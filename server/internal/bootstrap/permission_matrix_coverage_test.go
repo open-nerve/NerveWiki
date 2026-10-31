@@ -137,6 +137,8 @@ func targetViolation(pattern, path, slug string, s seeded) string {
 			// A tag is no target: the notebook before it is.
 		case segment == "{revision}" && i > 0 && want[i-1] == "versions":
 			// A version's revision is no target: the page before it is.
+		case segment == "{rule}" && i > 0 && want[i-1] == "lint":
+			// A lint rule is no target: the notebook before it still is.
 		case strings.HasSuffix(segment, "_id}"):
 			id, err := uuid.Parse(got[i])
 			of, isRow := s.workspaceOfRow(id)

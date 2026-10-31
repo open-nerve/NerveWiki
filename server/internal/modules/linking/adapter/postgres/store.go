@@ -109,6 +109,7 @@ func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {
 		out.RangeEnds = append(out.RangeEnds, int32(l.End))
 		out.Kinds = append(out.Kinds, l.Kind)
 		out.PropertyKeys = append(out.PropertyKeys, l.Property)
+		out.InFrontmatter = append(out.InFrontmatter, l.InFrontmatter())
 		out.Targets = append(out.Targets, l.Target)
 		out.Anchors = append(out.Anchors, l.Anchor)
 		out.Displays = append(out.Displays, l.Display)

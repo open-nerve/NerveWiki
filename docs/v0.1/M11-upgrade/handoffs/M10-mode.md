@@ -7,7 +7,9 @@ created: 2026-10-27
 
 # 模式的契约表、模式变化的订阅者与冻结的拒绝
 
-**P3决定62的后续义务（2026-10-30，尚待P3实施）**：当前Extractor仍为1；拟议v2落地后literal-v1页会触发已有stale_pages闸门，按[M10总设计](../../M10-llm-wiki/00-M10-design.md)§7拒绝批准或先reindex，不能过滤旧页后声称规则全过。若后续使用ingest，还须遵守[P3](../../M10-llm-wiki/03-P3-lint-health.md)§3.8.2的KnownAbsent/Ineligible/Known/Unknown及未改页coverage；新页已知不存在不等于全本旧消化为空。这里只交计划边界，审查/实现/测试均未由本条完成，M11仍未开始，status仍open。
+**P3/S1实际接入的移交（2026-10-31）**：内部LintScope的显式Contract＋AreaRootID与implicit identity隔离，effective standard的root=nil，stored standard可explicit LLM＋拟议root；零UUID不是nil。SourceArea/LintData完整整区不依赖hash；调用不得处于已有事务内，名额/期限及交付前授权仍适用。literal-v1现已实际计stale_pages，M11须按既有闸门拒批准或先reindex；不启动M11。完整item_key、cursor、规则与说明SDK余1003/933B见[M10/P3/S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)。P4 Unknown/未改页coverage继续后续义务，status仍open。
+
+**P3来源格式前置的移交（S1-0a历史记录，以下后续状态是原时点）**：当前Extractor为2，literal-v1为旧格式。后续lint实施时须计入stale_pages；M11按[M10总设计](../../M10-llm-wiki/00-M10-design.md) §7拒绝批准或先reindex，不能过滤旧页后称规则全过。S1-0a未实现lint或M11闸门，前置验证见[P3 §10.1](../../M10-llm-wiki/03-P3-lint-health.md#101-s1)。后续ingest仍遵守[P3](../../M10-llm-wiki/03-P3-lint-health.md) §3.8.2的KnownAbsent/Ineligible/Known/Unknown及未改页coverage；新页已知不存在不等于全本旧消化为空。M11未开始，status保持open。
 
 M10/P1 建成了模式与模板、模式守卫的框架、预检与后台拒绝的去处，以及网页的模式变化处理（[P1 设计](../../M10-llm-wiki/01-P1-contract-frame.md)第 8–10 节；[S4 审查](../../M10-llm-wiki/reviews/P1-S4-web-review.md)）。这里移交 P1 实施后明确的契约与接入位置；M11 的升级流程尚未开始。原有的[事件移交](M5-events.md)、[回滚一次升级](M8-P4-background.md)与[MCP、冻结及回滚调度移交](M9-mcp-upgrade.md)继续适用。
 

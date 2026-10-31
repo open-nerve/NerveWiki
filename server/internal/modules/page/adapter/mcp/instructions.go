@@ -29,46 +29,27 @@ Conventions
 
 // pathsAndTools are both entries' "Paths" and "Tools".
 const pathsAndTools = `Paths
-- Every path is from the notebook's root, its segments joined by "/". A leading "/" is optional; "./", ".." and ` +
-	`empty segments are refused.
-- A page is a Markdown file: its path is its ancestors' titles, then its own title and ".md", as in ` +
-	`"Projects/Roadmap.md". A page holds pages and attachments, as a folder does.
-- An attachment is a file under a page or at the root, as in "Projects/diagram.png". Its name never ends with ` +
-	`".md"; a page titled "x.png" is "x.png.md".
-- Segments compare without case: "projects/roadmap.md" finds "Projects/Roadmap.md".
-- Paths address nodes; they are not link targets. In a page's content, link as the wiki does: [[Projects/Roadmap]].
-
+- Paths start at the notebook root; a leading / is optional. Join segments with /. No ./, .. or empty segments.
+- Pages are ancestors' titles plus their title and .md: Projects/Roadmap.md. A page also holds children.
+- Attachments keep their names (never ending in .md): Projects/diagram.png. A page titled x.png is x.png.md.
+- Segments compare without case. Tool paths address nodes; content links use wiki targets: [[Projects/Roadmap]].
 Tools
-- list: the children of the root ("" or "/") or of a page ("Projects/"), in the tree's order. Any other pattern is a ` +
-	`glob over the paths, in path order: * and ? within a segment, ** across segments; "**/*.md" is every page. Go on ` +
-	`with next_cursor while it is set: a costly glob may answer a page with no items and a cursor.
-- read: a page's lines exactly as stored, from offset for limit lines, about 45 KiB at most per call. Go on with ` +
-	`next_offset, and with next_column within a line too long for one call. An attachment gives its metadata, and the ` +
-	`image or a link to download it.
-- grep: the lines matching a Go regular expression, with their paths and line numbers as read counts them; glob ` +
-	`narrows the pages.
-- search: words and Chinese text in titles and contents, best first, with excerpts. Use search for words, grep for ` +
-	`patterns and line numbers.
-- Pages queued in bulk (a batch, an import, a background restore or revert, an upgrade) reach search and a keyed ` +
-	`grep once indexed: building says so.
-- backlinks: the pages linking to a page, with context.
-- index: pages by type, tag or parent page, with summary, tags and inbound link count.
-- write: a page's whole content. Without base_version it creates the page and its missing parent pages; with the ` +
-	`version you read, it replaces the content.
-- edit: replaces old_string, which must occur exactly once unless replace_all is set, with new_string, byte for byte.
-- move: moves or renames a page or an attachment to its full new path ("B/x.md", never a page to move it into); ` +
-	`links to it follow unless update_links is false.
-- delete: puts a page or an attachment in the trash; a page with children needs recursive.
-- batch: up to 100 write, edit, move and delete ops as one change with a message, all or none; each op sees what ` +
-	`the ones before it did; base_version is from before the batch. Unlike separate calls, links follow its renames and ` +
-	`moves as one, from where they led before the batch or at their page's last write, blind to what ops did between, ` +
-	`its aliases included. A page it writes that is being edited refuses at that write.
-- versions: a page's versions, or with revision one version's lines.
-- log: the notebook's changes, newest first; path, actor ("me") and client ("mcp") narrow it.
-- changeset: one change in full. History is read-only here: people restore and revert in the web.
-- A page's version, "<node id>:<revision>", tells which content you read. A write or edit with base_version is ` +
-	`refused when the page changed since: read it again.
-- A page being edited in the web editor, by you too, refuses writes, edits, deletes and a move that would rewrite ` +
-	`its links, saying by whom: try again after they leave edit mode. The lock cannot be taken over.
-- Calls over 64 KiB are taken one at a time per token, the next waiting 2 seconds at most: send large writes one ` +
-	`after another, not in parallel.`
+- list: children of the root (empty or /) or a page (Projects/), in tree order; other patterns are path globs. * and ? stay in a segment, ** crosses segments. Follow next_cursor, even after an empty costly-glob page.
+- read: stored lines, using offset/limit, about 45 KiB per call. Continue with next_offset and next_column for a long line. Attachments return metadata and an image or download link.
+- grep: Go regular-expression matches with paths and read's line numbers; glob narrows pages.
+- search: words and Chinese text in titles and content, best first with excerpts. Bulk queued pages reach search and keyed grep once indexed; building reports this.
+- backlinks: linking pages with context.
+- index: pages by type, tag or parent, with summary, tags and inbound counts.
+- write: create a page and missing parents without base_version; replace with the version you read.
+- edit: replace old_string byte for byte with new_string; it must occur once unless replace_all is set.
+- move: rename or move to the full new path (B/x.md, not a destination folder). Links follow unless update_links is false.
+- delete: trash a node; a page with children needs recursive.
+- batch: up to 100 write/edit/move/delete ops, one change and message, all or none. Each sees earlier ops; base_version is from before the batch. Links follow all moves together, from before the batch or their page's last write, ignoring intermediate changes, including alias changes. An edited page refuses at its write.
+- versions: list versions or read one revision's lines.
+- log: newest changes; path, actor (me) and client (mcp) filter them.
+- changeset: one change. People restore or revert in the web; agent history is read-only.
+- lint: health counts/previews, or rule items continued with next_cursor. Capped counts are lower bounds.
+- pending_sources: LLM Wiki sources still undigested, with path/kind/bytes/created_at; follow next_cursor. Empty source pages are omitted.
+- Versions are <node id>:<revision>. If base_version is stale, read again.
+- Web editing, including your own, refuses writes, edits, deletes and moves that rewrite links. Wait for edit mode to end; the lock cannot be taken over.
+- Calls over 64 KiB run one at a time per token; the next waits at most 2s. Send large writes sequentially.`

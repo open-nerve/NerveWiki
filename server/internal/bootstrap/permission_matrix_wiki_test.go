@@ -9,6 +9,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -164,7 +165,7 @@ func seedWikiVariant(t testing.TB, exec func(sql string, args ...any), w wikiSee
 			exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 				"SELECT id, $3, 1, sha256(convert_to($3, 'UTF8')), octet_length($3), created_by_id, $2 FROM nodes WHERE id = $1",
 				node, now, p.Content)
-			exec(seededPageHistory, node)
+			exec(seededPageHistory, node, linking.Extractor)
 		}
 		seedWikiSources(exec, w, n.name, now)
 	}
@@ -323,6 +324,52 @@ func wikiMatrixRows() []matrixRow {
 	return append(rows, sourceMatrixRows()...)
 }
 
+// lintMatrixRows are the two reads on the existing notebook columns. Their
+// ordinary notebooks have empty indexed contents; both modes' nonempty
+// answers and later snapshots are exercised through Serve separately.
+func lintMatrixRows() []matrixRow {
+	readers := map[caller]cell{}
+	for _, c := range notebookColumns() {
+		readers[c] = cell{http.StatusNotFound, "notebook.not_found"}
+		if _, visible := roleIn(c); visible {
+			readers[c] = cellOK()
+		}
+	}
+	path := func(c caller, s seeded) string {
+		return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() + "/lint"
+	}
+	return []matrixRow{
+		{
+			op: "getLint", columns: notebookColumns(), cells: maps.Clone(readers),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, path(c, s), ""
+			},
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var summary map[string]any
+				decodeAnswer(t, answer, &summary)
+				lintServeEnvelope(t, summary, "standard")
+				lintServeWanted(t, lintServeSummary(t, summary, "standard"))
+			},
+		},
+		{
+			op: "listLintItems", columns: notebookColumns(), cells: maps.Clone(readers),
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, path(c, s) + "/wanted", ""
+			},
+			check: func(t *testing.T, _ caller, _ seeded, answer string) {
+				t.Helper()
+				var page map[string]any
+				decodeAnswer(t, answer, &page)
+				lintServeEnvelope(t, page, "standard")
+				if len(lintServeObjects(t, page["data"])) != 0 || page["next_cursor"] != nil {
+					t.Fatalf("lint matrix list=%v, want an empty array and null continuation", page)
+				}
+			},
+		},
+	}
+}
+
 // adminsOnlyOr answers a notebook's admins answer, its other writers
 // writer, refuses its readers, and does not show it to the rest: a write
 // an LLM Wiki keeps to its admins (M10/P1 design 3.22).
@@ -364,7 +411,7 @@ func seedWikiSources(exec func(string, ...any), w wikiSeeded, notebook string, n
 			p.id, w.notebook(notebook), p.parent, p.name, shared.TitleKey(p.name), i+2, now)
 		exec("INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at) "+
 			"SELECT id, $2, 1, sha256(convert_to($2, 'UTF8')), octet_length($2), created_by_id, created_at FROM nodes WHERE id = $1", p.id, p.content)
-		exec(seededPageHistory, p.id)
+		exec(seededPageHistory, p.id, linking.Extractor)
 		if !p.deleted && p.parent != nil {
 			exec("UPDATE nodes SET source_hash = sha256(convert_to($2, 'UTF8')) WHERE id = $1", p.id, p.content)
 		}

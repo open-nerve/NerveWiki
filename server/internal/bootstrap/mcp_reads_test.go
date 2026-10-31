@@ -466,6 +466,7 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	r.carolsWrites(t, answered)
 	r.wikiCodeCalls(t, answered)
 	sourceCodeCalls(t, answered)
+	wikiToolCodeCalls(t, answered)
 	busyWrites(t, answered)
 	r.busyGrep(t, slots, answered)
 	for tool, codes := range mcpToolCodes() {
@@ -774,22 +775,24 @@ func TestTheStringParametersAreDerivedFromTheSchema(t *testing.T) {
 // The account entry's notebook is added to them.
 func validToolArguments(created string) map[string]map[string]any {
 	return map[string]map[string]any{
-		"notebooks":     {},
-		"open_notebook": {},
-		"list":          {},
-		"read":          {"path": "Strings.md"},
-		"write":         {"path": "Strings.md", "content": "x"},
-		"edit":          {"path": "Strings.md", "old_string": "x", "new_string": "y"},
-		"move":          {"from": "Strings.md", "to": "Moved.md"},
-		"delete":        {"path": "Gone.md"},
-		"batch":         {"ops": []any{map[string]any{"op": "write", "path": "Strings.md", "content": "x"}}, "message": "strings"},
-		"versions":      {"path": "Strings.md"},
-		"log":           {},
-		"changeset":     {"id": created},
-		"grep":          {"pattern": "x"},
-		"search":        {"q": "x"},
-		"backlinks":     {"path": "Strings.md"},
-		"index":         {},
+		"notebooks":       {},
+		"open_notebook":   {},
+		"list":            {},
+		"read":            {"path": "Strings.md"},
+		"write":           {"path": "Strings.md", "content": "x"},
+		"edit":            {"path": "Strings.md", "old_string": "x", "new_string": "y"},
+		"move":            {"from": "Strings.md", "to": "Moved.md"},
+		"delete":          {"path": "Gone.md"},
+		"batch":           {"ops": []any{map[string]any{"op": "write", "path": "Strings.md", "content": "x"}}, "message": "strings"},
+		"versions":        {"path": "Strings.md"},
+		"log":             {},
+		"changeset":       {"id": created},
+		"grep":            {"pattern": "x"},
+		"search":          {"q": "x"},
+		"backlinks":       {"path": "Strings.md"},
+		"index":           {},
+		"lint":            {"rule": "wanted"},
+		"pending_sources": {},
 	}
 }
 

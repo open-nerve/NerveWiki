@@ -1438,6 +1438,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/lint": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read a notebook's health checks
+         * @description Counts and up to five items for each applicable rule, from one read snapshot. A standard notebook has wanted, orphans, ambiguous and invalid_frontmatter, in that order. An LLM Wiki additionally has missing_type, missing_summary, undigested_sources and invalid_sources, in that order. Any role in the notebook can read them. A notebook that does not exist, is deleted, or is not visible to the caller is notebook.not_found. After that check, an exhausted computation or waiting budget is server_busy, with Retry-After: 1. Counts at the cap are lower bounds. Later pages are computed from later snapshots; items may move, disappear or repeat between calls.
+         */
+        get: operations["getLint"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/lint/{rule}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read more items of a notebook's health check
+         * @description One page of a rule, from the current read snapshot. Any role in the notebook can read it. After HTTP binding, a malformed cursor is bad_request. When the requested rule is known, a cursor bound to another rule, notebook or scope is also bad_request before notebook authorization. A nonexistent, deleted or invisible notebook is then notebook.not_found; an unknown requested rule is wiki.lint_rule_not_found, without binding a shape-valid cursor. An LLM-only rule in a standard notebook is notebook.not_llm_wiki; a limit outside 1-100 is validation_failed; an exhausted computation or waiting budget is server_busy, with Retry-After: 1. These checks occur in that order. The last four rules are LLM-only. The limit is 50 when absent. Use next_cursor to continue, including a start cursor returned by another client. Each item also carries its own continuation cursor. A capped count does not truncate this list. Pages may move between calls; use item_key to identify an item, not its displayed target.
+         */
+        get: operations["listLintItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -2781,7 +2829,7 @@ export interface components {
         LinkTargetKind: "page" | "asset";
         /** @description A property whose value, or an item of whose list, is a link. */
         PropertyLink: {
-            /** @description The property's path, a list's item after a dot (sources.0). */
+            /** @description The property's path, a list's item after a dot (sources.0); the empty string is a legal empty property path, not a body link. */
             key: string;
             /**
              * Format: uuid
@@ -2864,6 +2912,240 @@ export interface components {
         };
         LinkTargetList: {
             data: components["schemas"]["LinkTarget"][];
+        };
+        /** @enum {string} */
+        LintMode: "standard" | "llm_wiki";
+        /**
+         * Format: int64
+         * @description The count capped at 10000. A count of 10000 always has count_capped true and is a lower bound; pagination still includes later items.
+         */
+        LintCount: number;
+        /** @description An opaque canonical continuation after this exact item. */
+        LintCursor: string;
+        /** @description The displayed target, valid UTF-8 and at most 256 bytes, cut only between characters. target_cut says whether it was shortened. The character bound here does not replace the UTF-8 byte bound. */
+        LintTarget: string;
+        LintWantedItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "wanted";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /**
+             * Format: int64
+             * @description The number of distinct referring pages in this complete target group.
+             */
+            pages: number;
+        };
+        /** @description Continue after the last item actually returned; null when there are no more. A start cursor from another client is also accepted by listLintItems and begins before the true first item. */
+        LintNextCursor: string | null;
+        LintWantedSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "wanted";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintWantedItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintOrphansItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "orphans";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+        };
+        LintOrphansSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "orphans";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintOrphansItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintAmbiguousItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "ambiguous";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+        };
+        LintAmbiguousSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "ambiguous";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintAmbiguousItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintInvalidFrontmatterItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_frontmatter";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+        };
+        LintInvalidFrontmatterSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_frontmatter";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintInvalidFrontmatterItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintMissingTypeItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_type";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+        };
+        LintMissingTypeSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_type";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintMissingTypeItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintMissingSummaryItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_summary";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+        };
+        LintMissingSummarySummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_summary";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintMissingSummaryItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        /** @enum {string} */
+        LintNodeKind: "page" | "asset";
+        LintUndigestedSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "undigested_sources";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            node_id: string;
+            kind: components["schemas"]["LintNodeKind"];
+            /** Format: int64 */
+            bytes: number;
+            /**
+             * Format: date-time
+             * @description The source node's original creation time.
+             */
+            created_at: string;
+        };
+        LintUndigestedSourcesSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "undigested_sources";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintUndigestedSourcesItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintInvalidSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_sources";
+            item_key: string;
+            cursor: components["schemas"]["LintCursor"];
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /** @description True for a non-link JSON value; false for a link that fails qualification. */
+            not_link: boolean;
+        };
+        LintInvalidSourcesSummary: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_sources";
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["LintInvalidSourcesItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
+        };
+        LintRuleSummary: components["schemas"]["LintWantedSummary"] | components["schemas"]["LintOrphansSummary"] | components["schemas"]["LintAmbiguousSummary"] | components["schemas"]["LintInvalidFrontmatterSummary"] | components["schemas"]["LintMissingTypeSummary"] | components["schemas"]["LintMissingSummarySummary"] | components["schemas"]["LintUndigestedSourcesSummary"] | components["schemas"]["LintInvalidSourcesSummary"];
+        LintSummary: {
+            mode: components["schemas"]["LintMode"];
+            /** Format: date-time */
+            computed_at: string;
+            /**
+             * Format: int64
+             * @description Pages with an old index; an administrator can reindex them.
+             */
+            stale_pages: number;
+            /** @description The applicable rules in their fixed order, including zero counts. */
+            rules: components["schemas"]["LintRuleSummary"][];
+        };
+        LintItem: components["schemas"]["LintWantedItem"] | components["schemas"]["LintOrphansItem"] | components["schemas"]["LintAmbiguousItem"] | components["schemas"]["LintInvalidFrontmatterItem"] | components["schemas"]["LintMissingTypeItem"] | components["schemas"]["LintMissingSummaryItem"] | components["schemas"]["LintUndigestedSourcesItem"] | components["schemas"]["LintInvalidSourcesItem"];
+        LintPage: {
+            mode: components["schemas"]["LintMode"];
+            /** Format: date-time */
+            computed_at: string;
+            /** Format: int64 */
+            stale_pages: number;
+            /** @description Items of the requested rule; an empty list is []. */
+            data: components["schemas"]["LintItem"][];
+            next_cursor: components["schemas"]["LintNextCursor"];
         };
         /** @description The data of hello, the first frame. */
         EventHello: {
@@ -3264,6 +3546,8 @@ export interface components {
         SearchLimit: number;
         /** @description A tag's name, without its '#', as listTags writes it and a reading view's tag link carries it; a nested tag's '/' is written %2F (a%2Fb). The tag "/" alone cannot be named: the path reads its %2F as a trailing slash, a path no operation has (404 not_found). */
         Tag: string;
+        /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+        Rule: string;
         /** @description The job's id. */
         JobID: string;
     };
@@ -3401,6 +3685,32 @@ export type TagPage = components['schemas']['TagPage'];
 export type TagPageList = components['schemas']['TagPageList'];
 export type LinkTarget = components['schemas']['LinkTarget'];
 export type LinkTargetList = components['schemas']['LinkTargetList'];
+export type LintMode = components['schemas']['LintMode'];
+export type LintCount = components['schemas']['LintCount'];
+export type LintCursor = components['schemas']['LintCursor'];
+export type LintTarget = components['schemas']['LintTarget'];
+export type LintWantedItem = components['schemas']['LintWantedItem'];
+export type LintNextCursor = components['schemas']['LintNextCursor'];
+export type LintWantedSummary = components['schemas']['LintWantedSummary'];
+export type LintOrphansItem = components['schemas']['LintOrphansItem'];
+export type LintOrphansSummary = components['schemas']['LintOrphansSummary'];
+export type LintAmbiguousItem = components['schemas']['LintAmbiguousItem'];
+export type LintAmbiguousSummary = components['schemas']['LintAmbiguousSummary'];
+export type LintInvalidFrontmatterItem = components['schemas']['LintInvalidFrontmatterItem'];
+export type LintInvalidFrontmatterSummary = components['schemas']['LintInvalidFrontmatterSummary'];
+export type LintMissingTypeItem = components['schemas']['LintMissingTypeItem'];
+export type LintMissingTypeSummary = components['schemas']['LintMissingTypeSummary'];
+export type LintMissingSummaryItem = components['schemas']['LintMissingSummaryItem'];
+export type LintMissingSummarySummary = components['schemas']['LintMissingSummarySummary'];
+export type LintNodeKind = components['schemas']['LintNodeKind'];
+export type LintUndigestedSourcesItem = components['schemas']['LintUndigestedSourcesItem'];
+export type LintUndigestedSourcesSummary = components['schemas']['LintUndigestedSourcesSummary'];
+export type LintInvalidSourcesItem = components['schemas']['LintInvalidSourcesItem'];
+export type LintInvalidSourcesSummary = components['schemas']['LintInvalidSourcesSummary'];
+export type LintRuleSummary = components['schemas']['LintRuleSummary'];
+export type LintSummary = components['schemas']['LintSummary'];
+export type LintItem = components['schemas']['LintItem'];
+export type LintPage = components['schemas']['LintPage'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
@@ -3442,6 +3752,7 @@ export type ParameterChangesetId = components['parameters']['ChangesetID'];
 export type ParameterWorkspaceSlug = components['parameters']['WorkspaceSlug'];
 export type ParameterSearchLimit = components['parameters']['SearchLimit'];
 export type ParameterTag = components['parameters']['Tag'];
+export type ParameterRule = components['parameters']['Rule'];
 export type ParameterJobId = components['parameters']['JobID'];
 export type HeaderContentDisposition = components['headers']['ContentDisposition'];
 export type HeaderETag = components['headers']['ETag'];
@@ -5360,6 +5671,63 @@ export interface operations {
                     "application/json": components["schemas"]["LinkTargetList"];
                 };
             };
+            default: components["responses"]["Problem"];
+        };
+    };
+    getLint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The applicable rules, with their counts and previews. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LintSummary"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    listLintItems: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the requested rule, with null after its last item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LintPage"];
+                };
+            };
+            503: components["responses"]["Problem"];
             default: components["responses"]["Problem"];
         };
     };

@@ -20,13 +20,21 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
-    # test-go-race、test-go-bootstrap-1、-2、-3 与 -4、test-go-costs、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
+    # test-go-race、test-go-bootstrap-1、-2、-3、-4 与 -5、test-go-costs、test-go-costs-lint、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
     # 不在这个和里）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
-    # server 共八份，连同 web、e2e 与 image 共十一项；四份组合根本机两轮的包耗时均值见 Makefile。
+    # server 共十份，连同 web、e2e 与 image 共十三项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
     # 33b4/4550 两分支 CI 40718770843/40730123058 的第一份 Test 均值 450.5 秒过线；第二份 418.5 秒。
     # 按 Makefile 的窄名称边界将 EveryResolutionCaseImports 移给第二份，预计为 432.8926/436.1074 秒。
-    # 新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
-    # 两次分支 CI 与最终两次 main Test 均值另验；不把本机包耗时当作 CI Test 步骤。
+    # 当时新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
+    # 当时两次分支 CI 与最终两次 main Test 均值另验；不把本机包耗时当作 CI Test 步骤。
+    # 以下 S1-0 候选说明保留当时口径；当前五份候选见下文。
+    # M10/P3/S1-0 当前候选只将 SECOND 的 The(MCP|Contents) 改为 The(MCP[C-Z]|Contents)。
+    # 四个 MCP B 前缀顶层从第二份移到第三份，详见 Makefile；FIRST/THIRD、工作流执行内容及超时不变。
+    # 既有 470 名称的候选静态分配为 167/70/118/115；当前编译清单、完整四份双轮与 CI 验收待实测。
+    # M10/P3/S1 五份待测候选：f64 的分支 CI 41068871923 attempt1 四份 Test 为 379/425/590/403 秒。
+    # 第五份取 TheMCP/TheLint/TheWikiTools，第二、三份排除它，第一、第四份原成员不动；494 顶层分为 167/39/114/122/52。
+    # 18b五份各两轮与精确分支CI41171083998 attempt1已验；当前495顶层167/39/114/123/52。
+    # 该分支单样本不代指定merge/record两次main各份Test均值严格<450秒验收；原Go/job期限不变。
     # 一份失败不取消别的：各自的失败都看得到。时限约为各份在 CI 上实测的两倍（M8/P3A，作业 6:20、10:58、9:26）：
     # 组合根那一份里 go test 的 -timeout 15m 先到，打出卡住的测试
     strategy:
@@ -37,7 +45,7 @@ jobs:
           # 20 分钟：go test 的 -timeout 15m 先到，打出卡住的测试（同组合根那几份）
           - leg: race
             timeout: 20
-          # 组合根的整个程序测试，竞态检测下最慢的一个包，按测试名分成四份（Makefile 的 FIRST、SECOND、THIRD 与第四份互补规则；
+          # 组合根的整个程序测试，竞态检测下最慢的一个包，按测试名分成五份（Makefile 的 FIRST、SECOND、THIRD、FIFTH 与第四份互补规则；
           # M8/P4A 审查 C 的 M-6：一份时测试一步已到 12 分钟，离 go test 的 15 分钟时限只剩约两成）。一份的测试一步两次运行的平均
           # 过了约 7:30 时照 M9/P2 设计 6.5 挪界线或再分一份：M9/P2 S1 时第二份 7:15 与 8:33、第一份 6:59 与 6:56，界线往后挪之后
           # 第二份照旧过线（7:54、7:45，中间一次两份都快的看作离群），撤回、再分一份（数在 Makefile 的注释里）
@@ -53,9 +61,14 @@ jobs:
             timeout: 25
           - leg: bootstrap-4
             timeout: 25
+          - leg: bootstrap-5
+            timeout: 25
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次。M9/P4 S1 加 grep 的守卫，
           # P4 之后作业估计 6.5–11 分钟，时限照约两倍的规则从 20 分钟提到 25 分钟（M9/P4 设计 6.5，第 11 节第 54 条）
           - leg: costs
+            timeout: 25
+          # lint 的迁移、计划与十万页规则/编排成本独立一份；原 costs 的静态检查和生成检查保持原位。
+          - leg: costs-lint
             timeout: 25
           # 不带竞态检测的组合根的预算与守卫：成本那一份在 M8/P4A 之前已到 15 分钟，加后台撤销的守卫时分出（M8/P4 设计 3.11）。
           # M9/P1 S2 时作业已到 11:05，时限照约两倍的规则从 20 分钟提到 25 分钟（S2 修正第二轮）；M9/P3 S1 修正第 6 轮时作业到 12:47，

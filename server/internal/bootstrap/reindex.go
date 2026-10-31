@@ -21,18 +21,23 @@ import (
 )
 
 // Reindex is `nervewiki reindex` (M6/P3 design 3.6): it rebuilds the link
-// index of the notebook id, or, when id is zero, of every notebook not
-// deleted, one at a time and each in a transaction, on the command line's
-// composition: a pool, the Markdown and its budget as serve's, and the
-// linking module's rebuild; no HTTP server or jobs client. After each, it
-// queues in bulk the notebook's nodes whose search rows are missing or of
-// another tokenizer, which the server's job builds (M8/P5 design 3.4),
-// whatever became of its rebuild. A line a notebook goes to out, with the
-// nodes queued. A notebook whose siblings' title keys would clash, or whose
-// rebuild fails, is left as it was, told on errOut, with the logs, as is
-// one whose nodes are not queued: the command then fails, after the other
-// notebooks; a rebuild's failure of the notebook --notebook names fails it
-// at once, with the queue's, if any (M8/P5A review B-N2).
+// index and title keys of one notebook, or every live notebook in id
+// order. Each linking/rekey rebuild is a transaction holding the notebook
+// and index locks. Failed or clashing rebuilds leave that stage unchanged.
+// It uses the command's pool, Markdown and budget, without HTTP or jobs.
+//
+// After each rebuild, while ctx is usable, search rows with a missing or
+// old tokenizer are queued even if linking failed. QueueSearch batches of
+// at most 10000 nodes commit separately, after the linking locks end.
+// A later batch's failure preserves earlier batches; queue failure does
+// not undo a committed link index or its event. The server's search job
+// builds the queued rows later (M8/P5 design 3.4).
+//
+// A notebook's result goes to out, failures and clashes to errOut. All-book
+// mode continues after ordinary failures and finally returns an error.
+// Single-book mode still attempts its queue after a linking failure and
+// joins their errors (M8/P5A review B-N2). Missing notebooks, cancellation
+// and output failures retain their early-return behavior.
 func Reindex(ctx context.Context, cfg config.Config, errOut, out io.Writer, id uuid.UUID) error {
 	c, err := openAdminCommand(ctx, cfg, errOut)
 	if err != nil {

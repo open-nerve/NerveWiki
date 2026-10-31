@@ -27,19 +27,23 @@ func TestSourceHashSchemaAndBackfill(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t, pgtest.NewEmptyDatabase(t))
 	oldFiles := fstest.MapFS{}
+	through50Files := fstest.MapFS{}
 	entries, err := fs.ReadDir(migrations.FS(), ".")
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, e := range entries {
-		if e.Name() > "00049_zzzz.sql" {
+		if e.Name() > "00050_zzzz.sql" {
 			continue
 		}
 		data, err := fs.ReadFile(migrations.FS(), e.Name())
 		if err != nil {
 			t.Fatal(err)
 		}
-		oldFiles[e.Name()] = &fstest.MapFile{Data: data, Mode: 0o444}
+		through50Files[e.Name()] = &fstest.MapFile{Data: data, Mode: 0o444}
+		if e.Name() <= "00049_zzzz.sql" {
+			oldFiles[e.Name()] = through50Files[e.Name()]
+		}
 	}
 	old, err := postgres.NewMigrator(pool, oldFiles)
 	if err != nil {
@@ -55,7 +59,8 @@ func TestSourceHashSchemaAndBackfill(t *testing.T) {
 	assertSourceHashColumn(t, pool, false)
 	want := seedSourceHashMigration(t, pool)
 	before := sourceMigrationData(t, pool)
-	m, err := postgres.NewMigrator(pool, migrations.FS())
+	// Keep this historical Up/Down/Up scoped to 50 as later migrations are added.
+	m, err := postgres.NewMigrator(pool, through50Files)
 	if err != nil {
 		t.Fatal(err)
 	}

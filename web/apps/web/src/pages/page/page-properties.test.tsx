@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, onTestFinished, test, vi } from "vitest";
+import { describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { json, problem } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
@@ -640,4 +640,103 @@ test("properties by a clock far ahead of the server's show, and show as the page
   await act(() => vi.advanceTimersByTimeAsync(60_000));
   await act(() => router.navigate(pagePath(install.id)));
   await within(section("Properties")).findByText("draft");
+});
+
+// The empty property path is an exact key, independent of the link's
+// written target and of other property paths with the same value.
+describe("empty property key", () => {
+  test("a resolved page consumes the empty path, with named and absent path controls", async () => {
+    const server = pageServer();
+    server.properties.set(install.id, {
+      valid: true,
+      assets_expire_at: null,
+      properties: [
+        { key: "", value: "[[Guide|empty page]]" },
+        { key: "named", value: "[[Guide|named page]]" },
+        { key: "absent", value: "[[Guide|absent page]]" },
+      ],
+      links: [
+        { key: "other", node_id: notes.id, kind: "page", url: null, inline: null },
+        { key: "named", node_id: linux.id, kind: "page", url: null, inline: null },
+        { key: "", node_id: guide.id, kind: "page", url: null, inline: null },
+      ],
+    });
+    renderApp(pagePath(install.id), server.app);
+    await within(await shownPanel()).findByRole("link", { name: "named page" });
+    expect(properties()).toEqual([
+      ["", "empty page"],
+      ["named", "named page"],
+      ["absent", "[[Guide|absent page]]"],
+    ]);
+    expect(
+      within(section("Properties"))
+        .getAllByRole("link")
+        .map((link) => [link.textContent, link.getAttribute("href")])
+    ).toEqual([
+      ["empty page", pagePath(guide.id)],
+      ["named page", pagePath(linux.id)],
+    ]);
+  });
+
+  test("an unresolved empty path is styled as unresolved and does not borrow a named resolution", async () => {
+    const server = pageServer();
+    server.properties.set(install.id, {
+      valid: true,
+      assets_expire_at: null,
+      properties: [
+        { key: "", value: "[[Gone|empty missing]]" },
+        { key: "named", value: "[[Gone|named page]]" },
+      ],
+      links: [
+        { key: "named", node_id: guide.id, kind: "page", url: null, inline: null },
+        { key: "", node_id: null, kind: null, url: null, inline: null },
+      ],
+    });
+    renderApp(pagePath(install.id), server.app);
+    await within(await shownPanel()).findByRole("link", { name: "named page" });
+    expect(properties()).toEqual([
+      ["", "empty missing"],
+      ["named", "named page"],
+    ]);
+    const missing = within(section("Properties")).getByText("empty missing");
+    expect(missing.closest("a")).toBeNull();
+    expect(missing.className).toContain("decoration-dashed");
+    expect(
+      within(section("Properties"))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href"))
+    ).toEqual([pagePath(guide.id)]);
+  });
+
+  test("an attachment consumes the empty path's signed address and inline disposition", async () => {
+    const server = pageServer();
+    const address = "/api/v0/assets/empty/content?b=x&e=1&s=y";
+    server.properties.set(install.id, {
+      valid: true,
+      assets_expire_at: null,
+      properties: [
+        { key: "", value: "[[x.png|empty attachment]]" },
+        { key: "named", value: "[[x.png|named page]]" },
+      ],
+      links: [
+        { key: "named", node_id: guide.id, kind: "page", url: null, inline: null },
+        { key: ".0", node_id: linux.id, kind: "asset", url: "/wrong-path", inline: false },
+        { key: "", node_id: notes.id, kind: "asset", url: address, inline: true },
+      ],
+    });
+    renderApp(pagePath(install.id), server.app);
+    await within(await shownPanel()).findByRole("link", { name: "named page" });
+    expect(properties()).toEqual([
+      ["", "empty attachment (opens in a new tab)"],
+      ["named", "named page"],
+    ]);
+    const link = within(section("Properties")).getByRole("link", { name: "empty attachment (opens in a new tab)" });
+    expect(link.getAttribute("href")).toBe(address);
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(link.hasAttribute("download")).toBe(false);
+    expect(within(section("Properties")).getByRole("link", { name: "named page" }).getAttribute("href")).toBe(
+      pagePath(guide.id)
+    );
+  });
 });

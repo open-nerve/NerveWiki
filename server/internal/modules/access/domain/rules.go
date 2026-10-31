@@ -133,6 +133,7 @@ func rules() map[shared.Action]Rule {
 		// The index of a notebook's pages over MCP (M9 design 4.9; M9/P4
 		// design 3.9.3): whoever reads the notebook.
 		"index.list": {Level: LevelNotebook, Notebook: readers()},
+		"lint.read":  {Level: LevelNotebook, Notebook: readers()},
 
 		// A notebook's attachments (M7/P2 design 3.5–3.7): its writers
 		// upload them, any role reads them; a rename, a move and a deletion

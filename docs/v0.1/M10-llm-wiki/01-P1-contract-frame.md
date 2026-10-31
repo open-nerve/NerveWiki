@@ -2486,6 +2486,9 @@ P1 完成，当且仅当：
 
 ## 9. 交给后面的 Phase
 
+**P3/S1接收（2026-10-31）**：lint.read/Actions/access规则与两REST权限矩阵已接；notebook/account两工具全对象合同、52格LLM变体及中英文新模板八规则干净有真实实证，见[P3 §10.1](03-P3-lint-health.md#101-s1)和[S1审查](reviews/P3-S1-lint-protocol-review.md)。S2健康页仍待，P1原交办及下列阶段记录按历史保留。
+
+
 - **S3**（S2 的审查留下的，主持者的决定 29）：四个 S2→S3 的窗口（第 0 节）的处理与核对见 10.3 和 [S3 的审查记录](reviews/P1-S3-prechecks-refusals-numbering-review.md)，已合并为 `a46c3d1d`（00 号文档第 12 节）。导入与恢复的加序号及 `checkPages` 的根下保留键规则对应 A-M2；撤销的两遍预检及 `TestPrechecksAnswerTheGuardsCodes` 的前一步碰到锁、后一步被模式拒绝的一行对应 A-M3；后台的开始时预检与 `refused` 的去处对应另两处窗口。这些窗口随 `a46c3d1d` 进入 main 并通过首次 main CI；完整 Step 审查、本机门禁与分支 CI 的既有证据保持不变。
 - **P2/S1**：来源事实/rewrite/管理/session/Merged义务已落地，验收进度见[P2](02-P2-source-area.md)3.14/10.1与[S1审查](reviews/P2-S1-source-rules-review.md)。实际构造为`page.NewModeGuard(pool, authorizer)`，mode写guard与sessionVeto均在lock前；`NodePlace.InArea`、`NodeFacts.Kind`、`StepContent`/Kinds/两侧Lines与恢复森林AfterParents，Unit复用已读祖先，普通模式零额外来源读/授权（不含旧响应读）。来源immutable、管理矩阵、按项正文/Merged后备及实际后台动作均有相应观察；rewrite真实SQL/fake用AND、full/Of取被撤销r，content-only只补相关线。08fa扩展`TestTheDowngradeEndsTheContract`，同一非空页真实降级后REST/MCP改变正文并核SQL版本；`ErrSourceAdminOnly`文字已区分管理sources与rename/move来源根，不暗示可删除根。`page.source_duplicate`、Forget与最终合成正文去重差异仍P2/S2；完整网页仍P2/S3。S1已合并且记录CI/两main Test均值已核，S2继续实施；合并见00号文档第12节。 P2/S2的同步SyncRestoreNode另新增一次普通模式也需的StateOf点读，之后普通模式不进入来源snapshot/元数据扫描；不改写前述S1阶段的guard读数结论。
 

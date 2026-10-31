@@ -1,16 +1,16 @@
 // Package wiki is the module of the LLM Wiki mode (M10 design 4.1): the
-// modes' contracts and the LLM Wiki's template. Its root is what bootstrap
-// sees: NewTemplate, the notebook module's seeder of a creation, over the
-// page module's template writes; TemplatePages, the template as the
-// contract holds it; Actions for the composition's checks. P1 has no
-// tables, routes or tools of its own.
+// modes' contracts, the LLM Wiki's template and its internal lint runtime.
+// Bootstrap constructs the template seeder separately from the runtime.
+// Register exposes the same runtime through the module's HTTP routes.
 package wiki
 
 import (
 	"slices"
 
+	httpadapter "github.com/open-nerve/NerveWiki/server/internal/modules/wiki/adapter/http"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
@@ -35,9 +35,10 @@ type (
 // The mode and the languages the composition root names: an alias carries
 // no constants, and bootstrap may not import wiki/domain.
 const (
-	ModeLLMWiki = domain.ModeLLMWiki
-	LocaleEn    = domain.LocaleEn
-	LocaleZhCN  = domain.LocaleZhCN
+	ModeStandard = domain.ModeStandard
+	ModeLLMWiki  = domain.ModeLLMWiki
+	LocaleEn     = domain.LocaleEn
+	LocaleZhCN   = domain.LocaleZhCN
 )
 
 // NewTemplate is the seeder over seeds, its templates parsed now.
@@ -52,6 +53,10 @@ func TemplatePages(mode Mode, l Locale) []TemplatePage {
 	return slices.Clone(c.Templates[l])
 }
 
-// Actions are the wiki module's actions in the rule table: none in P1;
-// P3 adds lint.read (M10 design 4.17).
-func Actions() []shared.Action { return nil }
+// Actions are the wiki module's actions in the rule table.
+func Actions() []shared.Action { return domain.Actions() }
+
+// Register mounts the HTTP routes using this module's shared lint runtime.
+func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
+	httpadapter.Register(router, api, m)
+}

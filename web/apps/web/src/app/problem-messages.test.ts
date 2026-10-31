@@ -63,6 +63,13 @@ test.each(operations.filter((operationId) => !unshown.includes(operationId)))(
 
 const problem = (status: number, code: string) => ({ status, code, title: "" });
 
+test.each([
+  ["en", "This health check rule does not exist."],
+  ["zh-CN", "没有这条健康检查规则。"],
+] as const)("an unknown health rule has an explanation in %s", (language, message) => {
+  expect(errorText(new ApiError(404, problem(404, "wiki.lint_rule_not_found")), translator(language))).toBe(message);
+});
+
 describe("errorText", () => {
   test.each([
     [

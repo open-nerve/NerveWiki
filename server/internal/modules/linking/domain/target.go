@@ -102,6 +102,11 @@ func (t Target) Reach(from []Step) int {
 	return max(len(from)-1-t.Up, 0) + len(t.Keys)
 }
 
+// kindPresence is the part of a candidate set that chooses the target form.
+type kindPresence interface {
+	has(string, bool) bool
+}
+
 // form is the key path the target is read as among candidates, the nodes
 // with one of its LastKeys, and whether as an attachment's (M6/P3 design 2;
 // M7/P3 design 4.2), as Obsidian reads it: written with ".md", a page's,
@@ -109,7 +114,7 @@ func (t Target) Reach(from []Step) int {
 // with it otherwise; else an attachment's when the notebook has an
 // attachment of its last segment's name anywhere, which only a name with
 // an extension may be (Node.Linkable); else a page's.
-func (t Target) form(candidates candidateSet) ([]string, bool) {
+func (t Target) form(candidates kindPresence) ([]string, bool) {
 	stem := t.Keys[len(t.Keys)-1]
 	switch {
 	case t.AltLast == "":
