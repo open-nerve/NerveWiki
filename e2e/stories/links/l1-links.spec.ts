@@ -178,7 +178,7 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     page.context().waitForEvent("page"),
     toTarget.click({ modifiers: ["ControlOrMeta"] }),
   ]);
-  await expect(pageHeading(opened, "Target")).toBeVisible();
+  await expect.poll(() => pageHeading(opened, "Target").isVisible()).toBe(true);
   // Watched from its start, as the stories' own tabs are: loaded again, it is quiet.
   const openedWatch = await watchPage(opened);
   await opened.reload();
