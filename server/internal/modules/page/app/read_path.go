@@ -72,8 +72,10 @@ type PageRead struct {
 	Bytes   int
 }
 
-// Execute reads the node at path in the notebook notebookID, unlocked,
-// without a transaction (M9/P1 design 3.11.1). Its order: the actor; the
+// Execute keeps ordinary node reads unlocked and without a transaction
+// (M9/P1 design 3.11.1). A canonical virtual read owns one exclusive
+// read-only repeatable-read snapshot, rechecking notebook access and mode
+// before generating its content (M10/P4 design 3.3). Its order: the actor; the
 // path, 422, a trailing "/" refused; the window's offset, column and
 // limit, 422; the notebook, notebook.not_found, page.read, which every
 // role may (no 403: a node not seen is not found); the node,

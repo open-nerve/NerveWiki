@@ -11,6 +11,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
@@ -57,6 +60,9 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 // transfer jobs, and MCP tools beside the modules'. The zero wiring is
 // serve's.
 type wiring struct {
+	// queryTracer observes real serve queries in cost tests. The pool retains
+	// the production configuration and connection setup; no query is replaced.
+	queryTracer pgx.QueryTracer
 	// batch bounds the writing jobs' batches, zero the import's: the
 	// interleavings make them small, so that a few nodes span batches
 	// (M8/P4 design 3.10).
@@ -115,6 +121,15 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		return nil, err
+	}
+	if w.queryTracer != nil {
+		observed := pool.Config()
+		pool.Close()
+		observed.ConnConfig.Tracer = w.queryTracer
+		pool, err = pgxpool.NewWithConfig(ctx, observed)
+		if err != nil {
+			return nil, err
+		}
 	}
 	// The configuration log masks database.url as a whole; say where the pool
 	// connects from pgx's own parse of it, which holds no password.
@@ -189,6 +204,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		return nil, err
 	}
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
+	trDeps.Contributors = []transfer.ExportContributor{wikiExport{notebooks: notebook.NewNotebooks(pool), files: files}}
 	trDeps.Batch = w.batch
 	if w.transfer != nil {
 		w.transfer(&trDeps)

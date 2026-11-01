@@ -388,8 +388,20 @@ CROSS JOIN LATERAL (
     ) u ORDER BY u.node_id LIMIT $2
 ) ids
 JOIN nodes n ON n.id = ids.node_id
-LEFT JOIN changeset_items i ON i.changeset_id = s.id AND i.node_id = ids.node_id
-LEFT JOIN page_revisions r ON r.changeset_id = s.id AND r.node_id = ids.node_id
+LEFT JOIN LATERAL (
+    SELECT x.node_id, x.before_parent_id, x.before_name, x.before_sort_order,
+        x.after_parent_id, x.after_name, x.after_sort_order, x.restored
+    FROM changeset_items x
+    WHERE x.changeset_id = s.id AND x.node_id = ids.node_id LIMIT 1
+) i ON true
+LEFT JOIN LATERAL (
+    SELECT y.base_revision, y.revision
+    -- A missing version stays a nullable row; the inner LEFT JOIN also
+    -- keeps revision nullable in the current sqlc output.
+    FROM (SELECT 1) wanted LEFT JOIN page_revisions y
+        ON y.changeset_id = s.id AND y.node_id = ids.node_id
+    LIMIT 1
+) r ON true
 LEFT JOIN nodes bp ON bp.id = i.before_parent_id
 LEFT JOIN nodes ap ON ap.id = i.after_parent_id
 ORDER BY s.id, ids.node_id
@@ -421,6 +433,8 @@ type FirstChangesRow struct {
 }
 
 // ListChanges' first n of each changeset, in one statement: a log page's summaries.
+// The unique (changeset_id, node_id) rows stay point reads even for the
+// export's 1000 changesets; an outer hash join would scan unrelated history.
 func (q *Queries) FirstChanges(ctx context.Context, arg FirstChangesParams) ([]FirstChangesRow, error) {
 	rows, err := q.db.Query(ctx, firstChanges, arg.Ids, arg.N)
 	if err != nil {
