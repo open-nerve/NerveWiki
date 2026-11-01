@@ -183,7 +183,7 @@ func (b trashBench) planned(tb testing.TB, c uuid.UUID) (reads, tree, plan time.
 		tb.Fatal(err)
 	}
 	reads, at = time.Since(at), time.Now()
-	if s.Tree, err = store.ListNodes(ctx, b.nb); err != nil {
+	if s.Tree, err = store.ListRevertTree(ctx, b.nb); err != nil {
 		tb.Fatal(err)
 	}
 	tree, at = time.Since(at), time.Now()

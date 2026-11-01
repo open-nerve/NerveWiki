@@ -17,6 +17,7 @@ import (
 type TrashReads struct {
 	Notebooks   Notebooks
 	Nodes       Nodes
+	RevertTrees RevertTrees
 	Trash       Trash
 	Names       Names
 	Attachments AttachmentInfos

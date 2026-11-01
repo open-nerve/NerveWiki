@@ -302,6 +302,20 @@ func (f *fakeStore) ListNodes(ctx context.Context, notebookID uuid.UUID) ([]doma
 	return out, nil
 }
 
+func (f *fakeStore) ListRevertTree(ctx context.Context, notebookID uuid.UUID) ([]domain.RevertTreeNode, error) {
+	f.record(ctx, "ListRevertTree")
+	if err := f.errs["ListRevertTree"]; err != nil {
+		return nil, err
+	}
+	out := make([]domain.RevertTreeNode, 0)
+	for _, n := range f.nodes {
+		if n.NotebookID == notebookID {
+			out = append(out, domain.RevertTreeNodeOf(n))
+		}
+	}
+	return out, nil
+}
+
 func (f *fakeStore) Children(ctx context.Context, notebookID uuid.UUID, parentID *uuid.UUID) ([]domain.Node, error) {
 	f.record(ctx, "Children")
 	if err := f.errs["Children"]; err != nil {
@@ -1397,7 +1411,7 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
-		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, Paths: f.store,
+		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, Paths: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),

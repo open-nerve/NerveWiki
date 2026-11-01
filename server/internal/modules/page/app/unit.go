@@ -23,14 +23,15 @@ import (
 
 // WriterDeps are what the write unit needs.
 type WriterDeps struct {
-	Tx         Tx
-	Clock      Clock
-	Auth       shared.Authorizer
-	Workspaces Workspaces
-	Notebooks  Notebooks
-	Nodes      Nodes
-	Paths      PathStore
-	NodeWriter NodeWriter
+	Tx          Tx
+	Clock       Clock
+	Auth        shared.Authorizer
+	Workspaces  Workspaces
+	Notebooks   Notebooks
+	Nodes       Nodes
+	RevertTrees RevertTrees
+	Paths       PathStore
+	NodeWriter  NodeWriter
 	// Trash reads a trash item again under the notebook's lock: its
 	// restore's, and a revert's; History a changeset and its nodes: a
 	// revert's.

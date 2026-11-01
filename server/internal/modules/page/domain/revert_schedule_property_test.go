@@ -613,7 +613,7 @@ func (p *propTrial) state(m propModel, items []domain.ChangesetItem, versions []
 			s.Contents[id] = domain.ContentNow{Revision: n.revision, Hash: p.hashes[domain.VersionRef{NodeID: id, Revision: n.revision}]}
 		}
 		if len(items) > 0 {
-			s.Tree = append(s.Tree, node(id, n.state()))
+			s.Tree = append(s.Tree, domain.RevertTreeNodeOf(node(id, n.state())))
 		}
 	}
 	touch := func(id uuid.UUID) {

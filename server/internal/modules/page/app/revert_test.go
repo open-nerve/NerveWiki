@@ -142,7 +142,7 @@ func TestRevertChangesetRestoresADeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	reads := []string{"ChangesetItems", "ChangesetVersions", "FindChangeset", "NodesNow 3", "TrashGroups 1"}
-	state := []string{"ContentsNow 0", "VersionHashes 2", "ListNodes"}
+	state := []string{"ContentsNow 0", "VersionHashes 2", "ListRevertTree"}
 	var want []string
 	want = append(want, "FindChangeset", "WorkspaceOf", "Authorize changeset.revert", "CountItems")
 	want = append(append(append(want, reads...), "TrashHistory"), state...)
@@ -564,6 +564,29 @@ func TestRevertChangesetsConflictsNameTheNodes(t *testing.T) {
 		e.Conflicts[0].NodeID != f.box.ID || e.Conflicts[0].Name != "Box" || e.Conflicts[0].Reason != "title_taken" ||
 		*e.Conflicts[0].HolderID != f.other.ID {
 		t.Errorf("revert = %v, %+v; want Box's title_taken held by BOX", err, e)
+	}
+}
+
+// A name claimed after the unlocked plan must be seen through the dedicated
+// tree read under the notebook lock, before any restore or changeset write.
+func TestRevertReadsTreeAgainUnderLock(t *testing.T) {
+	f := newRevertFixture()
+	holder := uuid.NewV7()
+	f.rec.calls = nil
+	f.rec.before = map[string]func(){"LockNotebook in tx": func() {
+		f.store.nodes[holder] = domain.Node{ID: holder, NotebookID: f.eng, Kind: domain.KindAsset, Name: "BOX", NameKey: "box"}
+	}}
+	_, err := f.revert(f.c.ID, nil, 0)
+	var e *shared.Error
+	if !errors.As(err, &e) || e.Code != "page.revert_conflict" || len(e.Conflicts) != 1 ||
+		e.Conflicts[0].NodeID != f.box.ID || e.Conflicts[0].Reason != "title_taken" ||
+		e.Conflicts[0].HolderID == nil || *e.Conflicts[0].HolderID != holder {
+		t.Fatalf("locked revert = %v, %+v; want Box's new asset holder", err, e)
+	}
+	if f.count("ListRevertTree") != 1 || f.count("ListRevertTree in tx") != 1 ||
+		f.called("ListNodes") || f.called("ListNodes in tx") ||
+		len(f.store.restorations) != 0 || len(f.store.changesets) != 0 {
+		t.Fatalf("locked conflict read/wrote incorrectly: %v; restores=%v changesets=%v", f.rec.calls, f.store.restorations, f.store.changesets)
 	}
 }
 

@@ -26,7 +26,7 @@ func TestPlanRevertNameCandidatesDoNotAllocatePerUnrelatedNode(t *testing.T) {
 	}
 	for i := range 100_000 {
 		name := fmt.Sprintf("unrelated-%06d.png", i)
-		state.Tree = append(state.Tree, domain.Node{ID: uuid.NewV7(), Kind: domain.KindAsset, Name: name, NameKey: name})
+		state.Tree = append(state.Tree, domain.RevertTreeNode{ID: uuid.NewV7(), Kind: domain.KindAsset, Name: name, NameKey: name})
 	}
 	want := domain.RevertPlan{Ops: []domain.RevertOp{{
 		Kind: domain.RevertRestore, NodeID: id, To: domain.TreeState{Name: "restored.png"},

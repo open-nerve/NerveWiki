@@ -133,7 +133,7 @@ func (w *world) state() domain.RevertState {
 	if len(w.items) > 0 {
 		for _, n := range w.nodes {
 			if n.DeletedAt == nil {
-				s.Tree = append(s.Tree, n.Node)
+				s.Tree = append(s.Tree, domain.RevertTreeNodeOf(n.Node))
 			}
 		}
 	}

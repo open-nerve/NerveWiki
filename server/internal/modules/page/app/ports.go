@@ -162,6 +162,13 @@ type AnyNode struct {
 	TrashRoot bool
 }
 
+// RevertTrees reads the complete live structural tree of a notebook, including
+// pages and assets, in the context's transaction when present. Successful empty
+// reads return a non-nil slice; nil in RevertState.Tree means it was not read.
+type RevertTrees interface {
+	ListRevertTree(ctx context.Context, notebookID uuid.UUID) ([]domain.RevertTreeNode, error)
+}
+
 // Nodes reads a notebook's nodes: unlocked for a read, under the write
 // unit's locks for a write. ErrNotFound for a missing or deleted node.
 type Nodes interface {

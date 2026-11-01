@@ -114,7 +114,7 @@ type RevertState struct {
 	Contents  map[uuid.UUID]ContentNow
 	Hashes    map[VersionRef][]byte
 	Groups    map[uuid.UUID][]TrashMember
-	Tree      []Node
+	Tree      []RevertTreeNode
 	Lines     map[uuid.UUID][]Ancestor
 	At        time.Time
 	Retention time.Duration

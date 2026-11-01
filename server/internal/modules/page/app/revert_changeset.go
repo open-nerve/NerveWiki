@@ -206,7 +206,7 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return revertChecked{}, err
 		}
 	}
-	reads := revertReads{history: r.history, trash: r.reads.Trash, nodes: r.reads.Nodes}
+	reads := revertReads{history: r.history, trash: r.reads.Trash, trees: r.reads.RevertTrees}
 	items, versions, err := reads.changeset(ctx, c.ID)
 	if errors.Is(err, ErrNotFound) {
 		// Gone since it was found: its notebook deleted, or the caller's

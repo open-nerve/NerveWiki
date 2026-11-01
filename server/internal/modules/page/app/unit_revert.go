@@ -68,7 +68,7 @@ type RevertDone struct {
 // unclassified, as the purge's take of what a restore brings back is
 // page.trash_changed, which the use case answers.
 func (u *Unit) Revert(ctx context.Context, r RevertRead) (RevertDone, error) {
-	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, nodes: u.w.d.Nodes}
+	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, trees: u.w.d.RevertTrees}
 	items, versions, err := reads.changeset(ctx, r.Changeset)
 	switch {
 	case errors.Is(err, ErrNotFound):
@@ -305,7 +305,7 @@ func parsedAs(contents []writtenContent, parsed map[domain.ContentRef]ParsedCont
 type revertReads struct {
 	history History
 	trash   Trash
-	nodes   Nodes
+	trees   RevertTrees
 }
 
 // changeset reads the changeset id's items and versions, then its row:
@@ -396,7 +396,7 @@ func (r revertReads) rest(ctx context.Context, notebookID uuid.UUID, s domain.Re
 		return domain.RevertState{}, err
 	}
 	if len(s.Items) > 0 {
-		if s.Tree, err = r.nodes.ListNodes(ctx, notebookID); err != nil {
+		if s.Tree, err = r.trees.ListRevertTree(ctx, notebookID); err != nil {
 			return domain.RevertState{}, err
 		}
 	}
@@ -679,7 +679,7 @@ func (u *Unit) batchState(ctx context.Context, r RevertPart, s domain.RevertStat
 	if len(s.Items) == 0 && len(s.Versions) == 0 {
 		return domain.RevertState{At: u.write.At, Retention: r.retention}, nil
 	}
-	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, nodes: u.w.d.Nodes}
+	reads := revertReads{history: u.w.d.History, trash: u.w.d.Trash, trees: u.w.d.RevertTrees}
 	return reads.state(ctx, u.write.NotebookID, r.plan.changeset, s.Items, s.Versions, u.write.At, r.retention)
 }
 
