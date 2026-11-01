@@ -82,7 +82,8 @@ type guardPaths struct{ app.NodePaths }
 func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.PagePath, error) {
 	out := make(map[uuid.UUID]app.PagePath, len(ids))
 	for _, id := range ids {
-		out[id] = app.PagePath{Path: id.String() + ".md"}
+		name := id.String()
+		out[id] = app.PagePath{Path: name + ".md", Title: name}
 	}
 	return out, nil
 }

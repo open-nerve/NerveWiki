@@ -29,16 +29,20 @@ type NodePaths interface {
 	// Paths is the paths of ids' nodes alive in notebookID, by id
 	// (app.NodePaths.Paths: one statement, PathStore.PathsOf).
 	Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]string, error)
-	// Pages is Paths of ids' pages, each with when its content last
-	// changed (PageStates): two statements.
+	// Pages reads live same-notebook pages with their stored title and real
+	// parent from path steps, then their content change (PageStates): two statements.
 	Pages(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]PagePath, error)
 	// ChildPages is the pages alive of notebookID whose parent is parent,
 	// the root's for uuid.UUID{}, in no order.
 	ChildPages(ctx context.Context, notebookID, parent uuid.UUID) ([]uuid.UUID, error)
+	// ChildPagesAt takes nil for the root; a zero UUID still names a parent.
+	ChildPagesAt(ctx context.Context, notebookID uuid.UUID, parent *uuid.UUID) ([]uuid.UUID, error)
 }
 
-// PagePath is a page's path and its content's last change.
+// PagePath is a live page's path, stored title, real parent and content change.
 type PagePath struct {
+	ParentID  *uuid.UUID
+	Title     string
 	Path      string
 	ChangedAt time.Time
 }
@@ -83,33 +87,52 @@ func (n nodePaths) Paths(ctx context.Context, notebookID uuid.UUID, ids []uuid.U
 }
 
 func (n nodePaths) Pages(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]PagePath, error) {
-	paths, err := n.Paths(ctx, notebookID, ids)
+	paths, err := n.store.LinkTargetsByIDs(ctx, notebookID, ids)
 	if err != nil {
 		return nil, err
 	}
+	out := make(map[uuid.UUID]PagePath, len(paths))
 	alive := make([]uuid.UUID, 0, len(paths))
-	for _, id := range ids {
-		if _, ok := paths[id]; ok {
-			alive = append(alive, id)
+	for _, p := range paths {
+		if p.Asset {
+			continue
 		}
+		names := make([]string, len(p.Steps))
+		for i, step := range p.Steps {
+			names[i] = step.Name
+		}
+		last := len(p.Steps) - 1
+		meta := PagePath{Path: domain.PathOfNames(names, domain.KindPage), Title: p.Steps[last].Name}
+		if last > 0 {
+			parent := p.Steps[last-1].ID
+			meta.ParentID = &parent
+		}
+		out[p.ID] = meta
+		alive = append(alive, p.ID)
 	}
-	out := make(map[uuid.UUID]PagePath, len(alive))
 	if len(alive) == 0 {
 		return out, nil
 	}
-	// An attachment has no content: its path has no state.
 	states, err := n.store.PageStates(ctx, alive)
 	if err != nil {
 		return nil, fmt.Errorf("page: the pages' states in %s: %w", notebookID, err)
 	}
-	for id, s := range states {
-		if path, ok := paths[id]; ok {
-			out[id] = PagePath{Path: path, ChangedAt: s.UpdatedAt}
+	for id, meta := range out {
+		state, ok := states[id]
+		if !ok {
+			delete(out, id)
+			continue
 		}
+		meta.ChangedAt = state.UpdatedAt
+		out[id] = meta
 	}
 	return out, nil
 }
 
 func (n nodePaths) ChildPages(ctx context.Context, notebookID, parent uuid.UUID) ([]uuid.UUID, error) {
 	return n.store.ChildPageIDs(ctx, notebookID, parent)
+}
+
+func (n nodePaths) ChildPagesAt(ctx context.Context, notebookID uuid.UUID, parent *uuid.UUID) ([]uuid.UUID, error) {
+	return n.store.IndexChildPagesAt(ctx, notebookID, parent)
 }

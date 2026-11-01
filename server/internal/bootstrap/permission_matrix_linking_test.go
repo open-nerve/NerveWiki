@@ -10,8 +10,8 @@ import (
 // The linking module's rows (M6/P5 design 7), by the notebook columns, as
 // the page module's reads: any role reads, the rest do not see the
 // notebook; a link's landing is its writers' (M6/P6 design 2). The seeded
-// pages' contents are empty, so the index's answers are; the link targets
-// are the notebook's pages.
+// pages' contents are empty: backlinks and tags are empty, while the
+// directory still lists every indexed page as untyped.
 func linkingMatrixRows() []matrixRow {
 	notebookNotFound := cell{http.StatusNotFound, "notebook.not_found"}
 	pageNotFound := cell{http.StatusNotFound, "page.not_found"}
@@ -36,6 +36,40 @@ func linkingMatrixRows() []matrixRow {
 		}
 	}
 	return []matrixRow{
+		{op: "listIndex", columns: notebookColumns(), request: func(c caller, s seeded) (string, string, string) {
+			return http.MethodGet, notebookPath(c, s) + "/index", ""
+		}, cells: readers(notebookNotFound), check: func(t *testing.T, c caller, s seeded, answer string) {
+			t.Helper()
+			var got directoryResponse
+			decodeAnswer(t, answer, &got)
+			want := map[string]matrixPage{}
+			var ids, wantIDs []string
+			for _, p := range matrixPages() {
+				if p.notebook == notebookOf(c) {
+					id := s.page(p.name).String()
+					want[id] = p
+					wantIDs = append(wantIDs, id)
+				}
+			}
+			slices.Sort(wantIDs)
+			for _, it := range got.Data {
+				ids = append(ids, it.ID)
+				p, ok := want[it.ID]
+				if !ok || it.Title != p.name || it.Type != nil || it.Tags == nil || len(it.Tags) != 0 {
+					t.Errorf("directory item=%+v, expected seed=%+v", it, p)
+				}
+				if p.parent == "" {
+					if it.ParentID != nil {
+						t.Errorf("root parent=%v", *it.ParentID)
+					}
+				} else if it.ParentID == nil || *it.ParentID != s.page(p.parent).String() {
+					t.Errorf("child parent=%v", it.ParentID)
+				}
+			}
+			if !slices.Equal(ids, wantIDs) || got.Next != nil || got.Types == nil || len(got.Types) != 0 || !got.Complete || got.Long != 0 || got.Mode != "standard" || got.Source != nil {
+				t.Errorf("directory=%+v, expected ordered IDs=%v", got, wantIDs)
+			}
+		}},
 		{
 			op:      "listBacklinks",
 			columns: notebookColumns(),

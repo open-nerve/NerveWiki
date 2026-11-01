@@ -47,7 +47,11 @@ type (
 	// bootstrap adapts page.NewNodePaths to it (M9/P4 design 3.9.1).
 	NodePaths = app.NodePaths
 	// PagePath is a page's path and its content's last change.
-	PagePath = app.PagePath
+	PagePath           = app.PagePath
+	IndexNotebooks     = app.IndexNotebooks
+	IndexNotebookState = app.IndexNotebookState
+	IndexSourceReads   = app.IndexSourceReads
+	IndexSourceNode    = app.IndexSourceNode
 )
 
 // Deps are what the HTTP side, the index's reads, needs.
@@ -63,7 +67,9 @@ type Deps struct {
 	Assets AttachmentAddresses
 	// NodePaths finds and writes the paths MCP's tools name (M9/P4 design
 	// 3.9.1).
-	NodePaths NodePaths
+	NodePaths      NodePaths
+	IndexNotebooks IndexNotebooks
+	IndexSources   IndexSourceReads
 }
 
 // Module is the wired linking module: its HTTP side and its MCP tools.
@@ -81,7 +87,9 @@ func New(d Deps) *Module {
 	store := postgresadapter.New(d.Pool)
 	access := app.Access{Notebooks: d.Notebooks, Pages: d.Pages, Auth: d.Authorizer}
 	backlinks := app.ListBacklinks{Access: access, Reads: store, Contents: d.Contents, Paths: d.NodePaths}
+	index := &app.ListIndex{Access: access, Reads: store, Paths: d.NodePaths, TagKey: markdownadapter.TagKey, Notebooks: d.IndexNotebooks, Sources: d.IndexSources, Catalogue: store}
 	return &Module{uc: httpadapter.UseCases{
+		ListIndex:         index,
 		ListBacklinks:     backlinks,
 		GetPageProperties: app.GetPageProperties{Access: access, Reads: store, Assets: d.Assets},
 		ListTags:          app.ListTags{Access: access, Reads: store},
@@ -90,7 +98,7 @@ func New(d Deps) *Module {
 		GetLinkLanding:    app.GetLinkLanding{Access: access, Pages: d.Pages, Reads: store, MaxDepth: d.MaxDepth},
 	}, tools: mcpadapter.UseCases{
 		Backlinks: backlinks,
-		Index:     app.ListIndex{Access: access, Reads: store, Paths: d.NodePaths, TagKey: markdownadapter.TagKey},
+		Index:     index,
 	}, paths: d.NodePaths != nil}
 }
 

@@ -744,6 +744,38 @@ func (q *Queries) FirstChildren(ctx context.Context, arg FirstChildrenParams) ([
 	return items, nil
 }
 
+const indexChildPagesAt = `-- name: IndexChildPagesAt :many
+SELECT id FROM nodes
+WHERE notebook_id = $1::uuid AND deleted_at IS NULL AND kind = 'page'
+    AND parent_id IS NOT DISTINCT FROM $2::uuid
+`
+
+type IndexChildPagesAtParams struct {
+	NotebookID uuid.UUID
+	ParentID   *uuid.UUID
+}
+
+// A nil parent is the root, distinct from a real zero-UUID parent.
+func (q *Queries) IndexChildPagesAt(ctx context.Context, arg IndexChildPagesAtParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, indexChildPagesAt, arg.NotebookID, arg.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listNodes = `-- name: ListNodes :many
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
     updated_at

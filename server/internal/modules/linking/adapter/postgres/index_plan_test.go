@@ -221,15 +221,15 @@ func TestIndexPlans(t *testing.T) {
 		want func(root *planNode) []string
 	}{
 		{"IndexPages", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.IndexPages(ctx, gen.IndexPagesParams{NotebookID: f.eng})
+			_, err := q.IndexPages(ctx, gen.IndexPagesParams{NotebookID: f.eng, TrimChars: " \t\r\n"})
 			return err
 		}), both(only("indexed_pages", "notebook_id", "indexed_pages_notebook_id_idx"), properties("page_properties_type_idx"))},
 		{"IndexPages of a type", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.IndexPages(ctx, gen.IndexPagesParams{NotebookID: f.eng, TypeIs: &project})
+			_, err := q.IndexPages(ctx, gen.IndexPagesParams{NotebookID: f.eng, TypeIs: &project, TrimChars: " \t\r\n"})
 			return err
 		}), both(only("indexed_pages", "notebook_id", "indexed_pages_notebook_id_idx"), properties("page_properties_type_idx"))},
 		{"IndexItems", statementOf(t, func(q *gen.Queries) error {
-			_, err := q.IndexItems(ctx, ids)
+			_, err := q.IndexItems(ctx, gen.IndexItemsParams{Ids: ids, TrimChars: " \t\r\n"})
 			return err
 		}), both(only("indexed_pages", "node_id", "indexed_pages_pkey"),
 			properties("page_properties_type_idx", "page_properties_summary_idx"), only("page_tags", "source_id", "page_tags_pkey"),

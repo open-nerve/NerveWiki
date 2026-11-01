@@ -118,7 +118,7 @@ func indexPagesTypes(t *testing.T, f fixture) {
 	page(&huge, property{"type", jsonText(huge)}, property{"summary", jsonText(huge)})
 	page(&at, property{"type", jsonText(at)})
 	page(&short, property{"type", jsonText(short)})
-	page(s(""), property{"type", jsonText("")})
+	page(nil, property{"type", jsonText("")})
 	page(nil)
 	f.indexPage(t, f.ops, []property{{"type", jsonText("a")}})
 

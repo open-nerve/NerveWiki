@@ -68,6 +68,24 @@ func (e LinkTargetKind) Valid() bool {
 	}
 }
 
+// Defines values for NotebookIndexMode.
+const (
+	NotebookIndexModeLlmWiki  NotebookIndexMode = "llm_wiki"
+	NotebookIndexModeStandard NotebookIndexMode = "standard"
+)
+
+// Valid indicates whether the value is a known member of the NotebookIndexMode enum.
+func (e NotebookIndexMode) Valid() bool {
+	switch e {
+	case NotebookIndexModeLlmWiki:
+		return true
+	case NotebookIndexModeStandard:
+		return true
+	default:
+		return false
+	}
+}
+
 // Backlink A page that links to another.
 type Backlink struct {
 	// Contexts The lines of its first 10 links there, by where they are written, one a line; none in the cases the operation lists.
@@ -134,6 +152,43 @@ type LinkTargetKind string
 // LinkTargetList defines model for LinkTargetList.
 type LinkTargetList struct {
 	Data []LinkTarget `json:"data"`
+}
+
+// NotebookIndex defines model for NotebookIndex.
+type NotebookIndex struct {
+	Data       []NotebookIndexItem       `json:"data"`
+	Mode       NotebookIndexMode         `json:"mode"`
+	NextCursor nullable.Nullable[string] `json:"next_cursor"`
+	SourceArea nullable.Nullable[struct {
+		RootID  uuid.UUID `json:"root_id"`
+		Sources int64     `json:"sources"`
+	}] `json:"source_area"`
+	Types                 []NotebookIndexType `json:"types"`
+	TypesComplete         bool                `json:"types_complete"`
+	UnfilterableTypePages int64               `json:"unfilterable_type_pages"`
+}
+
+// NotebookIndexMode defines model for NotebookIndex.Mode.
+type NotebookIndexMode string
+
+// NotebookIndexItem defines model for NotebookIndexItem.
+type NotebookIndexItem struct {
+	Inbound       int                          `json:"inbound"`
+	InboundCapped bool                         `json:"inbound_capped"`
+	PageID        uuid.UUID                    `json:"page_id"`
+	ParentID      nullable.Nullable[uuid.UUID] `json:"parent_id"`
+	Summary       nullable.Nullable[string]    `json:"summary"`
+	SummaryCut    bool                         `json:"summary_cut"`
+	Tags          []string                     `json:"tags"`
+	Title         string                       `json:"title"`
+	Type          nullable.Nullable[string]    `json:"type"`
+	UpdatedAt     time.Time                    `json:"updated_at"`
+}
+
+// NotebookIndexType defines model for NotebookIndexType.
+type NotebookIndexType struct {
+	Count int    `json:"count"`
+	Type  string `json:"type"`
 }
 
 // PageProperties defines model for PageProperties.
@@ -213,6 +268,20 @@ type Tag = string
 // Problem RFC 9457 problem details. `title` is the HTTP status phrase, `detail` explains this occurrence, and clients branch on `code`. Must match httpserver.Problem; the platform's contract test checks it.
 type Problem = externalRef0.Problem
 
+// ListIndexParams defines parameters for ListIndex.
+type ListIndexParams struct {
+	Type     *string    `form:"type,omitempty" json:"type,omitempty"`
+	Tag      *string    `form:"tag,omitempty" json:"tag,omitempty"`
+	ParentID *uuid.UUID `form:"parent_id,omitempty" json:"parent_id,omitempty"`
+	AtRoot   *bool      `form:"at_root,omitempty" json:"at_root,omitempty"`
+
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListBacklinksParams defines parameters for ListBacklinks.
 type ListBacklinksParams struct {
 	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
@@ -230,6 +299,9 @@ type GetLinkLandingParams struct {
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListIndex List a notebook's page directory
+	// (GET /api/v0/notebooks/{notebook_id}/index)
+	ListIndex(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListIndexParams)
 	// ListLinkTargets List what a notebook's links may lead to
 	// (GET /api/v0/notebooks/{notebook_id}/link-targets)
 	ListLinkTargets(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -258,6 +330,113 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListIndex operation middleware
+func (siw *ServerInterfaceWrapper) ListIndex(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIndexParams
+
+	// ------------- Optional query parameter "type" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "type", r.URL.Query(), &params.Type, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "type"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "type", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag", r.URL.Query(), &params.Tag, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "parent_id" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "parent_id", r.URL.Query(), &params.ParentID, runtime.BindQueryParameterOptions{Type: "string", Format: "uuid"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "parent_id"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "parent_id", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "at_root" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "at_root", r.URL.Query(), &params.AtRoot, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "at_root"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "at_root", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListIndex(w, r, notebookID, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListLinkTargets operation middleware
 func (siw *ServerInterfaceWrapper) ListLinkTargets(w http.ResponseWriter, r *http.Request) {
@@ -589,6 +768,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 		ErrorHandlerFunc:   options.ErrorHandlerFunc,
 	}
 
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/index", wrapper.ListIndex)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/backlinks", wrapper.ListBacklinks)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/pages/{page_id}/properties", wrapper.GetPageProperties)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/tags", wrapper.ListTags)
@@ -607,6 +787,53 @@ type ProblemApplicationProblemPlusJSONResponse struct {
 	Body externalRef0.Problem
 
 	Headers ProblemResponseHeaders
+}
+
+type ListIndexRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Params     ListIndexParams
+}
+
+type ListIndexResponseObject interface {
+	VisitListIndexResponse(w http.ResponseWriter) error
+}
+
+type ListIndex200JSONResponse NotebookIndex
+
+func (response ListIndex200JSONResponse) VisitListIndexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListIndexdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response ListIndexdefaultApplicationProblemPlusJSONResponse) VisitListIndexResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
 }
 
 type ListLinkTargetsRequestObject struct {
@@ -890,6 +1117,9 @@ func (response GetPagePropertiesdefaultApplicationProblemPlusJSONResponse) Visit
 
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
+	// ListIndex List a notebook's page directory
+	// (GET /api/v0/notebooks/{notebook_id}/index)
+	ListIndex(ctx context.Context, request ListIndexRequestObject) (ListIndexResponseObject, error)
 	// ListLinkTargets List what a notebook's links may lead to
 	// (GET /api/v0/notebooks/{notebook_id}/link-targets)
 	ListLinkTargets(ctx context.Context, request ListLinkTargetsRequestObject) (ListLinkTargetsResponseObject, error)
@@ -947,6 +1177,33 @@ type strictHandler struct {
 	ssi         StrictServerInterface
 	middlewares []StrictMiddlewareFunc
 	options     StrictHTTPServerOptions
+}
+
+// ListIndex operation middleware
+func (sh *strictHandler) ListIndex(w http.ResponseWriter, r *http.Request, notebookID NotebookID, params ListIndexParams) {
+	var request ListIndexRequestObject
+
+	request.NotebookID = notebookID
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListIndex(ctx, request.(ListIndexRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListIndex")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListIndexResponseObject); ok {
+		if err := validResponse.VisitListIndexResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
 }
 
 // ListLinkTargets operation middleware

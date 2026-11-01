@@ -314,3 +314,9 @@ WITH gone AS (
 )
 UPDATE changesets s SET deleted_at = sqlc.arg(now)::timestamptz
 WHERE s.notebook_id = ANY(sqlc.arg(notebook_ids)::uuid[]) AND s.deleted_at IS NULL;
+
+-- name: IndexChildPagesAt :many
+-- A nil parent is the root, distinct from a real zero-UUID parent.
+SELECT id FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id)::uuid AND deleted_at IS NULL AND kind = 'page'
+    AND parent_id IS NOT DISTINCT FROM sqlc.narg(parent_id)::uuid;

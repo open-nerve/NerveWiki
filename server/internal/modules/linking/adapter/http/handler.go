@@ -47,8 +47,14 @@ type GetLinkLandingUseCase interface {
 	Execute(ctx context.Context, id uuid.UUID, target *string) (domain.Landing, error)
 }
 
+// ListIndexUseCase is the shared REST and MCP directory.
+type ListIndexUseCase interface {
+	Execute(ctx context.Context, notebookID uuid.UUID, q app.IndexQuery) (app.IndexPage, error)
+}
+
 // UseCases are the use cases behind the module's operations.
 type UseCases struct {
+	ListIndex         ListIndexUseCase
 	ListBacklinks     ListBacklinksUseCase
 	GetPageProperties GetPagePropertiesUseCase
 	ListTags          ListTagsUseCase

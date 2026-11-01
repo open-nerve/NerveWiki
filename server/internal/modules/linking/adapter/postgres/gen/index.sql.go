@@ -69,32 +69,98 @@ func (q *Queries) InboundCounts(ctx context.Context, arg InboundCountsParams) ([
 	return items, nil
 }
 
+const indexCatalogueHeads = `-- name: IndexCatalogueHeads :many
+WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
+SELECT r.id::uuid AS id, coalesce(t.nonempty,false)::boolean AS typed,
+       coalesce(CASE WHEN t.nonempty AND octet_length(t.filter_value)<=1024
+            THEN t.filter_value ELSE NULL END, '')::text AS filter_type
+FROM requested r
+LEFT JOIN LATERAL (
+    SELECT frontmatter_valid FROM indexed_pages
+    WHERE node_id=r.id AND notebook_id=$1::uuid LIMIT 1
+) ip ON true
+LEFT JOIN LATERAL (
+    SELECT
+      CASE WHEN p.value_start IS NULL THEN false
+           WHEN btrim(p.value_start,$2::text)<>'' THEN true
+           WHEN p.value_chars<=257 THEN false
+           ELSE btrim(p.value #>> '{}',$2::text)<>'' END AS nonempty,
+      CASE WHEN p.value_start IS NULL THEN NULL
+           WHEN p.value_chars<=257 THEN p.value_start
+           WHEN p.value_chars<=1024 THEN p.value #>> '{}'
+           ELSE NULL END AS filter_value
+    FROM page_properties p
+    WHERE ip.frontmatter_valid AND p.source_id=r.id AND translate(p.key,'TYPE','type')='type'
+    ORDER BY p.position LIMIT 1
+) t ON true
+ORDER BY r.id
+`
+
+type IndexCatalogueHeadsParams struct {
+	NotebookID uuid.UUID
+	TrimChars  string
+	Ids        []uuid.UUID
+}
+
+type IndexCatalogueHeadsRow struct {
+	ID         uuid.UUID
+	Typed      bool
+	FilterType string
+}
+
+// Complete stored filter values for one finite batch, at most 512 requested IDs.
+// Every requested ID gets a row; a vanished index row is explicitly untyped.
+// Empty text transports NULL through sqlc's nonnullable CASE inference. A qualified
+// type cannot be empty; the adapter restores nil for this private sentinel.
+func (q *Queries) IndexCatalogueHeads(ctx context.Context, arg IndexCatalogueHeadsParams) ([]IndexCatalogueHeadsRow, error) {
+	rows, err := q.db.Query(ctx, indexCatalogueHeads, arg.NotebookID, arg.TrimChars, arg.Ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []IndexCatalogueHeadsRow
+	for rows.Next() {
+		var i IndexCatalogueHeadsRow
+		if err := rows.Scan(&i.ID, &i.Typed, &i.FilterType); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const indexItems = `-- name: IndexItems :many
-SELECT ip.node_id,
-    (ty.value_start IS NOT NULL)::boolean AS typed,
-    coalesce(ty.value_start, '')::text AS type_text,
-    (s.value_start IS NOT NULL)::boolean AS summarized,
-    coalesce(s.value_start, '')::text AS summary_start,
-    ARRAY(
-        SELECT left(t.tag, 512) FROM page_tags t WHERE t.source_id = ip.node_id ORDER BY t.tag_key LIMIT 21
-    )::text[] AS tags
+SELECT ip.node_id, coalesce(ty.nonempty,false)::boolean AS typed,
+       CASE WHEN coalesce(ty.nonempty,false) THEN coalesce(ty.value_start,'') ELSE '' END::text AS type_text,
+       (s.value_start IS NOT NULL)::boolean AS summarized,
+       coalesce(s.value_start,'')::text AS summary_start,
+       ARRAY(SELECT left(t.tag,512) FROM page_tags t WHERE t.source_id=ip.node_id ORDER BY t.tag_key LIMIT 21)::text[] AS tags
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT p.value_start
+    SELECT p.value_start,
+      CASE WHEN p.value_start IS NULL THEN false
+           WHEN btrim(p.value_start,$1::text)<>'' THEN true
+           WHEN p.value_chars<=257 THEN false
+           ELSE btrim(p.value #>> '{}',$1::text)<>'' END AS nonempty
     FROM page_properties p
-    WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
-    ORDER BY p.position
-    LIMIT 1
+    WHERE ip.frontmatter_valid AND p.source_id=ip.node_id AND translate(p.key,'TYPE','type')='type'
+    ORDER BY p.position LIMIT 1
 ) ty ON true
 LEFT JOIN LATERAL (
-    SELECT p.value_start
-    FROM page_properties p
-    WHERE p.source_id = ip.node_id AND translate(p.key, 'SUMARY', 'sumary') = 'summary'
-    ORDER BY p.position
-    LIMIT 1
+    SELECT p.value_start FROM page_properties p
+    WHERE p.source_id=ip.node_id AND translate(p.key,'SUMARY','sumary')='summary'
+    ORDER BY p.position LIMIT 1
 ) s ON true
-WHERE ip.node_id = ANY($1::uuid[])
+WHERE ip.node_id=ANY($2::uuid[])
 `
+
+type IndexItemsParams struct {
+	TrimChars string
+	Ids       []uuid.UUID
+}
 
 type IndexItemsRow struct {
 	NodeID       uuid.UUID
@@ -105,13 +171,10 @@ type IndexItemsRow struct {
 	Tags         []string
 }
 
-// The types, summaries and tags of the index's pages ids (M9/P4 design 3.9.3): the first property whose key is "type",
-// and the first whose key is "summary", but for ASCII case, each's value_start (00047), its first 257 characters when
-// its value is a string, by their partial indexes, typed and summarized telling an empty one from none; and the first
-// 21 tags by key, each as the page first writes it, its first 512 characters, the 21st telling that more follow, by
-// the primary key.
-func (q *Queries) IndexItems(ctx context.Context, ids []uuid.UUID) ([]IndexItemsRow, error) {
-	rows, err := q.db.Query(ctx, indexItems, ids)
+// Point-read these IDs' first type and summary keys, then the first 21 tags.
+// Type uses IndexPages' qualification; summary keeps its existing string-prefix contract.
+func (q *Queries) IndexItems(ctx context.Context, arg IndexItemsParams) ([]IndexItemsRow, error) {
+	rows, err := q.db.Query(ctx, indexItems, arg.TrimChars, arg.Ids)
 	if err != nil {
 		return nil, err
 	}
@@ -138,26 +201,31 @@ func (q *Queries) IndexItems(ctx context.Context, ids []uuid.UUID) ([]IndexItems
 }
 
 const indexPages = `-- name: IndexPages :many
-SELECT ip.node_id, (t.type_start IS NOT NULL)::boolean AS typed, coalesce(t.type_start, '')::text AS type_start
+SELECT ip.node_id, coalesce(t.nonempty, false)::boolean AS typed,
+       CASE WHEN coalesce(t.nonempty, false) THEN left(t.value_start, 128) ELSE '' END::text AS type_start
 FROM indexed_pages ip
 LEFT JOIN LATERAL (
-    SELECT left(p.value_start, 128) AS type_start,
-        CASE
-            WHEN $1::text IS NULL THEN true
-            WHEN p.value_start IS DISTINCT FROM left($1::text, 257) THEN false
-            WHEN char_length($1::text) < 257 THEN true
-            WHEN p.value_chars <> char_length($1::text) THEN false
-            ELSE p.value = to_jsonb($1::text)
-        END AS of_type
+    SELECT p.value_start,
+      CASE WHEN p.value_start IS NULL THEN false
+           WHEN btrim(p.value_start, $1::text) <> '' THEN true
+           WHEN p.value_chars <= 257 THEN false
+           ELSE btrim(p.value #>> '{}', $1::text) <> '' END AS nonempty,
+      CASE WHEN $2::text IS NULL THEN true
+           WHEN p.value_start IS DISTINCT FROM left($2::text,257) THEN false
+           WHEN char_length($2::text) < 257 THEN true
+           WHEN p.value_chars <> char_length($2::text) THEN false
+           ELSE p.value = to_jsonb($2::text) END AS of_type
     FROM page_properties p
-    WHERE p.source_id = ip.node_id AND translate(p.key, 'TYPE', 'type') = 'type'
-    ORDER BY p.position
-    LIMIT 1
+    WHERE ip.frontmatter_valid AND p.source_id = ip.node_id
+      AND translate(p.key,'TYPE','type') = 'type'
+    ORDER BY p.position LIMIT 1
 ) t ON true
-WHERE ip.notebook_id = $2 AND ($1::text IS NULL OR t.of_type)
+WHERE ip.notebook_id = $3::uuid
+  AND ($2::text IS NULL OR (t.nonempty AND t.of_type))
 `
 
 type IndexPagesParams struct {
+	TrimChars  string
 	TypeIs     *string
 	NotebookID uuid.UUID
 }
@@ -168,16 +236,12 @@ type IndexPagesRow struct {
 	TypeStart string
 }
 
-// The pages of a notebook the index holds (M9/P4 design 3.9.3), each with the start of its type: the first of its
-// properties whose key is "type" but for ASCII case (translate leaves any other key unequal), when that property's
-// value is a string, its first 128 characters, which the order's key of 64 bytes needs. With type_is, only the pages
-// whose type is that string; typed tells an empty type from none. Each page's properties are read by
-// page_properties_type_idx (00047), one probe a page whatever properties it has: never the notebook's others, nor
-// another notebook's. A type is read by its value_start (00047), its first 257 characters, never by its value, which
-// may be MiB long: the value only for type_is of 257 characters or more, where value_start is type_is's start and
-// value_chars its length, a value of at most 1,024 characters. The pages are read whole: the order is Go's title keys.
+// Read each notebook page's first ASCII-insensitive type key through its partial index.
+// Valid frontmatter and a string nonempty under JS trim qualify it. The 257-character
+// prefix normally decides that; only an all-whitespace long prefix reads the full value.
+// Exact filtering reads the full value only when matching prefixes and lengths need it.
 func (q *Queries) IndexPages(ctx context.Context, arg IndexPagesParams) ([]IndexPagesRow, error) {
-	rows, err := q.db.Query(ctx, indexPages, arg.TypeIs, arg.NotebookID)
+	rows, err := q.db.Query(ctx, indexPages, arg.TrimChars, arg.TypeIs, arg.NotebookID)
 	if err != nil {
 		return nil, err
 	}

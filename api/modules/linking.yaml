@@ -5,6 +5,54 @@ info:
   title: Nerve Wiki linking API
   version: v0
 paths:
+  /api/v0/notebooks/{notebook_id}/index:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: listIndex
+      tags: [linking]
+      summary: List a notebook's page directory
+      description: >-
+        Real indexed pages, ordered by type key and id, typed pages first. In an
+        LLM Wiki strict source descendants are excluded; the source root remains.
+        A type is the first ASCII-case-insensitive type key in valid frontmatter,
+        with a string value nonempty after JS whitespace trimming. The type filter
+        matches its complete stored value exactly and accepts at most 1024 UTF-8
+        bytes; display values may be cut. Catalogue counts cover all eligible
+        pages before item filters and paging, with at most 100 exact types and
+        32 KiB of serialized types JSON. types_complete is false when types are
+        omitted by either bound or a type exceeds the filter byte bound;
+        unfilterable_type_pages counts those long-type pages. Empty data still
+        carries the full response metadata. parent_id and at_root=true conflict.
+        Cursor errors precede filter and limit validation, then notebook access,
+        then parent validation; parent_id must name a live page in this notebook.
+        Any notebook role can read. Reads are unlocked, not a shared snapshot.
+      security: [{ bearer: [] }]
+      x-problem-codes: [bad_request, notebook.not_found, page.not_found, validation_failed]
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string }
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: parent_id
+          in: query
+          schema: { type: string, format: uuid }
+        - name: at_root
+          in: query
+          schema: { type: boolean }
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: The page directory and notebook-wide type catalogue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotebookIndex"
+        default:
+          $ref: "#/components/responses/Problem"
   /api/v0/pages/{page_id}/backlinks:
     parameters:
       - $ref: "#/components/parameters/PageID"
@@ -256,6 +304,52 @@ components:
           schema:
             $ref: "../common.yaml#/components/schemas/Problem"
   schemas:
+    NotebookIndex:
+      type: object
+      additionalProperties: false
+      required: [data, next_cursor, types, types_complete, unfilterable_type_pages, source_area, mode]
+      properties:
+        data:
+          type: array
+          items: { $ref: "#/components/schemas/NotebookIndexItem" }
+        next_cursor:
+          type: [string, "null"]
+        types:
+          type: array
+          maxItems: 100
+          items: { $ref: "#/components/schemas/NotebookIndexType" }
+        types_complete: { type: boolean }
+        unfilterable_type_pages: { type: integer, minimum: 0, format: int64 }
+        source_area:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [root_id, sources]
+          properties:
+            root_id: { type: string, format: uuid }
+            sources: { type: integer, minimum: 0, format: int64 }
+        mode: { type: string, enum: [standard, llm_wiki] }
+    NotebookIndexType:
+      type: object
+      additionalProperties: false
+      required: [type, count]
+      properties:
+        type: { type: string }
+        count: { type: integer, minimum: 0 }
+    NotebookIndexItem:
+      type: object
+      additionalProperties: false
+      required: [page_id, parent_id, title, type, summary, summary_cut, tags, updated_at, inbound, inbound_capped]
+      properties:
+        page_id: { type: string, format: uuid }
+        parent_id: { type: [string, "null"], format: uuid }
+        title: { type: string }
+        type: { type: [string, "null"] }
+        summary: { type: [string, "null"] }
+        summary_cut: { type: boolean }
+        tags: { type: array, items: { type: string } }
+        updated_at: { type: string, format: date-time }
+        inbound: { type: integer, minimum: 0, maximum: 1000 }
+        inbound_capped: { type: boolean }
     BacklinkPage:
       type: object
       additionalProperties: false

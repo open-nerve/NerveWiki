@@ -361,7 +361,7 @@ func (l linkingNodePaths) Pages(ctx context.Context, notebookID uuid.UUID, ids [
 	}
 	out := make(map[uuid.UUID]linking.PagePath, len(pages))
 	for id, p := range pages {
-		out[id] = linking.PagePath(p)
+		out[id] = linking.PagePath{Path: p.Path, ChangedAt: p.ChangedAt, ParentID: p.ParentID, Title: p.Title}
 	}
 	return out, nil
 }
@@ -396,4 +396,34 @@ type linkNotebookDeletion struct {
 
 func (d linkNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
 	return d.linking.NotebookDeleted(ctx, linking.NotebooksDeleted{NotebookIDs: x.NotebookIDs})
+}
+
+// Directory adapters expose only the state and strict source membership it reads.
+type linkingIndexNotebooks struct{ notebooks notebook.Notebooks }
+
+func (n linkingIndexNotebooks) StateOf(ctx context.Context, id uuid.UUID) (linking.IndexNotebookState, bool, error) {
+	state, ok, err := n.notebooks.StateOf(ctx, id)
+	if err != nil || !ok {
+		return linking.IndexNotebookState{}, ok, err
+	}
+	out := linking.IndexNotebookState{Mode: string(state.Mode)}
+	if state.Mode == notebook.ModeLLMWiki {
+		root := state.SourceRootID
+		out.SourceRootID = &root
+	}
+	return out, true, nil
+}
+
+type linkingIndexSources struct{ sources page.SourceArea }
+
+func (s linkingIndexSources) Nodes(ctx context.Context, notebookID, root uuid.UUID) ([]linking.IndexSourceNode, error) {
+	nodes, err := s.sources.Nodes(ctx, notebookID, root)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]linking.IndexSourceNode, len(nodes))
+	for i, n := range nodes {
+		out[i] = linking.IndexSourceNode{ID: n.ID, Asset: n.Kind == page.KindAsset, Bytes: n.PageBytes}
+	}
+	return out, nil
 }
