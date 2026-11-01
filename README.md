@@ -151,7 +151,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 ### 链接索引
 
-M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建旧页；正文链接的property_key为NULL，合法空属性路径为非NULL空串。literal-v1保留旧读取行为并计入stale_pages，需管理员重建。八规则、来源/附件和分页协议已提供REST与两scope MCP，健康网页留S2；详见[本Step记录](docs/v0.1/M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)。
+M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建旧页；正文链接的property_key为NULL，合法空属性路径为非NULL空串。literal-v1保留旧读取行为并计入stale_pages，需管理员重建。八规则、来源/附件和分页协议已提供REST与两scope MCP，健康网页已由P3/S2提供：在笔记本的健康度页查看结果、更多与重新检查，繁忙时手动重试；模式变化后由读者重新检查。服务端见[S1记录](docs/v0.1/M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)，网页见[S2记录](docs/v0.1/M10-llm-wiki/reviews/P3-S2-health-web-review.md)。
 
 - **索引**：每一页正文里的链接（wikilink、嵌入、Markdown 链接与图片，以及 frontmatter 里的属性链接）、标签、属性与别名，和每条链接解析到的页，随每次写入在同一个事务里更新：新建、改名、移动、删除（连同子页）、从回收站恢复、写正文、勾选任务项（还原版本与整组撤销由这几种写组成），删除笔记本时一并删除。同一笔记本的索引维护一个接一个进行（索引自己按笔记本的锁），所以同一笔记本的保存在提交处排队。
 - **来源格式**：当前链接索引的 `Extractor` 为 2。正文链接的 `property_key` 是 SQL NULL；合法空名称属性的路径是非 NULL 空字符串，属性接口会返回 `key: ""`。旧版本 1 把这两者合并，不能从旧行猜出来源。升级后须用新版 `reindex` 重建；真正写入正文会更新该页的格式，纯改树、读取或同内容保存不保证升级，不能代替全面重建。

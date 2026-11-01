@@ -885,6 +885,8 @@ S1不把source_hash/duplicate UI/SourceArea lint读写成已实现；决定36–
 
 **P3/S1接收（2026-10-31）**：SourceArea严格完整live后代已承接，含空页/asset真实bytes与created_at，排root、不依赖hash/ProbeSources、显式standard拟议root与>10000成员均已验；LLM实际LintData在一次snapshot内共享metadata，旧Nodes/SourceNodes合同保留。lint/pending_sources两MCP与48KiB预算已实证；健康网页仍归S2，见[S1审查](reviews/P3-S1-lint-protocol-review.md)。以下原交办及阶段文字保留历史。
 
+**P3完成接续（2026-11-01）**：S1的完整SourceArea/metadata、lint/pending_sources及协议预算，与S2健康网页、真实来源/附件定位、读者/双语/模式交错和延迟锚点回归已按各自最终输入完成审查、门禁及集成。S2原产品fa681/文档987d及原merge13ed失败、撤销树修复78167/52a5/真实修复merge、联合record与指定修复merge＋联合record两main分别见[P3完成核对](03-P3-lint-health.md#103-p3完成)、[S2审查](reviews/P3-S2-health-web-review.md)及[修复审查](reviews/P3-revert-tree-review.md)。上段及下方原交办中的“待”保留各自历史时点；P4 ingest/虚拟页、P5 prompts/系统说明/人工清单和M11/M12后继义务继续按原分工开放。
+
 
 P3：在已实现page.SourceArea基础上增加整区lint/pending来源读取，不复用匹配探查当整区枚举；继续root严格排除、asset SHA/当下字节、0字节page规则。P2未做lint、健康度、两工具或budget说明余量。P4：ingest/虚拟index/log/贡献者使用现有write guard与rewrite、derived hash规则；系统rewrite只维护当前hash不拒收敛，不能用新增普通输入伪造rewrite。P5：prompts与系统说明按最终源区规则（不许admin改正文、too_large、按事务provenance的duplicate文字）表述，仍自己完成prompt契约/人工清单/根README；P2不抢写prompt实现。 P3细化合同见[03-P3](03-P3-lint-health.md)：整区Nodes与Planned compactNodes是不同窄读，root严格排除、非hash枚举、>10k/显式standard拟议root、asset最终真实字节；SourceSlots/附件跟随与预算/Stop按该文。实现完成后再追加S1/S2审查、运行/CI证据，当前不写已承接完成。
 

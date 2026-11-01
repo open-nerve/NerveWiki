@@ -4,13 +4,13 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 进行中；S1已集成，S2产品fa681/文档987d及B-M1闭合保留，原13ed main CI仍FAILED。本记录写入时，修复文档52a5及no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` 的完整main CI已由主持者接受；本联合record自身CI、指定修复merge＋联合record两main配对及独立P3done仍待，后验见§10.3。原S2与修复分别见§10.2/§10.4；合并见00第12节，P4/P5/M11未开始。 |
+| 状态 | 已完成；S1产品18b、S2产品fa681/文档987d、撤销树修复产品78167/文档52a5分别按原输入接受。实现、三席/必要复核、完整门禁、文档与指定修复merge＋联合record两main配对均已验；原S2 merge13ed失败保留，§8最终核对见§10.3，修复历史见§10.4。本记录写入时，独立P3done自身精确main CI仍待提交后接受；此前不释放P4。M10继续，P4/P5/M10收尾/M11尚未开始。 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
 
-**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改。S2实现已提交至d0618b1d；完整W选定38单元已由根按资格接受，150独立heavy阶段/225次case执行及限制见§10.2。d061历史完整本地门禁/原固定容量/完整EW与代码CI已接受，三审随后确认B-M1；fa681已完成最小修复、9+2 minimum及实际postgen，正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），该句的Step文档待验为原写入时点；987d精确文档CI后已接受，原13ed main失败保留。撤销树产品78167的本地门禁/代码CI/三席接受范围保持。本记录写入时，修复文档52a5与no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` 的完整main CI已接受；本联合record自身CI/指定配对仍待，见§10.4，后验见§10.3。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
+**P3当前结果**：S1已实现Extractor2的正文NULL/合法空属性非NULL空串、严格完整SourceArea、唯一sources slot与八规则、稳定identity/cursor、同snapshot编排和REST/MCP两scope；S2已实现健康网页、reader/两模式两语言、分页/刷新/Back/Forward/附件定位及模式交错，B-M1延迟锚点修复与真实回归已随最终输入接受。完整实施、审查、失败与恢复、成本及CI分别见§10.1、§10.2和两Step及[撤销树审查](reviews/P3-revert-tree-review.md)；S1-0a、d061及fa681等证据各留实际身份，原S01–S69＋W01–W10共79行保留。撤销规划六字段完整live树已随78167接通同步锁前/锁下与后台；stored NameKey、原SortOrder数值、完整历史及原期限保持，SQL不承诺行序。原S2 merge13ed失败、修复文档/merge与联合record分开记，修复结果见§10.4，完整Phase核对及指定配对见§10.3；P4 Capture/BeforeIngest/Unknown覆盖和M12真实负载/停机等开放边界不因本Phase完成而关闭。
 
 ## 0. 两个可独立合并为绿的 Step
 
@@ -823,7 +823,7 @@ Tools
 
 卡state与summary都在SWR，不新增按本的结果store。完整item_key用于跨页去重；同目标的两种原始写法归同wanted组，但截断后同文的不同组仍显示两项；保留旧数据只属于正在显示的这次打开，不能跨login/notebook/entry共享。
 
-#### S2实际接线补记（完整Step待验收）
+#### S2实际接线补记（S2已验收）
 
 实施提交bfd/ebdd及后续E2E df73/d061已落地，具体输入、定向证据和未完成条件见§10.2。实际新增的health-request.ts只管理请求归属；health-page-lifecycle.test.tsx与health-rule.test.tsx分开覆盖生命周期和卡行为。entry专属SWR provider用2.5.1公开unload在卸载前清缓存、inflight和dedupe；公共['pages', notebook.id]树hook置于其外，搜索provider不变。刷新失败仍让显示的旧卡沿新generation手动重试/More，但退役请求不能发布；其它有限自动retry还须属于原operation。健康页局部焦点wrapper对一次完成只处理一次，reader动作后树重读不能重复抢旧焦点；两项均有真实red和附加WB控制A01/A02。service只传现有GET、signal和opaque cursor，既有nodeTarget/useNodeNavigate只做窄提取。此补记不改§4.2九项或共享默认策略。
 
@@ -1241,7 +1241,7 @@ S1完整验收须兼容/存储/API与真实D/F一起成立；正文TOAST禁止�
 
 ## 9. 交给后面的Phase
 
-**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2已实施并提交B-M1修复fa681；d061完整门禁/三审仅为历史，fa681控制及完整本地native19/Cost05/EW已按各自范围接受；精确CI、三席原复核及root对B-M1的关闭均已接受，见§10.2；原Step文档待验为当时状态，987d后已接受；原13ed main失败后转撤销树修复，78167本地门禁/代码CI/三席接受范围保持；本记录写入时，修复文档52a5及no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` 的完整main CI已接受，联合record自身CI/指定配对仍待（§10.4，后验§10.3）；P4、P5、M11尚未开始，下面的P4/P5交接继续是未来义务。
+**P3已交付的边界**：S1的SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、jsTrim、完整identity/cursor、内部explicit scope与公开REST/MCP协议，以及S2健康网页与`health#undigested_sources`可定位锚点，已按两Step最终输入完成验收与集成；撤销树修复另按78167/52a5及真实修复merge、联合record验收，原13ed失败不改写。结果见§10.1/§10.2/§10.4，最终指定配对与完成核对见§10.3。M6六行/注意1–4已done；M7第5项与M9第8项及说明余量已交，整份因P4/P5余项仍open。P4目录沿自己的SWR数据，不在lint名额外暗调pending；OldQualifiedFacts、unit起点BeforeIngest、Capture和未改页coverage仍由P4实现。M12保留旧MVCC/generic失败和S1历史约358MiB TotalAlloc；S2 Cost05两轮summary的实际go-total-alloc-bytes中位数另记为374979856/374953544B，仍高于最初250MiB目标，不把历史约数换标为本轮结果。修复Cost02的summary两轮TotalAlloc中位374650768/375132088B也独立保留，不冒充达到250MiB目标。生产负载/停机与CI余量继续开放。P4/P5/M11尚未开始；P4需本次独立P3done精确main CI接受后才进入下一Phase。
 
 
 P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。 S2已在实际页面实现该锚点，undigested零结果也打开披露并在reader未动作时定位；这不是P4目录、ingest或其计数的实施。
@@ -1531,7 +1531,38 @@ S2文档987d的minimum/gen及精确CI已按原输入接受；原S2 no-ff `13edc1
 
 ### 10.3 P3完成
 
-待§8全项和独立P3done精确main CI。此处不用自身尚未知SHA/run写自引用；后续既定P4设计补入口证据。
+2026-11-01：本记录写入时，主持者已按§8原43项及撤销树修复闭合前提核对实现、独立审查/必要修复核对、门禁、控制、文档与集成，P3已完成。最终接受原件：`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-p3-final-section8-acceptance-01.json`。此前43行覆盖准备与D-N1范围接受只证明PREP，不代替这份最终接受。
+
+| 独立输入 | 身份与接受范围 |
+|---|---|
+| S1 | 产品`18b922cfdec5471de622f1bcce9366c497a519e6`，文档`6e2b8bbf9a71a0b11db29dea62e44910a76d7213`；合并689bf607、record9d4ea2d1及原指定两main已接受，原失败/重跑范围保持。 |
+| S2 | 产品`fa681cf697703bc951266aa85978b1f1d62bbffe` / tree `698537c0107b8c741a8575b367eb3975389bbf18`；文档`987d4433c7281859e0f202346ca5346cc1600e21`及CI41245802670 attempt1已接受，B-M1 `CLOSED_ON_FA681`不重开。原no-ff13ed的main失败另列，不以修复身份替换。 |
+| 撤销树修复 | 产品`78167b424e5911fbd072ab0a047d82a39526a10d` / tree `bea20fde2becdd3911c3017d61c95602d19ae88d`；文档`52a54ebf28d3e90e0ce9375233a587f1fae9d3e2` / tree `130f32042d6349f53beb165677a3e9880e5e8e10`。本地/代码CI/三席分别沿修复接受入口；正式文档及精确CI最终接受：52a5的[CI41275881033 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41275881033/attempts/1)已按精确分支接受，13jobs/38required steps；`FIX/root-document-ci-acceptance-01.json` SHA `0cbf90cbae91ebb0953a0f4d2c91798180ad41d6172afd2df56819588346f842`。 |
+
+| 核对范围 | 已落实的范围与证据 |
+|---|---|
+| 合同与最后一跳 | 八规则/来源与metadata、root/AGENTS/bytes/folder各自豁免、唯一sources资格和distinct union、count/preview/page一致；REST与两scope MCP、完整identity/cursor/StartCursor/真实SDK、每端口ctx与同snapshot、名额/flight/取消/Stop清理；真实权限矩阵wrong-notebook负控和每个声明码/双语答出。实际代码、原控制及原审追加控制见S1审查；设计文本不代产品证据。 |
+| 健康网页 | S2每次进入含Back/Forward新算，generation隔离旧more，busy手动/失败保留数据仍报错，mode差异禁More而不自动算，当前树/缺项/附件父页、输出播报/可读名称、局部焦点与B-M1真实锚点回归均已验；LW8 API/MCP沿S1、page沿S2，只读无DB断言。fa681的B-M1由root按原A/B/C复核关闭，Important/Minor/Nit/Q均0；实际证据见[S2审查](reviews/P3-S2-health-web-review.md)。 |
+| 完整门禁与控制 | S2最终原native19、四成本targets/60recipes、实际清单完整EW和同构建LW8第二轮、代码精确分支CI及原A/B/C复核按最终输入接受；原per-binary session/heavy/timeout/容量限制、限定timedOut、存活probe、未到达断言和旧失败均保留。证据：`m10/p3-s2/root-s2-local-gates-and-push-release-02.json`（`f1c82e615684879bb5855d46669dac95b48c543a92a33b611479524a2e93f0bb`）、`root-anchor-controls-acceptance-01.json`（`73e2205740653bd203d7a305934ebdf349ff2a3fdc2db2af2d1db150d3dfe0be`）及`root-anchor-fix-check-dispositions-01.json`（`43a25df5b235e67ba94e232f8ca11f059793f5494aae4deb50d648421da0eed6`）。不借d061门禁或本机均值替最终输入/CI。 |
+| 迁移、计划与成本 | 来源v2、Sources/Nodes与必要JSON/TOAST/长target、真实D/F、51/52完整Up及5000-links写成本、reindex每本事务与独立search批次等实际数见S1与M12移交；S1历史约358MiB TotalAlloc保留原样本；S2 Cost05两轮summary的实际go-total-alloc-bytes中位数为374979856/374953544B，仍高于初始250MiB目标，当前数与历史约数分账。Cost05四个原targets完整60recipes及固定容量已由`root-full-costs-acceptance-05.json`（SHA `032a23d5860c718e8df81e25042377aaf2d184204c5e715378e4a20ed6e0b7a3`）按fa681接受，详细原件见S2审查。cost04在28条lint及10条cost成功后、costs第11项启动前被原3GiB前置条件阻止，make2/outer1，精确失败free未知；62个自有已完成P2诊断原文件经完整T7归档/映射核验后恢复空间，随后只做一次独立完整Cost05，不拼旧partial、不改阈值、不触及PGDATA，原失败与恢复回执分别保留。旧MVCC/generic、生产负载/停机与分配量目标仍留M12；SHARE索引挡写不挡读，不充生产停机承诺。 |
+| 撤销树修复 | 产品78167的本地门禁、代码CI41271794807 attempt1及三席接受独立记账；作者26units与A事务/取消、B原SortOrder、C WriterDeps接空树四个独立控制不并入S1/S2。B后台property与C正控存活、A private探针不合入均保留。native18完整阶段＋恢复nonbootstrap、Cost01前置失败与独立Cost02完整60/相关双轮、完整EW一轮353分别按原身份接受。修复文档52a5及其CI、真实修复merge和联合record见下表及§10.4；minimum/作者变异保留提交前同3346件源文件字节一致的记录，以及76生成文件native模式变化的归属限定。 |
+| 文档与移交 | 00、总体长期约定、两Step及修复结果/审查已同步；总体§5.6两处旧pending仅补历史时点与当前结果链接，文档D-N1关闭，不改合同/数字或新增产品决定；P1既有接收保持历史，P2补健康网页完成接续，README原“留S2”改为已提供的用法。M6done；M7/M9仍为P4/P5余项open。M11仅交explicit scope/stale闸门及已有内置说明真实余量；P5改说明后重新量并继续保留至少300B，M11尚未开始。M12真实服务器/并发/停机及M10收尾的IndexItems/grep复发核对继续开放。 |
+
+实际修复merge为`4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，tree/有序父为`130f32042d6349f53beb165677a3e9880e5e8e10` / `13edc125d5478285fbdf2750dd467f54bcc61a77`、`52a54ebf28d3e90e0ce9375233a587f1fae9d3e2`；同tree/正常push及完整main接受见`FIX/root-repair-main-acceptance-01.json` SHA `58165c603668e28b62dfb2e150b27d8afe7a374ddb63975b2b82d49f3a57a52e`；联合record为`df9b1d49544336f80d768bde4b6cda231403231e`，tree/parent为`d9b5e4f20302a17958c857b974e472bcbd2c3567` / `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`；提交原件`FIX/root-jointrecord-commit-01.json` SHA `561c5c30bd913e32ab2242dd8030f3dfd5705f5a04d7944fd6dd38f36e1613fa`。修复文档52a5的minimum与提交后gen按其实际回执接受；修复merge在确认tree与52a5一致后正常推送，并接受绑定真实head的完整main CI。联合record另按自身minimum、正常提交、提交后gen、正常推送和完整main CI的实际回执接受；完整链见[修复集成记录](reviews/P3-revert-tree-review.md#文档合并与联合record)与[S2接续](reviews/P3-S2-health-web-review.md#7-文档原合并与修复接续)。两个审查记录中的“本记录写入时，record自身待验”保留其历史时点，后验集中在本节，不再另造record-of-record。
+
+| main身份与指定配对 | 精确SHA | 实际CI与全部必需jobs/steps | 五份bootstrap Test秒（1→5） |
+|---|---|---|---|
+| S2原merge：失败，排除 | `13edc125d5478285fbdf2750dd467f54bcc61a77` | [CI41247708831 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41247708831/attempts/1) **FAILED**；guards失败，e2e/image skipped；no_statistics第三轮4.002198968s/HTTP500 | 不取其中成功片，不纳入配对 |
+| 修复merge：指定样本1 | `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` | [CI41277758157 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41277758157/attempts/1) / push / main / 4e6e9660abd8d0973cda9e17ae2578b1a6b9acca，completed/success；13jobs/38required steps；`FIX/root-main-ci-acceptance-01.json` SHA `f37155912f0139624288f4e1188bebda19a45ea8cec81ffdd1febc9d449d1767` | 449/200/261/373/317 |
+| 联合record：指定样本2 | `df9b1d49544336f80d768bde4b6cda231403231e` | [CI41281561763 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41281561763/attempts/1) / push / main / df9b1d49544336f80d768bde4b6cda231403231e，completed/success；13jobs/38required steps；`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-jointrecord-ci-acceptance-01.json` SHA `04437265d13f2491100aa778d94a752cc0cd84e5da5b4d46350f12fb072fbf19` | 340/203/355/401/312 |
+| 两次算术均值 | 仅上述修复merge＋联合record | 各片按原Test秒数求均值，五份均严格<450s；主持者配对接受：`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-repair-jointrecord-main-pair-acceptance-01.json` SHA `b1b3b30e5bd3191486eae0c989c490a99ba6db3081f95cb3a7a15a3f73fac4f2` | 394.5/201.5/308/387/314.5 |
+
+文档/修复merge/联合record实际失败、取消与重试历史：修复文档52a5/run41275881033 attempt1、修复merge4e6e/run41277758157 attempt1、联合recorddf9/run41281561763 attempt1均为各自首轮完整成功；这三次CI没有失败、取消或重跑。原S2 merge13ed/run41247708831 attempt1的guards失败及e2e/image skipped永久保留，不参与指定配对；S1既有失败/重跑另沿§10.1原记录。联合record自身八项minimum与提交后gen均一次实际exit0；gen-go重建nodes.sql.go的native0664→0644按执行前限定单列，全部bytes/Git可执行位及其余输入保持，不是产品失败或重跑。每个指定样本必须完整接受且绑定真实head/main/event/run/attempt及其原始jobs/steps；不能混入代码或文档分支、本地子进程计时、job wall，也不跨attempt拼接。一次代码分支455/306/254/293/308s不充main配对。
+
+S1指定两main五份均值315.5/307/325/402.5/316s沿既有接受，详见[S1审查](reviews/P3-S1-lint-protocol-review.md#record提交后自验收与l1失败重跑配对)，不称本次新跑。修复Cost02 summary两轮TotalAlloc中位374650768/375132088B与S1历史约358MiB、S2 Cost05的374979856/374953544B分账，均不证明达到初始250MiB目标；旧MVCC/generic、生产负载/停机及PG CPU/RSS等M12义务保持。两个诊断计时勘误、原13ed失败、native UNKNOWN/partial排除、Cost01磁盘预检/failed free未知、首败/存活资格与原期限不改。
+
+本次为独立`docs: M10/P3 done (M10/P3)`，六文件14处仅落实当前收尾范围。**本记录写入时，自己的SHA/run未知，精确main CI尚待提交后接受；本节不预填自身成功。** 该P3done CI不加入上述指定配对，不另造自指记录；主持者接受其精确main CI前不释放P4，后续既定P4设计自然补入口证据。P4是下一Phase，P4/P5和M10收尾仍未开始，M10继续进行中；真实两客户端人工清单归既定P5/M10收尾，P5改说明后的余量须重测，M11/M12欠账继续开放，不启动M11。
+
 
 <a id="104-p3旁支撤销规划完整树读取进行中"></a>
 
