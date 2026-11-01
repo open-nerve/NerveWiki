@@ -1,6 +1,6 @@
 # M10/P3 撤销规划完整树读取：修复审查记录
 
-> 本记录写入时：产品78167b4的本地门禁、精确代码分支CI和三席独立审查已由主持者接受，已核实Important/Minor/Nit/Q均0。正式文档提交及其CI、修复合并、联合record/指定两main配对和P3done仍待后续实际验收；原13ed main CI失败保持。
+> 本记录写入时：产品78167本地门禁、精确代码CI和三席接受范围保持，已核实Important/Minor/Nit/Q均0；文档52a5及修复no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` 的完整main CI已由主持者接受。原S2合并13ed的main CI仍FAILED；本联合record自身提交后检查/CI、指定配对及P3done仍待，后验见[P3§10.3](../03-P3-lint-health.md#103-p3完成)。
 
 ## 对象与原失败
 
@@ -11,7 +11,7 @@
 | 原 CI | [41247708831 attempt 1](https://github.com/open-nerve/NerveWiki/actions/runs/41247708831/attempts/1)，guards job `124674497913`：FAILED，原件保留 |
 | 修复归属 | M10/P3 旁支 `m10-revert-tree`；不计作新的 S2 功能或 P4 开始 |
 | 实际产品提交 | `78167b424e5911fbd072ab0a047d82a39526a10d`；tree `bea20fde2becdd3911c3017d61c95602d19ae88d`，parent为上述13ed；26路径（22修改、4新增）的提交blob逐件匹配原接受候选 |
-| 集成 | 本记录写入时，正式文档提交及其CI、no-ff合并/main CI、联合record/CI与指定配对仍PENDING；合并见[00号文档第12节](../00-M10-design.md#12-phase-进度表) |
+| 集成 | 本记录写入时，修复文档52a5及正常no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` / [CI41277758157 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41277758157/attempts/1)已接受；有序父/tree和收据见文末“文档、合并与联合record”。本联合record自身CI及指定两main配对仍待，后验见P3§10.3；合并见[00第12节](../00-M10-design.md#12-phase-进度表)。 |
 
 原 `TestSourceRevertAtTenThousandTakesItsTime/no_statistics` 三轮依次为 3.136115390s/200、3.495831081s/200、4.002198968s/500。应用报告 `API request deadline exceeded`，错误链为 `transaction abandoned after restore the blobs of nodes ... context deadline exceeded ... conn closed`。最后 blob 标签是取消被观察到的位置，不单独证明根因。原4s请求、2s提交、7.6s操作和10m target 合同保持；原失败不因本地绿被改写。[E1]
 
@@ -112,11 +112,11 @@ A/B/C分别在独立detached worktree审同一78167/bea20fde与26文件diff，�
 | 产品及本地门禁 | 78167、TDD/历史HTTP、7项minimum、作者26项源码变异、fullstatic含postgen/fresh build、Web、native19/affected双轮、Cost02完整60/容量/五项related双轮及完整EW一轮均按各自范围接受 [E2–E14][E18–E22] |
 | 代码CI、独立审查 | 精确41271794807 attempt1和A/B/C及主持者最终核对接受，无待修复发现 [E23][E25–E28] |
 | 失败与限制 | 原13ed main失败、native中断退出未知/partial排除、Cost01磁盘前置失败及failed free未知、作者/审查辅助首败与存活正控均保留；250MiB目标及M12性能边界开放 |
-| 正式修复文档 | 本记录及00/P3修订的正式应用、minimum/gen/链接核对、提交与精确doc CI待实际执行 |
-| 修复集成 | 正常no-ff、修复main完整CI、联合四文件main record及其完整CI、指定修复merge＋联合record五片均值验收均PENDING；合并见00第12节 |
+| 正式修复文档 | 52a54ebf28d3e90e0ce9375233a587f1fae9d3e2；八项fresh minimum、提交后原生gen、正常分支push均实际exit0；精确[CI41275881033 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41275881033/attempts/1)已接受。原件见文末集成节。 |
+| 修复集成 | 本记录写入时，正常no-ff `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` 及其完整main CI已接受；本联合record自身提交后检查/CI和指定修复merge＋联合record配对仍待，后验见P3§10.3。 |
 | Phase完成 | 指定配对和§8全项闭合后再独立五文件P3done，并接受其精确main CI；此前P4不释放，P5/M11不开始 |
 
-联合四文件record与独立五文件P3done的**准备范围已根审接受**（E17，PREP-only）；实际merge/record/pair/P3done未发生。该范围不要求重做原S2已验控制，不单独创建旧S2三文件record，也不新增record-of-record。本文是三席及主持者接受事实的文档汇总，起草者不是第四位代码审查者。
+联合四文件record与原五文件P3done的准备范围曾按E17接受（PREP-only）；随后文档D-N1由`root-p3-completion-document-scope-02.json`（SHA `25d1a8acc00b18efaba9e6bc22093113e47b580bda8fedc226946fda5367fca8`）将P3done最窄补为六文件14处，仍仅接受准备范围。本记录写入时，修复文档/正常no-ff及完整main CI已按文末实际收据接受；本联合record自身CI、指定配对与P3done仍待，后验见P3§10.3。原S2已验控制不重复计数，不单独创建旧S2三文件record或record-of-record。本文仍是三席及主持者接受事实的文档汇总，起草者不是第四位代码审查者。
 
 ## 证据索引
 
@@ -153,3 +153,20 @@ A/B/C分别在独立detached worktree审同一78167/bea20fde与26文件diff，�
 | E27 | FIX `independent-review-c-01/review.md`；`e376cbcff31a2d67bf505c93cf6a914165c01227a0d43122cb77a9ba95082365`；真实组合接线、原库存/CI独立核对与正控 |
 | E28 | FIX `root-independent-reviews-acceptance-01.json`；`dfc0088abd0a2dc9e2677c84270fb9bb05391faff26751968d905d7148727618`；三席最终接受，引用A/B先行回执`b458c1c00fde9e5f5fbe43a102534c05a6691bea5828b59d97391115b888fc9e`；不代替文档、merge或P3done |
 | E29 | `m10/p3-s2/root-s2-final-document-ci-acceptance-01.json`；`a22719c413c9354e08a323031e30c9338cb5efaa130c357167280add133b97e8`；S2原文档987d/CI41245802670 attempt1已接受，不能代替本修复文档CI |
+
+## 文档、合并与联合record
+
+**本记录写入时**，修复文档52a5与正常no-ff修复merge的完整main CI已由主持者接受；本联合record尚待自身提交后检查、精确main CI和指定配对，后验见[P3§10.3](../03-P3-lint-health.md#103-p3完成)。原S2 no-ff13ed/run41247708831 attempt1保持FAILED，不能写成修复merge或完整绿色样本。
+
+| 阶段 | 实际身份、结果与原件 |
+|---|---|
+| 修复文档输入及提交 | `52a54ebf28d3e90e0ce9375233a587f1fae9d3e2` / tree `130f32042d6349f53beb165677a3e9880e5e8e10` / parent `78167b424e5911fbd072ab0a047d82a39526a10d`；恰00/P3/本修复审查三文件。`FIX/root-document-commit-01.json` SHA `0741df1e67ee44290dbd450206914083751883227914090afd3920aa76fad99d`。 |
+| 文档fresh minimum | 八条实际命令均exit0；受测输入是78167上的三文档改动，3347文件，不冒称在已提交52a上重跑。server short为7292 PASS/1468 SKIP，tools27 PASS；`FIX/root-document-minimum-acceptance-01.json` SHA `59291e929bfbe8dd3699da78ffbd9ca263bab1514af04fd8e3a1cf186229dc36`。原代码全门禁仍归原输入。 |
+| 提交后gen与正常push | 52a上的原`make -j1 gen-check`实际exit0，28.382655846886337s，session26165已收；`FIX/root-document-postgen-acceptance-01.json` SHA `ccbd1c6e1bb86daba28692f2759c2170e70ec07cb049f63e07c0518a46af7268`。`git push origin m10-revert-tree`实际exit0，session41856已收；`FIX/document-branch-push-01.json` SHA `0d5ddc086254a125ef243405ba9ed65083b24354714fe9a030d5d2517734d2ff`。 |
+| 精确文档CI | [CI41275881033 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41275881033/attempts/1)；head `52a54ebf28d3e90e0ce9375233a587f1fae9d3e2` / branch `m10-revert-tree` / push / attempt1，completed/success；全部13个必需jobs/38个必需steps成功，五片Test为451/255/364/291/277秒；接受收据`FIX/root-document-ci-acceptance-01.json` SHA `0cbf90cbae91ebb0953a0f4d2c91798180ad41d6172afd2df56819588346f842`。此分支样本不计main配对。 |
+| 修复正常no-ff | head `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，tree `130f32042d6349f53beb165677a3e9880e5e8e10`，有序父`13edc125d5478285fbdf2750dd467f54bcc61a77 / 52a54ebf28d3e90e0ce9375233a587f1fae9d3e2`；正常no-ff实际exit0；tree与已接受52a5完全相同；`git push origin main`实际exit0，远端refs/heads/main核对为本merge；minimum与提交后gen沿52a5原回执归属；原件`FIX/repair-main-merge-01/merge.json` SHA `56aed228d2e3d1596444ab014bd189eac39590e156f1783e1f7b512a58c1a901`；正常push `FIX/repair-main-merge-01/push.json` SHA `9342109864b97382ed82444ec7ab630cdeff85770aa6fe725843ec111a30688d`。 |
+| 修复完整main CI | [CI41277758157 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41277758157/attempts/1)；head `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` / branch `main` / push / attempt1，completed/success；全部13个必需jobs/38个必需steps成功；五片**Test步骤**原秒数449/200/261/373/317秒；接受收据`FIX/root-main-ci-acceptance-01.json` SHA `f37155912f0139624288f4e1188bebda19a45ea8cec81ffdd1febc9d449d1767`。 |
+| 文档与修复main的尝试历史 | 文档CI41275881033接受attempt1（completed/success）；修复main CI41277758157接受attempt1（completed/success）；各自采用完整attempt；原13ed/CI41247708831 attempt1 FAILED另列；失败、取消、重试均保留，不拼attempt。 |
+| 本联合record及后验 | 本记录写入时，自己的提交后检查/精确main CI/指定配对仍待，不预填自身SHA或run。后验由P3§10.3转录；不再新增record-of-record。 |
+
+仅指定修复merge与本联合record两个完整接受的main attempt，逐片计算`mean_i=(repair_merge_Test_i+joint_record_Test_i)/2`，五个结果都须严格<450s。不得用13ed部分成功片、分支CI、本地子进程用时、job wall或跨attempt片段替代。配对及§8全项接受后，再独立六文件14处P3done并接受其精确main CI；该P3done CI不加入本次配对，P4/P5/M11仍未开始。前述业务语义、作者/三席变异、计时勘误与M12限制保持。
