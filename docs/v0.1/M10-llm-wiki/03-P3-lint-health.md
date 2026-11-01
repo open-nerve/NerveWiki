@@ -4,13 +4,13 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。 d061历史完整门禁、W38和CI41219802802 attempt1仍按其原输入保留。S2当前修复fa681已提交；d061三审的唯一Minor B-M1已改代码并补真实回归，minimum为9项root新执行＋2项作者同源复用，fa681 postcommit gen已接受。当前正式38＋额外3+1共42单元控制、native19、Cost05完整60recipes及实际EW353＋同build LW8第二轮24均已按各自范围接受，本地汇总f1c82e61…只释放代码分支推送；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…）；Step文档自身CI、merge/record指定两main及P3done仍PENDING。详见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)；合并与record验收见00号文档第12节 |
+| 状态 | 进行中；S1已集成，S2产品fa681及文档987d已接受，原13ed合并main CI失败保留。撤销树修复78167本地门禁、精确分支CI及三席/主持者核对已接受，无待修复发现；本次修复文档CI、no-ff/main、联合record/指定两main配对及独立P3done仍待。历史结果见§10.1/§10.2，旁支结果见§10.4；合并见00号文档第12节。P4/P5/M11未开始。 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
 | 决定 | 主持者接受连续实施决定49–60（负责人可以改判），见[设计审查记录](reviews/P3-design-review.md)；索引、容量及所有运行结果仍须完成本文实测准入。见§2.2 |
 
-**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改。S2实现已提交至d0618b1d；完整W选定38单元已由根按资格接受，150独立heavy阶段/225次case执行及限制见§10.2。d061历史完整本地门禁/原固定容量/完整EW与代码CI已接受，三审随后确认B-M1；fa681已完成最小修复、9+2 minimum及实际postgen，正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），Step文档CI与集成仍PENDING。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
+**来源表示与S1当前结果**：writer沿已有 `Link.InFrontmatter()` 传等长bool，generated CASE保留正文NULL与合法空属性非NULL空串，Extractor为2。S63–S69及其跨OS/OB/Web、D/F真实消费者在18b完整控制中逐腿核验；S1-0a的原样本保留为历史，当前完整结果见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。原S01–S69＋W01–W10共79行不改。S2实现已提交至d0618b1d；完整W选定38单元已由根按资格接受，150独立heavy阶段/225次case执行及限制见§10.2。d061历史完整本地门禁/原固定容量/完整EW与代码CI已接受，三审随后确认B-M1；fa681已完成最小修复、9+2 minimum及实际postgen，正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），该句的Step文档待验为原写入时点；987d精确文档CI后已接受，原13ed main失败保留。当前撤销树旁支78167的本地门禁/代码CI/三席已接受；修复文档及集成仍待，见§10.4。[来源修订记录](reviews/P3-origin-design-review.md)的决定62、三审、搜索维护及原失败历史保留。
 
 ## 0. 两个可独立合并为绿的 Step
 
@@ -797,6 +797,10 @@ Tools
 
 实测、失败来源及精确接受范围见§10.1和[S1审查](reviews/P3-S1-lint-protocol-review.md)。上述细化不实现S2网页、P4 Capture/ingest或M11升级。
 
+### 3.15 撤销树旁支的实际修订（决定70）
+
+产品78167在page增加`RevertTreeNode`六字段类型与`RevertTrees.ListRevertTree`端口；独立SQL/adapter读取同一本全部live页面及附件，WriterDeps/TrashReads均接同一Store。它只替换撤销规划的结构输入；NodesNow、ContentsNow、VersionHashes、公共ListNodes和完整历史保持。stored NameKey与原SortOrder数值保留，SQL无ORDER BY；成功空读非nil、未读nil、ctx事务/取消和锁下重新规划保持。实际范围、门禁/三席及集成待验见§10.4与[修复审查](reviews/P3-revert-tree-review.md)。
+
 ## 4. 网页
 
 ### 4.1 S1随契约交付
@@ -1073,6 +1077,17 @@ docs/v0.1/claude_to_codex/tools/heavy.sh go -C server test -p=1 -race -count=1 .
 
 所有catcher保存至少一个指定子测试run与真正断言fail/pass，0 tests、编译失败、其它测试先失败均不算kill。S65的literal-v1兼容在S1-0a可由现有读者观察，S1-2之后追加真实stale_pages/D/F证明；不把阶段不足包装成已覆盖。P4 Unknown变异只记§3.8.2的后续义务，不加入P3已跑计数。
 
+#### 撤销树旁支新增的独立源码控制
+
+原S1/S2表及控制数量保持。作者26units/78次Go及RT07/19/20首败、RT18存活边界见[修复审查](reviews/P3-revert-tree-review.md)；以下为三席另外实际执行的四项，均完成baseline→mutant→精确restore的0→1→0，未改写成S2控制或新全门禁。
+
+| 独立控制 | 实际故障与抓住它的断言 | 保留的正控/范围 |
+|---|---|---|
+| A-TX-01 | 丢事务连接选择：原事务测试、独立事务投影及数据库错误探针3项失败 | 其余4项PASS；真PG未提交/外部/回滚状态 |
+| A-CANCEL-01 | Query改用Background：预取消及表锁等待后运行中取消2项失败 | 其余5项PASS；不是Go timeout |
+| B-MUT-01 | 模拟树SortOrder置0：固定source facts把rename错答move，domain独立模型抓到Move标记错 | mutant19 PASS/2 FAIL，后台property仍PASS |
+| C-WriterDeps | WriterDeps接非nil空树：真实同步撤销200→409/parent_gone，后台任务failed/revert_conflict | content-only、锁外title_taken仍PASS；恢复6/6 PASS |
+
 ### 7.4 计划、物理工作、TOAST与迁移
 
 **当前实测边界（决定64）**：51/52各自完整Up、5000-links独立开/关索引、必要JSON/TOAST与真实consumer已实测。fresh无旧版本fixture的custom/generic与隐藏本A→B→A证据成立；原page MVCC恢复后generic返回2000却扫52000行的失败和未成功CTE实验保留，B新增auto/custom/generic探针分开归档，不能写生产物理工作始终有界。完整仓库内数表见[M12性能移交](../M12-release/handoffs/M4-performance.md)和[S1审查](reviews/P3-S1-lint-protocol-review.md)。以下仍是测量合同及原设计义务。
@@ -1226,7 +1241,7 @@ S1完整验收须兼容/存储/API与真实D/F一起成立；正文TOAST禁止�
 
 ## 9. 交给后面的Phase
 
-**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2已实施并提交B-M1修复fa681；d061完整门禁/三审仅为历史，fa681控制及完整本地native19/Cost05/EW已按各自范围接受；精确CI、三席原复核及root对B-M1的关闭均已接受，见§10.2；文档与集成仍PENDING；P4、P5、M11尚未开始，下面的P4/P5交接继续是未来义务。
+**S1已交付的边界**：SourceArea严格整区和snapshot局部LintData、SourceSlots纯资格、JS trim、完整身份、内部explicit scope与public协议已实现。M6六行/注意项在本分支文档交付关闭；M7第5项与M9第8项及说明余量完成，整份仍open。M12实际314行成本表和旧MVCC失败、约358MiB TotalAlloc未达目标、生产负载/停机/CI余量接续开放。S2已实施并提交B-M1修复fa681；d061完整门禁/三审仅为历史，fa681控制及完整本地native19/Cost05/EW已按各自范围接受；精确CI、三席原复核及root对B-M1的关闭均已接受，见§10.2；原Step文档待验为当时状态，987d后已接受；原13ed main失败后转撤销树修复，当前78167本地门禁/代码CI/三席已接受，正式修复文档与集成仍待，见§10.4；P4、P5、M11尚未开始，下面的P4/P5交接继续是未来义务。
 
 
 P4只复用P3实际定下的SourceArea/metadata、SourceSlots纯资格、jsTrim缺定义、稳定identity；OldQualifiedFacts与unit起点BeforeIngest、删前Capture、未改页批量SQL按§3.8.1/00§4.14在P4实现并测量；P3没有替它实现ingest或可直接套用的direct SQL。按自己的index/log/export/ingest合同增加功能，来源数量不等同pending数量。P3只提供虚拟target只读谓词，P4仍负责路径lookup/render/web样例与virtual工具行为。health#undigested_sources锚点可直接用，P4目录仍自己的SWR数据，不暗调lint计数。 S2已在实际页面实现该锚点，undigested零结果也打开披露并在reader未动作时定位；这不是P4目录、ingest或其计数的实施。
@@ -1517,6 +1532,24 @@ W05-C1首轮baseline-EW因ERR_NETWORK_CHANGED停在auth/动态JS初始化，业�
 ### 10.3 P3完成
 
 待§8全项和独立P3done精确main CI。此处不用自身尚未知SHA/run写自引用；后续既定P4设计补入口证据。
+
+### 10.4 P3旁支：撤销规划完整树读取（进行中）
+
+原S2 no-ff `13edc125d5478285fbdf2750dd467f54bcc61a77` 的CI41247708831 attempt1在第三轮no_statistics以4.002198968s/HTTP500失败，原失败及4s请求/2s提交/7.6s操作合同保留。修复产品`78167b424e5911fbd072ab0a047d82a39526a10d` / tree `bea20fde2becdd3911c3017d61c95602d19ae88d` / parent13ed已提交，26路径（4新增）。按主持者决定70，以独立六字段完整活树端口接通同步锁前/锁下和后台每批读取，保留assets、stored NameKey、原SortOrder数值、nil未读/非nil读空、上下文事务/错误链及原完整历史；SQL不承诺行序。没有schema/index、夹具、期限或预算调整。
+
+TDD/语义验证、早期一次原三状态九HTTP顺序对照、提交前7项minimum与作者26units/78次源码变异分别按原身份接受；前两组本地HTTP区间1.571–2.097s→1.313–1.838s只是顺序非随机对照。3346源码bytes相同，76生成文件native 100664→100644不写成完全相同metadata。提交后fullstatic含postgen/fresh build和Web182文件/3925 PASS均实际exit0；当前源码清单沿修复记录的E18固定。
+
+| 本轮接受项 | 实际范围与保留项 |
+|---|---|
+| native与本地容量 | 原18完整阶段＋新完整nonbootstrap组成native19；恢复8053 RUN/8052 PASS/1既有SKIP，affected三包两轮各1917 PASS。五份bootstrap本地子进程均值297.543/180.955/239.044/273.692/235.423s，均严格<450；旧session15569退出UNKNOWN、partial排除。 |
+| 成本与相关guards | Cost01在recipe04产品测试前3GiB预检停止，outer1/make2、失败free未记录。独立Cost02完整60recipes和14条lint两轮容量已接受，相关guards05/06/07/13/14二轮均通过；source-revert两轮18个HTTP200。固定校准不变，Wiki原250MiB TotalAlloc目标及M12义务继续开放。 |
+| 完整EW | 原fresh完整make e2e一轮353通过，0 skip/retry；含LW8，未增加S2专属LW8第二轮。 |
+| 代码CI | [41271794807 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41271794807/attempts/1)，精确78167/m10-revert-tree，全13jobs/38steps成功；五片Test455/306/254/293/308s。当前九HTTP200为1.623–2.215s，不能证明长期稳定或全部SQL收益因果，也不是指定main配对。 |
+| 独立审查 | A/B/C及主持者最终核对已完成，均0 Important/Minor/Nit/Q，无需产品修复或另造fix-check。A事务/运行中取消、B原SortOrder、C WriterDeps空树接线四项独立变异均0→1→0；B后台property与C content-only/锁外title_taken仍PASS。A仅留private探针不合入，其他tracked恢复，B/C clean。 |
+
+本旁支照实修订：仅换撤销规划的结构输入，公共ListNodes与NodesNow/ContentsNow/VersionHashes及原历史恢复算法保持；RT07/19/20首败、RT18存活、app首个无效RED、两个计时勘误和辅助审计修正均见[完整修复审查](reviews/P3-revert-tree-review.md)。作者26项与三席独立控制分开记录，不并入S2原控制数量。
+
+本记录写入时，正式修复文档提交/CI、no-ff与修复main CI仍待；合并见00第12节。联合四文件main record、指定“修复merge＋联合record”两个完整main逐片Test均值严格<450s，再独立五文件P3done的准备范围已由主持者接受；实际执行/验收均未发生。原§10.2及§10.3保留其历史与完成占位，S2与修复身份不互换；P4/P5/M11未开始。
 
 ## 附录：已核代码与只读证据
 

@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2已完成；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。 d061历史完整门禁、W38和CI41219802802 attempt1仍按其原输入保留。S2当前修复fa681已提交；d061三审的唯一Minor B-M1已改代码并补真实回归，minimum为9项root新执行＋2项作者同源复用，fa681 postcommit gen已接受。当前正式38＋额外3+1共42单元控制、native19、Cost05完整60recipes及实际EW353＋同build LW8第二轮24均已按各自范围接受，本地汇总f1c82e61…只释放代码分支推送；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…）；Step文档自身CI、merge/record指定两main及P3done仍PENDING。正文保留的前置pending是历史时点，现行进度仅见第12节当前表。 |
+| 状态 | 进行中；P1/P2已完成，P3/S1已集成，S2产品fa681及Step文档987d已接受。原S2合并13ed的main CI仍失败；撤销树修复78167的本地门禁、代码CI及三席/主持者核对已接受，无待修复发现。修复文档与集成、指定两main配对及独立P3done仍待。现行进度见第12节，原阶段结果/失败保留；P4/P5/M11未开始。 |
 | 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
@@ -780,6 +780,10 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 11. 负责人确认的决定
 
+### P3旁支撤销树修复：主持者的决定（负责人可以改判）70
+
+撤销规划改用独立RevertTrees/RevertTreeNode六字段完整活树，保留公共ListNodes、stored NameKey、**原SortOrder数值**、两次完整读取及锁下重规划、完整历史与原4s/2s/7.6s。SQL无ORDER BY，不承诺返回行顺序。产品78167b4的本地门禁、精确分支CI及三席独立审查已接受，无待修复发现；文档/合并与指定main配对仍待验。原13ed main失败、Cost01预检停止及两次ListNodes合计耗时的勘误保留。理由、证据和限制见[撤销树修复审查](reviews/P3-revert-tree-review.md)。
+
 ### P3/S1主持者的实施决定（负责人可以改判）
 
 编号接原来源修订记录的62；以下为主持者已正式分配的实施决定。
@@ -893,18 +897,20 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 12. Phase 进度表
 
-**当前进度表（唯一现行状态，2026-10-31）。**
+**当前进度表（唯一现行状态，2026-11-01）。**
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
-| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 进行中；S1服务端、来源整区、八规则、REST/MCP两scope及LW8 API/MCP已实施；18b完整本地门禁、248units/262legs/786阶段控制、五片各两轮与精确分支CI41171083998 attempt1的13jobs均已接受。独立审查A/B/C2的初稿与原件附记均已由主持者接受，无未关闭的已核实Important/Minor/Nit；Q-B1作为已知限制关闭审查疑问，性能边界仍留M12。Step文档 `6e2b8bbf9a71a0b11db29dea62e44910a76d7213` 的minimum、提交后gen与精确分支CI已分别接受；S1以 `689bf607bf05842e8d56389b1e5f282b252cd64e` no-ff合并，首次main CI已接受。record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145` 已正常提交并推送，提交前八项检查与提交后原生gen分别接受，原gen wrapper的权限位失败及恢复保留。record CI41188823890 attempt1的L1失败与一次完整同head重跑另列；attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2；P3/M10继续进行中，P4/P5/M11未开始。 d061历史完整门禁、W38和CI41219802802 attempt1仍按其原输入保留。S2当前修复fa681已提交；d061三审的唯一Minor B-M1已改代码并补真实回归，minimum为9项root新执行＋2项作者同源复用，fa681 postcommit gen已接受。当前正式38＋额外3+1共42单元控制、native19、Cost05完整60recipes及实际EW353＋同build LW8第二轮24均已按各自范围接受，本地汇总f1c82e61…只释放代码分支推送；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…）；Step文档自身CI、merge/record指定两main及P3done仍PENDING。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2实施/审查](reviews/P3-S2-health-web-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`；[record验收](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)  S2待；合并见本节实际记录 |
+| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 进行中；S1已集成，指定main五份Test均值315.5/307/325/402.5/316s已接受。S2产品fa681的42项控制、native19/Cost05/EW、精确代码CI及原席核对已接受，B-M1关闭；Step文档987d的精确分支CI已接受。原S2合并13ed的CI41247708831 attempt1仍FAILED。撤销树修复78167本地门禁、完整代码CI41271794807 attempt1及A/B/C与主持者核对已接受，已核实Important/Minor/Nit/Q均0；修复文档CI、no-ff/main、联合record/CI、指定两main配对与P3done待验。原失败和各阶段范围见§10.1/§10.2/§10.4及审查记录；P4/P5/M11未开始。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2实施/审查](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`；[record验收](reviews/P3-S1-lint-protocol-review.md#文档合并与record验收)；S2原合并`13edc125d5478285fbdf2750dd467f54bcc61a77`（CI失败）；修复合并待实际记录 |
 | P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
 S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147](https://github.com/open-nerve/NerveWiki/actions/runs/41185522147) attempt1 已接受；实际record为 `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`。record自身八项检查、原生gen与wrapper模式恢复、CI41188823890 attempt1失败及限定一次完整重跑见[S1审查](reviews/P3-S1-lint-protocol-review.md#record提交后自验收与l1失败重跑配对)；record attempt2最终结论：completed/success，主持者已按精确9d4接受；指定两main配对：主持者已接受；五份均值315.5/307/325/402.5/316秒全部严格<450秒，两次main各自全部13个必需作业/38个必需步骤成功；主持者已于2026-10-31 10:43 UTC接受S1集成并释放S2-1；该次放行范围为S2-1，当前S2进度另见P3§10.2。
+
+**P3撤销树旁支（进行中）**：S2文档987d已按其精确分支CI接受；原no-ff `13edc125d5478285fbdf2750dd467f54bcc61a77` 的[CI41247708831 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41247708831/attempts/1)仍FAILED。修复产品`78167b424e5911fbd072ab0a047d82a39526a10d`的本地门禁、[代码CI41271794807 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41271794807/attempts/1)及A/B/C与主持者最终核对已接受；三席均0 Important/Minor/Nit/Q。本次分支五片Test455/306/254/293/308s不构成指定两main配对。正式修复文档CI、修复no-ff/main CI、联合四文件record/CI及其指定配对、独立P3done仍待实际执行；集成准备范围已根审，不等于已经集成。详见[修复审查](reviews/P3-revert-tree-review.md)及[P3§10.4](03-P3-lint-health.md#104-p3旁支撤销规划完整树读取进行中)。
 
 **以下为来源前置发布时的历史进度快照，保留原字节与当时pending；不作为当前进度表。**
 
@@ -920,6 +926,8 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-11-01：记录P3撤销树旁支产品78167与决定70：六字段完整活树保留原SortOrder数值，SQL不承诺行序。原13ed main CI失败、native中断/退出未知与Cost01磁盘预检停止保留；本地全门禁、Cost02完整60/相关guards双轮、完整EW一轮353、精确代码CI41271794807 attempt1及三席/主持者核对已接受，无待修复发现。提交前minimum/26作者变异身份与76生成文件native模式限定不改；一次代码分支CI不满足指定两main配对。修复文档自身CI、merge/联合record/配对与独立P3done仍待，集成准备范围已根审。见[修复审查](reviews/P3-revert-tree-review.md)及[P3§10.4](03-P3-lint-health.md#104-p3旁支撤销规划完整树读取进行中)。
 
 - 2026-11-01：P3/S2四项历史实施及d061完整门禁/W38/CI保留原归属；独立A/B/C的唯一Minor B-M1已由fa681作一行focus修复并补三场景回归，作者证明、9+2 minimum与postgen分开记。当前42项控制及完整本地native19/Cost05/EW已按各自范围接受；cost04原空间前置失败和62个自有诊断文件归档后的独立完整Cost05另列，原预算不变；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…）。文档CI/合并记录与指定两main仍PENDING，见[S2记录](reviews/P3-S2-health-web-review.md)。
 
