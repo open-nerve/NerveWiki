@@ -40,7 +40,7 @@ func TestVirtualFiles(t *testing.T) {
 		}
 		destination := strings.Repeat("L", 600) + ".md"
 		got := rendered(t, fileIndex(domain.IndexFileItem{Path: filePath(destination), Title: strings.Repeat("T", 300), Type: &typ, Summary: &summary, Tags: tags}), 40960)
-		for _, want := range []string{"## Type: " + strings.Repeat("α", 128) + "…", "[" + strings.Repeat("T", 256) + "…](<" + destination + ">)", " — " + strings.Repeat("é", 128) + "…", "tag19, …", "Use index with type, tag or parent"} {
+		for _, want := range []string{"## Type: " + strings.Repeat("α", 126) + "…", "[" + strings.Repeat("T", 253) + "…](<" + destination + ">)", " — " + strings.Repeat("é", 126) + "…", "tag19, …", "Use index with type, tag or parent"} {
 			if !strings.Contains(got, want) {
 				t.Errorf("missing marked display or destination %q", want)
 			}
@@ -50,8 +50,53 @@ func TestVirtualFiles(t *testing.T) {
 		}
 		message := strings.Repeat("é", 300) + "TAIL"
 		b, err := domain.RenderLog(domain.RenderLogInput{Items: []domain.RenderLogChangeset{{Message: &message}}, Total: 1}, 40960)
-		if err != nil || !strings.Contains(string(b), "message: "+strings.Repeat("é", 250)+"…") || strings.Contains(string(b), "TAIL") || !strings.Contains(string(b), "Use log to filter and page through more.") {
-			t.Fatalf("log display boundary: %v %q", err, b)
+		if err != nil || !strings.Contains(string(b), "message: "+strings.Repeat("é", 248)+"…") || strings.Contains(string(b), "TAIL") || !strings.Contains(string(b), "Use log to filter and page through more.") {
+			t.Errorf("log display boundary: %v %q", err, b)
+		}
+		for _, tt := range []struct {
+			name, input, want string
+			limit             int
+		}{
+			{"title_ascii_exact", strings.Repeat("A", 256), strings.Repeat("A", 256), 256},
+			{"title_ascii_cut", strings.Repeat("A", 257), strings.Repeat("A", 253) + "…", 256},
+			{"title_utf8_exact", strings.Repeat("界", 85) + "a", strings.Repeat("界", 85) + "a", 256},
+			{"title_utf8_cut", strings.Repeat("界", 86), strings.Repeat("界", 84) + "…", 256},
+			{"title_bracket_exact", strings.Repeat("[", 128), strings.Repeat(`\[`, 128), 256},
+			{"title_bracket_cut", strings.Repeat("[", 129), strings.Repeat(`\[`, 126) + "…", 256},
+			{"title_slash_exact", strings.Repeat(`\`, 128), strings.Repeat(`\\`, 128), 256},
+			{"title_slash_cut", strings.Repeat(`\`, 129), strings.Repeat(`\\`, 126) + "…", 256},
+			{"message_ascii_exact", strings.Repeat("A", 500), strings.Repeat("A", 500), 500},
+			{"message_ascii_cut", strings.Repeat("A", 501), strings.Repeat("A", 497) + "…", 500},
+			{"message_utf8_exact", strings.Repeat("界", 166) + "ab", strings.Repeat("界", 166) + "ab", 500},
+			{"message_utf8_cut", strings.Repeat("界", 167), strings.Repeat("界", 165) + "…", 500},
+			{"message_bracket_exact", strings.Repeat("]", 250), strings.Repeat(`\]`, 250), 500},
+			{"message_bracket_cut", strings.Repeat("]", 251), strings.Repeat(`\]`, 248) + "…", 500},
+			{"message_slash_exact", strings.Repeat(`\`, 250), strings.Repeat(`\\`, 250), 500},
+			{"message_slash_cut", strings.Repeat(`\`, 251), strings.Repeat(`\\`, 248) + "…", 500},
+		} {
+			var label string
+			if tt.limit == 256 {
+				text := rendered(t, fileIndex(domain.IndexFileItem{Path: filePath(destination), Title: tt.input}), 40960)
+				_, rest, found := strings.Cut(text, "\n- [")
+				var complete bool
+				label, _, complete = strings.Cut(rest, "](<"+destination+">)")
+				if !found || !complete {
+					t.Fatalf("%s: missing complete destination identity in %q", tt.name, text)
+				}
+			} else {
+				body, err := domain.RenderLog(domain.RenderLogInput{Items: []domain.RenderLogChangeset{{Message: &tt.input}}, Total: 1}, 40960)
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, rest, found := strings.Cut(string(body), "; message: ")
+				label, _, _ = strings.Cut(rest, "\n")
+				if !found {
+					t.Fatalf("%s: missing message", tt.name)
+				}
+			}
+			if len(label) > tt.limit || !utf8.ValidString(label) || label != tt.want {
+				t.Errorf("%s: encoded display has %d bytes (limit %d): got %q, want %q", tt.name, len(label), tt.limit, label, tt.want)
+			}
 		}
 	})
 	t.Run("escape_bytes", func(t *testing.T) {

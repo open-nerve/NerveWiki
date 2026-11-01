@@ -56,8 +56,8 @@ type RenderLogInput struct {
 	Total int
 }
 
-// Display values are inline text, capped before Markdown escaping. A path's
-// destination is never shortened, trimmed or repaired along with its label.
+// Display values are inline text; the limit includes Markdown escaping and
+// the ellipsis. A path's destination is never changed along with its label.
 func fileLabel(s string, limit int) string {
 	s = strings.Map(func(r rune) rune {
 		if unicode.IsControl(r) || r == '\u2028' || r == '\u2029' {
@@ -65,14 +65,26 @@ func fileLabel(s string, limit int) string {
 		}
 		return r
 	}, strings.ToValidUTF8(s, "\ufffd"))
-	if len(s) > limit {
-		end := limit
-		for end > 0 && !utf8.RuneStart(s[end]) {
-			end--
+	var out strings.Builder
+	cut := 0
+	for _, r := range s {
+		escape := r == '\\' || r == '[' || r == ']'
+		size := utf8.RuneLen(r)
+		if escape {
+			size++
 		}
-		s = s[:end] + "…"
+		if out.Len()+size > limit {
+			return out.String()[:cut] + "…"
+		}
+		if escape {
+			out.WriteByte('\\')
+		}
+		out.WriteRune(r)
+		if out.Len()+len("…") <= limit {
+			cut = out.Len()
+		}
 	}
-	return strings.NewReplacer(`\`, `\\`, `[`, `\[`, `]`, `\]`).Replace(s)
+	return out.String()
 }
 
 func fileLink(p FilePath) (string, error) {
