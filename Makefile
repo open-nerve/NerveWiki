@@ -338,7 +338,10 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 过了它的一半就一个测试一行，单独一行仍过的那一行加 -timeout 15m（M9/P2 设计 6.5）。markdown 的三个原先一行，本机 140 到 155 秒；
 	@# M9/P2 S1 各单独跑两次：成本的 125.5 与 127.9 秒，渲染的 3.7 与 4.0 秒，链接的 22.5 与 21.7 秒，之和乘 2.4 约 6.1 分钟，所以拆成三行；
 	@# 成本的一个乘 2.4 约 5.1 分钟，仍过了 Go 默认的每个测试二进制 10 分钟的一半，它的一行加 -timeout 15m
-	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$' ./internal/bootstrap
+	@# P4/S1 将成本 top 的 to_a_page/to_an_image 两个完整子场景依次分为独立进程；各沿原 15m。
+	@# 原夹具、CheckCosts 采样和算法界不变；各行仍按本机两轮均值 ×2.4 ≤450s 核对容量。
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$/^to_a_page$$' ./internal/bootstrap
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$/^to_an_image$$' ./internal/bootstrap
 	@# P4：真实SDK/REST的100k读和整本ZIP导出分别保留独立进程、样本与SQL证据，仍为默认10m。
 	cd server && go test -count=1 -v -run '^TestVirtualIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestVirtualExportOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
