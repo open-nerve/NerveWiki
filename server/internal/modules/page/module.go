@@ -48,6 +48,9 @@ type Workspaces = app.Workspaces
 // notebook.NewNotebooks for it, the state to the module's own.
 type Notebooks = app.Notebooks
 
+// NotebookStates is the state read used by paths shared with other modules.
+type NotebookStates = app.NotebookStates
+
 // NotebookState and Mode are a notebook's state as the module reads it
 // (M10 design 4.3): bootstrap converts the notebook module's.
 type (

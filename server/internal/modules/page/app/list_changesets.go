@@ -152,7 +152,7 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 		return PathLog{}, err
 	}
 	if q.Path != nil {
-		at, err := NewNodePaths(l.r.Paths).Find(ctx, notebookID, path)
+		at, err := NewNodePaths(l.r.Paths, l.r.Notebooks).Find(ctx, notebookID, path)
 		if err != nil {
 			return PathLog{}, err
 		}

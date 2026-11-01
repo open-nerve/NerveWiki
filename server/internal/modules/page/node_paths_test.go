@@ -116,7 +116,7 @@ func wordsOf(t *testing.T, err error) string {
 func TestNodePathsCheckAndFindAPageAsPagesToolsDo(t *testing.T) {
 	p := newPathTree(t)
 	ctx := context.Background()
-	paths := page.NewNodePaths(p.pool)
+	paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
 
 	if err := paths.Check("parent", "A/B.md"); err != nil {
 		t.Errorf("a path = %v", err)
@@ -167,7 +167,7 @@ func TestNodePathsCheckAndFindAPageAsPagesToolsDo(t *testing.T) {
 func TestNodePathsReadThePathsPagesAndChildPages(t *testing.T) {
 	p := newPathTree(t)
 	ctx := context.Background()
-	paths := page.NewNodePaths(p.pool)
+	paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
 	ids := []uuid.UUID{p.a, p.b, p.c, p.x, p.r, p.elsewhere, uuid.NewV7()}
 
 	got, err := paths.Paths(ctx, p.notebook, ids)

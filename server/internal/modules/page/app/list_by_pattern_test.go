@@ -231,7 +231,7 @@ func TestListByPatternAnswersInItsOrder(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := list.Execute(f.asAlice(), f.eng, "Guide/", nil, nil); err != nil ||
-		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list", "ListNodes", "PageStates 4", "AttachmentInfos 1",
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize node.list", "StateOf", "ListNodes", "PageStates 4", "AttachmentInfos 1",
 			"AliveNodes 1"}) {
 		t.Errorf("list read %v, %v; want the decision, the tree, then the page's states and infos", f.rec.calls, err)
 	}

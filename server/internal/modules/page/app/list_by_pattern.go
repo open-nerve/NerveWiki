@@ -46,6 +46,7 @@ type Listing struct {
 // Listed is an item of list: a page with its content's state, or an
 // attachment with its type and size.
 type Listed struct {
+	Virtual     bool
 	Path        string
 	Node        domain.Node
 	HasChildren bool
@@ -92,6 +93,11 @@ func (l *ListByPattern) Execute(ctx context.Context, notebookID uuid.UUID, patte
 			return Listing{}, err
 		}
 	}
+	if children {
+		if err := after.Check(); err != nil {
+			return Listing{}, err
+		}
+	}
 	size, err := domain.CheckListLimit(limit)
 	if err != nil {
 		return Listing{}, err
@@ -99,11 +105,19 @@ func (l *ListByPattern) Execute(ctx context.Context, notebookID uuid.UUID, patte
 	if err := decideNotebook(ctx, l.notebooks, l.auth, actor, domain.ActionList, notebookID); err != nil {
 		return Listing{}, err
 	}
+	state, ok, err := l.notebooks.StateOf(ctx, notebookID)
+	if err != nil {
+		return Listing{}, err
+	}
+	if !ok {
+		return Listing{}, domain.ErrNotebookNotFound
+	}
 	nodes, err := l.nodes.ListNodes(ctx, notebookID)
 	if err != nil {
 		return Listing{}, err
 	}
 	t := treeOf(nodes)
+	t.addVirtual(state)
 	var out Listing
 	var found []*domain.GlobNode
 	if children {
@@ -159,6 +173,9 @@ func globCursor(k string) (string, error) {
 func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobNode, children bool) ([]Listed, error) {
 	var pages, attachments []uuid.UUID
 	for _, n := range nodes {
+		if t.virtual[n] != 0 {
+			continue
+		}
 		if n.Node.Kind == domain.KindPage {
 			pages = append(pages, n.Node.ID)
 		} else {
@@ -185,7 +202,9 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 	out := make([]Listed, 0, len(nodes))
 	for _, n := range nodes {
 		item := Listed{Path: t.pathOf(n), Node: *n.Node, HasChildren: len(n.Children) > 0}
-		if n.Node.Kind == domain.KindPage {
+		if t.virtual[n] != 0 {
+			item.Virtual = true
+		} else if n.Node.Kind == domain.KindPage {
 			state, ok := states[n.Node.ID]
 			if !ok {
 				continue
@@ -199,7 +218,7 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 			item.Attachment = &info
 		}
 		if children {
-			item.Cursor, err = shared.EncodeCursor(domain.ChildrenCursor{O: n.Node.SortOrder, I: n.Node.ID})
+			item.Cursor, err = t.childrenCursor(n)
 		} else {
 			item.Cursor, err = globCursor(t.keyOf(n))
 		}
@@ -213,8 +232,10 @@ func (l *ListByPattern) items(ctx context.Context, t tree, nodes []*domain.GlobN
 
 // tree is a notebook's nodes as list reads them: by parent, once.
 type tree struct {
-	roots []*domain.GlobNode
-	byID  map[uuid.UUID]*domain.GlobNode
+	notebook domain.NotebookState
+	virtual  map[*domain.GlobNode]int
+	roots    []*domain.GlobNode
+	byID     map[uuid.UUID]*domain.GlobNode
 }
 
 // treeOf groups nodes by parent; a node whose parent is not among them
@@ -271,42 +292,58 @@ func (t tree) keyOf(n *domain.GlobNode) string {
 // cursor after the size-th when one more follows.
 func (t tree) children(dir domain.Path, resumed bool, after domain.ChildrenCursor, size int) ([]*domain.GlobNode, string, error) {
 	level := t.roots
+	var chain []domain.Node
+	lookup := domain.VirtualLookup(t.notebook, t.lookup)
 	for d, key := range dir.Keys {
-		i := slices.IndexFunc(level, func(n *domain.GlobNode) bool { return n.Node.NameKey == key })
-		switch {
-		case i < 0 && d == len(dir.Keys)-1 && strings.HasSuffix(key, ".md"):
-			// A page's path with "/": its children were meant; or an
-			// attachment's, as Find hints it.
-			stem := strings.TrimSuffix(key, ".md")
-			j := slices.IndexFunc(level, func(n *domain.GlobNode) bool { return n.Node.NameKey == stem })
-			switch {
-			case j < 0:
-				return nil, "", &domain.PathNotFound{Path: dir.Written}
-			case level[j].Node.Kind != domain.KindPage:
-				return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.AttachmentHint(t.pathOf(level[j]))}
-			}
-			return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.ChildrenHint(t.pathOf(level[j]))}
-		case i < 0:
-			return nil, "", &domain.PathNotFound{Path: dir.Written}
-		case level[i].Node.Kind != domain.KindPage:
-			return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.AttachmentHint(t.pathOf(level[i]))}
+		n, ok, err := lookup(chain, key)
+		if err != nil {
+			return nil, "", err
 		}
-		level = level[i].Children
+		switch {
+		case !ok && d == len(dir.Keys)-1 && strings.HasSuffix(key, ".md"):
+			hinted, exists, err := lookup(chain, strings.TrimSuffix(key, ".md"))
+			if err != nil {
+				return nil, "", err
+			}
+			if !exists {
+				return nil, "", &domain.PathNotFound{Path: dir.Written}
+			}
+			if hinted.Kind != domain.KindPage {
+				return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.AttachmentHint(domain.PathOf(chain, hinted))}
+			}
+			return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.ChildrenHint(domain.PathOf(chain, hinted))}
+		case !ok:
+			return nil, "", &domain.PathNotFound{Path: dir.Written}
+		case n.Kind != domain.KindPage:
+			return nil, "", &domain.PathNotFound{Path: dir.Written, Hint: domain.AttachmentHint(domain.PathOf(chain, n))}
+		}
+		chain = append(chain, n)
+		level = t.byID[n.ID].Children
 	}
+	level = slices.DeleteFunc(slices.Clone(level), func(n *domain.GlobNode) bool { return t.virtual[n] != 0 })
 	sorted := slices.SortedFunc(slices.Values(level), func(a, b *domain.GlobNode) int {
 		return cmp.Or(cmp.Compare(a.Node.SortOrder, b.Node.SortOrder), a.Node.ID.Compare(b.Node.ID))
 	})
-	if resumed {
+	if resumed && after.V == 0 {
 		start, _ := slices.BinarySearchFunc(sorted, after, func(n *domain.GlobNode, c domain.ChildrenCursor) int {
 			return cmp.Or(cmp.Compare(n.Node.SortOrder, c.O), n.Node.ID.Compare(c.I), -1)
 		})
 		sorted = sorted[start:]
 	}
+	if len(dir.Keys) == 0 && (!resumed || after.V != 0) {
+		var prefix []*domain.GlobNode
+		// The roots' insertion order is index then log, independent of real sort values.
+		for _, n := range t.roots {
+			if v := t.virtual[n]; v > after.V {
+				prefix = append(prefix, n)
+			}
+		}
+		sorted = append(prefix, sorted...)
+	}
 	if len(sorted) <= size {
 		return sorted, "", nil
 	}
-	last := sorted[size-1].Node
-	next, err := shared.EncodeCursor(domain.ChildrenCursor{O: last.SortOrder, I: last.ID})
+	next, err := t.childrenCursor(sorted[size-1])
 	return sorted[:size], next, err
 }
 
@@ -320,7 +357,7 @@ func (t tree) pageHint(g domain.Glob) string {
 	level := t.roots
 	for i, key := range keys {
 		j := slices.IndexFunc(level, func(n *domain.GlobNode) bool {
-			return n.Node.NameKey == key && n.Node.Kind == domain.KindPage
+			return t.virtual[n] == 0 && n.Node.NameKey == key && n.Node.Kind == domain.KindPage
 		})
 		if j < 0 {
 			return ""
@@ -331,4 +368,40 @@ func (t tree) pageHint(g domain.Glob) string {
 		level = level[j].Children
 	}
 	return ""
+}
+
+// addVirtual is only for listing: grep's treeOf remains a tree of entities.
+func (t *tree) addVirtual(state domain.NotebookState) {
+	t.notebook = state
+	if state.Mode != domain.ModeLLMWiki {
+		return
+	}
+	t.virtual = make(map[*domain.GlobNode]int, 2)
+	for i, name := range []string{"index", "log"} {
+		n := &domain.GlobNode{Node: &domain.Node{Kind: domain.KindPage, Name: name, NameKey: name}}
+		t.virtual[n] = i + 1
+		t.roots = append(t.roots, n)
+	}
+}
+
+// childrenCursor keeps generated progress separate from real sort/id values.
+func (t tree) childrenCursor(n *domain.GlobNode) (string, error) {
+	if v := t.virtual[n]; v != 0 {
+		return shared.EncodeCursor(domain.ChildrenCursor{V: v})
+	}
+	return shared.EncodeCursor(domain.ChildrenCursor{O: n.Node.SortOrder, I: n.Node.ID})
+}
+
+// lookup reads only real nodes; VirtualLookup decides generated root keys.
+func (t tree) lookup(chain []domain.Node, key string) (domain.Node, bool, error) {
+	level := t.roots
+	if len(chain) > 0 {
+		level = t.byID[chain[len(chain)-1].ID].Children
+	}
+	for _, n := range level {
+		if t.virtual[n] == 0 && n.Node.NameKey == key {
+			return *n.Node, true, nil
+		}
+	}
+	return domain.Node{}, false, nil
 }

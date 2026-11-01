@@ -19,7 +19,7 @@ type ReadPath struct {
 
 // NewReadPath returns the use case.
 func NewReadPath(notebooks Notebooks, paths PathStore, nodes Nodes, auth shared.Authorizer) *ReadPath {
-	return &ReadPath{notebooks: notebooks, paths: NewNodePaths(paths), nodes: nodes, auth: auth}
+	return &ReadPath{notebooks: notebooks, paths: NewNodePaths(paths, notebooks), nodes: nodes, auth: auth}
 }
 
 // TextMeasure is how read's answer counts its text, which page's

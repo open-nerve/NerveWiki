@@ -219,7 +219,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		Nodes:     wikiNodes{nodes: page.NewLintNodes(pool)},
 		Rules: wikiRules{rules: linking.NewLintRules(pool, page.MaxContentBytes,
 			wikiAssetSizes{infos: asset.NewAttachmentInfos(pool)})},
-		Cursors: wikiCursors{}, Paths: wikiPaths{paths: page.NewNodePaths(pool)},
+		Cursors: wikiCursors{}, Paths: wikiPaths{paths: page.NewNodePaths(pool, pageNotebooks{notebook.NewNotebooks(pool)})},
 		Snapshots:  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Authorizer: authorizer, Clock: clock.System{}, Logger: logger,
 		MaxLintRuns: max(1, int(cfg.Database.MaxConns/2)/2),

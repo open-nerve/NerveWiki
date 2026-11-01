@@ -16,7 +16,7 @@ type SourceTargetPath struct {
 }
 
 func NewSourceTargetPath(notebooks Notebooks, paths PathStore, auth shared.Authorizer) *SourceTargetPath {
-	return &SourceTargetPath{notebooks: notebooks, paths: NewNodePaths(paths), auth: auth}
+	return &SourceTargetPath{notebooks: notebooks, paths: NewNodePaths(paths, notebooks), auth: auth}
 }
 func (r *SourceTargetPath) Execute(ctx context.Context, notebookID, nodeID uuid.UUID) (string, error) {
 	actor, err := shared.RequireActor(ctx)

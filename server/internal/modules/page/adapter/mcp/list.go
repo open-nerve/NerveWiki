@@ -31,9 +31,10 @@ type listItem struct {
 	Path        string     `json:"path"`
 	Kind        string     `json:"kind"`
 	HasChildren bool       `json:"has_children"`
+	Virtual     bool       `json:"virtual,omitempty"`
 	Version     string     `json:"version,omitempty"`
 	MIME        string     `json:"mime,omitempty"`
-	Bytes       int64      `json:"byte_size"`
+	Bytes       *int64     `json:"byte_size,omitempty"`
 	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
@@ -85,12 +86,14 @@ func (t tools) list(ctx context.Context, c mcpserver.Call, in listIn) (mcpserver
 func itemOf(it app.Listed) listItem {
 	item := listItem{Path: it.Path, Kind: "attachment", HasChildren: it.HasChildren}
 	switch {
+	case it.Virtual:
+		item.Kind, item.Virtual = "page", true
 	case it.Page != nil:
 		updated := it.Page.UpdatedAt.UTC()
-		item.Kind, item.Bytes, item.UpdatedAt = "page", int64(it.Page.Bytes), &updated
+		item.Kind, item.Bytes, item.UpdatedAt = "page", new(int64(it.Page.Bytes)), &updated
 		item.Version = domain.VersionToken{Node: it.Node.ID, Revision: it.Page.Revision}.String()
 	case it.Attachment != nil:
-		item.MIME, item.Bytes = it.Attachment.MIME, it.Attachment.Bytes
+		item.MIME, item.Bytes = it.Attachment.MIME, new(it.Attachment.Bytes)
 	}
 	return item
 }

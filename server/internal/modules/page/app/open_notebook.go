@@ -42,8 +42,9 @@ type Opened struct {
 
 // RootNode is a node at the notebook's root, by its path.
 type RootNode struct {
-	Path string
-	Kind domain.Kind
+	Virtual bool
+	Path    string
+	Kind    domain.Kind
 }
 
 // Execute opens the notebook notebookID, in its order (M9/P1 design
@@ -74,12 +75,16 @@ func (o *OpenNotebook) Execute(ctx context.Context, notebookID uuid.UUID) (Opene
 	if err != nil {
 		return Opened{}, err
 	}
-	if len(root) > domain.MaxOverviewRoot {
-		root, out.MoreRoot = root[:domain.MaxOverviewRoot], true
+	out.Root = make([]RootNode, 0, domain.MaxOverviewRoot)
+	if state.Mode == domain.ModeLLMWiki {
+		out.Root = append(out.Root, RootNode{Path: "index.md", Kind: domain.KindPage, Virtual: true}, RootNode{Path: "log.md", Kind: domain.KindPage, Virtual: true})
 	}
-	out.Root = make([]RootNode, len(root))
-	for i, n := range root {
-		out.Root[i] = RootNode{Path: domain.PathOf(nil, n), Kind: n.Kind}
+	room := domain.MaxOverviewRoot - len(out.Root)
+	if len(root) > room {
+		root, out.MoreRoot = root[:room], true
+	}
+	for _, n := range root {
+		out.Root = append(out.Root, RootNode{Path: domain.PathOf(nil, n), Kind: n.Kind})
 	}
 	if out.Agents, out.HasAgents, err = o.instructions.Execute(ctx, notebookID); err != nil {
 		return Opened{}, err

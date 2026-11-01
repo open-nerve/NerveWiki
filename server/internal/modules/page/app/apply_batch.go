@@ -80,7 +80,7 @@ func NewApplyBatch(writer *Writer, parser *ContentParser, paths PathStore, nodes
 	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, maxRewrites, maxLinks, maxBytes int, clock Clock,
 	logger *slog.Logger,
 ) *ApplyBatch {
-	return &ApplyBatch{writer: writer, parser: parser, paths: NewNodePaths(paths), nodes: nodes, states: states, links: links,
+	return &ApplyBatch{writer: writer, parser: parser, paths: NewNodePaths(paths, notebooks), nodes: nodes, states: states, links: links,
 		locks: locks, notebooks: notebooks, auth: auth, maxRewrites: cmp.Or(maxRewrites, domain.MaxBatchRewrites),
 		maxLinks: cmp.Or(maxLinks, domain.MaxBatchRewriteLinks), maxBytes: cmp.Or(maxBytes, domain.MaxBatchRewriteBytes), clock: clock,
 		logger: logger}

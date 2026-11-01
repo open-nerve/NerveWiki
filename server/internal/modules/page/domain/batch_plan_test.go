@@ -566,15 +566,13 @@ func TestThePlanChecksTheContract(t *testing.T) {
 			if p.Failed != nil && tt.want.code != "page.title_taken" || p.Needs != nil {
 				t.Errorf("in a standard notebook: Failed %v, Needs %+v; want neither", p.Failed, p.Needs)
 			}
-			p, ids := planIn(t, tt.nb, domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: raw}, tt.ops...)
+			p, _ = planIn(t, tt.nb, domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: raw}, tt.ops...)
 			if got := failed(t, p); got.code != tt.want.code || got.at != tt.want.at {
 				t.Fatalf("Failed = %+v (%v), want %s at %d", got, p.Failed, tt.want.code, tt.want.at)
 			}
 			node := uuid.UUID{}
 			if tt.want.node != "" {
 				node = tt.nb.id(t, tt.want.node)
-			} else if strings.HasPrefix(tt.want.code, "page.virtual_file") {
-				node = ids[0][0] // the page created at the root, the first of its path
 			}
 			var r *domain.Refused
 			marked := p.Failed != nil && errors.As(p.Failed, &r)
@@ -582,6 +580,11 @@ func TestThePlanChecksTheContract(t *testing.T) {
 			case tt.want.code == "" || tt.want.code == "page.title_taken":
 				if marked {
 					t.Errorf("Failed %v is marked a refusal", p.Failed)
+				}
+			case tt.want.code == "page.virtual_file" && tt.want.node == "":
+				var virtual *domain.VirtualFileError
+				if marked || !errors.Is(p.Failed, domain.ErrVirtualFile) || !errors.As(p.Failed, &virtual) || virtual.Name != "index" || p.Failed.Tool != domain.OpKindWrite {
+					t.Errorf("Failed = %#v, want the virtual lookup's refusal before creating a node", p.Failed)
 				}
 			case !marked || r.NodeID != node || p.Failed.Tool != domain.OpKind(tt.ops[tt.want.at].Op):
 				t.Errorf("Failed = %#v, want a refusal of %s (%s) by its op's tool", p.Failed, node, tt.want.node)

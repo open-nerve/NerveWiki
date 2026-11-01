@@ -21,12 +21,15 @@ import (
 // edit's and delete's path, move's from. Any other error is as it is.
 func toolErr(err error, c mcpserver.Call, path string) error {
 	var (
+		virtual  *domain.VirtualFileError
 		missing  *domain.PathNotFound
 		mismatch *domain.VersionMismatch
 		children *domain.Recursive
 		locks    *domain.LockPaths
 	)
 	switch {
+	case errors.As(err, &virtual):
+		return virtualFile(err, virtual)
 	case errors.As(err, &missing):
 		return notFound(err, missing)
 	case errors.As(err, &mismatch):
@@ -46,6 +49,10 @@ func toolErr(err error, c mcpserver.Call, path string) error {
 // page's tools' words (M9/P4 design 3.9.1): a path that names nothing, with
 // its hint while the answer holds it; any other error is as it is.
 func PathErr(err error) error {
+	var virtual *domain.VirtualFileError
+	if errors.As(err, &virtual) {
+		return virtualFile(err, virtual)
+	}
 	var missing *domain.PathNotFound
 	if errors.As(err, &missing) {
 		return notFound(err, missing)
@@ -104,4 +111,14 @@ func line(v any) (string, error) {
 		return "", err
 	}
 	return strings.TrimSuffix(b.String(), "\n"), nil
+}
+
+// virtualFile keeps the existing code and explains the generated file's role.
+func virtualFile(err error, v *domain.VirtualFileError) error {
+	name := strings.TrimSuffix(v.Name, ".md")
+	detail := "The index updates when pages change."
+	if name == "log" {
+		detail = "The log is the changesets and updates automatically."
+	}
+	return &mcpserver.ToolError{Err: err, Text: "page.virtual_file: " + domain.Quoted(name+".md") + " is generated. " + detail}
 }

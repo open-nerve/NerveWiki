@@ -174,7 +174,8 @@ const (
 		`(page or attachment) and whether it has children; a page also its version, size and last change, an attachment its ` +
 		`type and size. An answer holds at most limit items and about 48 KiB, and a costly glob over a large notebook stops ` +
 		`after a bounded amount of matching, maybe with no items: whenever next_cursor is set, pass it back as cursor to go ` +
-		`on. A path without wildcards that names nothing may come with a hint, as when it names a page without its .md.`
+		`on. A path without wildcards that names nothing may come with a hint, as when it names a page without its .md.` +
+		` In an LLM Wiki, index.md and log.md are generated root files: root children list them first; globs place them in path order. Their items have virtual:true and no version, byte_size or updated_at. They have no children.`
 	readDescription = `Read a page or an attachment by its path from the notebook's root; a page's path ends with .md. ` +
 		`A page comes as two text blocks: a line of JSON metadata (path, kind, version, offset, column, lines, ` +
 		`total_lines, byte_size, next_offset, next_column), then its lines exactly as stored, frontmatter, byte order ` +
@@ -184,7 +185,8 @@ const (
 		`(type, size, SHA-256, width and height, how to link it, a download address valid for an hour or two), then the ` +
 		`image itself for a PNG, JPEG, GIF or WebP of at most 3 MiB and 8000 pixels a side, or else a link to download ` +
 		`it. Without the server's public address set (server.public_url) there is no download address: an image still ` +
-		`comes itself, any other attachment as its metadata only, with a note saying so.`
+		`comes itself, any other attachment as its metadata only, with a note saying so.` +
+		` In an LLM Wiki, aliases of the generated root files, such as index and log.md.md, answer page.virtual_file.`
 	writeDescription = `Write a page's whole content by its path from the notebook's root; the path ends with .md. Without ` +
 		`base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a ` +
 		`page already is refused. With base_version, the version read, list or write gave, it replaces the ` +
@@ -261,7 +263,8 @@ const (
 		`too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, ` +
 		`a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or ` +
 		`written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ` +
-		`ranks pages and gives excerpts.`
+		`ranks pages and gives excerpts.` +
+		` Generated index.md and log.md in an LLM Wiki are not searched by grep or search.`
 	searchDescription = `Full-text search of the notebook for words: the pages and attachments whose titles hold every term come ` +
 		`first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. ` +
 		`Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of ` +

@@ -62,7 +62,8 @@ const (
 		`parent the child pages of that page, "/" those at the root. Omit a filter rather than give it empty: "" is ` +
 		`refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as ` +
 		`one written before nervewiki reindex after an upgrade, is not listed. Go on with next_cursor while it is ` +
-		`set.`
+		`set.` +
+		` This lists real pages, without the generated index.md and log.md. In an LLM Wiki, a generated root file cannot be parent: page.virtual_file.`
 )
 
 // nextCursor is the next_cursor of an answer that holds k of n items,

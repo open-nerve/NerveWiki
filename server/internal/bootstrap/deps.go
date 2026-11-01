@@ -219,7 +219,7 @@ func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linkin
 		Contents:   targets,
 		MaxDepth:   page.MaxDepth,
 		Assets:     assets,
-		NodePaths:  linkingNodePaths{page.NewNodePaths(pool)},
+		NodePaths:  linkingNodePaths{page.NewNodePaths(pool, pageNotebooks{notebook.NewNotebooks(pool)})},
 	}
 }
 

@@ -39,7 +39,7 @@ type RelocatePath struct {
 
 // NewRelocatePath returns the use case.
 func NewRelocatePath(writer *Writer, paths PathStore, notebooks Notebooks, auth shared.Authorizer, logger *slog.Logger) *RelocatePath {
-	return &RelocatePath{writer: writer, paths: NewNodePaths(paths), notebooks: notebooks, auth: auth, logger: logger}
+	return &RelocatePath{writer: writer, paths: NewNodePaths(paths, notebooks), notebooks: notebooks, auth: auth, logger: logger}
 }
 
 // Execute moves the node at p's from to p's to in the notebook notebookID

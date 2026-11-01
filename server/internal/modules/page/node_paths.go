@@ -43,10 +43,10 @@ type PagePath struct {
 	ChangedAt time.Time
 }
 
-// NewNodePaths returns NodePaths over pool alone (M9/P4 design 3.9.1).
-func NewNodePaths(pool *pgxpool.Pool) NodePaths {
+// NewNodePaths returns NodePaths over pool with the notebook state read (M9/P4 design 3.9.1).
+func NewNodePaths(pool *pgxpool.Pool, notebooks NotebookStates) NodePaths {
 	store := postgresadapter.New(pool)
-	return nodePaths{paths: app.NewNodePaths(store), store: store}
+	return nodePaths{paths: app.NewNodePaths(store, notebooks), store: store}
 }
 
 type nodePaths struct {

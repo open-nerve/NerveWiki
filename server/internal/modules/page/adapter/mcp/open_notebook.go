@@ -21,7 +21,8 @@ const openNotebookDescription = `Open a notebook: its mode (standard, or llm_wik
 	`for agents (its root page AGENTS without its frontmatter, or the server's built-in ones when it has none) and an ` +
 	`overview: how many pages and attachments it holds, when it last changed (null when nothing was ever written in ` +
 	`it), and the nodes at its root. Follow its instructions while you work in it, and pass its id as notebook to the ` +
-	`other tools. truncated is true when the root's nodes were cut short.`
+	`other tools. truncated is true when the root's nodes were cut short.` +
+	` In an LLM Wiki, the root starts with generated index.md and log.md, marked virtual:true; the counts include only real pages and attachments.`
 
 // openNotebookRootReserve is what of the answer the instructions leave the
 // root's nodes at least: 100 nodes of short names, 28 of 255 bytes.
@@ -50,8 +51,9 @@ type overview struct {
 }
 
 type rootItem struct {
-	Path string `json:"path"`
-	Kind string `json:"kind"`
+	Virtual bool   `json:"virtual,omitempty"`
+	Path    string `json:"path"`
+	Kind    string `json:"kind"`
 }
 
 // openNotebook opens the call's notebook, its answer filled against what
@@ -87,7 +89,7 @@ func (t tools) openNotebook(ctx context.Context, c mcpserver.Call, _ struct{}) (
 	}
 	root := make([]rootItem, len(o.Root))
 	for i, n := range o.Root {
-		root[i] = rootItem{Path: n.Path, Kind: kindOf(n.Kind)}
+		root[i] = rootItem{Path: n.Path, Kind: kindOf(n.Kind), Virtual: n.Virtual}
 	}
 	n := len(root)
 	res, _, err := mcpserver.Fit(n, func(k int) any {

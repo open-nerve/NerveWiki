@@ -52,6 +52,8 @@ type VisibleNotebooks interface {
 // Notebooks is what the module reads of notebooks: bootstrap hands
 // notebook.NewNotebooks to it.
 type Notebooks interface {
+	NotebookStates
+
 	// WorkspaceOf returns the workspace of the notebook not deleted with
 	// id, unlocked, and whether there is one.
 	WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
@@ -63,6 +65,10 @@ type Notebooks interface {
 	// row FOR NO KEY UPDATE, never lands inside a unit.
 	ShareByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
 	LockByID(ctx context.Context, id uuid.UUID) (domain.NotebookState, bool, error)
+}
+
+// NotebookStates is the narrow state read needed by path lookups.
+type NotebookStates interface {
 	// StateOf is the state of the notebook not deleted with id, unlocked,
 	// and whether there is one: a read that holds no lock sees one side of
 	// a downgrade or the other (M10 design 4.3).

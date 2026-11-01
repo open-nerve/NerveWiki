@@ -45,7 +45,7 @@ func TestFindByPath(t *testing.T) {
 	f.page("y.md", &a.ID, 5)
 	f.page("z.md", nil, 1)
 	_ = png
-	paths := app.NewNodePaths(f.store)
+	paths := app.NewNodePaths(f.store, f.notebooks)
 	for _, tt := range []struct{ path, want string }{
 		{"A.md", "A.md"},
 		{"a/STRASSE.md", "A/Straße.md"},
@@ -73,7 +73,7 @@ func TestFindByPath(t *testing.T) {
 	}
 	f.rec.calls = nil
 	p, _ := domain.ParsePath("path", "A/x.png.md", false)
-	if _, err := paths.Find(context.Background(), f.eng, p); err != nil || !slices.Equal(f.rec.calls, []string{"RootByKey", "ChildByKey"}) {
+	if _, err := paths.Find(context.Background(), f.eng, p); err != nil || !slices.Equal(f.rec.calls, []string{"StateOf", "RootByKey", "ChildByKey"}) {
 		t.Errorf("Find made %v, %v; want a lookup a segment", f.rec.calls, err)
 	}
 }
@@ -115,7 +115,7 @@ func TestReadPathAnswersInOrder(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := read.Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil, textMeasure(100)); err != nil ||
-		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize page.read", "RootByKey", "PageContent"}) {
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize page.read", "StateOf", "RootByKey", "PageContent"}) {
 		t.Errorf("read made %v, %v; want the decision, the lookup, then the content", f.rec.calls, err)
 	}
 	delete(f.auth.grants, domain.ActionRead)
