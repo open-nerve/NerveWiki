@@ -1,0 +1,2127 @@
+{
+  "status": "FORMAL_REVISION_02_IMPLEMENTATION_AND_AUDIT_MAP",
+  "commit": "6992fd042ff06c110a4e59e67fb89bfe5f43fbd9",
+  "identity_catalogue": "P4-virtual-ingest-source-pins.json",
+  "files": [
+    {
+      "path": "Makefile",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "新增virtual／ingest／catalogue成本入口，保持原预算并核实际分片"
+    },
+    {
+      "path": "api/dist/openapi.yaml",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "api/mcp/tools.json",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "S1目录／虚拟工具或S2历史ingest契约、严格schema与码声明，按Step同步生成物"
+    },
+    {
+      "path": "api/modules/linking.yaml",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "S1目录／虚拟工具或S2历史ingest契约、严格schema与码声明，按Step同步生成物"
+    },
+    {
+      "path": "api/modules/page.yaml",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "S1目录／虚拟工具或S2历史ingest契约、严格schema与码声明，按Step同步生成物"
+    },
+    {
+      "path": "deploy/runtime-grants.sql",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "changeset_sources运行角色DML授权，不授MAINTAIN"
+    },
+    {
+      "path": "e2e/fixtures/assert/page.ts",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "既有page／transfer断言文件承接真实marks、导出贡献及导入跳过验证"
+    },
+    {
+      "path": "e2e/fixtures/assert/transfer.ts",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "既有page／transfer断言文件承接真实marks、导出贡献及导入跳过验证"
+    },
+    {
+      "path": "e2e/stories/wiki/lw10-virtual.spec.ts",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S3"
+      ],
+      "responsibility": "LW10虚拟读／导出／导入与页面导航故事"
+    },
+    {
+      "path": "e2e/stories/wiki/lw12-downgrade.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "原双tab同事件流增加虚拟行随降级消失"
+    },
+    {
+      "path": "e2e/stories/wiki/lw13-index.spec.ts",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S3"
+      ],
+      "responsibility": "LW13两模式目录、reader、type/tag/More故事"
+    },
+    {
+      "path": "e2e/stories/wiki/lw9-ingest.spec.ts",
+      "status": "planned_new",
+      "steps": [
+        "S2",
+        "S3"
+      ],
+      "responsibility": "LW9真实写入产生mark及API／MCP／网页历史"
+    },
+    {
+      "path": "server/internal/bootstrap/deps.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "模块窄依赖与NodePaths新构造参数"
+    },
+    {
+      "path": "server/internal/bootstrap/ingest_cost_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "原预算下100k真mark、最大合法batch、400×300/400×10000 retained pairs及100ops；分阶段peak与PG范围；!race实际recipe",
+      "commits": [
+        "S2-2"
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/ingest_invariant_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/ingest_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/interleavings_ingest_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/interleavings_page_test.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/interleavings_virtual_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/linking.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "page／notebook根DTO逐字段适配给linking"
+    },
+    {
+      "path": "server/internal/bootstrap/mcp.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "两scope模块工具接线"
+    },
+    {
+      "path": "server/internal/bootstrap/mcp_tools_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/mcp_virtual_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/permission_matrix_linking_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/permission_matrix_mcp_linking_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/registrants.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page事件到linking逐字段接Kind／Notebook／ChangesetID／Before"
+    },
+    {
+      "path": "server/internal/bootstrap/reindex.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing NewAdmin composition and regression, no speculative signature edit"
+    },
+    {
+      "path": "server/internal/bootstrap/transfer_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/virtual_cost_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/bootstrap/virtual_export_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "真实ZIP folder-only/collision及全路径映射消费者；missing/duplicate/malformed；S2 ingest来源",
+      "commits": [
+        "S1-4",
+        "S2-3"
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/wiki_virtual.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "实际Scope.Nodes ID/Asset/Path映射到wiki-owned ExportPath；调用内同snapshot；两ToolDeps接线",
+      "commits": [
+        "S1-3",
+        "S1-4"
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/wire.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "在transfer构造前接只读wiki服务，保持lint生命周期"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/gen/bodyshape.gen.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/gen/server.gen.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/handler.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/index.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/gen/index.sql.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/gen/ingest.sql.go",
+      "status": "planned_new_generated",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_catalogue_cost_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_cost_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_plan_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/ingest.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "≤512头证明；一次最终candidate+parent证据全行/flags/rows.Err校验；不传R对SQL参数",
+      "commits": [
+        "S2-2"
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/ingest_plan_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/ingest_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/index.sql",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/ingest.sql",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "head点读与单条D_U/F_U/parent查询，全peer先count，当前目标revision防御验证",
+      "commits": [
+        "S2-2"
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/admin.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/app/index.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/app/index_directory_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/app/ingest.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "删前D_W/F_W独立资格与current/revision；保必要old-F ID切片，coverage、最终parent证据投影及Unknown闭包",
+      "commits": [
+        "S2-2"
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/ingest_before_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/app/ingest_coverage_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/linking/app/list_index.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "共用目录资格／排序／父筛选，REST catalogue与MCP精确SQL分支"
+    },
+    {
+      "path": "server/internal/modules/linking/app/ports.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "声明本模块拥有的窄DTO／读取或写入端口，跨模块由bootstrap转换"
+    },
+    {
+      "path": "server/internal/modules/linking/app/qualified_before.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "linking在Replace/Delete前Capture并合并旧证据"
+    },
+    {
+      "path": "server/internal/modules/linking/domain/index.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "目录／类型读取或index锁内ingest编排，保留既有索引维护和reindex不回填"
+    },
+    {
+      "path": "server/internal/modules/linking/index_files.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "linking根导出文件用头／条目／入链窄端口"
+    },
+    {
+      "path": "server/internal/modules/linking/module.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/gen/bodyshape.gen.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/gen/server.gen.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/history.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/changeset.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/history.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/list.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/open_notebook.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/read.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/tools.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/history.sql.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/ingest.sql.go",
+      "status": "planned_new_generated",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/models.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/purge.sql.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history_cost_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history_plans_test.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/ingest.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "所属模块的ingest查询／adapter；page管metadata及marks，linking管head／NovelSources"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/ingest_history_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/ingest_purge_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/paths_property_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/purge.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "bounded source叶循环与两个changeset父防线，同run继续清理notebook"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/history.sql",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/ingest.sql",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "所属模块的ingest查询／adapter；page管metadata及marks，linking管head／NovelSources"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/nodes.sql",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/purge.sql",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "bounded source叶循环与两个changeset父防线，同run继续清理notebook"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/store.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/apply_batch.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/delete_path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/edit_page.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/extension.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "StepContent增加BeforeRevision、Event传unit拥有的BeforeIngest，保持其余扩展合同"
+    },
+    {
+      "path": "server/internal/modules/page/app/gate_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/app/get_changeset.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/app/get_version.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/grep_lines_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/app/history.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/app/ingest_before.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page首次Before memo、旧revision／bytes与逆向祖先事实"
+    },
+    {
+      "path": "server/internal/modules/page/app/ingest_marks.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page拥有的同unit marks追加端口"
+    },
+    {
+      "path": "server/internal/modules/page/app/ingest_metadata.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page拥有的Now点读与raw Heads流／资格事实"
+    },
+    {
+      "path": "server/internal/modules/page/app/list_by_pattern.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/list_changesets.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/app/list_versions.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/app/open_notebook.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/ports.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "声明本模块拥有的窄DTO／读取或写入端口，跨模块由bootstrap转换"
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/app/relocate_path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/source_target_path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "首次memo／BeforeRevision及shared applyStep完整路径，保原守卫／锁边界"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_content.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "首次memo／BeforeRevision及shared applyStep完整路径，保原守卫／锁边界"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_create.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "首次memo／BeforeRevision及shared applyStep完整路径，保原守卫／锁边界"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_create_asset.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_delete.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_import.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_move.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_place.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_relocate.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_rename.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_restore.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_revert.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "audit existing applyStep path and test coverage; shared memo hook means no speculative edit required"
+    },
+    {
+      "path": "server/internal/modules/page/app/virtual.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/app/virtual_list_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/app/write_path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/batch_plan.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/batch_tree.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/changeset.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+    },
+    {
+      "path": "server/internal/modules/page/domain/errors.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/list.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/path.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/virtual.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/domain/virtual_cases_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/ingest_marks.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page拥有的同unit marks追加端口"
+    },
+    {
+      "path": "server/internal/modules/page/ingest_metadata.go",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "page拥有的Now点读与raw Heads流／资格事实"
+    },
+    {
+      "path": "server/internal/modules/page/module.go",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/page/node_paths.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/node_paths_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/page/tools.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/page/virtual_log.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "page有界历史DTO，S2补前五来源"
+    },
+    {
+      "path": "server/internal/modules/page/virtual_tree.go",
+      "status": "planned_new",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "page四字段文件树与选中页ChangedAt读取"
+    },
+    {
+      "path": "server/internal/modules/wiki/adapter/mcp/runtime_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/wiki/app/export.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "只读虚拟文件服务、纯生成或export贡献，复用调用者snapshot"
+    },
+    {
+      "path": "server/internal/modules/wiki/app/ports.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "声明本模块拥有的窄DTO／读取或写入端口，跨模块由bootstrap转换"
+    },
+    {
+      "path": "server/internal/modules/wiki/app/virtual_files.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按ID映射export全消费者，校验live覆盖/历史缺失/folder与碰撞；read原域路径；S2加ingest来源",
+      "commits": [
+        "S1-3",
+        "S1-4",
+        "S2-3"
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/domain/virtual_files.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "显示/目的地分离，percent先编码；按编码后总bytes整项截断与真实footer",
+      "commits": [
+        "S1-3",
+        "S2-3"
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/domain/virtual_files_test.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "server/internal/modules/wiki/module.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+    },
+    {
+      "path": "server/internal/modules/wiki/virtual_files.go",
+      "status": "planned_new",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "只读虚拟文件服务、纯生成或export贡献，复用调用者snapshot"
+    },
+    {
+      "path": "server/migrations/schema_test.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "迁移列／CHECK／索引／无外键与Up/Down/Up反例"
+    },
+    {
+      "path": "server/sqlc.yaml",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "00053及新query纳入各所属模块生成范围"
+    },
+    {
+      "path": "testdata/m10/virtual-targets.json",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "Go／TS共同使用的手写虚拟目标样例"
+    },
+    {
+      "path": "web/apps/web/src/app/routes.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "NotebookLayout下目录route及标题生命周期"
+    },
+    {
+      "path": "web/apps/web/src/i18n/messages/en.ts",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "responsibility": "新增码、目录、有限type与ingest显示的双语文本"
+    },
+    {
+      "path": "web/apps/web/src/i18n/messages/zh-CN.ts",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2",
+        "S3"
+      ],
+      "responsibility": "新增码、目录、有限type与ingest显示的双语文本"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/changeset-page.test.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/changeset-page.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "前二十nullable来源与附件openOf落点"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-filters.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "ingest=1 URL与筛选控件"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-page.test.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-page.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "ingest筛选／分页请求键与代际隔离"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-row.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "edit原kind旁展示ingest数量／前三来源"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/index-page.test.tsx",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/index-page.tsx",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "目录type/tag/More、有限菜单提示、焦点与mode差异"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/notebook-places.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "普通本目录入口"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/page-tree.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按mode派生虚拟导航行，不进page tree store"
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/virtual-rows.test.tsx",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/pages/page/unresolved-link.tsx",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "未解析虚拟根链接导航，保留真实已解析落点"
+    },
+    {
+      "path": "web/apps/web/src/pages/page/virtual-target.test.ts",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/pages/page/virtual-target.ts",
+      "status": "planned_new",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "共享fixture的虚拟目标识别"
+    },
+    {
+      "path": "web/apps/web/src/services/linking.service.ts",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "目录或历史API请求、query字段与SWR调用方同步"
+    },
+    {
+      "path": "web/apps/web/src/services/page.service.ts",
+      "status": "existing",
+      "steps": [
+        "S3"
+      ],
+      "responsibility": "目录或历史API请求、query字段与SWR调用方同步"
+    },
+    {
+      "path": "web/apps/web/src/test/fakes.ts",
+      "status": "existing",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "S1/S2 required API字段与真实schema同步"
+    },
+    {
+      "path": "web/apps/web/src/test/history-server-source.test.ts",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "按P4测试／完成矩阵核对应行为、非空oracle及单故障；成本／计划文件保原预算"
+    },
+    {
+      "path": "web/apps/web/src/test/history-server.ts",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "历史假服务端ingest字段与筛选语义"
+    },
+    {
+      "path": "web/packages/api-client/src/schema.gen.ts",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "由实际契约／sqlc生成，同提交核必填字段与旧查询保留，不手改生成物"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/nodes.sql.go",
+      "status": "existing_generated",
+      "steps": [
+        "S1",
+        "S2"
+      ],
+      "responsibility": "generated dependency audit; regenerate only with actual query/sqlc changes, preserve ListRevertTreeRow and method"
+    },
+    {
+      "path": "server/migrations/sql/00053_page_ingest.sql",
+      "status": "planned_new",
+      "steps": [
+        "S2"
+      ],
+      "responsibility": "S2-1增加ingest_count／source marks／两历史索引；Down丢标、不补历史，完整锁到commit实测"
+    },
+    {
+      "path": "server/internal/bootstrap/batch_cost_test.go",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "!race fixture补ToolDeps.Virtual；保原成本recipe和预算"
+    },
+    {
+      "path": "e2e/fixtures/mcp.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/history/hi1-versions.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/page/pg11-navigation.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/page/pg12-page-permissions.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/page/pg7-edit-save.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/page/pg8-save-conflict.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/page/pg9-byte-fidelity.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/wiki/lw5-manage-sources.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead判别元数据／真实version收窄与原oracle；不提前P5"
+    },
+    {
+      "path": "e2e/stories/asset/as2-paste.spec.ts",
+      "status": "existing",
+      "steps": [
+        "S1"
+      ],
+      "commits": [
+        "S1-3"
+      ],
+      "responsibility": "PageRead.meta解构version先真实页/非空string收窄，再传base_version；保附件粘贴/下载/embed原断言"
+    }
+  ],
+  "path_constructor_sites": [
+    {
+      "path": "server/internal/bootstrap/deps.go",
+      "lines": [
+        222
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/wire.go",
+      "lines": [
+        222
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/paths_property_test.go",
+      "lines": [
+        92
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/apply_batch.go",
+      "lines": [
+        83
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/delete_path.go",
+      "lines": [
+        39
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/edit_page.go",
+      "lines": [
+        57
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/gate_test.go",
+      "lines": [
+        67
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/get_version.go",
+      "lines": [
+        107
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/grep_lines_test.go",
+      "lines": [
+        110
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/history.go",
+      "lines": [
+        127
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/list_changesets.go",
+      "lines": [
+        155
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/list_versions.go",
+      "lines": [
+        109
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths.go",
+      "lines": [
+        17
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths_test.go",
+      "lines": [
+        27,
+        72,
+        77
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path.go",
+      "lines": [
+        21,
+        22
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path_test.go",
+      "lines": [
+        48,
+        91,
+        144
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/relocate_path.go",
+      "lines": [
+        42
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_target_path.go",
+      "lines": [
+        19
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/write_path.go",
+      "lines": [
+        60
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/module.go",
+      "lines": [
+        345
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/node_paths.go",
+      "lines": [
+        47,
+        49
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/node_paths_test.go",
+      "lines": [
+        119,
+        170
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/adapter/mcp/runtime_test.go",
+      "lines": [
+        49
+      ]
+    }
+  ],
+  "writer_trash_literal_sites": [
+    {
+      "path": "server/internal/modules/page/app/fakes_test.go",
+      "line": 1413
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_job_property_test.go",
+      "line": 883
+    },
+    {
+      "path": "server/internal/modules/page/app/trash_test.go",
+      "line": 63
+    },
+    {
+      "path": "server/internal/modules/page/extension_test.go",
+      "line": 545
+    },
+    {
+      "path": "server/internal/modules/page/module.go",
+      "line": 283
+    },
+    {
+      "path": "server/internal/modules/page/module.go",
+      "line": 295
+    }
+  ],
+  "repair_preservation_dependencies": [
+    {
+      "path": "server/internal/modules/page/domain/revert_tree.go",
+      "lines": [
+        7,
+        18
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert.go",
+      "lines": [
+        110,
+        117
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_schedule.go",
+      "lines": [
+        21,
+        41,
+        52,
+        56,
+        69,
+        103,
+        123,
+        128
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/trash.go",
+      "lines": [
+        17,
+        20
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/fakes_test.go",
+      "lines": [
+        23,
+        27,
+        29,
+        34,
+        38,
+        40,
+        49,
+        56
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/trash_test.go",
+      "lines": [
+        17,
+        22,
+        62,
+        67,
+        75,
+        79,
+        92,
+        99
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_tree_test.go",
+      "lines": [
+        16,
+        24,
+        28,
+        32,
+        43,
+        51,
+        84
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/revert_tree.go",
+      "lines": [
+        12
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/revert_tree_test.go",
+      "lines": [
+        18,
+        68,
+        76,
+        104
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/nodes.sql.go",
+      "lines": [
+        807,
+        817
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_test.go",
+      "lines": [
+        20,
+        25,
+        32,
+        43,
+        66,
+        77,
+        87,
+        94
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_facts_test.go",
+      "lines": [
+        14,
+        39,
+        86,
+        104,
+        152,
+        200
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_name_test.go",
+      "lines": [
+        11,
+        81,
+        138
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_job_property_test.go",
+      "lines": [
+        64,
+        125,
+        133,
+        144,
+        150,
+        155,
+        159,
+        176
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    },
+    {
+      "path": "server/internal/modules/page/extension_test.go",
+      "lines": [
+        45,
+        47,
+        49,
+        52,
+        54,
+        63,
+        67,
+        69
+      ],
+      "preserve": "RevertTrees六字段树、nil／empty、stored NameKey／原SortOrder、完整重读或其回归；仅审计保留，非自动编辑授权"
+    }
+  ],
+  "rules": [
+    "Status is actual existence at6992 or planned addition, not implementation progress.",
+    "S1 service/log files and stories may be extended in S2/S3 as the main plan already requires.",
+    "Regenerate only during authorized implementation; preserve ListRevertTreeRow.",
+    "Existing unit audit paths do not require an edit when the shared applyStep hook covers them."
+  ],
+  "tool_deps_literal_sites": [
+    {
+      "path": "server/internal/bootstrap/batch_cost_test.go",
+      "line": 64,
+      "commit": "S1-3"
+    },
+    {
+      "path": "server/internal/bootstrap/mcp.go",
+      "line": 48,
+      "commit": "S1-3"
+    }
+  ],
+  "mcp_read_version_sites": [
+    {
+      "path": "e2e/stories/asset/as2-paste.spec.ts",
+      "line": 113,
+      "kind": "destructured_PageRead_meta_version",
+      "base_version_use_lines": [
+        138
+      ],
+      "runtime_expect_lines": []
+    },
+    {
+      "path": "e2e/stories/history/hi1-versions.spec.ts",
+      "line": 187,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/history/hi1-versions.spec.ts",
+      "line": 207,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg11-navigation.spec.ts",
+      "line": 112,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg12-page-permissions.spec.ts",
+      "line": 153,
+      "kind": "destructured_PageRead_meta_version",
+      "base_version_use_lines": [
+        156
+      ],
+      "runtime_expect_lines": [
+        154
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg12-page-permissions.spec.ts",
+      "line": 163,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg12-page-permissions.spec.ts",
+      "line": 166,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg7-edit-save.spec.ts",
+      "line": 103,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg7-edit-save.spec.ts",
+      "line": 106,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg7-edit-save.spec.ts",
+      "line": 133,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg8-save-conflict.spec.ts",
+      "line": 101,
+      "kind": "destructured_PageRead_meta_version",
+      "base_version_use_lines": [
+        108,
+        109
+      ],
+      "runtime_expect_lines": [
+        102
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg8-save-conflict.spec.ts",
+      "line": 123,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg8-save-conflict.spec.ts",
+      "line": 125,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/page/pg9-byte-fidelity.spec.ts",
+      "line": 78,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 627,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 638,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 650,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 662,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 677,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 704,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 765,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 828,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "line": 836,
+      "kind": "direct_member_access"
+    },
+    {
+      "path": "e2e/stories/wiki/lw5-manage-sources.spec.ts",
+      "line": 395,
+      "kind": "direct_member_access"
+    }
+  ],
+  "mcp_version_audit_scope": {
+    "direct_member_sites": 21,
+    "destructured_PageRead_reads": 3,
+    "related_sites": 24,
+    "story_files": 9,
+    "downstream_use_lines_are_not_extra_read_sites": true,
+    "non_PageRead_casts_excluded": [
+      {
+        "path": "e2e/stories/collab/c4-guard.spec.ts",
+        "line": 97
+      },
+      {
+        "path": "e2e/stories/mcp/mc8-history.spec.ts",
+        "line": 152
+      }
+    ],
+    "contract": "real-page and nonempty string narrowing before base_version; runtime expects/business assertions retained; writtenOf required version unchanged; Record<string,unknown> is not a tsc-failure claim"
+  }
+}

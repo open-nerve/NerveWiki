@@ -1,0 +1,3598 @@
+{
+  "status": "CURRENT_6992_REVISION_02_BASELINE",
+  "commit": "6992fd042ff06c110a4e59e67fb89bfe5f43fbd9",
+  "tree": "bd74094f1e4b4fbaf04085431e2ba641f7e6c134",
+  "scope": "Current fixed identities and source line references; includes all previously audited sources, repair preservation dependencies, context and existing files in the implementation inventory, deduplicated.",
+  "files": [
+    {
+      "path": ".github/workflows/ci.yml",
+      "blob": "0e6289020a4736ad50eaa312a80f0f1d1e1cd91e",
+      "git_mode": "100644",
+      "sha256": "bc5eaeba7fc9db3da25dd6cd57805bc530144233a9adc256152c63cf33b1f936",
+      "bytes": 15917,
+      "lines": [
+        1,
+        3,
+        9,
+        13,
+        16
+      ]
+    },
+    {
+      "path": "Makefile",
+      "blob": "7166288b76ce8b953fedda57312ecb13633ac305",
+      "git_mode": "100644",
+      "sha256": "733f4ea9372d55d7f168bd0e77d1914d4526bfcb8bc1ce8916f4ca6b3c7cb94c",
+      "bytes": 35441,
+      "lines": [
+        255,
+        258,
+        262,
+        266,
+        270,
+        274
+      ]
+    },
+    {
+      "path": "README.md",
+      "blob": "1f14322df197b18c57ac30bea6ee4553bd189611",
+      "git_mode": "100644",
+      "sha256": "5de5877237f5e49369a7d459bd2f093168d60ff0c07927d40791da8619e30834",
+      "bytes": 146714,
+      "lines": [
+        1,
+        11,
+        36,
+        60,
+        74,
+        109,
+        118,
+        128
+      ]
+    },
+    {
+      "path": "api/dist/openapi.yaml",
+      "blob": "76ef6dd5c1483c63fa2fc3dabfc368f354854ed5",
+      "git_mode": "100644",
+      "sha256": "36dc387d781905c8387e7e10bebb5f7ebc65dcc4028be67ae601895cfbb9a2db",
+      "bytes": 267080,
+      "lines": [
+        1,
+        2,
+        9,
+        30
+      ]
+    },
+    {
+      "path": "api/mcp/tools.json",
+      "blob": "8ea4da5cb7f681488973649e366358925284b16f",
+      "git_mode": "100644",
+      "sha256": "130a69ff455a12a3c85be1279470e8d1922d53c38b3233c63d4efc565fa3bba4",
+      "bytes": 71427,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "api/modules/linking.yaml",
+      "blob": "ae5a4db5135b2ad6d2d6182afc2ff4a7c3c7200b",
+      "git_mode": "100644",
+      "sha256": "c699a235b3b93c84a6d5de7872e673984739eb886092c0bdb4fe74d5ce1c8ca2",
+      "bytes": 18565,
+      "lines": [
+        3,
+        4,
+        7,
+        200
+      ]
+    },
+    {
+      "path": "api/modules/page.yaml",
+      "blob": "379e47640744ee461417f02a62f9902efb44635f",
+      "git_mode": "100644",
+      "sha256": "a4ef069dd1a64b1834e67f5c9b3e9c775698a8617ad5a3a3a703a2f4d14407f4",
+      "bytes": 92823,
+      "lines": [
+        3,
+        4,
+        7,
+        1181
+      ]
+    },
+    {
+      "path": "deploy/runtime-grants.sql",
+      "blob": "9b2712f63ce9666e413b1f260fff55f866b64b83",
+      "git_mode": "100644",
+      "sha256": "63774da34b2dbda9de252b77cfee8a7b72835779f9058cb7b0396946f11a7d86",
+      "bytes": 3109,
+      "lines": [
+        15,
+        18,
+        23,
+        29,
+        34,
+        35,
+        36,
+        39
+      ]
+    },
+    {
+      "path": "docs/README.md",
+      "blob": "1f114a966bcb74df7dcb5c519755f438908c70e1",
+      "git_mode": "100644",
+      "sha256": "856538399051e78fa918516ddf6c19d99541fccc00098c0e808602a1aa1819cb",
+      "bytes": 8208,
+      "lines": [
+        1,
+        5,
+        24,
+        34,
+        46,
+        56,
+        65,
+        71
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/00-M10-design.md",
+      "blob": "9fa754a7db97fa4ba534fed15d57ae851c245ba7",
+      "git_mode": "100644",
+      "sha256": "0c904403d9309da0357f280e04807d96211b34c4b472bcbaf896c613694f8e29",
+      "bytes": 337238,
+      "lines": [
+        352,
+        375,
+        783,
+        898
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/02-P2-source-area.md",
+      "blob": "985cd5e7aa13a6e87bc37dc27c88b2e3e38afd7d",
+      "git_mode": "100644",
+      "sha256": "027ee8f55b64a296f864d7c796f950a9bee319d32123ae6e0b61b8c09dba40c4",
+      "bytes": 209457,
+      "lines": [
+        1,
+        13,
+        23,
+        39,
+        43,
+        66,
+        72,
+        74
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/03-P3-lint-health.md",
+      "blob": "0920d99a2286549331de909eb65f1c0ad7b42119",
+      "git_mode": "100644",
+      "sha256": "c359916cdf2c958edc987b0afb819661c0345f11a734dc9cd1067fc380876b06",
+      "bytes": 246170,
+      "lines": [
+        544,
+        585,
+        1163,
+        1532
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/handoffs/M5-events.md",
+      "blob": "9276c78fca66ed11a9ef4ff6778358dbecec4b33",
+      "git_mode": "100644",
+      "sha256": "9c779aba78567ab160396d1613e12ecc4a7388e9f52095aafb2d07c4df6e7215",
+      "bytes": 3520,
+      "lines": [
+        8,
+        12
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/handoffs/M6-links.md",
+      "blob": "312cc0a1306f76c72ee2923b50ec1c4b85945f8a",
+      "git_mode": "100644",
+      "sha256": "30bfa09c4267c376b31bf76105b52adeba79bb482112b0311119f22cdd5d7a87",
+      "bytes": 11534,
+      "lines": [
+        8,
+        28,
+        32,
+        45,
+        54
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/handoffs/M7-transfer.md",
+      "blob": "bfc8da7cf34d006a473ff837582ed2ea9f0cce7e",
+      "git_mode": "100644",
+      "sha256": "efb585355545427dd075db4c55e01229f2080af04619942a763a34e6298b35f1",
+      "bytes": 5819,
+      "lines": [
+        8,
+        19
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/handoffs/M8-history.md",
+      "blob": "8d78b7d252329ef8b2ec26bca9f46633ca666ba8",
+      "git_mode": "100644",
+      "sha256": "5dbc7395b1233a2e4da7937c26674a8f3871e022891ffccb566879fa64247da6",
+      "bytes": 8514,
+      "lines": [
+        8,
+        21
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/handoffs/M9-P1-mcp-registry.md",
+      "blob": "b6a07183c1cc39480960890f1733ad1fbd2561d9",
+      "git_mode": "100644",
+      "sha256": "5196533d5021de3d0979853d5e475c3a67496bc8de8a301999dfc3063ecdae79",
+      "bytes": 15183,
+      "lines": [
+        8,
+        34
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/reviews/P3-S2-health-web-review.md",
+      "blob": "036eaf4b2bc1e2d396763a03369cca91439d4bf7",
+      "git_mode": "100644",
+      "sha256": "95dc5e0f835cd5f50a424fd966dacab96717a2a00ddfc6a1b8dd0252c0fc4311",
+      "bytes": 132077,
+      "lines": [
+        1,
+        12,
+        28,
+        36,
+        46,
+        108,
+        110,
+        135
+      ]
+    },
+    {
+      "path": "docs/v0.1/M10-llm-wiki/reviews/P3-revert-tree-review.md",
+      "blob": "4537dd046a1ca1d7f8a4d5d0b3c03ce258fe3007",
+      "git_mode": "100644",
+      "sha256": "4387d69a88706872b14f5701420dbd549136ef189e16a2b515471b97717e7681",
+      "bytes": 30233,
+      "lines": [
+        1,
+        5,
+        18,
+        24,
+        42,
+        80,
+        94,
+        108
+      ]
+    },
+    {
+      "path": "docs/v0.1/M11-upgrade/handoffs/M10-mode.md",
+      "blob": "14ec042dcd115256c6eb90246fcb56f749e1a8bb",
+      "git_mode": "100644",
+      "sha256": "18233242f76da92e23149e889611fc13001f5d06a1d233f17989215c2a098d4f",
+      "bytes": 6767,
+      "lines": [
+        8,
+        28
+      ]
+    },
+    {
+      "path": "docs/v0.1/M11-upgrade/handoffs/M9-mcp-upgrade.md",
+      "blob": "7f16245bf633229b5f07fc8737a769172ffae7c8",
+      "git_mode": "100644",
+      "sha256": "46e40d81477d720f802425c0b8c7de61676864ae13d70df473c582e5d20b1af2",
+      "bytes": 3945,
+      "lines": [
+        8
+      ]
+    },
+    {
+      "path": "docs/v0.1/M12-release/handoffs/M4-performance.md",
+      "blob": "81df1f218a5e35167dd8c5603c84bb833bb4d533",
+      "git_mode": "100644",
+      "sha256": "9a294d7064e87c88eed34320c23a3d69aa8aec6960f9c31d709d28e685d57aa8",
+      "bytes": 144574,
+      "lines": [
+        8,
+        10,
+        18,
+        26,
+        97,
+        129,
+        157,
+        195
+      ]
+    },
+    {
+      "path": "docs/v0.1/M12-release/handoffs/M5-polish.md",
+      "blob": "5ec7050143a45a1b4e395575f09b0059e9f152fe",
+      "git_mode": "100644",
+      "sha256": "af3f8f93755d5288a0de39ccb476e43958afd030cc4fed8a6ffe62b72cce82be",
+      "bytes": 45222,
+      "lines": [
+        8,
+        236
+      ]
+    },
+    {
+      "path": "docs/v0.1/claude_to_codex/02-workflow.md",
+      "blob": "05bb67d75bde9f6a59bf49311612fb6ed2af6784",
+      "git_mode": "100644",
+      "sha256": "e30c235a4806bd9c1e3fd398428bfd4c447618b1e1684840abd2438d67510f28",
+      "bytes": 13192,
+      "lines": [
+        1,
+        5,
+        22,
+        36,
+        56,
+        58,
+        75,
+        79
+      ]
+    },
+    {
+      "path": "docs/v0.1/v0.1-design.md",
+      "blob": "7d25c9e4bb2abd8ae41b85ee867e94ace5d8b7a5",
+      "git_mode": "100644",
+      "sha256": "927958128a48681bc8e30a70ba21560443dbe2078f38fda560b4c1ac31ddaf5a",
+      "bytes": 541422,
+      "lines": [
+        490,
+        504,
+        978,
+        1251
+      ]
+    },
+    {
+      "path": "e2e/fixtures/assert/page.ts",
+      "blob": "75a0382cee71e61ff8311b753db188f97bd6ab39",
+      "git_mode": "100644",
+      "sha256": "6798afcf2f345acac339acc77fe71eddf72c1201003c66f5e7c4aed7bc1dac70",
+      "bytes": 32864,
+      "lines": [
+        20,
+        70,
+        97,
+        117
+      ]
+    },
+    {
+      "path": "e2e/fixtures/assert/transfer.ts",
+      "blob": "08887e064058793e8f77c0667a3f4faa183f2148",
+      "git_mode": "100644",
+      "sha256": "c4547c02833034ecac07f7dfb6450a91bd0c521880206456932a04b867d56e08",
+      "bytes": 12249,
+      "lines": [
+        26,
+        38,
+        85,
+        95
+      ]
+    },
+    {
+      "path": "e2e/fixtures/mcp.ts",
+      "blob": "6997954eff56d1253d94cbe3e373e57381ec8db7",
+      "git_mode": "100644",
+      "sha256": "2bdffc0b230882123b2c354cda7df35efc0a8bc3d218e2912cfa11af2d952c66",
+      "bytes": 9358,
+      "lines": [
+        45,
+        199,
+        210,
+        221
+      ]
+    },
+    {
+      "path": "e2e/stories/asset/as2-paste.spec.ts",
+      "blob": "a1d29825b53e1d5390a9bb88b6946b5c01c1d58f",
+      "git_mode": "100644",
+      "sha256": "55b0942dd203a32a884937f5c4e8fd6e7b3c65bca1e188bd3ff215946893e373",
+      "bytes": 14496,
+      "lines": [
+        113,
+        138
+      ]
+    },
+    {
+      "path": "e2e/stories/history/hi1-versions.spec.ts",
+      "blob": "4a92e7130b084b79d45bcd46127762e3101dc0b5",
+      "git_mode": "100644",
+      "sha256": "a69fa0605cec8cb1a383d931391e74f0e92e7d468d1708645c45c0875bb08dab",
+      "bytes": 16580,
+      "lines": [
+        187,
+        207
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg11-navigation.spec.ts",
+      "blob": "f04a3b436770070a72bf9391024527e2fc29d045",
+      "git_mode": "100644",
+      "sha256": "c2f10fc92a2f3b62df1ab53a141bcba2570428d7382cec130cc2fb346156cf8a",
+      "bytes": 7524,
+      "lines": [
+        112
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg12-page-permissions.spec.ts",
+      "blob": "e9e251188fe6bd3fd3fc86ef8da027899edebcc1",
+      "git_mode": "100644",
+      "sha256": "d87a51d72ea5f7d2a9faad804c558a5621834a2d483600481742f8e86d728d55",
+      "bytes": 14259,
+      "lines": [
+        153,
+        154,
+        156,
+        163,
+        166
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg7-edit-save.spec.ts",
+      "blob": "7ccd34200185796c9deb9bfcf330ad538e57ae1a",
+      "git_mode": "100644",
+      "sha256": "ce5627b483954ae50c89a89206758c04dfd8a10eac6debdfcb002916e13ccf9b",
+      "bytes": 9503,
+      "lines": [
+        103,
+        106,
+        133
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg8-save-conflict.spec.ts",
+      "blob": "7cb29b765fefc9242727dc1db3cb0a31b1bb3915",
+      "git_mode": "100644",
+      "sha256": "ed4401b2a0257c64a5a2663580773719f425ea64ad75a023d02dc3e03109b844",
+      "bytes": 10954,
+      "lines": [
+        101,
+        102,
+        108,
+        109,
+        123,
+        125
+      ]
+    },
+    {
+      "path": "e2e/stories/page/pg9-byte-fidelity.spec.ts",
+      "blob": "07906b09aec9e26b2fbdad6919116ff1d3df8ae0",
+      "git_mode": "100644",
+      "sha256": "71a8611f43e805b36ab226b46a560a362589b7933e1e7ac87b0b8facfa0cd3fe",
+      "bytes": 8645,
+      "lines": [
+        78
+      ]
+    },
+    {
+      "path": "e2e/stories/wiki/lw12-downgrade.spec.ts",
+      "blob": "25e713a2b23f3f8e05325d3f0945e834280aa26f",
+      "git_mode": "100644",
+      "sha256": "bd52eb7e863b416d71a618fbe7d58482fb73c52ca49518b2d0ab730bdcd6ef1c",
+      "bytes": 14685,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "e2e/stories/wiki/lw4-source-readonly.spec.ts",
+      "blob": "4b980f9a3a92a146b15bd898327bc04de504f26b",
+      "git_mode": "100644",
+      "sha256": "7326cac1b56e28ceea41caf27ba5a58400b5d39f2f49e84524df14f1c9f496b6",
+      "bytes": 39323,
+      "lines": [
+        627,
+        638,
+        650,
+        662,
+        677,
+        704,
+        765,
+        828,
+        836
+      ]
+    },
+    {
+      "path": "e2e/stories/wiki/lw5-manage-sources.spec.ts",
+      "blob": "137f34ec7d964a881a1d83aa668cc4a49f47c88f",
+      "git_mode": "100644",
+      "sha256": "f341a8b9eca1bf8b21ad6315782b04ad22e812d261e8e48f4ac038eca1e2aef9",
+      "bytes": 42772,
+      "lines": [
+        395
+      ]
+    },
+    {
+      "path": "server/go.mod",
+      "blob": "ba3d6c4a65311452f8ab42e28f5ab6fd94101c58",
+      "git_mode": "100644",
+      "sha256": "6abef10594894f5beafd1516461bde0f6af5abcf5317aeeeabbe02a402ecb1d6",
+      "bytes": 4988,
+      "lines": [
+        12
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/app_test.go",
+      "blob": "2295f9ec86fe76855b303f2c76560804344ea8c0",
+      "git_mode": "100644",
+      "sha256": "e1f0050c5caf659ef979ad1d046b63ecdad4bf08b949a1beca15c1be0e6838e6",
+      "bytes": 15168,
+      "lines": [
+        27,
+        35,
+        42,
+        45,
+        48,
+        52,
+        101,
+        110
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/batch_cost_test.go",
+      "blob": "728defaba4e721921fc2f6fde27576a6f9553182",
+      "git_mode": "100644",
+      "sha256": "4d99f69cac268b428afd4f1385ad1b3c1611c935ea8c3143306d0831d9a30802",
+      "bytes": 33770,
+      "lines": [
+        1,
+        64
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/deps.go",
+      "blob": "94f4bbffe5512223b6594fffd5d0dc5d697f4124",
+      "git_mode": "100644",
+      "sha256": "3a6e5450789a482e6e9ba6cb28307f5bf5a1cb75a3ade0a3f9d6c46d077aa0c8",
+      "bytes": 16012,
+      "lines": [
+        35,
+        67,
+        77,
+        105,
+        137,
+        148,
+        185,
+        193
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/events_registrants.go",
+      "blob": "19e70d2a134a284340e11ba5a45bf65d0a052f36",
+      "git_mode": "100644",
+      "sha256": "125def01350cf32660027db9d8dfcb9a6eced7468376f75cb4caa52996d0bf98",
+      "bytes": 3055,
+      "lines": [
+        16,
+        24,
+        35,
+        39,
+        47,
+        51,
+        55,
+        63
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/interleavings_page_test.go",
+      "blob": "4a79603d5b7dc97ca94f4a12f814b07cdcdd263e",
+      "git_mode": "100644",
+      "sha256": "9b09702b5829ef45ef86b19883beaa15258c3b5c7088ac19f158cbfb3c456c84",
+      "bytes": 31418,
+      "lines": [
+        57,
+        68,
+        73,
+        155,
+        165,
+        262,
+        275,
+        292
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/linking.go",
+      "blob": "8596733bfe3f6b6cdabb32bb8265f7feda39015f",
+      "git_mode": "100644",
+      "sha256": "9d06fb00d336fb76c45ead0758ac0e508560bdafbf3c3d25d7dfc52a4d54f21d",
+      "bytes": 14681,
+      "lines": [
+        21,
+        25,
+        42,
+        59,
+        63,
+        104,
+        122,
+        133
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/mcp.go",
+      "blob": "9a6c71ee88ed3f2345894e31f0a943f6cdfe5c97",
+      "git_mode": "100644",
+      "sha256": "aaa6320fe389369362d2b1e6ade1b580a37bd26f08e45fa9694f5b568c31f821",
+      "bytes": 7101,
+      "lines": [
+        30,
+        39,
+        47,
+        48,
+        54,
+        58,
+        66,
+        72,
+        86
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/mcp_tools_test.go",
+      "blob": "d06d12fa9e9093ab0b71ab6cf3ace2485716fc93",
+      "git_mode": "100644",
+      "sha256": "70f3a68bc5cf600c36e3700eb24d37a09d63f5518037060f655fc620c65cf9db",
+      "bytes": 16562,
+      "lines": [
+        24,
+        28,
+        34,
+        40
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/page_content_test.go",
+      "blob": "87eb3746301c9b66325103cb1472ee1d33183ae3",
+      "git_mode": "100644",
+      "sha256": "297e7e5bccc21b5ccc8ba0111b1fe9343c05c18c2c256d3537ab743094e7d522",
+      "bytes": 16951,
+      "lines": [
+        27,
+        33,
+        43,
+        54,
+        61,
+        75,
+        123,
+        149
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/permission_matrix_linking_test.go",
+      "blob": "4f29d314502480aa61ac138b4f675c467dbb23d2",
+      "git_mode": "100644",
+      "sha256": "6471088ddf072ac70212e23b0c7a846e7de9dd50022fe91e623676f68bfd58d2",
+      "bytes": 4316,
+      "lines": [
+        15
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/permission_matrix_mcp_linking_test.go",
+      "blob": "f00ba152a17d696d63dce68e9d3d178e9a6d2d82",
+      "git_mode": "100644",
+      "sha256": "cb10774fb7d180c0bb0cd411e470f5613b7fad0faf5253fe7e5ca0e326fb7c5e",
+      "bytes": 2346,
+      "lines": [
+        18
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/permission_matrix_mcp_test.go",
+      "blob": "71597ec08d6f9aa9cf9941178d45dab288653f5a",
+      "git_mode": "100644",
+      "sha256": "f88028db684a29d0dfd3e374b215c4b482e46a6798c74518a6d4f72f511008a9",
+      "bytes": 27073,
+      "lines": [
+        27,
+        45,
+        51,
+        65,
+        89,
+        122,
+        158,
+        331
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/purge_test.go",
+      "blob": "fc26e950459d5bddc809cef704667c4402ae6fca",
+      "git_mode": "100644",
+      "sha256": "0d0335752eba722b74b000c8de9615da362aab91f5b78e26be53912e7ffb07da",
+      "bytes": 13791,
+      "lines": [
+        24,
+        33,
+        56,
+        71,
+        98,
+        129,
+        160
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/registrants.go",
+      "blob": "e0e7df54328cfd1e5669e6a808e81dffebb36acf",
+      "git_mode": "100644",
+      "sha256": "51964078e9c77edd02976670ec4cfa204fa437019d4ea12d110b460fb6e35d8e",
+      "bytes": 15195,
+      "lines": [
+        34,
+        43,
+        47,
+        51,
+        61,
+        76,
+        83,
+        104
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/reindex.go",
+      "blob": "34114ee9f9fd203cdc278c0a3f0d74bf7ce79c56",
+      "git_mode": "100644",
+      "sha256": "504307e9cb3ee8fed291d0a6dcec91e2566c27aa926e107dd7b31770587dffac",
+      "bytes": 6987,
+      "lines": [
+        41,
+        113,
+        128,
+        156,
+        168
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/source_hash_invariant_test.go",
+      "blob": "1f01492ce149961df48eb8dbe23cdbc2fee9c4f7",
+      "git_mode": "100644",
+      "sha256": "9e3aac1129d52bfebacaf842b2ee2daf8fe4d88fab6827096d63c880a042d63d",
+      "bytes": 11301,
+      "lines": [
+        16,
+        21,
+        43,
+        140,
+        147
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/transfer_test.go",
+      "blob": "82e399c3f4dfcdc399c8407cf7464db46a26fcbb",
+      "git_mode": "100644",
+      "sha256": "87260f0c40f9153b261ab9e8643bd4197869d25379d599ddb0ea5241609397e5",
+      "bytes": 19573,
+      "lines": [
+        38,
+        65,
+        81,
+        98
+      ]
+    },
+    {
+      "path": "server/internal/bootstrap/wire.go",
+      "blob": "e4c2759f0249136447dc51f813d84b5f1fbd31f1",
+      "git_mode": "100644",
+      "sha256": "56a34c64f5235941b5d438670806946ca503e1b86cca03c3affecae0e3d18fa4",
+      "bytes": 11809,
+      "lines": [
+        39,
+        52,
+        59,
+        85,
+        273
+      ]
+    },
+    {
+      "path": "server/internal/modules/access/app/authorizer.go",
+      "blob": "b7c949737928aca0056ad7c998d52d6459b43dbb",
+      "git_mode": "100644",
+      "sha256": "45b314273f9954f38fa63b2bde6454f3d02447426eb32d0d984cda290f691e6f",
+      "bytes": 1789,
+      "lines": [
+        13,
+        19,
+        27
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/gen/bodyshape.gen.go",
+      "blob": "ca4f51510b244ed480ce89ddb07a4ae01fdab7f0",
+      "git_mode": "100644",
+      "sha256": "a70254a86a7b8458070d2fa45017be0a6169e2a62007cd1841d3b52070a6f18c",
+      "bytes": 604,
+      "lines": [
+        11
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/gen/server.gen.go",
+      "blob": "d83d23491147f80a8685a9dd234ad107aa6ca5fd",
+      "git_mode": "100644",
+      "sha256": "bde0967d6e0872c52999bf399cc14866df69ec54ddb76fe0a5cde1b6913b7557",
+      "bytes": 38047,
+      "lines": [
+        34,
+        60,
+        72,
+        84
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/http/handler.go",
+      "blob": "fc69f54a30076bb39c0ac58c8bb696fdccba613b",
+      "git_mode": "100644",
+      "sha256": "6637cba3ce10107ec28cc2f433caa7900eff4f53fd9d436710486846160e2ea9",
+      "bytes": 7781,
+      "lines": [
+        21,
+        26,
+        31,
+        36
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/markdown/facts.go",
+      "blob": "ac9d06bf144c3fa19f37b17124760289ef3520af",
+      "git_mode": "100644",
+      "sha256": "835c6c0d445172b1aaaa7bd4c661ba79a4a1ad3408e92053797413b117202baf",
+      "bytes": 9343,
+      "lines": [
+        88,
+        195
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/markdown/facts_test.go",
+      "blob": "c1faad6c4e68607d0cc3d0b9bcee51d1a18fe6b5",
+      "git_mode": "100644",
+      "sha256": "f84e63aa317d640277c5d6cd88313baa0c4fb1e367a91c3229f3e892a20fdebb",
+      "bytes": 17402,
+      "lines": [
+        23,
+        39,
+        81,
+        120,
+        155,
+        168,
+        201,
+        222
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/gen/index.sql.go",
+      "blob": "5a01e363fd25714df93f8c3561d8bd4a9ddc091a",
+      "git_mode": "100644",
+      "sha256": "1c8fc68e94eba3ff38542ac65a3a206c07c57fb51d29599f47d85050982040a5",
+      "bytes": 6429,
+      "lines": [
+        38,
+        43,
+        52,
+        99
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index.go",
+      "blob": "5ec53442698793f76247df6c0e7db58784f997a8",
+      "git_mode": "100644",
+      "sha256": "07235875189f3ec51e8db79ab3957cd56ffdf27f9fc8a31d491be80b14eaec09",
+      "bytes": 1743,
+      "lines": [
+        13,
+        26,
+        46
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_cost_test.go",
+      "blob": "3c2c62d25d13437eae1845100aad34053001071f",
+      "git_mode": "100644",
+      "sha256": "db3b871a3b6ccda57b530116c7478b08a1237a50ffd325c4c45a02bcabb63c1d",
+      "bytes": 13720,
+      "lines": [
+        61,
+        68,
+        70,
+        73
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_plan_test.go",
+      "blob": "e84f3ecad51c4b09313e36b587679b83382a4fb5",
+      "git_mode": "100644",
+      "sha256": "67052d8e1415040b8eaf91e4e923710c2662c96dd45783e21dbf493974ed0f0f",
+      "bytes": 10939,
+      "lines": [
+        19,
+        28,
+        41,
+        53
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/index_test.go",
+      "blob": "f0abe2bc71e13ed857aabe47226fe213306cbd75",
+      "git_mode": "100644",
+      "sha256": "76525a45a1160154e4162047680953029e42bc39d27fafdf1db44c34ce63b1be",
+      "bytes": 11278,
+      "lines": [
+        21,
+        25,
+        49,
+        60
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/index.sql",
+      "blob": "b084294a9120a943c374e8f3b648edf616c961d6",
+      "git_mode": "100644",
+      "sha256": "49e0334f5be87b5fef4139fad45efe8b35ebc5d242a820598c8cc9f3873f7fa1",
+      "bytes": 4386,
+      "lines": [
+        1,
+        28,
+        59
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/links.sql",
+      "blob": "e2c2b732c1e1561c56d547b2836d82d4ac30b532",
+      "git_mode": "100644",
+      "sha256": "3253bdf5836643aa1bf0c02135e879dd926b5963c40aeb8f3e0babf4bbf0d307",
+      "bytes": 3625,
+      "lines": [
+        1,
+        20,
+        27,
+        30,
+        41,
+        53
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/lint.sql",
+      "blob": "0db45e92baede1bf8f5ee96f4482c99fbe57d834",
+      "git_mode": "100644",
+      "sha256": "e5ffd640e97a7a1ef9c7135c94b384ae37b3e98dd08f27f58b98defbc63ba175",
+      "bytes": 11018,
+      "lines": [
+        1,
+        10,
+        26,
+        44,
+        61,
+        82,
+        99,
+        119
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/lint_rules.sql",
+      "blob": "bb7ed405d17915db3e8c66155c5e17e9be847c42",
+      "git_mode": "100644",
+      "sha256": "86548db672160cb39166f3c9668051ae768e55fcf36f46c192728f2c44c700e3",
+      "bytes": 11639,
+      "lines": [
+        9,
+        36,
+        60,
+        85,
+        100,
+        112,
+        125,
+        151
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/queries/pages.sql",
+      "blob": "72141d7f7e2efd028865927c37ef955297d1a587",
+      "git_mode": "100644",
+      "sha256": "efdc62e8ae8b7a36af3fdf4640f536658e88ea8ec4553b4b03467402b1fad1cd",
+      "bytes": 3241,
+      "lines": [
+        1,
+        6,
+        10,
+        18,
+        27,
+        32,
+        35,
+        38
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/adapter/postgres/store.go",
+      "blob": "ab3665aadd852e62fd84c6e7973ba578e64c394b",
+      "git_mode": "100644",
+      "sha256": "1f8c9514e7bb243a72c550c4ac5bccd549dc365ffa15b8b84375ed98ee1f31f1",
+      "bytes": 10509,
+      "lines": [
+        24,
+        27,
+        32,
+        37,
+        43,
+        49,
+        62,
+        74
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/admin.go",
+      "blob": "50a06d257b0ed8ee1a72b7023e11f5215953a27a",
+      "git_mode": "100644",
+      "sha256": "1463913ae0946f1f6d08ff00e20e0c9a752ce65e6cb6b4ac0b921a296807d0d2",
+      "bytes": 2340,
+      "lines": [
+        60
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/asset_links.go",
+      "blob": "6f69e36684397a0590658b9045b8114f8f2cbccf",
+      "git_mode": "100644",
+      "sha256": "92ec0197fa2a0d4e4a82367a4f2e62a4c0ac513f5deb924fc5d146d2630beff5",
+      "bytes": 2036,
+      "lines": [
+        13,
+        23,
+        33,
+        41
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/batch_links.go",
+      "blob": "300d2e0f45b33c80868ae54eb39aca551a30c576",
+      "git_mode": "100644",
+      "sha256": "8c603d8b4a58db957a6673ee53e2dc665cf15cea2e92b85823084a03a84698b4",
+      "bytes": 8918,
+      "lines": [
+        19,
+        31,
+        50,
+        63,
+        83,
+        112,
+        139,
+        186
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/deletion.go",
+      "blob": "7a26fa71fdbc58e21705c06dd5084a57defbe239",
+      "git_mode": "100644",
+      "sha256": "d2cec436ba36c51b845caa94ca7d433e665f57611c3bb963707fda55f15f6202",
+      "bytes": 734,
+      "lines": [
+        10,
+        18,
+        23
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/index.go",
+      "blob": "90c279eca665f157e7ba139c33a1004ecf130c72",
+      "git_mode": "100644",
+      "sha256": "ad153789a670ff7b8bb4e459ea875e4e355983a6deaf882547b71a7b720134c5",
+      "bytes": 6313,
+      "lines": [
+        13,
+        21,
+        36,
+        94,
+        123,
+        151,
+        172,
+        177
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/lint_reads.go",
+      "blob": "c3a81acba78628b0cc8fc7e393f2cce6c6937d79",
+      "git_mode": "100644",
+      "sha256": "2a273d990a622acf440b0be5552b440ae8886166cfef1cb0320054d831e55240",
+      "bytes": 11630,
+      "lines": [
+        14,
+        22,
+        28,
+        35,
+        41,
+        55,
+        62,
+        71,
+        116,
+        271,
+        320,
+        337,
+        339
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/lint_rule_ports.go",
+      "blob": "855cb507ecdc65c7aeecd63246b13425ce9e579f",
+      "git_mode": "100644",
+      "sha256": "84c4755ae1d8c9d621d460ffa1ea915cb307f102b515af8c6dcf903a08ba6a25",
+      "bytes": 3590,
+      "lines": [
+        13,
+        27,
+        39,
+        47,
+        56,
+        65,
+        84
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/lint_scope.go",
+      "blob": "c7336c1fc26d6d1e9086b56d0fa7e17dc0f53a52",
+      "git_mode": "100644",
+      "sha256": "d6d5bf3c8f35022a55e5a3a957c1e8ff78186dbc4e19860a68a4e30f9dfeba5f",
+      "bytes": 7716,
+      "lines": [
+        12,
+        20,
+        40,
+        42,
+        50,
+        58,
+        71,
+        75,
+        185,
+        279
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/lint_sources.go",
+      "blob": "710a94b1e0ada82f249b9177e75fc158e4315d0f",
+      "git_mode": "100644",
+      "sha256": "a804c7ea58e7ce820a8e853571e88f9485d6171317ac164bd9283cf5498cc969",
+      "bytes": 6786,
+      "lines": [
+        14,
+        19,
+        24,
+        182
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/list_index.go",
+      "blob": "12d30d31c3ccd6a33bbbd39b51204e49f47907d8",
+      "git_mode": "100644",
+      "sha256": "7393800a5cd497937fde9832c03b8dee5d1b0eea31c44cc93930f9cd90c8818f",
+      "bytes": 8098,
+      "lines": [
+        67,
+        93,
+        99,
+        102,
+        108,
+        122,
+        144
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/ports.go",
+      "blob": "12d49c7b01425d844ef3d9524f461e3d0a829f59",
+      "git_mode": "100644",
+      "sha256": "22fe780d47323278b3e02b3f5b8c0a347a6ff0761108d1224dcc74b3deab11b2",
+      "bytes": 20793,
+      "lines": [
+        20,
+        30,
+        38,
+        51,
+        58,
+        65,
+        100,
+        124
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/reindex.go",
+      "blob": "410ea7a307b093d875cf6a91be0429ce7f8414a9",
+      "git_mode": "100644",
+      "sha256": "b0ee12f5fe0518845257578246b7bcc78875d6606d7cc3a11a7ac7918dac762a",
+      "bytes": 4876,
+      "lines": [
+        13,
+        19,
+        32,
+        36,
+        47,
+        53,
+        58,
+        67
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/app/rewrite.go",
+      "blob": "0fc814af7e9648f994358d792800dfafa5e4268e",
+      "git_mode": "100644",
+      "sha256": "556810807c4dda33d522085ae769d13b99fe06fdd710cefbc9a23fb617610def",
+      "bytes": 39469,
+      "lines": [
+        22,
+        36,
+        47,
+        54,
+        62,
+        79,
+        146,
+        164,
+        178,
+        195,
+        198,
+        214,
+        216,
+        371
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/change.go",
+      "blob": "588b28438cbaeb48dd012dc09c1f6211b4dfda2b",
+      "git_mode": "100644",
+      "sha256": "a7cb4ec4b453251f54c06dc8a67b9a7f735fad983f33b3b6051e85870498b871",
+      "bytes": 8295,
+      "lines": [
+        12,
+        21,
+        32,
+        42,
+        50,
+        58,
+        68,
+        88
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/facts.go",
+      "blob": "ab5c481004a553e036d3acf7daa3239c4c6615da",
+      "git_mode": "100644",
+      "sha256": "f7bd553fa1a52ba05b9278a1b4b64201eaa7409ce50afc138404d60dec25b824",
+      "bytes": 5027,
+      "lines": [
+        13,
+        18,
+        36,
+        53,
+        63,
+        67,
+        77,
+        85,
+        102,
+        110
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/index.go",
+      "blob": "7979eaed5f10b593fc1172a59b1fd073fa707de2",
+      "git_mode": "100644",
+      "sha256": "084cf8d8389b3de59bcf7470d8eb58174a5ed2c98d23774e318cdaed1e8f2690",
+      "bytes": 3924,
+      "lines": [
+        17,
+        43,
+        51,
+        65,
+        73,
+        79,
+        87,
+        113
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/lint_sources.go",
+      "blob": "5c72d85269c91deb2f67b52bfe2c7134f20a5dd1",
+      "git_mode": "100644",
+      "sha256": "a8928f146e45dc2a124a6db223196efcfaeb57c97e901cecf52fdd61e61099ec",
+      "bytes": 6704,
+      "lines": [
+        18,
+        25,
+        34,
+        42,
+        86,
+        93,
+        147,
+        174
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/lint_target.go",
+      "blob": "5f53b4ca365fdaa8c311b893775f3b8c88b44e78",
+      "git_mode": "100644",
+      "sha256": "d8899e12f9e093afaceced00f87775ec414cc864231a811ce79d9d32e82fa531",
+      "bytes": 4129,
+      "lines": [
+        13,
+        17,
+        19,
+        25,
+        33,
+        88
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/lint_values.go",
+      "blob": "aea2cfb3421a566ec95d6d6ea645a1bc934a2c8d",
+      "git_mode": "100644",
+      "sha256": "066f59bb7af82fff397679e8574e11811ebab7f2787c3daa23c47a0109031be6",
+      "bytes": 5133,
+      "lines": [
+        16,
+        19,
+        32,
+        34,
+        38,
+        42,
+        47,
+        56
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/resolve.go",
+      "blob": "dd76614d6a3fda2a39cfb34a9eeadcb04222760e",
+      "git_mode": "100644",
+      "sha256": "fe8672ec397cdc65fa5ee3af50add8729854eef60fef73a7ccd966c7a7de79b9",
+      "bytes": 10871,
+      "lines": [
+        31,
+        44
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/domain/rewrite.go",
+      "blob": "802fcb2864add289a17c97ee6ca7110e9eec7144",
+      "git_mode": "100644",
+      "sha256": "e6a0a37c3544b4135074228d992ed1813332bbe5d5dedcf2888350f273f2b1dc",
+      "bytes": 20829,
+      "lines": [
+        473,
+        477,
+        481
+      ]
+    },
+    {
+      "path": "server/internal/modules/linking/module.go",
+      "blob": "3fdf81116a6040def8e1f6ad69536bd7583085fa",
+      "git_mode": "100644",
+      "sha256": "8ed7a5e91b9154e2f6e1891430683407c1015a949103561c76264727d9fed810",
+      "bytes": 11982,
+      "lines": [
+        34,
+        54,
+        70,
+        80,
+        99,
+        107,
+        113,
+        120
+      ]
+    },
+    {
+      "path": "server/internal/modules/notebook/adapter/postgres/queries/notebooks.sql",
+      "blob": "38b2a8661193d5c82cb2297e22bf032ec7f3c903",
+      "git_mode": "100644",
+      "sha256": "2000597fd6f15d8909d1a634ec1f79f4ec9ae3a65e70f06f2d116db380b4a5f3",
+      "bytes": 5356,
+      "lines": [
+        1,
+        9,
+        16,
+        26,
+        36,
+        42,
+        49,
+        55
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/gen/bodyshape.gen.go",
+      "blob": "8d9571fcd576f0038a1d44121c3f4c6f9a684245",
+      "git_mode": "100644",
+      "sha256": "b36d3b29fe759beb45fee0c8af9530c956335a6489604192f58541cedaaf0c27",
+      "bytes": 3921,
+      "lines": [
+        11
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/gen/server.gen.go",
+      "blob": "acef81ee6a272f31f48ad35036ef260128b795f4",
+      "git_mode": "100644",
+      "sha256": "350d170e5b3419853f4d9e644035fd2605c37dd07a94bdd38fe3afda748963e1",
+      "bytes": 152074,
+      "lines": [
+        36,
+        67,
+        91,
+        110
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/http/history.go",
+      "blob": "9bdeea2096e7b90156aca2455deea0f3ae641796",
+      "git_mode": "100644",
+      "sha256": "9107f07f1a568bdaa2b4291c1fea4ef20bab8a9570fb87f207055a3a1a5185f2",
+      "bytes": 6227,
+      "lines": [
+        17,
+        22,
+        27,
+        32
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/changeset.go",
+      "blob": "bb3cf855465853d0232110a86835ea16da6bbade",
+      "git_mode": "100644",
+      "sha256": "caa2d63acc6c7344a64e1023a0a1759fc7776f985dee5952bfb66fce77b85c2f",
+      "bytes": 2760,
+      "lines": [
+        13,
+        23,
+        38
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/history.go",
+      "blob": "2f243cee241408ef14c6f5ccf872c36407d2685c",
+      "git_mode": "100644",
+      "sha256": "1255834dc749b37a821556d7f26b6e97d128a6abc6ed54792db5894def80e76a",
+      "bytes": 7024,
+      "lines": [
+        20,
+        31,
+        40,
+        46
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/list.go",
+      "blob": "50a207724150cffd927bd75521ea28fd29ef3fcf",
+      "git_mode": "100644",
+      "sha256": "7d865c4bf3ad47177e7871acb5d93f5808147483db27ec96eff6950d4f1e83ce",
+      "bytes": 3188,
+      "lines": [
+        14,
+        22,
+        30,
+        42,
+        46,
+        85
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/open_notebook.go",
+      "blob": "db75b14d5ba11c942ac4327e62970c0acdb68138",
+      "git_mode": "100644",
+      "sha256": "5ee512cfa745f10d729dd608f25834b7a22a911a18b2621dec16ea179994ef74",
+      "bytes": 4115,
+      "lines": [
+        14,
+        20,
+        28,
+        34,
+        45,
+        52,
+        63,
+        103
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/read.go",
+      "blob": "b74d495284e04bad8ce6f1dc751454c6ea514a21",
+      "git_mode": "100644",
+      "sha256": "5605b9075ae83b2abf85d7878addf2ccee83c697a4a00688d916ac086a1ea847",
+      "bytes": 7380,
+      "lines": [
+        17,
+        27,
+        44,
+        59,
+        68,
+        77,
+        83,
+        94
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/tools.go",
+      "blob": "0f0a0836896beea1df452272280330148a7f2fa7",
+      "git_mode": "100644",
+      "sha256": "d49acc0b2a73cdf57c9fb8c97f85ba21ad525bf5eef27f1cbc106a2d1de77e11",
+      "bytes": 19659,
+      "lines": [
+        20,
+        25,
+        30,
+        35
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/history.sql.go",
+      "blob": "b461f8908e54ec9b663c6bcc86a2b06798e55bfe",
+      "git_mode": "100644",
+      "sha256": "ab7961be8ee6ea187634722646d6298d3bd11c38e1c5c0d2c9de273c95d3e5be",
+      "bytes": 29133,
+      "lines": [
+        24,
+        33,
+        64,
+        77
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/models.go",
+      "blob": "b902e0874e4ff3c16ece184771c58e5fbb2a008f",
+      "git_mode": "100644",
+      "sha256": "574dabfcec28ea7381ed05f7d1c5a872a798ffe63d6f6c53d840ab64778aca48",
+      "bytes": 2370,
+      "lines": [
+        13,
+        29,
+        46,
+        61
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/nodes.sql.go",
+      "blob": "efb085fbc9fd69f1feb477e391b301b37f16289a",
+      "git_mode": "100644",
+      "sha256": "725c1ade2dc758e68c9c6570979f1f4d1cce8b5a40121d28e033a752a3934fe0",
+      "bytes": 33780,
+      "lines": [
+        807,
+        817
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/gen/purge.sql.go",
+      "blob": "5a105f27d4c982d6ba4cec9d294871964f745842",
+      "git_mode": "100644",
+      "sha256": "966f9bbf235dec21f0df093634379053cfa7f26cf694477ef3bc3eb2d5f77dd8",
+      "bytes": 6280,
+      "lines": [
+        28,
+        41,
+        58,
+        64
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history.go",
+      "blob": "dc46f86a3064b9b5416573dcc4e1da8176878fbd",
+      "git_mode": "100644",
+      "sha256": "c295c636f5f6f8e30589db5d843897e1d36f81648155e819450873d8eaf1507f",
+      "bytes": 12872,
+      "lines": [
+        17,
+        28,
+        68,
+        84,
+        98,
+        110,
+        123,
+        142
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history_cost_test.go",
+      "blob": "eafc913d06b045a8d801be381a6293c010011dd3",
+      "git_mode": "100644",
+      "sha256": "351b9a65e60ea4d496f7d0e906bc43243acc0a0484da116adffb4b7c6c05a9b6",
+      "bytes": 13465,
+      "lines": [
+        29,
+        41,
+        106,
+        137
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/history_plans_test.go",
+      "blob": "1c1a9e32b1e8b19b1738fc86ed491b6264e3180f",
+      "git_mode": "100644",
+      "sha256": "7c0c694e6790373a00d385778efafd888ac0b59c74b75033480000d3d367c722",
+      "bytes": 11434,
+      "lines": [
+        31,
+        138,
+        177,
+        185
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/lint_metadata.go",
+      "blob": "3f3afcd00b3b733651badae22f18a4da73444f12",
+      "git_mode": "100644",
+      "sha256": "6a51df6a988493c5146816fc03365e8b1f8a9a05bcc15d9d14bb3c03e40d19da",
+      "bytes": 4381,
+      "lines": [
+        13,
+        33,
+        43,
+        58
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/paths_property_test.go",
+      "blob": "aa89662b0cfbbb36814489ba64cb620ed69de8bb",
+      "git_mode": "100644",
+      "sha256": "25cec5b1c163181081b4de86abcc940f1d0f0df88c64eb5121d9c2dd9bc18823",
+      "bytes": 8864,
+      "lines": [
+        20,
+        22,
+        27,
+        29
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/purge.go",
+      "blob": "505758f3d80317c34a21cfecf1ab730319652af3",
+      "git_mode": "100644",
+      "sha256": "9e886446cb5f273ca6d0c2821c5be78b43546f357052b42baee7265b1cfed0bd",
+      "bytes": 3255,
+      "lines": [
+        18,
+        28,
+        37,
+        50,
+        70
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/changesets.sql",
+      "blob": "ef484a935fdbdd2d8f0657259eab7e7c87251e47",
+      "git_mode": "100644",
+      "sha256": "66cb96c3454d2907fe472709d2e89913f4ea7f4cfb86f637ab6def455ab2b452",
+      "bytes": 6732,
+      "lines": [
+        1,
+        6,
+        11,
+        17,
+        52,
+        67,
+        75,
+        82
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/contents.sql",
+      "blob": "60d761416e53cd07b3da120e86a38b2f6c66d606",
+      "git_mode": "100644",
+      "sha256": "7b83c4e55911b820ff4195d54617d9ce73a9a7c983130743edc3c9dc09f68e5e",
+      "bytes": 5083,
+      "lines": [
+        1,
+        6,
+        11,
+        17,
+        27,
+        34,
+        40,
+        47
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/history.sql",
+      "blob": "17dab152c1e2e29d56842beb367866d0c75b2fbc",
+      "git_mode": "100644",
+      "sha256": "07b7fdab487b99c0bc3f18a04be22af1790323eb85cc3045383b9ffac25921e9",
+      "bytes": 13686,
+      "lines": [
+        3,
+        11,
+        24,
+        37,
+        63,
+        73,
+        79,
+        106
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/links.sql",
+      "blob": "aea3d0794b1aea4e3c29f3cbb9cb6d4473a55b06",
+      "git_mode": "100644",
+      "sha256": "0835da58d356560914a2cc69704dc2b5746e2929ecce427822a5c4c9ebd0b96b",
+      "bytes": 5596,
+      "lines": [
+        1,
+        25,
+        44,
+        60,
+        87,
+        94
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/lint_metadata.sql",
+      "blob": "9fb99f1038c098fc2a663f14c82b0bdd3b1b56df",
+      "git_mode": "100644",
+      "sha256": "7e0714f265998f1177955dad1d22c2b30a8062115dcba91e8cbcd0b88d61942c",
+      "bytes": 610,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/nodes.sql",
+      "blob": "5f820fc8de5a6f9155672c2bfbdae0bfa4ecf5c3",
+      "git_mode": "100644",
+      "sha256": "3b20c6cd6dd437a40f74f0763c38fef052fc5fe34e212dc26e30175d5cd9a5ee",
+      "bytes": 18614,
+      "lines": [
+        30,
+        37
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/purge.sql",
+      "blob": "e75ce124de87ee3af23cb3cac0e9b077ab8c5c73",
+      "git_mode": "100644",
+      "sha256": "f0ce936c08b51481461efb0c016f2c4562e24ecdc9f192cdad3a9fb17ebc30b0",
+      "bytes": 4280,
+      "lines": [
+        5,
+        23,
+        38,
+        44,
+        57,
+        66
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/queries/sources.sql",
+      "blob": "3f8b5a1d9187f56886e36c2a8562c88c2d3da286",
+      "git_mode": "100644",
+      "sha256": "8f15651cc18bd754e21cfcfd0b1cc6f42ec11ff50c466ad886d59dc70ea4af36",
+      "bytes": 3368,
+      "lines": [
+        1,
+        9,
+        40,
+        46,
+        56,
+        59
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/revert_tree.go",
+      "blob": "29651e5c7238f88d69def4aa630bf8ab1466de0b",
+      "git_mode": "100644",
+      "sha256": "d719c124c91daa6ea027649a2b632b77882070bdf3d213c14597d7d93c29d53e",
+      "bytes": 713,
+      "lines": [
+        12
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/revert_tree_test.go",
+      "blob": "e41da055ce85309ad38957201563b9e7c9be687b",
+      "git_mode": "100644",
+      "sha256": "e69731b1f49cc3cd0a5a778deecb69beae9ec0e99130b89700889349743d7621",
+      "bytes": 4632,
+      "lines": [
+        18,
+        68,
+        76,
+        104
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/source_area.go",
+      "blob": "23a077779df371baf9061c034e6dce71c27b7178",
+      "git_mode": "100644",
+      "sha256": "3a76bb7578517e39e7e13d04059e0699a65bc9e9f0bd5282848146bdd837fb6e",
+      "bytes": 5283,
+      "lines": [
+        16,
+        19,
+        39,
+        75,
+        102,
+        121,
+        133,
+        140
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/postgres/store.go",
+      "blob": "e8e7dfffd030c25ed523e7c2340e84e801d81955",
+      "git_mode": "100644",
+      "sha256": "b0e8ce0cafea6affb2d0977c7e8a16c4a8eb790576d09dcb4a5726b3403849e4",
+      "bytes": 19437,
+      "lines": [
+        27,
+        33,
+        38,
+        43,
+        49,
+        55,
+        63,
+        68
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/apply_batch.go",
+      "blob": "b0198d6ba71ee42c01ace6e6e2df46120230a3ea",
+      "git_mode": "100644",
+      "sha256": "785e5a5ea2b6a87488620c5a32231a69deee34e6e50491e7b920cea0c6e3a18a",
+      "bytes": 37664,
+      "lines": [
+        18,
+        31,
+        47,
+        56,
+        79,
+        94,
+        101,
+        126,
+        329,
+        340
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/authorize.go",
+      "blob": "46a78abd3242e7c6fcae7a67287977e52364f8a7",
+      "git_mode": "100644",
+      "sha256": "5790cbd2e710aa43b337ac5fc58cf71575f8325b64f927f42fd573c787ff26f2",
+      "bytes": 2437,
+      "lines": [
+        14,
+        26,
+        34,
+        44,
+        62,
+        71
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/delete_path.go",
+      "blob": "4895987c4fe1d35a6b4f334d9cb566792ecc5d2c",
+      "git_mode": "100644",
+      "sha256": "5ef4db4c4093673dd534bf1a523d1caf3c9c9b0eb395060b9c1f69984a3d9603",
+      "bytes": 3388,
+      "lines": [
+        13,
+        20,
+        29,
+        38
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/edit_page.go",
+      "blob": "253343bc976f9cfafce233ecbabbda48909ccc91",
+      "git_mode": "100644",
+      "sha256": "f826631029e8cd538799a25f10c8fc73434273ae7a010098fbac8e2fd19da879",
+      "bytes": 8947,
+      "lines": [
+        15,
+        26,
+        40,
+        54,
+        63,
+        75,
+        126,
+        221
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/extension.go",
+      "blob": "3e9c03d64ed96737d9ba2c7f91dd62ee36c2d664",
+      "git_mode": "100644",
+      "sha256": "7c39697fc138345142bf48b68551f0f097fa8e9deb9613db05ecf7ee3ed4abf8",
+      "bytes": 13143,
+      "lines": [
+        19,
+        27,
+        52,
+        76,
+        83,
+        100,
+        152,
+        163
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/fakes_test.go",
+      "blob": "fae182f78405d0a17b8e139bfe55ae2a12087004",
+      "git_mode": "100644",
+      "sha256": "359b5cae23e6a0df6515c19a294b67f4ea853c4549e36e648726924685e962e2",
+      "bytes": 51404,
+      "lines": [
+        23,
+        27,
+        29,
+        34,
+        38,
+        40,
+        49,
+        56
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/gate_test.go",
+      "blob": "a5e076fd8e94dbb5300f9dab718095ac4d8f050e",
+      "git_mode": "100644",
+      "sha256": "08749bb9a8ecf9963c624491a7d6323ce0da727789797f4f5aba2eb69ab55306",
+      "bytes": 2958,
+      "lines": [
+        17,
+        34,
+        54
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/get_changeset.go",
+      "blob": "86c31d4dde15639325e740efd00d5b94564016a0",
+      "git_mode": "100644",
+      "sha256": "34a3543fb6a8e30cf63451fed116057440820843bdabcf0cfd3df1376b83abdc",
+      "bytes": 4184,
+      "lines": [
+        13,
+        21,
+        26,
+        35,
+        49,
+        67
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/get_version.go",
+      "blob": "59cfff8e5b88d17b5a22eeaee2d51d185ba7dd5d",
+      "git_mode": "100644",
+      "sha256": "999fa77742210a04b3d24084e0dbb1ceb0eba931427660ff4336ed120a520c64",
+      "bytes": 4388,
+      "lines": [
+        12,
+        19,
+        24,
+        35
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/grep_lines_test.go",
+      "blob": "d3339d3831bb63315cc1561c3d17cfe67d3af8a3",
+      "git_mode": "100644",
+      "sha256": "4cad8fc0d7511bdfa8daa813905abb7c875af8f58f473f2700199259487b6535",
+      "bytes": 6771,
+      "lines": [
+        26,
+        51,
+        72,
+        96
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/history.go",
+      "blob": "ebbaed016672345cd56bba5b57e805f9fd659b24",
+      "git_mode": "100644",
+      "sha256": "10dc6455b772ea21dbe0f7b9e4247c5d8693952eb7c9b8e2799dc8e8c47fb0ae",
+      "bytes": 5557,
+      "lines": [
+        18,
+        28,
+        36,
+        42,
+        58,
+        83,
+        98,
+        117
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/jobs.go",
+      "blob": "8281d60e2a9fd279d0c7af88ebb3cecff71ad4dc",
+      "git_mode": "100644",
+      "sha256": "2b78cfbc59c57b6bb3c4ee5342ab88faa33aa33967536889a03cff1f0999032b",
+      "bytes": 33405,
+      "lines": [
+        24,
+        34,
+        41,
+        47,
+        61,
+        68,
+        82,
+        92
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/list_by_pattern.go",
+      "blob": "a9af2c0166e516326bdcc3711cd8f30d062397a8",
+      "git_mode": "100644",
+      "sha256": "4fb7cf8fb7f4b26b5e81ba30ea24108a833a70def6b49ff4875a231b161983c9",
+      "bytes": 10850,
+      "lines": [
+        15,
+        28,
+        40,
+        48,
+        68,
+        126,
+        151,
+        159
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/list_changesets.go",
+      "blob": "b48baab9ee563c5a851c2de75b885f00dda48dc8",
+      "git_mode": "100644",
+      "sha256": "871510de3ce6b1ab204f38dbf8493480c9ea7380794a0735962ae326780a68d2",
+      "bytes": 6563,
+      "lines": [
+        14,
+        24,
+        31,
+        36,
+        51,
+        97,
+        105,
+        117
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/list_versions.go",
+      "blob": "fa6b9d07fe2b282f27ea6dec60bdfecc649252c6",
+      "git_mode": "100644",
+      "sha256": "c41746c0a109e8c465477568d505c19408dd5730d6da475c14be277c414a1687",
+      "bytes": 8718,
+      "lines": [
+        13,
+        21,
+        34,
+        39
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/mode_guard.go",
+      "blob": "e0c6d2191ca9b446c014e21ab4f43e8d84d4e6e5",
+      "git_mode": "100644",
+      "sha256": "13c6043218c6ded8707930d53d40713ea0d0567fb15697ad0820f8e09213eecf",
+      "bytes": 3487,
+      "lines": [
+        16,
+        23,
+        29,
+        36,
+        62,
+        87
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths.go",
+      "blob": "07032d88d5883d8fd2c5a56482bf85674ec5ed3c",
+      "git_mode": "100644",
+      "sha256": "b7c8b5df0fe339ccac2ab0880c7c1ddeb50420971eef0114c664a5597908e7a5",
+      "bytes": 3464,
+      "lines": [
+        14,
+        17,
+        22,
+        35,
+        49,
+        56,
+        64,
+        77
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/node_paths_test.go",
+      "blob": "d53214ebb083187c2fa308a27cd575564c3d7238",
+      "git_mode": "100644",
+      "sha256": "c3f0be7f8d4e26bf5c0c02310bec63fe0f021eac393735d4651d5e14e2330260",
+      "bytes": 2740,
+      "lines": [
+        21,
+        68
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/open_notebook.go",
+      "blob": "54957b3e3c09f4ba7eb53ed94c6a9712c778cd16",
+      "git_mode": "100644",
+      "sha256": "30bc624ac7c0b171fb03cdf7131d62a3fba281543a9fd1fef9b5e0437b5ab7c4",
+      "bytes": 2992,
+      "lines": [
+        13,
+        23,
+        32,
+        44,
+        55
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/ports.go",
+      "blob": "256425cfd19bc08853a773da506a78243a565e09",
+      "git_mode": "100644",
+      "sha256": "a16cdb9c63ba090a568df408b383837a4cb5762cd87edae1278e10196ccafd12",
+      "bytes": 45905,
+      "lines": [
+        168,
+        174,
+        181,
+        380,
+        481,
+        528
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/put_page_content.go",
+      "blob": "502c5acd3e2efe1fb0bee1324a532d3434704b59",
+      "git_mode": "100644",
+      "sha256": "9a74041290740f44eaf55dd10f4a774c3e78f773c4b9400ce5610b5ffbe3adf8",
+      "bytes": 2927,
+      "lines": [
+        13,
+        21,
+        27,
+        43
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path.go",
+      "blob": "3a89d5e94d889f8475c5ed36971a1628adbceb5d",
+      "git_mode": "100644",
+      "sha256": "d173ff5b4389f10247f0aa1b03bbf8ee633308a61738bbacab456ab82ce73153",
+      "bytes": 3199,
+      "lines": [
+        13,
+        21,
+        30,
+        37,
+        45,
+        60
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/read_path_test.go",
+      "blob": "06f32a890d08a414f6543e047db38cf998b52f0b",
+      "git_mode": "100644",
+      "sha256": "3e14e22c802de257bc8e8b91f9df5a3fca5fb9a061f4645900a14844e140cd3b",
+      "bytes": 7357,
+      "lines": [
+        16,
+        21,
+        37,
+        86
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/readable.go",
+      "blob": "0c8a9631ff6749076f99d25ae8a1a11160e0766f",
+      "git_mode": "100644",
+      "sha256": "f86885cef6a32018873d6bf31590c929c776d1c0af8e2effaba583d37226aff7",
+      "bytes": 2690,
+      "lines": [
+        15,
+        45,
+        56
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/relocate_path.go",
+      "blob": "f1955cc7fe2082a608519760afb1445be3a6ba2e",
+      "git_mode": "100644",
+      "sha256": "add83640803dc32332ec21b725de3f4a96f402b6c6e1215cbe80f76b6f62cb47",
+      "bytes": 4821,
+      "lines": [
+        16,
+        23,
+        32,
+        41
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/restore_version.go",
+      "blob": "ec364908cb1e71f88139a26922ef170eca66987f",
+      "git_mode": "100644",
+      "sha256": "79a6e3c9c5de70be385a948f390bfd2acb3f0c00b5aedeb801c83b9943556f53",
+      "bytes": 3110,
+      "lines": [
+        14,
+        21,
+        29,
+        44
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_changeset.go",
+      "blob": "df61a8269a214189672832141d3a5b74e9c5cea7",
+      "git_mode": "100644",
+      "sha256": "3033685ec1a82e491e823234c30b6a43149238c9b6bad3a35e95bb4e50394ef1",
+      "bytes": 16920,
+      "lines": [
+        45
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_job_property_test.go",
+      "blob": "595afe91c9a3179f36b64b4270398842cc0dee63",
+      "git_mode": "100644",
+      "sha256": "5b4e6a80b916b6137d8c9fc4412d4d504b5aba9633022ba4a39454e3069224e1",
+      "bytes": 66292,
+      "lines": [
+        64,
+        125,
+        133,
+        144,
+        150,
+        155,
+        159,
+        176
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_test.go",
+      "blob": "91d11f4fc6b43df4a466784d750e89b75e6828b7",
+      "git_mode": "100644",
+      "sha256": "5e18dfab9fbe965c60eeac55e320d53cdcef60e2b6c4f4ea5442380d39151214",
+      "bytes": 47569,
+      "lines": [
+        20,
+        25,
+        32,
+        43,
+        66,
+        77,
+        87,
+        94
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/revert_tree_test.go",
+      "blob": "2445818fbc7f7f74afb008c31b4e9fef2c01e714",
+      "git_mode": "100644",
+      "sha256": "6bd50d7e70fe3eb001831ffa21195ba808341c29301672b4a3634a097b765591",
+      "bytes": 3327,
+      "lines": [
+        16,
+        24,
+        28,
+        32,
+        43,
+        51,
+        84
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_area.go",
+      "blob": "07fe2e2908c8773ce1a4b413dfd8dbfa7598eb4d",
+      "git_mode": "100644",
+      "sha256": "9b9b54be07257c229e6cd1759256581b757f3e60b816161619d4cce0b0c67512",
+      "bytes": 1880,
+      "lines": [
+        12,
+        20,
+        27,
+        34,
+        40,
+        46,
+        54
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_contract_test.go",
+      "blob": "ad9c9b82767f957c4d51a9dfac4af8c932006080",
+      "git_mode": "100644",
+      "sha256": "8fe2911a660cd1f4c510380755b0332782b4c9a0ba6464bdc53377e8343b988b",
+      "bytes": 10141,
+      "lines": [
+        15,
+        86,
+        123,
+        143,
+        202,
+        226
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_duplicates.go",
+      "blob": "c393775b17760c8c19756d9179e610a5e3b1b4df",
+      "git_mode": "100644",
+      "sha256": "a978283dc2e89fb8a47593ff21a5437557e45d8f1595c0dfeb9d4b07d8f1e45a",
+      "bytes": 2438,
+      "lines": [
+        12,
+        14,
+        27,
+        40,
+        46
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_fact_replay.go",
+      "blob": "1251cbb45b37ba74b9432621827ff705fc7dcbbc",
+      "git_mode": "100644",
+      "sha256": "6be43cbdd36ef7a8f096d366023e1663c1ecf31e2af736073efd3abe95049f37",
+      "bytes": 2339,
+      "lines": [
+        16,
+        22,
+        24,
+        66,
+        78,
+        82
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_facts.go",
+      "blob": "5e114027cda38c2b7f0c9d99eeac6183e4e1555c",
+      "git_mode": "100644",
+      "sha256": "49e67a01cb566356fee06675610511af617f948bc2ed9ad921e8f8403348f706",
+      "bytes": 3186,
+      "lines": [
+        13,
+        48,
+        67
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/source_target_path.go",
+      "blob": "ee6dbffe7fc7c9a2ad87377b25a17d333a2ed042",
+      "git_mode": "100644",
+      "sha256": "634a959818b12230107091062113405d6b588d38b1c0dc3816c5c9e23ea72bab",
+      "bytes": 1058,
+      "lines": [
+        12,
+        18,
+        21
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/toggle_task.go",
+      "blob": "495e61d55abaa790355270a91856289a53e89ee7",
+      "git_mode": "100644",
+      "sha256": "5ced495c590dfce69e18a72d2c87f382e294fd83cd3af63085ea6448918776b1",
+      "bytes": 4816,
+      "lines": [
+        13,
+        22,
+        28,
+        48,
+        105,
+        118,
+        132
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/trash.go",
+      "blob": "4834f439fdf22d2388ce619c845d5b8971795eac",
+      "git_mode": "100644",
+      "sha256": "b7ae1b5e6dba01ea04356880f2062a87102935f1bafddd4779c57ca634da3438",
+      "bytes": 3787,
+      "lines": [
+        17,
+        20
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/trash_test.go",
+      "blob": "42529d03eac5dba82d5c74d75ffc1f1e646cbf22",
+      "git_mode": "100644",
+      "sha256": "f3c583bc75ec2d230a005f17001bc89824a36c3099100047b2ac6e331bfe8853",
+      "bytes": 14045,
+      "lines": [
+        17,
+        22,
+        62,
+        67,
+        75,
+        79,
+        92,
+        99
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit.go",
+      "blob": "1f29d1c88174834ca8b07e64dc143eba8704edf7",
+      "git_mode": "100644",
+      "sha256": "487e5f8cc4e77f218cf93e71d2ea956e5ea6c569dbef517bd816b176e6b31c6b",
+      "bytes": 27484,
+      "lines": [
+        25,
+        71,
+        355,
+        711
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_content.go",
+      "blob": "8bb69063cc72f87680442947618125393870aa5b",
+      "git_mode": "100644",
+      "sha256": "0d75e52f434ee31afe16a09ec923a3321ad131624adafe865d74591ff512b7ee",
+      "bytes": 5980,
+      "lines": [
+        17,
+        24,
+        46,
+        50,
+        112,
+        122,
+        134
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_create.go",
+      "blob": "15830bf65e0554a98caee45a7d2e0fd27e2b6fe6",
+      "git_mode": "100644",
+      "sha256": "cc489b162f267af09c81ac111d4096f1091ff6afa157a8ffc96ca2ee0026cd13",
+      "bytes": 3408,
+      "lines": [
+        16,
+        33,
+        63
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_create_asset.go",
+      "blob": "5171516fa711cc4ca4079d7195e642087aaedaf2",
+      "git_mode": "100644",
+      "sha256": "95be1cbdbd577cc12bd7df672e9373974d7bbb356e5b96d272e94985b53a0b95",
+      "bytes": 3447,
+      "lines": [
+        14,
+        26,
+        49,
+        74
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_delete.go",
+      "blob": "89cfe96694a62eba2cb9f9ca25f804e1880f9f85",
+      "git_mode": "100644",
+      "sha256": "c4c073b544ae50884141ddcf839d3b5d9a6a44f965c5f8000a52de52f415ad15",
+      "bytes": 2514,
+      "lines": [
+        15,
+        26,
+        42
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_import.go",
+      "blob": "827e61140244895d70650664021e4de76216a972",
+      "git_mode": "100644",
+      "sha256": "1a8d613fbe9ed84f28b8dcde8e296c487144ae565c0a70326bcb68f1a313b8e3",
+      "bytes": 9520,
+      "lines": [
+        26,
+        42,
+        50,
+        56
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_move.go",
+      "blob": "ff61338fffce0b8646a28f7ea545ec36af500500",
+      "git_mode": "100644",
+      "sha256": "467e59c42e0ea3ed19445a409caf294ffa007584f92129d5533c500d7359d2fc",
+      "bytes": 4138,
+      "lines": [
+        22,
+        75
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_place.go",
+      "blob": "d566a4ed73225152ff09355c5986ed2136ab8bcc",
+      "git_mode": "100644",
+      "sha256": "de3220988dea11eb76a00041fab01448090ff06b5982478d5da0fc934b01f661",
+      "bytes": 4923,
+      "lines": [
+        18,
+        23,
+        32,
+        35
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_relocate.go",
+      "blob": "94a7241517036321d82a4949db2dffa4f3363381",
+      "git_mode": "100644",
+      "sha256": "005d9922d926fa08ac8752e0fd24c5d82623e0719517e7347f34c305d96f5c00",
+      "bytes": 3172,
+      "lines": [
+        19,
+        39
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_rename.go",
+      "blob": "d8c2a2dfe8bb19aab01ea87852b11e9b9de42479",
+      "git_mode": "100644",
+      "sha256": "7c4f46d6ca27de81b468d577dca14c1ace62bde8dd2c9bc3e972b9136bf81a12",
+      "bytes": 2245,
+      "lines": [
+        17,
+        21,
+        36
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_restore.go",
+      "blob": "f02f9ab3e878e12111ce0494a99da02de78ad664",
+      "git_mode": "100644",
+      "sha256": "90f24b0c7df9f28955c629fdfff88a8757df6e69edeaa24adb953fd36494a5e3",
+      "bytes": 19282,
+      "lines": [
+        17,
+        27,
+        49,
+        115
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_revert.go",
+      "blob": "b1d4a05f3ed76359eb0e3daa309184db477526df",
+      "git_mode": "100644",
+      "sha256": "2c71c428b2795460e6ffade6cf4e3799f188c01cb3c9087b5d6d11314078de40",
+      "bytes": 37616,
+      "lines": [
+        70,
+        149,
+        399,
+        460,
+        678,
+        707,
+        878
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/unit_sources.go",
+      "blob": "4a2e64cc032c70d1439fd9bc67e6f636b3e4c0c7",
+      "git_mode": "100644",
+      "sha256": "e9ce246c32bd7ac780095b362f0ace309160d4a003fd15a51e77b6795ba2742e",
+      "bytes": 4762,
+      "lines": [
+        17,
+        99,
+        121,
+        132
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/app/write_path.go",
+      "blob": "e7323be66e7d5c045ee13b25397097acd4130ae0",
+      "git_mode": "100644",
+      "sha256": "b4ce56fd04a69d900ced4360df68f37de82be70a20ee7e46234ebd0e953a01db",
+      "bytes": 9054,
+      "lines": [
+        17,
+        27,
+        36,
+        45,
+        57,
+        75,
+        109,
+        176
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/batch.go",
+      "blob": "1067145feecd59ccc11b7d5cbac0bdf9c1aea001",
+      "git_mode": "100644",
+      "sha256": "aef0dcfa029380e507469db6157b22e4c6df00a69cc5a83cb962ca99586549bb",
+      "bytes": 7929,
+      "lines": [
+        49,
+        53
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/batch_plan.go",
+      "blob": "e052c4fa5c66b62545de9b5c8aa8846848bc07fb",
+      "git_mode": "100644",
+      "sha256": "e902d424c86e8f65c7eaec542c32317852931b3adcc86ef65ccd2784c7624ed1",
+      "bytes": 39638,
+      "lines": [
+        18,
+        49,
+        63,
+        78,
+        109,
+        113,
+        123,
+        132,
+        138,
+        147,
+        158,
+        179,
+        950,
+        977
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/batch_tree.go",
+      "blob": "3abd039e0c2fa947b2854c24bca4832311881e96",
+      "git_mode": "100644",
+      "sha256": "8a9ffba1e1f656c584fb1bd8a432934b98854ef8e929470cb1219099bff9135c",
+      "bytes": 9268,
+      "lines": [
+        16,
+        29,
+        35,
+        46,
+        54,
+        70,
+        80,
+        94
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/changeset.go",
+      "blob": "88a1dafdbcd5f10db114ce51ecabd55a311c285b",
+      "git_mode": "100644",
+      "sha256": "a1bb8f3888c8ce36ccde29dbf41cf8c3d9e6f4b15729eea508cfe406eb0cc131",
+      "bytes": 9744,
+      "lines": [
+        17,
+        49,
+        66,
+        78
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/content.go",
+      "blob": "fe0f29fca91d57efbe800f9f33629f5f8cd4a28d",
+      "git_mode": "100644",
+      "sha256": "e78a6c23ab9381fbfc4c754ab42bf75efa6a001053bb3d284a90c40ca89879b1",
+      "bytes": 1104,
+      "lines": [
+        10,
+        12
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/contract.go",
+      "blob": "5be3701d82a6205e7f2df4ec8be938b9e1adf309",
+      "git_mode": "100644",
+      "sha256": "221b58b78e0d8ba718e4248ea665d7ec5ccdb43c77c8b4c9a179012b121f6afb",
+      "bytes": 8231,
+      "lines": [
+        19,
+        31,
+        39,
+        49,
+        56,
+        62,
+        71,
+        82,
+        171
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/errors.go",
+      "blob": "f965abeff2086fdc04191f45355f40b1417cc209",
+      "git_mode": "100644",
+      "sha256": "2b7b236ef48b9eb414eddb17bc971944009c323f9b5d9d1c6b74562c7c89f9a2",
+      "bytes": 16173,
+      "lines": [
+        14,
+        125,
+        131,
+        145,
+        151,
+        152,
+        156,
+        168
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/instructions.go",
+      "blob": "fd0dc81c07901a226cd9f494dfbd52185dc1074d",
+      "git_mode": "100644",
+      "sha256": "1439f93a17727c5ab8c167ef4090e73bbe87f65e6ea419e870c65dbc337ebb4c",
+      "bytes": 3350,
+      "lines": [
+        11,
+        15,
+        20,
+        27,
+        34,
+        52,
+        77,
+        82
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/list.go",
+      "blob": "de2cfdc6285ee1ba27247a59426d66a6e6f6e843",
+      "git_mode": "100644",
+      "sha256": "19978d9b203c4ce9acd353da3f015f7e976063d08130a3362106680e2a3e713d",
+      "bytes": 1143,
+      "lines": [
+        11,
+        18,
+        31,
+        39
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/node.go",
+      "blob": "cd53ffa95d8158a20ed78370866c74d3dbe68253",
+      "git_mode": "100644",
+      "sha256": "9a88482dd1a5d83e491aa1d620c58c1e713f32c0b5221c0d0d01ca9effca1cce",
+      "bytes": 1683,
+      "lines": [
+        14,
+        17,
+        23,
+        27,
+        42,
+        48,
+        55,
+        64
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/path.go",
+      "blob": "d00f3c4c292f06ca03ae2e455081442ece3419e3",
+      "git_mode": "100644",
+      "sha256": "d5cf43e5028ed325a16329f05ecf36e2486d5336f0c65bfe32f93f2e374fce25",
+      "bytes": 9941,
+      "lines": [
+        14,
+        21,
+        24,
+        37,
+        84,
+        94,
+        100,
+        111
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/read.go",
+      "blob": "8986b3ab7acf9a9c54f989cec62f78f134ee8b16",
+      "git_mode": "100644",
+      "sha256": "d9e534de5566192b2115e8d278f1aefc6450fd5bd61d61a40dafe577eaa734c4",
+      "bytes": 5717,
+      "lines": [
+        12,
+        16,
+        20,
+        45,
+        53,
+        67,
+        120,
+        130
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert.go",
+      "blob": "ac6952acf11602a22ed425cfa536c557508736fe",
+      "git_mode": "100644",
+      "sha256": "e73bef6e3ef64fc8d7026ec43eaef439a817fe4ba8ceb41e32aa7885560ae78b",
+      "bytes": 27243,
+      "lines": [
+        110,
+        117
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_facts_test.go",
+      "blob": "c912a2afd19782db30cf42d268ed4501e6ada827",
+      "git_mode": "100644",
+      "sha256": "bcd313fa1adf17213e680669d438c5e8cc9d08815493703aebf48e8fc98d3dfe",
+      "bytes": 11844,
+      "lines": [
+        14,
+        39,
+        86,
+        104,
+        152,
+        200
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_name_test.go",
+      "blob": "8de9fb667d4e62c471595c7013089df63938012b",
+      "git_mode": "100644",
+      "sha256": "8312b1b44ff4ca123edf534f16aeb478e675ea8d96858d4eafea5b84ce99d733",
+      "bytes": 7749,
+      "lines": [
+        11,
+        81,
+        138
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_schedule.go",
+      "blob": "1215131ac89df1ae009f9f304ba29facad9bf58b",
+      "git_mode": "100644",
+      "sha256": "686f1562e9c589bfbc869f181825ec9b882859a375481ec4a6f4796126ed8226",
+      "bytes": 17680,
+      "lines": [
+        21,
+        41,
+        52,
+        56,
+        69,
+        103,
+        123,
+        128
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/revert_tree.go",
+      "blob": "cd39cf07497654ba5c8b2dc5051842595c329dd8",
+      "git_mode": "100644",
+      "sha256": "6d9f25f22bd40e1bbcc8773f7120642b58ab13a2c626fdd15664d144cb33048b",
+      "bytes": 661,
+      "lines": [
+        7,
+        18
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/source_contract_test.go",
+      "blob": "162df3498b48ce1c2cdc8dfbe81eeab138ff110b",
+      "git_mode": "100644",
+      "sha256": "7f2b941d6483a643cc00681f4a921978dcc3e10823bbb2e52b35966eb029789a",
+      "bytes": 8520,
+      "lines": [
+        14,
+        84,
+        147
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/steps.go",
+      "blob": "d30fe8313b53895bfc7bf39e1a1fb08eaba61622",
+      "git_mode": "100644",
+      "sha256": "c1c94685d3248545e6b6e0f214993d0ae673a31576c7eaf5200b427afd9a1142",
+      "bytes": 6507,
+      "lines": [
+        20,
+        33,
+        68,
+        79,
+        96,
+        119,
+        128,
+        143
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/trash.go",
+      "blob": "c2b0a63ca1fe7beab99a6d6ac3585d8f678f68d3",
+      "git_mode": "100644",
+      "sha256": "9df6d10750a1a247fc407356865a99b184fb5bef4a2447d18312ee83d168e91f",
+      "bytes": 6766,
+      "lines": [
+        47,
+        49,
+        57,
+        66
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/domain/tree.go",
+      "blob": "e68485c16a12edce9007bf960588ffe159aaa340",
+      "git_mode": "100644",
+      "sha256": "c0928c7be7abce491c49eeefa1a7f0243c73c276ab28879c6fc1a83f7d5c7669",
+      "bytes": 2172,
+      "lines": [
+        12,
+        39,
+        45,
+        48,
+        56,
+        68,
+        81
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/extension_test.go",
+      "blob": "0e3ba47cf2295bbc56b487adedea6cb3dfb6d52b",
+      "git_mode": "100644",
+      "sha256": "dd5cc6be9eaa1c9047ef184a0105651414725ec6ad34928e1de12ff836d237a1",
+      "bytes": 44044,
+      "lines": [
+        45,
+        47,
+        49,
+        52,
+        54,
+        63,
+        67,
+        69
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/module.go",
+      "blob": "dd144f70b50f4fb82975acddee40864bfd6c39da",
+      "git_mode": "100644",
+      "sha256": "0f7e2aa1cdaf2d8fa1d2f2d1a5ab918a25b1775c05dad52a0553e9bea94ff7f3",
+      "bytes": 19147,
+      "lines": [
+        283,
+        285,
+        295,
+        345
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/node_paths.go",
+      "blob": "249541b35ea2d79460925e3c55d8053de7bbf1f3",
+      "git_mode": "100644",
+      "sha256": "bcea5bb9a36bc79f908851c7f384988ead55e15f93a222bc2ca54d0083f569c1",
+      "bytes": 4013,
+      "lines": [
+        20,
+        41,
+        47,
+        52
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/node_paths_test.go",
+      "blob": "60a12798c3c6aedc0b6c9c1f35a0e079014b17e3",
+      "git_mode": "100644",
+      "sha256": "873d4d3b6650b01bbd6549277c2180d06816327ff653dd52219e2e117e27169f",
+      "bytes": 8788,
+      "lines": [
+        27,
+        35,
+        99,
+        116
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/purgers.go",
+      "blob": "7cbc70406e414c5062a199c1d40c2adf3a365d66",
+      "git_mode": "100644",
+      "sha256": "31feb63ef234b0a2d73b515394ddf1df56cba7a07fc34dae5b70e8110a6f2ae1",
+      "bytes": 949,
+      "lines": [
+        15
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/source_area.go",
+      "blob": "251cea4dfcb5574b07406a6e88662a36664a31f1",
+      "git_mode": "100644",
+      "sha256": "af4902cda4df882462d53c2bb0efd85b6a766f4f4441868914286a3a56d8e5bc",
+      "bytes": 1591,
+      "lines": [
+        14,
+        20,
+        25,
+        31,
+        36,
+        42
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/tools.go",
+      "blob": "472f3b0ef9529ac61311d777246757c1ee6ef6ed",
+      "git_mode": "100644",
+      "sha256": "a0d31a2571caac0ab7c483a84602c09fb721f04c8ad8e395bf813ef97dd765cc",
+      "bytes": 1713,
+      "lines": [
+        13,
+        16,
+        19,
+        22,
+        26,
+        31
+      ]
+    },
+    {
+      "path": "server/internal/modules/transfer/app/contributors.go",
+      "blob": "705a9a1ff64ff51e61101aab1fe15a726889f5d3",
+      "git_mode": "100644",
+      "sha256": "1721498fb56e520d29e5238c84ad774ec218ef95c60216962c90632fa0b47eda",
+      "bytes": 1109,
+      "lines": [
+        11,
+        15,
+        18,
+        26,
+        29,
+        33
+      ]
+    },
+    {
+      "path": "server/internal/modules/transfer/app/export.go",
+      "blob": "edd77f8c2232191ead4bb8057ecab9f3a2fb90b4",
+      "git_mode": "100644",
+      "sha256": "45ffef232d22716349cdf27a927b41cc97f1e97e4f8ce7babafed7b7f7189cfa",
+      "bytes": 13451,
+      "lines": [
+        21,
+        26,
+        45,
+        52,
+        63,
+        87,
+        99,
+        126,
+        207,
+        243,
+        254,
+        263
+      ]
+    },
+    {
+      "path": "server/internal/modules/transfer/app/import.go",
+      "blob": "da6b38245acd4e69b4f660dc7586f7688a096103",
+      "git_mode": "100644",
+      "sha256": "7159b58f79acf94a20fc428cdfa4a9d34756ff545905f196fcd684e40eff61ef",
+      "bytes": 10287,
+      "lines": [
+        19,
+        24,
+        59,
+        70,
+        99,
+        106,
+        136,
+        188
+      ]
+    },
+    {
+      "path": "server/internal/modules/transfer/contributors.go",
+      "blob": "1fed385432bac7cda1a658140d7bfed9816f9727",
+      "git_mode": "100644",
+      "sha256": "3304b950a6de51a281944743a6100a2b5f0eb2b166d899f9d109f8e8edc5ac31",
+      "bytes": 919,
+      "lines": [
+        9
+      ]
+    },
+    {
+      "path": "server/internal/modules/transfer/domain/plan.go",
+      "blob": "645f06e5430e4bc9f0d34251aa73e005c1814044",
+      "git_mode": "100644",
+      "sha256": "c26d7556efd54e9ff56a04f4f825aa04d73d8e74113b059caf1ca57e44b1292f",
+      "bytes": 10180,
+      "lines": [
+        158,
+        214
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/adapter/mcp/runtime_test.go",
+      "blob": "bba4b105a20aee53b274283a1f7244fd2d872171",
+      "git_mode": "100644",
+      "sha256": "f20fd983c5bf2f7e1c587db6264bde72b285fa40e8fc7c4a66b5a822583355e1",
+      "bytes": 11127,
+      "lines": [
+        26,
+        32,
+        58,
+        132
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/app/ports.go",
+      "blob": "2f8b02088406919cf0dd3a1fefacd12d2f0ed5fa",
+      "git_mode": "100644",
+      "sha256": "1134bcd0047dee8b9381b1c50fbe6af444cfcdc6750cf1cbd883cf40e8bf648e",
+      "bytes": 1148,
+      "lines": [
+        14,
+        21,
+        31,
+        41
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/lint.go",
+      "blob": "908fb86ea7dac1aba61ad5881b577f042903aaf3",
+      "git_mode": "100644",
+      "sha256": "d2eedc70cd56c5df5b935f467e859dab584f7cd416a589d9c52ff30c8db75d23",
+      "bytes": 3872,
+      "lines": [
+        14,
+        48,
+        72,
+        90,
+        95,
+        107,
+        113
+      ]
+    },
+    {
+      "path": "server/internal/modules/wiki/module.go",
+      "blob": "a28f358e483a1ba7aac37931e9b4d570c9ad0a10",
+      "git_mode": "100644",
+      "sha256": "b6d0f930dc2b331773461a7976edaf7beb240f01e05c66985d89c0be1c57e985",
+      "bytes": 2408,
+      "lines": [
+        18,
+        22,
+        37,
+        45,
+        51,
+        57,
+        60
+      ]
+    },
+    {
+      "path": "server/internal/platform/jobs/purge.go",
+      "blob": "866ed17a7c0dbe24296259531a75e686b75ee718",
+      "git_mode": "100644",
+      "sha256": "8a044256c1716dc3defa400e3af61bcdee30c612e5606f91564f207407e96b53",
+      "bytes": 3591,
+      "lines": [
+        15,
+        29,
+        38,
+        42,
+        47,
+        58,
+        60,
+        63
+      ]
+    },
+    {
+      "path": "server/internal/platform/postgres/tx.go",
+      "blob": "87a9322c0781885e706a86d7a76b29e71eea9a91",
+      "git_mode": "100644",
+      "sha256": "27641490d616a9859806515e7b8034f6728a121496dad03918ca9fe90e6b1d46",
+      "bytes": 8175,
+      "lines": [
+        19,
+        26,
+        29,
+        32,
+        36,
+        52,
+        59,
+        68,
+        87,
+        97,
+        100,
+        163,
+        178,
+        200
+      ]
+    },
+    {
+      "path": "server/internal/platform/postgres/tx_test.go",
+      "blob": "519cde55854854bd4d01ced29902ddfa87a8b61c",
+      "git_mode": "100644",
+      "sha256": "03dac8f60a9f1b86a5283937c97cad737cd1427ac3ff4be4b45a34b0034b7d10",
+      "bytes": 15672,
+      "lines": [
+        254,
+        316,
+        353
+      ]
+    },
+    {
+      "path": "server/internal/shared/cursor.go",
+      "blob": "380716feee356da13f7be0f9305954b9be047ecb",
+      "git_mode": "100644",
+      "sha256": "749d102435e960e05e4b6482889df837da4a309fefd4ecf9022c7f831e0311cc",
+      "bytes": 3156,
+      "lines": [
+        9,
+        13,
+        21,
+        41,
+        67,
+        75,
+        84
+      ]
+    },
+    {
+      "path": "server/internal/shared/tx.go",
+      "blob": "010d1602818a4c5dd94314f54124dd0f9887fcca",
+      "git_mode": "100644",
+      "sha256": "d1a8512ee5f37d5a2431411dc6601c06125fe8f35189afaa8dcae4ca0021e1a2",
+      "bytes": 1523,
+      "lines": [
+        13,
+        22,
+        33
+      ]
+    },
+    {
+      "path": "server/migrations/schema_test.go",
+      "blob": "21ffcb2a4706e0ba669845c62364a5bfc354b8bc",
+      "git_mode": "100644",
+      "sha256": "04630b9a96d933592b433bdc6af33acd0f1c7fd294530a2772fb80388cd7f4c5",
+      "bytes": 48681,
+      "lines": [
+        43,
+        53,
+        68,
+        108
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00012_page_nodes.sql",
+      "blob": "fe40ed255bae5e3e1111a665fe0bb85f4beaf0d8",
+      "git_mode": "100644",
+      "sha256": "f32bc5e0ed32743043ed04ba80cc1fcfbd21484dafb7ad9956ad3ee2cfe4909d",
+      "bytes": 2535,
+      "lines": [
+        5,
+        32,
+        36,
+        38
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00014_page_changesets.sql",
+      "blob": "eec31c3b24c3c0b5af1fcb6e3824d41a3962becc",
+      "git_mode": "100644",
+      "sha256": "b3f41e03284a13a6c4af9e32ba1a9137a00b18811b3bf56beb111a95bd002c30",
+      "bytes": 1316,
+      "lines": [
+        5,
+        22,
+        23
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00020_linking_indexed_pages.sql",
+      "blob": "48f787a62ae283960558a22797b8165030983b01",
+      "git_mode": "100644",
+      "sha256": "aa64c726572fcdefc007d1a9be3d29ef735c1dcbaee54344b577085e8e51cb95",
+      "bytes": 1163,
+      "lines": [
+        7,
+        17
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00021_linking_page_links.sql",
+      "blob": "701711d3ec5fc5ac7c0bb58ab021b02eb7e447b3",
+      "git_mode": "100644",
+      "sha256": "40725aba993b90743df5e53ff3915941d8d35caff7d479e4b0ce06481ac41c70",
+      "bytes": 2133,
+      "lines": [
+        5,
+        31,
+        32,
+        35
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00023_linking_page_properties.sql",
+      "blob": "c492bc903fff993fc28b17e53ab57a60086f7398",
+      "git_mode": "100644",
+      "sha256": "8482aa3d68c5ada3c1c907e7b1250ae016c343e043f1ea1d63ad0b0c02079ed7",
+      "bytes": 733,
+      "lines": [
+        5,
+        15
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00026_linking_backlinks_index.sql",
+      "blob": "34e0bf978eafb9596cc73cc926b383299942631d",
+      "git_mode": "100644",
+      "sha256": "fc342e391a726543d73e2de36412eba7e81afa359d2ee64a708a426d65b33ce8",
+      "bytes": 1040,
+      "lines": [
+        7,
+        11,
+        15
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00028_linking_page_links_resolved_asset.sql",
+      "blob": "a8166de0df52a528af1c54b67ad5bc0e82567d7d",
+      "git_mode": "100644",
+      "sha256": "81bd70f4704907442ac2e8d0dec832ae90e2801a314128509cc5a9a6123ca27d",
+      "bytes": 832,
+      "lines": [
+        6,
+        13
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00037_page_changesets_log.sql",
+      "blob": "5de2dc85b01600f72daea6556a6c56149d14623d",
+      "git_mode": "100644",
+      "sha256": "875f96b6ceb10961c56215f01abc1413df7f4524acd00478381e9e171e306a42",
+      "bytes": 1520,
+      "lines": [
+        10,
+        11,
+        14,
+        16,
+        20
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00042_page_nodes_path_keys.sql",
+      "blob": "82b603a086743d181dfc7cb440465a9ce83f36a0",
+      "git_mode": "100644",
+      "sha256": "ea44542035cd36b161f2b0b96d99345c06919688aee7e8be55d397462c23683b",
+      "bytes": 1802,
+      "lines": [
+        14,
+        16,
+        21
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00051_linking_lint_sources.sql",
+      "blob": "de8654478de7a04638b16dd822c9eaeb8c1b5d75",
+      "git_mode": "100644",
+      "sha256": "4d9ef0546cf845f91b9a0f04909c477e705641941aabb36b1eee7f93f5c6e92c",
+      "bytes": 452,
+      "lines": [
+        6
+      ]
+    },
+    {
+      "path": "server/migrations/sql/00052_linking_lint_ranges.sql",
+      "blob": "68b767f1ca06de7be5dfa70ecc32e2ce2be652d0",
+      "git_mode": "100644",
+      "sha256": "15bcd1df65ab5bac1a9c8ab03e4fb4ed9c25ffabad941b101ac805799f1a653d",
+      "bytes": 424,
+      "lines": [
+        6
+      ]
+    },
+    {
+      "path": "server/sqlc.yaml",
+      "blob": "260813fb9bfb4d69b5d5e314a33cfb3ac8ab5c56",
+      "git_mode": "100644",
+      "sha256": "394866f9134e41fc3124d82b7d1366b6476571b369f3bfe08d4f258c87e12d2c",
+      "bytes": 8070,
+      "lines": [
+        2,
+        6,
+        7
+      ]
+    },
+    {
+      "path": "web/apps/web/src/app/routes.tsx",
+      "blob": "3b38d67a53107c79652f0491907ae9e62be7c879",
+      "git_mode": "100644",
+      "sha256": "ebe68e654d7f46bba6bb4e5f07fdcea442282a8bb78e56ae1d01fca584a990c4",
+      "bytes": 14285,
+      "lines": [
+        35
+      ]
+    },
+    {
+      "path": "web/apps/web/src/i18n/messages/en.ts",
+      "blob": "d5b22c8a762af4b7d66804423b23f2a46cd22ba5",
+      "git_mode": "100644",
+      "sha256": "c93abee4a8fa25099e4ca38c2ba52c3dfd449ac23a362249a486fdb5f0feee27",
+      "bytes": 70389,
+      "lines": [
+        2,
+        1141,
+        1144
+      ]
+    },
+    {
+      "path": "web/apps/web/src/i18n/messages/zh-CN.ts",
+      "blob": "458527752335f246393c37579abc36585419cde3",
+      "git_mode": "100644",
+      "sha256": "3ad4a9c3c8ae5c93409256c72cc8e51fdb33904dd7d1fa54d0b571e15a8c3304",
+      "bytes": 68579,
+      "lines": [
+        3
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/changeset-page.test.tsx",
+      "blob": "5d0ebe536b1dfd65176fe2f4b6a9027e8a6bf3f2",
+      "git_mode": "100644",
+      "sha256": "e8c2b5d65f1b10dca96914ae68e87a11a0a0e29cf565062cefbb889b4e363e84",
+      "bytes": 21369,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/changeset-page.tsx",
+      "blob": "28a714acd2e95a4eb3a860900be06aa88952c382",
+      "git_mode": "100644",
+      "sha256": "349bfb4b28b22ed22256f54385199728681230df5d38de31cc697f278a45c504",
+      "bytes": 16337,
+      "lines": [
+        62,
+        86,
+        250,
+        316,
+        369
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/health-page.tsx",
+      "blob": "c123443d49150f1993259cde098f2e0bf695a65f",
+      "git_mode": "100644",
+      "sha256": "a48dfce159db451908c6dc9974f105dcaf1d75778357e4f23a53daad9171185b",
+      "bytes": 11853,
+      "lines": [
+        43,
+        46,
+        66,
+        100
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/health-request.ts",
+      "blob": "a80f96e77967c920b75f2a7d55fca0a6445b76c9",
+      "git_mode": "100644",
+      "sha256": "25f17a32eaef953ea7f5bc1a90c179e637ea13e04d20e23010bd4f0884c729da",
+      "bytes": 1791,
+      "lines": [
+        40,
+        43,
+        47
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-filters.tsx",
+      "blob": "e0f524118649fea6ac924b8b526052cd21fba72b",
+      "git_mode": "100644",
+      "sha256": "c0e4a6334c43fc426fce1b3d2ad22af8f01a1b7ecb67d429e7249d91cf49eedd",
+      "bytes": 6733,
+      "lines": [
+        18,
+        24,
+        34,
+        75,
+        94,
+        160
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-page.test.tsx",
+      "blob": "a8bfc5a74f6dbb9ea3c87e7fd8459ba0c11853c8",
+      "git_mode": "100644",
+      "sha256": "d998bc224df69b6a08909edff7faf6148dc3c579a8f4a44c9d3e56c7edd39560",
+      "bytes": 46960,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-page.tsx",
+      "blob": "fb5467e9a03f7ba46be598359b45bde19399d1fa",
+      "git_mode": "100644",
+      "sha256": "6d9ec05e6dc7e96717b9bf1b0ff39721c75713bdd9e7e56c8b92a221b806fc9b",
+      "bytes": 9667,
+      "lines": [
+        29,
+        38,
+        49,
+        63,
+        220
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/history-row.tsx",
+      "blob": "894ee764bdf8fce01d598f7d0a4ac30ca8fe3d37",
+      "git_mode": "100644",
+      "sha256": "0411cf6e1a2f8b9a484d60d993d41b1584799749d13589f589a1b93b9673030e",
+      "bytes": 4799,
+      "lines": [
+        28
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/notebook-places.tsx",
+      "blob": "7320d82f6e442dc862be46bfeaee81fcadee49cf",
+      "git_mode": "100644",
+      "sha256": "8157b07830ca9e95acc80e17fd3ca294317309592a70bd2dea94a5d4c8aae2a7",
+      "bytes": 1294,
+      "lines": [
+        15
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/notebook/page-tree.tsx",
+      "blob": "deb4f5611df4c3d9f2cf66923cb49d6734325727",
+      "git_mode": "100644",
+      "sha256": "6afecc4b3133bf6e780aa6c9e448d9f7065c53949b1a02d204daadf0d75f27e9",
+      "bytes": 6584,
+      "lines": [
+        46
+      ]
+    },
+    {
+      "path": "web/apps/web/src/pages/page/unresolved-link.tsx",
+      "blob": "b1ca2d04d212d814dd1dca69d92ebaffaaa6bf35",
+      "git_mode": "100644",
+      "sha256": "ff6b9e763e916aad42bcc76d326e0d94b1d88ab0c2ba47865804fddf3520eb0b",
+      "bytes": 10862,
+      "lines": [
+        65,
+        208,
+        231,
+        238,
+        246,
+        258,
+        266
+      ]
+    },
+    {
+      "path": "web/apps/web/src/services/linking.service.ts",
+      "blob": "5fc80a293572da31090edde4eee4c03e0e205be2",
+      "git_mode": "100644",
+      "sha256": "984cd3284ddb66ddd68a3d83c79f42b7576d6f2aca58dd26b2c69550a287bd4d",
+      "bytes": 2877,
+      "lines": [
+        5,
+        12
+      ]
+    },
+    {
+      "path": "web/apps/web/src/services/page.service.ts",
+      "blob": "430b49bee9d39921ca6f4c25724a8d212a4610da",
+      "git_mode": "100644",
+      "sha256": "36a7255fcb2689f12af37782aa616befd02f394971f4c308bb71c3b31fff1872",
+      "bytes": 13907,
+      "lines": [
+        36,
+        66,
+        89,
+        101
+      ]
+    },
+    {
+      "path": "web/apps/web/src/test/fakes.ts",
+      "blob": "5d0f8306f473a09dc7de96b7190d7dc1487f82ad",
+      "git_mode": "100644",
+      "sha256": "e1b3145620f967a0d64afcd013ceb9662448c72ea2612459608b46b19aebeecf",
+      "bytes": 8932,
+      "lines": [
+        15,
+        31,
+        50,
+        64
+      ]
+    },
+    {
+      "path": "web/apps/web/src/test/history-server-source.test.ts",
+      "blob": "81a3f522f284a26d98ca236acfda850207c4c90b",
+      "git_mode": "100644",
+      "sha256": "09f017cc01a14e7a26c7ed273ba85ea4672ae0acb9690cd47e41eda46d7c34f2",
+      "bytes": 32626,
+      "lines": [
+        1
+      ]
+    },
+    {
+      "path": "web/apps/web/src/test/history-server.ts",
+      "blob": "7982a6c755e6a47fb8fc2b1d19653ad38c090274",
+      "git_mode": "100644",
+      "sha256": "245bfdeec0711bcb004bb857756556b1050bcb76ed9b1d59bdc836c607b3199e",
+      "bytes": 29844,
+      "lines": [
+        56,
+        59,
+        76,
+        103
+      ]
+    },
+    {
+      "path": "web/packages/api-client/src/schema.gen.ts",
+      "blob": "85f8978a54cfa87b61959b49910bde1041e2132e",
+      "git_mode": "100644",
+      "sha256": "d1493710c90c5ba30d32ca8245b7dc083c65630f17872efcf769a3ad660a1a7a",
+      "bytes": 311155,
+      "lines": [
+        6,
+        1778,
+        1779,
+        3573
+      ]
+    }
+  ]
+}

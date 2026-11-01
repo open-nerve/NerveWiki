@@ -1,0 +1,199 @@
+{
+  "status": "DESIGN_ACCEPTED_PUBLICATION_CANDIDATE_NOT_APPLIED",
+  "path": "docs/v0.1/M10-llm-wiki/00-M10-design.md",
+  "commit": "6992fd042ff06c110a4e59e67fb89bfe5f43fbd9",
+  "source_sha256": "0c904403d9309da0357f280e04807d96211b34c4b472bcbaf896c613694f8e29",
+  "changes": [
+    {
+      "label": "A01-virtual-error",
+      "line_at_6992": 354,
+      "reason": "真实现有哨兵与合同wrapper分开",
+      "old": "**认出它们的一处**：`domain.FindPath` 与 `WalkPath` 的查找（`Lookup`）由一个按契约的包装给出：LLM Wiki 下根下（祖先为空）查四个保留的标题键之一（`index`、`log`、`index.md`、`log.md`，4.9）时，不查库，答 `ErrVirtualFile{Name}`（`page.virtual_file`，带 4.9 的文字）。MCP 的每个按路径的工具经 `NodePaths.Find`/`Walk`，`batch` 的计划经它模拟的树上的同一个查找（`page/domain/batch_plan.go:361`、`:403`、`:427-431`、`:493`），所以写、`edit`、`move` 的来源与目的地的父节点一线、`delete`、`versions`、`backlinks`、`log {path}`、`index {parent}` 与 `batch` 的每一项都答这个码；`write` 新建 `index.md` 不再建一页真的（今天会，`page/app/write_path.go:105-170`），`edit`、`delete` 不再答 `page.not_found`。`read` 与 `list` 认出它、改为给出内容与虚拟的项；`read index`（附件的路径，键是 `[\"index\"]`）也碰到这个包装，答 `page.virtual_file`，不给 `index.md` 的内容；`read index.md.md`（键是 `[\"index.md\"]`）同样答 `page.virtual_file`：内容只给键是 `index`、`log` 的两个路径 `index.md`、`log.md`；`list {pattern: \"index/\"}`（把 `index` 当文件夹）同样答 `page.virtual_file`。`move` 的目的地的最后一段从不经过这个查找（`batch` 与 `relocate` 只走 `to.Keys[:len-1]`，`page/domain/batch_plan.go:431`、`page/app/relocate_path.go:128`）：移到根下的 `index.md` 由 4.9 的保留标题在守卫与 `CheckContract` 里以同一个码拒绝，`batch` 的计划里照样在预检里拒（审查 B-N4）。",
+      "old_sha256": "c4f34dc9f497eccc1a0ac9db5707fd20c3cac39a5e927a76c5ac81fe12041a4b",
+      "occurrences": 1,
+      "new": "**认出它们的一处**：`domain.FindPath` 与 `WalkPath` 的查找（`Lookup`）由一个按契约的包装给出：LLM Wiki 下根下（祖先为空）查四个保留的标题键之一（`index`、`log`、`index.md`、`log.md`，4.9）时，不查库，答 `VirtualFileError{Name}`（包住现有 `ErrVirtualFile` 哨兵，保留 `errors.Is`）（`page.virtual_file`，带 4.9 的文字）。MCP 的每个按路径的工具经 `NodePaths.Find`/`Walk`，`batch` 的计划经它模拟的树上的同一个查找（`page/domain/batch_plan.go:361`、`:403`、`:427-431`、`:493`），所以写、`edit`、`move` 的来源与目的地的父节点一线、`delete`、`versions`、`backlinks`、`log {path}`、`index {parent}` 与 `batch` 的每一项都答这个码；`write` 新建 `index.md` 不再建一页真的（今天会，`page/app/write_path.go:105-170`），`edit`、`delete` 不再答 `page.not_found`。`read` 与 `list` 认出它、改为给出内容与虚拟的项；`read index`（附件的路径，键是 `[\"index\"]`）也碰到这个包装，答 `page.virtual_file`，不给 `index.md` 的内容；`read index.md.md`（键是 `[\"index.md\"]`）同样答 `page.virtual_file`：内容只给键是 `index`、`log` 的两个路径 `index.md`、`log.md`；`list {pattern: \"index/\"}`（把 `index` 当文件夹）同样答 `page.virtual_file`。`move` 的目的地的最后一段从不经过这个查找（`batch` 与 `relocate` 只走 `to.Keys[:len-1]`，`page/domain/batch_plan.go:431`、`page/app/relocate_path.go:128`）：移到根下的 `index.md` 由 4.9 的保留标题在守卫与 `CheckContract` 里以同一个码拒绝，`batch` 的计划里照样在预检里拒（审查 B-N4）。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A02-virtual-snapshot",
+      "line_at_6992": 359,
+      "reason": "普通read与virtual/export事务所有权",
+      "old": "- `read`：给生成的 Markdown，按 `read` 的行切（`offset`、`column`、`limit`，`page/domain/read.go:67` 对任何字符串都成立）；元数据带 `virtual: true`，没有版本令牌（元数据的那一行说明的十个成员改写）。每次调用重新生成：两次之间别人写了，行号会挪；`tools.json` 的说明里写明。",
+      "old_sha256": "95b7f94dcaaa44ede9f84ec09bcced94fa1744023903ec2cc762e21339299e82",
+      "occurrences": 1,
+      "new": "- `read`：给生成的 Markdown，按 `read` 的行切（`offset`、`column`、`limit`，`page/domain/read.go:67` 对任何字符串都成立）；元数据带 `virtual: true`，没有版本令牌（元数据的那一行说明的十个成员改写）。每次调用重新生成：两次之间别人写了，行号会挪；`tools.json` 的说明里写明。 普通真实页/附件ReadPath保持unlocked/no transaction；仅规范virtual分支拥有一次只读RR快照，复用现page.Deps.Snapshots。mode提示只用于分支，snapshot内重新授权/读mode及source_root，所有生成数据与Cut同ctx；已降级则结束快照后重新授权走普通路径。GenerateInSnapshot不自己开事务；export复用已有snapshot、不嵌套。跨调用行号仍不稳定。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A03-tools-virtual-check",
+      "line_at_6992": 715,
+      "reason": "校正现构造所有权",
+      "old": "  - `ToolDeps.Virtual`：`page.New` 在它为空时 panic（同 `TestTheModuleRefusesNoAttachmentInfos`），再经 serve 的 `read index.md`。",
+      "old_sha256": "bd319cb8697465c0f2633d02d193ae3f456235f6148dd838ab2447c53a03e5b4",
+      "occurrences": 1,
+      "new": "   - `ToolDeps.Virtual`：`(*page.Module).Tools` 在它为空时 panic（同现工具依赖的校验位置）；NewReadPath使用现Deps.Snapshots，Tools用WithVirtual配置副本，再经serve的 `read index.md` 验证最后一跳。不是在 `page.New` 检查一个尚未传入的ToolDeps。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A04-before-capture",
+      "line_at_6992": 379,
+      "reason": "首次Before/revision/bytes不由index串行后移",
+      "old": "- **在哪里算（P4；决定59）**：linking.Index.PagesChanged已处于page unit最终树，不能把删除旧索引前当作改树前。P4在同一索引锁下、任何ReplacePage/DeletePages删旧属性/边前，按被写/删页逐页Capture OldQualifiedFacts：旧indexed current、旧wiki-emitter资格、合格引用{TargetID,TargetIsAsset,Origin=Body/FirstSourcesSlot,Start}。首JSON及全部同path边按P3的512/8MiB/合法单大项界读取、同SourceSlots判定，旧resolved事实不重新解析；只存当前页引用并流入旧已消化target-ID union，不留全页×关联数组。发出页/target的旧source/root/AGENTS/kind/bytes来自page unit BeforeIngest窄端口：首次变动Before及旧bytes memo、当前树叠加逆向Before重建unit起点祖先，新建标不存在、删除子树保旧事实，bootstrap逐字段传Write.Kind/Notebook/ChangesetID/BeforeIngest。签名与边界见P3§3.8.1；不只交旧(resolved_id,property_key)+首键名、不从新JSON补旧形状。P4在解析后得新候选，减旧target union，再以一条批量候选SQL查未被写/删页；该SQL由P4正式设计兑现，首JSON每相关页一次、全匹配边先数唯一性再筛candidate target，与手写oracle差分，P3没有现成direct EXISTS可套。页/来源判断仍经page端口，运行时不跨模块SQL；结果经page.NewIngestMarks写changeset_sources/ingest_count，同unit事务/索引锁。P3仅交纯判定与合同，不提前实现ingest。",
+      "old_sha256": "97205b88b6566041200f1aea2bb84dd990ebd9dc4dfdaa02a5c37bccb5a8ca64",
+      "occurrences": 1,
+      "new": "- **在哪里算（P4；决定59、71）**：同unit/index锁下、任何ReplacePage/DeletePages之前Capture全部写/删W的旧D与旧F。D为合格wiki直接引用；F(A)为current非空来源页的真实正文asset引用，排frontmatter和树parent。旧已消化是D及F父与D相交的资产；source对D不合格不能抹F。首次Before memo保初始树、bytes/revision与其可靠性，内容首锁与StepContent.BeforeRevision绑定；旧来源page target/F parent须可信BeforeRevision匹配旧Extractor2 head，所有旧头在首Replace/Delete前取，不借更新头补旧证明。新candidate的来源page须Now metadata非空/live/同本/source且Present/Extractor2/revision配对，asset无page head要求；此revision证明为P4新增。逐页复用现SourceValues/SourceSlots/Bodies流与512/8MiB/合法单大JSON界，首sources全peers后唯一判定，不重解析旧正文。先完整D_W，再读W source F；known/possible父已属D_W时折叠资产，剩余必要distinct(S,A) ID关系及每S资格/不确定性保留至最终D_U可知。这明确修订初稿不留W×关系承诺，但不保旧正文/JSON/peers/raw边；每S排序asset切片不做SQL pair参数副本。最终metadata证明父不可能进D_U且旧D_W全处理后可释放，未知不能当否定，system Rewrite仍live来源不能漏。Q/S同W删除须保旧D/F；Q未改/S在W按已批准最终tree/解析D_U近似与保留F交，不偷偷加强Q的Before。RevertTrees/六字段活树及nil/empty边界独立保留，不能代revision/bytes/deleted/coverage。bootstrap逐字段传Kind/Notebook/ChangesetID/Before；page.NewIngestMarks在同unit写标记，无跨模块SQL。",
+      "disposition": "accepted implementation decision 71; implementation and cost pending"
+    },
+    {
+      "label": "A05-unknown-coverage",
+      "line_at_6992": 381,
+      "reason": "保守上界、全量EOF、成本与错误界",
+      "old": "- **未知旧事实（决定62，P4待设计/实施）**：Capture必须显式区分KnownAbsent（unit起点新建页不存在）、KnownIneligible（起点事实足以证明无旧wiki发出资格）、Known（资格/JSON/来源表示/解析事实齐备）与Unknown（已存在而stale/missing或必需事实不可靠）。Known集合里的空引用才是已知空；Unknown不流成空old-union。未改页也须证明候选相关旧消化关系的覆盖足够；缺可信索引的一页可能在原来已消化S，不能仅因本次新建页KnownAbsent就推全本未消化。不能证明新颖性时正常编辑/索引更新继续，既有标记保留，但不新增该项无法证明的ingest；管理员先reindex恢复后续可靠判定，不事后补造旧标签。此保守缺标独立于上段“可信未改页按最终树”既有近似。P4负责高效coverage/unknown传播、必要诊断和保存成本、changed/untouched stale/missing及已知新页对照；本合同不许可逐保存无界扫全树、持久化ready字段或运行时parse旧正文。接口示意及纯SourceSlots测试仍不代表真实Capture已实现，详见P3§3.8.2。",
+      "old_sha256": "3a6b0b2598ef71978e80f6cbbe9a670ecc3eb249a5628ffc46085d7f6cc433ab",
+      "occurrences": 1,
+      "new": "- **未知旧事实（决定62、71；P4待实施）**：D与F角色分别区分KnownAbsent（可信起点新建不存在）、KnownIneligible（该角色资格确实不满足）、Known（完整可信旧表示与资格）及Unknown（零值）。Unknown默认AllDirect或该source F的AllAssets；完整可信旧resolved表示但target初始bytes/revision资格不确定时，可保完整PossibleDirectTargets/PossibleAssetTargets，包含该页所有known贡献，不把late事实当Before。全局PossibleTargets必须闭合D_possible∪F_possible(D_possible)，不能只列source S而漏其A；符号关系表达允许，截断/缺证不可称完整。source F不确定只在其父可能属D时影响asset，不把独立page T压掉；没有D父的资产仍可新标。未知不等于Known空。真正SQL/Scan/rows.Err/DTO/ctx错误回滚，事务健康查询间softstop才可Incomplete。全raw nodes含trash、严格keyset到EOF及全部适用current heads证明coverage；wiki missing/stale不能仅凭candidate reverse hits当无旧贡献，source F缺证独立传播。current对page使用metadata revision与Present同本Extractor2头配对，512只为批界。无实际候选普通保存零全本扫描，健康100k与最大合法batch须真实非空mark，不引低cap使正常本恒Unknown。不能证明的项不新增，原edit/index与已有标记保留，无持久ready、无运行时旧正文parse、无事后回填。",
+      "disposition": "accepted implementation decision 71; implementation and cost pending"
+    },
+    {
+      "label": "A06-index-serial",
+      "line_at_6992": 383,
+      "reason": "单列untouched串行和改删初始事实",
+      "old": "- **并发**：同一本笔记本的两个单元在索引的锁上串行（13.1 第 5 条）：后一个在前一个提交之后才读，看得到前一个新写的引用，所以同一个来源不会被两个变更集都记成\"新引用\"。",
+      "old_sha256": "885966383c7bef6aa6fb91dea2277adb2943c23d6c0ab87cde83757b4566afd2",
+      "occurrences": 1,
+      "new": "- **并发**：同一本笔记本的两个单元在索引的锁上串行（13.1 第 5 条）：后一个在前一个提交之后才读，看得到前一个新写的引用，所以同一个来源不会被两个变更集都记成\"新引用\"。 未改emitter指取得index advisory lock后的ReadCommitted提交串行边界，保留已批准的本unit最终树/解析近似，不宣称全本物理BEGIN快照。另writer已改content未提交而等index时，plain SELECT看到旧committed content及旧index；禁止index下再锁其content行造成锁序倒置。改删页始终用首次Before；source0→非空可由同book SHARE首次正文并发，source-hash只约束其来源新增，普通wiki写不因此有旧bytes证明，按上项Unknown处理。 D/F时点统一：W旧D/F在同锁首Replace/Delete前保存，未改Q/S按最终tree/解析/current证明；Q与S都W时不得用未改近似豁免旧跟随消化。Q不在W而S在W时，S旧F仅与Q最终合格D_U相交，S被删导致最终D_U不含S时不凭空补Q旧D。",
+      "disposition": "accepted implementation decision 71; implementation and cost pending"
+    },
+    {
+      "label": "A07-query-mark-bounds",
+      "line_at_6992": 382,
+      "reason": "完整candidate与所有匹配peer、错误、marks cap",
+      "old": "- **界**：判定在每次保存都要等的索引锁里（`index.go:41`），而一页可以有 10,000 条链接（`MaxLinks`，`linking/domain/facts.go:101-109`）、一个 `batch` 写很多页，所以候选的检查与插入各是一条语句，不是每个候选一条。一个变更集至多记 `MaxIngestSources` = 10,000 个来源（编辑会话把几次保存并进一个变更集，每次都可以引用新的来源）：到了就不再记，`ingest_count` 等于记下的行数，到顶时历史写\"10,000+\"。成本守卫在 `batch` 的界上（很多页 × 每页很多新的来源链接），在 `TestABatchAtItsRewriteBoundTakesItsTime` 旁边；M12 的性能移交加一条。",
+      "old_sha256": "d301c1e9bb791e2285612ecae43437811b9b337ac881257955777febb475d996",
+      "occurrences": 1,
+      "new": "- **界**：索引锁里最终候选证据查询与marks插入各一条，不为每来源另查。复用旧Bodies读取W source F属于新增实际读取成本；最终SQL传完整candidate、current source证明、untouched emitters/sources、D_W known/possible和去重F parent IDs，R对关系留app。SQL每相关页首JSON一次、完整peers数唯一后筛wanted，返回每candidate的D_U/F_U证据和全部parent D_U；app全扫错误/flags/rows.Err后才投影旧F闭包并产novel，即使空novel也须报错。全部目标与上下界不得受10000 mark cap截断。R≤Σdistinct_body_assets≤实际|W_source|×MaxLinks10000，512是读批，120000是被rewrite达到的链接而非旧F总上限；单rename不受400页batch界。400×300及400×10000（合法扩展名、每页80005B）的多pair、100操作、100k非空结果是新增成本计划，原request/内存/CI等预算不放宽，Go slice/capacity/去重/sort/旧新全集与PG参数同时峰值实测后定。一个cs最多10000来源，Add绑定owned live edit cs/notebook，去重排已有UUID序取剩余容量，seq接count、count按实际INSERT RETURNING增加；所有内部不变量/错误回滚，历史到顶仍显示10000+，不自动mark跟随asset。M12接实际性能样本，不以静态算式宣称通过。",
+      "disposition": "accepted implementation decision 71; implementation and cost pending"
+    },
+    {
+      "label": "A08-cleanup-invariants",
+      "line_at_6992": 385,
+      "reason": "bounded leaf/predicate/return与同次notebookpurge",
+      "old": "- **不变式**（`checkPages`，各有 SQL 播下的反例）：`changeset_sources` 只有存在的变更集的行（笔记本删除之后、清理之前，变更集已标删除而行还在，所以不写\"活着的\"）；`ingest_count` 等于这个变更集的行数（清理的谓词要取的变更集除外，4.2）；有标记的变更集都是 `edit` 类型。",
+      "old_sha256": "e8990885e1e1e2e01663e1ae118f1e8dae137f2954aa1d8772643663dd1eda60",
+      "occurrences": 1,
+      "new": "- **不变式**（`checkPages`，各有 SQL 播下的反例）：`changeset_sources` 只有存在的变更集的行（笔记本删除之后、清理之前，变更集已标删除而行还在，所以不写\"活着的\"）；`ingest_count` 等于这个变更集的行数（清理的谓词要取的变更集除外，4.2）；有标记的变更集都是 `edit` 类型。 清理source叶的两个资格分支与父一致（deleted-before或live-trimmed，并无items/revisions），每语句LIMIT batch且锁leaf/cs均SKIP LOCKED，循环到短批并把leaf数计入既有page purger返回；两个parent DELETE都加NOT EXISTS sources，同job可继续PurgeNotebooks。不增加独立purger或节点FK；原migration的完整ALTER到commit锁占有、CHECK扫描、Up/Down/Up/runtime/sqlc义务不变，最终序号按正式main绑定。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A09-ingest-measure",
+      "line_at_6992": 726,
+      "reason": "新增真实非空100k/普通快路测量义务",
+      "old": "  - ingest 的判定在 `batch` 的界上（很多页 × 每页很多新的来源链接），在 `TestABatchAtItsRewriteBoundTakesItsTime` 旁边；",
+      "old_sha256": "79eb2f5d778dda28f032a58b5f72d753c366cb9844948f0116d543b668dcd4cc",
+      "occurrences": 1,
+      "new": "  - ingest 的判定在 `batch` 的界上（很多页 × 每页很多新的来源链接），在 `TestABatchAtItsRewriteBoundTakesItsTime` 旁边； 同时要有普通非no-op但无新候选的零coverage快路、健康100k完整EOF后真新增T=1、旧S→新T非空及最大合法batch成功的oracle；不得以总Unknown过成本门禁。量完整IDs/union/参数编码/heap、SQL物理范围/首JSON次数、index锁时长和原预算。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A10-file-directory-measure",
+      "line_at_6992": 724,
+      "reason": "文件与目录新边界成本",
+      "old": "  - `index.md` 的一次 `read` 在 10 万页（含入链数最坏的形状）；贡献者在 10 万页与 1,000 个变更集；",
+      "old_sha256": "575ceddcfbc6c42dea6ecf68eba864f124ec7892073512fb1c03a94451948c0d",
+      "occurrences": 1,
+      "new": "  - `index.md` 的一次 `read` 在 10 万页（含入链数最坏的形状）；贡献者在 10 万页与 1,000 个变更集； read的40KiB在中和/转义后核实际UTF8字节与N/M，export索引不读inbound；目录有限catalogue另量100k全distinct/key碰撞/合法长type/jsTrim慢支路/TOAST/HTTP实际字节，MATERIALIZED不是物理范围或成本证明。固定预算与原容量义务不降。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A11a-types-contract",
+      "line_at_6992": 485,
+      "reason": "必要的新REST有界catalogue/显式完整性合同",
+      "old": "| `listIndex`（新） | `GET /api/v0/notebooks/{notebook_id}/index?type=&tag=&parent_id=&at_root=&limit=&cursor=` | linking | M9 的 `ListIndex`（MCP `index` 的同一份），`IndexQuery` 加按父节点 id 的筛选：`parent_id` 是一页的 id，`at_root=true` 是根下的子节点，两者同给答 422；项以 id 写（`{page_id, parent_id, title, type, summary, summary_cut, tags, updated_at, inbound, inbound_capped}`，6.1），去掉来源区的页（`ExcludeArea`；MCP 的 `index` 不用它）；答复 `{data, next_cursor, types, source_area, mode}`：`types` 是出现过的类型与各自的页数（不数来源区的页，目录视图的类型筛选从它选），`source_area` 是 `{root_id, sources}`（来源根与来源的数目，普通笔记本为 `null`），`mode` 是算时的模式。次序照 `ListIndex` 今天的（`linking/app/list_index.go:66-90`：游标 400，类型、标签、父节点的 422，含 `parent_id` 与 `at_root` 同给，都在 `l.check` 里，再 `limit` 的 422，然后笔记本的 404），声明为 13.1 第 27 条的一处例外：它是一个 MCP 工具的 REST 的一面，它的值的核对都与资源无关（13.1 第 4 条的那种例外），这样 M9 的 `TestListIndexJudgesInTurn`（`linking/app/list_index_test.go:149-175`）与文档都不改（审查 C2-M3） |",
+      "old_sha256": "b433d4d46137dd81a0c002fd92404b0ddfbcaa99836512438cccc5b0ebb15ca6",
+      "occurrences": 1,
+      "new": "| `listIndex`（新） | `GET /api/v0/notebooks/{notebook_id}/index?type=&tag=&parent_id=&at_root=&limit=&cursor=` | linking | M9 的 `ListIndex`（MCP `index` 的同一份），`IndexQuery` 加按父节点 id 的筛选：`parent_id` 是一页的 id，`at_root=true` 是根下的子节点，两者同给答 422；项以 id 写（`{page_id, parent_id, title, type, summary, summary_cut, tags, updated_at, inbound, inbound_capped}`，6.1），去掉来源区的页（`ExcludeArea`；MCP 的 `index` 不用它）；答复 `{data, next_cursor, types, types_complete, unfilterable_type_pages, source_area, mode}`：`types` 是有限的可精确筛选类型及各自页数：按既有索引保存的完整type值（保持NUL→FFFD，不是Markdown拼写）而非显示前缀/key合并，统计全本可列wiki页且排来源、在type/tag/parent筛选之前。内部候选界最多100项、types数组实际JSON≤32KiB；只有完整存储值≤1024 UTF-8字节者进入菜单，type参数仍原exact/1024B合同。types_complete明确是否因项/字节或long值未完整，unfilterable_type_pages给存储值超1024B的页数而非distinct类型数。完整有限ID头流按≤512批读取，有限top-K计保留项完整count，不静默截断合并。两新增字段与数值已随P4实施决定72接受设计，按S1实施并验证原预算，`source_area` 是 `{root_id, sources}`（来源根与来源的数目，普通笔记本为 `null`），`mode` 是算时的模式。次序照 `ListIndex` 今天的（`linking/app/list_index.go:66-90`：游标 400，类型、标签、父节点的 422，含 `parent_id` 与 `at_root` 同给，都在 `l.check` 里，再 `limit` 的 422，然后笔记本的 404），声明为 13.1 第 27 条的一处例外：它是一个 MCP 工具的 REST 的一面，它的值的核对都与资源无关（13.1 第 4 条的那种例外），这样 M9 的 `TestListIndexJudgesInTurn`（`linking/app/list_index_test.go:149-175`）与文档都不改（审查 C2-M3） REST内部Catalogue=true，从未按type/tag/parent过滤的完整首遍头排来源并分批取完整filter值，统计后筛items；MCP Catalogue=false，保留既有IndexPages(typeIs)精确SQL，不承担catalogue读取。 合法空children、TagKey=false、TagPages空、type零命中与cursor过尾只使items为空，REST仍收集全本catalogue及mode/source_area；真实错误保持原优先次序，MCP可保留原廉价空返回。 |",
+      "disposition": "accepted implementation decision 72; implementation and cost pending"
+    },
+    {
+      "label": "A11b-types-view",
+      "line_at_6992": 427,
+      "reason": "有限菜单与long值展示的必要UI合同合同",
+      "old": "| 目录视图 | `/:slug/notebooks/:id/index`（在 `NotebookLayout` 之下），两种模式都有（总体设计 5.2\"目录和日志在界面与工具中查看\"），普通笔记本从 `NotebookPlaces` 的\"目录\"进（这个入口留着，LW13 的页面版本也从这里进），LLM Wiki 另有树里的虚拟行。只列 wiki 的页（`ListIndex` 的 `ExcludeArea`），来源区写成一行（来源区的路径与来源的数目，链接到健康度面板的\"未消化的来源\"；不写待消化的数目），同 `index.md`（第 11 节主持者的决定）。分组照 5.5：有类型的（4.10 的\"缺\"的反面）按类型（类型按标题键排），组里按建的先后（`ListIndex` 在一个类型里按 id 排，id 是 UUIDv7，写明是\"按建的先后\"；与 `index.md` 不同，它是一个文件、在 Go 里按路径排，两者的不同写明，审查 B2-N8）；没有类型的按父页分组（已加载的项）。筛选按类型、标签，都在 URL 里（`?type=`、`?tag=`）；类型从答复带出的类型与页数里选（`ListIndex` 每次本就读每页的类型键）；按父页的筛选要一个选择器（`parent-options.tsx` 有），可以进 M12 的打磨（第 11 节主持者的决定）。\"更多\"翻页。页调 `useDocumentTitle`。不是由事件驱动的视图，选项、加载与重试、缓存的规则同健康度面板（4.12），只是没有遇到 `server_busy` 不自动重试的 `onErrorRetry`：`listIndex` 不占 lint 的名额、不声明 503（第 5 节），它的读不到照 `retry.ts` 的规则（审查 C4-N2）；`listIndex` 答出算时的 `mode`，视图同样比 `useNotebook().mode` 标出模式的改变；键是一次打开的 `location.key` 加上类型、标签与游标，只在 SWR 里，换键时去掉旧的（13.2 第 7、15 条；审查 C3-N3）。数据是新的 REST 目录（第 5 节：linking 的 `ListIndex` 加按父节点 id 的筛选与以 id 写的项，`index.list`）；代价：一个 REST 操作与一页，`ListIndex` 每次读整本的索引，加上 `ExcludeArea` 与 `source_area` 的来源区的读（10 万页约 1 秒，10 万个来源再约 0.1 秒；审查 B3-N3） |",
+      "old_sha256": "533732cf9dc3f7ae62c5034fff92727e895e588873413f3ec41c717b5359d06a",
+      "occurrences": 1,
+      "new": "| 目录视图 | `/:slug/notebooks/:id/index`（在 `NotebookLayout` 之下），两种模式都有（总体设计 5.2\"目录和日志在界面与工具中查看\"），普通笔记本从 `NotebookPlaces` 的\"目录\"进（这个入口留着，LW13 的页面版本也从这里进），LLM Wiki 另有树里的虚拟行。只列 wiki 的页（`ListIndex` 的 `ExcludeArea`），来源区写成一行（来源区的路径与来源的数目，链接到健康度面板的\"未消化的来源\"；不写待消化的数目），同 `index.md`（第 11 节主持者的决定）。分组照 5.5：有类型的（4.10 的\"缺\"的反面）按类型（类型按标题键排），组里按建的先后（`ListIndex` 在一个类型里按 id 排，id 是 UUIDv7，写明是\"按建的先后\"；与 `index.md` 不同，它是一个文件、在 Go 里按路径排，两者的不同写明，审查 B2-N8）；没有类型的按父页分组（已加载的项）。筛选按类型、标签，都在 URL 里（`?type=`、`?tag=`）；类型从答复的有限exact类型与页数中选，显示可截短但请求用完整存储值；types_complete=false提示“仅显示部分可筛选类型”，long页数非零提示“有N页的类型名称过长，无法按该类型筛选”。长类型页仍在目录，不能合并为一个假exact选项；当前URL选中值即使未在有限菜单也保留，不自动清筛选或重投。计数范围与项/字节界见第5节新REST合同，已随P4实施决定72接受设计；按父页的筛选要一个选择器（`parent-options.tsx` 有），可以进 M12 的打磨（第 11 节主持者的决定）。\"更多\"翻页。页调 `useDocumentTitle`。不是由事件驱动的视图，选项、加载与重试、缓存的规则同健康度面板（4.12），只是没有遇到 `server_busy` 不自动重试的 `onErrorRetry`：`listIndex` 不占 lint 的名额、不声明 503（第 5 节），它的读不到照 `retry.ts` 的规则（审查 C4-N2）；`listIndex` 答出算时的 `mode`，视图同样比 `useNotebook().mode` 标出模式的改变；键是一次打开的 `location.key` 加上类型、标签与游标，只在 SWR 里，换键时去掉旧的（13.2 第 7、15 条；审查 C3-N3）。数据是新的 REST 目录（第 5 节：linking 的 `ListIndex` 加按父节点 id 的筛选与以 id 写的项，`index.list`）；代价：一个 REST 操作与一页，`ListIndex` 每次读整本的索引，加上 `ExcludeArea` 与 `source_area` 的来源区的读和本候选的完整 catalogue 批读；B3-N3 的旧目录/来源样本仅作历史对照，不能当新增 catalogue 的通过证据。100k 全 distinct、长值与慢支路的时间、heap、TOAST和输出实际字节须由P4实测，保留原预算 |",
+      "disposition": "accepted implementation decision 72; implementation and cost pending"
+    },
+    {
+      "label": "A11c-types-limits",
+      "line_at_6992": 456,
+      "reason": "总体13.1#31有界输出落实合同",
+      "old": "| `index.md` | 40 KiB（`read`），写到它为止；读条目的上限 `MaxIndexFileItems`（P4 量过之后取 40 KiB 放得下的数，初值 200）；导出 10,000 项、2 MiB、不带入链数 | 4.13 |",
+      "old_sha256": "3e91b6749aa0eaf4aa262e5d1b72d4c6c634486a2ea4501cabb6c40ab4fe153d",
+      "occurrences": 1,
+      "new": "| `index.md` | 40 KiB（`read`），写到它为止；读条目的上限 `MaxIndexFileItems`（P4 量过之后取 40 KiB 放得下的数，初值 200）；导出 10,000 项、2 MiB、不带入链数 | 4.13 |\n| 目录 types catalogue（P4决定72） | 最多100个完整exact可筛选值；各≤1024 UTF-8字节；types数组JSON≤32KiB；types_complete和unfilterable_type_pages显式说明缺失；新常量已接受设计、待实施验证，不是新配置 | 5、P4类型边界 |",
+      "disposition": "accepted implementation decision 72; implementation and cost pending"
+    },
+    {
+      "label": "A12-destination-identity",
+      "line_at_6992": 366,
+      "reason": "A12-destination-identity; root accepted correction, original A fix1 resolved; root accepted",
+      "old": "- **写者的字符串要中和**（审查 B-M13）：两个文件被当作系统的输出读（\"目录\"与\"日志\"），而里面有写者控制的字符串：摘要可以带换行，变更集的说明至多 4,096 字节、可以带换行（`00014_page_changesets.sql:14`），一个 `summary: \"x\\n- [Fake](raw/y.md) — …\"` 或一个 `batch` 的说明就能伪造一项或一次别人的 ingest。所以：控制字符与换行一律换成空格；标题里的 `\\`、`[`、`]` 转义；链接的目的地写作 `<路径>`，路径里的 `<`、`>` 转义（标题与路径带空格、`(`、`)`、`]`、`<` 时 `[标题](路径)` 本会断开）。表格测试带这些敌意的字符串。",
+      "old_sha256": "29e38b9f5c0eff8d314fcc420113f864a45c982aa48f04aeb9c236456f53ef64",
+      "occurrences": 1,
+      "new": "- **写者的字符串要中和**（审查 B-M13）：两个文件被当作系统的输出读（\"目录\"与\"日志\"），而里面有写者控制的字符串：摘要可以带换行，变更集的说明至多 4,096 字节、可以带换行（`00014_page_changesets.sql:14`），一个 `summary: \"x\\n- [Fake](raw/y.md) — …\"` 或一个 `batch` 的说明就能伪造一项或一次别人的 ingest。所以：显示label中的控制字符与换行换空格，标题中的反斜杠和方括号转义；这些中和只用于显示。P4修订明确分开显示和目的地：上述中和／256B截短仅作用于显示label，不改node路径身份。read目的地取完整原路径，export取完整plan映射路径；先把字面%编码%25，再编码<>并包angle，%41/%20不被误读成别的名字。禁止trim／中和／截短destination；非法UTF8或控制字符路径为无名称内部错误。按最终编码后字节计整条，装不下则省整项并更新footer，不能写半个链接；固定头／来源行和footer一起受原预算。独立身份与编码扩张反控在P4设计列明。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    },
+    {
+      "label": "A13-export-mapped-paths",
+      "line_at_6992": 371,
+      "reason": "A13-export-mapped-paths; root accepted correction, original A fix1 resolved; root accepted",
+      "old": "**导出**（[M7 的移交](handoffs/M7-transfer.md)第 1、2、6 项）：wiki 登记 `transfer.ExportContributor`。只在整本导出（`Scope.RootID` 为空）、这本笔记本是 `llm_wiki`（在导出的快照里读）时，`Add(\"index.md\", …)`、`Add(\"log.md\", …)`，放在库的根下；子树的导出什么都不加（子树没有\"根下的目录\"，也就不会与一个叫 `index` 的子树根冲突）。贡献者在导出的快照里直接调它要的读（`ListIndex` 带 `ExcludeArea`、来源区的读、变更集的列表），从不经 wiki 的 `Lint`：那会再开一个快照（`WithinSnapshot` 在 ctx 已带事务时答 `ErrNestedSnapshot`，`platform/postgres/tx.go:131-141`），也会在导出里占一个 lint 的名额（审查 B2-M2）。LLM Wiki 的根下不会有叫 `index`、`log`、`index.md`、`log.md` 的真实节点（4.9），所以 M10 建的笔记本整本导出不会 `contributor_conflict`；一个 SQL 播下的根下的 `index.md` 文件夹页（M11 的升级之前可能有）让导出答 `contributor_conflict`，测试钉住这个结果，M11 的升级要先处理保留的标题（\"写给后面的 M\"）。导出用的上限比 `read` 大：`index.md` 至多 10,000 项、2 MiB，**不带入链数**（审查 B-M12：1,000 页各链接全部 10,000 项在 `MaxLinks` 之内，入链数在导出的快照里最坏约 12.5 秒），`log.md` 至多 1,000 个变更集、1 MiB，各自末尾说明截断；至多两个文件，写明上限、由贡献者守住、测试钉住（13.1 第 31 条；M7 移交第 6 项：不加流式写入），成本守卫在 10 万页与 1,000 个变更集上（P4 量，含最坏的形状）。贡献者的错误不带名称（13.1 第 10 条）。",
+      "old_sha256": "ef27f1fbad0563b1aa6d80ab29855764bb7a770da51e3ed6f777e5923030e5a4",
+      "occurrences": 1,
+      "new": "**导出**（[M7 的移交](handoffs/M7-transfer.md)第 1、2、6 项）：wiki 登记 `transfer.ExportContributor`。只在整本导出（`Scope.RootID` 为空）、这本笔记本是 `llm_wiki`（在导出的快照里读）时，`Add(\"index.md\", …)`、`Add(\"log.md\", …)`，放在库的根下；子树的导出什么都不加（子树没有\"根下的目录\"，也就不会与一个叫 `index` 的子树根冲突）。贡献者在导出的快照里直接调它要的读（`ListIndex` 带 `ExcludeArea`、来源区的读、变更集的列表），从不经 wiki 的 `Lint`：那会再开一个快照（`WithinSnapshot` 在 ctx 已带事务时答 `ErrNestedSnapshot`，`platform/postgres/tx.go:131-141`），也会在导出里占一个 lint 的名额（审查 B2-M2）。LLM Wiki 的根下不会有叫 `index`、`log`、`index.md`、`log.md` 的真实节点（4.9），所以 M10 建的笔记本整本导出不会 `contributor_conflict`；一个 SQL 播下的根下的 `index.md` 文件夹页（M11 的升级之前可能有）让导出答 `contributor_conflict`，测试钉住这个结果，M11 的升级要先处理保留的标题（\"写给后面的 M\"）。导出用的上限比 `read` 大：`index.md` 至多 10,000 项、2 MiB，**不带入链数**（审查 B-M12：1,000 页各链接全部 10,000 项在 `MaxLinks` 之内，入链数在导出的快照里最坏约 12.5 秒），`log.md` 至多 1,000 个变更集、1 MiB，各自末尾说明截断；至多两个文件，写明上限、由贡献者守住、测试钉住（13.1 第 31 条；M7 移交第 6 项：不加流式写入），成本守卫在 10 万页与 1,000 个变更集上（P4 量，含最坏的形状）。贡献者的错误不带名称（13.1 第 10 条）。 P4通过bootstrap把实际Scope.Nodes的ID／Asset／Path转为wiki自有export-only映射，在现snapshot内只读使用，完成后释放；不复刻plan。index、来源行、log变化和ingest来源按ID使用映射path（分组／排序／显示path同映射，标题仍原名）；folder-only显示尾斜杠非链接，不猜.md；历史缺ID保留null／非链接。重复／非法映射、live节点缺映射或kind不符使导出失败且不含名称，不静默丢条目。read仍用原page域路径。真实ZIP的folder-only与碰撞改名子树及丢映射反控验证全部消费者；不加snapshot／流式框架。",
+      "disposition": "design correction accepted after actual fresh reviews and original-reviewer checks; implementation pending"
+    }
+  ],
+  "publication_requirements": {
+    "current_P4_line_at_6992": 907,
+    "historical_duplicate_line_at_6992": 922,
+    "immutable_historical_snapshot_starts_at": 915,
+    "selector": "Use unique context including the current-table heading at900 and current P3 row906; never replace the repeated P4 row globally.",
+    "additional_actual_updates_after_review": "The three exact publication_status_replacements record accepted P3 own CI, accepted P4 design and decisions, and unknown/pending own design commit/CI; no application or implementation approval."
+  },
+  "application": "Design accepted by actual root receipt. This external candidate has root_accepted_for_application=false; root must review, create a separate approved payload, and trial a clean archive before applying with --check/--path. No application has run.",
+  "publication_status_replacements": [
+    {
+      "label": "P4-implementation-decisions-71-72",
+      "reason": "Append accepted implementation decisions to §11 without changing existing decisions.",
+      "old": "\n## 12. Phase 进度表\n",
+      "new": "\n### P4主持者的实施决定（负责人可以改判）71／72\n\n**71．** 主持者的决定（负责人可以改判），已接受设计：改删W以首次Before＋旧current head证明D_W/F_W，未改页依index串行后的最终tree/解析近似；来源page目标Now/Before均要求相应revision与Extractor2头。显式允许必要distinct(S,A)旧F ID关系及资格/不确定性，修订初稿不保W×关系的承诺；不保旧正文/JSON/peers/raw边。完整Unknown上界含known及继承闭包，SQL错回滚。 一条最终SQL仅传去重F parent IDs，完整D_U后app投影；已属D_W可折叠、最终资格不可能且旧贡献已全处理可释放。400×300与400×10000/100ops/健康100k均为待执行成本义务；120000改写链接不是旧F总界，512只是读批。原预算、无候选零全扫、非空T、五交错不放宽。原B/C已完成设计复核；设计接受不等于性能或实施接受。\n\n**72．** REST使用有界exact types catalogue：全本可列wiki页排来源后统计，独立type／tag／parent筛选；最大100项、types数组实际JSON≤32KiB。仅完整存储值≤1024UTF-8字节可作为filter；新增required types_complete与unfilterable_type_pages。Catalogue仅REST=true；MCP保留既有精确type SQL，不承担catalogue扫描。 00未定exact-key碰撞、超长值、计数范围与输出界，见[types方案](specs/P4-virtual-ingest-types-boundary.md)。新增字段／提示与全量有限输入读取是代价；不改现写入type长度或MCP filter。D01–D11和100k／TOAST／heap／HTTP字节及手写oracle闭合；菜单外URL值保持精确筛选。\n\n上述实施决定已于2026-11-01随P4正式设计接受，依据见[设计审查记录](reviews/P4-design-review.md)。本次正式设计文档自身commit/CI尚未知待验，S1–S3未开始；产品、成本与原门禁没有通过声明。\n\n## 12. Phase 进度表\n",
+      "line_at_6992": 897,
+      "old_sha256": "70faebf79cc6c0c51b1a6af497408b68e4dc97bdb533c95da11027f08e992bfa",
+      "occurrences": 1,
+      "disposition": "actual accepted facts; candidate application pending"
+    },
+    {
+      "label": "P3-P4-current-status",
+      "reason": "Unique current-table heading through current P3/P4 rows; preserve historical duplicate.",
+      "old": "**当前进度表（唯一现行状态，2026-11-01）。**\n\n| P | Phase 文档 | 状态 | 审查 | 合并 |\n|---|---|---|---|---|\n| P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |\n| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |\n| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 已完成；S1/S2及撤销树旁支的实施、审查/复核、门禁与集成已验，§8原43项及修复闭合前提已由主持者核对，见[完成核对](03-P3-lint-health.md#103-p3完成)。指定修复merge＋联合record五片Test均值394.5/201.5/308/387/314.5s，全部严格<450；原13ed失败单列。本记录写入时，独立P3done自身精确main CI仍待，接受后才释放P4；M10继续。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`，record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`；S2原merge `13edc125d5478285fbdf2750dd467f54bcc61a77`（main CI失败）；修复merge `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，联合record `df9b1d49544336f80d768bde4b6cda231403231e`；精确CI见§10.3 |\n| P4 虚拟页面与 ingest（S1–S3） | — | 未开始 | — | — |",
+      "new": "**当前进度表（唯一现行状态，2026-11-01）。**\n\n| P | Phase 文档 | 状态 | 审查 | 合并 |\n|---|---|---|---|---|\n| P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |\n| P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |\n| P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 已完成；S1/S2及撤销树旁支的实施、审查/复核、门禁与集成已验，§8原43项及修复闭合前提已由主持者核对，见[完成核对](03-P3-lint-health.md#103-p3完成)。指定修复merge＋联合record五片Test均值394.5/201.5/308/387/314.5s，全部严格<450；原13ed失败单列。独立P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤全部成功接受，P3完成并已释放P4正式设计。该own CI不进入指定4e6e/df9 pair，Test463/309/362/404/313s不保证新增测试容量；M10继续。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`，record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`；S2原merge `13edc125d5478285fbdf2750dd467f54bcc61a77`（main CI失败）；修复merge `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，联合record `df9b1d49544336f80d768bde4b6cda231403231e`；精确CI见§10.3 |\n| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | 正式设计已接受，实施决定71/72已采用；本次设计文档自身CI待验，S1–S3未开始 | [设计三审、两轮核对与主持者接受](reviews/P4-design-review.md) | 本次正式设计自身commit/精确main CI尚未知、待验；无实施放行 |",
+      "line_at_6992": 900,
+      "old_sha256": "4e584ae4953809d0639122a513da30a44b6a31bd59ddfee9fb28a2bc745ceee1",
+      "occurrences": 1,
+      "disposition": "actual accepted facts; candidate application pending"
+    },
+    {
+      "label": "P4-design-acceptance-history",
+      "reason": "Prepend actual acceptance facts; retain entire prior §13 suffix byte-for-byte.",
+      "old": "## 13. 变更记录",
+      "new": "## 13. 变更记录\n\n- 2026-11-01：P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤成功接受，正式P4入口已释放；该own CI不进入已接受4e6e/df9指定pair。三位fresh初审及两轮原席核对后，主持者已接受P4修订2设计，全部12项finding在设计层关闭，实施决定71/72采用、负责人可以改判。正式设计、附件、审查记录与00受控修订同批发布；15个原合同old锚保持，另三处登记实施决定、当前P3/P4状态与本条。本次文档自身commit/精确main CI尚未知待验，S1–S3与P4产品/成本验证未开始，不作成功声明。原13ed失败、指定pair/预算及以下各条原写入时点保持。见[P4正式设计](04-P4-virtual-ingest.md)、[实际设计审查记录](reviews/P4-design-review.md)。",
+      "line_at_6992": 928,
+      "old_sha256": "4e02f75a450fcf22dd5eb13c9694be56cf73ad0f346dddb4ab07295bb087ab77",
+      "occurrences": 1,
+      "disposition": "actual accepted facts; candidate application pending"
+    }
+  ],
+  "acceptance_receipt_sha256": "c0d9fa1c4c3fd176e306c7cbab7ac644b841b798457c8830c1b05451054810cb"
+}
