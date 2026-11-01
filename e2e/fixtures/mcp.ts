@@ -195,21 +195,70 @@ export function writtenOf(
   return { id: answer.node_id, revision: Number(revision), content_updated_at: answer.at };
 }
 
-/** A page's read (M9/P1 design 3.11.1): its metadata, read's first block, and its slice, the second. */
+interface PageReadMeta {
+  path: string;
+  kind: "page";
+  offset: number;
+  column: number;
+  lines: number;
+  total_lines: number;
+  byte_size: number;
+  next_offset: number | null;
+  next_column: number | null;
+}
+
+/** A generated page has no version. Real reads retain their required version. */
 export interface PageRead {
-  meta: {
-    path: string;
-    kind: string;
-    version: string;
-    offset: number;
-    column: number;
-    lines: number;
-    total_lines: number;
-    byte_size: number;
-    next_offset: number | null;
-    next_column: number | null;
-  };
+  meta: PageReadMeta & ({ virtual: true; version?: never } | { virtual?: false; version: string });
   text: string;
+}
+
+/** Narrow before a story uses a real page's version as a write precondition. */
+export function assertRealPage(read: PageRead): asserts read is PageRead & {
+  meta: PageReadMeta & { virtual?: false; version: string };
+} {
+  if (read.meta.virtual === true || typeof read.meta.version !== "string" || read.meta.version.length === 0) {
+    throw new Error("Expected a real page read with a nonempty version");
+  }
+}
+
+function pageReadMeta(value: unknown): PageRead["meta"] {
+  if (typeof value !== "object" || value === null) throw new Error("Invalid page read metadata");
+  const fields = new Map(Object.entries(value));
+  const integer = (name: string, minimum: number): number => {
+    const n: unknown = fields.get(name);
+    if (typeof n !== "number" || !Number.isSafeInteger(n) || n < minimum) {
+      throw new Error(`Invalid page read ${name}`);
+    }
+    return n;
+  };
+  const nullableInteger = (name: string, minimum: number) =>
+    fields.get(name) === null ? null : integer(name, minimum);
+  const path: unknown = fields.get("path");
+  if (typeof path !== "string" || path.length === 0 || fields.get("kind") !== "page") {
+    throw new Error("Invalid page read path or kind");
+  }
+  const base: PageReadMeta = {
+    path,
+    kind: "page",
+    offset: integer("offset", 1),
+    column: integer("column", 0),
+    lines: integer("lines", 0),
+    total_lines: integer("total_lines", 0),
+    byte_size: integer("byte_size", 0),
+    next_offset: nullableInteger("next_offset", 1),
+    next_column: nullableInteger("next_column", 0),
+  };
+  const virtual: unknown = fields.get("virtual");
+  if (virtual === true) {
+    if (fields.has("version")) throw new Error("Virtual read exposed a version");
+    return { ...base, virtual: true };
+  }
+  const version: unknown = fields.get("version");
+  if ((virtual !== undefined && virtual !== false) || typeof version !== "string" || version.length === 0) {
+    throw new Error("Real page read has no valid version");
+  }
+  return { ...base, virtual: false, version };
 }
 
 /** read's answer of a page's path through agent, from offset and column: two text blocks, no structuredContent. */
@@ -218,7 +267,8 @@ export async function readPage(agent: McpClient, args: Record<string, unknown>):
   expect(answer.isError, `read ${JSON.stringify(args)}: ${answer.text.join(" ")}`).toBe(false);
   expect(answer.structured, "a text tool's answer has no structuredContent").toBeUndefined();
   expect(answer.content.map((c) => c.type)).toEqual(["text", "text"]);
-  return { meta: JSON.parse(answer.text[0] ?? "") as PageRead["meta"], text: answer.text[1] ?? "" };
+  const meta: unknown = JSON.parse(answer.text[0] ?? "");
+  return { meta: pageReadMeta(meta), text: answer.text[1] ?? "" };
 }
 
 /**

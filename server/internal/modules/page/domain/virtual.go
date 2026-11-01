@@ -1,5 +1,28 @@
 package domain
 
+// VirtualName identifies a generated file; it is never a node or version.
+type VirtualName string
+
+const (
+	VirtualIndex VirtualName = "index.md"
+	VirtualLog   VirtualName = "log.md"
+)
+
+// CanonicalVirtualRead accepts only a root page with one .md suffix. ParsePath
+// already normalized the title keys and checked the spelling's grammar.
+func CanonicalVirtualRead(path Path) (VirtualName, bool) {
+	if path.Kind != KindPage || path.Dir || len(path.Keys) != 1 {
+		return "", false
+	}
+	switch path.Keys[0] {
+	case "index":
+		return VirtualIndex, true
+	case "log":
+		return VirtualLog, true
+	}
+	return "", false
+}
+
 // VirtualFileError names a generated root file. Its code and explanation
 // are the existing virtual-file contract, shared with destination guards.
 type VirtualFileError struct{ Name string }

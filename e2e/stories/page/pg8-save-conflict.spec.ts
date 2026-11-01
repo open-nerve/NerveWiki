@@ -5,7 +5,7 @@ import { countAnswers, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
-import { errorOf, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -98,7 +98,9 @@ test("PG8 (MCP): another credential writes first, so an agent's write and edit o
   const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
   const page = await createPage(api, adminPat, notebook.id, "Notes");
   const agent = await mcpClient(nervewiki.baseURL, editorPat, { notebook: notebook.id });
-  const { version } = (await readPage(agent, { path: "Notes.md" })).meta;
+  const initial = await readPage(agent, { path: "Notes.md" });
+  assertRealPage(initial);
+  const { version } = initial.meta;
   expect(version).toBe(`${page.id}:1`);
 
   expect((await writeContent(api, adminPat, page.id, { content: "Theirs\n", base_revision: 1 })).revision).toBe(2);
@@ -120,6 +122,7 @@ test("PG8 (MCP): another credential writes first, so an agent's write and edit o
 
   // The version now carries no content: the agent reads it, and writes on it.
   const current = await readPage(agent, { path: "Notes.md" });
+  assertRealPage(current);
   expect([current.meta.version, current.text]).toEqual([`${page.id}:2`, "Theirs\n"]);
   const kept = resultOf<Written>(
     await agent.call("write", { path: "Notes.md", content: "Mine\n", base_version: current.meta.version }),

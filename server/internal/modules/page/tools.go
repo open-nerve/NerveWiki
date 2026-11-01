@@ -23,7 +23,21 @@ var ErrNotFound = domain.ErrNotFound
 
 // ToolDeps are what page's tools need beyond the module's use cases: asset
 // is wired after page (v0.1 design 13.1, item 11).
-type ToolDeps struct{ Attachments AttachmentReader }
+type ToolDeps struct {
+	Attachments AttachmentReader
+	Virtual     VirtualFiles
+}
+
+type (
+	VirtualFiles     = app.VirtualFiles
+	VirtualReadScope = app.VirtualReadScope
+	VirtualName      = domain.VirtualName
+)
+
+const (
+	VirtualIndex = domain.VirtualIndex
+	VirtualLog   = domain.VirtualLog
+)
 
 // Tools are page's MCP tools, list, read (M9 design 4.9) and
 // open_notebook (4.6), write, edit, move and delete (4.10), versions, log
@@ -32,7 +46,10 @@ func (m *Module) Tools(d ToolDeps) []mcpserver.Tool {
 	if d.Attachments == nil {
 		panic("page: no attachment reader for the MCP tools")
 	}
-	return mcpadapter.Tools(mcpadapter.UseCases{TargetPath: m.targetPath, List: m.list, Read: m.read, Open: m.open, Write: m.write, Edit: m.edit,
+	if d.Virtual == nil {
+		panic("page: no virtual files for the MCP tools")
+	}
+	return mcpadapter.Tools(mcpadapter.UseCases{TargetPath: m.targetPath, List: m.list, Read: m.read.WithVirtual(d.Virtual), Open: m.open, Write: m.write, Edit: m.edit,
 		Move: m.move, Delete: m.remove, Batch: m.batch, Versions: m.versions, Version: m.version, Log: m.log,
 		Changeset: m.changeset, Grep: m.grep, Search: m.search}, d.Attachments)
 }

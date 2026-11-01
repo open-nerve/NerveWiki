@@ -1,17 +1,25 @@
 package bootstrap
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
+	"net/http/httptest"
 	"slices"
 	"strings"
 	"testing"
+	"time"
+	"unicode/utf8"
 	"uuid"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // These are real tool calls in both scopes, also registered in the global
@@ -131,6 +139,261 @@ func TestVirtualPaths(t *testing.T) {
 	t.Run("overview", virtualOverview)
 	t.Run("fit_boundary", virtualFitBoundary)
 	t.Run("field_order", virtualFieldOrder)
+	t.Run("read_window", virtualReadWindow)
+	t.Run("read_fresh", virtualReadFresh)
+	t.Run("tool_dependency", virtualToolDependency)
+	t.Run("source_line", virtualSourceLine)
+}
+
+// Canonical reads reach the generator through both real MCP entries. Aliases
+// remain refusals in virtualCodeCalls, and nested paths remain real above.
+func virtualReadWindow(t *testing.T) {
+	t.Run("renderer", virtualRenderedReadWindow)
+	t.Run("synthetic_longline", virtualSyntheticReadWindow)
+}
+
+func virtualRenderedReadWindow(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "Virtual read window")
+	tm.createPageWith(t, "alice", wiki.id, "", "Visible", "---\ntype: note\nsummary: visible\n---\nbody")
+	m := tm.agent(t, "alice", wiki.id)
+	for _, scope := range []string{"notebook", "account"} {
+		for _, path := range []string{"index.md", "log.md"} {
+			t.Run(scope+"/"+path, func(t *testing.T) {
+				res := sourceMCPCall(t, m, scope, "read", map[string]any{"path": path}).result(t)
+				if res["isError"] == true {
+					t.Fatalf("canonical virtual read refused: %v", res)
+				}
+				blocks, meta := blocksOf(t, res), metaOf(t, res)
+				if len(blocks) != 2 || meta["virtual"] != true || meta["path"] != path || meta["kind"] != "page" {
+					t.Fatalf("virtual read metadata or text missing: %v", res)
+				}
+				if _, ok := meta["version"]; ok {
+					t.Fatal("virtual read exposed a version")
+				}
+				if text, _ := blocks[1]["text"].(string); !strings.Contains(text, "Visible") {
+					t.Fatalf("virtual read omitted the real page: %q", text)
+				}
+			})
+		}
+	}
+	// A hand-written first-line oracle catches a generator bypassing Cut.
+	for _, scope := range []string{"notebook", "account"} {
+		res := sourceMCPCall(t, m, scope, "read", map[string]any{"path": "index.md", "offset": 1, "limit": 1}).result(t)
+		meta := metaOf(t, res)
+		if blocksOf(t, res)[1]["text"] != "# Index\n" || meta["lines"] != float64(1) || meta["next_offset"] != float64(2) || meta["next_column"] != nil {
+			t.Fatalf("hand-written header window: %v", res)
+		}
+	}
+	// Valid long tags and ampersands expand on the actual SDK wire. These complete
+	// long lines fit the file profile but need more than one read response.
+	tags := make([]string, 20)
+	for i := range tags {
+		tags[i] = fmt.Sprintf("tag%02d%s", i, strings.Repeat("_", 240))
+	}
+	front, _ := json.Marshal(map[string]any{"type": "a", "tags": tags, "summary": strings.Repeat("&", 256)})
+	for i := range 12 {
+		tm.createPageWith(t, "alice", wiki.id, "", fmt.Sprintf("é漢%03d", i)+strings.Repeat("&", 220), "---\n"+string(front)+"\n---\nbody")
+	}
+	for _, scope := range []string{"notebook", "account"} {
+		endpoint := atNotebook(wiki.id)
+		args := map[string]any{"path": "index.md"}
+		if scope == "account" {
+			endpoint = mcpserver.Pattern
+			args["notebook"] = wiki.id
+		}
+		client := mcpClient(t, m.base+endpoint, m.pat)
+		res, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: "read", Arguments: args})
+		if err != nil || res.IsError || len(res.Content) != 2 {
+			t.Fatalf("SDK read: %v %+v", err, res)
+		}
+		wire, err := json.Marshal(res)
+		if err != nil || len(wire) > 48<<10 {
+			t.Fatalf("SDK full result = %d bytes: %v", len(wire), err)
+		}
+		var meta map[string]any
+		if err := json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &meta); err != nil {
+			t.Fatal(err)
+		}
+		if meta["next_offset"] == nil {
+			t.Fatalf("escaping fixture did not force a continued read: %d SDK bytes, metadata %v", len(wire), meta)
+		}
+		args["offset"], args["column"], args["limit"] = 7, 5, 1
+		res, err = client.CallTool(context.Background(), &mcp.CallToolParams{Name: "read", Arguments: args})
+		if err != nil || res.IsError {
+			t.Fatalf("UTF-8 window: %v %+v", err, res)
+		}
+		text := res.Content[1].(*mcp.TextContent).Text
+		if !utf8.ValidString(text) || !strings.HasPrefix(text, "漢000&&&&") || len(text) < 4000 || !strings.Contains(text, "tags: tag00") {
+			t.Fatalf("byte column 5 did not start after é: %.120q", text)
+		}
+		if err := json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &meta); err != nil {
+			t.Fatal(err)
+		}
+		if meta["offset"] != float64(7) || meta["column"] != float64(5) || meta["lines"] != float64(1) || meta["next_offset"] != float64(8) || meta["next_column"] != nil {
+			t.Fatalf("long-line continuation metadata: %v", meta)
+		}
+		args["column"] = 4
+		res, err = client.CallTool(context.Background(), &mcp.CallToolParams{Name: "read", Arguments: args})
+		if err != nil || !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "validation_failed") {
+			t.Fatalf("interior UTF-8 column was accepted: %v %+v", err, res)
+		}
+	}
+}
+
+type virtualLongText string
+
+func (v virtualLongText) GenerateInSnapshot(_ context.Context, _ page.VirtualReadScope, name page.VirtualName) (string, error) {
+	if name != page.VirtualIndex {
+		return "", fmt.Errorf("synthetic virtual fixture: unexpected file")
+	}
+	return string(v), nil
+}
+
+// The renderer fixture covers complete lines. This isolated transport adds
+// a synthetic long line to exercise column boundaries, using the
+// real page.Tools/ReadPath/TxManager and SDK with synthetic file contents.
+// Authentication is a supplied real actor here; the renderer test above goes
+// through serve's real authentication and both production tool registrations.
+func virtualSyntheticReadWindow(t *testing.T) {
+	var deps page.Deps
+	tm := newAcmeTeamWiring(t, "member", "", wiring{page: func(d *page.Deps) { deps = *d }})
+	wiki := tm.llmWiki(t, "Synthetic SDK boundary")
+	m := tm.agent(t, "alice", wiki.id)
+	actor := shared.Actor{UserID: tm.userID(t, "alice")}
+	if err := tm.pool.QueryRow(context.Background(), "SELECT id FROM api_tokens WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1", actor.UserID).Scan(&actor.APITokenID); err != nil {
+		t.Fatal(err)
+	}
+	content := strings.Repeat("é漢&", 12000) + "ABCDE\nend\n"
+	pg := page.New(deps)
+	logger := slog.New(slog.DiscardHandler)
+	server := mcpserver.New(mcpserver.Options{
+		Name: "virtual-window-test", Version: "1", Tools: pg.Tools(page.ToolDeps{Attachments: virtualNoAttachments{}, Virtual: virtualLongText(content)}),
+		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Errors: httpserver.NewAPIErrors(logger),
+		RequestTimeout: 4 * time.Second, MaxBodyBytes: mcpBodyLimit, Logger: logger,
+	})
+	httpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server.ServeHTTP(w, r.WithContext(shared.WithActor(r.Context(), actor)))
+	}))
+	t.Cleanup(httpServer.Close)
+	for _, scope := range []string{"notebook", "account"} {
+		t.Run(scope, func(t *testing.T) {
+			endpoint := atNotebook(wiki.id)
+			args := map[string]any{"path": "index.md"}
+			if scope == "account" {
+				endpoint = mcpserver.Pattern
+				args["notebook"] = wiki.id
+			}
+			client := mcpClient(t, httpServer.URL+endpoint, m.pat)
+			read := func() (map[string]any, string) {
+				t.Helper()
+				res, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: "read", Arguments: args})
+				if err != nil || res.IsError || len(res.Content) != 2 {
+					t.Fatalf("synthetic SDK read: %v %+v", err, res)
+				}
+				wire, err := json.Marshal(res)
+				if err != nil || len(wire) > 48<<10 {
+					t.Fatalf("synthetic SDK full result: %d bytes, %v", len(wire), err)
+				}
+				var meta map[string]any
+				if err := json.Unmarshal([]byte(res.Content[0].(*mcp.TextContent).Text), &meta); err != nil {
+					t.Fatal(err)
+				}
+				if meta["virtual"] != true || meta["version"] != nil {
+					t.Fatalf("synthetic virtual metadata: %v", meta)
+				}
+				return meta, res.Content[1].(*mcp.TextContent).Text
+			}
+			meta, text := read()
+			column, ok := meta["next_column"].(float64)
+			if !ok || column <= 0 || column >= 72005 || meta["next_offset"] != float64(1) || meta["lines"] != float64(1) || !utf8.ValidString(text) || len(text) != int(column) || text != content[:int(column)] {
+				t.Fatalf("long line lost byte continuation: %v, %d bytes", meta, len(text))
+			}
+			// The last repetition starts at byte 71994; é ends at 71996.
+			// This literal suffix is independent of Cut and its wire measure.
+			args["offset"], args["column"], args["limit"] = 1, 71996, 1
+			meta, text = read()
+			if text != "漢&ABCDE\n" || meta["next_offset"] != float64(2) || meta["next_column"] != nil {
+				t.Fatalf("hand-written UTF-8 tail: %q %v", text, meta)
+			}
+			args["offset"], args["column"] = 2, 0
+			meta, text = read()
+			if text != "end\n" || meta["next_offset"] != nil || meta["next_column"] != nil {
+				t.Fatalf("last line: %q %v", text, meta)
+			}
+			args["offset"], args["column"] = 1, 71995
+			res, err := client.CallTool(context.Background(), &mcp.CallToolParams{Name: "read", Arguments: args})
+			if err != nil || !res.IsError || !strings.Contains(res.Content[0].(*mcp.TextContent).Text, "validation_failed") {
+				t.Fatalf("split é accepted: %v %+v", err, res)
+			}
+		})
+	}
+}
+
+func virtualSourceLine(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "Source file line")
+	tm.createPageWith(t, "alice", wiki.id, wiki.raw, "One", "one")
+	tm.createPageWith(t, "alice", wiki.id, wiki.raw, "Two", "two")
+	tm.createPage(t, "alice", wiki.id, wiki.raw, "Empty")
+	tm.upload(t, "alice", wiki.id, wiki.raw, "asset.txt", "x")
+	m := tm.agent(t, "alice", wiki.id)
+	for _, scope := range []string{"notebook", "account"} {
+		res := sourceMCPCall(t, m, scope, "read", map[string]any{"path": "index.md"}).result(t)
+		text := blocksOf(t, res)[1]["text"].(string)
+		if !strings.Contains(text, "Source area: [raw.md](<raw.md>) — 3 sources.") || !strings.Contains(text, "Showing 2 of 2 pages.") || strings.Contains(text, "raw/One.md") || strings.Contains(text, "raw/Empty.md") {
+			t.Fatalf("wired source membership/count: %q", text)
+		}
+	}
+}
+
+func virtualReadFresh(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "Fresh virtual reads")
+	m := tm.agent(t, "alice", wiki.id)
+	for _, scope := range []string{"notebook", "account"} {
+		before := map[string]string{}
+		for _, path := range []string{"index.md", "log.md"} {
+			before[path] = blocksOf(t, sourceMCPCall(t, m, scope, "read", map[string]any{"path": path}).result(t))[1]["text"].(string)
+		}
+		name := "Fresh" + scope
+		structured(t, sourceMCPCall(t, m, scope, "write", map[string]any{"path": name + ".md", "content": "---\ntype: note\n---\nfresh"}))
+		for _, path := range []string{"index.md", "log.md"} {
+			after := blocksOf(t, sourceMCPCall(t, m, scope, "read", map[string]any{"path": path}).result(t))[1]["text"].(string)
+			if before[path] == after || strings.Contains(before[path], name) || !strings.Contains(after, name+".md") {
+				t.Fatalf("%s/%s did not regenerate after a real write", scope, path)
+			}
+		}
+	}
+}
+
+type virtualNoAttachments struct{}
+
+func (virtualNoAttachments) Read(context.Context, uuid.UUID) (page.Attachment, error) {
+	return page.Attachment{}, page.ErrNotFound
+}
+func (virtualNoAttachments) Content(context.Context, page.Attachment, int64) ([]byte, int, int, error) {
+	return nil, 0, 0, page.ErrNotFound
+}
+
+func virtualToolDependency(t *testing.T) {
+	var deps page.Deps
+	tm := newAcmeTeamWiring(t, "member", "", wiring{page: func(d *page.Deps) { deps = *d }})
+	wiki := tm.llmWiki(t, "Tool dependency")
+	m := tm.agent(t, "alice", wiki.id)
+	tm.createPageWith(t, "alice", wiki.id, "", "Real", "ordinary")
+	res := sourceMCPCall(t, m, "notebook", "read", map[string]any{"path": "Real.md"}).result(t)
+	if blocksOf(t, res)[1]["text"] != "ordinary" {
+		t.Fatal("provided dependency changed an ordinary read")
+	}
+	func() {
+		defer func() {
+			if got := recover(); got != "page: no virtual files for the MCP tools" {
+				t.Errorf("Tools accepted missing Virtual or panicked elsewhere: %v", got)
+			}
+		}()
+		page.New(deps).Tools(page.ToolDeps{Attachments: virtualNoAttachments{}})
+	}()
 }
 
 func virtualRealPaths(t *testing.T) {
@@ -207,6 +470,17 @@ func virtualMetadata(t *testing.T) {
 		}
 		if !sawEmpty {
 			t.Error("empty real page missing")
+		}
+		for _, path := range []string{"index.md", "log.md", "Empty.md"} {
+			res := sourceMCPCall(t, m, scope, "read", map[string]any{"path": path}).result(t)
+			meta := metaOf(t, res)
+			if path == "Empty.md" {
+				if meta["version"] != empty+":1" || meta["byte_size"] != float64(0) || meta["virtual"] != nil {
+					t.Errorf("real empty read lost metadata: %v", meta)
+				}
+			} else if _, exists := meta["version"]; exists || meta["virtual"] != true {
+				t.Errorf("virtual read identity: %v", meta)
+			}
 		}
 	}
 	a := structured(t, m.call(t, mcpserver.Pattern, "open_notebook", map[string]any{"notebook": wiki.id}))

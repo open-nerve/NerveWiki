@@ -169,6 +169,13 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	pg := page.New(pd)
 	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
 	ln := linking.New(linkingDeps(pool, authorizer, embeds))
+	// File reads borrow the entry's snapshot and do not own the lint runtime.
+	files := wiki.NewVirtualFiles(wiki.VirtualFileDeps{
+		Index:   wikiFileIndex{linking.NewIndexFileReads(pool)},
+		Tree:    wikiFileTree{page.NewVirtualTreeReads(pool)},
+		Sources: wikiFileSources{page.NewSourceArea(pool)},
+		Log:     wikiFileLog{page.NewVirtualLogReads(pool, displayNames{identity.NewDirectory(pool)})},
+	})
 	// The LLM Wiki's template is parsed once, here: a template the page
 	// module refuses keeps serve from starting (M10/P1 design 3.8).
 	template, err := wiki.NewTemplate(wikiSeeds{pg.TreeWrites()})
@@ -246,7 +253,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)
-	tools := mcpTools(pg, as, ln, nb, wk)
+	tools := mcpTools(pg, as, ln, nb, wk, files)
 	mountMCP(router, api, mcpServer(cfg, logger, api, pg, mcpNames{identity.NewClientNames(pool)}, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the

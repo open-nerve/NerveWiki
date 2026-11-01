@@ -186,7 +186,7 @@ const (
 		`image itself for a PNG, JPEG, GIF or WebP of at most 3 MiB and 8000 pixels a side, or else a link to download ` +
 		`it. Without the server's public address set (server.public_url) there is no download address: an image still ` +
 		`comes itself, any other attachment as its metadata only, with a note saying so.` +
-		` In an LLM Wiki, aliases of the generated root files, such as index and log.md.md, answer page.virtual_file.`
+		` In an LLM Wiki, canonical root index.md and log.md are generated in one snapshot per read, with virtual:true and no version. Offsets are not stable across calls. Aliases such as index and log.md.md answer page.virtual_file.`
 	writeDescription = `Write a page's whole content by its path from the notebook's root; the path ends with .md. Without ` +
 		`base_version, it creates the page, and the parent pages it lacks, empty, in one change; a path that is a ` +
 		`page already is refused. With base_version, the version read, list or write gave, it replaces the ` +
