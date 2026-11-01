@@ -78,7 +78,21 @@ func virtualExportEntries(t *testing.T, tm acmeTeam, notebook, root string) map[
 }
 
 func virtualExportScopes(t *testing.T) {
-	tm := newAcmeTeam(t, "member", "")
+	tm := newAcmeTeamWiring(t, "member", "", wiring{transfer: func(d *transfer.Deps) {
+		if len(d.Contributors) != 1 {
+			t.Fatal("real wiki contributor was not registered")
+		}
+		actual := d.Contributors[0]
+		d.Contributors[0] = virtualContribution(func(ctx context.Context, scope transfer.ExportScope, sink transfer.ExportSink) error {
+			err := actual.Contribute(ctx, scope, sink)
+			if err != nil {
+				// Record the actual cause before the worker publishes its result;
+				// a generic failed job alone cannot prove a scope control was killed.
+				t.Logf("actual virtual export contributor error: %v", err)
+			}
+			return err
+		})
+	}})
 	wiki := tm.llmWiki(t, "ScopeWiki")
 	parent := tm.createPageWith(t, "alice", wiki.id, "", "Parent", "parent")
 	tm.createPageWith(t, "alice", wiki.id, parent, "index", "real nested index")
