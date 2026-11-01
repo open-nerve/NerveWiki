@@ -282,7 +282,7 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
+		Nodes: store, RevertTrees: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
 		Sources: store, Attachments: d.Attachments,
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: d.Snapshots, Sources: store, Attachments: d.Attachments}),
 		Names:          d.Names,
@@ -292,7 +292,7 @@ func New(d Deps) *Module {
 	parser := app.NewContentParser(writer, md, budget, d.Budget.Wait())
 	versions := app.VersionReads{Notebooks: d.Notebooks, Nodes: store, Versions: store, Names: d.Names, Auth: d.Authorizer, Clock: d.Clock,
 		Paths: store, States: store}
-	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
+	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, RevertTrees: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
 	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer, Paths: store}
 	locks := app.NewLockHolders(store, d.Names) // edit's precheck (M9/P2 design 3.8.2)

@@ -798,6 +798,49 @@ func (q *Queries) ListNodes(ctx context.Context, notebookID uuid.UUID) ([]ListNo
 	return items, nil
 }
 
+const listRevertTree = `-- name: ListRevertTree :many
+SELECT id, parent_id, kind, name, name_key, sort_order
+FROM nodes
+WHERE notebook_id = $1 AND deleted_at IS NULL
+`
+
+type ListRevertTreeRow struct {
+	ID        uuid.UUID
+	ParentID  *uuid.UUID
+	Kind      string
+	Name      string
+	NameKey   string
+	SortOrder float64
+}
+
+// The whole live tree for revert planning, without per-node audit data.
+func (q *Queries) ListRevertTree(ctx context.Context, notebookID uuid.UUID) ([]ListRevertTreeRow, error) {
+	rows, err := q.db.Query(ctx, listRevertTree, notebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListRevertTreeRow
+	for rows.Next() {
+		var i ListRevertTreeRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const markTrashRoots = `-- name: MarkTrashRoots :execrows
 UPDATE nodes n SET trash_root = true, trash_pages = u.pages, trash_assets = u.assets, trash_height = u.height
 FROM (SELECT unnest($2::uuid[]) AS id, unnest($3::integer[]) AS pages,

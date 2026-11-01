@@ -34,6 +34,12 @@ SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_
 FROM nodes
 WHERE notebook_id = sqlc.arg(notebook_id) AND deleted_at IS NULL;
 
+-- name: ListRevertTree :many
+-- The whole live tree for revert planning, without per-node audit data.
+SELECT id, parent_id, kind, name, name_key, sort_order
+FROM nodes
+WHERE notebook_id = sqlc.arg(notebook_id) AND deleted_at IS NULL;
+
 -- name: Children :many
 -- A parent's children not deleted (the root's when parent_id is NULL), in order.
 SELECT id, notebook_id, parent_id, kind, name, name_key, sort_order, created_by_id, updated_by_id, created_at,

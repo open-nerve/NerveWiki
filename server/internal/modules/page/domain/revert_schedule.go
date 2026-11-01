@@ -102,7 +102,7 @@ func (p *planner) newRevertSim() *revertSim {
 // no tree read, its pages alive where they are.
 func (p *planner) treeSim() *revertSim {
 	s := &revertSim{nodes: make(map[uuid.UUID]simNode, len(p.s.Tree)), under: map[uuid.UUID]map[string]uuid.UUID{}}
-	alive := func(n Node) {
+	alive := func(n RevertTreeNode) {
 		s.set(n.ID, simNode{parent: n.ParentID, name: n.Name, key: n.NameKey, order: n.SortOrder, kind: n.Kind, alive: true,
 			revision: p.s.Contents[n.ID].Revision})
 	}
@@ -112,7 +112,7 @@ func (p *planner) treeSim() *revertSim {
 	if len(p.s.Items) == 0 {
 		for _, id := range p.c.ids {
 			if n := p.s.Nodes[id]; n.DeletedAt == nil {
-				alive(n.Node)
+				alive(RevertTreeNodeOf(n.Node))
 			}
 		}
 	}

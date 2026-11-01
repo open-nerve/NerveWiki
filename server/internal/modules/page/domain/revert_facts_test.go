@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"reflect"
 	"slices"
 	"testing"
 	"uuid"
@@ -8,13 +9,38 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
+// The projected original name, parent, kind and order must survive into the
+// consumer's facts. Dropping order incorrectly turns this rename into a move.
+func TestRevertTreeProjectionKeepsSourceFacts(t *testing.T) {
+	raw, folder, asset := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	state := domain.RevertState{Tree: []domain.RevertTreeNode{
+		domain.RevertTreeNodeOf(domain.Node{ID: raw, Kind: domain.KindPage, Name: "raw", NameKey: "raw"}),
+		domain.RevertTreeNodeOf(domain.Node{ID: folder, ParentID: &raw, Kind: domain.KindPage, Name: "Folder", NameKey: "folder"}),
+		domain.RevertTreeNodeOf(domain.Node{ID: asset, ParentID: &folder, Kind: domain.KindAsset, Name: "ÉTÉ.PNG", NameKey: "été.png", SortOrder: 3.75}),
+	}}
+	plan := domain.RevertPlan{Ops: []domain.RevertOp{{Kind: domain.RevertPlace, NodeID: asset, Rename: true,
+		To: domain.TreeState{ParentID: &folder, Name: "renamed.png", SortOrder: 3.75}}}}
+	want := []domain.StepFacts{{Operation: domain.OpRename, Kind: domain.ChangesetRevert, Nodes: []domain.NodeFacts{{
+		ID: asset, Kind: domain.KindAsset,
+		Before: &domain.NodePlace{ParentID: &folder, Key: "été.png", InArea: true},
+		After:  &domain.NodePlace{ParentID: &folder, Key: "renamed.png", InArea: true},
+	}}}}
+	if got := slices.Collect(domain.RevertFacts(state, plan, raw)); !reflect.DeepEqual(got, want) {
+		t.Fatalf("source facts = %+v; want %+v", got, want)
+	}
+	state.Tree[2].SortOrder = 0
+	if got := slices.Collect(domain.RevertFacts(state, plan, raw)); len(got) != 1 || got[0].Operation != domain.OpMove {
+		t.Fatalf("different original order = %+v; want an actual move", got)
+	}
+}
+
 // Each later operation must see the moves, restores and deletions before
 // it, including descendants that joined or left a subtree meanwhile.
 func TestARevertsFactsFollowItsSteps(t *testing.T) {
 	// The descendant has the smaller id: sorting all nodes by id would
 	// incorrectly put it before its root.
 	box, doc, raw, notes := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	state := domain.RevertState{Items: []domain.ChangesetItem{{NodeID: box, After: &domain.TreeState{Name: "Box"}}}, Tree: []domain.Node{
+	state := domain.RevertState{Items: []domain.ChangesetItem{{NodeID: box, After: &domain.TreeState{Name: "Box"}}}, Tree: []domain.RevertTreeNode{
 		{ID: notes, Kind: domain.KindPage, Name: "Notes", NameKey: "notes"},
 		{ID: box, Kind: domain.KindPage, Name: "Box", NameKey: "box"},
 		{ID: raw, Kind: domain.KindPage, Name: "sources", NameKey: "sources", ParentID: &box},
@@ -77,7 +103,7 @@ func TestAContentOnlyRevertsFactsNeedNoTree(t *testing.T) {
 // tree or the moving root's single source flag.
 func TestRevertFactsTracksSourceMembershipAndKinds(t *testing.T) {
 	raw, outside, folder, asset := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	state := domain.RevertState{Tree: []domain.Node{
+	state := domain.RevertState{Tree: []domain.RevertTreeNode{
 		{ID: raw, Kind: domain.KindPage, Name: "raw", NameKey: "raw"},
 		{ID: outside, Kind: domain.KindPage, Name: "outside", NameKey: "outside"},
 		{ID: folder, Kind: domain.KindPage, Name: "folder", NameKey: "folder"},
@@ -126,7 +152,7 @@ func TestRevertFactsTracksSourceMembershipAndKinds(t *testing.T) {
 func TestRevertFactsRestoresThenUpdatesContentState(t *testing.T) {
 	raw, outside, page, asset := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	state := domain.RevertState{
-		Tree:     []domain.Node{{ID: raw, Kind: domain.KindPage, Name: "raw", NameKey: "raw"}},
+		Tree:     []domain.RevertTreeNode{{ID: raw, Kind: domain.KindPage, Name: "raw", NameKey: "raw"}},
 		Contents: map[uuid.UUID]domain.ContentNow{page: {Revision: 8, Bytes: 99, Hash: []byte("stale")}},
 		Hashes:   map[domain.VersionRef][]byte{{NodeID: page, Revision: 3}: []byte("trash")},
 	}

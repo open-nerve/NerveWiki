@@ -203,7 +203,7 @@ func TestSourceJobSimulatorUsesCurrentLinesForEachRestoredParent(t *testing.T) {
 		{Node: node(q, "Q", &f, domain.KindPage), Level: 1},
 		{Node: node(b, "B.png", &q, domain.KindAsset), Level: 2},
 	}
-	state := domain.RevertState{Tree: []domain.Node{node(raw, "raw", nil, domain.KindPage)},
+	state := domain.RevertState{Tree: []domain.RevertTreeNode{domain.RevertTreeNodeOf(node(raw, "raw", nil, domain.KindPage))},
 		Groups: map[uuid.UUID][]domain.TrashMember{f: group}}
 	actions := []domain.RevertOp{
 		{Kind: domain.RevertRestore, NodeID: f, Group: []domain.TrashMember{group[0], group[1], group[3]},

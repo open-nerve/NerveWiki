@@ -23,7 +23,7 @@ func TestSourceJobFactsUseNominalCutsAndActualActions(t *testing.T) {
 	for i, m := range group {
 		states[i] = m.Node.State()
 	}
-	checked := revertChecked{state: domain.RevertState{Tree: []domain.Node{node(raw, "raw", nil, 0)},
+	checked := revertChecked{state: domain.RevertState{Tree: []domain.RevertTreeNode{domain.RevertTreeNodeOf(node(raw, "raw", nil, 0))},
 		Hashes: map[domain.VersionRef][]byte{{NodeID: a, Revision: 3}: []byte("A"), {NodeID: b, Revision: 1}: []byte("BBBB")}},
 		plan: domain.RevertPlan{Ops: []domain.RevertOp{
 			{Kind: domain.RevertRestore, NodeID: f, Group: group, States: states},

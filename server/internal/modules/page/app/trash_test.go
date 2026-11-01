@@ -60,7 +60,7 @@ func (f *fixture) trashed(id uuid.UUID, at time.Time, by uuid.UUID) {
 }
 
 func (f *fixture) trashReads(at time.Time) app.TrashReads {
-	return app.TrashReads{Notebooks: f.notebooks, Nodes: f.store, Trash: f.store, Names: f.names,
+	return app.TrashReads{Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, Trash: f.store, Names: f.names,
 		Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}, Auth: f.auth, Clock: fixedClock{at}, Retention: retention}
 }
 

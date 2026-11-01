@@ -76,6 +76,62 @@ func TestPlanRevertNameCandidatesKeepConflictSemantics(t *testing.T) {
 	})
 }
 
+// The tree's witnesses are not limited to changeset members. The altered input
+// is a fixture sensitivity check, not a substitute for source mutation testing.
+func TestRevertTreeProjectionKeepsUntouchedWitnesses(t *testing.T) {
+	t.Run("stored legacy name key", func(t *testing.T) {
+		w := newWorld(t)
+		id := w.asset("new.png", nil, 0)
+		w.placed(id, domain.TreeState{Name: "old.png"})
+		holder := w.asset("Legacy label.png", nil, 1)
+		n := w.nodes[holder]
+		n.NameKey = "old.png"
+		w.nodes[holder] = n
+		want := domain.RevertPlan{Count: 1, Conflicts: []domain.RevertConflict{{
+			NodeID: id, Name: "old.png", Reason: domain.ConflictTitleTaken, HolderID: &holder,
+		}}}
+		if got := w.plan(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("stored key holder = %+v; want %+v", got, want)
+		}
+		delete(w.nodes, holder)
+		if got := w.plan(); got.Count != 0 || len(got.Ops) != 1 {
+			t.Fatalf("without holder = %+v; want the rename to become possible", got)
+		}
+	})
+	t.Run("untouched child", func(t *testing.T) {
+		w := newWorld(t)
+		parent := w.page("Created", nil, 0, 1, "created")
+		w.created(parent)
+		child := w.asset("added.png", &parent, 0)
+		want := domain.RevertPlan{Count: 1, Conflicts: []domain.RevertConflict{{
+			NodeID: child, Name: "added.png", Reason: domain.ConflictChildrenAdded,
+		}}}
+		if got := w.plan(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("untouched child = %+v; want %+v", got, want)
+		}
+		delete(w.nodes, child)
+		if got := w.plan(); got.Count != 0 || len(got.Ops) != 1 {
+			t.Fatalf("without child = %+v; want the deletion to become possible", got)
+		}
+	})
+	t.Run("untouched parent", func(t *testing.T) {
+		w := newWorld(t)
+		parent := w.page("Parent", nil, 0, 1, "parent")
+		id := w.asset("child.png", nil, 2)
+		w.placed(id, domain.TreeState{ParentID: &parent, Name: "child.png", SortOrder: 3.5})
+		want := domain.RevertPlan{Ops: []domain.RevertOp{{Kind: domain.RevertPlace, NodeID: id, Move: true,
+			To: domain.TreeState{ParentID: &parent, Name: "child.png", SortOrder: 3.5}}}}
+		if got := w.plan(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("parent witness = %+v; want %+v", got, want)
+		}
+		delete(w.nodes, parent)
+		want = domain.RevertPlan{Count: 1, Conflicts: []domain.RevertConflict{{NodeID: id, Name: "child.png", Reason: domain.ConflictParentGone}}}
+		if got := w.plan(); !reflect.DeepEqual(got, want) {
+			t.Fatalf("without parent = %+v; want %+v", got, want)
+		}
+	})
+}
+
 // Conflicting read snapshots still choose the same holder: an untouched
 // contender first, then ascending UUID, excluding the node itself. These
 // deliberately conflicting states are not examples of a valid earlier tree.
@@ -108,7 +164,7 @@ func TestPlanRevertNameCandidatesChooseAStableHolder(t *testing.T) {
 					state.Versions = []domain.ChangesetVersion{{NodeID: id, Base: new(1), Revision: 2, Hash: hash("written")}}
 				}
 				state.Nodes[id] = domain.NodeNow{Node: n}
-				state.Tree = append(state.Tree, n)
+				state.Tree = append(state.Tree, domain.RevertTreeNodeOf(n))
 				if !tt.untouched || i != 2 {
 					state.Items = append(state.Items, domain.ChangesetItem{NodeID: id,
 						Before: &domain.TreeState{Name: "old"}, After: &domain.TreeState{Name: current}})
