@@ -57,13 +57,45 @@ func newGuardNodes(notebook uuid.UUID) guardNodes {
 		nodes = append(nodes, root)
 		parent := root.ID
 		for d := 1; d < 11; d++ {
-			n := domain.Node{ID: uuid.NewV7(), NotebookID: notebook, ParentID: &parent, Kind: domain.KindPage, Name: chain[d],
+			parentID := parent
+			n := domain.Node{ID: uuid.NewV7(), NotebookID: notebook, ParentID: &parentID, Kind: domain.KindPage, Name: chain[d],
 				NameKey: chain[d]}
 			nodes = append(nodes, n)
 			parent = n.ID
 		}
 	}
 	return guardNodes{nodes: nodes}
+}
+
+// checkGuardNodes verifies the actual cost fixture before the timed call.
+// Its ordered groups must be 100,000 disjoint chains of 11 unique nodes.
+// In particular, retaining one mutable ParentID pointer for a whole chain
+// must fail here instead of silently reducing the walk to the roots.
+func checkGuardNodes(t *testing.T, nodes []domain.Node) {
+	t.Helper()
+	if len(nodes) != 1_100_000 {
+		t.Fatalf("guard tree: %d nodes, want 1100000", len(nodes))
+	}
+	ids := make(map[uuid.UUID]struct{}, len(nodes))
+	for i := range nodes {
+		n := &nodes[i]
+		if n.ID == (uuid.UUID{}) {
+			t.Fatalf("guard tree: node %d has a zero ID", i)
+		}
+		if _, exists := ids[n.ID]; exists {
+			t.Fatalf("guard tree: node %d repeats ID %s", i, n.ID)
+		}
+		ids[n.ID] = struct{}{}
+		if i%11 == 0 {
+			if n.ParentID != nil {
+				t.Fatalf("guard tree: root at %d has a parent", i)
+			}
+			continue
+		}
+		if n.ParentID == nil || *n.ParentID != nodes[i-1].ID {
+			t.Fatalf("guard tree: node %d does not descend from its previous chain node", i)
+		}
+	}
 }
 
 // guardGlob is one of P1's worst globs: its ligature-free walk over
@@ -127,6 +159,7 @@ func TestGrepOverTheGlobGuardTreeTakesItsTime(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionRead)
 	nodes := newGuardNodes(f.eng)
+	checkGuardNodes(t, nodes.nodes)
 	glob := guardGlob()
 	g := app.NewGrep(app.GrepDeps{Notebooks: f.notebooks, Nodes: nodes, States: shortContents{}, Reads: shortContents{},
 		Auth: f.auth, Parses: app.NewGrepParses(1), Slots: app.NewGrepSlots(1), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
