@@ -93,7 +93,25 @@ func (p *paths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid
 	out := map[uuid.UUID]app.PagePath{}
 	for _, id := range ids {
 		if at, ok := p.at[id]; ok && !p.assets[id] {
-			out[id] = app.PagePath{Path: at, ChangedAt: p.changed[id]}
+			title := strings.TrimSuffix(at[strings.LastIndex(at, "/")+1:], ".md")
+			meta := app.PagePath{Path: at, ChangedAt: p.changed[id], Title: title}
+			if parent, ok := p.parents[id]; ok {
+				meta.ParentID = &parent
+			}
+			out[id] = meta
+		}
+	}
+	return out, nil
+}
+
+func (p *paths) ChildPagesAt(_ context.Context, _ uuid.UUID, parent *uuid.UUID) ([]uuid.UUID, error) {
+	p.call("ChildPages")
+	var out []uuid.UUID
+	for id := range p.at {
+		stored, hasParent := p.parents[id]
+		matches := parent == nil && !hasParent || parent != nil && hasParent && stored == *parent
+		if !p.assets[id] && matches {
+			out = append(out, id)
 		}
 	}
 	return out, nil

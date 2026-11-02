@@ -57,7 +57,7 @@ type WritePath struct {
 func NewWritePath(writer *Writer, parser *ContentParser, paths PathStore, nodes Nodes, states PageStates,
 	notebooks Notebooks, auth shared.Authorizer, logger *slog.Logger,
 ) *WritePath {
-	return &WritePath{writer: writer, parser: parser, paths: NewNodePaths(paths), nodes: nodes, states: states,
+	return &WritePath{writer: writer, parser: parser, paths: NewNodePaths(paths, notebooks), nodes: nodes, states: states,
 		notebooks: notebooks, auth: auth, logger: logger}
 }
 

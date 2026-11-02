@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 
 import { expectContentWritten } from "../../fixtures/assert/page";
-import { mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -74,6 +74,7 @@ test("PG9 (MCP): CRLF, CR alone, mixed line breaks, a byte order mark, trailing 
       expect([written.changed, written.version]).toEqual([true, `${page.id}:2`]);
       await expectContentWritten(db, writtenOf(written, `write ${path}`), content, adminId);
       const read = await readPage(agent, { path });
+      assertRealPage(read);
       expect(Buffer.from(read.text, "utf8").equals(Buffer.from(content, "utf8")), JSON.stringify(read.text)).toBe(true);
       expect([read.meta.byte_size, read.meta.version]).toEqual([Buffer.byteLength(content), written.version]);
       // read gives no hash: REST's read of the same page does.

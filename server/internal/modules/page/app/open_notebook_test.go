@@ -60,7 +60,7 @@ func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	got, err := f.opener(o).Execute(f.asAlice(), f.eng)
 	want := app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules", Title: "AGENTS"}, HasAgents: true, Pages: 3,
 		Attachments: 1, LastChange: &last,
-		Root: []app.RootNode{{Path: "AGENTS.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}
+		Root: []app.RootNode{{Path: "index.md", Kind: domain.KindPage, Virtual: true}, {Path: "log.md", Kind: domain.KindPage, Virtual: true}, {Path: "AGENTS.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}
 	if err != nil || got.Mode != want.Mode || got.Agents != want.Agents || !got.HasAgents || got.Pages != 3 || got.Attachments != 1 ||
 		got.LastChange != &last || !slices.Equal(got.Root, want.Root) || got.MoreRoot {
 		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)

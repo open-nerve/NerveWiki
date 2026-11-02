@@ -2,6 +2,7 @@ package mcpadapter
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -90,5 +91,38 @@ func TestTheListFitsItsAnswer(t *testing.T) {
 	over := []app.Listed{{Path: "a.md", Page: &app.PageState{}, Cursor: strings.Repeat("c", mcpserver.MaxAnswerBytes)}, {Path: "b.md", Page: &app.PageState{}}}
 	if _, err := listOf(app.Listing{Items: over}).list(context.Background(), mcpserver.Call{}, listIn{}); !errors.Is(err, errNoItemFits) {
 		t.Errorf("an item that does not fit = %v, want errNoItemFits", err)
+	}
+}
+
+func TestVirtualListMetadata(t *testing.T) {
+	items := []app.Listed{{Path: "index.md", Virtual: true}, {Path: "log.md", Virtual: true}, {Path: "Empty.md", Node: domain.Node{ID: uuid.NewV7()}, Page: &app.PageState{Revision: 1}}}
+	res, err := listOf(app.Listing{Items: items}).list(context.Background(), mcpserver.Call{}, listIn{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Items []map[string]any `json:"items"`
+	}
+	if err := json.Unmarshal([]byte(rawOf(t, res)), &got); err != nil {
+		t.Fatal(err)
+	}
+	for i, item := range got.Items {
+		if i < 2 {
+			if item["virtual"] != true || item["kind"] != "page" {
+				t.Errorf("virtual item: %v", item)
+			}
+			for _, field := range []string{"version", "byte_size", "updated_at"} {
+				if _, ok := item[field]; ok {
+					t.Errorf("virtual %s exposes %s", items[i].Path, field)
+				}
+			}
+		} else {
+			if value, ok := item["byte_size"]; !ok || value != float64(0) {
+				t.Errorf("real empty page loses byte_size:0: %v", item)
+			}
+			if _, ok := item["virtual"]; ok {
+				t.Errorf("real item has virtual: %v", item)
+			}
+		}
 	}
 }

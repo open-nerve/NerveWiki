@@ -110,13 +110,26 @@ jobs:
       # 集成测试用 testcontainers 启动 PostgreSQL：ubuntu runner 自带 Docker。
       # 输出另存一份：失败时下一步从中取出失败的测试
       - name: Test
+        id: go-tests
         shell: bash
         # 不用回收器（Ryuk）：go test ./... 的各个包共用一个回收器的会话；一个包连它出错时 testcontainers 终止它、另起一个（reaper.go 的 retryLocked），
         # 新的那个在自己的客户端走光之后清掉整个会话的容器，连同没连上它、还在跑的包的数据库（M7/P6A 的 CI 两次在 bootstrap 中途失去数据库，疑为此）。
         # runner 用完即弃，容器不必回收；本机照旧由回收器删除
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: make "test-go-${{ matrix.leg }}" 2>&1 | tee "$RUNNER_TEMP/test-go.log"
+        # 完整 SQL/参数/EXPLAIN 的单行可超过 1 MiB；直接送到 runner 的控制台会积压，直到作业超时。
+        # tee 保存原字节，控制台只预览每行前 1 KiB，留出失败注解的上下文空间；pipefail 保留测试/管道失败。
+        run: |
+          make "test-go-${{ matrix.leg }}" 2>&1 | tee "$RUNNER_TEMP/test-go.log" | python3 .github/scripts/preview-test-log.py | tee "$RUNNER_TEMP/test-go-preview.log"
+      - name: Upload the Go test log
+        if: always() && steps.go-tests.outcome != 'skipped'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: go-test-${{ matrix.leg }}
+          path: |
+            ${{ runner.temp }}/test-go.log
+            ${{ runner.temp }}/test-go-preview.log
+          if-no-files-found: error
       # 失败的测试写成注解：公开仓库的运行日志只有有权限的人读得到，注解经检查的接口人人可读。
       # 失败处之前的 16 行也取：带 -v 的测试（耗时的守卫）在 --- FAIL 之前就打出了 === RUN 与自己的 Logf、Errorf，
       # 只取其后的行时注解里看不出是哪一条断言失败、测得多少（M8，main 的 1f732c9）；总量仍由 head 与下面的字数封顶。
@@ -125,7 +138,7 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E -B16 -A24 -- '--- FAIL|^panic: |^FAIL\s' "$RUNNER_TEMP/test-go.log" | head -n 600 > "$RUNNER_TEMP/failures.txt" || true
+          grep -E -B16 -A24 -- '--- FAIL|^panic: |^FAIL\s' "$RUNNER_TEMP/test-go-preview.log" | head -n 600 > "$RUNNER_TEMP/failures.txt" || true
           {
             echo "== containers"
             docker ps -a --format '{{.ID}} {{.Image}} {{.Status}}'

@@ -1,6 +1,6 @@
 import type { TreeNode } from "@nervewiki/api-client";
 
-import { errorOf, mcpClient, readPage, resultOf, type McpClient } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, readPage, resultOf, type McpClient } from "../../fixtures/mcp";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getPage, listNodes, postPage } from "../../fixtures/pages";
@@ -109,6 +109,7 @@ test("PG11 (MCP): an agent reads a page by its ancestors' path, in any case, and
 
   // A path is found by its keys, and answered with the names stored, those of the page's ancestors.
   const read = await readPage(agent, { path: "a/b/c.md" });
+  assertRealPage(read);
   expect([read.meta.path, read.meta.version]).toEqual(["A/B/C.md", `${c.id}:1`]);
   const ancestors = (await getPage(api, pat, c.id)).data?.ancestors ?? [];
   expect(read.meta.path).toBe([...ancestors.map((ancestor) => ancestor.name), "C.md"].join("/"));

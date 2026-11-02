@@ -27,10 +27,12 @@ func CheckListLimit(limit *int) (int, error) {
 }
 
 // ChildrenCursor is where a list of children goes on (M9 design 4.9):
-// after the item of sort order O and id I.
+// after the real item of sort order O and id I, or generated root item V
+// (1 for index, 2 for log). Zero V retains the original cursor bytes.
 type ChildrenCursor struct {
 	O float64   `json:"o"`
 	I uuid.UUID `json:"i"`
+	V int       `json:"v,omitempty"`
 }
 
 // GlobCursor is where a glob's list goes on: after the path key K. Neither
@@ -38,4 +40,12 @@ type ChildrenCursor struct {
 // repeated nor skipped among the others.
 type GlobCursor struct {
 	K string `json:"k"`
+}
+
+// Check keeps virtual progress separate from the real sort/id domain.
+func (c ChildrenCursor) Check() error {
+	if c.V < 0 || c.V > 2 || c.V != 0 && (c.O != 0 || c.I != (uuid.UUID{})) {
+		return shared.InvalidCursor()
+	}
+	return nil
 }

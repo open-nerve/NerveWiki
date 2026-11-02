@@ -66,9 +66,9 @@ func TestListVersionsAtPathListsAsExecute(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := []string{"WorkspaceOf", "Authorize page.history", "RootByKey", "ChildByKey", "ListVersions", "PageStates 1"}
+		want := []string{"WorkspaceOf", "Authorize page.history", "StateOf", "RootByKey", "ChildByKey", "ListVersions", "PageStates 1"}
 		if page == 0 {
-			want = slices.Insert(want, 5, "AliveChangesetOf")
+			want = slices.Insert(want, 6, "AliveChangesetOf")
 		}
 		if !slices.Equal(f.rec.calls, want) {
 			t.Errorf("page %d: calls = %v, want %v", page, f.rec.calls, want)
@@ -239,7 +239,7 @@ func TestGetVersionAtPathReadsTheVersion(t *testing.T) {
 	if got != want {
 		t.Errorf("version 1 at Guide/Notes.md = %+v, want %+v", got, want)
 	}
-	if want := []string{"WorkspaceOf", "Authorize page.history", "RootByKey", "ChildByKey", "FindVersion", "PageStates 1"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"WorkspaceOf", "Authorize page.history", "StateOf", "RootByKey", "ChildByKey", "FindVersion", "PageStates 1"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	for _, revision := range []int{2, 3, 4} {
@@ -393,7 +393,7 @@ func TestListChangesetsAtPathListsAsExecute(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := uc.AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new("A.md"), Actor: &me}); err != nil ||
-		!slices.Equal(f.rec.calls[:4], []string{"WorkspaceOf", "Authorize page.history", "RootByKey", "ListChangesets actor page"}) {
+		!slices.Equal(f.rec.calls[:5], []string{"WorkspaceOf", "Authorize page.history", "StateOf", "RootByKey", "ListChangesets actor page"}) {
 		t.Errorf("calls = %v, %v; want the notebook, the node by its path, then the log", f.rec.calls, err)
 	}
 }

@@ -2,16 +2,18 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | **正式设计已接受；设计文档自身提交与精确main CI待验**。S1–S3尚未开始 |
+| 状态 | **正式设计及入口main CI已接受；S1服务端/真实导出已实施，S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施**。S2/S3未开始，P4尚未完成 |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
-| 角色与接受状态 | 三位fresh初审与两轮原席核对已完成，主持者已按实际收据接受设计，当前已核实finding零open；决定71／72采用。见[设计审查记录](reviews/P4-design-review.md)。本次自身提交/CI未知，不作成功声明 |
+| 角色与接受状态 | 正式设计三审及原席核对、决定71/72和e5e8入口CI已接受。S1代码审查：77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。实际对象、发现/修复和原件见[S1记录](reviews/P4-S1-virtual-files-review.md)；作者与ROOT预读不充fresh席 |
 | 迁移与决定 | 固定6992迁移尾号00052；计划 `00053_page_ingest.sql` 尚未实施。实施决定接70，§2.3与00§11正式采用71／72，负责人可以改判 |
 | 依赖 | 已批准 00 §4.2/4.9/4.13/4.14/7/8/9、P3 §3.8.1–3.8.2／决定 62、02-workflow §2 |
 | 材料组成 | 本文与 `specs/P4-virtual-ingest-ports.md`、`specs/P4-virtual-ingest-queries.sql`、`specs/P4-virtual-ingest-test-completion-matrix.md`、`specs/P4-virtual-ingest-00-revisions.json`、`specs/P4-virtual-ingest-types-boundary.md`、`specs/P4-virtual-ingest-files.json` 是同一正式设计，附件不是以后再填的接口空白 |
 
-本文给出主持者已接受的正式设计合同。§2.3记录实施决定71／72；其余按既有00、P3交接和当前代码细化。P3入口已实际完成；P4的SQL、测试、性能、迁移与实现结果尚未产生。[源码事实](specs/P4-virtual-ingest-source-facts.md)与[当前源码身份](specs/P4-virtual-ingest-source-pins.json)支撑基线，不替代设计三审或未来动态验证。
+§2.1、§2.3、§7中设计commit/CI待产生、当前未实测等准备态原文保留为e5e8正式设计发布前记录；S1实际结果见§10.1及S1记录，S2/S3义务仍待实施。
+
+本文保留已接受的正式设计合同。S1已实现统一虚拟路径、有限目录、RR虚拟read与真实export；S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施。十二个代码/测试/CI提交、77正式三席及0b0修复验证分别记在§10.1及[S1记录](reviews/P4-S1-virtual-files-review.md)。S2/S3及00053迁移未实施，不能把S1结果算作P4完成。
 
 ## 0. Step 划分与独立为绿
 
@@ -61,6 +63,8 @@ P3已完成：6992是六文件P3done文档提交，parent为df9b1d49544336f80d76
 | 72 | REST使用有界exact types catalogue：全本可列wiki页排来源后统计，独立type／tag／parent筛选；最大100项、types数组实际JSON≤32KiB。仅完整存储值≤1024UTF-8字节可作为filter；新增required types_complete与unfilterable_type_pages。Catalogue仅REST=true；MCP保留既有精确type SQL，不承担catalogue扫描。 | 00未定exact-key碰撞、超长值、计数范围与输出界，见[types方案](specs/P4-virtual-ingest-types-boundary.md)。新增字段／提示与全量有限输入读取是代价；不改现写入type长度或MCP filter。D01–D11和100k／TOAST／heap／HTTP字节及手写oracle闭合；菜单外URL值保持精确筛选。 |
 
 虚拟分支单次RR／export复用、既有RevertTrees保留、00053迁移编号和文件／Step编排为已接受设计方案；实施中与既有契约不一致的新发现仍须交主持者处置，不由本表豁免实际验证。
+
+S1补充决定73以字面&→%26保Markdown实体目的地身份；74是Markdown成本原top按两个完整leaf分进程的单recipe例外；75明确256/500按最终转义显示UTF-8字节计并含省略号，不拆码点/转义对。原算法/样本/整文件与进程预算不变。ROOT已正式采用73、74、75，均为“主持者的决定（负责人可以改判）”；原预算与接口边界保留，技术修复和C-Q1补测不另增产品决定编号 编号及具体边界见00§11，实际依据和失败保留在S1记录；技术lint修复不编产品决定。
 
 ## 3. 服务端
 
@@ -119,13 +123,13 @@ Execute 顺序仍 actor→ParsePath→CheckWindow→decideNotebook。只对规�
 
 REST 与 MCP 复用同一 ListIndex、IndexCursor{K,Typed,ID} 与 type-key/id 顺序。IndexQuery 保留 MCP Parent 路径，新加 ParentID、AtRoot、ExcludeArea；Parent 与 ParentID/AtRoot 同给的内部调用为字段 422，公共 REST 只暴露 parent_id/at_root，MCP 仍只 Parent。REST ExcludeArea=true且Catalogue=true：完整首遍头排来源，分批取完整filter值，统计catalogue后筛items；MCP两者false，保留既有IndexPages(typeIs)精确SQL，不承担catalogue扫描。二者共用资格、排序与分页规则。ParentID 需存在、同本、live page；附件／外本／不存在统一 page.not_found；AtRoot=false 等同未给，parent_id + at_root=true 422。
 
-REST 候选以完整有限的可列 wiki 页集合统计 types/count，再按 catalogue 项/字节界输出（先排来源、独立于当前页与 type/tag/parent 筛选；这是本稿推荐，00未明确计数筛选范围），source_area={root_id,sources} 或 null、当次 mode；来源根自身仍列目录。普通本 source_area=null。类型使用 valid frontmatter、首 ASCII-insensitive `type`、string 且 jsTrim 非空；SQL 快路 value_start/value_chars，超过 257 字符且前缀全空才读全值判空。长空白后一个 x 不能漏；首键非字符串不能改取后键。文件排序 typed type-key/path、untyped parent-path/path；REST typed type-key/id（UUIDv7 建的先后），两种序不同明说。
+REST按已接受的决定72，以当次首遍完整有限可列wiki页集合排来源严格后代后统计exact types/count，独立于当前页及type/tag/parent筛选；来源根保留，source_area={root_id,sources}或null，另返回当次mode。普通本source_area=null。valid frontmatter的首ASCII-insensitive type必须为string且jsTrim非空；超过257字符且前缀全空才读全值，长空白后x不能漏，首非string不能改取后键。文件次序是typed type-key/path与untyped parent-path/path，REST/MCP仍type-key/id；这一区别是表示次序。S1-2真实PG/HTTP与S1-4成本见§10.1，S3目录UI尚未实现。
 
 文件数据端口见 ports：一次完整紧凑类型头／树／source membership，选定项目后取 facts，不循环公开 limit≤100 的 REST 页反复读全本。index read 初值 MaxIndexFileItems=200，≤40KiB，每项 inbound≤1000；最终取值须正式实测后冻结。log read recent≤50，每 cs 前3变化，message≤500B；S2 每 cs 前5来源。index export≤10000项/2MiB，**不得读 inbound**；log export≤1000cs/1MiB。全部界是代码常量，不加 YAML 配置。
 
-生成器纯函数、固定英文。显示title/type/summary/tag/message/client/name及显示path的控制字符／换行中和为空格，Markdown label转义反斜杠和方括号。**目的地身份独立**：read用完整原路径，export用完整映射路径；先把字面`%`编码为`%25`，再处理`<`／`>`为`%3C`／`%3E`并包进`<...>`。destination不做256B显示截断、trim或空格中和；异常控制字符／非法UTF8等非法路径返回无名称内部错误，不造一个指向别处的清理后路径。显示缩短只改label，不能改node身份。每条完整链接按编码／转义后实际UTF8字节试写，放不下则不写该条、保留footer，不能截断目的地／百分号编码或把半条算入M。固定头／来源行与footer也计入界，强制段装不下则内部预算错误。source area只给路径、非空页＋附件数及pending_sources/lint去处，无lint调用或伪pending数。%41/%20独立身份与编码后容量控制见F07/F08。
+生成器纯函数、固定英文。显示title/type/summary/tag/message/client/name及显示path的控制字符／换行中和为空格，Markdown label转义反斜杠、方括号和反引号。显示上限按最终转义字符串的UTF-8字节计，256B的label与500B的message上限均包含截短时的三字节省略号；恰好到界不省略，截短不拆UTF-8码点或反斜杠转义对。**目的地身份独立**：read用完整原路径，export用完整映射路径；先把字面`%`编码为`%25`，字面`&`编码为`%26`，再处理`<`／`>`为`%3C`／`%3E`并包进`<...>`；字面HTML实体拼写须经过真实Markdown/HTML/URL消费链仍保持原节点身份。destination不做256B显示截断、trim或空格中和；异常控制字符／非法UTF8等非法路径返回无名称内部错误，不造一个指向别处的清理后路径。显示缩短只改label，不能改node身份。每条完整链接按编码／转义后实际UTF8字节试写，放不下则不写该条、保留footer，不能截断目的地／百分号编码或把半条算入M。固定头／来源行与footer也计入界，强制段装不下则内部预算错误。source area只给路径、非空页＋附件数及pending_sources/lint去处，无lint调用或伪pending数。%41/%20独立身份与编码后容量控制见F07/F08。
 
-新增核实的边界：现type filter上限1024 **UTF-8字节**且与索引完整存储值exact相等（沿既有NUL→FFFD归一，不是原Markdown拼写）；type-key/显示前缀会碰撞，不能当filter值。`specs/P4-virtual-ingest-types-boundary.md`规定有限exact catalogue（≤100项、types JSON≤32KiB）、保留项完整计数、必填types_complete与unfilterable_type_pages明确未完整／long页数；长值页面仍可见但不发无效filter。这些新REST字段和00 A11已随决定72接受设计；100k/长值/TOAST成本未量，不冒称性能已接受。
+新增核实的边界：现type filter上限1024 **UTF-8字节**且与索引完整存储值exact相等（沿既有NUL→FFFD归一，不是原Markdown拼写）；type-key/显示前缀会碰撞，不能当filter值。`specs/P4-virtual-ingest-types-boundary.md`规定有限exact catalogue（≤100项、types JSON≤32KiB）、保留项完整计数、必填types_complete与unfilterable_type_pages明确未完整／long页数；长值页面仍可见但不发无效filter。这些新REST字段和00 A11已随决定72接受设计；S1-2服务端行为及S1-4的100k/长值/TOAST校准、fixed targeted guard已有独立收据；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；实际容量与精确CI分账见[S1记录](reviews/P4-S1-virtual-files-review.md)，不以targeted替代全进程。
 
 REST空结果仍交完整响应metadata：合法空父children、TagKey=false、TagPages空、精确type零命中或cursor越过尾部只确定items=[]／next为空，不能跳过mode、source_area、types与完整性字段。当前ListIndex:93–104的非错误空返回在Catalogue=true时改为记录itemsKnownEmpty并继续metadata／catalogue；不再需要的item筛选读取可省，但已遇到的真实字段／权限／parent／读取错误照原优先次序返回，metadata读取失败也返回错误。MCP Catalogue=false保留既有廉价空返回。D04用另一未筛选eligible typed页做非空oracle，逐腿回退每个REST捷径必须失败。
 
@@ -137,7 +141,7 @@ REST空结果仍交完整响应metadata：合法空父children、TagKey=false、
 
 导出路径以transfer已完成的plan为权威。bootstrap把`Scope.Nodes`逐字段复制为wiki自有`ExportPath{ID,Asset,Path}`，由export-only scope交GenerateInSnapshot；不重算plan、不加快照。映射只在当前contributor调用／export snapshot中只读，完成后释放，不跨调用缓存；read profile仍用page域原路径。index条目、来源区行、log变化和S2 log ingest来源按node ID查映射；导出显示path、untyped父目录组键及组内次序用映射路径，index标题仍为原可读标题。folder-only尾斜杠路径作为非链接文字，不伪造`.md`；文件／附件才链接。live tree／来源根／index项缺映射或kind不符为内部错误，历史缺ID保留null／非链接文字。历史Path=nil但ID仍在映射时按ID生成链接；禁止用旧path猜新落点。映射拒绝重复ID（即使值相同）、重复完整Path、空／绝对／dot或dotdot段、反斜杠、非法UTF8／控制字符、asset尾斜杠。校验在生成两文件前完成，错误使导出失败且不含名称，不静默丢live条目。E07/E08用真实zip entries核folder-only及碰撞改名子树，E09与U19核全部path消费者；不只比两份同算法输出。
 
-serve 的真实 zip 必须看到两文件与 contributed 元数据；metaPaths 读 contributed，reimport 按首个有效 meta 的精确 NFC 路径跳过。无 meta／首 meta 超16MiB fallback 保留：LLM 根保留名加序号，standard按普通实体导入。重新导入新的 LLM 产生 raw 2／AGENTS 2 的旧限制留文档，不扩展到 M11 的存量升级修复。
+serve的真实ZIP已由S1-4测试读取两虚拟文件及contributed；metaPaths只是读取该元数据的测试helper。生产链由ReadMeta构造Contributed，再由真实导入按第一个meta中的精确NFC路径跳过；E05的单fault是ReadMeta→Contributed映射，不把破坏helper算生产控制。无meta或首meta超过16MiB时沿既有fallback：LLM根保留名加序号，standard按实体导入。新LLM重新导入仍可产生raw 2/AGENTS 2；存量升级与旧保留根处理留M11。实际whole/subtree/standard、NFC、冲突和fallback证据见[S1记录](reviews/P4-S1-virtual-files-review.md)。行为、控制和完整门禁结果按实际身份记在该记录。
 
 ### 3.6 ingest 的时点、锁序与目标 current 证明
 
@@ -246,6 +250,12 @@ MCP tools描述改list/read/grep/index/open_notebook（S1），log/changeset（S
 
 不记录title/path/rawtarget/JSON/body。正常virtual读／目录沿现HTTP/MCP访问日志，不加lint运行info。ingest仅在有候选且证据不足时以受控debug诊断unit cs/notebook ID、Unknown原因枚举、raw/eligible头数、候选与抑制数量；正常无候选不输出一条每保存info。SQL错误沿现error包装回滚，不能重复报敏感内容；日志测试只截取子测试起点之后的行。是否debug默认可见沿现slog配置，不新配置项。诊断是内部辅助，不能成为公开产品状态或Ready标记。
 
+### 3.13 S1实施落点与已核修订
+
+S1按原4提交落地统一Lookup/list、REST目录、虚拟RR read、真实export/LW/成本；Tools负责Virtual nil校验，普通读与虚拟exclusive RR区分。字面&编码保实体身份，FirstChanges相关LATERAL保nullable与物理界；E05控制实际生产ReadMeta映射。门禁期修复L1兼容、CI日志、最终显示字节界、实际scope错误诊断及generic测试pool；Make仅按既有规则分组与移界。
+
+77正式三席为A零发现、B-I1 Important及C-Q1证据问题。0b0增加反引号显示转义与真实domain/两scope/ZIP回归，累计十二个代码/测试/CI提交，minimum/postgen及fresh EW357已接受。其余修复门禁、精确CI、原席核修和独立冷热补测按[S1记录](reviews/P4-S1-virtual-files-review.md)的实际记录收口；不把77的接受外推到0b0。73–75、原4/3/3、fixed guards与原CI循环不变；C-Q1是验证协议处置，不新增产品规则。
+
 ## 4. 网页
 
 S1/S2每个required API字段／工具码带中英problem文本、生成TS、现fakes与fixtures；knip不收“以后S3会用”的未消费导出。S3才增加真实入口。
@@ -324,7 +334,7 @@ S1-1不能要求Virtual内容依赖先存在：`ToolDeps.Virtual`及其nil要求
 
 M10 `handoffs/M7-transfer.md` 项1/2/6处理进展追加：
 
-> P4/S1落实整本LLM虚拟文件贡献：在原export snapshot内追加有界index.md/log.md，子树／普通本不加，metaPaths读取contributed并由导入精确NFC跳过。真实serve ZIP、冲突与fallback对照见P4/S1记录。重新导入新LLM产生raw 2/AGENTS 2的限制保留，存量升级交M11；其余未完成项不借本项关闭。
+> P4/S1在原export snapshot内只给whole LLM贡献有界index.md/log.md；standard/subtree不贡献。生产ReadMeta→Contributed与精确NFC导入、真实ZIP和冲突/fallback已验证，结果见S1记录；metaPaths仅为测试helper。重新导入的raw 2/AGENTS 2限制保留，存量升级留M11，M7整份仍open。
 
 M10 `handoffs/M9-P1-mcp-registry.md` 项3处理进展追加：
 
@@ -384,9 +394,19 @@ Step reviews必须含对象／方法／核实finding与处置commit／原席复�
 
 P5获得真实virtual行为、tools说明与log字段，继续prompt/握手系统说明与人工清单，P4不提前注册prompt。M11获得保留名冲突、旧表示重建、Unknown／最终树近似边界，只有负责人说开始后进入升级。M12接真实测量，向现open打磨移交新增目录父页selector项；生产负载／停机义务保持。若选定候选被正式三审改判，必须同步00锚点、端口SQL、矩阵与完成文字，不能留下互相矛盾的两套合同。
 
-## 10. 结果（实施后补）
+## 10. 结果
+
+### 10.0 正式设计发布时的记录（历史原文）
 
 2026-11-01：P3完成事实不变。三位fresh初审和两轮原席核对已完成，主持者依据实际root回执SHA256 `c0d9fa1c4c3fd176e306c7cbab7ac644b841b798457c8830c1b05451054810cb` 接受设计及实施决定71／72；当前已核实finding零open。正式设计自身commit/CI尚未知、待文档门禁与精确main CI验收；S1–S3未开始。所有P4产品、SQL、测试、生成、迁移、成本及CI结果仍待实际实施后填写。
+
+### 10.1 S1 虚拟路径、目录、文件与导出
+
+S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/MCP共用ListIndex及决定72 finite exact catalogue、独占RR虚拟read、真实whole LLM export/元数据及NFC reimport。四实施提交及其后门禁/审查修复累计十二提交；167c→15b仅改未发布message、同tree。S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施
+
+当前候选0b0df18c2ddd4b6779954458d37a617f66a42c5a/treed6614eb5ef0a03ebe5aa2c2f3091b65f8541d296修复77三审的B-I1反引号显示问题，minimum/postgen及fresh EW357已接受。77原A零发现、B-I1及C-Q1报告保历史身份；C-Q1采用独立PG shared_buffers冷/同操作warm补测，OS缓存保留，不增加原CI循环。最终验证分别为：0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。正式审查：77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各旧失败、来源对应、96控制分账、冷热实测与原席核修详见[S1记录](reviews/P4-S1-virtual-files-review.md)。
+
+原4s请求、2s提交/worker、历史200ms和六case的24固定限值不变；完整成本仍50recipe/100process/1333 recipe-local nodes。指定main pair各片实际Test均值<450s、文档CI、no-ff/main和record待真实执行。当前1Chromium；S3仍须至少3browser，S2/S3未实施，P4尚未完成。
 
 ## 附录：已核代码与绑定方式
 

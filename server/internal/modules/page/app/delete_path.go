@@ -36,7 +36,7 @@ type DeletePath struct {
 
 // NewDeletePath returns the use case.
 func NewDeletePath(writer *Writer, paths PathStore, notebooks Notebooks, auth shared.Authorizer, logger *slog.Logger) *DeletePath {
-	return &DeletePath{writer: writer, paths: NewNodePaths(paths), notebooks: notebooks, auth: auth, logger: logger}
+	return &DeletePath{writer: writer, paths: NewNodePaths(paths, notebooks), notebooks: notebooks, auth: auth, logger: logger}
 }
 
 // Execute deletes the node at p's path in the notebook notebookID, with

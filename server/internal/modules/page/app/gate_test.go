@@ -64,7 +64,7 @@ func TestTheNotebooksDecisionAnswersAFailure(t *testing.T) {
 			return err
 		},
 		"read": func() error {
-			_, err := app.NewReadPath(f.notebooks, f.store, f.store, f.auth).Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil,
+			_, err := app.NewReadPath(f.notebooks, f.store, f.store, f.auth, fakeSnapshots{f.rec}).Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil,
 				textMeasure(100))
 			return err
 		},

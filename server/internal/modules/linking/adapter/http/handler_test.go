@@ -41,14 +41,16 @@ func id(n int) uuid.UUID {
 // the fixtures' answer; next is the backlinks' next cursor, landing the
 // landing's answer, expires when the properties' addresses expire.
 type fakes struct {
-	err     error
-	next    string
-	landing domain.Landing
-	expires time.Time
-	got     []any
+	directory *app.IndexPage
+	err       error
+	next      string
+	landing   domain.Landing
+	expires   time.Time
+	got       []any
 }
 
 type (
+	fakeIndex      struct{ *fakes }
 	fakeBacklinks  struct{ *fakes }
 	fakeProperties struct{ *fakes }
 	fakeTags       struct{ *fakes }
@@ -117,7 +119,7 @@ func (f *fakes) serve(t *testing.T) http.Handler {
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}})
 	httpadapter.Register(router, api, httpadapter.UseCases{
-		ListBacklinks: fakeBacklinks{f}, GetPageProperties: fakeProperties{f}, ListTags: fakeTags{f}, GetTag: fakeTag{f},
+		ListIndex: fakeIndex{f}, ListBacklinks: fakeBacklinks{f}, GetPageProperties: fakeProperties{f}, ListTags: fakeTags{f}, GetTag: fakeTag{f},
 		ListLinkTargets: fakeTargets{f}, GetLinkLanding: fakeLanding{f},
 	})
 	return router
@@ -287,4 +289,12 @@ func TestParametersThatDoNotBindAreBadRequests(t *testing.T) {
 			t.Errorf("%s: %d %s, the use case got %v", path, status, body, f.got)
 		}
 	}
+}
+
+func (f fakeIndex) Execute(_ context.Context, notebookID uuid.UUID, q app.IndexQuery) (app.IndexPage, error) {
+	f.got = []any{notebookID, q}
+	if f.directory != nil {
+		return *f.directory, f.err
+	}
+	return app.IndexPage{Mode: "standard", TypesComplete: true}, f.err
 }

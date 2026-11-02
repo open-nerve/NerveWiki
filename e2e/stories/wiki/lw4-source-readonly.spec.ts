@@ -20,7 +20,7 @@ import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
 import { listChangesets, revertChangeset } from "../../fixtures/history";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
-import { errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -624,6 +624,7 @@ for (const scope of ["notebook", "account"] as const) {
       versions: [first.node_id],
     });
     const read = await readPage(agent, args({ path }));
+    assertRealPage(read);
     expect([read.text, read.meta.version]).toEqual([linked, first.version]);
 
     const refuseAs = async (caller: McpClient) => {
@@ -756,6 +757,7 @@ for (const scope of ["notebook", "account"] as const) {
     // The strict root and ordinary paths still accept both real MCP write and edit calls.
     const writable = async (pagePath: string, id?: string) => {
       const existing = id === undefined ? undefined : await readPage(agent, args({ path: pagePath }));
+      if (existing) assertRealPage(existing);
       const put = resultOf<Written>(
         await agent.call(
           "write",
@@ -825,6 +827,7 @@ for (const scope of ["notebook", "account"] as const) {
       },
       async (revision, content) => {
         const current = await readPage(agent, args({ path }));
+        assertRealPage(current);
         expect([current.meta.version, current.text]).toEqual([`${first.node_id}:${revision}`, content]);
         const versions = resultOf<{ current_version: string; versions: unknown[]; next_cursor: string | null }>(
           await agent.call("versions", args({ path })),

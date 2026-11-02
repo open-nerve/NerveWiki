@@ -1,7 +1,7 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
-import { errorOf, mcpClient, postMcp, readPage, resultOf } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, postMcp, readPage, resultOf } from "../../fixtures/mcp";
 import { addNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -150,7 +150,9 @@ test("PG12 (MCP): a member's agent writes, renames, moves and deletes by the wor
   expect(created.created.map((c) => c.path)).toEqual(["Notes/Mine.md"]);
   const renamed = resultOf(await member.call("move", { from: "Notes.md", to: "Shared.md" }), "rename Notes");
   expect(renamed).toMatchObject({ path: "Shared.md", node_id: page.id, changed: true });
-  const { version } = (await readPage(member, { path: "Shared.md" })).meta;
+  const initial = await readPage(member, { path: "Shared.md" });
+  assertRealPage(initial);
+  const { version } = initial.meta;
   expect(version).toBe(`${page.id}:1`);
   const shared = resultOf<Written>(
     await member.call("write", { path: "Shared.md", content: "# Shared\n", base_version: version }),
@@ -160,6 +162,7 @@ test("PG12 (MCP): a member's agent writes, renames, moves and deletes by the wor
 
   // The guest reader's agent reads, and is refused each write the member's would make, on the version it read.
   const read = await readPage(reader, { path: "Shared.md" });
+  assertRealPage(read);
   expect([read.text, read.meta.version]).toEqual(["# Shared\n", `${page.id}:2`]);
   const listed = resultOf<{ items: { path: string }[] }>(await reader.call("list"), "the reader's list");
   expect(listed.items.map((item) => item.path)).toEqual(["Shared.md"]);

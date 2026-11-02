@@ -27,7 +27,8 @@ type readIn struct {
 type pageMeta struct {
 	Path       string `json:"path"`
 	Kind       string `json:"kind"`
-	Version    string `json:"version"`
+	Version    string `json:"version,omitempty"`
+	Virtual    bool   `json:"virtual,omitempty"`
 	Offset     int    `json:"offset"`
 	Column     int    `json:"column"`
 	Lines      int    `json:"lines"`
@@ -100,8 +101,11 @@ func (t tools) read(ctx context.Context, c mcpserver.Call, in readIn) (mcpserver
 		return t.readAttachment(ctx, c, in.Path, r)
 	}
 	p := r.Page
-	meta := pageMeta{Path: r.Path, Kind: "page", Version: p.Version.String(), Offset: p.Window.Offset,
+	meta := pageMeta{Path: r.Path, Kind: "page", Virtual: p.Virtual, Offset: p.Window.Offset,
 		Column: p.Window.Column, Lines: p.Slice.Lines, TotalLines: p.Slice.TotalLines, Bytes: p.Bytes}
+	if !p.Virtual {
+		meta.Version = p.Version.String()
+	}
 	if p.Slice.NextOffset > 0 {
 		meta.NextOffset = &p.Slice.NextOffset
 	}

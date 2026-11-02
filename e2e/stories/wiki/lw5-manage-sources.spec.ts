@@ -20,7 +20,7 @@ import { createToken, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
-import { errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -389,6 +389,7 @@ for (const scope of ["notebook", "account"] as const) {
       "Entered"
     );
     const read = await readPage(writer, args({ path: "Evidence/Left/Entered.md" }));
+    assertRealPage(read);
     expect(read.text).toBe("Ordinary evidence.\n");
     await refuse(
       "write",

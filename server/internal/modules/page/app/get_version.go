@@ -104,7 +104,7 @@ func (g *GetVersion) AtPath(ctx context.Context, notebookID uuid.UUID, path stri
 	if err := decideNotebook(ctx, g.r.Notebooks, g.r.Auth, actor, domain.ActionHistory, notebookID); err != nil {
 		return PathVersion{}, err
 	}
-	at, err := NewNodePaths(g.r.Paths).Find(ctx, notebookID, p)
+	at, err := NewNodePaths(g.r.Paths, g.r.Notebooks).Find(ctx, notebookID, p)
 	if err != nil {
 		return PathVersion{}, err
 	}

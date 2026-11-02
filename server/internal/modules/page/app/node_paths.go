@@ -11,11 +11,15 @@ import (
 // and writes the paths of nodes by id (M9/P2 design 3.7), unlocked or in
 // the transaction ctx carries; it decides nothing: its callers decided
 // the notebook.
-type NodePaths struct{ store PathStore }
+type NodePaths struct {
+	store     PathStore
+	notebooks NotebookStates
+}
 
-// NewNodePaths returns the paths over store.
-func NewNodePaths(store PathStore) NodePaths {
-	return NodePaths{store: store}
+// NewNodePaths returns the paths over store, with the notebook state needed
+// to distinguish generated root files from real nested or standard paths.
+func NewNodePaths(store PathStore, notebooks NotebookStates) NodePaths {
+	return NodePaths{store: store, notebooks: notebooks}
 }
 
 // Found is a node a path named and its ancestors from the root.
@@ -33,7 +37,11 @@ type Found struct {
 // one moment: a read takes it, its answer's path written by the names
 // found (M9/P1 design 3.9.2).
 func (p NodePaths) Find(ctx context.Context, notebookID uuid.UUID, path domain.Path) (Found, error) {
-	n, ancestors, err := domain.FindPath(path, p.lookup(ctx, notebookID))
+	lookup, err := p.lookup(ctx, notebookID)
+	if err != nil {
+		return Found{}, err
+	}
+	n, ancestors, err := domain.FindPath(path, lookup)
 	if err != nil {
 		return Found{}, err
 	}
@@ -47,7 +55,11 @@ func (p NodePaths) Find(ctx context.Context, notebookID uuid.UUID, path domain.P
 // walks in its unit, whose lock of the notebook's row keeps the chain as
 // found (M9 design 4.8).
 func (p NodePaths) Walk(ctx context.Context, notebookID uuid.UUID, keys []string) ([]domain.Node, error) {
-	return domain.WalkPath(keys, p.lookup(ctx, notebookID))
+	lookup, err := p.lookup(ctx, notebookID)
+	if err != nil {
+		return nil, err
+	}
+	return domain.WalkPath(keys, lookup)
 }
 
 // Paths is the paths of ids' nodes alive in notebookID, by id, as PathOf
@@ -72,13 +84,20 @@ func (p NodePaths) Lines(ctx context.Context, notebookID uuid.UUID, ids []uuid.U
 	return out, err
 }
 
-// lookup is the store's point lookup in notebookID: the node keyed key
-// under the last of chain, the notebook's root for none.
-func (p NodePaths) lookup(ctx context.Context, notebookID uuid.UUID) domain.Lookup {
-	return func(chain []domain.Node, key string) (domain.Node, bool, error) {
+// lookup reads the authorized notebook state once, then wraps the store's
+// point lookup: the node under chain's last member, the root for none.
+func (p NodePaths) lookup(ctx context.Context, notebookID uuid.UUID) (domain.Lookup, error) {
+	state, ok, err := p.notebooks.StateOf(ctx, notebookID)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return nil, domain.ErrNotebookNotFound
+	}
+	return domain.VirtualLookup(state, func(chain []domain.Node, key string) (domain.Node, bool, error) {
 		if len(chain) == 0 {
 			return p.store.RootByKey(ctx, notebookID, key)
 		}
 		return p.store.ChildByKey(ctx, notebookID, chain[len(chain)-1].ID, key)
-	}
+	}), nil
 }

@@ -116,7 +116,7 @@ func wordsOf(t *testing.T, err error) string {
 func TestNodePathsCheckAndFindAPageAsPagesToolsDo(t *testing.T) {
 	p := newPathTree(t)
 	ctx := context.Background()
-	paths := page.NewNodePaths(p.pool)
+	paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
 
 	if err := paths.Check("parent", "A/B.md"); err != nil {
 		t.Errorf("a path = %v", err)
@@ -167,7 +167,7 @@ func TestNodePathsCheckAndFindAPageAsPagesToolsDo(t *testing.T) {
 func TestNodePathsReadThePathsPagesAndChildPages(t *testing.T) {
 	p := newPathTree(t)
 	ctx := context.Background()
-	paths := page.NewNodePaths(p.pool)
+	paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
 	ids := []uuid.UUID{p.a, p.b, p.c, p.x, p.r, p.elsewhere, uuid.NewV7()}
 
 	got, err := paths.Paths(ctx, p.notebook, ids)
@@ -208,4 +208,57 @@ func TestNodePathsReadThePathsPagesAndChildPages(t *testing.T) {
 	if got, err := paths.ChildPages(ctx, p.other, uuid.UUID{}); err != nil || !slices.Equal(got, []uuid.UUID{p.elsewhere}) {
 		t.Errorf("ChildPages of the other notebook's root = %v, %v", got, err)
 	}
+}
+
+// Titles containing .md are real stored titles, not parsed path fragments.
+func TestDirectoryIndex(t *testing.T) {
+	t.Run("metadata", func(t *testing.T) {
+		p := newPathTree(t)
+		paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
+		got, err := paths.Pages(t.Context(), p.notebook, []uuid.UUID{p.a, p.y, p.x, p.c, p.elsewhere})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != 2 || got[p.a].Title != "A" || got[p.a].ParentID != nil || got[p.y].Title != "y.md" || got[p.y].ParentID == nil || *got[p.y].ParentID != p.a {
+			t.Fatalf("real path metadata=%+v", got)
+		}
+	})
+	t.Run("zero_parent", func(t *testing.T) {
+		p := newPathTree(t)
+		ctx := t.Context()
+		zero := uuid.UUID{}
+		_, err := p.pool.Exec(ctx, `INSERT INTO nodes(id,notebook_id,parent_id,kind,name,name_key,sort_order,created_by_id,updated_by_id,created_at,updated_at)
+   SELECT $1,notebook_id,NULL,'page','Zero','zero',0,created_by_id,updated_by_id,created_at,updated_at FROM nodes WHERE id=$2`, zero, p.a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = p.pool.Exec(ctx, `INSERT INTO page_contents(node_id,content,revision,content_hash,byte_size,updated_by_id,updated_at)
+   SELECT $1,content,revision,content_hash,byte_size,updated_by_id,updated_at FROM page_contents WHERE node_id=$2`, zero, p.a)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err = p.pool.Exec(ctx, `UPDATE nodes SET parent_id=$1 WHERE id=$2`, zero, p.inbox); err != nil {
+			t.Fatal(err)
+		}
+		paths := page.NewNodePaths(p.pool, sqlNotebooks{pool: p.pool})
+		root, err := paths.ChildPagesAt(ctx, p.notebook, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		slices.SortFunc(root, uuid.UUID.Compare)
+		want := []uuid.UUID{zero, p.a}
+		slices.SortFunc(want, uuid.UUID.Compare)
+		if !slices.Equal(root, want) {
+			t.Fatalf("nil root=%v want=%v", root, want)
+		}
+		child, err := paths.ChildPagesAt(ctx, p.notebook, &zero)
+		if err != nil || !slices.Equal(child, []uuid.UUID{p.inbox}) {
+			t.Fatalf("zero parent children=%v %v", child, err)
+		}
+		pages, err := paths.Pages(ctx, p.notebook, []uuid.UUID{p.inbox})
+		if err != nil || pages[p.inbox].ParentID == nil || *pages[p.inbox].ParentID != zero || pages[p.inbox].Title != "Inbox" {
+			t.Fatalf("zero parent metadata=%+v %v", pages, err)
+		}
+	})
+
 }

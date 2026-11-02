@@ -212,14 +212,16 @@ func assetDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, autho
 func linkingDeps(pool *pgxpool.Pool, authorizer shared.Authorizer, assets linking.AttachmentAddresses) linking.Deps {
 	targets := page.NewLinkTargets(pool)
 	return linking.Deps{
-		Pool:       pool,
-		Authorizer: authorizer,
-		Notebooks:  notebook.NewNotebooks(pool),
-		Pages:      linkTargets{targets},
-		Contents:   targets,
-		MaxDepth:   page.MaxDepth,
-		Assets:     assets,
-		NodePaths:  linkingNodePaths{page.NewNodePaths(pool)},
+		Pool:           pool,
+		Authorizer:     authorizer,
+		Notebooks:      notebook.NewNotebooks(pool),
+		Pages:          linkTargets{targets},
+		Contents:       targets,
+		MaxDepth:       page.MaxDepth,
+		Assets:         assets,
+		NodePaths:      linkingNodePaths{page.NewNodePaths(pool, pageNotebooks{notebook.NewNotebooks(pool)})},
+		IndexNotebooks: linkingIndexNotebooks{notebook.NewNotebooks(pool)},
+		IndexSources:   linkingIndexSources{page.NewSourceArea(pool)},
 	}
 }
 

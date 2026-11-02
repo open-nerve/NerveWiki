@@ -122,14 +122,12 @@ type Reads interface {
 // IndexReads are what index reads of the link index (M9/P4 design 3.9.3),
 // on the pool, each in one statement.
 type IndexReads interface {
-	// IndexPages is the pages of notebookID the index holds, each with
-	// the start of its type (IndexTypeChars characters); with typeIs, only
-	// those whose type is that string. What it reads of a type is its
-	// first domain.IndexStartChars characters and its length, whatever
-	// the type's length (S2 review B-I1). It reads a type whole only for a
-	// typeIs of IndexStartChars characters or more, and only a type that
-	// starts as typeIs does and has as many characters: at most 1,024, as
-	// typeIs has at most domain.MaxIndexType bytes (fix check F-m1).
+	// IndexPages reads the notebook's compact type heads; typeIs keeps only
+	// exact full-value matches. Qualification uses valid frontmatter and the
+	// first ASCII type key's JS-nonempty string. Its 257-character prefix
+	// normally decides qualification, but an all-whitespace long prefix
+	// needs the full value. Exact matching reads the full value only after
+	// both prefix and length match a filter of at most MaxIndexType bytes.
 	IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]IndexedPage, error)
 	// IndexItems is the types, summaries and first tags of the pages ids.
 	IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]IndexFacts, error)
@@ -141,8 +139,8 @@ type IndexReads interface {
 }
 
 // IndexedPage is a page the index holds and the start of its type, the
-// first property whose key is "type" but for ASCII case when its value is
-// a string; Typed false for none.
+// first property whose key is "type" but for ASCII case, in valid frontmatter,
+// with a string value nonempty under JS whitespace trimming. Typed is false otherwise.
 type IndexedPage struct {
 	ID        uuid.UUID
 	TypeStart string
@@ -151,7 +149,8 @@ type IndexedPage struct {
 
 // IndexFacts is what index shows of a page's properties and tags: its type
 // and its summary, each the first of its key but for ASCII case when its
-// value is a string, nil for none, their first domain.IndexStartChars
+// value is a string (type also needs valid frontmatter and JS nonempty),
+// nil for none, their first domain.IndexStartChars
 // characters, which tell a string MaxIndexString cuts from one whole; its
 // first tags by key, one more than domain.MaxIndexTags at most, each its
 // first 512 characters.
@@ -180,10 +179,14 @@ type NodePaths interface {
 	// ChildPages is the pages alive of notebookID whose parent is parent,
 	// the root's for uuid.UUID{}, in no order.
 	ChildPages(ctx context.Context, notebookID, parent uuid.UUID) ([]uuid.UUID, error)
+	// ChildPagesAt distinguishes nil (root) from a real zero UUID parent.
+	ChildPagesAt(ctx context.Context, notebookID uuid.UUID, parent *uuid.UUID) ([]uuid.UUID, error)
 }
 
-// PagePath is a page's path and its content's last change.
+// PagePath is a live page's path, stored title, real parent and content change.
 type PagePath struct {
+	ParentID  *uuid.UUID
+	Title     string
 	Path      string
 	ChangedAt time.Time
 }
@@ -467,4 +470,46 @@ type RewriteParser interface {
 	// bytes, as it parses, and the budget's size (M9/P3 fix round 6,
 	// B3-M1).
 	Takes(n int) (take, size int)
+}
+
+// IndexCatalogueHead retains one requested page, even when its index row vanished.
+// A typed nil FilterType is a complete value longer than MaxIndexType bytes.
+type IndexCatalogueHead struct {
+	ID         uuid.UUID
+	Typed      bool
+	FilterType *string
+}
+
+// IndexCatalogueReads reads the finite first-pass IDs in batches of at most 512.
+type IndexCatalogueReads interface {
+	CatalogueHeads(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]IndexCatalogueHead, error)
+}
+
+// IndexNotebookState is the unlocked notebook state for this directory response.
+type IndexNotebookState struct {
+	Mode         string
+	SourceRootID *uuid.UUID
+}
+type IndexNotebooks interface {
+	StateOf(ctx context.Context, notebookID uuid.UUID) (IndexNotebookState, bool, error)
+}
+
+// IndexSourceReads reads all strict live descendants, including empty pages.
+type IndexSourceNode struct {
+	ID    uuid.UUID
+	Asset bool
+	Bytes int64
+}
+type IndexSourceReads interface {
+	Nodes(ctx context.Context, notebookID, rootID uuid.UUID) ([]IndexSourceNode, error)
+}
+
+// IndexType is one exact, complete, filterable stored type and its page count.
+type IndexType struct {
+	Type  string `json:"type"`
+	Count int    `json:"count"`
+}
+type IndexSourceArea struct {
+	RootID  uuid.UUID
+	Sources int64
 }

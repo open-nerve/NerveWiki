@@ -523,3 +523,12 @@ func (s *Store) Analyze(ctx context.Context) error {
 	}
 	return nil
 }
+
+// IndexChildPagesAt reads directory children without a zero-UUID sentinel.
+func (s *Store) IndexChildPagesAt(ctx context.Context, notebookID uuid.UUID, parent *uuid.UUID) ([]uuid.UUID, error) {
+	ids, err := s.queries(ctx).IndexChildPagesAt(ctx, gen.IndexChildPagesAtParams{NotebookID: notebookID, ParentID: parent})
+	if err != nil {
+		return nil, fmt.Errorf("read directory children: %w", err)
+	}
+	return ids, nil
+}

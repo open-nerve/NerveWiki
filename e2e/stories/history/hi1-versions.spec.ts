@@ -1,6 +1,6 @@
 import { expectVersions } from "../../fixtures/assert/page";
 import { displayNameOf } from "../../fixtures/auth";
-import { errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
+import { assertRealPage, errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -184,6 +184,7 @@ test("HI1 (MCP): an agent lists a page's versions as REST does, each edit sessio
   ).toEqual([row(4, 3, third), row(3, 1, second), row(1, null, created)]);
   expect([listed.next_cursor, listed.versions.some((version) => "content" in version)]).toEqual([null, false]);
   const read = await readPage(agent, { path: "Tasks.md" });
+  assertRealPage(read);
   expect([listed.current_version, read.meta.version]).toEqual([`${page.id}:4`, `${page.id}:4`]);
   expect([read.text === third, (await readContent(api, pat, page.id)).content === third]).toEqual([true, true]);
 

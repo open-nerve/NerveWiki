@@ -441,7 +441,7 @@ func (t *treePass) count(id uuid.UUID) {
 // compares.
 func (t *treePass) create(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
-	found, err := WalkPath(s.Path.Keys, t.cur.lookup)
+	found, err := WalkPath(s.Path.Keys, VirtualLookup(t.notebook, t.cur.lookup))
 	if on := (*AttachmentOnPath)(nil); err != nil && !errors.As(err, &on) {
 		return err
 	}
@@ -494,7 +494,7 @@ func (t *treePass) create(i int, s BatchStep) error {
 // token holds.
 func (t *treePass) content(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
-	n, ancestors, err := FindPath(s.Path, t.cur.lookup)
+	n, ancestors, err := FindPath(s.Path, VirtualLookup(t.notebook, t.cur.lookup))
 	if err != nil {
 		return err
 	}
@@ -521,11 +521,11 @@ func (t *treePass) content(i int, s BatchStep) error {
 // carry (MaxUnitNodes). One there and so named already is unchanged.
 func (t *treePass) move(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
-	n, ancestors, err := FindPath(s.From, t.cur.lookup)
+	n, ancestors, err := FindPath(s.From, VirtualLookup(t.notebook, t.cur.lookup))
 	if err != nil {
 		return err
 	}
-	chain, err := WalkPath(s.To.Keys[:len(s.To.Keys)-1], t.cur.lookup)
+	chain, err := WalkPath(s.To.Keys[:len(s.To.Keys)-1], VirtualLookup(t.notebook, t.cur.lookup))
 	var on *AttachmentOnPath
 	if err != nil && !errors.As(err, &on) {
 		return err
@@ -610,7 +610,7 @@ func (t *treePass) move(i int, s BatchStep) error {
 // 4.11's normalization), then B1 and B3 on all it takes.
 func (t *treePass) delete(i int, s BatchStep) error {
 	ps := &t.p.Steps[i]
-	n, ancestors, err := FindPath(s.Path, t.cur.lookup)
+	n, ancestors, err := FindPath(s.Path, VirtualLookup(t.notebook, t.cur.lookup))
 	if err != nil {
 		return err
 	}

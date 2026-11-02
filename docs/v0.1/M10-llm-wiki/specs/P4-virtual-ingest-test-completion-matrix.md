@@ -1,6 +1,6 @@
 # P4 测试、单故障变异与完成标准矩阵
 
-状态：正式接受设计的未执行计划，136个控制ID，原114个ID全保留；每腿分别baseline→单改→业务首败→restore。五个交错仍待实施。编译／fixture错误、通用超时与空集等同比较不算捕获。
+状态：正式设计136个控制ID保留，原114个ID不删。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于136ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
 
 ## 1. 测试文件与命令模板
 
@@ -52,7 +52,7 @@ Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不�
 | F04/S1 | VF/limit_after_escape | 多byte与大量可转义字符逼近40KiB，输出≤界且UTF8完整 | 先按原值截断再扩张转义 |
 | F05/S1 | VF/actual_footer | 至少3候选仅2条放得下，footer写真实2而非3 | footer用候选数 |
 | F06/S1 | VF/source_line | 2非空page+1asset+1empty，source行数=3，无pending计数/调用 | 把所有source页含empty都计数 |
-| F07/S1 | VF/percent_identity | x%41.md/xA.md、x%20.md/含空格路径两独立腿，解码生成链接回原ID | 每腿去字面%→%25 |
+| F07/S1 | VF/percent_identity | x%41.md/xA.md；合法x%20y.md/x y.md独立ID；另补`&amp;` / `&sol;`实体身份，renderer与实际ZIP分别验最终落点 | 原两腿去字面%→%25；实体补充去字面&→%26；旧尾空格fixture保留历史，不用于最终身份证明 |
 | F08/S1 | VF/percent_budget | 大量%编码扩张恰跨read/export界；整项省略、真实footer、dest未截断 | 按编码前字节计预算 |
 | E07/S1 | EX/folder_only_paths | 真zip有A/与A/B.md、无A.md，A为非链接，B目的地命中entry | folder-only回退live A.md |
 | E08/S1 | EX/renamed_subtree_paths | 真zip有N.md及N.md 2/c.md，child链接命中后者 | 丢映射并用live path补齐 |
@@ -71,8 +71,8 @@ Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不�
 | E01/S1 | EX/whole_last_hop | 真serve导出LLM zip两file＋contributed，真实页面同在 | bootstrap交空Contributors |
 | E02/S1 | EX/scope | whole llm2file；standard/subtree0虚拟file，实体不丢 | 删除RootID=nil条件 |
 | E03/S1 | EX/snapshot | export已有RR；中间rename/downgrade后path/mode同一旧视图 | contributor读不带export ctx |
-| E04/S1 | EX/no_inbound | >1000cs/10000页输出受界，trace0 inbound查询 | export使用read profile并查inbound |
-| E05/S1 | EX/meta_skip | zip realmeta contributed重导入，两个virtual不成为node | metaPaths忽略contributed |
+| E04/S1 | EX/no_inbound | 完整数据/非空trace下export不得查Inbound；正常合法profile/scope与真实ZIP内容均在 | 实际fault放开wiki/app/virtual_files.go的Inbound查询条件，保持合法export profile/scope；不用错误profile先被一致性拒绝来充数 |
+| E05/S1 | EX/meta_skip | realmeta contributed经真实ZIP reimport不产生index/log节点；精确NFC另腿核对 | 实际单fault破坏生产ReadMeta→Contributed映射，穿过真实导入skip；metaPaths是测试helper，修改它不计生产kill |
 | E06/S1 | EX/fallback_conflict | 无meta/oversizefirstmeta：LLM编号、standard真实导入；非法rootfolder冲突 | 静默跳过contributor_conflict |
 | B01/S2 | IB/absent_distinct | 新P可信Absent可mark；原v1/missingP保留原链接不mark | 把missing index当KnownAbsent |
 | B02/S2 | IB/has_negative | SourceValues无sources但有正文S，Capture仍非空旧S | HasSourceProperties(false)直接返回Absent |
@@ -194,7 +194,7 @@ U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当�
 | 00 4.9/4.13根路径、MCP两scope与batch | V01–V14、D09、E01–E06 | S1§10、总体13.1路径/V、M9移交项3 |
 | ReadPath正常无事务、virtual own RR、export reuse | V15–V19、E03、I2与真正后段读交错 | 00 A02、总体13.1读一致性、真实快照调用次数 |
 | 中和／40KiB／read window／SDK界 | F01–F08、V08/V12 | 输出实际bytes/UTF8/实际N/M；总体13.4，不填估计通过 |
-| Index typed/jsTrim/首key/REST/MCP/type catalogue | D01–D11；当前type新候选A11 | 真PG/HTTP、source排除、计数范围、exact collision、cap/complete/long；正式三审处置A11 |
+| Index typed/jsTrim/首key/REST/MCP/type catalogue | D01–D11；已接受决定72/00 A11 | 真PG/HTTP、source排除、计数范围、exact collision、cap/complete/long；S1服务端/targeted证据分账；完整代码三审结果见S1记录，S3 UI待验 |
 | whole/subtree/standard、meta/fallback/conflict | E01–E09，LW10API/MCP/page | M7项1/2/6、M11旧保留根边界，不修M11 |
 | Before初始资格／四态／Unknown界 | B01–B18、U12–U21、U03、I3/I4 | 00 A04–A08、P3移交兑现、Capture DTO与源byte证明 |
 | coverage全rawEOF/current、无候选不扫、错误回滚 | C01–C10、U02、I2/I4 | 100k真实非空mark＋零无候选全扫；不能用“总Unknown”过门禁 |
@@ -206,12 +206,14 @@ U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当�
 | S3焦点/模式/keys/retry/共享fixture | W01–W10、EW01–04 | 三browser和runtime身份，原LW12同stream；总体13.2/13.4与M12selector推后 |
 | read100k最坏inbound/export100k+1000cs | 真PG/bootstrap cost新selector；E04错误query路径 | 保原时间/内存线，cold/warm/noStats/custom/generic/更大另一本、实际SQL范围 |
 | ingest100k/maxbatch/sets编码/JSON单合法大值 | C08/U08/真实cost；S→T和cap oracle非空 | Go heap/TotalAlloc、wire参数、PGbuff/temp、index锁时长；M12原义务 |
-| 全distinct与长type工作上限 | D05–D08/cost；bounded输出与EOF | <=100项/<=32KiB候选界（正式三审可改判）、完整性明确、max合法长值慢支路真实TOAST |
+| 全distinct与长type工作上限 | D05–D08/cost；bounded输出与EOF | 决定72已定<=100项/<=32KiB界、完整性明确、S1-4长值/TOAST校准和fixed targeted已核；全Step容量结果见S1记录 |
 | 门禁/CI/三审/文档真实身份 | 原02流程，源码/生成物/bin/HTTPassets身份链 | 全本地→精确绿色分支CI→三代码审查；修复CI先于原席复核；doc/main/record/doneCI |
 
 ## 5. 必须实测但本次未运行的命令与材料
 
-正式Step使用原heavy.sh、原全局锁、锁后3GiB/T7，fresh build与源/runtime哈希。候选成本测试入口建议：`TestVirtualIndexOfAHundredThousandPagesTakesItsTime`、`TestVirtualExportOfAHundredThousandPagesTakesItsTime`、`TestIngestOfAHundredThousandPagesTakesItsTime`、`TestIngestAtTheBatchBoundaryTakesItsTime`、`TestIndexCatalogueHasBoundedWorkAndOutput`；全部是未来新test，最终Make recipe/timeout由正式main逐行重绑，沿原预算，不填当前不存在的实测bound数。
+本节原标题“本次未运行”指正式设计时点；S1已执行范围以下述实际记录为准，S2/S3仍待实施。
+
+正式Step继续使用原heavy/全局锁、锁后3GiB/T7与fresh runtime身份。S1三条新!race成本入口已在Make：TestIndexCatalogueHasBoundedWorkAndOutput、TestVirtualIndexOfAHundredThousandPagesTakesItsTime、TestVirtualExportOfAHundredThousandPagesTakesItsTime。决定74仅将旧Markdown top的两个完整leaf各成一行，原45条其余legacy与3新行保持，最终50行；每条原timeout/预算不提高。0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账 原件与源身份见S1记录。S2的TestIngestOfAHundredThousandPagesTakesItsTime、TestIngestAtTheBatchBoundaryTakesItsTime仍未建，不能宣称可运行。
 
 迁移测Up/Down/Up、已有数据不回填、schema名称/negative数据/runtime-role、实际goose事务从锁获得到commit；不得拿P2已做6M迁移数据顶本P4结果。SQL计划使用真实noStats/ANALYZE/custom/实际generic，另大本无关数据和MVCC实际影响照实报告。普通无candidate和健康100k candidate是不同数据集，不能用前者替后者。
 
@@ -219,6 +221,10 @@ U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当�
 
 ## 6. 当前记录
 
-本材料中全部测试、变异、容量、SQL执行、浏览器和门禁状态统一为 `NOT_RUN_FORMAL_DESIGN_REVISION_01`。上表测试选择器和新增文件是可审实现目标；没有填passed/failed计数、日期、CI或迁移完成。正式设计接受前应处置types A11与所有候选小决定；正式实现后再以原始日志填写实际首败/恢复及未完成义务。
+原87之外的display限额腿与generic-pool/afterconnect、force-generic、type-index三项曾在efad各0/1/0完成并获ROOT接受，共91/273；77窄对应不重标原过程。缺type index由完整IndexPages/真实非空计划捕获，不要求150ms过滤必杀。0b0修复后须重跑原91，并加B-I1 domain/真实两scope与ZIP两条回归，保留A外层ctx、B源SQL＋generated投影、C实际contributor移除三个原席故障，共96/288；逻辑重复与故障/argv差异详见S1记录，不改原136设计ID。C-Q1冷暖补测与其observer反控另账，不扩原CI循环或放宽预算。旧E02泛化失败与5a97以后实际cause证据保各自身份。
+
+S1-4额外R-S1-4-P1为items/revisions两个FirstChanges单JOIN控制：SQL与generated对应片段同一病灶，分别0/1/0、fault不gen、bytes/mode恢复。F08旧未杀、O(n²)无效超时及235%边界分别保留。
+
+原NOT_RUN_FORMAL_DESIGN_REVISION_01是设计时点历史。旧87/93、各次门禁与efad→77的成本/控制窄对应保真实身份。77本机门禁/精确CI41402585652 attempt1已接受，三席原报告为A零发现、B-I1 Important及C-Q1。0b0反引号修复的minimum/postgen及fresh EW357已接受，其余新96控制、native19、成本100、冷热补测、精确修复CI与原席核修依实际记录：0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施。详见S1记录；S2/S3、迁移/ingest容量与五交错未执行，库存不当作RUN/PASS。
 
 新增old-F成本义务详见主文§3.8：400×300与400×10000关系、实际100ops以及100k完整非空mark，所有原预算保持；120000为reached rewrite links而非旧F上界。最终SQL仅parent IDs，app投影的slice/capacity/去重/sort/GC及旧新集合同时峰值实测。U20归IC/retention_cost，实际成本进新bootstrap/ingest_cost_test.go的独立!race recipe，与linking coverage catcher分开记原生命令。

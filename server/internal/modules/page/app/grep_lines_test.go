@@ -107,7 +107,7 @@ func TestGrepLinesAreReads(t *testing.T) {
 	}
 	reads.buildAll()
 	g := f.grepper(reads, nil)
-	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth)
+	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth, fakeSnapshots{f.rec})
 	limit := domain.MaxGrepLimit
 	cutAfterNFC, hits := 0, 0
 	for _, pattern := range []string{`needle`, `^$`, `^`, `(?i)NEEDLE`, "\u00e9t", `y$`, `\rn`} {

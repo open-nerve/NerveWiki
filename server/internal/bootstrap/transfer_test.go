@@ -177,12 +177,13 @@ func storedArchives(t *testing.T, dir string) map[string]string {
 	return files
 }
 
-// metaPaths are the nodes' paths a meta.json lists, and its root's name.
-func metaPaths(t *testing.T, data string) ([]string, string) {
+// metaPaths are the nodes' paths, root name and contributed files a meta.json lists.
+func metaPaths(t *testing.T, data string) ([]string, string, []string) {
 	t.Helper()
 	var meta struct {
-		Format int `json:"format"`
-		Root   *struct {
+		Format      int      `json:"format"`
+		Contributed []string `json:"contributed"`
+		Root        *struct {
 			Name string `json:"name"`
 		} `json:"root"`
 		Nodes []struct {
@@ -200,7 +201,7 @@ func metaPaths(t *testing.T, data string) ([]string, string) {
 	if meta.Root != nil {
 		root = meta.Root.Name
 	}
-	return paths, root
+	return paths, root, meta.Contributed
 }
 
 // A notebook exports through serve as an Obsidian vault, in the exports'
@@ -260,7 +261,7 @@ func TestAnExportRunsThroughServe(t *testing.T) {
 			t.Errorf("%s = %q (method %d), want %q (method %d)", name, got.data, got.method, e.data, e.method)
 		}
 	}
-	if paths, root := metaPaths(t, entries["Eng/.nerve/meta.json"].data); root != "" || !slices.Equal(paths, []string{"Spec.md",
+	if paths, root, contributed := metaPaths(t, entries["Eng/.nerve/meta.json"].data); root != "" || len(contributed) != 0 || !slices.Equal(paths, []string{"Spec.md",
 		"Spec/Folder/", "Spec/Folder/Deep.md", "Spec/Linked.md", "Spec/Linked/Child.md", "Spec/x.png", "Café.md"}) {
 		t.Errorf("meta.json lists %q, root %q; want every node, no root", paths, root)
 	}
@@ -277,7 +278,7 @@ func TestAnExportRunsThroughServe(t *testing.T) {
 		"Spec/Spec/x.png", "Spec/.nerve/meta.json"}; !slices.Equal(names, want) {
 		t.Errorf("the subtree's archive = %q, want %q", names, want)
 	}
-	if paths, root := metaPaths(t, entries["Spec/.nerve/meta.json"].data); root != "Spec" || len(paths) != 6 || paths[0] != "Spec.md" {
+	if paths, root, contributed := metaPaths(t, entries["Spec/.nerve/meta.json"].data); root != "Spec" || len(contributed) != 0 || len(paths) != 6 || paths[0] != "Spec.md" {
 		t.Errorf("the subtree's meta.json lists %q, root %q; want its six nodes, under Spec", paths, root)
 	}
 	if _, j := tm.transferJobOf(t, "alice", whole.ID); j.State != "expired" || j.Download != nil {
@@ -483,7 +484,7 @@ func TestAnExportReportsAnAttachmentWithoutItsFile(t *testing.T) {
 	if !slices.Equal(names, []string{"Eng/kept.txt", "Eng/.nerve/meta.json"}) || entries["Eng/kept.txt"].data != "kept" {
 		t.Errorf("the archive = %q, want kept.txt and meta.json", names)
 	}
-	if paths, _ := metaPaths(t, entries["Eng/.nerve/meta.json"].data); !slices.Equal(paths, []string{"kept.txt"}) {
+	if paths, _, contributed := metaPaths(t, entries["Eng/.nerve/meta.json"].data); len(contributed) != 0 || !slices.Equal(paths, []string{"kept.txt"}) {
 		t.Errorf("meta.json lists %q, want kept.txt", paths)
 	}
 }

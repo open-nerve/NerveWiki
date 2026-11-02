@@ -48,6 +48,9 @@ type Workspaces = app.Workspaces
 // notebook.NewNotebooks for it, the state to the module's own.
 type Notebooks = app.Notebooks
 
+// NotebookStates is the state read used by paths shared with other modules.
+type NotebookStates = app.NotebookStates
+
 // NotebookState and Mode are a notebook's state as the module reads it
 // (M10 design 4.3): bootstrap converts the notebook module's.
 type (
@@ -342,7 +345,7 @@ func New(d Deps) *Module {
 		targetPath:   app.NewSourceTargetPath(d.Notebooks, store, d.Authorizer),
 		jobWrites:    app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
-		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer),
+		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer, d.Snapshots),
 		write:        app.NewWritePath(writer, parser, store, store, store, d.Notebooks, d.Authorizer, d.Logger),
 		edit:         app.NewEditPage(writer, parser, store, store, store, locks, d.Notebooks, d.Authorizer, d.Clock, d.Logger),
 		move:         app.NewRelocatePath(writer, store, d.Notebooks, d.Authorizer, d.Logger),

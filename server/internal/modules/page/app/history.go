@@ -124,7 +124,7 @@ func (r HistoryReads) alivePaths(ctx context.Context, notebookID uuid.UUID, chan
 	if len(ids) == 0 {
 		return map[uuid.UUID]string{}, nil
 	}
-	return NewNodePaths(r.Paths).Paths(ctx, notebookID, ids)
+	return NewNodePaths(r.Paths, r.Notebooks).Paths(ctx, notebookID, ids)
 }
 
 // logged are the changesets as the log lists them: their counts and

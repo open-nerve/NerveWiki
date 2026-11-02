@@ -89,7 +89,7 @@ func randomName(rnd *rand.Rand, asset bool) (string, bool) {
 func TestEveryNodesPathFindsIt(t *testing.T) {
 	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
 	f := newFixture(t)
-	paths := app.NewNodePaths(f.s)
+	paths := app.NewNodePaths(f.s, inWorkspace{uuid.NewV7()})
 	list := app.NewListByPattern(inWorkspace{uuid.NewV7()}, f.s, f.s, anyInfo{}, everyone{})
 	rnd := rand.New(rand.NewPCG(11, 13))
 	keys := map[[3]string]bool{} // a notebook's, a parent's and a key

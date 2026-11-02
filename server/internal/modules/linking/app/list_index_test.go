@@ -32,11 +32,11 @@ func (r *indexReads) IndexPages(_ context.Context, _ uuid.UUID, typeIs *string) 
 	var out []app.IndexedPage
 	for _, id := range r.held {
 		f := r.facts[id]
-		if typeIs != nil && (f.Type == nil || *f.Type != *typeIs) {
+		if typeIs != nil && (!indexTypePresent(f.Type) || *f.Type != *typeIs) {
 			continue
 		}
 		p := app.IndexedPage{ID: id}
-		if f.Type != nil {
+		if indexTypePresent(f.Type) {
 			runes := []rune(*f.Type)
 			p.TypeStart, p.Typed = string(runes[:min(len(runes), domain.IndexTypeChars)]), true
 		}
@@ -50,6 +50,9 @@ func (r *indexReads) IndexItems(_ context.Context, ids []uuid.UUID) (map[uuid.UU
 	out := map[uuid.UUID]app.IndexFacts{}
 	for _, id := range ids {
 		if f, ok := r.facts[id]; ok && slices.Contains(r.held, id) && !r.dropped[id] {
+			if !indexTypePresent(f.Type) {
+				f.Type = nil
+			}
 			out[id] = f
 		}
 	}
@@ -125,11 +128,11 @@ func (l indexLib) listIndex() app.ListIndex {
 func (l indexLib) ordered(ids ...uuid.UUID) []uuid.UUID {
 	slices.SortFunc(ids, func(a, b uuid.UUID) int {
 		ka, kb := l.reads.facts[a].Type, l.reads.facts[b].Type
-		ca, cb := domain.IndexCursor{ID: a, Typed: ka != nil}, domain.IndexCursor{ID: b, Typed: kb != nil}
-		if ka != nil {
+		ca, cb := domain.IndexCursor{ID: a, Typed: indexTypePresent(ka)}, domain.IndexCursor{ID: b, Typed: indexTypePresent(kb)}
+		if indexTypePresent(ka) {
 			ca.K = domain.IndexKey(*ka)
 		}
-		if kb != nil {
+		if indexTypePresent(kb) {
 			cb.K = domain.IndexKey(*kb)
 		}
 		return domain.CompareIndex(ca, cb)
@@ -243,11 +246,11 @@ func TestListIndex(t *testing.T) {
 		var want app.IndexItem
 		switch it.PageID {
 		case l.roadmap:
-			want = app.IndexItem{PageID: l.roadmap, Path: "Projects/Roadmap.md", Type: str("Project"), Summary: str(strings.Repeat("s", 256)),
+			want = app.IndexItem{PageID: l.roadmap, ParentID: &l.projects, Title: "Roadmap", Path: "Projects/Roadmap.md", Type: str("Project"), Summary: str(strings.Repeat("s", 256)),
 				Tags: []string{"plan", "plan/q4"}, Inbound: 2, ParentPath: str("Projects.md"), Cut: []string{"summary"},
 				Cursor: cursor(domain.IndexCursor{K: "project", Typed: true, ID: l.roadmap})}
 		case l.inbox:
-			want = app.IndexItem{PageID: l.inbox, Path: "Inbox.md", Tags: []string{}, Cut: []string{},
+			want = app.IndexItem{PageID: l.inbox, Title: "Inbox", Path: "Inbox.md", Tags: []string{}, Cut: []string{},
 				Cursor: cursor(domain.IndexCursor{ID: l.inbox})}
 		default:
 			continue
@@ -357,4 +360,9 @@ func TestListIndexCutsTheStrings(t *testing.T) {
 	if want := []string{"type", "tags[0]", "tags"}; !slices.Equal(it.Cut, want) || it.Type == nil || *it.Type != strings.Repeat("項", 85) {
 		t.Errorf("cut %q, type %v; want %q and 85 characters", it.Cut, it.Type, want)
 	}
+}
+
+// Match the stored-facts contract without reusing production's SQL or keyer.
+func indexTypePresent(v *string) bool {
+	return v != nil && strings.Trim(*v, "\u0009\u000a\u000b\u000c\u000d\u0020\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff") != ""
 }

@@ -61,7 +61,7 @@ func newBatchBenchOf(tb testing.TB, configure func(c *config.Config), maxRewrite
 		d.MaxBatchRewrites, d.MaxBatchRewriteLinks, d.MaxBatchRewriteBytes = maxRewrites, maxLinks, maxBytes
 	})
 	mountMCP(b.mux, b.api, mcpServer(b.cfg, slog.New(slog.DiscardHandler), b.api, b.pg, benchNames{},
-		b.pg.Tools(page.ToolDeps{Attachments: benchAttachments{}})))
+		b.pg.Tools(page.ToolDeps{Attachments: benchAttachments{}, Virtual: benchVirtualFiles{}})))
 	return batchBench{b, logs}
 }
 
@@ -76,6 +76,14 @@ func (benchNames) Record(context.Context, uuid.UUID, string) (bool, error) { ret
 
 // benchAttachments reads no attachment.
 type benchAttachments struct{}
+
+// The batch recipe never generates files. Fail an unexpected read instead of
+// silently weakening this fixture as new ToolDeps are wired.
+type benchVirtualFiles struct{}
+
+func (benchVirtualFiles) GenerateInSnapshot(context.Context, page.VirtualReadScope, page.VirtualName) (string, error) {
+	panic("batch cost fixture: unexpected virtual file read")
+}
 
 func (benchAttachments) Read(context.Context, uuid.UUID) (page.Attachment, error) {
 	return page.Attachment{}, page.ErrNotFound

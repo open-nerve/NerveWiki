@@ -13,7 +13,7 @@ import {
 import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
-import { mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, getView, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -100,6 +100,7 @@ test("PG7 (MCP): an editor's agent writes a page on its version and edits it on 
   const page = await createPage(api, adminPat, notebook.id, "Notes");
   const agent = await mcpClient(nervewiki.baseURL, editorPat, { notebook: notebook.id });
   const created = await readPage(agent, { path: "Notes.md" });
+  assertRealPage(created);
   expect(created.meta.version).toBe(`${page.id}:1`);
 
   const first = resultOf<Written>(
@@ -130,6 +131,8 @@ test("PG7 (MCP): an editor's agent writes a page on its version and edits it on 
   expect(await sessionsOf(db, page.id)).toEqual([]);
 
   const read = await readPage(agent, { path: "Notes.md" });
+
+  assertRealPage(read);
   expect([read.meta.version, read.meta.byte_size, read.text === content]).toEqual([
     `${page.id}:3`,
     Buffer.byteLength(content),

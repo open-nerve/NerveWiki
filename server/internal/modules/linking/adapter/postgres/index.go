@@ -7,11 +7,12 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 )
 
 // IndexPages implements app.IndexReads.
 func (s *Store) IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *string) ([]app.IndexedPage, error) {
-	rows, err := s.queries(ctx).IndexPages(ctx, gen.IndexPagesParams{NotebookID: notebookID, TypeIs: typeIs})
+	rows, err := s.queries(ctx).IndexPages(ctx, gen.IndexPagesParams{NotebookID: notebookID, TypeIs: typeIs, TrimChars: lintTrimChars})
 	if err != nil {
 		return nil, fmt.Errorf("the index's pages of %s: %w", notebookID, err)
 	}
@@ -24,7 +25,7 @@ func (s *Store) IndexPages(ctx context.Context, notebookID uuid.UUID, typeIs *st
 
 // IndexItems implements app.IndexReads.
 func (s *Store) IndexItems(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]app.IndexFacts, error) {
-	rows, err := s.queries(ctx).IndexItems(ctx, ids)
+	rows, err := s.queries(ctx).IndexItems(ctx, gen.IndexItemsParams{Ids: ids, TrimChars: lintTrimChars})
 	if err != nil {
 		return nil, fmt.Errorf("the index's items: %w", err)
 	}
@@ -51,6 +52,36 @@ func (s *Store) InboundCounts(ctx context.Context, ids []uuid.UUID, most int) (m
 	out := make(map[uuid.UUID]int, len(rows))
 	for _, r := range rows {
 		out[r.PageID] = int(r.Inbound)
+	}
+	return out, nil
+}
+
+// CatalogueHeads reads each requested ID once, in the same sorted order.
+func (s *Store) CatalogueHeads(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) ([]app.IndexCatalogueHead, error) {
+	if len(ids) > 512 {
+		return nil, fmt.Errorf("index: catalogue batch exceeds 512 IDs")
+	}
+	for i, id := range ids {
+		if i > 0 && ids[i-1].Compare(id) >= 0 {
+			return nil, fmt.Errorf("index: catalogue IDs must be sorted and unique")
+		}
+	}
+	rows, err := s.queries(ctx).IndexCatalogueHeads(ctx, gen.IndexCatalogueHeadsParams{NotebookID: notebookID, Ids: ids, TrimChars: lintTrimChars})
+	if err != nil {
+		return nil, fmt.Errorf("read index catalogue: %w", err)
+	}
+	if len(rows) != len(ids) {
+		return nil, fmt.Errorf("index: incomplete catalogue batch")
+	}
+	out := make([]app.IndexCatalogueHead, len(rows))
+	for i, r := range rows {
+		if r.ID != ids[i] || !r.Typed && r.FilterType != "" || len(r.FilterType) > domain.MaxIndexType {
+			return nil, fmt.Errorf("index: invalid catalogue row")
+		}
+		out[i] = app.IndexCatalogueHead{ID: r.ID, Typed: r.Typed}
+		if r.FilterType != "" {
+			out[i].FilterType = &r.FilterType
+		}
 	}
 	return out, nil
 }

@@ -12,11 +12,14 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// IndexQuery is index's arguments (M9 design 4.9).
+// IndexQuery is the shared directory query (M9 4.9; M10/P4 3.4).
+// REST uses ParentID/AtRoot, Catalogue and ExcludeArea; MCP uses Parent.
 type IndexQuery struct {
-	Type, Tag, Parent *string
-	Limit             *int
-	Cursor            *string
+	Type, Tag, Parent              *string
+	ParentID                       *uuid.UUID
+	AtRoot, ExcludeArea, Catalogue bool
+	Limit                          *int
+	Cursor                         *string
 }
 
 // IndexItem is a page of the index: its path, type, summary and tags, cut
@@ -25,6 +28,8 @@ type IndexQuery struct {
 // the cursor after it.
 type IndexItem struct {
 	PageID     uuid.UUID
+	ParentID   *uuid.UUID
+	Title      string
 	Path       string
 	Type       *string
 	Summary    *string
@@ -38,16 +43,24 @@ type IndexItem struct {
 
 // IndexPage is a page of index, and the cursor after it, "" after the last.
 type IndexPage struct {
-	Items []IndexItem
-	Next  string
+	Items                 []IndexItem
+	Next                  string
+	Types                 []IndexType
+	SourceArea            *IndexSourceArea
+	TypesComplete         bool
+	UnfilterableTypePages int64
+	Mode                  string
 }
 
 // ListIndex lists the pages of a notebook the link index holds, filtered
 // by type, tag and parent page (M9 design 4.9; M9/P4 design 3.9.3).
 type ListIndex struct {
-	Access Access
-	Reads  IndexReads
-	Paths  NodePaths
+	Access    Access
+	Reads     IndexReads
+	Paths     NodePaths
+	Notebooks IndexNotebooks
+	Sources   IndexSourceReads
+	Catalogue IndexCatalogueReads
 	// TagKey is the key a tag's name is kept by; false for a name no
 	// page's tag has, as GetTag's.
 	TagKey func(name string) (string, bool)
@@ -87,32 +100,47 @@ func (l ListIndex) Execute(ctx context.Context, notebookID uuid.UUID, q IndexQue
 	if err := l.Access.notebook(ctx, actor, notebookID, domain.ActionListIndex); err != nil {
 		return IndexPage{}, err
 	}
-	none := IndexPage{Items: []IndexItem{}}
-	var children, tagged map[uuid.UUID]bool // nil: not filtered
-	if q.Parent != nil {
-		if children, err = l.childPages(ctx, notebookID, *q.Parent); err != nil || len(children) == 0 {
-			return none, err
+	out := IndexPage{Items: []IndexItem{}, Types: []IndexType{}}
+	children, tagged, empty, err := l.filters(ctx, notebookID, q)
+	if err != nil || empty && !q.Catalogue {
+		return out, err
+	}
+	var excluded map[uuid.UUID]bool
+	if q.Catalogue || q.ExcludeArea {
+		if excluded, err = l.metadata(ctx, notebookID, q.ExcludeArea, &out); err != nil {
+			return IndexPage{}, err
 		}
 	}
-	if q.Tag != nil {
-		key, ok := l.TagKey(strings.TrimPrefix(*q.Tag, "#"))
-		if !ok {
-			return none, nil
-		}
-		ids, err := l.Reads.TagPages(ctx, notebookID, key)
-		if err != nil || len(ids) == 0 {
-			return none, err
-		}
-		tagged = setOf(ids)
+	// Catalogue is independent of every item filter. MCP keeps the existing
+	// exact type SQL and does not read full catalogue values.
+	typeIs := q.Type
+	if q.Catalogue {
+		typeIs = nil
 	}
-	pages, err := l.Reads.IndexPages(ctx, notebookID, q.Type)
+	pages, err := l.Reads.IndexPages(ctx, notebookID, typeIs)
 	if err != nil {
 		return IndexPage{}, err
+	}
+	var matching map[uuid.UUID]bool
+	if q.Catalogue {
+		ids := make([]uuid.UUID, 0, len(pages))
+		for _, p := range pages {
+			if !excluded[p.ID] {
+				ids = append(ids, p.ID)
+			}
+		}
+		slices.SortFunc(ids, uuid.UUID.Compare)
+		if matching, err = l.catalogue(ctx, notebookID, ids, q.Type, &out); err != nil {
+			return IndexPage{}, err
+		}
+	}
+	if empty {
+		return out, nil
 	}
 	// One keyer for every type: its buffers are kept (M9/P4 design 3.9.3).
 	keyer, order := domain.NewIndexKeyer(), make([]domain.IndexCursor, 0, len(pages))
 	for _, p := range pages {
-		if children != nil && !children[p.ID] || tagged != nil && !tagged[p.ID] {
+		if excluded[p.ID] || children != nil && !children[p.ID] || tagged != nil && !tagged[p.ID] || matching != nil && !matching[p.ID] {
 			continue
 		}
 		c := domain.IndexCursor{Typed: p.Typed, ID: p.ID}
@@ -124,7 +152,6 @@ func (l ListIndex) Execute(ctx context.Context, notebookID uuid.UUID, q IndexQue
 		}
 	}
 	slices.SortFunc(order, domain.CompareIndex)
-	out := none
 	if len(order) > size {
 		order = order[:size]
 		// After the last read, which a page deleted since leaves out.
@@ -155,6 +182,12 @@ func (l ListIndex) check(q IndexQuery) error {
 	if q.Tag != nil && *q.Tag == "" {
 		return indexField("tag", shared.FieldTooShort, "must not be empty: omit it for the pages of every tag")
 	}
+	if q.ParentID != nil && q.AtRoot {
+		return indexField("parent_id", shared.FieldInvalidFormat, "must not be combined with at_root")
+	}
+	if q.Parent != nil && (q.ParentID != nil || q.AtRoot) {
+		return indexField("parent", shared.FieldInvalidFormat, "must not be combined with parent_id or at_root")
+	}
 	if p := q.Parent; p != nil {
 		switch {
 		case *p == "":
@@ -169,14 +202,15 @@ func (l ListIndex) check(q IndexQuery) error {
 // childPages is the child pages of the page at parent, the root's for "/":
 // page.not_found for none.
 func (l ListIndex) childPages(ctx context.Context, notebookID uuid.UUID, parent string) (map[uuid.UUID]bool, error) {
-	var id uuid.UUID
+	var parentID *uuid.UUID
 	if parent != "/" {
-		var err error
-		if id, err = l.Paths.FindPage(ctx, notebookID, "parent", parent); err != nil {
+		id, err := l.Paths.FindPage(ctx, notebookID, "parent", parent)
+		if err != nil {
 			return nil, err
 		}
+		parentID = &id
 	}
-	ids, err := l.Paths.ChildPages(ctx, notebookID, id)
+	ids, err := l.Paths.ChildPagesAt(ctx, notebookID, parentID)
 	if err != nil {
 		return nil, err
 	}
@@ -222,7 +256,7 @@ func (l ListIndex) items(ctx context.Context, notebookID uuid.UUID, order []doma
 // cut naming each cut and "tags" for more; its parent's path that of its
 // path's last segment's parent, a page's.
 func indexItemOf(id uuid.UUID, p PagePath, f IndexFacts, inbound int, cursor string) IndexItem {
-	it := IndexItem{PageID: id, Path: p.Path, Tags: []string{}, ChangedAt: p.ChangedAt, Inbound: inbound, Cut: []string{}, Cursor: cursor}
+	it := IndexItem{PageID: id, ParentID: p.ParentID, Title: p.Title, Path: p.Path, Tags: []string{}, ChangedAt: p.ChangedAt, Inbound: inbound, Cut: []string{}, Cursor: cursor}
 	if i := strings.LastIndex(p.Path, "/"); i >= 0 {
 		parent := p.Path[:i] + ".md"
 		it.ParentPath = &parent

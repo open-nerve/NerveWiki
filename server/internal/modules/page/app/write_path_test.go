@@ -110,7 +110,7 @@ func TestWritePathAnswersInOrder(t *testing.T) {
 	f.budget.err = nil
 	f.rec.calls = nil
 	if _, err := f.writePath(f.eng, app.PathWrite{Path: "Guide.md", Content: "new", Base: tokenOf(guide.ID, 1)}); err != nil ||
-		!slices.Equal(f.rec.calls[:6], []string{"WorkspaceOf", "Authorize page.read", "RootByKey", "WorkspaceOf", "Authorize page.write", "Take 3"}) ||
+		!slices.Equal(f.rec.calls[:7], []string{"WorkspaceOf", "Authorize page.read", "StateOf", "RootByKey", "WorkspaceOf", "Authorize page.write", "Take 3"}) ||
 		!f.called("RootByKey in tx") {
 		t.Errorf("a write made %v, %v; want the notebook, the page, the decision, the parse, then the path found again in the unit",
 			f.rec.calls, err)

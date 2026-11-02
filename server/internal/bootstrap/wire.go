@@ -11,6 +11,9 @@ import (
 	"slices"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/asset"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/identity"
@@ -57,6 +60,9 @@ func newApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrati
 // transfer jobs, and MCP tools beside the modules'. The zero wiring is
 // serve's.
 type wiring struct {
+	// queryTracer observes real serve queries in cost tests. The pool retains
+	// the production configuration and connection setup; no query is replaced.
+	queryTracer pgx.QueryTracer
 	// batch bounds the writing jobs' batches, zero the import's: the
 	// interleavings make them small, so that a few nodes span batches
 	// (M8/P4 design 3.10).
@@ -116,6 +122,15 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
+	if w.queryTracer != nil {
+		observed := pool.Config()
+		pool.Close()
+		observed.ConnConfig.Tracer = w.queryTracer
+		pool, err = pgxpool.NewWithConfig(ctx, observed)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// The configuration log masks database.url as a whole; say where the pool
 	// connects from pgx's own parse of it, which holds no password.
 	target := pool.Config().ConnConfig
@@ -169,6 +184,13 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	pg := page.New(pd)
 	as := asset.New(assetDeps(cfg, pool, logger, authorizer, store, pg, contentKey, limiter))
 	ln := linking.New(linkingDeps(pool, authorizer, embeds))
+	// File reads borrow the entry's snapshot and do not own the lint runtime.
+	files := wiki.NewVirtualFiles(wiki.VirtualFileDeps{
+		Index:   wikiFileIndex{linking.NewIndexFileReads(pool)},
+		Tree:    wikiFileTree{page.NewVirtualTreeReads(pool)},
+		Sources: wikiFileSources{page.NewSourceArea(pool)},
+		Log:     wikiFileLog{page.NewVirtualLogReads(pool, displayNames{identity.NewDirectory(pool)})},
+	})
 	// The LLM Wiki's template is parsed once, here: a template the page
 	// module refuses keeps serve from starting (M10/P1 design 3.8).
 	template, err := wiki.NewTemplate(wikiSeeds{pg.TreeWrites()})
@@ -182,6 +204,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		return nil, err
 	}
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
+	trDeps.Contributors = []transfer.ExportContributor{wikiExport{notebooks: notebook.NewNotebooks(pool), files: files}}
 	trDeps.Batch = w.batch
 	if w.transfer != nil {
 		w.transfer(&trDeps)
@@ -219,7 +242,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		Nodes:     wikiNodes{nodes: page.NewLintNodes(pool)},
 		Rules: wikiRules{rules: linking.NewLintRules(pool, page.MaxContentBytes,
 			wikiAssetSizes{infos: asset.NewAttachmentInfos(pool)})},
-		Cursors: wikiCursors{}, Paths: wikiPaths{paths: page.NewNodePaths(pool)},
+		Cursors: wikiCursors{}, Paths: wikiPaths{paths: page.NewNodePaths(pool, pageNotebooks{notebook.NewNotebooks(pool)})},
 		Snapshots:  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Authorizer: authorizer, Clock: clock.System{}, Logger: logger,
 		MaxLintRuns: max(1, int(cfg.Database.MaxConns/2)/2),
@@ -246,7 +269,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	as.Register(router, api)
 	tr.Register(router, api)
 	ev.Register(router, api)
-	tools := mcpTools(pg, as, ln, nb, wk)
+	tools := mcpTools(pg, as, ln, nb, wk, files)
 	mountMCP(router, api, mcpServer(cfg, logger, api, pg, mcpNames{identity.NewClientNames(pool)}, slices.Concat(tools, w.mcpTools)))
 	// "/" without a method is the least specific pattern: /api/ and the
 	// probes keep their routes, and a wrong method on a page path gets the

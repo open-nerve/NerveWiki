@@ -237,7 +237,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # SECOND 与 THIRD 当前仅在 TheMCP[C-Z] 重合，这些名字只在第二份运行。
 # 既有 470 名称的候选静态分配为 167/70/118/115；当前编译清单、完整四份双轮与 CI 验收待实测。
 BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))
-BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP[C-Z]|Contents))
+BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # M10/P3/S1 五份待测候选：分支 f64 的 CI 41068871923 attempt1 中，四份 Test 为
@@ -286,6 +286,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# index 的守卫单独一行、带 -v：10 万页（类型取键最贵的形状）与 2,000 页各 1,000 个属性时 IndexPages、一页 100 项的 InboundCounts
 	@# 在无统计、ANALYZE 之后与通用计划下的中位数，与 ListIndex 一次调用的用时，时限本机的三倍（M9/P4 设计 6.1，审查 C-I3）
 	cd server && go test -count=1 -v -run '^TestIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/modules/linking/adapter/postgres
+	@# P4：完整100k目录批次、1024字节合法长类型、JSON输出界与真实参数/custom/generic计划，独立沿10m期限。
+	cd server && go test -count=1 -v -run '^TestIndexCatalogueHasBoundedWorkAndOutput$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestTrashHistoryAtItsBoundCountsInTimeWithForcedPlans$$' ./internal/modules/page/adapter/postgres
@@ -336,7 +338,13 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 过了它的一半就一个测试一行，单独一行仍过的那一行加 -timeout 15m（M9/P2 设计 6.5）。markdown 的三个原先一行，本机 140 到 155 秒；
 	@# M9/P2 S1 各单独跑两次：成本的 125.5 与 127.9 秒，渲染的 3.7 与 4.0 秒，链接的 22.5 与 21.7 秒，之和乘 2.4 约 6.1 分钟，所以拆成三行；
 	@# 成本的一个乘 2.4 约 5.1 分钟，仍过了 Go 默认的每个测试二进制 10 分钟的一半，它的一行加 -timeout 15m
-	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$' ./internal/bootstrap
+	@# P4/S1 将成本 top 的 to_a_page/to_an_image 两个完整子场景依次分为独立进程；各沿原 15m。
+	@# 原夹具、CheckCosts 采样和算法界不变；各行仍按本机两轮均值 ×2.4 ≤450s 核对容量。
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$/^to_a_page$$' ./internal/bootstrap
+	cd server && go test -count=1 -timeout 15m -run '^TestTheAppsMarkdownCostsAboutItsSize$$/^to_an_image$$' ./internal/bootstrap
+	@# P4：真实SDK/REST的100k读和整本ZIP导出分别保留独立进程、样本与SQL证据，仍为默认10m。
+	cd server && go test -count=1 -v -run '^TestVirtualIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestVirtualExportOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsMarkdownRendersCheckedHTML$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsLinksAreWithinTheirBound$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）

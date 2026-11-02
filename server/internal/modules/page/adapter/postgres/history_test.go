@@ -347,6 +347,33 @@ func TestListChangesMergesItemsAndVersions(t *testing.T) {
 		len(first[other.ID]) != 1 || first[other.ID][0].Change() != domain.ChangeRenamed {
 		t.Errorf("FirstChanges(2) = %+v, %v; want cs's first two, other's rename", first, err)
 	}
+	// The same handwritten fixture oracle applies to the bounded preview,
+	// independently of what ListChanges returned above. It includes an
+	// item-only move, version-only edit, and restored item plus version.
+	all, err := f.s.FirstChanges(ctx, []uuid.UUID{cs.ID}, 3)
+	if err != nil || len(all) != 1 || len(all[cs.ID]) != 3 {
+		t.Fatalf("FirstChanges(3) = %+v, %v; want all three fixture shapes", all, err)
+	}
+	for i, row := range all[cs.ID] {
+		if row.NodeID != ids[i] || row.NodeKind != domain.KindPage || describe(row) != want[ids[i]] {
+			t.Errorf("FirstChanges(3) row %d = %s %q, want %s %q", i, row.NodeID, describe(row), ids[i], want[ids[i]])
+		}
+		switch row.NodeID {
+		case moved.ID:
+			if row.Before == nil || row.After == nil || row.Before.SortOrder != 9 || row.After.SortOrder != 2 || row.Content != nil || row.Restored {
+				t.Errorf("FirstChanges item-only metadata = %+v", row)
+			}
+		case written.ID:
+			if row.Before != nil || row.After != nil || row.Restored {
+				t.Errorf("FirstChanges version-only metadata = %+v", row)
+			}
+		case both.ID:
+			if row.Before != nil || row.After == nil || row.After.SortOrder != 4 || !row.Restored {
+				t.Errorf("FirstChanges restored metadata = %+v", row)
+			}
+		}
+	}
+
 }
 
 // A revert's reads: the items counted to a limit; the items and versions

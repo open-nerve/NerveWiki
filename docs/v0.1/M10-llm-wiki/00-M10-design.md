@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1、P2、P3已完成。S1/S2及撤销树修复的实现、独立审查/必要修复核对、门禁、文档和集成均按各自真实输入接受；原S2合并13ed的main失败保留，指定修复merge＋联合record两main配对已接受，见[P3§10.3](03-P3-lint-health.md#103-p3完成)。本记录写入时，独立P3done自身SHA/run未知，精确main CI尚待提交后接受；此前不释放P4。P4为下一Phase，P4/P5、M10收尾与M11尚未开始；M10继续进行中。 |
+| 状态 | 进行中；P1/P2/P3已完成，原失败与指定main配对历史保留。正式P4设计及入口CI已接受；S1虚拟路径、目录、read和导出已实施，S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施。S2/S3、P5与M10收尾未完成，不开始M11；当前结果见[P4§10.1](04-P4-virtual-ingest.md)及[S1记录](reviews/P4-S1-virtual-files-review.md) |
 | 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
@@ -78,7 +78,7 @@
 | 编排与内容 | 新模块 wiki（总体设计 8.2）：模式的契约表、模板的正文、三个 playbook、lint 的编排（一个快照里调 linking 与 page 的端口，同导出由 transfer 编排 page、linking、asset 的端口）、lint 的 REST 与 MCP 工具、虚拟文件的生成、导出贡献者。M10 里 wiki 没有表（不进 `server/sqlc.yaml`、`deploy/runtime-grants.sql` 与清理器）；要动的清单是操作的并集（`bootstrap/actions_test.go:21`）、组合检查（`archtest/composition_test.go` 的命令行的路径上不许建模块的 `New`，`:100-117`；`:50-83` 不按模块名列、不必改）、`api/modules/wiki.yaml` 与根的 `openapi.yaml`、`wiki/adapter/http` 的 `TestMain`、矩阵与 wiki 自己的一个码 `wiki.lint_rule_not_found`（"不是 LLM Wiki"一律答 notebook 的 `notebook.not_llm_wiki`，同 notebook 答 `workspace.not_found` 的跨模块的码）。M11 的升级（`notebook_upgrades`、升级的工具与 playbook）也落在这里 | 不建 wiki、把 lint 与工具放进 linking、模板与 prompt 放进 page：今天最省，但一种模式的契约散在三个模块里，以后的模式（总体设计 5.1"再写一份契约"）每次改三处，M11 照样要建 wiki |
 | lint 的数据 | linking只查自己的page_links/indexed_pages/page_properties；page.SourceArea.Nodes给完整严格后代id/kind/created_at/page_bytes，root排除，不用hash或10k移入界；page.NewLintNodes(pool)给本本live紧凑id/parent/NameKey/Linkable/kind/created_at/page_bytes，供folder/AGENTS/relative与全本candidate presence。Linkable按原name末点条件算布尔，metadata经Planned，不物化ByKeys候选祖先、不改保存热路。最后返回asset经附件口、展示路径一次NodePaths.Paths；所有ctx同snapshot，真实两份metadata读取计成本。窄端口见P3§3.2–3.3 | wiki运行时跨模块SQL或读正文 |
 | ingest 的判定 | 在 linking 的索引观察者里：只有它同时有一页写之前的链接与写之后的解析。`ReplacePage` 与 `DeletePages` 交回每页旧的（解析到的节点、属性键）与旧的第一个折成 `sources` 的键（`linking/app/index.go:46-69`），判定由此对这个变更集写了、删除了的页是确切的（4.14）。结果经 page 只凭连接池的端口记在变更集上（page 的表、page 的 SQL） | wiki 的观察者排在 `links` 之后：那时旧的行已经没了，只能再读上一版的正文重新解析；排在 `links` 之前：新的链接还没有解析 |
-| 虚拟文件 | 路径的认出在 page 的 domain（`domain.FindPath`、`WalkPath` 的查找，MCP 的工具与 `batch` 的计划共用它，`page/domain/path.go:195`、`page/domain/batch_plan.go:361-493`）；内容由 wiki 生成，经 page 的 `ToolDeps.Virtual` 交给 `read` 与 `list`（同 M9 的 `ToolDeps.Attachments`，在 wiki 建好之后由组合根调 `Tools`；`page.New` 在它为空时 panic，同 `TestTheModuleRefusesNoAttachmentInfos`） | 每个工具各自认：漏掉 `batch` 的模拟的树 |
+| 虚拟文件 | 路径认出在page domain的统一Lookup包装，NodePaths与batch模拟树共用；list自行加入synthetic虚拟叶，不调用内容生成端口。内容由wiki生成，经page的ToolDeps.Virtual交给规范read；组合根先构造只读wiki文件服务，后调用(*page.Module).Tools。Attachments与Virtual的nil检查均在Tools，缺Virtual在这里panic；page.New不接收ToolDeps，不能称page.New因Virtual为空而panic。生产mcp与!race batch成本两构造均已接，成本替身对意外生成直接拒绝 | 每工具各自识别或给list新增无用内容依赖都会使统一合同漂移 |
 | 模板的写 | 经 page 的写入单元（13.1 第 1 条：每个写入入口都经写入管线），由 wiki 的创建播种者经 `(*page.Module).TreeWrites().Seed` 调用（4.4） | notebook 直接插入 `nodes`：越过模块，也绕过变更集与索引 |
 | 降级 | notebook 的用例（模式是它的列），经 transfer 只凭连接池的 `transfer.NewWritingJobs(pool)` 判断有没有写入任务、经 page 的 `page.NewSourceArea(pool).Forget` 清掉这本笔记本的 `source_hash`（4.5；一处声明的不经单元的写，同删除的级联：派生的数据、没有变更集、在笔记本行的锁下） | 放在 wiki：要 notebook 的写端口，多一层 |
 
@@ -363,7 +363,7 @@ P3决定62的S1-0a索引表示前置已实现（不是新DDL）：已有page_lin
 
 - `index.md`：只列 wiki 的页（第 11 节主持者的决定）。`ListIndex` 加一个选项 `ExcludeArea`：带着来源根时去掉来源区里的页（来源区的 id 由 page 的 `SourceArea.Nodes` 每次读一次，约 51–100 ms 每 10 万个节点，在 Go 里按集合去掉；`types` 的页数也不数它们）；`index.md`、目录视图与 REST 的 `listIndex` 用它，MCP 的 `index` 工具照 M9 建成的列每一页（它是筛选的工具，审查 B2-M2）。来源区以外的页，按总体设计 5.5 分组：有类型的（照 4.10 的"缺"的反面）按类型分组（类型按标题键排，组里按路径），没有类型的按父页分组（父页按路径排）；每项一行：`- [标题](<路径>) — 摘要`，再带标签、更新时间、入链数。来源区写成一行：来源区的路径与来源的数目（同一次来源区的读数出：来源根的严格后代里的页与附件，不数 0 字节的页即文件夹，同 4.11 的待消化；`index.md` 的这一行、`listIndex` 的 `source_area.sources` 与目录视图数的都是这个，审查 B3-N3），与"用 `pending_sources` 列出待消化的来源、`lint` 看别的"；不写待消化的数目：它是"未消化"一条规则，每次 `read index.md` 与每次打开目录都要跑一遍，又在 lint 的名额之外（审查 B2-M2）。数据是 M9 的 `ListIndex` 的那一份（路径、类型、摘要、标签、时刻、入链数到 1,000，字符串截到 256 字节、标出截断），承袭它的界线（索引里没有行的页不在其中）；它的次序（类型的键、再按 id，`linking/domain/index.go:27-61`）不是 5.5 的分组，所以文件先读全部索引的页的类型键（`ListIndex` 每次本就读它们）与树，在 Go 里排出 5.5 的次序，再为前面的项读条目。**字节是起作用的界**：一行带一句摘要、标签、时刻与入链数约 200–250 字节，40 KiB 约放 170–200 项，项数的上限很少起作用，所以写到 40 KiB 为止（一次 `read` 读得完），末尾一行照实际写出的数说"共 N 页，这里列出 M 页；用 `index` 工具按类型、标签、父页筛选与翻页"。`MaxIndexFileItems` 是读条目的上限，P4 量过之后取 40 KiB 放得下的数（主持者的决定），初值 200。代价：`ListIndex` 的一次调用（10 万页一页 100 项约 1.01–1.06 秒）、更多项的入链数（`InboundCounts` 在 1,001 个来源时约 1.2 ms 一个目标，M9/P4，最坏多约 0.5 秒）与树，加上来源区的读（10 万个来源约 0.1 秒）：10 万页约 1.7 秒，成本守卫在 Makefile 的一行，含最坏的形状。
 - `log.md`：最近的变更集，新的在前，同样写到 40 KiB 为止（`MaxLogFileChangesets` = 50 是读的上限）：每个一段，时刻、类型、执行者与客户端、说明（截到 500 字节）、ingest 的来源（至多 5 个的路径，P4/S2 随标记加上，生成器与贡献者一起扩展）、前三项变化（路径）；数据是 `ListChangesets`（`page/app/list_changesets.go:51-197`）的第一页。末尾一行照实际写出的数说，并指向 `log` 工具。
-- **写者的字符串要中和**（审查 B-M13）：两个文件被当作系统的输出读（"目录"与"日志"），而里面有写者控制的字符串：摘要可以带换行，变更集的说明至多 4,096 字节、可以带换行（`00014_page_changesets.sql:14`），一个 `summary: "x\n- [Fake](raw/y.md) — …"` 或一个 `batch` 的说明就能伪造一项或一次别人的 ingest。所以：显示label中的控制字符与换行换空格，标题中的反斜杠和方括号转义；这些中和只用于显示。P4修订明确分开显示和目的地：上述中和／256B截短仅作用于显示label，不改node路径身份。read目的地取完整原路径，export取完整plan映射路径；先把字面%编码%25，再编码<>并包angle，%41/%20不被误读成别的名字。禁止trim／中和／截短destination；非法UTF8或控制字符路径为无名称内部错误。按最终编码后字节计整条，装不下则省整项并更新footer，不能写半个链接；固定头／来源行和footer一起受原预算。独立身份与编码扩张反控在P4设计列明。
+- **写者的字符串要中和**（审查 B-M13）：两个文件被当作系统的输出读（"目录"与"日志"），而里面有写者控制的字符串：摘要可以带换行，变更集的说明至多 4,096 字节、可以带换行（`00014_page_changesets.sql:14`），一个 `summary: "x\n- [Fake](raw/y.md) — …"` 或一个 `batch` 的说明就能伪造一项或一次别人的 ingest。所以：显示label中的控制字符与换行换空格，标题中的反斜杠、方括号和反引号转义；这些中和只用于显示。P4修订明确分开显示和目的地：上述中和／256B截短仅作用于显示label，不改node路径身份；256B显示label与§4.16的500B message均计最终转义UTF-8字节，包含省略号，恰好到界不省略，不拆码点或Markdown转义对（本次决定75）。read目的地取完整原路径，export取完整plan映射路径；先把字面%编码%25、字面&编码%26，再编码<>并包angle；%41/%20及`&amp;` / `&sol;`不会经Markdown实体处理和HTML/URL解码后错指别名。禁止trim／中和／截短destination；非法UTF8或控制字符路径为无名称内部错误。按最终编码后字节计整条，装不下则省整项并更新footer，不能写半个链接；固定头／来源行和footer一起受原预算。独立身份与编码扩张反控在P4设计列明。
 - 两个文件都是英文的固定格式（agent 读它们，同 MCP 的文字是英文的，M9/P1）。
 
 **网页**：页面树的虚拟行在客户端由 `Notebook.mode` 生成（`web/…/pages/notebook/page-tree.tsx:145-151`），不进服务端的树、不进 `["pages", 笔记本]` 的 store（十几处读树的地方不受影响）：根下最前面两行，`index`（目录的图标）打开目录视图，`log`（历史的图标）去历史页；不能拖、不能放、没有菜单；是普通的链接，可读的名称说它打开什么（"目录""历史"）。`log` 这一行与 `NotebookPlaces` 的"历史"是去同一处的两个链接，有意如此（树里的那一行是 agent 看到的 `log.md` 在人这边的对应）。
@@ -902,7 +902,23 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 **72．** REST使用有界exact types catalogue：全本可列wiki页排来源后统计，独立type／tag／parent筛选；最大100项、types数组实际JSON≤32KiB。仅完整存储值≤1024UTF-8字节可作为filter；新增required types_complete与unfilterable_type_pages。Catalogue仅REST=true；MCP保留既有精确type SQL，不承担catalogue扫描。 00未定exact-key碰撞、超长值、计数范围与输出界，见[types方案](specs/P4-virtual-ingest-types-boundary.md)。新增字段／提示与全量有限输入读取是代价；不改现写入type长度或MCP filter。D01–D11和100k／TOAST／heap／HTTP字节及手写oracle闭合；菜单外URL值保持精确筛选。
 
-上述实施决定已于2026-11-01随P4正式设计接受，依据见[设计审查记录](reviews/P4-design-review.md)。本次正式设计文档自身commit/CI尚未知待验，S1–S3未开始；产品、成本与原门禁没有通过声明。
+上述实施决定71/72已于2026-11-01随P4正式设计接受，e5e8及CI41297112914 attempt1补足设计发布验收；S1实际结果见§12、P4§10.1和[S1记录](reviews/P4-S1-virtual-files-review.md)，S2/S3未开始。
+
+### P4/S1主持者的实施决定（负责人可以改判）73
+
+三项编号采用状态：ROOT已正式采用73、74、75，均为“主持者的决定（负责人可以改判）”；原预算与接口边界保留，技术修复和C-Q1补测不另增产品决定编号
+
+虚拟文件私有destination在字面%→%25与angle编码外，对字面&→%26，保持合法`&amp;` / `&sol;`路径经过Markdown实体处理、HTML/URL解码后的原节点身份。显示label不变，完整目的地不trim/截短/中和，仍按最终编码UTF-8字节守原cap；renderer和真实ZIP消费者各有独立身份对照。依据见S1记录，技术lint修复不另编产品决定。
+
+### P4/S1主持者的实施决定（负责人可以改判）74
+
+对Markdown成本原“top不可分”约束采用一次明确窄例外：只将TestTheAppsMarkdownCostsAboutItsSize的to_a_page与to_an_image两个完整且互斥的leaf，依原次序各放入独立进程；每个保15m/count1、真实parent+指定leaf RUN/PASS。原算法/夹具/GC/采样/预算不变，其他45条legacy与3条P4 recipe原样保留。旧完整top的process容量失败永久保留，不拆旧时长或挑更快样本替代新实跑；结果与来源对应见S1记录。原heavy/T7/3GiB、CI及main pair义务均保持。
+
+### P4/S1主持者的实施决定（负责人可以改判）75
+
+显示上限256/500常量不变：按最终转义后的UTF-8字符串计字节，省略号也占界内3字节。恰好limit不加省略号；超界只在完整码点与完整Markdown转义对之间截断。标题/type等显示label与log message共用小helper；完整destination、真实node身份和40KiB/2MiB/1MiB整文件预算不变。旧500字节原文前缀再加省略号的测试期望不构成合同许可；9c的修复、作者边界反控及最终同源完整验证各保实际身份，见S1记录。
+
+
 
 ## 12. Phase 进度表
 
@@ -913,7 +929,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
 | P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 已完成；S1/S2及撤销树旁支的实施、审查/复核、门禁与集成已验，§8原43项及修复闭合前提已由主持者核对，见[完成核对](03-P3-lint-health.md#103-p3完成)。指定修复merge＋联合record五片Test均值394.5/201.5/308/387/314.5s，全部严格<450；原13ed失败单列。独立P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤全部成功接受，P3完成并已释放P4正式设计。该own CI不进入指定4e6e/df9 pair，Test463/309/362/404/313s不保证新增测试容量；M10继续。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`，record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`；S2原merge `13edc125d5478285fbdf2750dd467f54bcc61a77`（main CI失败）；修复merge `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，联合record `df9b1d49544336f80d768bde4b6cda231403231e`；精确CI见§10.3 |
-| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | 正式设计已接受，实施决定71/72已采用；本次设计文档自身CI待验，S1–S3未开始 | [设计三审、两轮核对与主持者接受](reviews/P4-design-review.md) | 本次正式设计自身commit/精确main CI尚未知、待验；无实施放行 |
+| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | S1十二个代码/测试/CI提交的行为与修复已落地；S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施；S2/S3未实施，Phase未完成 | [设计审查](reviews/P4-design-review.md)、[S1记录](reviews/P4-S1-virtual-files-review.md) | 最终代码0b0df18c2ddd4b6779954458d37a617f66a42c5a；77三席、0b0修复与96控制/冷热补测/门禁/精确CI分账，73–75不增新产品规则。文档CI、no-ff/main/record及指定mainPair待实际运行 |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
@@ -935,6 +951,8 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-11-02：P4/S1落实虚拟路径/V、REST决定72、RR read与真实export/reimport，记录73目的地实体身份、74 Markdown完整leaf分组、75最终显示字节界。累计十二提交，77正式三席、0b0反引号修复与C-Q1独立冷热验证分别记账。S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施；行为和门禁摘要见[P4§10.1](04-P4-virtual-ingest.md)，全部发现/失败/原件见[S1记录](reviews/P4-S1-virtual-files-review.md)，S2/S3未实施。
 
 - 2026-11-01：P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤成功接受，正式P4入口已释放；该own CI不进入已接受4e6e/df9指定pair。三位fresh初审及两轮原席核对后，主持者已接受P4修订2设计，全部12项finding在设计层关闭，实施决定71/72采用、负责人可以改判。正式设计、附件、审查记录与00受控修订同批发布；15个原合同old锚保持，另三处登记实施决定、当前P3/P4状态与本条。本次文档自身commit/精确main CI尚未知待验，S1–S3与P4产品/成本验证未开始，不作成功声明。原13ed失败、指定pair/预算及以下各条原写入时点保持。见[P4正式设计](04-P4-virtual-ingest.md)、[实际设计审查记录](reviews/P4-design-review.md)。
 

@@ -1367,6 +1367,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * List a notebook's page directory
+         * @description Real indexed pages, ordered by type key and id, typed pages first. In an LLM Wiki strict source descendants are excluded; the source root remains. A type is the first ASCII-case-insensitive type key in valid frontmatter, with a string value nonempty after JS whitespace trimming. The type filter matches its complete stored value exactly and accepts at most 1024 UTF-8 bytes; display values may be cut. Catalogue counts cover all eligible pages before item filters and paging, with at most 100 exact types and 32 KiB of serialized types JSON. types_complete is false when types are omitted by either bound or a type exceeds the filter byte bound; unfilterable_type_pages counts those long-type pages. Empty data still carries the full response metadata. parent_id and at_root=true conflict. Cursor errors precede filter and limit validation, then notebook access, then parent validation; parent_id must name a live page in this notebook. Any notebook role can read. Reads are unlocked, not a shared snapshot.
+         */
+        get: operations["listIndex"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/notebooks/{notebook_id}/tags": {
         parameters: {
             query?: never;
@@ -2883,6 +2906,41 @@ export interface components {
             /** @description Why the target has no landing; null when it has one. */
             reason: components["schemas"]["LandingReason"] | null;
         };
+        NotebookIndexItem: {
+            /** Format: uuid */
+            page_id: string;
+            /** Format: uuid */
+            parent_id: string | null;
+            title: string;
+            type: string | null;
+            summary: string | null;
+            summary_cut: boolean;
+            tags: string[];
+            /** Format: date-time */
+            updated_at: string;
+            inbound: number;
+            inbound_capped: boolean;
+        };
+        NotebookIndexType: {
+            type: string;
+            count: number;
+        };
+        NotebookIndex: {
+            data: components["schemas"]["NotebookIndexItem"][];
+            next_cursor: string | null;
+            types: components["schemas"]["NotebookIndexType"][];
+            types_complete: boolean;
+            /** Format: int64 */
+            unfilterable_type_pages: number;
+            source_area: {
+                /** Format: uuid */
+                root_id: string;
+                /** Format: int64 */
+                sources: number;
+            } | null;
+            /** @enum {string} */
+            mode: "standard" | "llm_wiki";
+        };
         TagCount: {
             /** @description The tag, without its '#'. */
             tag: string;
@@ -3679,6 +3737,9 @@ export type PageProperties = components['schemas']['PageProperties'];
 export type Landing = components['schemas']['Landing'];
 export type LandingReason = components['schemas']['LandingReason'];
 export type LinkLanding = components['schemas']['LinkLanding'];
+export type NotebookIndexItem = components['schemas']['NotebookIndexItem'];
+export type NotebookIndexType = components['schemas']['NotebookIndexType'];
+export type NotebookIndex = components['schemas']['NotebookIndex'];
 export type TagCount = components['schemas']['TagCount'];
 export type TagList = components['schemas']['TagList'];
 export type TagPage = components['schemas']['TagPage'];
@@ -5595,6 +5656,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LinkLanding"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    listIndex: {
+        parameters: {
+            query?: {
+                type?: string;
+                tag?: string;
+                parent_id?: string;
+                at_root?: boolean;
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page directory and notebook-wide type catalogue. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotebookIndex"];
                 };
             };
             default: components["responses"]["Problem"];

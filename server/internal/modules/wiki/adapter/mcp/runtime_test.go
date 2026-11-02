@@ -46,7 +46,7 @@ func lintLongPath(t *testing.T, depth, number int, asset bool) string {
 		parts[len(parts)-1] = strings.Repeat("&", 252) + suffix + ".md"
 	}
 	path := strings.Join(parts, "/")
-	if err := page.NewNodePaths(nil).Check("path", path); err != nil {
+	if err := page.NewNodePaths(nil, checkPathStates{}).Check("path", path); err != nil {
 		t.Fatalf("fixture is not a legal tool path: %v", err)
 	}
 	if depth == 10 && ((!asset && len(path) != 2562) || (asset && len(path) != 2815)) {
@@ -320,4 +320,11 @@ func (p lintPrepared) RuleItems(ctx context.Context, rule domain.LintRule) ([]do
 		return slices.Clone(row.Items[start:end]), end < len(row.Items), ctx.Err()
 	}
 	return nil, false, errors.New("unknown fixture rule")
+}
+
+// Check parses without reading notebook state or the database.
+type checkPathStates struct{}
+
+func (checkPathStates) StateOf(context.Context, uuid.UUID) (page.NotebookState, bool, error) {
+	panic("Check must not read notebook state")
 }

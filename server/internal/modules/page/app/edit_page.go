@@ -54,7 +54,7 @@ type EditPage struct {
 func NewEditPage(writer *Writer, parser *ContentParser, paths PathStore, nodes Nodes, states PageStates,
 	locks *LockHolders, notebooks Notebooks, auth shared.Authorizer, clock Clock, logger *slog.Logger,
 ) *EditPage {
-	return &EditPage{writer: writer, parser: parser, paths: NewNodePaths(paths), nodes: nodes, states: states, locks: locks,
+	return &EditPage{writer: writer, parser: parser, paths: NewNodePaths(paths, notebooks), nodes: nodes, states: states, locks: locks,
 		notebooks: notebooks, auth: auth, clock: clock, logger: logger}
 }
 

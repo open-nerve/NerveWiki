@@ -5,7 +5,7 @@ import { expectChangesetOf } from "../../fixtures/assert/page";
 import { download, listAssets, pngBytes, uploadAsset } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
 import { getPageProperties, listTags } from "../../fixtures/links";
-import { mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -110,7 +110,9 @@ test("AS2 (MCP): an agent reads the page's uploaded images, each as itself with 
   );
   expect([dropped.link, pasted.link]).toEqual(["Guide/chart.png", "Pasted image 20261009120000.png"]);
   const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
-  const { version } = (await readPage(agent, { path: "Guide.md" })).meta;
+  const initial = await readPage(agent, { path: "Guide.md" });
+  assertRealPage(initial);
+  const { version } = initial.meta;
 
   // Each image as itself, how to link it, and its signed address, which downloads its bytes.
   const links: string[] = [];

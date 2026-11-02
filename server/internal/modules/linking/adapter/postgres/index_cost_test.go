@@ -44,6 +44,9 @@ const (
 	// characters, the 5 MB types' start, read 20 times (fix check F-m1):
 	// 6.0–9.8 ms planned for its arguments, 47.5–49.0 ms generic (three
 	// runs, load 1.4–2.4).
+	// Those historical generic samples used a pool without production's
+	// connection initialization. The generic pool now inherits that JIT-off
+	// initialization; the original bound is unchanged.
 	indexFilterBound = 150 * time.Millisecond
 	// indexCallAllocBound is what ListIndex's call allocates, rows and
 	// keys and all (S2 review C-n2): about 157 MB with one keyer for every
@@ -82,7 +85,8 @@ type guardPaths struct{ app.NodePaths }
 func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.PagePath, error) {
 	out := make(map[uuid.UUID]app.PagePath, len(ids))
 	for _, id := range ids {
-		out[id] = app.PagePath{Path: id.String() + ".md"}
+		name := id.String()
+		out[id] = app.PagePath{Path: name + ".md", Title: name}
 	}
 	return out, nil
 }
@@ -94,11 +98,14 @@ func (guardPaths) Pages(_ context.Context, _ uuid.UUID, ids []uuid.UUID) (map[uu
 // pages whose type is 5 MB, 100 of them with a summary of 5 MB (S2 review
 // B-I1). IndexPages, without statistics, analyzed and planned for any
 // arguments, reads every page and the start of its type, one probe a page
-// by 00047's index: without it the pages without a type read every
-// property, about 0.85-1.0 s more (mutant 184), only a little over
-// indexPagesBound; TestIndexPlans, by the index's name, and the filter's
-// read planned generic, about 650 ms against indexFilterBound, are its
-// sure catches (S2 fix checks F-n1, round 4). It reads value_start, never
+// by 00047's index. Without it the pages without a type read every
+// property, historically about 0.85-1.0 s more (mutant 184). The old
+// raw-pool generic filter measured about 650 ms against indexFilterBound
+// (S2 fix checks F-n1, round 4). With production's JIT-off initialization
+// (M10/P4/S1), that filter's bound did not catch the missing type index.
+// The full IndexPages reads still exceeded indexPagesBound in all three
+// stages; TestIndexPlans directly checks the nonempty scans' index names.
+// It reads value_start, never
 // the value: read whole, the 5 MB types are some two seconds more.
 // IndexItems of the 100 reads their starts alone. InboundCounts of the
 // first 100 stops at 1,000 each. 200 of the pages whose type is 5 MB are
@@ -187,16 +194,26 @@ func TestIndexOfAHundredThousandPagesTakesItsTime(t *testing.T) {
 	}
 	bigStart := strings.Repeat("x", domain.IndexStartChars)
 	generic := func() *pgxpool.Pool {
-		cfg, err := pgxpool.ParseConfig(url)
-		if err != nil {
-			t.Fatal(err)
-		}
+		// Keep production's connection initialization and pool settings;
+		// only the plan-cache mode differs.
+		cfg := pool.Config()
 		cfg.ConnConfig.RuntimeParams["plan_cache_mode"] = "force_generic_plan"
 		p, err := pgxpool.NewWithConfig(ctx, cfg)
 		if err != nil {
 			t.Fatal(err)
 		}
 		t.Cleanup(p.Close)
+		var jit, planCacheMode string
+		if err := p.QueryRow(ctx, "SELECT current_setting('jit'), current_setting('plan_cache_mode')").Scan(&jit, &planCacheMode); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("generic pool settings: jit=%s, plan_cache_mode=%s", jit, planCacheMode)
+		if jit != "off" {
+			t.Fatalf("generic pool jit = %q, want off as on production connections", jit)
+		}
+		if planCacheMode != "force_generic_plan" {
+			t.Fatalf("generic pool plan_cache_mode = %q, want force_generic_plan", planCacheMode)
+		}
 		return p
 	}
 	median := func(name string, bound time.Duration, read func() error) {

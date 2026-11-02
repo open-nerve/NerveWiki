@@ -12,6 +12,32 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 )
 
+type virtualText string
+
+func (v virtualText) GenerateInSnapshot(context.Context, app.VirtualReadScope, domain.VirtualName) (string, error) {
+	return string(v), nil
+}
+
+func TestReadPathVirtualConfigurationIsImmutable(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionRead)
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki}}
+	plain := app.NewReadPath(f.notebooks, f.store, f.store, f.auth, fakeSnapshots{f.rec})
+	a, b := plain.WithVirtual(virtualText("one\n")), plain.WithVirtual(virtualText("two\n"))
+	for _, tt := range []struct {
+		reader *app.ReadPath
+		want   string
+	}{{a, "one\n"}, {b, "two\n"}, {a, "one\n"}} {
+		out, err := tt.reader.Execute(f.asAlice(), f.eng, "index.md", nil, nil, nil, textMeasure(100))
+		if err != nil || out.Page == nil || !out.Page.Virtual || out.Page.Slice.Text != tt.want {
+			t.Fatalf("reader configuration was shared: %+v, %v", out, err)
+		}
+	}
+	if _, err := plain.Execute(f.asAlice(), f.eng, "index.md", nil, nil, nil, textMeasure(100)); !errors.Is(err, domain.ErrVirtualFile) {
+		t.Fatalf("WithVirtual mutated the original reader: %v", err)
+	}
+}
+
 // textMeasure counts a byte one, and leaves a slice room bytes.
 func textMeasure(room int) app.TextMeasure {
 	return app.TextMeasure{Bytes: func(s string) int { return len(s) }, Room: func(string) int { return room }}
@@ -45,7 +71,7 @@ func TestFindByPath(t *testing.T) {
 	f.page("y.md", &a.ID, 5)
 	f.page("z.md", nil, 1)
 	_ = png
-	paths := app.NewNodePaths(f.store)
+	paths := app.NewNodePaths(f.store, f.notebooks)
 	for _, tt := range []struct{ path, want string }{
 		{"A.md", "A.md"},
 		{"a/STRASSE.md", "A/Straße.md"},
@@ -73,7 +99,7 @@ func TestFindByPath(t *testing.T) {
 	}
 	f.rec.calls = nil
 	p, _ := domain.ParsePath("path", "A/x.png.md", false)
-	if _, err := paths.Find(context.Background(), f.eng, p); err != nil || !slices.Equal(f.rec.calls, []string{"RootByKey", "ChildByKey"}) {
+	if _, err := paths.Find(context.Background(), f.eng, p); err != nil || !slices.Equal(f.rec.calls, []string{"StateOf", "RootByKey", "ChildByKey"}) {
 		t.Errorf("Find made %v, %v; want a lookup a segment", f.rec.calls, err)
 	}
 }
@@ -88,7 +114,7 @@ func TestReadPathAnswersInOrder(t *testing.T) {
 	f.grant(domain.ActionRead)
 	guide := f.page("Guide", nil, 0)
 	f.content(guide.ID, "é\nline two\n", 3)
-	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth)
+	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth, fakeSnapshots{f.rec})
 	one, minus := 1, -1
 	unseen := uuid.NewV7()
 	for _, tt := range []struct {
@@ -115,7 +141,7 @@ func TestReadPathAnswersInOrder(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := read.Execute(f.asAlice(), f.eng, "Guide.md", nil, nil, nil, textMeasure(100)); err != nil ||
-		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize page.read", "RootByKey", "PageContent"}) {
+		!slices.Equal(f.rec.calls, []string{"WorkspaceOf", "Authorize page.read", "StateOf", "RootByKey", "PageContent"}) {
 		t.Errorf("read made %v, %v; want the decision, the lookup, then the content", f.rec.calls, err)
 	}
 	delete(f.auth.grants, domain.ActionRead)
@@ -141,7 +167,7 @@ func TestReadPathReadsAPageOrFindsAnAttachment(t *testing.T) {
 	setup := f.page("Setup", &guide.ID, 0)
 	f.content(setup.ID, "one\ntwo\nthree\n", 4)
 	png := f.asset("diagram.png", &guide.ID, 1)
-	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth)
+	read := app.NewReadPath(f.notebooks, f.store, f.store, f.auth, fakeSnapshots{f.rec})
 	two := 2
 	got, err := read.Execute(f.asAlice(), f.eng, "/guide/SETUP.md", &two, nil, nil, textMeasure(4))
 	switch {
