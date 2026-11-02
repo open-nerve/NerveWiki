@@ -1,6 +1,6 @@
 # M10/P4 S1（虚拟路径、目录、文件与导出）：审查记录
 
-> 原记录日期2026-11-02；合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。最新集成见[文档与合并记录](#文档与合并记录)，本record自身CI及指定两main配对仍待实际接受。
+> 原记录日期2026-11-02；合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，最新状态见[main record CI失败与会话fixture修复](#main-record-ci失败与会话fixture修复)：fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受；S1集成未闭环，S2未放行。
 
 | 项 | 接受事实与边界 |
 | --- | --- |
@@ -9,7 +9,7 @@
 | 代码审查前置 | 77的本机门禁、CI41402585652 attempt1与三席原报告保真实历史对象；efad成本100/91控的77窄对应不外推到0b0。0b0的B-I1修复、minimum/postgen及fresh EW357已接受；0b0完整native19、96控/288过程、成本100及精确修复CI以本表最终事实为准；C-Q1补测与原席核修见本文正式审查记录。0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。 |
 | 三位 fresh 审查 | 77三席原报告为A零发现、B唯一B-I1 Important、C唯一C-Q1证据问题；ROOT已核原报告与实际控制；77原报告不构成0b0核修结论；最终核修见本节事实槽。77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各实施作者和本起草者不充当各自范围的fresh席。 |
 | 修复核对 | 0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归；原件与逐席结论见下方正式审查记录。 |
-| 文档与集成 | Step文档`2ec19be8`及no-ff合并`a1f21e75`的精确CI已接受；身份、时间及后验义务见[文档与合并记录](#文档与合并记录)。本record自身CI及指定两main配对待实际接受。 |
+| 文档与集成 | Step文档`2ec19be8`及no-ff合并`a1f21e75`的精确CI已接受，保留[原合并记录](#文档与合并记录)。后续fd record CI41482903019 attempt1有bootstrap-2/guards两项失败；878会话测试修复的本地验证与精确代码CI已接受。原指定两main配对未完成，新修复merge＋record配对仅为后续计划；详见[补充记录](#main-record-ci失败与会话fixture修复)。 |
 
 ## 对象、提交与证据身份
 
@@ -201,7 +201,7 @@ Catalogue生产DefaultQueryExecMode实际为cache statement、显式override空�
 | 最终fresh EW | 0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；0b0新fresh EW357已接受；77、efad和5a97保原收据。 |
 | 最终精确代码CI | 精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验；修复后精确代码CI结果见本行最终事实；77精确CI41402585652 attempt1仅为修复前历史。 |
 | fresh三审及原席核对 | 77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0；0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归 |
-| 文档与集成 | Step文档及no-ff main的精确CI已接受；本record自身提交后检查、精确main CI及指定配对待验，见[文档与合并记录](#文档与合并记录)。 |
+| 文档与集成 | Step文档及a1f no-ff main的精确CI已接受；fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受；原配对未完成，新修复merge＋record配对仅为后续计划，见[补充记录](#main-record-ci失败与会话fixture修复)。 |
 
 ### 旧9260 native与旧EW历史
 
@@ -299,7 +299,7 @@ C-Q1首个export-round-1（原runtime01，session52178/terminal929a48/exit1，�
 
 ## 接受与推后
 
-当前Step文档与no-ff main的精确CI已接受，具体身份见[文档与合并记录](#文档与合并记录)；本record自身CI及指定两main配对待实际接受。S2/S3、P5与M10收尾未完成，M11未开始。
+Step文档与a1f no-ff main的精确CI已接受；fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受。原配对未完成，新修复merge＋record配对仅为后续计划；见[补充记录](#main-record-ci失败与会话fixture修复)。S1集成未闭环、S2未放行；S2/S3、P5与M10收尾未完成，M11未开始。
 
 **以下保留Step文档前的接受原文及当时待验状态。**
 
@@ -323,6 +323,58 @@ S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已�
 | 本record及后验 | 本记录写入时，自身SHA、提交后检查及精确main CI尚待实际产生；指定两main配对仍待ROOT接受。不为回填自身SHA/CI另建record-of-record；后续事实保存在树外回执，并随下一次既定文档自然转录。 |
 
 指定配对只取上列no-ff merge与本record两个完整接受的main attempt；逐片计算`mean_i=(merge_Test_i+record_Test_i)/2`，五个均值均须**严格<450s**。不能以分支CI、本地process/package用时、job wall、部分成功片或跨attempt拼接替代。record自身完整CI与该配对实际接受前，不声称S1集成闭环；S2/S3及00053、S3至少三browser、P5与M10收尾仍待，M11未开始。
+
+## main record CI失败与会话fixture修复
+
+本节补记于2026-11-03（Asia/Shanghai），事实截点为会话测试修复`878381485a5c3d1209f0afdce48ebb4865e85e35`的本地接受、提交后gen-check及第二轮本地计划观测；精确878代码CI及其完整日志/成本凭证已由ROOT接受；本文档自身CI和集成仍待验。上节`a1f21e75`的main CI成功仍成立；随后record `fd2607ab9fec4cade43fb28622873607891ae58f`的[CI41482903019 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41482903019/attempts/1)为completed/failure，不能接受原指定两main配对。S1集成尚未闭环，S2未放行；S2/S3未实施。
+
+### 两项失败与修复对象
+
+| 对象 | 已观察事实与处置边界 |
+|---|---|
+| fd main record | tree `a3d39e2bad8e585a2e73def491c54256eabcc977`、parent `a1f21e75804eafd3739558612933ae0c90b44d33`；仅三份Markdown的36+/11-。该head的attempt1最终9 jobs成功、bootstrap-2和guards失败、e2e/image跳过；十份server原始日志已保存，下载成功不等于门禁接受。 |
+| bootstrap-2 | `TestSourceSessionVetoRollsBackExpiredCleanup`报告durable source state改变、expired session消失；没有HTTP状态不符。原始CI未记录删除者/事务身份，不能据症状确定历史调度。 |
+| guards | `TestARevertAtTheUnitsBoundTakesItsTime`在10000 nodes/400000 history的原夹具上测得12.299969446s，超过原12s限值；相邻many-tops为2.845851567s并通过。会话fixture修复不解释或关闭这项性能失败。 |
+| 会话测试提交 | 分支`m10-session-veto-startup`的`878381485a5c3d1209f0afdce48ebb4865e85e35` / tree `b6148cf5c161b6a8f96350aac29256ff2dc8735e`，parent为失败的fd main；仅`server/internal/bootstrap/source_guard_test.go` +10/-3。已普通push；[精确代码CI41494579188 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41494579188/attempts/1)已按13个必需jobs/38个必需steps全部成功接受；仅绑定该878代码分支。 |
+
+精确run/head/jobs与十份日志的原件见[失败CI归档回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/main-record-ci-artifacts-failed-01/receipt.json)。fd的原minimum/postgen成功保原身份，不能覆盖其后真实CI失败；失败attempt不进入成功配对，也不拼接其它attempt的片段。
+
+### fixture竞争、永久断言与真实控制
+
+清理器设置`RunOnStart=true`，测试的一小时周期并不禁用首次清理。原fixture先人工过期，再快照/发请求，允许首次worker独立删除并提交。修复在人工过期**之前**调用已有`awaitJob`，等真实cleanup completed；再要求UPDATE恰好影响1行、请求前该session恰有1条expired且unended记录。原409/`page.source_immutable`、全部session及node/content/notebook状态比较、精确expired行与后续`page.edit_session_ended`断言保留。
+
+此屏障按本测试的独立数据库、单app、一次scheduler启动及原15m包期限成立；未关闭生产RunOnStart，未新增sleep、重试或延长期限。它不是跨scheduler重启或超过一小时运行的全局排他保证。生产事务路径未修改，临时SQL tracer、强制排序与变异均未提交。
+
+| 实际运行 | 退出、观察与范围 |
+|---|---|
+| `baseline-original-01` | 原fd目标单次真实PG/race：exit0、1 RUN/PASS。这只是无干预样本，不能证明竞争不存在。 |
+| `forced-startup-red-02` | exit1；基线永久源码未改，临时诊断控制真实SQL顺序：worker以autocommit删除1行，随后请求事务删除0行，再同请求连接rollback并返回409；原durable/expired两项oracle均红。它实证一种可造成原症状的因果路径，不证明历史CI恰好采用该调度。`red-01`因诊断误计identity同名SQL而未获接受，失败原件保留。 |
+| `after-barrier-green-01` → `transaction-escape-red-01` → `transaction-restored-green-01` | 同一双目标selector、原`-count=1 -race -timeout 15m`，真实退出**0/1/0**，每轮两顶层均实际RUN；首绿→红仅把`DeleteExpiredSessionsOf`的`s.queries(ctx)`改成`gen.New(s.pool)`，首绿→恢复绿所有输入一致。**永久目标测试自身**在红轮报durable state与expired行失败，不只依赖临时诊断。红轮诊断观察到事务外提交后先Fatal，不能声称它走完HTTP/rollback链；两绿轮观察到请求事务删除1行后rollback。 |
+| `related-cleanup-race-01` | exit0；已移除临时诊断，bootstrap/page postgres两包7个顶层、连同子测试11个节点实际RUN/PASS，包含empty/nonempty与move_first/open_first。不是skip、空选择器或编译失败代替业务控制。 |
+
+上述原目标0、强制交错1、修复后0是不同输入/选择器的诊断经历；同源同命令的rollback变异三轮另按0/1/0记账。旧96条控制及各旧epoch的0/1/0保持原归属，不重标为878重跑。真实原件见[startup控制](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-forced-startup-red-02.json)与[事务逃逸0/1/0回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-transaction-control-01.json)。
+
+测试小轮由独立审查者先作[源码审查](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/independent-review-01/source-review.txt)，封存后再[复核运行原件](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/independent-review-01/runtime-review.txt)，均为**I=0/M=0/N=0/Q=0**；审查者未执行Go/PG，也未用作者报告替代证据。ROOT复核其86个原件引用后接受此测试修复；这是该小轮的独立核对，不重写原S1三席结论或外推性能问题。
+
+### 本地门禁、提交后检查与未闭合范围
+
+| 阶段 | 实际输入与接受边界 |
+|---|---|
+| minimum8 | fd + 单文件测试修复dirty候选，3388源/252 embed；原八命令实际exit0。server short为8906 RUN、7373 PASS、1533 short SKIP；tools为27 RUN/PASS，旧terminal集合完整保留。SKIP和无tests包不计作PASS；不是878提交后的新执行。 |
+| 完整bootstrap-2 | 同一测试候选，原Make完整分片argv、race/count1/15m实际exit0，package 259.211s、process 265.12997104320675s；原命令无`-v`，不补造逐测试RUN数。此本地分片不替代精确CI或指定main Test步骤配对。 |
+| 提交 | 878仅提交测试修复，生产变异已恢复、临时诊断已移除；ROOT本地接受[回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-session-repair-local-acceptance-01.json) SHA256 `23ecf965414ab211c2ad1089a27dda05d6853dd1d886177e1b8c8adc09c5dc0e`。 |
+| postgen-01 | 启动方式导致PATH顺序与冻结值不同，前置检查拒绝，launcher exit1、child exit为null；没有启动generator。该原始失败保留，不计作gen-check执行或通过。 |
+| postgen-02 | 在878上采用与冻结值一致的launcher，绑定的内部cwd仍为修复WT；完整`make -j1 gen-check`实际exit0。3388源/252 embed字节及Git执行位不变；76项固定generated output原生mode的0664→0644逐项登记，其它mode不豁免。[提交后接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-postgen-02-acceptance.json) SHA256 `e3751c762d9c1ac344c76f04a6a0c032f0a4387c26012189cf2cd7c8515c3c69`。 |
+
+精确878 / `m10-session-veto-startup` / push / CI41494579188 attempt1已完整成功，由ROOT按13 jobs/38必需steps接受；十份server原始日志完整、六case/12 states/36 samples及24固定限值重算接受，见[精确代码CI接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-code-ci-acceptance-01.json)、[十份原始日志接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/code-ci-artifacts-01/receipt.json)及[六case/24固定限值重算回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-code-ci-cost-events-acceptance-01.json)。五bootstrap实际**Test步骤**依第1至5片为385/397/390/287/307s；guards **job**为1470/1800s，实际余量330s。此为代码分支样本，不进入指定两main配对，也不证明原fd性能失败的历史原因；本文档自身CI与新main集成仍待验。
+
+revert的原Make两目标无插桩本地单样本为6.179896086s/1.591799417s，实际exit0，保原12s/8s断言与Go期限；[该回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-revert-baseline-01.json)明确不作为CI修复接受。另一次带临时`!race`观测覆盖的诊断为HTTP200、6.669028961s、1072事件/0 pending；[离线汇总](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/dynamic-trace-summary-01/summary.md)将RestoreNodes与TrashHistory列为主要观测区间。它包含客户端等待、调度及观测开销，不能当作PG纯执行时间、原生gate或历史CI解释。
+
+第二轮`revert-plan-02`在878上实际exit0、两顶层PASS，原HTTP计时6.593024586s。ROOT核两条原SQL、原参数形状/模式、同PID92、各执行一次、连接/事务身份、设置恢复及前后源不变，按[本地诊断观测回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/root-plan-observation-02.json) SHA256 `1f9525e92277e4cca5ec27ffd9164f6c0aa5729be4866e621c359e1fe1672508`接受；插桩仍不计作native gate。该计划中RestoreNodes两历史表各一次scan/hash join，更新输入189900/210100行，没有逐节点重复全表扫描；确有6328kB磁盘排序/temp使用，`TIMING OFF`不能分配各节点耗时。TrashHistory按10000个节点索引范围读到合计400000行；其只读语句也报告WAL，但原因未证实。不能相加父子累计buffers/WAL、将观测读块/WAL归因于历史CI，或据此断言无优化空间。现有证据不足以选定生产修复；large guard 12s、many-tops 8s、请求15s期限及夹具不变，CI当时资源状态仍未知。[M12性能移交第15项](../../M12-release/handoffs/M4-performance.md)保留具体观测与未解风险，status仍open。
+
+性能计划另经[独立离线复核](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/dynamic-plan-review-02/report.md)（154项断言、43个输入pins），[ROOT接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/root-dynamic-plan-review-02-acceptance.json)保留相同观察边界；wrapper调用点124→221的[引用勘误](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/dynamic-plan-review-02-erratum-01/erratum.md)单列，原报告和运行输入未改。不新增性能修复或历史CI归因结论。
+
+原指定`a1f merge＋fd record`配对因fd两失败未完成，历史样本原样保留。ROOT已接受精确878代码CI；后续计划是文档分支CI接受后no-ff，再补实际merge记录；明确以**该次修复merge＋新record**的两个完整main attempt作新的指定配对，逐片实际Test均值须严格<450s，不跨attempt拼接。该no-ff及其记录尚未发生；本文档自身CI、新main/record CI及新配对均未在本节获接受。S1集成与原性能失败保持开放，S2/S3、P5和M10收尾不提前关闭；决定73–75及其它产品合同不变。
 
 ## 附录：全部独立控制腿分账
 
