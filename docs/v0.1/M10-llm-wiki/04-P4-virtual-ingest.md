@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | **正式设计及入口main CI已接受；S1代码、门禁与原席核修已接受，Step文档及no-ff main的精确CI已接受；本record自身CI及指定两main配对待实际接受。S2/S3未实施，P4尚未完成**；集成见[§10.1](#101-s1-虚拟路径目录文件与导出) |
+| 状态 | **正式设计、S1代码/门禁/原席核修及Step文档、a1f no-ff main CI已接受；fd record CI两项失败，878会话测试修复代码CI已接受；b4文档CI的costs失败，grep夹具f689仅测试修复、minimum8与独立核对已接受，postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受。随后986文档CI41517408885 attempt1因guards作业30m上限取消；ac84仅调度修复已提交，minimum8与postgen已接受，精确代码CI与独立审查结果见[调度补充](reviews/P4-S1-virtual-files-review.md#986文档ci取消与guards调度拆分)。S1集成未闭环、S2未放行；S2/S3未实施，P4尚未完成**；集成见[§10.1](#101-s1-虚拟路径目录文件与导出) |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
@@ -13,7 +13,7 @@
 
 §2.1、§2.3、§7中设计commit/CI待产生、当前未实测等准备态原文保留为e5e8正式设计发布前记录；S1实际结果见§10.1及S1记录，S2/S3义务仍待实施。
 
-本文保留已接受的正式设计合同。S1已实现统一虚拟路径、有限目录、RR虚拟read与真实export；代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受。Step文档及no-ff main的精确CI已接受，本record自身CI及指定两main配对待实际接受。十二个代码/测试/CI提交、77正式三席、0b0修复与集成分别见§10.1及[S1记录](reviews/P4-S1-virtual-files-review.md#文档与合并记录)。S2/S3及00053迁移未实施，P4尚未完成。
+本文保留已接受的正式设计合同。S1已实现统一虚拟路径、有限目录、RR虚拟read与真实export；代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受。Step文档及a1f no-ff main的精确CI已接受；fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受，随后986文档CI41517408885 attempt1因guards作业30m上限取消；ac84仅调度修复已提交，minimum8与postgen已接受，精确代码CI与独立审查结果见[调度补充](reviews/P4-S1-virtual-files-review.md#986文档ci取消与guards调度拆分)。S1集成未闭环。十二个代码/测试/CI提交、77正式三席、0b0修复与集成分别见§10.1及[S1记录](reviews/P4-S1-virtual-files-review.md#main-record-ci失败与会话fixture修复)。S2/S3及00053迁移未实施，P4尚未完成。
 
 ## 0. Step 划分与独立为绿
 
@@ -402,7 +402,7 @@ P5获得真实virtual行为、tools说明与log字段，继续prompt/握手系�
 
 ### 10.1 S1 虚拟路径、目录、文件与导出
 
-S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/MCP共用ListIndex及决定72 finite exact catalogue、独占RR虚拟read、真实whole LLM export/元数据及NFC reimport。四实施提交及其后门禁/审查修复累计十二提交；167c→15b仅改未发布message、同tree。S1代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受；Step文档及no-ff main的精确CI已接受，本record自身CI及指定两main配对待实际接受；S2/S3未实施。
+S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/MCP共用ListIndex及决定72 finite exact catalogue、独占RR虚拟read、真实whole LLM export/元数据及NFC reimport。四实施提交及其后门禁/审查修复累计十二提交；167c→15b仅改未发布message、同tree。S1代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受；Step文档及a1f no-ff main的精确CI已接受；fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受。后续b4文档CI的costs失败；grep夹具f689仅测试修复、minimum8与独立核对已接受，postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受。随后986文档CI41517408885 attempt1因guards作业30m上限取消；ac84仅调度修复已提交，minimum8与postgen已接受，精确代码CI与独立审查结果见[调度补充](reviews/P4-S1-virtual-files-review.md#986文档ci取消与guards调度拆分)。原配对未完成，S1集成未闭环、S2未放行；S2/S3未实施。
 
 当前候选0b0df18c2ddd4b6779954458d37a617f66a42c5a/treed6614eb5ef0a03ebe5aa2c2f3091b65f8541d296修复77三审的B-I1反引号显示问题，minimum/postgen及fresh EW357已接受。77原A零发现、B-I1及C-Q1报告保历史身份；C-Q1采用独立PG shared_buffers冷/同操作warm补测，OS缓存保留，不增加原CI循环。最终验证分别为：0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。正式审查：77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各旧失败、来源对应、96控制分账、冷热实测与原席核修详见[S1记录](reviews/P4-S1-virtual-files-review.md)。
 
@@ -410,7 +410,9 @@ S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/
 
 Step文档`2ec19be8793338c59a5f4014fe5812bd98831341`的[CI41469628154 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41469628154/attempts/1)与no-ff合并`a1f21e75804eafd3739558612933ae0c90b44d33`的[CI41476185798 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41476185798/attempts/1)均已由ROOT接受；有序父、同树关系、实际上海时间与CI尝试见[S1合并记录](reviews/P4-S1-virtual-files-review.md#文档与合并记录)，合并登记见[00§12](00-M10-design.md#12-phase-进度表)。
 
-本record自身提交后检查、精确main CI和指定“merge＋本record”两个main的五bootstrap分片实际Test均值仍待验，五个均值均须严格<450s；不回填未知自身SHA/CI或再建record-of-record。当前仅Chromium；S3仍须至少三browser，S2/S3未实施，P4尚未完成。
+fd record `fd2607ab9fec4cade43fb28622873607891ae58f`的[CI41482903019 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41482903019/attempts/1)有会话fixture与revert成本两项失败；878仅修会话测试，其精确代码CI已接受。原12s/8s guard和15s请求期限不变，本地计划观测不解释旧CI；原件见[S1原补充记录](reviews/P4-S1-virtual-files-review.md#main-record-ci失败与会话fixture修复)。后续b4文档CI41501780779 attempt1的grep-glob成本1.252742361s超过原1.25s；独立结构反证确认旧app fixture只有十万根可达，已作测试父ID副本及计时前全量校验修复，正确图本机单样本/独立BFS分账见[新补充](reviews/P4-S1-virtual-files-review.md#b4文档ci失败与grep-glob-fixture修复)。不改生产或预算、不归因历史CI，正确图与旧成绩不可混标，手工full-load重新标定义务留M12。f689测试修复、提交前minimum8与独立核对已接受；postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受；其后986文档CI因guards作业30m上限取消；ac84仅调度修复已提交，[精确代码CI41523895769 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41523895769/attempts/1)已接受；本轮独立审查已由ROOT接受，见[调度补充](reviews/P4-S1-virtual-files-review.md#986文档ci取消与guards调度拆分)，新文档CI与no-ff/main/record仍待ROOT实际绑定；后续指定修复merge＋新record两个完整main attempt的五片实际Test均值仍须严格<450s，不跨attempt拼接。当前仅Chromium；S3仍须至少三browser，S2/S3未实施，P4尚未完成。
+
+当前调度按ac84：`test-go-guards`仍完整串行运行`test-go-guards-core`的原12条及`test-go-guards-sources`的原6条，原18条Go recipe逐字不变；CI仅将旧guards一份替换为这两份，各保持1800s。新清单为11 server legs、14 jobs、40必需steps、11份server日志artifact；精确ac84的[精确代码CI41523895769 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41523895769/attempts/1)已按该清单完整接受，两份guards实际job及余量、五bootstrap实际Test时间见上述调度补充；后续文档/main每个完整attempt仍须逐项核验；分支样本不进入指定两main配对，旧13/38/10及单guards实测保留其历史身份。
 
 ## 附录：已核代码与绑定方式
 

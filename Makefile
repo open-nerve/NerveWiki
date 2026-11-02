@@ -182,7 +182,7 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
 	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名五份、各一个 go test 二进制、各受 15 分钟，
 	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这六个同时跑
-	@# （-j6，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的三份依次跑，不与竞态检测下的构建抢 CPU；各份之和就是下面 CI 的九份
+	@# （-j6，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的四份依次跑，不与竞态检测下的构建抢 CPU；guards 入口依次运行 core 与 sources，各份之和就是下面 CI 的十份
 	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
 	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
 	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
@@ -192,7 +192,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 	@$(MAKE) --no-print-directory test-go-costs-lint
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的九份（short 是第十份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的十份（short 是第十一份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -333,7 +333,12 @@ test-go-costs-lint: ## 不带竞态检测的 lint 迁移、计划、规则与十
 	cd server && go test -p=1 -count=1 -v -run '^TestLintPropertiesReadOnlyNecessaryValues$$' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-guards
-test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（CI 的一份；需要 Docker）
+test-go-guards: ## 依次运行组合根的全部预算与界线守卫（CI 分 core、sources 两份；需要 Docker）
+	@$(MAKE) --no-print-directory test-go-guards-core
+	@$(MAKE) --no-print-directory test-go-guards-sources
+
+.PHONY: test-go-guards-core
+test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守卫（CI 的一份；需要 Docker）
 	@# 这一份的 go test 不带 -timeout，每一行受 Go 默认的每个测试二进制 10 分钟。一行在 CI 上的估计（本机两次的平均乘 2.4，这一份的 CI 与本机之比）
 	@# 过了它的一半就一个测试一行，单独一行仍过的那一行加 -timeout 15m（M9/P2 设计 6.5）。markdown 的三个原先一行，本机 140 到 155 秒；
 	@# M9/P2 S1 各单独跑两次：成本的 125.5 与 127.9 秒，渲染的 3.7 与 4.0 秒，链接的 22.5 与 21.7 秒，之和乘 2.4 约 6.1 分钟，所以拆成三行；
@@ -365,8 +370,10 @@ test-go-guards: ## 不带竞态检测的组合根的预算与界线的守卫（C
 	@# 走到第 500 个候选的三次完整调用中位数的界仍为 1 s（M9/P4 设计 6.1，3.6.4）；两种预算独立，不改变候选数、计划与范围的检查。
 	@# S1 当时本机这一行约 10.5 秒，乘 2.4 约 25 秒；这是历史估计，后续 CI 用时见维护审查记录
 	cd server && go test -count=1 -v -run '^(TestGrepOfTheWorstLineTakesItsTime|TestGrepAtItsWorkBoundTakesItsTime|TestGrepOfAHundredThousandCandidatesTakesItsTime)$$' ./internal/bootstrap
-
-
+.PHONY: test-go-guards-sources
+test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一份；需要 Docker）
+	@# M10/P4/S1 的 986 文档 CI 41517408885 attempt1：旧 guards 的 18 行均打印 package ok，
+	@# 但整作业到 30 分钟被取消；将最后六行分出。两份仍各限 30 分钟，所有 Go argv、单项样本和预算不变。
 	@# M10/P2 来源的六项成功操作分别计时；五项HTTP与完整60k计划均三个DB设置各三次。
 	@# HTTP核实际应用池的auto/force_generic_plan设置；来源口仍Planned，不称为PREPARE通用计划。
 	@# 新预算来自本机原始样本的三倍；不修改原请求4s、提交2s或既有守卫。
