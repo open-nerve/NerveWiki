@@ -18,6 +18,8 @@ M7 建立了导出贡献者的扩展点，交空（[M7 总设计](../../M7-asset
 
 ## 处理进展
 
+- P4/S1（2026-11-02；合并见[00](../00-M10-design.md)第12节）：第1/2/6项已落源码与定向证据：原export snapshot只给whole LLM增加有界index/log，standard/subtree保真实内容；真实ZIP/contributed、map消费者、NFC reimport及冲突/fallback有独立控制。E05实际破坏生产ReadMeta→Contributed映射。0b0另补反引号显示身份及两scope/真实ZIP回归，77三席与修复后的96控制/冷热补测/门禁分账见[S1记录](../reviews/P4-S1-virtual-files-review.md)。S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施；raw 2/AGENTS 2重导入限制保留，M11存量升级不在本次；整份status保持open，不借第1/2/6项关闭其它义务。
+
 - P3/S2（2026-11-01；合并见[00号文档](../00-M10-design.md)第12节）：健康页附件条目按当前树父页和attachment state打开，移动后路径/href及点击落点有真实浏览器故事；缺失/树读失败保留结果并只重读nodes。第5项服务端语义仍沿S1；第1/2/6项export contributor、import skipping与输出界仍归P4，整份status保持open，d061历史门禁/三审保留；B-M1修复fa681已提交并有9+2 minimum及postgen，fa681正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），文档CI与集成仍PENDING，见[S2记录](../reviews/P3-S2-health-web-review.md)。
 
 - P3/S1（2026-10-31）：第5项的page/asset分型和来源附件跟随已完成，真实规则、REST、两scope MCP和控制见[S1审查](../reviews/P3-S1-lint-protocol-review.md)。附件A在D或其来源父集F(A)与D相交即已消化；否则有父source由待消化来源代表，无父则独立待消化。第1/2/6项的export contributor、import skipping及输出上界仍归P4，整份status保持open。
