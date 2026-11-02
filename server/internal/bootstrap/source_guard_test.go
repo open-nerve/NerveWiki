@@ -161,11 +161,18 @@ func TestSourceSessionVetoRollsBackExpiredCleanup(t *testing.T) {
 	id := tm.createPage(t, "bob", wiki.id, "", "Empty")
 	session := tm.openSession(t, "bob", id)
 	tm.send(t, nodeMove("alice", id, wiki.raw), http.StatusOK)
-	// testConfig's cleanup interval is an hour; no background cleanup can
-	// remove this fixture while the rejected opening's own cleanup runs.
-	if _, err := tm.pool.Exec(context.Background(), `UPDATE edit_sessions
+	// Cleanup runs on startup even with an hour-long interval. Wait for that
+	// run before expiring this fixture; the next scheduled run is outside
+	// this test's bounded lifetime.
+	awaitJob(t, tm.pool, "page.cleanup_expired_edit_sessions")
+	if tag, err := tm.pool.Exec(context.Background(), `UPDATE edit_sessions
 		SET created_at = now() - interval '2 minutes', expires_at = now() - interval '1 minute' WHERE id = $1`, session); err != nil {
 		t.Fatal(err)
+	} else if tag.RowsAffected() != 1 {
+		t.Fatalf("expiry UPDATE affected %d rows, want one", tag.RowsAffected())
+	}
+	if got := count(t, tm.pool, "SELECT count(*) FROM edit_sessions WHERE id = $1 AND expires_at < now() AND ended_reason IS NULL", session); got != 1 {
+		t.Fatalf("expired-session rollback fixture has %d expired, unended rows, want one", got)
 	}
 	tm.sourceUnchanged(t, wiki, id, sessionTakeOver("bob", id), cell{http.StatusConflict, "page.source_immutable"})
 	if tm.sessionsOf(t, id) != 1 || count(t, tm.pool, "SELECT count(*) FROM edit_sessions WHERE id = $1 AND expires_at < now() AND ended_reason IS NULL", session) != 1 {
