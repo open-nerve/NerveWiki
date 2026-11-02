@@ -68,7 +68,7 @@ func fileLabel(s string, limit int) string {
 	var out strings.Builder
 	cut := 0
 	for _, r := range s {
-		escape := r == '\\' || r == '[' || r == ']'
+		escape := r == '\\' || r == '[' || r == ']' || r == '`'
 		size := utf8.RuneLen(r)
 		if escape {
 			size++

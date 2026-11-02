@@ -55,6 +55,7 @@ func TestVirtualExport(t *testing.T) {
 	t.Run("folder_only_paths", virtualExportFolders)
 	t.Run("renamed_subtree_paths", virtualExportRenamed)
 	t.Run("path_identity", virtualExportIdentity)
+	t.Run("backtick_identity", virtualBacktickIdentity)
 	t.Run("percent_space_identity", func(t *testing.T) { virtualExportIdentityOf(t, []string{"x%20y.md", "x y.md"}) })
 	t.Run("entity_slash_identity", func(t *testing.T) { virtualExportIdentityOf(t, []string{"folder&sol;leaf.md", "folder/leaf.md"}) })
 	t.Run("meta_skip", virtualExportMetaSkip)
@@ -247,6 +248,54 @@ func virtualExportRenamed(t *testing.T) {
 
 func virtualExportIdentity(t *testing.T) {
 	virtualExportIdentityOf(t, []string{"x%41.md", "xA.md", "x%20y.md", "x y.md", "x&amp;Y.md", "x&Y.md", "folder&sol;leaf.md", "folder/leaf.md"})
+}
+
+// Display backticks must not turn the surrounding real links into code spans.
+// The six rendered documents come from the downloaded ZIP and both MCP scopes.
+func virtualBacktickIdentity(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "BacktickWiki")
+	paths := []string{"Ordinary.md", "tick`name.md", "tick``name.md", "`matched`.md"}
+	for i, path := range paths {
+		tm.createPageWith(t, "alice", wiki.id, "", strings.TrimSuffix(path, ".md"), "identity "+string(rune('a'+i)))
+	}
+	entries := virtualExportEntries(t, tm, wiki.id, "")
+	m := tm.agent(t, "alice", wiki.id)
+	for _, source := range []string{"export", "notebook", "account"} {
+		for _, file := range []string{"index.md", "log.md"} {
+			t.Run(source+"/"+file, func(t *testing.T) {
+				body := entries["BacktickWiki/"+file].data
+				if source != "export" {
+					res := sourceMCPCall(t, m, source, "read", map[string]any{"path": file}).result(t)
+					blocks := blocksOf(t, res)
+					if res["isError"] == true || len(blocks) != 2 || metaOf(t, res)["virtual"] != true {
+						t.Fatalf("virtual read failed: %v", res)
+					}
+					body, _ = blocks[1]["text"].(string)
+				}
+				var output bytes.Buffer
+				if err := goldmark.Convert([]byte(body), &output); err != nil {
+					t.Fatal(err)
+				}
+				destinations := map[string]bool{}
+				for _, link := range regexp.MustCompile(`href="([^"]*)"`).FindAllStringSubmatch(output.String(), -1) {
+					path, err := url.PathUnescape(html.UnescapeString(link[1]))
+					if err != nil {
+						t.Fatal(err)
+					}
+					if _, ok := entries["BacktickWiki/"+path]; !ok {
+						t.Errorf("rendered destination %q has no real ZIP entry", path)
+					}
+					destinations[path] = true
+				}
+				for i, path := range paths {
+					if !destinations[path] || entries["BacktickWiki/"+path].data != "identity "+string(rune('a'+i)) {
+						t.Errorf("missing complete link to actual page %q in rendered Markdown: %q", path, output.String())
+					}
+				}
+			})
+		}
+	}
 }
 
 func virtualExportIdentityOf(t *testing.T, paths []string) {

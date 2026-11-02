@@ -65,6 +65,8 @@ func TestVirtualFiles(t *testing.T) {
 			{"title_bracket_cut", strings.Repeat("[", 129), strings.Repeat(`\[`, 126) + "…", 256},
 			{"title_slash_exact", strings.Repeat(`\`, 128), strings.Repeat(`\\`, 128), 256},
 			{"title_slash_cut", strings.Repeat(`\`, 129), strings.Repeat(`\\`, 126) + "…", 256},
+			{"title_backtick_exact", strings.Repeat("`", 128), strings.Repeat("\\`", 128), 256},
+			{"title_backtick_cut", strings.Repeat("`", 129), strings.Repeat("\\`", 126) + "…", 256},
 			{"message_ascii_exact", strings.Repeat("A", 500), strings.Repeat("A", 500), 500},
 			{"message_ascii_cut", strings.Repeat("A", 501), strings.Repeat("A", 497) + "…", 500},
 			{"message_utf8_exact", strings.Repeat("界", 166) + "ab", strings.Repeat("界", 166) + "ab", 500},
@@ -73,6 +75,8 @@ func TestVirtualFiles(t *testing.T) {
 			{"message_bracket_cut", strings.Repeat("]", 251), strings.Repeat(`\]`, 248) + "…", 500},
 			{"message_slash_exact", strings.Repeat(`\`, 250), strings.Repeat(`\\`, 250), 500},
 			{"message_slash_cut", strings.Repeat(`\`, 251), strings.Repeat(`\\`, 248) + "…", 500},
+			{"message_backtick_exact", strings.Repeat("`", 250), strings.Repeat("\\`", 250), 500},
+			{"message_backtick_cut", strings.Repeat("`", 251), strings.Repeat("\\`", 248) + "…", 500},
 		} {
 			var label string
 			if tt.limit == 256 {
@@ -203,6 +207,40 @@ func TestVirtualFiles(t *testing.T) {
 					decoded, err := url.PathUnescape(html.UnescapeString(links[i+1][1]))
 					if err != nil || ids[decoded] != want {
 						t.Errorf("rendered entity link %q resolves to %q (%v), want %s", links[i+1][1], ids[decoded], err, want)
+					}
+				}
+			})
+		}
+	})
+	t.Run("backtick_identity", func(t *testing.T) {
+		// A code span can consume the label's closing bracket and destination.
+		// Render the actual output, then resolve its href, not Markdown syntax.
+		for _, tt := range []struct{ title, path string }{
+			{"tick`name", "tick`name.md"},
+			{"tick``name", "tick``name.md"},
+			{"`matched`", "`matched`.md"},
+		} {
+			t.Run(tt.title, func(t *testing.T) {
+				index := rendered(t, fileIndex(domain.IndexFileItem{Title: tt.title, Path: filePath(tt.path)}), 40960)
+				log, err := domain.RenderLog(domain.RenderLogInput{Items: []domain.RenderLogChangeset{{Changes: []domain.RenderLogChange{{Path: domain.FilePath{Label: tt.title, Destination: &tt.path}}}}}, Total: 1}, 40960)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, body := range []string{index, string(log)} {
+					var output bytes.Buffer
+					if err := goldmark.Convert([]byte(body), &output); err != nil {
+						t.Fatal(err)
+					}
+					found := false
+					for _, link := range regexp.MustCompile(`href="([^"]*)"`).FindAllStringSubmatch(output.String(), -1) {
+						path, err := url.PathUnescape(html.UnescapeString(link[1]))
+						if err != nil {
+							t.Fatal(err)
+						}
+						found = found || path == tt.path
+					}
+					if !found || !strings.Contains(output.String(), ">"+tt.title+"</a>") {
+						t.Errorf("literal title or complete link %q lost in rendered Markdown: %q", tt.path, output.String())
 					}
 				}
 			})
