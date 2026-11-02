@@ -1,6 +1,6 @@
 # M10/P4 S1（虚拟路径、目录、文件与导出）：审查记录
 
-> 原记录日期2026-11-02；合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，最新状态见[main record CI失败与会话fixture修复](#main-record-ci失败与会话fixture修复)：fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受；S1集成未闭环，S2未放行。
+> 原记录日期2026-11-02；合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，会话修复见[原补充记录](#main-record-ci失败与会话fixture修复)，最新状态见[b4文档CI失败与grep-glob fixture修复](#b4文档ci失败与grep-glob-fixture修复)：878代码CI接受后，b4文档CI的costs失败；grep夹具f689仅测试修复、minimum8与独立核对已接受，postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受，S1集成未闭环、S2未放行。
 
 | 项 | 接受事实与边界 |
 | --- | --- |
@@ -9,7 +9,7 @@
 | 代码审查前置 | 77的本机门禁、CI41402585652 attempt1与三席原报告保真实历史对象；efad成本100/91控的77窄对应不外推到0b0。0b0的B-I1修复、minimum/postgen及fresh EW357已接受；0b0完整native19、96控/288过程、成本100及精确修复CI以本表最终事实为准；C-Q1补测与原席核修见本文正式审查记录。0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。 |
 | 三位 fresh 审查 | 77三席原报告为A零发现、B唯一B-I1 Important、C唯一C-Q1证据问题；ROOT已核原报告与实际控制；77原报告不构成0b0核修结论；最终核修见本节事实槽。77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各实施作者和本起草者不充当各自范围的fresh席。 |
 | 修复核对 | 0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归；原件与逐席结论见下方正式审查记录。 |
-| 文档与集成 | Step文档`2ec19be8`及no-ff合并`a1f21e75`的精确CI已接受，保留[原合并记录](#文档与合并记录)。后续fd record CI41482903019 attempt1有bootstrap-2/guards两项失败；878会话测试修复的本地验证与精确代码CI已接受。原指定两main配对未完成，新修复merge＋record配对仅为后续计划；详见[补充记录](#main-record-ci失败与会话fixture修复)。 |
+| 文档与集成 | Step文档`2ec19be8`及no-ff合并`a1f21e75`的精确CI已接受；fd record CI41482903019 attempt1两项失败、878会话测试修复代码CI已接受，均保[原记录](#main-record-ci失败与会话fixture修复)。后续b4文档CI41501780779 attempt1的costs失败；grep夹具修复及正确图证据见[新补充](#b4文档ci失败与grep-glob-fixture修复)，f689仅测试修复及minimum8/独立核对已接受，postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受。原指定两main配对未完成，修复merge＋record仍待；S1集成未闭环、S2未放行。 |
 
 ## 对象、提交与证据身份
 
@@ -201,7 +201,7 @@ Catalogue生产DefaultQueryExecMode实际为cache statement、显式override空�
 | 最终fresh EW | 0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；0b0新fresh EW357已接受；77、efad和5a97保原收据。 |
 | 最终精确代码CI | 精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验；修复后精确代码CI结果见本行最终事实；77精确CI41402585652 attempt1仅为修复前历史。 |
 | fresh三审及原席核对 | 77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0；0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归 |
-| 文档与集成 | Step文档及a1f no-ff main的精确CI已接受；fd record CI两项失败，878会话测试修复的本地验证与精确代码CI已接受；原配对未完成，新修复merge＋record配对仅为后续计划，见[补充记录](#main-record-ci失败与会话fixture修复)。 |
+| 文档与集成 | Step文档及a1f main CI接受、fd record两失败与878会话修复代码CI接受保原身份；后续b4文档CI costs失败，grep夹具f689修复、minimum8及独立核对已接受，postgen与[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已接受，main配对仍待验，见[最新补充](#b4文档ci失败与grep-glob-fixture修复)。S1集成未闭环，S2未放行。 |
 
 ### 旧9260 native与旧EW历史
 
@@ -375,6 +375,38 @@ revert的原Make两目标无插桩本地单样本为6.179896086s/1.591799417s，
 性能计划另经[独立离线复核](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/dynamic-plan-review-02/report.md)（154项断言、43个输入pins），[ROOT接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/root-dynamic-plan-review-02-acceptance.json)保留相同观察边界；wrapper调用点124→221的[引用勘误](/home/parallels/.local/state/nervewiki/m10/p4-s1/revert-cost-readonly-recon-01/dynamic-plan-review-02-erratum-01/erratum.md)单列，原报告和运行输入未改。不新增性能修复或历史CI归因结论。
 
 原指定`a1f merge＋fd record`配对因fd两失败未完成，历史样本原样保留。ROOT已接受精确878代码CI；后续计划是文档分支CI接受后no-ff，再补实际merge记录；明确以**该次修复merge＋新record**的两个完整main attempt作新的指定配对，逐片实际Test均值须严格<450s，不跨attempt拼接。该no-ff及其记录尚未发生；本文档自身CI、新main/record CI及新配对均未在本节获接受。S1集成与原性能失败保持开放，S2/S3、P5和M10收尾不提前关闭；决定73–75及其它产品合同不变。
+
+## b4文档CI失败与grep-glob fixture修复
+
+本节补记于2026-11-03（Asia/Shanghai）。取证对象为文档提交`b4a031253c985b73d8f756d9ae7477421fb63e95`（tree `faaeb6687d2e9195fd6624dc323c98265d6de4bd`，parent 878）及其后仅`server/internal/modules/page/app/grep_cost_test.go`修改的候选；候选文件6021B、SHA256 `c05312271ad34d7ea2fbd57909fa7b76106a110cc541682820facbfb272fd0b3`。随后实际仅测试提交为`f689c839f2bbb8167db17b2b981da686b78faa1b` / tree `fe80ab4a49b20f8ce44194cac2131fcea1e1443d`，parent b4，唯一文件+34/-1且字节与该候选相同，见[提交回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/glob-fix-commit-01/receipt.json)。原878会话修复的接受、a1f成功、fd两项失败及上节当时pending均保历史身份；[精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已按13 jobs/38必需steps接受；文档自身CI与集成仍待验。
+
+### b4失败与独立结构证据
+
+[文档CI41501780779 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41501780779/attempts/1)的精确head为b4，`server (costs)` job125470814199的原`TestGrepOverTheGlobGuardTreeTakesItsTime`测得**1.252742361s > 1.25s**，超界2.742361ms；stop为glob、incomplete为true、next非空。原[失败job日志](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/doc-costs-failure-01/job-raw.log)的643–652行保留原recipe、RUN、测量、FAIL及Test步骤exit2；718–726行只是失败注解重印，不是第二个样本。whole-test 1.95s含构造，不与1.25s窗口比较；本次costs后续recipe未到达，不用旧绿补算执行。该失败阻断文档/main集成，不能用先前878成功覆盖。
+
+旧`newGuardNodes`在每组inner loop把所有child的ParentID指向同一个反复赋值的`parent`，最终十个child都指向末child，包括其自身；110万构造量不等于110万可达。独立BFS直接读ID/ParentID，不调用生产treeOf/Glob.Walk；[旧图red](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/targeted-runtime/runs/grep-glob-shape-red-01/result.json)实际exit1：total/unique 1100000、roots 100000、self-parent 100000、reachable 100000、unreachable 1000000、max-depth 1。它证明测试夹具未满足原十万条十一层独立链义务，**不证明历史CI时间超界的原因**。
+
+永久改动仅在测试文件：每次inner iteration复制`parentID := parent`再取址；原成本测试在计时前对即将传给Grep的同一个slice做全量校验，核1100000个非零唯一ID、每11条一组的根/前驱关系。任何结构错误立即终止，不另造一份fixture、不借生产遍历自证。没有生产代码、Make recipe、计时表达式或断言放宽；原1.25s、110万构造规模、1016B glob、MaxGlobWork=300000000以及其它预算不变。校验的set分配在计时外，仍可能影响GC/缓存，不能称零成本。
+
+| 实际原件 | 结果与边界 |
+|---|---|
+| 永久校验的旧图反证 | `grep-glob-regression-red-01`是UUID API误用导致的build failed，不算业务red；修正诊断稿后的[red-02](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/targeted-runtime/runs/grep-glob-regression-red-02/result.json)实际RUN、exit1，在node 1的前驱关系处失败，未进入原计时。 |
+| 修复后原生recipe | [fixture-fixed-01](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/targeted-runtime/runs/grep-glob-fixture-fixed-01/result.json)在上述c053候选无overlay、原count=1/selector下exit0，原窗口827.240875ms、stop glob/0 pages，永久结构检查及原结果/时间断言PASS；仅为这次本机单样本。 |
+| 修复后独立BFS | [shape-fixed-01](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/targeted-runtime/runs/grep-glob-shape-fixed-01/result.json)实际exit0；total/unique 1100000、roots 100000、self-parent 0、reachable 1100000、unreachable 0、max-depth 11，十一层各100000；前后候选源码相同。独立诊断与原生cost recipe分账，不冒充另一轮原生成本门禁。 |
+
+原图未插桩单样本850.167959ms与[原图profile](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/targeted-runtime/runs/grep-glob-profile-original-01/result.json)的760.499458ms窗口/820ms CPU samples各保输入身份。profile只在fixture后、原start前开始，在took后停止；CPU采样与MemStats会干预执行，treeOf、match、sort及GC仅是该旧图本机窗口的热点线索，不能把CPU累计值相加为墙钟、当原生gate，或据此归因CI。原五次CI同case值901.438207ms–1.178970452s及b4红见[有界历史原件复核](/home/parallels/.local/state/nervewiki/m10/p4-s1/root-grep-glob-history-review-01.json)；有限旧样本没有解释新红，也不能与修复后的正确图混作同一标定或挑选成成功配对。
+
+### 接受边界与待绑定事实
+
+f689的提交与ROOT接受的[独立测试小轮核对](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-review-01.json)已绑定：66个输入pins、I/M/N/Q均0；这不重写原S1三席结论。提交前[minimum8](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-minimum-01.json)的实际输入仍为b4+上述单文件dirty，session66607实际exit0，八命令全部完成；server short为8906 RUN/7373 PASS/1533 short SKIP，tools为27 RUN/PASS，skip/无tests不算PASS，不重标为f689提交后的新运行。
+
+精确f689的提交后完整`make -j1 gen-check`实际exit0（session25184）；3388源/252 embed字节及Git执行位不变，native mode差异为0，见[提交后gen-check接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-postgen-01.json)。精确f689 / `m10-session-veto-startup` / push / [精确代码CI41510773390 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41510773390/attempts/1)已由ROOT按13 jobs/38必需steps完整成功接受，见[精确代码CI接受回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-ci-01.json)。五bootstrap实际**Test步骤**依第1至5片为467/310/395/308/256s；guards **job**为1139/1800s，实际余量661s。此为代码分支样本，不进入指定两main配对，也不证明原b4或fd时间失败的历史原因；十份server上传的ZIP digest、完整raw与重建preview均已核对，见[十份CI原件](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/glob-fix-ci-artifacts-01/receipt.json)；[六case成本重算](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-ci-cost-events-01.json)按原24固定限值接受12 states/36 samples。
+
+正确fixture的原glob命令在该CI只执行一次：完整costs原件第263–268行依次为原`-count=1 -v`单测试命令、RUN、计时、单项PASS、包PASS与包结果。实际计时为 **1.060893919s（1,060,893,919ns）≤ 原1.25s**，日志为1016B glob、stop glob、0 pages；单项总时1.93s、包1.985s另列，不能代替计时窗口。原件绑定精确f689及上述c053测试源码：计时前的全量结构检查通过，原断言仍同时要求incomplete=true、next非空与原时间界。见[原glob CI核对](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-glob-fix-ci-named-glob-01.json)及[完整costs日志](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/glob-fix-ci-artifacts-01/go-test-costs/test-go.log)。这是正确图的一个CI样本，未声称历史失败的耗时原因或性能改善。
+
+文档自身CI、修复no-ff/main CI、新record CI与指定两main配对继续待验。本节本机结果不代替这些义务，不宣布性能优化或原b4时间失败已解释。原fd revert失败及M12 open不关闭；决定73–75、全部原limits不变，不新增产品决定。后续仍以修复merge＋新record两个完整接受的main attempt逐片实际Test均值严格<450s，不跨attempt或以分支/本机样本拼接；S1集成未闭环，S2未放行。
+
+M9原0.40–0.41s等历史成绩保留，但不能再当作正确十一层app fixture的标定。手工`BenchmarkGrepAtFullLoad`直接复用`newGuardNodes`经globRoots形成背景CPU工作；修复也改变其实际背景图，未来负载标定必须绑定正确图、硬件/负载和新原件，旧标定不可直接继承。本次没有执行该手工长负载benchmark，不把它新增为自动CI门禁，不据本机一次绿改预算；重新标定义务留[M12性能移交](../../M12-release/handoffs/M4-performance.md)。
 
 ## 附录：全部独立控制腿分账
 
