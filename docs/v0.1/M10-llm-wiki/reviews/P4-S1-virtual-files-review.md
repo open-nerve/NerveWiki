@@ -1,6 +1,6 @@
 # M10/P4 S1（虚拟路径、目录、文件与导出）：审查记录
 
-> 记录日期2026-11-02；最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296。原始证据按其实际源身份保留；本文是集成前的S1记录，文档自身CI与集成另待真实执行。
+> 原记录日期2026-11-02；合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。最新集成见[文档与合并记录](#文档与合并记录)，本record自身CI及指定两main配对仍待实际接受。
 
 | 项 | 接受事实与边界 |
 | --- | --- |
@@ -9,7 +9,7 @@
 | 代码审查前置 | 77的本机门禁、CI41402585652 attempt1与三席原报告保真实历史对象；efad成本100/91控的77窄对应不外推到0b0。0b0的B-I1修复、minimum/postgen及fresh EW357已接受；0b0完整native19、96控/288过程、成本100及精确修复CI以本表最终事实为准；C-Q1补测与原席核修见本文正式审查记录。0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。 |
 | 三位 fresh 审查 | 77三席原报告为A零发现、B唯一B-I1 Important、C唯一C-Q1证据问题；ROOT已核原报告与实际控制；77原报告不构成0b0核修结论；最终核修见本节事实槽。77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各实施作者和本起草者不充当各自范围的fresh席。 |
 | 修复核对 | 0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归；原件与逐席结论见下方正式审查记录。 |
-| 文档与集成 | 本次文档提交自身SHA/CI待实际产生；合并见00第12节。no-ff/main、record及指定两main配对仍待实际执行，不作为本次预合并文档无法完成的自指前置。 |
+| 文档与集成 | Step文档`2ec19be8`及no-ff合并`a1f21e75`的精确CI已接受；身份、时间及后验义务见[文档与合并记录](#文档与合并记录)。本record自身CI及指定两main配对待实际接受。 |
 
 ## 对象、提交与证据身份
 
@@ -201,7 +201,7 @@ Catalogue生产DefaultQueryExecMode实际为cache statement、显式override空�
 | 最终fresh EW | 0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；0b0新fresh EW357已接受；77、efad和5a97保原收据。 |
 | 最终精确代码CI | 精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验；修复后精确代码CI结果见本行最终事实；77精确CI41402585652 attempt1仅为修复前历史。 |
 | fresh三审及原席核对 | 77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0；0b0修复反引号并完成新完整门禁、96条288过程与精确CI；独立C-Q1冷暖补测及等待修正已核实，原B/C分别关闭两项，原A无回归 |
-| 文档与集成 | 文档自身SHA/CI、no-ff/main/record、指定main pair待实际产生，不预填通过。 |
+| 文档与集成 | Step文档及no-ff main的精确CI已接受；本record自身提交后检查、精确main CI及指定配对待验，见[文档与合并记录](#文档与合并记录)。 |
 
 ### 旧9260 native与旧EW历史
 
@@ -299,11 +299,30 @@ C-Q1首个export-round-1（原runtime01，session52178/terminal929a48/exit1，�
 
 ## 接受与推后
 
+当前Step文档与no-ff main的精确CI已接受，具体身份见[文档与合并记录](#文档与合并记录)；本record自身CI及指定两main配对待实际接受。S2/S3、P5与M10收尾未完成，M11未开始。
+
+**以下保留Step文档前的接受原文及当时待验状态。**
+
 S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施 ROOT已在原始门禁、精确CI与三份原席核修均复核后，接受最终0b0代码进入Step文档；收据`root-pre-document-acceptance-0b0-01.json` SHA256 `eda4a0f28844ccffb6b5757e632ab3bdb0ba36ed2f442d7aae24ad6edd26baad`。ROOT再次逐字节/native mode核3387源文件与252项embed均等于本树已接受快照且Git干净；无open Important/Minor。本文自身commit/CI、no-ff/main/record及指定main pair尚须实际执行，不能提前写成已完成。
 
 各旧epoch的87腿/93尝试、72校准及36正常targeted保原source/raw；9260→496d及efad→77窄对应仅为各自历史。最终代码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296的96条控制、完整native19/成本100/fresh EW、C-Q1独立补测、精确CI、三席与原席核修均以上节实际收据为准；不能将77的接受重标到0b0。文档自身CI与no-ff/main/record配对仍待；P4仅S1，S2 ingest/00053与S3UI/至少三browser未完成。P5、M10收尾、M11不提前关闭，M7/M9仍open，raw 2/AGENTS 2限制保留。
 
-下列旧逐腿附录保留原始记录，仅六处诊断摘录增加行内代码定界符；摘录文字及原始日志未改。“最终纳入”仅表示各实施作者当时epoch的选择，不能解释为0b0或未来修复已执行；E02的原泛化错误也不改写成新实际cause。当前96条以FINAL_CONTROL_RECORD对应真实源码及每次0/1/0，C-Q1外部实验另账。
+下列旧逐腿附录保留原始记录，仅六处诊断摘录增加行内代码定界符；摘录文字及原始日志未改。“最终纳入”仅表示各实施作者当时epoch的选择，不能解释为0b0或未来修复已执行；E02的原泛化错误也不改写成新实际cause。当前96条以“最终96条控制：原91＋两项修复回归＋三席原控制”一节对应真实源码及每次0/1/0，C-Q1外部实验另账。
+
+## 文档与合并记录
+
+本次补记于2026-11-03 00:26:53.492156（Asia/Shanghai）写入。产品、各轮minimum/postgen、三席初审与原席核修均保持原输入身份；决定73–75不变。同次补记将96条控制的内部槽名改为现有节名，原附录及数字不变。
+
+| 阶段 | 实际身份与接受范围 |
+|---|---|
+| Step文档 | `2ec19be8793338c59a5f4014fe5812bd98831341` / tree `76dba8afa44282b6cc9313fe0ffeea74e14d27c6`，parent `0b0df18c2ddd4b6779954458d37a617f66a42c5a`；提交时间2026-11-02 23:12:26（Asia/Shanghai）。 |
+| 文档分支CI | [CI41469628154 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41469628154/attempts/1)，精确head `2ec19be8793338c59a5f4014fe5812bd98831341` / `m10-p4-s1` / push / completed/success，全部13个必需jobs及38个必需steps成功；完成于2026-11-02 23:47:59，ROOT接受于2026-11-02 23:50:53.441324（均为Asia/Shanghai）。分支用时不进入main配对。 |
+| no-ff合并 | `a1f21e75804eafd3739558612933ae0c90b44d33` / tree `76dba8afa44282b6cc9313fe0ffeea74e14d27c6`；有序父`e5e8a0b3cffcc473aba9085b0965e3f2193f16dd` / `2ec19be8793338c59a5f4014fe5812bd98831341`；合并时间2026-11-02 23:53:48（Asia/Shanghai），与已接受Step文档同树。 |
+| 精确main CI | [CI41476185798 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41476185798/attempts/1)，精确head `a1f21e75804eafd3739558612933ae0c90b44d33` / `main` / push / completed/success，全部13个必需jobs及38个必需steps成功；完成于2026-11-03 00:23:02，ROOT接受于2026-11-03 00:25:43.834082（均为Asia/Shanghai）。五bootstrap分片实际**Test步骤**依第1至5片为306.0/332.0/392.0/409.0/318.0s，仅是指定配对的merge侧样本。 |
+| 此前CI尝试 | 文档在本次绑定head上无此前CI尝试。merge main在本次绑定head上无此前CI尝试。各次尝试保留原run/head/attempt与结论，只采用上列两个完整成功attempt，不拼接片段。 |
+| 本record及后验 | 本记录写入时，自身SHA、提交后检查及精确main CI尚待实际产生；指定两main配对仍待ROOT接受。不为回填自身SHA/CI另建record-of-record；后续事实保存在树外回执，并随下一次既定文档自然转录。 |
+
+指定配对只取上列no-ff merge与本record两个完整接受的main attempt；逐片计算`mean_i=(merge_Test_i+record_Test_i)/2`，五个均值均须**严格<450s**。不能以分支CI、本地process/package用时、job wall、部分成功片或跨attempt拼接替代。record自身完整CI与该配对实际接受前，不声称S1集成闭环；S2/S3及00053、S3至少三browser、P5与M10收尾仍待，M11未开始。
 
 ## 附录：全部独立控制腿分账
 

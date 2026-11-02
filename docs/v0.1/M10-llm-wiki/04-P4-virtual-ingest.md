@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | **正式设计及入口main CI已接受；S1服务端/真实导出已实施，S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施**。S2/S3未开始，P4尚未完成 |
+| 状态 | **正式设计及入口main CI已接受；S1代码、门禁与原席核修已接受，Step文档及no-ff main的精确CI已接受；本record自身CI及指定两main配对待实际接受。S2/S3未实施，P4尚未完成**；集成见[§10.1](#101-s1-虚拟路径目录文件与导出) |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
@@ -13,7 +13,7 @@
 
 §2.1、§2.3、§7中设计commit/CI待产生、当前未实测等准备态原文保留为e5e8正式设计发布前记录；S1实际结果见§10.1及S1记录，S2/S3义务仍待实施。
 
-本文保留已接受的正式设计合同。S1已实现统一虚拟路径、有限目录、RR虚拟read与真实export；S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施。十二个代码/测试/CI提交、77正式三席及0b0修复验证分别记在§10.1及[S1记录](reviews/P4-S1-virtual-files-review.md)。S2/S3及00053迁移未实施，不能把S1结果算作P4完成。
+本文保留已接受的正式设计合同。S1已实现统一虚拟路径、有限目录、RR虚拟read与真实export；代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受。Step文档及no-ff main的精确CI已接受，本record自身CI及指定两main配对待实际接受。十二个代码/测试/CI提交、77正式三席、0b0修复与集成分别见§10.1及[S1记录](reviews/P4-S1-virtual-files-review.md#文档与合并记录)。S2/S3及00053迁移未实施，P4尚未完成。
 
 ## 0. Step 划分与独立为绿
 
@@ -402,11 +402,15 @@ P5获得真实virtual行为、tools说明与log字段，继续prompt/握手系�
 
 ### 10.1 S1 虚拟路径、目录、文件与导出
 
-S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/MCP共用ListIndex及决定72 finite exact catalogue、独占RR虚拟read、真实whole LLM export/元数据及NFC reimport。四实施提交及其后门禁/审查修复累计十二提交；167c→15b仅改未发布message、同tree。S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施
+S1实现统一Lookup/四根键、V与真实负sort分域、真实SDK Fit、REST/MCP共用ListIndex及决定72 finite exact catalogue、独占RR虚拟read、真实whole LLM export/元数据及NFC reimport。四实施提交及其后门禁/审查修复累计十二提交；167c→15b仅改未发布message、同tree。S1代码、完整本地门禁、精确修复CI与三位原席第一次核修已接受；Step文档及no-ff main的精确CI已接受，本record自身CI及指定两main配对待实际接受；S2/S3未实施。
 
 当前候选0b0df18c2ddd4b6779954458d37a617f66a42c5a/treed6614eb5ef0a03ebe5aa2c2f3091b65f8541d296修复77三审的B-I1反引号显示问题，minimum/postgen及fresh EW357已接受。77原A零发现、B-I1及C-Q1报告保历史身份；C-Q1采用独立PG shared_buffers冷/同操作warm补测，OS缓存保留，不增加原CI循环。最终验证分别为：0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账；0b0最终源新完整native19已ROOT接受：8项inventory、五bootstrap分片双轮及全nonbootstrap race；五片process均值341.073/271.625/292.684/297.700/250.199s，均严格<450s；指定main CI pair另验；0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账；0b0 fresh build/EW session14866已ROOT接受357单过、0skip/retry/flaky，实际171.155s；仅Chromium，S3至少三browser仍待执行；精确0b0 CI41454798547 attempt1已13jobs/38必需steps成功；10份完整server日志及6case/24固定guards通过，web182/3926、EW357单过；guards job1707/1800s，branch五片357/312/399/400/321s，指定main pair另验。正式审查：77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。各旧失败、来源对应、96控制分账、冷热实测与原席核修详见[S1记录](reviews/P4-S1-virtual-files-review.md)。
 
-原4s请求、2s提交/worker、历史200ms和六case的24固定限值不变；完整成本仍50recipe/100process/1333 recipe-local nodes。指定main pair各片实际Test均值<450s、文档CI、no-ff/main和record待真实执行。当前1Chromium；S3仍须至少3browser，S2/S3未实施，P4尚未完成。
+原4s请求、2s提交/worker、历史200ms和六case的24固定限值不变；完整成本仍50recipe/100process/1333 recipe-local nodes。
+
+Step文档`2ec19be8793338c59a5f4014fe5812bd98831341`的[CI41469628154 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41469628154/attempts/1)与no-ff合并`a1f21e75804eafd3739558612933ae0c90b44d33`的[CI41476185798 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41476185798/attempts/1)均已由ROOT接受；有序父、同树关系、实际上海时间与CI尝试见[S1合并记录](reviews/P4-S1-virtual-files-review.md#文档与合并记录)，合并登记见[00§12](00-M10-design.md#12-phase-进度表)。
+
+本record自身提交后检查、精确main CI和指定“merge＋本record”两个main的五bootstrap分片实际Test均值仍待验，五个均值均须严格<450s；不回填未知自身SHA/CI或再建record-of-record。当前仅Chromium；S3仍须至少三browser，S2/S3未实施，P4尚未完成。
 
 ## 附录：已核代码与绑定方式
 
