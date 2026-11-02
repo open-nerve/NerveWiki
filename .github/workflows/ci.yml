@@ -20,9 +20,9 @@ jobs:
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
     # 一个作业跑全部的 Go 测试在 M8/P3A 时超过了 25 分钟的时限：分成几份并行，各占一个 runner（Makefile 的
-    # test-go-race、test-go-bootstrap-1、-2、-3、-4 与 -5、test-go-costs、test-go-costs-lint、test-go-guards，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
+    # test-go-race、test-go-bootstrap-1、-2、-3、-4 与 -5、test-go-costs、test-go-costs-lint、test-go-guards-core、test-go-guards-sources，几份之和是 make test-go；另有 test-go-short 一份，只跑单元测试，
     # 不在这个和里）。不带竞态检测的耗时守卫也因此不与竞态检测下的构建抢 CPU。
-    # server 共十份，连同 web、e2e 与 image 共十三项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
+    # server 共十一份，连同 web、e2e 与 image 共十四项；M10/P2/S2 历史四份本机两轮的包耗时均值见 Makefile。
     # 33b4/4550 两分支 CI 40718770843/40730123058 的第一份 Test 均值 450.5 秒过线；第二份 418.5 秒。
     # 按 Makefile 的窄名称边界将 EveryResolutionCaseImports 移给第二份，预计为 432.8926/436.1074 秒。
     # 当时新配置本机四份各两轮包耗时均值 319.376/309.7455/261.4265/266.258 秒，完整覆盖已核；不提高超时。
@@ -73,7 +73,11 @@ jobs:
           # 不带竞态检测的组合根的预算与守卫：成本那一份在 M8/P4A 之前已到 15 分钟，加后台撤销的守卫时分出（M8/P4 设计 3.11）。
           # M9/P1 S2 时作业已到 11:05，时限照约两倍的规则从 20 分钟提到 25 分钟（S2 修正第二轮）；M9/P3 S1 修正第 6 轮时作业到 12:47，
           # 照同一个规则从 25 分钟提到 30 分钟（修正第 7 轮，复核 C 的 N3-f4）：卡住时 go test 的时限仍先到，最晚约 21 分钟
-          - leg: guards
+          # M10/P4/S1 的 986 文档 CI 41517408885 attempt1 到 30 分钟取消；18 条 Go recipe 已各打印 package ok，
+          # 但 Test 步骤未成功。按完整原 recipe 分成前十二条与末六条来源操作，不提高作业或 Go 时限。
+          - leg: guards-core
+            timeout: 30
+          - leg: guards-sources
             timeout: 30
           # 只跑单元测试（Makefile 的 test-go-short：go test -short，不带竞态检测，不起数据库），README 告诉贡献者这样跑：别的份都不这样跑，
           # M9/P2 S1 的一个测试在 -short 下失败、没有谁看见（S1 修复第二轮，审查 C 的 C2-M1）。不在 make test-go 的各份之和里，也不进组合根的份：
