@@ -1,6 +1,6 @@
 # M10/P4 S1（虚拟路径、目录、文件与导出）：审查记录
 
-> 原记录日期2026-11-02；原合并补记日期2026-11-03；修复合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，旧fd失败和878测试修复见[原补充](#main-record-ci失败与会话fixture修复)，b4失败及f689正确grep夹具修复/代码CI见[后续补充](#b4文档ci失败与grep-glob-fixture修复)，986取消与ac84拆分见[调度补充](#986文档ci取消与guards调度拆分)，最新集成见[修复文档与no-ff合并记录](#修复文档与no-ff合并记录)：修复文档与修复merge的精确CI已接受；本record自身CI及新指定两main配对待验，S1集成未闭环、S2未放行。
+> 原记录日期2026-11-02；原合并补记日期2026-11-03；修复合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，旧fd失败和878测试修复见[原补充](#main-record-ci失败与会话fixture修复)，b4失败及f689正确grep夹具修复/代码CI见[后续补充](#b4文档ci失败与grep-glob-fixture修复)，986取消与ac84拆分见[调度补充](#986文档ci取消与guards调度拆分)，最新集成见[修复文档与no-ff合并记录](#修复文档与no-ff合并记录)：修复文档与修复merge的精确CI已接受；本record自身CI及新指定两main配对待验，S1集成未闭环、S2未放行。 最新后验随决定76的S2正式设计见[S1自然转录](#s1修复record后验随s2正式设计转录)：ca的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成闭环；本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行、未实施。上文及下列旧pending均保其原写入时点。
 
 > 本轮容量维护补充见[e650记录失败与bootstrap容量维护](#e650记录失败与bootstrap容量维护)：e650/a1失败、a2完整CI接受与指定pair容量失败分别记账；代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。原段中的“当前”“待验”继续按各自写入时点阅读；本record自身CI与预登记merge→直接record两main配对仍待验，S1未闭环、S2未放行。 最新集成见[容量维护文档与no-ff合并记录](#容量维护文档与no-ff合并记录)。
 
@@ -609,6 +609,37 @@ ROOT于2026-11-03 01:22:07.676771 UTC接受后发[A失败补核](/home/parallels
 | 本record与指定配对 | [预登记](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/main-pair-predeclaration-01.json)固定顺序为上述no-ff、其仅改本三文档的直接child record，两者各attempt1；本record自身完整CI及两者五片Test算术均值严格<450s仍待真实产生并接受。任一完整attempt失败或容量违反即阻塞、先诊断，不自动重跑、拼接成功job、替换pair或提高限值；旧97/e650首片466.5s失败pair、af代码分支、3166文档分支及本机时间均不充数。 |
 
 旧a1f成功、fd/b4失败、986取消、e650/a1失败、旧指定pair失败与af/a1失败均保留；af/a2只证明该次未复现，根因UNKNOWN、M12性能债和O25 OPEN仍在。合并见[00§12](../00-M10-design.md#12-phase-进度表)。此record不预言自身未来CI或配对通过，S1未闭环、S2未放行。
+
+## S1修复record后验（随S2正式设计转录）
+
+本节随决定76的S2正式设计自然转录S1实际收口，不新增record-of-record。ROOT于2026-11-03 12:17:16.929206 +08:00（Asia/Shanghai）以[ROOT收口](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-s1-closure-01.json)接受S1实施与主线集成，B-Q1已关闭，开放Important/Minor/Nit均0；[原B04最终核查](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-b-04.json)保留原B独立核查及其原件，不代签ROOT接受。下列历史失败与各段写入时点的pending全文保持。
+
+| 对象 | 实际后验与边界 |
+|---|---|
+| accepted main | ca4688a1e9255d68b9ce54ff1d9c0acb824b3068 / tree 1977eec1626950d51c11d3e6f2fc80ad6be7974c，唯一parent e07cc1964238b3d248c791c124d9a9fc48dd9253；ROOT收口时main与origin/main相同且clean。 |
+| record本机检查 | [提交前minimum8](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-record-minimum-01.json)在e07加三文档工作差异上实际通过；[ca提交后postgen](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-record-postgen-02.json)已接受，检查3388源文件/252内嵌文件，native mode差异0。先前postgen未启动的PATH诊断原件保留，未改写为产品失败。 |
+| 精确record CI | main、ca、CI41573821884/a1的[record完整CI接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-record-ci-final-observation-01.json)：完整14 jobs／40必需steps／11 artifacts及原四raw检查均接受；不拼接attempt。[11原件归属](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-record-ci-artifact-attribution-01.json)连接原件与各Upload窗口。 |
+| 成本与原限值 | 本record六P4成本case／12 states／36 samples／24固定限值已接受；glob 1.073215746s≤1.25s，revert large 8.81704111s／many-tops 1.950760754s分别在12s／8s内。lint为14 recipes、1047 RUN/PASS、6真100k样本、8 median；不以P4成本case代替sources六条recipe。详情及原件pins见上述完整CI回执。 |
+| 有序main配对 | 按[原预登记](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/main-pair-predeclaration-01.json)固定为e07的CI41569049575/a1→直接child ca的CI41573821884/a1；[指定配对接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-pair-01.json)接受以下Test步骤均值。merge的完整接受见[merge CI](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；不以branch、本机、job或package时间代Test。 |
+
+| bootstrap片 | e07/a1 Test（s） | ca/a1 Test（s） | 均值（s，严格<450） |
+|---|---:|---:|---:|
+| 1 | 422 | 322 | 372 |
+| 2 | 344 | 336 | 340 |
+| 3 | 360 | 351 | 355.5 |
+| 4 | 403 | 295 | 349 |
+| 5 | 280 | 281 | 280.5 |
+
+两guards的job与Test另列；job原上限各1800s，余量仅为本次观测。
+
+| main样本 | core job／Test／job余量（s） | sources job／Test／job余量（s） |
+|---|---:|---:|
+| e07/a1 | 1018／993／782 | 813／795／987 |
+| ca/a1 | 827／805／973 | 670／649／1130 |
+
+原a1f成功、fd两失败、b4 glob失败、986取消、e650/a1 lint失败、旧97/a1＋e650/a2首片466.5s容量失败及af/a1 revert超原12s失败继续成立；后续通过只说明本次未复现，性能根因仍UNKNOWN，不作环境归因或性能修复结论。原1.25s、summary 2s、12s/8s、15s请求期限、15m/25m、严格450s及全部原limits不变。O25 OPEN、M12 OPEN和正确图手工full-load重新标定义务保留。
+
+本次只放行决定76的S2正式设计绑定；该文档自身minimum10、实际commit、提交后gen-check及精确完整CI仍待真实接受。随后才可创建/绑定隔离S2实施WT并放行原三次有序代码提交。S2/S3均未实施、S2实施未放行，实际SDK/producer/控制/成本仍未运行，P4/M10未完成、M11未开始。190文件、146控制ID及34基础腿＋4 producer复验＝38计划腿保原合同，不把S1闭环写作S2实施完成。
 
 ## 附录：全部独立控制腿分账
 

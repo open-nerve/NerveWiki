@@ -417,7 +417,23 @@ func (s *Store) PurgeChangesetSources(ctx context.Context, before time.Time,
     batch int) (int, error) // one leaf statement; caller loops until short batch
 ```
 
-零ingest为count0、sources=[]；null元素不能compress。标记source本身的ID直到trash/purge后才在response置null，不修改持久mark。MCP显示路径保留同位置，两个scope同合同；现log/change output fit继续，不把source列表绕过TextBytes界。
+零ingest为count0、sources=[]；null元素不能compress。source本身ID在trash/purge或读取时消失后才在response原位置置null，不改持久mark。REST列表/detail仍required count与非nullnullable-ID数组（maxItems3/20）；内部log.md读5，不加MCP cut，沿原40KiB read/1MiB export整条省略与footer。
+
+决定76的MCP输出仅加在共享changesetFields（log.changesets[]和首次changeset.changeset）：
+
+```go
+IngestCount      int       `json:"ingest_count"`
+IngestSources    []*string `json:"ingest_sources"`
+IngestSourcesCut bool      `json:"ingest_sources_cut"` // required, no omitempty
+// app.PathLog gains Paths map[uuid.UUID]string; ChangesetPage.Paths is reused.
+// MCP logIn gains Ingest *bool `json:"ingest,omitempty"`.
+```
+
+三个输出键required且非null；count integer沿0..10000，sources数组item是完整path string或null，零值用非nil []；sources_cut为bool，false也出现。先按seq取P（log最多3/detail最多20）再映射、再仅取连续P[:s]；cut唯一s<len(P)，count超预览cap不是cut。零来源0/[]/false，非空P合法裁零[]/true，数组整体null无效；元素null占位，不跳长path/压缩null/补后项、不另分页。续页changeset:null只代表整个header缺席，三个键随header不出现，外层不补零值。Brief/VersionChangeset不加这些字段。
+
+AtPath/InNotebook在各自原授权/changeset归属校验后批量取来源Paths；InNotebook与changes IDs合并一次读，原位置缺映射转null、真错失败；REST Execute不加路径扫描。log输入ingest optional、type=[null,boolean]，省略/null/false均不筛、仅true筛；account notebook仍required string，notebook scope从entry取得。仅InputSchema按原机制注册，不加OutputSchema框架；输出required由本合同和真实raw-member断言保证。
+
+detail来源阶段以完整header、非nil空changes、n>0时真实Start（n=0原next）固定envelope做Fit，再固定P[:s]做原changes Fit：k=0/n>0保Start，0<k<n用Cursors[k-1]，k=n用NextCursor；续页header=nil跳过来源Fit，原errNoChangeFits保持。log先原完整rows Fit；仅n>0/k=0退让首行，next固定n>1时Cursors[0]、n=1时NextCursor。来源阶段Changes=[]且ChangesCut=(原Changes长度>0)固定；完整P裸header能装必保全P，再固定来源Fit changes；最终ChangesCut=(实留j<原长度)，false沿旧json:"changes_cut,omitempty"，不再无条件true。两个cut独立，来源退让后全部changes装回必须sources_cut=true/changes_cut=false或省略。不跳首行，至少前进一row；sources=[]固定包仍过界则保内部错误，不能删其它字段或抬48KiB。两个builder复制候选不污染原P/长度；此来源阶段固定envelope等价于先保全来源尝试changes Fit、仅build(0)过界才裁来源。独立s*/raw-token及过裁控制见matrix§2.1，不扩原rows/changes算法保证。
 
 以下是待合入现module YAML的schema部分；与原项目OpenAPI3.1/nullable写法一致，UUID/Problem/Limit复用现common。`IndexType`碰撞/超长identity问题见§2，本稿不假定其新字段／界已被批准。
 
@@ -470,14 +486,14 @@ components:
         updated_at: {type: string, format: date-time}
         inbound: {type: integer, minimum: 0, maximum: 1000}
         inbound_capped: {type: boolean}
-# api/modules/page.yaml: add to each full/list Changeset schema, not ChangesetBrief unless it actually returns them
+# api/modules/page.yaml: add to Changeset and separately expanded ChangesetDetail; not Brief/VersionChangeset.
 # required += [ingest_count, ingest_sources]
 # ingest_count: {type: integer, minimum: 0, maximum: 10000}
 # ingest_sources: {type: array, maxItems: 20, items: {type: [string, 'null'], format: uuid}}
 # list preview schema maxItems:3, detail:20. listChangesets query ingest:boolean optional.
 ```
 
-YAML沿固定api的tags/security/x-problem-codes与default Problem；index.list动作由模块Actions/用例Access及权限矩阵登记，不创不存在的x-action键。MCP工具输入log添加boolean `ingest`，额外成员仍strict；输出是现Text/structured形式，不新造HTTP endpoint。虚拟list/read字段按现SDKschema更新metadata，其类型变化和所有fakes同Step。
+YAML沿固定api的tags/security/x-problem-codes与default Problem；index.list沿现Actions/Access/权限矩阵，不创x-action。S2-1分别更新REST两个required schema、HTTP详情手拷贝、原生生成types及fakes；MCP-only cut不进REST/数据库/虚拟DTO。两scope tools.json手工同步log ingest输入与log/changeset描述，由实际tools/list全对象比较，不靠gen写该文件。来源是最多3/20的非分页预览，cut只因wire；“reads one in full”限定全部changes可分页。虚拟list/read原metadata及strict额外成员/码/说明预算保持。旧asMCP仅log/detail增加required false和独立路径/null期望，page完整golden/相邻字段同S2-1；Brief/VersionChangeset不加，禁止剥键或放宽DeepEqual。
 
 ## 6. 真实MCP fixture消费者（C-M1，S1-3）
 

@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | **正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；本record自身CI及预登记merge→直接record两main配对待验，S1集成未闭环、S2未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1合并补记](reviews/P4-S1-virtual-files-review.md#容量维护文档与no-ff合并记录) |
+| 状态 | **正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
@@ -41,6 +41,8 @@ P3已完成：6992是六文件P3done文档提交，parent为df9b1d49544336f80d76
 
 兑现 00 P4 三 Step 全部范围。来源区仍以 notebook mode/source_root_id 和严格 live 后代判定；根自身不算来源，来源数是非空页与附件的总数。虚拟文件只读、无实体节点／revision／search 索引；index 目录不调用 lint、不显示待消化数量、不占 Runs。历史 ingest 是 edit changeset 的追加标记，不是新 changeset kind。
 
+决定76补充MCP历史来源的wire预览，不改变ingest判定或原三代码提交。以下采用的是设计语义；S1集成与S2入口仍以真实main/record接受回执为准，不由本补充放行。API/tools.json、Go/TS及原生生成物在S2-1实施，本次正式设计修订只改文档。
+
 ### 2.1 对 00 的受控修订
 
 [00修订数据](specs/P4-virtual-ingest-00-revisions.json)含15个6992唯一old锚和完整new文字：原13锚保持，A04–A07随D/F与current证明修订；新增A12目的地身份、A13导出映射。决定71明确修订old-F紧凑关系的保留政策，决定72采用types方案。三审与原席核对已完成，主持者已接受；15个old锚原字节保持，new仅同步接受措辞，另三处发布状态替换与实际00投影同列于附件。
@@ -48,6 +50,8 @@ P3已完成：6992是六文件P3done文档提交，parent为df9b1d49544336f80d76
 原13处与新增2处old锚均在6992静态核对。采用时由主持者使用已准备的 `--check`／`--path` 全有或全无脚本，一处不匹配则不写任何文件，先在干净git archive副本试。若main变化先重绑；本次正式文档自身commit/CI仍待产生，接受设计不等于文档门禁或实施通过。
 
 正式采用还须更新00的当前进度／审查／决定／变更记录，不把这15个合同锚当全部发布动作。6992的P4“未开始”整行同时位于当前表907行和历史表922行，不能全局替换；用900行“当前进度表”及906行P3当前行构成唯一上下文，只改当前P4行并补6992 own CI接受和最终P4设计审查状态。915行起的历史快照及P3原“本记录写入时”pending原文保持；§13与主持者决定仅写真实已处置内容，本次正式设计自身commit/CI尚未知，不预写成功。
+
+决定76初始42处合同修订以实际986195a308629131e99fa5ae63e2f8c2ab474c75文档Git对象准备，冻结原件保留。本次正式绑定采用已由[ROOT收口](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-s1-closure-01.json)接受的main ca4688a1e9255d68b9ce54ff1d9c0acb824b3068 / tree 1977eec1626950d51c11d3e6f2fc80ad6be7974c，唯一parent e07cc1964238b3d248c791c124d9a9fc48dd9253；精确record CI41573821884/a1及预登记e07/a1→ca/a1两main配对见[指定配对接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-pair-01.json)。八份完整preimages从该Git对象重采（七份合同文档及S1自然转录审查记录），原42处old仍各唯一；旧6992的15锚数据与审查原件保留当时范围，不改写为本次输入。应用时仍须全部整文件与唯一锚预检先于写入，一处不符即不写。本次S2正式设计自身minimum10、commit、postgen及完整CI尚待；S2实施未放行，SDK/producer/控制仍未运行。
 
 ### 2.2 需要负责人确认
 
@@ -61,6 +65,7 @@ P3已完成：6992是六文件P3done文档提交，parent为df9b1d49544336f80d76
 |---|---|---|
 | 71 | 主持者的决定（负责人可以改判），已接受设计：改删W以首次Before＋旧current head证明D_W/F_W，未改页依index串行后的最终tree/解析近似；来源page目标Now/Before均要求相应revision与Extractor2头。显式允许必要distinct(S,A)旧F ID关系及资格/不确定性，修订初稿不保W×关系的承诺；不保旧正文/JSON/peers/raw边。完整Unknown上界含known及继承闭包，SQL错回滚。 | 一条最终SQL仅传去重F parent IDs，完整D_U后app投影；已属D_W可折叠、最终资格不可能且旧贡献已全处理可释放。400×300与400×10000/100ops/健康100k均为待执行成本义务；120000改写链接不是旧F总界，512只是读批。原预算、无候选零全扫、非空T、五交错不放宽。原B/C已完成设计复核；设计接受不等于性能或实施接受。 |
 | 72 | REST使用有界exact types catalogue：全本可列wiki页排来源后统计，独立type／tag／parent筛选；最大100项、types数组实际JSON≤32KiB。仅完整存储值≤1024UTF-8字节可作为filter；新增required types_complete与unfilterable_type_pages。Catalogue仅REST=true；MCP保留既有精确type SQL，不承担catalogue扫描。 | 00未定exact-key碰撞、超长值、计数范围与输出界，见[types方案](specs/P4-virtual-ingest-types-boundary.md)。新增字段／提示与全量有限输入读取是代价；不改现写入type长度或MCP filter。D01–D11和100k／TOAST／heap／HTTP字节及手写oracle闭合；菜单外URL值保持精确筛选。 |
+| 76 | 主持者的决定（负责人可以改判）：MCP log/detail在seq前3/20完整path/null逻辑预览上仅因48KiB保留前缀，required ingest_sources_cut；REST3/20与log.md5不变，来源无游标。 | detail空changes+真实Start/next先Fit来源；log先完整rows、首行退让才固定row-next择来源，再Fit changes；双cut独立。s*/相邻候选独立SDK编码与真实HTTP raw-token双oracle、两adapter过裁控制、旧完整期望同S2-1。三席静态处置与原C核修见设计审查补充；运行验证和S2入口另验。 |
 
 虚拟分支单次RR／export复用、既有RevertTrees保留、00053迁移编号和文件／Step编排为已接受设计方案；实施中与既有契约不一致的新发现仍须交主持者处置，不由本表豁免实际验证。
 
@@ -84,14 +89,15 @@ S1补充决定73以字面&→%26保Markdown实体目的地身份；74是Markdown
 | S2 | `server/internal/modules/page/app/{unit.go,extension.go,unit_content.go,unit_create.go,unit_delete.go,unit_move.go,unit_rename.go,unit_relocate.go,unit_revert.go,ports.go}`；新 `ingest_before.go` | applyStep 前首次 memo，全部真实创建／修改／删除／participant 路径；Event.BeforeIngest 与旧 revision |
 | S2 | page 新根 `ingest_marks.go,ingest_metadata.go`，app `ingest_marks.go,ingest_metadata.go`（page只拥有头DTO／读取，coverage编排在linking），postgres `ingest.go,queries/ingest.sql` | page 拥有 raw live／revision／树与写 marks；<=512 头流、显式 EOF；不读 linking 表 |
 | S2 | `server/internal/modules/linking/{module.go,admin.go}`；`app/{index.go,ports.go}`，新 `app/{qualified_before.go,ingest.go}`、postgres `ingest.go,queries/ingest.sql` | 索引锁内删前 Capture、index 头校验、旧 union/Unknown、候选 SQL，联接由 bootstrap，store 只读本模块表 |
-| S2 | page `domain/changeset.go`，`app/{list_changesets.go,get_changeset.go,history.go,ports.go}`，postgres `history.go,purge.go,queries/{history.sql,purge.sql}`，http `history.go`，mcp `history.go,changeset.go` | 字段、三条专用 ingest 查询、前 3/20/5 来源、bounded leaf purge 与两个父防线 |
+| S2 | page `domain/changeset.go`，`app/{list_changesets.go,get_changeset.go,history.go,ports.go}`，postgres `history.go,purge.go,queries/{history.sql,purge.sql}`，http `history.go`，mcp `history.go,changeset.go,log.go,tools.go` | S2-1字段、专用筛选、3/20/5来源、MCP两阶段Fit/双cut与工具说明、bounded leaf purge/父防线；tools.go保留S1归属 |
+| S2 | 现 `server/internal/bootstrap/mcp_history_test.go`、page `adapter/mcp/history_test.go` | S2-1旧asMCP和完整JSON golden同提交更新required false与非零路径；独立候选/真实SDK双oracle和逐腿控制，Brief/VersionChangeset不添键 |
 | S2 | `server/migrations/sql/00053_page_ingest.sql`，`server/sqlc.yaml`，`deploy/runtime-grants.sql`，`server/migrations/schema_test.go` | S2-1同提交迁移／schema／grants／sqlc；采用前确认00053未被其他main迁移占用 |
 | S2 | bootstrap `registrants.go,reindex.go,interleavings_page_test.go` 与现 checkPages/pageViolations 落点 | Event Kind/Notebook/ChangesetID/Before 逐字段、reindex 禁回填；三个不变量及两事务 controls |
 | S1/S2 | `api/modules/{linking,page}.yaml`，`api/mcp/tools.json`，对应 `api/dist`、server HTTP/Postgres gen、web 生成 schema/client，`web/apps/web/src/test/fakes.ts` | 先契约后生成；每个必填字段／码的中英文本／fakes 同提交可绿 |
 | S3 | `web/apps/web/src/app/routes.tsx`、`pages/notebook/{page-tree.tsx,notebook-places.tsx,history-page.tsx,history-filters.tsx,history-row.tsx,changeset-page.tsx}`，新 `index-page.tsx`；`pages/page/unresolved-link.tsx` | 文件名已按固定6992树核对；目录／历史／只读虚拟入口；不复制 page tree store |
 | S3 | `web/apps/web/src/services/{linking.service.ts,page.service.ts}`，locale、共享虚拟 fixture、对应 tests；新 `e2e/stories/wiki/{lw9-ingest.spec.ts,lw10-virtual.spec.ts,lw13-index.spec.ts}` 及现 `e2e/stories/wiki/lw12-downgrade.spec.ts` | URL/SWR key、非事件缓存、两语言、readers、已有 LW 故事内增量 |
 
-精确文件／Step见[文件表](specs/P4-virtual-ingest-files.json)：187落点，初稿176项全保留；修订1新增10项，本轮补as2共新增11项（Tools成本fixture、MCP helper、9个version消费者故事文件）。23构造文件／30声明调用、六WriterDeps／TrashReads、两ToolDeps站点分列；15修复依赖保留。S1-3同步24个相关站点及其下游使用；S2增加IngestNow时保留RevertTrees及gen/nodes.sql.go的ListRevertTreeRow，审计不要求无谓改动。
+精确文件／Step见[文件表](specs/P4-virtual-ingest-files.json)：当前190落点（137既存含11生成物、53计划），初稿176项全保留；此前修订2为187（新增11项，含as2），该历史数不改。决定76另补3个原已存在落点：mcp/log.go及bootstrap/mcp_history_test.go、page/adapter/mcp/history_test.go；tools.go保留S1并补S2/S2-1，不新增文件计数。23构造文件／30声明调用、六WriterDeps／TrashReads、两ToolDeps站点分列；15修复依赖保留。S1-3同步24个相关站点及其下游使用；S2增加IngestNow时保留RevertTrees及gen/nodes.sql.go的ListRevertTreeRow，审计不要求无谓改动。
 
 ### 3.2 虚拟路径与游标
 
@@ -224,7 +230,11 @@ C10把真实statement_timeout和ctx取消分成独立腿：57014／原ctx cause�
 
 计划迁移为 `server/migrations/sql/00053_page_ingest.sql`；采用前重新核号，DDL形状按00：changesets.ingest_count int NOT NULL DEFAULT0，命名CHECK>=0；changeset_sources三列 `(changeset_id uuid,seq int,node_id uuid)`均NOT NULL，PK(changeset_id,seq)、UNIQUE(changeset_id,node_id)。没有FK（node或cs均无）、没有deleted_at、新purger或持久ready。保留两个指定partial index名；notebook log index继承00037的真实predicate（无deleted predicate），actor index为deleted_at IS NULL AND ingest_count>0。Down丢marks，Up不补历史；runtime只授DML，无MAINTAIN。
 
-历史count字段必填，ingest_sources为固定前N位置的nullable IDs：列表3、单cs20、log.md5；已trashed/purged目标保留null，不能压缩后补第N+1个。通过changeset_sources PK `(cs,seq)` 对多个cs做unnest+LATERAL限N，数据读取和路径转换保留顺序。count≥cap显示下界，详情“前20个，共N个”；ingest=true筛选专用ListIngestChangesets/ListIngestChangesetsBy/ListIngestChangesetsOfPage三语句，false/省略仍原三条路径，不用一个可选OR把generic plan拖坏。页面history的原200ms守卫不改。
+历史count字段必填，REST `ingest_sources`为非null数组、固定seq前N nullable IDs：列表3、单cs20；内部虚拟log.md读取前5，再用其原整条预算。已trashed/purged或路径读取时消失者保留null位置，不压缩后补第N+1个。通过changeset_sources PK `(cs,seq)` 对多个cs做unnest+LATERAL限N；count不因预览/清理变化，≥cap沿既定下界展示。ingest=true专用ListIngestChangesets/ListIngestChangesetsBy/ListIngestChangesetsOfPage三语句，false/省略沿旧三路；原200ms守卫不变。
+
+决定76：MCP两scope的log/detail先把同seq前3/20映射为完整path/null逻辑预览P（m=len(P)），只为原48KiB wire界取P[:s]；`ingest_count`、非null `ingest_sources`及bool `ingest_sources_cut`均required，后者唯一规则s<m，不以count>3/20判cut。零来源0/[]/false；非空P可裁到[]/true；元素null保位、数组整体null无效。不缩短path、不跳长项补短项、不增加来源cursor；REST及虚拟文件DTO不加cut。app在原授权/归属校验后批量解析来源，真实读取错误仍失败，REST不多扫路径。
+
+detail只在首个非nil header做来源阶段：固定完整header其余字段、非nil空changes、原n>0时真实Start（n=0用原next），Fit来源后固定P[:s]再Fit changes；k=0/n>0带header+Start，0<k<n用对应change cursor，k=n用原NextCursor。续页header=null跳过来源阶段；nil header且无change可装保原errNoChangeFits，不造循环空页。log先保原完整rows Fit；仅n>0/k=0处理首行，不跳行。固定next为n>1时首行cursor、n=1时原NextCursor；空changes且`changes_cut=(原changes长度>0)`固定，完整P裸header能装便保全P，否则尾裁；再固定来源Fit changes。最终`changes_cut=(实际changes长度<原长度)`，false沿旧omitempty，来源裁后全部changes装回必须false/省略；与required sources_cut独立。来源空前缀仍装不下则保内部错误，不删其它字段或抬界。详细字段与候选编码见ports§5，独立oracle/四cut组合/控制见矩阵§2.1。
 
 page现purger里增加source叶循环，再做两个父分支。每条leaf语句LIMIT batch，`FOR UPDATE OF s SKIP LOCKED FOR NO KEY UPDATE OF c SKIP LOCKED`；eligibility是deleted_at<before，或trimmed且deleted_at IS NULL，并同时无items/revisions。循环到本语句返回短批；叶删除数计入page purger返回，保证jobs继续同轮处理。两个父DELETE都加NOT EXISTS changeset_sources。已锁住cs不等待，别的cs仍清；短批含SKIP LOCKED表示当前可清项穷尽，锁住的留后run。2500marks/一个cs和500cs×3分别要求同次purge run清完可清叶/父，随后PurgeNotebooks同次成功。
 
@@ -242,9 +252,9 @@ checkPages三个独立反例：mark的cs必存在（允许soft-deleted），inge
 | MCP write/edit/delete/move/versions/backlinks/log(path) | 现字段／授权先后，统一lookup保留，move末段CheckContract | 两scope逐工具真实virtual_file；standard与嵌套真实页成功；虚拟拒绝后DB未写 |
 | batch | 计划树／正文两遍逐项判断→完整计划后edit lock预检→unit guard | `[op0 locked,op1 virtual]`准确op1；反序、虚拟父链、目的地、先move再write；原REST可比守卫序保持 |
 | REST listChangesets | cursor400→notebook404/page.history→page_id404→client/limit422；ingest非boolean绑定400 | true/false/省略，reader成功、隐藏404，actor/client/page各种组合 |
-| MCP log／changeset | AtPath/InNotebook既有各自次序；log增boolean `ingest` | 两scope实际source摘要/null、普通kind、virtual path拒绝和gate |
+| MCP log／changeset | AtPath/InNotebook原各自授权/字段次序；log增可选nullable boolean ingest（仅true筛） | 两scope真实count、seq完整path/null及required cut；普通kind、reader/standard、隐藏/外本与Gate规则保持 |
 
-MCP tools描述改list/read/grep/index/open_notebook（S1），log/changeset（S2）；虚拟read每次生成、无version，grep/search忽略，真实index仍列真实页。不是P5系统说明改造，不挤占P3已验的内置说明余量。账户scope和notebook Gate不得为了统一表而改成一个新先后。
+MCP tools描述改list/read/grep/index/open_notebook（S1），log/changeset（S2-1）：明确来源是seq前3/20的非分页预览、required cut仅因wire；“changeset reads one in full”只指全部changes可分页，不承诺追回裁掉的来源。两个scope的api/mcp/tools.json在S2-1手工同步，并由真实tools/list完整对象比对；原生gen不生成该文件。平台只注册InputSchema，不增OutputSchema框架；输入strict/码/工具数量及原描述预算保持。虚拟read每次生成、无version，grep/search忽略，真实index仍列真实页。不是P5系统说明改造，不挤占P3已验余量；账户scope和notebook Gate不得为统一表而重排。
 
 ### 3.12 日志与可诊断性
 
@@ -289,8 +299,8 @@ LLM树顶部两普通导航链接index／log（可读中文“目录”“历史
 | S1-2 | 共用ListIndex类型语义、REST parent/types/source/mode、HTTP路由/action矩阵/generated client/双语 | rest入口实际消费新增DTO；旧MCP同usecase；type/排序/错误先后/计划基准 | `server,api,web: expose the notebook index (M10/P4/S1)` |
 | S1-3 | 内部file ports＋纯生成器＋ReadPath独占RR＋两处ToolDeps构造（含!race batch_cost_test.go）；PageRead元数据及真实version消费者；normal read原行为；两read文件 | 一次落完整生产consumer，nilcheck实际触发；输出界、RR交错、offset与SDK | `server,api: read virtual files in their snapshot (M10/P4/S1)` |
 | S1-4 | 早构造只读wiki服务、传递真实export plan路径、contributor及import核对；LW10/13和新cost/plan recipe | 移除真实contributor必被zip断言抓；100k/容量计划/所有控制；Step全门禁 | `server,e2e: contribute the virtual files to exports (M10/P4/S1)` |
-| S2-1 | 迁移/grants/sqlc、Marks store及bounded purge、checkPages、historyrequired fields与预览／专用筛选、HTTP/MCP schema/fakes | 普通历史count0/[]合法，marks端口真实store测试消费，三kind/角色/filter路径完整；无生产ingest承诺 | `server,api,web: keep ingest marks and read their history (M10/P4/S2)` |
-| S2-2 | unit首次memo/BeforeRevision、Event桥、Capture、coverage、candidate SQL、Add标记整条生产路径，reindex构造明确不回填 | 从正控真实PUT/batch到mark；每错误回滚；普通无候选早退、100k非空、最大batch、所有交错与SQL计划；不先落半个热路 | `server: mark proven new source ingestion in the write unit (M10/P4/S2)` |
+| S2-1 | 迁移/grants/sqlc、Marks store及bounded purge、checkPages、history required字段与专用筛选；REST3/20、MCP两阶段Fit/双cut/两scope SDK、schema/fakes及旧asMCP/完整golden同提交 | 普通历史0/[]/false、真实Add持久样本；独立s*/相邻候选与真实raw-token、H06–H15逐腿控制；不剥键/放宽DeepEqual，Brief/VersionChangeset不添字段；无producer承诺 | `server,api,web: keep ingest marks and read their history (M10/P4/S2)` |
+| S2-2 | unit首次memo/BeforeRevision、Event桥、Capture、coverage、candidate SQL、Add完整producer，reindex不回填；合法深树写入到MCP预览 | 真PUT/两scope batch先有缺非空marks的业务red，再接通；核哈希/解析/持久seq后测ASCII20及深& log3，另复验H08 source-Fit退化；原回滚、100k/最大batch/交错/计划保持 | `server: mark proven new source ingestion in the write unit (M10/P4/S2)` |
 | S2-3 | log.md/export前5source、LW9、完整容量/迁移/成本/所有控制与新增矩阵 | S1文件实际消费新历史DTO；historyindex守卫及同runpurge非空；Step全门禁 | `server,e2e: show ingestion in virtual logs and its stories (M10/P4/S2)` |
 | S3-1 | 目录route/services/SWR/Places与完整组件测试、type/tag/More/mode提示 | 已有REST；每个导出被route消费；tsc/knip/vitest；无需后一步 | `web: browse a notebook index (M10/P4/S3)` |
 | S3-2 | virtual树行、Go/TSfixture落点、reader、history标记/filter/detail及两语言 | 已有API；页面焦点与附件/null；同一个事件连接更新 | `web: navigate virtual files and ingestion history (M10/P4/S3)` |
@@ -298,11 +308,19 @@ LLM树顶部两普通导航链接index／log（可读中文“目录”“历史
 
 S1-1不能要求Virtual内容依赖先存在：`ToolDeps.Virtual`及其nil要求在S1-3才引入，前缀已可list，规范read在S1-3交付。S2-1新增零值历史字段是完整可用增量，并不声称ingest生产已开；S2-2同commit接上唯一producer。所有阶段代码变化对应的API contract/types/fakes同commit；若迁移与HTTP生成需要同一工具链，一起生成提交。
 
+S2-1明确更新bootstrap/mcp_history_test.go的asMCP及log/detail完整期望、page/adapter/mcp/history_test.go的完整golden和相邻字段断言：零值也required false，非零来源按独立树/seq映射path/null；仅log/detail这两种shape加字段，Brief/VersionChangeset不递归添加，实际wire裁剪腿用独立s*。不得剥新键、投影旧成员或放宽DeepEqual/完整JSON比较。S2-2真实producer与S2-3虚拟5/最终验收仍原分工，不加第四代码提交。
+
 ## 7. 测试、交错、变异、容量与 CI 余量
 
 `specs/P4-virtual-ingest-test-completion-matrix.md` 是本节的逐行控制表，含精确候选测试名/子测试与文件，正向非空oracle、单故障、交错barrier和完成标准映射。名字是设计拟定的将建测试，不冒称6992已有。原有守卫保留名称与预算；6992现有Make/CI事实见源码事实附表，新测试仍须在实施时加入实际recipe，不伪造已存在的选择器或结果。
 
+决定76后当前146个控制ID：原136完整保留，H06–H15连续新增10个，34个S2-1基础控制腿，H08四腿在S2-2真实producer上复验，共38个计划阶段腿；这些新腿均NOT_RUN，不混入S1历史执行数。两scope各验log四种独立cut组合（00/01/10/11），完整rows优先、来源优先于changes、首行next/至少一行前进、detail Start/续页header-null与无漏重遍历保持。
+
 每控制必须：正常树同命令过→单故障源码变异→命中指定业务断言首败→从备份恢复→同命令过。不能以编译／fixture失败／超时当成功捕获；改坏时不gen、不用git checkout --。每个病灶独立运行，不能把“删Capture且吞error”绑成一条。未改页v1/missing/晚bad JSON必须确实存在；常量用literal旧版本而非跟被测current常量同步变化。交错用现interleaveOnIndex和可观察barrier证明事务被锁的那一刻，不用sleep。
+
+新增来源oracle只测固定来源阶段：测试手写完整seq/path/null与独立header数据，空changes、真实Start/row-next、其它字段固定，sources_cut=(k<m)，log changes_cut=(原变化数>0)固定。用标准Encoder SetEscapeHTML(false)并仅剥一个encoder末尾LF，外层锁定SDK TextContent编码后读raw text token；不调用生产encode/Fit/TextBytes/MemberBytes/builder，不从返回长度或MCP header反求期望。独立枚举B(0..m)先得s*，核B(s*)≤49152，s*<m时B(s*+1)>49152，再比较真实P[:s*]；另从实际HTTP保存原始text token，Σ(len(token)-2)≤49152且Text/structured完整语义一致。只对来源固定envelope要求相邻不可再加，不给原rows/changes Fit强加全局最大保证。detail/log各做full-source header超界时s→s−1控制，保其它字段与后续Fit，必须被新oracle抓住。
+
+S2-2合法producer用raw根+9层255B父page，下挂255B、不同非空内容/哈希的asset（第11段是asset，不是第11层page），20路径各2563B、仍<4096B；真实wiki PUT/batch先核成功/精确非空marks/seq，再测两scope detail。log用合法含&标题的三深路径与≤4096B message，核真实resolver IDs，不把禁止< >的标题或仅算术当生产证据。独立s*不能预设19；长项后有短项/null时仍只保连续前缀。旧worst helper是合成极大envelope，不等于真实producer；空前缀[]/true须m>0且独立B(0)≤49152<B(1)，记录adapter/store/producer证据层，未实测合法producer空前缀不得宣称可达或通过。S2-1的Add读取证据、S2-2首次缺marks red、接通后Fit退化与S2-3虚拟5各分账。
 
 正式成本必须同时满足：normal非no-op保存无candidate零全扫；100k全健康、完整EOF而真实新T至少一个mark；已有旧S→新T仍成功；最大合法batch许多source、近10000cap仍非空；raw深/宽树、assets、trash/missing/stale、旧metadata revisions、晚首sources和合法最大JSON；read100k最坏inbound、export100k+1000cs且不读inbound；历史页200ms原预算。Go TotalAlloc/peak heap、完整ID参数编码、PG rows/buffers/TOAST/custom/generic、同index锁时长与普通保存耗时分开留原始样本，不能把SQL+Scan墙钟叫PG CPU。
 
@@ -348,7 +366,7 @@ M10 `handoffs/M9-P1-mcp-registry.md` 项3处理进展追加：
 
 `v0.1-design.md` §13.1 清理／历史项追加：
 
-> changeset_sources无外键与deleted_at；同changeset的marks只追加，单cs最多10000，count饱和显示10000+。历史列表/详情/虚拟日志按seq给前3/20/5来源，消失的节点保留null位置。ingest=true走三条专用历史查询，false或省略沿原查询。page清理器先按批SKIP LOCKED删除符合父清理资格且无items/revisions的source叶，循环到短批并累计返回；两个changeset父DELETE都要求NOT EXISTS sources，使同次job能继续清notebook，不另建purger。
+> changeset_sources无外键与deleted_at；同changeset的marks只追加，单cs最多10000，count饱和显示10000+。REST列表/详情按seq给前3/20 nullable IDs，虚拟日志前5及整条预算保持；MCP两scope给同逻辑预览的完整path/null wire前缀，required ingest_sources_cut仅由字节尾裁决定，两个cut独立、来源无cursor，消失节点保留null位置。ingest=true走三条专用历史查询，false或省略沿原查询。page清理器先按批SKIP LOCKED删除符合父清理资格且无items/revisions的source叶，循环到短批并累计返回；两个changeset父DELETE都要求NOT EXISTS sources，使同次job能继续清notebook，不另建purger。
 
 `v0.1-design.md` §13.4 不变量／反例／成本项追加：
 
@@ -401,6 +419,8 @@ P5获得真实virtual行为、tools说明与log字段，继续prompt/握手系�
 2026-11-01：P3完成事实不变。三位fresh初审和两轮原席核对已完成，主持者依据实际root回执SHA256 `c0d9fa1c4c3fd176e306c7cbab7ac644b841b798457c8830c1b05451054810cb` 接受设计及实施决定71／72；当前已核实finding零open。正式设计自身commit/CI尚未知、待文档门禁与精确main CI验收；S1–S3未开始。所有P4产品、SQL、测试、生成、迁移、成本及CI结果仍待实际实施后填写。
 
 ### 10.1 S1 虚拟路径、目录、文件与导出
+
+最新S1收口见[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)：record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已获ROOT接受，S1实施和主线集成闭环。以下各测量、CI与pending段保其原写入时点；决定76的S2正式设计自身minimum10/commit/postgen/CI待验，S2实施未放行、未实施。
 
 以下原结果、CI与pending段保其各自写入时点；e650/a1失败、a2完整复核与指定配对容量失败，以及本轮Make调度修复和af392f分支a1失败/预登记完整a2接受，集中见[§10.1.1](#1011-s1-bootstrap-容量维护)和[S1记录](reviews/P4-S1-virtual-files-review.md#e650记录失败与bootstrap容量维护)。本轮未来两次main配对尚未发生，S1未闭环、S2未放行。
 

@@ -99,3 +99,40 @@
 实施决定71采用必要紧凑old-F ID关系、完整D/F继承与Unknown上界、Before/Now current证明及最终parent IDs SQL后app投影；决定72采用REST有界exact types catalogue与完整性/long页字段，MCP保留原精确SQL。完整合同和代价见[正式设计§2.3](../04-P4-virtual-ingest.md#23-主持者的决定负责人可以改判)，同时登记00§11。设计接受不等于产品或性能接受；120k/4M、合法100操作、非空100k、原预算与双轮/指定main pair义务均待实施验证。
 
 本次正式设计自身文档commit、push与精确main CI身份尚未产生，状态为待验；不得把P3 own CI或设计静态核对当本次CI。采用时先由主持者审发布payload、在干净归档副本演练，再以受控00、正式设计和本记录同一个文档提交，完成必需八项、本次postgen、正常push及精确main CI接受后才可开始S1。S1–S3、迁移00053、全部P4控制/成本/性能尚未执行；原13ed失败、4e6e/df9指定pair和6992单次Test463/309/362/404/313的容量限定保持。此处不宣称实施放行。
+
+## S2 MCP来源预览补充（决定76）
+
+本节追加于原P4设计审查历史之后，不重写前文136控制/187路径/256pins及当时pending状态。主持者已采用“主持者的决定（负责人可以改判）76”：MCP来源采用明确wire cut的seq前缀；旧S1“不新增决定76”仅说明当时未占号，此前正式采用的最高编号为75，本次新增76，旧记录原文保持。本次修订已据三席和原C核修处置设计文字；不构成SDK/producer/控制/CI通过，也不构成S2实施放行。
+
+| 本轮原席项 | 正式结论、处置与界限 |
+|---|---|
+| A | I/M/N/Q均0；静态核对支持原rows优先、Start/Next、双cut、null/seq与两scope，不扩原Fit保证。 |
+| B-N1（Nit） | 原稿遗漏正式文件表的log.go S2/S2-1及tools.go保S1补S2归属；主持者采纳，§3.1/files同步。与旧初审B-I1无关，不重编号历史finding。 |
+| C I-C1（Important） | 仅验前缀/≤48KiB会漏过裁；修订为来源固定envelope独立SDK枚举s*及s+1、另测真实HTTP原始text token；log/detail各有仅full header过界时再少留一项的控制。原C已确认设计文字修复，新增I/M/N/Q=0，运行仍待。 |
+| C Q-C1 | 旧bootstrap asMCP的log/detail完整期望、page完整golden/相邻字段同S2-1更新required false与非零path/null；Brief/VersionChangeset不添、禁止剥键/放宽DeepEqual。原C认为答复充分，不加第四代码提交。 |
+
+来源预算只在固定header、空changes、真实Start/row-next和固定log changes_cut的来源阶段单调；不得据此要求原rows/changes Fit全局最大化。两cut最终独立、来源不跳长项补位、不新增游标。合成极大header与合法producer分开；[]/true须原m>0且B(0)≤49152<B(1)，记录adapter/store/producer证据层。raw-token与独立候选编码须同时存在，候选内层标准Encoder关闭HTML转义并只剥一次末尾LF，禁止生产encode/Fit/TextBytes/MemberBytes/builder或返回长度充oracle。
+
+| 冻结树外输入（原件不改） | SHA256 |
+|---|---|
+| 推荐稿02：`p4-s2-mcp-preview-contract-preparation-02/report.md` | `4215df70ad451b4be4201c8800143b27ad4c95bc398e1d7b74d498ef3aa63a3c` |
+| 02 manifest：`p4-s2-mcp-preview-contract-preparation-02/manifest.json` | `3cb8dd6a05ffed703ca2d7649cd093223e87ee3fffbb688f133139db617336e5` |
+| A正式报告：`p4-s2-mcp-preview-design-review-a-01/report.md` | `082f15a29f677c774f861feaf63e076ed121599fff0bd5524f7abdb0cba83cc5` |
+| B正式报告：`p4-s2-mcp-preview-design-review-b-01/report.md` | `90f9ec42c9c1a123925258862f281a73057c1b3c05dd779558b4878d7e754cd6` |
+| C正式报告：`p4-s2-mcp-preview-design-review-c-01/report.md` | `efd801944fd3c30dd41b39e13291c9613d0bd8a04edc120d720cb7574279b404` |
+| 原C核修：`p4-s2-mcp-preview-design-review-c-recheck-01/report.md` | `72e74a09b109bb0093dbf6e634e9c9f59eba8570fa55e80e7f919e13533b39ba` |
+| ROOT决定76原文：`root-p4-s2-preview-decision-76.md` | `161cb42b988d662432720fdb4b9fb3d4a90fe6a5248f76de4ad726286892c588` |
+
+初审/02及原C核修的源码基线为f689c839f2bbb8167db17b2b981da686b78faa1b / tree fe80ab4a49b20f8ce44194cac2131fcea1e1443d；初始正式文档窄包以实际986195a308629131e99fa5ae63e2f8c2ab474c75 / tree 6d27bba6547cf19ac057c0cb208c9d9b1a63b257准备并保留冻结原件。本次正式绑定据[ROOT收口](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-s1-closure-01.json)采用真实accepted main ca4688a1e9255d68b9ce54ff1d9c0acb824b3068 / tree 1977eec1626950d51c11d3e6f2fc80ad6be7974c，唯一parent e07cc1964238b3d248c791c124d9a9fc48dd9253；record CI41573821884/a1与指定e07/a1→ca/a1两main配对已接受。原七份合同文档仅00/P4的S1状态与集成段相对初始稿漂移，原42处old均恰一次；另以同一ca对象的S1审查全文作第八份前像承接自然收口。40处合同new逐字保留，另2处仅改出处绑定，合同原义不变；应用前仍核全部preimages与完整diff。本次设计自身minimum10、commit、postgen及完整CI尚待，S2实施未放行，不据S1收口宣称实际SDK/producer/控制通过。
+
+当前文件表190路径=原187+3个既存文件（137既存含11生成物、53计划）；新增log.go和两份Q-C1必改history测试，tools.go保S1补S2不增加行数。原6992 identity_catalogue/256pins不重写；三个补充既存文件在986的对象如下，existing/planned仍保原6992口径：
+
+| 追加映射路径 | 986 Git blob | SHA256 |
+|---|---|---|
+| `server/internal/modules/page/adapter/mcp/log.go` | `5331c9b2539dac19c15af2a7f85dc9d9d7fa6ff8` | `d98859a3b47c54f66a6b0be1e14e481babd995822eb6f91b94b9dd9f4b991a8c` |
+| `server/internal/bootstrap/mcp_history_test.go` | `ce68721c4c75c8faf62bd1363ab0ade1dc22ebb4` | `ba9ca11e793f4d73c4a432f9a7e69b0f50c0bc6b602b178b50d3a1c945f5517d` |
+| `server/internal/modules/page/adapter/mcp/history_test.go` | `45c9a324915079a6f4fcf48f03f53af1cbb633d6` | `38faf145abcbbd38d4a1cf9ceb9d98a0c8166c0baf4bdea79e3b695b26b2c9e3` |
+
+当前146控制ID=原136+连续H06–H15；34个S2-1基础腿及H08的4个S2-2 producer复验，共38个计划阶段腿，全部NOT_RUN。原136 ID保留，H02/H05只同步所需表示合同；本轮不能并入S1历史96/288。逐腿、四cut组合、O-size/O-prefix及合法深树见[当前矩阵§2.1](../specs/P4-virtual-ingest-test-completion-matrix.md#21-mcp来源预览决定76全部待执行)。原三代码提交、五交错、17SQL、100k/最大batch/迁移/真实SDK、48KiB与3/20/5、原4s/成本/容量/全门禁仍全部保留。
+
+正式合同落点为[00 §4.14/§11](../00-M10-design.md#414-ingest-标记)、[P4 §2/3.10/3.11/6/7](../04-P4-virtual-ingest.md#310-迁移历史与清理)、[ports §5](../specs/P4-virtual-ingest-ports.md#5-历史purge与json契约)、[files](../specs/P4-virtual-ingest-files.json)。总体设计只窄修§13.1#31原“log fallback总changes_cut=true”的直接冲突，不借此宣称新增功能已实现。API/tools.json、Go/TS与生成物均留S2-1实际实施；合成/存储样本不冒称真实producer，S2-2真实写入后逐项留证，S2-3保虚拟5和最终义务。

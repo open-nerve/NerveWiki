@@ -1,6 +1,6 @@
 # P4 测试、单故障变异与完成标准矩阵
 
-状态：正式设计136个控制ID保留，原114个ID不删。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于136ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
+状态：决定76补充后当前146个控制ID：原136（含更早114）全部保留，新增连续H06–H15共10个；34个S2-1基础控制腿，另H08四腿在S2-2真实producer复验，共38个计划阶段腿，均NOT_RUN，详见§2.1。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于原136或当前146ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
 
 ## 1. 测试文件与命令模板
 
@@ -17,6 +17,7 @@
 | IQ | 新 `server/internal/modules/linking/adapter/postgres/ingest_test.go`；`go test ./internal/modules/linking/adapter/postgres -run '^TestIngestCandidates/<子名>$' -count=1`；真实SQL对手写oracle |
 | II | 新 `server/internal/bootstrap/ingest_test.go,interleavings_ingest_test.go`；`go test ./internal/bootstrap -run '^TestIngestUnit/<子名>$' -count=1` |
 | HM | 新 page postgres `ingest_history_test.go`与现http/mcp history测试；`go test ./internal/modules/page/... -run '^TestIngestHistory/<子名>$' -count=1` |
+| HP | 现 `server/internal/bootstrap/mcp_history_test.go` 拟增 `TestMCPIngestPreview`，两scope真实SDK/HTTP；现page `adapter/mcp/history_test.go` 同步完整golden及adapter边界。`go test ./internal/bootstrap -run '^TestMCPIngestPreview/<子名>/<scope>$' -count=1` 是待建模板，不记已被Make收录；S2-1落实真实选择器。 |
 | PG | 新 page postgres `ingest_purge_test.go`；新bootstrap `ingest_invariant_test.go`；`go test ./internal/modules/page/... ./internal/bootstrap -run '^TestIngestCleanup/<子名>$' -count=1` |
 | W | 新/现 web组件test文件见P4-virtual-ingest-files.json；原vitest入口精确文件+`-t 'P4/<子名>'`（重绑现package脚本，不能伪造已跑命令） |
 | EW | 新LW9/10/13、现LW12 Playwright故事；按现三browser配置与heavy锁内fresh build逐phase运行指定test标题，见§5 |
@@ -136,10 +137,20 @@ Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不�
 | U21/S2 | II/untouched_deleted_source_approx | Q不在W、S在W被删，A同级存活，最终Q不再有可消化S，D_W空，P→A/T应[A,T]；与U14并列 | 为Q强造Before D或无条件保全部oldF |
 
 | H01/S2 | HM/true_false | notebook/actor/page三filter TRUE只ingest；false/omit同原结果 | false也走专用ingest SQL |
-| H02/S2 | HM/preview_order | 25来源seq中trashed/purged占位，list3/detail20/log5位置准确 | 压缩null再补后项 |
+| H02/S2 | HM/preview_order | 25来源seq中trashed/purged占位，REST list3/detail20/虚拟log5位置准确；MCP先同seq取3/20再映射，wire连续前缀另由H06–H15验证 | 压缩null再补后项 |
 | H03/S2 | HM/seq_order | sourceUUID刻意与seq反序，preview仍seq顺序 | 预览按node_id排序 |
 | H04/S2 | HM/actor_page_plan | 原TestTheLogReadsUseTheirIndexes新三支noStats/custom/generic非空命中正确索引 | 用optional OR替代专用TRUE SQL |
-| H05/S2 | HM/protocol_roles | reader+两MCPscope得真实count/source，隐藏404，kind仍edit | ingest改为新kind或require writer（分腿） |
+| H05/S2 | HM/protocol_roles | reader+两MCPscope得真实count与seq来源，MCP完整path/null和required cut，隐藏404，kind仍edit | ingest改为新kind或require writer（分腿） |
+| H06/S2 | HP/required_false | log/detail各两scope；零ingest与非零短预览raw-member均有required false，array非null；完整golden/DeepEqual保持 | 只将sources_cut改为omitempty使false缺键 |
+| H07/S2 | HP/count_not_cut | log/detail各两scope；count25、完整P3/20可装，来源全部保留且cut=false | 仅以count>len(returned_sources)判sources_cut |
+| H08/S2 | HP/source_fit | log/detail各两scope；full-source裸header真实超界，手写前缀+s*及SDK成功/≤49152；S2-1用真实Add，S2-2真实producer复验 | 只旁路该adapter来源阶段，保完整P进入原changes Fit |
+| H09/S2 | HP/detail_overcut | detail两scope，独立B(m)>49152且s*≥2；实际恰P[:s*]，B(s*)≤49152<B(s*+1) | 仅完整header超界时把detail正常s再减1 |
+| H10/S2 | HP/log_overcut | log两scope，独立B(m)>49152且s*≥1；实际恰P[:s*]，相邻候选不可再加 | 仅完整首行裸header超界时把log正常s再减1 |
+| H11/S2 | HP/independent_cuts | log两scope各01/10腿；sources/changes分别按原长度核；10保全部changes且无changes_cut，00/11另作正控 | 仅把最终ChangesCut绑定成IngestSourcesCut |
+| H12/S2 | HP/prefix_no_skip | log/detail各两scope，边界长项之后有可装短项/null，仍只答手写P[:s*]，不可跳过或补位 | 只跳过首个装不下来源，继续用后方短项/null补位 |
+| H13/S2 | HP/cursor | 两scope各detail-header-only、log-many、log-one-more三腿，真实Start/首行next/原Next逐值且遍历无漏重；终态null正控 | 每腿分别只把detail Start改nil／log-many改整页Next／log-one-more非空Next改nil |
+| H14/S2 | HP/sources_before_changes | log两scope01：完整来源裸header可装，全部changes不可装；来源不减且仅changes_cut=true；完整rows能装的00正控保持 | 仅在fallback先减一个来源以换更多changes |
+| H15/S2 | HP/continuation_null | detail两scope，续页changeset整体null、不在外层补count/sources/cut，按原changes cursor完成 | 仅在Detail=nil时生成零值header替代null |
 | P01/S2 | PG/leaf_loop | 2500marks/1cs和500cs×3各同run全可清且notebook被清 | leaf只删一次不循环 |
 | P02/S2 | PG/count_return | 页purger返回包含leaf数，jobs同run继续直到notebook可清 | 返回漏leaf数 |
 | P03/S2 | PG/parent_deleted | 保留leaf锁住时deleted父仍存在，其他可清 | deleted父去NOT EXISTS sources |
@@ -175,6 +186,28 @@ D04在初稿已有六腿，本修订保留原行；本轮准确ID／改行计数
 
 U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当前六字段Tree夹具与nil/empty差异，不恢复旧[]domain.Node或ListNodes撤销故障注入。现有完整活树/附件、ctx事务/取消、锁下重读、source facts与untouched witness回归作为需保留的修复基线列引用；不计为P4新控制已通过，也不替代U04真正kind-gate oracle。 实际修复回归行见源码事实 F26–F29；它们只要求保留，不计为本轮新执行结果。
 
+### 2.1 MCP来源预览（决定76，全部待执行）
+
+H06–H15是10个新增ID，原136不删/不改号。基础腿按notebook/account两scope分别命名：H06、H07、H08、H12各log/detail×2=4腿；H09、H10、H14、H15各2腿；H11为log的01/10×2=4腿；H13为detail-header-only/log-many/log-one-more×2=6腿；共34腿。S2-1每腿真实Add持久来源，分开baseline→单故障→指定断言首败→restore；不把多个fault同时打开。S2-2接通producer后另复验H08的log/detail×两scope4腿，共38个计划阶段腿；重复行为有不同phase身份，不冒充38个新ID或已执行。现有H02/H03继续抓null压缩/seq错序，不重复改号。候选命令名与实际Make选择器在实施时核对，未建测试不记RUN。
+
+**两个独立oracle都必需。** O-size保存这次真实HTTP SDK答复每个text的json.RawMessage，直接Σ(len(token)-2)≤49152，并核成功、Text解出JSON与StructuredContent完整相等；只decode后重marshal不算wire。O-prefix按手写P、夹具/独立REST或存储的完整header字段构造literal envelope，不复制被测MCP header/返回长度。detail空changes固定真实Start（原n=0时原next），log空changes固定真实row-next及ChangesCut=(原变化数>0)，其它字段固定；候选k的Sources=P[:k]、SourcesCut=(k<m)。内层测试自己用标准json.Encoder.SetEscapeHTML(false)，bytes.TrimSuffix只剥一个encoder附加末尾LF；外层用锁定go-sdk v1.8.0的json.Marshal(&mcp.TextContent{Text:inner})，取raw text token长度。禁止生产encode/Fit/TextBytes/MemberBytes/builder。独立枚举B(0..m)先算s*=max可装k，再核实际P[:s*]、B(s*)≤49152及s*<m时B(s*+1)>49152；B(0)也超则内部错误，不能称[]成功。候选编码不等于真实HTTP或producer成功。只对固定来源阶段要求相邻最大，不对原rows/changes Fit要求全局最大。
+
+| 健康答复腿（每行两scope） | 夹具与独立期望 | 主要控制/断言 |
+|---|---|---|
+| log 00 | 短P3与全部原changes可装，完整rows Fit优先；count25不代表cut | H06/H07、完整rows/required false，O-size，O-prefix得s*=m |
+| log 01 | 裸完整P可装，但全changes不可装；不牺牲来源换changes | H11/H14，sources_cut=false、changes_cut=true，固定来源O-prefix |
+| log 10 | 裸完整P超界，所选来源前缀后全部changes可装 | H08/H10/H11；sources_cut=true、changes_cut=false/省略，专抓旧fallback总true |
+| log 11 | 裸完整P超界，固定所选前缀后仍须裁changes | H08/H10及独立两长度；O-size/O-prefix，不互相推cut |
+| detail首答 | 有变化时来源阶段真实Start，固定前缀后分别有changes/仅header；无changes用原next | H08/H09/H13；header-only后从第一change继续，不漏/重 |
+| detail续答 | header整体null，原changes cursor/终态null；无一变化可装保原错误 | H15与H13，完整JSON比较、不补外层零值 |
+| 零/null/边界/空前缀 | 0/[]/false；全null保seq；长项后短/null不补位；m>0且B(0)≤49152<B(1)才[]/true | H02/H03/H06/H12；逐键required及证据层记录 |
+
+H09/H10只在full-source header超界且健康s*>0时s→s−1，其余字段/cursor、正常cut公式、后续changes Fit不改。detail ASCII20短固定字段先独立证明至少2来源可装；log深&+长message短固定字段先证明至少1来源可装。两个scope必须因预期数量/相邻候选断言失败，即使退化答复仍是合法未超界前缀；短header正控不变，恢复后回绿。
+
+真实producer由S2-2承担：合法raw根+9层255B page，下挂255B不同名、不同非空内容/hash的asset，第11段是asset，完整路径2563B<4096B；20路径仅字符下界已51260B。真实PUT/两scope batch先核创建/上传/解析、精确非空marks/count/seq，再调detail；19项是否可装以独立完整envelope为准。log用合法&标题的三深路径、≤4096B message，< >不用于禁止它们的标题，真实resolver IDs必须对齐。首次未接producer的red是缺marks；接通后的H08退化是Fit业务red，二者分账。旧worst helper的11段page/极大独立字段组合仅合成adapter上界；空前缀记录adapter/store/producer层及B(0)/B(1)，没有合法真实写入证据就不记producer空前缀成功。所有原48KiB、3/20/5、4s及容量界保持。
+
+S2-1同时改bootstrap旧asMCP log/detail期望（required false、非零独立路径/null）、page完整golden与相邻字段；不对Brief/VersionChangeset加键，不剥实际新键，不放宽DeepEqual/完整JSON。S2-3仍负责虚拟log/export5、LW9/LW10及全Step义务，不以这些MCP腿顶替原预算/清理/迁移/五交错。
+
 ## 3. 五个确定性双事务交错与手写oracle
 
 **I1 两unit争同S**：先建非空source S与两个空wiki P/Q，不预置任何consumption。测试外连接持index key，A/P和B/Q均已写自身content并在advisory锁等待；明确放A获锁并commit，再放B。A cs sources=[S]、B sources=[]；反过来只交换谁1谁0。A在marks处故障回滚腿：A无content/version/mark提交，B=1。结束checkPages/checkLinks与source_hash不变量，不能只看总mark≤1。
@@ -202,7 +235,7 @@ U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当�
 | mark edit/cap/session/index串行 | U01–U21、I1 | 10000/seq/unique/count实际行、Kind与桥接最后一跳；reindex零回填 |
 | 迁移／runtime/sqlc／CHECK与indices | P10及UpDownUp/runtime-role/schema names；history plans | 计划00053迁移、ALTER到commit锁时长、数据规模、rollforward/Down丢标说明 |
 | 清理／三不变量／同jobnotebookpurge | P01–P09、I5 | M8移交处理进展、总体13.1#6/13.4；retention/trimmed谓词准确 |
-| history true/false/filter/前N/null/权限 | H01–H05、W05/W09、LW9 | API/tool/types/fakes同Step、总体13.2 URL/null/附件落点 |
+| history true/false/filter/前N/null/权限与MCP wire预览 | H01–H15、W05/W09、LW9；O-size/O-prefix、双cut四组合及各adapter过裁 | API/tool/types/fakes与旧严格期望同S2-1；S2-2合法producer闭环，S2-3虚拟5；146ID是设计数，38新增计划阶段腿均NOT_RUN |
 | S3焦点/模式/keys/retry/共享fixture | W01–W10、EW01–04 | 三browser和runtime身份，原LW12同stream；总体13.2/13.4与M12selector推后 |
 | read100k最坏inbound/export100k+1000cs | 真PG/bootstrap cost新selector；E04错误query路径 | 保原时间/内存线，cold/warm/noStats/custom/generic/更大另一本、实际SQL范围 |
 | ingest100k/maxbatch/sets编码/JSON单合法大值 | C08/U08/真实cost；S→T和cap oracle非空 | Go heap/TotalAlloc、wire参数、PGbuff/temp、index锁时长；M12原义务 |
@@ -220,6 +253,8 @@ U04的revert腿基于当前WriterDeps/TrashReads.RevertTrees接线。复用当�
 每提交minimum，完整`make lint gen-check knip build`／`make test`／`make test-go-short`／`make e2e`；!race成本/guards独立。每规定进程双轮、算法每轮≥3样本，中位数/×3与process均值×2.4/timeout半界沿00；五bootstrap片、两指定mainTest均值<450s。浏览器每phase重新build当前源码，record actual identities，W/EW分账；SQLite/mock/只打印SQL都不能称真实PG验证。
 
 ## 6. 当前记录
+
+决定76设计补充：当前146ID=原136+H06–H15，34个S2-1基础控制腿及H08四个S2-2复验腿均未执行；三席设计发现/处置与原C核修只证明文字合同，不能计入下列S1历史96/288，也不预签SDK/producer/CI。
 
 原87之外的display限额腿与generic-pool/afterconnect、force-generic、type-index三项曾在efad各0/1/0完成并获ROOT接受，共91/273；77窄对应不重标原过程。缺type index由完整IndexPages/真实非空计划捕获，不要求150ms过滤必杀。0b0修复后须重跑原91，并加B-I1 domain/真实两scope与ZIP两条回归，保留A外层ctx、B源SQL＋generated投影、C实际contributor移除三个原席故障，共96/288；逻辑重复与故障/argv差异详见S1记录，不改原136设计ID。C-Q1冷暖补测与其observer反控另账，不扩原CI循环或放宽预算。旧E02泛化失败与5a97以后实际cause证据保各自身份。
 

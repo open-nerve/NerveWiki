@@ -1,5 +1,5 @@
 {
-  "status": "FORMAL_REVISION_02_IMPLEMENTATION_AND_AUDIT_MAP",
+  "status": "FORMAL_REVISION_02_WITH_S2_PREVIEW_DECISION_76",
   "commit": "6992fd042ff06c110a4e59e67fb89bfe5f43fbd9",
   "identity_catalogue": "P4-virtual-ingest-source-pins.json",
   "files": [
@@ -28,7 +28,7 @@
         "S1",
         "S2"
       ],
-      "responsibility": "S1目录／虚拟工具或S2历史ingest契约、严格schema与码声明，按Step同步生成物"
+      "responsibility": "S1目录/虚拟工具与S2-1历史ingest输入/描述手工同步；真实两scope tools/list全对象核对，native gen不生成此文件"
     },
     {
       "path": "api/modules/linking.yaml",
@@ -182,6 +182,18 @@
         "S1"
       ],
       "responsibility": "两scope模块工具接线"
+    },
+    {
+      "path": "server/internal/bootstrap/mcp_history_test.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "commits": [
+        "S2-1",
+        "S2-2"
+      ],
+      "responsibility": "S2-1旧asMCP完整期望、两scope SDK/raw-token与独立s*；S2-2真实producer到wire及指定复验，不剥键放宽DeepEqual"
     },
     {
       "path": "server/internal/bootstrap/mcp_tools_test.go",
@@ -554,7 +566,10 @@
       "steps": [
         "S2"
       ],
-      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+      "responsibility": "S2-1首次header固定Start/next与空changes择来源，再Fit changes；续页header-null及原游标保持",
+      "commits": [
+        "S2-1"
+      ]
     },
     {
       "path": "server/internal/modules/page/adapter/mcp/history.go",
@@ -562,7 +577,21 @@
       "steps": [
         "S2"
       ],
-      "responsibility": "ingest历史字段、筛选与前N nullable来源；原历史判断次序保持"
+      "responsibility": "S2-1共享count/完整path-null数组/required来源cut，零值与seq位置；不改Brief/VersionChangeset",
+      "commits": [
+        "S2-1"
+      ]
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/history_test.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "commits": [
+        "S2-1"
+      ],
+      "responsibility": "log/detail完整JSON golden与相邻字段、required false/非零path/null；来源边界及单故障，Brief/VersionChangeset不添键"
     },
     {
       "path": "server/internal/modules/page/adapter/mcp/list.go",
@@ -571,6 +600,17 @@
         "S1"
       ],
       "responsibility": "虚拟路径／V游标／list/read工具或相应节点读取，保持真实节点行为"
+    },
+    {
+      "path": "server/internal/modules/page/adapter/mcp/log.go",
+      "status": "existing",
+      "steps": [
+        "S2"
+      ],
+      "commits": [
+        "S2-1"
+      ],
+      "responsibility": "ingest筛选；原完整rows Fit优先，首行来源阶段及changes Fit，required来源cut与changes_cut独立，原row-next不跳行"
     },
     {
       "path": "server/internal/modules/page/adapter/mcp/open_notebook.go",
@@ -592,9 +632,13 @@
       "path": "server/internal/modules/page/adapter/mcp/tools.go",
       "status": "existing",
       "steps": [
-        "S1"
+        "S1",
+        "S2"
       ],
-      "responsibility": "本模块生产构造／入口接线、依赖校验和真实consumer"
+      "responsibility": "保留S1构造/虚拟工具职责；S2-1两scope log/changeset来源非分页预览、required wire cut与ingest输入描述",
+      "commits": [
+        "S2-1"
+      ]
     },
     {
       "path": "server/internal/modules/page/adapter/postgres/gen/history.sql.go",
@@ -1953,7 +1997,8 @@
     "Status is actual existence at6992 or planned addition, not implementation progress.",
     "S1 service/log files and stories may be extended in S2/S3 as the main plan already requires.",
     "Regenerate only during authorized implementation; preserve ListRevertTreeRow.",
-    "Existing unit audit paths do not require an edit when the shared applyStep hook covers them."
+    "Existing unit audit paths do not require an edit when the shared applyStep hook covers them.",
+    "决定76当前190落点；原187及256 source pins保历史。新增log.go与两history测试均在6992已存在，另以986 Git对象核身份（见P4-design-review补充）；existing/planned仍是原6992定义，不冒称当前实施状态。"
   ],
   "tool_deps_literal_sites": [
     {
