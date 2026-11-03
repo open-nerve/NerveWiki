@@ -5,6 +5,7 @@ package postgresadapter_test
 import (
 	"context"
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -160,6 +161,62 @@ func expect(err error, ok bool, got any) error {
 func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 	ctx := context.Background()
 	l := newLongLog(t)
+	// Preserve the original 100k history and all its old reads. Mark one in
+	// eleven plus the newest hundred; only that page holds 25 sources each.
+	if _, err := l.pool.Exec(ctx, "ALTER TABLE changeset_sources SET (autovacuum_enabled=false)"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := l.pool.Exec(ctx, `WITH numbered AS (
+  SELECT id,row_number() OVER(ORDER BY created_at) k FROM changesets WHERE notebook_id=$1)
+  UPDATE changesets c SET ingest_count=CASE WHEN c.id=ANY($2::uuid[]) THEN 25 ELSE 1 END
+  FROM numbered n WHERE c.id=n.id AND (n.k%11=0 OR c.id=ANY($2::uuid[]))`, l.notebook, l.newest); err != nil {
+		t.Fatal(err)
+	}
+	absent := uuid.NewV7()
+	if _, err := l.pool.Exec(ctx, `INSERT INTO changeset_sources(changeset_id,seq,node_id)
+  SELECT c.id,k,CASE WHEN k=1 THEN $3::uuid ELSE ($2::uuid[])[k] END
+  FROM changesets c CROSS JOIN LATERAL generate_series(1,c.ingest_count) k
+  WHERE c.notebook_id=$1 AND c.ingest_count>0`, l.notebook, l.pages[:25], absent); err != nil {
+		t.Fatal(err)
+	}
+	// Derive expected IDs from seed ordinal arithmetic, independently of the
+	// production ingest predicate and the generated history SQL.
+	expected := map[string][]uuid.UUID{}
+	for _, name := range []string{"notebook", "actor", "page"} {
+		var timestamps []time.Time
+		for k := 50000; k > 0 && len(timestamps) < 101; k-- {
+			if k%11 != 0 || name == "actor" && k%3 != 1 || name == "page" && k%5 != 1 && k%5 != 2 {
+				continue
+			}
+			timestamps = append(timestamps, now().Add(time.Duration(k)*time.Second))
+		}
+		rows, err := l.pool.Query(ctx, "SELECT id FROM changesets WHERE notebook_id=$1 AND created_at=ANY($2::timestamptz[]) ORDER BY created_at DESC,id DESC", l.notebook, timestamps)
+		if err != nil {
+			t.Fatal(err)
+		}
+		ids, err := pgx.CollectRows(rows, pgx.RowTo[uuid.UUID])
+		if err != nil || len(ids) != 101 {
+			t.Fatalf("independent %s fixture IDs%d,%v", name, len(ids), err)
+		}
+		expected[name] = ids
+	}
+	ingestPage := func(name string, filter domain.LogFilter) func() error {
+		return func() error {
+			got, err := l.s.ListChangesets(ctx, l.notebook, filter, domain.ChangesetCursor{At: now().Add(50000 * time.Second), ID: uuid.Max()}, 101)
+			if err != nil {
+				return err
+			}
+			ids := make([]uuid.UUID, len(got))
+			for i, row := range got {
+				ids[i] = row.ID
+				if row.IngestCount != 1 {
+					return fmt.Errorf("%s counter%d, want1", name, row.IngestCount)
+				}
+			}
+			return expect(nil, slices.Equal(ids, expected[name]), ids)
+		}
+	}
+
 	page := func(f domain.LogFilter, below domain.ChangesetCursor) func() error {
 		return func() error {
 			got, err := l.s.ListChangesets(ctx, l.notebook, f, below, 101)
@@ -190,6 +247,35 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 			got, err := l.s.ListChanges(ctx, l.large, l.pages[40_000], 101)
 			return expect(err, len(got) == 101 && got[0].NodeID == l.pages[40_001], len(got))
 		}},
+	}
+
+	reads = append(reads,
+		logRead{"an ingest page", ingestPage("notebook", domain.LogFilter{Ingest: true})},
+		logRead{"an actor's ingest page", ingestPage("actor", domain.LogFilter{Ingest: true, Actor: &l.bob})},
+		logRead{"a changed page's ingest page", ingestPage("page", domain.LogFilter{Ingest: true, PageID: &l.page})},
+	)
+	for _, n := range []int{3, 5, 20} {
+		reads = append(reads, logRead{fmt.Sprintf("the first %d ingest sources of a page", n), func() error {
+			got, err := l.s.FirstIngestSources(ctx, l.newest, n)
+			if err != nil {
+				return err
+			}
+			if len(got) != 100 {
+				return fmt.Errorf("source page has %d changesets, want100", len(got))
+			}
+			for _, id := range l.newest {
+				preview := got[id]
+				if len(preview) != n || preview[0] != nil {
+					return fmt.Errorf("source prefix %s=%v", id, preview)
+				}
+				for i := 1; i < n; i++ {
+					if preview[i] == nil || *preview[i] != l.pages[i] {
+						return fmt.Errorf("source position %s seq%d=%v", id, i+1, preview[i])
+					}
+				}
+			}
+			return nil
+		}})
 	}
 	for key, took := range l.at(t, reads) {
 		if took > 200*time.Millisecond {

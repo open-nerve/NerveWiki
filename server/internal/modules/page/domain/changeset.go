@@ -47,18 +47,19 @@ const MaxMessageBytes = 4096
 // longer be reverted whole; and a revert's changeset, RevertsID, with its
 // brief while the purge has not taken it.
 type Changeset struct {
-	ID         uuid.UUID
-	NotebookID uuid.UUID
-	Kind       ChangesetKind
-	Client     Client
-	Message    *string
-	By         uuid.UUID
-	ByName     string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
-	Trimmed    bool
-	RevertsID  uuid.UUID
-	Reverts    *ChangesetBrief
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	Kind        ChangesetKind
+	Client      Client
+	Message     *string
+	By          uuid.UUID
+	ByName      string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	IngestCount int
+	Trimmed     bool
+	RevertsID   uuid.UUID
+	Reverts     *ChangesetBrief
 }
 
 // ChangesetBrief is a changeset another names, a revert the one it
@@ -117,6 +118,7 @@ func ChangesetFrom() ChangesetCursor {
 type LogFilter struct {
 	Actor  *uuid.UUID
 	Client Client
+	Ingest bool
 	AllMCP bool
 	PageID *uuid.UUID
 }

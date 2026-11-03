@@ -235,21 +235,27 @@ const (
 		`above the one asked for: an edit session's saves share one version. Revisions are for reading: write and ` +
 		`edit take the page's version, from read. A page in the trash has no path: its versions are read in the ` +
 		`web.`
-	logDescription = `List the notebook's changesets, newest first: what people and agents changed, each with its ` +
-		`kind, client, author (id and display name), times, message, how many nodes and contents it changed, what ` +
-		`it reverts and what reverted it, and its first three changes; a changeset too large for the answer comes ` +
-		`alone, its changes cut to fit and changes_cut true. path keeps the changesets that changed that page or ` +
-		`attachment; actor those of an account, "me" for yours; client those of a client, "mcp" for every agent. ` +
-		`A page or an attachment in the trash has no path: find its changesets in the whole log. Go on with ` +
-		`next_cursor while it is set. changeset reads one in full. History is read-only here: people restore ` +
-		`versions and revert changesets in the web.`
-	changesetDescription = `Read one of the notebook's changesets by the id log gives: its kind, client, author, ` +
-		`times, message, counts, what it reverts and what reverted it, and whether it renames or moves nodes; then ` +
-		`what it did to each node it changed, a page at a time by node id: where the node was before and after in ` +
-		`the tree, the revision of the content it wrote, and the node's current path (null when it is in the ` +
-		`trash). The changeset itself comes on the first page, without cursor; go on with next_cursor while it is ` +
-		`set. A changeset of another notebook is not found here. History is read-only here: people revert ` +
-		`changesets in the web.`
+	logDescription = `List the notebook's changesets, newest first: what people and agents changed, each with its kind, ` +
+		`client, author (id and display name), times, message, how many nodes and contents it changed, what it ` +
+		`reverts and what reverted it, and its first three changes; a changeset too large for the answer comes ` +
+		`alone with its previews cut to fit. ingest_count is its persistent source count (up to 10000); ` +
+		`ingest_sources is up to its first three source paths in append order, null where a source is no longer ` +
+		`alive. ingest_sources_cut is always present and true only when the answer shortened that preview. ` +
+		`Sources take room before changes; changes_cut is true only when changes were shortened. ingest true ` +
+		`keeps only changesets with sources; false or omitted keeps all. path keeps the changesets that changed ` +
+		`that page or attachment; actor those of an account, "me" for yours; client those of a client, "mcp" for` +
+		` every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. ` +
+		`Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people ` +
+		`restore versions and revert changesets in the web.`
+	changesetDescription = `Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, ` +
+		`counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did ` +
+		`to each node it changed, a page at a time by node id: where the node was before and after in the tree, ` +
+		`the revision of the content it wrote, and the node's current path (null when it is in the trash). The ` +
+		`header includes ingest_count (up to 10000) and up to its first twenty source paths in append order, ` +
+		`null where a source is no longer alive. ingest_sources_cut is always present and true only when the ` +
+		`answer shortened that preview to fit; sources take room before changes. The changeset itself comes on ` +
+		`the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook` +
+		` is not found here. History is read-only here: people revert changesets in the web.`
 	grepDescription = `Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) ` +
 		`matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines ` +
 		`(read with that offset and limit 1 gives the line) and the line's text as stored, without its \r and, on the ` +

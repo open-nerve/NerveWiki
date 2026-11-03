@@ -54,7 +54,7 @@ const (
 		`"id":"0199a2b4-0000-7000-8000-000000000013","kind":"page","name":"Gone"}}`
 	changesetFields = `"changes":[` + renameJSON + `,` + writeJSON + `],"client":"mcp:a","content_count":1,` +
 		`"created_at":"2026-10-02T10:00:00Z","created_by":{"display_name":"Alice","user_id":"0199a2b4-0000-7000-8000-000000000001"},` +
-		`"id":"0199a2b4-0000-7000-8000-000000000050","kind":"revert","message":"Why","node_count":1,` +
+		`"id":"0199a2b4-0000-7000-8000-000000000050","ingest_count":0,"ingest_sources":[],"kind":"revert","message":"Why","node_count":1,` +
 		`"notebook_id":"0199a2b4-0000-7000-8000-000000000010","reverted_by":["0199a2b4-0000-7000-8000-000000000052"],` +
 		`"reverts":{"created_at":"2026-10-02T10:00:00Z","created_by":{"display_name":"Bob","user_id":` +
 		`"0199a2b4-0000-7000-8000-000000000002"},"id":"0199a2b4-0000-7000-8000-000000000051","kind":"edit"},"trimmed":false,` +
@@ -62,7 +62,7 @@ const (
 	loggedJSON = `{` + changesetFields + `}`
 	plainJSON  = `{"changes":[],"client":"web","content_count":0,"created_at":"2026-10-02T10:00:00Z","created_by":` +
 		`{"display_name":"Bob","user_id":"0199a2b4-0000-7000-8000-000000000002"},"id":"0199a2b4-0000-7000-8000-000000000053",` +
-		`"kind":"edit","message":null,"node_count":0,"notebook_id":"0199a2b4-0000-7000-8000-000000000010","reverted_by":[],` +
+		`"ingest_count":0,"ingest_sources":[],"kind":"edit","message":null,"node_count":0,"notebook_id":"0199a2b4-0000-7000-8000-000000000010","reverted_by":[],` +
 		`"reverts":null,"trimmed":false,"updated_at":"2026-10-02T10:00:00Z"}`
 )
 

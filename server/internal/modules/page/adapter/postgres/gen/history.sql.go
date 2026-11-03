@@ -328,7 +328,7 @@ func (q *Queries) CountItems(ctx context.Context, arg CountItemsParams) (int32, 
 const findChangeset = `-- name: FindChangeset :one
 
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.id = $1 AND c.deleted_at IS NULL
 `
@@ -344,6 +344,7 @@ type FindChangesetRow struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Trimmed     bool
+	IngestCount int32
 	RevertsKind *string
 	RevertsBy   *uuid.UUID
 	RevertsAt   *time.Time
@@ -366,6 +367,7 @@ func (q *Queries) FindChangeset(ctx context.Context, id uuid.UUID) (FindChangese
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Trimmed,
+		&i.IngestCount,
 		&i.RevertsKind,
 		&i.RevertsBy,
 		&i.RevertsAt,
@@ -565,7 +567,7 @@ func (q *Queries) ListChanges(ctx context.Context, arg ListChangesParams) ([]Lis
 
 const listChangesets = `-- name: ListChangesets :many
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = $1 AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < ($2::timestamptz, $3::uuid)
@@ -595,6 +597,7 @@ type ListChangesetsRow struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Trimmed     bool
+	IngestCount int32
 	RevertsKind *string
 	RevertsBy   *uuid.UUID
 	RevertsAt   *time.Time
@@ -629,6 +632,7 @@ func (q *Queries) ListChangesets(ctx context.Context, arg ListChangesetsParams) 
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Trimmed,
+			&i.IngestCount,
 			&i.RevertsKind,
 			&i.RevertsBy,
 			&i.RevertsAt,
@@ -645,7 +649,7 @@ func (q *Queries) ListChangesets(ctx context.Context, arg ListChangesetsParams) 
 
 const listChangesetsBy = `-- name: ListChangesetsBy :many
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = $1 AND c.created_by_id = $2 AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < ($3::timestamptz, $4::uuid)
@@ -676,6 +680,7 @@ type ListChangesetsByRow struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Trimmed     bool
+	IngestCount int32
 	RevertsKind *string
 	RevertsBy   *uuid.UUID
 	RevertsAt   *time.Time
@@ -711,6 +716,7 @@ func (q *Queries) ListChangesetsBy(ctx context.Context, arg ListChangesetsByPara
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Trimmed,
+			&i.IngestCount,
 			&i.RevertsKind,
 			&i.RevertsBy,
 			&i.RevertsAt,
@@ -732,11 +738,11 @@ WITH touched AS (
     SELECT r.changeset_id FROM page_revisions r WHERE r.node_id = $8
 ), changed AS (
     SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
-        x.trimmed, x.deleted_at
-    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+        x.trimmed, x.ingest_count, x.deleted_at
+    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets WHERE id = t.changeset_id LIMIT 1) x
 )
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changed c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = $1::uuid AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < ($2::timestamptz, $3::uuid)
@@ -769,6 +775,7 @@ type ListChangesetsOfPageRow struct {
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
 	Trimmed     bool
+	IngestCount int32
 	RevertsKind *string
 	RevertsBy   *uuid.UUID
 	RevertsAt   *time.Time
@@ -808,6 +815,284 @@ func (q *Queries) ListChangesetsOfPage(ctx context.Context, arg ListChangesetsOf
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Trimmed,
+			&i.IngestCount,
+			&i.RevertsKind,
+			&i.RevertsBy,
+			&i.RevertsAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngestChangesets = `-- name: ListIngestChangesets :many
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+FROM changesets marked
+CROSS JOIN LATERAL (
+    SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets
+    WHERE id = marked.id AND deleted_at IS NULL
+      AND ($1::text IS NULL OR client = $1::text)
+      AND (NOT $2::boolean OR client LIKE 'mcp:%')
+    LIMIT 1
+) c
+LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE marked.notebook_id = $3 AND marked.ingest_count > 0
+    AND (marked.created_at, marked.id) < ($4::timestamptz, $5::uuid)
+ORDER BY marked.created_at DESC, marked.id DESC
+LIMIT (SELECT $6::integer)
+`
+
+type ListIngestChangesetsParams struct {
+	Client     *string
+	AllMcp     bool
+	NotebookID uuid.UUID
+	BelowAt    time.Time
+	BelowID    uuid.UUID
+	MaxRows    int32
+}
+
+type ListIngestChangesetsRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	Kind        string
+	RevertsID   *uuid.UUID
+	Client      string
+	Message     *string
+	CreatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Trimmed     bool
+	IngestCount int32
+	RevertsKind *string
+	RevertsBy   *uuid.UUID
+	RevertsAt   *time.Time
+}
+
+// A notebook's log newer first below the cursor (M8 design 4.7): a range of its index backward, whatever plan is kept;
+// the client a filter on it, its values few. The brief of the changeset a revert reverts by its key.
+// Read only covered keys from the ordered ingest index. The same-snapshot
+// key probe reads live fields and filters the client without changing that range.
+// Preserve a runtime row bound even for a custom plan with missing statistics.
+func (q *Queries) ListIngestChangesets(ctx context.Context, arg ListIngestChangesetsParams) ([]ListIngestChangesetsRow, error) {
+	rows, err := q.db.Query(ctx, listIngestChangesets,
+		arg.Client,
+		arg.AllMcp,
+		arg.NotebookID,
+		arg.BelowAt,
+		arg.BelowID,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIngestChangesetsRow
+	for rows.Next() {
+		var i ListIngestChangesetsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.Kind,
+			&i.RevertsID,
+			&i.Client,
+			&i.Message,
+			&i.CreatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Trimmed,
+			&i.IngestCount,
+			&i.RevertsKind,
+			&i.RevertsBy,
+			&i.RevertsAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngestChangesetsBy = `-- name: ListIngestChangesetsBy :many
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE c.notebook_id = $1 AND c.created_by_id = $2 AND c.deleted_at IS NULL AND c.ingest_count > 0
+    AND (c.created_at, c.id) < ($3::timestamptz, $4::uuid)
+    AND ($5::text IS NULL OR c.client = $5::text)
+    AND (NOT $6::boolean OR c.client LIKE 'mcp:%')
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT $7
+`
+
+type ListIngestChangesetsByParams struct {
+	NotebookID uuid.UUID
+	Actor      uuid.UUID
+	BelowAt    time.Time
+	BelowID    uuid.UUID
+	Client     *string
+	AllMcp     bool
+	MaxRows    int32
+}
+
+type ListIngestChangesetsByRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	Kind        string
+	RevertsID   *uuid.UUID
+	Client      string
+	Message     *string
+	CreatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Trimmed     bool
+	IngestCount int32
+	RevertsKind *string
+	RevertsBy   *uuid.UUID
+	RevertsAt   *time.Time
+}
+
+// ListChangesets of one actor: a range of the actor's index backward. A statement of its own: a cached statement's
+// plan for any arguments serves one of the filters' paths.
+func (q *Queries) ListIngestChangesetsBy(ctx context.Context, arg ListIngestChangesetsByParams) ([]ListIngestChangesetsByRow, error) {
+	rows, err := q.db.Query(ctx, listIngestChangesetsBy,
+		arg.NotebookID,
+		arg.Actor,
+		arg.BelowAt,
+		arg.BelowID,
+		arg.Client,
+		arg.AllMcp,
+		arg.MaxRows,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIngestChangesetsByRow
+	for rows.Next() {
+		var i ListIngestChangesetsByRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.Kind,
+			&i.RevertsID,
+			&i.Client,
+			&i.Message,
+			&i.CreatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Trimmed,
+			&i.IngestCount,
+			&i.RevertsKind,
+			&i.RevertsBy,
+			&i.RevertsAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listIngestChangesetsOfPage = `-- name: ListIngestChangesetsOfPage :many
+WITH touched AS (
+    SELECT i.changeset_id FROM changeset_items i WHERE i.node_id >= (SELECT $8::uuid) AND i.node_id <= (SELECT $8::uuid)
+    UNION
+    SELECT r.changeset_id FROM page_revisions r WHERE r.node_id >= (SELECT $8::uuid) AND r.node_id <= (SELECT $8::uuid)
+), changed AS (
+    SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
+        x.trimmed, x.ingest_count, x.deleted_at
+    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+)
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+FROM changed c LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE c.notebook_id = $1::uuid AND c.deleted_at IS NULL AND c.ingest_count > 0
+    AND (c.created_at, c.id) < ($2::timestamptz, $3::uuid)
+    AND ($4::uuid IS NULL OR c.created_by_id = $4::uuid)
+    AND ($5::text IS NULL OR c.client = $5::text)
+    AND (NOT $6::boolean OR c.client LIKE 'mcp:%')
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT $7
+`
+
+type ListIngestChangesetsOfPageParams struct {
+	NotebookID uuid.UUID
+	BelowAt    time.Time
+	BelowID    uuid.UUID
+	Actor      *uuid.UUID
+	Client     *string
+	AllMcp     bool
+	MaxRows    int32
+	PageID     uuid.UUID
+}
+
+type ListIngestChangesetsOfPageRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	Kind        string
+	RevertsID   *uuid.UUID
+	Client      string
+	Message     *string
+	CreatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	Trimmed     bool
+	IngestCount int32
+	RevertsKind *string
+	RevertsBy   *uuid.UUID
+	RevertsAt   *time.Time
+}
+
+// ListChangesets of the changesets that changed a node, of one actor when it is set: the node's items' and versions'
+// changesets through their indexes on node_id, deleted or not (a node in the trash has its history), then each by its
+// key alone, as TrashLines reads a parent, sorted. Its cost is the node's history's: joined as the planner pleased,
+// without statistics a page of a 40,000 changesets' history walked the log's index and compared each with them all,
+// 7 s a page.
+// The same UUID bounds remain runtime values in both cache modes, so a
+// skewed actor or node distribution does not turn this point range into a
+// full relation scan or an unrelated leading-key walk.
+func (q *Queries) ListIngestChangesetsOfPage(ctx context.Context, arg ListIngestChangesetsOfPageParams) ([]ListIngestChangesetsOfPageRow, error) {
+	rows, err := q.db.Query(ctx, listIngestChangesetsOfPage,
+		arg.NotebookID,
+		arg.BelowAt,
+		arg.BelowID,
+		arg.Actor,
+		arg.Client,
+		arg.AllMcp,
+		arg.MaxRows,
+		arg.PageID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListIngestChangesetsOfPageRow
+	for rows.Next() {
+		var i ListIngestChangesetsOfPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.Kind,
+			&i.RevertsID,
+			&i.Client,
+			&i.Message,
+			&i.CreatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Trimmed,
+			&i.IngestCount,
 			&i.RevertsKind,
 			&i.RevertsBy,
 			&i.RevertsAt,

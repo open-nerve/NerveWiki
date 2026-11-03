@@ -74,7 +74,7 @@ func TestListChangesetsNewerFirst(t *testing.T) {
 	if want := []uuid.UUID{f.reverted.ID, f.written.ID, f.renamed.ID}; !slices.Equal(ids(got.Changesets), want) || got.NextCursor == "" {
 		t.Fatalf("first page = %v, next %q; want %v and a cursor", ids(got.Changesets), got.NextCursor, want)
 	}
-	if want := []string{"WorkspaceOf", "Authorize page.history", "ListChangesets", "ChangesetFacts 3", "FirstChanges 3 3"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"WorkspaceOf", "Authorize page.history", "ListChangesets", "ChangesetFacts 3", "FirstChanges 3 3", "FirstIngestSources 3 3"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	rev := got.Changesets[0]
@@ -197,7 +197,7 @@ func TestGetChangeset(t *testing.T) {
 		if err != nil || got.Changeset.ID != tt.c.ID || got.Moves != tt.moves || got.Changeset.ByName == "" {
 			t.Errorf("GetChangeset(%s) = %+v, %v; want it with %+v", tt.c.ID, got, err, tt.moves)
 		}
-		want := []string{"FindChangeset", "WorkspaceOf", "Authorize page.history", "ChangesetFacts 1", "FirstChanges 1 3", "ChangesetMoves"}
+		want := []string{"FindChangeset", "WorkspaceOf", "Authorize page.history", "ChangesetFacts 1", "FirstChanges 1 3", "FirstIngestSources 1 20", "ChangesetMoves"}
 		if !slices.Equal(f.rec.calls, want) {
 			t.Errorf("calls = %v, want %v", f.rec.calls, want)
 		}

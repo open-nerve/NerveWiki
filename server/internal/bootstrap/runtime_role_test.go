@@ -20,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/apitest"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -250,6 +251,46 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	var notes string
 	if err := roles.owner.QueryRow(ctx, "SELECT id::text FROM notebooks WHERE name = 'Notes'").Scan(&notes); err != nil {
 		t.Fatal(err)
+	}
+
+	// Consume the public marks port and history reads on the actual runtime
+	// login, then let its purger delete the leaf and parent with DML grants.
+	marked, source := uuid.NewV7(), uuid.UUID{}
+	if err := roles.server.QueryRow(ctx, "SELECT id FROM nodes WHERE notebook_id=$1", notes).Scan(&source); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := roles.server.Exec(ctx, `INSERT INTO changesets(id,notebook_id,kind,client,created_by_id,created_at,updated_at)
+		SELECT $1,id,'edit','api',created_by_id,now(),now() FROM notebooks WHERE id=$2`, marked, notes); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := page.NewIngestMarks(roles.server).Add(ctx, uuid.MustParse(notes), marked, []uuid.UUID{source}); err != nil ||
+		got != (page.IngestMarkResult{Added: 1, Count: 1}) {
+		t.Fatalf("Add as runtime=%+v,%v", got, err)
+	}
+	var markedHistory struct {
+		Data []struct {
+			ID      uuid.UUID    `json:"id"`
+			Count   int          `json:"ingest_count"`
+			Sources []*uuid.UUID `json:"ingest_sources"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(call(t, http.MethodGet, base+"/api/v0/notebooks/"+notes+"/changesets?ingest=true",
+		admin.AccessToken, "", http.StatusOK), &markedHistory); err != nil {
+		t.Fatal(err)
+	}
+	if len(markedHistory.Data) != 1 || markedHistory.Data[0].ID != marked || markedHistory.Data[0].Count != 1 ||
+		len(markedHistory.Data[0].Sources) != 1 || markedHistory.Data[0].Sources[0] == nil || *markedHistory.Data[0].Sources[0] != source {
+		t.Fatalf("runtime history=%+v, want marked edit and its source", markedHistory)
+	}
+	if _, err := roles.server.Exec(ctx, "UPDATE changesets SET trimmed=true WHERE id=$1", marked); err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range page.Purgers(roles.server) {
+		if p.Table == "changesets" {
+			if n, err := p.Purge(ctx, time.Now().Add(-1440*time.Hour), 1000); err != nil || n != 2 {
+				t.Fatalf("runtime source/parent purge=%d,%v, want2", n, err)
+			}
+		}
 	}
 	var export transferJob
 	if err := json.Unmarshal(call(t, http.MethodPost, base+"/api/v0/notebooks/"+notes+"/exports", admin.AccessToken, `{}`, http.StatusAccepted),

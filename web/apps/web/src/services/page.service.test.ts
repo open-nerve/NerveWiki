@@ -179,6 +179,8 @@ describe("PageService's history (M8/P3 design 4.1)", () => {
 
     await service.changesets("nb1", { actor: "", client: "", page: "" });
     await service.changesets("nb1", { actor: "u1", client: "mcp:claude", page: "p1" }, "next");
+    await service.changesets("nb1", { actor: "", client: "", page: "", ingest: true });
+    await service.changesets("nb1", { actor: "", client: "", page: "", ingest: false });
     await service.changeset("c1");
     await service.changes("c1");
     await service.changes("c1", "next");
@@ -186,6 +188,8 @@ describe("PageService's history (M8/P3 design 4.1)", () => {
     expect(asked).toEqual([
       "GET /api/v0/notebooks/nb1/changesets?limit=50",
       "GET /api/v0/notebooks/nb1/changesets?limit=50&actor=u1&client=mcp%3Aclaude&page_id=p1&cursor=next",
+      "GET /api/v0/notebooks/nb1/changesets?limit=50&ingest=true",
+      "GET /api/v0/notebooks/nb1/changesets?limit=50&ingest=false",
       "GET /api/v0/changesets/c1",
       "GET /api/v0/changesets/c1/changes?limit=100",
       "GET /api/v0/changesets/c1/changes?limit=100&cursor=next",

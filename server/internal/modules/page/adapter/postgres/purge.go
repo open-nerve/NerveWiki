@@ -62,23 +62,32 @@ func (s *Store) PurgeNodes(ctx context.Context, before time.Time, batch int) (in
 	return total, nil
 }
 
-// PurgeChangesets purges the changesets whose items and versions are
-// gone: those deleted with their notebook, then, while the batch has room,
-// those of live notebooks it trimmed (M8/P3 design 3.3), as PurgeNodes goes
-// on. A revert of an emptied changeset touched its nodes alone, so it is
-// emptied and trimmed too, and goes in this run or the next.
+// PurgeChangesets drains eligible source leaves in bounded statements before
+// deleting their parents. Source counts are independent of the parent budget;
+// the job sees the full deleted count and continues within the same run.
 func (s *Store) PurgeChangesets(ctx context.Context, before time.Time, batch int) (int, error) {
 	q := s.queries(ctx)
+	leaves := 0
+	for {
+		n, err := q.PurgeChangesetSources(ctx, gen.PurgeChangesetSourcesParams{Before: before, Batch: int32(batch)})
+		if err != nil {
+			return leaves, fmt.Errorf("purge changeset sources: %w", err)
+		}
+		leaves += int(n)
+		if int(n) < batch {
+			break
+		}
+	}
 	n, err := q.PurgeChangesets(ctx, gen.PurgeChangesetsParams{Before: before, Batch: int32(batch)})
 	if err != nil {
-		return 0, fmt.Errorf("purge changesets: %w", err)
+		return leaves, fmt.Errorf("purge changesets: %w", err)
 	}
 	if int(n) >= batch {
-		return int(n), nil
+		return leaves + int(n), nil
 	}
 	trimmed, err := q.PurgeTrimmedChangesets(ctx, int32(batch)-int32(n))
 	if err != nil {
-		return int(n), fmt.Errorf("purge trimmed changesets: %w", err)
+		return leaves + int(n), fmt.Errorf("purge trimmed changesets: %w", err)
 	}
-	return int(n + trimmed), nil
+	return leaves + int(n+trimmed), nil
 }

@@ -12,6 +12,7 @@ import (
 // changesets, one client's (mcp: every MCP client's), those that changed a
 // node; a page of limit from cursor.
 type LogQuery struct {
+	Ingest *bool
 	Actor  *uuid.UUID
 	Client *string
 	PageID *uuid.UUID
@@ -70,7 +71,7 @@ func (l *ListChangesets) Execute(ctx context.Context, notebookID uuid.UUID, q Lo
 	if _, err := authorize(ctx, l.r.Auth, actor, domain.ActionHistory, target, domain.ErrNotebookNotFound); err != nil {
 		return ChangesetList{}, err
 	}
-	f := domain.LogFilter{Actor: q.Actor, PageID: q.PageID}
+	f := domain.LogFilter{Actor: q.Actor, PageID: q.PageID, Ingest: q.Ingest != nil && *q.Ingest}
 	if q.PageID != nil {
 		nodes, err := l.r.History.NodesNow(ctx, []uuid.UUID{*q.PageID}, uuid.UUID{}) // no changeset reverted
 		if err != nil {
@@ -95,6 +96,7 @@ func (l *ListChangesets) Execute(ctx context.Context, notebookID uuid.UUID, q Lo
 // PathLogQuery is log's arguments (M9 design 4.9): Path a node's path for
 // LogQuery's page id, Actor an account's id or "me".
 type PathLogQuery struct {
+	Ingest              *bool
 	Path, Actor, Client *string
 	Limit               *int
 	Cursor              *string
@@ -103,6 +105,7 @@ type PathLogQuery struct {
 // PathLog is a page of the log as log answers it: the changesets, each
 // with the cursor that goes on after it, and the next page's.
 type PathLog struct {
+	Paths      map[uuid.UUID]string
 	Changesets []LoggedChangeset
 	Cursors    []string
 	NextCursor string
@@ -131,7 +134,7 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 			return PathLog{}, err
 		}
 	}
-	var f domain.LogFilter
+	f := domain.LogFilter{Ingest: q.Ingest != nil && *q.Ingest}
 	if q.Actor != nil {
 		id, err := domain.ParseActor(*q.Actor, actor.UserID)
 		if err != nil {
@@ -168,7 +171,15 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 	if err != nil {
 		return PathLog{}, err
 	}
-	return PathLog{Changesets: list.Changesets, Cursors: cursors, NextCursor: list.NextCursor}, nil
+	var sources []*uuid.UUID
+	for _, c := range list.Changesets {
+		sources = append(sources, c.IngestSources...)
+	}
+	paths, err := l.r.alivePaths(ctx, notebookID, nil, sources)
+	if err != nil {
+		return PathLog{}, err
+	}
+	return PathLog{Changesets: list.Changesets, Cursors: cursors, NextCursor: list.NextCursor, Paths: paths}, nil
 }
 
 // page is a page of the notebook's log that f keeps, newer first, below
@@ -190,7 +201,7 @@ func (l *ListChangesets) page(ctx context.Context, notebookID uuid.UUID, f domai
 			return ChangesetList{}, err
 		}
 	}
-	if out.Changesets, err = l.r.logged(ctx, changesets); err != nil {
+	if out.Changesets, err = l.r.logged(ctx, changesets, 3); err != nil {
 		return ChangesetList{}, err
 	}
 	return out, nil

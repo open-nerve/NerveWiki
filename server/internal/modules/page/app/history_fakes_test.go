@@ -31,6 +31,7 @@ type fakeHistory struct {
 // was deleted.
 type fakeChangeset struct {
 	domain.Changeset
+	sources  []uuid.UUID
 	items    []domain.ChangesetItem
 	versions []domain.ChangesetVersion
 	gone     bool
@@ -109,6 +110,9 @@ func (c *fakeChangeset) touches(id uuid.UUID) bool {
 func (h *fakeHistory) ListChangesets(ctx context.Context, notebookID uuid.UUID, f domain.LogFilter, below domain.ChangesetCursor,
 	limit int) ([]domain.Changeset, error) {
 	call := []string{"ListChangesets"}
+	if f.Ingest {
+		call = append(call, "ingest")
+	}
 	if f.Actor != nil {
 		call = append(call, "actor")
 	}
@@ -124,7 +128,7 @@ func (h *fakeHistory) ListChangesets(ctx context.Context, notebookID uuid.UUID, 
 	h.record(ctx, strings.Join(call, " "))
 	var out []domain.Changeset
 	for _, c := range h.sets {
-		if c.gone || c.NotebookID != notebookID || cmp.Or(c.CreatedAt.Compare(below.At), c.ID.Compare(below.ID)) >= 0 ||
+		if c.gone || (f.Ingest && c.IngestCount == 0) || c.NotebookID != notebookID || cmp.Or(c.CreatedAt.Compare(below.At), c.ID.Compare(below.ID)) >= 0 ||
 			f.Actor != nil && c.By != *f.Actor || f.Client != "" && c.Client != f.Client ||
 			f.AllMCP && !strings.HasPrefix(string(c.Client), "mcp:") || f.PageID != nil && !c.touches(*f.PageID) {
 			continue
@@ -408,4 +412,27 @@ func (h *fakeHistory) VersionContents(ctx context.Context, refs []domain.Version
 // historyReads are the log's reads over the fixture.
 func (f *fixture) historyReads() app.HistoryReads {
 	return app.HistoryReads{Notebooks: f.notebooks, History: f.log, Names: f.names, Auth: f.auth}
+}
+
+func (h *fakeHistory) FirstIngestSources(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]*uuid.UUID, error) {
+	h.record(ctx, fmt.Sprintf("FirstIngestSources %d %d", len(ids), n))
+	if err := h.store.errs["FirstIngestSources"]; err != nil {
+		return nil, err
+	}
+	out := map[uuid.UUID][]*uuid.UUID{}
+	for _, id := range ids {
+		out[id] = []*uuid.UUID{}
+		c := h.find(id)
+		if c == nil {
+			continue
+		}
+		for _, source := range c.sources[:min(n, len(c.sources))] {
+			var current *uuid.UUID
+			if node, ok := h.store.nodes[source]; ok && node.NotebookID == c.NotebookID {
+				current = new(source)
+			}
+			out[id] = append(out[id], current)
+		}
+	}
+	return out, nil
 }

@@ -108,7 +108,11 @@ func (g *GetChangeset) InNotebook(ctx context.Context, notebookID, id uuid.UUID,
 	if out.Cursors, err = cursorsAfter(l.Changes, func(r domain.ChangeRow) any { return domain.ChangeCursor{After: r.NodeID} }); err != nil {
 		return ChangesetPage{}, err
 	}
-	if out.Paths, err = g.r.alivePaths(ctx, notebookID, l.Changes); err != nil {
+	var sources []*uuid.UUID
+	if out.Detail != nil {
+		sources = out.Detail.IngestSources
+	}
+	if out.Paths, err = g.r.alivePaths(ctx, notebookID, l.Changes, sources); err != nil {
 		return ChangesetPage{}, err
 	}
 	if out.Start, err = shared.EncodeCursor(domain.ChangeCursor{}); err != nil { // after no id: from the first

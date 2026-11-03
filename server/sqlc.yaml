@@ -101,6 +101,7 @@ sql:
       - migrations/sql/00046_page_search_partial.sql
       - migrations/sql/00049_page_page_revisions_rewrite.sql
       - migrations/sql/00050_page_nodes_source_hash.sql
+      - migrations/sql/00053_page_ingest.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

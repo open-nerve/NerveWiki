@@ -86,7 +86,7 @@ const searchPage = 20;
  * mcp for every MCP client's), those that changed a node (page, a page's
  * or an attachment's id); "" for none.
  */
-export type LogFilter = { actor: string; client: string; page: string };
+export type LogFilter = { actor: string; client: string; page: string; ingest?: boolean };
 
 /**
  * PageService reads a notebook's page tree and a page's reading view, and
@@ -256,6 +256,7 @@ export class PageService {
             ...(filter.actor === "" ? {} : { actor: filter.actor }),
             ...(filter.client === "" ? {} : { client: filter.client }),
             ...(filter.page === "" ? {} : { page_id: filter.page }),
+            ...(filter.ingest === undefined ? {} : { ingest: filter.ingest }),
             ...(cursor === undefined ? {} : { cursor }),
           },
         },

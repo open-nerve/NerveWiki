@@ -46,7 +46,7 @@ func (t tools) changeset(ctx context.Context, c mcpserver.Call, in changesetIn) 
 	}
 	var header *changesetHeader
 	if d := p.Detail; d != nil {
-		header = &changesetHeader{changesetFields: fieldsOf(d.LoggedChangeset), Renames: d.Moves.Renames, Moves: d.Moves.Moves}
+		header = &changesetHeader{changesetFields: fieldsOf(d.LoggedChangeset, p.Paths), Renames: d.Moves.Renames, Moves: d.Moves.Moves}
 	}
 	changes := make([]change[pathNode], len(p.Changes))
 	for i, r := range p.Changes {
@@ -57,6 +57,24 @@ func (t tools) changeset(ctx context.Context, c mcpserver.Call, in changesetIn) 
 		changes[i] = changeOf(r, node)
 	}
 	n := len(changes)
+	if header != nil {
+		// The header's sources get the answer's room before its changes.
+		// Fixing this cursor makes the source prefixes monotone in size.
+		next := cursorOf(p.NextCursor)
+		if n > 0 {
+			next = &p.Start
+		}
+		sources := header.IngestSources
+		_, s, err := mcpserver.Fit(len(sources), func(s int) any {
+			h := *header
+			h.IngestSources, h.IngestSourcesCut = sources[:s], s < len(sources)
+			return changesetAnswer{Changeset: &h, Changes: []change[pathNode]{}, NextCursor: next}
+		})
+		if err != nil {
+			return mcpserver.Result{}, err
+		}
+		header.IngestSources, header.IngestSourcesCut = sources[:s], s < len(sources)
+	}
 	res, k, err := mcpserver.Fit(n, func(k int) any {
 		next := nextCursor(k, n, p.Cursors, p.NextCursor)
 		if k == 0 && n > 0 {

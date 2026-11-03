@@ -909,6 +909,11 @@ paths:
       security: [{ bearer: [] }]
       x-problem-codes: [bad_request, notebook.not_found, page.not_found, validation_failed]
       parameters:
+        - name: ingest
+          in: query
+          description: Only changesets with ingest sources when true; false or omitted keeps all changesets.
+          schema:
+            type: boolean
         - name: actor
           in: query
           description: The account whose changesets to list.
@@ -1840,6 +1845,8 @@ components:
           trimmed,
           node_count,
           content_count,
+          ingest_count,
+          ingest_sources,
           changes,
         ]
       properties:
@@ -1897,6 +1904,18 @@ components:
           type: integer
           minimum: 0
           maximum: 1000
+        ingest_count:
+          description: Distinct persistent ingest sources, capped at 10000.
+          type: integer
+          minimum: 0
+          maximum: 10000
+        ingest_sources:
+          description: The first 3 source positions in append order; null when the source is no longer alive in this notebook.
+          type: array
+          maxItems: 3
+          items:
+            type: [string, "null"]
+            format: uuid
         changes:
           description: Its first three changes, by node id.
           type: array
@@ -1925,6 +1944,8 @@ components:
           trimmed,
           node_count,
           content_count,
+          ingest_count,
+          ingest_sources,
           changes,
           renames,
           moves,
@@ -1984,6 +2005,18 @@ components:
           type: integer
           minimum: 0
           maximum: 1000
+        ingest_count:
+          description: Distinct persistent ingest sources, capped at 10000.
+          type: integer
+          minimum: 0
+          maximum: 10000
+        ingest_sources:
+          description: The first 20 source positions in append order; null when the source is no longer alive in this notebook.
+          type: array
+          maxItems: 20
+          items:
+            type: [string, "null"]
+            format: uuid
         changes:
           description: Its first three changes, by node id.
           type: array
