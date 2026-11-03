@@ -2,6 +2,8 @@
 
 > 原记录日期2026-11-02；原合并补记日期2026-11-03；修复合并补记日期2026-11-03（Asia/Shanghai）。最终源码0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296及各原始证据身份保留；旧过程与决定中的“当前”“待验”按原写入时点阅读。原合并见[文档与合并记录](#文档与合并记录)，旧fd失败和878测试修复见[原补充](#main-record-ci失败与会话fixture修复)，b4失败及f689正确grep夹具修复/代码CI见[后续补充](#b4文档ci失败与grep-glob-fixture修复)，986取消与ac84拆分见[调度补充](#986文档ci取消与guards调度拆分)，最新集成见[修复文档与no-ff合并记录](#修复文档与no-ff合并记录)：修复文档与修复merge的精确CI已接受；本record自身CI及新指定两main配对待验，S1集成未闭环、S2未放行。
 
+> 本轮容量维护补充见[e650记录失败与bootstrap容量维护](#e650记录失败与bootstrap容量维护)：e650/a1失败、a2完整CI接受与指定pair容量失败分别记账；代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；文档自身CI尚待。原段中的“当前”“待验”继续按各自写入时点阅读；本轮未来两main配对仍待验，S1未闭环、S2未放行。
+
 | 项 | 接受事实与边界 |
 | --- | --- |
 | 对象 | 分支 `m10-p4-s1` 的四个S1实施提交及八个门禁/审查期代码、测试或CI提交，共十二个。当前候选0b0df18c2ddd4b6779954458d37a617f66a42c5a/treed6614eb5ef0a03ebe5aa2c2f3091b65f8541d296；正式最终接受对象仍由0b0df18c2ddd4b6779954458d37a617f66a42c5a / d6614eb5ef0a03ebe5aa2c2f3091b65f8541d296绑定。S2/S3未实施。 |
@@ -457,6 +459,143 @@ ac84仅修改`Makefile`、`.github/workflows/ci.yml`与`README.md`，见[实际�
 f689代码CI41510773390 attempt1的五片Test 467/310/395/308/256s、guards job1139s，以及正确fixture的原glob 1.060893919s/PASS、十份原始日志与六case/24限值接受均保[原补充节](#b4文档ci失败与grep-glob-fixture修复)身份；旧13/38/10及单guards实测仅描述当时工作流，不借作当前14/40/11接受。
 
 ROOT指定的新配对只取**本次实际修复no-ff merge（first parent为fd、second parent为上述最终修复文档）＋本record**两个完整接受的main attempt；逐片`mean_i=(repair_merge_Test_i+record_Test_i)/2`，五均值均须**严格<450s**。旧a1f/fd失败配对、b4/986失败、本地及代码/文档分支样本均不计入，不跨attempt拼接。修复main CI成功不证明原fd、b4或986的历史资源原因，测试fixture修复与调度拆分不称为性能优化；原1.25s、12s/8s guard、15s请求期限、其它原limits、M12 open及决定73–75不变。M9/M12的正确图与手工full-load重新标定义务保持，不混用旧图样本。本record CI与新配对实际接受前，S1集成未闭环、S2未放行；S2/S3、P5与M10收尾仍待，M11未开始。
+
+## e650记录失败与bootstrap容量维护
+
+本节记录`m10-bootstrap-capacity`分支本轮容量维护，记录日期2026-11-03（Asia/Shanghai）。实际代码`af392f641f043e9497ce39abd7734ac3d55007c3` / tree `d96032187be0079cdc5e807cba37741b7c105c5e`的本机证据、完整CI41556086210/a2及原A/B/C03同席核对已获ROOT接受；文档自身CI和后续指定两main配对仍待，S1未闭环、S2未放行。合并见[00§12](../00-M10-design.md#12-phase-进度表)。
+
+按02-workflow保持作者、原A/B/C独立审查者与文档起草者/ROOT审阅分工：01是冻结源码初审，02是实际提交、完成的本机证据及注释桥接补核；三份02报告作成时尚未收到CI最终原件。随后a1整CI失败、A后发失败补核、一次预登记完整a2和原席03最终CI补核分别记账，不能倒填成02报告已验CI。原S1三席、96/288业务控制、全部旧成功/失败/取消/pending保原身份；本轮六控制独立分账，不改变S2正式设计草稿、产品决定或M12已open条目。
+
+### 实际触发：lint首败、同head复核与指定pair失败
+
+| 事实 | 实际身份、结论与界限 |
+|---|---|
+| e650 record | `e65043fe059c2788338278a2e68a1b80ee7c0a80` / tree `f2a9baecde16c45d27611a2a86d3868e492f5917`，唯一parent `97c9ad8e96c51a68a2824a893ddb92fd82340ae5`；只是本轮实际Git起点，不绑定为S1 accepted_main。 |
+| a1整CI失败 | CI41540276246/a1、main/push；11 jobs success、costs-lint job125602371138 failure、e2e/image 2 skipped。100000页的`TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory/summary/sample-1`在原4s request/2s worker下Execute 2.002009056s返回busy；第13条lint recipe失败、第14条`TestLintPropertiesReadOnlyNecessaryValues`为NOT_RUN。summary原固定median guard未走到断言，记NOT_EVALUATED；本轮未作新median校准；不能据壁钟判断具体等待/worker期限，cleanup预期失败子进程由外层PASS核验，不是第二个产品失败。 |
+| 调查与复核边界 | ROOT接受只读调查的事实/界限：未核实实现或fixture问题，根因UNKNOWN。2026-11-02 23:12:27.908449 UTC预登记一次同head完整复核，23:12:40.601829 UTC请求回执；无源码/fixture/limits改变，无新增产品决定号。原a1所有日志及失败保留，不继续盲rerun。 |
+| a2完整接受 | CI41540276246/a2、精确e650/main；14 jobs／40必需steps／11 artifacts全部接受，ROOT最终回执2026-11-02 23:39:09.421554 UTC。六P4 cost cases、原glob1250ms、core12＋sources6、全部14条lint recipe和六个真实100k样本、八项原median guard及预期失败child分别核验。六样本成功只说明本次未复现，不称修复、根因已知、环境已证实或余量可靠。a1成功jobs不拼接给a2。 |
+| 指定pair失败 | 固定97c9/CI41534799713/a1＋e650/CI41540276246/a2；真实pair verifier exit1，首片Test平均466.5s不满足严格<450s。整a2成功不取消容量失败，不换pair、不改用job/process/package或分支时间。 |
+
+| bootstrap片 | 97/a1真实Test(s) | e650/a2真实Test(s) | 均值(s) | 原严格<450s |
+|---|---:|---:|---:|---|
+| 1 | 461 | 472 | 466.5 | 失败，超16.5s |
+| 2 | 402 | 317 | 359.5 | 满足 |
+| 3 | 266 | 359 | 312.5 | 满足 |
+| 4 | 416 | 285 | 350.5 | 满足 |
+| 5 | 275 | 258 | 266.5 | 满足 |
+
+已知原件：[a1整CI失败](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-guards-split-main-record-ci-failure-a1-01.json)、[a1十一原件](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/guards-split-main-record-ci-artifacts-a1-02/receipt.json)、[独立调查接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-wiki-lint-failure-analysis-acceptance-01.json)、[一次完整复核预登记](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-wiki-lint-single-full-rerun-decision-01.json)、[a2全部接受但pair拒绝](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/root-main-record-a2-final-observation-01.json)、[真实pair verifier拒绝](/home/parallels/.local/state/nervewiki/m10/p4-s1/session-veto-repair-01/guards-split-main-record-pair-verifier-a2-01/receipt.json)。这些原件支持历史结论，不充当新候选运行证据。
+
+### af392f精确分支CI失败与一次完整复核
+
+| 已发生事实 | 实际身份与界限 |
+|---|---|
+| a1最终整CI | 精确`af392f641f043e9497ce39abd7734ac3d55007c3` / `m10-bootstrap-capacity` / push，CI41556086210/a1为completed/failure；14个jobs全部终态，11 success、`server (guards-core)` job125655196383 failure、e2e/image skipped。[ROOT失败观察](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-code-ci-failure-observation-01.json)。 |
+| 原core第8条失败 | `TestARevertAtTheUnitsBoundTakesItsTime`在10000 nodes/400000 history实测12.45394147s，超过原12s；同条`TestARevertOfManyTopsAtItsBoundTakesItsTime`为2.786200471s、原8s下PASS。真实core raw第521–526行；第8条进程失败，原第9–12条NOT_RUN，不能记整core通过或把同条many-tops成功当失败已消失。 |
+| 原件封存与拒绝 | [a1十一原件收据](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-failed-artifacts-01/receipt.json)封存全部11个server原件，receipt SHA256 `b004230d596ce4747f061b5798418641476fc6dfb7e845c74b3f0f9d3a0d8659`；ZIP/raw/preview与attempt上传身份分别保存。[原checker拒绝回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-rejection-01/receipt.json)真实exit1，没有接受输出；watch59741/d01a1c exit1。 |
+| 根因与原风险 | 与fd原12.299969446s同属large-revert guard越界；根因仍UNKNOWN。af的server树与workflow相对e650相同，原guards recipe未改；这不能证明runner/环境归因，也不能把窄调度改动称为性能修复或重新标定。12s/8s/15s、其它原预算与既有M12债不变。 |
+| 一次完整a2预登记 | [一次完整workflow复核决定](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-whole-rerun-decision-01/decision.json)在2026-11-03 01:19:26.210543 UTC预登记同head、最多一次、全workflow重复观测；[实际请求回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-whole-rerun-decision-01/receipt.json)在01:19:30.693196 UTC实际exit0，ROOT工具session37451/terminal313230。真实argv没有`--failed`，没有更换源码/fixture/阈值，也不挑只失败jobs。 |
+| a2完整终态与接受 | [a2最终run](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-final-a2-01/run.json)及[全部jobs](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-final-a2-01/jobs.json)确认同run41556086210/attempt2/同head的completed/success：14 jobs全部成功、40必需steps和11个server Upload齐全；watch31877/26b466 exit0。[ROOT完整代码CI及原件接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-code-ci-a2-final-observation-01.json)于2026-11-03 01:47:38.130408 UTC接受完整原件及原限值检查。一次预登记完整复核已完成，不拼接a1成功jobs；仅说明本次未复现，不代替未来指定main配对。 |
+| A后发失败补核与当前处置 | [A同席失败诊断](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-failure-review-a-01/report.md)及[当时ROOT接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-code-ci-failure-review-a-01.json)保留1项Important：a1未通过的CI验收阻塞，非已证实的新Make因果缺陷；Minor/Nit/Q无新增。实际HTTP200完整请求12.45394147s超原12s，不是15s请求超时、Go超时或DB错误。[ROOT原三席03接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-03.json)确认本轮完整代码CI前提由预登记a2满足；a1仍失败，根因UNKNOWN，M12性能债仍open，不作修复/标定或环境归因。02无新增I/M/N与这项后发历史发现分别保留。 |
+| 精确完整代码CI及原件 | [a2十一原件收据](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-artifacts-a2-01/receipt.json)保存精确af/41556086210/a2的11份ZIP/raw/preview，receipt SHA256 `698a3d033b150ce7c2c1c6c9adbcf4cf49fc96a40b33ffe68954ace90bce9bb5`；API digest、解包字节与本attempt成功Upload窗逐份相符。[精确CI checker回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-final-a2-01/verifier-receipt.json)及[四项raw检查回执](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-ci-a2-raw-checks-01/receipt.json)均实际exit0；六P4 cost cases/12 states/36 samples/原24 limits、glob1.040098623s≤原1.25s、core12＋sources6、lint14 recipes/1047 RUN→PASS/六真100k样本/八原median guards/六Finished cleanup均接受；预期失败child与外层PASS单独核验；原席03已核完整代码CI，文档自身CI和未来main pair仍待。 |
+
+| bootstrap片 | 失败a1成功job的Test(s) | 完整接受a2的Test(s) | 计量边界 |
+|---|---:|---:|---|
+| 1 | 425 | 358 | a1局部job与a2分支样本分别记账 |
+| 2 | 336 | 269 | a1局部job与a2分支样本分别记账 |
+| 3 | 274 | 390 | a1局部job与a2分支样本分别记账 |
+| 4 | 356 | 297 | a1局部job与a2分支样本分别记账 |
+| 5 | 259 | 320 | a1局部job与a2分支样本分别记账 |
+
+以上数字分别取各精确attempt的Test步骤，既非job总时长，也非Go package或本机process。a1整条失败，其成功jobs不构成整CI接受；a2整条已接受，但本分支两attempt不组成未来main配对。a2的guards-core/sources job为853/592s，Test为826/572s，均保原各1800s job上限；large9.058581014s、many-tops1.917504607s在原12s/8s下通过。旧97/e650首片466.5s失败pair仍按前表保留。
+
+### 维护范围、源码身份与逐名归属
+
+既有[M9/P2§6.5](../../M9-mcp/02-P2-writes-history.md#65-ci-的余量)要求过线片向可容纳邻居挪界，挪前本机估计、挪后两次真实CI核对；两侧都须在线下，邻居越线则撤回并按原规则处置，从不提高`-timeout`。本轮实际commit `af392f641f043e9497ce39abd7734ac3d55007c3`，tree `d96032187be0079cdc5e807cba37741b7c105c5e`，唯一parent `e65043fe059c2788338278a2e68a1b80ee7c0a80`，完整Git差异只有Makefile；最终38163B、native0664、SHA256 `6f6de4f506865ea7c91445583f12a9fff86516999b73c82b86272b7352032036`，只改FIRST/SECOND可执行内容及说明注释。[实际提交](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-commit-01/receipt.json)与[正常分支推送](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-push-01/receipt.json)均真实exit0，正常推送本分支，没有main接受。
+
+旧ee1327／38139B输入的native17在2026-11-03 00:43:51.659862 UTC实际完成，[ROOT旧字节native17接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-native-01.json)接受五片各独立双轮；其source一直是e650＋dirty Make，旧minimum01与六控制同样保原身份。随后[B-N1实际应用和桥接](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/nit-application-01/receipt.json)在00:45:16.606329 UTC只把Makefile:244的“与 e650 的源码顶层相同”改为“与 e650 在 race 构建中参与的源码顶层相同”；非注释字节相同、17对真实Make展开（34条命令）逐对argv/stdout/stderr相同且均exit0。最终6f6de4字节与af Git Make完全一致，B-N1已解决。它是明确的注释桥接，不是把旧执行改标成新字节或新提交运行。
+
+新minimum02已在提交前e650＋最终6f6de4 dirty Make上实际重跑八命令并获ROOT接受；只有随后提交后的postgen才绑定clean af392f。三种输入身份分别保留，旧native、旧minimum及旧控制不会改名成af新跑。
+
+候选两个表达式为：
+
+```make
+BOOTSTRAP_FIRST = ^Test[A-D]
+BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
+```
+
+真实make展开后`VirtualExport$$`保留单个`$`；SECOND仍按原FIFTH排除，THIRD/FIFTH及第四片的既有互斥语义保持。历史race编译499顶层与e650在race构建中参与的源码顶层对应，旧分配168/40/116/123/52，候选157/51/116/123/52；只移动以下11名，其他488名逐一保持原片，3/4/5完整成员不变。本轮fresh编译499 race/531 nonrace及5个真实Make dry-run已获[ROOT库存接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-inventory-01.json)，库存SHA256 `1e4b55f6945fae28028c7cb7d6c262d26fc9f61ffd8cb17ada2c79a21ad5544a`。它只证明编译名单与分配，32个nonrace专属top未在race过程执行，不等于native测试pass。
+
+| 顶层测试 | 原片→候选片 | 真实路径 |
+|---|---|---|
+| TestEachChangeIsRevertedThroughServe | 1 → 2 | `server/internal/bootstrap/history_test.go` |
+| TestEndingASessionASaveInItHolds | 1 → 2 | `server/internal/bootstrap/interleavings_content_test.go` |
+| TestEveryKindBecomesItsProblem | 1 → 2 | `server/internal/bootstrap/errors_test.go` |
+| TestEveryMCPAnswerIsNotStored | 1 → 2 | `server/internal/bootstrap/mcp_test.go` |
+| TestEveryMCPToolHasItsCodes | 1 → 2 | `server/internal/bootstrap/permission_matrix_mcp_test.go` |
+| TestEveryNotebookDeletionResetsItsStreams | 1 → 2 | `server/internal/bootstrap/events_deletion_test.go` |
+| TestEveryOperationAcceptsAPersonalAccessToken | 1 → 2 | `server/internal/bootstrap/contract_test.go` |
+| TestEveryPageWriteKeepsTheIndex | 1 → 2 | `server/internal/bootstrap/links_test.go` |
+| TestEveryPageWriteReachesTheStreams | 1 → 2 | `server/internal/bootstrap/events_pages_test.go` |
+| TestEveryProblemResponseDeclaresItsHeaders | 1 → 2 | `server/internal/bootstrap/contract_test.go` |
+| TestEveryResolutionCaseExportsAsAVault | 1 → 2 | `server/internal/bootstrap/transfer_obsidian_test.go` |
+
+上述11名的10份文件在历史0b0与e650的Git blob相同；历史两轮顶层Elapsed和27.05/28.21s、均值27.63s乘规划比1.6得44.208s，第一/第二片估计422.292/403.708s。run→terminal口径另存，不能把Elapsed、process或预测当新CI Test。所有估计只支持候选选取，不证明本轮通过。[作者调查](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/author-preparation-01/readonly-analysis-01.json)、[ROOT计划接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/author-preparation-01/root-plan-review.json)、[实际patch与静态记录](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/author-preparation-01/apply-01/receipt.json)、[ROOT候选核对](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-candidate-01.json)保留原bytes/SHA。
+
+### 已完成实施证据与尚未发生的接受
+
+| 项目 | 实际结果与源身份 |
+|---|---|
+| minimum01历史输入 | session57154/f52359 exit0、八命令已接受；输入e650＋旧ee1327 dirty Make（3388 source/252 embed），保持[minimum01](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-minimum-01.json)原记录，不改标新字节。 |
+| fresh库存与旧native17 | [native17](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-native-01.json)：执行37435/011b4a exit0，verifier64551/1c8cc5 exit0，全部17阶段完成。499 race/531 nonrace真实库存分配157/51/116/123/52，32个nonrace专属仅枚举；十个实际race过程两轮各4099 RUN/终态（4095 pass/4 skip）、4097归一身份和499顶层，skip不算pass。旧ee1327输入，完整source/工具/锁/原始日志与五个process均值已核。 |
+| 六项调度控制 | [六控制](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-controls-01.json)：session70381/55c35b exit0，实际各0/1/0，故障影响15/15/53/157/6/0；原preparation01未执行静态问题不计kill。所有控制保旧ee1327输入及恢复身份，借已核注释等价连接最终Make，不声称在af重复执行。 |
+| B-N1实际应用/桥接 | [实际注释桥接](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/nit-application-01/receipt.json)已落地，唯一注释差异在244行；17组34条真实Make展开相同，最终38163B/SHA6f6de4。旧native source未重标，B席02确认Nit解决。 |
+| 新字节minimum02 | [minimum02](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-minimum-02.json)：执行84603/e0e2f4 exit0，verifier22908/371c76 exit0，八原命令完整；提交前e650＋6f6de4 dirty Make，3388 source/252 embed。server短测8906 RUN=7373 pass+1533 skip，93包pass/23无测试包skip；tools27 RUN/pass。不是af提交后重跑。 |
+| 实际code commit与push | [code commit](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-commit-01/receipt.json)：`af392f641f043e9497ce39abd7734ac3d55007c3` / tree `d96032187be0079cdc5e807cba37741b7c105c5e` / parent e650，00:51:36.714678 UTC生成clean提交、仅Make变更；[code push](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/code-push-01/receipt.json)正常`git push --set-upstream origin m10-bootstrap-capacity` exit0。源码身份与真实Git对象一致。 |
+| 提交后postgen | [postgen](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-postgen-01.json)：clean af392f上执行97766/366b82 exit0、verifier b8b05e exit0。源码字节/Git执行位、embed与Git状态相同；固定生成路径中实际76项native0664→0644，不能称完整磁盘snapshot无变化，未豁免其它路径/mode/字节。 |
+| 三席第二轮补核 | [ROOT原三席第二轮接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-02.json)已接受A/B/C02对af实际提交、旧native完整原件、唯一注释桥接、新minimum与postgen的核对，无新增Important/Minor/Nit，B-N1解决。报告时尚无最终CI原件；该范围不含后来a1失败或a2终态接受。后续原席03完整CI核对已完成：[ROOT原三席03接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-03.json)于2026-11-03 01:57:36.534634 UTC接受原A/B/C03对精确af/41556086210/a2的核对，无新增Important/Minor/Nit；B-Q1代码CI部分与C代码CI等待项已核，文档自身CI和未来指定main pair仍待。 |
+| 精确代码CI | a1最终失败、原checker exit1、11原件保留；预登记完整a2按14 jobs/40必需steps/11 artifacts及原costs/guards/lint接受，原checker实际exit0。[ROOT完整代码CI及原件接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-code-ci-a2-final-observation-01.json)及[ROOT原三席03接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-03.json)共同绑定精确af/41556086210/a2，不替代文档自身CI或未来main pair。 |
+| 本文档提交前检查/自身CI | 文档自己的minimum、commit/postgen、push与精确完整CI待真实执行并另留回执；按02-workflow由ROOT审文档、先archive试用再应用，代码CI不替代文档自身CI。 |
+| 后续no-ff、record与指定两main配对 | 尚未发生；合并见[00§12](../00-M10-design.md#12-phase-进度表)。未来两个完整main head/tree/run/attempt、有序父与逐片实际Test均值严格<450s另验，尚无本轮main接受；本机、分支CI、a1局部成功job与旧失败pair不替代。 |
+
+| 旧ee1327本机片 | process第一/第二→均值(s) | package第一/第二→均值(s) | 顶层run→terminal区间和第一/第二→均值(s) |
+|---|---|---|---|
+| 1 | 295.724509599/301.030830894 → 298.377670246 | 291.02/296.093 → 293.5565 | 289.80813801/294.869301641 → 292.338719826 |
+| 2 | 274.231661839/278.353828424 → 276.292745132 | 269.395/273.413 → 271.404 | 268.166639714/272.185372171 → 270.176005942 |
+| 3 | 269.129572462/274.750352339 → 271.9399624 | 264.09/269.612 → 266.851 | 262.840678378/268.362066093 → 265.601372236 |
+| 4 | 294.758599641/287.609326637 → 291.183963139 | 289.769/282.69 → 286.2295 | 288.469777713/281.379607763 → 284.924692738 |
+| 5 | 244.34717095/241.422895823 → 242.885033387 | 238.83/236.276 → 237.553 | 237.605124951/235.056518321 → 236.330821636 |
+
+本表用于阅读，完整原精度与引用见[native完整verification](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/native-verified-01.json)；五process均值均严格<450s，仅为本机旧字节双轮接受。process来自heavy锁后Python `time.monotonic()`围住实际child；heavy排队/wrapper另记，package为Go包终态Elapsed，顶层区间取真实run→terminal，不把并行矩阵父Elapsed或本机均值换成CI Test。
+
+[本轮验证范围](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/local-validation-scope-01.json)及实际Git差异确认server/web/api/workflow与其余Make可执行行未变。旧完整组件观察保原身份；本轮native覆盖七库存阶段和十个bootstrap race过程，minimum/postgen各有上述范围，不冒称重新本机跑过成本/guards/web/e2e。a1整CI失败保留，预登记完整a2已按真实原件接受；本次通过不能解释a1性能根因或补写新的本机执行。heavy全局锁、锁后3GiB/T7预检、真实source-command.lock、源码bytes/native modes、index/embed/tool/env检查与全部预算延续。
+
+| 控制名 | 实际唯一故障与诊断 | 正常/故障/恢复 | 实际证据 |
+|---|---|---|---|
+| `first_reincludes_e` | FIRST重新包含E；15个TestE重复归入1/2，含11个迁移名及4个原在第二片的TestE | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/first_reincludes_e/result.json)；受影响15名，旧ee1327恢复已核 |
+| `second_omits_e` | SECOND漏E；同15个TestE错误落入4，虽全集覆盖仍由错片检查拒绝 | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/second_omits_e/result.json)；受影响15名，旧ee1327恢复已核 |
+| `third_omits_skip` | 第三片去掉SECOND/FIFTH skip；53名双归属：52个第五片成员为3/5，另TestVirtualExport为2/3 | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/third_omits_skip/result.json)；受影响53名，旧ee1327恢复已核 |
+| `fourth_omits_first_exclusion` | 第四片漏FIRST排除；157名重复1/4 | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/fourth_omits_first_exclusion/result.json)；受影响157名，旧ee1327恢复已核 |
+| `fifth_omits_wikitools` | 第五片run漏WikiTools；6名遗漏 | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/fifth_omits_wikitools/result.json)；受影响6名，旧ee1327恢复已核 |
+| `timeout_relaxed` | 原15m改20m；归属受影响0名，但五片COMMAND_CONTRACT均拒绝 | 0 / 1 / 0 | [实际三腿结果](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/controls-execution-01/timeout_relaxed/result.json)；受影响0名，旧ee1327恢复已核 |
+
+六项的期望归属独立取历史已接受逐名分组，仅把手工11名移至2；这里的11是正常候选迁移数，不是前两项变异的15个实际受影响名。原第二片另4名为`TestEveryResolutionCaseImportsFromAVault`、`TestEverySessionChangeReachesTheStreams`、`TestEverySoftDeletedTableHasAPurger`、`TestEveryVisibilityChangeResetsItsStreams`。不能从候选selector反推期望答案。旧ee1327输入的实际分组已由真实Make展开与fresh compiled inventory比对，ROOT重解析90条真实make命令、逐腿重算499名归属；全集/互斥/每名原片及3/4/5不变同时核查，第二项覆盖全集仍被错片检查抓住。控制作用于树外临时Make副本，原候选不改；各项从备份恢复到38139B/ee1327/native0664后复验，实际控制原件与ROOT回执共同保存。与原S1业务96/288控制分账。
+
+### 独立审查的已发生阶段与后续边界
+
+| 席位 | 01冻结源码初审（原报告与控制保持） | 02实际提交/完整本机同席补核 | 03精确代码CI同席补核与剩余范围 |
+|---|---|---|---|
+| A | [A01](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-a-01/report.md)：I/M/N/Q均0；独立499归属、美元转义/惰性统一入口；两个实际0/1/0控制抓VirtualExport双归属及无效selector。旧控制保ee1327原执行，不称af新跑。 | [A02](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-a-02/report.md)：实际af Git、3388 source/252 embed、17对桥接和独立17条make-n、完整native/新minimum/postgen已核；I/M/N/Q均0。 | [A03](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-a-03/report.md)核精确14/40/11、五片原命令、18 guards及costs/glob/lint原件与限值，无新增I/M/N/Q。02当时未收最终CI及随后A的1项Important失败补核保留；本轮完整代码CI前提现已满足，文档CI/main pair仍待。 |
+| B | [B01](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-b-01/review.txt)：0 Important/0 Minor，B-N1一项Nit已采纳；15m→20m负对照真实0/1/0，旧pair被严格拒绝。 | [B02](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-b-02/review.txt)：B-N1在af已解决，无新增Important/Minor/Nit；独立十过程/每节点身份和十进制用时、17对桥接/本席make-n、新minimum与76项生成mode核对通过。B-Q1本机部分已完成。 | [B03](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-b-03/review.txt)独立核两attempt原run/jobs、22份ZIP/raw/preview、Test时间、18 guards及原限值，无新增I/M/N；B-Q1代码CI部分已核实，文档CI/merge/record/指定main pair仍待。02当时未核CI的范围不倒填。 |
+| C | [C01](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-c-01/review-initial.txt)：0 Important/Minor/Nit；吞递归错误的checker0/1/0、Make2/0/2及50条错误后续调用原件保留。 | [C02](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-c-02/review-followup.txt)：af、旧ee1327完整17阶段、五片各独立双轮、注释桥接、新minimum/postgen已核，无新增Important/Minor/Nit；旧Q的本机/提交部分完成。 | [C03](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/independent-review-c-03/review-code-ci.txt)核精确14/40/11、50条costs/lint/guards原recipe、6case/24limits、glob及lint节点/样本/median/cleanup，无新增I/M/N；本席代码CI等待项已关闭。02当时in_progress按历史阅读，文档CI和指定main pair等仍待。 |
+
+[ROOT同席第二轮接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-02.json)在2026-11-03 01:17:04.978678 UTC只接受上述实际源码和已完成本机证据补核，并已明确知道a1失败、当时独立失败诊断另在进行；merge_ready=false、main_pair_accepted=false。初审B/C、ROOT分类与第二轮三席自写检查的预检查/解析断言错误均保在各自原报告/原件，未记作产品首败或控制kill；最终补核退出与范围不抹去那些历史。B-N1是注释口径修正，不是性能修复；旧native/控制身份经具体字节和实际命令桥接，而非重命名。
+
+ROOT于2026-11-03 01:22:07.676771 UTC接受后发[A失败补核](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-code-ci-failure-review-a-01.json)：Important=1为a1未通过的验收阻塞，Minor/Nit/Q无新增；没有证明本次Make调度是原因。12份直接调用链文件在fd/878/e650/af四head逐文件同blob；af/e650/97的整个server同tree，未把fd整个server错称相同。失败守卫位于!race文件，不在499 race迁移名单，独立guards-core recipe不使用FIRST/SECOND。代码/逻辑独立不是底层资源物理隔离证据；现有CI缺同一慢请求内SQL/pool等待与同期CPU/I/O，旧878插桩成功计划/失败后的资源快照不能解释当前慢样本。A当时限定一次完整a2只观察原阈值下是否再次越界、若再红即停止自动重跑；本次通过仍不能作根因、修复或校准结论。
+
+[ROOT原三席03接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-independent-review-03.json)于2026-11-03 01:57:36.534634 UTC接受原A/B/C03对精确af/41556086210/a2的核对，无新增Important/Minor/Nit；B-Q1代码CI部分与C代码CI等待项已核，文档自身CI和未来指定main pair仍待。ROOT接受代码与完整代码CI，允许最终文档绑定；A后发Important所列本轮完整代码CI前提已满足，a1失败原件、未知根因和M12性能义务仍保留。原席03审查脚本自身的预检查/解析失败记录照实封存，不记作产品失败或控制kill。接续仍须文档应用/提交/自身CI、未来no-ff/record与指定两main配对；未知提交号不预填。
+
+本轮执行既有容量规则，没有新增产品决定、性能优化、测试/fixture/命名变化、组数或阈值变化。原glob1.25s、revert12s/8s、request4s/summary worker2s、summary原固定median guards、请求15s、race15m、五CI job各25m、两guards各1800s、14/40/11与指定main均值严格<450s均保留。原a1f成功、fd两失败、b4失败、986取消、e650/a1失败、97/e650指定pair失败与本轮af/a1失败分别保留；未知根因、O25 OPEN、M12 open和正确图full-load重标定义务仍在。本轮代码及完整代码CI接受不替代文档自身CI和未来指定main配对；S1未闭环，S2继续未放行。
 
 ## 附录：全部独立控制腿分账
 

@@ -236,8 +236,16 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # TestTheMCPBatchMeetsAWebRename、TestTheMCPBatchReachesItsUseCase 从第二份移到第三份；
 # SECOND 与 THIRD 当前仅在 TheMCP[C-Z] 重合，这些名字只在第二份运行。
 # 既有 470 名称的候选静态分配为 167/70/118/115；当前编译清单、完整四份双轮与 CI 验收待实测。
-BOOTSTRAP_FIRST = ^Test([A-D]|E([a-u]|very([A-Q]|ResolutionCase[A-H])))
-BOOTSTRAP_SECOND = ^Test(Every(ResolutionCase[I-Z]|[S-Z])|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
+# M10/P4/S1：指定 main 97c9ad8e（CI 41534799713 attempt1）与 e65043fe（CI 41540276246 attempt2）的
+# 五份 Test 分别为 461/402/266/416/275 与 472/317/359/285/258 秒，均值 466.5/359.5/312.5/350.5/266.5 秒。
+# 第一份超过严格 450 秒线，按 M9/P2 6.5 将其中 11 个 TestE 顶层交给相邻第二份；此处只调整分组余量。
+# 这 11 个测试的文件在历史 0b0df18c 与 e65043fe 的 Git blob 相同；0b0 两轮顶层 Elapsed 之和 27.05/28.21 秒，
+# 均值 27.63 乘规划比 1.6 为 44.208 秒，两份预计 422.292/403.708 秒；这些数只用于移界规划，不是新候选实测。
+# 历史 race 编译清单的 499 个顶层与 e650 在 race 构建中参与的源码顶层相同，静态分配从 168/40/116/123/52 变为 157/51/116/123/52；
+# 仅上述 11 个测试从第一份移到第二份，第三、四、五份现有成员不变；测试名、五份、竞态/count/15m 与作业时限不变。
+# 新候选的编译清单、各份单独双轮和指定两次 main Test 均值的实际核验见 P4-S1 审查记录；历史原件不替代候选验收。
+BOOTSTRAP_FIRST = ^Test[A-D]
+BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # M10/P3/S1 五份待测候选：分支 f64 的 CI 41068871923 attempt1 中，四份 Test 为
