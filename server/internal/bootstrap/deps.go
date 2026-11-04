@@ -148,7 +148,7 @@ func parsing(cfg config.Config, logger *slog.Logger, pool *pgxpool.Pool, assets 
 func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, authorizer shared.Authorizer,
 	md *markdown.Markdown, budget *markdown.Budget,
 ) page.Deps {
-	ext := pageRegistrants(pool, authorizer)
+	ext := pageRegistrants(pool, authorizer, logger)
 	tx := postgres.NewTxManager(pool, cfg.Database.CommitTimeout)
 	return page.Deps{
 		Pool:         pool,

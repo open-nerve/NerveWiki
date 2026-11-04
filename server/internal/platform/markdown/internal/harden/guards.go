@@ -66,11 +66,15 @@ func (ix *index) add(at int, line []byte) {
 	ix.instruction = max(ix.instruction, last("?>"))
 	ix.declaration = max(ix.declaration, last(">"))
 	ix.cdata = max(ix.cdata, last("]]>"))
-	for _, r := range runsOf(line, func(c byte) bool { return c == '`' }) {
-		ix.ticks[r[1]-r[0]] = at + r[0]
-	}
-	for _, r := range runsOf(line, isEmailChar) {
-		ix.emails = append(ix.emails, email{at + r[0], at + r[1], emailLink(line[r[0]:])})
+	runsOf(line, func(c byte) bool { return c == '`' }, func(start, end int) {
+		ix.ticks[end-start] = at + start
+	})
+	// An email cannot cross a line or lack a literal '@'. Index each line
+	// once; checking every suffix at each inline position would be quadratic.
+	if bytes.IndexByte(line, '@') >= 0 {
+		runsOf(line, isEmailChar, func(start, end int) {
+			ix.emails = append(ix.emails, email{at + start, at + end, emailLink(line[start:])})
+		})
 	}
 	backslashes := 0
 	for j, c := range line {
@@ -85,10 +89,9 @@ func (ix *index) add(at int, line []byte) {
 	}
 }
 
-// runsOf is the maximal runs of bytes of line that in holds, as [start,
-// end).
-func runsOf(line []byte, in func(c byte) bool) [][2]int {
-	var runs [][2]int
+// runsOf visits the maximal runs of bytes of line that in holds, as
+// [start, end), in order.
+func runsOf(line []byte, in func(c byte) bool, visit func(start, end int)) {
 	for j := 0; j < len(line); j++ {
 		if !in(line[j]) {
 			continue
@@ -97,10 +100,9 @@ func runsOf(line []byte, in func(c byte) bool) [][2]int {
 		for k < len(line) && in(line[k]) {
 			k++
 		}
-		runs = append(runs, [2]int{j, k})
+		visit(j, k)
 		j = k
 	}
-	return runs
 }
 
 // isEmailChar is goldmark's util.FindEmailIndex test for the local part:
@@ -250,7 +252,7 @@ func (l *linkify) Parse(parent ast.Node, block text.Reader, pc parser.Context) a
 	}
 	emails := indexOf(parent, block.Source(), pc).emails
 	k := sort.Search(len(emails), func(i int) bool { return emails[i].end > at })
-	if k < len(emails) && emails[k].start <= at && !emails[k].link {
+	if k == len(emails) || emails[k].start > at || !emails[k].link {
 		return nil
 	}
 	return l.inner.Parse(parent, read, pc)

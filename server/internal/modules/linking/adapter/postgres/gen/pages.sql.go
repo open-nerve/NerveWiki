@@ -11,13 +11,13 @@ import (
 	"uuid"
 )
 
-const aliasKeysOf = `-- name: AliasKeysOf :many
+const AliasKeysOf = `-- name: AliasKeysOf :many
 SELECT DISTINCT alias_key FROM page_aliases WHERE source_id = ANY($1::uuid[]) ORDER BY alias_key
 `
 
 // The keys of the aliases of the pages ids, each once.
 func (q *Queries) AliasKeysOf(ctx context.Context, ids []uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, aliasKeysOf, ids)
+	rows, err := q.db.Query(ctx, AliasKeysOf, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (q *Queries) AliasKeysOf(ctx context.Context, ids []uuid.UUID) ([]string, e
 	return items, nil
 }
 
-const aliasesByKeys = `-- name: AliasesByKeys :many
+const AliasesByKeys = `-- name: AliasesByKeys :many
 SELECT source_id, alias_key FROM page_aliases
 WHERE notebook_id = $1 AND alias_key = ANY($2::text[])
 ORDER BY source_id, alias_key
@@ -54,7 +54,7 @@ type AliasesByKeysRow struct {
 
 // The pages of a notebook with an alias whose key is one of keys.
 func (q *Queries) AliasesByKeys(ctx context.Context, arg AliasesByKeysParams) ([]AliasesByKeysRow, error) {
-	rows, err := q.db.Query(ctx, aliasesByKeys, arg.NotebookID, arg.Keys)
+	rows, err := q.db.Query(ctx, AliasesByKeys, arg.NotebookID, arg.Keys)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (q *Queries) AliasesByKeys(ctx context.Context, arg AliasesByKeysParams) ([
 	return items, nil
 }
 
-const deleteAliasesOf = `-- name: DeleteAliasesOf :many
+const DeleteAliasesOf = `-- name: DeleteAliasesOf :many
 WITH deleted AS (
     DELETE FROM page_aliases WHERE source_id = ANY($1::uuid[]) RETURNING alias_key
 )
@@ -82,7 +82,7 @@ SELECT DISTINCT alias_key FROM deleted ORDER BY alias_key
 
 // The keys of the aliases deleted, each once.
 func (q *Queries) DeleteAliasesOf(ctx context.Context, ids []uuid.UUID) ([]string, error) {
-	rows, err := q.db.Query(ctx, deleteAliasesOf, ids)
+	rows, err := q.db.Query(ctx, DeleteAliasesOf, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -101,70 +101,70 @@ func (q *Queries) DeleteAliasesOf(ctx context.Context, ids []uuid.UUID) ([]strin
 	return items, nil
 }
 
-const deleteIndexedPages = `-- name: DeleteIndexedPages :exec
+const DeleteIndexedPages = `-- name: DeleteIndexedPages :exec
 DELETE FROM indexed_pages WHERE node_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteIndexedPages(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteIndexedPages, ids)
+	_, err := q.db.Exec(ctx, DeleteIndexedPages, ids)
 	return err
 }
 
-const deleteNotebooksAliases = `-- name: DeleteNotebooksAliases :exec
+const DeleteNotebooksAliases = `-- name: DeleteNotebooksAliases :exec
 DELETE FROM page_aliases WHERE notebook_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteNotebooksAliases(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteNotebooksAliases, ids)
+	_, err := q.db.Exec(ctx, DeleteNotebooksAliases, ids)
 	return err
 }
 
-const deleteNotebooksIndexedPages = `-- name: DeleteNotebooksIndexedPages :exec
+const DeleteNotebooksIndexedPages = `-- name: DeleteNotebooksIndexedPages :exec
 DELETE FROM indexed_pages WHERE notebook_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteNotebooksIndexedPages(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteNotebooksIndexedPages, ids)
+	_, err := q.db.Exec(ctx, DeleteNotebooksIndexedPages, ids)
 	return err
 }
 
-const deleteNotebooksProperties = `-- name: DeleteNotebooksProperties :exec
+const DeleteNotebooksProperties = `-- name: DeleteNotebooksProperties :exec
 DELETE FROM page_properties WHERE notebook_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteNotebooksProperties(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteNotebooksProperties, ids)
+	_, err := q.db.Exec(ctx, DeleteNotebooksProperties, ids)
 	return err
 }
 
-const deleteNotebooksTags = `-- name: DeleteNotebooksTags :exec
+const DeleteNotebooksTags = `-- name: DeleteNotebooksTags :exec
 DELETE FROM page_tags WHERE notebook_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteNotebooksTags(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteNotebooksTags, ids)
+	_, err := q.db.Exec(ctx, DeleteNotebooksTags, ids)
 	return err
 }
 
-const deletePropertiesOf = `-- name: DeletePropertiesOf :exec
+const DeletePropertiesOf = `-- name: DeletePropertiesOf :exec
 DELETE FROM page_properties WHERE source_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeletePropertiesOf(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deletePropertiesOf, ids)
+	_, err := q.db.Exec(ctx, DeletePropertiesOf, ids)
 	return err
 }
 
-const deleteTagsOf = `-- name: DeleteTagsOf :exec
+const DeleteTagsOf = `-- name: DeleteTagsOf :exec
 DELETE FROM page_tags WHERE source_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteTagsOf(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteTagsOf, ids)
+	_, err := q.db.Exec(ctx, DeleteTagsOf, ids)
 	return err
 }
 
-const indexedPagesOf = `-- name: IndexedPagesOf :many
+const IndexedPagesOf = `-- name: IndexedPagesOf :many
 SELECT node_id, revision, extractor FROM indexed_pages WHERE node_id = ANY($1::uuid[])
 `
 
@@ -176,7 +176,7 @@ type IndexedPagesOfRow struct {
 
 // The revision and the extractor of the rows of the pages among ids the index has (M6/P4 design 4.1).
 func (q *Queries) IndexedPagesOf(ctx context.Context, ids []uuid.UUID) ([]IndexedPagesOfRow, error) {
-	rows, err := q.db.Query(ctx, indexedPagesOf, ids)
+	rows, err := q.db.Query(ctx, IndexedPagesOf, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (q *Queries) IndexedPagesOf(ctx context.Context, ids []uuid.UUID) ([]Indexe
 	return items, nil
 }
 
-const insertAliases = `-- name: InsertAliases :exec
+const InsertAliases = `-- name: InsertAliases :exec
 INSERT INTO page_aliases (source_id, alias_key, notebook_id, alias)
 SELECT $1, u.alias_key, $2, u.alias
 FROM (SELECT unnest($3::text[]) AS alias_key, unnest($4::text[]) AS alias) AS u
@@ -209,7 +209,7 @@ type InsertAliasesParams struct {
 }
 
 func (q *Queries) InsertAliases(ctx context.Context, arg InsertAliasesParams) error {
-	_, err := q.db.Exec(ctx, insertAliases,
+	_, err := q.db.Exec(ctx, InsertAliases,
 		arg.SourceID,
 		arg.NotebookID,
 		arg.AliasKeys,
@@ -218,7 +218,7 @@ func (q *Queries) InsertAliases(ctx context.Context, arg InsertAliasesParams) er
 	return err
 }
 
-const insertIndexedPage = `-- name: InsertIndexedPage :exec
+const InsertIndexedPage = `-- name: InsertIndexedPage :exec
 INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
 VALUES ($1, $2, $3, $4, $5)
 `
@@ -232,7 +232,7 @@ type InsertIndexedPageParams struct {
 }
 
 func (q *Queries) InsertIndexedPage(ctx context.Context, arg InsertIndexedPageParams) error {
-	_, err := q.db.Exec(ctx, insertIndexedPage,
+	_, err := q.db.Exec(ctx, InsertIndexedPage,
 		arg.NodeID,
 		arg.NotebookID,
 		arg.Revision,
@@ -242,7 +242,7 @@ func (q *Queries) InsertIndexedPage(ctx context.Context, arg InsertIndexedPagePa
 	return err
 }
 
-const insertProperties = `-- name: InsertProperties :exec
+const InsertProperties = `-- name: InsertProperties :exec
 INSERT INTO page_properties (source_id, position, notebook_id, key, value)
 SELECT $1, u.position, $2, u.key, u.value::jsonb
 FROM (
@@ -261,7 +261,7 @@ type InsertPropertiesParams struct {
 
 // Each value is JSON, as text.
 func (q *Queries) InsertProperties(ctx context.Context, arg InsertPropertiesParams) error {
-	_, err := q.db.Exec(ctx, insertProperties,
+	_, err := q.db.Exec(ctx, InsertProperties,
 		arg.SourceID,
 		arg.NotebookID,
 		arg.Positions,
@@ -271,7 +271,7 @@ func (q *Queries) InsertProperties(ctx context.Context, arg InsertPropertiesPara
 	return err
 }
 
-const insertTags = `-- name: InsertTags :exec
+const InsertTags = `-- name: InsertTags :exec
 INSERT INTO page_tags (source_id, tag_key, notebook_id, tag, count)
 SELECT $1, u.tag_key, $2, u.tag, u.count
 FROM (
@@ -289,7 +289,7 @@ type InsertTagsParams struct {
 }
 
 func (q *Queries) InsertTags(ctx context.Context, arg InsertTagsParams) error {
-	_, err := q.db.Exec(ctx, insertTags,
+	_, err := q.db.Exec(ctx, InsertTags,
 		arg.SourceID,
 		arg.NotebookID,
 		arg.TagKeys,
@@ -299,7 +299,7 @@ func (q *Queries) InsertTags(ctx context.Context, arg InsertTagsParams) error {
 	return err
 }
 
-const lockNotebook = `-- name: LockNotebook :exec
+const LockNotebook = `-- name: LockNotebook :exec
 SELECT pg_advisory_xact_lock($1::integer, $2::integer)
 `
 
@@ -311,6 +311,6 @@ type LockNotebookParams struct {
 // The notebook's lock of the index until the transaction ends (M6 design 4.5): the key pair's space is the
 // index's alone, apart from the single keys of goose and River.
 func (q *Queries) LockNotebook(ctx context.Context, arg LockNotebookParams) error {
-	_, err := q.db.Exec(ctx, lockNotebook, arg.Space, arg.Key)
+	_, err := q.db.Exec(ctx, LockNotebook, arg.Space, arg.Key)
 	return err
 }

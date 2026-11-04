@@ -132,7 +132,8 @@ func (b *Budget) hold(n int) *Hold {
 // Hold is the bytes of the budget a content holds.
 type Hold struct {
 	budget  *Budget
-	content int // the content's size
+	parent  *Reservation // nil for an ordinary Take or TakeNow
+	content int          // the content's size
 	mu      sync.Mutex
 	n       int // the bytes held
 }
@@ -162,7 +163,11 @@ func (h *Hold) keep(n int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	if n < h.n {
-		h.budget.bytes.Release(int64(h.n - n))
+		if h.parent == nil {
+			h.budget.bytes.Release(int64(h.n - n))
+		} else {
+			h.parent.give(h.n - n)
+		}
 		h.n = n
 	}
 }

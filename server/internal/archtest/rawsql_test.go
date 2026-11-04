@@ -79,7 +79,8 @@ var sqlText = regexp.MustCompile(`\b(?:SELECT\b[\s\S]*\bFROM|INSERT\s+INTO|UPDAT
 // relative to server/: in a file that is neither a test nor generated (in
 // the gen directory right under adapter/<kind>/, where sqlc and oapi-codegen
 // write), no call of an isStatementMethod method with two arguments or more,
-// and no string literal that sqlText matches. A file that does not parse is
+// except checked forwarding calls and named own-gen calls below, and no
+// string literal that sqlText matches. A file that does not parse is
 // reported too, so that it cannot hide either.
 //
 // The rule finds raw SQL written by accident, not an evasion. Out of its
@@ -103,10 +104,15 @@ func rawSQLViolations(files map[string]string) []string {
 			found = append(found, fmt.Sprintf("%s does not parse: %v", path, err))
 			continue
 		}
+		forwarded := rawSQLForwardedCalls(path, f)
+		collectors := rawSQLIngestOldBodyCalls(path, f)
+		if collector := rawSQLCollectorCall(path, f); collector != nil {
+			collectors[collector] = true
+		}
 		ast.Inspect(f, func(n ast.Node) bool {
 			switch n := n.(type) {
 			case *ast.CallExpr:
-				if sel, ok := n.Fun.(*ast.SelectorExpr); ok && isStatementMethod(sel.Sel.Name) && len(n.Args) >= 2 {
+				if sel, ok := n.Fun.(*ast.SelectorExpr); ok && isStatementMethod(sel.Sel.Name) && len(n.Args) >= 2 && !forwarded[n] && !collectors[n] {
 					found = append(found, fmt.Sprintf("%s: calls %s, which runs SQL outside sqlc's queries", fset.Position(n.Pos()), sel.Sel.Name))
 				}
 			case *ast.BasicLit:
@@ -123,6 +129,316 @@ func rawSQLViolations(files map[string]string) []string {
 	return found
 }
 
+// rawSQLCollectorCall permits only the named uses of linking's own sqlc
+// constants. Protected identifiers may occur only at the checked argument
+// nodes: writes, aliases, shadows and address escape invalidate the call.
+func rawSQLCollectorCall(path string, f *ast.File) *ast.CallExpr {
+	if f.Name.Name != "postgresadapter" {
+		return nil
+	}
+	var name string
+	var params [][3]string
+	var protected []string
+	var query func(*ast.CallExpr) bool
+	switch path {
+	case "internal/modules/linking/adapter/postgres/links_reached.go":
+		name, query = "linksReached", rawSQLLinksReachedQuery
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"notebookID", "uuid", "UUID"}, {"r", "domain", "Reach"}}
+		protected = []string{"ctx", "q", "gen", "notebookID", "r"}
+	case "internal/modules/linking/adapter/postgres/retention_collect.go":
+		name, query = "inspectPageLinksForRetention", rawSQLRetentionQuery
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"arg", "gen", "InspectPageLinksForRetentionParams"}, {"links", "gen", "InsertLinksParams"}}
+		protected = []string{"ctx", "q", "gen", "arg"}
+	case "internal/modules/linking/adapter/postgres/prepared_source_collect.go":
+		name, query = "inspectPageLinksForPreparation", rawSQLPreparationQuery
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"arg", "gen", "InspectPageLinksForPreparationParams"}, {"links", "", "preparedLinkFacts"}}
+		protected = []string{"ctx", "q", "gen", "arg"}
+	case "internal/modules/linking/adapter/postgres/links_reached_except.go":
+		name, query = "linksReachedExcept", rawSQLLinksExceptQuery
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"arg", "gen", "LinksReachedExceptParams"}}
+		protected = []string{"ctx", "q", "gen", "arg"}
+	default:
+		return nil
+	}
+	imports := 0
+	for _, imp := range f.Imports {
+		value, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return nil
+		}
+		name := value[strings.LastIndex(value, "/")+1:]
+		if imp.Name != nil {
+			name = imp.Name.Name
+		}
+		if name == "gen" {
+			if value != "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen" {
+				return nil
+			}
+			imports++
+		}
+	}
+	if imports != 1 {
+		return nil
+	}
+	var fn *ast.FuncDecl
+	for _, decl := range f.Decls {
+		if candidate, ok := decl.(*ast.FuncDecl); ok && candidate.Name.Name == name {
+			if fn != nil {
+				return nil
+			}
+			fn = candidate
+		}
+	}
+	if fn == nil || fn.Recv != nil || fn.Body == nil || fn.Type.TypeParams != nil ||
+		fn.Type.Params == nil || len(fn.Type.Params.List) != len(params) || fn.Type.Results == nil || len(fn.Type.Results.List) != 2 {
+		return nil
+	}
+	for i, want := range params {
+		field := fn.Type.Params.List[i]
+		typ := field.Type
+		if (name == "inspectPageLinksForRetention" || name == "inspectPageLinksForPreparation") && i == 3 {
+			pointer, ok := typ.(*ast.StarExpr)
+			if !ok {
+				return nil
+			}
+			typ = pointer.X
+		}
+		validType := rawSQLSelector(typ, want[1], want[2])
+		if name == "inspectPageLinksForPreparation" && i == 3 {
+			validType = rawSQLName(typ, "preparedLinkFacts")
+		}
+		if len(field.Names) != 1 || !rawSQLName(field.Names[0], want[0]) || !validType {
+			return nil
+		}
+	}
+	results := fn.Type.Results.List
+	validResult := rawSQLName(results[0].Type, "retentionPlan")
+	if name == "inspectPageLinksForPreparation" {
+		validResult = rawSQLName(results[0].Type, "preparedLinkRead")
+	}
+	if name == "linksReached" || name == "linksReachedExcept" {
+		out, ok := results[0].Type.(*ast.ArrayType)
+		validResult = ok && out.Len == nil && rawSQLSelector(out.Elt, "app", "Link")
+	}
+	if !validResult || !rawSQLName(results[1].Type, "error") || len(results[0].Names) != 0 || len(results[1].Names) != 0 || len(fn.Body.List) == 0 {
+		return nil
+	}
+	// A direct first statement cannot be a closure, deferred call or loop.
+	assign, ok := fn.Body.List[0].(*ast.AssignStmt)
+	if !ok || assign.Tok != token.DEFINE || len(assign.Lhs) != 2 || !rawSQLName(assign.Lhs[0], "rows") || !rawSQLName(assign.Lhs[1], "err") || len(assign.Rhs) != 1 {
+		return nil
+	}
+	call, ok := assign.Rhs[0].(*ast.CallExpr)
+	if !ok || !query(call) {
+		return nil
+	}
+	uses := map[*ast.Ident]bool{call.Fun.(*ast.SelectorExpr).X.(*ast.Ident): true}
+	for _, arg := range call.Args {
+		if sel, ok := arg.(*ast.SelectorExpr); ok {
+			uses[sel.X.(*ast.Ident)] = true
+		} else {
+			uses[arg.(*ast.Ident)] = true
+		}
+	}
+	unchanged, matches := true, 0
+	ast.Inspect(f, func(n ast.Node) bool {
+		if call, ok := n.(*ast.CallExpr); ok && query(call) {
+			matches++
+		}
+		return true
+	})
+	ast.Inspect(fn.Body, func(n ast.Node) bool {
+		switch n := n.(type) {
+		case *ast.FuncLit:
+			unchanged = false
+		case *ast.Ident:
+			if slices.Contains(protected, n.Name) {
+				unchanged = unchanged && uses[n]
+			}
+		}
+		return true
+	})
+	if unchanged && matches == 1 {
+		return call
+	}
+	return nil
+}
+
+func rawSQLLinksReachedQuery(call *ast.CallExpr) bool {
+	return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 6 && !call.Ellipsis.IsValid() &&
+		rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", "LinksReached") &&
+		rawSQLName(call.Args[2], "notebookID") && rawSQLSelector(call.Args[3], "r", "Keys") &&
+		rawSQLSelector(call.Args[4], "r", "Targets") && rawSQLSelector(call.Args[5], "r", "Sources")
+}
+
+func rawSQLRetentionQuery(call *ast.CallExpr) bool {
+	return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 5 && !call.Ellipsis.IsValid() &&
+		rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", "InspectPageLinksForRetention") &&
+		rawSQLSelector(call.Args[2], "arg", "SourceID") && rawSQLSelector(call.Args[3], "arg", "NotebookID") &&
+		rawSQLSelector(call.Args[4], "arg", "Extractor")
+}
+
+// rawSQLForwardedCalls permits only the two adapters that pass sqlc's SQL
+// through unchanged while selecting an execution mode or argument encoder.
+// The exception belongs to exact return calls, never to a file or type.
+func rawSQLForwardedCalls(path string, f *ast.File) map[*ast.CallExpr]bool {
+	var receiver, method string
+	switch path {
+	case "internal/modules/linking/adapter/postgres/lint.go":
+		receiver, method = "lintBodyQuerier", "Query"
+	case "internal/modules/linking/adapter/postgres/retention_array_encoding.go":
+		receiver, method = "retentionArrayQuerier", "Exec"
+	default:
+		return nil
+	}
+	allowed := map[*ast.CallExpr]bool{}
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || !rawSQLForwarderSignature(fn, receiver, method) {
+			continue
+		}
+		calls := map[*ast.CallExpr]bool{}
+		sqlReads := map[*ast.Ident]bool{}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			if ret, ok := n.(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
+				if call, ok := ret.Results[0].(*ast.CallExpr); ok && rawSQLForwardingCall(call, method) {
+					calls[call] = true
+					sqlReads[call.Args[1].(*ast.Ident)] = true
+				}
+			}
+			// The encoder's budget inspection reads the string by value.
+			if call, ok := n.(*ast.CallExpr); ok && method == "Exec" && rawSQLName(call.Fun, "retentionArrayBudget") &&
+				len(call.Args) == 2 && !call.Ellipsis.IsValid() && rawSQLName(call.Args[0], "sql") && rawSQLName(call.Args[1], "args") {
+				sqlReads[call.Args[0].(*ast.Ident)] = true
+			}
+			return true
+		})
+		unchanged := true
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch n := n.(type) {
+			case *ast.Ident:
+				// Every use is accounted for by node identity, so assignment,
+				// aliasing, concatenation, shadowing and address escape fail.
+				if n.Name == "sql" && !sqlReads[n] {
+					unchanged = false
+				}
+			case *ast.FuncLit:
+				// These wrappers have no nested functions. Do not attribute
+				// a closure's parameters or calls to the outer signature.
+				unchanged = false
+			case *ast.AssignStmt:
+				for _, lhs := range n.Lhs {
+					unchanged = unchanged && !rawSQLBindingMention(lhs)
+				}
+			case *ast.RangeStmt:
+				unchanged = unchanged && !rawSQLBindingMention(n.Key) && !rawSQLBindingMention(n.Value)
+			case *ast.ValueSpec:
+				for _, name := range n.Names {
+					unchanged = unchanged && !rawSQLBindingMention(name)
+				}
+			case *ast.TypeSpec:
+				unchanged = unchanged && !rawSQLBindingMention(n.Name)
+			case *ast.Field:
+				for _, name := range n.Names {
+					unchanged = unchanged && !rawSQLBindingMention(name)
+				}
+			case *ast.IncDecStmt:
+				unchanged = unchanged && !rawSQLBindingMention(n.X)
+			case *ast.UnaryExpr:
+				if n.Op == token.AND {
+					unchanged = unchanged && !rawSQLBindingMention(n.X)
+				}
+			}
+			return true
+		})
+		if unchanged {
+			maps.Copy(allowed, calls)
+		}
+	}
+	return allowed
+}
+
+func rawSQLForwarderSignature(fn *ast.FuncDecl, receiver, method string) bool {
+	if fn.Name.Name != method || fn.Body == nil || fn.Recv == nil || len(fn.Recv.List) != 1 ||
+		len(fn.Recv.List[0].Names) != 1 || !rawSQLName(fn.Recv.List[0].Names[0], "q") || !rawSQLName(fn.Recv.List[0].Type, receiver) ||
+		fn.Type.TypeParams != nil || fn.Type.Params == nil || len(fn.Type.Params.List) != 3 {
+		return false
+	}
+	params := fn.Type.Params.List
+	for i, name := range []string{"ctx", "sql", "args"} {
+		if len(params[i].Names) != 1 || !rawSQLName(params[i].Names[0], name) {
+			return false
+		}
+	}
+	variadic, ok := params[2].Type.(*ast.Ellipsis)
+	if !rawSQLSelector(params[0].Type, "context", "Context") || !rawSQLName(params[1].Type, "string") || !ok || !rawSQLName(variadic.Elt, "any") {
+		return false
+	}
+	if fn.Type.Results == nil || len(fn.Type.Results.List) != 2 {
+		return false
+	}
+	results := fn.Type.Results.List
+	resultPackage, resultType := "pgx", "Rows"
+	if method == "Exec" {
+		resultPackage, resultType = "pgconn", "CommandTag"
+	}
+	return len(results[0].Names) == 0 && len(results[1].Names) == 0 &&
+		rawSQLSelector(results[0].Type, resultPackage, resultType) && rawSQLName(results[1].Type, "error")
+}
+
+func rawSQLForwardingCall(call *ast.CallExpr, method string) bool {
+	sel, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || sel.Sel.Name != method || !rawSQLSelector(sel.X, "q", "Querier") || len(call.Args) != 3 ||
+		!call.Ellipsis.IsValid() || !rawSQLName(call.Args[0], "ctx") || !rawSQLName(call.Args[1], "sql") {
+		return false
+	}
+	if rawSQLName(call.Args[2], "args") {
+		return true
+	}
+	// lintBodyQuerier prepends one pgx execution mode to the original args.
+	prepend, ok := call.Args[2].(*ast.CallExpr)
+	if method != "Query" || !ok || !rawSQLName(prepend.Fun, "append") || len(prepend.Args) != 2 ||
+		!prepend.Ellipsis.IsValid() || !rawSQLName(prepend.Args[1], "args") {
+		return false
+	}
+	mode, ok := prepend.Args[0].(*ast.CompositeLit)
+	if !ok || len(mode.Elts) != 1 || !rawSQLName(mode.Elts[0], "mode") {
+		return false
+	}
+	slice, ok := mode.Type.(*ast.ArrayType)
+	return ok && slice.Len == nil && rawSQLName(slice.Elt, "any")
+}
+
+func rawSQLName(n ast.Node, name string) bool {
+	id, ok := n.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+func rawSQLSelector(n ast.Node, base, name string) bool {
+	sel, ok := n.(*ast.SelectorExpr)
+	return ok && rawSQLName(sel.X, base) && sel.Sel.Name == name
+}
+
+// Reject writes, declarations or addresses involving any forwarding binding.
+// This deliberately rejects harmless local shadowing too: these two small
+// wrappers need none, and name equality alone must never justify a forward.
+func rawSQLBindingMention(n ast.Node) bool {
+	if n == nil {
+		return false
+	}
+	found := false
+	ast.Inspect(n, func(n ast.Node) bool {
+		if id, ok := n.(*ast.Ident); ok {
+			switch id.Name {
+			case "q", "ctx", "sql", "args":
+				found = true
+			}
+		}
+		return !found
+	})
+	return found
+}
+
 // generated reports whether path, relative to server/, is in the gen
 // directory of a module's adapter (internal/modules/<module>/adapter/<kind>/gen/),
 // where sqlc and oapi-codegen write; a gen directory anywhere else is
@@ -130,4 +446,19 @@ func rawSQLViolations(files map[string]string) []string {
 func generated(path string) bool {
 	parts := strings.Split(path, "/")
 	return len(parts) > 6 && parts[0] == "internal" && parts[1] == "modules" && parts[3] == "adapter" && parts[5] == "gen"
+}
+
+func rawSQLPreparationQuery(call *ast.CallExpr) bool {
+	return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 5 && !call.Ellipsis.IsValid() &&
+		rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", "InspectPageLinksForPreparation") &&
+		rawSQLSelector(call.Args[2], "arg", "SourceID") && rawSQLSelector(call.Args[3], "arg", "NotebookID") &&
+		rawSQLSelector(call.Args[4], "arg", "Extractor")
+}
+
+func rawSQLLinksExceptQuery(call *ast.CallExpr) bool {
+	return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 7 && !call.Ellipsis.IsValid() &&
+		rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", "LinksReachedExcept") &&
+		rawSQLSelector(call.Args[2], "arg", "ExcludedSources") && rawSQLSelector(call.Args[3], "arg", "Keys") &&
+		rawSQLSelector(call.Args[4], "arg", "NotebookID") && rawSQLSelector(call.Args[5], "arg", "Targets") &&
+		rawSQLSelector(call.Args[6], "arg", "Sources")
 }

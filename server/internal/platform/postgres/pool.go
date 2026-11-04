@@ -50,6 +50,11 @@ func afterConnect(ctx context.Context, conn *pgx.Conn) error {
 	if err := scanTimestamptzInUTC(ctx, conn); err != nil {
 		return err
 	}
+	typeMap := conn.TypeMap()
+	typeMap.TryWrapScanPlanFuncs = append(
+		[]pgtype.TryWrapScanPlanFunc{tryWrapStdUUIDScanPlan},
+		typeMap.TryWrapScanPlanFuncs...,
+	)
 	if _, err := conn.Exec(ctx, "SET jit = off"); err != nil {
 		return fmt.Errorf("turn jit off: %w", err)
 	}

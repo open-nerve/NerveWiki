@@ -122,6 +122,9 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 			return err
 		}
 	}
+	if reservations, ok := r.Parser.(RewriteReservations); ok {
+		return r.rewriteWindow(ctx, m, index, all, shares, u, reservations)
+	}
 	for _, id := range index.pages {
 		err := r.rewrite(ctx, id, index.indexed[id].Revision, nil, index.reached[id], index.from[id], index.tree, index.recased,
 			shares, u)
@@ -914,75 +917,30 @@ func (r Rewrite) rewrite(ctx context.Context, id uuid.UUID, revision int, given 
 		was.Release()
 		facts = domain.Facts{Links: was.Facts.Links, Aliases: was.Facts.Aliases}
 	}
-	var links []domain.Resolved
-	for _, l := range facts.Links {
-		if x, ok := reached[l.Start]; ok {
-			links = append(links, domain.Resolved{Link: l, Before: x.before, After: x.after})
-		}
-	}
-	rewriting := domain.Rewrite(content, from, links, tree, recased)
+	rewriting := rewriteOf(content, facts, reached, from, tree, recased)
 	for _, l := range rewriting.Left {
 		r.left(ctx, "no writing leads where it led", id, l)
 	}
 	if len(rewriting.Edits) == 0 {
 		return nil
 	}
-	var now Parsed   // the last writing's parse
-	var large int    // the bytes of a writing past MaxContent, if one was
-	read := false    // whether a writing was parsed, to read back
-	written := false // whether now is the unit's, given back as it ends
-	defer func() {
-		if !written {
-			now.release() // a writing not written, or a panic, holds none of the budget
-		}
-	}()
-	writing, left, kept, err := rewriting.Written(content, facts, from, tree, func(writing string) (domain.Facts, error) {
-		now.release()
-		now = Parsed{}
-		if len(writing) > r.MaxContent {
-			large = len(writing)
-			return domain.Facts{}, domain.ErrTooLarge
-		}
-		if err := shares.fit(len(writing)); err != nil {
-			return domain.Facts{}, err
-		}
-		var err error
-		now, err = r.Parser.ParseNow(ctx, writing)
-		read = true
-		return now.Facts, err
-	})
+	out, err := r.readBack(ctx, content, facts, from, tree, rewriting, r.Parser.ParseNow, shares)
 	if err != nil {
 		return err
 	}
-	if !kept {
-		level, msg := slog.LevelError, "the links of a page are not rewritten: no writing reads back as its links and aliases"
-		if !read {
-			level, msg = slog.LevelWarn, "the links of a page are not rewritten: it would hold more than a page may"
+	handed := false
+	defer func() {
+		if !handed {
+			out.now.release()
 		}
-		attrs := []slog.Attr{slog.String("page_id", id.String())}
-		if large > 0 {
-			attrs = append(attrs, slog.Int("bytes", len(content)), slog.Int("written", large))
-		}
-		r.Logger.LogAttrs(ctx, level, msg, attrs...)
+	}()
+	if !r.logReadBack(ctx, id, len(content), out) {
 		return nil
 	}
-	// The links a writing of the body alone left: with the sizes when a
-	// writing with them was too large; whether the others changed more than
-	// the links, or failed for the body's edits, the writings do not tell.
-	// An error, too large alone or not, where a page left whole for its size
-	// is a warning: the page is written, its links lead elsewhere unseen
-	// (M6/P4 fix check c10-1).
-	var sizes []slog.Attr
-	if left.TooLarge > 0 {
-		sizes = []slog.Attr{slog.Int("bytes", len(content)), slog.Int("written", left.TooLarge)}
-	}
-	for _, l := range left.Links {
-		r.left(ctx, "no writing of the page with it was kept", id, l, sizes...)
-	}
-	u.Defer(now.Release)
-	shares.add(now)
-	written = true
-	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: writing, Facts: now.Written})
+	u.Defer(out.now.Release)
+	shares.add(out.now)
+	handed = true
+	return u.WriteContent(ctx, Rewritten{PageID: id, Base: revision, Content: out.content, Facts: out.now.Written})
 }
 
 // keptShares is the bytes of the parse budget the facts of the pages a

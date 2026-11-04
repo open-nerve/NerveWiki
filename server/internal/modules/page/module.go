@@ -285,7 +285,7 @@ func New(d Deps) *Module {
 	budget := markdownadapter.NewBudget(d.Budget)
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
-		Nodes: store, RevertTrees: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
+		Nodes: store, RevertTrees: store, IngestNow: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
 		Sources: store, Attachments: d.Attachments,
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: d.Snapshots, Sources: store, Attachments: d.Attachments}),
 		Names:          d.Names,

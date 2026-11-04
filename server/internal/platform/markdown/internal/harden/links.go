@@ -43,9 +43,10 @@ func (l *label) Dump(source []byte, level int) { ast.DumpHelper(l, source, level
 
 //nolint:gochecknoglobals // keys are made once, as goldmark's are
 var (
-	labelsKey   = parser.NewContextKey() // *label: the head of the open labels
-	linksKey    = parser.NewContextKey() // int: the links made so far
-	repeatedKey = parser.NewContextKey() // int: the bytes reference links have repeated
+	labelsKey    = parser.NewContextKey() // *label: the head of the open labels
+	linksKey     = parser.NewContextKey() // int: the links made so far
+	repeatedKey  = parser.NewContextKey() // int: the bytes reference links have repeated
+	labelSlotKey = parser.NewContextKey() // *label: one detached, successfully closed outermost label
 )
 
 func labelsOf(pc parser.Context) *label {
@@ -254,7 +255,7 @@ func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.No
 			toText(last)
 			return nil
 		}
-		link = ast.NewLink()
+		link = newLink(pc, last.isImage)
 		takeText(parent, link, last)
 		link.Title = r.Title()
 		link.Destination = r.Destination()
@@ -273,6 +274,10 @@ func (links) Parse(parent ast.Node, block text.Reader, pc parser.Context) ast.No
 	} else {
 		writtenOf(pc).inline(n, dest)
 	}
+	// Only successful closure with no labels left open may fill the slot.
+	if labelsOf(pc) == nil {
+		pc.Set(labelSlotKey, last)
+	}
 	return n
 }
 
@@ -281,7 +286,13 @@ func openLabel(block text.Reader, pos int, isImage bool, pc parser.Context) *lab
 	if isImage {
 		start--
 	}
-	l := &label{seg: text.NewSegment(start, pos+1), isImage: isImage, links: linksMade(pc)}
+	l, _ := pc.Get(labelSlotKey).(*label)
+	// The slot must never refer to an active label.
+	pc.Set(labelSlotKey, nil)
+	if l == nil {
+		l = &label{}
+	}
+	*l = label{seg: text.NewSegment(start, pos+1), isImage: isImage, links: linksMade(pc)}
 	pushLabel(pc, l)
 	block.Advance(1)
 	return l
@@ -328,7 +339,7 @@ func referenceLink(parent ast.Node, last *label, block text.Reader, pc parser.Co
 	if !ok {
 		return nil, true
 	}
-	link := ast.NewLink()
+	link := newLink(pc, last.isImage)
 	takeText(parent, link, last)
 	link.Title = r.Title()
 	link.Destination = r.Destination()
@@ -366,7 +377,7 @@ func inlineLink(parent ast.Node, last *label, block text.Reader, pc parser.Conte
 			block.Advance(1)
 		}
 	}
-	link := ast.NewLink()
+	link := newLink(pc, last.isImage)
 	takeText(parent, link, last)
 	link.Destination = destination
 	link.Title = title

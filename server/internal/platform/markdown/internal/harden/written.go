@@ -1,6 +1,8 @@
 package harden
 
 import (
+	"math"
+
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/parser"
 	"github.com/yuin/goldmark/text"
@@ -12,9 +14,30 @@ import (
 // attribute would show in goldmark's rendering of a link. It lives in the
 // parse's context.
 type written struct {
-	at   map[ast.Node]text.Segment // an inline link's or image's destination
-	uses map[ast.Node]string       // a reference link's or image's definition, by its key
-	defs map[string]text.Segment   // each definition's destination, the first of a key
+	links  map[*ast.Link]writtenRange // the usual inline destinations, by node identity
+	images map[*ast.Image]writtenRange
+	at     map[ast.Node]text.Segment // full segments for other nodes or uncommon ranges
+	uses   map[ast.Node]string       // a reference link's or image's definition, by its key
+	defs   map[string]text.Segment   // each definition's destination, the first of a key
+}
+
+// writtenRange keeps byte offsets only. The parser's inlineDestination makes
+// plain segments; other inputs keep every field through at instead.
+// The narrower representation never limits the number of destinations.
+type writtenRange struct {
+	start, stop uint32
+}
+
+func compactWrittenRange(s text.Segment) (writtenRange, bool) {
+	if s.Padding != 0 || s.ForceNewline || s.Start < 0 || s.Stop < 0 ||
+		uint64(s.Start) > math.MaxUint32 || uint64(s.Stop) > math.MaxUint32 {
+		return writtenRange{}, false
+	}
+	return writtenRange{start: uint32(s.Start), stop: uint32(s.Stop)}, true
+}
+
+func (r writtenRange) segment() text.Segment {
+	return text.Segment{Start: int(r.start), Stop: int(r.stop)}
 }
 
 var writtenKey = parser.NewContextKey() //nolint:gochecknoglobals // a key is made once, as goldmark's are
@@ -23,16 +46,45 @@ func writtenOf(pc parser.Context) *written {
 	if w, ok := pc.Get(writtenKey).(*written); ok {
 		return w
 	}
-	w := &written{at: map[ast.Node]text.Segment{}, uses: map[ast.Node]string{}, defs: map[string]text.Segment{}}
+	w := &written{uses: map[ast.Node]string{}, defs: map[string]text.Segment{}}
 	pc.Set(writtenKey, w)
 	return w
 }
 
 // inline records n's destination, written at dest; an empty one is not.
 func (w *written) inline(n ast.Node, dest text.Segment) {
-	if dest.Len() > 0 {
-		w.at[n] = dest
+	if dest.Len() <= 0 {
+		return
 	}
+	if at, ok := compactWrittenRange(dest); ok {
+		switch n := n.(type) {
+		case *ast.Link:
+			if w.links == nil {
+				w.links = make(map[*ast.Link]writtenRange)
+			}
+			w.links[n] = at
+			delete(w.at, n)
+			return
+		case *ast.Image:
+			if w.images == nil {
+				w.images = make(map[*ast.Image]writtenRange)
+			}
+			w.images[n] = at
+			delete(w.at, n)
+			return
+		}
+	}
+	// A node has only its latest record, whichever representation it needs.
+	switch n := n.(type) {
+	case *ast.Link:
+		delete(w.links, n)
+	case *ast.Image:
+		delete(w.images, n)
+	}
+	if w.at == nil {
+		w.at = make(map[ast.Node]text.Segment)
+	}
+	w.at[n] = dest
 }
 
 // reference records that n uses the definition labeled ref.
@@ -56,6 +108,16 @@ func (w *written) define(label []byte, dest text.Segment) {
 func Destinations(pc parser.Context) func(n ast.Node) (text.Segment, bool) {
 	w := writtenOf(pc)
 	return func(n ast.Node) (text.Segment, bool) {
+		switch n := n.(type) {
+		case *ast.Link:
+			if at, ok := w.links[n]; ok {
+				return at.segment(), true
+			}
+		case *ast.Image:
+			if at, ok := w.images[n]; ok {
+				return at.segment(), true
+			}
+		}
 		if s, ok := w.at[n]; ok {
 			return s, true
 		}

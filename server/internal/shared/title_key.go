@@ -1,6 +1,9 @@
 package shared
 
 import (
+	"strings"
+	"unicode/utf8"
+
 	"golang.org/x/text/cases"
 	"golang.org/x/text/unicode/norm"
 )
@@ -13,6 +16,13 @@ import (
 // Obsidian, are one title here. A new Unicode version may change keys,
 // which nervewiki reindex recomputes (M6).
 func TitleKey(s string) string {
-	// A Caser keeps state: one per call, never shared.
-	return norm.NFC.String(cases.Fold().String(norm.NFC.String(s)))
+	// ASCII is already NFC and its full fold is its lowercase spelling.
+	// Any non-ASCII byte keeps the whole original Unicode pipeline.
+	for i := range len(s) {
+		if s[i] >= utf8.RuneSelf {
+			// A Caser keeps state: one per call, never shared.
+			return norm.NFC.String(cases.Fold().String(norm.NFC.String(s)))
+		}
+	}
+	return strings.ToLower(s)
 }

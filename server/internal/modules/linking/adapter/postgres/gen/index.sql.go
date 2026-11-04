@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const inboundCounts = `-- name: InboundCounts :many
+const InboundCounts = `-- name: InboundCounts :many
 WITH RECURSIVE steps (target, source_id, n) AS (
     SELECT t.id, x.source_id, CASE WHEN x.source_id = t.id THEN 0 ELSE 1 END
     FROM unnest($1::uuid[]) t (id)
@@ -50,7 +50,7 @@ type InboundCountsRow struct {
 // a page's links: a page may write a million (M6/P5 review r1-1). A page no other links to has no row, or a row of 0
 // when it links to itself alone.
 func (q *Queries) InboundCounts(ctx context.Context, arg InboundCountsParams) ([]InboundCountsRow, error) {
-	rows, err := q.db.Query(ctx, inboundCounts, arg.Ids, arg.MaxCount)
+	rows, err := q.db.Query(ctx, InboundCounts, arg.Ids, arg.MaxCount)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +69,7 @@ func (q *Queries) InboundCounts(ctx context.Context, arg InboundCountsParams) ([
 	return items, nil
 }
 
-const indexCatalogueHeads = `-- name: IndexCatalogueHeads :many
+const IndexCatalogueHeads = `-- name: IndexCatalogueHeads :many
 WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
 SELECT r.id::uuid AS id, coalesce(t.nonempty,false)::boolean AS typed,
        coalesce(CASE WHEN t.nonempty AND octet_length(t.filter_value)<=1024
@@ -113,7 +113,7 @@ type IndexCatalogueHeadsRow struct {
 // Empty text transports NULL through sqlc's nonnullable CASE inference. A qualified
 // type cannot be empty; the adapter restores nil for this private sentinel.
 func (q *Queries) IndexCatalogueHeads(ctx context.Context, arg IndexCatalogueHeadsParams) ([]IndexCatalogueHeadsRow, error) {
-	rows, err := q.db.Query(ctx, indexCatalogueHeads, arg.NotebookID, arg.TrimChars, arg.Ids)
+	rows, err := q.db.Query(ctx, IndexCatalogueHeads, arg.NotebookID, arg.TrimChars, arg.Ids)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (q *Queries) IndexCatalogueHeads(ctx context.Context, arg IndexCatalogueHea
 	return items, nil
 }
 
-const indexItems = `-- name: IndexItems :many
+const IndexItems = `-- name: IndexItems :many
 SELECT ip.node_id, coalesce(ty.nonempty,false)::boolean AS typed,
        CASE WHEN coalesce(ty.nonempty,false) THEN coalesce(ty.value_start,'') ELSE '' END::text AS type_text,
        (s.value_start IS NOT NULL)::boolean AS summarized,
@@ -174,7 +174,7 @@ type IndexItemsRow struct {
 // Point-read these IDs' first type and summary keys, then the first 21 tags.
 // Type uses IndexPages' qualification; summary keeps its existing string-prefix contract.
 func (q *Queries) IndexItems(ctx context.Context, arg IndexItemsParams) ([]IndexItemsRow, error) {
-	rows, err := q.db.Query(ctx, indexItems, arg.TrimChars, arg.Ids)
+	rows, err := q.db.Query(ctx, IndexItems, arg.TrimChars, arg.Ids)
 	if err != nil {
 		return nil, err
 	}
@@ -200,7 +200,7 @@ func (q *Queries) IndexItems(ctx context.Context, arg IndexItemsParams) ([]Index
 	return items, nil
 }
 
-const indexPages = `-- name: IndexPages :many
+const IndexPages = `-- name: IndexPages :many
 SELECT ip.node_id, coalesce(t.nonempty, false)::boolean AS typed,
        CASE WHEN coalesce(t.nonempty, false) THEN left(t.value_start, 128) ELSE '' END::text AS type_start
 FROM indexed_pages ip
@@ -241,7 +241,7 @@ type IndexPagesRow struct {
 // prefix normally decides that; only an all-whitespace long prefix reads the full value.
 // Exact filtering reads the full value only when matching prefixes and lengths need it.
 func (q *Queries) IndexPages(ctx context.Context, arg IndexPagesParams) ([]IndexPagesRow, error) {
-	rows, err := q.db.Query(ctx, indexPages, arg.TrimChars, arg.TypeIs, arg.NotebookID)
+	rows, err := q.db.Query(ctx, IndexPages, arg.TrimChars, arg.TypeIs, arg.NotebookID)
 	if err != nil {
 		return nil, err
 	}

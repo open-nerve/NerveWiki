@@ -160,8 +160,15 @@ type Index = app.Index
 // NewIndex returns the index's observer, from the pool, the page module's
 // reads and the publisher alone (it parses nothing): the command line's
 // compositions build it too.
-func NewIndex(pool *pgxpool.Pool, pages Pages, publisher Publisher) Index {
-	return app.Index{Store: postgresadapter.New(pool), Pages: pages, Publisher: publisher}
+func NewIndex(pool *pgxpool.Pool, pages Pages, publisher Publisher, ingest IngestDeps) Index {
+	if ingest.Metadata == nil || ingest.Marks == nil || ingest.MaxContentBytes <= 0 {
+		panic("linking: incomplete ingest dependencies")
+	}
+	evidence := postgresadapter.NewIngestReads(pool, ingest.MaxContentBytes)
+	reads := app.NewLintReads(postgresadapter.NewLintReads(pool, ingest.MaxContentBytes), ingest.MaxContentBytes)
+	store := postgresadapter.New(pool)
+	return app.Index{Store: store, Preparations: store, Pages: pages, Publisher: publisher,
+		Ingest: &app.Ingest{Metadata: ingest.Metadata, Marks: ingest.Marks, Heads: evidence, Candidates: evidence, Reads: reads, OldBodies: evidence, Logger: ingest.Logger}}
 }
 
 // What a rewrite of links follows, what it reads and how it writes:

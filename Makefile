@@ -296,6 +296,20 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -count=1 -v -run '^TestIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/modules/linking/adapter/postgres
 	@# P4：完整100k目录批次、1024字节合法长类型、JSON输出界与真实参数/custom/generic计划，独立沿10m期限。
 	cd server && go test -count=1 -v -run '^TestIndexCatalogueHasBoundedWorkAndOutput$$' ./internal/modules/linking/adapter/postgres
+	@# P4：真实512头点读与首sources JSON一次，完整手写候选oracle及无统计/custom/generic物理工作。
+	cd server && go test -count=1 -v -run '^TestIngestPlans$$' ./internal/modules/linking/adapter/postgres
+	@# NovelSources：独立的稀疏反向/完整source范围守卫；三统计/真实Rebuild状态分进程，保原默认10m与容量门禁。
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^no_statistics$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^analyzed$$/^pristine$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^analyzed$$/^app_rebuild$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^no_statistics$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
+	@# 同事务来源准备与排除关系：实际Store参数、三统计/计划模式、重复keys及完整原生15列值。
+	cd server && go test -count=1 -v -run '^TestPreparedSource(ReadPlans|ReadDValues|ResidualDuplicateKeyPlan)$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestTrashHistoryAtItsBoundCountsInTimeWithForcedPlans$$' ./internal/modules/page/adapter/postgres
@@ -358,6 +372,9 @@ test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守�
 	@# P4：真实SDK/REST的100k读和整本ZIP导出分别保留独立进程、样本与SQL证据，仍为默认10m。
 	cd server && go test -count=1 -v -run '^TestVirtualIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestVirtualExportOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	@# P4：完整100k ingestion与最大旧F/batch分别独立进程；原请求/提交预算与默认10m不变。
+	cd server && go test -count=1 -v -run '^TestIngestOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestAtTheBatchBoundaryTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsMarkdownRendersCheckedHTML$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsLinksAreWithinTheirBound$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
@@ -391,6 +408,12 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceRevertAtTenThousandTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceForgetHundredThousandTakesItsTime$$' ./internal/bootstrap
+	@# P4/S2：五个额外合法来源形状分别独立进程，保各自三样本与原请求/单元预算、Go默认10m。
+	cd server && go test -count=1 -v -run '^TestIngestOfMaximumSourcePageTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfMixedSourcePagesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfUnreferencedSourcesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfMoreThanBatchSourcesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfDeletedSourceGroupsTakesItsTime$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）

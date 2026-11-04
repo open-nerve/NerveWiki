@@ -9,13 +9,13 @@ import (
 	"context"
 )
 
-const analyze = `-- name: Analyze :exec
+const Analyze = `-- name: Analyze :exec
 ANALYZE indexed_pages, page_links, page_tags, page_properties, page_aliases
 `
 
 // The statistics of the tables an import writes (M7/P6 design 3.6; M6 handoff, item 4): without them, LinksReached
 // scans a notebook's links.
 func (q *Queries) Analyze(ctx context.Context) error {
-	_, err := q.db.Exec(ctx, analyze)
+	_, err := q.db.Exec(ctx, Analyze)
 	return err
 }

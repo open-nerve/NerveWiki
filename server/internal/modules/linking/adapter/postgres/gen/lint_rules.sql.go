@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const lintFrontmatterCount = `-- name: LintFrontmatterCount :one
+const LintFrontmatterCount = `-- name: LintFrontmatterCount :one
 WITH candidates AS MATERIALIZED (SELECT unnest($1::uuid[]) AS id),
  qualified AS (
 SELECT ip.node_id
@@ -34,13 +34,13 @@ type LintFrontmatterCountParams struct {
 }
 
 func (q *Queries) LintFrontmatterCount(ctx context.Context, arg LintFrontmatterCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, lintFrontmatterCount, arg.CandidateIds, arg.NotebookID, arg.Extractor)
+	row := q.db.QueryRow(ctx, LintFrontmatterCount, arg.CandidateIds, arg.NotebookID, arg.Extractor)
 	var column_1 int64
 	err := row.Scan(&column_1)
 	return column_1, err
 }
 
-const lintFrontmatterItemsAfter = `-- name: LintFrontmatterItemsAfter :many
+const LintFrontmatterItemsAfter = `-- name: LintFrontmatterItemsAfter :many
 WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -63,7 +63,7 @@ type LintFrontmatterItemsAfterParams struct {
 }
 
 func (q *Queries) LintFrontmatterItemsAfter(ctx context.Context, arg LintFrontmatterItemsAfterParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintFrontmatterItemsAfter,
+	rows, err := q.db.Query(ctx, LintFrontmatterItemsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.AfterID,
@@ -88,7 +88,7 @@ func (q *Queries) LintFrontmatterItemsAfter(ctx context.Context, arg LintFrontma
 	return items, nil
 }
 
-const lintFrontmatterItemsFirst = `-- name: LintFrontmatterItemsFirst :many
+const LintFrontmatterItemsFirst = `-- name: LintFrontmatterItemsFirst :many
 WITH candidates AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -109,7 +109,7 @@ type LintFrontmatterItemsFirstParams struct {
 }
 
 func (q *Queries) LintFrontmatterItemsFirst(ctx context.Context, arg LintFrontmatterItemsFirstParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintFrontmatterItemsFirst,
+	rows, err := q.db.Query(ctx, LintFrontmatterItemsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.Take,
@@ -133,7 +133,7 @@ func (q *Queries) LintFrontmatterItemsFirst(ctx context.Context, arg LintFrontma
 	return items, nil
 }
 
-const lintMissingSummaryCount = `-- name: LintMissingSummaryCount :one
+const LintMissingSummaryCount = `-- name: LintMissingSummaryCount :one
 WITH candidates AS MATERIALIZED (SELECT unnest($1::uuid[]) AS id),
  qualified AS (
 SELECT ip.node_id
@@ -168,7 +168,7 @@ type LintMissingSummaryCountParams struct {
 }
 
 func (q *Queries) LintMissingSummaryCount(ctx context.Context, arg LintMissingSummaryCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, lintMissingSummaryCount,
+	row := q.db.QueryRow(ctx, LintMissingSummaryCount,
 		arg.CandidateIds,
 		arg.NotebookID,
 		arg.Extractor,
@@ -179,7 +179,7 @@ func (q *Queries) LintMissingSummaryCount(ctx context.Context, arg LintMissingSu
 	return column_1, err
 }
 
-const lintMissingSummaryItemsAfter = `-- name: LintMissingSummaryItemsAfter :many
+const LintMissingSummaryItemsAfter = `-- name: LintMissingSummaryItemsAfter :many
 WITH candidates AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -214,7 +214,7 @@ type LintMissingSummaryItemsAfterParams struct {
 }
 
 func (q *Queries) LintMissingSummaryItemsAfter(ctx context.Context, arg LintMissingSummaryItemsAfterParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintMissingSummaryItemsAfter,
+	rows, err := q.db.Query(ctx, LintMissingSummaryItemsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.TrimChars,
@@ -240,7 +240,7 @@ func (q *Queries) LintMissingSummaryItemsAfter(ctx context.Context, arg LintMiss
 	return items, nil
 }
 
-const lintMissingSummaryItemsFirst = `-- name: LintMissingSummaryItemsFirst :many
+const LintMissingSummaryItemsFirst = `-- name: LintMissingSummaryItemsFirst :many
 WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -273,7 +273,7 @@ type LintMissingSummaryItemsFirstParams struct {
 }
 
 func (q *Queries) LintMissingSummaryItemsFirst(ctx context.Context, arg LintMissingSummaryItemsFirstParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintMissingSummaryItemsFirst,
+	rows, err := q.db.Query(ctx, LintMissingSummaryItemsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.TrimChars,
@@ -298,7 +298,7 @@ func (q *Queries) LintMissingSummaryItemsFirst(ctx context.Context, arg LintMiss
 	return items, nil
 }
 
-const lintMissingTypeCount = `-- name: LintMissingTypeCount :one
+const LintMissingTypeCount = `-- name: LintMissingTypeCount :one
 WITH candidates AS MATERIALIZED (SELECT unnest($1::uuid[]) AS id),
  qualified AS (
 SELECT ip.node_id
@@ -333,7 +333,7 @@ type LintMissingTypeCountParams struct {
 }
 
 func (q *Queries) LintMissingTypeCount(ctx context.Context, arg LintMissingTypeCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, lintMissingTypeCount,
+	row := q.db.QueryRow(ctx, LintMissingTypeCount,
 		arg.CandidateIds,
 		arg.NotebookID,
 		arg.Extractor,
@@ -344,7 +344,7 @@ func (q *Queries) LintMissingTypeCount(ctx context.Context, arg LintMissingTypeC
 	return column_1, err
 }
 
-const lintMissingTypeItemsAfter = `-- name: LintMissingTypeItemsAfter :many
+const LintMissingTypeItemsAfter = `-- name: LintMissingTypeItemsAfter :many
 WITH candidates AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -379,7 +379,7 @@ type LintMissingTypeItemsAfterParams struct {
 }
 
 func (q *Queries) LintMissingTypeItemsAfter(ctx context.Context, arg LintMissingTypeItemsAfterParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintMissingTypeItemsAfter,
+	rows, err := q.db.Query(ctx, LintMissingTypeItemsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.TrimChars,
@@ -405,7 +405,7 @@ func (q *Queries) LintMissingTypeItemsAfter(ctx context.Context, arg LintMissing
 	return items, nil
 }
 
-const lintMissingTypeItemsFirst = `-- name: LintMissingTypeItemsFirst :many
+const LintMissingTypeItemsFirst = `-- name: LintMissingTypeItemsFirst :many
 WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id)
 SELECT ip.node_id
 FROM candidates c CROSS JOIN LATERAL (
@@ -438,7 +438,7 @@ type LintMissingTypeItemsFirstParams struct {
 }
 
 func (q *Queries) LintMissingTypeItemsFirst(ctx context.Context, arg LintMissingTypeItemsFirstParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintMissingTypeItemsFirst,
+	rows, err := q.db.Query(ctx, LintMissingTypeItemsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.TrimChars,
@@ -463,7 +463,7 @@ func (q *Queries) LintMissingTypeItemsFirst(ctx context.Context, arg LintMissing
 	return items, nil
 }
 
-const lintOrphanCount = `-- name: LintOrphanCount :one
+const LintOrphanCount = `-- name: LintOrphanCount :one
 
 WITH candidates AS MATERIALIZED (SELECT unnest($1::uuid[]) AS id),
  excluded_emitters AS MATERIALIZED (SELECT unnest($2::uuid[]) AS id),
@@ -507,7 +507,7 @@ type LintOrphanCountParams struct {
 // inside the LATERAL prevents notebook BitmapAnd rescans or 100k parent probes
 // chosen by the normal no-statistics/generic planner (physical matrix guard).
 func (q *Queries) LintOrphanCount(ctx context.Context, arg LintOrphanCountParams) (int64, error) {
-	row := q.db.QueryRow(ctx, lintOrphanCount,
+	row := q.db.QueryRow(ctx, LintOrphanCount,
 		arg.CandidateIds,
 		arg.ExcludedEmitters,
 		arg.NotebookID,
@@ -518,7 +518,7 @@ func (q *Queries) LintOrphanCount(ctx context.Context, arg LintOrphanCountParams
 	return column_1, err
 }
 
-const lintOrphanItemsAfter = `-- name: LintOrphanItemsAfter :many
+const LintOrphanItemsAfter = `-- name: LintOrphanItemsAfter :many
 WITH candidates AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT ip.node_id
@@ -554,7 +554,7 @@ type LintOrphanItemsAfterParams struct {
 }
 
 func (q *Queries) LintOrphanItemsAfter(ctx context.Context, arg LintOrphanItemsAfterParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintOrphanItemsAfter,
+	rows, err := q.db.Query(ctx, LintOrphanItemsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.AfterID,
@@ -580,7 +580,7 @@ func (q *Queries) LintOrphanItemsAfter(ctx context.Context, arg LintOrphanItemsA
 	return items, nil
 }
 
-const lintOrphanItemsFirst = `-- name: LintOrphanItemsFirst :many
+const LintOrphanItemsFirst = `-- name: LintOrphanItemsFirst :many
 WITH candidates AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id ORDER BY id),
  excluded_emitters AS MATERIALIZED (SELECT unnest($5::uuid[]) AS id)
 SELECT ip.node_id
@@ -614,7 +614,7 @@ type LintOrphanItemsFirstParams struct {
 }
 
 func (q *Queries) LintOrphanItemsFirst(ctx context.Context, arg LintOrphanItemsFirstParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintOrphanItemsFirst,
+	rows, err := q.db.Query(ctx, LintOrphanItemsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.Take,
@@ -639,7 +639,7 @@ func (q *Queries) LintOrphanItemsFirst(ctx context.Context, arg LintOrphanItemsF
 	return items, nil
 }
 
-const lintPendingAssets = `-- name: LintPendingAssets :many
+const LintPendingAssets = `-- name: LintPendingAssets :many
 WITH assets AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id),
  parents AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id)
 SELECT a.id::uuid FROM assets a
@@ -676,7 +676,7 @@ type LintPendingAssetsParams struct {
 // semi join; the scalar LIMIT InitPlan avoids the no-statistics startup plan
 // choosing a whole-table scan for each asset. Both are actual-plan guarded.
 func (q *Queries) LintPendingAssets(ctx context.Context, arg LintPendingAssetsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, lintPendingAssets,
+	rows, err := q.db.Query(ctx, LintPendingAssets,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.AssetIds,

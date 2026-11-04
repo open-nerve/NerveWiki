@@ -24,11 +24,15 @@ type Page struct {
 	Deleted    bool
 }
 
-// Dropped is what a page's rows held that the index's maintenance still
-// reads once they go: the pages and attachments its links resolved to, and
-// its aliases' keys, each once.
+// Dropped is the backlink event targets and alias keys of a page's old rows.
 type Dropped struct {
-	Targets   []uuid.UUID
+	// Targets is used only for event invalidation, never ingest's old D/F.
+	// With at most MaxEventPages distinct nonzero targets it includes all
+	// of them. Above that limit it may contain any MaxEventPages+1 or more
+	// distinct nonzero targets as an overflow witness; the complete set
+	// remains valid. The publisher ignores zero IDs.
+	Targets []uuid.UUID
+	// AliasKeys holds all old alias keys, each once.
 	AliasKeys []string
 }
 
@@ -66,8 +70,18 @@ type Store interface {
 	// Lock takes the notebook's lock of the index until the transaction
 	// ends: its maintenance runs one at a time (M6 design 4.5).
 	Lock(ctx context.Context, notebookID uuid.UUID) error
-	// ReplacePage has the page's rows hold f, its links resolved to none,
-	// and returns what its rows held before.
+	// ReplacePage has the page's rows hold f and returns Dropped for its old
+	// targets and all old alias keys, including rows retained unchanged.
+	// Outside a transaction its links are resolved to none, as before.
+	// In an index-maintenance transaction the caller holds this notebook's
+	// index lock and has completed any before-capture. A row with identical
+	// complete persisted facts may keep its old resolution only as a
+	// comparison baseline. Changed and new facts are resolved to none.
+	// The caller must freshly resolve every written source and the complete
+	// affected reach, and write the differences before exposing the new
+	// index, publishing or committing. An old resolution is no qualification
+	// or fresh-resolution evidence. InTx alone does not establish this
+	// maintenance scope. Other transactional uses require explicit review.
 	ReplacePage(ctx context.Context, p Page, f domain.Facts) (Dropped, error)
 	// AddPage has the rows of a page that has none hold f, its links
 	// resolved to none: a rebuild's, after DeleteNotebooks.
@@ -470,6 +484,23 @@ type RewriteParser interface {
 	// bytes, as it parses, and the budget's size (M9/P3 fix round 6,
 	// B3-M1).
 	Takes(n int) (take, size int)
+}
+
+// RewriteReservations optionally reserves the original parser's global
+// budget before a bounded future task starts. An unsupported parser has no
+// such dependency and remains serial. Admission is never a parse error.
+type RewriteReservations interface {
+	TryReserve(upperBytes int) (RewriteReservation, bool)
+}
+
+// RewriteReservation belongs to one page. Its old result retains the full
+// grant until ordered promotion; each real candidate uses an actual child
+// take and the original ParseNow core. Close releases unused credit only;
+// a child given to Unit.Defer keeps its share through the original Unit end.
+type RewriteReservation interface {
+	TryGrow(upperBytes int) bool
+	ParseNow(context.Context, string) (Parsed, error)
+	Close()
 }
 
 // IndexCatalogueHead retains one requested page, even when its index row vanished.

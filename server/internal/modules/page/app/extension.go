@@ -76,6 +76,7 @@ type Step struct {
 type StepContent struct {
 	Hash                       []byte
 	Bytes, BeforeBytes, Merged int
+	BeforeRevision             int
 }
 
 // StepLines are the operation root's ancestors on each side. Nil Lines means
@@ -205,8 +206,9 @@ type Appender interface {
 // each edit session the unit opens or ends.
 type Event struct {
 	Write
-	ChangesetID uuid.UUID
-	Changes     []domain.Change
+	ChangesetID  uuid.UUID
+	Changes      []domain.Change
+	BeforeIngest IngestBefore
 }
 
 // PageObserver follows a unit that changed something, when its operations

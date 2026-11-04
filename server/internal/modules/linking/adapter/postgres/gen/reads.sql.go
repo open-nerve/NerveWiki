@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const backlinks = `-- name: Backlinks :many
+const Backlinks = `-- name: Backlinks :many
 WITH RECURSIVE sources (source_id, n) AS (
     (
         SELECT l.source_id, CASE WHEN l.source_id = $1::uuid THEN 0 ELSE 1 END
@@ -89,7 +89,7 @@ type BacklinksRow struct {
 // and until the table is vacuumed the same reads take the primary key, or, before jit was off (M6 closeout FA5-M1),
 // the plan was compiled (review c6, c7).
 func (q *Queries) Backlinks(ctx context.Context, arg BacklinksParams) ([]BacklinksRow, error) {
-	rows, err := q.db.Query(ctx, backlinks,
+	rows, err := q.db.Query(ctx, Backlinks,
 		arg.Target,
 		arg.MaxCount,
 		arg.Contexts,
@@ -121,7 +121,7 @@ func (q *Queries) Backlinks(ctx context.Context, arg BacklinksParams) ([]Backlin
 	return items, nil
 }
 
-const notebookAliases = `-- name: NotebookAliases :many
+const NotebookAliases = `-- name: NotebookAliases :many
 SELECT a.source_id, a.alias FROM page_aliases a WHERE a.notebook_id = $1 ORDER BY a.source_id, a.alias_key
 `
 
@@ -132,7 +132,7 @@ type NotebookAliasesRow struct {
 
 // The aliases of a notebook's pages, by page, each page's by key (M6/P5 design 6).
 func (q *Queries) NotebookAliases(ctx context.Context, notebookID uuid.UUID) ([]NotebookAliasesRow, error) {
-	rows, err := q.db.Query(ctx, notebookAliases, notebookID)
+	rows, err := q.db.Query(ctx, NotebookAliases, notebookID)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +151,7 @@ func (q *Queries) NotebookAliases(ctx context.Context, notebookID uuid.UUID) ([]
 	return items, nil
 }
 
-const pageProperties = `-- name: PageProperties :one
+const PageProperties = `-- name: PageProperties :one
 SELECT ip.frontmatter_valid,
     ARRAY(
         SELECT p.key FROM page_properties p WHERE p.source_id = ip.node_id ORDER BY p.position
@@ -189,7 +189,7 @@ type PagePropertiesRow struct {
 // whether to an attachment (M7/P3 design 4.6), by where they start. One statement, so one snapshot; none for a page
 // the index does not have.
 func (q *Queries) PageProperties(ctx context.Context, nodeID uuid.UUID) (PagePropertiesRow, error) {
-	row := q.db.QueryRow(ctx, pageProperties, nodeID)
+	row := q.db.QueryRow(ctx, PageProperties, nodeID)
 	var i PagePropertiesRow
 	err := row.Scan(
 		&i.FrontmatterValid,
@@ -202,7 +202,7 @@ func (q *Queries) PageProperties(ctx context.Context, nodeID uuid.UUID) (PagePro
 	return i, err
 }
 
-const tagPages = `-- name: TagPages :many
+const TagPages = `-- name: TagPages :many
 SELECT DISTINCT t.source_id
 FROM page_tags t
 WHERE t.notebook_id = $1 AND (
@@ -220,7 +220,7 @@ type TagPagesParams struct {
 // The pages of a notebook with the tag of key or one under it, key/…, by id (M6/P5 design 5): '0' is the byte
 // after '/', and the keys compare by bytes.
 func (q *Queries) TagPages(ctx context.Context, arg TagPagesParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, tagPages, arg.NotebookID, arg.Key)
+	rows, err := q.db.Query(ctx, TagPages, arg.NotebookID, arg.Key)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +239,7 @@ func (q *Queries) TagPages(ctx context.Context, arg TagPagesParams) ([]uuid.UUID
 	return items, nil
 }
 
-const tags = `-- name: Tags :many
+const Tags = `-- name: Tags :many
 SELECT mode() WITHIN GROUP (ORDER BY t.tag COLLATE "C")::text AS tag, count(*) AS pages
 FROM page_tags t
 WHERE t.notebook_id = $1
@@ -255,7 +255,7 @@ type TagsRow struct {
 // A notebook's tags by key (M6/P5 design 5): each as most of its pages write it, the first by bytes of those as
 // many, and how many pages have it.
 func (q *Queries) Tags(ctx context.Context, notebookID uuid.UUID) ([]TagsRow, error) {
-	rows, err := q.db.Query(ctx, tags, notebookID)
+	rows, err := q.db.Query(ctx, Tags, notebookID)
 	if err != nil {
 		return nil, err
 	}

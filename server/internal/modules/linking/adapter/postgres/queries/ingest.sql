@@ -1,0 +1,168 @@
+-- Ingestion evidence in the caller's write transaction and index lock.
+
+-- name: IngestIndexedHeads :many
+WITH requested AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(page_ids)::uuid[]) AS id,
+           unnest(sqlc.arg(page_revisions)::integer[]) AS revision
+)
+SELECT r.id::uuid AS id, r.revision::integer AS page_revision,
+       (ip.node_id IS NOT NULL)::boolean AS present,
+       coalesce(ip.revision, 0)::integer AS indexed_revision,
+       coalesce(ip.extractor, 0)::integer AS extractor,
+       coalesce(ip.frontmatter_valid, false)::boolean AS frontmatter_valid
+FROM requested r LEFT JOIN LATERAL (
+    -- The requested relation drives PK probes even with no statistics or a
+    -- generic plan; absent rows still emit a complete nullable head.
+    SELECT node_id, revision, extractor, frontmatter_valid
+    FROM indexed_pages
+    WHERE node_id = r.id AND notebook_id = sqlc.arg(notebook_id)::uuid
+    LIMIT 1
+) ip ON true
+ORDER BY r.id;
+
+-- name: IngestNovelSources :many
+WITH candidates AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(candidate_ids)::uuid[]) AS id,
+           unnest(sqlc.arg(candidate_assets)::boolean[]) AS asset,
+           unnest(sqlc.arg(candidate_revisions)::integer[]) AS revision
+), source_proofs AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(current_source_ids)::uuid[]) AS id,
+           unnest(sqlc.arg(current_source_revisions)::integer[]) AS revision
+), current_sources AS MATERIALIZED (
+    SELECT s.id, s.revision FROM source_proofs s JOIN indexed_pages ip
+      ON ip.node_id = s.id AND ip.notebook_id = sqlc.arg(notebook_id)::uuid
+      AND ip.extractor = sqlc.arg(extractor)::integer AND ip.revision = s.revision
+), parents AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(parent_ids)::uuid[]) AS id
+), eligible AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(eligible_emitter_ids)::uuid[]) AS id
+), untouched_sources AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(untouched_source_ids)::uuid[]) AS id
+), followed_ranges AS MATERIALIZED (
+    -- Materialize each complete reverse range once before joining source roles.
+    -- The unbounded fence keeps notebook/role filters out of the index range.
+    SELECT l.source_id, c.id AS asset_id
+    FROM candidates c CROSS JOIN LATERAL (
+        SELECT l.source_id, l.notebook_id, l.resolved_asset, l.property_key
+        FROM page_links l WHERE l.resolved_id = c.id
+        OFFSET 0
+    ) l
+    WHERE c.asset AND l.resolved_asset AND l.property_key IS NULL
+      AND l.notebook_id = sqlc.arg(notebook_id)::uuid
+), followed_untouched AS MATERIALIZED (
+    SELECT DISTINCT l.source_id, l.asset_id
+    FROM followed_ranges l
+    JOIN untouched_sources u ON u.id = l.source_id
+    JOIN current_sources s ON s.id = l.source_id
+), wanted AS MATERIALIZED (
+    SELECT id, asset FROM candidates
+    UNION SELECT source_id, false FROM followed_untouched
+    UNION SELECT id, false FROM parents
+), relevant_ranges AS MATERIALIZED (
+    SELECT l.source_id
+    FROM wanted w CROSS JOIN LATERAL (
+        SELECT l.source_id, l.notebook_id, l.resolved_asset
+        FROM page_links l WHERE l.resolved_id = w.id
+        OFFSET 0
+    ) l
+    WHERE l.resolved_asset = w.asset
+      AND l.notebook_id = sqlc.arg(notebook_id)::uuid
+), relevant AS MATERIALIZED (
+    -- Reverse hits discover whole source pages only, never prefilter same-slot peers.
+    SELECT DISTINCT l.source_id, ip.frontmatter_valid
+    FROM relevant_ranges l
+    JOIN eligible e ON e.id = l.source_id
+    JOIN indexed_pages ip ON ip.node_id = l.source_id
+      AND ip.notebook_id = sqlc.arg(notebook_id)::uuid
+      AND ip.extractor = sqlc.arg(extractor)::integer
+), first_json AS MATERIALIZED (
+    SELECT r.source_id, p.key, p.value
+    FROM relevant r CROSS JOIN LATERAL (
+        SELECT p.key, p.value FROM page_properties p
+        WHERE r.frontmatter_valid AND p.source_id = r.source_id
+          AND translate(p.key, 'SOURCE', 'source') = 'sources'
+        ORDER BY p.position LIMIT 1
+    ) p
+), shape AS MATERIALIZED (
+    SELECT source_id, key, value, jsonb_typeof(value) AS value_kind,
+           (CASE WHEN jsonb_typeof(value) = 'array'
+             THEN jsonb_array_length(value) > sqlc.arg(max_slot_items)::integer
+             ELSE false END
+            OR octet_length(value::text)::bigint > sqlc.arg(max_json_bytes)::bigint)
+            AS invalid_source_value
+    FROM first_json
+), slots AS MATERIALIZED (
+    SELECT s.source_id, CASE WHEN s.value_kind = 'array'
+           THEN s.key || '.' || (a.ordinality - 1)::text
+           ELSE s.key END AS property_key
+    FROM shape s CROSS JOIN LATERAL jsonb_array_elements(
+        CASE WHEN s.invalid_source_value THEN '[]'::jsonb
+             WHEN s.value_kind = 'array' THEN s.value
+             WHEN s.value_kind = 'string' THEN jsonb_build_array(s.value)
+             ELSE '[]'::jsonb END
+    ) WITH ORDINALITY a(value, ordinality)
+    WHERE jsonb_typeof(a.value) = 'string'
+), peer_ranges AS MATERIALIZED (
+    -- Read each slot-bearing page's complete property range once, before
+    -- matching slots. Empty slots do not start an unrelated index scan.
+    SELECT l.source_id, l.property_key, l.resolved_id, l.resolved_asset, l.target
+    FROM (SELECT DISTINCT source_id FROM slots) s CROSS JOIN LATERAL (
+        SELECT l.source_id, l.property_key, l.resolved_id, l.resolved_asset, l.target
+        FROM page_links l
+        WHERE l.source_id = s.source_id AND l.notebook_id = sqlc.arg(notebook_id)::uuid
+          AND l.property_key IS NOT NULL
+        OFFSET 0
+    ) l
+), peer_pairs AS MATERIALIZED (
+    -- A full equality join consumes both complete relations without rescanning
+    -- the peer tuplestore per slot when JSON cardinality is underestimated.
+    -- Keep unmatched rows inside this fence; peers removes them before counting.
+    SELECT s.source_id AS slot_source_id, l.source_id, l.property_key,
+           l.resolved_id, l.resolved_asset, l.target
+    FROM slots s FULL JOIN peer_ranges l
+      ON l.source_id = s.source_id AND l.property_key = s.property_key
+), peers AS MATERIALIZED (
+    -- All peers precede target qualification, including unresolved and duplicates.
+    SELECT l.source_id, l.property_key, l.resolved_id, l.resolved_asset,
+           (l.target = '' OR (l.resolved_asset AND l.resolved_id IS NULL)) AS invalid_peer,
+           count(*) OVER (PARTITION BY l.source_id, l.property_key) AS matching_edges
+    FROM peer_pairs l WHERE l.slot_source_id IS NOT NULL AND l.source_id IS NOT NULL
+), qualified AS MATERIALIZED (
+    SELECT l.resolved_id AS id, l.resolved_asset AS asset
+    FROM relevant r CROSS JOIN LATERAL (
+        SELECT l.resolved_id, l.resolved_asset FROM page_links l
+        WHERE l.source_id = r.source_id AND l.notebook_id = sqlc.arg(notebook_id)::uuid
+          AND l.property_key IS NULL AND l.resolved_id IS NOT NULL
+        OFFSET 0
+    ) l
+    UNION ALL
+    SELECT resolved_id, resolved_asset FROM peers
+    WHERE matching_edges = 1 AND resolved_id IS NOT NULL
+), digested AS MATERIALIZED (
+    SELECT DISTINCT c.id, c.asset
+    FROM qualified q JOIN wanted c ON c.id = q.id AND c.asset = q.asset
+    WHERE c.asset OR EXISTS (SELECT 1 FROM current_sources s WHERE s.id = c.id)
+), possible_direct AS MATERIALIZED (
+    SELECT unnest(sqlc.arg(possible_old_direct_ids)::uuid[]) AS id
+    UNION SELECT id FROM digested WHERE id IS NOT NULL
+), flags AS MATERIALIZED (
+    SELECT (EXISTS (SELECT 1 FROM shape WHERE invalid_source_value)
+            OR EXISTS (SELECT 1 FROM peers WHERE invalid_peer)) AS invalid_source_value,
+      (EXISTS (SELECT 1 FROM source_proofs s WHERE NOT EXISTS
+          (SELECT 1 FROM current_sources c WHERE c.id = s.id AND c.revision = s.revision))
+       OR EXISTS (SELECT 1 FROM candidates c WHERE NOT c.asset AND NOT EXISTS
+          (SELECT 1 FROM current_sources s WHERE s.id = c.id AND s.revision = c.revision))) AS invalid_proof
+), output AS (
+    SELECT 'candidate'::text AS row_kind, c.id, c.asset,
+      EXISTS (SELECT 1 FROM digested d WHERE d.id = c.id AND d.asset = c.asset) AS directly_digested,
+      EXISTS (SELECT 1 FROM followed_untouched f JOIN possible_direct d ON d.id = f.source_id
+              WHERE c.asset AND f.asset_id = c.id) AS followed_by_untouched
+    FROM candidates c
+    UNION ALL
+    SELECT 'parent'::text, p.id, false,
+      EXISTS (SELECT 1 FROM digested d WHERE d.id = p.id AND NOT d.asset), false
+    FROM parents p
+)
+SELECT o.row_kind, o.id::uuid AS id, o.asset::boolean AS asset, o.directly_digested, o.followed_by_untouched,
+       f.invalid_source_value, f.invalid_proof
+FROM output o CROSS JOIN flags f ORDER BY o.row_kind, o.id;

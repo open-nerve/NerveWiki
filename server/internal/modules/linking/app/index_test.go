@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 	"slices"
 	"strings"
@@ -487,4 +488,115 @@ func TestAPageWithAnAliasMovedResolvesTheLinksToItsAliasAnew(t *testing.T) {
 	w.run(w.move("Y", "P")...)
 	w.resolves("src", 0, "P/X", true)
 	w.publishedEvent([]string{"src"}, []string{"P/X", "P/Y"})
+}
+
+// Each source resolves the same relative target from its own folder, whether
+// sources are ordered, descending or reappear later. Zero is an ordinary source.
+func TestResolutionCachesFollowEachSource(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		zero  bool
+		order [4]int
+	}{
+		{"ordered", false, [4]int{0, 1, 2, 3}},
+		{"descending", false, [4]int{2, 3, 0, 1}},
+		{"reappearing", false, [4]int{0, 2, 1, 3}},
+		{"zero_ordered", true, [4]int{0, 1, 2, 3}},
+		{"zero_descending", true, [4]int{2, 3, 0, 1}},
+		{"zero_reappearing", true, [4]int{0, 2, 1, 3}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			w := newWorld(t, "left", "left/x", "left/src", "right", "right/x", "right/src")
+			if tc.zero {
+				old := w.id("left/src") // A leaf: no child's parent needs changing.
+				w.tree.nodes[uuid.UUID{}] = w.tree.nodes[old]
+				delete(w.tree.nodes, old)
+				w.tree.names["left/src"] = uuid.UUID{}
+			}
+			if w.id("left/src").Compare(w.id("right/src")) >= 0 {
+				t.Fatal("fixture source IDs are not strictly ordered")
+			}
+			// Seed the existing fake index without resolving first. Both forms
+			// have the same canonical target, with a different answer per source.
+			for _, path := range []string{"left/src", "right/src"} {
+				c := w.write(path, []string{"./x", "./X"})
+				p := app.Page{ID: c.NodeID, NotebookID: w.notebook, Revision: c.Revision}
+				if err := w.store.AddPage(t.Context(), p, c.Facts); err != nil {
+					t.Fatal(err)
+				}
+			}
+			seeded := slices.Clone(w.store.links)
+			if len(seeded) != 4 {
+				t.Fatalf("seeded %d links, want four", len(seeded))
+			}
+			for i, j := range tc.order {
+				w.store.links[i] = seeded[j]
+			}
+			left, right := w.id("left/x"), w.id("right/x")
+			if left == (uuid.UUID{}) || right == (uuid.UUID{}) || left == right {
+				t.Fatal("expected two distinct nonempty relative targets")
+			}
+			wantIDs := [4]uuid.UUID{left, left, right, right}
+			// Creating root x reaches every ./x and ./X through the original
+			// Store.Links filter, which retains the chosen order. It must not
+			// replace either folder's relative answer with the new root page.
+			w.run(w.create("x"))
+			if len(w.store.links) != 4 {
+				t.Fatalf("index has %d links, want four", len(w.store.links))
+			}
+			for i, j := range tc.order {
+				want := seeded[j]
+				want.Resolution = domain.Resolution{ID: wantIDs[j]}
+				if got := w.store.links[i]; got != want {
+					t.Errorf("link %d = %+v, want %+v", i, got, want)
+				}
+			}
+		})
+	}
+}
+
+// A view can contain more links than an index keeps. New, repeated and
+// invalid targets still have an answer after many distinct raw targets.
+func TestAViewResolvesAllLinksAfterManyDistinctTargets(t *testing.T) {
+	w := newWorld(t, "folder", "folder/src", "folder/x", "x", "tail")
+	source := w.id("folder/src")
+	x, tail := w.id("folder/x"), w.id("tail")
+	if x == (uuid.UUID{}) || tail == (uuid.UUID{}) || x == tail {
+		t.Fatal("expected distinct nonempty relative and tail targets")
+	}
+	// Fill a fixed 10,000 distinct raw targets, including the entry at
+	// index zero and two invalid forms, before the mixed six-link tail.
+	targets := make([]string, 10_000, 10_006)
+	targets[0], targets[1], targets[2] = "./x", "", "a//b"
+	for i := 3; i < 10_000; i++ {
+		targets[i] = fmt.Sprintf("missing%05d", i)
+	}
+	targets = append(targets, "tail", "./x", "tail", "", "./x", "a//b")
+	links := make([]app.Link, len(targets))
+	for i, target := range targets {
+		links[i] = app.Link{SourceID: source, Start: 10 * i, Target: target}
+	}
+	// No index rows were seeded: the real reading-view path resolves
+	// every input anew, including those beyond a page's index limit.
+	views := app.Views{Store: w.store, Pages: w.tree}
+	got, err := views.Resolve(t.Context(), app.Page{ID: source, NotebookID: w.notebook, Revision: 1}, links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := make([]domain.Resolution, 10_006)
+	want[0] = domain.Resolution{ID: x}
+	want[10_000], want[10_002] = domain.Resolution{ID: tail}, domain.Resolution{ID: tail}
+	want[10_001], want[10_004] = domain.Resolution{ID: x}, domain.Resolution{ID: x}
+	if len(got) != len(want) {
+		t.Fatalf("resolved %d starts, want all %d", len(got), len(want))
+	}
+	for i, expected := range want {
+		start := 10 * i
+		if actual, present := got[start]; !present || actual != expected {
+			t.Errorf("start %d present=%t resolution=%+v, want %+v", start, present, actual, expected)
+		}
+	}
+	if w.store.viewed != 1 || w.tree.reads != 2 {
+		t.Errorf("viewed %d, read candidates and paths %d times, want 1 and 2", w.store.viewed, w.tree.reads)
+	}
 }

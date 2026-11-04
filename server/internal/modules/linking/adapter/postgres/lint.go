@@ -8,11 +8,13 @@ import (
 	"strings"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
 // LintReads reads bounded projections in the caller's transaction.
@@ -24,6 +26,27 @@ type LintReads struct {
 // NewLintReads takes the page module's fixed content limit, not user configuration.
 func NewLintReads(pool *pgxpool.Pool, maxContentBytes int) *LintReads {
 	return &LintReads{store: New(pool), maxPayloadBytes: app.MaxLintPayloadBytes(maxContentBytes)}
+}
+
+// lintBodyQuerier chooses a description cache on the connection DB selected.
+// Only BodyReferences and private OldBodyReferences use it; other methods remain embedded.
+type lintBodyQuerier struct {
+	postgres.Querier
+}
+
+func (q lintBodyQuerier) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+	var conn *pgx.Conn
+	switch db := q.Querier.(type) {
+	case pgx.Tx:
+		conn = db.Conn()
+	case *pgxpool.Conn:
+		conn = db.Conn()
+	}
+	mode := pgx.QueryExecModeDescribeExec
+	if conn != nil && conn.Config().DescriptionCacheCapacity > 0 {
+		mode = pgx.QueryExecModeCacheDescribe
+	}
+	return q.Querier.Query(ctx, sql, append([]any{mode}, args...)...)
 }
 
 var _ app.LintReadStore = (*LintReads)(nil)
@@ -315,7 +338,7 @@ func (r *LintReads) SourceSlotEdges(ctx context.Context, notebook uuid.UUID, pos
 }
 
 // BodyReferences reads only short current-format body references. Emitters
-// is the complete unique set; the SQL materializes it once per statement.
+// is the complete relation; the SQL materializes membership once per statement.
 func (r *LintReads) BodyReferences(ctx context.Context, notebook uuid.UUID, emitters []uuid.UUID, after *app.EdgePos, take int) ([]app.BodyReference, error) {
 	if err := lintTake(take, after); err != nil {
 		return nil, err
@@ -323,9 +346,21 @@ func (r *LintReads) BodyReferences(ctx context.Context, notebook uuid.UUID, emit
 	if len(emitters) == 0 {
 		return nil, nil
 	}
+	// UUID byte ordering matches PostgreSQL, including the literal zero ID.
+	// Preserve the input relation: callers may provide unordered or duplicate IDs.
+	first, last := emitters[0], emitters[0]
+	for _, id := range emitters[1:] {
+		if bytes.Compare(id[:], first[:]) < 0 {
+			first = id
+		}
+		if bytes.Compare(id[:], last[:]) > 0 {
+			last = id
+		}
+	}
+	q := gen.New(lintBodyQuerier{Querier: postgres.DB(ctx, r.store.pool)})
 	var out []app.BodyReference
 	if after == nil {
-		rows, err := r.store.planned(ctx).LintBodyReferencesFirst(ctx, gen.LintBodyReferencesFirstParams{NotebookID: notebook, Extractor: domain.Extractor, WikiPageIds: emitters, Take: int32(take)})
+		rows, err := q.LintBodyReferencesFirst(ctx, gen.LintBodyReferencesFirstParams{NotebookID: notebook, Extractor: domain.Extractor, WikiPageIds: emitters, FirstSource: first, LastSource: last, Take: int32(take)})
 		if err != nil {
 			return nil, err
 		}
@@ -336,7 +371,7 @@ func (r *LintReads) BodyReferences(ctx context.Context, notebook uuid.UUID, emit
 			out = append(out, app.BodyReference{EdgePos: app.EdgePos{SourceID: v.SourceID, Start: v.RangeStart}, ResolvedID: *v.ResolvedID, ResolvedAsset: v.ResolvedAsset})
 		}
 	} else {
-		rows, err := r.store.planned(ctx).LintBodyReferencesAfter(ctx, gen.LintBodyReferencesAfterParams{NotebookID: notebook, Extractor: domain.Extractor, WikiPageIds: emitters, Take: int32(take), AfterSource: after.SourceID, AfterStart: after.Start})
+		rows, err := q.LintBodyReferencesAfter(ctx, gen.LintBodyReferencesAfterParams{NotebookID: notebook, Extractor: domain.Extractor, WikiPageIds: emitters, FirstSource: first, LastSource: last, Take: int32(take), AfterSource: after.SourceID, AfterStart: after.Start})
 		if err != nil {
 			return nil, err
 		}

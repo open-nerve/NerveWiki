@@ -200,6 +200,8 @@ CROSS JOIN LATERAL (
  LIMIT 1
 ) current_page
 WHERE l.notebook_id=sqlc.arg(notebook_id)
+ AND l.source_id >= sqlc.arg(first_source)::uuid
+ AND l.source_id <= sqlc.arg(last_source)::uuid
 ORDER BY l.source_id,l.range_start LIMIT (SELECT sqlc.arg(take)::integer);
 
 -- name: LintBodyReferencesAfter :many
@@ -215,6 +217,8 @@ CROSS JOIN LATERAL (
  LIMIT 1
 ) current_page
 WHERE l.notebook_id=sqlc.arg(notebook_id)
+ AND l.source_id >= sqlc.arg(first_source)::uuid
+ AND l.source_id <= sqlc.arg(last_source)::uuid
  AND (l.source_id,l.range_start)>(sqlc.arg(after_source)::uuid,sqlc.arg(after_start)::integer)
 ORDER BY l.source_id,l.range_start LIMIT (SELECT sqlc.arg(take)::integer);
 

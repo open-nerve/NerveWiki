@@ -382,7 +382,7 @@ func testLintOriginStaleD(t *testing.T, after bool) {
 	q := gen.New(postgres.Planned(f.pool))
 	emitters := []uuid.UUID{first, old, last}
 	if !after {
-		rows, err := q.LintBodyReferencesFirst(t.Context(), gen.LintBodyReferencesFirstParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, Take: 512})
+		rows, err := q.LintBodyReferencesFirst(t.Context(), gen.LintBodyReferencesFirstParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, FirstSource: first, LastSource: last, Take: 512})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -390,7 +390,7 @@ func testLintOriginStaleD(t *testing.T, after bool) {
 			add(r.SourceID, r.RangeStart, r.ResolvedID, r.ResolvedAsset)
 		}
 	} else {
-		rows, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, AfterSource: first, AfterStart: int32(cur.Links[0].Start), Take: 512})
+		rows, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, FirstSource: first, LastSource: last, AfterSource: first, AfterStart: int32(cur.Links[0].Start), Take: 512})
 		if err != nil {
 			t.Fatal(err)
 		}

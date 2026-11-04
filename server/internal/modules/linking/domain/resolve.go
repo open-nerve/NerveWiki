@@ -312,27 +312,29 @@ func endsWith(path []Step, keys []string) bool {
 // one is, folder's own page included, then with the shortest path, then
 // with the least id: ambiguous when the id decides.
 func preferred(nodes []Node, folder []Step) Resolution {
-	in := nodes
-	if len(folder) > 0 {
-		var inside []Node
-		for _, n := range nodes {
-			if under(n, folder) {
-				inside = append(inside, n)
+	first := nodes[0] // The caller always supplies at least one candidate.
+	shortest, tied := 0, 0
+	inside := false
+	for _, n := range nodes {
+		local := len(folder) > 0 && under(n, folder)
+		if inside && !local {
+			continue
+		}
+		if local && !inside {
+			inside, tied = true, 0
+		}
+		length := n.length()
+		switch {
+		case tied == 0 || length < shortest:
+			first, shortest, tied = n, length, 1
+		case length == shortest:
+			tied++
+			if n.ID.Compare(first.ID) < 0 {
+				first = n
 			}
 		}
-		if len(inside) > 0 {
-			in = inside
-		}
 	}
-	shortest := slices.MinFunc(in, func(a, b Node) int { return a.length() - b.length() }).length()
-	var tied []Node
-	for _, n := range in {
-		if n.length() == shortest {
-			tied = append(tied, n)
-		}
-	}
-	first := slices.MinFunc(tied, func(a, b Node) int { return a.ID.Compare(b.ID) })
-	return Resolution{ID: first.ID, Ambiguous: len(tied) > 1}
+	return Resolution{ID: first.ID, Ambiguous: tied > 1}
 }
 
 // under tells whether n is folder's last page or below it. A page is its

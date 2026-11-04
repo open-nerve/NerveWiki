@@ -61,24 +61,36 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	if len(links) == 0 {
 		return nil, nil, nil
 	}
-	targets := make([]domain.Target, len(links))
-	parsed := make([]bool, len(links))
+	targets := newParsedTargetRows(len(links))
 	var keys []string
-	ids := make([]uuid.UUID, 0, len(links))
+	reach := make(map[string]int)
+	ids := make([]uuid.UUID, 0)
 	read := make(map[uuid.UUID]bool, len(known))
 	for _, n := range known {
 		read[n.ID] = true
 	}
+	orderedSources := true
 	for i, l := range links {
-		if targets[i], parsed[i] = domain.ParseTarget(l.Target); parsed[i] {
-			keys = append(keys, targets[i].LastKeys()...)
+		sourceChanged := i == 0 || links[i-1].SourceID != l.SourceID
+		if sourceChanged && i > 0 && links[i-1].SourceID.Compare(l.SourceID) > 0 {
+			orderedSources = false
 		}
-		if !read[l.SourceID] {
+		t, parsed := targets.add(i, l.Target)
+		if parsed {
+			for _, key := range t.LastKeys() {
+				if _, seen := reach[key]; !seen {
+					keys = append(keys, key)
+					reach[key] = 0
+				}
+			}
+		}
+		if sourceChanged && !read[l.SourceID] {
 			ids = append(ids, l.SourceID)
+			read[l.SourceID] = true
 		}
 	}
+	targets.cache = nil // Later passes need values and row references, not raw keys.
 	slices.Sort(keys)
-	keys = slices.Compact(keys)
 	out := make([]domain.Resolution, len(links))
 	if len(keys) == 0 {
 		return out, nil, nil
@@ -111,11 +123,17 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	for _, n := range known {
 		byID[n.ID] = n
 	}
-	reach := make(map[string]int)
+	overflow := 0
+	var reachFrom domain.Node
+	var reachExists bool
 	for i, l := range links {
-		if from, ok := byID[l.SourceID]; ok && parsed[i] {
-			for _, key := range targets[i].LastKeys() {
-				reach[key] = max(reach[key], targets[i].Reach(from.Path))
+		t, parsed := targets.at(i, &overflow)
+		if i == 0 || links[i-1].SourceID != l.SourceID {
+			reachFrom, reachExists = byID[l.SourceID]
+		}
+		if reachExists && parsed {
+			for _, key := range t.LastKeys() {
+				reach[key] = max(reach[key], t.Reach(reachFrom.Path))
 			}
 		}
 	}
@@ -124,31 +142,37 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 	// does (M6 closeout FA-I1, FA2-M1, FA3-N2).
 	suffixes := domain.NewSuffixes(candidates, reach)
 	var missing []uuid.UUID
-	// A link's resolution depends on its page and its target's parse alone.
-	type link struct {
-		source uuid.UUID
-		target domain.TargetKey
-	}
-	resolved := make(map[link]domain.Resolution)
+	// Share fresh values across an ordered run only when complete source
+	// folders are equal; overflow still has the original per-source cache.
+	// Unordered sources keep the original whole-call source cache.
+	resolved := newResolutionMemo(orderedSources)
+	overflow = 0
 	// The pages of each alias key, read once a key, as a target of it comes.
 	aliased := make(map[string][]domain.Node)
+	var from domain.Node
+	var exists bool
 	for i, l := range links {
 		if i%checkEvery == 0 {
 			if err := ctx.Err(); err != nil {
 				return nil, nil, err
 			}
 		}
-		if !parsed[i] {
+		if i == 0 || links[i-1].SourceID != l.SourceID {
+			from, exists = byID[l.SourceID]
+			if orderedSources {
+				resolved.begin(from.Path, exists)
+			}
+		}
+		t, parsed := targets.at(i, &overflow)
+		if !parsed {
 			continue
 		}
-		from, ok := byID[l.SourceID]
-		if !ok {
+		if !exists {
 			missing = append(missing, l.SourceID)
 			continue
 		}
-		t := targets[i]
-		w := link{l.SourceID, t.Key()}
-		if r, ok := resolved[w]; ok {
+		key := t.Key()
+		if r, ok := resolved.get(l.SourceID, key); ok {
 			out[i] = r
 			continue
 		}
@@ -167,7 +191,7 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			aliased[key] = named
 		}
 		out[i] = suffixes.Resolve(t, from.Path, aliased)
-		resolved[w] = out[i]
+		resolved.put(l.SourceID, key, out[i])
 	}
 	slices.SortFunc(missing, uuid.UUID.Compare)
 	return out, slices.Compact(missing), nil

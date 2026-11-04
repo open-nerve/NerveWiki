@@ -152,6 +152,9 @@ func (f lintPropertyCostFixture) measure(t *testing.T, name string, propertyToas
 		var work map[string]lintWork
 		f.c.trace.begin()
 		err := f.c.f.tx.WithinSnapshot(t.Context(), func(ctx context.Context) error {
+			if err := f.c.trace.bindSnapshot(ctx); err != nil {
+				return err
+			}
 			db := postgres.DB(ctx, f.c.f.pool)
 			tx, ok := postgres.TxFrom(ctx)
 			if !ok {
@@ -203,7 +206,7 @@ func (f lintPropertyCostFixture) measure(t *testing.T, name string, propertyToas
 			t.Fatal(err)
 		}
 		if !bodyToast {
-			lintCostDescribeExec(t, queries, modes)
+			lintCostQueryModes(t, queries, modes)
 		}
 		if statementCache == nil || *statementCache != 0 {
 			t.Fatalf("production read created named lint statements: %v", statementCache)

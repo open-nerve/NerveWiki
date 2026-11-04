@@ -61,12 +61,28 @@ type Tag struct {
 // properties, each read by values. A reference definition two links use is
 // one link.
 func extract(t markdown.Tree, values parser.Parser) any {
+	var ranges linkRanges
+	return extractWithRanges(t, values, &ranges)
+}
+
+// extractWithRanges keeps the range state local to this extraction. The
+// supplied state also lets tests observe whether the real walk needed a map.
+func extractWithRanges(t markdown.Tree, values parser.Parser, ranges *linkRanges) Extracted {
 	var out Extracted
-	seen := map[markdown.Span]bool{}
+	var blocks [][]Link
+	linkCount := 0
 	add := func(l Link) {
-		if !seen[l.Range] {
-			seen[l.Range] = true
+		if ranges.first(l.Range, blocks, out.Links) {
+			// Keep completed blocks instead of repeatedly copying a growing
+			// full slice. The final facts below still own one exact slice.
+			if len(out.Links) == cap(out.Links) {
+				if len(out.Links) > 0 {
+					blocks = append(blocks, out.Links)
+				}
+				out.Links = make([]Link, 0, min(max(1, 2*cap(out.Links)), 256))
+			}
 			out.Links = append(out.Links, l)
+			linkCount++
 		}
 	}
 	_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -99,12 +115,57 @@ func extract(t markdown.Tree, values parser.Parser) any {
 			add(p.Link)
 		}
 	}
+	// The facts outlive the parse: retain no staging blocks or excess
+	// capacity (M6/P2 fix check 3 M1). Preserve the original visit order
+	// before the stable sort, including equal starts with different ends.
+	if len(blocks) == 0 {
+		out.Links = slices.Clone(out.Links)
+	} else {
+		links := make([]Link, linkCount)
+		at := 0
+		for _, block := range blocks {
+			at += copy(links[at:], block)
+		}
+		copy(links[at:], out.Links)
+		out.Links = links
+	}
 	slices.SortStableFunc(out.Links, func(a, b Link) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
 	slices.SortStableFunc(out.Tags, func(a, b Tag) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
-	// The facts outlive the parse: each slice as long as what it holds, not
-	// the twice as long that appending may leave (M6/P2 fix check 3 M1).
-	out.Links, out.Tags = slices.Clone(out.Links), slices.Clone(out.Tags)
+	out.Tags = slices.Clone(out.Tags)
 	return out
+}
+
+// linkRanges accepts the first occurrence of each complete range. A strictly
+// increasing start cannot repeat a previous range. On the first other start,
+// all accepted ranges enter the map, which handles the rest of the extraction.
+// Nothing assumes that an AST walk or frontmatter visits ranges in source order.
+type linkRanges struct {
+	seen    map[markdown.Span]bool
+	last    int
+	started bool
+}
+
+func (r *linkRanges) first(at markdown.Span, blocks [][]Link, tail []Link) bool {
+	if r.seen == nil && (!r.started || at.Start > r.last) {
+		r.last, r.started = at.Start, true
+		return true
+	}
+	if r.seen == nil {
+		r.seen = make(map[markdown.Span]bool)
+		for _, block := range blocks {
+			for _, l := range block {
+				r.seen[l.Range] = true
+			}
+		}
+		for _, l := range tail {
+			r.seen[l.Range] = true
+		}
+	}
+	if r.seen[at] {
+		return false
+	}
+	r.seen[at] = true
+	return true
 }
 
 // link is the link w makes, none if it has no target: one to its own page's
@@ -138,7 +199,7 @@ var scheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 // JavaScript's decodeURI does; none for an address elsewhere (a scheme, or
 // "//") or an anchor alone.
 func markdownLink(kind Kind, written string, at int) (Link, bool) {
-	if scheme.MatchString(written) || strings.HasPrefix(written, "//") {
+	if strings.Contains(written, ":") && scheme.MatchString(written) || strings.HasPrefix(written, "//") {
 		return Link{}, false
 	}
 	target, anchor, _ := strings.Cut(written, "#")

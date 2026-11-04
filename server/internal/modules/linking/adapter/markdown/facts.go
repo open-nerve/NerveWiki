@@ -46,6 +46,9 @@ func PageFacts(facts any) (domain.Facts, error) {
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
 	aliasesProperty, _ := propertyOf(fm.Properties, "aliases")
 	scalars := scalarsByPath(fm.Scalars)
+	if n := min(len(x.Links), domain.MaxLinks); n > 0 {
+		out.Links = make([]domain.Link, 0, n)
+	}
 	for _, l := range x.Links[:min(len(x.Links), domain.MaxLinks)] {
 		link := domain.Link{
 			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
@@ -250,6 +253,12 @@ func (p Parser) ParseNow(ctx context.Context, content string) (app.Parsed, error
 	case err != nil:
 		return app.Parsed{}, err
 	}
+	return p.parseHeld(content, hold)
+}
+
+// parseHeld is shared by ordinary and reserved parses. The hold already
+// owns the actual content take; parsing never takes a second budget share.
+func (p Parser) parseHeld(content string, hold *markdown.Hold) (app.Parsed, error) {
 	taken := false
 	defer func() {
 		if !taken {

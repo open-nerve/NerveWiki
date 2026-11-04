@@ -257,10 +257,13 @@ type pageExtensions struct {
 // line takes the edit sessions' subscribers alone (pageSessionSubscribers).
 // serve and this package's tests take them from here; the page module's
 // own tests build the lock themselves.
-func pageRegistrants(pool *pgxpool.Pool, authorizer shared.Authorizer) pageExtensions {
+func pageRegistrants(pool *pgxpool.Pool, authorizer shared.Authorizer, logger *slog.Logger) pageExtensions {
 	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
 	mode := page.NewModeGuard(pool, authorizer)
-	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()})}
+	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()}, linking.IngestDeps{
+		Metadata: linkIngestMetadata{page.NewIngestMetadata(pool)}, Marks: linkIngestMarks{page.NewIngestMarks(pool)},
+		MaxContentBytes: page.MaxContentBytes, Logger: logger,
+	})}
 	return pageExtensions{
 		guards:             []page.WriteGuard{mode, lock},
 		observers:          []page.PageObserver{pageEvents{events.NewPublisher()}, links, assetObserver{asset.NewPageObserver(pool)}},
