@@ -190,6 +190,8 @@ test("HI3 (API): each write is a changeset of its account and client, listed new
     trimmed: false,
     node_count: 1,
     content_count: 1,
+    ingest_count: 0,
+    ingest_sources: [],
     changes: [
       {
         node: { id: of.beta, kind: "page", name: "Gamma", alive: true },

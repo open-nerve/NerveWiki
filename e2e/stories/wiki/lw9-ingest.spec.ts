@@ -349,6 +349,7 @@ for (const scope of ["notebook", "account"] as const) {
     const repeat = resultOf<IngestBatch>(
       await agent.call("batch", {
         ...target,
+        message: `Use the same paper again through ${scope}`,
         ops: [
           {
             op: "write",

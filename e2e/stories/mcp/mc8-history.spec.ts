@@ -98,7 +98,11 @@ test("MC8 (MCP): an agent reads the notebook's log narrowed by client, actor and
       // oxlint-disable-next-line no-await-in-loop -- each page goes on from the one before
       const { data, response } = await listChangesets(api, pat, notebookId, { ...query, limit: 100, cursor });
       expect(response.status, `REST's log of ${JSON.stringify(query)}`).toBe(200);
-      rows.push(...((data?.data ?? []) as Row[]));
+      for (const row of data?.data ?? []) {
+        expect(row.ingest_count).toBe(0);
+        expect(row.ingest_sources).toEqual([]);
+        rows.push({ ...row, ingest_sources_cut: false });
+      }
       if (!data?.next_cursor) {
         return rows;
       }
@@ -130,8 +134,10 @@ test("MC8 (MCP): an agent reads the notebook's log narrowed by client, actor and
   const page = resultOf<ChangesetPage>(await agent.call("changeset", { id: movedId }), "changeset of the move");
   const { data: detail } = await getChangeset(api, pat, movedId);
   const { data: changes } = await listChanges(api, pat, movedId);
+  expect(detail?.ingest_count).toBe(0);
+  expect(detail?.ingest_sources).toEqual([]);
   const { changes: _first, ...header } = detail ?? { changes: [] };
-  expect(page.changeset).toEqual(header);
+  expect(page.changeset).toEqual({ ...header, ingest_sources_cut: false });
   expect(page.changeset?.moves, "the move moves a node").toBe(true);
   expect(page.changes.map((c) => [c.node.id, c.node.kind, c.node.path])).toEqual([
     [plan.node_id, "page", "Archive/Plan.md"],
