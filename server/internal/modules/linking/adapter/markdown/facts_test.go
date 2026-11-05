@@ -33,6 +33,62 @@ func factsOf(t *testing.T, content string) domain.Facts {
 	return f
 }
 
+// Converting the same parsed facts twice owns two output slices and must
+// never normalize the original extraction through an input pointer.
+func TestPageFactsOwnTheirMappedLinks(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed := md.Parse([]byte("[x](a%00b.md) [[B]]")).Facts()
+	extracted := parsed.Extracted(obsidian.Name).(obsidian.Extracted)
+	wantInput := []obsidian.Link{
+		{Kind: obsidian.KindLink, Target: "a\x00b.md", Range: markdown.Span{Start: 4, Stop: 12}},
+		{Kind: obsidian.KindWikilink, Target: "B", Range: markdown.Span{Start: 16, Stop: 17}},
+	}
+	if !reflect.DeepEqual(extracted.Links, wantInput) {
+		t.Fatalf("literal extraction = %+v, want %+v", extracted.Links, wantInput)
+	}
+	want := domain.Facts{FrontmatterValid: true, Links: []domain.Link{
+		{Kind: "link", Target: "a\uFFFDb.md", Start: 4, End: 12},
+		{Kind: "wikilink", Target: "B", Start: 16, End: 17},
+	}}
+	first, err := markdownadapter.PageFacts(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := markdownadapter.PageFacts(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(first, want) || !reflect.DeepEqual(second, want) || cap(first.Links) != 2 || cap(second.Links) != 2 {
+		t.Fatalf("same parsed facts returned %+v and %+v, want independent exact two-link values %+v", first, second, want)
+	}
+	first.Links[0] = domain.Link{Kind: "image", Target: "Changed", Start: 100, End: 107}
+	if !reflect.DeepEqual(second, want) {
+		t.Fatalf("changing one PageFacts result changed another: %+v", second)
+	}
+	if !reflect.DeepEqual(extracted.Links, wantInput) {
+		t.Fatalf("PageFacts changed the original extracted links: %+v, want %+v", extracted.Links, wantInput)
+	}
+}
+
+func TestPageFactsKeepNoLinksNil(t *testing.T) {
+	md, err := markdown.New([]markdown.Extension{obsidian.Extension(obsidian.Options{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, content := range []string{"", "plain text", "---\nname: value\n---\n"} {
+		facts, err := markdownadapter.PageFacts(md.Parse([]byte(content)).Facts())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if facts.Links != nil {
+			t.Fatalf("no-link content %q returned nonnil Links: %#v", content, facts.Links)
+		}
+	}
+}
+
 // A page's facts are its links as the extension took them, the
 // frontmatter's tags before the body's, by key with how often, its aliases
 // and its properties in order, a mapping an object.
@@ -280,13 +336,13 @@ func TestAParseNowHoldsItsShareTakenNow(t *testing.T) {
 // frontmatter's first: a page of 870,000 would hold the notebook's index
 // lock for seconds (M6 closeout A-I1).
 func TestThePageFactsKeepTheFirstMaxLinks(t *testing.T) {
-	content := "---\nup: \"[[Up]]\"\n---\n" + strings.Repeat("[[a]] ", domain.MaxLinks) + "[[last]]\n"
+	content := "---\nup: \"[[Up]]\"\n---\n" + strings.Repeat("[[a]] ", 9_998) + "[[Kept]] [[Dropped]]\n"
 	f := factsOf(t, content)
 	if len(f.Links) != domain.MaxLinks {
 		t.Fatalf("%d links kept, want %d", len(f.Links), domain.MaxLinks)
 	}
-	if first, last := f.Links[0], f.Links[len(f.Links)-1]; first.Target != "Up" || first.Property != "up" || last.Target != "a" {
-		t.Errorf("first %+v, last %+v; want the property's link first, the body's [[a]] last", first, last)
+	if first, last := f.Links[0], f.Links[len(f.Links)-1]; first.Target != "Up" || first.Property != "up" || last.Target != "Kept" || last.Start != 60011 || last.End != 60015 {
+		t.Errorf("first %+v, last %+v; want the property's Up first and Kept at 60011..60015 last", first, last)
 	}
 }
 

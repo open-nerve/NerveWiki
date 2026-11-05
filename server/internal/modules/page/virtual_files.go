@@ -82,8 +82,18 @@ type VirtualLogReads interface {
 	Recent(context.Context, uuid.UUID, int) ([]VirtualLogChangeset, error)
 }
 
+// virtualLogStore keeps the bounded reads used by Recent together. The
+// production value is the existing page store, using the caller's context.
+type virtualLogStore interface {
+	ListChangesets(context.Context, uuid.UUID, domain.LogFilter, domain.ChangesetCursor, int) ([]domain.Changeset, error)
+	ChangesetFacts(context.Context, []uuid.UUID) (map[uuid.UUID]domain.ChangesetFacts, error)
+	FirstChanges(context.Context, []uuid.UUID, int) (map[uuid.UUID][]domain.ChangeRow, error)
+	FirstIngestSources(context.Context, []uuid.UUID, int) (map[uuid.UUID][]*uuid.UUID, error)
+	LinkTargetsByIDs(context.Context, uuid.UUID, []uuid.UUID) ([]postgresadapter.LinkPath, error)
+}
+
 type virtualLogReads struct {
-	store *postgresadapter.Store
+	store virtualLogStore
 	names Names
 }
 
@@ -116,33 +126,70 @@ func (r virtualLogReads) Recent(ctx context.Context, notebook uuid.UUID, limit i
 	if err != nil {
 		return nil, err
 	}
+	sources, err := r.store.FirstIngestSources(ctx, ids, 5)
+	if err != nil {
+		return nil, err
+	}
 	names, err := r.names.DisplayNames(ctx, actors)
 	if err != nil {
 		return nil, err
 	}
 	nodes := []uuid.UUID{}
-	for _, cs := range changes {
-		for _, c := range cs {
+	seenNodes := map[uuid.UUID]bool{}
+	add := func(id uuid.UUID) {
+		if !seenNodes[id] {
+			nodes = append(nodes, id)
+			seenNodes[id] = true
+		}
+	}
+	for _, id := range ids {
+		for _, c := range changes[id] {
 			if c.Alive {
-				nodes = append(nodes, c.NodeID)
+				add(c.NodeID)
+			}
+		}
+		for _, source := range sources[id] {
+			if source != nil {
+				add(*source)
 			}
 		}
 	}
-	paths, err := r.store.PathsOf(ctx, notebook, nodes)
+	targets, err := r.store.LinkTargetsByIDs(ctx, notebook, nodes)
 	if err != nil {
 		return nil, err
+	}
+	paths := make(map[uuid.UUID]VirtualLogSource, len(targets))
+	for _, target := range targets {
+		names := make([]string, len(target.Steps))
+		for i, step := range target.Steps {
+			names[i] = step.Name
+		}
+		kind := domain.KindPage
+		if target.Asset {
+			kind = domain.KindAsset
+		}
+		path := domain.PathOfNames(names, kind)
+		paths[target.ID] = VirtualLogSource{NodeID: &target.ID, Path: &path, Asset: target.Asset}
 	}
 	out := make([]VirtualLogChangeset, len(rows))
 	for i, row := range rows {
 		cs := VirtualLogChangeset{ID: row.ID, Kind: string(row.Kind), Client: string(row.Client), ByName: names[row.By],
 			CreatedAt: row.CreatedAt, Message: row.Message, NodeCount: facts[row.ID].Nodes, ContentCount: facts[row.ID].Contents,
-			Changes: []VirtualLogChange{}, IngestSources: []VirtualLogSource{}}
+			IngestCount: row.IngestCount,
+			Changes:     []VirtualLogChange{}, IngestSources: []VirtualLogSource{}}
 		for _, c := range changes[row.ID] {
 			change := VirtualLogChange{NodeID: c.NodeID, Name: c.Name, Kind: string(c.Change()), Asset: c.NodeKind == domain.KindAsset}
 			if path, ok := paths[c.NodeID]; ok {
-				change.Path = &path
+				change.Path = path.Path
 			}
 			cs.Changes = append(cs.Changes, change)
+		}
+		for _, source := range sources[row.ID] {
+			var preview VirtualLogSource
+			if source != nil {
+				preview = paths[*source]
+			}
+			cs.IngestSources = append(cs.IngestSources, preview)
 		}
 		out[i] = cs
 	}

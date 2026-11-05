@@ -10,6 +10,8 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
@@ -121,10 +123,10 @@ func TestSetResolutionsKeepsTheIndexTransactionVisibleAtomically(t *testing.T) {
 			if prefix.PID != owner || prefix.Err != nil || prefix.Rows < 1 {
 				t.Fatalf("first actual write=%+v owner=%d", prefix, owner)
 			}
-			if prefix.Lengths != [5]int{256, 256, 256, 256, 256} || prefix.Rows != 256 {
+			if prefix.Lengths != [5]int{4096, 4096, 4096, 4096, 4096} || prefix.Rows != 4096 || prefix.Query != "SetOrderedSourceResolutions" {
 				// Keep exercising the original transaction on the RED baseline;
-				// an oversized real statement is the uncalibrated private strategy.
-				t.Errorf("SET_WRITE_BATCHES: first completed statement=%+v, want exactly 256 rows", prefix)
+				// the original 256-row strategy must fail the native batch assertion.
+				t.Errorf("SET_WRITE_BATCHES: first completed statement=%+v, want exactly 4096 rows through SetOrderedSourceResolutions", prefix)
 			}
 			reader, err := f.pool.Acquire(ctx)
 			if err != nil {
@@ -198,8 +200,8 @@ func TestSetResolutionsKeepsTheIndexTransactionVisibleAtomically(t *testing.T) {
 			for i := range f.desired {
 				f.desired[i].Resolution = domain.Resolution{ID: lintID(250)}
 			}
-			lengths := setWrite256Lengths(32, 1)
-			for i, c := range f.assertCalls(t, f.desired, lengths, owner) {
+			lengths := []int{4096, 4096, 1}
+			for i, c := range f.assertCalls(t, f.desired, lengths, owner, pgx.QueryExecModeCacheDescribe, "SetOrderedSourceResolutions", "SetOrderedSourceResolutions", "SetResolutions") {
 				if c.Err != nil || c.Rows != int64(lengths[i]) {
 					t.Fatalf("Index actual completed statements: %+v", c)
 				}

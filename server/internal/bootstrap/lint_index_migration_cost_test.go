@@ -152,6 +152,30 @@ func lintSourcesMigrator(t *testing.T, pool *pgxpool.Pool) *postgres.Migrator {
 	return lintCostMigrator(t, pool, 51)
 }
 
+// lintMigrationDropIngest restores the schema-52 starting point of the
+// older index migrations after their real seed app has stopped. Keep the
+// shared application seed on the current schema for its other consumers.
+func lintMigrationDropIngest(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != 53 {
+		t.Fatalf("legacy migration setup version=%d, want 53 before Down", version)
+	}
+	m := lintCostMigrator(t, pool, 53)
+	r, err := m.Down(t.Context())
+	closeErr := m.Close()
+	if err != nil || closeErr != nil || r == nil || r.Version != 53 || r.Source != "00053_page_ingest.sql" {
+		t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only ingest migration 53", r, err, closeErr)
+	}
+	if n := count(t, pool, `SELECT
+ (to_regclass('public.changeset_sources') IS NOT NULL)::integer
+ + (to_regclass('public.changesets_notebook_id_created_at_ingest_idx') IS NOT NULL)::integer
+ + (to_regclass('public.changesets_notebook_id_created_by_id_created_at_ingest_idx') IS NOT NULL)::integer
+ + (SELECT count(*) FROM pg_attribute WHERE attrelid='public.changesets'::regclass
+    AND attname='ingest_count' AND NOT attisdropped)`); n != 0 {
+		t.Fatalf("legacy migration setup retained %d ingest schema objects after Down53, want 0", n)
+	}
+}
+
 // Goose Down deletes its version row. Check both the production status API
 // and the actual version table so Up51 cannot silently reapply or account
 // for 52. The ordinary full template starts with both versions applied.
@@ -241,6 +265,7 @@ func lintMigrationCost(t *testing.T, dense bool) {
 	sourceIndexSettle(t, app.team.pool)
 	app.stop()
 	pool := connect(t, database)
+	lintMigrationDropIngest(t, pool)
 	lintMigrationState(t, pool, true, true)
 	ranges := lintCostMigrator(t, pool, 52)
 	lintRangeDown(t, ranges, pool)

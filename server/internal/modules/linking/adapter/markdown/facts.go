@@ -46,18 +46,20 @@ func PageFacts(facts any) (domain.Facts, error) {
 	out := domain.Facts{FrontmatterValid: !fm.Present || fm.Valid}
 	aliasesProperty, _ := propertyOf(fm.Properties, "aliases")
 	scalars := scalarsByPath(fm.Scalars)
-	if n := min(len(x.Links), domain.MaxLinks); n > 0 {
-		out.Links = make([]domain.Link, 0, n)
+	n := min(len(x.Links), domain.MaxLinks)
+	if n > 0 {
+		out.Links = make([]domain.Link, n)
 	}
-	for _, l := range x.Links[:min(len(x.Links), domain.MaxLinks)] {
-		link := domain.Link{
-			Kind: string(l.Kind), Property: text(l.Key), Target: text(l.Target), Anchor: text(l.Anchor), Display: text(l.Display),
-			Start: l.Range.Start, End: l.Range.Stop, InTable: l.InTable,
+	for i := range out.Links {
+		l, link := &x.Links[i], &out.Links[i]
+		link.Kind = string(l.Kind)
+		link.Property, link.Target, link.Anchor, link.Display = text(l.Key), text(l.Target), text(l.Anchor), text(l.Display)
+		link.Start, link.End, link.InTable = l.Range.Start, l.Range.Stop, l.InTable
+		if len(scalars) > 0 {
+			if s, ok := scalarOf(scalars, *l); ok {
+				link.Quote, link.Aliases = s.Quote, valueOf(s, aliasesProperty)
+			}
 		}
-		if s, ok := scalarOf(scalars, l); ok {
-			link.Quote, link.Aliases = s.Quote, valueOf(s, aliasesProperty)
-		}
-		out.Links = append(out.Links, link)
 	}
 	var tags, aliases []string
 	for _, s := range stringsOf(fm.Properties, "tags") {

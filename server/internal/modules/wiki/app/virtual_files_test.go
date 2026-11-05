@@ -16,6 +16,11 @@ type fileReads struct {
 	facts        map[uuid.UUID]app.FileIndexFacts
 	log          []app.VirtualLogChangeset
 	inboundCalls int
+	treeCalls    int
+	logCalls     int
+	logLimit     int
+	logContext   context.Context
+	logError     error
 }
 
 func (f *fileReads) Heads(context.Context, uuid.UUID) ([]app.FileIndexHead, error) {
@@ -33,13 +38,16 @@ func (f *fileReads) Inbound(context.Context, []uuid.UUID) (map[uuid.UUID]int, er
 	return nil, nil
 }
 func (f *fileReads) Nodes(context.Context, uuid.UUID) ([]app.VirtualTreeNode, error) {
+	f.treeCalls++
 	return f.nodes, nil
 }
 func (f *fileReads) ChangedAt(context.Context, []uuid.UUID) (map[uuid.UUID]time.Time, error) {
 	return nil, nil
 }
-func (f *fileReads) Recent(context.Context, uuid.UUID, int) ([]app.VirtualLogChangeset, error) {
-	return f.log, nil
+func (f *fileReads) Recent(ctx context.Context, _ uuid.UUID, limit int) ([]app.VirtualLogChangeset, error) {
+	f.logCalls++
+	f.logLimit, f.logContext = limit, ctx
+	return f.log, f.logError
 }
 
 type fileSources []app.VirtualSourceNode
@@ -49,6 +57,7 @@ func (f fileSources) Nodes(context.Context, uuid.UUID, uuid.UUID) ([]app.Virtual
 }
 
 func TestVirtualFiles(t *testing.T) {
+	t.Run("ingest", testVirtualIngestLog)
 	t.Run("groups", func(t *testing.T) {
 		root, parent, a, z, b, r, c := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 		alpha, beta := "Alpha", "Beta"

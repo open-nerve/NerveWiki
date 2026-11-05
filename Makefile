@@ -310,7 +310,10 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	@# 同事务来源准备与排除关系：实际Store参数、三统计/计划模式、重复keys及完整原生15列值。
 	cd server && go test -count=1 -v -run '^TestPreparedSource(ReadPlans|ReadDValues|ResidualDuplicateKeyPlan)$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
+	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
+	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestTrashHistoryAtItsBoundCountsInTimeWithForcedPlans$$' ./internal/modules/page/adapter/postgres
 	@# 搜索的守卫单独一行、带 -v：通过时也打出各个读的中位数，CI 的日志里看得到，下次重新测量有数据（M8/P5A 审查 C 的 M-2）
@@ -327,6 +330,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourcePrecheckConvergedPlansCostTheirActualExclusions$$' ./internal/modules/page/adapter/postgres
 	@# 相同10万来源语料的六个独立副本：三/四列索引的实际空间、温表构建和正常HTTP写入差异。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
+	@# S2-3：10本百万历史、全旧像与真实AccessExclusive交错，另一个default10m进程。
+	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsTenHistories$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint
@@ -372,6 +377,8 @@ test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守�
 	@# P4：真实SDK/REST的100k读和整本ZIP导出分别保留独立进程、样本与SQL证据，仍为默认10m。
 	cd server && go test -count=1 -v -run '^TestVirtualIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestVirtualExportOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	@# S2-3：真实来源预览批读与同本物理界；独立 !race 进程，保留默认10m。
+	cd server && go test -count=1 -v -run '^TestIngestVirtualLogPaths$$' ./internal/bootstrap
 	@# P4：完整100k ingestion与最大旧F/batch分别独立进程；原请求/提交预算与默认10m不变。
 	cd server && go test -count=1 -v -run '^TestIngestOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestAtTheBatchBoundaryTakesItsTime$$' ./internal/bootstrap
@@ -409,7 +416,7 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceForgetHundredThousandTakesItsTime$$' ./internal/bootstrap
 	@# P4/S2：五个额外合法来源形状分别独立进程，保各自三样本与原请求/单元预算、Go默认10m。
-	cd server && go test -count=1 -v -run '^TestIngestOfMaximumSourcePageTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfAMaximumSourcePageTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfMixedSourcePagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfUnreferencedSourcesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfMoreThanBatchSourcesTakesItsTime$$' ./internal/bootstrap

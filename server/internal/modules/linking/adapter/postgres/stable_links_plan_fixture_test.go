@@ -377,16 +377,22 @@ SELECT node_id,0,1,notebook_id,'wikilink','foreign','foreign',false FROM indexed
 	out := &stablePlanFixture{fixture: f, specs: slices.Clone(p.specs[:len(specs)]), inputs: p, trace: tr, state: state}
 	switch state {
 	case "no_statistics":
-	case "analyzed", "app_rebuild_after_analyzed":
+	case "analyzed", "app_rebuild_after_analyzed", bufferedRebuildState:
 		if err := f.s.Analyze(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	default:
 		t.Fatalf("unknown stable fixture state %q", state)
 	}
-	if state == "app_rebuild_after_analyzed" {
+	if state == "app_rebuild_after_analyzed" || state == bufferedRebuildState {
 		tr.begin()
-		rebuild := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: p, Publisher: p}, Contents: p, Notebooks: p, Parser: parser}
+		// Original three-version state stays streaming; the added state uses
+		// the default buffered protocol and must prove two-version history.
+		limit := uint64(1)
+		if state == bufferedRebuildState {
+			limit = 0
+		}
+		rebuild := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: p, Publisher: p}, Contents: p, Notebooks: p, Parser: parser, Writes: f.s, StagingLimit: limit}
 		out.rebuilt, err = rebuild.Notebook(t.Context(), f.eng)
 		history := tr.end()
 		links, unresolved := 0, 0
@@ -401,17 +407,25 @@ SELECT node_id,0,1,notebook_id,'wikilink','foreign','foreign',false FROM indexed
 		if err != nil || out.rebuilt.Pages != len(p.specs) || out.rebuilt.Links != links || out.rebuilt.Unresolved != unresolved || p.locked != 1 || p.rekeyed != 1 || len(p.events) != 1 {
 			t.Fatalf("real adapter rebuild: result=%+v err=%v locks=%d rekeys=%d events=%d", out.rebuilt, err, p.locked, p.rekeyed, len(p.events))
 		}
-		written := map[string]int64{}
-		for _, call := range history {
-			if call.Error != "" {
-				t.Fatalf("real rebuild query %s: %s", call.Name, call.Error)
+		if state == bufferedRebuildState {
+			pageRows := make(map[uuid.UUID]int, len(p.specs))
+			for _, s := range p.specs {
+				pageRows[s.ID] = s.N
 			}
-			written[call.Name] += call.RowsAffected
+			bufferedRebuildHistory(t, tr, history, pageRows)
+		} else {
+			written := map[string]int64{}
+			for _, call := range history {
+				if call.Error != "" {
+					t.Fatalf("real rebuild query %s: %s", call.Name, call.Error)
+				}
+				written[call.Name] += call.RowsAffected
+			}
+			if written["DeleteNotebooksLinks"] != int64(links) || written["InsertLinks"] != int64(links) || written["SetResolutions"]+written["SetOrderedSourceResolutions"] != int64(links-unresolved) || !slices.Equal(tr.terminal(), []string{"commit"}) {
+				t.Fatalf("real rebuild version history: commands=%v links=%d resolved=%d terminal=%v", written, links, links-unresolved, tr.terminal())
+			}
+			lintEvidence(t, "stable-rebuild-history", history)
 		}
-		if written["DeleteNotebooksLinks"] != int64(links) || written["InsertLinks"] != int64(links) || written["SetResolutions"] != int64(links-unresolved) || !slices.Equal(tr.terminal(), []string{"commit"}) {
-			t.Fatalf("real rebuild version history: commands=%v links=%d resolved=%d terminal=%v", written, links, links-unresolved, tr.terminal())
-		}
-		lintEvidence(t, "stable-rebuild-history", history)
 		// No post-Rebuild VACUUM/ANALYZE, no manual resolution repair.
 	}
 	out.statistics = stablePlanStatistics(t, f, state != "no_statistics")

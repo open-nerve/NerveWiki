@@ -99,14 +99,14 @@ SELECT node_id,0,1,notebook_id,'wikilink','foreign','foreign',false FROM indexed
 	var rebuilt app.Rebuilt
 	switch state {
 	case "adapter_no_statistics":
-	case "adapter_analyzed", "adapter_app_rebuild_after_analyzed":
+	case "adapter_analyzed", "adapter_app_rebuild_after_analyzed", bufferedRebuildState:
 		if err := f.s.Analyze(t.Context()); err != nil {
 			t.Fatal(err)
 		}
 	default:
 		t.Fatalf("unknown fixture state %q", state)
 	}
-	if state == "adapter_app_rebuild_after_analyzed" {
+	if state == "adapter_app_rebuild_after_analyzed" || state == bufferedRebuildState {
 		inputs := &setPlanInputs{notebook: f.eng, texts: texts, ids: ids}
 		names := []string{"source0", "source1", "noise", "x"}
 		pages := make(setIndexPages, len(ids))
@@ -114,8 +114,23 @@ SELECT node_id,0,1,notebook_id,'wikilink','foreign','foreign',false FROM indexed
 			pages[i] = domain.Node{ID: id, Path: []domain.Step{{ID: id, Key: names[i], Name: names[i]}}}
 		}
 		published := 0
-		rebuild := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: pages, Publisher: setIndexPublisher(func(context.Context, app.LinksChanged) error { published++; return nil })}, Contents: inputs, Notebooks: inputs, Parser: parser}
+		// Preserve the original state's explicit streaming fallback. Only the
+		// separately selected buffered state uses the production default.
+		limit := uint64(1)
+		var trace *stablePlanTrace
+		if state == bufferedRebuildState {
+			limit = 0
+			trace = &stablePlanTrace{}
+			pool := lintPool(t, f, trace, 1)
+			f.pool, f.s, f.tx = pool, postgresadapter.New(pool), postgres.NewTxManager(pool, time.Second)
+			trace.begin()
+		}
+		rebuild := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: pages, Publisher: setIndexPublisher(func(context.Context, app.LinksChanged) error { published++; return nil })}, Contents: inputs, Notebooks: inputs, Parser: parser, Writes: f.s, StagingLimit: limit}
 		rebuilt, err = rebuild.Notebook(t.Context(), f.eng)
+		if trace != nil {
+			history := trace.end()
+			bufferedRebuildHistory(t, trace, history, map[uuid.UUID]int{ids[0]: 4096, ids[1]: 4097, ids[2]: 10000, ids[3]: 0})
+		}
 		if err != nil || rebuilt.Pages != 4 || rebuilt.Links != 18193 || rebuilt.Unresolved != 10000 || len(rebuilt.Clashes) != 0 || !inputs.locked || !inputs.rekeyed || published != 1 {
 			t.Fatalf("real adapter app.Rebuild result=%+v err=%v locked=%t rekeyed=%t publish=%d", rebuilt, err, inputs.locked, inputs.rekeyed, published)
 		}
@@ -129,7 +144,7 @@ SELECT node_id,0,1,notebook_id,'wikilink','foreign','foreign',false FROM indexed
 	}
 	for _, l := range before {
 		want := domain.Resolution{}
-		if state == "adapter_app_rebuild_after_analyzed" {
+		if state == "adapter_app_rebuild_after_analyzed" || state == bufferedRebuildState {
 			want.ID = lintID(250)
 		}
 		if l.Resolution != want {
@@ -149,7 +164,7 @@ type setPlanCapture struct {
 }
 
 func (tr *setPlanCapture) TraceQueryStart(ctx context.Context, c *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
-	if strings.HasPrefix(d.SQL, "-- name: SetResolutions ") {
+	if setWriteQuery(d.SQL) != "" {
 		args := d.Args
 		if len(args) > 0 {
 			if _, ok := args[0].(pgx.QueryExecMode); ok {
@@ -159,7 +174,7 @@ func (tr *setPlanCapture) TraceQueryStart(ctx context.Context, c *pgx.Conn, d pg
 		tr.seen++
 		if len(args) != 5 {
 			tr.bad = "not five real arrays"
-		} else if tr.seen == 1 || tr.seen == 33 {
+		} else if tr.seen == 1 || tr.seen == 3 {
 			s := statement{sql: d.SQL}
 			for _, arg := range args {
 				switch v := arg.(type) {
@@ -219,30 +234,31 @@ func setPlanParameters(t *testing.T) (statement, statement) {
 		}
 		return cause
 	})
-	if !errors.Is(err, cause) || tr.bad != "" || tr.seen != 33 || tr.first.sql != tr.tail.sql {
+	if !errors.Is(err, cause) || tr.bad != "" || tr.seen != 3 || setWriteQuery(tr.first.sql) != "SetOrderedSourceResolutions" || setWriteQuery(tr.tail.sql) != "SetResolutions" {
 		t.Fatalf("real parameter capture=%d %s err=%v", tr.seen, tr.bad, err)
 	}
 	observer := setWriteFixture{fixture: f.fixture, trace: &tr.base}
-	lengths := setWrite256Lengths(32, 1)
-	for i, c := range observer.assertCalls(t, desired, lengths, pid) {
+	lengths := []int{4096, 4096, 1}
+	for i, c := range observer.assertCalls(t, desired, lengths, pid, pgx.QueryExecModeCacheDescribe, "SetOrderedSourceResolutions", "SetOrderedSourceResolutions", "SetResolutions") {
 		if c.Err != nil || c.Rows != int64(lengths[i]) {
 			t.Fatalf("capture real command=%+v", c)
 		}
 	}
 	observer.assertRows(t, f.before)
-	lintEvidence(t, "set-write-captured", map[string]any{"sql": tr.first.sql, "first_parameters": tr.first.args, "tail_parameters": tr.tail.args, "complete_calls": tr.base.snapshot()})
+	lintEvidence(t, "set-write-captured", map[string]any{"first_sql": tr.first.sql, "tail_sql": tr.tail.sql, "first_parameters": tr.first.args, "tail_parameters": tr.tail.args, "complete_calls": tr.base.snapshot()})
 	return tr.first, tr.tail
 }
 
 type setPlanNode struct {
-	Type      string        `json:"Node Type"`
-	Relation  string        `json:"Relation Name"`
-	Index     string        `json:"Index Name"`
-	Rows      float64       `json:"Actual Rows"`
-	Loops     float64       `json:"Actual Loops"`
-	Removed   float64       `json:"Rows Removed by Filter"`
-	Rechecked float64       `json:"Rows Removed by Index Recheck"`
-	Plans     []setPlanNode `json:"Plans"`
+	Type        string        `json:"Node Type"`
+	Relation    string        `json:"Relation Name"`
+	Index       string        `json:"Index Name"`
+	Rows        float64       `json:"Actual Rows"`
+	Loops       float64       `json:"Actual Loops"`
+	Removed     float64       `json:"Rows Removed by Filter"`
+	Rechecked   float64       `json:"Rows Removed by Index Recheck"`
+	JoinRemoved float64       `json:"Rows Removed by Join Filter"`
+	Plans       []setPlanNode `json:"Plans"`
 }
 
 func (n setPlanNode) reads() []setPlanNode {
@@ -254,6 +270,26 @@ func (n setPlanNode) reads() []setPlanNode {
 		out = append(out, child.reads()...)
 	}
 	return out
+}
+
+// Count input expansion and join work visible in the real plan.
+// PostgreSQL reports per-loop row averages, so retain float64 here.
+// These are work counts, not server CPU or all internal array operations.
+func (n setPlanNode) inputWork() (projectSetRows, functionScanWork, joinRemoved float64) {
+	if n.Type == "ProjectSet" {
+		projectSetRows = n.Rows * n.Loops
+	}
+	if n.Type == "Function Scan" {
+		functionScanWork = (n.Rows + n.Removed) * n.Loops
+	}
+	joinRemoved = n.JoinRemoved * n.Loops
+	for _, child := range n.Plans {
+		projected, scanned, removed := child.inputWork()
+		projectSetRows += projected
+		functionScanWork += scanned
+		joinRemoved += removed
+	}
+	return projectSetRows, functionScanWork, joinRemoved
 }
 
 type setPlanEvidence struct {
@@ -275,6 +311,8 @@ type setPlanEvidence struct {
 	PlanningWork, ExecutionWork                          map[string]lintWork
 	Plan                                                 json.RawMessage
 	Reads                                                []setPlanNode
+	ProjectSetRows, JoinFilterRowsRemoved                float64
+	FunctionScanWork                                     float64
 }
 
 // Exact observed SQL identity/mode/PID is checked by a narrow query tracer.
@@ -340,7 +378,7 @@ func setPlanRun(t *testing.T, state, mode, operation string, s statement) {
 	ev := setPlanEvidence{Case: t.Name(), State: state, Mode: mode, Operation: operation, SQL: s.sql, Statistics: f.statistics, Rebuilt: f.rebuilt, Settings: map[string]string{}}
 	n := len(s.args[0].([]uuid.UUID))
 	ev.ArgumentLengths = [5]int{n, len(s.args[1].([]int32)), len(s.args[2].([]uuid.UUID)), len(s.args[3].([]bool)), len(s.args[4].([]bool))}
-	if ev.ArgumentLengths != [5]int{n, n, n, n, n} || (n != 256 && n != 1) {
+	if ev.ArgumentLengths != [5]int{n, n, n, n, n} || (n != 4096 && n != 1) {
 		t.Fatalf("captured parameter shape=%v", ev.ArgumentLengths)
 	}
 	cause := errors.New("plan observation must roll back all original UPDATE effects")
@@ -458,6 +496,7 @@ func setPlanRun(t *testing.T, state, mode, operation string, s statement) {
 				return fmt.Errorf("actual UPDATE plan: %s: got %d plans, want 1", ev.Plan, len(decoded))
 			}
 			ev.Reads = decoded[0].Plan.reads()
+			ev.ProjectSetRows, ev.FunctionScanWork, ev.JoinFilterRowsRemoved = decoded[0].Plan.inputWork()
 		}
 		lintEvidence(t, "set-write-plan", ev)
 		if tr.calls != 1 || tr.pid != ev.PID || tr.mode != pgx.QueryExecModeDescribeExec {
@@ -491,6 +530,15 @@ func setPlanRun(t *testing.T, state, mode, operation string, s statement) {
 			if len(ev.Reads) == 0 || inspected > float64(4*n) {
 				t.Errorf("actual scan rows/loops reached noise: %+v, sum%g limit%d", ev.Reads, inspected, 4*n)
 			}
+			if ev.ProjectSetRows > float64(4*n) {
+				t.Errorf("actual ProjectSet rows/loops repeated input: sum%g limit%d", ev.ProjectSetRows, 4*n)
+			}
+			if ev.JoinFilterRowsRemoved > float64(4*n) {
+				t.Errorf("actual join-filter rows/loops repeated comparisons: sum%g limit%d", ev.JoinFilterRowsRemoved, 4*n)
+			}
+			if ev.FunctionScanWork > float64(4*n) {
+				t.Errorf("actual Function Scan rows/filter/loops repeated input: sum%g limit%d", ev.FunctionScanWork, 4*n)
+			}
 		}
 		setPlanPostState(t, ctx, f, s, true)
 		return cause
@@ -502,7 +550,7 @@ func setPlanRun(t *testing.T, state, mode, operation string, s statement) {
 }
 
 // Thirty-six leaves: three explicit adapter states, three planner modes,
-// actual first256/final1 parameters of a complete 8193-row write, and isolated
+// actual first4096/final1 parameters of a complete 8193-row write, and isolated
 // Exec/EXPLAIN databases.
 func TestSetResolutionWritePlans(t *testing.T) {
 	first, tail := setPlanParameters(t)
@@ -513,7 +561,7 @@ func TestSetResolutionWritePlans(t *testing.T) {
 					for _, shape := range []struct {
 						name string
 						s    statement
-					}{{"first256", first}, {"tail1", tail}} {
+					}{{"first4096", first}, {"tail1", tail}} {
 						t.Run(shape.name, func(t *testing.T) {
 							for _, operation := range []string{"exec", "explain"} {
 								t.Run(operation, func(t *testing.T) { setPlanRun(t, state, mode, operation, shape.s) })

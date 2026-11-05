@@ -62,10 +62,12 @@ func (ix *index) add(at int, line []byte) {
 		}
 		return -1
 	}
-	ix.comment = max(ix.comment, last("-->"))
-	ix.instruction = max(ix.instruction, last("?>"))
-	ix.declaration = max(ix.declaration, last(">"))
-	ix.cdata = max(ix.cdata, last("]]>"))
+	if k := bytes.LastIndexByte(line, '>'); k >= 0 {
+		ix.declaration = max(ix.declaration, at+k)
+		ix.comment = max(ix.comment, last("-->"))
+		ix.instruction = max(ix.instruction, last("?>"))
+		ix.cdata = max(ix.cdata, last("]]>"))
+	}
 	runsOf(line, func(c byte) bool { return c == '`' }, func(start, end int) {
 		ix.ticks[end-start] = at + start
 	})

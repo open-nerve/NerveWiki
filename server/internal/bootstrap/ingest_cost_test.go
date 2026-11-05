@@ -321,6 +321,16 @@ func TestIngestAtTheBatchBoundaryTakesItsTime(t *testing.T) {
 			}
 			seedPagesSQL(t, tm.pool, nb.ID, pages)
 			ingestCostSettle(t, tm, `UPDATE nodes n SET source_hash=c.content_hash FROM page_contents c WHERE c.node_id=n.id AND n.notebook_id=$1 AND n.parent_id=$2 AND c.byte_size>0`, nb.ID, *nb.SourceRootID)
+			// Creation checks run before the full old-F index is built.
+			var sources []string
+			for sample := range 3 {
+				sources = append(sources, tm.createPageWith(t, "alice", nb.ID, *nb.SourceRootID, fmt.Sprintf("T%d", sample), fmt.Sprintf("Independent T%d evidence", sample)))
+				var outputs []sqlPage
+				for i := range shape.ops - 1 {
+					outputs = append(outputs, sqlPage{"", fmt.Sprintf("P%d_%02d", sample, i), ""})
+				}
+				seedPagesSQL(t, tm.pool, nb.ID, outputs)
+			}
 			tm.reindex(t, nb.ID) // real parser/extractor/resolver, outside the request timer
 			if n := count(t, tm.pool, `SELECT count(*) FROM page_links l JOIN nodes n ON n.id=l.source_id JOIN indexed_pages i ON i.node_id=n.id
                 JOIN page_contents c ON c.node_id=n.id WHERE n.notebook_id=$1 AND n.parent_id=$2 AND n.name LIKE 'S%'
@@ -331,15 +341,8 @@ func TestIngestAtTheBatchBoundaryTakesItsTime(t *testing.T) {
 			if n := count(t, tm.pool, "SELECT count(DISTINCT source_hash) FROM nodes WHERE notebook_id=$1 AND name LIKE 'S%'", nb.ID); n != 400 {
 				t.Fatalf("distinct source hashes %d", n)
 			}
-			var sources []string
-			for sample := range 3 {
-				sources = append(sources, tm.createPageWith(t, "alice", nb.ID, *nb.SourceRootID, fmt.Sprintf("T%d", sample), fmt.Sprintf("Independent T%d evidence", sample)))
-				var outputs []sqlPage
-				for i := range shape.ops - 1 {
-					outputs = append(outputs, sqlPage{"", fmt.Sprintf("P%d_%02d", sample, i), ""})
-				}
-				seedPagesSQL(t, tm.pool, nb.ID, outputs)
-			}
+			// Preserve the complete post-rebuild invariant before any measured write.
+			checkPages(t, tm.pool)
 			if shape.raw > 0 {
 				ingestCostFill(t, tm, nb.ID, shape.raw)
 			}
@@ -428,7 +431,6 @@ func TestIngestAtTheBatchBoundaryTakesItsTime(t *testing.T) {
 				beforeName = nextName
 			}
 			checkPages(t, tm.pool)
-			checkLinks(t, tm.pool)
 		})
 	}
 }

@@ -55,12 +55,14 @@ type Admin struct {
 
 // NewAdmin returns the rebuild of the indexes.
 func NewAdmin(d AdminDeps) Admin {
+	store := postgresadapter.New(d.Pool)
 	return Admin{rebuild: app.Rebuild{
 		Tx:        d.Tx,
-		Index:     app.Index{Store: postgresadapter.New(d.Pool), Pages: d.Pages, Publisher: d.Publisher},
+		Index:     app.Index{Store: store, Pages: d.Pages, Publisher: d.Publisher},
 		Contents:  d.Contents,
 		Notebooks: d.Notebooks,
 		Parser:    markdownadapter.NewParser(d.Markdown, d.Budget),
+		Writes:    store,
 	}}
 }
 

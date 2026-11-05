@@ -84,7 +84,7 @@ func newRebuild(w *world, texts map[string]string) (app.Rebuild, *contents, *not
 		c.texts[w.id(path)] = text
 	}
 	nb := &notebooks{id: w.notebook, workspace: uuid.NewV7()}
-	return app.Rebuild{Tx: tx{}, Index: w.index, Contents: c, Notebooks: nb, Parser: parser{}}, c, nb
+	return app.Rebuild{Tx: tx{}, Index: w.index, Contents: c, Notebooks: nb, Parser: parser{}, Writes: w.store}, c, nb
 }
 
 // A rebuild drops the notebook's rows, those of a page no longer there

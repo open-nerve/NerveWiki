@@ -49,6 +49,16 @@ func TestStablePageLinksPreserveLegacyErrorsAndTheirOrder(t *testing.T) {
 				l.Target = "Other.md"
 				f.Links = append(f.Links, l)
 			}},
+		{name: "late_prefix_duplicate", code: "23505", constraint: "page_links_pkey", failedSQL: "InsertLinks",
+			prepare: func(_ *app.Page, f *domain.Facts) {
+				f.Links = []domain.Link{
+					{Kind: "link", Target: "Note", Start: 0, End: 4},
+					{Kind: "link", Target: "Note", Start: 10, End: 14},
+					{Kind: "link", Target: "Note", Start: 20, End: 24},
+					{Kind: "link", Target: "Note", Start: 5, End: 9},
+					{Kind: "link", Target: "Other.md", Start: 10, End: 17},
+				}
+			}},
 		{name: "int32_collision", code: "23505", constraint: "page_links_pkey", failedSQL: "InsertLinks",
 			prepare: func(_ *app.Page, f *domain.Facts) {
 				l := f.Links[0]

@@ -190,9 +190,13 @@ func RenderLog(in RenderLogInput, maxBytes int) ([]byte, error) {
 	}
 	return renderFile("# Log\n\n", len(in.Items), maxBytes, footer, func(i int) (string, error) {
 		it := in.Items[i]
-		line := fmt.Sprintf("- %s %s — %s; client: %s; by: %s; nodes: %d; contents: %d; ingests: %d",
+		ingests := fmt.Sprint(it.IngestCount)
+		if it.IngestCount == 10000 {
+			ingests += "+"
+		}
+		line := fmt.Sprintf("- %s %s — %s; client: %s; by: %s; nodes: %d; contents: %d; ingests: %s",
 			it.CreatedAt.UTC().Format(time.RFC3339), it.ID, fileLabel(it.Kind, 256), fileLabel(it.Client, 256),
-			fileLabel(it.ByName, 256), it.NodeCount, it.ContentCount, it.IngestCount)
+			fileLabel(it.ByName, 256), it.NodeCount, it.ContentCount, ingests)
 		if it.Message != nil {
 			line += "; message: " + fileLabel(*it.Message, 500)
 		}

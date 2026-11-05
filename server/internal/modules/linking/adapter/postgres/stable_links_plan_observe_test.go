@@ -27,20 +27,21 @@ const stablePlanDelete = "DeleteMissingPageLinks"
 const stablePlanWrite = "WritePageLinksRetainingEqualPrefiltered"
 
 type stablePlanCall struct {
-	Name, SQL, Kind, Error, ArgumentSHA, PreparedName string
-	Args                                              []any
-	ArgumentTypes, LeadingOptions                     []string
-	PID                                               uint32
-	DefaultMode                                       pgx.QueryExecMode
-	StatementCapacity, DescriptionCapacity            int
-	RowsAffected                                      int64
+	Name, SQL, Kind, Error, ArgumentSHA, PreparedName, CommandTag string
+	Args                                                          []any
+	ArgumentTypes, LeadingOptions                                 []string
+	PID                                                           uint32
+	DefaultMode                                                   pgx.QueryExecMode
+	StatementCapacity, DescriptionCapacity                        int
+	RowsAffected                                                  int64
 }
 type stablePlanTrace struct {
-	mu       sync.Mutex
-	active   bool
-	calls    []stablePlanCall
-	ends     []string
-	prepares map[string]string
+	mu         sync.Mutex
+	active     bool
+	calls      []stablePlanCall
+	ends       []string
+	prepares   map[string]string
+	boundaries []bufferedPlanBoundary
 }
 type stablePlanTraceKey struct{}
 
@@ -70,6 +71,11 @@ func (tr *stablePlanTrace) TraceQueryStart(ctx context.Context, c *pgx.Conn, d p
 	}
 	if !tr.active {
 		return ctx
+	}
+	if plain == "begin" || plain == "commit" || plain == "rollback" {
+		i := len(tr.boundaries)
+		tr.boundaries = append(tr.boundaries, bufferedPlanBoundary{SQL: plain, PID: c.PgConn().PID()})
+		return context.WithValue(ctx, bufferedPlanBoundaryKey{}, i)
 	}
 	fields := strings.Fields(strings.SplitN(d.SQL, "\n", 2)[0])
 	if len(fields) != 4 || fields[0] != "--" || fields[1] != "name:" {
@@ -105,6 +111,15 @@ func (tr *stablePlanTrace) TraceQueryStart(ctx context.Context, c *pgx.Conn, d p
 	return context.WithValue(ctx, stablePlanTraceKey{}, i)
 }
 func (tr *stablePlanTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryEndData) {
+	if i, ok := ctx.Value(bufferedPlanBoundaryKey{}).(int); ok {
+		tr.mu.Lock()
+		defer tr.mu.Unlock()
+		tr.boundaries[i].CommandTag = d.CommandTag.String()
+		if d.Err != nil {
+			tr.boundaries[i].Error = d.Err.Error()
+		}
+		return
+	}
 	i, ok := ctx.Value(stablePlanTraceKey{}).(int)
 	if !ok {
 		return
@@ -112,6 +127,7 @@ func (tr *stablePlanTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, d pgx
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	tr.calls[i].RowsAffected = d.CommandTag.RowsAffected()
+	tr.calls[i].CommandTag = d.CommandTag.String()
 	if d.Err != nil {
 		tr.calls[i].Error = d.Err.Error()
 	}
@@ -132,6 +148,7 @@ func (tr *stablePlanTrace) begin() {
 	tr.active = true
 	tr.calls = nil
 	tr.ends = nil
+	tr.boundaries = nil
 }
 func (tr *stablePlanTrace) end() []stablePlanCall {
 	tr.mu.Lock()
@@ -639,6 +656,11 @@ func stablePlanObserve(t *testing.T, ctx context.Context, f *stablePlanFixture, 
 		e.VersionLedger["rebuild_resolution_updates"] = known
 		e.VersionLedger["source_versions_created_since_pristine_upper"] = 2*s.N + known
 	}
+	if f.state == bufferedRebuildState {
+		e.VersionLedger["rebuild_old_delete_existing_versions"] = s.N
+		e.VersionLedger["rebuild_new_inserts"] = s.N
+		e.VersionLedger["source_versions_created_since_pristine_upper"] = 2 * s.N
+	}
 	if c.Name == stablePlanWrite {
 		e.VersionLedger["prefix_deletes"] = s.Z
 		e.VersionLedger["visible_before_statement"] = s.N - s.Z
@@ -851,10 +873,15 @@ func stablePlanCheckTree(t *testing.T, s stablePlanSpec, e stablePlanEvidence, r
 
 // This fixture VACUUMs the pristine seed. Only the real rebuild creates extra
 // versions before observation: delete the original, insert its replacement,
-// and update each originally resolved row once. Apply that literal history
+// and (only in streaming fallback) update each originally resolved row once.
+// The default buffered state inserts the final row with no resolution UPDATE.
+// Apply that literal history
 // only to the selected keys, never to all N when checking Delete or Write.
 func stablePlanSelectedVersions(rows []stablePlanRow, state string) int64 {
 	n := int64(len(rows))
+	if state == bufferedRebuildState {
+		return 2 * n
+	}
 	if state == "app_rebuild_after_analyzed" {
 		n += int64(len(rows))
 		for _, r := range rows {

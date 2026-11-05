@@ -28,20 +28,28 @@ type setWriteKey struct {
 	Source uuid.UUID
 	Start  int32
 }
+type setWriteValue struct {
+	Key        setWriteKey
+	Resolution domain.Resolution
+}
 type setWriteCall struct {
-	PID         uint32
-	Mode        pgx.QueryExecMode
-	Lengths     [5]int
-	First, Last setWriteKey
-	Rows        int64
-	Err         error
-	Done        bool
-	BadArgs     string
+	Query                                  string
+	Values                                 []setWriteValue
+	PID                                    uint32
+	Mode                                   pgx.QueryExecMode
+	StatementCapacity, DescriptionCapacity int
+	Lengths                                [5]int
+	First, Last                            setWriteKey
+	Rows                                   int64
+	Err                                    error
+	Done                                   bool
+	BadArgs                                string
 }
 type setWriteTrace struct {
-	mu    sync.Mutex
-	calls []setWriteCall
-	after func(context.Context, int, setWriteCall)
+	mu       sync.Mutex
+	calls    []setWriteCall
+	prepared []lintPrepareObservation
+	after    func(context.Context, int, setWriteCall)
 }
 type setWriteTraceKey struct{}
 type setWriteTraceAt struct {
@@ -49,11 +57,23 @@ type setWriteTraceAt struct {
 	index int
 }
 
+// Only these two generated identities belong to this private write protocol.
+func setWriteQuery(sql string) string {
+	for _, name := range []string{"SetResolutions", "SetOrderedSourceResolutions"} {
+		if strings.HasPrefix(sql, "-- name: "+name+" ") {
+			return name
+		}
+	}
+	return ""
+}
+
 func (tr *setWriteTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
-	if !strings.HasPrefix(d.SQL, "-- name: SetResolutions ") {
+	query := setWriteQuery(d.SQL)
+	if query == "" {
 		return ctx
 	}
-	call := setWriteCall{PID: conn.PgConn().PID()}
+	cfg := conn.Config()
+	call := setWriteCall{Query: query, PID: conn.PgConn().PID(), StatementCapacity: cfg.StatementCacheCapacity, DescriptionCapacity: cfg.DescriptionCacheCapacity}
 	args := d.Args
 	if len(args) > 0 {
 		if mode, ok := args[0].(pgx.QueryExecMode); ok {
@@ -72,6 +92,12 @@ func (tr *setWriteTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, d 
 			call.BadArgs = fmt.Sprintf("parameter types %T %T %T %T %T", args[0], args[1], args[2], args[3], args[4])
 		} else {
 			call.Lengths = [5]int{len(sources), len(starts), len(targets), len(ambiguous), len(assets)}
+			if len(starts) == len(sources) && len(targets) == len(sources) && len(ambiguous) == len(sources) && len(assets) == len(sources) {
+				call.Values = make([]setWriteValue, len(sources))
+				for i := range sources {
+					call.Values[i] = setWriteValue{setWriteKey{sources[i], starts[i]}, domain.Resolution{ID: targets[i], Ambiguous: ambiguous[i], Asset: assets[i]}}
+				}
+			}
 			if len(sources) > 0 && len(starts) == len(sources) {
 				call.First = setWriteKey{sources[0], starts[0]}
 				call.Last = setWriteKey{sources[len(sources)-1], starts[len(starts)-1]}
@@ -111,6 +137,7 @@ type setWriteFixture struct {
 	writer          *pgxpool.Pool
 	trace           *setWriteTrace
 	before, desired []app.Link
+	sources         []uuid.UUID
 }
 
 func newSetWriteFixture(t *testing.T, n int) setWriteFixture {
@@ -146,11 +173,15 @@ func newSetWriteFixture(t *testing.T, n int) setWriteFixture {
 			desired[i].Resolution = domain.Resolution{ID: lintID(251), Asset: true}
 		}
 	}
-	return setWriteFixture{fixture: f, writer: pool, trace: tr, before: before, desired: desired}
+	return setWriteFixture{fixture: f, writer: pool, trace: tr, before: before, desired: desired, sources: []uuid.UUID{{}, lintID(1)}}
 }
 func (f setWriteFixture) assertRows(t *testing.T, want []app.Link) {
 	t.Helper()
-	got, err := f.s.Links(t.Context(), f.eng, domain.Reach{Sources: []uuid.UUID{{}, lintID(1)}})
+	sources := f.sources
+	if sources == nil {
+		sources = []uuid.UUID{{}, lintID(1)}
+	}
+	got, err := f.s.Links(t.Context(), f.eng, domain.Reach{Sources: sources})
 	if err != nil || !slices.Equal(got, want) {
 		at := 0
 		for at < min(len(got), len(want)) && got[at] == want[at] {
@@ -174,20 +205,43 @@ func (f setWriteFixture) set(ctx context.Context, links []app.Link) (uint32, err
 	})
 	return pid, err
 }
-func (f setWriteFixture) assertCalls(t *testing.T, links []app.Link, lengths []int, pid uint32) []setWriteCall {
+func (f setWriteFixture) assertCalls(t *testing.T, links []app.Link, lengths []int, pid uint32, wantMode pgx.QueryExecMode, queries ...string) []setWriteCall {
 	t.Helper()
 	calls := f.trace.snapshot()
-	t.Logf("SETWRITE actual: %+v", calls)
+	brief := slices.Clone(calls)
+	for i := range brief {
+		brief[i].Values = nil
+	}
+	t.Logf("SETWRITE actual: %+v", brief)
 	if len(calls) != len(lengths) {
-		t.Fatalf("SET_WRITE_BATCHES: got %d actual SQL calls, want lengths %v; calls=%+v", len(calls), lengths, calls)
+		t.Fatalf("SET_WRITE_BATCHES: got %d actual SQL calls, want lengths %v; calls=%+v", len(calls), lengths, brief)
+	}
+	if len(queries) != 0 && len(queries) != len(lengths) {
+		t.Fatal("test query identities do not match expected lengths")
 	}
 	at := 0
 	for i, c := range calls {
 		n := lengths[i]
-		if c.BadArgs != "" || !c.Done || c.PID == 0 || pid != 0 && c.PID != pid || c.Mode != pgx.QueryExecModeDescribeExec || c.Lengths != [5]int{n, n, n, n, n} {
-			t.Fatalf("SET_WRITE_PARAMETERS: call %d=%+v, want five arrays of %d on writer %d through DescribeExec", i, c, n, pid)
+		query := "SetResolutions"
+		if len(queries) > 0 {
+			query = queries[i]
+		}
+		if c.Query != query {
+			t.Fatalf("SET_WRITE_QUERY: statement%d=%q want%q", i, c.Query, query)
+		}
+		if c.BadArgs != "" || !c.Done || c.PID == 0 || pid != 0 && c.PID != pid || c.Mode != wantMode || c.Lengths != [5]int{n, n, n, n, n} {
+			t.Fatalf("SET_WRITE_PARAMETERS: call %d=%+v, want five arrays of %d on writer %d through %v", i, c, n, pid, wantMode)
 		}
 		if n > 0 {
+			if len(c.Values) != n {
+				t.Fatalf("SET_WRITE_VALUES: statement%d observed%d want%d", i, len(c.Values), n)
+			}
+			for j, v := range c.Values {
+				l := links[at+j]
+				if v != (setWriteValue{setWriteKey{l.SourceID, int32(l.Start)}, l.Resolution}) {
+					t.Fatalf("SET_WRITE_VALUES: statement%d row%d actual%+v want%+v", i, j, v, l)
+				}
+			}
 			first, last := links[at], links[at+n-1]
 			if c.First != (setWriteKey{first.SourceID, int32(first.Start)}) || c.Last != (setWriteKey{last.SourceID, int32(last.Start)}) {
 				t.Fatalf("SET_WRITE_TAIL: call %d endpoints=%+v/%+v, want %+v/%+v", i, c.First, c.Last, first, last)
@@ -220,19 +274,21 @@ func TestSetResolutionsUsesCompleteBoundedStatements(t *testing.T) {
 		n       int
 		lengths []int
 		groups  [4]int
+		mode    pgx.QueryExecMode
+		queries []string
 	}{
-		{"nil", 0, []int{0}, [4]int{}},
-		{"empty", 0, []int{0}, [4]int{}},
-		{"255", 255, []int{255}, [4]int{64, 64, 64, 63}},
-		{"256", 256, []int{256}, [4]int{64, 64, 64, 64}},
-		{"257", 257, []int{256, 1}, [4]int{65, 64, 64, 64}},
-		{"512", 512, []int{256, 256}, [4]int{128, 128, 128, 128}},
-		{"513", 513, []int{256, 256, 1}, [4]int{129, 128, 128, 128}},
-		{"4095", 4095, setWrite256Lengths(15, 255), [4]int{1024, 1024, 1024, 1023}},
-		{"4096", 4096, setWrite256Lengths(16, 0), [4]int{1024, 1024, 1024, 1024}},
-		{"4097", 4097, setWrite256Lengths(16, 1), [4]int{1025, 1024, 1024, 1024}},
-		{"8192", 8192, setWrite256Lengths(32, 0), [4]int{2048, 2048, 2048, 2048}},
-		{"8193", 8193, setWrite256Lengths(32, 1), [4]int{2049, 2048, 2048, 2048}},
+		{"nil", 0, []int{0}, [4]int{}, pgx.QueryExecModeDescribeExec, nil},
+		{"empty", 0, []int{0}, [4]int{}, pgx.QueryExecModeDescribeExec, nil},
+		{"255", 255, []int{255}, [4]int{64, 64, 64, 63}, pgx.QueryExecModeDescribeExec, nil},
+		{"256", 256, []int{256}, [4]int{64, 64, 64, 64}, pgx.QueryExecModeDescribeExec, nil},
+		{"257", 257, []int{257}, [4]int{65, 64, 64, 64}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions"}},
+		{"512", 512, []int{512}, [4]int{128, 128, 128, 128}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions"}},
+		{"513", 513, []int{513}, [4]int{129, 128, 128, 128}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions"}},
+		{"4095", 4095, []int{4095}, [4]int{1024, 1024, 1024, 1023}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions"}},
+		{"4096", 4096, []int{4096}, [4]int{1024, 1024, 1024, 1024}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions"}},
+		{"4097", 4097, []int{4096, 1}, [4]int{1025, 1024, 1024, 1024}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions", "SetResolutions"}},
+		{"8192", 8192, []int{4096, 4096}, [4]int{2048, 2048, 2048, 2048}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions", "SetOrderedSourceResolutions"}},
+		{"8193", 8193, []int{4096, 4096, 1}, [4]int{2049, 2048, 2048, 2048}, pgx.QueryExecModeCacheDescribe, []string{"SetOrderedSourceResolutions", "SetOrderedSourceResolutions", "SetResolutions"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSetWriteFixture(t, tc.n)
@@ -257,7 +313,7 @@ func TestSetResolutionsUsesCompleteBoundedStatements(t *testing.T) {
 			if err != nil || groups != tc.groups {
 				t.Fatalf("independent groups=%v want%v: %v", groups, tc.groups, err)
 			}
-			for i, c := range f.assertCalls(t, links, tc.lengths, pid) {
+			for i, c := range f.assertCalls(t, links, tc.lengths, pid, tc.mode, tc.queries...) {
 				if c.Err != nil || c.Rows != int64(tc.lengths[i]) {
 					t.Fatalf("actual completed write %d: %+v", i, c)
 				}
@@ -279,7 +335,7 @@ func TestSetResolutionsUsesCompleteBoundedStatements(t *testing.T) {
 		want := slices.Clone(f.before)
 		copy(want[4095:4352], links)
 		f.assertRows(t, want)
-		for i, c := range f.assertCalls(t, links, []int{256, 1}, pid) {
+		for i, c := range f.assertCalls(t, links, []int{256, 1}, pid, pgx.QueryExecModeCacheDescribe) {
 			if c.Err != nil || c.Rows != int64([]int{256, 1}[i]) {
 				t.Fatalf("mixed-source actual completed statement %d: %+v", i, c)
 			}
@@ -361,7 +417,7 @@ func TestSetResolutionsRetainsSingleStatementFallback(t *testing.T) {
 				}
 				f.assertRows(t, f.desired)
 			}
-			calls := f.assertCalls(t, links, []int{n}, pid)
+			calls := f.assertCalls(t, links, []int{n}, pid, pgx.QueryExecModeDescribeExec)
 			wantRows := n
 			if missing {
 				wantRows--
@@ -387,8 +443,8 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 				lintExec(t, f.fixture, "DELETE FROM page_links WHERE source_id=$1 AND range_start=4096", lintID(1))
 				f.before = slices.DeleteFunc(f.before, func(l app.Link) bool { return l.SourceID == lintID(1) && l.Start == 4096 })
 			} else {
-				// Preserve the original bad key at 4096: it must now fail statement 17,
-				// after sixteen real statements have succeeded in the same transaction.
+				// Preserve the original bad key at 4096: the second new statement fails
+				// after all 4096 preceding keys succeeded in the same transaction.
 				f.desired[4096].Resolution = domain.Resolution{Asset: true}
 			}
 			var callback error
@@ -402,11 +458,13 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 				callback = f.s.SetResolutions(ctx, f.desired)
 				return callback
 			})
-			lengths := setWrite256Lengths(17, 0)
+			lengths := []int{4096, 4096}
+			queries := []string{"SetOrderedSourceResolutions", "SetOrderedSourceResolutions"}
 			if kind == "missing_first_and_tail" {
-				lengths = setWrite256Lengths(32, 1)
+				lengths = []int{4096, 4096, 1}
+				queries = append(queries, "SetResolutions")
 			}
-			calls := f.assertCalls(t, f.desired, lengths, pid)
+			calls := f.assertCalls(t, f.desired, lengths, pid, pgx.QueryExecModeCacheDescribe, queries...)
 			if err == nil || callback == nil || !errors.Is(err, callback) {
 				t.Fatalf("callback/manager lost original error: %v / %v", callback, err)
 			}
@@ -415,11 +473,11 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 					t.Fatalf("aggregate missing rows: %v", callback)
 				}
 				for i, c := range calls {
-					want := int64(256)
+					want := int64(4096)
 					switch i {
 					case 0:
-						want = 255
-					case 32:
+						want = 4095
+					case 2:
 						want = 0
 					}
 					if c.Err != nil || c.Rows != want {
@@ -428,11 +486,11 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 				}
 			} else {
 				var pg *pgconn.PgError
-				if !errors.As(callback, &pg) || pg.Code != "23514" || pg.ConstraintName != "page_links_resolved_asset_check" || !strings.HasPrefix(callback.Error(), "set 8193 links' resolutions: ") || !errors.Is(callback, calls[16].Err) {
+				if !errors.As(callback, &pg) || pg.Code != "23514" || pg.ConstraintName != "page_links_resolved_asset_check" || !strings.HasPrefix(callback.Error(), "set 8193 links' resolutions: ") || !errors.Is(callback, calls[1].Err) {
 					t.Fatalf("later real CHECK lost precedence/identity: callback=%v calls=%+v", callback, calls)
 				}
-				for i, c := range calls[:16] {
-					want := int64(256)
+				for i, c := range calls[:1] {
+					want := int64(4096)
 					if i == 0 && kind == "missing_then_check" {
 						want--
 					}
@@ -440,8 +498,8 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 						t.Fatalf("real success before later CHECK: statement%d=%+v wantRows%d", i, c, want)
 					}
 				}
-				if calls[16].Err == nil || calls[16].Rows != 0 {
-					t.Fatalf("real statement17 CHECK boundary: %+v", calls[16])
+				if calls[1].Err == nil || calls[1].Rows != 0 {
+					t.Fatalf("real statement2 CHECK boundary: %+v", calls[1])
 				}
 			}
 			f.assertRows(t, f.before)
@@ -451,12 +509,25 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 		name    string
 		after   int
 		lengths []int
+		queries []string
 	}{
-		{"cancel_between_successful_statements", 15, setWrite256Lengths(17, 0)},
-		{"cancel_at_new_boundary", 0, []int{256, 256}},
+		{"cancel_between_successful_statements", 0, []int{4096, 4096}, []string{"SetOrderedSourceResolutions", "SetOrderedSourceResolutions"}},
+		{"cancel_at_new_boundary", 0, setWrite256Lengths(2, 0), nil},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f := newSetWriteFixture(t, 8193)
+			var f setWriteFixture
+			if tc.name == "cancel_at_new_boundary" {
+				// Same 8193-row request, with 33 short sources: after256 remains
+				// a real successful original-SQL boundary before cancellation.
+				runs := make([]int, 33)
+				for i := range runs {
+					runs[i] = 256
+				}
+				runs[32] = 1
+				f = newSetWriteRuns(t, runs)
+			} else {
+				f = newSetWriteFixture(t, 8193)
+			}
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			f.trace.after = func(_ context.Context, i int, c setWriteCall) {
@@ -475,9 +546,9 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 				callback = f.s.SetResolutions(ctx, f.desired)
 				return callback
 			})
-			calls := f.assertCalls(t, f.desired, tc.lengths, pid)
+			calls := f.assertCalls(t, f.desired, tc.lengths, pid, pgx.QueryExecModeCacheDescribe, tc.queries...)
 			for i, c := range calls[:len(calls)-1] {
-				if c.Err != nil || c.Rows != 256 {
+				if c.Err != nil || c.Rows != int64(tc.lengths[i]) {
 					t.Fatalf("real successful prefix before cancellation: statement%d=%+v", i, c)
 				}
 			}
@@ -497,13 +568,13 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		f.trace.after = func(_ context.Context, i int, c setWriteCall) {
-			if i == 16 && c.Err == nil {
+			if i == 1 && c.Err == nil {
 				cancel()
 			}
 		}
 		pid, err := f.set(ctx, f.desired)
-		lengths := setWrite256Lengths(16, 1)
-		calls := f.assertCalls(t, f.desired, lengths, pid)
+		lengths := []int{4096, 1}
+		calls := f.assertCalls(t, f.desired, lengths, pid, pgx.QueryExecModeCacheDescribe, "SetOrderedSourceResolutions", "SetResolutions")
 		if err != nil || !errors.Is(ctx.Err(), context.Canceled) {
 			t.Fatalf("completed statements must keep original detached commit: ctx=%v manager=%v actual=%+v", ctx.Err(), err, calls)
 		}
@@ -532,7 +603,7 @@ func TestSetResolutionsPreservesFailureAndRollsBack(t *testing.T) {
 				callback = f.s.SetResolutions(ctx, links)
 				return callback
 			})
-			calls := f.assertCalls(t, links, []int{0}, pid)
+			calls := f.assertCalls(t, links, []int{0}, pid, pgx.QueryExecModeDescribeExec)
 			if !errors.Is(callback, context.Canceled) || !errors.Is(err, context.Canceled) || !errors.Is(calls[0].Err, context.Canceled) {
 				t.Fatalf("empty SQL/cause suppressed: %v / %v / %+v", callback, err, calls)
 			}

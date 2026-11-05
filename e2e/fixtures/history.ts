@@ -1,6 +1,7 @@
 import type { ApiClient } from "@nervewiki/api-client";
 
 import { bearer } from "./auth";
+import { getVersion } from "./pages";
 
 // A notebook's history through the API (M8 design 4.7, 4.8; M8/P3 design
 // 4.8): its log, a changeset, its changes, and a revert of it.
@@ -13,6 +14,7 @@ export interface LogQuery {
   pageId?: string;
   limit?: number;
   cursor?: string;
+  ingest?: boolean;
 }
 
 /** credential's read of a page of the notebook notebookId's log, as query filters it, as the API answers it. */
@@ -26,6 +28,7 @@ export async function listChangesets(api: ApiClient, credential: string, noteboo
         page_id: query.pageId,
         limit: query.limit,
         cursor: query.cursor,
+        ingest: query.ingest,
       },
     },
     headers: bearer(credential),
@@ -55,4 +58,33 @@ export async function revertChangeset(api: ApiClient, credential: string, id: st
     ...(message === undefined ? {} : { body: { message } }),
     headers: bearer(credential),
   });
+}
+
+/** The real revision's changeset identity, obtained from the public version endpoint. */
+export async function changesetOfRevision(
+  api: ApiClient,
+  credential: string,
+  pageId: string,
+  revision: number
+): Promise<string> {
+  const { data, error, response } = await getVersion(api, credential, pageId, revision);
+  if (response.status !== 200 || !data) {
+    throw new Error(`version ${pageId}:${revision}: ${response.status} ${JSON.stringify(error)}`);
+  }
+  return data.changeset.id;
+}
+
+/** One whole entry of an actually read/downloaded log, selected by its changeset ID, never by its position. */
+export function entryOfVirtualLog(log: string, changesetId: string): string[] {
+  const lines = log.split("\n");
+  const positions = lines.flatMap((line, i) =>
+    line.startsWith("- ") && line.includes(` ${changesetId} — `) ? [i] : []
+  );
+  const start = positions[0];
+  if (positions.length !== 1 || start === undefined) {
+    throw new Error(`log must contain exactly one entry for ${changesetId}, found ${positions.length}`);
+  }
+  let end = start + 1;
+  while (lines[end]?.startsWith("  - ")) end++;
+  return lines.slice(start, end);
 }

@@ -24,6 +24,9 @@ func TestThePartsEdgesParseAsGoldmarkParsesThem(t *testing.T) {
 			"a <!-- b --> c", "a <!-- b", "a <!--> b", "a <!---> b", "a <?b?> c", "a <? b", "a <?> b",
 			"a <!A b> c", "a <!A b", "a <![CDATA[ b ]]> c", "a <![CDATA[ b", "<!-- a\nb --> c",
 			"<!--x@y.z>", "a <b c=\"<!--\"> d",
+			"a <!--b--> <?c?> <!D e> <![CDATA[f]]>\nplain\n",
+			"a <!--b--> <?c?> <!D e> <![CDATA[f]]>\nplain >\n",
+			"a <!D \\>\n`code` mail@example.test\n",
 		},
 		"links": {
 			"[a](<b\\>c>)", "[a](<b\\\\>c>)", "[a](<b>c)", "[a](<b\nc>)", "[a](b(c)d)", "[a](b(c)",

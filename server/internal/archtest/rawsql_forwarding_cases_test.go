@@ -13,6 +13,7 @@ func rawSQLForwarders() []rawSQLForwarderFixture {
 	return []rawSQLForwarderFixture{
 		{"internal/modules/linking/adapter/postgres/lint.go", "lintBodyQuerier", "Query", "pgx.Rows"},
 		{"internal/modules/linking/adapter/postgres/retention_array_encoding.go", "retentionArrayQuerier", "Exec", "pgconn.CommandTag"},
+		{"internal/modules/linking/adapter/postgres/set_resolutions_mode.go", "setResolutionBatchQuerier", "Exec", "pgconn.CommandTag"},
 	}
 }
 
@@ -175,4 +176,32 @@ func TestRawSQLForwardersStillReportOtherCallsAndSQLLiterals(t *testing.T) {
 			rawSQLForwarderCheck(t, f.path, f.source("return q.Querier.METHOD(ctx, sql, args...)")+other, call)
 		})
 	}
+}
+
+// A mode may be prepended only by the two exact mode forwarders. Adding the
+// Set wrapper must not let the existing retention encoder acquire that right.
+func TestRawSQLForwarderModesStayNarrow(t *testing.T) {
+	for i, f := range rawSQLForwarders() {
+		t.Run(f.receiver, func(t *testing.T) {
+			call := ": calls " + f.method + ", which runs SQL outside sqlc's queries"
+			body := "mode := q.mode; return q.Querier.METHOD(ctx, sql, append([]any{mode}, args...)...)"
+			if i == 1 {
+				rawSQLForwarderCheck(t, f.path, f.source(body), call)
+				return
+			}
+			rawSQLForwarderCheck(t, f.path, f.source(body))
+			for _, args := range []string{
+				"append([]any{mode, mode}, args...)",
+				"append([]any{pgx.QueryExecModeCacheDescribe}, args...)",
+				"append([]any{mode}, other...)",
+				"append(args, mode)",
+				"append([]any{mode}, args)",
+			} {
+				rawSQLForwarderCheck(t, f.path, f.source("return q.Querier.METHOD(ctx, sql, "+args+"...)"), call)
+			}
+		})
+	}
+	f := rawSQLForwarders()[2]
+	rawSQLForwarderCheck(t, f.path, f.source("retentionArrayBudget(sql, args); return q.Querier.Exec(ctx, sql, args...)"),
+		": calls Exec, which runs SQL outside sqlc's queries")
 }

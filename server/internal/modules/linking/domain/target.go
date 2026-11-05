@@ -70,7 +70,7 @@ func ParseTarget(target string) (Target, bool) {
 		segments[len(segments)-1] = last[:n]
 	}
 	t.Name = segments[len(segments)-1]
-	t.Keys = make([]string, len(segments))
+	t.Keys = segments
 	for i, s := range segments {
 		t.Keys[i] = shared.TitleKey(s)
 	}

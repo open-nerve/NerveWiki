@@ -33,68 +33,74 @@ import (
 func TestIngestNovelSourceRanges(t *testing.T) {
 	for _, state := range []string{"no_statistics", "analyzed/pristine", "analyzed/app_rebuild"} {
 		t.Run(state, func(t *testing.T) {
-			f, q, want := novelRangeFixture(t, state)
-			var got app.IngestCandidateEvidence
-			if err := f.tx.WithinTx(t.Context(), func(ctx context.Context) error {
-				if err := f.s.Lock(ctx, f.eng); err != nil {
-					return err
+			novelRangeRun(t, state)
+		})
+	}
+}
+
+// Reused by the separately selected default-buffered physical state.
+func novelRangeRun(t *testing.T, state string) {
+	t.Helper()
+	f, q, want := novelRangeFixture(t, state)
+	var got app.IngestCandidateEvidence
+	if err := f.tx.WithinTx(t.Context(), func(ctx context.Context) error {
+		if err := f.s.Lock(ctx, f.eng); err != nil {
+			return err
+		}
+		var err error
+		got, err = postgresadapter.NewIngestReads(f.pool, 5<<20).NovelSources(ctx, q)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var actual []novelRangeRow
+	for _, r := range got.Candidates {
+		actual = append(actual, novelRangeRow{"candidate", r.ID, r.Asset, r.Direct, r.FollowedUntouched, false, false})
+	}
+	for _, r := range got.Parents {
+		actual = append(actual, novelRangeRow{"parent", r.ID, false, r.Direct, false, false, false})
+	}
+	novelRangeRows(t, actual, want)
+	ids, assets, revisions := []uuid.UUID{}, []bool{}, []int32{}
+	for _, c := range q.Candidates {
+		ids = append(ids, c.ID)
+		assets = append(assets, c.Asset)
+		revisions = append(revisions, int32(c.Revision))
+	}
+	current, currentRevisions := []uuid.UUID{}, []int32{}
+	for _, c := range q.CurrentSources {
+		current = append(current, c.ID)
+		currentRevisions = append(currentRevisions, int32(c.Revision))
+	}
+	s := statementOf(t, func(g *gen.Queries) error {
+		_, err := g.IngestNovelSources(t.Context(), gen.IngestNovelSourcesParams{
+			CandidateIds: ids, CandidateAssets: assets, CandidateRevisions: revisions,
+			CurrentSourceIds: current, CurrentSourceRevisions: currentRevisions,
+			NotebookID: f.eng, Extractor: int32(domain.Extractor), ParentIds: q.ParentIDs,
+			EligibleEmitterIds: q.EligibleEmitters, UntouchedSourceIds: q.UntouchedSources,
+			MaxSlotItems: 10000, MaxJsonBytes: app.MaxLintPayloadBytes(5 << 20), PossibleOldDirectIds: q.PossibleOldDirect,
+		})
+		return err
+	})
+	wantArgs := []any{ids, assets, revisions, current, currentRevisions, f.eng, int32(domain.Extractor), q.ParentIDs, q.EligibleEmitters, q.UntouchedSources, int32(10000), app.MaxLintPayloadBytes(5 << 20), q.PossibleOldDirect}
+	if !reflect.DeepEqual(s.args, wantArgs) {
+		t.Fatalf("actual generated 13-argument Novel binding differs: got %v want %v", s.args, wantArgs)
+	}
+	for _, mode := range []string{"auto", "force_custom_plan", "force_generic_plan"} {
+		t.Run(mode, func(t *testing.T) {
+			var raw []novelRangeRow
+			_, ev := lintExecutedMode(t, f, s, mode, func(rows pgx.Rows, _ int) {
+				var r novelRangeRow
+				if err := rows.Scan(&r.Kind, &r.ID, &r.Asset, &r.Direct, &r.Followed, &r.Invalid, &r.Proof); err != nil {
+					t.Fatal(err)
 				}
-				var err error
-				got, err = postgresadapter.NewIngestReads(f.pool, 5<<20).NovelSources(ctx, q)
-				return err
-			}); err != nil {
-				t.Fatal(err)
-			}
-			var actual []novelRangeRow
-			for _, r := range got.Candidates {
-				actual = append(actual, novelRangeRow{"candidate", r.ID, r.Asset, r.Direct, r.FollowedUntouched, false, false})
-			}
-			for _, r := range got.Parents {
-				actual = append(actual, novelRangeRow{"parent", r.ID, false, r.Direct, false, false, false})
-			}
-			novelRangeRows(t, actual, want)
-			ids, assets, revisions := []uuid.UUID{}, []bool{}, []int32{}
-			for _, c := range q.Candidates {
-				ids = append(ids, c.ID)
-				assets = append(assets, c.Asset)
-				revisions = append(revisions, int32(c.Revision))
-			}
-			current, currentRevisions := []uuid.UUID{}, []int32{}
-			for _, c := range q.CurrentSources {
-				current = append(current, c.ID)
-				currentRevisions = append(currentRevisions, int32(c.Revision))
-			}
-			s := statementOf(t, func(g *gen.Queries) error {
-				_, err := g.IngestNovelSources(t.Context(), gen.IngestNovelSourcesParams{
-					CandidateIds: ids, CandidateAssets: assets, CandidateRevisions: revisions,
-					CurrentSourceIds: current, CurrentSourceRevisions: currentRevisions,
-					NotebookID: f.eng, Extractor: int32(domain.Extractor), ParentIds: q.ParentIDs,
-					EligibleEmitterIds: q.EligibleEmitters, UntouchedSourceIds: q.UntouchedSources,
-					MaxSlotItems: 10000, MaxJsonBytes: app.MaxLintPayloadBytes(5 << 20), PossibleOldDirectIds: q.PossibleOldDirect,
-				})
-				return err
+				raw = append(raw, r)
 			})
-			wantArgs := []any{ids, assets, revisions, current, currentRevisions, f.eng, int32(domain.Extractor), q.ParentIDs, q.EligibleEmitters, q.UntouchedSources, int32(10000), app.MaxLintPayloadBytes(5 << 20), q.PossibleOldDirect}
-			if !reflect.DeepEqual(s.args, wantArgs) {
-				t.Fatalf("actual generated 13-argument Novel binding differs: got %v want %v", s.args, wantArgs)
+			novelRangeRows(t, raw, want) // Complete ordered 403 rows, including both false flags on each.
+			if ev.Rows != len(want) {
+				t.Fatalf("drained rows %d != %d", ev.Rows, len(want))
 			}
-			for _, mode := range []string{"auto", "force_custom_plan", "force_generic_plan"} {
-				t.Run(mode, func(t *testing.T) {
-					var raw []novelRangeRow
-					_, ev := lintExecutedMode(t, f, s, mode, func(rows pgx.Rows, _ int) {
-						var r novelRangeRow
-						if err := rows.Scan(&r.Kind, &r.ID, &r.Asset, &r.Direct, &r.Followed, &r.Invalid, &r.Proof); err != nil {
-							t.Fatal(err)
-						}
-						raw = append(raw, r)
-					})
-					novelRangeRows(t, raw, want) // Complete ordered 403 rows, including both false flags on each.
-					if ev.Rows != len(want) {
-						t.Fatalf("drained rows %d != %d", ev.Rows, len(want))
-					}
-					novelRangePhysical(t, ev, state, lintRangeIndexes(t, f))
-				})
-			}
+			novelRangePhysical(t, ev, state, lintRangeIndexes(t, f))
 		})
 	}
 }
@@ -219,14 +225,20 @@ func novelRangeFixture(t *testing.T, state string) (fixture, app.IngestCandidate
 	if state != "no_statistics" {
 		lintAnalyze(t, f)
 	}
-	if strings.HasSuffix(state, "/app_rebuild") {
+	if strings.HasSuffix(state, "/app_rebuild") || state == bufferedRebuildState {
 		// Reuse the existing small input ports, but this fixture supplies all
 		// 805 page bodies plus real flat attachment metadata. Revision is 1.
 		trace := &stablePlanTrace{}
 		pool := lintPool(t, f, trace, 6) // lintExecutedMode also uses pool reads while holding its transaction.
 		f.pool, f.s, f.tx = pool, postgresadapter.New(pool), postgres.NewTxManager(pool, time.Second)
 		trace.begin()
-		r := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: p, Publisher: p}, Contents: p, Notebooks: p, Parser: parser}
+		// Keep the original low-limit history. Only the new state selects
+		// default staging, with native history checked independently below.
+		limit := uint64(1)
+		if state == bufferedRebuildState {
+			limit = 0
+		}
+		r := app.Rebuild{Tx: f.tx, Index: app.Index{Store: f.s, Pages: p, Publisher: p}, Contents: p, Notebooks: p, Parser: parser, Writes: f.s, StagingLimit: limit}
 		got, err := r.Notebook(t.Context(), f.eng)
 		history := trace.end()
 		want := app.Rebuilt{Pages: 805, Links: 52117, Unresolved: 1}
@@ -236,17 +248,25 @@ func novelRangeFixture(t *testing.T, state string) (fixture, app.IngestCandidate
 		if !slices.EqualFunc(p.events, []app.LinksChanged{{WorkspaceID: stablePlanID(900003), NotebookID: f.eng}}, func(a, b app.LinksChanged) bool { return reflect.DeepEqual(a, b) }) {
 			t.Fatalf("complete Rebuild event: %+v", p.events)
 		}
-		written := map[string]int64{}
-		for _, call := range history {
-			if call.Error != "" {
-				t.Fatalf("real Rebuild SQL %s: %s", call.Name, call.Error)
+		if state == bufferedRebuildState {
+			pageRows := make(map[uuid.UUID]int, len(p.specs))
+			for _, s := range p.specs {
+				pageRows[s.ID] = len(s.OldFacts.Links)
 			}
-			written[call.Name] += call.RowsAffected
+			bufferedRebuildHistory(t, trace, history, pageRows)
+		} else {
+			written := map[string]int64{}
+			for _, call := range history {
+				if call.Error != "" {
+					t.Fatalf("real Rebuild SQL %s: %s", call.Name, call.Error)
+				}
+				written[call.Name] += call.RowsAffected
+			}
+			if written["DeleteNotebooksLinks"] != 52117 || written["InsertLinks"] != 52117 || written["SetResolutions"]+written["SetOrderedSourceResolutions"] != 52116 || !slices.Equal(trace.terminal(), []string{"commit"}) {
+				t.Fatalf("real Rebuild version history: rows=%v terminal=%v", written, trace.terminal())
+			}
+			lintEvidence(t, "novel-real-rebuild-history", history)
 		}
-		if written["DeleteNotebooksLinks"] != 52117 || written["InsertLinks"] != 52117 || written["SetResolutions"] != 52116 || !slices.Equal(trace.terminal(), []string{"commit"}) {
-			t.Fatalf("real Rebuild version history: rows=%v terminal=%v", written, trace.terminal())
-		}
-		lintEvidence(t, "novel-real-rebuild-history", history)
 		check() // No post-Rebuild VACUUM, ANALYZE, manual Set, or row repair.
 	}
 	q := app.IngestCandidateQuery{NotebookID: f.eng, Candidates: []app.IngestSource{{ID: novelRangeID(1), Asset: true}, {ID: novelRangeID(2), Asset: true}, {ID: novelRangeID(3), Revision: 1}}, UntouchedSources: []uuid.UUID{novelRangeID(3), novelRangeID(4), novelRangeID(5)}, EligibleEmitters: []uuid.UUID{novelRangeID(7), novelRangeID(8)}}
@@ -260,6 +280,9 @@ func novelRangeFixture(t *testing.T, state string) (fixture, app.IngestCandidate
 		q.ParentIDs = append(q.ParentIDs, id)
 		q.EligibleEmitters = append(q.EligibleEmitters, novelRangeID(uint64(2000+i)))
 		want = append(want, novelRangeRow{"parent", id, false, true, false, false, false})
+	}
+	if state == bufferedRebuildState {
+		bufferedNovelLedger(t, wantLinks, q)
 	}
 	lintEvidence(t, "novel-sparse-fixture", map[string]any{"state": state, "current": 403, "untouched": 3, "eligible": 402, "pages": 805, "main_links": 52117, "foreign_links": 102408, "foreign_same_target": 8, "qf_complete_links": 515, "live_reverse_followed": 11, "live_reverse_wanted": 412, "live_sources": 916, "live_total": 1339, "scope": "real adapter and app Rebuild, not bootstrap Writer or whole request cost"})
 	return f, q, want
@@ -347,10 +370,15 @@ func novelRangeFixtureCheck(t *testing.T, f fixture, p *stablePlanInputs, wantLi
 // Tuple counters include work before SQL filters; plan averages alone do not.
 func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes map[string]string) {
 	t.Helper()
-	rebuilt := strings.HasSuffix(state, "/app_rebuild")
+	rebuilt := strings.HasSuffix(state, "/app_rebuild") || state == bufferedRebuildState
 	live := map[string]float64{"CTE followed_untouched": 11, "CTE relevant": 412, "CTE digested": 916, "CTE peers": 0}
 	bound := int64(1339)
-	if rebuilt {
+	if state == bufferedRebuildState {
+		// Same complete ranges, with two versions for every main source row:
+		// 2*3+8 reverse followed + 2*404+8 reverse wanted + 2*916 source.
+		// bufferedNovelLedger derives these counts from checked literal rows.
+		bound = 2662
+	} else if rebuilt {
 		// Main reverse entries: old resolved + new resolved; foreign stays once.
 		// Resolved source entries have at most three versions; the one
 		// unresolved entry has two: 14 + 816 + 3*915 + 2 = 3577.
@@ -359,12 +387,15 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 	// Only source_id endpoint sampling through the full pkey gets a planning
 	// allowance. Two probes is a strict guard for this fixed fixture/PG plan
 	// family, not a global planner bound. Each endpoint has at most one live
-	// version after seed VACUUM, or three versions after the real Rebuild.
+	// version after seed VACUUM, two after buffered Rebuild, or three after
+	// the original streaming Rebuild.
 	// Direction is not observed: do not assume one min plus one max probe.
 	var endpointRows, endpointScans, endpointFetched int64
 	if state != "no_statistics" {
 		endpointScans, endpointFetched, endpointRows = 2, 2, 2
-		if rebuilt {
+		if state == bufferedRebuildState {
+			endpointRows = 4 // two probes * at most two buffered versions
+		} else if rebuilt {
 			endpointRows = 6 // two probes * at most three versions per endpoint
 		}
 	}
@@ -502,5 +533,5 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 			t.Errorf("%s complete visible/filter work: heapLower=%.0f bitmapLower=%.0f bound=%.0f", scope, visible[scope], bitmap[scope], allowed)
 		}
 	}
-	lintEvidence(t, "novel-range-ledger", map[string]any{"live": live, "tuple_bound_with_versions": bound, "logical_range_probes": 808, "actual_work": ev.ExecutionWork, "explain_work": ev.ExplainWork, "planning_work": ev.PlanningWork, "visible_lower": visible, "bitmap_lower": bitmap, "rebuilt": rebuilt, "note": "execution and EXPLAIN are distinct reads; generic is the helper's named EXECUTE, not a standalone raw-SQL label; blocks remain raw diagnostics"})
+	lintEvidence(t, "novel-range-ledger", map[string]any{"live": live, "tuple_bound_with_versions": bound, "logical_range_probes": 808, "actual_work": ev.ExecutionWork, "explain_work": ev.ExplainWork, "planning_work": ev.PlanningWork, "visible_lower": visible, "bitmap_lower": bitmap, "rebuilt": rebuilt, "state": state, "note": "execution and EXPLAIN are distinct reads; generic is the helper's named EXECUTE, not a standalone raw-SQL label; blocks remain raw diagnostics"})
 }

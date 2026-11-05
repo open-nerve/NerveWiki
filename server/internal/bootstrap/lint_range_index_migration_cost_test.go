@@ -95,6 +95,7 @@ func lintRangeMigrationSeed(t *testing.T, dense bool, perBook int) lintRangeMigr
 	sourceIndexSettle(t, app.team.pool)
 	app.stop()
 	f.Pool = connect(t, database)
+	lintMigrationDropIngest(t, f.Pool)
 	lintMigrationState(t, f.Pool, true, true)
 	m := lintCostMigrator(t, f.Pool, 52)
 	lintRangeDown(t, m, f.Pool)

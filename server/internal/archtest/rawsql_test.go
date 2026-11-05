@@ -278,7 +278,7 @@ func rawSQLRetentionQuery(call *ast.CallExpr) bool {
 		rawSQLSelector(call.Args[4], "arg", "Extractor")
 }
 
-// rawSQLForwardedCalls permits only the two adapters that pass sqlc's SQL
+// rawSQLForwardedCalls permits only the named adapters that pass sqlc's SQL
 // through unchanged while selecting an execution mode or argument encoder.
 // The exception belongs to exact return calls, never to a file or type.
 func rawSQLForwardedCalls(path string, f *ast.File) map[*ast.CallExpr]bool {
@@ -288,6 +288,8 @@ func rawSQLForwardedCalls(path string, f *ast.File) map[*ast.CallExpr]bool {
 		receiver, method = "lintBodyQuerier", "Query"
 	case "internal/modules/linking/adapter/postgres/retention_array_encoding.go":
 		receiver, method = "retentionArrayQuerier", "Exec"
+	case "internal/modules/linking/adapter/postgres/set_resolutions_mode.go":
+		receiver, method = "setResolutionBatchQuerier", "Exec"
 	default:
 		return nil
 	}
@@ -301,13 +303,13 @@ func rawSQLForwardedCalls(path string, f *ast.File) map[*ast.CallExpr]bool {
 		sqlReads := map[*ast.Ident]bool{}
 		ast.Inspect(fn.Body, func(n ast.Node) bool {
 			if ret, ok := n.(*ast.ReturnStmt); ok && len(ret.Results) == 1 {
-				if call, ok := ret.Results[0].(*ast.CallExpr); ok && rawSQLForwardingCall(call, method) {
+				if call, ok := ret.Results[0].(*ast.CallExpr); ok && rawSQLForwardingCall(call, method, receiver == "lintBodyQuerier" || receiver == "setResolutionBatchQuerier") {
 					calls[call] = true
 					sqlReads[call.Args[1].(*ast.Ident)] = true
 				}
 			}
 			// The encoder's budget inspection reads the string by value.
-			if call, ok := n.(*ast.CallExpr); ok && method == "Exec" && rawSQLName(call.Fun, "retentionArrayBudget") &&
+			if call, ok := n.(*ast.CallExpr); ok && receiver == "retentionArrayQuerier" && rawSQLName(call.Fun, "retentionArrayBudget") &&
 				len(call.Args) == 2 && !call.Ellipsis.IsValid() && rawSQLName(call.Args[0], "sql") && rawSQLName(call.Args[1], "args") {
 				sqlReads[call.Args[0].(*ast.Ident)] = true
 			}
@@ -386,7 +388,7 @@ func rawSQLForwarderSignature(fn *ast.FuncDecl, receiver, method string) bool {
 		rawSQLSelector(results[0].Type, resultPackage, resultType) && rawSQLName(results[1].Type, "error")
 }
 
-func rawSQLForwardingCall(call *ast.CallExpr, method string) bool {
+func rawSQLForwardingCall(call *ast.CallExpr, method string, modePrefix bool) bool {
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok || sel.Sel.Name != method || !rawSQLSelector(sel.X, "q", "Querier") || len(call.Args) != 3 ||
 		!call.Ellipsis.IsValid() || !rawSQLName(call.Args[0], "ctx") || !rawSQLName(call.Args[1], "sql") {
@@ -395,9 +397,9 @@ func rawSQLForwardingCall(call *ast.CallExpr, method string) bool {
 	if rawSQLName(call.Args[2], "args") {
 		return true
 	}
-	// lintBodyQuerier prepends one pgx execution mode to the original args.
+	// Only the exact mode forwarders prepend one pgx mode to original args.
 	prepend, ok := call.Args[2].(*ast.CallExpr)
-	if method != "Query" || !ok || !rawSQLName(prepend.Fun, "append") || len(prepend.Args) != 2 ||
+	if !modePrefix || !ok || !rawSQLName(prepend.Fun, "append") || len(prepend.Args) != 2 ||
 		!prepend.Ellipsis.IsValid() || !rawSQLName(prepend.Args[1], "args") {
 		return false
 	}
@@ -420,7 +422,7 @@ func rawSQLSelector(n ast.Node, base, name string) bool {
 }
 
 // Reject writes, declarations or addresses involving any forwarding binding.
-// This deliberately rejects harmless local shadowing too: these two small
+// This deliberately rejects harmless local shadowing too: these small
 // wrappers need none, and name equality alone must never justify a forward.
 func rawSQLBindingMention(n ast.Node) bool {
 	if n == nil {

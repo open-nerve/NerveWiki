@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
@@ -96,16 +97,27 @@ func retainablePageFacts(p app.Page, f domain.Facts) bool {
 	if p.ID == uuid.Nil() || p.NotebookID == uuid.Nil() || p.Revision < 1 || int(int32(p.Revision)) != p.Revision {
 		return false
 	}
-	starts := make(map[int32]struct{}, len(f.Links))
-	for _, l := range f.Links {
+	var starts map[int32]struct{}
+	var previous int32
+	for i, l := range f.Links {
 		start, end := int32(l.Start), int32(l.End)
 		if start < 0 || end <= start || int(start) != l.Start || int(end) != l.End || l.Target == "" {
 			return false
 		}
-		if _, duplicate := starts[start]; duplicate {
-			return false
+		if starts == nil && i > 0 && start <= previous {
+			// The validated prefix was strictly increasing; backfill it once.
+			starts = make(map[int32]struct{}, len(f.Links))
+			for _, prior := range f.Links[:i] {
+				starts[int32(prior.Start)] = struct{}{}
+			}
 		}
-		starts[start] = struct{}{}
+		if starts != nil {
+			if _, duplicate := starts[start]; duplicate {
+				return false
+			}
+			starts[start] = struct{}{}
+		}
+		previous = start
 		switch l.Kind {
 		case "wikilink", "embed", "link", "image":
 		default:
@@ -436,6 +448,11 @@ func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
 // complete input. Every eligible row is still written in the caller's transaction.
 const resolutionWriteRows = 256
 
+// Long runs use one source per statement so the additional index predicates
+// cannot admit a cross-source product. Short runs keep the original 256-row
+// coalescing; the full request is never truncated at either bound.
+const resolutionSourceWriteRows = 4096
+
 // orderedResolutionKeys admits only a globally strict SQL-key order. Checking
 // every key before any write prevents duplicates across statement boundaries.
 // Noncanonical callers keep the original single statement and its error behavior.
@@ -458,16 +475,32 @@ func orderedResolutionKeys(links []app.Link) bool {
 
 func (s *Store) setOrderedResolutions(ctx context.Context, links []app.Link) error {
 	p := gen.SetResolutionsParams{
-		SourceIds:      make([]uuid.UUID, resolutionWriteRows),
-		RangeStarts:    make([]int32, resolutionWriteRows),
-		ResolvedIds:    make([]uuid.UUID, resolutionWriteRows),
-		Ambiguous:      make([]bool, resolutionWriteRows),
-		ResolvedAssets: make([]bool, resolutionWriteRows),
+		SourceIds:      make([]uuid.UUID, resolutionSourceWriteRows),
+		RangeStarts:    make([]int32, resolutionSourceWriteRows),
+		ResolvedIds:    make([]uuid.UUID, resolutionSourceWriteRows),
+		Ambiguous:      make([]bool, resolutionSourceWriteRows),
+		ResolvedAssets: make([]bool, resolutionSourceWriteRows),
 	}
-	q := s.planned(ctx)
+	querier := postgres.DB(ctx, s.pool)
+	mode := pgx.QueryExecModeDescribeExec
+	if tx, ok := querier.(pgx.Tx); ok && tx.Conn().Config().DescriptionCacheCapacity > 0 {
+		mode = pgx.QueryExecModeCacheDescribe
+	}
+	q := gen.New(setResolutionBatchQuerier{Querier: querier, mode: mode})
 	var total int64
-	for from := 0; from < len(links); from += resolutionWriteRows {
-		batch := links[from:min(from+resolutionWriteRows, len(links))]
+	for from := 0; from < len(links); {
+		to := from + 1
+		limit := min(from+resolutionSourceWriteRows, len(links))
+		for to < limit && links[to].SourceID == links[from].SourceID {
+			to++
+		}
+		longSource := to-from > resolutionWriteRows
+		if !longSource {
+			// Coalesce short sources, including a prefix of the next long run.
+			// Every nonfinal statement therefore contains at least 256 rows.
+			to = min(from+resolutionWriteRows, len(links))
+		}
+		batch := links[from:to]
 		p.SourceIds, p.RangeStarts = p.SourceIds[:len(batch)], p.RangeStarts[:len(batch)]
 		p.ResolvedIds, p.Ambiguous = p.ResolvedIds[:len(batch)], p.Ambiguous[:len(batch)]
 		p.ResolvedAssets = p.ResolvedAssets[:len(batch)]
@@ -476,11 +509,18 @@ func (s *Store) setOrderedResolutions(ctx context.Context, links []app.Link) err
 			p.ResolvedIds[i] = l.Resolution.ID
 			p.Ambiguous[i], p.ResolvedAssets[i] = l.Resolution.Ambiguous, l.Resolution.Asset
 		}
-		n, err := q.SetResolutions(ctx, p)
+		var n int64
+		var err error
+		if longSource {
+			n, err = q.SetOrderedSourceResolutions(ctx, gen.SetOrderedSourceResolutionsParams(p))
+		} else {
+			n, err = q.SetResolutions(ctx, p)
+		}
 		if err != nil {
 			return fmt.Errorf("set %d links' resolutions: %w", len(links), err)
 		}
 		total += n
+		from = to
 	}
 	// A later database/context error must win over an earlier missing row,
 	// just as the original statement fails before its affected-row check.
