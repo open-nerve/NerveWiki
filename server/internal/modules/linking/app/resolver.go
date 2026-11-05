@@ -75,21 +75,31 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		if sourceChanged && i > 0 && links[i-1].SourceID.Compare(l.SourceID) > 0 {
 			orderedSources = false
 		}
-		t, parsed := targets.add(i, l.Target)
-		if parsed {
-			for _, key := range t.LastKeys() {
-				if _, seen := reach[key]; !seen {
-					keys = append(keys, key)
-					reach[key] = 0
-				}
-			}
-		}
+		targets.add(i, l.Target)
 		if sourceChanged && !read[l.SourceID] {
 			ids = append(ids, l.SourceID)
 			read[l.SourceID] = true
 		}
 	}
 	targets.cache = nil // Later passes need values and row references, not raw keys.
+	// Cached rows share one immutable parse. Register its keys once, while
+	// every uncached valid row still contributes its complete target.
+	addKeys := func(t domain.Target) {
+		for _, key := range t.LastKeys() {
+			if _, seen := reach[key]; !seen {
+				keys = append(keys, key)
+				reach[key] = 0
+			}
+		}
+	}
+	for _, t := range targets.values {
+		addKeys(t)
+	}
+	for _, block := range targets.overflow {
+		for _, t := range block {
+			addKeys(t)
+		}
+	}
 	slices.Sort(keys)
 	out := make([]domain.Resolution, len(links))
 	if len(keys) == 0 {
@@ -124,6 +134,8 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 		byID[n.ID] = n
 	}
 	overflow := 0
+	// At most maxParsedTargets entries; missing sources do not establish a reach.
+	cachedReach := make([]int, len(targets.values))
 	var reachFrom domain.Node
 	var reachExists bool
 	for i, l := range links {
@@ -132,8 +144,16 @@ func resolutions(ctx context.Context, store Store, pages Pages, notebookID uuid.
 			reachFrom, reachExists = byID[l.SourceID]
 		}
 		if reachExists && parsed {
+			depth := t.Reach(reachFrom.Path)
+			if ref := targets.refs[i]; ref != targetOverflow {
+				at := int(ref) - 1 // A parsed non-overflow row has a positive cached ref.
+				if depth <= cachedReach[at] {
+					continue
+				}
+				cachedReach[at] = depth
+			}
 			for _, key := range t.LastKeys() {
-				reach[key] = max(reach[key], t.Reach(reachFrom.Path))
+				reach[key] = max(reach[key], depth)
 			}
 		}
 	}
