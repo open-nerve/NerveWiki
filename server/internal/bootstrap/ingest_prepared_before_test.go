@@ -185,12 +185,16 @@ func (r ingestBeforePreparedRows) Scan(dest ...any) error {
 	if len(dest) != 15 {
 		return fmt.Errorf("B18 prepared columns=%d", len(dest))
 	}
+	text, err := ingestPreparedNativeText(r.Rows)
+	if err != nil {
+		return fmt.Errorf("B18 prepared native TEXT: %w", err)
+	}
 	start, a := dest[1].(*pgtype.Int4)
 	notebook, b := dest[3].(*uuid.UUID)
-	property, c := dest[5].(*pgtype.Text)
+	property := text[1]
 	target, d := dest[12].(*pgtype.UUID)
 	asset, e := dest[14].(*bool)
-	if !a || !b || !c || !d || !e {
+	if !a || !b || !d || !e {
 		return fmt.Errorf("B18 prepared native Scan destinations differ")
 	}
 	r.p.trace.mu.Lock()

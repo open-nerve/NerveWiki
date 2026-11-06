@@ -307,29 +307,28 @@ func (r *ingestPreparedBoundaryRows) Scan(dest ...any) error {
 	if len(dest) != 15 {
 		return p.fail("Inspect did not scan all 15 columns")
 	}
+	text, err := ingestPreparedNativeText(r.Rows)
+	if err != nil {
+		return p.fail(err.Error())
+	}
+	kind, property, target := text[0], text[1], text[2]
+	anchor, display, key, alt := text[3], text[4], text[5], text[6]
 	can, c := dest[0].(*bool)
 	start, a := dest[1].(*pgtype.Int4)
 	end, e := dest[2].(*int32)
 	book, b := dest[3].(*uuid.UUID)
-	kind, k := dest[4].(*string)
-	property, q := dest[5].(*pgtype.Text)
-	target, d := dest[6].(*string)
-	anchor, h := dest[7].(*pgtype.Text)
-	display, v := dest[8].(*pgtype.Text)
-	key, y := dest[9].(*pgtype.Text)
-	alt, z := dest[10].(*pgtype.Text)
 	aliases, l := dest[11].(*bool)
 	id, i := dest[12].(*pgtype.UUID)
 	ambiguous, m := dest[13].(*bool)
 	asset, f := dest[14].(*bool)
-	if !c || !a || !e || !b || !k || !q || !d || !h || !v || !y || !z || !l || !i || !m || !f || !*can || !start.Valid || !id.Valid || *book != s.notebook || *kind != "link" || property.Valid || anchor.Valid || display.Valid || alt.Valid || *aliases || !*asset {
+	if !c || !a || !e || !b || !l || !i || !m || !f || !*can || !start.Valid || !id.Valid || *book != s.notebook || !kind.Valid || kind.String != "link" || !target.Valid || property.Valid || anchor.Valid || display.Valid || alt.Valid || *aliases || !*asset {
 		return p.fail("15-column native values/destinations differ from the literal fixture")
 	}
 	oldTarget, tail := p.tailNames[uuid.UUID(id.Bytes)]
 	if !tail {
 		oldTarget = "a.txt"
 	}
-	if *target != oldTarget || !key.Valid || key.String != oldTarget || *end != start.Int32+int32(len(oldTarget)) || *ambiguous != tail {
+	if target.String != oldTarget || !key.Valid || key.String != oldTarget || *end != start.Int32+int32(len(oldTarget)) || *ambiguous != tail {
 		return p.fail("native old facts or wrong-derived tail baseline changed")
 	}
 	row := linkingapp.BodyReference{EdgePos: linkingapp.EdgePos{SourceID: r.source, Start: start.Int32}, ResolvedID: uuid.UUID(id.Bytes), ResolvedAsset: *asset}
@@ -352,6 +351,27 @@ func (r *ingestPreparedBoundaryRows) Scan(dest ...any) error {
 		}
 	}
 	return nil
+}
+
+// Native TEXT scanners need not populate *string/*pgtype.Text destinations.
+// Read the current database row after its original Scan; pgx keeps RawValues
+// until Next/Close, and TEXT has the same bytes in text and binary formats.
+func ingestPreparedNativeText(rows pgx.Rows) ([7]pgtype.Text, error) {
+	var text [7]pgtype.Text
+	fields, raw := rows.FieldDescriptions(), rows.RawValues()
+	if len(fields) != 15 || len(raw) != 15 {
+		return text, errors.New("prepared native row must have 15 field descriptions and raw values")
+	}
+	for i := range text {
+		field := fields[i+4]
+		if field.DataTypeOID != pgtype.TextOID || (field.Format != pgtype.TextFormatCode && field.Format != pgtype.BinaryFormatCode) {
+			return text, errors.New("prepared native text column must be TEXT in text or binary format")
+		}
+		if value := raw[i+4]; value != nil {
+			text[i] = pgtype.Text{String: string(value), Valid: true}
+		}
+	}
+	return text, nil
 }
 
 func (r *ingestPreparedBoundaryRows) scanResidual(dest []any) error {
