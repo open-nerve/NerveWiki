@@ -258,7 +258,7 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 落在第四份的补集，两次分支样本 449/455 秒，均值过了 450 秒的线；照规则按测试名移到第五份，不提高 -timeout。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 521 个顶层静态分配为 157/51/116/132/52/13；各份双轮与指定 main pair 仍须实际核验。
+# 当前 521 个顶层静态分配为 157/51/116/123/61/13（见第五份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
