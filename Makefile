@@ -318,12 +318,15 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条及 LinksReached 物理守卫（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
 	@# 同事务来源准备与排除关系：实际Store参数、三统计/计划模式、重复keys及完整原生15列值。
 	cd server && go test -count=1 -v -run '^TestPreparedSource(ReadPlans|ReadDValues|ResidualDuplicateKeyPlan)$$' ./internal/modules/linking/adapter/postgres
+	@# LinksReached：稀疏9叶与400万行6叶各独立进程；!race、非short，沿默认10m/count=1。
+	cd server && go test -count=1 -v -run '^TestLinksReachedReadPlans$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestLinksReachedDenseReadPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres

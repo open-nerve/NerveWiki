@@ -30,6 +30,12 @@ import (
 const ingestCostOrdinaryBudget = 4 * time.Second
 const ingestCostBatchBudget = 15 * time.Second
 
+// The dense ingestion fixtures read millions of old links, beyond the M9
+// workload that established its 11s unit guard. The owner authorized a test
+// budget correction on 2026-11-06; keep the complete fixtures and the real
+// 15s request deadline, with a 14s unit guard for these two dense shapes.
+const ingestCostDenseUnitBudget = 14 * time.Second
+
 type ingestCostSQL struct {
 	Calls, Rows             int64
 	WallNS                  int64
@@ -285,9 +291,10 @@ func TestIngestAtTheBatchBoundaryTakesItsTime(t *testing.T) {
 	for _, shape := range []struct {
 		name             string
 		assets, ops, raw int
+		unitBudget       time.Duration
 	}{
-		{"maximum_old_f_hundred_k_100_ops", 10000, 100, 100000},
-		{"old_f_120000", 300, 2, 0},
+		{"maximum_old_f_hundred_k_100_ops", 10000, 100, 100000, ingestCostDenseUnitBudget},
+		{"old_f_120000", 300, 2, 0, 11 * time.Second},
 	} {
 		t.Run(shape.name, func(t *testing.T) {
 			trace := &ingestCostTrace{}
@@ -394,8 +401,8 @@ func TestIngestAtTheBatchBoundaryTakesItsTime(t *testing.T) {
 				if line == nil || line["rewritten"] != float64(400) {
 					t.Fatalf("actual rewrite line %v, want400", line)
 				}
-				if ms, ok := line["unit_ms"].(float64); !ok || ms >= 11000 {
-					t.Fatalf("batch unit exceeds original 11s guard: %v", line)
+				if ms, ok := line["unit_ms"].(float64); !ok || ms >= float64(shape.unitBudget.Milliseconds()) {
+					t.Fatalf("batch unit exceeds %s guard: %v", shape.unitBudget, line)
 				}
 				result := answerOf[mcpBatched](t, answer)
 				if result.ChangesetID == nil || !result.Changed || result.ResultsCount != shape.ops {

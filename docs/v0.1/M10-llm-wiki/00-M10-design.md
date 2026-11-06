@@ -781,6 +781,14 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 ## 11. 负责人确认的决定
 
+### 2026-11-06：P4/S2 极端 ingest 用例的时间门槛
+
+负责人原话：“Ok， 不要把这次当做性能问题继续 无限优化了，调整 测试用例量级或者时限即可 ～”。
+
+主持者的落实决定（负责人可以改判）：保留完整负载与正确性断言，仅把 `TestIngestAtTheBatchBoundaryTakesItsTime/maximum_old_f_hundred_k_100_ops` 和 `TestIngestOfMixedSourcePagesTakesItsTime` 的事务守卫改为严格小于14秒。旧11秒来自M9约400页、每页约200条链接的本机标定，不是当前最多400万旧关系负载的四核实测门槛。两个新用例仍各跑3个样本，完整读取、真实mark与不变量等断言继续执行；较小ingest用例与M9原用例保留11秒，真实请求15秒与commit2秒不变。14秒在请求期限内保留1秒的事务外余量，但不承诺所有机器均通过。
+
+这是负责人授权的验收范围修订，覆盖下文与P4设计中“原预算不放宽”对上述两个用例的约束；其余约束不变。本轮结束持续性能优化，已有四核CI的11秒失败仍保留，不能按新线追认为通过。修改后的完整用例与后续分支/main CI须据实际运行记录验收，P4/S2及M10尚未完成。具体范围见[P4§2.2](04-P4-virtual-ingest.md#22-需要负责人确认)。
+
 ### P3旁支撤销树修复：主持者的决定（负责人可以改判）70
 
 撤销规划改用独立RevertTrees/RevertTreeNode六字段完整活树，保留公共ListNodes、stored NameKey、**原SortOrder数值**、两次完整读取及锁下重规划、完整历史与原4s/2s/7.6s。SQL无ORDER BY，不承诺返回行顺序。产品78167b4的本地门禁、精确分支CI及三席独立审查已接受，无待修复发现；文档/合并与指定main配对仍待验。原13ed main失败、Cost01预检停止及两次ListNodes合计耗时的勘误保留。理由、证据和限制见[撤销树修复审查](reviews/P3-revert-tree-review.md)。

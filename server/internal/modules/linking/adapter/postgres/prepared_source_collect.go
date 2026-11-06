@@ -32,10 +32,9 @@ func inspectPageLinksForPreparation(ctx context.Context, q postgres.Querier, arg
 	return collectPreparedSource(rows, links)
 }
 
-// One fixed native Scan scratch, including fixed nullable codecs. The DTO's
-// nullable pointers refer only to this scratch, are reset after every Scan,
-// and are never retained in the result. Non-null fields keep their native
-// destinations/errors. No statement or metadata work occurs before Close.
+// One fixed native Scan scratch. Verified native TEXT compares within its
+// codec callbacks; other metadata keeps the original destinations. Nullable
+// pointers refer only to this scratch and never survive the comparison.
 func collectPreparedSource(rows pgx.Rows, links *preparedLinkFacts) (preparedLinkRead, error) {
 	defer rows.Close()
 	byStart := newPreparedStartMatcher(links.values)
@@ -56,12 +55,29 @@ func collectPreparedSource(rows pgx.Rows, links *preparedLinkFacts) (preparedLin
 	dest := [...]any{&row.CanRetain, &start, &row.RangeEnd, &row.NotebookID,
 		&row.Kind, &property, &row.Target, &anchor, &display, &key, &alt,
 		&aliases, &resolved, &ambiguous, &resolvedAsset}
+	var text preparedSourceTextComparison
+	compareText := false
 	seen, haveBody := false, false
 	var lastBody int32
 	var bodyErr error
 	for rows.Next() {
+		if !seen {
+			compareText = text.prepare(rows, links, &byStart, &start, &row,
+				[5]*pgtype.Text{&property, &anchor, &display, &key, &alt})
+			if compareText {
+				for i := range text.columns {
+					dest[i+4] = &text.columns[i]
+				}
+			}
+		}
+		if compareText {
+			text.reset()
+		}
 		if err := rows.Scan(dest[:]...); err != nil {
 			return preparedLinkRead{}, err
+		}
+		if compareText {
+			text.project()
 		}
 		seen = true
 		out.canRetain = out.canRetain && row.CanRetain
@@ -102,14 +118,21 @@ func collectPreparedSource(rows pgx.Rows, links *preparedLinkFacts) (preparedLin
 				out.assets = append(out.assets, *row.ResolvedID)
 			}
 		}
-		if i, ok := byStart.find(*row.RangeStart); ok {
+		i, ok, value := text.index, text.found, text.value
+		if !compareText {
+			i, ok = byStart.find(*row.RangeStart)
+			if ok {
+				value = links.at(i)
+			}
+		}
+		if ok {
 			// Keep one equality implementation: this value projection borrows
 			// fixed scratch pointers only for the duration of this comparison.
 			old := gen.InspectPageLinksForRetentionRow{CanRetain: row.CanRetain, RangeStart: row.RangeStart,
 				RangeEnd: row.RangeEnd, NotebookID: row.NotebookID, Kind: row.Kind, PropertyKey: row.PropertyKey,
 				Target: row.Target, Anchor: row.Anchor, Display: row.Display, TargetKey: row.TargetKey,
 				TargetAltKey: row.TargetAltKey, Aliases: aliases, ResolvedID: row.ResolvedID}
-			changed[i] = !retentionValuesEqual(&old, links.at(i))
+			changed[i] = compareText && !text.same || !retentionValuesEqual(&old, value)
 			if !changed[i] && row.ResolvedID != nil {
 				inputs[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: ambiguous, Asset: resolvedAsset}
 			}

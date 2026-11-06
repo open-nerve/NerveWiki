@@ -19,24 +19,24 @@ import (
 // Separate top-level processes keep each additional data shape reviewable.
 // The original two formal tops and their 4M/100k/100-op samples stay unchanged.
 func TestIngestOfAMaximumSourcePageTakesItsTime(t *testing.T) {
-	ingestAdditionalRewriteCost(t, "maximum_source_page", []int{page.MaxContentBytes}, 10000, true, false)
+	ingestAdditionalRewriteCost(t, "maximum_source_page", []int{page.MaxContentBytes}, 10000, true, false, 11*time.Second)
 }
 func TestIngestOfMixedSourcePagesTakesItsTime(t *testing.T) {
-	ingestAdditionalRewriteCost(t, "mixed_maximum_bytes", heaviestLast(pagedomain.MaxBatchRewriteBytes), 10000, true, false)
+	ingestAdditionalRewriteCost(t, "mixed_maximum_bytes", heaviestLast(pagedomain.MaxBatchRewriteBytes), 10000, true, false, ingestCostDenseUnitBudget)
 }
 func TestIngestOfUnreferencedSourcesTakesItsTime(t *testing.T) {
 	sizes := make([]int, 400)
 	for i := range sizes {
 		sizes[i] = 5 + 8*300
 	}
-	ingestAdditionalRewriteCost(t, "unreferenced_old_f", sizes, 300, false, false)
+	ingestAdditionalRewriteCost(t, "unreferenced_old_f", sizes, 300, false, false, 11*time.Second)
 }
 func TestIngestOfMoreThanBatchSourcesTakesItsTime(t *testing.T) {
 	sizes := make([]int, 401)
 	for i := range sizes {
 		sizes[i] = 5 + 8*300
 	}
-	ingestAdditionalRewriteCost(t, "single_rename_401_sources", sizes, 300, true, true)
+	ingestAdditionalRewriteCost(t, "single_rename_401_sources", sizes, 300, true, true, 11*time.Second)
 }
 
 func ingestAdditionalTeam(t *testing.T, trace *ingestCostTrace, logs *syncBuffer, batch bool) acmeTeam {
@@ -59,7 +59,7 @@ func ingestAdditionalAssets(t *testing.T, tm acmeTeam, nb, root string, n int) [
 	ingestCostSettle(t, tm, `INSERT INTO page_search_queue(node_id,notebook_id,bulk) SELECT id,notebook_id,false FROM nodes WHERE notebook_id=$1 AND kind='asset'`, nb)
 	return names
 }
-func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets int, referenced, single bool) {
+func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets int, referenced, single bool, unitBudget time.Duration) {
 	trace, logs := &ingestCostTrace{}, &syncBuffer{}
 	tm := ingestAdditionalTeam(t, trace, logs, !single)
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Additional ingestion shape","mode":"llm_wiki"}`)
@@ -198,8 +198,8 @@ func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets 
 			if line == nil || line["rewritten"] != float64(len(sizes)) {
 				t.Fatalf("actual rewritten line=%v", line)
 			}
-			if ms, ok := line["unit_ms"].(float64); !ok || ms >= 11000 {
-				t.Fatalf("additional batch exceeded original11s unit guard: %v", line)
+			if ms, ok := line["unit_ms"].(float64); !ok || ms >= float64(unitBudget.Milliseconds()) {
+				t.Fatalf("additional batch exceeded %s unit guard: %v", unitBudget, line)
 			}
 			if queries["IngestNovelSources"].Calls != 1 {
 				t.Fatal("additional batch did not complete candidate evidence")

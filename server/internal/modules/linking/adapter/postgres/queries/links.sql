@@ -30,12 +30,68 @@ DELETE FROM page_links WHERE notebook_id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: LinksReached :many
 -- The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
 -- one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
-FROM page_links l
-WHERE l.notebook_id = sqlc.arg(notebook_id) AND (
-    l.target_key = ANY(sqlc.arg(keys)::text[]) OR l.target_alt_key = ANY(sqlc.arg(keys)::text[])
-    OR l.resolved_id = ANY(sqlc.arg(targets)::uuid[]) OR l.source_id = ANY(sqlc.arg(sources)::uuid[])
+WITH args AS NOT MATERIALIZED (
+    SELECT sqlc.arg(notebook_id)::uuid AS notebook_id,
+           sqlc.arg(keys)::text[] AS keys,
+           sqlc.arg(targets)::uuid[] AS targets,
+           sqlc.arg(sources)::uuid[] AS sources
+), reached AS (
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE l.source_id = ANY(a.sources)
+        ORDER BY l.source_id, l.range_start
+    )
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT k.value COLLATE "C" AS value
+        FROM unnest(a.keys) AS k(value)
+        WHERE k.value IS NOT NULL
+    ) key_input
+    CROSS JOIN LATERAL (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.notebook_id = a.notebook_id
+          AND l.target_key = key_input.value
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+        OFFSET 0
+    ) l
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    JOIN page_links l ON l.notebook_id = a.notebook_id
+    WHERE l.target_alt_key = ANY(a.keys)
+      AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+      AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT l.notebook_id, l.source_id, l.range_start, l.target,
+               l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.resolved_id = ANY(a.targets)
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+          AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+          AND (l.target_alt_key = ANY(a.keys)) IS NOT TRUE
+        OFFSET 0
+    ) l
+    WHERE l.notebook_id = a.notebook_id
 )
+SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+       l.ambiguous, l.resolved_asset, l.aliases
+FROM reached l
 ORDER BY l.source_id, l.range_start;
 
 -- name: SetResolutions :execrows

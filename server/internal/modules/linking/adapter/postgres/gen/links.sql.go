@@ -104,12 +104,68 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 }
 
 const LinksReached = `-- name: LinksReached :many
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
-FROM page_links l
-WHERE l.notebook_id = $1 AND (
-    l.target_key = ANY($2::text[]) OR l.target_alt_key = ANY($2::text[])
-    OR l.resolved_id = ANY($3::uuid[]) OR l.source_id = ANY($4::uuid[])
+WITH args AS NOT MATERIALIZED (
+    SELECT $1::uuid AS notebook_id,
+           $2::text[] AS keys,
+           $3::uuid[] AS targets,
+           $4::uuid[] AS sources
+), reached AS (
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE l.source_id = ANY(a.sources)
+        ORDER BY l.source_id, l.range_start
+    )
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT k.value COLLATE "C" AS value
+        FROM unnest(a.keys) AS k(value)
+        WHERE k.value IS NOT NULL
+    ) key_input
+    CROSS JOIN LATERAL (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.notebook_id = a.notebook_id
+          AND l.target_key = key_input.value
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+        OFFSET 0
+    ) l
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    JOIN page_links l ON l.notebook_id = a.notebook_id
+    WHERE l.target_alt_key = ANY(a.keys)
+      AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+      AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT l.notebook_id, l.source_id, l.range_start, l.target,
+               l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.resolved_id = ANY(a.targets)
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+          AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+          AND (l.target_alt_key = ANY(a.keys)) IS NOT TRUE
+        OFFSET 0
+    ) l
+    WHERE l.notebook_id = a.notebook_id
 )
+SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+       l.ambiguous, l.resolved_asset, l.aliases
+FROM reached l
 ORDER BY l.source_id, l.range_start
 `
 

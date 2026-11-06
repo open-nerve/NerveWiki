@@ -102,6 +102,7 @@ sql:
       - migrations/sql/00049_page_page_revisions_rewrite.sql
       - migrations/sql/00050_page_nodes_source_hash.sql
       - migrations/sql/00053_page_ingest.sql
+      - migrations/sql/00054_page_content_compression.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:
