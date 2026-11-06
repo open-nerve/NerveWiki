@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -121,13 +122,54 @@ func TestIngestCoverage(t *testing.T) {
 		cs := f.write(t, f.p, "a real changed body without links")
 		calls, _ := trace.stop()
 		assertIngestMarks(t, f.tm, cs)
-		for _, name := range []string{"IngestHeadsFirst", "IngestHeadsAfter", "IngestNovelSources", "LintSourceNodes"} {
-			if calls[name] != 0 {
-				t.Fatalf("noncandidate save performed %s: %v", name, calls)
-			}
-		}
+		assertNoIngestScan(t, calls)
 		if count(t, f.tm.pool, "SELECT revision FROM indexed_pages WHERE node_id=$1", f.p) != 2 {
 			t.Fatal("noncandidate positive write did not update its real index")
 		}
 	})
+	t.Run("already_referenced", testIngestAlreadyReferenced)
+}
+
+func assertNoIngestScan(t *testing.T, calls map[string]int) {
+	t.Helper()
+	for _, name := range []string{"IngestHeadsFirst", "IngestHeadsAfter", "IngestNovelSources", "LintSourceNodes"} {
+		if calls[name] != 0 {
+			t.Fatalf("save without a remaining candidate performed %s: %v", name, calls)
+		}
+	}
+}
+
+// A page saved again with the sources it already cites has no candidate left:
+// what the page cited before takes them out before the whole-notebook read.
+func testIngestAlreadyReferenced(t *testing.T) {
+	trace := &ingestQueryTrace{}
+	f := newIngestFixture(t, &wiring{queryTracer: trace})
+	a := f.tm.upload(t, "alice", f.nb, f.raw, "a.txt", "asset")
+	body := "[[raw/S]] [asset](raw/a.txt)"
+	assertIngestMarks(t, f.tm, f.write(t, f.p, body), f.s, a.ID)
+
+	trace.start()
+	cs := f.write(t, f.p, "typo fixed "+body)
+	calls, _ := trace.stop()
+	assertIngestMarks(t, f.tm, cs)
+	assertNoIngestScan(t, calls)
+
+	trace.start()
+	cs = f.write(t, f.p, body+" [[raw/T]]")
+	calls, _ = trace.stop()
+	assertIngestMarks(t, f.tm, cs, f.t)
+	if calls["IngestHeadsFirst"] != 1 || calls["IngestNovelSources"] != 1 {
+		t.Fatalf("a new reference beside old ones skipped the proof: %v", calls)
+	}
+
+	u := f.tm.createPageWith(t, "alice", f.nb, f.raw, "U", "Source U evidence.")
+	ingestExec(t, f.tm, "UPDATE indexed_pages SET extractor=1 WHERE node_id=$1", f.p)
+	trace.start()
+	cs = f.write(t, f.p, body+" [[raw/U]]")
+	calls, _ = trace.stop()
+	assertIngestMarks(t, f.tm, cs)
+	assertNoIngestScan(t, calls)
+	if got := f.tm.resolvedFrom(t, f.p); !slices.Contains(got, u) {
+		t.Fatalf("unknown old page lost its real new reference: %v", got)
+	}
 }

@@ -237,7 +237,12 @@ func (u *ingestUnit) finish(ctx context.Context, written []uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	// The ordinary non-no-op path ends here without any whole-notebook read.
+	// What W may have cited before can never be novel: those candidates leave
+	// here, so saving a page with the sources it already cites stays on the
+	// ordinary non-no-op path, which ends without any whole-notebook read.
+	candidates = slices.DeleteFunc(candidates, func(c IngestSource) bool {
+		return u.bounds.allDirect || u.bounds.possibleDirect[c.ID]
+	})
 	if len(candidates) == 0 {
 		return nil
 	}
@@ -299,7 +304,7 @@ func (u *ingestUnit) finish(ctx context.Context, written []uuid.UUID) error {
 		if fact.ID != c.ID || fact.Asset != c.Asset {
 			return errors.New("ingest: malformed candidate evidence")
 		}
-		if u.bounds.allDirect || u.bounds.possibleDirect[c.ID] || fact.Direct {
+		if fact.Direct {
 			continue
 		}
 		if c.Asset && (u.bounds.allInheritedAssets || u.bounds.possibleFollowed[c.ID] || fact.FollowedUntouched) {

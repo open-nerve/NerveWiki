@@ -134,6 +134,25 @@ func TestIngestBefore(t *testing.T) {
 			checkPages(t, f.tm.pool)
 		})
 	}
+	// An untouched source's stale head hides its F. Q left alone gives no
+	// D_U for it, so A stands alone as lint reads it; Q written carries old
+	// D_W evidence, which keeps A from being marked. T is marked either way.
+	for _, q := range []string{"q_untouched", "q_written"} {
+		t.Run("stale_parent_"+q, func(t *testing.T) {
+			f := newIngestFixture(t, nil)
+			a := f.tm.upload(t, "alice", f.nb, f.raw, "a.txt", "followed asset")
+			parent := f.tm.createPageWith(t, "alice", f.nb, f.raw, "Parent", "Source body [A](a.txt).")
+			id := f.tm.createPageWith(t, "alice", f.nb, "", "Q", "[[raw/Parent]]")
+			ingestExec(t, f.tm, "UPDATE indexed_pages SET extractor=1 WHERE node_id=$1", parent)
+			ops := []map[string]any{opWriteOn("P.md", "[A](raw/a.txt) [[raw/T]]", versionOf(f.p, 1))}
+			want := []string{f.t, a.ID}
+			if q == "q_written" {
+				ops = append(ops, opWriteOn("Q.md", "changed [[raw/Parent]]", versionOf(id, 1)))
+				want = []string{f.t}
+			}
+			assertIngestMarks(t, f.tm, f.batch(t, ops...), want...)
+		})
+	}
 	t.Run("asset_without_page_head", func(t *testing.T) {
 		f := newIngestFixture(t, nil)
 		a := f.tm.upload(t, "alice", f.nb, f.raw, "a.txt", "independent asset")
