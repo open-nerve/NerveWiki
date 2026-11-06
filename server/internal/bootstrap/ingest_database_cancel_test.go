@@ -110,8 +110,7 @@ func (w c10DraftTx) WithinTx(ctx context.Context, fn func(context.Context) error
 }
 
 // QueryTracer sees the first end attempt even on a closed connection in pinned
-// pgx v5.11.0. See dependency-path.md for the exact scope and source pins.
-// No test helper calls Commit/Rollback on the target transaction.
+// pgx v5.11.0. No test helper calls Commit/Rollback on the target transaction.
 type c10DraftTracer struct{}
 
 func (c10DraftTracer) TraceQueryStart(ctx context.Context, conn *pgx.Conn, d pgx.TraceQueryStartData) context.Context {

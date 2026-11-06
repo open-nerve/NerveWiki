@@ -2,7 +2,9 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"strings"
@@ -128,6 +130,108 @@ func TestIngestCoverage(t *testing.T) {
 		}
 	})
 	t.Run("already_referenced", testIngestAlreadyReferenced)
+	t.Run("diagnostics", testIngestDiagnostics)
+}
+
+// One debug line, with IDs, a reason and counts, only when a candidate meets
+// too little evidence. Each leg reads the log from where it started.
+func testIngestDiagnostics(t *testing.T) {
+	type line struct {
+		Msg, Reason, NotebookID, ChangesetID string
+		Raw, Heads, Candidates, Suppressed   int
+		Added                                int
+		text                                 string
+	}
+	setup := func(t *testing.T) (ingestFixture, *syncBuffer) {
+		t.Helper()
+		logs := &syncBuffer{}
+		tm := newAcmeTeamOn(t, "", "", nil, nil, slog.New(slog.NewJSONHandler(logs, &slog.HandlerOptions{Level: slog.LevelDebug})))
+		return ingestFixtureOn(t, tm), logs
+	}
+	since := func(t *testing.T, logs *syncBuffer, start int) []line {
+		t.Helper()
+		var out []line
+		for text := range strings.SplitSeq(logs.String()[start:], "\n") {
+			if !strings.Contains(text, `"msg":"ingest `) {
+				continue
+			}
+			var raw struct {
+				Msg         string `json:"msg"`
+				Reason      string `json:"reason"`
+				NotebookID  string `json:"notebook_id"`
+				ChangesetID string `json:"changeset_id"`
+				Raw         int    `json:"raw_nodes"`
+				Heads       int    `json:"eligible_heads"`
+				Candidates  int    `json:"candidates"`
+				Suppressed  int    `json:"suppressed"`
+				Added       int    `json:"added"`
+			}
+			if err := json.Unmarshal([]byte(text), &raw); err != nil {
+				t.Fatalf("%s: %v", text, err)
+			}
+			out = append(out, line{raw.Msg, raw.Reason, raw.NotebookID, raw.ChangesetID, raw.Raw, raw.Heads, raw.Candidates, raw.Suppressed, raw.Added, text})
+		}
+		return out
+	}
+	one := func(t *testing.T, f ingestFixture, logs *syncBuffer, start int, cs, msg, reason string, candidates, suppressed int) line {
+		t.Helper()
+		got := since(t, logs, start)
+		if len(got) != 1 {
+			t.Fatalf("diagnostics=%+v, want exactly one", got)
+		}
+		l := got[0]
+		if l.Msg != msg || l.Reason != reason || l.NotebookID != f.nb || l.ChangesetID != cs || l.Candidates != candidates || l.Suppressed != suppressed {
+			t.Fatalf("diagnostic=%+v, want %s/%s for %s with %d candidates, %d suppressed", l, msg, reason, cs, candidates, suppressed)
+		}
+		for _, private := range []string{"raw/", "[[", "Source"} {
+			if strings.Contains(l.text, private) {
+				t.Fatalf("diagnostic carries %q: %s", private, l.text)
+			}
+		}
+		return l
+	}
+	t.Run("none_without_candidates", func(t *testing.T) {
+		f, logs := setup(t)
+		start := len(logs.String())
+		f.write(t, f.p, "changed without links")
+		if got := since(t, logs, start); len(got) != 0 {
+			t.Fatalf("ordinary save logged %+v", got)
+		}
+	})
+	t.Run("coverage_gap", func(t *testing.T) {
+		f, logs := setup(t)
+		q := f.tm.createPage(t, "alice", f.nb, "", "Q")
+		ingestExec(t, f.tm, "UPDATE indexed_pages SET extractor=1 WHERE node_id=$1", q)
+		start := len(logs.String())
+		cs := f.write(t, f.p, "[[raw/T]]")
+		assertIngestMarks(t, f.tm, cs)
+		if l := one(t, f, logs, start, cs, "ingest coverage incomplete", "stale_extractor", 1, 1); l.Raw == 0 || l.Heads == 0 {
+			t.Fatalf("coverage diagnostic lost its counts: %+v", l)
+		}
+	})
+	t.Run("unknown_old_page", func(t *testing.T) {
+		f, logs := setup(t)
+		ingestExec(t, f.tm, "UPDATE indexed_pages SET extractor=1 WHERE node_id=$1", f.p)
+		start := len(logs.String())
+		cs := f.write(t, f.p, "[[raw/S]]")
+		assertIngestMarks(t, f.tm, cs)
+		if l := one(t, f, logs, start, cs, "ingest incomplete old evidence", "old_direct_unknown", 1, 1); l.Raw != 0 {
+			t.Fatalf("unknown old page read the raw tree: %+v", l)
+		}
+	})
+	t.Run("suppressed_asset", func(t *testing.T) {
+		f, logs := setup(t)
+		f.tm.upload(t, "alice", f.nb, f.raw, "a.txt", "followed asset")
+		parent := f.tm.createPageWith(t, "alice", f.nb, f.raw, "Parent", "Source body [A](a.txt).")
+		q := f.tm.createPageWith(t, "alice", f.nb, "", "Q", "[[raw/Parent]]")
+		ingestExec(t, f.tm, "UPDATE indexed_pages SET extractor=1 WHERE node_id=$1", parent)
+		start := len(logs.String())
+		cs := f.batch(t, opWriteOn("Q.md", "changed [[raw/Parent]]", versionOf(q, 1)), opWriteOn("P.md", "[A](raw/a.txt) [[raw/T]]", versionOf(f.p, 1)))
+		assertIngestMarks(t, f.tm, cs, f.t)
+		if l := one(t, f, logs, start, cs, "ingest incomplete old evidence", "old_followed_unknown", 2, 1); l.Added != 1 || l.Raw == 0 {
+			t.Fatalf("old evidence diagnostic lost its counts: %+v", l)
+		}
+	})
 }
 
 func assertNoIngestScan(t *testing.T, calls map[string]int) {

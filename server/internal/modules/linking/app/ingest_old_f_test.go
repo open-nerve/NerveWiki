@@ -281,7 +281,7 @@ func (f *privateOldFBefore) OldBodyReferences(ctx context.Context, nb uuid.UUID,
 }
 func privateOldFUnit(f *privateOldFBefore, sources []uuid.UUID) *ingestUnit {
 	return &ingestUnit{deps: &Ingest{Heads: f, Reads: NewLintReads(f, 5<<20), OldBodies: f}, event: PagesChanged{NotebookID: f.notebook, BeforeIngest: f}, writtenOrDeleted: sources,
-		bounds: ingestBounds{knownDirect: map[uuid.UUID]bool{}, possibleDirect: map[uuid.UUID]bool{}, knownFollowed: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
+		bounds: ingestBounds{possibleDirect: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
 }
 func privateOldFSource(f *privateOldFBefore, id uuid.UUID) {
 	f.nodes[id] = IngestNodeBefore{ID: id, Exists: true, Kind: "page", InSource: true, PageBytes: 200000, PageBytesKnown: true, Revision: 7, RevisionKnown: true}

@@ -24,6 +24,10 @@ func newIngestFixture(t *testing.T, w *wiring) ingestFixture {
 	} else {
 		tm = newAcmeTeamWiring(t, "", "", *w)
 	}
+	return ingestFixtureOn(t, tm)
+}
+func ingestFixtureOn(t *testing.T, tm acmeTeam) ingestFixture {
+	t.Helper()
 	book := tm.createWith(t, tm.tokens["alice"], `{"name":"Ingest semantics","mode":"llm_wiki"}`)
 	f := ingestFixture{tm: tm, nb: book.ID, raw: *book.SourceRootID}
 	f.s = tm.createPageWith(t, "alice", f.nb, f.raw, "S", "Source S evidence.")
@@ -86,6 +90,7 @@ func TestIngestBefore(t *testing.T) {
 	t.Run("prepared_source_native_boundary", testIngestPreparedSourceBoundary)
 	t.Run("source_value_bytes", testIngestSourceValueBytes)
 	testIngestBeforeBusiness(t)
+	t.Run("exclusions", testIngestExclusions)
 	t.Run("missing_ancestor", testIngestMissingAncestor)
 	t.Run("possible_incomplete", testIngestOldSlotsFailure)
 	t.Run("has_negative", func(t *testing.T) {

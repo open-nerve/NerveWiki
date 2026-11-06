@@ -33,6 +33,22 @@ type ingestScope struct {
 	notebookID, rootID uuid.UUID
 	extractor          int
 }
+
+func (r CoverageReason) String() string {
+	switch r {
+	case MissingIndex:
+		return "missing_index"
+	case StaleExtractor:
+		return "stale_extractor"
+	case RevisionMismatch:
+		return "revision_mismatch"
+	case WorkBudget:
+		return "work_budget"
+	default:
+		return "no_gap"
+	}
+}
+
 type coverageResult struct {
 	state                             CoverageState
 	reason                            CoverageReason
@@ -42,6 +58,10 @@ type coverageResult struct {
 	currentSources                    []IngestRevision
 	untouchedSources, unknownFParents []uuid.UUID
 }
+
+// heads counts the current heads the proof read before it ended.
+func (r coverageResult) heads() int { return len(r.eligibleEmitters) + len(r.currentSources) }
+
 type IngestCoverage struct {
 	Metadata IngestMetadata
 	Heads    IngestIndexHeads

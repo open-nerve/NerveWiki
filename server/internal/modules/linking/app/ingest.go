@@ -16,13 +16,13 @@ type oldFollowed struct {
 	possible bool
 }
 type ingestBounds struct {
-	knownDirect, possibleDirect     map[uuid.UUID]bool
-	allDirect                       bool
-	knownFollowed, possibleFollowed map[uuid.UUID]bool
-	allInheritedAssets              bool
-	uncertain                       bool
-	retained                        []oldFollowed
-	unknownFParents                 []uuid.UUID
+	possibleDirect     map[uuid.UUID]bool
+	allDirect          bool
+	possibleFollowed   map[uuid.UUID]bool
+	allInheritedAssets bool
+	uncertain          bool
+	retained           []oldFollowed
+	unknownFParents    []uuid.UUID
 }
 type ingestUnit struct {
 	prepared         *sourcePreparationSet
@@ -61,8 +61,7 @@ func (x Index) beginIngest(ctx context.Context, e PagesChanged) (*ingestUnit, er
 		return nil, errors.New("ingest: incomplete edit observer dependencies")
 	}
 	u := &ingestUnit{deps: x.Ingest, event: e, writtenOrDeleted: sortedIngestIDs(w), started: time.Now(),
-		bounds: ingestBounds{knownDirect: map[uuid.UUID]bool{}, possibleDirect: map[uuid.UUID]bool{},
-			knownFollowed: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
+		bounds: ingestBounds{possibleDirect: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
 	u.prepared = newSourcePreparationSet(e, x.Preparations)
 	u.scope = ingestScope{identity: u, notebookID: e.NotebookID, rootID: *e.Notebook.SourceRootID, extractor: domain.Extractor}
 	if err := captureForIngest(ctx, u); err != nil {
@@ -74,7 +73,6 @@ func (x Index) beginIngest(ctx context.Context, e PagesChanged) (*ingestUnit, er
 func (u *ingestUnit) direct(f OldQualifiedFacts) error {
 	u.bounds.uncertain = u.bounds.uncertain || f.State == OldFactsUnknown
 	for _, ref := range f.References {
-		u.bounds.knownDirect[ref.TargetID] = true
 		u.bounds.possibleDirect[ref.TargetID] = true
 	}
 	if f.State == OldFactsUnknown {
@@ -108,9 +106,6 @@ func (u *ingestUnit) followed(f OldSourceFacts) error {
 	if u.bounds.possibleDirect[f.PageID] || u.bounds.allDirect {
 		for _, id := range assets {
 			u.bounds.possibleFollowed[id] = true
-			if f.State == OldFactsKnown && u.bounds.knownDirect[f.PageID] {
-				u.bounds.knownFollowed[id] = true
-			}
 		}
 	} else {
 		// Transfer the one sorted asset slice, not an R-sized map or SQL pair array.
@@ -240,10 +235,14 @@ func (u *ingestUnit) finish(ctx context.Context, written []uuid.UUID) error {
 	// What W may have cited before can never be novel: those candidates leave
 	// here, so saving a page with the sources it already cites stays on the
 	// ordinary non-no-op path, which ends without any whole-notebook read.
+	found := len(candidates)
 	candidates = slices.DeleteFunc(candidates, func(c IngestSource) bool {
 		return u.bounds.allDirect || u.bounds.possibleDirect[c.ID]
 	})
 	if len(candidates) == 0 {
+		if found > 0 && u.bounds.uncertain {
+			u.debugEvidence(ctx, "ingest incomplete old evidence", u.bounds.reason(), 0, 0, found, found)
+		}
 		return nil
 	}
 	coverage, err := (IngestCoverage{Metadata: u.deps.Metadata, Heads: u.deps.Heads}).check(ctx, u.scope, u.writtenOrDeleted)
@@ -251,11 +250,7 @@ func (u *ingestUnit) finish(ctx context.Context, written []uuid.UUID) error {
 		return err
 	}
 	if coverage.state != CoverageComplete {
-		if u.deps.Logger != nil {
-			u.deps.Logger.DebugContext(ctx, "ingest coverage incomplete", "notebook_id", u.scope.notebookID,
-				"changeset_id", u.event.ChangesetID, "reason", coverage.reason, "raw_nodes", coverage.visited,
-				"candidates", len(candidates), "duration", time.Since(u.started))
-		}
+		u.debugEvidence(ctx, "ingest coverage incomplete", coverage.reason.String(), coverage.visited, coverage.heads(), found, found)
 		return nil
 	}
 	if coverage.scope.identity != u || coverage.scope.notebookID != u.scope.notebookID || coverage.scope.rootID != u.scope.rootID ||
@@ -319,10 +314,31 @@ func (u *ingestUnit) finish(ctx context.Context, written []uuid.UUID) error {
 			return err
 		}
 	}
-	if u.deps.Logger != nil && u.bounds.uncertain {
-		u.deps.Logger.DebugContext(ctx, "ingest incomplete old evidence", "notebook_id", u.scope.notebookID,
-			"changeset_id", u.event.ChangesetID, "raw_nodes", coverage.visited, "candidates", len(candidates),
-			"old_f_pairs", u.oldPairs, "parent_ids", len(parents), "added", result.Added, "duration", time.Since(u.started))
+	if u.bounds.uncertain {
+		u.debugEvidence(ctx, "ingest incomplete old evidence", u.bounds.reason(), coverage.visited, coverage.heads(), found, found-len(novel),
+			"old_f_pairs", u.oldPairs, "parent_ids", len(parents), "added", result.Added)
 	}
 	return nil
+}
+
+// debugEvidence is the one diagnostic of a unit with candidates and too little
+// evidence: IDs, an enum and counts, never a title, path, target or body.
+func (u *ingestUnit) debugEvidence(ctx context.Context, message, reason string, raw int64, heads, candidates, suppressed int, more ...any) {
+	if u.deps.Logger == nil {
+		return
+	}
+	args := []any{"notebook_id", u.scope.notebookID, "changeset_id", u.event.ChangesetID, "reason", reason, "raw_nodes", raw,
+		"eligible_heads", heads, "candidates", candidates, "suppressed", suppressed, "duration", time.Since(u.started)}
+	u.deps.Logger.DebugContext(ctx, message, append(args, more...)...)
+}
+
+func (b ingestBounds) reason() string {
+	switch {
+	case b.allDirect:
+		return "old_direct_unknown"
+	case b.allInheritedAssets:
+		return "old_followed_unknown"
+	default:
+		return "old_targets_possible"
+	}
 }

@@ -52,7 +52,7 @@ func TestIngestPrivateSourceQualification(t *testing.T) {
 			}
 			u := &ingestUnit{deps: &Ingest{Heads: f, Reads: NewLintReads(f, 5<<20), OldBodies: f},
 				event: PagesChanged{NotebookID: nb, BeforeIngest: f}, writtenOrDeleted: []uuid.UUID{s},
-				bounds: ingestBounds{knownDirect: map[uuid.UUID]bool{}, possibleDirect: map[uuid.UUID]bool{}, knownFollowed: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
+				bounds: ingestBounds{possibleDirect: map[uuid.UUID]bool{}, possibleFollowed: map[uuid.UUID]bool{}}}
 			if err := captureForIngest(t.Context(), u); err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +69,7 @@ func TestIngestPrivateSourceQualification(t *testing.T) {
 			if f.calls != calls || u.bounds.uncertain != tc.uncertain || !reflect.DeepEqual(u.bounds.retained, retained) || !slices.Equal(u.bounds.unknownFParents, unknown) {
 				t.Fatalf("private source qualification: calls=%d want%d bounds=%+v retained=%+v unknown=%v", f.calls, calls, u.bounds, retained, unknown)
 			}
-			if len(u.bounds.knownDirect)+len(u.bounds.possibleDirect)+len(u.bounds.knownFollowed)+len(u.bounds.possibleFollowed) != 0 || u.bounds.allDirect || u.bounds.allInheritedAssets {
+			if len(u.bounds.possibleDirect)+len(u.bounds.possibleFollowed) != 0 || u.bounds.allDirect || u.bounds.allInheritedAssets {
 				t.Fatalf("source-only old F changed independent wiki D or inherited global bound: %+v", u.bounds)
 			}
 		})

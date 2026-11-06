@@ -1593,6 +1593,13 @@ func (f *fakeStore) Now(ctx context.Context, notebookID, root uuid.UUID, ids []u
 	if err := f.errs["IngestNow"]; err != nil {
 		return nil, err
 	}
+	// The real store refuses both (ingestMetadataIDs).
+	if len(ids) > 512 {
+		return nil, errors.New("ingest metadata: more than 512 IDs")
+	}
+	if !slices.IsSortedFunc(ids, uuid.UUID.Compare) || len(slices.Compact(slices.Clone(ids))) != len(ids) {
+		return nil, errors.New("ingest metadata: IDs must be sorted and unique")
+	}
 	out := make([]app.IngestHead, len(ids))
 	for i, id := range ids {
 		h := app.IngestHead{ID: id}

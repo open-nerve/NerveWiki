@@ -58,6 +58,32 @@ func TestIngestBefore(t *testing.T) {
 			t.Fatal("fixture did not actually move ancestor out")
 		}
 	})
+	t.Run("first_memo_agents", func(t *testing.T) {
+		f, _ := ingestFixtureBefore()
+		agents := f.page("AGENTS", nil, 0)
+		calls := 0
+		f.observers = []app.PageObserver{ingestObserver(func(ctx context.Context, e app.Event) error {
+			calls++
+			rows, err := e.BeforeIngest.NodesBefore(ctx, []uuid.UUID{agents.ID})
+			if err != nil {
+				return err
+			}
+			if len(rows) != 1 || !rows[0].Exists || !rows[0].IsRootAgents || rows[0].InSource || rows[0].IsSourceRoot {
+				t.Fatalf("root AGENTS facts=%+v, want its initial role after the rename", rows)
+			}
+			return nil
+		})}
+		_, err := f.run(f.asAlice(), domain.ClientWeb, func(ctx context.Context, u *app.Unit) error {
+			if _, err := u.Rename(ctx, agents.ID, "Notes"); err != nil {
+				return err
+			}
+			_, err := u.WriteContent(ctx, app.ContentWrite{NodeID: agents.ID, Content: "renamed", Base: 1})
+			return err
+		})
+		if err != nil || calls != 1 {
+			t.Fatalf("unit=%v observations=%d", err, calls)
+		}
+	})
 	t.Run("before_revision", func(t *testing.T) {
 		f, _ := ingestFixtureBefore()
 		p := f.page("P", nil, 1)
