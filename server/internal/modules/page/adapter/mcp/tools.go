@@ -245,8 +245,9 @@ const (
 		`keeps only changesets with sources; false or omitted keeps all. path keeps the changesets that changed ` +
 		`that page or attachment; actor those of an account, "me" for yours; client those of a client, "mcp" for` +
 		` every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. ` +
-		`Go on with next_cursor while it is set. changeset reads one in full. History is read-only here: people ` +
-		`restore versions and revert changesets in the web.`
+		`Go on with next_cursor while it is set. changeset reads all of one's changes; its sources stay a preview ` +
+		`of the first twenty, without a cursor. History is read-only here: people restore versions and revert ` +
+		`changesets in the web.`
 	changesetDescription = `Read one of the notebook's changesets by the id log gives: its kind, client, author, times, message, ` +
 		`counts, what it reverts and what reverted it, and whether it renames or moves nodes; then what it did ` +
 		`to each node it changed, a page at a time by node id: where the node was before and after in the tree, ` +
@@ -254,8 +255,9 @@ const (
 		`header includes ingest_count (up to 10000) and up to its first twenty source paths in append order, ` +
 		`null where a source is no longer alive. ingest_sources_cut is always present and true only when the ` +
 		`answer shortened that preview to fit; sources take room before changes. The changeset itself comes on ` +
-		`the first page, without cursor; go on with next_cursor while it is set. A changeset of another notebook` +
-		` is not found here. History is read-only here: people revert changesets in the web.`
+		`the first page, without cursor; go on with next_cursor while it is set. It pages changes only: sources ` +
+		`have no cursor. A changeset of another notebook is not found here. History is read-only here: people ` +
+		`revert changesets in the web.`
 	grepDescription = `Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) ` +
 		`matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines ` +
 		`(read with that offset and limit 1 gives the line) and the line's text as stored, without its \r and, on the ` +
