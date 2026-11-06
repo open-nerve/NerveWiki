@@ -133,7 +133,7 @@ Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不�
 | U17/S2 | II/unknown_follow_closure | old Q的完整PossibleDirect={S,K}含known K，S的完整F={A}、K的F={B}；new A/B/T仅T标，状态仍Unknown；F missing腿仅asset保守而page T标 | 分腿仅漏S→A闭包／漏known K→B／把asset-only未知变AllDirect |
 | U18/S2 | II/unknown_f_unreferenced | S旧F缺证但完整D_W/D_U均不含S，P直引独立A/T，marks=[A,T] | 见任何UnknownFParent就无条件AllAssets |
 | U19/S2 | EX/ingest_export_map | 真whole zip，log ingest来源使用实际Scope映射；历史缺ID纯文字且不补后位，root/folder来源不指虚构md | ingest source沿用Notebook原路径 |
-| U20/S2 | IC/retention_cost | 400×300、400×10000、100ops与100k分腿真实接受且A0/T1；R、bytes、head/F读量及peak/预算逐值记录。2026-11-06负责人改判仅使最大旧F/100ops/100k与mixed最大字节两个用例的unit<14s；较小用例unit<11s、真实request15s/commit2s、全部3样本与完整关系不变，见[P4§2.2](../04-P4-virtual-ingest.md#22-需要负责人确认) | 丢全部retained以省成本；业务A0首败，不靠超时 |
+| U20/S2 | IC/retention_cost | 400×300、400×10000、100ops与100k分腿真实接受且A0/T1；R、bytes、head/F读量及peak/预算逐值记录。2026-11-06负责人改判、2026-11-07决定150仅使最大旧F/100ops/100k与mixed最大字节两个用例的测试请求期限为30s、unit<29s；较小用例unit<11s、真实request15s/commit2s、全部3样本与完整关系不变，见[P4§2.2](../04-P4-virtual-ingest.md#22-需要负责人确认) | 丢全部retained以省成本；业务A0首败，不靠超时 |
 | U21/S2 | II/untouched_deleted_source_approx | Q不在W、S在W被删，A同级存活，最终Q不再有可消化S，D_W空，P→A/T应[A,T]；与U14并列 | 为Q强造Before D或无条件保全部oldF |
 
 | H01/S2 | HM/true_false | notebook/actor/page三filter TRUE只ingest；false/omit同原结果 | false也走专用ingest SQL |

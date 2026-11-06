@@ -115,6 +115,9 @@ jobs:
       - name: Go version
         working-directory: server
         run: go version
+      # ubuntu-24.04 的 runner 池有几代 CPU，同一二进制的耗时可差两倍；计时失败先看落在哪一种（M10/P4/S2）
+      - name: Runner CPU
+        run: grep -m1 'model name' /proc/cpuinfo
       - name: Lint
         if: matrix.leg == 'costs-1'
         run: make lint-go
