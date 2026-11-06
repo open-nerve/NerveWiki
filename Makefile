@@ -254,7 +254,9 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 既有 494 个编译顶层静态分配为 167/39/114/122/52；未改测试名，Go 15m 与 bootstrap job 25m 不变。
 # 18b 当前五份各两轮已实测：495顶层167/39/114/123/52；process均值310.418/191.582/245.091/278.787/227.605秒。
 # 精确分支CI41171083998 attempt1五份Test为336/198/372/386/288秒；指定merge/record两次main各份均值<450秒仍待真实验收。
-BOOTSTRAP_FIFTH = ^TestThe(MCP|Lint|WikiTools)
+# M10/P4/S2 审查：S2 新增的 9 个顶层（TestRebuild*×5、TestRewriteWindowNativeWriter、TestStableLinkRetention*×3）
+# 落在第四份的补集，两次分支样本 449/455 秒，均值过了 450 秒的线；照规则按测试名移到第五份，不提高 -timeout。
+BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
 # 当前 521 个顶层静态分配为 157/51/116/132/52/13；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest

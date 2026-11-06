@@ -69,13 +69,14 @@ jobs:
           # P4 之后作业估计 6.5–11 分钟，时限照约两倍的规则从 20 分钟提到 25 分钟（M9/P4 设计 6.5，第 11 节第 54 条）
           # M10/P4/S2：原 costs 的 32 条命令按 1–13 / 14–20 / 21–32 连续分三份。
           # 42093077490/a1 在第16条期间到作业25m被取消；原Go期限、样本与预算不变。
-          # 静态与生成物检查仅第一份，三份仍各25m；实际新CI结果另验。
+          # 静态与生成物检查仅第一份；实际新CI结果另验。
           # D143：costs-2 在 PreparedSource 后增加两条 LinksReached 物理守卫；现共34条（13/9/12）。
           # 原32条的argv、分组与各Go期限不变；新增两条各独立默认10m，实际新CI余量另验。
+          # M10/P4/S2 审查：costs-1/2 实测作业 17.2/15.4 分钟，而 runner CPU 可差两倍，照约两倍的规则取 35。
           - leg: costs-1
-            timeout: 25
+            timeout: 35
           - leg: costs-2
-            timeout: 25
+            timeout: 35
           - leg: costs-3
             timeout: 25
           # lint 的迁移、计划与十万页规则/编排成本独立一份；静态检查和生成检查只在 costs-1 运行。
@@ -176,62 +177,6 @@ jobs:
                   chunk = text[i:i + 4000].replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
                   print(f"::{level} title={title}, part {i // 4000 + 1}::{chunk}")
           EOF
-
-      # Diagnostic only, after the original failed Test/log/annotations. A profile
-      # run can neither replace that failure nor count as a guard acceptance.
-      - name: Profile the failed ingestion guard
-        id: ingest-profile
-        if: failure() && !cancelled() && steps.go-tests.outcome == 'failure' && matrix.leg == 'guards-core'
-        shell: bash
-        env:
-          TESTCONTAINERS_RYUK_DISABLED: "true"
-        run: |
-          if ! python3 - "$RUNNER_TEMP/test-go.log" <<'PY'
-          import re
-          import sys
-          from pathlib import Path
-
-          def c2_failed(lines):
-              recipe = "cd server && go test -count=1 -v -run '^TestIngestAtTheBatchBoundaryTakesItsTime$' ./internal/bootstrap"
-              starts = [i for i, line in enumerate(lines) if line == recipe]
-              if len(starts) != 1:
-                  return False
-              block = lines[starts[0] + 1:]
-              block = block[:next((i for i, line in enumerate(block) if line.startswith("cd server && go test ")), len(block))]
-              name = "TestIngestAtTheBatchBoundaryTakesItsTime"
-              runs = [i for i, line in enumerate(block) if line == "=== RUN   " + name]
-              terminals = [(i, match[1]) for i, line in enumerate(block) if (match := re.fullmatch(r"--- (PASS|FAIL|SKIP): " + name + r" \([0-9.]+s\)", line))]
-              packages = [i for i, line in enumerate(block) if re.fullmatch(r"FAIL\s+github.com/open-nerve/NerveWiki/server/internal/bootstrap\s+[0-9.]+s", line)]
-              return len(runs) == len(terminals) == len(packages) == 1 and terminals[0][1] == "FAIL" and runs[0] < terminals[0][0] < packages[0]
-
-          sys.exit(0 if c2_failed(Path(sys.argv[1]).read_text().splitlines()) else 1)
-          PY
-          then
-            echo "No exact C2 recipe/test/package failure; no diagnostic rerun."
-            exit 0
-          fi
-          profile_dir="$RUNNER_TEMP/ingest-profile"
-          mkdir "$profile_dir"
-          echo "started=true" >> "$GITHUB_OUTPUT"
-          {
-            printf 'purpose=diagnostic-only\noriginal_test_outcome=failure\n'
-            printf 'run=%s\nattempt=%s\nworkflow_sha=%s\nrunner_os=%s\nrunner_arch=%s\n' "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" "$GITHUB_SHA" "$RUNNER_OS" "$RUNNER_ARCH"
-            git rev-parse HEAD
-            go version
-            go env GOOS GOARCH
-          } > "$profile_dir/identity.txt"
-          cd server
-          go_status=0
-          go test -count=1 -v -run '^TestIngestAtTheBatchBoundaryTakesItsTime$' -o "$profile_dir/bootstrap.test" -cpuprofile "$profile_dir/cpu.pprof" -memprofile "$profile_dir/allocs.pprof" ./internal/bootstrap > "$profile_dir/diagnostic.log" 2>&1 || go_status=$?
-          printf 'go_test_exit=%s\n' "$go_status" > "$profile_dir/exit.txt"
-          exit "$go_status"
-      - name: Upload the ingestion diagnostic profile
-        if: always() && steps.ingest-profile.outputs.started == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ingest-profile-${{ matrix.leg }}
-          path: ${{ runner.temp }}/ingest-profile/
-          if-no-files-found: error
 
   web:
     name: web
