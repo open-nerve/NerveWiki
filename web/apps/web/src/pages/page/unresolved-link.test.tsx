@@ -89,7 +89,7 @@ test("a link with no landing says why; OK gives the focus back to the link", asy
     parent_missing: "A page on its path does not exist.",
     too_deep: "Its page would nest more than 10 levels deep.",
     not_resolvable:
-      "A page created for it would not be the one it leads to: another page answers to its name, or the name is written otherwise.",
+      "A page created for it would not be the one it leads to: another page answers to its name, the name is written otherwise, or an LLM Wiki keeps the name at its root for a generated file.",
     target_invalid: "This link's target cannot name a page.",
   } as const;
   const { server } = await open(

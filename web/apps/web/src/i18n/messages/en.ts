@@ -104,7 +104,7 @@ export const en = {
   "unresolved.parentMissing": "A page on its path does not exist.",
   "unresolved.tooDeep": "Its page would nest more than 10 levels deep.",
   "unresolved.notResolvable":
-    "A page created for it would not be the one it leads to: another page answers to its name, or the name is written otherwise.",
+    "A page created for it would not be the one it leads to: another page answers to its name, the name is written otherwise, or an LLM Wiki keeps the name at its root for a generated file.",
   "unresolved.targetIsAsset": "This name is an attachment's, not a page's; no page is created for it.",
   "unresolved.ok": "OK",
   "reading.table": "Table",

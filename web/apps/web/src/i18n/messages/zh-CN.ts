@@ -102,7 +102,8 @@ export const zhCN: Messages = {
   "unresolved.titleInvalid": "它的名称不能作为页面的标题。",
   "unresolved.parentMissing": "路径里有一个页面不存在。",
   "unresolved.tooDeep": "它的页面会超过 10 层。",
-  "unresolved.notResolvable": "为它新建的页面不会是它指向的那一页：另有页面答应这个名称，或名称的写法不同。",
+  "unresolved.notResolvable":
+    "为它新建的页面不会是它指向的那一页：另有页面答应这个名称，名称的写法不同，或这个名称在 LLM Wiki 的根下留给系统生成的文件。",
   "unresolved.targetIsAsset": "这个名称是附件，不是页面，不为它新建页面。",
   "unresolved.ok": "好",
   "reading.table": "表格",
