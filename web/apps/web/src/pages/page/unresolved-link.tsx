@@ -30,14 +30,7 @@ type Landing = NonNullable<LinkLanding["landing"]>;
  * Why a link's page is not created: the reader cannot, a read-only view (a version's, a page's in the trash) does
  * not, an embed or an image does not, or the server's reason.
  */
-type Why =
-  | "reader"
-  | "readerWiki"
-  | "readOnly"
-  | "embed"
-  | "image"
-  | "sourceArea"
-  | NonNullable<LinkLanding["reason"]>;
+type Why = "reader" | "readerWiki" | "readOnly" | "embed" | "image" | "sourceArea" | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of

@@ -296,7 +296,13 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const raw = notebook.source_root_id;
   const spaced = "Attention is all you need by Vaswani and others ".repeat(3).trim();
   const source = await createPage(api, pat, notebook.id, spaced, raw, "spaced title\n");
-  const file = await uploadAsset(api, pat, notebook.id, { name: `${spaced}.txt`, bytes: utf8("a long name") }, source.id);
+  const file = await uploadAsset(
+    api,
+    pat,
+    notebook.id,
+    { name: `${spaced}.txt`, bytes: utf8("a long name") },
+    source.id
+  );
   const page = await signedInPage(tokens);
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   await page.setViewportSize({ width: 375, height: 800 });
