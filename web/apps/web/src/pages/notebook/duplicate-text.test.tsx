@@ -4,7 +4,7 @@ import { observer } from "mobx-react-lite";
 import { runInAction } from "mobx";
 import { useEffect, useState } from "react";
 import type { RouteObject } from "react-router";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
 import { ApiError } from "../../services/api";
@@ -339,6 +339,18 @@ test("duplicate targets include attachments and stale trees: report paths resolv
   expect(sourceAtPath(pages, "raw/Folder/known.png")?.node.id).toBe(asset.id);
   expect(sourceAtPath(pages, "raw/Folder/Known")).toBeUndefined();
   expect(sourceAtPath(pages, "../../elsewhere.md")).toBeUndefined();
+});
+
+test("a report's paths cost one walk of the tree, not one for each of its problems", async () => {
+  const server = sourceServer();
+  const many = Array.from({ length: 300 }, (_, i) => pageNode(100 + i, `Page ${i}`, folder));
+  server.nodes.push(...many);
+  const view = probe(server, duplicate());
+  await view.open();
+  const { pages } = view.stores();
+  const walked = vi.spyOn(pages, "nodeAncestors");
+  for (let i = 0; i < 100; i++) expect(sourceAtPath(pages, "raw/Folder/Page 299.md")?.node.id).toBe(many[299]?.id);
+  expect(walked.mock.calls.length).toBeLessThan(1000);
 });
 
 test.each([known, asset])(

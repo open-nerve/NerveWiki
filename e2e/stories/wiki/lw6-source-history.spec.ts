@@ -6,10 +6,10 @@ import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { bearer, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { notebookPath } from "../../fixtures/notebook-pages";
-import { revertChangeset } from "../../fixtures/history";
-import { joinAs } from "../../fixtures/invitations";
+import { listChangesets, revertChangeset } from "../../fixtures/history";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, deleteNode, readContent, writeContent } from "../../fixtures/pages";
+import { createPage, deleteNode, listNodes, readContent, renameNode, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, listJobs, runningJob, startImport, startTrashRestore } from "../../fixtures/transfer";
 import { zipOf } from "../../fixtures/zip-write";
@@ -299,7 +299,7 @@ for (const entry of ["API", "page"] as const) {
         await expect(row).toContainText(/earlier completed batches are kept/i);
         await expect(row).toContainText(/this batch was not written/i);
         // The refused node remains in the trash; its unknown current location must not become a live-page link.
-        await expect(row.getByRole("link", { name: target.id, exact: true })).toHaveCount(0);
+        await expect(row.locator(`a[href*="${target.id}"]`)).toHaveCount(0);
         await row.getByRole("link", { name: "raw/Late competitor.md", exact: true }).click();
         await expect(page).toHaveURL(
           new URL(wikiPagePath(workspace.slug, notebook.id, known.id), nervewiki.baseURL).href
@@ -389,6 +389,59 @@ for (const kind of ["page", "asset"] as const) {
     await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
   });
 }
+
+test("LW6 (page): a writer undoes an admin's deletion of a source; an admin's rename is an admin's to undo, and that undo writes the rewritten page back", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const notebook = await createNotebook(api, pat, workspace.slug, "Undo sources", "editor", { mode: "llm_wiki" });
+  const raw = notebook.source_root_id;
+  if (!raw) throw new Error("no source root");
+  const deleted = await createPage(api, pat, notebook.id, "To delete", raw, "deleted source\n");
+  const renamed = await createPage(api, pat, notebook.id, "To rename", raw, "renamed source\n");
+  const citing = "See [[raw/To rename]]\n";
+  const wiki = await createPage(api, pat, notebook.id, "Citing", null, citing);
+  const newest = async () => {
+    const { data } = await listChangesets(api, pat, notebook.id);
+    const changeset = data?.data[0];
+    if (!changeset) throw new Error("no changeset");
+    return changeset.id;
+  };
+  const page = await signedInPage(tokens);
+  const undo = async (id: string, status: number) => {
+    await page.goto(changesetPath(workspace.slug, notebook.id, id));
+    await page.getByRole("button", { name: "Undo change", exact: true }).click();
+    const answer = answerTo(page, "POST", `/api/v0/changesets/${id}/revert`);
+    await page.getByRole("alertdialog").getByRole("button", { name: "Undo", exact: true }).click();
+    expect((await answer).status()).toBe(status);
+  };
+
+  await deleteNode(api, pat, deleted.id);
+  await undo(await newest(), 200);
+  expect((await listNodes(api, pat, notebook.id)).map((node) => node.name)).toContain("To delete");
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+
+  expect((await renameNode(api, pat, renamed.id, "Renamed source")).response.status).toBe(200);
+  expect((await readContent(api, pat, wiki.id)).content).not.toBe(citing);
+  const rename = await newest();
+  pageWatch.expectConsole({ errors: [failedToLoad(403)] });
+  await undo(rename, 403);
+  const refusal = page.getByRole("alertdialog");
+  await expect(refusal).toContainText(/only the notebook's admins/i);
+  // Moving a page out and back restores content; it does nothing for a rename a writer may not touch.
+  await expect(refusal).not.toContainText("Temporary steps");
+  expect((await listNodes(api, pat, notebook.id)).map((node) => node.name)).toContain("Renamed source");
+
+  expect((await revertChangeset(api, pat, rename)).response.status).toBe(200);
+  expect((await listNodes(api, pat, notebook.id)).map((node) => node.name)).toContain("To rename");
+  expect((await readContent(api, pat, wiki.id)).content).toBe(citing);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+});
 
 test("LW6 (page): even an admin restores source content outside the area before moving it back, and resolves duplicates before retrying", async ({
   api,

@@ -282,6 +282,48 @@ for (const change of ["created", "moved in"] as const) {
   });
 }
 
+test("LW3 (page): at 375 wide a long source keeps to the page and its refused dialog's buttons to the dialog", async ({
+  api,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Long sources", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!notebook.source_root_id) throw new Error("no configured source root");
+  const raw = notebook.source_root_id;
+  const spaced = "Attention is all you need by Vaswani and others ".repeat(3).trim();
+  const source = await createPage(api, pat, notebook.id, spaced, raw, "spaced title\n");
+  const page = await signedInPage(tokens);
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await expect(pageHeading(page, spaced)).toBeVisible();
+  const width = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(width).toEqual({ viewport: 375, content: 375 });
+
+  const unbroken = "attention_is_all_you_need_vaswani_2017_neurips";
+  await createPage(api, pat, notebook.id, unbroken, raw, "same bytes\n");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, raw));
+  await choosePageAction(page, notebook.name, "raw", "Paste Markdown");
+  await page.setViewportSize({ width: 375, height: 800 });
+  const dialog = page.getByRole("dialog", { name: "Paste Markdown under raw", exact: true });
+  await dialog.getByLabel("Title", { exact: true }).fill("Again");
+  await dialog.getByLabel("Markdown", { exact: true }).fill("same bytes\n");
+  await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+  await expect(dialog.getByRole("link", { name: `raw/${unbroken}.md`, exact: true })).toBeVisible();
+  const edge = await dialog.boundingBox();
+  const add = await dialog.getByRole("button", { name: "Add source", exact: true }).boundingBox();
+  if (edge === null || add === null) throw new Error("the dialog has no box");
+  expect(add.x + add.width).toBeLessThanOrEqual(edge.x + edge.width);
+});
+
 test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({
   api,
   db,

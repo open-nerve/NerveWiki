@@ -104,7 +104,7 @@ for (const mode of ["standard", "llm_wiki"] as const) {
   });
 }
 
-// EW03: real ordinary pages, the unchanged default page size (50), and a reader.
+// Real ordinary pages, the unchanged default page size (50), and a reader.
 // The topic group straddles More: its one heading must survive the appended row.
 const byID = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
@@ -160,7 +160,7 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
   const directory = page
     .getByRole("navigation", { name: "More of Catalogue", exact: true })
     .getByRole("link", { name: "Directory", exact: true });
-  await expect(directory, "EW03_ENTRY: Directory is available in an ordinary notebook").toBeVisible();
+  await expect(directory, "Directory is available in an ordinary notebook").toBeVisible();
   const first = indexAnswer();
   await directory.click();
   const firstResponse = await first;
@@ -170,7 +170,7 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
   await expect(page).toHaveTitle("Directory · Catalogue · Nerve Wiki");
   const pages = page.getByRole("region", { name: "Directory pages", exact: true });
   const groups = pages.getByRole("heading", { level: 2 });
-  await expect(groups, "EW03_GROUPS: both nonempty groups before More").toHaveText(["note", "topic"]);
+  await expect(groups, "both nonempty groups before More").toHaveText(["note", "topic"]);
   await expect(pages.getByRole("link")).toHaveText(ordered.slice(0, 50).map((item) => item.name));
   await expect(pages.locator("section").nth(0).getByRole("link")).toHaveCount(2);
   await expect(pages.locator("section").nth(1).getByRole("link")).toHaveCount(48);
@@ -181,11 +181,11 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
   const nextParams = new URL(nextResponse.url()).searchParams;
   expect([...nextParams.keys()]).toEqual(["cursor"]);
   expect(nextParams.get("cursor")).not.toBe("");
-  await expect(pages.getByRole("link"), "EW03_MORE: all 51 real pages").toHaveText(ordered.map((item) => item.name));
+  await expect(pages.getByRole("link"), "all 51 real pages").toHaveText(ordered.map((item) => item.name));
   expect(await pages.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(
     ordered.map((item) => `${home}/pages/${item.id}`)
   );
-  await expect(groups, "EW03_MERGE: the appended topic retains one group").toHaveText(["note", "topic"]);
+  await expect(groups, "the appended topic retains one group").toHaveText(["note", "topic"]);
   await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Type", exact: true }).getByRole("option")).toHaveText([
     "All types",
@@ -209,7 +209,7 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
     ["tag", "keep"],
   ]);
   await expect(page).toHaveURL(`${home}/index?type=topic&tag=keep`);
-  await expect(pages.getByRole("link"), "EW03_FILTER: the literal keep subset, without note or omit").toHaveText(
+  await expect(pages.getByRole("link"), "the literal keep subset, without note or omit").toHaveText(
     topics
       .filter((item) => item.keep)
       .toSorted(byID)

@@ -6,6 +6,7 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import type { HeldDialog } from "../../app/held-dialog";
 import { useMounted } from "../../app/mounted";
+import { canAddSource } from "../../app/source-permissions";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,7 +30,7 @@ type Landing = NonNullable<LinkLanding["landing"]>;
  * Why a link's page is not created: the reader cannot, a read-only view (a version's, a page's in the trash) does
  * not, an embed or an image does not, or the server's reason.
  */
-type Why = "reader" | "readOnly" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
+type Why = "reader" | "readOnly" | "embed" | "image" | "sourceArea" | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
@@ -122,7 +123,7 @@ export function useUnresolvedLinks({
       }
     }
     if (readOnly || !writesPages(notebook.role)) {
-      show({ why: readOnly ? "readOnly" : "reader" });
+      show({ why: readOnly ? "readOnly" : pages.isSource(page) ? "sourceArea" : "reader" });
       return;
     }
     asking.current = true;
@@ -139,6 +140,9 @@ export function useUnresolvedLinks({
         if (answer.reason === "target_is_asset") {
           reload();
         }
+      } else if (canAddSource(pages, answer.landing.parent_id)) {
+        // A page made here would be an empty source, which its writer could neither fill nor take back.
+        show({ why: "sourceArea" });
       } else {
         show({ landing: answer.landing });
       }
@@ -278,6 +282,8 @@ function whyText(why: Why, t: Translate): string {
       return t("unresolved.reader");
     case "readOnly":
       return t("unresolved.readOnly");
+    case "sourceArea":
+      return t("unresolved.sourceArea");
     case "embed":
       return t("unresolved.embed");
     case "image":

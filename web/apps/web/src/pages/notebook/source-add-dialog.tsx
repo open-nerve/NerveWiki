@@ -165,6 +165,9 @@ const PasteSource = observer(function PasteSource({
           },
         });
         if (mounted() && at.current === from && !request.controller.signal.aborted) created(page.id);
+      } catch (error) {
+        // The address changed while the paste waited: nothing was sent, and no refusal to show.
+        if (!(error instanceof DOMException && error.name === "AbortError")) throw error;
       } finally {
         if (pending.current === request) pending.current = undefined;
       }

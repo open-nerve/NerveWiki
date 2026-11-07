@@ -6,6 +6,7 @@ import { useMounted } from "../../app/mounted";
 import { errorText } from "../../app/problem-messages";
 import { useT } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
+import type { TreeNode } from "../../services/page.service";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { openOf } from "../open-node";
 import { nodeTarget, type NodeTarget } from "../node-target";
@@ -22,18 +23,28 @@ type SourceProblem = { code: string; duplicate_of?: string | null; to?: string |
 
 const attempted = new WeakMap<PageTreeStore, WeakMap<object, Set<string>>>();
 const reading = new WeakMap<PageTreeStore, Promise<void>>();
+const paths = new WeakMap<TreeNode[], Map<string, string>>();
 
 export function sourceAtPath(pages: PageTreeStore, path: string): NodeTarget | undefined {
   const target = atPath(pages, path);
   return target !== undefined && pages.isSource(target.node.id) ? target : undefined;
 }
 
+/** A read of the tree's paths: a report's thousand problems look theirs up, and a read replaces the nodes whole. */
 function atPath(pages: PageTreeStore, path: string): NodeTarget | undefined {
-  for (const node of pages.nodes ?? []) {
-    const target = nodeTarget(pages, node.id);
-    if (target?.path === path) return target;
+  const nodes = pages.nodes;
+  if (nodes === undefined) return undefined;
+  let ids = paths.get(nodes);
+  if (ids === undefined) {
+    ids = new Map();
+    for (const node of nodes) {
+      const target = nodeTarget(pages, node.id);
+      if (target !== undefined && !ids.has(target.path)) ids.set(target.path, node.id);
+    }
+    paths.set(nodes, ids);
   }
-  return undefined;
+  const id = ids.get(path);
+  return id === undefined ? undefined : nodeTarget(pages, id);
 }
 
 /** UI-only rich text. The app's ordinary errorText keeps its string contract. */
@@ -232,18 +243,23 @@ const TargetLink = observer(function TargetLink({
   }
 
   return (
-    <a href={open.to} onClick={(event) => void activate(event)} className="underline underline-offset-4">
+    <a
+      href={open.to}
+      onClick={(event) => void activate(event)}
+      className="underline underline-offset-4 [overflow-wrap:anywhere]"
+    >
       {found.path}
     </a>
   );
 });
 
-function HistoryAdvice({ background }: { background: boolean }) {
+/** Moving a page out and back is advice for content alone: an admin's rename is no writer's to undo that way. */
+function HistoryAdvice({ background, content = true }: { background: boolean; content?: boolean }) {
   const t = useT();
   return (
     <>
       {background && <span className="block">{t("source.historyBackground")}</span>}
-      <span className="block">{t("source.historyRestore")}</span>
+      {content && <span className="block">{t("source.historyRestore")}</span>}
     </>
   );
 }
@@ -258,7 +274,10 @@ function HistoryRefusal({ problem, context }: { problem: unknown; context: Dupli
       <span className="block">
         {t(context.kind === "background" ? "source.duplicateBatchNotWritten" : "source.duplicateNotWritten")}
       </span>
-      <HistoryAdvice background={context.kind === "background" && context.backgroundUndo !== false} />
+      <HistoryAdvice
+        background={context.kind === "background" && context.backgroundUndo !== false}
+        content={source?.code === "page.source_immutable"}
+      />
     </span>
   );
 }

@@ -216,7 +216,10 @@ test.describe("the Chinese creation page", () => {
     await expect(notebookHeading(page, created.name)).toBeFocused();
 
     const tree = page.getByRole("navigation", { name: "研究笔记的页面", exact: true });
-    await expect(tree.getByRole("link", { name: "raw （来源区）", exact: true })).toBeVisible();
+    const raw = tree.getByRole("link", { name: "raw （来源区）", exact: true });
+    await expect(raw).toBeVisible();
+    await raw.click();
+    await expect(page.getByRole("article", { name: "raw", exact: true })).toContainText("来源");
     const agents = tree.getByRole("link", { name: "AGENTS （给 agent 的约定）", exact: true });
     await expect(agents).toBeVisible();
     await agents.click();

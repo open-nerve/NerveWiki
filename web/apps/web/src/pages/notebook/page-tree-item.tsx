@@ -123,7 +123,8 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
           draggable={writer ? false : undefined}
           className={({ isActive }) =>
             cn(
-              "min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-accent",
+              // Relative: an unseen suffix stays inside what truncate clips.
+              "relative min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-accent",
               isActive ? "bg-accent font-medium" : "text-muted-foreground"
             )
           }
