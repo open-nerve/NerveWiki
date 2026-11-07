@@ -690,3 +690,36 @@ export async function expectDeletionRevisions(db: Database, deletionId: string, 
   );
   expect(rows).toEqual(ids.toSorted().map((id) => ({ id, deleted: true, revision: true })));
 }
+
+/** changesets, changeset_sources: the real producer's complete count and immutable append sequence. */
+export async function expectIngestOf(
+  db: Database,
+  changesetId: string,
+  notebookId: string,
+  sources: readonly string[]
+): Promise<void> {
+  const rows = await db.query(
+    `SELECT c.notebook_id AS "notebookId", c.kind, c.ingest_count AS count,
+            coalesce((SELECT jsonb_agg(jsonb_build_object('seq', s.seq, 'nodeId', s.node_id) ORDER BY s.seq)
+                        FROM changeset_sources s WHERE s.changeset_id = c.id), '[]'::jsonb) AS sources
+       FROM changesets c WHERE c.id = $1 AND c.deleted_at IS NULL`,
+    [changesetId]
+  );
+  expect(rows).toEqual([
+    { notebookId, kind: "edit", count: sources.length, sources: sources.map((nodeId, i) => ({ seq: i + 1, nodeId })) },
+  ]);
+}
+
+/** An imported notebook has real history, but no ingest marks backfilled from the archive's virtual log. */
+export async function expectNoIngestIn(db: Database, notebookId: string): Promise<void> {
+  const rows = await db.query<{ changesets: number; total: number; marks: number }>(
+    `SELECT count(*)::int AS changesets, coalesce(sum(c.ingest_count), 0)::int AS total,
+            (SELECT count(*)::int FROM changeset_sources s JOIN changesets x ON x.id = s.changeset_id
+              WHERE x.notebook_id = $1) AS marks
+       FROM changesets c WHERE c.notebook_id = $1`,
+    [notebookId]
+  );
+  expect(rows).toHaveLength(1);
+  expect(rows[0]?.changesets).toBeGreaterThan(0);
+  expect(rows[0]).toMatchObject({ total: 0, marks: 0 });
+}

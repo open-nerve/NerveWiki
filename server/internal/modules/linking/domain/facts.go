@@ -69,7 +69,11 @@ func (l Link) Keys() []string {
 	if !ok {
 		return nil
 	}
-	return slices.DeleteFunc(t.LastKeys(), func(k string) bool { return len(k) > MaxKey })
+	keys := t.Keys
+	if len(keys) != 1 || t.AltLast != "" {
+		keys = t.LastKeys()
+	}
+	return slices.DeleteFunc(keys, func(k string) bool { return len(k) > MaxKey })
 }
 
 // Tag is a tag of a page, one a title key: as first written, and how often

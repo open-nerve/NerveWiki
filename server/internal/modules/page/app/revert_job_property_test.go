@@ -881,7 +881,7 @@ func (c *checkedStore) RestoreNodes(ctx context.Context, r app.Restoration) (app
 // writes through c.
 func (f *fixture) checkedJobs(c *checkedStore) *app.JobWrites {
 	w := app.NewWriter(app.WriterDeps{
-		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store,
+		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		NodeWriter: c, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 	})

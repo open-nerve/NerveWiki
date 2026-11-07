@@ -87,6 +87,9 @@ export type FakeChangeset = {
   revertedBy: string[];
   trimmed: boolean;
   changes: FakeChange[];
+  /** Persistent seq order; preview keeps null positions for sources no longer alive. */
+  ingestSources: string[];
+  ingestCount: number;
   counts?: { nodes: number; contents: number };
   conflicts: RevertConflict[];
   tooLarge: boolean;
@@ -125,6 +128,8 @@ export function fakeChangeset(what: Partial<FakeChangeset> = {}): FakeChangeset 
     revertedBy: [],
     trimmed: false,
     changes: [],
+    ingestSources: [],
+    ingestCount: 0,
     conflicts: [],
     tooLarge: false,
     jobTooLarge: false,
@@ -293,7 +298,7 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
           },
         ];
       });
-  const answered = (changeset: FakeChangeset): Changeset => {
+  const answered = (changeset: FakeChangeset, previewN: number): Changeset => {
     const reverts = changeset.reverts === null ? undefined : changesetOf(changeset.reverts);
     const items = changeset.changes.filter((change) => change.before !== null || change.after !== null);
     return {
@@ -316,12 +321,23 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
         1000,
         changeset.counts?.contents ?? changeset.changes.filter((change) => change.content !== null).length
       ),
+      ingest_count: changeset.ingestCount,
+      ingest_sources: changeset.ingestSources
+        .slice(0, previewN)
+        .map((id) =>
+          server.nodes.some((node) => sameId(node.id, id) && sameId(node.notebook_id, notebookJSON.id)) ? id : null
+        ),
       changes: changesOf(changeset).slice(0, 3),
     };
   };
   return {
     [`GET /api/v0/notebooks/${notebookJSON.id}/changesets`]: async (request) => {
       const query = new URL(request.url).searchParams;
+      const ingest = query.get("ingest");
+      const ingestTrue = ingest !== null && ["1", "t", "T", "TRUE", "true", "True"].includes(ingest);
+      if (ingest !== null && !ingestTrue && !["0", "f", "F", "FALSE", "false", "False"].includes(ingest)) {
+        return problem(400, "bad_request");
+      }
       const cursor = query.get("cursor");
       const [actor, client, page] = [query.get("actor"), query.get("client"), query.get("page_id")];
       const limit = Number(query.get("limit") ?? "50");
@@ -354,6 +370,7 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       const listed = server.changesets
         .filter(
           (changeset) =>
+            (!ingestTrue || changeset.ingestCount > 0) &&
             (cursor === null || keyOf(changeset) < cursor) &&
             (actor === null || sameId(changeset.by.user_id, actor)) &&
             (client === null ||
@@ -365,7 +382,7 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       const data = listed.slice(0, limit);
       const last = data.at(-1);
       return json({
-        data: data.map(answered),
+        data: data.map((changeset) => answered(changeset, 3)),
         next_cursor: listed.length > limit && last !== undefined ? keyOf(last) : null,
       });
     },
@@ -382,7 +399,7 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       }
       const changes = changeset.changes.filter((change) => change.before !== null && change.after !== null);
       return json({
-        ...answered(changeset),
+        ...answered(changeset, 20),
         renames: changes.some((change) => change.before?.name !== change.after?.name),
         moves: changes.some((change) => change.before?.parent !== change.after?.parent),
       });

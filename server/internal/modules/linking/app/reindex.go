@@ -70,6 +70,10 @@ type Rebuild struct {
 	Contents  Contents
 	Notebooks Notebooks
 	Parser    Parser
+	Writes    RebuildWrites
+	// StagingLimit can only lower the private 512 MiB logical bound; zero
+	// selects that default. NewAdmin does not expose an override.
+	StagingLimit uint64
 }
 
 // Notebook rebuilds the index of notebookID in one transaction, which
@@ -81,6 +85,9 @@ type Rebuild struct {
 // any may have changed.
 func (r Rebuild) Notebook(ctx context.Context, notebookID uuid.UUID) (Rebuilt, error) {
 	var out Rebuilt
+	if r.Writes == nil {
+		return out, errors.New("linking: rebuild writes are not configured")
+	}
 	err := r.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		workspaceID, ok, err := r.Notebooks.WorkspaceOf(ctx, notebookID)
 		if err == nil && ok {
@@ -108,42 +115,30 @@ func (r Rebuild) Notebook(ctx context.Context, notebookID uuid.UUID) (Rebuilt, e
 		if err != nil {
 			return err
 		}
-		for _, id := range ids {
-			if err := r.page(ctx, notebookID, id); err != nil {
-				return err
-			}
-		}
-		links, err := store.Links(ctx, notebookID, domain.Reach{Sources: ids})
+		links, unresolved, err := r.rebuildPages(ctx, notebookID, ids)
 		if err != nil {
 			return err
 		}
-		resolved, err := r.Index.resolve(ctx, notebookID, links)
-		if err != nil {
-			return err
-		}
-		if err := store.SetResolutions(ctx, resolved); err != nil {
-			return err
-		}
-		out = Rebuilt{Pages: len(ids), Links: len(links), Unresolved: len(links) - len(resolved)}
+		out = Rebuilt{Pages: len(ids), Links: links, Unresolved: unresolved}
 		return r.Index.Publisher.LinksChanged(ctx, LinksChanged{WorkspaceID: workspaceID, NotebookID: notebookID})
 	})
 	return out, err
 }
 
-// page has the rows of the page id, which has none, hold the facts of its
-// content, its links resolved to none.
-func (r Rebuild) page(ctx context.Context, notebookID, id uuid.UUID) error {
+// pageFacts reads and parses one page once; the caller either stages its own
+// link copies or hands these same facts to ordinary AddPage.
+func (r Rebuild) pageFacts(ctx context.Context, notebookID, id uuid.UUID) (Page, domain.Facts, error) {
 	content, revision, ok, err := r.Contents.Content(ctx, id)
 	switch {
 	case err != nil:
-		return err
+		return Page{}, domain.Facts{}, err
 	case !ok:
 		// The notebook's row, which the rebuild holds, keeps its pages.
-		return fmt.Errorf("the content of page %s, which the rebuild read, is gone", id)
+		return Page{}, domain.Facts{}, fmt.Errorf("the content of page %s, which the rebuild read, is gone", id)
 	}
 	facts, err := r.Parser.Facts(ctx, content)
 	if err != nil {
-		return err
+		return Page{}, domain.Facts{}, err
 	}
-	return r.Index.Store.AddPage(ctx, Page{ID: id, NotebookID: notebookID, Revision: revision}, facts)
+	return Page{ID: id, NotebookID: notebookID, Revision: revision}, facts, nil
 }

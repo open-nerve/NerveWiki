@@ -85,6 +85,9 @@ func (c *lintCostFixture) sample(t *testing.T, query app.RuleQuery, expected map
 	var prepareWall *int64
 	measurement, err := lintCostMeasure(t, func() error {
 		return c.f.tx.WithinSnapshot(t.Context(), func(ctx context.Context) error {
+			if err := c.trace.bindSnapshot(ctx); err != nil {
+				return err
+			}
 			var err error
 			started := time.Now()
 			prepared, err = c.rules.Prepare(ctx, c.in, query)
@@ -143,7 +146,7 @@ func (c *lintCostFixture) sample(t *testing.T, query app.RuleQuery, expected map
 	if err != nil {
 		t.Fatal(err)
 	}
-	lintCostDescribeExec(t, queries, modes)
+	lintCostQueryModes(t, queries, modes)
 	_, invalid := expected[domain.InvalidSources]
 	_, pending := expected[domain.UndigestedSources]
 	if statementCache == nil || *statementCache != 0 || prepared.StalePages() != c.stale || len(timings.Rules) != len(expected) || (timings.SharedSources != nil) != (invalid || pending) {

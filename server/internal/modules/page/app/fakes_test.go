@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -1411,7 +1412,7 @@ func (f *fixture) logger() *slog.Logger { return slog.New(slog.NewTextHandler(f.
 
 func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
-		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, Paths: f.store,
+		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store, Paths: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
@@ -1583,6 +1584,51 @@ func (f *fakeStore) PageStates(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 		if c, ok := f.contents[id]; ok {
 			out[id] = app.PageState{Revision: c.Revision, Bytes: c.ByteSize, UpdatedAt: c.At, Hash: c.Hash}
 		}
+	}
+	return out, nil
+}
+
+func (f *fakeStore) Now(ctx context.Context, notebookID, root uuid.UUID, ids []uuid.UUID) ([]app.IngestHead, error) {
+	f.record(ctx, "IngestNow")
+	if err := f.errs["IngestNow"]; err != nil {
+		return nil, err
+	}
+	// The real store refuses both (ingestMetadataIDs).
+	if len(ids) > 512 {
+		return nil, errors.New("ingest metadata: more than 512 IDs")
+	}
+	if !slices.IsSortedFunc(ids, uuid.UUID.Compare) || len(slices.Compact(slices.Clone(ids))) != len(ids) {
+		return nil, errors.New("ingest metadata: IDs must be sorted and unique")
+	}
+	out := make([]app.IngestHead, len(ids))
+	for i, id := range ids {
+		h := app.IngestHead{ID: id}
+		n, ok := f.nodes[id]
+		if !ok || n.NotebookID != notebookID {
+			out[i] = h
+			continue
+		}
+		h.Exists, h.Live, h.Kind = true, true, n.Kind
+		c, has := f.contents[id]
+		h.HasContent, h.Revision, h.PageBytes = has, c.Revision, int64(c.ByteSize)
+		h.IsSourceRoot = id == root
+		h.IsRootAgents = n.Kind == domain.KindPage && n.ParentID == nil && n.NameKey == shared.TitleKey(domain.AgentsTitle)
+		seen := map[uuid.UUID]bool{id: true}
+		for parent := n.ParentID; parent != nil; {
+			if seen[*parent] {
+				return nil, errors.New("invalid fake ancestry")
+			}
+			seen[*parent] = true
+			if *parent == root {
+				h.InSource = true
+			}
+			p, ok := f.nodes[*parent]
+			if !ok || p.NotebookID != notebookID || p.Kind != domain.KindPage {
+				return nil, errors.New("invalid fake ancestor")
+			}
+			parent = p.ParentID
+		}
+		out[i] = h
 	}
 	return out, nil
 }

@@ -563,6 +563,7 @@ type History interface {
 	// changeset.
 	ListChanges(ctx context.Context, id, after uuid.UUID, limit int) ([]domain.ChangeRow, error)
 	FirstChanges(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]domain.ChangeRow, error)
+	FirstIngestSources(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]*uuid.UUID, error)
 	// The revert's reads (M8/P3 design 3.6): the changeset's items counted
 	// to limit; its items and its versions, by node; nodes as they are
 	// now, alive or not, a root with its group's counts and whether its

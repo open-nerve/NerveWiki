@@ -46,12 +46,41 @@ func (q *Queries) PurgeChangesetItems(ctx context.Context, arg PurgeChangesetIte
 	return result.RowsAffected(), nil
 }
 
+const purgeChangesetSources = `-- name: PurgeChangesetSources :execrows
+WITH doomed AS (
+    SELECT s.changeset_id, s.seq
+    FROM changeset_sources s JOIN changesets c ON c.id = s.changeset_id
+    WHERE (c.deleted_at < $1::timestamptz
+        OR (c.trimmed AND c.deleted_at IS NULL))
+      AND NOT EXISTS (SELECT 1 FROM changeset_items i WHERE i.changeset_id = c.id)
+      AND NOT EXISTS (SELECT 1 FROM page_revisions v WHERE v.changeset_id = c.id)
+    LIMIT $2::integer
+    FOR UPDATE OF s SKIP LOCKED FOR NO KEY UPDATE OF c SKIP LOCKED
+)
+DELETE FROM changeset_sources s USING doomed d
+WHERE s.changeset_id = d.changeset_id AND s.seq = d.seq
+`
+
+type PurgeChangesetSourcesParams struct {
+	Before time.Time
+	Batch  int32
+}
+
+func (q *Queries) PurgeChangesetSources(ctx context.Context, arg PurgeChangesetSourcesParams) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeChangesetSources, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const purgeChangesets = `-- name: PurgeChangesets :execrows
 DELETE FROM changesets WHERE id IN (
     SELECT s.id FROM changesets s
     WHERE s.deleted_at < $1::timestamptz
         AND NOT EXISTS (SELECT 1 FROM changeset_items x WHERE x.changeset_id = s.id)
         AND NOT EXISTS (SELECT 1 FROM page_revisions x WHERE x.changeset_id = s.id)
+        AND NOT EXISTS (SELECT 1 FROM changeset_sources x WHERE x.changeset_id = s.id)
     LIMIT $2 FOR UPDATE SKIP LOCKED)
 `
 
@@ -151,6 +180,7 @@ DELETE FROM changesets WHERE id IN (
     WHERE s.trimmed AND s.deleted_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM changeset_items x WHERE x.changeset_id = s.id)
         AND NOT EXISTS (SELECT 1 FROM page_revisions x WHERE x.changeset_id = s.id)
+        AND NOT EXISTS (SELECT 1 FROM changeset_sources x WHERE x.changeset_id = s.id)
     LIMIT $1 FOR UPDATE SKIP LOCKED)
 `
 

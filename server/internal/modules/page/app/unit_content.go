@@ -67,7 +67,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 	case c.ByteSize == current.ByteSize && bytes.Equal(c.Hash, current.Hash):
 		if u.write.Notebook.Mode == domain.ModeLLMWiki && (u.write.Kind == domain.ChangesetVersionRestore ||
 			session.ID != uuid.Nil() || w.Merged != nil && *w.Merged > 1) {
-			step, err := u.withSourceLines(ctx, u.contentStep(n, current.ByteSize, c, w, session))
+			step, err := u.withSourceLines(ctx, u.contentStep(n, current, c, w, session))
 			if err != nil {
 				return 0, err
 			}
@@ -85,7 +85,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 			return 0, err
 		}
 	}
-	step := u.contentStep(n, current.ByteSize, c, w, session)
+	step := u.contentStep(n, current, c, w, session)
 	base := current.Revision
 	err = u.apply(ctx, step, participate, func(ctx context.Context) error {
 		if resumed {
@@ -109,7 +109,7 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 
 // contentStep is shared by changed writes and the few no-ops whose
 // contract still applies. A no-op never enters apply or the edit lock.
-func (u *Unit) contentStep(n domain.Node, beforeBytes int, c Content, w ContentWrite, session EditSession) Step {
+func (u *Unit) contentStep(n domain.Node, before ContentLock, c Content, w ContentWrite, session EditSession) Step {
 	state := n.State()
 	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
 	step.EditSessionID = session.ID
@@ -118,7 +118,7 @@ func (u *Unit) contentStep(n domain.Node, beforeBytes int, c Content, w ContentW
 	if w.Merged != nil {
 		merged = *w.Merged
 	}
-	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: beforeBytes, Merged: merged}
+	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: before.ByteSize, BeforeRevision: before.Revision, Merged: merged}
 	step.Rewrite = w.Rewrite
 	return step
 }

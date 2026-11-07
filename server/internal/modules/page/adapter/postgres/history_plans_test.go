@@ -78,6 +78,10 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 			_, err := q.FirstChanges(ctx, gen.FirstChangesParams{Ids: ids, N: 3})
 			return err
 		}), []string{"changeset_items_changeset_id_node_id_key", "page_revisions_changeset_id_node_id_key", "nodes_pkey"}, false},
+		{"FirstIngestSources", statementOf(t, func(q *gen.Queries) error {
+			_, err := q.FirstIngestSources(ctx, gen.FirstIngestSourcesParams{ChangesetIds: ids, PreviewCount: 3})
+			return err
+		}), []string{"changeset_sources_pkey", "changesets_pkey"}, false},
 		{"CountItems", statementOf(t, func(q *gen.Queries) error {
 			_, err := q.CountItems(ctx, gen.CountItemsParams{ID: id, Lim: 10_001})
 			return err
@@ -120,6 +124,24 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 				t.Errorf("%s does not read %s:\n%s", tt.name, index, text)
 			}
 		}
+		if tt.name == "FirstIngestSources" {
+			// Either unique node key is a point lookup only when its Index
+			// Cond binds the persistent source ID. The composite key also
+			// has to bind the owning notebook.
+			point := false
+			for i, line := range plan {
+				if i+1 == len(plan) {
+					continue
+				}
+				fields, cond := strings.Fields(line), plan[i+1]
+				id := strings.Contains(cond, "Index Cond:") && strings.Contains(cond, "(id = changeset_sources.node_id)")
+				point = point || id && (slices.Contains(fields, "nodes_pkey") ||
+					slices.Contains(fields, "nodes_notebook_id_id_key") && strings.Contains(cond, "(notebook_id = changesets.notebook_id)"))
+			}
+			if !point {
+				t.Errorf("FirstIngestSources does not bind the source ID in a unique node index condition:\n%s", text)
+			}
+		}
 		if strings.Contains(text, "Seq Scan") {
 			t.Errorf("%s scans a table whole:\n%s", tt.name, text)
 		}
@@ -127,6 +149,8 @@ func TestTheLogReadsUseTheirIndexes(t *testing.T) {
 			t.Errorf("%s sorts:\n%s", tt.name, text)
 		}
 	}
+	t.Run("ingest", testIngestHistoryPlans)
+	t.Run("ingest_preview", testIngestPreviewPlans)
 }
 
 // logOfSomeSize gives eng a log the planner weighs as a notebook's, with

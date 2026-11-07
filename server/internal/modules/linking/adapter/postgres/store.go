@@ -4,12 +4,16 @@
 package postgresadapter
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"strings"
+	"unicode/utf8"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
@@ -58,8 +62,24 @@ func (s *Store) Lock(ctx context.Context, notebookID uuid.UUID) error {
 	return nil
 }
 
-// ReplacePage implements app.Store.
+// ReplacePage implements app.Store. Retaining a comparison baseline is only
+// valid in the caller's index-maintenance transaction, under its notebook/index
+// locks, after any before-capture and before full fresh resolution. InTx alone
+// does not prove that lifecycle; the internal Store contract requires it.
 func (s *Store) ReplacePage(ctx context.Context, p app.Page, f domain.Facts) (app.Dropped, error) {
+	if postgres.InTx(ctx) && ctx.Err() == nil && retainablePageFacts(p, f) {
+		// All targets still go through the original per-link Keys computation.
+		links := linksParams(p, f.Links)
+		old, err := inspectPageLinksForRetention(ctx, postgres.DB(ctx, s.pool), gen.InspectPageLinksForRetentionParams{
+			SourceID: p.ID, NotebookID: p.NotebookID, Extractor: domain.Extractor,
+		}, &links)
+		if err != nil {
+			return app.Dropped{}, fmt.Errorf("inspect the retained links of page %s: %w", p.ID, err)
+		}
+		if old.canRetain {
+			return s.replacePageRetaining(ctx, p, f, links, old.targets, old.missing)
+		}
+	}
 	dropped, err := s.DeletePages(ctx, []uuid.UUID{p.ID})
 	if err != nil {
 		return app.Dropped{}, err
@@ -68,6 +88,128 @@ func (s *Store) ReplacePage(ctx context.Context, p app.Page, f domain.Facts) (ap
 		return app.Dropped{}, err
 	}
 	return dropped, nil
+}
+
+// retainablePageFacts chooses a path, never validates or rewrites the caller's
+// input. Noncanonical input keeps the original Delete/Add and its SQL errors.
+// Nonempty targets that cannot parse are legal and must still be written.
+func retainablePageFacts(p app.Page, f domain.Facts) bool {
+	if p.ID == uuid.Nil() || p.NotebookID == uuid.Nil() || p.Revision < 1 || int(int32(p.Revision)) != p.Revision {
+		return false
+	}
+	var starts map[int32]struct{}
+	var previous int32
+	for i, l := range f.Links {
+		start, end := int32(l.Start), int32(l.End)
+		if start < 0 || end <= start || int(start) != l.Start || int(end) != l.End || l.Target == "" {
+			return false
+		}
+		if starts == nil && i > 0 && start <= previous {
+			// The validated prefix was strictly increasing; backfill it once.
+			starts = make(map[int32]struct{}, len(f.Links))
+			for _, prior := range f.Links[:i] {
+				starts[int32(prior.Start)] = struct{}{}
+			}
+		}
+		if starts != nil {
+			if _, duplicate := starts[start]; duplicate {
+				return false
+			}
+			starts[start] = struct{}{}
+		}
+		previous = start
+		switch l.Kind {
+		case "wikilink", "embed", "link", "image":
+		default:
+			return false
+		}
+		if !retentionText(l.Kind, l.Property, l.Target, l.Anchor, l.Display) {
+			return false
+		}
+	}
+	tags := make(map[string]struct{}, len(f.Tags))
+	for _, t := range f.Tags {
+		if t.Key == "" || t.Name == "" || t.Count < 1 || int(int32(t.Count)) != t.Count || !retentionText(t.Key, t.Name) {
+			return false
+		}
+		if _, duplicate := tags[t.Key]; duplicate {
+			return false
+		}
+		tags[t.Key] = struct{}{}
+	}
+	aliases := make(map[string]struct{}, len(f.Aliases))
+	for _, a := range f.Aliases {
+		if a.Key == "" || a.Name == "" || !retentionText(a.Key, a.Name) {
+			return false
+		}
+		if _, duplicate := aliases[a.Key]; duplicate {
+			return false
+		}
+		aliases[a.Key] = struct{}{}
+	}
+	for i, p := range f.Properties {
+		if int(int32(i)) != i || !retentionText(p.Key) || bytes.IndexByte(p.Value, 0) >= 0 || !utf8.Valid(p.Value) {
+			return false
+		}
+		// JSON syntax, numeric and escaped-Unicode validity stay with the original
+		// InsertProperties value::jsonb at its original position, not Go json.Valid.
+	}
+	return true
+}
+
+func retentionText(values ...string) bool {
+	for _, value := range values {
+		if strings.IndexByte(value, 0) >= 0 || !utf8.ValidString(value) {
+			return false
+		}
+	}
+	return true
+}
+
+// Once Inspect selected this branch, every SQL failure returns its cause to the
+// original transaction. Never retry it through legacy after a partial write.
+func (s *Store) replacePageRetaining(ctx context.Context, p app.Page, f domain.Facts, links gen.InsertLinksParams, targets []uuid.UUID, missing []int32) (app.Dropped, error) {
+	q := gen.New(retentionArrayQuerier{Querier: postgres.DB(ctx, s.pool)})
+	if err := q.DeleteMissingPageLinks(ctx, gen.DeleteMissingPageLinksParams{SourceID: p.ID, MissingRangeStarts: missing}); err != nil {
+		return app.Dropped{}, fmt.Errorf("delete the links of %d pages: %w", 1, err)
+	}
+	ids := []uuid.UUID{p.ID}
+	keys, err := q.DeleteAliasesOf(ctx, ids)
+	if err == nil {
+		err = q.DeleteTagsOf(ctx, ids)
+	}
+	if err == nil {
+		err = q.DeletePropertiesOf(ctx, ids)
+	}
+	if err == nil {
+		err = q.DeleteIndexedPages(ctx, ids)
+	}
+	if err != nil {
+		return app.Dropped{}, fmt.Errorf("delete the index of %d pages: %w", 1, err)
+	}
+	err = q.InsertIndexedPage(ctx, gen.InsertIndexedPageParams{
+		NodeID: p.ID, NotebookID: p.NotebookID, Revision: int32(p.Revision), Extractor: domain.Extractor,
+		FrontmatterValid: f.FrontmatterValid,
+	})
+	if err == nil {
+		err = q.WritePageLinksRetainingEqualPrefiltered(ctx, gen.WritePageLinksRetainingEqualPrefilteredParams(links))
+	}
+	if err == nil {
+		err = q.InsertTags(ctx, tagsParams(p, f.Tags))
+	}
+	if err == nil {
+		err = q.InsertProperties(ctx, propertiesParams(p, f.Properties))
+	}
+	if err == nil {
+		err = q.InsertAliases(ctx, aliasesParams(p, f.Aliases))
+	}
+	if err != nil {
+		return app.Dropped{}, fmt.Errorf("index page %s: %w", p.ID, err)
+	}
+	if len(targets) == 0 {
+		targets = nil
+	}
+	return app.Dropped{Targets: targets, AliasKeys: keys}, nil
 }
 
 // AddPage implements app.Store.
@@ -97,7 +239,20 @@ func (s *Store) AddPage(ctx context.Context, p app.Page, f domain.Facts) error {
 
 func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {
 	out := gen.InsertLinksParams{SourceID: p.ID, NotebookID: p.NotebookID}
-	for _, l := range links {
+	if n := len(links); n > 0 {
+		out.RangeStarts = make([]int32, n)
+		out.RangeEnds = make([]int32, n)
+		out.Kinds = make([]string, n)
+		out.PropertyKeys = make([]string, n)
+		out.InFrontmatter = make([]bool, n)
+		out.Targets = make([]string, n)
+		out.Anchors = make([]string, n)
+		out.Displays = make([]string, n)
+		out.TargetKeys = make([]string, n)
+		out.TargetAltKeys = make([]string, n)
+		out.Aliases = make([]bool, n)
+	}
+	for i, l := range links {
 		var key, alt string
 		if keys := l.Keys(); len(keys) > 0 {
 			key = keys[0]
@@ -105,17 +260,17 @@ func linksParams(p app.Page, links []domain.Link) gen.InsertLinksParams {
 				alt = keys[1]
 			}
 		}
-		out.RangeStarts = append(out.RangeStarts, int32(l.Start))
-		out.RangeEnds = append(out.RangeEnds, int32(l.End))
-		out.Kinds = append(out.Kinds, l.Kind)
-		out.PropertyKeys = append(out.PropertyKeys, l.Property)
-		out.InFrontmatter = append(out.InFrontmatter, l.InFrontmatter())
-		out.Targets = append(out.Targets, l.Target)
-		out.Anchors = append(out.Anchors, l.Anchor)
-		out.Displays = append(out.Displays, l.Display)
-		out.TargetKeys = append(out.TargetKeys, key)
-		out.TargetAltKeys = append(out.TargetAltKeys, alt)
-		out.Aliases = append(out.Aliases, l.Aliases)
+		out.RangeStarts[i] = int32(l.Start)
+		out.RangeEnds[i] = int32(l.End)
+		out.Kinds[i] = l.Kind
+		out.PropertyKeys[i] = l.Property
+		out.InFrontmatter[i] = l.InFrontmatter()
+		out.Targets[i] = l.Target
+		out.Anchors[i] = l.Anchor
+		out.Displays[i] = l.Display
+		out.TargetKeys[i] = key
+		out.TargetAltKeys[i] = alt
+		out.Aliases[i] = l.Aliases
 	}
 	return out
 }
@@ -191,18 +346,9 @@ func (s *Store) DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error {
 // them one by one, 75–83 ms of a rename where theirs took 16–26 ms (M6
 // closeout FA5-Q1).
 func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]app.Link, error) {
-	rows, err := s.planned(ctx).LinksReached(ctx, gen.LinksReachedParams{
-		NotebookID: notebookID, Keys: r.Keys, Targets: r.Targets, Sources: r.Sources,
-	})
+	out, err := linksReached(ctx, postgres.Planned(postgres.DB(ctx, s.pool)), notebookID, r)
 	if err != nil {
 		return nil, fmt.Errorf("links of %s: %w", notebookID, err)
-	}
-	out := make([]app.Link, len(rows))
-	for i, row := range rows {
-		out[i] = app.Link{SourceID: row.SourceID, Start: int(row.RangeStart), Target: row.Target, Aliases: row.Aliases}
-		if row.ResolvedID != nil {
-			out[i].Resolution = domain.Resolution{ID: *row.ResolvedID, Ambiguous: row.Ambiguous, Asset: row.ResolvedAsset}
-		}
 	}
 	return out, nil
 }
@@ -277,6 +423,9 @@ func (s *Store) AliasKeys(ctx context.Context, ids []uuid.UUID) ([]string, error
 // or finds twice, is a defect: the maintenance read each once, in the
 // same transaction.
 func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
+	if len(links) > resolutionWriteRows && postgres.InTx(ctx) && orderedResolutionKeys(links) {
+		return s.setOrderedResolutions(ctx, links)
+	}
 	var p gen.SetResolutionsParams
 	for _, l := range links {
 		p.SourceIds = append(p.SourceIds, l.SourceID)
@@ -291,6 +440,92 @@ func (s *Store) SetResolutions(ctx context.Context, links []app.Link) error {
 	}
 	if int(n) != len(links) {
 		return fmt.Errorf("set %d links' resolutions, of %d", n, len(links))
+	}
+	return nil
+}
+
+// resolutionWriteRows bounds one statement's parameter arrays, never the
+// complete input. Every eligible row is still written in the caller's transaction.
+const resolutionWriteRows = 256
+
+// Long runs use one source per statement so the additional index predicates
+// cannot admit a cross-source product. Short runs keep the original 256-row
+// coalescing; the full request is never truncated at either bound.
+const resolutionSourceWriteRows = 4096
+
+// orderedResolutionKeys admits only a globally strict SQL-key order. Checking
+// every key before any write prevents duplicates across statement boundaries.
+// Noncanonical callers keep the original single statement and its error behavior.
+func orderedResolutionKeys(links []app.Link) bool {
+	for i, l := range links {
+		start := int32(l.Start)
+		if start < 0 || int(start) != l.Start {
+			return false
+		}
+		if i > 0 {
+			previous := links[i-1]
+			order := previous.SourceID.Compare(l.SourceID)
+			if order > 0 || order == 0 && int32(previous.Start) >= start {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (s *Store) setOrderedResolutions(ctx context.Context, links []app.Link) error {
+	p := gen.SetResolutionsParams{
+		SourceIds:      make([]uuid.UUID, resolutionSourceWriteRows),
+		RangeStarts:    make([]int32, resolutionSourceWriteRows),
+		ResolvedIds:    make([]uuid.UUID, resolutionSourceWriteRows),
+		Ambiguous:      make([]bool, resolutionSourceWriteRows),
+		ResolvedAssets: make([]bool, resolutionSourceWriteRows),
+	}
+	querier := postgres.DB(ctx, s.pool)
+	mode := pgx.QueryExecModeDescribeExec
+	if tx, ok := querier.(pgx.Tx); ok && tx.Conn().Config().DescriptionCacheCapacity > 0 {
+		mode = pgx.QueryExecModeCacheDescribe
+	}
+	q := gen.New(setResolutionBatchQuerier{Querier: querier, mode: mode})
+	var total int64
+	for from := 0; from < len(links); {
+		to := from + 1
+		limit := min(from+resolutionSourceWriteRows, len(links))
+		for to < limit && links[to].SourceID == links[from].SourceID {
+			to++
+		}
+		longSource := to-from > resolutionWriteRows
+		if !longSource {
+			// Coalesce short sources, including a prefix of the next long run.
+			// Every nonfinal statement therefore contains at least 256 rows.
+			to = min(from+resolutionWriteRows, len(links))
+		}
+		batch := links[from:to]
+		p.SourceIds, p.RangeStarts = p.SourceIds[:len(batch)], p.RangeStarts[:len(batch)]
+		p.ResolvedIds, p.Ambiguous = p.ResolvedIds[:len(batch)], p.Ambiguous[:len(batch)]
+		p.ResolvedAssets = p.ResolvedAssets[:len(batch)]
+		for i, l := range batch {
+			p.SourceIds[i], p.RangeStarts[i] = l.SourceID, int32(l.Start)
+			p.ResolvedIds[i] = l.Resolution.ID
+			p.Ambiguous[i], p.ResolvedAssets[i] = l.Resolution.Ambiguous, l.Resolution.Asset
+		}
+		var n int64
+		var err error
+		if longSource {
+			n, err = q.SetOrderedSourceResolutions(ctx, gen.SetOrderedSourceResolutionsParams(p))
+		} else {
+			n, err = q.SetResolutions(ctx, p)
+		}
+		if err != nil {
+			return fmt.Errorf("set %d links' resolutions: %w", len(links), err)
+		}
+		total += n
+		from = to
+	}
+	// A later database/context error must win over an earlier missing row,
+	// just as the original statement fails before its affected-row check.
+	if int(total) != len(links) {
+		return fmt.Errorf("set %d links' resolutions, of %d", total, len(links))
 	}
 	return nil
 }

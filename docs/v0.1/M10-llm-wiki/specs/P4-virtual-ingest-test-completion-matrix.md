@@ -1,6 +1,6 @@
 # P4 测试、单故障变异与完成标准矩阵
 
-状态：决定76补充后当前146个控制ID：原136（含更早114）全部保留，新增连续H06–H15共10个；34个S2-1基础控制腿，另H08四腿在S2-2真实producer复验，共38个计划阶段腿，均NOT_RUN，详见§2.1。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于原136或当前146ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
+状态：S2已实施，实际结果见[S2审查记录](../reviews/P4-S2-ingest-history-review.md)，S3未实施。S2审查另加B19–B22、C11–C13、Q12–Q13九行。以下保留设计时的原文。决定76补充后当前146个控制ID：原136（含更早114）全部保留，新增连续H06–H15共10个；34个S2-1基础控制腿，另H08四腿在S2-2真实producer复验，共38个计划阶段腿，均NOT_RUN，详见§2.1。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于原136或当前146ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
 
 ## 1. 测试文件与命令模板
 
@@ -12,13 +12,13 @@
 | VF | 新 `server/internal/modules/wiki/domain/virtual_files_test.go`；`go test ./internal/modules/wiki/domain -run '^TestVirtualFiles/<子名>$' -count=1` |
 | DI | 新 `server/internal/modules/linking/app/index_directory_test.go`＋现 postgres index测试；`go test ./internal/modules/linking/... -run '^TestDirectoryIndex/<子名>$' -count=1` |
 | EX | 新 `server/internal/bootstrap/virtual_export_test.go`；`go test ./internal/bootstrap -run '^TestVirtualExport/<子名>$' -count=1`，真实serve zip不是mock sink |
-| IB | 新 `server/internal/modules/linking/app/ingest_before_test.go`；`go test ./internal/modules/linking/app -run '^TestIngestBefore/<子名>$' -count=1`，重要Capture用真PG适配或bootstrap对应腿 |
-| IC | 新 `server/internal/modules/linking/app/ingest_coverage_test.go`与postgres `ingest_test.go`；`go test ./internal/modules/linking/... -run '^TestIngestCoverage/<子名>$' -count=1` |
+| IB | 实际在 `server/internal/bootstrap/ingest_business_test.go`、`ingest_before_business_test.go`，私有部分在 `linking/app/ingest_private_before_test.go`；`go test ./internal/bootstrap -run '^TestIngestBefore/<子名>$' -count=1`，重要Capture用真PG适配或bootstrap对应腿 |
+| IC | 实际在 `server/internal/bootstrap/ingest_coverage_test.go`；`go test ./internal/bootstrap -run '^TestIngestCoverage/<子名>$' -count=1` |
 | IQ | 新 `server/internal/modules/linking/adapter/postgres/ingest_test.go`；`go test ./internal/modules/linking/adapter/postgres -run '^TestIngestCandidates/<子名>$' -count=1`；真实SQL对手写oracle |
-| II | 新 `server/internal/bootstrap/ingest_test.go,interleavings_ingest_test.go`；`go test ./internal/bootstrap -run '^TestIngestUnit/<子名>$' -count=1` |
+| II | 实际在 `server/internal/bootstrap/ingest_test.go,ingest_interleavings_test.go,ingest_exclusions_test.go`；`go test ./internal/bootstrap -run '^TestIngestUnit/<子名>$' -count=1` |
 | HM | 新 page postgres `ingest_history_test.go`与现http/mcp history测试；`go test ./internal/modules/page/... -run '^TestIngestHistory/<子名>$' -count=1` |
-| HP | 现 `server/internal/bootstrap/mcp_history_test.go` 拟增 `TestMCPIngestPreview`，两scope真实SDK/HTTP；现page `adapter/mcp/history_test.go` 同步完整golden及adapter边界。`go test ./internal/bootstrap -run '^TestMCPIngestPreview/<子名>/<scope>$' -count=1` 是待建模板，不记已被Make收录；S2-1落实真实选择器。 |
-| PG | 新 page postgres `ingest_purge_test.go`；新bootstrap `ingest_invariant_test.go`；`go test ./internal/modules/page/... ./internal/bootstrap -run '^TestIngestCleanup/<子名>$' -count=1` |
+| HP | 现 `server/internal/bootstrap/mcp_history_test.go` 实际为 `ingest_mcp_preview_test.go` 的 `TestIngestMCPPreview`，两scope真实SDK/HTTP；现page `adapter/mcp/history_test.go` 同步完整golden及adapter边界。`go test ./internal/bootstrap -run '^TestMCPIngestPreview/<子名>/<scope>$' -count=1` 是待建模板，不记已被Make收录；S2-1落实真实选择器。 |
+| PG | 实际在 page postgres `ingest_cleanup_test.go`；bootstrap `ingest_cleanup_test.go,ingest_invariant_rules_test.go`；`go test ./internal/modules/page/... ./internal/bootstrap -run '^TestIngestCleanup/<子名>$' -count=1` |
 | W | 新/现 web组件test文件见P4-virtual-ingest-files.json；原vitest入口精确文件+`-t 'P4/<子名>'`（重绑现package脚本，不能伪造已跑命令） |
 | EW | 新LW9/10/13、现LW12 Playwright故事；按现三browser配置与heavy锁内fresh build逐phase运行指定test标题，见§5 |
 
@@ -133,8 +133,17 @@ Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不�
 | U17/S2 | II/unknown_follow_closure | old Q的完整PossibleDirect={S,K}含known K，S的完整F={A}、K的F={B}；new A/B/T仅T标，状态仍Unknown；F missing腿仅asset保守而page T标 | 分腿仅漏S→A闭包／漏known K→B／把asset-only未知变AllDirect |
 | U18/S2 | II/unknown_f_unreferenced | S旧F缺证但完整D_W/D_U均不含S，P直引独立A/T，marks=[A,T] | 见任何UnknownFParent就无条件AllAssets |
 | U19/S2 | EX/ingest_export_map | 真whole zip，log ingest来源使用实际Scope映射；历史缺ID纯文字且不补后位，root/folder来源不指虚构md | ingest source沿用Notebook原路径 |
-| U20/S2 | IC/retention_cost | 400×300、400×10000、100ops与100k分腿真实接受且A0/T1；R、bytes、head/F读量及peak/原预算逐值记录 | 丢全部retained以省成本；业务A0首败，不靠超时 |
+| U20/S2 | IC/retention_cost | 400×300、400×10000、100ops与100k分腿真实接受且A0/T1；R、bytes、head/F读量及peak/预算逐值记录。2026-11-06负责人改判、2026-11-07决定150仅使最大旧F/100ops/100k与mixed最大字节两个用例的测试请求期限为30s、unit<29s；较小用例unit<11s、真实request15s/commit2s、全部3样本与完整关系不变，见[P4§2.2](../04-P4-virtual-ingest.md#22-需要负责人确认) | 丢全部retained以省成本；业务A0首败，不靠超时 |
 | U21/S2 | II/untouched_deleted_source_approx | Q不在W、S在W被删，A同级存活，最终Q不再有可消化S，D_W空，P→A/T应[A,T]；与U14并列 | 为Q强造Before D或无条件保全部oldF |
+| B19/S2 | II/exclusions | 根AGENTS与来源根三条腿六个用例：写它们不是ingest、未改时不消化、Before里去掉引用不留旧D | 分别去掉ingest.go、ingest_coverage.go、ingest_before.go的IsRootAgents／IsSourceRoot判断（A1–A6） |
+| B20/S2 | II/exclusions/before_known_empty_target | Before已知0字节的来源，同unit填内容，算新ingest | 去掉PageBytesKnown与PageBytes==0判断（B1） |
+| B21/S2 | page/app first_memo_agents | 根AGENTS在unit里改名后，Before仍给IsRootAgents | 翻转IsRootAgents的parent判断 |
+| B22/S2 | page/app delete_all_nodes | 替身同真实存储拒绝超512和未排序的IDs，514节点要分批 | Now不分批（M20）；need反序（M21） |
+| C11/S2 | IB/stale_parent_q_untouched、q_written | 未改stale来源：Q未改标[T,A]，Q在W标[T]（决定151） | coverage不收parent、parents不传、不升级、D_U不要求current（C1–C3、M18） |
+| C12/S2 | IC/already_referenced | 重存已引用来源零全扫且无标记；新引用在旁仍证明并标T；未知旧页零全扫 | 去掉allDirect或possibleDirect的减法 |
+| C13/S2 | IC/diagnostics | 有候选且证据不足时恰一行debug，含§3.12字段，无路径／正文；无候选无行 | 早退不记、reason固定、suppressed不减、heads为0（L1–L4） |
+| Q12/S2 | II/exclusions/f_frontmatter_not_followed | 来源frontmatter的asset边不算F | 去掉property_key IS NULL（S1） |
+| Q13/S2 | II/exclusions/nonstring_element_no_slot | sources:[1]加顶层'sources.0'不是槽 | 去掉jsonb_typeof字符串判断（S5） |
 
 | H01/S2 | HM/true_false | notebook/actor/page三filter TRUE只ingest；false/omit同原结果 | false也走专用ingest SQL |
 | H02/S2 | HM/preview_order | 25来源seq中trashed/purged占位，REST list3/detail20/虚拟log5位置准确；MCP先同seq取3/20再映射，wire连续前缀另由H06–H15验证 | 压缩null再补后项 |
@@ -244,7 +253,7 @@ S2-1同时改bootstrap旧asMCP log/detail期望（required false、非零独立�
 
 ## 5. 必须实测但本次未运行的命令与材料
 
-本节原标题“本次未运行”指正式设计时点；S1已执行范围以下述实际记录为准，S2/S3仍待实施。
+本节原标题“本次未运行”指正式设计时点；S1、S2已执行范围以各自审查记录为准，S3仍待实施。
 
 正式Step继续使用原heavy/全局锁、锁后3GiB/T7与fresh runtime身份。S1三条新!race成本入口已在Make：TestIndexCatalogueHasBoundedWorkAndOutput、TestVirtualIndexOfAHundredThousandPagesTakesItsTime、TestVirtualExportOfAHundredThousandPagesTakesItsTime。决定74仅将旧Markdown top的两个完整leaf各成一行，原45条其余legacy与3新行保持，最终50行；每条原timeout/预算不提高。0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账 原件与源身份见S1记录。S2的TestIngestOfAHundredThousandPagesTakesItsTime、TestIngestAtTheBatchBoundaryTakesItsTime仍未建，不能宣称可运行。
 

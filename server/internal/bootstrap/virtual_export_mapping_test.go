@@ -20,6 +20,9 @@ func virtualExportMapConsumers(t *testing.T) {
 	t.Run("source_path", virtualExportSourcePath)
 	t.Run("history_missing", virtualExportMissingHistory)
 	t.Run("history_nil_path", virtualExportNilHistoryPath)
+	t.Run("ingest_sources", func(t *testing.T) { virtualExportIngestSources(t, false) })
+	t.Run("ingest_nil_path", func(t *testing.T) { virtualExportIngestSources(t, true) })
+	t.Run("ingest_purged_source", virtualExportIngestPurgedSource)
 	t.Run("invalid", virtualExportInvalidMaps)
 }
 

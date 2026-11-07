@@ -24,6 +24,7 @@ type Changeset struct {
 	Trimmed     bool
 	Renames     bool
 	Moves       bool
+	IngestCount int32
 }
 
 type ChangesetItem struct {
@@ -41,6 +42,12 @@ type ChangesetItem struct {
 	DeletedAt       *time.Time
 	Restored        bool
 	Revision        *int32
+}
+
+type ChangesetSource struct {
+	ChangesetID uuid.UUID
+	Seq         int32
+	NodeID      uuid.UUID
 }
 
 type EditSession struct {

@@ -27,9 +27,13 @@ import (
 // Measurements below belong to this linking test process. The two external
 // ports remain explicit fixture facts; bootstrap measures the actual modules.
 type lintCostQuery struct {
-	Calls, Rows, WallNS int64
-	ArrayElements       int64
-	MaxArrayElements    int
+	Calls, Rows, WallNS                                                int64
+	ArrayElements                                                      int64
+	MaxArrayElements                                                   int
+	Starts, MissingMode, DuplicateMode, MisplacedMode, WrongConnection int64
+	Modes                                                              map[string]int64
+	PID                                                                uint32
+	StatementCapacity, DescriptionCapacity                             int
 }
 
 type lintCostArray struct {
@@ -39,11 +43,13 @@ type lintCostArray struct {
 }
 
 type lintCostTrace struct {
-	mu      sync.Mutex
-	active  bool
-	queries map[string]lintCostQuery
-	arrays  map[string]*lintCostArray
-	modes   map[string]int
+	mu                                     sync.Mutex
+	active                                 bool
+	queries                                map[string]lintCostQuery
+	arrays                                 map[string]*lintCostArray
+	modes                                  map[string]int
+	bound                                  *pgx.Conn
+	statementCapacity, descriptionCapacity int
 }
 
 type lintCostTraceKey struct{}
@@ -52,7 +58,7 @@ type lintCostQueryStart struct {
 	at   time.Time
 }
 
-func (tr *lintCostTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+func (tr *lintCostTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	tr.mu.Lock()
 	defer tr.mu.Unlock()
 	if !tr.active || !strings.HasPrefix(data.SQL, "-- name: Lint") {
@@ -60,9 +66,24 @@ func (tr *lintCostTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data 
 	}
 	name := strings.Fields(data.SQL)[2]
 	q := tr.queries[name]
+	q.Starts++
+	q.PID = conn.PgConn().PID()
+	q.StatementCapacity, q.DescriptionCapacity = tr.statementCapacity, tr.descriptionCapacity
+	if tr.bound == nil || conn != tr.bound {
+		q.WrongConnection++
+	}
+	if q.Modes == nil {
+		q.Modes = map[string]int64{}
+	}
+	modeCount, leading := 0, false
 	for i, arg := range data.Args {
 		if mode, ok := arg.(pgx.QueryExecMode); ok {
 			tr.modes[mode.String()]++
+			q.Modes[mode.String()]++
+			modeCount++
+			if i == 0 {
+				leading = true
+			}
 		}
 		if ids, ok := arg.([]uuid.UUID); ok {
 			q.ArrayElements += int64(len(ids))
@@ -75,6 +96,15 @@ func (tr *lintCostTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data 
 			}
 			tr.arrays[key].Calls++
 		}
+	}
+	if modeCount == 0 {
+		q.MissingMode++
+	}
+	if modeCount > 1 {
+		q.DuplicateMode++
+	}
+	if !leading {
+		q.MisplacedMode++
 	}
 	tr.queries[name] = q
 	return context.WithValue(ctx, lintCostTraceKey{}, lintCostQueryStart{name, time.Now()})
@@ -101,6 +131,8 @@ func (tr *lintCostTrace) begin() {
 	tr.queries = map[string]lintCostQuery{}
 	tr.arrays = map[string]*lintCostArray{}
 	tr.modes = map[string]int{}
+	tr.bound = nil
+	tr.statementCapacity, tr.descriptionCapacity = 0, 0
 }
 
 func (tr *lintCostTrace) end() (map[string]lintCostQuery, map[string]int, int64) {
@@ -114,15 +146,51 @@ func (tr *lintCostTrace) end() (map[string]lintCostQuery, map[string]int, int64)
 	return tr.queries, tr.modes, elapsed
 }
 
-func lintCostDescribeExec(t *testing.T, queries map[string]lintCostQuery, modes map[string]int) {
-	t.Helper()
-	for mode, count := range modes {
-		if mode != pgx.QueryExecModeDescribeExec.String() || count == 0 {
-			t.Fatalf("real production query mode %q=%d, want DescribeExec", mode, count)
-		}
+// Cost fixtures declare a positive-cache snapshot, independently of the mode
+// later observed. Preserve their actual connection identity without copying
+// Conn.Config on every measured query. Config is immutable on that connection.
+func (tr *lintCostTrace) bindSnapshot(ctx context.Context) error {
+	tx, ok := postgres.TxFrom(ctx)
+	if !ok {
+		return fmt.Errorf("cost mode fixture lost actual snapshot transaction")
 	}
+	conn := tx.Conn()
+	cfg := conn.Config()
+	if cfg.DescriptionCacheCapacity <= 0 {
+		return fmt.Errorf("cost mode fixture requires positive actual description capacity, got %d", cfg.DescriptionCacheCapacity)
+	}
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	tr.bound = conn
+	tr.statementCapacity, tr.descriptionCapacity = cfg.StatementCacheCapacity, cfg.DescriptionCacheCapacity
+	return nil
+}
+
+func lintCostQueryModes(t *testing.T, queries map[string]lintCostQuery, modes map[string]int) {
+	t.Helper()
 	if len(queries) == 0 || len(modes) == 0 {
 		t.Fatal("cost interval observed no actual production lint queries")
+	}
+	actual := map[string]int{}
+	for name, q := range queries {
+		want := pgx.QueryExecModeDescribeExec
+		if name == "LintBodyReferencesFirst" || name == "LintBodyReferencesAfter" {
+			want = pgx.QueryExecModeCacheDescribe
+		}
+		if q.Calls <= 0 || q.Starts != q.Calls || q.MissingMode != 0 || q.DuplicateMode != 0 || q.MisplacedMode != 0 || q.WrongConnection != 0 || q.PID == 0 || q.DescriptionCapacity <= 0 || len(q.Modes) != 1 || q.Modes[want.String()] != q.Starts {
+			t.Fatalf("exact cost query mode %s: %+v; want %v once leading on declared real snapshot", name, q, want)
+		}
+		for mode, count := range q.Modes {
+			actual[mode] += int(count)
+		}
+	}
+	if len(actual) != len(modes) {
+		t.Fatalf("aggregate mode keys changed: by-query=%v aggregate=%v", actual, modes)
+	}
+	for mode, count := range modes {
+		if count <= 0 || actual[mode] != count {
+			t.Fatalf("aggregate mode count differs: by-query=%v aggregate=%v", actual, modes)
+		}
 	}
 }
 

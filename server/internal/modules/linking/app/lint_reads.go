@@ -335,6 +335,16 @@ func (r *LintReads) SourceSlots(notebook uuid.UUID, specs []SourceSpec) *LintBat
 
 // Bodies streams only short resolved body references of current emitters.
 func (r *LintReads) Bodies(notebook uuid.UUID, emitters []uuid.UUID) *LintBatches[BodyReference] {
+	return bodyBatches(notebook, emitters, func(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID, after *EdgePos, take int) ([]BodyReference, error) {
+		return r.store.BodyReferences(ctx, notebook, ids, after, take)
+	})
+}
+
+// bodyBatches owns the public current-head Bodies cursor, 512-row query bound
+// and terminal empty read. The private old-F capture has its own raw buffer.
+func bodyBatches(notebook uuid.UUID, emitters []uuid.UUID,
+	fetch func(context.Context, uuid.UUID, []uuid.UUID, *EdgePos, int) ([]BodyReference, error),
+) *LintBatches[BodyReference] {
 	ids := slices.Clone(emitters)
 	var after *EdgePos
 	done := false
@@ -342,7 +352,7 @@ func (r *LintReads) Bodies(notebook uuid.UUID, emitters []uuid.UUID) *LintBatche
 		if done {
 			return nil, nil
 		}
-		out, err := r.store.BodyReferences(ctx, notebook, ids, after, LintReadRows)
+		out, err := fetch(ctx, notebook, ids, after, LintReadRows)
 		if err != nil {
 			return nil, err
 		}

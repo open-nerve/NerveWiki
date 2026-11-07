@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const lintAmbiguousEdgeHeadsAfter = `-- name: LintAmbiguousEdgeHeadsAfter :many
+const LintAmbiguousEdgeHeadsAfter = `-- name: LintAmbiguousEdgeHeadsAfter :many
 WITH excluded AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
 FROM page_links l
@@ -53,7 +53,7 @@ type LintAmbiguousEdgeHeadsAfterRow struct {
 }
 
 func (q *Queries) LintAmbiguousEdgeHeadsAfter(ctx context.Context, arg LintAmbiguousEdgeHeadsAfterParams) ([]LintAmbiguousEdgeHeadsAfterRow, error) {
-	rows, err := q.db.Query(ctx, lintAmbiguousEdgeHeadsAfter,
+	rows, err := q.db.Query(ctx, LintAmbiguousEdgeHeadsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.AfterSource,
@@ -79,7 +79,7 @@ func (q *Queries) LintAmbiguousEdgeHeadsAfter(ctx context.Context, arg LintAmbig
 	return items, nil
 }
 
-const lintAmbiguousEdgeHeadsFirst = `-- name: LintAmbiguousEdgeHeadsFirst :many
+const LintAmbiguousEdgeHeadsFirst = `-- name: LintAmbiguousEdgeHeadsFirst :many
 WITH excluded AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id)
 SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
 FROM page_links l
@@ -117,7 +117,7 @@ type LintAmbiguousEdgeHeadsFirstRow struct {
 }
 
 func (q *Queries) LintAmbiguousEdgeHeadsFirst(ctx context.Context, arg LintAmbiguousEdgeHeadsFirstParams) ([]LintAmbiguousEdgeHeadsFirstRow, error) {
-	rows, err := q.db.Query(ctx, lintAmbiguousEdgeHeadsFirst,
+	rows, err := q.db.Query(ctx, LintAmbiguousEdgeHeadsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.Take,
@@ -141,8 +141,8 @@ func (q *Queries) LintAmbiguousEdgeHeadsFirst(ctx context.Context, arg LintAmbig
 	return items, nil
 }
 
-const lintBodyReferencesAfter = `-- name: LintBodyReferencesAfter :many
-WITH emitters AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
+const LintBodyReferencesAfter = `-- name: LintBodyReferencesAfter :many
+WITH emitters AS MATERIALIZED (SELECT unnest($8::uuid[]) AS id)
 SELECT l.source_id,l.range_start,l.resolved_id,l.resolved_asset
 FROM page_links l
 CROSS JOIN LATERAL (
@@ -154,13 +154,17 @@ CROSS JOIN LATERAL (
  LIMIT 1
 ) current_page
 WHERE l.notebook_id=$1
- AND (l.source_id,l.range_start)>($3::uuid,$4::integer)
-ORDER BY l.source_id,l.range_start LIMIT (SELECT $5::integer)
+ AND l.source_id >= $3::uuid
+ AND l.source_id <= $4::uuid
+ AND (l.source_id,l.range_start)>($5::uuid,$6::integer)
+ORDER BY l.source_id,l.range_start LIMIT (SELECT $7::integer)
 `
 
 type LintBodyReferencesAfterParams struct {
 	NotebookID  uuid.UUID
 	Extractor   int32
+	FirstSource uuid.UUID
+	LastSource  uuid.UUID
 	AfterSource uuid.UUID
 	AfterStart  int32
 	Take        int32
@@ -175,9 +179,11 @@ type LintBodyReferencesAfterRow struct {
 }
 
 func (q *Queries) LintBodyReferencesAfter(ctx context.Context, arg LintBodyReferencesAfterParams) ([]LintBodyReferencesAfterRow, error) {
-	rows, err := q.db.Query(ctx, lintBodyReferencesAfter,
+	rows, err := q.db.Query(ctx, LintBodyReferencesAfter,
 		arg.NotebookID,
 		arg.Extractor,
+		arg.FirstSource,
+		arg.LastSource,
 		arg.AfterSource,
 		arg.AfterStart,
 		arg.Take,
@@ -206,8 +212,8 @@ func (q *Queries) LintBodyReferencesAfter(ctx context.Context, arg LintBodyRefer
 	return items, nil
 }
 
-const lintBodyReferencesFirst = `-- name: LintBodyReferencesFirst :many
-WITH emitters AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id)
+const LintBodyReferencesFirst = `-- name: LintBodyReferencesFirst :many
+WITH emitters AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT l.source_id,l.range_start,l.resolved_id,l.resolved_asset
 FROM page_links l
 CROSS JOIN LATERAL (
@@ -219,12 +225,16 @@ CROSS JOIN LATERAL (
  LIMIT 1
 ) current_page
 WHERE l.notebook_id=$1
-ORDER BY l.source_id,l.range_start LIMIT (SELECT $3::integer)
+ AND l.source_id >= $3::uuid
+ AND l.source_id <= $4::uuid
+ORDER BY l.source_id,l.range_start LIMIT (SELECT $5::integer)
 `
 
 type LintBodyReferencesFirstParams struct {
 	NotebookID  uuid.UUID
 	Extractor   int32
+	FirstSource uuid.UUID
+	LastSource  uuid.UUID
 	Take        int32
 	WikiPageIds []uuid.UUID
 }
@@ -237,9 +247,11 @@ type LintBodyReferencesFirstRow struct {
 }
 
 func (q *Queries) LintBodyReferencesFirst(ctx context.Context, arg LintBodyReferencesFirstParams) ([]LintBodyReferencesFirstRow, error) {
-	rows, err := q.db.Query(ctx, lintBodyReferencesFirst,
+	rows, err := q.db.Query(ctx, LintBodyReferencesFirst,
 		arg.NotebookID,
 		arg.Extractor,
+		arg.FirstSource,
+		arg.LastSource,
 		arg.Take,
 		arg.WikiPageIds,
 	)
@@ -266,7 +278,7 @@ func (q *Queries) LintBodyReferencesFirst(ctx context.Context, arg LintBodyRefer
 	return items, nil
 }
 
-const lintEdgesByPositions = `-- name: LintEdgesByPositions :many
+const LintEdgesByPositions = `-- name: LintEdgesByPositions :many
 WITH requested AS MATERIALIZED (
  SELECT unnest($2::uuid[]) AS source_id,
         unnest($3::integer[]) AS range_start
@@ -303,7 +315,7 @@ type LintEdgesByPositionsRow struct {
 }
 
 func (q *Queries) LintEdgesByPositions(ctx context.Context, arg LintEdgesByPositionsParams) ([]LintEdgesByPositionsRow, error) {
-	rows, err := q.db.Query(ctx, lintEdgesByPositions, arg.NotebookID, arg.SourceIds, arg.Starts)
+	rows, err := q.db.Query(ctx, LintEdgesByPositions, arg.NotebookID, arg.SourceIds, arg.Starts)
 	if err != nil {
 		return nil, err
 	}
@@ -332,7 +344,7 @@ func (q *Queries) LintEdgesByPositions(ctx context.Context, arg LintEdgesByPosit
 	return items, nil
 }
 
-const lintFirstSourceHeads = `-- name: LintFirstSourceHeads :many
+const LintFirstSourceHeads = `-- name: LintFirstSourceHeads :many
 WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
 SELECT ip.node_id,p.position,octet_length(p.value::text)::bigint AS value_bytes
 FROM requested r
@@ -363,7 +375,7 @@ type LintFirstSourceHeadsRow struct {
 }
 
 func (q *Queries) LintFirstSourceHeads(ctx context.Context, arg LintFirstSourceHeadsParams) ([]LintFirstSourceHeadsRow, error) {
-	rows, err := q.db.Query(ctx, lintFirstSourceHeads, arg.NotebookID, arg.Extractor, arg.PageIds)
+	rows, err := q.db.Query(ctx, LintFirstSourceHeads, arg.NotebookID, arg.Extractor, arg.PageIds)
 	if err != nil {
 		return nil, err
 	}
@@ -382,7 +394,7 @@ func (q *Queries) LintFirstSourceHeads(ctx context.Context, arg LintFirstSourceH
 	return items, nil
 }
 
-const lintFirstSourceValues = `-- name: LintFirstSourceValues :many
+const LintFirstSourceValues = `-- name: LintFirstSourceValues :many
 WITH requested AS MATERIALIZED (
  SELECT unnest($3::uuid[]) AS id,
         unnest($4::integer[]) AS position
@@ -418,7 +430,7 @@ type LintFirstSourceValuesRow struct {
 }
 
 func (q *Queries) LintFirstSourceValues(ctx context.Context, arg LintFirstSourceValuesParams) ([]LintFirstSourceValuesRow, error) {
-	rows, err := q.db.Query(ctx, lintFirstSourceValues,
+	rows, err := q.db.Query(ctx, LintFirstSourceValues,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.PageIds,
@@ -447,7 +459,7 @@ func (q *Queries) LintFirstSourceValues(ctx context.Context, arg LintFirstSource
 	return items, nil
 }
 
-const lintHasSourceProperties = `-- name: LintHasSourceProperties :one
+const LintHasSourceProperties = `-- name: LintHasSourceProperties :one
 WITH requested AS MATERIALIZED (SELECT unnest($3::uuid[]) AS id)
 SELECT EXISTS (
  SELECT 1 FROM requested r
@@ -476,13 +488,13 @@ type LintHasSourcePropertiesParams struct {
 // keep both LIMITs so absent sources do not require every indexed-page lookup.
 // page_properties has no FK: do not add a new p.notebook_id qualification.
 func (q *Queries) LintHasSourceProperties(ctx context.Context, arg LintHasSourcePropertiesParams) (bool, error) {
-	row := q.db.QueryRow(ctx, lintHasSourceProperties, arg.NotebookID, arg.Extractor, arg.PageIds)
+	row := q.db.QueryRow(ctx, LintHasSourceProperties, arg.NotebookID, arg.Extractor, arg.PageIds)
 	var exists bool
 	err := row.Scan(&exists)
 	return exists, err
 }
 
-const lintHeads = `-- name: LintHeads :many
+const LintHeads = `-- name: LintHeads :many
 SELECT node_id, extractor, frontmatter_valid
 FROM indexed_pages WHERE notebook_id = $1 ORDER BY node_id
 `
@@ -494,7 +506,7 @@ type LintHeadsRow struct {
 }
 
 func (q *Queries) LintHeads(ctx context.Context, notebookID uuid.UUID) ([]LintHeadsRow, error) {
-	rows, err := q.db.Query(ctx, lintHeads, notebookID)
+	rows, err := q.db.Query(ctx, LintHeads, notebookID)
 	if err != nil {
 		return nil, err
 	}
@@ -513,7 +525,7 @@ func (q *Queries) LintHeads(ctx context.Context, notebookID uuid.UUID) ([]LintHe
 	return items, nil
 }
 
-const lintSourceSlotEdges = `-- name: LintSourceSlotEdges :many
+const LintSourceSlotEdges = `-- name: LintSourceSlotEdges :many
 WITH requested AS MATERIALIZED (
  SELECT unnest($2::uuid[]) AS source_id,
         unnest($3::integer[]) AS range_start
@@ -546,7 +558,7 @@ type LintSourceSlotEdgesRow struct {
 }
 
 func (q *Queries) LintSourceSlotEdges(ctx context.Context, arg LintSourceSlotEdgesParams) ([]LintSourceSlotEdgesRow, error) {
-	rows, err := q.db.Query(ctx, lintSourceSlotEdges, arg.NotebookID, arg.PageIds, arg.Starts)
+	rows, err := q.db.Query(ctx, LintSourceSlotEdges, arg.NotebookID, arg.PageIds, arg.Starts)
 	if err != nil {
 		return nil, err
 	}
@@ -574,7 +586,7 @@ func (q *Queries) LintSourceSlotEdges(ctx context.Context, arg LintSourceSlotEdg
 	return items, nil
 }
 
-const lintSourceSlotHeadsAfter = `-- name: LintSourceSlotHeadsAfter :many
+const LintSourceSlotHeadsAfter = `-- name: LintSourceSlotHeadsAfter :many
 WITH spec AS MATERIALIZED (
  SELECT unnest($8::uuid[]) AS id,
         unnest($9::text[]) AS key,
@@ -626,7 +638,7 @@ type LintSourceSlotHeadsAfterRow struct {
 }
 
 func (q *Queries) LintSourceSlotHeadsAfter(ctx context.Context, arg LintSourceSlotHeadsAfterParams) ([]LintSourceSlotHeadsAfterRow, error) {
-	rows, err := q.db.Query(ctx, lintSourceSlotHeadsAfter,
+	rows, err := q.db.Query(ctx, LintSourceSlotHeadsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.BatchFirstSource,
@@ -662,7 +674,7 @@ func (q *Queries) LintSourceSlotHeadsAfter(ctx context.Context, arg LintSourceSl
 	return items, nil
 }
 
-const lintSourceSlotHeadsFirst = `-- name: LintSourceSlotHeadsFirst :many
+const LintSourceSlotHeadsFirst = `-- name: LintSourceSlotHeadsFirst :many
 WITH spec AS MATERIALIZED (
  SELECT unnest($6::uuid[]) AS id,
         unnest($7::text[]) AS key,
@@ -711,7 +723,7 @@ type LintSourceSlotHeadsFirstRow struct {
 }
 
 func (q *Queries) LintSourceSlotHeadsFirst(ctx context.Context, arg LintSourceSlotHeadsFirstParams) ([]LintSourceSlotHeadsFirstRow, error) {
-	rows, err := q.db.Query(ctx, lintSourceSlotHeadsFirst,
+	rows, err := q.db.Query(ctx, LintSourceSlotHeadsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.BatchFirstSource,
@@ -745,7 +757,7 @@ func (q *Queries) LintSourceSlotHeadsFirst(ctx context.Context, arg LintSourceSl
 	return items, nil
 }
 
-const lintWantedEdgeHeadsAfter = `-- name: LintWantedEdgeHeadsAfter :many
+const LintWantedEdgeHeadsAfter = `-- name: LintWantedEdgeHeadsAfter :many
 WITH excluded AS MATERIALIZED (SELECT unnest($6::uuid[]) AS id)
 SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
 FROM page_links l
@@ -780,7 +792,7 @@ type LintWantedEdgeHeadsAfterRow struct {
 }
 
 func (q *Queries) LintWantedEdgeHeadsAfter(ctx context.Context, arg LintWantedEdgeHeadsAfterParams) ([]LintWantedEdgeHeadsAfterRow, error) {
-	rows, err := q.db.Query(ctx, lintWantedEdgeHeadsAfter,
+	rows, err := q.db.Query(ctx, LintWantedEdgeHeadsAfter,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.AfterSource,
@@ -806,7 +818,7 @@ func (q *Queries) LintWantedEdgeHeadsAfter(ctx context.Context, arg LintWantedEd
 	return items, nil
 }
 
-const lintWantedEdgeHeadsFirst = `-- name: LintWantedEdgeHeadsFirst :many
+const LintWantedEdgeHeadsFirst = `-- name: LintWantedEdgeHeadsFirst :many
 WITH excluded AS MATERIALIZED (SELECT unnest($4::uuid[]) AS id)
 SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
 FROM page_links l
@@ -842,7 +854,7 @@ type LintWantedEdgeHeadsFirstRow struct {
 // entire range because it estimates fewer rows than the supplied take. Both
 // shapes are guarded with normal planner settings and actual generic execution.
 func (q *Queries) LintWantedEdgeHeadsFirst(ctx context.Context, arg LintWantedEdgeHeadsFirstParams) ([]LintWantedEdgeHeadsFirstRow, error) {
-	rows, err := q.db.Query(ctx, lintWantedEdgeHeadsFirst,
+	rows, err := q.db.Query(ctx, LintWantedEdgeHeadsFirst,
 		arg.NotebookID,
 		arg.Extractor,
 		arg.Take,

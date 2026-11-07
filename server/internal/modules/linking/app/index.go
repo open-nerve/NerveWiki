@@ -11,17 +11,23 @@ import (
 // PagesChanged is a page write unit's changes in a notebook, merged by
 // node, as the page module's observers get them once per unit.
 type PagesChanged struct {
-	WorkspaceID uuid.UUID
-	NotebookID  uuid.UUID
-	Changes     []domain.Change
+	WorkspaceID  uuid.UUID
+	NotebookID   uuid.UUID
+	Changes      []domain.Change
+	ChangesetID  uuid.UUID
+	Kind         string
+	Notebook     IngestNotebook
+	BeforeIngest IngestBefore
 }
 
 // Index keeps the link index with the writes of the pages (M6/P3 design
 // 3.4): the page module's observer, in each unit's transaction.
 type Index struct {
-	Store     Store
-	Pages     Pages
-	Publisher Publisher
+	Store        Store
+	Preparations SourcePreparations
+	Pages        Pages
+	Publisher    Publisher
+	Ingest       *Ingest
 }
 
 // PagesChanged follows the unit e: under the notebook's lock of the index,
@@ -41,12 +47,16 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	if err := x.Store.Lock(ctx, e.NotebookID); err != nil {
 		return err
 	}
+	ingest, err := x.beginIngest(ctx, e)
+	if err != nil {
+		return err
+	}
 	var written, deleted, dropped []uuid.UUID
 	aliases := 0 // the keys of the aliases the unit dropped or added
 	for _, c := range e.Changes {
 		switch {
 		case c.After != nil && c.Revision != 0:
-			old, err := x.Store.ReplacePage(ctx, Page{ID: c.NodeID, NotebookID: e.NotebookID, Revision: c.Revision}, c.Facts)
+			old, err := ingest.replace(ctx, x.Store, Page{ID: c.NodeID, NotebookID: e.NotebookID, Revision: c.Revision}, c.Facts)
 			if err != nil {
 				return err
 			}
@@ -67,11 +77,11 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		reach.Keys = append(reach.Keys, old.AliasKeys...)
 		aliases += len(old.AliasKeys)
 	}
-	reach, err := spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed, nil)
+	reach, err = spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed, nil)
 	if err != nil {
 		return err
 	}
-	links, err := x.Store.Links(ctx, e.NotebookID, reach)
+	links, err := ingest.links(ctx, x.Store, e.NotebookID, reach)
 	if err != nil {
 		return err
 	}
@@ -80,6 +90,9 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		return err
 	}
 	if err := x.Store.SetResolutions(ctx, changed); err != nil {
+		return err
+	}
+	if err := ingest.finish(ctx, written); err != nil {
 		return err
 	}
 	return x.publish(ctx, e, links, changed, written, dropped, aliases > 0)
@@ -121,23 +134,57 @@ func spread(ctx context.Context, store Store, pages Pages, notebookID uuid.UUID,
 // version's (M8 Codex review R3): an event of its own when nothing else
 // changed. Nothing changed publishes nothing.
 func (x Index) publish(ctx context.Context, e PagesChanged, links, changed []Link, written, dropped []uuid.UUID, aliases bool) error {
-	before := make(map[linkKey]domain.Resolution, len(links))
+	nonzero := 0
 	for _, l := range links {
-		before[keyOf(l)] = l.Resolution
+		if l.Resolution.ID != uuid.Nil() {
+			nonzero++
+		}
 	}
-	var pages []uuid.UUID
-	targets := slices.Clone(dropped)
+	before := make(map[linkKey]uuid.UUID)
+	if len(changed) < nonzero {
+		for _, l := range changed {
+			before[keyOf(l)] = uuid.Nil()
+		}
+		for _, l := range links {
+			key := keyOf(l)
+			if _, needed := before[key]; needed {
+				before[key] = l.Resolution.ID
+			}
+		}
+	} else {
+		for _, l := range links {
+			if l.Resolution.ID == uuid.Nil() {
+				delete(before, keyOf(l))
+			} else {
+				before[keyOf(l)] = l.Resolution.ID
+			}
+		}
+	}
+	writtenSet := make(map[uuid.UUID]struct{}, len(written))
+	for _, id := range written {
+		writtenSet[id] = struct{}{}
+	}
+	var pages, targets []uuid.UUID
+	for _, id := range dropped {
+		if id != uuid.Nil() {
+			targets = appendEventPage(targets, id)
+		}
+	}
 	for _, l := range changed {
-		old := before[keyOf(l)]
-		if old.ID == l.Resolution.ID {
+		oldID := before[keyOf(l)]
+		if oldID == l.Resolution.ID {
 			continue
 		}
-		if !slices.Contains(written, l.SourceID) {
-			pages = append(pages, l.SourceID)
+		if _, ok := writtenSet[l.SourceID]; !ok {
+			pages = appendEventPage(pages, l.SourceID)
 		}
-		targets = append(targets, old.ID, l.Resolution.ID)
+		if oldID != uuid.Nil() {
+			targets = appendEventPage(targets, oldID)
+		}
+		if l.Resolution.ID != uuid.Nil() {
+			targets = appendEventPage(targets, l.Resolution.ID)
+		}
 	}
-	targets = slices.DeleteFunc(targets, func(id uuid.UUID) bool { return id == uuid.Nil() })
 	if len(pages) == 0 && len(targets) == 0 && !aliases {
 		return nil
 	}
@@ -176,6 +223,15 @@ type linkKey struct {
 
 func keyOf(l Link) linkKey {
 	return linkKey{source: l.SourceID, start: l.Start}
+}
+
+// appendEventPage keeps each ID once, plus one distinct ID past the event
+// bound as an overflow witness. A nonempty overflow must still publish.
+func appendEventPage(ids []uuid.UUID, id uuid.UUID) []uuid.UUID {
+	if len(ids) > MaxEventPages || slices.Contains(ids, id) {
+		return ids
+	}
+	return append(ids, id)
 }
 
 // eventPages is ids as a links event lists them: sorted, each once, empty

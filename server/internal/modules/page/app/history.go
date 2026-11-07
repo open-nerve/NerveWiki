@@ -26,9 +26,10 @@ type HistoryReads struct {
 // LoggedChangeset is a changeset as the log lists it: with its counts and
 // reverts, and its first changes.
 type LoggedChangeset struct {
-	Changeset domain.Changeset
-	Facts     domain.ChangesetFacts
-	Changes   []domain.ChangeRow
+	Changeset     domain.Changeset
+	Facts         domain.ChangesetFacts
+	Changes       []domain.ChangeRow
+	IngestSources []*uuid.UUID
 }
 
 // loggedChanges is how many of each changeset's changes the log lists with
@@ -81,7 +82,7 @@ func (r HistoryReads) readableChangeset(ctx context.Context, id uuid.UUID) (doma
 // detail is c as GetChangeset reads it: as the log lists it, and whether
 // it renames or moves a node, which the log's lines do not read.
 func (r HistoryReads) detail(ctx context.Context, c domain.Changeset) (ChangesetDetail, error) {
-	logged, err := r.logged(ctx, []domain.Changeset{c})
+	logged, err := r.logged(ctx, []domain.Changeset{c}, 20)
 	if err != nil {
 		return ChangesetDetail{}, err
 	}
@@ -114,11 +115,23 @@ func (r HistoryReads) changes(ctx context.Context, id, after uuid.UUID, size int
 // alivePaths are the paths of the nodes of changes alive now in
 // notebookID, by id, read once for them all (NodePaths.Paths): a node in
 // the trash or gone has none.
-func (r HistoryReads) alivePaths(ctx context.Context, notebookID uuid.UUID, changes []domain.ChangeRow) (map[uuid.UUID]string, error) {
+func (r HistoryReads) alivePaths(ctx context.Context, notebookID uuid.UUID, changes []domain.ChangeRow, sources []*uuid.UUID) (map[uuid.UUID]string, error) {
 	var ids []uuid.UUID
+	seen := map[uuid.UUID]bool{}
+	add := func(id uuid.UUID) {
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
 	for _, c := range changes {
 		if c.Alive {
-			ids = append(ids, c.NodeID)
+			add(c.NodeID)
+		}
+	}
+	for _, id := range sources {
+		if id != nil {
+			add(*id)
 		}
 	}
 	if len(ids) == 0 {
@@ -130,7 +143,7 @@ func (r HistoryReads) alivePaths(ctx context.Context, notebookID uuid.UUID, chan
 // logged are the changesets as the log lists them: their counts and
 // reverts, their first changes, and the display names of their actors and
 // of the reverted ones' actors, each read once.
-func (r HistoryReads) logged(ctx context.Context, changesets []domain.Changeset) ([]LoggedChangeset, error) {
+func (r HistoryReads) logged(ctx context.Context, changesets []domain.Changeset, preview int) ([]LoggedChangeset, error) {
 	if len(changesets) == 0 {
 		return nil, nil
 	}
@@ -157,6 +170,10 @@ func (r HistoryReads) logged(ctx context.Context, changesets []domain.Changeset)
 	if err != nil {
 		return nil, err
 	}
+	sources, err := r.History.FirstIngestSources(ctx, ids, preview)
+	if err != nil {
+		return nil, err
+	}
 	names, err := r.Names.DisplayNames(ctx, actors)
 	if err != nil {
 		return nil, err
@@ -169,7 +186,8 @@ func (r HistoryReads) logged(ctx context.Context, changesets []domain.Changeset)
 			brief.ByName = names[brief.By]
 			c.Reverts = &brief
 		}
-		out[i] = LoggedChangeset{Changeset: c, Facts: facts[c.ID], Changes: changes[c.ID]}
+		out[i] = LoggedChangeset{Changeset: c, Facts: facts[c.ID], Changes: changes[c.ID],
+			IngestSources: append([]*uuid.UUID{}, sources[c.ID]...)}
 	}
 	return out, nil
 }

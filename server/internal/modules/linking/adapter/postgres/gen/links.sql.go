@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const deleteLinksOf = `-- name: DeleteLinksOf :many
+const DeleteLinksOf = `-- name: DeleteLinksOf :many
 WITH deleted AS (
     DELETE FROM page_links WHERE source_id = ANY($1::uuid[]) RETURNING resolved_id
 )
@@ -20,7 +20,7 @@ SELECT DISTINCT resolved_id::uuid AS resolved_id FROM deleted WHERE resolved_id 
 
 // The pages the links deleted resolved to, each once.
 func (q *Queries) DeleteLinksOf(ctx context.Context, ids []uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, deleteLinksOf, ids)
+	rows, err := q.db.Query(ctx, DeleteLinksOf, ids)
 	if err != nil {
 		return nil, err
 	}
@@ -39,16 +39,16 @@ func (q *Queries) DeleteLinksOf(ctx context.Context, ids []uuid.UUID) ([]uuid.UU
 	return items, nil
 }
 
-const deleteNotebooksLinks = `-- name: DeleteNotebooksLinks :exec
+const DeleteNotebooksLinks = `-- name: DeleteNotebooksLinks :exec
 DELETE FROM page_links WHERE notebook_id = ANY($1::uuid[])
 `
 
 func (q *Queries) DeleteNotebooksLinks(ctx context.Context, ids []uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteNotebooksLinks, ids)
+	_, err := q.db.Exec(ctx, DeleteNotebooksLinks, ids)
 	return err
 }
 
-const insertLinks = `-- name: InsertLinks :exec
+const InsertLinks = `-- name: InsertLinks :exec
 INSERT INTO page_links (
     source_id, range_start, range_end, notebook_id, kind, property_key, target, anchor, display, target_key,
     target_alt_key, resolved_id, ambiguous, aliases
@@ -85,7 +85,7 @@ type InsertLinksParams struct {
 // A page's links, resolved to none. Only body links have a NULL property path; an empty property path is a property.
 // An empty anchor, display text or target key is none.
 func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error {
-	_, err := q.db.Exec(ctx, insertLinks,
+	_, err := q.db.Exec(ctx, InsertLinks,
 		arg.SourceID,
 		arg.NotebookID,
 		arg.RangeStarts,
@@ -103,13 +103,69 @@ func (q *Queries) InsertLinks(ctx context.Context, arg InsertLinksParams) error 
 	return err
 }
 
-const linksReached = `-- name: LinksReached :many
-SELECT l.source_id, l.range_start, l.target, l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
-FROM page_links l
-WHERE l.notebook_id = $1 AND (
-    l.target_key = ANY($2::text[]) OR l.target_alt_key = ANY($2::text[])
-    OR l.resolved_id = ANY($3::uuid[]) OR l.source_id = ANY($4::uuid[])
+const LinksReached = `-- name: LinksReached :many
+WITH args AS NOT MATERIALIZED (
+    SELECT $1::uuid AS notebook_id,
+           $2::text[] AS keys,
+           $3::uuid[] AS targets,
+           $4::uuid[] AS sources
+), reached AS (
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE l.source_id = ANY(a.sources)
+        ORDER BY l.source_id, l.range_start
+    )
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT DISTINCT k.value COLLATE "C" AS value
+        FROM unnest(a.keys) AS k(value)
+        WHERE k.value IS NOT NULL
+    ) key_input
+    CROSS JOIN LATERAL (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.notebook_id = a.notebook_id
+          AND l.target_key = key_input.value
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+        OFFSET 0
+    ) l
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    JOIN page_links l ON l.notebook_id = a.notebook_id
+    WHERE l.target_alt_key = ANY(a.keys)
+      AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+      AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+
+    UNION ALL
+    SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+           l.ambiguous, l.resolved_asset, l.aliases
+    FROM args a
+    CROSS JOIN LATERAL (
+        SELECT l.notebook_id, l.source_id, l.range_start, l.target,
+               l.resolved_id, l.ambiguous, l.resolved_asset, l.aliases
+        FROM page_links l
+        WHERE l.resolved_id = ANY(a.targets)
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+          AND (l.target_key = ANY(a.keys)) IS NOT TRUE
+          AND (l.target_alt_key = ANY(a.keys)) IS NOT TRUE
+        OFFSET 0
+    ) l
+    WHERE l.notebook_id = a.notebook_id
 )
+SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+       l.ambiguous, l.resolved_asset, l.aliases
+FROM reached l
 ORDER BY l.source_id, l.range_start
 `
 
@@ -133,7 +189,7 @@ type LinksReachedRow struct {
 // The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
 // one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
 func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]LinksReachedRow, error) {
-	rows, err := q.db.Query(ctx, linksReached,
+	rows, err := q.db.Query(ctx, LinksReached,
 		arg.NotebookID,
 		arg.Keys,
 		arg.Targets,
@@ -165,7 +221,7 @@ func (q *Queries) LinksReached(ctx context.Context, arg LinksReachedParams) ([]L
 	return items, nil
 }
 
-const pageView = `-- name: PageView :many
+const PageView = `-- name: PageView :many
 SELECT ip.revision, ip.extractor, l.range_start, l.resolved_id, l.ambiguous, l.resolved_asset
 FROM indexed_pages ip LEFT JOIN page_links l ON l.source_id = ip.node_id
 WHERE ip.node_id = $1
@@ -184,7 +240,7 @@ type PageViewRow struct {
 // each of its links resolves to; one row without a link for a page without links, none for a page the index does not
 // have. Both tables are read by their primary keys.
 func (q *Queries) PageView(ctx context.Context, nodeID uuid.UUID) ([]PageViewRow, error) {
-	rows, err := q.db.Query(ctx, pageView, nodeID)
+	rows, err := q.db.Query(ctx, PageView, nodeID)
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +266,7 @@ func (q *Queries) PageView(ctx context.Context, nodeID uuid.UUID) ([]PageViewRow
 	return items, nil
 }
 
-const setResolutions = `-- name: SetResolutions :execrows
+const SetResolutions = `-- name: SetResolutions :execrows
 UPDATE page_links l
 SET resolved_id = NULLIF(u.resolved_id, '00000000-0000-0000-0000-000000000000'::uuid), ambiguous = u.ambiguous,
     resolved_asset = u.resolved_asset
@@ -232,7 +288,7 @@ type SetResolutionsParams struct {
 
 // Each link, by its page and start, resolves to the page or the attachment given, the zero id none.
 func (q *Queries) SetResolutions(ctx context.Context, arg SetResolutionsParams) (int64, error) {
-	result, err := q.db.Exec(ctx, setResolutions,
+	result, err := q.db.Exec(ctx, SetResolutions,
 		arg.SourceIds,
 		arg.RangeStarts,
 		arg.ResolvedIds,

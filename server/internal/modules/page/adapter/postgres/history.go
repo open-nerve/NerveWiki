@@ -36,6 +36,27 @@ func (s *Store) ListChangesets(ctx context.Context, notebookID uuid.UUID, f doma
 	var rows []gen.ListChangesetsRow
 	var err error
 	switch {
+	case f.Ingest && f.PageID != nil:
+		var page []gen.ListIngestChangesetsOfPageRow
+		page, err = q.ListIngestChangesetsOfPage(ctx, gen.ListIngestChangesetsOfPageParams{NotebookID: notebookID, BelowAt: below.At,
+			BelowID: below.ID, Actor: f.Actor, Client: client, AllMcp: f.AllMCP, MaxRows: int32(limit), PageID: *f.PageID})
+		for _, r := range page {
+			rows = append(rows, gen.ListChangesetsRow(r))
+		}
+	case f.Ingest && f.Actor != nil:
+		var by []gen.ListIngestChangesetsByRow
+		by, err = q.ListIngestChangesetsBy(ctx, gen.ListIngestChangesetsByParams{NotebookID: notebookID, Actor: *f.Actor, BelowAt: below.At,
+			BelowID: below.ID, Client: client, AllMcp: f.AllMCP, MaxRows: int32(limit)})
+		for _, r := range by {
+			rows = append(rows, gen.ListChangesetsRow(r))
+		}
+	case f.Ingest:
+		var all []gen.ListIngestChangesetsRow
+		all, err = q.ListIngestChangesets(ctx, gen.ListIngestChangesetsParams{NotebookID: notebookID, BelowAt: below.At, BelowID: below.ID,
+			Client: client, AllMcp: f.AllMCP, MaxRows: int32(limit)})
+		for _, r := range all {
+			rows = append(rows, gen.ListChangesetsRow(r))
+		}
 	case f.PageID != nil:
 		var page []gen.ListChangesetsOfPageRow
 		page, err = q.ListChangesetsOfPage(ctx, gen.ListChangesetsOfPageParams{NotebookID: notebookID, BelowAt: below.At,
@@ -68,7 +89,7 @@ func (s *Store) ListChangesets(ctx context.Context, notebookID uuid.UUID, f doma
 func changesetOf(r gen.ListChangesetsRow) domain.Changeset {
 	c := domain.Changeset{
 		ID: r.ID, NotebookID: r.NotebookID, Kind: domain.ChangesetKind(r.Kind), Client: domain.Client(r.Client), Message: r.Message,
-		By: r.CreatedByID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Trimmed: r.Trimmed,
+		By: r.CreatedByID, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Trimmed: r.Trimmed, IngestCount: int(r.IngestCount),
 	}
 	if r.RevertsID != nil {
 		c.RevertsID = *r.RevertsID

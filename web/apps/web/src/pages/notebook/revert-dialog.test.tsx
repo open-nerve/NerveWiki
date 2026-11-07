@@ -952,6 +952,8 @@ test("an undo whose answer was lost, its changeset read again as the tab signed 
         reverts: null,
         reverted_by: [],
         trimmed: false,
+        ingest_count: 0,
+        ingest_sources: [],
         node_count: 1,
         content_count: 1,
         changes: [],

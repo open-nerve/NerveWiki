@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -71,6 +72,13 @@ const llmWikiGap = "live LLM Wikis without their source root or root AGENTS page
 // with its count, by the rule (M10/P1 design 3.14): a test seeds a rule's
 // counterexample and finds its sentence.
 func pageViolations(t testing.TB, pool *pgxpool.Pool) []string {
+	t.Helper()
+	return pageViolationsAt(t, pool, nil)
+}
+
+// pageViolationsAt allows a count gap only within a purge run's explicit cutoff.
+// Ordinary invariant checks never assume a purge is in progress.
+func pageViolationsAt(t testing.TB, pool *pgxpool.Pool, before *time.Time) []string {
 	t.Helper()
 	rules := map[string]string{
 		sourceHashGap: sourceHashViolationSQL,
@@ -148,7 +156,7 @@ func pageViolations(t testing.TB, pool *pgxpool.Pool) []string {
 			found = append(found, fmt.Sprintf("%d %s, want none", n, what))
 		}
 	}
-	return found
+	return append(found, ingestViolations(t, pool, before)...)
 }
 
 // hasLLMWikiGap reports whether violations hold llmWikiGap's sentence.

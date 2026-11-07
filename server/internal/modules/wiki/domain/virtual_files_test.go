@@ -32,6 +32,7 @@ func rendered(t *testing.T, in domain.RenderIndexInput, budget int) string {
 }
 
 func TestVirtualFiles(t *testing.T) {
+	t.Run("ingest", testVirtualIngestLog)
 	t.Run("display_limits", func(t *testing.T) {
 		summary, typ := strings.Repeat("é", 130), strings.Repeat("α", 130)
 		tags := make([]string, 21)

@@ -2,12 +2,12 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | **正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
+| 状态 | S2已实施并审查，结果见§10.2；S3未开始。以下是S1时点的原文：**正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
 | 角色与接受状态 | 正式设计三审及原席核对、决定71/72和e5e8入口CI已接受。S1代码审查：77初审A无发现、B有B-I1 Important、C有C-Q1；精确0b0第一次原A/B/C核修均通过，B-I1与C-Q1关闭，新增Important/Minor均0。实际对象、发现/修复和原件见[S1记录](reviews/P4-S1-virtual-files-review.md)；作者与ROOT预读不充fresh席 |
-| 迁移与决定 | 固定6992迁移尾号00052；计划 `00053_page_ingest.sql` 尚未实施。实施决定接70，§2.3与00§11正式采用71／72，负责人可以改判 |
+| 迁移与决定 | 固定6992迁移尾号00052；S2实施了 `00053_page_ingest.sql` 与 `00054_page_content_compression.sql`。实施决定接70，§2.3与00§11正式采用71／72，负责人可以改判 |
 | 依赖 | 已批准 00 §4.2/4.9/4.13/4.14/7/8/9、P3 §3.8.1–3.8.2／决定 62、02-workflow §2 |
 | 材料组成 | 本文与 `specs/P4-virtual-ingest-ports.md`、`specs/P4-virtual-ingest-queries.sql`、`specs/P4-virtual-ingest-test-completion-matrix.md`、`specs/P4-virtual-ingest-00-revisions.json`、`specs/P4-virtual-ingest-types-boundary.md`、`specs/P4-virtual-ingest-files.json` 是同一正式设计，附件不是以后再填的接口空白 |
 
@@ -56,6 +56,10 @@ P3已完成：6992是六文件P3done文档提交，parent为df9b1d49544336f80d76
 ### 2.2 需要负责人确认
 
 没有需重新请负责人决定的产品事项；主持者已按既有授权采用§2.3实施决定，负责人可以改判。REST父页筛选本期交付，网页父页选择器按00允许留M12打磨；P5 prompt、M11升级和新增公开模式／配置不在本Phase。若正式验证不能满足原预算，提交具体冲突和原始证据修订设计，不自降验收线。
+
+**2026-11-06负责人改判：** 负责人明确要求停止以本次失败为由持续优化，允许调整用例量级或时限。主持者选择保留全部负载，只将最大旧F/100操作/100k节点和mixed最大字节两个用例的事务守卫由11秒改为严格小于14秒；其各3个样本、完整关系、真实mark及后续正确性断言不减。较小用例、M9旧守卫、真实请求15秒、commit2秒及其他成本/内存/过程门禁不变。原11秒由M9不同负载的本机约3.56秒乘三得到；当前四核CI首样本unit12.552/12.453秒不证明存在必须继续修复的性能BUG。本次14秒是负责人授权范围内的主持者选择（负责人可以改判），不是既有失败的重新接受，也不是所有四核机器的容量保证。该窄修订优先于本文及附件“原预算不放宽”针对这两个用例的旧文字；完整修改后用例及CI仍按真实结果记录。负责人原话见[00§11](00-M10-design.md#11-负责人确认的决定)。
+
+**2026-11-07 主持者的决定 150（负责人可以改判）：** 上一段的 14 秒不够，诊断 04 是落在了快机器上。这两个用例改为测试请求期限 30 秒、unit 严格小于 29 秒，负载与断言不变；生产的 `server.request_timeout` 仍是 15 秒。事实与理由见 [00 §11](00-M10-design.md#11-负责人确认的决定)。
 
 ### 2.3 主持者的决定（负责人可以改判）
 
@@ -216,9 +220,9 @@ coverage分别产出完整untouched wiki emitter IDs、所有当前合格非空s
 
 SQL附件仍17个命名语句，**NovelSources正文已实质修订**；不是17条未变。新增旧F读取复用已存在LintBodyReferencesFirst/After（通过Bodies），无每S额外查询；旧D用既有SourceValues/Slots/Bodies。头点读从wiki扩到Before/Now source targets和F角色。未执行SQL／sqlc／EXPLAIN。
 
-NovelSources收到完整candidate（含page revision）、可信current source relation、untouched wiki/source IDs、D_W known/possible的完整direct IDs，以及剩余old-F和UnknownF的**去重parent IDs**。R个(S,A)关系与折叠资产union保留在app，不复制为PG参数。SQL先取candidate asset的F_U父（untouched current正文），wanted为candidate加F_U父、old-F父和unknown F父；反向边只找相关wiki页的superset。每相关页首sources JSON一次，完整同path peers先数exactly-one（包括重复target、未resolved、其他target），再筛wanted；property_key NULL才正文。D_U的page目标还须在当前source证明集合，asset候选已有Now证明。D_W保持Before资格，不以删除后的S或新head重判旧D。
+NovelSources收到减去D_W known/possible之后剩余的完整candidate（含page revision）、可信current source relation、untouched wiki/source IDs、D_W known/possible的完整direct IDs，以及剩余old-F和UnknownF的**去重parent IDs**。R个(S,A)关系与折叠资产union保留在app，不复制为PG参数。SQL先取candidate asset的F_U父（untouched current正文），wanted为candidate加F_U父、old-F父和unknown F父；反向边只找相关wiki页的superset。每相关页首sources JSON一次，完整同path peers先数exactly-one（包括重复target、未resolved、其他target），再筛wanted；property_key NULL才正文。D_U的page目标还须在当前source证明集合，asset候选已有Now证明。D_W保持Before资格，不以删除后的S或新head重判旧D。
 
-一条SQL返回每candidate的直接D_U命中、F_U是否与D_W known/possible或D_U相交，以及每请求parent的D_U命中，外加重复invalid_source_value／invalid_proof。adapter要求candidate和parent各完整恰一行（同ID可不同row_kind），扫完及rows.Err、所有flag后才把结果交app。source candidate的Now revision／Extractor2在SQL defensively核，违反已交证明是内部错误而非改判novel。parent没当前资格时其D_U=false；这不抹掉app的Before D_W证据。
+一条SQL返回每candidate的直接D_U命中、F_U是否与D_W known/possible或D_U相交，以及每请求parent的D_U命中，外加重复invalid_source_value／invalid_proof。adapter要求candidate和parent各完整恰一行（同ID可不同row_kind），扫完及rows.Err、所有flag后才把结果交app。source candidate的Now revision／Extractor2在SQL defensively核，违反已交证明是内部错误而非改判novel。parent没当前资格时其D_U=false；这不抹掉app的Before D_W证据。所以未改的stale/缺头来源S，UnknownFParent只经D_W这条腿起作用：Q→S未改时S→A吞不掉A，A照lint独立待消化，可以标；Q在W时Before证据说S可能已被消化，A不标，这比lint有意少标一个。独立T两种情形都标（决定151）。
 
 app据D_W known/possible＋完整parent D_U命中投影剩余old-F关系，并将匹配UnknownFParent升级InheritedAllAssets，随后释放关系。最终直接candidate要同时不在known/possible direct、折叠known/possible资产union、F_U继承结果及old-F投影，才能novel；AllDirect阻所有无法证实目标，InheritedAllAssets只阻asset。完整Unknown符号闭包包含所有known贡献，不因SQL只传parent而漏asset。没有parent被D引用时不能把所有F资产都压掉，独立T控制必须真mark。即使novel空，也先消费全部SQL错误；不为每S另开查询。
 
@@ -228,7 +232,7 @@ C10把真实statement_timeout和ctx取消分成独立腿：57014／原ctx cause�
 
 ### 3.10 迁移、历史与清理
 
-计划迁移为 `server/migrations/sql/00053_page_ingest.sql`；采用前重新核号，DDL形状按00：changesets.ingest_count int NOT NULL DEFAULT0，命名CHECK>=0；changeset_sources三列 `(changeset_id uuid,seq int,node_id uuid)`均NOT NULL，PK(changeset_id,seq)、UNIQUE(changeset_id,node_id)。没有FK（node或cs均无）、没有deleted_at、新purger或持久ready。保留两个指定partial index名；notebook log index继承00037的真实predicate（无deleted predicate），actor index为deleted_at IS NULL AND ingest_count>0。Down丢marks，Up不补历史；runtime只授DML，无MAINTAIN。
+S2实现时另加 `server/migrations/sql/00054_page_content_compression.sql`（决定144）：page_contents与page_revisions的content之后写入的可压缩的值用LZ4，只改目录、不改写已有值；部署须带LZ4构建，升级次序与实测见README。迁移为 `server/migrations/sql/00053_page_ingest.sql`，DDL形状按00：changesets.ingest_count int NOT NULL DEFAULT0，命名CHECK>=0；changeset_sources三列 `(changeset_id uuid,seq int,node_id uuid)`均NOT NULL，PK(changeset_id,seq)、UNIQUE(changeset_id,node_id)。没有FK（node或cs均无）、没有deleted_at、新purger或持久ready。保留两个指定partial index名；notebook log index继承00037的真实predicate（无deleted predicate），actor index为deleted_at IS NULL AND ingest_count>0。Down丢marks，Up不补历史；runtime只授DML，无MAINTAIN。
 
 历史count字段必填，REST `ingest_sources`为非null数组、固定seq前N nullable IDs：列表3、单cs20；内部虚拟log.md读取前5，再用其原整条预算。已trashed/purged或路径读取时消失者保留null位置，不压缩后补第N+1个。通过changeset_sources PK `(cs,seq)` 对多个cs做unnest+LATERAL限N；count不因预览/清理变化，≥cap沿既定下界展示。ingest=true专用ListIngestChangesets/ListIngestChangesetsBy/ListIngestChangesetsOfPage三语句，false/省略沿旧三路；原200ms守卫不变。
 
@@ -453,6 +457,17 @@ CI41556086210/a1精确af392f分支push最终completed/failure：11 jobs success�
 本轮分支文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb` / tree `c879036e7db93178922d966d199f54f08f0db710`（parent `af392f641f043e9497ce39abd7734ac3d55007c3`）的提交前minimum8与提交后postgen已通过并正常推送；文档自身CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)。本轮no-ff为`e07cc1964238b3d248c791c124d9a9fc48dd9253` / tree `c879036e7db93178922d966d199f54f08f0db710`，有序父为`e65043fe059c2788338278a2e68a1b80ee7c0a80`、`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`；精确main CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。合并身份见[00§12](00-M10-design.md#12-phase-进度表)，原件与前置检查见[S1合并补记](reviews/P4-S1-virtual-files-review.md#容量维护文档与no-ff合并记录)。
 
 本record须是该no-ff的三文档直接child；自身完整CI及预登记merge→record两个attempt1的五片实际Test均值严格<450s仍待验。分支CI、本机或旧97/e650失败pair不替代；任一完整attempt失败或容量越线先诊断，不自动重跑或换样本。§10.1.1与此前pending保各自记录时点，旧失败/UNKNOWN、O25 OPEN、M12 open及正确图full-load重标定义务不变；S1未闭环、S2未放行。
+
+### 10.2 S2 ingest 与历史
+
+S2 建成了 ingest 标记、历史的读取与筛选和 `log.md` 的显示，审查、决定与变异见[S2审查记录](reviews/P4-S2-ingest-history-review.md)。
+
+与本文的偏离，都记在那份记录里：
+
+- §6 列了三个代码提交，实际到 `02567298` 是 11 个，多出的是过成本门槛的容量修复、测试与 CI 的调整；审查的修复另有 4 个。
+- 加了迁移 00054（决定 144），部署须带 LZ4 构建，§3.10 已写。
+- bootstrap 由五份增为六份（§7 写的是五份），`costs` 分三份。
+- 两个极端用例的请求期限放宽到 30 秒（决定 150）。
 
 ## 附录：已核代码与绑定方式
 

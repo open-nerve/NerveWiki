@@ -1,6 +1,7 @@
 package obsidian
 
 import (
+	"bytes"
 	"cmp"
 	"regexp"
 	"slices"
@@ -61,12 +62,33 @@ type Tag struct {
 // properties, each read by values. A reference definition two links use is
 // one link.
 func extract(t markdown.Tree, values parser.Parser) any {
+	var ranges linkRanges
+	return extractWithRanges(t, values, &ranges)
+}
+
+// extractWithRanges keeps the range state local to this extraction. The
+// supplied state also lets tests observe whether the real walk needed a map.
+func extractWithRanges(t markdown.Tree, values parser.Parser, ranges *linkRanges) Extracted {
 	var out Extracted
-	seen := map[markdown.Span]bool{}
+	var blocks [][]Link
+	linkCount := 0
+	if !ranges.started && ranges.seen == nil {
+		if count, ordered := orderedBodyLinks(t); ordered && count > 0 {
+			out.Links = make([]Link, 0, count)
+		}
+	}
 	add := func(l Link) {
-		if !seen[l.Range] {
-			seen[l.Range] = true
+		if ranges.first(l.Range, blocks, out.Links) {
+			// Keep completed blocks instead of repeatedly copying a growing
+			// full slice. The final facts below still own one exact slice.
+			if len(out.Links) == cap(out.Links) {
+				if len(out.Links) > 0 {
+					blocks = append(blocks, out.Links)
+				}
+				out.Links = make([]Link, 0, min(max(1, 2*cap(out.Links)), 256))
+			}
 			out.Links = append(out.Links, l)
+			linkCount++
 		}
 	}
 	_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -99,12 +121,114 @@ func extract(t markdown.Tree, values parser.Parser) any {
 			add(p.Link)
 		}
 	}
+	// The facts outlive the parse: retain no staging blocks or excess
+	// capacity (M6/P2 fix check 3 M1). Preserve the original visit order
+	// before the stable sort, including equal starts with different ends.
+	if len(blocks) > 0 || len(out.Links) != cap(out.Links) {
+		links := make([]Link, linkCount)
+		at := 0
+		for _, block := range blocks {
+			at += copy(links[at:], block)
+		}
+		copy(links[at:], out.Links)
+		out.Links = links
+	}
 	slices.SortStableFunc(out.Links, func(a, b Link) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
 	slices.SortStableFunc(out.Tags, func(a, b Tag) int { return cmp.Compare(a.Range.Start, b.Range.Start) })
-	// The facts outlive the parse: each slice as long as what it holds, not
-	// the twice as long that appending may leave (M6/P2 fix check 3 M1).
-	out.Links, out.Tags = slices.Clone(out.Links), slices.Clone(out.Tags)
+	out.Tags = slices.Clone(out.Tags)
 	return out
+}
+
+// orderedBodyLinks counts without constructing facts or decoding their targets.
+// Properties and any unproven body retain the bounded staging path. Strictly
+// increasing starts prove that none of these complete ranges can be repeated.
+func orderedBodyLinks(t markdown.Tree) (int, bool) {
+	if len(t.Frontmatter.Scalars) != 0 {
+		return 0, false
+	}
+	count, last := 0, 0
+	ordered := true
+	_ = ast.Walk(t.Root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
+		if !entering {
+			return ast.WalkContinue, nil
+		}
+		status := ast.WalkContinue
+		var start int
+		switch n := n.(type) {
+		case *wikilink:
+			if n.target == "" {
+				ordered = false
+				return ast.WalkStop, nil
+			}
+			start, status = n.at.Start, ast.WalkSkipChildren
+		case *tag:
+			return ast.WalkSkipChildren, nil
+		case *ast.Link, *ast.Image:
+			at, found := t.Destination(n)
+			if !found || at.Start < 0 || at.Stop < at.Start || at.Stop > len(t.Content) {
+				ordered = false
+				return ast.WalkStop, nil
+			}
+			written := t.Content[at.Start:at.Stop]
+			var end int
+			if bytes.IndexByte(written, ':') < 0 {
+				end = markdownPathEnd(string(written))
+			} else {
+				end = markdownTargetEnd(string(written))
+			}
+			if end < 0 {
+				ordered = false
+				return ast.WalkStop, nil
+			}
+			start = at.Start
+			if _, image := n.(*ast.Image); image {
+				status = ast.WalkSkipChildren
+			}
+		default:
+			return ast.WalkContinue, nil
+		}
+		if count > 0 && start <= last {
+			ordered = false
+			return ast.WalkStop, nil
+		}
+		count++
+		last = start
+		return status, nil
+	})
+	return count, ordered
+}
+
+// linkRanges accepts the first occurrence of each complete range. A strictly
+// increasing start cannot repeat a previous range. On the first other start,
+// all accepted ranges enter the map, which handles the rest of the extraction.
+// Nothing assumes that an AST walk or frontmatter visits ranges in source order.
+type linkRanges struct {
+	seen    map[markdown.Span]bool
+	last    int
+	started bool
+}
+
+func (r *linkRanges) first(at markdown.Span, blocks [][]Link, tail []Link) bool {
+	if r.seen == nil && (!r.started || at.Start > r.last) {
+		r.last, r.started = at.Start, true
+		return true
+	}
+	if r.seen == nil {
+		r.seen = make(map[markdown.Span]bool)
+		for _, block := range blocks {
+			for _, l := range block {
+				r.seen[l.Range] = true
+			}
+		}
+		for _, l := range tail {
+			r.seen[l.Range] = true
+		}
+	}
+	if r.seen[at] {
+		return false
+	}
+	r.seen[at] = true
+	return true
 }
 
 // link is the link w makes, none if it has no target: one to its own page's
@@ -138,17 +262,43 @@ var scheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 // JavaScript's decodeURI does; none for an address elsewhere (a scheme, or
 // "//") or an anchor alone.
 func markdownLink(kind Kind, written string, at int) (Link, bool) {
-	if scheme.MatchString(written) || strings.HasPrefix(written, "//") {
+	end := markdownTargetEnd(written)
+	if end < 0 {
 		return Link{}, false
 	}
-	target, anchor, _ := strings.Cut(written, "#")
-	if target == "" {
-		return Link{}, false
+	target, anchor := written[:end], ""
+	if end < len(written) {
+		anchor = written[end+1:]
 	}
 	return Link{
 		Kind: kind, Target: markdown.DecodeURI(target), Anchor: markdown.DecodeURI(anchor),
 		Range: markdown.Span{Start: at, Stop: at + len(target)},
 	}, true
+}
+
+// markdownTargetEnd is the shared qualification of a written destination,
+// before URI decoding. A negative end means that it relates no notebook page.
+func markdownTargetEnd(written string) int {
+	if strings.Contains(written, ":") && scheme.MatchString(written) {
+		return -1
+	}
+	return markdownPathEnd(written)
+}
+
+// markdownPathEnd qualifies the path part without retaining written. Callers
+// either checked the scheme or proved that written contains no colon.
+func markdownPathEnd(written string) int {
+	if strings.HasPrefix(written, "//") {
+		return -1
+	}
+	end := strings.IndexByte(written, '#')
+	if end < 0 {
+		end = len(written)
+	}
+	if end == 0 {
+		return -1
+	}
+	return end
 }
 
 // propertyLink is a property link, its node and the value it was parsed

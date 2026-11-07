@@ -180,19 +180,19 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名五份、各一个 go test 二进制、各受 15 分钟，
-	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这六个同时跑
-	@# （-j6，随份数；macOS 的 make 3.81 也有 -j），之后不带竞态检测的四份依次跑，不与竞态检测下的构建抢 CPU；guards 入口依次运行 core 与 sources，各份之和就是下面 CI 的十份
+	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名六份、各一个 go test 二进制、各受 15 分钟，
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这七个最多六个同时跑
+	@# （保留 -j6 的并发上限；macOS 的 make 3.81 也有 -j），之后成本与守卫各份依次跑，不与竞态检测下的构建抢 CPU；guards 入口依次运行 core 与 sources；costs 的三组也串行，各份之和就是下面 CI 的十三份
 	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
 	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
 	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
 	@# M10/P2/S2 增为四份时沿用随份数的并发规则；上述加速幅度属于 M9/P2 三份时的历史测量。
-	@$(MAKE) --no-print-directory -j6 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5
+	@$(MAKE) --no-print-directory -j6 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-costs-lint
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的十份（short 是第十一份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的十三份（short 是第十四份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -254,13 +254,18 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 既有 494 个编译顶层静态分配为 167/39/114/122/52；未改测试名，Go 15m 与 bootstrap job 25m 不变。
 # 18b 当前五份各两轮已实测：495顶层167/39/114/123/52；process均值310.418/191.582/245.091/278.787/227.605秒。
 # 精确分支CI41171083998 attempt1五份Test为336/198/372/386/288秒；指定merge/record两次main各份均值<450秒仍待真实验收。
-BOOTSTRAP_FIFTH = ^TestThe(MCP|Lint|WikiTools)
+# M10/P4/S2 审查：S2 新增的 9 个顶层（TestRebuild*×5、TestRewriteWindowNativeWriter、TestStableLinkRetention*×3）
+# 落在第四份的补集，两次分支样本 449/455 秒，均值过了 450 秒的线；照规则按测试名移到第五份，不提高 -timeout。
+BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention)
+# M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
+# 当前 521 个顶层静态分配为 157/51/116/123/61/13（见第五份的说明）；各份双轮与指定 main pair 仍须实际核验。
+BOOTSTRAP_SIXTH = ^TestIngest
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 ## 竞态检测下运行组合根的整个程序测试，五份依次（需要 Docker）
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 ## 竞态检测下运行组合根的整个程序测试，六份依次（需要 Docker）
 
 .PHONY: test-go-bootstrap-1
 test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
@@ -275,15 +280,24 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_THIRD)' -skip '$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-4
-test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中名字不匹配 FIRST/SECOND/THIRD/FIFTH 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)|$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
+test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中名字不匹配 FIRST/SECOND/THIRD/FIFTH/SIXTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SIXTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-5
 test-go-bootstrap-5: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIFTH 的（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
 
+.PHONY: test-go-bootstrap-6
+test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SIXTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SIXTH)' ./internal/bootstrap
+
 .PHONY: test-go-costs
-test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫，以及 server/tools（CI 的一份；需要 Docker）
+test-go-costs: ## 顺序运行三份成本守卫及 server/tools（需要 Docker）
+	@$(MAKE) --no-print-directory -j1 test-go-costs-1 test-go-costs-2 test-go-costs-3
+
+.PHONY: test-go-costs-1
+test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker）
+	@# 原 32 条命令按连续边界分份，公共入口仍串行；每条 argv、Go timeout 与预算不变。
 	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算，以及阅读视图在各种解析下的 HTML 检查与体积上限，在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
 	@# /mcp 的请求体的 JSON 值有上限，扫描过了它就停：路由上限那么长（37.8 MB）的 [[],[],…] 被拒时只分配几 KiB（M9/P2 S1 审查 A2-I1）；这个测试只在不带竞态检测的构建里
@@ -296,7 +310,33 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -count=1 -v -run '^TestIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/modules/linking/adapter/postgres
 	@# P4：完整100k目录批次、1024字节合法长类型、JSON输出界与真实参数/custom/generic计划，独立沿10m期限。
 	cd server && go test -count=1 -v -run '^TestIndexCatalogueHasBoundedWorkAndOutput$$' ./internal/modules/linking/adapter/postgres
+	@# P4：真实512头点读与首sources JSON一次，完整手写候选oracle及无统计/custom/generic物理工作。
+	cd server && go test -count=1 -v -run '^TestIngestPlans$$' ./internal/modules/linking/adapter/postgres
+	@# NovelSources：独立的稀疏反向/完整source范围守卫；三统计/真实Rebuild状态分进程，保原默认10m与容量门禁。
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^no_statistics$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^analyzed$$/^pristine$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^analyzed$$/^app_rebuild$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^no_statistics$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
+
+.PHONY: test-go-costs-2
+test-go-costs-2: ## 原成本命令第 14–20 条及 LinksReached 物理守卫（CI 第二份；需要 Docker）
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
+	@# 同事务来源准备与排除关系：实际Store参数、三统计/计划模式、重复keys及完整原生15列值。
+	cd server && go test -count=1 -v -run '^TestPreparedSource(ReadPlans|ReadDValues|ResidualDuplicateKeyPlan)$$' ./internal/modules/linking/adapter/postgres
+	@# LinksReached：稀疏9叶与400万行6叶各独立进程；!race、非short，沿默认10m/count=1。
+	cd server && go test -count=1 -v -run '^TestLinksReachedReadPlans$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestLinksReachedDenseReadPlans$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
+
+.PHONY: test-go-costs-3
+test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docker）
+	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
+	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestTrashHistoryAtItsBoundCountsInTimeWithForcedPlans$$' ./internal/modules/page/adapter/postgres
 	@# 搜索的守卫单独一行、带 -v：通过时也打出各个读的中位数，CI 的日志里看得到，下次重新测量有数据（M8/P5A 审查 C 的 M-2）
@@ -313,6 +353,8 @@ test-go-costs: ## 不带竞态检测的分配、耗时预算与界线的守卫�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourcePrecheckConvergedPlansCostTheirActualExclusions$$' ./internal/modules/page/adapter/postgres
 	@# 相同10万来源语料的六个独立副本：三/四列索引的实际空间、温表构建和正常HTTP写入差异。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
+	@# S2-3：10本百万历史、全旧像与真实AccessExclusive交错，另一个default10m进程。
+	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsTenHistories$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint
@@ -358,6 +400,11 @@ test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守�
 	@# P4：真实SDK/REST的100k读和整本ZIP导出分别保留独立进程、样本与SQL证据，仍为默认10m。
 	cd server && go test -count=1 -v -run '^TestVirtualIndexOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestVirtualExportOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	@# S2-3：真实来源预览批读与同本物理界；独立 !race 进程，保留默认10m。
+	cd server && go test -count=1 -v -run '^TestIngestVirtualLogPaths$$' ./internal/bootstrap
+	@# P4：完整100k ingestion与最大旧F/batch分别独立进程；原请求/提交预算与默认10m不变。
+	cd server && go test -count=1 -v -run '^TestIngestOfAHundredThousandPagesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestAtTheBatchBoundaryTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsMarkdownRendersCheckedHTML$$' ./internal/bootstrap
 	cd server && go test -count=1 -run '^TestTheAppsLinksAreWithinTheirBound$$' ./internal/bootstrap
 	@# 恢复在单元上限的测试单独一行、带 -v：通过时也打出恢复用的时间，CI 的日志里看得到（M8/P2A 第二轮复核 M-a）
@@ -391,6 +438,12 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceRevertAtTenThousandTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceForgetHundredThousandTakesItsTime$$' ./internal/bootstrap
+	@# P4/S2：五个额外合法来源形状分别独立进程，保各自三样本与原请求/单元预算、Go默认10m。
+	cd server && go test -count=1 -v -run '^TestIngestOfAMaximumSourcePageTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfMixedSourcePagesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfUnreferencedSourcesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfMoreThanBatchSourcesTakesItsTime$$' ./internal/bootstrap
+	cd server && go test -count=1 -v -run '^TestIngestOfDeletedSourceGroupsTakesItsTime$$' ./internal/bootstrap
 
 .PHONY: test-go-short
 test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）

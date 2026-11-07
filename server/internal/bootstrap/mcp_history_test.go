@@ -132,21 +132,32 @@ func mcpPages(t *testing.T, m *mcpApp, tool, member string, args map[string]any)
 
 // asMCP is REST's answer v as MCP's history writes it: a changed node's
 // kind "attachment" where REST writes "asset" (M9/P2 design 3.16.3).
-func asMCP(v any) any {
+func asMCP(v any, paths map[string]string) any {
 	switch x := v.(type) {
 	case map[string]any:
 		out := make(map[string]any, len(x))
 		for k, e := range x {
-			out[k] = asMCP(e)
+			out[k] = asMCP(e, paths)
 		}
 		if node, ok := out["node"].(map[string]any); ok && node["kind"] == "asset" {
 			node["kind"] = "attachment"
+		}
+		if sources, ok := out["ingest_sources"].([]any); ok {
+			for i, source := range sources {
+				sources[i] = nil
+				if id, ok := source.(string); ok {
+					if path, ok := paths[id]; ok {
+						sources[i] = path
+					}
+				}
+			}
+			out["ingest_sources_cut"] = false
 		}
 		return out
 	case []any:
 		out := make([]any, len(x))
 		for i, e := range x {
-			out[i] = asMCP(e)
+			out[i] = asMCP(e, paths)
 		}
 		return out
 	}
@@ -189,7 +200,7 @@ func (tm acmeTeam) treePaths(t *testing.T, by, nb string) map[string]string {
 // withPaths are REST's changes as changeset answers them: each node with
 // its path now, null when it is not alive.
 func withPaths(changes []any, paths map[string]string) []any {
-	out := asMCP(changes).([]any)
+	out := asMCP(changes, paths).([]any)
 	for _, c := range out {
 		node, _ := c.(map[string]any)["node"].(map[string]any)
 		node["path"] = nil
@@ -272,7 +283,7 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 			{"of my agents by twos", map[string]any{"actor": "me", "client": "mcp", "limit": 2}, "actor=" + me + "&client=mcp"},
 		} {
 			got, pages := mcpPages(t, alice, "log", "changesets", tt.args)
-			want := asMCP(tm.restPages(t, "alice", logs, tt.query)).([]any)
+			want := asMCP(tm.restPages(t, "alice", logs, tt.query), tm.treePaths(t, "alice", nb)).([]any)
 			sameJSON(t, "the log "+tt.name, got, want)
 			if limit, ok := tt.args["limit"].(int); ok && len(pages) != (len(want)+limit-1)/limit {
 				t.Errorf("the log %s is %d pages of %d rows, want %d of %d", tt.name, len(pages), len(want), (len(want)+limit-1)/limit, limit)
@@ -293,7 +304,7 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 		paths, attachments, moves := tm.treePaths(t, "alice", nb), 0, map[string]bool{}
 		for _, row := range all {
 			id, _ := row.(map[string]any)["id"].(string)
-			want := asMCP(tm.restOf(t, "alice", "/api/v0/changesets/"+id)).(map[string]any)
+			want := asMCP(tm.restOf(t, "alice", "/api/v0/changesets/"+id), paths).(map[string]any)
 			delete(want, "changes")
 			if want["moves"] == true {
 				moves[id] = true
@@ -549,7 +560,7 @@ func TestTheMCPHistoryAnswersGoOn(t *testing.T) {
 	alice.handshakeAs(t, "whole-program")
 	h := seedLongHistory(t, tm, alice, nb)
 	logs := "/api/v0/notebooks/" + nb + "/changesets"
-	rest := asMCP(tm.restPages(t, "alice", logs, "limit=100")).([]any)
+	rest := asMCP(tm.restPages(t, "alice", logs, "limit=100"), tm.treePaths(t, "alice", nb)).([]any)
 	if len(rest) < 4 || rest[0].(map[string]any)["id"] != h.w1 || rest[1].(map[string]any)["id"] != h.w2 {
 		t.Fatalf("REST's log is %d rows, want W1, W2 first", len(rest))
 	}
@@ -577,7 +588,7 @@ func TestTheMCPHistoryAnswersGoOn(t *testing.T) {
 	}
 
 	changes := withPaths(tm.restPages(t, "alice", "/api/v0/changesets/"+h.c1+"/changes", "limit=100"), tm.treePaths(t, "alice", nb))
-	header := asMCP(tm.restOf(t, "alice", "/api/v0/changesets/"+h.c1)).(map[string]any)
+	header := asMCP(tm.restOf(t, "alice", "/api/v0/changesets/"+h.c1), tm.treePaths(t, "alice", nb)).(map[string]any)
 	delete(header, "changes")
 	if len(changes) != 1 || changes[0].(map[string]any)["node"].(map[string]any)["path"] != h.leaf {
 		t.Fatalf("C1's changes are %v, want one, of the leaf at its long path", changes)

@@ -36,7 +36,7 @@ type RevertChangesetUseCase interface {
 // ListChangesets serves GET /api/v0/notebooks/{notebook_id}/changesets.
 func (h handler) ListChangesets(ctx context.Context, req gen.ListChangesetsRequestObject) (gen.ListChangesetsResponseObject, error) {
 	p := req.Params
-	l, err := h.uc.ListChangesets.Execute(ctx, req.NotebookID, app.LogQuery{Actor: p.Actor, Client: p.Client, PageID: p.PageID,
+	l, err := h.uc.ListChangesets.Execute(ctx, req.NotebookID, app.LogQuery{Ingest: p.Ingest, Actor: p.Actor, Client: p.Client, PageID: p.PageID,
 		Limit: p.Limit, Cursor: p.Cursor})
 	if err != nil {
 		return nil, err
@@ -62,6 +62,7 @@ func (h handler) GetChangeset(ctx context.Context, req gen.GetChangesetRequestOb
 		ID: c.ID, NotebookID: c.NotebookID, Kind: c.Kind, Client: c.Client, Message: c.Message, CreatedBy: c.CreatedBy,
 		CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt, Reverts: c.Reverts, RevertedBy: c.RevertedBy, Trimmed: c.Trimmed,
 		NodeCount: c.NodeCount, ContentCount: c.ContentCount, Changes: c.Changes, Renames: d.Moves.Renames, Moves: d.Moves.Moves,
+		IngestCount: c.IngestCount, IngestSources: c.IngestSources,
 	}, nil
 }
 
@@ -113,6 +114,7 @@ func changesetOf(l app.LoggedChangeset) gen.Changeset {
 		Message: nullable.NewNullNullable[string](), CreatedBy: apigen.UserRef{UserID: c.By, DisplayName: c.ByName}, CreatedAt: c.CreatedAt,
 		UpdatedAt: c.UpdatedAt, Reverts: nullable.NewNullNullable[gen.ChangesetBrief](), RevertedBy: append([]uuid.UUID{}, l.Facts.RevertedBy...),
 		Trimmed: c.Trimmed, NodeCount: l.Facts.Nodes, ContentCount: l.Facts.Contents, Changes: make([]gen.ChangesetChange, len(l.Changes)),
+		IngestCount: c.IngestCount, IngestSources: make([]nullable.Nullable[uuid.UUID], len(l.IngestSources)),
 	}
 	if c.Message != nil {
 		out.Message = nullable.NewNullableWithValue(*c.Message)
@@ -120,6 +122,12 @@ func changesetOf(l app.LoggedChangeset) gen.Changeset {
 	if r := c.Reverts; r != nil {
 		out.Reverts = nullable.NewNullableWithValue(gen.ChangesetBrief{ID: r.ID, Kind: gen.ChangesetKind(r.Kind),
 			CreatedBy: apigen.UserRef{UserID: r.By, DisplayName: r.ByName}, CreatedAt: r.CreatedAt})
+	}
+	for i, id := range l.IngestSources {
+		out.IngestSources[i] = nullable.NewNullNullable[uuid.UUID]()
+		if id != nil {
+			out.IngestSources[i] = nullable.NewNullableWithValue(*id)
+		}
 	}
 	for i, ch := range l.Changes {
 		out.Changes[i] = changeOf(ch)

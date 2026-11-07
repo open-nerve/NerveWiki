@@ -14,9 +14,8 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/jackc/pgx/v5/pgtype"
-
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres/gen"
@@ -76,6 +75,8 @@ func lintExecute(t *testing.T, name string, args []any) string {
 			literals[i] = quote(v) + "::text"
 		case int32:
 			literals[i] = fmt.Sprintf("%d::integer", v)
+		case int64:
+			literals[i] = fmt.Sprintf("%d::bigint", v)
 		case []uuid.UUID:
 			a := make([]string, len(v))
 			for j, id := range v {
@@ -639,6 +640,11 @@ func TestLintPlans(t *testing.T) {
 		defer conn.Release()
 		ctx := postgres.OnConn(t.Context(), conn)
 		r := postgresadapter.NewLintReads(pool, 5*1024*1024)
+		cfg, pid := conn.Conn().Config(), conn.Conn().PgConn().PID()
+		if cfg.DescriptionCacheCapacity <= 0 {
+			t.Fatal("cache-route fixture requires an actual positive description cache")
+		}
+		var bodyAfter app.EdgePos
 		for i := 0; i < 7; i++ {
 			heads, err := r.Heads(ctx, f.eng)
 			if err != nil || len(heads) != 2 {
@@ -669,9 +675,11 @@ func TestLintPlans(t *testing.T) {
 			if rows, err := r.SourceSlotEdges(ctx, f.eng, []app.EdgePos{slot[0].EdgePos}); err != nil || len(rows) != 1 {
 				t.Fatalf("Planned slot exact: %d %v", len(rows), err)
 			}
-			if rows, err := r.BodyReferences(ctx, f.eng, []uuid.UUID{p}, nil, 512); err != nil || len(rows) != 1 {
-				t.Fatalf("Planned short body: %d %v", len(rows), err)
+			body, err := r.BodyReferences(ctx, f.eng, []uuid.UUID{p}, nil, 512)
+			if err != nil || len(body) != 1 {
+				t.Fatalf("bound short body: %d %v", len(body), err)
 			}
+			bodyAfter = body[0].EdgePos
 			if rows, err := r.AmbiguousEdgeHeads(ctx, f.eng, nil, nil, 512); err != nil || len(rows) != 1 {
 				t.Fatalf("Planned ambiguous: %d %v", len(rows), err)
 			}
@@ -683,11 +691,49 @@ func TestLintPlans(t *testing.T) {
 		if cached != 0 || len(tr.calls) != 70 || len(tr.modes) != 70 {
 			t.Fatalf("Planned route: cached=%d calls=%d modes=%d", cached, len(tr.calls), len(tr.modes))
 		}
-		for _, mode := range tr.modes {
-			if mode != pgx.QueryExecModeDescribeExec {
-				t.Fatalf("mode=%v", mode)
+		sequence := []string{"LintHeads", "LintWantedEdgeHeadsFirst", "LintWantedEdgeHeadsAfter", "LintEdgesByPositions", "LintFirstSourceHeads", "LintFirstSourceValues", "LintSourceSlotHeadsFirst", "LintSourceSlotEdges", "LintBodyReferencesFirst", "LintAmbiguousEdgeHeadsFirst"}
+		observed := tr.observations()
+		if len(observed) != 70 {
+			t.Fatalf("original cohort observations=%d want 70", len(observed))
+		}
+		cachedBodies := 0
+		for i, call := range observed {
+			name, mode := sequence[i%10], pgx.QueryExecModeDescribeExec
+			if name == "LintBodyReferencesFirst" {
+				mode = pgx.QueryExecModeCacheDescribe
+				cachedBodies++
+			}
+			lintAssertMode(t, call, name, mode, pid, cfg.StatementCacheCapacity, cfg.DescriptionCacheCapacity)
+			if call.Err != nil {
+				t.Fatal(call.Err)
 			}
 		}
+		if cachedBodies != 7 || len(observed)-cachedBodies != 63 {
+			t.Fatalf("original 70 cohort split=%d/%d want 7/63", cachedBodies, len(observed)-cachedBodies)
+		}
+		for range 7 {
+			rows, err := r.BodyReferences(ctx, f.eng, []uuid.UUID{p}, &bodyAfter, 512)
+			if err != nil || len(rows) != 0 {
+				t.Fatalf("bound Body After EOF: %d %v", len(rows), err)
+			}
+		}
+		observed = tr.observations()
+		if len(tr.calls) != 77 || len(tr.modes) != 77 || len(observed) != 77 {
+			t.Fatalf("70 plus 7 After: calls=%d modes=%d observations=%d", len(tr.calls), len(tr.modes), len(observed))
+		}
+		for _, call := range observed[70:] {
+			lintAssertMode(t, call, "LintBodyReferencesAfter", pgx.QueryExecModeCacheDescribe, pid, cfg.StatementCacheCapacity, cfg.DescriptionCacheCapacity)
+			if call.Err != nil {
+				t.Fatal(call.Err)
+			}
+		}
+		lintNoNamedStatements(t, ctx, pool)
+		byName, byMode := map[string]int{}, map[string]int{}
+		for _, call := range observed {
+			byName[call.Name]++
+			byMode[call.Mode.String()]++
+		}
+		t.Logf("actual original70 plus After7: names=%v modes=%v PID=%d capacities=%d/%d named-Lint=0", byName, byMode, pid, cfg.StatementCacheCapacity, cfg.DescriptionCacheCapacity)
 		// A genuine default-cached call is the positive control for named cache.
 		if _, err := gen.New(conn).LintHeads(t.Context(), f.eng); err != nil {
 			t.Fatal(err)
@@ -827,8 +873,12 @@ func TestLintPhysicalRangesCompleteSources(t *testing.T) {
 							for k := uint64(1); k <= 2000; k++ {
 								emitters = append(emitters, lintReaderID(k))
 							}
+							first := lintReaderID(1)
+							if n > 0 {
+								first = lintID(1)
+							}
 							s := statementOf(t, func(q *gen.Queries) error {
-								_, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, AfterSource: lintReaderID(1000), AfterStart: 0, Take: 512})
+								_, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, WikiPageIds: emitters, FirstSource: first, LastSource: lintReaderID(2000), AfterSource: lintReaderID(1000), AfterStart: 0, Take: 512})
 								return err
 							})
 							plan, body := lintExecuted(t, f, s, generic)
@@ -977,10 +1027,10 @@ func TestLintPhysicalRangesBodyAndAmbiguous(t *testing.T) {
 									s := statementOf(t, func(q *gen.Queries) error {
 										if kind == "body" {
 											if part.after == nil {
-												_, err := q.LintBodyReferencesFirst(t.Context(), gen.LintBodyReferencesFirstParams{NotebookID: f.eng, Extractor: 2, Take: 512, WikiPageIds: emitters})
+												_, err := q.LintBodyReferencesFirst(t.Context(), gen.LintBodyReferencesFirstParams{NotebookID: f.eng, Extractor: 2, Take: 512, WikiPageIds: emitters, FirstSource: lintReaderID(1), LastSource: lintReaderID(2000)})
 												return err
 											}
-											_, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, Take: 512, WikiPageIds: emitters, AfterSource: part.after.SourceID, AfterStart: part.after.Start})
+											_, err := q.LintBodyReferencesAfter(t.Context(), gen.LintBodyReferencesAfterParams{NotebookID: f.eng, Extractor: 2, Take: 512, WikiPageIds: emitters, FirstSource: lintReaderID(1), LastSource: lintReaderID(2000), AfterSource: part.after.SourceID, AfterStart: part.after.Start})
 											return err
 										}
 										if part.after == nil {

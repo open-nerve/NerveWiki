@@ -34,7 +34,16 @@ func (l linkIndex) PagesChanged(ctx context.Context, e page.Event) error {
 		}
 		changes[i].Facts = facts
 	}
-	return l.index.PagesChanged(ctx, linking.PagesChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, Changes: changes})
+	event := linking.PagesChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, ChangesetID: e.ChangesetID,
+		Kind: string(e.Kind), Changes: changes, Notebook: linking.IngestNotebook{Mode: string(e.Notebook.Mode)}}
+	if e.Notebook.Mode == page.ModeLLMWiki {
+		root := e.Notebook.SourceRootID
+		event.Notebook.SourceRootID = &root
+	}
+	if e.BeforeIngest != nil {
+		event.BeforeIngest = linkIngestBefore{e.BeforeIngest}
+	}
+	return l.index.PagesChanged(ctx, event)
 }
 
 // linkChanges are the page module's changes as linking reads them, without

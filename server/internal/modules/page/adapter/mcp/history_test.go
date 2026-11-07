@@ -356,14 +356,14 @@ func TestTheLogAnswersItsShape(t *testing.T) {
 	want := `{"changesets":[{"id":"` + cs.String() + `","notebook_id":"` + notebook.String() + `","kind":"revert","client":"api",` +
 		`"message":"why","created_by":` + user(bob, "Bob") + `,"created_at":"2026-10-17T08:30:00Z","updated_at":"2026-10-17T08:30:01Z",` +
 		`"reverts":{"id":"` + other.String() + `","kind":"edit","created_by":` + user(alice, "Alice") + `,"created_at":"2026-10-17T08:30:00Z"},` +
-		`"reverted_by":["` + reverted.String() + `"],"trimmed":false,"node_count":1,"content_count":1,"changes":[` +
+		`"reverted_by":["` + reverted.String() + `"],"trimmed":false,"node_count":1,"content_count":1,"ingest_count":0,"ingest_sources":[],"ingest_sources_cut":false,"changes":[` +
 		`{"node":{"id":"` + png.String() + `","kind":"attachment","name":"flow-1.png","alive":true},"kind":"renamed",` +
 		`"before":{` + guides + `,"name":"flow.png"},"after":{` + guides + `,"name":"flow-1.png"},"content":null},` +
 		`{"node":{"id":"` + plan.String() + `","kind":"page","name":"Plan","alive":false},"kind":"content","before":null,"after":null,` +
 		`"content":{"base_revision":2,"revision":3}}]},` +
 		`{"id":"` + other.String() + `","notebook_id":"` + notebook.String() + `","kind":"edit","client":"mcp:claude-code","message":null,` +
 		`"created_by":` + user(alice, "Alice") + `,"created_at":"2026-10-17T08:30:00Z","updated_at":"2026-10-17T08:30:00Z","reverts":null,` +
-		`"reverted_by":[],"trimmed":true,"node_count":0,"content_count":0,"changes":[{"node":{"id":"` + plan.String() + `","kind":"page",` +
+		`"reverted_by":[],"trimmed":true,"node_count":0,"content_count":0,"ingest_count":0,"ingest_sources":[],"ingest_sources_cut":false,"changes":[{"node":{"id":"` + plan.String() + `","kind":"page",` +
 		`"name":"Plan","alive":false},"kind":"created","before":null,"after":{"parent_id":null,"parent_name":null,"name":"Plan"},` +
 		`"content":{"base_revision":null,"revision":1}}]}],"next_cursor":"c2"}`
 	if raw := rawOf(t, res); raw != want {
@@ -447,7 +447,7 @@ func TestTheLogFitsItsAnswer(t *testing.T) {
 	// What it measures (M9/P2 design 3.16.4): a row without changes fits,
 	// with three it is over.
 	cursor := new(strings.Repeat("e", 120))
-	bare, whole := changesetRowOf(largest), changesetRowOf(largest)
+	bare, whole := changesetRowOf(largest, nil), changesetRowOf(largest, nil)
 	bare.Changes = []change[changeNode]{}
 	none, three := textOf(t, logAnswer{Changesets: []changesetRow{bare}, NextCursor: cursor}),
 		textOf(t, logAnswer{Changesets: []changesetRow{whole}, NextCursor: cursor})
@@ -498,7 +498,7 @@ func TestTheChangesetAnswersItsShape(t *testing.T) {
 		`"next_cursor":"c2"}`
 	want := `{"changeset":{"id":"` + cs.String() + `","notebook_id":"` + notebook.String() + `","kind":"edit","client":"mcp:claude-code",` +
 		`"message":null,"created_by":{"user_id":"` + alice.String() + `","display_name":"Alice"},"created_at":"2026-10-17T08:30:00Z",` +
-		`"updated_at":"2026-10-17T08:30:00Z","reverts":null,"reverted_by":[],"trimmed":false,"node_count":2,"content_count":0,` +
+		`"updated_at":"2026-10-17T08:30:00Z","reverts":null,"reverted_by":[],"trimmed":false,"node_count":2,"content_count":0,"ingest_count":0,"ingest_sources":[],"ingest_sources_cut":false,` +
 		`"renames":true,"moves":false},` + changesJSON
 	if raw := rawOf(t, res); raw != want {
 		t.Errorf("the answer is\n%s\nwant\n%s", raw, want)
@@ -506,7 +506,7 @@ func TestTheChangesetAnswersItsShape(t *testing.T) {
 	// A changeset that moves a node across parents (S2 review C-M2).
 	p.Detail.Moves = domain.ChangesetMoves{Moves: true}
 	res, err = tools.changeset(context.Background(), mcpserver.Call{}, changesetIn{ID: cs.String()})
-	if raw := rawOf(t, res); err != nil || !strings.Contains(raw, `"content_count":0,"renames":false,"moves":true},`) {
+	if raw := rawOf(t, res); err != nil || !strings.Contains(raw, `"content_count":0,"ingest_count":0,"ingest_sources":[],"ingest_sources_cut":false,"renames":false,"moves":true},`) {
 		t.Errorf("a changeset that moves = %s, %v", raw, err)
 	}
 	// With a cursor, no changeset.
@@ -607,7 +607,7 @@ func TestTheChangesetFitsItsAnswer(t *testing.T) {
 	}
 	// What it measures (M9/P2 design 3.16.4).
 	cursor := new(strings.Repeat("e", 120))
-	header := &changesetHeader{changesetFields: fieldsOf(largest), Renames: true, Moves: true}
+	header := &changesetHeader{changesetFields: fieldsOf(largest, nil), Renames: true, Moves: true}
 	one := []change[pathNode]{changeOf(worstChange(), pathNode{changeNode: nodeOf(worstChange()), Path: new(worst().path)})}
 	alone := textOf(t, changesetAnswer{Changeset: header, Changes: []change[pathNode]{}, NextCursor: cursor})
 	first := textOf(t, changesetAnswer{Changeset: header, Changes: one, NextCursor: cursor})

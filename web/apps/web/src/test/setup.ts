@@ -24,8 +24,15 @@ beforeEach(() => {
 
 // Without vitest's globals Testing Library cannot unmount by itself. The app
 // also writes to <html> and to localStorage: every test starts from none of it.
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // PageEditing lets a StrictMode remount keep its session in this task.
+  // Finish the unmount's zero-delay disposal before jsdom removes the page.
+  if (vi.isFakeTimers()) {
+    await vi.advanceTimersByTimeAsync(0);
+  } else {
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+  }
   for (const method of ["warn", "error"] as const) {
     const spy = vi.mocked(console[method]);
     if (!spy.getMockImplementation()) {

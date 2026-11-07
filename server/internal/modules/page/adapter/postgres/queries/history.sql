@@ -4,7 +4,7 @@
 -- A changeset of a live notebook (its deleted_at is its notebook's), with the brief of the one it reverts while that one
 -- is there.
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.id = sqlc.arg(id) AND c.deleted_at IS NULL;
 
@@ -12,7 +12,7 @@ WHERE c.id = sqlc.arg(id) AND c.deleted_at IS NULL;
 -- A notebook's log newer first below the cursor (M8 design 4.7): a range of its index backward, whatever plan is kept;
 -- the client a filter on it, its values few. The brief of the changeset a revert reverts by its key.
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
@@ -25,7 +25,7 @@ LIMIT sqlc.arg(max_rows);
 -- ListChangesets of one actor: a range of the actor's index backward. A statement of its own: a cached statement's
 -- plan for any arguments serves one of the filters' paths.
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.created_by_id = sqlc.arg(actor) AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
@@ -46,11 +46,11 @@ WITH touched AS (
     SELECT r.changeset_id FROM page_revisions r WHERE r.node_id = sqlc.arg(page_id)
 ), changed AS (
     SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
-        x.trimmed, x.deleted_at
+        x.trimmed, x.ingest_count, x.deleted_at
     FROM touched t CROSS JOIN LATERAL (SELECT * FROM changesets WHERE id = t.changeset_id LIMIT 1) x
 )
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
-    c.trimmed, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changed c LEFT JOIN changesets v ON v.id = c.reverts_id
 WHERE c.notebook_id = sqlc.arg(notebook_id)::uuid AND c.deleted_at IS NULL
     AND (c.created_at, c.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
@@ -221,3 +221,67 @@ SELECT max(c.updated_at)::timestamptz AS last_change
 FROM changesets c
 WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.deleted_at IS NULL
 GROUP BY c.notebook_id;
+
+-- name: ListIngestChangesets :many
+-- A notebook's log newer first below the cursor (M8 design 4.7): a range of its index backward, whatever plan is kept;
+-- the client a filter on it, its values few. The brief of the changeset a revert reverts by its key.
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+-- Read only covered keys from the ordered ingest index. The same-snapshot
+-- key probe reads live fields and filters the client without changing that range.
+FROM changesets marked
+CROSS JOIN LATERAL (
+    SELECT * FROM changesets
+    WHERE id = marked.id AND deleted_at IS NULL
+      AND (sqlc.narg(client)::text IS NULL OR client = sqlc.narg(client)::text)
+      AND (NOT sqlc.arg(all_mcp)::boolean OR client LIKE 'mcp:%')
+    LIMIT 1
+) c
+LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE marked.notebook_id = sqlc.arg(notebook_id) AND marked.ingest_count > 0
+    AND (marked.created_at, marked.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+ORDER BY marked.created_at DESC, marked.id DESC
+-- Preserve a runtime row bound even for a custom plan with missing statistics.
+LIMIT (SELECT sqlc.arg(max_rows)::integer);
+
+-- name: ListIngestChangesetsBy :many
+-- ListChangesets of one actor: a range of the actor's index backward. A statement of its own: a cached statement's
+-- plan for any arguments serves one of the filters' paths.
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+FROM changesets c LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE c.notebook_id = sqlc.arg(notebook_id) AND c.created_by_id = sqlc.arg(actor) AND c.deleted_at IS NULL AND c.ingest_count > 0
+    AND (c.created_at, c.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+    AND (sqlc.narg(client)::text IS NULL OR c.client = sqlc.narg(client)::text)
+    AND (NOT sqlc.arg(all_mcp)::boolean OR c.client LIKE 'mcp:%')
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT sqlc.arg(max_rows);
+
+-- name: ListIngestChangesetsOfPage :many
+-- ListChangesets of the changesets that changed a node, of one actor when it is set: the node's items' and versions'
+-- changesets through their indexes on node_id, deleted or not (a node in the trash has its history), then each by its
+-- key alone, as TrashLines reads a parent, sorted. Its cost is the node's history's: joined as the planner pleased,
+-- without statistics a page of a 40,000 changesets' history walked the log's index and compared each with them all,
+-- 7 s a page.
+-- The same UUID bounds remain runtime values in both cache modes, so a
+-- skewed actor or node distribution does not turn this point range into a
+-- full relation scan or an unrelated leading-key walk.
+WITH touched AS (
+    SELECT i.changeset_id FROM changeset_items i WHERE i.node_id >= (SELECT sqlc.arg(page_id)::uuid) AND i.node_id <= (SELECT sqlc.arg(page_id)::uuid)
+    UNION
+    SELECT r.changeset_id FROM page_revisions r WHERE r.node_id >= (SELECT sqlc.arg(page_id)::uuid) AND r.node_id <= (SELECT sqlc.arg(page_id)::uuid)
+), changed AS (
+    SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
+        x.trimmed, x.ingest_count, x.deleted_at
+    FROM touched t CROSS JOIN LATERAL (SELECT * FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+)
+SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
+    c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
+FROM changed c LEFT JOIN changesets v ON v.id = c.reverts_id
+WHERE c.notebook_id = sqlc.arg(notebook_id)::uuid AND c.deleted_at IS NULL AND c.ingest_count > 0
+    AND (c.created_at, c.id) < (sqlc.arg(below_at)::timestamptz, sqlc.arg(below_id)::uuid)
+    AND (sqlc.narg(actor)::uuid IS NULL OR c.created_by_id = sqlc.narg(actor)::uuid)
+    AND (sqlc.narg(client)::text IS NULL OR c.client = sqlc.narg(client)::text)
+    AND (NOT sqlc.arg(all_mcp)::boolean OR c.client LIKE 'mcp:%')
+ORDER BY c.created_at DESC, c.id DESC
+LIMIT sqlc.arg(max_rows);

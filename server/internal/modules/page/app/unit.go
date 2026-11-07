@@ -30,6 +30,7 @@ type WriterDeps struct {
 	Notebooks   Notebooks
 	Nodes       Nodes
 	RevertTrees RevertTrees
+	IngestNow   IngestNow
 	Paths       PathStore
 	NodeWriter  NodeWriter
 	// Trash reads a trash item again under the notebook's lock: its
@@ -322,6 +323,7 @@ type Unit struct {
 	frozen        map[uuid.UUID]bool
 	carried       map[uuid.UUID]map[uuid.UUID]bool
 	keepLinks     bool
+	ingest        map[uuid.UUID]ingestBeforeNode
 }
 
 // refusalOf is a guard's error err of the step s (M10 design 4.6): a
@@ -367,6 +369,9 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 		if err := g.GuardWrite(ctx, s); err != nil {
 			return refusalOf(err, s)
 		}
+	}
+	if err := u.rememberIngestBefore(ctx, s); err != nil {
+		return err
 	}
 	if err := u.rememberSourceBefore(ctx, s); err != nil {
 		return err
@@ -713,6 +718,9 @@ func (u *Unit) tell(ctx context.Context) error {
 		return nil
 	}
 	e := Event{Write: u.write, ChangesetID: u.changeset, Changes: u.changes}
+	if u.ingestEnabled() {
+		e.BeforeIngest = u
+	}
 	for _, o := range u.w.d.Observers {
 		if err := o.PagesChanged(ctx, e); err != nil {
 			return err

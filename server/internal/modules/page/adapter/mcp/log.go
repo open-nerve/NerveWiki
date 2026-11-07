@@ -9,6 +9,7 @@ import (
 
 // logIn is log's arguments (M9/P2 design 3.16.2).
 type logIn struct {
+	Ingest *bool   `json:"ingest,omitempty" jsonschema:"Only changesets with ingest sources when true; false or omitted keeps all changesets."`
 	Path   *string `json:"path,omitempty" jsonschema:"Only the changesets that changed the page or attachment at this path, from the notebook's root."`
 	Actor  *string `json:"actor,omitempty" jsonschema:"Only the changesets by this account: its id, or \"me\" for yours."`
 	Client *string `json:"client,omitempty" jsonschema:"Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."`
@@ -34,13 +35,13 @@ func (t tools) log(ctx context.Context, c mcpserver.Call, in logIn) (mcpserver.R
 		path = *in.Path
 	}
 	l, err := t.uc.Log.AtPath(ctx, c.Notebook, app.PathLogQuery{Path: in.Path, Actor: in.Actor, Client: in.Client, Limit: in.Limit,
-		Cursor: in.Cursor})
+		Cursor: in.Cursor, Ingest: in.Ingest})
 	if err != nil {
 		return mcpserver.Result{}, toolErr(err, c, path)
 	}
 	rows := make([]changesetRow, len(l.Changesets))
 	for i, lc := range l.Changesets {
-		rows[i] = changesetRowOf(lc)
+		rows[i] = changesetRowOf(lc, l.Paths)
 	}
 	n := len(rows)
 	res, k, err := mcpserver.Fit(n, func(k int) any {
@@ -54,9 +55,22 @@ func (t tools) log(ctx context.Context, c mcpserver.Call, in logIn) (mcpserver.R
 		next = l.Cursors[0]
 	}
 	first := rows[0]
+	// The source stage uses a fixed cursor and an empty changes array.
+	// It keeps the largest contiguous prefix, including null positions.
+	sources := first.IngestSources
+	_, s, err := mcpserver.Fit(len(sources), func(s int) any {
+		row := first
+		row.IngestSources, row.IngestSourcesCut = sources[:s], s < len(sources)
+		row.Changes, row.ChangesCut = []change[changeNode]{}, len(first.Changes) > 0
+		return logAnswer{Changesets: []changesetRow{row}, NextCursor: cursorOf(next)}
+	})
+	if err != nil {
+		return mcpserver.Result{}, err
+	}
+	first.IngestSources, first.IngestSourcesCut = sources[:s], s < len(sources)
 	res, _, err = mcpserver.Fit(len(first.Changes), func(j int) any {
 		row := first
-		row.Changes, row.ChangesCut = first.Changes[:j], true
+		row.Changes, row.ChangesCut = first.Changes[:j], j < len(first.Changes)
 		return logAnswer{Changesets: []changesetRow{row}, NextCursor: cursorOf(next)}
 	})
 	return res, err

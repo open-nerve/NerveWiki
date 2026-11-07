@@ -96,7 +96,8 @@
 | 00049 page `page_revisions`（P2 的 S1） | `rewrite boolean NOT NULL DEFAULT false`：这一行覆盖的每一次写都是系统的链接改写（参与者追加的写），或撤销里写回一个这样的版本。同一版本行连续写以 AND 合并，旧行 false；撤销取被撤销版本的标记，写回与撤销的撤销沿用。Down 去掉列：再 Up 时旧的标记都成了 `false`，撤销这些改写的写回在来源上被拒（只会更严） | 4.7 的"撤销的写回"；只改元数据（审查 B 在 200 万行上量过 0.5 ms）。M11 的"内容保全"也用得上 |
 | 00050 page `nodes`（P2 的 S2） | `source_hash bytea`，`CONSTRAINT nodes_source_hash_check CHECK (octet_length(source_hash) = 32)`；部分索引 `nodes_notebook_id_kind_source_hash_idx ON nodes (notebook_id, kind, source_hash, id) WHERE source_hash IS NOT NULL AND deleted_at IS NULL`。Up 最后为已有的 `llm_wiki` 笔记本补上哈希：每本一条递归的语句，从 `source_root_id` 走活着的子孙，页取 `page_contents.content_hash`（字节数大于 0 的），附件取 `asset_blobs.sha256`（按 `node_id`）。它读两张别的模块的表，都只读、不改：notebook 的 `notebooks`（`mode` 与 `source_root_id`）与 asset 的 `asset_blobs`。归属的检查只看改表的语句（`archtest/sqlc_test.go:123-129`、`:235-245`），它的注释写明不看数据的语句、由审查把关（`:113-122`）；sqlc 也不理会 schema 文件里的数据的语句（审查 A 以仓库钉住的 sqlc v1.31.1 试过）。所以这是迁移读别的模块的表的第一处，到 00047 为止的迁移里没有先例，作为 7.1"只写自己的查询"的一处经过审查的例外，写进迁移的注释与"总体设计的修订"的 7.1。索引非唯一，系统改写可以使已有来源同字节；末键 id 供完整历史计划排除受影响节点时有界分页，不再另建三列索引。Down 去掉列与索引 | 去重（4.8）：只有 LLM Wiki 活着的、有正文的来源有值。补哈希是为了发布之前已有 LLM Wiki 的库（P1 合并之后、P2/S2 之前的开发库）与 `goose down` 再 `up`；发布的第一次 Up 时没有 `llm_wiki` 的笔记本，这条语句什么也不做。**锁**：一个 goose 的事务里，`ALTER` 取 ACCESS EXCLUSIVE，一直持到建完部分索引，读与写都等；检查让 `ALTER` 扫一遍表（审查 A、B 在 200–300 万行上量过 72–94 ms，不带检查 0.15–0.7 ms），建索引再扫一遍（82 ms）。升级说明本就先停服务，所以写成停机的时长：P2/S2 在 600 万节点分别测无 LLM 与已有 LLM（含真实页/附件回填）的完整 goose Up 冷启动事务；只在事务开始前冷却一次自有 PG 文件的 OS page cache，以文件 manifest/fincore 核验，承认设备缓存与启动预热。CHECK/index 分别冷却的诊断另列，不相加冒充完整事务/停机时间；不动全局缓存或用户服务。600 万迁移与 10 万来源另量四列相对原三列的空间、建索引/回填及写维护代价；实际结果写入升级说明，M12 仍重测真实服务器。不用 `NOT VALID` 再 `VALIDATE`：同一个事务里 ACCESS EXCLUSIVE 照样持到提交，省不下什么 |
 | linking（P3） | 一个一定有的部分索引 `page_properties_sources_idx ON page_properties (source_id, position) WHERE translate(key, 'SOURCE', 'source') = 'sources'`，同 00047 给 `type`、`summary` 的那两个：每页的第一个 `sources` 键由它一次探到（没有它时一个横向的读要读一页的每个属性，00047 的注释），也找得到只有不加引号的 `[[x]]` 或普通字符串、因而一条属性链接也没有的页（4.11 的"`sources` 指向无效"）。普通page_links(notebook_id,source_id,range_start)复合索引也是测量候选，不带resolved_id IS NULL，不INCLUDE长target/value；先证keyset物理范围退化、修正后再准入。按量的结果另加的至多几个：有歧义的链接（`ambiguous`，插入时为假）、属性链接（`property_key IS NOT NULL`）、解析失败的页（`NOT frontmatter_valid`）。不建 `WHERE resolved_id IS NULL` 的索引：`InsertLinks` 把每条链接先写成没有解析（`linking/adapter/postgres/queries/links.sql:2-9`），这个索引就要收每次保存的每条链接（5,000 条链接的一页一次 5,000 项，在索引锁里，M6 量过这样的保存约 70 ms），想要的页改用别的形状（4.11） | 4.11：`sources` 的那一个是规则要的；别的只给量过、确实慢的规则加，并量它在 M6 的 5,000 条链接的保存上的代价。只建索引的迁移取 SHARE：写等、读不等（读与写都等只在同一个事务里有 `ALTER` 持着 ACCESS EXCLUSIVE 时，如 00050 与 ingest 的迁移）；每个各自量扫描的用时、写进升级说明 |
-| 下一个号 page `changesets` 与新表 `changeset_sources`（P4 的 S2） | `changesets.ingest_count integer NOT NULL DEFAULT 0`，`CONSTRAINT changesets_ingest_count_check CHECK (ingest_count >= 0)`；部分索引 `changesets_notebook_id_created_at_ingest_idx ON changesets (notebook_id, created_at DESC, id DESC)` 与 `changesets_notebook_id_created_by_id_created_at_ingest_idx ON changesets (notebook_id, created_by_id, created_at DESC, id DESC)`，谓词都是 `ingest_count > 0` 加 00037 的日志索引的谓词；`changeset_sources (changeset_id uuid NOT NULL, seq integer NOT NULL, node_id uuid NOT NULL, CONSTRAINT changeset_sources_pkey PRIMARY KEY (changeset_id, seq), CONSTRAINT changeset_sources_changeset_id_node_id_key UNIQUE (changeset_id, node_id))`，两列都不建外键。新表进 `server/sqlc.yaml` 的 page 的 schema 与 `deploy/runtime-grants.sql`（只要数据的授权，同 `changeset_items` 的那一行，`runtime-grants.sql:19`；不给 MAINTAIN：它只给任务要 ANALYZE 的表，`:24-29`，而没有任务写标记，标记只在 `edit` 的变更集上；13.1 第 16 条），同一个提交。Down 去掉列、索引与表：再 Up 时旧的标记没了 | 4.14。`changeset_sources` 照派生的表（`page_search`、linking 的索引表）：没有 `deleted_at`、没有清理器，也不引用 `changesets`。清理的规则（13.1 第 6 条）要求指向被清理的表的外键有排在前面的清理器，而没有 `deleted_at` 的表又不许有清理器（`bootstrap/purge_test.go:56-94`），所以它的行由清理变更集之前的一个叶子的步删除：同一个清理器里的一条语句，`LIMIT` 一批（13.1 第 6 条：先叶子、按批的行，`purge.sql:1-3`；一个变更集至多 10,000 行，跟着变更集一起删会让一条语句删到 1,000 × 10,000 行，`platform/jobs/purge.go:42`），删的是两条清理变更集的语句（`PurgeChangesets`，`page/adapter/postgres/queries/purge.sql:57-64`；`PurgeTrimmedChangesets`，`:66-75`）就要取的变更集的行，谓词同它们，以同样的行锁取那些变更集（`FOR … OF c SKIP LOCKED`）；两条语句再加 `NOT EXISTS (SELECT 1 FROM changeset_sources …)`，同它们对条目与版本的做法。这一步照 `PurgeNodes` 对它的叶子的做法循环到一批不满为止，删的行数算进清理器交回的数（`purgeTable` 只在交回满批时再调它，`platform/jobs/purge.go:94-103`）：否则一个有 2,500 个来源的变更集、或 500 个各有 3 个来源的变更集会让一轮停在中途，删除了的笔记本的变更集留过这次运行，而 `changesets.notebook_id` 是 `ON DELETE RESTRICT`（`00014_page_changesets.sql:8`），同一次运行里 `PurgeNotebooks` 就失败、之后的清理器也不跑。每条语句仍至多一批（审查 B3-M1）；清理的测试：一本删除了的 LLM Wiki 笔记本带着这两种形状，在一次运行里删完，同一次运行里 `PurgeNotebooks` 成功。它不是登记的清理器（表没有 `deleted_at`，`TestEverySoftDeletedTableHasAPurger` 不许它有）。`checkPages` 守着"只有存在的变更集有行"（笔记本删除之后、清理之前，变更集的 `deleted_at` 已设、行还在，`page/adapter/postgres/queries/nodes.sql:290`，所以不是"活着的"）与"`ingest_count` 等于行数"，后一条只对清理的谓词不取的变更集（叶子的步删到一半的、锁着而被跳过的不算）。来源可能在变更集之前被清理掉，所以 `node_id` 不引用 `nodes`；清理来源不删这些行，`ingest_count` 照旧数着清理掉的来源（读作 `null`，4.14）。主键按 `seq`：读"前 N 个"按它走索引；`(changeset_id, node_id)` 唯一，同一来源只记一次。两个部分索引给"只看 ingest"的历史与"某人的 ingest"（日志的约定：每种筛选一条语句，`page/adapter/postgres/queries/history.sql:24-26`）。锁与扫描同 00050：检查扫一遍 `changesets`，P4 量、写进升级说明 |
+| 00053 page `changesets` 与新表 `changeset_sources`（P4 的 S2） | `changesets.ingest_count integer NOT NULL DEFAULT 0`，`CONSTRAINT changesets_ingest_count_check CHECK (ingest_count >= 0)`；部分索引 `changesets_notebook_id_created_at_ingest_idx ON changesets (notebook_id, created_at DESC, id DESC)` 与 `changesets_notebook_id_created_by_id_created_at_ingest_idx ON changesets (notebook_id, created_by_id, created_at DESC, id DESC)`，谓词都是 `ingest_count > 0` 加 00037 的日志索引的谓词；`changeset_sources (changeset_id uuid NOT NULL, seq integer NOT NULL, node_id uuid NOT NULL, CONSTRAINT changeset_sources_pkey PRIMARY KEY (changeset_id, seq), CONSTRAINT changeset_sources_changeset_id_node_id_key UNIQUE (changeset_id, node_id))`，两列都不建外键。新表进 `server/sqlc.yaml` 的 page 的 schema 与 `deploy/runtime-grants.sql`（只要数据的授权，同 `changeset_items` 的那一行，`runtime-grants.sql:19`；不给 MAINTAIN：它只给任务要 ANALYZE 的表，`:24-29`，而没有任务写标记，标记只在 `edit` 的变更集上；13.1 第 16 条），同一个提交。Down 去掉列、索引与表：再 Up 时旧的标记没了 | 4.14。`changeset_sources` 照派生的表（`page_search`、linking 的索引表）：没有 `deleted_at`、没有清理器，也不引用 `changesets`。清理的规则（13.1 第 6 条）要求指向被清理的表的外键有排在前面的清理器，而没有 `deleted_at` 的表又不许有清理器（`bootstrap/purge_test.go:56-94`），所以它的行由清理变更集之前的一个叶子的步删除：同一个清理器里的一条语句，`LIMIT` 一批（13.1 第 6 条：先叶子、按批的行，`purge.sql:1-3`；一个变更集至多 10,000 行，跟着变更集一起删会让一条语句删到 1,000 × 10,000 行，`platform/jobs/purge.go:42`），删的是两条清理变更集的语句（`PurgeChangesets`，`page/adapter/postgres/queries/purge.sql:57-64`；`PurgeTrimmedChangesets`，`:66-75`）就要取的变更集的行，谓词同它们，以同样的行锁取那些变更集（`FOR … OF c SKIP LOCKED`）；两条语句再加 `NOT EXISTS (SELECT 1 FROM changeset_sources …)`，同它们对条目与版本的做法。这一步照 `PurgeNodes` 对它的叶子的做法循环到一批不满为止，删的行数算进清理器交回的数（`purgeTable` 只在交回满批时再调它，`platform/jobs/purge.go:94-103`）：否则一个有 2,500 个来源的变更集、或 500 个各有 3 个来源的变更集会让一轮停在中途，删除了的笔记本的变更集留过这次运行，而 `changesets.notebook_id` 是 `ON DELETE RESTRICT`（`00014_page_changesets.sql:8`），同一次运行里 `PurgeNotebooks` 就失败、之后的清理器也不跑。每条语句仍至多一批（审查 B3-M1）；清理的测试：一本删除了的 LLM Wiki 笔记本带着这两种形状，在一次运行里删完，同一次运行里 `PurgeNotebooks` 成功。它不是登记的清理器（表没有 `deleted_at`，`TestEverySoftDeletedTableHasAPurger` 不许它有）。`checkPages` 守着"只有存在的变更集有行"（笔记本删除之后、清理之前，变更集的 `deleted_at` 已设、行还在，`page/adapter/postgres/queries/nodes.sql:290`，所以不是"活着的"）与"`ingest_count` 等于行数"，后一条只对清理的谓词不取的变更集（叶子的步删到一半的、锁着而被跳过的不算）。来源可能在变更集之前被清理掉，所以 `node_id` 不引用 `nodes`；清理来源不删这些行，`ingest_count` 照旧数着清理掉的来源（读作 `null`，4.14）。主键按 `seq`：读"前 N 个"按它走索引；`(changeset_id, node_id)` 唯一，同一来源只记一次。两个部分索引给"只看 ingest"的历史与"某人的 ingest"（日志的约定：每种筛选一条语句，`page/adapter/postgres/queries/history.sql:24-26`）。锁与扫描同 00050：检查扫一遍 `changesets`，P4 量、写进升级说明 |
+| 00054 page `page_contents`、`page_revisions`（P4 的 S2） | 两列 `content` 之后写入的可压缩的值 `SET COMPRESSION lz4`：只改目录，已有的值不改写；`ACCESS EXCLUSIVE` 持到提交。Down 恢复 `default`，已有的 LZ4 值不变，读它们仍要带 LZ4 的数据库。部署须带 LZ4 构建（[总体设计](../v0.1-design.md) 7.1） | 决定 144：过成本门槛的容量修复 |
 
 下文以内容称这些迁移（"`rewrite` 的迁移""`source_hash` 的迁移""ingest 的迁移"）。wiki 没有迁移。没有新的配置项：上限都是代码里的常量（4.18）。
 
@@ -720,7 +721,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 - **派生数据**：`source_hash` 等于重建（4.8 的步的种类各有最少的次数；降级之后的写与恢复在内）；`checkPages` 加 `source_hash` 的不变式、"活着的 `llm_wiki` 有来源根与 `AGENTS`"、`changeset_sources` 的三条（4.14），每条一个 SQL 播下的反例（13.4 第 1 条）；`batch` 进这个测试。
 - **交错**：4.17 的各个，结束时核对不变式。
 - **清理**：一本删除了的 LLM Wiki 笔记本，它的变更集带着很多来源（一个变更集 2,500 个，与 500 个变更集各 3 个），在一次清理的运行里删完，同一次运行里 `PurgeNotebooks` 成功（4.2）。
-- **成本与计划**（13.4第8、9条，`!race`，4.11的2秒是目标，不预填通过）：lint迁移/计划/规则/真实编排与必要属性成本归`test-go-costs-lint`，其余成本、既有组合根守卫分别在`test-go-costs`和`test-go-guards`。每条锁内process两轮均值×2.4须≤其旧Go timeout一半；新增算法回退guard按两轮各至少三样本中位数的较大值×3校准为固定值，再用实际慢CI核验，不能把容量倍率当算法阈值。worker 2s/request 4s与原有guards不变，不能靠short/race替代`!race`入口；当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）（costs-lint原10行加三新顶层的四条完整recipe）。这是当前入口组成，最终完整Test/job容量与CI尚待实测验收，不更改下列形状、原期限或历史证据：
+- **成本与计划**（13.4第8、9条，`!race`，4.11的2秒是目标，不预填通过；P4/S2 起 costs/lint/guards 为 34/14/27 条，bootstrap 六份，见 [S2 记录](reviews/P4-S2-ingest-history-review.md)）：lint迁移/计划/规则/真实编排与必要属性成本归`test-go-costs-lint`，其余成本、既有组合根守卫分别在`test-go-costs`和`test-go-guards`。每条锁内process两轮均值×2.4须≤其旧Go timeout一半；新增算法回退guard按两轮各至少三样本中位数的较大值×3校准为固定值，再用实际慢CI核验，不能把容量倍率当算法阈值。worker 2s/request 4s与原有guards不变，不能靠short/race替代`!race`入口；当前Makefile为17 costs＋14 costs-lint＋15 guards，共46条go-test recipes（含server/tools）（costs-lint原10行加三新顶层的四条完整recipe）。这是当前入口组成，最终完整Test/job容量与CI尚待实测验收，不更改下列形状、原期限或历史证据：
   - lint 每条规则与摘要在 10 万页上（含内存的界，含 4.10 的长空白的行）； P3另含10万source与大量区外未解析边同场的参数/关系/往返工作、一末键大量深路径presence无祖先读（复用真实bootstrap摘要成本与生产wanted trace，page metadata测试不代消费链）、slot全部匹配边唯一性与不重叠源批范围、源JSON长度/值双读、合法YAML转义长前段加短/x使target超过固定5MiB且target_key=x的真实parser→PageFacts→保存/读取，wanted与source-slot各自非空并分别只收紧target检查、JSON宽界不动、JSONB指数/别名与单大项进度；未实测前目标不写通过。
   - `index.md` 的一次 `read` 在 10 万页（含入链数最坏的形状）；贡献者在 10 万页与 1,000 个变更集； read的40KiB在中和/转义后核实际UTF8字节与N/M，export索引不读inbound；目录有限catalogue另量100k全distinct/key碰撞/合法长type/jsTrim慢支路/TOAST/HTTP实际字节，MATERIALIZED不是物理范围或成本证明。固定预算与原容量义务不降。
   - 去重：一次新增在 10 万个来源；一棵上限子树移进 `raw`（另有普通10001成功与超界有限物化、成功末层空父探查）；恢复与撤销在 `MaxUnitNodes`、`MaxUnitPages` 而每个节点都在来源区里；60k任务完整计划、X跨10k与大量同hash收敛、降级 Forget 在10万来源；按4.8独立成本行；600万空/已有LLM实际冷事务与三/四列成本差按4.2；
@@ -780,6 +781,64 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 | agent 不照 playbook 做 | playbook 只是建议，来源区、保护与保留的标题由守卫强制；真实客户端的人工核对在 v0.1 的最后（4.19） |
 
 ## 11. 负责人确认的决定
+
+### 2026-11-07：接手与推进方式
+
+Codex 额度用尽，项目交回 Claude，负责人确认 Codex 不再插手，本机与本项目由 Claude 独占。负责人原话："都按你建议的来，删掉诊断分支，回到标准流程，继续推进"。
+
+- 边界照旧：推进到 M10 收尾完成后停下，用中文汇报，不开始 M11。
+- 回到 [02-workflow](../claude_to_codex/02-workflow.md) 的做法：`make` 门禁、分支与 `main` 的 CI、三位独立审查。Codex 在 M10 后期自建的逐步哈希回执不再延续，已有证据留在本机，不进仓库。
+- P4 决定 77–149 是 Codex 的内部编号，记在 [P4/S2 审查记录](reviews/P4-S2-ingest-history-review.md)，负责人可以改判的在那里列出。
+
+### 2026-11-07：两个极端 ingest 用例的请求期限（主持者的决定 150，负责人可以改判）
+
+**事实。** 精确提交 `b86019d9` 的分支 CI [42284811629](https://github.com/open-nerve/NerveWiki/actions/runs/42284811629) 里，`guards-core`、`guards-sources` 两份失败，失败后带 profile 的重跑同样失败：两个用例的首个请求都在 15.00 秒被期限截断（MCP 答 `internal_error: the call ran out of time`），事务回滚，后面的样本与断言没有跑到。产品代码与通过的诊断 04（[42232019209](https://github.com/open-nerve/NerveWiki/actions/runs/42232019209)）逐字节相同，差别在机器：两次都跑完的 `old_f_120000` 分配相同（232 MiB），CPU 时间却是 0.93 秒与 1.85 秒。`ubuntu-24.04` 这个标签下至少有三代 CPU：
+
+| 运行 | CPU | 最大形状的请求 |
+|---|---|---|
+| 诊断 04 | EPYC 9V45 | 9.2–10.4 秒 |
+| 诊断 03 | EPYC 9V74 | 12.5–14.4 秒 |
+| 诊断 02（S2 较早的代码） | EPYC 7763 | 到 15 秒期限 |
+| `b86019d9` 分支 CI | 当时未记录 | 到 15 秒期限，同样工作约慢 2 倍 |
+| `cf510743` 分支 CI [42308764984](https://github.com/open-nerve/NerveWiki/actions/runs/42308764984)（决定之后，期限已是 30 秒） | EPYC 7763 | 17.7–17.9 秒，通过 |
+
+所以诊断 04 的通过是落在了快机器上，不能证明 14 秒的线够用。11-06 的决定只放宽了 unit 守卫，15 秒的请求期限在慢机器上照样先到。
+
+**决定。** 只放宽这两个用例的时限，不缩用例：请求期限 30 秒、unit 守卫严格小于 29 秒。负责人授权的是"调整测试用例量级或者时限"，这里选时限，因为会随机器变化的只有时间；4M 关系与最大字节的正确性、内存、行数、调用次数这些界线与机器无关，缩用例会连它们一起放弃。30 秒取仓库"界线取本机的三倍"的规矩（本机中位数 9.9 秒）。较小用例的 15 秒与 11 秒、提交 2 秒、全部 3 个样本不变。CI 每个 server 作业加一步打印 CPU 型号，计时失败时先看落在哪一种。
+
+**这不改生产。** `server.request_timeout` 仍是 15 秒。这个上限下，老一代 4 核机器上的最大合法 batch 会超时：请求答 `internal_error`，事务回滚，不留半截数据，客户端可以拆小重试，运维也可以调大这个配置。这是已知的容量边界，已写入 [M12 的性能移交](../M12-release/handoffs/M4-performance.md)，不在 M10 继续优化。
+
+### 2026-11-07：未改 stale 来源的旧 F（主持者的决定 151，负责人可以改判）
+
+S2 的审查者 A 问：来源 S 的索引 stale，S→A，Q→S，这次新页 P→A,T。Q 未改时标 `[T, A]`，Q 在这次的 W 里时标 `[T]`，同一个旧状态的标记取决于 Q 写没写。
+
+**决定。** 照 04-P4 §3.9 的实现，不改：没有当前资格的 parent 没有 D_U，但这不抹掉 Before 的 D_W。lint 在两种情形下都把 A 算待消化。Q 未改时标 A，与 lint 一致；Q 在 W 时有意比 lint 少标一个 A，因为手里有“S 可能已被消化”的旧证据，不能证明的项不新增。这个差别只出现在来源 stale 或缺头的时候，只影响一个历史标签，lint 不读标记，不影响任何规则。两种情形都有用例钉住（`TestIngestBefore/stale_parent_*`）。
+
+### 2026-11-07：不改写 S2 分支的历史（主持者的决定 152，负责人可以改判）
+
+S2 前 11 个提交里有 5 个不能单独过 e2e 或 costs-lint，它们都过工作流要求的每提交门禁。不压缩，记下范围，见 [S2 记录](reviews/P4-S2-ingest-history-review.md)。
+
+### 2026-11-07：恢复与撤销的时限（主持者的决定 153，负责人可以改判）
+
+S2 的分支 CI [42316471113](https://github.com/open-nerve/NerveWiki/actions/runs/42316471113) 里，`TestARevertAtTheUnitsBoundTakesItsTime` 12.05 秒，过了 12 秒的线。和决定 150 是同一件事，同样的工作，只差机器：
+
+| CPU | 撤销 | 恢复 |
+|---|---|---|
+| EPYC 9V45 | 6.8 秒 | 6.0 秒 |
+| EPYC 9V74 | 9.0 秒 | 8.3 秒 |
+| EPYC 7763 | 11.7–12.05 秒 | 11.0–11.2 秒 |
+
+12 秒是 M5 Max 上 3.8–4.0 秒的三倍，而 EPYC 7763 约慢三倍，这条线就是它的常态。P4/S1 记下的 12.30、12.45 秒和"性能根因未知"也是这样：当时 CI 还没有记 CPU。
+
+**决定。** 两条线都改成 14 秒，只改时限，不改负载。不取三倍的规则，因为上面压着 bench 15 秒的请求期限，再高这条断言就没有意义了。这比决定 150 窄：请求期限不动。
+
+### 2026-11-06：P4/S2 极端 ingest 用例的时间门槛
+
+负责人原话：“Ok， 不要把这次当做性能问题继续 无限优化了，调整 测试用例量级或者时限即可 ～”。
+
+主持者的落实决定（负责人可以改判）：保留完整负载与正确性断言，仅把 `TestIngestAtTheBatchBoundaryTakesItsTime/maximum_old_f_hundred_k_100_ops` 和 `TestIngestOfMixedSourcePagesTakesItsTime` 的事务守卫改为严格小于14秒。旧11秒来自M9约400页、每页约200条链接的本机标定，不是当前最多400万旧关系负载的四核实测门槛。两个新用例仍各跑3个样本，完整读取、真实mark与不变量等断言继续执行；较小ingest用例与M9原用例保留11秒，真实请求15秒与commit2秒不变。14秒在请求期限内保留1秒的事务外余量，但不承诺所有机器均通过。
+
+这是负责人授权的验收范围修订，覆盖下文与P4设计中“原预算不放宽”对上述两个用例的约束；其余约束不变。本轮结束持续性能优化，已有四核CI的11秒失败仍保留，不能按新线追认为通过。修改后的完整用例与后续分支/main CI须据实际运行记录验收，P4/S2及M10尚未完成。具体范围见[P4§2.2](04-P4-virtual-ingest.md#22-需要负责人确认)。
 
 ### P3旁支撤销树修复：主持者的决定（负责人可以改判）70
 
@@ -937,7 +996,7 @@ detail先以空changes、真实Start/next固定envelope选择来源，再固定�
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
 | P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 已完成；S1/S2及撤销树旁支的实施、审查/复核、门禁与集成已验，§8原43项及修复闭合前提已由主持者核对，见[完成核对](03-P3-lint-health.md#103-p3完成)。指定修复merge＋联合record五片Test均值394.5/201.5/308/387/314.5s，全部严格<450；原13ed失败单列。独立P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤全部成功接受，P3完成并已释放P4正式设计。该own CI不进入指定4e6e/df9 pair，Test463/309/362/404/313s不保证新增测试容量；M10继续。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`，record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`；S2原merge `13edc125d5478285fbdf2750dd467f54bcc61a77`（main CI失败）；修复merge `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，联合record `df9b1d49544336f80d768bde4b6cda231403231e`；精确CI见§10.3 |
-| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | S1原代码、门禁、原席核修与878/f689测试修复及ac84调度拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受，e650/a1失败保留；指定97/a1＋e650/a2首片均值466.5s容量失败，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行；S2/S3未实施，Phase未完成 | [设计审查](reviews/P4-design-review.md)、[S1本轮记录](reviews/P4-S1-virtual-files-review.md#e650记录失败与bootstrap容量维护) | 原a1f成功、fd/b4失败及986取消保原记录。已知record `e65043fe059c2788338278a2e68a1b80ee7c0a80`；本轮代码`af392f641f043e9497ce39abd7734ac3d55007c3`只维护Make第一/第二片界线及注释；真实提交/本机材料、完整a2与原席03已核；a1失败继续单列；record ca4688a1完整CI及预登记两main配对已接受，S1自然收口。本轮合并见本表及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)，该指定两main Test配对保原口径，不以分支或本机代替。 |
+| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | S2已实施并审查，[记录](reviews/P4-S2-ingest-history-review.md)，合并见本节；S3未开始。S1：S1原代码、门禁、原席核修与878/f689测试修复及ac84调度拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受，e650/a1失败保留；指定97/a1＋e650/a2首片均值466.5s容量失败，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行；S2/S3未实施，Phase未完成 | [设计审查](reviews/P4-design-review.md)、[S1本轮记录](reviews/P4-S1-virtual-files-review.md#e650记录失败与bootstrap容量维护) | 原a1f成功、fd/b4失败及986取消保原记录。已知record `e65043fe059c2788338278a2e68a1b80ee7c0a80`；本轮代码`af392f641f043e9497ce39abd7734ac3d55007c3`只维护Make第一/第二片界线及注释；真实提交/本机材料、完整a2与原席03已核；a1失败继续单列；record ca4688a1完整CI及预登记两main配对已接受，S1自然收口。本轮合并见本表及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)，该指定两main Test配对保原口径，不以分支或本机代替。 |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
@@ -959,6 +1018,8 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-11-07：P4/S2 实施并审查完成：ingest 标记、历史读取与筛选、`log.md` 的显示；迁移 00053、00054。接手之后回到标准流程，决定 150–152 记在第 11 节，[审查记录](reviews/P4-S2-ingest-history-review.md)。
 
 - 2026-11-03：决定76的S2正式设计保原42处合同语义；随此八文档提交自然转录已接受的S1 main ca4688a1完整CI与预登记e07/a1→ca/a1配对，五片均值372/340/355.5/349/280.5s均严格<450s，见[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)及[ROOT收口](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-s1-closure-01.json)。旧失败与历史pending保留；本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行、未实施。
 

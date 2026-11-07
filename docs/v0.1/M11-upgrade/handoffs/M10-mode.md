@@ -28,3 +28,7 @@ M10/P1 建成了模式与模板、模式守卫的框架、预检与后台拒绝�
 ### M10/P2补充（来源契约；升级仍未开始）
 
 P2/S1–S2已完成来源事实/rewrite/hash；S3网页与后续集成见[P2结果](../../M10-llm-wiki/02-P2-source-area.md#103-s3-完整来源网页)。批准变为LLM时须在同事务重建指定根严格后代source_hash并清区外；普通模式虽可预指定SourceRootID，hash仍NULL。保全revision.rewrite，旧无标记/Down-Up按保守规则；SourceHashes、ModeSubscriber顺序与free refusal.code沿既有接口。此为已实现契约的交接，不设计升级流程；status仍open。SourceRootID旧过强注释Nit继续M10收尾，不顺手加强SQL约束。
+
+### M10/P4补充（ingest；升级仍未开始）
+
+P4的ingest只相信当前来源表示与充分旧／未改证据。旧v1、missing/stale必须先reindex，之后恢复未来可靠判断，不补此前历史标签；Unknown与PossibleTargets不是升级ready状态。批准升级前仍处理旧根index/log保留名，否则whole export可能contributor_conflict。本移交不启动M11，也不把未改页最终树／解析近似写成全unit旧快照精确。

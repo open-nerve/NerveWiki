@@ -14,11 +14,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
-
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/linking/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
 func TestLintCrossNotebook(t *testing.T) {
@@ -143,7 +142,8 @@ func TestLintEdgeBatches(t *testing.T) {
 		}
 		lintExec(t, f, `UPDATE indexed_pages SET extractor=1 WHERE node_id=$1`, old)
 		lintExec(t, f, `UPDATE page_links SET property_key=NULL WHERE source_id=$1 AND property_key=''`, old)
-		ids := []uuid.UUID{current, old, foreign}
+		// The public reader does not require sorted emitters.
+		ids := []uuid.UUID{foreign, current, old}
 		first, err := r.BodyReferences(t.Context(), f.eng, ids, nil, 1)
 		start := int32(strings.Index(content, "body"))
 		if err != nil || len(first) != 1 || first[0].SourceID != current || first[0].Start != start {
@@ -212,26 +212,39 @@ func TestLintEdgeBatches(t *testing.T) {
 }
 
 type lintTrace struct {
-	mu    sync.Mutex
-	calls []string
-	modes []pgx.QueryExecMode
+	mu       sync.Mutex
+	calls    []string
+	modes    []pgx.QueryExecMode
+	observed []lintModeObservation
+	prepared []lintPrepareObservation
 }
 
-func (t *lintTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+func (t *lintTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	if strings.HasPrefix(data.SQL, "-- name: Lint") {
 		t.mu.Lock()
+		defer t.mu.Unlock()
 		t.calls = append(t.calls, strings.Fields(data.SQL)[2])
 		if len(data.Args) > 0 {
 			if mode, ok := data.Args[0].(pgx.QueryExecMode); ok {
 				t.modes = append(t.modes, mode)
 			}
 		}
-		t.mu.Unlock()
+		i := len(t.observed)
+		t.observed = append(t.observed, lintObservedMode(conn, data))
+		return context.WithValue(ctx, lintModeQueryKey{}, i)
 	}
 	return ctx
 }
-func (*lintTrace) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
-func (t *lintTrace) names() []string                                               { t.mu.Lock(); defer t.mu.Unlock(); return slices.Clone(t.calls) }
+func (t *lintTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryEndData) {
+	i, ok := ctx.Value(lintModeQueryKey{}).(int)
+	if !ok {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.observed[i].Ended, t.observed[i].Err = true, data.Err
+}
+func (t *lintTrace) names() []string { t.mu.Lock(); defer t.mu.Unlock(); return slices.Clone(t.calls) }
 func lintPool(t *testing.T, f fixture, tracer pgx.QueryTracer, connections int32) *pgxpool.Pool {
 	t.Helper()
 	cfg := f.pool.Config()

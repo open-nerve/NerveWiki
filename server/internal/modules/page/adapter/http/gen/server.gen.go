@@ -187,6 +187,12 @@ type Changeset struct {
 	CreatedBy externalRef0.UserRef `json:"created_by"`
 	ID        uuid.UUID            `json:"id"`
 
+	// IngestCount Distinct persistent ingest sources, capped at 10000.
+	IngestCount int `json:"ingest_count"`
+
+	// IngestSources The first 3 source positions in append order; null when the source is no longer alive in this notebook.
+	IngestSources []nullable.Nullable[uuid.UUID] `json:"ingest_sources"`
+
 	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
 	Kind ChangesetKind `json:"kind"`
 
@@ -266,6 +272,12 @@ type ChangesetDetail struct {
 	// CreatedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
 	CreatedBy externalRef0.UserRef `json:"created_by"`
 	ID        uuid.UUID            `json:"id"`
+
+	// IngestCount Distinct persistent ingest sources, capped at 10000.
+	IngestCount int `json:"ingest_count"`
+
+	// IngestSources The first 20 source positions in append order; null when the source is no longer alive in this notebook.
+	IngestSources []nullable.Nullable[uuid.UUID] `json:"ingest_sources"`
 
 	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
 	Kind ChangesetKind `json:"kind"`
@@ -759,6 +771,9 @@ type ListChangesetChangesParams struct {
 
 // ListChangesetsParams defines parameters for ListChangesets.
 type ListChangesetsParams struct {
+	// Ingest Only changesets with ingest sources when true; false or omitted keeps all changesets.
+	Ingest *bool `form:"ingest,omitempty" json:"ingest,omitempty"`
+
 	// Actor The account whose changesets to list.
 	Actor *uuid.UUID `form:"actor,omitempty" json:"actor,omitempty"`
 
@@ -1232,6 +1247,19 @@ func (siw *ServerInterfaceWrapper) ListChangesets(w http.ResponseWriter, r *http
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListChangesetsParams
+
+	// ------------- Optional query parameter "ingest" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "ingest", r.URL.Query(), &params.Ingest, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ingest"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ingest", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "actor" -------------
 

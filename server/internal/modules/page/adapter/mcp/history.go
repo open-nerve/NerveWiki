@@ -74,19 +74,22 @@ func versionOf(v domain.Version) versionRow {
 // changesetFields are a changeset's members as REST's Changeset has them,
 // its changes aside.
 type changesetFields struct {
-	ID           uuid.UUID       `json:"id"`
-	NotebookID   uuid.UUID       `json:"notebook_id"`
-	Kind         string          `json:"kind"`
-	Client       string          `json:"client"`
-	Message      *string         `json:"message"`
-	CreatedBy    userRef         `json:"created_by"`
-	CreatedAt    time.Time       `json:"created_at"`
-	UpdatedAt    time.Time       `json:"updated_at"`
-	Reverts      *changesetBrief `json:"reverts"`
-	RevertedBy   []uuid.UUID     `json:"reverted_by"`
-	Trimmed      bool            `json:"trimmed"`
-	NodeCount    int             `json:"node_count"`
-	ContentCount int             `json:"content_count"`
+	ID               uuid.UUID       `json:"id"`
+	NotebookID       uuid.UUID       `json:"notebook_id"`
+	Kind             string          `json:"kind"`
+	Client           string          `json:"client"`
+	Message          *string         `json:"message"`
+	CreatedBy        userRef         `json:"created_by"`
+	CreatedAt        time.Time       `json:"created_at"`
+	UpdatedAt        time.Time       `json:"updated_at"`
+	Reverts          *changesetBrief `json:"reverts"`
+	RevertedBy       []uuid.UUID     `json:"reverted_by"`
+	Trimmed          bool            `json:"trimmed"`
+	NodeCount        int             `json:"node_count"`
+	ContentCount     int             `json:"content_count"`
+	IngestCount      int             `json:"ingest_count"`
+	IngestSources    []*string       `json:"ingest_sources"`
+	IngestSourcesCut bool            `json:"ingest_sources_cut"`
 }
 
 // changesetBrief is the changeset a revert reverts, as REST's
@@ -117,12 +120,19 @@ type changesetHeader struct {
 	Moves   bool `json:"moves"`
 }
 
-func fieldsOf(l app.LoggedChangeset) changesetFields {
+func fieldsOf(l app.LoggedChangeset, paths map[uuid.UUID]string) changesetFields {
 	c := l.Changeset
 	out := changesetFields{ID: c.ID, NotebookID: c.NotebookID, Kind: string(c.Kind), Client: string(c.Client), Message: c.Message,
 		CreatedBy: userRef{UserID: c.By, DisplayName: c.ByName}, CreatedAt: c.CreatedAt.UTC(), UpdatedAt: c.UpdatedAt.UTC(),
 		RevertedBy: append([]uuid.UUID{}, l.Facts.RevertedBy...), Trimmed: c.Trimmed, NodeCount: l.Facts.Nodes,
-		ContentCount: l.Facts.Contents}
+		ContentCount: l.Facts.Contents, IngestCount: c.IngestCount, IngestSources: make([]*string, len(l.IngestSources))}
+	for i, id := range l.IngestSources {
+		if id != nil {
+			if path, ok := paths[*id]; ok {
+				out.IngestSources[i] = &path
+			}
+		}
+	}
 	if r := c.Reverts; r != nil {
 		out.Reverts = &changesetBrief{ID: r.ID, Kind: string(r.Kind), CreatedBy: userRef{UserID: r.By, DisplayName: r.ByName},
 			CreatedAt: r.CreatedAt.UTC()}
@@ -130,8 +140,8 @@ func fieldsOf(l app.LoggedChangeset) changesetFields {
 	return out
 }
 
-func changesetRowOf(l app.LoggedChangeset) changesetRow {
-	row := changesetRow{changesetFields: fieldsOf(l), Changes: make([]change[changeNode], len(l.Changes))}
+func changesetRowOf(l app.LoggedChangeset, paths map[uuid.UUID]string) changesetRow {
+	row := changesetRow{changesetFields: fieldsOf(l, paths), Changes: make([]change[changeNode], len(l.Changes))}
 	for i, r := range l.Changes {
 		row.Changes[i] = changeOf(r, nodeOf(r))
 	}

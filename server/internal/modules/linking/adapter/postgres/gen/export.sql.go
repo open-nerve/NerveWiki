@@ -11,7 +11,7 @@ import (
 	"uuid"
 )
 
-const linkedPages = `-- name: LinkedPages :many
+const LinkedPages = `-- name: LinkedPages :many
 SELECT t.id::uuid AS id FROM unnest($1::uuid[]) AS t(id)
 WHERE EXISTS (
     SELECT 1 FROM page_links l
@@ -30,7 +30,7 @@ type LinkedPagesParams struct {
 // outside the sources, which a subtree's export leaves out, are not read. The sources grow with the notebook: the store
 // plans it with its arguments.
 func (q *Queries) LinkedPages(ctx context.Context, arg LinkedPagesParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, linkedPages, arg.Targets, arg.Sources)
+	rows, err := q.db.Query(ctx, LinkedPages, arg.Targets, arg.Sources)
 	if err != nil {
 		return nil, err
 	}

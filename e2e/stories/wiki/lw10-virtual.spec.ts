@@ -1,8 +1,11 @@
 /* oxlint-disable no-await-in-loop -- Each scoped client and transfer consumes the preceding real response. */
-import { expectImported, treeOf } from "../../fixtures/assert/transfer";
+import { expectIngestOf, expectNoIngestIn } from "../../fixtures/assert/page";
+import { pngBytes, uploadAsset } from "../../fixtures/assets";
+import { entryOfVirtualLog, listChangesets } from "../../fixtures/history";
+import { expectImported, sha256Of, treeOf } from "../../fixtures/assert/transfer";
 import { errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, listNodes, readContent } from "../../fixtures/pages";
+import { createPage, listNodes, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, downloadArchive, endedJob, startExport, startImport } from "../../fixtures/transfer";
 import { newTeam } from "../../fixtures/workspaces";
@@ -142,4 +145,138 @@ test("LW10: a standard notebook keeps its real index and log in reads and export
   const { entries } = await archiveAt(nervewiki.baseURL, job.download.url);
   for (const name of ["index", "log"])
     expect(entries.find((e) => e.name === `Ordinary/${name}.md`)?.data.toString("utf8")).toBe(`real ${name}`);
+});
+
+test("LW10: real ingestion reaches log.md and whole export", async ({ api, db, nervewiki }, info) => {
+  const team = await newTeam(api, info);
+  const wiki = await createNotebook(api, team.pat, team.workspace.slug, "IngestExport", "none", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!wiki.source_root_id) throw new Error("the template has no source root");
+  const raw = wiki.source_root_id;
+  const roots = await listNodes(api, team.pat, wiki.id);
+  const agents = roots.find((node) => node.parent_id === null && node.name === "AGENTS");
+  if (!agents) throw new Error("the template has no real AGENTS page");
+  await createPage(api, team.pat, wiki.id, "N", null, "sibling file\n");
+  const source = await createPage(api, team.pat, wiki.id, "Leaf", raw, "page source\n");
+  const asset = await uploadAsset(api, team.pat, wiki.id, { name: "clip.png", bytes: pngBytes }, raw);
+  // With no body or inbound link to the source root itself, export uses a
+  // folder. Its real N.md title collides with the sibling page's N.md file.
+  await writeContent(api, team.pat, raw, {
+    content: "",
+    base_revision: (await readContent(api, team.pat, raw)).revision,
+  });
+  await writeContent(api, team.pat, agents.id, {
+    content: "Instructions without links.\n",
+    base_revision: (await readContent(api, team.pat, agents.id)).revision,
+  });
+  const writer = await mcpClient(nervewiki.baseURL, team.pat, { notebook: wiki.id });
+  resultOf(await writer.call("move", { from: "raw.md", to: "N.md.md" }), "rename the real source root");
+  const summary = await createPage(api, team.pat, wiki.id, "Summary", null, "before\n");
+  const written = resultOf<{ changed: boolean; changeset_id: string | null; node_id: string }>(
+    await writer.call("write", {
+      path: "Summary.md",
+      base_version: `${summary.id}:${summary.revision}`,
+      content: "[[N.md/Leaf]]\n![](N.md/clip.png)\n",
+    }),
+    "produce a page and an asset mark"
+  );
+  expect([written.changed, written.node_id]).toEqual([true, summary.id]);
+  if (!written.changeset_id) throw new Error("the real source write has no changeset");
+  const changeset = written.changeset_id;
+  const ids = [source.id, asset.id].toSorted();
+  await expectIngestOf(db, changeset, wiki.id, ids);
+  const readPaths = new Map([
+    [source.id, "N.md/Leaf.md"],
+    [asset.id, "N.md/clip.png"],
+  ]);
+  const zipPaths = new Map([
+    [source.id, "N.md 2/Leaf.md"],
+    [asset.id, "N.md 2/clip.png"],
+  ]);
+  for (const scope of ["notebook", "account"] as const) {
+    const agent = await mcpClient(nervewiki.baseURL, team.pat, scope === "notebook" ? { notebook: wiki.id } : {});
+    const target = scope === "account" ? { notebook: wiki.id } : {};
+    const read = await readPage(agent, { ...target, path: "log.md" });
+    expect([read.meta.virtual, read.meta.next_offset, read.meta.next_column]).toEqual([true, null, null]);
+    const entry = entryOfVirtualLog(read.text, changeset);
+    expect(entry[0]).toMatch(/; ingests: 2$/);
+    expect(entry.filter((line) => line.startsWith("  - source: "))).toEqual(
+      ids.map((id) => {
+        const path = readPaths.get(id);
+        return `  - source: [${path}](<${path}>)`;
+      })
+    );
+  }
+  const whole = await endedJob(api, team.pat, (await startExport(api, team.pat, wiki.id)).id);
+  expect(whole.state).toBe("succeeded");
+  if (!whole.download) throw new Error("the real ingest export has no download");
+  const response = await downloadArchive(nervewiki.baseURL, whole.download.url);
+  expect(response.status).toBe(200);
+  const archive = Buffer.from(await response.arrayBuffer());
+  const files = new Map(unzip(archive).map((entry) => [entry.name, entry.data]));
+  expect(files.get("IngestExport/N.md")?.toString("utf8")).toBe("sibling file\n");
+  expect(files.has("IngestExport/N.md 2/")).toBe(true);
+  expect(files.get("IngestExport/N.md 2/Leaf.md")?.toString("utf8")).toBe("page source\n");
+  expect(files.get("IngestExport/N.md 2/clip.png")).toEqual(Buffer.from(pngBytes));
+  const log = files.get("IngestExport/log.md")?.toString("utf8");
+  if (log === undefined) throw new Error("the real whole ZIP has no log contribution");
+  const entry = entryOfVirtualLog(log, changeset);
+  expect(entry[0]).toMatch(/; ingests: 2$/);
+  expect(entry.filter((line) => line.startsWith("  - source: "))).toEqual(
+    ids.map((id) => {
+      const path = zipPaths.get(id);
+      return `  - source: [${path}](<${path}>)`;
+    })
+  );
+  const meta = JSON.parse(files.get("IngestExport/.nerve/meta.json")?.toString("utf8") ?? "null") as {
+    contributed: string[];
+  };
+  expect(meta.contributed).toEqual(["index.md", "log.md"]);
+  expect(files.get("IngestExport/index.md")?.toString("utf8")).toContain("Source area: N.md 2/ — 2 sources.");
+
+  for (const mode of ["llm_wiki", "standard"] as const) {
+    const destination = await createNotebook(api, team.pat, team.workspace.slug, `Ingest reimport ${mode}`, "none", {
+      mode,
+      templateLocale: "en",
+    });
+    const imported = await endedJob(api, team.pat, (await startImport(api, team.pat, destination.id, archive)).id);
+    expect(imported.state).toBe("succeeded");
+    const nodes = await listNodes(api, team.pat, destination.id);
+    expect(
+      nodes
+        .filter((node) => node.parent_id === null)
+        .map((node) => node.name)
+        .toSorted()
+    ).toEqual(
+      mode === "llm_wiki"
+        ? ["AGENTS", "AGENTS 2", "N", "N.md 2", "Summary", "raw"]
+        : ["AGENTS", "N", "N.md 2", "Summary"]
+    );
+    expect(
+      (await treeOf(db, nervewiki.storageDir, destination.id))
+        .filter((node) => node.path === "N.md 2" || node.path.startsWith("N.md 2/"))
+        .toSorted((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
+    ).toEqual([
+      { path: "N.md 2", kind: "page", content: "" },
+      { path: "N.md 2/Leaf", kind: "page", content: "page source\n" },
+      { path: "N.md 2/clip.png", kind: "asset", mime: "image/png", sha256: sha256Of(pngBytes) },
+    ]);
+    await expectImported(db, nervewiki.storageDir, imported.id, {
+      creatorId: team.adminId,
+      client: "api",
+      root: null,
+      state: "succeeded",
+      failure: null,
+      done: 6,
+      total: 6,
+      counts: { pages: 5, attachments: 1, renamed: mode === "llm_wiki" ? 1 : 0, skipped: 0 },
+    });
+    const history = await listChangesets(api, team.pat, destination.id, { limit: 100 });
+    expect(history.response.status).toBe(200);
+    expect(history.data?.data.some((row) => row.kind === "import")).toBe(true);
+    for (const row of history.data?.data ?? []) expect([row.ingest_count, row.ingest_sources]).toEqual([0, []]);
+    await expectNoIngestIn(db, destination.id);
+  }
 });

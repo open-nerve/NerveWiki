@@ -347,6 +347,8 @@ test("a changeset not found, or of another notebook, is no page", async () => {
         reverts: null,
         reverted_by: [],
         trimmed: false,
+        ingest_count: 0,
+        ingest_sources: [],
         node_count: 0,
         content_count: 0,
         changes: [],

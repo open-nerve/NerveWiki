@@ -2703,6 +2703,10 @@ export interface components {
             node_count: number;
             /** @description How many pages' contents it wrote, counted up to 1000: 1000 is as many or more. */
             content_count: number;
+            /** @description Distinct persistent ingest sources, capped at 10000. */
+            ingest_count: number;
+            /** @description The first 3 source positions in append order; null when the source is no longer alive in this notebook. */
+            ingest_sources: (string | null)[];
             /** @description Its first three changes, by node id. */
             changes: components["schemas"]["ChangesetChange"][];
         };
@@ -2743,6 +2747,10 @@ export interface components {
             node_count: number;
             /** @description How many pages' contents it wrote, counted up to 1000: 1000 is as many or more. */
             content_count: number;
+            /** @description Distinct persistent ingest sources, capped at 10000. */
+            ingest_count: number;
+            /** @description The first 20 source positions in append order; null when the source is no longer alive in this notebook. */
+            ingest_sources: (string | null)[];
             /** @description Its first three changes, by node id. */
             changes: components["schemas"]["ChangesetChange"][];
             /** @description Whether it renames a node. */
@@ -5435,6 +5443,8 @@ export interface operations {
     listChangesets: {
         parameters: {
             query?: {
+                /** @description Only changesets with ingest sources when true; false or omitted keeps all changesets. */
+                ingest?: boolean;
                 /** @description The account whose changesets to list. */
                 actor?: string;
                 /** @description The client whose changesets to list: web, api, cli, mcp:<name> for one MCP client, or mcp for every one. */
