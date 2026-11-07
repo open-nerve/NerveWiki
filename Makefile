@@ -259,7 +259,8 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # M10/P5/S1 审查：第六份在 EPYC 7763 上 Test 一步 483/491/493 秒，别的 CPU 上 301–373 秒，两次 main 都落在 7763 时均值过 450 秒的线。
 # 第六份本机合计 304 秒（-race -json）：TestIngestUnit 162、TestIngestBefore 71.5 太大，给邻居会把它推过线；
 # 照 M9/P2 设计 6.5 把 TestIngestCandidates、TestIngestCoverage（本机 38 秒，折到 7763 约 62 秒）给第五份（7763 上 344–359 秒），不提高 -timeout。
-BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$|IngestCoverage$$)
+# 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
+BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
 # 当前 521 个顶层静态分配为 157/51/116/123/61/13（见第五份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest

@@ -37,8 +37,9 @@ const (
 	indexCallBound = 3500 * time.Millisecond
 	// indexItemsBound is the median of IndexItems of 100 pages whose type
 	// and summary are 5 MB each, read 20 times (a read is under a
-	// millisecond): 7.9–9.0 ms (the three runs of 20).
-	indexItemsBound = 30 * time.Millisecond
+	// millisecond): 7.9–9.0 ms (the three runs of 20), 18–29 ms on CI, a
+	// sample 30.8 ms (M10's decision 170).
+	indexItemsBound = 60 * time.Millisecond
 	// indexFilterBound is the median of IndexPages of the filter's
 	// notebook, 200 types of 5 MB and the filter's, by a type of 300
 	// characters, the 5 MB types' start, read 20 times (fix check F-m1):

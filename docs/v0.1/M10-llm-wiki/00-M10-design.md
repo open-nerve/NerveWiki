@@ -818,9 +818,15 @@ S2 的审查者 A 问：来源 S 的索引 stale，S→A，Q→S，这次新页 
 
 S2 前 11 个提交里有 5 个不能单独过 e2e 或 costs-lint，它们都过工作流要求的每提交门禁。不压缩，记下范围，见 [S2 记录](reviews/P4-S2-ingest-history-review.md)。
 
+### 2026-11-07：两个成本的界与第五份（主持者的决定 168–170，负责人可以改判）
+
+- **168，lint 的六个 `properties/*` 成本组放宽 CPU，两组放宽 `Wall`。** main CI [42369644304](https://github.com/open-nerve/NerveWiki/actions/runs/42369644304) 的 `costs-lint` 红在 `properties/missing_summary-complete-needed-values`：中位数 6.248 毫秒，界 6 毫秒，这次提交只改了文档。三个样本 7.36、1.90、6.25 毫秒，同一组在前四次 CI 上的中位数 1.7–3.0 毫秒，内存 13504 字节没动。CPU 用 `getrusage` 取整个进程，含 1 毫秒一次的 `ReadMemStats` 采样与后台的 GC，多出来的 4 毫秒是谁的没有查出来。同一族在 [42093077490](https://github.com/open-nerve/NerveWiki/actions/runs/42093077490)（`f3d929ad`，P4/S2 分支，当时没有记下）红过一次：`properties/first-sources-complete-JSON-and-slot` 的 `Wall` 18.69 毫秒、CPU 12.11 毫秒，界 18、10 毫秒，平常 8 与 5 毫秒。收尾审查 C 查出来的。"最大中位数乘三"放到几毫秒的组上，界比这份噪声还小。所以 `GoCPU` 五组 12 毫秒，`first-sources` 24 毫秒；`Wall` 只动红过或贴近的两组：`first-sources` 18 到 36 毫秒，`actual-body-positive-control` 7 到 14 毫秒（CI 上到过 4.7）。这些组的回退还由 `TotalAlloc`、`HeapGrowth` 与其余的 `Wall` 看着，这些不改。依负责人 2026-11-06 的话，调界，不优化。
+- **169，`TestIngestCoverage` 退回第六份。** 决定 166 之后两次 main 第五份 436、470 秒，均值 453 秒过了 450 秒的线；第六份 398、363 秒。第五份的 470 秒落在 EPYC 7763 上，这一次第二、三、四份也在 7763 上（426/410/411 秒），都没有放下它的余地，第六份有。照 M9/P2 §6.5 给邻居，不提高 `-timeout`，也暂不分第七份。六份在 7763 上合计约 2500 秒，平均约 420 秒，再加测试时第七份就该来了。
+- **170，`IndexItems` 的界 30 毫秒提到 60 毫秒。** 第 7 节的收尾追加要核对它。它从 `ca831b58` 的 [40325348498](https://github.com/open-nerve/NerveWiki/actions/runs/40325348498) 之后没有再过这条线，但 EPYC 7763 上的中位数 25.8–29.7 毫秒，一个样本到过 30.8，EPYC 9V74 上 18–23 毫秒，本机 12 毫秒，余量不到 5%，这不算稳定。第 7 节要求校准时保留并验证反例：把两个 `value_start` 改成读整值，本机三个阶段的中位数 2.76、2.77、7.62 秒，60 毫秒的界全部抓到；`TestIndexPlans` 不动。
+
 ### 2026-11-07：第六份与就绪（主持者的决定 166、167，负责人可以改判）
 
-- **166，第六份的两个测试移到第五份。** 第六份只有 `TestIngest`，在 EPYC 7763 上 483–493 秒，别的 CPU 上 301–373 秒。两次 main 都落在 7763 时均值过 450 秒的线，而 `ubuntu-24.04` 这个标签下分到哪种 CPU 由不得我们。`TestIngestUnit`、`TestIngestBefore` 太大，给邻居会把它推过线，所以照 M9/P2 §6.5 把 `TestIngestCandidates`、`TestIngestCoverage` 给第五份，不提高 `-timeout`。
+- **166，第六份的两个测试移到第五份。** 第六份只有 `TestIngest`，在 EPYC 7763 上 483–493 秒，别的 CPU 上 301–373 秒。两次 main 都落在 7763 时均值过 450 秒的线，而 `ubuntu-24.04` 这个标签下分到哪种 CPU 由不得我们。`TestIngestUnit`、`TestIngestBefore` 太大，给邻居会把它推过线，所以照 M9/P2 §6.5 把 `TestIngestCandidates`、`TestIngestCoverage` 给第五份，不提高 `-timeout`。后者由决定 169 退回。
 - **167，`/readyz` 不等后台任务，e2e 的 fixture 等。** main CI 42357198372 的 S1 红在这里：`/readyz` 答 200 之后，River 的 `LISTEN` 还没做完，故事删了数据库，`start the jobs` 失败，服务退出。"任务起不来就停服务"是 `app.go` 写明的，README 也写着就绪只看数据库与迁移，所以产品不改。fixture 已经为事件监听做过同样的等待，这里再等 `jobs started`。审查 C 确定性地复现了这个窗口。
 
 ### 2026-11-07：P5 设计的五个取舍（主持者的决定 161–165，负责人可以改判）
@@ -1073,6 +1079,7 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 
 ## 13. 变更记录
 
+- 2026-11-07：`costs-lint` 红在一个文档提交上，第五份两次 main 均值 453 秒，`IndexItems` 的余量不到 5%。决定 168–170 记在第 11 节。
 - 2026-11-07：P5/S1 实施并审查完成：按入口的 prompt 注册表、三份 playbook、两个入口共用的说明。决定 166、167 记在第 11 节，[审查记录](reviews/P5-S1-playbooks-review.md)。
 
 - 2026-11-07：P5 设计完成并审查：系统段放在 `AGENTS` 之前，答复的界算上 `description`，`PageRead` 不再改。决定 161–165 记在第 11 节，[设计审查](reviews/P5-design-review.md)。
