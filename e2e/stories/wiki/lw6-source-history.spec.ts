@@ -417,6 +417,7 @@ test("LW6 (page): even an admin restores source content outside the area before 
   await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
   expect((await movePageWith(page, notebook.name, source.id, "Draft", "raw", "Last")).status()).toBe(200);
   await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+  await expect(page.getByRole("article", { name: "Version 1", exact: true })).toContainText("first source bytes");
   await expect(page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })).toHaveCount(
     0
   );
