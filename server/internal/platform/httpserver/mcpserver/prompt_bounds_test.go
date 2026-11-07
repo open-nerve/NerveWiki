@@ -406,11 +406,14 @@ func TestPromptErrorsAndLogs(t *testing.T) {
 		}
 		l := lines[0]
 		if l["outcome"] != want || l["prompt"] != "p" || l["entry"] != "notebook" || l["notebook_id"] != visible.String() ||
-			l["user_id"] != alice.String() || l["token_id"] != aliceTok.String() || l["request_id"] == "" || l["level"] != "INFO" {
+			l["user_id"] != alice.String() || l["token_id"] != aliceTok.String() || l["level"] != "INFO" {
 			t.Errorf("the call line = %v, want outcome %s", l, want)
 		}
 		if _, ok := l["duration_ms"]; !ok {
 			t.Errorf("the call line = %v, without its duration", l)
+		}
+		if id, _ := l["request_id"].(string); id == "" {
+			t.Errorf("the call line = %v, without its request id", l)
 		}
 	}
 
@@ -555,7 +558,14 @@ func TestPromptCallKnowsItsCaller(t *testing.T) {
 	if got.Entry != NotebookEntry || got.Notebook != visible || got.UserID != alice || got.TokenID != aliceTok || got.Client != "the-recorded-client" {
 		t.Errorf("the handler had %+v", got)
 	}
-	if lines := promptLines(t, s.logs); len(lines) != 1 || lines[0]["client"] != "the-recorded-client" {
+	if lines := promptLines(t, s.logs); len(lines) != 1 || lines[0]["client"] != "the-recorded-client" || lines[0]["entry"] != "notebook" {
 		t.Errorf("the call lines are %v, want one with the client", lines)
+	}
+	result(t, s.post(t, context.Background(), Pattern, patToken, getPromptBody(t, "p", nil), v2025()))
+	if got.Entry != AccountEntry || got.Notebook != (uuid.UUID{}) {
+		t.Errorf("through the account entry the handler had %+v", got)
+	}
+	if lines := promptLines(t, s.logs); len(lines) != 2 || lines[1]["entry"] != "account" {
+		t.Errorf("the call lines are %v, want a second, of the account entry", lines)
 	}
 }

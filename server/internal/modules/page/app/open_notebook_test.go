@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -34,6 +35,19 @@ func (f *fakeOverview) NotebookLastChange(ctx context.Context, _ uuid.UUID) (*ti
 func (f *fakeOverview) FirstChildren(ctx context.Context, _ uuid.UUID, n int) ([]domain.Node, error) {
 	f.record(ctx, fmt.Sprintf("FirstChildren %d", n))
 	return f.root[:min(n, len(f.root))], nil
+}
+
+// A read of the instructions that fails is open_notebook's error: never an
+// answer that reads as a standard notebook's (M10/P5 design 3.7).
+func TestOpenNotebookKeepsTheInstructionsError(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionList)
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: f.page("raw", nil, 0).ID}}
+	failure := errors.New("the database is gone")
+	f.store.errs = map[string]error{"FindNodeIn": failure}
+	if _, err := f.opener(&fakeOverview{recorder: f.rec}).Execute(f.asAlice(), f.eng); !errors.Is(err, failure) {
+		t.Errorf("Execute() = %v, want its cause", err)
+	}
 }
 
 // opener is the use case on f's fakes and overview.

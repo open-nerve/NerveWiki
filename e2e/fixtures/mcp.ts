@@ -189,7 +189,13 @@ export async function mcpClient(
         content,
       };
     },
-    listPrompts: async () => ((await request("prompts/list", {}))?.prompts ?? []) as McpPrompt[],
+    listPrompts: async () => {
+      const prompts = (await request("prompts/list", {}))?.prompts;
+      if (!Array.isArray(prompts)) {
+        throw new Error(`prompts/list at ${url}: ${JSON.stringify(prompts)}, want an array`);
+      }
+      return prompts as McpPrompt[];
+    },
     getPrompt: async (name, args = {}) => {
       const message = { jsonrpc: "2.0", id: ++id, method: "prompts/get", params: { name, arguments: args } };
       const answer = await exchange(url, credential, protocolVersion, message);

@@ -136,15 +136,18 @@ func TestNotebookInstructionsShareTheirBudget(t *testing.T) {
 			{mcpserver.NotebookEntry, 349, notebookParagraph},
 			{mcpserver.AccountEntry, 286, accountParagraph},
 		} {
-			fits := strings.Repeat("p", tt.room)
-			if got := text(t, wikiOf(fits, "raw", &agents), tt.entry); !strings.HasPrefix(got, tt.paragraph(fits)+"\n\n") {
-				t.Errorf("%s: %d bytes of path = %.120q, want the path", tt.entry, tt.room, got)
-			}
-			if n := len(tt.paragraph(fits)); n != maxSystemBytes {
-				t.Errorf("%s: the longest paragraph is %d bytes, want %d", tt.entry, n, maxSystemBytes)
-			}
-			if got := text(t, wikiOf(fits+"p", "raw", &agents), tt.entry); !strings.HasPrefix(got, tt.paragraph("raw")+"\n\n") {
-				t.Errorf("%s: %d bytes of path = %.120q, want the title", tt.entry, tt.room+1, got)
+			// The bound is of the bytes as written: & counts one, not its escape.
+			for _, char := range []string{"p", "&"} {
+				fits := strings.Repeat(char, tt.room)
+				if got := text(t, wikiOf(fits, "raw", &agents), tt.entry); !strings.HasPrefix(got, tt.paragraph(fits)+"\n\n") {
+					t.Errorf("%s: %d bytes of path = %.120q, want the path", tt.entry, tt.room, got)
+				}
+				if n := len(tt.paragraph(fits)); n != maxSystemBytes {
+					t.Errorf("%s: the longest paragraph is %d bytes, want %d", tt.entry, n, maxSystemBytes)
+				}
+				if got := text(t, wikiOf(fits+char, "raw", &agents), tt.entry); !strings.HasPrefix(got, tt.paragraph("raw")+"\n\n") {
+					t.Errorf("%s: %d bytes of path = %.120q, want the title", tt.entry, tt.room+1, got)
+				}
 			}
 		}
 	})

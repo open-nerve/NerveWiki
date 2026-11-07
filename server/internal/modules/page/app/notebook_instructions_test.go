@@ -42,6 +42,15 @@ func TestInstructionsReadTheSourceRoot(t *testing.T) {
 		t.Errorf("a standard notebook's calls = %q, want no read of a root", f.rec.calls)
 	}
 
+	// No AGENTS text is no reason to lose the root: the built-in text has
+	// the paragraph too.
+	empty := newFixture()
+	root := empty.page("raw", nil, 0)
+	got, err = empty.instructionsOf().Read(empty.asAlice(), empty.eng, domain.NotebookState{Mode: domain.ModeLLMWiki, SourceRootID: root.ID})
+	if err != nil || got.HasAgents || got.SourceRootPath != "raw" || got.SourceRootTitle != "raw" {
+		t.Errorf("a notebook without AGENTS: Read() = %+v, %v; want the root still", got, err)
+	}
+
 	failure := errors.New("the database is gone")
 	for _, port := range []string{"AgentsPage", "FindNodeIn", "Ancestors"} {
 		f.store.errs = map[string]error{port: failure}

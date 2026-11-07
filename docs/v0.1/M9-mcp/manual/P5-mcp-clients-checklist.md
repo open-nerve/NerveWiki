@@ -107,18 +107,18 @@
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| A1 | 在 `$CC` 里 `claude --mcp-config "$CC/mcp.json" --strict-mcp-config`，输入 `/mcp` | `/mcp` 只列出 `nervewiki`、已连上、14 个工具（照文档；列出别的服务时记下：它来自插件或 claude.ai 的连接器）；服务的日志里一行 `MCP initialize`，记下它的客户端名称。日志里若是 401：这个文件里的 `${NERVEWIKI_CLAUDE_TOKEN}` 没有展开（照文档它展开）：记下，之后改用 `$CC/mcp-literal.json`（同一个文件，令牌照字面写进去），`account.json` 与 `throttled.json` 也同样写成字面的（`account-literal.json`、`throttled-literal.json`，A5 与 F 用它们），三份都 `chmod 600`，"做完"删掉 | |
+| A1 | 在 `$CC` 里 `claude --mcp-config "$CC/mcp.json" --strict-mcp-config`，输入 `/mcp` | `/mcp` 只列出 `nervewiki`、已连上、16 个工具（照文档；列出别的服务时记下：它来自插件或 claude.ai 的连接器）；服务的日志里一行 `MCP initialize`，记下它的客户端名称。日志里若是 401：这个文件里的 `${NERVEWIKI_CLAUDE_TOKEN}` 没有展开（照文档它展开）：记下，之后改用 `$CC/mcp-literal.json`（同一个文件，令牌照字面写进去），`account.json` 与 `throttled.json` 也同样写成字面的（`account-literal.json`、`throttled-literal.json`，A5 与 F 用它们），三份都 `chmod 600`，"做完"删掉 | |
 | A2 | 让 agent 说出"这本笔记本的说明里的暗号" | 它答"青石板"（握手时的说明是 `AGENTS` 页去掉 frontmatter 的正文；M0/P1 记下 Claude Code 收到了说明），不调用工具 | |
 | A3 | 先数一次你的 `~/.claude.json` 里的 `"nervewiki"`：`grep -o '"nervewiki"' ~/.claude.json` 每处列一行，记下几行。在 `$CC` 里执行 README 的项目范围的命令，地址照第 5 步换：`claude mcp add --scope project --transport http nervewiki "http://127.0.0.1:8080/mcp?notebook=$NB_CC" --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'`（双引号里的 `$NB_CC` 由 shell 展开，单引号里的令牌一段原样）；然后 `grep nwk_pat_ .mcp.json`，再 `claude --mcp-config "$CC/.mcp.json" --strict-mcp-config`，输入 `/mcp`；退出之后再数一次 `"nervewiki"` | `$CC/.mcp.json` 里是 `${NERVEWIKI_CLAUDE_TOKEN}` 原样、`grep` 什么也找不到（照文档）；连上，14 个工具（`${…}` 由 Claude Code 展开，照文档）。记下 `ls -a "$CC"` 里这条命令另外写了什么。两次数的相同：命令没有把服务写进你的 `~/.claude.json`（它的结构仓库里没有记录，数的只是出现的次数，未核对）。多了时记下，在 `$CC` 里执行 `claude mcp remove nervewiki --scope local`（未核对）去掉它，再数一次，仍然多时也记下；不要动你原有的 `nervewiki`（第一次数的不是 0 时） | |
 | A4 | 只把 `$CC/mcp.json` 里的 `${NERVEWIKI_CLAUDE_TOKEN}` 换成一个不存在的变量 `${NO_SUCH_TOKEN}`，启动，`/mcp`；之后改回 | 记下 Claude Code 怎样对待没有设的变量（报错、留空、照原样发出）与服务端的日志（401？） | |
-| A5 | `claude --mcp-config "$CC/account.json" --strict-mcp-config`，让 agent 列出它能用的笔记本，再打开 `MCP 清单 CC` 并说出暗号 | 16 个工具；它先调 `notebooks`、再调 `open_notebook`（说明在它的答复里），答"青石板"；之后的调用都带 `notebook` | |
+| A5 | `claude --mcp-config "$CC/account.json" --strict-mcp-config`，让 agent 列出它能用的笔记本，再打开 `MCP 清单 CC` 并说出暗号 | 18 个工具；它先调 `notebooks`、再调 `open_notebook`（说明在它的答复里），答"青石板"；之后的调用都带 `notebook` | |
 | A6 | 第 C 部分做过之后，网页上打开两本笔记本的历史，按"MCP"筛选 | `MCP 清单 CC` 里 agent 的变更集显示"MCP（<A1 记下的名称>）"，`MCP 清单 Codex` 里的显示"MCP（<B1 记下的名称>）" | |
 
 ### B：Codex 接上
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| B1 | 在设了临时 `CODEX_HOME` 与 `NERVEWIKI_CODEX_TOKEN` 的终端里，在 `$CX` 启动 `codex`，输入 `/mcp` | 列出 `nervewiki` 与它的 14 个工具（照文档）；服务的日志里一行 `MCP initialize`，客户端名称 `codex-mcp-client`（M9 总设计 4.5） | |
+| B1 | 在设了临时 `CODEX_HOME` 与 `NERVEWIKI_CODEX_TOKEN` 的终端里，在 `$CX` 启动 `codex`，输入 `/mcp` | 列出 `nervewiki` 与它的 16 个工具（照文档）；服务的日志里一行 `MCP initialize`，客户端名称 `codex-mcp-client`（M9 总设计 4.5） | |
 | B2 | 让 agent 说出"这本笔记本的说明里的暗号" | 它答"青石板"；记下它有没有调用工具（读 `AGENTS.md` 得到的不算握手的说明：Codex 是否把服务端的说明交给模型未核对） | |
 | B3 | 把 `config.toml` 的 `url` 换成账户入口 `http://127.0.0.1:8080/mcp`，重启 Codex，做 A5（打开 `MCP 清单 Codex`）；之后换回笔记本入口 | 同 A5 | |
 | B4 | 退出 Codex，`unset NERVEWIKI_CODEX_TOKEN`，再启动 | 记下 Codex 怎样对待没有设的 `bearer_token_env_var`（不起这个服务并报错，或不带令牌连接、得到 401）；之后设回 | |

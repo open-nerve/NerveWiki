@@ -240,6 +240,7 @@ func TestTheWikiInstructionsFollowTheirSourceRoot(t *testing.T) {
 		return idOf(t, answer{body: made})
 	}
 	body := strings.TrimSpace(wikiPages(t)[1].Content)
+	builtIn := r.instructionsAt(t, atNotebook(r.notebook)) // a notebook without an AGENTS page
 	expect := func(t *testing.T, root string) {
 		t.Helper()
 		if got, want := r.instructionsAt(t, atNotebook(wiki)), notebookParagraph(root)+"\n\n"+body; got != want {
@@ -272,8 +273,15 @@ func TestTheWikiInstructionsFollowTheirSourceRoot(t *testing.T) {
 		if err := r.pool.QueryRow(context.Background(), `SELECT id FROM nodes WHERE notebook_id = $1 AND parent_id IS NULL AND name = 'AGENTS'`, wiki).Scan(&agents); err != nil {
 			t.Fatal(err)
 		}
-		r.write(t, agents, "# New rules\n")
+		r.write(t, agents, "\ufeff---\ntags: [rules]\n---\n\n# New rules\n")
 		body = "# New rules"
+		expect(t, "Shelf/sources")
+		// Emptied, it gives way to the built-in text: the paragraph stays.
+		r.write(t, agents, "---\ntags: [none]\n---\n \n")
+		body = builtIn
+		expect(t, "Shelf/sources")
+		r.write(t, agents, "# Rules\n")
+		body = "# Rules"
 		expect(t, "Shelf/sources")
 	})
 	t.Run("deep", func(t *testing.T) {

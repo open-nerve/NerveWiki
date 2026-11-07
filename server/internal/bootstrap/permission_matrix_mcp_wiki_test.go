@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -124,23 +125,31 @@ func TestTheWikiToolsReadLLMWikiMatrix(t *testing.T) {
 }
 
 // promptCellOf is a prompt's get as a cell: its HTTP refusal, the code of
-// its JSON-RPC error, or none for an answer.
-func promptCellOf(t *testing.T, a mcpAnswer) mcpCell {
+// its JSON-RPC error, or none for an answer that holds the prompt's text,
+// which starts with first. An error without a code is a fault, or a prompt
+// the server does not have: never an answer.
+func promptCellOf(t *testing.T, a mcpAnswer, first string) mcpCell {
 	t.Helper()
 	if a.status != http.StatusOK {
 		return mcpCellOf(t, a)
 	}
-	if _, ok := a.decoded(t)["error"]; !ok {
-		a.result(t)
-		return mcpCell{}
+	if _, ok := a.decoded(t)["error"]; ok {
+		_, message, code := promptRefusal(t, a)
+		if code == "" {
+			t.Fatalf("a JSON-RPC error without a code: %q", message)
+		}
+		return mcpCell{code: code}
 	}
-	_, _, code := promptRefusal(t, a)
-	return mcpCell{code: code}
+	if !strings.Contains(string(a.body), `"text":"`+first) {
+		t.Fatalf("the answer has not the prompt's text, %q: %.300s", first, a.body)
+	}
+	return mcpCell{}
 }
 
-// A prompt is read where lint is, in the notebook entry alone (M10
-// decision 165): the same 13 callers, the LLM Wiki's answer and the
-// standard notebook's refusal behind the same HTTP 404.
+// Each prompt of the contract's file is read where lint is, in the
+// notebook entry alone (M10 decision 165): the same 13 callers, the LLM
+// Wiki's text and the standard notebook's refusal behind the same HTTP
+// 404. A prompt added to the file without its first line here fails.
 func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
@@ -154,32 +163,46 @@ func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
 	if len(pats) != 13 {
 		t.Fatal("the matrix needs all 13 real PATs; select prepare and tokens")
 	}
+	firstLines := map[string]string{
+		"ingest": "Ingest a source into this LLM Wiki.",
+		"lint":   "Check and maintain this LLM Wiki.",
+		"query":  "Answer a question from this LLM Wiki.",
+	}
+	prompts := readPromptLists(t)["notebook"]
 	checked := 0
-	for _, mode := range []string{"llm_wiki", "standard"} {
-		for _, c := range notebookColumns() {
-			t.Run(mode+"/"+string(c), func(t *testing.T) {
-				s := d.seeded.in(t)
-				name := notebookOf(c)
-				notebook := s.wiki.notebook(name)
-				want := wikiMCPReader(c)
-				if mode == "standard" {
-					notebook = s.notebook(name)
-					if want == (mcpCell{}) {
-						want.code = "notebook.not_llm_wiki"
+	for _, p := range prompts {
+		prompt := p.(map[string]any)["name"].(string)
+		first, ok := firstLines[prompt]
+		if !ok {
+			t.Fatalf("no row of the prompt %s", prompt)
+		}
+		args := map[string]string{"question": "Why?"} // what query requires; the others take it as any argument of no use
+		for _, mode := range []string{"llm_wiki", "standard"} {
+			for _, c := range notebookColumns() {
+				t.Run(prompt+"/"+mode+"/"+string(c), func(t *testing.T) {
+					s := d.seeded.in(t)
+					name := notebookOf(c)
+					notebook := s.wiki.notebook(name)
+					want := wikiMCPReader(c)
+					if mode == "standard" {
+						notebook = s.notebook(name)
+						if want == (mcpCell{}) {
+							want.code = "notebook.not_llm_wiki"
+						}
 					}
-				}
-				if want.code == "notebook.not_found" {
-					want.http = http.StatusNotFound
-				}
-				m := &mcpApp{base: base, pat: pats[c]}
-				if got := promptCellOf(t, m.getPrompt(t, atNotebook(notebook.String()), m.pat, "lint", nil)); got != want {
-					t.Fatalf("%s/%s = %s, want %s", mode, c, got, want)
-				}
-				checked++
-			})
+					if want.code == "notebook.not_found" {
+						want.http = http.StatusNotFound
+					}
+					m := &mcpApp{base: base, pat: pats[c]}
+					if got := promptCellOf(t, m.getPrompt(t, atNotebook(notebook.String()), m.pat, prompt, args), first); got != want {
+						t.Fatalf("%s/%s/%s = %s, want %s", prompt, mode, c, got, want)
+					}
+					checked++
+				})
+			}
 		}
 	}
-	if checked != 26 {
-		t.Fatalf("checked %d answers, want 13 columns in two modes", checked)
+	if want := 2 * 13 * len(prompts); len(prompts) != 3 || checked != want {
+		t.Fatalf("checked %d answers of %d prompts, want 13 columns in two modes of each of three", checked, len(prompts))
 	}
 }

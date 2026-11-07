@@ -93,6 +93,17 @@ func TestPlaybooksAuthorizeAndRequireMode(t *testing.T) {
 		})
 	}
 
+	t.Run("a workspace read that fails", func(t *testing.T) {
+		p := NewPlaybooks(lintExecNotebooks{
+			workspace: func(context.Context, uuid.UUID) (uuid.UUID, bool, error) { return uuid.UUID{}, false, failure },
+		}, lintExecAuth(func(context.Context, shared.Actor, shared.Action, shared.Target) (shared.Grant, error) {
+			return shared.Grant{}, nil
+		}))
+		if _, err := p.Execute(ctx, lintExecID(2), domain.PlaybookLint, nil); !errors.Is(err, failure) {
+			t.Errorf("Execute() = %v, want its cause", err)
+		}
+	})
+
 	t.Run("a state that fails", func(t *testing.T) {
 		p := NewPlaybooks(lintExecNotebooks{
 			workspace: func(context.Context, uuid.UUID) (uuid.UUID, bool, error) { return lintExecID(1), true, nil },

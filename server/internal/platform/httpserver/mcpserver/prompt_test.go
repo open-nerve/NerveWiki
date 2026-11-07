@@ -10,7 +10,7 @@ import (
 // A prompt double, the registry M10 builds on (M9/P1 design 3.4.7): its
 // entries say prompts without listChanged, prompts/list lists it, and
 // prompts/get reaches its handler with its arguments, a required one left
-// out the SDK's -32602.
+// out mcpserver's -32602.
 func TestThePromptDoubleIsListedAndReached(t *testing.T) {
 	var got map[string]string
 	var call Call

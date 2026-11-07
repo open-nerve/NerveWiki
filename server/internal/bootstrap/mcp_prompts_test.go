@@ -120,6 +120,9 @@ func TestThePromptListsAreTheContract(t *testing.T) {
 
 	// The comparison itself: one less, one more and one reworded are told.
 	got := m.listedPrompts(t, wiki)
+	if len(got["notebook"]) == 0 {
+		t.Fatal("the notebook entry lists no prompt to compare")
+	}
 	reworded := map[string]any{}
 	maps.Copy(reworded, got["notebook"][0].(map[string]any))
 	reworded["description"] = "Something else."
@@ -189,6 +192,21 @@ func TestTheWikiPromptsAreReached(t *testing.T) {
 	t.Run("no source", func(t *testing.T) {
 		if got := text(t, m.getPrompt(t, at, m.pat, "ingest", nil)); strings.Contains(got, "supplied by the caller:") {
 			t.Errorf("a get without a source ends %q", got[len(got)-80:])
+		}
+	})
+	// An argument goes as it was sent: an empty source is a source, and
+	// the white space around one is its own; a key of no prompt is nobody's.
+	for name, source := range map[string]string{"an empty source": "", "a spaced source": "  a b.md\t"} {
+		t.Run(name, func(t *testing.T) {
+			got := text(t, m.getPrompt(t, at, m.pat, "ingest", map[string]string{"source": source}))
+			if !strings.HasSuffix(got, "Source path supplied by the caller:\n"+source) {
+				t.Errorf("the message ends %q", got[len(got)-60:])
+			}
+		})
+	}
+	t.Run("a key of no prompt", func(t *testing.T) {
+		if got := text(t, m.getPrompt(t, at, m.pat, "lint", map[string]string{"": "INJECTED"})); strings.Contains(got, "INJECTED") {
+			t.Errorf("the message ends %q", got[len(got)-60:])
 		}
 	})
 	t.Run("no question", func(t *testing.T) {
