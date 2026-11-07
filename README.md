@@ -28,7 +28,7 @@ make          # 查看所有命令
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
   - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j6` 同时跑 `test-go-race` 与五个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。最后一个入口依次跑 `test-go-guards-core` 与 `test-go-guards-sources`；CI 分别运行这两份，保留全部原测试与预算。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j6` 同时跑 `test-go-race` 与六个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。最后一个入口依次跑 `test-go-guards-core` 与 `test-go-guards-sources`；CI 分别运行这两份，保留全部原测试与预算。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
   - 端到端测试另跑 `make e2e`，见下文"端到端测试"。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
@@ -188,7 +188,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 ### 导入与导出
 
-- **导出**（`POST /api/v0/notebooks/{notebook_id}/exports`，可带 `root_id` 只导出一页及其子页）：能读这本笔记本的人都能导出。后台任务在一个快照里把页面写成 `.md`、附件写成原来的文件，按 Obsidian 库的布局打成 zip（有子页的页是同名的文件夹；`.nerve/meta.json` 记着次序），报告列出改了名的与找不到文件的附件。成功之后经签名地址下载（`GET /api/v0/transfer-jobs/{job_id}/download`，不带令牌，计入 `anonymous` 桶，按客户端 IP），保留 `transfer.export_ttl`（默认 24 小时）；每人每本笔记本只留最新的一份，同时只有一个在进行（409 `transfer.busy`）。导出贡献者（之后的 M 注册）加的文件也进 zip，记在 `meta.json` 的 `contributed`，导入时不导入。
+- **导出**（`POST /api/v0/notebooks/{notebook_id}/exports`，可带 `root_id` 只导出一页及其子页；LLM Wiki 的整本导出带 `index.md`、`log.md`，子树导出不带，导入时跳过）：能读这本笔记本的人都能导出。后台任务在一个快照里把页面写成 `.md`、附件写成原来的文件，按 Obsidian 库的布局打成 zip（有子页的页是同名的文件夹；`.nerve/meta.json` 记着次序），报告列出改了名的与找不到文件的附件。成功之后经签名地址下载（`GET /api/v0/transfer-jobs/{job_id}/download`，不带令牌，计入 `anonymous` 桶，按客户端 IP），保留 `transfer.export_ttl`（默认 24 小时）；每人每本笔记本只留最新的一份，同时只有一个在进行（409 `transfer.busy`）。导出贡献者（之后的 M 注册）加的文件也进 zip，记在 `meta.json` 的 `contributed`，导入时不导入。
 - **导入**（`POST /api/v0/notebooks/{notebook_id}/imports`，`multipart/form-data`：可选的 `parent_id`，然后是 `file`）：笔记本的编辑者与管理员把一个 zip（Obsidian 的库、本系统的导出，或任何 Markdown 文件夹）导入到根或一页之下。`.md` 是页面，文件夹是同名页面的子页面，其余文件是附件；隐藏的文件与文件夹（如 `.obsidian`）、`__MACOSX`、`Thumbs.db` 不导入；不能作为标题的名称修正、已占用的加序号，不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。zip 至多 `transfer.import_max_bytes`（默认 512 MiB）、`import_max_entries` 个条目、解压后 `import_max_unpacked_bytes`，建的节点（条目加路径隐含的文件夹）至多 60,000 个（一次撤销能撤销的上限），超过的整包失败、什么都不写。一本笔记本同时只有一个导入（上传中的也算，第二个在读文件之前答 409 `transfer.busy`）。导入分批写进笔记本（一批至多 100 个节点），整个导入是一个变更集；中途失败、取消或服务重启时，已写的部分留在笔记本里，报告写明。
 - **任务**：从回收站恢复一项（`POST /api/v0/notebooks/{notebook_id}/trash-restores`）与整组撤销一个变更集（`POST /api/v0/notebooks/{notebook_id}/reverts`）在一次请求里做不完时（422 `page.restore_too_large`、`page.revert_too_large`）可以在后台分批进行，同导入是任务：一本笔记本同时只有一个导入、恢复或撤销（409 `transfer.busy`），每批在锁下重新核对，途中停下时已完成的部分留着，报告写明；后台的撤销至多 60,000 个条目，超过答 422。撤销里必须一起做的一段（一个节点暂时的名称或位置与它的放回、一页的恢复与写回原来的正文、撤销的撤销里一页的写回与删除它）总在同一批里，两批之间别人看不到暂时的名称；一段放不进一批（它带回的页、附件、历史或链接一批写不下）时任务停下（`revert_too_large`），在它之前撤销的部分留着，报告写明。`GET /api/v0/notebooks/{notebook_id}/transfer-jobs` 按游标列出（自己的；笔记本的管理员看到所有人的），`GET /api/v0/transfer-jobs/{job_id}` 读一个与它的报告，`POST /api/v0/transfer-jobs/{job_id}/cancel` 取消（排队的立即取消，运行中的导出在一秒之内，导入、恢复与撤销在两批之间停下）。全部排队与运行中的任务至多 `transfer.max_queued`（默认 20），超出答 503 `server_busy`；一个任务至多运行 `transfer.job_timeout`（默认 6 小时）。不自动重试：失败的说明原因，重新开始即可。服务停机时运行中的任务被打断，记成失败 `interrupted`（导入、恢复与撤销已写的部分留着），重启之后不再运行。进程恰在 River 取到任务、任务开始之前停掉时，任务一直排队，直到 River 的救援（`transfer.job_timeout` 加 1 小时，默认 7 小时）之后才记成失败：其间它占着队列的一个名额，这本笔记本开始不了新的导入、恢复与撤销（导出是同一个人在这本笔记本），答 409 `transfer.busy`；开始它的人与笔记本的管理员可以取消它。
 - **后台任务**：每 5 分钟把心跳停了超过 `transfer.heartbeat_timeout` 的任务记成失败（服务启动时也做一次），每 15 分钟让到期的导出过期并删掉 zip，每天清扫存储里不属于任何任务的 zip。导出与导入在各自的队列里运行（从回收站恢复与整组撤销在导入的队列里），`jobs.export_workers` 与 `jobs.import_workers` 加上搜索的建索引任务（运行时占一个连接）合起来至多 `database.max_conns` 的一半（默认各 1，所以 `max_conns` 至少 6；更小的配置启动失败）。
@@ -201,6 +201,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
   - `pages`：一个写入单元，`tree` 说明是否改了树（新建、改名、移动、删除、从回收站恢复），`pages` 是写了正文的页与新版本 `[{id, revision}]`（新建的页在版本 1）；多于 20 页时是 `null`，当作每一页都写过；
   - `lock`：一页的编辑会话开启或结束，`{page_id, session_id}`，去读锁；接管是先结束、再开启的两帧；
   - `links`：一个写入单元改变了链接索引或别名，`{pages, targets, aliases}`：`pages` 是链接改指别的页的页（不含这个单元写了正文的页，它们在 `pages` 帧里），`targets` 是反链变了的页；各自多于 20 页时是 `null`，当作这个笔记本的每一页都变了。`aliases` 说明这个单元是否增加或去掉了某一页的别名（随正文，或随这一页本身）：版本的链接不在索引里、按现在的别名解析，客户端于是重读这个笔记本显示着的每个版本的阅读视图（回收站的预览也是）；别名变了而没有链接改指别处时，`pages`、`targets` 都是空列表。`nervewiki reindex` 每个笔记本发一帧，两个列表都是 `null`，`aliases` 为假（`null` 已当作每一页都变了）；
+  - `mode`：这本笔记本的模式变了（降级），只带 id，去读笔记本；
   - `reset`：`{reason}`，流的最后一帧；
   - 心跳是一行注释 `: heartbeat`。不认识的类型跳过：之后的 M 会加自己的类型。
 - **`reset`**：服务端随即关闭连接，客户端重连并整体刷新（树与打开的页），不补发事件。原因：`access`（看得到的笔记本可能变了：工作区或笔记本的成员身份、笔记本的开放程度、停用与恢复）、`notebooks_deleted`（看得到的笔记本被删除，删工作区也是）、`expired`（凭证到期，续期之后重连）、`unauthenticated`（心跳时重新认证失败：撤销、别处退出登录、停用）、`reconnected`（服务端接收通知的连接断开又连上，期间的事件丢了）、`overflow`（客户端读得太慢，缓冲的 64 个事件满了）。因 `access`、`notebooks_deleted`、`reconnected`、`overflow` 而 `reset` 时，之前已经送到这条流的事件先写出；凭证到期或失效时不再写出。流也可能不带 `reset` 就结束：服务停机、心跳时认证服务出错、客户端一个心跳之内收不下一帧，客户端同样重连并刷新。
@@ -228,7 +229,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 ### LLM Wiki 与 playbook
 
-新建笔记本时可以选择 LLM Wiki。它有来源区和根下的 `AGENTS` 约定：来源添加后不修改，知识页由人或 agent 按约定维护；`AGENTS` 的正文可以更新，但在这种模式下不能删除、改名或移动。`index.md` 与 `log.md` 是系统生成的视图，不是要写回的页面。
+新建笔记本时可以选择 LLM Wiki（`POST /api/v0/workspaces/{slug}/notebooks` 带 `mode: "llm_wiki"` 与模板的语言 `template_locale`，`zh-CN` 或 `en`；笔记本的答复带 `mode` 与 `source_root_id`）。它有来源区和根下的 `AGENTS` 约定：来源添加后不修改，知识页由人或 agent 按约定维护；`AGENTS` 的正文可以更新，但在这种模式下不能删除、改名或移动。`index.md` 与 `log.md` 是系统生成的视图，不是要写回的页面。
 
 在这本笔记本的 MCP 入口 `/mcp?notebook=<id>`，`prompts/list` 提供英文的 `ingest`、`query`、`lint`。`ingest` 可带 `source` 路径，省略时先列 `pending_sources`，读完来源之后用一个带说明的 `batch` 更新知识页，写明 `type`、`summary` 与带引号的 `sources`，再做 lint。`query` 带 `question`，查找并引用页和来源。`lint` 先做能机械修的，再看最近的变更集，报告其余。
 
@@ -236,7 +237,11 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 握手和 `open_notebook` 的说明先是一段系统的文字，后面跟 `AGENTS` 去掉 frontmatter 的正文，空正文时用内置说明。系统的文字写当前的来源根和生成的视图，来源根改名或移动之后下一次读取就更新。`AGENTS` 太长时被截短并提示用 `read` 读全，系统的文字不截；来源根的路径太长时，这段文字改写它的标题。
 
-**降级**：管理员可以把 LLM Wiki 降级成普通笔记本，有写入任务排队或运行时拒绝。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。`AGENTS` 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
+**来源**：`raw` 下的页与附件是来源。写下之后不再改（`page.source_immutable`，连管理员也一样）；来源区里的改名、移动只给笔记本的管理员（`page.source_admin_only`）；同种内容逐字节相同的被拒绝（`page.source_duplicate`，`duplicate_of` 指出已有的来源）；一次移动的量有上限（`page.source_too_large`）。根下的 `index`、`log`、`index.md`、`log.md` 留给生成的视图，页与附件都不能占用（`page.virtual_file`），导入时加序号。后台任务撞到这些规则时失败为 `refused`，`refusal` 给出码、节点与 `duplicate_of`；导入里的重复记成报告的 `duplicate_source`。
+
+**健康度与目录**：`GET /api/v0/notebooks/{notebook_id}/lint` 给每条规则的计数与至多五项，`GET .../lint/{rule}` 分页读完，网页的"健康度"就是它们。普通笔记本有四条规则，LLM Wiki 再加 `missing_type`、`missing_summary`、`undigested_sources`、`invalid_sources`。`GET /api/v0/notebooks/{notebook_id}/index` 是目录：真实的页按类型与 id 排序，LLM Wiki 里不含来源根之下的来源，可按 `type`、`tag`、`parent_id`、`at_root` 筛，网页的"目录"读它。历史里 `GET /api/v0/notebooks/{notebook_id}/changesets?ingest=true` 只列记了 ingest 的变更集，`ingest_count` 是其中不同的来源数（至多 10,000）。
+
+**降级**：管理员可以把 LLM Wiki 降级成普通笔记本（`POST /api/v0/notebooks/{notebook_id}/downgrade`，网页在笔记本的设置里），有写入任务排队或运行时拒绝（`transfer.busy`）。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。`AGENTS` 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
 
 **重新导入的限制**：把 LLM Wiki 的导出导进一本新的 LLM Wiki，根下的 `AGENTS.md` 因为已有 `AGENTS` 成为 `AGENTS 2`，档案的 `raw/` 因为已有 `raw` 成为 `raw 2`，它里面的来源落在来源区之外。这是 v0.1 写明的限制。
 
@@ -443,7 +448,7 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 - **新手引导**：步骤注册在 `src/onboarding/steps.ts`，服务端只记录完成的步骤 id。加一步就是写它的组件、追加到 `onboardingSteps`（同时加进 e2e 的 `fixtures/auth.ts`）；已经完成前面步骤的用户下次访问只看到新的一步。现在三步：资料；工作区（已有工作区的账户，比如经邀请加入的，直接继续；没有的在这里创建一个；关闭创建时说明怎么加入，再继续）；笔记本（在要落到的、能建笔记本的工作区里：已经看得到笔记本的直接继续，看不到的建一本私密笔记本，名称默认按页面的语言是"我的笔记"或"My notes"；没有这样的工作区，即没有工作区或处处只是访客的，说明笔记本在哪里建，再继续）。M2 时完成了前两步的账户，下次访问只看到笔记本一步。
 - **工作区的外壳**：`/` 落到这台设备最后访问的工作区（localStorage 的 `nwiki.workspace`）、按名称的第一个，或者创建页；`/:slug` 是工作区的外壳，左栏切换工作区，不是成员的 slug 显示 404。新的顶层页面要把它的路径段加进保留名单 `server/internal/modules/workspace/domain/reserved_slugs.txt` 的 `[app]`，vitest 核对路由与名单一致。
 - **工作区的页面**：`/create-workspace` 建工作区，slug 随名称生成，停止输入之后问服务端是否可用；关闭创建时只说明怎么加入一个工作区。`/:slug/settings/general` 是工作区的名称与地址：管理员改名，删除要先输入 slug，删除之后回到 `/`；其他成员只能看。`/:slug/settings/members` 列出成员（访客看不到邮箱），管理员改别人的角色、移出、邀请（复制链接自己发出，浏览器不能复制时显示链接框；链接用管理员访问本站的地址拼出，经内网地址访问时复制的就是内网链接，对外发链接请从公开地址打开）、撤回邀请；每个成员都能离开，离开之后回到 `/`。
-- **笔记本的页面**：工作区的左栏分"我的笔记本"（只有自己是成员的私密笔记本）与"团队笔记本"，"新建笔记本"在对话框里起名、选开放程度，建好之后进入它；换到别的工作区时左栏随之重建，对话框里没发出的草稿不带过去，在途的创建答复之后不再跳转。`/:slug/notebooks/:id` 是笔记本的外壳：在工作区的笔记本列表里找到它才显示，自己删除或离开之后回到工作区首页，看不到的显示 404。`settings/general` 是名称与开放程度（开放程度点"保存"才发出），管理员可以删除（先输入名称）；`settings/members` 列出成员，管理员从工作区成员中添加、改角色、移出，成员可以离开，没有管理员时页面说明一句。工作区设置的"无主笔记本"一页只给管理员：接管、删除（先输入名称），名称与原所有者都相同的两本另显示 id 的末六位；下面是审计记录，"加载更多"一页一页往下读。管理员的工作区首页提醒还有几本无主笔记本。
+- **笔记本的页面**：工作区的左栏分"我的笔记本"（只有自己是成员的私密笔记本）与"团队笔记本"，"新建笔记本"在对话框里起名、选开放程度与模式，建好之后进入它；换到别的工作区时左栏随之重建，对话框里没发出的草稿不带过去，在途的创建答复之后不再跳转。`/:slug/notebooks/:id` 是笔记本的外壳：在工作区的笔记本列表里找到它才显示，自己删除或离开之后回到工作区首页，看不到的显示 404。`settings/general` 是名称与开放程度（开放程度点"保存"才发出），管理员可以删除（先输入名称）；`settings/members` 列出成员，管理员从工作区成员中添加、改角色、移出，成员可以离开，没有管理员时页面说明一句。工作区设置的"无主笔记本"一页只给管理员：接管、删除（先输入名称），名称与原所有者都相同的两本另显示 id 的末六位；下面是审计记录，"加载更多"一页一页往下读。管理员的工作区首页提醒还有几本无主笔记本。
 - **页面**：笔记本的左栏是它的页面树：展开与折叠，拖拽改变位置（或用"移动到…"对话框，键盘可用），新建子页、改名、删除（移到回收站）在每一项的菜单里；`Ctrl+O`（macOS 上 `Cmd+O`）快速切换页面。`/:slug/notebooks/:id/pages/:pageId` 是页面：面包屑、标题、阅读视图与子页面列表；阅读视图里代码块的高亮在 Worker 里做，超时就不着色；能写的人在阅读视图里勾选、取消任务项（复选框以它那一项的文字为名称，空格键也可以）。页面树、阅读视图与编辑锁随事件流实时更新：一个浏览器一条流，由一个标签页持有、转给同一登录的别的标签页；别人连续保存时一页的阅读视图至多 5 秒重读一次，隐藏的标签页在重新可见时重读；每次连上都整体刷新。别的标签页或别人删掉的页显示 404，本标签页删掉的去它的父页；正在编辑而有未保存的修改时页面留在原处，直到离开：页面、笔记本、工作区被删（之后又有同名的新工作区也一样），或被移出笔记本、工作区，都一样。
 - **编辑**：写者点"编辑"或按 `Ctrl+E`（`Cmd+E`）先拿这一页的编辑锁，在原处换成源码编辑器（CodeMirror，第一次编辑时才下载）。别人正在编辑时页面写着"某某正在编辑这一页"，不能编辑；自己在别处编辑时可以"在这里编辑"接管；笔记本的管理员可以"解除锁定"。停顿约 2 秒自动保存，30 分钟没有输入就保存并退出编辑，关闭标签页时释放锁（释放没发出去时由租约兜底，至多 2 分钟）；编辑中失去锁（被接管、被解除，或过期之后被别人拿到）时编辑器只读，上方说明原因，"回到阅读"离开。`Ctrl+S` 保存，`Ctrl+E` 或"完成"保存之后回到阅读视图；保存的是编辑器里的文字加上原来的换行写法与 BOM，输入法组合中按的保存等组合结束再做。有未保存的修改时去别的页先确认，关标签页由浏览器提醒；退出登录（在哪个标签页都一样）先保存同一登录各标签页未保存的修改、结束它们的编辑，至多等 2 秒再登出。保存时这一页已被别人改过，编辑器上方显示差异，"保留我的"覆盖、"放弃我的"载入现在的正文。编辑模式不进地址：刷新回到阅读视图。
 - **链接与右栏**：阅读视图里指向页的链接经路由在应用内打开（带修饰键或中键时由浏览器在新标签页打开），带锚点的去那个标题；解析不到的链接，写者点了先确认、再按服务端给的落点新建并打开，读者只看到"页面不存在"的说明。标签去 `/:slug/notebooks/:id/tags/:tag`，列出带它（及其下的标签）的页。公式（KaTeX）与图（mermaid）在第一次用到时才下载，各有上限：定义宏的公式、太深太大的公式与图显示原文。编辑器里 `[[` 补全页面的标题与别名，`#` 补全标签，输入法组合中不弹出。页面旁边是右栏（宽屏在右侧，窄屏在正文之后）：大纲（阅读时，至多前 1,000 个标题）、反链（"更多反向链接"一页页往下读）、属性（属性链接去那一页）、版本（见下面的"历史与回收站"），随事件流实时更新。
@@ -473,7 +478,7 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ## 部署
 
-M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实例，用新binary完成迁移及 `reindex` 后再 `serve`，启动不会自动重建。Extractor2重建的linking/rekey按每本事务持锁阻写，阶段失败/撞键回滚本阶段；后续search入队按独立≤10000节点批次提交，linking失败仍可能入队，queue失败不回滚已提交v2或前批，锁不覆盖全部queue，整个命令/全实例并非原子。51/52普通SHARE索引构建挡写允许读；真实本机Up、5000-links写入和代表重建表见[性能移交](docs/v0.1/M12-release/handoffs/M4-performance.md)，生产停机与负载仍待M12实机复核；回退binary后仍按对应格式重建。
+M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实例，用新binary完成迁移及 `reindex` 后再 `serve`，启动不会自动重建。Extractor2重建的linking/rekey按每本事务持锁阻写，阶段失败/撞键回滚本阶段；后续search入队按独立≤10000节点批次提交，linking失败仍可能入队，queue失败不回滚已提交v2或前批，锁不覆盖全部queue，整个命令/全实例并非原子。00051/00052普通SHARE索引构建挡写允许读；真实本机Up、5000-links写入和代表重建表见[性能移交](docs/v0.1/M12-release/handoffs/M4-performance.md)，生产停机与负载仍待M12实机复核；回退binary后仍按对应格式重建。
 
 镜像由 `deploy/Dockerfile` 构建：前端与服务端都在其中，运行时是 distroless 镜像，只有 `/nervewiki` 一个程序，以非 root 用户（uid 65532）运行，监听 8080。
 

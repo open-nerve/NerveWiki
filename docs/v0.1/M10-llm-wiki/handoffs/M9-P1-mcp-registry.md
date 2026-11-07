@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M9/P1
 to: M10
 created: 2026-10-18
@@ -52,3 +52,5 @@ M9/P1 建了 MCP 的平台与读的工具（[M9/P1 文档](../../M9-mcp/01-P1-pl
 - P2/S2：第7项来源四写、两scope真实错误与duplicate_of全链已在增量中核验；两份batch工具描述已说明最终合成正文查重差异，HTTP report追加catcher已纳入c7历史124项、当前159义务的来源分层验收。工具/虚拟/prompt属P3–P5，整份open。 代码已推进至 `33b4da5a`，本机与精确分支11项CI已验；B-N1原审已关闭，main集成未决状态见[P2 §10.2](../02-P2-source-area.md#102-s2-来源-hash去重与验证)与[S2审查](../reviews/P2-S2-source-hash-review.md)。
 
 - P2/S3（2026-10-29）：第7项四种来源写、最终合成正文差异与两scope字段/错误的服务端S2已验，页面只读/管理/duplicate与历史报告按[S3审查](../reviews/P2-S3-source-web-review.md)接续。未新增MCP工具或prompt；第8项/说明余量仍P3，虚拟文件P4，prompt及系统说明P5，整份open。
+
+- M10 收尾（2026-11-07）：八项都已落实，证据逐项记在[收尾审查](../reviews/M10-closeout-review.md)。状态改为 done。

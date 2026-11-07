@@ -18,7 +18,7 @@
 
 核对过的要点：预检保留领域错误、界线、契约、锁与预算的次序；锁外额外授权的失去可见性答原操作 404，数据库错误原样；锁下没有复用锁外的放行。`RevertFacts` 复用调度器的模拟，按前面的操作改变之后的树建事实。`revertDefect` 不吞标出的拒绝；`treeError` 的九个哨兵仍在前，已转换的错误及其 wrapper 原样交回；四处单行 `nolint:errorlint` 只为钉住对象身份。`Refused.Unwrap` 保留导入文件的清理判定。存储与 HTTP 收自由字符串的码，普通报告显式 `null`，网页未知码含原码。三处加序号只在 LLM Wiki 实际落到根下时启用，通用 `under` 不变。没有另列的未核实怀疑或过度设计发现；完整 Step 审查另记。
 
-任务范围报告保存在树外 `/home/parallels/.local/state/nervewiki/m10/s3-task1-review-a.md`、`s3-task2-review-b.md`、`s3-task2-review-b-fix1.md`、`s3-task3-review-c.md`。实施记录与逐条命令在 `s3-evidence/task1`、`task2`、`task3`。这里记录实际结果，不把实施者报告里当时的“尚未提交”“未跑变异”等历史状态当作最终状态。
+任务范围报告保存在树外 `~/.local/state/nervewiki/m10/s3-task1-review-a.md`、`s3-task2-review-b.md`、`s3-task2-review-b-fix1.md`、`s3-task3-review-c.md`。实施记录与逐条命令在 `s3-evidence/task1`、`task2`、`task3`。这里记录实际结果，不把实施者报告里当时的“尚未提交”“未跑变异”等历史状态当作最终状态。
 
 ## 完整 Step 的独立审查
 
@@ -71,7 +71,7 @@ S4、P2 之后的来源区规则/去重、M11 移交与 M10 收尾均未在本 S
 | 85 | RevertFacts 不执行 sim.place | `TestARevertsFactsFollowItsSteps`；纯正文对照 | 删除仍含已移出的 raw，后续移动/删除用旧名字；纯正文对照通过 |
 | 86 | finalizer 不清非 refused 的 refusal | `TestAJobsRefusalBelongsToItsFinalFailure` | timeout、interrupted、cancelled 三行保留旧拒绝；普通拒绝通过 |
 
-原始目录在树外 `/home/parallels/.local/state/nervewiki/m10/s3-evidence`：`mutations-task1/final-607e761e`（42/43/44/53）、`mutations-task1/run-final-85`、`mutations-task2/final-607e761e`（45/46/47/48/49/52/86）、`mutations-task3/run-607e761e`（50/51a/b/c）。各有 metadata、results、proof、原样/变异/恢复的命令 JSON 与日志、差异和备份，以及 final-state；结果由逐条的 named test、assertions、invalid_failure、restored_exactly 与 restored_green 读取，不凭 helper 总退出码推断。
+原始目录在树外 `~/.local/state/nervewiki/m10/s3-evidence`：`mutations-task1/final-607e761e`（42/43/44/53）、`mutations-task1/run-final-85`、`mutations-task2/final-607e761e`（45/46/47/48/49/52/86）、`mutations-task3/run-607e761e`（50/51a/b/c）。各有 metadata、results、proof、原样/变异/恢复的命令 JSON 与日志、差异和备份，以及 final-state；结果由逐条的 named test、assertions、invalid_failure、restored_exactly 与 restored_green 读取，不凭 helper 总退出码推断。
 
 **完整 Step 审查增加的反向对照**：保留 42–86 编号，追加 87、88 两个逻辑变体，各由一个永久测试抓到。与前面的 16 个变体/18 次 catcher 合起来是 **18 个逻辑变体、20 次指定永久测试的 catcher 执行**。A 的 85/88 overlay 另外提供两次独立确认；不另造变体编号，不把其临时事实探针称作新增的永久 catcher。
 
@@ -94,7 +94,7 @@ B-M1 的生产修复只有 shared finalizer 的三行。新增四行回归在修
 ```sh
 go -C server test -short -count=1 -v \
   -run '^TestReviewBRefusalClearedWhenFinalOutcomeChanges$' \
-  -overlay /home/parallels/.local/state/nervewiki/m10/s3-task2-review-b-evidence/overlay.json \
+  -overlay ~/.local/state/nervewiki/m10/s3-task2-review-b-evidence/overlay.json \
   ./internal/modules/transfer/app
 ```
 
@@ -185,4 +185,4 @@ S3 已于 2026-10-26 合并为 `a46c3d1d`（完整 SHA `a46c3d1d076a97e793fafaa6
 
 上述第三次运行是决定 34 允许的新完整 push CI，保存于 `s3-evidence/main-ci-f2fe6180/`；所有三次及每对平均在 `s3-evidence/postmerge-all-samples.json`，主持者在 S4 开始前已核对 latest main 全绿与所有每对平均低于 450s。本次是决定 33–34 要求的既定 S4 文档转写，保留原失败及权限拒绝，没有为转写制造额外运行；M10 的两项成本守卫稳定性义务仍未关闭。
 
-原始证据保存在树外 `s3-evidence/main-ci-ca831b58/attempt-1/{run,jobs,timings,costs-annotations}.json`、`costs-failed.log`，两次本机诊断为该运行目录的 `index-cost-local-diagnostic.log`；首次 main 原始文件在 `s3-evidence/main-ci-a46c3d1d/`。独立只读诊断为 `ci-index-cost-recon.md`，主持者的有界处置及 Actions 权限拒绝记录为 `s3-evidence/main-ci-ca831b58/diagnosed-retry-decision.json`（均相对 `/home/parallels/.local/state/nervewiki/m10/`）。保留这些失败证据；下一次全绿不会自动取消 M10 收尾的稳定性义务。
+原始证据保存在树外 `s3-evidence/main-ci-ca831b58/attempt-1/{run,jobs,timings,costs-annotations}.json`、`costs-failed.log`，两次本机诊断为该运行目录的 `index-cost-local-diagnostic.log`；首次 main 原始文件在 `s3-evidence/main-ci-a46c3d1d/`。独立只读诊断为 `ci-index-cost-recon.md`，主持者的有界处置及 Actions 权限拒绝记录为 `s3-evidence/main-ci-ca831b58/diagnosed-retry-decision.json`（均相对 `~/.local/state/nervewiki/m10/`）。保留这些失败证据；下一次全绿不会自动取消 M10 收尾的稳定性义务。

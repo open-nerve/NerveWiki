@@ -9,7 +9,7 @@ created: 2026-10-03
 
 ### M10/P3/S1当前实际成本与未解范围（2026-10-31）
 
-18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s未提高。旧版本MVCC/generic物理范围仍留M12。 当前本地门禁/控制及精确18b分支13jobs已通过；三席及文档/集成接受按[S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)独立记录，不能借成本表预验后续main。
+18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s当时未提高（之后的例外见M10决定150、153、159、160、168、170）。旧版本MVCC/generic物理范围仍留M12。 当前本地门禁/控制及精确18b分支13jobs已通过；三席及文档/集成接受按[S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)独立记录，不能借成本表预验后续main。
 
 **M12继续open。** 已知旧版本MVCC/generic返回2000却Seq Scan52000及未成功CTE实验保留；B本轮真实auto/custom有界、强制generic仍52000且结果正确，不修改当前查询掩盖边界。生产计划/负载、100k全reindex、部署停机、PG CPU/RSS及CI余量仍需实机复核；guards单次分支Test1479/job1501s、30分钟余299s，不作原因归因。
 
@@ -288,47 +288,47 @@ costs-lint 每轮14独立进程、1047 PASS节点；两轮逐recipe锁内process
 
 上述数值分别以原四目标回执、当前两轮成本容量接受和根全成本复核为事实基础；没有用当前可能暂处单故障的工作树读取数值。root_acceptances/receipts 全 ref 在 pins.json。完整源码测量边界的10个文件也由实际gen输入的 preserved_bytes/SHA/native mode绑定；原件一律未修改。
 
-- `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-all-cost-targets-review-01.json` — SHA-256 `4f187063ee86d0125616b6a609236371825b7ff3061e43b59601f569c1bfb701`
+- `~/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-all-cost-targets-review-01.json` — SHA-256 `4f187063ee86d0125616b6a609236371825b7ff3061e43b59601f569c1bfb701`
 
-- `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-cost-pair-review-01.json` — SHA-256 `34298af3553a67b44324cc99e0f9057e9518d3c646afaf93a772506420790d4a`
+- `~/.local/state/nervewiki/m10/p3-s1/s1-7/root-post-sources-cost-pair-review-01.json` — SHA-256 `34298af3553a67b44324cc99e0f9057e9518d3c646afaf93a772506420790d4a`
 
 R1 原始文件（以下是全部14个recipe；data行号在各表和samples.json）：
 
 | ID | 原始 output.log 路径 | SHA-256 |
 | --- | --- | --- |
-| R1/01 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-01/output.log | 90aa072f46c5da7663e922ba138d895d1554efb78a3172dbfe9a14fb48723323 |
-| R1/02 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-02/output.log | 1baa2676f137a9bd79a8f235734f9e48890f1d6039193835779ddc370474759f |
-| R1/03 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-03/output.log | b69805c87837aabd23d81bca2e36d8b0cd37f0e7690d0608c1741bd91a22b554 |
-| R1/04 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-04/output.log | 94b6a8a8ad662df882d56a13c99a5d563a287853b6427660a2ccf40d3932cd7f |
-| R1/05 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-05/output.log | c0fed09054dc5f1ecf3b02d9b8f2745b76796ddb9cb6f4725fcc9db6d719a2df |
-| R1/06 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-06/output.log | 488a1676ed446475d7ed6a98f45887a13499c2d96b7ab8bf8d487cfba3085160 |
-| R1/07 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-07/output.log | 30f364e08222669fec50bfb61fe9ea90763cd48ee3cabcf69834ec0673980bd8 |
-| R1/08 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-08/output.log | 133bd89e0a4a452ab89df4ba50e97aed9bd8c0e8401a2ccb3392b4aad792d055 |
-| R1/09 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-09/output.log | f74b79d023dafe90d8ae20e83c8304d328408385b5dae9b039deab6462f7be07 |
-| R1/10 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-10/output.log | 2748f6019f9168fd224845dca9696111e63c3d148c93acd246d153716daab061 |
-| R1/11 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-11/output.log | 3f819d0de658aa75fb7621c5e4650cbd69343bbcc0f680eed7e4d9e174a9cb1b |
-| R1/12 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-12/output.log | 7f67bae7f25807993789c9d5beedfc8cf9c589fee32795a339f4fe71e8257974 |
-| R1/13 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-13/output.log | 913f34249adfd1fa90ff2a9414181d747a6d7bbdd66b83645355f5fa23879e5b |
-| R1/14 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-14/output.log | 8c4a39bbacdd3104613645f34794f66aba2394af367726d6deba209bd4a98522 |
+| R1/01 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-01/output.log | 90aa072f46c5da7663e922ba138d895d1554efb78a3172dbfe9a14fb48723323 |
+| R1/02 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-02/output.log | 1baa2676f137a9bd79a8f235734f9e48890f1d6039193835779ddc370474759f |
+| R1/03 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-03/output.log | b69805c87837aabd23d81bca2e36d8b0cd37f0e7690d0608c1741bd91a22b554 |
+| R1/04 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-04/output.log | 94b6a8a8ad662df882d56a13c99a5d563a287853b6427660a2ccf40d3932cd7f |
+| R1/05 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-05/output.log | c0fed09054dc5f1ecf3b02d9b8f2745b76796ddb9cb6f4725fcc9db6d719a2df |
+| R1/06 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-06/output.log | 488a1676ed446475d7ed6a98f45887a13499c2d96b7ab8bf8d487cfba3085160 |
+| R1/07 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-07/output.log | 30f364e08222669fec50bfb61fe9ea90763cd48ee3cabcf69834ec0673980bd8 |
+| R1/08 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-08/output.log | 133bd89e0a4a452ab89df4ba50e97aed9bd8c0e8401a2ccb3392b4aad792d055 |
+| R1/09 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-09/output.log | f74b79d023dafe90d8ae20e83c8304d328408385b5dae9b039deab6462f7be07 |
+| R1/10 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-10/output.log | 2748f6019f9168fd224845dca9696111e63c3d148c93acd246d153716daab061 |
+| R1/11 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-11/output.log | 3f819d0de658aa75fb7621c5e4650cbd69343bbcc0f680eed7e4d9e174a9cb1b |
+| R1/12 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-12/output.log | 7f67bae7f25807993789c9d5beedfc8cf9c589fee32795a339f4fe71e8257974 |
+| R1/13 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-13/output.log | 913f34249adfd1fa90ff2a9414181d747a6d7bbdd66b83645355f5fa23879e5b |
+| R1/14 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/16-costs-lint-first/test-go-costs-lint-14/output.log | 8c4a39bbacdd3104613645f34794f66aba2394af367726d6deba209bd4a98522 |
 
 R2 原始文件（以下是全部14个recipe；data行号在各表和samples.json）：
 
 | ID | 原始 output.log 路径 | SHA-256 |
 | --- | --- | --- |
-| R2/01 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-01/output.log | 47ccb05e2cc38c6a32e361af662c92265ef08a2c143fbe0ec70ac59caafae9fd |
-| R2/02 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-02/output.log | 9371aba785858c71f3f7626b7d6148fcb6c93c81c6b5b5ad2cc894a2454f6c20 |
-| R2/03 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-03/output.log | 738c2fcce5ec490334443ddad33bbd9d39414c396f585fe814ddf60419ee3c75 |
-| R2/04 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-04/output.log | 335f2969866fa7f13a1b5625011a8ed5279cfb0601bede261f8a2d843b746577 |
-| R2/05 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-05/output.log | b88793931214640d2b21051108cc3605e872b1d0bd5a24a80a2c266cdfef4fea |
-| R2/06 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-06/output.log | 064e3d3143c330f2bb3ccb0a46b79031a46f0eb38f513ea811c6ced3d63104e2 |
-| R2/07 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-07/output.log | c64494dcc25a85b061cf29f0aaaf05ecea846227fffd69dac352f060122330d3 |
-| R2/08 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-08/output.log | 415b88158cdc9ccc2a3e0e362cb3dd9d2de612cafc11ac791b1ba9505189e09b |
-| R2/09 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-09/output.log | 2dd481fd711c8ebebf50635d3172da3e54fa6886d72c9b2ab6a0c8099254eb5b |
-| R2/10 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-10/output.log | 6022f6234aeb5f75876d23fef9ad1bcd91b16a97f34f90befbe5c08f5aa351c9 |
-| R2/11 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-11/output.log | 1071078622a39741790e16554fa7513ab7cde5fcf65ce71c66dde8f4d8d681cc |
-| R2/12 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-12/output.log | 1ed2db05f2cfffe0bc072664e288c3dfb7c5cabfdfbbab1ee404d9f4debce47e |
-| R2/13 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-13/output.log | e7f4ac31c5215e84c63ef71feda738fcab1c64d27cdcc070201d109f499da3ea |
-| R2/14 | /home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-14/output.log | 831f860dd565e7dfaa06271a5381293720f338a8253cb42b51af54bc0dcf90c7 |
+| R2/01 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-01/output.log | 47ccb05e2cc38c6a32e361af662c92265ef08a2c143fbe0ec70ac59caafae9fd |
+| R2/02 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-02/output.log | 9371aba785858c71f3f7626b7d6148fcb6c93c81c6b5b5ad2cc894a2454f6c20 |
+| R2/03 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-03/output.log | 738c2fcce5ec490334443ddad33bbd9d39414c396f585fe814ddf60419ee3c75 |
+| R2/04 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-04/output.log | 335f2969866fa7f13a1b5625011a8ed5279cfb0601bede261f8a2d843b746577 |
+| R2/05 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-05/output.log | b88793931214640d2b21051108cc3605e872b1d0bd5a24a80a2c266cdfef4fea |
+| R2/06 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-06/output.log | 064e3d3143c330f2bb3ccb0a46b79031a46f0eb38f513ea811c6ced3d63104e2 |
+| R2/07 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-07/output.log | c64494dcc25a85b061cf29f0aaaf05ecea846227fffd69dac352f060122330d3 |
+| R2/08 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-08/output.log | 415b88158cdc9ccc2a3e0e362cb3dd9d2de612cafc11ac791b1ba9505189e09b |
+| R2/09 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-09/output.log | 2dd481fd711c8ebebf50635d3172da3e54fa6886d72c9b2ab6a0c8099254eb5b |
+| R2/10 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-10/output.log | 6022f6234aeb5f75876d23fef9ad1bcd91b16a97f34f90befbe5c08f5aa351c9 |
+| R2/11 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-11/output.log | 1071078622a39741790e16554fa7513ab7cde5fcf65ce71c66dde8f4d8d681cc |
+| R2/12 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-12/output.log | 1ed2db05f2cfffe0bc072664e288c3dfb7c5cabfdfbbab1ee404d9f4debce47e |
+| R2/13 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-13/output.log | e7f4ac31c5215e84c63ef71feda738fcab1c64d27cdcc070201d109f499da3ea |
+| R2/14 | ~/.local/state/nervewiki/m10/p3-s1/s1-7/post-sources-cost-recipes-01/17-costs-lint-second/test-go-costs-lint-14/output.log | 831f860dd565e7dfaa06271a5381293720f338a8253cb42b51af54bc0dcf90c7 |
 
 未测或不作推断：PG CPU/进程RSS、全部生产集群的冷缓存/并发争用分布、100k实际全reindex、真实部署的长尾与CI慢机预算。临时开发诊断和此前失败CI、原S1-0a历史样本保持各自身份；没有用本机当前成功覆盖它们。最终分支CI、main、三个独立Step审查及整个控制批次的结论在本补充冻结时不宣称完成。
 
@@ -462,6 +462,9 @@ M4 的几处性能风险当时只做了推理或单机实测，留给 M12 的压
    - **迁移 00042 的两个唯一索引**（[M9 收尾审查](../../M9-mcp/reviews/M9-closeout-review.md) C 的风险；M9 总设计 4.2、第 10 节）：00042 以不并发的 `CREATE UNIQUE INDEX` 在 `nodes` 上建根与子节点的两个部分唯一索引（取代 00012 的兄弟的索引，M9 总设计第 11 节第 17 条），建的时候挡住 `nodes` 的写；大的实例上的用时在任何地方都没有量过（同批的 00044 在 20 万行上 Up 632.5 ms，[M9/P2](../../M9-mcp/02-P2-writes-history.md) 第 9 节）。升级照 README 先停旧的服务；在大的实例上量，写进升级的说明。
    - **真实客户端与 e2e**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 第 11 节）：48 KiB 的答复与 3 MiB 的内联图片两个上限，照人工清单的 C7、C9、C10 记下的再看（Claude Code 的约 25,000 个 token 的结果上限；一个请求里 20 张以上的图片时每张至多 2,000 像素）。压测时也量慢的发送者经 Caddy（缓冲在内存里）与直接暴露时占满名额的样子。e2e 的 E2E 一步在 M9/P5 之后量得 3:37、3:40、3:35（分支的三次运行；P5 之前 3:41，P5 的设计估 3:45–4:15），合并之后 `main` 的一次 2:56，21 个新的测试本机合计约 3.8 秒；作业的时限 20 分钟，之后的 M 继续往里加故事时看要不要把 e2e 分份。
    - **经 Caddy 时早答的拒绝成了 502**（[M9/P5](../../M9-mcp/05-P5-stories-docs.md) 5.2，Caddy 2.10.2 上量过，上游是一个同样不读请求体就答的 Go `net/http` 的替身）：服务端在读请求体之前的拒绝，取不到名额的 503 `server_busy`、认证失败的 401、限流的 429，对几 MiB 以上的请求体经 Caddy 常常到客户端成了 502、没有 `Retry-After`（M9/P5 的 S1 合并之前的重跑：缓冲的两个路由 2–30 MiB 的 24 次都是 502）；nginx 照原样转发（量的是 503）。网页的保存只在 503 带着 `Retry-After` 时等一等再发（`web/apps/web/src/stores/page-editing.ts:336`），在 401 时续期再发（`web/apps/web/src/session/auth-middleware.ts:45`），拿到 502 两样都不做：两个大的调用占着名额时的一次大的保存、访问令牌过期时的一次大的保存，都立刻失败；agent 也看不到"稍后重发"。服务端可以怎样改由 M12 定，例如早答之前把一个很快地到来的请求体短短地读掉，让代理写完再拿到答复；这只是一种可能，不是决定。部署文档至少写明用 Caddy 时的这个代价，或推荐 nginx。
+
+19. **M10 的 LLM Wiki**（[M10 总设计](../../M10-llm-wiki/00-M10-design.md)"写给后面的 M"）：lint 每条规则在 30 万页上的耗时与内存、一次快照占一个连接的时长；名额 `MaxLintRuns`（`max(1, floor(floor(max_conns/2)/2))`，取自请求的那一半）与 `LintTimeout`（`min(10 秒, request_timeout/2)`）在真实负载下够不够（CI 上十万页摘要 1.09–2.01 秒，决定 160，成本用例请求 6 秒、worker 3 秒）；ingest 的判定在索引锁里的时长；`index.md` 每次 `read` 读整本的索引、树与来源区（10 万页约 1.7 秒），目录视图同 `ListIndex` 加来源区的读；`source_hash`（00050）、ingest（00053、00054）持 `ACCESS EXCLUSIVE`、linking（00051、00052）持 `SHARE` 的迁移在大实例上的停机时长，写进升级说明；去重的 advisory lock 在大量并发新增时的等待；降级的 `Forget` 在大的来源区上挡住写的时长。
+20. **M10 收尾时两个守卫的 CI 记录**（M10 总设计第 7 节的两条收尾项，[收尾审查](../../M10-llm-wiki/reviews/M10-closeout-review.md)）：`TestGrepOfAHundredThousandCandidatesTakesItsTime` 自 `789b4071` 提到 600 毫秒之后没有再失败，最近七次中位数 106–193 毫秒，最慢样本 218 毫秒。`TestIndexOfAHundredThousandPagesTakesItsTime` 的 `IndexItems` 界由 30 毫秒提到 60 毫秒（决定 170），整值读取的反例三个阶段 2.76–7.62 秒，60 毫秒抓得到。
 
 ### M10/P2/S2 来源成本与迁移补充（阶段原件与最终接受分列）
 

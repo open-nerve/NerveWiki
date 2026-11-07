@@ -43,7 +43,7 @@ source loss 复用既有 session 幂等结束：捕获原 id 后 end，迟到 op
 
 原 C：原C在8c关闭C-M1及预算Q1，当前0I/M/N。三完整组件文件+原独立复现94→3失败91通过→94；同一条件负控每phase实际build的真实LW3 created/moved-in+原独立三例3→2失败1通过→3，构建均成功，真实产物SHA与同argv/固定输出均核。恢复后18个相关page故事全部默认30秒通过，0skip/retry/flaky；保留旧LW12 API slow。其证据不充根组件组数或后续fullStep/CI，旧C-location存活及#37旧输出路径历史保持。
 
-产品修复与最终测试头的来源：原席产品结论绑定 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 只有测试差异 `web/apps/web/src/pages/notebook/source-drag-hints.test.tsx`。根核全部 3198 份既有Git entries/blob与文件字节未变；产品未改、测试增量另按根回执接受，原席未被记为重跑后续全Step。原件 `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-test-only-final-code-bridge.json`，SHA-256 `3c6d20185ec954adfb532ea6014f2f3eac16301710eff9090c3e1830ac797a03`。
+产品修复与最终测试头的来源：原席产品结论绑定 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 只有测试差异 `web/apps/web/src/pages/notebook/source-drag-hints.test.tsx`。根核全部 3198 份既有Git entries/blob与文件字节未变；产品未改、测试增量另按根回执接受，原席未被记为重跑后续全Step。原件 `~/.local/state/nervewiki/m10/p2-s3/s35-test-only-final-code-bridge.json`，SHA-256 `3c6d20185ec954adfb532ea6014f2f3eac16301710eff9090c3e1830ac797a03`。
 
 ## 独立验证与证据边界
 
@@ -184,7 +184,7 @@ S2入口在本次既定文档自然补记：精确 `66d8236c12aaa8923616f6f42f2e
 
 实际HTTP和成本样本保存在各精确CI接受原件；代码CI的revert 3.970788992 s窄余量仍保留观察。三次通过不作为持续稳定性或实机负载的证明。
 
-集成接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-main-integration-acceptance.json`，SHA-256 `ebfd5804de3a0d0bb95f57020c0357dde7ddfdc0df13a9b0d4abc131c0c43f3e`。本次合并记录写作时尚未产生自身提交号/CI；记录main与上表合并main的四片Test实际配对和均值由既定P2done自然补记。合并见00第12节，不为记录自身SHA循环追加文档。
+集成接受原件`~/.local/state/nervewiki/m10/p2-s3/s35-main-integration-acceptance.json`，SHA-256 `ebfd5804de3a0d0bb95f57020c0357dde7ddfdc0df13a9b0d4abc131c0c43f3e`。本次合并记录写作时尚未产生自身提交号/CI；记录main与上表合并main的四片Test实际配对和均值由既定P2done自然补记。合并见00第12节，不为记录自身SHA循环追加文档。
 
 P2完成时自然补录（2026-10-29）：上述合并记录提交为`ae1794a89c6d6d501e1cdd659fcc99104721fab7`，其精确main [CI40857496453](https://github.com/open-nerve/NerveWiki/actions/runs/40857496453) attempt 1全部11作业及必需步骤成功。与合并main逐片配对如下：
 
@@ -195,7 +195,7 @@ P2完成时自然补录（2026-10-29）：上述合并记录提交为`ae1794a89c
 | 两次均值（须严格<450s） | — | 438.5 | 447 | 304 | 364.5 |
 | 450s余量 | — | 11.5 | 3 | 146 | 85.5 |
 
-四片均值均<450s；配对接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`。期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。P2 §8.3及最终人工核对的闭环见[10.4](../02-P2-source-area.md#104-p2完成核对)，本次P2done提交的精确main CI由主持者提交后核验，获接受前不进入P3。
+四片均值均<450s；配对接受原件`~/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`。期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。P2 §8.3及最终人工核对的闭环见[10.4](../02-P2-source-area.md#104-p2完成核对)，本次P2done提交的精确main CI由主持者提交后核验，获接受前不进入P3。
 
 分支文档阶段的移交核对（2026-10-29；以下保留当时状态，当前完成状态见后段）：
 
@@ -214,14 +214,14 @@ M8来源历史全部义务已由S1–S3证据核对，状态done；M7§3与M9§7
 | C初审 | `review-c/initial-report.txt` | `189c527ca5f801eaa5cb1ee2ebe825ae8fb4c822bbef4d0acea413274989e871` |
 | C历史原件审计 | `review-c/workflow-integrity.json` | `ad8560a2d54131350497f7272b3e6f582f472c2a7d2e1fc685ee1c2fa44562f7` |
 | S34本地提交接受 | `s34-local-commit-acceptance.json` | `0457ef48e90a134e6a27cf1a6ab3c4898b29da1aba6ece462c7d8e7dad17beb3` |
-| final_source_manifest | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-doc-final-source-inputs-ae4501.json` | `fb248f9404892f3a9d0fe643685b815a7b2c8c178259e77f0b9f716317866713` |
-| per_commit | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-final-per-commit-index.json` | `4d4bee9bf1ff77775628e7e20eaa7e36c3fd11557b68df9f1149abf7b9d1687d` |
-| a_recheck | `/home/parallels/.local/state/nervewiki/m10/p2-s3/review-a/fix-check-1/fix-check-1-report.txt` | `7a1c932d7ece576116cf4d51e303ae0bf3308b3cc863818eb4db05e6005df1e8` |
-| b_recheck | `/home/parallels/.local/state/nervewiki/m10/p2-s3/review-b/fix-check-1/review-report.json` | `565376f4ee0390c272c0c745ef9ef8ef2fe07207d3ac67ff42388988da12c610` |
-| c_recheck | `/home/parallels/.local/state/nervewiki/m10/p2-s3/review-c/recheck-8c17b5cc/report.txt` | `14772e86f0f59c6776c7f09bf009eee47792c66cb9961a39df6757f90ee0b877` |
-| controls | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-final-root-replay-acceptance.json` | `adb59c436474a13bfab09bf330b750a443459aabf475d5ec908d2f6603dda100` |
-| gates | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-final-step-gates-acceptance.json` | `0ca0a4dca0cacb7b0fe751301554b8bc2cbd98266f11cdf566b9f813eacff71f` |
-| bootstrap | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-final-step-gates-acceptance.json` | `0ca0a4dca0cacb7b0fe751301554b8bc2cbd98266f11cdf566b9f813eacff71f` |
-| code_ci | `/home/parallels/.local/state/nervewiki/m10/p2-s3/ci-code-ae4501/root-ci-acceptance.json` | `ecf596568c1c6e432b21a3043894f0ee444646f925fc05e38e3721294c29c2bc` |
-| s2_main_pair | `/home/parallels/.local/state/nervewiki/m10/p2-s3-current-preparation/root-s2-completion-and-s3-release-8904.json` | `795a5508863326df0f51ae8ccb40867642a16e60190149b26de2d188b53bb235` |
-| handoffs | `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-branch-handoff-root-acceptance.json` | `a34ee31725fb6d6b307c779fd47872827db53dcc050b665279ae503f913bc415` |
+| final_source_manifest | `~/.local/state/nervewiki/m10/p2-s3/s35-doc-final-source-inputs-ae4501.json` | `fb248f9404892f3a9d0fe643685b815a7b2c8c178259e77f0b9f716317866713` |
+| per_commit | `~/.local/state/nervewiki/m10/p2-s3/s35-final-per-commit-index.json` | `4d4bee9bf1ff77775628e7e20eaa7e36c3fd11557b68df9f1149abf7b9d1687d` |
+| a_recheck | `~/.local/state/nervewiki/m10/p2-s3/review-a/fix-check-1/fix-check-1-report.txt` | `7a1c932d7ece576116cf4d51e303ae0bf3308b3cc863818eb4db05e6005df1e8` |
+| b_recheck | `~/.local/state/nervewiki/m10/p2-s3/review-b/fix-check-1/review-report.json` | `565376f4ee0390c272c0c745ef9ef8ef2fe07207d3ac67ff42388988da12c610` |
+| c_recheck | `~/.local/state/nervewiki/m10/p2-s3/review-c/recheck-8c17b5cc/report.txt` | `14772e86f0f59c6776c7f09bf009eee47792c66cb9961a39df6757f90ee0b877` |
+| controls | `~/.local/state/nervewiki/m10/p2-s3/s35-final-root-replay-acceptance.json` | `adb59c436474a13bfab09bf330b750a443459aabf475d5ec908d2f6603dda100` |
+| gates | `~/.local/state/nervewiki/m10/p2-s3/s35-final-step-gates-acceptance.json` | `0ca0a4dca0cacb7b0fe751301554b8bc2cbd98266f11cdf566b9f813eacff71f` |
+| bootstrap | `~/.local/state/nervewiki/m10/p2-s3/s35-final-step-gates-acceptance.json` | `0ca0a4dca0cacb7b0fe751301554b8bc2cbd98266f11cdf566b9f813eacff71f` |
+| code_ci | `~/.local/state/nervewiki/m10/p2-s3/ci-code-ae4501/root-ci-acceptance.json` | `ecf596568c1c6e432b21a3043894f0ee444646f925fc05e38e3721294c29c2bc` |
+| s2_main_pair | `~/.local/state/nervewiki/m10/p2-s3-current-preparation/root-s2-completion-and-s3-release-8904.json` | `795a5508863326df0f51ae8ccb40867642a16e60190149b26de2d188b53bb235` |
+| handoffs | `~/.local/state/nervewiki/m10/p2-s3/s35-branch-handoff-root-acceptance.json` | `a34ee31725fb6d6b307c779fd47872827db53dcc050b665279ae503f913bc415` |

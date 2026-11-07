@@ -482,7 +482,7 @@ M6已随Step文档done；M7/M9的P4/P5事项、M11未开始，以及M12既有MVC
 
 ## 原件导航与身份
 
-树外原件共同根为 `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-7/`（记作S17）；下面列相对S17的原件位置与完整SHA256。S1-0a、S1-1等上级路径保留真实位置。正文关键数据与分类在仓库内自包含；这些导航用于追原raw/input/argv，不以哈希存在替代语义审查。E17是旧queued快照，不能替代N01终态失败；各H/N历史接受的适用头不变。
+树外原件共同根为 `~/.local/state/nervewiki/m10/p3-s1/s1-7/`（记作S17）；下面列相对S17的原件位置与完整SHA256。S1-0a、S1-1等上级路径保留真实位置。正文关键数据与分类在仓库内自包含；这些导航用于追原raw/input/argv，不以哈希存在替代语义审查。E17是旧queued快照，不能替代N01终态失败；各H/N历史接受的适用头不变。
 
 | 键 | 原件（相对S17） | SHA256 |
 |---|---|---|
@@ -507,15 +507,15 @@ M6已随Step文档done；M7/M9的P4/P5事项、M11未开始，以及M12既有MVC
 | E13 | `post-ci-cost-facts-preparation-01/capacity-02.zh.md` | `b31aa4834618b9909ed5fb18eeb9afbf8568bd9ca0b49335356cc0a84b3189fa` |
 | E13 | `post-ci-cost-facts-preparation-01/document-values.json` | `7ea3d1659b577bf1b1e67dbeafbf2dff50c24365d7873a3d1103567874792307` |
 | E14 | `root-post-ci-lint-cost-capacity-acceptance-01.json` | `a717d84de1a2429c85d40d5fad800e86b61b477af47ddb7ead6b2b3b849f436f` |
-| E15 | `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-6/root-rules-guard-proposal-acceptance.json` | `da474def7a4ed72c6e55d21e77671a5c748b1555518f336d9db3c0101eee58ed` |
-| E16 | `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-1/page-author/known-mvcc-boundary.json` | `3385e8edaf592d8782c42bc43fbc2d352628a49cfbc3061ed3132d657474c631` |
+| E15 | `~/.local/state/nervewiki/m10/p3-s1/s1-6/root-rules-guard-proposal-acceptance.json` | `da474def7a4ed72c6e55d21e77671a5c748b1555518f336d9db3c0101eee58ed` |
+| E16 | `~/.local/state/nervewiki/m10/p3-s1/s1-1/page-author/known-mvcc-boundary.json` | `3385e8edaf592d8782c42bc43fbc2d352628a49cfbc3061ed3132d657474c631` |
 | E17 | `branch-ci-14fe/01/run.json` | `8730fa1b124c282eafa66aa8c835a38746d191ac1c9900a8ebb599a034560f0f` |
 | E18 | `m6-closure-preparation-01/manifest.json` | `0a0e1a7f44abad8da4ee3f3a5d3eae545b8443e2446e22f8518e09657888ecc1` |
 | E19 | `root-m6-semantic-preparation-review-01.json` | `a42bd467e7bc4fd9504771bdccd2389552fe820c1d3b5318b0b0aa1c755c9414` |
 | E20 | `root-m7-m9-handoff-preparation-review-01.json` | `da6244d5dec282ba885a22a02b08e1814ef2e2d2dd8a03a28abb45e362f46901` |
 | H01 | `document-preparation-01/manifest.json` | `236f9919b279f4862cb22858fc71c757e7b74d5344056d649a3f87159b130b17` |
 | H02 | `doc-preparation-02/manifest.json` | `183c5d62e5ac968ba20dc7f3dd47956d5bf3227d20a7f8a147cd1644d4388eb4` |
-| H03 | `/home/parallels/.local/state/nervewiki/m10/p3-s1/s1-0a/root-s1-0a-completion.json` | `daf46bbfc8ecb85b31a02147efe58d8d5fcca2540879af58afb594a8f8ac5de2` |
+| H03 | `~/.local/state/nervewiki/m10/p3-s1/s1-0a/root-s1-0a-completion.json` | `daf46bbfc8ecb85b31a02147efe58d8d5fcca2540879af58afb594a8f8ac5de2` |
 | H04 | `root-formal69-final-controls-acceptance-01.json` | `ebe1d497b4d740e95ae36d0ea4ecdfbd480662cfde21476dfe16aa00227078f2` |
 | H05 | `root-final-local-gates-acceptance-01.json` | `be5b9a6766a544f3f28b1c63ba83d6629cd9fcd812e30e4836feb56e1d3e43d1` |
 | H06 | `root-unaffected-evidence-reuse-acceptance-01.json` | `09821db86f5a161f810708bff59285c688cce383699fd74c02ad52fe9f3b943b` |

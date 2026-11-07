@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M10/P3；两个 Step：S1 服务端与协议；S2 健康度网页 |
 | 日期 | 2026-10-29 |
-| 状态 | 已完成；S1产品18b、S2产品fa681/文档987d、撤销树修复产品78167/文档52a5分别按原输入接受。实现、三席/必要复核、完整门禁、文档与指定修复merge＋联合record两main配对均已验；原S2 merge13ed失败保留，§8最终核对见§10.3，修复历史见§10.4。本记录写入时，独立P3done自身精确main CI仍待提交后接受；此前不释放P4。M10继续，P4/P5/M10收尾/M11尚未开始。 |
+| 状态 | 已完成；S1产品18b、S2产品fa681/文档987d、撤销树修复产品78167/文档52a5分别按原输入接受。实现、三席/必要复核、完整门禁、文档与指定修复merge＋联合record两main配对均已验；原S2 merge13ed失败保留，§8最终核对见§10.3，修复历史见§10.4。本记录写入时，独立P3done自身精确main CI仍待提交后接受；此前不释放P4。 |
 | 原设计精确基线 | `main = origin/main = f6bd0cdee2b7570252a43581cf71cd1e71592f76`；P2 已完成 |
 | 上级 | [M10 总设计](00-M10-design.md) §4.10–4.12、§5、§7–9；[总体设计](../v0.1-design.md) §5.6、§13；[推进方式](../claude_to_codex/02-workflow.md)；[P2 移交](02-P2-source-area.md#9-给后面-phase-与-m-的移交) |
 | 记法 | `page/`、`linking/`、`wiki/` 在 `server/internal/modules/` 下；`bootstrap/`、`platform/`、`shared/` 在 `server/internal/` 下；`W/` 是 `web/apps/web/src/`。本文拟新增的文件、类型、测试名均是设计，不冒称已有实现 |
@@ -1531,7 +1531,7 @@ S2文档987d的minimum/gen及精确CI已按原输入接受；原S2 no-ff `13edc1
 
 ### 10.3 P3完成
 
-2026-11-01：本记录写入时，主持者已按§8原43项及撤销树修复闭合前提核对实现、独立审查/必要修复核对、门禁、控制、文档与集成，P3已完成。最终接受原件：`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-p3-final-section8-acceptance-01.json`。此前43行覆盖准备与D-N1范围接受只证明PREP，不代替这份最终接受。
+2026-11-01：本记录写入时，主持者已按§8原43项及撤销树修复闭合前提核对实现、独立审查/必要修复核对、门禁、控制、文档与集成，P3已完成。最终接受原件：`~/.local/state/nervewiki/m10/p3-revert-tree/root-p3-final-section8-acceptance-01.json`。此前43行覆盖准备与D-N1范围接受只证明PREP，不代替这份最终接受。
 
 | 独立输入 | 身份与接受范围 |
 |---|---|
@@ -1554,8 +1554,8 @@ S2文档987d的minimum/gen及精确CI已按原输入接受；原S2 no-ff `13edc1
 |---|---|---|---|
 | S2原merge：失败，排除 | `13edc125d5478285fbdf2750dd467f54bcc61a77` | [CI41247708831 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41247708831/attempts/1) **FAILED**；guards失败，e2e/image skipped；no_statistics第三轮4.002198968s/HTTP500 | 不取其中成功片，不纳入配对 |
 | 修复merge：指定样本1 | `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca` | [CI41277758157 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41277758157/attempts/1) / push / main / 4e6e9660abd8d0973cda9e17ae2578b1a6b9acca，completed/success；13jobs/38required steps；`FIX/root-main-ci-acceptance-01.json` SHA `f37155912f0139624288f4e1188bebda19a45ea8cec81ffdd1febc9d449d1767` | 449/200/261/373/317 |
-| 联合record：指定样本2 | `df9b1d49544336f80d768bde4b6cda231403231e` | [CI41281561763 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41281561763/attempts/1) / push / main / df9b1d49544336f80d768bde4b6cda231403231e，completed/success；13jobs/38required steps；`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-jointrecord-ci-acceptance-01.json` SHA `04437265d13f2491100aa778d94a752cc0cd84e5da5b4d46350f12fb072fbf19` | 340/203/355/401/312 |
-| 两次算术均值 | 仅上述修复merge＋联合record | 各片按原Test秒数求均值，五份均严格<450s；主持者配对接受：`/home/parallels/.local/state/nervewiki/m10/p3-revert-tree/root-repair-jointrecord-main-pair-acceptance-01.json` SHA `b1b3b30e5bd3191486eae0c989c490a99ba6db3081f95cb3a7a15a3f73fac4f2` | 394.5/201.5/308/387/314.5 |
+| 联合record：指定样本2 | `df9b1d49544336f80d768bde4b6cda231403231e` | [CI41281561763 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41281561763/attempts/1) / push / main / df9b1d49544336f80d768bde4b6cda231403231e，completed/success；13jobs/38required steps；`~/.local/state/nervewiki/m10/p3-revert-tree/root-jointrecord-ci-acceptance-01.json` SHA `04437265d13f2491100aa778d94a752cc0cd84e5da5b4d46350f12fb072fbf19` | 340/203/355/401/312 |
+| 两次算术均值 | 仅上述修复merge＋联合record | 各片按原Test秒数求均值，五份均严格<450s；主持者配对接受：`~/.local/state/nervewiki/m10/p3-revert-tree/root-repair-jointrecord-main-pair-acceptance-01.json` SHA `b1b3b30e5bd3191486eae0c989c490a99ba6db3081f95cb3a7a15a3f73fac4f2` | 394.5/201.5/308/387/314.5 |
 
 文档/修复merge/联合record实际失败、取消与重试历史：修复文档52a5/run41275881033 attempt1、修复merge4e6e/run41277758157 attempt1、联合recorddf9/run41281561763 attempt1均为各自首轮完整成功；这三次CI没有失败、取消或重跑。原S2 merge13ed/run41247708831 attempt1的guards失败及e2e/image skipped永久保留，不参与指定配对；S1既有失败/重跑另沿§10.1原记录。联合record自身八项minimum与提交后gen均一次实际exit0；gen-go重建nodes.sql.go的native0664→0644按执行前限定单列，全部bytes/Git可执行位及其余输入保持，不是产品失败或重跑。每个指定样本必须完整接受且绑定真实head/main/event/run/attempt及其原始jobs/steps；不能混入代码或文档分支、本地子进程计时、job wall，也不跨attempt拼接。一次代码分支455/306/254/293/308s不充main配对。
 
