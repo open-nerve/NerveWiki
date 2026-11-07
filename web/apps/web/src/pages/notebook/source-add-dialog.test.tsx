@@ -161,6 +161,7 @@ test("pasted Markdown keeps a taken title and the body until the user explicitly
   server.nodes.push(pageNode(70, "Evidence", guide));
   sourcePage(server);
   const dialog = await pasteDialog(user);
+  expect(within(dialog).getByText(/normalizes line endings/)).toBeTruthy();
   draft(dialog);
 
   await user.click(within(dialog).getByRole("button", { name: "Add source" }));

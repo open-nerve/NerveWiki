@@ -379,7 +379,64 @@ test.each([guide, agents, notes])(
   }
 );
 
-test.each([notes, install])("a source's unresolved link may create another page under $name", async (parent) => {
+test("a source's unresolved link creates no page in the source area, where it would stay empty", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id });
+  server.contents.set(install.id, { content: "[[Other page]]\n", revision: 1 });
+  server.views.set(install.id, {
+    html: '<p><a class="nw-wikilink nw-unresolved" data-nw-target="Other page">Other page</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  server.landings.set("Other page", {
+    node_id: null,
+    landing: { parent_id: install.id, title: "Other page" },
+    reason: null,
+  });
+  renderApp(pagePath(install.id), server.app, { enhancements: [unresolvedLinks] });
+  const article = await screen.findByRole("article", { name: "Install" });
+  await user.click(within(article).getByRole("button", { name: "Other page" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "“Other page” does not exist" });
+  expect(within(dialog).getByText(/not from a link/)).toBeTruthy();
+  expect(within(dialog).queryByRole("button", { name: "Create page" })).toBeNull();
+});
+
+test("an unresolved link's parent this tab has not read is read before it is offered", async () => {
+  const user = userEvent.setup();
+  const later = pageNode(79, "Later", guide);
+  const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id });
+  server.contents.set(notes.id, { content: "[[raw/Later/Child]]\n", revision: 1 });
+  server.views.set(notes.id, {
+    html: '<p><a class="nw-wikilink nw-unresolved" data-nw-target="Child">Child</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  server.landings.set("Child", { node_id: null, landing: { parent_id: later.id, title: "Child" }, reason: null });
+  renderApp(pagePath(notes.id), server.app, { enhancements: [unresolvedLinks] });
+  const article = await screen.findByRole("article", { name: "Notes" });
+  server.nodes.push(later);
+  await user.click(within(article).getByRole("button", { name: "Child" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "“Child” does not exist" });
+  expect(within(dialog).getByText(/not from a link/)).toBeTruthy();
+});
+
+test("a reader of an LLM Wiki is not promised a page that a link may not create", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ role: "reader", mode: "llm_wiki", sourceRootId: guide.id });
+  server.contents.set(install.id, { content: "[[Other page]]\n", revision: 1 });
+  server.views.set(install.id, {
+    html: '<p><a class="nw-wikilink nw-unresolved" data-nw-target="Other page">Other page</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  renderApp(pagePath(install.id), server.app, { enhancements: [unresolvedLinks] });
+  const article = await screen.findByRole("article", { name: "Install" });
+  await user.click(within(article).getByRole("button", { name: "Other page" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "“Other page” does not exist" });
+  expect(within(dialog).getByText(/may be able to create it/)).toBeTruthy();
+});
+
+test.each([notes])("a source's unresolved link may create another page under $name", async (parent) => {
   const user = userEvent.setup();
   const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id });
   const original = { content: "[[Other page]]\n", revision: 1 };

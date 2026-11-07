@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M7 收尾
 to: M10
 created: 2026-10-10
@@ -32,3 +32,5 @@ M7 建立了导出贡献者的扩展点，交空（[M7 总设计](../../M7-asset
 - P2/S2：第3项逐字节SHA256去重已在上传/移入/恢复、导入重复报告及后代保留的增量中核验，页与附件不跨kind；实施已验、等待最终S2签字。第5项lint留P3，导出/虚拟/贡献者留P4，整份open。 代码已推进至 `33b4da5a`，本机与精确分支11项CI已验；B-N1原审已关闭，main集成未决状态见[P2 §10.2](../02-P2-source-area.md#102-s2-来源-hash去重与验证)与[S2审查](../reviews/P2-S2-source-hash-review.md)。
 
 - P2/S3（2026-10-29）：第3项来源逐字节去重的网页最终入口、上传/移入/恢复/导入的完整duplicate路径与真实asset定位按[P2/S3](../reviews/P2-S3-source-web-review.md)核验，服务端S2入口已闭环。第4项仍照既定行为；第5项lint留P3，第1/2/6项贡献者/导出留P4，整份open。
+
+- M10 收尾（2026-11-07）：六项都已落实，证据逐项记在[收尾审查](../reviews/M10-closeout-review.md)。第 4 项按总设计第 11 节主持者的决定 14 没有代码。状态改为 done。

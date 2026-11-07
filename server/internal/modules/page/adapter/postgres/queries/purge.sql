@@ -77,6 +77,8 @@ DELETE FROM changesets WHERE id IN (
     LIMIT sqlc.arg(batch) FOR UPDATE SKIP LOCKED);
 
 -- name: PurgeChangesetSources :execrows
+-- Deletes the sources of the changesets due for the purge, a batch at a time,
+-- before PurgeChangesets takes the changesets themselves.
 WITH doomed AS (
     SELECT s.changeset_id, s.seq
     FROM changeset_sources s JOIN changesets c ON c.id = s.changeset_id

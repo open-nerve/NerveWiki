@@ -3,7 +3,7 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 / Phase | M10 模式契约与 LLM Wiki / P2 来源区 |
-| 日期、状态 | 2026-10-29；P2已完成：S1–S3实施、独立审查/原席复核、最终门禁、三Step集成和S3合并/记录两main四片均值已验，§8.3核对与移交见10.4。本次P2done精确main CI由主持者提交后核验，全绿后放行P3；当前P3–P5及M10收尾未开始，M10仍进行中 |
+| 日期、状态 | 2026-10-29；P2已完成：S1–S3实施、独立审查/原席复核、最终门禁、三Step集成和S3合并/记录两main四片均值已验，§8.3核对与移交见10.4。本次P2done精确main CI由主持者提交后核验，全绿后放行P3 |
 | 基线 | `main` = `origin/main` = `403841fc75d0e5ac6b5f39447158213c0e07b2fe`，树 `b3665215f745d4dcfe7e8d339d4882e6d95b4a63` |
 | 入口 | P1 已完成；其后 grep 成本维护也已合并并核对，两份 main CI 全 10 项成功；第 1 节 |
 | 权威 | [文档约定](../../README.md)、[总体设计](../v0.1-design.md)、[M10 总设计](00-M10-design.md) §4.6–4.8、§4.16–4.18、§7、§9；[P1](01-P1-contract-frame.md) §8–10；[M8 历史移交](handoffs/M8-history.md)、[M9 MCP 移交](handoffs/M9-P1-mcp-registry.md) |
@@ -1112,7 +1112,7 @@ Web 178 文件/3812 通过；short 8208 run=6915 pass+1293 明确 skip；完整 
 
 精确代码CI 40843325190的20项成本指标和45个真实HTTP样本（5种操作×3统计状态×3次）已核原始日志、预算与状态。各操作HTTP最大秒数：create 0.359200391，move 1.047166084，restore 3.228866466，revert 3.970788992，forget 2.227704099。revert离原4秒请求期限仅29.211ms；保留为后续CI/M10收尾的窄余量观察，不由单次通过宣称稳定。guards的Test 1553s，整个job 1571s（原job上限1800s）；Test与job分别记录。没有抬高任何预算，也不以较快的样本替换这次最慢请求。
 
-原席产品结论绑定 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 只有测试差异 `web/apps/web/src/pages/notebook/source-drag-hints.test.tsx`。根核全部 3198 份既有Git entries/blob与文件字节未变；产品未改、测试增量另按根回执接受，原席未被记为重跑后续全Step。原件 `/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-test-only-final-code-bridge.json`，SHA-256 `3c6d20185ec954adfb532ea6014f2f3eac16301710eff9090c3e1830ac797a03`。
+原席产品结论绑定 `8c17b5cceb65b2a0f70976bbe4752daeaabaee05`；最终 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 只有测试差异 `web/apps/web/src/pages/notebook/source-drag-hints.test.tsx`。根核全部 3198 份既有Git entries/blob与文件字节未变；产品未改、测试增量另按根回执接受，原席未被记为重跑后续全Step。原件 `~/.local/state/nervewiki/m10/p2-s3/s35-test-only-final-code-bridge.json`，SHA-256 `3c6d20185ec954adfb532ea6014f2f3eac16301710eff9090c3e1830ac797a03`。
 
 精确 `ae4501aa166771db153dae5dfa710ef16ee26ac4` 的 [CI 40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)（m10-p2-s3 push，attempt 1）实际 11 个作业及列明必需步骤均成功；四片 Test 步为 453.0/311.0/289.0/371.0 s。全部控制及每轮argv、失败断言、恢复/输入hash见S3审查与树外原件；S3新增/原审追加和旧S2库存分开。S3集成记录（2026-10-29）：代码`ae4501aa166771db153dae5dfa710ef16ee26ac4`/[CI40843325190](https://github.com/open-nerve/NerveWiki/actions/runs/40843325190)、文档`f6b397b7234f2495ac092be8214b8bf266a95c91`/[CI40848348596](https://github.com/open-nerve/NerveWiki/actions/runs/40848348596)和no-ff合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`/[main CI40852524505](https://github.com/open-nerve/NerveWiki/actions/runs/40852524505)均已按精确SHA/attempt接受；两父与同树证明见[S3审查](reviews/P2-S3-source-web-review.md#合并phase边界与移交)。本次合并记录写作时尚未产生自身提交号/CI；两main分片均值及P2完成另在10.4自然补记。
 
@@ -1127,7 +1127,7 @@ P2/S1–S3实施、独立审查与原席复核、最终门禁和三Step集成已
 | 两次均值（须严格<450s） | — | 438.5 | 447 | 304 | 364.5 |
 | 450s余量 | — | 11.5 | 3 | 146 | 85.5 |
 
-两main配对接受原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`；期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。§8.3及其最终人工核对单由主持者逐项接受，原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-p2-closeout-acceptance.json`，SHA-256 `b697704eaca5ad7c1b94f9ccf7c186ee154e93f2ca080d7888c18523013b5d9d`：
+两main配对接受原件`~/.local/state/nervewiki/m10/p2-s3/s35-merge-record-main-ci-pair.json`，SHA-256 `4a4637db7a87f3edf359139cb6b69424930b44f1570f659e90562f9c8e91cded`；期间失败/重试记录：无（实际清单为`[]`；两样本均attempt 1，完整期间清单已核，没有择绿或重试）。§8.3及其最终人工核对单由主持者逐项接受，原件`~/.local/state/nervewiki/m10/p2-s3/s35-p2-closeout-acceptance.json`，SHA-256 `b697704eaca5ad7c1b94f9ccf7c186ee154e93f2ca080d7888c18523013b5d9d`：
 
 | §8.3项目 | 已核范围 | 实际证据 |
 |---|---|---|
@@ -1141,7 +1141,7 @@ P2/S1–S3实施、独立审查与原席复核、最终门禁和三Step集成已
 | P1§9/00/P2 | P1交P2项与三Step实际集成核对；决定48当前/历史模板字节分别保留 | P1§9、P2 10.1–10.4、00§12；当前raw659/605、总5580，历史648/593、总5557 |
 | 最终人工核对单 | 码、guard/veto、SQL/fakes/API全链、全部控制、600万A/B与main CI均有证据 | S2入口接受、S3最终门禁/控制/三审原件及本节两main精确CI；40组39kill+1存活，126日志含明确CR桥接 |
 
-上述产品核对原件`/home/parallels/.local/state/nervewiki/m10/p2-s3/s35-p2-product-closeout-audit.json`，SHA-256 `a00d5ca3e1bbee39f3d09e74373633f650025b6fa70eaf402ab0121e42a083ba`，逐项列实际文件及既有接受原件；这是主持者对不变产品与记录的核对，没有冒称新一轮独立审查或测试。600万冷启动的OS/设备缓存与WAL归因限制、实机负载未验、代码CI revert 3.970788992 s窄余量以及IndexItems30ms/grep600ms持续稳定性义务均保留。
+上述产品核对原件`~/.local/state/nervewiki/m10/p2-s3/s35-p2-product-closeout-audit.json`，SHA-256 `a00d5ca3e1bbee39f3d09e74373633f650025b6fa70eaf402ab0121e42a083ba`，逐项列实际文件及既有接受原件；这是主持者对不变产品与记录的核对，没有冒称新一轮独立审查或测试。600万冷启动的OS/设备缓存与WAL归因限制、实机负载未验、代码CI revert 3.970788992 s窄余量以及IndexItems30ms/grep600ms持续稳定性义务均保留。
 
 本次按workflow §3.7提交`docs: M10/P2 done (M10/P2)`，当前完成状态记录实施、审查、集成与收尾核对已验。主持者仍须在推送后取得此提交的精确main CI全绿，才放行P3；自己的SHA/run不写入自身，后续既定P3文档自然补录，不追加自引用记录提交。
 

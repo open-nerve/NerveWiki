@@ -6,6 +6,7 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesPages } from "../../app/effective-role";
 import type { HeldDialog } from "../../app/held-dialog";
 import { useMounted } from "../../app/mounted";
+import { canAddSource } from "../../app/source-permissions";
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -29,7 +30,7 @@ type Landing = NonNullable<LinkLanding["landing"]>;
  * Why a link's page is not created: the reader cannot, a read-only view (a version's, a page's in the trash) does
  * not, an embed or an image does not, or the server's reason.
  */
-type Why = "reader" | "readOnly" | "embed" | "image" | NonNullable<LinkLanding["reason"]>;
+type Why = "reader" | "readerWiki" | "readOnly" | "embed" | "image" | "sourceArea" | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
@@ -122,7 +123,8 @@ export function useUnresolvedLinks({
       }
     }
     if (readOnly || !writesPages(notebook.role)) {
-      show({ why: readOnly ? "readOnly" : "reader" });
+      // A reader asks for no landing, and in an LLM Wiki it decides whether a writer could create the page.
+      show({ why: readOnly ? "readOnly" : notebook.mode === "llm_wiki" ? "readerWiki" : "reader" });
       return;
     }
     asking.current = true;
@@ -140,7 +142,11 @@ export function useUnresolvedLinks({
           reload();
         }
       } else {
-        show({ landing: answer.landing });
+        // A parent this tab has not read yet may be in the source area: the tree says, so it is read first.
+        const parent = answer.landing.parent_id;
+        if (parent !== null && pages.nodeById(parent) === undefined) await pages.load().catch(() => undefined);
+        // A page made there would be an empty source, which its writer could neither fill nor take back.
+        show(canAddSource(pages, parent) ? { why: "sourceArea" } : { landing: answer.landing });
       }
     } catch (error) {
       // A target longer than the server takes has no landing, nor one past a proxy's limit on the address (414).
@@ -276,8 +282,12 @@ function whyText(why: Why, t: Translate): string {
   switch (why) {
     case "reader":
       return t("unresolved.reader");
+    case "readerWiki":
+      return t("unresolved.readerWiki");
     case "readOnly":
       return t("unresolved.readOnly");
+    case "sourceArea":
+      return t("unresolved.sourceArea");
     case "embed":
       return t("unresolved.embed");
     case "image":

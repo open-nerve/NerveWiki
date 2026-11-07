@@ -436,7 +436,7 @@ for (const scope of ["notebook", "account"] as const) {
   });
 }
 
-// EW01: the editor produces the mark. API/DB assertions verify that same real
+// The editor produces the mark. API/DB assertions verify that same real
 // write; they do not seed marks or replace the browser's history request.
 test("LW9 (page): a wiki edit appears with its ingested source and remains under Only ingestion", async ({
   api,
@@ -510,12 +510,12 @@ test("LW9 (page): a wiki edit appears with its ingested source and remains under
   });
   await page.getByRole("combobox", { name: "Ingestion", exact: true }).selectOption({ label: "Only ingestion" });
   await expect(page).toHaveURL(historyPath(team.workspace.slug, wiki.id, { ingest: "1" }));
-  await expect(rows, "EW01_FILTER: only the editor's marked change survives").toHaveCount(1);
+  await expect(rows, "only the editor's marked change survives").toHaveCount(1);
   // Observe all answers: a prior unfiltered event refresh must not be mistaken
   // for the selected filter's response. The nonempty DOM oracle above is primary.
   expect(
     answers.find((answer) => answer.url.searchParams.get("ingest") === "true")?.status,
-    "EW01_QUERY: the actual history read keeps ingest=true"
+    "the actual history read keeps ingest=true"
   ).toBe(200);
   await expect(plainLink).toHaveCount(0);
   await expect(row.getByText("Ingest", { exact: true })).toBeVisible();

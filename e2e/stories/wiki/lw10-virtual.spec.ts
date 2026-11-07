@@ -287,7 +287,7 @@ test("LW10: real ingestion reaches log.md and whole export", async ({ api, db, n
   }
 });
 
-// EW02: actual reader anchors and ordinary tree Links; the writer downloads
+// Actual reader anchors and ordinary tree Links; the writer downloads
 // the real contributor's ZIP through the existing export dialog and job row.
 test("LW10 (page): virtual tree links and unresolved reader links open Directory and History, and a real ZIP contains both", async ({
   api,
@@ -336,7 +336,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
     await tree.getByRole("link").evaluateAll((links) => links.slice(0, 2).map((link) => link.textContent))
   ).toEqual(["Directory", "History"]);
   await directory.click();
-  await expect(reader, "EW02_ROUTE: the registered index route opens").toHaveURL(`${home}/index`);
+  await expect(reader, "the registered index route opens").toHaveURL(`${home}/index`);
   await expect(
     reader.getByRole("main").getByRole("heading", { level: 1, name: "Directory", exact: true })
   ).toBeVisible();
@@ -351,7 +351,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   await tree.getByRole("link", { name: "Guide", exact: true }).click();
   const article = reader.getByRole("article", { name: "Guide", exact: true });
   await article.getByRole("button", { name: "Open directory", exact: true }).click();
-  await expect(reader, "EW02_READER: unresolved root index works for a reader").toHaveURL(`${home}/index`);
+  await expect(reader, "unresolved root index works for a reader").toHaveURL(`${home}/index`);
   await expect(
     reader.getByRole("main").getByRole("heading", { level: 1, name: "Directory", exact: true })
   ).toBeVisible();
@@ -359,7 +359,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   await article.getByRole("button", { name: "Open history", exact: true }).click();
   await expect(reader).toHaveURL(`${home}/history`);
   await expect(reader.getByRole("main").getByRole("heading", { level: 1, name: "History", exact: true })).toBeVisible();
-  expect(forbiddenCalls, "EW02_READER: virtual navigation never asks permission to create").toEqual([]);
+  expect(forbiddenCalls, "virtual navigation never asks permission to create").toEqual([]);
 
   const writer = await signedInPage(team.tokens);
   await writer.goto(notebookPath(team.workspace.slug, wiki.id, "transfer"));
@@ -372,7 +372,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   expect(files.get("Browser virtual/raw/Evidence.md")).toBe("Evidence bytes.\n");
   expect(files.get("Browser virtual/index.md")).toContain("](<Guide.md>)");
   const log = files.get("Browser virtual/log.md");
-  if (log === undefined) throw new Error("EW02_ZIP: the actual downloaded archive has no log.md");
+  if (log === undefined) throw new Error("the actual downloaded archive has no log.md");
   const entry = entryOfVirtualLog(log, changeset);
   expect(entry[0]).toMatch(/; ingests: 1$/);
   expect(entry.filter((line) => line.startsWith("  - source: "))).toEqual([

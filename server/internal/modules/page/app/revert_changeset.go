@@ -283,16 +283,11 @@ func (r revertChecks) check(ctx context.Context, c domain.Changeset, spec UnitSp
 			return err
 		})
 	}
-	if precheck := r.writer.d.SourcePrecheck; precheck != nil {
-		if checked.job != nil {
-			err = precheck.CheckJob(ctx, c.NotebookID, notebook, checked, *checked.job, checked.cuts, ask)
-		} else {
-			err = precheck.Check(ctx, c.NotebookID, notebook, domain.RevertFacts(state, plan, notebook.SourceRootID), ask)
-		}
-	} else if checked.job != nil {
-		err = checkJobContract(checked, *checked.job, checked.cuts, notebook, func(action shared.Action) error { return ask(ctx, action) })
+	precheck := r.writer.d.SourcePrecheck
+	if checked.job != nil {
+		err = precheck.CheckJob(ctx, c.NotebookID, notebook, checked, *checked.job, checked.cuts, ask)
 	} else {
-		err = checkRevertContract(state, plan, notebook, func(action shared.Action) error { return ask(ctx, action) })
+		err = precheck.Check(ctx, c.NotebookID, notebook, domain.RevertFacts(state, plan, notebook.SourceRootID), ask)
 	}
 	if err != nil {
 		return revertChecked{}, err

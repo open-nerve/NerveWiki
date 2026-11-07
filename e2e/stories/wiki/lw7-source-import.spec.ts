@@ -15,6 +15,30 @@ import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { importWith, jobRow, openReport } from "../../fixtures/wiki-transfer";
 import { zipOf } from "../../fixtures/zip-write";
 
+test("LW7 (API): an archive imported at an LLM Wiki's root takes numbers where its titles are reserved or taken", async ({
+  api,
+  db,
+  nervewiki,
+}, testInfo) => {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Imported root", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  const archive = zipOf([
+    { name: "index.md", data: "my index\n" },
+    { name: "log.md", data: "my log\n" },
+    { name: "Sub/index.md", data: "nested index\n" },
+  ]);
+  const job = await endedJob(api, pat, (await startImport(api, pat, notebook.id, archive)).id);
+  expect(job.state).toBe("succeeded");
+  const paths = (await treeOf(db, nervewiki.storageDir, notebook.id)).map((node) => node.path);
+  expect(paths).toEqual(expect.arrayContaining(["index 2", "log 2", "Sub", "Sub/index"]));
+  expect(paths).not.toContain("log");
+  expect(job.problems.map((problem) => problem.code)).toEqual(["renamed", "renamed"]);
+  await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
+});
+
 // Both entry points import the same real archive and check the complete persisted result. MCP has no import tool;
 // Go additionally uses single-node batches to prove duplicate parents keep their descendants across batches.
 for (const entryPoint of ["API", "page"] as const) {

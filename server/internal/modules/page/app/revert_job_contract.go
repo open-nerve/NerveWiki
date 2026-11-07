@@ -5,16 +5,11 @@ import (
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
-	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// checkJobContract judges the nominal batches' actual group actions, before
-// locks and parsing. Runtime batches still re-read and guard their writes.
-func checkJobContract(checked revertChecked, job JobPlan, cuts [][2]int, notebook domain.NotebookState, ask func(shared.Action) error) error {
-	return checkRevertFacts(jobRevertFacts(checked, job, cuts, notebook.SourceRootID), notebook, ask)
-}
-
-// jobRevertFacts uses compact payloads and the same per-batch action
+// jobRevertFacts are the nominal batches' actual group actions, judged before
+// locks and parsing; runtime batches still re-read and guard their writes. It
+// uses compact payloads and the same per-batch action
 // enumeration as RevertBatch. The initial checked restore payload supplies
 // each selected member's trash bytes and target state, never future members.
 func jobRevertFacts(checked revertChecked, job JobPlan, cuts [][2]int, sourceRootID uuid.UUID) iter.Seq[domain.StepFacts] {

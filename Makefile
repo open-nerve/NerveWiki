@@ -230,7 +230,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 新边界本机两轮 Go 包耗时均值为 319.376/309.7455/261.4265/266.258 秒；不是 CI Test 步骤时长。
 # EveryResolutionCase 在 H/I 之间分配；其他未匹配的新名字由第四份补齐，仍无遗漏、重叠；原超时不变。
 # 以上分支样本不替代最终两次 main 的各份 Test 均值验收（须 <450 秒）。
-# 以下 S1-0 候选文字保留当时口径；当前五份候选见 BOOTSTRAP_FIFTH 前的说明。
+# 以下 S1-0 候选文字保留当时口径；当前六份见 BOOTSTRAP_FIFTH 前的说明。
 # M10/P3/S1-0 当前候选：SECOND 的 MCP 在 B/C 前缀移界，FIRST/THIRD 与所有执行参数不变。
 # TestTheMCPBacklinksAreRESTs、TestTheMCPBatchIsRefusedWhole、
 # TestTheMCPBatchMeetsAWebRename、TestTheMCPBatchReachesItsUseCase 从第二份移到第三份；

@@ -883,7 +883,8 @@ func (f *fixture) checkedJobs(c *checkedStore) *app.JobWrites {
 	w := app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
-		NodeWriter: c, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
+		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
+		NodeWriter:     c, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 	})
 	return app.NewJobWrites(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait), f.store, 0, 0)
 }

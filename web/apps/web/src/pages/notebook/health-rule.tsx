@@ -183,7 +183,9 @@ export const HealthRule = observer(function HealthRule({
       <h2 ref={heading} id={`${summary.rule}-heading`} tabIndex={-1} className="font-semibold outline-none">
         {title}
       </h2>
-      <p className="text-sm text-muted-foreground">{t(text.description)}</p>
+      <p className="text-sm text-muted-foreground">
+        {t(summary.rule === "orphans" && mode === "llm_wiki" ? "health.orphansDescriptionWiki" : text.description)}
+      </p>
       <p className="text-sm">
         {summary.count === 1 && !summary.count_capped ? t("health.oneIssue") : t("health.count", { count })}
       </p>

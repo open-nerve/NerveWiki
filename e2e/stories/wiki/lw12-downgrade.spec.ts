@@ -182,14 +182,12 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     await expect(sourceTab.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await sourceTab.keyboard.press("ControlOrMeta+e");
     await expect(editorContent(sourceTab)).toHaveCount(0);
-    // EW04: both existing tabs already show the two virtual rows. These locators
+    // Both existing tabs already show the two virtual rows. These locators
     // stay on those same documents while the original event proof below runs.
     const virtualLinks = [writer, sourceTab].flatMap((tab) =>
       ["Directory", "History"].map((name) => pageTree(tab, notebook.name).getByRole("link", { name, exact: true }))
     );
-    await Promise.all(
-      virtualLinks.map((link) => expect(link, "EW04_BEFORE: a virtual row in the original tab").toBeVisible())
-    );
+    await Promise.all(virtualLinks.map((link) => expect(link, "a virtual row in the original tab").toBeVisible()));
     expect(streams.holders()).toEqual([writer]);
     const readsBefore = notebookReads();
     const streamsBefore = streams.opened();
@@ -212,9 +210,7 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
 
     await expect(otherMode.getByText("Standard notebook", { exact: true })).toBeVisible();
     await Promise.all(
-      virtualLinks.map((link) =>
-        expect(link, "EW04_AFTER: mode removes the row without navigation or a new stream").toHaveCount(0)
-      )
+      virtualLinks.map((link) => expect(link, "mode removes the row without navigation or a new stream").toHaveCount(0))
     );
     expect(notebookReads()).toBeGreaterThan(readsBefore);
     expect(await writer.evaluate(() => "lw12Document" in window)).toBe(true);

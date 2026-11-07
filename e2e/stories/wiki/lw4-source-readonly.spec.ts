@@ -298,6 +298,7 @@ for (const role of ["writer", "admin"] as const) {
       await expect(page.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
       await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
       await expect(page.getByRole("main").getByRole("button", { name: "Edit here", exact: true })).toHaveCount(0);
+      await expect(page.getByRole("main")).toContainText("Sources keep their original content");
       await expect(article.getByRole("checkbox")).toHaveCount(1);
       await expect(article.getByRole("checkbox")).toBeDisabled();
       await page.keyboard.press("ControlOrMeta+e");
@@ -318,6 +319,31 @@ for (const role of ["writer", "admin"] as const) {
     }
   });
 }
+
+test("LW4 (page): a link to a page not there creates no source, from a source or a wiki page", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const { pat, workspace } = await newOnboardedTeam(api, testInfo);
+  const writer = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "writer"), "member");
+  const { notebook, raw } = await sourceWiki(api, pat, workspace.slug);
+  const source = await createPage(api, pat, notebook.id, "Paper", raw.id, "See [[Missing page]]\n");
+  const wiki = await createPage(api, pat, notebook.id, "Notes", null, "See [[raw/New one]] and [[Elsewhere]]\n");
+  const page = await signedInPage(writer);
+  const notice = async (target: string) => {
+    await page.getByRole("article").getByRole("button", { name: target, exact: true }).click();
+    const dialog = page.getByRole("alertdialog");
+    await expect(dialog).toContainText("not from a link");
+    await expect(dialog.getByRole("button", { name: "Create page", exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "OK", exact: true }).click();
+  };
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await notice("Missing page");
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, wiki.id));
+  await notice("raw/New one");
+  await page.getByRole("article").getByRole("button", { name: "Elsewhere", exact: true }).click();
+  await expect(page.getByRole("alertdialog").getByRole("button", { name: "Create page", exact: true })).toBeVisible();
+});
 
 test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root instructions, root AGENTS and ordinary pages, and take over an ordinary edit", async ({
   api,

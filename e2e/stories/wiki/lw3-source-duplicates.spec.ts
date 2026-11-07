@@ -12,7 +12,7 @@ import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
-import { choosePageAction, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { choosePageAction, moveDialog, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW3's API and both MCP entries use real writers. UUID provenance for old nodes entering, restoring, receiving
@@ -281,6 +281,71 @@ for (const change of ["created", "moved in"] as const) {
     }
   });
 }
+
+test("LW3 (page): at 375 wide a long source keeps to the page and its refused dialog's buttons to the dialog", async ({
+  api,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Long sources", "editor", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (!notebook.source_root_id) throw new Error("no configured source root");
+  const raw = notebook.source_root_id;
+  const spaced = "Attention is all you need by Vaswani and others ".repeat(3).trim();
+  const source = await createPage(api, pat, notebook.id, spaced, raw, "spaced title\n");
+  const file = await uploadAsset(
+    api,
+    pat,
+    notebook.id,
+    { name: `${spaced}.txt`, bytes: utf8("a long name") },
+    source.id
+  );
+  const page = await signedInPage(tokens);
+  pageWatch.expectConsole({ errors: [failedToLoad(409)] });
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await expect(pageHeading(page, spaced)).toBeVisible();
+  await expect(page.locator(`[data-attachment="${file.id}"]`)).toBeAttached();
+  const width = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(width).toEqual({ viewport: 375, content: 375 });
+
+  const unbroken = "attention_is_all_you_need_vaswani_2017_neurips";
+  await createPage(api, pat, notebook.id, unbroken, raw, "same bytes\n");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto(wikiPagePath(workspace.slug, notebook.id, raw));
+  await choosePageAction(page, notebook.name, "raw", "Paste Markdown");
+  await page.setViewportSize({ width: 375, height: 800 });
+  const dialog = page.getByRole("dialog", { name: "Paste Markdown under raw", exact: true });
+  await dialog.getByLabel("Title", { exact: true }).fill("Again");
+  await dialog.getByLabel("Markdown", { exact: true }).fill("same bytes\n");
+  await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+  await expect(dialog.getByRole("link", { name: `raw/${unbroken}.md`, exact: true })).toBeVisible();
+  const edge = await dialog.boundingBox();
+  const add = await dialog.getByRole("button", { name: "Add source", exact: true }).boundingBox();
+  if (edge === null || add === null) throw new Error("the dialog has no box");
+  expect(add.x + add.width).toBeLessThanOrEqual(edge.x + edge.width);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A select takes the width of its longest option, a long source's path among them.
+  await createPage(api, pat, notebook.id, "Plain");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.reload();
+  await choosePageAction(page, notebook.name, "Plain", "Move to…");
+  await page.setViewportSize({ width: 375, height: 800 });
+  const move = moveDialog(page, "Plain");
+  const box = await move.boundingBox();
+  const button = await move.getByRole("button", { name: "Move", exact: true }).boundingBox();
+  const select = await move.getByLabel("Parent page", { exact: true }).boundingBox();
+  if (box === null || button === null || select === null) throw new Error("the move dialog has no box");
+  expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
+  expect(select.x + select.width).toBeLessThanOrEqual(box.x + box.width);
+});
 
 test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({
   api,

@@ -7,7 +7,7 @@ created: 2026-10-27
 
 # 模式的契约表、模式变化的订阅者与冻结的拒绝
 
-**P3/S1实际接入的移交（2026-10-31）**：内部LintScope的显式Contract＋AreaRootID与implicit identity隔离，effective standard的root=nil，stored standard可explicit LLM＋拟议root；零UUID不是nil。SourceArea/LintData完整整区不依赖hash；调用不得处于已有事务内，名额/期限及交付前授权仍适用。literal-v1现已实际计stale_pages，M11须按既有闸门拒批准或先reindex；不启动M11。完整item_key、cursor、规则与说明SDK余1003/933B见[M10/P3/S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)。P4 Unknown/未改页coverage继续后续义务，status仍open。
+**P3/S1实际接入的移交（2026-10-31）**：内部LintScope的显式Contract＋AreaRootID与implicit identity隔离，effective standard的root=nil，stored standard可explicit LLM＋拟议root；零UUID不是nil。SourceArea/LintData完整整区不依赖hash；调用不得处于已有事务内，名额/期限及交付前授权仍适用。literal-v1现已实际计stale_pages，M11须按既有闸门拒批准或先reindex；不启动M11。完整item_key、cursor、规则与说明SDK余1003/933B见[M10/P3/S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)。P4 Unknown/未改页coverage已随P4/S2实施，status仍open。
 
 **P3来源格式前置的移交（S1-0a历史记录，以下后续状态是原时点）**：当前Extractor为2，literal-v1为旧格式。后续lint实施时须计入stale_pages；M11按[M10总设计](../../M10-llm-wiki/00-M10-design.md) §7拒绝批准或先reindex，不能过滤旧页后称规则全过。S1-0a未实现lint或M11闸门，前置验证见[P3 §10.1](../../M10-llm-wiki/03-P3-lint-health.md#101-s1)。后续ingest仍遵守[P3](../../M10-llm-wiki/03-P3-lint-health.md) §3.8.2的KnownAbsent/Ineligible/Known/Unknown及未改页coverage；新页已知不存在不等于全本旧消化为空。M11未开始，status保持open。
 
@@ -27,8 +27,19 @@ M10/P1 建成了模式与模板、模式守卫的框架、预检与后台拒绝�
 
 ### M10/P2补充（来源契约；升级仍未开始）
 
-P2/S1–S2已完成来源事实/rewrite/hash；S3网页与后续集成见[P2结果](../../M10-llm-wiki/02-P2-source-area.md#103-s3-完整来源网页)。批准变为LLM时须在同事务重建指定根严格后代source_hash并清区外；普通模式虽可预指定SourceRootID，hash仍NULL。保全revision.rewrite，旧无标记/Down-Up按保守规则；SourceHashes、ModeSubscriber顺序与free refusal.code沿既有接口。此为已实现契约的交接，不设计升级流程；status仍open。SourceRootID旧过强注释Nit继续M10收尾，不顺手加强SQL约束。
+P2/S1–S2已完成来源事实/rewrite/hash；S3网页与后续集成见[P2结果](../../M10-llm-wiki/02-P2-source-area.md#103-s3-完整来源网页)。批准变为LLM时须在同事务重建指定根严格后代source_hash并清区外；普通模式虽可预指定SourceRootID，hash仍NULL。保全revision.rewrite，旧无标记/Down-Up按保守规则；SourceHashes、ModeSubscriber顺序与free refusal.code沿既有接口。此为已实现契约的交接，不设计升级流程；status仍open。SourceRootID的注释已在M10收尾改正，SQL约束不加强。
 
 ### M10/P4补充（ingest；升级仍未开始）
 
 P4的ingest只相信当前来源表示与充分旧／未改证据。旧v1、missing/stale必须先reindex，之后恢复未来可靠判断，不补此前历史标签；Unknown与PossibleTargets不是升级ready状态。批准升级前仍处理旧根index/log保留名，否则whole export可能contributor_conflict。本移交不启动M11，也不把未改页最终树／解析近似写成全unit旧快照精确。
+
+### M10 收尾补充（升级仍未开始）
+
+- **已有的笔记库**：把 LLM Wiki 的导出重新导入一本新的 LLM Wiki，得到 `AGENTS 2` 与 `raw 2`，来源落在来源区以外（`bootstrap/virtual_export_import_test.go:36`、LW10，README"重新导入的限制"）。M10 不合并。已有的笔记库（含这样导回来的）走升级定来源根，M11 设计时写明这种库怎样走。
+- **根下的保留标题**：升级之前根下可能有 `index`、`log`、`index.md`、`log.md` 的真实节点，页与附件都算，含一个 `index.md` 的文件夹页，它让整本导出答 `contributor_conflict`。批准之前改名或拒绝（5.8 第二道闸第 3 条）。
+- **回收站里的保留标题**（收尾审查 A-M1）：批准之前删掉的根下 `index`，批准之后撤销那次删除会把它带回 LLM Wiki 的根：`CheckContract` 只判建、改名、移动，撤销的恢复不加序号（`page/app/unit_revert.go`），放回保留的根答的 `page.virtual_file` 又不在 `revertChangeset` 的码里。M10 里走不到（根下没有这样的节点）。M11 要判 `OpRestore`，或批准时一并处理回收站。
+- **upgrade 的 prompt**：登记在 wiki 的 `Prompts()`，`Entry: NotebookEntry`、静态，先写 `api/mcp/prompts.json`，`TestThePromptListsAreTheContract`、`TestThePromptReadsLLMWikiMatrix` 加行。方向相反：`wiki/app/playbooks.go` 的 `Execute` 对不是 `llm_wiki` 的笔记本答 `notebook.not_llm_wiki`，upgrade 要在升级中的普通笔记本上答、在别的状态答错误，不能原样经它。
+- **闸门**：经 wiki 的 `Lint` 内部入口，传 `LintScope{Contract: LLM Wiki 的, AreaRootID: 提议的来源根}`，一个快照里取。第 4 条是 `invalid_frontmatter`，第 5 条是 `missing_type`、`missing_summary`、`invalid_sources`；第 6 条要自己的数：`wanted` 数不同的写下的目标，不含读作附件的、虚拟的与来源发出的，到 10,000 就停。`stale_pages > 0` 时拒绝提交或先 reindex。
+- **内容保全**：第 7 条"差异只来自系统的链接改写"按版本行的 `rewrite` 判。
+- **守卫的次序**：冻结与护栏登记在 `pageRegistrants` 的守卫里，建议排在模式与锁之前；`Write.Notebook` 是加升级状态的地方。
+- **说明与降级**：说明里不用"upgrade"一词（它指服务端的升级）；降级在升级期间如何（拒绝或先放弃升级）由 M11 定；`notebook.change_mode` 可以给发起与批准用。

@@ -99,7 +99,7 @@ export function AttachmentRow({
         {...opening}
         data-attachment={asset.id}
         draggable={false}
-        className="min-w-0 flex-1 truncate hover:underline"
+        className="relative min-w-0 flex-1 truncate hover:underline"
       >
         {asset.name}
         {source && (

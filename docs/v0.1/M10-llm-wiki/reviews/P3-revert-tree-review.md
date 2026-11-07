@@ -120,7 +120,7 @@ A/B/C分别在独立detached worktree审同一78167/bea20fde与26文件diff，�
 
 ## 证据索引
 
-树外证据根缩写：`INV = m10/p3-s2/s2-main-merge-guards-investigation-01`，`FIX = m10/p3-revert-tree`。均在 `/home/parallels/.local/state/nervewiki/` 下；T7原CI日志路径另列。深层命令、每个文件与原日志沿下列已接受回执引用，不复制成长表。
+树外证据根缩写：`INV = m10/p3-s2/s2-main-merge-guards-investigation-01`，`FIX = m10/p3-revert-tree`。均在 `~/.local/state/nervewiki/` 下；T7原CI日志路径另列。深层命令、每个文件与原日志沿下列已接受回执引用，不复制成长表。
 
 | 标号 | 原件与 SHA256 |
 |---|---|

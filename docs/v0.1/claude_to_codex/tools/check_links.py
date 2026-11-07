@@ -27,7 +27,7 @@ def broken_of(p, text):
             target = m.group(1).split('#')[0]
             if not target or re.match(r'[a-z]+:', target):
                 continue
-            if not (p.parent / target).resolve().exists():
+            if target.startswith('/') or not (p.parent / target).resolve().exists():
                 out.append((n, m.group(1)))
     return out
 
