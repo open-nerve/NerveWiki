@@ -21,6 +21,7 @@ import type { LinkLanding } from "../../services/linking.service";
 import type { Notebook } from "../../services/notebook.service";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { useWorkspace } from "../workspace/workspace-layout";
+import { virtualTarget } from "./virtual-target";
 
 type Landing = NonNullable<LinkLanding["landing"]>;
 
@@ -111,6 +112,14 @@ export function useUnresolvedLinks({
     if (link.kind !== "link") {
       show({ why: link.kind });
       return;
+    }
+    if (notebook.mode === "llm_wiki") {
+      const virtual = virtualTarget(link.target, pages.nodeAncestors(page)?.length);
+      if (virtual !== undefined) {
+        const route = virtual === "index" ? "index" : "history";
+        void navigate(`/${slug}/notebooks/${notebook.id}/${route}`, { state: arrived });
+        return;
+      }
     }
     if (readOnly || !writesPages(notebook.role)) {
       show({ why: readOnly ? "readOnly" : "reader" });

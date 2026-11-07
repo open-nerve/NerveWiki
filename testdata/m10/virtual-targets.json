@@ -1,0 +1,101 @@
+[
+  { "name": "index", "raw": "index", "parents": [], "virtual": "index", "wanted": "", "qualified": false },
+  { "name": "log", "raw": "log", "parents": [], "virtual": "log", "wanted": "", "qualified": false },
+  { "name": "case", "raw": "INDEX", "parents": [], "virtual": "index", "wanted": "", "qualified": false },
+  { "name": "suffix", "raw": "LoG.MD", "parents": [], "virtual": "log", "wanted": "", "qualified": false },
+  { "name": "rooted", "raw": "/index", "parents": ["a"], "virtual": "index", "wanted": "", "qualified": false },
+  {
+    "name": "bare-from-nested",
+    "raw": "index",
+    "parents": ["a", "b"],
+    "virtual": "index",
+    "wanted": "",
+    "qualified": false
+  },
+  { "name": "relative-root", "raw": "./index", "parents": [], "virtual": "index", "wanted": "", "qualified": false },
+  {
+    "name": "relative-nested",
+    "raw": "./index",
+    "parents": ["a"],
+    "virtual": null,
+    "wanted": "a/index",
+    "qualified": true
+  },
+  { "name": "up-to-root", "raw": "../index", "parents": ["a"], "virtual": "index", "wanted": "", "qualified": false },
+  {
+    "name": "up-still-nested",
+    "raw": "../index",
+    "parents": ["a", "b"],
+    "virtual": null,
+    "wanted": "a/index",
+    "qualified": true
+  },
+  { "name": "two-up", "raw": "../../log", "parents": ["a", "b"], "virtual": "log", "wanted": "", "qualified": false },
+  { "name": "too-many-up", "raw": "../../log", "parents": ["a"], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "above-root", "raw": "../index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "dot-then-up", "raw": "./../LOG", "parents": ["a"], "virtual": "log", "wanted": "", "qualified": false },
+  {
+    "name": "nested",
+    "raw": "notes/index",
+    "parents": [],
+    "virtual": null,
+    "wanted": "notes/index",
+    "qualified": true
+  },
+  {
+    "name": "rooted-nested",
+    "raw": "/notes/log.md",
+    "parents": [],
+    "virtual": null,
+    "wanted": "notes/log",
+    "qualified": true
+  },
+  { "name": "double-index", "raw": "index.md.md", "parents": [], "virtual": "index", "wanted": "", "qualified": false },
+  { "name": "double-log", "raw": "/LOG.MD.md", "parents": ["a"], "virtual": "log", "wanted": "", "qualified": false },
+  {
+    "name": "triple-index",
+    "raw": "index.md.md.md",
+    "parents": [],
+    "virtual": null,
+    "wanted": "index.md.md",
+    "qualified": true
+  },
+  {
+    "name": "triple-log",
+    "raw": "log.MD.md.MD",
+    "parents": [],
+    "virtual": null,
+    "wanted": "log.md.md",
+    "qualified": true
+  },
+  { "name": "dotless-i", "raw": "ındex", "parents": [], "virtual": null, "wanted": "ındex", "qualified": true },
+  { "name": "dotted-i", "raw": "İndex", "parents": [], "virtual": null, "wanted": "i̇ndex", "qualified": true },
+  { "name": "decomposed", "raw": "Ä/LOG.md", "parents": [], "virtual": null, "wanted": "ä/log", "qualified": true },
+  {
+    "name": "fold",
+    "raw": "Straße/INDEX",
+    "parents": [],
+    "virtual": null,
+    "wanted": "strasse/index",
+    "qualified": true
+  },
+  { "name": "empty", "raw": "", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "empty-prefix", "raw": "//index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "empty-segment", "raw": "a//log", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "trailing", "raw": "index/", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "internal-dot", "raw": "a/./index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "internal-up", "raw": "a/../log", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "rooted-up", "raw": "/../index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "rooted-dot", "raw": "/./index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "only-suffix", "raw": ".md", "parents": [], "virtual": null, "wanted": ".md", "qualified": true },
+  { "name": "spaces", "raw": " index ", "parents": [], "virtual": null, "wanted": " index ", "qualified": true },
+  { "name": "no-decode", "raw": "%69ndex", "parents": [], "virtual": null, "wanted": "%69ndex", "qualified": true },
+  {
+    "name": "anchor-is-not-key",
+    "raw": "index#part",
+    "parents": [],
+    "virtual": null,
+    "wanted": "index#part",
+    "qualified": true
+  }
+]

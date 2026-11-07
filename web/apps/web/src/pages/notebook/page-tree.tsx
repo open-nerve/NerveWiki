@@ -1,9 +1,9 @@
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { extractInstruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/list-item";
-import { Plus } from "lucide-react";
+import { History, List, Plus } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
-import { useParams } from "react-router";
+import { Link, useParams } from "react-router";
 import useSWR from "swr";
 
 import { writesPages } from "../../app/effective-role";
@@ -12,6 +12,7 @@ import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
 import { duplicateText } from "./duplicate-text";
 import { useNodeNavigate } from "../node-target";
+import { useWorkspace } from "../workspace/workspace-layout";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { formatPeriod } from "../../i18n/format";
@@ -45,6 +46,8 @@ import { useSourceMove } from "./source-move-confirmation";
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
+  const { slug } = useWorkspace();
+  const home = `/${slug}/notebooks/${notebook.id}`;
   const navigateNode = useNodeNavigate(pages);
   const { pageId } = useParams();
   const t = useT();
@@ -142,6 +145,21 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           </Button>
         )}
       </div>
+      {notebook.mode === "llm_wiki" && (
+        <div className="space-y-1">
+          <Link to={`${home}/index`} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent">
+            <List aria-hidden="true" className="size-4" />
+            {t("index.title")}
+          </Link>
+          <Link
+            to={`${home}/history`}
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+          >
+            <History aria-hidden="true" className="size-4" />
+            {t("history.title")}
+          </Link>
+        </div>
+      )}
       {failure !== undefined && (
         <Alert>
           {duplicateText(failure, pages, (id) => {

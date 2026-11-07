@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
+import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -23,7 +24,7 @@ import { HistoryRow } from "./history-row";
 import { useNotebook } from "./notebook-layout";
 
 /**
- * filterOf is the filter of a history's address: ?actor=&client=&page=, "" for each left out; an id in capitals is
+ * filterOf is the filter of a history's address: ?actor=&client=&page=&ingest=1, "" for an id or client left out; an id in capitals is
  * the id, as the server reads it, and as the page names it (M8/P3B review B-2).
  */
 function filterOf(params: URLSearchParams): LogFilter {
@@ -31,17 +32,19 @@ function filterOf(params: URLSearchParams): LogFilter {
     actor: (params.get("actor") ?? "").toLowerCase(),
     client: params.get("client") ?? "",
     page: (params.get("page") ?? "").toLowerCase(),
+    ingest: params.get("ingest") === "1" ? true : undefined,
   };
 }
 
 /** paramsOf is the query of a history's address that has filter: those of it that narrow it alone. */
-function paramsOf({ actor, client, page }: LogFilter): URLSearchParams {
+function paramsOf({ actor, client, page, ingest }: LogFilter): URLSearchParams {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries({ actor, client, page })) {
     if (value !== "") {
       params.set(name, value);
     }
   }
+  if (ingest === true) params.set("ingest", "1");
   return params;
 }
 
@@ -66,7 +69,7 @@ export const HistoryPage = observer(function HistoryPage() {
   const pages = usePageTree(notebook);
   const { locale } = useStore().preferences;
   const t = useT();
-  const heading = useRef<HTMLHeadingElement>(null);
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   // Who's filter, which holds Only this person's choice.
   const who = useRef<HTMLSelectElement>(null);
   const title = t("history.title");
@@ -75,7 +78,9 @@ export const HistoryPage = observer(function HistoryPage() {
   const filter = filterOf(params);
   // An account or a page in the address that is no id names none: not read, as the server would refuse it.
   const readable = [filter.actor, filter.page].every((id) => id === "" || idPattern.test(id));
-  const key = readable ? ["changesets", notebook.id, filter.actor, filter.client, filter.page] : null;
+  const key = readable
+    ? ["changesets", notebook.id, filter.actor, filter.client, filter.page, filter.ingest === true]
+    : null;
   const swr = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
   const cached = () => (key === null ? undefined : swr.cache.get(unstable_serialize(key)));
@@ -124,7 +129,7 @@ export const HistoryPage = observer(function HistoryPage() {
   );
 
   function choose(next: LogFilter): void {
-    const nextKey = ["changesets", notebook.id, next.actor, next.client, next.page];
+    const nextKey = ["changesets", notebook.id, next.actor, next.client, next.page, next.ingest === true];
     setAsked(unstable_serialize(nextKey));
     setParams(paramsOf(next), { replace: true });
   }

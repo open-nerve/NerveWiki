@@ -110,7 +110,7 @@ export const HistoryFilters = observer(function HistoryFilters({
 }) {
   const t = useT();
   const pages = usePageTree(notebook);
-  const ids = { actor: useId(), client: useId() };
+  const ids = { actor: useId(), client: useId(), ingest: useId() };
   const mcps = read.map((changeset) => changeset.client).filter((client) => client.startsWith("mcp:"));
   const shown = [...new Set([...clients, ...mcps, ...(filter.client === "" ? [] : [filter.client])])];
   const node = filter.page === "" ? undefined : pages.nodes?.find((each) => each.id === filter.page);
@@ -146,6 +146,17 @@ export const HistoryFilters = observer(function HistoryFilters({
               {clientText(client, t)}
             </option>
           ))}
+        </NativeSelect>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={ids.ingest}>{t("history.ingestion")}</Label>
+        <NativeSelect
+          id={ids.ingest}
+          value={filter.ingest === true ? "1" : ""}
+          onChange={(event) => choose({ ...filter, ingest: event.target.value === "1" ? true : undefined })}
+        >
+          <option value="">{t("history.allChanges")}</option>
+          <option value="1">{t("history.onlyIngest")}</option>
         </NativeSelect>
       </div>
       {filter.page !== "" && <PageFilter name={page} remove={() => choose({ ...filter, page: "" })} left={left} />}

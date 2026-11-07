@@ -57,7 +57,7 @@ func WantedTarget(ctx context.Context, raw, kind string, parentKeys []string, ll
 		keys = append(keys, parentKeys[:len(parentKeys)-t.Up]...)
 		keys = append(keys, t.Keys...)
 	}
-	if llm && len(keys) == 1 && (keys[0] == "index" || keys[0] == "log" || keys[0] == "index.md" || keys[0] == "log.md") {
+	if llm && virtualTargetKeys(keys) {
 		return "", false, nil
 	}
 	var joined strings.Builder
@@ -81,6 +81,12 @@ func WantedTarget(ctx context.Context, raw, kind string, parentKeys []string, ll
 		return "", false, err
 	}
 	return joined.String(), true, nil
+}
+
+// virtualTargetKeys recognizes only a complete canonical root target. The
+// caller preserves the grammar, above-root, presence and asset checks first.
+func virtualTargetKeys(keys []string) bool {
+	return len(keys) == 1 && (keys[0] == "index" || keys[0] == "log" || keys[0] == "index.md" || keys[0] == "log.md")
 }
 
 // The same ParseTarget grammar, with cancellable scans and the shared
