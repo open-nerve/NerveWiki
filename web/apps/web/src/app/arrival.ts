@@ -42,6 +42,10 @@ function takeArrivalFocus(navigation: object, heading: HTMLElement | null): void
   const at = document.activeElement;
   if (first || at === null || at === document.body) {
     heading?.focus();
+    // WebKit does not scroll to a focused heading near the top of a page left scrolled down.
+    if (heading !== null && heading.getBoundingClientRect().bottom < 0) {
+      heading.scrollIntoView({ block: "center" });
+    }
   }
 }
 

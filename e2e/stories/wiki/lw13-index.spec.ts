@@ -211,10 +211,72 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
       .map((item) => item.name)
   );
   await expect(pages.getByRole("link")).toHaveCount(25);
+  const clear = page.getByRole("button", { name: "Clear filters", exact: true });
   const cleared = indexAnswer();
-  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  await clear.focus();
+  await page.keyboard.press("Enter");
   expect(new URL((await cleared).url()).search).toBe("");
   await expect(page).toHaveURL(`${home}/index`);
   await expect(groups).toHaveText(["note", "topic"]);
   await expect(pages.getByRole("link")).toHaveText(ordered.slice(0, 50).map((item) => item.name));
+  await expect(clear, "nothing left to clear keeps the focus on the button").toHaveAttribute("aria-disabled", "true");
+  await expect(clear).toBeFocused();
+
+  // A row far down the list opens its page at the top, not at the list's scroll.
+  await pages.getByRole("link").nth(49).click();
+  await expect(page).toHaveURL(`${home}/pages/${ordered[49]!.id}`);
+  const title = page.getByRole("main").getByRole("heading", { level: 1, name: ordered[49]!.name, exact: true });
+  await expect(title).toBeFocused();
+  await expect.poll(() => title.evaluate((heading) => heading.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
+});
+
+// Pages without a type group by parent, so a later read's rows join a group far above the button.
+test("LW13 (page): the last More of untyped pages under two parents moves the reader to its first row", async ({
+  api,
+  signedInPage,
+}, info) => {
+  const team = await newOnboardedTeam(api, info);
+  const notebook = await createNotebook(api, team.pat, team.workspace.slug, "Untyped", "none");
+  const parents = [
+    await createPage(api, team.pat, notebook.id, "Left", null, "Left\n"),
+    await createPage(api, team.pat, notebook.id, "Right", null, "Right\n"),
+  ];
+  for (let i = 0; i < 52; i++) {
+    await createPage(api, team.pat, notebook.id, `Child ${String(i).padStart(2, "0")}`, parents[i % 2]!.id, `${i}\n`);
+  }
+  const page = await signedInPage(team.tokens);
+  await page.goto(`/${team.workspace.slug}/notebooks/${notebook.id}/index`);
+  const pages = page.getByRole("region", { name: "Directory pages", exact: true });
+  await expect(pages.getByRole("link")).toHaveCount(50);
+  const more = page.getByRole("button", { name: "More", exact: true });
+  await more.focus();
+  await page.keyboard.press("Enter");
+  await expect(pages.getByRole("link")).toHaveCount(54);
+  await expect(more).toHaveCount(0);
+  const focused = () =>
+    page.evaluate(() => {
+      const at = document.activeElement;
+      return at instanceof HTMLAnchorElement ? at.getBoundingClientRect().top : undefined;
+    });
+  await expect.poll(focused).toBeGreaterThanOrEqual(0);
+  expect(await focused()).toBeLessThan(page.viewportSize()!.height);
+});
+
+test("LW13 (page): at 375 wide a long type and tag wrap inside the directory", async ({ api, signedInPage }, info) => {
+  const team = await newOnboardedTeam(api, info);
+  const notebook = await createNotebook(api, team.pat, team.workspace.slug, "Long values", "none");
+  const long = "x".repeat(180);
+  await createPage(api, team.pat, notebook.id, "Long", null, `---\ntype: ${long}\ntags: [${long}]\n---\nLong\n`);
+  const page = await signedInPage(team.tokens);
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(`/${team.workspace.slug}/notebooks/${notebook.id}/index`);
+  await expect(page.getByRole("region", { name: "Directory pages", exact: true }).getByRole("link")).toHaveText([
+    "Long",
+  ]);
+  await expect(page.getByText(`#${long}`, { exact: true })).toBeVisible();
+  const width = await page.evaluate(() => ({
+    viewport: document.documentElement.clientWidth,
+    content: document.documentElement.scrollWidth,
+  }));
+  expect(width).toEqual({ viewport: 375, content: 375 });
 });

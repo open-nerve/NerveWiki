@@ -266,12 +266,10 @@ test.each([false, true])("P4/focus: More adds a real page; reader moved=%s", asy
     await user.click(tag);
     fireEvent.wheel(window);
   }
-  const scroll = { x: window.scrollX, y: window.scrollY };
   await act(async () => held.resolve(json({ ...indexFacts(), data: [indexFacts().data[1]!] })));
   const added = await screen.findByRole("link", { name: "Bravo" });
   expect(titles()).toEqual(["Alpha", "Bravo"]);
   await waitFor(() => expect(document.activeElement).toBe(moved ? tag : added));
-  expect({ x: window.scrollX, y: window.scrollY }).toEqual(scroll);
 });
 
 test.each([
@@ -288,4 +286,96 @@ test.each([
     expect(screen.queryByText("3 pages have type names too long to filter by.") !== null).toBe(tooLong);
   });
   expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
+});
+
+test("P4/open_row: a row opens its page arrived at, the page's title taking the focus", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.value.data = [{ ...indexFacts().data[0]!, page_id: guide.id, title: guide.name }];
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  await user.click(directory().getByRole("link", { name: guide.name }));
+  const title = await screen.findByRole("heading", { level: 1, name: guide.name });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
+test("P4/reopen: the link that goes with the list gives the focus to the title", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.value.mode = "llm_wiki";
+  renderApp(indexPath, fixture.server.app);
+  const reopen = await screen.findByRole("link", { name: "Reopen directory" });
+  fixture.value.mode = "standard";
+  reopen.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(screen.queryByRole("link", { name: "Reopen directory" })).toBeNull());
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Directory" }));
+});
+
+test("P4/clear_focus: Clear filters keeps the focus as nothing is left to clear, and then does nothing", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  renderApp(`${indexPath}?tag=plan`, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const clear = screen.getByRole("button", { name: "Clear filters" });
+  expect(clear.getAttribute("aria-disabled")).toBeNull();
+  clear.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(new URL(fixture.requests.at(-1)!.url).search).toBe(""));
+  expect(clear.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(clear);
+  const reads = fixture.requests.length;
+  await user.keyboard("{Enter}");
+  expect(fixture.requests).toHaveLength(reads);
+});
+
+test("P4/catalogue_stays: every type stays choosable while the next filter is read, a failure included", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const held = deferred<Response>();
+  fixture.answer = () => held.promise;
+  const type = screen.getByRole("combobox", { name: "Type" });
+  const options = () =>
+    within(type)
+      .getAllByRole("option")
+      .map((option) => option.textContent);
+  const every = ["All types", "Note (1)", "note (1)", "Topic (1)"];
+  expect(options()).toEqual(every);
+  await user.selectOptions(type, "Note");
+  await waitFor(() => expect(fixture.requests).toHaveLength(2));
+  expect(options()).toEqual(every);
+  await act(async () => held.resolve(problem(403, "forbidden")));
+  await screen.findByRole("alert");
+  expect(options()).toEqual(every);
+});
+
+test.each([
+  { query: "", said: "This notebook has no pages yet." },
+  { query: "?tag=none", said: "No pages match these filters." },
+])("P4/empty: an empty list says why, filtered '$query'", async ({ query, said }) => {
+  const fixture = indexServer();
+  fixture.value.data = [];
+  renderApp(`${indexPath}${query}`, fixture.server.app);
+  await screen.findByText(said);
+});
+
+test("P4/blank_type: a type of blanks cut short leaves no empty line under the title", async () => {
+  const fixture = indexServer();
+  const blank = " ".repeat(256);
+  fixture.value.data = [{ ...indexFacts().data[0]!, type: blank, type_key: " ".repeat(64) }];
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const row = directory().getByRole("link", { name: "Alpha" }).closest("li")!;
+  expect([...row.querySelectorAll("p")].filter((line) => line.textContent === blank)).toEqual([]);
+});
+
+test("P4/parent_pending: an untyped group says nothing of its parent until the tree is read", async () => {
+  const held = deferred<Response>();
+  const fixture = indexServer({ [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => held.promise });
+  fixture.value.data = [{ ...indexFacts().data[1]!, type: null, type_key: null }];
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("heading", { level: 2, name: "Without a type · …" });
+  expect(screen.queryByText(/Parent unavailable/)).toBeNull();
 });

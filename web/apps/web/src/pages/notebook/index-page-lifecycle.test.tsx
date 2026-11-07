@@ -172,6 +172,32 @@ test("P4/retry: an ordinary network failure really retries and then renders thre
   expect(shown()).toEqual(["Alpha", "Bravo", "Charlie"]);
 });
 
+test("P4/later_retry: a later page is not read again by itself, whose end would take the focus; More reads it", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const fixture = indexServer();
+  fixture.value.data = [indexFacts().data[0]!];
+  fixture.value.next_cursor = "next";
+  let offline = true;
+  fixture.answer = (request) => {
+    if (!new URL(request.url).searchParams.has("cursor")) return json(fixture.value);
+    if (offline) throw new TypeError("offline");
+    return json({ ...indexFacts(), data: [indexFacts().data[1]!] });
+  };
+  renderApp(indexPath, fixture.server.app);
+  const more = await screen.findByRole("button", { name: "More" });
+  more.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("alert");
+  offline = false;
+  await act(() => vi.advanceTimersByTimeAsync(300_000));
+  expect(fixture.requests).toHaveLength(2);
+  expect(document.activeElement).toBe(more);
+  await user.keyboard("{Enter}");
+  const added = await screen.findByRole("link", { name: "Bravo" });
+  await waitFor(() => expect(document.activeElement).toBe(added));
+});
+
 test("P4/retired_retry: leaving retires a scheduled retry and isolates the next login", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const fixture = indexServer();

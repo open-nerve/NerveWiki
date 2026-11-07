@@ -316,6 +316,7 @@ export const en = {
   "index.sources": "{path} · {count} sources",
   "index.sourceArea": "Source area",
   "index.empty": "No pages match these filters.",
+  "index.none": "This notebook has no pages yet.",
   "index.more": "More",
   "index.pages": "Directory pages",
   "index.root": "Notebook root",

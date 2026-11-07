@@ -44,7 +44,7 @@ export const IngestSources = observer(function IngestSources({
               ? undefined
               : openOf({ id: target.node.id, kind: target.node.kind, parent: target.node.parent_id }, home);
           return (
-            <li key={id ?? `gone-${index.toString()}`} className="break-words">
+            <li key={id ?? `gone-${index.toString()}`} className="max-w-full min-w-0 [overflow-wrap:anywhere]">
               {target !== undefined && open !== undefined ? (
                 <Link to={open.to} state={open.state} className="underline underline-offset-4">
                   <bdi>{target.path}</bdi>

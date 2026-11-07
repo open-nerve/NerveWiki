@@ -1,10 +1,10 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
-import useSWR, { SWRConfig, useSWRConfig, type Unloader } from "swr";
+import useSWR, { SWRConfig } from "swr";
 import useSWRInfinite from "swr/infinite";
 
-import { useArrivalFocus } from "../../app/arrival";
+import { arrived, useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -26,7 +26,6 @@ type Owner = {
   alive: boolean;
   restarting: boolean;
   controllers: Set<AbortController>;
-  unload?: Unloader;
   restart?: () => void;
 };
 type PageKey = readonly ["notebook-index", string | undefined, string, string, string, string, string, string | null];
@@ -41,10 +40,13 @@ export const IndexPage = observer(function IndexPage() {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const filter = { type: params.get("type") ?? "", tag: params.get("tag") ?? "" };
-  const identity = JSON.stringify([store.loginId, workspace.id, notebook.id, location.key, filter.type, filter.tag]);
-  const [metadata, setMetadata] = useState<{ identity: string; first: NotebookIndex }>();
-  const report = useCallback((first: NotebookIndex) => setMetadata({ identity, first }), [identity]);
+  const scope = JSON.stringify([store.loginId, workspace.id, notebook.id]);
+  const identity = JSON.stringify([scope, location.key, filter.type, filter.tag]);
+  const [metadata, setMetadata] = useState<{ scope: string; identity: string; first: NotebookIndex }>();
+  const report = useCallback((first: NotebookIndex) => setMetadata({ scope, identity, first }), [scope, identity]);
   const current = metadata?.identity === identity ? metadata.first : undefined;
+  // The types do not depend on the filter: the last read's stay choosable while the next is read.
+  const types = metadata?.scope === scope ? metadata.first.types : [];
   const heading = useArrivalFocus<HTMLHeadingElement>();
   const t = useT();
   useDocumentTitle(t("index.title"), notebook.name);
@@ -61,7 +63,7 @@ export const IndexPage = observer(function IndexPage() {
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
         {t("index.title")}
       </h1>
-      <IndexFilters filter={filter} catalogue={current?.types ?? []} choose={choose} />
+      <IndexFilters filter={filter} catalogue={types} choose={choose} />
       {current !== undefined && !current.types_complete && (
         <p className="text-muted-foreground">{t("index.partialTypes")}</p>
       )}
@@ -113,7 +115,6 @@ function IndexEntry(props: EntryProps) {
       owner.restarting = true;
       for (const controller of owner.controllers) controller.abort();
       owner.controllers.clear();
-      owner.unload?.({ revalidate: false });
     };
   }, []);
   return (
@@ -137,7 +138,6 @@ const IndexResults = observer(function IndexResults({
   const store = useStore();
   const { slug } = useWorkspace();
   const t = useT();
-  const { unload } = useSWRConfig();
   const current = () => control.current.alive && store.auth.state.loginId === store.loginId;
   const getKey = (page: number, previous: NotebookIndex | null): PageKey | null => {
     if (page > 0 && (previous === null || previous.next_cursor === null)) return null;
@@ -175,6 +175,8 @@ const IndexResults = observer(function IndexResults({
       revalidateFirstPage: false,
       onErrorRetry: (cause, key, config, revalidate, options) => {
         if (!current() || (cause instanceof DOMException && cause.name === "AbortError")) return;
+        // A later page is read again by More: read by itself, it would take the focus with the button it ends.
+        if (data?.[0] !== undefined) return;
         // The normal retry policy, including ordinary server_busy; only a retired generation is suppressed.
         onErrorRetry?.(
           cause,
@@ -189,11 +191,10 @@ const IndexResults = observer(function IndexResults({
     }
   );
   useLayoutEffect(() => {
-    control.current.unload = unload;
     control.current.restart = () => {
       void mutate().catch(() => undefined);
     };
-  }, [control, unload, mutate]);
+  }, [control, mutate]);
   const first = data?.[0];
   useEffect(() => {
     if (first !== undefined && control.current.alive && store.auth.state.loginId === store.loginId) report(first);
@@ -210,10 +211,10 @@ const IndexResults = observer(function IndexResults({
   useEffect(() => {
     const wait = waiting.current;
     if (wait === undefined) return;
-    const arrived = data !== undefined && data.length > wait.before;
-    if (arrived || (error !== undefined && !isValidating)) {
+    const read = data !== undefined && data.length > wait.before;
+    if (read || (error !== undefined && !isValidating)) {
       waiting.current = undefined;
-      wait.settle(arrived ? data : undefined);
+      wait.settle(read ? data : undefined);
     }
   }, [data, error, isValidating]);
   useEffect(
@@ -259,7 +260,7 @@ const IndexResults = observer(function IndexResults({
       {mismatch && (
         <Alert>
           {t("index.modeChanged")}{" "}
-          <Link to={reopen} className="underline">
+          <Link to={reopen} state={arrived} className="underline">
             {t("index.reopen")}
           </Link>
         </Alert>
@@ -277,7 +278,9 @@ const IndexResults = observer(function IndexResults({
       {first === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : items.length === 0 ? (
-        <p className="text-muted-foreground">{t("index.empty")}</p>
+        <p className="text-muted-foreground">
+          {t(filter.type === "" && filter.tag === "" ? "index.none" : "index.empty")}
+        </p>
       ) : (
         <IndexRows
           items={items}

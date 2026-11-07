@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
 
+import { arrived } from "../../app/arrival";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { NotebookIndexItem } from "../../services/linking.service";
@@ -53,7 +54,8 @@ export const IndexRows = observer(function IndexRows({
         const parent =
           group.parent === null
             ? t("index.root")
-            : (nodeTarget(pages, group.parent)?.path ?? t("index.parentUnavailable"));
+            : (nodeTarget(pages, group.parent)?.path ??
+              (pages.nodes === undefined ? "…" : t("index.parentUnavailable")));
         const title =
           group.typeKey === null
             ? t("index.untyped", { parent })
@@ -67,11 +69,14 @@ export const IndexRows = observer(function IndexRows({
                   <Link
                     ref={(node) => linkRef(item.page_id, node)}
                     to={`${home}/pages/${item.page_id}`}
+                    state={arrived}
                     className="font-medium break-words underline underline-offset-4"
                   >
                     {item.title}
                   </Link>
-                  {item.type !== null && <p className="text-sm text-muted-foreground break-words">{item.type}</p>}
+                  {item.type !== null && item.type.trim() !== "" && (
+                    <p className="text-sm text-muted-foreground break-words">{item.type}</p>
+                  )}
                   {item.summary !== null && (
                     <p className="break-words">
                       {item.summary}
@@ -82,7 +87,9 @@ export const IndexRows = observer(function IndexRows({
                   {item.tags.length > 0 && (
                     <p className="flex flex-wrap gap-2 text-sm">
                       {item.tags.map((tag) => (
-                        <span key={tag}>#{tag}</span>
+                        <span key={tag} className="min-w-0 [overflow-wrap:anywhere]">
+                          #{tag}
+                        </span>
                       ))}
                     </p>
                   )}

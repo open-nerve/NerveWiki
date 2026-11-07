@@ -33,6 +33,7 @@ export function IndexFilters({
     setShown(filter.tag);
     setTag(filter.tag);
   }
+  const clear = filter.type !== "" || filter.tag !== "" || tag !== "";
   const outside = filter.type !== "" && !catalogue.some((option) => option.type === filter.type);
   return (
     <form
@@ -42,7 +43,7 @@ export function IndexFilters({
         choose({ ...filter, tag });
       }}
     >
-      <div className="space-y-2">
+      <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={typeId}>{t("index.type")}</Label>
         <NativeSelect
           id={typeId}
@@ -69,8 +70,10 @@ export function IndexFilters({
       <Button
         type="button"
         variant="ghost"
-        disabled={filter.type === "" && filter.tag === "" && tag === ""}
+        aria-disabled={!clear || undefined}
+        className="aria-disabled:opacity-50"
         onClick={() => {
+          if (!clear) return;
           setTag("");
           choose({ type: "", tag: "" });
         }}

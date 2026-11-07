@@ -303,6 +303,7 @@ export const zhCN: Messages = {
   "index.sources": "{path} · {count}个来源",
   "index.sourceArea": "来源区",
   "index.empty": "没有符合筛选条件的页面。",
+  "index.none": "这个笔记本还没有页面。",
   "index.more": "更多",
   "index.pages": "目录页面",
   "index.root": "笔记本根目录",

@@ -1,12 +1,8 @@
-import type { NotebookIndex, NotebookIndexItem } from "@nervewiki/api-client";
+import type { NotebookIndex } from "@nervewiki/api-client";
 
 import { json, notebookJSON, type Answer } from "./fakes";
 import { guide, install, linux, notes, pageNode, pageServer } from "./page-server";
 
-// The intersection keeps the route-only baseline test compilable before normal API generation.
-// After decision116 generation it is the same required nullable field as NotebookIndexItem.
-type DirectoryItem = NotebookIndexItem & { type_key: string | null };
-type DirectoryPage = Omit<NotebookIndex, "data"> & { data: DirectoryItem[] };
 export const indexHome = `/lab/notebooks/${notebookJSON.id}`;
 export const indexPath = `${indexHome}/index`;
 const indexRoute = `GET /api/v0/notebooks/${notebookJSON.id}/index`;
@@ -16,7 +12,7 @@ export const secondId = "0199a2b4-0000-7000-8000-000000000702";
 export const thirdId = "0199a2b4-0000-7000-8000-000000000703";
 
 /** Complete wire literals; neither grouping nor type normalization is computed by this fake. */
-export function indexFacts(): DirectoryPage {
+export function indexFacts(): NotebookIndex {
   return {
     data: [
       {
@@ -95,7 +91,7 @@ export function indexServer(answers: Record<string, Answer> = {}) {
     get value() {
       return fixture.value;
     },
-    set value(value: DirectoryPage) {
+    set value(value: NotebookIndex) {
       fixture.value = value;
     },
     get answer() {
