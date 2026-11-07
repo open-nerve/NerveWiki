@@ -4,7 +4,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import useSWR, { SWRConfig } from "swr";
 import useSWRInfinite from "swr/infinite";
 
-import { arrived, useArrivalFocus } from "../../app/arrival";
+import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -40,13 +40,10 @@ export const IndexPage = observer(function IndexPage() {
   const location = useLocation();
   const [params, setParams] = useSearchParams();
   const filter = { type: params.get("type") ?? "", tag: params.get("tag") ?? "" };
-  const scope = JSON.stringify([store.loginId, workspace.id, notebook.id]);
-  const identity = JSON.stringify([scope, location.key, filter.type, filter.tag]);
-  const [metadata, setMetadata] = useState<{ scope: string; identity: string; first: NotebookIndex }>();
-  const report = useCallback((first: NotebookIndex) => setMetadata({ scope, identity, first }), [scope, identity]);
+  const identity = JSON.stringify([store.loginId, workspace.id, notebook.id, location.key, filter.type, filter.tag]);
+  const [metadata, setMetadata] = useState<{ identity: string; first: NotebookIndex }>();
+  const report = useCallback((first: NotebookIndex) => setMetadata({ identity, first }), [identity]);
   const current = metadata?.identity === identity ? metadata.first : undefined;
-  // The types do not depend on the filter: the last read's stay choosable while the next is read.
-  const types = metadata?.scope === scope ? metadata.first.types : [];
   const heading = useArrivalFocus<HTMLHeadingElement>();
   const t = useT();
   useDocumentTitle(t("index.title"), notebook.name);
@@ -63,7 +60,8 @@ export const IndexPage = observer(function IndexPage() {
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
         {t("index.title")}
       </h1>
-      <IndexFilters filter={filter} catalogue={types} choose={choose} />
+      {/* The types do not depend on the filter: the last read's stay choosable while the next is read. */}
+      <IndexFilters filter={filter} catalogue={metadata?.first.types ?? []} choose={choose} />
       {current !== undefined && !current.types_complete && (
         <p className="text-muted-foreground">{t("index.partialTypes")}</p>
       )}
@@ -260,7 +258,8 @@ const IndexResults = observer(function IndexResults({
       {mismatch && (
         <Alert>
           {t("index.modeChanged")}{" "}
-          <Link to={reopen} state={arrived} className="underline">
+          {/* It goes with the list, however the directory was reached: an entry already arrived at has no new arrival. */}
+          <Link to={reopen} onClick={() => heading.current?.focus({ preventScroll: true })} className="underline">
             {t("index.reopen")}
           </Link>
         </Alert>

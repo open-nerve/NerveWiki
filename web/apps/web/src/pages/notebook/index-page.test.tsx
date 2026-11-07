@@ -2,6 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { arrived } from "../../app/arrival";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { deferred } from "../../test/health-server";
 import {
@@ -299,18 +300,23 @@ test("P4/open_row: a row opens its page arrived at, the page's title taking the 
   await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
-test("P4/reopen: the link that goes with the list gives the focus to the title", async () => {
-  const user = userEvent.setup();
-  const fixture = indexServer();
-  fixture.value.mode = "llm_wiki";
-  renderApp(indexPath, fixture.server.app);
-  const reopen = await screen.findByRole("link", { name: "Reopen directory" });
-  fixture.value.mode = "standard";
-  reopen.focus();
-  await user.keyboard("{Enter}");
-  await waitFor(() => expect(screen.queryByRole("link", { name: "Reopen directory" })).toBeNull());
-  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Directory" }));
-});
+test.each([false, true])(
+  "P4/reopen: the link that goes with the list gives the focus to the title; arrived=%s",
+  async (entered) => {
+    const user = userEvent.setup();
+    const fixture = indexServer();
+    fixture.value.mode = "llm_wiki";
+    const { router } = renderApp(indexHome, fixture.server.app);
+    await screen.findByRole("heading", { level: 1, name: "Plans" });
+    await act(() => router.navigate(indexPath, { state: entered ? arrived : undefined }));
+    const reopen = await screen.findByRole("link", { name: "Reopen directory" });
+    fixture.value.mode = "standard";
+    reopen.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(screen.queryByRole("link", { name: "Reopen directory" })).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Directory" }));
+  }
+);
 
 test("P4/clear_focus: Clear filters keeps the focus as nothing is left to clear, and then does nothing", async () => {
   const user = userEvent.setup();
