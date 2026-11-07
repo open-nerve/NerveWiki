@@ -76,4 +76,14 @@ C 另列了 M10 收尾要做的事，收尾时逐条处理：
 
 ## 原席核对
 
-待原席核对。
+三位各自读了重写之后的设计，对着代码核，全部初审发现都已关闭，没有 Important。核对又提了几条小的，都改了：
+
+- **A**：`WorkspaceOf` 没有、`Authorize` 答 `ErrNotVisible` 都要写成 `notebook.not_found`，因为 `ErrNotVisible` 自己的码是空的；P23 靠组合根的测试核能力，要写明确切的能力对象（A 用 overlay 跑了这个变异：账户入口多了 `prompts`，列表仍是空的）；真实上限改成约 27.9 KB；panic 那一行的 `outcome` 写明。
+- **B**：系统段在前时 `fits` 仍然量的是实际返回的字符串，6,000 组随机输入没有超界。`AgentsText` 放不下时不给信号，所以 `NotebookText` 要再量一次，内置说明一支也量；这个护栏没有测试，补 `no_room` 与变异 P27。两条说"删掉了"的过度设计其实还留着一半（握手的 `fits`、组合根那一行的五项），改掉，五项挪到假端口的测试。00 的 LW1 一行照新的次序写。
+- **C**：README 的"说明"那一条重写时漏了，补上，并写明新的一节放在哪里；`limit 1` 时 `next_offset` 会走出这一行，playbook 改成"until next_column is null"；确认 ingest 改用 batch 答复的 `changeset_id`，比翻 `pending_sources` 与 `log` 准；`sources` 的说法不再假定 `pending_sources` 被调过；分份的秒数改成最近五次 main 的实际范围；人工清单的步号改成 J1–J11，免得和 Phase 撞名。
+
+C 实测了 playbook 现在教的写法都记下 ingest 标记，`invalid_sources`、`invalid_frontmatter` 都为空；`prompts.json` 原样过 oxfmt。B 的原型上，七个说明、降级与权限的测试除了 §3.1 列出要改的 `TestNotebooksAnswerTheirModeOverMCP` 都通过，P14–P22、P25、P26 都杀得掉。
+
+这些都是一句话的改动，不再开一轮。真实的杀死与 LW1、LW11 要到实施之后才有。
+
+设计提交 `3b0d55f2` 的时候，我的脚本在改 00 时中断，后面的命令没有看返回值，把这一节和 00 的 LW1 一行漏在外面就推了。下一个提交补上，历史不改。

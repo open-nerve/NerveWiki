@@ -738,7 +738,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 
 | 故事 | 内容 | 版本与 Step |
 |---|---|---|
-| LW1 新建 LLM Wiki 笔记本 | 对话框选 LLM Wiki（中文界面）：根下 `raw` 与 `AGENTS` 是中文的模板，与笔记本同一个变更集与时刻，`source_root_id` 是 `raw`；英文界面建的是英文的；普通笔记本没有它们；MCP：笔记本入口握手的说明是 `AGENTS` 的正文（P1），加系统的一段（P5） | API、MCP（握手的 `AGENTS` 正文）P1/S1；页面 P1/S4；P5 给 MCP 版本加系统的一段 |
+| LW1 新建 LLM Wiki 笔记本 | 对话框选 LLM Wiki（中文界面）：根下 `raw` 与 `AGENTS` 是中文的模板，与笔记本同一个变更集与时刻，`source_root_id` 是 `raw`；英文界面建的是英文的；普通笔记本没有它们；MCP：笔记本入口握手的说明是系统的一段（P5），再是 `AGENTS` 的正文（P1） | API、MCP（握手的 `AGENTS` 正文）P1/S1；页面 P1/S4；P5 给 MCP 版本加系统的一段 |
 | LW2 保护与保留的标题 | `AGENTS` 删除、改名、移动被拒（`page.protected`），正文可改；`raw` 不能删除，写者不能改名、管理员能（来源根的管理员规则在 P1/S2）；根下建 `index` 页被拒（`page.virtual_file`）；MCP：`delete AGENTS.md`、`move AGENTS.md`、根下的 `write index/x.md` | API、MCP P1/S2；页面 P1/S4 |
 | LW3 添加来源 | 粘贴为来源一次写成；上传一个 PDF 为来源；同样的字节再加一次被拒并指出已有的路径；MCP：`write raw/x.md`，重复被拒 | API、MCP P2/S2；页面 P2/S3 |
 | LW4 来源只读 | 来源页没有编辑与勾选、阅读视图有说明；PUT、MCP 的 `edit` 与 `write` 覆盖、还原版本都被拒；来源根的说明可以改；改名一页 wiki 页时来源里指向它的链接被系统改写 | API、MCP P2/S1；页面 P2/S3 |
