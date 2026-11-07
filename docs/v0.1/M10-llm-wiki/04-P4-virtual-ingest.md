@@ -2,7 +2,7 @@
 
 | 项 | 值 |
 |---|---|
-| 状态 | S2已实施并审查，结果见§10.2；S3未开始。以下是S1时点的原文：**正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
+| 状态 | S2已合并 `78a093e9`，结果见§10.2；S3进行中。以下是S1时点的原文：**正式设计与S1原代码/门禁/原席核修、878/f689测试修复及ac84拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3未实施，P4尚未完成**；此前各失败与pending按原写入时点保留，最新见[§10.1.2](#1012-容量维护文档与合并补记)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
 | 文档路径 | `docs/v0.1/M10-llm-wiki/04-P4-virtual-ingest.md` |
 | 基线 | `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` / tree `bd74094f1e4b4fbaf04085431e2ba641f7e6c134`；产品源码承接 `78167b424e5911fbd072ab0a047d82a39526a10d` |
 | 日期与入口 | 2026-11-01；6992 own main [CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1) 已按13作业／38必需步骤接受，主持者已释放正式设计 |
@@ -460,7 +460,7 @@ CI41556086210/a1精确af392f分支push最终completed/failure：11 jobs success�
 
 ### 10.2 S2 ingest 与历史
 
-S2 建成了 ingest 标记、历史的读取与筛选和 `log.md` 的显示，审查、决定与变异见[S2审查记录](reviews/P4-S2-ingest-history-review.md)。
+S2 建成了 ingest 标记、历史的读取与筛选和 `log.md` 的显示，审查、决定与变异见[S2审查记录](reviews/P4-S2-ingest-history-review.md)。合并为 `78a093e9`，main [CI42331529264](https://github.com/open-nerve/NerveWiki/actions/runs/42331529264) 17 个作业全绿。
 
 与本文的偏离，都记在那份记录里：
 
