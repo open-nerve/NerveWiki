@@ -341,8 +341,10 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const move = moveDialog(page, "Plain");
   const box = await move.boundingBox();
   const button = await move.getByRole("button", { name: "Move", exact: true }).boundingBox();
-  if (box === null || button === null) throw new Error("the move dialog has no box");
+  const select = await move.getByLabel("Parent page", { exact: true }).boundingBox();
+  if (box === null || button === null || select === null) throw new Error("the move dialog has no box");
   expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
+  expect(select.x + select.width).toBeLessThanOrEqual(box.x + box.width);
 });
 
 test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({
