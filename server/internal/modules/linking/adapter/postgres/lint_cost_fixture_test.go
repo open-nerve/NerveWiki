@@ -493,19 +493,25 @@ func lintCostMedian(t *testing.T, group, name string, samples []lintCostMetrics)
 // Each group takes the largest case median of either round, times three,
 // rounded up to 1ms / 64KiB. The 112 cases and all raw samples remain in
 // the external calibration-proposal; no limit is derived from this run.
+//
+// The six properties groups keep that rule except for GoCPU, which is
+// lintPropertyCPU: CPU is read from the whole process, and a few milliseconds
+// of it are not the case's own. See M10's decision 168.
 type lintCostLimits struct {
 	Wall, GoCPU            time.Duration
 	TotalAlloc, HeapGrowth uint64
 }
 
+const lintPropertyCPU = 12 * time.Millisecond
+
 func lintCostLimitsFor(group string) (lintCostLimits, bool) {
 	limits := map[string]lintCostLimits{
-		"properties/actual-body-positive-control":           {Wall: 7 * time.Millisecond, GoCPU: 4 * time.Millisecond, TotalAlloc: 11_141_120, HeapGrowth: 11_141_120},
-		"properties/first-sources-complete-JSON-and-slot":   {Wall: 18 * time.Millisecond, GoCPU: 10 * time.Millisecond, TotalAlloc: 20_643_840, HeapGrowth: 20_643_840},
-		"properties/missing_summary-complete-needed-values": {Wall: 37 * time.Millisecond, GoCPU: 6 * time.Millisecond, TotalAlloc: 65_536, HeapGrowth: 65_536},
-		"properties/missing_summary-prefix-and-unrelated":   {Wall: 2 * time.Millisecond, GoCPU: 1 * time.Millisecond, TotalAlloc: 65_536, HeapGrowth: 65_536},
-		"properties/missing_type-complete-needed-values":    {Wall: 36 * time.Millisecond, GoCPU: 5 * time.Millisecond, TotalAlloc: 65_536, HeapGrowth: 65_536},
-		"properties/missing_type-prefix-and-unrelated":      {Wall: 3 * time.Millisecond, GoCPU: 3 * time.Millisecond, TotalAlloc: 65_536, HeapGrowth: 65_536},
+		"properties/actual-body-positive-control":           {Wall: 7 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 11_141_120, HeapGrowth: 11_141_120},
+		"properties/first-sources-complete-JSON-and-slot":   {Wall: 18 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 20_643_840, HeapGrowth: 20_643_840},
+		"properties/missing_summary-complete-needed-values": {Wall: 37 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 65_536, HeapGrowth: 65_536},
+		"properties/missing_summary-prefix-and-unrelated":   {Wall: 2 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 65_536, HeapGrowth: 65_536},
+		"properties/missing_type-complete-needed-values":    {Wall: 36 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 65_536, HeapGrowth: 65_536},
+		"properties/missing_type-prefix-and-unrelated":      {Wall: 3 * time.Millisecond, GoCPU: lintPropertyCPU, TotalAlloc: 65_536, HeapGrowth: 65_536},
 		"rules/eight/ambiguous":                             {Wall: 932 * time.Millisecond, GoCPU: 964 * time.Millisecond, TotalAlloc: 598_474_752, HeapGrowth: 503_709_696},
 		"rules/eight/invalid_frontmatter":                   {Wall: 816 * time.Millisecond, GoCPU: 850 * time.Millisecond, TotalAlloc: 509_739_008, HeapGrowth: 429_654_016},
 		"rules/eight/invalid_sources":                       {Wall: 1525 * time.Millisecond, GoCPU: 898 * time.Millisecond, TotalAlloc: 505_872_384, HeapGrowth: 425_721_856},
