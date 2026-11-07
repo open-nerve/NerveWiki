@@ -256,7 +256,10 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 精确分支CI41171083998 attempt1五份Test为336/198/372/386/288秒；指定merge/record两次main各份均值<450秒仍待真实验收。
 # M10/P4/S2 审查：S2 新增的 9 个顶层（TestRebuild*×5、TestRewriteWindowNativeWriter、TestStableLinkRetention*×3）
 # 落在第四份的补集，两次分支样本 449/455 秒，均值过了 450 秒的线；照规则按测试名移到第五份，不提高 -timeout。
-BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention)
+# M10/P5/S1 审查：第六份在 EPYC 7763 上 Test 一步 483/491/493 秒，别的 CPU 上 301–373 秒，两次 main 都落在 7763 时均值过 450 秒的线。
+# 第六份本机合计 304 秒（-race -json）：TestIngestUnit 162、TestIngestBefore 71.5 太大，给邻居会把它推过线；
+# 照 M9/P2 设计 6.5 把 TestIngestCandidates、TestIngestCoverage（本机 38 秒，折到 7763 约 62 秒）给第五份（7763 上 344–359 秒），不提高 -timeout。
+BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$|IngestCoverage$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
 # 当前 521 个顶层静态分配为 157/51/116/123/61/13（见第五份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
@@ -288,8 +291,8 @@ test-go-bootstrap-5: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-6
-test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SIXTH 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SIXTH)' ./internal/bootstrap
+test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SIXTH 且不匹配 BOOTSTRAP_FIFTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SIXTH)' -skip '$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 顺序运行三份成本守卫及 server/tools（需要 Docker）
