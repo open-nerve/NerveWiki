@@ -1,6 +1,6 @@
 # P4 测试、单故障变异与完成标准矩阵
 
-状态：S2已实施，实际结果见[S2审查记录](../reviews/P4-S2-ingest-history-review.md)，S3未实施。S2审查另加B19–B22、C11–C13、Q12–Q13九行。以下保留设计时的原文。决定76补充后当前146个控制ID：原136（含更早114）全部保留，新增连续H06–H15共10个；34个S2-1基础控制腿，另H08四腿在S2-2真实producer复验，共38个计划阶段腿，均NOT_RUN，详见§2.1。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于原136或当前146ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
+状态：S2、S3已实施，实际结果见[S2审查记录](../reviews/P4-S2-ingest-history-review.md)与[S3审查记录](../reviews/P4-S3-web-review.md)。S2审查另加B19–B22、C11–C13、Q12–Q13九行。以下保留设计时的原文。决定76补充后当前146个控制ID：原136（含更早114）全部保留，新增连续H06–H15共10个；34个S2-1基础控制腿，另H08四腿在S2-2真实producer复验，共38个计划阶段腿，均NOT_RUN，详见§2.1。S1作者11/16/22/38共87腿与93尝试保原epoch；原87＋display1＋generic3的efad91/273与供77沿用的窄对应保历史。本轮0b0原91＋B-I1两回归＋三席原故障共96/288，实际结果见最终记录，不等于96种不重叠行为；0b0最终源96条/288实际业务过程已ROOT接受：前86与后10保两控制器身份，各条0/1/0；另保第87条因原3GiB预检拒绝、未启动Go的记录；C-Q1 observer另账。准确映射与原始首败见[S1记录](../reviews/P4-S1-virtual-files-review.md)，C-Q1外部观察器实验另账。不等于原136或当前146ID全部执行；S2/S3及五个S2交错未实施，编译/环境/通用超时不算业务kill。
 
 ## 1. 测试文件与命令模板
 
@@ -20,7 +20,7 @@
 | HP | 现 `server/internal/bootstrap/mcp_history_test.go` 实际为 `ingest_mcp_preview_test.go` 的 `TestIngestMCPPreview`，两scope真实SDK/HTTP；现page `adapter/mcp/history_test.go` 同步完整golden及adapter边界。`go test ./internal/bootstrap -run '^TestMCPIngestPreview/<子名>/<scope>$' -count=1` 是待建模板，不记已被Make收录；S2-1落实真实选择器。 |
 | PG | 实际在 page postgres `ingest_cleanup_test.go`；bootstrap `ingest_cleanup_test.go,ingest_invariant_rules_test.go`；`go test ./internal/modules/page/... ./internal/bootstrap -run '^TestIngestCleanup/<子名>$' -count=1` |
 | W | 新/现 web组件test文件见P4-virtual-ingest-files.json；原vitest入口精确文件+`-t 'P4/<子名>'`（重绑现package脚本，不能伪造已跑命令） |
-| EW | 新LW9/10/13、现LW12 Playwright故事；按现三browser配置与heavy锁内fresh build逐phase运行指定test标题，见§5 |
+| EW | 新LW9/10/13、现LW12 Playwright故事；按heavy锁内fresh build运行指定test标题，见§5。设计时写的"现三browser配置"不实，`main`只有Chromium；S3起这几条故事跑三种引擎（决定155） |
 
 Go命令cwd均`<正式StepWT>/server`；表只是未来执行模板，本轮不调用。每个新测试必须被真实Make/CI选择器收进对应片，尤其bootstrap独立recipe表达式；重绑后写真实argv与超时，不以宽泛`go test ./...`替代设计规定的原生单进程成本。
 
@@ -253,7 +253,7 @@ S2-1同时改bootstrap旧asMCP log/detail期望（required false、非零独立�
 
 ## 5. 必须实测但本次未运行的命令与材料
 
-本节原标题“本次未运行”指正式设计时点；S1、S2已执行范围以各自审查记录为准，S3仍待实施。
+本节原标题“本次未运行”指正式设计时点；S1、S2、S3已执行范围以各自审查记录为准。
 
 正式Step继续使用原heavy/全局锁、锁后3GiB/T7与fresh runtime身份。S1三条新!race成本入口已在Make：TestIndexCatalogueHasBoundedWorkAndOutput、TestVirtualIndexOfAHundredThousandPagesTakesItsTime、TestVirtualExportOfAHundredThousandPagesTakesItsTime。决定74仅将旧Markdown top的两个完整leaf各成一行，原45条其余legacy与3新行保持，最终50行；每条原timeout/预算不提高。0b0 fresh完整6targets/50recipe双轮100过程、1333 recipe-local identities及6case/24固定guards已ROOT接受；各pair原容量均满足，最大占半界65.443%；原首轮100容量失败保留，C-Q1独立补测另账 原件与源身份见S1记录。S2的TestIngestOfAHundredThousandPagesTakesItsTime、TestIngestAtTheBatchBoundaryTakesItsTime仍未建，不能宣称可运行。
 

@@ -32,3 +32,5 @@ M8 让写入守卫看得到一个单元是不是撤销、还原或恢复（[M8 �
 - P2完成（2026-10-29）：来源历史全部义务已核并将status改为done；rewrite全链、来源不可还原版本、管理与逐字节去重、同步整单元回滚/后台前批保留、全部错误/报告与网页解释分别见[P2 §10.4](../02-P2-source-area.md#104-p2完成核对)和[S1](../reviews/P2-S1-source-rules-review.md)、[S2](../reviews/P2-S2-source-hash-review.md)、[S3审查](../reviews/P2-S3-source-web-review.md)。S3合并`ecd79c77d0cdb2259d50758b26514f61ebb329ca`与记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7`的精确main CI和四片Test均值已验。本次P2done精确main CI由主持者提交后核验、获接受后放行P3；前述各阶段open/待验均保留为当时记录，不沿P1旧“P2–P5”笼统文字推迟本移交。
 
 - P4/S2（2026-11-07）：P4/S2已按真实记录落实edit changeset的追加ingest标记、true筛选三SQL、按seq的前3/20/5 nullable来源及10000饱和展示；清理源叶与父防线、同job notebook清理和三不变量各有非空控制。历史原kind、权限、撤销/恢复合同与原200ms页读预算保持；本条完成身份见[P4/S2记录](../reviews/P4-S2-ingest-history-review.md)，不把P5或M11义务顺带关闭。
+
+- P4/S3（2026-11-07）：历史的 `ingest=1` 筛选、标记、三条与二十条的来源预览、来源附件经 `openOf` 落到父页，已删的来源没有链接，见 [S3 审查](../reviews/P4-S3-web-review.md)。

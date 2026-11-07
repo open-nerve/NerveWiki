@@ -232,5 +232,19 @@ created: 2026-10-03
     - 网页上显示 MCP 的两个地址（笔记本入口与账户入口）与接入的帮助，以 README 的"接入 agent（MCP）"为底稿：一个 agent 一个 PAT、令牌放在环境变量里（每个客户端一个变量）、审批不一律放行。那一节里标着"照文档""未核对"的几句，等人工清单在 v0.1 的最后跑过、README 照它改过之后再照抄。
     - agent 的变更集在历史里只显示 `clientInfo.name`（"MCP（名称）"，M9 总设计 4.5）；客户端报了 `clientInfo.title` 时显示它。
 32. **长的 MCP 客户端名称在窄屏上**（[M9 收尾审查](../../M9-mcp/reviews/M9-closeout-review.md) B-M1，M9 总设计第 11 节主持者的决定第 105 条）：客户端名称是 agent 报的 `clientInfo.name`，清理之后至多 128 个字符、可以没有空格（`shared/client_name.go`）。一个 128 个字符的名称在 375 px 上把历史页撑到 1,027 px（"客户端"的下拉，`pages/notebook/history-filters.tsx` 的 `NativeSelect` 没有宽度的界线，1,003 px 宽），把它的变更集的页撑到 712 px（`changeset-page.tsx` 的"Client: MCP (…)"一行没有 `break-words`）；历史的列表的行本身会折行（`history-row.tsx` 有 `break-words`）。代码是 M8 的（P3B），名称从 M9 起由任何 agent 给出。审查 B 试过、让两页都放得下的改法（历史 375 px、下拉 327 px，变更集的页 375 px）：`HistoryFilters` 的两个 `NativeSelect` 加 `className="block max-w-full"`（同搜索页的笔记本的下拉，`pages/search/search-page.tsx`，SE1 在 375 px 上守着它），它们外面的两个 `div` 加 `min-w-0 max-w-full`（关着的下拉截掉文字，打开的列表仍显示全名），`changeset-page.tsx` 的那一行加 `break-words`；MC3 的页面部分加一个 128 个字符的客户端名称在 375 px 上的检查，同 SE1 对它的下拉。"谁"的下拉对长的显示名是同一件事（第 26 条的"历史页的筛选的选择"一项），一起改。另有 B 没有探的一处：客户端名称由从右到左的字母组成时，行里的"MCP（名）· 5 分钟前"可能重排（客户端不在 `<bdi>` 里，消息在；服务端去掉 bidi 的控制字符，不去强的从右到左的字母），显示名从 M8 起同样，是全应用的一处。
+33. **Firefox 与 WebKit 上的老故事**（M10/P4/S3，[M10 总设计](../../M10-llm-wiki/00-M10-design.md#11-负责人确认的决定)第 11 节决定 155）：2026-11-07 全量跑过一次三个浏览器，1092 条里 1063 过，Chromium 0 败，Firefox 14 败，WebKit 15 败。这些故事是照 Chromium 写的，多数败在测试的手法上：CDP 只有 Chromium 有（输入法、限速）、WebKit 没有 `MediaRecorder`、拖放、浏览器读不到先答的拒绝（TR2）、WebKit 把跳转时中断的请求记成异常。这不说明产品在那里坏了，但也不是它们在那里好的证明。有两条要人工确认：
+    - Safari 的窄屏：375 宽的搜索页，页面宽到 704（SE1）。
+    - Safari 的多标签：第二个标签页登出之后，另一个标签页的事件流数没有归零（C8）。
+
+34. **目录父页选择器**（[M10/P4](../../M10-llm-wiki/04-P4-virtual-ingest.md) §8.3）：P4 的 REST `parent_id`、`at_root` 已完成；网页的父页选择器按 M10 总设计允许留作打磨。目录的 type、tag、More 和普通笔记本的入口已在 P4 交付，不在这一项里。
+35. **目录与历史的小事**（[M10/P4 S3 审查](../../M10-llm-wiki/reviews/P4-S3-web-review.md)）：
+    - 英文的单数不通，比如"raw.md · 1 sources"：`index.*` 与相邻的 `health.*` 都这样，i18n 没有复数的写法。
+    - LLM Wiki 里导向目录或历史的未解析链接还带着 `aria-haspopup="dialog"`，按下去是导航（A-N2）：`reading/unresolved-links.ts` 不知道模式，要给增强传一个判断。
+    - 手写的地址里 `type` 超过 1024 字节时答 422，"重试"永远不成功，只有"清除筛选"有用（A-N5）；历史对这种情形有专门的说明，目录可以照着做。
+    - 没有类型的页按已读到的父页分组：不是最后一页的 More 新增的行可能全在上方，按钮附近看不到变化，只有读屏的状态在说（A-Q2）。
+    - 历史的 Ingestion 筛选在普通笔记本里也显示，那里选了什么都没有（A-Q3）。模式可以改，留着无害；要不要隐藏等 M11 定了模式的转换再说。
+    - 树已读到之后刷新失败，好好的目录上方也出现红色错误（只沿代码走过，没有实跑；健康页同样写法）。
+    - 375 宽下打开文件夹里的页时，树展开把已取得焦点的标题推到视口之下（目录的行、搜索命中都这样，到达焦点加树展开的旧机制）。
+    - 375 宽下两处旧的超宽：历史的 Who 下拉在显示名长时撑宽；`changeset-change.tsx` 的链接到 1596（A 顺带看到）。
 
 之后的 M 推迟的体验事项照样追加到这份移交。
