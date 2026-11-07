@@ -504,11 +504,11 @@ func (b trashBench) toppedUp(tb testing.TB, root string, n int) {
 }
 
 // A restore at the unit's bounds, of the full load, its nodes' and its
-// history's, takes its time: in 12 seconds, a CI's slower than the
-// machine the bounds were measured on (M8/P2 design 3.11; M8/P2A review,
-// A-M4), three times its 3.8–4.0 s there, under the bench's request
-// deadline, 15 s; the time logged for CI's runs (make test-go runs it
-// with -v).
+// history's, takes its time: in 14 seconds, under the bench's request
+// deadline, 15 s. The bounds were measured at 3.8–4.0 s on a faster machine
+// (M8/P2 design 3.11; M8/P2A review, A-M4); CI's runners differ by their CPU,
+// 6.0 to 11.2 s (M10 decision 153). The time is logged for CI's runs
+// (make test-go runs it with -v).
 // Deleted again, its history 420,000 rows with the items of the restore
 // and of the deletion, 20,000 past the bound, it is
 // page.restore_too_large and writes nothing. The bench keeps the
@@ -531,8 +531,8 @@ func TestARestoreAtTheUnitsBoundTakesItsTime(t *testing.T) {
 	}
 	took := bench.timed(t, http.MethodPost, "/api/v0/nodes/"+root+"/restore", http.StatusOK)
 	t.Logf("a restore of %d nodes, %d rows of history, took %s", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
-	if took > 12*time.Second {
-		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 12 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
+	if took > 14*time.Second {
+		t.Errorf("a restore of %d nodes, %d rows of history, took %s, want 14 s at most", domain.MaxUnitNodes, domain.MaxUnitHistory, took)
 	}
 	if n := count(t, bench.pool, "SELECT count(*) FROM nodes WHERE deleted_at IS NULL"); n != domain.MaxUnitNodes {
 		t.Errorf("%d nodes back, want %d", n, domain.MaxUnitNodes)

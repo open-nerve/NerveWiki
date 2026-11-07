@@ -473,4 +473,6 @@ M10/P2后续接受补记（2026-10-29）：精确 `66d8236c12aaa8923616f6f42f2ee
 
 M10/P4/S2（2026-11-07）：**最大合法 batch 的容量边界。** `server.request_timeout` 15 秒之下，一次改写 400 个各带 10000 条链接的来源（约 400 万条旧关系）在 EPYC 9V45 的 4 核上约 10 秒，在慢约一倍的 4 核上超过 15 秒，请求答 `internal_error: the call ran out of time`，事务回滚，不留半截数据。M12 要定的是：部署文档写明的硬件下限、这种超时对用户的提示（现在是通用的内部错误）、要不要给 batch 单独的期限。测试的时限与依据见 [M10 总设计第 11 节](../../M10-llm-wiki/00-M10-design.md#11-负责人确认的决定)。
 
+M10/P4/S2（2026-11-07）：**上面"再次越界"的根因。** 恢复与撤销的时间随 runner 的 CPU 变，EPYC 9V45 约 6–7 秒，EPYC 7763 约 11–12.5 秒，不是代码变了。两条守卫改成 14 秒（[决定 153](../../M10-llm-wiki/00-M10-design.md#11-负责人确认的决定)）。生产的 `server.request_timeout` 仍是 15 秒，这两种操作在界线上、慢的 4 核机器上离它不远。
+
 M10/P4/S2（2026-11-07）：P4新增virtual read/export、ingest coverage与候选判定、历史ingest索引和marks迁移的实测记录在[P4/S2审查记录](../../M10-llm-wiki/reviews/P4-S2-ingest-history-review.md)。保留具体环境、数据形状、冷/热/custom/generic、heap/PG范围、原预算和锁占有样本；生产并发负载、MVCC老版本积累、大实例迁移停机仍待M12。不得以设计静态SQL或无候选快路证明100k真候选可用。
