@@ -126,8 +126,9 @@
 |---|---|---|---|---|---|---|---|
 | 42374069206（main，决定 168–170 的合并） | `bbeb9fbb` | 391 | 426 | 385 | 417 | 383 | 323 |
 | 42376299367（main，记录） | `4278b2b8` | 347 | 428 | 390 | 408 | 355 | 387 |
+| 42387317557（main，收尾的合并） | `2cbc8f72` | 360 | 296 | 277 | 355 | 394 | 469 |
 
-这两次的均值 369/427/387.5/412.5/369/355 秒，都低于 450。【收尾的两次 main】
+前两次的均值 369/427/387.5/412.5/369/355 秒，都低于 450。【收尾的两次 main】
 
 ## 核实修复
 
@@ -139,7 +140,7 @@
 
 `79d87ab4` 本机：`make lint gen-check knip build test-go-short test-web` 通过，`make e2e` 503 个通过。`make test-go` 第一次红了两个组合根测试，当时六份同时跑，三位审查者也在跑，负载到 20：`TestTheMCPBatchIsRefusedWhole` 的 10 MiB 一例 14.2 秒，界 12 秒；`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches` 的一例，网页的写排在任务的第二批之后，答 `page.cycle`。这两个测试单独跑都过（5.2 秒；三遍），它们所在的两份单独重跑也过，之后 `test-go-costs-1/2/3`、`test-go-costs-lint`、`test-go-guards-core`、`test-go-guards-sources` 都过。收尾没有动批之间的路径：`jobs.go` 没有改，`revert_changeset.go` 与 `revert_job_contract.go` 只删了 nil 分支，`apply_batch.go` 只改了注释。后一个靠批之间的次序，负载高时可能再遇到；这几次 CI 每份一台机器，都没有红。`make image-smoke` 在普通克隆里通过。
 
-【最后一轮的门禁与 CI】
+最后的修复（`692d2482` 起）：`make lint gen-check knip build test-web` 通过，`make e2e` 503 个通过；`lint` 第一次查出两个文件的格式，`d5c62b73` 修了。分支 CI [42384756241](https://github.com/open-nerve/NerveWiki/actions/runs/42384756241)（`0a506a6e`）17 项全绿，合并 `2cbc8f72`，main CI [42387317557](https://github.com/open-nerve/NerveWiki/actions/runs/42387317557) 17 项全绿。第二轮的修复只有文档与一处断言（下拉的右边，变异抓到），由主持者核对（02-workflow §3.4）。
 
 ## 没能验证的风险
 
