@@ -2,6 +2,7 @@ package app_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -36,6 +37,20 @@ func (f *fakeOverview) FirstChildren(ctx context.Context, _ uuid.UUID, n int) ([
 	return f.root[:min(n, len(f.root))], nil
 }
 
+// A read of the instructions that fails is open_notebook's error: never an
+// answer that reads as a standard notebook's (M10/P5 design 3.7).
+func TestOpenNotebookKeepsTheInstructionsError(t *testing.T) {
+	f := newFixture()
+	f.grant(domain.ActionList)
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: f.page("raw", nil, 0).ID}}
+	for _, failure := range []error{errors.New("the database is gone"), app.ErrNotFound} {
+		f.store.errs = map[string]error{"FindNodeIn": failure}
+		if _, err := f.opener(&fakeOverview{recorder: f.rec}).Execute(f.asAlice(), f.eng); !errors.Is(err, failure) {
+			t.Errorf("Execute() = %v, want %v", err, failure)
+		}
+	}
+}
+
 // opener is the use case on f's fakes and overview.
 func (f *fixture) opener(o *fakeOverview) *app.OpenNotebook {
 	return app.NewOpenNotebook(app.NewNotebookGate(f.notebooks, f.auth), f.notebooks, o, f.instructionsOf())
@@ -50,7 +65,9 @@ func (f *fixture) opener(o *fakeOverview) *app.OpenNotebook {
 func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
-	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: uuid.NewV7()}}
+	sources := f.page("sources", nil, 2)
+	raw := f.page("raw", &sources.ID, 0)
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: raw.ID}}
 	agents := f.page("AGENTS", nil, 0)
 	f.write(agents, "# Rules", 1)
 	logo := f.asset("logo.png", nil, 1)
@@ -58,15 +75,15 @@ func TestOpenNotebookAnswersInOrder(t *testing.T) {
 	o := &fakeOverview{recorder: f.rec, pages: 3, attachments: 1, last: &last, root: []domain.Node{agents, logo}}
 	f.rec.calls = nil
 	got, err := f.opener(o).Execute(f.asAlice(), f.eng)
-	want := app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules", Title: "AGENTS"}, HasAgents: true, Pages: 3,
-		Attachments: 1, LastChange: &last,
+	want := app.Opened{Instructions: app.NotebookInstructions{NotebookID: f.eng, Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules", Title: "AGENTS"},
+		HasAgents: true, SourceRootPath: "sources/raw", SourceRootTitle: "raw"}, Pages: 3, Attachments: 1, LastChange: &last,
 		Root: []app.RootNode{{Path: "index.md", Kind: domain.KindPage, Virtual: true}, {Path: "log.md", Kind: domain.KindPage, Virtual: true}, {Path: "AGENTS.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}
-	if err != nil || got.Mode != want.Mode || got.Agents != want.Agents || !got.HasAgents || got.Pages != 3 || got.Attachments != 1 ||
+	if err != nil || got.Instructions != want.Instructions || got.Pages != 3 || got.Attachments != 1 ||
 		got.LastChange != &last || !slices.Equal(got.Root, want.Root) || got.MoreRoot {
 		t.Errorf("Execute() = %+v, %v; want %+v", got, err, want)
 	}
 	calls := []string{"WorkspaceOf", "Authorize node.list", "StateOf", "NotebookCounts", "NotebookLastChange", "FirstChildren 101",
-		"AgentsPage", "PageContent", "FrontmatterEnd"}
+		"AgentsPage", "PageContent", "FrontmatterEnd", "FindNodeIn", "Ancestors"}
 	if !slices.Equal(f.rec.calls, calls) {
 		t.Errorf("calls = %q, want %q", f.rec.calls, calls)
 	}
@@ -105,8 +122,8 @@ func TestOpenNotebookOfTheRootsFirstNodes(t *testing.T) {
 	o := &fakeOverview{recorder: f.rec, root: root}
 	got, err := f.opener(o).Execute(f.asAlice(), f.eng)
 	if err != nil || len(got.Root) != domain.MaxOverviewRoot || !got.MoreRoot || got.Root[99].Path != "P099.md" || got.LastChange != nil ||
-		got.HasAgents {
-		t.Errorf("101 at the root: %d listed, more %v, last %v, agents %v, %v", len(got.Root), got.MoreRoot, got.LastChange, got.HasAgents, err)
+		got.Instructions.HasAgents {
+		t.Errorf("101 at the root: %d listed, more %v, last %v, agents %v, %v", len(got.Root), got.MoreRoot, got.LastChange, got.Instructions.HasAgents, err)
 	}
 	o.root = root[:domain.MaxOverviewRoot]
 	if got, err := f.opener(o).Execute(f.asAlice(), f.eng); err != nil || len(got.Root) != domain.MaxOverviewRoot || got.MoreRoot {

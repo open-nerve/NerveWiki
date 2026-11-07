@@ -107,18 +107,18 @@
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| A1 | 在 `$CC` 里 `claude --mcp-config "$CC/mcp.json" --strict-mcp-config`，输入 `/mcp` | `/mcp` 只列出 `nervewiki`、已连上、14 个工具（照文档；列出别的服务时记下：它来自插件或 claude.ai 的连接器）；服务的日志里一行 `MCP initialize`，记下它的客户端名称。日志里若是 401：这个文件里的 `${NERVEWIKI_CLAUDE_TOKEN}` 没有展开（照文档它展开）：记下，之后改用 `$CC/mcp-literal.json`（同一个文件，令牌照字面写进去），`account.json` 与 `throttled.json` 也同样写成字面的（`account-literal.json`、`throttled-literal.json`，A5 与 F 用它们），三份都 `chmod 600`，"做完"删掉 | |
+| A1 | 在 `$CC` 里 `claude --mcp-config "$CC/mcp.json" --strict-mcp-config`，输入 `/mcp` | `/mcp` 只列出 `nervewiki`、已连上、16 个工具（照文档；列出别的服务时记下：它来自插件或 claude.ai 的连接器）；服务的日志里一行 `MCP initialize`，记下它的客户端名称。日志里若是 401：这个文件里的 `${NERVEWIKI_CLAUDE_TOKEN}` 没有展开（照文档它展开）：记下，之后改用 `$CC/mcp-literal.json`（同一个文件，令牌照字面写进去），`account.json` 与 `throttled.json` 也同样写成字面的（`account-literal.json`、`throttled-literal.json`，A5 与 F 用它们），三份都 `chmod 600`，"做完"删掉 | |
 | A2 | 让 agent 说出"这本笔记本的说明里的暗号" | 它答"青石板"（握手时的说明是 `AGENTS` 页去掉 frontmatter 的正文；M0/P1 记下 Claude Code 收到了说明），不调用工具 | |
-| A3 | 先数一次你的 `~/.claude.json` 里的 `"nervewiki"`：`grep -o '"nervewiki"' ~/.claude.json` 每处列一行，记下几行。在 `$CC` 里执行 README 的项目范围的命令，地址照第 5 步换：`claude mcp add --scope project --transport http nervewiki "http://127.0.0.1:8080/mcp?notebook=$NB_CC" --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'`（双引号里的 `$NB_CC` 由 shell 展开，单引号里的令牌一段原样）；然后 `grep nwk_pat_ .mcp.json`，再 `claude --mcp-config "$CC/.mcp.json" --strict-mcp-config`，输入 `/mcp`；退出之后再数一次 `"nervewiki"` | `$CC/.mcp.json` 里是 `${NERVEWIKI_CLAUDE_TOKEN}` 原样、`grep` 什么也找不到（照文档）；连上，14 个工具（`${…}` 由 Claude Code 展开，照文档）。记下 `ls -a "$CC"` 里这条命令另外写了什么。两次数的相同：命令没有把服务写进你的 `~/.claude.json`（它的结构仓库里没有记录，数的只是出现的次数，未核对）。多了时记下，在 `$CC` 里执行 `claude mcp remove nervewiki --scope local`（未核对）去掉它，再数一次，仍然多时也记下；不要动你原有的 `nervewiki`（第一次数的不是 0 时） | |
+| A3 | 先数一次你的 `~/.claude.json` 里的 `"nervewiki"`：`grep -o '"nervewiki"' ~/.claude.json` 每处列一行，记下几行。在 `$CC` 里执行 README 的项目范围的命令，地址照第 5 步换：`claude mcp add --scope project --transport http nervewiki "http://127.0.0.1:8080/mcp?notebook=$NB_CC" --header 'Authorization: Bearer ${NERVEWIKI_CLAUDE_TOKEN}'`（双引号里的 `$NB_CC` 由 shell 展开，单引号里的令牌一段原样）；然后 `grep nwk_pat_ .mcp.json`，再 `claude --mcp-config "$CC/.mcp.json" --strict-mcp-config`，输入 `/mcp`；退出之后再数一次 `"nervewiki"` | `$CC/.mcp.json` 里是 `${NERVEWIKI_CLAUDE_TOKEN}` 原样、`grep` 什么也找不到（照文档）；连上，16 个工具（`${…}` 由 Claude Code 展开，照文档）。记下 `ls -a "$CC"` 里这条命令另外写了什么。两次数的相同：命令没有把服务写进你的 `~/.claude.json`（它的结构仓库里没有记录，数的只是出现的次数，未核对）。多了时记下，在 `$CC` 里执行 `claude mcp remove nervewiki --scope local`（未核对）去掉它，再数一次，仍然多时也记下；不要动你原有的 `nervewiki`（第一次数的不是 0 时） | |
 | A4 | 只把 `$CC/mcp.json` 里的 `${NERVEWIKI_CLAUDE_TOKEN}` 换成一个不存在的变量 `${NO_SUCH_TOKEN}`，启动，`/mcp`；之后改回 | 记下 Claude Code 怎样对待没有设的变量（报错、留空、照原样发出）与服务端的日志（401？） | |
-| A5 | `claude --mcp-config "$CC/account.json" --strict-mcp-config`，让 agent 列出它能用的笔记本，再打开 `MCP 清单 CC` 并说出暗号 | 16 个工具；它先调 `notebooks`、再调 `open_notebook`（说明在它的答复里），答"青石板"；之后的调用都带 `notebook` | |
+| A5 | `claude --mcp-config "$CC/account.json" --strict-mcp-config`，让 agent 列出它能用的笔记本，再打开 `MCP 清单 CC` 并说出暗号 | 18 个工具；它先调 `notebooks`、再调 `open_notebook`（说明在它的答复里），答"青石板"；之后的调用都带 `notebook` | |
 | A6 | 第 C 部分做过之后，网页上打开两本笔记本的历史，按"MCP"筛选 | `MCP 清单 CC` 里 agent 的变更集显示"MCP（<A1 记下的名称>）"，`MCP 清单 Codex` 里的显示"MCP（<B1 记下的名称>）" | |
 
 ### B：Codex 接上
 
 | # | 操作 | 预期 | 记下的 |
 |---|---|---|---|
-| B1 | 在设了临时 `CODEX_HOME` 与 `NERVEWIKI_CODEX_TOKEN` 的终端里，在 `$CX` 启动 `codex`，输入 `/mcp` | 列出 `nervewiki` 与它的 14 个工具（照文档）；服务的日志里一行 `MCP initialize`，客户端名称 `codex-mcp-client`（M9 总设计 4.5） | |
+| B1 | 在设了临时 `CODEX_HOME` 与 `NERVEWIKI_CODEX_TOKEN` 的终端里，在 `$CX` 启动 `codex`，输入 `/mcp` | 列出 `nervewiki` 与它的 16 个工具（照文档）；服务的日志里一行 `MCP initialize`，客户端名称 `codex-mcp-client`（M9 总设计 4.5） | |
 | B2 | 让 agent 说出"这本笔记本的说明里的暗号" | 它答"青石板"；记下它有没有调用工具（读 `AGENTS.md` 得到的不算握手的说明：Codex 是否把服务端的说明交给模型未核对） | |
 | B3 | 把 `config.toml` 的 `url` 换成账户入口 `http://127.0.0.1:8080/mcp`，重启 Codex，做 A5（打开 `MCP 清单 Codex`）；之后换回笔记本入口 | 同 A5 | |
 | B4 | 退出 Codex，`unset NERVEWIKI_CODEX_TOKEN`，再启动 | 记下 Codex 怎样对待没有设的 `bearer_token_env_var`（不起这个服务并报错，或不带令牌连接、得到 401）；之后设回 | |
@@ -285,6 +285,28 @@ for addr in "$CADDY" "$BASE"; do
 done
 ```
 
+### J：prompts 与 LLM Wiki（M10）
+
+这一节由 M10/P5 加。每步只记客户端实际做了什么，不要求模型一定照 playbook 做。
+
+准备：沿用上面隔离的客户端环境，记下 Claude Code 与 Codex 的版本和日期，不碰自己的配置。在网页上建一本 LLM Wiki，往它的来源区放两份来源（一页、一个附件），另备一本普通笔记本和一个 PAT。
+
+| 步 | 做什么 | 看什么 |
+|---|---|---|
+| J1 | 接这本 LLM Wiki 的笔记本入口 | 客户端怎样列出 ingest、query、lint 与它们的参数 |
+| J2 | 取 `ingest`，不带 source，再带一个已有的来源路径 | 返回的说明和完整路径 |
+| J3 | 取 `query`，question 用多个词 | 多个词怎样传过去 |
+| J4 | 在普通笔记本取同一个 prompt | 对 -32602 与 `notebook.not_llm_wiki` 显示什么 |
+| J5 | 接账户入口 | 没有 prompt，`open_notebook` 的说明指向笔记本的地址；不把客户端缓存的旧清单当成服务器的能力 |
+| J6 | 看握手的说明 | agent 看得到开头那段系统的文字吗；`AGENTS` 很长时还看得到吗（决定 161） |
+| J7 | 让 agent 照 ingest 做一份已批准的维护 | 先读完整来源，小改用 `edit`，`move` 一步到位，一个 `batch`，保留带引号的 `sources`，遵守锁和错误提示；`changeset` 上有 ingest 标记 |
+| J8 | 用 query 答一个查得到的问题 | 引用；遇到 `partial_lines`、`cut`、`next_offset`、`next_column` 时用 `read` 补齐，不把片段当全文 |
+| J9 | 用 lint 先修再看最近的 `log` | 来源没有变；空的父页没有被编造元数据 |
+| J10 | 改来源根的位置、改 `AGENTS`，重连 | 说明更新了 |
+| J11 | 降级之后重连 | 没有 "pages under" 这句系统的文字。`AGENTS` 自己可能还写着 LLM Wiki，不算失败 |
+
+逐客户端记通过或失败和处置。发现 playbook 的措辞有偏差，记下原文，由负责人定怎样改，不放松服务端的守卫。M11 的 upgrade prompt 不在这一节。
+
 ## 做完
 
 1. **Codex 的登录**：照"不碰你自己的客户端配置"登录的第 3 种复制过 `auth.json` 的，先照那里的规则决定复制不复制回去（看 `shasum` 的两个指纹），**再**删临时目录；用第 2 种的，在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用，不能用时在那里 `codex login` 再登录一次。
@@ -298,5 +320,5 @@ done
 - 本地进程的（stdio）MCP 服务、OAuth：服务端没有它们（M9 总设计第 2 节"不做"）。
 - 2026-07-28 的协议（`server/discover`、`subscriptions/listen`）：等真实的客户端发它再开（M9 总设计第 11 节主持者的决定第 2 条）；客户端若以它连接而被拒，记在"记下的"里，交负责人。
 - Claude Code 的别的许可模式（`acceptEdits`、`bypassPermissions` 一类）：README 不推荐它们，是负责人自己的选择。
-- prompts（ingest、query、lint）：M10 登记。
+- prompts（ingest、query、lint）在上面的 J 部分；M11 的 upgrade prompt 由 M11 登记。
 - 多个实例：v0.1 只支持单实例。

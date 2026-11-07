@@ -88,8 +88,9 @@ type Deps struct {
 // Module owns one runtime shared by every internal caller. Construction does
 // not launch a worker; a flight starts only after Execute authorizes its caller.
 type Module struct {
-	lint *app.Lint
-	runs *app.Runs
+	lint      *app.Lint
+	runs      *app.Runs
+	playbooks *app.Playbooks
 }
 
 func New(d Deps) *Module {
@@ -100,7 +101,8 @@ func New(d Deps) *Module {
 			Rules: d.Rules, Cursors: d.Cursors, Paths: d.Paths,
 			Snapshots: d.Snapshots, Authorizer: d.Authorizer, Clock: d.Clock, Runs: runs,
 		}),
-		runs: runs,
+		runs:      runs,
+		playbooks: app.NewPlaybooks(d.Notebooks, d.Authorizer),
 	}
 }
 

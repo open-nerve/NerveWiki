@@ -128,8 +128,21 @@ func TestTheDowngradeEndsTheContract(t *testing.T) {
 		tm.sourceUnchanged(t, wiki, source, contentWrite(by, source, "changed before downgrade", 1, ""),
 			cell{http.StatusConflict, "page.source_immutable"})
 	}
+	// A handshake first, so that the AGENTS text is cached under the
+	// version the downgrade leaves: the paragraph goes all the same.
+	agent := tm.agent(t, "alice", wiki.id)
+	body, ok := strings.CutPrefix(agent.instructionsAt(t, atNotebook(wiki.id)), notebookParagraph("raw")+"\n\n")
+	if !ok {
+		t.Fatalf("the LLM Wiki's handshake does not start with its paragraph: %.200q", agent.instructionsAt(t, atNotebook(wiki.id)))
+	}
 	if status, answer := tm.downgrade(t, "alice", wiki.id); status != http.StatusOK {
 		t.Fatalf("downgrade = %d %s, want 200", status, answer)
+	}
+	if got := agent.instructionsAt(t, atNotebook(wiki.id)); got != body {
+		t.Errorf("the handshake after the downgrade = %.200q, want the AGENTS text alone", got)
+	}
+	if got := agent.opened(t, wiki.id)["instructions"]; got != body {
+		t.Errorf("open_notebook after the downgrade = %.200q, want the AGENTS text alone", got)
 	}
 	wiki.name = "the notebook downgraded"
 	// Write before moving raw so both clients address the very same page

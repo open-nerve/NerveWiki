@@ -383,8 +383,8 @@ func TestNewRefusesItsWiringFaults(t *testing.T) {
 		{"an entry that is none", []Tool{tool("a", 4, false)}, nil, "listed in no entry"},
 		{"a notebook of the notebook entry alone", []Tool{tool("a", NotebookEntry, true)}, nil, "only the account entry"},
 		{"twice in an entry", []Tool{tool("a", NotebookEntry, false), tool("a", BothEntries, false)}, nil, "twice in the notebook entry"},
-		{"a prompt twice", nil, []Prompt{{Name: "p", Get: get}, {Name: "p", Get: get}}, "prompt p is registered twice"},
-		{"a prompt without its handler", nil, []Prompt{{Name: "p"}}, "prompt p has no handler"},
+		{"a prompt twice", nil, []Prompt{{Name: "p", Entry: NotebookEntry, Get: get}, {Name: "p", Entry: AccountEntry, Get: get}}, "prompt p is registered twice"},
+		{"a prompt without its handler", nil, []Prompt{{Name: "p", Entry: BothEntries}}, "prompt p has no handler"},
 		{"a tool without its handler", []Tool{NewTool[struct{}](Spec{Name: "a", Entry: BothEntries}, nil)}, nil, "tool a has no handler"},
 	}
 	for _, tt := range tests {

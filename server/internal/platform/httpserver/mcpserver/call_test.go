@@ -428,7 +428,7 @@ func TestRecoveryAnswersEachMethod(t *testing.T) {
 		nilMap()["x"]++
 		return Result{}, nil
 	})
-	panicky := Prompt{Name: "panicky", Get: func(context.Context, Call, map[string]string) (string, []string, error) {
+	panicky := Prompt{Name: "panicky", Entry: BothEntries, Get: func(context.Context, Call, map[string]string) (string, []string, error) {
 		panic("prompt: getting")
 	}}
 	s := serveMCP(t, setup{options: func(o *Options) { o.Tools = append(o.Tools, boom); o.Prompts = []Prompt{panicky} }})

@@ -342,8 +342,8 @@ func (s *Server) overBound(ctx context.Context, name string, n int) (*mcp.CallTo
 // methodError is the JSON-RPC error of err, met by a method that is no
 // tool's call (the handshake's instructions, M9/P1 design 3.15.2):
 // classified and logged as a tool's error is, an internal error that
-// names the request; a problem, which no such method answers today, in
-// its own words.
+// names the request; a problem, a handshake's notebook.not_found of a
+// notebook deleted since its gate, in its own words.
 func (s *Server) methodError(ctx context.Context, method string, err error) error {
 	a := httpserver.ProblemOf(ctx, err)
 	id := httpserver.RequestID(ctx)

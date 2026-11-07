@@ -314,7 +314,7 @@ func TestEveryMCPAnswerIsNotStored(t *testing.T) {
 // The official Go client on its default options negotiates the latest
 // version the SDK speaks; a handshake of 2025-06-18 keeps it; a request of
 // a version the SDK does not speak is the SDK's 400. The capabilities are
-// the tools alone, unchanging: no logging, no prompts.
+// the tools and the prompts, unchanging: no logging.
 func TestTheMCPNegotiatesItsVersion(t *testing.T) {
 	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
 	cs := mcpClient(t, m.base+atNotebook(m.notebook), m.pat)
@@ -322,8 +322,8 @@ func TestTheMCPNegotiatesItsVersion(t *testing.T) {
 	if hello.ProtocolVersion != mcpVersion {
 		t.Errorf("the Go client negotiated %q, want %s", hello.ProtocolVersion, mcpVersion)
 	}
-	if caps, err := json.Marshal(hello.Capabilities); err != nil || string(caps) != `{"tools":{}}` {
-		t.Errorf("the capabilities = %s, want the tools alone, unchanging", caps)
+	if caps, err := json.Marshal(hello.Capabilities); err != nil || string(caps) != `{"prompts":{},"tools":{}}` {
+		t.Errorf("the capabilities = %s, want the tools and the prompts, unchanging", caps)
 	}
 	r := m.post(t, context.Background(), "/mcp", m.pat, initializeBody("2025-06-18"), nil).result(t)
 	if r["protocolVersion"] != "2025-06-18" {

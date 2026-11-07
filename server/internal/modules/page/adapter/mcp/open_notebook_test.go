@@ -49,10 +49,11 @@ func openOf(t *testing.T, o opened) (openAnswer, string, error) {
 // gate is notebook.not_found, as one the gate did not find.
 func TestTheOpenNotebookAnswer(t *testing.T) {
 	last := time.Date(2026, 10, 17, 16, 30, 0, 0, time.FixedZone("CST", 8*3600))
-	_, raw, err := openOf(t, opened{answer: app.Opened{Mode: domain.ModeLLMWiki, Agents: domain.Agents{Body: "# Rules <&>", Title: "agents"},
-		HasAgents: true, Pages: 120, Attachments: 8, LastChange: &last,
+	_, raw, err := openOf(t, opened{answer: app.Opened{Instructions: app.NotebookInstructions{NotebookID: nb, Mode: domain.ModeLLMWiki,
+		Agents: domain.Agents{Body: "# Rules <&>", Title: "agents"}, HasAgents: true, SourceRootPath: "raw", SourceRootTitle: "raw"},
+		Pages: 120, Attachments: 8, LastChange: &last,
 		Root: []app.RootNode{{Path: "Inbox.md", Kind: domain.KindPage}, {Path: "logo.png", Kind: domain.KindAsset}}}})
-	want := `{"notebook":"01920000-0000-7000-8000-0000000000b0","mode":"llm_wiki","instructions":"# Rules <&>","instructions_from":"agents.md",` +
+	want := `{"notebook":"01920000-0000-7000-8000-0000000000b0","mode":"llm_wiki","instructions":"` + accountParagraph("raw") + `\n\n# Rules <&>","instructions_from":"agents.md",` +
 		`"overview":{"pages":120,"attachments":8,"last_changed_at":"2026-10-17T08:30:00Z","root":[{"path":"Inbox.md","kind":"page"},` +
 		`{"path":"logo.png","kind":"attachment"}]},"truncated":false}`
 	if err != nil || raw != want {
@@ -95,7 +96,7 @@ func TestOpenNotebookFitsItsAnswer(t *testing.T) {
 	}
 	for _, title := range []string{"AGENTS", strings.Repeat("&", 255)} {
 		agents := domain.Agents{Body: body, Cut: true, Title: title}
-		a, raw, err := openOf(t, opened{answer: app.Opened{Agents: agents, HasAgents: true, Pages: 100, Root: longRoot(domain.MaxOverviewRoot)}})
+		a, raw, err := openOf(t, opened{answer: app.Opened{Instructions: app.NotebookInstructions{Agents: agents, HasAgents: true}, Pages: 100, Root: longRoot(domain.MaxOverviewRoot)}})
 		if err != nil {
 			t.Fatalf("%.10s: %v", title, err)
 		}

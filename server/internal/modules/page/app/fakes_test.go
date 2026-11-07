@@ -340,6 +340,9 @@ func sameParent(a, b *uuid.UUID) bool {
 
 func (f *fakeStore) Ancestors(ctx context.Context, id uuid.UUID) ([]domain.Ancestor, error) {
 	f.record(ctx, "Ancestors")
+	if err := f.errs["Ancestors"]; err != nil {
+		return nil, err
+	}
 	var out []domain.Ancestor
 	for p := f.nodes[id].ParentID; p != nil; p = f.nodes[*p].ParentID {
 		out = append(out, domain.Ancestor{ID: *p, Name: f.nodes[*p].Name})
@@ -1569,6 +1572,9 @@ func (f *fakeStore) AliveNodes(ctx context.Context, ids []uuid.UUID) (map[uuid.U
 // content's revision, a call.
 func (f *fakeStore) AgentsPage(ctx context.Context, notebookID uuid.UUID, key string) (uuid.UUID, domain.Kind, string, int, bool, error) {
 	f.record(ctx, "AgentsPage")
+	if err := f.errs["AgentsPage"]; err != nil {
+		return uuid.UUID{}, "", "", 0, false, err
+	}
 	n, ok, _ := f.byKey(notebookID, nil, key)
 	if !ok {
 		return uuid.UUID{}, "", "", 0, false, nil

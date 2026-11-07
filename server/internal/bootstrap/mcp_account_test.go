@@ -60,8 +60,8 @@ func TestNotebooksListsTheAccountsWorkspaces(t *testing.T) {
 
 // MCP answers each notebook's mode (M10/P1 design 3.12, 3.16): notebooks
 // lists it for each; open_notebook answers an LLM Wiki's, its
-// instructions its AGENTS page's text, and once the LLM Wiki is
-// downgraded, both answer standard at the next call.
+// instructions the system paragraph and its AGENTS page's text, and once
+// the LLM Wiki is downgraded, both answer standard at the next call.
 func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
 	r := startReadsApp(t, "")
 	status, created := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/workspaces/acme/notebooks", r.access,
@@ -88,15 +88,15 @@ func TestNotebooksAnswerTheirModeOverMCP(t *testing.T) {
 	listedModes("of the LLM Wiki", map[string]string{wiki: "llm_wiki", r.notebook: "standard"})
 	agents := wikiPages(t)[1].Content
 	if o := r.opened(t, wiki); o["mode"] != "llm_wiki" || o["instructions_from"] != "AGENTS.md" ||
-		o["instructions"] != strings.TrimSpace(agents) {
-		t.Errorf("open_notebook of the LLM Wiki = mode %v, instructions from %v, %d bytes of them; want llm_wiki, its AGENTS page's text",
+		o["instructions"] != accountParagraph("raw", wiki)+"\n\n"+strings.TrimSpace(agents) {
+		t.Errorf("open_notebook of the LLM Wiki = mode %v, instructions from %v, %d bytes of them; want llm_wiki, the paragraph and its AGENTS page's text",
 			o["mode"], o["instructions_from"], len(fmt.Sprint(o["instructions"])))
 	}
 	if status, answer := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+wiki+"/downgrade", r.access, ""); status != http.StatusOK {
 		t.Fatalf("downgrade = %d %s, want 200", status, answer)
 	}
-	if o := r.opened(t, wiki); o["mode"] != "standard" {
-		t.Errorf("open_notebook after the downgrade = mode %v, want standard", o["mode"])
+	if o := r.opened(t, wiki); o["mode"] != "standard" || o["instructions"] != strings.TrimSpace(agents) {
+		t.Errorf("open_notebook after the downgrade = mode %v, %.100q; want standard, the AGENTS page's text alone", o["mode"], o["instructions"])
 	}
 	listedModes("after the downgrade", map[string]string{wiki: "standard", r.notebook: "standard"})
 }

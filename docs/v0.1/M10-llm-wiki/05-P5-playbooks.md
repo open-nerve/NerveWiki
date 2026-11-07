@@ -2,11 +2,11 @@
 
 | 项 | 内容 |
 |---|---|
-| 状态 | 设计，已审查；未实施 |
+| 状态 | S1 已实施并审查，合并见 [00](00-M10-design.md) 第 12 节 |
 | 权威 | [00](00-M10-design.md) §4.15、§4.19、§5、§7，故事 LW1、LW11；[总体设计](../v0.1-design.md) §5.9、§12.4、§13；[M9 移交](handoffs/M9-P1-mcp-registry.md)；[02-workflow](../claude_to_codex/02-workflow.md) |
 | 基线 | `c5fff600`（M10/P4 done），tree `d2fc220e` |
 | Step | S1，一个能单独合并为绿的 Step |
-| 审查 | [设计审查](reviews/P5-design-review.md) |
+| 审查 | [设计审查](reviews/P5-design-review.md)、[S1 审查](reviews/P5-S1-playbooks-review.md) |
 
 ## 0. Step 的划分
 
@@ -155,10 +155,10 @@ SDK 解成 map 之后分不出 null 与空字符串：`{"question":null}` 过 `R
 | 1 | HTTP 边缘：请求体大小与形状、PAT、`notebook` 查询参数、`NotebookGate` | 全部保留。认证失败、笔记本看不到都在 SDK 之前，看不到是 HTTP 404 的 problem，不是 JSON-RPC |
 | 2 | SDK 解码参数 | 不进中间件，没有调用日志。无 params 是 HTTP 400，`params:null` 是 -32600，非字符串参数是 -32602，SDK 把整个 params 回显给调用者。所以"不回显值"和 48 KiB 只约束成功路径和第 4 步，这是 `edge.go` 已接受的 M9 行为 |
 | 3 | SDK 找 prompt | 账户入口和未知名称答 SDK 的 -32602，处理函数不调用，不记调用日志（决定 162） |
-| 4 | `mcpserver` 按声明次序查参数 | 先查 `Required` 的键，再查已声明字符串参数的字节数 ≤ 4,096。两者都是 -32602，`message` 写参数名与界，不回显值，`data` 是 `{"code":"validation_failed"}`，都不调用 `Get`。`validation_failed` 在 `shared` 里，`mcpserver` 不导入 shared，用私有常量 |
+| 4 | `mcpserver` 按声明次序查参数 | 逐个参数先查 `Required` 的键，再查这个参数的字节数 ≤ 4,096。两者都是 -32602，`message` 写参数名与界，不回显值，`data` 是 `{"code":"validation_failed"}`，都不调用 `Get`。`validation_failed` 在 `shared` 里，`mcpserver` 不导入 shared，用私有常量 |
 | 5 | wiki 用例：`RequireActor` → `WorkspaceOf` → `Authorize(lint.read)` → `StateOf` | 不启动 Runs、快照或 lint。`WorkspaceOf` 没有、`Authorize` 答 `ErrNotVisible`、`StateOf` 没有都是 `notebook.not_found`（`ErrNotVisible` 自己的码是空的，要换成这个码），普通笔记本是 `ErrNotLLMWiki`，端口的错误保持原因 |
 | 6 | 读静态资源、拼一次消息 | `Get` 出错时不发送它一起返回的部分内容 |
-| 7 | 平台数 `TextBytes(description) + ΣTextBytes(消息)` | 超 48 KiB 是缺陷，-32603，不截成成功，只有带缺陷的处理函数走得到。这里记一行 error，只带 prompt 与字节数 |
+| 7 | 平台数 `TextBytes(description) + ΣTextBytes(消息)` | 超 48 KiB 是缺陷，-32603，不截成成功，只有带缺陷的处理函数走得到。这里记一行 error，带 prompt、字节数与 `request_id` |
 
 第 4 步在第 5 步之前，所以普通笔记本加 4,097 字节的参数答 `validation_failed`，不答 `notebook.not_llm_wiki`。这是 00 §4.15 的"处理函数之前"，与 lint 规则页的次序不同，不算矛盾。
 
@@ -245,6 +245,8 @@ func NotebookText(i app.NotebookInstructions, entry mcpserver.Entry,
 
 LW1、LW11 不在 `threeBrowsers` 里，只跑 Chromium。LW11 不开浏览器。
 
+`e2e/fixtures/server.ts` 起服务时再等 `jobs started` 这一行（决定 167）。
+
 ## 6. 实施步骤
 
 设计提交在先。三个产品提交，每个都过 02-workflow 的最低要求：build、vet、模块的 lint、短测试；第 2、3 个改了 e2e 的 TS，再跑 `pnpm -r run check:types`、`check:format` 与 `make knip`。
@@ -268,8 +270,8 @@ LW1、LW11 不在 `threeBrowsers` 里，只跑 Chromium。LW11 不开浏览器�
 | 平台 `TestPromptErrorsAndLogs` | 4xx、5xx 的 problem 与 `data`；普通错误；真实的取消、到期；活的 ctx 上裸的 Canceled、DeadlineExceeded；未知；panic 的形状（无 `data`），那一行的 `outcome` 是 `internal_error`；日志级别；已登记的 prompt 一行调用日志；日志从子测试开始之后切片，传独特的 source、question，任何字段都不含它们。`client_cancel` 要轮询日志，分类日志晚于客户端返回和处理函数退出，同 `TestTheInstructionsAreReadWithinTheCallsDeadline` |
 | wiki `TestPlaybooksAuthorizeAndRequireMode` | 没有 actor、未找到、看不到（答 `notebook.not_found`）、拒绝、状态错误、普通笔记本、LLM Wiki 各自最先答的错误与调用次序；用假授权者判 `Authorize` 确实被调用；不碰 Runs；参数不裁不改；三份正文的第一行、各自的关键句、不超 16 KiB |
 | 组合根 `TestThePromptListsAreTheContract` | 真实的两个入口、两种模式，整个对象比较，3 项与 0 项；能力是确切的对象，笔记本入口 `{"prompts":{},"tools":{}}`，账户入口 `{"tools":{}}`；比较器对少一个、多一个、说明不同要报错 |
-| 组合根 `TestTheWikiPromptsAreReached` | `New` → `wk.Prompts` → `Options` → 三个真实的 `Get`；第一行字面，`source`、`question` 只出现一次；普通笔记本确切的 RPC 错误；普通笔记本加 4,097 字节答 `validation_failed`；账户入口 unknown；读者能取用；看不到的笔记本是 HTTP 404 的 problem（`NotVisible` 的映射只由 wiki 的单元测试覆盖） |
-| 组合根 `TestThePromptReadsLLMWikiMatrix` | 决定 165：13 列的角色，同 `TestTheWikiToolsReadLLMWikiMatrix` |
+| 组合根 `TestTheWikiPromptsAreReached` | `New` → `wk.Prompts` → `Options` → 三个真实的 `Get`；第一行字面，`source`、`question` 只出现一次；普通笔记本确切的 RPC 错误；普通笔记本加 4,097 字节答 `validation_failed`；账户入口 unknown；空的 source、带空白的 source 原样到达，没有哪个 prompt 声明的键不进正文；看不到的笔记本是 HTTP 404 的 problem（`NotVisible` 的映射只由 wiki 的单元测试覆盖） |
+| 组合根 `TestThePromptReadsLLMWikiMatrix` | 决定 165：`prompts.json` 的每个 prompt × 13 列的角色 × 两种模式，78 格，同 `TestTheWikiToolsReadLLMWikiMatrix`。答复要有这个 prompt 的第一行，没有 `data.code` 的错误不算答复，所以读者能取用在这里判 |
 | page `TestNotebookInstructionsShareTheirBudget` | 普通笔记本逐字不变；两个入口的系统句；AGENTS、BOM、frontmatter、空的回退、截断提示；**按 SDK 真实的文字量判**（同 `TestTheBuiltInInstructionsAreShort` 的量法），不用 `TextBytes` 自己判自己：32,768 恰好整段保留，多 1 字节截断而系统段保留；实际的 open 骨架加 `MemberBytes`、8 KiB 预留、最终 SDK 不超 48 KiB；路径 349、350 与 286、287 字节四个点；`…` 这一支用明确标为超长的纯函数输入；`no_room`：纯函数在所需字节数减 1 时答错误、等于所需时答系统段加提示，AGENTS 与内置说明两支都测 |
 | M9 的说明缓存测试（G16）加 `TestTheWikiInstructionsFollowTheirSourceRoot` | 真实 SDK：缓存命中与新版本；来源根实际改名、移动之后两个入口都是新路径；10 层 255 字节退成标题 |
 | page/app `TestInstructionsReadTheSourceRoot`，page `TestMCPEntryAnswersItsState` | 用假端口：普通笔记本不读根；只读一次祖先，没有 `ListNodes`；AGENTS、读、祖先的真实错误保持原因；`StateOf` 答没有时握手答 `notebook.not_found` |
@@ -315,12 +317,28 @@ LW1、LW11 不在 `threeBrowsers` 里，只跑 Chromium。LW11 不开浏览器�
 | P25 | 根的路径加 `.md` | `TestTheWikiInstructionsFollowTheirSourceRoot` |
 | P26 | 空 AGENTS 的回退漏掉系统段 | `TestNotebookInstructionsShareTheirBudget` |
 | P27 | `NotebookText` 去掉 `AgentsText` 之后的再量 | `TestNotebookInstructionsShareTheirBudget/no_room`，生产到不了，只有纯函数的测试抓得到 |
+| P28 | 握手丢掉 problem 的码 | `TestAProblemOfTheInstructionsIsTheHandshakesError` |
+| P29 | `Call` 不带客户端 | `TestPromptCallKnowsItsCaller` |
+| P30 | 日志行不带客户端 | 同上 |
+| P31 | 500 的 problem 答 -32602 | `TestPromptErrorsAndLogs/problem500` |
+| P32 | 名字为空的键当成参数 | `TestThePromptsPassTheirArgument` |
+| P33 | LLM Wiki 里每次取用都失败 | `TestThePromptReadsLLMWikiMatrix` |
+| P34 | `query` 绕过用例 | 同上，普通笔记本的列 |
+| P35 | 没有 AGENTS 时不读来源根 | `TestInstructionsReadTheSourceRoot`、`TestTheWikiInstructionsFollowTheirSourceRoot` |
+| P36 | 握手读失败时答内置说明 | `TestTheInstructionsShareNoTransaction` |
+| P37 | `open_notebook` 吞掉读的错误 | `TestOpenNotebookKeepsTheInstructionsError` |
+| P38 | 512 按转义之后的字节算 | `TestNotebookInstructionsShareTheirBudget/path_at_bound` |
+| P39 | `WorkspaceOf` 的失败答 `notebook.not_found` | `TestPlaybooksAuthorizeAndRequireMode` |
+| P40 | 处理函数一律以为是笔记本入口 | `TestPromptCallKnowsItsCaller` |
+| P41 | 日志行不带 `request_id` | `TestPromptErrorsAndLogs/ok` |
 
 ### 7.4 门禁与 CI 的余量
 
 推送之前：`make lint gen-check knip build`、`make test`、`make test-go-short`、`make e2e`，重的运行经 `heavy.sh`。`make gen-check` 不用加检查：`tools.json`、`prompts.json` 都是手写的，由测试比较。
 
 新测试的分份：`TestThePromptListsAreTheContract`、`TestTheWikiPromptsAreReached`、`TestThePromptReadsLLMWikiMatrix`、`TestTheWikiInstructionsFollowTheirSourceRoot` 落第三份，`TestTheDowngradeEndsTheContract` 在第四份，`TestNotebookInstructionsShareTheirBudget` 在 page，归 `test-go-race`。最近五次 main 第三份 265–405 秒，第四份 330–415 秒，都低于 450，新测试都是小的。两次 main 的均值严格低于 450 秒，分片要调整时按 M9/P2 §6.5。
+
+审查发现第六份在 EPYC 7763 上 483–493 秒，别的 CPU 上 301–373 秒，两次 main 都落在 7763 时就过线。`TestIngestCandidates`、`TestIngestCoverage` 移到第五份（决定 166）。
 
 P5 不碰成本的负载，时限照决定 150、153、159、160 的做法：同样的工作在 EPYC 7763 上慢约一倍，再碰到线先查 CPU。
 
@@ -340,9 +358,9 @@ P5 不碰成本的负载，时限照决定 150、153、159、160 的做法：同
 >
 > 普通笔记本也列出同样三个名字，取用答 JSON-RPC -32602，码是 `notebook.not_llm_wiki`。账户入口 `/mcp` 没有 prompt，`open_notebook` 的说明给出对应笔记本的入口。
 >
-> 握手和 `open_notebook` 的说明是一段系统的文字，后面跟 AGENTS 去掉 frontmatter 的正文，空正文时用内置说明。系统的文字写当前的来源根和生成的视图，来源根改名或移动之后下一次读取就更新。AGENTS 太长时被截短并提示用 `read` 读全，系统的文字不截。
+> 握手和 `open_notebook` 的说明先是一段系统的文字，后面跟 AGENTS 去掉 frontmatter 的正文，空正文时用内置说明。系统的文字写当前的来源根和生成的视图，来源根改名或移动之后下一次读取就更新。AGENTS 太长时被截短并提示用 `read` 读全，系统的文字不截；来源根的路径太长时，这段文字改写它的标题。
 >
-> **降级**：管理员可以把 LLM Wiki 降级成普通笔记本，有写入任务在进行时拒绝。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。AGENTS 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
+> **降级**：管理员可以把 LLM Wiki 降级成普通笔记本，有写入任务排队或运行时拒绝。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。AGENTS 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
 >
 > **重新导入的限制**：把 LLM Wiki 的导出导进一本新的 LLM Wiki，根下的 `AGENTS.md` 因为已有 `AGENTS` 成为 `AGENTS 2`，档案的 `raw/` 因为已有 `raw` 成为 `raw 2`，它里面的来源落在来源区之外。这是 v0.1 写明的限制。
 
@@ -362,7 +380,7 @@ P5 不碰成本的负载，时限照决定 150、153、159、160 的做法：同
 | J4 | 在普通笔记本取同一个 prompt | 对 -32602 与 `notebook.not_llm_wiki` 显示什么 |
 | J5 | 接账户入口 | 没有 prompt，`open_notebook` 的说明指向笔记本的地址；不把客户端缓存的旧清单当成服务器的能力 |
 | J6 | 看握手的说明 | agent 看得到系统的文字吗（决定 161）；AGENTS 很长时看得到吗 |
-| J7 | 让 agent 照 ingest 做一份已批准的维护 | 先读完整来源，小改用 `edit`，`move` 一步到位，一个 `batch`，保留带引号的 `sources`，遵守锁和错误提示；`log` 上有 ingest 标记 |
+| J7 | 让 agent 照 ingest 做一份已批准的维护 | 先读完整来源，小改用 `edit`，`move` 一步到位，一个 `batch`，保留带引号的 `sources`，遵守锁和错误提示；`changeset` 上有 ingest 标记 |
 | J8 | 用 query 答一个查得到的问题 | 引用；遇到 `partial_lines`、`cut`、`next_offset`、`next_column` 时用 `read` 补齐，不把片段当全文 |
 | J9 | 用 lint 先修再看最近的 `log` | 来源没有变；空的父页没有被编造元数据 |
 | J10 | 改来源根的位置、改 AGENTS，重连 | 说明更新了 |
@@ -385,7 +403,18 @@ P5 是 M10 最后的实现 Phase，之后是 M10 收尾（02 §4），不自动�
 
 ## 10. 结果
 
-实施后补。
+### 10.1 S1
+
+S1 建成了设计第 0 节列的全部内容：按入口的 Prompt 注册表和它的界，三份英文 playbook，两个入口共用的说明。门禁、CI 与分份的数都在 [S1 审查记录](reviews/P5-S1-playbooks-review.md)。
+
+与设计不同的地方：
+
+- `TestThePromptReadsLLMWikiMatrix` 从 13 列扩到 78 格，读者能取用改由它判，见 §7.1。
+- 三个 `Get` 由 `playbook` 这一个闭包给出，`PlaybookText` 在 domain 里拼参数，设计附录 B 原写"由 adapter 追加"，已改。
+- 过界的 error 行多带 `request_id`。
+- playbook 比设计初稿多两句：ingest 分清没记标记和失败，lint 写明 `log` 只给名字。附录 B 是最终的文字。
+- 不在设计里的两处：第六份的两个测试移到第五份（决定 166），e2e 的服务等 `jobs started`（决定 167）。
+- 设计 §6 第 2 步要先看到测试因行为失败再实现。实际先写了实现，靠变异补上：P01–P05、P13 证明这些测试会因行为失败。
 
 ## 附录 A：核对过的代码
 
@@ -415,7 +444,7 @@ For a small existing change, use edit with exact text rather than replacing the 
 
 Treat grep's partial_lines and cut hits, and an incomplete page read, as partial evidence. grep gives a line, not an offset: call read with offset set to that line and limit 1, with column when the hit has one, and repeat from next_offset and next_column until next_column is null. partial_lines have no column: read the line from its start. Continue next_cursor where needed; an empty page, a capped count or grep's incomplete does not prove there is no more. On stale versions or locks, re-read or wait as the tool says; do not overwrite a source or take over an edit lock.
 
-After the successful batch, call lint and check the relevant results. Confirm the ingestion: read the batch's changeset_id with changeset and check its ingest_count and ingest_sources. A batch can succeed and record nothing: lint's invalid_frontmatter or invalid_sources says why. A source already digested adds no mark. Report the pages changed, the source references and any remaining work. Do not claim ingestion succeeded just because a prompt or a batch message was produced.
+After the successful batch, call lint and check the relevant results. Confirm the ingestion: read the batch's changeset_id with changeset and check its ingest_count and ingest_sources. A batch can succeed and record nothing: lint's invalid_frontmatter or invalid_sources may say why, and a stale_pages above zero means the links were still being indexed. A source already digested adds no mark, and a source gone from pending_sources is digested even without one: report the missing mark, and do not repeat the ingestion. Report the pages changed, the source references and any remaining work. Do not claim ingestion succeeded just because a prompt or a batch message was produced.
 ```
 
 没有提供 source 时不追加用户段。提供了（包括空串）就追加 `Source path supplied by the caller:\n` 和原值一次，路径是否有效由之后的 `read` 判断。
@@ -447,7 +476,7 @@ Read the affected knowledge pages and their evidence. Make only justified mechan
 
 Use edit for small changes with exact old text and current versions for replacements. Move to the full new path in one operation. Respect permissions, edit locks and all batch limits; a failed batch is not a successful partial repair. grep gives a line, not an offset: for partial_lines or a cut hit, call read with offset set to that line and limit 1, with column when the hit has one, and repeat from next_offset and next_column until next_column is null.
 
-After mechanical repairs, read recent changesets with log and inspect the pages they touched for semantic problems: unsupported claims, contradictions, duplicated concepts and stale references. The newest entries are your own repairs: look past them. log shows each changeset's first three changes; read all of one with changeset, and read the pages and their cited sources as needed. Choose the relevant recent changes; do not assume a fixed number is always enough. Do not infer semantic correctness solely from a clean mechanical lint result.
+After mechanical repairs, read recent changesets with log and inspect the pages they touched for semantic problems: unsupported claims, contradictions, duplicated concepts and stale references. The newest entries are your own repairs: look past them. log shows each changeset's first three changes by name; read one with changeset for all its changes and their paths, and read the pages and their cited sources as needed. Choose the relevant recent changes; do not assume a fixed number is always enough. Do not infer semantic correctness solely from a clean mechanical lint result.
 
 Run lint again after successful repairs. Report what changed, which pages and sources justify it, what remains uncertain and what needs human judgment. Never claim a fix that the tools did not commit.
 ```

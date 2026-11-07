@@ -61,7 +61,7 @@ func newBatchBenchOf(tb testing.TB, configure func(c *config.Config), maxRewrite
 		d.MaxBatchRewrites, d.MaxBatchRewriteLinks, d.MaxBatchRewriteBytes = maxRewrites, maxLinks, maxBytes
 	})
 	mountMCP(b.mux, b.api, mcpServer(b.cfg, slog.New(slog.DiscardHandler), b.api, b.pg, benchNames{},
-		b.pg.Tools(page.ToolDeps{Attachments: benchAttachments{}, Virtual: benchVirtualFiles{}})))
+		b.pg.Tools(page.ToolDeps{Attachments: benchAttachments{}, Virtual: benchVirtualFiles{}}), nil))
 	return batchBench{b, logs}
 }
 

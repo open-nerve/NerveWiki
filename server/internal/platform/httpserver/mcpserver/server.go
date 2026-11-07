@@ -4,8 +4,9 @@
 // own; the registry's tools and prompts; every method's call context, its
 // recovery from a panic, the results and errors with their bound; and the
 // logs. It is part of httpserver, whose classification of errors and
-// problems it answers with. The modules build its Tool values in their
-// adapter/mcp and never meet the SDK's types; bootstrap fills Options.
+// problems it answers with. The modules build its Tool and Prompt values
+// in their adapter/mcp and never meet the SDK's types; bootstrap fills
+// Options.
 package mcpserver
 
 import (
@@ -14,6 +15,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"time"
 	"uuid"
 
@@ -33,7 +35,7 @@ func protocolVersions() []string {
 type Options struct {
 	Name, Version string // serverInfo
 	Tools         []Tool
-	Prompts       []Prompt // none in M9's production wiring; the platform test's double (M9/P1 design 3.4.7)
+	Prompts       []Prompt
 	Credentials   func(ctx context.Context) (Credential, bool)
 	Notebooks     Notebooks   // the notebook entry's gate and instructions
 	Account       string      // the account entry's instructions ("" sends none)
@@ -99,7 +101,7 @@ var errNoCredential = errors.New("mcpserver: no credential on the request: the r
 var errUnwritten = errors.New("mcpserver: the SDK wrote no answer")
 
 // New builds the server: a wiring fault panics (a tool or a prompt named
-// twice, a tool of no entry, an input type that is no struct, a schema it
+// twice or of no entry, an input type that is no struct, a schema it
 // cannot normalize, a Notebook tool that is not in the account entry,
 // where alone the flag adds its "notebook").
 func New(o Options) *Server {
@@ -120,7 +122,7 @@ func New(o Options) *Server {
 		requestTimeout: o.RequestTimeout, logger: o.Logger,
 	}
 	sdk := sdkLogger(o.Logger)
-	s.notebookEntry, s.accountEntry = s.newEntry(o, sdk), s.newEntry(o, sdk)
+	s.notebookEntry, s.accountEntry = s.newEntry(o, NotebookEntry, sdk), s.newEntry(o, AccountEntry, sdk)
 	s.addTools(o.Tools)
 	s.addPrompts(o.Prompts)
 	s.handler = mcp.NewStreamableHTTPHandler(s.getServer, &mcp.StreamableHTTPOptions{
@@ -136,13 +138,14 @@ func New(o Options) *Server {
 	return s
 }
 
-// newEntry is one entry's server, without its tools: the protocol versions,
-// the capabilities that never change, every result private and never
-// cached, and the receiving middlewares, outer outermost. Its instructions
-// are the handshake's to fill per request.
-func (s *Server) newEntry(o Options, logger *slog.Logger) *mcp.Server {
+// newEntry is entry e's server, without its tools: the protocol versions,
+// the capabilities that never change, prompts only when a prompt is e's,
+// every result private and never cached, and the receiving middlewares,
+// outer outermost. Its instructions are the handshake's to fill per
+// request.
+func (s *Server) newEntry(o Options, e Entry, logger *slog.Logger) *mcp.Server {
 	caps := &mcp.ServerCapabilities{Tools: &mcp.ToolCapabilities{ListChanged: false}}
-	if len(o.Prompts) > 0 {
+	if slices.ContainsFunc(o.Prompts, func(p Prompt) bool { return p.Entry&e != 0 }) {
 		// Left nil, the SDK fills it in with listChanged true once a
 		// prompt is added.
 		caps.Prompts = &mcp.PromptCapabilities{ListChanged: false}

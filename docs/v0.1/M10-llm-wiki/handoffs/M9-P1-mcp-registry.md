@@ -33,6 +33,8 @@ M9/P1 建了 MCP 的平台与读的工具（[M9/P1 文档](../../M9-mcp/01-P1-pl
 
 ## 处理进展
 
+- P5/S1（2026-11-07；合并见[00](../00-M10-design.md)第12节）：第1项按入口的注册表、第2项最后一跳与 `prompts.json`、第5项 `prompts/get` 的界与错误、第6项余量都做完。第2项写的 `tools.json` 扩键与第5项的请求例外由 00 §4.15 取代：`prompts.json` 是单独的文件，`prompts/get` 没有大请求体的例外。[S1 记录](../reviews/P5-S1-playbooks-review.md)。
+
 - P4/S1（2026-11-02；合并见[00](../00-M10-design.md)第12节）：第3项的两scope虚拟路径/list/read及账户open_notebook、工具描述/码表、V游标与真实负sort、glob/grep界线、canonical读与其他virtual_file、SDK窗口/字节上界已有S1作者/ROOT证据；普通与nested同名实体保留。list不消费生成端口，Tools而非page.New检查Virtual。S1代码、完整本地门禁、精确修复CI和三位原席第一次核修已接受；当前进入Step文档与主线集成，合并见00第12节；S2/S3仍待实施，见[S1记录](../reviews/P4-S1-virtual-files-review.md)。P5 prompt、系统说明与人工清单义务仍open，整份status不关闭。
 
 - P3/S2（2026-11-01；合并见[00号文档](../00-M10-design.md)第12节）：本单元只加健康网页与LW8 page，保留原7个API/MCP故事；未改两scope注册、工具合同、SDK限值或说明余量。虚拟页P4、prompt/说明/人工清单P5与M11预留仍按原边界，整份status保持open；d061历史门禁/三审保留；B-M1修复fa681已提交并有9+2 minimum及postgen，fa681正式38＋额外3+1控制及完整本地native19/Cost05/EW已按各自范围接受；当前接受结论：fa681代码CI41240404612 attempt1及原A/B/C修复核对均已接受；root关闭B-M1，当前已核实Important/Minor/Nit/Q均0，准入Step文档（处置回执43a25df5…），文档CI与集成仍PENDING，见[S2记录](../reviews/P3-S2-health-web-review.md)。

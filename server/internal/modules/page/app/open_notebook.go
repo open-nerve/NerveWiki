@@ -24,20 +24,18 @@ func NewOpenNotebook(gate *NotebookGate, notebooks Notebooks, overview OverviewS
 	return &OpenNotebook{gate: gate, notebooks: notebooks, overview: overview, instructions: instructions}
 }
 
-// Opened is an open notebook: its mode, its AGENTS page's text when
-// HasAgents (else the built-in instructions, which the adapter writes),
-// its pages and attachments, its last change, nil when nothing was ever
-// written in it, and the root's first nodes, at most MaxOverviewRoot in
-// the tree's order, MoreRoot when others follow.
+// Opened is an open notebook: what its instructions are written from, its
+// mode among them, which the adapter writes; its pages and attachments,
+// its last change, nil when nothing was ever written in it, and the root's
+// first nodes, at most MaxOverviewRoot in the tree's order, MoreRoot when
+// others follow.
 type Opened struct {
-	Mode        domain.Mode
-	Agents      domain.Agents
-	HasAgents   bool
-	Pages       int64
-	Attachments int64
-	LastChange  *time.Time
-	Root        []RootNode
-	MoreRoot    bool
+	Instructions NotebookInstructions
+	Pages        int64
+	Attachments  int64
+	LastChange   *time.Time
+	Root         []RootNode
+	MoreRoot     bool
 }
 
 // RootNode is a node at the notebook's root, by its path.
@@ -64,7 +62,7 @@ func (o *OpenNotebook) Execute(ctx context.Context, notebookID uuid.UUID) (Opene
 	case !ok:
 		return Opened{}, domain.ErrNotebookNotFound
 	}
-	out := Opened{Mode: state.Mode}
+	var out Opened
 	if out.Pages, out.Attachments, err = o.overview.NotebookCounts(ctx, notebookID); err != nil {
 		return Opened{}, err
 	}
@@ -86,7 +84,7 @@ func (o *OpenNotebook) Execute(ctx context.Context, notebookID uuid.UUID) (Opene
 	for _, n := range root {
 		out.Root = append(out.Root, RootNode{Path: domain.PathOf(nil, n), Kind: n.Kind})
 	}
-	if out.Agents, out.HasAgents, err = o.instructions.Execute(ctx, notebookID); err != nil {
+	if out.Instructions, err = o.instructions.Read(ctx, notebookID, state); err != nil {
 		return Opened{}, err
 	}
 	return out, nil

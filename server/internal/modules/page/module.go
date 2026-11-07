@@ -245,6 +245,7 @@ type Deps struct {
 type Module struct {
 	uc           httpadapter.UseCases
 	gate         *app.NotebookGate   // MCP's notebook entry (MCPEntry)
+	notebooks    app.NotebookStates  // its handshake's mode and source root
 	instructions *app.Instructions   // its handshake's and open_notebook's, with their one cache
 	list         *app.ListByPattern  // MCP's list (Tools)
 	read         *app.ReadPath       // MCP's read (Tools)
@@ -339,7 +340,7 @@ func New(d Deps) *Module {
 		RevertChangeset: app.NewRevertChangeset(trash, store, writer, parser,
 			app.RevertBounds{Nodes: d.MaxUnitNodes, History: d.MaxUnitHistory, Steps: d.MaxRevertSteps}, d.Logger),
 		Search: search,
-	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), jobs: []jobs.Job{
+	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), notebooks: d.Notebooks, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md), seeds: app.NewSeedWrites(writer, md),
 		targetPath:   app.NewSourceTargetPath(d.Notebooks, store, d.Authorizer),

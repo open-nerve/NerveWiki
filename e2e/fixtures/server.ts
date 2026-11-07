@@ -123,6 +123,9 @@ export async function startNervewiki(
       // /readyz does not wait for the listener: until it listens, a stream is 503 not_ready, which a page's
       // first stream would wait out (README, the event stream).
       await waitForLog(logFile, listening, child, deadline);
+      // Nor for the jobs, which start beside HTTP: a story that took the database away before River listens would
+      // meet a server that exits, as it must when its jobs cannot start (run 42357198372, S1).
+      await waitForLog(logFile, jobsStarted, child, deadline);
     }
     return { baseURL, storageDir, stop: () => stop(child, logFile) };
   } catch (err) {
@@ -165,6 +168,7 @@ function readAddr(addrFile: string): string | undefined {
 
 /** What nervewiki logs once the event stream's listener listens. */
 const listening = 'msg="notification listener listening"';
+const jobsStarted = 'msg="jobs started"';
 
 /** waitForLog waits until logFile has text, while child runs, until deadline. */
 async function waitForLog(logFile: string, text: string, child: ChildProcess, deadline: number): Promise<void> {
