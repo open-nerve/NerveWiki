@@ -33,7 +33,7 @@
 | 发现 | 处置 |
 |---|---|
 | M1 撤销的恢复不判保留的标题，升级之后才走得到 | 写进 [M11 的移交](../../M11-upgrade/handoffs/M10-mode.md)。M10 里走不到，不改代码 |
-| M2 `SourcePrecheck` 的 nil 分支只在测试里跑，任务的性质测试跑的是回退 | 删掉回退，fixture 用真的 `CheckJob` |
+| M2 `SourcePrecheck` 的 nil 分支只在测试里跑，任务的性质测试跑的是回退 | 删掉回退，fixture 用真的 `SourcePrecheck`（普通笔记本，到 `Check` 的模式判断为止）。`CheckJob` 由 `TestARevertsChecksRefuseTheContract`、`TestARevertsExtraDecisionKeepsItsErrors` 盖住 |
 | Nit：注释过时或写着 Step 的历史（`notebook.go`、`contract.go`、`lint_errors.go`、`mode_guard.go`、`apply_batch.go`、`extension.go`、`refusal.go`、`wiki/module.go`、`linking/module.go`、`purge.sql`） | 都改了 |
 | Nit：4.8 只写了链接改写让两个来源相同，撤销的写回同样 | 补进 4.8 |
 | Nit：`unit_revert.go:98` 另造一个 `NewModeGuard`；未加锁地先读模式再读根，降级加删 `raw` 落在两次读之间时答错误 | 接受。前者不绕过规则；后者靠推理得出，15 轮没有复现，握手下次就好 |
@@ -72,7 +72,7 @@
 | I-12 决定 144 不在第 11 节 | 补上，第 11 节开头加编号的说明 |
 | I-13 README 缺 M10 的用法 | `### LLM Wiki 与 playbook` 加来源、健康度与目录、降级的接口，事件加 `mode`，导出加 `index.md` |
 | M-1 `notebook.go` 的注释 | 改了 |
-| M-2 13.1 缺 M10 的几处 | 补了第 1、11、13、16 条与树写入、导入两段。13.2 第 14 条 M10 没有改变写法，不加 |
+| M-2 13.1 缺 M10 的几处 | 补了第 1、8、10、11、13、16 条与树写入、导入两段，13.2 第 10 条。13.2 第 14 条 M10 没有改变写法，不加 |
 | M-3、M-4 过时的签名，缺 `page.source_too_large` | 改了 |
 | M-5 编号有三套 | 第 11 节开头加说明，决定 62、133、134 提上来 |
 | M-6 清单没写 J 的结果放哪 | 改了 |
@@ -117,8 +117,8 @@
 
 第 7 节要收尾核对这两个，分别记。C 扫了 2026-10-26 以来 119 次 CI 里失败的 31 次。
 
-- **`TestGrepOfAHundredThousandCandidatesTakesItsTime`**：唯一的失败是 `b112450f` 的 40378004872，在 600 毫秒的界之前。`789b4071` 之后没有再失败，最近七次中位数 106–193 毫秒，最慢样本 218 毫秒，余量约三倍。稳定。
-- **`TestIndexOfAHundredThousandPagesTakesItsTime`**：30 毫秒的 `IndexItems` 红在 `ca831b58` 的 40325348498，`5a97e969` 的 41370811260 红的是另一条界（`efadfcb6` 修了）。之后 30 毫秒没有再红，但 EPYC 7763 上中位数 25.8–29.7 毫秒，一个样本 30.8 毫秒，余量不到 5%，不算稳定。决定 170 提到 60 毫秒，整值读取的反例本机 2.76–7.62 秒，抓得到；`TestIndexPlans` 不动。
+- **`TestGrepOfAHundredThousandCandidatesTakesItsTime`**：唯一的失败是 `b112450f` 的 40378004872，在 600 毫秒的界之前。`789b4071` 之后没有再失败，最近七次中位数 105–193 毫秒，最慢样本 218 毫秒，余量约三倍。稳定。
+- **`TestIndexOfAHundredThousandPagesTakesItsTime`**：30 毫秒的 `IndexItems` 红在 `ca831b58` 的 40325348498，`5a97e969` 的 41370811260 红的是另一条界（`efadfcb6` 修了）。之后 30 毫秒没有再红，但 EPYC 7763 上中位数 25.8–28.7 毫秒，一个样本 30.8 毫秒，余量不到 5%，不算稳定。决定 170 提到 60 毫秒，整值读取的反例本机 2.76–7.62 秒，抓得到；`TestIndexPlans` 不动。
 
 ## 分份的数
 
@@ -136,7 +136,7 @@
 
 - 真实客户端，见"人工验收"。
 - 十万页以上的负载、停机窗口，在 [M12 的性能移交](../../M12-release/handoffs/M4-performance.md)第 19 条。
-- `ubuntu-24.04` 的 CPU 由不得我们：六份在 EPYC 7763 上合计约 2500 秒，平均约 420 秒。再加测试就要分第七份。别的成本守卫里余量最小的约 0.73（修复之前的 `actual-body-positive-control`）。
+- `ubuntu-24.04` 的 CPU 由不得我们：六份在 EPYC 7763 上合计约 2500 秒，平均约 420 秒。再加测试就要分第七份。成本守卫的余量没有全部扫过。看过的里面最小的，都在 EPYC 7763 上：`ListIndex` 3.01–3.03 秒，界 3.5 秒（0.87）；撤销 11.7–12.05 秒，界 14 秒（0.86，决定 153）；`IndexPages` 0.82 秒，界 1.025 秒（0.80）。costs-lint 的各组至多 0.69（`rules/wanted/100k-excluded-and-outside`）。
 - 单个提交 `d3e1eb75` 曾单独不绿（历史，见 P4/S3 记录）。`3b0d55f2` 是一个不完整的推送，下一个提交补上（[P5 设计审查](P5-design-review.md)）。不改写历史。
 
 ## 人工验收
