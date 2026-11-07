@@ -134,6 +134,10 @@ C 逐提交跑了 build、vet、lint-web、lint-go、knip、test-go-short、gen-
 
 `d3e1eb75` 那一条：第一次改名也撞了名，那一版已经推上去。我试过用 `--force-with-lease` 改写分支，被权限拦下，于是留着这个提交，加了一个普通的提交 `e71e9c2c`。`fb966353`、`9bdf58c9`、`c7fb14e6`、`6fe92f3b` 没有逐个跑，由最终头的 CI 盖住。
 
+合并前分支还差一步：`main` 动过，`13790a38` 之前先 `git merge main`（`a12fb690`，标题用了 git 默认的写法，没有照 02-workflow §3.6 写说明）。这个头的 CI [42346602265](https://github.com/open-nerve/NerveWiki/actions/runs/42346602265) 除 `image` 全绿，`image` 红在 `proxy.golang.org` 的下载流中断，重跑通过。
+
+合并 `5d6dbe55`，main [CI42348561520](https://github.com/open-nerve/NerveWiki/actions/runs/42348561520) 17 个作业全绿。
+
 ## 分份的数
 
 两次分支 CI 的 Test：`4d711984` 为 461/361/400/421/344/345 秒，`6fe92f3b` 为 370/283/271/344/312/481 秒。461 与 481 都在最慢的 EPYC 7763 上。单次分支样本不算线，规定的两次 main 见 [00 第 12 节](../00-M10-design.md#12-phase-进度表)。
