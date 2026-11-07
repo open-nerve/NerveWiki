@@ -4,7 +4,7 @@
 |---|---|
 | 对象 | 分支 `m10-p5-s1`，base `94c335db`。三个产品提交 `7ce0396f`、`e9d9589a`、`dbca1230`，之后五个修复提交 |
 | 方法 | 三位独立审查者，各在自己的 worktree 里，在真库上跑，用 overlay 改坏代码。A 管服务端的正确性，B 管契约、组合根、矩阵，并照 playbook 一步一步用真实工具走，C 管测试、变异、e2e、每个提交是否单独为绿、CI 与量的数 |
-| 结论 | 没有产品缺陷。Important 五条，都是抓不到错的测试，最值得看的是 B-I1、C-I1：矩阵把没有 `data.code` 的错误当成答复，读者取用失败时全绿。产品文字上一处 Minor（B-M3），ingest 有一句话会误导 agent。另外查出两件和 P5 无关的事：main 的 S1 冒烟有一个真实的启动窗口，第六份在 EPYC 7763 上过线 |
+| 结论 | 没有产品缺陷。Important 四条，都是抓不到错的测试，最值得看的是 B-I1、C-I1：矩阵把没有 `data.code` 的错误当成答复，读者取用失败时全绿。产品文字上一处 Minor（B-M3），ingest 有一句话会误导 agent。另外查出两件和 P5 无关的事：main 的 S1 冒烟有一个真实的启动窗口，第六份在 EPYC 7763 上过线 |
 
 S1 建成了按入口的 Prompt 注册表和它的界、三份英文 playbook、两个入口共用的说明。P5 设计是设计，这份记录只写审查。
 
@@ -73,9 +73,9 @@ B、C 原席核对 `d9d78cac`。B：全部关闭，只剩 M9 清单一处工具�
 
 ## 门禁与 CI
 
-`dbca1230` 本机：`make lint gen-check knip build test-go-short` 通过；`make e2e` 495 个通过。`make test` 第一次被我设的 1500 秒时限在 `test-go-costs-2` 中途掐断，race 包与组合根六份已经过了；剩下的 `test-go-costs-2`、`test-go-costs-3`、`test-go-costs-lint`、`test-go-guards`、`test-web` 分开跑完，都通过。修复之后的提交没有重跑整个 `make test`，靠分支 CI。
+`dbca1230` 本机：`make lint gen-check knip build test-go-short` 通过；`make e2e` 495 个通过。`make test` 第一次被我设的 1500 秒时限在 `test-go-costs-2` 中途掐断，race 包与组合根六份已经过了；剩下的 `test-go-costs-2`、`test-go-costs-3`、`test-go-costs-lint`、`test-go-guards`、`test-web` 分开跑完，都通过。修复之后的提交没有重跑整个 `make test`，靠分支 CI；最后的树上本机重跑了 `make lint gen-check knip build test-go-short test-web` 与 `make e2e`，都通过，e2e 495 个。
 
-分支 CI：`dbca1230` [42359985832](https://github.com/open-nerve/NerveWiki/actions/runs/42359985832) 全绿，495 个 e2e。修复之后见合并的记录。
+分支 CI：`dbca1230` [42359985832](https://github.com/open-nerve/NerveWiki/actions/runs/42359985832) 全绿，495 个 e2e。最后的 `f57a6d44` [42365781770](https://github.com/open-nerve/NerveWiki/actions/runs/42365781770) 全绿。合并 `ba1fd4c9`，main CI [42367580440](https://github.com/open-nerve/NerveWiki/actions/runs/42367580440) 全绿。
 
 每个提交是否单独为绿：C 逐个跑了 build、vet、lint、短测试，第 2、3 个加 `check:types`、`oxfmt`、`knip`，都过。
 
@@ -86,7 +86,9 @@ B、C 原席核对 `d9d78cac`。B：全部关闭，只剩 M9 清单一处工具�
 | 42357162761（main） | `3b0d55f2` | 429 | 381 | 369 | 415 | 344 | 483 |
 | 42357198372（main） | `94c335db` | 352 | 336 | 324 | 408 | 359 | 493 |
 | 42359985832（分支） | `dbca1230` | 433 | 288 | 409 | 317 | 351 | 491 |
-| 42364701652（分支，已移两个测试） | `d9d78cac` | 356 | 332 | 392 | 353 | 366 | 378 |
+| 42364701652（分支，已移两个测试；这次运行被下一次推送取消，组合根六份已跑完） | `d9d78cac` | 356 | 332 | 392 | 353 | 366 | 378 |
+| 42365781770（分支） | `f57a6d44` | 401 | 426 | 344 | 301 | 292 | 368 |
+| 42367580440（main，合并） | `ba1fd4c9` | 393 | 338 | 277 | 300 | 436 | 398 |
 
 新测试在本机竞态检测下 1.2–4.1 秒，四个落第三份，降级落第四份，`TestNotebookInstructionsShareTheirBudget` 在 `test-go-race`。全部 568 个顶层测试各落一份：167/58/123/136/63/21。
 
