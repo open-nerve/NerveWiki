@@ -211,10 +211,10 @@ const IndexResults = observer(function IndexResults({
   useEffect(() => {
     const wait = waiting.current;
     if (wait === undefined) return;
-    const read = data !== undefined && data.length > wait.before;
-    if (read || (error !== undefined && !isValidating)) {
+    const landed = data !== undefined && data.length > wait.before;
+    if (landed || (error !== undefined && !isValidating)) {
       waiting.current = undefined;
-      wait.settle(read ? data : undefined);
+      wait.settle(landed ? data : undefined);
     }
   }, [data, error, isValidating]);
   useEffect(
