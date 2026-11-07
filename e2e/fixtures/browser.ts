@@ -1,5 +1,9 @@
 import { STATUS_CODES } from "node:http";
 
+/** WebKit's note, on a busy machine, that the entry it preloaded was not used soon enough after load. */
+const preloadUnused =
+  /^The resource \S+\/assets\/\S+ was preloaded using link preload but not used within a few seconds from the window's load event\. Please make sure it wasn't preloaded for nothing\.$/;
+
 import { expect, type Locator, type Page, type Request, type Response, type TestInfo } from "@playwright/test";
 
 interface NativeHttpConsoleError {
@@ -171,10 +175,9 @@ export async function watchPage(page: Page): Promise<PageWatch> {
   });
   page.on("pageerror", (error) => {
     // WebKit reports a fetch that a navigation cancelled as an uncaught error. Only this site's API, in these words.
-    const own = `${new URL(page.url()).host}/api/v0/`;
     if (
       browserName === "webkit" &&
-      error.message.includes(own) &&
+      error.message.includes(`${new URL(page.url()).host}/api/v0/`) &&
       error.message.endsWith("due to access control checks.")
     ) {
       return;
@@ -186,7 +189,7 @@ export async function watchPage(page: Page): Promise<PageWatch> {
       watch.eventStreamErrors.push(message.text());
     } else if (message.type() === "error") {
       watch.consoleErrors.push(message.text());
-    } else if (message.type() === "warning") {
+    } else if (message.type() === "warning" && !(browserName === "webkit" && preloadUnused.test(message.text()))) {
       watch.consoleWarnings.push(message.text());
     }
   });

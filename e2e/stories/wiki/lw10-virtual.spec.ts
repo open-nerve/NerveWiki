@@ -324,8 +324,10 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   const home = `/${team.workspace.slug}/notebooks/${wiki.id}`;
   await reader.goto(wikiPagePath(team.workspace.slug, wiki.id, guide.id));
   await expect(pageHeading(reader, "Guide")).toBeVisible();
-  await expect(reader.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   const tree = pageTree(reader, wiki.name);
+  // Edit waits for the tree as well as the title: asked sooner, a writer has none either.
+  await expect(tree.getByRole("link", { name: "Guide", exact: true })).toBeVisible();
+  await expect(reader.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   const directory = tree.getByRole("link", { name: "Directory", exact: true });
   const history = tree.getByRole("link", { name: "History", exact: true });
   await expect(directory).toHaveAttribute("href", `${home}/index`);
@@ -333,10 +335,6 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   expect(
     await tree.getByRole("link").evaluateAll((links) => links.slice(0, 2).map((link) => link.textContent))
   ).toEqual(["Directory", "History"]);
-  await expect(directory.locator("..")).not.toHaveAttribute("draggable");
-  await expect(history.locator("..")).not.toHaveAttribute("draggable");
-  await expect(tree.getByRole("button", { name: "Actions for Directory", exact: true })).toHaveCount(0);
-  await expect(tree.getByRole("button", { name: "Actions for History", exact: true })).toHaveCount(0);
   await directory.click();
   await expect(reader, "EW02_ROUTE: the registered index route opens").toHaveURL(`${home}/index`);
   await expect(

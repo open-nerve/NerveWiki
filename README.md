@@ -443,7 +443,7 @@ make build     # 构建前端并内嵌进 bin/nervewiki
 
 ## 端到端测试
 
-`e2e/` 用 Playwright 驱动 `make build` 构建的 `bin/nervewiki`（全部故事跑 Chromium；LLM Wiki 的页面故事与用到剪贴板的几条也跑 Firefox、WebKit，见 `e2e/playwright.config.ts`），数据库由 testcontainers 启动（需要 Docker）。一次运行启动一个 PostgreSQL、迁移一个模板库；每个 worker 复制出自己的库，运行自己的 `nervewiki serve`。
+`e2e/` 用 Playwright 驱动 `make build` 构建的 `bin/nervewiki`（全部故事跑 Chromium；配置里 `threeBrowsers` 列出的几条也跑 Firefox、WebKit，见 `e2e/playwright.config.ts`），数据库由 testcontainers 启动（需要 Docker）。一次运行启动一个 PostgreSQL、迁移一个模板库；每个 worker 复制出自己的库，运行自己的 `nervewiki serve`。
 
 ```bash
 pnpm --filter @nervewiki/e2e exec playwright install chromium firefox webkit   # 第一次运行前安装浏览器

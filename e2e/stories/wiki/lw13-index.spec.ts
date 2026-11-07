@@ -1,4 +1,6 @@
 /* oxlint-disable no-await-in-loop -- Pagination and fixture writes have a deliberate order. */
+import type { Route } from "@playwright/test";
+
 import { bearer, createToken, emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
@@ -6,7 +8,7 @@ import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { wikiPagePath } from "../../fixtures/wiki-pages";
+import { pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 for (const mode of ["standard", "llm_wiki"] as const) {
@@ -151,6 +153,9 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
       (response) => response.request().method() === "GET" && new URL(response.url()).pathname === indexAPI
     );
   await page.goto(wikiPagePath(team.workspace.slug, notebook.id, notes[0]!.id));
+  await expect(pageHeading(page, notes[0]!.name)).toBeVisible();
+  // Edit waits for the tree as well as the title: asked sooner, a writer has none either.
+  await expect(pageTree(page, "Catalogue").getByRole("link", { name: notes[0]!.name, exact: true })).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   const directory = page
     .getByRole("navigation", { name: "More of Catalogue", exact: true })
@@ -260,6 +265,35 @@ test("LW13 (page): the last More of untyped pages under two parents moves the re
     });
   await expect.poll(focused).toBeGreaterThanOrEqual(0);
   expect(await focused()).toBeLessThan(page.viewportSize()!.height);
+
+  // A reader who scrolls while More reads stays where they went, the focus unmoved.
+  const held: Route[] = [];
+  await page.route(
+    (url) => url.searchParams.has("cursor"),
+    (route) => void held.push(route)
+  );
+  await page.reload();
+  await expect(pages.getByRole("link")).toHaveCount(50);
+  await more.focus();
+  const read = page.waitForRequest((request) => new URL(request.url()).searchParams.has("cursor"));
+  await page.keyboard.press("Enter");
+  await read;
+  await page.mouse.move(640, 360);
+  await page.mouse.wheel(0, -300);
+  const scrolled = () => page.evaluate(() => window.scrollY);
+  let there = -1;
+  await expect
+    .poll(async () => {
+      const before = there;
+      there = await scrolled();
+      return there === before;
+    })
+    .toBe(true);
+  await Promise.all(held.map((route) => route.fallback()));
+  await expect(pages.getByRole("link")).toHaveCount(54);
+  await expect(more).toHaveCount(0);
+  expect(await scrolled()).toBe(there);
+  expect(await focused()).toBeUndefined();
 });
 
 test("LW13 (page): at 375 wide a long type and tag wrap inside the directory", async ({ api, signedInPage }, info) => {

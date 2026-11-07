@@ -459,7 +459,6 @@ test("LW4 (page): source loss locks the mounted editor, automatically releases i
       await page.keyboard.press("ControlOrMeta+c");
       expect(await readClipboardText(page, browserName)).toBe(`${original}Unsaved notes to copy.\n`);
       const afterLoss = pageWatch.apiRequests.length;
-      await editor.focus();
       await page.keyboard.press("ControlOrMeta+s");
       await page.clock.fastForward(40_000);
       expect(
