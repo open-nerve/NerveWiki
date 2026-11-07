@@ -118,7 +118,7 @@
 第 7 节要收尾核对这两个，分别记。C 扫了 2026-10-26 以来 119 次 CI 里失败的 31 次。
 
 - **`TestGrepOfAHundredThousandCandidatesTakesItsTime`**：唯一的失败是 `b112450f` 的 40378004872，在 600 毫秒的界之前。`789b4071` 之后没有再失败，最近七次中位数 105–193 毫秒，最慢样本 218 毫秒，余量约三倍。稳定。
-- **`TestIndexOfAHundredThousandPagesTakesItsTime`**：30 毫秒的 `IndexItems` 红在 `ca831b58` 的 40325348498，`5a97e969` 的 41370811260 红的是另一条界（`efadfcb6` 修了）。之后 30 毫秒没有再红，但 EPYC 7763 上中位数 25.8–28.7 毫秒，一个样本 30.8 毫秒，余量不到 5%，不算稳定。决定 170 提到 60 毫秒，整值读取的反例本机 2.76–7.62 秒，抓得到；`TestIndexPlans` 不动。
+- **`TestIndexOfAHundredThousandPagesTakesItsTime`**：30 毫秒的 `IndexItems` 红在 `ca831b58` 的 40325348498，`5a97e969` 的 41370811260 红的是另一条界（`efadfcb6` 修了）。之后 30 毫秒没有再红，但 EPYC 7763 上中位数 25.8–28.7 毫秒，一个样本 30.8 毫秒，余量不到 5%，不算稳定。决定 170 提到 60 毫秒，整值读取的反例本机两次量得 2.76–7.62 秒与 9.22–9.69 秒，三个阶段都抓到；`TestIndexPlans` 不动。
 
 ## 分份的数
 
@@ -137,7 +137,7 @@
 
 ## 门禁
 
-`79d87ab4` 本机：`make lint gen-check knip build test-go-short test-web` 通过，`make e2e` 503 个通过。`make test-go` 第一次红了两个组合根测试，当时六份同时跑，三位审查者也在跑，负载到 20：`TestTheMCPBatchIsRefusedWhole` 的 10 MiB 一例 14.2 秒，界 12 秒；`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches` 的一例，网页的写排在任务的第二批之后，答 `page.cycle`。这两个测试单独跑都过（5.2 秒；三遍），它们所在的两份单独重跑也过，之后 `test-go-costs-1/2/3`、`test-go-costs-lint`、`test-go-guards-core`、`test-go-guards-sources` 都过。代码没有动过这两处。后一个靠批之间的次序，负载高时可能再遇到；这几次 CI 每份一台机器，都没有红。`make image-smoke` 在普通克隆里通过。
+`79d87ab4` 本机：`make lint gen-check knip build test-go-short test-web` 通过，`make e2e` 503 个通过。`make test-go` 第一次红了两个组合根测试，当时六份同时跑，三位审查者也在跑，负载到 20：`TestTheMCPBatchIsRefusedWhole` 的 10 MiB 一例 14.2 秒，界 12 秒；`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches` 的一例，网页的写排在任务的第二批之后，答 `page.cycle`。这两个测试单独跑都过（5.2 秒；三遍），它们所在的两份单独重跑也过，之后 `test-go-costs-1/2/3`、`test-go-costs-lint`、`test-go-guards-core`、`test-go-guards-sources` 都过。收尾没有动批之间的路径：`jobs.go` 没有改，`revert_changeset.go` 与 `revert_job_contract.go` 只删了 nil 分支，`apply_batch.go` 只改了注释。后一个靠批之间的次序，负载高时可能再遇到；这几次 CI 每份一台机器，都没有红。`make image-smoke` 在普通克隆里通过。
 
 【最后一轮的门禁与 CI】
 
