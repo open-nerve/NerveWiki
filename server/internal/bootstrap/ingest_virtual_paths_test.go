@@ -142,7 +142,12 @@ func TestIngestVirtualLogPaths(t *testing.T) {
 			calls := map[string]int{}
 			var pid uint32
 			var snapshot uint64
+			recent := []string{"ListChangesets", "ChangesetFacts", "FirstChanges", "FirstIngestSources", "ProfilesByID", "LinkTargetsByIDs"}
 			for _, q := range queries {
+				// The trace sees the whole pool: River polls on its own connection.
+				if !slices.Contains(recent, q.Name) {
+					continue
+				}
 				if pid == 0 {
 					pid, snapshot = q.PID, q.Snapshot
 				}

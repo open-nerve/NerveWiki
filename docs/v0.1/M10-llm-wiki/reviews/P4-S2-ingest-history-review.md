@@ -120,6 +120,8 @@ A-I1 的修复另有三条：去掉 `allDirect` 或 `possibleDirect` 的减法�
 
 之后的分支 CI [42316471113](https://github.com/open-nerve/NerveWiki/actions/runs/42316471113) 里 `guards-core` 红：撤销 12.05 秒过了 12 秒的线，这次落在 EPYC 7763 上。同样与 S2 无关，处置见决定 153。
 
+再下一次 [42319120895](https://github.com/open-nerve/NerveWiki/actions/runs/42319120895) 里 `guards-core` 又红，这次是 S2 自己的测试：`TestIngestVirtualLogPaths` 的 trace 收的是整个连接池，River 的 `JobGetAvailable` 落进了窗口，而断言要求窗口里的查询都在一个快照里。改成只看 `Recent` 自己的六条查询。在窗口里注入一条假的查询验证：旧代码失败、现象相同；新代码放过 `JobGetAvailable`；注入 `ListChangesets` 时仍失败，所以 `Recent` 的查询逃出快照照样抓得到。
+
 Codex 在 `b86019d9` 跑完成本全量：148/148，3868/3868 节点，最慢的指标用到预算的 92.7%。
 
 CI 的 runner 不是同一种机器。`b86019d9` 的分支 CI [42284811629](https://github.com/open-nerve/NerveWiki/actions/runs/42284811629) 里两个极端用例撞到 15 秒的请求期限，同样的代码在快机器上约 10 秒，同等工作慢约一倍。决定 150 因此放宽时限，并在 CI 里加了 `Runner CPU` 一步。
