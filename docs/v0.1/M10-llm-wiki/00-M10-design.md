@@ -699,7 +699,7 @@ Nerve 没有 MCP、prompt、数据的 lint、模式的契约或只增不改的�
 - 平台：mcpserver 的 `Prompt.Entry`、`newEntry` 按入口声明能力、`promptHandler` 的错误、参数的界与日志、答复的上限、`membersOf` 抄 `duplicate_of`；httpserver 的 `Problem` 加 `duplicate_of`。
 - 契约：`api/mcp/tools.json` 里改的工具对象（第 5 节的表）与新的 `api/mcp/prompts.json`；`events.yaml` 的 `EventMode`。
 - 组合根：wiki 的接线与构建次序；P4 linkIndex转换带ChangesetID/Kind/Notebook/BeforeIngest；`treeError` 的 `refused`（`ErrLocked` 在前）；守卫的次序；`mcpTools` 拼 wiki 的工具，`Options.Prompts`。P3同一wiki module注册REST/两scope工具、持唯一Runs；app.run最前defer覆盖全部退出，app.close在migrator/pool前幂等Stop，独立有界drain并join返回错误。
-- 网页：M3 的建笔记本的对话框与设置；M4 的树的行（图标、菜单、来源区的"新建页面"、拖进来源区的确认）；M5 的 `eventHandlers`（`refreshedOnConnect` 不变）；M5 的编辑会话的失去编辑的原因；M6 的解析不到的链接；M7 的附件一节（写者在来源上收起改名、移动、删除）与上传的行的重复的文字；M8 的历史的行、筛选与变更集页，回收站与撤销的对话框；`NotebookPlaces` 的"健康"与"目录"。
+- 网页：M3 的建笔记本的对话框与设置；M4 的树的行（图标、菜单、来源区的两个入口、拖进来源区的确认）；M5 的 `eventHandlers`（`refreshedOnConnect` 不变）；M5 的编辑会话的失去编辑的原因；M6 的解析不到的链接；M7 的附件一节（写者在来源上收起改名、移动、删除）与上传的行的重复的文字；M8 的历史的行、筛选与变更集页，回收站与撤销的对话框；`NotebookPlaces` 的"健康"与"目录"。
 
 ## 9. 测试策略
 

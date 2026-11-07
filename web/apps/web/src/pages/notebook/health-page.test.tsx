@@ -253,6 +253,8 @@ test.each([
   expect(within(places).getByRole("link", { name: "Health" }).getAttribute("aria-current")).toBe("page");
   expect(document.title).toBe("Health · Plans · Nerve Wiki");
   expect(fixture.requests).toHaveLength(1);
+  const sources = health().queryAllByText(/Links from sources do not count/);
+  expect(sources).toHaveLength(mode === "llm_wiki" ? 1 : 0);
 });
 
 test("previews keep every item branch, same-looking identities, source bytes and original creation times", async () => {

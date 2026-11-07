@@ -44,14 +44,14 @@
 
 | 发现 | 处置 |
 |---|---|
-| M1 重复来源的路径不折行，对话框的按钮跑到外面 | `TargetLink` 折行；LW3 在 375 宽下量按钮，变异抓到 |
-| M2 `sr-only` 的后缀逃出 `truncate`，长来源让整页横向滚动 | 树的行与附件的行加 `relative`；同一故事量页宽，变异抓到 |
-| M3 三条路建出写者动不了的空来源 | 决定 171：落在来源区的链接不再给"新建"，空的粘贴留作文件夹 |
+| M1 重复来源的路径不折行，对话框的按钮跑到外面 | `TargetLink` 折行。核对时 B 又查出移动对话框：下拉框按最长的选项撑宽，表单跑出对话框，与拒绝无关，普通笔记本也有。`DialogContent` 的列改 `minmax(0,1fr)`，`NativeSelect` 加 `max-w-full`。LW3 在 375 宽下量两个对话框的按钮，两个变异都抓到 |
+| M2 `sr-only` 的后缀逃出 `truncate`，长来源让整页横向滚动 | 树的行与附件的行加 `relative`；同一故事量页宽，带一个长名的附件，两处变异都抓到 |
+| M3 三条路建出写者动不了的空来源 | 决定 171：落在来源区的链接不再给"新建"，空的粘贴留作文件夹。核对时 B 查出这个标签页的树里还没有父页时仍给"新建"：先读树再判。读者不问落点，LLM Wiki 里读者的话改成"也许可以" |
 | M4 打开导入报告阻塞主线程几秒（问题 × 节点） | 路径按一次树的读取建一张表；vitest 数走树的次数 |
 | M5 历史的拒绝给写者建议一件服务端拒绝的事 | 只在 `page.source_immutable` 时给这句话；LW6 断言 |
 | M6 故事的行承诺了没人断言的事 | 补 LW4 的阅读说明、LW6 的写者撤销与管理员写回、LW7 的根下导入；后台撤销的 `refused` 改写行文，由 `TestTheSourceRootsPutBackIsRefusedInALaterBatch` 盖住 |
-| Nit：LW1 的 `raw` 语言、`source.newlineHint`、孤立页的说明、`lw6:302` 失败不了的断言、17 处 `EW0x`、00 里的"新建页面"、`PasteSource` 的 `AbortError`、LW3 的 PDF | 都改了 |
-| Nit：`{ times: 1 }` 的路由、`sourceAtPath` 只给测试导出 | 接受。340 遍没有抖动 |
+| Nit：LW1 的 `raw` 语言、`source.newlineHint`、孤立页的说明（只在 LLM Wiki 里说来源不算）、`lw6:302` 失败不了的断言、17 处 `EW0x`、00 里的"新建页面"、`PasteSource` 的 `AbortError`、LW3 的 PDF | 都改了。`AbortError` 那一处没有测试钉着 |
+| Nit：`{ times: 1 }` 的路由、`sourceAtPath` 只给测试导出、`atPath` 的表在删除失败且读到相同的树时少一项 | 接受。340 遍没有抖动；最后一条只在 store 里造得出来，树一变就好 |
 | 打磨十条 | 写进 [M5-polish](../../M12-release/handoffs/M5-polish.md) 第 38 条 |
 
 ### C（完成标准与文档）
@@ -122,15 +122,24 @@
 
 ## 分份的数
 
-【分份】
+| 运行 | 提交 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| 42374069206（main，决定 168–170 的合并） | `bbeb9fbb` | 391 | 426 | 385 | 417 | 383 | 323 |
+| 42376299367（main，记录） | `4278b2b8` | 347 | 428 | 390 | 408 | 355 | 387 |
+
+这两次的均值 369/427/387.5/412.5/369/355 秒，都低于 450。【收尾的两次 main】
 
 ## 核实修复
 
-【核实】
+**第一轮（`79d87ab4`）。** A：两条 Minor 与 Nit 都关闭，删掉 nil 分支没有改变次序、码或普通笔记本的读；记录里"用真的 `CheckJob`"写错了，已改。C：I-10、I-13、M-2、M-7 有剩下的，记录里"余量最小 0.73"是错的，已换成实际扫过的数；余下的中位数、README 的来源规则、§15 一行都改了。B：M2、M4、M5、M6 关闭，M1、M3 没有关完，修复带来三处错话（普通笔记本的孤立页说明、两种读者的提示），都改了。
+
+【第二轮】
 
 ## 门禁
 
-【门禁】
+`79d87ab4` 本机：`make lint gen-check knip build test-go-short test-web` 通过，`make e2e` 503 个通过。`make test-go` 第一次红了两个组合根测试，当时六份同时跑，三位审查者也在跑，负载到 20：`TestTheMCPBatchIsRefusedWhole` 的 10 MiB 一例 14.2 秒，界 12 秒；`TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches` 的一例，网页的写排在任务的第二批之后，答 `page.cycle`。这两个测试单独跑都过（5.2 秒；三遍），它们所在的两份单独重跑也过，之后 `test-go-costs-1/2/3`、`test-go-costs-lint`、`test-go-guards-core`、`test-go-guards-sources` 都过。代码没有动过这两处。后一个靠批之间的次序，负载高时可能再遇到；这几次 CI 每份一台机器，都没有红。`make image-smoke` 在普通克隆里通过。
+
+【最后一轮的门禁与 CI】
 
 ## 没能验证的风险
 

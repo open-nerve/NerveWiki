@@ -12,7 +12,7 @@ import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
-import { choosePageAction, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { choosePageAction, moveDialog, pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // LW3's API and both MCP entries use real writers. UUID provenance for old nodes entering, restoring, receiving
@@ -296,11 +296,13 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const raw = notebook.source_root_id;
   const spaced = "Attention is all you need by Vaswani and others ".repeat(3).trim();
   const source = await createPage(api, pat, notebook.id, spaced, raw, "spaced title\n");
+  const file = await uploadAsset(api, pat, notebook.id, { name: `${spaced}.txt`, bytes: utf8("a long name") }, source.id);
   const page = await signedInPage(tokens);
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, spaced)).toBeVisible();
+  await expect(page.locator(`[data-attachment="${file.id}"]`)).toBeAttached();
   const width = await page.evaluate(() => ({
     viewport: document.documentElement.clientWidth,
     content: document.documentElement.scrollWidth,
@@ -322,6 +324,19 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const add = await dialog.getByRole("button", { name: "Add source", exact: true }).boundingBox();
   if (edge === null || add === null) throw new Error("the dialog has no box");
   expect(add.x + add.width).toBeLessThanOrEqual(edge.x + edge.width);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A select takes the width of its longest option, a long source's path among them.
+  await createPage(api, pat, notebook.id, "Plain");
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.reload();
+  await choosePageAction(page, notebook.name, "Plain", "Move to…");
+  await page.setViewportSize({ width: 375, height: 800 });
+  const move = moveDialog(page, "Plain");
+  const box = await move.boundingBox();
+  const button = await move.getByRole("button", { name: "Move", exact: true }).boundingBox();
+  if (box === null || button === null) throw new Error("the move dialog has no box");
+  expect(button.x + button.width).toBeLessThanOrEqual(box.x + box.width);
 });
 
 test("LW3 (page): paste creates the initial body once, and mixed uppercase Markdown preserves its bytes after closing the upload dialog and navigating away", async ({

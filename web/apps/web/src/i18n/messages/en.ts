@@ -97,6 +97,7 @@ export const en = {
   "unresolved.missingTitle": "“{target}” does not exist",
   "unresolved.reader": "No page has this name. The notebook's editors can create it from this link.",
   "unresolved.readOnly": "No page has this name. This view is read only: no page is created from its links.",
+  "unresolved.readerWiki": "No page has this name. The notebook's editors may be able to create it from this link.",
   "unresolved.sourceArea":
     "No page has this name. Sources are added with Paste Markdown or Upload files, not from a link.",
   "unresolved.embed": "No page has this name. An embed shows a page; it does not create one.",
@@ -354,7 +355,8 @@ export const en = {
   "health.wanted": "Wanted pages",
   "health.wantedDescription": "Links to pages that do not exist yet.",
   "health.orphans": "Orphan pages",
-  "health.orphansDescription": "Pages that no other page links to. In an LLM Wiki, links from sources do not count.",
+  "health.orphansDescription": "Pages that no other page links to.",
+  "health.orphansDescriptionWiki": "Pages that no other page links to. Links from sources do not count.",
   "health.ambiguous": "Ambiguous links",
   "health.ambiguousDescription": "Links that could refer to more than one page.",
   "health.invalidFrontmatter": "Invalid frontmatter",
