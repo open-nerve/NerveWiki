@@ -43,10 +43,11 @@ func TestOpenNotebookKeepsTheInstructionsError(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionList)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: f.page("raw", nil, 0).ID}}
-	failure := errors.New("the database is gone")
-	f.store.errs = map[string]error{"FindNodeIn": failure}
-	if _, err := f.opener(&fakeOverview{recorder: f.rec}).Execute(f.asAlice(), f.eng); !errors.Is(err, failure) {
-		t.Errorf("Execute() = %v, want its cause", err)
+	for _, failure := range []error{errors.New("the database is gone"), app.ErrNotFound} {
+		f.store.errs = map[string]error{"FindNodeIn": failure}
+		if _, err := f.opener(&fakeOverview{recorder: f.rec}).Execute(f.asAlice(), f.eng); !errors.Is(err, failure) {
+			t.Errorf("Execute() = %v, want %v", err, failure)
+		}
 	}
 }
 

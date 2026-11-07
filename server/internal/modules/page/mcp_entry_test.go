@@ -123,11 +123,13 @@ func TestTheInstructionsShareNoTransaction(t *testing.T) {
 	}
 	root := rootOf{agentsOf: agentsOf{node: uuid.NewV7(), content: "# Rules"}, title: "raw"}
 
-	// The state read says LLM Wiki; the next read says standard.
-	if got, err := entry(root, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7()); err != nil || !strings.HasPrefix(got, "This notebook is an LLM Wiki: pages under `raw/`") {
+	// One entry, its state read first says LLM Wiki, the next standard.
+	downgraded := entry(root, domain.ModeLLMWiki)
+	downgraded.notebooks = &statesInTurn{turns: []domain.Mode{domain.ModeLLMWiki, domain.ModeStandard}}
+	if got, err := downgraded.Instructions(context.Background(), uuid.NewV7()); err != nil || !strings.HasPrefix(got, "This notebook is an LLM Wiki: pages under `raw/`") {
 		t.Errorf("a downgrade after the state = %.80q, %v; want one paragraph more", got, err)
 	}
-	if got, err := entry(root, domain.ModeStandard).Instructions(context.Background(), uuid.NewV7()); err != nil || got != "# Rules" {
+	if got, err := downgraded.Instructions(context.Background(), uuid.NewV7()); err != nil || got != "# Rules" {
 		t.Errorf("the next handshake = %q, %v", got, err)
 	}
 
@@ -137,15 +139,26 @@ func TestTheInstructionsShareNoTransaction(t *testing.T) {
 		t.Errorf("a move between the reads = %.80q, %v; want the two reads joined", got, err)
 	}
 
-	gone := root
-	gone.err = app.ErrNotFound
-	_, err := entry(gone, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7())
-	if !errors.Is(err, app.ErrNotFound) {
-		t.Fatalf("a root gone = %v, want the read's error", err)
+	for _, failure := range []error{app.ErrNotFound, errors.New("the database is gone")} {
+		gone := root
+		gone.err = failure
+		_, err := entry(gone, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7())
+		if !errors.Is(err, failure) {
+			t.Fatalf("a root's read failing with %v = %v, want that error", failure, err)
+		}
+		if a := httpserver.ProblemOf(context.Background(), err); a.Fault != httpserver.FaultUnknown {
+			t.Errorf("%v is classified %v, want an unknown fault: an internal error, logged", failure, a.Fault)
+		}
 	}
-	if a := httpserver.ProblemOf(context.Background(), err); a.Fault != httpserver.FaultUnknown {
-		t.Errorf("a root gone is classified %v, want an unknown fault: an internal error, logged", a.Fault)
-	}
+}
+
+// statesInTurn answers each mode of turns in turn.
+type statesInTurn struct{ turns []domain.Mode }
+
+func (s *statesInTurn) StateOf(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
+	mode := s.turns[0]
+	s.turns = s.turns[1:]
+	return domain.NotebookState{Mode: mode}, true, nil
 }
 
 // rootOf is agentsOf of a notebook whose source root is titled title,
