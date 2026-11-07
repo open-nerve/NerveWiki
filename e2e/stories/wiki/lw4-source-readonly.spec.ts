@@ -15,6 +15,7 @@ import {
 } from "../../fixtures/assert/page";
 import { createToken, emailFor } from "../../fixtures/auth";
 import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
+import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
 import { readLock } from "../../fixtures/collab";
 import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
@@ -395,6 +396,7 @@ test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root ins
 test("LW4 (page): source loss locks the mounted editor, automatically releases its real server session and preserves unsaved text for copying before leaving", async ({
   api,
   db,
+  browserName,
   pageWatch,
   signedInPage,
 }, testInfo) => {
@@ -408,7 +410,7 @@ test("LW4 (page): source loss locks the mounted editor, automatically releases i
   const original = "Original evidence.\n";
   const ordinary = await createPage(api, writerPat, notebook.id, "Open draft", null, original);
   const page = await signedInPage(writer);
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await grantClipboardPermissions(page.context(), browserName);
   await page.clock.install();
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${ordinary.id}/view`);
@@ -455,8 +457,9 @@ test("LW4 (page): source loss locks the mounted editor, automatically releases i
       await editor.focus();
       await page.keyboard.press("ControlOrMeta+a");
       await page.keyboard.press("ControlOrMeta+c");
-      expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(`${original}Unsaved notes to copy.\n`);
+      expect(await readClipboardText(page, browserName)).toBe(`${original}Unsaved notes to copy.\n`);
       const afterLoss = pageWatch.apiRequests.length;
+      await editor.focus();
       await page.keyboard.press("ControlOrMeta+s");
       await page.clock.fastForward(40_000);
       expect(

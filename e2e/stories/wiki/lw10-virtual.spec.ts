@@ -1,14 +1,20 @@
 /* oxlint-disable no-await-in-loop -- Each scoped client and transfer consumes the preceding real response. */
 import { expectIngestOf, expectNoIngestIn } from "../../fixtures/assert/page";
 import { pngBytes, uploadAsset } from "../../fixtures/assets";
-import { entryOfVirtualLog, listChangesets } from "../../fixtures/history";
+import { changesetOfRevision, entryOfVirtualLog, listChangesets } from "../../fixtures/history";
 import { expectImported, sha256Of, treeOf } from "../../fixtures/assert/transfer";
 import { errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
+import { bearer, emailFor } from "../../fixtures/auth";
+import { joinOnboarded } from "../../fixtures/invitations";
+import { addedNotebookMember } from "../../fixtures/notebook-members";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, downloadArchive, endedJob, startExport, startImport } from "../../fixtures/transfer";
-import { newTeam } from "../../fixtures/workspaces";
+import { pageHeading, pageTree, wikiPagePath } from "../../fixtures/wiki-pages";
+import { downloadFrom, exportWith, jobRow } from "../../fixtures/wiki-transfer";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import { unzip } from "../../fixtures/zip";
 
 // S1 exercises the actual API/MCP and downloaded archive. The tree links and
@@ -279,4 +285,101 @@ test("LW10: real ingestion reaches log.md and whole export", async ({ api, db, n
     for (const row of history.data?.data ?? []) expect([row.ingest_count, row.ingest_sources]).toEqual([0, []]);
     await expectNoIngestIn(db, destination.id);
   }
+});
+
+// EW02: actual reader anchors and ordinary tree Links; the writer downloads
+// the real contributor's ZIP through the existing export dialog and job row.
+test("LW10 (page): virtual tree links and unresolved reader links open Directory and History, and a real ZIP contains both", async ({
+  api,
+  db,
+  signedInPage,
+  anotherPage,
+}, info) => {
+  const team = await newOnboardedTeam(api, info);
+  const wiki = await createNotebook(api, team.pat, team.workspace.slug, "Browser virtual", "none", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (wiki.source_root_id === null) throw new Error("the LLM template has no source root");
+  const evidence = await createPage(api, team.pat, wiki.id, "Evidence", wiki.source_root_id, "Evidence bytes.\n");
+  const body =
+    "---\ntype: note\nsummary: real guide\n---\nRead [[raw/Evidence]].\n\n[[/index|Open directory]] · [[/log|Open history]]\n";
+  const guide = await createPage(api, team.pat, wiki.id, "Guide", null, body);
+  const changeset = await changesetOfRevision(api, team.pat, guide.id, guide.revision);
+  await expectIngestOf(db, changeset, wiki.id, [evidence.id]);
+  const readerTokens = await joinOnboarded(api, team.pat, team.workspace.slug, emailFor(info, "reader"), "guest");
+  const me = await api.GET("/api/v0/me", { headers: bearer(readerTokens.access_token) });
+  if (!me.data) throw new Error("the reader has no user identity");
+  await addedNotebookMember(api, team.pat, wiki.id, me.data.id, "reader");
+  const reader = await anotherPage(readerTokens);
+  const forbiddenCalls: string[] = [];
+  reader.on("request", (request) => {
+    const path = new URL(request.url()).pathname;
+    if (
+      path.endsWith("/link-landing") ||
+      (request.method() === "POST" && path === `/api/v0/notebooks/${wiki.id}/pages`)
+    )
+      forbiddenCalls.push(`${request.method()} ${path}`);
+  });
+  const home = `/${team.workspace.slug}/notebooks/${wiki.id}`;
+  await reader.goto(wikiPagePath(team.workspace.slug, wiki.id, guide.id));
+  await expect(pageHeading(reader, "Guide")).toBeVisible();
+  await expect(reader.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  const tree = pageTree(reader, wiki.name);
+  const directory = tree.getByRole("link", { name: "Directory", exact: true });
+  const history = tree.getByRole("link", { name: "History", exact: true });
+  await expect(directory).toHaveAttribute("href", `${home}/index`);
+  await expect(history).toHaveAttribute("href", `${home}/history`);
+  expect(
+    await tree.getByRole("link").evaluateAll((links) => links.slice(0, 2).map((link) => link.textContent))
+  ).toEqual(["Directory", "History"]);
+  await expect(directory.locator("..")).not.toHaveAttribute("draggable");
+  await expect(history.locator("..")).not.toHaveAttribute("draggable");
+  await expect(tree.getByRole("button", { name: "Actions for Directory", exact: true })).toHaveCount(0);
+  await expect(tree.getByRole("button", { name: "Actions for History", exact: true })).toHaveCount(0);
+  await directory.click();
+  await expect(reader, "EW02_ROUTE: the registered index route opens").toHaveURL(`${home}/index`);
+  await expect(
+    reader.getByRole("main").getByRole("heading", { level: 1, name: "Directory", exact: true })
+  ).toBeVisible();
+  await expect(
+    reader
+      .getByRole("region", { name: "Directory pages", exact: true })
+      .getByRole("link", { name: "Guide", exact: true })
+  ).toHaveAttribute("href", `${home}/pages/${guide.id}`);
+  await history.click();
+  await expect(reader).toHaveURL(`${home}/history`);
+  await expect(reader.getByRole("main").getByRole("heading", { level: 1, name: "History", exact: true })).toBeVisible();
+  await tree.getByRole("link", { name: "Guide", exact: true }).click();
+  const article = reader.getByRole("article", { name: "Guide", exact: true });
+  await article.getByRole("button", { name: "Open directory", exact: true }).click();
+  await expect(reader, "EW02_READER: unresolved root index works for a reader").toHaveURL(`${home}/index`);
+  await expect(
+    reader.getByRole("main").getByRole("heading", { level: 1, name: "Directory", exact: true })
+  ).toBeVisible();
+  await tree.getByRole("link", { name: "Guide", exact: true }).click();
+  await article.getByRole("button", { name: "Open history", exact: true }).click();
+  await expect(reader).toHaveURL(`${home}/history`);
+  await expect(reader.getByRole("main").getByRole("heading", { level: 1, name: "History", exact: true })).toBeVisible();
+  expect(forbiddenCalls, "EW02_READER: virtual navigation never asks permission to create").toEqual([]);
+
+  const writer = await signedInPage(team.tokens);
+  await writer.goto(notebookPath(team.workspace.slug, wiki.id, "transfer"));
+  await writer.getByRole("button", { name: "Export the whole notebook", exact: true }).click();
+  const job = await exportWith(writer, wiki.id, "Export Browser virtual?");
+  expect(job.client).toBe("web");
+  const archive = await downloadFrom(writer, jobRow(writer, "Export of the whole notebook"));
+  const files = new Map(archive.entries.map((entry) => [entry.name, entry.data.toString("utf8")]));
+  expect(files.get("Browser virtual/Guide.md")).toBe(body);
+  expect(files.get("Browser virtual/raw/Evidence.md")).toBe("Evidence bytes.\n");
+  expect(files.get("Browser virtual/index.md")).toContain("](<Guide.md>)");
+  const log = files.get("Browser virtual/log.md");
+  if (log === undefined) throw new Error("EW02_ZIP: the actual downloaded archive has no log.md");
+  const entry = entryOfVirtualLog(log, changeset);
+  expect(entry[0]).toMatch(/; ingests: 1$/);
+  expect(entry.filter((line) => line.startsWith("  - source: "))).toEqual([
+    "  - source: [raw/Evidence.md](<raw/Evidence.md>)",
+  ]);
+  const meta = JSON.parse(files.get("Browser virtual/.nerve/meta.json") ?? "null") as { contributed: string[] };
+  expect(meta.contributed).toEqual(["index.md", "log.md"]);
 });

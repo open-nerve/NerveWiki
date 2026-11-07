@@ -5,7 +5,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNewPage, expectSourceHashes, pageStateOf } from "../../fixtures/assert/page";
 import { pngBytes, postAsset, uploadAsset, utf8 } from "../../fixtures/assets";
 import { createToken, emailFor } from "../../fixtures/auth";
-import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
+import { abortFailedConsole, answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
@@ -257,7 +257,7 @@ for (const change of ["created", "moved in"] as const) {
         if (reads.length === 1) await route.abort("failed");
         else await route.continue();
       });
-      watchOf(page).expectConsole({ errors: [failedToLoad(409), "Failed to load resource: net::ERR_FAILED"] });
+      watchOf(page).expectConsole({ errors: [failedToLoad(409), abortFailedConsole()] });
       const rejected = answerTo(page, "POST", createsPath);
       await dialog.getByRole("button", { name: "Add source", exact: true }).click();
       const response = await rejected;

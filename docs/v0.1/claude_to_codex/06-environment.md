@@ -10,7 +10,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **Go**：1.26 或更高，`GOTOOLCHAIN=auto`。第一次在 `server/` 下执行 Go 命令时，会自动下载 `go.mod` 锁定的 `go1.27.1`。竞态检测要 cgo，Linux 上要有 gcc。
 - **Node 24**：执行一次 `corepack enable`，pnpm 12.8.1 由 `package.json` 锁定；在仓库根执行 `pnpm install`。
 - **`make tools`**：把 golangci-lint 2.14.0 装进 `./bin`。`make lint` 用它，不用系统里的。
-- **Playwright 的 Chromium**：`pnpm --filter @nervewiki/e2e exec playwright install chromium`。Linux 上照 CI 的写法带 `--with-deps` 装系统库。
+- **Playwright 的三个浏览器**：`pnpm --filter @nervewiki/e2e exec playwright install chromium firefox webkit`。Linux 上照 CI 的写法带 `--with-deps` 装系统库。
 - **`make image-smoke`** 另要 curl、jq、openssl。下面的工具要 python3。
 
 装好之后先在 `main` 上跑一遍下面的门禁，确认机器本身是绿的，再开 S3。下载依赖与工具链是正常的开发准备；不下载的是语料与负责人的数据（[04](04-owner-decisions-and-preferences.md) 第 4 节）。

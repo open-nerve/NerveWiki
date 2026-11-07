@@ -1,12 +1,13 @@
 /* oxlint-disable no-await-in-loop -- Pagination and fixture writes have a deliberate order. */
 import { bearer, createToken, emailFor } from "../../fixtures/auth";
-import { joinAs } from "../../fixtures/invitations";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { newTeam } from "../../fixtures/workspaces";
+import { wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 for (const mode of ["standard", "llm_wiki"] as const) {
   test(`LW13: a reader pages and filters the ${mode} directory with complete types`, async ({
@@ -100,3 +101,120 @@ for (const mode of ["standard", "llm_wiki"] as const) {
     }
   });
 }
+
+// EW03: real ordinary pages, the unchanged default page size (50), and a reader.
+// The topic group straddles More: its one heading must survive the appended row.
+const byID = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+test("LW13 (page): an ordinary reader opens Directory from Places, reads two groups across More, and filters exact type and tag", async ({
+  api,
+  signedInPage,
+}, info) => {
+  const team = await newOnboardedTeam(api, info);
+  const notebook = await createNotebook(api, team.pat, team.workspace.slug, "Catalogue", "none");
+  const notes: { id: string; name: string }[] = [];
+  const topics: { id: string; name: string; keep: boolean }[] = [];
+  for (const name of ["Note keep", "Note omit"]) {
+    const page = await createPage(
+      api,
+      team.pat,
+      notebook.id,
+      name,
+      null,
+      `---\ntype: note\ntags: [${name === "Note keep" ? "keep" : "omit"}]\n---\n${name}\n`
+    );
+    notes.push({ id: page.id, name });
+  }
+  for (let i = 0; i < 49; i++) {
+    const name = `Topic ${String(i).padStart(2, "0")}`;
+    const keep = i % 2 === 0;
+    const page = await createPage(
+      api,
+      team.pat,
+      notebook.id,
+      name,
+      null,
+      `---\ntype: topic\ntags: [${keep ? "keep" : "omit"}]\n---\n${name}\n`
+    );
+    topics.push({ id: page.id, name, keep });
+  }
+  const ordered = [...notes.toSorted(byID), ...topics.toSorted(byID)];
+  const reader = await joinOnboarded(api, team.pat, team.workspace.slug, emailFor(info, "reader"), "guest");
+  const me = await api.GET("/api/v0/me", { headers: bearer(reader.access_token) });
+  if (!me.data) throw new Error("the browser reader has no user identity");
+  await addedNotebookMember(api, team.pat, notebook.id, me.data.id, "reader");
+  const page = await signedInPage(reader);
+  const home = `/${team.workspace.slug}/notebooks/${notebook.id}`;
+  const indexAPI = `/api/v0/notebooks/${notebook.id}/index`;
+  const indexAnswer = () =>
+    page.waitForResponse(
+      (response) => response.request().method() === "GET" && new URL(response.url()).pathname === indexAPI
+    );
+  await page.goto(wikiPagePath(team.workspace.slug, notebook.id, notes[0]!.id));
+  await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
+  const directory = page
+    .getByRole("navigation", { name: "More of Catalogue", exact: true })
+    .getByRole("link", { name: "Directory", exact: true });
+  await expect(directory, "EW03_ENTRY: Directory is available in an ordinary notebook").toBeVisible();
+  const first = indexAnswer();
+  await directory.click();
+  const firstResponse = await first;
+  expect(firstResponse.status()).toBe(200);
+  expect(new URL(firstResponse.url()).search).toBe("");
+  await expect(page).toHaveURL(`${home}/index`);
+  await expect(page).toHaveTitle("Directory · Catalogue · Nerve Wiki");
+  const pages = page.getByRole("region", { name: "Directory pages", exact: true });
+  const groups = pages.getByRole("heading", { level: 2 });
+  await expect(groups, "EW03_GROUPS: both nonempty groups before More").toHaveText(["note", "topic"]);
+  await expect(pages.getByRole("link")).toHaveText(ordered.slice(0, 50).map((item) => item.name));
+  await expect(pages.locator("section").nth(0).getByRole("link")).toHaveCount(2);
+  await expect(pages.locator("section").nth(1).getByRole("link")).toHaveCount(48);
+  const next = indexAnswer();
+  await page.getByRole("button", { name: "More", exact: true }).click();
+  const nextResponse = await next;
+  expect(nextResponse.status()).toBe(200);
+  const nextParams = new URL(nextResponse.url()).searchParams;
+  expect([...nextParams.keys()]).toEqual(["cursor"]);
+  expect(nextParams.get("cursor")).not.toBe("");
+  await expect(pages.getByRole("link"), "EW03_MORE: all 51 real pages").toHaveText(ordered.map((item) => item.name));
+  expect(await pages.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("href")))).toEqual(
+    ordered.map((item) => `${home}/pages/${item.id}`)
+  );
+  await expect(groups, "EW03_MERGE: the appended topic retains one group").toHaveText(["note", "topic"]);
+  await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Type", exact: true }).getByRole("option")).toHaveText([
+    "All types",
+    "note (2)",
+    "topic (49)",
+  ]);
+
+  const typed = indexAnswer();
+  await page.getByRole("combobox", { name: "Type", exact: true }).selectOption("topic");
+  const typedResponse = await typed;
+  expect([...new URL(typedResponse.url()).searchParams]).toEqual([["type", "topic"]]);
+  await expect(page).toHaveURL(`${home}/index?type=topic`);
+  await expect(groups).toHaveText(["topic"]);
+  await expect(pages.getByRole("link")).toHaveText(topics.toSorted(byID).map((item) => item.name));
+  await page.getByRole("textbox", { name: "Tag", exact: true }).fill("keep");
+  const tagged = indexAnswer();
+  await page.getByRole("button", { name: "Apply tag", exact: true }).click();
+  const taggedResponse = await tagged;
+  expect([...new URL(taggedResponse.url()).searchParams]).toEqual([
+    ["type", "topic"],
+    ["tag", "keep"],
+  ]);
+  await expect(page).toHaveURL(`${home}/index?type=topic&tag=keep`);
+  await expect(pages.getByRole("link"), "EW03_FILTER: the literal keep subset, without note or omit").toHaveText(
+    topics
+      .filter((item) => item.keep)
+      .toSorted(byID)
+      .map((item) => item.name)
+  );
+  await expect(pages.getByRole("link")).toHaveCount(25);
+  const cleared = indexAnswer();
+  await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+  expect(new URL((await cleared).url()).search).toBe("");
+  await expect(page).toHaveURL(`${home}/index`);
+  await expect(groups).toHaveText(["note", "topic"]);
+  await expect(pages.getByRole("link")).toHaveText(ordered.slice(0, 50).map((item) => item.name));
+});

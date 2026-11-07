@@ -1,5 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const threeBrowsers = /stories\/(wiki\/lw(3|4|8|9|10|12|13)-|identity\/a10-|workspace\/w5-)/;
+
 export default defineConfig({
   testDir: "stories",
   // Starts PostgreSQL and migrates the template database once per run.
@@ -17,5 +19,10 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  // The whole suite is Chromium's: many stories use CDP or read what only it does. These run on all three.
+  projects: [
+    { name: "chromium", use: { ...devices["Desktop Chrome"] } },
+    { name: "firefox", testMatch: threeBrowsers, use: { ...devices["Desktop Firefox"] } },
+    { name: "webkit", testMatch: threeBrowsers, use: { ...devices["Desktop Safari"] } },
+  ],
 });

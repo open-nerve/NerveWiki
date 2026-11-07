@@ -11,6 +11,7 @@ import type { Page } from "@playwright/test";
 
 import { bearer, createToken, emailFor, password, register, registerOnboarded } from "../../fixtures/auth";
 import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
+import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
 import { createTokenWith, holdAnswer } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -129,10 +130,11 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   api,
   db,
   context,
+  browserName,
   pageWatch,
   signedInPage,
 }, testInfo) => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await grantClipboardPermissions(context, browserName);
   const email = emailFor(testInfo);
   const page = await signedInPage(await registerOnboarded(api, email));
   const userId = await accountIdOf(db, email);
@@ -161,7 +163,7 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   await expect(shown.getByLabel("Token", { exact: true })).toHaveValue(created.token);
   await shown.getByRole("button", { name: "Copy" }).click();
   await expect(shown.getByRole("status")).toHaveText("Copied.");
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(created.token);
+  expect(await readClipboardText(page, browserName, shown)).toBe(created.token);
   await shown.getByRole("button", { name: "Done" }).click();
   await expect(shown).toBeHidden();
   const row = page.getByRole("listitem").filter({ hasText: "CI deploy" });

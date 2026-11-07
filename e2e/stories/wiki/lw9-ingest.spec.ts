@@ -1,5 +1,10 @@
 /* oxlint-disable no-await-in-loop -- The story follows real writes, a session's append order, and each scoped client. */
-import { expectChangesetOf, expectIngestOf, expectOneSessionRevision } from "../../fixtures/assert/page";
+import {
+  expectChangesetOf,
+  expectContentWritten,
+  expectIngestOf,
+  expectOneSessionRevision,
+} from "../../fixtures/assert/page";
 import { bearer, emailFor } from "../../fixtures/auth";
 import { changesetOfRevision, entryOfVirtualLog, getChangeset, listChangesets } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
@@ -8,7 +13,16 @@ import { createNotebook, updateNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, endSession, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { archiveAt, endedJob, startExport } from "../../fixtures/transfer";
-import { newTeam } from "../../fixtures/workspaces";
+import {
+  changesetPath,
+  contentWrites,
+  historyPath,
+  pageHeading,
+  saveEdit,
+  startEditing,
+  wikiPagePath,
+} from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 interface IngestRow {
   id: string;
@@ -421,3 +435,96 @@ for (const scope of ["notebook", "account"] as const) {
     ]);
   });
 }
+
+// EW01: the editor produces the mark. API/DB assertions verify that same real
+// write; they do not seed marks or replace the browser's history request.
+test("LW9 (page): a wiki edit appears with its ingested source and remains under Only ingestion", async ({
+  api,
+  db,
+  signedInPage,
+}, info) => {
+  const team = await newOnboardedTeam(api, info);
+  const wiki = await createNotebook(api, team.pat, team.workspace.slug, "Browser ingest", "none", {
+    mode: "llm_wiki",
+    templateLocale: "en",
+  });
+  if (wiki.source_root_id === null) throw new Error("the LLM template has no source root");
+  const source = await createPage(api, team.pat, wiki.id, "Evidence", wiki.source_root_id, "Original evidence.\n");
+  const summary = await createPage(api, team.pat, wiki.id, "Summary", null, "Before.\n");
+  const page = await signedInPage(team.tokens);
+  await page.goto(wikiPagePath(team.workspace.slug, wiki.id, summary.id));
+  await expect(pageHeading(page, "Summary")).toBeVisible();
+  const writes = contentWrites(page, summary.id);
+  const content = "Read [[raw/Evidence]].\n";
+  await (await startEditing(page)).fill(content);
+  await saveEdit(page);
+  expect(await writes.all()).toEqual([{ status: 200 }]);
+  const saved = await writes.saved();
+  await expectContentWritten(db, saved, content, team.adminId);
+  const written = await readContent(api, team.pat, summary.id);
+  expect(written).toMatchObject({ content, revision: 2 });
+  const changeset = await changesetOfRevision(api, team.pat, summary.id, written.revision);
+  await expectIngestOf(db, changeset, wiki.id, [source.id]);
+  await expectChangesetOf(db, changeset, {
+    client: "web",
+    byId: team.adminId,
+    items: [],
+    versions: [summary.id],
+    kind: "edit",
+  });
+  await page.getByRole("main").getByRole("button", { name: "Done", exact: true }).click();
+  // A known later zero-mark change makes a dropped ingest query observable.
+  const ordinary = await createPage(api, team.pat, wiki.id, "Unmarked", null, "A separate ordinary edit.\n");
+  const unmarked = await changesetOfRevision(api, team.pat, ordinary.id, ordinary.revision);
+  await expectIngestOf(db, unmarked, wiki.id, []);
+  const main = page.getByRole("main");
+  await page
+    .getByRole("navigation", { name: "More of Browser ingest", exact: true })
+    .getByRole("link", { name: "History", exact: true })
+    .click();
+  await expect(page).toHaveURL(historyPath(team.workspace.slug, wiki.id));
+  const history = main.getByRole("list", { name: "Changes", exact: true });
+  // Source lists are nested lists: count only the original changeset rows.
+  const rows = history.locator(":scope > li");
+  const detail = changesetPath(team.workspace.slug, wiki.id, changeset);
+  const row = rows.filter({ has: page.locator(`a[href="${detail}"]`) });
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("Edit · ");
+  await expect(row.getByText("Ingest", { exact: true })).toBeVisible();
+  await expect(row.getByText("Sources: 1", { exact: true })).toBeVisible();
+  const sources = row.getByRole("list", { name: "Ingested sources", exact: true });
+  await expect(sources.getByRole("listitem")).toHaveCount(1);
+  await expect(sources.getByRole("link")).toHaveText(["raw/Evidence.md"]);
+  await expect(sources.getByRole("link")).toHaveAttribute(
+    "href",
+    wikiPagePath(team.workspace.slug, wiki.id, source.id)
+  );
+  const plainLink = history.locator(`a[href="${changesetPath(team.workspace.slug, wiki.id, unmarked)}"]`);
+  await expect(plainLink).toBeVisible();
+
+  const answers: { url: URL; status: number }[] = [];
+  page.on("response", (response) => {
+    const url = new URL(response.url());
+    if (response.request().method() === "GET" && url.pathname === `/api/v0/notebooks/${wiki.id}/changesets`)
+      answers.push({ url, status: response.status() });
+  });
+  await page.getByRole("combobox", { name: "Ingestion", exact: true }).selectOption({ label: "Only ingestion" });
+  await expect(page).toHaveURL(historyPath(team.workspace.slug, wiki.id, { ingest: "1" }));
+  await expect(rows, "EW01_FILTER: only the editor's marked change survives").toHaveCount(1);
+  // Observe all answers: a prior unfiltered event refresh must not be mistaken
+  // for the selected filter's response. The nonempty DOM oracle above is primary.
+  expect(
+    answers.find((answer) => answer.url.searchParams.get("ingest") === "true")?.status,
+    "EW01_QUERY: the actual history read keeps ingest=true"
+  ).toBe(200);
+  await expect(plainLink).toHaveCount(0);
+  await expect(row.getByText("Ingest", { exact: true })).toBeVisible();
+  await row.locator(`a[href="${detail}"]`).click();
+  await expect(page).toHaveURL(detail);
+  await expect(main.getByRole("heading", { level: 1 })).toContainText("Edit · ");
+  await expect(main.getByText("Ingest", { exact: true })).toBeVisible();
+  await expect(main.getByRole("list", { name: "Ingested sources", exact: true }).getByRole("link")).toHaveAttribute(
+    "href",
+    wikiPagePath(team.workspace.slug, wiki.id, source.id)
+  );
+});

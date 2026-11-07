@@ -8,7 +8,7 @@ import type { Page as BrowserPage, TestInfo } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { bearer, createToken, emailFor } from "../../fixtures/auth";
-import { answerTo, eventStreamPath } from "../../fixtures/browser";
+import { abortFailedConsole, abortFailedRequestError, answerTo, eventStreamPath } from "../../fixtures/browser";
 import { settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
@@ -1066,12 +1066,12 @@ test.describe("LW8 (page)", () => {
       },
       { times: 1 }
     );
-    watchOf(page).expectConsole({ errors: ["Failed to load resource: net::ERR_FAILED"] });
+    watchOf(page).expectConsole({ errors: [abortFailedConsole()] });
     const failure = page.waitForEvent("requestfailed", {
       predicate: (request) => new URL(request.url()).pathname === nodesPath,
     });
     await moveNode(api, team.pat, asset.id, { parent_id: next.id });
-    expect((await failure).failure()?.errorText).toBe("net::ERR_FAILED");
+    expect((await failure).failure()?.errorText).toBe(abortFailedRequestError(page));
     const paths = page.getByRole("main").getByRole("group", { name: "Page paths", exact: true });
     await expect(paths.getByRole("alert")).toBeVisible();
     await expect(card.getByRole("listitem")).toHaveCount(1);
@@ -1222,7 +1222,7 @@ test.describe("LW8 (page)", () => {
       },
       { times: 1 }
     );
-    watchOf(page).expectConsole({ errors: ["Failed to load resource: net::ERR_FAILED"] });
+    watchOf(page).expectConsole({ errors: [abortFailedConsole()] });
     await healthLink(page, notebook).click();
     const retry = page.getByRole("main").getByRole("button", { name: "Try again", exact: true });
     await expect(retry).toBeVisible();
@@ -1230,7 +1230,7 @@ test.describe("LW8 (page)", () => {
     expect(reads.summary()).toBe(1);
     expect(reads.answers).toEqual([]);
     expect(watchOf(page).apiFailures.filter((failure) => failure.endsWith(`/notebooks/${notebook.id}/lint`))).toEqual([
-      `net::ERR_FAILED GET /api/v0/notebooks/${notebook.id}/lint`,
+      `${abortFailedRequestError(page)} GET /api/v0/notebooks/${notebook.id}/lint`,
     ]);
     const clickedAt = Date.now();
     expect(clickedAt - failedAt, "manual retry precedes the normal first 5s automatic retry").toBeLessThan(5_000);
