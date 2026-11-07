@@ -33,6 +33,14 @@
   { "name": "two-up", "raw": "../../log", "parents": ["a", "b"], "virtual": "log", "wanted": "", "qualified": false },
   { "name": "too-many-up", "raw": "../../log", "parents": ["a"], "virtual": null, "wanted": "", "qualified": false },
   { "name": "above-root", "raw": "../index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  {
+    "name": "above-root-nested",
+    "raw": "../index/child",
+    "parents": [],
+    "virtual": null,
+    "wanted": "",
+    "qualified": false
+  },
   { "name": "dot-then-up", "raw": "./../LOG", "parents": ["a"], "virtual": "log", "wanted": "", "qualified": false },
   {
     "name": "nested",

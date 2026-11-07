@@ -142,6 +142,9 @@ func TestALandingLeavesTheGeneratedFilesTitlesAlone(t *testing.T) {
 		{"R", "A/log", domain.Landing{Parent: id("A"), Title: "log"}, domain.Landing{Parent: id("A"), Title: "log"}, false},
 		{"R", "index.md.md.md", root("index.md.md"), root("index.md.md"), false},
 		{"R", "indexes", root("indexes"), root("indexes"), false},
+		// A target with no page to make has no title to judge.
+		{"R", "A", domain.Landing{Node: id("A")}, domain.Landing{Node: id("A")}, false},
+		{"R", "a:b", domain.Landing{Reason: domain.TitleInvalid}, domain.Landing{Reason: domain.TitleInvalid}, false},
 	}
 	for _, tt := range tests {
 		for mode, want := range map[string]domain.Landing{"llm_wiki": tt.llm, "standard": tt.normal} {

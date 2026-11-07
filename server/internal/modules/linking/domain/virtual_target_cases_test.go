@@ -29,8 +29,8 @@ func TestVirtualTargetSharedCases(t *testing.T) {
 	if err := json.Unmarshal(data, &cases); err != nil {
 		t.Fatal(err)
 	}
-	if len(cases) != 38 {
-		t.Fatalf("shared cases = %d, want 38", len(cases))
+	if len(cases) != 39 {
+		t.Fatalf("shared cases = %d, want 39", len(cases))
 	}
 	positive, negative := 0, 0
 	for _, tt := range cases {
@@ -58,7 +58,7 @@ func TestVirtualTargetSharedCases(t *testing.T) {
 			}
 		})
 	}
-	if positive != 12 || negative != 26 {
-		t.Fatalf("shared split = %d/%d, want 12/26", positive, negative)
+	if positive != 12 || negative != 27 {
+		t.Fatalf("shared split = %d/%d, want 12/27", positive, negative)
 	}
 }

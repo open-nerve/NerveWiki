@@ -104,5 +104,6 @@ func TestALandingLeavesAWikisGeneratedFilesTitles(t *testing.T) {
 	lands(page, "/LOG.md", refused)
 	lands(folder, "index.md.md", refused)
 	lands(page, "index", `{"landing":{"parent_id":"`+folder+`","title":"index"},"node_id":null,"reason":null}`)
+	lands(page, "AGENTS", `{"landing":null,"node_id":"`+wiki.agents+`","reason":null}`)
 	lands(plain, "index", `{"landing":{"parent_id":null,"title":"index"},"node_id":null,"reason":null}`)
 }
