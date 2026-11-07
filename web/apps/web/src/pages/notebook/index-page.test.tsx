@@ -323,22 +323,25 @@ test.each([false, true])(
   }
 );
 
-test("P4/clear_focus: Clear filters keeps the focus as nothing is left to clear, and then does nothing", async () => {
-  const user = userEvent.setup();
-  const fixture = indexServer();
-  renderApp(`${indexPath}?tag=plan`, fixture.server.app);
-  const clear = await screen.findByRole("button", { name: "Clear filters" });
-  await screen.findByRole("region", { name: "Directory pages" });
-  expect(clear.getAttribute("aria-disabled")).toBeNull();
-  clear.focus();
-  await user.keyboard("{Enter}");
-  await waitFor(() => expect(new URL(fixture.requests.at(-1)!.url).search).toBe(""));
-  expect(clear.getAttribute("aria-disabled")).toBe("true");
-  expect(document.activeElement).toBe(clear);
-  const reads = fixture.requests.length;
-  await user.keyboard("{Enter}");
-  expect(fixture.requests).toHaveLength(reads);
-});
+test.each(["?tag=plan", "?type=Note"])(
+  "P4/clear_focus: Clear filters from %s keeps the focus, then does nothing",
+  async (query) => {
+    const user = userEvent.setup();
+    const fixture = indexServer();
+    renderApp(`${indexPath}${query}`, fixture.server.app);
+    const clear = await screen.findByRole("button", { name: "Clear filters" });
+    await screen.findByRole("region", { name: "Directory pages" });
+    expect(clear.getAttribute("aria-disabled")).toBeNull();
+    clear.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(new URL(fixture.requests.at(-1)!.url).search).toBe(""));
+    expect(clear.getAttribute("aria-disabled")).toBe("true");
+    expect(document.activeElement).toBe(clear);
+    const reads = fixture.requests.length;
+    await user.keyboard("{Enter}");
+    expect(fixture.requests).toHaveLength(reads);
+  }
+);
 
 test("P4/catalogue_stays: every type stays choosable while the next filter is read, a failure included", async () => {
   const user = userEvent.setup();
