@@ -114,6 +114,8 @@ A-I1 的修复另有三条：去掉 `allDirect` 或 `possibleDirect` 的减法�
 
 这次 CI 第一次把两个极端用例之一放在最慢的机器上：`guards-core` 落在 EPYC 7763，最大形状三次 17.65–17.90 秒，低于 29 秒的守卫；`guards-sources` 落在 EPYC 9V45，最大字节三次 9.1–9.5 秒。17.7 秒也证实了 M12 那条容量边界：生产的 `request_timeout` 是 15 秒。
 
+文档提交 `55f4f8ab` 的分支 CI [42313012300](https://github.com/open-nerve/NerveWiki/actions/runs/42313012300) 里 e2e 红了一条：LW6 的页面被跳回登录页，`POST /auth/refresh` 答 401，服务端记 `refresh token reused: session revoked`。这个问题早于 S2，代码与上一次绿的 CI 相同。故事 `goto` 版本页之后，否定断言不等页面加载就过，下一个 `goto` 打断了在途的续期：服务端已经换了令牌，浏览器没收到，再用旧令牌就算重复使用。这是 [M1 设计](../../M1-auth/00-M1-design.md)第 10 节接受的后果，产品不改。本机 30 次复现不出来；把续期的答复延后 500 ms 时，旧的故事 4 次全败、现象相同，改后 4 次全过。改法是照 LW4 先等版本的内容出现，这也让那条否定断言真的有意义。
+
 Codex 在 `b86019d9` 跑完成本全量：148/148，3868/3868 节点，最慢的指标用到预算的 92.7%。
 
 CI 的 runner 不是同一种机器。`b86019d9` 的分支 CI [42284811629](https://github.com/open-nerve/NerveWiki/actions/runs/42284811629) 里两个极端用例撞到 15 秒的请求期限，同样的代码在快机器上约 10 秒，同等工作慢约一倍。决定 150 因此放宽时限，并在 CI 里加了 `Runner CPU` 一步。
