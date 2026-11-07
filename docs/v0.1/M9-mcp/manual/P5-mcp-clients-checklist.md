@@ -285,6 +285,28 @@ for addr in "$CADDY" "$BASE"; do
 done
 ```
 
+### J：prompts 与 LLM Wiki（M10）
+
+这一节由 M10/P5 加。每步只记客户端实际做了什么，不要求模型一定照 playbook 做。
+
+准备：沿用上面隔离的客户端环境，记下 Claude Code 与 Codex 的版本和日期，不碰自己的配置。在网页上建一本 LLM Wiki，往它的来源区放两份来源（一页、一个附件），另备一本普通笔记本和一个 PAT。
+
+| 步 | 做什么 | 看什么 |
+|---|---|---|
+| J1 | 接这本 LLM Wiki 的笔记本入口 | 客户端怎样列出 ingest、query、lint 与它们的参数 |
+| J2 | 取 `ingest`，不带 source，再带一个已有的来源路径 | 返回的说明和完整路径 |
+| J3 | 取 `query`，question 用多个词 | 多个词怎样传过去 |
+| J4 | 在普通笔记本取同一个 prompt | 对 -32602 与 `notebook.not_llm_wiki` 显示什么 |
+| J5 | 接账户入口 | 没有 prompt，`open_notebook` 的说明指向笔记本的地址；不把客户端缓存的旧清单当成服务器的能力 |
+| J6 | 看握手的说明 | agent 看得到开头那段系统的文字吗；`AGENTS` 很长时还看得到吗（决定 161） |
+| J7 | 让 agent 照 ingest 做一份已批准的维护 | 先读完整来源，小改用 `edit`，`move` 一步到位，一个 `batch`，保留带引号的 `sources`，遵守锁和错误提示；`changeset` 上有 ingest 标记 |
+| J8 | 用 query 答一个查得到的问题 | 引用；遇到 `partial_lines`、`cut`、`next_offset`、`next_column` 时用 `read` 补齐，不把片段当全文 |
+| J9 | 用 lint 先修再看最近的 `log` | 来源没有变；空的父页没有被编造元数据 |
+| J10 | 改来源根的位置、改 `AGENTS`，重连 | 说明更新了 |
+| J11 | 降级之后重连 | 没有 "pages under" 这句系统的文字。`AGENTS` 自己可能还写着 LLM Wiki，不算失败 |
+
+逐客户端记通过或失败和处置。发现 playbook 的措辞有偏差，记下原文，由负责人定怎样改，不放松服务端的守卫。M11 的 upgrade prompt 不在这一节。
+
 ## 做完
 
 1. **Codex 的登录**：照"不碰你自己的客户端配置"登录的第 3 种复制过 `auth.json` 的，先照那里的规则决定复制不复制回去（看 `shasum` 的两个指纹），**再**删临时目录；用第 2 种的，在一个没有设 `CODEX_HOME` 的终端里启动你自己的 Codex，记下它是否照常可用，不能用时在那里 `codex login` 再登录一次。
@@ -298,5 +320,5 @@ done
 - 本地进程的（stdio）MCP 服务、OAuth：服务端没有它们（M9 总设计第 2 节"不做"）。
 - 2026-07-28 的协议（`server/discover`、`subscriptions/listen`）：等真实的客户端发它再开（M9 总设计第 11 节主持者的决定第 2 条）；客户端若以它连接而被拒，记在"记下的"里，交负责人。
 - Claude Code 的别的许可模式（`acceptEdits`、`bypassPermissions` 一类）：README 不推荐它们，是负责人自己的选择。
-- prompts（ingest、query、lint）：M10 登记。
+- prompts（ingest、query、lint）在上面的 J 部分；M11 的 upgrade prompt 由 M11 登记。
 - 多个实例：v0.1 只支持单实例。

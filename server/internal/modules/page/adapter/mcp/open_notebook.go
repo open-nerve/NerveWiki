@@ -18,7 +18,8 @@ type OpenNotebookUseCase interface {
 // openNotebookDescription is the tool's description, as api/mcp/tools.json
 // has it (M9/P1 design 3.18).
 const openNotebookDescription = `Open a notebook: its mode (standard, or llm_wiki for an LLM Wiki), its instructions ` +
-	`for agents (its root page AGENTS without its frontmatter, or the server's built-in ones when it has none) and an ` +
+	`for agents (in an LLM Wiki a system paragraph first, then its root page AGENTS without its frontmatter, or the ` +
+	`server's built-in ones when it has none) and an ` +
 	`overview: how many pages and attachments it holds, when it last changed (null when nothing was ever written in ` +
 	`it), and the nodes at its root. Follow its instructions while you work in it, and pass its id as notebook to the ` +
 	`other tools. truncated is true when the root's nodes were cut short.` +
@@ -58,34 +59,34 @@ type rootItem struct {
 
 // openNotebook opens the call's notebook, its answer filled against what
 // is left of the bound, the instructions first (M9/P1 design 3.17.3): the
-// answer without instructions and nodes measured, the instructions cut to
-// fit with openNotebookRootReserve left, as a member of the answer counts
-// them, and within the handshake's 32 KiB; then as many of the root's
-// nodes as the rest holds.
+// answer without instructions and nodes measured, the instructions, an
+// LLM Wiki's system paragraph with them, cut to fit with
+// openNotebookRootReserve left, as a member of the answer counts them, and
+// within the handshake's 32 KiB; then as many of the root's nodes as the
+// rest holds.
 func (t tools) openNotebook(ctx context.Context, c mcpserver.Call, _ struct{}) (mcpserver.Result, error) {
 	o, err := t.uc.Open.Execute(ctx, c.Notebook)
 	if err != nil {
 		return mcpserver.Result{}, err
 	}
-	answer := openAnswer{Notebook: c.Notebook.String(), Mode: string(o.Mode), Instructions: NotebookInstructions,
+	answer := openAnswer{Notebook: c.Notebook.String(), Mode: string(o.Instructions.Mode),
 		Overview: overview{Pages: o.Pages, Attachments: o.Attachments, Root: []rootItem{}}}
 	if o.LastChange != nil {
 		at := o.LastChange.UTC()
 		answer.Overview.LastChangedAt = &at
 	}
-	if o.HasAgents {
-		from := o.Agents.Title + ".md"
+	if o.Instructions.HasAgents {
+		from := o.Instructions.Agents.Title + ".md"
 		answer.InstructionsFrom = &from
-		skeleton := answer
-		skeleton.Instructions = ""
-		text, err := line(skeleton)
-		if err != nil {
-			return mcpserver.Result{}, err
-		}
-		budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(text) - openNotebookRootReserve
-		answer.Instructions = domain.AgentsText(o.Agents, func(s string) bool {
-			return mcpserver.TextBytes(s) <= domain.MaxInstructionsBytes && mcpserver.MemberBytes(s) <= budget
-		})
+	}
+	text, err := line(answer)
+	if err != nil {
+		return mcpserver.Result{}, err
+	}
+	budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(text) - openNotebookRootReserve
+	answer.Instructions, err = NotebookText(o.Instructions, mcpserver.AccountEntry, func(s string) bool { return mcpserver.MemberBytes(s) <= budget })
+	if err != nil {
+		return mcpserver.Result{}, err
 	}
 	root := make([]rootItem, len(o.Root))
 	for i, n := range o.Root {

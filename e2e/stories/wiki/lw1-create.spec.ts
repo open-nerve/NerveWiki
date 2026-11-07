@@ -106,7 +106,7 @@ test("LW1 (API): an LLM Wiki is created with its template in the language asked,
   expect(await countNotebooks(db)).toEqual(before);
 });
 
-test("LW1 (MCP): an agent of an LLM Wiki is given its AGENTS page as its instructions, and sees the notebook's mode", async ({
+test("LW1 (MCP): an agent of an LLM Wiki is given a system paragraph and its AGENTS page as its instructions, and sees the notebook's mode", async ({
   api,
   nervewiki,
 }, testInfo) => {
@@ -121,9 +121,11 @@ test("LW1 (MCP): an agent of an LLM Wiki is given its AGENTS page as its instruc
   }
   const { content } = await readContent(api, pat, agents.id);
 
-  // The notebook entry's handshake: the AGENTS page's text.
+  // The notebook entry's handshake: the system paragraph (M10 decision 161), then the AGENTS page's text.
+  const paragraph =
+    "This notebook is an LLM Wiki: pages under `raw/` are sources you add once and never change; index.md and log.md are generated; ";
   const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: created.id });
-  expect(agent.instructions).toBe(content.trim());
+  expect(agent.instructions).toBe(`${paragraph}run the prompts ingest, query and lint.\n\n${content.trim()}`);
 
   // The account entry: the notebook's mode in the list and when opened.
   const account = await mcpClient(nervewiki.baseURL, pat);
@@ -133,7 +135,12 @@ test("LW1 (MCP): an agent of an LLM Wiki is given its AGENTS page as its instruc
   expect(notebooks.find((n) => n.id === created.id)?.mode).toBe("llm_wiki");
   const opened = await account.call("open_notebook", { notebook: created.id });
   expect(opened.isError, opened.text.join(" ")).toBe(false);
-  expect(opened.structured).toMatchObject({ notebook: created.id, mode: "llm_wiki", instructions_from: "AGENTS.md" });
+  expect(opened.structured).toMatchObject({
+    notebook: created.id,
+    mode: "llm_wiki",
+    instructions: `${paragraph}its prompts ingest, query and lint are served at \`/mcp?notebook=${created.id}\`.\n\n${content.trim()}`,
+    instructions_from: "AGENTS.md",
+  });
 });
 
 test("LW1 (page): an English LLM Wiki starts with its source area and instructions, named in the tree", async ({

@@ -196,3 +196,93 @@ func skeletonOf(t *testing.T, o map[string]any) string {
 	}
 	return strings.TrimSuffix(b.String(), "\n")
 }
+
+// The sentences of an LLM Wiki's system paragraph, written out here again
+// (M10 design 4.15): the notebook entry's and the account entry's.
+func notebookParagraph(root string) string {
+	return "This notebook is an LLM Wiki: pages under `" + root + "/` are sources you add once and never change; index.md and log.md are generated; " +
+		"run the prompts ingest, query and lint."
+}
+
+func accountParagraph(root, notebook string) string {
+	return "This notebook is an LLM Wiki: pages under `" + root + "/` are sources you add once and never change; index.md and log.md are generated; " +
+		"its prompts ingest, query and lint are served at `/mcp?notebook=" + notebook + "`."
+}
+
+// An LLM Wiki's instructions say where its sources are now (M10 design
+// 4.15): the AGENTS text comes from its cache, the paragraph never does.
+// Each step's write ends before the next handshake, so the order is the
+// test's; a path too long for the paragraph gives way to the title.
+func TestTheWikiInstructionsFollowTheirSourceRoot(t *testing.T) {
+	r := startReadsApp(t, "")
+	status, created := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/workspaces/acme/notebooks", r.access, `{"name":"Field notes","mode":"llm_wiki"}`)
+	if status != http.StatusCreated {
+		t.Fatalf("create an LLM Wiki = %d %s", status, created)
+	}
+	var notebook struct {
+		ID           string `json:"id"`
+		SourceRootID string `json:"source_root_id"`
+	}
+	if err := json.Unmarshal([]byte(created), &notebook); err != nil {
+		t.Fatal(err)
+	}
+	wiki, raw := notebook.ID, notebook.SourceRootID
+	page := func(t *testing.T, parent, title string) string {
+		t.Helper()
+		parentID := "null"
+		if parent != "" {
+			parentID = `"` + parent + `"`
+		}
+		status, made := ask(t, r.contract, http.MethodPost, r.base+"/api/v0/notebooks/"+wiki+"/pages", r.access, `{"parent_id":`+parentID+`,"title":"`+title+`"}`)
+		if status != http.StatusCreated {
+			t.Fatalf("create %.20s = %d %s", title, status, made)
+		}
+		return idOf(t, answer{body: made})
+	}
+	body := strings.TrimSpace(wikiPages(t)[1].Content)
+	expect := func(t *testing.T, root string) {
+		t.Helper()
+		if got, want := r.instructionsAt(t, atNotebook(wiki)), notebookParagraph(root)+"\n\n"+body; got != want {
+			t.Errorf("the handshake's instructions = %.300q, want %.300q", got, want)
+		}
+		if got, want := r.opened(t, wiki)["instructions"], accountParagraph(root, wiki)+"\n\n"+body; got != want {
+			t.Errorf("open_notebook's instructions = %.300q, want %.300q", got, want)
+		}
+	}
+	t.Run("template", func(t *testing.T) {
+		expect(t, "raw")
+		expect(t, "raw") // the AGENTS text from the cache now
+	})
+	t.Run("rename", func(t *testing.T) {
+		r.rest(t, nodeRename("alice", raw, "sources"), http.StatusOK)
+		expect(t, "sources")
+	})
+	library := ""
+	t.Run("move", func(t *testing.T) {
+		library = page(t, "", "Library")
+		r.rest(t, nodeMove("alice", raw, library), http.StatusOK)
+		expect(t, "Library/sources")
+	})
+	t.Run("an ancestor renamed", func(t *testing.T) {
+		r.rest(t, nodeRename("alice", library, "Shelf"), http.StatusOK)
+		expect(t, "Shelf/sources")
+	})
+	t.Run("a new AGENTS", func(t *testing.T) {
+		var agents string
+		if err := r.pool.QueryRow(context.Background(), `SELECT id FROM nodes WHERE notebook_id = $1 AND parent_id IS NULL AND name = 'AGENTS'`, wiki).Scan(&agents); err != nil {
+			t.Fatal(err)
+		}
+		r.write(t, agents, "# New rules\n")
+		body = "# New rules"
+		expect(t, "Shelf/sources")
+	})
+	t.Run("deep", func(t *testing.T) {
+		parent, title := "", strings.Repeat("t", 255)
+		for range 9 {
+			parent = page(t, parent, title)
+		}
+		r.rest(t, nodeMove("alice", raw, parent), http.StatusOK)
+		r.rest(t, nodeRename("alice", raw, title), http.StatusOK)
+		expect(t, title)
+	})
+}

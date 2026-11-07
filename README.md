@@ -210,7 +210,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 ### MCP
 
-`lint` 与 `pending_sources` 已在notebook/account两入口注册，复用同一个健康检查执行入口与授权规则。真实SDK答复上限48KiB，分页裁剪保留真实末项游标；摘要完全裁空时仍可用StartCursor取非空规则。当前内置说明notebook raw/SDK为3044/3093B、account为3113/3163B，实际SDK距4KiB余1003/933B，保留M11至少300B余量；P4虚拟页与P5 prompts仍待。
+`lint` 与 `pending_sources` 已在notebook/account两入口注册，复用同一个健康检查执行入口与授权规则。真实SDK答复上限48KiB，分页裁剪保留真实末项游标；摘要完全裁空时仍可用StartCursor取非空规则。当前内置说明notebook raw/SDK为3044/3093B、account为3113/3163B，实际SDK距4KiB余1003/933B，保留M11至少300B余量。
 
 - **两种地址**：`/mcp` 是整个账户（账户入口），`/mcp?notebook=<笔记本 id>` 是一本笔记本（笔记本入口）。`notebook` 只能出现一次、是 UUID，否则答 404 `notebook.not_found`，不查库；看不到或已删除的笔记本同样答 404，在握手之前。
 - **只收个人访问令牌**：`Authorization: Bearer <PAT>`。会话的访问令牌答 403 `forbidden`（它 15 分钟就过期，服务端没有 OAuth，经 MCP 续不了期），没有、无效、已撤销的令牌答 401。服务端没有 OAuth：`/.well-known/` 之下都答 404，`POST /register` 答 OAuth 的错误 `invalid_client_metadata`。一个 POST 在限流里算一次请求，与 REST 共用这个令牌的桶。
@@ -221,10 +221,24 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 - **历史**：两个入口都有 `versions`（一页的版本列表，带 `revision` 时读那个版本的行，`offset`、`column` 与 `limit` 同 `read`）、`log`（这本笔记本的变更集，新的在前，可按 `path`、`actor`（账户的 id，`"me"` 是自己）与 `client`（`mcp` 是全部的 agent）筛选）与 `changeset`（一个变更集与它对每个节点做了什么，节点带它现在的路径），账户入口里同样要 `notebook`。只读：还原版本、从回收站恢复与撤销变更集是人在网页上做的，经 MCP 的一次移动加改名在网页上一步撤销，一个 `batch` 在网页上整组撤销。`changeset` 只认这本笔记本的，别的笔记本的变更集答 `page.changeset_not_found`；回收站里的页与附件没有路径（`versions`、`log` 按路径找不到它，`changeset` 里它的路径为 null），它们的变更集在不筛选的 `log` 里；一个答复放不下的变更集在 `log` 里单独来、变化截短并带 `changes_cut: true`，用 `changeset` 读全。
 - **找**：两个入口都有 `grep` 与 `search`，账户入口里同样要 `notebook`。`grep` 以 Go 的正则（RE2，同 ripgrep 默认的语法）逐行找这本笔记本里页的正文（含 frontmatter；不找标题与附件，标题用 `list` 的 glob 找），按路径的次序一页接一页：每个命中带页的路径、行号（同 `read` 的数法：以它为 `offset`、`limit` 为 1 读到的就是这一行）与这一行存下的文字（去掉 `\r`，第一行去掉 BOM）；长于 1,000 字节的行截在第一个匹配的周围（`cut: true`），不从行首起时 `column` 是它起头的字节（同 `read` 的 `column`）。`glob` 只留路径匹配它的页（同 `list`），`ignore_case` 同 `(?i)`，每页至多 `limit` 个命中（1–500，默认 100）。模式至多 1,024 字节、不含换行，每行单独匹配；它同正文的行一样按 NFC 读：组合的记号要与前一个字符分开时写成转义（如 `\x{301}`）；太复杂的（如大的重复）答 `validation_failed`。一次调用查的有界（至多 500 页、32 MiB 的正文与有界的匹配的工作，在调用的期限之前 3 秒停下；同时匹配的调用有名额，等 1 秒取不到答 `server_busy`）：`next_cursor` 还在就接着调；`incomplete` 为真说这次调用在查完它该查的页之前停在界线上，这时没有命中不说明没有；`partial_lines` 是长得一次调用匹配不完的行，只匹配了开头，用 `read` 读它们。模式里取得出词时，`grep` 以搜索的索引挑出要查的页，词可能被截掉的页总被查；批量入队的页（`batch`、导入、后台的恢复与撤销、升级写的）在索引建好之前不查，其间 `building` 为真。取不出词的模式（如 `\d{4}-\d{2}-\d{2}`）一页接一页地查每一页，批量入队的也查，`building` 为假。两次调用之间被移动或写过的页（连同子页）可能被跳过或再查一次。`search` 是这一本笔记本的全文搜索（同上文"搜索"：名称里有每个词的在前，其余的在后，各按最后改动从新到旧；摘要是纯文本，截处是 `…`；第一页带约数；每页 1–50 条，默认 20）：单个汉字只找标题；一页可能少于 `limit` 条、甚至一条也没有而带 `next_cursor`，接着调；`building` 同 `grep`。按词找、找中文用 `search`；按模式、原样的文字与行号用 `grep`。
 - **索引与反链**：两个入口都有 `index` 与 `backlinks`，账户入口里同样要 `notebook`；都只读，读的是链接索引（上文"链接索引"）。`index` 列出这本笔记本里索引有的页，每项：路径、frontmatter 的 `type` 与 `summary`（不分大小写的第一个这样的键，值是文字时）、标签（至多 20 个）、正文的最后改动、链到它的别的页数（1,000 是 1,000 或更多）与父页的路径；`type`、`summary` 与每个标签截到 256 字节，`cut` 说出截了哪些。`type` 只留这种类型的页（整个相等），`tag` 留有这个标签或它之下的标签的页（`plan` 含 `plan/q4`，开头的 `#` 去掉），`parent` 留这一页的子页（`/` 是根下的）；不筛就不传，传 `""` 答 `validation_failed`。有类型的页在前、按类型排，其余的在后；每页 1–100 项，默认 50，`next_cursor` 还在就接着调。索引还没读过的页不在其中（升级之后 `nervewiki reindex` 之前写的那种）。`backlinks` 列出链到一页的页：每项带它的路径、它链到那里的链接数（1,000 是 1,000 或更多）与前十个链接所在的行（各至多 240 字节）；一页链到自己的不算，索引读过它之后又写过的页还没有行；每页 1–100 项，默认 50。只有页有反链：附件的路径答 `page.not_found`。
-- **说明**：笔记本入口握手时给出这本笔记本根下标题为 `AGENTS` 的页（不分大小写）去掉 frontmatter 的正文，至多 32 KiB：截在最后一个换行，末尾一行说出怎样用 `read` 读全文。没有这一页、或它去掉 frontmatter 之后只剩空白时，给内置的英文说明（路径的写法与工具）；改了、替换、改名或删掉这一页之后，下一次连接就是新的。团队要别的约定（例如中文）就写一个 `AGENTS` 页，它整个取代内置的说明。
+- **说明**：笔记本入口握手时给出这本笔记本根下标题为 `AGENTS` 的页（不分大小写）去掉 frontmatter 的正文，至多 32 KiB：截在最后一个换行，末尾一行说出怎样用 `read` 读全文。没有这一页、或它去掉 frontmatter 之后只剩空白时，给内置的英文说明（路径的写法与工具）；改了、替换、改名或删掉这一页之后，下一次连接就是新的。团队要别的约定（例如中文）就写一个 `AGENTS` 页，它整个取代内置的说明。LLM Wiki 的说明在这些文字之前多一段系统的文字，见下一节。
 - **客户端的名称**：取客户端报的 `clientInfo.name`（清理之后至多 128 个字符），记在这个令牌上，日志的每次调用带它；重启之后、客户端没有再报时用记下的。一个 agent 用一个 PAT：两个客户端同时用一个时，记的是最后报的那个。
 - **`server.public_url`**：实例对外的地址（只到源，默认空）。`read` 给附件的下载地址时以它起头（签名同"附件"）；为空时图片照样直接放进答复，别的附件只给元数据。
-- 接上 Claude Code、Codex 见下一节"接入 agent（MCP）"；反向代理的要求见"部署"。
+- 接上 Claude Code、Codex 见下文"接入 agent（MCP）"；反向代理的要求见"部署"。
+
+### LLM Wiki 与 playbook
+
+新建笔记本时可以选择 LLM Wiki。它有来源区和根下的 `AGENTS` 约定：来源添加后不修改，知识页由人或 agent 按约定维护；`AGENTS` 的正文可以更新，但在这种模式下不能删除、改名或移动。`index.md` 与 `log.md` 是系统生成的视图，不是要写回的页面。
+
+在这本笔记本的 MCP 入口 `/mcp?notebook=<id>`，`prompts/list` 提供英文的 `ingest`、`query`、`lint`。`ingest` 可带 `source` 路径，省略时先列 `pending_sources`，读完来源之后用一个带说明的 `batch` 更新知识页，写明 `type`、`summary` 与带引号的 `sources`，再做 lint。`query` 带 `question`，查找并引用页和来源。`lint` 先做能机械修的，再看最近的变更集，报告其余。
+
+普通笔记本也列出同样三个名字，取用答 JSON-RPC -32602，码是 `notebook.not_llm_wiki`。账户入口 `/mcp` 没有 prompt，`open_notebook` 的说明给出对应笔记本的入口。
+
+握手和 `open_notebook` 的说明先是一段系统的文字，后面跟 `AGENTS` 去掉 frontmatter 的正文，空正文时用内置说明。系统的文字写当前的来源根和生成的视图，来源根改名或移动之后下一次读取就更新。`AGENTS` 太长时被截短并提示用 `read` 读全，系统的文字不截。
+
+**降级**：管理员可以把 LLM Wiki 降级成普通笔记本，有排队或运行的任务时拒绝。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。`AGENTS` 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
+
+**重新导入的限制**：把 LLM Wiki 的导出导进一本新的 LLM Wiki，根下的 `AGENTS.md` 因为已有 `AGENTS` 成为 `AGENTS 2`，档案的 `raw/` 因为已有 `raw` 成为 `raw 2`，它里面的来源落在来源区之外。这是 v0.1 写明的限制。
 
 ## 接入 agent（MCP）
 
@@ -336,6 +350,7 @@ lint的summary每规则最多5项，规则页limit默认50、范围1–100；cou
 | `write`、`edit` | 正文至多 5 MiB；`edit` 的 `old_string` 至多 1 MiB                                                                                                                                                      |
 | `batch`         | 至多 100 项，字符串合计至多 6 MiB、正文与 `new_string` 合计至多 5 MiB，别的界线见上文"MCP"的"batch"                                                                                                    |
 | 说明            | 见上文"MCP"的"说明"                                                                                                                                                                                    |
+| prompt          | 每个参数至多 4,096 字节，请求至多 64 KiB，答复的文字至多 48 KiB                                                                                                                                        |
 | 限流            | 一个 POST 算一次请求，与这个令牌的 REST 请求共用一个桶（`ratelimit.authenticated`）                                                                                                                    |
 
 ### 大的请求体的名额

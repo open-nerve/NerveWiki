@@ -2,6 +2,7 @@ package page
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"uuid"
@@ -31,6 +32,17 @@ func (a agentsOf) PageContent(context.Context, uuid.UUID) (app.PageContent, erro
 
 func (agentsOf) FrontmatterEnd(string) int { return 0 }
 
+// entryStates is the notebooks' state read of a handshake.
+type entryStates struct {
+	state domain.NotebookState
+	found bool
+	err   error
+}
+
+func (s entryStates) StateOf(context.Context, uuid.UUID) (domain.NotebookState, bool, error) {
+	return s.state, s.found, s.err
+}
+
 // measured is a body that the handshake's text counts n bytes of: lines of
 // "<", "漢" and "x", padded with "x".
 func measured(n int) string {
@@ -50,7 +62,7 @@ func TestTheHandshakesInstructionsAreWholeUpToTheirBound(t *testing.T) {
 			t.Fatalf("a body of %d bytes measured %d", n, mcpserver.TextBytes(body))
 		}
 		page := agentsOf{node: uuid.NewV7(), content: body}
-		entry := MCPEntry{instructions: app.NewInstructions(page, page, page, mcpserver.TextBytes)}
+		entry := MCPEntry{notebooks: entryStates{found: true}, instructions: app.NewInstructions(page, page, page, mcpserver.TextBytes)}
 		got, err := entry.Instructions(context.Background(), uuid.NewV7())
 		switch {
 		case err != nil:
@@ -64,4 +76,51 @@ func TestTheHandshakesInstructionsAreWholeUpToTheirBound(t *testing.T) {
 			t.Errorf("%d bytes: %d bytes not a prefix of the body and the note", n, mcpserver.TextBytes(got))
 		}
 	}
+}
+
+// The handshake's own failures (M10/P5 design 3.7): a notebook deleted
+// since the Gate is notebook.not_found, never read as a standard one; a
+// read that fails keeps its cause; a standard notebook is not asked for
+// its root, and an LLM Wiki answers the system paragraph of its entry.
+func TestMCPEntryAnswersItsState(t *testing.T) {
+	failure := errors.New("the database is gone")
+	page := agentsOf{node: uuid.NewV7(), content: "# Rules"}
+	entry := func(states entryStates) MCPEntry {
+		return MCPEntry{notebooks: states, instructions: app.NewInstructions(page, page, page, mcpserver.TextBytes)}
+	}
+	if _, err := entry(entryStates{}).Instructions(context.Background(), uuid.NewV7()); !errors.Is(err, domain.ErrNotebookNotFound) {
+		t.Errorf("a notebook gone since the gate = %v, want notebook.not_found", err)
+	}
+	if _, err := entry(entryStates{err: failure}).Instructions(context.Background(), uuid.NewV7()); !errors.Is(err, failure) {
+		t.Errorf("a state that fails = %v, want its cause", err)
+	}
+	// agentsOf's Nodes is nil: a read of the root would panic.
+	if got, err := entry(entryStates{found: true, state: domain.NotebookState{Mode: domain.ModeStandard}}).Instructions(context.Background(), uuid.NewV7()); err != nil || got != "# Rules" {
+		t.Errorf("a standard notebook = %q, %v", got, err)
+	}
+	root := rootOf{agentsOf: page, title: "raw", line: []domain.Ancestor{{Name: "sources"}}}
+	wiki := MCPEntry{notebooks: entryStates{found: true, state: domain.NotebookState{Mode: domain.ModeLLMWiki}},
+		instructions: app.NewInstructions(root, root, root, mcpserver.TextBytes)}
+	got, err := wiki.Instructions(context.Background(), uuid.NewV7())
+	want := "This notebook is an LLM Wiki: pages under `sources/raw/` are sources you add once and never change; index.md and log.md are generated; " +
+		"run the prompts ingest, query and lint.\n\n# Rules"
+	if err != nil || got != want {
+		t.Errorf("an LLM Wiki = %q, %v; want %q", got, err, want)
+	}
+}
+
+// rootOf is agentsOf of a notebook whose source root is titled title,
+// under line.
+type rootOf struct {
+	agentsOf
+	title string
+	line  []domain.Ancestor
+}
+
+func (r rootOf) FindNodeIn(context.Context, uuid.UUID, uuid.UUID) (domain.Node, error) {
+	return domain.Node{Name: r.title, Kind: domain.KindPage}, nil
+}
+
+func (r rootOf) Ancestors(context.Context, uuid.UUID) ([]domain.Ancestor, error) {
+	return r.line, nil
 }

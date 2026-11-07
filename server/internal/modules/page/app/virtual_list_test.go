@@ -132,7 +132,7 @@ func TestVirtualListing(t *testing.T) {
 	t.Run("overview", func(t *testing.T) {
 		f := newFixture()
 		f.grant(domain.ActionList)
-		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki}}
+		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: {Mode: domain.ModeLLMWiki, SourceRootID: f.page("raw", nil, -1).ID}}
 		var root []domain.Node
 		for i := range 100 {
 			root = append(root, f.page(fmt.Sprintf("P%03d", i), nil, float64(i)))
