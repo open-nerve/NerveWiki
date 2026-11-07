@@ -27,15 +27,13 @@ type StepFacts struct {
 
 // ContentFacts is the content a step writes, its hash and byte size,
 // the byte size immediately before it, and its merged user changes.
-// M10/P2/S1 carries these facts; S2 adds source-hash deduplication.
 type ContentFacts struct {
 	Hash                       []byte
 	Bytes, BeforeBytes, Merged int
 }
 
 // NodeFacts is a node of a step: its kind, Before nil for a creation,
-// After nil for a deletion. M10/P2/S1 carries each side's source-area
-// membership alongside content, rewrite and edit-session facts.
+// After nil for a deletion, with each side's source-area membership.
 type NodeFacts struct {
 	ID     uuid.UUID
 	Kind   Kind

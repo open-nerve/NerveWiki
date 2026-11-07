@@ -229,7 +229,8 @@ type SessionOpening struct {
 }
 
 // EditSessionVetoer may refuse an edit session's opening (M5: an alive
-// session of the page, page.locked; M11: a freeze). It runs in
+// session of the page, page.locked; M10: a source, page.source_immutable;
+// M11: a freeze). It runs in
 // the opening's unit after the decision, under the page's gate, the content
 // row's lock, so that two openings of a page decide one after the other;
 // its error, a *shared.Error the opening declares, rolls the unit back and

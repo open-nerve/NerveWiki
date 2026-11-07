@@ -66,6 +66,8 @@ type PurgeChangesetSourcesParams struct {
 	Batch  int32
 }
 
+// Deletes the sources of the changesets due for the purge, a batch at a time,
+// before PurgeChangesets takes the changesets themselves.
 func (q *Queries) PurgeChangesetSources(ctx context.Context, arg PurgeChangesetSourcesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgeChangesetSources, arg.Before, arg.Batch)
 	if err != nil {

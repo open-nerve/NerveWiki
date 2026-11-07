@@ -1,6 +1,7 @@
 // Package wiki is the module of the LLM Wiki mode (M10 design 4.1): the
-// modes' contracts, the LLM Wiki's template and its internal lint runtime.
-// Bootstrap constructs the template seeder separately from the runtime.
+// modes' contracts, the LLM Wiki's template, its internal lint runtime, its
+// virtual files and its prompts. Bootstrap constructs the template seeder
+// separately from the runtime.
 // Register exposes the same runtime through the module's HTTP routes.
 package wiki
 

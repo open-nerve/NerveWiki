@@ -11,9 +11,6 @@ import (
 
 func (w *JobWrites) planRestoreSource(ctx context.Context, spec JobSpec, root domain.TrashRoot, notebook domain.NotebookState) (JobPlan, error) {
 	precheck := w.writer.d.SourcePrecheck
-	if precheck == nil {
-		return w.planRestoreRead(ctx, spec, root)
-	}
 	var plan JobPlan
 	err := precheck.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
 		var err error

@@ -38,8 +38,10 @@ type Notebook struct {
 	UpdatedAt   time.Time
 	// Ownerless is set while the notebook has no active admin (M3 design 4).
 	Ownerless *Ownerless
-	// Mode is the notebook's mode; SourceRootID an LLM Wiki's source root,
-	// the zero id for a standard notebook (notebooks_source_root_check).
+	// Mode is the notebook's mode; SourceRootID its source root.
+	// notebooks_source_root_check asks an LLM Wiki for one and does not
+	// forbid a standard notebook's: creating and downgrading leave the zero
+	// id, and M11 may set it before the mode.
 	Mode         Mode
 	SourceRootID uuid.UUID
 }

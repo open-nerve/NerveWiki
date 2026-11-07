@@ -55,10 +55,11 @@ func (g *ModeGuard) VetoEditSession(ctx context.Context, o SessionOpening) error
 }
 
 // GuardWrite judges s by its notebook's contract, the state its unit read
-// under the notebook's lock: page.protected and page.virtual_file as
-// CheckContract answers them, page.source_admin_only for a step whose need
-// the unit's actor is not granted. A database's error is answered as it
-// is, and rolls the unit back.
+// under the notebook's lock: the codes CheckContract answers, among them
+// page.protected, page.virtual_file, page.source_immutable and
+// page.source_too_large; page.source_admin_only for a step whose need the
+// unit's actor is not granted; page.source_duplicate for bytes already a
+// source's. A database's error is answered as it is, and rolls the unit back.
 func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 	if s.Notebook.Mode != domain.ModeLLMWiki {
 		return nil
