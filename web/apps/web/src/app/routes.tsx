@@ -185,6 +185,13 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
+                            path: "index",
+                            lazy: async () => {
+                              const { IndexPage } = await import("../pages/notebook/index-page");
+                              return { Component: IndexPage };
+                            },
+                          },
+                          {
                             path: "health",
                             lazy: async () => {
                               const { HealthPage } = await import("../pages/notebook/health-page");

@@ -246,7 +246,7 @@ func TestListIndex(t *testing.T) {
 		var want app.IndexItem
 		switch it.PageID {
 		case l.roadmap:
-			want = app.IndexItem{PageID: l.roadmap, ParentID: &l.projects, Title: "Roadmap", Path: "Projects/Roadmap.md", Type: str("Project"), Summary: str(strings.Repeat("s", 256)),
+			want = app.IndexItem{PageID: l.roadmap, ParentID: &l.projects, Title: "Roadmap", Path: "Projects/Roadmap.md", Type: str("Project"), TypeKey: str("project"), Summary: str(strings.Repeat("s", 256)),
 				Tags: []string{"plan", "plan/q4"}, Inbound: 2, ParentPath: str("Projects.md"), Cut: []string{"summary"},
 				Cursor: cursor(domain.IndexCursor{K: "project", Typed: true, ID: l.roadmap})}
 		case l.inbox:

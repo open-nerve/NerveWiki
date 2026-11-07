@@ -81,3 +81,29 @@ func TestALinksLandingThroughServe(t *testing.T) {
 	lands("Plans/2026.md", `{"landing":null,"node_id":"`+made+`","reason":null}`)
 	tm.quiet(t, nb, marker, s)
 }
+
+// An LLM Wiki's root keeps the titles of its generated files: the landing
+// says so through serve, where the write guard would answer page.virtual_file
+// to the page it offered (M10 design 4.9). A standard notebook offers it, and
+// so does a folder of the wiki.
+func TestALandingLeavesAWikisGeneratedFilesTitles(t *testing.T) {
+	tm := newAcmeTeam(t, "member", "")
+	wiki := tm.llmWiki(t, "Landing wiki")
+	folder := tm.createPageWith(t, "alice", wiki.id, "", "Folder", "x")
+	page := tm.createPageWith(t, "alice", wiki.id, folder, "Page", "x")
+	plain := tm.createPageWith(t, "alice", tm.createNotebook(t, "alice", "Landing plain"), "", "Page", "x")
+	lands := func(from, target, want string) {
+		t.Helper()
+		status, body := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/pages/"+from+"/link-landing?target="+url.QueryEscape(target), tm.tokens["alice"], "")
+		if status != http.StatusOK || strings.TrimSpace(body) != want {
+			t.Errorf("the landing of %q = %d %s, want %s", target, status, body, want)
+		}
+	}
+	refused := `{"landing":null,"node_id":null,"reason":"not_resolvable"}`
+	lands(page, "../index", refused)
+	lands(page, "/LOG.md", refused)
+	lands(folder, "index.md.md", refused)
+	lands(page, "index", `{"landing":{"parent_id":"`+folder+`","title":"index"},"node_id":null,"reason":null}`)
+	lands(page, "AGENTS", `{"landing":null,"node_id":"`+wiki.agents+`","reason":null}`)
+	lands(plain, "index", `{"landing":{"parent_id":null,"title":"index"},"node_id":null,"reason":null}`)
+}

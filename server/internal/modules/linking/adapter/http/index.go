@@ -41,10 +41,13 @@ func (h handler) ListIndex(ctx context.Context, req gen.ListIndexRequestObject) 
 	}
 	for i, item := range page.Items {
 		row := gen.NotebookIndexItem{PageID: item.PageID, ParentID: nullable.NewNullNullable[uuid.UUID](), Title: item.Title,
-			Type: nullable.NewNullNullable[string](), Summary: nullable.NewNullNullable[string](), SummaryCut: slices.Contains(item.Cut, "summary"),
+			Type: nullable.NewNullNullable[string](), TypeKey: nullable.NewNullNullable[string](), Summary: nullable.NewNullNullable[string](), SummaryCut: slices.Contains(item.Cut, "summary"),
 			Tags: append([]string{}, item.Tags...), UpdatedAt: item.ChangedAt, Inbound: item.Inbound, InboundCapped: item.Inbound == domain.MaxInbound}
 		if item.ParentID != nil {
 			row.ParentID = nullable.NewNullableWithValue(*item.ParentID)
+		}
+		if item.TypeKey != nil {
+			row.TypeKey = nullable.NewNullableWithValue(*item.TypeKey)
 		}
 		if item.Type != nil {
 			row.Type = nullable.NewNullableWithValue(*item.Type)

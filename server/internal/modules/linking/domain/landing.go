@@ -21,7 +21,8 @@ const (
 	// TooDeep: the page would be deeper than pages nest.
 	TooDeep Reason = "too_deep"
 	// NotResolvable: the target would not lead to the page made, or not to
-	// it alone.
+	// it alone, or the page would take a title an LLM Wiki's root keeps for
+	// its generated files (app.GetLinkLanding).
 	NotResolvable Reason = "not_resolvable"
 	// TargetIsAsset: the target is read as an attachment's, which it leads
 	// to or not, so that a page made for it would not be its target; or the

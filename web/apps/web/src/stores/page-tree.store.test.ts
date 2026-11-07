@@ -128,6 +128,15 @@ function store(nodes: TreeNode[] = [guide, install, linux, notes]) {
       })),
   };
   const linking = {
+    index: async () => ({
+      data: [],
+      next_cursor: null,
+      types: [],
+      types_complete: true,
+      unfilterable_type_pages: 0,
+      source_area: null,
+      mode: "standard" as const,
+    }),
     tagPages: async (notebook: string, tag: string) => {
       sent.push(`tag ${notebook} ${tag}`);
       return [guide.id];

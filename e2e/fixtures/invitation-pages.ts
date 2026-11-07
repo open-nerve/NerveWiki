@@ -2,6 +2,7 @@ import type { WorkspaceInvitation, WorkspaceRole } from "@nervewiki/api-client";
 import { expect, type Page, type Response } from "@playwright/test";
 
 import { answerTo } from "./browser";
+import { readClipboardText, type ClipboardBrowser } from "./clipboard";
 
 // The invitations of the members page, and the invitation page, as a user
 // works them (M2/P6 design 3.3, 3.4).
@@ -27,12 +28,12 @@ export async function inviteWith(
 
 /**
  * Copies the link of the invitation to email on the members page of page, and resolves what the clipboard
- * holds then: the page's context must be granted clipboard-read and clipboard-write.
+ * holds then: grantClipboardPermissions prepares the context for browserName.
  */
-export async function copyLinkWith(page: Page, email: string): Promise<string> {
+export async function copyLinkWith(page: Page, email: string, browserName: ClipboardBrowser): Promise<string> {
   await page.getByRole("button", { name: `Copy link: ${email}`, exact: true }).click();
   await expect(page.getByText(`Copied the link of the invitation to ${email}.`, { exact: true })).toBeVisible();
-  return page.evaluate(() => navigator.clipboard.readText());
+  return readClipboardText(page, browserName);
 }
 
 /** Withdraws the invitation id, to email, once confirmed, and resolves the answer's status. */

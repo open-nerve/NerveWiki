@@ -111,3 +111,61 @@ func TestALandingReadsThePagesItsTargetNames(t *testing.T) {
 		t.Errorf("a page deleted since the decision: %v", err)
 	}
 }
+
+// An LLM Wiki's root keeps the titles of its generated files, so a landing
+// there does not offer a page the write guard would refuse (M10 design
+// 4.9). Only a landing at the root with such a title reads the mode: a
+// nested index is a page like any other, and a standard notebook has no
+// generated files.
+func TestALandingLeavesTheGeneratedFilesTitlesAlone(t *testing.T) {
+	l := newLibrary()
+	for _, p := range []string{"A", "A/src", "R"} {
+		l.notebooks[l.tree.add(p)] = l.nb
+	}
+	id := func(p string) uuid.UUID { return l.tree.names[p] }
+	root := func(title string) domain.Landing { return domain.Landing{Title: title} }
+	refused := domain.Landing{Reason: domain.NotResolvable}
+	tests := []struct {
+		from, target string
+		llm, normal  domain.Landing
+		reads        bool
+	}{
+		{"R", "index", refused, root("index"), true},
+		{"R", "LOG", refused, root("LOG"), true},
+		{"R", "index.md", refused, root("index"), true},
+		{"R", "index.md.md", refused, root("index.md"), true},
+		{"R", "/LOG.MD.md", refused, root("LOG.MD"), true},
+		{"A/src", "../index", refused, root("index"), true},
+		{"A/src", "/log", refused, root("log"), true},
+		// A bare name lands beside the page it is written in, not at the root.
+		{"A/src", "index", domain.Landing{Parent: id("A"), Title: "index"}, domain.Landing{Parent: id("A"), Title: "index"}, false},
+		{"R", "A/log", domain.Landing{Parent: id("A"), Title: "log"}, domain.Landing{Parent: id("A"), Title: "log"}, false},
+		{"R", "index.md.md.md", root("index.md.md"), root("index.md.md"), false},
+		{"R", "indexes", root("indexes"), root("indexes"), false},
+		// A target with no page to make has no title to judge.
+		{"R", "A", domain.Landing{Node: id("A")}, domain.Landing{Node: id("A")}, false},
+		{"R", "a:b", domain.Landing{Reason: domain.TitleInvalid}, domain.Landing{Reason: domain.TitleInvalid}, false},
+	}
+	for _, tt := range tests {
+		for mode, want := range map[string]domain.Landing{"llm_wiki": tt.llm, "standard": tt.normal} {
+			l.mode, l.calls = mode, nil
+			got, err := l.getLinkLanding(10).Execute(reader(), id(tt.from), &tt.target)
+			if err != nil || got != want {
+				t.Errorf("%s from %s in %s: %+v, %v; want %+v", tt.target, tt.from, mode, got, err, want)
+			}
+			if read := slices.Contains(l.calls, "StateOf"); read != tt.reads {
+				t.Errorf("%s from %s in %s: read the mode = %v", tt.target, tt.from, mode, read)
+			}
+		}
+	}
+	target := "index"
+	failed := errors.New("state")
+	l.stateErr = failed
+	if _, err := l.getLinkLanding(10).Execute(reader(), id("R"), &target); !errors.Is(err, failed) {
+		t.Errorf("a failed read of the mode: %v", err)
+	}
+	l.stateErr, l.unstated = nil, true
+	if _, err := l.getLinkLanding(10).Execute(reader(), id("R"), &target); !errors.Is(err, domain.ErrPageNotFound) {
+		t.Errorf("a notebook gone since the decision: %v", err)
+	}
+}

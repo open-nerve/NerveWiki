@@ -11,6 +11,7 @@ import type { Changeset } from "../../services/page.service";
 import { useStore } from "../../stores/context";
 import { Mark } from "../page/page-versions";
 import { byText, changesetName, changesText, clientText, countsText } from "./changeset-text";
+import { IngestMark, IngestSources } from "./history-ingest";
 
 /**
  * HistoryRow is a changeset of a notebook's history (M8 design 4.7, 4.13;
@@ -67,6 +68,7 @@ export const HistoryRow = observer(function HistoryRow({
         >
           {byText(changeset, t)}
         </Link>
+        <IngestMark count={changeset.ingest_count} />
         {only !== undefined && (
           <Button variant="ghost" className="h-7 px-2 text-xs" aria-label={only.name} onClick={only.choose}>
             {t("history.only")}
@@ -93,6 +95,7 @@ export const HistoryRow = observer(function HistoryRow({
       )}
       {summary !== "" && <p className="text-sm break-words">{summary}</p>}
       <p className="text-sm text-muted-foreground">{countsText(changeset, t, locale)}</p>
+      <IngestSources changeset={changeset} limit={3} />
       {(newest !== undefined || changeset.trimmed || changeset.kind === "revert") && (
         <p className="flex flex-wrap items-center gap-2 text-sm">
           {newest !== undefined && (

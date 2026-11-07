@@ -77,7 +77,7 @@ test("an LLM Wiki's tree gives its two kinds a text equivalent after a space", a
   const nav = await tree();
   await within(nav).findByRole("button", { name: "Actions for AGENTS" });
 
-  expect(titles(nav)).toEqual(["raw (source area)", "AGENTS (instructions for agents)"]);
+  expect(titles(nav)).toEqual(["Directory", "History", "raw (source area)", "AGENTS (instructions for agents)"]);
 });
 
 test.each(["raw", "AGENTS"])("a standard notebook's %s has every action and remains draggable", async (name) => {

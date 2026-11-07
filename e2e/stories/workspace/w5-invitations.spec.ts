@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectInvitation, expectPendingInvitation } from "../../fixtures/assert/workspace";
 import { bearer, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
+import { grantClipboardPermissions } from "../../fixtures/clipboard";
 import { copyLinkWith, inviteWith, linkTo, withdrawWith } from "../../fixtures/invitation-pages";
 import { invite, joinAs, joinOnboarded, listInvitations, preview, withdraw } from "../../fixtures/invitations";
 import { membersList } from "../../fixtures/member-pages";
@@ -78,6 +79,7 @@ test("W5 (API): the admin invites, lists the links and withdraws one; a member a
 test("W5 (page): the admin invites an address and copies its link; an address refused says why; a withdrawn link no longer works", async ({
   api,
   db,
+  browserName,
   pageWatch,
   signedInPage,
 }, testInfo) => {
@@ -86,7 +88,7 @@ test("W5 (page): the admin invites an address and copies its link; an address re
   const adminId = await accountIdOf(db, adminEmail);
   const { slug } = await createWorkspace(api, tokens.access_token, "Acme", slugFor(testInfo));
   const page = await signedInPage(tokens);
-  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  await grantClipboardPermissions(page.context(), browserName);
   await page.goto(`/${slug}/settings/members`);
 
   const email = emailFor(testInfo, "invitee");
@@ -98,7 +100,7 @@ test("W5 (page): the admin invites an address and copies its link; an address re
   await expectPendingInvitation(db, invitation, adminId);
   await expect(page.getByText(`Invited ${email}. Copy the link and send it to them.`, { exact: true })).toBeVisible();
   // The link is the list's, with the token in its fragment.
-  expect(await copyLinkWith(page, email)).toBe(linkTo(invitation, new URL(page.url()).origin));
+  expect(await copyLinkWith(page, email, browserName)).toBe(linkTo(invitation, new URL(page.url()).origin));
 
   pageWatch.expectConsole({ errors: [failedToLoad(422), failedToLoad(422)] });
   expect((await inviteWith(page, slug, email)).status).toBe(422);

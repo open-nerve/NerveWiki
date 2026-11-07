@@ -5,7 +5,9 @@ import { ApiError } from "../services/api";
 import type { Notebook } from "../services/notebook.service";
 import type {
   BacklinkPage,
+  IndexFilter,
   LinkingService,
+  NotebookIndex,
   LinkLanding,
   LinkTarget,
   PageProperties,
@@ -132,7 +134,7 @@ export class PageTreeStore {
     readonly notebookId: string,
     private readonly linking: Pick<
       LinkingService,
-      "tagPages" | "linkLanding" | "linkTargets" | "tags" | "backlinks" | "properties"
+      "index" | "tagPages" | "linkLanding" | "linkTargets" | "tags" | "backlinks" | "properties"
     >,
     /** The current list entry, including changes of mode, root and role. */
     private readonly currentNotebook: () => Notebook | undefined
@@ -430,6 +432,11 @@ export class PageTreeStore {
   /** view reads the page id's reading view, which the store does not keep: SWR does, by page. */
   view(id: string): Promise<PageView> {
     return this.service.getPageView(id);
+  }
+
+  /** The directory is owned by its opening's SWR scope, never stored in this tree. */
+  index(filter: IndexFilter, cursor?: string, signal?: AbortSignal): Promise<NotebookIndex> {
+    return this.linking.index(this.notebookId, filter, cursor, signal);
   }
 
   /** tagPages reads the ids of the notebook's pages that have tag, or a tag under it (tag/…), by id. */

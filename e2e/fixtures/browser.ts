@@ -2,6 +2,19 @@ import { STATUS_CODES } from "node:http";
 
 import { expect, type Locator, type Page, type Request, type Response, type TestInfo } from "@playwright/test";
 
+/** WebKit's note, under parallel workers, that the entry it preloaded was not used soon enough after load. */
+const preloadUnused =
+  /^The resource \S+\/assets\/\S+ was preloaded using link preload but not used within a few seconds from the window's load event\. Please make sure it wasn't preloaded for nothing\.$/;
+
+interface NativeHttpConsoleError {
+  readonly kind: "native-http-error";
+  readonly status: number;
+}
+
+interface NativeAbortFailedConsoleError {
+  readonly kind: "native-abort-failed";
+}
+
 /**
  * What a page did that a story checks: its API calls, and what went wrong in it. The event stream (M5/P3
  * design 3.12) is a connection the app keeps in the background, opened again as it ends, whose failures race
@@ -32,9 +45,13 @@ export interface PageWatch {
   /**
    * Declares what the page will log that is no fault of the app, in the order it comes: the errors the
    * browser logs about what the story makes happen, such as its report of each answer of 400 or more
-   * (failedToLoad). The check as the test ends (expectQuietPage) expects exactly what was declared.
+   * (failedToLoad). Native HTTP/abort-failed expectations resolve for this page's browser; ordinary strings remain
+   * exact. The check as the test ends (expectQuietPage) compares every actual message with that list.
    */
-  expectConsole(expected: { errors?: readonly string[]; warnings?: readonly string[] }): void;
+  expectConsole(expected: {
+    errors?: readonly (string | NativeHttpConsoleError | NativeAbortFailedConsoleError)[];
+    warnings?: readonly string[];
+  }): void;
 }
 
 /** The next answer page gets to method path. */
@@ -63,9 +80,26 @@ export function noteOf(field: Locator): Promise<string | null> {
   });
 }
 
-/** What Chromium logs on the console when the page gets an answer of status, 400 or more, to a request. */
-export function failedToLoad(status: number): string {
-  return `Failed to load resource: the server responded with a status of ${status} (${STATUS_CODES[status]})`;
+/** A native HTTP console expectation, resolved by expectConsole for the actual browser. */
+export function failedToLoad(status: number): NativeHttpConsoleError {
+  if (!Number.isInteger(status) || status < 400 || status > 599 || STATUS_CODES[status] === undefined) {
+    throw new Error(`unsupported native HTTP error status: ${status}`);
+  }
+  return { kind: "native-http-error", status };
+}
+
+/** The native console expectation for Playwright route.abort("failed") only. */
+export function abortFailedConsole(): NativeAbortFailedConsoleError {
+  return { kind: "native-abort-failed" };
+}
+
+/** The exact request failure for Playwright route.abort("failed") in this page's browser. */
+export function abortFailedRequestError(page: Page): string {
+  const browserName = page.context().browser()?.browserType().name();
+  if (browserName === "chromium") return "net::ERR_FAILED";
+  if (browserName === "firefox") return "NS_ERROR_FAILURE";
+  if (browserName === "webkit") return "Blocked by Web Inspector";
+  throw new Error(`unsupported abort-failed browser: ${browserName}`);
 }
 
 /** The path of the event stream, GET /api/v0/events. */
@@ -87,6 +121,10 @@ function aboutEventStream(location: { url: string }): boolean {
  * navigation, so that nothing the app does as it starts goes unseen.
  */
 export async function watchPage(page: Page): Promise<PageWatch> {
+  const browserName = page.context().browser()?.browserType().name();
+  if (browserName !== "chromium" && browserName !== "firefox" && browserName !== "webkit") {
+    throw new Error(`unsupported console browser: ${browserName}`);
+  }
   const watch: PageWatch = {
     apiRequests: [],
     apiFailures: [],
@@ -97,7 +135,19 @@ export async function watchPage(page: Page): Promise<PageWatch> {
     cspViolations: [],
     expectedConsole: { errors: [], warnings: [] },
     expectConsole: ({ errors = [], warnings = [] }) => {
-      watch.expectedConsole.errors.push(...errors);
+      for (const error of errors) {
+        if (typeof error === "string") {
+          watch.expectedConsole.errors.push(error);
+        } else if (error.kind === "native-http-error" && browserName !== "firefox") {
+          // Firefox's native HTTP expectation contributes no line. Actual console
+          // events are still collected and must match the complete expected list.
+          watch.expectedConsole.errors.push(
+            `Failed to load resource: the server responded with a status of ${error.status} (${STATUS_CODES[error.status]})`
+          );
+        } else if (error.kind === "native-abort-failed" && browserName === "chromium") {
+          watch.expectedConsole.errors.push("Failed to load resource: net::ERR_FAILED");
+        }
+      }
       watch.expectedConsole.warnings.push(...warnings);
     },
   };
@@ -124,6 +174,14 @@ export async function watchPage(page: Page): Promise<PageWatch> {
     }
   });
   page.on("pageerror", (error) => {
+    // WebKit reports a fetch that a navigation cancelled as an uncaught error. Only this site's API, in these words.
+    if (
+      browserName === "webkit" &&
+      error.message.includes(`${new URL(page.url()).host}/api/v0/`) &&
+      error.message.endsWith("due to access control checks.")
+    ) {
+      return;
+    }
     watch.pageErrors.push(error.message);
   });
   page.on("console", (message) => {
@@ -131,7 +189,7 @@ export async function watchPage(page: Page): Promise<PageWatch> {
       watch.eventStreamErrors.push(message.text());
     } else if (message.type() === "error") {
       watch.consoleErrors.push(message.text());
-    } else if (message.type() === "warning") {
+    } else if (message.type() === "warning" && !(browserName === "webkit" && preloadUnused.test(message.text()))) {
       watch.consoleWarnings.push(message.text());
     }
   });

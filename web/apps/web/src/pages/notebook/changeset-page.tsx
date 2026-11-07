@@ -27,6 +27,7 @@ import { useWorkspace } from "../workspace/workspace-layout";
 import { ChangesetChangeRow } from "./changeset-change";
 import { byText, changesetName, clientText, countsText } from "./changeset-text";
 import { useNotebook } from "./notebook-layout";
+import { IngestMark, IngestSources } from "./history-ingest";
 import { RevertDialog, type Reverted } from "./revert-dialog";
 import type { FocusJob } from "./transfer-page";
 
@@ -208,6 +209,12 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
           className="text-3xl font-semibold break-words outline-none"
         >
           {byText(data, t)}
+          {data.ingest_count > 0 && (
+            <>
+              {" "}
+              <IngestMark count={data.ingest_count} />
+            </>
+          )}
         </h1>
         <ChangesetFacts changeset={data} href={href} />
       </div>
@@ -356,6 +363,7 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
       )}
       {changeset.trimmed && <p>{t("history.trimmedNote")}</p>}
       <p className="text-muted-foreground">{countsText(changeset, t, locale)}</p>
+      <IngestSources changeset={changeset} limit={20} />
     </div>
   );
 }

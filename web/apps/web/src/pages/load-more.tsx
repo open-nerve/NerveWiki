@@ -101,7 +101,12 @@ export function useLoadMore(
     }
     const at = document.activeElement;
     if (at === null || at === document.body || at === gaveTo.current) {
-      (focusing === null ? heading.current : item.current(focusing))?.focus({ preventScroll: true });
+      // A row may land far from the button, in a group above it: the reader goes with the focus.
+      if (focusing === null) {
+        heading.current?.focus({ preventScroll: true });
+      } else {
+        item.current(focusing)?.focus();
+      }
     }
   }, [focusing, heading]);
 

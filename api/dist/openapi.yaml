@@ -1850,7 +1850,7 @@ paths:
       tags:
         - linking
       summary: Read where a page made for a link would go
-      description: 'Where a page made for a link''s target, written in this page, would go so that the link then leads to it: under which page, null for the notebook''s root, and titled what, the target''s last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; target_is_asset, it is read as an attachment''s, its last segment, not written with ".md", the title key of an attachment of the notebook with an extension, which it leads to or not, or an attachment where the page would go has its title; parent_missing, no page is where its other segments lead, read from this page''s folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone. The notebook''s admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.'
+      description: 'Where a page made for a link''s target, written in this page, would go so that the link then leads to it: under which page, null for the notebook''s root, and titled what, the target''s last segment as written without ".md". createPage makes it. A target that leads to a page already answers that page instead; one with no such place answers why: target_invalid, it has an empty segment, a "." or ".." past its head, a NUL, or bytes that are not UTF-8; title_invalid, its last segment is no title; target_is_asset, it is read as an attachment''s, its last segment, not written with ".md", the title key of an attachment of the notebook with an extension, which it leads to or not, or an attachment where the page would go has its title; parent_missing, no page is where its other segments lead, read from this page''s folder for "./" and "../", from the root for "/", else as links resolve but not by aliases; too_deep, the page made would be deeper than pages nest; not_resolvable, the target would not lead to the page made, or not to it alone, or the page made would take at an LLM Wiki''s root a title kept for its generated files, index, log, index.md or log.md. The notebook''s admins and editors can read it. A page that does not exist, is deleted, or whose notebook the caller has no role in is page.not_found; then a role that does not write is forbidden; then a target absent or longer than 4096 bytes is validation_failed.'
       security:
         - bearer: []
       x-problem-codes:
@@ -4828,6 +4828,7 @@ components:
         - parent_id
         - title
         - type
+        - type_key
         - summary
         - summary_cut
         - tags
@@ -4849,6 +4850,11 @@ components:
           type:
             - string
             - 'null'
+        type_key:
+          type:
+            - string
+            - 'null'
+          description: This read's ordering/grouping key, at most 64 UTF-8 bytes; null when the sorting pass classified the page as untyped. It may differ from the later display type in this non-snapshot read. Never a type filter; filters use the complete exact values in the types catalogue.
         summary:
           type:
             - string

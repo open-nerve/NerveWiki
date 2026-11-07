@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1/P2/P3已完成。P4/S1原a1f成功、fd两失败、b4 glob失败、986文档guards超时取消及此前配对未完成保留；878/f689测试修复、ac84调度拆分、2fc文档与97c9 no-ff的精确CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3、P5与M10收尾未完成，M11未开始；见[本轮容量维护](04-P4-virtual-ingest.md#1011-s1-bootstrap-容量维护)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
+| 状态 | 进行中；P1/P2/P3已完成，P4的S1、S2已合并，S3已实施并审查，P5与收尾未开始。以下是S1时点的原文：进行中；P1/P2/P3已完成。P4/S1原a1f成功、fd两失败、b4 glob失败、986文档guards超时取消及此前配对未完成保留；878/f689测试修复、ac84调度拆分、2fc文档与97c9 no-ff的精确CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3、P5与M10收尾未完成，M11未开始；见[本轮容量维护](04-P4-virtual-ingest.md#1011-s1-bootstrap-容量维护)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
 | 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
@@ -818,6 +818,33 @@ S2 的审查者 A 问：来源 S 的索引 stale，S→A，Q→S，这次新页 
 
 S2 前 11 个提交里有 5 个不能单独过 e2e 或 costs-lint，它们都过工作流要求的每提交门禁。不压缩，记下范围，见 [S2 记录](reviews/P4-S2-ingest-history-review.md)。
 
+### 2026-11-07：grep 守卫的时限（主持者的决定 159，负责人可以改判）
+
+S3 的分支 CI [42342868114](https://github.com/open-nerve/NerveWiki/actions/runs/42342868114) 里，`TestGrepOverTheGlobGuardTreeTakesItsTime` 1.36 秒，过了 1.25 秒的线。S3 没有改到这段代码。
+
+1.25 秒是"本机用时的三倍"，基线 0.40 秒量在一个结构有误的 fixture 上。2026-11-03 修好 fixture 之后真实用时变长，时限特意没动，所以这条线一直只比常态高几个百分点：
+
+| 样本 | 用时 |
+|---|---|
+| 本机十次 | 1.03–1.15 秒 |
+| CI 七次 | 0.67–1.36 秒（EPYC 9V45 0.67，EPYC 7763 1.13–1.18，Xeon 8370C 1.19，EPYC 9V74 0.97–1.36） |
+
+**决定。** 改成 3.25 秒，就是这个守卫自己的规则：正确 fixture 上本机用时的约三倍。只改测试的时限，不改负载，不动产品预算，同决定 153 与负责人 2026-11-06 的话。上面没有压着别的线，所以取满三倍。M12 `M4-performance.md` 里手工 `BenchmarkGrepAtFullLoad` 的重新标定是另一件事，继续 open。
+
+### 2026-11-07：S3 审查的三个取舍（主持者的决定 156–158，负责人可以改判）
+
+**决定 156，目录的后续页失败不自动重试。** 04-P4 §8.3 写"失败沿普通 retry 策略"，W06 只钉第一页。More 的等待在失败时已经结束，后面的自动重试读到最后一页时按钮带着焦点离开，焦点落到屏外的标题，下一次 Tab 回到页顶。这里取：已有第一页时失败不自动重试，提示留在按钮旁，由 More 重读，这也是 13.2 第 19 条对"加载更多"的写法。第一页的失败仍走普通的重试。
+
+**决定 157，More 落到条目时随焦点滚动。** `useLoadMore` 原来一律 `preventScroll`。没有类型的页按已读到的父页分组，最后一页的行可能插进上方的组，焦点落到屏外，这是超过 50 页、页面没有 `type` 的普通笔记本的默认形状。这里取：落到条目时不再 `preventScroll`，落到标题时保留。这一分支只在读者没动时才走（13.2 第 26 条）。`useLoadMore` 八个列表共用，其余七个的条目接在列表末尾，实测的历史与回收站滚动不变。
+
+**决定 158，落点读模式，复用 `not_resolvable`。** 这条改了 Codex 的决定 120 的后半句，请负责人留意。120 记在本机的证据目录里，不在 git 里，写的是读者点虚拟链接时由网页先导航，"不添 `target_is_virtual` 或 GetLinkLanding mode port"。前半句照做了。后半句与上面 4.9 的"落点也用它，不再提议建"矛盾，审查 B-M1 也证实了后果：`[x](../index)` 写在根下的页里时网页判不是虚拟（上行超出根），落点却钳到根下提议建 `index`，写者确认之后守卫答 409。这里取 4.9：`GetLinkLanding` 加一个读模式的端口，只有根下的保留标题才读。没有加新的原因：枚举不变，对话框的文字两种语言各加一个分句，说明这个名称留给系统生成的文件。代价是这句在普通笔记本的 `not_resolvable` 上也会显示，是真话但用不上。负责人改判时，要么撤掉这个端口并改 4.9 与契约的说明，要么维持现状。
+
+### 2026-11-07：S3 的预备材料与三个浏览器（主持者的决定 154、155，负责人可以改判）
+
+**决定 154，不装证据脚手架。** Codex 为 S3 备了 20 份补丁，其中 2 份（`observeBuiltAssets`、`runEWControl`）只为它的回执流程服务：把每个响应的哈希附进证据，把四个故事包进环境变量选择器。回到标准流程之后它们没有用处，只让故事难读，不装。变异由审查者直接做。
+
+**决定 155，全部故事只跑 Chromium。** 04-P4 §5 写"S3 至少按原三浏览器套件要求"，而 `main` 上的配置一直只有 Chromium，P3/S2 的先例也只是定向的几个场景。这里取：全部故事跑 Chromium，S3 的页面故事和用到剪贴板、控制台的几条（LW3、LW4、LW8、LW9、LW10、LW12、LW13、A10、W5）也跑 Firefox、WebKit，进 CI。让全部故事跨浏览器是另一件事：全量跑过一次，1092 条里 29 条败在 Firefox、WebKit 上，全在 S3 之外，多数是测试的手法，记在 [M12 的打磨清单](../M12-release/handoffs/M5-polish.md)，其中两条要人工确认。
+
 ### 2026-11-07：恢复与撤销的时限（主持者的决定 153，负责人可以改判）
 
 S2 的分支 CI [42316471113](https://github.com/open-nerve/NerveWiki/actions/runs/42316471113) 里，`TestARevertAtTheUnitsBoundTakesItsTime` 12.05 秒，过了 12 秒的线。和决定 150 是同一件事，同样的工作，只差机器：
@@ -989,14 +1016,14 @@ detail先以空changes、真实Start/next固定envelope选择来源，再固定�
 
 ## 12. Phase 进度表
 
-**当前进度表（唯一现行状态，2026-11-03，Asia/Shanghai）。**
+**当前进度表（唯一现行状态，2026-11-07，Asia/Shanghai）。**
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 契约的框架（S1–S4） | [01-P1](01-P1-contract-frame.md) | 已完成 | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-mode-template-review.md)、[S2](reviews/P1-S2-guard-review.md)、[S3](reviews/P1-S3-prechecks-refusals-numbering-review.md)、[S4](reviews/P1-S4-web-review.md) | S1 `45d086a1`、S2 `bad859c0`；S3 `a46c3d1d`；S4 `f261952f` |
 | P2 来源区（S1–S3） | [02-P2](02-P2-source-area.md) | 已完成；实施、三审复核、三Step集成及两main均值已验；[完成核对](02-P2-source-area.md#104-p2完成核对)。P2done `f6bd0cde` 的 [CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) 已接受并放行P3 | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-source-rules-review.md)、[S2](reviews/P2-S2-source-hash-review.md)、[S3](reviews/P2-S3-source-web-review.md) | S1 `bf8d6625`；S2 `66d8236c12aaa8923616f6f42f2ee33b772884f9`，记录`8904a8769646c3b8919ff6a4c503eeae3ac70727`；S3 `ecd79c77d0cdb2259d50758b26514f61ebb329ca`，记录`ae1794a89c6d6d501e1cdd659fcc99104721fab7` |
 | P3 lint 与健康度（S1、S2） | [03-P3](03-P3-lint-health.md) | 已完成；S1/S2及撤销树旁支的实施、审查/复核、门禁与集成已验，§8原43项及修复闭合前提已由主持者核对，见[完成核对](03-P3-lint-health.md#103-p3完成)。指定修复merge＋联合record五片Test均值394.5/201.5/308/387/314.5s，全部严格<450；原13ed失败单列。独立P3done `6992fd042ff06c110a4e59e67fb89bfe5f43fbd9` 的[CI41284728142 attempt1](https://github.com/open-nerve/NerveWiki/actions/runs/41284728142/attempts/1)已按13作业/38必需步骤全部成功接受，P3完成并已释放P4正式设计。该own CI不进入指定4e6e/df9 pair，Test463/309/362/404/313s不保证新增测试容量；M10继续。 | [原设计](reviews/P3-design-review.md)、[来源修订](reviews/P3-origin-design-review.md)、[S1](reviews/P3-S1-lint-protocol-review.md)、[S2](reviews/P3-S2-health-web-review.md)、[撤销树旁支](reviews/P3-revert-tree-review.md) | S1 `689bf607bf05842e8d56389b1e5f282b252cd64e`，record `9d4ea2d13564c7234c7b80c8566c8e6b3a111145`；S2原merge `13edc125d5478285fbdf2750dd467f54bcc61a77`（main CI失败）；修复merge `4e6e9660abd8d0973cda9e17ae2578b1a6b9acca`，联合record `df9b1d49544336f80d768bde4b6cda231403231e`；精确CI见§10.3 |
-| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | S2已合并 `78a093e9`，main [CI42331529264](https://github.com/open-nerve/NerveWiki/actions/runs/42331529264) 全绿，[记录](reviews/P4-S2-ingest-history-review.md)；S3进行中。S1：S1原代码、门禁、原席核修与878/f689测试修复及ac84调度拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受，e650/a1失败保留；指定97/a1＋e650/a2首片均值466.5s容量失败，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行；S2/S3未实施，Phase未完成 | [设计审查](reviews/P4-design-review.md)、[S1本轮记录](reviews/P4-S1-virtual-files-review.md#e650记录失败与bootstrap容量维护) | 原a1f成功、fd/b4失败及986取消保原记录。已知record `e65043fe059c2788338278a2e68a1b80ee7c0a80`；本轮代码`af392f641f043e9497ce39abd7734ac3d55007c3`只维护Make第一/第二片界线及注释；真实提交/本机材料、完整a2与原席03已核；a1失败继续单列；record ca4688a1完整CI及预登记两main配对已接受，S1自然收口。本轮合并见本表及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)，该指定两main Test配对保原口径，不以分支或本机代替。 |
+| P4 虚拟页面与 ingest（S1–S3） | [04-P4](04-P4-virtual-ingest.md) | S2已合并 `78a093e9`，main [CI42331529264](https://github.com/open-nerve/NerveWiki/actions/runs/42331529264) 全绿，[记录](reviews/P4-S2-ingest-history-review.md)；S3已实施并审查，[记录](reviews/P4-S3-web-review.md)。以下是S1时点的原文：S1：S1原代码、门禁、原席核修与878/f689测试修复及ac84调度拆分已接受；2fc文档/97c9 no-ff与e650/a2整CI已接受，e650/a1失败保留；指定97/a1＋e650/a2首片均值466.5s容量失败，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)。record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行；S2/S3未实施，Phase未完成 | [设计审查](reviews/P4-design-review.md)、[S1本轮记录](reviews/P4-S1-virtual-files-review.md#e650记录失败与bootstrap容量维护) | 原a1f成功、fd/b4失败及986取消保原记录。已知record `e65043fe059c2788338278a2e68a1b80ee7c0a80`；本轮代码`af392f641f043e9497ce39abd7734ac3d55007c3`只维护Make第一/第二片界线及注释；真实提交/本机材料、完整a2与原席03已核；a1失败继续单列；record ca4688a1完整CI及预登记两main配对已接受，S1自然收口。本轮合并见本表及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录)，该指定两main Test配对保原口径，不以分支或本机代替。 |
 | P5 playbook、说明与收尾的故事（S1） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
@@ -1018,6 +1045,8 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 **P3入口维护（不计作P3/S1）**：搜索守卫参考校准，代码 `ccac8c5d9e741721965e07c2b053f04dbe446e61`，分支 `m10-search-guard-calibration`；范围内实施、七项Go门禁、独立代码审查及精确代码CI40913568907 attempt1已由主持者接受。文档 `aa860be1b32bb98410e6a6811d2d87569de78b25` 的CI40921122246 attempt1亦已接受；实际no-ff合并为 `b957fdbe0367a9a6ff0f65d2afc303db49a755c2`，两父为 `9e38a38f648ffa19130afb8a8b468b792dad1381` / `aa860be1b32bb98410e6a6811d2d87569de78b25`，树 `8ded1428ce9cfe42a24ab80dd374c32c10b4dfd3` 与文档分支相同；该main自身CI40925905708 attempt1全11作业/32必需步骤成功并已接受，回执见[维护审查记录第7节](reviews/search-guard-calibration-review.md#7-维护文档合并与main-ci)。本记录自身提交/CI仍待产生；新增空名称属性链接来源设计缺口仍开放，决定62的具体修订与独立审查另行完成，P3放行尚待重绑。维护仅在此单列，不填入上表P3/S1合并位置。
 
 ## 13. 变更记录
+
+- 2026-11-07：P4/S3 实施并审查完成：目录页面与普通笔记本的入口、树上的两条虚拟行、读者的虚拟链接、历史的 ingest 标记与筛选；落点不再提议根下的保留标题。决定 154–159 记在第 11 节，其中 158 改了 Codex 的决定 120 的后半句，[审查记录](reviews/P4-S3-web-review.md)。
 
 - 2026-11-07：P4/S2 实施并审查完成：ingest 标记、历史读取与筛选、`log.md` 的显示；迁移 00053、00054。接手之后回到标准流程，决定 150–152 记在第 11 节，[审查记录](reviews/P4-S2-ingest-history-review.md)。
 
