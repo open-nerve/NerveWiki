@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M10 模式契约与 LLM Wiki（`M10-llm-wiki`） |
 | 日期 | 2026-10-24 |
-| 状态 | 进行中；P1/P2/P3已完成。P4/S1原a1f成功、fd两失败、b4 glob失败、986文档guards超时取消及此前配对未完成保留；878/f689测试修复、ac84调度拆分、2fc文档与97c9 no-ff的精确CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3、P5与M10收尾未完成，M11未开始；见[本轮容量维护](04-P4-virtual-ingest.md#1011-s1-bootstrap-容量维护)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
+| 状态 | 进行中；P1/P2/P3已完成，P4的S1、S2已合并，S3已实施并审查，P5与收尾未开始。以下是S1时点的原文：进行中；P1/P2/P3已完成。P4/S1原a1f成功、fd两失败、b4 glob失败、986文档guards超时取消及此前配对未完成保留；878/f689测试修复、ac84调度拆分、2fc文档与97c9 no-ff的精确CI已接受。e650 record的a1 lint失败保留，a2完整14/40/11已接受但仅本次未复现；指定97/a1＋e650/a2首片Test均值466.5s不满足严格<450s。已按既有M9/P2§6.5实施Make两selector容量维护，代码`af392f641f043e9497ce39abd7734ac3d55007c3`已正常提交/推送，旧字节native17、B-N1注释桥接、新字节minimum02、提交后postgen与原A/B/C第二轮本机/源码补核已接受；CI41556086210/a1因revert12.45394147s>原12s失败保留；预登记的同head完整a2已按14/40/11及原成本/guards/lint接受，原A/B/C03已核代码与完整代码CI、无新增I/M/N；本轮文档`3166bbcde7e23b4eb614b6367ea7e95c801e91cb`已提交并正常推送，精确分支CI41566238435/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-document-ci-final-observation-01.json)；本轮no-ff main `e07cc1964238b3d248c791c124d9a9fc48dd9253`，CI41569049575/a1：[完整接受](/home/parallels/.local/state/nervewiki/m10/p4-s1/bootstrap-capacity-repair-01/root-main-ci-final-observation-01.json)；record ca4688a1的完整CI与预登记e07/a1→ca/a1配对已接受，S1实施与主线集成已闭环；决定76的S2正式设计获绑定放行，本次设计自身minimum10/commit/postgen/CI待验，S2实施未放行。S2/S3、P5与M10收尾未完成，M11未开始；见[本轮容量维护](04-P4-virtual-ingest.md#1011-s1-bootstrap-容量维护)及[S1自然转录](reviews/P4-S1-virtual-files-review.md#s1修复record后验随s2正式设计转录) |
 | 来源前置发布时状态（历史） | 进行中；P1、P2已完成。P2done精确f6bd0cde的[CI40861860430](https://github.com/open-nerve/NerveWiki/actions/runs/40861860430) attempt1全11作业/必需步骤成功，当时释放P3设计阶段；b02设计自身CI与S1入口已接受；S1-0容量调整已提交89d36454，S1-0a来源表示前置已实现，结果见P3§10.1。[P3设计](03-P3-lint-health.md)及[设计审查](reviews/P3-design-review.md)记录决定49–60与原席复核；原决定49–60设计已由主持者接受；新增决定62具体第二稿经三位独立审查及原席复核后已由主持者接受设计语义，S1/S2尚未完成，P4/P5与M10收尾未开始，不开始M11。历史失败及当时待验文字保留。 |
 | 依赖 | M9（MCP 工具与 prompt 注册表）、M7（导出贡献者、附件进树与链接）、M6（链接索引）、M8（变更集的类型、撤销与后台任务）；总体设计 12.3 照此修订（第 7 节"总体设计的修订"） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 3.3–3.10、4.2、4.4、4.5、5、6.1–6.3、7.1、7.2、8.2、8.3、8.5、9.2、10、10.1、12.1–12.6、13、14、15 节 |
@@ -826,10 +826,10 @@ S3 的分支 CI [42342868114](https://github.com/open-nerve/NerveWiki/actions/ru
 
 | 样本 | 用时 |
 |---|---|
-| 本机五次 | 1.03–1.08 秒 |
-| CI 六次 | 0.67–1.36 秒（EPYC 9V45 0.67，EPYC 7763 1.13–1.18，Xeon 8370C 1.19，EPYC 9V74 1.18–1.36） |
+| 本机十次 | 1.03–1.15 秒 |
+| CI 七次 | 0.67–1.36 秒（EPYC 9V45 0.67，EPYC 7763 1.13–1.18，Xeon 8370C 1.19，EPYC 9V74 0.97–1.36） |
 
-**决定。** 改成 3.25 秒，就是这个守卫自己的规则：正确 fixture 上本机用时的三倍。只改测试的时限，不改负载，不动产品预算，同决定 153 与负责人 2026-11-06 的话。上面没有压着别的线，所以取满三倍。M12 `M4-performance.md` 里手工 `BenchmarkGrepAtFullLoad` 的重新标定是另一件事，继续 open。
+**决定。** 改成 3.25 秒，就是这个守卫自己的规则：正确 fixture 上本机用时的约三倍。只改测试的时限，不改负载，不动产品预算，同决定 153 与负责人 2026-11-06 的话。上面没有压着别的线，所以取满三倍。M12 `M4-performance.md` 里手工 `BenchmarkGrepAtFullLoad` 的重新标定是另一件事，继续 open。
 
 ### 2026-11-07：S3 审查的三个取舍（主持者的决定 156–158，负责人可以改判）
 
@@ -1016,7 +1016,7 @@ detail先以空changes、真实Start/next固定envelope选择来源，再固定�
 
 ## 12. Phase 进度表
 
-**当前进度表（唯一现行状态，2026-11-03，Asia/Shanghai）。**
+**当前进度表（唯一现行状态，2026-11-07，Asia/Shanghai）。**
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|

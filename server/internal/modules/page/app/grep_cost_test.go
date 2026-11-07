@@ -17,8 +17,8 @@ import (
 )
 
 // grepGlobTimeBound is how long a grep over the glob guard tree may take:
-// three times its time here, 1.03-1.08 s over the corrected tree (M9/P4
-// design 6.1; M10 decision 159).
+// about three times its time here, 1.03-1.15 s over the corrected tree
+// (M9/P4 design 6.1; M10 decision 159).
 const grepGlobTimeBound = 3250 * time.Millisecond
 
 // guardNodes is P1's guard tree as a notebook's nodes (page/domain's

@@ -2,7 +2,7 @@ import { STATUS_CODES } from "node:http";
 
 import { expect, type Locator, type Page, type Request, type Response, type TestInfo } from "@playwright/test";
 
-/** WebKit's note, on a busy machine, that the entry it preloaded was not used soon enough after load. */
+/** WebKit's note, under parallel workers, that the entry it preloaded was not used soon enough after load. */
 const preloadUnused =
   /^The resource \S+\/assets\/\S+ was preloaded using link preload but not used within a few seconds from the window's load event\. Please make sure it wasn't preloaded for nothing\.$/;
 
