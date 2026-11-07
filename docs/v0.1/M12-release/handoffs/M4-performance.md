@@ -122,7 +122,7 @@ created: 2026-10-03
 | properties/missing_summary-prefix-and-unrelated | 0.629/0.255/0.005/0.005 | 0.693/0.236/0.005/0.005 | 2.000/1.000/0.062/0.062 | R1/14:L793–794; R2/14:L67–68 |
 | properties/missing_summary-complete-needed-values | 11.409/1.065/0.012/0.012 | 11.815/1.719/0.012/0.012 | 37.000/6.000/0.062/0.062 | R1/14:L984–985; R2/14:L78–79 |
 
-六个 `properties/*` 组的 CPU 上限后来一律改成 12 毫秒，别的三项不变，见 [M10 的决定 168](../../M10-llm-wiki/00-M10-design.md)。
+六个 `properties/*` 组的 CPU 上限与两组的 Wall 后来放宽，内存两项不变，见 [M10 的决定 168](../../M10-llm-wiki/00-M10-design.md)。
 
 八规则大形状原 oracle：wanted=8、orphans=21、ambiguous=7、invalid_frontmatter=7、missing_type=12007、missing_summary=12007、undigested_sources=100007、invalid_sources=14；fixture 有 100007 source IDs、12000 stale、12000 cap 前零文件夹和50000外本页。属性形状在 fresh hidden A→B→A 各5读取页/50000外页、noStats/ANALYZE下运行；首 sources 位置1003、body524288 B、完整 sources JSON524296 B、必要 distinct JSON1269162 B。group 固定门限来自已冻结校准，当前 median 通过该门限；日志中 median_times_three 是诊断字段，不能再当本轮新门限。
 
