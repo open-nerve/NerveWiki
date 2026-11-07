@@ -109,7 +109,7 @@
   { "name": "trailing", "raw": "index/", "parents": [], "virtual": null, "wanted": "", "qualified": false },
   { "name": "internal-dot", "raw": "a/./index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
   { "name": "internal-up", "raw": "a/../log", "parents": [], "virtual": null, "wanted": "", "qualified": false },
-  { "name": "rooted-up", "raw": "/../index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
+  { "name": "rooted-up", "raw": "/../index", "parents": ["a"], "virtual": null, "wanted": "", "qualified": false },
   { "name": "rooted-dot", "raw": "/./index", "parents": [], "virtual": null, "wanted": "", "qualified": false },
   { "name": "only-suffix", "raw": ".md", "parents": [], "virtual": null, "wanted": ".md", "qualified": true },
   { "name": "spaces", "raw": " index ", "parents": [], "virtual": null, "wanted": " index ", "qualified": true },

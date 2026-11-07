@@ -64,6 +64,7 @@ test("P4/W05 filter_key: URL and boolean request select ingestion without losing
   const select = ingestion();
   await userEvent.selectOptions(select, "Only ingestion");
   await waitFor(() => expect(messages()).toEqual(["Ingest edit"]));
+  await screen.findByText("Listed: 1.");
   expect(router.state.location.search).toBe(`?client=api&page=${guide.id}&ingest=1`);
   expect(document.activeElement).toBe(select);
   const query = new URL(requests.at(-1)?.url ?? "").searchParams;

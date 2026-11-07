@@ -43,6 +43,7 @@ test("P4/route: a reader opens the real notebook Directory with three linked pag
   ).toBe("Directory");
   expect(document.title).toContain("Directory");
   expect(fixture.requests).toHaveLength(1);
+  expect(screen.getByRole("status", { name: "Directory results" }).textContent).toBe("3 pages shown.");
 });
 
 test.each(["standard", "llm_wiki"] as const)("P4/places: Directory is available in %s", async (mode) => {
@@ -157,7 +158,7 @@ test.each(["type", "tag"] as const)(
       });
     };
     const { router } = renderApp(indexPath, fixture.server.app);
-    await screen.findByRole("region", { name: "Directory pages" });
+    await screen.findByRole("option", { name: "note (1)" });
     const control = screen.getByRole(field === "type" ? "combobox" : "textbox", {
       name: field === "type" ? "Type" : "Tag",
     });
@@ -209,7 +210,7 @@ test("P4/catalogue_notice: exact colliding/long selections stay intact and bound
     return json(fixture.value);
   };
   const { router } = renderApp(`${indexPath}?type=${encodeURIComponent(selected)}`, fixture.server.app);
-  await screen.findByRole("region", { name: "Directory pages" });
+  await screen.findByText("Only some filterable types are shown.");
   const choice = screen.getByRole("combobox", { name: "Type" }) as HTMLSelectElement;
   expect(choice.value).toBe(selected);
   expect(choice.selectedOptions[0]?.textContent).not.toMatch(/\(\d+\)/);
@@ -237,7 +238,7 @@ test("P4/more_failure: a refused More stops being busy, says so, and reads again
   let refused = true;
   fixture.answer = (request) => {
     if (!new URL(request.url).searchParams.has("cursor")) return json(fixture.value);
-    return refused ? problem(403, "forbidden") : json({ ...indexFacts(), data: [indexFacts().data[1]!] });
+    return refused ? problem(404, "notebook.not_found") : json({ ...indexFacts(), data: [indexFacts().data[1]!] });
   };
   renderApp(indexPath, fixture.server.app);
   const more = await screen.findByRole("button", { name: "More" });
@@ -267,9 +268,9 @@ test.each([false, true])("P4/focus: More adds a real page; reader moved=%s", asy
     await user.click(tag);
     fireEvent.wheel(window);
   }
-  await act(async () => held.resolve(json({ ...indexFacts(), data: [indexFacts().data[1]!] })));
+  await act(async () => held.resolve(json({ ...indexFacts(), data: indexFacts().data.slice(1) })));
   const added = await screen.findByRole("link", { name: "Bravo" });
-  expect(titles()).toEqual(["Alpha", "Bravo"]);
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
   await waitFor(() => expect(document.activeElement).toBe(moved ? tag : added));
 });
 
@@ -308,13 +309,17 @@ test.each([false, true])(
     fixture.value.mode = "llm_wiki";
     const { router } = renderApp(indexHome, fixture.server.app);
     await screen.findByRole("heading", { level: 1, name: "Plans" });
-    await act(() => router.navigate(indexPath, { state: entered ? arrived : undefined }));
+    await act(() => router.navigate(`${indexPath}?tag=plan`, { state: entered ? arrived : undefined }));
     const reopen = await screen.findByRole("link", { name: "Reopen directory" });
     fixture.value.mode = "standard";
+    const reads = fixture.requests.length;
     reopen.focus();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(screen.queryByRole("link", { name: "Reopen directory" })).toBeNull());
     expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Directory" }));
+    expect(fixture.requests).toHaveLength(reads + 1);
+    expect(new URL(fixture.requests.at(-1)!.url).search).toBe("?tag=plan");
+    expect(router.state.location.pathname + router.state.location.search).toBe(`${indexPath}?tag=plan`);
   }
 );
 
@@ -322,8 +327,8 @@ test("P4/clear_focus: Clear filters keeps the focus as nothing is left to clear,
   const user = userEvent.setup();
   const fixture = indexServer();
   renderApp(`${indexPath}?tag=plan`, fixture.server.app);
+  const clear = await screen.findByRole("button", { name: "Clear filters" });
   await screen.findByRole("region", { name: "Directory pages" });
-  const clear = screen.getByRole("button", { name: "Clear filters" });
   expect(clear.getAttribute("aria-disabled")).toBeNull();
   clear.focus();
   await user.keyboard("{Enter}");
@@ -339,7 +344,7 @@ test("P4/catalogue_stays: every type stays choosable while the next filter is re
   const user = userEvent.setup();
   const fixture = indexServer();
   renderApp(indexPath, fixture.server.app);
-  await screen.findByRole("region", { name: "Directory pages" });
+  await screen.findByRole("option", { name: "Topic (1)" });
   const held = deferred<Response>();
   fixture.answer = () => held.promise;
   const type = screen.getByRole("combobox", { name: "Type" });
@@ -352,7 +357,7 @@ test("P4/catalogue_stays: every type stays choosable while the next filter is re
   await user.selectOptions(type, "Note");
   await waitFor(() => expect(fixture.requests).toHaveLength(2));
   expect(options()).toEqual(every);
-  await act(async () => held.resolve(problem(403, "forbidden")));
+  await act(async () => held.resolve(problem(404, "notebook.not_found")));
   await screen.findByRole("alert");
   expect(options()).toEqual(every);
 });
@@ -384,4 +389,75 @@ test("P4/parent_pending: an untyped group says nothing of its parent until the t
   renderApp(indexPath, fixture.server.app);
   await screen.findByRole("heading", { level: 2, name: "Without a type · …" });
   expect(screen.queryByText(/Parent unavailable/)).toBeNull();
+});
+
+test("P4/crossed_mode: a later page of another mode joins nothing and leaves the way out", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.value.data = [indexFacts().data[0]!];
+  fixture.value.next_cursor = "next";
+  fixture.answer = (request) =>
+    new URL(request.url).searchParams.has("cursor")
+      ? json({ ...indexFacts(), mode: "llm_wiki", data: [indexFacts().data[1]!] })
+      : json(fixture.value);
+  renderApp(indexPath, fixture.server.app);
+  const more = await screen.findByRole("button", { name: "More" });
+  more.focus();
+  await user.keyboard("{Enter}");
+  await screen.findByRole("link", { name: "Reopen directory" });
+  expect(titles()).toEqual(["Alpha"]);
+  expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Directory" }))
+  );
+});
+
+test("P4/filters_together: choosing a type keeps the applied tag", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  const { router } = renderApp(`${indexPath}?tag=plan`, fixture.server.app);
+  await screen.findByRole("option", { name: "note (1)" });
+  await user.selectOptions(screen.getByRole("combobox", { name: "Type" }), "note");
+  await waitFor(() => expect(router.state.location.search).toBe("?type=note&tag=plan"));
+  await waitFor(() => expect(new URL(fixture.requests.at(-1)!.url).search).toBe("?type=note&tag=plan"));
+});
+
+test("P4/tag_follows: the Tag box follows the address, and Clear also empties text not applied", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  const { router } = renderApp(`${indexPath}?tag=plan`, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const tag = screen.getByRole("textbox", { name: "Tag" }) as HTMLInputElement;
+  expect(tag.value).toBe("plan");
+  await act(() => router.navigate(indexPath));
+  await waitFor(() => expect(tag.value).toBe(""));
+  await screen.findByRole("region", { name: "Directory pages" });
+  const reads = fixture.requests.length;
+  await user.type(tag, "typed");
+  await user.click(screen.getByRole("button", { name: "Clear filters" }));
+  expect(tag.value).toBe("");
+  expect(router.state.location.search).toBe("");
+  expect(fixture.requests).toHaveLength(reads);
+});
+
+test("P4/long_label: a long type is shortened on its label only", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  const long = "t".repeat(100);
+  fixture.value.types = [{ type: long, count: 2 }];
+  const { router } = renderApp(indexPath, fixture.server.app);
+  const option = await screen.findByRole("option", { name: `${"t".repeat(79)}… (2)` });
+  expect((option as HTMLOptionElement).value).toBe(long);
+  await user.selectOptions(screen.getByRole("combobox", { name: "Type" }), option);
+  await waitFor(() => expect(new URLSearchParams(router.state.location.search).get("type")).toBe(long));
+});
+
+test("P4/tree_failure: a tree that cannot be read says so above the rows, which stay", async () => {
+  const fixture = indexServer();
+  fixture.server.nodesDown = true;
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const main = within(screen.getByRole("main"));
+  await waitFor(() => expect(main.getByRole("button", { name: "Try again" })).toBeTruthy());
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
 });

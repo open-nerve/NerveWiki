@@ -75,7 +75,8 @@ export function IndexFilters({
         onClick={() => {
           if (!clear) return;
           setTag("");
-          choose({ type: "", tag: "" });
+          // Text not applied is the box's alone: a new address would read the list again and fold what More read.
+          if (filter.type !== "" || filter.tag !== "") choose({ type: "", tag: "" });
         }}
       >
         {t("index.clearFilters")}

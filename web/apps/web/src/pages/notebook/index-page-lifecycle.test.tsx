@@ -198,7 +198,7 @@ test("P4/later_retry: a later page is not read again by itself, whose end would 
   await waitFor(() => expect(document.activeElement).toBe(added));
 });
 
-test("P4/retired_retry: leaving retires a scheduled retry and isolates the next login", async () => {
+test("P4/retired_retry: leaving retires a scheduled retry and the next opening reads afresh", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const fixture = indexServer();
   fixture.answer = () => {
