@@ -14,7 +14,7 @@ import (
 func TestThePromptDoubleIsListedAndReached(t *testing.T) {
 	var got map[string]string
 	var call Call
-	ingest := Prompt{Name: "ingest", Title: "Ingest", Description: "Takes a source in.",
+	ingest := Prompt{Name: "ingest", Title: "Ingest", Description: "Takes a source in.", Entry: BothEntries,
 		Arguments: []PromptArgument{{Name: "source", Description: "The source.", Required: true}, {Name: "note"}},
 		Get: func(_ context.Context, c Call, args map[string]string) (string, []string, error) {
 			got, call = args, c

@@ -89,6 +89,15 @@ func (s *Server) logCall(ctx context.Context, tool string, c Call, outcome strin
 	s.logger.LogAttrs(ctx, slog.LevelInfo, "MCP tool call", attrs...)
 }
 
+// logPrompt logs a prompt's get as logCall logs a tool's call: never its
+// arguments nor its text (M10 design 4.15).
+func (s *Server) logPrompt(ctx context.Context, prompt string, c Call, outcome string, took time.Duration) {
+	attrs := []slog.Attr{slog.String("prompt", prompt), slog.String("entry", c.Entry.String())}
+	attrs = append(attrs, credentialAttrs(ctx, c.Notebook, Credential{UserID: c.UserID, TokenID: c.TokenID})...)
+	attrs = append(attrs, slog.String("client", c.Client), slog.String("outcome", outcome), slog.Int64("duration_ms", took.Milliseconds()))
+	s.logger.LogAttrs(ctx, slog.LevelInfo, "MCP prompt call", attrs...)
+}
+
 // credentialAttrs are the log's notebook, when there is one, the account,
 // the token and the request id.
 func credentialAttrs(ctx context.Context, notebook uuid.UUID, cred Credential) []slog.Attr {
