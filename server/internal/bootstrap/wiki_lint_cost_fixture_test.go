@@ -42,6 +42,7 @@ func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	t.Helper()
 	trace := &wikiCostTrace{}
 	runtimeFixture := newLintRuntime(t, func(d *wiki.Deps) {
+		d.LintTimeout = wikiCostWorker
 		d.Sources = wikiCostSources{d.Sources, trace}
 		d.Nodes = wikiCostNodes{d.Nodes, trace}
 		d.Rules = wikiCostRules{d.Rules, trace}

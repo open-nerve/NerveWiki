@@ -818,6 +818,20 @@ S2 的审查者 A 问：来源 S 的索引 stale，S→A，Q→S，这次新页 
 
 S2 前 11 个提交里有 5 个不能单独过 e2e 或 costs-lint，它们都过工作流要求的每提交门禁。不压缩，记下范围，见 [S2 记录](reviews/P4-S2-ingest-history-review.md)。
 
+### 2026-11-07：lint 成本用例的期限（主持者的决定 160，负责人可以改判）
+
+`main` 的 CI [42350642032](https://github.com/open-nerve/NerveWiki/actions/runs/42350642032) 里，`TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory/summary/sample-1` 2.001 秒撞到 worker 的 2 秒，答 `server_busy`。这次提交只改了文档。
+
+2 秒不是产品的预算：生产是 `min(10 秒, server.request_timeout/2)`，默认 7.5 秒；2 秒是这个用例用的 4 秒请求的一半。而十万页的摘要在 CI 上要这么久：
+
+| CPU | 三个样本 |
+|---|---|
+| Xeon 6973P-C | 1.09–1.21 秒 |
+| EPYC 9V74 | 1.31–1.78 秒 |
+| EPYC 7763 | 1.72–2.01 秒 |
+
+**决定。** 只放宽这个成本用例：请求 6 秒、worker 3 秒，比例同生产。只改时限，不改负载，同决定 150、153。`checkWikiCost` 的校准上限（中位数的 wall、CPU、内存）不动，其余运行时测试仍是 4 秒与 2 秒。
+
 ### 2026-11-07：grep 守卫的时限（主持者的决定 159，负责人可以改判）
 
 S3 的分支 CI [42342868114](https://github.com/open-nerve/NerveWiki/actions/runs/42342868114) 里，`TestGrepOverTheGlobGuardTreeTakesItsTime` 1.36 秒，过了 1.25 秒的线。S3 没有改到这段代码。
@@ -1046,7 +1060,7 @@ S1合并 `689bf607bf05842e8d56389b1e5f282b252cd64e` 的首次main [CI41185522147
 
 ## 13. 变更记录
 
-- 2026-11-07：P4/S3 实施并审查完成：目录页面与普通笔记本的入口、树上的两条虚拟行、读者的虚拟链接、历史的 ingest 标记与筛选；落点不再提议根下的保留标题。决定 154–159 记在第 11 节，其中 158 改了 Codex 的决定 120 的后半句，[审查记录](reviews/P4-S3-web-review.md)。
+- 2026-11-07：P4/S3 实施并审查完成：目录页面与普通笔记本的入口、树上的两条虚拟行、读者的虚拟链接、历史的 ingest 标记与筛选；落点不再提议根下的保留标题。决定 154–160 记在第 11 节，其中 158 改了 Codex 的决定 120 的后半句，[审查记录](reviews/P4-S3-web-review.md)。
 
 - 2026-11-07：P4/S2 实施并审查完成：ingest 标记、历史读取与筛选、`log.md` 的显示；迁移 00053、00054。接手之后回到标准流程，决定 150–152 记在第 11 节，[审查记录](reviews/P4-S2-ingest-history-review.md)。
 

@@ -24,6 +24,15 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
+// The real ports under a wider deadline than the runtime tests' 4 s request,
+// in the production ratio of worker to request: the slowest CI runners take
+// 1.7-2.0 s over this notebook (M10 decision 160). Production's lint timeout
+// is min(10 s, server.request_timeout/2).
+const (
+	wikiCostRequest = 6 * time.Second
+	wikiCostWorker  = 3 * time.Second
+)
+
 // This is the actual bootstrap Module.Execute, with the installed authority,
 // snapshot, source-area, metadata, linking, asset and final Paths ports. Seed
 // and validation are outside the measured calls. CPU/heap are the Go process,
@@ -171,7 +180,7 @@ func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation
 			}
 		}
 	}()
-	ctx, cancel := context.WithTimeout(actor, 4*time.Second)
+	ctx, cancel := context.WithTimeout(actor, wikiCostRequest)
 	defer cancel()
 	cpu, start := originCPU(t), time.Now()
 	result, err := f.module.Execute(ctx, wiki.LintScope{NotebookID: uuid.MustParse(f.book.id)}, query)
@@ -204,14 +213,14 @@ func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation
 		after.TotalAlloc - before.TotalAlloc, before.HeapAlloc, high, high - before.HeapAlloc,
 		int64(time.Millisecond), len(encoded), err != nil, queries, stages, timings})
 	// A ByKeys regression is diagnosed even if its full ancestor materializing
-	// work exhausts the real 2s worker: expiry is not the mutation oracle.
+	// work exhausts the worker: expiry is not the mutation oracle.
 	for _, q := range queries {
 		if q.Name == "LinkTargetsByKeys" {
 			t.Fatalf("S49 wanted consumer read full candidate ancestors through LinkTargetsByKeys (rows=%d stage=%s)", q.Rows, q.Stage)
 		}
 	}
 	if err != nil {
-		t.Fatalf("actual %s Execute under unchanged 4s request/2s worker: %v", operation, err)
+		t.Fatalf("actual %s Execute under its request and worker deadlines: %v", operation, err)
 	}
 	if sqlNS > int64(elapsed) {
 		t.Fatal("observed sequential SQL+scan wall exceeds Execute; observation accounting is invalid")
@@ -418,7 +427,7 @@ func TestWikiCostSamplesWaitForFinished(t *testing.T) {
 			strings.Count(text, "=== RUN   "+name+"/sample-failure\n") != 1 ||
 			strings.Count(text, "=== RUN   "+name+"/next-reset\n") != 1 ||
 			!strings.Contains(text, "--- FAIL: "+name+"/sample-failure ") ||
-			!strings.Contains(text, "actual summary Execute under unchanged 4s request/2s worker: context canceled") {
+			!strings.Contains(text, "actual summary Execute under its request and worker deadlines: context canceled") {
 			t.Fatalf("fresh cost child did not reach the designated real measure Fatal and two actual nodes: %v", err)
 		}
 		if !strings.Contains(text, "--- PASS: "+name+"/next-reset ") ||
