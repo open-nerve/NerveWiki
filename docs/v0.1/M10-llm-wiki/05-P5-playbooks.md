@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 状态 | S1 已合并 `ba1fd4c9` |
+| 状态 | S1 已合并 `ba1fd4c9`，CI 的两处修复已合并 `bbeb9fbb` |
 | 权威 | [00](00-M10-design.md) §4.15、§4.19、§5、§7，故事 LW1、LW11；[总体设计](../v0.1-design.md) §5.9、§12.4、§13；[M9 移交](handoffs/M9-P1-mcp-registry.md)；[02-workflow](../claude_to_codex/02-workflow.md) |
 | 基线 | `c5fff600`（M10/P4 done），tree `d2fc220e` |
 | Step | S1，一个能单独合并为绿的 Step |
