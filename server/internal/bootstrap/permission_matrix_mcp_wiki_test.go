@@ -122,3 +122,64 @@ func TestTheWikiToolsReadLLMWikiMatrix(t *testing.T) {
 		t.Fatalf("checked %d real LLM matrix answers, want 13 columns × two entries × two tools", checked)
 	}
 }
+
+// promptCellOf is a prompt's get as a cell: its HTTP refusal, the code of
+// its JSON-RPC error, or none for an answer.
+func promptCellOf(t *testing.T, a mcpAnswer) mcpCell {
+	t.Helper()
+	if a.status != http.StatusOK {
+		return mcpCellOf(t, a)
+	}
+	if _, ok := a.decoded(t)["error"]; !ok {
+		a.result(t)
+		return mcpCell{}
+	}
+	_, _, code := promptRefusal(t, a)
+	return mcpCell{code: code}
+}
+
+// A prompt is read where lint is, in the notebook entry alone (M10
+// decision 165): the same 13 callers, the LLM Wiki's answer and the
+// standard notebook's refusal behind the same HTTP 404.
+func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
+	d := prepareMatrix(t)
+	contract := apitest.Load(t)
+	base := startApp(t, d.config(t, d.url, productionDeadlines), migrations.FS())
+	pats := map[caller]string{}
+	t.Run("tokens", func(t *testing.T) {
+		for _, c := range notebookColumns() {
+			pats[c] = createToken(t, contract, base, d.tokens[c])
+		}
+	})
+	if len(pats) != 13 {
+		t.Fatal("the matrix needs all 13 real PATs; select prepare and tokens")
+	}
+	checked := 0
+	for _, mode := range []string{"llm_wiki", "standard"} {
+		for _, c := range notebookColumns() {
+			t.Run(mode+"/"+string(c), func(t *testing.T) {
+				s := d.seeded.in(t)
+				name := notebookOf(c)
+				notebook := s.wiki.notebook(name)
+				want := wikiMCPReader(c)
+				if mode == "standard" {
+					notebook = s.notebook(name)
+					if want == (mcpCell{}) {
+						want.code = "notebook.not_llm_wiki"
+					}
+				}
+				if want.code == "notebook.not_found" {
+					want.http = http.StatusNotFound
+				}
+				m := &mcpApp{base: base, pat: pats[c]}
+				if got := promptCellOf(t, m.getPrompt(t, atNotebook(notebook.String()), m.pat, "lint", nil)); got != want {
+					t.Fatalf("%s/%s = %s, want %s", mode, c, got, want)
+				}
+				checked++
+			})
+		}
+	}
+	if checked != 26 {
+		t.Fatalf("checked %d answers, want 13 columns in two modes", checked)
+	}
+}

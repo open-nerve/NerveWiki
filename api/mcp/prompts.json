@@ -1,0 +1,33 @@
+{
+  "notebook": [
+    {
+      "name": "ingest",
+      "title": "Ingest a source",
+      "description": "Turn an LLM Wiki source into maintained pages, in one batch, then check the result. LLM Wiki only.",
+      "arguments": [
+        {
+          "name": "source",
+          "description": "The source path in this notebook. Omit it to list pending sources first."
+        }
+      ]
+    },
+    {
+      "name": "lint",
+      "title": "Check and maintain the wiki",
+      "description": "Check an LLM Wiki, make justified mechanical repairs, inspect recent changes, and report. LLM Wiki only."
+    },
+    {
+      "name": "query",
+      "title": "Answer from the wiki",
+      "description": "Answer a question from this LLM Wiki with references to its pages and sources. LLM Wiki only.",
+      "arguments": [
+        {
+          "name": "question",
+          "description": "The question to answer from this notebook.",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "account": []
+}

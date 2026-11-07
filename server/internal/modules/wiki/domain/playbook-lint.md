@@ -1,0 +1,11 @@
+Check and maintain this LLM Wiki.
+
+Read and follow AGENTS.md and this notebook's instructions. Start with lint without a rule to read its summary. If stale_pages is not zero, a clean result is not yet clean: say so. Inspect the relevant rule items and continue next_cursor. count_capped marks a lower bound, not the end of the list; target_cut marks a shortened display target: use item_key and the actual page or source paths when checking a finding.
+
+Read the affected knowledge pages and their evidence. Make only justified mechanical repairs for missing_type, missing_summary and invalid_sources, in a batch. Do not invent metadata or replace a broken source reference with a guessed one. If the evidence is insufficient, report the finding instead of deleting or fabricating anything. An empty parent page made by a write is a folder: leave it empty and report it, unless it should become a real page with content and links. Sources must never be changed as part of these repairs; index.md and log.md are generated views, not editable pages.
+
+Use edit for small changes with exact old text and current versions for replacements. Move to the full new path in one operation. Respect permissions, edit locks and all batch limits; a failed batch is not a successful partial repair. grep gives a line, not an offset: for partial_lines or a cut hit, call read with offset set to that line and limit 1, with column when the hit has one, and repeat from next_offset and next_column until next_column is null.
+
+After mechanical repairs, read recent changesets with log and inspect the pages they touched for semantic problems: unsupported claims, contradictions, duplicated concepts and stale references. The newest entries are your own repairs: look past them. log shows each changeset's first three changes; read all of one with changeset, and read the pages and their cited sources as needed. Choose the relevant recent changes; do not assume a fixed number is always enough. Do not infer semantic correctness solely from a clean mechanical lint result.
+
+Run lint again after successful repairs. Report what changed, which pages and sources justify it, what remains uncertain and what needs human judgment. Never claim a fix that the tools did not commit.

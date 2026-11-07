@@ -37,12 +37,36 @@ interface McpAnswer {
   content: McpContent[];
 }
 
+/** A prompt as prompts/list tells it. */
+interface McpPrompt {
+  name: string;
+  title?: string;
+  description?: string;
+  arguments?: { name: string; description?: string; required?: boolean }[];
+}
+
+/** A JSON-RPC error as the wire has it. */
+interface McpRpcError {
+  code: number;
+  message: string;
+  data?: { code?: string };
+}
+
+/** A prompt's answer: its description, and its messages' text. */
+interface McpPromptResult {
+  description?: string;
+  messages: { role: string; content: { type: string; text: string } }[];
+}
+
 /** A scripted MCP client of one entry, initialized (M9 design 9). */
 export interface McpClient {
   readonly protocolVersion: string;
   readonly instructions: string | undefined;
   listTools(): Promise<McpTool[]>;
   call(tool: string, args?: Record<string, unknown>): Promise<McpAnswer>;
+  listPrompts(): Promise<McpPrompt[]>;
+  /** A prompts/get, the one request whose JSON-RPC error is an answer: a standard notebook's refusal is LW11's. */
+  getPrompt(name: string, args?: Record<string, string>): Promise<{ result: McpPromptResult } | { error: McpRpcError }>;
 }
 
 /** The MCP address of baseURL: the account entry, or a notebook's. */
@@ -79,11 +103,16 @@ export function postMcp(
 }
 
 /**
- * The result of message, a request (with an id) or a notification (without), sent to url: a request answered 200
- * application/json without a JSON-RPC error, a notification 202 with an empty body. Anything else throws, with the
- * status and the answer.
+ * The answer of message, a request (with an id) or a notification (without), sent to url: a request answered 200
+ * application/json, a notification 202 with an empty body, which has none. Anything else throws, with the status and
+ * the answer.
  */
-async function send(url: string, credential: string, version: string | undefined, message: Record<string, unknown>) {
+async function exchange(
+  url: string,
+  credential: string,
+  version: string | undefined,
+  message: Record<string, unknown>
+): Promise<{ result?: Record<string, unknown>; error?: McpRpcError } | undefined> {
   const response = await fetch(url, {
     method: "POST",
     headers: headersOf(credential, version),
@@ -100,9 +129,17 @@ async function send(url: string, credential: string, version: string | undefined
   if (response.status !== 200 || !(response.headers.get("content-type") ?? "").startsWith("application/json")) {
     throw new Error(`the request ${what}, want 200 application/json`);
   }
-  const answer = JSON.parse(body) as { result?: Record<string, unknown>; error?: unknown };
+  return JSON.parse(body) as { result?: Record<string, unknown>; error?: McpRpcError };
+}
+
+/** The result of message, as exchange answers it: a JSON-RPC error, or no result of a request, throws. */
+async function send(url: string, credential: string, version: string | undefined, message: Record<string, unknown>) {
+  const answer = await exchange(url, credential, version, message);
+  if (answer === undefined) {
+    return undefined;
+  }
   if (answer.error !== undefined || answer.result === undefined) {
-    throw new Error(`the request ${what}, want its result`);
+    throw new Error(`the request ${String(message.method)} at ${url}: ${JSON.stringify(answer)}, want its result`);
   }
   return answer.result;
 }
@@ -151,6 +188,18 @@ export async function mcpClient(
         text: content.flatMap((c) => (c.type === "text" ? [c.text] : [])),
         content,
       };
+    },
+    listPrompts: async () => ((await request("prompts/list", {}))?.prompts ?? []) as McpPrompt[],
+    getPrompt: async (name, args = {}) => {
+      const message = { jsonrpc: "2.0", id: ++id, method: "prompts/get", params: { name, arguments: args } };
+      const answer = await exchange(url, credential, protocolVersion, message);
+      if (answer?.error !== undefined) {
+        return { error: answer.error };
+      }
+      if (answer?.result === undefined) {
+        throw new Error(`prompts/get ${name} at ${url}: ${JSON.stringify(answer)}, want a result or an error`);
+      }
+      return { result: answer.result as unknown as McpPromptResult };
     },
   };
 }

@@ -129,14 +129,20 @@ func (l *Lint) authorize(ctx context.Context, actor shared.Actor, notebook uuid.
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	workspace, found, err := l.deps.Notebooks.WorkspaceOf(ctx, notebook)
+	return authorizeLintRead(ctx, l.deps.Notebooks, l.deps.Authorizer, actor, notebook)
+}
+
+// authorizeLintRead is lint.read of actor in the notebook: none, and one
+// the actor cannot see, are notebook.not_found.
+func authorizeLintRead(ctx context.Context, notebooks Notebooks, auth shared.Authorizer, actor shared.Actor, notebook uuid.UUID) error {
+	workspace, found, err := notebooks.WorkspaceOf(ctx, notebook)
 	if err != nil {
 		return err
 	}
 	if !found {
 		return domain.ErrNotebookNotFound
 	}
-	_, err = l.deps.Authorizer.Authorize(ctx, actor, domain.ActionLintRead, shared.Target{WorkspaceID: workspace, NotebookID: notebook})
+	_, err = auth.Authorize(ctx, actor, domain.ActionLintRead, shared.Target{WorkspaceID: workspace, NotebookID: notebook})
 	if errors.Is(err, shared.ErrNotVisible) {
 		return domain.ErrNotebookNotFound
 	}
