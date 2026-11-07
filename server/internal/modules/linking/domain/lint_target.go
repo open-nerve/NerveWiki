@@ -89,6 +89,12 @@ func virtualTargetKeys(keys []string) bool {
 	return len(keys) == 1 && (keys[0] == "index" || keys[0] == "log" || keys[0] == "index.md" || keys[0] == "log.md")
 }
 
+// VirtualRootTitle tells whether a page of this title at an LLM Wiki's root
+// would take a generated file's name.
+func VirtualRootTitle(title string) bool {
+	return virtualTargetKeys([]string{shared.TitleKey(title)})
+}
+
 // The same ParseTarget grammar, with cancellable scans and the shared
 // context-aware TitleKey pipeline. The old parsing/write path is unchanged.
 func lintParseTarget(ctx context.Context, raw string) (Target, bool, error) {

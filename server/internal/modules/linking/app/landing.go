@@ -19,6 +19,9 @@ type GetLinkLanding struct {
 	Access Access
 	Pages  PageTree
 	Reads  Reads
+	// Notebooks is read only for a landing that would take a generated
+	// file's title at the root.
+	Notebooks IndexNotebooks
 	// MaxDepth is how deep pages nest, a root at depth 1.
 	MaxDepth int
 }
@@ -30,7 +33,9 @@ type GetLinkLanding struct {
 // domain.TargetInvalid, without a read. The aliases are read only for a
 // target that may lead by one. A page deleted since the decision is
 // page.not_found, and an aliased page deleted since its alias was read is
-// none. A read takes no lock and opens no transaction.
+// none. A title the write guard keeps at an LLM Wiki's root is
+// domain.NotResolvable, the mode read only then. A read takes no lock and
+// opens no transaction.
 func (g GetLinkLanding) Execute(ctx context.Context, id uuid.UUID, target *string) (domain.Landing, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -100,5 +105,19 @@ func (g GetLinkLanding) Execute(ctx context.Context, id uuid.UUID, target *strin
 			aliased[a.Key] = append(aliased[a.Key], n)
 		}
 	}
-	return domain.Land(t, from.Path, candidates, parents, aliased, g.MaxDepth), nil
+	landing := domain.Land(t, from.Path, candidates, parents, aliased, g.MaxDepth)
+	if landing.Parent != (uuid.UUID{}) || !domain.VirtualRootTitle(landing.Title) {
+		return landing, nil
+	}
+	state, ok, err := g.Notebooks.StateOf(ctx, notebookID)
+	if err != nil {
+		return domain.Landing{}, err
+	}
+	if !ok {
+		return domain.Landing{}, domain.ErrPageNotFound
+	}
+	if state.Mode == "llm_wiki" {
+		return domain.Landing{Reason: domain.NotResolvable}, nil
+	}
+	return landing, nil
 }

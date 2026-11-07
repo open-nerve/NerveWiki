@@ -1,5 +1,5 @@
 /**
- * An unresolved LLM target's virtual route (P4, decision 120). This follows
+ * An unresolved LLM target's virtual route (M10 design 4.9). This follows
  * the shared target grammar and strips one .md suffix. Only the four ASCII
  * reserved keys are needed here; the upload titleKey approximation would
  * incorrectly fold dotless ı into i. No URL decoding or whitespace trim.

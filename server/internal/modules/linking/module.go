@@ -95,7 +95,7 @@ func New(d Deps) *Module {
 		ListTags:          app.ListTags{Access: access, Reads: store},
 		GetTag:            app.GetTag{Access: access, Reads: store, TagKey: markdownadapter.TagKey},
 		ListLinkTargets:   app.ListLinkTargets{Access: access, Reads: store},
-		GetLinkLanding:    app.GetLinkLanding{Access: access, Pages: d.Pages, Reads: store, MaxDepth: d.MaxDepth},
+		GetLinkLanding:    app.GetLinkLanding{Access: access, Pages: d.Pages, Reads: store, Notebooks: d.IndexNotebooks, MaxDepth: d.MaxDepth},
 	}, tools: mcpadapter.UseCases{
 		Backlinks: backlinks,
 		Index:     index,

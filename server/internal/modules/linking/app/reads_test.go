@@ -40,6 +40,9 @@ type library struct {
 	aliases    map[uuid.UUID][]string
 	aliasRows  []app.Alias
 	contents   map[uuid.UUID]revised
+	mode       string
+	stateErr   error
+	unstated   bool
 	calls      []string
 }
 
@@ -172,13 +175,18 @@ func (l lib) getProperties() app.GetPageProperties {
 }
 
 func (l lib) getLinkLanding(depth int) app.GetLinkLanding {
-	return app.GetLinkLanding{Access: l.access(), Pages: l.library, Reads: l.library, MaxDepth: depth}
+	return app.GetLinkLanding{Access: l.access(), Pages: l.library, Reads: l.library, Notebooks: l.library, MaxDepth: depth}
 }
 
 func (l lib) getTag() app.GetTag {
 	return app.GetTag{Access: l.access(), Reads: l.library, TagKey: func(name string) (string, bool) {
 		return strings.ToLower(name), name != "" && !strings.Contains(name, " ")
 	}}
+}
+
+func (l *library) StateOf(context.Context, uuid.UUID) (app.IndexNotebookState, bool, error) {
+	l.calls = append(l.calls, "StateOf")
+	return app.IndexNotebookState{Mode: l.mode}, !l.unstated, l.stateErr
 }
 
 // reader is a context with a signed-in caller.

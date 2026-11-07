@@ -18,9 +18,9 @@ const cases = JSON.parse(
 ) as TargetCase[];
 
 test("P4/W03 shared_cases: the fixture has both virtual and ordinary or invalid targets", () => {
-  expect(cases).toHaveLength(36);
+  expect(cases).toHaveLength(38);
   expect(cases.filter((row) => row.virtual !== null)).toHaveLength(12);
-  expect(cases.filter((row) => row.virtual === null)).toHaveLength(24);
+  expect(cases.filter((row) => row.virtual === null)).toHaveLength(26);
 });
 
 test.each(cases)("P4/W03 shared_cases: $name", ({ raw, parents, virtual }) => {

@@ -43,6 +43,22 @@
     "qualified": true
   },
   {
+    "name": "under-index",
+    "raw": "index/child",
+    "parents": [],
+    "virtual": null,
+    "wanted": "index/child",
+    "qualified": true
+  },
+  {
+    "name": "up-under-index",
+    "raw": "../index/child",
+    "parents": ["a"],
+    "virtual": null,
+    "wanted": "index/child",
+    "qualified": true
+  },
+  {
     "name": "rooted-nested",
     "raw": "/notes/log.md",
     "parents": [],
