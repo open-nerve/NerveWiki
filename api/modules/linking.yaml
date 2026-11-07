@@ -338,12 +338,20 @@ components:
     NotebookIndexItem:
       type: object
       additionalProperties: false
-      required: [page_id, parent_id, title, type, summary, summary_cut, tags, updated_at, inbound, inbound_capped]
+      required:
+        [page_id, parent_id, title, type, type_key, summary, summary_cut, tags, updated_at, inbound, inbound_capped]
       properties:
         page_id: { type: string, format: uuid }
         parent_id: { type: [string, "null"], format: uuid }
         title: { type: string }
         type: { type: [string, "null"] }
+        type_key:
+          type: [string, "null"]
+          description: >-
+            This read's ordering/grouping key, at most 64 UTF-8 bytes; null when
+            the sorting pass classified the page as untyped. It may differ from
+            the later display type in this non-snapshot read. Never a type filter;
+            filters use the complete exact values in the types catalogue.
         summary: { type: [string, "null"] }
         summary_cut: { type: boolean }
         tags: { type: array, items: { type: string } }

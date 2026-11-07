@@ -27,10 +27,10 @@ func TestDirectoryIndex(t *testing.T) {
 	})
 	t.Run("required_fields", func(t *testing.T) {
 		zero := uuid.UUID{}
-		typ, summary := "topic", "summary"
+		typ, group, summary := "topic", "earlier-type", "summary"
 		at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 		f := &fakes{directory: &app.IndexPage{Mode: "llm_wiki", Next: "next", SourceArea: &app.IndexSourceArea{RootID: id(11), Sources: 0}, Types: []app.IndexType{{Type: "topic", Count: 2}}, TypesComplete: false, UnfilterableTypePages: 3,
-			Items: []app.IndexItem{{PageID: id(12), Title: "a.md", ChangedAt: at}, {PageID: id(13), ParentID: &zero, Title: "Child", Type: &typ, Summary: &summary, Cut: []string{"summary"}, ChangedAt: at, Inbound: 1000}}}}
+			Items: []app.IndexItem{{PageID: id(12), Title: "a.md", ChangedAt: at}, {PageID: id(13), ParentID: &zero, Title: "Child", Type: &typ, TypeKey: &group, Summary: &summary, Cut: []string{"summary"}, ChangedAt: at, Inbound: 1000}}}}
 		status, body := call(t, f.serve(t), notebookPath+"/index?parent_id="+zero.String()+"&at_root=false&type=topic&tag=plan&limit=2&cursor=cursor")
 		if status != http.StatusOK {
 			t.Fatalf("status=%d %s", status, body)
@@ -42,10 +42,10 @@ func TestDirectoryIndex(t *testing.T) {
 		rows := got["data"].([]any)
 		a := rows[0].(map[string]any)
 		b := rows[1].(map[string]any)
-		if len(got) != 7 || len(a) != 10 || len(b) != 10 || a["parent_id"] != nil || a["type"] != nil || a["summary"] != nil || a["summary_cut"] != false || a["inbound"] != float64(0) || a["inbound_capped"] != false || !reflect.DeepEqual(a["tags"], []any{}) || a["title"] != "a.md" {
+		if len(got) != 7 || len(a) != 11 || len(b) != 11 || a["parent_id"] != nil || a["type"] != nil || a["type_key"] != nil || a["summary"] != nil || a["summary_cut"] != false || a["inbound"] != float64(0) || a["inbound_capped"] != false || !reflect.DeepEqual(a["tags"], []any{}) || a["title"] != "a.md" {
 			t.Fatalf("required zero/null values: %s", body)
 		}
-		if b["parent_id"] != zero.String() || b["summary_cut"] != true || b["inbound_capped"] != true || got["types_complete"] != false || got["unfilterable_type_pages"] != float64(3) || got["source_area"].(map[string]any)["sources"] != float64(0) {
+		if b["parent_id"] != zero.String() || b["type_key"] != "earlier-type" || b["summary_cut"] != true || b["inbound_capped"] != true || got["types_complete"] != false || got["unfilterable_type_pages"] != float64(3) || got["source_area"].(map[string]any)["sources"] != float64(0) {
 			t.Fatalf("required nonempty values: %s", body)
 		}
 		limit, cursor, tag := 2, "cursor", "plan"

@@ -2921,6 +2921,8 @@ export interface components {
             parent_id: string | null;
             title: string;
             type: string | null;
+            /** @description This read's ordering/grouping key, at most 64 UTF-8 bytes; null when the sorting pass classified the page as untyped. It may differ from the later display type in this non-snapshot read. Never a type filter; filters use the complete exact values in the types catalogue. */
+            type_key: string | null;
             summary: string | null;
             summary_cut: boolean;
             tags: string[];

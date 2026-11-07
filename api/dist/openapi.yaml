@@ -4828,6 +4828,7 @@ components:
         - parent_id
         - title
         - type
+        - type_key
         - summary
         - summary_cut
         - tags
@@ -4849,6 +4850,11 @@ components:
           type:
             - string
             - 'null'
+        type_key:
+          type:
+            - string
+            - 'null'
+          description: This read's ordering/grouping key, at most 64 UTF-8 bytes; null when the sorting pass classified the page as untyped. It may differ from the later display type in this non-snapshot read. Never a type filter; filters use the complete exact values in the types catalogue.
         summary:
           type:
             - string

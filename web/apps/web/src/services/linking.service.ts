@@ -1,16 +1,46 @@
-import type { ApiClient, BacklinkPage, LinkLanding, LinkTarget, PageProperties, TagCount } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  BacklinkPage,
+  LinkLanding,
+  LinkTarget,
+  NotebookIndex,
+  NotebookIndexItem,
+  PageProperties,
+  TagCount,
+} from "@nervewiki/api-client";
 
 import { unwrap } from "./api";
 
-export type { BacklinkPage, LinkLanding, LinkTarget, PageProperties, TagCount };
+export type { BacklinkPage, LinkLanding, LinkTarget, NotebookIndex, NotebookIndexItem, PageProperties, TagCount };
+
+/** Exact directory filters; empty means omitted, never a display prefix or a type key. */
+export type IndexFilter = { type: string; tag: string };
 
 /**
  * LinkingService reads the link index (M6/P5, P6, P7): the pages of a tag,
  * where a page made for a link that leads nowhere would go, what the
- * editor completes, and a page's backlinks and properties.
+ * editor completes, and a page's backlinks and properties; and the notebook's
+ * paged directory with its exact-type catalogue (M10/P4).
  */
 export class LinkingService {
   constructor(private readonly api: ApiClient) {}
+
+  /** index reads one page of the notebook directory, including its independent exact-type catalogue. */
+  async index(notebookId: string, filter: IndexFilter, cursor?: string, signal?: AbortSignal): Promise<NotebookIndex> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/index", {
+        params: {
+          path: { notebook_id: notebookId },
+          query: {
+            ...(filter.type === "" ? {} : { type: filter.type }),
+            ...(filter.tag === "" ? {} : { tag: filter.tag }),
+            ...(cursor === undefined ? {} : { cursor }),
+          },
+        },
+        signal,
+      })
+    );
+  }
 
   /** tagPages answers the ids of the pages of the notebook that have tag, or a tag under it (tag/…), by id. */
   async tagPages(notebookId: string, tag: string): Promise<string[]> {

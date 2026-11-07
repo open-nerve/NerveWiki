@@ -1,0 +1,291 @@
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { expect, test } from "vitest";
+
+import { json, notebookJSON, problem } from "../../test/fakes";
+import { deferred } from "../../test/health-server";
+import {
+  firstId,
+  indexFacts,
+  indexHome,
+  indexPath,
+  indexRaw,
+  indexServer,
+  secondId,
+  thirdId,
+} from "../../test/index-server";
+import { guide, notes } from "../../test/page-server";
+import { renderApp } from "../../test/render";
+
+function directory() {
+  return within(screen.getByRole("region", { name: "Directory pages" }));
+}
+function titles() {
+  return directory()
+    .getAllByRole("link")
+    .filter((link) => link.getAttribute("href")?.includes("/pages/"))
+    .map((link) => link.textContent);
+}
+
+// Removing the real route/service wiring fails at this nonempty user result, not a missing import.
+test("P4/route: a reader opens the real notebook Directory with three linked pages", async () => {
+  const fixture = indexServer();
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("heading", { level: 1, name: "Directory" });
+  await screen.findByRole("region", { name: "Directory pages" });
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
+  expect(directory().getByRole("link", { name: "Alpha" }).getAttribute("href")).toBe(`${indexHome}/pages/${firstId}`);
+  expect(directory().getByRole("link", { name: "Bravo" }).getAttribute("href")).toBe(`${indexHome}/pages/${secondId}`);
+  expect(directory().getByRole("link", { name: "Charlie" }).getAttribute("href")).toBe(`${indexHome}/pages/${thirdId}`);
+  expect(
+    screen.getByRole("navigation", { name: "More of Plans" }).querySelector('[aria-current="page"]')?.textContent
+  ).toBe("Directory");
+  expect(document.title).toContain("Directory");
+  expect(fixture.requests).toHaveLength(1);
+});
+
+test.each(["standard", "llm_wiki"] as const)("P4/places: Directory is available in %s", async (mode) => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.server.notebook.mode = mode;
+  fixture.server.notebook.source_root_id = mode === "llm_wiki" ? indexRaw.id : null;
+  fixture.value.mode = mode;
+  renderApp(indexHome, fixture.server.app);
+  const places = await screen.findByRole("navigation", { name: "More of Plans" });
+  await user.click(within(places).getByRole("link", { name: "Directory" }));
+  await screen.findByRole("region", { name: "Directory pages" });
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
+});
+
+test("P4/group_key: casefold groups, later display changes, untyped parents and More preserve literal order", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  const base = indexFacts();
+  const extra = (id: string, title: string) => ({ ...base.data[0]!, page_id: id, title });
+  fixture.value.data = [
+    { ...base.data[0]!, type: "Straße", type_key: "strasse" },
+    { ...base.data[1]!, type: null, type_key: "strasse" },
+  ];
+  fixture.value.next_cursor = "same-group-next";
+  fixture.answer = (request) =>
+    new URL(request.url).searchParams.has("cursor")
+      ? json({
+          ...base,
+          data: [
+            { ...base.data[2]!, type: "STRASSE", type_key: "strasse" },
+            { ...extra("0199a2b4-0000-7000-8000-000000000704", "Delta"), type: "é", type_key: "é" },
+            { ...extra("0199a2b4-0000-7000-8000-000000000705", "Echo"), type: "e\u0301", type_key: "é" },
+            {
+              ...extra("0199a2b4-0000-7000-8000-000000000706", "Foxtrot"),
+              type: "Added after sorting",
+              type_key: null,
+              parent_id: guide.id,
+            },
+            {
+              ...extra("0199a2b4-0000-7000-8000-000000000707", "Golf"),
+              type: null,
+              type_key: null,
+              parent_id: notes.id,
+            },
+            {
+              ...extra("0199a2b4-0000-7000-8000-000000000708", "Hotel"),
+              type: null,
+              type_key: null,
+              parent_id: guide.id,
+            },
+          ],
+        })
+      : json(fixture.value);
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("heading", { level: 2, name: "Straße" });
+  await user.click(screen.getByRole("button", { name: "More" }));
+  await screen.findByRole("link", { name: "Hotel" });
+  expect(
+    directory()
+      .getAllByRole("heading", { level: 2 })
+      .map((heading) => heading.textContent)
+  ).toEqual(["Straße", "é", "Without a type · Guide.md", "Without a type · Notes.md"]);
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Hotel", "Golf"]);
+  expect(directory().getByText("Added after sorting")).toBeTruthy();
+  expect(fixture.requests.map((request) => new URL(request.url).search)).toEqual(["", "?cursor=same-group-next"]);
+});
+
+test.each([
+  { sources: 0, label: "Guide/raw.md · 0 sources" },
+  { sources: 2, label: "Guide/raw.md · 2 sources" },
+])(
+  "P4/details: summaries, tags, dates, caps and one current source-area link ($sources)",
+  async ({ sources, label }) => {
+    let lintReads = 0;
+    const fixture = indexServer({
+      [`GET /api/v0/notebooks/${notebookJSON.id}/lint`]: () => {
+        lintReads += 1;
+        throw new Error("Directory must not calculate health");
+      },
+    });
+    fixture.server.notebook.mode = "llm_wiki";
+    fixture.server.notebook.source_root_id = indexRaw.id;
+    fixture.value.mode = "llm_wiki";
+    fixture.value.source_area = { root_id: indexRaw.id, sources };
+    renderApp(indexPath, fixture.server.app);
+    await screen.findByRole("link", { name: label });
+    expect(screen.getAllByRole("link", { name: label })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: label }).getAttribute("href")).toBe(
+      `${indexHome}/health#undigested_sources`
+    );
+    expect(directory().getByText("First summary")).toBeTruthy();
+    expect(directory().getByText("Summary shortened")).toBeTruthy();
+    expect(directory().getByText("#plan/q4")).toBeTruthy();
+    expect(directory().getByText("2 incoming links")).toBeTruthy();
+    expect(directory().getByText("At least 1,000 incoming links")).toBeTruthy();
+    expect(directory().getAllByText(/Oct [345], 2026/)).toHaveLength(3);
+    expect(lintReads).toBe(0);
+  }
+);
+
+test.each(["type", "tag"] as const)(
+  "P4/filter_key/%s: exact URL/query and visible result change without moving focus",
+  async (field) => {
+    const user = userEvent.setup();
+    const fixture = indexServer();
+    fixture.answer = (request) => {
+      const query = new URL(request.url).searchParams;
+      return json({
+        ...indexFacts(),
+        data: query.has(field) ? [{ ...indexFacts().data[2]!, title: "Filtered Charlie" }] : indexFacts().data,
+      });
+    };
+    const { router } = renderApp(indexPath, fixture.server.app);
+    await screen.findByRole("region", { name: "Directory pages" });
+    const control = screen.getByRole(field === "type" ? "combobox" : "textbox", {
+      name: field === "type" ? "Type" : "Tag",
+    });
+    if (field === "type") await user.selectOptions(control, "note");
+    else {
+      await user.type(control, "plan/q4");
+      await user.keyboard("{Enter}");
+    }
+    await screen.findByRole("link", { name: "Filtered Charlie" });
+    expect(titles()).toEqual(["Filtered Charlie"]);
+    expect(new URLSearchParams(router.state.location.search).get(field)).toBe(field === "type" ? "note" : "plan/q4");
+    expect(new URL(fixture.requests.at(-1)!.url).searchParams.get(field)).toBe(field === "type" ? "note" : "plan/q4");
+    expect(document.activeElement).toBe(control);
+  }
+);
+
+test("P4/catalogue_notice: exact colliding/long selections stay intact and bounded notices remain independent", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  const selected = "é".repeat(512); // Exactly 1024 UTF-8 bytes, not 1024 characters.
+  const another = "é".repeat(511) + "ax"; // Same display/key prefix, another exact 1024-byte value.
+  fixture.value.types = [
+    { type: "A", count: 2 },
+    { type: "a", count: 3 },
+    { type: another, count: 4 },
+  ];
+  fixture.value.types_complete = false;
+  fixture.value.unfilterable_type_pages = 7;
+  fixture.value.data[0]!.type = "é".repeat(128); // A long display prefix is not an eligible menu value.
+  fixture.answer = (request) => {
+    const type = new URL(request.url).searchParams.get("type");
+    if (type === "A")
+      return json({
+        ...fixture.value,
+        data: [
+          { ...indexFacts().data[0]!, type: "A", type_key: "a" },
+          { ...indexFacts().data[1]!, type: "A", type_key: "a" },
+        ],
+      });
+    if (type === "a")
+      return json({
+        ...fixture.value,
+        data: [
+          { ...indexFacts().data[0]!, type: "a", type_key: "a" },
+          { ...indexFacts().data[1]!, type: "a", type_key: "a" },
+          { ...indexFacts().data[2]!, type: "a", type_key: "a" },
+        ],
+      });
+    return json(fixture.value);
+  };
+  const { router } = renderApp(`${indexPath}?type=${encodeURIComponent(selected)}`, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  const choice = screen.getByRole("combobox", { name: "Type" }) as HTMLSelectElement;
+  expect(choice.value).toBe(selected);
+  expect(choice.selectedOptions[0]?.textContent).not.toMatch(/\(\d+\)/);
+  expect(screen.getByText("Only some filterable types are shown.")).toBeTruthy();
+  expect(screen.getByText("7 pages have type names too long to filter by.")).toBeTruthy();
+  expect([...choice.options].map((option) => option.value)).toEqual(["", selected, "A", "a", another]);
+  expect(new URL(fixture.requests[0]!.url).searchParams.get("type")).toBe(selected);
+  expect(new URLSearchParams(router.state.location.search).get("type")).toBe(selected);
+  expect(fixture.requests).toHaveLength(1);
+  await user.selectOptions(choice, "A");
+  await waitFor(() => expect(fixture.requests).toHaveLength(2));
+  expect(new URL(fixture.requests[1]!.url).searchParams.get("type")).toBe("A");
+  await waitFor(() => expect(titles()).toEqual(["Alpha", "Bravo"]));
+  await user.selectOptions(choice, "a");
+  await waitFor(() => expect(fixture.requests).toHaveLength(3));
+  expect(new URL(fixture.requests[2]!.url).searchParams.get("type")).toBe("a");
+  await waitFor(() => expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]));
+});
+
+test("P4/more_failure: a refused More stops being busy, says so, and reads again", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.value.data = [indexFacts().data[0]!];
+  fixture.value.next_cursor = "next";
+  let refused = true;
+  fixture.answer = (request) => {
+    if (!new URL(request.url).searchParams.has("cursor")) return json(fixture.value);
+    return refused ? problem(403, "forbidden") : json({ ...indexFacts(), data: [indexFacts().data[1]!] });
+  };
+  renderApp(indexPath, fixture.server.app);
+  const more = await screen.findByRole("button", { name: "More" });
+  await user.click(more);
+  await screen.findByRole("alert");
+  await waitFor(() => expect(more.getAttribute("aria-busy")).toBeNull());
+  expect(titles()).toEqual(["Alpha"]);
+  refused = false;
+  await user.click(more);
+  const added = await screen.findByRole("link", { name: "Bravo" });
+  await waitFor(() => expect(document.activeElement).toBe(added));
+});
+
+test.each([false, true])("P4/focus: More adds a real page; reader moved=%s", async (moved) => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.value.data = [indexFacts().data[0]!];
+  fixture.value.next_cursor = "next";
+  const held = deferred<Response>();
+  fixture.answer = (request) => (new URL(request.url).searchParams.has("cursor") ? held.promise : json(fixture.value));
+  renderApp(indexPath, fixture.server.app);
+  const more = await screen.findByRole("button", { name: "More" });
+  await user.click(more);
+  await waitFor(() => expect(fixture.requests).toHaveLength(2));
+  const tag = screen.getByRole("textbox", { name: "Tag" });
+  if (moved) {
+    await user.click(tag);
+    fireEvent.wheel(window);
+  }
+  const scroll = { x: window.scrollX, y: window.scrollY };
+  await act(async () => held.resolve(json({ ...indexFacts(), data: [indexFacts().data[1]!] })));
+  const added = await screen.findByRole("link", { name: "Bravo" });
+  expect(titles()).toEqual(["Alpha", "Bravo"]);
+  await waitFor(() => expect(document.activeElement).toBe(moved ? tag : added));
+  expect({ x: window.scrollX, y: window.scrollY }).toEqual(scroll);
+});
+
+test.each([
+  { complete: false, long: 0, partial: true, tooLong: false },
+  { complete: true, long: 3, partial: false, tooLong: true },
+])("P4/catalogue_notice independent flags: $complete/$long", async ({ complete, long, partial, tooLong }) => {
+  const fixture = indexServer();
+  fixture.value.types_complete = complete;
+  fixture.value.unfilterable_type_pages = long;
+  renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("region", { name: "Directory pages" });
+  await waitFor(() => {
+    expect(screen.queryByText("Only some filterable types are shown.") !== null).toBe(partial);
+    expect(screen.queryByText("3 pages have type names too long to filter by.") !== null).toBe(tooLong);
+  });
+  expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
+});

@@ -32,6 +32,7 @@ type IndexItem struct {
 	Title      string
 	Path       string
 	Type       *string
+	TypeKey    *string // This read's ordering key; nil when its first pass was untyped.
 	Summary    *string
 	Tags       []string
 	ChangedAt  time.Time
@@ -246,7 +247,12 @@ func (l ListIndex) items(ctx context.Context, notebookID uuid.UUID, order []doma
 		if err != nil {
 			return IndexPage{}, err
 		}
-		out.Items = append(out.Items, indexItemOf(c.ID, p, f, inbound[c.ID], cursor))
+		item := indexItemOf(c.ID, p, f, inbound[c.ID], cursor)
+		if c.Typed {
+			key := c.K
+			item.TypeKey = &key
+		}
+		out.Items = append(out.Items, item)
 	}
 	return out, nil
 }

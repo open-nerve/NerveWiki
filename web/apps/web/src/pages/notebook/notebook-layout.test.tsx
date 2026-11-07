@@ -84,7 +84,7 @@ test("the notebook's health, history and trash are in a navigation of its own be
     within(places)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["Health", "History", "Trash"]);
+  ).toEqual(["Directory", "Health", "History", "Trash"]);
   const history = within(places).getByRole("link", { name: "History" });
   const trash = within(places).getByRole("link", { name: "Trash" });
   expect(trash.getAttribute("aria-current")).toBeNull();

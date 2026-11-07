@@ -241,7 +241,7 @@ test.each([
     within(places)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["Health", "History", "Trash"]);
+  ).toEqual(["Directory", "Health", "History", "Trash"]);
   await user.click(within(places).getByRole("link", { name: "Health" }));
 
   await screen.findByRole("heading", { name: "Wanted pages" });

@@ -182,7 +182,10 @@ type NotebookIndexItem struct {
 	Tags          []string                     `json:"tags"`
 	Title         string                       `json:"title"`
 	Type          nullable.Nullable[string]    `json:"type"`
-	UpdatedAt     time.Time                    `json:"updated_at"`
+
+	// TypeKey This read's ordering/grouping key, at most 64 UTF-8 bytes; null when the sorting pass classified the page as untyped. It may differ from the later display type in this non-snapshot read. Never a type filter; filters use the complete exact values in the types catalogue.
+	TypeKey   nullable.Nullable[string] `json:"type_key"`
+	UpdatedAt time.Time                 `json:"updated_at"`
 }
 
 // NotebookIndexType defines model for NotebookIndexType.
