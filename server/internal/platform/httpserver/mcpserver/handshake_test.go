@@ -102,6 +102,21 @@ func TestInstructionsThatFailAreTheHandshakesError(t *testing.T) {
 	}
 }
 
+// A notebook deleted since the gate is a problem of the handshake, in its
+// own words: still the JSON-RPC internal error, no initialize logged, and
+// not the built-in instructions (M10/P5 design 3.7).
+func TestAProblemOfTheInstructionsIsTheHandshakesError(t *testing.T) {
+	s, _ := withInstructions(t, "", "", notebookNotFound())
+	v := s.post(t, context.Background(), Pattern+"?notebook="+visible.String(), patToken, initialize, nil).decoded(t)
+	e, _ := v["error"].(map[string]any)
+	if v["result"] != nil || e["code"] != float64(-32603) || e["message"] != "notebook.not_found: No such notebook." || e["data"] != nil {
+		t.Fatalf("answer = %v, want -32603 in the problem's words, without data", v)
+	}
+	if s.logs.find(t, "MCP initialize") != nil {
+		t.Error("a handshake that failed logged its initialize")
+	}
+}
+
 // held is fakeNotebooks whose instructions end only when their context
 // does, or a while past any deadline a test sets: ended is what ended
 // them, nil for the while.

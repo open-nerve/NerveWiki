@@ -4,8 +4,9 @@
 // own; the registry's tools and prompts; every method's call context, its
 // recovery from a panic, the results and errors with their bound; and the
 // logs. It is part of httpserver, whose classification of errors and
-// problems it answers with. The modules build its Tool values in their
-// adapter/mcp and never meet the SDK's types; bootstrap fills Options.
+// problems it answers with. The modules build its Tool and Prompt values
+// in their adapter/mcp and never meet the SDK's types; bootstrap fills
+// Options.
 package mcpserver
 
 import (
@@ -100,7 +101,7 @@ var errNoCredential = errors.New("mcpserver: no credential on the request: the r
 var errUnwritten = errors.New("mcpserver: the SDK wrote no answer")
 
 // New builds the server: a wiring fault panics (a tool or a prompt named
-// twice, a tool of no entry, an input type that is no struct, a schema it
+// twice or of no entry, an input type that is no struct, a schema it
 // cannot normalize, a Notebook tool that is not in the account entry,
 // where alone the flag adds its "notebook").
 func New(o Options) *Server {

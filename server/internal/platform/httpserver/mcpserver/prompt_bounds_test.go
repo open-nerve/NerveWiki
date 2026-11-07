@@ -12,8 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"uuid"
 )
 
 // promptGet is a prompt's handler.
@@ -350,7 +349,7 @@ func TestPromptAnswersUseSDKTextBytes(t *testing.T) {
 		name, char string
 		bytes      int
 	}{
-		{"gt", ">", 6}, {"amp", "&", 6}, {"nul", "\x00", 6}, {"u2028", " ", 6}, {"u2029", " ", 6},
+		{"gt", ">", 6}, {"amp", "&", 6}, {"nul", "\x00", 6}, {"u2028", "\u2028", 6}, {"u2029", "\u2029", 6},
 		{"newline", "\n", 2}, {"return", "\r", 2}, {"tab", "\t", 2}, {"backspace", "\b", 2}, {"formfeed", "\f", 2},
 		{"quote", `"`, 2}, {"backslash", `\`, 2},
 	} {
@@ -432,14 +431,16 @@ func TestPromptErrorsAndLogs(t *testing.T) {
 		}
 		outcome(t, s, "notebook.not_llm_wiki")
 	})
-	t.Run("problem5xx", func(t *testing.T) {
-		s, _ := promptServer(t, failing(problem{status: http.StatusServiceUnavailable, code: "wiki.busy", detail: "Busy."}))
-		code, message, data := rpcError(t, s.getPrompt(context.Background(), t, "p", nil))
-		if code != -32603 || message != "wiki.busy: Busy." || data["code"] != "wiki.busy" {
-			t.Errorf("answer = %d %q %v", code, message, data)
-		}
-		outcome(t, s, "wiki.busy")
-	})
+	for name, status := range map[string]int{"problem500": http.StatusInternalServerError, "problem5xx": http.StatusServiceUnavailable} {
+		t.Run(name, func(t *testing.T) {
+			s, _ := promptServer(t, failing(problem{status: status, code: "wiki.busy", detail: "Busy."}))
+			code, message, data := rpcError(t, s.getPrompt(context.Background(), t, "p", nil))
+			if code != -32603 || message != "wiki.busy: Busy." || data["code"] != "wiki.busy" {
+				t.Errorf("answer = %d %q %v", code, message, data)
+			}
+			outcome(t, s, "wiki.busy")
+		})
+	}
 
 	unknown := func(t *testing.T, err error, cause string) {
 		t.Helper()
@@ -530,19 +531,31 @@ func TestPromptErrorsAndLogs(t *testing.T) {
 	})
 }
 
-// A get over the Go client reaches the handler with its call's identity
-// (M10 design 4.15): the client's name, the notebook and the token.
+// recordedClient is the client name a token remembers.
+type recordedClient struct{}
+
+func (recordedClient) Clean(name string) string { return name }
+func (recordedClient) Recorded(context.Context, uuid.UUID) (string, error) {
+	return "the-recorded-client", nil
+}
+func (recordedClient) Record(context.Context, uuid.UUID, string) (bool, error) { return false, nil }
+
+// A get reaches the handler with its call's identity, and its log line
+// says the same client (M10 design 4.15).
 func TestPromptCallKnowsItsCaller(t *testing.T) {
 	var got Call
-	s, _ := promptServer(t, func(_ context.Context, c Call, _ map[string]string) (string, []string, error) {
-		got = c
-		return "", []string{"ok"}, nil
-	})
-	cs := s.connect(t, notebookPath(), nil)
-	if _, err := cs.GetPrompt(context.Background(), &mcp.GetPromptParams{Name: "p"}); err != nil {
-		t.Fatal(err)
-	}
-	if got.Entry != NotebookEntry || got.Notebook != visible || got.UserID != alice || got.TokenID != aliceTok {
+	s := serveMCP(t, setup{options: func(o *Options) {
+		o.Names = recordedClient{}
+		o.Prompts = []Prompt{{Name: "p", Entry: BothEntries, Get: func(_ context.Context, c Call, _ map[string]string) (string, []string, error) {
+			got = c
+			return "", []string{"ok"}, nil
+		}}}
+	}})
+	result(t, s.getPrompt(context.Background(), t, "p", nil))
+	if got.Entry != NotebookEntry || got.Notebook != visible || got.UserID != alice || got.TokenID != aliceTok || got.Client != "the-recorded-client" {
 		t.Errorf("the handler had %+v", got)
+	}
+	if lines := promptLines(t, s.logs); len(lines) != 1 || lines[0]["client"] != "the-recorded-client" {
+		t.Errorf("the call lines are %v, want one with the client", lines)
 	}
 }

@@ -220,9 +220,16 @@ func TestTheWikiPromptsAreReached(t *testing.T) {
 		}
 	})
 	t.Run("logged", func(t *testing.T) {
+		lines := func() []map[string]any {
+			return slices.DeleteFunc(m.logLines(t), func(l map[string]any) bool { return l["msg"] != "MCP prompt call" })
+		}
+		before := len(lines())
 		m.getPrompt(t, at, m.pat, "ingest", map[string]string{"source": "raw/never-logged.md"})
-		line := m.logged(t, "MCP prompt call")
-		if line == nil || line["entry"] != "notebook" || line["notebook_id"] != wiki {
+		after := lines()
+		if len(after) != before+1 {
+			t.Fatalf("%d call lines after %d: want this get's one", len(after), before)
+		}
+		if line := after[len(after)-1]; line["prompt"] != "ingest" || line["entry"] != "notebook" || line["notebook_id"] != wiki || line["outcome"] != "ok" {
 			t.Errorf("the call line = %v", line)
 		}
 		for _, l := range m.logLines(t) {

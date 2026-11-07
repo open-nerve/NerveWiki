@@ -195,9 +195,9 @@ func TestNotebookInstructionsShareTheirBudget(t *testing.T) {
 		s, _ := line(skeleton)
 		budget := mcpserver.MaxAnswerBytes - mcpserver.TextBytes(s) - openNotebookRootReserve
 		if !strings.HasPrefix(a.Instructions, accountParagraph("raw")+"\n\n") || mcpserver.MemberBytes(a.Instructions) > budget ||
-			mcpserver.TextBytes(raw) > mcpserver.MaxAnswerBytes || len(a.Overview.Root) < 28 {
+			sdkTextBytes(t, raw) > mcpserver.MaxAnswerBytes || len(a.Overview.Root) < 28 {
 			t.Errorf("the instructions are %d bytes as a member of %d, the answer %d, %d root nodes", mcpserver.MemberBytes(a.Instructions), budget,
-				mcpserver.TextBytes(raw), len(a.Overview.Root))
+				sdkTextBytes(t, raw), len(a.Overview.Root))
 		}
 	})
 

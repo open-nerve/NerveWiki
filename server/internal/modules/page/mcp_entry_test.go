@@ -9,6 +9,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 )
 
@@ -109,16 +110,55 @@ func TestMCPEntryAnswersItsState(t *testing.T) {
 	}
 }
 
+// The handshake's reads share no transaction (M10/P5 design 3.7, 7.2):
+// each outcome of a change between them lasts one answer. A downgrade
+// after the state was read answers one paragraph more; a move and a rename
+// between the root's two reads, one path that never was; a root gone
+// between them, an error no problem names, which mcpserver answers as a
+// fault and logs at error.
+func TestTheInstructionsShareNoTransaction(t *testing.T) {
+	entry := func(root rootOf, mode domain.Mode) MCPEntry {
+		return MCPEntry{notebooks: entryStates{found: true, state: domain.NotebookState{Mode: mode}},
+			instructions: app.NewInstructions(root, root, root, mcpserver.TextBytes)}
+	}
+	root := rootOf{agentsOf: agentsOf{node: uuid.NewV7(), content: "# Rules"}, title: "raw"}
+
+	// The state read says LLM Wiki; the next read says standard.
+	if got, err := entry(root, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7()); err != nil || !strings.HasPrefix(got, "This notebook is an LLM Wiki: pages under `raw/`") {
+		t.Errorf("a downgrade after the state = %.80q, %v; want one paragraph more", got, err)
+	}
+	if got, err := entry(root, domain.ModeStandard).Instructions(context.Background(), uuid.NewV7()); err != nil || got != "# Rules" {
+		t.Errorf("the next handshake = %q, %v", got, err)
+	}
+
+	mixed := root
+	mixed.title, mixed.line = "new", []domain.Ancestor{{Name: "old"}}
+	if got, err := entry(mixed, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7()); err != nil || !strings.Contains(got, "pages under `old/new/`") {
+		t.Errorf("a move between the reads = %.80q, %v; want the two reads joined", got, err)
+	}
+
+	gone := root
+	gone.err = app.ErrNotFound
+	_, err := entry(gone, domain.ModeLLMWiki).Instructions(context.Background(), uuid.NewV7())
+	if !errors.Is(err, app.ErrNotFound) {
+		t.Fatalf("a root gone = %v, want the read's error", err)
+	}
+	if a := httpserver.ProblemOf(context.Background(), err); a.Fault != httpserver.FaultUnknown {
+		t.Errorf("a root gone is classified %v, want an unknown fault: an internal error, logged", a.Fault)
+	}
+}
+
 // rootOf is agentsOf of a notebook whose source root is titled title,
-// under line.
+// under line; err is its point read's.
 type rootOf struct {
 	agentsOf
 	title string
 	line  []domain.Ancestor
+	err   error
 }
 
 func (r rootOf) FindNodeIn(context.Context, uuid.UUID, uuid.UUID) (domain.Node, error) {
-	return domain.Node{Name: r.title, Kind: domain.KindPage}, nil
+	return domain.Node{Name: r.title, Kind: domain.KindPage}, r.err
 }
 
 func (r rootOf) Ancestors(context.Context, uuid.UUID) ([]domain.Ancestor, error) {
