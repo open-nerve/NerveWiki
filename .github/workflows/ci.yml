@@ -66,6 +66,7 @@ jobs:
           - leg: bootstrap-6
             timeout: 25
           # M11/P1/S1：升级的整个程序测试（TestUpgrade…）单列一份（Makefile 的 BOOTSTRAP_SEVENTH，00-M11 第 186 条）
+          # M11/P1：第六份在 EPYC 7763 上两次 main 均值 460 秒过线，TestIngestBefore 挪到第七份（数在 Makefile 的注释里）
           - leg: bootstrap-7
             timeout: 25
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次。M9/P4 S1 加 grep 的守卫，

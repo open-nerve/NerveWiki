@@ -1524,7 +1524,7 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 
 ### 7.5 CI 的余量
 
-新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
+新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。S1 合并之后两次 `main` 的第六份在 EPYC 7763 上是 461、459 秒，过了线；照规则把 `TestIngestBefore`（7763 上约 120 秒）挪给第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)`，`2beef88c`），第六份折到 7763 约 386 秒，第七份现约 147 秒，P1 末估约 274–374 秒；`TestIngestUnit`（约 261 秒）不挪，挪了第七份在 P1 末会过线。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
 
 ### 7.6 P1 怎样量
 
