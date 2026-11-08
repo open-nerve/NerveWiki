@@ -42,13 +42,17 @@ export async function expectNewNotebook(db: Database, created: Notebook, adminId
   ]);
 }
 
-/** notebooks: notebook is the row as the API answered a change, last updated by updaterId. */
+/**
+ * notebooks: notebook is the row as the API answered a change, last updated by updaterId, its upgrade's four columns
+ * too (M11/P1 design 5).
+ */
 export async function expectNotebook(db: Database, notebook: Notebook, updaterId: string): Promise<void> {
   const rows = await db.query(
     `SELECT name, workspace_access, mode, source_root_id, updated_by_id = $2 AS by_updater,
-            updated_at = $3::timestamptz AS at_answer, deleted_at IS NOT NULL AS deleted
+            updated_at = $3::timestamptz AS at_answer, deleted_at IS NOT NULL AS deleted,
+            upgrade_id, upgrade_state, upgrade_by_id, upgrade_at IS NOT DISTINCT FROM $4::timestamptz AS upgrade_at_answer
        FROM notebooks WHERE id = $1`,
-    [notebook.id, updaterId, notebook.updated_at]
+    [notebook.id, updaterId, notebook.updated_at, notebook.upgrade?.started_at ?? null]
   );
   expect(rows).toEqual([
     {
@@ -59,6 +63,10 @@ export async function expectNotebook(db: Database, notebook: Notebook, updaterId
       by_updater: true,
       at_answer: true,
       deleted: false,
+      upgrade_id: notebook.upgrade?.id ?? null,
+      upgrade_state: notebook.upgrade?.state ?? null,
+      upgrade_by_id: notebook.upgrade?.started_by ?? null,
+      upgrade_at_answer: true,
     },
   ]);
 }
