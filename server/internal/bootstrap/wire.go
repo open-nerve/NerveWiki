@@ -249,7 +249,10 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		MaxLintRuns: max(1, int(cfg.Database.MaxConns/2)/2),
 		LintTimeout: lintTimeout,
 		// An upgrade's start and read (M11/P1 design 3.15): the start's
-		// transaction has lint's deadline (decisions 227, 232); the mode's
+		// transaction has a deadline of its own, three quarters of the
+		// request's, the rest for the COMMIT, the ANALYZE and a 503
+		// (decisions 227, 232): lint's half did not hold the start of
+		// 100,000 pages on CI's runners (the S2 record); the mode's
 		// subscribers are the downgrade's.
 		Pool: pool, Tx: postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Workspaces:    workspace.NewWorkspaces(pool),
@@ -258,7 +261,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		Writing:       transfer.NewWritingJobs(pool),
 		Names:         displayNames{identity.NewDirectory(pool)},
 		UpgradeAction: notebook.ActionChangeMode,
-		StartTimeout:  lintTimeout,
+		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,
 		Template:      template,
 	}
 	if w.wiki != nil {

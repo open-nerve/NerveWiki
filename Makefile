@@ -352,6 +352,8 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# M11/P1/S1：删除护栏的读，一万个节点的子树对着两次升级各十万行，四种统计与计划状态：自定义与通用的计划都只经 upgrade_nodes_pkey 读、两列都在索引条件里，中位数在本机的三倍（25 ms）之内；带 -v 打出中位数（P1 设计 7.1，决定 236）
 	cd server && go test -count=1 -v -run '^TestUpgradeProtectedReadsInTimeAtTheUnitsBound$$' ./internal/modules/page/adapter/postgres
+	@# M11/P1/S2：发起，5 万页、1.5 万页在 raw 里各带 10 条待建（10 万页在最慢的 runner 上过 4.5 s，照决定 232 进 M12 的移交）；upgrade_nodes 三种统计状态 × 自定义与通用的计划：先在发起的事务里核对 SetBaselineWanted 的计划只读 upgrade_nodes 一遍或逐个 id 经主键，再核对三次发起都答 200、中位数在本机两轮的三倍之内；带 -v 打出各段（P1 设计 7.1，决定 232、236）
+	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
 test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docker）
