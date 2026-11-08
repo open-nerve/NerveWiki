@@ -25,6 +25,7 @@ type Changeset struct {
 	Renames     bool
 	Moves       bool
 	IngestCount int32
+	UpgradeID   *uuid.UUID
 }
 
 type ChangesetItem struct {
@@ -132,4 +133,20 @@ type PageSearchQueue struct {
 type PageSearchTag struct {
 	NotebookID uuid.UUID
 	Prefix     string
+}
+
+type UpgradeNode struct {
+	UpgradeID    uuid.UUID
+	NodeID       uuid.UUID
+	NotebookID   uuid.UUID
+	Baseline     bool
+	Kind         string
+	ParentID     *uuid.UUID
+	Name         *string
+	SortOrder    *float64
+	Revision     *int32
+	ContentHash  []byte
+	ByteSize     *int32
+	Wanted       *int32
+	AcceptedHash []byte
 }

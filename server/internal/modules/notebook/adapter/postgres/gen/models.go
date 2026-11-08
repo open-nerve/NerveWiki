@@ -24,6 +24,10 @@ type Notebook struct {
 	DeletedAt       *time.Time
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 }
 
 type NotebookAuditEvent struct {

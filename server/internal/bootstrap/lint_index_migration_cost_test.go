@@ -157,16 +157,26 @@ func lintSourcesMigrator(t *testing.T, pool *pgxpool.Pool) *postgres.Migrator {
 // shared application seed on the current schema for its other consumers.
 func lintMigrationDropIngest(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	// Restore the older compression policy through the real Down54 first.
-	// Down does not rewrite the seed app's existing content.
-	if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != 54 {
-		t.Fatalf("legacy migration setup version=%d, want 54 before Down", version)
-	}
-	m54 := lintCostMigrator(t, pool, 54)
-	r54, err54 := m54.Down(t.Context())
-	close54Err := m54.Close()
-	if err54 != nil || close54Err != nil || r54 == nil || r54.Version != 54 || r54.Source != "00054_page_content_compression.sql" {
-		t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only compression migration 54", r54, err54, close54Err)
+	// Undo M11's upgrade columns and baseline (56, 55), then restore the
+	// older compression policy (54), each through its real Down, newest
+	// first. Down does not rewrite the seed app's existing content.
+	for _, down := range []struct {
+		version int
+		source  string
+	}{
+		{56, "00056_page_upgrade_nodes.sql"},
+		{55, "00055_notebook_notebooks_upgrade.sql"},
+		{54, "00054_page_content_compression.sql"},
+	} {
+		if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != down.version {
+			t.Fatalf("legacy migration setup version=%d, want %d before Down", version, down.version)
+		}
+		m := lintCostMigrator(t, pool, int64(down.version))
+		r, err := m.Down(t.Context())
+		closeErr := m.Close()
+		if err != nil || closeErr != nil || r == nil || r.Version != int64(down.version) || r.Source != down.source {
+			t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only migration %d", r, err, closeErr, down.version)
+		}
 	}
 	if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != 53 {
 		t.Fatalf("legacy migration setup version=%d, want 53 before Down", version)

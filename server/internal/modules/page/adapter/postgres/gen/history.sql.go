@@ -739,7 +739,7 @@ WITH touched AS (
 ), changed AS (
     SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
         x.trimmed, x.ingest_count, x.deleted_at
-    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count, upgrade_id FROM changesets WHERE id = t.changeset_id LIMIT 1) x
 )
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
     c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
@@ -835,7 +835,7 @@ SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created
     c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at
 FROM changesets marked
 CROSS JOIN LATERAL (
-    SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets
+    SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count, upgrade_id FROM changesets
     WHERE id = marked.id AND deleted_at IS NULL
       AND ($1::text IS NULL OR client = $1::text)
       AND (NOT $2::boolean OR client LIKE 'mcp:%')
@@ -1013,7 +1013,7 @@ WITH touched AS (
 ), changed AS (
     SELECT x.id, x.notebook_id, x.kind, x.reverts_id, x.client, x.message, x.created_by_id, x.created_at, x.updated_at,
         x.trimmed, x.ingest_count, x.deleted_at
-    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count FROM changesets WHERE id = t.changeset_id LIMIT 1) x
+    FROM touched t CROSS JOIN LATERAL (SELECT id, notebook_id, kind, client, message, created_by_id, created_at, updated_at, deleted_at, reverts_id, trimmed, renames, moves, ingest_count, upgrade_id FROM changesets WHERE id = t.changeset_id LIMIT 1) x
 )
 SELECT c.id, c.notebook_id, c.kind, c.reverts_id, c.client, c.message, c.created_by_id, c.created_at, c.updated_at,
     c.trimmed, c.ingest_count, v.kind AS reverts_kind, v.created_by_id AS reverts_by, v.created_at AS reverts_at

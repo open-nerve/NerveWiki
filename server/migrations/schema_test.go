@@ -253,6 +253,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"changesets_reverts_check c",
 		"changesets_reverts_id_idx iw",
 		"changesets_trimmed_idx iw",
+		"changesets_upgrade_id_idx iw",
 		"edit_sessions_client_check c",
 		"edit_sessions_ended_by_id_fkey f a",
 		"edit_sessions_ended_check c",
@@ -320,6 +321,8 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"notebooks_pkey p",
 		"notebooks_source_root_check c",
 		"notebooks_updated_by_id_fkey f a",
+		"notebooks_upgrade_by_id_fkey f a",
+		"notebooks_upgrade_check c",
 		"notebooks_workspace_access_check c",
 		"notebooks_workspace_id_fkey f r",
 		"notebooks_workspace_id_idx i",
@@ -411,6 +414,13 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"transfer_jobs_state_idx iw",
 		"transfer_jobs_target_check c",
 		"transfer_jobs_writing_key iuw",
+		"upgrade_nodes_baseline_check c",
+		"upgrade_nodes_kind_check c",
+		"upgrade_nodes_notebook_id_idx i",
+		"upgrade_nodes_page_check c",
+		"upgrade_nodes_pkey iu",
+		"upgrade_nodes_pkey p",
+		"upgrade_nodes_wanted_check c",
 		"users_display_name_check c",
 		"users_email_check c",
 		"users_email_key iu",
@@ -481,6 +491,10 @@ func checkedRows(t *testing.T, pool *pgxpool.Pool) {
 			"created_at, updated_at) VALUES ('0199a2b4-0000-7000-8000-000000000008', '0199a2b4-0000-7000-8000-000000000005', '" +
 			strings.Repeat("名", 85) + "', 'editor', 'llm_wiki', '0199a2b4-0000-7000-8000-000000000010', " + user + ", " + user + ", now(), now())",
 		"UPDATE notebooks SET ownerless_since = now(), former_owner_id = " + user,
+		// A standard notebook being upgraded, its four columns set together (M11/P1 design 3.2).
+		"INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at, upgrade_id, upgrade_state, " +
+			"upgrade_by_id, upgrade_at) VALUES ('0199a2b4-0000-7000-8000-000000000019', '0199a2b4-0000-7000-8000-000000000005', 'Upgrading', " +
+			user + ", " + user + ", now(), now(), '0199a2b4-0000-7000-8000-000000000020', 'upgrading', " + user + ", now())",
 		"INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
 			"('0199a2b4-0000-7000-8000-000000000009', '0199a2b4-0000-7000-8000-000000000008', " + user + ", 'reader', " +
 			user + ", " + user + ", now(), now())",
@@ -529,6 +543,17 @@ func checkedRows(t *testing.T, pool *pgxpool.Pool) {
 			"('0199a2b4-0000-7000-8000-000000000011', '0199a2b4-0000-7000-8000-000000000008', false)",
 		// The notebook's prefix of the search's keys.
 		"INSERT INTO page_search_tags (notebook_id, prefix) VALUES ('0199a2b4-0000-7000-8000-000000000008', '0#')",
+		// The upgrade's baseline: a page at the root and an attachment under it, and the protected row of the source
+		// root its start created, a page at the root (M11/P1 design 3.2).
+		"INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision, " +
+			"content_hash, byte_size, wanted, accepted_hash) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000020', '0199a2b4-0000-7000-8000-000000000021', '0199a2b4-0000-7000-8000-000000000019', true, " +
+			"'page', NULL, 'Guide', 0, 1, sha256('x'), 1, 10000, sha256('x')), " +
+			"('0199a2b4-0000-7000-8000-000000000020', '0199a2b4-0000-7000-8000-000000000022', '0199a2b4-0000-7000-8000-000000000019', true, " +
+			"'asset', '0199a2b4-0000-7000-8000-000000000021', 'a.png', 1, NULL, NULL, NULL, NULL, NULL), " +
+			"('0199a2b4-0000-7000-8000-000000000020', '0199a2b4-0000-7000-8000-000000000023', '0199a2b4-0000-7000-8000-000000000019', false, " +
+			"'page', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
+		"UPDATE changesets SET upgrade_id = '0199a2b4-0000-7000-8000-000000000020'",
 		// An export of the notebook, running.
 		"INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, progress_done, progress_total, " +
 			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +
@@ -603,6 +628,19 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a third mode", "UPDATE notebooks SET mode = 'upgrading'", "notebooks_mode_check"},
 		{"an upper-case mode", "UPDATE notebooks SET mode = 'LLM_WIKI'", "notebooks_mode_check"},
 		{"an LLM Wiki without its source root", "UPDATE notebooks SET source_root_id = NULL", "notebooks_source_root_check"},
+		// An upgrade's four columns (M11/P1 design 3.2): each conjunct alone broken, each = both ways.
+		{"an upgrade's state without its id", "UPDATE notebooks SET upgrade_id = NULL, upgrade_by_id = NULL, upgrade_at = NULL " +
+			"WHERE upgrade_id IS NOT NULL", "notebooks_upgrade_check"},
+		{"an upgrade without its state", "UPDATE notebooks SET upgrade_state = NULL WHERE upgrade_id IS NOT NULL", "notebooks_upgrade_check"},
+		{"an upgrade without its initiator", "UPDATE notebooks SET upgrade_by_id = NULL WHERE upgrade_id IS NOT NULL", "notebooks_upgrade_check"},
+		{"an initiator alone", "UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_at = NULL WHERE upgrade_id IS NOT NULL",
+			"notebooks_upgrade_check"},
+		{"a start alone", "UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL WHERE upgrade_id IS NOT NULL",
+			"notebooks_upgrade_check"},
+		{"an upgrade without its start", "UPDATE notebooks SET upgrade_at = NULL WHERE upgrade_id IS NOT NULL", "notebooks_upgrade_check"},
+		{"an upgrade's unknown state", "UPDATE notebooks SET upgrade_state = 'approved' WHERE upgrade_id IS NOT NULL", "notebooks_upgrade_check"},
+		{"an LLM Wiki upgrading", "UPDATE notebooks SET upgrade_id = gen_random_uuid(), upgrade_state = 'upgrading', upgrade_by_id = " +
+			"created_by_id, upgrade_at = now() WHERE mode = 'llm_wiki'", "notebooks_upgrade_check"},
 		{"a notebook's fourth role", "UPDATE notebook_members SET role = 'owner'", "notebook_members_role_check"},
 		{"a notebook's upper-case role", "UPDATE notebook_members SET role = 'Reader'", "notebook_members_role_check"},
 		{"a third kind of node", "UPDATE nodes SET kind = 'folder'", "nodes_kind_check"},
@@ -732,6 +770,38 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a running export's bytes", "UPDATE transfer_jobs SET result_bytes = 1", "transfer_jobs_result_bytes_check"},
 		{"an archive of -1 bytes", "UPDATE transfer_jobs SET state = 'succeeded', finished_at = now(), report = '{}', result_bytes = -1",
 			"transfer_jobs_result_bytes_check"},
+		// An upgrade's baseline (M11/P1 design 3.2): each conjunct alone broken, each = both ways; the baseline page,
+		// the baseline attachment and the protected row each broken where the shape is theirs.
+		{"a baseline row of a folder", "UPDATE upgrade_nodes SET kind = 'folder' WHERE kind = 'asset'", "upgrade_nodes_kind_check"},
+		{"a baseline row without its name", "UPDATE upgrade_nodes SET name = NULL, sort_order = NULL WHERE kind = 'asset'",
+			"upgrade_nodes_baseline_check"},
+		{"a protected row with a name", "UPDATE upgrade_nodes SET name = 'raw', sort_order = 0 WHERE NOT baseline",
+			"upgrade_nodes_baseline_check"},
+		{"a name without its order", "UPDATE upgrade_nodes SET sort_order = NULL WHERE kind = 'asset'", "upgrade_nodes_baseline_check"},
+		{"an order without its name", "UPDATE upgrade_nodes SET sort_order = 0 WHERE NOT baseline", "upgrade_nodes_baseline_check"},
+		{"a protected attachment", "UPDATE upgrade_nodes SET kind = 'asset' WHERE NOT baseline", "upgrade_nodes_baseline_check"},
+		{"a protected row under a page", "UPDATE upgrade_nodes SET parent_id = gen_random_uuid() WHERE NOT baseline",
+			"upgrade_nodes_baseline_check"},
+		{"a baseline page without its version", "UPDATE upgrade_nodes SET revision = NULL, content_hash = NULL, byte_size = NULL, " +
+			"wanted = NULL, accepted_hash = NULL WHERE baseline AND kind = 'page'", "upgrade_nodes_page_check"},
+		{"a baseline attachment with a version", "UPDATE upgrade_nodes SET revision = 1, content_hash = sha256('x'), byte_size = 1, " +
+			"wanted = 0, accepted_hash = sha256('x') WHERE kind = 'asset'", "upgrade_nodes_page_check"},
+		{"a baseline page without its hash", "UPDATE upgrade_nodes SET content_hash = NULL WHERE baseline AND kind = 'page'",
+			"upgrade_nodes_page_check"},
+		{"a baseline page without its size", "UPDATE upgrade_nodes SET byte_size = NULL WHERE baseline AND kind = 'page'",
+			"upgrade_nodes_page_check"},
+		{"a baseline page without its wanted", "UPDATE upgrade_nodes SET wanted = NULL WHERE baseline AND kind = 'page'",
+			"upgrade_nodes_page_check"},
+		{"a baseline page without its accepted hash", "UPDATE upgrade_nodes SET accepted_hash = NULL WHERE baseline AND kind = 'page'",
+			"upgrade_nodes_page_check"},
+		{"a protected row with a hash", "UPDATE upgrade_nodes SET content_hash = sha256('x') WHERE NOT baseline", "upgrade_nodes_page_check"},
+		{"a protected row with a size", "UPDATE upgrade_nodes SET byte_size = 1 WHERE NOT baseline", "upgrade_nodes_page_check"},
+		{"a protected row with a wanted", "UPDATE upgrade_nodes SET wanted = 0 WHERE NOT baseline", "upgrade_nodes_page_check"},
+		{"a protected row with an accepted hash", "UPDATE upgrade_nodes SET accepted_hash = sha256('x') WHERE NOT baseline",
+			"upgrade_nodes_page_check"},
+		{"a page wanting 10,001 targets", "UPDATE upgrade_nodes SET wanted = 10001 WHERE baseline AND kind = 'page'",
+			"upgrade_nodes_wanted_check"},
+		{"a page wanting -1 targets", "UPDATE upgrade_nodes SET wanted = -1 WHERE baseline AND kind = 'page'", "upgrade_nodes_wanted_check"},
 		// The writing jobs' columns (M8/P4 design 3.2): each check alone broken, the others kept.
 		{"an export's changeset", "UPDATE transfer_jobs SET changeset_id = gen_random_uuid()", "transfer_jobs_changeset_check"},
 		{"a restore without its changeset", "UPDATE transfer_jobs SET kind = 'trash_restore', root_id = gen_random_uuid()",
