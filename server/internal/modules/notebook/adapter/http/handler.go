@@ -12,6 +12,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -166,7 +167,18 @@ func notebookOf(v app.View) gen.Notebook {
 	}
 	return gen.Notebook{
 		ID: n.ID, WorkspaceID: n.WorkspaceID, Name: n.Name, WorkspaceAccess: gen.WorkspaceAccess(n.Access),
-		Mode: gen.NotebookMode(n.Mode), SourceRootID: sourceRoot, Role: gen.NotebookRole(v.Role), MemberCount: v.MemberCount,
-		CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
+		Mode: gen.NotebookMode(n.Mode), SourceRootID: sourceRoot, Upgrade: upgradeOf(n.Upgrade), Role: gen.NotebookRole(v.Role),
+		MemberCount: v.MemberCount, CreatedAt: n.CreatedAt, UpdatedAt: n.UpdatedAt,
 	}
+}
+
+// upgradeOf is a notebook's upgrade under way as the API shows it, null
+// for none (M11 design 4.5): every reader of the notebook sees it.
+func upgradeOf(u domain.Upgrade) nullable.Nullable[gen.NotebookUpgrade] {
+	if u.ID == (uuid.UUID{}) {
+		return nullable.NewNullNullable[gen.NotebookUpgrade]()
+	}
+	return nullable.NewNullableWithValue(gen.NotebookUpgrade{
+		ID: u.ID, State: gen.NotebookUpgradeState(u.State), StartedBy: u.By, StartedAt: u.At,
+	})
 }

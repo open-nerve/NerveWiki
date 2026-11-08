@@ -78,15 +78,15 @@ func (s *Store) LockNotebook(ctx context.Context, id uuid.UUID) (domain.Notebook
 }
 
 // ShareNotebook locks the notebook not deleted with id FOR SHARE, and
-// answers its mode and source root read under the lock, the zero id for
-// none: a page write's lock (notebook.NewNotebooks). No such notebook is
-// app.ErrNotFound.
-func (s *Store) ShareNotebook(ctx context.Context, id uuid.UUID) (domain.Mode, uuid.UUID, error) {
+// answers its mode, source root and upgrade under way read under the
+// lock, the zero id and the zero upgrade for none: a page write's lock
+// (notebook.NewNotebooks). No such notebook is app.ErrNotFound.
+func (s *Store) ShareNotebook(ctx context.Context, id uuid.UUID) (domain.Mode, uuid.UUID, domain.Upgrade, error) {
 	row, err := s.queries(ctx).ShareNotebook(ctx, id)
 	if err != nil {
-		return "", uuid.UUID{}, notFound("share notebook", err)
+		return "", uuid.UUID{}, domain.Upgrade{}, notFound("share notebook", err)
 	}
-	return domain.Mode(row.Mode), idOf(row.SourceRootID), nil
+	return domain.Mode(row.Mode), idOf(row.SourceRootID), upgradeOf(row.UpgradeID, row.UpgradeState, row.UpgradeByID, row.UpgradeAt), nil
 }
 
 // notebookOf is a row of the queries that read a notebook's columns: they
@@ -95,12 +95,23 @@ func notebookOf(r gen.FindNotebookRow) domain.Notebook {
 	n := domain.Notebook{
 		ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Access: shared.WorkspaceAccess(r.WorkspaceAccess),
 		CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Mode: domain.Mode(r.Mode), SourceRootID: idOf(r.SourceRootID),
+		Upgrade: upgradeOf(r.UpgradeID, r.UpgradeState, r.UpgradeByID, r.UpgradeAt),
 	}
 	// notebooks_ownerless_check sets both or neither.
 	if r.OwnerlessSince != nil {
 		n.Ownerless = &domain.Ownerless{Since: *r.OwnerlessSince, FormerOwner: *r.FormerOwnerID}
 	}
 	return n
+}
+
+// upgradeOf is a notebook's four columns of its upgrade under way: the
+// zero upgrade for none, notebooks_upgrade_check setting the four
+// together.
+func upgradeOf(id *uuid.UUID, state *string, by *uuid.UUID, at *time.Time) domain.Upgrade {
+	if id == nil || state == nil || by == nil || at == nil {
+		return domain.Upgrade{}
+	}
+	return domain.Upgrade{ID: *id, State: domain.UpgradeState(*state), By: *by, At: *at}
 }
 
 // idOf is a nullable id column: the zero id for NULL.
@@ -148,6 +159,7 @@ func (s *Store) ListNotebooks(ctx context.Context, workspaceID, userID uuid.UUID
 			Notebook: domain.Notebook{
 				ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, Access: shared.WorkspaceAccess(r.WorkspaceAccess),
 				CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, Mode: domain.Mode(r.Mode), SourceRootID: idOf(r.SourceRootID),
+				Upgrade: upgradeOf(r.UpgradeID, r.UpgradeState, r.UpgradeByID, r.UpgradeAt),
 			},
 			Explicit:    role(r.Role),
 			MemberCount: int(r.MemberCount),

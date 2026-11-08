@@ -2136,10 +2136,28 @@ export interface components {
          */
         WorkspaceAccess: "none" | "viewer" | "editor";
         /**
-         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode; see the notebook's upgrade.
          * @enum {string}
          */
         NotebookMode: "standard" | "llm_wiki";
+        /**
+         * @description The state of a notebook's upgrade under way: upgrading while its initiator's agent rearranges it, reviewing once submitted, rolling_back while it is put back as it was when it started.
+         * @enum {string}
+         */
+        NotebookUpgradeState: "upgrading" | "reviewing" | "rolling_back";
+        /** @description A notebook's upgrade to an LLM Wiki under way, as each reader of the notebook sees it; its admins read the rest with getUpgrade. */
+        NotebookUpgrade: {
+            /** Format: uuid */
+            id: string;
+            state: components["schemas"]["NotebookUpgradeState"];
+            /**
+             * Format: uuid
+             * @description The account that started it.
+             */
+            started_by: string;
+            /** Format: date-time */
+            started_at: string;
+        };
         /**
          * @description A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
          * @enum {string}
@@ -2159,6 +2177,8 @@ export interface components {
              * @description An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
              */
             source_root_id: string | null;
+            /** @description The notebook's upgrade to an LLM Wiki under way, null for none. Whoever reads the notebook sees it: its content is read-only meanwhile, but for its initiator's MCP writes while upgrading. */
+            upgrade: components["schemas"]["NotebookUpgrade"] | null;
             role: components["schemas"]["NotebookRole"];
             /** @description How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks"). */
             member_count: number;
@@ -3674,6 +3694,8 @@ export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type WorkspaceAccess = components['schemas']['WorkspaceAccess'];
 export type NotebookMode = components['schemas']['NotebookMode'];
+export type NotebookUpgradeState = components['schemas']['NotebookUpgradeState'];
+export type NotebookUpgrade = components['schemas']['NotebookUpgrade'];
 export type NotebookRole = components['schemas']['NotebookRole'];
 export type Notebook = components['schemas']['Notebook'];
 export type NotebookList = components['schemas']['NotebookList'];

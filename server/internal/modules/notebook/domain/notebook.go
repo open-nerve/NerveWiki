@@ -44,6 +44,9 @@ type Notebook struct {
 	// id, and M11 may set it before the mode.
 	Mode         Mode
 	SourceRootID uuid.UUID
+	// Upgrade is its upgrade to an LLM Wiki under way, the zero value for
+	// none (M11 design 4.5): whoever reads the notebook sees it.
+	Upgrade Upgrade
 }
 
 // Draft is a new notebook's checked values.

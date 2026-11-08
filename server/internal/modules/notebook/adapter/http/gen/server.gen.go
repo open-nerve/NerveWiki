@@ -98,6 +98,27 @@ func (e NotebookRole) Valid() bool {
 	}
 }
 
+// Defines values for NotebookUpgradeState.
+const (
+	NotebookUpgradeStateReviewing   NotebookUpgradeState = "reviewing"
+	NotebookUpgradeStateRollingBack NotebookUpgradeState = "rolling_back"
+	NotebookUpgradeStateUpgrading   NotebookUpgradeState = "upgrading"
+)
+
+// Valid indicates whether the value is a known member of the NotebookUpgradeState enum.
+func (e NotebookUpgradeState) Valid() bool {
+	switch e {
+	case NotebookUpgradeStateReviewing:
+		return true
+	case NotebookUpgradeStateRollingBack:
+		return true
+	case NotebookUpgradeStateUpgrading:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAccess.
 const (
 	WorkspaceAccessEditor WorkspaceAccess = "editor"
@@ -134,7 +155,7 @@ type Notebook struct {
 	// MemberCount How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks").
 	MemberCount int `json:"member_count"`
 
-	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode; see the notebook's upgrade.
 	Mode NotebookMode `json:"mode"`
 	Name string       `json:"name"`
 
@@ -144,6 +165,9 @@ type Notebook struct {
 	// SourceRootID An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
 	SourceRootID nullable.Nullable[uuid.UUID] `json:"source_root_id"`
 	UpdatedAt    time.Time                    `json:"updated_at"`
+
+	// Upgrade The notebook's upgrade to an LLM Wiki under way, null for none. Whoever reads the notebook sees it: its content is read-only meanwhile, but for its initiator's MCP writes while upgrading.
+	Upgrade nullable.Nullable[NotebookUpgrade] `json:"upgrade"`
 
 	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 	WorkspaceAccess WorkspaceAccess `json:"workspace_access"`
@@ -179,7 +203,7 @@ type NotebookAuditEventPage struct {
 
 // NotebookCreate A new notebook; its workspace access is none, its mode standard and its template's language en when absent.
 type NotebookCreate struct {
-	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+	// Mode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode; see the notebook's upgrade.
 	Mode *NotebookMode `json:"mode,omitempty"`
 
 	// Name 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported.
@@ -237,7 +261,7 @@ type NotebookMemberUpdate struct {
 	Role NotebookRole `json:"role"`
 }
 
-// NotebookMode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+// NotebookMode A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode; see the notebook's upgrade.
 type NotebookMode string
 
 // NotebookName 1–255 bytes after the surrounding blanks are trimmed and the text is in NFC; none of / \ : * ? " < > | # ^ [ ] nor control characters; not starting or ending with a dot; no name Windows reserves (CON, COM1, …). It is the folder's name when the notebook is exported.
@@ -254,6 +278,21 @@ type NotebookUpdate struct {
 	// WorkspaceAccess How open a notebook is to its workspace: the role it gives the workspace's admins and members who are not its members (viewer gives reader, editor gives editor; none gives nothing). Guests have their own membership's role alone.
 	WorkspaceAccess *WorkspaceAccess `json:"workspace_access,omitempty"`
 }
+
+// NotebookUpgrade A notebook's upgrade to an LLM Wiki under way, as each reader of the notebook sees it; its admins read the rest with getUpgrade.
+type NotebookUpgrade struct {
+	ID        uuid.UUID `json:"id"`
+	StartedAt time.Time `json:"started_at"`
+
+	// StartedBy The account that started it.
+	StartedBy uuid.UUID `json:"started_by"`
+
+	// State The state of a notebook's upgrade under way: upgrading while its initiator's agent rearranges it, reviewing once submitted, rolling_back while it is put back as it was when it started.
+	State NotebookUpgradeState `json:"state"`
+}
+
+// NotebookUpgradeState The state of a notebook's upgrade under way: upgrading while its initiator's agent rearranges it, reviewing once submitted, rolling_back while it is put back as it was when it started.
+type NotebookUpgradeState string
 
 // OwnerlessNotebook A notebook without an active admin, as its workspace's admins see it.
 type OwnerlessNotebook struct {

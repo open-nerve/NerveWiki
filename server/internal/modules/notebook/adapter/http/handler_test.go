@@ -49,7 +49,7 @@ func view(role shared.NotebookRole) app.View {
 }
 
 const engineeringJSON = `{"created_at":"2026-10-02T10:00:00Z","id":"0199a2b4-0000-7000-8000-00000000000b","member_count":2,` +
-	`"mode":"standard","name":"Engineering","role":"%s","source_root_id":null,"updated_at":"2026-10-02T10:00:00Z",` +
+	`"mode":"standard","name":"Engineering","role":"%s","source_root_id":null,"updated_at":"2026-10-02T10:00:00Z","upgrade":null,` +
 	`"workspace_access":"viewer","workspace_id":"0199a2b4-0000-7000-8000-00000000000a"}`
 
 func engineering(role string) string { return strings.Replace(engineeringJSON, "%s", role, 1) }
@@ -59,11 +59,13 @@ func engineering(role string) string { return strings.Replace(engineeringJSON, "
 func sourceRootID() uuid.UUID { return uuid.MustParse("0199a2b4-0000-7000-8000-00000000000c") }
 
 // The fake use cases record what they got and answer err, or a view: an
-// LLM Wiki's when wiki is set.
+// LLM Wiki's when wiki is set; one being upgraded, upgrade, when it is not
+// the zero upgrade.
 type fakeUseCase struct {
-	got  []any
-	err  error
-	wiki bool
+	got     []any
+	err     error
+	wiki    bool
+	upgrade domain.Upgrade
 }
 
 func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, error) {
@@ -75,6 +77,7 @@ func (f *fakeUseCase) answer(role shared.NotebookRole, got ...any) (app.View, er
 	if f.wiki {
 		v.Notebook.Mode, v.Notebook.SourceRootID = domain.ModeLLMWiki, sourceRootID()
 	}
+	v.Notebook.Upgrade = f.upgrade
 	return v, nil
 }
 
@@ -224,6 +227,20 @@ func TestAnLLMWikiIsAnsweredWithItsSourceRoot(t *testing.T) {
 	f.get.wiki = true
 	want := strings.NewReplacer(`"mode":"standard"`, `"mode":"llm_wiki"`,
 		`"source_root_id":null`, `"source_root_id":"`+sourceRootID().String()+`"`).Replace(engineering("editor")) + "\n"
+	if status, body := call(t, f.serve(t), http.MethodGet, notebookPath, ""); status != http.StatusOK || body != want {
+		t.Errorf("GET = %d %s, want 200 %s", status, body, want)
+	}
+}
+
+// A notebook being upgraded is answered with its upgrade under way, its
+// id, state, initiator and start, to whoever reads it (M11/P1 design 3.3).
+func TestAnUpgradingNotebookIsAnsweredWithItsUpgrade(t *testing.T) {
+	f := newFakes(nil)
+	f.get.upgrade = domain.Upgrade{ID: uuid.MustParse("0199a2b4-0000-7000-8000-00000000000d"), State: domain.UpgradeRollingBack,
+		By: uuid.MustParse("0199a2b4-0000-7000-8000-000000000001"), At: time.Date(2026, 11, 8, 9, 30, 0, 0, time.UTC)}
+	want := strings.Replace(engineering("reader"), `"upgrade":null`, `"upgrade":{"id":"0199a2b4-0000-7000-8000-00000000000d",`+
+		`"started_at":"2026-11-08T09:30:00Z","started_by":"0199a2b4-0000-7000-8000-000000000001","state":"rolling_back"}`, 1)
+	want = strings.Replace(want, `"role":"reader"`, `"role":"editor"`, 1) + "\n"
 	if status, body := call(t, f.serve(t), http.MethodGet, notebookPath, ""); status != http.StatusOK || body != want {
 		t.Errorf("GET = %d %s, want 200 %s", status, body, want)
 	}

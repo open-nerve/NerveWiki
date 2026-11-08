@@ -11,6 +11,57 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
+// Each of the port's state reads answers a notebook's upgrade under way,
+// set by SQL as an upgrade's start sets it, and none once it is cleared
+// (M11/P1 design 3.3): StateOf unlocked, ShareState and LockState under
+// their locks, a unit's.
+func TestTheStatesAnswerTheirUpgrade(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	nbs := notebook.NewNotebooks(f.pool)
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	want := notebook.Upgrade{ID: uuid.NewV7(), State: notebook.UpgradeUpgrading, By: f.bob, At: testNow()}
+	f.exec(t, "UPDATE notebooks SET upgrade_id = $2, upgrade_state = $3, upgrade_by_id = $4, upgrade_at = $5 WHERE id = $1",
+		f.eng, want.ID, string(want.State), want.By, want.At)
+	// states are the three reads' states of eng.
+	states := func() map[string]notebook.State {
+		t.Helper()
+		got := map[string]notebook.State{}
+		s, ok, err := nbs.StateOf(ctx, f.eng)
+		if err != nil || !ok {
+			t.Fatalf("StateOf(eng) = %+v, %v, %v", s, ok, err)
+		}
+		got["StateOf"] = s
+		for name, read := range map[string]func(context.Context, uuid.UUID) (notebook.State, bool, error){
+			"ShareState": nbs.ShareState, "LockState": nbs.LockState,
+		} {
+			if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+				s, ok, err := read(ctx, f.eng)
+				if err == nil && !ok {
+					t.Errorf("%s(eng) found none", name)
+				}
+				got[name] = s
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return got
+	}
+	for name, s := range states() {
+		u := s.Upgrade
+		if s.Mode != notebook.ModeStandard || u.ID != want.ID || u.State != want.State || u.By != want.By || !u.At.Equal(want.At) {
+			t.Errorf("%s(eng) = %+v, want standard with the upgrade %+v", name, s, want)
+		}
+	}
+	f.exec(t, "UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL WHERE id = $1", f.eng)
+	for name, s := range states() {
+		if s != (notebook.State{Mode: notebook.ModeStandard}) {
+			t.Errorf("%s(eng) with no upgrade = %+v, want standard with none", name, s)
+		}
+	}
+}
+
 // The page module's port on a real database (M4/P1 design 3.3).
 func TestNotebooksFindAndLock(t *testing.T) {
 	ctx := context.Background()

@@ -113,7 +113,7 @@ func (q *Queries) LockHoldings(ctx context.Context, arg LockHoldingsParams) ([]L
 
 const lockOwnerlessOf = `-- name: LockOwnerlessOf :many
 SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
-    source_root_id
+    source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at
 FROM notebooks
 WHERE workspace_id = $1 AND former_owner_id = $2 AND deleted_at IS NULL
 ORDER BY id
@@ -136,10 +136,14 @@ type LockOwnerlessOfRow struct {
 	FormerOwnerID   *uuid.UUID
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 }
 
 // The ownerless notebooks not deleted of the workspace whose former owner the account is, locked FOR NO KEY
-// UPDATE by id: its restore returns them (M3 design 4).
+// UPDATE by id: its restore returns them (M3 design 4). With its upgrade under way (M11 design 4.5).
 func (q *Queries) LockOwnerlessOf(ctx context.Context, arg LockOwnerlessOfParams) ([]LockOwnerlessOfRow, error) {
 	rows, err := q.db.Query(ctx, lockOwnerlessOf, arg.WorkspaceID, arg.FormerOwnerID)
 	if err != nil {
@@ -160,6 +164,10 @@ func (q *Queries) LockOwnerlessOf(ctx context.Context, arg LockOwnerlessOfParams
 			&i.FormerOwnerID,
 			&i.Mode,
 			&i.SourceRootID,
+			&i.UpgradeID,
+			&i.UpgradeState,
+			&i.UpgradeByID,
+			&i.UpgradeAt,
 		); err != nil {
 			return nil, err
 		}
