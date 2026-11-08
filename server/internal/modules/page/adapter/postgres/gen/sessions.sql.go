@@ -140,6 +140,26 @@ func (q *Queries) DeleteExpiredSessionsOf(ctx context.Context, arg DeleteExpired
 	return result.RowsAffected(), nil
 }
 
+const deleteExpiredSessionsOfNotebook = `-- name: DeleteExpiredSessionsOfNotebook :execrows
+DELETE FROM edit_sessions WHERE notebook_id = $1 AND expires_at <= $2
+`
+
+type DeleteExpiredSessionsOfNotebookParams struct {
+	NotebookID uuid.UUID
+	Now        time.Time
+}
+
+// An upgrade's start's first look at the sessions (M11 design 4.4 step 7), under the notebook's row lock: the rows
+// expired at now go, tombstones among them, as an opening's first step does for its page (DeleteExpiredSessionsOf),
+// so that a heartbeat that read an earlier time finds no row to keep alive.
+func (q *Queries) DeleteExpiredSessionsOfNotebook(ctx context.Context, arg DeleteExpiredSessionsOfNotebookParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteExpiredSessionsOfNotebook, arg.NotebookID, arg.Now)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteNodeSessions = `-- name: DeleteNodeSessions :many
 DELETE FROM edit_sessions WHERE node_id = ANY($1::uuid[])
 RETURNING id, node_id, notebook_id, user_id, client, changeset_id, revision, created_at, expires_at, ended_reason,
@@ -428,6 +448,46 @@ func (q *Queries) HeartbeatSession(ctx context.Context, arg HeartbeatSessionPara
 		&i.EndedAt,
 	)
 	return i, err
+}
+
+const liveSessionsOfNotebook = `-- name: LiveSessionsOfNotebook :many
+SELECT node_id, user_id, count(*) OVER () AS total
+FROM edit_sessions
+WHERE notebook_id = $1 AND ended_reason IS NULL AND expires_at > $2
+ORDER BY node_id, created_at, id
+LIMIT 100
+`
+
+type LiveSessionsOfNotebookParams struct {
+	NotebookID uuid.UUID
+	Now        time.Time
+}
+
+type LiveSessionsOfNotebookRow struct {
+	NodeID uuid.UUID
+	UserID uuid.UUID
+	Total  int64
+}
+
+// The sessions alive at now in the notebook, the first 100 by page, and how many there are.
+func (q *Queries) LiveSessionsOfNotebook(ctx context.Context, arg LiveSessionsOfNotebookParams) ([]LiveSessionsOfNotebookRow, error) {
+	rows, err := q.db.Query(ctx, liveSessionsOfNotebook, arg.NotebookID, arg.Now)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LiveSessionsOfNotebookRow
+	for rows.Next() {
+		var i LiveSessionsOfNotebookRow
+		if err := rows.Scan(&i.NodeID, &i.UserID, &i.Total); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lockSession = `-- name: LockSession :one
