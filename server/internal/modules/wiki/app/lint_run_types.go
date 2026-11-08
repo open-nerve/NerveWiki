@@ -45,8 +45,11 @@ type RunOutput struct {
 	Stats  RunStats
 }
 
+// Logger is the module's log: lint's runs write info lines, an upgrade's
+// start info and warn lines (M11/P1 design 3.23).
 type Logger interface {
 	InfoContext(context.Context, string, ...any)
+	WarnContext(context.Context, string, ...any)
 }
 
 type RunEventKind uint8

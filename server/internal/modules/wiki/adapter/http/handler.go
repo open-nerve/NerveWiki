@@ -3,6 +3,7 @@ package httpadapter
 
 import (
 	"context"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/adapter/http/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/app"
@@ -15,9 +16,15 @@ type LintUseCase interface {
 	Execute(context.Context, app.LintScope, app.LintQuery) (domain.LintResult, error)
 }
 
+// UpgradeUseCases are an upgrade's start and read (M11/P1 design 3.14).
+type UpgradeUseCases interface {
+	StartUpgrade(ctx context.Context, id uuid.UUID, locale string) (app.UpgradeView, error)
+	GetUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+}
+
 // Register mounts the generated strict routes behind the platform's middlewares.
-func Register(router *httpserver.Router, api *httpserver.API, lint LintUseCase) {
-	strict := gen.NewStrictHandlerWithOptions(handler{lint: lint}, nil, gen.StrictHTTPServerOptions{
+func Register(router *httpserver.Router, api *httpserver.API, lint LintUseCase, upgrades UpgradeUseCases) {
+	strict := gen.NewStrictHandlerWithOptions(handler{lint: lint, upgrades: upgrades}, nil, gen.StrictHTTPServerOptions{
 		RequestErrorHandlerFunc: api.Errors.BodyError, ResponseErrorHandlerFunc: api.Errors.Write,
 	})
 	var middlewares []gen.MiddlewareFunc
@@ -29,7 +36,10 @@ func Register(router *httpserver.Router, api *httpserver.API, lint LintUseCase) 
 	})
 }
 
-type handler struct{ lint LintUseCase }
+type handler struct {
+	lint     LintUseCase
+	upgrades UpgradeUseCases
+}
 
 func (h handler) GetLint(ctx context.Context, req gen.GetLintRequestObject) (gen.GetLintResponseObject, error) {
 	result, err := h.lint.Execute(ctx, app.LintScope{NotebookID: req.NotebookID}, app.LintQuery{})

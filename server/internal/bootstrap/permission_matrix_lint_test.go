@@ -11,7 +11,7 @@ import (
 func TestLintMatrixTargets(t *testing.T) {
 	contract := apitest.Load(t)
 	seed := newSeeded().in(t)
-	rows := matrixRows()
+	rows := coveredMatrixRows()
 	t.Run("actual-rows", func(t *testing.T) {
 		var found []string
 		for _, row := range rows {

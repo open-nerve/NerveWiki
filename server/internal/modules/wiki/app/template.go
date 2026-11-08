@@ -3,10 +3,12 @@ package app
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // Creation is a notebook being created, as the composition root converts
@@ -97,4 +99,47 @@ func (t *Template) NotebookCreated(ctx context.Context, c Creation) (uuid.UUID, 
 		}
 	}
 	return root, nil
+}
+
+// SeedUpgrade writes, in one unit of the upgrade upgradeID, the pages of
+// locale's template whose title keys are among keys (raw, agents: the
+// ones the notebook lacks), new ids, parsed at start-up, at the root's
+// end; it answers the written ids by title key (M11/P1 design 3.14 step
+// 12). The changeset's message is the template's. A language there is no
+// template of, a key it has no page of, or a seed that answers another
+// count of pages is a defect: the start checked the language and names
+// only the template's keys.
+func (t *Template) SeedUpgrade(ctx context.Context, notebookID, upgradeID uuid.UUID, locale domain.Locale, client string,
+	at time.Time, keys []string) (map[string]uuid.UUID, error) {
+	pages, ok := t.parsed[locale]
+	if !ok {
+		return nil, fmt.Errorf("wiki: an upgrade of notebook %s in language %q, which has no template", notebookID, locale)
+	}
+	seed := Seed{NotebookID: notebookID, At: at, Client: client, Message: domain.TemplateMessage(locale), Upgrade: upgradeID}
+	var written []string
+	for _, p := range pages {
+		key := shared.TitleKey(p.Title)
+		if slices.Contains(keys, key) {
+			seed.Pages = append(seed.Pages, SeedPage{Title: p.Title, Content: p.Content, Parsed: p.parsed})
+			written = append(written, key)
+		}
+	}
+	if len(written) != len(keys) {
+		return nil, fmt.Errorf("wiki: an upgrade of notebook %s seeds %q, of which the template has %q", notebookID, keys, written)
+	}
+	if len(seed.Pages) == 0 {
+		return map[string]uuid.UUID{}, nil
+	}
+	ids, err := t.seeds.Seed(ctx, seed)
+	switch {
+	case err != nil:
+		return nil, err
+	case len(ids) != len(seed.Pages):
+		return nil, fmt.Errorf("wiki: the upgrade's seed of notebook %s answered %d ids for %d pages", notebookID, len(ids), len(seed.Pages))
+	}
+	out := make(map[string]uuid.UUID, len(ids))
+	for i, key := range written {
+		out[key] = ids[i]
+	}
+	return out, nil
 }

@@ -71,10 +71,11 @@ components:
             carries it.
         locks:
           description: >-
-            The edit locks linking.pages_locked names, one a page: each page
-            whose links a rename or move would write again and who edits it
-            (the caller themself when they edit it). No other code carries
-            it.
+            The edit locks linking.pages_locked and wiki.upgrade_pages_locked
+            name, one a page: each page whose links a rename or move would
+            write again, or that an upgrade could not start beside, and who
+            edits it (the caller themself when they edit it); at most 100, the
+            detail saying how many there are. No other code carries it.
           type: array
           items:
             $ref: "#/components/schemas/PageLock"

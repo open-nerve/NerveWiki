@@ -17,13 +17,15 @@ type Seeds interface {
 }
 
 // Seed is a template's unit: notebook, time, client, the changeset's
-// message, its pages in order.
+// message, its pages in order; and the upgrade it is written for, the zero
+// id for none, whose own unit it then is (M11/P1 design 3.14).
 type Seed struct {
 	NotebookID uuid.UUID
 	At         time.Time
 	Client     string
 	Message    string
 	Pages      []SeedPage
+	Upgrade    uuid.UUID
 }
 
 // SeedPage is a page of a seed: its id, the zero one for a new id, its

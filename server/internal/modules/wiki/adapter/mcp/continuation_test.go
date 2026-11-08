@@ -23,7 +23,7 @@ func lintRESTServer(t *testing.T, use LintUseCase) http.Handler {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
 	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: lintAuth{}})
-	httpadapter.Register(router, api, use)
+	httpadapter.Register(router, api, use, nil)
 	return router
 }
 

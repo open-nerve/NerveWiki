@@ -230,7 +230,7 @@ func newLintFixture(t *testing.T, options ...func(*lintFixture)) *lintFixture {
 		Cursors: lintCursors{f: f}, Paths: f, Snapshots: f, Authorizer: f, Clock: f, Runs: runs})
 	router := httpserver.NewRouter(log)
 	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: lintAuth{}})
-	httpadapter.Register(router, api, lint)
+	httpadapter.Register(router, api, lint, nil)
 	f.handler = lintHTTP{Handler: router, contract: apitest.Load(t)}
 	return f
 }

@@ -87,6 +87,7 @@ func TestUpgradeFreezeAnswersFirst(t *testing.T) {
 func TestUpgradeFreezeFollowsTheInitiatorsRole(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Notes")
+	tm.createPage(t, "alice", nb, "", "raw")
 	bob := tm.addNotebookMember(t, "alice", nb, "bob", "admin")
 	tm.upgrade(t, nb, "bob", "upgrading")
 	agent := tm.agent(t, "bob", nb)
@@ -136,6 +137,8 @@ func TestUpgradeFreezeLetsOnlyItsOwnWrites(t *testing.T) {
 			own := tm.newest(t, nb).ID
 			if state != "upgrading" {
 				tm.exec(t, "UPDATE notebooks SET upgrade_state = $2 WHERE id = $1", nb, state)
+				tm.exec(t, `UPDATE notebook_upgrades SET state = $2, ending = 'abandoned', rollback_job_id = gen_random_uuid()
+					WHERE id = (SELECT upgrade_id FROM notebooks WHERE id = $1)`, nb, state)
 			}
 			refused := cell{http.StatusConflict, "notebook.upgrading"}
 			tm.guarded(t, g, "bob reverts his rename", changesetRevert("bob", old), refused)

@@ -1093,7 +1093,15 @@ export const en = {
   "problem.notebook.not_llm_wiki": "This notebook is not an LLM Wiki.",
   "problem.notebook.upgrading":
     "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends.",
+  "problem.notebook.already_llm_wiki": "This notebook is already an LLM Wiki.",
   "problem.wiki.lint_rule_not_found": "This health check rule does not exist.",
+  "problem.wiki.upgrade_not_found": "This notebook has no upgrade under way.",
+  "problem.wiki.upgrade_pages_locked":
+    "Pages are being edited, so the upgrade cannot start: wait for their editors to leave, or have an admin unlock them.",
+  "problem.wiki.upgrade_title_taken":
+    "An attachment at the root is titled raw or AGENTS: rename it first, then start the upgrade.",
+  "problem.wiki.upgrade_stale_index":
+    "The link index is out of date: ask a server admin to run nervewiki reindex, then start the upgrade.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",

@@ -1,7 +1,7 @@
-# wiki 模块的健康检查；生成的 Go 代码在 server/internal/modules/wiki/adapter/http/gen。
+# wiki 模块的健康检查与升级；生成的 Go 代码在 server/internal/modules/wiki/adapter/http/gen。
 openapi: 3.1.0
 info:
-  title: Nerve Wiki health checks API
+  title: Nerve Wiki health checks and upgrade API
   version: v0
 paths:
   /api/v0/notebooks/{notebook_id}/lint:
@@ -79,6 +79,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LintPage"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: getUpgrade
+      tags: [wiki]
+      summary: The notebook's upgrade to an LLM Wiki under way, for its admins.
+      description: >-
+        The notebook's upgrade under way, upgrading, reviewing or rolling
+        back, with who started it and when, the source root it proposes,
+        the pages its start wrote and its baseline. Its admins can
+        (forbidden). A notebook that does not exist, is deleted, or that
+        the caller cannot see is notebook.not_found; one without an upgrade
+        under way is wiki.upgrade_not_found.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, wiki.upgrade_not_found]
+      responses:
+        "200":
+          description: The upgrade.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
+        default:
+          $ref: "#/components/responses/Problem"
+    post:
+      operationId: startUpgrade
+      tags: [wiki]
+      summary: >-
+        Starts upgrading a standard notebook to an LLM Wiki: records its
+        baseline, writes the AGENTS and raw pages it lacks, and freezes its
+        content but for its initiator's MCP writes.
+      description: >-
+        Its admins can (forbidden). The template's language is
+        template_locale, en when absent. A notebook that does not exist, is
+        deleted, or that the caller cannot see is notebook.not_found; an LLM
+        Wiki is notebook.already_llm_wiki; one with an upgrade under way,
+        another admin's start first among them, is notebook.upgrading; one
+        with an import, a restore or an undo queued or running is
+        transfer.busy; one with pages being edited is
+        wiki.upgrade_pages_locked, naming them; one whose root holds an
+        attachment titled raw or AGENTS is wiki.upgrade_title_taken. A start
+        that finds no capacity to compute the baseline, or that runs out of
+        time, is server_busy, with Retry-After: 1; one whose link index is
+        out of date is wiki.upgrade_stale_index. These checks occur in that
+        order. A page raw at the root becomes the proposed source root.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          validation_failed,
+          notebook.not_found,
+          forbidden,
+          notebook.already_llm_wiki,
+          notebook.upgrading,
+          transfer.busy,
+          wiki.upgrade_pages_locked,
+          wiki.upgrade_title_taken,
+          server_busy,
+          wiki.upgrade_stale_index,
+        ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpgradeStart"
+      responses:
+        "200":
+          description: The upgrade started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
         "503":
           $ref: "#/components/responses/Problem"
         default:
@@ -581,3 +658,138 @@ components:
             $ref: "#/components/schemas/LintInvalidSourcesItem"
         next_cursor:
           $ref: "#/components/schemas/LintNextCursor"
+    UpgradeStart:
+      type: object
+      additionalProperties: false
+      properties:
+        template_locale:
+          description: >-
+            The language of the pages the start writes, AGENTS and raw, when
+            the notebook lacks them; en when absent.
+          type: string
+          enum: [zh-CN, en]
+    UpgradeState:
+      description: >-
+        Where an upgrade is: upgrading while its initiator's agent rearranges
+        the notebook, reviewing once submitted, rolling_back while the
+        notebook is put back as it was when it started; approved and
+        rolled_back once it ended.
+      type: string
+      enum: [upgrading, reviewing, rolling_back, approved, rolled_back]
+    UpgradeEnding:
+      description: Why an upgrade rolls back, abandoned by an admin or rejected at its review.
+      type: string
+      enum: [abandoned, rejected]
+    UpgradeBaseline:
+      description: The notebook as the upgrade started, before the pages its start wrote.
+      type: object
+      additionalProperties: false
+      required: [nodes, pages, wanted]
+      properties:
+        nodes:
+          description: Its pages and attachments.
+          type: integer
+          minimum: 0
+        pages:
+          type: integer
+          minimum: 0
+        wanted:
+          description: The distinct pages its links lead to that do not exist yet.
+          allOf:
+            - $ref: "#/components/schemas/LintCount"
+    UpgradeRollbackLeft:
+      description: >-
+        Where a rollback ended short: the nodes not back in place, the pages
+        not written back, the new nodes still there. In pages not yet
+        written back, links the system rewrote may lead nowhere.
+      type: object
+      additionalProperties: false
+      required: [nodes, pages, created]
+      properties:
+        nodes:
+          type: integer
+          minimum: 0
+        pages:
+          type: integer
+          minimum: 0
+        created:
+          type: integer
+          minimum: 0
+    Upgrade:
+      description: A notebook's upgrade to an LLM Wiki, as its admins read it.
+      type: object
+      additionalProperties: false
+      required:
+        [
+          id,
+          notebook_id,
+          state,
+          started_by,
+          started_at,
+          source_root_id,
+          seeded_page_ids,
+          baseline,
+          submitted_by,
+          submitted_at,
+          rollback_job_id,
+          ending,
+          rollback_complete,
+          rollback_left,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        notebook_id:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/UpgradeState"
+        started_by:
+          $ref: "../common.yaml#/components/schemas/UserRef"
+        started_at:
+          type: string
+          format: date-time
+        source_root_id:
+          description: The source root the upgrade proposes, a page at the root titled raw.
+          type: string
+          format: uuid
+        seeded_page_ids:
+          description: The pages the start wrote, raw then AGENTS, those the notebook lacked.
+          type: array
+          maxItems: 2
+          items:
+            type: string
+            format: uuid
+        baseline:
+          $ref: "#/components/schemas/UpgradeBaseline"
+        submitted_by:
+          description: Who submitted it for review; null before.
+          oneOf:
+            - $ref: "../common.yaml#/components/schemas/UserRef"
+            - type: "null"
+        submitted_at:
+          description: When it was submitted for review; null before.
+          type: [string, "null"]
+          format: date-time
+        rollback_job_id:
+          description: The job that rolls it back; null when it does not roll back.
+          type: [string, "null"]
+          format: uuid
+        ending:
+          description: Why it rolls back; null when it does not.
+          anyOf:
+            - $ref: "#/components/schemas/UpgradeEnding"
+            - type: "null"
+        rollback_complete:
+          description: Whether its rollback put everything back, once the rollback ended; null before.
+          type: [boolean, "null"]
+        rollback_left:
+          description: >-
+            Where a rollback ended short: the nodes not back in place, the
+            pages not written back, the new nodes still there. In pages not
+            yet written back, links the system rewrote may lead nowhere.
+            null otherwise.
+          oneOf:
+            - $ref: "#/components/schemas/UpgradeRollbackLeft"
+            - type: "null"

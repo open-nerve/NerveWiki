@@ -158,3 +158,77 @@ func TestTheTemplateFails(t *testing.T) {
 		t.Error("NewTemplate with a page refused = nil error, want the server's fault")
 	}
 }
+
+// An upgrade's start writes the template's pages the notebook lacks, in
+// the template's order, as the upgrade's own unit, its changeset's message
+// the template's, their contents parsed at start-up; and answers their ids
+// by title key (M11/P1 design 3.14 step 12). A language or a key there is
+// no page of, or a seed answering another count, is a defect.
+func TestTheTemplateSeedsAnUpgrade(t *testing.T) {
+	seeds := &fakeSeeds{}
+	template := newTemplate(t, seeds)
+	parsed := len(seeds.parsed)
+	nb, upgrade, at := uuid.NewV7(), uuid.NewV7(), time.Date(2026, 11, 9, 1, 2, 3, 0, time.UTC)
+	for _, tt := range []struct {
+		locale  domain.Locale
+		keys    []string
+		titles  []string
+		message string
+	}{
+		{domain.LocaleEn, []string{"raw", "agents"}, []string{"raw", "AGENTS"}, "LLM Wiki template"},
+		{domain.LocaleZhCN, []string{"agents"}, []string{"AGENTS"}, "LLM Wiki 模板"},
+		{domain.LocaleEn, []string{"raw"}, []string{"raw"}, "LLM Wiki template"},
+	} {
+		seeds.seeds = nil
+		got, err := template.SeedUpgrade(context.Background(), nb, upgrade, tt.locale, "api", at, tt.keys)
+		if err != nil || len(seeds.seeds) != 1 {
+			t.Fatalf("%s %v: %v, seeds %+v", tt.locale, tt.keys, err, seeds.seeds)
+		}
+		s := seeds.seeds[0]
+		if s.NotebookID != nb || s.Upgrade != upgrade || s.At != at || s.Client != "api" || s.Message != tt.message || len(s.Pages) != len(tt.titles) {
+			t.Fatalf("%s %v seeded %+v", tt.locale, tt.keys, s)
+		}
+		c, _ := domain.ContractOf(domain.ModeLLMWiki)
+		for i, p := range s.Pages {
+			var want domain.TemplatePage
+			for _, page := range c.Templates[tt.locale] {
+				if page.Title == tt.titles[i] {
+					want = page
+				}
+			}
+			if p.Title != tt.titles[i] || p.ID != (uuid.UUID{}) || p.Content != want.Content || p.Parsed.Facts != "facts of "+want.Content {
+				t.Errorf("%s page %d = %+v", tt.locale, i, p)
+			}
+		}
+		if len(got) != len(tt.keys) {
+			t.Errorf("%s %v answered %v", tt.locale, tt.keys, got)
+		}
+		for _, key := range tt.keys {
+			if got[key] == (uuid.UUID{}) {
+				t.Errorf("%s answered no id for %s: %v", tt.locale, key, got)
+			}
+		}
+	}
+	if len(seeds.parsed) != parsed {
+		t.Errorf("an upgrade parsed the template again: %d parses", len(seeds.parsed)-parsed)
+	}
+	seeds.seeds = nil
+	for name, call := range map[string]func() error{
+		"no such language": func() error {
+			_, err := template.SeedUpgrade(context.Background(), nb, upgrade, "fr", "api", at, []string{"raw"})
+			return err
+		},
+		"no such page": func() error {
+			_, err := template.SeedUpgrade(context.Background(), nb, upgrade, domain.LocaleEn, "api", at, []string{"raw", "index"})
+			return err
+		},
+	} {
+		if call() == nil || len(seeds.seeds) != 0 {
+			t.Errorf("%s: seeded %+v", name, seeds.seeds)
+		}
+	}
+	seeds.ids = []uuid.UUID{uuid.NewV7()}
+	if _, err := template.SeedUpgrade(context.Background(), nb, upgrade, domain.LocaleEn, "api", at, []string{"raw", "agents"}); err == nil {
+		t.Error("one id for two pages answered no error")
+	}
+}

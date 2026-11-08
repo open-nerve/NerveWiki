@@ -296,6 +296,69 @@ func (e LintWantedSummaryRule) Valid() bool {
 	}
 }
 
+// Defines values for UpgradeEnding.
+const (
+	UpgradeEndingAbandoned UpgradeEnding = "abandoned"
+	UpgradeEndingRejected  UpgradeEnding = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the UpgradeEnding enum.
+func (e UpgradeEnding) Valid() bool {
+	switch e {
+	case UpgradeEndingAbandoned:
+		return true
+	case UpgradeEndingRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpgradeStartTemplateLocale.
+const (
+	UpgradeStartTemplateLocaleEn   UpgradeStartTemplateLocale = "en"
+	UpgradeStartTemplateLocaleZhCN UpgradeStartTemplateLocale = "zh-CN"
+)
+
+// Valid indicates whether the value is a known member of the UpgradeStartTemplateLocale enum.
+func (e UpgradeStartTemplateLocale) Valid() bool {
+	switch e {
+	case UpgradeStartTemplateLocaleEn:
+		return true
+	case UpgradeStartTemplateLocaleZhCN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for UpgradeState.
+const (
+	UpgradeStateApproved    UpgradeState = "approved"
+	UpgradeStateReviewing   UpgradeState = "reviewing"
+	UpgradeStateRolledBack  UpgradeState = "rolled_back"
+	UpgradeStateRollingBack UpgradeState = "rolling_back"
+	UpgradeStateUpgrading   UpgradeState = "upgrading"
+)
+
+// Valid indicates whether the value is a known member of the UpgradeState enum.
+func (e UpgradeState) Valid() bool {
+	switch e {
+	case UpgradeStateApproved:
+		return true
+	case UpgradeStateReviewing:
+		return true
+	case UpgradeStateRolledBack:
+		return true
+	case UpgradeStateRollingBack:
+		return true
+	case UpgradeStateUpgrading:
+		return true
+	default:
+		return false
+	}
+}
+
 // LintAmbiguousItem defines model for LintAmbiguousItem.
 type LintAmbiguousItem struct {
 	// Cursor An opaque canonical continuation after this exact item.
@@ -588,6 +651,77 @@ type LintWantedSummary struct {
 // LintWantedSummaryRule defines model for LintWantedSummary.Rule.
 type LintWantedSummaryRule string
 
+// Upgrade A notebook's upgrade to an LLM Wiki, as its admins read it.
+type Upgrade struct {
+	// Baseline The notebook as the upgrade started, before the pages its start wrote.
+	Baseline UpgradeBaseline `json:"baseline"`
+
+	// Ending Why it rolls back; null when it does not.
+	Ending     nullable.Nullable[UpgradeEnding] `json:"ending"`
+	ID         uuid.UUID                        `json:"id"`
+	NotebookID uuid.UUID                        `json:"notebook_id"`
+
+	// RollbackComplete Whether its rollback put everything back, once the rollback ended; null before.
+	RollbackComplete nullable.Nullable[bool] `json:"rollback_complete"`
+
+	// RollbackJobID The job that rolls it back; null when it does not roll back.
+	RollbackJobID nullable.Nullable[uuid.UUID] `json:"rollback_job_id"`
+
+	// RollbackLeft Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. null otherwise.
+	RollbackLeft nullable.Nullable[UpgradeRollbackLeft] `json:"rollback_left"`
+
+	// SeededPageIds The pages the start wrote, raw then AGENTS, those the notebook lacked.
+	SeededPageIds []uuid.UUID `json:"seeded_page_ids"`
+
+	// SourceRootID The source root the upgrade proposes, a page at the root titled raw.
+	SourceRootID uuid.UUID `json:"source_root_id"`
+	StartedAt    time.Time `json:"started_at"`
+
+	// StartedBy An account, by its id and its display name, as of the answer: who made a changeset, holds a lock, started a job or deleted a node.
+	StartedBy externalRef0.UserRef `json:"started_by"`
+
+	// State Where an upgrade is: upgrading while its initiator's agent rearranges the notebook, reviewing once submitted, rolling_back while the notebook is put back as it was when it started; approved and rolled_back once it ended.
+	State UpgradeState `json:"state"`
+
+	// SubmittedAt When it was submitted for review; null before.
+	SubmittedAt nullable.Nullable[time.Time] `json:"submitted_at"`
+
+	// SubmittedBy Who submitted it for review; null before.
+	SubmittedBy nullable.Nullable[externalRef0.UserRef] `json:"submitted_by"`
+}
+
+// UpgradeBaseline The notebook as the upgrade started, before the pages its start wrote.
+type UpgradeBaseline struct {
+	// Nodes Its pages and attachments.
+	Nodes int `json:"nodes"`
+	Pages int `json:"pages"`
+
+	// Wanted The distinct pages its links lead to that do not exist yet.
+	Wanted LintCount `json:"wanted"`
+}
+
+// UpgradeEnding Why an upgrade rolls back, abandoned by an admin or rejected at its review.
+type UpgradeEnding string
+
+// UpgradeRollbackLeft Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere.
+type UpgradeRollbackLeft struct {
+	Created int `json:"created"`
+	Nodes   int `json:"nodes"`
+	Pages   int `json:"pages"`
+}
+
+// UpgradeStart defines model for UpgradeStart.
+type UpgradeStart struct {
+	// TemplateLocale The language of the pages the start writes, AGENTS and raw, when the notebook lacks them; en when absent.
+	TemplateLocale *UpgradeStartTemplateLocale `json:"template_locale,omitempty"`
+}
+
+// UpgradeStartTemplateLocale The language of the pages the start writes, AGENTS and raw, when the notebook lacks them; en when absent.
+type UpgradeStartTemplateLocale string
+
+// UpgradeState Where an upgrade is: upgrading while its initiator's agent rearranges the notebook, reviewing once submitted, rolling_back while the notebook is put back as it was when it started; approved and rolled_back once it ended.
+type UpgradeState string
+
 // NotebookID defines model for NotebookID.
 type NotebookID = uuid.UUID
 
@@ -605,6 +739,9 @@ type ListLintItemsParams struct {
 	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
 	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 }
+
+// StartUpgradeJSONRequestBody defines body for StartUpgrade for application/json ContentType.
+type StartUpgradeJSONRequestBody = UpgradeStart
 
 // AsLintWantedItem returns the union data inside the LintItem as a LintWantedItem
 func (t LintItem) AsLintWantedItem() (LintWantedItem, error) {
@@ -1248,6 +1385,12 @@ type ServerInterface interface {
 	// ListLintItems Read more items of a notebook's health check
 	// (GET /api/v0/notebooks/{notebook_id}/lint/{rule})
 	ListLintItems(w http.ResponseWriter, r *http.Request, notebookID NotebookID, rule Rule, params ListLintItemsParams)
+	// GetUpgrade The notebook's upgrade to an LLM Wiki under way, for its admins.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade)
+	GetUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// StartUpgrade Starts upgrading a standard notebook to an LLM Wiki: records its baseline, writes the AGENTS and raw pages it lacks, and freezes its content but for its initiator's MCP writes.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade)
+	StartUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -1340,6 +1483,58 @@ func (siw *ServerInterfaceWrapper) ListLintItems(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLintItems(w, r, notebookID, rule, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) GetUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetUpgrade(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// StartUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) StartUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.StartUpgrade(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1471,6 +1666,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/lint", wrapper.GetLint)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/lint/{rule}", wrapper.ListLintItems)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade", wrapper.GetUpgrade)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade", wrapper.StartUpgrade)
 
 	return m
 }
@@ -1633,6 +1830,126 @@ func (response ListLintItemsdefaultApplicationProblemPlusJSONResponse) VisitList
 	return err
 }
 
+type GetUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type GetUpgradeResponseObject interface {
+	VisitGetUpgradeResponse(w http.ResponseWriter) error
+}
+
+type GetUpgrade200JSONResponse Upgrade
+
+func (response GetUpgrade200JSONResponse) VisitGetUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response GetUpgradedefaultApplicationProblemPlusJSONResponse) VisitGetUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Body       *StartUpgradeJSONRequestBody
+}
+
+type StartUpgradeResponseObject interface {
+	VisitStartUpgradeResponse(w http.ResponseWriter) error
+}
+
+type StartUpgrade200JSONResponse Upgrade
+
+func (response StartUpgrade200JSONResponse) VisitStartUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartUpgrade503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response StartUpgrade503ApplicationProblemPlusJSONResponse) VisitStartUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type StartUpgradedefaultResponseHeaders struct {
+	RetryAfter      *int
+	WWWAuthenticate *string
+}
+
+type StartUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    StartUpgradedefaultResponseHeaders
+	StatusCode int
+}
+
+func (response StartUpgradedefaultApplicationProblemPlusJSONResponse) VisitStartUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// GetLint Read a notebook's health checks
@@ -1641,6 +1958,12 @@ type StrictServerInterface interface {
 	// ListLintItems Read more items of a notebook's health check
 	// (GET /api/v0/notebooks/{notebook_id}/lint/{rule})
 	ListLintItems(ctx context.Context, request ListLintItemsRequestObject) (ListLintItemsResponseObject, error)
+	// GetUpgrade The notebook's upgrade to an LLM Wiki under way, for its admins.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade)
+	GetUpgrade(ctx context.Context, request GetUpgradeRequestObject) (GetUpgradeResponseObject, error)
+	// StartUpgrade Starts upgrading a standard notebook to an LLM Wiki: records its baseline, writes the AGENTS and raw pages it lacks, and freezes its content but for its initiator's MCP writes.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade)
+	StartUpgrade(ctx context.Context, request StartUpgradeRequestObject) (StartUpgradeResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1729,6 +2052,65 @@ func (sh *strictHandler) ListLintItems(w http.ResponseWriter, r *http.Request, n
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(ListLintItemsResponseObject); ok {
 		if err := validResponse.VisitListLintItemsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetUpgrade operation middleware
+func (sh *strictHandler) GetUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request GetUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetUpgrade(ctx, request.(GetUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetUpgradeResponseObject); ok {
+		if err := validResponse.VisitGetUpgradeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// StartUpgrade operation middleware
+func (sh *strictHandler) StartUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request StartUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	var body StartUpgradeJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.StartUpgrade(ctx, request.(StartUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "StartUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(StartUpgradeResponseObject); ok {
+		if err := validResponse.VisitStartUpgradeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

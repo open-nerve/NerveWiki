@@ -27,7 +27,7 @@ func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) ([]uuid.UUID, error) {
 		pages[i] = page.PageDraft{ID: p.ID, Title: p.Title, Content: p.Content, Facts: p.Parsed.Facts}
 	}
 	return s.tree.Seed(ctx, page.SeedSpec{NotebookID: x.NotebookID, At: x.At, Client: page.Client(x.Client),
-		Message: &x.Message, Pages: pages})
+		Message: &x.Message, Pages: pages, Upgrade: x.Upgrade})
 }
 
 func (s wikiSeeds) Parse(content string) (wiki.Parsed, error) {

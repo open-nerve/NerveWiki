@@ -623,3 +623,30 @@ func lintExecLogEntry(t *testing.T, log *lintRunLog, secrets []string) map[strin
 	}
 	return entry
 }
+
+// computeIn computes as of the moment its caller hands it, through the
+// transaction ctx carries, and reads no clock of its own: compute hands it
+// the snapshot's, an upgrade's start its transaction's (M11/P1 design
+// 3.13); prepareIn reads the state and prepares, projecting nothing.
+func TestComputeInTakesItsMoment(t *testing.T) {
+	deps, trace, _, _ := lintExecFixture(t)
+	l := NewLint(deps)
+	at := time.Date(2026, 11, 9, 1, 2, 3, 0, time.UTC)
+	out, err := l.computeIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, RuleQuery{}, domain.LintSummary, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Result.ComputedAt.Equal(at) || out.Stats.StalePages == nil || out.Stats.Mode != domain.ModeStandard {
+		t.Fatalf("computed %+v, %+v as of %v", out.Result, out.Stats, at)
+	}
+	if got := trace.copy(); slices.Contains(got, "clock") || !slices.Equal(got[:3], []string{"state", "nodes", "prepare"}) {
+		t.Fatalf("computeIn called %v", got)
+	}
+	prepared, stats, err := l.prepareIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, RuleQuery{})
+	if err != nil || prepared == nil || stats.StalePages == nil || stats.PrepareElapsed == nil {
+		t.Fatalf("prepareIn = %v, %+v, %v", prepared, stats, err)
+	}
+	if got := trace.copy(); slices.Contains(got, "paths") || slices.Contains(got, "encode") {
+		t.Fatalf("prepareIn projected: %v", got)
+	}
+}
