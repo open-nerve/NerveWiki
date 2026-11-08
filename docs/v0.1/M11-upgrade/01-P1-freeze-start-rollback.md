@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P1 冻结、发起与放弃（四个 Step：S1 数据、冻结与删除的护栏（服务端）；S2 发起与读（服务端）；S3 放弃、回滚与结束（服务端）；S4 网页） |
-| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订） |
-| 状态 | 进行中（设计已审查，S1 开工；[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节） |
+| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1 修订 2026-11-09） |
+| 状态 | 进行中（S1 审查与修复核对完成，合并见 00 号文档第 12 节；S2 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，实施与审查之后与代码不同之处照实改在各节（3.25 列出），结果在 10.1 |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.1–4.5、4.6 的"删除"、4.10、4.12、4.14–4.18、第 5、7、8、9 节与"移交的落实"；[M11 设计审查](reviews/M11-design-review.md)；[移交](handoffs/)：M10-mode、M5-events、M8-P4-background、M9-mcp-upgrade；[v0.1 总体设计](../v0.1-design.md) 5.8、7.2、12.4、13.1–13.4；[M10/P1](../M10-llm-wiki/01-P1-contract-frame.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:368`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:25`；契约写作 `api/modules/notebook.yaml:462`。代码的行号是 `main` 的 `9184f67b` 的（代码与 `7ff74a67`、`d9169baa` 相同，其后只改了文档），00 号文档的行号也是它的 |
 | 工作笔记 | 代码的核对分六份（notebook、page 的单元与守卫、transfer、撤销的计划、wiki 与 lint 与组合根、网页与 e2e 与 CI），本文引的每个行号都在其中核对过、关键的几处又逐行复读过（附录）。P1 的设计不跑重的东西；要量的在 7.6 |
@@ -198,14 +198,14 @@ DROP TABLE upgrade_nodes;
 
 各列的类型照它们抄的那一列：`sort_order` 同 `nodes.sort_order`（`00012_page_nodes.sql:18-19`），`revision`、`content_hash`、`byte_size` 同 `page_contents`（`00013_page_page_contents.sql:10-15`）。每个检查的每个合取都不因 NULL 放过：`baseline`、`kind` 非空，其余都是 `IS NULL` 的比较；`upgrade_nodes_baseline_check` 的最后一个析取在 `baseline` 为真时就是真，为假时要 `kind = 'page' AND parent_id IS NULL`，两者非空。
 
-**`TestConstraintAndIndexNames`**（`server/migrations/schema_test.go:163`，`want` 的表从 `:191` 起，`notebooks` 的项在 `:314-325`）加：`"notebooks_upgrade_check c"`、`"notebooks_upgrade_by_id_fkey f a"`（照 `:314` 的 `"notebooks_created_by_id_fkey f a"`：`REFERENCES users` 不写动作），`"upgrade_nodes_pkey p"`、`"upgrade_nodes_kind_check c"`、`"upgrade_nodes_baseline_check c"`、`"upgrade_nodes_page_check c"`、`"upgrade_nodes_wanted_check c"`、`"upgrade_nodes_notebook_id_idx i"`、`"changesets_upgrade_id_idx i"`（每项的写法照表里同类的项，实施时对着 `:191` 起的已有项抄）。
+**`TestConstraintAndIndexNames`**（`server/migrations/schema_test.go:163`，`want` 的表从 `:191` 起，`notebooks` 的项在 `:314-325`）加：`"notebooks_upgrade_check c"`、`"notebooks_upgrade_by_id_fkey f a"`（照 `:314` 的 `"notebooks_created_by_id_fkey f a"`：`REFERENCES users` 不写动作），`"upgrade_nodes_pkey iu"` 与 `"upgrade_nodes_pkey p"`（主键的索引与约束各一项，S1 偏离 4）、`"upgrade_nodes_kind_check c"`、`"upgrade_nodes_baseline_check c"`、`"upgrade_nodes_page_check c"`、`"upgrade_nodes_wanted_check c"`、`"upgrade_nodes_notebook_id_idx i"`、`"changesets_upgrade_id_idx iw"`（部分索引；每项的写法照表里同类的项，实施时对着 `:191` 起的已有项抄）。
 
-**反例**（`TestChecksRejectCounterexamples`，`schema_test.go:544`，表 `{name, stmt, constraint}` 在 `:553` 起，00048 的三行在 `:603-605`；循环 `:755-763` 要 SQLSTATE 23514）。`checkedRows`（`:463`）已种下一本普通笔记本与一本 LLM Wiki（`:478-483`）；加一个基线页与一个基线附件（各一个节点行与页的正文行），每行一个反例，每个只钉住一种形状（05-lessons 第 1 节）：
+**反例**（`TestChecksRejectCounterexamples`，`schema_test.go:544`，表 `{name, stmt, constraint}` 在 `:553` 起，00048 的三行在 `:603-605`；循环 `:755-763` 要 SQLSTATE 23514）。`checkedRows`（`:463`）原来只种下一本 LLM Wiki（`:478-483`），没有普通的笔记本：加一本升级中的普通笔记本（四列齐全）与它的三行 `upgrade_nodes`（根下的基线页、它下面的基线附件、保护行），另给已有的变更集设上 `upgrade_id`（S1 偏离 1；基线行没有外键，不另种节点行）。每行一个反例，改这本笔记本或这三行之一，每个只钉住一种形状（05-lessons 第 1 节）：
 
 | 名称 | 语句的形状 | 约束 |
 |---|---|---|
 | 状态有、另三列空 | `UPDATE notebooks SET upgrade_state = 'upgrading'` | `notebooks_upgrade_check` |
-| id 有、另三列空 | `SET upgrade_id = …` | 同上 |
+| 缺状态 | `SET upgrade_id, upgrade_by_id, upgrade_at`（第一个合取的另一个方向；初稿的"id 有、另三列空"同时违反三个合取，S1 偏离 3） | 同上 |
 | 缺发起人 | `SET upgrade_id, upgrade_state, upgrade_at` | 同上 |
 | 只有发起人 | `SET upgrade_by_id = …`（另三列空：等式的另一个方向） | 同上 |
 | 只有时刻 | `SET upgrade_at = …`（另三列空） | 同上 |
@@ -213,7 +213,7 @@ DROP TABLE upgrade_nodes;
 | 不认识的状态 | 四列都有，`upgrade_state = 'approved'` | 同上 |
 | LLM Wiki 带升级 | 在 LLM Wiki 的行上四列都有，`'upgrading'` | 同上 |
 | 种类 | `upgrade_nodes` 一行 `kind = 'folder'` | `upgrade_nodes_kind_check` |
-| 基线没有名称 | `baseline = true`、`name IS NULL` | `upgrade_nodes_baseline_check` |
+| 基线没有名称 | `baseline = true`、`name` 与 `sort_order` 都空（只空 `name` 时另违反"名称与次序同空"） | `upgrade_nodes_baseline_check` |
 | 保护行带名称 | `baseline = false`、`kind = 'page'`、`parent_id IS NULL`、`name`、`sort_order` 都有 | 同上 |
 | 名称有、次序空 | `baseline = true`、`sort_order IS NULL` | 同上 |
 | 次序有、名称空 | `baseline = false`、`kind = 'page'`、`parent_id IS NULL`、`name IS NULL`、`sort_order` 有 | 同上 |
@@ -232,9 +232,9 @@ DROP TABLE upgrade_nodes;
 | 待建数过界 | 基线页、`wanted = 10001` | `upgrade_nodes_wanted_check` |
 | 待建数为负 | 基线页、`wanted = -1` | 同上 |
 
-每个写成 `=` 的合取两个方向各一行，每行只违反一个合取（P1 审查 B-N2、修订核对 B2-N1：把 `=` 改成单向的蕴含，只有一个方向的反例抓不住；00057 的同一条规则见 3.10）。正例由 `checkedRows` 自己的插入给出（四列齐全的普通笔记本、基线页、基线附件、保护行，插入不报错）。
+每个写成 `=` 的合取两个方向各一行，每行只违反一个合取（P1 审查 B-N2、修订核对 B2-N1：把 `=` 改成单向的蕴含，只有一个方向的反例抓不住；00057 的同一条规则见 3.10）。正例由 `checkedRows` 自己的插入给出（四列齐全的普通笔记本、基线页、基线附件、保护行，插入不报错）。共 27 个：`notebooks_upgrade_check` 8 个、`upgrade_nodes_*` 19 个；S1 审查 B 在真库上把每个反例对每个合取求值，各恰好违反一个。
 
-**Down**：新的 `server/migrations/upgrade_test.go` 的 `TestTheUpgradeColumnsGoDown`，照 `TestTheNotebooksModeGoesDown`（`server/migrations/notebooks_mode_test.go:17-65`）与 `downTo`（`background_jobs_test.go:15-26`）：升到最新，种一本升级中的笔记本、它的基线行与一个带 `upgrade_id` 的变更集；`downTo(t, m, 55)` 之后 `changesets.upgrade_id` 与 `upgrade_nodes` 不在、变更集的行在；`downTo(t, m, 54)` 之后 `notebooks` 没有四列、笔记本的行在、模式不变；再升回最新成功（`TestMigrationsGoUpDownAndUpAgain`，`schema_test.go:68`，另管全程）。
+**Down**：新的 `server/migrations/upgrade_test.go` 的 `TestTheUpgradeColumnsGoDown`，照 `TestTheNotebooksModeGoesDown`（`server/migrations/notebooks_mode_test.go:17-65`）与 `downTo`（`background_jobs_test.go:15-26`）：升到最新，种一本升级中的笔记本、它的基线行与一个带 `upgrade_id` 的变更集；`downTo(t, m, 56)` 之后 `changesets.upgrade_id` 与 `upgrade_nodes` 不在、变更集的行在；`downTo(t, m, 55)` 之后 `notebooks` 没有四列、笔记本的行在、模式不变（`downTo` 退掉给定的那一版，S1 偏离 2）；再升回最新成功（`TestMigrationsGoUpDownAndUpAgain`，`schema_test.go:68`，另管全程）。
 
 **授权**：`deploy/runtime-grants.sql` 的数据授权（`:17-20`）的表名加 `upgrade_nodes`；`MAINTAIN`（`:29-30`）加 `upgrade_nodes`，注释加一句"an upgrade's start analyzes its baseline (M11 design 4.4 step 16)"。`TestTheGrantsFileCoversEveryRelationAndFunction`（`bootstrap/runtime_role_test.go:362`）对每张表要恰好的权限集，`analyzed` 表（`:389`）照 `page_search` 的写法加 `"upgrade_nodes": true`：两样少一样它都失败。以运行时角色发起一次、断言 `last_analyze` 变了的那一段在 S2（第一个 `ANALYZE` 在那里，3.15）。
 
@@ -264,7 +264,7 @@ type Upgrade struct {
 }
 ```
 
-- `domain.Notebook`（`notebook/domain/notebook.go:32-47`）加 `Upgrade Upgrade`；`Apply`（`:135`）的 `!=` 照旧成立（`Upgrade` 只有可比较的字段）。根的 `State`（`notebook/notebooks.go:30-33`）加 `Upgrade Upgrade`；`ShareState`（`:111-121`）、`LockState`（`:123-133`）、`StateOf`（`:93`）填它。`notebook/module.go` 的别名（`:61-72`）加 `Upgrade`、`UpgradeState` 与三个值，另导出 `const ActionChangeMode = domain.ActionChangeMode`（`notebook/domain/actions.go:20`；组合根交给 page 的冻结守卫，S3 也交给 page 与 transfer 的回滚，S2 交给 wiki）。
+- `domain.Notebook`（`notebook/domain/notebook.go:32-47`）加 `Upgrade Upgrade`；`Apply`（`:135`）的 `!=` 照旧成立（`Upgrade` 只有可比较的字段）。根的 `State`（`notebook/notebooks.go:30-33`）加 `Upgrade Upgrade`；`ShareState`（`:111-121`）、`LockState`（`:123-133`）、`StateOf`（`:93`）填它。`notebook/notebooks.go` 加 `Upgrade`、`UpgradeState` 与三个值的别名，挨着 `State`、`Mode`（S1 偏离 5；初稿写在 `notebook/module.go` 的别名里），`notebook/module.go` 另导出 `const ActionChangeMode = domain.ActionChangeMode`（`notebook/domain/actions.go:20`；组合根交给 page 的冻结守卫，S3 也交给 page 与 transfer 的回滚，S2 交给 wiki）。
 - 查询：`FindNotebook`、`LockNotebook`（`notebooks.sql:9-24`）、`LockOwnerlessOf`（`cascade.sql:37-45`）在 `mode, source_root_id` 之后加 `upgrade_id, upgrade_state, upgrade_by_id, upgrade_at`（三条同列，`gen.FindNotebookRow(r)` 的转换照旧成立）；`ShareNotebook`（`:26-34`）改为 `SELECT id, mode, source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at`；`ListNotebooks`（`:55-68`）与 `ListOwnerless`（`ownerless.sql:1-9`）在 `n.mode, n.source_root_id` 之后加 `n.upgrade_id, n.upgrade_state, n.upgrade_by_id, n.upgrade_at`。每条查询的注释加一句"with its upgrade under way (M11 design 4.5)"；`ShareNotebook` 的注释末尾的"a downgrade takes the row FOR NO KEY UPDATE, so a unit's mode does not change while it runs"改为"…so a unit's mode and upgrade do not change while it runs"。
 - `store.go`：`upgradeOf(id, state, by, at)` 照 `idOf` 的写法把四个可空的列转成 `domain.Upgrade`；`notebookOf`（`:94-104`）、`ListNotebooks`（`:146-151`）、`ownerless.go:20-24` 填它；`ShareNotebook`（`:84-90`）改为交回 `(domain.Mode, uuid.UUID, domain.Upgrade, error)`。
 - 契约（`api/modules/notebook.yaml`）：`NotebookMode` 的说明（`:452-461`）末尾的"an upgrade's states are no mode"之后加"; see the notebook's upgrade"；`Notebook`（`:462-501`）的 `required`（`:469`）加 `upgrade`，属性加：
@@ -424,21 +424,29 @@ type UpgradeNodes interface {
 // FreezeGuard keeps an upgrading notebook's content read-only (M11 design
 // 4.5): a guard of the writes and a vetoer of the openings, first of both.
 type FreezeGuard struct {
-	auth  shared.Authorizer
-	admin shared.Action
-	nodes UpgradeNodes
+	auth   shared.Authorizer
+	admin  shared.Action
+	nodes  UpgradeNodes
+	// admits is domain.FreezeAdmits; a test's, given by WithAdmits
+	// (export_test.go), answers a freeze it does not (S1 review S1A-N2).
+	admits func(n domain.NotebookState, own uuid.UUID, client domain.Client, by uuid.UUID) domain.Freeze
 }
 
 func NewFreezeGuard(auth shared.Authorizer, admin shared.Action, nodes UpgradeNodes) *FreezeGuard
 
 func (g *FreezeGuard) GuardWrite(ctx context.Context, s Step) error {
-	switch domain.FreezeAdmits(s.Notebook, s.UpgradeOwn, s.Client, s.By) {
+	switch f := g.admits(s.Notebook, s.UpgradeOwn, s.Client, s.By); f {
 	case domain.FreezeOpen:
 		return nil
 	case domain.FreezeStale:
 		return domain.ErrStaleUpgradeWrite
 	case domain.FreezeRefused:
 		return domain.ErrUpgrading
+	case domain.FreezeAsk:
+	default:
+		// A freeze it does not know is a defect's error: it lets nothing
+		// by it was not told to (S1 review S1A-N2).
+		return fmt.Errorf("page: freeze %d unknown", f)
 	}
 	if err := s.Grants.Ask(ctx, g.admin, decideAction(g.auth, s, g.admin)); err != nil {
 		if errors.Is(err, shared.Forbidden()) {
@@ -479,9 +487,9 @@ func (g *FreezeGuard) VetoEditSession(ctx context.Context, o SessionOpening) err
 }
 ```
 
-- `decideAction(auth, s, action)` 是 `ModeGuard.decide`（`page/app/mode_guard.go:88-97`）抽出的函数，两个守卫共用（判定的目标是 `s.WorkspaceID`、`s.NotebookID`，执行者取 ctx 的）。`Grants.Ask` 的注释（`grants.go:15`）"Only the mode guard and the unit's own locked checks ask"改为"Only the freeze and mode guards and the unit's own locked checks ask"。
-- 拒绝标在 `s.Changes` 里第一个受保护的节点（`Changes` 从上往下排，`unit_delete.go:46-53`），`refusalOf`（`unit.go:333-339`）见到已标的不再改标（`domain.Refuse` 不重包，`page/domain/refused.go:23-28`）。`ErrUpgrading` 不标节点时由 `refusalOf` 标 `Changes[0]`，`batch` 的失败项与 transfer 的 `refused` 因此有去处（4.5）。
-- 模块根（`page/freeze_guard.go`，照 `page/mode_guard.go:20-23`）：`type FreezeGuard = app.FreezeGuard`；`func NewFreezeGuard(pool *pgxpool.Pool, auth shared.Authorizer, admin shared.Action) *FreezeGuard`，读者是 `postgresadapter.New(pool)`（它经 `postgres.DB(ctx, pool)` 用单元的事务）。13.1 第 21 条的例外同 `NewModeGuard`。
+- `decideAction(auth, s, action)` 是 `ModeGuard.decide`（`page/app/mode_guard.go:88-97`）抽出的函数，两个守卫共用（判定的目标是 `s.WorkspaceID`、`s.NotebookID`，执行者取 ctx 的）；撤销的单元也用它（`page/app/unit_revert.go:100`），不再只为判定建一个 `ModeGuard`（S1 偏离 6）。`Grants.Ask` 的注释（`grants.go:15`）"Only the mode guard and the unit's own locked checks ask"改为"Only the freeze and mode guards and the unit's own locked checks ask"；它前面的"a step of a standard notebook, or one that touches no source, never does"改为"a step of a notebook with no upgrade that touches no source never does"：冻结的守卫恰在普通笔记本里问（S1 审查 S1A-N3）。
+- 拒绝标在 `s.Changes` 里第一个受保护的节点（`Changes` 从上往下排，`unit_delete.go:46-53`），`refusalOf`（`unit.go:333-339`）见到已标的不再改标（`domain.Refuse` 不重包，`page/domain/refused.go:23-28`）。`ErrUpgrading` 不标节点时由 `refusalOf` 标 `Changes[0]`，`batch` 的失败项与 transfer 的 `refused` 因此有去处（4.5）。被标的节点只在 page 之内看得到：MCP 的工具错误只带 `code`、`message` 与 `op`（`platform/httpserver/mcpserver/errors.go`），`batch` 的失败项是那个删除的操作（`OpFailed` 只带操作的序号与工具，`page/app/apply_batch.go:624-636`）；transfer 的 `refused` 带节点（`bootstrap/transfer.go:257`），但后台任务的单元不是 MCP 的写，到不了护栏。所以只有 `TestTheFreezeGuard` 钉住"标在第一个受保护的节点"（7.3 第 14 条），P1 不为它改 MCP 工具错误的形状（S1 审查 S1A-Q1 = S1C-M1，决定 237）。
+- 模块根（`page/freeze_guard.go`，照 `page/mode_guard.go:20-23`）：`type FreezeGuard = app.FreezeGuard`；`func NewFreezeGuard(pool *pgxpool.Pool, auth shared.Authorizer, admin shared.Action) *FreezeGuard`，读者是 `postgresadapter.New(pool)`（它经 `postgres.DB(ctx, pool)` 用单元的事务）。13.1 第 21 条的例外同 `NewModeGuard`。模块根另照 `ModeStandard`、`ModeLLMWiki` 导出升级的三个状态 `UpgradeUpgrading`、`UpgradeReviewing`、`UpgradeRollingBack`（`page/module.go:70-75`；S1 审查 S1C-N3：组合根的测试以它们写期望）。
 - 读（`page/adapter/postgres/queries/upgrade.sql`，新）：
 
 ```sql
@@ -496,12 +504,12 @@ WHERE upgrade_id = sqlc.arg(upgrade_id) AND node_id = ANY(sqlc.arg(node_ids)::uu
 
 **变更集的 `upgrade_id`**：`app.Changeset`（`page/app/ports.go:127-137`）加 `UpgradeID uuid.UUID`；`ensureChangeset`（`unit.go:467-470`）填 `u.write.Notebook.Upgrade.ID`。冻结之下能建变更集的只有发起人的 MCP 写与升级自己的单元（别的单元在守卫处整个回滚，守卫在变更集之前，`unit.go:368-372`），所以"笔记本有升级就记它"等于"这次升级的写都记它"。`CreateChangeset`（`changesets.sql:1-4`）的列与值加 `upgrade_id`、`sqlc.narg(upgrade_id)`；`changesets.go:15-28` 把零 id 写成 `NULL`。`TouchChangeset` 不改（并进已有的变更集不改它的标记；冻结中没有会并进旧变更集的写：编辑会话开不了，导入与后台任务开不了）。
 
-**预检**（4.5，各在判定之后、别的检查之前）：
-- `AssetWrites.Check`：`:57` 的 `StateOf` 提到 `:50` 的 `Allowed` 之后，`Upgrade.ID` 不为零答 `ErrUpgrading`；之后的模式的核对（`:78-81`）用同一个读到的状态。
+**预检**（4.5，各在判定之后、别的检查之前；三处共用 `Writer.notUpgrading`，`page/app/unit.go:165-182`：读一次不加锁的状态，有升级答 `ErrUpgrading`，没有笔记本答 `notebook.not_found`，S1 偏离 8）：
+- `AssetWrites.Check`：`:57` 的 `StateOf` 提到 `:50` 的 `Allowed` 之后，`Upgrade.ID` 不为零答 `ErrUpgrading`；之后的模式的核对（`:78-81`）用同一个读到的状态；状态因此恒读一次，以前名称的检查先拒时一次也不读（M10 的 `TestAnUploadsCheckRefusesAReservedTitle` 随之改为恒一次）。
 - `JobWrites.CheckRestore`：`:140-146` 的 `StateOf` 提到 `:119` 的 `Allowed` 之后，同样；之后的 `FindAnyNode` 与 `admit` 照旧。
-- `JobWrites.CheckRevert`：`:180` 的 `Allowed` 之后另读一次 `StateOf`、同样判；`revertChecks.check`（`revert_changeset.go:248-254`）不改，同步的 `revertChangeset` 不加预检（4.5）。
+- `JobWrites.CheckRevert`：`:180` 的 `Allowed` 之后另读一次 `StateOf`、同样判；`revertChecks.check`（`revert_changeset.go:248-254`）不改，同步的 `revertChangeset` 不加预检（4.5）。所以后台撤销的开始路径读两次状态（M10 的 `TestARevertsChecksRefuseTheContract` 随之改为两次）。
 
-**测试**：`page/domain` 的 `TestFreezeAdmits`（状态 × 客户端 × 执行者 × `UpgradeOwn` 的表：没有升级；`upgrading` 的发起人 MCP、发起人 web、别人 MCP；`reviewing`、`rolling_back` 的发起人 MCP；`UpgradeOwn` 等于当前、不等于当前、当前已没有升级）；`page/app` 的 `TestTheFreezeGuard`（假的 `UpgradeNodes` 与授权者：`Ask` 只问一次、`forbidden` 答 `notebook.upgrading`、删除的拒绝标在第一个受保护的节点而不是 `Changes[0]`、新建的子树可以删、不是删除的步不读）、`TestTheFreezeLetsItsOwnUnits`（以 `UnitSpec.UpgradeOwn` 写：等于当前放过、过期答 `ErrStaleUpgradeWrite` 且什么也没写）、`TestTheChangesetsCarryTheirUpgrade`；`page/adapter/postgres` 的 `UpgradeProtected` 的测试。
+**测试**：`page/domain` 的 `TestFreezeAdmits`（状态 × 客户端 × 执行者 × `UpgradeOwn` 的表：没有升级；`upgrading` 的发起人 MCP、发起人 web、别人 MCP；`reviewing`、`rolling_back` 的发起人 MCP；`UpgradeOwn` 等于当前、不等于当前、当前已没有升级）；`page/app` 的 `TestTheFreezeGuard`（假的 `UpgradeNodes` 与授权者：`Ask` 只问一次、`forbidden` 答 `notebook.upgrading`、删除的拒绝标在第一个受保护的节点而不是 `Changes[0]`、新建的子树可以删、不是删除的步不读）、`TestTheFreezeLetsItsOwnUnits`（以 `UnitSpec.UpgradeOwn` 写：等于当前放过、过期答 `ErrStaleUpgradeWrite` 且什么也没写）、`TestTheChangesetsCarryTheirUpgrade`、`TestThePrechecksRefuseAnUpgradingNotebook`（上传、后台恢复、后台撤销的预检在判定之后先答 `notebook.upgrading`、之后什么也不读、撤销不 admit；读者仍是 `forbidden`；S1 偏离 13）；`TestTheFreezeGuard` 另有"a freeze it does not know"（不认识的判定答缺陷的错误，什么也不问、不读，单元什么也没写；S1 审查 S1A-N2）；`page/adapter/postgres` 的 `UpgradeProtected` 的测试与 `TestCreateChangesetWritesItsUpgrade`（都在 `upgrade_test.go`，S1 偏离 9）；组合根的 `TestPageNotebooksConvertTheState` 加升级的一行，期望写 page 的常量（S1 偏离 11、S1 审查 S1C-N3）。
 
 ### 3.5 S1：transfer 的笔记本端口与开任务的判断
 
@@ -530,10 +538,10 @@ type Notebooks interface {
 - 组合根的新文件 `bootstrap/transfer_notebooks.go`：`transferNotebooks{notebook.Notebooks}`，`ShareByID` 经 `ShareState`、`StateOf` 经根的 `StateOf`，转换 `Upgrade.ID` 与 `State == notebook.UpgradeRollingBack`；`bootstrap/deps.go:243` 改交它。
 - `StartDeps.lock`（`transfer/app/start.go:105-113`）改为交回 `(NotebookState, error)`；导出（`:73`）不看它（冻结期间导出照常，4.5）。
 - `transfer/domain/errors.go` 加 `ErrUpgrading`（同 page 的码与文字，先例 `page/domain/errors.go:21` 的 `notebook.not_found`）。
-- 导入的预检：`StartImport.Check`（`start_import.go:76` 的 `authorize` 之后、`:79` 的 `place` 之前）读 `StateOf`，`UpgradeID` 不为零答 `ErrUpgrading`。
+- 导入的预检：`StartImport.Check`（`start_import.go:76` 的 `authorize` 之后、`:79` 的 `place` 之前）读 `StateOf`，`UpgradeID` 不为零答 `ErrUpgrading`；没有笔记本（判定之后被删）答 `notebook.not_found`（`StartDeps.notUpgrading`，`transfer/app/start.go:126-137`）。
 - 导入建任务的事务：`:249` 的 `lock` 交回的状态 `UpgradeID` 不为零答 `ErrUpgrading`（正在上传的导入在这里被拒，文件照导入失败时的处理删掉，`start_import.go` 已有的失败路径）。
 - `startBackground`（`start_background.go:169`）：`lock` 之后，`UpgradeID` 不为零而不是"种类 `rollback`、`job.UpgradeID` 等于它、`RollingBack`"时答 `ErrUpgrading`。S1 里还没有回滚的种类，这一条只有"不为零就拒"一支，S3 加放过的一支（3.19）。
-- 测试：`transfer/app` 的 `TestTheStartsRefuseAnUpgradingNotebook`（假的端口：导入的 `Check`、建任务、`StartTrashRestore`、`StartRevert` 各答 `notebook.upgrading`；导出照常）。
+- 测试：`transfer/app` 的 `TestTheStartsRefuseAnUpgradingNotebook`（假的端口：导入的 `Check`、建任务、`StartTrashRestore`、`StartRevert` 各答 `notebook.upgrading`；导出照常。导入的 `Check` 用父节点不存在的请求，断言调用恰是 `[Notebooks.WorkspaceOf, Authorize, Notebooks.StateOf]`，升级结束之后同一请求答 `page.not_found`；读状态时笔记本已删答 `notebook.not_found`；恢复与撤销的开始由读者发起时，锁下的判定先答 `forbidden`：S1 审查 S1A-M1、S1A-N1）；导入的 `Check` 的调用序列多了 `Notebooks.StateOf`，`TestAnImportStarts` 随之改（S1 偏离 8）；组合根的 `TestTransferNotebooksConvertTheState`（没有、升级中、回滚中、没有笔记本、错误，两种读；S1 偏离 11）；transfer 的 `adapter/http` 的替身 `notebooks` 带一个原子的 `upgrading`，恢复与撤销的 409 由 transfer 自己在锁下答、导入的由 `StateOf` 答（S1 偏离 14）。
 
 ### 3.6 S1：`notebook.upgrading` 的声明与 MCP 的码
 
@@ -571,7 +579,7 @@ type Notebooks interface {
 - `Makefile`：`BOOTSTRAP_SIXTH`（`:266`）之后加一段注释与 `BOOTSTRAP_SEVENTH = ^TestUpgrade`（"M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），第三份的 `[U-Z]` 收得下它，所以第三份跳过它；第四份是补集，跳过第三份的模式时已跳过它"）；`test-go-bootstrap-7` 照 `-6`（`:294-296`）写，`-run '$(BOOTSTRAP_SEVENTH)'`；`test-go-bootstrap-3`（`:284`）的 `-skip` 改为 `'$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SEVENTH)'`，它的说明改为"不匹配 SECOND/FIFTH/SEVENTH 的"；`test-go-bootstrap`（`:272`）的依赖加 `-7`、说明"六份依次"改为"七份依次"；`test-go`（`:190`）的列表加 `test-go-bootstrap-7`；注释 `:183`"组合根按测试名六份"改为"七份"，`:184`"竞态检测的这七个最多六个同时跑"改为"这八个最多六个同时跑"（`-j6` 不变），`:185` 与 `:195` 的"CI 的十三份"改为"十四份"。
 - `.github/workflows/ci.yml`：`bootstrap-6`（`:66-67`）之后加 `- leg: bootstrap-7`、`timeout: 25`；注释 `:23` 的"-4、-5 与 -6"改为"-4、-5、-6 与 -7"，`:25` 的"server 共十四份（含 short），连同 web、e2e 与 image 共十七项"改为"十五份……十八项"，`:48` 的"按测试名分成六份（Makefile 的 FIRST、SECOND、THIRD、FIFTH、SIXTH 与第四份互补规则"改为"七份（……FIFTH、SIXTH、SEVENTH 与第四份互补规则"。
 - `docs/v0.1/claude_to_codex/06-environment.md`：`:27`"（`-2` 到 `-6` 同理）"改为"到 `-7`"；`:49`"组合根现在分六份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_SIXTH`），CI 共 17 项：14 个 server 的 leg（race、bootstrap-1 到 bootstrap-6、"改为"七份（……到 `BOOTSTRAP_SEVENTH`），CI 共 18 项：15 个 server 的 leg（race、bootstrap-1 到 bootstrap-7、"，同一条的"`make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-6`"改为"到 `-7`"。
-- S1 的记录写出每份的 `go test -list`：`TestUpgrade…` 只在第七份，七份合起来等于全部顶层测试（第 223 条）。
+- S1 的记录写出每份的 `go test -list`：`TestUpgrade…` 只在第七份，七份合起来等于全部顶层测试（第 223 条）。清单是竞态构建的，同 `Makefile` 的分份注释的口径（`//go:build !race` 的成本与守卫测试不进任何一份，在 costs、guards 的行里跑；S1 审查 S1C-N2）：S1 之后 534 个，七份 158、51、121、123、62、12、7，`Makefile` 的注释写这个数。
 
 ### 3.9 S2 的文件
 
@@ -888,7 +896,7 @@ LIMIT (SELECT sqlc.arg(take)::integer);
 7. `Upgrades.ClearExpiredSessions(notebookID, at)`；`Upgrades.LiveSessions(notebookID, at)` 有：经 `Names` 取显示名，409 `wiki.upgrade_pages_locked`，`Locks` 是至多 100 项（`shared.Error.Locks`，`shared/error.go:119-121`，同 `linking.pages_locked` 的 `domain.PagesLocked`，`linking/app/rewrite.go:775-789`），`detail` 写总数。
 8. `Upgrades.RootNodes(notebookID, ["raw", "agents"])`：有一个是附件：409 `wiki.upgrade_title_taken`；`raw` 是页：它是提议的根；`agents` 是页：留着。
 9. `release, ok := Runs.TryHold()`；不 `ok`：503 `server_busy`（`shared.ServerBusy(time.Second)`）。`release` 记在 `fn` 之外，`WithinTx` 返回之后才调（"提交；放开名额"）。
-10. `id := uuid.NewV7()`；`States.Start(notebookID, Upgrade{ID: id, State: upgrading, By: actor, At: at})`。
+10. `id := uuid.NewV7()`；`States.Start(notebookID, Upgrade{ID: id, State: upgrading, By: actor, At: at})`。`Start` 断言 `up.ID` 不为零，零是缺陷：00055 的检查收零 UUID，程序却处处以零当"没有升级"（S1 审查 S1B-N1）。
 11. `base := Upgrades.Capture(id, notebookID)`。
 12. 缺的页（P1 审查 B-M1：复用启动时解析好的模板，同建 LLM Wiki，13.3 第 3 条的例外只用一次）：`*app.Template`（`wiki/app/template.go:23-53`，`NewTemplate` 在启动时解析每种语言的每一页）加
 
@@ -1219,12 +1227,36 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 
 - `notebooks_upgrade_check`、`upgrade_nodes_*`、`notebook_upgrades_*`、`transfer_jobs_upgrade_check` 与写入键：`TestChecksRejectCounterexamples` 的各行（3.2、3.10、3.17）。
 - 冻结的每一步：`TestFreezeAdmits` 的表；登记：`TestUpgradeFreezeReachesEveryPath` 的去掉冻结的子测试与 `TestUpgradeFreezeAnswersFirst`。
-- 删除的护栏：`TestUpgradeGuardrails` 的删除（REST 到不了，只经 MCP）；标的节点：`TestTheFreezeGuard`。
+- 删除的护栏：`TestUpgradeGuardrails` 的删除（REST 到不了，只经 MCP）；标的节点：`TestTheFreezeGuard`（只在 page 之内看得到，决定 237）；护栏的读走主键：成本守卫的计划的断言（7.1，决定 236）。
 - 预检：`TestUpgradeFreezeReachesEveryPath` 里只有预检答的情形，各是预检之后、单元之前另一个码会先答的：上传在存储将满时（`storage_full` 在 page 的检查之后，`asset/app/upload.go:67-76`）、恢复一个过期的回收站项（`page.restore_expired`）、撤销一个超过 `MaxJobItems` 的变更集（`page.revert_too_large`）、导入在存储将满时；预检判冻结时它们答 `notebook.upgrading`，不判时答那个码。建任务时的判断：正在上传的导入（7.2 第 4 条）。
-- 后台任务的每一批（纵深防御的一层，P1 审查 A-N6）：`TestUpgradeFreezeReachesEveryPath` 的"任务的批"子测试（7.1）。
+- 后台任务的每一批（纵深防御的一层，P1 审查 A-N6）：`TestUpgradeFreezeReachesEveryPath` 的"任务的批"子测试（7.1）；S1 只在 `upgrading` 里测，S3 加 `rolling_back` 一行：别的任务的一批在回滚中被拒、回滚自己的批放过（S1 审查 S1C-N1）。
 - 发起的每个码：`TestUpgradeStart` 依次；保护行：同一个测试断言补写的 `raw` 恰有一行 `baseline = false`、已有的 `raw` 没有（P1 审查 B-N1）。
 - 回滚的每遍核对：`TestUpgradeRollback` 的"两遍之间以 SQL 结束升级"（7.1）；`UpgradeOwn` 的过期：7.2 第 16 条；写入键与 `Writing` 认回滚：`TestOneWritingJobAtOnceInANotebook` 的回滚的行与 `TestUpgradeRollback` 的"回滚在跑时继续、结束回滚答 `transfer.busy`"。
 - 取消的规则：矩阵的两个变体。
+
+### 3.25 S1 的实施对设计的修正
+
+S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardrails-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里；各节因 S1 新写的代码位置是 `68c3c505` 的（头的表说的 `9184f67b` 管其余的）：
+
+- **S1，实施时定下的**（实施者的 24 条偏离，括号里是它的号；S1 审查 A、B、C 各在自己的范围里判过，都对，第 10、20、23、24 条另成了审查的发现）：
+  - 3.2：`checkedRows` 原来只有一本 LLM Wiki、没有普通的笔记本，加一本升级中的普通笔记本与它的三行 `upgrade_nodes`（基线页、基线附件、保护行），另给变更集设上 `upgrade_id`（1）；初稿的反例"id 有、另三列空"同时违反三个合取，换成"缺状态"，"基线没有名称"一行的名称与次序都空，每个反例只违反一个合取，共 27 个（3）；名称表的主键是 `upgrade_nodes_pkey iu` 与 `upgrade_nodes_pkey p` 两项（4），部分索引照表里同类的项写作 `iw`；`TestTheUpgradeColumnsGoDown` 依次 `downTo(56)`、`downTo(55)`（`downTo` 退掉给定的那一版，2）。
+  - 3.3：notebook 根的 `Upgrade`、`UpgradeState` 与三个值的别名在 `notebook/notebooks.go`，挨着 `State`、`Mode`；`ActionChangeMode` 在 `module.go`（5）。
+  - 3.4：`decideAction` 也给撤销的单元用，它不再只为判定建一个 `ModeGuard`（6）；三个 page 的预检共用 `Writer.notUpgrading`，后台撤销的开始路径读两次状态、上传的 `Check` 恒读一次，M10 的两个钉住读的次数的测试随之改（8）；测试另有 `TestThePrechecksRefuseAnUpgradingNotebook`（13）与适配器的 `TestCreateChangesetWritesItsUpgrade`（9）；模块根的构造在第 4 个提交里先不用连接池、第 5 个接上，签名一直是设计的（7，各节不改）。
+  - 3.5：导入的 `Check` 的调用序列多一个 `Notebooks.StateOf`，`TestAnImportStarts` 随之改（8）；组合根的 `TestTransferNotebooksConvertTheState`，`TestPageNotebooksConvertTheState` 加升级的一行（11）；transfer 的 `adapter/http` 的替身 `notebooks` 带一个原子的 `upgrading`（14）。
+  - 3.7：`events.yaml` 的 `mode` 的说明保留其后的"Its data is the notebook's ids. Read the notebook again…"一句，加"its upgrade"（22）。
+  - 6.1：第 6 个提交的范围是 `server, api`（12）；第 2 个提交另改 M10 的 lint 迁移的成本夹具（24，见下面的决定 238）；oxfmt 报出的四处格式以 fixup 并回第 3、4、6 个提交（15，各节不改）。
+  - 7.1：`TestUpgradeFreezeReachesEveryPath` 的三种状态在一个应用里、三个子测试各起自己的应用（16）；`TestUpgradeFreezeLeavesTheRest` 另核对读页与字节不变的写（17）；`TestUpgradeFreezeAnswersFirst` 另核对接管的开启（18）；`TestUpgradeFreezeLetsOnlyItsOwnWrites` 跑 `upgrading` 与 `rolling_back`，另含后台撤销的开始与发起人撤销 agent 的变更集（19）；夹具的 `upgradeIn` 与 `endUpgrade`（21）；成本守卫写在适配器一层（20，界见下面的决定 236）。这几条是测试的组织，7.1 的表不改，10.1 记下。
+  - 7.3：第 14 条的第二个测试看不到被标的节点（10，决定 237）；第 68 条改在 `unit.go`（23）；第 18 条在 S1 由 `TestTheStartsRefuseAnUpgradingNotebook` 的建任务抓到，7.2 第 4 条的交错在 S2。
+  - 7.5：第七份在 S1 有七个测试（`TestUpgradeToolsErrorsCarryTheirCodes` 也以 `TestUpgrade` 起名），不是六个。
+- **S1，审查与修复一轮带来的**（编号是 S1 的审查记录的；主持者的决定见审查记录的第 236–239 条）：
+  - 删除护栏的读的成本守卫以计划为主、时长为辅：四种统计状态 × 两种计划都走主键、两列都进索引条件、主键的列钉住，界 25 ms（S1B-I1 = S1C-M2，决定 236；7.1、3.24，7.3 第 87–89 条；00 号文档第 9 节的同一行）。
+  - 被标的节点只在 page 之内看得到（S1A-Q1 = S1C-M1，决定 237；3.4，7.3 第 14 条；00 号文档 4.6）。
+  - M10 的 lint 迁移的成本夹具从嵌入的最新迁移退（S1B-M1、S1C-N5，决定 238）：6.2、6.3 不用改它，6.1 第 2 个提交写明。
+  - transfer 的开始的次序与两处新分支有测试（S1A-M1、S1A-N1；3.5，7.3 第 90–92 条）。
+  - 冻结的守卫对不认识的判定答缺陷的错误（S1A-N2，修复一轮唯一的生产的改动；3.4 的代码与测试，7.3 第 93 条）；`Grants` 的注释照实（S1A-N3，3.4）；page 的模块根导出三个状态常量（S1C-N3；3.4，7.3 第 94 条）。
+  - 分份的数用竞态构建的口径（S1C-N2，3.8）。
+  - C 的 o1、o4、o7、o9 补成 7.3 第 83–86 条（S1C-N7）。
+  - 交给后面的 Step：S2 的 `States.Start` 断言升级的 id 非零（S1B-N1，3.14 第 10 步）；S3 的"任务的批"加 `rolling_back` 一行（S1C-N1；7.1、3.24、6.3 第 4 个提交）。没有交给 v0.1 之后的打磨的。
 
 ## 4. 网页
 
@@ -1284,11 +1316,11 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 ### 6.1 S1（`m11-p1-s1`）
 
 1. `server, docs: the composition root's seventh shard (M11/P1/S1)`：3.8（还没有 `TestUpgrade…`，`-run '^TestUpgrade'` 什么也不跑也是绿的）。
-2. `server: an upgrade's columns and baseline (M11/P1/S1)`：00055、00056、sqlc、`schema_test` 的名称与反例、`TestTheUpgradeColumnsGoDown`、两行授权与 `analyzed`（3.2）。
+2. `server: an upgrade's columns and baseline (M11/P1/S1)`：00055、00056、sqlc、`schema_test` 的名称与反例、`TestTheUpgradeColumnsGoDown`、两行授权与 `analyzed`（3.2）；M10 的 lint 迁移的成本夹具 `lintMigrationDropIngest`（`bootstrap/lint_index_migration_cost_test.go`）把库退过新的迁移（S1 偏离 24；修复一轮改为从嵌入的最新迁移退，以后的迁移不用碰它，决定 238）。
 3. `server, api, web: a notebook's reads carry its upgrade (M11/P1/S1)`：3.3；网页的两处字面量（4.1）。
 4. `server, api, web: the freeze guards the page writes and vetoes the openings (M11/P1/S1)`：3.4 除删除的护栏与预检；九个经单元的操作与 `openEditSession` 的声明（3.6 的表）、page 的 `adapter/http` 测试答出；`mcpToolCodes()` 的五行加 `notebook.upgrading`、`upgradeToolCodes()` 的五对、`TestUpgradeToolsErrorsCarryTheirCodes` 的这一半；`notebook.upgrading` 的文字（4.1）。
 5. `server: the initiator's agent deletes no node the upgrade started with (M11/P1/S1)`：删除的护栏、`UpgradeProtected`、`page.upgrade_protected`、`mcpToolCodes()` 与 `upgradeToolCodes()` 的两对、`mcpOwnCodes()`、`TestUpgradeGuardrails` 的删除。
-6. `server, api, web: the prechecks and the transfer starts refuse an upgrading notebook (M11/P1/S1)`：3.4 的预检、3.5；四个操作的声明与 asset、transfer 的 `adapter/http` 测试。
+6. `server, api: the prechecks and the transfer starts refuse an upgrading notebook (M11/P1/S1)`：3.4 的预检、3.5；四个操作的声明与 asset、transfer 的 `adapter/http` 测试。不改网页：`x-problem-codes` 不进 `schema.gen.ts`，`notebook.upgrading` 的文字在第 4 个提交已加（S1 偏离 12）。
 7. `server, api, web: the freeze reaches every path and leaves the rest (M11/P1/S1)`：`TestUpgradeFreezeReachesEveryPath`、`TestUpgradeFreezeLeavesTheRest`、`TestUpgradeFreezeAnswersFirst`、`TestUpgradeFreezeFollowsTheInitiatorsRole`、`TestUpgradeFreezeLetsOnlyItsOwnWrites`（含"任务的批"的子测试，P1 审查 A-N6）；`events.yaml` 的两处说明（3.7）；删除护栏的成本守卫。
 
 ### 6.2 S2（`m11-p1-s2`）
@@ -1306,7 +1338,7 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 1. `server, api, web: the rollback's kinds of changeset and job (M11/P1/S3)`：00058、00059、sqlc、`schema_test`、`Writing` 与它的适配器测试的回滚的行（`TestOneWritingJobAtOnceInANotebook`，`transfer/adapter/postgres/store_test.go:304`；P1 审查 A-M2）、两个模块的种类、River、Rescue 的表与 `TestTheRescue`、`ChangesetKind` 与 `TransferKind`；新种类的文字与两份 `writingKinds`、回滚的报告（4.3）。
 2. `server: the page module rolls an upgrade back pass by pass (M11/P1/S3)`：3.18，含性质测试与回滚的计划、先删、剩下的差三个成本守卫。
 3. `server, api, web: a rollback's job, its end and who cancels it (M11/P1/S3)`：3.19、3.20 的 `RollbackEnd`、`SetState`、`Clear`；`cancelTransferJob` 与 `TransferFailure` 的契约、`transfer` 的 `adapter/http` 测试答出 `forbidden`。
-4. `server, api, web: abandonUpgrade and endUpgradeRollback (M11/P1/S3)`：3.20 的其余、`wiki.upgrade_state` 的文字、矩阵的 S3 行、`TestUpgradeRollback`、交错（7.2 第 10–12、16 条）、日志。
+4. `server, api, web: abandonUpgrade and endUpgradeRollback (M11/P1/S3)`：3.20 的其余、`wiki.upgrade_state` 的文字、矩阵的 S3 行、`TestUpgradeRollback`、`TestUpgradeFreezeReachesEveryPath` 的"任务的批"的 `rolling_back` 一行（S1 审查 S1C-N1）、交错（7.2 第 10–12、16 条）、日志。
 5. `e2e: UP3 over the API (M11/P1/S3)`。
 
 ### 6.4 S4（`m11-p1-s4`）
@@ -1331,9 +1363,9 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 | 迁移的检查、名称、Down | `TestChecksRejectCounterexamples`、`TestConstraintAndIndexNames`、`TestTheUpgradeColumnsGoDown` | `server/migrations` | S1、S2、S3 |
 | 六条查询带升级 | 3.3 的三个测试 | notebook | S1 |
 | 冻结的规则 | `TestFreezeAdmits` | `page/domain` | S1 |
-| 守卫、否决者、删除的护栏、自己的单元 | `TestTheFreezeGuard`、`TestTheFreezeLetsItsOwnUnits`、`TestTheChangesetsCarryTheirUpgrade` | `page/app` | S1 |
-| transfer 的开任务 | `TestTheStartsRefuseAnUpgradingNotebook` | `transfer/app` | S1、S3 |
-| 冻结到每条路径（14 个 REST 写、5 个 MCP 写、开会话、导入、恢复与撤销的开始；只有预检答的情形；发起人的 MCP 写放过；`upgrading`、`reviewing`、`rolling_back` 三列；去掉冻结一项的子测试失败；"任务的批"：导入、恢复、撤销各一个任务停在两批之间（`wiring.batch = transfer.Batch{Nodes: 1}`，`wiring.transfer` 包住 `Tree`、在第二批的调用里停住，照 `bootstrap/source_background_test.go:96`），以 SQL 设上升级的列与基线的行（S2 起另有 wiki 的行），放开之后那一批以 `refused` 停下、`refusal.code` 是 `notebook.upgrading`、什么也没写（`bootstrap/transfer.go:253-257` 的去处）。发起时有写入任务就答 `transfer.busy`，冻结之下到不了这里，这是纵深防御的一层（00 号文档第 3 节第 3 条，P1 审查 A-N6）） | `TestUpgradeFreezeReachesEveryPath` | 第七份 | S1 |
+| 守卫、否决者、删除的护栏、自己的单元、预检 | `TestTheFreezeGuard`、`TestTheFreezeLetsItsOwnUnits`、`TestTheChangesetsCarryTheirUpgrade`、`TestThePrechecksRefuseAnUpgradingNotebook` | `page/app` | S1 |
+| transfer 的开任务；组合根交给 page 与 transfer 的状态 | `TestTheStartsRefuseAnUpgradingNotebook`；`TestPageNotebooksConvertTheState`、`TestTransferNotebooksConvertTheState` | `transfer/app`；组合根的第四、三份 | S1、S3 |
+| 冻结到每条路径（14 个 REST 写、5 个 MCP 写、开会话、导入、恢复与撤销的开始；只有预检答的情形；发起人的 MCP 写放过；`upgrading`、`reviewing`、`rolling_back` 三列；去掉冻结一项的子测试失败；"任务的批"：导入、恢复、撤销各一个任务停在两批之间（`wiring.batch = transfer.Batch{Nodes: 1}`，`wiring.transfer` 包住 `Tree`、在第二批的调用里停住，照 `bootstrap/source_background_test.go:96`），以 SQL 设上升级的列与基线的行（S2 起另有 wiki 的行），放开之后那一批以 `refused` 停下、`refusal.code` 是 `notebook.upgrading`、什么也没写（`bootstrap/transfer.go:253-257` 的去处）。发起时有写入任务就答 `transfer.busy`，冻结之下到不了这里，这是纵深防御的一层（00 号文档第 3 节第 3 条，P1 审查 A-N6）；S3 给"任务的批"加 `rolling_back` 一行：别的任务的一批在回滚中被拒、回滚自己的批放过（S1 审查 S1C-N1：S1 只在 `upgrading` 里测，按状态区分后台单元的代码在 S3 才有）） | `TestUpgradeFreezeReachesEveryPath` | 第七份 | S1、S3 |
 | 冻结之外照常（导出、改名称与开放程度、加成员、删除笔记本、强制解锁，三种状态） | `TestUpgradeFreezeLeavesTheRest` | 第七份 | S1 |
 | 冻结排在最前 | `TestUpgradeFreezeAnswersFirst`（以 SQL 造出冻结与锁都拒的写） | 第七份 | S1 |
 | 发起人被降为写者 | `TestUpgradeFreezeFollowsTheInitiatorsRole` | 第七份 | S1 |
@@ -1360,7 +1392,7 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 | 守卫 | 规模 | Step | 预算 |
 |---|---|---|---|
 | 发起 | 10 万节点、10 万页，其中 3 万页在提议的来源区（已有的 `raw`）里、各带 10 条待建，区外另有待建（P1 审查 B-I1：夹具不放区里的页抓不到第二遍；另量第 16 步的 `ANALYZE` 与各段：`Capture`、`Seed`、`prepareIn` 的两遍、`SetWanted`）；`upgrade_nodes` 从未分析、分析过另一次升级的行、本次之后 × 自定义与通用计划 | S2 | 发起实际受的 `ctxStart`：照 lint 的成本守卫的配置（请求 6 s、`LintTimeout` 3 s，`bootstrap/wiki_lint_cost_test.go:27-34`，M10 决定 160）；放不下照第 232 条 |
-| 删除护栏的读 | 一次删 1 万个节点的子树 | S1 | 单元 2 s |
+| 删除护栏的读 | 一次删 1 万个节点的子树，对着两次升级各 10 万行（`TestUpgradeProtectedReadsInTimeAtTheUnitsBound`，`page/adapter/postgres`，`!race`，`test-go-costs-2` 一行） | S1 | 计划为主：四种统计状态（没有统计、分析过、只有另一次升级的统计、`force_generic_plan`）× 自定义与通用两种计划都只经 `upgrade_nodes_pkey` 读、两列都进索引条件、没有顺序扫描，主键的列钉成 `(upgrade_id, node_id)`；时长为辅，本机两轮中位数较大的乘 3、向上取整到 5 ms，即 25 ms（初稿写"单元 2 s"，与上面的总规则不一致；S1 审查 S1B-I1 = S1C-M2，决定 236） |
 | 回滚的计划 | 10 万个条目（纯函数）与合成读的三种统计状态 | S3 | 本机两轮中位数 × 3 的时长与 `TotalAlloc` |
 | 回滚先删 | 10 万个零散的新页 | S3 | 同上 |
 | 剩下的差的读 | 10 万节点、10 万页 | S3 | 请求 4 s |
@@ -1404,11 +1436,11 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 | 11 | 按 `Kind == revert` 放行 | `TestUpgradeFreezeLetsOnlyItsOwnWrites` | S1 |
 | 12 | `reviewing` 也放过发起人的 MCP 写 | `TestFreezeAdmits`；`TestUpgradeFreezeReachesEveryPath` 的 `reviewing` 列 | S1 |
 | 13 | 去掉过期的 `UpgradeOwn` 的核对 | `TestFreezeAdmits`、`TestTheFreezeLetsItsOwnUnits`；7.2 第 16 条 | S1、S3 |
-| 14 | 删除的拒绝标在 `Changes[0]` | `TestTheFreezeGuard`；`TestUpgradeGuardrails` 的 `batch` 一行 | S1 |
+| 14 | 删除的拒绝标在 `Changes[0]` | `TestTheFreezeGuard`（只有它：被标的节点只在 page 之内看得到，MCP 的工具错误只带 `code`、`message`、`op`，后台任务到不了护栏；`TestUpgradeGuardrails` 的 `batch` 一行钉的是整批在那个删除的操作被拒、什么也没写，对这条变异照过；S1 审查 S1C-M1，决定 237） | S1 |
 | 15 | 删除的护栏不读保护行（只看 `baseline`） | `TestUpgradeGuardrails` 的补写的 `raw` | S1 |
 | 16 | 上传的预检不判冻结 | `TestUpgradeFreezeReachesEveryPath` 的上传在存储将满时（答 `storage_full` 而不是 `notebook.upgrading`，3.24） | S1 |
 | 17 | `CheckRevert` 不判冻结；`CheckRestore` 不判；导入的 `Check` 不判 | 同上的 `startRevert`（超过 `MaxJobItems` 的变更集）、`startTrashRestore`（过期的项）、`startImport`（存储将满），各一次 | S1 |
-| 18 | 导入建任务的事务不判冻结 | 7.2 第 4 条 | S1、S2 |
+| 18 | 导入建任务的事务不判冻结 | `TestTheStartsRefuseAnUpgradingNotebook` 的建任务（S1）；7.2 第 4 条（S2） | S1、S2 |
 | 19 | 冻结的判断放进 `StartDeps.lock` | `TestUpgradeFreezeLeavesTheRest` 的导出 | S1 |
 | 20 | `ensureChangeset` 不记 `upgrade_id` | `TestTheChangesetsCarryTheirUpgrade`；UP3 的变更集 | S1 |
 | 21 | 第三份的 `-skip` 不含第七份 | 不列：没有会因它失败的测试（第 223 条），由记录里的 `go test -list` 核对 | S1 |
@@ -1458,7 +1490,7 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 | 65 | 同一检查的 `(name IS NULL) = (sort_order IS NULL)` 改成单向 | 反例"次序有、名称空" | S1 |
 | 66 | 00055 的 `(upgrade_id IS NULL) = (upgrade_by_id IS NULL)` 改成单向 | 反例"只有发起人" | S1 |
 | 67 | 发起准备整份摘要 | `TestUpgradeStart` 的 `wiki/app` 一半（假的 `Rules` 记下查询） | S2 |
-| 68 | 冻结的守卫放过后台任务的单元（按 `Background`） | `TestUpgradeFreezeReachesEveryPath` 的"任务的批" | S1 |
+| 68 | 后台任务的单元放过冻结：守卫的 `Step` 没有 `Background`，改在 `page/app/unit.go` 造 `Write` 处，`spec.Background` 的单元的 `Write.Notebook` 去掉升级（或取当前升级为 `UpgradeOwn`）（S1 审查 S1C-N7） | `TestUpgradeFreezeReachesEveryPath` 的"任务的批" | S1 |
 | 69 | 结束的两个钩子锁不到笔记本行时照调 `End` 或 `Stopped` | `TestARollbacksEnd`；7.2 第 12 条 | S3 |
 | 70 | `rollbackSucceeded` 不记"rollback ended" | `TestARollbacksEnd` 的日志 | S3 |
 | 71 | `PlanRollback` 的 `ErrJobGone` 经 `stopped`（归为 `internal`） | `TestARollbacksEnd`；`TestUpgradeRollback` 的"两遍之间"（任务行成了 `failed`） | S3 |
@@ -1473,6 +1505,18 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 | 80 | 00055 的 `(upgrade_id IS NULL) = (upgrade_at IS NULL)` 改成单向 | 反例"只有时刻" | S1 |
 | 81 | `upgrade_nodes_page_check` 的 `(revision IS NULL) = (x IS NULL)` 四个合取任一改成单向 | 反例"保护行带哈希""保护行带字节数""保护行带待建数""保护行带认可的哈希"各杀一个 | S1 |
 | 82 | `notebook_upgrades_submission_check` 的两个合取任一改成单向 | 反例"只有 `submission_id`""只有 `submitted_by_id`"各杀一个 | S2 |
+| 83 | `batch` 的单元跳过冻结的守卫（S1 审查 C 的 o1） | `TestUpgradeFreezeReachesEveryPath`、`TestUpgradeToolsErrorsCarryTheirCodes` 的 `batch` | S1 |
+| 84 | 删除的护栏只问子树的根（o4） | `TestTheFreezeGuard` 的删除护栏；`TestUpgradeGuardrails`（删掉了收着基线页的新建节点） | S1 |
+| 85 | 任何人的 MCP 写都去问 `notebook.change_mode`，不看发起人（o7，同审查 A 的 W1） | `TestUpgradeToolsErrorsCarryTheirCodes`（别人发起的那一本）；`TestFreezeAdmits` | S1 |
+| 86 | 组合根的 `transferNotebooks` 不转换升级（o9） | `TestUpgradeFreezeReachesEveryPath` 的 `startImport`（答 202、任务多一行） | S1 |
+| 87 | 删除护栏的读用不上主键：只剩 `upgrade_id` 走键、两列都不走键，或写成 `IS TRUE` 的条件（审查 B 的 c1，C 的 c1、c2） | `TestUpgradeProtectedReadsInTimeAtTheUnitsBound` 的计划 | S1 |
+| 88 | 00056 去掉 `upgrade_nodes_pkey`（B 的 c2） | 同上（`pg_get_indexdef` 找不到主键） | S1 |
+| 89 | 00056 的主键的列序换成 `(node_id, upgrade_id)` | 同上（只有列的钉住抓得到：计划仍走主键、两列都进条件） | S1 |
+| 90 | 导入的 `Check` 把冻结的判断挪到 `place` 之后（A 的 A1） | `TestTheStartsRefuseAnUpgradingNotebook` 的"an import's Check"（父节点不存在的请求、调用序列） | S1 |
+| 91 | transfer 的 `notUpgrading` 对没有的笔记本放过（A5） | 同上的"the notebook deleted as its state is read" | S1 |
+| 92 | transfer 的开任务在判定之前答 `notebook.upgrading`（A7） | 同上的恢复与撤销的"by a reader" | S1 |
+| 93 | 冻结的守卫对不认识的判定放行（去掉 `default`） | `TestTheFreezeGuard` 的"a freeze it does not know" | S1 |
+| 94 | page 的 `UpgradeRollingBack` 不是 notebook 的那个字符串 | `TestPageNotebooksConvertTheState` | S1 |
 
 ### 7.4 门禁
 
@@ -1480,7 +1524,7 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 
 ### 7.5 CI 的余量
 
-新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的六个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
+新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
 
 ### 7.6 P1 怎样量
 
@@ -1531,7 +1575,67 @@ P1 完成，当且仅当：
 
 ## 10. 结果
 
-（实施后补。）
+每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
+
+### 10.1 S1：数据、冻结与删除的护栏（服务端）（2026-11-09，合并见 00 号文档第 12 节）
+
+- 提交（从 main 的 `379a2d6d` 开始，照 6.1 的次序，7 个；Step 的文档提交是主持者的）：
+  - 组合根的第七份：`BOOTSTRAP_SEVENTH = ^TestUpgrade`、`test-go-bootstrap-7`，第三份的 `-skip` 加它，`test-go` 与 `test-go-bootstrap` 的依赖、CI 的 `bootstrap-7`（25 分钟）、`06-environment.md` 的两处（`8b98ade3`）。
+  - 迁移 00055（笔记本的四列与 `notebooks_upgrade_check`）与 00056（`upgrade_nodes`、`changesets.upgrade_id` 与它的部分索引），sqlc 的两项；`schema_test` 的十个名称、一本升级中的普通笔记本与三行、27 个反例（每个只违反一个合取，写成 `=` 的合取两个方向各一个）；`TestTheUpgradeColumnsGoDown`；`runtime-grants.sql` 的两行与 `analyzed`；M10 的 lint 迁移的成本夹具先经真的 Down 退 56、55（`3b23bad0`）。
+  - notebook 的读带升级：领域的 `Upgrade`、根的 `State.Upgrade` 与别名、`ActionChangeMode`；六条读笔记本的查询与 `upgradeOf`；契约的 `NotebookUpgrade`、`NotebookUpgradeState` 与必填可空的 `Notebook.upgrade`；`TestTheStatesAnswerTheirUpgrade`、`TestTheNotebooksAnswerTheirUpgrade`、`TestAnUpgradingNotebookIsAnsweredWithItsUpgrade`；网页两处字面量（`2f209937`）。
+  - 冻结：page 的 `NotebookState.Upgrade`、`FreezeAdmits`（`TestFreezeAdmits`）、`ErrUpgrading`、`ErrStaleUpgradeWrite`；`Write.UpgradeOwn` 与 `UnitSpec.UpgradeOwn`；`FreezeGuard`（守卫与否决者）、`decideAction`；`ensureChangeset` 记 `upgrade_id`；组合根的 `toPageState` 转换升级、登记 `[freeze, mode, lock]`；九个经单元的操作与 `openEditSession` 声明 `notebook.upgrading`，page 的 `adapter/http` 测试答出；`mcpToolCodes()` 的五行与 `upgradeToolCodes()`、`TestUpgradeToolsErrorsCarryTheirCodes` 的一半；两种语言的文字；`TestTheFreezeGuard`、`TestTheFreezeLetsItsOwnUnits`、`TestTheChangesetsCarryTheirUpgrade`（`1a54bfcd`）。
+  - 删除的护栏：`UpgradeNodes.Protected`（`UpgradeProtected`，按主键，在单元的事务里），`page.upgrade_protected` 标在子树里第一个受保护的节点；`mcpOwnCodes()`、`mcpToolCodes()` 与 `upgradeToolCodes()` 的两对；`TestUpgradeProtected`、`TestCreateChangesetWritesItsUpgrade`、`TestUpgradeGuardrails`（`d668fc3f`）。
+  - 预检与 transfer 的开始：page 的三个预检在判定之后先读一次状态（`Writer.notUpgrading`）；transfer 的 `NotebookState`、端口的 `ShareByID` 交回它、新的 `StateOf`，组合根的 `transferNotebooks`；导入的 `Check`、建导入的任务、恢复与撤销的开始答 `notebook.upgrading`，导出照常；四个操作的声明与 asset、transfer 的 `adapter/http` 测试；`TestTheStartsRefuseAnUpgradingNotebook`、`TestThePrechecksRefuseAnUpgradingNotebook`、`TestTransferNotebooksConvertTheState`（`54ce782f`）。
+  - 整个程序的测试：`TestUpgradeFreezeReachesEveryPath`（三种状态 × 14 个 REST 写 × bob 与发起人；5 个 MCP 写；只有预检答的四种情形与升级结束之后的原码；"任务的批"；去掉冻结）、`TestUpgradeFreezeLeavesTheRest`、`TestUpgradeFreezeAnswersFirst`、`TestUpgradeFreezeFollowsTheInitiatorsRole`、`TestUpgradeFreezeLetsOnlyItsOwnWrites`；`events.yaml` 的两处说明；删除护栏的读的成本守卫 `TestUpgradeProtectedReadsInTimeAtTheUnitsBound`（`test-go-costs-2` 一行）（`a28064e9`）。
+  - 每个提交单独在一个干净的工作树里 build、vet、`make lint-go`、`make gen-check` 与 short 测试都通过；碰契约或网页的另过 `make lint-web`、`make knip` 与 vitest（189 个文件，4,087–4,088 个测试）。第 6 个提交的 vitest 第一次在负载约 24 下有两个计时的测试（编辑器的 20 万字符的段落解析）超界，单独重跑通过；第 2 个提交的成本夹具修正之后，它另单独重跑 build、vet、`make lint-go` 与 short。推送之前分支改写过两次：oxfmt 的四处并回第 3、4、6 个提交，M10 的 lint 迁移的成本夹具的修正并回第 2 个。审查 C 另在第 2、4、6 个提交上跑同样的门禁与网页的三步，在第 2–6 个提交上跑竞态下的数据库测试与组合根里 S1 加或改的测试，都通过。
+  - 修复一轮另有 4 个（下面），一共 11 个；合并见 00 号文档第 12 节。
+- 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.25 列出）：
+  1. `checkedRows` 原来只有一本 LLM Wiki：加一本升级中的普通笔记本（`…019`，升级 `…020`）与三行 `upgrade_nodes`（基线页 `…021`、基线附件 `…022`、保护行 `…023`），另给变更集设上 `upgrade_id`（3.2）。
+  2. `TestTheUpgradeColumnsGoDown` 依次 `downTo(56)`、`downTo(55)`：`downTo` 退掉给定的那一版，设计写的 55、54 差一（3.2；审查 B 核对）。
+  3. 设计的反例"id 有、另三列空"同时违反三个合取：换成每个只违反一个合取的反例，写成 `=` 的合取两个方向各一个，`notebooks_upgrade_check` 8 个、`upgrade_nodes_*` 19 个（3.2；第 64–66、80、81 条变异各被点名的那一个杀死）。
+  4. 名称表要 `upgrade_nodes_pkey iu` 与 `upgrade_nodes_pkey p` 两项（主键的索引与约束）（3.2）。
+  5. notebook 根的 `Upgrade`、`UpgradeState` 与三个值的别名在 `notebook/notebooks.go`，挨着 `State`、`Mode`；`ActionChangeMode` 在 `module.go`（3.3）。
+  6. 从 `ModeGuard` 抽出的 `decideAction(auth, s, action)` 由冻结的守卫与 `unit_revert.go` 共用，撤销不再只为判定建一个 `ModeGuard`（3.4；审查 A：与原来等价）。
+  7. 第 4 个提交里根的 `page.NewFreezeGuard(pool, auth, admin)` 还不用连接池，第 5 个接上 `UpgradeProtected` 的读者；签名一直是设计的。
+  8. page 的三个预检共用 `Writer.notUpgrading`（读一次不加锁的状态，有升级答 `notebook.upgrading`，没有笔记本答 `notebook.not_found`）：后台撤销的开始路径读两次状态（M10 的 `TestARevertsChecksRefuseTheContract` 改为两次）；上传的 `Check` 恒读一次，以前名称的检查先拒时一次也不读（`TestAnUploadsCheckRefusesAReservedTitle` 改为恒一次）；导入的 `Check` 的调用序列加 `Notebooks.StateOf`（`TestAnImportStarts`）（3.4、3.5；审查 A：M10 已有的码之间的相对次序不变，只多一次主键读）。
+  9. `CreateChangeset` 写 `upgrade_id` 的适配器测试 `TestCreateChangesetWritesItsUpgrade` 在 `page/adapter/postgres/upgrade_test.go`（3.4）。
+  10. 第 14 条变异的第二个测试 `TestUpgradeGuardrails` 的 `batch` 一行看不到拒绝标在哪个节点（MCP 的工具错误只带 `code`、`message`、`op`），只有 `TestTheFreezeGuard` 抓到它（审查 S1C-M1，决定 237；7.3 第 14 条改）。
+  11. `TestPageNotebooksConvertTheState` 加升级的一行；另加 `TestTransferNotebooksConvertTheState`（组合根的 `transferNotebooks`：没有、升级中、回滚中、没有笔记本、错误，两种读）（3.5）。
+  12. 第 6 个提交的范围写 `server, api`：`x-problem-codes` 不进 `schema.gen.ts`，`notebook.upgrading` 的两种语言的文字在第 4 个提交已加，网页没有文件改动；`problem-messages.test.ts` 读契约，照过（6.1）。
+  13. 另加 `page/app` 的 `TestThePrechecksRefuseAnUpgradingNotebook`：上传、后台恢复、后台撤销的预检在判定之后先答 `notebook.upgrading`、之后什么也不读、撤销不 admit，读者仍是 `forbidden`。设计只靠整个程序的测试盖这三处，单元一层另钉一次（3.4；它抓到审查 A 的 A2、A4）。
+  14. transfer 的 `adapter/http` 的替身 `notebooks` 带一个原子的 `upgrading`：恢复与撤销的 `notebook.upgrading` 由 transfer 自己在锁下答，导入的由 `StateOf` 答，三条都经真的用例；asset 的那条由 page 的检查的替身答（3.5；它让审查 A 的 A3 被抓到）。
+  15. oxfmt 报出第 3、4、6 个提交里四个文件的格式（`notebook.yaml` 的流式列表、`page.yaml` 与 `transfer.yaml` 的行内码表、`en.ts` 的一行）：第 1–6 个提交时只跑了 Go 一侧与 tsc、knip、vitest，没跑 `make lint-web`，第 7 个之前才发现，以 fixup 并回各自的提交（分支还没推），打包的 `api/dist/openapi.yaml` 不变。
+  16. `TestUpgradeFreezeReachesEveryPath`：三种状态在一个应用里（每种一本 `frozenNotebook`：一页在第 2 版、一页改过名、一个回收站项），bob 与发起人（经 REST）的 14 个写各答 409 `notebook.upgrading`、行与任务数不变；bob 的 agent 的 5 个 MCP 写被拒；发起人的 agent 只在 `upgrading` 放过。"only the prechecks answer"（存储一点余地也不留、一个已过恢复期、清理器还没取走的回收站项、`MaxJobItems = 1`；升级中四个各答 `notebook.upgrading`，`endUpgrade` 之后各答原来的码）、"the jobs' batches"（`transfer.Batch{Nodes: 1}`，`upgradeBetweenBatches` 在任务的第二次调用之前以 SQL 设上升级；导入、恢复、撤销各以 `failed`、`refused`、`notebook.upgrading`、`done = 1` 结束）、"without the freeze"（从 `Guards` 与 `EditSessionVetoers` 各删去恰好一个 `*page.FreezeGuard`，之后九个经单元的写、五个工具与开会话都成功）三个子测试各起自己的应用。
+  17. `TestUpgradeFreezeLeavesTheRest` 另核对读页与"字节不变的写答成功、什么也不写"（4.5 的"不冻结"）；导出的开始不经 `background()`（它要求变更集），另写开始与等结束。
+  18. `TestUpgradeFreezeAnswersFirst` 另核对接管的开启也先答 `notebook.upgrading`（否决者里冻结最先）。
+  19. `TestUpgradeFreezeLetsOnlyItsOwnWrites` 跑 `upgrading` 与 `rolling_back` 两种状态，另含后台撤销的开始与发起人经 REST 撤销她的 agent 为升级写的变更集。
+  20. 删除护栏的读的成本守卫写在适配器一层（`page/adapter/postgres` 的 `TestUpgradeProtectedReadsInTimeAtTheUnitsBound`，`//go:build !race`，`-short` 下随 pgtest 跳过）：1 万个 id（一半是基线的）对着两次升级各 10 万行，一个连接上四种状态；界照 7.1 的表取单元的 2 秒。审查发现它抓不到顺序扫描（S1B-I1 = S1C-M2），修复一轮改为以计划为主、界 25 ms（决定 236；7.1 改）。
+  21. 夹具另加 `upgradeIn`（一个事务，交回错误，供任务的 goroutine 用，不调 `t.Fatal`）与 `endUpgrade`（清四列、删行）。
+  22. `events.yaml` 的 `mode` 的说明用设计的新句子，其后"Its data is the notebook's ids. Read the notebook again…"一句保留，加"its upgrade"（3.7）。
+  23. 第 68 条变异改在 `unit.go`：守卫看不到 `Background`，`spec.Background` 的单元的 `Write.Notebook` 去掉升级（审查 S1C-N7；7.3 第 68 条改）。
+  24. 设计没有列 M10 的 lint 迁移的成本夹具（`bootstrap/lint_index_migration_cost_test.go` 的 `lintMigrationDropIngest`，`test-go-costs-lint` 经它把库退到 52）：它认定最新的迁移是 54，S1 加了 55、56，第二次 `make test` 在 `costs-lint` 失败；改为先经真的 Down 退 56、55，并回第 2 个提交。这一处只在不带竞态的 `costs-lint` 里跑，逐个提交的核对与组合根的七份都碰不到它。修复一轮改为从嵌入的最新版本退（审查 S1B-M1，决定 238），以后的迁移不用改它（6.1）。
+- 实测（本机，经 `heavy.sh`）：
+  - 新的测试在竞态下（`go test -race -count=1 -v`，逐包）：第七份的七个共 13.0 秒（`TestUpgradeFreezeReachesEveryPath` 5.56、`TestUpgradeFreezeLeavesTheRest` 2.53、`TestUpgradeFreezeFollowsTheInitiatorsRole` 1.37、`TestUpgradeFreezeLetsOnlyItsOwnWrites` 0.95、`TestUpgradeGuardrails` 0.91、`TestUpgradeToolsErrorsCarryTheirCodes` 0.90、`TestUpgradeFreezeAnswersFirst` 0.80），包 14.2 秒；`TestChecksRejectCounterexamples` 5.53 秒；其余新的单元与适配器测试各在 1.4 秒之内（含起容器）。
+  - 删除护栏的读的成本守卫（不带竞态，五次读的中位数）：建成时没有统计、分析过、只有另一次升级的统计、通用计划 4.0–6.8 ms，准备 0.8–0.9 秒，整个测试 2.5–2.7 秒；修复一轮加了计划的断言之后，本机两轮 7.5、6.1、6.3、5.1 ms 与 6.5、5.8、5.3、6.4 ms，界取较大的 7.5 ms 的三倍、向上取整到 5 ms，即 25 ms；两次 CI 的 costs-2 5.7–8.6 ms，在界内。
+  - e2e（不带竞态）：建成时 `make e2e` 503 个 148 秒（Playwright 2.4 分钟）；审查 C 503 个（2.3 分钟）；修复一轮 503 个（2.6 分钟）。S1 不加 e2e。
+- 反向对照（每一条的结果见 [S1 的审查记录](reviews/P1-S1-freeze-guardrails-review.md)"反向对照"）：
+  - 7.3 的 S1 各行（1–20、64–66、68、80、81a–d，设计列两个测试的各跑一次，共 37 次）：36 次被点名的测试抓到；第 14 条的 `TestUpgradeGuardrails` 一半看不到被标的节点（MCP 的错误不带节点），同一变异由 `TestTheFreezeGuard` 抓到（决定 237，第 14 条改为只列它）。第 21 条照设计以 `go test -list` 核对：第三份的模式单独收下 7 个 `TestUpgrade…`，七份合起来每个恰在一份。
+  - 审查者的变异里存活的（A 的 A1、A5、A7，B 的 c1、c2，C 的 c1、c2）各成了一条发现，修复一轮之后都被抓到；连同修复一轮自己的 p1、n2、n3 与 C 的 o1、o4、o7、o9 写成 7.3 的第 83–94 条。A 的 W6（同第 14 条）与 C 的 o2（S1C-N1，S3 补）照预料存活。修复一轮在 `68c3c505` 上重跑 49 条（实施的 37 条与 12 条），46 条抓到，存活的正是这三条照预料的。
+- 门禁（本机）：建成时 `make lint gen-check knip build` 通过（16 秒）；经 `heavy.sh`：`make test` 第一次在第五份有两个计时的测试超界（逐个提交的核对与它同时跑，负载 24；单独重跑通过），第二次（单独跑，1,942 秒）竞态、组合根七份与成本三份通过、在 `test-go-costs-lint` 发现 M10 的 lint 迁移的成本夹具认定最新的迁移是 54（上面第 24 条），之后 `make -j1 test-go-costs-lint test-go-guards test-web` 在修正后的头上通过（1,547 秒，vitest 189 个文件、4,088 个测试）；`make test-go-short` 46 秒；`make e2e` 503 个 148 秒。修复一轮（`68c3c505`）：4 个提交各自 build、vet、`make lint-go`、`make gen-check` 与 short 都通过（碰 `Makefile` 的两个另过 `make lint`，夹具的那个另过 `make test-go-costs-lint` 与一个空的 00057）；头上 `make lint`、`gen-check`、`knip`、`build` 通过，`make test-go-short` 通过，`make e2e` 503 个；`make test` 第一次只在 guards-core 的 `TestTheAppsMarkdownCostsAboutItsSize/to_a_page` 以 0.02 ms 超界（`platform/markdown` 最后改在 M10/P4/S2，单独重跑通过），第二次全绿。
+- 组合根的各份（3.8，竞态构建的口径）：`go test -race -list` 534 个顶层测试，七份 158、51、121、123、62、12、7，各在恰好一份，`TestUpgrade…` 只在第七份；第三份的 `-run` 模式单独收下全部 7 个 `TestUpgrade…`（7.3 第 21 条）。另有 42 个 `!race` 的成本与守卫测试不进竞态构建（实施报告的 576 个、167/58/124/136/62/22/7 是不带竞态的清单，审查 S1C-N2）。本机单独两轮（包的时间）：第一份 298.8、290.8 秒，第二份 279.5、283.2，第三份 266.2、278.9，第四份 220.2、227.4，第五份 259.1、259.9，第六份 264.9、261.4，第七份 14.5、14.7。
+- CI：分支的 run 42491802403（`a28064e9`）全绿（作业，括号里是测试一步）：竞态 13:29（13:09）、组合根一 5:00（4:42）、二 6:11（5:49）、三 5:04（4:45）、四 7:24（7:02）、五 6:48（6:25）、六 4:27（4:10）、七 1:02（0:42）、成本一 17:00（13:38）、二 16:12（15:51）、三 10:23（10:01）、lint 的成本 11:22（11:04）、守卫 core 19:31（19:11）、sources 16:57（16:33）、short 2:37（2:19）、web 4:20（3:48）、e2e 7:30（E2E 一步 5:58）、镜像 1:25。修复一轮的 run 42512020813（`68c3c505`）全绿：竞态 13:23（13:04）、组合根一 7:02（6:45）、二 4:46（4:28）、三 7:18（6:54）、四 7:20（7:01）、五 6:46（6:25）、六 5:04（4:48）、七 1:21（0:57）、成本一 17:12（13:40）、二 12:42（12:23）、三 8:00（7:39）、lint 的成本 13:12（12:49）、守卫 core 12:00（11:41）、sources 17:24（17:02）、short 3:19（2:57）、web 4:51（4:17）、e2e 6:45（E2E 一步 5:34）、镜像 1:23。组合根七份的测试一步都在 450 秒之下，最紧的是第四份（422、421 秒）；第 8 节第 1 条要的合并之后两次 `main` 的平均，合并之后量。
+- 设计的文字照建成的与修复一轮改，已改在各节（3.2、3.3、3.4、3.5、3.8、3.14、3.24、6.1、6.3、7.1、7.3、7.5；3.25 列出）；7.3 加第 83–94 条。00 号文档 4.6 与第 9 节的成本守卫一行随之改。
+- **修复一轮**（2026-11-09，分支 `m11-p1-s1` 的 `68c3c505`；三份审查与主持者的修复说明 `fix-1.md`，决定 236–239）：从 `a28064e9` 起 4 个提交，一组一个，普通推送，没有改写已推的历史：
+  - 重要的与次要的：
+    - S1B-I1 = S1C-M2 `f66537d4`：删除护栏的读的成本守卫钉住主键的列，四种统计 × 自定义与通用两种计划都断言走主键、两列都进索引条件、没有顺序扫描；界 25 ms（决定 236）。
+    - S1B-M1、S1C-N5 `b7f242e7`：M10 的 lint 迁移的成本夹具从嵌入的最新迁移逐个经真的 Down 退到 54（决定 238）；另以一个空的 00057 验证过。
+    - S1A-M1、S1A-N1 `e5aa8a67`：导入的 `Check` 以父节点不存在的请求断言答 `notebook.upgrading` 与完整的调用序列；"读状态时笔记本已删"答 `notebook.not_found`；恢复与撤销的开始由读者发起时答 `forbidden`。
+  - 小问题 `68c3c505`：冻结的守卫对不认识的判定答缺陷的错误、整个单元回滚（S1A-N2，这一轮唯一的生产的改动；`FreezeGuard` 加测试的缝 `admits` 与 `WithAdmits`）；`Grants` 与 `TestUpgradeFreezeAnswersFirst` 的注释（S1A-N3、N4）；`Makefile` 的分份的数写竞态的 534 个（S1C-N2）；`TestPageNotebooksConvertTheState` 的期望写 page 的常量，page 的模块根导出三个状态常量（S1C-N3）；`06-environment.md` 的 `-j6` 与"逐个提交的核对也经 `heavy.sh`"一句（S1C-N4、N6）。
+  - 只改文档的在本 Step 的文档提交：7.3 第 14 条只列 `TestTheFreezeGuard`，3.4 与 00 号文档 4.6 照实（S1A-Q1 = S1C-M1，决定 237）；3.14 第 10 步记 `Start` 断言升级的 id 非零（S1B-N1，S2 做）；S3 的"任务的批"加 `rolling_back` 一行（S1C-N1）；`NotebookUpgrade` 的说明在 S2 之前引用 `getUpgrade`，接受（S1B-N2）；7.3 第 68 条的写法与第 83–94 条（S1C-N7 与修复一轮的变异）。
+  - 实施者在这一轮的一次失误：第一次跑 `costs-lint` 时在同一个工作树里接着改后面的提交，那次编进了半成品、作废，以干净的工作树里的那次为准。
+- **审查的结论**：Important 1（S1B-I1 = S1C-M2），Minor 另 3（S1A-M1、S1B-M1、S1C-M1 = S1A-Q1），Nit 13（S1C-N5 并入 S1B-M1），都已改或写明交给 S2、S3。三位都没有找到答错的结果：A 的交错探针在四条路上逼不出"读了没升级、写照样落下"的窗口；B 在真库上核对 27 个反例各恰好违反一个合取、14 个操作的码表与设计一致、读者与看不到的人先答 403 与 404；C 的逐个提交、竞态下的中间提交与头上的 e2e 都通过。实施者的 24 条偏离由三位判过，都对（第 20 条照了设计的表，表本身错了）。
+- **修复核对一轮**（2026-11-09，三位各在 `68c3c505` 的自己的工作树里）：三位都没有新的发现（Important 0、Minor 0、Nit 0）。要改代码的旧发现都关了：A 的 S1A-M1、N1–N4、Q2，B 的 S1B-I1、M1，C 的 S1C-M2、N2–N6；只改文档的处置对，文档的部分在本提交（S1A-Q1 = S1C-M1、S1C-N7、S1B-N1、S1B-N2），S1C-N1 交给 S3。A 重跑 A1、A5、A7，新加 F1–F5（`default` 的三种写坏、构造器、`goneAsRead` 的开关），都被抓到；B 的 c1、c2 与新的 c3 被杀，q3、q4（只留位图、套一层 Gather）照过、不误报，q1、q2（关掉位图）让"分析过、自定义计划"一格改选并行的顺序扫描，一个空的 00057 下两个 lint 迁移的测试通过；C 在 4 个提交上各自跑门禁都通过，重跑 32 个变异，31 个抓到、o2 照预料存活，实施者报告的变异表、CI 与中位数与它读到的逐项一致。B 记下一项观察：那一格位图读与并行顺序扫描的估计成本只差约 9%，代价模型一变，测试会以整表扫描失败；主持者接受，这正是决定 236 要的信号，若 CI 上因此不稳再议。不需要第二轮。
+- 实施者留下的六项：Step 的文档提交是本提交；第 14 条的 `TestUpgradeGuardrails` 一半见决定 237；"任务的批"里任务由发起人开，不改（第 68 条与 9b 在那里各自失败）；本机计时的守卫在高负载下超界，见审查 S1C-N6；成本守卫的界见决定 236；lint 迁移的夹具见决定 238。
 
 ## 附录：核对过的代码
 
