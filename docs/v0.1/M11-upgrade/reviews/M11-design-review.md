@@ -171,3 +171,92 @@ C 问到这四条是否原话：出处是主持者交给设计者的负责人回
 | B | `seeded_root`、`seeded_agents` 两个布尔可以推出 | `seeded_agents` 换成 `seeded_agents_id`（B-M7）；`seeded_root` 留着：wiki 读不到 page 的保护行，靠它答"补写的来源根" |
 | C | `TestUpgradeFreezeAnswersFirst` 钉住的次序在实际里到不了 | 留着（便宜），4.5 与第 9 节写明它以 SQL 造出、不是用户看得到的效果 |
 | C | 横幅与升级页都显示 MCP 地址 | 都不显示（C-I2） |
+
+## 修订核对第一轮
+
+| 项 | 内容 |
+|---|---|
+| 核对对象 | `fe9aa7d7` 的 [00-M11-design.md](../00-M11-design.md)（第一轮修订）与本记录，对照 `dbce5828` 的初稿（`git diff dbce5828 fe9aa7d7`）与主持者的第一份修订说明 |
+| 核对方式 | 三位各自对照自己上一轮的发现，读修订在自己范围里新加的部分，对着 `fe9aa7d7` 的代码核对新引用的行。A：没有起 PostgreSQL。B：经 `heavy.sh` 起一次性的 `postgres:18.6-trixie`，照修订原文建 00055–00057 的约束，插反例并照 4.3、4.8、4.10 的写法走一遍状态机（`checks2.sql`）；在 `dbce5828` 的副本里加 `platform/postgres/zz_review_b_timeout_test.go`，用平台的 `TxManager` 在真库上复现"写事务里内层的期限到了"答成 500。C：用脚本（`seq_rev.py`、`check_rev2.py`）照第 7 节取出 45 对旧文字与新文字，在 `v0.1-design.md` 上依次替换，每段旧文字在替换的那一刻恰好出现一次 |
+| 日期 | 2026-11-08 |
+| 结论 | 旧发现：A 15 条里 14 条关、A-N1 大体关；B 28 条里 25 条关、3 条部分关（B-I2、B-M8、B-M9，各引出一条新发现）；C 30 条全关（C-M2、C-M3、C-M5、C-M6、C-M10、C-N7 各留一处 Nit），C-M13 的替代办法 C 认为成立。新发现：Important 1（B）、Minor 10（A 4、B 3、C 3）、Nit 20（A 5、B 7、C 8）、Question 1（C）。全部处理：Minor 与 Important 照主持者的裁定，Nit 照审查者的建议；设计者在这一轮另做的取舍是 225–231 |
+
+### 三位的结论（旧发现）
+
+- **A**：A-I1、A-I2、A-M1–M6、A-N2–N6 关闭；A-M1 关闭而表述有一处歧义（A2-N3）；A-M4 关闭而 e2e 的一处安排不对（A2-N4）；A-M5 关闭而引出 A2-M2；A-N1 大体关闭（`succeed` 里失败时的写法，A2-N1）；A-Q1 由主持者第 212 条答了。上一轮 A 的三条未核实的怀疑的核对结果都成立。
+- **B**：B-I1、B-M1–M7、B-N1–N8、B-Q2 关闭，B-Q1、B-Q3 已答。部分关闭三条：B-I2（护栏与逐页都对，逐页的数法在代码里做不到，B2-I1）；B-M8（发起的期限超时答成 500，B2-M1；在锁下等名额，B2-N1）；B-M9（`MAINTAIN` 漏了没有测试失败，B2-M3）。B 实测 00055–00057 的约束：初稿接受的五种行都被挡住，状态机到得了的行都写得进；例外是 B2-M2 与 B2-N5。
+- **C**：30 条全关。留下的 Nit：C-M2 → C2-N1，C-M3 → C2-N2，C-M5、C-N7 → C2-N5，C-M6 → C2-N3，C-M10 → C2-N4。C-M13 的替代办法（动作答 `Upgrade`）成立：答 `Notebook` 要么让 wiki 的生成代码引 notebook 的生成包，违反 `archtest/rules_test.go:42`，要么把 `Notebook` 搬进 `common.yaml`；唯一的代价是动作答复到列表重读之间 `Notebook.upgrade` 旧一瞬，可以接受。45 对旧文字与三处锚点各恰好出现一次。
+
+### 主持者的裁定
+
+- **A2-M1**：接受。凡带 `UpgradeOwn` 的单元，标记不等于笔记本当前的升级（含已没有升级）就拒，放在守卫的第 1 步之前。
+- **A2-M2**：接受。"审阅中、没有报告"只在 `submitted_at + LintTimeout + 10 秒` 之后才能被重新提交或退回接管；之前答状态的码。第 215 条照改。
+- **A2-M3**：接受。`rollback` 进 Rescue 的种类表，`TestTheRescue` 改成逐个核对全部种类。
+- **A2-M4**：取"写明"，不做"每批之间链接一致"。
+- **A 的问题（`Runs.Hold` 在笔记本行的锁下）**：只许立即取，取不到就答 503 带 `Retry-After`，从不在行锁下等名额；写明并有测试。B2-N1 随之了结。
+- **B2-I1**：取第一种：发起时对提议的来源区里的基线页另读一次，照来源区以外同样的口径数；`upgrade_nodes_page_check` 不放宽。
+- **B2-M1**：接受，用答得出 503 的那种，写明为什么不再是 500，有测试。
+- **B2-M2**：接受，先开任务，再一条 `UPDATE` 写 `rolling_back`、结局与任务的 id。
+- **B2-M3**：接受审查者的两处测试的改法。
+- **C2-M1**：接受。停下与结束各经订阅链发 `mode`（与 A-N1 的"一个事务"一起写），进度照已有的任务界面的做法。
+- **C2-M2**：接受，升级页的键进 `refreshedOnConnect`。
+- **C2-M3**：接受，存下或给成本守卫，取便宜的那种，写明。
+- **C2-Q1**：第 212 条仍是主持者的决定（负责人可以改判），不阻塞；第 11 节写明它放宽了负责人第 1 条，并在 M11 的汇报里第一条请负责人看。主持者 2026-11-08 已在对话里告诉负责人。
+- **Nit** 与 C-M3 的剩余一处：照审查者的建议改。
+
+### 新发现与处置
+
+| 编号 | 级别 | 一句话 | 处置 | 改在哪里 |
+|---|---|---|---|---|
+| B2-I1 | Important | 来源区里的页在 SQL 里就被排除（`linking/adapter/postgres/queries/lint.sql:18`、`:34`），从 `raw` 移出的原有页基线记为 0，闸门 6 误报 | 主持者取第一种：发起时对提议的来源区里的基线页另读一遍（`= ANY(这些页)`），同一事务、同一把锁、同样的目标判定；去掉"在 `generalEmitter` 之前数"；有测试与变异，进发起的成本守卫 | 4.4 第 13 步、4.7 闸门 6、第 8 节 linking、第 9 节、第 187、188 条 |
+| A2-M1 | Minor | 结束回滚之后，Rescue 记为中断而 worker 仍在跑的旧回滚单元照第 1 步放过，会删用户的新页 | 守卫第 1 步之前拒过期的 `UpgradeOwn`（`ErrStaleUpgradeWrite`），回滚的每一遍核对升级；交错第 16 条与变异 | 4.5、4.10、4.16、第 9 节、第 225 条 |
+| A2-M2 | Minor | "审阅中、没有报告"也是正在算的状态，再提交会顶掉正在算的那一次 | 只在 `submitted_at + LintTimeout + 10 s` 之后接管，之内 409 `wiki.upgrade_state`（`detail`"上一次提交正在计算"）；退回同样 | 4.3、4.8、4.15 审阅、4.16 交错第 15 条、第 10 节、第 215 条 |
+| A2-M3 | Minor | `rollback` 不在 Rescue 的种类表（`transfer/app/maintain.go:108`），River 丢掉的回滚任务永远 `queued`，继续与结束都答 `transfer.busy` | 进表，`riverKind`、worker、`Kind.Writes()` 同改；`TestTheRescue` 逐个核对全部种类；整个程序的测试与变异 | 4.10、第 8 节 transfer、第 9 节 |
+| A2-M4 | Minor | 结束回滚时还没写回正文的原有页的链接可能指向空处（`schedule` 最后才写回，`revert_schedule.go:313-342`） | 主持者取"写明"：第 212 条、对话框、`Upgrade.rollback_left` 的说明写明，健康度面板列出 | 4.10、4.15、第 5 节 `Upgrade`、第 10 节、第 212 条 |
+| B2-M1 | Minor | 写事务里内层的 `LintTimeout` 到期时 `ROLLBACK` 失败、错误只剩文字，答 500（已复现） | 整个发起的事务开在 `ctxStart` 上，返回之后按 `ctxStart.Err()` 答 503；不用 `SET LOCAL statement_timeout` 与理由；测试断言 503、没有 error 日志 | 4.4"期限"、4.7、第 9 节、第 219、227 条 |
+| B2-M2 | Minor | 先写 `rolling_back` 与结局、后记任务的 id 过不了 `notebook_upgrades_rollback_job_check`（已复现） | 先 `SetState`、`Publish`、开任务，最后一条 `UPDATE` 一起写 `state`、`ending`、`rollback_job_id`；适配器测试 | 4.10"开始"、第 9 节 |
+| B2-M3 | Minor | `upgrade_nodes` 的 `MAINTAIN` 漏了也没有测试失败 | `runtime_role_test.go` 的 `analyzed`（`:389-392`）加 `upgrade_nodes`；`TestTheRuntimeRoleServesWithTheGrantsFile` 以运行时角色发起，断言 `last_analyze` 变了、没有 warn；变异 | 4.4 第 16 步、第 9 节、第 220 条 |
+| C2-M1 | Minor | 回滚停下之后升级页看不出来：没有轮询，停下也不发 `mode` | 回滚任务的 `fail` 与 `succeed` 对称（一个事务：笔记本行、`FinishJob`、`RollbackEnd.Stopped` 发 `mode`）；升级页照任务页轮询任务（`transfer-page.tsx:46`、`:178`），结束时重读升级；vitest | 4.10、4.12、4.15、第 8、9 节、第 228 条 |
+| C2-M2 | Minor | `["upgrade", notebook_id]` 不在 `refreshedOnConnect`，重连之后不重读 | 进第三层（`app/event-stream.tsx:15-34`）；vitest 与变异 | 4.12、第 8、9 节 |
+| C2-M3 | Minor | 剩下的差的读没有成本守卫，`endUpgradeRollback` 却在笔记本行的锁下做它 | 取现读加成本守卫（停下有不经 wiki 的路，存下的数会缺）：10 万节点、10 万页、三种统计状态、请求 4 s；风险表加结束回滚 | 4.10、第 9 节成本守卫、第 10 节、第 226 条 |
+| A2-N1 | Nit | `RollbackEnd` 在 `succeed` 里失败时任务留在 `running`（`job_run.go:189-190`、`jobs.sql:67-70`） | 先回滚结束的事务，第二个事务 `FinishJob(failed, internal)` 与 `Stopped`；测试 | 4.10"做完"、第 9 节 |
+| A2-N2 | Nit | 规则放在 `views.sees` 会连读一起挡 | 放进 `Cancel.Run`（`sees` 之后），答 403 `forbidden`，读与列表不变 | 4.3、4.15、第 5 节、第 8 节、第 218、229 条 |
+| A2-N3 | Nit | `Folded` 在写的路径上有歧义；能标 `Last` 的只有两个码 | 写的路径要这一次写等于改写的结果；两个正文的码标 `Last`，`keep_links` 标移动，`protected` 标删除 | 4.6、第 8 节 page、第 9 节、第 190 条 |
+| A2-N4 | Nit | UP4 的删除一步在 P1/S1 跑不了 | 改为 P1/S2 起；P1/S1 由 `TestUpgradeGuardrails` 以 SQL 设列盖住 | 第 9 节 UP4 |
+| A2-N5 | Nit | 先删一个单元一棵子树，10 万个零散的新页就是 10 万个单元 | 一个单元装多棵、合计至多 `MaxUnitNodes`；进成本守卫 | 4.10、第 9 节、第 193、231 条 |
+| B2-N1 | Nit | 第 9 步在锁下等名额 | 随主持者对 A 的问题的裁定：`Runs.TryHold` 只立即试取 | 4.4 第 9 步、4.7、4.16、第 219 条 |
+| B2-N2 | Nit | 条目一路的键与快照没写 | 条目的键带升级的 id，快照核对升级的 id 与状态 | 4.7"名额与期限"、第 9 节 |
+| B2-N3 | Nit | `logFinished` 与 `Stop` 不认新入口 | `logFinished` 给新种类名字；`TryHold` 的持有者计入 `active`，`Stop` 之后答不可并等持有者 | 4.7、第 8、9 节 |
+| B2-N4 | Nit | 变异表里账本那一条对错了测试 | 分成两条："账本不在改写时更新"由普通测试杀，"闸门 7 不比账本"由 SQL 绕过单元的测试杀 | 第 9 节变异 |
+| B2-N5 | Nit | 表允许"驳回而没有提交"的行（实测） | 加 `notebook_upgrades_rejected_check` 与反例 | 4.2 的 00057、第 9 节 |
+| B2-N6 | Nit | 成本守卫漏了剩下的差的现读与检查时逐页读 `wanted` | 各进成本守卫表 | 第 9 节 |
+| B2-N7 | Nit | sqlc 解析不了 `FROM` 里多参数的 `unnest` | 照 `SetSourceHashes` 在选择列表里各 `unnest` 一个数组（`sources.sql:15-17`、`:46-54`） | 4.4 第 13 步 |
+| C2-N1 | Nit | MCP 表头"照 REST 的次序"不准 | 写成"照 REST 的次序；参数的 `validation_failed` 照 `lint` 的行在前"（`permission_matrix_mcp_test.go:114`） | 第 5 节 MCP |
+| C2-N2 | Nit | `upgrade` 进 `prompts.json` 后两个原测试出问题 | `TestThePromptReadsLLMWikiMatrix` 只取三个 LLM Wiki 的 prompt（`:177`、`:205`）；`TestThePromptListsAreTheContract` 改为四（`mcp_prompts_test.go:96-106`） | 4.13 |
+| C2-N3 | Nit | "每个码都答出过"的测试在哪、P1/S1 怎样种没写 | 放进第七份的 `TestUpgradeToolsErrorsCarryTheirCodes`，核对读两边；P1/S1 以 SQL 设列 | 第 5 节 MCP |
+| C2-N4 | Nit | `TransferFailure.description` 没提回滚 | 第 5 节"改的 schema"加一行，P1/S3 | 第 5 节 |
+| C2-N5 | Nit | 第七份漏了几处写份数的注释 | `Makefile:183`、`:185`、`:195`、`:272`，`ci.yml:48`；`06-environment.md:27` 与 `:49` 分开写 | 第 9 节第七份 |
+| C2-N6 | Nit | UP4 的"P1/S1 起"对不上 | 同 A2-N4 | 第 9 节 UP4 |
+| C2-N7 | Nit | 差已空时结束回滚仍记 `false` | 三个数都是 0 时记 `true`、不记三个数；对话框"已经复原完，结束即可" | 4.3、4.10、4.15、第 217、230 条 |
+| C2-N8 | Nit | 只改 `views.sees` 时列表与读不一致 | 同 A2-N2 | 同 A2-N2 |
+| C2-Q1 | Question | 第 212 条是否列为"需要负责人确认" | 主持者：不阻塞；第 11 节写明它放宽负责人第 1 条，M11 的汇报里第一条请负责人看 | 第 11 节第 212 条与"需要负责人确认" |
+
+### 未核实的怀疑：核对的结果
+
+| 来自 | 怀疑 | 核对的结果与处理 |
+|---|---|---|
+| A | `Runs.Hold` 在笔记本行的锁下会不会等名额 | 主持者的裁定：只立即试取（`Runs.TryHold`），交错第 17 条与变异 |
+| C | `HealthRule` 在没有游标时藏起"更多"（`health-rule.tsx:210`） | 属实；"从第一页读"做成 `HealthRule` 的参数，P3/S3 写代码时核对，写进 4.15 审阅 |
+| C | 剩下的差的读在 10 万节点上要多久 | 同 C2-M3，进成本守卫 |
+
+### 设计者在这一轮的取舍 225–231（主持者的决定，负责人可以改判）
+
+- **225**：守卫先拒过期的 `UpgradeOwn`（`ErrStaleUpgradeWrite`，不是给用户的码），回滚的每一遍核对升级（A2-M1）。
+- **226**：剩下的差现数、给成本守卫，不在停下时存下：停下有不经 wiki 的路（Rescue、崩溃）（C2-M3）。
+- **227**：整个发起的事务受 `LintTimeout`，到期答 503；不套内层的期限，不用 `SET LOCAL statement_timeout`（B2-M1）。
+- **228**：回滚停下也发 `mode`（与 `succeed` 对称的 `fail`），升级页轮询回滚的任务（C2-M1）。
+- **229**：取消回滚的规则放在 `Cancel.Run`，答 403 `forbidden`，读与列表不变（A2-N2、C2-N8）。
+- **230**：结束回滚时差已空就记做完（C2-N7）。
+- **231**：先删一个单元装多棵子树，合计至多 `MaxUnitNodes`（A2-N5）。
+
+另照裁定改了第 187、188、190、193、212、215、217、218、219、220 条。

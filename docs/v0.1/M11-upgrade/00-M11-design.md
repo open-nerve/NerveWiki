@@ -4,10 +4,10 @@
 |---|---|
 | 里程碑 | M11 升级流程（`M11-upgrade`） |
 | 日期 | 2026-11-08 |
-| 状态 | 设计中（第一轮设计审查之后的修订，待复核；[审查记录](reviews/M11-design-review.md)） |
+| 状态 | 设计中（修订核对第一轮之后的修订，待复核；[审查记录](reviews/M11-design-review.md)） |
 | 依赖 | M10（模式的契约、守卫的框架、lint 的显式范围、模式变化的订阅者、来源的哈希）、M8（撤销的计划、后台任务与分批）、M9（MCP 的注册表、`batch`、多轮的调度）、M5（事件流）、M7（任务的运行）；总体设计 12.3 只写了 M10 与 M8，第 7 节"总体设计的修订"照此补全 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 1.3、3.3、3.8、3.10、5.4–5.9、6.1、6.3、7.2、8.2–8.5、9.2、10、10.1、12.1–12.6、13、14 节 |
-| 代码位置的写法 | 同 [M10 总设计](../M10-llm-wiki/00-M10-design.md)：模块写作 `page/app/unit.go:357`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`）；契约写 `api/…`；前端写作 `web/…/pages/notebook/general-page.tsx:129`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/playwright.config.ts:3`。行号都是 `main` 的 `dbce5828` 的（代码与 `7ff74a67` 相同，其后只改了文档），由设计者对着它逐条核对过；M10 文档与移交里的行号已有漂移，这里不照抄 |
+| 代码位置的写法 | 同 [M10 总设计](../M10-llm-wiki/00-M10-design.md)：模块写作 `page/app/unit.go:357`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`）；契约写 `api/…`；前端写作 `web/…/pages/notebook/general-page.tsx:129`（`web/apps/web/src/` 之下）；e2e 写作 `e2e/playwright.config.ts:3`。行号都是 `main` 的 `fe9aa7d7` 的（代码与 `7ff74a67` 相同，其后只改了文档），由设计者对着它逐条核对过；M10 文档与移交里的行号已有漂移，这里不照抄 |
 
 ---
 
@@ -90,7 +90,7 @@
 |---|---|---|
 | 00055 notebook `notebooks`（P1/S1） | `upgrade_id uuid`，`upgrade_state text`，`upgrade_by_id uuid REFERENCES users`，`upgrade_at timestamptz`；`CONSTRAINT notebooks_upgrade_check CHECK ((upgrade_state IS NULL) = (upgrade_id IS NULL) AND (upgrade_id IS NULL) = (upgrade_by_id IS NULL) AND (upgrade_id IS NULL) = (upgrade_at IS NULL) AND (upgrade_state IS NULL OR upgrade_state IN ('upgrading', 'reviewing', 'rolling_back') AND mode = 'standard'))`。每个合取都不会因 NULL 而放过（初稿的写法在"状态为空、另三列有值"时是 NULL，被接受，审查 B-M1 实测）。Down 去掉四列：之前的程序不知道升级，冻结着的笔记本照普通的读（迁移的注释写明） | 4.1。最后一个析取让 LLM Wiki 不会带着升级；`upgrade_id` 不建外键（wiki 的表归 wiki 清理，`notebooks` 指向它会打乱从叶到根的清理，同 `00048_notebook_notebooks_mode.sql:1-6` 的理由） |
 | 00056 page `upgrade_nodes` 与 `changesets`（P1/S1） | `upgrade_nodes (upgrade_id uuid NOT NULL, node_id uuid NOT NULL, notebook_id uuid NOT NULL, baseline boolean NOT NULL, kind text NOT NULL, parent_id uuid, name text, sort_order` 与 `nodes.sort_order` 同类型`, revision integer, content_hash bytea, byte_size integer, wanted integer, accepted_hash bytea, CONSTRAINT upgrade_nodes_pkey PRIMARY KEY (upgrade_id, node_id))`；`upgrade_nodes_kind_check CHECK (kind IN ('page', 'asset'))`；`upgrade_nodes_baseline_check CHECK (baseline = (name IS NOT NULL) AND (name IS NULL) = (sort_order IS NULL) AND (baseline OR kind = 'page' AND parent_id IS NULL))`；`upgrade_nodes_page_check CHECK ((baseline AND kind = 'page') = (revision IS NOT NULL) AND (revision IS NULL) = (content_hash IS NULL) AND (revision IS NULL) = (byte_size IS NULL) AND (revision IS NULL) = (wanted IS NULL) AND (revision IS NULL) = (accepted_hash IS NULL))`；`upgrade_nodes_wanted_check CHECK (wanted IS NULL OR wanted BETWEEN 0 AND 10000)`（一页至多 `MaxLinks = 10,000` 条链接，`linking/domain/facts.go:114`）；索引 `upgrade_nodes_notebook_id_idx (notebook_id)`。`changesets.upgrade_id uuid`（不建外键），部分索引 `changesets_upgrade_id_idx ON changesets (upgrade_id) WHERE upgrade_id IS NOT NULL`。不带 `deleted_at`、不建外键（照 `edit_sessions` 与 linking 的派生表）：行在升级结束时删、笔记本删除时删，所以不要清理器。`runtime-grants.sql` 另给 `upgrade_nodes` 的 `MAINTAIN`（第 220 条，照 `:25-30` 的写法）。Down 去掉表与列 | 4.4、4.6、4.7、4.10。`baseline = false` 的一行是发起时建的 `raw` 的保护（第 194 条）：只防删除，不判正文、不进回滚的计划 |
-| 00057 wiki `notebook_upgrades`（P1/S2） | `id uuid PRIMARY KEY`，`notebook_id uuid NOT NULL REFERENCES notebooks ON DELETE RESTRICT`，`state text NOT NULL`，`ending text`，`source_root_id uuid NOT NULL`，`seeded_root boolean NOT NULL`，`seeded_agents_id uuid`（发起时建的 `AGENTS`，没建为空），`locale text NOT NULL`，`baseline_nodes integer NOT NULL`，`baseline_pages integer NOT NULL`，`baseline_wanted integer NOT NULL`，`baseline_wanted_capped boolean NOT NULL`（这两列只给报告的前后对比，闸门 6 逐页比，4.7），`submission_id uuid`，`submitted_by_id uuid REFERENCES users`，`submitted_at timestamptz`，`report jsonb`，`rollback_job_id uuid`，`rollback_complete boolean`，`rollback_left_nodes integer`，`rollback_left_pages integer`，`rollback_left_created integer`，审计四列（`created_by_id` 是发起人、`created_at` 是开始的时刻），`deleted_at timestamptz`。检查：`notebook_upgrades_state_check`（`upgrading`、`reviewing`、`rolling_back`、`approved`、`rolled_back`）；`notebook_upgrades_ending_check`（`abandoned`、`rejected`）；`notebook_upgrades_locale_check`（`zh-CN`、`en`）；`notebook_upgrades_baseline_check CHECK (baseline_nodes >= 0 AND baseline_pages BETWEEN 0 AND baseline_nodes AND baseline_wanted BETWEEN 0 AND 10000 AND baseline_wanted_capped = (baseline_wanted = 10000))`（照 `LintCount` 的不变式，`wiki/app/lint_projection.go:39`）；`notebook_upgrades_ending_state_check CHECK ((state IN ('rolling_back', 'rolled_back')) = (ending IS NOT NULL))`；`notebook_upgrades_submission_check CHECK ((submission_id IS NULL) = (submitted_at IS NULL) AND (submitted_at IS NULL) = (submitted_by_id IS NULL))`；`notebook_upgrades_submission_state_check CHECK ((state <> 'upgrading' OR submission_id IS NULL) AND (state NOT IN ('reviewing', 'approved') OR submission_id IS NOT NULL))`；`notebook_upgrades_report_check CHECK (report IS NULL OR submission_id IS NOT NULL AND state <> 'upgrading' AND jsonb_typeof(report) = 'object' AND octet_length(report::text) <= 65536)`；`notebook_upgrades_approved_check CHECK (state <> 'approved' OR report IS NOT NULL)`；`notebook_upgrades_rollback_job_check CHECK ((rollback_job_id IS NOT NULL) = (state IN ('rolling_back', 'rolled_back')))`；`notebook_upgrades_rollback_end_check CHECK ((rollback_complete IS NOT NULL) = (state = 'rolled_back') AND (rollback_complete IS DISTINCT FROM false) = (rollback_left_nodes IS NULL) AND (rollback_left_nodes IS NULL) = (rollback_left_pages IS NULL) AND (rollback_left_nodes IS NULL) = (rollback_left_created IS NULL))`。部分唯一索引 `notebook_upgrades_notebook_id_key ON notebook_upgrades (notebook_id) WHERE state IN ('upgrading', 'reviewing', 'rolling_back') AND deleted_at IS NULL`；索引 `notebook_upgrades_notebook_id_idx (notebook_id)`（清理笔记本时外键的核对）。wiki 第一次有表：`server/sqlc.yaml` 加 wiki 的一项（今天没有，`grep modules/wiki server/sqlc.yaml` 为空）、`wiki/adapter/postgres`、`runtime-grants.sql` 的一个表名、清理器排在 notebook 之前（`bootstrap/registrants.go:311-314`）、笔记本删除的订阅者（`:194-197`）以同一时刻软删除这些笔记本的行 | 一本笔记本至多一次进行中的升级由索引守着；提交、报告、回滚的任务与结局都绑在状态上，状态机到不了的行写不进去（审查 B-M2 实测的五种都被挡住）；驳回与放弃之后提交与报告留着（第 221 条）；结束的行随笔记本软删除、照常清理（13.1 第 6 条） |
+| 00057 wiki `notebook_upgrades`（P1/S2） | `id uuid PRIMARY KEY`，`notebook_id uuid NOT NULL REFERENCES notebooks ON DELETE RESTRICT`，`state text NOT NULL`，`ending text`，`source_root_id uuid NOT NULL`，`seeded_root boolean NOT NULL`，`seeded_agents_id uuid`（发起时建的 `AGENTS`，没建为空），`locale text NOT NULL`，`baseline_nodes integer NOT NULL`，`baseline_pages integer NOT NULL`，`baseline_wanted integer NOT NULL`，`baseline_wanted_capped boolean NOT NULL`（这两列只给报告的前后对比，闸门 6 逐页比，4.7），`submission_id uuid`，`submitted_by_id uuid REFERENCES users`，`submitted_at timestamptz`，`report jsonb`，`rollback_job_id uuid`，`rollback_complete boolean`，`rollback_left_nodes integer`，`rollback_left_pages integer`，`rollback_left_created integer`，审计四列（`created_by_id` 是发起人、`created_at` 是开始的时刻），`deleted_at timestamptz`。检查：`notebook_upgrades_state_check`（`upgrading`、`reviewing`、`rolling_back`、`approved`、`rolled_back`）；`notebook_upgrades_ending_check`（`abandoned`、`rejected`）；`notebook_upgrades_locale_check`（`zh-CN`、`en`）；`notebook_upgrades_baseline_check CHECK (baseline_nodes >= 0 AND baseline_pages BETWEEN 0 AND baseline_nodes AND baseline_wanted BETWEEN 0 AND 10000 AND baseline_wanted_capped = (baseline_wanted = 10000))`（照 `LintCount` 的不变式，`wiki/app/lint_projection.go:39`）；`notebook_upgrades_ending_state_check CHECK ((state IN ('rolling_back', 'rolled_back')) = (ending IS NOT NULL))`；`notebook_upgrades_submission_check CHECK ((submission_id IS NULL) = (submitted_at IS NULL) AND (submitted_at IS NULL) = (submitted_by_id IS NULL))`；`notebook_upgrades_submission_state_check CHECK ((state <> 'upgrading' OR submission_id IS NULL) AND (state NOT IN ('reviewing', 'approved') OR submission_id IS NOT NULL))`；`notebook_upgrades_report_check CHECK (report IS NULL OR submission_id IS NOT NULL AND state <> 'upgrading' AND jsonb_typeof(report) = 'object' AND octet_length(report::text) <= 65536)`；`notebook_upgrades_approved_check CHECK (state <> 'approved' OR report IS NOT NULL)`；`notebook_upgrades_rejected_check CHECK (ending IS DISTINCT FROM 'rejected' OR submission_id IS NOT NULL)`（驳回只发生在审阅中，必有提交，核对 B2-N5）；`notebook_upgrades_rollback_job_check CHECK ((rollback_job_id IS NOT NULL) = (state IN ('rolling_back', 'rolled_back')))`；`notebook_upgrades_rollback_end_check CHECK ((rollback_complete IS NOT NULL) = (state = 'rolled_back') AND (rollback_complete IS DISTINCT FROM false) = (rollback_left_nodes IS NULL) AND (rollback_left_nodes IS NULL) = (rollback_left_pages IS NULL) AND (rollback_left_nodes IS NULL) = (rollback_left_created IS NULL))`。部分唯一索引 `notebook_upgrades_notebook_id_key ON notebook_upgrades (notebook_id) WHERE state IN ('upgrading', 'reviewing', 'rolling_back') AND deleted_at IS NULL`；索引 `notebook_upgrades_notebook_id_idx (notebook_id)`（清理笔记本时外键的核对）。wiki 第一次有表：`server/sqlc.yaml` 加 wiki 的一项（今天没有，`grep modules/wiki server/sqlc.yaml` 为空）、`wiki/adapter/postgres`、`runtime-grants.sql` 的一个表名、清理器排在 notebook 之前（`bootstrap/registrants.go:311-314`）、笔记本删除的订阅者（`:194-197`）以同一时刻软删除这些笔记本的行 | 一本笔记本至多一次进行中的升级由索引守着；提交、报告、回滚的任务与结局都绑在状态上，状态机到不了的行写不进去（审查 B-M2 实测的五种都被挡住）；驳回与放弃之后提交与报告留着（第 221 条）；结束的行随笔记本软删除、照常清理（13.1 第 6 条） |
 | 00058 page `changesets`（P1/S3） | `changesets_kind_check` 加 `rollback`（`00034_page_changesets_history.sql:7`）；`changesets_reverts_check` 不变（`rollback` 没有 `reverts_id`）。Down 把 `rollback` 改成 `edit` 再收紧检查（照 00034 的 Down，`:15-17`） | 4.10、第 192 条 |
 | 00059 transfer `transfer_jobs`（P1/S3） | `transfer_jobs_kind_check` 加 `rollback`；`upgrade_id uuid`，`CONSTRAINT transfer_jobs_upgrade_check CHECK ((upgrade_id IS NOT NULL) = (kind = 'rollback'))`；`transfer_jobs_root_check` 的 `CASE` 加 `WHEN 'rollback' THEN root_id IS NULL`；`transfer_jobs_writing_key` 的谓词加 `rollback`（`00039_transfer_background_jobs.sql:26-27`），`transfer/adapter/postgres/queries/jobs.sql:33` 的写入任务的探查同样。Down 删掉 `rollback` 的行、恢复 00039 的定义 | 一本笔记本同时一个写入任务，回滚也算 |
 
@@ -103,15 +103,15 @@
 | 从 | 动作（操作） | 到 | 谁 | 写什么 | 状态不对时 |
 |---|---|---|---|---|---|
 | 没有升级的普通笔记本 | 发起（`startUpgrade`） | `upgrading` | 任何笔记本管理员 | 4.4 | LLM Wiki 答 409 `notebook.already_llm_wiki`；已有升级答 409 `notebook.upgrading` |
-| `upgrading`，或 `reviewing` 而没有报告 | 提交（`submitUpgrade`、`upgrade_submit`）的第一个事务 | `reviewing`（还没有报告） | 任何笔记本管理员，或他的 PAT 的 MCP | 新的 `submission_id`、`submitted_by_id`、`submitted_at` | 409 `wiki.upgrade_state` |
+| `upgrading`，或 `reviewing` 而没有报告且 `submitted_at + LintTimeout + 10 s` 已过 | 提交（`submitUpgrade`、`upgrade_submit`）的第一个事务 | `reviewing`（还没有报告） | 任何笔记本管理员，或他的 PAT 的 MCP | 新的 `submission_id`、`submitted_by_id`、`submitted_at` | 409 `wiki.upgrade_state`（没有报告而还在期限之内时 `detail` 写"上一次提交正在计算"） |
 | `reviewing`（这次提交、还没有报告） | 提交的第二个事务，闸门全过 | `reviewing`（存下报告） | 同上 | `report` | 这次提交已被退回、放弃或被后一次提交取代：409 `wiki.upgrade_state` |
 | `reviewing`（这次提交、还没有报告） | 提交的第二个事务，闸门不过或算不出 | `upgrading` | 同上 | 清掉提交的三列 | 同上 |
-| `reviewing` | 退回（`sendBackUpgrade`） | `upgrading` | 任何笔记本管理员 | 清掉提交的三列与 `report` | 409 `wiki.upgrade_state` |
+| `reviewing`，有报告，或没有报告而 `submitted_at + LintTimeout + 10 s` 已过 | 退回（`sendBackUpgrade`） | `upgrading` | 任何笔记本管理员 | 清掉提交的三列与 `report` | 409 `wiki.upgrade_state` |
 | `reviewing`（有报告） | 批准（`approveUpgrade`） | 没有升级的 LLM Wiki；行 `approved` | 任何笔记本管理员（负责人第 4 条） | 4.9 | 没有报告也答 409 `wiki.upgrade_state` |
 | `reviewing` | 驳回（`rejectUpgrade`） | `rolling_back`，`ending = rejected` | 任何笔记本管理员 | 4.10 | 409 `wiki.upgrade_state` |
 | `upgrading`、`reviewing` | 放弃（`abandonUpgrade`） | `rolling_back`，`ending = abandoned` | 任何笔记本管理员（负责人第 1 条） | 4.10 | 409 `wiki.upgrade_state` |
 | `rolling_back`，回滚的任务已停下 | 放弃（继续回滚） | `rolling_back` | 任何笔记本管理员 | 新开一个回滚的任务 | 任务在排队或运行：409 `transfer.busy` |
-| `rolling_back`，回滚的任务已停下 | 结束回滚（`endUpgradeRollback`，主持者第 212 条） | 没有升级的普通笔记本；行 `rolled_back`，`rollback_complete = false` | 任何笔记本管理员 | 4.10 | 任务在排队或运行：409 `transfer.busy`；不在 `rolling_back`：409 `wiki.upgrade_state` |
+| `rolling_back`，回滚的任务已停下 | 结束回滚（`endUpgradeRollback`，主持者第 212 条） | 没有升级的普通笔记本；行 `rolled_back`，`rollback_complete = false`（剩下的差为空时 `true`，第 230 条） | 任何笔记本管理员 | 4.10 | 任务在排队或运行：409 `transfer.busy`；不在 `rolling_back`：409 `wiki.upgrade_state` |
 | `rolling_back` | 回滚的任务做完 | 没有升级的普通笔记本；行 `rolled_back`，`rollback_complete = true` | 系统（任务的执行者） | 4.10 | — |
 
 - **锁**：每个转移是一个事务（提交是两个），次序是工作区行 `FOR SHARE` → 笔记本行 `FOR NO KEY UPDATE` → 判定 → 读与写。wiki 的行只在笔记本行的锁下改，不另加锁；它排在 13.1 第 5 条的全局次序里笔记本行之后。回滚的任务开在同一个事务里时，transfer 在笔记本行之后取它的队列锁（`transfer/app/start_background.go:169-172` 的次序；队列锁是 advisory 锁，`transfer/adapter/postgres/queries/jobs.sql:11-14`）。
@@ -120,7 +120,7 @@
 - **降级**：升级期间笔记本是普通的，`downgradeNotebook` 在锁下就答 409 `notebook.not_llm_wiki`（`notebook/app/downgrade_notebook.go:73-75`），不需新规则（M10 写的"由 M11 定"的答案，第 7 节写明）。
 - **删除笔记本**：照常（管理员显式的破坏性操作，第 175 条）；wiki 的行随之软删除，`upgrade_nodes` 的行随 page 的笔记本删除删去，回滚的任务随 transfer 的笔记本删除删去（`bootstrap/registrants.go:194-197` 的订阅者）。
 - **发起人离开**：发起人被停用（PAT 失效）、离开、被降为写者或笔记本成了无主的，升级会话留着；任何别的管理员（无主时接管之后的管理员）可以放弃、批准、驳回或结束回滚。横幅写清"任何笔记本管理员都可以放弃"。
-- **回滚任务的取消**：只有笔记本管理员能取消回滚的任务（第 218 条）。今天任务的发起人或笔记本管理员都能取消（`transfer/app/cancel.go:45-64`、`views.go:94-103`，规则 `transfer.cancel` 给读者以上，`access/domain/rules.go:151`），开回滚任务的管理员之后被降为写者时还能反复让它停下；`views.sees` 对 `rollback` 的任务要 `admin`。
+- **回滚任务的取消**：只有笔记本管理员能取消回滚的任务（第 218 条）。今天任务的发起人或笔记本管理员都能取消（`transfer/app/cancel.go:45-64`、`views.go:94-103`，规则 `transfer.cancel` 给读者以上，`access/domain/rules.go:151`），开回滚任务的管理员之后被降为写者时还能反复让它停下。改在 `Cancel.Run` 里、`sees` 之后（`transfer/app/cancel.go:63`）：回滚的任务要 `admin`，否则答 403 `forbidden`（`cancelTransferJob` 加声明，第 229 条）；不改 `views.sees`：它也管读（`transfer/app/reads.go:60`），而列表对非管理员按发起人列出（`:87-99`），挡在 `sees` 里会让列表里有、读却答 `transfer.not_found`（核对 A2-N2、C2-N8）。
 
 ### 4.4 发起
 
@@ -128,20 +128,22 @@
 
 1. 请求体的取值：不认识的语言 422 `validation_failed`（字段 `template_locale`，`invalid_format`）。
 2. 不加锁读笔记本的工作区：没有或看不到答 404 `notebook.not_found`。
-3. 事务里：`notebook.NewUpgradeStates` 的 `Lock`（工作区行 `FOR SHARE`、笔记本行 `FOR NO KEY UPDATE`），判定 `notebook.change_mode`：看不到 404，不是管理员 403 `forbidden`。读一次时钟（13.1 第 9 条：之后每一步，含会话的判活与 lint 的 `computed_at`，都用这一刻）。
+3. 事务（开在 `ctxStart` 上，见下面"期限"）里：`notebook.NewUpgradeStates` 的 `Lock`（工作区行 `FOR SHARE`、笔记本行 `FOR NO KEY UPDATE`），判定 `notebook.change_mode`：看不到 404，不是管理员 403 `forbidden`。读一次时钟（13.1 第 9 条：之后每一步，含会话的判活与 lint 的 `computed_at`，都用这一刻）。
 4. 模式是 `llm_wiki`：409 `notebook.already_llm_wiki`。
 5. 已有进行中的升级：409 `notebook.upgrading`（并发的两次发起，后一次在锁下看到前一次）。
 6. 有排队或运行的写入任务：409 `transfer.busy`（`transfer.NewWritingJobs(pool).Writing`，`transfer/writing_jobs.go:26`，同降级）。
 7. 编辑会话：先删这本笔记本在这一刻已过期的会话行（墓碑在内），同开启的第一步（`page/adapter/postgres/queries/sessions.sql:32-36`，`page/app/unit_session.go:32`：这样一个在过期之前读了时钟的心跳找不到行可续，`sessions.sql:66-73`、`page/app/heartbeat_edit_session.go:45-53`）；再读活着的会话：有就 409 `wiki.upgrade_pages_locked`，problem 的 `locks` 按页 id 列出前 100 项（每页与编辑者），`detail` 写总数（一条语句 `LIMIT 100` 加 `count(*) OVER ()`，第 174、203 条）。管理员可以先强制解锁，或等闲置退出。
 8. 根下的键：标题键 `raw` 或 `agents` 的根下节点是附件时 409 `wiki.upgrade_title_taken`（第 199 条：先改名再发起）。键 `raw` 是页时用它作提议的来源根（有子节点、正文非空都照用，主持者第 214 条：来源根的正文本来就可以改，5.4；它下面的节点从此按来源算，发起的对话框写明）。键 `agents` 是页时留着它（第 172 条：正文不改）。
-9. 占一个 lint 的名额（`Runs.Hold`，第 219 条）：拿不到时 503 `server_busy` 带 `Retry-After: 1`。之后的写与第 13 步的计算都在这个名额里。
+9. 立即试取一个 lint 的名额（`Runs.TryHold`，第 219 条）：这时已持着笔记本行，所以从不等名额，没有空的就答 503 `server_busy` 带 `Retry-After: 1`（主持者对核对 A 的问题的裁定：在行锁下等名额会让这本笔记本的写与工作区的成员写陪着等）。之后的写与第 13 步的计算都在这个名额里。
 10. `notebook.NewUpgradeStates` 的 `Start` 写四列：新的 UUIDv7 作升级的 id，`upgrading`，发起人，这一刻。
 11. page 记基线（`UpgradeBaseline.Capture`）：一条 `INSERT … SELECT`，这本笔记本每个活着的节点一行（`baseline = true`，父节点、名称、次序值；页另有 `page_contents` 的版本号、哈希、字节数，`accepted_hash` 等于哈希，`wanted` 先为 0）。答复节点数与页数。
 12. 补写缺的页（第 173 条）：缺 `raw` 或 `AGENTS` 时经 `(*page.Module).TreeWrites().Seed` 写一个单元，`SeedSpec` 新加 `Upgrade`（这次升级的 id），单元的 `Write.UpgradeOwn` 由此设上：冻结的守卫放过它（4.5），`ensureChangeset` 给它的变更集记上 `upgrade_id`（4.10 的回滚因此也删掉它们：它们不在基线里）。页的正文是 `wiki.TemplatePages(llm_wiki, locale)` 里的那一页（`wiki/module.go:52-55`），在根下的末尾（`page/app/seed_writes.go:24-27`），变更集的说明是模板的（`wiki/app/template.go:78`）。建了 `raw` 时，page 给它记一行保护（`baseline = false`）。
-13. 在这个事务里、笔记本行的锁下调 lint 的 `computeIn`（4.7）一次，种类是"升级的基线"，显式的 LLM Wiki 契约与提议的来源根，期限 `LintTimeout`（超时 503 `server_busy`，整个发起回滚）：`stale_pages > 0` 时 409 `wiki.upgrade_stale_index`（第 198 条：先由服务器管理员运行 `nervewiki reindex`），整个事务回滚；否则得到 `wanted` 的总数（报告用）与每个基线页发出的待建目标数（闸门 6 用，4.7），后者以一条 `UPDATE … FROM unnest(…)` 写进基线行的 `wanted`（第 187 条）。
+13. 在这个事务里、笔记本行的锁下调 lint 的 `computeIn`（4.7）一次，种类是"升级的基线"，显式的 LLM Wiki 契约与提议的来源根：`stale_pages > 0` 时 409 `wiki.upgrade_stale_index`（第 198 条：先由服务器管理员运行 `nervewiki reindex`），整个事务回滚；否则得到 `wanted` 的总数（报告用）与来源区以外每个基线页发出的待建目标数；再对发起这一刻在提议的来源区里的基线页另读一次，照同样的口径数（4.7 闸门 6 的"第二遍"，核对 B2-I1），同一个事务、同一把锁下。两者以一条 `UPDATE` 写进基线行的 `wanted`：每个数组在子查询的选择列表里各 `unnest` 一次，照 `SetSourceHashes`（`page/adapter/postgres/queries/sources.sql:46-54`；`:15-17` 的注释：sqlc 解析不了 `FROM` 里多参数的 `unnest`，核对 B2-N7）（第 187 条）。
 14. 插入 wiki 的行（提议的来源根、`seeded_root`、`seeded_agents_id`、语言、基线的两个数、`wanted` 的总数与是否封顶）。
 15. `Publish`（`From`、`To` 都是 `standard`）；提交；放开名额。
-16. 提交之后对 `upgrade_nodes` 做一次 `ANALYZE`（第 220 条；失败只记一行 warn，不改答复）；一行 info 日志（4.18）。答复 200 `Upgrade`。
+16. 提交之后对 `upgrade_nodes` 做一次 `ANALYZE`（第 220 条；失败只记一行 warn，不改答复；授权漏了由第 9 节的运行时角色的测试抓住）；一行 info 日志（4.18）。答复 200 `Upgrade`。
+
+**期限**（第 227 条，核对 B2-M1）：整个发起的事务开在 `ctxStart = context.WithTimeout(ctx, LintTimeout)` 上，锁、写、补写与计算都在这个期限里；`WithinTx` 返回之后，`ctxStart` 到期而请求的 ctx 没有到期时答 503 `server_busy`（带 `Retry-After: 1`），不看 `WithinTx` 交回的错误的形状。不在 `WithinTx` 里面另套一层期限：那样期限一到，pgx 关掉连接，`ROLLBACK` 失败，`fn` 的错误只剩文字（`platform/postgres/tx.go:165-172`），`ProblemOf` 归为未知的错误、答 500 并记 error（`platform/httpserver/apierrors.go:262-281`），B 在真库上复现过。不用 `SET LOCAL statement_timeout`：它只限一条语句，`computeIn` 是许多条分页的读。
 
 步 11 在步 12 之前：模板的页不进基线（第 173 条），`AGENTS` 的模板正文可以由 agent 定制。步 12 的 `Seed` 在调用方的事务里重入同样的锁（`page/app/unit.go:198-217` 的注释），它读到的 `Write.Notebook` 已带 `upgrading`。
 
@@ -153,7 +155,7 @@
 
 **输入**：`page/domain.NotebookState`（`page/domain/mode.go:17-20`）加 `Upgrade NotebookUpgrade{ID uuid.UUID; State UpgradeState; By uuid.UUID}`，只有可比较的字段（`notebook/notebooks_test.go:74` 用 `!=` 比较 `State`）；`notebook.State`（`notebook/notebooks.go:30-33`）同样，组合根的 `toPageState` 逐字段转换（`bootstrap/page_notebooks.go:32-38`）。`FindNotebook`、`LockNotebook`、`ShareNotebook`（`notebooks.sql:9-34`）与 `ListNotebooks`（`:55-68`，它自己列了 `mode, source_root_id`，不经前三条）都多选四列：`listNotebooks` 是网页的横幅与只读判断的来源，漏了它网页上每个编辑控件都放开、每次写都答 409（审查 B-M6）。`Write`（`page/app/extension.go:27-47`）加 `UpgradeOwn uuid.UUID`：这个单元是哪一次升级自己的写（发起时补写的页、回滚的单元）；只有 `SeedSpec.Upgrade` 与回滚的 `JobSpec` 设它，REST 与 MCP 的适配器建不出它（第 177 条）。
 
-**守卫** `FreezeGuard.GuardWrite(ctx, s Step)`：
+**守卫** `FreezeGuard.GuardWrite(ctx, s Step)`。在第 1 步之前先核对一条（核对 A2-M1，第 225 条）：`s.UpgradeOwn` 不为零而不等于 `s.Notebook.Upgrade.ID`（含这本笔记本已没有升级）时拒绝，答 `domain.ErrStaleUpgradeWrite`（不是给用户的码）。这是一个过期的回滚单元：Rescue 把心跳写不进的任务记为中断（`transfer/app/maintain.go:101-106`），而 worker 不停，心跳写不进时只记一行 warn、照跑批（`transfer/app/job_run.go:148-160`）；管理员这时结束回滚、笔记本解冻，下一批若照第 1 步放过，"先删"会按已删的基线行把用户刚开始编辑的新建页挪进回收站。
 
 1. `s.Notebook.Upgrade.ID` 为零：放过，什么也不读。
 2. `s.UpgradeOwn == s.Notebook.Upgrade.ID`：放过（发起的补写在 `upgrading`，回滚的单元在 `rolling_back`；不看 `Kind`，第 177 条）。
@@ -192,7 +194,7 @@
 
 **账本**（第 191 条）：单元在每个正文步写了之后（与来源哈希的维护同一处，`page/app/unit.go:385`），在 `Write.Notebook.Upgrade.ID` 不为零时执行 `UPDATE upgrade_nodes SET accepted_hash = $1 WHERE upgrade_id = $2 AND node_id = $3 AND baseline`：不是基线页时改 0 行。今天正文只经单元的 `writeContent` → `applyStep` 写，被拒的单元连账本一起回滚，所以对每个基线页 `content_hash = accepted_hash` 恒成立：它是绊线，只在将来出现一条绕过单元的正文写时才响，杀它的测试只能用 SQL 绕过单元造出来（审查 B-M4 与主持者的处置）。它不是护栏之外的独立证明。
 
-**`batch` 的折进**（第 190 条，取主持者倾向的 B，按审查 A-M1 改判据）：`batch` 的计划把此前的移动对一页的链接改写折进用户的正文（`page/domain/batch_contents.go:94-99`），单元在这一页的第一个正文操作处写最终的正文、不标 `Rewrite`（`page/app/apply_batch.go:713-727`）。这样的页的正文因改写不同，护栏照上一段会拒。B：计划在改写之后记下 `rewritten != content`（这一次改写真的改了这一页），一页的任何正文操作有过这样的改写就是 `Folded`；`ContentWrite`（`page/app/unit_content.go:17-25`）加 `Folded bool`，随 `StepContent.Folded` 到守卫。正文变了而 `Folded` 时答 409 `page.upgrade_batch_rewrite`（"拆开：先写页，再移动，或分两个 batch"），否则答 `page.upgrade_immutable`；整个 `batch` 回滚。不取 `ps.Moved`：它只要两个正文操作之间有任何移动就是真（`batch_contents.go:95-96`，`MovesBetween` 不分页），索引过时、改写什么也没改时也是真（审查 A-M1 的探针），"无关的移动之后改正文"会答错码、叫 agent 去拆。拒绝标在这一页的最后一个正文操作上（计划的页有 `First`、`Last`，`page/domain/batch_plan.go:268`）：单元在 `First` 处写，`failed` 默认标那里（`apply_batch.go:617-625`），护栏的三个码改标 `Last`，playbook 与 5.8 照写。不取 A（计划按项判、单元做后备）：A 要计划读基线、按项判、与单元的后备做差分与性质测试；B 的码明确，agent 拆开就能过。分开调用 `move` 时改写由参与者以 `Rewrite = true` 写，放行；`batch` 里最后一个正文操作之后的移动同样由推后的参与者写（`Rewrite = true`）。
+**`batch` 的折进**（第 190 条，取主持者倾向的 B，按审查 A-M1 改判据）：`batch` 的计划把此前的移动对一页的链接改写折进用户的正文（`page/domain/batch_contents.go:94-99`），单元在这一页的第一个正文操作处写最终的正文、不标 `Rewrite`（`page/app/apply_batch.go:713-727`）。这样的页的正文因改写不同，护栏照上一段会拒。B：计划记下这一次改写真的改了这一页、并进了最终的正文：编辑的路径（`page/domain/batch_contents.go:90-99`）是改写的结果不等于改写前的内容；写的路径（`holdsAt`，`:183-197`）是改写改了这一页、而且这一次写的内容恰好等于改写的结果（不等时 agent 的内容整个替换掉改写，改写没进正文，核对 A2-N3）；一页的任何正文操作有过这样的改写就是 `Folded`；`ContentWrite`（`page/app/unit_content.go:17-25`）加 `Folded bool`，随 `StepContent.Folded` 到守卫。正文变了而 `Folded` 时答 409 `page.upgrade_batch_rewrite`（"拆开：先写页，再移动，或分两个 batch"），否则答 `page.upgrade_immutable`；整个 `batch` 回滚。不取 `ps.Moved`：它只要两个正文操作之间有任何移动就是真（`batch_contents.go:95-96`，`MovesBetween` 不分页），索引过时、改写什么也没改时也是真（审查 A-M1 的探针），"无关的移动之后改正文"会答错码、叫 agent 去拆。拒绝标在这一页的最后一个正文操作上（计划的页有 `First`、`Last`，`page/domain/batch_plan.go:268`）：单元在 `First` 处写，`failed` 默认标那里（`apply_batch.go:617-625`），两个正文的码（`page.upgrade_immutable`、`page.upgrade_batch_rewrite`）改标 `Last`；`page.upgrade_keep_links` 标在那个移动的操作上，`page.upgrade_protected` 标在那个删除的操作上（核对 A2-N3）；playbook 与 5.8 照写。不取 A（计划按项判、单元做后备）：A 要计划读基线、按项判、与单元的后备做差分与性质测试；B 的码明确，agent 拆开就能过。分开调用 `move` 时改写由参与者以 `Rewrite = true` 写，放行；`batch` 里最后一个正文操作之后的移动同样由推后的参与者写（`Rewrite = true`）。
 
 **同一页在一个 `batch` 里改了又改回**：单元只写最终的正文（M10 的 `Merged`），护栏只比最终的，放过；分开调用时第一次就被拒。这是一处与"结果等于按次序分开调用"（M9 4.11）不同的地方，写进 5.8 与 playbook（第 208 条）。
 
@@ -208,7 +210,7 @@
 
 **发起时的一致**（审查 B-N4）：发起的事务是 READ COMMITTED（`platform/postgres/tx.go:121` 的 `WithinTx`），`computeIn` 的分页读各取各的快照。它们一致，是因为写 lint 所读的行（`nodes`、`page_contents`、linking 的索引表）的每条路径都先取笔记本行：单元（`page/app/unit.go:244-256`）、`reindex`（`linking/app/reindex.go:94` 取 `FOR NO KEY UPDATE`）、笔记本删除；linking 没有别的后台写。发起持着 `FOR NO KEY UPDATE`，这些都等它。以后加一条不取笔记本行的写，要重看这里。
 
-**名额与期限**：检查经同一个 `Runs`（`wiki/app/lint_runs.go:62`）：同一组名额（`MaxLintRuns`）、`LintTimeout`、超出答 503 `server_busy` 带 `Retry-After: 1`。`RunKey`（`wiki/app/lint_run_types.go:13-23`）加两种 `Kind` 与一个 `Scope uuid.UUID`：检查的键带升级的 id，同一次升级的检查之间合并；提交的键带这次提交的 `submission_id`，从不并入别的计算（审查 B-I1：`Do` 只按键找已有的 flight，不看它的快照是何时取的，`lint_runs.go:89-103`；提交若并入第一个事务之前开始的检查，存下的报告就不是冻结那一刻的，而批准只复核闸门 1–3）。`Runs.Do` 的结果类型由 `domain.LintResult` 泛化为"一次运行的结果"。发起时的那一次不经 `Do`（在写事务里，不能交给另一个 goroutine：`Do` 的 worker 用 `context.WithoutCancel(ctx)`，会把事务带进 goroutine），而经新的 `Runs.Hold(ctx) (release func(), error)`：同样的等待预算、只占名额、不开 goroutine，拿不到答 503；计算包在 `context.WithTimeout(ctx, LintTimeout)` 里（第 219 条，M10 移交的"名额/期限仍适用"）。
+**名额与期限**：检查经同一个 `Runs`（`wiki/app/lint_runs.go:62`）：同一组名额（`MaxLintRuns`）、`LintTimeout`、超出答 503 `server_busy` 带 `Retry-After: 1`。`RunKey`（`wiki/app/lint_run_types.go:13-23`）加两种 `Kind` 与一个 `Scope uuid.UUID`：检查的键带升级的 id，同一次升级的检查之间合并；提交的键带这次提交的 `submission_id`，从不并入别的计算（审查 B-I1：`Do` 只按键找已有的 flight，不看它的快照是何时取的，`lint_runs.go:89-103`；提交若并入第一个事务之前开始的检查，存下的报告就不是冻结那一刻的，而批准只复核闸门 1–3）。`Runs.Do` 的结果类型由 `domain.LintResult` 泛化为"一次运行的结果"。发起时的那一次不经 `Do`（在写事务里，不能交给另一个 goroutine：`Do` 的 worker 用 `context.WithoutCancel(ctx)`，会把事务带进 goroutine），而经新的 `Runs.TryHold() (release func(), ok bool)`：只立即试取一个名额，不等、不开 goroutine，没有空的答 503（发起这时已持着笔记本行，主持者的裁定）；计算的期限是发起事务的 `ctxStart`（4.4，第 227 条；M10 移交的"名额/期限仍适用"，第 219 条）。`TryHold` 的持有者计入 `Runs` 的 `active`；`Stop`（`lint_runs.go:221`）关闭之后 `TryHold` 答 503，并等现有的持有者放开（它们受 `ctxStart` 约束）；`logFinished`（`:270-279`）给新的种类（检查、条目、提交、发起）各一个名字，不记成 `unknown`（核对 B2-N3）。条目（`listUpgradeCheckItems` 与带 `rule` 的 `upgrade_verify`）的键同样带升级的 id（`Scope`），快照里同样核对升级的 id 与状态（核对 B2-N2：同一个根的前后两次升级不共用条目的计算；排队时升级被批准答 409）。
 
 **闸门**（总体设计 5.8 的七条，加索引是否过时；照 lint 的口径）：
 
@@ -219,7 +221,7 @@
 | `reserved_titles` | 3. 根下没有占着保留标题的真实节点 | lint 读到的紧凑节点里 `ParentID == nil` 且 `NameKey` 是 `index`、`log`、`index.md`、`log.md`，页与附件都算；列出这些节点（至多 4 个） | `computeIn` 的同一份节点（`wiki/app/lint_ports.go:43-51`）；四个键由组合根从 page 模块根交（`page/domain/contract.go:88`，模块根新导出），不在 wiki 另写一份 |
 | `frontmatter` | 4. 区外每页的 frontmatter 能解析，`type`、`summary` 不为空 | 规则 `invalid_frontmatter`、`missing_type`、`missing_summary` 的数都是 0。口径照 lint（`linking/app/lint_scope.go:219-237`）：`invalid_frontmatter` 收区外的每页（含来源根与根下 `AGENTS`）；后两条豁免来源根与根下 `AGENTS`，不豁免文件夹页 | 摘要 |
 | `sources` | 5. 每个 `sources` 引用都指向来源区里存在的节点 | 规则 `invalid_sources` 的数是 0 | 摘要 |
-| `links` | 6. 原有页的待建链接不多于升级前 | 逐页（主持者对审查 B-I2 的处置，第 180、188 条）：每个现在在来源区以外的基线页，它现在发出的不同的待建目标数不多于发起时记下的 `upgrade_nodes.wanted`。两头同一个数法：linking 的 `prepareWanted`（`linking/app/lint_edges.go:23-87`）按发出页走，同一页的 `seen` 就是这一页的数（`:44-63`），加一个按页的产出；它在 `generalEmitter` 的筛选之前数（来源也数：发起时在 `raw` 里、之后被移出来的基线页也有基线可比），目标的判定照 `wanted`（读作附件的、显式 LLM 契约下虚拟的不算，`linking/domain/lint_target.go:50-63`）。一页至多 10,000 条链接，没有全本的封顶问题。新建的页发出的待建链接不算（LLM Wiki 里待建是提示）。不过的页列出前 5 个与总数 | 发起时的基线行与这次的按页的数（`computeIn` 的同一份） |
+| `links` | 6. 原有页的待建链接不多于升级前 | 逐页（主持者对审查 B-I2 的处置，第 180、188 条）：每个现在在来源区以外的基线页，它现在发出的不同的待建目标数不多于发起时记下的 `upgrade_nodes.wanted`。两头同一个数法：linking 的 `prepareWanted`（`linking/app/lint_edges.go:23-87`）按发出页走，同一页的 `seen` 就是这一页的数（`:44-63`），加一个按页的产出，目标的判定照 `wanted`（读作附件的、显式 LLM 契约下虚拟的不算，`linking/domain/lint_target.go:50-63`）。这条流只有来源区以外的页：`prepareWanted` 读 `r.reads.Wanted(s.notebook, s.excluded)`（`linking/app/lint_edges.go:29`），来源区里的页进了 `s.excluded`（`linking/app/lint_scope.go:203-205`），在 SQL 里就去掉了（`linking/adapter/postgres/queries/lint.sql:18`、`:34`）。所以发起时另有**第二遍**（核对 B2-I1，主持者取第一种）：对发起这一刻在提议的来源区里的基线页，linking 加一个只读给定发出页的流（同一条语句把 `NOT IN excluded` 换成 `= ANY(这些页)`），同样判目标、按页数，不经 `generalEmitter`；在发起的同一个事务、同一把锁下。这样发起时在已有的 `raw` 里、之后被 agent 移出来的原有页有它真实的基线，不是 0。一页至多 10,000 条链接，没有全本的封顶问题。新建的页发出的待建链接不算（LLM Wiki 里待建是提示）。不过的页列出前 5 个与总数 | 发起时的基线行与这次的按页的数（`computeIn` 的同一份） |
 | `preserved` | 7. 内容保全 | 每个基线节点（`baseline = true`）都活着；每个基线页现在的 `page_contents.content_hash` 等于账本的 `accepted_hash`；分母取 wiki 行的 `baseline_nodes`、`baseline_pages`，现读的基线行数不等于它们时这一闸不过并记一行 error（缺陷）。数出节点与页的"保全的/全部的"，列出前 5 个不符的节点 | page 的一条 SQL（基线行连 `nodes` 与 `page_contents`，按主键），不读正文 |
 | `index` | 索引是新的 | `stale_pages == 0`（`wiki/app/lint.go:253-258`）；不过时提示服务器管理员运行 `nervewiki reindex` | 摘要 |
 
@@ -241,7 +243,7 @@
 
 **提交**（REST `submitUpgrade` 与 MCP `upgrade_submit`，同一个用例；第 182 条与主持者的方向"先置审阅再算"）：
 
-1. 第一个事务：锁（4.3），判定 `notebook.change_mode`，状态是 `upgrading`，或 `reviewing` 而没有报告（上一次提交没有做完，例如进程在两次事务之间停了），否则 409 `wiki.upgrade_state`；写 `reviewing` 与新的 `submission_id`、`submitted_by_id`、`submitted_at`；`Publish`；提交。此后发起人的 agent 也写不进来，提交的计算看到的就是提交的那一刻，不需要另找"写入的水位"。
+1. 第一个事务：锁（4.3），判定 `notebook.change_mode`，状态是 `upgrading`，或 `reviewing` 而没有报告且 `submitted_at + LintTimeout + 10 s` 已过（上一次提交脱离请求的一段一定已经结束，这是崩溃之后的状态）；没有报告而还在这个期限之内答 409 `wiki.upgrade_state`，`detail` 写"上一次提交正在计算"（核对 A2-M2：不然后一次提交顶掉正在算的那一次，连点两次时还连着的请求显示失败，agent 的工具超时又立即重试时一次也存不下）；别的状态 409 `wiki.upgrade_state`；写 `reviewing` 与新的 `submission_id`、`submitted_by_id`、`submitted_at`；`Publish`；提交。此后发起人的 agent 也写不进来，提交的计算看到的就是提交的那一刻，不需要另找"写入的水位"。
 2. 从这里起脱离请求的上下文（第 215 条）：`context.WithTimeout(context.WithoutCancel(ctx), LintTimeout + 10 s)`，照 transfer 写任务结束的做法（`transfer/app/job_run.go:186`）。MCP 客户端常有自己的工具超时，10 万页的笔记本上它可能在计算中断开；不脱离，第二个事务就开不起来（`platform/postgres/tx.go:153` 的 `begin(ctx, opts)`），行留在"审阅中、没有报告"，agent 自己出不来。
 3. 在快照里经 `Runs.Do`、以提交的键算报告（4.7）。
 4. 第二个事务：锁；行仍是这次提交（同一个 `submission_id`）、仍是 `reviewing`、还没有报告，否则什么也不写、答 409 `wiki.upgrade_state`（期间被退回、放弃或被后一次提交取代）。
@@ -249,9 +251,9 @@
    - `stale_pages > 0`：退回 `upgrading`、清掉提交的三列，`Publish`，答 409 `wiki.upgrade_stale_index`。
    - 别的闸门不过：同样退回，答 409 `wiki.upgrade_not_ready`，不带报告（不扩 `Problem` 的成员，第 182 条），`detail` 写不过的闸门的键。
    - 第 3 步答 503 或出错：同样退回，答那个错误。
-5. 第二个事务本身失败（进程崩溃、库断开），行留在 `reviewing`、没有报告：批准答 `wiki.upgrade_state`；任何管理员可以退回，发起人的 agent 或任何管理员可以再提交一次（第 1 步认这种状态），都有测试。
+5. 第二个事务本身失败（进程崩溃、库断开），行留在 `reviewing`、没有报告：批准答 `wiki.upgrade_state`；过了 `submitted_at + LintTimeout + 10 s`，任何管理员可以退回，发起人的 agent 或任何管理员可以再提交一次（第 1 步认这种状态）。测试：第一次在算、第二次提交答 409、第一次存下报告；过了期限之后再提交成功；期限之内退回答 409。
 
-**退回**（`sendBackUpgrade`）：`reviewing`（有没有报告都行）→ `upgrading`，清掉提交的三列与报告；v0.1 不附说明（第 183 条）：管理员在自己的客户端里告诉 agent。
+**退回**（`sendBackUpgrade`）：`reviewing`（有报告，或没有报告而提交已过 `LintTimeout + 10 s`；之内答 409 `wiki.upgrade_state`）→ `upgrading`，清掉提交的三列与报告；v0.1 不附说明（第 183 条）：管理员在自己的客户端里告诉 agent。
 
 **网页上提交不过之后**（审查 C-Q4）：升级页收到 409 `wiki.upgrade_not_ready` 或 `wiki.upgrade_stale_index` 后自动读一次 `checkUpgrade`，显示不过的闸门（等于点了"检查"，再占一个 lint 名额）。
 
@@ -275,22 +277,23 @@
 
 ### 4.10 驳回、放弃与回滚
 
-**开始**（`rejectUpgrade`、`abandonUpgrade`）：一个事务：锁，判定，状态（4.3），写 `rolling_back` 与结局，`Publish`（在开任务之前，缩短持队列锁的时间），再经 transfer 的 `Rollbacks().Start` 在这个事务里建回滚任务的行并投递（`transfer/app/start_background.go:154-198` 的 `startBackground`：嵌套的 `WithinTx` 加入调用方的事务，重入笔记本行的锁；种类 `rollback`、`upgrade_id`、客户端是请求的；`MaxQueued` 满时 503 `server_busy`），记下 `rollback_job_id`。`Rollbacks().Start` 不记日志（`startBackground` 在嵌套的事务返回、外层提交之前就记"queued"，`:192`，外层随后失败时不实，审查 A-N6），由 wiki 在提交之后记。答 200 `Upgrade`。回滚的任务由 REST 开，客户端是 `web` 或 `api`，不必放开 `transfer_jobs.client`（M8 的移交第 5 条不适用）。
+**开始**（`rejectUpgrade`、`abandonUpgrade`）：一个事务：锁，判定，状态（4.3）；`notebook.NewUpgradeStates` 的 `SetState` 把笔记本的四列写成 `rolling_back`；`Publish`（在开任务之前，缩短持队列锁的时间）；再经 transfer 的 `Rollbacks().Start` 在这个事务里建回滚任务的行并投递（`transfer/app/start_background.go:154-198` 的 `startBackground`：嵌套的 `WithinTx` 加入调用方的事务，重入笔记本行的锁；种类 `rollback`、`upgrade_id`、客户端是请求的；`MaxQueued` 满时 503 `server_busy`）；最后一条 `UPDATE` 把 wiki 的行的 `state`、`ending`、`rollback_job_id` 一起写（核对 B2-M2：`notebook_upgrades_rollback_job_check` 不能延到提交时再判，先写 `rolling_back` 与结局、后记任务的 id 过不了它，B 实测）。继续回滚只改 `rollback_job_id`。`Rollbacks().Start` 不记日志（`startBackground` 在嵌套的事务返回、外层提交之前就记"queued"，`:192`，外层随后失败时不实，审查 A-N6），由 wiki 在提交之后记。答 200 `Upgrade`。回滚的任务由 REST 开，客户端是 `web` 或 `api`，不必放开 `transfer_jobs.client`（M8 的移交第 5 条不适用）。
 
 **回滚按基线整体复原**（第 178 条，核实可行），每一遍两段：
 
-- **先删新建的子树**（审查 A-I2 的第一条建议）：一棵不含基线节点的新建子树（根是没有基线行的活节点，子树里没有基线节点，取极大的）的删除不需要调度，在计划之外按单元删：每个单元一棵子树、至多 `MaxUnitNodes = 10,000` 个节点（`page/domain/trash.go:57`），更大的从下往上删（先删它下面不超过界线的子树，再删它自己）。它们不计入下面的界，删的数进报告的 `deleted`。发起时补写的 `raw`、`AGENTS` 与 agent 新建的综合页都在这里删掉（进回收站，第 209 条）。
+- **先删新建的子树**（审查 A-I2 的第一条建议）：一棵不含基线节点的新建子树（根是没有基线行的活节点，子树里没有基线节点，取极大的）的删除不需要调度，在计划之外按单元删：一个单元装若干棵这样的子树，合计至多 `MaxUnitNodes = 10,000` 个节点（`page/domain/trash.go:57`；同后台撤销的切批：一个单元一棵会让 10 万个零散的新页成为 10 万个单元，核对 A2-N5，第 231 条），一棵更大的从下往上删（先删它下面不超过界线的子树，再删它自己）；先删进成本守卫（第 9 节）。它们不计入下面的界，删的数进报告的 `deleted`。发起时补写的 `raw`、`AGENTS` 与 agent 新建的综合页都在这里删掉（进回收站，第 209 条）。
 - **再计划剩下的**：`PlanRevert` 是 `page/domain` 的纯函数，输入是 `RevertState{Items, Versions, Nodes, Contents, Hashes, Groups, Tree, Lines, At, Retention}`（`page/domain/revert.go:110-121`、`:373`），`Items` 是 `{NodeID, Before, After *TreeState, Restored, Revision}`（`page/domain/changeset.go:192-198`），`Versions` 是 `{NodeID, Base *int, BaseBytes, Rewrite, Revision, Hash}`（`:204-211`）。合成的"变更集 C"：每个位置、名称或次序值与基线不同的基线节点一条（`Before` 是基线的，`After` 是现在的）；每个收着基线节点的新建节点一条（`Before == nil`，删除）；每个哈希与基线不同的基线页一个版本（`Base` 是基线的版本号，`Revision`、`Hash` 是现在的）；`Hashes` 里基线版本的哈希取自基线的行。合成的条目的 `Revision` 都是 0、`Restored` 为空（不然 `left()` 对没有版本的移动页调 `sameVersion`，`revert.go:463-464`，要 `Hashes` 里有现在的版本号的哈希，没有就记 `missing`、停在 `page.changeset_trimmed`，审查 A-N2）；合成的版本 `Rewrite = false`。基线节点不会被删（护栏，P1/S1 起），所以计划里没有从回收站的恢复，只有放回、删除与写回；`schedule`（`page/domain/revert_schedule.go:304`）照它的轮与三条后备排步（交换名称、移进新建的文件夹、改名之后新建同名，M9/P3 测过的形状），`ErrRevertUnordered` 是缺陷（500），不重试（M9 的移交第 3 条）。合成的 C 比 M9/P3 测过的任何真实变更集都大、形状都杂，第 9 节加大的随机形状的性质测试。升级中新建又删掉的节点不在合成的条目里（净效果为零），留在回收站。
 - **基线页的版本不会被清理**：清理只删 `deleted_at` 早于期限的版本与条目（`page/adapter/postgres/queries/purge.sql:23-36`），版本随节点的删除才标 `deleted_at`（`page/adapter/postgres/queries/nodes.sql:221-228`）；基线节点在升级中删不掉，所以发起时的版本行一直在。基线的版本号就是那时的 `page_contents.revision`：发起时没有活着的编辑会话（第 174 条）、没有写入任务，那一行不会再被并入（`changesets.sql:52-64` 的 `ON CONFLICT … WHERE`）。写回经 `History.VersionContents`（`page/app/ports.go:584`）按（页、版本号）读。逐个撤销时"凡碰过新建又删掉的节点的变更集都被截掉"（调查 A 的 D7）的问题因此不存在。
-- **app 里换掉的四处**：后台撤销今天以变更集为键读：`batchChangeset`（`page/app/unit_revert.go:634`）读条目、版本与 `trimmed`，`revertContents`（`page/app/jobs.go:872`）按变更集的版本读要写回的正文，`PlanRevert`（`:342`）读变更集，单元的 `UnitSpec` 是 `revertUnit`（`:100`）。回滚加平行的一支：`JobWrites.PlanRollback`（含先删的一段）、`RunBatch` 的回滚分支、`Unit.RollbackBatch`，以基线的行与现在的状态合成同样的 `RevertState`；其余照用：`PlanRevert`、`revertSteps` 的分段（`page/app/jobs.go:378`）、`CheckRevertPart` 与 `CheckRevertSteps`、`place`、`Delete`、`WriteContent`。
+- **app 里换掉的四处**：后台撤销今天以变更集为键读：`batchChangeset`（`page/app/unit_revert.go:634`）读条目、版本与 `trimmed`，`revertContents`（`page/app/jobs.go:872`）按变更集的版本读要写回的正文，`PlanRevert`（`:342`）读变更集，单元的 `UnitSpec` 是 `revertUnit`（`:100`）。回滚加平行的一支：`JobWrites.PlanRollback`（含先删的一段）、`RunBatch` 的回滚分支、`Unit.RollbackBatch`，以基线的行与现在的状态合成同样的 `RevertState`；其余照用：`PlanRevert`、`revertSteps` 的分段（`page/app/jobs.go:378`）、`CheckRevertPart` 与 `CheckRevertSteps`、`place`、`Delete`、`WriteContent`。回滚的每一遍先核对升级仍是任务的那一次（`upgrade_id`），不是就停；单元的守卫另以 `UpgradeOwn` 核对（4.5，第 225 条）。
+- **transfer 里按种类写死的各处**（核对 A2-M3）：Rescue 的种类表（`transfer/app/maintain.go:108`）、River 的种类（`transfer/adapter/river/jobs.go:205-216` 的 `riverKind`）与 worker 的登记、`domain.Kind.Writes()`（`transfer/domain/job.go:23-25`，今天生产代码不用它，与写入键同步）都加 `rollback`。Rescue 的表漏了它时，River 在任务开始写行之前丢掉的回滚任务（`maintain.go:96-100` 的注释）一直是 `queued`，"继续"与"结束回滚"都答 `transfer.busy`，第 212 条的出口就堵住了；`TestTheRescue`（`transfer/app/requests_test.go:339-360`）今天逐个列出种类，改为逐个核对全部种类，加一个种类而不进表时失败。
 - **单元**：`UnitSpec{Kind: rollback, UpgradeOwn: 升级的 id, Changeset: 任务的, Create: true, Tree: true, Background: true, Action: notebook.change_mode, Options: Options{UpdateLinks: false}}`，执行者是任务的发起人（`transfer/app/background.go` 的 `shared.Actor{UserID: job.CreatedBy, JobID}`）。`UpdateLinks` 为假：放回与改回名不让参与者改写链接（`linking/app/rewrite.go:63`），基线页的链接文字由正文的写回复原；设成真时参与者会改写基线页，同一遍的写回以过期的 `Base` 撞上 `ErrRevisionMismatch`，`unit_revert.go:129-133` 把它当缺陷。冻结的守卫按 `UpgradeOwn` 放过它们（4.5）；模式的守卫在普通笔记本里直接放过；没有会话，锁的守卫也放过。发起人之后不再是管理员时，下一批答 `forbidden`，任务停下，另一位管理员继续。
 - **变更集**：类型 `rollback`（第 192 条），`upgrade_id` 是这次升级的，说明是固定的英文"Upgrade rollback"，先删的一段与计划的批都进它。它是普通的变更集，之后可以在网页上撤销（等于重做 agent 的整理）。主持者第 179 条写"类型不变"，对 agent 的写成立（照旧是 `edit`，ingest 只认 `edit`）；回滚的写不能用 `revert`（`changesets_reverts_check` 要它有 `reverts_id`，`00034_page_changesets_history.sql:9`），所以另加一种：这是对第 179 条的一处补充，写明。
 - **分批**：照 M9/P3 的切法（`transfer/app/background.go:140-236`：段不切开、过大减半、503 重试）。transfer 的 `backgroundRun.run`（`:86`）加 `rollback` 的一支：按"遍"做——先删、计划、跑完这一遍的批、再来，直到差为空，然后结束（下面）；一遍什么也没写而差不空是缺陷（任务以 `internal` 停下）。
 - **界**（第 193 条）：先删之后，一遍的树的条目一次计划，至多 `MaxRollbackItems = 300,000`（`page/domain`）；正文的写回超过时分到后面的遍。剩下的树的条目是位置变了的基线节点（不超过基线节点数）与收着基线节点的新建节点（每个都是某个基线节点的祖先，深度至多 `MaxDepth = 10`，`page/domain/node.go:23`，实际是 agent 建的分类文件夹）：它们都是这本笔记本先删之后的活节点，所以条目数不超过笔记本的活节点数。v0.1 的规模是 30 万节点，规模之内的笔记本到不了界；只有超过 v0.1 规模的笔记本才会以 `revert_too_large` 停下，这时有下面的"结束回滚"。M8 的 `MaxJobItems = 60,000`（`page/domain/jobs.go:29`）是一个撤销任务的界，回滚的界另设，计划的内存与时长在 10 万个条目上有成本守卫，30 万的进 M12 的性能移交。
-- **停下与继续**：任务停下（取消、重启记作 `interrupted`、River 的任务超时 `transfer.job_timeout` 记作 `timeout`，`platform/config/config.go:252-254`、`transfer/app/job_run.go:233-235`；界、意外的冲突）时，已做的批留着，升级留在 `rolling_back`，网页显示任务的报告、"继续回滚"与"结束回滚"；继续就是 `abandonUpgrade` 在停下的 `rolling_back` 上开一个新任务（第 200 条），它重新算差，超时停下的大回滚因此靠几次继续做完。合成的计划里没有恢复，所以没有 M8 的移交第 2 条的"停在一组中间"。
+- **停下与继续**：任务停下（取消、重启记作 `interrupted`、River 的任务超时 `transfer.job_timeout` 记作 `timeout`，`platform/config/config.go:252-254`、`transfer/app/job_run.go:233-235`；界、意外的冲突）时，已做的批留着，升级留在 `rolling_back`，网页显示任务的报告、"继续回滚"与"结束回滚"。任务停下时，`jobRun.finish` 对回滚的任务走一个与 `succeed` 对称的 `fail`：一个事务里先笔记本行，再 `FinishJob`，再 wiki 的 `RollbackEnd.Stopped`（`Publish`，`From == To`），开着的升级页因此不刷新就看到停下（核对 C2-M1，第 228 条）；Rescue 记为中断的任务与排队时被取消的任务（`CancelQueued`，`transfer/app/cancel.go:68-70`）不经这里，由升级页对任务的轮询看到（4.15）。继续就是 `abandonUpgrade` 在停下的 `rolling_back` 上开一个新任务（第 200 条），它重新算差，超时停下的大回滚因此靠几次继续做完。合成的计划里没有恢复，所以没有 M8 的移交第 2 条的"停在一组中间"。
 - **确定性的停下**：`ErrRevertUnordered`（缺陷）、一段放不进一批（`transfer/app/background.go:166-175` 的 `errSegmentTooLarge`）、界，继续会再停在同一处。冻结不设时限、任何管理员随时可以放弃（负责人第 1 条），没有出口笔记本就永久只读；所以有"结束回滚"（主持者第 212 条）。
-- **结束回滚**（`endUpgradeRollback`，第 217 条）：一个事务：锁，判定，状态是 `rolling_back` 否则 409 `wiki.upgrade_state`，回滚的任务在排队或运行 409 `transfer.busy`；page 数出剩下的差（基线节点不在原位的数、正文与基线不同的基线页数、没有基线行的活节点数，与 `getUpgrade` 显示的同一条读）；清掉四列、删掉基线的行、wiki 的行改为 `rolled_back`，结局不改，`rollback_complete = false` 与三个数；`Publish`。答 200 `Upgrade`。护栏保证了原有页的正文与节点都在，保留现状不丢内容，只是结构没有全部放回；历史里有升级与回滚的每个变更集，可以逐个撤销。
-- **做完**（`wiki.NewRollbackEnd`，transfer 的 `Deps.RollbackEnd`）：任务的最后一遍之后，在 `jobRun.finish` 的 `succeed` 里一个事务（审查 A-N1）：先笔记本行 `FOR NO KEY UPDATE`（笔记本的删除先锁笔记本行再改任务行，`transfer/adapter/postgres/queries/jobs.sql:149-152`；导出的 `succeed` 为此同样先锁笔记本行，`transfer/app/export.go:394-410`）；升级仍是这一次、仍是 `rolling_back`；page 核对差为空；清掉四列、删掉基线的行、wiki 的行改为 `rolled_back`、`rollback_complete = true`、`Publish`；再 `FinishJob`。差不空时答错误，任务以 `internal` 停下，升级留着，可以继续或结束。
+- **结束回滚**（`endUpgradeRollback`，第 217 条）：一个事务：锁，判定，状态是 `rolling_back` 否则 409 `wiki.upgrade_state`，回滚的任务在排队或运行 409 `transfer.busy`；page 数出剩下的差（基线节点不在原位的数、正文与基线不同的基线页数、没有基线行的活节点数，与 `getUpgrade` 显示的同一条读；现数，有成本守卫，第 226 条）；清掉四列、删掉基线的行、wiki 的行改为 `rolled_back`，结局不改，`rollback_complete = false` 与三个数；三个数都是 0 时同做完，记 `true`、不记三个数（`notebook_upgrades_rollback_end_check`；任务在最后一批之后、`succeed` 之前被中断，差其实已空，核对 C2-N7，第 230 条）；`Publish`。答 200 `Upgrade`。护栏保证了原有页的正文与节点都在，保留现状不丢内容，只是结构没有全部放回；而且还没写回正文的原有页里，系统改写过的链接可能指不到：`schedule` 每一轮先放回、再删除、恢复，最后才写回（`page/domain/revert_schedule.go:313-342`），停在中间时被放回的节点的链接还是改写过的样子。健康度面板会列出这些解析不到的链接；这是放弃整体回滚的代价，第 212 条、对话框与 `Upgrade.rollback_left` 的说明写明（核对 A2-M4，主持者取"写明"；日志只记事实，13.1 第 10 条）。历史里有升级与回滚的每个变更集，可以逐个撤销。
+- **做完**（`wiki.NewRollbackEnd`，transfer 的 `Deps.RollbackEnd`）：任务的最后一遍之后，在 `jobRun.finish` 的 `succeed` 里一个事务（审查 A-N1）：先笔记本行 `FOR NO KEY UPDATE`（笔记本的删除先锁笔记本行再改任务行，`transfer/adapter/postgres/queries/jobs.sql:149-152`；导出的 `succeed` 为此同样先锁笔记本行，`transfer/app/export.go:394-410`）；升级仍是这一次、仍是 `rolling_back`；page 核对差为空；清掉四列、删掉基线的行、wiki 的行改为 `rolled_back`、`rollback_complete = true`、`Publish`；再 `FinishJob`。差不空时先回滚这个结束的事务，再在第二个事务里先笔记本行、`FinishJob`（`failed`、`internal`）、`RollbackEnd.Stopped`；升级留着，可以继续或结束。不然 `finish` 在 `succeed` 返回错误时什么也不写（`transfer/app/job_run.go:189-190`），任务行留在 `running`，River 重试时 `StartJob` 只认 `queued`（`transfer/adapter/postgres/queries/jobs.sql:67-70`），要等 Rescue 在 `heartbeat_timeout` 之后记为中断，这几分钟里继续与结束都答 `transfer.busy`（核对 A2-N1）。
 
 M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停在一组中间的处理"随第 177、178 条不再适用，逐项写在第 7 节"移交的落实"。
 
@@ -300,9 +303,9 @@ M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停�
 
 ### 4.12 事件（第 185 条）
 
-- 发起、提交（两个事务）、退回、放弃、驳回、批准、结束回滚、回滚做完，都经 `notebook.NewUpgradeStates` 的 `Publish` 调订阅链（`notebook/app/extension.go:75-101` 的 `ModeChange`、`ModeSubscriber`、`publishMode`），组合根唯一的注册者发 `mode`（`bootstrap/events_registrants.go:59-66`）。状态变了而模式没变时 `From == To`；存下报告时状态不变，也发（第 216 条）。
+- 发起、提交（两个事务）、退回、放弃、驳回、批准、结束回滚、回滚停下（第 228 条）、回滚做完，都经 `notebook.NewUpgradeStates` 的 `Publish` 调订阅链（`notebook/app/extension.go:75-101` 的 `ModeChange`、`ModeSubscriber`、`publishMode`），组合根唯一的注册者发 `mode`（`bootstrap/events_registrants.go:59-66`）。状态变了而模式没变时 `From == To`；存下报告时状态不变，也发（第 216 条）。
 - `EventMode`（`api/modules/events.yaml:222-233`）不加字段；`mode` 的说明（`:48-51`）改为"一本笔记本的模式或它的升级变了"，`EventMode.description`（`:223`，"a change of a notebook's mode"）一并改（审查 C-N5）。
-- 网页：`modeChanged` 今天重读这个工作区的笔记本列表（`web/…/events/handlers.ts:277-279`），横幅与只读随 `Notebook.upgrade` 变；它另外重读这本笔记本的升级（SWR 键 `["upgrade", notebook_id]`，`EventMode` 带 `notebook_id`），升级页的报告、回滚的进度由此更新（第 216 条）。
+- 网页：`modeChanged` 今天重读这个工作区的笔记本列表（`web/…/events/handlers.ts:277-279`），横幅与只读随 `Notebook.upgrade` 变；它另外重读这本笔记本的升级（SWR 键 `["upgrade", notebook_id]`，`EventMode` 带 `notebook_id`），升级页的报告与状态由此更新（第 216 条）；回滚的进度靠升级页对任务的轮询（4.15）。`upgrade` 进 `refreshedOnConnect`（`app/event-stream.tsx:15-34`）的第三层，与 `pages` 同层、在笔记本之后：断开期间漏掉的 `mode`（存下报告、回滚停下或做完）由重连之后的重读补上（核对 C2-M2；总体设计 3.3 的重连只刷新、不补发）。
 - [M5 的事件移交](handoffs/M5-events.md)：类型 `mode` 已由 M10 建（`TestTheModeEventReachesTheStreams`，`bootstrap/wiki_downgrade_test.go:88`）；M11 的整个程序测试 `TestUpgradeStatesReachTheStreams` 证明每个转移都到流。
 
 ### 4.13 MCP：工具、prompt 与说明
@@ -327,7 +330,7 @@ M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停�
 
 **prompt `upgrade`**：在 wiki 的 `Prompts()`（`wiki/prompts.go:9`），`Entry: NotebookEntry`、静态，先写 `api/mcp/prompts.json` 的笔记本一项；没有参数。处理函数是新的用例 `UpgradePlaybook.Execute`：actor → 判定 `lint.read`（看不到答 `notebook.not_found`，同其余的 prompt，`wiki/app/playbooks.go:28-46`）→ 状态是 `upgrading` 才答 playbook，别的（没有升级、审阅中、回滚中、LLM Wiki）答 `wiki.upgrade_state`。它不经 `Playbooks.Execute`：那一条对不是 `llm_wiki` 的笔记本答 `notebook.not_llm_wiki`，方向相反（M10 收尾的移交）。playbook 是 `wiki/domain/playbook-upgrade.md`，英文（第 176 条），至多 `MaxPlaybookBytes = 16 KiB`（`wiki/domain/playbook.go:21`），内容：只有发起人的 agent 能写，`notebook.upgrading` 在升级中的意思是"你不是发起人，或已不是这本笔记本的管理员"；先 `upgrade_verify`；把原有页归为来源或 wiki 页；来源移进来源根（正文不改）；wiki 页只改 frontmatter（`type`、`summary`、`sources`），文件夹页也要；无效的 frontmatter 就地改（4.6）；`AGENTS` 已有时改名保留、另建；根下的保留标题改名；不删原有节点；移动与改名不要传 `update_links: false`（系统的链接改写是放行的，`page.upgrade_keep_links`）；`batch` 里先写页、后移动（`page.upgrade_batch_rewrite`）；新建页的标题会让原有页的短链接改指它（第 213 条）；反复 `upgrade_verify` 直到全过，再 `upgrade_submit`；每个码的意思。
 
-**prompt 的测试**（审查 C-M3）：`TestThePromptReadsLLMWikiMatrix`（`bootstrap/permission_matrix_mcp_wiki_test.go:153-216`）今天对每个 prompt 只跑两种模式，并断言 `len(prompts) != 3` 时失败（`:205`）；`TestThePromptListsAreTheContract` 写死 `len(want["notebook"]) != 3`（`bootstrap/mcp_prompts_test.go:105`）。改为按"prompt × 状态"的期望表：`llm_wiki`、没有升级的 `standard`、`upgrading`、`reviewing`（`ingest`、`query`、`lint` 在后三种答 `notebook.not_llm_wiki`；`upgrade` 只在 `upgrading` 答文字，其余答 `wiki.upgrade_state`），状态数与 prompt 数的断言随之改；变异"prompt 在审阅中也答"由 `reviewing` 一格抓住。这部分放进第七份的 `TestUpgradePromptMatrix`（第 222 条），原测试只改 prompt 数。
+**prompt 的测试**（审查 C-M3）：`TestThePromptReadsLLMWikiMatrix`（`bootstrap/permission_matrix_mcp_wiki_test.go:153-216`）今天对每个 prompt 只跑两种模式，并断言 `len(prompts) != 3` 时失败（`:205`）；`TestThePromptListsAreTheContract` 写死 `len(want["notebook"]) != 3`（`bootstrap/mcp_prompts_test.go:105`）。改为按"prompt × 状态"的期望表：`llm_wiki`、没有升级的 `standard`、`upgrading`、`reviewing`（`ingest`、`query`、`lint` 在后三种答 `notebook.not_llm_wiki`；`upgrade` 只在 `upgrading` 答文字，其余答 `wiki.upgrade_state`），状态数与 prompt 数的断言随之改；变异"prompt 在审阅中也答"由 `reviewing` 一格抓住。这部分放进第七份的 `TestUpgradePromptMatrix`（第 222 条）。原测试（核对 C2-N2）：`TestThePromptReadsLLMWikiMatrix` 对 `prompts.json` 的每一项循环、没有行就失败（`permission_matrix_mcp_wiki_test.go:177`），改为只取三个 LLM Wiki 的 prompt，`:205` 的断言随之改；`TestThePromptListsAreTheContract` 的 `!= 3` 与注释"lists the three"（`bootstrap/mcp_prompts_test.go:96-106`）改为四。
 
 **不加的**（第 196 条）：`notebooks`、`open_notebook` 的每项不加升级的状态；握手的说明不加"正在升级"的系统段（说明的缓存按笔记本、`AGENTS` 节点与版本号，加状态要改缓存的键）。agent 从 README 写的地址、prompt 名、`upgrade_verify` 与写的错误得知升级。
 
@@ -349,16 +352,16 @@ M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停�
 
 **发起**：设置"模式"一节（M10 加的降级，`pages/notebook/general-page.tsx:128-169`）对普通笔记本、管理员、没有升级时加"升级为 LLM Wiki…"按钮，`ConfirmDialog` 的 `held` 写法与 `tone="default"`（同降级，`:156-166`），对话框写后果（冻结到提交或放弃、补写的两页、原有页的正文不改）；根下已有标题为 `raw` 的页而它下面有节点时，对话框另写"根下的 `raw` 将成为来源区（现有 N 个节点），批准之后它下面的都是只读的来源；不是来源的可以由 agent 移出"，N 从页面树已读到的 `listNodes`（`api/modules/page.yaml:12`，整棵树）数出（主持者第 214 条）。模板的语言取界面语言。拒绝的文字：`wiki.upgrade_pages_locked` 列出 `locks` 的页与编辑者，`app/pages-locked.tsx:19` 今天只认 `linking.pages_locked`，放宽到新码（审查 C-N3；`lockedText`，`app/problem-messages.ts:137`，只读单个 `lock`，不合用），并提示可以强制解锁；`transfer.busy` 用 `transfer.writingBusy`；其余照 `problemMessages`。成功之后去升级页、焦点给它的标题。有升级时这一节写状态与"查看升级"。
 
-**升级页**：外壳下自己的一段 `upgrade`（与 `health` 并列，`app/routes.tsx:194-200`），`/:slug/notebooks/:id/upgrade`，调 `useDocumentTitle`。只给管理员的读（13.2 第 18 条）：非管理员不发读、只说明谁能看；导航不加入口，入口是横幅与设置的"模式"一节；403 时重读 `["notebooks", ws]`（`useFollowRole` 重读的是工作区，`app/follow-role.ts:11`，不合用，同 M10 4.5）；404 `wiki.upgrade_not_found`"没有进行中的升级"。SWR 键 `["upgrade", notebook_id]`，`mode` 事件重读它（4.12）。各节：
+**升级页**：外壳下自己的一段 `upgrade`（与 `health` 并列，`app/routes.tsx:194-200`），`/:slug/notebooks/:id/upgrade`，调 `useDocumentTitle`。只给管理员的读（13.2 第 18 条）：非管理员不发读、只说明谁能看；导航不加入口，入口是横幅与设置的"模式"一节；403 时重读 `["notebooks", ws]`（`useFollowRole` 重读的是工作区，`app/follow-role.ts:11`，不合用，同 M10 4.5）；404 `wiki.upgrade_not_found`"没有进行中的升级"。SWR 键 `["upgrade", notebook_id]`，`mode` 事件与重连都重读它（4.12）。各节：
 - 状态（谁、何时发起，提议的来源根与补写的页的链接）。
 - 接入 agent（第 184 条，审查 C-M12）：对发起人（仍是管理员）写 prompt 的名字 `upgrade` 与"照 README 的'接入 agent（MCP）'一节把 agent 连到这本笔记本"（README 的升级一节写明笔记本入口 `/mcp?notebook=<id>`，id 在网页地址 `/notebooks/` 之后，`README.md:259`）；对其他管理员写"只有发起人（显示名）的 agent 能写；你可以检查、提交、放弃"。
 - 检查（P2/S3）："检查"按钮读 `checkUpgrade`，列八个闸门与规则的卡；卡的"更多"读 `listUpgradeCheckItems`。`HealthItem` 与 `healthRetry`（`pages/notebook/health-request.ts:40`，`server_busy` 不自动重试）照用；`HealthRule`（`pages/notebook/health-rule.tsx:48`）把"读一页"与"模式的核对"做成参数后复用。"提交审阅"按钮（`upgrading`）；提交答 409 之后自动读一次检查（4.8）。
-- 审阅（P3/S3）：`reviewing` 读存下的报告（`UpgradeReport`），规则的"更多"从第一页读 `listUpgradeCheckItems`（4.7）；没有报告时写"正在核对，或上一次提交没有做完"并给"退回"。"批准""退回继续修改"（`default`）、"驳回"（`destructive`）。批准之后去笔记本首页、焦点给标题。
-- 回滚：`rolling_back` 显示任务的进度与报告（复用 `transfer-report.tsx`）；停下时"继续回滚"与"结束回滚，保留现在的样子"（`destructive`，对话框写剩下的三个数：不在原位的节点、没有写回的页、还在的新建节点，来自 `Upgrade.rollback_left`）。
+- 审阅（P3/S3）：`reviewing` 读存下的报告（`UpgradeReport`），规则的"更多"从第一页读 `listUpgradeCheckItems`（4.7）；没有报告时写"正在核对，或上一次提交没有做完"，提交过了 `LintTimeout + 10 s` 才给"退回"（之前退回答 409，4.8）；"更多"在没有游标时被 `HealthRule` 藏起（`health-rule.tsx:210`），"从第一页读"做成它的参数，P3/S3 写代码时核对（核对 C 的未核实的怀疑）。"批准""退回继续修改"（`default`）、"驳回"（`destructive`）。批准之后去笔记本首页、焦点给标题。
+- 回滚：`rolling_back` 按 `rollback_job_id` 读任务（`getTransferJob`），任务在排队或运行时照任务页的做法轮询（`pages/notebook/transfer-page.tsx:46` 的 `pollInterval`、`:178` 的 `refreshInterval`），任务转为结束时再读一次 `["upgrade", notebook_id]`、取回 `rollback_left`（核对 C2-M1：任务的进度没有事件，Rescue 记为中断的任务也不发 `mode`）；显示进度与报告（复用 `transfer-report.tsx`）；停下时"继续回滚"与"结束回滚，保留现在的样子"（`destructive`，对话框写剩下的三个数：不在原位的节点、没有写回的页、还在的新建节点，来自 `Upgrade.rollback_left`；另写"还没写回正文的页里，系统改写过的链接可能指不到，健康度面板会列出它们"；三个数都是 0 时写"已经复原完，结束即可"，第 230 条）。
 - "放弃这次升级"（`destructive`，不要求输入名称：回滚本身也能撤销），`upgrading`、`reviewing` 与停下的 `rolling_back` 都有（后者就是继续）。
 对话框都用 `held` 与 `onClosed` 的焦点规则（`general-page.tsx:138-140`）。
 
-**回滚任务在网页上的报告**（审查 C-M10）：`pages/notebook/transfer-report.tsx` 的 `shownCounts`（`:122-127`，`Record<string, …>`，tsc 不强制）加 `rollback: ["deleted", "put_back", "written"]`，不然 `:202` 退回导入的计数；`kindFailures`（`:54`）加 `rollback` 的失败文字（`forbidden`"开始回滚的人已不是管理员，另一位管理员可以继续"、`revert_too_large`"这次升级改动太多，回滚停下了：可以结束回滚、保留现在的样子"、`internal`、`interrupted`、`timeout`"可以继续回滚"）；`countText`（`:130-133`）的 `skipped` 不涉及回滚。假服务端 `test/jobs-server.ts:10` 有一份自己的 `writingKinds`，与 `stores/transfer.store.ts:27` 一起加 `rollback`（05-lessons 第 2 节：替身要在真东西会失败的地方失败），P1/S3 带。
+**回滚任务在网页上的报告**（审查 C-M10）：`pages/notebook/transfer-report.tsx` 的 `shownCounts`（`:122-127`，`Record<string, …>`，tsc 不强制）加 `rollback: ["deleted", "put_back", "written"]`，不然 `:202` 退回导入的计数；`kindFailures`（`:54`）加 `rollback` 的失败文字（`forbidden`"开始回滚的人已不是管理员，另一位管理员可以继续"、`revert_too_large`"这次升级改动太多，回滚停下了：可以结束回滚、保留现在的样子"、`internal`、`interrupted`、`timeout`"可以继续回滚"）；`countText`（`:130-133`）的 `skipped` 不涉及回滚。任务页的"取消"对回滚的任务只给管理员（第 229 条）。假服务端 `test/jobs-server.ts:10` 有一份自己的 `writingKinds`，与 `stores/transfer.store.ts:27` 一起加 `rollback`（05-lessons 第 2 节：替身要在真东西会失败的地方失败），P1/S3 带。
 
 **store 与 service**：动作答 `Upgrade`（第 201 条），放在 `NotebookStore`（经 `inTurn`，`stores/notebook.store.ts:45`）：成功之后重读笔记本列表与这本笔记本的升级，403、404、状态不对时照 `downgrade` 重读列表（`:114-143`）；service 是新的 `services/upgrade.service.ts`（十个操作与读），只在网页 Step 里加（knip）。服务端 Step 只带：码的两种语言的文字（`app/problem-messages.ts:11-74`，`problem-messages.test.ts` 读契约核对，`:43-62`）、假服务端的 `upgrade: null`（`test/fakes.ts:91` 的 `notebookJSON` 与各测试里的 `Notebook` 字面量，tsc 逐个报出）、新种类的文字（变更集的 `kindText`，`pages/notebook/changeset-text.ts:14-27`；任务的 `jobTitle` 与 `changesetKinds`，`pages/notebook/transfer-names.ts:9-34`；两份 `writingKinds`）。
 
@@ -366,7 +369,7 @@ M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停�
 
 ### 4.16 码的次序、加锁与交错
 
-- **码的次序**（第 5 节逐个操作写出）：取值的 422 → 看不到 404 → 不是管理员 403 → 模式与状态的 409 → 资源占用的 409（`transfer.busy`、编辑会话）→ 内容的 409 → 503。例外：`listUpgradeCheckItems` 照 `listLintItems`（`api/modules/wiki.yaml:63-71`；lint 在模式之后才判 `PageSize`）把 `limit` 的 422 放在 `wiki.upgrade_state` 之后，游标的 400 在最前（审查 C-N4）；`startUpgrade` 的 503 在内容的 409 之间（名额在写之前占，`wiki.upgrade_stale_index` 要算了才知道）。写入单元里守卫的码在领域的码之后（4.5）。同一操作经 REST 与 MCP 答同样的码与次序（13.4 第 3 条的"三种入口的次序"）。
+- **码的次序**（第 5 节逐个操作写出）：取值的 422 → 看不到 404 → 不是管理员 403 → 模式与状态的 409 → 资源占用的 409（`transfer.busy`、编辑会话）→ 内容的 409 → 503。例外：`listUpgradeCheckItems` 照 `listLintItems`（`api/modules/wiki.yaml:63-71`；lint 在模式之后才判 `PageSize`）把 `limit` 的 422 放在 `wiki.upgrade_state` 之后，游标的 400 在最前（审查 C-N4）；`startUpgrade` 的 503 在内容的 409 之间（名额在写之前、笔记本行之下立即试取，从不在锁下等，`wiki.upgrade_stale_index` 要算了才知道）。写入单元里守卫的码在领域的码之后（4.5）。同一操作经 REST 与 MCP 答同样的码与次序（13.4 第 3 条的"三种入口的次序"）。
 - **加锁**：所有转移在工作区 `FOR SHARE` → 笔记本 `FOR NO KEY UPDATE` 之下；单元取笔记本行的 `FOR SHARE` 或 `FOR NO KEY UPDATE`（`page/app/unit.go:244-256`），所以转移与写入单元串行，一个单元里状态不变。发起的事务在锁下删过期的会话、读活着的会话、写基线、跑 `Seed` 的单元（重入）与一次 lint 的读；批准的事务在锁下重建哈希。它们在笔记本行的锁下的时长进成本守卫与 M12 的移交。
 - **要确定地逼出的交错**（05-lessons 第 3 节：持住双方都要的行，`pgtest.WaitForLockWaits`，再放开；先后在一个共用的日志里断言）：
   1. 发起与正在跑的写入单元：单元先持笔记本行，发起等它，基线含它写的；发起先持，单元等它，之后被冻结拒绝（别人的 REST 写）。
@@ -383,6 +386,9 @@ M8、M9 两份移交里"逐个倒序撤销、按 `Kind == revert` 放行、停�
   12. 回滚做完与删除笔记本同时：两边都先取笔记本行，串行，不死锁。
   13. 发起人被降为写者与他正在跑的写：成员的写取笔记本行，之后的单元经 `Grants` 被拒。
   14. 两次发起同时：后一次答 `notebook.upgrading`。
+  15. 第一次提交在算、第二次提交：第二次答 409（"上一次提交正在计算"），第一次存下报告；过了 `LintTimeout + 10 s` 之后的再提交成功（核对 A2-M2）。
+  16. Rescue 把回滚任务记为中断、worker 还在跑、管理员结束回滚：下一批的单元被 `UpgradeOwn` 的核对拒绝，什么也没写（核对 A2-M1）。
+  17. 发起与占满的 lint 名额：发起在笔记本行下试取不到，立即答 503，不等（主持者的裁定）。
   每个交错的测试结束时核对 `checkPages`、`checkLinks`、`checkSearch`。
 
 ### 4.17 上限
@@ -443,7 +449,7 @@ M9 的 MCP 人工清单（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`�
 
 - `UpgradeStart`：`{template_locale?: "zh-CN" | "en"}`，`additionalProperties: false`。
 - `UpgradeState`：`upgrading`、`reviewing`、`rolling_back`、`approved`、`rolled_back`（`getUpgrade` 只答前三种；动作的答复可以是后两种）。
-- `Upgrade`：`id`、`notebook_id`、`state`、`started_by`（`UserRef`）、`started_at`、`source_root_id`、`seeded_page_ids`（发起时建的页，0–2 个，来自 `seeded_root` 与 `seeded_agents_id`）、`baseline`（`{nodes, pages, wanted: LintCount}`）、`submitted_by`（`UserRef | null`）、`submitted_at`（`| null`）、`report`（`UpgradeReport | null`，存下的那份）、`rollback_job_id`（`| null`）、`ending`（`abandoned | rejected | null`）、`rollback_complete`（`boolean | null`）、`rollback_left`（`{nodes, pages, created} | null`：`rolling_back` 而任务没有排队或运行时由 page 现数，结束回滚时记下的那份）。全部必填、`additionalProperties: false`。`UserRef` 由 identity 的目录给出显示名（6.1 的例外之一：同锁与历史的 `UserRef`，第 7 节修订第 17 条）。
+- `Upgrade`：`id`、`notebook_id`、`state`、`started_by`（`UserRef`）、`started_at`、`source_root_id`、`seeded_page_ids`（发起时建的页，0–2 个，来自 `seeded_root` 与 `seeded_agents_id`）、`baseline`（`{nodes, pages, wanted: LintCount}`）、`submitted_by`（`UserRef | null`）、`submitted_at`（`| null`）、`report`（`UpgradeReport | null`，存下的那份）、`rollback_job_id`（`| null`）、`ending`（`abandoned | rejected | null`）、`rollback_complete`（`boolean | null`）、`rollback_left`（`{nodes, pages, created} | null`：`rolling_back` 而任务没有排队或运行时由 page 现数，结束回滚时记下的那份；说明写明"还没写回正文的页里，系统改写过的链接可能指不到"，第 212 条）。全部必填、`additionalProperties: false`。`UserRef` 由 identity 的目录给出显示名（6.1 的例外之一：同锁与历史的 `UserRef`，第 7 节修订第 17 条）。
 - `UpgradeCheck`：`computed_at`、`stale_pages`、`passed`、`gates`（`agents`、`source_root`、`reserved_titles`（带 `node_ids`）、`frontmatter`、`sources`、`links`（带 `pages_worse`、`node_ids`）、`preserved`（带 `nodes`、`nodes_kept`、`pages`、`pages_kept`、`node_ids`）、`index`，每个有 `passed`）、`rules`（八条规则的摘要，同 `getLint` 的每一项）、`counts`（`sources`、`moved_into_sources`、`wiki_pages`、`new_pages`、`changesets`、`wanted_before`、`wanted_now`，后两个是 `LintCount`）。
 - `UpgradeReport`：`UpgradeCheck` 的闸门与计数，`rules` 的每项只有 `rule`、`count`、`count_capped`、`items`（至多 5 项，每项是那条规则的条目去掉 `cursor`），没有 `next_cursor`（4.7）。契约测试核对一份存下的报告（第 9 节）。
 
@@ -459,11 +465,12 @@ M9 的 MCP 人工清单（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`�
 | `ChangesetKind`（`api/modules/page.yaml:1526-1531`） | 加 `rollback` | P1/S3 |
 | transfer 的任务（`TransferJob` 的 `kind`） | 加 `rollback`；`upgrade_id` 不进答复（任务的名称是固定的 `upgrade`） | P1/S3 |
 | `revertChangeset`、`startRevert` | 加 `page.virtual_file`（4.11），在 `page.protected` 之后 | P3/S1 |
-| `cancelTransferJob` 的说明 | 回滚的任务只有笔记本管理员能取消（码不变：发起人之外的非管理员本来就答 `transfer.not_found`） | P1/S3 |
+| `cancelTransferJob` | 回滚的任务只有笔记本管理员能取消：非管理员（含开它之后被降为写者的发起人）答 403 `forbidden`，`x-problem-codes`（`api/modules/transfer.yaml:386`）加 `forbidden`；读与列表不变（第 229 条） | P1/S3 |
+| `TransferFailure.description`（`api/modules/transfer.yaml:912-947`） | `forbidden`（`:916-918`，今天只说导入、恢复、撤销）与"A revert's alone"一段的 `revert_too_large`（`:937-942`）加上回滚的任务（核对 C2-N4） | P1/S3 |
 
 **加 `notebook.upgrading` 的 14 个写操作**（对着 `api/modules/*.yaml` 的写操作逐个核对过；P1/S1；每个在它的模块的 `adapter/http` 测试里经 `apitest.CheckResponse` 答出，13.1 第 8 条）：page 的 `createPage`、`putPageContent`、`openEditSession`、`restorePageVersion`、`toggleTask`、`renameNode`、`deleteNode`、`moveNode`、`restoreNode`、`revertChangeset`；asset 的 `uploadAsset`；transfer 的 `startImport`、`startTrashRestore`、`startRevert`。不加的写：`releaseEditLock`、`heartbeatEditSession`、`endEditSession`（4.5）、`startExport`、`cancelTransferJob`，以及 notebook 的设置、成员、删除与 `downgradeNotebook`（升级期间答 `notebook.not_llm_wiki`）。
 
-**MCP**（每行的码照 REST 的次序，审查 C-M2）：
+**MCP**（每行的码照 REST 的次序；参数的 `validation_failed` 照 `lint` 的行排在前面，`bootstrap/permission_matrix_mcp_test.go:114`；审查 C-M2、核对 C2-N1）：
 
 | 工具 / prompt | 参数 | 答复 | 入口 | 码（`mcpToolCodes()` 的行） | Phase |
 |---|---|---|---|---|---|
@@ -475,7 +482,7 @@ M9 的 MCP 人工清单（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`�
 | `batch` | 照旧 | 照旧 | 两个 | 加 `notebook.upgrading`、`page.upgrade_protected`（P1/S1）、`page.upgrade_immutable`、`page.upgrade_batch_rewrite`、`page.upgrade_keep_links`（P2/S1） | 见码 |
 | prompt `upgrade`（新） | — | 英文的 playbook | 笔记本 | `notebook.not_found`、`wiki.upgrade_state`（参数过界的 `validation_failed` 照 `TestTheWikiPromptsAreReached` 的做法） | P3/S2 |
 
-`mcpOwnCodes()`（`bootstrap/mcp_client_test.go:338-340`）加四个 `page.upgrade_*`；`wiki.upgrade_state` 等由 REST 声明，不进它。每个码经真实的调用答出过（`bootstrap/mcp_reads_test.go` 的做法），测试的环境用 4.14 的升级的变体。
+`mcpOwnCodes()`（`bootstrap/mcp_client_test.go:338-340`）加四个 `page.upgrade_*`；`wiki.upgrade_state` 等由 REST 声明，不进它。每个码经真实的调用答出过（核对 C2-N3）：今天这个检查是第五份的 `TestTheMCPToolsErrorsCarryTheirCodes`（`bootstrap/mcp_reads_test.go:427`，注释 `:410-411`），它用自己的应用（`startReadsAppWith`）；升级的码的调用放在第七份的 `TestUpgradeToolsErrorsCarryTheirCodes`，"每个码都答出过"的核对读两边的结果；P1/S1 以 SQL 设升级列与基线行，不等 4.14 的变体。
 
 **新的码**（文字两种语言，由加它的服务端 Step 写）：
 
@@ -504,7 +511,7 @@ Nerve 没有模式的契约、冻结、闸门或人审的流程（M10 的调查�
 
 | P | 名称 | 交付 | 验证 |
 |---|---|---|---|
-| P1 | 冻结、发起与放弃（四个 Step） | **S1 服务端：数据、冻结与删除的护栏**：迁移 00055、00056；`State`、`NotebookState`、`View` 带升级（四条查询，`ListNotebooks` 在内），`Notebook.upgrade`；`Write.UpgradeOwn`；`page.NewFreezeGuard`（守卫与否决者的第 1–4 步）登记在最前；删除的护栏与 `page.upgrade_protected`；四处预检、导入建任务与 `startBackground` 里的判断；`ensureChangeset` 记 `upgrade_id`；`notebook.upgrading` 进 14 个操作与 5 个工具，文字；`events.yaml` 的两处说明；第七份（第 186 条：`Makefile` 的分份、`test-go` 的列表、CI、`06-environment.md`）。**S2 服务端：发起与读**：迁移 00057（wiki 的第一张表）；`notebook.NewUpgradeStates` 与订阅链；page 的基线、会话、根下的键、`Seed` 的 `Upgrade`、保护行；wiki 的 lint 拆出 `computeIn`、`Runs.Hold`、按页的待建数；`startUpgrade`、`getUpgrade`；五个码与 `locks` 的说明；`checkPages` 的新规则（补 S1 夹具的 wiki 行）。**S3 服务端：放弃、回滚与结束**：迁移 00058、00059；page 的回滚（先删、计划、批、剩下的差）；transfer 的 `rollback` 与取消的规则；`abandonUpgrade`（含继续）、`endUpgradeRollback`；`wiki.NewRollbackEnd`；`wiki.upgrade_state`；新种类的文字与两份 `writingKinds`。**S4 网页**：横幅、只读、编辑失去、发起、升级页的状态与接入的说明、放弃、回滚的报告、继续与结束 | S1：`TestUpgradeFreezeReachesEveryPath`、`TestUpgradeFreezeLeavesTheRest` 等（第 9 节），最后一跳；S2：发起的码与交错、`TestUpgradeStatesReachTheStreams`、UP1（API、MCP）、UP2（API）；S3：回滚的性质测试与停下继续、结束回滚、UP3（API）；S4：控件表、UP1–UP3 的页面版本 |
+| P1 | 冻结、发起与放弃（四个 Step） | **S1 服务端：数据、冻结与删除的护栏**：迁移 00055、00056；`State`、`NotebookState`、`View` 带升级（四条查询，`ListNotebooks` 在内），`Notebook.upgrade`；`Write.UpgradeOwn`；`page.NewFreezeGuard`（守卫与否决者的第 1–4 步）登记在最前；删除的护栏与 `page.upgrade_protected`；四处预检、导入建任务与 `startBackground` 里的判断；`ensureChangeset` 记 `upgrade_id`；`notebook.upgrading` 进 14 个操作与 5 个工具，文字；`events.yaml` 的两处说明；第七份（第 186 条：`Makefile` 的分份、`test-go` 的列表、CI、`06-environment.md`）。**S2 服务端：发起与读**：迁移 00057（wiki 的第一张表）；`notebook.NewUpgradeStates` 与订阅链；page 的基线、会话、根下的键、`Seed` 的 `Upgrade`、保护行；wiki 的 lint 拆出 `computeIn`、`Runs.TryHold`、按页的待建数与来源区里基线页的第二遍；`startUpgrade`、`getUpgrade`；五个码与 `locks` 的说明；`checkPages` 的新规则（补 S1 夹具的 wiki 行）。**S3 服务端：放弃、回滚与结束**：迁移 00058、00059；page 的回滚（先删、计划、批、剩下的差）；transfer 的 `rollback`（含 Rescue 的种类表与 `fail`）与取消的规则；`abandonUpgrade`（含继续）、`endUpgradeRollback`；`wiki.NewRollbackEnd`；`wiki.upgrade_state`；新种类的文字与两份 `writingKinds`。**S4 网页**：横幅、只读、编辑失去、发起、升级页的状态与接入的说明、放弃、回滚的报告、继续与结束 | S1：`TestUpgradeFreezeReachesEveryPath`、`TestUpgradeFreezeLeavesTheRest` 等（第 9 节），最后一跳；S2：发起的码与交错、`TestUpgradeStatesReachTheStreams`、UP1（API、MCP）、UP2（API）；S3：回滚的性质测试与停下继续、结束回滚、UP3（API）；S4：控件表、UP1–UP3 的页面版本 |
 | P2 | 护栏、闸门与提交（三个 Step） | **S1 服务端：护栏**：不改写链接的移动与改名、正文的切分、逐步的比较、`Folded` 与拒绝标在最后一个正文操作、账本、三个码。**S2 服务端：闸门、检查与提交**：闸门与报告（逐页的闸门 6、快照里的核对、两种 `RunKey`）、`UpgradeReport`、`checkUpgrade`、`listUpgradeCheckItems`、`submitUpgrade`（脱离请求的第二段）；`upgrade_verify`、`upgrade_submit`（`tools.json`、矩阵、码、说明、`Fit`）；"server update"的措辞；`wiki.upgrade_not_ready`。**S3 网页**：升级页的检查、条目与提交，提交不过之后的再读，审阅中的只读报告 | S1：护栏的形状表、UP4（MCP）；S2：闸门的每一格、提交的交错、10 万页的成本守卫、UP5（API、MCP）；S3：UP5 的页面版本 |
 | P3 | 审阅、批准与 playbook（三个 Step） | **S1 服务端：审阅**：`approveUpgrade`（`page.NewSourceRebuild`）、`rejectUpgrade`、`sendBackUpgrade`；第 181 条（撤销里的 `OpRestore`、两个操作的 `page.virtual_file`）。**S2 服务端：playbook 与文档**：prompt `upgrade` 与 playbook、`prompts.json`、prompt 的矩阵改写、README 的"升级"一节、MCP 人工清单的 K。**S3 网页**：审阅的三个动作、报告的"更多"、批准之后的跳转 | S1：批准的一个事务与哈希的重建、驳回的回滚、181 的同步与后台与回收站恢复的正例、UP6、UP7、UP8（API）与 UP6、UP7 的 MCP；S2：prompt 的最后一跳、UP9（MCP）；S3：UP6–UP8 的页面版本 |
 
@@ -532,7 +539,7 @@ Nerve 没有模式的契约、冻结、闸门或人审的流程（M10 的调查�
 | | P3/S1 补充：显式范围 | 闸门与发起都用显式的 LLM Wiki 契约与提议的来源根（4.7），P1/S2、P2/S2 |
 | | P3/S1 补充：零 UUID 不是 nil | 提议的根从不为零：来自模板写下的页或根下已有的 `raw`，发起时校验；检查与条目的范围带它 |
 | | P3/S1 补充：调用不得处于已有事务内 | 检查与条目照做（`Runs.Do`，在快照里）；发起是偏离：在写事务里调 `computeIn`（第 187 条，理由见那里） |
-| | P3/S1 补充：名额与期限仍适用 | 检查与条目经 `Runs.Do`；发起经 `Runs.Hold` 占名额、计算受 `LintTimeout`（第 219 条），P1/S2 |
+| | P3/S1 补充：名额与期限仍适用 | 检查与条目经 `Runs.Do`；发起经 `Runs.TryHold` 在行锁下立即试取名额、整个事务受 `LintTimeout`（第 219、227 条），P1/S2 |
 | | P3/S1 补充：交付前授权仍适用 | 检查与条目在交付之前再判一次 `notebook.change_mode`（4.7），P2/S2 |
 | | P3/S1 补充：`stale_pages` | `stale_pages > 0` 时发起与提交拒绝（第 198 条），P1/S2、P2/S2 |
 | | P4 补充：旧格式先 reindex；Unknown 不是 ready；批准前处理根下的 `index`、`log` | 同上；闸门 3（4.7），P2/S2 |
@@ -639,21 +646,21 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 改前面 M 的扩展点与代码（12.1 第 6 条的例外，逐项写明）：
 
 - notebook（M3、M10）：`State`、`View`、`Notebook` 带升级；四条查询多选四列；模块根新导出 `notebook.NewUpgradeStates(pool, subscribers)`（`Lock`、`Start`、`SetState`、`Approve`、`Clear`、`Publish`，都在调用方事务里；"升级改模式时同样经它"今天没有入口，`notebook/module.go:139-141` 只交给降级）与 `ActionChangeMode`；`SetNotebookMode` 同时清升级的列。
-- page（M4–M10）：`NotebookState.Upgrade`；`Write.UpgradeOwn`、`UnitSpec.UpgradeOwn`、`SeedSpec.Upgrade`；`Step.KeepLinks`、`StepContent.Body`、`StepContent.Folded`、`ContentWrite.Folded`；批的计划记下改写是否改了内容、护栏的拒绝标在 `Last`；`WriterDeps.Markdown`；`ensureChangeset` 记 `upgrade_id`；单元维护账本；`CheckContract` 判撤销里的 `OpRestore`；预检判有没有升级；新的只凭连接池的端口（基线、会话与根下的键、闸门与剩下的差的读）与 `page.NewSourceRebuild`（交附件的端口）；回滚（先删、计划、批）；模块根导出 `ReservedKeys`。
-- transfer（M7、M8）：种类 `rollback`、`upgrade_id`；`Notebooks.ShareByID` 交回升级的状态、导入建任务与 `startBackground` 里判冻结；`backgroundRun` 的回滚一支（按遍）；`jobRun.finish` 的 `succeed` 里调 `Deps.RollbackEnd`；`views.sees` 对回滚的任务要管理员；模块的 `Rollbacks()`（在调用方事务里开回滚任务，不记日志）。
-- wiki（M10）：`Deps` 加连接池、事务、`Names`、`UpgradeAction`、`ReservedKeys`、transfer 的 `Rollbacks`、page 的 `TreeWrites` 与各端口；`computeIn`（收调用方的时刻）；`RunKey` 的两种新种类与 `Scope`、`Runs.Hold`、`Runs.Do` 的结果的泛化。
-- linking（M6、M9、M10）：`prepareWanted` 的按页的数；工具说明的措辞（"server update"）。
+- page（M4–M10）：`NotebookState.Upgrade`；`Write.UpgradeOwn`、`UnitSpec.UpgradeOwn`、`SeedSpec.Upgrade`；`Step.KeepLinks`、`StepContent.Body`、`StepContent.Folded`、`ContentWrite.Folded`；批的计划记下改写是否改了内容并进了最终的正文、两个正文的码标在 `Last`；守卫先核对过期的 `UpgradeOwn`（`domain.ErrStaleUpgradeWrite`，第 225 条）；`WriterDeps.Markdown`；`ensureChangeset` 记 `upgrade_id`；单元维护账本；`CheckContract` 判撤销里的 `OpRestore`；预检判有没有升级；新的只凭连接池的端口（基线、会话与根下的键、闸门与剩下的差的读）与 `page.NewSourceRebuild`（交附件的端口）；回滚（先删（一个单元多棵子树）、计划、批、每一遍核对升级）；剩下的差的现读（第 226 条）；模块根导出 `ReservedKeys`。
+- transfer（M7、M8）：种类 `rollback`、`upgrade_id`；`Notebooks.ShareByID` 交回升级的状态、导入建任务与 `startBackground` 里判冻结；`backgroundRun` 的回滚一支（按遍）；`jobRun.finish` 的 `succeed` 里调 `Deps.RollbackEnd`，新的对称的 `fail` 里调 `RollbackEnd.Stopped`（第 228 条），`RollbackEnd` 报错时第二个事务以 `internal` 结束；Rescue 的种类表、`riverKind` 与 worker 的登记、`Kind.Writes()` 加 `rollback`；`Cancel.Run` 对回滚的任务要管理员、否则 `forbidden`（第 229 条）；模块的 `Rollbacks()`（在调用方事务里开回滚任务，不记日志）。
+- wiki（M10）：`Deps` 加连接池、事务、`Names`、`UpgradeAction`、`ReservedKeys`、transfer 的 `Rollbacks`、page 的 `TreeWrites` 与各端口；`computeIn`（收调用方的时刻）；`RunKey` 的新种类与 `Scope`、`Runs.TryHold`、`Runs.Do` 的结果的泛化、`logFinished` 的新名字。
+- linking（M6、M9、M10）：`prepareWanted` 的按页的数；只读给定发出页的 `wanted` 的流（发起时的第二遍，`= ANY(这些页)`）；工具说明的措辞（"server update"）。
 - 组合根：冻结的守卫的登记、`toPageState` 与 transfer 的转换、wiki 的接线与 `RollbackEnd` 的预先建、清理器与删除订阅者、第七份。
-- 网页：M10 的设置"模式"一节（`general-page.tsx:128-169`，审查 C-N9）；M4 的外壳（横幅）；M5 的 `EditLost`；M4–M8 的 14 个文件的只读判断；M6 的未建链接的 `Why`；M6 的 `pages-locked.tsx`；M8 的变更集与任务的种类的文字与报告；M5 的 `modeChanged`。
+- 网页：M10 的设置"模式"一节（`general-page.tsx:128-169`，审查 C-N9）；M4 的外壳（横幅）；M5 的 `EditLost`；M4–M8 的 14 个文件的只读判断；M6 的未建链接的 `Why`；M6 的 `pages-locked.tsx`；M8 的变更集与任务的种类的文字与报告、任务页的"取消"对回滚的任务只给管理员；M5 的 `modeChanged` 与 `refreshedOnConnect`。
 - 构建与 CI（M8/P3A 起的分份）：第七份（第 9 节）。
 
 ## 9. 测试策略
 
 - **规则（单元测试，表格驱动）**：
-  - page 的 `domain`：`FreezeAdmits`（状态 × 客户端 × 执行者 × `UpgradeOwn`）；正文的切分的形状表（没有 frontmatter、开头的 BOM、frontmatter 之后的 BOM、`\r\n` 的界线、有效的、无效的带收尾行的、只有开头一行的、空的正文，每种一个反例，05-lessons"一个反例只钉住一种形状"）；`CheckContract` 的撤销里的 `OpRestore`、回收站恢复与导入除外；批的计划的 `Folded`（无关的移动之后改正文不是 `Folded`、索引过时不是、改写真的改了才是）；合成的回滚条目（位置、名称、次序、收着基线的新建、正文、净效果为零的不进、`Revision` 为 0）与先删的子树的划分（含超过 `MaxUnitNodes` 的从下往上）；合成计划在大的随机形状上的性质测试（改名环、跨层的移动、新建的文件夹收着基线节点；`PlanRevert` 不答 `ErrRevertUnordered`，执行之后等于基线）。
-  - wiki 的 `domain`：闸门的判定（第 6 条逐页：抵消的场景、封顶的场景、从 `raw` 移出的基线页、新建页不算；第 7 条的数与分母）、状态机的转移表（含"审阅中、没有报告"的再提交）、报告的大小的界、`UpgradeReport` 的投影。
-  - wiki 的 `app`：`Runs` 的两种新键不互相并入、`Hold` 的名额与预算（照审查 B 的 `TestReviewBJoinAfterSnapshot` 的写法）。
-- **真库的适配器**：`upgrade_nodes` 的记下与核对（`INSERT … SELECT` 等于逐行读）、逐页待建数的写、闸门 7 的 SQL、剩下的差的数、发起时的会话（先删过期的）与根下的键、`SourceRebuild` 等于从头重建（`checkPages`）与缺附件元数据时报错、`notebook_upgrades` 与 `notebooks` 的每个检查与唯一索引（每个析取项一个反例，13.4 第 1 条；含"状态为空、另三列有值"与审查 B 实测的五种）、`transfer_jobs` 的新检查与写入键；`ListNotebooks` 带升级列。
+  - page 的 `domain`：`FreezeAdmits`（状态 × 客户端 × 执行者 × `UpgradeOwn`，含过期的 `UpgradeOwn` 与已没有升级）；正文的切分的形状表（没有 frontmatter、开头的 BOM、frontmatter 之后的 BOM、`\r\n` 的界线、有效的、无效的带收尾行的、只有开头一行的、空的正文，每种一个反例，05-lessons"一个反例只钉住一种形状"）；`CheckContract` 的撤销里的 `OpRestore`、回收站恢复与导入除外；批的计划的 `Folded`（无关的移动之后改正文不是 `Folded`、索引过时不是、改写真的改了才是；写的路径上 agent 的内容不等于改写的结果时不是）；合成的回滚条目（位置、名称、次序、收着基线的新建、正文、净效果为零的不进、`Revision` 为 0）与先删的子树的划分（多棵小的装进一个单元、合计不超过 `MaxUnitNodes`，超过的从下往上）；合成计划在大的随机形状上的性质测试（改名环、跨层的移动、新建的文件夹收着基线节点；`PlanRevert` 不答 `ErrRevertUnordered`，执行之后等于基线）。
+  - wiki 的 `domain`：闸门的判定（第 6 条逐页：抵消的场景、封顶的场景、从 `raw` 移出的基线页、新建页不算；第 7 条的数与分母）、状态机的转移表（含"审阅中、没有报告"在期限之内答 409、之后可再提交与退回）、报告的大小的界、`UpgradeReport` 的投影。
+  - wiki 的 `app`：`Runs` 的新键不互相并入（检查、条目各带升级的 id）；`TryHold` 名额占满时立即答不可、不等，持有者计入 `active`，`Stop` 之后答不可并等持有者放开；`logFinished` 给新种类的名字（照审查 B 的 `TestReviewBJoinAfterSnapshot` 的写法）。
+- **真库的适配器**：`upgrade_nodes` 的记下与核对（`INSERT … SELECT` 等于逐行读）、逐页待建数的写、闸门 7 的 SQL、剩下的差的数、发起时的会话（先删过期的）与根下的键、`SourceRebuild` 等于从头重建（`checkPages`）与缺附件元数据时报错、`notebook_upgrades` 与 `notebooks` 的每个检查与唯一索引（每个析取项一个反例，13.4 第 1 条；含"状态为空、另三列有值"、审查 B 实测的五种与"驳回而没有提交"；驳回与放弃的写的次序过得了 `notebook_upgrades_rollback_job_check`，核对 B2-M2）、`transfer_jobs` 的新检查与写入键；`ListNotebooks` 带升级列。
 - **契约**：`apitest.CheckResponse` 核对一份存下的报告（`Upgrade.report` 是 `UpgradeReport`）与每个操作的每个声明的码。
 - **整个程序的测试与最后一跳**（13.1 第 21 条；把组合根交的注册者换成空，测试必须失败；第 186 条：统一以 `TestUpgrade` 起名）：
   - `TestUpgradeFreezeReachesEveryPath`：第 5 节的 14 个 REST 写操作与 5 个 MCP 写工具，每条一个别人的写与一个发起人的 REST 写，断言 `notebook.upgrading` 与"什么都没写"；编辑会话的开启；后台的导入、恢复、撤销的开始（预检）与只有建任务时才拒的情形（正在上传的导入）；发起人的 MCP 写放过。组合根的守卫列表换回 `[mode, lock]` 时失败。
@@ -661,9 +668,10 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
   - `TestUpgradeFreezeAnswersFirst`（以 SQL 造出冻结与锁都拒的写，答 `notebook.upgrading`；钉住登记次序，4.5）。
   - `TestUpgradeFreezeFollowsTheInitiatorsRole`、`TestUpgradeFreezeLetsOnlyItsOwnWrites`（别人在网页上撤销一个旧变更集被拒：不按 `Kind` 放行）。
   - `TestUpgradeStates`、`TestUpgradeStatesReachTheStreams`：每个转移（存下报告在内）到另一条流的 `mode`；订阅者交空时失败；`listNotebooks` 对升级中的笔记本 `upgrade` 不为空。
-  - `TestUpgradeStart`：4.4 的码依次、`Hold` 拿不到时的 503、计算超时整个回滚、`ANALYZE`。
+  - `TestUpgradeStart`：4.4 的码依次；名额占满时立即答 503、不等；`ctxStart` 到期答 503 而不是 500、没有 error 级的日志、整个回滚（核对 B2-M1）；`ANALYZE`；一页在已有的 `raw` 里、带一个解析不到的链接，agent 把它移出来之后闸门 6 照过（核对 B2-I1）。
+  - 运行时角色（核对 B2-M3）：`bootstrap/runtime_role_test.go` 的 `analyzed` 表（`:389-392`）加 `upgrade_nodes`；`TestTheRuntimeRoleServesWithTheGrantsFile`（`:128`，今天以导入核对 `last_analyze`，`:334-336`）以运行时角色发起一次升级，断言 `upgrade_nodes` 的 `last_analyze` 变了、没有 `ANALYZE` 失败的那行 warn。
   - `TestUpgradeGuardrails`：P1/S1 起删除；P2/S1 起 MCP 的 `write`、`edit`、`move`（含 `update_links: false`）、`batch` 的护栏，含 `batch` 的折进与拆开之后通过、无关的移动之后改正文答 `page.upgrade_immutable`、拒绝标的操作、系统改写放行、账本（以 SQL 绕过单元改一页的正文，闸门 7 不过）。
-  - `TestUpgradeGates`、`TestUpgradeSubmit`（含脱离请求：客户端在计算中断开，报告照样存下；第二个事务失败之后的退回与再提交）、`TestUpgradeSubmitInterleavings`、`TestUpgradeApproval`（模式、根、哈希、事件；`SourceRebuild` 换成空的时 `checkPages` 失败）、`TestUpgradeRollback`（放弃、驳回、先删的一段、停下继续、超时之后继续、结束回滚；`RollbackEnd` 换成空时状态留着、测试失败；写者取消回滚任务答 `transfer.not_found`）、`TestUpgradeTrashReservedTitles`（第 181 条：撤销答 `page.virtual_file`，同步与后台；`restoreNode` 与 `startTrashRestore` 恢复同一项答 200、名为 `index 2`）、`TestUpgradeTools`、`TestUpgradePrompt`、`TestUpgradeDeletion`（删除笔记本：wiki 的订阅者交空时行留着、测试失败；清理器的测试要每张带 `deleted_at` 的表都有清理器）。
+  - `TestUpgradeGates`、`TestUpgradeSubmit`（含脱离请求：客户端在计算中断开，报告照样存下；第二个事务失败之后的退回与再提交）、`TestUpgradeSubmitInterleavings`、`TestUpgradeApproval`（模式、根、哈希、事件；`SourceRebuild` 换成空的时 `checkPages` 失败）、`TestUpgradeRollback`（放弃、驳回、先删的一段（一个单元装多棵子树）、停下继续、超时之后继续、结束回滚、差为空时结束记 `true`；停下与做完各发一次 `mode`；`RollbackEnd` 换成空时状态留着、测试失败；`RollbackEnd` 核对差不空时任务以 `internal` 结束、不留在 `running`；写者取消回滚任务答 403 `forbidden`，读与列表照旧；以 SQL 结束升级、再跑一批旧回滚，被拒、什么也没写；River 丢掉的排队中的回滚任务被 Rescue 记为失败之后，继续与结束都可用）、`TestTheRescue` 改为逐个核对全部种类、`TestUpgradeTrashReservedTitles`（第 181 条：撤销答 `page.virtual_file`，同步与后台；`restoreNode` 与 `startTrashRestore` 恢复同一项答 200、名为 `index 2`）、`TestUpgradeTools`、`TestUpgradePrompt`、`TestUpgradeDeletion`（删除笔记本：wiki 的订阅者交空时行留着、测试失败；清理器的测试要每张带 `deleted_at` 的表都有清理器）。
   - 矩阵（第 222 条）：`TestUpgradePermissionMatrix`、`TestUpgradeToolsMatrix`、`TestUpgradePromptMatrix`（4.13、4.14）。
   - 交错：4.16 的十四个，各一个确定的测试（持锁、`pgtest.WaitForLockWaits`、放开；先后记在共用的日志里）。
   - `checkPages` 加（P1/S2 起，只看活着的笔记本，审查 A-N4、B-N7）：有升级列的笔记本恰有一行同 id、同状态、同发起人的进行中的 wiki 行；进行中的升级的基线行数等于 wiki 行的 `baseline_nodes`，基线页数等于 `baseline_pages`；基线行只属于进行中的升级；提议的来源根活着且属于这本笔记本；`seeded_agents_id` 不为空时属于这本笔记本；LLM Wiki 没有升级列。
@@ -674,7 +682,7 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
   | UP1 发起与冻结 | 发起；补写的两页、基线；横幅；别人的 REST 与 MCP 写 409；发起人的网页只读、MCP 写放过；另一个标签页随 `mode` 看到横幅 | API、MCP：P1/S2；页面：P1/S4（三种浏览器） |
   | UP2 发起被拒 | 编辑会话（列出页与编辑者）、写入任务、已是 LLM Wiki、已在升级；根下已有 `raw` 时对话框写明它将成为来源区 | API：P1/S2；页面：P1/S4。MCP 豁免：MCP 不能发起，被拒的发起在 MCP 上没有可看的；冻结之外的 MCP 写由 `TestUpgradeFreezeReachesEveryPath` 盖住 |
   | UP3 放弃、回滚与结束 | agent 移动、改名、改 frontmatter、新建之后放弃；基线复原、新建的进回收站、回滚的变更集；取消任务之后继续做完；另一本：取消之后结束回滚，冻结解除、剩下的数记下 | API（MCP 写作准备）：P1/S3；页面：P1/S4。MCP 豁免：MCP 不能放弃或结束回滚；回滚中 MCP 写被拒由 `TestUpgradeFreezeReachesEveryPath` 的 `rolling_back` 一格盖住 |
-  | UP4 护栏 | 改正文、删除、`update_links: false` 的移动被拒；改 frontmatter、移动、改名、新建、链接改写放行；`batch` 的折进被拒、拆开通过；无效的 frontmatter 的两种形状 | MCP（只能由 MCP 完成）：P1/S1 起删除一步，P2/S1 全部。API 豁免：REST 的写在冻结里就被拒，由 `TestUpgradeFreezeReachesEveryPath` 盖住 |
+  | UP4 护栏 | 改正文、删除、`update_links: false` 的移动被拒；改 frontmatter、移动、改名、新建、链接改写放行；`batch` 的折进被拒、拆开通过；无效的 frontmatter 的两种形状 | MCP（只能由 MCP 完成）：P1/S2 起删除一步（P1/S1 没有发起的接口，e2e 的数据经 REST 种下；P1/S1 的删除由 `TestUpgradeGuardrails` 以 SQL 设列盖住，核对 A2-N4、C2-N6），P2/S1 全部。API 豁免：REST 的写在冻结里就被拒，由 `TestUpgradeFreezeReachesEveryPath` 盖住 |
   | UP5 检查与提交 | 不过的报告与条目、修好、提交进审阅、存下的报告；提交不过时退回、网页自动再检查 | API、MCP：P2/S2；页面：P2/S3 |
   | UP6 退回与驳回 | 退回之后 agent 的 MCP 写又被放行；驳回之后回滚、MCP 写答 `notebook.upgrading` | API、MCP：P3/S1；页面：P3/S3 |
   | UP7 批准 | 批准；模式、来源根、来源的哈希；另一个标签页随 `mode` 看到 LLM Wiki；根下 `AGENTS` 受保护；撤销删掉根下 `index` 的旧变更集答 `page.virtual_file`（第 181 条）；MCP：`list` 列出虚拟的两项、`delete AGENTS.md` 答 `page.protected` | API、MCP：P3/S1；页面：P3/S3（三种浏览器） |
@@ -682,20 +690,22 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
   | UP9 upgrade 的 playbook | 升级中 `prompts/get upgrade` 的文字；普通笔记本答 `wiki.upgrade_state` | MCP（只能由 MCP 完成，不写，不断言数据库）：P3/S2 |
 
   `playwright.config.ts:3` 的 `threeBrowsers` 加 `upgrade/up(1|7)-`：横幅、发起与批准的跳转与焦点；其余的对话框与 LW12 是同一个 `ConfirmDialog`、同一套 `held` 与 `onClosed` 的焦点规则，LW12 已在三种浏览器里跑（审查 C-Q3）。页面版本里刻意引起的 409 用 `pageWatch.expectConsole(failedToLoad(409))` 声明（13.2 第 9 条）；对话框与按钮按确切的名字找（05-lessons 第 6 节）。UP9 不写页，照 10.1 的例外"什么也不写的故事……不断言数据库"（修订第 23 条）。
-- **网页（vitest）**：控件表的每一项（4.15，含上传的重试）；`lostBy` 的新原因；横幅按状态与身份、在升级页上不带链接；升级页只给管理员的读、接入一节按发起人与其他管理员；对话框的焦点；`NotebookStore` 的动作与交错（照降级的七条）；回滚报告的计数与失败文字；`pages-locked` 认新码。
+- **网页（vitest）**：控件表的每一项（4.15，含上传的重试）；回滚的任务停下之后，不刷新页面就出现"继续""结束"两个按钮与三个数（核对 C2-M1）；`modeChanged` 重读升级的键、重连重读升级的键各一条（核对 C2-M2）；任务页的"取消"对回滚的任务只给管理员；`lostBy` 的新原因；横幅按状态与身份、在升级页上不带链接；升级页只给管理员的读、接入一节按发起人与其他管理员；对话框的焦点；`NotebookStore` 的动作与交错（照降级的七条）；回滚报告的计数与失败文字；`pages-locked` 认新码。
 - **成本守卫**（13.4 第 8 条，`test-go-costs` 各一行、`-short` 跳过，界取本机的三倍并对照 CI 的竞态；审查 B-M9）：
 
   | 守卫 | 规模 | 统计状态 × 计划 | 预算 |
   |---|---|---|---|
-  | 发起 | 10 万节点、10 万页 | `upgrade_nodes` 从未分析、分析过另一次升级的行、本次 `ANALYZE` 之后 × 自定义与通用计划（05-lessons 第 4 节） | 请求 4 s（13.4 第 8 条的默认）；放不下时那个 Step 照决定 160 另立一条决定，不悄悄放宽 |
-  | 检查 | 10 万页 | 同上（闸门 7 的连接、"新建的页"的 `NOT EXISTS`） | 照决定 160 的例外：请求 6 s、worker 3 s |
+  | 发起 | 10 万节点、10 万页（含来源区里基线页的第二遍） | `upgrade_nodes` 从未分析、分析过另一次升级的行、本次 `ANALYZE` 之后 × 自定义与通用计划（05-lessons 第 4 节） | 请求 4 s（13.4 第 8 条的默认）；放不下时那个 Step 照决定 160 另立一条决定，不悄悄放宽 |
+  | 检查 | 10 万页 | 同上（闸门 7 的连接、"新建的页"的 `NOT EXISTS`、逐页比 `wanted` 读全部基线页，核对 B2-N6） | 照决定 160 的例外：请求 6 s、worker 3 s |
   | 批准 | 10 万个来源 | 同上（基线行的 `DELETE`） | 请求 4 s |
   | 删除护栏的读 | 一次删 1 万个节点的子树 | 同上（`node_id = ANY(…)` 按主键） | 单元 2 s |
   | 回滚的计划 | 10 万个条目 | —（纯函数）与合成读的三种统计状态 | 本机两轮中位数 × 3 的时长与 `TotalAlloc` |
+  | 回滚先删 | 10 万个零散的新页 | 同上 | 本机两轮中位数 × 3（核对 A2-N5） |
+  | 剩下的差的读 | 10 万节点、10 万页 | 同上（`getUpgrade` 与 `endUpgradeRollback` 共用这一条读） | 请求 4 s（核对 C2-M3、B2-N6，第 226 条） |
 
   种子用 SQL（05-lessons 第 1 节：测试准备不超过 4 秒的请求期限）。
-- **变异（第 7 节的每个 Phase 设计列全，这里是要列进去的）**：冻结的守卫排在锁之后（`TestUpgradeFreezeAnswersFirst`）；放过发起人的非 MCP 写；去掉 `Grants.Ask`；按 `Kind == revert` 放行；去掉否决者；预检不判冻结（只有预检答的那几个情形）；把冻结的判断放进 `StartDeps.lock`（`TestUpgradeFreezeLeavesTheRest` 的导出）；发起不先删过期的会话；基线在补写之后记；删除的拒绝标在子树的根；不拒不改写链接的移动；正文不去 BOM；比全文的哈希；`Folded` 取 `Moved`；不传 `Folded`；拒绝标在 `First`；账本不在改写时更新（以 SQL 绕过单元的测试杀它，第 191 条）；闸门 6 改回全本的净数（抵消的场景）；闸门 6 算新建页；闸门 7 的分母取现读的行；快照里不核对升级的 id 与状态；提交并入已有的检查（交错第 6 条）；提交的第二个事务不核 `submission_id`；提交的第二段用请求的上下文；存下报告不发 `mode`；闸门 2 不查 `AGENTS`；批准不重建哈希、不发事件；回滚漏删新建的子树；合成的条目带 `Revision`；回滚的单元 `UpdateLinks = true`；`RollbackEnd` 不清列；结束回滚不删基线行；回滚的任务允许写者取消；`CheckContract` 的 `OpRestore` 不分种类（回收站恢复的正例）；`CheckContract` 不判 `OpRestore`；去掉两个操作的 `page.virtual_file` 的声明（`apitest` 的 `unanswered`）；`ListNotebooks` 不选升级的列；说明少一行；prompt 在审阅中也答；`writesNotebook` 不看升级；`lostBy` 不认 `notebook.upgrading`；`modeChanged` 不重读升级。
-- **第七份**（第 186 条，P1/S1）：`Makefile` 加 `BOOTSTRAP_SEVENTH = ^TestUpgrade`、`test-go-bootstrap-7`、`test-go-bootstrap` 的依赖（`Makefile:272`）；`test-go` 自己逐个列出六份（`Makefile:190`），加第七份，它上面的注释"竞态检测的这七个最多六个同时跑"（`:184`）随之改为八个（审查 C-M5：不改则 `make test` 不跑 `TestUpgrade…`）；第三份的 `-skip` 加它（`Makefile:283-284`，`BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])`，`:250`，会收下 `TestUpgrade…`）；第四份是补集，它的 `-skip` 含第三份的模式（`Makefile:288`），那个模式收得下 `TestUpgrade…`，所以第四份不必改；第一、二、五、六份的模式都不收它（现有的 `TestUploadingAnd…` 也不匹配 `^TestUpgrade`）。CI 的 server 矩阵加 `bootstrap-7`（今天 `bootstrap-1` 到 `-6`，`.github/workflows/ci.yml:55-66`），注释（`:23-25`"十四份……共十七项"）改为十五份、十八项；`docs/v0.1/claude_to_codex/06-environment.md:27`、`:49` 的"六份""17 项"同时改。P1/S1 的记录里写出每份的 `go test -list` 证明 `TestUpgrade…` 只在第七份、各份合起来等于全部（第 223 条：不把"第三份不跳过第七份"列为变异，没有会因它失败的测试）。
+- **变异（第 7 节的每个 Phase 设计列全，这里是要列进去的）**：冻结的守卫排在锁之后（`TestUpgradeFreezeAnswersFirst`）；放过发起人的非 MCP 写；去掉 `Grants.Ask`；按 `Kind == revert` 放行；去掉否决者；预检不判冻结（只有预检答的那几个情形）；把冻结的判断放进 `StartDeps.lock`（`TestUpgradeFreezeLeavesTheRest` 的导出）；发起不先删过期的会话；基线在补写之后记；删除的拒绝标在子树的根；不拒不改写链接的移动；正文不去 BOM；比全文的哈希；`Folded` 取 `Moved`；不传 `Folded`；拒绝标在 `First`；账本不在改写时更新（一条普通的测试杀它：改名引起系统改写一页基线页，闸门 7 不过）；闸门 7 不比账本（只有以 SQL 绕过单元的测试杀得掉，第 191 条；核对 B2-N4）；去掉 `UpgradeOwn` 与当前升级的核对（交错第 16 条）；`TryHold` 改为等名额（交错第 17 条）；发起事务里另套一层期限（超时答 500）；第二遍不读来源区里的基线页；期限之内的再提交顶掉正在算的那一次（交错第 15 条）；Rescue 的表漏掉 `rollback`；`runtime-grants.sql` 不给 `upgrade_nodes` 的 `MAINTAIN`；回滚停下不发 `mode`；`refreshedOnConnect` 不含 `upgrade`；闸门 6 改回全本的净数（抵消的场景）；闸门 6 算新建页；闸门 7 的分母取现读的行；快照里不核对升级的 id 与状态；提交并入已有的检查（交错第 6 条）；提交的第二个事务不核 `submission_id`；提交的第二段用请求的上下文；存下报告不发 `mode`；闸门 2 不查 `AGENTS`；批准不重建哈希、不发事件；回滚漏删新建的子树；合成的条目带 `Revision`；回滚的单元 `UpdateLinks = true`；`RollbackEnd` 不清列；结束回滚不删基线行；回滚的任务允许写者取消；`CheckContract` 的 `OpRestore` 不分种类（回收站恢复的正例）；`CheckContract` 不判 `OpRestore`；去掉两个操作的 `page.virtual_file` 的声明（`apitest` 的 `unanswered`）；`ListNotebooks` 不选升级的列；说明少一行；prompt 在审阅中也答；`writesNotebook` 不看升级；`lostBy` 不认 `notebook.upgrading`；`modeChanged` 不重读升级。
+- **第七份**（第 186 条，P1/S1）：`Makefile` 加 `BOOTSTRAP_SEVENTH = ^TestUpgrade`、`test-go-bootstrap-7`、`test-go-bootstrap` 的依赖（`Makefile:272`）；`test-go` 自己逐个列出六份（`Makefile:190`），加第七份，它上面的注释"竞态检测的这七个最多六个同时跑"（`:184`）随之改为八个（审查 C-M5：不改则 `make test` 不跑 `TestUpgrade…`）；第三份的 `-skip` 加它（`Makefile:283-284`，`BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])`，`:250`，会收下 `TestUpgrade…`）；第四份是补集，它的 `-skip` 含第三份的模式（`Makefile:288`），那个模式收得下 `TestUpgrade…`，所以第四份不必改；第一、二、五、六份的模式都不收它（现有的 `TestUploadingAnd…` 也不匹配 `^TestUpgrade`）。CI 的 server 矩阵加 `bootstrap-7`（今天 `bootstrap-1` 到 `-6`，`.github/workflows/ci.yml:55-66`），注释（`:23-25`"十四份……共十七项"）改为十五份、十八项；几处写份数的注释同时改（核对 C2-N5）：`Makefile:183`"组合根按测试名六份"、`:185` 与 `:195`"CI 的十三份"、`:272` 的"六份依次"、`ci.yml:48`"按测试名分成六份"；`docs/v0.1/claude_to_codex/06-environment.md:27` 的"`-2` 到 `-6` 同理"改为到 `-7`，`:49` 的"六份""17 项"改为七份、18 项。P1/S1 的记录里写出每份的 `go test -list` 证明 `TestUpgrade…` 只在第七份、各份合起来等于全部（第 223 条：不把"第三份不跳过第七份"列为变异，没有会因它失败的测试）。
 
 ## 10. 风险
 
@@ -709,9 +719,10 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 | 无效的 frontmatter 一块可以被 agent 改掉 | 照 `Parse` 的定义它本来就不是正文（4.6）；playbook 要求保留原文；历史里可以逐个撤销 |
 | 文件夹页也要 `type`、`summary`，按目录组织的笔记本负担大 | 照 lint 的口径（主持者的方向）；报告列出；README 与 playbook 写明 |
 | 根下已有的 `raw` 文件夹放着普通笔记 | 发起的对话框写明它将成为来源区与节点数；agent 可以移出；报告计数（主持者第 214 条） |
-| 发起与批准在笔记本行的锁下做较多的事（会话、基线、一次 lint、哈希） | 发起占 lint 名额、受 `LintTimeout`；10 万页的成本守卫；30 万页进 M12；都是一次性的管理员动作 |
+| 发起、批准与结束回滚在笔记本行的锁下做较多的事（会话、基线、一次 lint 与第二遍、哈希、剩下的差） | 发起在行锁下只试取 lint 名额、整个事务受 `LintTimeout`；10 万页的成本守卫；30 万页进 M12；都是一次性的管理员动作 |
+| 结束回滚留下链接指不到的原有页 | 第 212 条、对话框与 `Upgrade.rollback_left` 的说明写明；健康度面板列出；默认仍是继续做完 |
 | 检查占 lint 的名额，agent 反复检查 | 同一个 `Runs` 的名额与期限、`server_busy` 带 `Retry-After`；同一次升级的检查合并（提交不并入） |
-| 提交的两个事务之间进程停了，留在没有报告的审阅中 | 批准拒绝；退回、放弃、再提交都可用（4.8） |
+| 提交的两个事务之间进程停了，留在没有报告的审阅中 | 批准拒绝；放弃随时可用，退回与再提交在 `submitted_at + LintTimeout + 10 s` 之后可用（4.8，第 215 条） |
 | 横幅出现时 WebKit 上内容跳一下 | 同已有的公式、图表变高；P1/S4 在 WebKit 里人工看一次并记录，留给 M12 的打磨（第 224 条） |
 | CI 的余量：六份合计约 2500 秒，平均约 420 秒（[M10 收尾审查](../M10-llm-wiki/reviews/M10-closeout-review.md)"要盯着的"） | 第七份从 P1/S1 起；升级的矩阵与 prompt 的矩阵进第七份（第 222 条），第三、四、五份只改已有测试的几行；e2e 加两个三种浏览器的故事，作业的 20 分钟限额照 M10 的量（6:36–8:12）有余 |
 | 内置说明的余量 | 两行 183 字节之后各剩 750 字节以上（4.13） |
@@ -748,19 +759,19 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 
 ### 2026-11-08：设计审查之后的主持者的决定 212–214（负责人可以改判）
 
-- **212 回滚停下之后可以结束回滚、保留现在的样子**。主持者的决定（负责人可以改判）。回滚停下之后（任何原因），管理员的首选动作是"继续"；另给一个"结束回滚、保留现在的样子"：升级不批准地结束，标出回滚没有做完，解除冻结，记下剩下的条目（4.10 的 `endUpgradeRollback`，细节见第 217 条）。理由：负责人定了冻结不设时限、任何管理员随时可以放弃；确定性的停下（缺陷 `ErrRevertUnordered`、一段放不进一批、界）若没有出口，笔记本会永久只读；护栏保证了原有页的正文与节点都在，保留现状不丢内容，只是结构没有全部放回。它要一个 REST 操作、矩阵的行、文字与确认对话框（`destructive`）。回答设计审查 A-Q1。
+- **212 回滚停下之后可以结束回滚、保留现在的样子**。主持者的决定（负责人可以改判）。回滚停下之后（任何原因），管理员的首选动作是"继续"；另给一个"结束回滚、保留现在的样子"：升级不批准地结束，标出回滚没有做完，解除冻结，记下剩下的条目（4.10 的 `endUpgradeRollback`，细节见第 217 条）。理由：负责人定了冻结不设时限、任何管理员随时可以放弃；确定性的停下（缺陷 `ErrRevertUnordered`、一段放不进一批、界）若没有出口，笔记本会永久只读；护栏保证了原有页的正文与节点都在，保留现状不丢内容，只是结构没有全部放回；还没写回正文的原有页里，系统改写过的链接可能指不到，健康度面板会列出它们，这是放弃整体回滚的代价，对话框与 `Upgrade.rollback_left` 的说明写明（修订核对 A2-M4）。它要一个 REST 操作、矩阵的行、文字与确认对话框（`destructive`）。回答设计审查 A-Q1。它放宽了负责人第 1 条的"放弃时整体回滚"：默认仍是整体回滚，只在回滚停下之后多给一个出口；M11 的汇报里第一条请负责人看这一条（修订核对 C2-Q1），主持者 2026-11-08 已在对话里告诉负责人。
 - **213 新建页让原有页的短链接改指新页，接受**。主持者的决定（负责人可以改判）。这是 Obsidian 的语义（新建只重新解析，总体设计 4.4、4.5）：agent 在根下新建 `Plan`，`Meetings/` 下一页的 `[[Plan]]` 从 `Projects/Plan` 改指新页，字节与待建数都不变。写进 5.8 的修订（修订第 10 条）与 upgrade 的 playbook（提醒 agent 新建页的标题会改变短链接的指向），报告不另列。回答设计审查 B-Q3。
 - **214 根下已有的 `raw` 照用作提议的来源根**。主持者的决定（负责人可以改判）。发起的对话框写明"根下的 `raw` 将成为来源区（现有 N 个节点），批准之后它下面的都是只读的来源"，agent 可以把不是来源的移出来，报告计数（4.4、4.15）。回答设计审查 B-Q1。
 
-### 2026-11-08：00-M11 的设计者的取舍 187–211 与修订中的 215–224（主持者的决定，负责人可以改判）
+### 2026-11-08：00-M11 的设计者的取舍 187–211、修订中的 215–224 与修订核对之后的 225–231（主持者的决定，负责人可以改判）
 
-- **187 闸门 6 的基线在发起的事务里量**。lint 拆出 `computeIn`，发起在笔记本行的锁下调它一次（逐页的待建数、`wanted` 的总数与 `stale_pages`），占名额与期限见第 219 条。理由：在锁下读到的就是提交后立即的状态，又没有"发起提交之后、量之前发起人的 agent 已经写了"的窗口；不另设一个对所有人冻结的过渡状态。代价是发起的事务里多一次 lint 的读（成本守卫与 M12）（4.4、4.7）。
-- **188 闸门 6 逐页的数法**（设计审查 B-I2 改；初稿是全本的数与封顶的比较）。按页数在 `generalEmitter` 的筛选之前（来源也数，从 `raw` 移出的基线页有基线可比），目标判定照 `wanted`；只比现在在区外的基线页；一页至多 10,000 条链接，没有封顶的比较；全本的 `wanted` 只作报告的前后对比（4.7）。
+- **187 闸门 6 的基线在发起的事务里量**。lint 拆出 `computeIn`，发起在笔记本行的锁下调它一次（逐页的待建数、`wanted` 的总数与 `stale_pages`），来源区里的基线页另读一遍（第 188 条），名额与期限见第 219、227 条。理由：在锁下读到的就是提交后立即的状态，又没有"发起提交之后、量之前发起人的 agent 已经写了"的窗口；不另设一个对所有人冻结的过渡状态。代价是发起的事务里多一次 lint 的读（成本守卫与 M12）（4.4、4.7）。
+- **188 闸门 6 逐页的数法**（设计审查 B-I2 改；初稿是全本的数与封顶的比较）。区外的基线页照 `wanted` 的流按页数；发起这一刻在提议的来源区里的基线页另读一遍（来源页在 SQL 里就被排除，修订核对 B2-I1），从 `raw` 移出的基线页有真实的基线可比；目标判定照 `wanted`；只比现在在区外的基线页；一页至多 10,000 条链接，没有封顶的比较；全本的 `wanted` 只作报告的前后对比（4.7）。
 - **189 正文的切分**：`body` = 去掉 `FrontmatterEnd` 之后，再去掉开头的一个 BOM（不论有没有 frontmatter）。比主持者的写法多去掉"frontmatter 之后紧跟的 BOM"：agent 在 BOM 之前加 frontmatter 时，BOM 落到 frontmatter 之后，读者看不见它，不该算改了正文。并核实了主持者说明里"无效的 frontmatter"一条的前提：`FrontmatterEnd` 只在没有收尾行时答 0（4.6）。
-- **190 `batch` 的折进取 B**（设计审查 A-M1 改判据）：护栏答 `page.upgrade_batch_rewrite`，单元经 `ContentWrite.Folded` 告诉守卫；`Folded` 是"计划里这一页的某次改写真的改了内容"，不是 `Moved`；护栏的拒绝标在这一页的最后一个正文操作上。不取 A。理由见 4.6。
+- **190 `batch` 的折进取 B**（设计审查 A-M1 改判据）：护栏答 `page.upgrade_batch_rewrite`，单元经 `ContentWrite.Folded` 告诉守卫；`Folded` 是"计划里这一页的某次改写真的改了内容并进了最终的正文"（写的路径要这一次写恰好等于改写的结果，修订核对 A2-N3），不是 `Moved`；两个正文的码标在这一页的最后一个正文操作上。不取 A。理由见 4.6。
 - **191 账本是绊线**（设计审查 B-M4 与主持者的处置改写）：`upgrade_nodes.accepted_hash` 由单元在每个正文写之后维护，闸门 7 = 基线节点都活着 ∧ 每页的 `content_hash` 等于 `accepted_hash`（分母取 wiki 行）。今天正文只经单元写，这一半恒真；它只在将来出现绕过单元的写时响，杀它的测试只能用 SQL 绕过单元造出来；报告写"核对"，不写"证明"（4.6、4.7）。
 - **192 回滚总在后台**：transfer 的任务种类 `rollback`，变更集类型 `rollback`；不另开同步的一条路。理由：一条路、一套测试；小的回滚在后台也只要一批（4.10）。
-- **193 回滚先删新建的子树，剩下的一遍至多 `MaxRollbackItems = 300,000`**（设计审查 A-I2 改）。不含基线节点的新建子树在计划之外按单元删（每个单元至多 `MaxUnitNodes`），不计入界；剩下的条目是基线节点与收着基线节点的新建节点，都是先删之后的活节点，规模之内的笔记本到不了界；正文的写回超过时分到后面的遍。理由：初稿把新建节点算进界，而冻结不设时限、新建不受限，界会被 agent 的新建撑破、继续又停在同一处（4.10）。
+- **193 回滚先删新建的子树，剩下的一遍至多 `MaxRollbackItems = 300,000`**（设计审查 A-I2 改）。不含基线节点的新建子树在计划之外按单元删（一个单元装多棵，合计至多 `MaxUnitNodes`，第 231 条），不计入界；剩下的条目是基线节点与收着基线节点的新建节点，都是先删之后的活节点，规模之内的笔记本到不了界；正文的写回超过时分到后面的遍。理由：初稿把新建节点算进界，而冻结不设时限、新建不受限，界会被 agent 的新建撑破、继续又停在同一处（4.10）。
 - **194 提议的来源根不先写进 `notebooks.source_root_id`**：记在 wiki 的行；page 的 `upgrade_nodes` 给发起时建的 `raw` 一行保护（已有的 `raw` 是基线节点，本来就删不掉）。理由：`source_root_id` 的契约说明"Null for a standard notebook"照旧成立；page 里读 `SourceRootID` 的地方不止调查抽查的几处（`page/app/asset_writes.go:76`、`page/app/source_restore_precheck.go:60`、`page/app/ingest_before.go:81`、`page/app/unit_source_entry.go:31` 等），先写它要逐处证明都先判模式（4.1、4.6）。
 - **195 权限**：升级的十个 REST 操作与两个工具都判 `notebook.change_mode`（组合根交给 wiki 与冻结的守卫），读升级也只给管理员；prompt 判 `lint.read`；不新增动作。理由：发起与批准本来就是"改模式"（`notebook/domain/actions.go:18-19` 的注释已这样预备）；只给管理员的读照 13.2 第 18 条（4.14）。
 - **196 两个工具在两个入口都登记**；MCP 的 `notebooks`、`open_notebook` 与握手的说明不加升级的状态。理由：同 `lint`；`pathsAndTools` 是两个入口共用的说明，只在一个入口登记会让另一个入口的说明讲到它没有的工具；说明的缓存按 `AGENTS` 的版本，加状态要改缓存（4.13）。
@@ -779,16 +790,23 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 - **209 回滚删掉的新建节点留在回收站**，可以再恢复；不另清理。
 - **210 护栏的四个码只在 MCP**：进 `mcpOwnCodes()`；REST 的写操作只加 `notebook.upgrading`（REST 的写在冻结里就被拒，到不了护栏）。
 - **211 冻结期间字节不变的正文写照旧答成功**：单元在守卫之前返回（`page/app/unit_content.go:66-78`），什么也没写，不为它另加一次判断。
-- **215 提交的第二段脱离请求的上下文**（设计审查 A-M5）：第一个事务之后用 `context.WithTimeout(context.WithoutCancel(ctx), LintTimeout + 10 s)` 算与写；"审阅中、没有报告"由任何管理员退回或再一次提交出来（提交的第一个事务认这种状态）。理由：MCP 客户端的工具超时会让升级卡在没有报告的审阅里，agent 自己出不来；照 transfer 写任务结束的做法（4.8）。
+- **215 提交的第二段脱离请求的上下文**（设计审查 A-M5）：第一个事务之后用 `context.WithTimeout(context.WithoutCancel(ctx), LintTimeout + 10 s)` 算与写；"审阅中、没有报告"在 `submitted_at + LintTimeout + 10 s` 之后由任何管理员退回或再一次提交出来（提交的第一个事务认这种状态）；之内答 409 `wiki.upgrade_state`，不让后一次提交顶掉正在算的那一次（修订核对 A2-M2，主持者的裁定）。理由：MCP 客户端的工具超时会让升级卡在没有报告的审阅里，agent 自己出不来；照 transfer 写任务结束的做法（4.8）。
 - **216 存下报告也发 `mode`，网页的 `modeChanged` 也重读这本笔记本的升级**（设计审查 B-M5）。理由：最常见的路是 agent 提交、管理员开着升级页；不发，审阅页一直停在"没有报告"。不在 `NotebookUpgrade` 加随报告变的字段：报告在 wiki 的表，notebook 模块读不到（4.8、4.12）。
-- **217 结束回滚的写法**（实现主持者第 212 条）：只在 `rolling_back` 且回滚的任务没有排队或运行时；结局（放弃或驳回）不改，`rolled_back` 带 `rollback_complete = false` 与剩下的三个数（不在原位的基线节点、正文没写回的基线页、还在的新建节点）。理由：主持者写"记为放弃"；被驳回的升级改记为放弃会丢掉"被驳回"这一事实，所以保留结局、另记没做完（4.10）。
-- **218 回滚的任务只有笔记本管理员能取消**（核实设计审查 A 的未核实的怀疑）：今天任务的发起人也能取消自己的任务（`transfer/app/views.go:94-103`），开回滚任务的管理员被降为写者之后能反复让它停下（4.3）。
-- **219 发起占 lint 的名额、受 `LintTimeout`**（设计审查 B-M8）：`Runs.Hold` 只占名额、不开 goroutine；`startUpgrade` 的码加 `server_busy`。理由：M10 的移交"名额/期限仍适用"；几本大笔记本同时发起时各跑一次不计名额的 lint 又持着笔记本行（4.4、4.7）。
-- **220 发起提交之后对 `upgrade_nodes` 做一次 `ANALYZE`**（设计审查 B-M9），`runtime-grants.sql` 给它 `MAINTAIN`。理由：新表一次写进至多 30 万行之后立刻被读，上一次升级分析过的统计会把这次的 `upgrade_id` 估得偏小（M10 在 `sources.sql:46-49` 记过没有统计时的平方级）；成本守卫量三种统计状态（第 9 节）。
+- **217 结束回滚的写法**（实现主持者第 212 条）：只在 `rolling_back` 且回滚的任务没有排队或运行时；结局（放弃或驳回）不改，`rolled_back` 带 `rollback_complete = false` 与剩下的三个数（不在原位的基线节点、正文没写回的基线页、还在的新建节点；三个数都是 0 时记 `true`、不记三个数，第 230 条）。理由：主持者写"记为放弃"；被驳回的升级改记为放弃会丢掉"被驳回"这一事实，所以保留结局、另记没做完（4.10）。
+- **218 回滚的任务只有笔记本管理员能取消**（核实设计审查 A 的未核实的怀疑）：今天任务的发起人也能取消自己的任务（`transfer/app/views.go:94-103`），开回滚任务的管理员被降为写者之后能反复让它停下。规则放在 `Cancel.Run`，不放在 `views.sees`（第 229 条）（4.3）。
+- **219 发起占 lint 的名额、受 `LintTimeout`**（设计审查 B-M8）：`Runs.TryHold` 只立即试取名额、不等、不开 goroutine（发起这时持着笔记本行，主持者的裁定），整个发起的事务受 `LintTimeout`（第 227 条）；`startUpgrade` 的码加 `server_busy`。理由：M10 的移交"名额/期限仍适用"；几本大笔记本同时发起时各跑一次不计名额的 lint 又持着笔记本行（4.4、4.7）。
+- **220 发起提交之后对 `upgrade_nodes` 做一次 `ANALYZE`**（设计审查 B-M9），`runtime-grants.sql` 给它 `MAINTAIN`，运行时角色的测试核对 `last_analyze` 变了（修订核对 B2-M3）。理由：新表一次写进至多 30 万行之后立刻被读，上一次升级分析过的统计会把这次的 `upgrade_id` 估得偏小（M10 在 `sources.sql:46-49` 记过没有统计时的平方级）；成本守卫量三种统计状态（第 9 节）。
 - **221 驳回与放弃之后提交与报告留在行里**（设计审查 B-M2 的"由设计定"）：审计时看得到被驳回的是哪一份；退回才清掉它们（4.2）。
 - **222 升级的矩阵写成自己的 `TestUpgrade…` 测试**（设计审查 C-M6）：`TestUpgradePermissionMatrix`、`TestUpgradeToolsMatrix`、`TestUpgradePromptMatrix` 进第七份；覆盖的检查读到它们的行。理由：`TestPermissionMatrix` 在第四份、MCP 与 prompt 的矩阵在第三份，第三、四份的两次均值在 M10/P5 是 387.5、412.5 秒，在 M10 收尾是 281、327.5 秒，界是 450 秒（`docs/v0.1/M10-llm-wiki/reviews/M10-closeout-review.md:132`）（4.14）。
 - **223 分份的正确性用记录里的 `go test -list` 证明，不列为变异**（设计审查 C-M7）：去掉第三份 `-skip` 里的第七份，`TestUpgrade…` 在两份各跑一次、都绿，没有测试会失败（第 9 节）。
 - **224 横幅照已有的滚动锚定**（核实设计审查 C 的未核实的怀疑）：页面靠窗口的滚动锚定（`pages/workspace/workspace-layout.tsx:107-113`），横幅插在内容之前与正文里的公式、图表变高是同一种情形；WebKit 有没有这一跳没有在三种引擎里实测（设计阶段不跑浏览器），P1/S4 在 WebKit 里人工看一次并记录，有跳动就进 M12 的打磨（4.15）。
+- **225 守卫先拒过期的 `UpgradeOwn`**（修订核对 A2-M1，实现主持者的裁定）：带 `UpgradeOwn` 的单元，标记不等于这本笔记本当前的升级（含已没有升级）时答 `domain.ErrStaleUpgradeWrite`，在守卫的第 1 步之前；回滚的每一遍也先核对任务的升级仍是当前的。不是给用户的码：它只出现在已被 Rescue 记为中断、worker 还在跑的回滚任务里。理由：结束回滚解冻之后，过期的一批照第 1 步放过，会按已删的基线行把用户的新页挪进回收站（4.5、4.10）。
+- **226 剩下的差现数，给成本守卫**（修订核对 C2-M3，取便宜的那种）：不在停下时算好存下。停下有三条路（任务失败、Rescue 记为中断、进程崩溃），后两条不经 wiki，存下的数会缺；现数是一条读（基线行对 `nodes`、`page_contents`，加没有基线行的活节点），`getUpgrade` 与 `endUpgradeRollback` 共用，成本守卫 10 万节点、10 万页、三种统计状态、请求 4 s（4.10、第 9 节）。
+- **227 整个发起的事务受 `LintTimeout`，到期答 503**（修订核对 B2-M1）：事务开在 `ctxStart` 上，`WithinTx` 返回之后看 `ctxStart.Err()` 与请求的 ctx 定 503。不在事务里另套内层的期限（pgx 关掉连接、`ROLLBACK` 失败，错误只剩文字，答成 500）；不用 `SET LOCAL statement_timeout`（只限一条语句，`computeIn` 是许多条分页的读）（4.4）。
+- **228 回滚停下也发 `mode`，升级页轮询回滚的任务**（修订核对 C2-M1）：`jobRun.finish` 对回滚的任务走与 `succeed` 对称的 `fail`，一个事务里笔记本行、`FinishJob`、`RollbackEnd.Stopped`（`From == To`）；进度照任务页的轮询（`transfer-page.tsx:46`、`:178`），Rescue 记为中断与排队时被取消的任务由轮询看到。理由：任务的进度今天就没有事件，任务页也是轮询；只发 `mode` 看不到 Rescue 那一条（4.10、4.12、4.15）。
+- **229 取消回滚的规则放在 `Cancel.Run`，答 403 `forbidden`**（修订核对 A2-N2、C2-N8）：`views.sees` 也管读，列表对非管理员按发起人列出、不经 `sees`；挡在 `sees` 里会让降为写者的发起人在列表里看到任务、读它却答 `transfer.not_found`。改为读与列表不变、取消答 `forbidden`，`cancelTransferJob` 加声明，任务页的"取消"对回滚的任务只给管理员（4.3、第 5 节）。
+- **230 结束回滚时差已空就记做完**（修订核对 C2-N7）：三个数都是 0 时 `rollback_complete = true`、不记三个数（同 `RollbackEnd`），对话框写"已经复原完，结束即可"。理由：任务在最后一批之后、`succeed` 之前被中断时，记"没做完"与事实不符（4.10）。
+- **231 先删一个单元装多棵子树**（修订核对 A2-N5）：合计至多 `MaxUnitNodes`，同后台撤销的切批；更大的一棵从下往上删；先删进成本守卫（10 万个零散的新页）。理由：一个单元一棵，10 万个零散的新页就是 10 万个单元，各取一次笔记本行、并进变更集、记条目、入队搜索（4.10、第 9 节）。
 
 ### 对主持者说明的核实（初稿的结论，审查之后照旧）
 
@@ -801,7 +819,7 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 
 ### 需要负责人确认
 
-无。第 184 条已改为不显示 MCP 地址，与负责人 M9 的决定一致；第 212 条（结束回滚）触及负责人第 1 条的"放弃时整体回滚"，是主持者的决定，负责人可以改判。
+无阻塞的问题。第 184 条已改为不显示 MCP 地址，与负责人 M9 的决定一致。第 212 条（结束回滚）放宽了负责人第 1 条的"放弃时整体回滚"（默认仍是整体回滚，只在回滚停下之后多给一个出口），是主持者的决定，负责人可以改判；M11 的汇报里第一条请负责人看它，主持者 2026-11-08 已在对话里告诉负责人。
 
 ## 12. Phase 进度表
 
@@ -818,3 +836,4 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 |---|---|---|
 | 2026-11-08 | 初稿：三个 Phase、10 个 Step；九个 REST 操作、两个工具、一个 prompt、九个故事；回滚按基线整体复原；设计者的取舍 187–211 | 负责人 2026-11-08 的批准与四条回答、主持者的决定 172–186、三份只读调查（对着 `7ff74a67` 逐条核对）、四份 `open` 的移交 |
 | 2026-11-08 | 设计审查之后的修订：撤销里的恢复才判保留标题（A-I1）；回滚先删新建的子树、可以结束回滚（A-I2、第 212 条）；提交不并入检查（B-I1）；拒绝不改写链接的移动、闸门 6 逐页（B-I2）；存下的报告单立 schema（C-I1）；网页不显示 MCP 地址（C-I2、第 184 条）；删除的护栏挪进 P1/S1；动作答 `Upgrade`；第十个操作 `endUpgradeRollback`；迁移的检查补全；主持者的决定 212–214，设计者的 215–224；其余 Minor、Nit 照审查者的建议 | [设计审查记录](reviews/M11-design-review.md)、主持者的修订说明 |
+| 2026-11-08 | 修订核对第一轮之后的修订：过期的回滚单元被守卫拒（A2-M1）；"审阅中、没有报告"在 `LintTimeout + 10 s` 之后才可接管（A2-M2）；`rollback` 进 Rescue 的种类表（A2-M3）；结束回滚写明链接可能指不到（A2-M4）；发起在行锁下只立即试取名额（`Runs.TryHold`）；来源区里的基线页另读一遍（B2-I1）；整个发起的事务受期限、答 503（B2-M1）；先开任务再一条 `UPDATE`（B2-M2）；`ANALYZE` 的授权有测试（B2-M3）；回滚停下发 `mode`、升级页轮询任务（C2-M1）；`upgrade` 进 `refreshedOnConnect`（C2-M2）；剩下的差有成本守卫（C2-M3）；第 212 条写明放宽负责人第 1 条（C2-Q1）；设计者的 225–231；其余 Nit 照审查者的建议 | [审查记录的修订核对第一轮](reviews/M11-design-review.md#修订核对第一轮)、主持者的修订说明 |
