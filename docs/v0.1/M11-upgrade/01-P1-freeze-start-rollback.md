@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M11/P1 冻结、发起与放弃（四个 Step：S1 数据、冻结与删除的护栏（服务端）；S2 发起与读（服务端）；S3 放弃、回滚与结束（服务端）；S4 网页） |
 | 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1 修订 2026-11-09） |
-| 状态 | 进行中（S1 审查与修复核对完成，合并见 00 号文档第 12 节；S2 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，实施与审查之后与代码不同之处照实改在各节（3.25 列出），结果在 10.1 |
+| 状态 | 进行中（S1 已合并 `27b30c7f`；S2 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，实施与审查之后与代码不同之处照实改在各节（3.25 列出），结果在 10.1 |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.1–4.5、4.6 的"删除"、4.10、4.12、4.14–4.18、第 5、7、8、9 节与"移交的落实"；[M11 设计审查](reviews/M11-design-review.md)；[移交](handoffs/)：M10-mode、M5-events、M8-P4-background、M9-mcp-upgrade；[v0.1 总体设计](../v0.1-design.md) 5.8、7.2、12.4、13.1–13.4；[M10/P1](../M10-llm-wiki/01-P1-contract-frame.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:368`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:25`；契约写作 `api/modules/notebook.yaml:462`。代码的行号是 `main` 的 `9184f67b` 的（代码与 `7ff74a67`、`d9169baa` 相同，其后只改了文档），00 号文档的行号也是它的 |
 | 工作笔记 | 代码的核对分六份（notebook、page 的单元与守卫、transfer、撤销的计划、wiki 与 lint 与组合根、网页与 e2e 与 CI），本文引的每个行号都在其中核对过、关键的几处又逐行复读过（附录）。P1 的设计不跑重的东西；要量的在 7.6 |
@@ -1577,7 +1577,7 @@ P1 完成，当且仅当：
 
 每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
 
-### 10.1 S1：数据、冻结与删除的护栏（服务端）（2026-11-09，合并见 00 号文档第 12 节）
+### 10.1 S1：数据、冻结与删除的护栏（服务端）（2026-11-09，合并 `27b30c7f`）
 
 - 提交（从 main 的 `379a2d6d` 开始，照 6.1 的次序，7 个；Step 的文档提交是主持者的）：
   - 组合根的第七份：`BOOTSTRAP_SEVENTH = ^TestUpgrade`、`test-go-bootstrap-7`，第三份的 `-skip` 加它，`test-go` 与 `test-go-bootstrap` 的依赖、CI 的 `bootstrap-7`（25 分钟）、`06-environment.md` 的两处（`8b98ade3`）。
@@ -1588,7 +1588,7 @@ P1 完成，当且仅当：
   - 预检与 transfer 的开始：page 的三个预检在判定之后先读一次状态（`Writer.notUpgrading`）；transfer 的 `NotebookState`、端口的 `ShareByID` 交回它、新的 `StateOf`，组合根的 `transferNotebooks`；导入的 `Check`、建导入的任务、恢复与撤销的开始答 `notebook.upgrading`，导出照常；四个操作的声明与 asset、transfer 的 `adapter/http` 测试；`TestTheStartsRefuseAnUpgradingNotebook`、`TestThePrechecksRefuseAnUpgradingNotebook`、`TestTransferNotebooksConvertTheState`（`54ce782f`）。
   - 整个程序的测试：`TestUpgradeFreezeReachesEveryPath`（三种状态 × 14 个 REST 写 × bob 与发起人；5 个 MCP 写；只有预检答的四种情形与升级结束之后的原码；"任务的批"；去掉冻结）、`TestUpgradeFreezeLeavesTheRest`、`TestUpgradeFreezeAnswersFirst`、`TestUpgradeFreezeFollowsTheInitiatorsRole`、`TestUpgradeFreezeLetsOnlyItsOwnWrites`；`events.yaml` 的两处说明；删除护栏的读的成本守卫 `TestUpgradeProtectedReadsInTimeAtTheUnitsBound`（`test-go-costs-2` 一行）（`a28064e9`）。
   - 每个提交单独在一个干净的工作树里 build、vet、`make lint-go`、`make gen-check` 与 short 测试都通过；碰契约或网页的另过 `make lint-web`、`make knip` 与 vitest（189 个文件，4,087–4,088 个测试）。第 6 个提交的 vitest 第一次在负载约 24 下有两个计时的测试（编辑器的 20 万字符的段落解析）超界，单独重跑通过；第 2 个提交的成本夹具修正之后，它另单独重跑 build、vet、`make lint-go` 与 short。推送之前分支改写过两次：oxfmt 的四处并回第 3、4、6 个提交，M10 的 lint 迁移的成本夹具的修正并回第 2 个。审查 C 另在第 2、4、6 个提交上跑同样的门禁与网页的三步，在第 2–6 个提交上跑竞态下的数据库测试与组合根里 S1 加或改的测试，都通过。
-  - 修复一轮另有 4 个（下面），一共 11 个；合并见 00 号文档第 12 节。
+  - 修复一轮另有 4 个（下面），一共 11 个；合并 `27b30c7f`。
 - 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.25 列出）：
   1. `checkedRows` 原来只有一本 LLM Wiki：加一本升级中的普通笔记本（`…019`，升级 `…020`）与三行 `upgrade_nodes`（基线页 `…021`、基线附件 `…022`、保护行 `…023`），另给变更集设上 `upgrade_id`（3.2）。
   2. `TestTheUpgradeColumnsGoDown` 依次 `downTo(56)`、`downTo(55)`：`downTo` 退掉给定的那一版，设计写的 55、54 差一（3.2；审查 B 核对）。
