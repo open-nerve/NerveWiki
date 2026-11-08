@@ -331,7 +331,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条及 LinksReached 物理守卫（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫与删除护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -343,6 +343,8 @@ test-go-costs-2: ## 原成本命令第 14–20 条及 LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
+	@# M11/P1/S1：删除护栏的读，一万个节点的子树对着两次升级各十万行，四种统计与计划状态，中位数在单元的 2 秒之内；带 -v 打出中位数（P1 设计 7.1）
+	cd server && go test -count=1 -v -run '^TestUpgradeProtectedReadsInTimeAtTheUnitsBound$$' ./internal/modules/page/adapter/postgres
 
 .PHONY: test-go-costs-3
 test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docker）
