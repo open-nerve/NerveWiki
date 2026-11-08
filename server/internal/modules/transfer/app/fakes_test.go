@@ -150,13 +150,15 @@ func (w workspaces) ShareByID(context.Context, uuid.UUID) (bool, error) {
 }
 
 // notebooks are the notebooks by id: each its workspace and name. One
-// unshared is deleted as it locks; one of upgrades is being upgraded,
-// before it locks too unless upgradedAsLocked, which an upload's check
-// let by before the upgrade's start.
+// unshared is deleted as it locks, one goneAsRead as its state is read
+// unlocked; one of upgrades is being upgraded, before it locks too unless
+// upgradedAsLocked, which an upload's check let by before the upgrade's
+// start.
 type notebooks struct {
 	names            map[uuid.UUID]string
 	workspace        uuid.UUID
 	unshared         bool
+	goneAsRead       bool
 	upgrades         map[uuid.UUID]uuid.UUID
 	upgradedAsLocked bool
 	rec              *recorder
@@ -180,6 +182,7 @@ func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (app.NotebookState
 func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
 	n.rec.add("Notebooks.StateOf")
 	_, ok := n.names[id]
+	ok = ok && !n.goneAsRead
 	if !ok || n.upgradedAsLocked {
 		return app.NotebookState{}, ok, nil
 	}
