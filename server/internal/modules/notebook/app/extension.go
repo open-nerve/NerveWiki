@@ -87,8 +87,10 @@ type ModeSubscriber interface {
 	ModeChanged(ctx context.Context, m ModeChange) error
 }
 
-// publishMode calls the subscribers in order; the first error stops it.
-func publishMode(ctx context.Context, subscribers []ModeSubscriber, m ModeChange) error {
+// PublishMode calls the subscribers in order; the first error stops it:
+// the downgrade's, and the module root's UpgradeStates' (M11/P1 design
+// 3.11).
+func PublishMode(ctx context.Context, subscribers []ModeSubscriber, m ModeChange) error {
 	for _, s := range subscribers {
 		if err := s.ModeChanged(ctx, m); err != nil {
 			return err

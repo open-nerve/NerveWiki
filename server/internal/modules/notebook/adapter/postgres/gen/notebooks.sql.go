@@ -399,6 +399,35 @@ func (q *Queries) ShareNotebook(ctx context.Context, id uuid.UUID) (ShareNoteboo
 	return i, err
 }
 
+const startUpgrade = `-- name: StartUpgrade :execrows
+UPDATE notebooks
+SET upgrade_id = $1::uuid, upgrade_state = 'upgrading', upgrade_by_id = $2::uuid,
+    upgrade_at = $3::timestamptz, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND deleted_at IS NULL AND upgrade_id IS NULL AND mode = 'standard'
+`
+
+type StartUpgradeParams struct {
+	UpgradeID uuid.UUID
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+}
+
+// A notebook's upgrade's start (M11 design 4.4 step 10), under the row's lock: the one write of its four columns
+// that sets them, on a standard notebook with none.
+func (q *Queries) StartUpgrade(ctx context.Context, arg StartUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, startUpgrade,
+		arg.UpgradeID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateNotebook = `-- name: UpdateNotebook :exec
 UPDATE notebooks
 SET name = $1, workspace_access = $2, updated_by_id = $3,

@@ -94,7 +94,7 @@ func (d *DowngradeNotebook) Execute(ctx context.Context, id uuid.UUID) (View, er
 			WorkspaceID: standard.WorkspaceID, NotebookID: standard.ID, From: locked.Mode, To: standard.Mode,
 			By: actor.UserID, At: standard.UpdatedAt,
 		}
-		if err := publishMode(ctx, d.d.Subscribers, change); err != nil {
+		if err := PublishMode(ctx, d.d.Subscribers, change); err != nil {
 			return err
 		}
 		count, err := d.d.Notebooks.CountMembers(ctx, standard.ID)

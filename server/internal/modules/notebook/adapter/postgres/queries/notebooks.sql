@@ -100,3 +100,11 @@ SELECT id FROM deleted ORDER BY id;
 -- name: NotebookIDs :many
 -- The notebooks not deleted, by id: nervewiki reindex goes through them one at a time.
 SELECT id FROM notebooks WHERE deleted_at IS NULL ORDER BY id;
+
+-- name: StartUpgrade :execrows
+-- A notebook's upgrade's start (M11 design 4.4 step 10), under the row's lock: the one write of its four columns
+-- that sets them, on a standard notebook with none.
+UPDATE notebooks
+SET upgrade_id = sqlc.arg(upgrade_id)::uuid, upgrade_state = 'upgrading', upgrade_by_id = sqlc.arg(by)::uuid,
+    upgrade_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND upgrade_id IS NULL AND mode = 'standard';
