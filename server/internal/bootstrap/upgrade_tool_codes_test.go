@@ -19,12 +19,15 @@ func upgradeToolCodes() map[toolCode]bool {
 	return map[toolCode]bool{
 		{"write", "notebook.upgrading"}: true, {"edit", "notebook.upgrading"}: true, {"move", "notebook.upgrading"}: true,
 		{"delete", "notebook.upgrading"}: true, {"batch", "notebook.upgrading"}: true,
+		{"delete", "page.upgrade_protected"}: true, {"batch", "page.upgrade_protected"}: true,
 	}
 }
 
 // Each code of upgradeToolCodes is answered by a real call, in either
 // entry (M11/P1 design 3.6): in a notebook being upgraded by bob, alice's
-// agent's write, edit, move, delete and batch are notebook.upgrading, each
+// agent's write, edit, move, delete and batch are notebook.upgrading; in
+// one being upgraded by alice, whose baseline has Guide, her agent's
+// delete of Guide, alone or in a batch, is page.upgrade_protected; each
 // refused before it wrote anything; and each pair listed is a code of its
 // tool's row.
 func TestUpgradeToolsErrorsCarryTheirCodes(t *testing.T) {
@@ -33,26 +36,33 @@ func TestUpgradeToolsErrorsCarryTheirCodes(t *testing.T) {
 	tm.createPageWith(t, "alice", others, "", "Guide", "a\n")
 	tm.createPage(t, "alice", others, "", "Other")
 	tm.upgrade(t, others, "bob", "upgrading")
+	own := tm.openNotebook(t, "alice", "Own")
+	tm.createPageWith(t, "alice", own, "", "Guide", "a\n")
+	tm.upgrade(t, own, "alice", "upgrading")
 	agent := tm.agent(t, "alice", others)
 	answered := answeredCodes{}
 	for _, scope := range []string{"notebook", "account"} {
 		for _, tt := range []struct {
-			tool, code string
-			args       map[string]any
+			notebook, tool, code string
+			args                 map[string]any
 		}{
-			{"write", "notebook.upgrading", map[string]any{"path": "New.md", "content": "x"}},
-			{"edit", "notebook.upgrading", map[string]any{"path": "Guide.md", "old_string": "a", "new_string": "b"}},
-			{"move", "notebook.upgrading", map[string]any{"from": "Other.md", "to": "Moved.md"}},
-			{"delete", "notebook.upgrading", map[string]any{"path": "Other.md"}},
-			{"batch", "notebook.upgrading", batched(opWrite("New.md", "x"))},
+			{others, "write", "notebook.upgrading", map[string]any{"path": "New.md", "content": "x"}},
+			{others, "edit", "notebook.upgrading", map[string]any{"path": "Guide.md", "old_string": "a", "new_string": "b"}},
+			{others, "move", "notebook.upgrading", map[string]any{"from": "Other.md", "to": "Moved.md"}},
+			{others, "delete", "notebook.upgrading", map[string]any{"path": "Other.md"}},
+			{others, "batch", "notebook.upgrading", batched(opWrite("New.md", "x"))},
+			{own, "delete", "page.upgrade_protected", map[string]any{"path": "Guide.md"}},
+			{own, "batch", "page.upgrade_protected", batched(opWrite("New.md", "x"), opDelete("Guide.md"))},
 		} {
-			before := sourcePersistentRows(t, tm, others)
-			member := sourceMCPCall(t, agent, scope, tt.tool, tt.args).toolError(t)
+			m := *agent
+			m.notebook = tt.notebook
+			before := sourcePersistentRows(t, tm, tt.notebook)
+			member := sourceMCPCall(t, &m, scope, tt.tool, tt.args).toolError(t)
 			if member["code"] != tt.code {
-				t.Errorf("%s: %s in another's upgrade = %v, want %s", scope, tt.tool, member, tt.code)
+				t.Errorf("%s: %s = %v, want %s", scope, tt.tool, member, tt.code)
 				continue
 			}
-			if after := sourcePersistentRows(t, tm, others); !slices.Equal(after, before) {
+			if after := sourcePersistentRows(t, tm, tt.notebook); !slices.Equal(after, before) {
 				t.Errorf("%s: %s, refused, changed the notebook's rows", scope, tt.tool)
 			}
 			answered.add(tt.tool, tt.code)

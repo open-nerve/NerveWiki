@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"testing"
 	"uuid"
 
@@ -15,6 +16,29 @@ import (
 // changeMode is the notebook module's notebook.change_mode, which
 // bootstrap hands the freeze guard.
 const changeMode = shared.Action("notebook.change_mode")
+
+// upgradeNodes are an upgrade's rows in memory: protected the ids that have
+// one, of any upgrade; reads the reads made, each its upgrade's id and the
+// ids asked; err fails each read.
+type upgradeNodes struct {
+	protected map[uuid.UUID]bool
+	reads     [][]uuid.UUID
+	err       error
+}
+
+func (n *upgradeNodes) Protected(_ context.Context, upgradeID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]bool, error) {
+	n.reads = append(n.reads, append([]uuid.UUID{upgradeID}, ids...))
+	if n.err != nil {
+		return nil, n.err
+	}
+	out := map[uuid.UUID]bool{}
+	for _, id := range ids {
+		if n.protected[id] {
+			out[id] = true
+		}
+	}
+	return out, nil
+}
 
 // upgrading is eng of f being upgraded by alice, in state, the upgrade id.
 func (f *fixture) upgrading(state domain.UpgradeState, id uuid.UUID) domain.NotebookState {
@@ -31,7 +55,7 @@ func (f *fixture) freezeStep(n domain.NotebookState, client domain.Client, grant
 }
 
 // The freeze guard (M11/P1 design 3.4): a notebook with no upgrade it lets
-// by asking nothing; the initiator's web write while upgrading it refuses
+// by asking nothing, reading no row; the initiator's web write while upgrading it refuses
 // without asking; his MCP write asks notebook.change_mode once a unit, two
 // steps of one unit asking it once and two units twice, and is let by
 // when granted; refused or not visible, the write is notebook.upgrading;
@@ -47,17 +71,21 @@ func TestTheFreezeGuard(t *testing.T) {
 
 	t.Run("no upgrade", func(t *testing.T) {
 		f := newFixture()
-		guard := app.NewFreezeGuard(f.auth, changeMode)
-		err := guard.GuardWrite(f.asAlice(), f.freezeStep(domain.NotebookState{Mode: domain.ModeStandard}, domain.ClientWeb, &app.Grants{},
-			domain.OpCreate, page))
-		if err != nil || len(f.rec.calls) != 0 {
-			t.Errorf("a write of a notebook with no upgrade = %v after %v, want nil asking nothing", err, f.rec.calls)
+		nodes := &upgradeNodes{}
+		guard := app.NewFreezeGuard(f.auth, changeMode, nodes)
+		for _, op := range []domain.Operation{domain.OpCreate, domain.OpDelete} {
+			err := guard.GuardWrite(f.asAlice(), f.freezeStep(domain.NotebookState{Mode: domain.ModeStandard}, domain.ClientWeb, &app.Grants{},
+				op, page))
+			if err != nil || len(f.rec.calls) != 0 || len(nodes.reads) != 0 {
+				t.Errorf("a %s of a notebook with no upgrade = %v after %v, %d reads; want nil asking nothing, reading nothing", op, err,
+					f.rec.calls, len(nodes.reads))
+			}
 		}
 	})
 	t.Run("the initiator's web write", func(t *testing.T) {
 		f := newFixture()
 		f.grant(changeMode)
-		guard := app.NewFreezeGuard(f.auth, changeMode)
+		guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 		err := guard.GuardWrite(f.asAlice(), f.freezeStep(f.upgrading(domain.UpgradeUpgrading, current), domain.ClientWeb, &app.Grants{},
 			domain.OpCreate, page))
 		if codeOf(err) != "notebook.upgrading" || asked(f) != 0 {
@@ -67,7 +95,7 @@ func TestTheFreezeGuard(t *testing.T) {
 	t.Run("the initiator's MCP writes ask once a unit", func(t *testing.T) {
 		f := newFixture()
 		f.grant(changeMode)
-		guard := app.NewFreezeGuard(f.auth, changeMode)
+		guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 		n := f.upgrading(domain.UpgradeUpgrading, current)
 		unit := &app.Grants{}
 		for range 2 {
@@ -98,7 +126,7 @@ func TestTheFreezeGuard(t *testing.T) {
 		t.Run("the initiator's MCP write, "+denial.name, func(t *testing.T) {
 			f := newFixture()
 			denial.set(f)
-			guard := app.NewFreezeGuard(f.auth, changeMode)
+			guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 			unit := &app.Grants{}
 			n := f.upgrading(domain.UpgradeUpgrading, current)
 			for range 2 {
@@ -115,7 +143,7 @@ func TestTheFreezeGuard(t *testing.T) {
 		f := newFixture()
 		failure := errors.New("the database is gone")
 		f.auth.failing = map[shared.Action]error{changeMode: failure}
-		guard := app.NewFreezeGuard(f.auth, changeMode)
+		guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 		err := guard.GuardWrite(f.asAlice(), f.freezeStep(f.upgrading(domain.UpgradeUpgrading, current), agent, &app.Grants{},
 			domain.OpCreate, page))
 		if !errors.Is(err, failure) {
@@ -125,7 +153,7 @@ func TestTheFreezeGuard(t *testing.T) {
 	t.Run("a stale unit", func(t *testing.T) {
 		f := newFixture()
 		f.grant(changeMode)
-		guard := app.NewFreezeGuard(f.auth, changeMode)
+		guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 		s := f.freezeStep(f.upgrading(domain.UpgradeRollingBack, current), domain.ClientWeb, &app.Grants{}, domain.OpCreate, page)
 		s.UpgradeOwn = uuid.NewV7()
 		err := guard.GuardWrite(f.asAlice(), s)
@@ -134,9 +162,54 @@ func TestTheFreezeGuard(t *testing.T) {
 			t.Errorf("a unit of another upgrade = %v after %v, want ErrStaleUpgradeWrite, no problem, asking nothing", err, f.rec.calls)
 		}
 	})
+	// The deletion guardrail: a subtree whose root the agent created, a
+	// baseline page under it, and the protected source root under that, is
+	// refused, page.upgrade_protected marked with the baseline page, the
+	// first protected in the subtree's order, not with its root; the
+	// upgrade's rows read once, of the notebook's upgrade, the subtree's
+	// ids. A subtree all created since goes; a step not a delete reads no
+	// row; the reader's error is answered as it is.
+	t.Run("the deletion guardrail", func(t *testing.T) {
+		created, baseline, root, fresh := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+		subtree := []domain.Change{{NodeID: created, Before: &domain.TreeState{Name: "Made"}},
+			{NodeID: baseline, Before: &domain.TreeState{ParentID: &created, Name: "Guide"}},
+			{NodeID: root, Before: &domain.TreeState{ParentID: &baseline, Name: "raw"}}}
+		f := newFixture()
+		f.grant(changeMode)
+		nodes := &upgradeNodes{protected: map[uuid.UUID]bool{baseline: true, root: true}}
+		guard := app.NewFreezeGuard(f.auth, changeMode, nodes)
+		n := f.upgrading(domain.UpgradeUpgrading, current)
+		err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, domain.OpDelete, subtree...))
+		var r *domain.Refused
+		if codeOf(err) != "page.upgrade_protected" || !errors.As(err, &r) || r.NodeID != baseline {
+			t.Errorf("the deletion of a subtree holding baseline nodes = %v (%+v), want page.upgrade_protected marked with Guide", err, r)
+		}
+		if want := [][]uuid.UUID{{current, created, baseline, root}}; !slices.EqualFunc(nodes.reads, want, slices.Equal) {
+			t.Errorf("read %v, want the upgrade's rows of the subtree once, %v", nodes.reads, want)
+		}
+		nodes.reads = nil
+		if err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, domain.OpDelete,
+			domain.Change{NodeID: fresh, Before: &domain.TreeState{Name: "New"}})); err != nil {
+			t.Errorf("the deletion of a page created since = %v, want nil", err)
+		}
+		nodes.reads = nil
+		for _, op := range []domain.Operation{domain.OpMove, domain.OpRename, domain.OpContent, domain.OpCreate} {
+			if err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, op, subtree[1])); err != nil {
+				t.Errorf("a %s of a baseline page = %v, want nil (P2/S1's guardrails)", op, err)
+			}
+		}
+		if len(nodes.reads) != 0 {
+			t.Errorf("steps not a delete read %v, want nothing", nodes.reads)
+		}
+		failure := errors.New("the database is gone")
+		nodes.err = failure
+		if err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, domain.OpDelete, subtree...)); !errors.Is(err, failure) {
+			t.Errorf("the deletion, the reader failing = %v, want its error", err)
+		}
+	})
 	t.Run("the vetoer", func(t *testing.T) {
 		f := newFixture()
-		guard := app.NewFreezeGuard(f.auth, changeMode)
+		guard := app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})
 		for _, state := range []domain.UpgradeState{domain.UpgradeUpgrading, domain.UpgradeReviewing, domain.UpgradeRollingBack} {
 			o := app.SessionOpening{Write: app.Write{NotebookID: f.eng, By: f.alice, Client: domain.ClientWeb,
 				Notebook: f.upgrading(state, current)}, PageID: page.NodeID}
@@ -169,7 +242,7 @@ func TestTheFreezeLetsItsOwnUnits(t *testing.T) {
 		f := newFixture()
 		f.grant(domain.ActionCreate)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(state, current)}
-		f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode)}
+		f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})}
 		if err := unit(f, current); err != nil || len(f.store.nodes) != 1 || len(f.store.changesets) != 1 ||
 			f.store.changesets[0].UpgradeID != current {
 			t.Errorf("%s: the upgrade's own unit = %v, %d nodes, changesets %+v; want a page, its changeset of the upgrade",
@@ -190,7 +263,7 @@ func TestTheFreezeLetsItsOwnUnits(t *testing.T) {
 		f := newFixture()
 		f.grant(domain.ActionCreate)
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: tt.state}
-		f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode)}
+		f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})}
 		if err := unit(f, current); !errors.Is(err, domain.ErrStaleUpgradeWrite) || len(f.store.nodes) != 0 || len(f.store.changesets) != 0 {
 			t.Errorf("a unit of %s = %v, %d nodes, %d changesets; want ErrStaleUpgradeWrite, nothing written", tt.name, err,
 				len(f.store.nodes), len(f.store.changesets))
@@ -224,7 +297,7 @@ func TestTheChangesetsCarryTheirUpgrade(t *testing.T) {
 		tt.state.Upgrade.By = f.alice
 		f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: tt.state}
 		if tt.guard {
-			f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode)}
+			f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})}
 		}
 		_, err := f.writer().Run(f.asAlice(), app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true, Client: tt.client,
 			NotFound: domain.ErrNotebookNotFound}, create("Notes"))

@@ -3,6 +3,7 @@ package page
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
@@ -16,7 +17,8 @@ type FreezeGuard = app.FreezeGuard
 // one the units decide with, asking admin, the notebook module's
 // notebook.change_mode, of an upgrade's initiator's MCP writes (v0.1
 // design 13.1 item 21's exception, as NewModeGuard: a registrant not built
-// from the pool alone).
-func NewFreezeGuard(_ *pgxpool.Pool, auth shared.Authorizer, admin shared.Action) *FreezeGuard {
-	return app.NewFreezeGuard(auth, admin)
+// from the pool alone). Its reader of the upgrade's rows uses the unit's
+// transaction, under the notebook's row lock.
+func NewFreezeGuard(pool *pgxpool.Pool, auth shared.Authorizer, admin shared.Action) *FreezeGuard {
+	return app.NewFreezeGuard(auth, admin, postgresadapter.New(pool))
 }
