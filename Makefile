@@ -343,7 +343,7 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
-	@# M11/P1/S1：删除护栏的读，一万个节点的子树对着两次升级各十万行，四种统计与计划状态，中位数在单元的 2 秒之内；带 -v 打出中位数（P1 设计 7.1）
+	@# M11/P1/S1：删除护栏的读，一万个节点的子树对着两次升级各十万行，四种统计与计划状态：自定义与通用的计划都只经 upgrade_nodes_pkey 读、两列都在索引条件里，中位数在本机的三倍（25 ms）之内；带 -v 打出中位数（P1 设计 7.1，决定 236）
 	cd server && go test -count=1 -v -run '^TestUpgradeProtectedReadsInTimeAtTheUnitsBound$$' ./internal/modules/page/adapter/postgres
 
 .PHONY: test-go-costs-3
