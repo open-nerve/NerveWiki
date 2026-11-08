@@ -7,16 +7,18 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// Grants is a unit's memo of the actions asked beyond its own decision
-// (M10 design 4.6): the mode guard is one registrant that every unit
-// shares, which cannot keep an answer, so the unit keeps it. Ask asks
-// an action at most once a unit, the first time a step needs it; a step
-// of a standard notebook, or one that touches no source, never does.
-// Only the freeze and mode guards and the unit's own locked checks ask; any
-// extension may read the answers. It is read in the unit's transaction,
-// so it sees the members the unit's own decision saw. A precheck before
-// the unit asks on its own and keeps nothing here: the unit asks again
-// under its locks.
+// Grants is a unit's memo of the actions asked beyond its own decision (M10
+// design 4.6): the mode guard is one registrant that every unit shares,
+// which cannot keep an answer, so the unit keeps it. Ask asks an action at
+// most once a unit, the first time a step needs it; a step of a notebook
+// with no upgrade that touches no source never does: the freeze guard asks
+// of the initiator's MCP writes while a notebook is being upgraded, a
+// standard one too, the mode guard of the writes that touch an LLM Wiki's
+// source. Only the freeze and mode guards and the unit's own locked checks
+// ask; any extension may read the answers. It is read in the unit's
+// transaction, so it sees the members the unit's own decision saw. A
+// precheck before the unit asks on its own and keeps nothing here: the unit
+// asks again under its locks.
 type Grants struct {
 	allowed map[shared.Action]bool
 }

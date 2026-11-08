@@ -162,6 +162,31 @@ func TestTheFreezeGuard(t *testing.T) {
 			t.Errorf("a unit of another upgrade = %v after %v, want ErrStaleUpgradeWrite, no problem, asking nothing", err, f.rec.calls)
 		}
 	})
+	// A freeze the guard does not know is a defect's error, no problem's:
+	// it asks nothing and reads no row, and its unit writes nothing, though
+	// every action is granted.
+	t.Run("a freeze it does not know", func(t *testing.T) {
+		f := newFixture()
+		f.grant(changeMode, domain.ActionCreate)
+		nodes := &upgradeNodes{}
+		unknown := func(domain.NotebookState, uuid.UUID, domain.Client, uuid.UUID) domain.Freeze {
+			return domain.FreezeAsk + 1
+		}
+		guard := app.NewFreezeGuard(f.auth, changeMode, nodes).WithAdmits(unknown)
+		err := guard.GuardWrite(f.asAlice(), f.freezeStep(f.upgrading(domain.UpgradeUpgrading, current), agent, &app.Grants{},
+			domain.OpCreate, page))
+		var problem *shared.Error
+		if err == nil || errors.As(err, &problem) || len(f.rec.calls) != 0 || len(nodes.reads) != 0 {
+			t.Errorf("an unknown freeze = %v after %v, %d reads; want a defect's error, asking and reading nothing", err, f.rec.calls,
+				len(nodes.reads))
+		}
+		f.guards = []app.WriteGuard{guard}
+		if _, err := f.writer().Run(f.asAlice(), app.UnitSpec{NotebookID: f.eng, Action: domain.ActionCreate, Tree: true, Client: agent,
+			NotFound: domain.ErrNotebookNotFound}, create("Notes")); err == nil || len(f.store.nodes) != 0 || len(f.store.changesets) != 0 {
+			t.Errorf("a unit of an unknown freeze = %v, %d nodes, %d changesets; want its error, nothing written", err,
+				len(f.store.nodes), len(f.store.changesets))
+		}
+	})
 	// The deletion guardrail: a subtree whose root the agent created, a
 	// baseline page under it, and the protected source root under that, is
 	// refused, page.upgrade_protected marked with the baseline page, the

@@ -38,7 +38,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 
 ## 3. 几个 agent 共用一台机器时
 
-- **重的运行一次只跑一个**：整个程序的测试、`make test`、`make e2e`、量时间。几个 agent（实施者、审查者）同时起 PostgreSQL 容器，彼此拖慢，量出的时间与计时守卫都不可信。用 [tools/heavy.sh](tools/heavy.sh) 包住它们，例如 `docs/v0.1/claude_to_codex/tools/heavy.sh make test`。锁是一个目录，默认 `${TMPDIR:-/tmp}/nervewiki-heavy.lock`，可用 `NW_HEAVY_LOCK` 改。
+- **重的运行一次只跑一个**：整个程序的测试、`make test`、`make e2e`、量时间。几个 agent（实施者、审查者）同时起 PostgreSQL 容器，彼此拖慢，量出的时间与计时守卫都不可信。用 [tools/heavy.sh](tools/heavy.sh) 包住它们，例如 `docs/v0.1/claude_to_codex/tools/heavy.sh make test`。逐个提交的核对（含 vitest 的计时断言与全量 lint）也经 `heavy.sh`，至少不与 `make test` 同时跑：两者同时跑，负载到 8 核的三倍，计时守卫会超界（M11/P1/S1）。锁是一个目录，默认 `${TMPDIR:-/tmp}/nervewiki-heavy.lock`，可用 `NW_HEAVY_LOCK` 改。
 - **只停自己起的进程与容器**，按 PID 或容器 id。不用 `pkill`、`killall`，不重启 Docker，不清别人的容器与卷。testcontainers 的容器由 Ryuk 收走；关掉 Ryuk 跑过的（`TESTCONTAINERS_RYUK_DISABLED=true`），只删自己那次运行留下的。
 - 审查者在自己的副本或 worktree 里跑，不在实施者的树上改坏代码。
 
@@ -46,7 +46,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 
 - 工作流是 `.github/workflows/ci.yml`。同一分支的新推送会取消正在跑的那次，等它跑完再推。
 - 读 CI 用 [tools/ci-wait.sh](tools/ci-wait.sh)：`tools/ci-wait.sh <完整的 sha>`。它找到这个提交的那次运行，等它完成，列出每个作业的结论与时间，以及 Test、E2E 两步的时间（组合根的各份看的就是各自 Test 一步，不是整个作业的时长）。装了 `gh` 并登录时用它；否则用公开的 REST API，每个 IP 每小时 60 次，所以它每 2 分钟才问一次。仓库默认 `open-nerve/NerveWiki`，可用 `NW_REPO` 改。
-- **分份**：组合根现在分七份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_SEVENTH`），CI 共 18 项：15 个 server 的 leg（race、bootstrap-1 到 bootstrap-7、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。每一份两次 `main` 运行的 Test 一步的平均要在 450 秒之下，过线时先挪给邻份，挪不下就再分一份，不提高 `-timeout`。本机量时在同一把 heavy 锁下分别运行 `make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-7`，每份两轮；不要拿 `make test-go` 内部的 `-j5` 当这些串行的样本。更早的三份、四份与十项、十一项的记录保留当时的口径。
+- **分份**：组合根现在分七份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_SEVENTH`），CI 共 18 项：15 个 server 的 leg（race、bootstrap-1 到 bootstrap-7、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。每一份两次 `main` 运行的 Test 一步的平均要在 450 秒之下，过线时先挪给邻份，挪不下就再分一份，不提高 `-timeout`。本机量时在同一把 heavy 锁下分别运行 `make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-7`，每份两轮；不要拿 `make test-go` 内部的 `-j6` 当这些串行的样本。更早的三份、四份与十项、十一项的记录保留当时的口径。
 - 失败的原因：作业日志要认证（`gh run view <id> --log-failed`）。不认证时，失败的作业的 annotations（`/repos/<repo>/check-runs/<作业 id>/annotations`）是公开的，Go 的失败与 Playwright 的 `github` 报告器都写在那里。
 - 只在 Linux 上失败的，在 `golang:1.27.1-trixie` 容器里复现（`--cpus=2`、`-race`），见 [05](05-lessons.md) 第 7 节。
 

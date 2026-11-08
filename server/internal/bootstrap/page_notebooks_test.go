@@ -88,7 +88,7 @@ func TestPageNotebooksConvertTheState(t *testing.T) {
 			{"an LLM Wiki", wiki, page.NotebookState{Mode: page.ModeLLMWiki, SourceRootID: root}, true},
 			{"a standard notebook", plain, page.NotebookState{Mode: page.ModeStandard}, true},
 			{"an upgrading notebook", upgrading, page.NotebookState{Mode: page.ModeStandard, Upgrade: page.NotebookUpgrade{ID: upgrade,
-				State: page.UpgradeState(notebook.UpgradeRollingBack), By: initiator}}, true},
+				State: page.UpgradeRollingBack, By: initiator}}, true},
 			{"none", gone, page.NotebookState{}, false},
 		} {
 			calls = nil

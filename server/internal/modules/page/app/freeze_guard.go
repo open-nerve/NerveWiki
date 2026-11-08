@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -23,9 +24,10 @@ type UpgradeNodes interface {
 // lets by at once, reading nothing. The initiator's agent's writes it
 // admits it holds to the guardrails (M11 design 4.6).
 type FreezeGuard struct {
-	auth  shared.Authorizer
-	admin shared.Action
-	nodes UpgradeNodes
+	auth   shared.Authorizer
+	admin  shared.Action
+	nodes  UpgradeNodes
+	admits func(n domain.NotebookState, own uuid.UUID, client domain.Client, by uuid.UUID) domain.Freeze
 }
 
 // NewFreezeGuard is the guard over auth, the authorizer the units decide
@@ -33,7 +35,7 @@ type FreezeGuard struct {
 // notebook module's notebook.change_mode, which bootstrap hands it; nodes
 // read the upgrade's rows its deletion guardrail keeps.
 func NewFreezeGuard(auth shared.Authorizer, admin shared.Action, nodes UpgradeNodes) *FreezeGuard {
-	return &FreezeGuard{auth: auth, admin: admin, nodes: nodes}
+	return &FreezeGuard{auth: auth, admin: admin, nodes: nodes, admits: domain.FreezeAdmits}
 }
 
 // GuardWrite judges s by the upgrade its unit read under the notebook's
@@ -42,10 +44,11 @@ func NewFreezeGuard(auth shared.Authorizer, admin shared.Action, nodes UpgradeNo
 // notebook.upgrading, which the unit marks with the step's first node; the
 // initiator's MCP write while upgrading asks admin once a unit (Grants),
 // notebook.upgrading when it is not granted, the initiator no admin now;
-// granted, it is held to the guardrails. Any other error, the database's,
-// is answered as it is.
+// granted, it is held to the guardrails. A freeze it does not know is a
+// defect's error: it lets nothing by it was not told to. Any other error,
+// the database's, is answered as it is.
 func (g *FreezeGuard) GuardWrite(ctx context.Context, s Step) error {
-	switch domain.FreezeAdmits(s.Notebook, s.UpgradeOwn, s.Client, s.By) {
+	switch f := g.admits(s.Notebook, s.UpgradeOwn, s.Client, s.By); f {
 	case domain.FreezeOpen:
 		return nil
 	case domain.FreezeStale:
@@ -53,6 +56,8 @@ func (g *FreezeGuard) GuardWrite(ctx context.Context, s Step) error {
 	case domain.FreezeRefused:
 		return domain.ErrUpgrading
 	case domain.FreezeAsk:
+	default:
+		return fmt.Errorf("page: freeze %d unknown", f)
 	}
 	if err := s.Grants.Ask(ctx, g.admin, decideAction(g.auth, s, g.admin)); err != nil {
 		if errors.Is(err, shared.Forbidden()) {

@@ -57,7 +57,8 @@ func TestUpgradeFreezeLeavesTheRest(t *testing.T) {
 // 4.5): with bob's edit session opened on Held before the upgrade, which
 // its start would refuse, set by SQL, alice's deletion of Held, which the
 // lock refuses too, is notebook.upgrading, and so is her opening of a
-// session on it, which the lock would take over; once the upgrade ended,
+// session on it, which the lock would refuse too, bob's session not hers
+// to take over; once the upgrade ended,
 // the deletion meets the lock, page.locked naming bob's. The composition
 // root registering the freeze after the lock fails the first.
 func TestUpgradeFreezeAnswersFirst(t *testing.T) {

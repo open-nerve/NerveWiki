@@ -67,6 +67,13 @@ const (
 	ModeLLMWiki  = domain.ModeLLMWiki
 )
 
+// The upgrade's states, each the notebook module's own string.
+const (
+	UpgradeUpgrading   = domain.UpgradeUpgrading
+	UpgradeReviewing   = domain.UpgradeReviewing
+	UpgradeRollingBack = domain.UpgradeRollingBack
+)
+
 // Names reads the accounts' display names: bootstrap hands identity's
 // directory to it.
 type Names = app.Names
