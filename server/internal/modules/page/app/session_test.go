@@ -319,8 +319,8 @@ func TestDeletingASubtreeEndsItsSessions(t *testing.T) {
 }
 
 // The notebook module's deletion deletes the notebooks' sessions after
-// their pages, and tells the subscribers of the alive ones, by the
-// deletion's actor at its time.
+// their pages, then their upgrades' rows, and tells the subscribers of the
+// alive ones, by the deletion's actor at its time.
 func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 	f := newFixture()
 	sub := &subscriber{recorder: f.rec}
@@ -332,7 +332,8 @@ func TestANotebookDeletionEndsItsSessions(t *testing.T) {
 	if err := d.NotebookDeleted(context.Background(), app.NotebookDeleted{WorkspaceID: f.acme, NotebookIDs: []uuid.UUID{f.eng}, By: by, At: at}); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"DeleteNotebooksPages", "QueueSearchOfNotebooks", "DeleteNotebookSessions", "EditSessionEnded"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"DeleteNotebooksPages", "QueueSearchOfNotebooks", "DeleteNotebookSessions", "DeleteNotebooksUpgradeNodes",
+		"EditSessionEnded"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	want := []app.SessionEnded{{SessionID: alive.ID, WorkspaceID: f.acme, NotebookID: f.eng, PageID: n.ID, UserID: f.alice,

@@ -22,3 +22,12 @@ func (s *Store) Protected(ctx context.Context, upgradeID uuid.UUID, ids []uuid.U
 	}
 	return protected, nil
 }
+
+// DeleteNotebooksUpgradeNodes implements app.NotebookPages: the deleted
+// notebooks' upgrades' rows go, in the deletion's transaction.
+func (s *Store) DeleteNotebooksUpgradeNodes(ctx context.Context, ids []uuid.UUID) error {
+	if err := s.queries(ctx).DeleteUpgradeNodesOfNotebooks(ctx, ids); err != nil {
+		return fmt.Errorf("delete the notebooks' upgrade rows: %w", err)
+	}
+	return nil
+}

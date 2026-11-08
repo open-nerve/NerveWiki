@@ -630,8 +630,8 @@ type Attachment struct {
 // ErrNoAttachmentFile is an attachment whose file is not in the store.
 var ErrNoAttachmentFile = errors.New("page: the attachment's file is not in the store")
 
-// NotebookPages deletes the pages of deleted notebooks, and their edit
-// sessions.
+// NotebookPages deletes the pages of deleted notebooks, their edit
+// sessions and their upgrades' rows.
 type NotebookPages interface {
 	DeleteNotebooksPages(ctx context.Context, ids []uuid.UUID, by uuid.UUID, at time.Time) error
 	// QueueSearchOfNotebooks queues for the search's job, exact, the
@@ -641,6 +641,9 @@ type NotebookPages interface {
 	// DeleteNotebookSessions deletes the notebooks' edit sessions and
 	// returns them.
 	DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]EditSession, error)
+	// DeleteNotebooksUpgradeNodes deletes the notebooks' upgrades' rows,
+	// their baselines and protected source roots (M11/P1 design 3.12).
+	DeleteNotebooksUpgradeNodes(ctx context.Context, ids []uuid.UUID) error
 }
 
 // EditSession is an edit session (M4 design 4): who edits which page from

@@ -11,6 +11,17 @@ import (
 	"uuid"
 )
 
+const deleteUpgradeNodesOfNotebooks = `-- name: DeleteUpgradeNodesOfNotebooks :exec
+DELETE FROM upgrade_nodes WHERE notebook_id = ANY($1::uuid[])
+`
+
+// The notebooks' deletion (M11/P1 design 3.12): their upgrades' baseline and protected rows go, by
+// upgrade_nodes_notebook_id_idx. The rows have no deleted_at: an upgrade's ending deletes them too.
+func (q *Queries) DeleteUpgradeNodesOfNotebooks(ctx context.Context, notebookIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUpgradeNodesOfNotebooks, notebookIds)
+	return err
+}
+
 const upgradeProtected = `-- name: UpgradeProtected :many
 SELECT node_id FROM upgrade_nodes
 WHERE upgrade_id = $1 AND node_id = ANY($2::uuid[])

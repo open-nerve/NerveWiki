@@ -46,3 +46,13 @@ func (t wikiTemplate) NotebookCreated(ctx context.Context, c notebook.NotebookCr
 	return t.template.NotebookCreated(ctx, wiki.Creation{NotebookID: c.NotebookID, Mode: wiki.Mode(c.Mode),
 		SourceRootID: c.SourceRootID, Locale: wiki.Locale(c.Locale), Client: c.Client, At: c.At})
 }
+
+// wikiNotebookDeletion is the upgrades' part in a notebook's deletion as
+// the notebook module calls it (M11/P1 design 3.15).
+type wikiNotebookDeletion struct {
+	wiki wiki.NotebookDeletion
+}
+
+func (d wikiNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
+	return d.wiki.NotebooksDeleted(ctx, x.NotebookIDs, x.By, x.At)
+}

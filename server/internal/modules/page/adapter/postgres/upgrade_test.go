@@ -66,3 +66,28 @@ func TestCreateChangesetWritesItsUpgrade(t *testing.T) {
 		t.Errorf("a changeset of no upgrade has upgrade_id NULL %d times, want once", n)
 	}
 }
+
+// A notebook's deletion deletes its upgrades' rows, baseline and
+// protected, by the notebook (M11/P1 design 3.12); another notebook's
+// stay.
+func TestTheNotebooksDeletionDeletesTheirUpgradesRows(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	f.exec(t, `INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+			content_hash, byte_size, wanted, accepted_hash) VALUES
+		($1, gen_random_uuid(), $3, true, 'page', NULL, 'Guide', 0, 1, sha256('x'), 1, 0, sha256('x')),
+		($1, gen_random_uuid(), $3, false, 'page', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+		($2, gen_random_uuid(), $4, true, 'asset', NULL, 'b.png', 0, NULL, NULL, NULL, NULL, NULL)`,
+		uuid.NewV7(), uuid.NewV7(), f.eng, f.ops)
+	if err := f.s.DeleteNotebooksUpgradeNodes(ctx, []uuid.UUID{f.eng}); err != nil {
+		t.Fatal(err)
+	}
+	var eng, ops int
+	if err := f.pool.QueryRow(ctx, `SELECT count(*) FILTER (WHERE notebook_id = $1), count(*) FILTER (WHERE notebook_id = $2)
+		FROM upgrade_nodes`, f.eng, f.ops).Scan(&eng, &ops); err != nil {
+		t.Fatal(err)
+	}
+	if eng != 0 || ops != 1 {
+		t.Errorf("after eng's deletion, eng has %d rows, ops %d; want none, ops' one", eng, ops)
+	}
+}
