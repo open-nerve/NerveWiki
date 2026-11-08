@@ -31,6 +31,13 @@ var ErrBusy = shared.NewError(shared.KindConflict, "transfer.busy",
 var ErrWriting = shared.NewError(shared.KindConflict, "transfer.busy",
 	"A write into this notebook (an import, a restore or a revert) is under way: wait for it to end.")
 
+// ErrUpgrading is a job that writes the notebook's tree asked of a notebook
+// being upgraded to an LLM Wiki (M11 design 4.5): the notebook module's
+// notebook.upgrading, as ErrNotebookNotFound is its notebook.not_found, of
+// the page module's text.
+var ErrUpgrading = shared.NewError(shared.KindConflict, "notebook.upgrading",
+	"The notebook is being upgraded to an LLM Wiki: its content is read-only until the upgrade ends.")
+
 // ErrNotCancellable is a cancel of a job that has ended.
 var ErrNotCancellable = shared.NewError(shared.KindConflict, "transfer.not_cancellable", "The job has ended.")
 

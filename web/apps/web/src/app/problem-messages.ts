@@ -39,6 +39,7 @@ export const problemMessages = {
   "notebook.own_membership": "problem.notebook.own_membership",
   "notebook.sole_admin": "problem.notebook.sole_admin",
   "notebook.not_llm_wiki": "problem.notebook.not_llm_wiki",
+  "notebook.upgrading": "problem.notebook.upgrading",
   "wiki.lint_rule_not_found": "problem.wiki.lint_rule_not_found",
   "page.not_found": "problem.page.not_found",
   "page.version_not_found": "problem.page.version_not_found",

@@ -186,6 +186,12 @@ func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
 	httpadapter.Register(router, api, m.uc)
 }
 
+// ActionChangeMode is the action of a notebook's mode, its admins'
+// (M10 design 4.5): bootstrap hands it to the page module's freeze, which
+// asks it of an upgrade's initiator's writes (M11 design 4.1, 4.5), and to
+// the modules that start, roll back and end an upgrade.
+const ActionChangeMode = domain.ActionChangeMode
+
 // Actions are the module's actions: bootstrap checks they are the access
 // module's rule table.
 func Actions() []shared.Action {

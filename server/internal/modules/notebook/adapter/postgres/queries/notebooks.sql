@@ -7,18 +7,18 @@ VALUES (sqlc.arg(id), sqlc.arg(workspace_id), sqlc.arg(name), sqlc.arg(workspace
     sqlc.narg(source_root_id), sqlc.arg(by), sqlc.arg(by), sqlc.arg(now), sqlc.arg(now));
 
 -- name: FindNotebook :one
--- A notebook not deleted, unlocked: what a read authorizes against.
+-- A notebook not deleted, unlocked: what a read authorizes against. With its upgrade under way (M11 design 4.5).
 SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
-    source_root_id
+    source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL;
 
 -- name: LockNotebook :one
 -- FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
 -- after the workspace row's FOR SHARE, then decide (M3/P1 design 3.10). A deletion committed while it waited
--- leaves no row.
+-- leaves no row. With its upgrade under way (M11 design 4.5).
 SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
-    source_root_id
+    source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at
 FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR NO KEY UPDATE;
@@ -27,9 +27,9 @@ FOR NO KEY UPDATE;
 -- The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
 -- it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
 -- management write, a tree write or a deletion. A deletion committed while it waited leaves no row. With its mode
--- and source root, which the page write reads under this lock (M10 design 4.6): a downgrade takes the row FOR NO
--- KEY UPDATE, so a unit's mode does not change while it runs.
-SELECT id, mode, source_root_id FROM notebooks
+-- and source root, which the page write reads under this lock (M10 design 4.6), with its upgrade under way (M11
+-- design 4.5): a downgrade takes the row FOR NO KEY UPDATE, so a unit's mode and upgrade do not change while it runs.
+SELECT id, mode, source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at FROM notebooks
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL
 FOR SHARE;
 
@@ -56,8 +56,10 @@ WHERE id = sqlc.arg(id);
 -- The notebooks not deleted of the workspace that the account is an active member of, or, when the workspace
 -- access reaches it (an admin's or a member's), that are open to the workspace; with its explicit role and the
 -- count of active members. By name, case-insensitively, then by name and id. The same rule as the access
--- module's decision, shared.EffectiveNotebookRole: bootstrap's visibility test holds the two together.
-SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id, m.role,
+-- module's decision, shared.EffectiveNotebookRole: bootstrap's visibility test holds the two together. With its
+-- upgrade under way (M11 design 4.5).
+SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id,
+    n.upgrade_id, n.upgrade_state, n.upgrade_by_id, n.upgrade_at, m.role,
     (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n

@@ -12,3 +12,4 @@ created: 2026-10-04
 ## 处理进展
 
 - M11 开工（2026-11-08）：照[M11 总设计](../00-M11-design.md)第 7 节"移交的落实"：M10 已建类型 `mode`；M11 的每个升级状态的变化都经模式变化的订阅链发它，`EventMode` 不加字段、只改说明（00-M11 4.12）。说明在 P1/S1，最后一跳 `TestUpgradeStatesReachTheStreams` 在 P1/S2。仍是 `open`，做完的 Step 各加一行，M11 收尾时改为 `done`。
+- P1/S1（2026-11-09，合并见 [00 号文档](../00-M11-design.md)第 12 节）：`events.yaml` 的 `mode` 与 `EventMode` 的说明写上升级的转移（发起、提交、退回、批准、驳回、放弃、回滚的停下与结束），`EventMode` 不加字段；S1 还没有发它的转移，最后一跳 `TestUpgradeStatesReachTheStreams` 在 P1/S2。仍是 `open`。

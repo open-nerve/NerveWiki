@@ -149,6 +149,7 @@ func TestTheVersionOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, restorePath, restore, domain.Refuse(shared.NewError(shared.KindConflict, "page.source_immutable", "Sources are immutable."), id(12)), http.StatusConflict, "page.source_immutable"},
 		{http.MethodPost, restorePath, restore, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPost, restorePath, restore, domain.ErrRevisionMismatch, http.StatusConflict, "page.revision_mismatch"},
+		{http.MethodPost, restorePath, restore, domain.Refuse(domain.ErrUpgrading, id(12)), http.StatusConflict, "notebook.upgrading"},
 		{http.MethodPost, restorePath, restore, domain.Locked(id(12), id(2), "Bob"), http.StatusConflict, "page.locked"},
 	} {
 		status, body := call(t, (&fakes{err: tt.err}).serve(t), "session", tt.method, tt.path, tt.body)

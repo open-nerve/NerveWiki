@@ -1524,7 +1524,7 @@ export interface paths {
          *     - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
          *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
          *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after an upgrade once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
-         *     - mode: a notebook's mode changed, an LLM Wiki downgraded to a standard notebook (and, later, a notebook upgraded): its data is the notebook's ids. Read the notebook again, its mode and the caller's role in it with it.
+         *     - mode: a notebook's mode or its upgrade changed: a downgrade, an upgrade's start, submission, return, approval, rejection, abandonment, and its rollback's stop and end. Its data is the notebook's ids. Read the notebook again, its mode, its upgrade and the caller's role in it with it.
          *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
          *
          *     The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
@@ -2136,10 +2136,28 @@ export interface components {
          */
         WorkspaceAccess: "none" | "viewer" | "editor";
         /**
-         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode.
+         * @description A notebook's mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade's states are no mode; see the notebook's upgrade.
          * @enum {string}
          */
         NotebookMode: "standard" | "llm_wiki";
+        /**
+         * @description The state of a notebook's upgrade under way: upgrading while its initiator's agent rearranges it, reviewing once submitted, rolling_back while it is put back as it was when it started.
+         * @enum {string}
+         */
+        NotebookUpgradeState: "upgrading" | "reviewing" | "rolling_back";
+        /** @description A notebook's upgrade to an LLM Wiki under way, as each reader of the notebook sees it; its admins read the rest with getUpgrade. */
+        NotebookUpgrade: {
+            /** Format: uuid */
+            id: string;
+            state: components["schemas"]["NotebookUpgradeState"];
+            /**
+             * Format: uuid
+             * @description The account that started it.
+             */
+            started_by: string;
+            /** Format: date-time */
+            started_at: string;
+        };
         /**
          * @description A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.
          * @enum {string}
@@ -2159,6 +2177,8 @@ export interface components {
              * @description An LLM Wiki's source root: the page its template wrote, under which its sources are. Null for a standard notebook.
              */
             source_root_id: string | null;
+            /** @description The notebook's upgrade to an LLM Wiki under way, null for none. Whoever reads the notebook sees it: its content is read-only meanwhile, but for its initiator's MCP writes while upgrading. */
+            upgrade: components["schemas"]["NotebookUpgrade"] | null;
             role: components["schemas"]["NotebookRole"];
             /** @description How many active members the notebook has. A private notebook with one member is the caller's own ("My notebooks"). */
             member_count: number;
@@ -3261,7 +3281,7 @@ export interface components {
             /** @description Whether the write changed the aliases of the notebook's pages, a page's added or dropped by its content, or with the page itself: the links of the pages' versions, which the index does not hold, may resolve otherwise. False for a rebuilt index, whose null lists take every page as changed. */
             aliases: boolean;
         };
-        /** @description The data of mode, a change of a notebook's mode. */
+        /** @description The data of mode, a change of a notebook's mode or of its upgrade. */
         EventMode: {
             /** Format: uuid */
             workspace_id: string;
@@ -3674,6 +3694,8 @@ export type InvitationPreview = components['schemas']['InvitationPreview'];
 export type SlugAvailability = components['schemas']['SlugAvailability'];
 export type WorkspaceAccess = components['schemas']['WorkspaceAccess'];
 export type NotebookMode = components['schemas']['NotebookMode'];
+export type NotebookUpgradeState = components['schemas']['NotebookUpgradeState'];
+export type NotebookUpgrade = components['schemas']['NotebookUpgrade'];
 export type NotebookRole = components['schemas']['NotebookRole'];
 export type Notebook = components['schemas']['Notebook'];
 export type NotebookList = components['schemas']['NotebookList'];

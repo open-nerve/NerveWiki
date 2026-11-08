@@ -208,6 +208,90 @@ func TestTheNotebooksAnswerTheirMode(t *testing.T) {
 	}
 }
 
+// Each of the six queries that read a notebook's columns answers its
+// upgrade under way (M11/P1 design 3.3), set by SQL as an upgrade's start
+// sets it: FindNotebook, LockNotebook and LockOwnerlessOf, whose rows
+// notebookOf takes; ShareNotebook, a page write's lock; ListNotebooks and
+// ListOwnerless, which build the notebook by hand. Cleared, each answers
+// none.
+func TestTheNotebooksAnswerTheirUpgrade(t *testing.T) {
+	ctx := context.Background()
+	s, pool := newStore(t)
+	alice := newAccount(t, pool, "alice@corp.com")
+	acme := newWorkspace(t, pool, "acme", alice)
+	n := newNotebook(t, s, acme, "Field notes", shared.AccessViewer, alice)
+	upgrade := domain.Upgrade{ID: uuid.NewV7(), State: domain.UpgradeReviewing, By: alice, At: later()}
+	exec(t, pool, "UPDATE notebooks SET upgrade_id = $2, upgrade_state = $3, upgrade_by_id = $4, upgrade_at = $5 WHERE id = $1",
+		n.ID, upgrade.ID, string(upgrade.State), upgrade.By, upgrade.At)
+	if err := inTx(t, pool, func(ctx context.Context) error {
+		if err := s.EndMembershipsOf(ctx, alice, []uuid.UUID{n.ID}, alice, later()); err != nil {
+			return err
+		}
+		return s.SetOwnerless(ctx, []uuid.UUID{n.ID}, alice, later())
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// reads are the six queries' upgrades of n.
+	reads := func() map[string]domain.Upgrade {
+		t.Helper()
+		got := map[string]domain.Upgrade{}
+		found, err := s.FindNotebook(ctx, n.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got["FindNotebook"] = found.Upgrade
+		listed, err := s.ListNotebooks(ctx, acme, alice, true)
+		if err != nil || len(listed) != 1 {
+			t.Fatalf("ListNotebooks() = %+v, %v; want the notebook", listed, err)
+		}
+		got["ListNotebooks"] = listed[0].Notebook.Upgrade
+		ownerless, err := s.ListOwnerless(ctx, acme)
+		if err != nil || len(ownerless) != 1 {
+			t.Fatalf("ListOwnerless() = %+v, %v; want the notebook", ownerless, err)
+		}
+		got["ListOwnerless"] = ownerless[0].Notebook.Upgrade
+		if err := inTx(t, pool, func(ctx context.Context) error {
+			locked, err := s.LockNotebook(ctx, n.ID)
+			if err != nil {
+				return err
+			}
+			got["LockNotebook"] = locked.Upgrade
+			_, _, under, err := s.ShareNotebook(ctx, n.ID)
+			if err != nil {
+				return err
+			}
+			got["ShareNotebook"] = under
+			returned, err := s.LockOwnerlessOf(ctx, acme, alice)
+			if err != nil || len(returned) != 1 {
+				t.Fatalf("LockOwnerlessOf() = %+v, %v; want the notebook", returned, err)
+			}
+			got["LockOwnerlessOf"] = returned[0].Upgrade
+			return nil
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return got
+	}
+	same := func(a, b domain.Upgrade) bool {
+		return a.ID == b.ID && a.State == b.State && a.By == b.By && a.At.Equal(b.At)
+	}
+	got := reads()
+	if len(got) != 6 {
+		t.Fatalf("read %d of the six queries", len(got))
+	}
+	for query, u := range got {
+		if !same(u, upgrade) {
+			t.Errorf("%s answers the upgrade %+v, want %+v", query, u, upgrade)
+		}
+	}
+	exec(t, pool, "UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL WHERE id = $1", n.ID)
+	for query, u := range reads() {
+		if u != (domain.Upgrade{}) {
+			t.Errorf("%s of a notebook with none answers the upgrade %+v, want none", query, u)
+		}
+	}
+}
+
 func TestFindNotebookOfNoNotebook(t *testing.T) {
 	s, pool := newStore(t)
 	alice := newAccount(t, pool, "alice@corp.com")

@@ -252,7 +252,9 @@ type pageExtensions struct {
 // links event (M6/P3); M7's attachments observe them last, their rows
 // deleted with their nodes (M7/P2); M10's mode guard comes first, before
 // the lock, so that a write both refuse answers the mode's code (v0.1
-// design 12.4, M10 design 4.6); M11's freeze vetoes an opening. Its
+// design 12.4, M10 design 4.6); M11's freeze comes first of both, so that
+// a write it and another refuse answers notebook.upgrading (M11 design
+// 4.5), asking notebook.change_mode of an upgrade's initiator. Its
 // authorizer is the composition root's, which only serve has: the command
 // line takes the edit sessions' subscribers alone (pageSessionSubscribers).
 // serve and this package's tests take them from here; the page module's
@@ -260,14 +262,15 @@ type pageExtensions struct {
 func pageRegistrants(pool *pgxpool.Pool, authorizer shared.Authorizer, logger *slog.Logger) pageExtensions {
 	lock := page.NewEditLock(pool, displayNames{identity.NewDirectory(pool)})
 	mode := page.NewModeGuard(pool, authorizer)
+	freeze := page.NewFreezeGuard(pool, authorizer, notebook.ActionChangeMode)
 	links := linkIndex{linking.NewIndex(pool, linkTargets{page.NewLinkTargets(pool)}, linkEvents{events.NewPublisher()}, linking.IngestDeps{
 		Metadata: linkIngestMetadata{page.NewIngestMetadata(pool)}, Marks: linkIngestMarks{page.NewIngestMarks(pool)},
 		MaxContentBytes: page.MaxContentBytes, Logger: logger,
 	})}
 	return pageExtensions{
-		guards:             []page.WriteGuard{mode, lock},
+		guards:             []page.WriteGuard{freeze, mode, lock},
 		observers:          []page.PageObserver{pageEvents{events.NewPublisher()}, links, assetObserver{asset.NewPageObserver(pool)}},
-		sessionVetoers:     []page.EditSessionVetoer{mode, lock},
+		sessionVetoers:     []page.EditSessionVetoer{freeze, mode, lock},
 		sessionSubscribers: pageSessionSubscribers(),
 	}
 }

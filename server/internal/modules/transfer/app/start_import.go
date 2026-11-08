@@ -61,9 +61,10 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // writes its tree queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
 // running or being uploaded are 503 server_busy; a store that would keep
 // less than MinFree once the body, and what the other uploads have still
-// to store, are written is 507 storage_full. Once it passes, the notebook
-// is claimed for the upload until Release; a failure, or a panic,
-// releases it. The Checks decide one at a time.
+// to store, are written is 507 storage_full. A notebook being upgraded is
+// notebook.upgrading, right after the decision (M11 design 4.5). Once it
+// passes, the notebook is claimed for the upload until Release; a
+// failure, or a panic, releases it. The Checks decide one at a time.
 func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -74,6 +75,9 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 		return err
 	}
 	if err := s.d.authorize(ctx, actor, workspaceID, req.NotebookID, domain.ActionImport); err != nil {
+		return err
+	}
+	if err := s.d.notUpgrading(ctx, req.NotebookID); err != nil {
 		return err
 	}
 	if err := s.place(ctx, req); err != nil {
@@ -246,8 +250,15 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		return job, false, err
 	}
 	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.d.lock(ctx, actor, workspaceID, req.NotebookID, domain.ActionImport); err != nil {
+		state, err := s.d.lock(ctx, actor, workspaceID, req.NotebookID, domain.ActionImport)
+		if err != nil {
 			return err
+		}
+		// An upload Check let by before the upgrade's start is refused
+		// here, under the notebook's lock: its file goes as a failed
+		// import's (M11 design 4.5).
+		if state.UpgradeID != (uuid.UUID{}) {
+			return domain.ErrUpgrading
 		}
 		if err := s.place(ctx, req); err != nil {
 			return err

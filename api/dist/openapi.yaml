@@ -1062,6 +1062,7 @@ paths:
         - validation_failed
         - page.title_taken
         - page.too_deep
+        - notebook.upgrading
         - page.virtual_file
         - server_busy
       requestBody:
@@ -1141,6 +1142,7 @@ paths:
         - page.edit_session_taken_over
         - page.edit_session_unlocked
         - page.revision_mismatch
+        - notebook.upgrading
         - page.locked
         - server_busy
       requestBody:
@@ -1173,6 +1175,7 @@ paths:
         - page.source_immutable
         - page.not_found
         - forbidden
+        - notebook.upgrading
         - page.locked
       requestBody:
         required: false
@@ -1345,6 +1348,7 @@ paths:
         - forbidden
         - server_busy
         - page.revision_mismatch
+        - notebook.upgrading
         - page.locked
       requestBody:
         required: true
@@ -1378,6 +1382,7 @@ paths:
         - forbidden
         - page.revision_mismatch
         - validation_failed
+        - notebook.upgrading
         - page.locked
         - server_busy
       requestBody:
@@ -1454,6 +1459,7 @@ paths:
         - forbidden
         - validation_failed
         - page.title_taken
+        - notebook.upgrading
         - page.protected
         - page.virtual_file
         - page.source_admin_only
@@ -1486,6 +1492,7 @@ paths:
         - page.source_admin_only
         - page.not_found
         - forbidden
+        - notebook.upgrading
         - page.protected
         - page.locked
       responses:
@@ -1512,6 +1519,7 @@ paths:
         - page.cycle
         - page.title_taken
         - page.too_deep
+        - notebook.upgrading
         - page.protected
         - page.virtual_file
         - page.source_admin_only
@@ -1606,6 +1614,7 @@ paths:
         - page.restore_too_large
         - server_busy
         - page.trash_changed
+        - notebook.upgrading
       responses:
         '200':
           description: The item's root, restored.
@@ -1734,6 +1743,7 @@ paths:
         - page.changeset_trimmed
         - page.revert_too_large
         - page.revert_conflict
+        - notebook.upgrading
         - page.protected
         - page.source_admin_only
         - page.source_too_large
@@ -2055,7 +2065,7 @@ paths:
         - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
         - lock: an edit session of a page opened or ended; the client reads the page's lock again.
         - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after an upgrade once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
-        - mode: a notebook's mode changed, an LLM Wiki downgraded to a standard notebook (and, later, a notebook upgraded): its data is the notebook's ids. Read the notebook again, its mode and the caller's role in it with it.
+        - mode: a notebook's mode or its upgrade changed: a downgrade, an upgrade's start, submission, return, approval, rejection, abandonment, and its rollback's stop and end. Its data is the notebook's ids. Read the notebook again, its mode, its upgrade and the caller's role in it with it.
         - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
 
         The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
@@ -2098,6 +2108,7 @@ paths:
         - page.source_duplicate
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - validation_failed
         - page.title_taken
         - page.virtual_file
@@ -2337,6 +2348,7 @@ paths:
       x-problem-codes:
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.not_found
         - transfer.busy
         - server_busy
@@ -2383,6 +2395,7 @@ paths:
         - page.source_duplicate
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.not_found
         - page.not_in_trash
         - page.not_trash_root
@@ -2421,6 +2434,7 @@ paths:
         - validation_failed
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.changeset_not_found
         - page.changeset_trimmed
         - page.revert_too_large
@@ -3246,11 +3260,40 @@ components:
         - viewer
         - editor
     NotebookMode:
-      description: 'A notebook''s mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade''s states are no mode.'
+      description: 'A notebook''s mode. standard is a notebook as it always was; llm_wiki is an LLM Wiki: its source area holds sources written once, its root page AGENTS and source root cannot be deleted, index and log at its root are generated, and its agents are served the prompts ingest, query and lint. A downgrade makes an LLM Wiki standard; an upgrade''s states are no mode; see the notebook''s upgrade.'
       type: string
       enum:
         - standard
         - llm_wiki
+    NotebookUpgradeState:
+      description: 'The state of a notebook''s upgrade under way: upgrading while its initiator''s agent rearranges it, reviewing once submitted, rolling_back while it is put back as it was when it started.'
+      type: string
+      enum:
+        - upgrading
+        - reviewing
+        - rolling_back
+    NotebookUpgrade:
+      description: A notebook's upgrade to an LLM Wiki under way, as each reader of the notebook sees it; its admins read the rest with getUpgrade.
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - state
+        - started_by
+        - started_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/NotebookUpgradeState'
+        started_by:
+          description: The account that started it.
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
     NotebookRole:
       description: 'A role in a notebook: admin manages the notebook and its members, editor writes, reader reads. Rules compare roles by set; which of two is higher only the order reader < editor < admin says.'
       type: string
@@ -3269,6 +3312,7 @@ components:
         - workspace_access
         - mode
         - source_root_id
+        - upgrade
         - role
         - member_count
         - created_at
@@ -3292,6 +3336,11 @@ components:
             - string
             - 'null'
           format: uuid
+        upgrade:
+          description: 'The notebook''s upgrade to an LLM Wiki under way, null for none. Whoever reads the notebook sees it: its content is read-only meanwhile, but for its initiator''s MCP writes while upgrading.'
+          oneOf:
+            - $ref: '#/components/schemas/NotebookUpgrade'
+            - type: 'null'
         role:
           $ref: '#/components/schemas/NotebookRole'
         member_count:
@@ -5672,7 +5721,7 @@ components:
           description: 'Whether the write changed the aliases of the notebook''s pages, a page''s added or dropped by its content, or with the page itself: the links of the pages'' versions, which the index does not hold, may resolve otherwise. False for a rebuilt index, whose null lists take every page as changed.'
           type: boolean
     EventMode:
-      description: The data of mode, a change of a notebook's mode.
+      description: The data of mode, a change of a notebook's mode or of its upgrade.
       type: object
       additionalProperties: false
       required:

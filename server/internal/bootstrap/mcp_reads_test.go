@@ -423,7 +423,9 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // notebook's, grep server_busy once the app's one slot, which the test
 // holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls);
 // backlinks and index theirs, and their path's or parent's page.not_found
-// (linkCodeCalls).
+// (linkCodeCalls). The codes of an upgrade's freeze and guardrails, which
+// upgradeToolCodes lists, the seventh shard's TestUpgradeToolsErrorsCarryTheirCodes
+// answers (M11/P1 design 3.6): this app has no upgrade.
 func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	slots := page.NewGrepSlots(1)
 	r := startReadsAppWith(t, publicOrigin, wiring{page: func(d *page.Deps) { d.GrepSlots = slots }})
@@ -470,9 +472,10 @@ func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	wikiToolCodeCalls(t, answered)
 	busyWrites(t, answered)
 	r.busyGrep(t, slots, answered)
+	upgrade := upgradeToolCodes()
 	for tool, codes := range mcpToolCodes() {
 		for _, code := range codes {
-			if !answered[tool][code] {
+			if !answered[tool][code] && !upgrade[toolCode{tool, code}] {
 				t.Errorf("%s's row lists %s, which no call here answers", tool, code)
 			}
 		}

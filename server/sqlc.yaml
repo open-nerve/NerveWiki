@@ -58,6 +58,7 @@ sql:
       - migrations/sql/00010_notebook_notebook_members.sql
       - migrations/sql/00011_notebook_notebook_audit_events.sql
       - migrations/sql/00048_notebook_notebooks_mode.sql
+      - migrations/sql/00055_notebook_notebooks_upgrade.sql
     queries: internal/modules/notebook/adapter/postgres/queries
     gen:
       go:
@@ -103,6 +104,7 @@ sql:
       - migrations/sql/00050_page_nodes_source_hash.sql
       - migrations/sql/00053_page_ingest.sql
       - migrations/sql/00054_page_content_compression.sql
+      - migrations/sql/00056_page_upgrade_nodes.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:

@@ -456,9 +456,36 @@ components:
         page AGENTS and source root cannot be deleted, index and log at its
         root are generated, and its agents are served the prompts ingest,
         query and lint. A downgrade makes an LLM Wiki standard; an upgrade's
-        states are no mode.
+        states are no mode; see the notebook's upgrade.
       type: string
       enum: [standard, llm_wiki]
+    NotebookUpgradeState:
+      description: >-
+        The state of a notebook's upgrade under way: upgrading while its
+        initiator's agent rearranges it, reviewing once submitted,
+        rolling_back while it is put back as it was when it started.
+      type: string
+      enum: [upgrading, reviewing, rolling_back]
+    NotebookUpgrade:
+      description: >-
+        A notebook's upgrade to an LLM Wiki under way, as each reader of the
+        notebook sees it; its admins read the rest with getUpgrade.
+      type: object
+      additionalProperties: false
+      required: [id, state, started_by, started_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/NotebookUpgradeState"
+        started_by:
+          description: The account that started it.
+          type: string
+          format: uuid
+        started_at:
+          type: string
+          format: date-time
     Notebook:
       description: >-
         A notebook, with the caller's effective role in it: the higher of its
@@ -466,7 +493,19 @@ components:
       type: object
       additionalProperties: false
       required:
-        [id, workspace_id, name, workspace_access, mode, source_root_id, role, member_count, created_at, updated_at]
+        [
+          id,
+          workspace_id,
+          name,
+          workspace_access,
+          mode,
+          source_root_id,
+          upgrade,
+          role,
+          member_count,
+          created_at,
+          updated_at,
+        ]
       properties:
         id:
           type: string
@@ -486,6 +525,14 @@ components:
             which its sources are. Null for a standard notebook.
           type: [string, "null"]
           format: uuid
+        upgrade:
+          description: >-
+            The notebook's upgrade to an LLM Wiki under way, null for none.
+            Whoever reads the notebook sees it: its content is read-only
+            meanwhile, but for its initiator's MCP writes while upgrading.
+          oneOf:
+            - $ref: "#/components/schemas/NotebookUpgrade"
+            - type: "null"
         role:
           $ref: "#/components/schemas/NotebookRole"
         member_count:

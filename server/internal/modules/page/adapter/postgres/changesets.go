@@ -13,13 +13,16 @@ import (
 
 // CreateChangeset implements app.ChangesetWriter.
 func (s *Store) CreateChangeset(ctx context.Context, c app.Changeset) error {
-	var reverts *uuid.UUID
+	var reverts, upgrade *uuid.UUID
 	if c.RevertsID != (uuid.UUID{}) {
 		reverts = &c.RevertsID
 	}
+	if c.UpgradeID != (uuid.UUID{}) {
+		upgrade = &c.UpgradeID
+	}
 	if err := s.queries(ctx).CreateChangeset(ctx, gen.CreateChangesetParams{
 		ID: c.ID, NotebookID: c.NotebookID, Kind: string(c.Kind), RevertsID: reverts, Client: string(c.Client), Message: c.Message,
-		By: c.By, Now: c.At,
+		By: c.By, Now: c.At, UpgradeID: upgrade,
 	}); err != nil {
 		return fmt.Errorf("create changeset: %w", err)
 	}

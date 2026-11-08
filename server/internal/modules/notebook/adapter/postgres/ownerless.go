@@ -20,7 +20,8 @@ func (s *Store) ListOwnerless(ctx context.Context, workspaceID uuid.UUID) ([]app
 		n := notebookOf(gen.FindNotebookRow{
 			ID: r.ID, WorkspaceID: r.WorkspaceID, Name: r.Name, WorkspaceAccess: r.WorkspaceAccess, CreatedAt: r.CreatedAt,
 			UpdatedAt: r.UpdatedAt, OwnerlessSince: r.OwnerlessSince, FormerOwnerID: r.FormerOwnerID, Mode: r.Mode,
-			SourceRootID: r.SourceRootID,
+			SourceRootID: r.SourceRootID, UpgradeID: r.UpgradeID, UpgradeState: r.UpgradeState, UpgradeByID: r.UpgradeByID,
+			UpgradeAt: r.UpgradeAt,
 		})
 		listed[i] = app.OwnerlessListed{Notebook: n, MemberCount: int(r.MemberCount)}
 	}

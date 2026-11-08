@@ -180,7 +180,7 @@
 
 只在 `upgrading`、只对发起人的 MCP 写（4.5 第 4 步之后）。分两块：删除在 P1/S1（回滚依赖"基线节点删不掉"，要从能发起的那一刻起成立，审查 A-M4），其余在 P2/S1。
 
-**删除**（P1/S1）：`OpDelete` 的 `Changes` 列出整棵子树的每个节点（`page/app/unit_delete.go:34-51`）。其中有 `upgrade_nodes` 里的节点（基线节点或提议的来源根的保护行）时拒绝 409 `page.upgrade_protected`，一条按 `(upgrade_id, node_id = ANY(…))` 的读。拒绝以 `domain.Refuse(err, 第一个受保护的节点)` 标出，不让 `refusalOf` 默认标子树的根（`page/app/unit.go:333-339` 取 `s.Changes[0]`，那可能是 agent 新建的文件夹，审查 A-N3）：`batch` 的失败项与 MCP 的文字指向真正受保护的那个。升级中新建的节点可以删。
+**删除**（P1/S1）：`OpDelete` 的 `Changes` 列出整棵子树的每个节点（`page/app/unit_delete.go:34-51`）。其中有 `upgrade_nodes` 里的节点（基线节点或提议的来源根的保护行）时拒绝 409 `page.upgrade_protected`，一条按 `(upgrade_id, node_id = ANY(…))` 的读。拒绝以 `domain.Refuse(err, 第一个受保护的节点)` 标出，不让 `refusalOf` 默认标子树的根（`page/app/unit.go:333-339` 取 `s.Changes[0]`，那可能是 agent 新建的文件夹，审查 A-N3）。被标的节点只在 page 之内看得到（`TestTheFreezeGuard` 钉住）：MCP 的工具错误只带 `code`、`message` 与 `op`，`batch` 的失败项是那个删除的操作；transfer 的 `refused` 带节点，但后台任务的单元不是 MCP 的写，到不了护栏。P1 不为它改 MCP 工具错误的形状（P1/S1 审查 S1A-Q1 = S1C-M1，决定 237）。升级中新建的节点可以删。
 
 **不改写链接的移动与改名**（P2/S1，审查 B-I2）：MCP 的 `move` 与 `batch` 的移动都有 `update_links`（`api/mcp/tools.json` 的说明："leaves every page linking to it as it is: those links may then lead elsewhere, or nowhere"）。单个的 `move` 经 `page/app/relocate_path.go:85-86` 放进 `Write.Options.UpdateLinks`；`batch` 的单元整体是 `UpdateLinks: true`（`page/app/apply_batch.go:255`），每个移动经 `Placement.KeepLinks`（`:769-770`、`page/app/unit_relocate.go:40`）让 `follow` 不跟（`page/app/unit.go:537`），`Step` 里今天没有这个标记。改：单元在搬迁的步上设 `Step.KeepLinks`（来自 `u.keepLinks`）；护栏对 `OpMove`、`OpRename` 的步，`!s.Options.UpdateLinks || s.KeepLinks` 时拒绝 409 `page.upgrade_keep_links`。不改写链接，原有页的链接就断了或指向别处，而它们的字节不变，闸门 6、7 都看不出；agent 可能为了"不碰原有页的正文"关掉改写，playbook 写明系统的改写是放行的。
 
@@ -698,7 +698,7 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
   | 发起 | 10 万节点、10 万页（含来源区里基线页的第二遍；另量第 16 步的 `ANALYZE`） | `upgrade_nodes` 从未分析、分析过另一次升级的行、本次 `ANALYZE` 之后 × 自定义与通用计划（05-lessons 第 4 节） | 发起实际受的期限 `ctxStart`，不是请求的期限（核对 B3-M2）：守卫照 lint 的成本守卫的配置（请求 6 s、`LintTimeout` 3 s，`bootstrap/wiki_lint_cost_test.go:27-34`，M10 决定 160），生产 7.5 s（`request_timeout: 15s`，`server/configs/config.yaml:17`；`bootstrap/wire.go:249`）；默认 4 s 的请求下是 2 s。放不下时照第 232 条，不悄悄放宽 |
   | 检查 | 10 万页 | 同上（闸门 7 的连接、"新建的页"的 `NOT EXISTS`、逐页比 `wanted` 读全部基线页，核对 B2-N6） | 照决定 160 的例外：请求 6 s、worker 3 s |
   | 批准 | 10 万个来源 | 同上（基线行的 `DELETE`） | 请求 4 s |
-  | 删除护栏的读 | 一次删 1 万个节点的子树 | 同上（`node_id = ANY(…)` 按主键） | 单元 2 s |
+  | 删除护栏的读 | 一次删 1 万个节点的子树 | 同上（`node_id = ANY(…)` 按主键；自定义与通用两种计划都断言只经主键读、两列都进索引条件） | 计划为主，时长为辅：本机两轮中位数 × 3（P1/S1 取 25 ms；初稿写"单元 2 s"，P1/S1 审查 S1B-I1 = S1C-M2，决定 236） |
   | 回滚的计划 | 10 万个条目 | —（纯函数）与合成读的三种统计状态 | 本机两轮中位数 × 3 的时长与 `TotalAlloc` |
   | 回滚先删 | 10 万个零散的新页 | 同上 | 本机两轮中位数 × 3（核对 A2-N5） |
   | 剩下的差的读 | 10 万节点、10 万页 | 同上（`getUpgrade` 与 `endUpgradeRollback` 共用这一条读） | 请求 4 s（核对 C2-M3、B2-N6，第 226 条） |
@@ -833,7 +833,7 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 冻结、发起与放弃（S1–S4） | [01-P1](01-P1-freeze-start-rollback.md) | 进行中（设计已审查） | [设计](reviews/P1-design-review.md) | — |
+| P1 冻结、发起与放弃（S1–S4） | [01-P1](01-P1-freeze-start-rollback.md) | 进行中（S1 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-freeze-guardrails-review.md) | — |
 | P2 护栏、闸门与提交（S1–S3） | — | 未开始 | — | — |
 | P3 审阅、批准与 playbook（S1–S3） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
@@ -849,3 +849,4 @@ M11 不建立新的扩展点（12.4 里 M11 只注册）。注册：
 | 2026-11-08 | 修订核对第三轮之后的修订（主持者）：取消回滚的矩阵变体改为"its own rollback, ended"（C4-M1）；退回答 409 时网页显示自己的文字（C4-N1）；`ANALYZE` 的余量的理由改正（B4-N1） | [设计审查记录](reviews/M11-design-review.md)"修订核对第三轮" |
 | 2026-11-08 | 设计定稿：第 7 节"总体设计的修订"第 2–29 条以脚本落进 `v0.1-design.md`（48 处带标签的替换与插入，每段旧文字在替换时恰好出现一次；第 1 条不改，第 30 条的 13.1–13.4 随实现它们的 Phase 改），其中 12.2 的 M11 一行是中偏重、12.6 的 M11 一行是进行中、第 15 节加 M11 开工一行；`docs/README.md` 加 M11 的提交说明一句；状态改为进行中 | 设计审查与三轮修订核对没有 Important 与 Minor（[审查记录](reviews/M11-design-review.md)）；`02-workflow.md` 第 1 节第 8 步 |
 | 2026-11-08 | P1 设计已审查，S1 开工；P1 设计 2.1 的十三条修订落进本文：读笔记本的六条查询多选四列；`Lock` 只锁笔记本行，工作区行由调用方先锁；transfer 的笔记本端口由组合根的 `transferNotebooks` 实现；发起按笔记本删过期的会话、读活着的会话；回滚的一遍或只删、或合成计划；`Upgrade.report` 在 P2/S2 加；冻结的整个程序测试去掉登记里的冻结；`expectConsole` 的写法；`threeBrowsers` 在 P1 只加 UP1；page 的 `Deps.UpgradeAction`；发起只调 `prepareIn`、只准备 `wanted`（4.7 与第 7 节里说发起调 `computeIn` 的两处随之改）；回滚不前进的判据；第二遍每 512 页一段。第 11 节加 P1 的取舍 233–235 | [P1 设计](01-P1-freeze-start-rollback.md) 2.1、2.3 与它的[审查记录](reviews/P1-design-review.md)（设计审查与修订核对第一轮） |
+| 2026-11-09 | P1 的 S1 实施、审查与修复核对（合并的提交见第 12 节）：迁移 00055（笔记本的升级四列）与 00056（`upgrade_nodes`、`changesets.upgrade_id`）；notebook 的六条读带升级、契约的 `Notebook.upgrade`；page 的冻结的守卫与否决者排在最前（`[freeze, mode, lock]`），按 `UpgradeOwn` 放行升级自己的单元，发起人在 `upgrading` 中的 MCP 写每个单元问一次 `notebook.change_mode`；删除的护栏（`page.upgrade_protected`）；page 的三个预检与 transfer 的导入预检、建任务与开始答 `notebook.upgrading`，导出照常；14 个 REST 操作与 5 个 MCP 写工具的码；组合根的第七份。与设计不同之处：反例每个只违反一个合取、Down 的版本号、三个预检共用 `Writer.notUpgrading` 等 24 条偏离（P1 设计 3.25）。审查之后：删除护栏的读的成本守卫以计划为主、界 25 ms，第 9 节的那一行随之改（决定 236）；被标的节点只在 page 之内看得到，4.6 那一句照实改（决定 237）；M10 的 lint 迁移的成本夹具从最新的迁移退（决定 238）；冻结的守卫对不认识的判定答缺陷的错误。修复核对一轮三位都没有新的发现，不需要第二轮。P1 设计随之改 3.2–3.5、3.8、3.14、3.24、6.1、6.3、7.1、7.3、7.5，加 3.25 与 10.1 | [P1 设计](01-P1-freeze-start-rollback.md) 3.25、10.1 与 [S1 的审查记录](reviews/P1-S1-freeze-guardrails-review.md)（主持者的决定 236–239） |

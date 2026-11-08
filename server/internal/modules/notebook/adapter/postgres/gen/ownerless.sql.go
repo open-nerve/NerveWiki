@@ -14,7 +14,7 @@ import (
 
 const listOwnerless = `-- name: ListOwnerless :many
 SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.ownerless_since, n.former_owner_id,
-    n.mode, n.source_root_id, (SELECT count(*) FROM notebook_members c
+    n.mode, n.source_root_id, n.upgrade_id, n.upgrade_state, n.upgrade_by_id, n.upgrade_at, (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n
 WHERE n.workspace_id = $1 AND n.deleted_at IS NULL AND n.ownerless_since IS NOT NULL
@@ -32,11 +32,15 @@ type ListOwnerlessRow struct {
 	FormerOwnerID   *uuid.UUID
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 	MemberCount     int64
 }
 
 // The ownerless notebooks not deleted of the workspace, the earliest to become so first, then by id; with the
-// count of active members.
+// count of active members. With its upgrade under way (M11 design 4.5).
 func (q *Queries) ListOwnerless(ctx context.Context, workspaceID uuid.UUID) ([]ListOwnerlessRow, error) {
 	rows, err := q.db.Query(ctx, listOwnerless, workspaceID)
 	if err != nil {
@@ -57,6 +61,10 @@ func (q *Queries) ListOwnerless(ctx context.Context, workspaceID uuid.UUID) ([]L
 			&i.FormerOwnerID,
 			&i.Mode,
 			&i.SourceRootID,
+			&i.UpgradeID,
+			&i.UpgradeState,
+			&i.UpgradeByID,
+			&i.UpgradeAt,
 			&i.MemberCount,
 		); err != nil {
 			return nil, err

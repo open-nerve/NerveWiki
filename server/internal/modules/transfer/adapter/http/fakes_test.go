@@ -12,6 +12,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
@@ -96,15 +97,29 @@ type workspaces struct{}
 
 func (workspaces) ShareByID(context.Context, uuid.UUID) (bool, error) { return true, nil }
 
-// notebooks has notebookID() alone, named Eng.
-type notebooks struct{}
+// notebooks has notebookID() alone, named Eng, being upgraded while
+// upgrading is set.
+type notebooks struct {
+	upgrading *atomic.Bool
+}
 
 func (notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, error) {
 	return workspaceID(), id == notebookID(), nil
 }
 
-func (notebooks) ShareByID(_ context.Context, id uuid.UUID) (bool, error) {
-	return id == notebookID(), nil
+func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
+	return n.state(), id == notebookID(), nil
+}
+
+func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
+	return n.state(), id == notebookID(), nil
+}
+
+func (n notebooks) state() app.NotebookState {
+	if n.upgrading != nil && n.upgrading.Load() {
+		return app.NotebookState{UpgradeID: pageID()}
+	}
+	return app.NotebookState{}
 }
 
 func (notebooks) NameOf(_ context.Context, id uuid.UUID) (string, bool, error) {
@@ -639,6 +654,7 @@ type harness struct {
 	base      string
 	client    *http.Client
 	anonymous *bucket
+	upgrading atomic.Bool // the notebook being upgraded
 }
 
 const (
@@ -661,7 +677,7 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 		queue: &queue{}, signer: macadapter.New([]byte("key")), signedAt: now(), logs: &syncBuffer{}, contract: apitest.Load(t),
 		client: &http.Client{Timeout: 10 * time.Second}, anonymous: &bucket{left: 1000}}
 	logger := slog.New(slog.NewTextHandler(h.logs, nil))
-	start := app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{}, Nodes: nodes{},
+	start := app.StartDeps{Tx: direct{}, Authorizer: roles{}, Workspaces: workspaces{}, Notebooks: notebooks{upgrading: &h.upgrading}, Nodes: nodes{},
 		Rows: h.rows, Archives: h.archives, Queue: h.queue, Names: names{}, Signer: h.signer, Clock: fixedClock{}, Logger: logger,
 		Uploads: app.NewUploads(), MaxQueued: maxQueued, MinFree: minFree, ImportMaxBytes: importMaxBytes}
 	background := app.BackgroundDeps{Tree: tree{}, RestoreAction: restoreAction, RevertAction: revertAction}

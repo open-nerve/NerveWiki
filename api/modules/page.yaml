@@ -69,6 +69,7 @@ paths:
           validation_failed,
           page.title_taken,
           page.too_deep,
+          notebook.upgrading,
           page.virtual_file,
           server_busy,
         ]
@@ -183,6 +184,7 @@ paths:
           page.edit_session_taken_over,
           page.edit_session_unlocked,
           page.revision_mismatch,
+          notebook.upgrading,
           page.locked,
           server_busy,
         ]
@@ -225,7 +227,7 @@ paths:
         takeover leaves existing sessions unchanged. The source root and
         AGENTS can have edit sessions.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.source_immutable, page.not_found, forbidden, page.locked]
+      x-problem-codes: [page.source_immutable, page.not_found, forbidden, notebook.upgrading, page.locked]
       requestBody:
         required: false
         content:
@@ -480,6 +482,7 @@ paths:
           forbidden,
           server_busy,
           page.revision_mismatch,
+          notebook.upgrading,
           page.locked,
         ]
       requestBody:
@@ -533,6 +536,7 @@ paths:
           forbidden,
           page.revision_mismatch,
           validation_failed,
+          notebook.upgrading,
           page.locked,
           server_busy,
         ]
@@ -638,6 +642,7 @@ paths:
           forbidden,
           validation_failed,
           page.title_taken,
+          notebook.upgrading,
           page.protected,
           page.virtual_file,
           page.source_admin_only,
@@ -679,7 +684,8 @@ paths:
         requires a notebook admin (page.source_admin_only), before any lock
         is looked at; an admin still cannot delete the source root.
       security: [{ bearer: [] }]
-      x-problem-codes: [page.source_admin_only, page.not_found, forbidden, page.protected, page.locked]
+      x-problem-codes:
+        [page.source_admin_only, page.not_found, forbidden, notebook.upgrading, page.protected, page.locked]
       responses:
         "204":
           description: The node and the nodes under it are deleted.
@@ -744,6 +750,7 @@ paths:
           page.cycle,
           page.title_taken,
           page.too_deep,
+          notebook.upgrading,
           page.protected,
           page.virtual_file,
           page.source_admin_only,
@@ -875,6 +882,7 @@ paths:
           page.restore_too_large,
           server_busy,
           page.trash_changed,
+          notebook.upgrading,
         ]
       responses:
         "200":
@@ -1090,6 +1098,7 @@ paths:
           page.changeset_trimmed,
           page.revert_too_large,
           page.revert_conflict,
+          notebook.upgrading,
           page.protected,
           page.source_admin_only,
           page.source_too_large,

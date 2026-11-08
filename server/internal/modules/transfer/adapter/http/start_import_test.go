@@ -130,6 +130,8 @@ func TestStartImportRefusesBeforeTheFile(t *testing.T) {
 		{"a notebook that is not", nil, "/api/v0/notebooks/" + pageID().String() + "/imports", "bob", nil,
 			http.StatusNotFound, "notebook.not_found"},
 		{"a reader", nil, importsPath(), "session", nil, http.StatusForbidden, "forbidden"},
+		{"a notebook being upgraded", func(h *harness) { h.upgrading.Store(true) }, importsPath(), "bob", nil, http.StatusConflict,
+			"notebook.upgrading"},
 		{"a parent that is no page", nil, importsPath(), "bob", []part{{name: "parent_id", value: notebookID().String()}},
 			http.StatusNotFound, "page.not_found"},
 		{"an import under way", func(h *harness) {

@@ -58,7 +58,8 @@ func TestTheBackgroundStartsQueueTheJob(t *testing.T) {
 }
 
 // Each refusal of a background start answers its code: the page module's
-// checks', then a write into the notebook under way, then the queue full.
+// checks', then a notebook being upgraded, a write into the notebook under
+// way, then the queue full.
 func TestTheBackgroundStartsRefusals(t *testing.T) {
 	other := "/api/v0/notebooks/" + pageID().String()
 	restore := func(id string) string { return `{"node_id": "` + id + `"}` }
@@ -68,6 +69,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		h.rows.add(domain.Job{ID: pageID(), NotebookID: notebookID(), Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: alice(),
 			CreatedAt: now()})
 	}
+	upgrading := func(h *harness) { h.upgrading.Store(true) }
 	full := func(h *harness) {
 		for range maxQueued {
 			h.job(alice(), domain.StateQueued, now(), "")
@@ -90,6 +92,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		{"an item expired", nil, restoresPath(), "bob", restore(refusing("page.restore_expired")), http.StatusConflict, "page.restore_expired"},
 		{"duplicate restore", nil, restoresPath(), "bob", restore(refusing("page.source_duplicate")), http.StatusConflict, "page.source_duplicate"},
 		{"duplicate revert", nil, revertsPath(), "bob", revert(refusing("page.source_duplicate")), http.StatusConflict, "page.source_duplicate"},
+		{"a restore of a notebook being upgraded", upgrading, restoresPath(), "bob", restore(free), http.StatusConflict, "notebook.upgrading"},
 		{"a restore beside a write", writing, restoresPath(), "bob", restore(free), http.StatusConflict, "transfer.busy"},
 		{"a restore with the queue full", full, restoresPath(), "bob", restore(free), http.StatusServiceUnavailable, "server_busy"},
 		{"an empty message", nil, revertsPath(), "bob", `{"changeset_id": "` + free + `", "message": ""}`, http.StatusUnprocessableEntity,
@@ -102,6 +105,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			"page.changeset_trimmed"},
 		{"a changeset too large", nil, revertsPath(), "bob", revert(refusing("page.revert_too_large")), http.StatusUnprocessableEntity,
 			"page.revert_too_large"},
+		{"a revert of a notebook being upgraded", upgrading, revertsPath(), "bob", revert(free), http.StatusConflict, "notebook.upgrading"},
 		{"a revert beside a write", writing, revertsPath(), "bob", revert(free), http.StatusConflict, "transfer.busy"},
 		{"conflicts", nil, revertsPath(), "bob", revert(conflicting().String()), http.StatusConflict, "page.revert_conflict"},
 		{"an immutable source", nil, revertsPath(), "bob", revert(refusing("page.source_immutable")), http.StatusConflict, "page.source_immutable"},

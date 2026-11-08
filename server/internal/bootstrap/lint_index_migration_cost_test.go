@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/fs"
+	"maps"
 	"net/http"
 	"slices"
 	"strconv"
@@ -101,27 +102,13 @@ func lintMigrationFootprintOf(t *testing.T, pool *pgxpool.Pool) lintMigrationFoo
 // This test-only ceiling keeps Up51 separate after production adds Up52.
 func lintMigrationFS(t *testing.T, ceiling int64) fs.FS {
 	t.Helper()
-	original := migrations.FS()
-	entries, err := fs.ReadDir(original, ".")
-	if err != nil {
-		t.Fatal(err)
-	}
 	files := fstest.MapFS{}
 	found := false
-	for _, entry := range entries {
-		name := entry.Name()
-		prefix, _, ok := strings.Cut(name, "_")
-		if entry.IsDir() || !ok || !strings.HasSuffix(name, ".sql") {
-			continue
-		}
-		version, err := strconv.ParseInt(prefix, 10, 64)
-		if err != nil {
-			t.Fatal(err)
-		}
+	for version, name := range lintEmbeddedMigrations(t) {
 		if version > ceiling {
 			continue
 		}
-		data, err := fs.ReadFile(original, name)
+		data, err := fs.ReadFile(migrations.FS(), name)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -152,30 +139,78 @@ func lintSourcesMigrator(t *testing.T, pool *pgxpool.Pool) *postgres.Migrator {
 	return lintCostMigrator(t, pool, 51)
 }
 
+// lintEmbeddedMigrations are the embedded migrations' names by version.
+func lintEmbeddedMigrations(t *testing.T) map[int64]string {
+	t.Helper()
+	entries, err := fs.ReadDir(migrations.FS(), ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[int64]string{}
+	for _, entry := range entries {
+		name := entry.Name()
+		prefix, _, ok := strings.Cut(name, "_")
+		if entry.IsDir() || !ok || !strings.HasSuffix(name, ".sql") {
+			continue
+		}
+		version, err := strconv.ParseInt(prefix, 10, 64)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if names[version] != "" {
+			t.Fatalf("migrations %s and %s are both version %d", names[version], name, version)
+		}
+		names[version] = name
+	}
+	return names
+}
+
 // lintMigrationDropIngest restores the schema-52 starting point of the
 // older index migrations after their real seed app has stopped. Keep the
 // shared application seed on the current schema for its other consumers.
 func lintMigrationDropIngest(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	// Restore the older compression policy through the real Down54 first.
+	// Undo every migration after 54, from the newest embedded one down,
+	// each through its real Down (M11's upgrade baseline and columns, 56
+	// and 55, and whatever comes after them), then restore the older
+	// compression policy (54) and drop ingest (53). The fixture names no
+	// newest migration, so a new one needs no line here (decision 238).
 	// Down does not rewrite the seed app's existing content.
-	if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != 54 {
-		t.Fatalf("legacy migration setup version=%d, want 54 before Down", version)
+	names := lintEmbeddedMigrations(t)
+	newest := slices.Max(slices.Collect(maps.Keys(names)))
+	v := count(t, pool, "SELECT max(version_id) FROM goose_db_version")
+	if int64(v) != newest {
+		t.Fatalf("legacy migration setup version=%d, want the newest embedded migration %d", v, newest)
 	}
-	m54 := lintCostMigrator(t, pool, 54)
-	r54, err54 := m54.Down(t.Context())
-	close54Err := m54.Close()
-	if err54 != nil || close54Err != nil || r54 == nil || r54.Version != 54 || r54.Source != "00054_page_content_compression.sql" {
-		t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only compression migration 54", r54, err54, close54Err)
+	for v > 54 {
+		m := lintCostMigrator(t, pool, int64(v))
+		r, err := m.Down(t.Context())
+		closeErr := m.Close()
+		if err != nil || closeErr != nil || r == nil || r.Version != int64(v) || r.Source != names[int64(v)] {
+			t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only migration %d, %s", r, err, closeErr, v, names[int64(v)])
+		}
+		next := count(t, pool, "SELECT max(version_id) FROM goose_db_version")
+		if next >= v {
+			t.Fatalf("legacy migration setup version=%d after Down%d", next, v)
+		}
+		v = next
 	}
-	if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != 53 {
-		t.Fatalf("legacy migration setup version=%d, want 53 before Down", version)
-	}
-	m := lintCostMigrator(t, pool, 53)
-	r, err := m.Down(t.Context())
-	closeErr := m.Close()
-	if err != nil || closeErr != nil || r == nil || r.Version != 53 || r.Source != "00053_page_ingest.sql" {
-		t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only ingest migration 53", r, err, closeErr)
+	for _, down := range []struct {
+		version int
+		source  string
+	}{
+		{54, "00054_page_content_compression.sql"},
+		{53, "00053_page_ingest.sql"},
+	} {
+		if version := count(t, pool, "SELECT max(version_id) FROM goose_db_version"); version != down.version {
+			t.Fatalf("legacy migration setup version=%d, want %d before Down", version, down.version)
+		}
+		m := lintCostMigrator(t, pool, int64(down.version))
+		r, err := m.Down(t.Context())
+		closeErr := m.Close()
+		if err != nil || closeErr != nil || r == nil || r.Version != int64(down.version) || r.Source != down.source {
+			t.Fatalf("legacy migration setup Down = %+v, %v; close=%v; want only migration %d", r, err, closeErr, down.version)
+		}
 	}
 	if n := count(t, pool, `SELECT
  (to_regclass('public.changeset_sources') IS NOT NULL)::integer

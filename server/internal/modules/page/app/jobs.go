@@ -111,12 +111,17 @@ func (w *JobWrites) checks() revertChecks {
 // CheckRestore checks a background restore of the trash item of the root
 // nodeID in the notebook, unlocked, and answers its name (M8 design 4.14,
 // startTrashRestore's order): notebook.not_found for a notebook that is
-// not there or the caller cannot see, forbidden for a reader, page.not_found
-// for a node not of the notebook, or purged; then page.not_in_trash,
-// page.not_trash_root and page.restore_expired. Its size is no bound: any
-// item restores in the background.
+// not there or the caller cannot see, forbidden for a reader,
+// notebook.upgrading for a notebook being upgraded (M11 design 4.5),
+// page.not_found for a node not of the notebook, or purged; then
+// page.not_in_trash, page.not_trash_root and page.restore_expired. Its size
+// is no bound: any item restores in the background.
 func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UUID, admit func(context.Context) error) (string, error) {
 	if err := w.writer.Allowed(ctx, restoreUnit(JobSpec{NotebookID: notebookID})); err != nil {
+		return "", err
+	}
+	notebook, err := w.writer.notUpgrading(ctx, notebookID)
+	if err != nil {
 		return "", err
 	}
 	n, err := w.reads.Nodes.FindAnyNode(ctx, nodeID)
@@ -137,13 +142,6 @@ func (w *JobWrites) CheckRestore(ctx context.Context, notebookID, nodeID uuid.UU
 			return "", err
 		}
 	}
-	notebook, ok, err := w.writer.d.Notebooks.StateOf(ctx, notebookID)
-	if err != nil {
-		return "", err
-	}
-	if !ok {
-		return "", domain.ErrNotebookNotFound
-	}
 	if notebook.Mode == domain.ModeLLMWiki {
 		if _, err := w.planRestoreSource(ctx, JobSpec{NotebookID: notebookID}, root, notebook); err != nil {
 			return "", err
@@ -158,13 +156,13 @@ type JobBatches func([]domain.JobStep) [][2]int
 // CheckRevert checks a background revert of the changeset changesetID in
 // the notebook with message (nil: none), unlocked, and answers the
 // changeset's kind (M8 design 4.14, startRevert's order): a message that
-// breaks its rules is 422 validation_failed; notebook.not_found and
-// forbidden as CheckRestore; page.changeset_not_found for a changeset not
-// of the notebook; then the revert's check (revertChecks.check), its
-// items bounded by MaxJobItems, admit called right after them, before
-// anything else is read, its error answered as it is; and page.locked
-// after the plan's conflicts, for a page it deletes or writes back that
-// an edit session holds.
+// breaks its rules is 422 validation_failed; notebook.not_found, forbidden
+// and notebook.upgrading as CheckRestore; page.changeset_not_found for a
+// changeset not of the notebook; then the revert's check
+// (revertChecks.check), its items bounded by MaxJobItems, admit called
+// right after them, before anything else is read, its error answered as
+// it is; and page.locked after the plan's conflicts, for a page it
+// deletes or writes back that an edit session holds.
 func (w *JobWrites) CheckRevert(ctx context.Context, notebookID, changesetID uuid.UUID, message *string,
 	admit func(context.Context) error, batches JobBatches,
 ) (domain.ChangesetKind, error) {
@@ -178,6 +176,9 @@ func (w *JobWrites) CheckRevert(ctx context.Context, notebookID, changesetID uui
 	}
 	spec := revertUnit(JobSpec{NotebookID: notebookID, Client: domain.ClientWeb, Message: message}, changesetID)
 	if err := w.writer.Allowed(ctx, spec); err != nil {
+		return "", err
+	}
+	if _, err := w.writer.notUpgrading(ctx, notebookID); err != nil {
 		return "", err
 	}
 	c, err := w.history.FindChangeset(ctx, changesetID)

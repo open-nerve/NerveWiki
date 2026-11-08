@@ -32,6 +32,14 @@ func (g *Grep) WithLines(lines func(content string, from int, yield func(line in
 	return &c
 }
 
+// WithAdmits is g judging a write by admits: a test's, which answers a
+// freeze domain.FreezeAdmits does not.
+func (g *FreezeGuard) WithAdmits(admits func(n domain.NotebookState, own uuid.UUID, client domain.Client, by uuid.UUID) domain.Freeze) *FreezeGuard {
+	c := *g
+	c.admits = admits
+	return &c
+}
+
 // WithMaxWork is l with its globs' work a call at most maxWork: a test's
 // bound, less than domain.MaxGlobWork.
 func (l *ListByPattern) WithMaxWork(maxWork int64) *ListByPattern {

@@ -334,9 +334,10 @@ func declaredCodes(t testing.TB) []string {
 
 // mcpOwnCodes are the codes an MCP tool's error carries that no REST
 // operation answers: MCP has one more (M9 design 4.7), batch's bound
-// (M9/P3 design 3.13.1).
+// (M9/P3 design 3.13.1); and an upgrade's deletion guardrail's, which only
+// the initiator's agent meets, REST's writes frozen (M11/P1 design 3.6).
 func mcpOwnCodes() []string {
-	return []string{"page.batch_too_large"}
+	return []string{"page.batch_too_large", "page.upgrade_protected"}
 }
 
 // undeclaredToolCode is the error of a tool error's code that codes do

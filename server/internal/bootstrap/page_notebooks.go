@@ -11,7 +11,8 @@ import (
 // pageNotebooks is the notebook module's Notebooks as the page module reads
 // them (M10/P1 design 3.12, 3.18): the workspace as it is; the state, read
 // unlocked or under each lock, converted field by field into the page
-// module's own, each module with its mode (v0.1 design 13.1 item 11).
+// module's own, each module with its mode (v0.1 design 13.1 item 11), its
+// upgrade under way with it (M11 design 4.5).
 type pageNotebooks struct {
 	notebook.Notebooks
 }
@@ -34,5 +35,7 @@ func toPageState(s notebook.State, ok bool, err error) (page.NotebookState, bool
 	if err != nil || !ok {
 		return page.NotebookState{}, ok, err
 	}
-	return page.NotebookState{Mode: page.Mode(s.Mode), SourceRootID: s.SourceRootID}, true, nil
+	return page.NotebookState{Mode: page.Mode(s.Mode), SourceRootID: s.SourceRootID, Upgrade: page.NotebookUpgrade{
+		ID: s.Upgrade.ID, State: page.UpgradeState(s.Upgrade.State), By: s.Upgrade.By,
+	}}, true, nil
 }

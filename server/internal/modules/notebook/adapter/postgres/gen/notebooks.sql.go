@@ -112,7 +112,7 @@ func (q *Queries) DeleteNotebooksOf(ctx context.Context, arg DeleteNotebooksOfPa
 
 const findNotebook = `-- name: FindNotebook :one
 SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
-    source_root_id
+    source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 `
@@ -128,9 +128,13 @@ type FindNotebookRow struct {
 	FormerOwnerID   *uuid.UUID
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 }
 
-// A notebook not deleted, unlocked: what a read authorizes against.
+// A notebook not deleted, unlocked: what a read authorizes against. With its upgrade under way (M11 design 4.5).
 func (q *Queries) FindNotebook(ctx context.Context, id uuid.UUID) (FindNotebookRow, error) {
 	row := q.db.QueryRow(ctx, findNotebook, id)
 	var i FindNotebookRow
@@ -145,12 +149,17 @@ func (q *Queries) FindNotebook(ctx context.Context, id uuid.UUID) (FindNotebookR
 		&i.FormerOwnerID,
 		&i.Mode,
 		&i.SourceRootID,
+		&i.UpgradeID,
+		&i.UpgradeState,
+		&i.UpgradeByID,
+		&i.UpgradeAt,
 	)
 	return i, err
 }
 
 const listNotebooks = `-- name: ListNotebooks :many
-SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id, m.role,
+SELECT n.id, n.workspace_id, n.name, n.workspace_access, n.created_at, n.updated_at, n.mode, n.source_root_id,
+    n.upgrade_id, n.upgrade_state, n.upgrade_by_id, n.upgrade_at, m.role,
     (SELECT count(*) FROM notebook_members c
      WHERE c.notebook_id = n.id AND c.ended_at IS NULL AND c.deleted_at IS NULL) AS member_count
 FROM notebooks n
@@ -176,6 +185,10 @@ type ListNotebooksRow struct {
 	UpdatedAt       time.Time
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 	Role            *string
 	MemberCount     int64
 }
@@ -183,7 +196,8 @@ type ListNotebooksRow struct {
 // The notebooks not deleted of the workspace that the account is an active member of, or, when the workspace
 // access reaches it (an admin's or a member's), that are open to the workspace; with its explicit role and the
 // count of active members. By name, case-insensitively, then by name and id. The same rule as the access
-// module's decision, shared.EffectiveNotebookRole: bootstrap's visibility test holds the two together.
+// module's decision, shared.EffectiveNotebookRole: bootstrap's visibility test holds the two together. With its
+// upgrade under way (M11 design 4.5).
 func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([]ListNotebooksRow, error) {
 	rows, err := q.db.Query(ctx, listNotebooks, arg.UserID, arg.WorkspaceID, arg.Reached)
 	if err != nil {
@@ -202,6 +216,10 @@ func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([
 			&i.UpdatedAt,
 			&i.Mode,
 			&i.SourceRootID,
+			&i.UpgradeID,
+			&i.UpgradeState,
+			&i.UpgradeByID,
+			&i.UpgradeAt,
 			&i.Role,
 			&i.MemberCount,
 		); err != nil {
@@ -217,7 +235,7 @@ func (q *Queries) ListNotebooks(ctx context.Context, arg ListNotebooksParams) ([
 
 const lockNotebook = `-- name: LockNotebook :one
 SELECT id, workspace_id, name, workspace_access, created_at, updated_at, ownerless_since, former_owner_id, mode,
-    source_root_id
+    source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at
 FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 FOR NO KEY UPDATE
@@ -234,11 +252,15 @@ type LockNotebookRow struct {
 	FormerOwnerID   *uuid.UUID
 	Mode            string
 	SourceRootID    *uuid.UUID
+	UpgradeID       *uuid.UUID
+	UpgradeState    *string
+	UpgradeByID     *uuid.UUID
+	UpgradeAt       *time.Time
 }
 
 // FindNotebook locked FOR NO KEY UPDATE until the transaction ends: a notebook's management writes take it
 // after the workspace row's FOR SHARE, then decide (M3/P1 design 3.10). A deletion committed while it waited
-// leaves no row.
+// leaves no row. With its upgrade under way (M11 design 4.5).
 func (q *Queries) LockNotebook(ctx context.Context, id uuid.UUID) (LockNotebookRow, error) {
 	row := q.db.QueryRow(ctx, lockNotebook, id)
 	var i LockNotebookRow
@@ -253,6 +275,10 @@ func (q *Queries) LockNotebook(ctx context.Context, id uuid.UUID) (LockNotebookR
 		&i.FormerOwnerID,
 		&i.Mode,
 		&i.SourceRootID,
+		&i.UpgradeID,
+		&i.UpgradeState,
+		&i.UpgradeByID,
+		&i.UpgradeAt,
 	)
 	return i, err
 }
@@ -338,7 +364,7 @@ func (q *Queries) SetNotebookMode(ctx context.Context, arg SetNotebookModeParams
 }
 
 const shareNotebook = `-- name: ShareNotebook :one
-SELECT id, mode, source_root_id FROM notebooks
+SELECT id, mode, source_root_id, upgrade_id, upgrade_state, upgrade_by_id, upgrade_at FROM notebooks
 WHERE id = $1 AND deleted_at IS NULL
 FOR SHARE
 `
@@ -347,17 +373,29 @@ type ShareNotebookRow struct {
 	ID           uuid.UUID
 	Mode         string
 	SourceRootID *uuid.UUID
+	UpgradeID    *uuid.UUID
+	UpgradeState *string
+	UpgradeByID  *uuid.UUID
+	UpgradeAt    *time.Time
 }
 
 // The notebook not deleted locked FOR SHARE until the transaction ends: a page write that changes no tree takes
 // it after the workspace row's FOR SHARE (M4/P1 design 3.3), and so runs beside the others but not beside a
 // management write, a tree write or a deletion. A deletion committed while it waited leaves no row. With its mode
-// and source root, which the page write reads under this lock (M10 design 4.6): a downgrade takes the row FOR NO
-// KEY UPDATE, so a unit's mode does not change while it runs.
+// and source root, which the page write reads under this lock (M10 design 4.6), with its upgrade under way (M11
+// design 4.5): a downgrade takes the row FOR NO KEY UPDATE, so a unit's mode and upgrade do not change while it runs.
 func (q *Queries) ShareNotebook(ctx context.Context, id uuid.UUID) (ShareNotebookRow, error) {
 	row := q.db.QueryRow(ctx, shareNotebook, id)
 	var i ShareNotebookRow
-	err := row.Scan(&i.ID, &i.Mode, &i.SourceRootID)
+	err := row.Scan(
+		&i.ID,
+		&i.Mode,
+		&i.SourceRootID,
+		&i.UpgradeID,
+		&i.UpgradeState,
+		&i.UpgradeByID,
+		&i.UpgradeAt,
+	)
 	return i, err
 }
 

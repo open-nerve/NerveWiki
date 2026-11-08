@@ -95,6 +95,7 @@ export const notebookJSON: Notebook = {
   workspace_access: "none",
   mode: "standard",
   source_root_id: null,
+  upgrade: null,
   role: "admin",
   member_count: 1,
   created_at: "2026-10-02T08:00:00Z",

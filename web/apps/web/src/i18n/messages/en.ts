@@ -1091,6 +1091,8 @@ export const en = {
   "problem.notebook.sole_admin":
     "You are the only admin of one or more notebooks. In each one's settings, make another member an admin first, or delete it.",
   "problem.notebook.not_llm_wiki": "This notebook is not an LLM Wiki.",
+  "problem.notebook.upgrading":
+    "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends.",
   "problem.wiki.lint_rule_not_found": "This health check rule does not exist.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",

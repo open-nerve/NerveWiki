@@ -25,11 +25,28 @@ const (
 	ModeLLMWiki  = domain.ModeLLMWiki
 )
 
+// Upgrade is a notebook's upgrade to an LLM Wiki under way, the zero
+// value for none (M11 design 4.3, 4.5); UpgradeState its state, which
+// bootstrap converts to the modules' own, field by field.
+type (
+	Upgrade      = domain.Upgrade
+	UpgradeState = domain.UpgradeState
+)
+
+// The three states of an upgrade under way, for bootstrap's conversions.
+const (
+	UpgradeUpgrading   = domain.UpgradeUpgrading
+	UpgradeReviewing   = domain.UpgradeReviewing
+	UpgradeRollingBack = domain.UpgradeRollingBack
+)
+
 // State is a notebook's mode and source root, as the modules inside it
-// read them (M10 design 4.3, 4.6): the zero id for none.
+// read them (M10 design 4.3, 4.6): the zero id for none; and its upgrade
+// under way, the zero value for none (M11 design 4.5).
 type State struct {
 	Mode         Mode
 	SourceRootID uuid.UUID
+	Upgrade      Upgrade
 }
 
 // Notebooks is what the modules inside a notebook read of it (M4/P1 design
@@ -58,8 +75,8 @@ type Notebooks interface {
 	// read, instructions, lint) see one side of a downgrade or the other.
 	StateOf(ctx context.Context, id uuid.UUID) (State, bool, error)
 	// ShareState is ShareByID with the state read under the lock, and
-	// LockState LockByID's: a unit's mode does not change while it runs
-	// (M10 design 4.6).
+	// LockState LockByID's: a unit's mode and upgrade do not change while
+	// it runs (M10 design 4.6, M11 design 4.5).
 	ShareState(ctx context.Context, id uuid.UUID) (State, bool, error)
 	LockState(ctx context.Context, id uuid.UUID) (State, bool, error)
 }
@@ -95,7 +112,7 @@ func (n notebooks) StateOf(ctx context.Context, id uuid.UUID) (State, bool, erro
 	if ok, err := found(err); !ok || err != nil {
 		return State{}, false, err
 	}
-	return State{Mode: nb.Mode, SourceRootID: nb.SourceRootID}, true, nil
+	return stateOf(nb), true, nil
 }
 
 func (n notebooks) ShareByID(ctx context.Context, id uuid.UUID) (bool, error) {
@@ -112,12 +129,12 @@ func (n notebooks) ShareState(ctx context.Context, id uuid.UUID) (State, bool, e
 	if !postgres.InTx(ctx) {
 		return State{}, false, errors.New("share the notebook row: not in a transaction, the lock would end with the statement")
 	}
-	mode, root, err := n.store.ShareNotebook(ctx, id)
+	mode, root, upgrade, err := n.store.ShareNotebook(ctx, id)
 	ok, err := found(err)
 	if err != nil {
 		return State{}, false, fmt.Errorf("share the notebook row: %w", err)
 	}
-	return State{Mode: mode, SourceRootID: root}, ok, nil
+	return State{Mode: mode, SourceRootID: root, Upgrade: upgrade}, ok, nil
 }
 
 func (n notebooks) LockState(ctx context.Context, id uuid.UUID) (State, bool, error) {
@@ -129,7 +146,12 @@ func (n notebooks) LockState(ctx context.Context, id uuid.UUID) (State, bool, er
 	if err != nil {
 		return State{}, false, fmt.Errorf("lock the notebook row: %w", err)
 	}
-	return State{Mode: nb.Mode, SourceRootID: nb.SourceRootID}, ok, nil
+	return stateOf(nb), ok, nil
+}
+
+// stateOf is a notebook's state.
+func stateOf(n domain.Notebook) State {
+	return State{Mode: n.Mode, SourceRootID: n.SourceRootID, Upgrade: n.Upgrade}
 }
 
 // found is the store's answer as Notebooks gives it: app.ErrNotFound is no
