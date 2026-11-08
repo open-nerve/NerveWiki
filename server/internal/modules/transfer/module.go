@@ -51,8 +51,11 @@ const (
 type (
 	// Workspaces locks a notebook's workspace: the workspace module's.
 	Workspaces = app.Workspaces
-	// Notebooks reads and locks the notebooks: the notebook module's.
-	Notebooks = app.Notebooks
+	// Notebooks reads and locks the notebooks: the notebook module's,
+	// which bootstrap converts; NotebookState is what a start reads of one,
+	// its upgrade under way (M11 design 4.5).
+	Notebooks     = app.Notebooks
+	NotebookState = app.NotebookState
 	// Names reads the accounts' display names: identity's directory.
 	Names = app.Names
 	// Nodes reads an export's scope: bootstrap adapts the page module's

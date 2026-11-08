@@ -25,15 +25,26 @@ type Workspaces interface {
 	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
 }
 
-// Notebooks reads and locks the notebooks: bootstrap hands it the notebook
+// NotebookState is what a start reads of its notebook: its upgrade under
+// way, the zero id for none (M11 design 4.5), and whether it rolls back.
+type NotebookState struct {
+	UpgradeID   uuid.UUID
+	RollingBack bool
+}
+
+// Notebooks reads and locks the notebooks: bootstrap converts the notebook
 // module's.
 type Notebooks interface {
 	// WorkspaceOf is the workspace of the notebook not deleted id,
 	// unlocked; false for none.
 	WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID, bool, error)
 	// ShareByID locks the notebook not deleted id FOR SHARE until the
-	// transaction ends, and reports whether there is one.
-	ShareByID(ctx context.Context, id uuid.UUID) (bool, error)
+	// transaction ends, and answers its state read under the lock; false
+	// for none.
+	ShareByID(ctx context.Context, id uuid.UUID) (NotebookState, bool, error)
+	// StateOf is the notebook's state, unlocked; false for none: an
+	// import's check, outside a transaction.
+	StateOf(ctx context.Context, id uuid.UUID) (NotebookState, bool, error)
 	// NameOf is the name of the notebook not deleted id, in the caller's
 	// transaction; false for none.
 	NameOf(ctx context.Context, id uuid.UUID) (string, bool, error)

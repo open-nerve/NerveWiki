@@ -927,8 +927,11 @@ func TestARevertsChecksRefuseTheContract(t *testing.T) {
 					if !errors.As(err, &refusal) || refusal.NodeID != raw.ID {
 						t.Errorf("refusal = %#v, want raw %s", err, raw.ID)
 					}
-					if f.count("StateOf") != 1 {
-						t.Errorf("calls = %v, want one state read", f.rec.calls)
+					// The contract reads the state once; a background
+					// revert's check reads it once more before, for the
+					// freeze alone (M11/P1 design 3.4).
+					if reads := map[string]int{"start": 2}[route]; f.count("StateOf") != max(reads, 1) {
+						t.Errorf("calls = %v, want %d state reads", f.rec.calls, max(reads, 1))
 					}
 				}
 				asked := 0

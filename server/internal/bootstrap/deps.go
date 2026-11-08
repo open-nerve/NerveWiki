@@ -240,8 +240,8 @@ func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 	blobs := asset.NewBlobs(pool, store, logger)
 	return transfer.Deps{
 		Pool: pool, Tx: tx, Snapshots: tx, Store: store, Inserter: inserter, Clock: clock.System{}, Logger: logger, Authorizer: authorizer,
-		Workspaces: workspace.NewWorkspaces(pool), Notebooks: notebook.NewNotebooks(pool), Names: displayNames{identity.NewDirectory(pool)},
-		Nodes: transferNodes{page.NewExportNodes(pool)}, Linked: linking.NewLinkedPages(pool), Blobs: transferBlobs{blobs},
+		Workspaces: workspace.NewWorkspaces(pool), Notebooks: transferNotebooks{notebook.NewNotebooks(pool)},
+		Names: displayNames{identity.NewDirectory(pool)}, Nodes: transferNodes{page.NewExportNodes(pool)}, Linked: linking.NewLinkedPages(pool), Blobs: transferBlobs{blobs},
 		Tree: transferTree{tree}, Attachments: transferAttachments{blobs},
 		Statistics:  []transfer.Analyzer{page.NewStatistics(pool), linking.NewStatistics(pool), asset.NewStatistics(pool)},
 		DownloadKey: downloadKey, ExportTTL: t.ExportTTL, JobTimeout: t.JobTimeout, HeartbeatTimeout: t.HeartbeatTimeout, MaxQueued: t.MaxQueued,

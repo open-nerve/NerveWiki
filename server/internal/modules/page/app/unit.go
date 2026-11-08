@@ -162,6 +162,25 @@ func (w *Writer) Allowed(ctx context.Context, spec UnitSpec) error {
 	return err
 }
 
+// notUpgrading is the state of the notebook id, read unlocked: a
+// precheck's, right after its decision, which answers notebook.upgrading
+// for a notebook being upgraded before any other check (M11 design 4.5):
+// the prechecks are REST's alone, whose writes the freeze refuses whoever
+// writes, so no rule of who writes is read here. notebook.not_found for
+// none.
+func (w *Writer) notUpgrading(ctx context.Context, id uuid.UUID) (domain.NotebookState, error) {
+	state, ok, err := w.d.Notebooks.StateOf(ctx, id)
+	switch {
+	case err != nil:
+		return domain.NotebookState{}, err
+	case !ok:
+		return domain.NotebookState{}, domain.ErrNotebookNotFound
+	case state.Upgrade.ID != (uuid.UUID{}):
+		return domain.NotebookState{}, domain.ErrUpgrading
+	}
+	return state, nil
+}
+
 // requireActor is ctx's actor, which acts with exactly one credential:
 // one with none, or more, is the caller's fault (M7/P6 design 3.2).
 func requireActor(ctx context.Context) (shared.Actor, error) {

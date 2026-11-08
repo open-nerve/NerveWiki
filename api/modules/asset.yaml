@@ -53,6 +53,7 @@ paths:
           page.source_duplicate,
           notebook.not_found,
           forbidden,
+          notebook.upgrading,
           validation_failed,
           page.title_taken,
           page.virtual_file,

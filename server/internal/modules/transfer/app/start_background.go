@@ -148,9 +148,10 @@ func (d StartDeps) claim(ctx context.Context, notebookID uuid.UUID) (func(), err
 // startBackground writes job's row, queued, and enqueues it, as its
 // creator from its client asks: 503 server_busy when MaxQueued jobs wait
 // or run; then, under the workspace's row and the notebook's, FOR SHARE,
-// action decided again, and the jobs' creations one at a time, room in
-// the queue and no job that writes the notebook's tree; the changeset it
-// will write decided (M8/P4 design 3.2).
+// action decided again, notebook.upgrading for a notebook being upgraded
+// (M11 design 4.5), and the jobs' creations one at a time, room in the
+// queue and no job that writes the notebook's tree; the changeset it will
+// write decided (M8/P4 design 3.2).
 func (d StartDeps) startBackground(ctx context.Context, action shared.Action, job domain.Job,
 	enqueue func(ctx context.Context, id uuid.UUID) error,
 ) (JobView, error) {
@@ -166,8 +167,12 @@ func (d StartDeps) startBackground(ctx context.Context, action shared.Action, jo
 		return JobView{}, err
 	}
 	err = d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := d.lock(ctx, actor, workspaceID, job.NotebookID, action); err != nil {
+		state, err := d.lock(ctx, actor, workspaceID, job.NotebookID, action)
+		if err != nil {
 			return err
+		}
+		if state.UpgradeID != (uuid.UUID{}) {
+			return domain.ErrUpgrading
 		}
 		if err := d.Rows.LockQueue(ctx); err != nil {
 			return err

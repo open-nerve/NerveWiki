@@ -2108,6 +2108,7 @@ paths:
         - page.source_duplicate
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - validation_failed
         - page.title_taken
         - page.virtual_file
@@ -2347,6 +2348,7 @@ paths:
       x-problem-codes:
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.not_found
         - transfer.busy
         - server_busy
@@ -2393,6 +2395,7 @@ paths:
         - page.source_duplicate
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.not_found
         - page.not_in_trash
         - page.not_trash_root
@@ -2431,6 +2434,7 @@ paths:
         - validation_failed
         - notebook.not_found
         - forbidden
+        - notebook.upgrading
         - page.changeset_not_found
         - page.changeset_trimmed
         - page.revert_too_large

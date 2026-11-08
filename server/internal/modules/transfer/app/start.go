@@ -70,7 +70,9 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 	}
 	var job domain.Job
 	err = s.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
-		if err := s.d.lock(ctx, actor, workspaceID, notebookID, domain.ActionExport); err != nil {
+		// An export reads, and goes on while the notebook is being
+		// upgraded (M11 design 4.5): its lock's state it leaves.
+		if _, err := s.d.lock(ctx, actor, workspaceID, notebookID, domain.ActionExport); err != nil {
 			return err
 		}
 		name, err := s.nameOf(ctx, notebookID, root)
@@ -101,15 +103,37 @@ func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.
 }
 
 // lock locks the workspace's row and the notebook's FOR SHARE, then
-// decides action: a deletion committed meanwhile leaves none.
-func (d StartDeps) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) error {
+// decides action, and answers the notebook's state read under its lock: a
+// deletion committed meanwhile leaves none. It judges no upgrade: an
+// export goes on while one is under way, the writing jobs' starts refuse
+// one each (M11 design 4.5).
+func (d StartDeps) lock(ctx context.Context, actor shared.Actor, workspaceID, notebookID uuid.UUID, action shared.Action) (
+	NotebookState, error,
+) {
 	if ok, err := d.Workspaces.ShareByID(ctx, workspaceID); err != nil || !ok {
-		return orNotFound(err)
+		return NotebookState{}, orNotFound(err)
 	}
-	if ok, err := d.Notebooks.ShareByID(ctx, notebookID); err != nil || !ok {
-		return orNotFound(err)
+	state, ok, err := d.Notebooks.ShareByID(ctx, notebookID)
+	if err != nil || !ok {
+		return NotebookState{}, orNotFound(err)
 	}
-	return d.authorize(ctx, actor, workspaceID, notebookID, action)
+	return state, d.authorize(ctx, actor, workspaceID, notebookID, action)
+}
+
+// notUpgrading is notebook.upgrading for a notebook being upgraded, read
+// unlocked: an import's check, before it reads the file (M11 design 4.5);
+// notebook.not_found for none.
+func (d StartDeps) notUpgrading(ctx context.Context, notebookID uuid.UUID) error {
+	state, ok, err := d.Notebooks.StateOf(ctx, notebookID)
+	switch {
+	case err != nil:
+		return err
+	case !ok:
+		return domain.ErrNotebookNotFound
+	case state.UpgradeID != (uuid.UUID{}):
+		return domain.ErrUpgrading
+	}
+	return nil
 }
 
 // workspaceOf is the notebook's workspace: notebook.not_found for none.

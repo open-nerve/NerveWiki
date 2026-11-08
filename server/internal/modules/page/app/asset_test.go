@@ -364,12 +364,11 @@ func TestAnUploadsCheckRefusesAReservedTitle(t *testing.T) {
 					t.Errorf("refusal = %#v, want zero node", err)
 				}
 			}
-			reads := 1
-			if tt.taken || tt.title == "index.md" {
-				reads = 0
-			}
-			if f.count("StateOf") != reads || f.called("LockNotebook in tx") {
-				t.Errorf("calls = %v, want %d state reads and no unit", f.rec.calls, reads)
+			// One state read, right after the decision, for the freeze and
+			// the contract both (M11/P1 design 3.4): the name's checks still
+			// answer before the contract.
+			if f.count("StateOf") != 1 || f.called("LockNotebook in tx") {
+				t.Errorf("calls = %v, want 1 state read and no unit", f.rec.calls)
 			}
 		})
 	}

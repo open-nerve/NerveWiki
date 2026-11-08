@@ -306,3 +306,49 @@ func TestTheChangesetsCarryTheirUpgrade(t *testing.T) {
 		}
 	}
 }
+
+// The prechecks of the REST starts that write (M11/P1 design 3.4): an
+// upload's, a background restore's and a background revert's answer
+// notebook.upgrading right after their decision, a reader still
+// forbidden, before any check that would answer otherwise (a name
+// invalid, a page not in the trash, a changeset not found), reading
+// nothing after the state; the revert admits nothing.
+func TestThePrechecksRefuseAnUpgradingNotebook(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		action shared.Action
+		check  func(f *fixture) error
+	}{
+		{"an upload's, of a name invalid", upload, func(f *fixture) error {
+			return f.checkAsset(f.newAsset("index.md", nil))
+		}},
+		{"a restore's, of a page not in the trash", domain.ActionRestore, func(f *fixture) error {
+			box := f.page("Box", nil, 0)
+			_, err := f.jobs(now(), 0, 0).CheckRestore(f.asAlice(), f.eng, box.ID, nil)
+			return err
+		}},
+		{"a revert's, of a changeset not found", domain.ActionRevert, func(f *fixture) error {
+			_, err := f.jobs(now(), 1, 0).CheckRevert(f.asAlice(), f.eng, uuid.NewV7(), nil, func(context.Context) error {
+				t.Error("a revert of a notebook being upgraded admitted")
+				return nil
+			}, allJobBatches)
+			return err
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(tt.action)
+			f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(domain.UpgradeReviewing, uuid.NewV7())}
+			if err := tt.check(f); codeOf(err) != "notebook.upgrading" {
+				t.Errorf("Check() = %v, want notebook.upgrading", err)
+			}
+			if calls := f.rec.calls; len(calls) == 0 || calls[len(calls)-1] != "StateOf" {
+				t.Errorf("calls = %v, want none after the state's read", calls)
+			}
+			f.auth.grants[tt.action], f.auth.forbidden[tt.action] = false, true
+			if err := tt.check(f); codeOf(err) != shared.CodeForbidden {
+				t.Errorf("a reader's Check() = %v, want forbidden", err)
+			}
+		})
+	}
+}

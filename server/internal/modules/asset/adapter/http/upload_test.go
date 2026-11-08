@@ -338,6 +338,11 @@ func TestUploadAnswersEachFailure(t *testing.T) {
 			h.tree.checkErr = shared.NewError(shared.KindNotFound, "notebook.not_found", "No such notebook.")
 		}, 404, "notebook.not_found", "", false, false},
 		{"a reader", "", "", []part{file("a.png", "x")}, func(h *harness) { h.tree.checkErr = shared.Forbidden() }, 403, "forbidden", "", false, false},
+		// The freeze's precheck (M11/P1 design 3.4), before the store's room.
+		{"a notebook being upgraded", "", "", []part{file("a.png", "x")}, func(h *harness) {
+			h.tree.checkErr = shared.NewError(shared.KindConflict, "notebook.upgrading", "Being upgraded.")
+			h.files.free = 0
+		}, 409, "notebook.upgrading", "", false, false},
 		{"a name the rules refuse", "", "", []part{file("a.md", "x")}, func(h *harness) {
 			h.tree.checkErr = shared.Invalid(shared.FieldError{Field: "name", Code: shared.FieldNotAllowed, Message: "ends with .md"})
 		}, 422, "validation_failed", "name", false, false},

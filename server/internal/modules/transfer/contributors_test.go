@@ -292,7 +292,13 @@ func (n notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool
 	return uuid.UUID{}, id == n.eng, nil
 }
 
-func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (bool, error) { return id == n.eng, nil }
+func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (transfer.NotebookState, bool, error) {
+	return transfer.NotebookState{}, id == n.eng, nil
+}
+
+func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (transfer.NotebookState, bool, error) {
+	return transfer.NotebookState{}, id == n.eng, nil
+}
 
 func (n notebooks) NameOf(_ context.Context, id uuid.UUID) (string, bool, error) {
 	return "Eng", id == n.eng, nil

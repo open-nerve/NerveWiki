@@ -402,7 +402,7 @@ func (r *run) succeed(ctx context.Context, e Ended, attrs []any) error {
 	ok := false
 	err := r.e.d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		var err error
-		if ok, err = r.e.d.Notebooks.ShareByID(ctx, r.job.NotebookID); err != nil || !ok {
+		if _, ok, err = r.e.d.Notebooks.ShareByID(ctx, r.job.NotebookID); err != nil || !ok {
 			return err
 		}
 		if ok, err = r.e.d.Rows.FinishJob(ctx, r.job.ID, e); err != nil || !ok {

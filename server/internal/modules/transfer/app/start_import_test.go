@@ -40,7 +40,7 @@ func TestAnImportStarts(t *testing.T) {
 	if err := s.Check(as(w.bob), req); err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"Notebooks.WorkspaceOf", "Authorize", "Writing", "CountActive", "Free"}; !slices.Equal(w.rec.calls, want) {
+	if want := []string{"Notebooks.WorkspaceOf", "Authorize", "Notebooks.StateOf", "Writing", "CountActive", "Free"}; !slices.Equal(w.rec.calls, want) {
 		t.Errorf("Check's calls = %v, want %v", w.rec.calls, want)
 	}
 	stored, err := s.Store(as(w.bob), app.ImportRequest{NotebookID: w.eng}, strings.NewReader("PK zip"))
