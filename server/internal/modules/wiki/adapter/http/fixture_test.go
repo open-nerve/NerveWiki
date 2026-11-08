@@ -132,6 +132,7 @@ type lintPrepared struct {
 }
 
 func (p lintPrepared) StalePages() int64               { return 2 }
+func (p lintPrepared) WantedByPage() map[uuid.UUID]int { return nil }
 func (p lintPrepared) Timings() app.PreparationTimings { return app.PreparationTimings{} }
 func (p lintPrepared) RuleCount(ctx context.Context, rule domain.LintRule) (domain.LintCount, error) {
 	return p.counts[rule], ctx.Err()

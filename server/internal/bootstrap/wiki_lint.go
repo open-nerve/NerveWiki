@@ -139,7 +139,7 @@ func (r wikiRules) PrepareRules(ctx context.Context, in wiki.ReadInput, query wi
 		input.Nodes[i] = linking.CompactNode{ID: node.ID, ParentID: wikiCopy(node.ParentID), Kind: kind,
 			NameKey: node.NameKey, Linkable: node.Linkable, CreatedAt: node.CreatedAt, PageBytes: node.PageBytes}
 	}
-	q := linking.RuleQuery{Limit: query.Limit}
+	q := linking.RuleQuery{Limit: query.Limit, WantedByPage: query.WantedByPage}
 	if query.Rule != nil {
 		rule := linking.Rule(*query.Rule)
 		q.Rule = &rule
@@ -158,6 +158,8 @@ func (r wikiRules) PrepareRules(ctx context.Context, in wiki.ReadInput, query wi
 type wikiPrepared struct{ prepared *linking.PreparedRules }
 
 func (p wikiPrepared) StalePages() int64 { return p.prepared.StalePages() }
+
+func (p wikiPrepared) WantedByPage() map[uuid.UUID]int { return p.prepared.WantedByPage() }
 
 func (p wikiPrepared) RuleCount(ctx context.Context, rule wiki.LintRule) (wiki.LintCount, error) {
 	count, err := p.prepared.RuleCount(ctx, linking.Rule(rule))

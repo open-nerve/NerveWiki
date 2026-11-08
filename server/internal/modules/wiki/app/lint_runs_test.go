@@ -667,3 +667,144 @@ func TestLintExpiryIsObservedOnce(t *testing.T) {
 		})
 	}
 }
+
+func lintRunActive(r *Runs) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.active
+}
+
+// lintRunTryHold answers TryHold within the test's bound: a TryHold that
+// waits for a slot fails here instead of hanging.
+func lintRunTryHold(t *testing.T, r *Runs) (func(), bool) {
+	t.Helper()
+	type held struct {
+		release func()
+		ok      bool
+	}
+	done := make(chan held, 1)
+	go func() {
+		release, ok := r.TryHold()
+		done <- held{release, ok}
+	}()
+	select {
+	case h := <-done:
+		return h.release, h.ok
+	case <-time.After(2 * time.Second):
+		t.Fatal("TryHold waited for a slot")
+		return nil, false
+	}
+}
+
+func TestTryHoldNeverWaits(t *testing.T) {
+	r, _, _ := lintRunFixture(t, 2, time.Second)
+	first, ok := lintRunTryHold(t, r)
+	if !ok {
+		t.Fatal("an idle owner refused a holder")
+	}
+	second, ok := lintRunTryHold(t, r)
+	if !ok {
+		t.Fatal("the second slot was refused")
+	}
+	if _, ok := lintRunTryHold(t, r); ok {
+		t.Fatal("a holder took a slot beyond the bound")
+	}
+	if got := lintRunActive(r); got != 2 {
+		t.Fatalf("active = %d, want the two holders", got)
+	}
+	first()
+	first()
+	third, ok := lintRunTryHold(t, r)
+	if !ok {
+		t.Fatal("a released slot was not taken again")
+	}
+	if _, ok := lintRunTryHold(t, r); ok {
+		t.Fatal("a second release of one hold freed another slot")
+	}
+	if got := lintRunActive(r); got != 2 {
+		t.Fatalf("active = %d after a repeated release, want 2", got)
+	}
+	second()
+	third()
+	if got := lintRunActive(r); got != 0 {
+		t.Fatalf("active = %d after every release, want 0", got)
+	}
+}
+
+func TestStopWaitsForTheHolders(t *testing.T) {
+	r, _, _ := lintRunFixture(t, 2, time.Second)
+	release, ok := lintRunTryHold(t, r)
+	if !ok {
+		t.Fatal("an idle owner refused a holder")
+	}
+	stop := make(chan error, 1)
+	go func() { stop <- r.Stop(t.Context()) }()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		r.mu.Lock()
+		closed := r.closed
+		r.mu.Unlock()
+		if closed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Stop did not close admission")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, ok := lintRunTryHold(t, r); ok {
+		t.Fatal("a stopped owner handed out a slot")
+	}
+	select {
+	case err := <-stop:
+		t.Fatalf("Stop returned (%v) while a holder still held its slot", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+	select {
+	case err := <-stop:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Stop did not return after the holder's release")
+	}
+	if got := lintRunActive(r); got != 0 {
+		t.Fatalf("active = %d after Stop, want 0", got)
+	}
+}
+
+func TestAHolderTakesAWorkersSlot(t *testing.T) {
+	r, events, _ := lintRunFixture(t, 1, 2*time.Second)
+	release, ok := lintRunTryHold(t, r)
+	if !ok {
+		t.Fatal("an idle owner refused a holder")
+	}
+	var calls atomic.Int32
+	answer := lintRunAsync(r, t.Context(), lintRunKey(), func(context.Context) (RunOutput, error) {
+		calls.Add(1)
+		return RunOutput{Result: domain.LintResult{Mode: domain.ModeStandard}}, nil
+	})
+	flight := events.take(t, RunCreated, 0)
+	wait := time.After(100 * time.Millisecond)
+waiting:
+	for {
+		select {
+		case event := <-events.c:
+			if event.Kind == RunAcquired {
+				t.Fatal("a worker took the slot a holder holds")
+			}
+			events.pending = append(events.pending, event)
+		case <-wait:
+			break waiting
+		}
+	}
+	if calls.Load() != 0 {
+		t.Fatal("a worker ran while the holder held the only slot")
+	}
+	release()
+	events.take(t, RunAcquired, flight.FlightID)
+	if got := lintRunTake(t, answer); got.err != nil || got.result.Mode != domain.ModeStandard || calls.Load() != 1 {
+		t.Fatalf("after the release: %+v, calls %d", got, calls.Load())
+	}
+}

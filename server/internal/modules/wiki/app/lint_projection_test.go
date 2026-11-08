@@ -134,7 +134,9 @@ func TestLintSnapshotOrder(t *testing.T) {
 				t.Fatalf("path projection=%+v", got)
 			}
 		}
-		wantCalls := []string{"workspace", "authorize", "begin", "state", "clock", "sources", "prepare"}
+		// compute reads the clock in its snapshot and hands the moment to
+		// computeIn, which reads the state (M11/P1 design 3.13).
+		wantCalls := []string{"workspace", "authorize", "begin", "clock", "state", "sources", "prepare"}
 		for range 8 {
 			wantCalls = append(wantCalls, "encode")
 		}
@@ -163,7 +165,7 @@ func TestLintSnapshotOrder(t *testing.T) {
 				t.Fatalf("empty projection=%+v", got)
 			}
 		}
-		if got := trace.copy(); !slices.Equal(got, []string{"workspace", "authorize", "begin", "state", "clock", "nodes", "prepare", "end", "workspace", "authorize"}) {
+		if got := trace.copy(); !slices.Equal(got, []string{"workspace", "authorize", "begin", "clock", "state", "nodes", "prepare", "end", "workspace", "authorize"}) {
 			t.Fatalf("empty snapshot order=%v", got)
 		}
 	})

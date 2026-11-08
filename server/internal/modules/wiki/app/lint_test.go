@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,9 +93,11 @@ type lintExecPrepared struct {
 	items   map[domain.LintRule][]domain.LintItem
 	more    map[domain.LintRule]bool
 	timings PreparationTimings
+	byPage  map[uuid.UUID]int
 }
 
-func (p *lintExecPrepared) StalePages() int64 { return p.stale }
+func (p *lintExecPrepared) StalePages() int64               { return p.stale }
+func (p *lintExecPrepared) WantedByPage() map[uuid.UUID]int { return maps.Clone(p.byPage) }
 func (p *lintExecPrepared) RuleCount(ctx context.Context, rule domain.LintRule) (domain.LintCount, error) {
 	return p.counts[rule], ctx.Err()
 }

@@ -141,6 +141,63 @@ func (q *Queries) LintAmbiguousEdgeHeadsFirst(ctx context.Context, arg LintAmbig
 	return items, nil
 }
 
+const LintAreaWantedEdgeHeads = `-- name: LintAreaWantedEdgeHeads :many
+SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
+FROM page_links l
+CROSS JOIN LATERAL (
+ SELECT 1 WHERE l.resolved_id IS NULL AND l.target_key IS NOT NULL
+ LIMIT 1
+) wanted
+WHERE l.source_id = ANY($1::uuid[])
+    AND (l.source_id, l.range_start) > ($2::uuid, $3::integer)
+ORDER BY l.source_id, l.range_start
+LIMIT (SELECT $4::integer)
+`
+
+type LintAreaWantedEdgeHeadsParams struct {
+	PageIds     []uuid.UUID
+	AfterSource uuid.UUID
+	AfterStart  int32
+	Take        int32
+}
+
+type LintAreaWantedEdgeHeadsRow struct {
+	SourceID    uuid.UUID
+	RangeStart  int32
+	TargetBytes int64
+}
+
+// The wanted edges' heads of up to LintReadRows given current pages after the cursor (M11 design 4.7 gate 6's
+// second pass): the pages drive page_links' primary key through the array, whose btree scan returns the rows in key
+// order, so that no batch sorts a chunk's edges and LIMIT stops early. The whole set at once, joined and then
+// sorted past a cursor, was quadratic (M11/P1 design review B-I1). Custom and generic plans are both guarded. As in
+// the keyset queries above, the edge's eligibility stays inside a LIMIT 1 LATERAL: on the outer scan, its IS NULL
+// with no statistics estimated one row, and a custom plan then sorted all of a page's edges for each batch.
+func (q *Queries) LintAreaWantedEdgeHeads(ctx context.Context, arg LintAreaWantedEdgeHeadsParams) ([]LintAreaWantedEdgeHeadsRow, error) {
+	rows, err := q.db.Query(ctx, LintAreaWantedEdgeHeads,
+		arg.PageIds,
+		arg.AfterSource,
+		arg.AfterStart,
+		arg.Take,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []LintAreaWantedEdgeHeadsRow
+	for rows.Next() {
+		var i LintAreaWantedEdgeHeadsRow
+		if err := rows.Scan(&i.SourceID, &i.RangeStart, &i.TargetBytes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const LintBodyReferencesAfter = `-- name: LintBodyReferencesAfter :many
 WITH emitters AS MATERIALIZED (SELECT unnest($8::uuid[]) AS id)
 SELECT l.source_id,l.range_start,l.resolved_id,l.resolved_asset

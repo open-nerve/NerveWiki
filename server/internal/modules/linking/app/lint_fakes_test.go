@@ -37,6 +37,13 @@ type lintData struct {
 	fail        string
 	boom        error
 	onCall      func(string)
+	areaCalls   []lintAreaCall
+}
+
+// lintAreaCall is one AreaWantedEdgeHeads call: its pages and cursor.
+type lintAreaCall struct {
+	pages []uuid.UUID
+	after app.EdgePos
 }
 
 func lintID(n uint64) uuid.UUID {
@@ -143,6 +150,32 @@ func (f *lintData) WantedEdgeHeads(ctx context.Context, nb uuid.UUID, excluded [
 }
 func (f *lintData) AmbiguousEdgeHeads(ctx context.Context, nb uuid.UUID, excluded []uuid.UUID, after *app.EdgePos, take int) ([]app.EdgeHead, error) {
 	return f.edgeHeads(ctx, nb, excluded, after, take, true)
+}
+func (f *lintData) AreaWantedEdgeHeads(ctx context.Context, nb uuid.UUID, pages []uuid.UUID, after app.EdgePos, take int) ([]app.EdgeHead, error) {
+	if err := f.enter(ctx, "area-heads", nb); err != nil {
+		return nil, err
+	}
+	if take != app.LintReadRows || len(pages) == 0 || !lintSorted(pages, app.LintReadRows) || after.Start < -1 {
+		return nil, errors.New("fake rejected area parameters")
+	}
+	for _, id := range pages {
+		if !f.current(id) {
+			return nil, errors.New("fake: the caller passed a page that is not current")
+		}
+	}
+	f.areaCalls = append(f.areaCalls, lintAreaCall{pages: slices.Clone(pages), after: after})
+	var out []app.EdgeHead
+	for _, e := range f.edges {
+		if !slices.Contains(pages, e.SourceID) || e.Compare(after) <= 0 || e.ResolvedID != nil || e.TargetKey == nil {
+			continue
+		}
+		out = append(out, app.EdgeHead{EdgePos: e.EdgePos, TargetBytes: int64(len(e.Target))})
+	}
+	slices.SortFunc(out, func(a, b app.EdgeHead) int { return a.Compare(b.EdgePos) })
+	if len(out) > take {
+		out = out[:take]
+	}
+	return out, nil
 }
 func (f *lintData) Edges(ctx context.Context, nb uuid.UUID, positions []app.EdgePos) ([]app.LintEdge, error) {
 	if err := f.enter(ctx, "edges", nb); err != nil {

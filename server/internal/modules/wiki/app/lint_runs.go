@@ -123,6 +123,36 @@ func (r *Runs) Do(ctx context.Context, key RunKey, run func(context.Context) (Ru
 	}
 }
 
+// TryHold takes a slot now or not at all, never waiting (M11 design 4.7):
+// an upgrade's start holds it under the notebook's row lock. false when
+// every slot is taken or Runs has stopped. A holder counts in active, so
+// Stop waits for its release, which the start's own deadline bounds.
+func (r *Runs) TryHold() (release func(), ok bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil, false
+	}
+	select {
+	case r.slots <- struct{}{}:
+	default:
+		return nil, false
+	}
+	r.active++
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			<-r.slots
+			r.mu.Lock()
+			r.active--
+			if r.closed && r.active == 0 {
+				close(r.drained)
+			}
+			r.mu.Unlock()
+		})
+	}, true
+}
+
 func (r *Runs) work(f *lintFlight, run func(context.Context) (RunOutput, error)) {
 	var output RunOutput
 	var runErr error
