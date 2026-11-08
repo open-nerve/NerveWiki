@@ -1,7 +1,8 @@
 -- name: CreateChangeset :exec
-INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at)
+-- upgrade_id is the upgrade the changeset is written in, NULL for none (M11 design 4.5).
+INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at, upgrade_id)
 VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.arg(kind), sqlc.narg(reverts_id), sqlc.arg(client), sqlc.narg(message),
-    sqlc.arg(by), sqlc.arg(now), sqlc.arg(now));
+    sqlc.arg(by), sqlc.arg(now), sqlc.arg(now), sqlc.narg(upgrade_id));
 
 -- name: TouchChangeset :exec
 -- An edit session's changeset, written again: its updated_at is its last write's time, which the notebook's

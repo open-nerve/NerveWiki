@@ -35,8 +35,13 @@ type Write struct {
 	RevertsID   uuid.UUID
 	// Notebook is the notebook's mode and source root, read once under
 	// the notebook's row lock as the unit began (M10 design 4.6): the
-	// mode guard's contract and its prechecks'.
+	// mode guard's contract and its prechecks'; and its upgrade under way,
+	// the freeze's (M11 design 4.5).
 	Notebook domain.NotebookState
+	// UpgradeOwn is the upgrade this unit writes for, the zero id for none:
+	// the pages its start seeds (SeedSpec.Upgrade) and its rollback's
+	// batches (M11 design 4.5). No REST or MCP adapter can set it.
+	UpgradeOwn uuid.UUID
 	// Grants is the unit's memo of the actions it asked beyond its own
 	// decision (Grants): the unit's own, a pointer, since each step and
 	// each guard has the Write by value.
@@ -168,7 +173,7 @@ type AssetMeta struct {
 }
 
 // WriteGuard may refuse an operation (M5: the edit lock; M10: a schema's
-// invariants; M11: freezes). It runs in the unit's transaction after the
+// invariants; M11: an upgrade's freeze). It runs in the unit's transaction after the
 // lock, the decision and the domain's checks, before the write; its error,
 // a *shared.Error the operations it guards declare, rolls the unit back
 // and is answered as it is.

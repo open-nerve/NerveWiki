@@ -123,7 +123,8 @@ type ContentMeta struct {
 
 // Changeset is a write's entry in its notebook's log; a revert's names the
 // changeset it reverts. Reverted, as LockChangeset reads it, tells whether
-// a revert of it was made.
+// a revert of it was made. UpgradeID is the upgrade it was written in, the
+// zero id for none (M11 design 4.5), which CreateChangeset writes.
 type Changeset struct {
 	ID         uuid.UUID
 	NotebookID uuid.UUID
@@ -134,6 +135,7 @@ type Changeset struct {
 	By         uuid.UUID
 	At         time.Time
 	Reverted   bool
+	UpgradeID  uuid.UUID
 }
 
 // Item is a node's change in a changeset: where the node was before the

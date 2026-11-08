@@ -12,7 +12,7 @@ import (
 // shares, which cannot keep an answer, so the unit keeps it. Ask asks
 // an action at most once a unit, the first time a step needs it; a step
 // of a standard notebook, or one that touches no source, never does.
-// Only the mode guard and the unit's own locked checks ask; any
+// Only the freeze and mode guards and the unit's own locked checks ask; any
 // extension may read the answers. It is read in the unit's transaction,
 // so it sees the members the unit's own decision saw. A precheck before
 // the unit asks on its own and keeps nothing here: the unit asks again

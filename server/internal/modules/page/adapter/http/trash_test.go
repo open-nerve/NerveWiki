@@ -158,6 +158,7 @@ func TestTheTrashOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, restoreNodePath, domain.ErrRestoreTooLarge, http.StatusUnprocessableEntity, "page.restore_too_large"},
 		{http.MethodPost, restoreNodePath, busy, http.StatusServiceUnavailable, "server_busy"},
 		{http.MethodPost, restoreNodePath, domain.ErrTrashChanged, http.StatusConflict, "page.trash_changed"},
+		{http.MethodPost, restoreNodePath, domain.Refuse(domain.ErrUpgrading, id(12)), http.StatusConflict, "notebook.upgrading"},
 	} {
 		status, body := call(t, (&fakes{err: tt.err}).serve(t), "session", tt.method, tt.path, "")
 		root := strings.Contains(body, `"root_id":"0199a2b4-0000-7000-8000-000000000040"`)

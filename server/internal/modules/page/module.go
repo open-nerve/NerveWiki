@@ -52,10 +52,13 @@ type Notebooks = app.Notebooks
 type NotebookStates = app.NotebookStates
 
 // NotebookState and Mode are a notebook's state as the module reads it
-// (M10 design 4.3): bootstrap converts the notebook module's.
+// (M10 design 4.3), NotebookUpgrade and UpgradeState its upgrade under way
+// (M11 design 4.5): bootstrap converts the notebook module's.
 type (
-	NotebookState = domain.NotebookState
-	Mode          = domain.Mode
+	NotebookState   = domain.NotebookState
+	Mode            = domain.Mode
+	NotebookUpgrade = domain.NotebookUpgrade
+	UpgradeState    = domain.UpgradeState
 )
 
 // The modes.

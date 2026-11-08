@@ -121,6 +121,10 @@ type UnitSpec struct {
 	// operations call no participant; its use case has them follow the
 	// unit's renames and moves once, after all of them (Unit.Participate).
 	DeferParticipants bool
+	// UpgradeOwn is the upgrade the unit writes for (Write.UpgradeOwn), the
+	// zero id for none: an upgrade's start's seeds and its rollback's
+	// batches set it (M11 design 4.5), no use case of a request.
+	UpgradeOwn uuid.UUID
 }
 
 // ErrChangesetReverted is a unit that would merge into a changeset a
@@ -263,7 +267,8 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		}
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
-			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, Grants: &Grants{}, Tree: spec.Tree, sources: &sourceMemo{},
+			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, UpgradeOwn: spec.UpgradeOwn, Grants: &Grants{},
+			Tree: spec.Tree, sources: &sourceMemo{},
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {
@@ -448,7 +453,10 @@ func (u *Unit) lockInto(ctx context.Context) error {
 // merges the unit into the one it names, which lockInto locked: its
 // updated_at moved to the unit's time, which the notebook's activity and
 // log read. One it is to create, not there yet, it inserts with the id it
-// names.
+// names. One it inserts in a notebook being upgraded records the upgrade
+// (M11 design 4.5): under the freeze only the initiator's MCP writes and
+// the upgrade's own units get past the guards, which come before it, so
+// every changeset of the upgrade has it. One it merges into keeps its own.
 func (u *Unit) ensureChangeset(ctx context.Context) error {
 	if u.changeset != (uuid.UUID{}) {
 		return nil
@@ -466,7 +474,7 @@ func (u *Unit) ensureChangeset(ctx context.Context) error {
 	}
 	if err := u.w.d.Changesets.CreateChangeset(ctx, Changeset{
 		ID: id, NotebookID: u.write.NotebookID, Kind: u.write.Kind, RevertsID: u.write.RevertsID, Client: u.write.Client,
-		Message: u.message, By: u.write.By, At: u.write.At,
+		Message: u.message, By: u.write.By, At: u.write.At, UpgradeID: u.write.Notebook.Upgrade.ID,
 	}); err != nil {
 		return err
 	}

@@ -1062,6 +1062,7 @@ paths:
         - validation_failed
         - page.title_taken
         - page.too_deep
+        - notebook.upgrading
         - page.virtual_file
         - server_busy
       requestBody:
@@ -1141,6 +1142,7 @@ paths:
         - page.edit_session_taken_over
         - page.edit_session_unlocked
         - page.revision_mismatch
+        - notebook.upgrading
         - page.locked
         - server_busy
       requestBody:
@@ -1173,6 +1175,7 @@ paths:
         - page.source_immutable
         - page.not_found
         - forbidden
+        - notebook.upgrading
         - page.locked
       requestBody:
         required: false
@@ -1345,6 +1348,7 @@ paths:
         - forbidden
         - server_busy
         - page.revision_mismatch
+        - notebook.upgrading
         - page.locked
       requestBody:
         required: true
@@ -1378,6 +1382,7 @@ paths:
         - forbidden
         - page.revision_mismatch
         - validation_failed
+        - notebook.upgrading
         - page.locked
         - server_busy
       requestBody:
@@ -1454,6 +1459,7 @@ paths:
         - forbidden
         - validation_failed
         - page.title_taken
+        - notebook.upgrading
         - page.protected
         - page.virtual_file
         - page.source_admin_only
@@ -1486,6 +1492,7 @@ paths:
         - page.source_admin_only
         - page.not_found
         - forbidden
+        - notebook.upgrading
         - page.protected
         - page.locked
       responses:
@@ -1512,6 +1519,7 @@ paths:
         - page.cycle
         - page.title_taken
         - page.too_deep
+        - notebook.upgrading
         - page.protected
         - page.virtual_file
         - page.source_admin_only
@@ -1606,6 +1614,7 @@ paths:
         - page.restore_too_large
         - server_busy
         - page.trash_changed
+        - notebook.upgrading
       responses:
         '200':
           description: The item's root, restored.
@@ -1734,6 +1743,7 @@ paths:
         - page.changeset_trimmed
         - page.revert_too_large
         - page.revert_conflict
+        - notebook.upgrading
         - page.protected
         - page.source_admin_only
         - page.source_too_large

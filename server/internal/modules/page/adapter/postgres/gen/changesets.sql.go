@@ -13,9 +13,9 @@ import (
 )
 
 const createChangeset = `-- name: CreateChangeset :exec
-INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at)
+INSERT INTO changesets (id, notebook_id, kind, reverts_id, client, message, created_by_id, created_at, updated_at, upgrade_id)
 VALUES ($1, $2, $3, $4, $5, $6,
-    $7, $8, $8)
+    $7, $8, $8, $9)
 `
 
 type CreateChangesetParams struct {
@@ -27,8 +27,10 @@ type CreateChangesetParams struct {
 	Message    *string
 	By         uuid.UUID
 	Now        time.Time
+	UpgradeID  *uuid.UUID
 }
 
+// upgrade_id is the upgrade the changeset is written in, NULL for none (M11 design 4.5).
 func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams) error {
 	_, err := q.db.Exec(ctx, createChangeset,
 		arg.ID,
@@ -39,6 +41,7 @@ func (q *Queries) CreateChangeset(ctx context.Context, arg CreateChangesetParams
 		arg.Message,
 		arg.By,
 		arg.Now,
+		arg.UpgradeID,
 	)
 	return err
 }

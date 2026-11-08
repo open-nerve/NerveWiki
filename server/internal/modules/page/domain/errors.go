@@ -117,7 +117,18 @@ var (
 	// or renaming or moving its source root (M10 design 4.7).
 	ErrSourceAdminOnly = shared.NewError(shared.KindForbidden, "page.source_admin_only",
 		"Only the notebook's admins can rename, move or delete sources in an LLM Wiki, or rename or move its source root.")
+	// ErrUpgrading: the notebook is being upgraded and the write is not
+	// its initiator's MCP write while upgrading (M11 design 4.5): the
+	// notebook module's notebook.upgrading, as ErrNotebookNotFound is its
+	// notebook.not_found.
+	ErrUpgrading = shared.NewError(shared.KindConflict, "notebook.upgrading",
+		"The notebook is being upgraded to an LLM Wiki: its content is read-only until the upgrade ends.")
 )
+
+// ErrStaleUpgradeWrite is a unit of an upgrade the notebook no longer has:
+// a rollback's batch after its rollback was ended. No problem: a defect's
+// error, which rolls the unit back (M11 design 4.5, decision 225).
+var ErrStaleUpgradeWrite = errors.New("page: a write of an upgrade the notebook no longer has")
 
 // ErrBatchTooLarge: a batch is past one of its bounds (M9 design 4.11,
 // 4.14): MCP's own code, which no REST operation answers. BatchTooLarge

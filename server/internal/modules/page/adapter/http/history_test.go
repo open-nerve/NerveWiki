@@ -178,6 +178,7 @@ func TestTheHistoryOperationsAnswerEachProblem(t *testing.T) {
 		{http.MethodPost, revertPath, domain.ErrChangesetTrimmed, http.StatusConflict, "page.changeset_trimmed"},
 		{http.MethodPost, revertPath, domain.ErrRevertTooLarge, http.StatusUnprocessableEntity, "page.revert_too_large"},
 		{http.MethodPost, revertPath, conflict, http.StatusConflict, "page.revert_conflict"},
+		{http.MethodPost, revertPath, domain.Refuse(domain.ErrUpgrading, id(12)), http.StatusConflict, "notebook.upgrading"},
 		{http.MethodPost, revertPath, domain.Refuse(domain.ErrProtected, id(12)), http.StatusConflict, "page.protected"},
 		{http.MethodPost, revertPath, domain.Refuse(domain.ErrSourceAdminOnly, id(12)), http.StatusForbidden, "page.source_admin_only"},
 		{http.MethodPost, revertPath, domain.Refuse(domain.ErrSourceTooLarge, id(12)), http.StatusUnprocessableEntity, "page.source_too_large"},

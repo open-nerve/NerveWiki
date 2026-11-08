@@ -73,7 +73,7 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 	}
 	switch {
 	case v.Needs != "":
-		err := s.Grants.Ask(ctx, v.Needs, g.decide(s, v.Needs))
+		err := s.Grants.Ask(ctx, v.Needs, decideAction(g.auth, s, v.Needs))
 		if isForbidden(err) {
 			return domain.Refuse(domain.ErrSourceAdminOnly, v.NodeID)
 		}
@@ -82,16 +82,17 @@ func (g *ModeGuard) GuardWrite(ctx context.Context, s Step) error {
 	return nil
 }
 
-// decide is the decision of action on s's notebook for the unit's actor,
-// ctx's: its own decision just saw the notebook, so that one not visible
-// is denied too (Grants.Ask), page.source_admin_only as forbidden is.
-func (g *ModeGuard) decide(s Step, action shared.Action) func(ctx context.Context) error {
+// decideAction is the decision of action on s's notebook by auth for the
+// unit's actor, ctx's, as a guard asks it (Grants.Ask): the unit's own
+// decision just saw the notebook, so that one not visible is denied too,
+// as forbidden is. The mode and freeze guards share it.
+func decideAction(auth shared.Authorizer, s Step, action shared.Action) func(ctx context.Context) error {
 	return func(ctx context.Context) error {
 		actor, err := shared.RequireActor(ctx)
 		if err != nil {
 			return err
 		}
-		_, err = g.auth.Authorize(ctx, actor, action, shared.Target{WorkspaceID: s.WorkspaceID, NotebookID: s.NotebookID})
+		_, err = auth.Authorize(ctx, actor, action, shared.Target{WorkspaceID: s.WorkspaceID, NotebookID: s.NotebookID})
 		return err
 	}
 }

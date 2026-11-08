@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
@@ -45,17 +46,21 @@ func (s states) read(call string, id uuid.UUID) (notebook.State, bool, error) {
 // pageNotebooks converts the notebook module's state into the page
 // module's field by field (M10/P1 design 3.12, 3.18), unlocked and under
 // each lock, each through the notebook module's read of its own: an LLM
-// Wiki's mode and source root, a standard notebook's mode and none; a
+// Wiki's mode and source root, a standard notebook's mode and none, an
+// upgrading one's upgrade, its id, state and initiator (M11/P1 design 3.4:
+// its start the page module does not read); a
 // notebook not found, as one deleted after open_notebook's gate is, is not
 // found, with the zero state, never a found state of no mode; an error is
 // answered as it is.
 func TestPageNotebooksConvertTheState(t *testing.T) {
-	wiki, plain, gone := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
-	root := uuid.NewV7()
+	wiki, plain, upgrading, gone := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	root, upgrade, initiator := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	var calls []string
 	n := pageNotebooks{states{of: map[uuid.UUID]notebook.State{
 		wiki:  {Mode: notebook.ModeLLMWiki, SourceRootID: root},
 		plain: {Mode: notebook.ModeStandard},
+		upgrading: {Mode: notebook.ModeStandard, Upgrade: notebook.Upgrade{ID: upgrade, State: notebook.UpgradeRollingBack, By: initiator,
+			At: time.Now()}},
 	}, calls: &calls}}
 	failure := errors.New("the database is gone")
 	failing := pageNotebooks{states{err: failure, calls: &calls}}
@@ -82,6 +87,8 @@ func TestPageNotebooksConvertTheState(t *testing.T) {
 		}{
 			{"an LLM Wiki", wiki, page.NotebookState{Mode: page.ModeLLMWiki, SourceRootID: root}, true},
 			{"a standard notebook", plain, page.NotebookState{Mode: page.ModeStandard}, true},
+			{"an upgrading notebook", upgrading, page.NotebookState{Mode: page.ModeStandard, Upgrade: page.NotebookUpgrade{ID: upgrade,
+				State: page.UpgradeState(notebook.UpgradeRollingBack), By: initiator}}, true},
 			{"none", gone, page.NotebookState{}, false},
 		} {
 			calls = nil
