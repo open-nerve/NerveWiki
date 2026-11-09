@@ -20,8 +20,11 @@ func NewGetUpgrade(d UpgradeDeps) *GetUpgrade { return &GetUpgrade{d: d} }
 // no notebook or one the caller cannot see, forbidden for one they are no
 // admin of, wiki.upgrade_not_found for none under way. One rolling back
 // whose job is neither queued nor running tells what its rollback has
-// left, read now (M11/P1 design 3.20). It takes no lock and no snapshot:
-// each of its fields is of one row, but what is left.
+// left, read now (M11/P1 design 3.20). It takes no lock; the upgrade's
+// row, whether a job writes and what is left are read in one snapshot,
+// so that a rollback's end committed between them is in all three or in
+// none: never an upgrade rolling back whose baseline is gone, every node
+// alive told as created (M11/P1 S3 review A-M2).
 func (g *GetUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -41,25 +44,31 @@ func (g *GetUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView, er
 	if err != nil {
 		return UpgradeView{}, err
 	}
-	up, ok, err := g.d.Rows.Current(ctx, id)
-	switch {
-	case err != nil:
-		return UpgradeView{}, err
-	case !ok:
-		return UpgradeView{}, domain.ErrUpgradeNotFound
-	}
-	if up.State == domain.UpgradeRollingBack {
+	var up domain.Upgrade
+	if err := g.d.Snapshots.WithinSnapshot(ctx, func(ctx context.Context) error {
+		var ok bool
+		var err error
+		up, ok, err = g.d.Rows.Current(ctx, id)
+		switch {
+		case err != nil:
+			return err
+		case !ok:
+			return domain.ErrUpgradeNotFound
+		case up.State != domain.UpgradeRollingBack:
+			return nil
+		}
 		writing, err := g.d.Writing.Writing(ctx, id)
+		if err != nil || writing {
+			return err
+		}
+		left, err := g.d.Rollback.Left(ctx, up.ID, id)
 		if err != nil {
-			return UpgradeView{}, err
+			return err
 		}
-		if !writing {
-			left, err := g.d.Rollback.Left(ctx, up.ID, id)
-			if err != nil {
-				return UpgradeView{}, err
-			}
-			up.RollbackLeft = &left
-		}
+		up.RollbackLeft = &left
+		return nil
+	}); err != nil {
+		return UpgradeView{}, err
 	}
 	return g.d.named(ctx, up)
 }

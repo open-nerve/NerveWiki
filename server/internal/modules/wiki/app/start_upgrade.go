@@ -21,6 +21,7 @@ const maxUpgradeLocks = 100
 // transaction (decisions 227, 232).
 type UpgradeDeps struct {
 	Tx         shared.TxManager
+	Snapshots  shared.Snapshots
 	Notebooks  Notebooks
 	Workspaces UpgradeWorkspaces
 	States     UpgradeStates

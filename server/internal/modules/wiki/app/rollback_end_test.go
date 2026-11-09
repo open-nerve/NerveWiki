@@ -155,19 +155,26 @@ func TestTheRollbackEnd(t *testing.T) {
 		{"a node new left", func(f *endFake) { f.left = domain.RollbackLeft{Created: 1} }, true, "lock, left"},
 	} {
 		f, end, log := fixture(tt.change)
-		left, err := end.End(ctx, nb, up)
-		if err != nil || left != tt.left || strings.Join(f.calls, ", ") != tt.calls || len(log.lines(t)) != 0 {
-			t.Errorf("%s: End() = %v, %v after %v, logged %v; want %v after %s, nothing written", tt.name, left, err, f.calls, log.lines(t),
-				tt.left, tt.calls)
+		left, committed, err := end.End(ctx, nb, up)
+		if err != nil || left != tt.left || committed != nil || strings.Join(f.calls, ", ") != tt.calls || len(log.lines(t)) != 0 {
+			t.Errorf("%s: End() = %v, committed %v, %v after %v, logged %v; want %v, none, after %s, nothing written", tt.name, left,
+				committed != nil, err, f.calls, log.lines(t), tt.left, tt.calls)
 		}
 	}
 
 	f, end, log := fixture(nil)
-	left, err := end.End(ctx, nb, up)
-	if want := "lock, left, workspace, clock, clear, delete baseline, end row, publish"; err != nil || left ||
+	left, committed, err := end.End(ctx, nb, up)
+	if want := "lock, left, workspace, clock, clear, delete baseline, end row, publish"; err != nil || left || committed == nil ||
 		strings.Join(f.calls, ", ") != want {
-		t.Fatalf("End() of nothing left = %v, %v after %v; want false after %s", left, err, f.calls, want)
+		t.Fatalf("End() of nothing left = %v, committed %v, %v after %v; want false and committed after %s", left, committed != nil, err,
+			f.calls, want)
 	}
+	// The line is its caller's to log once the transaction committed
+	// (M11/P1 S3 review A-N1).
+	if lines := log.lines(t); len(lines) != 0 {
+		t.Errorf("logged %v before committed, want nothing", lines)
+	}
+	committed()
 	if f.cleared != [3]uuid.UUID{nb, up, starter} || f.deleted != up || f.ended != up || f.endedLeft != nil || f.endedBy != starter {
 		t.Errorf("cleared %v, deleted %v, ended %v by %v left %v; want the upgrade's, by the starter, complete", f.cleared, f.deleted,
 			f.ended, f.endedBy, f.endedLeft)
@@ -184,7 +191,7 @@ func TestTheRollbackEnd(t *testing.T) {
 	}
 
 	f, end, _ = fixture(func(f *endFake) { f.noRow = true })
-	if _, err := end.End(ctx, nb, up); err == nil || slices.Contains(f.calls, "publish") {
+	if _, committed, err := end.End(ctx, nb, up); err == nil || committed != nil || slices.Contains(f.calls, "publish") {
 		t.Errorf("End() of a row no longer rolling back = %v after %v, want a defect's error, nothing told", err, f.calls)
 	}
 
@@ -207,7 +214,7 @@ func TestTheRollbackEnd(t *testing.T) {
 	}
 
 	_, end, _ = fixture(nil)
-	if _, err := end.End(context.Background(), nb, up); err == nil {
+	if _, _, err := end.End(context.Background(), nb, up); err == nil {
 		t.Error("End() without an actor = nil, want an error")
 	}
 	if err := end.Stopped(context.Background(), nb, up); err == nil {

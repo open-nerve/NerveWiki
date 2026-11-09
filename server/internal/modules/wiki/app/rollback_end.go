@@ -35,55 +35,57 @@ func NewRollbackEnd(d RollbackEndDeps) *RollbackEnd { return &RollbackEnd{d: d} 
 // End ends the upgrade upgradeID of the notebook when its rollback left
 // nothing, and answers whether it left something: the notebook's upgrade
 // cleared, its baseline deleted, its row rolled back, complete, and the
-// mode's subscribers told; an info line "upgrade rolled back", which
-// measures from when the rollback was abandoned or continued last.
-// Nothing, and false, when the notebook's upgrade is no longer it,
-// rolling back.
-func (r *RollbackEnd) End(ctx context.Context, notebookID, upgradeID uuid.UUID) (bool, error) {
+// mode's subscribers told; and committed, which logs an info line
+// "upgrade rolled back", measured from when the rollback was abandoned or
+// continued last, for its caller to call once the transaction committed
+// (M11/P1 S3 review A-N1). Nothing, false and nil when the notebook's
+// upgrade is no longer it, rolling back.
+func (r *RollbackEnd) End(ctx context.Context, notebookID, upgradeID uuid.UUID) (bool, func(), error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	state, ok, err := r.d.States.Lock(ctx, notebookID)
 	if err != nil || !ok || state.Upgrade.ID != upgradeID || state.Upgrade.State != domain.UpgradeRollingBack {
-		return false, err
+		return false, nil, err
 	}
 	left, err := r.d.Pages.Left(ctx, upgradeID, notebookID)
 	switch {
 	case err != nil:
-		return false, err
+		return false, nil, err
 	case left != (domain.RollbackLeft{}):
-		return true, nil
+		return true, nil, nil
 	}
 	workspace, ok, err := r.d.Notebooks.WorkspaceOf(ctx, notebookID)
 	switch {
 	case err != nil:
-		return false, err
+		return false, nil, err
 	case !ok:
-		return false, fmt.Errorf("wiki: the notebook %s locked has no workspace, a defect", notebookID)
+		return false, nil, fmt.Errorf("wiki: the notebook %s locked has no workspace, a defect", notebookID)
 	}
 	at := r.d.Clock.Now()
 	if err := r.d.States.Clear(ctx, notebookID, upgradeID, actor.UserID, at); err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if err := r.d.Pages.DeleteBaseline(ctx, upgradeID); err != nil {
-		return false, err
+		return false, nil, err
 	}
 	since, ok, err := r.d.Rows.EndRollback(ctx, upgradeID, nil, actor.UserID, at)
 	switch {
 	case err != nil:
-		return false, err
+		return false, nil, err
 	case !ok:
-		return false, fmt.Errorf("wiki: the upgrade %s rolling back on its notebook has no row rolling back, a defect", upgradeID)
+		return false, nil, fmt.Errorf("wiki: the upgrade %s rolling back on its notebook has no row rolling back, a defect", upgradeID)
 	}
 	if err := r.d.States.Publish(ctx, ModeChange{WorkspaceID: workspace, NotebookID: notebookID, From: domain.ModeStandard,
 		To: domain.ModeStandard, By: actor.UserID, At: at}); err != nil {
-		return false, err
+		return false, nil, err
 	}
-	r.d.Logger.InfoContext(ctx, "upgrade rolled back", slog.String("workspace_id", workspace.String()),
-		slog.String("notebook_id", notebookID.String()), slog.String("upgrade_id", upgradeID.String()),
-		slog.String("user_id", actor.UserID.String()), slog.Int64("elapsed_ms", at.Sub(since).Milliseconds()))
-	return false, nil
+	return false, func() {
+		r.d.Logger.InfoContext(ctx, "upgrade rolled back", slog.String("workspace_id", workspace.String()),
+			slog.String("notebook_id", notebookID.String()), slog.String("upgrade_id", upgradeID.String()),
+			slog.String("user_id", actor.UserID.String()), slog.Int64("elapsed_ms", at.Sub(since).Milliseconds()))
+	}, nil
 }
 
 // Stopped tells the mode's subscribers that the rollback of upgradeID

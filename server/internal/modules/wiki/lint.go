@@ -154,7 +154,7 @@ func New(d Deps) *Module {
 		Snapshots: d.Snapshots, Authorizer: d.Authorizer, Clock: d.Clock, Runs: runs,
 	})
 	upgrades := app.UpgradeDeps{
-		Tx: d.Tx, Notebooks: d.Notebooks, Workspaces: d.Workspaces, States: d.UpgradeStates, Pages: d.Upgrades,
+		Tx: d.Tx, Snapshots: d.Snapshots, Notebooks: d.Notebooks, Workspaces: d.Workspaces, States: d.UpgradeStates, Pages: d.Upgrades,
 		Rollback: d.RollbackPages, Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Rollbacks: d.Rollbacks, Names: d.Names,
 		Authorizer: d.Authorizer, Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger,
 		Timeout: d.StartTimeout,

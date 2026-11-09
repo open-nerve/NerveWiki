@@ -76,16 +76,20 @@ func TestUpgradeInterleavings(t *testing.T) {
 	clock := &stoppedClock{read: make(chan time.Time, 1), free: make(chan struct{})}
 	rules := &heldRules{held: make(chan struct{}, 1), free: make(chan struct{})}
 	stops, end, logs := &rollbackStops{}, &stoppedEnd{reached: make(chan struct{}, 1), free: make(chan struct{})}, &syncBuffer{}
+	gate := &writingGate{}
 	tm := newAcmeTeamOn(t, "member", "", nil, &wiring{
 		page: func(d *page.Deps) { clock.Clock, d.Clock = d.Clock, clock },
-		wiki: func(d *wiki.Deps) { rules.Rules, d.Rules = d.Rules, rules },
+		wiki: func(d *wiki.Deps) {
+			rules.Rules, d.Rules = d.Rules, rules
+			gate.WritingJobs, d.Writing = d.Writing, gate
+		},
 		transfer: func(d *transfer.Deps) {
 			stops.Tree, d.Tree = d.Tree, stops
 			end.RollbackEnd, d.RollbackEnd = d.RollbackEnd, end
 		},
 		batch: transfer.Batch{Nodes: 1},
 	}, slog.New(slog.NewJSONHandler(logs, nil)))
-	rollbacks := rollbackInterleavings{tm: tm, stops: stops, end: end, logs: logs}
+	rollbacks := rollbackInterleavings{tm: tm, stops: stops, end: end, gate: gate, logs: logs}
 	created := cell{status: http.StatusCreated}
 	upgrading := cell{http.StatusConflict, "notebook.upgrading"}
 
@@ -354,4 +358,5 @@ func TestUpgradeInterleavings(t *testing.T) {
 	t.Run("11 a rollback's batch and its cancel", rollbacks.theBatchAndTheCancel)
 	t.Run("12 a rollback's end and the notebook's deletion", rollbacks.theEndAndTheDeletion)
 	t.Run("16 the rescue, the running worker and the end", rollbacks.theRescueAndTheEnd)
+	t.Run("the read of an upgrade across its rollback's end", rollbacks.readAcrossTheEnd)
 }

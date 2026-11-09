@@ -59,9 +59,12 @@ type Notebooks interface {
 // notebook's row locked first.
 type RollbackEnd interface {
 	// End ends the upgrade upgradeID of the notebook when its rollback left
-	// nothing, and answers whether it left something; nothing, and false,
+	// nothing, and answers whether it left something, and, when it ended
+	// the upgrade, committed, which its caller calls once the transaction
+	// committed: it logs the upgrade's end, which a transaction that does
+	// not commit must not (M11/P1 S3 review A-N1). Nothing, false and nil
 	// when the notebook's upgrade is no longer it, rolling back.
-	End(ctx context.Context, notebookID, upgradeID uuid.UUID) (left bool, err error)
+	End(ctx context.Context, notebookID, upgradeID uuid.UUID) (left bool, committed func(), err error)
 	// Stopped tells the mode's subscribers that the rollback stopped, when
 	// the notebook's upgrade is still it, rolling back.
 	Stopped(ctx context.Context, notebookID, upgradeID uuid.UUID) error

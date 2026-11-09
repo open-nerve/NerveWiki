@@ -66,7 +66,8 @@ func (t *rbTree) RunBatch(ctx context.Context, spec app.JobSpec, p app.JobPlan, 
 
 // rbEnd is the wiki module's end of the upgrades as a rollback's job ends:
 // End answers left, err fails both; each call recorded with its upgrade
-// and actor.
+// and actor; End's committed, when nothing is left, records
+// "RollbackEnd.committed" as the wiki module's logs its line.
 type rbEnd struct {
 	rec    *recorder
 	left   bool
@@ -84,9 +85,12 @@ func (e *rbEnd) note(ctx context.Context, call string, upgradeID uuid.UUID) {
 	e.of, e.actors = append(e.of, upgradeID), append(e.actors, actor)
 }
 
-func (e *rbEnd) End(ctx context.Context, _, upgradeID uuid.UUID) (bool, error) {
+func (e *rbEnd) End(ctx context.Context, _, upgradeID uuid.UUID) (bool, func(), error) {
 	e.note(ctx, "RollbackEnd.End", upgradeID)
-	return e.left, e.err
+	if e.left || e.err != nil {
+		return e.left, nil, e.err
+	}
+	return false, func() { e.rec.add("RollbackEnd.committed") }, nil
 }
 
 func (e *rbEnd) Stopped(ctx context.Context, _, upgradeID uuid.UUID) error {
@@ -95,10 +99,12 @@ func (e *rbEnd) Stopped(ctx context.Context, _, upgradeID uuid.UUID) error {
 }
 
 // undoTx runs fn in a transaction of the rows: an error rolls its writes
-// to them back, as the database would.
+// to them back, as the database would; so does a commit that fails, as
+// commitErr says.
 type undoTx struct {
-	rows *rows
-	rec  *recorder
+	rows      *rows
+	rec       *recorder
+	commitErr error
 }
 
 func (u undoTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
@@ -109,7 +115,12 @@ func (u undoTx) WithinTx(ctx context.Context, fn func(ctx context.Context) error
 		kept[id] = *r
 	}
 	u.rows.mu.Unlock()
-	if err := fn(ctx); err != nil {
+	err := fn(ctx)
+	if err == nil && u.commitErr != nil {
+		err = u.commitErr
+		u.rec.add("commit failed")
+	}
+	if err != nil {
 		u.rows.mu.Lock()
 		for id, r := range kept {
 			*u.rows.jobs[id] = r
@@ -126,13 +137,15 @@ func (u undoTx) WithinSnapshot(ctx context.Context, fn func(ctx context.Context)
 	return errors.New("a rollback's end reads no snapshot")
 }
 
-// rbWorld is a rollback's job's surroundings.
+// rbWorld is a rollback's job's surroundings; commitErr fails its
+// transactions' commits.
 type rbWorld struct {
 	*backgroundWorld
-	rb   *rbTree
-	end  *rbEnd
-	logs *logs
-	up   uuid.UUID
+	rb        *rbTree
+	end       *rbEnd
+	logs      *logs
+	up        uuid.UUID
+	commitErr error
 }
 
 func newRbWorld(passes ...rbPass) *rbWorld {
@@ -146,8 +159,8 @@ func newRbWorld(passes ...rbPass) *rbWorld {
 
 func (w *rbWorld) runner() *app.Background {
 	return app.NewBackground(app.BackgroundRunDeps{Tree: w.rb, Statistics: []app.Analyzer{w.stats}, Rows: w.rows, Clock: fixedClock{now()},
-		Logger: w.logger, Beat: 5 * time.Millisecond, Backoff: time.Millisecond, Batch: w.batch, Tx: undoTx{rows: w.rows, rec: w.rec},
-		Notebooks: w.notebooks, RollbackEnd: w.end})
+		Logger: w.logger, Beat: 5 * time.Millisecond, Backoff: time.Millisecond, Batch: w.batch, Notebooks: w.notebooks, RollbackEnd: w.end,
+		Tx: undoTx{rows: w.rows, rec: w.rec, commitErr: w.commitErr}})
 }
 
 // queued adds bob's rollback of the upgrade up in eng, queued.
@@ -169,8 +182,8 @@ func (w *rbWorld) run(t *testing.T, ctx context.Context, j domain.Job) domain.Jo
 
 // ends are the end's calls in order.
 func (w *rbWorld) ends() string {
-	return strings.Join(w.rec.of("begin", "commit", "rollback", "Notebooks.LockByID", "FinishJob", "RollbackEnd.End",
-		"RollbackEnd.Stopped"), ", ")
+	return strings.Join(w.rec.of("begin", "commit", "commit failed", "rollback", "Notebooks.LockByID", "FinishJob", "RollbackEnd.End",
+		"RollbackEnd.committed", "RollbackEnd.Stopped"), ", ")
 }
 
 // lines are the log's lines that say text.
@@ -261,7 +274,8 @@ func TestARollbacksEnd(t *testing.T) {
 		ends    string
 		logged  string
 	}
-	done := outcome{domain.StateSucceeded, "", "begin, Notebooks.LockByID, FinishJob, RollbackEnd.End, commit", `msg="rollback ended"`}
+	done := outcome{domain.StateSucceeded, "", "begin, Notebooks.LockByID, FinishJob, RollbackEnd.End, commit, RollbackEnd.committed",
+		`msg="rollback ended"`}
 	stopped := func(state domain.State, failure domain.Failure) outcome {
 		return outcome{state, failure, "begin, Notebooks.LockByID, FinishJob, RollbackEnd.Stopped, commit", `msg="rollback ended"`}
 	}
@@ -351,6 +365,29 @@ func TestARollbacksEnd(t *testing.T) {
 				t.Errorf("the end's line %q, want %s", lines[0], level)
 			}
 		})
+	}
+}
+
+// The upgrade's end is logged once the transaction that wrote it
+// commits (M11/P1 S3 review A-N1): a commit that fails rolls the job's
+// end and the upgrade's back, and logs neither "upgrade rolled back" (the
+// wiki module's committed, not called) nor "rollback ended"; the run
+// fails, for River to try again.
+func TestARollbacksEndIsLoggedOnceCommitted(t *testing.T) {
+	w := newRbWorld(rbPass{steps: steps(2, 0), pass: app.RollbackPass{Deletes: true, Left: app.RollbackLeft{Created: 2}}})
+	w.batch, w.commitErr = app.Batch{Nodes: 1}, errors.New("the commit failed")
+	j := w.queued()
+	if err := w.runner().Run(context.Background(), j.ID); !errors.Is(err, w.commitErr) {
+		t.Errorf("Run() = %v, want the commit's error", err)
+	}
+	if ends, want := w.ends(), "begin, Notebooks.LockByID, FinishJob, RollbackEnd.End, commit failed, rollback"; ends != want {
+		t.Errorf("its end %s, want %s", ends, want)
+	}
+	if got := w.rows.get(j.ID); got.State != domain.StateRunning {
+		t.Errorf("the job %s, want it running still, its end rolled back", got.State)
+	}
+	if lines := w.lines(`msg="rollback ended"`); len(lines) != 0 {
+		t.Errorf("logged %q, want no rollback ended", lines)
 	}
 }
 

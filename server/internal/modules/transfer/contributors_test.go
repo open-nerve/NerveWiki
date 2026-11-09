@@ -308,8 +308,8 @@ func (n notebooks) LockByID(_ context.Context, id uuid.UUID) (bool, error) {
 // noRollbackEnd ends no upgrade: these tests run no rollback.
 type noRollbackEnd struct{}
 
-func (noRollbackEnd) End(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
-	return false, errors.New("no rollback runs here")
+func (noRollbackEnd) End(context.Context, uuid.UUID, uuid.UUID) (bool, func(), error) {
+	return false, nil, errors.New("no rollback runs here")
 }
 
 func (noRollbackEnd) Stopped(context.Context, uuid.UUID, uuid.UUID) error {

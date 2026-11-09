@@ -56,6 +56,13 @@ func (f *abandonFake) WithinTx(ctx context.Context, fn func(context.Context) err
 	return nil
 }
 
+// WithinSnapshot runs fn, its calls between "snapshot" and "end snapshot".
+func (f *abandonFake) WithinSnapshot(ctx context.Context, fn func(context.Context) error) error {
+	f.note("snapshot")
+	defer f.note("end snapshot")
+	return fn(ctx)
+}
+
 // in fails the call outside the transaction.
 func (f *abandonFake) in(ctx context.Context, call string) error {
 	if ctx.Value(abandonTxKey{}) != true {
@@ -210,7 +217,7 @@ func newAbandonFixture(change func(*abandonFake)) abandonFixture {
 	if change != nil {
 		change(x.f)
 	}
-	x.d = app.UpgradeDeps{Tx: x.f, Notebooks: x.f, Workspaces: x.f, States: x.f, Rollback: x.f, Rows: x.f, Writing: x.f,
+	x.d = app.UpgradeDeps{Tx: x.f, Snapshots: x.f, Notebooks: x.f, Workspaces: x.f, States: x.f, Rollback: x.f, Rows: x.f, Writing: x.f,
 		Rollbacks: abandonRollbacks{x.f}, Names: x.f, Authorizer: x.f, Action: "notebook.change_mode", Clock: x.f,
 		Logger: slog.New(slog.NewJSONHandler(x.log, nil))}
 	return x
@@ -471,7 +478,8 @@ func TestEndUpgradeRollback(t *testing.T) {
 
 // The read of an upgrade (M11/P1 design 3.20): rolling back with no job
 // queued or running, it tells what the rollback has left, read now; with
-// one, or upgrading, it reads neither.
+// one, or upgrading, it reads neither; the row, the jobs and what is left
+// in one snapshot (M11/P1 S3 review A-M2); none, wiki.upgrade_not_found.
 func TestGetUpgradeTellsWhatAStoppedRollbackLeft(t *testing.T) {
 	left := domain.RollbackLeft{Nodes: 4, Pages: 5, Created: 6}
 	for _, tt := range []struct {
@@ -481,9 +489,9 @@ func TestGetUpgradeTellsWhatAStoppedRollbackLeft(t *testing.T) {
 		want    *domain.RollbackLeft
 		calls   string
 	}{
-		{"stopped", domain.UpgradeRollingBack, false, &left, "workspace, authorize, current, writing, left, names"},
-		{"its job running", domain.UpgradeRollingBack, true, nil, "workspace, authorize, current, writing, names"},
-		{"upgrading", domain.UpgradeUpgrading, false, nil, "workspace, authorize, current, names"},
+		{"stopped", domain.UpgradeRollingBack, false, &left, "workspace, authorize, snapshot, current, writing, left, end snapshot, names"},
+		{"its job running", domain.UpgradeRollingBack, true, nil, "workspace, authorize, snapshot, current, writing, end snapshot, names"},
+		{"upgrading", domain.UpgradeUpgrading, false, nil, "workspace, authorize, snapshot, current, end snapshot, names"},
 	} {
 		x := newAbandonFixture(func(f *abandonFake) {
 			f.row.State, f.writing, f.left = tt.state, tt.writing, left
@@ -494,5 +502,10 @@ func TestGetUpgradeTellsWhatAStoppedRollbackLeft(t *testing.T) {
 			tt.want != nil && *view.Upgrade.RollbackLeft != *tt.want {
 			t.Errorf("%s: %+v, %v after %s; want left %+v after %s", tt.name, view.Upgrade.RollbackLeft, err, calls, tt.want, tt.calls)
 		}
+	}
+	x := newAbandonFixture(func(f *abandonFake) { f.row = domain.Upgrade{} })
+	if _, err := app.NewGetUpgrade(x.d).Execute(x.ctx(), x.nb); !errors.Is(err, domain.ErrUpgradeNotFound) ||
+		strings.Join(x.f.calls, ", ") != "workspace, authorize, snapshot, current, end snapshot" {
+		t.Errorf("none under way: %v after %v; want wiki.upgrade_not_found after the snapshot's read", err, x.f.calls)
 	}
 }

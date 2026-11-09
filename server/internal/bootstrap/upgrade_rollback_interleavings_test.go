@@ -4,19 +4,54 @@ import (
 	"context"
 	"net/http"
 	"slices"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
-// The rollback's interleavings (M11/P1 design 7.2: #10, 11, 12, 16), in
+// The rollback's interleavings (M11/P1 design 7.2: #10, 11, 12, 16; and
+// the read of an upgrade across its rollback's end), in
 // TestUpgradeInterleavings, on its app: the rollbacks' batches of one
 // node, their plans and batches stopped by rollbackStops, their ends by
-// stoppedEnd, the log in a buffer.
+// stoppedEnd, the wiki module's reads of the writing jobs by writingGate,
+// the log in a buffer.
+
+// writingGate is the wiki module's WritingJobs, which, armed, stops its
+// next call before it reads, until released.
+type writingGate struct {
+	wiki.WritingJobs
+	mu               sync.Mutex
+	armed            bool
+	reached, release chan struct{}
+}
+
+// arm stops the next call.
+func (g *writingGate) arm() {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.armed, g.reached, g.release = true, make(chan struct{}), make(chan struct{})
+}
+
+func (g *writingGate) Writing(ctx context.Context, notebookID uuid.UUID) (bool, error) {
+	g.mu.Lock()
+	stop, reached, release := g.armed, g.reached, g.release
+	g.armed = false
+	g.mu.Unlock()
+	if stop {
+		close(reached)
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+	}
+	return g.WritingJobs.Writing(ctx, notebookID)
+}
 
 // stoppedEnd is the wiki module's end of the rollbacks, which, armed,
 // stops in End, the notebook's row locked and the job's end written,
@@ -29,7 +64,7 @@ type stoppedEnd struct {
 	ends    atomic.Int32
 }
 
-func (e *stoppedEnd) End(ctx context.Context, notebookID, upgradeID uuid.UUID) (bool, error) {
+func (e *stoppedEnd) End(ctx context.Context, notebookID, upgradeID uuid.UUID) (bool, func(), error) {
 	e.ends.Add(1)
 	if e.armed.CompareAndSwap(true, false) {
 		e.reached <- struct{}{}
@@ -43,6 +78,7 @@ type rollbackInterleavings struct {
 	tm    acmeTeam
 	stops *rollbackStops
 	end   *stoppedEnd
+	gate  *writingGate
 	logs  *syncBuffer
 }
 
@@ -254,4 +290,53 @@ func (r rollbackInterleavings) theRescueAndTheEnd(t *testing.T) {
 	tm.rolledBack(t, nb, up, job, false)
 	awaitBackground(t, tm)
 	checkPages(t, tm.pool)
+}
+
+// readAcrossTheEnd is the read of an upgrade across its rollback's end
+// (M11/P1 S3 review A-M2): getUpgrade reads the upgrade's row, then waits
+// before it reads whether a job writes; the rollback's job, let go, ends
+// the upgrade. Let go, getUpgrade answers as its snapshot had it: rolling
+// back, the job running, nothing told left; not the upgrade rolling back
+// with its baseline gone, every node alive told as created. Read again,
+// there is none.
+func (r rollbackInterleavings) readAcrossTheEnd(t *testing.T) {
+	tm := r.tm
+	nb, _, _ := tm.rollbackNotebook(t, "Read across the end")
+	r.stops.arm(nb, 1, 0, false)
+	job := tm.abandoned(t, "alice", nb)
+	r.stops.stopped(t)
+	r.gate.arm()
+	type answered struct {
+		status int
+		answer string
+	}
+	read := make(chan answered, 1)
+	go func() {
+		status, answer := ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/notebooks/"+nb+"/upgrade", tm.tokens["alice"], "")
+		read <- answered{status, answer}
+	}()
+	select {
+	case <-r.gate.reached:
+	case <-time.After(interleavingWait):
+		t.Fatal("getUpgrade did not read whether a job writes")
+	}
+	r.stops.goOn()
+	if j := tm.endedBackground(t, "alice", job); j.State != "succeeded" {
+		t.Fatalf("the rollback = %s, want it succeeded", j)
+	}
+	close(r.gate.release)
+	var got answered
+	select {
+	case got = <-read:
+	case <-time.After(interleavingWait):
+		t.Fatal("getUpgrade did not answer")
+	}
+	var a rollbackAnswer
+	decodeAnswer(t, got.answer, &a)
+	if got.status != http.StatusOK || a.State != "rolling_back" || a.RollbackJobID == nil || *a.RollbackJobID != job || a.left() != "null" {
+		t.Errorf("getUpgrade across the end = %d %s; want the upgrade rolling back, its job %s running, nothing told left", got.status,
+			got.answer, job)
+	}
+	status, answer := tm.getUpgrade(t, "alice", nb)
+	wantCode(t, "the read after the end", status, answer, cell{http.StatusNotFound, "wiki.upgrade_not_found"})
 }

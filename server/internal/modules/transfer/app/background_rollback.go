@@ -65,18 +65,20 @@ func (r *backgroundRun) rollback(ctx, running context.Context, spec JobSpec) err
 // rollbackSucceeded ends the rollback's job and its upgrade in one
 // transaction: the notebook's row first, as a deletion takes it before
 // the job's (jobs.sql); the job's end; then the upgrade ended when nothing
-// is left; and its "rollback ended" line, as the export's succeed logs
-// its own (finish logs nothing past a succeed). The job's end comes before
-// the upgrade's, so that the upgrade ends, and the wiki module logs it,
-// only in a transaction that writes the job's end: a job no longer
-// running (the rescue failed it) rolls it all back, and the "stopped" line
-// is logged. Something left rolls it all back and ends the job failed,
+// is left; once it committed, the upgrade's end's line, then its "rollback
+// ended" line, as the export's succeed logs its own (finish logs nothing
+// past a succeed). The job's end comes before the upgrade's, so that the
+// upgrade ends, and the wiki module logs it, only in a transaction that
+// writes the job's end and commits (M11/P1 S3 review A-N1): a job no
+// longer running (the rescue failed it) rolls it all back, and the
+// "stopped" line is logged. Something left rolls it all back and ends the job failed,
 // internal, as a stop's end, rollbackStopped, writes it. A notebook
 // deleted meanwhile leaves no row to lock: nothing is written, End is not
 // called, and the "stopped" line is logged.
 func (r *backgroundRun) rollbackSucceeded(ctx, running, end context.Context, e Ended, attrs []any) error {
 	e.Report = r.report
 	locked, left := false, false
+	var committed func()
 	err := r.b.d.Tx.WithinTx(end, func(ctx context.Context) error {
 		var err error
 		if locked, err = r.b.d.Notebooks.LockByID(ctx, r.job.NotebookID); err != nil || !locked {
@@ -89,7 +91,7 @@ func (r *backgroundRun) rollbackSucceeded(ctx, running, end context.Context, e E
 		case !ok:
 			return errNoLongerRuns
 		}
-		if left, err = r.b.d.RollbackEnd.End(ctx, r.job.NotebookID, *r.job.UpgradeID); err != nil {
+		if left, committed, err = r.b.d.RollbackEnd.End(ctx, r.job.NotebookID, *r.job.UpgradeID); err != nil {
 			return err
 		}
 		if left {
@@ -105,6 +107,9 @@ func (r *backgroundRun) rollbackSucceeded(ctx, running, end context.Context, e E
 		return nil
 	case err != nil:
 		return fmt.Errorf("write the success of rollback %s: %w", r.job.ID, err)
+	}
+	if committed != nil {
+		committed()
 	}
 	r.logger.InfoContext(end, "rollback ended", append(attrs, slog.String("state", string(domain.StateSucceeded)),
 		slog.String("failure", ""), slog.Int64("nodes", e.Progress.Done), slog.Int64("skipped", e.Report.Counts.Skipped))...)
