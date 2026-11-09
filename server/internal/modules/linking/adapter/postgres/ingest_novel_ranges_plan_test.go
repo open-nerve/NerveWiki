@@ -467,25 +467,26 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 	if err := json.Unmarshal(ev.Plan, &doc); err != nil || len(doc) != 1 {
 		t.Fatalf("actual plan: %v", err)
 	}
-	// A Bitmap Index Scan counts every index entry in its ranges, dead
-	// versions too, before any visibility check. With no VACUUM after a
-	// Rebuild those entries stay until an earlier index scan has marked them
-	// dead, which depends on what else holds back the horizon (M11/P1: a main
-	// run counted 614 entries for 412 live in the reverse ranges). Allow the
-	// versions derived above: two for a reverse entry (old and new resolved)
-	// and three for a source entry after the streaming Rebuild, two for every
-	// main row after the buffered one. The heap still counts live rows only.
+	// A Bitmap Index Scan counts every index entry in its ranges, dead versions
+	// too, and never marks them dead; with no VACUUM after a Rebuild only a plain
+	// index scan over these ranges does. Which family the planner picks here
+	// follows ANALYZE's sample of page_links (M11/P1: main run 42583342275
+	// estimated 3226 rows per probe and read 816 bitmap entries for 412 live;
+	// its rerun and seven earlier runs estimated 1995-2805 and used index scans).
+	// So after a Rebuild the bitmap's bounds are the entries derived above
+	// (old and new resolved for a main reverse entry, a foreign one once; three
+	// versions for a resolved source entry and two for the unresolved one after
+	// the streaming Rebuild, two for every main row after the buffered one); the
+	// heap's bound still counts live rows only.
 	versions := func(scope string) float64 {
-		switch {
-		case state == bufferedRebuildState:
-			return 2
-		case !rebuilt:
-			return 1
-		case scope == "CTE digested" || scope == "CTE peers":
-			return 3
-		default:
-			return 2
+		exact := map[string]float64{"CTE followed_untouched": 2*3 + 8, "CTE relevant": 2*404 + 8, "CTE digested": 3*915 + 2}
+		if state == bufferedRebuildState {
+			exact["CTE digested"] = 2 * 916
 		}
+		if rebuilt && live[scope] > 0 {
+			return exact[scope] / live[scope]
+		}
+		return 1
 	}
 	visible, bitmap, seen := map[string]float64{}, map[string]float64{}, map[string]int{}
 	var visit func(node, string)
