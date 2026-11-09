@@ -789,7 +789,8 @@ func (b trashBench) arrays(tb testing.TB, c, r uuid.UUID) string {
 // The guards of a background revert at MaxJobItems (M8/P4 design 3.11),
 // each a line of its own in make test-go-guards, with -v, so that CI's
 // runs log their times: their limits are three times the times measured
-// here, CI being about 2.1 times slower (M8/P4 review B-M11). A request's
+// here, CI then about 2.1 times slower (M8/P4 review B-M11), the slowest
+// runner since about three times (the limits' comment). A request's
 // time is the least of three runs (fastestOf): a runner's slow moment once
 // took one past its limit (M8/P5B review, decision 10; M8 closeout A-1).
 // The bench keeps the composition root's bound: one far from the domain's
@@ -920,13 +921,20 @@ func fastestOf(tb testing.TB, what string, run func() time.Duration) time.Durati
 }
 
 // The guards' limits, three times the times measured here at the full
-// load (load 6-8): the request 0.3 s, of many groups 0.7 s, the job of
-// 10,000 nodes 5.5-6.5 s; the largest steps three times the bench's
-// slowest runs (load 6-13), the deletion 3.6-4.7 s here, 4.6 s there, the
-// group's first batch 0.75-1.0 s here, 2.2 s there.
+// load (load 6-8): the job of 10,000 nodes 5.5-6.5 s; the largest steps
+// three times the bench's slowest runs (load 6-13), the deletion 3.6-4.7 s
+// here, 4.6 s there, the group's first batch 0.75-1.0 s here, 2.2 s there.
+// The two requests' were three times theirs too, of the import 0.3 s and of
+// many groups 0.7 s, but CI's slowest runner, an EPYC 7763, takes about
+// three times those, not 2.1: 760-875 ms and 1.71-2.16 s in runs
+// 42530568840, 42687957467, 42700292442 and 42700539469, many groups past
+// its 2.1 s in 42700292442 (the other runners 437-873 ms, 1.02-1.94 s).
+// Their limits are 1.3 s and 3 s, 1.5 and 1.4 times the 7763's most, the
+// load as it was (decision 249); here they now take 357-381 ms and
+// 0.88-0.92 s (M11), the limits still over three times that.
 const (
-	startRevertLimit = 1 * time.Second
-	manyGroupsLimit  = 2100 * time.Millisecond
+	startRevertLimit = 1300 * time.Millisecond
+	manyGroupsLimit  = 3 * time.Second
 	revertJobLimit   = 17 * time.Second
 	largestStepLimit = 14 * time.Second
 	groupBatchLimit  = 6600 * time.Millisecond
