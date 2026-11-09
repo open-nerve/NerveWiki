@@ -521,7 +521,8 @@ func startCostUpgradeScans(scans []startCostScan) error {
 
 // startCostPageScans fails unless each scan of nodes and edit_sessions is by
 // an index with notebook_id in its condition, each of page_contents by
-// page_contents_pkey, and each table of want is read.
+// page_contents_pkey on node_id, repeated on a Nested Loop's inner side, a
+// key read for each node (decision 240), and each table of want is read.
 func startCostPageScans(scans []startCostScan, want ...string) error {
 	read := map[string]bool{}
 	for _, s := range scans {
@@ -537,6 +538,12 @@ func startCostPageScans(scans []startCostScan, want ...string) error {
 				s.Relation != "page_contents" && !strings.Contains(ix.Cond, "notebook_id") {
 				return fmt.Errorf("%s read by a %s of %s on %q", s.Relation, s.Type, ix.Index, ix.Cond)
 			}
+			if s.Relation == "page_contents" && !strings.Contains(ix.Cond, "node_id") {
+				return fmt.Errorf("page_contents read by a %s of %s with no node_id in %q: the whole index", s.Type, ix.Index, ix.Cond)
+			}
+		}
+		if s.Relation == "page_contents" && !s.repeated {
+			return fmt.Errorf("page_contents read by a %s once, not for each node on a Nested Loop's inner side", s.Type)
 		}
 	}
 	for _, table := range want {
@@ -613,5 +620,48 @@ func (n startCostNode) bitmaps(into *[]startCostNode) {
 			*into = append(*into, below)
 		}
 		below.bitmaps(into)
+	}
+}
+
+// The guard's check of the page reads (M11/P1 design 7.1, decision 240) on
+// plans written by hand, without a database, so that it runs in the short
+// line (make test-go-short), which builds this file without race, and is
+// not skipped there; the guard itself runs in costs-2. page_contents is
+// read by its key for each node, as CaptureBaseline's LATERAL is: a whole
+// index in key order, or a key read once, or a key read on the inner side
+// with no node_id, or a Seq Scan under a Hash Join, are refused.
+func TestTheStartGuardJudgesThePageReads(t *testing.T) {
+	const nodes = `{"Node Type":"Bitmap Heap Scan","Relation Name":"nodes","Parent Relationship":"Outer","Plans":[` +
+		`{"Node Type":"Bitmap Index Scan","Index Name":"nodes_notebook_id_parent_id_idx","Index Cond":"(notebook_id = '0190'::uuid)"}]}`
+	key := func(parent, cond string) string {
+		return `{"Node Type":"Index Scan","Relation Name":"page_contents","Index Name":"page_contents_pkey","Parent Relationship":"` +
+			parent + `","Index Cond":"` + cond + `"}`
+	}
+	for _, tt := range []struct {
+		name, plan string
+		ok         bool
+	}{
+		{"the LATERAL's key read for each node", `{"Node Type":"Nested Loop","Join Type":"Left","Plans":[` + nodes +
+			`,{"Node Type":"Limit","Parent Relationship":"Inner","Plans":[` + key("Outer", "(node_id = n.id)") + `]}]}`, true},
+		{"the whole key in order under a Merge Join", `{"Node Type":"Merge Join","Plans":[{"Node Type":"Sort","Parent Relationship":"Outer",` +
+			`"Plans":[` + nodes + `]},` + key("Inner", "") + `]}`, false},
+		{"a key read once", `{"Node Type":"Merge Join","Plans":[{"Node Type":"Sort","Parent Relationship":"Outer","Plans":[` + nodes + `]},` +
+			key("Inner", "(node_id = n.id)") + `]}`, false},
+		{"the whole key for each node", `{"Node Type":"Nested Loop","Join Type":"Left","Plans":[` + nodes +
+			`,{"Node Type":"Limit","Parent Relationship":"Inner","Plans":[` + key("Outer", "") + `]}]}`, false},
+		{"a Seq Scan under a Hash Join", `{"Node Type":"Hash Join","Plans":[` + nodes + `,{"Node Type":"Hash","Parent Relationship":"Inner",` +
+			`"Plans":[{"Node Type":"Seq Scan","Relation Name":"page_contents","Parent Relationship":"Outer"}]}]}`, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var plan startCostNode
+			if err := json.Unmarshal([]byte(tt.plan), &plan); err != nil {
+				t.Fatal(err)
+			}
+			var scans []startCostScan
+			plan.scans(false, &scans)
+			if err := startCostPageScans(scans, "nodes", "page_contents"); (err == nil) != tt.ok {
+				t.Errorf("%s: the check answered %v, want accepted %v", plan.shape(), err, tt.ok)
+			}
+		})
 	}
 }
