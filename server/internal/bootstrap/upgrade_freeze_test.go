@@ -288,15 +288,19 @@ func (u *upgradeBetweenBatches) RunBatch(ctx context.Context, spec transfer.JobS
 // batches, and sets their notebook's upgrade then, as no start may: the
 // second batch's unit is refused, the job failed refused,
 // notebook.upgrading, the first batch's node written and nothing of the
-// second (M11/P1 design 7.1, review A-N6).
+// second (M11/P1 design 7.1, review A-N6). So is a restore's whose
+// notebook starts rolling back then (review S1C-N1); an upgrade's own
+// rollback, in batches of one, writes each of its batches as the
+// notebook rolls back.
 func jobsBatchesMeetTheFreeze(t *testing.T) {
 	stop := &upgradeBetweenBatches{}
 	tm := newAcmeTeamWiring(t, "member", "", wiring{batch: transfer.Batch{Nodes: 1}, transfer: func(d *transfer.Deps) {
 		stop.Tree, d.Tree = d.Tree, stop
 	}})
 	alice := tm.userOf(t, "alice")
+	state := "upgrading"
 	stop.upgrade = func(ctx context.Context, nb uuid.UUID) error {
-		_, err := upgradeIn(ctx, tm.pool, nb.String(), alice, "upgrading")
+		_, err := upgradeIn(ctx, tm.pool, nb.String(), alice, state)
 		return err
 	}
 	alive := func(nb string) int {
@@ -338,6 +342,29 @@ func jobsBatchesMeetTheFreeze(t *testing.T) {
 	imported := tm.newest(t, reverts).ID
 	stop.arm(reverts)
 	check("the revert", tm.background(t, revertStart("alice", reverts, imported, "")), reverts, 2)
+
+	rolling := tm.openNotebook(t, "alice", "Rolling back")
+	box = tm.createPage(t, "alice", rolling, "", "Box")
+	for _, name := range []string{"c1", "c2"} {
+		tm.createPage(t, "alice", rolling, box, name)
+	}
+	tm.send(t, nodeDeletion("alice", box), http.StatusNoContent)
+	state = "rolling_back"
+	stop.arm(rolling)
+	check("the restore as the notebook rolls back", tm.background(t, trashRestoreStart("alice", rolling, box)), rolling, 1)
+
+	own := tm.openNotebook(t, "alice", "Own")
+	tm.createPage(t, "alice", own, "", "Guide")
+	tm.upgraded(t, "alice", own)
+	for _, path := range []string{"A.md", "B.md", "C.md"} {
+		if r := tm.agent(t, "alice", own).use(t, "write", map[string]any{"path": path, "content": "x"}).result(t); r["isError"] == true {
+			t.Fatalf("the agent's write of %s = %v", path, r)
+		}
+	}
+	job := tm.abandoned(t, "alice", own)
+	if j := tm.endedBackground(t, "alice", job); j.State != "succeeded" || j.Progress.Done != 5 {
+		t.Errorf("the rollback in batches of one = %s, want it succeeded, its five new nodes deleted", j)
+	}
 	checkPages(t, tm.pool)
 	checkBackground(t, tm)
 }

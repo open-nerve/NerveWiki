@@ -262,3 +262,25 @@ func (s *Store) StartUpgrade(ctx context.Context, id, upgradeID, by uuid.UUID, a
 	}
 	return n, nil
 }
+
+// SetUpgradeState sets the notebook's upgrade upgradeID's state, by by at
+// at, and answers how many rows it changed: none when the notebook's
+// upgrade is another or none.
+func (s *Store) SetUpgradeState(ctx context.Context, id, upgradeID uuid.UUID, state string, by uuid.UUID, at time.Time) (int64, error) {
+	n, err := s.queries(ctx).SetUpgradeState(ctx, gen.SetUpgradeStateParams{ID: id, UpgradeID: upgradeID, State: &state, By: by, Now: at})
+	if err != nil {
+		return 0, fmt.Errorf("set the notebook's upgrade's state: %w", err)
+	}
+	return n, nil
+}
+
+// ClearUpgrade clears the notebook's upgrade upgradeID, by by at at, and
+// answers how many rows it changed: none when the notebook's upgrade is
+// another or none.
+func (s *Store) ClearUpgrade(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) (int64, error) {
+	n, err := s.queries(ctx).ClearUpgrade(ctx, gen.ClearUpgradeParams{ID: id, UpgradeID: upgradeID, By: by, Now: at})
+	if err != nil {
+		return 0, fmt.Errorf("clear the notebook's upgrade: %w", err)
+	}
+	return n, nil
+}

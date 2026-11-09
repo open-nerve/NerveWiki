@@ -433,6 +433,7 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"transfer_jobs_state_check c",
 		"transfer_jobs_state_idx iw",
 		"transfer_jobs_target_check c",
+		"transfer_jobs_upgrade_check c",
 		"transfer_jobs_writing_key iuw",
 		"upgrade_nodes_baseline_check c",
 		"upgrade_nodes_kind_check c",
@@ -609,6 +610,9 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		rolledBack  = "state = 'rolled_back', ending = 'abandoned', rollback_job_id = gen_random_uuid()"
 		submitter   = "'0199a2b4-0000-7000-8000-000000000001'"
 		submission  = "submission_id = gen_random_uuid(), submitted_at = now(), submitted_by_id = " + submitter
+		// checkedRows' export made a rollback (M11/P1 design 3.17): its changeset and its upgrade, each check of the
+		// rollback's held but the one a case breaks.
+		rollbackJob = "UPDATE transfer_jobs SET kind = 'rollback', changeset_id = gen_random_uuid(), upgrade_id = gen_random_uuid(), "
 	)
 	tests := []struct{ name, stmt, constraint string }{
 		{"upper-case ASCII e-mail", insertUser("'Bob@corp.com'", "'b'"), "users_email_check"},
@@ -915,6 +919,23 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			"transfer_jobs_root_check"},
 		{"a revert under a page", "UPDATE transfer_jobs SET kind = 'revert', root_id = gen_random_uuid(), " +
 			"changeset_id = gen_random_uuid(), target_changeset_id = gen_random_uuid()", "transfer_jobs_root_check"},
+		// The rollback's job (M11/P1 design 3.17), checkedRows' export made one: each conjunct alone broken, both
+		// directions of upgrade_check's =, the other checks kept.
+		{"a rollback without its upgrade", "UPDATE transfer_jobs SET kind = 'rollback', changeset_id = gen_random_uuid()",
+			"transfer_jobs_upgrade_check"},
+		{"a revert's upgrade", "UPDATE transfer_jobs SET kind = 'revert', changeset_id = gen_random_uuid(), " +
+			"target_changeset_id = gen_random_uuid(), upgrade_id = gen_random_uuid()", "transfer_jobs_upgrade_check"},
+		{"an export's upgrade", "UPDATE transfer_jobs SET upgrade_id = gen_random_uuid()", "transfer_jobs_upgrade_check"},
+		{"a rollback under a page", rollbackJob + "root_id = gen_random_uuid()", "transfer_jobs_root_check"},
+		{"a rollback without its changeset", "UPDATE transfer_jobs SET kind = 'rollback', upgrade_id = gen_random_uuid()",
+			"transfer_jobs_changeset_check"},
+		{"a rollback's target", rollbackJob + "target_changeset_id = gen_random_uuid()", "transfer_jobs_target_check"},
+		{"a rollback's message", rollbackJob + "message = 'm'", "transfer_jobs_message_check"},
+		{"a job of a kind past the rollback", "UPDATE transfer_jobs SET kind = 'rollback2', changeset_id = gen_random_uuid()",
+			"transfer_jobs_kind_check"},
+		{"a changeset of a kind past the rollback", "UPDATE changesets SET kind = 'rollback2'", "changesets_kind_check"},
+		{"a rollback naming a changeset it reverts", "UPDATE changesets SET kind = 'rollback', reverts_id = id",
+			"changesets_reverts_check"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -924,6 +945,20 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 				t.Errorf("%s = %v, want check_violation (23514) of %s", tt.stmt, err, tt.constraint)
 			}
 		})
+	}
+	// The rollback's job and changeset as its start and units write them (M11/P1 design 3.17) hold every check: each
+	// in a transaction rolled back, the rows above kept for what follows.
+	for _, stmt := range []string{rollbackJob + "root_id = NULL", "UPDATE changesets SET kind = 'rollback'"} {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tx.Exec(ctx, stmt); err != nil {
+			t.Errorf("%s = %v, want it taken", stmt, err)
+		}
+		if err := tx.Rollback(ctx); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// A notebook has one upgrade under way at most (M11/P1 design 3.10): a second, reviewing or rolling back, is a
 	// unique violation of the partial index; one that ended, approved, and one soft-deleted, upgrading, stay beside it.
@@ -950,6 +985,28 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 	}
 	if _, err := pool.Exec(ctx, another("upgrading", ", deleted_at", ", now()")); err != nil {
 		t.Errorf("a deleted upgrade beside the one under way = %v, want it kept", err)
+	}
+	// A rollback is one of the jobs that write a notebook's tree (M11/P1 design 3.17): queued, beside it a queued
+	// import is a unique violation of the writing key, which a stopped rollback holds not.
+	writing := func(kind, state, columns, values string) string {
+		ended := "NULL, NULL"
+		if state == "failed" {
+			ended = "now(), '{}'"
+		}
+		return "INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, finished_at, report, created_at, " +
+			"changeset_id" + columns + ") VALUES (gen_random_uuid(), '0199a2b4-0000-7000-8000-000000000019', '" + kind + "', '" + state +
+			"', 'upgrade', " + submitter + ", 'web', " + ended + ", now(), gen_random_uuid()" + values + ")"
+	}
+	if _, err := pool.Exec(ctx, writing("rollback", "failed", ", upgrade_id", ", '0199a2b4-0000-7000-8000-000000000020'")); err != nil {
+		t.Fatalf("a stopped rollback = %v", err)
+	}
+	if _, err := pool.Exec(ctx, writing("rollback", "queued", ", upgrade_id", ", '0199a2b4-0000-7000-8000-000000000020'")); err != nil {
+		t.Fatalf("a queued rollback beside a stopped one = %v", err)
+	}
+	_, err := pool.Exec(ctx, writing("import", "queued", "", ""))
+	var pgErr *pgconn.PgError
+	if !errors.As(err, &pgErr) || pgErr.Code != "23505" || pgErr.ConstraintName != "transfer_jobs_writing_key" {
+		t.Errorf("an import queued beside a queued rollback = %v, want unique_violation (23505) of transfer_jobs_writing_key", err)
 	}
 	// Each client check, as the database holds it, refuses exactly the code points shared.Unshowable refuses
 	// in a name, but NUL, which text holds not (M9/P2 design 3.3.2): one statement a table, PostgreSQL reading

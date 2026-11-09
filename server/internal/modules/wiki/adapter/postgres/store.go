@@ -73,6 +73,50 @@ func (s *Store) Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgra
 	return u, true, nil
 }
 
+// EndRollback ends the upgrade id rolling back, rolled back, by by at at:
+// complete for left nil, else short of left (M11 decision 230). It
+// answers when the row changed before, as the rollback was abandoned or
+// continued; false for no upgrade id rolling back.
+func (s *Store) EndRollback(ctx context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool,
+	error,
+) {
+	complete := left == nil
+	arg := gen.EndUpgradeRollbackParams{ID: id, Complete: &complete, By: by, Now: at}
+	if left != nil {
+		nodes, pages, created := int32(left.Nodes), int32(left.Pages), int32(left.Created)
+		arg.LeftNodes, arg.LeftPages, arg.LeftCreated = &nodes, &pages, &created
+	}
+	since, err := s.queries(ctx).EndUpgradeRollback(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("end an upgrade's rollback: %w", err)
+	}
+	return since, true, nil
+}
+
+// RollBack sets the upgrade id rolling back, for ending, its rollback's
+// job jobID, by by at at, in one statement; false for no upgrade id
+// upgrading or reviewing.
+func (s *Store) RollBack(ctx context.Context, id uuid.UUID, ending domain.UpgradeEnding, jobID, by uuid.UUID, at time.Time) (bool, error) {
+	n, err := s.queries(ctx).RollBackUpgrade(ctx, gen.RollBackUpgradeParams{ID: id, Ending: string(ending), JobID: jobID, By: by, Now: at})
+	if err != nil {
+		return false, fmt.Errorf("roll an upgrade back: %w", err)
+	}
+	return n == 1, nil
+}
+
+// ContinueRollback sets the rollback's job of the upgrade id rolling
+// back, by by at at; false for no upgrade id rolling back.
+func (s *Store) ContinueRollback(ctx context.Context, id, jobID, by uuid.UUID, at time.Time) (bool, error) {
+	n, err := s.queries(ctx).ContinueUpgradeRollback(ctx, gen.ContinueUpgradeRollbackParams{ID: id, JobID: jobID, By: by, Now: at})
+	if err != nil {
+		return false, fmt.Errorf("continue an upgrade's rollback: %w", err)
+	}
+	return n == 1, nil
+}
+
 // SoftDeleteOf deletes the notebooks' upgrades, under way or ended, by by
 // at at: their deletion's (M11/P1 design 3.15).
 func (s *Store) SoftDeleteOf(ctx context.Context, notebookIDs []uuid.UUID, by uuid.UUID, at time.Time) error {

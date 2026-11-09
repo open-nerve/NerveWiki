@@ -52,8 +52,32 @@ test.each([
   ["revert", "tree_changed", "While the undo ran, the pages it was undoing changed."],
   ["revert", "changeset_reverted", "What the undo had done was itself undone while it ran."],
   ["revert", "gremlins", "The job failed."],
+  [
+    "rollback",
+    "forbidden",
+    "The person who started the rollback is no longer an admin of the notebook: another admin can continue it.",
+  ],
+  [
+    "rollback",
+    "revert_too_large",
+    "The upgrade changed too much, and the rollback stopped: you can end the rollback, keeping the notebook as it is.",
+  ],
+  ["rollback", "internal", "The server failed, and the rollback stopped: you can continue it."],
+  ["rollback", "interrupted", "The rollback was interrupted: you can continue it."],
+  ["rollback", "timeout", "The rollback ran past the server's time limit: you can continue it."],
+  ["rollback", "gremlins", "The job failed."],
 ] as const)("a failure of an %s, %s, says what befell it", (kind, failure, says) => {
   expect(failureText(kind, failure, t)).toBe(says);
+});
+
+test.each([
+  ["forbidden", "开始回滚的人已不是管理员，另一位管理员可以继续。"],
+  ["revert_too_large", "这次升级改动太多，回滚停下了：可以结束回滚、保留现在的样子。"],
+  ["internal", "服务器出错了，回滚停下了：可以继续回滚。"],
+  ["interrupted", "回滚中断了：可以继续回滚。"],
+  ["timeout", "回滚超过了服务器的时限：可以继续回滚。"],
+] as const)("a rollback that stopped, %s, says what to do next in Chinese too", (failure, says) => {
+  expect(failureText("rollback", failure, translator("zh-CN"))).toBe(says);
 });
 
 test("a revert one of whose parts done at once is past a batch says so in Chinese too", () => {

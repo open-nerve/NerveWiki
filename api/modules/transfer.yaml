@@ -384,9 +384,11 @@ paths:
         job that ends first ends as it would have. Its starter and the notebook's
         admins can cancel it; one not found is transfer.not_found as
         getTransferJob's; a job that has ended is transfer.not_cancellable.
-        A running job's cancel asked again is the first's.
+        A running job's cancel asked again is the first's. An upgrade's
+        rollback only a notebook admin may cancel: whoever else sees it gets
+        forbidden.
       security: [{ bearer: [] }]
-      x-problem-codes: [transfer.not_found, transfer.not_cancellable]
+      x-problem-codes: [transfer.not_found, forbidden, transfer.not_cancellable]
       responses:
         "200":
           description: The job, as the cancel left it.
@@ -635,7 +637,7 @@ components:
             The page exported with its subtree, or imported under; null for
             the whole notebook, or its root. A restore's, the root of the
             trash item it restores, a page or an attachment; null for a
-            revert.
+            revert and a rollback.
           type: [string, "null"]
           format: uuid
         name:
@@ -643,12 +645,14 @@ components:
             What is exported, by name, the notebook's or the page's, which
             the archive is named after; for an import, the archive's file
             name; for a restore, the trash item's name as it was deleted;
-            for a revert, the kind of the changeset it reverts.
+            for a revert, the kind of the changeset it reverts; for an
+            upgrade's rollback, upgrade.
           type: string
         changeset_id:
           description: >-
             The changeset the job writes in, an import's, a restore's
-            trash_restore or a revert's revert, decided as the job was
+            trash_restore, a revert's revert or a rollback's rollback,
+            decided as the job was
             created: it exists once the job first wrote. Null for an export,
             and for an import created before the jobs had it.
           type: [string, "null"]
@@ -742,7 +746,7 @@ components:
             The page exported with its subtree, or imported under; null for
             the whole notebook, or its root. A restore's, the root of the
             trash item it restores, a page or an attachment; null for a
-            revert.
+            revert and a rollback.
           type: [string, "null"]
           format: uuid
         name:
@@ -750,12 +754,14 @@ components:
             What is exported, by name, the notebook's or the page's, which
             the archive is named after; for an import, the archive's file
             name; for a restore, the trash item's name as it was deleted;
-            for a revert, the kind of the changeset it reverts.
+            for a revert, the kind of the changeset it reverts; for an
+            upgrade's rollback, upgrade.
           type: string
         changeset_id:
           description: >-
             The changeset the job writes in, an import's, a restore's
-            trash_restore or a revert's revert, decided as the job was
+            trash_restore, a revert's revert or a rollback's rollback,
+            decided as the job was
             created: it exists once the job first wrote. Null for an export,
             and for an import created before the jobs had it.
           type: [string, "null"]
@@ -827,8 +833,12 @@ components:
           type: integer
           minimum: 0
     TransferKind:
+      description: >-
+        What a job does: an import, an export, a trash item's restore, a
+        changeset's revert, or an upgrade's rollback, which puts the
+        notebook back as the upgrade started.
       type: string
-      enum: [import, export, trash_restore, revert]
+      enum: [import, export, trash_restore, revert, rollback]
     TransferClient:
       description: Where the job was started from, which its writes are of.
       type: string
@@ -918,7 +928,9 @@ components:
         job stopped beating, or the job queue dropped it before it began),
         timeout (it ran past the instance's limit), forbidden (its starter
         could no longer read the notebook as it ran, or write in it as an
-        import, a restore or a revert ran), root_not_found (the page
+        import, a restore or a revert ran, or a rollback's: its starter is no
+        longer the notebook's admin, and another admin may continue it),
+        root_not_found (the page
         exported, or imported under, was gone as it ran), storage_full,
         contributor_conflict (a file the server adds was where a node is),
         internal; for an import's archive as a whole, nothing written:
@@ -944,7 +956,8 @@ components:
         restores); page_locked (an edit session holds a page it was about to
         delete or write back, the report's lock); revert_too_large (one of
         its segments, steps that must be in one batch, holds more pages,
-        attachments, history or links than one batch writes). A writing job's
+        attachments, history or links than one batch writes; or a rollback's
+        pass too large). A writing job's
         refused (a write of the job the notebook's contract as an LLM Wiki
         refused: its refusal says which and where). What a job wrote before
         it failed is kept.

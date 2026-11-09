@@ -171,16 +171,18 @@ export type BackgroundCounts = Partial<
 
 /**
  * transfer_jobs, changesets: the job id is creatorId's restore of the trash item of the root root, or revert of the
- * changeset target, in the background (M8/P4 design 4.5), from client, succeeded with its nodes done of as many, its
- * report the counts, where it put the item (placed, a restore's) and no failure, started before it ended. Its
- * changeset, decided as it started, is the one its batches wrote, alive, of its kind, creatorId's from client, a
- * revert's reverting target. It resolves that changeset's id.
+ * changeset target, or rollback of the upgrade upgrade (M11/P1 design 5), in the background (M8/P4 design 4.5), from
+ * client, succeeded with its nodes done of as many, its report the counts, where it put the item (placed, a
+ * restore's) and no failure, started before it ended. Its changeset, decided as it started, is the one its batches
+ * wrote, alive, of its kind, creatorId's from client, a revert's reverting target, a rollback's of its upgrade. It
+ * resolves that changeset's id.
  */
 export async function expectBackgroundJob(
   db: Database,
   id: string,
   expected: {
-    kind: "trash_restore" | "revert";
+    kind: "trash_restore" | "revert" | "rollback";
+    upgrade?: string;
     creatorId: string;
     client: string;
     root: string | null;
@@ -196,7 +198,8 @@ export async function expectBackgroundJob(
             j.report->'counts' AS counts, j.report->'placed' AS placed,
             j.created_at <= j.started_at AND j.started_at <= j.finished_at AS ordered, j.deleted_at IS NULL AS live,
             j.changeset_id, s.kind AS changeset_kind, s.reverts_id, s.created_by_id = $2 AS changeset_by_creator,
-            s.client AS changeset_client, s.deleted_at IS NULL AS changeset_live
+            s.client AS changeset_client, s.deleted_at IS NULL AS changeset_live, j.upgrade_id,
+            s.upgrade_id AS changeset_upgrade_id
        FROM transfer_jobs j LEFT JOIN changesets s ON s.id = j.changeset_id WHERE j.id = $1`,
     [id, expected.creatorId]
   );
@@ -232,6 +235,8 @@ export async function expectBackgroundJob(
       changeset_by_creator: true,
       changeset_client: expected.client,
       changeset_live: true,
+      upgrade_id: expected.upgrade ?? null,
+      changeset_upgrade_id: expected.upgrade ?? null,
     },
   ]);
   return rows[0]?.changeset_id ?? "";

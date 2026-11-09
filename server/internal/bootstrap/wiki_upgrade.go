@@ -7,6 +7,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
@@ -49,6 +50,25 @@ func (s wikiUpgradeStates) Start(ctx context.Context, id uuid.UUID, up wiki.Note
 		return errWikiLintValue
 	}
 	return s.states.Start(ctx, id, notebook.Upgrade{ID: up.ID, State: notebook.UpgradeUpgrading, By: up.By, At: up.At})
+}
+
+func (s wikiUpgradeStates) SetState(ctx context.Context, id, upgradeID uuid.UUID, state wiki.UpgradeState, by uuid.UUID,
+	at time.Time,
+) error {
+	var to notebook.UpgradeState
+	switch state {
+	case wiki.UpgradeReviewing:
+		to = notebook.UpgradeReviewing
+	case wiki.UpgradeRollingBack:
+		to = notebook.UpgradeRollingBack
+	default:
+		return errWikiLintValue
+	}
+	return s.states.SetState(ctx, id, upgradeID, to, by, at)
+}
+
+func (s wikiUpgradeStates) Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error {
+	return s.states.Clear(ctx, id, upgradeID, by, at)
 }
 
 func (s wikiUpgradeStates) Publish(ctx context.Context, c wiki.ModeChange) error {
@@ -135,4 +155,29 @@ func (p wikiUpgradePages) RootNodes(ctx context.Context, notebookID uuid.UUID, k
 		out[i] = wiki.RootNode{ID: n.ID, Kind: kind, Key: n.Key}
 	}
 	return out, nil
+}
+
+// wikiRollbackPages are page.Upgrades as the wiki module's rollback's end
+// calls them (M11/P1 design 3.20).
+type wikiRollbackPages struct {
+	upgrades *page.Upgrades
+}
+
+func (p wikiRollbackPages) Left(ctx context.Context, upgradeID, notebookID uuid.UUID) (wiki.RollbackLeft, error) {
+	left, err := p.upgrades.Left(ctx, upgradeID, notebookID)
+	return wiki.RollbackLeft{Nodes: left.Nodes, Pages: left.Pages, Created: left.Created}, err
+}
+
+func (p wikiRollbackPages) DeleteBaseline(ctx context.Context, upgradeID uuid.UUID) error {
+	return p.upgrades.DeleteBaseline(ctx, upgradeID)
+}
+
+// wikiRollbacks are the transfer module's Rollbacks as the wiki module's
+// abandonment calls them (M11/P1 design 3.20): the client is the request's.
+type wikiRollbacks struct {
+	rollbacks transfer.Rollbacks
+}
+
+func (r wikiRollbacks) Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client string) (uuid.UUID, error) {
+	return r.rollbacks.Start(ctx, notebookID, upgradeID, transfer.Client(client))
 }

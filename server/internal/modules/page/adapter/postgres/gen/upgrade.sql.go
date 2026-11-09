@@ -7,6 +7,7 @@ package gen
 
 import (
 	"context"
+	"time"
 
 	"uuid"
 )
@@ -62,6 +63,19 @@ func (q *Queries) CaptureBaseline(ctx context.Context, arg CaptureBaselineParams
 	return i, err
 }
 
+const deleteUpgradeNodes = `-- name: DeleteUpgradeNodes :execrows
+DELETE FROM upgrade_nodes WHERE upgrade_id = $1
+`
+
+// An upgrade's rows, as it ends (M11 design 4.10), by upgrade_nodes_pkey's prefix.
+func (q *Queries) DeleteUpgradeNodes(ctx context.Context, upgradeID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUpgradeNodes, upgradeID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const deleteUpgradeNodesOfNotebooks = `-- name: DeleteUpgradeNodesOfNotebooks :exec
 DELETE FROM upgrade_nodes WHERE notebook_id = ANY($1::uuid[])
 `
@@ -88,6 +102,336 @@ type ProtectSourceRootParams struct {
 func (q *Queries) ProtectSourceRoot(ctx context.Context, arg ProtectSourceRootParams) error {
 	_, err := q.db.Exec(ctx, protectSourceRoot, arg.UpgradeID, arg.NodeID, arg.NotebookID)
 	return err
+}
+
+const rollbackBaseline = `-- name: RollbackBaseline :many
+SELECT node_id, kind, parent_id, name, sort_order, revision, content_hash, byte_size FROM upgrade_nodes
+WHERE upgrade_id = $1 AND baseline
+`
+
+type RollbackBaselineRow struct {
+	NodeID      uuid.UUID
+	Kind        string
+	ParentID    *uuid.UUID
+	Name        *string
+	SortOrder   *float64
+	Revision    *int32
+	ContentHash []byte
+	ByteSize    *int32
+}
+
+// An upgrade's baseline rows, every one, by upgrade_nodes_pkey's prefix (M11 design 4.10): what a rollback's plan
+// puts back.
+func (q *Queries) RollbackBaseline(ctx context.Context, upgradeID uuid.UUID) ([]RollbackBaselineRow, error) {
+	rows, err := q.db.Query(ctx, rollbackBaseline, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RollbackBaselineRow
+	for rows.Next() {
+		var i RollbackBaselineRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Kind,
+			&i.ParentID,
+			&i.Name,
+			&i.SortOrder,
+			&i.Revision,
+			&i.ContentHash,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollbackContentsNow = `-- name: RollbackContentsNow :many
+SELECT b.node_id, c.revision, c.content_hash, c.byte_size
+FROM upgrade_nodes b
+JOIN LATERAL (
+    SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+    WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+) c ON true
+WHERE b.upgrade_id = $1 AND b.baseline AND b.kind = 'page'
+`
+
+type RollbackContentsNowRow struct {
+	NodeID      uuid.UUID
+	Revision    int32
+	ContentHash []byte
+	ByteSize    int32
+}
+
+// The contents now of the upgrade's baseline pages (M11 design 4.10), their revisions, hashes and byte sizes, each
+// by page_contents_pkey, as RollbackFreeForest reads its rows, without reading the bodies.
+func (q *Queries) RollbackContentsNow(ctx context.Context, upgradeID uuid.UUID) ([]RollbackContentsNowRow, error) {
+	rows, err := q.db.Query(ctx, rollbackContentsNow, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RollbackContentsNowRow
+	for rows.Next() {
+		var i RollbackContentsNowRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Revision,
+			&i.ContentHash,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollbackFreeForest = `-- name: RollbackFreeForest :many
+WITH RECURSIVE holders AS (
+    SELECT n.parent_id AS id FROM upgrade_nodes b
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1) n ON true
+    WHERE b.upgrade_id = $1 AND b.baseline AND n.parent_id IS NOT NULL
+  UNION
+    SELECT n.parent_id FROM holders h
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = h.id LIMIT 1) n ON true
+    WHERE n.parent_id IS NOT NULL
+)
+SELECT n.id, n.parent_id FROM nodes n
+LEFT JOIN LATERAL (
+    SELECT true AS baseline FROM upgrade_nodes b WHERE b.upgrade_id = $1 AND b.node_id = n.id AND b.baseline
+    LIMIT 1
+) b ON true
+WHERE n.notebook_id = $2 AND n.deleted_at IS NULL AND b.baseline IS NULL
+    AND NOT EXISTS (SELECT 1 FROM holders h WHERE h.id = n.id)
+`
+
+type RollbackFreeForestParams struct {
+	UpgradeID  uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type RollbackFreeForestRow struct {
+	ID       uuid.UUID
+	ParentID *uuid.UUID
+}
+
+// The new nodes alive in the notebook that hold no baseline node, with their parents (M11 design 4.10): the
+// holders are the ancestors of the baseline nodes alive; a free node is a new one that is no holder. The roots of
+// the free subtrees are those whose parent is none, a holder or a baseline node. Depth is at most MaxDepth: the
+// holders climb as many levels. Each node is read by its key, each upgrade's row by upgrade_nodes_pkey, a row at a
+// time (the LATERALs' LIMIT 1 keeps them from being pulled up into joins, which may read a table whole), so that the
+// read costs as the notebook and not as the instance (decision 240; its cost guard). The holders are left out by an
+// anti-join, NOT EXISTS: a NOT IN of them is, once the tables are analyzed, a SubPlan run for each node alive, which
+// reads the holders whole each time, as many nodes times as many holders (decision 244); a holder's id is never null,
+// so the two say the same.
+func (q *Queries) RollbackFreeForest(ctx context.Context, arg RollbackFreeForestParams) ([]RollbackFreeForestRow, error) {
+	rows, err := q.db.Query(ctx, rollbackFreeForest, arg.UpgradeID, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RollbackFreeForestRow
+	for rows.Next() {
+		var i RollbackFreeForestRow
+		if err := rows.Scan(&i.ID, &i.ParentID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollbackHolders = `-- name: RollbackHolders :many
+WITH RECURSIVE holders AS (
+    SELECT n.parent_id AS id FROM upgrade_nodes b
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1) n ON true
+    WHERE b.upgrade_id = $1 AND b.baseline AND n.parent_id IS NOT NULL
+  UNION
+    SELECT n.parent_id FROM holders h
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = h.id LIMIT 1) n ON true
+    WHERE n.parent_id IS NOT NULL
+)
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at
+FROM holders h
+JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+        n.created_at, n.updated_at
+    FROM nodes n WHERE n.id = h.id AND n.deleted_at IS NULL LIMIT 1
+) n ON true
+LEFT JOIN LATERAL (
+    SELECT true AS baseline FROM upgrade_nodes b WHERE b.upgrade_id = $1 AND b.node_id = h.id AND b.baseline
+    LIMIT 1
+) b ON true
+WHERE b.baseline IS NULL
+`
+
+type RollbackHoldersRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The new nodes alive holding baseline nodes alive, their ancestors with no baseline row, as they are now (M11
+// design 4.10): what a rollback's plan deletes once the baseline nodes under them are put back. Read as
+// RollbackFreeForest reads them, each holder's node by its key.
+func (q *Queries) RollbackHolders(ctx context.Context, upgradeID uuid.UUID) ([]RollbackHoldersRow, error) {
+	rows, err := q.db.Query(ctx, rollbackHolders, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RollbackHoldersRow
+	for rows.Next() {
+		var i RollbackHoldersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const rollbackLeft = `-- name: RollbackLeft :one
+SELECT
+    (SELECT count(*) FILTER (WHERE n.alive IS NULL OR n.parent_id IS DISTINCT FROM b.parent_id OR n.name <> b.name
+         OR n.sort_order <> b.sort_order)
+     FROM upgrade_nodes b
+     LEFT JOIN LATERAL (
+         SELECT true AS alive, n.parent_id, n.name, n.sort_order FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL
+         LIMIT 1
+     ) n ON true
+     WHERE b.upgrade_id = $1 AND b.baseline)::integer AS nodes,
+    (SELECT count(*) FROM upgrade_nodes b
+     JOIN LATERAL (
+         SELECT c.content_hash FROM page_contents c WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+     ) c ON true
+     WHERE b.upgrade_id = $1 AND b.baseline AND b.kind = 'page'
+         AND c.content_hash <> b.content_hash)::integer AS pages,
+    (SELECT count(*) FROM nodes n
+     LEFT JOIN LATERAL (
+         SELECT true AS baseline FROM upgrade_nodes b
+         WHERE b.upgrade_id = $1 AND b.node_id = n.id AND b.baseline LIMIT 1
+     ) b ON true
+     WHERE n.notebook_id = $2 AND n.deleted_at IS NULL AND b.baseline IS NULL)::integer AS created
+`
+
+type RollbackLeftParams struct {
+	UpgradeID  uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type RollbackLeftRow struct {
+	Nodes   int32
+	Pages   int32
+	Created int32
+}
+
+// What a rollback has left to do (M11 design 4.10, decision 226): the baseline nodes not in place (parent, name or
+// order not the baseline's, or not alive), the baseline pages whose content is not the baseline's, and the live
+// nodes with no baseline row. getUpgrade, endUpgradeRollback and the rollback's end read it alike. Read as
+// RollbackFreeForest reads its rows: a baseline row's node and content each by its key, a live node's baseline
+// row by upgrade_nodes_pkey.
+func (q *Queries) RollbackLeft(ctx context.Context, arg RollbackLeftParams) (RollbackLeftRow, error) {
+	row := q.db.QueryRow(ctx, rollbackLeft, arg.UpgradeID, arg.NotebookID)
+	var i RollbackLeftRow
+	err := row.Scan(&i.Nodes, &i.Pages, &i.Created)
+	return i, err
+}
+
+const rollbackNodesNow = `-- name: RollbackNodesNow :many
+SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+    n.created_at, n.updated_at
+FROM upgrade_nodes b
+JOIN LATERAL (
+    SELECT n.id, n.notebook_id, n.parent_id, n.kind, n.name, n.name_key, n.sort_order, n.created_by_id, n.updated_by_id,
+        n.created_at, n.updated_at
+    FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1
+) n ON true
+WHERE b.upgrade_id = $1 AND b.baseline
+`
+
+type RollbackNodesNowRow struct {
+	ID          uuid.UUID
+	NotebookID  uuid.UUID
+	ParentID    *uuid.UUID
+	Kind        string
+	Name        string
+	NameKey     string
+	SortOrder   float64
+	CreatedByID uuid.UUID
+	UpdatedByID uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// The upgrade's baseline nodes alive as they are now (M11 design 4.10), each by its key, as RollbackFreeForest
+// reads them: what a rollback's plan compares with the baseline.
+func (q *Queries) RollbackNodesNow(ctx context.Context, upgradeID uuid.UUID) ([]RollbackNodesNowRow, error) {
+	rows, err := q.db.Query(ctx, rollbackNodesNow, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RollbackNodesNowRow
+	for rows.Next() {
+		var i RollbackNodesNowRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.NotebookID,
+			&i.ParentID,
+			&i.Kind,
+			&i.Name,
+			&i.NameKey,
+			&i.SortOrder,
+			&i.CreatedByID,
+			&i.UpdatedByID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rootNodesByKey = `-- name: RootNodesByKey :many

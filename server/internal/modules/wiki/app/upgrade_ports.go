@@ -47,13 +47,24 @@ type ModeChange struct {
 }
 
 // UpgradeStates are the notebook module's upgrade's columns (M11/P1 design
-// 3.11): Lock locks the notebook's row FOR NO KEY UPDATE and answers its
-// state, false for none; Start sets its upgrade; Publish tells the mode's
-// subscribers.
+// 3.11, 3.20): Lock locks the notebook's row FOR NO KEY UPDATE and answers
+// its state, false for none; Start sets its upgrade; SetState its next
+// state and Clear ends it, each of the notebook's upgrade upgradeID by by
+// at at; Publish tells the mode's subscribers.
 type UpgradeStates interface {
 	Lock(ctx context.Context, id uuid.UUID) (UpgradeNotebook, bool, error)
 	Start(ctx context.Context, id uuid.UUID, up NotebookUpgrade) error
+	SetState(ctx context.Context, id, upgradeID uuid.UUID, state domain.UpgradeState, by uuid.UUID, at time.Time) error
+	Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error
 	Publish(ctx context.Context, c ModeChange) error
+}
+
+// RollbackPages are the page module's part in a rollback's end (M11/P1
+// design 3.18, 3.20): what the rollback of the upgrade has left to do in
+// the notebook, read now; the upgrade's baseline deleted as it ends.
+type RollbackPages interface {
+	Left(ctx context.Context, upgradeID, notebookID uuid.UUID) (domain.RollbackLeft, error)
+	DeleteBaseline(ctx context.Context, upgradeID uuid.UUID) error
 }
 
 // UpgradeBaseline is how many nodes and pages a baseline holds.
@@ -97,10 +108,28 @@ type Names interface {
 
 // UpgradeRows are the module's notebook_upgrades: Insert writes an
 // upgrade's row by by at at; Current reads a notebook's upgrade under way,
-// false for none.
+// false for none; RollBack sets the upgrade id upgrading or reviewing
+// rolling back for ending, its rollback's job jobID, in one statement;
+// ContinueRollback sets the job of the upgrade id rolling back;
+// EndRollback ends the upgrade id rolling back, rolled back, complete for
+// left nil, and answers when its row changed before. Each write is by by
+// at at, false for no row in the state it wants.
 type UpgradeRows interface {
 	Insert(ctx context.Context, u domain.Upgrade, by uuid.UUID, at time.Time) error
 	Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgrade, bool, error)
+	RollBack(ctx context.Context, id uuid.UUID, ending domain.UpgradeEnding, jobID, by uuid.UUID, at time.Time) (bool, error)
+	ContinueRollback(ctx context.Context, id, jobID, by uuid.UUID, at time.Time) (bool, error)
+	EndRollback(ctx context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool, error)
+}
+
+// Rollbacks start an upgrade's rollback's job, the transfer module's
+// (M11/P1 design 3.19): Start writes the rollback of the notebook's
+// upgrade upgradeID, queued, as its caller from client ("web" or "api")
+// asks, in the caller's transaction, which holds the notebook's row and
+// has set the upgrade rolling back, and answers the job's id: server_busy
+// when the queue is full.
+type Rollbacks interface {
+	Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client string) (uuid.UUID, error)
 }
 
 // UpgradeView is an upgrade as its admins read it: the row, and the

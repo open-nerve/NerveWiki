@@ -1534,10 +1534,11 @@ components:
           $ref: "../common.yaml#/components/schemas/UserRef"
     ChangesetKind:
       description: >-
-        What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the
-        revert of another changeset.
+        What a changeset records: an edit, an import, a version restored, a node restored from the trash, the
+        revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade
+        started.
       type: string
-      enum: [edit, import, version_restore, trash_restore, revert]
+      enum: [edit, import, version_restore, trash_restore, revert, rollback]
     VersionRestore:
       description: A restore of a version.
       type: object

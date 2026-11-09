@@ -34,6 +34,11 @@ func (s states) LockState(_ context.Context, id uuid.UUID) (notebook.State, bool
 	return s.read("LockState", id)
 }
 
+func (s states) LockByID(_ context.Context, id uuid.UUID) (bool, error) {
+	_, ok, err := s.read("LockByID", id)
+	return ok, err
+}
+
 func (s states) read(call string, id uuid.UUID) (notebook.State, bool, error) {
 	*s.calls = append(*s.calls, call)
 	if s.err != nil {

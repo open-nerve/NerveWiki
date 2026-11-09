@@ -317,7 +317,10 @@ type seeded struct {
 	assets          map[string]uuid.UUID // by name
 	sessions        map[string]uuid.UUID // by page/owner
 	jobs            map[string]uuid.UUID // by notebook/owner
-	changesets      map[string]uuid.UUID // by notebook
+	// rollbackJobs are the ids of the rollbacks' jobs the upgrade's cancel
+	// rows prepare by SQL, each cell its own (M11/P1 design 3.22).
+	rollbackJobs map[string]uuid.UUID // by variant/caller
+	changesets   map[string]uuid.UUID // by notebook
 	// wiki is the LLM Wiki variant's (permission_matrix_wiki_test.go).
 	wiki wikiSeeded
 	// accounts are the columns' account ids, which registering them through
@@ -330,7 +333,12 @@ func newSeeded() seeded {
 	s := seeded{workspaces: map[string]uuid.UUID{}, memberships: map[string]uuid.UUID{}, invitations: map[string]uuid.UUID{},
 		notebooks: map[string]uuid.UUID{}, notebookMembers: map[string]uuid.UUID{}, pages: map[string]uuid.UUID{},
 		assets: map[string]uuid.UUID{}, sessions: map[string]uuid.UUID{}, jobs: map[string]uuid.UUID{}, changesets: map[string]uuid.UUID{},
-		accounts: map[caller]uuid.UUID{}, wiki: newWikiSeeded()}
+		rollbackJobs: map[string]uuid.UUID{}, accounts: map[caller]uuid.UUID{}, wiki: newWikiSeeded()}
+	for _, variant := range rollbackJobVariants() {
+		for _, c := range notebookColumns() {
+			s.rollbackJobs[variant+"/"+string(c)] = uuid.NewV7()
+		}
+	}
 	for _, nb := range matrixRevert() {
 		s.changesets[nb] = uuid.NewV7()
 	}
@@ -463,6 +471,17 @@ func (s seeded) job(name string, owner caller) uuid.UUID {
 	return id
 }
 
+// rollbackJob is the id of the rollback's job the cancel row variant
+// prepares for c, in notebookOf(c).
+func (s seeded) rollbackJob(variant string, c caller) uuid.UUID {
+	id, ok := s.rollbackJobs[variant+"/"+string(c)]
+	if !ok {
+		s.t.Helper()
+		s.t.Fatalf("no rollback's job %s of %s is seeded", variant, c)
+	}
+	return id
+}
+
 // changeset is the id of the rename seeded in the notebook name.
 func (s seeded) changeset(name string) uuid.UUID {
 	id, ok := s.changesets[name]
@@ -498,6 +517,12 @@ func (s seeded) workspaceOfRow(id uuid.UUID) (string, bool) {
 		if seededID == id {
 			name, _, _ := strings.Cut(key, "/")
 			return s.workspaceOfRow(s.notebooks[name])
+		}
+	}
+	for key, seededID := range s.rollbackJobs {
+		if seededID == id {
+			_, c, _ := strings.Cut(key, "/")
+			return s.workspaceOfRow(s.notebooks[notebookOf(caller(c))])
 		}
 	}
 	for name, seededID := range s.changesets {

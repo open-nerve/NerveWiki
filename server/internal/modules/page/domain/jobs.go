@@ -28,6 +28,14 @@ import (
 // background revert can undo any import (M8/P4 design 2.2 (a)).
 const MaxJobItems = 60_000
 
+// MaxRollbackItems bounds the tree's items of one pass of a rollback's
+// plan (M11 decision 193), and its versions with them: past it the pass
+// is page.revert_too_large. A pass's items are the baseline nodes not in
+// place and the new nodes holding baseline nodes, all alive once the free
+// subtrees are deleted, so a notebook of v0.1's size never reaches it;
+// the versions past what is left of it wait for the later passes.
+const MaxRollbackItems = 300_000
+
 // JobStep is a step of a background job (M8/P4 design 3.3; M9/P3 design
 // 3.22), a write no batch splits: a restore's node; a revert's place of a
 // node or step aside, deletion of a top's subtree, node of a group it

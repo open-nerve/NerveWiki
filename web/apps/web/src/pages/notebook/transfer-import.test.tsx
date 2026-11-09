@@ -247,6 +247,8 @@ test.each([
   ["an import", jobJSON(1, { kind: "import", name: "Old.zip" }), "Import of Old.zip"],
   ["a restore", jobJSON(1, { kind: "trash_restore", root_id: guide.id, name: "Guide" }), "Restore of Guide from"],
   ["an undo", jobJSON(1, { kind: "revert", name: "import", target_changeset_id: changesetId(1) }), "Undo: Import"],
+  // M11/P1 design 4.3: an upgrade's rollback writes the tree too (the store's writingKinds).
+  ["an upgrade's rollback", jobJSON(1, { kind: "rollback", name: "upgrade" }), "Undo the upgrade"],
 ])("%s of the notebook under way among the jobs is told, and no import starts", async (_, job, title) => {
   const user = userEvent.setup();
   const server = jobsServer({ jobs: [underWay(job, 2, 9)] });

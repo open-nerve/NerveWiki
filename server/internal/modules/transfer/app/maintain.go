@@ -105,7 +105,7 @@ func (r *Rescue) Run(ctx context.Context) error {
 		return fmt.Errorf("rescue the interrupted jobs: %w", err)
 	}
 	r.log(ctx, "job interrupted", jobs)
-	for _, kind := range []domain.Kind{domain.KindExport, domain.KindImport, domain.KindTrashRestore, domain.KindRevert} {
+	for _, kind := range domain.Kinds() {
 		if err := r.lost(ctx, kind); err != nil {
 			return err
 		}

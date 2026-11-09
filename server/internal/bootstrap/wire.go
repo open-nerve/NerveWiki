@@ -203,7 +203,14 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
+	// An upgrade's rollback's job ends the upgrade through the wiki module
+	// (M11/P1 design 3.20), which comes after the transfer module: its end
+	// comes first, from the pool.
+	upgradeStates := wikiUpgradeStates{notebook.NewUpgradeStates(pool, notebookRegistrants(pool).modeSubscribers)}
+	rollbackEnd := wiki.NewRollbackEnd(pool, wikiLintNotebooks{notebooks: notebook.NewNotebooks(pool)}, upgradeStates,
+		wikiRollbackPages{page.NewUpgrades(pool)}, clock.System{}, logger)
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
+	trDeps.RollbackEnd = rollbackEnd
 	trDeps.Contributors = []transfer.ExportContributor{wikiExport{notebooks: notebook.NewNotebooks(pool), files: files}}
 	trDeps.Batch = w.batch
 	if w.transfer != nil {
@@ -253,12 +260,15 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		// request's, the rest for the COMMIT, the ANALYZE and a 503
 		// (decisions 227, 232): lint's half did not hold the start of
 		// 100,000 pages on CI's runners (the S2 record); the mode's
-		// subscribers are the downgrade's.
+		// subscribers are the downgrade's. The abandonment starts the
+		// rollbacks' jobs through the transfer module (3.20).
 		Pool: pool, Tx: postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Workspaces:    workspace.NewWorkspaces(pool),
-		UpgradeStates: wikiUpgradeStates{notebook.NewUpgradeStates(pool, notebookRegistrants(pool).modeSubscribers)},
+		UpgradeStates: upgradeStates,
 		Upgrades:      wikiUpgradePages{page.NewUpgrades(pool)},
+		RollbackPages: wikiRollbackPages{page.NewUpgrades(pool)},
 		Writing:       transfer.NewWritingJobs(pool),
+		Rollbacks:     wikiRollbacks{tr.Rollbacks()},
 		Names:         displayNames{identity.NewDirectory(pool)},
 		UpgradeAction: notebook.ActionChangeMode,
 		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,

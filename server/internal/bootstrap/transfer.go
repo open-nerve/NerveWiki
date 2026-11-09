@@ -138,7 +138,20 @@ func (t transferTree) PlanRevert(ctx context.Context, spec transfer.JobSpec, cha
 	return planOf(p), nil
 }
 
-// RunBatch writes a batch of a plan PlanRestore or PlanRevert made.
+// PlanRollback plans a pass of an upgrade's rollback (M11/P1 design
+// 3.18): the page module's ErrRollbackGone is the transfer module's
+// ErrJobGone (treeError).
+func (t transferTree) PlanRollback(ctx context.Context, spec transfer.JobSpec) (transfer.JobPlan, transfer.RollbackPass, error) {
+	p, pass, err := t.tree.PlanRollback(ctx, jobSpec(spec))
+	if err != nil {
+		return nil, transfer.RollbackPass{}, treeError(err)
+	}
+	return planOf(p), transfer.RollbackPass{Deletes: pass.Deletes, Done: pass.Done, Items: pass.Items,
+		Left: transfer.RollbackLeft{Nodes: pass.Left.Nodes, Pages: pass.Left.Pages, Created: pass.Left.Created}}, nil
+}
+
+// RunBatch writes a batch of a plan PlanRestore, PlanRevert or
+// PlanRollback made.
 func (t transferTree) RunBatch(ctx context.Context, spec transfer.JobSpec, plan transfer.JobPlan, from, to int) (transfer.BatchDone, error) {
 	p, ok := plan.(jobPlan)
 	if !ok {
@@ -157,7 +170,8 @@ func (t transferTree) RunBatch(ctx context.Context, spec transfer.JobSpec, plan 
 }
 
 func jobSpec(spec transfer.JobSpec) page.JobSpec {
-	return page.JobSpec{NotebookID: spec.NotebookID, Client: page.Client(spec.Client), Changeset: spec.Changeset, Message: spec.Message}
+	return page.JobSpec{NotebookID: spec.NotebookID, Client: page.Client(spec.Client), Changeset: spec.Changeset, Message: spec.Message,
+		UpgradeID: spec.UpgradeID}
 }
 
 // jobPlan is the page module's plan, its steps as the transfer module
@@ -221,8 +235,10 @@ func createdNode(n page.CreatedNode) transfer.CreatedNode {
 	return out
 }
 
-// treeError is the page module's error as the jobs read it: a page too
-// deep, a parent gone, the job's changeset reverted; a batch to halve,
+// treeError is the page module's error as the jobs read it: a rollback's
+// upgrade no longer the notebook's, the job gone (M11 decision 233); a
+// page too deep, a parent gone, the job's changeset reverted; a batch to
+// halve,
 // which keeps the page module's, wrapped, for the log of a revert it stops
 // to say which bound (M9/P3 design 3.23); a trash item changed or expired,
 // a changeset trimmed; a revert's conflicts and the lock it met, which
@@ -231,6 +247,8 @@ func createdNode(n page.CreatedNode) transfer.CreatedNode {
 // and node, with an existing transfer refusal returned unchanged.
 func treeError(err error) error {
 	switch {
+	case errors.Is(err, page.ErrRollbackGone):
+		return transfer.ErrJobGone
 	case errors.Is(err, page.ErrTooDeep):
 		return transfer.ErrTooDeep
 	case errors.Is(err, page.ErrNoParent):

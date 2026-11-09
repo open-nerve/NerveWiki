@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer/domain"
 )
@@ -236,13 +237,20 @@ func TestListTransferJobs(t *testing.T) {
 
 // A cancel ends a queued job at once, asks a running one to stop, the time
 // answered, and is transfer.not_cancellable once the job ended; another's
-// job is its notebook's admin's alone, transfer.not_found to the rest.
+// job is its notebook's admin's alone, transfer.not_found to the rest; an
+// upgrade's rollback is an admin's alone, forbidden to its starter no
+// admin (M11/P1 design 3.19).
 func TestCancelTransferJob(t *testing.T) {
 	h := newHarness(t)
 	queued := h.job(alice(), domain.StateQueued, now(), "")
 	running := h.job(alice(), domain.StateRunning, now(), "")
 	ended := h.job(alice(), domain.StateSucceeded, now(), "zip")
 	bobs := h.job(bob(), domain.StateRunning, now(), "")
+	rollback := h.job(alice(), domain.StateQueued, now(), "")
+	up := uuid.NewV7()
+	h.rows.mu.Lock()
+	h.rows.jobs[rollback.ID].Kind, h.rows.jobs[rollback.ID].UpgradeID, h.rows.jobs[rollback.ID].Name = domain.KindRollback, &up, "upgrade"
+	h.rows.mu.Unlock()
 	for _, tt := range []struct {
 		name, id, token string
 		status          int
@@ -252,6 +260,8 @@ func TestCancelTransferJob(t *testing.T) {
 		{"another's, to a reader", bobs.ID.String(), "session", http.StatusNotFound, "transfer.not_found", ""},
 		{"another's, running, to the admin", running.ID.String(), "bob", http.StatusOK, "", "running"},
 		{"its own, ended", ended.ID.String(), "session", http.StatusConflict, "transfer.not_cancellable", ""},
+		{"its own rollback, to a reader", rollback.ID.String(), "session", http.StatusForbidden, "forbidden", ""},
+		{"another's rollback, to the admin", rollback.ID.String(), "bob", http.StatusOK, "", "cancelled"},
 		{"a job that is not", pageID().String(), "session", http.StatusNotFound, "transfer.not_found", ""},
 	} {
 		res, body := h.send(t, http.MethodPost, "/api/v0/transfer-jobs/"+tt.id+"/cancel", tt.token, "")

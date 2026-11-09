@@ -50,7 +50,7 @@ func (s *Store) CreateJob(ctx context.Context, j domain.Job) error {
 	err := s.queries(ctx).CreateJob(ctx, gen.CreateJobParams{
 		ID: j.ID, NotebookID: j.NotebookID, RootID: j.RootID, Kind: string(j.Kind), Name: j.Name, CreatedByID: j.CreatedBy,
 		Client: string(j.Client), CreatedAt: j.CreatedAt, ChangesetID: j.ChangesetID, TargetChangesetID: j.TargetChangesetID,
-		Message: j.Message,
+		Message: j.Message, UpgradeID: j.UpgradeID,
 	})
 	var pgErr *pgconn.PgError
 	switch {
@@ -331,7 +331,7 @@ func jobOf(r gen.FindJobRow) (domain.Job, error) {
 		CreatedBy: r.CreatedByID, Client: domain.Client(r.Client), Progress: domain.Progress{Done: r.ProgressDone, Total: r.ProgressTotal},
 		CancelRequested: r.CancelRequestedAt, Heartbeat: r.HeartbeatAt, Started: r.StartedAt, Finished: r.FinishedAt,
 		ResultBytes: r.ResultBytes, CreatedAt: r.CreatedAt, ChangesetID: r.ChangesetID, TargetChangesetID: r.TargetChangesetID,
-		Message: r.Message,
+		Message: r.Message, UpgradeID: r.UpgradeID,
 	}
 	// A running job's report is the heartbeat's, which only its end shows.
 	if r.Report != nil && j.State.Ended() {

@@ -271,14 +271,18 @@ test("of two imports at once, the page asks before it is left until both have en
   expect([store.uploading, warned.at(-1)]).toEqual([0, false]);
 });
 
-test("writing tells whether a job held that writes the tree, an import, a restore or a revert, is queued or running: not an export, not one ended", () => {
+test("writing tells whether a job held that writes the tree, an import, a restore, a revert or an upgrade's rollback, is queued or running: not an export, not one ended", () => {
   const { store } = storeOf();
   const imported = job(2, { kind: "import" });
   const restore = job(3, { kind: "trash_restore", root_id: "n3" });
   const revert = job(4, { kind: "revert", target_changeset_id: "c4" });
+  const rollback = job(5, { kind: "rollback", name: "upgrade" });
   const cases: [TransferJob[], boolean][] = [
     [[], false],
-    [[underWay(job(1), 0, 0), imported, restore, revert], false],
+    [[underWay(job(1), 0, 0), imported, restore, revert, rollback], false],
+    [[underWay(rollback, 0, 0)], true],
+    [[underWay(rollback, 3, 40)], true],
+    [[{ ...rollback, state: "failed" }], false],
     [[job(1), underWay(imported, 0, 0)], true],
     [[underWay(imported, 1, 4)], true],
     [[underWay(restore, 0, 0)], true],

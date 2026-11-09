@@ -12,6 +12,34 @@ import (
 	"uuid"
 )
 
+const continueUpgradeRollback = `-- name: ContinueUpgradeRollback :execrows
+UPDATE notebook_upgrades
+SET rollback_job_id = $1::uuid, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND state = 'rolling_back' AND deleted_at IS NULL
+`
+
+type ContinueUpgradeRollbackParams struct {
+	JobID uuid.UUID
+	By    uuid.UUID
+	Now   time.Time
+	ID    uuid.UUID
+}
+
+// A stopped rollback continued (M11 design 4.10), under the notebook's row lock: its new job. No row when the upgrade
+// does not roll back.
+func (q *Queries) ContinueUpgradeRollback(ctx context.Context, arg ContinueUpgradeRollbackParams) (int64, error) {
+	result, err := q.db.Exec(ctx, continueUpgradeRollback,
+		arg.JobID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const currentUpgrade = `-- name: CurrentUpgrade :one
 SELECT id, notebook_id, state, ending, source_root_id, seeded_root, seeded_agents_id, locale, baseline_nodes,
     baseline_pages, baseline_wanted, baseline_wanted_capped, submitted_by_id, submitted_at, rollback_job_id,
@@ -73,6 +101,45 @@ func (q *Queries) CurrentUpgrade(ctx context.Context, notebookID uuid.UUID) (Cur
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const endUpgradeRollback = `-- name: EndUpgradeRollback :one
+UPDATE notebook_upgrades u
+SET state = 'rolled_back', rollback_complete = $1, rollback_left_nodes = $2::integer,
+    rollback_left_pages = $3::integer, rollback_left_created = $4::integer,
+    updated_by_id = $5::uuid, updated_at = $6::timestamptz
+FROM (SELECT o.id, o.updated_at FROM notebook_upgrades o WHERE o.id = $7) b
+WHERE u.id = b.id AND u.state = 'rolling_back' AND u.deleted_at IS NULL
+RETURNING b.updated_at AS since
+`
+
+type EndUpgradeRollbackParams struct {
+	Complete    *bool
+	LeftNodes   *int32
+	LeftPages   *int32
+	LeftCreated *int32
+	By          uuid.UUID
+	Now         time.Time
+	ID          uuid.UUID
+}
+
+// A rollback's end (M11 design 4.10, decision 230), under the notebook's row lock: the upgrade rolled back, complete
+// when nothing was left, else what was left; who and when. It answers when the row changed last before, as the
+// rollback was abandoned or continued, which the end's log measures from; no row when the upgrade no longer rolls
+// back.
+func (q *Queries) EndUpgradeRollback(ctx context.Context, arg EndUpgradeRollbackParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, endUpgradeRollback,
+		arg.Complete,
+		arg.LeftNodes,
+		arg.LeftPages,
+		arg.LeftCreated,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	var since time.Time
+	err := row.Scan(&since)
+	return since, err
 }
 
 const insertUpgrade = `-- name: InsertUpgrade :exec
@@ -138,6 +205,38 @@ type PurgeUpgradesParams struct {
 // lock order.
 func (q *Queries) PurgeUpgrades(ctx context.Context, arg PurgeUpgradesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgeUpgrades, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rollBackUpgrade = `-- name: RollBackUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'rolling_back', ending = $1::text, rollback_job_id = $2::uuid,
+    updated_by_id = $3::uuid, updated_at = $4::timestamptz
+WHERE id = $5 AND state IN ('upgrading', 'reviewing') AND deleted_at IS NULL
+`
+
+type RollBackUpgradeParams struct {
+	Ending string
+	JobID  uuid.UUID
+	By     uuid.UUID
+	Now    time.Time
+	ID     uuid.UUID
+}
+
+// An upgrade abandoned (M11 design 4.10), under the notebook's row lock: rolling back, why, and its rollback's job, in
+// one statement, as notebook_upgrades_rollback_job_check wants the job with the state. No row when the upgrade is not
+// upgrading or reviewing.
+func (q *Queries) RollBackUpgrade(ctx context.Context, arg RollBackUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rollBackUpgrade,
+		arg.Ending,
+		arg.JobID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}

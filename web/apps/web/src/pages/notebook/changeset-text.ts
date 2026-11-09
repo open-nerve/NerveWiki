@@ -23,6 +23,8 @@ export function kindText(kind: Changeset["kind"], t: Translate): string {
       return t("history.kind.trash_restore");
     case "revert":
       return t("history.kind.revert");
+    case "rollback":
+      return t("history.kind.rollback");
   }
 }
 

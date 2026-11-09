@@ -115,6 +115,7 @@ const (
 	TransferKindExport       TransferKind = "export"
 	TransferKindImport       TransferKind = "import"
 	TransferKindRevert       TransferKind = "revert"
+	TransferKindRollback     TransferKind = "rollback"
 	TransferKindTrashRestore TransferKind = "trash_restore"
 )
 
@@ -126,6 +127,8 @@ func (e TransferKind) Valid() bool {
 	case TransferKindImport:
 		return true
 	case TransferKindRevert:
+		return true
+	case TransferKindRollback:
 		return true
 	case TransferKindTrashRestore:
 		return true
@@ -275,7 +278,7 @@ type TransferDownload struct {
 	URL string `json:"url"`
 }
 
-// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes). A writing job's refused (a write of the job the notebook's contract as an LLM Wiki refused: its refusal says which and where). What a job wrote before it failed is kept.
+// TransferFailure Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran, or a rollback's: its starter is no longer the notebook's admin, and another admin may continue it), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes; or a rollback's pass too large). A writing job's refused (a write of the job the notebook's contract as an LLM Wiki refused: its refusal says which and where). What a job wrote before it failed is kept.
 type TransferFailure string
 
 // TransferJob An import or an export of a notebook, a restore of a trash item or a revert of a changeset, a job that runs in the background: queued, then running, then succeeded, failed or cancelled. An export's archive expires a while after it succeeded, the instance's export TTL, or at once when its starter's next export of the notebook succeeds: a starter keeps only their latest export of a notebook. created_by is its starter.
@@ -283,7 +286,7 @@ type TransferJob struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
-	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
 	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -297,9 +300,11 @@ type TransferJob struct {
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
 	FinishedAt nullable.Nullable[time.Time]        `json:"finished_at"`
 	ID         uuid.UUID                           `json:"id"`
-	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+	// Kind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+	Kind TransferKind `json:"kind"`
+
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -312,7 +317,7 @@ type TransferJob struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -326,7 +331,7 @@ type TransferJobDetail struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
-	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
 	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -346,9 +351,11 @@ type TransferJobDetail struct {
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
 	FinishedAt nullable.Nullable[time.Time]        `json:"finished_at"`
 	ID         uuid.UUID                           `json:"id"`
-	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+	// Kind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+	Kind TransferKind `json:"kind"`
+
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -367,7 +374,7 @@ type TransferJobDetail struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -384,7 +391,7 @@ type TransferJobPage struct {
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
 
-// TransferKind defines model for TransferKind.
+// TransferKind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
 type TransferKind string
 
 // TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes), duplicate_source (identical bytes already exist as a source of the same kind; path is the archive item and to is the matching notebook path).

@@ -161,6 +161,8 @@ type notebooks struct {
 	goneAsRead       bool
 	upgrades         map[uuid.UUID]uuid.UUID
 	upgradedAsLocked bool
+	rollingBack      bool
+	unlocked         bool
 	rec              *recorder
 }
 
@@ -176,7 +178,13 @@ func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (app.NotebookState
 	if !ok || n.unshared {
 		return app.NotebookState{}, false, nil
 	}
-	return app.NotebookState{UpgradeID: n.upgrades[id]}, true, nil
+	return app.NotebookState{UpgradeID: n.upgrades[id], RollingBack: n.rollingBack}, true, nil
+}
+
+func (n notebooks) LockByID(_ context.Context, id uuid.UUID) (bool, error) {
+	n.rec.add("Notebooks.LockByID")
+	_, ok := n.names[id]
+	return ok && !n.unlocked, nil
 }
 
 func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
@@ -619,6 +627,15 @@ func (q *queue) TrashRestore(_ context.Context, id uuid.UUID) error {
 
 func (q *queue) Revert(_ context.Context, id uuid.UUID) error {
 	q.rec.add("Queue.Revert")
+	if q.err != nil {
+		return q.err
+	}
+	q.enqueued = append(q.enqueued, id)
+	return nil
+}
+
+func (q *queue) Rollback(_ context.Context, id uuid.UUID) error {
+	q.rec.add("Queue.Rollback")
 	if q.err != nil {
 		return q.err
 	}

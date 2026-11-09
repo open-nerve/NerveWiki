@@ -59,6 +59,7 @@ const (
 	ChangesetKindEdit           ChangesetKind = "edit"
 	ChangesetKindImport         ChangesetKind = "import"
 	ChangesetKindRevert         ChangesetKind = "revert"
+	ChangesetKindRollback       ChangesetKind = "rollback"
 	ChangesetKindTrashRestore   ChangesetKind = "trash_restore"
 	ChangesetKindVersionRestore ChangesetKind = "version_restore"
 )
@@ -71,6 +72,8 @@ func (e ChangesetKind) Valid() bool {
 	case ChangesetKindImport:
 		return true
 	case ChangesetKindRevert:
+		return true
+	case ChangesetKindRollback:
 		return true
 	case ChangesetKindTrashRestore:
 		return true
@@ -193,7 +196,7 @@ type Changeset struct {
 	// IngestSources The first 3 source positions in append order; null when the source is no longer alive in this notebook.
 	IngestSources []nullable.Nullable[uuid.UUID] `json:"ingest_sources"`
 
-	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
 	Kind ChangesetKind `json:"kind"`
 
 	// Message Why it was made, as a revert's request said; null for none.
@@ -224,7 +227,7 @@ type ChangesetBrief struct {
 	CreatedBy externalRef0.UserRef `json:"created_by"`
 	ID        uuid.UUID            `json:"id"`
 
-	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
 	Kind ChangesetKind `json:"kind"`
 }
 
@@ -279,7 +282,7 @@ type ChangesetDetail struct {
 	// IngestSources The first 20 source positions in append order; null when the source is no longer alive in this notebook.
 	IngestSources []nullable.Nullable[uuid.UUID] `json:"ingest_sources"`
 
-	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
 	Kind ChangesetKind `json:"kind"`
 
 	// Message Why it was made, as a revert's request said; null for none.
@@ -308,7 +311,7 @@ type ChangesetDetail struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ChangesetKind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+// ChangesetKind What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
 type ChangesetKind string
 
 // ChangesetPage A page of a notebook's history, newer first.
@@ -713,7 +716,7 @@ type VersionChangeset struct {
 	CreatedBy externalRef0.UserRef `json:"created_by"`
 	ID        uuid.UUID            `json:"id"`
 
-	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+	// Kind What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
 	Kind ChangesetKind `json:"kind"`
 }
 

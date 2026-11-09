@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P1 冻结、发起与放弃（四个 Step：S1 数据、冻结与删除的护栏（服务端）；S2 发起与读（服务端）；S3 放弃、回滚与结束（服务端）；S4 网页） |
-| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1、S2 修订 2026-11-09） |
-| 状态 | 进行中（S1 已合并 `27b30c7f`，S2 已合并 `9c7c6821`；S3 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，S2 的审查记录 [P1-S2-start-and-read-review.md](reviews/P1-S2-start-and-read-review.md)；实施与审查之后与代码不同之处照实改在各节（3.25、3.26 列出），结果在 10.1、10.2 |
+| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1、S2 修订 2026-11-09；照 S3 修订 2026-11-10） |
+| 状态 | 进行中（S1 已合并 `27b30c7f`，S2 已合并 `9c7c6821`，S3 已合并 `（待填）`；S4 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，S2 的审查记录 [P1-S2-start-and-read-review.md](reviews/P1-S2-start-and-read-review.md)，S3 的审查记录 [P1-S3-abandon-rollback-and-end-review.md](reviews/P1-S3-abandon-rollback-and-end-review.md)；实施与审查之后与代码不同之处照实改在各节（3.25–3.27 列出），结果在 10.1–10.3 |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.1–4.5、4.6 的"删除"、4.10、4.12、4.14–4.18、第 5、7、8、9 节与"移交的落实"；[M11 设计审查](reviews/M11-design-review.md)；[移交](handoffs/)：M10-mode、M5-events、M8-P4-background、M9-mcp-upgrade；[v0.1 总体设计](../v0.1-design.md) 5.8、7.2、12.4、13.1–13.4；[M10/P1](../M10-llm-wiki/01-P1-contract-frame.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:368`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:25`；契约写作 `api/modules/notebook.yaml:462`。代码的行号是 `main` 的 `9184f67b` 的（代码与 `7ff74a67`、`d9169baa` 相同，其后只改了文档），00 号文档的行号也是它的 |
 | 工作笔记 | 代码的核对分六份（notebook、page 的单元与守卫、transfer、撤销的计划、wiki 与 lint 与组合根、网页与 e2e 与 CI），本文引的每个行号都在其中核对过、关键的几处又逐行复读过（附录）。P1 的设计不跑重的东西；要量的在 7.6 |
@@ -1052,20 +1052,22 @@ type RollbackPass struct {
 	Deletes bool
 	Done    bool
 	Left    domain.RollbackLeft
+	Items   int
 }
 
 // PlanRollback plans one pass of the rollback of spec's upgrade, unlocked
-// (the notebook is frozen, the rollback its one writer): the upgrade must
-// still be the notebook's, rolling back, else ErrRollbackGone.
-func (w *JobWrites) PlanRollback(ctx context.Context, spec JobSpec, nominal func([]domain.JobStep) [][2]int) (JobPlan, RollbackPass, error)
+// (the notebook is frozen, the rollback its one writer): the decision of
+// the job's starter first, as each batch's; the upgrade must still be the
+// notebook's, rolling back, else ErrRollbackGone.
+func (w *JobWrites) PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, RollbackPass, error)
 ```
 
-`JobSpec`（`page/app/jobs.go:24-29`）加 `UpgradeID uuid.UUID`；`JobPlan`（`:34-38`）加 `rollback *rollbackPlan`（先删的子树的包，或合成的撤销计划）。次序：
+`JobSpec`（`page/app/jobs.go:24-29`）加 `UpgradeID uuid.UUID`；`JobPlan`（`:34-38`）加 `rollback *rollbackPlan`（先删的子树的包，或合成的撤销计划）。S3 的实施不收 `nominal`：回滚的批由 transfer 照 `batchEnd` 切，计划不需要名义的切法；`RollbackPass.Items` 是这一遍的条目与版本数，"rollback pass"一行要它（偏离 4、6）。次序：
 
-1. `Notebooks.StateOf`：`Upgrade.ID != spec.UpgradeID` 或不是 `rolling_back`：`ErrRollbackGone`（组合根交回 transfer 的 `ErrJobGone`，任务只记一行"stopped"、不写结束，第 233 条、3.19）。
+1. 先过判定（`writer.Allowed` 对回滚的单元，同每一批：发起人被降级之后这一步就答 `forbidden`，S3 偏离 6），再 `Notebooks.StateOf`：`Upgrade.ID != spec.UpgradeID` 或不是 `rolling_back`：`ErrRollbackGone`（组合根交回 transfer 的 `ErrJobGone`，任务只记一行"stopped"、不写结束，第 233 条、3.19）。
 2. `Upgrades.Left(upgradeID, notebookID)`（下面的 SQL）全是 0：`Done`。
-3. 读不含基线节点的新建子树的森林（下面的 `FreeForest`）：不空时 `domain.PackFreeSubtrees(forest, MaxUnitNodes)` 把它们装成步：每一步是若干棵合计至多 `MaxUnitNodes` 个节点的子树的根（根两两不相干，`DeleteNodes` 一次删一整棵，`page/adapter/postgres/store.go:447-457`）；超过界线的一棵在这一遍只删它下面的不超过界线的极大子树，它自己留到下一遍。`Deletes`。
-4. 否则合成：`domain.RollbackState(baseline, now)` 造出 `RevertState`（`page/domain/revert.go:110-121`）：`Items` 是位置、名称或次序值任一与基线不同的基线节点（`Before` 基线、`After` 现在）与收着基线节点的新建节点（`Before == nil`），`Revision` 都是 0、`Restored` 为空；`Versions` 是哈希与基线不同的基线页（`Base` 是基线的版本号、`BaseBytes` 基线的字节数、`Rewrite = false`、`Revision`、`Hash` 是现在的）；`Hashes` 里基线版本的哈希取自基线的行；`Nodes`、`Contents`、`Tree`、`Lines`、`Groups`、`At`、`Retention` 照 `revertReads` 的 `state`、`rest`（`page/app/unit_revert.go:384-416`）读（`NodesNow`、`ContentsNow`、`ListRevertTree`，`ports.go:174-175`、`:581-582`）。条目数先数：超过 `MaxRollbackItems = 300,000`（`page/domain/jobs.go` 新的常量，同 `MaxJobItems`，`:29`）答 `page.revert_too_large`；版本超过余下的额度时按页 id 取前面的，其余留到后面的遍。再 `PlanRevert`（`revert.go:373`）与 `revertSteps`（`jobs.go:378`）。`ErrRevertUnordered`（`revert.go:98`）是缺陷，照旧以 500 的类别交回。
+3. 读不含基线节点的新建子树的森林（下面的 `FreeForest`）：不空时 `domain.PackFreeSubtrees(forest, whole, pack)` 把它们装成步（`whole` 是 `MaxUnitNodes`，`pack` 是 `MaxDeleteFirstNodes = 2,500`，`page/domain/trash.go`，S3 审查之后的决定 243）：每一步是若干棵合计至多 `pack` 个节点的子树的根（根两两不相干，`DeleteNodes` 一次删一整棵，`page/adapter/postgres/store.go:447-457`）；单独一棵大于 `pack`、不大于 `whole` 的子树独占一步，不拆；超过 `whole` 的一棵在这一遍只删它下面的不超过界线的极大子树，它自己留到下一遍。`Deletes`。先删的一个单元删上万棵小子树、每棵一次 `Subtree` 与 `DeleteSubtree`，比恢复与撤销同样大小的单元慢 2–3 倍，又持着笔记本行，所以它的界比 `MaxUnitNodes` 小，要短于 15 秒的请求期限（S3A-M1）。
+4. 否则合成：`domain.RollbackState(baseline, now)` 造出 `RevertState`（`page/domain/revert.go:110-121`）：`Items` 是位置、名称或次序值任一与基线不同的基线节点（`Before` 基线、`After` 现在）与收着基线节点的新建节点（`Before == nil`），`Revision` 都是 0、`Restored` 为空；`Versions` 是哈希与基线不同的基线页（`Base` 是基线的版本号、`BaseBytes` 基线的字节数、`Rewrite = false`、`Revision`、`Hash` 是现在的）；`Hashes` 里基线版本的哈希取自基线的行；`Nodes`、`Contents`、`Tree`、`Lines`、`Groups`、`At`、`Retention` 照 `revertReads` 的 `state`、`rest`（`page/app/unit_revert.go:384-416`）读（`NodesNow`、`ContentsNow`、`ListRevertTree`，`ports.go:174-175`、`:581-582`）。S3 的实施里 `Nodes`、`Contents` 改由新的 `RollbackNodesNow`、`RollbackContentsNow` 读：由基线行驱动、逐行经键，不按十万个 id 的数组读（那样在守卫的统计状态下读整张表）；树照旧 `ListRevertTree`；不活着的基线节点不进条目，`Left` 照数它（偏离 7、8）。条目数先数：超过 `MaxRollbackItems = 300,000`（`page/domain/jobs.go` 新的常量，同 `MaxJobItems`，`:29`）答 `page.revert_too_large`；版本超过余下的额度时按页 id 取前面的，其余留到后面的遍。再 `PlanRevert`（`revert.go:373`）与 `revertSteps`（`jobs.go:378`）。`ErrRevertUnordered`（`revert.go:98`）是缺陷，照旧以 500 的类别交回。
 
 **读**（`page/adapter/postgres/queries/upgrade.sql`）：
 
@@ -1073,40 +1075,64 @@ func (w *JobWrites) PlanRollback(ctx context.Context, spec JobSpec, nominal func
 -- name: RollbackFreeForest :many
 -- The new nodes alive in the notebook that hold no baseline node, with their parents (M11 design 4.10): the
 -- holders are the ancestors of the baseline nodes alive; a free node is a new one that is no holder. The roots of
--- the free subtrees are those whose parent is none, a holder or a baseline node. Depth is at most MaxDepth.
+-- the free subtrees are those whose parent is none, a holder or a baseline node. Depth is at most MaxDepth: the
+-- holders climb as many levels. Each node is read by its key, each upgrade's row by upgrade_nodes_pkey, a row at a
+-- time (the LATERALs' LIMIT 1 keeps them from being pulled up into joins, which may read a table whole), so that the
+-- read costs as the notebook and not as the instance (decision 240; its cost guard). The holders are left out by an
+-- anti-join, NOT EXISTS: a NOT IN of them is, once the tables are analyzed, a SubPlan run for each node alive, which
+-- reads the holders whole each time, as many nodes times as many holders (decision 244); a holder's id is never null,
+-- so the two say the same.
 WITH RECURSIVE holders AS (
-    SELECT n.parent_id AS id FROM upgrade_nodes b JOIN nodes n ON n.id = b.node_id
-    WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.baseline AND n.deleted_at IS NULL AND n.parent_id IS NOT NULL
+    SELECT n.parent_id AS id FROM upgrade_nodes b
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1) n ON true
+    WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.baseline AND n.parent_id IS NOT NULL
   UNION
-    SELECT n.parent_id FROM holders h JOIN nodes n ON n.id = h.id WHERE n.parent_id IS NOT NULL
+    SELECT n.parent_id FROM holders h
+    JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = h.id LIMIT 1) n ON true
+    WHERE n.parent_id IS NOT NULL
 )
 SELECT n.id, n.parent_id FROM nodes n
-WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL
-    AND NOT EXISTS (SELECT 1 FROM upgrade_nodes b WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = n.id
-        AND b.baseline)
-    AND n.id NOT IN (SELECT id FROM holders);
+LEFT JOIN LATERAL (
+    SELECT true AS baseline FROM upgrade_nodes b WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = n.id AND b.baseline
+    LIMIT 1
+) b ON true
+WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL AND b.baseline IS NULL
+    AND NOT EXISTS (SELECT 1 FROM holders h WHERE h.id = n.id);
 
 -- name: RollbackLeft :one
 -- What a rollback has left to do (M11 design 4.10, decision 226): the baseline nodes not in place (parent, name or
 -- order not the baseline's, or not alive), the baseline pages whose content is not the baseline's, and the live
--- nodes with no baseline row. getUpgrade, endUpgradeRollback and the rollback's end read it alike.
+-- nodes with no baseline row. getUpgrade, endUpgradeRollback and the rollback's end read it alike. Read as
+-- RollbackFreeForest reads its rows: a baseline row's node and content each by its key, a live node's baseline
+-- row by upgrade_nodes_pkey.
 SELECT
-    (SELECT count(*) FROM upgrade_nodes b LEFT JOIN nodes n ON n.id = b.node_id AND n.deleted_at IS NULL
-     WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.baseline AND (n.id IS NULL
-         OR n.parent_id IS DISTINCT FROM b.parent_id OR n.name <> b.name OR n.sort_order <> b.sort_order))::integer AS nodes,
-    (SELECT count(*) FROM upgrade_nodes b JOIN page_contents c ON c.node_id = b.node_id AND c.deleted_at IS NULL
+    (SELECT count(*) FILTER (WHERE n.alive IS NULL OR n.parent_id IS DISTINCT FROM b.parent_id OR n.name <> b.name
+         OR n.sort_order <> b.sort_order)
+     FROM upgrade_nodes b
+     LEFT JOIN LATERAL (
+         SELECT true AS alive, n.parent_id, n.name, n.sort_order FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL
+         LIMIT 1
+     ) n ON true
+     WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.baseline)::integer AS nodes,
+    (SELECT count(*) FROM upgrade_nodes b
+     JOIN LATERAL (
+         SELECT c.content_hash FROM page_contents c WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+     ) c ON true
      WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.baseline AND b.kind = 'page'
          AND c.content_hash <> b.content_hash)::integer AS pages,
-    (SELECT count(*) FROM nodes n WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL
-     AND NOT EXISTS (SELECT 1 FROM upgrade_nodes b WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = n.id
-         AND b.baseline))::integer AS created;
+    (SELECT count(*) FROM nodes n
+     LEFT JOIN LATERAL (
+         SELECT true AS baseline FROM upgrade_nodes b
+         WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = n.id AND b.baseline LIMIT 1
+     ) b ON true
+     WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL AND b.baseline IS NULL)::integer AS created;
 
 -- name: DeleteUpgradeNodes :execrows
--- An upgrade's rows, as it ends (M11 design 4.10).
+-- An upgrade's rows, as it ends (M11 design 4.10), by upgrade_nodes_pkey's prefix.
 DELETE FROM upgrade_nodes WHERE upgrade_id = sqlc.arg(upgrade_id);
 ```
 
-自由的森林在 Go 里按 `parent_id` 建（父节点不在结果里的就是根），`PackFreeSubtrees` 自下而上数大小再装。基线行的读（合成要的全部基线行，一次按 `upgrade_id` 读，走主键的前缀）与"收着基线节点的新建节点"（`holders` 里没有基线行的）同在 `upgrade.sql`，形状照上面两条。`page.Upgrades`（3.12）加 `Left` 与 `DeleteBaseline`。
+自由的森林在 Go 里按 `parent_id` 建（父节点不在结果里的就是根），`PackFreeSubtrees` 自下而上数大小再装。基线行的读（合成要的全部基线行，一次按 `upgrade_id` 读，走主键的前缀）与"收着基线节点的新建节点"（`holders` 里没有基线行的）同在 `upgrade.sql`，形状照上面两条。`page.Upgrades`（3.12）加 `Left` 与 `DeleteBaseline`。S3 的实施（偏离 7，决定 240）：上面的读都逐行经键，`LATERAL … LIMIT 1` 不让子查询被拉平成可能读整张表的连接；另有 `RollbackHolders`（收着者的节点，读法同 `RollbackFreeForest`）、`RollbackBaseline`（基线行，经主键的前缀）、`RollbackNodesNow`、`RollbackContentsNow`，端口 `RollbackReads`（`page/app/rollback.go:27`）；sqlc 把 `LEFT JOIN LATERAL` 子查询的列当非空，要可空的读分成内连接的几条。`RollbackFreeForest` 排除收着者用 `NOT EXISTS`，不用设计原来的 `NOT IN`：分析过统计之后 `NOT IN` 是普通的 SubPlan，每个活节点把 `holders` 读一遍，1 万个收着者、10 万页时要 26.8 秒，`NOT EXISTS` 是哈希反连接、0.32 秒（S3 审查 S3B-I1，决定 244）。
 
 **批**：`RunBatch`（`page/app/jobs.go:609`）加回滚的分支：先删的包经新的 `Unit.DeleteFreeSubtrees`，每棵 `Subtree`（`unit_delete.go:26-32`）再 `DeleteSubtree`（`:42-66`）；合成的批经新的 `Unit.RollbackBatch(ctx, part RevertPart, plan *rollbackPlan)`，照 `Unit.RevertBatch`（`unit_revert.go:460`）：同样读 `rest`、`nodesNow`（`:357-368`），条目与版本来自合成的状态、不经 `batchChangeset`（`:634-636`），写回的正文经 `History.VersionContents`（`ports.go:584`）按（页、基线版本号）读、不经 `revertContents`（`jobs.go:872`）；其余（`CheckRevertPart`、`CheckRevertSteps`、`place`、`Delete`、`WriteContent`、`revertDefect` `:935-948`）照用。回滚的单元：
 
@@ -1118,15 +1144,15 @@ func rollbackUnit(spec JobSpec, action shared.Action) UnitSpec {
 }
 ```
 
-`action` 是 page 的 `Deps.UpgradeAction`（2.1 第 10 条），`NewJobWrites`（`jobs.go:82`）多收它；`rollbackMessage` 是固定的英文 `"Upgrade rollback"`；`domain.ChangesetRollback`（`page/domain/changeset.go:21-26` 的常量加一个）。`UpdateLinks` 为假（`linking/app/rewrite.go:63-65`）。变更集的 `upgrade_id` 由 `ensureChangeset` 从 `Write.Notebook.Upgrade.ID` 记上（3.4）。
+`action` 是 page 的 `Deps.UpgradeAction`（2.1 第 10 条），`NewJobWrites`（`jobs.go:82`）多收它；`rollbackMessage` 是固定的英文 `"Upgrade rollback"`；`domain.ChangesetRollback`（`page/domain/changeset.go:21-26` 的常量加一个）。`UpdateLinks` 为假（`linking/app/rewrite.go:63-65`）。变更集的 `upgrade_id` 由 `ensureChangeset` 从 `Write.Notebook.Upgrade.ID` 记上（3.4）。S3 的实施：合成的批是 `Unit.RollbackBatch(ctx, r RevertPart)`，复用撤销的批的主体 `revertPart`，条目与版本换成合成状态的；合成的计划有冲突或要从回收站恢复当缺陷（基线是合法的树）（偏离 8）；先删的批由 `deleteBatch` 判，多步的批合计过 `MaxDeleteFirstNodes` 答 `ErrJobBatchTooLarge`（决定 243）。
 
 **组合根**：`transferTree`（`bootstrap/transfer.go:86-88`）加 `PlanRollback` 与回滚的 `RunBatch` 的转发（照 `PlanRevert` 的 `:133-139`），`treeError`（`:232-261`）认 `ErrRollbackGone`，交回 `transfer.ErrJobGone`（第 233 条：今天的 `errGone` 不导出，`transfer/app/job_run.go:32-33`，组合根交不回它；P1 审查 A-N1）。
 
-**测试**：`page/domain` 的 `TestPackFreeSubtrees`（多棵小的装进一步、合计不超过界线、超过的一棵这一遍只删它下面的极大子树、根两两不相干）、`TestRollbackState`（位置、名称、次序各自不同的基线节点各一条；收着基线的新建节点一条 `Before == nil`；正文不同的基线页一个版本、`Base` 是基线的；净效果为零的不进；`Revision` 都是 0；条目数过界答 `revert_too_large`）与 `TestRollbackPlansPutTheBaselineBack`（性质测试，照 `TestScheduleEndsAndPutsTheNotebookBack`，`page/domain/revert_schedule_property_test.go:51`：大的随机形状，改名环、跨层的移动、新建的文件夹收着基线节点、交换名称；`PlanRevert` 不答 `ErrRevertUnordered`，按步重放之后等于基线，而且是一遍：重放之后由基线行算的剩下的差为 0（2.1 第 12 条：合成的一遍本就到达基线，P1 审查 A-M3）；判据由基线行直接比，不经被测的合成）；`page/app` 的 `TestARollbackPassAtATime`（先删的一遍只有删、之后的一遍是合成的、再一次 `PlanRollback` 就是 `Done`，没有第二遍合成；升级换了答 `ErrRollbackGone`）与 `TestTheRollbacksStepsReplayToTheBaseline`（照 `TestTheJobsStepsReplayToStar`，`page/app/revert_job_property_test.go:64`，`cutsBy` `:1031`：任意切批都到基线）；`page/adapter/postgres` 的 `RollbackFreeForest` 与 `RollbackLeft`（"只差次序值"记为不在原位，核对 A3-N2）。
+**测试**：`page/domain` 的 `TestPackFreeSubtrees`（多棵小的装进一步、合计不超过界线、超过的一棵这一遍只删它下面的极大子树、根两两不相干；S3 审查之后另有"一棵过 `pack`、不过 `whole` 的子树独占一步"，随机的森林各取 `whole` 与 `pack ≤ whole`）、`TestTheFirstDeletesBound`（`MaxDeleteFirstNodes` 是决定 243 的 2,500、不大于 `MaxUnitNodes`；修复第二轮，S3A-N3 = S3B-N3）、`TestRollbackState`（位置、名称、次序各自不同的基线节点各一条；收着基线的新建节点一条 `Before == nil`；正文不同的基线页一个版本、`Base` 是基线的；净效果为零的不进；`Revision` 都是 0；条目数过界答 `revert_too_large`）与 `TestRollbackPlansPutTheBaselineBack`（性质测试，照 `TestScheduleEndsAndPutsTheNotebookBack`，`page/domain/revert_schedule_property_test.go:51`：大的随机形状，改名环、跨层的移动、新建的文件夹收着基线节点、交换名称；`PlanRevert` 不答 `ErrRevertUnordered`，按步重放之后等于基线，而且是一遍：重放之后由基线行算的剩下的差为 0（2.1 第 12 条：合成的一遍本就到达基线，P1 审查 A-M3）；判据由基线行直接比，不经被测的合成）；`page/app` 的 `TestARollbackPassAtATime`（先删的一遍只有删、之后的一遍是合成的、再一次 `PlanRollback` 就是 `Done`，没有第二遍合成；升级换了答 `ErrRollbackGone`；S3 审查之后另有"free subtrees past MaxDeleteFirstNodes"：三步、两步一批答 `ErrJobBatchTooLarge`）与 `TestTheRollbacksStepsReplayToTheBaseline`（照 `TestTheJobsStepsReplayToStar`，`page/app/revert_job_property_test.go:64`，`cutsBy` `:1031`：任意切批都到基线）；`page/adapter/postgres` 的 `RollbackFreeForest` 与 `RollbackLeft`（"只差次序值"记为不在原位，核对 A3-N2；`TestARollbacksReads`，S3 审查之后收着者两层：Install 在新建的 `Topics/Sub` 之下，holders 是 {Sub, Topics}，S3C-M1）。
 
 ### 3.19 S3：transfer 的回滚
 
-- **种类**：`transfer/domain/job.go` 的种类（`:14-19`）加 `KindRollback Kind = "rollback"`，`Writes()`（`:23-25`）认它；`Job`（`:63-98`）加 `UpgradeID *uuid.UUID`。River（`transfer/adapter/river/jobs.go`）：`RollbackKind`、`RollbackArgs{JobID}`、`Queue.Rollback(ctx, id)` 照 `Queue.Revert`（`:198-202`，`QueueImport`、`MaxAttempts: 1`），`riverKind`（`:206-217`）加一支，worker 在 `transfer/module.go:229-237` 登记。Rescue 的种类表（`transfer/app/maintain.go:108`）加它；`TestTheRescue`（`transfer/app/requests_test.go:339-371`）改为对 `domain` 的全部种类逐个核对（种类的表由新的 `domain.Kinds()` 给出，加一个种类而 Rescue 不认时失败）。
+- **种类**：`transfer/domain/job.go` 的种类（`:14-19`）加 `KindRollback Kind = "rollback"`，`Writes()`（`:23-25`）认它；`Job`（`:63-98`）加 `UpgradeID *uuid.UUID`。River（`transfer/adapter/river/jobs.go`）：`RollbackKind`、`RollbackArgs{JobID}`、`Queue.Rollback(ctx, id)` 照 `Queue.Revert`（`:198-202`，`QueueImport`、`MaxAttempts: 1`），`riverKind`（`:206-217`）加一支，worker 在 `transfer/module.go:229-237` 登记（S3 在第 1 个提交就登记，未知的种类落到 `Background.Run` 的 default、答 `internal`，偏离 5）。Rescue 的种类表（`transfer/app/maintain.go:108`）加它；`TestTheRescue`（`transfer/app/requests_test.go:339-371`）改为对 `domain` 的全部种类逐个核对（种类的表由新的 `domain.Kinds()` 给出，加一个种类而 Rescue 不认时失败）。
 - **端口**：`Notebooks`（3.5）加 `LockByID(ctx, id) (bool, error)`（`FOR NO KEY UPDATE`，组合根经根的 `LockByID`，`notebook/notebooks.go:106-109`）。新的：
 
 ```go
@@ -1135,9 +1161,12 @@ func rollbackUnit(spec JobSpec, action shared.Action) UnitSpec {
 // locked first.
 type RollbackEnd interface {
 	// End ends the upgrade upgradeID of the notebook when its rollback left
-	// nothing, and answers whether it left something; nothing, and false,
+	// nothing, and answers whether it left something, and, when it ended
+	// the upgrade, committed, which its caller calls once the transaction
+	// committed: it logs the upgrade's end, which a transaction that does
+	// not commit must not (M11/P1 S3 review A-N1). Nothing, false and nil
 	// when the notebook's upgrade is no longer it, rolling back.
-	End(ctx context.Context, notebookID, upgradeID uuid.UUID) (left bool, err error)
+	End(ctx context.Context, notebookID, upgradeID uuid.UUID) (left bool, committed func(), err error)
 	// Stopped tells the mode's subscribers that the rollback stopped, when
 	// the notebook's upgrade is still it, rolling back.
 	Stopped(ctx context.Context, notebookID, upgradeID uuid.UUID) error
@@ -1156,20 +1185,25 @@ type Rollbacks struct{ d StartDeps; action shared.Action }
 func (r Rollbacks) Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client string) (uuid.UUID, error)
 ```
 
-  `startBackground`（`start_background.go:154-198`）拆成 `queueBackground`（`:160-190` 的部分：`room`、`workspaceOf`、`WithinTx` 里的锁、队列锁、`room`、`writing`、建行、投递，交回任务）与 `startBackground`（`queueBackground` 之后记"queued"、造视图）；`Rollbacks.Start` 只调前者，`Job{Kind: KindRollback, UpgradeID: &upgradeID, Name: "upgrade", Client: client}`，动作是 `RollbackAction`。`WithinTx` 加入调用方的事务（`platform/postgres/tx.go:121-129`），`lock` 的 `ShareByID` 在调用方已持的 `FOR NO KEY UPDATE` 之下重入。冻结的判断（3.5）加放过的一支：`Kind == KindRollback && *job.UpgradeID == state.UpgradeID && state.RollingBack`。模块的 `(*Module).Rollbacks() Rollbacks`。
+  `startBackground`（`start_background.go:154-198`）拆成 `queueBackground`（`:160-190` 的部分：`room`、`workspaceOf`、`WithinTx` 里的锁、队列锁、`room`、`writing`、建行、投递，交回任务）与 `startBackground`（`queueBackground` 之后记"queued"、造视图）；`Rollbacks.Start` 只调前者，`Job{Kind: KindRollback, UpgradeID: &upgradeID, Name: "upgrade", Client: client}`，动作是 `RollbackAction`（客户端在 transfer 是 `domain.Client`，wiki 的端口收 string，组合根转成 `transfer.Client`，S3 偏离 10）。`WithinTx` 加入调用方的事务（`platform/postgres/tx.go:121-129`），`lock` 的 `ShareByID` 在调用方已持的 `FOR NO KEY UPDATE` 之下重入。冻结的判断（3.5）加放过的一支：`Kind == KindRollback && *job.UpgradeID == state.UpgradeID && state.RollingBack`。模块的 `(*Module).Rollbacks() Rollbacks`。
 - **运行**：`backgroundRun.run`（`background.go:86-128`）的分派（`:93-102`）加 `KindRollback` 一支，调 `r.rollback(ctx, running, spec)`：`spec` 带 `UpgradeID`；按遍循环：`Tree.PlanRollback`；`Done` 就返回 nil；否则照现有的循环跑这一遍的批（`:107-126`，`batch`、`count`、`publish` 照用；总数逐遍加）；每遍一行 info（3.23）；这一遍之后 `Left` 的三个数之和不比这一遍之前小时以 `internal` 停下（2.1 第 12 条，终止的保证）。`PlanRollback` 交回的 `ErrJobGone` 原样交回 `finish`，不经 `stopped`（`background.go:262-297` 会把它归为 `internal`）：`finish` 照 `errGone` 只记一行、不写结束（第 233 条）。
 - **结束**：`Background.Run`（`:54-74`）对回滚的任务给 `finish` 一个 `succeed` 与一个结束的写法；`jobRun`（`job_run.go`）加字段 `finishJob func(end context.Context, e Ended) (bool, error)`，缺省是 `r.rows.FinishJob`（`:211`），回滚的是 `rollbackStopped`：
 
 ```go
 // rollbackSucceeded ends the rollback's job and its upgrade in one
-// transaction: the notebook's row first, as a deletion takes it before the
-// job's (jobs.sql:149-152); the upgrade ended when nothing is left; then
-// the job's end, and its "rollback ended" line, as the export's succeed
-// logs its own (finish logs nothing past a succeed). Something left rolls
-// that back and ends the job failed, internal, as rollbackStopped does. A
-// notebook deleted meanwhile leaves no row to lock: nothing is written,
-// End is not called, and the "stopped" line is logged (as export.go:403-407).
-func (r *backgroundRun) rollbackSucceeded(end context.Context, e Ended) error
+// transaction: the notebook's row first, as a deletion takes it before
+// the job's (jobs.sql); the job's end; then the upgrade ended when nothing
+// is left; once it committed, the upgrade's end's line, then its "rollback
+// ended" line, as the export's succeed logs its own (finish logs nothing
+// past a succeed). The job's end comes before the upgrade's, so that the
+// upgrade ends, and the wiki module logs it, only in a transaction that
+// writes the job's end and commits (M11/P1 S3 review A-N1): a job no
+// longer running (the rescue failed it) rolls it all back, and the
+// "stopped" line is logged. Something left rolls it all back and ends the job failed,
+// internal, as a stop's end, rollbackStopped, writes it. A notebook
+// deleted meanwhile leaves no row to lock: nothing is written, End is not
+// called, and the "stopped" line is logged.
+func (r *backgroundRun) rollbackSucceeded(ctx, running, end context.Context, e Ended, attrs []any) error
 
 // rollbackStopped writes a stopped rollback's end in one transaction: the
 // notebook's row, the job's end, then RollbackEnd.Stopped when the end
@@ -1178,9 +1212,9 @@ func (r *backgroundRun) rollbackSucceeded(end context.Context, e Ended) error
 func (r *backgroundRun) rollbackStopped(end context.Context, e Ended) (bool, error)
 ```
 
-  `finish` 里的 `FinishJob`（`:211`）改调 `r.finishJob`；`!ok`（`:215-218`）与 `errGone`（`:196-198`）照旧只记一行，不调 `Stopped`（核对 B3-N2）。
+  `finish` 里的 `FinishJob`（`:211`）改调 `r.finishJob`；`!ok`（`:215-218`）与 `errGone`（`:196-198`）照旧只记一行，不调 `Stopped`（核对 B3-N2）。S3 的实施（偏离 3，审查 A、B 核对过）：做完的次序是锁笔记本行 → `FinishJob` → `End`，不是上面初稿的锁 → `End` → `FinishJob`：`FinishJob` 答已不在运行（Rescue 已记它失败）时 `End` 根本不跑，整个事务回滚、记 stopped，之后管理员结束回滚时差已空，照第 230 条记做完；`End` 答剩下时连同 `FinishJob` 的写一起回滚，第二个事务经 `finish` 以 `internal` 结束并调 `Stopped`，"rollback ended"是 error 级；锁的次序始终笔记本行在前、任务行在后，与取消、心跳、Rescue、删除笔记本都不成环。"upgrade rolled back"由 `End` 交回的 `committed` 在 `WithinTx` 返回、没有错之后记，再记"rollback ended"（S3 审查 S3A-N1）。
 - **取消**：`Cancel.Run`（`transfer/app/cancel.go:49-92`）在 `sees`（`:63`）之后：任务是回滚的，判定 `RollbackAction`，`forbidden` 或看不到都答 403 `forbidden`（`sees` 已过，这里的"看不到"只会是两步之间被移出，照 403）；`CancelQueued`（`:68-70`）照旧在它之后。`views.sees`、读与列表不改（4.3）。
-- **测试**：`transfer/app` 的 `TestARollbackRunsPassByPass`（假的 `Tree`：两遍先删、一遍合成、`Done`；总数逐遍加；差不缩小时 `internal`）、`TestARollbacksEnd`（假的 `RollbackEnd`：做完时一个事务里先锁笔记本、`End`、再 `FinishJob`；`left` 时第二个事务以 `internal` 结束并调 `Stopped`；取消、超时、中断各调一次 `Stopped`；`FinishJob` 交回 `!ok` 时不调；笔记本行锁不到时两个钩子都什么也不写、不调 `End` 与 `Stopped`、记"stopped"（P1 审查 A-N2）；做完时记"rollback ended"一行（A-N3），`ErrJobGone` 只记"stopped"）、`TestOnlyAdminsCancelARollback`、`TestTheStartsRefuseAnUpgradingNotebook` 加回滚放过的一支与"升级换了"不放过的一支。
+- **测试**：`transfer/app` 的 `TestARollbackRunsPassByPass`（假的 `Tree`：两遍先删、一遍合成、`Done`；总数逐遍加；差不缩小时 `internal`）、`TestARollbacksEnd`（假的 `RollbackEnd`：做完时一个事务里先锁笔记本、`FinishJob`、再 `End`（S3 偏离 3），提交之后才调 `committed`，提交答错时"upgrade rolled back"与"rollback ended"都不记、任务仍在跑（`TestARollbacksEndIsLoggedOnceCommitted`，S3A-N1）；`left` 时第二个事务以 `internal` 结束并调 `Stopped`；取消、超时、中断各调一次 `Stopped`；`FinishJob` 交回 `!ok` 时不调；笔记本行锁不到时两个钩子都什么也不写、不调 `End` 与 `Stopped`、记"stopped"（P1 审查 A-N2）；做完时记"rollback ended"一行（A-N3），`ErrJobGone` 只记"stopped"）、`TestOnlyAdminsCancelARollback`、回滚放过的一支与"升级换了"不放过的一支写成单独的 `TestARollbackStartsInItsUpgradeAlone`（另含编辑者 `forbidden`、队列满 `server_busy`、回滚中开恢复仍答 `notebook.upgrading`；S3 偏离 11）。
 
 ### 3.20 S3：wiki 的放弃、结束回滚与 `RollbackEnd`
 
@@ -1197,12 +1231,12 @@ UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NU
 WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 ```
 
-- **`AbandonUpgrade.Execute(ctx, notebookID) (UpgradeView, error)`**：`WorkspaceOf`（404）→ `WithinTx`：工作区行、`States.Lock`（404）、判定（404、403）、`at`；没有升级或状态不在 `upgrading`、`reviewing`、`rolling_back`：409 `wiki.upgrade_state`。`upgrading`、`reviewing`：`States.SetState(rolling_back)` → `Publish` → `Rollbacks.Start(notebookID, upgradeID, client)`（`MaxQueued` 满时 503）→ 一条 `UPDATE` 写 wiki 行的 `state = 'rolling_back'`、`ending = 'abandoned'`、`rollback_job_id`（核对 B2-M2）。`rolling_back`：`Writing` 为真 409 `transfer.busy`；否则 `Rollbacks.Start` → 只改 `rollback_job_id` → `Publish`（`From == To`；继续也是表里的一个转移，4.3）。提交之后一行 info（`job_id`）。答 200 `Upgrade`。驳回（P3/S1）走同一个私有的 `rollBack(ending)`。
-- **`EndUpgradeRollback.Execute(ctx, notebookID) (UpgradeView, error)`**：锁与判定同上；状态不是 `rolling_back`：409 `wiki.upgrade_state`；`Writing` 为真：409 `transfer.busy`；`left := Upgrades.Left(upgradeID, notebookID)`；`States.Clear`；`Upgrades.DeleteBaseline(upgradeID)`；wiki 行改为 `rolled_back`、`rollback_complete = left.Zero()`，不为零时记三个数（第 230 条）；`Publish`；提交之后 info（三个数）。答 200 `Upgrade`（`rolled_back`）。
-- **`RollbackEnd`**（`wiki/app/rollback_end.go`，模块根 `wiki.NewRollbackEnd(pool, states, upgrades)`：`states` 是 `notebook.NewUpgradeStates(pool, modeSubscribers)`，`upgrades` 是 `page.NewUpgrades(pool)`，都只凭连接池；组合根在 transfer 之前预先建它，`bootstrap/wire.go:188-196` 的 `VirtualFiles`、`Template` 旁）：`End`：`States.Lock`（transfer 已持，重入）；升级不是它或不在 `rolling_back`：`false, nil`；`Upgrades.Left` 不为零：`true, nil`；否则 `Clear`、`DeleteBaseline`、wiki 行 `rolled_back` 与 `rollback_complete = true`、`Publish`，`false, nil`。`Stopped`：`States.Lock`，仍是它、仍在回滚就 `Publish`（`From == To`）。执行者是任务的发起人（ctx 的 actor，`background.go:64`），`updated_by_id` 记他。
-- **`getUpgrade`** 在 S3 加 `rollback_left`：`rolling_back` 且 `Writing` 为假时 `Upgrades.Left`（现读）；别的时候 `null`。
+- **`AbandonUpgrade.Execute(ctx, notebookID) (UpgradeView, error)`**：`WorkspaceOf`（404）→ `WithinTx`：工作区行、`States.Lock`（404）、判定（404、403）、`at`；没有升级或状态不在 `upgrading`、`reviewing`、`rolling_back`：409 `wiki.upgrade_state`。`upgrading`、`reviewing`：`States.SetState(rolling_back)` → `Publish` → `Rollbacks.Start(notebookID, upgradeID, client)`（`MaxQueued` 满时 503）→ 一条 `UPDATE` 写 wiki 行的 `state = 'rolling_back'`、`ending = 'abandoned'`、`rollback_job_id`（核对 B2-M2；S3 的 `RollBack` 是 `:execrows`、不 `RETURNING`，写完经 `Current` 读回整行，偏离 12）。`rolling_back`：`Writing` 为真 409 `transfer.busy`（wiki 的 `ErrRollbackWriting`，文字说回滚的任务排着或在跑，不复用发起的 `ErrWriting`；S3 偏离 13）；否则 `Rollbacks.Start` → 只改 `rollback_job_id`（`ContinueRollback`，`:execrows`）→ `Publish`（`From == To`；继续也是表里的一个转移，4.3）。提交之后一行 info（`job_id`）。答 200 `Upgrade`。驳回（P3/S1）走同一个私有的 `rollBack(ending)`。
+- **`EndUpgradeRollback.Execute(ctx, notebookID) (UpgradeView, error)`**：锁与判定同上；状态不是 `rolling_back`：409 `wiki.upgrade_state`；`Writing` 为真：409 `transfer.busy`；`left := Upgrades.Left(upgradeID, notebookID)`；`States.Clear`；`Upgrades.DeleteBaseline(upgradeID)`；wiki 行改为 `rolled_back`、`rollback_complete = left.Zero()`，不为零时记三个数（第 230 条）；`Publish`；提交之后 info（三个数）。答 200 `Upgrade`（`rolled_back`）。S3 的实施：锁与判定抽成 `UpgradeDeps.locked`（工作区 `FOR SHARE` → 笔记本 `FOR NO KEY UPDATE` → 判定 → 时钟），发起也改用它，读名字抽成 `named`；结束回滚在写之前读 `Current`、在内存里改成 `rolled_back`（`Current` 只读进行中的）（偏离 12、13）。
+- **`RollbackEnd`**（`wiki/app/rollback_end.go`，模块根 `wiki.NewRollbackEnd(pool, notebooks, states, pages, clock, logger)`（初稿是 `(pool, states, upgrades)`；`notebooks` 给 `ModeChange` 的工作区，`clock` 给 `updated_at`，S3 偏离 4）：`states` 是 `notebook.NewUpgradeStates(pool, modeSubscribers)`，`pages` 包着 `page.NewUpgrades(pool)`；组合根在 transfer 之前预先建它，`bootstrap/wire.go:188-196` 的 `VirtualFiles`、`Template` 旁）：`End`：`States.Lock`（transfer 已持，重入）；升级不是它或不在 `rolling_back`：`false, nil`；`Upgrades.Left` 不为零：`true, nil`；否则 `Clear`、`DeleteBaseline`、wiki 行 `rolled_back` 与 `rollback_complete = true`、`Publish`，交回 `false` 与 `committed`：transfer 在结束的事务提交之后调它，记"upgrade rolled back"（S3 审查 S3A-N1）；`updated_at` 与 `ModeChange.At` 是同一时刻（S3 偏离 11）。`Stopped`：`States.Lock`，仍是它、仍在回滚就 `Publish`（`From == To`）。执行者是任务的发起人（ctx 的 actor，`background.go:64`），`updated_by_id` 记他。
+- **`getUpgrade`** 在 S3 加 `rollback_left`：`rolling_back` 且 `Writing` 为假时 `Upgrades.Left`（现读）；别的时候 `null`。`Current`、`Writing`、`Left` 三次读在一个 `Snapshots.WithinSnapshot` 里（`UpgradeDeps` 加 `Snapshots`）：回滚的结束提交在几次读之间时三次都看得到或都看不到，不会答出基线行已删、全部活节点算作新建的 `rolling_back`（S3 审查 S3A-M2）。S2 的 `TestUpgradeStates` 那一格（以 SQL 设成 `rolling_back`、没有任务行）因此答发起补写的两页（`created` 2）（S3 偏离 14）。
 - **错误**：`ErrUpgradeState`（409 `wiki.upgrade_state`："The upgrade is not in a state that allows this."）。
-- **测试**：`wiki/app` 的 `TestAbandonUpgrade`、`TestEndUpgradeRollback`、`TestTheRollbackEnd`（假的端口：每条码依次；`upgrading` 与 `reviewing` 的写的次序过得了 `notebook_upgrades_rollback_job_check`；继续只改任务的 id；结束时三个数为 0 记 `true`）。
+- **测试**：`wiki/app` 的 `TestAbandonUpgrade`、`TestEndUpgradeRollback`、`TestTheRollbackEnd`（假的端口：每条码依次；`upgrading` 与 `reviewing` 的写的次序过得了 `notebook_upgrades_rollback_job_check`；继续只改任务的 id；结束时三个数为 0 记 `true`）。S3 另有 `TestGetUpgradeTellsWhatAStoppedRollbackLeft`（调用夹在快照之间，另有 404 一格）；`TestTheRollbackEnd` 加"a node out of place left"（S3C-M2），断言调 `committed()` 之前一行也没记（S3A-N1）；wiki 适配器的 `TestAnUpgradesRowRollsBack`、`TestARollbacksEndRow`。
 
 ### 3.21 S3：契约
 
@@ -1230,13 +1264,15 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 
 S2 的三行没有另种升级的变体（S2 偏离 5）：用 lab 种好的笔记本，每格在自己的库的副本上以 SQL 准备，`startUpgrade` 的一格先删那本笔记本的编辑会话（lab 的种子里会话是活的），`getUpgrade` 的两格由 `upgradeIn` 以笔记本的创建者设成 `upgrading`、`reviewing`；每格之后只核对 `pageViolations` 里升级的几句；覆盖的两个检查 `TestThePermissionMatrixCoversEveryOperation` 与 `TestLintMatrixTargets` 经 `coveredMatrixRows()` 读到这些行（逐个提交的核对发现后者原来只读 `matrixRows()`）。上面的变体工作区 S2 没有用到。
 
+S3 的四行同样照 S2 偏离 5（S3 偏离 1）：`endUpgradeRollback` 的一格用新夹具 `rollingBackIn`（`upgradeIn` 之后插一条回滚任务行、wiki 行的 `rollback_job_id` 指它），lab 的笔记本没有改动，答 `rollback_complete = true`；`cancelTransferJob` 的两个变体的任务 id 按"变体/列"预定在 `seeded.rollbackJobs`、登记进 `workspaceOfRow`，"another's"的发起人是 lab 的工作区管理员 `someoneElse`；每格一个库的副本，写入键挡不住别的格。审查 B 核对过：格与上表一致，`rollingBackIn` 写的任务行满足 00059 的各个检查，`targetViolation` 认得两个变体的路径；回滚的判定挪到 `sees` 之前（mx1）、去掉判定（mx2）各被一行抓到。
+
 ### 3.23 日志
 
 13.1 第 10 条：只记事实。每条一个测试，只读自己子测试开始之后的行（05-lessons 第 1 节）。
 
 - 发起（S2）：info "upgrade started"：`workspace_id`、`notebook_id`、`upgrade_id`、`user_id`、`baseline_nodes`、`baseline_pages`、`seeded_root`、`seeded_agents`、`wanted`、`elapsed_ms`；warn "upgrade baseline not analyzed"：`notebook_id`、`upgrade_id`、`error`；warn "upgrade start timed out"：`workspace_id`、`notebook_id`、`user_id`、`elapsed_ms`、`timeout_ms`（第 232 条）。
 - 放弃（S3）：info "upgrade abandoned"（继续时 "upgrade rollback continued"）：id、`user_id`、`job_id`。结束回滚：info "upgrade rollback ended"：id、`user_id`、`nodes`、`pages`、`created`、`complete`。
-- 回滚（S3）：transfer 的任务日志照旧（"rollback started"；停下的"rollback ended"由 `finish` 记；做完的"rollback ended"由 `rollbackSucceeded` 自己记，因为 `finish` 在 `succeed` 不为空时直接交回它的结果、不记那一行，`job_run.go:189-191`，同导出的 `export.go:427-428`；P1 审查 A-N3）；每遍 info "rollback pass"：`job_id`、`upgrade_id`、`pass`、`deleted_first`（这一遍删的节点数）、`items`、`steps`；做完 info "upgrade rolled back"：id、`elapsed_ms`（由 `RollbackEnd` 记）。
+- 回滚（S3）：transfer 的任务日志照旧（"rollback started"；停下的"rollback ended"由 `finish` 记；做完的"rollback ended"由 `rollbackSucceeded` 自己记，因为 `finish` 在 `succeed` 不为空时直接交回它的结果、不记那一行，`job_run.go:189-191`，同导出的 `export.go:427-428`；P1 审查 A-N3）；每遍 info "rollback pass"：`job_id`、`upgrade_id`、`pass`、`deleted_first`（这一遍删的节点数）、`items`、`steps`；做完 info "upgrade rolled back"：id、`elapsed_ms`（由 `RollbackEnd` 交回的 `committed` 在结束的事务提交之后记，S3 审查 S3A-N1；`elapsed_ms` 从 wiki 行上一次改动（放弃或继续）算起，S3 偏离 11）。
 
 ### 3.24 每个新检查的反向对照
 
@@ -1300,6 +1336,29 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
   - 只记下、不改历史的：第 6 个提交 `1c4d35c0` 的标题没写发起在生产上的期限从 7.5 秒变成 11.25 秒，范围只写 `server`；修复一轮的 `0da54746` 同样改了 `ci.yml` 的一行注释、范围只写 `server`（S2C-N5，10.2）。
   - 交给后面的：10 万页的发起进 M12 的性能移交（00 号文档第 232 条与"写给后面的 M"，第 9 节）。没有交给 v0.1 之后的打磨的。
 
+### 3.27 S3 的实施对设计的修正
+
+S3 的审查与两轮修复核对见 [S3 的审查记录](reviews/P1-S3-abandon-rollback-and-end-review.md)，结果在 10.3。与上文最初的设计不同之处已改在各节里；各节因 S3 新写的代码位置是 `9c0a0f42` 的（修复第二轮只改注释与一个单元测试；头的表说的 `9184f67b` 管其余的，S1 新写的是 `68c3c505` 的，S2 的是 `42529055` 的）：
+
+- **S3，实施时定下的**（实施者的 27 条偏离，括号里是它的号；第 1–4 条主持者开工前同意；三位审查者各在自己的范围里判过，都对，第 3、7、14 条 A 与 B 都核对过；第 2 条在实施报告的 10.3 草稿里抄错了一处（S3B-N2），第 23 条的推断与头上的结果不合（S3C-N3），都照实写在下面与 10.3）：
+  - 3.18：`PlanRollback` 不收 `nominal`（回滚的批由 transfer 照 `batchEnd` 切），先过判定、再读状态：发起人被降级之后计划这一步就答 `forbidden`，与下一批一致（6）；`RollbackPass` 加 `Items`，"rollback pass"一行要它（4）。回滚的读改成逐行经键（`LATERAL … LIMIT 1`，决定 240）：设计的连接与 `NodesNow`、`ContentsNow` 按十万个 id 的数组读，在守卫的统计状态下对 `nodes`、`page_contents`、`upgrade_nodes` 整表顺序扫描或读整个索引（第一次核对 21 处）；holders 的递归逐行经 `nodes_pkey`，反连接探 `upgrade_nodes_pkey`，`RollbackLeft` 三段各自逐行经键，新的 `RollbackNodesNow`、`RollbackContentsNow` 由基线行驱动，`RollbackHolders` 直接答收着者的节点，端口 `RollbackReads` 加 `RollbackNow`；sqlc 把 `LEFT JOIN LATERAL` 子查询的列当非空，要可空的读分成内连接的几条（7）。合成的批复用撤销的批的主体 `revertPart`，条目与版本换成合成状态的；合成的计划有冲突或要从回收站恢复当缺陷（基线是合法的树）；不活着的基线节点不进条目，`Left` 照数它（8）。
+  - 3.19：做完的结束的次序是锁笔记本行 → `FinishJob` → `End`（设计是锁 → `End` → `FinishJob`）：`FinishJob` 答已不在运行（Rescue 已记它失败）时 `End` 根本不跑，整个事务回滚、记 stopped；`End` 答剩下时连同 `FinishJob` 的写一起回滚，第二个事务经 `finish` 以 `internal` 结束并调 `Stopped`（3）。`wiki.NewRollbackEnd(pool, notebooks, states, pages, clock, logger)`：`notebooks` 给 `ModeChange` 的工作区，`clock` 给 `updated_at`（4）。`Rollbacks.Start` 的客户端在 transfer 是 `domain.Client`，wiki 的端口收 string，组合根转成 `transfer.Client`（10）。开回滚的两支写成单独的 `TestARollbackStartsInItsUpgradeAlone`，另含编辑者 `forbidden`、队列满 `server_busy`、回滚中开恢复仍答 `notebook.upgrading`（11）。
+  - 3.20：`RollBack`、`ContinueRollback` 是 `:execrows`，不 `RETURNING`：放弃与继续写完之后经 `Current` 读回整行，结束回滚在写之前读 `Current`、在内存里改成 `rolled_back`（12）。继续与结束回滚的 `transfer.busy` 是 wiki 的 `ErrRollbackWriting`（文字说回滚的任务排着或在跑），不复用发起的 `ErrWriting`；锁与判定抽成 `UpgradeDeps.locked`，发起也改用它，读名字抽成 `named`（13）。`rollback_left` 只在 `rolling_back` 且没有排队或在跑的写入任务时现读；S2 的 `TestUpgradeStates` 那一格（以 SQL 设成 `rolling_back`、没有任务行）由 `null` 改为发起补写的两页（`created` 2）（14）。`End` 的 `updated_at` 与 `ModeChange.At` 是同一时刻，`Stopped` 的取时钟；"upgrade rolled back"的 `elapsed_ms` 从 wiki 行上一次改动（放弃或继续）算起（11）。
+  - 3.22：矩阵照 S2 偏离 5，不建单独的"升级的变体"工作区：lab 的笔记本，每格在自己的库的副本上以 SQL 准备，新夹具 `rollingBackIn`，`seeded.rollbackJobs` 按"变体/列"预定两个取消变体的任务 id、登记进 `workspaceOfRow`（1）。
+  - 6.3：回滚的 River worker 在第 1 个提交就登记，未知的种类落到 `Background.Run` 的 default、答 `internal`（5）。`awaitBackground` 也等 `transfer.rollback`（20）。
+  - 7.1：三个成本守卫进 `test-go-costs-3`，`ci.yml` 的 costs-3 作业时限 25 → 35 分钟，先删的一行加上 `-timeout 20m`（界 550 s，近 Go 默认的 10 分钟）（2）；计划的守卫在 `page/app`、读的在 `page/adapter/postgres`、先删的在 `page` 模块根，先删的守卫不另种九本笔记本（它读的 `FreeForest` 在读的守卫里核对计划）（9）。`TestUpgradeRollback` 一个应用跑九格、超时一格另起应用；"先删的一段"并进"放弃与做完"；降级的发起人取消之后多断言放开的一步；"两遍之间"停在第二次 `PlanRollback` 之前；River 丢掉的回滚由真的 rescue 记为中断（以 SQL 排一个 `transfer.rescue_interrupted` 的 River 任务）（15、27）。流的测试接 `rollbackStops`，S3 的八步各一个 `mode`（18）；"任务的批"加两本（19）；"放弃与做完"另有一个只差次序值的节点、断言第一遍一步（26）。
+  - 7.2：第 11 条用 `Tree` 的包装停在第一批（16）；第 12 条两个方向，`stoppedEnd` 与 `armDone`（17）。
+  - 第 5 节：UP3 是两个测试，夹具 `abandonUpgrade`、`endUpgradeRollback`、`cancelJob`（21）。
+  - 7.3：第 41 条的夹具里 Guide 的基线另链向开始时还不存在的 `[[Kept 2]]`（22）；第 71 条是等价的变异，改为 71b（24）；第 45、49、69 条组合根的一半，第 49 条审查之后另有一格盖住，其余三处只列单元（25）。第 23 条推断"合成的一遍先写回、后改名"，建议把第 41 条的抓法改成"笔记本与开始前不同"；审查 C 在头上打出 error 行，抓法正是设计写的（写回撞上修订号，任务 `internal`），第 41 条照设计写，不改（S3C-N3）。
+- **S3，审查与修复两轮带来的**（编号是 S3 的审查记录的；主持者的决定见审查记录的第 243–245 条）：
+  - 先删的单元另有上限 `MaxDeleteFirstNodes = 2,500`（`page/domain/trash.go`），`PackFreeSubtrees(forest, whole, pack)` 收两个上限：装在一起的不过 `pack`，一棵大于 `pack`、不大于 `whole`（`MaxUnitNodes`）的子树独占一步，更大的照旧往下拆；`deleteBatch` 以它判多步的批。先删的守卫判每个单元不过 14 秒，种子先删 5,000 页再 `ANALYZE`，测稳态（S3A-M1，决定 243；3.18，7.1，7.3 第 121 条）。修复第二轮让注释分清旧种子、稳态与估算，由 `page/domain` 的单元测试钉住 2,500（S3A-N3 = S3B-N3；7.3 第 122 条）。
+  - `RollbackFreeForest` 用 `NOT EXISTS`；读的守卫换成父节点多的形状，计划核对加两道：在内侧逐行重复的扫描必须经外行的键，不许逐行重读整个集合（S3B-I1、S3B-M1 = S3A-N2、S3B-Q1，决定 244；3.18，7.1，7.3 第 116–118 条；00 号文档第 9 节的同一行）。
+  - `getUpgrade` 的三次读在一个快照里（S3A-M2；3.20，7.2，7.3 第 119 条）；"upgrade rolled back"在结束的事务提交之后记，`End` 交回 `committed`（S3A-N1；3.19、3.20、3.23，7.3 第 120 条）。
+  - holders 的递归测到两层（S3C-M1，7.3 第 111 条）；结束时剩下的节点有单元与组合根各一格（S3C-M2，7.3 第 49、112 条）；`reviewing` 的 `rollback_left` 为 `null`（S3C-N4，第 113 条）；Down 复原的三个检查（S3B-N1，第 115 条）；变更集的文字 `rollback`（S3C-N2，4.3，第 114 条）。
+  - 第一份里 `^TestABackground` 的 13 个顶层挪到第七份（S3C-M3，决定 245；7.5）。
+  - 只记下、不改历史的：`cc015aec` 改了 `ci.yml` 与 `Makefile`，范围只写 `server`；`47518c39` 把 `Makefile` 写进了范围（部件该写 `build`）（S3C-N1，10.3）。
+  - 交给后面的：先删在统计过时之时单元线性变慢、lint 的排除集超过约 20 万个时 `NOT IN` 变成逐行的 SubPlan，进 M12 的性能移交（00 号文档"写给后面的 M"，第 9 节）；M9 的撤销测试在满负载下被新来的事务插队（S3C-M4），不属于 S3，由旁支 `m11-p1-m9-revert-flake`（`aebf78c3`）修：新的 `batchGate` 扣住下一批，直到网页的写答了才放，单独合并；第二份在 7763 上 431–437 秒，合并之后看两次 `main`（决定 245）。没有交给 v0.1 之后的打磨的。
+
 ## 4. 网页
 
 网页的门禁（tsc、knip、vitest、`make gen-check-web`）在每个 Step 的合并时都跑，所以服务端的 Step 自带它改的契约在网页上要的东西；service、store 的方法与组件只在 S4 加（knip 报出没人用的导出）。
@@ -1319,7 +1378,7 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 ### 4.3 S3 随服务端的部分
 
 - `wiki.upgrade_state` 的文字（"升级现在的状态不允许这样做。"）。
-- 新种类：变更集的 `kindText`（`W/pages/notebook/changeset-text.ts:14-27`，`switch` 由 tsc 强制）加 `rollback`（"升级的回滚"/"Upgrade rollback"，键 `history.kind.rollback`）；`W/pages/notebook/transfer-names.ts` 的 `changesetKinds`（`:9-15`，`Record<Changeset["kind"], true>`，tsc 强制）加 `rollback`，`jobTitle`（`:22-34`）对 `kind === "rollback"` 写"撤销升级"/"Undo the upgrade"（任务的名称是固定的 `upgrade`）；`jobTitle` 的 `switch` 之后有一句兜底、落到导出的标题（`:33`），漏了这一支 tsc 不报，所以 `transfer-names.test.ts` 加"回滚任务的标题是'撤销升级'"一条（P1 审查 C-N3）。两份 `writingKinds`（`W/stores/transfer.store.ts:27`、`W/test/jobs-server.ts:10`）加 `"rollback"`（05-lessons 第 2 节：替身在真东西会失败的地方失败）：store 的那份决定按钮（`transfer.store.ts:101`），vitest 是"回滚在跑时导入的按钮不可用"；假服务端的那份决定它答不答 `transfer.busy`（`jobs-server.ts:204`），vitest 是"假服务端有一个页面还没读到的回滚任务，用户开始导入，页面显示 `transfer.writingBusy`"（P1 审查 C-N4）。
+- 新种类：变更集的 `kindText`（`W/pages/notebook/changeset-text.ts:14-27`，`switch` 由 tsc 强制）加 `rollback`（"升级的回滚"/"Upgrade rollback"，键 `history.kind.rollback`）；`W/pages/notebook/transfer-names.ts` 的 `changesetKinds`（`:9-15`，`Record<Changeset["kind"], true>`，tsc 强制）加 `rollback`，`jobTitle`（`:22-34`）对 `kind === "rollback"` 写"撤销升级"/"Undo the upgrade"（任务的名称是固定的 `upgrade`）；`jobTitle` 的 `switch` 之后有一句兜底、落到导出的标题（`:33`），漏了这一支 tsc 不报，所以 `transfer-names.test.ts` 加"回滚任务的标题是'撤销升级'"一条（P1 审查 C-N3）。两份 `writingKinds`（`W/stores/transfer.store.ts:27`、`W/test/jobs-server.ts:10`）加 `"rollback"`（05-lessons 第 2 节：替身在真东西会失败的地方失败）：store 的那份决定按钮（`transfer.store.ts:101`），vitest 是"回滚在跑时导入的按钮不可用"；假服务端的那份决定它答不答 `transfer.busy`（`jobs-server.ts:204`），vitest 是"假服务端有一个页面还没读到的回滚任务，用户开始导入，页面显示 `transfer.writingBusy`"（P1 审查 C-N4）。`kindText` 的 `rollback` 一支由 tsc 强制有、写错键没人抓，S3 审查之后由 `transfer-names.test.ts` 的"撤销一个 `rollback` 变更集的任务，标题是 Undo: Upgrade rollback"经 `jobTitle` 钉住（S3C-N2）。
 - 回滚的报告（`W/pages/notebook/transfer-report.tsx`）：`shownCounts`（`:122-127`）加 `rollback: ["deleted", "put_back", "written"]`，不然 `:202` 退回导入的计数；`kindFailures`（`:54`）加 `rollback` 的失败文字（`forbidden`"开始回滚的人已不是管理员，另一位管理员可以继续"、`revert_too_large`"这次升级改动太多，回滚停下了：可以结束回滚、保留现在的样子"、`internal`、`interrupted`、`timeout`"可以继续回滚"）。vitest：回滚的报告显示三个计数与每种失败的文字。
 
 ### 4.4 S4：网页
@@ -1377,10 +1436,10 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 
 ### 6.3 S3（`m11-p1-s3`）
 
-1. `server, api, web: the rollback's kinds of changeset and job (M11/P1/S3)`：00058、00059、sqlc、`schema_test`、`Writing` 与它的适配器测试的回滚的行（`TestOneWritingJobAtOnceInANotebook`，`transfer/adapter/postgres/store_test.go:304`；P1 审查 A-M2）、两个模块的种类、River、Rescue 的表与 `TestTheRescue`、`ChangesetKind` 与 `TransferKind`；新种类的文字与两份 `writingKinds`、回滚的报告（4.3）。
-2. `server: the page module rolls an upgrade back pass by pass (M11/P1/S3)`：3.18，含性质测试与回滚的计划、先删、剩下的差三个成本守卫。
+1. `server, api, web: the rollback's kinds of changeset and job (M11/P1/S3)`：00058、00059、sqlc、`schema_test`、`Writing` 与它的适配器测试的回滚的行（`TestOneWritingJobAtOnceInANotebook`，`transfer/adapter/postgres/store_test.go:304`；P1 审查 A-M2）、两个模块的种类、River、Rescue 的表与 `TestTheRescue`、`ChangesetKind` 与 `TransferKind`；新种类的文字与两份 `writingKinds`、回滚的报告（4.3）。回滚的 River worker 也在这个提交登记（S3 偏离 5）。
+2. `server: the page module rolls an upgrade back pass by pass (M11/P1/S3)`：3.18，含性质测试与回滚的计划、先删、剩下的差三个成本守卫（实施的这个提交另改了 `ci.yml` 的 costs-3 时限与 `Makefile`，范围只写 `server`，S3C-N1）。
 3. `server, api, web: a rollback's job, its end and who cancels it (M11/P1/S3)`：3.19、3.20 的 `RollbackEnd`、`SetState`、`Clear`；`cancelTransferJob` 与 `TransferFailure` 的契约、`transfer` 的 `adapter/http` 测试答出 `forbidden`。
-4. `server, api, web: abandonUpgrade and endUpgradeRollback (M11/P1/S3)`：3.20 的其余、`wiki.upgrade_state` 的文字、矩阵的 S3 行、`TestUpgradeRollback`、`TestUpgradeFreezeReachesEveryPath` 的"任务的批"的 `rolling_back` 一行（S1 审查 S1C-N1）、交错（7.2 第 10–12、16 条）、日志。
+4. `server, api, web: abandonUpgrade and endUpgradeRollback (M11/P1/S3)`：3.20 的其余、`wiki.upgrade_state` 的文字、矩阵的 S3 行、`TestUpgradeRollback`、`TestUpgradeFreezeReachesEveryPath` 的"任务的批"的 `rolling_back` 一行（S1 审查 S1C-N1）、交错（7.2 第 10–12、16 条）、日志。实际的范围写作 `server, api, web, Makefile`，部件该写 `build`（S3C-N1）。
 5. `e2e: UP3 over the API (M11/P1/S3)`。
 
 ### 6.4 S4（`m11-p1-s4`）
@@ -1424,20 +1483,20 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 | `checkPages` 的升级规则 | `TestPageViolationsCatchEachUpgradeGap`（照 `TestPageViolationsCatchEachLLMWikiGap` 的写法）：每条一个 SQL 造出的违反，只报它自己的规则；"同状态"、基线页数与源根"是页"三个合取另各一行（S2B-N3） | 第四份 | S2 |
 | 回滚的计划与先删 | 3.18 的测试（含性质测试） | `page/domain`、`page/app` | S3 |
 | 回滚的运行与结束 | 3.19 的测试 | `transfer/app` | S3 |
-| 放弃、继续、结束回滚 | `TestUpgradeRollback`：放弃与做完（基线复原、新建的在回收站、`rollback` 的变更集；先删的几遍之后只有一遍合成，`rollback pass` 的日志行与之后 `RollbackLeft` 为 0，2.1 第 12 条、P1 审查 A-M3）、回滚在跑时（`Tree` 的包装停住一批）继续与结束回滚都答 409 `transfer.busy`（A-M2）、先删的一段（一个单元装多棵子树）、停下继续、超时之后继续、结束回滚（`false` 与三个数；差为空时 `true`；只剩一次改名时 `false`、`nodes = 1`）、`RollbackEnd` 换成空时状态留着、测试失败、差不空时任务以 `internal` 结束、开任务之后被降为写者的发起人取消答 403、两遍之间以 SQL 结束升级（`Tree` 的包装在第二次 `PlanRollback` 之前停住；只记"stopped"、任务行照旧 `running`、没有单元跑、新建的页都在，测试自己以 SQL 收拾那一行，第 233 条；A-M2）、River 丢掉的排队中的回滚被 Rescue 记为失败之后继续与结束都可用 | 第七份 | S3 |
+| 放弃、继续、结束回滚 | `TestUpgradeRollback`：放弃与做完（基线复原、新建的在回收站、`rollback` 的变更集；先删的几遍之后只有一遍合成，`rollback pass` 的日志行与之后 `RollbackLeft` 为 0，2.1 第 12 条、P1 审查 A-M3）、回滚在跑时（`Tree` 的包装停住一批）继续与结束回滚都答 409 `transfer.busy`（A-M2）、先删的一段（一个单元装多棵子树）、停下继续、超时之后继续、结束回滚（`false` 与三个数；差为空时 `true`；只剩一次改名时 `false`、`nodes = 1`）、`RollbackEnd` 换成空时状态留着、测试失败、差不空时任务以 `internal` 结束、开任务之后被降为写者的发起人取消答 403、两遍之间以 SQL 结束升级（`Tree` 的包装在第二次 `PlanRollback` 之前停住；只记"stopped"、任务行照旧 `running`、没有单元跑、新建的页都在，测试自己以 SQL 收拾那一行，第 233 条；A-M2）、River 丢掉的排队中的回滚被 Rescue 记为失败之后继续与结束都可用。S3 的实施：一个应用跑九格（各一本笔记本，`rollbackStops` 包住 `Tree`），超时一格另起应用（`transfer.job_timeout` 3 秒）；"先删的一段"并进"放弃与做完"（8 个新节点、6 棵子树在一个单元里，第一遍的"rollback pass"一行 `steps` 为 1），那一格的 agent 另把 Notes 移出再移回（只差次序值）；降级的发起人取消答 403 之后放开，任务以 `forbidden` 失败，另一位管理员继续、做完；"两遍之间"停在第二次 `PlanRollback` 之前；River 丢掉的回滚由真的 rescue 记为中断（以 SQL 排一个 `transfer.rescue_interrupted` 的 River 任务）（偏离 15、26、27）。S3 审查之后：夹具 `rollbackNotebook` 把 Guide 移到 `Made/Deep/` 之下，收着者两层（S3C-M1）；"something left at the end"：`armDone` 停在计划答 Done 之后、以 SQL 改名一个基线页，任务以 `internal` 结束、恰一行 ERROR 的"rollback ended"、升级仍在回滚、剩 1 0 0，继续之后复原（S3C-M2） | 第七份 | S3 |
 | 矩阵 | `TestUpgradePermissionMatrix`（3.22） | 第七份 | S2、S3 |
 | Rescue 认全部种类 | `TestTheRescue` | `transfer/app` | S3 |
 | 网页 | 第 4 节的 vitest | `web` | S1–S4 |
 
-**成本守卫**（13.4 第 8 条；`test-go-costs` 各一行、`-short` 跳过；界取本机两轮的中位数的三倍并对照 CI 的竞态；种子用 SQL，被测的那份准备不超过 4 秒（发起的守卫另种九本笔记本作不该读的行，种子共约 10 秒，这本笔记本的 1.4 秒）；统计状态 × 计划照 05-lessons 第 4 节）：
+**成本守卫**（13.4 第 8 条；`test-go-costs` 各一行、`-short` 跳过；界取本机两轮的中位数的三倍并对照 CI 的竞态；种子用 SQL，被测的那份准备不超过 4 秒（发起的守卫另种九本笔记本作不该读的行，种子共约 10 秒，这本笔记本的 1.4 秒；回滚的读的守卫同样另种九本，种子共约 15 秒，计时的那本 2.4 秒）；统计状态 × 计划照 05-lessons 第 4 节）：
 
 | 守卫 | 规模 | Step | 预算 |
 |---|---|---|---|
 | 发起 | 5 万节点、5 万页，其中 1.5 万页在提议的来源区（已有的 `raw`）里、各带 10 条待建，区外 3,499 页各 1 条、1,000 个目标（P1 审查 B-I1：夹具不放区里的页抓不到第二遍；另量第 16 步的 `ANALYZE` 与各段：`Capture`、`Seed`、`prepareIn` 的两遍、`SetWanted`）；库里另有九本各 5 万页的笔记本（`nodes`、`page_contents` 各多 45 万行，`edit_sessions` 4.5 万行），作发起不该读的行（S2 审查 S2B-M2，决定 240）；`upgrade_nodes`、`nodes`、`page_contents`、`edit_sessions` 从未分析、分析过这本笔记本的上一次发起、只有另一次进行中的升级的 10 万行的统计 × 自定义与通用计划（`TestUpgradeStartTakesItsTimeAtAnyStatistics`，组合根，`!race`，`test-go-costs-2` 一行）。设计的规模是 10 万页、3 万页在区里：放不进守卫配置下的期限，进 M12 的性能移交（第 232 条，S2 偏离 16） | S2 | 计划为主（决定 236、240）：每种统计 × 计划的第一次发起在发起的事务里取 `SetBaselineWanted`（`upgrade_nodes` 只扫一次，在嵌套循环的内侧时经 `upgrade_nodes_pkey`、两列都在索引条件里）、`CaptureBaseline`、`RootNodesByKey` 与两条会话的语句的自定义与通用计划：`nodes`、`edit_sessions` 只经索引条件含 `notebook_id` 的扫描，`page_contents` 只经 `page_contents_pkey`、索引条件含 `node_id`、在嵌套循环的内侧逐个节点读（后两项是修复第二轮的，S2A-N4；`TestTheStartGuardJudgesThePageReads` 以合成的计划钉住这道核对），不对这几张表顺序扫描。时长为辅：发起实际受的 `ctxStart` 是请求的四分之三（守卫的请求 6 s 照 lint 的成本守卫的配置，`bootstrap/wiki_lint_cost_test.go:27-34`，M10 决定 160，即 4.5 s），界取本机两轮中位数较大的乘 3、向上取整到 100 ms：建成时库里只有这一本，3.5 s；另种九本之后 3.6 s |
 | 删除护栏的读 | 一次删 1 万个节点的子树，对着两次升级各 10 万行（`TestUpgradeProtectedReadsInTimeAtTheUnitsBound`，`page/adapter/postgres`，`!race`，`test-go-costs-2` 一行） | S1 | 计划为主：四种统计状态（没有统计、分析过、只有另一次升级的统计、`force_generic_plan`）× 自定义与通用两种计划都只经 `upgrade_nodes_pkey` 读、两列都进索引条件、没有顺序扫描，主键的列钉成 `(upgrade_id, node_id)`；时长为辅，本机两轮中位数较大的乘 3、向上取整到 5 ms，即 25 ms（初稿写"单元 2 s"，与上面的总规则不一致；S1 审查 S1B-I1 = S1C-M2，决定 236） |
-| 回滚的计划 | 10 万个条目（纯函数）与合成读的三种统计状态 | S3 | 本机两轮中位数 × 3 的时长与 `TotalAlloc` |
-| 回滚先删 | 10 万个零散的新页 | S3 | 同上 |
-| 剩下的差的读 | 10 万节点、10 万页 | S3 | 请求 4 s |
+| 回滚的计划 | 10 万个条目（100 个文件夹各 1,000 页的基线，每页移到下一个文件夹、改名或改次序各三分之一），`PlanRollback` 在内存里的读上：`RollbackState`、`PlanRevert`、`revertSteps`（`TestARollbacksPlanOfAHundredThousandItemsTakesItsTime`，`page/app`，`!race`，`test-go-costs-3` 一行） | S3 | 五次的中位数与 `TotalAlloc`，界取本机两轮较大的乘 3：2 s、1,600 MiB（本机 639、644 ms，527 MiB；CI 的 7763 上 1,069 ms） |
+| 回滚先删 | 1,000 个文件夹下 10 万个零散的新页，先删的一遍 40 个单元、各 2,500 个节点，真的 `PlanRollback` 与 `RunBatch`；种子在建基线之前经 HTTP 删掉一个 5,000 页的文件夹、关掉六张表的 autovacuum 再 `ANALYZE`，让统计见过已删的行，测稳态（不这样做，单元的时长取决于 autovacuum 何时醒来；决定 243）（`TestARollbackDeletesAHundredThousandScatteredPagesFirst`，`page` 模块根，`!race`，`test-go-costs-3` 一行，`-timeout 20m`） | S3 | 每个单元即最慢的那个不过 14 s（决定 153、243：单元持着笔记本行，压在 15 秒的请求期限之下，不取三倍的规则），中位数只记进日志；一遍与分配取本机两轮较大的乘 3：330 s、2,300 MiB（本机最大的单元 2,758、3,221 ms，一遍 109.3 s，737 MiB）。上限的数由 `page/domain` 的 `TestTheFirstDeletesBound` 钉住：改回 1 万时单元本机约 11 s，只在 7763 一类的机器上过 14 s（S3A-N3 = S3B-N3）。建成时是 10 个单元各 1 万、判中位数，界 550 s、39 s、2,300 MiB（S3A-M1） |
+| 剩下的差与合成的读 | 10 万节点、10 万页：计时的笔记本是 1 万个文件夹、各是一页下面 9 页，另 1 万个新文件夹收着三分之一的页（10 万行基线、1 万个收着者）；原来的 100 个文件夹各 999 页、100 个收着者作第二本，只核对计划；另九本各 5 万页的笔记本与它们的升级的基线行作不该读的行（决定 240、244）；三种统计（从未分析、分析过、只有别的升级的统计）× 自定义与通用计划（`TestARollbacksReadsTakeTheirTimeAtAnyStatistics`，`page/adapter/postgres`，`!race`，`test-go-costs-3` 一行） | S3 | 计划为主（决定 236、240、244）：七条读（`RollbackLeft`、`RollbackFreeForest`、`RollbackHolders`、`RollbackBaseline`、`RollbackNodesNow`、`RollbackContentsNow`、`ListRevertTree`）在两种形状 × 六格里，`upgrade_nodes` 只经 `upgrade_nodes_pkey`、索引条件含 `upgrade_id`；`nodes` 只经索引条件含 `notebook_id` 的扫描或经 `nodes_pkey` 按 `id`；`page_contents` 只经 `page_contents_pkey` 按 `node_id`；比较别的表的列的扫描只在嵌套循环的内侧逐行重复（不在 Materialize、Hash 之下），位图堆扫描只认经 `BitmapAnd`、`BitmapOr` 的位图；在内侧逐行重复的扫描必须经外行的键；不许逐行重读整个集合（非 hashed 的 SubPlan 之下与嵌套循环内侧的 `CTE Scan`、`WorkTable Scan`、`Materialize`）；一格计划有问题就在计时之前停下。`TestTheRollbackGuardJudgesThePlans` 以合成的计划钉住这道核对（17 格，不连数据库，short 一行）。时长为辅：`RollbackLeft` 与一遍的合成读各自六格的中位数，界取本机两轮较大的乘 3、向上取整到 100 ms：1.2 s、3.1 s（本机 330–376 ms、961–1,011 ms）。建成时一种形状，界 1.3 s、4.6 s；设计原来的"请求 4 s"是剩下的差一条的预算（第 226 条） |
 
 ### 7.2 交错
 
@@ -1450,8 +1509,9 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 | 3 | 发起与过期之前读了时钟的心跳 | 心跳在读时钟之后停住（钩子），会话在发起的那一刻已过期，发起删掉它的行，心跳放开之后找不到行可续 | S2 |
 | 4 | 发起与正在上传的导入 | 导入的 `Check` 已过、上传停住，发起成功，上传放开之后建任务被拒、文件删掉 | S2 |
 | 10 | 放弃与发起人正在跑的 `batch` | `batch` 先持笔记本行，放弃等它，回滚的计划含它的改动，做完之后等于基线 | S3 |
-| 11 | 回滚的批与取消 | 照 `TestCancellingABackgroundJob`（`bootstrap/interleavings_background_stops_test.go:335`）：`stopAtFirst`（`interleavings_background_stops_test.go:73`）持住第一批，取消，`cancelSeen`（`bootstrap/background_test.go:236`）等心跳照常读到它（`job_run.go:167-168`），放开：第一批写完，下一批之前停下，任务 `cancelled`、`mode` 发一次；继续之后做完，或结束回滚。心跳要照常，所以这一条不装第 16 条的触发器（P1 审查 A-M1） | S3 |
-| 12 | 回滚做完与删除笔记本 | 结束的事务停在锁笔记本行之后，删除等它；反过来删除先持，结束的事务等它，之后锁不到笔记本行（`LockNotebook` 不收已删的，`notebooks.sql:16-24`）：什么也不写、不调 `End`、记"stopped"、不发 `mode`；不死锁（P1 审查 A-N2；`rollbackStopped` 的同一情形由 `TestARollbacksEnd` 的假端口盖住） | S3 |
+| 11 | 回滚的批与取消 | 照 `TestCancellingABackgroundJob`（`bootstrap/interleavings_background_stops_test.go:335`）：`stopAtFirst`（`interleavings_background_stops_test.go:73`）持住第一批，取消，`cancelSeen`（`bootstrap/background_test.go:236`）等心跳照常读到它（`job_run.go:167-168`），放开：第一批写完，下一批之前停下，任务 `cancelled`、`mode` 发一次；继续之后做完，或结束回滚。心跳要照常，所以这一条不装第 16 条的触发器（P1 审查 A-M1）。S3 的实施用 `Tree` 的包装停在第一批，不用 `stopAtFirst`：放弃锁笔记本行 `FOR NO KEY UPDATE`，测试持着 `FOR SHARE` 时放弃自己就等住；第一批是先删的整个单元；继续做完、结束回滚各一本（偏离 16） | S3 |
+| 12 | 回滚做完与删除笔记本 | 结束的事务停在锁笔记本行之后，删除等它；反过来删除先持，结束的事务等它，之后锁不到笔记本行（`LockNotebook` 不收已删的，`notebooks.sql:16-24`）：什么也不写、不调 `End`、记"stopped"、不发 `mode`；不死锁（P1 审查 A-N2；`rollbackStopped` 的同一情形由 `TestARollbacksEnd` 的假端口盖住）。S3 的实施两个方向：结束的事务停在 `End` 里（`stoppedEnd` 包住 transfer 的 `RollbackEnd`），删除等笔记本行，之后 204、升级随笔记本软删除；反过来 `rollbackStops.armDone` 停在答 Done 的计划之后，测试持笔记本行，删除先排、结束的事务后排，删除先拿到行，结束锁不到行：不调 `End`、记 stopped，任务行照旧 `running`、随笔记本软删除；两个方向都走 `rollbackSucceeded`（偏离 17） | S3 |
+| — | 回滚的结束落在 `getUpgrade` 的几次读之间（S3 审查 S3A-M2） | 包住 `Writing` 的 `writingGate` 让读停在 `Current` 之后，回滚做完再放开：答 200 `rolling_back`、它的任务、`rollback_left` 为 null（快照里任务还在跑），之后再读答 404；不在快照里时答 200、`created` 是全部活节点（"the read of an upgrade across its rollback's end"，`TestUpgradeInterleavings`） | S3 |
 | 13 | 发起人被降为写者与他正在跑的写 | 成员的写先持笔记本行，发起人的 MCP 写等它，之后 `Grants` 答 `forbidden`、单元答 `notebook.upgrading` | S2 |
 | 14 | 两次发起同时 | 第一次停在 `Start` 之后，第二次等笔记本行，之后答 `notebook.upgrading` | S2 |
 | 16 | Rescue 记为中断、worker 还在跑、管理员结束回滚 | 00 号文档要钉的是"心跳写不进、worker 照跑"（第 225 条，`job_run.go:148-160`），不是"心跳读到不再运行"（那时 `stop(errGone)`，`:164-166`，放开之后不跑下一批，测试时过时不过；P1 审查 A-M1）。接线：应用由 `newAcmeTeamOn`（`bootstrap/interleavings_workspace_test.go:92`）建，同时交 `wiring.transfer`（包住 `Tree`，在第二批的调用里停住）与一个记进共用缓冲的 logger。次序：(1) 停住之后，测试在自己的库里装第 234 条的触发器；(2) 轮询日志的缓冲，等到这次装上之后的"rollback heartbeat not written"那一行（期限 `interleavingWait`，`:33`）：这行只在触发器装上之后、行还是 `running` 时落了一次心跳才记（`BeatJob` 只更新 `running` 的行，`jobs.sql:75-81`；触发器只对选中的行触发），心跳每秒一次，不等就时过时不过（修订核对 A2-M1）；(3) 以 Rescue 的 `InterruptJobs` 那条 SQL（`jobs.sql:120-132`）把任务记为 `failed`、`interrupted`；之后的心跳交回无行，走 `stop(errGone)`，不再记 warn（`job_run.go:153-166`）；(4) 结束回滚（任务已不在运行，答 200，冻结解除）；(5) 放开：停住的那一批在 `retry` 看过 `running` 之后，照跑，单元答 `ErrStaleUpgradeWrite`、什么也没写、新建的页还在。断言的次序：共用的日志里 warn 在"记为中断"之前；之后断言那一批什么也没写、任务行照旧是 `failed`、`interrupted`、记了"stopped"。"stopped"可能来自 `finish` 的 `errGone` 一支（心跳已在 (3) 之后读到无行），也可能来自 `rollbackStopped` 的 `FinishJob` 交回 `!ok`（心跳还没落），两者都满足断言，测试不区分。触发器只在这个测试的库里、只认这个任务 id，生产的代码与接线不改 | S3 |
@@ -1501,19 +1561,19 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 | 34 | `checkPages` 去掉"有升级列就有 wiki 行" | 它的 SQL 造出的违反 | S2 |
 | 35 | `stale_pages > 0` 不拒 | `TestUpgradeStart` 的 `wiki.upgrade_stale_index` | S2 |
 | 36 | 根下的 `raw` 附件不拒 | `TestUpgradeStart` 的 `wiki.upgrade_title_taken` | S2 |
-| 37 | Rescue 的表漏掉 `rollback` | `TestTheRescue`；`TestUpgradeRollback` 的 River 丢掉的一行 | S3 |
+| 37 | Rescue 的表漏掉 `rollback` | `TestTheRescue`；`TestUpgradeRollback` 的 River 丢掉的一行（那一格以 SQL 排一个 rescue 的 River 任务、真的跑 rescue；原来以 `FailQueued` 的 SQL 代 rescue 写、抓不到；S3 偏离 27） | S3 |
 | 38 | 写入键或 `Writing` 不含 `rollback` | 索引的一半：`TestChecksRejectCounterexamples` 的写入键；查询的一半：`TestOneWritingJobAtOnceInANotebook`（`transfer/adapter/postgres/store_test.go:304`，加一个排队的回滚任务的行）与 `TestUpgradeRollback` 的"回滚在跑时继续与结束回滚答 `transfer.busy`"（`TestEndUpgradeRollback` 用假的端口，碰不到 SQL；P1 审查 A-M2） | S3 |
 | 39 | 回滚漏删新建的子树 | `TestARollbackPassAtATime`；`TestUpgradeRollback`（新建的不在回收站） | S3 |
 | 40 | 合成的条目带 `Revision` | `TestRollbackState`；`TestUpgradeRollback`（停在 `page.changeset_trimmed`） | S3 |
-| 41 | 回滚的单元 `UpdateLinks = true` | `TestUpgradeRollback`（写回撞上 `ErrRevisionMismatch`，任务 `internal`） | S3 |
+| 41 | 回滚的单元 `UpdateLinks = true` | `TestUpgradeRollback`（写回撞上 `ErrRevisionMismatch`，任务以 `internal` 停下："The page was changed since it was read."；夹具里 Guide 的基线另链向开始时还不存在的 `[[Kept 2]]`，S3 偏离 22；实施报告推断的"先写回、后改名"与头上的结果不合，抓法照设计写，S3C-N3） | S3 |
 | 42 | "不在原位"只比父节点 | `RollbackLeft` 的测试；`TestUpgradeRollback` 的只剩一次改名 | S3 |
-| 43 | 先删的一步每棵子树一个单元 | `TestPackFreeSubtrees`；回滚先删的成本守卫 | S3 |
+| 43 | 先删的一步每棵子树一个单元 | `TestPackFreeSubtrees`；`TestUpgradeRollback` 的"放弃与做完"（第一遍的"rollback pass"一行 `steps` 为 1，S3 偏离 26）；7.2 第 11 条（一个节点一批之下第一批只有一棵子树）；回滚先删的成本守卫（没跑） | S3 |
 | 44 | 差不缩小时不停 | `TestARollbackRunsPassByPass` | S3 |
-| 45 | `Stopped` 不看 `FinishJob` 的 `ok` | `TestARollbacksEnd`；7.2 第 12 条 | S3 |
+| 45 | `Stopped` 不看 `FinishJob` 的 `ok` | `TestARollbacksEnd`（7.2 第 12 条两个方向都走 `rollbackSucceeded`，组合根不盖 `rollbackStopped`；S3 偏离 25） | S3 |
 | 46 | 回滚停下不发 `mode` | `TestUpgradeStatesReachTheStreams` 的停下 | S3 |
 | 47 | `RollbackEnd` 不清列 | `TestUpgradeRollback`（冻结还在） | S3 |
 | 48 | 结束回滚不删基线行 | `TestEndUpgradeRollback`；`checkPages` 的"基线行只属于进行中的升级" | S3 |
-| 49 | 差不空时 `succeed` 照写成功 | `TestARollbacksEnd`；`TestUpgradeRollback` 的 `internal` 一行 | S3 |
+| 49 | 差不空时 `succeed` 照写成功 | `TestARollbacksEnd`；`TestUpgradeRollback` 的"something left at the end"（`armDone` 停在计划答 Done 之后、以 SQL 改名一个基线页：任务以 `internal` 结束；"一遍之后差不减"那一格走的是 `rollback()` 里差不减的一支，碰不到 `End` 的剩余，S3C-M2） | S3 |
 | 50 | 回滚的任务允许写者取消 | `TestUpgradePermissionMatrix` 的"its own rollback, ended" | S3 |
 | 51 | 取消的规则放在 `sees` 之前 | 同上的"another's rollback, queued" | S3 |
 | 52 | 放弃先记任务的 id、后写状态（两条 `UPDATE`） | `TestAbandonUpgrade` 的真库一行（`notebook_upgrades_rollback_job_check`） | S3 |
@@ -1533,10 +1593,10 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 | 66 | 00055 的 `(upgrade_id IS NULL) = (upgrade_by_id IS NULL)` 改成单向 | 反例"只有发起人" | S1 |
 | 67 | 发起准备整份摘要 | `TestUpgradeStart` 的 `wiki/app` 一半（假的 `Rules` 记下查询） | S2 |
 | 68 | 后台任务的单元放过冻结：守卫的 `Step` 没有 `Background`，改在 `page/app/unit.go` 造 `Write` 处，`spec.Background` 的单元的 `Write.Notebook` 去掉升级（或取当前升级为 `UpgradeOwn`）（S1 审查 S1C-N7） | `TestUpgradeFreezeReachesEveryPath` 的"任务的批" | S1 |
-| 69 | 结束的两个钩子锁不到笔记本行时照调 `End` 或 `Stopped` | `TestARollbacksEnd`；7.2 第 12 条 | S3 |
+| 69 | 结束的两个钩子锁不到笔记本行时照调 `End` 或 `Stopped` | `TestARollbacksEnd`（组合根不盖：删除在同一个事务里把任务行一并软删除，`FinishJob` 答 !ok，`End` 照样不调，与原样一样；`rollbackStopped` 同第 45 条；S3 偏离 25） | S3 |
 | 70 | `rollbackSucceeded` 不记"rollback ended" | `TestARollbacksEnd` 的日志 | S3 |
-| 71 | `PlanRollback` 的 `ErrJobGone` 经 `stopped`（归为 `internal`） | `TestARollbacksEnd`；`TestUpgradeRollback` 的"两遍之间"（任务行成了 `failed`） | S3 |
-| 72 | 合成的条目漏了一类差（例如只差次序值的基线节点） | `TestRollbackState` 的次序一行；`TestRollbackPlansPutTheBaselineBack` 的"一遍"；`TestUpgradeRollback` 的"只有一遍合成" | S3 |
+| 71 | `finish` 不看错误链里的 `ErrJobGone`、只看 cause（71b；初稿的"`PlanRollback` 的 `ErrJobGone` 经 `stopped`"是等价的变异：`stopped` 归类时保留错误链，`finish` 先判 `errors.Is(err, ErrJobGone)`，S3 偏离 24） | `TestARollbacksEnd`；`TestUpgradeRollback` 的"两遍之间"（任务行成了 `failed`） | S3 |
+| 72 | 合成的条目漏了一类差（例如只差次序值的基线节点） | `TestRollbackState` 的次序一行；`TestRollbackPlansPutTheBaselineBack` 的"一遍"；`TestUpgradeRollback` 的"只有一遍合成"（那一格的 agent 另把 Notes 移进 Folder 再移回，只差次序值，S3 偏离 26） | S3 |
 | 73 | `jobTitle` 漏了 `rollback` 一支 | `transfer-names.test.ts` 的回滚任务的标题 | S3 |
 | 74 | 升级页的任务转为结束时不重读升级 | `upgrade-page.test.tsx` 的"停下之后出现两个按钮与三个数" | S4 |
 | 75 | 升级页的轮询在任务结束之后不停 | 同上（之后不再有请求） | S4 |
@@ -1575,6 +1635,18 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 | 108 | 部分唯一索引的谓词去掉 `'rolling_back'`（g6）、去掉 `deleted_at IS NULL`（g7） | 唯一索引的"第二行 `rolling_back` 答 23505""软删除的 `upgrading` 放过"（S2B-N1） | S2 |
 | 109 | `checkPages` 的升级规则去掉"同状态"、基线页数、源根"是页"三个合取之一（cp-state、cp-pages、cp-kind），或连同"同笔记本"一起（cp-all） | `TestPageViolationsCatchEachUpgradeGap` 的三行（wiki 行另一个状态、基线页多一、源根是附件），每行只报自己的规则（S2B-N3） | S2 |
 | 110 | 成本守卫对 `page_contents` 的核对不要求 `Index Cond` 含 `node_id`（r1）；不要求在嵌套循环的内侧逐个节点读（r2）（S2A-N4） | `TestTheStartGuardJudgesThePageReads`（与守卫同在 `!race` 的 `bootstrap/upgrade_start_cost_test.go`，不连数据库，short 一行）：Nested Loop 内侧没有条件的一格杀 r1，Merge Join 内侧有条件、只读一次的一格杀 r2（修复第二轮 `9b3000c1`） | S2 |
+| 111 | 收着者的递归只上一层：`RollbackFreeForest` 的递归一步 `WHERE false`（审查 C 的 c10）；`RollbackHolders` 的同样（c10b） | `TestARollbacksReads`（Install 在 `Topics/Sub` 之下，holders 是 {Sub, Topics}）；`TestUpgradeRollback`（Guide 在 `Made/Deep/` 之下：c10 下任务 `failed`、`forbidden`，c10b 下合成的一遍做不完、多一遍）（S3C-M1） | S3 |
+| 112 | `End` 只看 `Pages`、`Created`，不看不在原位的节点（C 的 c11） | `TestTheRollbackEnd` 的"a node out of place left"；`TestUpgradeRollback` 的"something left at the end"（S3C-M2） | S3 |
+| 113 | `getUpgrade` 在任何状态都读差（C 的 c4） | `TestGetUpgradeTellsWhatAStoppedRollbackLeft`；`TestUpgradeStates` 的 `reviewing` 一格（`"rollback_left":null`，S3C-N4） | S3 |
+| 114 | `kindText` 的 `rollback` 答成 `revert` 的键（C 的 w4） | `transfer-names.test.ts`（撤销一个 `rollback` 变更集的任务，标题是"Undo: Upgrade rollback"，S3C-N2） | S3 |
+| 115 | 00059 的 Down 复原的 `transfer_jobs_kind_check`、`transfer_jobs_root_check` 仍收 `rollback`，00058 的 Down 复原的 `changesets_kind_check` 仍收 `rollback`（审查 B 的 m7、m8、m10） | `TestTheRollbackKindsGoDown` 的 `checks` 一列（三个阶段 3、1、0，S3B-N1） | S3 |
+| 116 | 读的三处探针丢 `node_id`：`RollbackFreeForest`、`RollbackHolders`、`RollbackLeft` 的 `created` 写成 `b.node_id::text = n.id::text`（B 的 g1–g3）；核对不要求逐行重复的扫描经外行的键（n5） | 读的守卫"从未分析"一格的计划核对（"for each row, by no column of it"，不等超时）；`TestTheRollbackGuardJudgesThePlans` 的 A 的三格与 B 的一格（S3B-M1 = S3A-N2，决定 244） | S3 |
+| 117 | `RollbackFreeForest` 改回 `NOT IN (SELECT id FROM holders)`（B 的 g4）；核对不报逐行重读整个集合（n6）；SubPlan 之下不算逐行重复（n7） | 读的守卫"分析过"一格的计划核对（"a CTE Scan holders read whole for each row"）；`TestTheRollbackGuardJudgesThePlans` 的非 hashed 的 SubPlan 与 Materialize 两格（S3B-I1，决定 244） | S3 |
+| 118 | hashed 的 SubPlan 也算逐行重复（n8） | `TestTheRollbackGuardJudgesThePlans` 的 hashed 的一格（应收） | S3 |
+| 119 | `getUpgrade` 的三次读各自一条语句，不在一个快照里（A 的 G1） | `TestGetUpgradeTellsWhatAStoppedRollbackLeft`（调用夹在快照之间）；`TestUpgradeInterleavings` 的"the read of an upgrade across its rollback's end"（答 200 `rolling_back`、`created` 是全部活节点；S3A-M2） | S3 |
+| 120 | "upgrade rolled back"在提交之前记：`rollbackSucceeded` 在事务里就调 `committed`（A 的 C1）；`End` 自己先记（C2）；永远不调 `committed`（C3） | `TestARollbacksEnd/done`、`TestARollbacksEndIsLoggedOnceCommitted`（替身的提交答错，没有这一行）；`TestTheRollbackEnd`（S3A-N1） | S3 |
+| 121 | 先删的装步用 `whole` 不用 `pack`（n1）；`deleteBatch` 以 `maxUnitNodes` 判（n2）；`maxDeleteNodes` 不受 `maxUnitNodes` 限（n3） | `TestPackFreeSubtrees/random_forests`；`TestARollbackPassAtATime` 的"free subtrees past MaxDeleteFirstNodes"与"free subtrees past MaxUnitNodes"（决定 243） | S3 |
+| 122 | `MaxDeleteFirstNodes` 改回 10,000（A 的 X1、B 的 cap）；`MaxUnitNodes` 小于它 | `TestTheFirstDeletesBound`（`page/domain`，修复第二轮 `de554eda`；先删的守卫只在 7763 一类的机器上抓得到改回 1 万，S3A-N3 = S3B-N3） | S3 |
 
 ### 7.4 门禁
 
@@ -1582,13 +1654,13 @@ S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-an
 
 ### 7.5 CI 的余量
 
-新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。S1 合并之后两次 `main` 的第六份在 EPYC 7763 上是 461、459 秒，过了线；照规则把 `TestIngestBefore`（7763 上约 120 秒）挪给第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)`，`2beef88c`），第六份折到 7763 约 386 秒，第七份现约 147 秒，P1 末估约 274–374 秒；`TestIngestUnit`（约 261 秒）不挪，挪了第七份在 P1 末会过线。S2 加七个组合根的测试（第七份六个，第四份的 `TestPageViolationsCatchEachUpgradeGap` 一个），竞态构建 541 个、七份 158、51、121、124、62、11、14；第七份本机两轮约 90 秒，CI 149、151 秒，折到 7763 约 164 秒（10.2）。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
+新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。S1 合并之后两次 `main` 的第六份在 EPYC 7763 上是 461、459 秒，过了线；照规则把 `TestIngestBefore`（7763 上约 120 秒）挪给第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)`，`2beef88c`），第六份折到 7763 约 386 秒，第七份现约 147 秒，P1 末估约 274–374 秒；`TestIngestUnit`（约 261 秒）不挪，挪了第七份在 P1 末会过线。S2 加七个组合根的测试（第七份六个，第四份的 `TestPageViolationsCatchEachUpgradeGap` 一个），竞态构建 541 个、七份 158、51、121、124、62、11、14；第七份本机两轮约 90 秒，CI 149、151 秒，折到 7763 约 164 秒（10.2）。S3 加一个组合根的测试（第七份的 `TestUpgradeRollback`），竞态构建 542 个，七份 158、51、121、124、62、11、15；第七份本机两轮 116.4、120.6 秒，CI 在 7763 上包 180.1 秒。S3 的分支 CI 上第一、二份的测试一步 446、443 秒，贴着线，照决定 245 把第一份里 `^TestABackground` 的 13 个顶层挪到第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground)`，第一份的目标加 `-skip`）：七份 145、51、121、124、62、11、28；本机第一份 231.0、230.3 秒，第七份 168.9、171.1 秒；CI 上第一份在 7763 上测试一步 371 秒（挪之前 `main` 上 442 秒），第七份在 9V45 上 211 秒，7763 上估约 290–300 秒；第二份在 7763 上 431–437 秒，合并之后看两次 `main`（10.3）。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
 
 ### 7.6 P1 怎样量
 
 - S1：第七份与第三份的 `go test -list`；第七份本机两轮；删除护栏的守卫的本机中位数。
 - S2：发起的成本守卫三种统计状态 × 两种计划的本机中位数与它在 `ctxStart` 之内的余量，各段（`Capture`、`Seed`、`prepareIn` 的两遍与 `PreparationTimings` 的分规则耗时、`SetWanted`、`ANALYZE`）分开记（放不下时照第 232 条，写进记录；P1 审查 B 的未核实的怀疑。S2 量下来 10 万页放不下守卫配置下的 3 s，期限改为请求的四分之三、守卫减为 5 万页，审查之后库里另种九本笔记本，决定 240；各项的数在 10.2）；`LintAreaWantedEdgeHeads` 的整条流在审查者 B 的数据上的时长，与 B 实测的对照：整组一次传入时强制自定义计划 18.1 s、通用计划每批 256 ms（约 150 s）、自动选择 66.2 s，一段 512 页一次读 0.17 s（PostgreSQL 18.6，10 万页里 3 万页在区里、各 10 条，30 万条边）；`SetBaselineWanted` 对照 B 实测的三种统计状态（从未分析：自定义 432 ms、通用 671 ms；分析过已结束的另一次升级：386、444 ms；分析过进行中的另一次：400、445 ms）；第七份本机两轮。
-- S3：回滚的计划、先删、剩下的差三个守卫；第七份本机两轮。
+- S3：回滚的计划、先删、剩下的差三个守卫；第七份本机两轮。量到的在 10.3：建成时三个守卫与七份；修复一轮之后先删与读两个守卫重量两轮、重定界（决定 243、244），第一、七份各两轮（决定 245）。
 - S4：e2e 三种浏览器的 UP1 的时长。
 
 ## 8. 完成标准
@@ -1611,7 +1683,7 @@ P1 完成，当且仅当：
    - 13.1 第 10 条（`:1103`）末尾加——S2、S3：3.23 的各行，写法"升级的发起、放弃、结束回滚与回滚的每一遍各一行 info，只有 id、数与耗时（M11/P1）"。
    - 13.1 第 11 条（`:1104`）与第 21 条（`:1127`）末尾加——S1："`page.NewFreezeGuard(pool, authorizer, admin)` 同 `page.NewModeGuard` 不只凭连接池（M11/P1）。"S2："`notebook.NewUpgradeStates(pool, subscribers)` 在调用方的事务里写升级的列并调模式变化的订阅者（12.1 第 6 条的例外），`page.NewUpgrades(pool)` 只凭连接池（M11/P1）。"S3："`wiki.NewRollbackEnd` 由组合根在 transfer 之前以只凭连接池的端口建，`(*transfer.Module).Rollbacks()` 在调用方的事务里开回滚的任务、不记日志（M11/P1）。"
    - 13.1 第 23 条（`:1137`）末尾加——S2："`Runs.TryHold` 在笔记本行的锁下只试取一个名额、不等，持有者计入 `active`，`Stop` 等它放开（M11/P1）。"
-   - 13.1 第 31 条（`:1164`）末尾加——S2："发起时列出的编辑会话至多 100 项（M11/P1）。"S3："回滚一遍的树的条目至多 `MaxRollbackItems = 300,000`，先删的一个单元至多 `MaxUnitNodes` 个节点（M11/P1）。"
+   - 13.1 第 31 条（`:1164`）末尾加——S2："发起时列出的编辑会话至多 100 项（M11/P1）。"S3："回滚一遍的树的条目至多 `MaxRollbackItems = 300,000`，先删的一个单元装在一起的子树合计至多 `MaxDeleteFirstNodes = 2,500` 个节点，单独一棵更大的独占一个单元、至多 `MaxUnitNodes`（决定 243）（M11/P1）。"
    - 13.2 第 9 条（`:1199`）末尾加——S4："升级的故事里刻意的 409 以 `pageWatch.expectConsole({ errors: [failedToLoad(409)] })` 声明（M11/P1）。"第 18 条（`:1209`）末尾加——S4："升级页（M11）同样只给管理员的读。"
    - 13.4 第 1 条（`:1262`）末尾加——S1："M11/P1：迁移的每个检查的每个合取各一个反例，写成 `=` 的合取两个方向各一个（把 `=` 改成单向的蕴含时失败）。"S2、S3 的文档提交不再加（同一句管 00057–00059）。
    - 13.4 第 3 条（`:1264`）末尾加——S2："M11/P1：升级的故事在 `e2e/stories/upgrade/`；UP2 的 MCP 版本豁免（MCP 不能发起），UP4 只有 MCP 版本（REST 的写在冻结里就被拒），各由写明的整个程序的测试盖住。"S3："UP3 的 MCP 版本豁免（MCP 不能放弃或结束回滚），由 `TestUpgradeFreezeReachesEveryPath` 的 `rolling_back` 一格盖住。"S4："M11/P1：UP1 的页面版本在三种浏览器里跑；UP2 的页面版本只走编辑会话与写入任务两种拒绝。"
@@ -1629,7 +1701,7 @@ P1 完成，当且仅当：
 - **P2/S3、P3/S3（网页）**：`upgrade.service.ts` 与 `NotebookStore` 加检查、提交、审阅的方法；升级页加"检查"与"审阅"两节；P3/S3 的 `threeBrowsers` 加 `upgrade\/up7-`。
 - **P3/S1（审阅）**：`UpgradeStates.Approve`、`page.NewSourceRebuild`；`rejectUpgrade` 用 3.20 的 `rollBack(ending)`；批准与退回删基线行用 S3 的 `DeleteBaseline`；第 181 条。
 - **P3/S2**：prompt `upgrade`、README 的"升级"一节、MCP 人工清单的 K。
-- **M12**（00 号文档"写给后面的 M"已列）：P1 量的发起、回滚的计划、先删与剩下的差在 10 万上的数，写进 M12 的性能移交的那几条（S2：10 万页的发起放不下守卫配置下的 4.5 s，10.2，00 号文档第 232 条）。
+- **M12**（00 号文档"写给后面的 M"已列）：P1 量的发起、回滚的计划、先删与剩下的差在 10 万上的数，写进 M12 的性能移交的那几条（S2：10 万页的发起放不下守卫配置下的 4.5 s，10.2，00 号文档第 232 条；S3：先删在统计过时之时单元线性变慢、lint 的排除集超过约 20 万个时 `NOT IN` 变成逐行的 SubPlan，10.3，00 号文档"写给后面的 M"与第 243 条）。
 
 ## 10. 结果
 
@@ -1750,6 +1822,68 @@ P1 完成，当且仅当：
 - **审查的结论**：Important 1（S2C-I1），Minor 另 5（S2A-M1 = S2C-N3、S2A-M2、S2B-M1、S2B-M2、S2C-M1），Nit 10（S2C-N3 并入 S2A-M1），修复核对一轮另 1 条 Nit（S2A-N4）；都已改或记下（S2C-N5）。代码本身三位都没有查出错，问题都在"测试钉住了什么"与 `CaptureBaseline` 的计划上：A 的探针在发起与删除笔记本两种先后下都对；B 在真库上核对 31 个反例、契约与矩阵与设计一致；C 的逐个提交、竞态下的中间提交与头上的 e2e 都通过。实施者的 20 条偏离由三位判过，都对。
 - **合并之后**（2026-11-09）：`main` 上合并那次的 CI（run 42583342275）第一次有两项红，都在 M10 的测试里，代码与分支上三次全绿的相同；重跑失败的作业全绿。`bootstrap-6` 的 `TestIngestCoverage/raw_eof` 是数据竞争：查询追踪的 `stop` 原样交出自己的 map，River 在追踪开着时开始、`stop` 之后结束的取任务在锁下写它，测试不加锁读；`costs-1` 的 `TestIngestNovelSourceRanges/analyzed/app_rebuild` 在反向两段数到位图条目 614（扣过舍入余量，实读 816）对活的 412：`ANALYZE` 的抽样让规划器这次选了位图扫描，它从不标掉死的版本，夹具在 Rebuild 之后又不 VACUUM。分支 `m11-p1-flakes`（`4eae99c0`、`38b84fec`，合并 `58abac7a`）只改这两个测试文件：`stop` 交出副本（同包另四个追踪早已这样）；Rebuild 之后位图的两处界取夹具推出的条目数（14、816、2747，缓冲的 Rebuild 之后 1832），堆的界照旧只算活的行。审查者 C 在本机造出 main 那次的计划（Rebuild 之后 `random_page_cost` 7）：旧的界照 main 一字不差地失败，新的在两种重建过的状态都通过，再跑一次 Rebuild 仍被抓到；它纠正了归因（`4eae99c0` 的说明归到视界，不准；注释在 `38b84fec` 改了，已推的说明不改写）。本机门禁：`make lint-go`、`make gen-check`、short，两个测试各三次、缓冲的那一态；分支 CI run 42589745116 全绿。
 - 实施者留下的五项：Step 的文档提交是本提交；10 万页的发起进 M12 的性能移交（00 号文档第 232 条与"写给后面的 M"）；第 24 条变异靠测试二进制的期限，见审查 S2C-N2；`make test` 里第一份的交错计时测试，记为已知的负载敏感；S3、S4 照设计。
+
+### 10.3 S3：放弃、回滚与结束（服务端）（2026-11-09 至 11-10，合并 `（待填）`）
+
+- 提交（从 main 的 `e5059e55` 开始，照 6.3 的次序，5 个；Step 的文档提交是主持者的）：
+  - 迁移 00058（变更集的 `rollback`）与 00059（任务的 `rollback`、`upgrade_id`，写入键收它）；page 的 `ChangesetKind`、transfer 的 `Kind` 与 `Kinds()`、River 的种类与 worker、Rescue 的表；契约与网页的两种新种类、回滚报告的三个数、任务的标题（`19b2ae6f`）。
+  - page 模块的回滚：`PlanRollback` 一遍一遍地计划（先删不收基线节点的新子树，`PackFreeSubtrees` 把多棵子树装进一步；没有了就从基线合成一遍撤销，复用撤销的批），`RunBatch` 写它的批；回滚的读逐行经键（决定 240）；三个成本守卫进 costs-3，`ci.yml` 的 costs-3 时限 35 分钟（`cc015aec`）。这个提交改了 `ci.yml` 与 `Makefile`，范围只写 `server`，只在正文末段提了（审查 S3C-N1；已推的历史不改写）。
+  - transfer 的回滚任务：`Rollbacks.Start`、一遍一遍地跑、差不减就以 `internal` 停、"rollback pass"的日志；做完与停下各在一个事务里先锁笔记本行（做完：锁 → `FinishJob` → `End`）；取消回滚只给管理员；wiki 的 `RollbackEnd`；notebook 的 `SetState`、`Clear`（`776f957f`）。
+  - `abandonUpgrade`（放弃，或继续停下的回滚）、`endUpgradeRollback` 与 `getUpgrade` 现读的 `rollback_left`；码 `wiki.upgrade_state`（网页两种语言）；第七份的 `TestUpgradeRollback`，交错第 10、11、12（两个方向）、16 条，流、冻结的批、矩阵四行；`Makefile` 的分份注释（`47518c39`，范围写作 `server, api, web, Makefile`，部件该写 `build`，S3C-N1）。
+  - e2e：UP3 的 API，两个测试（`9b572167`）。
+  - 每个提交单独在一个干净的工作树里 build、vet、`make lint-go`、`make gen-check` 与 short 测试都通过；碰契约、网页或 e2e 的另过 `make lint-web`、`make knip` 与 vitest（189 个文件，4,121 个测试）。推送之前 4、5 号改写过三次：一次给夹具加一个链接（写变异时看出），两次补变异第 37、41、43、72 条组合根的一半抓不到的测试。审查 C 另在 5 个提交上各自跑同样的门禁与竞态下各自碰到的包，都通过。
+  - 修复一轮另有 5 个、第二轮 1 个（下面），一共 11 个；合并 `（待填）`。
+- 与设计不同之处（主持者开工前同意的 1–4；其余实施时定下的，都是最小的改动；已改在各节，3.27 列出）：
+  1. 矩阵照 S2 偏离 5：lab 的笔记本、每格自己的库的副本以 SQL 准备（新夹具 `rollingBackIn`、预定的回滚任务 id）（3.22）。
+  2. 三个成本守卫进 costs-3；costs-3 的作业时限 35 分钟，先删的一行加上 `-timeout 20m`（7.1）。
+  3. 做完的结束：锁 → `FinishJob` → `End`；`FinishJob` 答不在运行就回滚整个事务、记 stopped；`End` 答剩下就回滚、第二个事务以 `internal` 结束（3.19）。
+  4. `RollbackPass.Items`；`wiki.NewRollbackEnd(pool, notebooks, states, pages, clock, logger)`（3.18、3.19）。
+  5. 回滚的 worker 在 1 号登记（6.3）。
+  6. `PlanRollback` 不收 `nominal`；先判定再读（3.18）。
+  7. 回滚的读逐行经键（`LATERAL … LIMIT 1`），新的 `RollbackNodesNow`、`RollbackContentsNow`；`RollbackLeft` 从 127–462 毫秒变成 368–429 毫秒，合成的读从 534–1,242 毫秒变成 885–1,514 毫秒，随这本笔记本而不随实例（3.18，决定 240）。
+  8. 合成的批复用撤销的批的主体；合成的计划有冲突或要从回收站恢复当缺陷（3.18）。
+  9. 三个守卫：计划在 `page/app`、读在 `page/adapter/postgres`、先删在 `page` 模块根（7.1）。
+  10. `Rollbacks.Start` 收 transfer 的 `Client`，wiki 的端口收 string（3.19）。
+  11. 回滚的开始的测试是 `TestARollbackStartsInItsUpgradeAlone`；`End` 与 `ModeChange` 同一时刻，"upgrade rolled back"的 `elapsed_ms` 从 wiki 行上一次改动算起（3.19、3.20、3.23）。
+  12. `RollBack`、`ContinueRollback` 不 `RETURNING`，写完经 `Current` 读回（3.20）。
+  13. 继续与结束的 `transfer.busy` 是 wiki 的 `ErrRollbackWriting`；锁与判定抽成 `UpgradeDeps.locked`（3.20）。
+  14. `rollback_left` 在回滚中且任务不排不跑时现读；S2 的 `TestUpgradeStates` 那一格随之改（3.20）。
+  15. `TestUpgradeRollback` 一个应用九格、超时一格另起；"先删的一段"并进"放弃与做完"；降级的发起人取消之后多断言放开的一步；"两遍之间"停在第二次计划之前（7.1）。
+  16. 交错第 11 条用 `Tree` 的包装停在第一批（7.2）。
+  17. 交错第 12 条两个方向，`stoppedEnd` 与 `armDone`（7.2）。
+  18. 流的测试接 `rollbackStops`，S3 的八步各一个 `mode`（7.1）。
+  19. 冻结的"任务的批"加两本（7.1）。
+  20. `awaitBackground` 也等 `transfer.rollback`。
+  21. UP3 是两个测试，夹具 `abandonUpgrade`、`endUpgradeRollback`、`cancelJob`（第 5 节）。
+  22. 第 41 条的夹具：Guide 的基线另链向开始时还不存在的 `[[Kept 2]]`（7.3）。
+  23. 实施报告推断合成的一遍先写回、后改名，建议把 7.3 第 41 条的抓法改为"笔记本与开始前不同"；审查 C 在头上打出 error 行（"The page was changed since it was read."），抓法正是设计写的，第 41 条不改（S3C-N3）。
+  24. 第 71 条是等价的变异，改为 71b（`finish` 只看 cause）（7.3）。
+  25. 第 45、49、69 条的组合根一半不盖（程序里造不出，或 7.2 第 12 条只走做完的一支）；审查之后第 49 条另有一格盖住（7.3）。
+  26. "放弃与做完"另有一个只差次序值的节点、断言第一遍一步（第 43、72 条）（7.1）。
+  27. River 丢掉的排队中的回滚由真的 rescue 记为中断：以 SQL 排一个 `transfer.rescue_interrupted` 的 River 任务，River 立即做它（第 37 条）（7.1）。
+- 实测（本机，经 `heavy.sh`；每一项的出处见 [S3 的审查记录](reviews/P1-S3-abandon-rollback-and-end-review.md)"实测"）：
+  - 新的测试在竞态下：第七份 `TestUpgradeRollback` 13.30、`TestUpgradeFreezeReachesEveryPath` 7.61、`TestUpgradeInterleavings` 6.78、`TestUpgradeStatesReachTheStreams` 4.58 秒；`TestTheUpgradesCodesAreAnswered` 13.95 秒；S3 其余的各在 3.2 秒之内。
+  - 回滚的成本守卫，建成时：计划 10 万个条目 639、644 毫秒（界 2 秒）、527 MiB（界 1,600 MiB）；读在三种统计 × 两种计划下逐语句核对计划，`RollbackLeft` 最大中位数 413、429 毫秒（界 1.3 秒）、合成的读 1,449、1,514 毫秒（界 4.6 秒）；先删 10 万零散页一遍 180.0、182.3 秒（界 550 秒）、10 个单元的中位数 12.0、13.0 秒（界 39 秒）、746 MiB（界 2,300 MiB），第 2–4 个单元 27–38 秒。
+  - 修复一轮之后：先删 40 个单元、各 2,500 个节点，两轮最大的单元 2,758、3,221 毫秒（界 14 秒），一遍 109.3、109.2 秒（界 330 秒），737 MiB（界 2,300 MiB），种子 2.4、2.5 秒；读换成父节点多的形状，`RollbackLeft` 六格的中位数 330–376 毫秒（界 1.2 秒），合成的读 961–1,011 毫秒（界 3.1 秒），种子 14.8、14.7 秒（计时的那本 2.4、2.5 秒）。
+  - e2e：`make e2e` 509 个（建成 2.3 分钟；修复一轮 132 秒）。
+- 反向对照（每一条的结果见 S3 的审查记录"反向对照"）：
+  - 7.3 的 S3 各行（13 的 S3 一半、37–53、60、61、69–73）共 28 种改坏，加实施者自己的 16 种；除第 71 条（等价）都被点名的测试抓到。第 37、41、43、72 条组合根的一半原样抓不到，补了测试；第 71 条改为 71b 抓到；第 45、49、69 条的组合根一半在程序里不盖。
+  - 审查者的变异里存活的（A 喂给守卫的核对的三格合成计划，B 的 m7、m8、m10 与三处丢键的读（几格里过计划核对、要等到 10 分钟的超时才红），C 的 c4、c10、c11、49 的组合根一半、w4）各成了一条发现，修复一轮之后都被抓到；连同修复一轮自己的 n1–n3、n5–n8 与 A 的 G1、C1–C3，写成 7.3 的第 111–121 条，第 37、41、43、45、49、69、71、72 条照实改。照预料存活的：A 的 T11、A4（等价）。修复核对一轮另有 C 的 c10b 被抓到；A 的 X1、X1b 与 B 的 cap（`MaxDeleteFirstNodes` 改回 1 万）存活，成了 S3A-N3 = S3B-N3，修复第二轮由单元测试钉住（第 122 条）。
+- 门禁（本机）：建成时头 `9b572167` 上 `make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 3,311 秒通过（回滚的守卫：计划中位数 515 毫秒；`RollbackLeft` 326–361 毫秒、合成的读 795–1,318 毫秒；先删一遍 131.3 秒），`make test-go-short` 44 秒，`make e2e` 138 秒。此前一次 `make test` 在竞态与七份同时跑（负载约 8.7）时第四份 M9 的 `TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches/a_place's_parent_deleted_between_batches` 失败（第二批先于网页的删除拿到笔记本行，S3C-M4），单独 4 次、第四份单独两轮都通过；S3 没有改撤销的路径。修复一轮（`9c0a0f42`）：5 个提交各自 build、vet、`make lint-go`、`make gen-check` 与 short 都通过，碰网页的第 4 个另过 `make lint-web`、`make knip`、`make test-web`；头上 `make lint gen-check knip build` 通过，`make test` 第一次 378 秒在第四份同一张表的 `…/a_place's_parent_moved_under_its_node_between_batches` 失败（`the web's write = 409 page.cycle`，同一种插队），重跑 3,293 秒通过（vitest 4,122 个测试），`make test-go-short` 40 秒，`make e2e` 第一次 508 个过、`l1-links.spec.ts:178` 等新标签页 30 秒超时（负载约 10，已知的旧偶发），重跑 509 个 132 秒；修复核对 C 判这两次失败都与 S3 无关。修复第二轮（`de554eda`）照决定 242：提交单独为绿（build、vet、`make lint-go`、`make gen-check`、short），`make lint gen-check knip build` 通过，`page/domain` 的包测试 60.8 秒。
+- 组合根的各份（竞态构建的口径）：建成时 `go test -race -list` 542 个顶层，七份 158、51、121、124、62、11、15，各在恰好一份。本机单独两轮（包的时间）：第一份 295.0、292.0 秒，第二份 262.3、244.8，第三份 264.4、249.2，第四份 225.2、202.1，第五份 262.4、248.3，第六份 194.3、182.7，第七份 116.4、120.6（S2 时 95.6、89.6）。修复一轮照决定 245 把第一份里 `^TestABackground` 的 13 个顶层挪到第七份：七份 145、51、121、124、62、11、28，各在恰好一份；本机第一份 231.0、230.3 秒，第七份 168.9、171.1 秒（审查 C 一轮 237.4、167.0 秒）。
+- CI：分支的 run 42635761979（`9b572167`）全绿；七份的测试一步 446、443、409、300、396、354、211 秒（包 414.0、409.4、378.3、278.5、363.2、323.1、180.1 秒；第一至三份 9V74，第四份 9V45，第五至七份 7763），第一、二份离 450 秒的线只差 4、7 秒（S3C-M3，决定 245）；costs-3 18:08 在 7763 上，回滚的守卫约是本机的 2 倍：计划 1,069 毫秒，`RollbackLeft` 645–688 毫秒，合成的读 1,747–2,968 毫秒（界 4.6 秒，余量约 1.55 倍），先删一遍 259.2 秒、单元中位数 21.4 秒，第 2–3 个单元 43.0、39.6 秒。修复一轮的 run 42671683550（`9c0a0f42`）前两次 attempt 有作业没有建出来（GitHub Actions 的事故，工作流本轮没改），`gh run rerun` 之后第三次 18 项全绿：七份的测试一步 371、437、423、377、401、325、211 秒（第一份在 7763 上，挪之前 `main` 上 442 秒；第二份在 7763 上 437 秒，`main` 上两次 436、431 秒；第七份在 9V45 上，7763 上估约 290–300 秒）；costs-3 在 9V45 上 10:47：`RollbackLeft` 471–652 毫秒（界 1.2 秒），合成的读 1,472–1,785 毫秒（界 3.1 秒），种子 19.9 秒，先删 40 个单元 2,807–3,075 毫秒（界 14 秒），一遍 115.5 秒，计划 794 毫秒。修复第二轮的 run 42688339794（`de554eda`）第一次 attempt 17 项过，guards-core 红在 M7 的 markdown 时长比守卫 `TestTheAppsMarkdownCostsAboutItsSize/to_a_page`（8.76 倍对 8 倍的线，EPYC 9V74；实施者判为与 S3 无关：本提交只改注释与一个单元测试），只重跑那一项之后 18 项全绿；七份的测试一步 356、348、419、296、282、279、199 秒，costs-3 13:28。
+- **修复一轮**（2026-11-10，分支 `m11-p1-s3` 的 `9c0a0f42`；三份审查与主持者的修复说明 `fix-1.md`，决定 243–245）：从 `9b572167` 起 5 个提交，一组一个，普通推送，没有改写已推的历史；提交 1、2 改了 `Makefile` 里自己守卫的注释，范围写 `server, build`：
+  - `63cd2572`：先删的单元另有上限 `MaxDeleteFirstNodes = 2,500`，`PackFreeSubtrees(forest, whole, pack)`，`deleteBatch` 以它判；守卫判每个单元不过 14 秒、一遍 330 秒、2,300 MiB，种子先经 HTTP 删掉一个 5,000 页的文件夹、关掉六张表的 autovacuum 再 `ANALYZE`（S3A-M1，决定 243）。上限改回 1 万时本机单元 10.8–11.1 秒、守卫是绿的；去掉"统计见过已删的行"时 40 个单元从 3.0 秒涨到 28.1 秒、守卫红。
+  - `923ad055`：`RollbackFreeForest` 改为 `NOT EXISTS`，这一轮回滚的读唯一的 SQL 改动；读的守卫计时的笔记本换成父节点多的形状，原来的形状作第二本只核对计划；计划核对加两道，判据测试加七格、共 17 格（S3B-I1、S3B-M1 = S3A-N2、S3B-Q1，决定 244）。改回 `NOT IN` 在"分析过"的计划核对就红（25.3 秒），三处探针丢键在"从未分析"的计划核对就红（15.9–17.2 秒）。
+  - `9605c0e4`：`getUpgrade` 的三次读放进一个 `Snapshots.WithinSnapshot`，`UpgradeDeps` 加 `Snapshots`；`RollbackEnd.End` 交回 `committed`，`rollbackSucceeded` 在 `WithinTx` 返回之后调它（S3A-M2、S3A-N1）。
+  - `6d8ed474`：`TestARollbacksReads` 的收着者两层、组合根的 Guide 移到 `Made/Deep/` 之下；`TestTheRollbackEnd` 的"a node out of place left"、`TestUpgradeRollback` 的"something left at the end"（本机 0.47 秒）；`reviewing` 的 `"rollback_left":null`；`TestTheRollbackKindsGoDown` 的 `checks` 一列；`transfer-names.test.ts` 的撤销一个 `rollback` 变更集的任务（S3C-M1、M2、N4，S3B-N1，S3C-N2）。
+  - `9c0a0f42`：`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground)`，第一份的目标加 `-skip`（S3C-M3，决定 245）。
+  - 只改文档的在本 Step 的文档提交：S3B-N2、S3C-N1、S3C-N3；设计 3.18–3.20、3.22、3.23、4.3、6.3、7.1–7.3、7.5、7.6、第 8、9 节；00 号文档 4.10、4.17、第 9 节、第 11 节与 M12 的移交。
+- **修复核对一轮**（2026-11-10，三位各在 `9c0a0f42` 的自己的工作树里）：三位都判旧发现里要改代码的都已关闭（只改文档的部分在本提交）。A 重跑审查时的 42 个变异（8 个照头上的写法重写），T11、A4 照旧等价，其余都抓到；新的 G1、G1b、C1–C3 都抓到；把头上的核对原样抄出、喂审查时的三格合成计划，都被拒；X1、X1b（`MaxDeleteFirstNodes` 改回 1 万）存活。B 重跑迁移的 11 个变异，m7、m8、m10 现在被抓到；g1–g4 在计划核对一步红；12 个 `RollbackFreeForest` 的计划都是哈希反连接，207–310 毫秒；`rollbackHashed` 在 PostgreSQL 18.6 上只会误报、不会放过；linking 的七处 `NOT IN (SELECT id FROM excluded…)` 是 `unnest` 的集合，在 20 万个之内都是 hashed，lint 的守卫已钉住；cap 存活。C 在头上重跑 10 次变异都抓到（另加 c10b），逐一推过 `Made/Deep/` 之后各格的期望，重算七份的归类与 CI 的数，与报告一致。新的一条 Nit，A、B 各自报出：S3A-N3 = S3B-N3（先删上限的注释把两种种子、实测与估算混在一起，改回 1 万只在 7763 一类的机器上会被守卫抓到）。
+- **修复第二轮**（2026-11-10，`de554eda`；`fix-2.md`，决定 242）：一个提交，只改 `page/domain/trash.go` 与 `page/rollback_cost_test.go` 的注释，加 `page/domain` 的单元测试 `TestTheFirstDeletesBound`：注释分三件事写（旧种子下 7763 上 21–43 秒；稳态的 2,500 个节点本机 2.7–3.2 秒、9V45 上 2.9–3.1 秒，1 万个节点本机 10.6–11.1 秒；7763 的稳态没有实测，估 4–6 秒与 15–19 秒），测试断言 `MaxDeleteFirstNodes == 2_500` 且不大于 `MaxUnitNodes`（S3A-N3 = S3B-N3）；常量改成 10,000（x1）、`MaxUnitNodes` 改成 2,000（x2）都被它抓到。本机门禁照决定 242（上面"门禁"），分支 CI（上面"CI"）。
+- **修复核对第二轮**（B，在 `de554eda` 上）：S3B-N3 关：两处注释的数与估算核过（本机 2.7–3.2 秒、10.6–11.1 秒乘 1.4–1.7，约 4–6 秒、15–19 秒）；头上 `page/domain` 的包测试通过；常量改成 10,000 时 `TestTheFirstDeletesBound` 红（修复核对一轮这一变异存活）；分支 CI 第一次 attempt 的 markdown 时长比（8.77 倍对"8 倍加 1 ms"，只超出 0.04 ms，EPYC 9V74）与 S3 无关：S3 的提交没有碰 `platform/markdown`；没有新发现。
+- **审查的结论**：Important 1（S3B-I1），Minor 另 7（S3A-M1、S3A-M2、S3B-M1 = S3A-N2、S3C-M1、S3C-M2、S3C-M3、S3C-M4），Nit 7，Q 1（S3B-Q1，随 S3B-I1），修复核对一轮另 1 条 Nit（S3A-N3 = S3B-N3）；都已改或记下，S3C-M4 不属于 S3、由旁支 `m11-p1-m9-revert-flake`（`aebf78c3`）修，单独合并、记录另写。代码的次序与码三位都没有查出错，问题在两处成本（`NOT IN` 的二次代价、先删的单元长过请求期限）、`getUpgrade` 的快照、日志的时机，以及"测试钉住了什么"：A 的探针在两次放弃同时到、删除与放弃各先一次下都对；B 在真库上逐字比对两个迁移、核对反例、契约与矩阵，查清先删的单元为什么慢（统计过时）；C 的逐个提交、头上的 e2e 都通过，CI 的数照实、读法有误（S3C-M3）。实施者的 27 条偏离由三位判过，都对，第 23 条的推断除外。
+- 实施者留下的五项：Step 的文档提交是本提交；先删的第 2–4 个单元慢，B 查清是 `nodes`、`page_contents` 的统计过时，守卫改测稳态，统计过时时的线性变慢进 M12 的性能移交（决定 243）；读的守卫在 CI 上余量最小的合成读，随 S3B-I1 重定界（S3B-Q1）；M9 的撤销测试的插队，见 S3C-M4；S4 照设计。
 
 ## 附录：核对过的代码
 

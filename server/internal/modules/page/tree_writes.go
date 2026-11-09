@@ -34,6 +34,10 @@ type (
 	JobStep    = domain.JobStep
 	JobBatches = app.JobBatches
 	BatchDone  = app.BatchDone
+	// RollbackPass is what a pass of an upgrade's rollback does, and
+	// RollbackLeft what it has left (M11/P1 design 3.18).
+	RollbackPass = app.RollbackPass
+	RollbackLeft = domain.RollbackLeft
 	// Placement is where a restore put a trash item's root.
 	Placement = domain.Placement
 	// SeedSpec is a template's unit, of PageDrafts, each with its content's
@@ -74,6 +78,10 @@ var ErrTooDeep = domain.ErrTooDeep
 
 // ErrNoParent is an import's parent that is no page of the notebook.
 var ErrNoParent = app.ErrNoParent
+
+// ErrRollbackGone is a rollback's job whose upgrade is no longer the
+// notebook's, rolling back (M11 decision 233).
+var ErrRollbackGone = app.ErrRollbackGone
 
 // TreeWrites creates the attachments' nodes, and an import's; writes the
 // background restores and reverts (M8/P4 design 3.3); and the template's
@@ -119,6 +127,14 @@ type TreeWrites interface {
 	// ErrLocked.
 	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
 	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error)
+	// PlanRollback plans one pass of the rollback of spec's upgrade
+	// (M11/P1 design 3.18), unlocked: notebook.not_found or forbidden for
+	// a job whose starter is no longer the notebook's admin;
+	// ErrRollbackGone for an upgrade no longer the notebook's, rolling
+	// back; a pass Done when nothing is left, one that deletes the free
+	// subtrees first, or one put back by a plan from the baseline,
+	// page.revert_too_large past MaxRollbackItems.
+	PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, RollbackPass, error)
 	// RunBatch writes the plan's steps from to to (not included) in a
 	// unit of spec merged into the job's changeset: ErrJobBatchTooLarge to
 	// halve, server_busy to try again; the restores' ErrTrashChanged,
@@ -244,6 +260,10 @@ func (t treeWrites) PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.U
 
 func (t treeWrites) PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error) {
 	return t.jobs.PlanRevert(ctx, spec, changesetID, batches)
+}
+
+func (t treeWrites) PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, RollbackPass, error) {
+	return t.jobs.PlanRollback(ctx, spec)
 }
 
 func (t treeWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error) {

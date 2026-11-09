@@ -35,6 +35,10 @@ func (t *tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID, app.JobBatche
 	return nil, errImportsTree
 }
 
+func (t *tree) PlanRollback(context.Context, app.JobSpec) (app.JobPlan, app.RollbackPass, error) {
+	return nil, app.RollbackPass{}, errImportsTree
+}
+
 func (t *tree) RunBatch(context.Context, app.JobSpec, app.JobPlan, int, int) (app.BatchDone, error) {
 	return app.BatchDone{}, errImportsTree
 }

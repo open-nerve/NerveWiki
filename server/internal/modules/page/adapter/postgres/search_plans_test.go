@@ -169,6 +169,8 @@ func (c *searchCorpus) attachments(t *testing.T, f fixture, notebook uuid.UUID, 
 type planNode struct {
 	Type        string     `json:"Node Type"`
 	Parent      string     `json:"Parent Relationship"`
+	SubplanName string     `json:"Subplan Name"`
+	CTEName     string     `json:"CTE Name"`
 	Relation    string     `json:"Relation Name"`
 	Alias       string     `json:"Alias"`
 	Index       string     `json:"Index Name"`

@@ -108,3 +108,16 @@ UPDATE notebooks
 SET upgrade_id = sqlc.arg(upgrade_id)::uuid, upgrade_state = 'upgrading', upgrade_by_id = sqlc.arg(by)::uuid,
     upgrade_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
 WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND upgrade_id IS NULL AND mode = 'standard';
+
+-- name: SetUpgradeState :execrows
+-- A notebook's upgrade's next state (M11/P1 design 3.20), under the row's lock: the notebook's upgrade is still
+-- upgrade_id; who and when, as each change of the row.
+UPDATE notebooks SET upgrade_state = sqlc.arg(state), updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id)::uuid;
+
+-- name: ClearUpgrade :execrows
+-- A notebook's upgrade's end (M11/P1 design 3.20), under the row's lock: its four columns cleared together, the
+-- notebook's upgrade still upgrade_id.
+UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL,
+    updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id)::uuid;

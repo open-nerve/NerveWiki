@@ -14,7 +14,9 @@ import type { Database } from "../db";
  */
 export async function expectUpgrade(db: Database, upgrade: Upgrade): Promise<void> {
   const rows = await db.query(
-    `SELECT u.notebook_id, u.state, u.ending, u.rollback_job_id, u.source_root_id,
+    `SELECT u.notebook_id, u.state, u.ending, u.rollback_job_id, u.rollback_complete,
+            CASE WHEN u.rollback_left_nodes IS NOT NULL THEN jsonb_build_object('nodes', u.rollback_left_nodes,
+              'pages', u.rollback_left_pages, 'created', u.rollback_left_created) END AS rollback_left, u.source_root_id,
             ARRAY(SELECT s.x FROM unnest(ARRAY[CASE WHEN u.seeded_root THEN u.source_root_id END, u.seeded_agents_id])
                     WITH ORDINALITY AS s(x, o) WHERE s.x IS NOT NULL ORDER BY s.o)::text[] AS seeded,
             u.baseline_nodes, u.baseline_pages, u.baseline_wanted, u.created_by_id,
@@ -32,6 +34,9 @@ export async function expectUpgrade(db: Database, upgrade: Upgrade): Promise<voi
       state: upgrade.state,
       ending: upgrade.ending,
       rollback_job_id: upgrade.rollback_job_id,
+      rollback_complete: upgrade.rollback_complete,
+      // Rolling back, what is left is counted as it is read, not kept.
+      rollback_left: upgrade.state === "rolled_back" ? upgrade.rollback_left : null,
       source_root_id: upgrade.source_root_id,
       seeded: upgrade.seeded_page_ids,
       baseline_nodes: upgrade.baseline.nodes,

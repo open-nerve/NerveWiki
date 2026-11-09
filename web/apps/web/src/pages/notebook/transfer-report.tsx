@@ -66,6 +66,15 @@ const kindFailures: Partial<Record<TransferJob["kind"], Partial<Record<TransferF
     tree_changed: "transfer.revertFailure.tree_changed",
     changeset_reverted: "transfer.revertFailure.changeset_reverted",
   },
+  // An upgrade's rollback that stopped is continued, or ended as it is
+  // (M11/P1 design 4.3): each failure says which.
+  rollback: {
+    forbidden: "transfer.rollbackFailure.forbidden",
+    revert_too_large: "transfer.rollbackFailure.revert_too_large",
+    internal: "transfer.rollbackFailure.internal",
+    interrupted: "transfer.rollbackFailure.interrupted",
+    timeout: "transfer.rollbackFailure.timeout",
+  },
 };
 
 /**
@@ -124,6 +133,7 @@ const shownCounts: Record<string, readonly ShownCount[]> = {
   import: ["pages", "attachments", "renamed", "skipped"],
   trash_restore: ["pages", "attachments", "renamed", "skipped"],
   revert: ["restored", "deleted", "put_back", "written", "skipped"],
+  rollback: ["deleted", "put_back", "written"],
 };
 
 /** countText is what count of a job of kind is called: a restore's and a revert's skipped, restored by someone first. */

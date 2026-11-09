@@ -7,7 +7,8 @@ import (
 )
 
 // The refusals of an upgrade's start and read (M11/P1 design 3.14), in the
-// order the start judges them.
+// order the start judges them, and of its abandonment and its rollback's
+// end (3.20).
 var (
 	// ErrAlreadyLLMWiki: the notebook is an LLM Wiki already.
 	ErrAlreadyLLMWiki = shared.NewError(shared.KindConflict, "notebook.already_llm_wiki", "The notebook is already an LLM Wiki.")
@@ -33,6 +34,15 @@ var (
 		"The link index is out of date: a server admin runs nervewiki reindex, then the upgrade can start.")
 	// ErrUpgradeNotFound: the notebook has no upgrade under way.
 	ErrUpgradeNotFound = shared.NewError(shared.KindNotFound, "wiki.upgrade_not_found", "The notebook has no upgrade under way.")
+	// ErrUpgradeState: the notebook's upgrade is not in a state that
+	// allows the operation (M11/P1 design 3.20): an abandonment of none,
+	// an end of a rollback of one not rolling back.
+	ErrUpgradeState = shared.NewError(shared.KindConflict, "wiki.upgrade_state", "The upgrade is not in a state that allows this.")
+	// ErrRollbackWriting: the transfer module's transfer.busy, the
+	// upgrade's rollback queued or running, as its continuation or its
+	// end finds it.
+	ErrRollbackWriting = shared.NewError(shared.KindConflict, "transfer.busy",
+		"The upgrade's rollback is queued or running: continue or end it once it has stopped.")
 )
 
 // UpgradePagesLocked is ErrUpgradePagesLocked naming locks, at most 100,

@@ -32,6 +32,24 @@ func (h handler) StartUpgrade(ctx context.Context, req gen.StartUpgradeRequestOb
 	return gen.StartUpgrade200JSONResponse(upgradeOf(view)), nil
 }
 
+func (h handler) AbandonUpgrade(ctx context.Context, req gen.AbandonUpgradeRequestObject) (gen.AbandonUpgradeResponseObject, error) {
+	view, err := h.upgrades.AbandonUpgrade(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.AbandonUpgrade200JSONResponse(upgradeOf(view)), nil
+}
+
+func (h handler) EndUpgradeRollback(ctx context.Context, req gen.EndUpgradeRollbackRequestObject) (gen.EndUpgradeRollbackResponseObject,
+	error,
+) {
+	view, err := h.upgrades.EndUpgradeRollback(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	return gen.EndUpgradeRollback200JSONResponse(upgradeOf(view)), nil
+}
+
 // upgradeOf is view as the contract's Upgrade: the pages the start wrote,
 // raw then AGENTS; each step's fields null until it.
 func upgradeOf(view app.UpgradeView) gen.Upgrade {

@@ -16,10 +16,13 @@ type LintUseCase interface {
 	Execute(context.Context, app.LintScope, app.LintQuery) (domain.LintResult, error)
 }
 
-// UpgradeUseCases are an upgrade's start and read (M11/P1 design 3.14).
+// UpgradeUseCases are an upgrade's start and read (M11/P1 design 3.14),
+// its abandonment and its rollback's end (3.20).
 type UpgradeUseCases interface {
 	StartUpgrade(ctx context.Context, id uuid.UUID, locale string) (app.UpgradeView, error)
 	GetUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+	AbandonUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+	EndUpgradeRollback(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
 }
 
 // Register mounts the generated strict routes behind the platform's middlewares.
