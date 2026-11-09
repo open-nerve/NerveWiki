@@ -467,6 +467,27 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 	if err := json.Unmarshal(ev.Plan, &doc); err != nil || len(doc) != 1 {
 		t.Fatalf("actual plan: %v", err)
 	}
+	// A Bitmap Index Scan counts every index entry in its ranges, dead versions
+	// too, and never marks them dead; with no VACUUM after a Rebuild only a plain
+	// index scan over these ranges does. Which family the planner picks here
+	// follows ANALYZE's sample of page_links (M11/P1: main run 42583342275
+	// estimated 3226 rows per probe and read 816 bitmap entries for 412 live;
+	// its rerun and seven earlier runs estimated 1995-2805 and used index scans).
+	// So after a Rebuild the bitmap's bounds are the entries derived above
+	// (old and new resolved for a main reverse entry, a foreign one once; three
+	// versions for a resolved source entry and two for the unresolved one after
+	// the streaming Rebuild, two for every main row after the buffered one); the
+	// heap's bound still counts live rows only.
+	versions := func(scope string) float64 {
+		exact := map[string]float64{"CTE followed_untouched": 2*3 + 8, "CTE relevant": 2*404 + 8, "CTE digested": 3*915 + 2}
+		if state == bufferedRebuildState {
+			exact["CTE digested"] = 2 * 916
+		}
+		if rebuilt && live[scope] > 0 {
+			return exact[scope] / live[scope]
+		}
+		return 1
+	}
 	visible, bitmap, seen := map[string]float64{}, map[string]float64{}, map[string]int{}
 	var visit func(node, string)
 	visit = func(n node, scope string) {
@@ -516,8 +537,12 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 			} else if n.Type == "Bitmap Index Scan" {
 				bitmap[scope] += math.Max(0, n.Rows-0.5) * n.Loops
 			}
-			if lower > allowed {
-				t.Errorf("%s actual range read lower bound %.0f exceeds %.0f: %+v", scope, lower, allowed, n)
+			limit := allowed
+			if n.Type == "Bitmap Index Scan" {
+				limit = allowed * versions(scope)
+			}
+			if lower > limit {
+				t.Errorf("%s actual range read lower bound %.0f exceeds %.0f: %+v", scope, lower, limit, n)
 			}
 		}
 		for _, child := range n.Plans {
@@ -529,8 +554,8 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 		if allowed > 0 && seen[scope] == 0 {
 			t.Errorf("no executed page_links range for %s", scope)
 		}
-		if visible[scope] > allowed || bitmap[scope] > allowed {
-			t.Errorf("%s complete visible/filter work: heapLower=%.0f bitmapLower=%.0f bound=%.0f", scope, visible[scope], bitmap[scope], allowed)
+		if visible[scope] > allowed || bitmap[scope] > allowed*versions(scope) {
+			t.Errorf("%s complete visible/filter work: heapLower=%.0f bitmapLower=%.0f bound=%.0f (bitmap %.0f)", scope, visible[scope], bitmap[scope], allowed, allowed*versions(scope))
 		}
 	}
 	lintEvidence(t, "novel-range-ledger", map[string]any{"live": live, "tuple_bound_with_versions": bound, "logical_range_probes": 808, "actual_work": ev.ExecutionWork, "explain_work": ev.ExplainWork, "planning_work": ev.PlanningWork, "visible_lower": visible, "bitmap_lower": bitmap, "rebuilt": rebuilt, "state": state, "note": "execution and EXPLAIN are distinct reads; generic is the helper's named EXECUTE, not a standalone raw-SQL label; blocks remain raw diagnostics"})
