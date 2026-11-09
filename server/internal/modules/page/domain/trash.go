@@ -72,13 +72,19 @@ const (
 	// notebook's row FOR NO KEY UPDATE, and its workspace's FOR SHARE,
 	// until it commits: the notebook's admin writes (a continuation, an
 	// end, a rename) wait for it, which must stay within the 15 s of a
-	// request (decision 153's 14 s). Measured by the rollback's cost guard
-	// (page/rollback_cost_test.go), 100,000 scattered pages: a unit of
-	// 10,000 took 10.8 to 12 s here once the statistics had seen deleted
-	// rows (more before), 21 to 43 s on CI's EPYC 7763, about twice as
-	// slow; a quarter of it took 2.7 to 3.2 s here, about 6 to 7 s there. A
-	// subtree past it alone, of MaxUnitNodes at most, is a unit's whole
-	// (M11/P1 design 3.18).
+	// request (decision 153's 14 s). The rollback's cost guard
+	// (page/rollback_cost_test.go), 100,000 scattered pages, measured:
+	//   - with its old seed (statistics that had seen no deleted row,
+	//     autovacuum on), units of 10,000 took 21 to 43 s on CI's EPYC 7763
+	//     (run 42635761979);
+	//   - in the steady state, units of 2,500 took 2.7 to 3.2 s here and 2.9
+	//     to 3.1 s on CI's EPYC 9V45 (run 42671683550), units of 10,000 10.6
+	//     to 11.1 s here;
+	//   - the steady state on a 7763 is not measured: estimated at the
+	//     guard's 7763-to-here ratio in S3 (about 1.4 to 1.7), units of 2,500
+	//     take about 4 to 6 s there, units of 10,000 about 15 to 19 s.
+	// TestTheFirstDeletesBound holds the number. A subtree past it alone, of
+	// MaxUnitNodes at most, is a unit's whole (M11/P1 design 3.18).
 	MaxDeleteFirstNodes = 2_500
 )
 

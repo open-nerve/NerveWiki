@@ -36,11 +36,16 @@ const (
 // request, which the notebook's admin writes waiting for the unit's lock
 // on the notebook's row spend (decision 243). The two rounds' passes, 40
 // units of 2,500 pages, took 109.3 and 109.2 s and 737 MiB, their units
-// 2.67 to 3.22 s (medians 2.72 and 2.71 s); the seed 2.4 and 2.5 s. Units
-// of MaxUnitNodes, 10,000 pages, took 10.8 to 11.1 s here, about twice as
-// many on CI, past 14 s; without the deleted folder, units of 2,500 took
-// 3.0 s, then each more than the one before, 28.1 s the last, the pass
-// 645 s.
+// 2.67 to 3.22 s (medians 2.72 and 2.71 s); the seed 2.4 and 2.5 s. On
+// CI's EPYC 9V45 (run 42671683550) its units took 2.9 to 3.1 s, the pass
+// 115.5 s. Units of MaxUnitNodes, 10,000 pages, took 10.6 to 11.1 s here:
+// they would pass 14 s only on a machine like CI's EPYC 7763 (an
+// estimate, 15 to 19 s at the S3 guard's ratio there, about 1.4 to 1.7,
+// not measured); on one like its 9V45, near this one, they stay within
+// it. So the bound is held by the unit test TestTheFirstDeletesBound
+// (page/domain), not by this guard. Without the deleted folder, units of
+// 2,500 took 3.0 s, then each more than the one before, 28.1 s the last,
+// the pass 645 s.
 const (
 	rollbackDeleteBound      = 330 * time.Second
 	rollbackDeleteAllocBound = 2300 << 20

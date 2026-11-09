@@ -138,3 +138,15 @@ func TestPlacementOf(t *testing.T) {
 		}
 	}
 }
+
+// MaxDeleteFirstNodes is decision 243's number, within MaxUnitNodes (M11/P1
+// S3 review A-N3, B-N3): the rollback's cost guard holds a unit of the
+// first deletes within 14 s only on a machine as slow as CI's EPYC 7763,
+// and passes a unit of MaxUnitNodes on one like its 9V45. Changing the
+// number is changing the decision first.
+func TestTheFirstDeletesBound(t *testing.T) {
+	first, unit := domain.MaxDeleteFirstNodes, domain.MaxUnitNodes
+	if first != 2_500 || first > unit {
+		t.Errorf("MaxDeleteFirstNodes = %d, MaxUnitNodes %d; want decision 243's 2,500, within MaxUnitNodes", first, unit)
+	}
+}
