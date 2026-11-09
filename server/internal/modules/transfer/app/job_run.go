@@ -27,10 +27,13 @@ const (
 )
 
 // The causes a running job's heartbeat stops it with. A job gone was
-// deleted with its notebook, or no longer runs: the rescue failed it.
+// deleted with its notebook, or no longer runs: the rescue failed it. A
+// rollback's whose upgrade was ended meanwhile is one too (M11 decision
+// 233): the composition root answers ErrJobGone for it, and its end is
+// written by no one.
 var (
 	errCancelRequested = errors.New("transfer: the job's cancel was asked")
-	errGone            = errors.New("transfer: the job was deleted, or no longer runs")
+	ErrJobGone         = errors.New("transfer: the job was deleted, or no longer runs")
 )
 
 // failure is a job's failure as its report tells it, and the error behind
@@ -63,7 +66,7 @@ func authorizeJob(ctx context.Context, notebooks Notebooks, authorizer shared.Au
 	case err != nil:
 		return err
 	case !ok:
-		return errGone
+		return ErrJobGone
 	}
 	actor := shared.Actor{UserID: job.CreatedBy, JobID: job.ID}
 	_, err = authorizer.Authorize(ctx, actor, action, shared.Target{WorkspaceID: workspaceID, NotebookID: job.NotebookID})
@@ -163,7 +166,7 @@ func (r *jobRun) beat(ctx context.Context, stop context.CancelCauseFunc) <-chan 
 			failing = false
 			switch {
 			case errors.Is(err, ErrNoRow) || b.Deleted:
-				stop(errGone)
+				stop(ErrJobGone)
 			case b.CancelRequested:
 				stop(errCancelRequested)
 			}
@@ -193,7 +196,7 @@ func (r *jobRun) finish(ctx, running context.Context, err error, attrs []any, su
 	if err != nil {
 		cause := context.Cause(running)
 		switch {
-		case errors.Is(cause, errGone) || errors.Is(err, errGone):
+		case errors.Is(cause, ErrJobGone) || errors.Is(err, ErrJobGone):
 			r.logger.InfoContext(end, kind+" stopped: the job was deleted, or no longer runs", attrs...)
 			return nil
 		case errors.Is(cause, errCancelRequested):

@@ -459,6 +459,15 @@ type RevertPart struct {
 // revision just checked. A classified error but the guards' page.locked
 // and the restore's page.trash_changed is a defect.
 func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error) {
+	if r.plan.rollback != nil {
+		return BatchDone{}, errors.New("page: a revert's batch of a rollback's plan")
+	}
+	return u.revertPart(ctx, r)
+}
+
+// revertPart is RevertBatch's and RollbackBatch's batch: a rollback's
+// items and versions are its plan's, read as a changeset's are.
+func (u *Unit) revertPart(ctx context.Context, r RevertPart) (BatchDone, error) {
 	steps := r.plan.steps[r.from:r.to]
 	var items, versions, conts []uuid.UUID
 	var contSteps []revertStep
@@ -478,8 +487,12 @@ func (u *Unit) RevertBatch(ctx context.Context, r RevertPart) (BatchDone, error)
 			conts, contSteps, cont[s.node] = append(conts, s.node), append(contSteps, s), true
 		}
 	}
-	read, befores, err := u.batchChangeset(ctx, r.plan.changeset, items, versions, conts)
-	if err != nil {
+	var read domain.RevertState
+	var befores map[uuid.UUID]domain.ChangesetItem
+	var err error
+	if r.plan.rollback != nil {
+		read, befores = r.plan.rollback.read(items, versions), map[uuid.UUID]domain.ChangesetItem{}
+	} else if read, befores, err = u.batchChangeset(ctx, r.plan.changeset, items, versions, conts); err != nil {
 		return BatchDone{}, err
 	}
 	state, err := u.batchState(ctx, r, read)

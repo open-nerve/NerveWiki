@@ -49,16 +49,43 @@ type Tree interface {
 	// refusals.
 	PlanRestore(ctx context.Context, spec JobSpec, nodeID uuid.UUID) (JobPlan, error)
 	PlanRevert(ctx context.Context, spec JobSpec, changesetID uuid.UUID, batches JobBatches) (JobPlan, error)
+	// PlanRollback plans one pass of the rollback of spec's upgrade
+	// (M11/P1 design 3.18): ErrJobGone for an upgrade no longer the
+	// notebook's, rolling back; a pass Done when nothing is left.
+	PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, RollbackPass, error)
 	RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error)
 }
 
 // JobSpec is a background job's units': its notebook and client, the
-// changeset its row names, a revert's message.
+// changeset its row names, a revert's message, a rollback's upgrade.
 type JobSpec struct {
 	NotebookID uuid.UUID
 	Client     domain.Client
 	Changeset  uuid.UUID
 	Message    *string
+	UpgradeID  uuid.UUID
+}
+
+// RollbackPass is what a pass of an upgrade's rollback does (M11/P1
+// design 3.18): delete the free subtrees first, or put the rest back by a
+// plan, of Items items and versions; or nothing, Done. Left is what was
+// left before it.
+type RollbackPass struct {
+	Deletes bool
+	Done    bool
+	Left    RollbackLeft
+	Items   int
+}
+
+// RollbackLeft is what a rollback has left to do: the baseline nodes not
+// in place, the baseline pages not written back, the new nodes alive.
+type RollbackLeft struct {
+	Nodes, Pages, Created int
+}
+
+// Sum is the three counts together, which each pass makes smaller.
+func (l RollbackLeft) Sum() int {
+	return l.Nodes + l.Pages + l.Created
 }
 
 // JobPlan is a background job's plan, the page module's, which only it

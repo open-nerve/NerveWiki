@@ -259,6 +259,10 @@ func (tree) PlanRevert(context.Context, app.JobSpec, uuid.UUID, app.JobBatches) 
 	panic("tree: no job runs here")
 }
 
+func (tree) PlanRollback(context.Context, app.JobSpec) (app.JobPlan, app.RollbackPass, error) {
+	panic("tree: no job runs here")
+}
+
 func (tree) RunBatch(context.Context, app.JobSpec, app.JobPlan, int, int) (app.BatchDone, error) {
 	panic("tree: no job runs here")
 }

@@ -20,21 +20,24 @@ import (
 
 // JobSpec is a background job's units': its notebook and client; the
 // changeset its row names, which its first unit that writes makes and its
-// later units merge into; a revert's message, written as it is made.
+// later units merge into; a revert's message, written as it is made; a
+// rollback's upgrade (M11/P1 design 3.18), the zero id for any other.
 type JobSpec struct {
 	NotebookID uuid.UUID
 	Client     domain.Client
 	Changeset  uuid.UUID
 	Message    *string
+	UpgradeID  uuid.UUID
 }
 
 // JobPlan is a background job's plan: its steps, each a write no batch
 // splits, in their order; its caller cuts them into batches and hands
 // each back to RunBatch with the plan.
 type JobPlan struct {
-	steps   []domain.JobStep
-	restore *restorePlan
-	revert  *revertPlan
+	steps    []domain.JobStep
+	restore  *restorePlan
+	revert   *revertPlan
+	rollback *rollbackPlan
 }
 
 // Steps are the plan's steps in their order.
@@ -64,7 +67,8 @@ type BatchDone struct {
 	Placed                                 *domain.Placement
 }
 
-// JobWrites are the background restores' and reverts' writes.
+// JobWrites are the background restores', reverts' and an upgrade's
+// rollbacks' writes.
 type JobWrites struct {
 	reads    TrashReads
 	history  History
@@ -75,15 +79,35 @@ type JobWrites struct {
 	// maxHistory bounds the rows of history a batch of more than one
 	// node restores: MaxUnitHistory.
 	maxHistory int
+	// rollbacks are a rollback's reads, upgradeAction the action its
+	// units decide on, the notebook module's notebook.change_mode (M11/P1
+	// design 2.1 item 10); maxUnitNodes bounds a step that deletes first,
+	// MaxUnitNodes, and maxRollbackItems a pass's plan, MaxRollbackItems.
+	rollbacks        RollbackReads
+	upgradeAction    shared.Action
+	maxUnitNodes     int
+	maxRollbackItems int
+}
+
+// JobRollbacks are what a rollback needs of the module (M11/P1 design
+// 3.18): its reads, its units' action, and its bounds, each zero the
+// domain's: MaxUnitNodes and MaxRollbackItems.
+type JobRollbacks struct {
+	Reads    RollbackReads
+	Action   shared.Action
+	MaxNodes int
+	MaxItems int
 }
 
 // NewJobWrites returns them, the domain's bounds where maxItems and
 // maxHistory have none (0).
 func NewJobWrites(reads TrashReads, history History, writer *Writer, parser *ContentParser, sessions AliveSessions, maxItems,
-	maxHistory int,
+	maxHistory int, rollbacks JobRollbacks,
 ) *JobWrites {
 	return &JobWrites{reads: reads, history: history, writer: writer, parser: parser, sessions: sessions,
-		maxItems: cmp.Or(maxItems, domain.MaxJobItems), maxHistory: cmp.Or(maxHistory, domain.MaxUnitHistory)}
+		maxItems: cmp.Or(maxItems, domain.MaxJobItems), maxHistory: cmp.Or(maxHistory, domain.MaxUnitHistory),
+		rollbacks: rollbacks.Reads, upgradeAction: rollbacks.Action, maxUnitNodes: cmp.Or(rollbacks.MaxNodes, domain.MaxUnitNodes),
+		maxRollbackItems: cmp.Or(rollbacks.MaxItems, domain.MaxRollbackItems)}
 }
 
 // restoreUnit is the unit of a restore's batch of spec: the job's
@@ -286,6 +310,9 @@ type revertPlan struct {
 	changeset uuid.UUID
 	steps     []revertStep
 	groups    []revertGroup
+	// rollback, set, is the rollback whose pass the plan is: its items
+	// and versions are the plan's, of no changeset (M11/P1 design 3.18).
+	rollback *rollbackPlan
 }
 
 // revertStep is a step of a background revert as its job keeps it from
@@ -614,6 +641,9 @@ func (w *JobWrites) RunBatch(ctx context.Context, spec JobSpec, plan JobPlan, fr
 	if plan.restore != nil {
 		return w.restoreBatch(ctx, spec, plan.restore, from, to)
 	}
+	if plan.rollback != nil && plan.revert == nil {
+		return w.deleteBatch(ctx, spec, plan, from, to)
+	}
 	done, err := w.revertBatch(ctx, spec, plan.revert, plan.steps[from:to], from, to)
 	if errors.Is(err, domain.ErrTrashChanged) {
 		return BatchDone{}, domain.ErrChangesetTrimmed
@@ -744,7 +774,12 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	if err := w.withinHistory(ctx, len(nodes), deleted); err != nil {
 		return BatchDone{}, err
 	}
-	contents, err := w.revertContents(ctx, p.changeset, trashed, written, trashBound(p, steps, sizes))
+	var contents map[domain.ContentRef]string
+	if p.rollback != nil {
+		contents, err = w.rollbackContents(ctx, p.rollback, written)
+	} else {
+		contents, err = w.revertContents(ctx, p.changeset, trashed, written, trashBound(p, steps, sizes))
+	}
 	if err != nil {
 		return BatchDone{}, err
 	}
@@ -759,10 +794,14 @@ func (w *JobWrites) revertBatch(ctx context.Context, spec JobSpec, p *revertPlan
 	parsed := parsedContents(contents, facts)
 	var done BatchDone
 	var retimed map[int32]time.Time
-	if _, err := w.writer.Run(ctx, revertUnit(spec, p.changeset), func(ctx context.Context, u *Unit) error {
+	unit, batch := revertUnit(spec, p.changeset), (*Unit).RevertBatch
+	if p.rollback != nil {
+		unit, batch = rollbackUnit(spec, w.upgradeAction), (*Unit).RollbackBatch
+	}
+	if _, err := w.writer.Run(ctx, unit, func(ctx context.Context, u *Unit) error {
 		var err error
 		retimed = map[int32]time.Time{}
-		done, err = u.RevertBatch(ctx, RevertPart{plan: p, from: from, to: to, parsed: parsed, retention: w.reads.Retention,
+		done, err = batch(u, ctx, RevertPart{plan: p, from: from, to: to, parsed: parsed, retention: w.reads.Retention,
 			retimed: retimed})
 		return err
 	}); err != nil {

@@ -83,6 +83,21 @@ func (u *Upgrades) LiveSessions(ctx context.Context, notebookID uuid.UUID, at ti
 	return u.store.LiveSessionsOfNotebook(ctx, notebookID, at)
 }
 
+// Left is what the rollback of the upgrade has left to do in the notebook
+// (M11 decision 226): the baseline nodes not in place, the baseline pages
+// not written back, the new nodes alive; in the transaction ctx carries,
+// when it carries one.
+func (u *Upgrades) Left(ctx context.Context, upgradeID, notebookID uuid.UUID) (RollbackLeft, error) {
+	return u.store.RollbackLeft(ctx, upgradeID, notebookID)
+}
+
+// DeleteBaseline deletes the upgrade's rows, baseline and protected, as
+// it ends (M11 design 4.10), in the transaction ctx carries.
+func (u *Upgrades) DeleteBaseline(ctx context.Context, upgradeID uuid.UUID) error {
+	_, err := u.store.DeleteUpgradeNodes(ctx, upgradeID)
+	return err
+}
+
 // RootNodes are the nodes alive at the notebook's root whose title keys
 // are among keys (M11 design 4.4 step 8).
 func (u *Upgrades) RootNodes(ctx context.Context, notebookID uuid.UUID, keys []string) ([]RootNode, error) {

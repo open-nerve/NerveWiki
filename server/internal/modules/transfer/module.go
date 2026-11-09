@@ -89,6 +89,8 @@ type (
 	JobStep         = app.JobStep
 	JobBatches      = app.JobBatches
 	BatchDone       = app.BatchDone
+	RollbackPass    = app.RollbackPass
+	RollbackLeft    = app.RollbackLeft
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
 	// Refused is a job write the notebook contract refused, with its code,
@@ -121,6 +123,7 @@ var (
 	ErrTooLarge          = app.ErrTooLarge
 	ErrStorageFull       = domain.ErrStorageFull
 	ErrBatchTooLarge     = app.ErrBatchTooLarge
+	ErrJobGone           = app.ErrJobGone
 	ErrTrashChanged      = app.ErrTrashChanged
 	ErrRestoreExpired    = app.ErrRestoreExpired
 	ErrRevertConflict    = app.ErrRevertConflict

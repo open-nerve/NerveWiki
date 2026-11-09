@@ -356,7 +356,7 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
-test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docker）
+test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）
 	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
@@ -377,6 +377,14 @@ test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docke
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceIndexFourthKeyCostsItsSpaceAndNormalWrites$$' ./internal/bootstrap
 	@# S2-3：10本百万历史、全旧像与真实AccessExclusive交错，另一个default10m进程。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsTenHistories$$' ./internal/bootstrap
+	@# M11/P1/S3：回滚的三个守卫各单独一行、带 -v（P1 设计 7.1，决定 236、240）。计划：10 万个条目，PlanRollback 在内存里的读上，中位数的时长与分配在本机两轮的三倍之内
+	cd server && go test -count=1 -v -run '^TestARollbacksPlanOfAHundredThousandItemsTakesItsTime$$' ./internal/modules/page/app
+	@# 读：10 万节点、10 万页，库里另有九本各 5 万页的笔记本与它们的升级的基线行；三种统计状态 × 自定义与通用的计划，先核对 RollbackLeft 与合成的一遍的六条读只经键
+	@# （upgrade_nodes 经主键的前缀，nodes 经 notebook_id 或逐行经主键，page_contents 逐行经主键，不顺序扫描），再核对 RollbackLeft 的中位数在请求的 4 秒、合成的读在本机两轮的三倍之内（决定 226）
+	cd server && go test -count=1 -v -run '^TestARollbacksReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# 先删：10 万个零散的新页装成十个单元、各 1 万棵子树（决定 231），整遍、单元的中位数与分配在本机两轮的三倍之内；本机一遍约 3 分钟，
+	@# 界 550 秒近 Go 默认的 10 分钟，所以这一行 -timeout 20m
+	cd server && go test -count=1 -timeout 20m -v -run '^TestARollbackDeletesAHundredThousandScatteredPagesFirst$$' ./internal/modules/page
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint

@@ -176,6 +176,9 @@ func pageDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, author
 		SearchInterval:   cfg.Page.SearchIndexInterval,
 		// MCP's batch's links on its plan (M9/P3 design 3.7.4).
 		BatchLinks: batchLinks{linking.NewBatchLinks(pool, page.MaxContentBytes, logger)},
+		// An upgrade's rollback's units decide on notebook.change_mode
+		// (M11/P1 design 2.1 item 10), as the freeze guard's admin does.
+		UpgradeAction: notebook.ActionChangeMode,
 	}
 }
 
