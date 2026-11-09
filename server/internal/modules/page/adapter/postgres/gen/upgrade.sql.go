@@ -29,7 +29,11 @@ WITH captured AS (
     SELECT $1, n.id, n.notebook_id, true, n.kind, n.parent_id, n.name, n.sort_order, c.revision,
         c.content_hash, c.byte_size, CASE WHEN n.kind = 'page' THEN 0 END, c.content_hash
     FROM nodes n
-    LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
+    LEFT JOIN LATERAL (
+        SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+        WHERE c.node_id = n.id AND c.deleted_at IS NULL
+        LIMIT 1
+    ) c ON true
     WHERE n.notebook_id = $2 AND n.deleted_at IS NULL
     RETURNING kind
 )
@@ -47,7 +51,10 @@ type CaptureBaselineRow struct {
 }
 
 // An upgrade's baseline (M11 design 4.4 step 11): a row for each node alive in the notebook, under the notebook's row
-// lock; a page's latest version, its hash also the one the guardrails accept, its wanted count 0 until step 13.
+// lock; a page's latest version, its hash also the one the guardrails accept, its wanted count 0 until step 13. The
+// notebook's nodes drive page_contents' primary key, one node at a time, so that the start reads this notebook's
+// rows and not the instance's (decision 240): the LIMIT 1 keeps the LATERAL from being pulled up into a join, which
+// may hash the whole table, and changes nothing, a node having one row of page_contents at most.
 func (q *Queries) CaptureBaseline(ctx context.Context, arg CaptureBaselineParams) (CaptureBaselineRow, error) {
 	row := q.db.QueryRow(ctx, captureBaseline, arg.UpgradeID, arg.NotebookID)
 	var i CaptureBaselineRow

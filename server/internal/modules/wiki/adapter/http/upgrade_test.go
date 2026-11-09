@@ -131,7 +131,7 @@ func TestTheUpgradeIsAnswered(t *testing.T) {
 		t.Errorf("the start was asked for %q", f.locale)
 	}
 	// The binding does not check the enum: the use case answers 422 for
-	// a language there is no template of (TestStartingAnUpgrade).
+	// a language there is no template of (wiki/app's TestUpgradeStart).
 	upgradeCall(t, h, http.MethodPost, lintID(10), `{"template_locale":"fr"}`)
 	if len(f.locale) != 3 || f.locale[2] != "fr" {
 		t.Errorf("the start was asked for %q", f.locale)
