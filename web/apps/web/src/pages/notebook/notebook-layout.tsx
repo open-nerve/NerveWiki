@@ -13,6 +13,7 @@ import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
 import { NotebookPlaces } from "./notebook-places";
 import { PageTree } from "./page-tree";
 import { QuickSwitch } from "./quick-switch";
+import { UpgradeBanner } from "./upgrade-banner";
 
 const NotebookContext = createContext<Notebook | undefined>(undefined);
 
@@ -39,7 +40,8 @@ export function useNotebook(): Notebook {
  * home instead, arrived at. Its pages start anew with each notebook, and
  * so do its page tree, which it puts in the workspace's left column
  * (M4/P5 design 3.6) with its other places below it (notebook-places.tsx),
- * and its quick switch (3.10). A notebook gone while
+ * and its quick switch (3.10); above its pages, the banner of its upgrade
+ * under way (M11/P1 design 4.4). A notebook gone while
  * this tab edits one of its pages with changes not saved stays, as it was
  * last found, until the edit ends (M5/P4 design 3.9).
  */
@@ -73,6 +75,8 @@ export const NotebookLayout = observer(function NotebookLayout() {
           column
         )}
       <QuickSwitch notebook={notebook} />
+      {/* Outside the outlet: the upgrade's state changing remounts none of the page. */}
+      <UpgradeBanner notebook={notebook} />
       <Outlet key={notebook.id} />
     </NotebookContext>
   );

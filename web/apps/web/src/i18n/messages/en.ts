@@ -693,6 +693,12 @@ export const en = {
   "notebookSettings.deleteConfirm": "Delete",
   "notebookSettings.deleting": "Deleting…",
   "notebookSettings.cancel": "Cancel",
+  "upgrade.bannerUpgrading": "This notebook is being upgraded to an LLM Wiki: it is read-only for now.",
+  "upgrade.bannerReviewing":
+    "This notebook's upgrade is submitted and waits for an admin's review: it is read-only for now.",
+  "upgrade.bannerRollingBack": "This notebook's upgrade is being undone: it is read-only for now.",
+  "upgrade.bannerAnyAdmin": "Any admin of the notebook can abandon this upgrade.",
+  "upgrade.view": "View the upgrade",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",
