@@ -262,7 +262,7 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 542 个顶层（竞态构建，M11/P1/S3 之后）静态分配为 158/51/121/124/62/11/15（见第五份与第七份的说明）；各份双轮与指定 main pair 仍须实际核验。
+# 当前 542 个顶层（竞态构建，M11/P1/S3 审查修复之后）静态分配为 145/51/121/124/62/11/28（见第五份与第七份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 # M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），都以 TestUpgrade 起名。第三份的 [U-Z] 收得下它，所以第三份跳过它；
 # 第四份是补集，跳过第三份的模式时已跳过它；第一、二、五、六份的模式都不收它（TestUploading… 也不匹配 ^TestUpgrade）。
@@ -273,7 +273,13 @@ BOOTSTRAP_SIXTH = ^TestIngest
 # 31 秒，余下的几乎不变：看来进程里第一个重的测试付冷启动，原来是 TestIngestBefore），折到 7763 约 386 秒；第七份 82.1/84.1 秒，约 147 秒。
 # 挪 TestIngestUnit（7763 上约 261 秒）会让第七份到 P1 末（P1 设计 7.5 估 150–250 秒）过线，不挪它。不提高 -timeout。
 # 第六份 -skip 第七份；第四份由 ^TestIngest 跳过它，第一、二、三、五份的模式不收它。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)
+# M11/P1/S3 审查（C-M3，00-M11 第 245 条）：分支的 CI（42635761979）第一份 Test 一步 446 秒（9V74）、第二份 443 秒，离线 4 与 7 秒；
+# main 上第一份落在 7763 上时 442 秒。照 M10/P5/S1 的先例贴线就先挪：第一份里 ^TestABackground 的 13 个顶层（本机 -race -json 约
+# 56 秒，审查者 C 那一轮）挪到离线最远的第七份（7763 上 211 秒）；第一份 -skip 第七份的模式，第四份跳过第一份的模式时已跳过它们，
+# 别的份的模式不收它们。本机两轮（make -j1，包的时间）第一份 295.0/292.0 → 231.0/230.3 秒，第七份 116.4/120.6 → 168.9/171.1 秒；
+# 照分支的 7763 上第七份与本机之比（测试一步 211/118.5≈1.78），第七份约 300 秒，在约 330 秒之下，13 个都挪。第一份照 main 的 7763
+# 与本机之比（442/287.4≈1.54）约 355 秒。第二份暂不动，合并之后看两次 main。不提高 -timeout。
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -282,8 +288,8 @@ test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的
 test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 test-go-bootstrap-7 ## 竞态检测下运行组合根的整个程序测试，七份依次（需要 Docker）
 
 .PHONY: test-go-bootstrap-1
-test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' ./internal/bootstrap
+test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 且不匹配 BOOTSTRAP_SEVENTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIRST)' -skip '$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-2
 test-go-bootstrap-2: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SECOND 且不匹配 BOOTSTRAP_FIFTH 的（CI 的一份；需要 Docker）
@@ -306,7 +312,7 @@ test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SIXTH)' -skip '$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-7
-test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SEVENTH 的：升级的，与第六份让出的 TestIngestBefore（CI 的一份；需要 Docker）
+test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SEVENTH 的：升级的，第六份让出的 TestIngestBefore，第一份让出的 TestABackground…（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
