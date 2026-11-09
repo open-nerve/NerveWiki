@@ -39,6 +39,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 ## 3. 几个 agent 共用一台机器时
 
 - **重的运行一次只跑一个**：整个程序的测试、`make test`、`make e2e`、量时间。几个 agent（实施者、审查者）同时起 PostgreSQL 容器，彼此拖慢，量出的时间与计时守卫都不可信。用 [tools/heavy.sh](tools/heavy.sh) 包住它们，例如 `docs/v0.1/claude_to_codex/tools/heavy.sh make test`。逐个提交的核对（含 vitest 的计时断言与全量 lint）也经 `heavy.sh`，至少不与 `make test` 同时跑：两者同时跑，负载到 8 核的三倍，计时守卫会超界（M11/P1/S1）。锁是一个目录，默认 `${TMPDIR:-/tmp}/nervewiki-heavy.lock`，可用 `NW_HEAVY_LOCK` 改。
+- **跑重的之前看一眼 `df`**：长时间的变异与竞态构建会让 Go 的构建缓存（`~/.cache/go-build`）涨到几十 G；根分区满了，testcontainers 里的 PostgreSQL 写不进 WAL（"No space left on device"），测试以别的样子失败（M11/P1/S2 的修复第二轮：缓存到 59 G，`make test-go-costs-2` 第一次失败）。满了先修剪自己的缓存，它可以重建，例如经 `heavy.sh` 删掉 12 小时没用过的条目（`find ~/.cache/go-build -mindepth 2 -type f -mmin +720 -delete`）；不动 Docker 的镜像、容器与卷。
 - **只停自己起的进程与容器**，按 PID 或容器 id。不用 `pkill`、`killall`，不重启 Docker，不清别人的容器与卷。testcontainers 的容器由 Ryuk 收走；关掉 Ryuk 跑过的（`TESTCONTAINERS_RYUK_DISABLED=true`），只删自己那次运行留下的。
 - 审查者在自己的副本或 worktree 里跑，不在实施者的树上改坏代码。
 

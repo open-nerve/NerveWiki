@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P1 冻结、发起与放弃（四个 Step：S1 数据、冻结与删除的护栏（服务端）；S2 发起与读（服务端）；S3 放弃、回滚与结束（服务端）；S4 网页） |
-| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1 修订 2026-11-09） |
-| 状态 | 进行中（S1 已合并 `27b30c7f`；S2 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，实施与审查之后与代码不同之处照实改在各节（3.25 列出），结果在 10.1 |
+| 日期 | 2026-11-08（初稿；同日照设计审查第一轮修订；照 S1、S2 修订 2026-11-09） |
+| 状态 | 进行中（S1 已合并 `27b30c7f`，S2 已合并 `（待填）`；S3 待开工）；设计已审查，[审查记录](reviews/P1-design-review.md)，修订核对第一轮在它的末节；S1 的审查记录 [P1-S1-freeze-guardrails-review.md](reviews/P1-S1-freeze-guardrails-review.md)，S2 的审查记录 [P1-S2-start-and-read-review.md](reviews/P1-S2-start-and-read-review.md)；实施与审查之后与代码不同之处照实改在各节（3.25、3.26 列出），结果在 10.1、10.2 |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.1–4.5、4.6 的"删除"、4.10、4.12、4.14–4.18、第 5、7、8、9 节与"移交的落实"；[M11 设计审查](reviews/M11-design-review.md)；[移交](handoffs/)：M10-mode、M5-events、M8-P4-background、M9-mcp-upgrade；[v0.1 总体设计](../v0.1-design.md) 5.8、7.2、12.4、13.1–13.4；[M10/P1](../M10-llm-wiki/01-P1-contract-frame.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/app/unit.go:368`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移写作 `00048_notebook_notebooks_mode.sql:9`（`server/migrations/sql/`），迁移的测试写作 `server/migrations/schema_test.go:163`；前端写作 `W/stores/notebook.store.ts:45`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/notebooks.ts:25`；契约写作 `api/modules/notebook.yaml:462`。代码的行号是 `main` 的 `9184f67b` 的（代码与 `7ff74a67`、`d9169baa` 相同，其后只改了文档），00 号文档的行号也是它的 |
 | 工作笔记 | 代码的核对分六份（notebook、page 的单元与守卫、transfer、撤销的计划、wiki 与 lint 与组合根、网页与 e2e 与 CI），本文引的每个行号都在其中核对过、关键的几处又逐行复读过（附录）。P1 的设计不跑重的东西；要量的在 7.6 |
@@ -635,14 +635,17 @@ CREATE TABLE notebook_upgrades (
         CHECK (state IN ('upgrading', 'reviewing', 'rolling_back', 'approved', 'rolled_back')),
     CONSTRAINT notebook_upgrades_ending_check CHECK (ending IN ('abandoned', 'rejected')),
     CONSTRAINT notebook_upgrades_locale_check CHECK (locale IN ('zh-CN', 'en')),
+    -- baseline_nodes >= 0 follows from 0 <= baseline_pages <= baseline_nodes, kept to be read.
     CONSTRAINT notebook_upgrades_baseline_check CHECK (baseline_nodes >= 0 AND baseline_pages BETWEEN 0 AND baseline_nodes
         AND baseline_wanted BETWEEN 0 AND 10000 AND baseline_wanted_capped = (baseline_wanted = 10000)),
     CONSTRAINT notebook_upgrades_ending_state_check
         CHECK ((state IN ('rolling_back', 'rolled_back')) = (ending IS NOT NULL)),
     CONSTRAINT notebook_upgrades_submission_check CHECK ((submission_id IS NULL) = (submitted_at IS NULL)
         AND (submitted_at IS NULL) = (submitted_by_id IS NULL)),
+    -- 'approved' in the second conjunct follows from approved_check with report_check, kept to be read.
     CONSTRAINT notebook_upgrades_submission_state_check CHECK ((state <> 'upgrading' OR submission_id IS NULL)
         AND (state NOT IN ('reviewing', 'approved') OR submission_id IS NOT NULL)),
+    -- state <> 'upgrading' follows from submission_id IS NOT NULL with submission_state_check, kept to be read.
     CONSTRAINT notebook_upgrades_report_check CHECK (report IS NULL OR submission_id IS NOT NULL AND state <> 'upgrading'
         AND jsonb_typeof(report) = 'object' AND octet_length(report::text) <= 65536),
     CONSTRAINT notebook_upgrades_approved_check CHECK (state <> 'approved' OR report IS NOT NULL),
@@ -663,7 +666,7 @@ CREATE INDEX notebook_upgrades_notebook_id_idx ON notebook_upgrades (notebook_id
 DROP TABLE notebook_upgrades;
 ```
 
-`ending`、`locale` 的检查在 NULL 时放过是有意的（`ending` 可空；`locale` 非空）；其余每个合取都是非空列或 `IS NULL`、`IS DISTINCT FROM` 的比较。名称进 `TestConstraintAndIndexNames`（主键、`notebook_id` 的外键照已有的 `ON DELETE RESTRICT` 项的写法、三个 `REFERENCES users` 的外键照 `"notebooks_created_by_id_fkey f a"`、十二个检查、两个索引）。反例：`checkedRows` 给 S1 种下的升级中的笔记本补一行 `upgrading` 的 wiki 行，再各以一条 `INSERT` 或 `UPDATE` 钉住：不认识的状态、结局、语言；`baseline_nodes < 0`、`baseline_pages > baseline_nodes`、`baseline_wanted = 10001`、`capped` 与数不符（两个方向各一）；`rolling_back` 没有结局、`upgrading` 有结局；提交三列各缺一（三条）；只有 `submission_id`（只违反 `(submission_id IS NULL) = (submitted_at IS NULL)`）、只有 `submitted_by_id`（只违反 `(submitted_at IS NULL) = (submitted_by_id IS NULL)`）（两条："缺时刻"同时违反两个合取，每个合取的这一方向要单独的一行；修订核对 B2-N1）；`upgrading` 带提交、`reviewing` 没有提交；报告在 `upgrading`、报告没有提交、报告是数组、报告超过 65,536 字节；`approved` 没有报告；`rejected` 没有提交；`rolling_back` 没有任务、`upgrading` 有任务；`rolled_back` 没有 `rollback_complete`、`upgrading` 有它、`true` 带三个数、`false` 缺一个数（三条）。唯一索引另有一条：同一本笔记本第二行进行中的升级答 23505（循环照 `schema_test.go:755-763` 的写法，这一条单独断言 SQLSTATE）。`upgrade_test.go` 的 Down 测试加 `downTo(t, m, 56)` 之后表不在。
+`ending`、`locale` 的检查在 NULL 时放过是有意的（`ending` 可空；`locale` 非空）；其余每个合取都是非空列或 `IS NULL`、`IS DISTINCT FROM` 的比较。名称进 `TestConstraintAndIndexNames`（主键、`notebook_id` 的外键照已有的 `ON DELETE RESTRICT` 项的写法、三个 `REFERENCES users` 的外键照 `"notebooks_created_by_id_fkey f a"`、十二个检查、两个索引）。反例：`checkedRows` 给 S1 种下的升级中的笔记本补一行 `upgrading` 的 wiki 行，再各以一条 `INSERT` 或 `UPDATE` 钉住：不认识的状态、结局、语言；`baseline_nodes < 0`（连带违反 `pages <= nodes`）、`baseline_pages < 0`、`baseline_pages > baseline_nodes`、`baseline_wanted < 0`（同时设 `capped = false`）、`baseline_wanted = 10001`、`capped` 与数不符（两个方向各一）；`rolling_back` 没有结局、`upgrading` 有结局；提交三列各缺一（三条）；只有 `submission_id`（只违反 `(submission_id IS NULL) = (submitted_at IS NULL)`）、只有 `submitted_by_id`（只违反 `(submitted_at IS NULL) = (submitted_by_id IS NULL)`）（两条："缺时刻"同时违反两个合取，每个合取的这一方向要单独的一行；修订核对 B2-N1）；`upgrading` 带提交、`reviewing` 没有提交；报告在 `upgrading`（连带违反 `submission_state_check`，报出的是 `report_check`：PostgreSQL 按名字的次序查检查约束）、报告没有提交、报告是数组、报告超过 65,536 字节；`approved` 没有报告；`rejected` 没有提交；`rolling_back` 没有任务、`upgrading` 有任务；`rolled_back` 没有 `rollback_complete`、`upgrading` 有它、`true` 带三个数、`false` 缺一个数（三条）；这三个 `=` 的另一向各一条（`false` 三个数都空、`true` 只带页数、`true` 只带新节点数：原来只由"`false` 缺节点数"一条同时碰到三个合取，S2 审查 S2B-M1）。唯一索引另有四条：同一本笔记本第二行 `reviewing`、第二行 `rolling_back`（带结局与任务）答 23505，一行 `approved`、一行软删除的 `upgrading` 放过（谓词的两项各有一条，S2B-N1；循环照 `schema_test.go:755-763` 的写法，这几条单独断言 SQLSTATE）。检查的反例共 36 个。被别的约束蕴含的三个合取保留，只为读得清楚，迁移里各一句注释写明由哪条推出（决定 241，S2B-N2）：`baseline_nodes >= 0`（由 `0 <= baseline_pages <= baseline_nodes`）、`submission_state_check` 的 `'approved'`（由 `approved_check` 与 `report_check`）、`report_check` 的 `state <> 'upgrading'`（由 `submission_id IS NOT NULL` 与 `submission_state_check`）；13.4 第 1 条的"每个合取单独一条反例"对它们不适用，"`baseline_nodes < 0`"与"报告在 `upgrading`"两条照实写连带违反的检查。`upgrade_test.go` 的 Down 测试 `downTo(t, m, 57)`（`downTo` 退掉给定的那一版，同 S1 偏离 2）之后只少这张表、其余照旧，再 Up 回来。
 
 ### 3.11 S2：`notebook.NewUpgradeStates`
 
@@ -743,14 +746,21 @@ SQL（`page/adapter/postgres/queries/upgrade.sql` 与 `sessions.sql`）：
 ```sql
 -- name: CaptureBaseline :one
 -- An upgrade's baseline (M11 design 4.4 step 11): a row for each node alive in the notebook, under the notebook's row
--- lock; a page's latest version, its hash also the one the guardrails accept, its wanted count 0 until step 13.
+-- lock; a page's latest version, its hash also the one the guardrails accept, its wanted count 0 until step 13. The
+-- notebook's nodes drive page_contents' primary key, one node at a time, so that the start reads this notebook's
+-- rows and not the instance's (decision 240): the LIMIT 1 keeps the LATERAL from being pulled up into a join, which
+-- may hash the whole table, and changes nothing, a node having one row of page_contents at most.
 WITH captured AS (
     INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
         content_hash, byte_size, wanted, accepted_hash)
     SELECT sqlc.arg(upgrade_id), n.id, n.notebook_id, true, n.kind, n.parent_id, n.name, n.sort_order, c.revision,
         c.content_hash, c.byte_size, CASE WHEN n.kind = 'page' THEN 0 END, c.content_hash
     FROM nodes n
-    LEFT JOIN page_contents c ON c.node_id = n.id AND c.deleted_at IS NULL
+    LEFT JOIN LATERAL (
+        SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+        WHERE c.node_id = n.id AND c.deleted_at IS NULL
+        LIMIT 1
+    ) c ON true
     WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL
     RETURNING kind
 )
@@ -794,7 +804,7 @@ ORDER BY node_id, created_at, id
 LIMIT 100;
 ```
 
-- `Capture` 不连 `nodes` 以外的模块的表；页一定有一行活的正文（`checkPages` 的"pages without exactly one content"，`bootstrap/interleavings_page_test.go:91-92`），所以 `upgrade_nodes_page_check` 不会因缺正文被违反。
+- `Capture` 不连 `nodes` 以外的模块的表；正文由这本笔记本的节点逐个经 `page_contents_pkey` 读（`LATERAL … LIMIT 1`：不带 `LIMIT 1` 时子查询被拉平成连接；原来的普通连接在库里有别的笔记本、分析过之后，两种计划都对整张 `page_contents` 顺序扫描），发起的成本随这本笔记本、不随实例（S2 审查 S2B-M2，决定 240；成本守卫核对它的计划，7.1）；页一定有一行活的正文（`checkPages` 的"pages without exactly one content"，`bootstrap/interleavings_page_test.go:91-92`），所以 `upgrade_nodes_page_check` 不会因缺正文被违反。
 - `SetWanted` 以两个数组（按 id 排好）调一次；数组为空时不发。
 - `SeedSpec`（`page/app/seed_writes.go:28-34`）加 `Upgrade uuid.UUID`（"the upgrade the pages are seeded for, the zero id for none: its unit is the upgrade's own"），`Seed`（`:42-62`）的 `UnitSpec` 加 `UpgradeOwn: spec.Upgrade`。模板的创建（`wiki/app/template.go:86`）照旧不设。
 - page 的笔记本删除的订阅者另删这些笔记本的 `upgrade_nodes`（`DELETE FROM upgrade_nodes WHERE notebook_id = ANY(…)`，在它已有的语句之后）。
@@ -821,7 +831,7 @@ func (l *Lint) computeIn(ctx context.Context, scope LintScope, query RuleQuery, 
 func (l *Lint) prepareIn(ctx context.Context, scope LintScope, query RuleQuery) (PreparedRules, RunStats, error)
 ```
 
-  `computeIn` 是 `prepareIn` 加今天的投影（`:250-262`）；发起只调 `prepareIn`，`query` 是 `RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true}`（只准备 `wanted` 一条规则，`Limit` 照规则页的下限、不读条目），之后读 `StalePages()`、`RuleCount(ctx, wanted)` 与 `WantedByPage()`。P2/S2 的检查用 `computeIn`。
+  `computeIn` 是 `prepareIn` 加今天的投影（`:250-262`）；发起只调 `prepareIn`，`query` 是 `RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true}`（只准备 `wanted` 一条规则，`Limit` 照规则页的下限、不读条目），之后读 `StalePages()`、`RuleCount(ctx, wanted)` 与 `WantedByPage()`。P2/S2 的检查用 `computeIn`。测试：`wiki/app` 的 `TestComputeInTakesItsMoment`（`computeIn` 用调用方的时刻，`compute` 在快照里读一次时钟；`computeIn` 的调用恰是 `state, nodes, prepare, encode, paths`，`prepareIn` 恰是 `state, nodes, prepare`；S2 偏离 8，S2C-N1）。
 
 **`TryHold`**（`wiki/app/lint_runs.go`）：
 
@@ -859,10 +869,10 @@ func (r *Runs) TryHold() (release func(), ok bool) {
 
 名额与 `work` 的取法（`:139-145`）同一个 `slots`；放开照 `finish`（`:168-204`）的 `active--` 与 `drained`（`:198-201`）。持有者不登记 flight，`Stop`（`:221-257`）不取消它，只等它放开。发起不经 `Do`、没有 flight，`logFinished`（`:265-322`）不记它，发起自己的日志行有耗时（3.23）；检查、条目、提交的 `RunKey` 种类与 `Scope` 是 P2/S2 的（2.1 第 11 条）。测试（`wiki/app/lint_runs_test.go`）：`TestTryHoldNeverWaits`（名额占满时立即答 `false`，不等；放开之后可取；`release` 调两次只放一次）、`TestStopWaitsForTheHolders`（`Stop` 之后 `TryHold` 答 `false`，`Stop` 等到持有者放开才返回，`active` 回到 0）、`TestAHolderTakesAWorkersSlot`（持有者占着唯一的名额时 `Do` 的 worker 等它）。
 
-**按页的待建数**（linking，`linking/app/lint_edges.go:23-87`）：`RuleQuery`（`wiki/app/lint_ports.go:82-86`）加 `WantedByPage bool`，经组合根的 `wikiRules`（`bootstrap/wiki_lint.go:120-156`）交给 linking 的计划；`PreparedRules`（`lint_ports.go:100-105`）加 `WantedByPage() map[uuid.UUID]int`。linking 里：
+**按页的待建数**（linking，`linking/app/lint_edges.go:23-87`）：`RuleQuery`（`wiki/app/lint_ports.go:82-86`）加 `WantedByPage bool`（只与 `wanted` 一条规则同用，别的组合 `lintQuery` 答 `errLintQuery`；S2 偏离 2），经组合根的 `wikiRules`（`bootstrap/wiki_lint.go:120-156`）交给 linking 的计划；`PreparedRules`（`lint_ports.go:100-105`）加 `WantedByPage() map[uuid.UUID]int`。linking 里：
 
 - 第一遍：`prepareWanted` 在换发出页（`:46`）之前与流的末尾把 `len(seen)` 记进 `byPage[source]`（只有带资格的目标，`seen` 本来就是它，`:59-63`）。这条流只有 `generalEmitter` 的页（`:42`：显式的 LLM 契约下是区外的当前页）。
-- 第二遍（核对 B2-I1）：显式的 LLM 契约下、要按页的数时，`prepareAreaWanted` 对 `s.excluded`（`linking/app/lint_scope.go:205`）里当前的页（`s.current`，范围在同一个事务里读到的，所以 SQL 不再判当前）另读一条流 `r.reads.WantedOf(s.notebook, pages)`，同样判 `WantedTarget`、按页数，不经 `generalEmitter`；结果并进 `byPage`，不进规则的条目与数（`wanted` 规则照旧只数区外的页）。
+- 第二遍（核对 B2-I1）：范围的模式是 LLM Wiki、要按页的数时（实施只看模式、不看契约是不是显式的；今天只有发起传 `WantedByPage`，它交显式的契约；S2 偏离 2），`prepareAreaWanted` 对 `s.excluded`（`linking/app/lint_scope.go:205`）里当前的页（`s.current`，范围在同一个事务里读到的，所以 SQL 不再判当前）另读一条流 `r.reads.WantedOf(s.notebook, pages)`，同样判 `WantedTarget`、按页数，不经 `generalEmitter`；结果并进 `byPage`，不进规则的条目与数（`wanted` 规则照旧只数区外的页）。
 - 读（2.1 第 13 条，P1 审查 B-I1；第 235 条）：不把整组页一次传入、在连接之后排序分页（审查者 B 实测平方级）。`WantedOf` 照 `SourceValues`（`linking/app/lint_reads.go:271-310`）：页去重、按 id 排好（不排好答错误，同 `:274-279`），每 `LintReadRows = 512`（`:15`）个一段；段内照（页、位置）的游标分批，每批只传这一段里游标所在的页及其后的页，由 `page_links` 的主键 `(source_id, range_start)`（`00021_linking_page_links.sql:25`）的数组扫描按键序交回，不对一段的边排序；一段读完换下一段。取目标照 `lintBatches` 的 `maxPayload`（同 `Wanted`）。查询（`linking/adapter/postgres/queries/lint.sql`）：
 
 ```sql
@@ -870,18 +880,23 @@ func (r *Runs) TryHold() (release func(), ok bool) {
 -- The wanted edges' heads of up to LintReadRows given current pages after the cursor (M11 design 4.7 gate 6's
 -- second pass): the pages drive page_links' primary key through the array, whose btree scan returns the rows in key
 -- order, so that no batch sorts a chunk's edges and LIMIT stops early. The whole set at once, joined and then
--- sorted past a cursor, was quadratic (M11/P1 design review B-I1). Custom and generic plans are both guarded.
+-- sorted past a cursor, was quadratic (M11/P1 design review B-I1). Custom and generic plans are both guarded. As in
+-- the keyset queries above, the edge's eligibility stays inside a LIMIT 1 LATERAL: on the outer scan, its IS NULL
+-- with no statistics estimated one row, and a custom plan then sorted all of a page's edges for each batch.
 SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
 FROM page_links l
+CROSS JOIN LATERAL (
+    SELECT 1 WHERE l.resolved_id IS NULL AND l.target_key IS NOT NULL
+    LIMIT 1
+) wanted
 WHERE l.source_id = ANY(sqlc.arg(page_ids)::uuid[])
     AND (l.source_id, l.range_start) > (sqlc.arg(after_source)::uuid, sqlc.arg(after_start)::integer)
-    AND l.resolved_id IS NULL AND l.target_key IS NOT NULL
 ORDER BY l.source_id, l.range_start
 LIMIT (SELECT sqlc.arg(take)::integer);
 ```
 
-  一段的第一批的游标是零 UUID 与 `-1`；`range_start` 的类型照 00021。`LIMIT` 的标量子查询照 `lint.sql:4-9` 的注释的理由（没有统计时的自定义计划不排整段）。新的计划的测试照 `linking/adapter/postgres/lint_plan_test.go`：一段 512 页、每页 10 条与一页 10,000 条两种数据，自定义与通用两种计划，断言走 `page_links_pkey`、没有 `Sort` 节点；做不到时退回审查者实测的形状（一段一次读全部的头，`second_pass.sql` 的 `chunked_all`），段缩到最坏（一页 `MaxLinks = 10,000` 条，`linking/domain/facts.go:114`）也放得下，写进 S2 的记录（第 235 条）。
-- 测试：`linking/app` 的 `TestTheWantedCountsByPage`（两页各自的不同目标数、同一目标两次只算一次、读作附件的与虚拟的不算、没有待建链接的页不在表里即 0；区里的页只在第二遍里、不进规则的数；不要按页的数时不读第二遍）；`linking/adapter/postgres` 的 `LintAreaWantedEdgeHeads` 的分批（第一批、一页跨两批、跨段、空段）与上面的计划的测试；`linking/app` 的 `TestTheAreaPassReadsByChunk`（`WantedOf` 对 1,500 页分三段读、每段内游标前进、没排好的页答错误）。
+  一段的第一批的游标是零 UUID 与 `-1`；`range_start` 的类型照 00021。`LIMIT` 的标量子查询照 `lint.sql:4-9` 的注释的理由（没有统计时的自定义计划不排整段）。新的计划的测试照 `linking/adapter/postgres/lint_plan_test.go`：一段 512 页、每页 10 条与一页 10,000 条两种数据，自定义与通用两种计划，断言走 `page_links_pkey`、没有 `Sort` 节点；做不到时退回审查者实测的形状（一段一次读全部的头，`second_pass.sql` 的 `chunked_all`），段缩到最坏（一页 `MaxLinks = 10,000` 条，`linking/domain/facts.go:114`）也放得下，写进 S2 的记录（第 235 条）。S2 做到了：`linking/adapter/postgres/lint_area_plan_test.go` 的 `TestLintPlansOfTheAreaPass`；为此待建的过滤写在 `LIMIT 1` 的 `LATERAL` 里，不写在 `WHERE` 里（没有统计时 `IS NULL` 估 0.005，单页数组的自定义计划选了位图扫描加 Sort；S2 偏离 1）。
+- 测试：`linking/app` 的 `TestTheWantedCountsByPage`（两页各自的不同目标数、同一目标两次只算一次、读作附件的与虚拟的不算、没有待建链接的页不在表里即 0；区里的页只在第二遍里、不进规则的数；不要按页的数时不读第二遍；区里的页同样带重复的目标、相对链接 `./Alpha`、图片与虚拟的 `index`，两遍判得一样（S2A-M2）；第二遍交回区外的页答 `ErrLintRows`、交回已解析的边不计（S2A-N2））；`linking/adapter/postgres` 的 `TestTheAreaWantedHeadsGoByBatch`（第一批、一页跨两批、跨段、空段、拒收 513 个 id）与计划的测试 `TestLintPlansOfTheAreaPass`（`!race`，由 `test-go-costs-lint` 已有的 `^TestLint(Plans|…)` 一行跑：没有统计与分析过 × 自定义与通用 × 七种位置都只经 `page_links_pkey` 读一次、没有 Sort）；`linking/app` 的 `TestTheAreaPassReadsByChunk`（`WantedOf` 对 1,500 页分三段读、每段内游标前进、没排好的页答错误、替身拒收 512 个以上的 id）。
 
 ### 3.14 S2：`startUpgrade` 与 `getUpgrade`
 
@@ -889,13 +904,13 @@ LIMIT (SELECT sqlc.arg(take)::integer);
 
 1. `locale` 空时取 `en`，不是 `zh-CN`、`en`：422 `validation_failed`（字段 `template_locale`、`invalid_format`，照 `createNotebook`）。
 2. `Notebooks.WorkspaceOf` 不加锁：没有答 404 `notebook.not_found`。
-3. `ctxStart, cancel := context.WithTimeout(ctx, d.StartTimeout)`（默认 `LintTimeout`，第 227、232 条）；`Tx.WithinTx(ctxStart, fn)`，`fn` 里：`Workspaces.ShareByID`（没有：404）→ `States.Lock`（没有：404）→ 判定 `UpgradeAction`（`shared.ErrNotVisible`：404；`forbidden`：403）→ `at := Clock.Now().UTC()`（之后每一步都用它）。
+3. `ctxStart, cancel := context.WithTimeout(ctx, d.StartTimeout)`（组合根交 `RequestTimeout × 3/4`，第 227、232 条，S2 偏离 16）；`Tx.WithinTx(ctxStart, fn)`，`fn` 里：`Workspaces.ShareByID`（没有：404）→ `States.Lock`（没有：404）→ 判定 `UpgradeAction`（`shared.ErrNotVisible`：404；`forbidden`：403）→ `at := Clock.Now().UTC()`（之后每一步都用它）。
 4. `Mode == llm_wiki`：409 `notebook.already_llm_wiki`。
 5. `Upgrade.ID` 不为零：409 `notebook.upgrading`。
 6. `Writing.Writing(notebookID)` 为真：409 `transfer.busy`（`transfer.NewWritingJobs(pool)`，`transfer/writing_jobs.go:26`，同降级）。
 7. `Upgrades.ClearExpiredSessions(notebookID, at)`；`Upgrades.LiveSessions(notebookID, at)` 有：经 `Names` 取显示名，409 `wiki.upgrade_pages_locked`，`Locks` 是至多 100 项（`shared.Error.Locks`，`shared/error.go:119-121`，同 `linking.pages_locked` 的 `domain.PagesLocked`，`linking/app/rewrite.go:775-789`），`detail` 写总数。
 8. `Upgrades.RootNodes(notebookID, ["raw", "agents"])`：有一个是附件：409 `wiki.upgrade_title_taken`；`raw` 是页：它是提议的根；`agents` 是页：留着。
-9. `release, ok := Runs.TryHold()`；不 `ok`：503 `server_busy`（`shared.ServerBusy(time.Second)`）。`release` 记在 `fn` 之外，`WithinTx` 返回之后才调（"提交；放开名额"）。
+9. `release, ok := Runs.TryHold()`；不 `ok`：503 `server_busy`（`shared.ServerBusy(time.Second)`）。`release` 记在 `fn` 之外，`WithinTx` 返回之后才调（"提交；放开名额"）：计算与提交时持着、`ANALYZE` 之前已放开，名额占满时第 4–8 步照答自己的码，由 `wiki/app` 的 `TestUpgradeStart` 钉住（S2 审查 S2A-M1 = S2C-N3）。
 10. `id := uuid.NewV7()`；`States.Start(notebookID, Upgrade{ID: id, State: upgrading, By: actor, At: at})`。`Start` 断言 `up.ID` 不为零，零是缺陷：00055 的检查收零 UUID，程序却处处以零当"没有升级"（S1 审查 S1B-N1）。
 11. `base := Upgrades.Capture(id, notebookID)`。
 12. 缺的页（P1 审查 B-M1：复用启动时解析好的模板，同建 LLM Wiki，13.3 第 3 条的例外只用一次）：`*app.Template`（`wiki/app/template.go:23-53`，`NewTemplate` 在启动时解析每种语言的每一页）加
@@ -910,16 +925,16 @@ LIMIT (SELECT sqlc.arg(take)::integer);
     ```
 
     它经 `t.seeds.Seed` 写一个 `Seed`（`wiki/app/ports.go:14-27`，端口的类型是 `Seed`、页是带 `Parsed` 的 `SeedPage`），`Seed` 加 `Upgrade uuid.UUID`，说明是模板的（`domain.TemplateMessage`，`wiki/domain/template.go:50-58`）；组合根的 `wikiSeeds.Seed`（`bootstrap/wiki.go:24-31`）把它转成 `page.SeedSpec.Upgrade`。写了 `raw` 时它是提议的根，`Upgrades.Protect(id, notebookID, root)`。
-13. `prepared, stats := Lint.prepareIn(ctx, LintScope{显式的 llm_wiki 契约, 根}, RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true})`（3.13；时刻是 `at`）；`prepared.StalePages() > 0`：409 `wiki.upgrade_stale_index`；`Upgrades.SetWanted(id, prepared.WantedByPage())`；`prepared.RuleCount(ctx, wanted)` 是报告用的总数与是否封顶。
+13. `prepared, stats := Lint.prepareIn(ctx, LintScope{显式的 llm_wiki 契约, 根}, RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true})`（3.13；`prepareIn` 不投影，用不到时刻）；`prepared.StalePages() > 0`：409 `wiki.upgrade_stale_index`；`Upgrades.SetWanted(id, prepared.WantedByPage())`；`prepared.RuleCount(ctx, wanted)` 是报告用的总数与是否封顶。
 14. `Rows.Insert`：wiki 的行（`upgrading`、根、`seeded_root`、`seeded_agents_id`、语言、`base`、总数、审计列）。
 15. `States.Publish(ModeChange{From: standard, To: standard, …})`。
 16. `WithinTx` 返回：错误包着 `context.DeadlineExceeded`、`ctxStart.Err() != nil`、`ctx.Err() == nil` 三样同时成立时记一行 warn（3.23）、答 503 `server_busy`（`Retry-After: 1`）；别的错误照它自己的答。交回 nil 就是已提交：`Upgrades.Analyze(ctx)`（请求的 ctx），失败记一行 warn、答复不变；记 info；答 200 `Upgrade`。
 
-`StartTimeout` 是 `wiki.Deps` 的新项，组合根交 `LintTimeout`（`bootstrap/wire.go:249`）。成本守卫（7.1）量出 10 万页放不下时照第 232 条另给发起自己的期限，不悄悄放宽。
+`StartTimeout` 是 `wiki.Deps` 的新项。组合根原交 `LintTimeout`（`bootstrap/wire.go:249`）；成本守卫（7.1）量出 10 万页放不下（本机 2.2–2.4 s，离守卫配置下 3 s 的期限只余约 20%，照 lint 守卫在 CI 上的倍率折到 2.5–5.6 s），S2 照第 232 条改交 `RequestTimeout × 3/4`（`bootstrap/wire.go:264`；守卫 4.5 s，生产 11.25 s，默认 4 s 的请求下 3 s），守卫的规模减为 5 万页，10 万页进 M12 的性能移交（S2 偏离 16，10.2）。
 
 **`GetUpgrade.Execute(ctx, notebookID) (UpgradeView, error)`**：`WorkspaceOf`（404）→ 判定 `UpgradeAction`（404、403）→ `Rows.Current(notebookID)`（进行中的三种状态、`deleted_at IS NULL`）没有：404 `wiki.upgrade_not_found` → `Names` 取发起人与提交人的显示名 → 视图。S2 的回滚各格都为 `null`（S3 加 `rollback_left` 的现读）。不加锁、不在快照里：各格都来自一行。
 
-**错误**（`wiki/domain/upgrade_errors.go`）：`ErrAlreadyLLMWiki`（409 `notebook.already_llm_wiki`）、`ErrUpgrading`（409 `notebook.upgrading`，同 page 的文字）、`ErrWriting`（409 `transfer.busy`，文字照 `notebook/domain/errors.go:31-32`）、`ErrUpgradePagesLocked`（409 `wiki.upgrade_pages_locked`）、`ErrUpgradeTitleTaken`（409 `wiki.upgrade_title_taken`："A node at the root titled raw or AGENTS is an attachment: rename it, then start the upgrade."）、`ErrUpgradeStaleIndex`（409 `wiki.upgrade_stale_index`："The link index is out of date: a server admin runs nervewiki reindex, then the upgrade can start."）、`ErrUpgradeNotFound`（404 `wiki.upgrade_not_found`）。
+**错误**（`wiki/domain/upgrade_errors.go`）：`ErrAlreadyLLMWiki`（409 `notebook.already_llm_wiki`）、`ErrUpgrading`（409 `notebook.upgrading`，同 page 的文字）、`ErrWriting`（409 `transfer.busy`，文字照 `notebook/domain/errors.go:31-32`，末句改为"…start the upgrade once it is done."，S2 偏离 4）、`ErrUpgradePagesLocked`（409 `wiki.upgrade_pages_locked`）、`ErrUpgradeTitleTaken`（409 `wiki.upgrade_title_taken`："A node at the root titled raw or AGENTS is an attachment: rename it, then start the upgrade."）、`ErrUpgradeStaleIndex`（409 `wiki.upgrade_stale_index`："The link index is out of date: a server admin runs nervewiki reindex, then the upgrade can start."）、`ErrUpgradeNotFound`（404 `wiki.upgrade_not_found`）。
 
 **契约**（`api/modules/wiki.yaml`；`api/openapi.yaml` 的路径表（`:164-167` 的 wiki 一段）加 `/api/v0/notebooks/{notebook_id}/upgrade`，wiki 标签的说明（`:31-32`）加"and its upgrade"）：
 
@@ -951,13 +966,13 @@ LIMIT (SELECT sqlc.arg(take)::integer);
 
 ### 3.15 S2：接线、清理与 `checkPages`
 
-- `wiki.Deps`（`wiki/lint.go:72-86`）加：`Tx`（连接池的事务）、`Workspaces`（`workspace.NewWorkspaces(pool)`）、`UpgradeStates`（`notebook.NewUpgradeStates(pool, modeSubscribers)`）、`Upgrades`（`page.NewUpgrades(pool)`）、`Writing`（`transfer.NewWritingJobs(pool)`）、`Names`（`displayNames{identity.NewDirectory(pool)}`，`bootstrap/display_names.go:13`）、`UpgradeAction`（`notebook.ActionChangeMode`）、`StartTimeout`、`Template`（`bootstrap/wire.go:196` 建好的 `*wiki.Template`，模块根的别名；今天 `wiki.Deps` 没有 `Seeds`，它只交给 `wiki.NewTemplate`）。组合根的 `wikiDeps`（`bootstrap/wire.go:239-250`）填它们；`wiki.New`（`:254`）照旧在 transfer 之后。
+- `wiki.Deps`（`wiki/lint.go:72-86`）加：`Pool`（wiki 自己的表的适配器 `postgresadapter.New(d.Pool)`；S2 偏离 3）、`Tx`（连接池的事务）、`Workspaces`（`workspace.NewWorkspaces(pool)`）、`UpgradeStates`（`notebook.NewUpgradeStates(pool, modeSubscribers)`）、`Upgrades`（`page.NewUpgrades(pool)`）、`Writing`（`transfer.NewWritingJobs(pool)`）、`Names`（`displayNames{identity.NewDirectory(pool)}`，`bootstrap/display_names.go:13`）、`UpgradeAction`（`notebook.ActionChangeMode`）、`StartTimeout`、`Template`（`bootstrap/wire.go:196` 建好的 `*wiki.Template`，模块根的别名；今天 `wiki.Deps` 没有 `Seeds`，它只交给 `wiki.NewTemplate`）。组合根的 `wikiDeps`（`bootstrap/wire.go:239-250`）填它们；`wiki.New`（`:254`）照旧在 transfer 之后。
 - `wiki/adapter/postgres`：`queries/upgrades.sql` 的 `InsertUpgrade`、`CurrentUpgrade`（`WHERE notebook_id = $1 AND state IN (…) AND deleted_at IS NULL`，走部分唯一索引）、`SoftDeleteUpgradesOf`（笔记本删除）、`PurgeUpgrades`（照别的模块的清理器）。`server/sqlc.yaml` 加 wiki 的一项（schema 只有 00057，`REFERENCES notebooks` 照 `archtest/sqlc_test.go:113-116` 许跨模块的引用；`TestSQLCSchemaScope`，`:18-36`，要有查询的模块有一项）。
 - 授权：`deploy/runtime-grants.sql` 的数据授权（`:17-20`）加 `notebook_upgrades`。
 - 清理器：`wiki.Purgers(pool)` 进 `bootstrap/registrants.go:311-314`，排在 notebook 之前（外键 `ON DELETE RESTRICT`）；`bootstrap/purge_test.go`（`:56`、`:71`、`:98`）的"每张带 `deleted_at` 的表都有清理器"照旧过。
 - 笔记本删除的订阅者：`wiki.NewNotebookDeletion(pool)`（只凭连接池：命令行的路径上不许建 `wiki.New`）进 `notebookRegistrants`（`registrants.go:189-204`），以删除的那一刻软删除这些笔记本的行；page 的订阅者同时删 `upgrade_nodes`（3.12）。
-- 运行时角色：`TestTheRuntimeRoleServesWithTheGrantsFile`（`bootstrap/runtime_role_test.go:128`）照它对导入的写法（`:334-336`）加一段：以运行时角色发起一次升级，断言答 200、`upgrade_nodes` 的 `last_analyze` 变了、日志里没有 `ANALYZE` 失败的那行 warn（核对 B2-M3）。
-- `checkPages`（`bootstrap/interleavings_page_test.go:58`，规则的表 `:83-151`）加（只看活着的笔记本）：有升级列的笔记本恰有一行同 id、同状态、同发起人的进行中的 wiki 行；没有升级列的笔记本没有进行中的 wiki 行；进行中的升级的基线行数等于 `baseline_nodes`、基线页数等于 `baseline_pages`；基线行与保护行只属于进行中的升级；`upgrading`、`reviewing` 中提议的来源根活着、是页、属于这本笔记本（回滚先删会把补写的 `raw` 挪进回收站，所以不管 `rolling_back`）；`seeded_agents_id` 不为空时属于这本笔记本；LLM Wiki 没有升级列（00055 的检查本来就挡住，规则留作对照）。每条规则照 `TestPageViolationsCatchEachLLMWikiGap`（`:173`）的写法各有一个以 SQL 造出的违反，规则被删时它失败。S1 的整个程序测试的夹具（以 SQL 设升级列）在这个提交里补上 wiki 的行（00 号文档第 7 节"大小与绿"）。
+- 运行时角色：`TestTheRuntimeRoleServesWithTheGrantsFile`（`bootstrap/runtime_role_test.go:128`）照它对导入的写法（`:334-336`）加一段：先以 owner 的 SQL 给那本笔记本加一个管理员（S2 偏离 14），再以运行时角色发起一次升级，断言答 200、`upgrade_nodes` 的 `last_analyze` 变了、日志里没有 `ANALYZE` 失败的那行 warn（核对 B2-M3）。
+- `checkPages`（`bootstrap/interleavings_page_test.go:58`，规则的表 `:83-151`）加（只看活着的笔记本；库里有 `notebook_upgrades` 时才加，`to_regclass('notebook_upgrades')`，`:156`：M10 的迁移夹具 `TestIngestMigrationCostsLongHistory` 在退到 53 的库上调 `checkPages`，S2 偏离 6）：有升级列的笔记本恰有一行同 id、同状态、同发起人的进行中的 wiki 行；没有升级列的笔记本没有进行中的 wiki 行；进行中的升级的基线行数等于 `baseline_nodes`、基线页数等于 `baseline_pages`；基线行与保护行只属于进行中的升级；`upgrading`、`reviewing` 中提议的来源根活着、是页、属于这本笔记本（回滚先删会把补写的 `raw` 挪进回收站，所以不管 `rolling_back`）；`seeded_agents_id` 不为空时属于这本笔记本；LLM Wiki 没有升级列（00055 的检查本来就挡住，规则留作对照）。每条规则照 `TestPageViolationsCatchEachLLMWikiGap`（`:173`）的写法各有一个以 SQL 造出的违反，规则被删时它失败。测试名为 `TestPageViolationsCatchEachUpgradeGap`（`bootstrap/page_violations_upgrade_test.go`，第四份：不以 `TestUpgrade` 起名）；每行断言七条升级规则里只有它自己的报，"同状态"、基线页数与源根"是页"三个合取另各有一行（S2B-N3）；"同笔记本"一个合取没有单独的行：可以造（wiki 行指向一本软删除的笔记本时只有它报），有主键与部分唯一索引挡着，省了。S1 的整个程序测试的夹具（以 SQL 设升级列）在这个提交里补上 wiki 的行（00 号文档第 7 节"大小与绿"）。
 
 ### 3.16 S3 的文件
 
@@ -1213,6 +1228,8 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id);
 
 种子要过的两项核对（修订核对 C2-N2）：变体以 SQL 种完之后跑 `checkPages`，同 M10 的 LLM Wiki 的变体（`bootstrap/permission_matrix_wiki_test.go:657`）：S2 起它有升级的规则（3.15），所以每本升级中的笔记本要有同 id、同状态、同发起人的 wiki 行，基线行数等于 `baseline_nodes`、基线页数等于 `baseline_pages`，`upgrading`、`reviewing` 的提议的根活着、是页。矩阵的 `targetViolation` 要求路径里的每个 `{…_id}` 是这一列的工作区里种下的行（`bootstrap/permission_matrix_coverage_test.go:142-147`），所以 `cancelTransferJob` 的两个变体的任务 id 登记进 `workspaceOfRow`（`bootstrap/permission_matrix_seeded_test.go:476-477`），S3 加。
 
+S2 的三行没有另种升级的变体（S2 偏离 5）：用 lab 种好的笔记本，每格在自己的库的副本上以 SQL 准备，`startUpgrade` 的一格先删那本笔记本的编辑会话（lab 的种子里会话是活的），`getUpgrade` 的两格由 `upgradeIn` 以笔记本的创建者设成 `upgrading`、`reviewing`；每格之后只核对 `pageViolations` 里升级的几句；覆盖的两个检查 `TestThePermissionMatrixCoversEveryOperation` 与 `TestLintMatrixTargets` 经 `coveredMatrixRows()` 读到这些行（逐个提交的核对发现后者原来只读 `matrixRows()`）。上面的变体工作区 S2 没有用到。
+
 ### 3.23 日志
 
 13.1 第 10 条：只记事实。每条一个测试，只读自己子测试开始之后的行（05-lessons 第 1 节）。
@@ -1257,6 +1274,31 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
   - 分份的数用竞态构建的口径（S1C-N2，3.8）。
   - C 的 o1、o4、o7、o9 补成 7.3 第 83–86 条（S1C-N7）。
   - 交给后面的 Step：S2 的 `States.Start` 断言升级的 id 非零（S1B-N1，3.14 第 10 步）；S3 的"任务的批"加 `rolling_back` 一行（S1C-N1；7.1、3.24、6.3 第 4 个提交）。没有交给 v0.1 之后的打磨的。
+
+### 3.26 S2 的实施对设计的修正
+
+S2 的审查与两轮修复核对见 [S2 的审查记录](reviews/P1-S2-start-and-read-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里；各节因 S2 新写的代码位置是 `42529055` 的（头的表说的 `9184f67b` 管其余的，S1 新写的是 `68c3c505` 的）：
+
+- **S2，实施时定下的**（实施者的 20 条偏离，括号里是它的号；三位审查者各在自己的范围里判过，都对，第 7 条连带出审查的 S2A-M1）：
+  - 3.13：`LintAreaWantedEdgeHeads` 的待建过滤写在 `LIMIT 1` 的 `LATERAL` 里，不写在 `WHERE` 里：没有统计时 PostgreSQL 18 把 `IS NULL` 估成 0.005，单页数组的自定义计划选了位图扫描加 Sort；`LATERAL` 是 `lint.sql` 里已有的写法，`TestLintPlansOfTheAreaPass` 钉住（1）。`RuleQuery.WantedByPage` 只与 `wanted` 一条规则同用，别的组合 `lintQuery` 答 `errLintQuery`；第二遍在范围的模式是 LLM Wiki 时跑，不看契约是不是显式的，今天只有发起传它（2）。`TestComputeInTakesItsMoment` 钉住 `computeIn` 用调用方的时刻：S2 的发起只调 `prepareIn`（8）。
+  - 3.14：发起的期限 `StartTimeout = RequestTimeout × 3/4`，不是 `LintTimeout`（16，第 232 条：10 万页放不进守卫配置下 `LintTimeout` 的 3 秒）；生产上发起的期限因此从 7.5 秒变成 11.25 秒，默认 4 秒的请求下从 2 秒变成 3 秒。`transfer.busy` 的文字照降级的，末句改为"…start the upgrade once it is done."（4）。`GetUpgrade` 直接从行读 S2 还用不到的回滚的几列，都是 null（15）。
+  - 3.15：`wiki.Deps` 加 `Pool`，wiki 自己的表的适配器要它（3）。`checkPages` 的升级规则只在库里有 `notebook_upgrades` 时加（`to_regclass`）：M10 的 `TestIngestMigrationCostsLongHistory` 在退到 53 的库上调 `checkPages`，只在不带竞态的 `costs-3` 里跑，实施者第二次 `make test` 才撞上，同 S1 偏离 24；测试名为 `TestPageViolationsCatchEachUpgradeGap`，在第四份（6）。S1 的测试照新规则改 wiki 的行或加 raw（11）；运行时角色的测试先以 owner 的 SQL 加一个笔记本管理员（14）。
+  - 3.22：矩阵的三行没有另种变体工作区：用 lab 种好的笔记本，每格在自己的库的副本上以 SQL 准备，覆盖的两个检查经 `coveredMatrixRows()` 读它们（5）。
+  - 7.1、7.2：名额占满的 503 只在 7.2 第 17 条与 `wiki/app` 的 `a-full-slot-is-503-at-once` 测（7）；`wiki/app` 的 `TestUpgradeStart` 在 `app_test` 包里（9）；夹具 `upgradeIn` 选根、写一致的 wiki 行，`endUpgrade` 记 `rolled_back`（10）；7.2 第 3 条的心跳答 `page.edit_session_not_found`（12）；`TestUpgradeStatesReachTheStreams` 里补写的页先送 `pages`、再是 `mode`（13）；成本守卫是 5 万页、1.5 万页在 raw 里，名字不带规模（16），在发起的事务里核对 `SetBaselineWanted` 的自定义与通用计划，"本次之后"读作分析过这本笔记本的上一次发起，每次发起之后 `VACUUM`（17）。
+  - 第 5 节：e2e 的夹具 `upgrades.ts` 与 `assert/wiki.ts` 的 `upgradesOf`；UP1 的"别人"在 REST 版本是一位编辑者、在 MCP 版本是另一位笔记本管理员；UP2 末尾在编辑者离开、导入做完之后再发起一次答 200；`threeBrowsers` 在 S4 改（18）。
+  - 7.3：第 31 条的测试改为 `TestComputeInTakesItsMoment`（8）；第 62 条四种写法，成本守卫只抓得到三者合在一起的那种（19）；第 18 条的 S2 一半由 7.2 第 4 条抓到（20）。
+- **S2，审查与修复两轮带来的**（编号是 S2 的审查记录的；主持者的决定见审查记录的第 240–242 条）：
+  - 发起的期限落在一条语句之中时答 503 而不是 500，由组合根的 `inside a statement` 钉住（S2C-I1；7.1，7.3 第 26 条）。
+  - 领域的拒绝在回滚越过期限时照答自己的码（S2C-M1，7.3 第 95 条）；`COMMIT` 自己超时而 `ctxStart` 还活着时不答 503（S2A-N1，第 96 条）。
+  - 名额在计算与提交时持着、`ANALYZE` 之前已放开，名额占满时第 4–8 步照答自己的 409（S2A-M1 = S2C-N3；3.14 第 9 步，7.1，7.3 第 97、98 条）；7.2 第 17 条在另一个 goroutine 里发起、限时 2 秒（S2C-N2；7.2，7.3 第 24 条）。
+  - 第二遍对目标的判断与它的两道防御检查有测试（S2A-M2、S2A-N2；3.13，7.3 第 99、100 条）；`CurrentUpgrade` 的 `rolling_back`（S2A-N3，第 101 条）；`TestComputeInTakesItsMoment` 的后一半（S2C-N1，第 102 条）。
+  - 发起只读这本笔记本的行（S2B-M2，决定 240）：`CaptureBaseline` 改为 `LEFT JOIN LATERAL (… LIMIT 1)`，修复一轮唯一的生产的改动（3.12）；成本守卫的库另种九本笔记本，核对 page 的四条读的两种计划，界 3.6 秒（7.1，7.3 第 103–105 条；00 号文档第 9 节的同一行）；第二轮把"逐个经主键读"落到核对上（S2A-N4，7.3 第 110 条，门禁照决定 242）。
+  - 00057 的反例补五条、部分唯一索引补两条（S2B-M1、S2B-N1；3.10，7.3 第 107、108 条）；被蕴含的三个合取保留并在迁移里注明（S2B-N2，决定 241；3.10）。
+  - `checkPages` 的升级规则补三行、每行只报自己的规则（S2B-N3；3.15，7.3 第 109 条）。
+  - 第二遍的计划的测试另钉住 `source_id` 的键与 `LATERAL` 的写法（审查 B 的 c3、C 的 62e；7.3 第 106 条）。
+  - 7.1 的"种子用 SQL，准备不超过 4 秒"照实写成被测的那份（修复核对 A 提的口径）。
+  - 只记下、不改历史的：第 6 个提交 `1c4d35c0` 的标题没写发起在生产上的期限从 7.5 秒变成 11.25 秒，范围只写 `server`；修复一轮的 `0da54746` 同样改了 `ci.yml` 的一行注释、范围只写 `server`（S2C-N5，10.2）。
+  - 交给后面的：10 万页的发起进 M12 的性能移交（00 号文档第 232 条与"写给后面的 M"，第 9 节）。没有交给 v0.1 之后的打磨的。
 
 ## 4. 网页
 
@@ -1352,7 +1394,7 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 
 ### 6.5 合并的门禁
 
-02-workflow 3.1：`make lint gen-check knip build`、`make test`、`make test-go-short`、`make e2e`（经 `docs/v0.1/claude_to_codex/tools/heavy.sh`）；7.3 的每个变异；7.5 要量的；分支的 CI 全绿。
+02-workflow 3.1：`make lint gen-check knip build`、`make test`、`make test-go-short`、`make e2e`（经 `docs/v0.1/claude_to_codex/tools/heavy.sh`）；7.3 的每个变异；7.5 要量的；分支的 CI 全绿。合并之前的修复提交只改成本或守卫测试本身、且该测试只由一行跑时，本机取提交单独为绿、`make lint gen-check knip build`、经 `heavy.sh` 的那一行与 `make test-go-short`，其余由分支 CI 的全部各项担保（决定 242）。
 
 ## 7. 测试与验证
 
@@ -1375,11 +1417,11 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | lint 的拆分、名额、按页的数 | 3.13 的测试 | `wiki/app`、`linking` | S2 |
 | 基线、会话、根下的键、`Seed` | 3.12 的测试 | page | S2 |
 | `UpgradeStates` | 3.11 的测试 | notebook | S2 |
-| 发起的码与期限 | `TestUpgradeStart`：4.4 的码依次；名额占满立即 503；`fn` 里 `ctxStart` 到期答 503、没有 error 级的日志、整个回滚、有超时的 warn；`COMMIT` 之后才到期答 200（`wiki/app` 里假的事务管理器）；领域的 409 照答；`ANALYZE` 在请求的 ctx 上；在已有的 `raw` 里带一个解析不到的链接的页的基线 `wanted` 是 1 而不是 0（第二遍）；补写的 `raw` 恰有一行保护行（`baseline = false`）、已有的 `raw` 没有（P1 审查 B-N1）；`wiki/app` 的一半以假的 `Rules` 断言只准备 `wanted` 一条规则（B-N3） | 第七份、`wiki/app` | S2 |
+| 发起的码与期限 | `TestUpgradeStart`：4.4 的码依次；名额占满立即 503；`fn` 里 `ctxStart` 到期答 503、没有 error 级的日志、整个回滚、有超时的 warn（组合根两格：期限落在一条语句之中，测试持住笔记本行、发起在 `States.Lock` 上到期，S2C-I1；落在两条语句之间）；`COMMIT` 之后才到期答 200（`wiki/app` 里假的事务管理器）；领域的 409 照答，回滚越过期限时也是（S2C-M1）；`COMMIT` 自己超时而 `ctxStart` 还活着时不答 503（S2A-N1）；名额在计算与提交时持着、`ANALYZE` 之前已放开，名额占满时第 4–8 步照答自己的 409、stale 一格答 503（S2A-M1 = S2C-N3）；`ANALYZE` 在请求的 ctx 上；在已有的 `raw` 里带一个解析不到的链接的页的基线 `wanted` 是 1 而不是 0（第二遍）；补写的 `raw` 恰有一行保护行（`baseline = false`）、已有的 `raw` 没有（P1 审查 B-N1）；`wiki/app` 的一半以假的 `Rules` 断言只准备 `wanted` 一条规则（B-N3） | 第七份、`wiki/app` | S2 |
 | 状态到流 | `TestUpgradeStatesReachTheStreams`（S2：发起；S3：放弃、继续、停下、做完、结束回滚；订阅者交空时失败；`listNotebooks` 带 `upgrade`） | 第七份 | S2、S3 |
 | 删除笔记本 | `TestUpgradeDeletion`（wiki 的行软删除、基线行删去；订阅者交空时失败） | 第七份 | S2 |
 | 运行时角色 | `TestTheRuntimeRoleServesWithTheGrantsFile` 的发起一段 | 已有的份 | S2 |
-| `checkPages` 的升级规则 | `TestPageViolationsCatchEachLLMWikiGap` 的写法，每条一个 SQL 造出的违反 | 已有的份 | S2 |
+| `checkPages` 的升级规则 | `TestPageViolationsCatchEachUpgradeGap`（照 `TestPageViolationsCatchEachLLMWikiGap` 的写法）：每条一个 SQL 造出的违反，只报它自己的规则；"同状态"、基线页数与源根"是页"三个合取另各一行（S2B-N3） | 第四份 | S2 |
 | 回滚的计划与先删 | 3.18 的测试（含性质测试） | `page/domain`、`page/app` | S3 |
 | 回滚的运行与结束 | 3.19 的测试 | `transfer/app` | S3 |
 | 放弃、继续、结束回滚 | `TestUpgradeRollback`：放弃与做完（基线复原、新建的在回收站、`rollback` 的变更集；先删的几遍之后只有一遍合成，`rollback pass` 的日志行与之后 `RollbackLeft` 为 0，2.1 第 12 条、P1 审查 A-M3）、回滚在跑时（`Tree` 的包装停住一批）继续与结束回滚都答 409 `transfer.busy`（A-M2）、先删的一段（一个单元装多棵子树）、停下继续、超时之后继续、结束回滚（`false` 与三个数；差为空时 `true`；只剩一次改名时 `false`、`nodes = 1`）、`RollbackEnd` 换成空时状态留着、测试失败、差不空时任务以 `internal` 结束、开任务之后被降为写者的发起人取消答 403、两遍之间以 SQL 结束升级（`Tree` 的包装在第二次 `PlanRollback` 之前停住；只记"stopped"、任务行照旧 `running`、没有单元跑、新建的页都在，测试自己以 SQL 收拾那一行，第 233 条；A-M2）、River 丢掉的排队中的回滚被 Rescue 记为失败之后继续与结束都可用 | 第七份 | S3 |
@@ -1387,11 +1429,11 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | Rescue 认全部种类 | `TestTheRescue` | `transfer/app` | S3 |
 | 网页 | 第 4 节的 vitest | `web` | S1–S4 |
 
-**成本守卫**（13.4 第 8 条；`test-go-costs` 各一行、`-short` 跳过；界取本机两轮的中位数的三倍并对照 CI 的竞态；种子用 SQL，准备不超过 4 秒；统计状态 × 计划照 05-lessons 第 4 节）：
+**成本守卫**（13.4 第 8 条；`test-go-costs` 各一行、`-short` 跳过；界取本机两轮的中位数的三倍并对照 CI 的竞态；种子用 SQL，被测的那份准备不超过 4 秒（发起的守卫另种九本笔记本作不该读的行，种子共约 10 秒，这本笔记本的 1.4 秒）；统计状态 × 计划照 05-lessons 第 4 节）：
 
 | 守卫 | 规模 | Step | 预算 |
 |---|---|---|---|
-| 发起 | 10 万节点、10 万页，其中 3 万页在提议的来源区（已有的 `raw`）里、各带 10 条待建，区外另有待建（P1 审查 B-I1：夹具不放区里的页抓不到第二遍；另量第 16 步的 `ANALYZE` 与各段：`Capture`、`Seed`、`prepareIn` 的两遍、`SetWanted`）；`upgrade_nodes` 从未分析、分析过另一次升级的行、本次之后 × 自定义与通用计划 | S2 | 发起实际受的 `ctxStart`：照 lint 的成本守卫的配置（请求 6 s、`LintTimeout` 3 s，`bootstrap/wiki_lint_cost_test.go:27-34`，M10 决定 160）；放不下照第 232 条 |
+| 发起 | 5 万节点、5 万页，其中 1.5 万页在提议的来源区（已有的 `raw`）里、各带 10 条待建，区外 3,499 页各 1 条、1,000 个目标（P1 审查 B-I1：夹具不放区里的页抓不到第二遍；另量第 16 步的 `ANALYZE` 与各段：`Capture`、`Seed`、`prepareIn` 的两遍、`SetWanted`）；库里另有九本各 5 万页的笔记本（`nodes`、`page_contents` 各多 45 万行，`edit_sessions` 4.5 万行），作发起不该读的行（S2 审查 S2B-M2，决定 240）；`upgrade_nodes`、`nodes`、`page_contents`、`edit_sessions` 从未分析、分析过这本笔记本的上一次发起、只有另一次进行中的升级的 10 万行的统计 × 自定义与通用计划（`TestUpgradeStartTakesItsTimeAtAnyStatistics`，组合根，`!race`，`test-go-costs-2` 一行）。设计的规模是 10 万页、3 万页在区里：放不进守卫配置下的期限，进 M12 的性能移交（第 232 条，S2 偏离 16） | S2 | 计划为主（决定 236、240）：每种统计 × 计划的第一次发起在发起的事务里取 `SetBaselineWanted`（`upgrade_nodes` 只扫一次，在嵌套循环的内侧时经 `upgrade_nodes_pkey`、两列都在索引条件里）、`CaptureBaseline`、`RootNodesByKey` 与两条会话的语句的自定义与通用计划：`nodes`、`edit_sessions` 只经索引条件含 `notebook_id` 的扫描，`page_contents` 只经 `page_contents_pkey`、索引条件含 `node_id`、在嵌套循环的内侧逐个节点读（后两项是修复第二轮的，S2A-N4；`TestTheStartGuardJudgesThePageReads` 以合成的计划钉住这道核对），不对这几张表顺序扫描。时长为辅：发起实际受的 `ctxStart` 是请求的四分之三（守卫的请求 6 s 照 lint 的成本守卫的配置，`bootstrap/wiki_lint_cost_test.go:27-34`，M10 决定 160，即 4.5 s），界取本机两轮中位数较大的乘 3、向上取整到 100 ms：建成时库里只有这一本，3.5 s；另种九本之后 3.6 s |
 | 删除护栏的读 | 一次删 1 万个节点的子树，对着两次升级各 10 万行（`TestUpgradeProtectedReadsInTimeAtTheUnitsBound`，`page/adapter/postgres`，`!race`，`test-go-costs-2` 一行） | S1 | 计划为主：四种统计状态（没有统计、分析过、只有另一次升级的统计、`force_generic_plan`）× 自定义与通用两种计划都只经 `upgrade_nodes_pkey` 读、两列都进索引条件、没有顺序扫描，主键的列钉成 `(upgrade_id, node_id)`；时长为辅，本机两轮中位数较大的乘 3、向上取整到 5 ms，即 25 ms（初稿写"单元 2 s"，与上面的总规则不一致；S1 审查 S1B-I1 = S1C-M2，决定 236） |
 | 回滚的计划 | 10 万个条目（纯函数）与合成读的三种统计状态 | S3 | 本机两轮中位数 × 3 的时长与 `TotalAlloc` |
 | 回滚先删 | 10 万个零散的新页 | S3 | 同上 |
@@ -1413,7 +1455,7 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | 13 | 发起人被降为写者与他正在跑的写 | 成员的写先持笔记本行，发起人的 MCP 写等它，之后 `Grants` 答 `forbidden`、单元答 `notebook.upgrading` | S2 |
 | 14 | 两次发起同时 | 第一次停在 `Start` 之后，第二次等笔记本行，之后答 `notebook.upgrading` | S2 |
 | 16 | Rescue 记为中断、worker 还在跑、管理员结束回滚 | 00 号文档要钉的是"心跳写不进、worker 照跑"（第 225 条，`job_run.go:148-160`），不是"心跳读到不再运行"（那时 `stop(errGone)`，`:164-166`，放开之后不跑下一批，测试时过时不过；P1 审查 A-M1）。接线：应用由 `newAcmeTeamOn`（`bootstrap/interleavings_workspace_test.go:92`）建，同时交 `wiring.transfer`（包住 `Tree`，在第二批的调用里停住）与一个记进共用缓冲的 logger。次序：(1) 停住之后，测试在自己的库里装第 234 条的触发器；(2) 轮询日志的缓冲，等到这次装上之后的"rollback heartbeat not written"那一行（期限 `interleavingWait`，`:33`）：这行只在触发器装上之后、行还是 `running` 时落了一次心跳才记（`BeatJob` 只更新 `running` 的行，`jobs.sql:75-81`；触发器只对选中的行触发），心跳每秒一次，不等就时过时不过（修订核对 A2-M1）；(3) 以 Rescue 的 `InterruptJobs` 那条 SQL（`jobs.sql:120-132`）把任务记为 `failed`、`interrupted`；之后的心跳交回无行，走 `stop(errGone)`，不再记 warn（`job_run.go:153-166`）；(4) 结束回滚（任务已不在运行，答 200，冻结解除）；(5) 放开：停住的那一批在 `retry` 看过 `running` 之后，照跑，单元答 `ErrStaleUpgradeWrite`、什么也没写、新建的页还在。断言的次序：共用的日志里 warn 在"记为中断"之前；之后断言那一批什么也没写、任务行照旧是 `failed`、`interrupted`、记了"stopped"。"stopped"可能来自 `finish` 的 `errGone` 一支（心跳已在 (3) 之后读到无行），也可能来自 `rollbackStopped` 的 `FinishJob` 交回 `!ok`（心跳还没落），两者都满足断言，测试不区分。触发器只在这个测试的库里、只认这个任务 id，生产的代码与接线不改 | S3 |
-| 17 | 发起与占满的 lint 名额 | 以 `Runs.Do` 的假计算占满全部名额，发起立即答 503（`Retry-After: 1`），不等（用时远小于名额的期限） | S2 |
+| 17 | 发起与占满的 lint 名额 | 以 `Runs.Do` 的假计算占满全部名额，发起立即答 503（`Retry-After: 1`），不等（用时远小于名额的期限）；发起在另一个 goroutine 里，限时 2 秒等答复，`TryHold` 写坏成等名额时几秒内失败、不挂到第七份的期限（S2C-N2） | S2 |
 
 第 5–9、15 条是 P2、P3 的（提交、检查、批准与驳回）。
 
@@ -1446,14 +1488,14 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | 21 | 第三份的 `-skip` 不含第七份 | 不列：没有会因它失败的测试（第 223 条），由记录里的 `go test -list` 核对 | S1 |
 | 22 | 发起不先删过期的会话 | 7.2 第 3 条 | S2 |
 | 23 | 基线在补写之后记 | `TestUpgradeStart`（补写的页不在基线里） | S2 |
-| 24 | `TryHold` 改为等名额 | 7.2 第 17 条；`TestTryHoldNeverWaits` | S2 |
+| 24 | `TryHold` 改为等名额 | 7.2 第 17 条（发起在另一个 goroutine 里、限时 2 秒，S2C-N2）；`TestTryHoldNeverWaits`（持着锁阻塞的写法在清理时的 `Stop` 上挂到测试二进制的期限，不动夹具） | S2 |
 | 25 | `TryHold` 的持有者不计入 `active` | `TestStopWaitsForTheHolders` | S2 |
-| 26 | 发起事务里另套一层期限 | `TestUpgradeStart` 的期限一行（答 500、有 error 级的日志） | S2 |
+| 26 | 发起事务里另套一层期限（`WithinTx` 开在请求的 ctx 上、`fn` 里另套同长的期限：审查 C 的 d26b；或更短的：实施的写法） | 组合根 `TestUpgradeStart/its own deadline/inside a statement`（测试持住笔记本行，期限落在 `States.Lock` 的语句之中：变异下 pgx 关掉连接、答 500、有 error 级的日志；S2C-I1）；更短的那种另被 `between statements` 抓到 | S2 |
 | 27 | `WithinTx` 交回 nil 时也看 `ctxStart` | `TestUpgradeStart` 的 `COMMIT` 之后到期一行 | S2 |
 | 28 | `ANALYZE` 用 `ctxStart` | 同上（`ANALYZE` 失败的 warn 出现） | S2 |
 | 29 | 第二遍不读来源区里的基线页 | `TestUpgradeStart` 的已有 `raw` 一行；`TestTheWantedCountsByPage` | S2 |
 | 30 | 第一遍记页数时不重置（`seen` 跨页） | `TestTheWantedCountsByPage` | S2 |
-| 31 | `computeIn` 自己读时钟 | `TestUpgradeStart`（`computed_at` 与发起的时刻不同） | S2 |
+| 31 | `computeIn` 自己读时钟 | `TestComputeInTakesItsMoment`（S2 的发起只调 `prepareIn`、不经 `computeIn`，`TestUpgradeStart` 抓不到它；S2 偏离 8） | S2 |
 | 32 | 发起不 `Publish` | `TestUpgradeStatesReachTheStreams` | S2 |
 | 33 | wiki 的删除订阅者交空 | `TestUpgradeDeletion` | S2 |
 | 34 | `checkPages` 去掉"有升级列就有 wiki 行" | 它的 SQL 造出的违反 | S2 |
@@ -1484,7 +1526,7 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | 59 | 任务页的取消对写者也显示 | 任务页的 vitest | S4 |
 | 60 | 回滚的报告退回导入的计数（`shownCounts` 不含 `rollback`） | 回滚报告的 vitest | S3 |
 | 61 | `jobs-server.ts` 的 `writingKinds` 不含 `rollback` | 任务页的 vitest：假服务端有一个页面还没读到的回滚任务，用户开始导入，页面显示 `transfer.writingBusy`（按钮由 store 的那一份决定，`transfer.store.ts:101`；P1 审查 C-N4） | S3 |
-| 62 | 第二遍把整区的页一次传入、在连接之后按（页、位置）的游标排序分页 | 发起的成本守卫（区里 3 万页、各 10 条待建；审查者 B 实测自动选择计划 66 s）；`LintAreaWantedEdgeHeads` 的计划的测试 | S2 |
+| 62 | 第二遍把整区的页一次传入、在连接之后按（页、位置）的游标排序分页 | 应用不分段：`TestTheAreaPassReadsByChunk`；适配器不限 512 个 id：`TestTheAreaWantedHeadsGoByBatch/refused`；与 `unnest` 的 id 连接之后排序：计划的测试 `TestLintPlansOfTheAreaPass`；发起的成本守卫只抓得到三者合在一起的那种（审查者 B 实测的形状，自动选择计划 66 s）：5 万页上单独的整区一次传入只慢到界的约 90%（S2 偏离 19） | S2 |
 | 63 | 发起不调 `Protect` | `TestUpgradeStart` 的保护行 | S2 |
 | 64 | `upgrade_nodes_baseline_check` 的 `baseline = (name IS NOT NULL)` 改成单向（`NOT baseline OR name IS NOT NULL`） | 反例"保护行带名称" | S1 |
 | 65 | 同一检查的 `(name IS NULL) = (sort_order IS NULL)` 改成单向 | 反例"次序有、名称空" | S1 |
@@ -1517,6 +1559,22 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 | 92 | transfer 的开任务在判定之前答 `notebook.upgrading`（A7） | 同上的恢复与撤销的"by a reader" | S1 |
 | 93 | 冻结的守卫对不认识的判定放行（去掉 `default`） | `TestTheFreezeGuard` 的"a freeze it does not know" | S1 |
 | 94 | page 的 `UpgradeRollingBack` 不是 notebook 的那个字符串 | `TestPageNotebooksConvertTheState` | S1 |
+| 95 | 503 的判断去掉 `errors.Is(err, context.DeadlineExceeded)`（审查 C 的 o24） | `wiki/app` 的 `TestUpgradeStart/a-refusal-rolled-back-past-its-deadline`（领域的拒绝在回滚越过期限时照答 409；S2C-M1） | S2 |
+| 96 | 503 的判断去掉 `ctxStart.Err() != nil`（A 的 W1） | 同上的 `a-commit-out-of-its-own-time`（`COMMIT` 自己超时、`ctxStart` 还活着：答提交的错误；S2A-N1） | S2 |
+| 97 | 名额放得早：`TryHold` 之后立刻放开（A 的 W3）、`fn` 里 `defer` 放开、提交之前（C 的 o3）；放得晚：`WithinTx` 之后不放、只靠函数末尾的 `defer`（A 的 W6） | 同上的 `it-writes-what-the-notebook-lacks`（替身在 `Capture`、准备、提交之前与 `Analyze` 四处探名额：前三处被持着，`ANALYZE` 之前已放开；S2A-M1 = S2C-N3） | S2 |
+| 98 | `TryHold` 挪前：挪到 `Writing` 之前（A 的 W4）或 `refuseSessions` 之前（C 的 o2b） | 同上的 `each-refusal-in-its-turn` 的 `-a-full-slot` 各格（名额被占满时第 4–8 步照答自己的 409，`a-stale-index` 答 503） | S2 |
+| 99 | 第二遍不判资格（A 的 L5）、不去重（L8）、不取父页的键（L10） | `TestTheWantedCountsByPage` 的 `an-llm-contract`（区里的页带重复的目标、`./Alpha`、图片与虚拟的 `index`；S2A-M2） | S2 |
+| 100 | 第二遍不核对 `s.source`（A 的 L4）；不跳过已解析的链接（L7） | 同上的 `a-page-outside-the-area-answered`；`a-resolved-link-answered`（S2A-N2） | S2 |
+| 101 | `CurrentUpgrade` 去掉 `rolling_back`（A 的 WA2） | `TestTheUpgradesRows`（以 SQL 设成 `rolling_back` 的一行；S2A-N3） | S2 |
+| 102 | `prepareIn` 返回之前投影（n1） | `TestComputeInTakesItsMoment`（`prepareIn` 的调用恰是 `state, nodes, prepare`；S2C-N1） | S2 |
+| 103 | 发起读 page 的表丢了笔记本的键：生成的 `CaptureBaseline`（审查 B 的 c2）、`RootNodesByKey`（rk）、两条会话的语句（ds、ls）写成 `(notebook_id = $n) IS TRUE` | 发起的成本守卫的计划（库里另有九本笔记本；S2B-M2，决定 240） | S2 |
+| 104 | `CaptureBaseline` 的正文不逐个经主键读：改回普通的 `LEFT JOIN`（f240a）、`LATERAL` 不带 `LIMIT 1`（f240b）、与按 `node_id` 排序的子查询连接（C 的 x1） | 同上（"page_contents read by a Seq Scan"） | S2 |
+| 105 | 生成的 `SetBaselineWanted` 丢 `upgrade_id`（B 的 c1） | 同上（分析过、通用计划一格：主键只以 `node_id` 走） | S2 |
+| 106 | 第二遍的读用不上主键或要排序：生成的 `LintAreaWantedEdgeHeads` 丢 `source_id` 的键（B 的 c3）；待建的过滤挪出 `LIMIT 1` 的 `LATERAL`（C 的 62e，S2 偏离 1 反过来） | `TestLintPlansOfTheAreaPass`（成本守卫对它们只看时长，抓不抓得到看机器） | S2 |
+| 107 | 00057 的五个方向：`baseline_pages`、`baseline_wanted` 的下界去掉，`rollback_end_check` 的三个 `=` 各去掉一个方向（`false` 就有剩下的节点数、有页数就有节点数、有新节点数就有节点数）（B 的 g1–g5） | `TestChecksRejectCounterexamples` 的"a baseline of -1 pages""-1 wanted at the start""a short rollback with nothing left""a complete rollback with its pages left""a complete rollback with its new nodes left"各杀一个（S2B-M1） | S2 |
+| 108 | 部分唯一索引的谓词去掉 `'rolling_back'`（g6）、去掉 `deleted_at IS NULL`（g7） | 唯一索引的"第二行 `rolling_back` 答 23505""软删除的 `upgrading` 放过"（S2B-N1） | S2 |
+| 109 | `checkPages` 的升级规则去掉"同状态"、基线页数、源根"是页"三个合取之一（cp-state、cp-pages、cp-kind），或连同"同笔记本"一起（cp-all） | `TestPageViolationsCatchEachUpgradeGap` 的三行（wiki 行另一个状态、基线页多一、源根是附件），每行只报自己的规则（S2B-N3） | S2 |
+| 110 | 成本守卫对 `page_contents` 的核对不要求 `Index Cond` 含 `node_id`（r1）；不要求在嵌套循环的内侧逐个节点读（r2）（S2A-N4） | `TestTheStartGuardJudgesThePageReads`（与守卫同在 `!race` 的 `bootstrap/upgrade_start_cost_test.go`，不连数据库，short 一行）：Nested Loop 内侧没有条件的一格杀 r1，Merge Join 内侧有条件、只读一次的一格杀 r2（修复第二轮 `9b3000c1`） | S2 |
 
 ### 7.4 门禁
 
@@ -1524,12 +1582,12 @@ S1 的审查与修复核对见 [S1 的审查记录](reviews/P1-S1-freeze-guardra
 
 ### 7.5 CI 的余量
 
-新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。S1 合并之后两次 `main` 的第六份在 EPYC 7763 上是 461、459 秒，过了线；照规则把 `TestIngestBefore`（7763 上约 120 秒）挪给第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)`，`2beef88c`），第六份折到 7763 约 386 秒，第七份现约 147 秒，P1 末估约 274–374 秒；`TestIngestUnit`（约 261 秒）不挪，挪了第七份在 P1 末会过线。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
+新的整个程序的测试都以 `TestUpgrade` 起名，只落进第七份（`BOOTSTRAP_SEVENTH = ^TestUpgrade`）；改的已有测试（运行时角色、`checkPages` 的规则、覆盖的检查、第五份的码的核对）只多几行，留在原份。第七份在 P1 末约有：S1 的七个、S2 的五个（`Start`、`States`、`StatesReachTheStreams`、`Deletion`、`Interleavings` 的 S2 部分）与矩阵、S3 的 `Rollback` 与交错的 S3 部分。每个 Step 的记录写出七份各自的 `go test -list` 与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均要在 450 秒之下（06-environment 第 49 行的规则），第七份在 P1 末估在 150–250 秒（交错与矩阵各约 30–60 秒，照 M10 的同类），P2、P3 再加。S1 合并之后两次 `main` 的第六份在 EPYC 7763 上是 461、459 秒，过了线；照规则把 `TestIngestBefore`（7763 上约 120 秒）挪给第七份（`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$)`，`2beef88c`），第六份折到 7763 约 386 秒，第七份现约 147 秒，P1 末估约 274–374 秒；`TestIngestUnit`（约 261 秒）不挪，挪了第七份在 P1 末会过线。S2 加七个组合根的测试（第七份六个，第四份的 `TestPageViolationsCatchEachUpgradeGap` 一个），竞态构建 541 个、七份 158、51、121、124、62、11、14；第七份本机两轮约 90 秒，CI 149、151 秒，折到 7763 约 164 秒（10.2）。e2e 加 UP1 的三种浏览器，作业的 20 分钟照 M10 的量（6:36–8:12）有余。
 
 ### 7.6 P1 怎样量
 
 - S1：第七份与第三份的 `go test -list`；第七份本机两轮；删除护栏的守卫的本机中位数。
-- S2：发起的成本守卫三种统计状态 × 两种计划的本机中位数与它在 `ctxStart` 之内的余量，各段（`Capture`、`Seed`、`prepareIn` 的两遍与 `PreparationTimings` 的分规则耗时、`SetWanted`、`ANALYZE`）分开记（放不下时照第 232 条，写进记录；P1 审查 B 的未核实的怀疑）；`LintAreaWantedEdgeHeads` 的整条流在审查者 B 的数据上的时长，与 B 实测的对照：整组一次传入时强制自定义计划 18.1 s、通用计划每批 256 ms（约 150 s）、自动选择 66.2 s，一段 512 页一次读 0.17 s（PostgreSQL 18.6，10 万页里 3 万页在区里、各 10 条，30 万条边）；`SetBaselineWanted` 对照 B 实测的三种统计状态（从未分析：自定义 432 ms、通用 671 ms；分析过已结束的另一次升级：386、444 ms；分析过进行中的另一次：400、445 ms）；第七份本机两轮。
+- S2：发起的成本守卫三种统计状态 × 两种计划的本机中位数与它在 `ctxStart` 之内的余量，各段（`Capture`、`Seed`、`prepareIn` 的两遍与 `PreparationTimings` 的分规则耗时、`SetWanted`、`ANALYZE`）分开记（放不下时照第 232 条，写进记录；P1 审查 B 的未核实的怀疑。S2 量下来 10 万页放不下守卫配置下的 3 s，期限改为请求的四分之三、守卫减为 5 万页，审查之后库里另种九本笔记本，决定 240；各项的数在 10.2）；`LintAreaWantedEdgeHeads` 的整条流在审查者 B 的数据上的时长，与 B 实测的对照：整组一次传入时强制自定义计划 18.1 s、通用计划每批 256 ms（约 150 s）、自动选择 66.2 s，一段 512 页一次读 0.17 s（PostgreSQL 18.6，10 万页里 3 万页在区里、各 10 条，30 万条边）；`SetBaselineWanted` 对照 B 实测的三种统计状态（从未分析：自定义 432 ms、通用 671 ms；分析过已结束的另一次升级：386、444 ms；分析过进行中的另一次：400、445 ms）；第七份本机两轮。
 - S3：回滚的计划、先删、剩下的差三个守卫；第七份本机两轮。
 - S4：e2e 三种浏览器的 UP1 的时长。
 
@@ -1571,7 +1629,7 @@ P1 完成，当且仅当：
 - **P2/S3、P3/S3（网页）**：`upgrade.service.ts` 与 `NotebookStore` 加检查、提交、审阅的方法；升级页加"检查"与"审阅"两节；P3/S3 的 `threeBrowsers` 加 `upgrade\/up7-`。
 - **P3/S1（审阅）**：`UpgradeStates.Approve`、`page.NewSourceRebuild`；`rejectUpgrade` 用 3.20 的 `rollBack(ending)`；批准与退回删基线行用 S3 的 `DeleteBaseline`；第 181 条。
 - **P3/S2**：prompt `upgrade`、README 的"升级"一节、MCP 人工清单的 K。
-- **M12**（00 号文档"写给后面的 M"已列）：P1 量的发起、回滚的计划、先删与剩下的差在 10 万上的数，写进 M12 的性能移交的那几条。
+- **M12**（00 号文档"写给后面的 M"已列）：P1 量的发起、回滚的计划、先删与剩下的差在 10 万上的数，写进 M12 的性能移交的那几条（S2：10 万页的发起放不下守卫配置下的 4.5 s，10.2，00 号文档第 232 条）。
 
 ## 10. 结果
 
@@ -1636,6 +1694,61 @@ P1 完成，当且仅当：
 - **审查的结论**：Important 1（S1B-I1 = S1C-M2），Minor 另 3（S1A-M1、S1B-M1、S1C-M1 = S1A-Q1），Nit 13（S1C-N5 并入 S1B-M1），都已改或写明交给 S2、S3。三位都没有找到答错的结果：A 的交错探针在四条路上逼不出"读了没升级、写照样落下"的窗口；B 在真库上核对 27 个反例各恰好违反一个合取、14 个操作的码表与设计一致、读者与看不到的人先答 403 与 404；C 的逐个提交、竞态下的中间提交与头上的 e2e 都通过。实施者的 24 条偏离由三位判过，都对（第 20 条照了设计的表，表本身错了）。
 - **修复核对一轮**（2026-11-09，三位各在 `68c3c505` 的自己的工作树里）：三位都没有新的发现（Important 0、Minor 0、Nit 0）。要改代码的旧发现都关了：A 的 S1A-M1、N1–N4、Q2，B 的 S1B-I1、M1，C 的 S1C-M2、N2–N6；只改文档的处置对，文档的部分在本提交（S1A-Q1 = S1C-M1、S1C-N7、S1B-N1、S1B-N2），S1C-N1 交给 S3。A 重跑 A1、A5、A7，新加 F1–F5（`default` 的三种写坏、构造器、`goneAsRead` 的开关），都被抓到；B 的 c1、c2 与新的 c3 被杀，q3、q4（只留位图、套一层 Gather）照过、不误报，q1、q2（关掉位图）让"分析过、自定义计划"一格改选并行的顺序扫描，一个空的 00057 下两个 lint 迁移的测试通过；C 在 4 个提交上各自跑门禁都通过，重跑 32 个变异，31 个抓到、o2 照预料存活，实施者报告的变异表、CI 与中位数与它读到的逐项一致。B 记下一项观察：那一格位图读与并行顺序扫描的估计成本只差约 9%，代价模型一变，测试会以整表扫描失败；主持者接受，这正是决定 236 要的信号，若 CI 上因此不稳再议。不需要第二轮。
 - 实施者留下的六项：Step 的文档提交是本提交；第 14 条的 `TestUpgradeGuardrails` 一半见决定 237；"任务的批"里任务由发起人开，不改（第 68 条与 9b 在那里各自失败）；本机计时的守卫在高负载下超界，见审查 S1C-N6；成本守卫的界见决定 236；lint 迁移的夹具见决定 238。
+
+### 10.2 S2：发起与读（服务端）（2026-11-09，合并 `（待填）`）
+
+- 提交（从 main 的 `5795229c` 开始，照 6.2 的次序，7 个；Step 的文档提交是主持者的）：
+  - wiki 模块的第一张表：迁移 00057 的 `notebook_upgrades`（14 个约束与"一本笔记本至多一个进行中"的部分唯一索引）、wiki 的 sqlc 一项与 `wiki/adapter/postgres`、授权一行、wiki 的清理器排在 notebook 之前、notebook 与 page 两个模块的笔记本删除订阅者（删笔记本时一并软删除升级的行、删掉 `upgrade_nodes`）（`1423abec`）。
+  - notebook 的 `UpgradeStates`：在调用方的事务里锁笔记本行、写四列（断言升级的 id 非零，S1B-N1）、把模式的变化交给降级的订阅者（`26f6762b`）。
+  - page 的升级端口：`CaptureBaseline`、`ProtectSourceRoot`、`SetBaselineWanted`、`AnalyzeUpgradeNodes`、`RootNodesByKey`，按笔记本删过期的会话与读活着的会话；`TreeWrites().Seed` 的 `SeedSpec.Upgrade`（`35c290fb`）。
+  - lint：`computeIn` 在调用方的事务里算、`prepareIn` 只准备不投影；`Runs.TryHold` 立即持名额或不持；`RuleQuery.WantedByPage` 与第二遍的 `LintAreaWantedEdgeHeads`（按 512 页一段、行比较的游标，待建的过滤在 `LIMIT 1` 的 `LATERAL` 里）（`4488279f`）。
+  - `startUpgrade` 与 `getUpgrade`：契约的两个操作、六个 schema 与十个码的声明，`wiki/adapter/http` 答出每个码；组合根的接线；`checkPages` 的七条升级规则（库里有这张表时）与 `TestPageViolationsCatchEachUpgradeGap`；矩阵的三行与 `TestUpgradePermissionMatrix`；`TestUpgradeStart`、`TestUpgradeStates`、`TestUpgradeStatesReachTheStreams`、`TestUpgradeDeletion`、交错（7.2 第 1–4、13、14、17 条）；运行时角色的发起；网页的五个码的两种语言的文字（`0778f5e2`）。
+  - 发起的成本守卫 `TestUpgradeStartTakesItsTimeAtAnyStatistics`（`test-go-costs-2` 一行）；发起的期限改为请求的四分之三（第 232 条）（`1c4d35c0`）。这个提交的标题只说成本守卫，没写生产上发起的期限从 `LintTimeout` 的 7.5 秒变成 11.25 秒，范围只写 `server` 而改了 `ci.yml` 的一行注释（审查 S2C-N5；已推的历史不改写，记在这里与合并的说明里）。
+  - e2e：UP1 的 API 与 MCP、UP2 的 API、UP4 的删除一步；夹具 `upgrades.ts`、`assert/wiki.ts`，`expectNotebook` 的四列、`expectBaseline` 与变更集的 `upgrade_id`（`c5a81c7a`）。
+  - 每个提交单独在一个干净的工作树里 build、vet、`make lint-go`、`make gen-check` 与 short 测试都通过；碰契约、网页或 e2e 的另过 `make lint-web`、`make knip` 与 vitest（189 个文件，4,095 个测试）。推送之前改写过两次：逐个提交的核对发现第 5 个的 `TestLintMatrixTargets` 没读升级的行、第 6、7 个的 errorlint；第二次 `make test` 发现 M10 的迁移夹具在 53 的库上调 `checkPages`（下面第 6 条）。审查 C 另在 7 个提交上跑同样的门禁与竞态下各自碰到的包，都通过。
+  - 修复一轮另有 4 个、第二轮 1 个（下面），一共 12 个；合并 `（待填）`。
+- 与设计不同之处（实施时定下的，都是最小的改动；已改在各节，3.26 列出）：
+  1. `LintAreaWantedEdgeHeads` 的待建过滤写在 `LIMIT 1` 的 `LATERAL` 里：没有统计时 `IS NULL` 估 0.005，自定义计划选了位图扫描加 Sort（3.13）。
+  2. `WantedByPage` 只配 `wanted` 一条规则，别的组合答 `errLintQuery`；第二遍在模式是 LLM Wiki 时跑（3.13）。
+  3. `wiki.Deps` 加 `Pool`（自己的表的适配器）（3.15）。
+  4. `transfer.busy` 的文字末句是"…start the upgrade once it is done."（3.14）。
+  5. 矩阵的行用 lab 的笔记本，每格在库的副本上以 SQL 准备：发起的一行先删那本笔记本的编辑会话，`getUpgrade` 的两行以 `upgradeIn` 由笔记本的创建者设成 `upgrading`、`reviewing`；每格之后只核对 `pageViolations` 里升级的几句；两处覆盖的检查经 `coveredMatrixRows()` 读它们（3.22）。
+  6. `checkPages` 的违反的测试名为 `TestPageViolationsCatchEachUpgradeGap`（第四份）；升级的规则只在库里有 `notebook_upgrades` 时加（3.15）。
+  7. 名额占满的 503 只在 7.2 第 17 条与 `wiki/app` 测（审查之后另有"名额占满时各码照答"的一组，S2A-M1）。
+  8. 第 31 条变异的测试是 `TestComputeInTakesItsMoment`：S2 的发起不经 `computeIn`（7.3 第 31 条改）。
+  9. `wiki/app` 的 `TestUpgradeStart` 在 `app_test` 包里，替身 `startFake` 盖住每个端口、记下调用的次序。
+  10. 夹具 `upgradeIn` 选根（根下的 `raw` 页优先，否则最早的根页）、按状态写一致的 wiki 行，`endUpgrade` 把 wiki 的行记为 `rolled_back`。
+  11. S1 的测试照 `checkPages` 的新规则改 wiki 的行或加 raw。
+  12. 7.2 第 3 条：发起删了过期的会话，之后的心跳答 `page.edit_session_not_found`。
+  13. 流里先是补写的 `pages`，再是 `mode`。
+  14. 运行时角色的测试先以 owner 的 SQL 加一个笔记本管理员，断言 `upgrade_nodes` 被分析过、日志里没有"upgrade baseline not analyzed"。
+  15. `GetUpgrade` 的回滚几列直接从行读（S2 时都是 null）。
+  16. 发起的期限是请求的四分之三（守卫 4.5 秒、生产 11.25 秒、默认 4 秒的请求下 3 秒）；守卫是 5 万页、1.5 万页在 raw 里；10 万页在最慢的 runner 上过 4.5 秒，进 M12 的移交（第 232 条；3.14、7.1 改）。
+  17. 守卫在发起的事务里核对 `SetBaselineWanted` 的自定义与通用计划；"本次之后"读作分析过这本笔记本的上一次发起；每次发起之后 `VACUUM`；`ci.yml` 的 costs-2 加一行注释（36 条，时限不变）。
+  18. e2e 的夹具名与 `upgradesOf`；UP1 的"别人"是编辑者（REST）与另一位管理员（MCP）；UP2 末尾再发起一次答 200（第 5 节）。
+  19. 第 62 条变异四种写法，7.3 第 62 条改列 `TestTheAreaPassReadsByChunk`、`TestTheAreaWantedHeadsGoByBatch/refused` 与计划的测试，成本守卫只对三者合在一起的那种。
+  20. 第 18 条变异的 S2 一半由 7.2 第 4 条抓到。
+- 实测（本机，经 `heavy.sh`；每一项的出处见 [S2 的审查记录](reviews/P1-S2-start-and-read-review.md)"实测"）：
+  - 新的测试在竞态下：第七份的六个共 9.5 秒（`TestUpgradeStart` 2.27、`TestUpgradeStatesReachTheStreams` 2.13、`TestUpgradeInterleavings` 1.91、`TestUpgradePermissionMatrix` 1.48、`TestUpgradeStates` 0.94、`TestUpgradeDeletion` 0.78 秒）；`TestPageViolationsCatchEachUpgradeGap` 2.34 秒；`TestTheUpgradesCodesAreAnswered` 7.87 秒；其余各在 1.7 秒之内。
+  - 发起的成本守卫：10 万页本机两轮中位数 2.16–2.41 秒，守卫配置下 3 秒的期限只余约 20%，折到 CI 2.5–5.6 秒，照第 232 条改期限、减规模；5 万页建成时两轮 1.04–1.15 秒、界 3.5 秒，CI（9V74）1.57–1.62 秒；修复一轮另种九本笔记本之后两轮 1.11–1.17 秒、界 3.6 秒，种子 10.2 秒（这本笔记本的 1.4 秒），CI（8370C）2.13–2.22 秒。计划：六种状态与模式都经主键或一次读完，没有顺序扫描；修复一轮之后 `CaptureBaseline` 在六格里都是逐个经 `page_contents_pkey` 读正文的 Nested Loop。第二遍在审查者 B 的数据上 0.34–0.40 秒（B 量的整组一次传入 18.1、约 150、66.2 秒）；`SetBaselineWanted` 10 万页 162–211 毫秒（B 386–671 毫秒）。修复第二轮之后本机 `make test-go-costs-2` 里中位数 1.34–1.42 秒（种子 11.9 秒），CI（9V74）1.69–1.74 秒，界 3.6 秒。
+  - e2e：`make e2e` 507 个（建成 2.2–2.4 分钟，修复一轮 130 秒）。
+- 反向对照（每一条的结果见 S2 的审查记录"反向对照"）：
+  - 7.3 的 S2 各行（第 18 条的 S2 一半、22–36、62、63、67、82）共 25 种改坏，都被点名的测试抓到；第 24 条建成时靠测试二进制的期限（修复一轮之后第 17 条交错 2 秒内失败）；第 62 条成本守卫只抓得到三者合在一起的那种（62c），另三种由分段、适配器与计划的测试抓到。
+  - 审查者的变异里存活的（A 的 W1、W3、W4、W6、L4、L5、L7、L8、L10、WA2 与组合根的 B4–B6，B 的 g1–g7、c2、cp-all，C 的 d26b、o24、o2b、o3）各成了一条发现，修复一轮之后都被抓到；连同修复一轮自己的 n1、f240a、f240b，B 的 c1、c3，C 的 62e 写成 7.3 的第 95–109 条，第 24、26、31、62 条照实改。照预料存活的：A 的 N2、P3、B8 与 B 的 g9、g10（等价或被蕴含，决定 241），d26b 的 `wiki/app` 一半，cp-notebook。修复核对一轮另加的 B 的 rk、ds、ls 与 C 的 x1 都被守卫的计划抓到。修复第二轮：`startCostPageScans` 去掉两项新要求之一（r1、r2）各被 `TestTheStartGuardJudgesThePageReads` 的一格抓到（7.3 第 110 条），B 的 c2 与 f240a、f240b 照旧被守卫抓到。
+- 门禁（本机）：建成时头 `c5a81c7a` 上 `make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 3,473 秒通过、`make test-go-short` 47 秒、`make e2e` 507 个 148 秒。此前两次 `make test`（`b2c65a37`）：第一次在竞态六份同时跑时第一份的两个交错的计时测试超时（与 S2 无关，单独两轮通过）；第二次发现 M10 的迁移夹具在 53 的库上调 `checkPages`（上面第 6 条，并回第 5 个）。修复一轮（`42529055`）：4 个提交各自 build、vet、`make lint-go`、`make gen-check` 与 short 都通过；头上 `make lint gen-check knip build` 通过，`make test` 第一次在第一份的 `TestABackgroundJobAndItsNotebooksDeletion/revert` 失败（与 S2 无关，单独三次通过），第二次 3,324 秒通过，`make test-go-short` 40 秒，`make e2e` 507 个 130 秒。修复第二轮照决定 242：提交单独为绿，`make lint gen-check knip build` 通过，`make test-go-costs-2` 第一次因本机根分区满失败（Go 的构建缓存涨到 59 G，修剪之后剩 44 G；`06-environment.md` 第 3 节加一句），第二次 608 秒通过，`make test-go-short` 44 秒。
+- 组合根的各份（竞态构建的口径）：`go test -race -list` 541 个顶层，七份 158、51、121、124、62、11、14，各在恰好一份；S2 加的七个里六个 `TestUpgrade…` 在第七份，`TestPageViolationsCatchEachUpgradeGap` 在第四份，`!race` 的成本守卫不进任何一份。本机单独两轮（`b2c65a37`，包的时间）：第一份 288.3、286.4 秒，第二份 262.7、243.2，第三份 267.3、249.8，第四份 223.9、208.5，第五份 263.0、245.8，第六份 184.5、187.0，第七份 95.6、89.6（S2 之前 82.1、84.1）；修复一轮之后第七份 90.3、93.4 秒。分份调整合并之后 `main` 的第一次运行 42530568840（`5795229c`）的七份测试一步是 288、399、348、284、392、228、137 秒（审查 C 读的）；S2 合并之后两次 `main` 的平均：`（待填：两次 main 的七份与平均）`。修复第二轮的 `TestTheStartGuardJudgesThePageReads` 在 `!race` 的守卫文件里，不进任何一份，跑在 short 一行。
+- CI：分支的 run 42554470668（`c5a81c7a`）全绿，七份的测试一步 357、431、382、431、395、245、149 秒（第二、四份在 EPYC 7763 上），costs-2 16:13（15:49），守卫在 9V74 上 38.6 秒；修复一轮的 run 42571990070（`42529055`）全绿，七份 288、350、342、410、393、298、151 秒，costs-2 在 8370C 上 20:39（20:06），守卫 70.1 秒（种子 22.1 秒）。都在 450 秒之下。costs-2 在 7763 上：`main` 的 42530568840 已是 22.2 分钟，加上发起的守卫约 23.5 分钟，对 35 分钟的作业时限不到 `ci.yml` 注释说的约两倍（审查 C；S2 只多约 1.2 分钟），合并之后看 `main` 上的数。修复第二轮的 run 42579807531（`9b3000c1`）全绿，七份 444、429、262、422、393、304、119 秒（第一份离线 6 秒，第二轮没有碰任何一份的测试），costs-2 在 9V74 上 16:39（16:12），守卫 55.7 秒。
+- **修复一轮**（2026-11-09，分支 `m11-p1-s2` 的 `42529055`；三份审查与主持者的修复说明 `fix-1.md`，决定 240、241）：从 `c5a81c7a` 起 4 个提交，一组一个，普通推送，没有改写已推的历史（提交 3 推送之前为 gochecknoglobals 重写过一次）：
+  - `219d6f28`：组合根的 `its own deadline` 分成 `inside a statement`（测试持住笔记本行，发起在 `States.Lock` 的语句之中到期：503、恰一行 warn、没有 error、什么也没写）与 `between statements` 两格（S2C-I1）；`wiki/app` 的替身加 `rollbackLate` 与 `commitErr`：领域的拒绝在回滚越过期限时照答 409，`COMMIT` 自己超时时不答 503（S2C-M1、S2A-N1）；替身在 `Capture`、准备、提交与 `Analyze` 四处探名额，`each-refusal-in-its-turn` 每格另在名额占满时跑一次（S2A-M1 = S2C-N3）；7.2 第 17 条在另一个 goroutine 里发起、限时 2 秒（S2C-N2）。
+  - `99bf2d54`：第二遍的夹具带重复的目标、`./Alpha`、图片与虚拟的 `index`，两遍判得一样（S2A-M2）；替身的 `areaStray`、`areaResolved` 两个开关（S2A-N2）；`TestComputeInTakesItsMoment` 用会投影的查询（S2C-N1）。
+  - `0da54746`：`CaptureBaseline` 改为 `LEFT JOIN LATERAL (… LIMIT 1)`，这一轮唯一的生产的改动；守卫另种九本笔记本，核对 `CaptureBaseline`、`RootNodesByKey` 与两条会话的语句的两种计划，界 3.6 秒（S2B-M2，决定 240）；守卫的笔记本名与日志前缀、一处注释（S2C-N4）。
+  - `42529055`：00057 的五条反例与部分唯一索引的两条（S2B-M1、S2B-N1）；被蕴含的三个合取的注释（S2B-N2，决定 241）；`checkPages` 的升级规则补三行、每行只报自己的（S2B-N3）；`TestTheUpgradesRows` 的 `rolling_back`（S2A-N3）。
+  - 只改文档的在本 Step 的文档提交：S2C-N5；设计 3.10、3.12–3.15、3.22、7.1–7.3、7.5、7.6；00 号文档第 232 条、第 9 节与 M12 的移交。
+- **修复核对一轮**（2026-11-09，三位各在 `42529055` 的自己的工作树里）：旧发现都关了（只改文档的部分在本提交）。A 重跑留下的 10 个变异都被抓到；B 的 g1–g7、c2、cp-all 都被杀，新加的 rk、ds、ls 被守卫的计划杀，`CaptureBaseline` 在旁边有九本与 200 本笔记本的两种库、两种统计、两种计划下都逐个经主键读；C 在 4 个提交上各自跑门禁都通过，重跑 12 次变异，d26b 的组合根一半、o24、o2b、o3、24a、24b、n1、d31 与新的 x1 都被抓到。新的一条 Nit：S2A-N4（守卫对 `page_contents` 的核对只看索引名，Merge Join 之下没有条件的主键扫描也能过；B、C 把同一处列为未核实的怀疑）。B 指出实施者在 `42529055` 的提交说明里"cp-notebook 没有一行能单独违反"不对（wiki 行指向一本软删除的笔记本就只有 `upgradeRowGap` 报），那一行仍可省；C 记下 costs-2 在 7763 上的时长（上面"CI"）与第一份负载敏感的交错计时测试（S2 第一次 `make test` 的两个、修复一轮的 `TestABackgroundJobAndItsNotebooksDeletion/revert`），都与 S2 无关，不挡合并。
+- **修复第二轮**（2026-11-09，`9b3000c1`；`fix-2.md`，决定 242）：一个提交，只改 `bootstrap/upgrade_start_cost_test.go`：`startCostPageScans` 对 `page_contents` 另要求每个经主键的扫描的 `Index Cond` 含 `node_id`、且在嵌套循环的内侧逐个节点重复（S2A-N4，决定 240 的"逐个经主键读"落到核对上）；新的不连数据库的 `TestTheStartGuardJudgesThePageReads` 喂五种合成的计划，其中两格各只违反一项。本机门禁照决定 242（上面"门禁"），分支 CI 全绿（上面"CI"）。
+- **修复核对第二轮**（A，在 `9b3000c1` 上）：S2A-N4 关了，没有新的发现；r1、r2 重跑都被抓到，check1 那种 Merge Join 的合成计划现在被拒。修复核对两轮就结束。
+- **审查的结论**：Important 1（S2C-I1），Minor 另 5（S2A-M1 = S2C-N3、S2A-M2、S2B-M1、S2B-M2、S2C-M1），Nit 10（S2C-N3 并入 S2A-M1），修复核对一轮另 1 条 Nit（S2A-N4）；都已改或记下（S2C-N5）。代码本身三位都没有查出错，问题都在"测试钉住了什么"与 `CaptureBaseline` 的计划上：A 的探针在发起与删除笔记本两种先后下都对；B 在真库上核对 31 个反例、契约与矩阵与设计一致；C 的逐个提交、竞态下的中间提交与头上的 e2e 都通过。实施者的 20 条偏离由三位判过，都对。
+- 实施者留下的五项：Step 的文档提交是本提交；10 万页的发起进 M12 的性能移交（00 号文档第 232 条与"写给后面的 M"）；第 24 条变异靠测试二进制的期限，见审查 S2C-N2；`make test` 里第一份的交错计时测试，记为已知的负载敏感；S3、S4 照设计。
 
 ## 附录：核对过的代码
 
