@@ -24,13 +24,17 @@ func NewSeedWrites(writer *Writer, md Markdown) *SeedWrites {
 // SeedSpec is a template's unit: in NotebookID, at At, from Client, its
 // changeset's message Message, writing Pages in order, each created last
 // among its siblings. The actor is ctx's, as Run's (v0.1 design 13.1
-// item 1; M10 design review A2-N3).
+// item 1; M10 design review A2-N3). Upgrade is the upgrade the pages are
+// seeded for, the zero id for none: its unit is the upgrade's own (M11
+// design 4.4 step 12), which the freeze lets by and whose changeset
+// records the upgrade.
 type SeedSpec struct {
 	NotebookID uuid.UUID
 	At         time.Time
 	Client     domain.Client
 	Message    *string
 	Pages      []PageDraft
+	Upgrade    uuid.UUID
 }
 
 // Seed writes spec's pages in one unit that changes the tree, of the edit
@@ -43,7 +47,7 @@ func (s *SeedWrites) Seed(ctx context.Context, spec SeedSpec) ([]uuid.UUID, erro
 	var ids []uuid.UUID
 	_, err := s.writer.Seed(ctx, UnitSpec{
 		NotebookID: spec.NotebookID, Action: domain.ActionCreate, Tree: true, Client: spec.Client,
-		NotFound: domain.ErrNotebookNotFound, Message: spec.Message,
+		NotFound: domain.ErrNotebookNotFound, Message: spec.Message, UpgradeOwn: spec.Upgrade,
 	}, spec.At, func(ctx context.Context, u *Unit) error {
 		ids = ids[:0]
 		for _, p := range spec.Pages {

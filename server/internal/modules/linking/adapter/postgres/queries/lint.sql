@@ -41,6 +41,24 @@ WHERE l.notebook_id=sqlc.arg(notebook_id)
 ORDER BY l.source_id,l.range_start
 LIMIT (SELECT sqlc.arg(take)::integer);
 
+-- name: LintAreaWantedEdgeHeads :many
+-- The wanted edges' heads of up to LintReadRows given current pages after the cursor (M11 design 4.7 gate 6's
+-- second pass): the pages drive page_links' primary key through the array, whose btree scan returns the rows in key
+-- order, so that no batch sorts a chunk's edges and LIMIT stops early. The whole set at once, joined and then
+-- sorted past a cursor, was quadratic (M11/P1 design review B-I1). Custom and generic plans are both guarded. As in
+-- the keyset queries above, the edge's eligibility stays inside a LIMIT 1 LATERAL: on the outer scan, its IS NULL
+-- with no statistics estimated one row, and a custom plan then sorted all of a page's edges for each batch.
+SELECT l.source_id, l.range_start, octet_length(l.target)::bigint AS target_bytes
+FROM page_links l
+CROSS JOIN LATERAL (
+ SELECT 1 WHERE l.resolved_id IS NULL AND l.target_key IS NOT NULL
+ LIMIT 1
+) wanted
+WHERE l.source_id = ANY(sqlc.arg(page_ids)::uuid[])
+    AND (l.source_id, l.range_start) > (sqlc.arg(after_source)::uuid, sqlc.arg(after_start)::integer)
+ORDER BY l.source_id, l.range_start
+LIMIT (SELECT sqlc.arg(take)::integer);
+
 -- name: LintEdgesByPositions :many
 WITH requested AS MATERIALIZED (
  SELECT unnest(sqlc.arg(source_ids)::uuid[]) AS source_id,

@@ -15,6 +15,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/workspace"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
@@ -182,9 +183,9 @@ type notebookExtensions struct {
 // tells its pages' activity (M4/P4); M7's attachments do both, after the
 // pages (M7/P2); M6's link index drops the notebooks' rows after them
 // (M6/P3); M7's imports and exports delete the notebooks' jobs after
-// those (M7/P5); M5's event streams follow a deletion, last, and a
-// visibility change (M5/P2); M10's event stream follows a mode change
-// (M10/P1). The module's use cases and its parts in the workspace module's
+// those (M7/P5); M11's upgrades go with them (M11/P1); M5's event
+// streams follow a deletion, last, and a visibility change (M5/P2); M10's
+// event stream follows a mode change (M10/P1). The module's use cases and its parts in the workspace module's
 // events all take them from here.
 func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	pages := page.NewNotebookDeletion(pool, pageSessionSubscribers())
@@ -193,7 +194,7 @@ func notebookRegistrants(pool *pgxpool.Pool) notebookExtensions {
 	return notebookExtensions{
 		deletionSubscribers: []notebook.NotebookDeletionSubscriber{
 			pageNotebookDeletion{pages}, assetNotebookDeletion{asset.NewNotebookDeletion(pool)}, links,
-			transferNotebookDeletion{transfer.NewNotebookDeletion(pool)}, streams,
+			transferNotebookDeletion{transfer.NewNotebookDeletion(pool)}, wikiNotebookDeletion{wiki.NewNotebookDeletion(pool)}, streams,
 		},
 		visibilitySubscribers: []notebook.VisibilitySubscriber{streams},
 		modeSubscribers:       []notebook.ModeSubscriber{streams},
@@ -306,12 +307,12 @@ func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []mark
 // purgers are the modules' purgers of the soft-deleted rows, leaf to root
 // (M2 design 8, M2/P4 design 3.4): a module whose tables reference
 // another's comes before it, the attachments and the imports' and
-// exports' jobs before the pages before the notebooks before the
-// workspaces. The attachments' and the jobs' purgers delete their files in
+// exports' jobs before the pages, and the upgrades, before the notebooks
+// before the workspaces. The attachments' and the jobs' purgers delete their files in
 // store first, in transactions of tx, their failures logged to logger. The
 // database test of the purge checks the order against the foreign keys,
 // and that every table with deleted_at has its purger.
 func purgers(pool *pgxpool.Pool, tx shared.TxManager, store storage.Store, logger *slog.Logger) []jobs.Purger {
 	return slices.Concat(asset.Purgers(pool, tx, store, logger), transfer.Purgers(pool, tx, store, logger), page.Purgers(pool),
-		notebook.Purgers(pool), workspace.Purgers(pool))
+		wiki.Purgers(pool), notebook.Purgers(pool), workspace.Purgers(pool))
 }

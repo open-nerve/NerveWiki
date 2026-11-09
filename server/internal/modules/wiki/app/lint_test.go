@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -92,9 +93,11 @@ type lintExecPrepared struct {
 	items   map[domain.LintRule][]domain.LintItem
 	more    map[domain.LintRule]bool
 	timings PreparationTimings
+	byPage  map[uuid.UUID]int
 }
 
-func (p *lintExecPrepared) StalePages() int64 { return p.stale }
+func (p *lintExecPrepared) StalePages() int64               { return p.stale }
+func (p *lintExecPrepared) WantedByPage() map[uuid.UUID]int { return maps.Clone(p.byPage) }
 func (p *lintExecPrepared) RuleCount(ctx context.Context, rule domain.LintRule) (domain.LintCount, error) {
 	return p.counts[rule], ctx.Err()
 }
@@ -619,4 +622,50 @@ func lintExecLogEntry(t *testing.T, log *lintRunLog, secrets []string) map[strin
 		t.Fatal(err)
 	}
 	return entry
+}
+
+// computeIn computes as of the moment its caller hands it, through the
+// transaction ctx carries, and reads no clock of its own: compute hands it
+// the snapshot's, an upgrade's start its transaction's (M11/P1 design
+// 3.13); prepareIn reads the state and prepares, projecting nothing: a
+// query whose answer computeIn projects (its item's path, its rule's start
+// cursor) is only prepared.
+func TestComputeInTakesItsMoment(t *testing.T) {
+	orphans := domain.RuleOrphans
+	query := RuleQuery{Rule: &orphans, Limit: 1}
+	page := lintExecID(30)
+	fixture := func(t *testing.T) (*Lint, *lintExecTrace) {
+		deps, trace, _, _ := lintExecFixture(t)
+		deps.Rules = lintExecRules(func(context.Context, ReadInput, RuleQuery) (PreparedRules, error) {
+			trace.add("prepare")
+			return &lintExecPrepared{counts: map[domain.LintRule]domain.LintCount{orphans: {Value: 1}}, items: map[domain.LintRule][]domain.LintItem{
+				orphans: {{Rule: orphans, ItemKey: "o:30", Cursor: "after:30", PageID: &page}}}}, nil
+		})
+		deps.Paths = lintExecPaths(func(context.Context, uuid.UUID, []uuid.UUID) (map[uuid.UUID]string, error) {
+			trace.add("paths")
+			return map[uuid.UUID]string{page: "Page"}, nil
+		})
+		return NewLint(deps), trace
+	}
+	l, trace := fixture(t)
+	at := time.Date(2026, 11, 9, 1, 2, 3, 0, time.UTC)
+	out, err := l.computeIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, query, domain.LintItems, at)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !out.Result.ComputedAt.Equal(at) || out.Stats.StalePages == nil || out.Stats.Mode != domain.ModeStandard ||
+		len(out.Result.Rules) != 1 || len(out.Result.Rules[0].Items) != 1 || out.Result.Rules[0].StartCursor == nil {
+		t.Fatalf("computed %+v, %+v as of %v", out.Result, out.Stats, at)
+	}
+	if got := trace.copy(); slices.Contains(got, "clock") || !slices.Equal(got, []string{"state", "nodes", "prepare", "encode", "paths"}) {
+		t.Fatalf("computeIn called %v, want it to project the item and the cursor", got)
+	}
+	l, trace = fixture(t)
+	prepared, stats, err := l.prepareIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, query)
+	if err != nil || prepared == nil || stats.StalePages == nil || stats.PrepareElapsed == nil {
+		t.Fatalf("prepareIn = %v, %+v, %v", prepared, stats, err)
+	}
+	if got := trace.copy(); !slices.Equal(got, []string{"state", "nodes", "prepare"}) {
+		t.Fatalf("prepareIn called %v: it projected", got)
+	}
 }

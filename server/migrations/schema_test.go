@@ -312,6 +312,26 @@ func TestConstraintAndIndexNames(t *testing.T) {
 		"notebook_members_updated_by_id_fkey f a",
 		"notebook_members_user_id_fkey f a",
 		"notebook_members_user_id_idx iw",
+		"notebook_upgrades_approved_check c",
+		"notebook_upgrades_baseline_check c",
+		"notebook_upgrades_created_by_id_fkey f a",
+		"notebook_upgrades_ending_check c",
+		"notebook_upgrades_ending_state_check c",
+		"notebook_upgrades_locale_check c",
+		"notebook_upgrades_notebook_id_fkey f r",
+		"notebook_upgrades_notebook_id_idx i",
+		"notebook_upgrades_notebook_id_key iuw",
+		"notebook_upgrades_pkey iu",
+		"notebook_upgrades_pkey p",
+		"notebook_upgrades_rejected_check c",
+		"notebook_upgrades_report_check c",
+		"notebook_upgrades_rollback_end_check c",
+		"notebook_upgrades_rollback_job_check c",
+		"notebook_upgrades_state_check c",
+		"notebook_upgrades_submission_check c",
+		"notebook_upgrades_submission_state_check c",
+		"notebook_upgrades_submitted_by_id_fkey f a",
+		"notebook_upgrades_updated_by_id_fkey f a",
 		"notebooks_created_by_id_fkey f a",
 		"notebooks_former_owner_id_fkey f a",
 		"notebooks_mode_check c",
@@ -554,6 +574,12 @@ func checkedRows(t *testing.T, pool *pgxpool.Pool) {
 			"('0199a2b4-0000-7000-8000-000000000020', '0199a2b4-0000-7000-8000-000000000023', '0199a2b4-0000-7000-8000-000000000019', false, " +
 			"'page', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL)",
 		"UPDATE changesets SET upgrade_id = '0199a2b4-0000-7000-8000-000000000020'",
+		// The wiki module's row of that upgrade (M11/P1 design 3.10): upgrading, its seeded source root the protected
+		// row's page, its baseline's two nodes and one page, wanting the most it counts.
+		"INSERT INTO notebook_upgrades (id, notebook_id, state, source_root_id, seeded_root, locale, baseline_nodes, baseline_pages, " +
+			"baseline_wanted, baseline_wanted_capped, created_by_id, updated_by_id, created_at, updated_at) VALUES " +
+			"('0199a2b4-0000-7000-8000-000000000020', '0199a2b4-0000-7000-8000-000000000019', 'upgrading', " +
+			"'0199a2b4-0000-7000-8000-000000000023', true, 'zh-CN', 2, 1, 10000, true, " + user + ", " + user + ", now(), now())",
 		// An export of the notebook, running.
 		"INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, progress_done, progress_total, " +
 			"started_at, heartbeat_at, created_at) VALUES ('0199a2b4-0000-7000-8000-000000000018', '0199a2b4-0000-7000-8000-000000000008', " +
@@ -575,6 +601,15 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 			email + ", 'x', " + displayName + ", now(), now())"
 	}
 	steps := func(ids string) string { return "UPDATE users SET onboarding_steps = " + ids }
+	// The upgrade's row in the wiki module (M11/P1 design 3.10): upgrading, without a submission; rolling back and
+	// rolled back as their steps set them; a submission's three columns.
+	const (
+		upgrade     = "UPDATE notebook_upgrades SET "
+		rollingBack = "state = 'rolling_back', ending = 'abandoned', rollback_job_id = gen_random_uuid()"
+		rolledBack  = "state = 'rolled_back', ending = 'abandoned', rollback_job_id = gen_random_uuid()"
+		submitter   = "'0199a2b4-0000-7000-8000-000000000001'"
+		submission  = "submission_id = gen_random_uuid(), submitted_at = now(), submitted_by_id = " + submitter
+	)
 	tests := []struct{ name, stmt, constraint string }{
 		{"upper-case ASCII e-mail", insertUser("'Bob@corp.com'", "'b'"), "users_email_check"},
 		{"upper-case non-ASCII e-mail", insertUser("'Élodie@corp.com'", "'e'"), "users_email_check"},
@@ -802,6 +837,65 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 		{"a page wanting 10,001 targets", "UPDATE upgrade_nodes SET wanted = 10001 WHERE baseline AND kind = 'page'",
 			"upgrade_nodes_wanted_check"},
 		{"a page wanting -1 targets", "UPDATE upgrade_nodes SET wanted = -1 WHERE baseline AND kind = 'page'", "upgrade_nodes_wanted_check"},
+		// An upgrade's row (M11/P1 design 3.10): each conjunct alone broken, an = broken each way; a submission without
+		// its time breaks both of submission_check's =, each way of which has its own row. The three conjuncts that
+		// follow from others, kept to be read (00057's comment, decision 241), have no row of their own:
+		// baseline_nodes >= 0 and submission_state_check's 'approved' none, report_check's state <> 'upgrading' one
+		// that breaks submission_state_check too.
+		{"an upgrade's unknown state", upgrade + "state = 'done'", "notebook_upgrades_state_check"},
+		{"an upgrade's unknown ending", upgrade + "state = 'rolling_back', ending = 'cancelled', rollback_job_id = gen_random_uuid()",
+			"notebook_upgrades_ending_check"},
+		{"an upgrade's unknown language", upgrade + "locale = 'fr'", "notebook_upgrades_locale_check"},
+		// Breaks baseline_pages <= baseline_nodes too, which baseline_nodes >= 0 follows from.
+		{"a baseline of -1 nodes", upgrade + "baseline_nodes = -1", "notebook_upgrades_baseline_check"},
+		{"a baseline of -1 pages", upgrade + "baseline_pages = -1", "notebook_upgrades_baseline_check"},
+		{"more baseline pages than nodes", upgrade + "baseline_pages = 3", "notebook_upgrades_baseline_check"},
+		{"-1 wanted at the start", upgrade + "baseline_wanted = -1, baseline_wanted_capped = false", "notebook_upgrades_baseline_check"},
+		{"10,001 wanted at the start", upgrade + "baseline_wanted = 10001, baseline_wanted_capped = false",
+			"notebook_upgrades_baseline_check"},
+		{"capped under 10,000 wanted", upgrade + "baseline_wanted = 9999", "notebook_upgrades_baseline_check"},
+		{"10,000 wanted not capped", upgrade + "baseline_wanted_capped = false", "notebook_upgrades_baseline_check"},
+		{"rolling back without its ending", upgrade + "state = 'rolling_back', rollback_job_id = gen_random_uuid()",
+			"notebook_upgrades_ending_state_check"},
+		{"an ending while upgrading", upgrade + "ending = 'abandoned'", "notebook_upgrades_ending_state_check"},
+		{"a submission without its id", upgrade + rollingBack + ", submitted_at = now(), submitted_by_id = " + submitter,
+			"notebook_upgrades_submission_check"},
+		{"a submission without its time", upgrade + rollingBack + ", submission_id = gen_random_uuid(), submitted_by_id = " + submitter,
+			"notebook_upgrades_submission_check"},
+		{"a submission without its submitter", upgrade + rollingBack + ", submission_id = gen_random_uuid(), submitted_at = now()",
+			"notebook_upgrades_submission_check"},
+		{"a submission's id alone", upgrade + rollingBack + ", submission_id = gen_random_uuid()", "notebook_upgrades_submission_check"},
+		{"a submission's submitter alone", upgrade + rollingBack + ", submitted_by_id = " + submitter,
+			"notebook_upgrades_submission_check"},
+		{"a submission while upgrading", upgrade + submission, "notebook_upgrades_submission_state_check"},
+		{"reviewing without a submission", upgrade + "state = 'reviewing'", "notebook_upgrades_submission_state_check"},
+		// Breaks submission_state_check too, which report_check's state <> 'upgrading' follows from: PostgreSQL checks
+		// a table's checks in their names' order and names report_check's.
+		{"a report while upgrading", upgrade + submission + ", report = '{}'", "notebook_upgrades_report_check"},
+		{"a report without a submission", upgrade + rollingBack + ", report = '{}'", "notebook_upgrades_report_check"},
+		{"a report not an object", upgrade + "state = 'reviewing', " + submission + ", report = '[]'", "notebook_upgrades_report_check"},
+		{"a report of more than 65,536 bytes", upgrade + "state = 'reviewing', " + submission +
+			", report = jsonb_build_object('r', repeat('x', 65536))", "notebook_upgrades_report_check"},
+		{"approved without its report", upgrade + "state = 'approved', " + submission, "notebook_upgrades_approved_check"},
+		{"rejected without a submission", upgrade + "state = 'rolling_back', ending = 'rejected', rollback_job_id = gen_random_uuid()",
+			"notebook_upgrades_rejected_check"},
+		{"rolling back without its job", upgrade + "state = 'rolling_back', ending = 'abandoned'", "notebook_upgrades_rollback_job_check"},
+		{"a rollback's job while upgrading", upgrade + "rollback_job_id = gen_random_uuid()", "notebook_upgrades_rollback_job_check"},
+		{"rolled back without its end", upgrade + rolledBack, "notebook_upgrades_rollback_end_check"},
+		{"a rollback's end while upgrading", upgrade + "rollback_complete = true", "notebook_upgrades_rollback_end_check"},
+		{"a complete rollback with what it left", upgrade + rolledBack + ", rollback_complete = true, rollback_left_nodes = 0, " +
+			"rollback_left_pages = 0, rollback_left_created = 0", "notebook_upgrades_rollback_end_check"},
+		{"a short rollback without its nodes left", upgrade + rolledBack + ", rollback_complete = false, rollback_left_pages = 1, " +
+			"rollback_left_created = 1", "notebook_upgrades_rollback_end_check"},
+		{"a short rollback with nothing left", upgrade + rolledBack + ", rollback_complete = false", "notebook_upgrades_rollback_end_check"},
+		{"a complete rollback with its pages left", upgrade + rolledBack + ", rollback_complete = true, rollback_left_pages = 1",
+			"notebook_upgrades_rollback_end_check"},
+		{"a complete rollback with its new nodes left", upgrade + rolledBack + ", rollback_complete = true, rollback_left_created = 1",
+			"notebook_upgrades_rollback_end_check"},
+		{"a short rollback without its pages left", upgrade + rolledBack + ", rollback_complete = false, rollback_left_nodes = 1, " +
+			"rollback_left_created = 1", "notebook_upgrades_rollback_end_check"},
+		{"a short rollback without its new nodes left", upgrade + rolledBack + ", rollback_complete = false, rollback_left_nodes = 1, " +
+			"rollback_left_pages = 1", "notebook_upgrades_rollback_end_check"},
 		// The writing jobs' columns (M8/P4 design 3.2): each check alone broken, the others kept.
 		{"an export's changeset", "UPDATE transfer_jobs SET changeset_id = gen_random_uuid()", "transfer_jobs_changeset_check"},
 		{"a restore without its changeset", "UPDATE transfer_jobs SET kind = 'trash_restore', root_id = gen_random_uuid()",
@@ -830,6 +924,32 @@ func TestChecksRejectCounterexamples(t *testing.T) {
 				t.Errorf("%s = %v, want check_violation (23514) of %s", tt.stmt, err, tt.constraint)
 			}
 		})
+	}
+	// A notebook has one upgrade under way at most (M11/P1 design 3.10): a second, reviewing or rolling back, is a
+	// unique violation of the partial index; one that ended, approved, and one soft-deleted, upgrading, stay beside it.
+	another := func(state, columns, values string) string {
+		return "INSERT INTO notebook_upgrades (id, notebook_id, state, source_root_id, seeded_root, locale, baseline_nodes, " +
+			"baseline_pages, baseline_wanted, baseline_wanted_capped, created_by_id, updated_by_id, created_at, updated_at" + columns +
+			") VALUES (gen_random_uuid(), '0199a2b4-0000-7000-8000-000000000019', '" + state + "', gen_random_uuid(), false, 'en', " +
+			"0, 0, 0, false, " + submitter + ", " + submitter + ", now(), now()" + values + ")"
+	}
+	submitted, submittedValues := ", submission_id, submitted_at, submitted_by_id", ", gen_random_uuid(), now(), "+submitter
+	for _, second := range []struct{ state, columns, values string }{
+		{"reviewing", submitted, submittedValues},
+		{"rolling_back", ", ending, rollback_job_id", ", 'abandoned', gen_random_uuid()"},
+	} {
+		_, err := pool.Exec(ctx, another(second.state, second.columns, second.values))
+		var pgErr *pgconn.PgError
+		if !errors.As(err, &pgErr) || pgErr.Code != "23505" || pgErr.ConstraintName != "notebook_upgrades_notebook_id_key" {
+			t.Errorf("a second upgrade under way, %s, = %v, want unique_violation (23505) of notebook_upgrades_notebook_id_key",
+				second.state, err)
+		}
+	}
+	if _, err := pool.Exec(ctx, another("approved", submitted+", report", submittedValues+", '{}'")); err != nil {
+		t.Errorf("an approved upgrade beside the one under way = %v, want it kept", err)
+	}
+	if _, err := pool.Exec(ctx, another("upgrading", ", deleted_at", ", now()")); err != nil {
+		t.Errorf("a deleted upgrade beside the one under way = %v, want it kept", err)
 	}
 	// Each client check, as the database holds it, refuses exactly the code points shared.Unshowable refuses
 	// in a name, but NUL, which text holds not (M9/P2 design 3.3.2): one statement a table, PostgreSQL reading

@@ -125,6 +125,10 @@ type LintReadStore interface {
 	Heads(context.Context, uuid.UUID) ([]IndexedHead, error)
 	WantedEdgeHeads(context.Context, uuid.UUID, []uuid.UUID, *EdgePos, int) ([]EdgeHead, error)
 	AmbiguousEdgeHeads(context.Context, uuid.UUID, []uuid.UUID, *EdgePos, int) ([]EdgeHead, error)
+	// AreaWantedEdgeHeads takes at most LintReadRows sorted, unique pages the
+	// caller has found current and a cursor whose Start may be -1 (before a
+	// page's first position); it answers their wanted heads past it in order.
+	AreaWantedEdgeHeads(context.Context, uuid.UUID, []uuid.UUID, EdgePos, int) ([]EdgeHead, error)
 	Edges(context.Context, uuid.UUID, []EdgePos) ([]LintEdge, error)
 	// HasSourceProperties takes the complete sorted, unique eligibility set,
 	// including zero UUID. True still requires the original bounded reads.
@@ -257,6 +261,52 @@ func (r *LintReads) Wanted(notebook uuid.UUID, excluded []uuid.UUID) *LintBatche
 	ids := slices.Clone(excluded)
 	return r.edges(notebook, func(ctx context.Context, p *EdgePos) ([]EdgeHead, error) {
 		return r.store.WantedEdgeHeads(ctx, notebook, ids, p, LintReadRows)
+	})
+}
+
+// WantedOf reads the unresolved keyed edges of pages, sorted, unique and
+// current in the caller's snapshot: an LLM contract's area, the second pass
+// of an upgrade's start (M11 design 4.7 gate 6). The pages go LintReadRows a
+// chunk; each batch passes only its chunk's pages from the cursor's page on,
+// whose edges the primary key returns in order, and a chunk's first batch
+// starts before every position. The whole set at once was quadratic.
+func (r *LintReads) WantedOf(notebook uuid.UUID, pages []uuid.UUID) *LintBatches[LintEdge] {
+	ids := slices.Clone(pages)
+	for i, id := range ids {
+		if i > 0 && bytes.Compare(ids[i-1][:], id[:]) >= 0 {
+			return &LintBatches[LintEdge]{err: errors.New("lint reads: area page IDs must be unique and sorted")}
+		}
+	}
+	var chunk []uuid.UUID
+	var cursor EdgePos
+	return r.edges(notebook, func(ctx context.Context, _ *EdgePos) ([]EdgeHead, error) {
+		for {
+			if len(chunk) == 0 {
+				if len(ids) == 0 {
+					return nil, nil
+				}
+				n := min(len(ids), LintReadRows)
+				chunk, ids = ids[:n], ids[n:]
+				cursor = EdgePos{Start: -1}
+			}
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			from, _ := slices.BinarySearchFunc(chunk, cursor.SourceID, func(a, b uuid.UUID) int { return bytes.Compare(a[:], b[:]) })
+			chunk = chunk[from:]
+			h, err := r.store.AreaWantedEdgeHeads(ctx, notebook, chunk, cursor, LintReadRows)
+			if err != nil {
+				return nil, err
+			}
+			if len(h) < LintReadRows {
+				chunk = nil
+			} else {
+				cursor = h[len(h)-1].EdgePos
+			}
+			if len(h) > 0 {
+				return h, nil
+			}
+		}
 	})
 }
 

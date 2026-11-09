@@ -27,7 +27,7 @@ func (s wikiSeeds) Seed(ctx context.Context, x wiki.Seed) ([]uuid.UUID, error) {
 		pages[i] = page.PageDraft{ID: p.ID, Title: p.Title, Content: p.Content, Facts: p.Parsed.Facts}
 	}
 	return s.tree.Seed(ctx, page.SeedSpec{NotebookID: x.NotebookID, At: x.At, Client: page.Client(x.Client),
-		Message: &x.Message, Pages: pages})
+		Message: &x.Message, Pages: pages, Upgrade: x.Upgrade})
 }
 
 func (s wikiSeeds) Parse(content string) (wiki.Parsed, error) {
@@ -45,4 +45,14 @@ type wikiTemplate struct {
 func (t wikiTemplate) NotebookCreated(ctx context.Context, c notebook.NotebookCreation) (uuid.UUID, error) {
 	return t.template.NotebookCreated(ctx, wiki.Creation{NotebookID: c.NotebookID, Mode: wiki.Mode(c.Mode),
 		SourceRootID: c.SourceRootID, Locale: wiki.Locale(c.Locale), Client: c.Client, At: c.At})
+}
+
+// wikiNotebookDeletion is the upgrades' part in a notebook's deletion as
+// the notebook module calls it (M11/P1 design 3.15).
+type wikiNotebookDeletion struct {
+	wiki wiki.NotebookDeletion
+}
+
+func (d wikiNotebookDeletion) NotebookDeleted(ctx context.Context, x notebook.NotebookDeletion) error {
+	return d.wiki.NotebooksDeleted(ctx, x.NotebookIDs, x.By, x.At)
 }

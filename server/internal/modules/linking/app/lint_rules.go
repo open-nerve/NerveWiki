@@ -24,9 +24,10 @@ func NewRules(reads *LintReads, store LintRuleStore, assets AssetSizes) *Rules {
 }
 
 type lintPlan struct {
-	rules []domain.Rule
-	after *domain.Position
-	limit int
+	rules  []domain.Rule
+	after  *domain.Position
+	limit  int
+	byPage bool
 }
 
 func lintCopyQuery(q RuleQuery) RuleQuery {
@@ -40,6 +41,9 @@ func lintCopyQuery(q RuleQuery) RuleQuery {
 
 func lintQuery(q RuleQuery, s *ReadScope) (lintPlan, error) {
 	allowed := domain.ApplicableRules(s.mode)
+	if q.WantedByPage && (q.Rule == nil || *q.Rule != domain.Wanted) {
+		return lintPlan{}, errLintQuery
+	}
 	if q.Rule == nil {
 		if q.After != nil || q.Limit != 0 {
 			return lintPlan{}, errLintQuery
@@ -63,7 +67,7 @@ func lintQuery(q RuleQuery, s *ReadScope) (lintPlan, error) {
 			q.After = nil
 		}
 	}
-	return lintPlan{rules: []domain.Rule{*q.Rule}, after: q.After, limit: limit}, nil
+	return lintPlan{rules: []domain.Rule{*q.Rule}, after: q.After, limit: limit, byPage: q.WantedByPage}, nil
 }
 
 // Prepare completes every requested count/page before publishing a result.
@@ -112,7 +116,10 @@ func (r *Rules) Prepare(ctx context.Context, input ReadInput, query RuleQuery) (
 		started := time.Now()
 		switch rule {
 		case domain.Wanted:
-			result, err = r.prepareWanted(ctx, scope, plan)
+			result, out.wantedByPage, err = r.prepareWanted(ctx, scope, plan)
+			if err == nil && plan.byPage && scope.mode == domain.ModeLLM {
+				err = r.prepareAreaWanted(ctx, scope, out.wantedByPage)
+			}
 		case domain.Ambiguous:
 			result, err = r.prepareAmbiguous(ctx, scope, plan)
 		case domain.InvalidSources:

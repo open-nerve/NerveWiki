@@ -1189,6 +1189,11 @@ func (f *fakeStore) QueueSearch(ctx context.Context, notebookID uuid.UUID, ids [
 	return nil
 }
 
+func (f *fakeStore) DeleteNotebooksUpgradeNodes(ctx context.Context, _ []uuid.UUID) error {
+	f.record(ctx, "DeleteNotebooksUpgradeNodes")
+	return nil
+}
+
 func (f *fakeStore) DeleteNotebookSessions(ctx context.Context, ids []uuid.UUID) ([]app.EditSession, error) {
 	f.record(ctx, "DeleteNotebookSessions")
 	var out []app.EditSession

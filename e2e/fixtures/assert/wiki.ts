@@ -1,0 +1,54 @@
+import type { Upgrade } from "@nervewiki/api-client";
+import { expect } from "@playwright/test";
+
+import type { Database } from "../db";
+
+// Database assertions of the upgrade stories (M11/P1 design 5): the wiki
+// module's row of an upgrade and its notebook's columns. The times are
+// compared in SQL, to the microsecond.
+
+/**
+ * notebook_upgrades, notebooks: upgrade's row is as the API answered it, its state, ending, rollback's job, source
+ * root, the pages its start wrote and its baseline's three numbers, started by its initiator at its time; while it is
+ * under way its notebook's four columns name it, its initiator and its time.
+ */
+export async function expectUpgrade(db: Database, upgrade: Upgrade): Promise<void> {
+  const rows = await db.query(
+    `SELECT u.notebook_id, u.state, u.ending, u.rollback_job_id, u.source_root_id,
+            ARRAY(SELECT s.x FROM unnest(ARRAY[CASE WHEN u.seeded_root THEN u.source_root_id END, u.seeded_agents_id])
+                    WITH ORDINALITY AS s(x, o) WHERE s.x IS NOT NULL ORDER BY s.o)::text[] AS seeded,
+            u.baseline_nodes, u.baseline_pages, u.baseline_wanted, u.created_by_id,
+            u.created_at = $2::timestamptz AS at_answer,
+            n.upgrade_id IS NOT DISTINCT FROM CASE WHEN u.state IN ('upgrading', 'reviewing', 'rolling_back') THEN u.id END
+              AND n.upgrade_state IS NOT DISTINCT FROM CASE WHEN n.upgrade_id = u.id THEN u.state END
+              AND n.upgrade_by_id IS NOT DISTINCT FROM CASE WHEN n.upgrade_id = u.id THEN u.created_by_id END
+              AND n.upgrade_at IS NOT DISTINCT FROM CASE WHEN n.upgrade_id = u.id THEN u.created_at END AS notebook_names_it
+       FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id WHERE u.id = $1`,
+    [upgrade.id, upgrade.started_at]
+  );
+  expect(rows).toEqual([
+    {
+      notebook_id: upgrade.notebook_id,
+      state: upgrade.state,
+      ending: upgrade.ending,
+      rollback_job_id: upgrade.rollback_job_id,
+      source_root_id: upgrade.source_root_id,
+      seeded: upgrade.seeded_page_ids,
+      baseline_nodes: upgrade.baseline.nodes,
+      baseline_pages: upgrade.baseline.pages,
+      baseline_wanted: upgrade.baseline.wanted,
+      created_by_id: upgrade.started_by.user_id,
+      at_answer: true,
+      notebook_names_it: true,
+    },
+  ]);
+}
+
+/** notebook_upgrades: the upgrades of the notebook id, under way or ended, by state. */
+export async function upgradesOf(db: Database, id: string): Promise<string[]> {
+  const rows = await db.query<{ state: string }>(
+    "SELECT state FROM notebook_upgrades WHERE notebook_id = $1 ORDER BY created_at, id",
+    [id]
+  );
+  return rows.map((row) => row.state);
+}

@@ -52,7 +52,8 @@ import (
 // title key is reserved for its virtual files; a source hash missing or wrong
 // on a live eligible descendant, or left on a root, empty page, ordinary
 // notebook, deleted node or outside the source area (M10/P2 design 3.7).
-// Missing eligible page or attachment metadata is a violation too.
+// Missing eligible page or attachment metadata is a violation too; and
+// the rows of an upgrade under way (upgradeRules, M11/P1 design 3.15).
 // The links' invariant and
 // the search's (checkSearch, M8/P5 design 3.10) are checked with it.
 func checkPages(t *testing.T, pool *pgxpool.Pool) {
@@ -150,6 +151,11 @@ func pageViolationsAt(t testing.TB, pool *pgxpool.Pool, before *time.Time) []str
 			WHERE n.mode = 'llm_wiki' AND n.deleted_at IS NULL AND x.deleted_at IS NULL AND x.parent_id IS NULL
 				AND x.name_key IN ('index', 'log', 'index.md', 'log.md')`,
 	}
+	// A migration fixture checks a database it took back below 00057
+	// (TestIngestMigrationCostsLongHistory at 53): it has no upgrade.
+	if count(t, pool, "SELECT (to_regclass('notebook_upgrades') IS NOT NULL)::int") == 1 {
+		maps.Copy(rules, upgradeRules())
+	}
 	var found []string
 	for _, what := range slices.Sorted(maps.Keys(rules)) {
 		if n := count(t, pool, rules[what]); n != 0 {
@@ -157,6 +163,49 @@ func pageViolationsAt(t testing.TB, pool *pgxpool.Pool, before *time.Time) []str
 		}
 	}
 	return append(found, ingestViolations(t, pool, before)...)
+}
+
+// The rules of an upgrade under way (M11/P1 design 3.15), of live
+// notebooks alone: a notebook being upgraded has its upgrade's row under
+// way, of the same id, state and initiator, and one not being upgraded
+// none; the baseline's rows are its counts; the baseline's and the
+// protected rows are of their notebook's upgrade under way; the source
+// root proposed, upgrading or reviewing, is a live page of the notebook
+// (a rollback first deletes what the start wrote, raw among it); a seeded
+// AGENTS is the notebook's; an LLM Wiki is not upgraded (00055's check
+// refuses it too).
+const (
+	upgradeRowGap      = "live notebooks being upgraded without their upgrade's row"
+	upgradeRowExtra    = "live notebooks not being upgraded with an upgrade's row under way"
+	upgradeBaselineGap = "upgrades under way whose baseline rows are not their counts"
+	upgradeRowsOfNone  = "upgrade rows not of their live notebook's upgrade under way"
+	upgradeRootGap     = "upgrades upgrading or reviewing whose source root is no live page of their notebook"
+	upgradeAgentsGap   = "upgrades whose seeded AGENTS is another notebook's"
+	upgradeOfLLMWiki   = "live LLM Wikis being upgraded"
+)
+
+func upgradeRules() map[string]string {
+	return map[string]string{
+		upgradeRowGap: `SELECT count(*) FROM notebooks n WHERE n.deleted_at IS NULL AND n.upgrade_id IS NOT NULL
+			AND NOT EXISTS (SELECT 1 FROM notebook_upgrades u WHERE u.id = n.upgrade_id AND u.notebook_id = n.id
+				AND u.state = n.upgrade_state AND u.created_by_id = n.upgrade_by_id AND u.deleted_at IS NULL)`,
+		upgradeRowExtra: `SELECT count(*) FROM notebooks n WHERE n.deleted_at IS NULL AND n.upgrade_id IS NULL
+			AND EXISTS (SELECT 1 FROM notebook_upgrades u WHERE u.notebook_id = n.id AND u.deleted_at IS NULL
+				AND u.state IN ('upgrading', 'reviewing', 'rolling_back'))`,
+		upgradeBaselineGap: `SELECT count(*) FROM notebooks n JOIN notebook_upgrades u ON u.id = n.upgrade_id
+			WHERE n.deleted_at IS NULL
+				AND ((SELECT count(*) FROM upgrade_nodes x WHERE x.upgrade_id = u.id AND x.baseline) <> u.baseline_nodes
+				OR (SELECT count(*) FROM upgrade_nodes x WHERE x.upgrade_id = u.id AND x.baseline AND x.kind = 'page') <> u.baseline_pages)`,
+		upgradeRowsOfNone: `SELECT count(*) FROM upgrade_nodes x JOIN notebooks n ON n.id = x.notebook_id
+			WHERE n.deleted_at IS NULL AND n.upgrade_id IS DISTINCT FROM x.upgrade_id`,
+		upgradeRootGap: `SELECT count(*) FROM notebooks n JOIN notebook_upgrades u ON u.id = n.upgrade_id
+			WHERE n.deleted_at IS NULL AND u.state IN ('upgrading', 'reviewing') AND NOT EXISTS (SELECT 1 FROM nodes r
+				WHERE r.id = u.source_root_id AND r.notebook_id = n.id AND r.kind = 'page' AND r.deleted_at IS NULL)`,
+		upgradeAgentsGap: `SELECT count(*) FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id
+			WHERE n.deleted_at IS NULL AND u.deleted_at IS NULL AND u.seeded_agents_id IS NOT NULL
+				AND NOT EXISTS (SELECT 1 FROM nodes a WHERE a.id = u.seeded_agents_id AND a.notebook_id = n.id)`,
+		upgradeOfLLMWiki: `SELECT count(*) FROM notebooks WHERE deleted_at IS NULL AND mode = 'llm_wiki' AND upgrade_id IS NOT NULL`,
+	}
 }
 
 // hasLLMWikiGap reports whether violations hold llmWikiGap's sentence.

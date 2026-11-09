@@ -202,7 +202,8 @@ export async function expectRelocated(
 
 /**
  * What a changeset holds, as expectChangesetOf checks it: its client and author, its items' nodes, its versions' pages;
- * and, when given, its message (null for none) and kind (M9/P3 design 4.1).
+ * and, when given, its message (null for none) and kind (M9/P3 design 4.1), and the upgrade it was written in (null
+ * for none; M11/P1 design 5).
  */
 export interface ChangesetOf {
   client: string;
@@ -211,13 +212,14 @@ export interface ChangesetOf {
   versions: string[];
   message?: string | null;
   kind?: string;
+  upgradeId?: string | null;
 }
 
 /**
  * changesets, changeset_items, page_revisions: the changeset id is of want's client by its author, and holds an item of
  * exactly want's items and a version of exactly its versions, in any order: what one MCP write or move did, the
- * parents it created and the pages whose links it wrote again among them; of want's message and kind when it gives
- * them.
+ * parents it created and the pages whose links it wrote again among them; of want's message, kind and upgrade when it
+ * gives them.
  */
 export async function expectChangesetOf(db: Database, id: string, want: ChangesetOf): Promise<void> {
   const rows = await db.query<{
@@ -227,16 +229,19 @@ export async function expectChangesetOf(db: Database, id: string, want: Changese
     versions: string[];
     message: string | null;
     kind: string;
+    upgradeId: string | null;
   }>(
     `SELECT s.client, s.created_by_id AS "byId",
             ARRAY(SELECT i.node_id::text FROM changeset_items i WHERE i.changeset_id = s.id ORDER BY i.node_id::text) AS items,
             ARRAY(SELECT r.node_id::text FROM page_revisions r WHERE r.changeset_id = s.id ORDER BY r.node_id::text) AS versions,
-            s.message, s.kind
+            s.message, s.kind, s.upgrade_id AS "upgradeId"
        FROM changesets s WHERE s.id = $1`,
     [id]
   );
-  // The message and the kind are compared when want gives them.
-  const compared = (changeset: Omit<(typeof rows)[number], "message" | "kind"> & Partial<(typeof rows)[number]>) => {
+  // The message, the kind and the upgrade are compared when want gives them.
+  const compared = (
+    changeset: Omit<(typeof rows)[number], "message" | "kind" | "upgradeId"> & Partial<(typeof rows)[number]>
+  ) => {
     const out: Record<string, unknown> = {
       client: changeset.client,
       byId: changeset.byId,
@@ -249,11 +254,37 @@ export async function expectChangesetOf(db: Database, id: string, want: Changese
     if (want.kind !== undefined) {
       out.kind = changeset.kind;
     }
+    if (want.upgradeId !== undefined) {
+      out.upgradeId = changeset.upgradeId;
+    }
     return out;
   };
   expect(rows.map(compared)).toEqual([
     compared({ ...want, items: want.items.toSorted(), versions: want.versions.toSorted() }),
   ]);
+}
+
+/**
+ * upgrade_nodes: the upgrade upgradeId has a row of its baseline for each of want's baseline, the nodes alive in its
+ * notebook as it started, and a row not of it for each of want's protected, the source root its start wrote (M11/P1
+ * design 5); in any order.
+ */
+export async function expectBaseline(
+  db: Database,
+  upgradeId: string,
+  want: { baseline: string[]; protected: string[] }
+): Promise<void> {
+  const rows = await db.query<{ baseline: boolean; nodes: string[] }>(
+    `SELECT baseline, array_agg(node_id::text ORDER BY node_id::text) AS nodes
+       FROM upgrade_nodes WHERE upgrade_id = $1 GROUP BY baseline ORDER BY baseline DESC`,
+    [upgradeId]
+  );
+  expect(rows).toEqual(
+    [
+      { baseline: true, nodes: want.baseline.toSorted() },
+      { baseline: false, nodes: want.protected.toSorted() },
+    ].filter((row) => row.nodes.length > 0)
+  );
 }
 
 /**

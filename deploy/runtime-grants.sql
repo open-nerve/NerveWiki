@@ -18,7 +18,7 @@ GRANT USAGE ON SCHEMA public TO nervewiki_runtime;
 GRANT SELECT, INSERT, UPDATE, DELETE ON users, auth_sessions, api_tokens, workspaces, workspace_members, workspace_invitations,
     notebooks, notebook_members, notebook_audit_events, nodes, page_contents, changesets, changeset_items, changeset_sources,
     page_revisions, edit_sessions, indexed_pages, page_links, page_tags, page_properties, page_aliases, page_search,
-    page_search_queue, page_search_tags, asset_blobs, transfer_jobs, upgrade_nodes TO nervewiki_runtime;
+    page_search_queue, page_search_tags, asset_blobs, transfer_jobs, upgrade_nodes, notebook_upgrades TO nervewiki_runtime;
 -- The search's queue takes each queueing's version from its sequence (M8/P5 design 3.2).
 GRANT USAGE ON SEQUENCE page_search_queue_version_seq, page_search_tags_seq TO nervewiki_runtime;
 

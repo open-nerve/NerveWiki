@@ -293,9 +293,9 @@ type NotebookDeleted struct {
 // NotebookDeletion is the module's registrant of the notebook module's
 // deletion (M4/P1 design 3.9): the notebooks' pages not deleted, what
 // follows them and the notebooks' changesets, at the deletion's time, the
-// nodes it deleted queued for the search's job (M8/P5 design 3.4), and
+// nodes it deleted queued for the search's job (M8/P5 design 3.4),
 // their edit sessions, whose subscribers follow the alive ones' end (M4/P4
-// design 3.7). It runs in the deletion's transaction, which holds the
+// design 3.7), and their upgrades' rows (M11/P1 design 3.12). It runs in the deletion's transaction, which holds the
 // notebooks' rows FOR NO KEY UPDATE: no page write of them runs beside it.
 type NotebookDeletion struct {
 	Pages       NotebookPages
@@ -312,6 +312,9 @@ func (n NotebookDeletion) NotebookDeleted(ctx context.Context, d NotebookDeleted
 	}
 	sessions, err := n.Pages.DeleteNotebookSessions(ctx, d.NotebookIDs)
 	if err != nil {
+		return err
+	}
+	if err := n.Pages.DeleteNotebooksUpgradeNodes(ctx, d.NotebookIDs); err != nil {
 		return err
 	}
 	return tellEnded(ctx, n.Subscribers, d.WorkspaceID, sessions, domain.EndedWithPage, d.By, d.At)

@@ -29,7 +29,7 @@ tags:
   - name: linking
     description: The link index's reads, backlinks, properties, tags and link targets.
   - name: wiki
-    description: A notebook's health checks, counts and paged findings.
+    description: A notebook's health checks, counts and paged findings, and its upgrade.
   - name: events
     description: The stream of the events of what the caller sees.
   - name: asset
@@ -165,6 +165,8 @@ paths:
     $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1lint"
   /api/v0/notebooks/{notebook_id}/lint/{rule}:
     $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1lint~1{rule}"
+  /api/v0/notebooks/{notebook_id}/upgrade:
+    $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1upgrade"
   /api/v0/events:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
   /api/v0/notebooks/{notebook_id}/assets:

@@ -236,6 +236,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
+	lintTimeout := min(10*time.Second, cfg.Server.RequestTimeout/2)
 	wikiDeps := wiki.Deps{
 		Notebooks: wikiLintNotebooks{notebooks: notebook.NewNotebooks(pool)},
 		Sources:   wikiSources{sources: page.NewSourceArea(pool)},
@@ -246,7 +247,22 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		Snapshots:  postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Authorizer: authorizer, Clock: clock.System{}, Logger: logger,
 		MaxLintRuns: max(1, int(cfg.Database.MaxConns/2)/2),
-		LintTimeout: min(10*time.Second, cfg.Server.RequestTimeout/2),
+		LintTimeout: lintTimeout,
+		// An upgrade's start and read (M11/P1 design 3.15): the start's
+		// transaction has a deadline of its own, three quarters of the
+		// request's, the rest for the COMMIT, the ANALYZE and a 503
+		// (decisions 227, 232): lint's half did not hold the start of
+		// 100,000 pages on CI's runners (the S2 record); the mode's
+		// subscribers are the downgrade's.
+		Pool: pool, Tx: postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
+		Workspaces:    workspace.NewWorkspaces(pool),
+		UpgradeStates: wikiUpgradeStates{notebook.NewUpgradeStates(pool, notebookRegistrants(pool).modeSubscribers)},
+		Upgrades:      wikiUpgradePages{page.NewUpgrades(pool)},
+		Writing:       transfer.NewWritingJobs(pool),
+		Names:         displayNames{identity.NewDirectory(pool)},
+		UpgradeAction: notebook.ActionChangeMode,
+		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,
+		Template:      template,
 	}
 	if w.wiki != nil {
 		w.wiki(&wikiDeps)

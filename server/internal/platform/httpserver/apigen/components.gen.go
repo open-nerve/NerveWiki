@@ -151,7 +151,7 @@ type Problem struct {
 	// Lock The edit lock page.locked names: the page locked and who holds it (the caller themself when they hold it elsewhere). No other code carries it.
 	Lock *PageLock `json:"lock,omitempty"`
 
-	// Locks The edit locks linking.pages_locked names, one a page: each page whose links a rename or move would write again and who edits it (the caller themself when they edit it). No other code carries it.
+	// Locks The edit locks linking.pages_locked and wiki.upgrade_pages_locked name, one a page: each page whose links a rename or move would write again, or that an upgrade could not start beside, and who edits it (the caller themself when they edit it); at most 100, the detail saying how many there are. No other code carries it.
 	Locks *[]PageLock `json:"locks,omitempty"`
 
 	// RootID The root of the trash item a node was deleted with: page.not_trash_root names it, the item to restore. No other code carries it.

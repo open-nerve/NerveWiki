@@ -131,6 +131,36 @@ func (r *LintReads) WantedEdgeHeads(ctx context.Context, notebook uuid.UUID, exc
 	return out, nil
 }
 
+// AreaWantedEdgeHeads reads an area chunk's wanted heads past the cursor,
+// the pages driving the primary key (M11 design 4.7 gate 6's second pass).
+// The caller found them current; only Edges rechecks the notebook.
+func (r *LintReads) AreaWantedEdgeHeads(ctx context.Context, notebook uuid.UUID, pages []uuid.UUID, after app.EdgePos, take int) ([]app.EdgeHead, error) {
+	if take < 1 || take > app.LintReadRows {
+		return nil, errors.New("lint reads: take must be between 1 and 512")
+	}
+	if after.Start < -1 {
+		return nil, errors.New("lint reads: cursor before a page's first position")
+	}
+	if err := lintIDs(pages); err != nil {
+		return nil, err
+	}
+	if len(pages) == 0 {
+		return nil, nil
+	}
+	rows, err := r.store.planned(ctx).LintAreaWantedEdgeHeads(ctx, gen.LintAreaWantedEdgeHeadsParams{PageIds: pages, AfterSource: after.SourceID, AfterStart: after.Start, Take: int32(take)})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]app.EdgeHead, len(rows))
+	for i, v := range rows {
+		out[i] = app.EdgeHead{EdgePos: app.EdgePos{SourceID: v.SourceID, Start: v.RangeStart}, TargetBytes: v.TargetBytes}
+		if v.TargetBytes < 1 || v.TargetBytes > r.maxPayloadBytes {
+			return nil, fmt.Errorf("lint reads: target exceeds derived bound in notebook %s source %s", notebook, v.SourceID)
+		}
+	}
+	return out, nil
+}
+
 // AmbiguousEdgeHeads reads only short heads, with a separate initial statement.
 func (r *LintReads) AmbiguousEdgeHeads(ctx context.Context, notebook uuid.UUID, excluded []uuid.UUID, after *app.EdgePos, take int) ([]app.EdgeHead, error) {
 	if err := lintTake(take, after); err != nil {

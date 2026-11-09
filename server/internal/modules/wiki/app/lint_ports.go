@@ -79,10 +79,14 @@ type ReadInput struct {
 	SourceIDs     []uuid.UUID
 }
 
+// RuleQuery's WantedByPage, with the wanted rule only, also counts each
+// page's distinct wanted targets, an LLM contract's area included: an
+// upgrade's start records them (M11 design 4.7 gate 6).
 type RuleQuery struct {
-	Rule  *domain.LintRule
-	After *domain.LintPosition
-	Limit int
+	Rule         *domain.LintRule
+	After        *domain.LintPosition
+	Limit        int
+	WantedByPage bool
 }
 
 type RuleTiming struct {
@@ -102,6 +106,9 @@ type PreparedRules interface {
 	RuleCount(context.Context, domain.LintRule) (domain.LintCount, error)
 	RuleItems(context.Context, domain.LintRule) ([]domain.LintItem, bool, error)
 	Timings() PreparationTimings
+	// WantedByPage is nil unless the query asked for it; a page absent
+	// from it has no wanted target.
+	WantedByPage() map[uuid.UUID]int
 }
 
 type Rules interface {

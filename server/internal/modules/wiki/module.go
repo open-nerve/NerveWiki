@@ -59,5 +59,5 @@ func Actions() []shared.Action { return domain.Actions() }
 
 // Register mounts the HTTP routes using this module's shared lint runtime.
 func (m *Module) Register(router *httpserver.Router, api *httpserver.API) {
-	httpadapter.Register(router, api, m)
+	httpadapter.Register(router, api, m, m)
 }

@@ -28,6 +28,8 @@ func TestUpgradeGuardrails(t *testing.T) {
 	upgrade := tm.upgrade(t, nb, "alice", "upgrading")
 	tm.exec(t, `UPDATE upgrade_nodes SET baseline = false, parent_id = NULL, name = NULL, sort_order = NULL, revision = NULL,
 		content_hash = NULL, byte_size = NULL, wanted = NULL, accepted_hash = NULL WHERE upgrade_id = $1 AND node_id = $2`, upgrade, raw)
+	tm.exec(t, `UPDATE notebook_upgrades SET seeded_root = true, source_root_id = $2, baseline_nodes = baseline_nodes - 1,
+		baseline_pages = baseline_pages - 1 WHERE id = $1`, upgrade, raw)
 	agent := tm.agent(t, "alice", nb)
 	alive := func(names ...string) []string {
 		return queryStrings(t, tm.pool, `SELECT name FROM nodes WHERE notebook_id = $1 AND deleted_at IS NULL AND name = ANY($2)

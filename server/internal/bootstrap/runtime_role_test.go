@@ -123,7 +123,8 @@ func call(t *testing.T, method, url, token, body string, want int) []byte {
 // and rebuilds the link index; an export runs, enqueued with its job's row
 // and read in its snapshot, and its archive downloads; an import runs, its
 // archive uploaded, its nodes written, the statistics of the tables it
-// fills refreshed; River's daily reindex goes through, as River runs it,
+// fills refreshed; an upgrade starts, its baseline's statistics refreshed;
+// River's daily reindex goes through, as River runs it,
 // index by index. Nothing logs a permission denied, the shutdown included.
 func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	roles := newSplitRoles(t)
@@ -333,6 +334,29 @@ func TestTheRuntimeRoleServesWithTheGrantsFile(t *testing.T) {
 	}
 	if got := analyzed(t, roles.owner, importAnalyzes()); len(got) != len(importAnalyzes()) {
 		t.Errorf("analyzed as %s %q, want %q", roles.serverName, got, importAnalyzes())
+	}
+
+	// An upgrade's start (M11/P1 design 3.15): its writes, the template's
+	// pages among them, and its baseline's statistics, refreshed after the
+	// commit, which takes MAINTAIN on upgrade_nodes.
+	// The notebook is open to the workspace as editor: its admin's row.
+	if _, err := roles.owner.Exec(ctx, `INSERT INTO notebook_members (id, notebook_id, user_id, role, created_by_id, updated_by_id,
+			created_at, updated_at) SELECT gen_random_uuid(), id, created_by_id, 'admin', created_by_id, created_by_id, now(), now()
+		FROM notebooks WHERE id = $1`, notes); err != nil {
+		t.Fatal(err)
+	}
+	var upgraded struct {
+		State string `json:"state"`
+	}
+	if err := json.Unmarshal(call(t, http.MethodPost, base+"/api/v0/notebooks/"+notes+"/upgrade", admin.AccessToken, `{}`, http.StatusOK),
+		&upgraded); err != nil || upgraded.State != "upgrading" {
+		t.Fatalf("an upgrade's start as %s = %+v, %v", roles.serverName, upgraded, err)
+	}
+	if got := analyzed(t, roles.owner, []string{"upgrade_nodes"}); len(got) != 1 {
+		t.Errorf("upgrade_nodes not analyzed as %s", roles.serverName)
+	}
+	if strings.Contains(logs.String(), "upgrade baseline not analyzed") {
+		t.Errorf("the start as %s could not analyze its baseline:\n%s", roles.serverName, logs.String())
 	}
 
 	for _, index := range river.ReindexerIndexNamesDefault() {

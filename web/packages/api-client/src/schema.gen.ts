@@ -1509,6 +1509,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * The notebook's upgrade to an LLM Wiki under way, for its admins.
+         * @description The notebook's upgrade under way, upgrading, reviewing or rolling back, with who started it and when, the source root it proposes, the pages its start wrote and its baseline. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade under way is wiki.upgrade_not_found.
+         */
+        get: operations["getUpgrade"];
+        put?: never;
+        /**
+         * Starts upgrading a standard notebook to an LLM Wiki: records its baseline, writes the AGENTS and raw pages it lacks, and freezes its content but for its initiator's MCP writes.
+         * @description Its admins can (forbidden). The template's language is template_locale, en when absent. A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; an LLM Wiki is notebook.already_llm_wiki; one with an upgrade under way, another admin's start first among them, is notebook.upgrading; one with an import, a restore or an undo queued or running is transfer.busy; one with pages being edited is wiki.upgrade_pages_locked, naming them; one whose root holds an attachment titled raw or AGENTS is wiki.upgrade_title_taken. A start that finds no capacity to compute the baseline, or that runs out of time, is server_busy, with Retry-After: 1; one whose link index is out of date is wiki.upgrade_stale_index. These checks occur in that order. A page raw at the root becomes the proposed source root.
+         */
+        post: operations["startUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -1863,7 +1890,7 @@ export interface components {
             errors?: components["schemas"]["FieldError"][];
             /** @description The edit lock page.locked names: the page locked and who holds it (the caller themself when they hold it elsewhere). No other code carries it. */
             lock?: components["schemas"]["PageLock"];
-            /** @description The edit locks linking.pages_locked names, one a page: each page whose links a rename or move would write again and who edits it (the caller themself when they edit it). No other code carries it. */
+            /** @description The edit locks linking.pages_locked and wiki.upgrade_pages_locked name, one a page: each page whose links a rename or move would write again, or that an upgrade could not start beside, and who edits it (the caller themself when they edit it); at most 100, the detail saying how many there are. No other code carries it. */
             locks?: components["schemas"]["PageLock"][];
             /** @description Who ended the caller's edit session: page.edit_session_unlocked names the notebook's admin who unlocked it. No other code carries it. */
             ended_by?: {
@@ -3235,6 +3262,74 @@ export interface components {
             data: components["schemas"]["LintItem"][];
             next_cursor: components["schemas"]["LintNextCursor"];
         };
+        /**
+         * @description Where an upgrade is: upgrading while its initiator's agent rearranges the notebook, reviewing once submitted, rolling_back while the notebook is put back as it was when it started; approved and rolled_back once it ended.
+         * @enum {string}
+         */
+        UpgradeState: "upgrading" | "reviewing" | "rolling_back" | "approved" | "rolled_back";
+        /** @description The notebook as the upgrade started, before the pages its start wrote. */
+        UpgradeBaseline: {
+            /** @description Its pages and attachments. */
+            nodes: number;
+            pages: number;
+            /** @description The distinct pages its links lead to that do not exist yet. */
+            wanted: components["schemas"]["LintCount"];
+        };
+        /**
+         * @description Why an upgrade rolls back, abandoned by an admin or rejected at its review.
+         * @enum {string}
+         */
+        UpgradeEnding: "abandoned" | "rejected";
+        /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. */
+        UpgradeRollbackLeft: {
+            nodes: number;
+            pages: number;
+            created: number;
+        };
+        /** @description A notebook's upgrade to an LLM Wiki, as its admins read it. */
+        Upgrade: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            state: components["schemas"]["UpgradeState"];
+            started_by: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            started_at: string;
+            /**
+             * Format: uuid
+             * @description The source root the upgrade proposes, a page at the root titled raw.
+             */
+            source_root_id: string;
+            /** @description The pages the start wrote, raw then AGENTS, those the notebook lacked. */
+            seeded_page_ids: string[];
+            baseline: components["schemas"]["UpgradeBaseline"];
+            /** @description Who submitted it for review; null before. */
+            submitted_by: components["schemas"]["UserRef"] | null;
+            /**
+             * Format: date-time
+             * @description When it was submitted for review; null before.
+             */
+            submitted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The job that rolls it back; null when it does not roll back.
+             */
+            rollback_job_id: string | null;
+            /** @description Why it rolls back; null when it does not. */
+            ending: components["schemas"]["UpgradeEnding"] | null;
+            /** @description Whether its rollback put everything back, once the rollback ended; null before. */
+            rollback_complete: boolean | null;
+            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. null otherwise. */
+            rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
+        };
+        UpgradeStart: {
+            /**
+             * @description The language of the pages the start writes, AGENTS and raw, when the notebook lacks them; en when absent.
+             * @enum {string}
+             */
+            template_locale?: "zh-CN" | "en";
+        };
         /** @description The data of hello, the first frame. */
         EventHello: {
             /** @description Seconds between two heartbeats. */
@@ -3804,6 +3899,12 @@ export type LintRuleSummary = components['schemas']['LintRuleSummary'];
 export type LintSummary = components['schemas']['LintSummary'];
 export type LintItem = components['schemas']['LintItem'];
 export type LintPage = components['schemas']['LintPage'];
+export type UpgradeState = components['schemas']['UpgradeState'];
+export type UpgradeBaseline = components['schemas']['UpgradeBaseline'];
+export type UpgradeEnding = components['schemas']['UpgradeEnding'];
+export type UpgradeRollbackLeft = components['schemas']['UpgradeRollbackLeft'];
+export type Upgrade = components['schemas']['Upgrade'];
+export type UpgradeStart = components['schemas']['UpgradeStart'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
@@ -5853,6 +5954,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LintPage"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    getUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            default: components["responses"]["Problem"];
+        };
+    };
+    startUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpgradeStart"];
+            };
+        };
+        responses: {
+            /** @description The upgrade started. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
                 };
             };
             503: components["responses"]["Problem"];

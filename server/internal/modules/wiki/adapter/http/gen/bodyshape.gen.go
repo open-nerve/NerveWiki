@@ -10,8 +10,13 @@ import "github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/body
 // the strict handler decodes it.
 func BodyShapes() *bodyshape.Table {
 	return &bodyshape.Table{
-		Nodes:     []bodyshape.Node{},
-		Roots:     map[string]int{},
+		Nodes: []bodyshape.Node{
+			/* 0 */ {Types: bodyshape.Object, Extra: bodyshape.Closed, Items: bodyshape.Open, Props: map[string]int{"template_locale": 1}},
+			/* 1 */ {Types: bodyshape.String, Extra: bodyshape.Open, Items: bodyshape.Open},
+		},
+		Roots: map[string]int{
+			"POST /api/v0/notebooks/{notebook_id}/upgrade": 0,
+		},
 		MaxValues: bodyshape.MaxRESTValues,
 	}
 }

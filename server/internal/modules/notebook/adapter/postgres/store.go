@@ -251,3 +251,14 @@ func (s *Store) NotebookIDs(ctx context.Context) ([]uuid.UUID, error) {
 	}
 	return ids, nil
 }
+
+// StartUpgrade sets the notebook's upgrade to upgradeID, upgrading, by by
+// at at (M11 design 4.4 step 10), and answers how many rows it changed:
+// none for a notebook deleted, an LLM Wiki, or one with an upgrade.
+func (s *Store) StartUpgrade(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) (int64, error) {
+	n, err := s.queries(ctx).StartUpgrade(ctx, gen.StartUpgradeParams{ID: id, UpgradeID: upgradeID, By: by, Now: at})
+	if err != nil {
+		return 0, fmt.Errorf("start the notebook's upgrade: %w", err)
+	}
+	return n, nil
+}

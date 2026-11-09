@@ -152,8 +152,19 @@ func targetViolation(pattern, path, slug string, s seeded) string {
 	return ""
 }
 
+// coveredMatrixRows are the rows the coverage reads: the matrix's, and the
+// upgrade's, which run in the seventh shard's TestUpgradePermissionMatrix
+// (M11/P1 design 3.22).
+func coveredMatrixRows() []matrixRow {
+	rows := matrixRows()
+	for _, r := range upgradeMatrixRows() {
+		rows = append(rows, r.matrixRow)
+	}
+	return rows
+}
+
 func TestThePermissionMatrixCoversEveryOperation(t *testing.T) {
-	for _, v := range matrixViolations(apitest.Load(t).Operations(), matrixExempt(), matrixRows(), newSeeded().in(t)) {
+	for _, v := range matrixViolations(apitest.Load(t).Operations(), matrixExempt(), coveredMatrixRows(), newSeeded().in(t)) {
 		t.Error(v)
 	}
 }

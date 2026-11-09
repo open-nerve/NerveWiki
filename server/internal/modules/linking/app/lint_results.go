@@ -3,7 +3,9 @@ package app
 import (
 	"container/heap"
 	"context"
+	"maps"
 	"slices"
+	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 )
@@ -108,13 +110,23 @@ func lintCopyItems(in []domain.Item) []domain.Item {
 // Prepared is an immutable projection of exactly one preparation query.
 // Sources and D are never re-read by its projection methods.
 type Prepared struct {
-	stale   int64
-	results map[domain.Rule]preparedRule
-	timings PreparationTimings
+	stale        int64
+	results      map[domain.Rule]preparedRule
+	timings      PreparationTimings
+	wantedByPage map[uuid.UUID]int
 }
 
 // StalePages counts each old indexed page once, across all selected rules.
 func (p *Prepared) StalePages() int64 { return p.stale }
+
+// WantedByPage copies each page's count of distinct wanted targets, for a
+// query that asked for it, nil otherwise. A page absent from it has none.
+func (p *Prepared) WantedByPage() map[uuid.UUID]int {
+	if p == nil {
+		return nil
+	}
+	return maps.Clone(p.wantedByPage)
+}
 
 // RuleCount is a value copy. Rules not in the preparation are internal errors.
 func (p *Prepared) RuleCount(ctx context.Context, rule domain.Rule) (domain.Count, error) {

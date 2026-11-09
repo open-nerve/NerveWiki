@@ -11,6 +11,142 @@ import (
 	"uuid"
 )
 
+const analyzeUpgradeNodes = `-- name: AnalyzeUpgradeNodes :exec
+ANALYZE upgrade_nodes
+`
+
+// After an upgrade's start commits (M11 design 4.4 step 16): its baseline, up to 300,000 rows written at once, is
+// read at once by the guardrails and the gates.
+func (q *Queries) AnalyzeUpgradeNodes(ctx context.Context) error {
+	_, err := q.db.Exec(ctx, analyzeUpgradeNodes)
+	return err
+}
+
+const captureBaseline = `-- name: CaptureBaseline :one
+WITH captured AS (
+    INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+        content_hash, byte_size, wanted, accepted_hash)
+    SELECT $1, n.id, n.notebook_id, true, n.kind, n.parent_id, n.name, n.sort_order, c.revision,
+        c.content_hash, c.byte_size, CASE WHEN n.kind = 'page' THEN 0 END, c.content_hash
+    FROM nodes n
+    LEFT JOIN LATERAL (
+        SELECT c.revision, c.content_hash, c.byte_size FROM page_contents c
+        WHERE c.node_id = n.id AND c.deleted_at IS NULL
+        LIMIT 1
+    ) c ON true
+    WHERE n.notebook_id = $2 AND n.deleted_at IS NULL
+    RETURNING kind
+)
+SELECT count(*)::integer AS nodes, (count(*) FILTER (WHERE kind = 'page'))::integer AS pages FROM captured
+`
+
+type CaptureBaselineParams struct {
+	UpgradeID  uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type CaptureBaselineRow struct {
+	Nodes int32
+	Pages int32
+}
+
+// An upgrade's baseline (M11 design 4.4 step 11): a row for each node alive in the notebook, under the notebook's row
+// lock; a page's latest version, its hash also the one the guardrails accept, its wanted count 0 until step 13. The
+// notebook's nodes drive page_contents' primary key, one node at a time, so that the start reads this notebook's
+// rows and not the instance's (decision 240): the LIMIT 1 keeps the LATERAL from being pulled up into a join, which
+// may hash the whole table, and changes nothing, a node having one row of page_contents at most.
+func (q *Queries) CaptureBaseline(ctx context.Context, arg CaptureBaselineParams) (CaptureBaselineRow, error) {
+	row := q.db.QueryRow(ctx, captureBaseline, arg.UpgradeID, arg.NotebookID)
+	var i CaptureBaselineRow
+	err := row.Scan(&i.Nodes, &i.Pages)
+	return i, err
+}
+
+const deleteUpgradeNodesOfNotebooks = `-- name: DeleteUpgradeNodesOfNotebooks :exec
+DELETE FROM upgrade_nodes WHERE notebook_id = ANY($1::uuid[])
+`
+
+// The notebooks' deletion (M11/P1 design 3.12): their upgrades' baseline and protected rows go, by
+// upgrade_nodes_notebook_id_idx. The rows have no deleted_at: an upgrade's ending deletes them too.
+func (q *Queries) DeleteUpgradeNodesOfNotebooks(ctx context.Context, notebookIds []uuid.UUID) error {
+	_, err := q.db.Exec(ctx, deleteUpgradeNodesOfNotebooks, notebookIds)
+	return err
+}
+
+const protectSourceRoot = `-- name: ProtectSourceRoot :exec
+INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind)
+VALUES ($1, $2, $3, false, 'page')
+`
+
+type ProtectSourceRootParams struct {
+	UpgradeID  uuid.UUID
+	NodeID     uuid.UUID
+	NotebookID uuid.UUID
+}
+
+// The source root an upgrade's start created (M11 design 4.4 step 12): kept from a delete, not of the baseline.
+func (q *Queries) ProtectSourceRoot(ctx context.Context, arg ProtectSourceRootParams) error {
+	_, err := q.db.Exec(ctx, protectSourceRoot, arg.UpgradeID, arg.NodeID, arg.NotebookID)
+	return err
+}
+
+const rootNodesByKey = `-- name: RootNodesByKey :many
+SELECT id, kind, name_key FROM nodes
+WHERE notebook_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
+    AND name_key = ANY($2::text[])
+`
+
+type RootNodesByKeyParams struct {
+	NotebookID uuid.UUID
+	Keys       []string
+}
+
+type RootNodesByKeyRow struct {
+	ID      uuid.UUID
+	Kind    string
+	NameKey string
+}
+
+// The nodes alive at the notebook's root whose title keys are keys, by nodes_notebook_id_name_key_root_key.
+func (q *Queries) RootNodesByKey(ctx context.Context, arg RootNodesByKeyParams) ([]RootNodesByKeyRow, error) {
+	rows, err := q.db.Query(ctx, rootNodesByKey, arg.NotebookID, arg.Keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []RootNodesByKeyRow
+	for rows.Next() {
+		var i RootNodesByKeyRow
+		if err := rows.Scan(&i.ID, &i.Kind, &i.NameKey); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setBaselineWanted = `-- name: SetBaselineWanted :exec
+UPDATE upgrade_nodes u SET wanted = w.wanted
+FROM (SELECT unnest($2::uuid[]) AS node_id, unnest($3::integer[]) AS wanted) w
+WHERE u.upgrade_id = $1 AND u.node_id = w.node_id AND u.baseline AND u.kind = 'page'
+`
+
+type SetBaselineWantedParams struct {
+	UpgradeID uuid.UUID
+	NodeIds   []uuid.UUID
+	Wanted    []int32
+}
+
+// The distinct wanted targets each baseline page links to as the upgrade starts (M11 design 4.4 step 13), one
+// unnest a list in the select list as SetSourceHashes (sources.sql:46-54): sqlc parses no multi-argument unnest in FROM.
+func (q *Queries) SetBaselineWanted(ctx context.Context, arg SetBaselineWantedParams) error {
+	_, err := q.db.Exec(ctx, setBaselineWanted, arg.UpgradeID, arg.NodeIds, arg.Wanted)
+	return err
+}
+
 const upgradeProtected = `-- name: UpgradeProtected :many
 SELECT node_id FROM upgrade_nodes
 WHERE upgrade_id = $1 AND node_id = ANY($2::uuid[])

@@ -106,3 +106,17 @@ WHERE id IN (
     LIMIT sqlc.arg(batch)
     FOR UPDATE SKIP LOCKED
 );
+
+-- name: DeleteExpiredSessionsOfNotebook :execrows
+-- An upgrade's start's first look at the sessions (M11 design 4.4 step 7), under the notebook's row lock: the rows
+-- expired at now go, tombstones among them, as an opening's first step does for its page (DeleteExpiredSessionsOf),
+-- so that a heartbeat that read an earlier time finds no row to keep alive.
+DELETE FROM edit_sessions WHERE notebook_id = sqlc.arg(notebook_id) AND expires_at <= sqlc.arg(now);
+
+-- name: LiveSessionsOfNotebook :many
+-- The sessions alive at now in the notebook, the first 100 by page, and how many there are.
+SELECT node_id, user_id, count(*) OVER () AS total
+FROM edit_sessions
+WHERE notebook_id = sqlc.arg(notebook_id) AND ended_reason IS NULL AND expires_at > sqlc.arg(now)
+ORDER BY node_id, created_at, id
+LIMIT 100;

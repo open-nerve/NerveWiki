@@ -262,7 +262,7 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 534 个顶层（竞态构建，M11/P1 第六份让出 TestIngestBefore 之后）静态分配为 158/51/121/123/62/11/8（见第五份与第七份的说明）；各份双轮与指定 main pair 仍须实际核验。
+# 当前 541 个顶层（竞态构建，M11/P1/S2 之后）静态分配为 158/51/121/124/62/11/14（见第五份与第七份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 # M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），都以 TestUpgrade 起名。第三份的 [U-Z] 收得下它，所以第三份跳过它；
 # 第四份是补集，跳过第三份的模式时已跳过它；第一、二、五、六份的模式都不收它（TestUploading… 也不匹配 ^TestUpgrade）。
@@ -352,6 +352,8 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
 	@# M11/P1/S1：删除护栏的读，一万个节点的子树对着两次升级各十万行，四种统计与计划状态：自定义与通用的计划都只经 upgrade_nodes_pkey 读、两列都在索引条件里，中位数在本机的三倍（25 ms）之内；带 -v 打出中位数（P1 设计 7.1，决定 236）
 	cd server && go test -count=1 -v -run '^TestUpgradeProtectedReadsInTimeAtTheUnitsBound$$' ./internal/modules/page/adapter/postgres
+	@# M11/P1/S2：发起，5 万页、1.5 万页在 raw 里各带 10 条待建（10 万页在最慢的 runner 上过 4.5 s，照决定 232 进 M12 的移交）；upgrade_nodes 三种统计状态 × 自定义与通用的计划：先在发起的事务里核对 SetBaselineWanted 的计划只读 upgrade_nodes 一遍或逐个 id 经主键，再核对三次发起都答 200、中位数在本机两轮的三倍之内；带 -v 打出各段（P1 设计 7.1，决定 232、236）
+	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
 test-go-costs-3: ## 原成本命令第 21–32 条（CI 第三份；需要 Docker）
