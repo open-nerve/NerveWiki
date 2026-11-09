@@ -63,3 +63,26 @@ test("pagesLocked says nothing of a page the tree does not know, nor of another 
     )
   ).toBeUndefined();
 });
+
+test("pagesLocked says an upgrade cannot start while its pages are being edited, and names who edits each", () => {
+  const upgrade = new ApiError(409, {
+    status: 409,
+    code: "wiki.upgrade_pages_locked",
+    title: "Conflict",
+    locks: [
+      { page_id: "p2", user_id: "u-bob", display_name: "Bob" },
+      { page_id: "p4", user_id: "u-ada", display_name: "Ada" },
+    ],
+  });
+  expect(parts(pagesLocked(upgrade, t, "u-ada", titleOf))).toEqual([
+    "These pages are being edited, so the upgrade cannot start. Try again once their editors leave; a notebook admin can also release a lock.",
+    "Bob is editing “Linux”.",
+    "You are editing “Notes”.",
+  ]);
+  expect(parts(pagesLocked(upgrade, translator("zh-CN"), "u-ada", titleOf))).toEqual([
+    "这些页正在被编辑，升级不能开始。等他们退出编辑后再试；笔记本管理员也可以解除锁定。",
+    "Bob 正在编辑「Linux」。",
+    "你正在编辑「Notes」。",
+  ]);
+  expect(pagesLocked(upgrade, t, "u-ada", (id) => (id === "p2" ? "Linux" : undefined))).toBeUndefined();
+});

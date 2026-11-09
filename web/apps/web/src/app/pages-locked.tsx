@@ -1,14 +1,26 @@
 import type { ReactNode } from "react";
 
-import type { Translate } from "../i18n/i18n";
+import type { PlainKey, Translate } from "../i18n/i18n";
 import { ApiError } from "../services/api";
 
 /**
- * pagesLocked is what linking.pages_locked says of the pages it names (M6/P4
- * design 6): a rename or move writes their links again, and who edits each,
- * the page by its title, the account itself when me is theirs; undefined
- * for any other error, and for a page title does not know, which errorText
- * says in general.
+ * What each refusal that names the pages being edited says of them first:
+ * a rename or a move would write their links again (M6/P4 design 6); an
+ * upgrade cannot start while they are edited (M11/P1 design 4.4).
+ */
+const leads: Record<string, PlainKey> = {
+  "linking.pages_locked": "page.pagesLocked",
+  "wiki.upgrade_pages_locked": "upgrade.pagesLocked",
+};
+
+/**
+ * pagesLocked is what linking.pages_locked or wiki.upgrade_pages_locked
+ * says of the pages it names: why they stop the change, and who edits
+ * each, the page by its title, the account itself when me is theirs;
+ * undefined for any other error, and for a page title does not know,
+ * which errorText says in general. An upgrade's start names 100 pages at
+ * most; the server's detail counts them all, in its own words, which the
+ * page does not show.
  */
 export function pagesLocked(
   error: unknown,
@@ -16,8 +28,9 @@ export function pagesLocked(
   me: string | undefined,
   title: (pageId: string) => string | undefined
 ): ReactNode {
-  const locks = error instanceof ApiError && error.code === "linking.pages_locked" ? error.problem?.locks : undefined;
-  if (locks === undefined || locks.length === 0) {
+  const lead = error instanceof ApiError && error.code !== undefined ? leads[error.code] : undefined;
+  const locks = lead === undefined ? undefined : (error as ApiError).problem?.locks;
+  if (lead === undefined || locks === undefined || locks.length === 0) {
     return undefined;
   }
   const items: { id: string; text: string }[] = [];
@@ -36,7 +49,7 @@ export function pagesLocked(
   }
   return (
     <>
-      <p>{t("page.pagesLocked")}</p>
+      <p>{t(lead)}</p>
       <ul className="mt-1 list-disc pl-5">
         {items.map((item) => (
           <li key={item.id}>{item.text}</li>

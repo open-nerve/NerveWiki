@@ -1,19 +1,28 @@
 import { observer } from "mobx-react-lite";
 import { useRef, useState, type FormEvent } from "react";
+import { Link, useNavigate } from "react-router";
+import useSWR, { useSWRConfig } from "swr";
 
+import { arrived } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
+import { useMounted } from "../../app/mounted";
+import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import { titleKey } from "../../lib/title-key";
 import type { Notebook, WorkspaceAccess } from "../../services/notebook.service";
+import type { TreeNode } from "../../services/page.service";
 import type { Workspace } from "../../services/workspace.service";
-import { useNotebooks } from "../../stores/context";
+import { useAccount, useNotebooks, usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { AccessOptions } from "./access-options";
+import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
+import { upgradeStateText } from "./upgrade-banner";
 
 /**
  * NotebookGeneralPage is a notebook's name, workspace access and mode
@@ -125,15 +134,40 @@ const AccessForm = observer(function AccessForm({ workspace, notebook }: Noteboo
   );
 });
 
-/** ModeSection keeps a refused downgrade's dialog even when a reread removes its trigger. */
-function ModeSection({ workspace, notebook }: NotebookProps) {
+/**
+ * ModeSection is the notebook's mode (M10/P1 design 4.4) and its upgrade
+ * (M11/P1 design 4.4). An admin downgrades an LLM Wiki; an admin starts
+ * upgrading a standard notebook without an upgrade, once its tree is
+ * read: what the start makes of a page raw at the root comes from it.
+ * Each dialog stays, with its refusal, when a read again removes its
+ * trigger. Started, the upgrade's page shows, its title taking the
+ * focus. While an upgrade is under way the section says where it is, and
+ * its admins get its page (decision 246).
+ */
+const ModeSection = observer(function ModeSection({ workspace, notebook }: NotebookProps) {
   const notebooks = useNotebooks(workspace);
+  const pages = usePageTree(notebook);
+  const { me } = useAccount();
+  const { preferences } = useStore();
+  const { mutate } = useSWRConfig();
+  const navigate = useNavigate();
+  const mounted = useMounted();
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [starting, setStarting] = useState(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const startButton = useRef<HTMLButtonElement>(null);
+  // The left column reads the same tree: what the start makes of raw is counted in it.
+  useSWR(["pages", notebook.id], () => pages.load());
   const wiki = notebook.mode === "llm_wiki";
-  const downgrades = wiki && notebook.role === "admin";
+  const admin = notebook.role === "admin";
+  const downgrades = wiki && admin;
+  const upgrade = notebook.upgrade;
+  const upgrades = !wiki && admin && upgrade === null && pages.tree !== undefined;
+  const raw = pages.childrenOf(null).find((node) => titleKey(node.name) === titleKey("raw"));
+  const underRaw = raw === undefined ? 0 : nodesUnder(pages.nodes ?? [], raw.id);
+  const home = `/${workspace.slug}/notebooks/${notebook.id}`;
 
   function onClosed(done: boolean) {
     (done ? heading.current : (button.current ?? heading.current))?.focus();
@@ -148,9 +182,27 @@ function ModeSection({ workspace, notebook }: NotebookProps) {
       <p className="text-sm text-muted-foreground">
         {wiki ? t("notebookSettings.modeLLMWikiHint") : t("notebookSettings.modeStandardHint")}
       </p>
+      {upgrade !== null && (
+        <p className="text-sm">
+          {t(upgradeStateText[upgrade.state])}
+          {admin && (
+            <>
+              {" "}
+              <Link to={`${home}/upgrade`} className="font-medium underline underline-offset-4">
+                {t("upgrade.view")}
+              </Link>
+            </>
+          )}
+        </p>
+      )}
       {downgrades && (
         <Button ref={button} variant="outline" onClick={() => setOpen(true)}>
           {t("notebookSettings.downgrade")}
+        </Button>
+      )}
+      {upgrades && (
+        <Button ref={startButton} variant="outline" onClick={() => setStarting(true)}>
+          {t("upgrade.start")}
         </Button>
       )}
       <ConfirmDialog
@@ -164,8 +216,62 @@ function ModeSection({ workspace, notebook }: NotebookProps) {
         texts={{ "transfer.busy": "transfer.writingBusy", forbidden: "notebookSettings.downgradeAdminsOnly" }}
         tone="default"
       />
+      <ConfirmDialog
+        held={{
+          open: starting,
+          onOpenChange: setStarting,
+          onClosed: (done) => (done ? heading.current : (startButton.current ?? heading.current))?.focus(),
+        }}
+        title={t("upgrade.startTitle", { name: notebook.name })}
+        description={t("upgrade.startBody")}
+        more={
+          underRaw > 0 ? (
+            <p>{t("upgrade.startRaw", { count: new Intl.NumberFormat(preferences.locale).format(underRaw) })}</p>
+          ) : undefined
+        }
+        confirmLabel={t("upgrade.startConfirm")}
+        sendingLabel={t("upgrade.starting")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={async () => {
+          await notebooks.startUpgrade(notebook.id, preferences.locale);
+          // The settings left meanwhile stay left: the upgrade shows in the banner and the list.
+          if (mounted()) {
+            void mutate(["upgrade", notebook.id]);
+            void navigate(`${home}/upgrade`, { state: arrived });
+          }
+        }}
+        explain={(error) => pagesLocked(error, t, me.id, (id) => distinctName(pages.tree, notebook, id, t))}
+        texts={{ "transfer.busy": "transfer.writingBusy" }}
+        tone="default"
+      />
     </section>
   );
+});
+
+/**
+ * nodesUnder counts the nodes, pages and attachments, under the node id
+ * among nodes, at any depth: linear in nodes, none spread into arguments
+ * (v0.1 design 13.2, item 25).
+ */
+function nodesUnder(nodes: readonly TreeNode[], id: string): number {
+  const children = new Map<string | null, string[]>();
+  for (const node of nodes) {
+    const siblings = children.get(node.parent_id);
+    if (siblings === undefined) {
+      children.set(node.parent_id, [node.id]);
+    } else {
+      siblings.push(node.id);
+    }
+  }
+  let count = 0;
+  const below = [id];
+  for (let at = below.pop(); at !== undefined; at = below.pop()) {
+    for (const child of children.get(at) ?? []) {
+      count += 1;
+      below.push(child);
+    }
+  }
+  return count;
 }
 
 /**

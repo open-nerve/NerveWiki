@@ -699,6 +699,22 @@ export const en = {
   "upgrade.bannerRollingBack": "This notebook's upgrade is being undone: it is read-only for now.",
   "upgrade.bannerAnyAdmin": "Any admin of the notebook can abandon this upgrade.",
   "upgrade.view": "View the upgrade",
+  "upgrade.start": "Upgrade to an LLM Wiki…",
+  "upgrade.startTitle": "Upgrade “{name}” to an LLM Wiki?",
+  "upgrade.startBody":
+    "Until the upgrade ends, approved or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed.",
+  "upgrade.startRaw":
+    "The page raw at the root becomes the source area ({count} nodes under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.",
+  "upgrade.startConfirm": "Start the upgrade",
+  "upgrade.starting": "Starting…",
+  "upgrade.title": "Upgrade to an LLM Wiki",
+  "upgrade.adminsOnly": "Only the notebook's admins can see its upgrade.",
+  "upgrade.state": "Where it is",
+  "upgrade.startedBy": "Started by {name} on {time}.",
+  "upgrade.sourceRoot": "Its source area:",
+  "upgrade.seeded": "The pages it wrote:",
+  "upgrade.pagesLocked":
+    "These pages are being edited, so the upgrade cannot start. Try again once their editors leave; a notebook admin can also release a lock.",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",

@@ -100,3 +100,40 @@ test("the confirm button is destructive unless the dialog's tone is the default 
     unmount();
   }
 });
+
+test("the dialog says more below its description, and a refusal its explain makes a list of", async () => {
+  const user = userEvent.setup();
+  render(
+    <I18nProvider locale="en">
+      <ConfirmDialog
+        trigger={<button type="button">Open</button>}
+        title="Start it?"
+        description="It starts."
+        more={<p>Its page raw holds 3 nodes.</p>}
+        confirmLabel="Start"
+        sendingLabel="Starting…"
+        cancelLabel="Cancel"
+        confirm={() => Promise.reject(new Error("refused"))}
+        explain={() => (
+          <ul>
+            <li>Notes</li>
+            <li>Guide</li>
+          </ul>
+        )}
+        tone="default"
+      />
+    </I18nProvider>
+  );
+
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Start it?" });
+  expect(within(dialog).getByText("Its page raw holds 3 nodes.")).toBeTruthy();
+  await user.click(within(dialog).getByRole("button", { name: "Start" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(
+    within(alert)
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual(["Notes", "Guide"]);
+});

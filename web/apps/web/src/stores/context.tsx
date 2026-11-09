@@ -2,6 +2,7 @@ import { createContext, use, type ReactNode } from "react";
 
 import type { User } from "../services/account.service";
 import type { Notebook } from "../services/notebook.service";
+import type { UpgradeService } from "../services/upgrade.service";
 import type { Workspace } from "../services/workspace.service";
 import type { WikiService } from "../services/wiki.service";
 import type { AccountStore } from "./account.store";
@@ -91,6 +92,15 @@ export function useWiki(): WikiService {
     throw new Error("useWiki is used outside SignedIn");
   }
   return wiki;
+}
+
+/** useUpgrades reads a notebook's upgrade with the signed-in generation's service, its results SWR's. */
+export function useUpgrades(): UpgradeService {
+  const upgrades = useStore().upgrades;
+  if (upgrades === undefined) {
+    throw new Error("useUpgrades is used outside SignedIn");
+  }
+  return upgrades;
 }
 
 /** useSearch is the searches of workspace: only for the pages the SignedIn guard shows. */

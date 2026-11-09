@@ -10,6 +10,11 @@ import { formOf } from "./transfer";
 /** The kinds of the jobs that write a notebook's tree, one under way at once (M8/P4 design 3.2). */
 const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert", "rollback"]);
 
+/** writing tells whether one of jobs writes the notebook's tree and is under way: queued or running. */
+export function writing(jobs: readonly TransferJob[]): boolean {
+  return jobs.some((job) => writingKinds.has(job.kind) && underWayNow(job));
+}
+
 /** What the server parses as an id: a parent_id not like it is 400. */
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
@@ -203,7 +208,7 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
   };
   // A job of the tree under way, or none: transfer.busy, then a queue full.
   const refused = () =>
-    server.busy || server.jobs.some((job) => writingKinds.has(job.kind) && underWayNow(job))
+    server.busy || writing(server.jobs)
       ? problem(409, "transfer.busy")
       : server.queueFull
         ? problem(503, "server_busy", {}, { "Retry-After": "2" })

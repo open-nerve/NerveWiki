@@ -112,3 +112,20 @@ test("the banner comes and goes with the upgrade, taking no focus, the page stay
   expect(document.activeElement).toBe(link);
   expect(screen.getByRole("article", { name: "Guide" })).toBe(article);
 });
+
+test.each(["upgrading", "reviewing", "rolling_back"] as const)(
+  "on the upgrade's own page, an upgrade %s's banner leads nowhere: the page is there",
+  async (state) => {
+    const server = pageServer();
+    server.notebook = { ...server.notebook, upgrade: upgradeOf(state, bob.user_id) };
+    renderApp(upgradePath, server.app);
+
+    await screen.findByRole("heading", { level: 1, name: "Upgrade to an LLM Wiki" });
+    const banner = bannerOf(said[state]);
+    expect(banner).not.toBeNull();
+    expect(within(banner as HTMLElement).queryByRole("link")).toBeNull();
+    expect(within(banner as HTMLElement).queryByText(anyAdmin, { exact: false }) !== null).toBe(
+      state !== "rolling_back"
+    );
+  }
+);
