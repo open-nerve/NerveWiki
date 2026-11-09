@@ -38,6 +38,10 @@ type lintData struct {
 	boom        error
 	onCall      func(string)
 	areaCalls   []lintAreaCall
+	// areaStray's links are answered to the second pass too, unasked;
+	// areaResolved answers it the resolved links.
+	areaStray    uuid.UUID
+	areaResolved bool
 }
 
 // lintAreaCall is one AreaWantedEdgeHeads call: its pages and cursor.
@@ -166,7 +170,8 @@ func (f *lintData) AreaWantedEdgeHeads(ctx context.Context, nb uuid.UUID, pages 
 	f.areaCalls = append(f.areaCalls, lintAreaCall{pages: slices.Clone(pages), after: after})
 	var out []app.EdgeHead
 	for _, e := range f.edges {
-		if !slices.Contains(pages, e.SourceID) || e.Compare(after) <= 0 || e.ResolvedID != nil || e.TargetKey == nil {
+		asked := slices.Contains(pages, e.SourceID) || e.SourceID == f.areaStray
+		if !asked || e.Compare(after) <= 0 || e.ResolvedID != nil && !f.areaResolved || e.TargetKey == nil {
 			continue
 		}
 		out = append(out, app.EdgeHead{EdgePos: e.EdgePos, TargetBytes: int64(len(e.Target))})

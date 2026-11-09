@@ -7,6 +7,9 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking/domain"
 )
 
+// ErrLintRows is errLintRows, a read's inconsistent answer.
+var ErrLintRows = errLintRows
+
 // CheckEvery is how many links resolutions resolves between two looks at
 // its context.
 const CheckEvery = checkEvery

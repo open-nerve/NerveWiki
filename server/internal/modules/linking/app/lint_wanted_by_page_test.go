@@ -1,6 +1,7 @@
 package app_test
 
 import (
+	"errors"
 	"maps"
 	"slices"
 	"testing"
@@ -14,7 +15,10 @@ import (
 // (10) holds a and b (100, 101) and c (102), whose index is stale; outside
 // it p, q, r and s (20–23). p links Alpha twice and Beta; q links Alpha,
 // Gamma and Delta; r links nothing; s links only an image read as an
-// attachment and the virtual index; a links Alpha and Epsilon, b Zeta.
+// attachment and the virtual index. In the area, judged by the second
+// pass alike: a links Alpha twice, Epsilon, ./Alpha (raw/alpha by its
+// parent's key, another target) and AGENTS, resolved; b links Zeta, an
+// image read as an attachment and the virtual index.
 func lintByPageFixture() (*lintData, app.ReadInput) {
 	root := lintID(10)
 	f, in := lintFixture(lintNode(10, nil, "raw", domain.NodePage, 0), lintNode(11, nil, "agents", domain.NodePage, 1),
@@ -29,11 +33,15 @@ func lintByPageFixture() (*lintData, app.ReadInput) {
 	}
 	resolved := lintEdge(20, 3, "Here", "wikilink")
 	resolved.ResolvedID = lintPtr(lintID(21))
+	areaResolved := lintEdge(100, 4, "AGENTS", "wikilink")
+	areaResolved.ResolvedID = lintPtr(lintID(11))
 	f.edges = []app.LintEdge{
 		lintEdge(20, 0, "Alpha", "wikilink"), lintEdge(20, 1, "alpha", "link"), lintEdge(20, 2, "Beta", "wikilink"), resolved,
 		lintEdge(21, 0, "Alpha", "wikilink"), lintEdge(21, 1, "Gamma", "wikilink"), lintEdge(21, 2, "Delta", "link"),
 		lintEdge(23, 0, "chart.png", "image"), lintEdge(23, 1, "index", "wikilink"),
-		lintEdge(100, 0, "Alpha", "wikilink"), lintEdge(100, 1, "Epsilon", "wikilink"), lintEdge(101, 0, "Zeta", "wikilink"),
+		lintEdge(100, 0, "Alpha", "wikilink"), lintEdge(100, 1, "Epsilon", "wikilink"), lintEdge(100, 2, "alpha", "link"),
+		lintEdge(100, 3, "./Alpha", "link"), areaResolved,
+		lintEdge(101, 0, "Zeta", "wikilink"), lintEdge(101, 1, "chart.png", "image"), lintEdge(101, 2, "index", "wikilink"),
 		lintEdge(102, 0, "Eta", "wikilink"),
 	}
 	in.EffectiveMode, in.AreaRootID, in.Explicit = domain.ModeLLM, &root, true
@@ -42,8 +50,9 @@ func lintByPageFixture() (*lintData, app.ReadInput) {
 }
 
 // An upgrade's start records each page's count of distinct wanted targets
-// (M11/P1 design 3.13): a target twice counts once, a target read as an
-// attachment or a virtual file not at all, a page without one is absent;
+// (M11/P1 design 3.13), judged alike in both passes: a target twice counts
+// once, a target read as an attachment or a virtual file not at all, a
+// relative one by its page's parents' keys, a page without one is absent;
 // the area's pages are counted in a second pass only, never in the rule's
 // count, which a preparation that does not ask for the counts never reads.
 func TestTheWantedCountsByPage(t *testing.T) {
@@ -53,7 +62,7 @@ func TestTheWantedCountsByPage(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		want := map[uuid.UUID]int{lintID(20): 2, lintID(21): 3, lintID(100): 2, lintID(101): 1}
+		want := map[uuid.UUID]int{lintID(20): 2, lintID(21): 3, lintID(100): 3, lintID(101): 1}
 		if got := p.WantedByPage(); !maps.Equal(got, want) {
 			t.Fatalf("wanted by page = %v, want %v", got, want)
 		}
@@ -93,12 +102,33 @@ func TestTheWantedCountsByPage(t *testing.T) {
 		}
 		// No area: one pass counts every current page, the virtual index
 		// a wanted page of a standard notebook.
-		want := map[uuid.UUID]int{lintID(20): 2, lintID(21): 3, lintID(23): 1, lintID(100): 2, lintID(101): 1}
+		want := map[uuid.UUID]int{lintID(20): 2, lintID(21): 3, lintID(23): 1, lintID(100): 3, lintID(101): 2}
 		if got := p.WantedByPage(); !maps.Equal(got, want) {
 			t.Fatalf("wanted by page = %v, want %v", got, want)
 		}
 		if slices.Contains(f.calls, "area-heads") {
 			t.Fatalf("a standard notebook read a second pass: %v", f.calls)
+		}
+	})
+	// The store answers the second pass what it did not ask: a current
+	// page outside the area is an inconsistent read, a resolved link is
+	// no wanted page.
+	t.Run("a-page-outside-the-area-answered", func(t *testing.T) {
+		f, in := lintByPageFixture()
+		f.areaStray = lintID(20)
+		if _, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true}); !errors.Is(err, app.ErrLintRows) {
+			t.Fatalf("prepared %v, want the rows refused", err)
+		}
+	})
+	t.Run("a-resolved-link-answered", func(t *testing.T) {
+		f, in := lintByPageFixture()
+		f.areaResolved = true
+		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := p.WantedByPage()[lintID(100)]; got != 3 {
+			t.Fatalf("a's wanted count = %d, want 3: its resolved link counted", got)
 		}
 	})
 	t.Run("only-with-the-wanted-rule", func(t *testing.T) {
