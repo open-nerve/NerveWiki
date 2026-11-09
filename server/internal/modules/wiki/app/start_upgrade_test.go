@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"maps"
 	"reflect"
@@ -53,12 +54,16 @@ func (l *startLog) lines(t *testing.T) []map[string]any {
 type startTxKey struct{}
 
 // startFake is every port of an upgrade's start (M11/P1 design 3.14): a
-// transaction manager that runs fn and answers its error, rolled back, or
-// commits, late by commitLate; the notebook, its workspace, its pages and
-// its lint as the fields say; the calls in order.
+// transaction manager that runs fn and answers its error, rolled back late
+// by rollbackLate, or commits, late by commitLate, answering commitErr; the
+// notebook, its workspace, its pages and its lint as the fields say; the
+// calls in order, and at four of them whether the start held the lint's
+// only slot.
 type startFake struct {
 	mu    sync.Mutex
 	calls []string
+	runs  *app.Runs
+	slots []string
 
 	at                        time.Time
 	ws                        uuid.UUID
@@ -75,7 +80,8 @@ type startFake struct {
 	byPage                    map[uuid.UUID]int
 	count                     domain.LintCount
 	captureWaits              bool
-	commitLate                time.Duration
+	commitLate, rollbackLate  time.Duration
+	commitErr                 error
 	analyzeErr                error
 	started                   app.NotebookUpgrade
 	protected                 uuid.UUID
@@ -103,15 +109,39 @@ func (f *startFake) trace() []string {
 	return slices.Clone(f.calls)
 }
 
+// slot notes at call whether the lint's only slot was held: one taken here
+// goes back at once.
+func (f *startFake) slot(call string) {
+	release, ok := f.runs.TryHold()
+	if ok {
+		release()
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.slots = append(f.slots, fmt.Sprintf("%s held %t", call, !ok))
+}
+
+func (f *startFake) held() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.slots)
+}
+
 func inTx(ctx context.Context) bool { return ctx.Value(startTxKey{}) == true }
 
 func (f *startFake) WithinTx(ctx context.Context, fn func(context.Context) error) error {
 	f.note("begin")
 	if err := fn(context.WithValue(ctx, startTxKey{}, true)); err != nil {
+		time.Sleep(f.rollbackLate)
 		f.note("rollback")
 		return err
 	}
 	time.Sleep(f.commitLate)
+	f.slot("commit")
+	if f.commitErr != nil {
+		f.note("commit failed")
+		return f.commitErr
+	}
 	f.note("commit")
 	return nil
 }
@@ -177,6 +207,7 @@ func (f *startFake) Writing(context.Context, uuid.UUID) (bool, error) {
 
 func (f *startFake) Capture(ctx context.Context, _, _ uuid.UUID) (app.UpgradeBaseline, error) {
 	f.note("capture")
+	f.slot("capture")
 	if f.captureWaits {
 		<-ctx.Done()
 		return app.UpgradeBaseline{}, ctx.Err()
@@ -198,6 +229,7 @@ func (f *startFake) SetWanted(_ context.Context, _ uuid.UUID, wanted map[uuid.UU
 
 func (f *startFake) Analyze(ctx context.Context) error {
 	f.note("analyze")
+	f.slot("analyze")
 	_, f.analyzeDeadline = ctx.Deadline()
 	f.analyzeErrAtCall = ctx.Err()
 	return f.analyzeErr
@@ -254,6 +286,7 @@ func (f *startFake) Nodes(context.Context, uuid.UUID) ([]app.CompactNode, error)
 
 func (f *startFake) PrepareRules(_ context.Context, input app.ReadInput, query app.RuleQuery) (app.PreparedRules, error) {
 	f.note("prepare")
+	f.slot("prepare")
 	f.input, f.query = input, query
 	return startPrepared{f}, nil
 }
@@ -304,6 +337,7 @@ func newStartFixture(t *testing.T, timeout time.Duration, change func(*startFake
 	log := &startLog{}
 	logger := slog.New(slog.NewJSONHandler(log, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	runs := app.NewRuns(1, time.Second, logger, nil)
+	f.runs = runs
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -346,13 +380,43 @@ func startCode(err error) string {
 	return ""
 }
 
+// refusalInItsTurn checks a refused start's calls: none for an invalid
+// body, or all of them up to last, then rolled back; its slot given back;
+// the locks of wiki.upgrade_pages_locked named.
+func refusalInItsTurn(t *testing.T, x startFixture, err error, code, last string, holders []app.SessionHolder) {
+	t.Helper()
+	calls := x.f.trace()
+	if last == "" {
+		if len(calls) != 0 {
+			t.Errorf("read %v", calls)
+		}
+		return
+	}
+	inTx := slices.Contains(calls, "begin")
+	if inTx && (len(calls) < 2 || calls[len(calls)-2] != last || calls[len(calls)-1] != "rollback") ||
+		!inTx && calls[len(calls)-1] != last || slices.Contains(calls, "commit") {
+		t.Errorf("calls %v, want them to end at %s", calls, last)
+	}
+	x.slotFree(t)
+	if code == "wiki.upgrade_pages_locked" {
+		var problem *shared.Error
+		errors.As(err, &problem)
+		if len(problem.Locks) != 100 || problem.Locks[0].PageID != holders[0].PageID || problem.Locks[0].DisplayName != "name of "+holders[0].UserID.String() ||
+			!strings.HasPrefix(problem.Detail, "150 pages") {
+			t.Errorf("the locks named: %d, %+v, %q", len(problem.Locks), problem.Locks[0], problem.Detail)
+		}
+	}
+}
+
 // An upgrade's start (M11/P1 design 3.14; M11 design 4.4), with fakes of
 // every port: the order of its steps and their codes, the template's pages
 // the notebook lacks written as the upgrade's own unit, only the wanted
-// rule prepared in its transaction, a slot held now or not at all, its own
-// deadline server_busy with a warn line, a commit past it 200, the
-// statistics refreshed on the request's ctx. The whole program's half is
-// the seventh shard's TestUpgradeStart.
+// rule prepared in its transaction, a slot held now or not at all, after
+// every refusal but the stale index, from the baseline through the commit;
+// its own deadline server_busy with a warn line, a refusal rolled back past
+// it its own code, a commit past it 200, a commit out of its own time not
+// server_busy; the statistics refreshed on the request's ctx. The whole
+// program's half is the seventh shard's TestUpgradeStart.
 func TestUpgradeStart(t *testing.T) {
 	t.Run("it-writes-what-the-notebook-lacks", func(t *testing.T) {
 		raw, agents, page := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
@@ -402,6 +466,9 @@ func TestUpgradeStart(t *testing.T) {
 		if f.analyzeDeadline || f.analyzeErrAtCall != nil {
 			t.Error("the baseline was analyzed on the start's deadline, not the request's ctx")
 		}
+		if got, want := f.held(), []string{"capture held true", "prepare held true", "commit held true", "analyze held false"}; !slices.Equal(got, want) {
+			t.Errorf("the lint slot %v\nwant %v: held while the start computes, to its commit, and given back before the statistics", got, want)
+		}
 		x.slotFree(t)
 		lines := x.log.lines(t)
 		if len(lines) != 1 {
@@ -450,6 +517,9 @@ func TestUpgradeStart(t *testing.T) {
 			t.Error("protected a raw the notebook had")
 		}
 	})
+	// Each refusal in its turn, with the lint's only slot free and again
+	// held by another: the slot is step 9, after every refusal but the
+	// stale index, which a full slot's server_busy comes before.
 	t.Run("each-refusal-in-its-turn", func(t *testing.T) {
 		var holders []app.SessionHolder
 		for range 100 {
@@ -477,35 +547,34 @@ func TestUpgradeStart(t *testing.T) {
 			}, "roots"},
 			{"a-stale-index", "", "wiki.upgrade_stale_index", func(f *startFake) { f.stale = 1 }, "prepare"},
 		} {
-			t.Run(tt.name, func(t *testing.T) {
-				x := newStartFixture(t, time.Second, tt.change)
-				x.seeds.ids = []uuid.UUID{uuid.NewV7(), uuid.NewV7()}
-				_, err := x.start.Execute(x.ctx(), x.nb, tt.locale)
-				if got := startCode(err); got != tt.code {
-					t.Fatalf("answered %v, want %s", err, tt.code)
-				}
-				calls := x.f.trace()
-				if tt.last == "" {
-					if len(calls) != 0 {
-						t.Errorf("read %v", calls)
-					}
-					return
-				}
-				inTx := slices.Contains(calls, "begin")
-				if inTx && (len(calls) < 2 || calls[len(calls)-2] != tt.last || calls[len(calls)-1] != "rollback") ||
-					!inTx && calls[len(calls)-1] != tt.last || slices.Contains(calls, "commit") {
-					t.Errorf("calls %v, want them to end at %s", calls, tt.last)
-				}
-				x.slotFree(t)
-				if tt.code == "wiki.upgrade_pages_locked" {
-					var problem *shared.Error
-					errors.As(err, &problem)
-					if len(problem.Locks) != 100 || problem.Locks[0].PageID != holders[0].PageID || problem.Locks[0].DisplayName != "name of "+holders[0].UserID.String() ||
-						!strings.HasPrefix(problem.Detail, "150 pages") {
-						t.Errorf("the locks named: %d, %+v, %q", len(problem.Locks), problem.Locks[0], problem.Detail)
+			for _, full := range []bool{false, true} {
+				name, code, last := tt.name, tt.code, tt.last
+				if full {
+					name += "-a-full-slot"
+					if code == "wiki.upgrade_stale_index" {
+						code, last = "server_busy", "roots"
 					}
 				}
-			})
+				t.Run(name, func(t *testing.T) {
+					x := newStartFixture(t, time.Second, tt.change)
+					x.seeds.ids = []uuid.UUID{uuid.NewV7(), uuid.NewV7()}
+					var other func()
+					if full {
+						var ok bool
+						if other, ok = x.runs.TryHold(); !ok {
+							t.Fatal("no slot")
+						}
+					}
+					_, err := x.start.Execute(x.ctx(), x.nb, tt.locale)
+					if other != nil {
+						other()
+					}
+					if got := startCode(err); got != code {
+						t.Fatalf("answered %v, want %s", err, code)
+					}
+					refusalInItsTurn(t, x, err, code, last, holders)
+				})
+			}
 		}
 	})
 	t.Run("a-full-slot-is-503-at-once", func(t *testing.T) {
@@ -570,6 +639,36 @@ func TestUpgradeStart(t *testing.T) {
 		if lines := x.log.lines(t); len(lines) != 1 || lines[0]["msg"] != "upgrade started" {
 			t.Errorf("log %v", lines)
 		}
+	})
+	// A domain's refusal answers its own code, though its rollback ran past
+	// the start's deadline (decision 227).
+	t.Run("a-refusal-rolled-back-past-its-deadline", func(t *testing.T) {
+		x := newStartFixture(t, 50*time.Millisecond, func(f *startFake) { f.stale, f.rollbackLate = 1, 100*time.Millisecond })
+		_, err := x.start.Execute(x.ctx(), x.nb, "")
+		if got := startCode(err); got != "wiki.upgrade_stale_index" {
+			t.Fatalf("answered %v, want wiki.upgrade_stale_index", err)
+		}
+		if lines := x.log.lines(t); len(lines) != 0 {
+			t.Errorf("log %v", lines)
+		}
+		x.slotFree(t)
+	})
+	// A commit that ran out of its own time, the start's deadline not yet
+	// up: an error of the transaction, not server_busy (M11 design 4.4).
+	t.Run("a-commit-out-of-its-own-time", func(t *testing.T) {
+		failed := fmt.Errorf("commit transaction: %w", context.DeadlineExceeded)
+		x := newStartFixture(t, time.Minute, func(f *startFake) { f.commitErr = failed })
+		_, err := x.start.Execute(x.ctx(), x.nb, "")
+		if !errors.Is(err, failed) || startCode(err) != "" {
+			t.Fatalf("answered %v, want the commit's error", err)
+		}
+		if lines := x.log.lines(t); len(lines) != 0 {
+			t.Errorf("log %v", lines)
+		}
+		if slices.Contains(x.f.trace(), "analyze") {
+			t.Error("analyzed a baseline not committed")
+		}
+		x.slotFree(t)
 	})
 	t.Run("the-statistics-fail", func(t *testing.T) {
 		x := newStartFixture(t, time.Second, func(f *startFake) { f.analyzeErr = errors.New("analyze failed") })

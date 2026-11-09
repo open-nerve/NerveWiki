@@ -61,8 +61,9 @@ func upgradeLines(t *testing.T, logs *syncBuffer, before int, msg string) []map[
 // before them, the seeded raw the one protected row; a raw page at the
 // root the source root, the wanted links of its pages counted in a second
 // pass; the baseline's statistics refreshed after the commit; one log
-// line; its own deadline server_busy, all rolled back, a warn line and no
-// error. A full lint slot's 503 is TestUpgradeInterleavings' #17.
+// line; its own deadline, inside a statement or between two, server_busy,
+// all rolled back, a warn line and no error. A full lint slot's 503 is
+// TestUpgradeInterleavings' #17.
 func TestUpgradeStart(t *testing.T) {
 	logs := &syncBuffer{}
 	tm := newAcmeTeamLogging(t, "member", "", nil, transfer.Batch{}, slog.New(slog.NewJSONHandler(logs, nil)))
@@ -208,47 +209,86 @@ func TestUpgradeStart(t *testing.T) {
 		}
 		checkPages(t, tm.pool)
 	})
+	// Its own deadline, inside a statement and between two: 503 at once,
+	// Retry-After: 1, one warn line and no error, nothing written.
 	t.Run("its own deadline", func(t *testing.T) {
 		logs := &syncBuffer{}
 		var slow *slowCapture
 		tm := newAcmeTeamOn(t, "", "", nil, &wiring{wiki: func(d *wiki.Deps) {
 			slow = &slowCapture{UpgradePages: d.Upgrades}
-			d.Upgrades, d.StartTimeout = slow, 200*time.Millisecond
+			d.Upgrades, d.StartTimeout = slow, 300*time.Millisecond
 		}}, slog.New(slog.NewJSONHandler(logs, nil)))
 		nb := tm.openNotebook(t, "alice", "Slow")
 		tm.createPage(t, "alice", nb, "", "Page")
-		status, answer := tm.startUpgrade(t, "alice", nb, `{}`)
-		wantCode(t, "a start past its deadline", status, answer, cell{http.StatusServiceUnavailable, "server_busy"})
-		if !slow.waited.Load() {
-			t.Error("the start did not wait in Capture")
-		}
-		unchanged := count(t, tm.pool, `SELECT (SELECT count(*) FROM notebooks WHERE id = $1 AND upgrade_id IS NOT NULL)
-			+ (SELECT count(*) FROM notebook_upgrades) + (SELECT count(*) FROM upgrade_nodes)
-			+ (SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name IN ('raw', 'AGENTS'))`, nb)
-		if unchanged != 0 {
-			t.Errorf("a start past its deadline left %d rows", unchanged)
-		}
-		lines := upgradeLines(t, logs, 0, "upgrade start timed out")
-		if len(lines) != 1 || lines[0]["level"] != "WARN" || lines[0]["notebook_id"] != nb || lines[0]["timeout_ms"] != 200.0 {
-			t.Errorf("logged %v, want one warn line of the timeout", lines)
-		}
-		for _, l := range (&mcpApp{logs: logs}).logLines(t) {
-			if l["level"] == "ERROR" {
-				t.Errorf("an error line: %v", l)
+		timedOut := func(t *testing.T, what string, before int, res *http.Response, body []byte) {
+			t.Helper()
+			wantCode(t, what, res.StatusCode, string(body), cell{http.StatusServiceUnavailable, "server_busy"})
+			if res.Header.Get("Retry-After") != "1" {
+				t.Errorf("%s: Retry-After %q, want 1", what, res.Header.Get("Retry-After"))
 			}
+			unchanged := count(t, tm.pool, `SELECT (SELECT count(*) FROM notebooks WHERE id = $1 AND upgrade_id IS NOT NULL)
+				+ (SELECT count(*) FROM notebook_upgrades) + (SELECT count(*) FROM upgrade_nodes)
+				+ (SELECT count(*) FROM nodes WHERE notebook_id = $1 AND name IN ('raw', 'AGENTS'))`, nb)
+			if unchanged != 0 {
+				t.Errorf("%s left %d rows", what, unchanged)
+			}
+			lines := upgradeLines(t, logs, before, "upgrade start timed out")
+			if len(lines) != 1 || lines[0]["level"] != "WARN" || lines[0]["notebook_id"] != nb || lines[0]["timeout_ms"] != 300.0 {
+				t.Errorf("%s logged %v, want one warn line of the timeout", what, lines)
+			}
+			for _, l := range (&mcpApp{logs: logs}).logLines(t)[before:] {
+				if l["level"] == "ERROR" {
+					t.Errorf("an error line: %v", l)
+				}
+			}
+			checkPages(t, tm.pool)
 		}
-		checkPages(t, tm.pool)
+		start := func(t *testing.T) (*http.Response, []byte) {
+			t.Helper()
+			req := newRequest(t, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/upgrade", tm.tokens["alice"], []byte(`{}`))
+			res, body := sendRequest(t, req)
+			tm.contract.CheckResponse(t, req, res)
+			return res, body
+		}
+		// Waiting for the notebook's row a write of the test holds: pgx
+		// closes the connection, the rollback fails, and only the start's
+		// ctx says it was its deadline (decision 227).
+		t.Run("inside a statement", func(t *testing.T) {
+			before := len((&mcpApp{logs: logs}).logLines(t))
+			holder := tm.holdNotebook(t, nb)
+			res, body := start(t)
+			if err := holder.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			timedOut(t, "a start past its deadline inside a statement", before, res, body)
+		})
+		// Capture waiting in Go for its transaction's end: the error the
+		// start's fn answers wraps the deadline.
+		t.Run("between statements", func(t *testing.T) {
+			before := len((&mcpApp{logs: logs}).logLines(t))
+			slow.armed.Store(true)
+			defer slow.armed.Store(false)
+			res, body := start(t)
+			if !slow.waited.Load() {
+				t.Error("the start did not wait in Capture")
+			}
+			timedOut(t, "a start past its deadline between statements", before, res, body)
+		})
 	})
 }
 
-// slowCapture is the page module's upgrade port whose Capture waits for
-// its transaction's end: the start's deadline runs out in its transaction.
+// slowCapture is the page module's upgrade port whose Capture, once armed,
+// waits for its transaction's end: the start's deadline runs out in its
+// transaction, between two statements.
 type slowCapture struct {
 	wiki.UpgradePages
-	waited atomic.Bool
+	armed, waited atomic.Bool
 }
 
 func (s *slowCapture) Capture(ctx context.Context, upgradeID, notebookID uuid.UUID) (wiki.UpgradeBaseline, error) {
+	if !s.armed.Load() {
+		return s.UpgradePages.Capture(ctx, upgradeID, notebookID)
+	}
 	s.waited.Store(true)
 	<-ctx.Done()
 	return wiki.UpgradeBaseline{}, ctx.Err()

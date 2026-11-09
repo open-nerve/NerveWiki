@@ -274,7 +274,9 @@ func TestUpgradeInterleavings(t *testing.T) {
 	})
 
 	// #17: lint's only slot held by a read, the start is server_busy at
-	// once, Retry-After: 1, far within the slot's wait.
+	// once, Retry-After: 1, far within the slot's wait. The start is sent
+	// aside: one that waited for the slot fails here in 2 s and gets it
+	// once the read gives it back, rather than hang the shard.
 	t.Run("17 the start and the lint slots taken", func(t *testing.T) {
 		nb := tm.openNotebook(t, "alice", "Seventeen")
 		tm.createPage(t, "alice", nb, "", "Page")
@@ -288,15 +290,44 @@ func TestUpgradeInterleavings(t *testing.T) {
 			t.Fatal("the lint read took no slot")
 		}
 		req := newRequest(t, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/upgrade", tm.tokens["alice"], []byte(`{}`))
-		started := time.Now()
-		res, body := sendRequest(t, req)
-		elapsed := time.Since(started)
-		tm.contract.CheckResponse(t, req, res)
-		if res.StatusCode != http.StatusServiceUnavailable || problemCodeOf(string(body)) != "server_busy" ||
-			res.Header.Get("Retry-After") != "1" || elapsed > time.Second {
-			t.Errorf("the start with the slot taken = %d %s %v after %v, want 503 server_busy at once", res.StatusCode, body, res.Header, elapsed)
+		type sent struct {
+			res     *http.Response
+			body    []byte
+			err     error
+			elapsed time.Duration
 		}
-		rules.free <- struct{}{}
+		started := make(chan sent, 1)
+		go func() {
+			at := time.Now()
+			res, err := client().Do(req)
+			var body []byte
+			if err == nil {
+				body, err = io.ReadAll(res.Body)
+				_ = res.Body.Close()
+				res.Body = io.NopCloser(bytes.NewReader(body))
+			}
+			started <- sent{res, body, err, time.Since(at)}
+		}()
+		select {
+		case s := <-started:
+			rules.free <- struct{}{}
+			if s.err != nil {
+				t.Fatal(s.err)
+			}
+			tm.contract.CheckResponse(t, req, s.res)
+			if s.res.StatusCode != http.StatusServiceUnavailable || problemCodeOf(string(s.body)) != "server_busy" ||
+				s.res.Header.Get("Retry-After") != "1" || s.elapsed > time.Second {
+				t.Errorf("the start with the slot taken = %d %s %v after %v, want 503 server_busy at once", s.res.StatusCode, s.body, s.res.Header, s.elapsed)
+			}
+		case <-time.After(2 * time.Second):
+			t.Error("the start with the slot taken did not answer in 2 s: it waited for the slot")
+			rules.free <- struct{}{}
+			select {
+			case <-started:
+			case <-time.After(interleavingWait):
+				t.Error("the start did not answer once the slot was given back")
+			}
+		}
 		select {
 		case a := <-linted:
 			wantAnswer(t, "the lint read let go", a, cellOK())
