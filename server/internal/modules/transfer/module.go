@@ -96,6 +96,8 @@ type (
 	// 3.19).
 	RollbackEnd = app.RollbackEnd
 	Rollbacks   = app.Rollbacks
+	// Client is where a job was started from, "web" or "api".
+	Client = domain.Client
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
 	// Refused is a job write the notebook contract refused, with its code,

@@ -22,8 +22,9 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// upgradeFake answers an upgrade's start and read with view or err, and
-// records the locale the start was asked for.
+// upgradeFake answers an upgrade's start, read, abandonment and
+// rollback's end with view or err, and records the locale the start was
+// asked for.
 type upgradeFake struct {
 	mu     sync.Mutex
 	view   app.UpgradeView
@@ -48,6 +49,20 @@ func (f *upgradeFake) GetUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeVi
 	return f.view, f.err
 }
 
+func (f *upgradeFake) AbandonUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.view, f.err
+}
+
+func (f *upgradeFake) EndUpgradeRollback(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.view, f.err
+}
+
 func upgradeServer(t *testing.T, f *upgradeFake) lintHTTP {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
@@ -58,11 +73,18 @@ func upgradeServer(t *testing.T, f *upgradeFake) lintHTTP {
 
 func upgradeCall(t *testing.T, h lintHTTP, method string, nb uuid.UUID, body string) (*http.Response, []byte) {
 	t.Helper()
+	return upgradeCallAt(t, h, method, nb, "", body)
+}
+
+// upgradeCallAt calls the upgrade's path, then sub ("/abandon" or
+// "/end-rollback"), and checks the answer against the contract.
+func upgradeCallAt(t *testing.T, h lintHTTP, method string, nb uuid.UUID, sub, body string) (*http.Response, []byte) {
+	t.Helper()
 	var reader io.Reader
 	if body != "" {
 		reader = strings.NewReader(body)
 	}
-	req := httptest.NewRequest(method, "/api/v0/notebooks/"+nb.String()+"/upgrade", reader)
+	req := httptest.NewRequest(method, "/api/v0/notebooks/"+nb.String()+"/upgrade"+sub, reader)
 	req.Header.Set("Authorization", "Bearer session")
 	if body != "" {
 		req.Header.Set("Content-Type", "application/json")
@@ -90,16 +112,18 @@ func upgradeView() app.UpgradeView {
 	}, StartedByName: "Ada", SubmittedByName: "Bo"}
 }
 
-// The upgrade's two operations answer the use cases' views in the
+// The upgrade's four operations answer the use cases' views in the
 // contract's shape: the pages the start wrote, raw then AGENTS; each
 // step's field null until it; the template's language passed as sent.
+// The abandonment and the rollback's end take no body.
 func TestTheUpgradeIsAnswered(t *testing.T) {
 	f := &upgradeFake{view: upgradeView()}
 	h := upgradeServer(t, f)
-	for _, call := range []struct{ method, body string }{{http.MethodGet, ""}, {http.MethodPost, `{"template_locale":"zh-CN"}`}} {
-		response, body := upgradeCall(t, h, call.method, lintID(10), call.body)
+	for _, call := range []struct{ method, sub, body string }{{http.MethodGet, "", ""}, {http.MethodPost, "", `{"template_locale":"zh-CN"}`},
+		{http.MethodPost, "/abandon", ""}, {http.MethodPost, "/end-rollback", ""}} {
+		response, body := upgradeCallAt(t, h, call.method, lintID(10), call.sub, call.body)
 		if response.StatusCode != http.StatusOK {
-			t.Fatalf("%s: %d %s", call.method, response.StatusCode, body)
+			t.Fatalf("%s %s: %d %s", call.method, call.sub, response.StatusCode, body)
 		}
 		var got map[string]any
 		if err := json.Unmarshal(body, &got); err != nil {
@@ -112,7 +136,7 @@ func TestTheUpgradeIsAnswered(t *testing.T) {
 			`"started_by":{"display_name":"Ada","user_id":"00000000-0000-0000-0000-000000000001"},"state":"rolling_back",` +
 			`"submitted_at":"2026-01-02T04:04:05Z","submitted_by":{"display_name":"Bo","user_id":"00000000-0000-0000-0000-000000000005"}}`
 		if normalized, _ := json.Marshal(got); string(normalized) != want {
-			t.Errorf("%s answered %s\nwant %s", call.method, normalized, want)
+			t.Errorf("%s %s answered %s\nwant %s", call.method, call.sub, normalized, want)
 		}
 	}
 	f.view = app.UpgradeView{Upgrade: domain.Upgrade{ID: lintID(30), NotebookID: lintID(10), State: domain.UpgradeUpgrading,
@@ -147,28 +171,38 @@ func TestTheUpgradesCodesAreAnswered(t *testing.T) {
 		err    error
 		status int
 		code   string
+		sub    string
 	}{
-		{http.MethodPost, shared.Invalid(shared.FieldError{Field: "template_locale", Code: shared.FieldInvalidFormat, Message: "must be zh-CN or en"}), 422, "validation_failed"},
-		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found"},
-		{http.MethodPost, shared.Forbidden(), 403, "forbidden"},
-		{http.MethodPost, domain.ErrAlreadyLLMWiki, 409, "notebook.already_llm_wiki"},
-		{http.MethodPost, domain.ErrUpgrading, 409, "notebook.upgrading"},
-		{http.MethodPost, domain.ErrWriting, 409, "transfer.busy"},
-		{http.MethodPost, locked, 409, "wiki.upgrade_pages_locked"},
-		{http.MethodPost, domain.ErrUpgradeTitleTaken, 409, "wiki.upgrade_title_taken"},
-		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy"},
-		{http.MethodPost, domain.ErrUpgradeStaleIndex, 409, "wiki.upgrade_stale_index"},
-		{http.MethodGet, domain.ErrNotebookNotFound, 404, "notebook.not_found"},
-		{http.MethodGet, shared.Forbidden(), 403, "forbidden"},
-		{http.MethodGet, domain.ErrUpgradeNotFound, 404, "wiki.upgrade_not_found"},
+		{http.MethodPost, shared.Invalid(shared.FieldError{Field: "template_locale", Code: shared.FieldInvalidFormat, Message: "must be zh-CN or en"}), 422, "validation_failed", ""},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", ""},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", ""},
+		{http.MethodPost, domain.ErrAlreadyLLMWiki, 409, "notebook.already_llm_wiki", ""},
+		{http.MethodPost, domain.ErrUpgrading, 409, "notebook.upgrading", ""},
+		{http.MethodPost, domain.ErrWriting, 409, "transfer.busy", ""},
+		{http.MethodPost, locked, 409, "wiki.upgrade_pages_locked", ""},
+		{http.MethodPost, domain.ErrUpgradeTitleTaken, 409, "wiki.upgrade_title_taken", ""},
+		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy", ""},
+		{http.MethodPost, domain.ErrUpgradeStaleIndex, 409, "wiki.upgrade_stale_index", ""},
+		{http.MethodGet, domain.ErrNotebookNotFound, 404, "notebook.not_found", ""},
+		{http.MethodGet, shared.Forbidden(), 403, "forbidden", ""},
+		{http.MethodGet, domain.ErrUpgradeNotFound, 404, "wiki.upgrade_not_found", ""},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/abandon"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/abandon"},
+		{http.MethodPost, domain.ErrUpgradeState, 409, "wiki.upgrade_state", "/abandon"},
+		{http.MethodPost, domain.ErrRollbackWriting, 409, "transfer.busy", "/abandon"},
+		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy", "/abandon"},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/end-rollback"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/end-rollback"},
+		{http.MethodPost, domain.ErrUpgradeState, 409, "wiki.upgrade_state", "/end-rollback"},
+		{http.MethodPost, domain.ErrRollbackWriting, 409, "transfer.busy", "/end-rollback"},
 	} {
-		t.Run(tt.method+"/"+tt.code, func(t *testing.T) {
+		t.Run(tt.method+tt.sub+"/"+tt.code, func(t *testing.T) {
 			h := upgradeServer(t, &upgradeFake{err: tt.err})
 			body := ""
-			if tt.method == http.MethodPost {
+			if tt.method == http.MethodPost && tt.sub == "" {
 				body = `{}`
 			}
-			response, got := upgradeCall(t, h, tt.method, lintID(10), body)
+			response, got := upgradeCallAt(t, h, tt.method, lintID(10), tt.sub, body)
 			var problem struct {
 				Code   string `json:"code"`
 				Detail string `json:"detail"`

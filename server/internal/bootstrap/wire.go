@@ -260,12 +260,15 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		// request's, the rest for the COMMIT, the ANALYZE and a 503
 		// (decisions 227, 232): lint's half did not hold the start of
 		// 100,000 pages on CI's runners (the S2 record); the mode's
-		// subscribers are the downgrade's.
+		// subscribers are the downgrade's. The abandonment starts the
+		// rollbacks' jobs through the transfer module (3.20).
 		Pool: pool, Tx: postgres.NewTxManager(pool, cfg.Database.CommitTimeout),
 		Workspaces:    workspace.NewWorkspaces(pool),
 		UpgradeStates: upgradeStates,
 		Upgrades:      wikiUpgradePages{page.NewUpgrades(pool)},
+		RollbackPages: wikiRollbackPages{page.NewUpgrades(pool)},
 		Writing:       transfer.NewWritingJobs(pool),
+		Rollbacks:     wikiRollbacks{tr.Rollbacks()},
 		Names:         displayNames{identity.NewDirectory(pool)},
 		UpgradeAction: notebook.ActionChangeMode,
 		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,

@@ -46,3 +46,19 @@ SET state = 'rolled_back', rollback_complete = sqlc.arg(complete), rollback_left
 FROM (SELECT o.id, o.updated_at FROM notebook_upgrades o WHERE o.id = sqlc.arg(id)) b
 WHERE u.id = b.id AND u.state = 'rolling_back' AND u.deleted_at IS NULL
 RETURNING b.updated_at AS since;
+
+-- name: RollBackUpgrade :execrows
+-- An upgrade abandoned (M11 design 4.10), under the notebook's row lock: rolling back, why, and its rollback's job, in
+-- one statement, as notebook_upgrades_rollback_job_check wants the job with the state. No row when the upgrade is not
+-- upgrading or reviewing.
+UPDATE notebook_upgrades
+SET state = 'rolling_back', ending = sqlc.arg(ending)::text, rollback_job_id = sqlc.arg(job_id)::uuid,
+    updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND state IN ('upgrading', 'reviewing') AND deleted_at IS NULL;
+
+-- name: ContinueUpgradeRollback :execrows
+-- A stopped rollback continued (M11 design 4.10), under the notebook's row lock: its new job. No row when the upgrade
+-- does not roll back.
+UPDATE notebook_upgrades
+SET rollback_job_id = sqlc.arg(job_id)::uuid, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND state = 'rolling_back' AND deleted_at IS NULL;

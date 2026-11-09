@@ -160,6 +160,68 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/abandon:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: abandonUpgrade
+      tags: [wiki]
+      summary: >-
+        Abandons the upgrade, or continues its stopped rollback: puts the
+        notebook back as the upgrade started, in a background job.
+      description: >-
+        An upgrade upgrading or reviewing rolls back, abandoned, its
+        content frozen but for the rollback's job; one rolling back whose
+        job stopped gets a new job. Its admins can (forbidden). A notebook
+        that does not exist, is deleted, or that the caller cannot see is
+        notebook.not_found; one without an upgrade under way is
+        wiki.upgrade_state; one whose rollback's job is queued or running
+        is transfer.busy; a full job queue is server_busy. These checks
+        occur in that order. The answer is the upgrade, rolling back, with
+        its rollback's job.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, wiki.upgrade_state, transfer.busy, server_busy]
+      responses:
+        "200":
+          description: The upgrade, rolling back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/end-rollback:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: endUpgradeRollback
+      tags: [wiki]
+      summary: >-
+        Ends a stopped rollback, keeping the notebook as it is: the
+        upgrade's original pages and nodes are all there; some may not be
+        back in place, and in pages not yet written back, links the system
+        rewrote may lead nowhere.
+      description: >-
+        The upgrade ends, rolled back: its content is no longer frozen, and
+        rollback_complete tells whether the rollback had put everything
+        back, rollback_left what it had not. Its admins can (forbidden). A
+        notebook that does not exist, is deleted, or that the caller cannot
+        see is notebook.not_found; one whose upgrade is not rolling back is
+        wiki.upgrade_state; one whose rollback's job is queued or running
+        is transfer.busy. These checks occur in that order.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, wiki.upgrade_state, transfer.busy]
+      responses:
+        "200":
+          description: The upgrade, rolled back.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearer:
@@ -789,7 +851,7 @@ components:
             Where a rollback ended short: the nodes not back in place, the
             pages not written back, the new nodes still there. In pages not
             yet written back, links the system rewrote may lead nowhere.
-            null otherwise.
+            Rolling back with its job stopped: counted now. null otherwise.
           oneOf:
             - $ref: "#/components/schemas/UpgradeRollbackLeft"
             - type: "null"

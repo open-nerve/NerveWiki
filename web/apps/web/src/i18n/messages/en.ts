@@ -1111,6 +1111,7 @@ export const en = {
     "An attachment at the root is titled raw or AGENTS: rename it first, then start the upgrade.",
   "problem.wiki.upgrade_stale_index":
     "The link index is out of date: ask a server admin to run nervewiki reindex, then start the upgrade.",
+  "problem.wiki.upgrade_state": "The upgrade's current state does not allow this.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",

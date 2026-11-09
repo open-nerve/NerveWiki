@@ -1059,6 +1059,7 @@ export const zhCN: Messages = {
   "problem.wiki.upgrade_pages_locked": "有页面正在被编辑，不能开始升级：等他们退出编辑，或由管理员强制解锁。",
   "problem.wiki.upgrade_title_taken": "根下名为 raw 或 AGENTS 的是附件：先改名，再开始升级。",
   "problem.wiki.upgrade_stale_index": "链接的索引过时了：请服务器管理员运行 nervewiki reindex，再开始升级。",
+  "problem.wiki.upgrade_state": "升级现在的状态不允许这样做。",
   "problem.page.not_found": "这个页面不存在，或者你无权访问它。",
   "problem.page.version_not_found": "这个页面没有这个版本。",
   "problem.asset.not_found": "这个附件不存在，或者你无权访问它。",

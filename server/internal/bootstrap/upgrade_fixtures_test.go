@@ -72,6 +72,33 @@ func upgradeIn(ctx context.Context, pool *pgxpool.Pool, nb, byID, state string) 
 	})
 }
 
+// rollingBackIn sets the notebook nb rolling back as upgradeIn does,
+// by the account byID, its rollback's job job written as River never
+// enqueued it, by the same account, in state, queued or ended, and the
+// wiki row's (M11/P1 design 3.22). A deleted notebook is left as it is.
+func rollingBackIn(ctx context.Context, pool *pgxpool.Pool, nb, byID, job, state string) error {
+	var alive bool
+	if err := pool.QueryRow(ctx, "SELECT deleted_at IS NULL FROM notebooks WHERE id = $1", nb).Scan(&alive); err != nil || !alive {
+		return err
+	}
+	up, err := upgradeIn(ctx, pool, nb, byID, "rolling_back")
+	if err != nil {
+		return err
+	}
+	return pgx.BeginFunc(ctx, pool, func(tx pgx.Tx) error {
+		if _, err := tx.Exec(ctx, `INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, started_at,
+				heartbeat_at, finished_at, report, created_at, changeset_id, upgrade_id)
+			SELECT $1, $2, 'rollback', $3::text, 'upgrade', $4, 'web', CASE WHEN $3 <> 'queued' THEN now() END,
+				CASE WHEN $3 <> 'queued' THEN now() END, CASE WHEN $3 NOT IN ('queued', 'running') THEN now() END,
+				CASE WHEN $3 NOT IN ('queued', 'running') THEN '{"failure": "interrupted"}'::jsonb END, now(), gen_random_uuid(), $5`,
+			job, nb, state, byID, up); err != nil {
+			return err
+		}
+		_, err := tx.Exec(ctx, "UPDATE notebook_upgrades SET rollback_job_id = $2 WHERE id = $1", up, job)
+		return err
+	})
+}
+
 // endUpgrade ends the notebook nb's upgrade as its end will: its four
 // columns cleared, its rows deleted, its wiki row rolled back.
 func (tm acmeTeam) endUpgrade(t testing.TB, nb string) {

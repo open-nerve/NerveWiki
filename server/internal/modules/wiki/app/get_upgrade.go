@@ -18,8 +18,10 @@ func NewGetUpgrade(d UpgradeDeps) *GetUpgrade { return &GetUpgrade{d: d} }
 
 // Execute answers notebook id's upgrade under way: notebook.not_found for
 // no notebook or one the caller cannot see, forbidden for one they are no
-// admin of, wiki.upgrade_not_found for none under way. It takes no lock
-// and no snapshot: each of its fields is of one row.
+// admin of, wiki.upgrade_not_found for none under way. One rolling back
+// whose job is neither queued nor running tells what its rollback has
+// left, read now (M11/P1 design 3.20). It takes no lock and no snapshot:
+// each of its fields is of one row, but what is left.
 func (g *GetUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -46,17 +48,18 @@ func (g *GetUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView, er
 	case !ok:
 		return UpgradeView{}, domain.ErrUpgradeNotFound
 	}
-	ids := []uuid.UUID{up.CreatedBy}
-	if up.SubmittedBy != nil {
-		ids = append(ids, *up.SubmittedBy)
+	if up.State == domain.UpgradeRollingBack {
+		writing, err := g.d.Writing.Writing(ctx, id)
+		if err != nil {
+			return UpgradeView{}, err
+		}
+		if !writing {
+			left, err := g.d.Rollback.Left(ctx, up.ID, id)
+			if err != nil {
+				return UpgradeView{}, err
+			}
+			up.RollbackLeft = &left
+		}
 	}
-	names, err := g.d.Names.DisplayNames(ctx, ids)
-	if err != nil {
-		return UpgradeView{}, err
-	}
-	view := UpgradeView{Upgrade: up, StartedByName: names[up.CreatedBy]}
-	if up.SubmittedBy != nil {
-		view.SubmittedByName = names[*up.SubmittedBy]
-	}
-	return view, nil
+	return g.d.named(ctx, up)
 }

@@ -15,12 +15,15 @@ import (
 	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
-// The start's interleavings (M11/P1 design 7.2: #1–4, 13, 14, 17), each a
-// determined order: the test holds the notebook's row both sides want, or
-// stops one side by a hook of the wiring that does nothing unarmed.
+// The start's interleavings (M11/P1 design 7.2: #1–4, 13, 14, 17) and the
+// rollback's (#10–12, 16), each a determined order: the test holds the
+// notebook's row both sides want, or stops one side by a hook of the
+// wiring that does nothing unarmed. The rollbacks write batches of one
+// node.
 
 // stoppedClock is the page module's clock, which, armed, reads the time
 // once and stops before answering it until let go.
@@ -72,10 +75,17 @@ func wantAnswer(t *testing.T, what string, a answer, want cell) {
 func TestUpgradeInterleavings(t *testing.T) {
 	clock := &stoppedClock{read: make(chan time.Time, 1), free: make(chan struct{})}
 	rules := &heldRules{held: make(chan struct{}, 1), free: make(chan struct{})}
+	stops, end, logs := &rollbackStops{}, &stoppedEnd{reached: make(chan struct{}, 1), free: make(chan struct{})}, &syncBuffer{}
 	tm := newAcmeTeamOn(t, "member", "", nil, &wiring{
 		page: func(d *page.Deps) { clock.Clock, d.Clock = d.Clock, clock },
 		wiki: func(d *wiki.Deps) { rules.Rules, d.Rules = d.Rules, rules },
-	}, slog.New(slog.DiscardHandler))
+		transfer: func(d *transfer.Deps) {
+			stops.Tree, d.Tree = d.Tree, stops
+			end.RollbackEnd, d.RollbackEnd = d.RollbackEnd, end
+		},
+		batch: transfer.Batch{Nodes: 1},
+	}, slog.New(slog.NewJSONHandler(logs, nil)))
+	rollbacks := rollbackInterleavings{tm: tm, stops: stops, end: end, logs: logs}
 	created := cell{status: http.StatusCreated}
 	upgrading := cell{http.StatusConflict, "notebook.upgrading"}
 
@@ -339,4 +349,9 @@ func TestUpgradeInterleavings(t *testing.T) {
 		}
 		checkPages(t, tm.pool)
 	})
+
+	t.Run("10 the abandonment and the initiator's batch", rollbacks.abandonAndTheBatch)
+	t.Run("11 a rollback's batch and its cancel", rollbacks.theBatchAndTheCancel)
+	t.Run("12 a rollback's end and the notebook's deletion", rollbacks.theEndAndTheDeletion)
+	t.Run("16 the rescue, the running worker and the end", rollbacks.theRescueAndTheEnd)
 }

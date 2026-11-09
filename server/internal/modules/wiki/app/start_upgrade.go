@@ -15,17 +15,20 @@ import (
 // detail says how many there are (M11 design 4.4 step 7).
 const maxUpgradeLocks = 100
 
-// UpgradeDeps are what an upgrade's start and read need (M11/P1 design
-// 3.14, 3.15): Action is the notebook module's notebook.change_mode;
-// Timeout bounds the start's transaction (decisions 227, 232).
+// UpgradeDeps are what an upgrade's start and read, its abandonment and
+// its rollback's end need (M11/P1 design 3.14, 3.15, 3.20): Action is the
+// notebook module's notebook.change_mode; Timeout bounds the start's
+// transaction (decisions 227, 232).
 type UpgradeDeps struct {
 	Tx         shared.TxManager
 	Notebooks  Notebooks
 	Workspaces UpgradeWorkspaces
 	States     UpgradeStates
 	Pages      UpgradePages
+	Rollback   RollbackPages
 	Rows       UpgradeRows
 	Writing    WritingJobs
+	Rollbacks  Rollbacks
 	Names      Names
 	Authorizer shared.Authorizer
 	Action     shared.Action
@@ -33,6 +36,29 @@ type UpgradeDeps struct {
 	Clock      Clock
 	Logger     Logger
 	Timeout    time.Duration
+}
+
+// locked locks notebook id's workspace's row FOR SHARE and its row FOR NO
+// KEY UPDATE, decides the caller's action, and reads the clock once: the
+// first steps of an admin's write of the upgrade, in its transaction
+// (M11 design 4.4 step 3). notebook.not_found for no row or a notebook
+// the caller cannot see, forbidden for one they are no admin of.
+func (d UpgradeDeps) locked(ctx context.Context, actor shared.Actor, workspace, id uuid.UUID) (UpgradeNotebook, time.Time, error) {
+	if ok, err := d.Workspaces.ShareByID(ctx, workspace); err != nil || !ok {
+		return UpgradeNotebook{}, time.Time{}, orNotebookNotFound(err)
+	}
+	state, ok, err := d.States.Lock(ctx, id)
+	if err != nil || !ok {
+		return UpgradeNotebook{}, time.Time{}, orNotebookNotFound(err)
+	}
+	_, err = d.Authorizer.Authorize(ctx, actor, d.Action, shared.Target{WorkspaceID: workspace, NotebookID: id})
+	if errors.Is(err, shared.ErrNotVisible) {
+		return UpgradeNotebook{}, time.Time{}, domain.ErrNotebookNotFound
+	}
+	if err != nil {
+		return UpgradeNotebook{}, time.Time{}, err
+	}
+	return state, d.Clock.Now().UTC(), nil
 }
 
 // StartUpgrade starts upgrading a standard notebook to an LLM Wiki:
@@ -154,21 +180,10 @@ func (s *StartUpgrade) Execute(ctx context.Context, id uuid.UUID, locale string)
 // lint slot it holds.
 func (s *StartUpgrade) start(ctx context.Context, actor shared.Actor, client string, workspace, id uuid.UUID, l domain.Locale,
 	release *func()) (startOutcome, error) {
-	if ok, err := s.d.Workspaces.ShareByID(ctx, workspace); err != nil || !ok {
-		return startOutcome{}, orNotebookNotFound(err)
-	}
-	state, ok, err := s.d.States.Lock(ctx, id)
-	if err != nil || !ok {
-		return startOutcome{}, orNotebookNotFound(err)
-	}
-	_, err = s.d.Authorizer.Authorize(ctx, actor, s.d.Action, shared.Target{WorkspaceID: workspace, NotebookID: id})
-	if errors.Is(err, shared.ErrNotVisible) {
-		return startOutcome{}, domain.ErrNotebookNotFound
-	}
+	state, at, err := s.d.locked(ctx, actor, workspace, id)
 	if err != nil {
 		return startOutcome{}, err
 	}
-	at := s.d.Clock.Now().UTC()
 	switch {
 	case state.Mode == domain.ModeLLMWiki:
 		return startOutcome{}, domain.ErrAlreadyLLMWiki

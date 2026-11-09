@@ -206,3 +206,68 @@ func TestARollbacksEndRow(t *testing.T) {
 		}
 	}
 }
+
+// An upgrade's row rolled back and its rollback continued (M11/P1 design
+// 3.20): an upgrade upgrading, or reviewing, rolls back, abandoned, its
+// job written in the same statement, by its writer at its time; it reads
+// back so, under way. Its rollback continued changes its job alone. An
+// upgrade not in the state a write wants, or none, changes nothing and
+// answers false. The job written apart from the state is what
+// notebook_upgrades_rollback_job_check refuses: hence one statement.
+func TestAnUpgradesRowRollsBack(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	at := time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
+	eng, ops := started(f.eng, f.alice, at), started(f.ops, f.bob, at)
+	for _, u := range []domain.Upgrade{eng, ops} {
+		if err := f.store.Insert(ctx, u, u.CreatedBy, u.CreatedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE notebook_upgrades SET rollback_job_id = gen_random_uuid() WHERE id = $1`, eng.ID); err == nil {
+		t.Error("the job written before the state passed notebook_upgrades_rollback_job_check")
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE notebook_upgrades SET state = 'reviewing', submission_id = gen_random_uuid(),
+		submitted_at = $2, submitted_by_id = $3 WHERE id = $1`, ops.ID, at, f.bob); err != nil {
+		t.Fatal(err)
+	}
+	abandoned, continued := at.Add(time.Hour), at.Add(2*time.Hour)
+	if ok, err := f.store.ContinueRollback(ctx, eng.ID, uuid.NewV7(), f.bob, abandoned); ok || err != nil {
+		t.Errorf("ContinueRollback(upgrading) = %v, %v; want none rolling back", ok, err)
+	}
+	first, second := uuid.NewV7(), uuid.NewV7()
+	for _, u := range []domain.Upgrade{eng, ops} {
+		if ok, err := f.store.RollBack(ctx, u.ID, domain.UpgradeAbandoned, first, f.alice, abandoned); !ok || err != nil {
+			t.Errorf("RollBack(%v) = %v, %v; want it rolling back", u.ID, ok, err)
+		}
+	}
+	for name, id := range map[string]uuid.UUID{"rolling back": eng.ID, "none": uuid.NewV7()} {
+		if ok, err := f.store.RollBack(ctx, id, domain.UpgradeAbandoned, second, f.bob, continued); ok || err != nil {
+			t.Errorf("RollBack(%s) = %v, %v; want none upgrading or reviewing", name, ok, err)
+		}
+	}
+	if ok, err := f.store.ContinueRollback(ctx, eng.ID, second, f.bob, continued); !ok || err != nil {
+		t.Errorf("ContinueRollback(eng) = %v, %v; want its job changed", ok, err)
+	}
+	if ok, err := f.store.ContinueRollback(ctx, uuid.NewV7(), second, f.bob, continued); ok || err != nil {
+		t.Errorf("ContinueRollback(none) = %v, %v; want false", ok, err)
+	}
+	for _, tt := range []struct {
+		up  domain.Upgrade
+		job uuid.UUID
+		by  uuid.UUID
+		at  time.Time
+	}{{eng, second, f.bob, continued}, {ops, first, f.alice, abandoned}} {
+		got, ok, err := f.store.Current(ctx, tt.up.NotebookID)
+		var by uuid.UUID
+		var changed time.Time
+		if err == nil {
+			err = f.pool.QueryRow(ctx, `SELECT updated_by_id, updated_at FROM notebook_upgrades WHERE id = $1`, tt.up.ID).Scan(&by, &changed)
+		}
+		if err != nil || !ok || got.State != domain.UpgradeRollingBack || got.Ending != domain.UpgradeAbandoned || got.RollbackJobID == nil ||
+			*got.RollbackJobID != tt.job || by != tt.by || !changed.Equal(tt.at) {
+			t.Errorf("%v: %+v, %v, %v, by %v at %v; want rolling back, abandoned, job %v, by %v at %v", tt.up.ID, got, ok, err, by,
+				changed, tt.job, tt.by, tt.at)
+		}
+	}
+}

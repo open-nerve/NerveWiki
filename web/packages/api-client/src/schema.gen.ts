@@ -1536,6 +1536,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
+         * @description An upgrade upgrading or reviewing rolls back, abandoned, its content frozen but for the rollback's job; one rolling back whose job stopped gets a new job. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade under way is wiki.upgrade_state; one whose rollback's job is queued or running is transfer.busy; a full job queue is server_busy. These checks occur in that order. The answer is the upgrade, rolling back, with its rollback's job.
+         */
+        post: operations["abandonUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/end-rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
+         * @description The upgrade ends, rolled back: its content is no longer frozen, and rollback_complete tells whether the rollback had put everything back, rollback_left what it had not. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one whose upgrade is not rolling back is wiki.upgrade_state; one whose rollback's job is queued or running is transfer.busy. These checks occur in that order.
+         */
+        post: operations["endUpgradeRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -3320,7 +3366,7 @@ export interface components {
             ending: components["schemas"]["UpgradeEnding"] | null;
             /** @description Whether its rollback put everything back, once the rollback ended; null before. */
             rollback_complete: boolean | null;
-            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. null otherwise. */
+            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. Rolling back with its job stopped: counted now. null otherwise. */
             rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
         };
         UpgradeStart: {
@@ -6013,6 +6059,55 @@ export interface operations {
                 };
             };
             503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    abandonUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolling back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    endUpgradeRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolled back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
             default: components["responses"]["Problem"];
         };
     };

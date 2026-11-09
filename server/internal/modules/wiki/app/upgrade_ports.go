@@ -108,13 +108,28 @@ type Names interface {
 
 // UpgradeRows are the module's notebook_upgrades: Insert writes an
 // upgrade's row by by at at; Current reads a notebook's upgrade under way,
-// false for none; EndRollback ends the upgrade id rolling back, rolled
-// back, complete for left nil, by by at at, and answers when its row
-// changed before, false for none rolling back.
+// false for none; RollBack sets the upgrade id upgrading or reviewing
+// rolling back for ending, its rollback's job jobID, in one statement;
+// ContinueRollback sets the job of the upgrade id rolling back;
+// EndRollback ends the upgrade id rolling back, rolled back, complete for
+// left nil, and answers when its row changed before. Each write is by by
+// at at, false for no row in the state it wants.
 type UpgradeRows interface {
 	Insert(ctx context.Context, u domain.Upgrade, by uuid.UUID, at time.Time) error
 	Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgrade, bool, error)
+	RollBack(ctx context.Context, id uuid.UUID, ending domain.UpgradeEnding, jobID, by uuid.UUID, at time.Time) (bool, error)
+	ContinueRollback(ctx context.Context, id, jobID, by uuid.UUID, at time.Time) (bool, error)
 	EndRollback(ctx context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool, error)
+}
+
+// Rollbacks start an upgrade's rollback's job, the transfer module's
+// (M11/P1 design 3.19): Start writes the rollback of the notebook's
+// upgrade upgradeID, queued, as its caller from client ("web" or "api")
+// asks, in the caller's transaction, which holds the notebook's row and
+// has set the upgrade rolling back, and answers the job's id: server_busy
+// when the queue is full.
+type Rollbacks interface {
+	Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client string) (uuid.UUID, error)
 }
 
 // UpgradeView is an upgrade as its admins read it: the row, and the

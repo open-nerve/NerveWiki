@@ -12,6 +12,34 @@ import (
 	"uuid"
 )
 
+const continueUpgradeRollback = `-- name: ContinueUpgradeRollback :execrows
+UPDATE notebook_upgrades
+SET rollback_job_id = $1::uuid, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND state = 'rolling_back' AND deleted_at IS NULL
+`
+
+type ContinueUpgradeRollbackParams struct {
+	JobID uuid.UUID
+	By    uuid.UUID
+	Now   time.Time
+	ID    uuid.UUID
+}
+
+// A stopped rollback continued (M11 design 4.10), under the notebook's row lock: its new job. No row when the upgrade
+// does not roll back.
+func (q *Queries) ContinueUpgradeRollback(ctx context.Context, arg ContinueUpgradeRollbackParams) (int64, error) {
+	result, err := q.db.Exec(ctx, continueUpgradeRollback,
+		arg.JobID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const currentUpgrade = `-- name: CurrentUpgrade :one
 SELECT id, notebook_id, state, ending, source_root_id, seeded_root, seeded_agents_id, locale, baseline_nodes,
     baseline_pages, baseline_wanted, baseline_wanted_capped, submitted_by_id, submitted_at, rollback_job_id,
@@ -177,6 +205,38 @@ type PurgeUpgradesParams struct {
 // lock order.
 func (q *Queries) PurgeUpgrades(ctx context.Context, arg PurgeUpgradesParams) (int64, error) {
 	result, err := q.db.Exec(ctx, purgeUpgrades, arg.Before, arg.Batch)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rollBackUpgrade = `-- name: RollBackUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'rolling_back', ending = $1::text, rollback_job_id = $2::uuid,
+    updated_by_id = $3::uuid, updated_at = $4::timestamptz
+WHERE id = $5 AND state IN ('upgrading', 'reviewing') AND deleted_at IS NULL
+`
+
+type RollBackUpgradeParams struct {
+	Ending string
+	JobID  uuid.UUID
+	By     uuid.UUID
+	Now    time.Time
+	ID     uuid.UUID
+}
+
+// An upgrade abandoned (M11 design 4.10), under the notebook's row lock: rolling back, why, and its rollback's job, in
+// one statement, as notebook_upgrades_rollback_job_check wants the job with the state. No row when the upgrade is not
+// upgrading or reviewing.
+func (q *Queries) RollBackUpgrade(ctx context.Context, arg RollBackUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rollBackUpgrade,
+		arg.Ending,
+		arg.JobID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
 	if err != nil {
 		return 0, err
 	}

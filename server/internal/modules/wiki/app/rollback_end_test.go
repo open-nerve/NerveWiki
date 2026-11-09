@@ -92,6 +92,14 @@ func (f *endFake) Current(context.Context, uuid.UUID) (domain.Upgrade, bool, err
 	return domain.Upgrade{}, false, errors.New("the end reads no row")
 }
 
+func (f *endFake) RollBack(context.Context, uuid.UUID, domain.UpgradeEnding, uuid.UUID, uuid.UUID, time.Time) (bool, error) {
+	return false, errors.New("the end rolls no upgrade back")
+}
+
+func (f *endFake) ContinueRollback(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) (bool, error) {
+	return false, errors.New("the end continues no rollback")
+}
+
 func (f *endFake) EndRollback(_ context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool, error) {
 	f.note("end row")
 	if !at.Equal(f.at) {

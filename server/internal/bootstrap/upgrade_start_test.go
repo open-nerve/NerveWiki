@@ -2,8 +2,11 @@ package bootstrap
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -354,8 +357,10 @@ func TestUpgradeStates(t *testing.T) {
 	tm.exec(t, `UPDATE notebooks SET upgrade_state = 'rolling_back' WHERE id = $1`, nb)
 	tm.exec(t, `UPDATE notebook_upgrades SET state = 'rolling_back', ending = 'rejected', rollback_job_id = $2 WHERE id = $1`, u.ID, job)
 	status, answer = tm.getUpgrade(t, "alice", nb)
+	// No job queued or running: what is left counted now, the pages the
+	// start wrote (S3).
 	if status != http.StatusOK || !strings.Contains(answer, `"state":"rolling_back"`) || !strings.Contains(answer, `"ending":"rejected"`) ||
-		!strings.Contains(answer, `"rollback_job_id":"`+job+`"`) || !strings.Contains(answer, `"rollback_left":null`) {
+		!strings.Contains(answer, `"rollback_job_id":"`+job+`"`) || !strings.Contains(answer, `"rollback_left":{"created":2,"nodes":0,"pages":0}`) {
 		t.Errorf("rolling back = %d %s", status, answer)
 	}
 	carries("rolling_back")
@@ -372,9 +377,13 @@ func TestUpgradeStates(t *testing.T) {
 // its admin's and a reader's, and no other, a member's who does not see
 // it; a write of a marker page every stream sees comes next in each. The
 // composition root hands the start the mode's subscribers: without them,
-// no mode frame comes.
+// no mode frame comes. So does each of the rollback's steps (3.20): the
+// abandonment, the job's stop, the continuation, the rollback done; and,
+// a second upgrade abandoned and stopped, the rollback's end.
 func TestUpgradeStatesReachTheStreams(t *testing.T) {
-	tm := newAcmeTeam(t, "member", "member")
+	stops := &rollbackStops{}
+	tm := newAcmeTeamOn(t, "member", "member", nil, &wiring{transfer: func(d *transfer.Deps) { stops.Tree, d.Tree = d.Tree, stops }},
+		slog.New(slog.DiscardHandler))
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Notes","workspace_access":"none"}`).ID
 	tm.createPage(t, "alice", nb, "", "Page")
 	tm.addNotebookMember(t, "alice", nb, "bob", "reader")
@@ -401,6 +410,78 @@ func TestUpgradeStatesReachTheStreams(t *testing.T) {
 		}
 	}
 	tm.quiet(t, eng, marker, alice, bob, carol)
+
+	steps := func(what string, step func()) {
+		t.Helper()
+		step()
+		if got := tm.modeFrames(t, nb, eng, marker, alice, bob, carol); !slices.Equal(got, []int{1, 1, 0}) {
+			t.Errorf("%s: mode frames %v to alice, bob and carol, want one to each who sees the notebook", what, got)
+		}
+	}
+	var job string
+	stopped := func(plan, batch int) func() {
+		return func() {
+			stops.arm(nb, plan, batch, false)
+			job = tm.abandoned(t, "alice", nb)
+			stops.stopped(t)
+		}
+	}
+	cancelled := func() {
+		tm.cancelSeen(t, "alice", job)
+		stops.goOn()
+		if j := tm.endedBackground(t, "alice", job); j.State != "cancelled" {
+			t.Fatalf("the rollback = %s, want it cancelled", j)
+		}
+	}
+	// Stopped at its first plan, the job writes nothing: its continuation
+	// has the seeded pages to delete.
+	steps("the abandonment", stopped(1, 0))
+	steps("the job's stop", cancelled)
+	steps("the continuation", stopped(0, 1))
+	steps("the rollback done", func() {
+		stops.goOn()
+		if j := tm.endedBackground(t, "alice", job); j.State != "succeeded" {
+			t.Fatalf("the rollback = %s, want it succeeded", j)
+		}
+	})
+	steps("a second start", func() { tm.upgraded(t, "alice", nb) })
+	steps("its abandonment", stopped(1, 0))
+	steps("its job's stop", cancelled)
+	steps("its rollback's end", func() {
+		if status, answer := tm.endRollback(t, "alice", nb); status != http.StatusOK {
+			t.Fatalf("the end = %d %s", status, answer)
+		}
+	})
+}
+
+// modeFrames writes the marker of eng, and answers, for each stream, how
+// many mode frames of nb came before the marker's write, the other frames
+// of nb skipped: a frame of another notebook fails t.
+func (tm acmeTeam) modeFrames(t *testing.T, nb, eng, marker string, streams ...*eventStream) []int {
+	t.Helper()
+	rev := tm.content(t, "alice", marker).Revision
+	tm.send(t, contentWrite("alice", marker, fmt.Sprintf("# Marker %d", rev+1), rev, ""), http.StatusOK)
+	out := make([]int, len(streams))
+	for i, s := range streams {
+		for f := s.next(t); ; f = s.next(t) {
+			var of struct {
+				NotebookID string `json:"notebook_id"`
+			}
+			if err := json.Unmarshal([]byte(f.data), &of); err != nil {
+				t.Fatalf("%s's stream: %s %s: %v", s.name, f.event, f.data, err)
+			}
+			if f.event == "pages" && of.NotebookID == eng {
+				break
+			}
+			if of.NotebookID != nb {
+				t.Fatalf("%s's stream: %s %s, want one of %s", s.name, f.event, f.data, nb)
+			}
+			if f.event == "mode" {
+				out[i]++
+			}
+		}
+	}
+	return out
 }
 
 // A notebook's deletion takes its upgrade with it (M11/P1 design 3.15):

@@ -7,6 +7,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/notebook"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
@@ -169,4 +170,14 @@ func (p wikiRollbackPages) Left(ctx context.Context, upgradeID, notebookID uuid.
 
 func (p wikiRollbackPages) DeleteBaseline(ctx context.Context, upgradeID uuid.UUID) error {
 	return p.upgrades.DeleteBaseline(ctx, upgradeID)
+}
+
+// wikiRollbacks are the transfer module's Rollbacks as the wiki module's
+// abandonment calls them (M11/P1 design 3.20): the client is the request's.
+type wikiRollbacks struct {
+	rollbacks transfer.Rollbacks
+}
+
+func (r wikiRollbacks) Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client string) (uuid.UUID, error) {
+	return r.rollbacks.Start(ctx, notebookID, upgradeID, transfer.Client(client))
 }
