@@ -7,9 +7,9 @@ import { autosavePause } from "../editor/autosave";
 import { editorExtensions, type EditorControls, type EditorExtension } from "../editor/registry";
 import { ApiError } from "../services/api";
 import type { PageContent } from "../services/page.service";
-import { problem, type Answer as HttpAnswer } from "../test/fakes";
+import { problem, upgradeOf, type Answer as HttpAnswer } from "../test/fakes";
 import { pageEditor } from "../test/page-editor";
-import { ada, guide, notes, pagePath, pageServer } from "../test/page-server";
+import { ada, bob, guide, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 import { editSessionHeartbeat } from "./edit-session";
 import { PageEditing, type EditingService } from "./page-editing";
@@ -483,6 +483,35 @@ test("source loss locks the mounted editor and preserves unsaved text: real regi
     'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
     "END session-1",
   ]);
+});
+
+test("an upgrade's freeze refusing a save locks the mounted editor, keeps its text, and saves no more", async () => {
+  const server = pageServer({ role: "editor", nodes: [guide, notes] });
+  const { view, type, controls, editing } = await mountedSourceEdit(server);
+  const save = vi.spyOn(controls, "save");
+  act(() => type(" my unsaved text"));
+  // Another admin starts the upgrade, which deletes the sessions lapsed meanwhile (M11/P1 design 4.4).
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  server.sessions.clear();
+  const writes = () => server.sent.filter((line) => !line.startsWith("GET "));
+
+  await act(() => controls.save());
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more."
+  );
+  expect(editing.session.lost).toEqual({ reason: "upgrading" });
+  expect(view.state.readOnly).toBe(true);
+  expect(view.state.facet(EditorView.editable)).toBe(false);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  expect(editing.unsaved).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  const before = writes();
+  await act(() => vi.advanceTimersByTimeAsync(Math.max(autosavePause, editSessionHeartbeat) * 3));
+  // Not tried again: the autosave's timer does not call save, and nothing more goes out.
+  expect(save).toHaveBeenCalledOnce();
+  expect(writes()).toEqual(before);
+  expect(before.filter((line) => line.startsWith("409 notebook.upgrading PUT"))).toHaveLength(1);
 });
 
 test("source loss locks the mounted editor and preserves unsaved text: pending autosave stops before end answers", async () => {

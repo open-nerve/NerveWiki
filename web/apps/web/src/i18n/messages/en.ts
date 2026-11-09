@@ -599,6 +599,8 @@ export const en = {
   "editor.lostUnlocked": "{name} released your edit of this page: this editor saves no more.",
   "editor.lostGone": "This page no longer exists: this editor saves no more.",
   "editor.lostSource": "This page is now a source. Its original content is read-only.",
+  "editor.lostUpgrading":
+    "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more.",
   "editor.lostTaken": "Your edit lapsed, and {name} is editing this page now: this editor saves no more.",
   "editor.lostTakenSelf": "Your edit lapsed, and you are editing this page elsewhere now: this editor saves no more.",
   "editor.lostUnsaved": "Your changes here are not saved: copy them before you leave.",

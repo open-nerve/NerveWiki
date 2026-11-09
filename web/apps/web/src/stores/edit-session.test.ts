@@ -126,6 +126,13 @@ test.each<[string, () => Error, (() => Error) | undefined, EditLost]>([
     () => refusal(403, "forbidden"),
     { reason: "no_access" },
   ],
+  // An upgrade's start deleted the session lapsed meanwhile, and its freeze refuses a new one (M11/P1 design 4.4).
+  [
+    "lapsed, the notebook being upgraded",
+    () => refusal(404, "page.edit_session_not_found"),
+    () => refusal(409, "notebook.upgrading"),
+    { reason: "upgrading" },
+  ],
 ])("a beat %s loses the edit for good: nothing beats or opens again", async (_, beat, open, lost) => {
   const { session, sent, answers } = await opened();
   answers.beat = () => {
@@ -397,6 +404,29 @@ test.each(["save", "heartbeat"] as const)(
     expect(vi.getTimerCount()).toBe(0);
   }
 );
+
+test("a save refused by an upgrade's freeze loses the edit and ends the server session exactly once", async () => {
+  const { session, sent, answers, page, events } = await opened();
+  const ended = deferred<void>();
+  answers.end = () => ended.promise;
+  const upgrading = refusal(409, "notebook.upgrading");
+
+  expect(session.settle(upgrading)).toBe(true);
+
+  expect(session.lost).toEqual({ reason: "upgrading" });
+  expect(sent).toEqual(["OPEN", "END s1"]);
+  expect(page.listening()).toBe(0);
+  expect(events.count()).toBe(0);
+  const end = session.end();
+  expect(session.end()).toBe(end);
+  expect(session.settle(upgrading)).toBe(true);
+  await vi.advanceTimersByTimeAsync(editSessionHeartbeat * 3);
+  expect(sent).toEqual(["OPEN", "END s1"]);
+  await expect(session.current()).rejects.toBeInstanceOf(EditEnded);
+  ended.resolve();
+  await end;
+  expect(vi.getTimerCount()).toBe(0);
+});
 
 test("source loss ends the server session exactly once: reopening arrives after loss and unmount", async () => {
   const { session, sent, answers, page, events } = await opened();
