@@ -60,7 +60,10 @@ WHERE notebook_id = sqlc.arg(notebook_id) AND parent_id IS NULL AND deleted_at I
 -- the free subtrees are those whose parent is none, a holder or a baseline node. Depth is at most MaxDepth: the
 -- holders climb as many levels. Each node is read by its key, each upgrade's row by upgrade_nodes_pkey, a row at a
 -- time (the LATERALs' LIMIT 1 keeps them from being pulled up into joins, which may read a table whole), so that the
--- read costs as the notebook and not as the instance (decision 240; its cost guard).
+-- read costs as the notebook and not as the instance (decision 240; its cost guard). The holders are left out by an
+-- anti-join, NOT EXISTS: a NOT IN of them is, once the tables are analyzed, a SubPlan run for each node alive, which
+-- reads the holders whole each time, as many nodes times as many holders (decision 244); a holder's id is never null,
+-- so the two say the same.
 WITH RECURSIVE holders AS (
     SELECT n.parent_id AS id FROM upgrade_nodes b
     JOIN LATERAL (SELECT n.parent_id FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1) n ON true
@@ -76,7 +79,7 @@ LEFT JOIN LATERAL (
     LIMIT 1
 ) b ON true
 WHERE n.notebook_id = sqlc.arg(notebook_id) AND n.deleted_at IS NULL AND b.baseline IS NULL
-    AND n.id NOT IN (SELECT id FROM holders);
+    AND NOT EXISTS (SELECT 1 FROM holders h WHERE h.id = n.id);
 
 -- name: RollbackHolders :many
 -- The new nodes alive holding baseline nodes alive, their ancestors with no baseline row, as they are now (M11

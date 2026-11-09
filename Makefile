@@ -379,8 +379,10 @@ test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsTenHistories$$' ./internal/bootstrap
 	@# M11/P1/S3：回滚的三个守卫各单独一行、带 -v（P1 设计 7.1，决定 236、240）。计划：10 万个条目，PlanRollback 在内存里的读上，中位数的时长与分配在本机两轮的三倍之内
 	cd server && go test -count=1 -v -run '^TestARollbacksPlanOfAHundredThousandItemsTakesItsTime$$' ./internal/modules/page/app
-	@# 读：10 万节点、10 万页，库里另有九本各 5 万页的笔记本与它们的升级的基线行；三种统计状态 × 自定义与通用的计划，先核对 RollbackLeft 与合成的一遍的六条读只经键
-	@# （upgrade_nodes 经主键的前缀，nodes 经 notebook_id 或逐行经主键，page_contents 逐行经主键，不顺序扫描），再核对 RollbackLeft 的中位数在请求的 4 秒、合成的读在本机两轮的三倍之内（决定 226）
+	@# 读：两本 10 万页的笔记本，一本 1 万个文件夹各 10 页（计时），一本 100 个文件夹各 1,000 页（只核对计划），库里另有九本各 5 万页的笔记本与它们的升级的基线行；
+	@# 三种统计状态 × 自定义与通用的计划，先核对 RollbackLeft 与合成的一遍的六条读只经键（upgrade_nodes 经主键的前缀，nodes 经 notebook_id 或逐行经主键，page_contents
+	@# 逐行经主键，不顺序扫描；在内侧逐行重复的读经外行的键，不逐行重读整个集合，决定 244），计划有问题就停在计时之前；再核对 RollbackLeft 的中位数在请求的 4 秒、
+	@# 合成的读在本机两轮的三倍之内（决定 226、236）
 	cd server && go test -count=1 -v -run '^TestARollbacksReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
 	@# 先删：10 万个零散的新页装成 40 个单元、各 2,500 棵子树（决定 231、243），种子先删 5,000 页，让统计见过已删的行，量稳态；每个单元不过 14 秒
 	@# （决定 153），整遍与分配在本机两轮的三倍之内，本机一遍约 110 秒、界 330 秒。统计没见过已删的行时单元一个比一个慢，本机一遍 645 秒，
