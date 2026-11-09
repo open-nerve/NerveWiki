@@ -2484,10 +2484,10 @@ export interface components {
             assets_expire_at: string | null;
         };
         /**
-         * @description What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+         * @description What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
          * @enum {string}
          */
-        ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert";
+        ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert" | "rollback";
         /** @description The changeset a version is of, and the account it is by. */
         VersionChangeset: {
             /** Format: uuid */
@@ -3447,8 +3447,11 @@ export interface components {
              */
             root_id?: string | null;
         };
-        /** @enum {string} */
-        TransferKind: "import" | "export" | "trash_restore" | "revert";
+        /**
+         * @description What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+         * @enum {string}
+         */
+        TransferKind: "import" | "export" | "trash_restore" | "revert" | "rollback";
         /** @enum {string} */
         TransferState: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
         /**
@@ -3555,14 +3558,14 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade. */
             name: string;
             /**
              * Format: uuid
-             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             * @description The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
              */
             changeset_id: string | null;
             /**
@@ -3633,14 +3636,14 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade. */
             name: string;
             /**
              * Format: uuid
-             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             * @description The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
              */
             changeset_id: string | null;
             /**

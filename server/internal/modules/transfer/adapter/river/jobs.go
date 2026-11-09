@@ -1,8 +1,8 @@
 // Package riveradapter works the transfer module's background jobs on
 // River (M7/P5 design 3.2, 3.8, 3.12; M7/P6 design 3.13; M8/P4 design
-// 3.6): each worker only runs a use case. The exports run in a queue of
-// their own, the jobs that write a notebook's tree, the imports, restores
-// and reverts, in another, each its job's timeout, one attempt; the
+// 3.6; M11/P1 design 3.19): each worker only runs a use case. The exports
+// run in a queue of their own, the jobs that write a notebook's tree, the
+// imports, restores, reverts and rollbacks, in another, each its job's timeout, one attempt; the
 // request enqueues them in its own transaction.
 package riveradapter
 
@@ -28,6 +28,7 @@ const (
 	ImportKind       = "transfer.import"
 	TrashRestoreKind = "transfer.trash_restore"
 	RevertKind       = "transfer.revert"
+	RollbackKind     = "transfer.rollback"
 	RescueKind       = "transfer.rescue_interrupted"
 	ExpireKind       = "transfer.expire_exports"
 	SweepKind        = "transfer.sweep_orphan_archives"
@@ -91,6 +92,17 @@ func (RevertArgs) Kind() string { return RevertKind }
 
 func (a RevertArgs) id() uuid.UUID { return a.JobID }
 
+// RollbackArgs are an upgrade's rollback's job's arguments: its row's id
+// (M11/P1 design 3.19).
+type RollbackArgs struct {
+	JobID uuid.UUID `json:"job_id"`
+}
+
+// Kind is RollbackKind.
+func (RollbackArgs) Kind() string { return RollbackKind }
+
+func (a RollbackArgs) id() uuid.UUID { return a.JobID }
+
 // JobUseCase is the use case a job's worker runs: app.Export, app.Import,
 // app.Background.
 type JobUseCase interface {
@@ -149,6 +161,14 @@ func RevertJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	}}
 }
 
+// RollbackJob is the upgrades' rollbacks' worker, each run within
+// timeout, on the imports' queue.
+func RollbackJob(uc JobUseCase, timeout time.Duration) jobs.Job {
+	return jobs.Job{Add: func(w *river.Workers) error {
+		return river.AddWorkerSafely(w, &jobWorker[RollbackArgs]{uc: uc, timeout: timeout})
+	}}
+}
+
 // Queue enqueues the module's jobs in the caller's transaction, with the
 // insert-only client, and tells which River still holds.
 type Queue struct {
@@ -202,6 +222,17 @@ func (q Queue) Revert(ctx context.Context, id uuid.UUID) error {
 	return q.inserter.InsertTx(ctx, tx, RevertArgs{JobID: id}, &river.InsertOpts{Queue: QueueImport, MaxAttempts: 1})
 }
 
+// Rollback enqueues the upgrade's rollback id in the imports' queue (M11/P1
+// design 3.19), one attempt, in the transaction ctx carries: the caller's,
+// which abandons the upgrade.
+func (q Queue) Rollback(ctx context.Context, id uuid.UUID) error {
+	tx, ok := postgres.TxFrom(ctx)
+	if !ok {
+		return errors.New("enqueue a rollback: not in a transaction")
+	}
+	return q.inserter.InsertTx(ctx, tx, RollbackArgs{JobID: id}, &river.InsertOpts{Queue: QueueImport, MaxAttempts: 1})
+}
+
 // riverKind is River's kind of the module's jobs of kind.
 func riverKind(kind domain.Kind) (string, bool) {
 	switch kind {
@@ -213,6 +244,8 @@ func riverKind(kind domain.Kind) (string, bool) {
 		return TrashRestoreKind, true
 	case domain.KindRevert:
 		return RevertKind, true
+	case domain.KindRollback:
+		return RollbackKind, true
 	}
 	return "", false
 }

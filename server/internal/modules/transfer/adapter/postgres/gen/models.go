@@ -32,4 +32,5 @@ type TransferJob struct {
 	ChangesetID       *uuid.UUID
 	TargetChangesetID *uuid.UUID
 	Message           *string
+	UpgradeID         *uuid.UUID
 }

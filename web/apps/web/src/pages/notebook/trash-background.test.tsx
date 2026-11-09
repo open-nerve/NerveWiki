@@ -6,7 +6,7 @@ import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
-import { jobJSON, jobsServer, reportOf } from "../../test/jobs-server";
+import { jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { assetNode, guide, install, linux, notes } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
@@ -236,6 +236,26 @@ test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string,
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe(started));
   }
 );
+
+// The fake server refuses as the real one does (05-lessons 2): an upgrade's rollback the page has not read yet holds
+// the notebook's writes, as an import, a restore and an undo do (M11/P1 design 4.3, P1 review C-N4).
+test("a restore in the background refused by an upgrade's rollback the page has not read yet says a job that writes the tree is under way", async () => {
+  const user = userEvent.setup();
+  const { server } = large();
+  renderApp(trashPath, server.app);
+  const start = await refused(user);
+  server.jobs = [underWay(jobJSON(9, { kind: "rollback", name: "upgrade" }), 0, 0)];
+
+  await user.click(start);
+
+  await waitFor(() =>
+    expect(screen.getByRole("alert").textContent).toBe(
+      "An import, a restore or an undo is under way in this notebook: wait for it to end, then try again."
+    )
+  );
+  expect(startsOf(server.asked)).toEqual(["POST restore Linux"]);
+  expect(server.jobs.map((job) => job.kind)).toEqual(["rollback"]);
+});
 
 test("a restore in the background refused, the role taken away meanwhile, says why, and reads the notebooks again: a reader by now, the Restores go, the focus to the title", async () => {
   const user = userEvent.setup();

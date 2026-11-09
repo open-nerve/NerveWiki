@@ -3908,7 +3908,7 @@ components:
             - 'null'
           format: date-time
     ChangesetKind:
-      description: 'What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.'
+      description: 'What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade''s rollback, which put the notebook back as the upgrade started.'
       type: string
       enum:
         - edit
@@ -3916,6 +3916,7 @@ components:
         - version_restore
         - trash_restore
         - revert
+        - rollback
     VersionChangeset:
       description: The changeset a version is of, and the account it is by.
       type: object
@@ -6054,12 +6055,14 @@ components:
             - 'null'
           format: uuid
     TransferKind:
+      description: 'What a job does: an import, an export, a trash item''s restore, a changeset''s revert, or an upgrade''s rollback, which puts the notebook back as the upgrade started.'
       type: string
       enum:
         - import
         - export
         - trash_restore
         - revert
+        - rollback
     TransferState:
       type: string
       enum:
@@ -6261,16 +6264,16 @@ components:
           type: string
           format: uuid
         root_id:
-          description: The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+          description: The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
           type:
             - string
             - 'null'
           format: uuid
         name:
-          description: What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+          description: What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
           type: string
         changeset_id:
-          description: 'The changeset the job writes in, an import''s, a restore''s trash_restore or a revert''s revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.'
+          description: 'The changeset the job writes in, an import''s, a restore''s trash_restore, a revert''s revert or a rollback''s rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.'
           type:
             - string
             - 'null'
@@ -6431,16 +6434,16 @@ components:
           type: string
           format: uuid
         root_id:
-          description: The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+          description: The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
           type:
             - string
             - 'null'
           format: uuid
         name:
-          description: What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+          description: What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
           type: string
         changeset_id:
-          description: 'The changeset the job writes in, an import''s, a restore''s trash_restore or a revert''s revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.'
+          description: 'The changeset the job writes in, an import''s, a restore''s trash_restore, a revert''s revert or a rollback''s rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.'
           type:
             - string
             - 'null'

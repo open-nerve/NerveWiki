@@ -24,6 +24,10 @@ const (
 	ChangesetTrashRestore   ChangesetKind = "trash_restore"
 	// ChangesetRevert reverts another changeset, which it names.
 	ChangesetRevert ChangesetKind = "revert"
+	// ChangesetRollback is an upgrade's rollback (M11 design 4.10): it puts
+	// the notebook back as the upgrade started, of no one changeset; its
+	// upgrade_id is the upgrade's.
+	ChangesetRollback ChangesetKind = "rollback"
 )
 
 // A notebook's log (M8 design 4.7; M8/P3 design 3.4): its changesets newer

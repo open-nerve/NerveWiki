@@ -234,6 +234,7 @@ func New(d Deps) *Module {
 			riveradapter.ImportJob(imp, d.JobTimeout),
 			riveradapter.TrashRestoreJob(run, d.JobTimeout),
 			riveradapter.RevertJob(run, d.JobTimeout),
+			riveradapter.RollbackJob(run, d.JobTimeout),
 			riveradapter.RescueJob(app.NewRescue(rows, queue, d.Clock, d.Logger, d.HeartbeatTimeout)),
 			riveradapter.ExpireJob(app.NewExpire(rows, archives, d.Clock, d.Logger, d.ExportTTL)),
 			riveradapter.SweepJob(app.NewSweep(rows, archives, d.Clock, d.Logger)),

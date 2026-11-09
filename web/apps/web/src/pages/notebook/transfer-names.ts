@@ -12,12 +12,14 @@ const changesetKinds: Record<Changeset["kind"], true> = {
   version_restore: true,
   trash_restore: true,
   revert: true,
+  rollback: true,
 };
 
 /**
  * jobTitle is what a job does: an export of the whole notebook or of a
- * page, an import, a restore of a trash item, or an undo of a change of a
- * kind, its name (M8/P4 design 4.3).
+ * page, an import, a restore of a trash item, an undo of a change of a
+ * kind, its name (M8/P4 design 4.3), or an upgrade's rollback, the undo of
+ * the upgrade (M11/P1 design 4.3).
  */
 export function jobTitle(job: TransferJob, t: Translate): string {
   switch (job.kind) {
@@ -29,6 +31,8 @@ export function jobTitle(job: TransferJob, t: Translate): string {
       return t("transfer.revertOf", {
         kind: Object.hasOwn(changesetKinds, job.name) ? kindText(job.name as Changeset["kind"], t) : job.name,
       });
+    case "rollback":
+      return t("transfer.rollback");
   }
   return job.root_id === null ? t("transfer.exportOfNotebook") : t("transfer.exportOfPage", { name: job.name });
 }

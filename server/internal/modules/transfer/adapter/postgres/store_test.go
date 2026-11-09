@@ -338,6 +338,77 @@ func TestOneWritingJobAtOnceInANotebook(t *testing.T) {
 	}
 }
 
+// An upgrade's rollback writes its notebook's tree (M11/P1 design 3.17):
+// queued or running, it refuses an import, a restore, a revert and another
+// rollback through the writing key, and Writing tells it, the query's half
+// (P1 review A-M2); ended, or deleted with its notebook, it holds nothing;
+// an export goes beside it, and one in another notebook. Its upgrade
+// reads back.
+func TestARollbackIsOneWritingJobOfItsNotebook(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	upgrade := uuid.NewV7()
+	rollback := func(notebook uuid.UUID) (domain.Job, error) {
+		changeset := uuid.NewV7()
+		j := domain.Job{ID: uuid.NewV7(), NotebookID: notebook, Kind: domain.KindRollback, State: domain.StateQueued, Name: "upgrade",
+			CreatedBy: f.alice, Client: domain.ClientWeb, CreatedAt: at(0), ChangesetID: &changeset, UpgradeID: &upgrade}
+		return j, f.store.CreateJob(ctx, j)
+	}
+	first, err := rollback(f.eng)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := f.store.FindJob(ctx, first.ID); err != nil || got.Kind != domain.KindRollback || got.UpgradeID == nil ||
+		*got.UpgradeID != upgrade || got.RootID != nil || got.TargetChangesetID != nil || *got.ChangesetID != *first.ChangesetID {
+		t.Fatalf("FindJob() = %+v, %v; want the rollback as written, of its upgrade", got, err)
+	}
+	refused := func(when string) {
+		t.Helper()
+		if busy, err := f.store.Writing(ctx, f.eng); !busy || err != nil {
+			t.Errorf("Writing() beside a rollback %s = %v, %v; want true", when, busy, err)
+		}
+		imported := domain.Job{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.KindImport, State: domain.StateQueued, Name: "vault.zip",
+			CreatedBy: f.bob, Client: domain.ClientWeb, CreatedAt: at(0)}
+		if err := f.store.CreateJob(ctx, imported); !errors.Is(err, domain.ErrWriting) {
+			t.Errorf("CreateJob() of an import beside a rollback %s = %v, want ErrWriting", when, err)
+		}
+		root := uuid.NewV7()
+		if _, err := f.background(t, f.eng, f.bob, &root, uuid.UUID{}); !errors.Is(err, domain.ErrWriting) {
+			t.Errorf("CreateJob() of a restore beside a rollback %s = %v, want ErrWriting", when, err)
+		}
+		if _, err := f.background(t, f.eng, f.bob, nil, uuid.NewV7()); !errors.Is(err, domain.ErrWriting) {
+			t.Errorf("CreateJob() of a revert beside a rollback %s = %v, want ErrWriting", when, err)
+		}
+		if _, err := rollback(f.eng); !errors.Is(err, domain.ErrWriting) {
+			t.Errorf("CreateJob() of a second rollback beside one %s = %v, want ErrWriting", when, err)
+		}
+	}
+	refused("queued")
+	f.export(t, f.eng, f.bob, at(0))
+	if _, err := rollback(f.ops); err != nil {
+		t.Errorf("CreateJob() of a rollback in another notebook = %v", err)
+	}
+	f.start(t, first.ID, at(0))
+	refused("running")
+	if ok, err := f.store.FinishJob(ctx, first.ID, app.Ended{State: domain.StateFailed, At: at(0), Name: "upgrade",
+		Report: domain.Report{Failure: domain.FailureInterrupted}}); !ok || err != nil {
+		t.Fatalf("FinishJob() = %v, %v", ok, err)
+	}
+	if busy, err := f.store.Writing(ctx, f.eng); busy || err != nil {
+		t.Errorf("Writing() once the rollback ended = %v, %v; want false", busy, err)
+	}
+	if _, err := rollback(f.eng); err != nil {
+		t.Errorf("CreateJob() of a rollback once the first ended = %v", err)
+	}
+	if err := f.store.DeleteJobsOfNotebooks(ctx, []uuid.UUID{f.eng}, at(0)); err != nil {
+		t.Fatal(err)
+	}
+	if busy, err := f.store.Writing(ctx, f.eng); busy || err != nil {
+		t.Errorf("Writing() once the queued rollback was deleted = %v, %v; want false", busy, err)
+	}
+	f.importJob(t, f.eng, f.bob, at(0))
+}
+
 // A background job's row reads back as written (M8/P4 design 3.2, 3.6):
 // its changeset, a revert's target and message; its report's placement,
 // conflicts and lock, the list without the conflicts.

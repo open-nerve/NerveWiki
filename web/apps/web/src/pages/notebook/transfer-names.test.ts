@@ -16,6 +16,13 @@ test.each([
   [jobJSON(4, { kind: "revert", name: "import" }), "Undo: Import"],
   [jobJSON(5, { kind: "revert", name: "revert" }), "Undo: Undo change"],
   [jobJSON(6, { kind: "revert", name: "gremlins" }), "Undo: gremlins"],
+  [jobJSON(7, { kind: "rollback", name: "upgrade" }), "Undo the upgrade"],
 ])("job %#'s title is %s", (job, title) => {
   expect(jobTitle(job, t)).toBe(title);
+});
+
+// jobTitle's switch falls to the export's title after it: tsc does not tell a kind left out (M11/P1 review C-N3).
+test("an upgrade's rollback is the undo of the upgrade, in Chinese too", () => {
+  const job = jobJSON(1, { kind: "rollback", name: "upgrade" });
+  expect([jobTitle(job, t), jobTitle(job, translator("zh-CN"))]).toEqual(["Undo the upgrade", "撤销升级"]);
 });

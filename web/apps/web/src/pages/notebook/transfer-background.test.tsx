@@ -28,6 +28,8 @@ const links = (of: HTMLElement) =>
 
 const restoreOf = (n: number, more: Partial<TransferJob> = {}) =>
   jobJSON(n, { kind: "trash_restore", root_id: linux.id, name: "Linux", changeset_id: jobChangesetId(n), ...more });
+const rollbackOf = (n: number, more: Partial<TransferJob> = {}) =>
+  jobJSON(n, { kind: "rollback", name: "upgrade", changeset_id: jobChangesetId(n), ...more });
 const revertOf = (n: number, more: Partial<TransferJob> = {}) =>
   jobJSON(n, {
     kind: "revert",
@@ -216,6 +218,31 @@ test.each<[string, NonNullable<NonNullable<TransferJob["report"]>["placed"]>, st
     expect(within(shown).queryByText(/left are in the trash/u)).toBeNull();
   }
 );
+
+// M11/P1 design 4.3: an upgrade's rollback counts what it deleted, put back and wrote back (not an import's
+// counts, which a kind not in shownCounts falls to), and says what to do after each failure.
+test("an upgrade's rollback's report counts what it deleted, put back and wrote back, and says what to do once it stopped", async () => {
+  const user = userEvent.setup();
+  const counts = { restored: 0, deleted: 1501, put_back: 2, written: 3, skipped: 0 };
+  const server = jobsServer({
+    jobs: [
+      rollbackOf(1, { report: reportOf(null, counts), progress: { done: 1506, total: 1506 } }),
+      rollbackOf(2, {
+        state: "failed",
+        report: reportOf("revert_too_large", counts),
+        progress: { done: 1506, total: 1600 },
+      }),
+    ],
+  });
+  renderApp(transfer, server.app);
+
+  const done = await reportOpened(user, "Undo the upgrade, Oct 5, 2026, 8:00 AM (ID 000701)");
+  expect(countsOf(done)).toEqual(["Nodes deleted 1,501", "Nodes put back 2", "Pages written back 3"]);
+  const stopped = await row("Undo the upgrade, Oct 5, 2026, 8:00 AM (ID 000702)");
+  expect(stopped.textContent).toContain(
+    "Failed · The upgrade changed too much, and the rollback stopped: you can end the rollback, keeping the notebook as it is."
+  );
+});
 
 test("a revert's report counts what it did to the nodes and the pages; one with nothing to undo says so", async () => {
   const user = userEvent.setup();

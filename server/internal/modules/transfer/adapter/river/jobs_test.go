@@ -83,7 +83,8 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 	q, tx := NewQueue(inserter), postgres.NewTxManager(pool, 5*time.Second)
-	kept, dropped, imported, restored, reverted := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	kept, dropped, imported, restored, reverted, rolledBack := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7(),
+		uuid.NewV7()
 	err = tx.WithinTx(ctx, func(ctx context.Context) error {
 		if err := q.Export(ctx, kept); err != nil {
 			return err
@@ -92,6 +93,9 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 			return err
 		}
 		if err := q.Revert(ctx, reverted); err != nil {
+			return err
+		}
+		if err := q.Rollback(ctx, rolledBack); err != nil {
 			return err
 		}
 		if err := q.Export(ctx, dropped); err != nil {
@@ -109,7 +113,8 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 	for kind, want := range map[string]struct {
 		queue string
 		n     int
-	}{ExportKind: {QueueExport, 2}, ImportKind: {QueueImport, 1}, TrashRestoreKind: {QueueImport, 1}, RevertKind: {QueueImport, 1}} {
+	}{ExportKind: {QueueExport, 2}, ImportKind: {QueueImport, 1}, TrashRestoreKind: {QueueImport, 1}, RevertKind: {QueueImport, 1},
+		RollbackKind: {QueueImport, 1}} {
 		var n, otherwise int
 		if err := pool.QueryRow(ctx, `SELECT count(*), count(*) FILTER (WHERE queue <> $1 OR max_attempts <> 1) FROM river_job WHERE kind = $2`,
 			want.queue, kind).Scan(&n, &otherwise); err != nil || n != want.n || otherwise != 0 {
@@ -136,6 +141,10 @@ func TestTheQueueHoldsTheJobsRiverHasNotFinished(t *testing.T) {
 	held, err = q.Held(ctx, domain.KindRevert)
 	if err != nil || !slices.Equal(held, []uuid.UUID{reverted}) {
 		t.Errorf("Held(revert) = %v, %v; want the revert alone", held, err)
+	}
+	held, err = q.Held(ctx, domain.KindRollback)
+	if err != nil || !slices.Equal(held, []uuid.UUID{rolledBack}) {
+		t.Errorf("Held(rollback) = %v, %v; want the rollback alone", held, err)
 	}
 	if _, err := q.Held(ctx, domain.Kind("copy")); err == nil {
 		t.Error("Held of no kind = nil error")

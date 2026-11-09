@@ -115,6 +115,7 @@ const (
 	TransferKindExport       TransferKind = "export"
 	TransferKindImport       TransferKind = "import"
 	TransferKindRevert       TransferKind = "revert"
+	TransferKindRollback     TransferKind = "rollback"
 	TransferKindTrashRestore TransferKind = "trash_restore"
 )
 
@@ -126,6 +127,8 @@ func (e TransferKind) Valid() bool {
 	case TransferKindImport:
 		return true
 	case TransferKindRevert:
+		return true
+	case TransferKindRollback:
 		return true
 	case TransferKindTrashRestore:
 		return true
@@ -283,7 +286,7 @@ type TransferJob struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
-	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
 	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -297,9 +300,11 @@ type TransferJob struct {
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
 	FinishedAt nullable.Nullable[time.Time]        `json:"finished_at"`
 	ID         uuid.UUID                           `json:"id"`
-	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+	// Kind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+	Kind TransferKind `json:"kind"`
+
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -312,7 +317,7 @@ type TransferJob struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -326,7 +331,7 @@ type TransferJobDetail struct {
 	// CancelRequestedAt When a cancel of the job was asked as it ran: it stops at its next heartbeat, within about a second, unless it ends first; null when none was.
 	CancelRequestedAt nullable.Nullable[time.Time] `json:"cancel_requested_at"`
 
-	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+	// ChangesetID The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
 	ChangesetID nullable.Nullable[uuid.UUID] `json:"changeset_id"`
 
 	// Client Where the job was started from, which its writes are of.
@@ -346,9 +351,11 @@ type TransferJobDetail struct {
 	Download   nullable.Nullable[TransferDownload] `json:"download"`
 	FinishedAt nullable.Nullable[time.Time]        `json:"finished_at"`
 	ID         uuid.UUID                           `json:"id"`
-	Kind       TransferKind                        `json:"kind"`
 
-	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts.
+	// Kind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+	Kind TransferKind `json:"kind"`
+
+	// Name What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade.
 	Name       string    `json:"name"`
 	NotebookID uuid.UUID `json:"notebook_id"`
 
@@ -367,7 +374,7 @@ type TransferJobDetail struct {
 	// ResultBytes The bytes of an export's archive, once it succeeded, and after it expired; null otherwise.
 	ResultBytes nullable.Nullable[int64] `json:"result_bytes"`
 
-	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+	// RootID The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
 	RootID    nullable.Nullable[uuid.UUID] `json:"root_id"`
 	StartedAt nullable.Nullable[time.Time] `json:"started_at"`
 	State     TransferState                `json:"state"`
@@ -384,7 +391,7 @@ type TransferJobPage struct {
 	NextCursor nullable.Nullable[externalRef0.NextCursor] `json:"next_cursor"`
 }
 
-// TransferKind defines model for TransferKind.
+// TransferKind What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
 type TransferKind string
 
 // TransferProblem What befell a node, at its path in the archive's vault (at most 1,024 bytes): renamed, written at to instead, so links to its old name do not reach it there; file_missing, an attachment whose file was not in the storage. An import's entry skipped, at its name in the archive: unsafe_path (it leaves the archive's root: "..", an absolute path, a drive), special_file (a symbolic link, or another file that is no regular one), encrypted, unsupported_method (compressed otherwise than stored or deflated), too_compressed (it unpacks to more than 200 times its packed size), name_not_utf8, invalid_content (a page's file not UTF-8, or holding NUL), too_large (a page's file past 5 MiB, an attachment past the instance's asset_max_bytes), duplicate (a path an earlier entry has), unreadable (its data broken, its checksum or size not its header's); an import's node, at its path in the vault: too_deep (more than 10 levels deep in the notebook where the import goes, with everything under it), renamed (created under the name at the end of to, its path from where the import goes), duplicate_source (identical bytes already exist as a source of the same kind; path is the archive item and to is the matching notebook path).

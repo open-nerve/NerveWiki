@@ -8,20 +8,28 @@ import (
 // Kind is what a job does.
 type Kind string
 
-// The kinds of job: an import and an export of a notebook (M7), and from
-// M8 a trash item's restore and a changeset's revert in the background
-// (M8/P4 design 3.2).
+// The kinds of job: an import and an export of a notebook (M7), from M8
+// a trash item's restore and a changeset's revert in the background
+// (M8/P4 design 3.2), and from M11 an upgrade's rollback (M11/P1 design
+// 3.19).
 const (
 	KindImport       Kind = "import"
 	KindExport       Kind = "export"
 	KindTrashRestore Kind = "trash_restore"
 	KindRevert       Kind = "revert"
+	KindRollback     Kind = "rollback"
 )
+
+// Kinds are the kinds of job, in the order they came: what goes over each,
+// as the rescue does, misses none that a new kind adds.
+func Kinds() []Kind {
+	return []Kind{KindExport, KindImport, KindTrashRestore, KindRevert, KindRollback}
+}
 
 // Writes reports whether a job of kind writes its notebook's tree: one
 // such job at a time a notebook, whoever started it (M8 design 4.10).
 func (k Kind) Writes() bool {
-	return k == KindImport || k == KindTrashRestore || k == KindRevert
+	return k == KindImport || k == KindTrashRestore || k == KindRevert || k == KindRollback
 }
 
 // State is where a job is (M7/P5 design 3.5): queued, then running, then
@@ -82,9 +90,12 @@ type Job struct {
 	// message of its revert, nil for none.
 	TargetChangesetID *uuid.UUID
 	Message           *string
-	CreatedBy         uuid.UUID
-	Client            Client
-	Progress          Progress
+	// UpgradeID is the upgrade a rollback rolls back; nil for any other
+	// kind (M11/P1 design 3.19).
+	UpgradeID *uuid.UUID
+	CreatedBy uuid.UUID
+	Client    Client
+	Progress  Progress
 	// CancelRequested is when a cancel of the running job was asked.
 	CancelRequested *time.Time
 	Heartbeat       *time.Time
