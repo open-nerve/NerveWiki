@@ -153,6 +153,7 @@ func TestTheRollbackEnd(t *testing.T) {
 		{"none", func(f *endFake) { f.state.Upgrade = app.NotebookUpgrade{} }, false, "lock"},
 		{"a page left", func(f *endFake) { f.left = domain.RollbackLeft{Pages: 1} }, true, "lock, left"},
 		{"a node new left", func(f *endFake) { f.left = domain.RollbackLeft{Created: 1} }, true, "lock, left"},
+		{"a node out of place left", func(f *endFake) { f.left = domain.RollbackLeft{Nodes: 1} }, true, "lock, left"},
 	} {
 		f, end, log := fixture(tt.change)
 		left, committed, err := end.End(ctx, nb, up)

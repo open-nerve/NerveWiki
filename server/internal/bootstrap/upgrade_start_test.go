@@ -348,8 +348,11 @@ func TestUpgradeStates(t *testing.T) {
 	tm.exec(t, `UPDATE notebook_upgrades SET state = 'reviewing', submission_id = gen_random_uuid(), submitted_by_id = $2,
 		submitted_at = now() WHERE id = $1`, u.ID, bob)
 	status, answer = tm.getUpgrade(t, "alice", nb)
+	// Reviewing, nothing is told left (M11/P1 S3 review C-N4): only a
+	// rollback stopped is read now.
 	if status != http.StatusOK || !strings.Contains(answer, `"state":"reviewing"`) ||
-		!strings.Contains(answer, `"submitted_by":{"display_name":"bob","user_id":"`+bob+`"}`) || strings.Contains(answer, `"submitted_at":null`) {
+		!strings.Contains(answer, `"submitted_by":{"display_name":"bob","user_id":"`+bob+`"}`) || strings.Contains(answer, `"submitted_at":null`) ||
+		!strings.Contains(answer, `"rollback_left":null`) {
 		t.Errorf("reviewing = %d %s", status, answer)
 	}
 	carries("reviewing")

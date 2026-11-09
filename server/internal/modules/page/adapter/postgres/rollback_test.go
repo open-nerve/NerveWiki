@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -18,9 +19,10 @@ import (
 // baseline pages of another content and the live nodes with no baseline
 // row, a protected row's node among them, a deleted one not; the free
 // nodes, new ones alive holding no baseline node, with their parents; the
-// holders, the new ancestors of baseline nodes alive; the baseline, each
-// row as captured. Another upgrade's rows, of the same notebook, change
-// none of it; DeleteUpgradeNodes deletes the upgrade's rows and no other.
+// holders, the new ancestors of baseline nodes alive, two levels of them
+// (M11/P1 S3 review C-M1); the baseline, each row as captured. Another
+// upgrade's rows, of the same notebook, change none of it;
+// DeleteUpgradeNodes deletes the upgrade's rows and no other.
 func TestARollbacksReads(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -46,18 +48,19 @@ func TestARollbacksReads(t *testing.T) {
 	capture(upgrade)
 
 	// The agent's: a free subtree at the root, protected as a source
-	// root is; a holder of Install, a free page under it; a free page
-	// under Guide; a new page deleted; Guide written; photo renamed;
-	// Notes reordered; Old deleted by a hand's SQL.
+	// root is; Topics holding Sub holding Install, a free page under
+	// Topics; a free page under Guide; a new page deleted; Guide written;
+	// photo renamed; Notes reordered; Old deleted by a hand's SQL.
 	scratch := f.page(t, f.eng, nil, "Scratch", 10)
 	scratch1 := f.page(t, f.eng, &scratch.ID, "Scratch 1", 0)
 	topics := f.page(t, f.eng, nil, "Topics", 11)
 	folder := f.page(t, f.eng, &topics.ID, "Folder", 1)
+	sub := f.page(t, f.eng, &topics.ID, "Sub", 2)
 	child := f.page(t, f.eng, &guide.ID, "Child", 5)
 	gone := f.page(t, f.eng, nil, "Gone", 12)
 	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = ANY($1)", []uuid.UUID{gone.ID, old.ID})
 	f.exec(t, "UPDATE page_contents SET deleted_at = now() WHERE node_id = ANY($1)", []uuid.UUID{gone.ID, old.ID})
-	f.exec(t, "UPDATE nodes SET parent_id = $2 WHERE id = $1", install.ID, topics.ID)
+	f.exec(t, "UPDATE nodes SET parent_id = $2 WHERE id = $1", install.ID, sub.ID)
 	f.exec(t, "UPDATE nodes SET name = 'shot.png', name_key = 'shot.png' WHERE id = $1", photo.ID)
 	f.exec(t, "UPDATE nodes SET sort_order = 2.5 WHERE id = $1", notes.ID)
 	f.write(t, guide.ID, "guide, the agent's", 2, now())
@@ -71,8 +74,8 @@ func TestARollbacksReads(t *testing.T) {
 	capture(other)
 
 	left, err := f.s.RollbackLeft(ctx, upgrade, f.eng)
-	if want := (domain.RollbackLeft{Nodes: 4, Pages: 1, Created: 5}); err != nil || left != want {
-		t.Errorf("RollbackLeft = %+v, %v; want %+v: Install, photo, Notes, Old; Guide; five new", left, err, want)
+	if want := (domain.RollbackLeft{Nodes: 4, Pages: 1, Created: 6}); err != nil || left != want {
+		t.Errorf("RollbackLeft = %+v, %v; want %+v: Install, photo, Notes, Old; Guide; six new", left, err, want)
 	}
 	if left, err := f.s.RollbackLeft(ctx, other, f.eng); err != nil || !left.Zero() {
 		t.Errorf("the other upgrade's RollbackLeft = %+v, %v; want nothing", left, err)
@@ -91,9 +94,12 @@ func TestARollbacksReads(t *testing.T) {
 	}) {
 		t.Errorf("RollbackFreeForest = %+v, %v; want Scratch, Scratch 1, Folder, Child", forest, err)
 	}
-	if holders, err := f.s.RollbackHolders(ctx, upgrade); err != nil || len(holders) != 1 || holders[0].ID != topics.ID ||
-		holders[0].Name != "Topics" || holders[0].ParentID != nil || holders[0].SortOrder != 11 || holders[0].NotebookID != f.eng {
-		t.Errorf("RollbackHolders = %+v, %v; want Topics %s alone, as it is", holders, err, topics.ID)
+	holders, err := f.s.RollbackHolders(ctx, upgrade)
+	slices.SortFunc(holders, func(a, b domain.Node) int { return strings.Compare(a.Name, b.Name) })
+	if err != nil || len(holders) != 2 || holders[0].ID != sub.ID || holders[0].Name != "Sub" || holders[0].ParentID == nil ||
+		*holders[0].ParentID != topics.ID || holders[0].SortOrder != 2 || holders[1].ID != topics.ID || holders[1].Name != "Topics" ||
+		holders[1].ParentID != nil || holders[1].SortOrder != 11 || holders[1].NotebookID != f.eng {
+		t.Errorf("RollbackHolders = %+v, %v; want Sub %s and Topics %s, as they are", holders, err, sub.ID, topics.ID)
 	}
 	if holders, err := f.s.RollbackHolders(ctx, other); err != nil || len(holders) != 0 {
 		t.Errorf("the other upgrade's holders = %v, %v; want none", holders, err)
@@ -125,7 +131,7 @@ func TestARollbacksReads(t *testing.T) {
 		n := now[id]
 		return n.Name + "@" + fmt.Sprint(n.SortOrder)
 	}
-	if err != nil || len(now) != 5 || now[install.ID].ParentID == nil || *now[install.ID].ParentID != topics.ID ||
+	if err != nil || len(now) != 5 || now[install.ID].ParentID == nil || *now[install.ID].ParentID != sub.ID ||
 		at(photo.ID) != "shot.png@1" || at(notes.ID) != "Notes@2.5" || at(guide.ID) != "Guide@0" || at(logo.ID) != "logo.png@1" ||
 		now[guide.ID].NotebookID != f.eng || now[guide.ID].Kind != domain.KindPage {
 		t.Errorf("RollbackNow's nodes = %+v, %v; want the five alive as they are, Old not", now, err)
@@ -146,7 +152,7 @@ func TestARollbacksReads(t *testing.T) {
 	if n := f.count(t, "SELECT count(*) FROM upgrade_nodes WHERE upgrade_id = $1", upgrade); n != 0 {
 		t.Errorf("the upgrade has %d rows left, want none", n)
 	}
-	if n := f.count(t, "SELECT count(*) FROM upgrade_nodes WHERE upgrade_id = $1", other); n != 10 {
-		t.Errorf("the other upgrade has %d rows, want its 10", n)
+	if n := f.count(t, "SELECT count(*) FROM upgrade_nodes WHERE upgrade_id = $1", other); n != 11 {
+		t.Errorf("the other upgrade has %d rows, want its 11", n)
 	}
 }

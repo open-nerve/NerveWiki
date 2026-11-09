@@ -177,7 +177,7 @@ func (r rollbackInterleavings) theBatchAndTheCancel(t *testing.T) {
 		status, answer := tm.endRollback(t, "alice", nb)
 		var a rollbackAnswer
 		decodeAnswer(t, answer, &a)
-		if status != http.StatusOK || a.State != "rolled_back" || a.left() != "2 2 1" {
+		if status != http.StatusOK || a.State != "rolled_back" || a.left() != "2 2 2" {
 			t.Errorf("the end = %d %s, want rolled back, what the first batch did not delete left", status, answer)
 		}
 		tm.rolledBack(t, nb, up, job, false)

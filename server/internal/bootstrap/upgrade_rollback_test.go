@@ -192,7 +192,8 @@ func rollbackTeam(t *testing.T, change func(*config.Config)) (acmeTeam, *rollbac
 }
 
 // rollbackNotebook is a notebook alice upgrades, its agent's writes made:
-// Guide moved under Made, which it wrote with Inner; Folder/Kept renamed
+// Guide moved under Made/Deep, which it wrote with Inner under Deep, two
+// new nodes holding it (M11/P1 S3 review C-M1); Folder/Kept renamed
 // Kept 2, Guide's link to it rewritten by the system, its link to Kept 2,
 // wanted before, now Kept's too; Notes' frontmatter changed; Fresh,
 // Folder/Child and Box with One and Two written; then the agent's more.
@@ -210,8 +211,8 @@ func (tm acmeTeam) rollbackNotebook(t *testing.T, name string, more ...agentWrit
 	u := tm.upgraded(t, "alice", nb)
 	agent := tm.agent(t, "alice", nb)
 	for _, w := range append([]agentWrite{
-		{"write", map[string]any{"path": "Made/Inner.md", "content": "inner\n"}},
-		{"move", map[string]any{"from": "Guide.md", "to": "Made/Guide.md"}},
+		{"write", map[string]any{"path": "Made/Deep/Inner.md", "content": "inner\n"}},
+		{"move", map[string]any{"from": "Guide.md", "to": "Made/Deep/Guide.md"}},
 		{"move", map[string]any{"from": "Folder/Kept.md", "to": "Folder/Kept 2.md"}},
 		{"edit", map[string]any{"path": "Notes.md", "old_string": "tags: [a]", "new_string": "tags: [b]"}},
 		{"write", map[string]any{"path": "Fresh.md", "content": "fresh\n"}},
@@ -291,6 +292,7 @@ func TestUpgradeRollback(t *testing.T) {
 	t.Run("stopped and ended short", r.stoppedAndEndedShort)
 	t.Run("ended with nothing or a rename left", r.endedEarly)
 	t.Run("a pass that leaves as much", r.aPassThatLeavesAsMuch)
+	t.Run("something left at the end", r.leftAtTheEnd)
 	t.Run("its starter demoted", r.itsStarterDemoted)
 	t.Run("the upgrade ended between passes", r.endedBetweenPasses)
 	t.Run("queued and dropped", r.queuedAndDropped)
@@ -329,7 +331,7 @@ func (r rollbackCase) abandonedAndDone(t *testing.T) {
 		t.Errorf("the notebook after the rollback:\n%s\nwant as before the start:\n%s", now, before)
 	}
 	if got := queryStrings(t, tm.pool, `SELECT name FROM nodes WHERE notebook_id = $1 AND deleted_at IS NOT NULL ORDER BY name`,
-		nb); !slices.Equal(got, []string{"AGENTS", "Box", "Child", "Fresh", "Inner", "Made", "One", "Two", "raw"}) {
+		nb); !slices.Equal(got, []string{"AGENTS", "Box", "Child", "Deep", "Fresh", "Inner", "Made", "One", "Two", "raw"}) {
 		t.Errorf("deleted %q, want the new nodes", got)
 	}
 	if got := queryStrings(t, tm.pool, `SELECT id::text FROM changesets WHERE notebook_id = $1 AND kind = 'rollback' AND upgrade_id = $2`,
@@ -347,7 +349,7 @@ func (r rollbackCase) abandonedAndDone(t *testing.T) {
 		t.Errorf("%d batches, want one a pass", batches)
 	}
 	if got := queryStrings(t, tm.pool, `SELECT count(*) || ' ' || count(DISTINCT i.created_at) FROM changeset_items i
-		JOIN nodes n ON n.id = i.node_id WHERE i.changeset_id = $1 AND i.after_name IS NULL AND n.name <> 'Made'`,
+		JOIN nodes n ON n.id = i.node_id WHERE i.changeset_id = $1 AND i.after_name IS NULL AND n.name NOT IN ('Made', 'Deep')`,
 		*j.ChangesetID); !slices.Equal(got, []string{"8 1"}) {
 		t.Errorf("the deleted first %q, want 8 items of one unit", got)
 	}
@@ -436,8 +438,8 @@ func (r rollbackCase) stoppedAndContinued(t *testing.T) {
 // stoppedAndEndedShort cancels the rollback after it deleted first: its
 // end keeps the notebook as it is, rolled back, not complete, with what
 // was left: Guide and Kept 2 not in place, Notes and Guide not written
-// back, Made
-// still there; the freeze is lifted, and a line logged.
+// back, Made and Deep still there; the freeze is lifted, and a line
+// logged.
 func (r rollbackCase) stoppedAndEndedShort(t *testing.T) {
 	tm, mark := r.tm, r.mark(t)
 	nb, up, _ := tm.rollbackNotebook(t, "Short")
@@ -445,22 +447,22 @@ func (r rollbackCase) stoppedAndEndedShort(t *testing.T) {
 	status, answer := tm.endRollback(t, "alice", nb)
 	var a rollbackAnswer
 	decodeAnswer(t, answer, &a)
-	if status != http.StatusOK || a.State != "rolled_back" || a.RollbackComplete == nil || *a.RollbackComplete || a.left() != "2 2 1" {
-		t.Errorf("the end = %d %s, want rolled back, not complete, 2 nodes, 2 pages and 1 node new left", status, answer)
+	if status != http.StatusOK || a.State != "rolled_back" || a.RollbackComplete == nil || *a.RollbackComplete || a.left() != "2 2 2" {
+		t.Errorf("the end = %d %s, want rolled back, not complete, 2 nodes, 2 pages and 2 nodes new left", status, answer)
 	}
 	tm.rolledBack(t, nb, up, job, false)
 	if got := queryStrings(t, tm.pool, `SELECT concat_ws(' ', rollback_left_nodes, rollback_left_pages, rollback_left_created)
-		FROM notebook_upgrades WHERE id = $1`, up); !slices.Equal(got, []string{"2 2 1"}) {
-		t.Errorf("the row's left %q, want 2 2 1", got)
+		FROM notebook_upgrades WHERE id = $1`, up); !slices.Equal(got, []string{"2 2 2"}) {
+		t.Errorf("the row's left %q, want 2 2 2", got)
 	}
-	if got := queryStrings(t, tm.pool, `SELECT name FROM nodes WHERE notebook_id = $1 AND deleted_at IS NULL AND name IN ('Made', 'Kept 2')
-		ORDER BY name`, nb); !slices.Equal(got, []string{"Kept 2", "Made"}) {
-		t.Errorf("alive %q, want Kept 2 and Made as the end found them", got)
+	if got := queryStrings(t, tm.pool, `SELECT name FROM nodes WHERE notebook_id = $1 AND deleted_at IS NULL
+		AND name IN ('Made', 'Deep', 'Kept 2') ORDER BY name`, nb); !slices.Equal(got, []string{"Deep", "Kept 2", "Made"}) {
+		t.Errorf("alive %q, want Deep, Kept 2 and Made as the end found them", got)
 	}
 	lines := upgradeLines(t, r.logs, mark, "upgrade rollback ended")
-	if len(lines) != 1 || lines[0]["nodes"] != float64(2) || lines[0]["pages"] != float64(2) || lines[0]["created"] != float64(1) ||
+	if len(lines) != 1 || lines[0]["nodes"] != float64(2) || lines[0]["pages"] != float64(2) || lines[0]["created"] != float64(2) ||
 		lines[0]["complete"] != false || lines[0]["upgrade_id"] != up {
-		t.Errorf("logged %v, want one end of 2, 2 and 1, not complete", lines)
+		t.Errorf("logged %v, want one end of 2, 2 and 2, not complete", lines)
 	}
 	tm.createPage(t, "bob", nb, "", "After")
 }
@@ -496,6 +498,47 @@ func (r rollbackCase) endedEarly(t *testing.T) {
 			t.Errorf("%s: the end = %d %s, want rolled back, complete %v, left %s", tt.name, status, answer, tt.complete, tt.left)
 		}
 		tm.rolledBack(t, nb, up, job, tt.complete)
+	}
+}
+
+// leftAtTheEnd renames a baseline page by SQL once the rollback's plan
+// found nothing left, before its end (M11/P1 S3 review C-M2; design 7.3
+// #49): the end finds a node out of place, ends nothing, and the job
+// fails, internal, its "rollback ended" line an error's; the upgrade still
+// rolling back tells the node left; a continuation is done, the notebook
+// as before the start.
+func (r rollbackCase) leftAtTheEnd(t *testing.T) {
+	tm, mark := r.tm, r.mark(t)
+	nb, up, before := tm.rollbackNotebook(t, "Left at the end")
+	r.stops.armDone(nb)
+	job := tm.abandoned(t, "alice", nb)
+	r.stops.stopped(t)
+	tm.exec(t, `UPDATE nodes SET name = 'Notes renamed', name_key = 'notes renamed' WHERE notebook_id = $1 AND name = 'Notes'
+		AND deleted_at IS NULL`, nb)
+	r.stops.goOn()
+	if j := tm.endedBackground(t, "alice", job); j.State != "failed" || j.failure() != "internal" {
+		t.Fatalf("the rollback with a node left at its end = %s, want it failed, internal", j)
+	}
+	var ended []map[string]any
+	for _, l := range upgradeLines(t, r.logs, mark, "rollback ended") {
+		if l["job_id"] == job {
+			ended = append(ended, l)
+		}
+	}
+	if len(ended) != 1 || ended[0]["level"] != "ERROR" {
+		t.Errorf("logged %v, want one error line rollback ended", ended)
+	}
+	if a := tm.rollbackOf(t, nb); a.State != "rolling_back" || a.left() != "1 0 0" {
+		t.Errorf("the upgrade = %+v, left %s; want it rolling back, one node left", a, a.left())
+	}
+	r.stops.arm(nb, 0, 0, false)
+	second := tm.abandoned(t, "alice", nb)
+	if j := tm.endedBackground(t, "alice", second); j.State != "succeeded" {
+		t.Fatalf("the continuation = %s, want it succeeded", j)
+	}
+	tm.rolledBack(t, nb, up, second, true)
+	if now := tm.notebookState(t, nb); now != before {
+		t.Errorf("the notebook after the continuation:\n%s\nwant as before the start:\n%s", now, before)
 	}
 }
 
@@ -568,8 +611,8 @@ func (r rollbackCase) itsStarterDemoted(t *testing.T) {
 
 // endedBetweenPasses ends the upgrade by SQL as the rollback is about to
 // plan its second pass (decision 233): the job logs "stopped" and writes
-// no end, its row running; no unit runs, Made and Guide under it as the
-// first pass left them. The test then fails the row itself.
+// no end, its row running; no unit runs, Made, Deep and Guide under them
+// as the first pass left them. The test then fails the row itself.
 func (r rollbackCase) endedBetweenPasses(t *testing.T) {
 	tm, mark := r.tm, r.mark(t)
 	nb, _, _ := tm.rollbackNotebook(t, "Gone")
@@ -594,10 +637,10 @@ func (r rollbackCase) endedBetweenPasses(t *testing.T) {
 	if _, batches := r.stops.counts(); batches != 1 {
 		t.Errorf("%d batches, want the first pass's alone", batches)
 	}
-	if got := queryStrings(t, tm.pool, `SELECT g.name || ' ' || m.name FROM nodes g JOIN nodes m ON m.id = g.parent_id
-		WHERE g.notebook_id = $1 AND g.name = 'Guide' AND g.deleted_at IS NULL AND m.deleted_at IS NULL`, nb); !slices.Equal(got,
-		[]string{"Guide Made"}) {
-		t.Errorf("Guide's place %q, want under Made, as the first pass left it", got)
+	if got := queryStrings(t, tm.pool, `SELECT g.name || ' ' || d.name || ' ' || m.name FROM nodes g JOIN nodes d ON d.id = g.parent_id
+		JOIN nodes m ON m.id = d.parent_id WHERE g.notebook_id = $1 AND g.name = 'Guide' AND g.deleted_at IS NULL AND d.deleted_at IS NULL
+		AND m.deleted_at IS NULL`, nb); !slices.Equal(got, []string{"Guide Deep Made"}) {
+		t.Errorf("Guide's place %q, want under Made/Deep, as the first pass left it", got)
 	}
 	tm.exec(t, `UPDATE transfer_jobs SET state = 'failed', finished_at = now(), report = '{"failure": "interrupted"}' WHERE id = $1`, job)
 }
@@ -651,7 +694,7 @@ func (r rollbackCase) queuedAndDropped(t *testing.T) {
 	status, answer := tm.endRollback(t, "alice", ended.nb)
 	var a rollbackAnswer
 	decodeAnswer(t, answer, &a)
-	if status != http.StatusOK || a.State != "rolled_back" || a.left() != "2 2 9" {
+	if status != http.StatusOK || a.State != "rolled_back" || a.left() != "2 2 10" {
 		t.Errorf("the end of a dropped rollback = %d %s, want rolled back, everything left", status, answer)
 	}
 	tm.rolledBack(t, ended.nb, ended.up, ended.job, false)

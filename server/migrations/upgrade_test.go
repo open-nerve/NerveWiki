@@ -104,8 +104,10 @@ func TestTheUpgradeColumnsGoDown(t *testing.T) {
 // kind, its upgrade and its place among the writing jobs (M11/P1 design
 // 3.17). Down goes back one at a time: 00059's deletes the rollbacks' jobs
 // and keeps the rest, the column and the rollback gone from the writing
-// key; 00058's makes the rollbacks' changesets edits, their writes kept,
-// as 00034's Down does. Up again takes a rollback's job and changeset.
+// key and from the jobs' kind and root checks; 00058's makes the
+// rollbacks' changesets edits, their writes kept, as 00034's Down does,
+// and the rollback gone from the changesets' kind check (M11/P1 S3 review
+// B-N1). Up again takes a rollback's job and changeset.
 func TestTheRollbackKindsGoDown(t *testing.T) {
 	ctx := context.Background()
 	pool := newPool(t, pgtest.NewDatabase(t))
@@ -147,8 +149,9 @@ func TestTheRollbackKindsGoDown(t *testing.T) {
 		}
 	}
 	// shape counts the jobs by kind, the jobs' upgrade column, the writing
-	// key's rollback and the changesets by kind.
-	type shape struct{ rollbackJobs, imports, column, writingRollback, rollbackChangesets, edits int }
+	// key's rollback, the changesets by kind and the checks that take the
+	// rollback: the jobs' kind and root, the changesets' kind.
+	type shape struct{ rollbackJobs, imports, column, writingRollback, rollbackChangesets, edits, checks int }
 	read := func() shape {
 		t.Helper()
 		var s shape
@@ -156,23 +159,25 @@ func TestTheRollbackKindsGoDown(t *testing.T) {
 			(SELECT count(*) FROM transfer_jobs WHERE kind = 'rollback'), (SELECT count(*) FROM transfer_jobs WHERE kind = 'import'),
 			(SELECT count(*) FROM information_schema.columns WHERE table_name = 'transfer_jobs' AND column_name = 'upgrade_id'),
 			(SELECT count(*) FROM pg_indexes WHERE indexname = 'transfer_jobs_writing_key' AND indexdef LIKE '%rollback%'),
-			(SELECT count(*) FROM changesets WHERE kind = 'rollback'), (SELECT count(*) FROM changesets WHERE kind = 'edit')`).
-			Scan(&s.rollbackJobs, &s.imports, &s.column, &s.writingRollback, &s.rollbackChangesets, &s.edits); err != nil {
+			(SELECT count(*) FROM changesets WHERE kind = 'rollback'), (SELECT count(*) FROM changesets WHERE kind = 'edit'),
+			(SELECT count(*) FROM pg_constraint WHERE conname IN ('transfer_jobs_kind_check', 'transfer_jobs_root_check',
+				'changesets_kind_check') AND pg_get_constraintdef(oid) LIKE '%rollback%')`).
+			Scan(&s.rollbackJobs, &s.imports, &s.column, &s.writingRollback, &s.rollbackChangesets, &s.edits, &s.checks); err != nil {
 			t.Fatal(err)
 		}
 		return s
 	}
-	if got, want := read(), (shape{1, 1, 1, 1, 1, 0}); got != want {
+	if got, want := read(), (shape{1, 1, 1, 1, 1, 0, 3}); got != want {
 		t.Fatalf("before Down, %+v, want %+v", got, want)
 	}
 	downTo(t, m, 59)
-	if got, want := read(), (shape{0, 1, 0, 0, 1, 0}); got != want {
-		t.Errorf("after 00059's Down, %+v, want %+v: the rollback's job, its column and its place in the writing key gone, the "+
-			"import kept", got, want)
+	if got, want := read(), (shape{0, 1, 0, 0, 1, 0, 1}); got != want {
+		t.Errorf("after 00059's Down, %+v, want %+v: the rollback's job, its column and its place in the writing key and the jobs' "+
+			"checks gone, the import kept", got, want)
 	}
 	downTo(t, m, 58)
-	if got, want := read(), (shape{0, 1, 0, 0, 0, 1}); got != want {
-		t.Errorf("after 00058's Down, %+v, want %+v: the rollback's changeset an edit", got, want)
+	if got, want := read(), (shape{0, 1, 0, 0, 0, 1, 0}); got != want {
+		t.Errorf("after 00058's Down, %+v, want %+v: the rollback's changeset an edit, the changesets' check without it", got, want)
 	}
 	if _, err := m.Up(ctx); err != nil {
 		t.Fatalf("Up() again: %v", err)
@@ -182,7 +187,7 @@ func TestTheRollbackKindsGoDown(t *testing.T) {
 			t.Errorf("after Up again, %s: %v", stmt, err)
 		}
 	}
-	if got, want := read(), (shape{1, 1, 1, 1, 1, 1}); got != want {
+	if got, want := read(), (shape{1, 1, 1, 1, 1, 1, 3}); got != want {
 		t.Errorf("after Up again, %+v, want %+v", got, want)
 	}
 }
