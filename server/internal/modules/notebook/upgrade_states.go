@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,6 +63,42 @@ func (u *UpgradeStates) Start(ctx context.Context, id uuid.UUID, up Upgrade) err
 	}
 	if n != 1 {
 		return fmt.Errorf("notebook: the upgrade's start changed %d rows of notebook %s, a defect: its caller judged it standard and without one", n, id)
+	}
+	return nil
+}
+
+// SetState sets the notebook's upgrade upgradeID's state to state, by by
+// at at (M11/P1 design 3.20): the notebook is locked and its upgrade is
+// upgradeID, which its caller judged under the lock; a row unchanged is a
+// defect.
+func (u *UpgradeStates) SetState(ctx context.Context, id, upgradeID uuid.UUID, state UpgradeState, by uuid.UUID, at time.Time) error {
+	if !postgres.InTx(ctx) {
+		return errors.New("set the notebook's upgrade's state: not in a transaction")
+	}
+	n, err := u.store.SetUpgradeState(ctx, id, upgradeID, string(state), by, at)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("notebook: the upgrade %s's state changed %d rows of notebook %s, a defect: its caller judged it the notebook's", upgradeID, n, id)
+	}
+	return nil
+}
+
+// Clear ends the notebook's upgrade upgradeID, its four columns cleared,
+// by by at at (M11/P1 design 3.20): the notebook is locked and its
+// upgrade is upgradeID, which its caller judged under the lock; a row
+// unchanged is a defect.
+func (u *UpgradeStates) Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error {
+	if !postgres.InTx(ctx) {
+		return errors.New("clear the notebook's upgrade: not in a transaction")
+	}
+	n, err := u.store.ClearUpgrade(ctx, id, upgradeID, by, at)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("notebook: the upgrade %s's end changed %d rows of notebook %s, a defect: its caller judged it the notebook's", upgradeID, n, id)
 	}
 	return nil
 }

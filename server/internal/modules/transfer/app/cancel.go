@@ -15,11 +15,12 @@ import (
 // running one at its next heartbeat. It writes the job's row alone, never
 // the notebook's: a running job's steps and a cancel make no cycle.
 type Cancel struct {
-	tx     shared.TxManager
-	rows   Rows
-	views  views
-	clock  Clock
-	logger *slog.Logger
+	tx       shared.TxManager
+	rows     Rows
+	views    views
+	clock    Clock
+	logger   *slog.Logger
+	rollback shared.Action
 }
 
 // CancelDeps are what Cancel needs.
@@ -34,17 +35,22 @@ type CancelDeps struct {
 	Logger     *slog.Logger
 	// ExportTTL is transfer.export_ttl.
 	ExportTTL time.Duration
+	// RollbackAction is the notebook module's notebook.change_mode, which
+	// a rollback's cancel decides (M11/P1 design 3.19).
+	RollbackAction shared.Action
 }
 
 // NewCancel returns the use case.
 func NewCancel(d CancelDeps) *Cancel {
-	return &Cancel{tx: d.Tx, rows: d.Rows, clock: d.Clock, logger: d.Logger,
+	return &Cancel{tx: d.Tx, rows: d.Rows, clock: d.Clock, logger: d.Logger, rollback: d.RollbackAction,
 		views: views{auth: d.Authorizer, notebooks: d.Notebooks, names: d.Names, signer: d.Signer, clock: d.Clock, ttl: d.ExportTTL}}
 }
 
 // Run cancels the job id for its starter or the notebook's admin
 // (transfer.cancel), and answers it as it is then: transfer.not_found as
-// Reads.Get; transfer.not_cancellable for a job that has ended. A running
+// Reads.Get; an upgrade's rollback, for its notebook's admin alone
+// (RollbackAction), forbidden for whoever else sees it (M11/P1 design
+// 3.19); transfer.not_cancellable for a job that has ended. A running
 // job's cancel asked again keeps the first time.
 func (c *Cancel) Run(ctx context.Context, id uuid.UUID) (JobView, error) {
 	actor, err := shared.RequireActor(ctx)
@@ -62,6 +68,13 @@ func (c *Cancel) Run(ctx context.Context, id uuid.UUID) (JobView, error) {
 		}
 		if err := c.views.sees(ctx, actor, domain.ActionCancel, locked); err != nil {
 			return err
+		}
+		if locked.Kind == domain.KindRollback {
+			// Seen a moment ago, the notebook is out of sight only if it
+			// was taken from the caller between the two: forbidden too.
+			if _, err := c.views.decide(ctx, actor, c.rollback, locked.NotebookID, shared.Forbidden()); err != nil {
+				return err
+			}
 		}
 		now := c.clock.Now()
 		switch locked.State {

@@ -109,6 +109,95 @@ func TestTheUpgradeStatesWriteUnderTheirCaller(t *testing.T) {
 	}
 }
 
+// SetState and Clear write the notebook's upgrade when it is theirs
+// (M11/P1 design 3.20): outside a transaction each fails; another
+// upgrade's id, or none, changes no row and is a defect's error; SetState
+// sets the state alone, the start's who and when kept; Clear clears the
+// four columns together; each records who and when on the row; both go
+// with their caller's rollback.
+func TestTheUpgradeStatesSetAndClearTheirUpgradeOnly(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	states := notebook.NewUpgradeStates(f.pool, nil)
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	up := notebook.Upgrade{ID: uuid.NewV7(), State: notebook.UpgradeUpgrading, By: f.bob, At: testNow()}
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error { return states.Start(ctx, f.eng, up) }); err != nil {
+		t.Fatal(err)
+	}
+	// row is eng's upgrade's four columns and who changed the row when.
+	type row struct {
+		upgrade, by *uuid.UUID
+		state       *string
+		at          *time.Time
+		updatedBy   uuid.UUID
+		updatedAt   time.Time
+	}
+	read := func() row {
+		t.Helper()
+		var r row
+		if err := f.pool.QueryRow(ctx, `SELECT upgrade_id, upgrade_state, upgrade_by_id, upgrade_at, updated_by_id, updated_at
+			FROM notebooks WHERE id = $1`, f.eng).Scan(&r.upgrade, &r.state, &r.by, &r.at, &r.updatedBy, &r.updatedAt); err != nil {
+			t.Fatal(err)
+		}
+		return r
+	}
+	later, latest := testNow().Add(time.Minute), testNow().Add(2*time.Minute)
+	if err := states.SetState(ctx, f.eng, up.ID, notebook.UpgradeRollingBack, f.alice, later); err == nil {
+		t.Error("SetState() outside a transaction = nil, want an error")
+	}
+	if err := states.Clear(ctx, f.eng, up.ID, f.alice, later); err == nil {
+		t.Error("Clear() outside a transaction = nil, want an error")
+	}
+	other := uuid.NewV7()
+	for name, write := range map[string]func(ctx context.Context) error{
+		"SetState of another upgrade": func(ctx context.Context) error {
+			return states.SetState(ctx, f.eng, other, notebook.UpgradeRollingBack, f.alice, later)
+		},
+		"Clear of another upgrade": func(ctx context.Context) error { return states.Clear(ctx, f.eng, other, f.alice, later) },
+		"SetState of a notebook of none": func(ctx context.Context) error {
+			return states.SetState(ctx, f.ops, up.ID, notebook.UpgradeRollingBack, f.alice, later)
+		},
+	} {
+		if err := tx.WithinTx(ctx, write); err == nil {
+			t.Errorf("%s = nil, want a defect's error", name)
+		}
+	}
+	if r := read(); r.state == nil || *r.state != string(notebook.UpgradeUpgrading) || r.updatedBy != f.bob {
+		t.Errorf("eng after the writes of another upgrade = %+v, want as it started", r)
+	}
+
+	rolledBack := errors.New("the caller rolls back")
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := states.SetState(ctx, f.eng, up.ID, notebook.UpgradeRollingBack, f.alice, later); err != nil {
+			return err
+		}
+		return rolledBack
+	}); !errors.Is(err, rolledBack) {
+		t.Fatal(err)
+	}
+	if r := read(); *r.state != string(notebook.UpgradeUpgrading) {
+		t.Errorf("eng's state after its caller rolled back = %s, want upgrading", *r.state)
+	}
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+		return states.SetState(ctx, f.eng, up.ID, notebook.UpgradeRollingBack, f.alice, later)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if r := read(); r.upgrade == nil || *r.upgrade != up.ID || *r.state != string(notebook.UpgradeRollingBack) || *r.by != f.bob ||
+		!r.at.Equal(testNow()) || r.updatedBy != f.alice || !r.updatedAt.Equal(later) {
+		t.Errorf("eng after SetState = %+v, want rolling back, the start's who and when kept, alice's change", r)
+	}
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error { return states.Clear(ctx, f.eng, up.ID, f.alice, latest) }); err != nil {
+		t.Fatal(err)
+	}
+	if r := read(); r.upgrade != nil || r.state != nil || r.by != nil || r.at != nil || r.updatedBy != f.alice || !r.updatedAt.Equal(latest) {
+		t.Errorf("eng after Clear = %+v, want no upgrade, alice's change", r)
+	}
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error { return states.Clear(ctx, f.eng, up.ID, f.alice, latest) }); err == nil {
+		t.Error("Clear of an upgrade ended = nil, want a defect's error")
+	}
+}
+
 // modeRecorder records the mode changes it is told of, in a shared list,
 // and answers err.
 type modeRecorder struct {

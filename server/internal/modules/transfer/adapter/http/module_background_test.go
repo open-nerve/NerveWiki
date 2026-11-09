@@ -2,6 +2,7 @@ package httpadapter_test
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -36,7 +37,7 @@ func TestTheModulePassesBatchBoundsToRevertStart(t *testing.T) {
 			logger := slog.New(slog.DiscardHandler)
 			module := transfer.New(transfer.Deps{Tree: probe, Clock: fixedClock{}, Logger: logger, Batch: tt.batch,
 				DownloadKey: []byte("key"), RestoreAction: restoreAction, RevertAction: revertAction,
-				ImportMaxBytes: importMaxBytes, MinRate: 64 << 10})
+				ImportMaxBytes: importMaxBytes, MinRate: 64 << 10, RollbackAction: "notebook.change_mode", RollbackEnd: noRollbackEnd{}})
 			router := httpserver.NewRouter(logger)
 			module.Register(router, httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: fakeAuth{}}))
 			request := httptest.NewRequest(http.MethodPost, revertsPath(),
@@ -69,4 +70,15 @@ func (t *moduleRevertTree) CheckRevert(_ context.Context, _, _ uuid.UUID, _ *str
 		t.cuts = batches(t.steps)
 	}
 	return "", shared.Forbidden()
+}
+
+// noRollbackEnd ends no upgrade: these tests run no rollback.
+type noRollbackEnd struct{}
+
+func (noRollbackEnd) End(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	return false, errors.New("no rollback runs here")
+}
+
+func (noRollbackEnd) Stopped(context.Context, uuid.UUID, uuid.UUID) error {
+	return errors.New("no rollback runs here")
 }

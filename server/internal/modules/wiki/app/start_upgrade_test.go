@@ -181,6 +181,14 @@ func (f *startFake) Start(_ context.Context, _ uuid.UUID, up app.NotebookUpgrade
 	return nil
 }
 
+func (f *startFake) SetState(context.Context, uuid.UUID, uuid.UUID, domain.UpgradeState, uuid.UUID, time.Time) error {
+	return errors.New("the start sets no state but upgrading")
+}
+
+func (f *startFake) Clear(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) error {
+	return errors.New("the start clears no upgrade")
+}
+
 func (f *startFake) Publish(_ context.Context, c app.ModeChange) error {
 	f.note("publish")
 	f.published = c
@@ -261,6 +269,10 @@ func (f *startFake) Insert(_ context.Context, u domain.Upgrade, by uuid.UUID, _ 
 
 func (f *startFake) Current(context.Context, uuid.UUID) (domain.Upgrade, bool, error) {
 	return domain.Upgrade{}, false, errors.New("the start reads no row")
+}
+
+func (f *startFake) EndRollback(context.Context, uuid.UUID, *domain.RollbackLeft, uuid.UUID, time.Time) (time.Time, bool, error) {
+	return time.Time{}, false, errors.New("the start ends no rollback")
 }
 
 func (f *startFake) DisplayNames(_ context.Context, ids []uuid.UUID) (map[uuid.UUID]string, error) {

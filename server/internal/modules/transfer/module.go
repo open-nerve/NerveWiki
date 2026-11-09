@@ -91,6 +91,11 @@ type (
 	BatchDone       = app.BatchDone
 	RollbackPass    = app.RollbackPass
 	RollbackLeft    = app.RollbackLeft
+	// RollbackEnd is the end of an upgrade as its rollback's job ends, the
+	// wiki module's; Rollbacks start the rollbacks' jobs (M11/P1 design
+	// 3.19).
+	RollbackEnd = app.RollbackEnd
+	Rollbacks   = app.Rollbacks
 	// Placement is where a restore put its trash item's root.
 	Placement = domain.Placement
 	// Refused is a job write the notebook contract refused, with its code,
@@ -184,6 +189,12 @@ type Deps struct {
 	// the job's row: node.restore and changeset.revert.
 	RestoreAction shared.Action
 	RevertAction  shared.Action
+	// RollbackAction is the notebook module's notebook.change_mode, which
+	// an upgrade's rollback's start and cancel decide; RollbackEnd the
+	// wiki module's end of the upgrade as its rollback's job ends (M11/P1
+	// design 3.19). New panics without them.
+	RollbackAction shared.Action
+	RollbackEnd    RollbackEnd
 }
 
 // beat is how often a running job writes its heartbeat and progress;
@@ -195,15 +206,21 @@ const (
 
 // Module is the wired transfer module.
 type Module struct {
-	uc     httpadapter.UseCases
-	limits httpadapter.Limits
-	logger *slog.Logger
-	jobs   []jobs.Job
+	uc        httpadapter.UseCases
+	limits    httpadapter.Limits
+	logger    *slog.Logger
+	jobs      []jobs.Job
+	rollbacks Rollbacks
 }
 
 // New wires the module: its rows on the pool, its archives in the store,
-// its jobs enqueued with the insert-only client.
+// its jobs enqueued with the insert-only client. Without RollbackAction
+// or RollbackEnd it panics: a rollback would start that no one could
+// cancel, or end that ends no upgrade.
 func New(d Deps) *Module {
+	if d.RollbackAction == "" || d.RollbackEnd == nil {
+		panic("transfer: New without RollbackAction or RollbackEnd")
+	}
 	rows, archives, signer := postgresadapter.New(d.Pool), archiveadapter.New(d.Store, d.Logger), macadapter.New(d.DownloadKey)
 	queue := riveradapter.NewQueue(d.Inserter)
 	export := app.NewExport(app.ExportDeps{Tx: d.Tx, Snapshots: d.Snapshots, Authorizer: d.Authorizer, Notebooks: d.Notebooks, Nodes: d.Nodes,
@@ -217,7 +234,7 @@ func New(d Deps) *Module {
 		MaxQueued: d.MaxQueued, MinFree: d.MinFreeBytes, ImportMaxBytes: d.ImportMaxBytes}
 	background := app.BackgroundDeps{Tree: d.Tree, RestoreAction: d.RestoreAction, RevertAction: d.RevertAction, Batch: d.Batch}
 	run := app.NewBackground(app.BackgroundRunDeps{Tree: d.Tree, Statistics: d.Statistics, Rows: rows, Clock: d.Clock, Logger: d.Logger,
-		Beat: beat, Backoff: backoff, Batch: d.Batch})
+		Beat: beat, Backoff: backoff, Batch: d.Batch, Tx: d.Tx, Notebooks: d.Notebooks, RollbackEnd: d.RollbackEnd})
 	return &Module{
 		uc: httpadapter.UseCases{
 			Start:   app.NewStartExport(start),
@@ -227,11 +244,12 @@ func New(d Deps) *Module {
 			Reads: app.NewReads(app.ReadsDeps{Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names, Signer: signer, Clock: d.Clock,
 				Rows: rows, ExportTTL: d.ExportTTL}),
 			Cancel: app.NewCancel(app.CancelDeps{Tx: d.Tx, Rows: rows, Authorizer: d.Authorizer, Notebooks: d.Notebooks, Names: d.Names,
-				Signer: signer, Clock: d.Clock, Logger: d.Logger, ExportTTL: d.ExportTTL}),
+				Signer: signer, Clock: d.Clock, Logger: d.Logger, ExportTTL: d.ExportTTL, RollbackAction: d.RollbackAction}),
 			Download: app.NewDownload(rows, archives, signer, d.Clock, d.Logger, d.ExportTTL),
 		},
-		limits: httpadapter.Limits{ImportMaxBytes: d.ImportMaxBytes, MinRate: d.MinRate},
-		logger: d.Logger,
+		limits:    httpadapter.Limits{ImportMaxBytes: d.ImportMaxBytes, MinRate: d.MinRate},
+		logger:    d.Logger,
+		rollbacks: app.NewRollbacks(start, d.RollbackAction),
 		jobs: []jobs.Job{
 			riveradapter.ExportJob(export, d.JobTimeout),
 			riveradapter.ImportJob(imp, d.JobTimeout),
@@ -243,6 +261,12 @@ func New(d Deps) *Module {
 			riveradapter.SweepJob(app.NewSweep(rows, archives, d.Clock, d.Logger)),
 		},
 	}
+}
+
+// Rollbacks start the upgrades' rollbacks' jobs in their callers'
+// transactions: the wiki module's abandonment (M11/P1 design 3.19).
+func (m *Module) Rollbacks() Rollbacks {
+	return m.rollbacks
 }
 
 // Register mounts the module's API on router, the root router from

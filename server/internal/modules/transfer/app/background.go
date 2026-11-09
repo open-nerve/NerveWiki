@@ -37,6 +37,11 @@ type BackgroundRunDeps struct {
 	Backoff time.Duration
 	// Batch bounds a batch: zero is the import's, which production keeps.
 	Batch Batch
+	// Tx, Notebooks and RollbackEnd write a rollback's end with its
+	// upgrade's, the notebook's row locked first (M11/P1 design 3.19).
+	Tx          shared.TxManager
+	Notebooks   Notebooks
+	RollbackEnd RollbackEnd
 }
 
 // NewBackground returns the use case.
@@ -70,7 +75,13 @@ func (b *Background) Run(ctx context.Context, id uuid.UUID) error {
 	r.stats.end(ctx)
 	stop(nil)
 	<-beating
-	return r.finish(ctx, running, err, append(attrs, r.counted()...), nil)
+	attrs = append(attrs, r.counted()...)
+	var succeed func(end context.Context, e Ended) error
+	if job.Kind == domain.KindRollback && job.UpgradeID != nil {
+		r.finishJob = r.rollbackStopped
+		succeed = func(end context.Context, e Ended) error { return r.rollbackSucceeded(ctx, running, end, e, attrs) }
+	}
+	return r.finish(ctx, running, err, attrs, succeed)
 }
 
 // backgroundRun is a restore or a revert as it runs.
@@ -97,15 +108,24 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 		plan, err = r.b.d.Tree.PlanRevert(running, spec, *r.job.TargetChangesetID, func(steps []JobStep) [][2]int {
 			return nominalBatches(steps, r.bounds)
 		})
+	case r.job.Kind == domain.KindRollback && r.job.UpgradeID != nil:
+		spec.UpgradeID = *r.job.UpgradeID
+		return r.rollback(ctx, running, spec)
 	default:
 		return fmt.Errorf("a background job %s of kind %q", r.job.ID, r.job.Kind)
 	}
 	if err != nil {
 		return r.stopped(err)
 	}
-	steps, total := plan.Steps(), int64(plan.Total())
-	r.all.Store(total)
+	r.all.Store(int64(plan.Total()))
 	r.publish()
+	return r.batches(ctx, running, spec, plan)
+}
+
+// batches writes the plan's batches, the progress's done grown by each
+// one's nodes, up to its total.
+func (r *backgroundRun) batches(ctx, running context.Context, spec JobSpec, plan JobPlan) error {
+	steps := plan.Steps()
 	for from := 0; from < len(steps); {
 		if running.Err() != nil {
 			return context.Cause(running)
@@ -118,7 +138,7 @@ func (r *backgroundRun) run(ctx, running context.Context) error {
 		for _, s := range steps[from:to] {
 			nodes += int64(s.Nodes)
 		}
-		r.done.Store(min(r.done.Load()+nodes, total))
+		r.done.Store(min(r.done.Load()+nodes, r.all.Load()))
 		r.count(done)
 		r.publish()
 		r.stats.wrote(ctx, done.Nodes)

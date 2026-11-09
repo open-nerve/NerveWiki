@@ -251,6 +251,7 @@ func transferDeps(cfg config.Config, pool *pgxpool.Pool, logger *slog.Logger, au
 		ImportMaxBytes: t.ImportMaxBytes, ImportMaxEntries: t.ImportMaxEntries, ImportMaxUnpackedBytes: t.ImportMaxUnpackedBytes,
 		ImportMaxNodes: page.MaxJobItems, MinFreeBytes: cfg.Storage.MinFreeBytes, MinRate: cfg.Asset.UploadMinRate, AssetMaxBytes: cfg.Asset.MaxBytes,
 		MaxContentBytes: page.MaxContentBytes, RestoreAction: page.ActionRestore, RevertAction: page.ActionRevert,
+		RollbackAction: notebook.ActionChangeMode,
 	}
 }
 

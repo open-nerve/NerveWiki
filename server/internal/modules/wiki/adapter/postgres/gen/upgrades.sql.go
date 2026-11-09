@@ -75,6 +75,45 @@ func (q *Queries) CurrentUpgrade(ctx context.Context, notebookID uuid.UUID) (Cur
 	return i, err
 }
 
+const endUpgradeRollback = `-- name: EndUpgradeRollback :one
+UPDATE notebook_upgrades u
+SET state = 'rolled_back', rollback_complete = $1, rollback_left_nodes = $2::integer,
+    rollback_left_pages = $3::integer, rollback_left_created = $4::integer,
+    updated_by_id = $5::uuid, updated_at = $6::timestamptz
+FROM (SELECT o.id, o.updated_at FROM notebook_upgrades o WHERE o.id = $7) b
+WHERE u.id = b.id AND u.state = 'rolling_back' AND u.deleted_at IS NULL
+RETURNING b.updated_at AS since
+`
+
+type EndUpgradeRollbackParams struct {
+	Complete    *bool
+	LeftNodes   *int32
+	LeftPages   *int32
+	LeftCreated *int32
+	By          uuid.UUID
+	Now         time.Time
+	ID          uuid.UUID
+}
+
+// A rollback's end (M11 design 4.10, decision 230), under the notebook's row lock: the upgrade rolled back, complete
+// when nothing was left, else what was left; who and when. It answers when the row changed last before, as the
+// rollback was abandoned or continued, which the end's log measures from; no row when the upgrade no longer rolls
+// back.
+func (q *Queries) EndUpgradeRollback(ctx context.Context, arg EndUpgradeRollbackParams) (time.Time, error) {
+	row := q.db.QueryRow(ctx, endUpgradeRollback,
+		arg.Complete,
+		arg.LeftNodes,
+		arg.LeftPages,
+		arg.LeftCreated,
+		arg.By,
+		arg.Now,
+		arg.ID,
+	)
+	var since time.Time
+	err := row.Scan(&since)
+	return since, err
+}
+
 const insertUpgrade = `-- name: InsertUpgrade :exec
 INSERT INTO notebook_upgrades (id, notebook_id, state, source_root_id, seeded_root, seeded_agents_id, locale, baseline_nodes,
     baseline_pages, baseline_wanted, baseline_wanted_capped, created_by_id, updated_by_id, created_at, updated_at)

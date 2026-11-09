@@ -48,6 +48,23 @@ type Notebooks interface {
 	// NameOf is the name of the notebook not deleted id, in the caller's
 	// transaction; false for none.
 	NameOf(ctx context.Context, id uuid.UUID) (string, bool, error)
+	// LockByID locks the notebook not deleted id FOR NO KEY UPDATE until
+	// the transaction ends; false for none: a rollback's end, which ends
+	// the notebook's upgrade (M11/P1 design 3.19).
+	LockByID(ctx context.Context, id uuid.UUID) (bool, error)
+}
+
+// RollbackEnd ends an upgrade as its rollback's job ends (M11 design
+// 4.10): the wiki module's, in the job's end's transaction, the
+// notebook's row locked first.
+type RollbackEnd interface {
+	// End ends the upgrade upgradeID of the notebook when its rollback left
+	// nothing, and answers whether it left something; nothing, and false,
+	// when the notebook's upgrade is no longer it, rolling back.
+	End(ctx context.Context, notebookID, upgradeID uuid.UUID) (left bool, err error)
+	// Stopped tells the mode's subscribers that the rollback stopped, when
+	// the notebook's upgrade is still it, rolling back.
+	Stopped(ctx context.Context, notebookID, upgradeID uuid.UUID) error
 }
 
 // Names reads the accounts' display names: identity's directory.
@@ -189,6 +206,9 @@ type Queue interface {
 	// the imports' queue (M8/P4 design 3.6).
 	TrashRestore(ctx context.Context, id uuid.UUID) error
 	Revert(ctx context.Context, id uuid.UUID) error
+	// Rollback enqueues an upgrade's rollback, in the imports' queue too
+	// (M11/P1 design 3.19).
+	Rollback(ctx context.Context, id uuid.UUID) error
 }
 
 // Held tells which jobs River still holds: adapter/river.

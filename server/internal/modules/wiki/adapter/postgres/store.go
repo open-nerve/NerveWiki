@@ -73,6 +73,29 @@ func (s *Store) Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgra
 	return u, true, nil
 }
 
+// EndRollback ends the upgrade id rolling back, rolled back, by by at at:
+// complete for left nil, else short of left (M11 decision 230). It
+// answers when the row changed before, as the rollback was abandoned or
+// continued; false for no upgrade id rolling back.
+func (s *Store) EndRollback(ctx context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool,
+	error,
+) {
+	complete := left == nil
+	arg := gen.EndUpgradeRollbackParams{ID: id, Complete: &complete, By: by, Now: at}
+	if left != nil {
+		nodes, pages, created := int32(left.Nodes), int32(left.Pages), int32(left.Created)
+		arg.LeftNodes, arg.LeftPages, arg.LeftCreated = &nodes, &pages, &created
+	}
+	since, err := s.queries(ctx).EndUpgradeRollback(ctx, arg)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("end an upgrade's rollback: %w", err)
+	}
+	return since, true, nil
+}
+
 // SoftDeleteOf deletes the notebooks' upgrades, under way or ended, by by
 // at at: their deletion's (M11/P1 design 3.15).
 func (s *Store) SoftDeleteOf(ctx context.Context, notebookIDs []uuid.UUID, by uuid.UUID, at time.Time) error {

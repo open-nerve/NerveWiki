@@ -76,10 +76,12 @@ func (direct) WithinTx(ctx context.Context, fn func(ctx context.Context) error) 
 // revert are its writers'.
 type roles struct{}
 
-// The page module's actions of the background starts.
+// The page module's actions of the background starts, and the notebook
+// module's an upgrade's rollback decides.
 const (
-	restoreAction shared.Action = "node.restore"
-	revertAction  shared.Action = "changeset.revert"
+	restoreAction  shared.Action = "node.restore"
+	revertAction   shared.Action = "changeset.revert"
+	rollbackAction shared.Action = "notebook.change_mode"
 )
 
 func (roles) Authorize(_ context.Context, actor shared.Actor, action shared.Action, t shared.Target) (shared.Grant, error) {
@@ -87,7 +89,7 @@ func (roles) Authorize(_ context.Context, actor shared.Actor, action shared.Acti
 	if !ok || t.NotebookID != notebookID() {
 		return shared.Grant{}, shared.ErrNotVisible
 	}
-	if slices.Contains([]shared.Action{domain.ActionImport, restoreAction, revertAction}, action) && role == shared.NotebookReader {
+	if slices.Contains([]shared.Action{domain.ActionImport, restoreAction, revertAction, rollbackAction}, action) && role == shared.NotebookReader {
 		return shared.Grant{}, shared.Forbidden()
 	}
 	return shared.Grant{WorkspaceRole: shared.WorkspaceMember, NotebookRole: role}, nil
@@ -109,6 +111,10 @@ func (notebooks) WorkspaceOf(_ context.Context, id uuid.UUID) (uuid.UUID, bool, 
 
 func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
 	return n.state(), id == notebookID(), nil
+}
+
+func (notebooks) LockByID(_ context.Context, id uuid.UUID) (bool, error) {
+	return id == notebookID(), nil
 }
 
 func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (app.NotebookState, bool, error) {
@@ -602,6 +608,10 @@ func (q *queue) Revert(_ context.Context, id uuid.UUID) error {
 	return q.Import(context.Background(), id)
 }
 
+func (q *queue) Rollback(_ context.Context, id uuid.UUID) error {
+	return q.Import(context.Background(), id)
+}
+
 // bucket allows left requests, recording each key.
 type bucket struct {
 	mu   sync.Mutex
@@ -693,7 +703,7 @@ func newHarnessWith(t *testing.T, o httpservertest.APIOptions) *harness {
 		Reads: app.NewReads(app.ReadsDeps{Authorizer: roles{}, Notebooks: notebooks{}, Names: names{}, Signer: h.signer, Clock: fixedClock{},
 			Rows: h.rows, ExportTTL: exportTTL}),
 		Cancel: app.NewCancel(app.CancelDeps{Tx: direct{}, Rows: h.rows, Authorizer: roles{}, Notebooks: notebooks{}, Names: names{},
-			Signer: h.signer, Clock: fixedClock{}, Logger: logger, ExportTTL: exportTTL}),
+			Signer: h.signer, Clock: fixedClock{}, Logger: logger, ExportTTL: exportTTL, RollbackAction: rollbackAction}),
 		Download: app.NewDownload(h.rows, h.archives, h.signer, fixedClock{}, logger, exportTTL),
 	}
 	h.router = httpserver.NewRouter(slog.New(slog.DiscardHandler))

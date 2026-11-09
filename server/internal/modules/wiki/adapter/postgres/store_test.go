@@ -135,3 +135,74 @@ func TestTheUpgradesRows(t *testing.T) {
 		t.Errorf("%d upgrades left, %v; want ops' 1", left, err)
 	}
 }
+
+// A rollback's end's row (M11/P1 design 3.20, decision 230): an upgrade
+// rolling back ends rolled back, complete with nothing left, or with what
+// was left, by its writer at its time, and answers when its row changed
+// before; one upgrading, one already ended, or none, changes nothing and
+// answers false.
+func TestARollbacksEndRow(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	at := time.Date(2026, 11, 9, 9, 0, 0, 0, time.UTC)
+	eng, ops := started(f.eng, f.alice, at), started(f.ops, f.bob, at)
+	for _, u := range []domain.Upgrade{eng, ops} {
+		if err := f.store.Insert(ctx, u, u.CreatedBy, u.CreatedAt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	abandoned, ended := at.Add(time.Hour), at.Add(2*time.Hour)
+	if _, ok, err := f.store.EndRollback(ctx, ops.ID, nil, f.bob, ended); ok || err != nil {
+		t.Errorf("EndRollback(upgrading) = %v, %v; want none rolling back", ok, err)
+	}
+	if _, ok, err := f.store.EndRollback(ctx, uuid.NewV7(), nil, f.bob, ended); ok || err != nil {
+		t.Errorf("EndRollback(no upgrade) = %v, %v; want none", ok, err)
+	}
+	if _, err := f.pool.Exec(ctx, `UPDATE notebook_upgrades SET state = 'rolling_back', ending = 'abandoned',
+		rollback_job_id = gen_random_uuid(), updated_at = $1`, abandoned); err != nil {
+		t.Fatal(err)
+	}
+	since, ok, err := f.store.EndRollback(ctx, eng.ID, nil, f.bob, ended)
+	if err != nil || !ok || !since.Equal(abandoned) {
+		t.Errorf("EndRollback(eng) = %v, %v, %v; want since its abandonment %v", since, ok, err, abandoned)
+	}
+	left := domain.RollbackLeft{Nodes: 1, Pages: 2, Created: 3}
+	if _, ok, err := f.store.EndRollback(ctx, ops.ID, &left, f.alice, ended); err != nil || !ok {
+		t.Errorf("EndRollback(ops, left) = %v, %v; want it ended", ok, err)
+	}
+	if _, ok, err := f.store.EndRollback(ctx, eng.ID, nil, f.bob, ended.Add(time.Hour)); ok || err != nil {
+		t.Errorf("EndRollback(eng again) = %v, %v; want none rolling back", ok, err)
+	}
+	type row struct {
+		complete              *bool
+		nodes, pages, created *int32
+		by                    uuid.UUID
+		at                    time.Time
+	}
+	for _, tt := range []struct {
+		id       uuid.UUID
+		complete bool
+		left     *domain.RollbackLeft
+		by       uuid.UUID
+	}{{eng.ID, true, nil, f.bob}, {ops.ID, false, &left, f.alice}} {
+		var r row
+		var state string
+		if err := f.pool.QueryRow(ctx, `SELECT state, rollback_complete, rollback_left_nodes, rollback_left_pages, rollback_left_created,
+			updated_by_id, updated_at FROM notebook_upgrades WHERE id = $1`, tt.id).Scan(&state, &r.complete, &r.nodes, &r.pages,
+			&r.created, &r.by, &r.at); err != nil {
+			t.Fatal(err)
+		}
+		got := (*domain.RollbackLeft)(nil)
+		if r.nodes != nil && r.pages != nil && r.created != nil {
+			got = &domain.RollbackLeft{Nodes: int(*r.nodes), Pages: int(*r.pages), Created: int(*r.created)}
+		}
+		if state != "rolled_back" || r.complete == nil || *r.complete != tt.complete || !reflect.DeepEqual(got, tt.left) || r.by != tt.by ||
+			!r.at.Equal(ended) {
+			t.Errorf("%v: %s, complete %v, left %+v, by %v at %v; want rolled back, %v, %+v, by %v at %v", tt.id, state, r.complete, got,
+				r.by, r.at, tt.complete, tt.left, tt.by, ended)
+		}
+		if _, ok, err := f.store.Current(ctx, f.eng); ok || err != nil {
+			t.Errorf("Current(eng) after its end = %v, %v; want none under way", ok, err)
+		}
+	}
+}

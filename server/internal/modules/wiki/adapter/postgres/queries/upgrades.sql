@@ -33,3 +33,16 @@ WHERE id IN (
     LIMIT sqlc.arg(batch)
     FOR UPDATE SKIP LOCKED
 );
+
+-- name: EndUpgradeRollback :one
+-- A rollback's end (M11 design 4.10, decision 230), under the notebook's row lock: the upgrade rolled back, complete
+-- when nothing was left, else what was left; who and when. It answers when the row changed last before, as the
+-- rollback was abandoned or continued, which the end's log measures from; no row when the upgrade no longer rolls
+-- back.
+UPDATE notebook_upgrades u
+SET state = 'rolled_back', rollback_complete = sqlc.arg(complete), rollback_left_nodes = sqlc.narg(left_nodes)::integer,
+    rollback_left_pages = sqlc.narg(left_pages)::integer, rollback_left_created = sqlc.narg(left_created)::integer,
+    updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+FROM (SELECT o.id, o.updated_at FROM notebook_upgrades o WHERE o.id = sqlc.arg(id)) b
+WHERE u.id = b.id AND u.state = 'rolling_back' AND u.deleted_at IS NULL
+RETURNING b.updated_at AS since;

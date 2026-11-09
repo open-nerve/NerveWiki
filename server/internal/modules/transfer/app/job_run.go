@@ -95,12 +95,17 @@ type jobRun struct {
 	// interrupted.
 	reported atomic.Pointer[domain.Report]
 	name     string
+	// finishJob writes the job's end, false when it no longer runs: its
+	// row's, or a rollback's with its upgrade's (M11/P1 design 3.19).
+	finishJob func(end context.Context, e Ended) (bool, error)
 }
 
 // newJobRun returns job's run, writing its rows, its heartbeat every
 // every.
 func newJobRun(job domain.Job, rows Rows, clock Clock, logger *slog.Logger, every time.Duration) *jobRun {
-	return &jobRun{rows: rows, clock: clock, logger: logger, every: every, job: job, name: job.Name}
+	r := &jobRun{rows: rows, clock: clock, logger: logger, every: every, job: job, name: job.Name}
+	r.finishJob = func(end context.Context, e Ended) (bool, error) { return r.rows.FinishJob(end, r.job.ID, e) }
+	return r
 }
 
 // progress is the run's progress now.
@@ -211,7 +216,7 @@ func (r *jobRun) finish(ctx, running context.Context, err error, attrs []any, su
 		report.Refusal = nil
 	}
 	e.Report = report
-	ok, writeErr := r.rows.FinishJob(end, r.job.ID, e)
+	ok, writeErr := r.finishJob(end, e)
 	if writeErr != nil {
 		return fmt.Errorf("write the end of %s %s: %w", kind, r.job.ID, writeErr)
 	}
