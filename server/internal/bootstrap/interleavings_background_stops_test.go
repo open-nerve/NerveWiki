@@ -114,6 +114,7 @@ func (tm acmeTeam) stopPaused(t *testing.T, nb string, c step, then func(j backg
 	case <-time.After(interleavingWait):
 		t.Fatal("the job's first batch did not end")
 	}
+	tm.batches.came(t, 2)
 	next(2)
 	pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
 	then(j)
@@ -469,6 +470,8 @@ func TestABackgroundJobAndItsNotebooksDeletion(t *testing.T) {
 			if a := deleted(); a.status != http.StatusNoContent {
 				t.Fatalf("the notebook's deletion = %d %s, want 204", a.status, a.body)
 			}
+			// Not came: the notebook deleted, the heartbeat may stop the job
+			// before its second batch asks.
 			next(2)
 			awaitBackground(t, tm)
 			if got := queryStrings(t, tm.pool, "SELECT state || ' ' || (deleted_at IS NOT NULL) FROM transfer_jobs WHERE id = $1",

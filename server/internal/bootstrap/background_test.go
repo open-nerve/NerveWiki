@@ -178,13 +178,16 @@ func newBatchedTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 // the next batch, a lock asked anew, may take the row before the woken
 // write does (a lock its holder left is no queue; betweenUnits). Held at
 // the gate, the next batch has not asked yet (M9 story, found in M11:
-// M11/P1 S3 review C-M4). Unarmed, it is the Tree as it is.
+// M11/P1 S3 review C-M4). Unarmed, it is the Tree as it is. A test
+// checks that a batch it lets go was held there (came): else it would
+// pass on the lock's order as before, its gate gone unnoticed.
 type batchGate struct {
 	transfer.Tree
 	mu    sync.Mutex
 	armed uuid.UUID
 	calls int
 	held  map[int]chan struct{}
+	at    map[int]chan struct{} // each closed as its batch is held
 }
 
 // hold arms g for the notebook nb, its batches counted from the next
@@ -197,10 +200,11 @@ func (g *batchGate) hold(t *testing.T, nb string, ns ...int) (letGo func(n int))
 	}
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	g.armed, g.calls, g.held = uuid.MustParse(nb), 0, map[int]chan struct{}{}
+	g.armed, g.calls, g.held, g.at = uuid.MustParse(nb), 0, map[int]chan struct{}{}, map[int]chan struct{}{}
 	held := g.held
 	for _, n := range ns {
 		held[n] = make(chan struct{})
+		g.at[n] = make(chan struct{})
 	}
 	var once sync.Map
 	letGo = func(n int) {
@@ -217,7 +221,7 @@ func (g *batchGate) hold(t *testing.T, nb string, ns ...int) (letGo func(n int))
 }
 
 // wait is what the batch of the notebook nb RunBatch is called for waits
-// for: its channel when it is one held, else none.
+// for: its channel when it is one held, the gate told it came, else none.
 func (g *batchGate) wait(nb uuid.UUID) chan struct{} {
 	g.mu.Lock()
 	defer g.mu.Unlock()
@@ -225,7 +229,28 @@ func (g *batchGate) wait(nb uuid.UUID) chan struct{} {
 		return nil
 	}
 	g.calls++
-	return g.held[g.calls]
+	held := g.held[g.calls]
+	if held != nil {
+		close(g.at[g.calls])
+	}
+	return held
+}
+
+// came waits until the armed notebook's batch n is held at the gate, at
+// most interleavingWait (M9 story, found in M11: review M9F-C-N1).
+func (g *batchGate) came(t *testing.T, n int) {
+	t.Helper()
+	g.mu.Lock()
+	at := g.at[n]
+	g.mu.Unlock()
+	if at == nil {
+		t.Fatalf("batch %d is not one the gate holds", n)
+	}
+	select {
+	case <-at:
+	case <-time.After(interleavingWait):
+		t.Fatalf("batch %d was not held at the gate", n)
+	}
 }
 
 func (g *batchGate) RunBatch(ctx context.Context, spec transfer.JobSpec, p transfer.JobPlan, from, to int) (transfer.BatchDone, error) {

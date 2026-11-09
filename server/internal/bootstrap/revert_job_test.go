@@ -216,6 +216,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a, b := wrote(), renamed(); a.status != http.StatusOK || b.status != http.StatusOK {
 			t.Fatalf("the web's write = %d %s, its rename = %d %s; want both done", a.status, a.body, b.status, b.body)
 		}
+		tm.batches.came(t, 2)
 		next(2)
 		got := tm.endedBackground(t, "alice", j.ID)
 		reasons, names := map[string]string{}, map[string]string{}
@@ -271,6 +272,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a := away(); a.status != http.StatusOK {
 			t.Fatalf("the web's write = %d %s", a.status, a.body)
 		}
+		tm.batches.came(t, 2)
 		next(2)
 		if at := h.waited(t); at != made {
 			t.Fatalf("the second batch waits for %s, want the new Plan", at)
@@ -281,6 +283,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a := back(); a.status != http.StatusOK {
 			t.Fatalf("the web's write back = %d %s", a.status, a.body)
 		}
+		tm.batches.came(t, 3)
 		next(3)
 		got := tm.endedBackground(t, "alice", j.ID)
 		if got.State != "succeeded" {
@@ -365,6 +368,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 			if a.status != http.StatusOK && a.status != http.StatusNoContent && a.status != http.StatusCreated {
 				t.Fatalf("the web's write = %d %s", a.status, a.body)
 			}
+			tm.batches.came(t, 2)
 			next(2)
 			got := tm.endedBackground(t, "alice", j.ID)
 			name := tt.node[strings.LastIndex(tt.node, "/")+1:]
