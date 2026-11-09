@@ -347,6 +347,19 @@ func TestARollbackPassAtATime(t *testing.T) {
 			t.Errorf("two packs of two in a batch = %v, want ErrJobBatchTooLarge", err)
 		}
 	})
+	// A unit that deletes first packs MaxDeleteFirstNodes, below
+	// MaxUnitNodes (M11 decision 243): the same five, two a pack of four
+	// whole, are three steps, and two of them in a batch are past it.
+	t.Run("free subtrees past MaxDeleteFirstNodes", func(t *testing.T) {
+		w := f.checkedWrites(store, app.JobRollbacks{Reads: reads, Action: changeMode, MaxNodes: 4, MaxDeleteNodes: 2})
+		plan, pass, err := w.PlanRollback(f.asJob(), spec)
+		if err != nil || !pass.Deletes || len(plan.Steps()) != 3 {
+			t.Fatalf("five loose pages, two a unit = %+v, %v, %d steps; want three", pass, err, len(plan.Steps()))
+		}
+		if _, err := w.RunBatch(f.asJob(), spec, plan, 0, 2); !errors.Is(err, domain.ErrJobBatchTooLarge) {
+			t.Errorf("two packs of two in a batch = %v, want ErrJobBatchTooLarge", err)
+		}
+	})
 }
 
 // rbTrial is a rollback's trial over the fixture: a random baseline, the
@@ -556,7 +569,10 @@ func TestTheRollbacksStepsReplayToTheBaseline(t *testing.T) {
 		up := uuid.NewV7()
 		p.f.rollingBack(up, domain.UpgradeRollingBack)
 		store := &checkedStore{fakeStore: p.f.store}
-		w, spec := p.f.rollbacks(store, p.reads, 1+p.rng.IntN(4), 0), p.f.jobSpec()
+		whole := 1 + p.rng.IntN(4)
+		w := p.f.checkedWrites(store, app.JobRollbacks{Reads: p.reads, Action: changeMode, MaxNodes: whole,
+			MaxDeleteNodes: 1 + p.rng.IntN(whole)})
+		spec := p.f.jobSpec()
 		spec.UpgradeID = up
 		plans := 0
 		for pass := 0; ; pass++ {

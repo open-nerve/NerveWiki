@@ -225,7 +225,9 @@ type Deps struct {
 	// UpgradeAction is the notebook module's notebook.change_mode, which
 	// an upgrade's rollback's units decide on (M11/P1 design 2.1 item 10):
 	// the page module's domain has no such action. MaxUnitNodes bounds a
-	// step of its pass that deletes first too.
+	// subtree its pass that deletes first deletes whole too, and caps
+	// domain.MaxDeleteFirstNodes, the nodes of the subtrees a unit of that
+	// pass packs (M11 decision 243).
 	UpgradeAction shared.Action
 	// MaxBatchRewrites bounds the pages a batch's deferred rewrite writes,
 	// MaxBatchRewriteLinks their links, MaxBatchRewriteBytes their bytes:

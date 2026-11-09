@@ -58,15 +58,16 @@ type FreeNode struct {
 }
 
 // PackFreeSubtrees packs the free nodes into the steps of a pass that
-// deletes first (M11 design 4.10, decision 231): a free node whose parent
-// is not free roots a free subtree; each step is the roots of subtrees of
-// max nodes at most together, in the order of their roots' ids, each step
-// as full as the next subtree lets it. A subtree past max is not deleted
-// whole this pass: the subtrees of max nodes at most right under its
-// largest part are, from the bottom up, and it waits for a later pass,
-// smaller then. The roots of a pass are pairwise apart: none is under
-// another, so each deletion takes a whole subtree.
-func PackFreeSubtrees(forest []FreeNode, max int) [][]uuid.UUID {
+// deletes first (M11 design 4.10, decisions 231 and 243): a free node
+// whose parent is not free roots a free subtree; each step is the roots of
+// subtrees of pack nodes at most together, in the order of their roots'
+// ids, each step as full as the next subtree lets it; a subtree past pack,
+// of whole nodes at most, is a step alone, never split. A subtree past
+// whole is not deleted whole this pass: the subtrees of whole nodes at
+// most right under its largest part are, from the bottom up, and it waits
+// for a later pass, smaller then. The roots of a pass are pairwise apart:
+// none is under another, so each deletion takes a whole subtree.
+func PackFreeSubtrees(forest []FreeNode, whole, pack int) [][]uuid.UUID {
 	free := make(map[uuid.UUID]bool, len(forest))
 	for _, n := range forest {
 		free[n.ID] = true
@@ -104,25 +105,25 @@ func PackFreeSubtrees(forest []FreeNode, max int) [][]uuid.UUID {
 			stack = stack[:len(stack)-1]
 		}
 	}
-	// The subtrees deleted this pass: each root of max nodes at most, and
+	// The subtrees deleted this pass: each root of whole nodes at most, and
 	// under a larger one each child that is, the larger ones gone down.
-	var whole []uuid.UUID
+	var deleted []uuid.UUID
 	pending := slices.Clone(roots)
 	for len(pending) > 0 {
 		id := pending[len(pending)-1]
 		pending = pending[:len(pending)-1]
-		if size[id] <= max {
-			whole = append(whole, id)
+		if size[id] <= whole {
+			deleted = append(deleted, id)
 			continue
 		}
 		pending = append(pending, children[id]...)
 	}
-	slices.SortFunc(whole, func(a, b uuid.UUID) int { return a.Compare(b) })
+	slices.SortFunc(deleted, func(a, b uuid.UUID) int { return a.Compare(b) })
 	var steps [][]uuid.UUID
 	var step []uuid.UUID
 	n := 0
-	for _, id := range whole {
-		if n+size[id] > max && len(step) > 0 {
+	for _, id := range deleted {
+		if n+size[id] > pack && len(step) > 0 {
 			steps, step, n = append(steps, step), nil, 0
 		}
 		step, n = append(step, id), n+size[id]

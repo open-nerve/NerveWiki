@@ -27,11 +27,12 @@ func under(n int, parent *uuid.UUID) domain.FreeNode {
 	return domain.FreeNode{ID: rid(n), ParentID: parent}
 }
 
-// packed checks the steps of a forest packed with max: each step's
-// subtrees max nodes at most together, every root a free subtree's whole
-// (each node under it in it), no root under another of the pass, and
-// none twice; it answers the nodes deleted.
-func packed(t *testing.T, forest []domain.FreeNode, steps [][]uuid.UUID, max int) map[uuid.UUID]bool {
+// packed checks the steps of a forest packed with whole and pack: each
+// step's subtrees pack nodes at most together, or one alone of whole at
+// most, every root a free subtree's whole (each node under it in it), no
+// root under another of the pass, and none twice; it answers the nodes
+// deleted.
+func packed(t *testing.T, forest []domain.FreeNode, steps [][]uuid.UUID, whole, pack int) map[uuid.UUID]bool {
 	t.Helper()
 	parent := map[uuid.UUID]*uuid.UUID{}
 	children := map[uuid.UUID][]uuid.UUID{}
@@ -68,8 +69,8 @@ func packed(t *testing.T, forest []domain.FreeNode, steps [][]uuid.UUID, max int
 				deleted[id] = true
 			}
 		}
-		if n > max || len(step) == 0 {
-			t.Errorf("step %d holds %d nodes in %d subtrees, want 1 to %d", i, n, len(step), max)
+		if len(step) == 0 || n > pack && (len(step) > 1 || n > whole) {
+			t.Errorf("step %d holds %d nodes in %d subtrees, want 1 to %d, or one subtree of %d at most", i, n, len(step), pack, whole)
 		}
 	}
 	for root := range roots {
@@ -82,9 +83,10 @@ func packed(t *testing.T, forest []domain.FreeNode, steps [][]uuid.UUID, max int
 	return deleted
 }
 
-// PackFreeSubtrees packs the free subtrees into steps of max nodes at
-// most, many a step (M11 decision 231), their roots apart; one past max
-// waits, the largest parts under it deleted first (M11/P1 design 3.18).
+// PackFreeSubtrees packs the free subtrees into steps of pack nodes at
+// most, many a step (M11 decisions 231, 243), their roots apart; one past
+// pack of whole nodes at most is a step alone; one past whole waits, the
+// largest parts under it deleted first (M11/P1 design 3.18).
 func TestPackFreeSubtrees(t *testing.T) {
 	holder := rid(900)
 	t.Run("small subtrees share a step, past the bound a new one", func(t *testing.T) {
@@ -92,12 +94,12 @@ func TestPackFreeSubtrees(t *testing.T) {
 		// whose parent is no free node.
 		forest := []domain.FreeNode{under(1, nil), under(2, nil), under(3, ptr(rid(2))), under(4, ptr(rid(2))),
 			under(5, nil), under(6, ptr(rid(5))), under(7, &holder)}
-		steps := domain.PackFreeSubtrees(forest, 4)
+		steps := domain.PackFreeSubtrees(forest, 4, 4)
 		want := [][]uuid.UUID{{rid(1), rid(2)}, {rid(5), rid(7)}}
 		if !slices.EqualFunc(steps, want, slices.Equal) {
 			t.Fatalf("PackFreeSubtrees() = %v, want %v", steps, want)
 		}
-		if deleted := packed(t, forest, steps, 4); len(deleted) != len(forest) {
+		if deleted := packed(t, forest, steps, 4, 4); len(deleted) != len(forest) {
 			t.Errorf("deleted %d nodes, want all %d", len(deleted), len(forest))
 		}
 	})
@@ -106,17 +108,17 @@ func TestPackFreeSubtrees(t *testing.T) {
 		// u go this pass, each a step of its own, and r waits.
 		forest := []domain.FreeNode{under(10, nil), under(11, ptr(rid(10))), under(12, ptr(rid(11))), under(13, ptr(rid(11))),
 			under(14, ptr(rid(10))), under(15, ptr(rid(14)))}
-		steps := domain.PackFreeSubtrees(forest, 4)
+		steps := domain.PackFreeSubtrees(forest, 4, 4)
 		want := [][]uuid.UUID{{rid(11)}, {rid(14)}}
 		if !slices.EqualFunc(steps, want, slices.Equal) {
 			t.Fatalf("PackFreeSubtrees() = %v, want %v", steps, want)
 		}
-		deleted := packed(t, forest, steps, 4)
+		deleted := packed(t, forest, steps, 4, 4)
 		if deleted[rid(10)] || len(deleted) != 5 {
 			t.Errorf("deleted %v, want all but r", deleted)
 		}
 		// The next pass, r alone left, deletes it.
-		if next := domain.PackFreeSubtrees([]domain.FreeNode{under(10, nil)}, 4); !slices.EqualFunc(next,
+		if next := domain.PackFreeSubtrees([]domain.FreeNode{under(10, nil)}, 4, 4); !slices.EqualFunc(next,
 			[][]uuid.UUID{{rid(10)}}, slices.Equal) {
 			t.Errorf("the next pass = %v, want r", next)
 		}
@@ -125,22 +127,39 @@ func TestPackFreeSubtrees(t *testing.T) {
 		// r > s > (t1 of two, t2 of two, t3); past 3 r and s wait.
 		forest := []domain.FreeNode{under(20, nil), under(21, ptr(rid(20))), under(22, ptr(rid(21))), under(23, ptr(rid(22))),
 			under(24, ptr(rid(21))), under(25, ptr(rid(24))), under(26, ptr(rid(21)))}
-		steps := domain.PackFreeSubtrees(forest, 3)
+		steps := domain.PackFreeSubtrees(forest, 3, 3)
 		want := [][]uuid.UUID{{rid(22)}, {rid(24), rid(26)}}
 		if !slices.EqualFunc(steps, want, slices.Equal) {
 			t.Fatalf("PackFreeSubtrees() = %v, want %v", steps, want)
 		}
-		packed(t, forest, steps, 3)
+		packed(t, forest, steps, 3, 3)
+	})
+	t.Run("a subtree past the pack, within the whole, a step alone", func(t *testing.T) {
+		// a alone; b with three children, four nodes, past a pack of 3
+		// within a whole of 4; c and d alone; e over f with three
+		// children. b is a step of its own, whole, the small ones packed
+		// around it; e, of five, past the whole, waits, and f, of four,
+		// is a step alone too.
+		forest := []domain.FreeNode{under(30, nil), under(31, nil), under(32, ptr(rid(31))), under(33, ptr(rid(31))),
+			under(34, ptr(rid(31))), under(35, nil), under(36, nil), under(37, nil), under(38, ptr(rid(37))),
+			under(39, ptr(rid(38))), under(40, ptr(rid(38))), under(41, ptr(rid(38)))}
+		steps := domain.PackFreeSubtrees(forest, 4, 3)
+		want := [][]uuid.UUID{{rid(30)}, {rid(31)}, {rid(35), rid(36)}, {rid(38)}}
+		if !slices.EqualFunc(steps, want, slices.Equal) {
+			t.Fatalf("PackFreeSubtrees() = %v, want %v", steps, want)
+		}
+		packed(t, forest, steps, 4, 3)
 	})
 	t.Run("none", func(t *testing.T) {
-		if steps := domain.PackFreeSubtrees(nil, 4); steps != nil {
+		if steps := domain.PackFreeSubtrees(nil, 4, 4); steps != nil {
 			t.Errorf("PackFreeSubtrees(nil) = %v, want none", steps)
 		}
 	})
 	t.Run("random forests", func(t *testing.T) {
 		rng := rand.New(rand.NewPCG(7, 11))
 		for trial := range 2000 {
-			n, max := 1+rng.IntN(60), 1+rng.IntN(12)
+			n, whole := 1+rng.IntN(60), 1+rng.IntN(12)
+			pack := 1 + rng.IntN(whole)
 			var forest []domain.FreeNode
 			for i := range n {
 				var parent *uuid.UUID
@@ -155,11 +174,11 @@ func TestPackFreeSubtrees(t *testing.T) {
 			// The forest in another order packs alike.
 			shuffled := slices.Clone(forest)
 			rng.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
-			steps := domain.PackFreeSubtrees(forest, max)
-			if again := domain.PackFreeSubtrees(shuffled, max); !slices.EqualFunc(steps, again, slices.Equal) {
+			steps := domain.PackFreeSubtrees(forest, whole, pack)
+			if again := domain.PackFreeSubtrees(shuffled, whole, pack); !slices.EqualFunc(steps, again, slices.Equal) {
 				t.Fatalf("trial %d: %v, shuffled %v", trial, steps, again)
 			}
-			if deleted := packed(t, forest, steps, max); len(deleted) == 0 {
+			if deleted := packed(t, forest, steps, whole, pack); len(deleted) == 0 {
 				t.Fatalf("trial %d: a forest of %d deletes nothing", trial, n)
 			}
 			// Each pass deletes something, so the passes end.
@@ -168,7 +187,7 @@ func TestPackFreeSubtrees(t *testing.T) {
 				if passes > n {
 					t.Fatalf("trial %d: no end", trial)
 				}
-				gone := packed(t, left, domain.PackFreeSubtrees(left, max), max)
+				gone := packed(t, left, domain.PackFreeSubtrees(left, whole, pack), whole, pack)
 				left = slices.DeleteFunc(slices.Clone(left), func(f domain.FreeNode) bool { return gone[f.ID] })
 			}
 		}

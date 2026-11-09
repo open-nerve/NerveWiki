@@ -85,11 +85,12 @@ func rollbackUnit(spec JobSpec, action shared.Action) UnitSpec {
 // 3.18's order: the decision of the job's starter first, as each batch's
 // (notebook.not_found, forbidden); the notebook's upgrade must still be
 // spec's, rolling back, else ErrRollbackGone; nothing left is Done; the
-// free subtrees, when there are any, packed into steps of MaxUnitNodes at
-// most; else the plan of the state of the baseline (domain.RollbackState),
-// page.revert_too_large past MaxRollbackItems, its steps as a revert's
-// (revertSteps). A plan with conflicts answers them, a defect: the
-// baseline was valid.
+// free subtrees, when there are any, packed into steps of
+// MaxDeleteFirstNodes at most, a subtree past it of MaxUnitNodes at most
+// a step alone (M11 decision 243); else the plan of the state of the
+// baseline (domain.RollbackState), page.revert_too_large past
+// MaxRollbackItems, its steps as a revert's (revertSteps). A plan with
+// conflicts answers them, a defect: the baseline was valid.
 func (w *JobWrites) PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, RollbackPass, error) {
 	if err := w.writer.Allowed(ctx, rollbackUnit(spec, w.upgradeAction)); err != nil {
 		return JobPlan{}, RollbackPass{}, err
@@ -119,7 +120,7 @@ func (w *JobWrites) PlanRollback(ctx context.Context, spec JobSpec) (JobPlan, Ro
 	}
 	if len(forest) > 0 {
 		pass.Deletes = true
-		return deleteFirst(domain.PackFreeSubtrees(forest, w.maxUnitNodes), forest), pass, nil
+		return deleteFirst(domain.PackFreeSubtrees(forest, w.maxUnitNodes, w.maxDeleteNodes), forest), pass, nil
 	}
 	state, err := w.rollbackState(ctx, spec)
 	if err != nil {
@@ -211,15 +212,16 @@ func (w *JobWrites) rollbackState(ctx context.Context, spec JobSpec) (domain.Rev
 }
 
 // deleteBatch deletes the free subtrees of the plan's steps from to to in
-// a unit of spec: past MaxUnitNodes for steps of more than one pack,
-// errPastNodes, as a revert's batch past its nodes.
+// a unit of spec: past MaxDeleteFirstNodes for steps of more than one
+// pack, errPastNodes, as a revert's batch past its nodes (M11 decision
+// 243).
 func (w *JobWrites) deleteBatch(ctx context.Context, spec JobSpec, plan JobPlan, from, to int) (BatchDone, error) {
 	var roots []uuid.UUID
 	nodes := 0
 	for i := from; i < to; i++ {
 		roots, nodes = append(roots, plan.rollback.deletes[i]...), nodes+plan.steps[i].Nodes
 	}
-	if to-from > 1 && nodes > w.maxUnitNodes {
+	if to-from > 1 && nodes > w.maxDeleteNodes {
 		return BatchDone{}, errPastNodes
 	}
 	var deleted int

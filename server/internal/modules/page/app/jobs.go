@@ -81,22 +81,27 @@ type JobWrites struct {
 	maxHistory int
 	// rollbacks are a rollback's reads, upgradeAction the action its
 	// units decide on, the notebook module's notebook.change_mode (M11/P1
-	// design 2.1 item 10); maxUnitNodes bounds a step that deletes first,
-	// MaxUnitNodes, and maxRollbackItems a pass's plan, MaxRollbackItems.
+	// design 2.1 item 10); maxUnitNodes bounds a subtree that deletes first
+	// whole, MaxUnitNodes, maxDeleteNodes the subtrees a unit that deletes
+	// first packs together, MaxDeleteFirstNodes, never more than
+	// maxUnitNodes (M11 decision 243), and maxRollbackItems a pass's plan,
+	// MaxRollbackItems.
 	rollbacks        RollbackReads
 	upgradeAction    shared.Action
 	maxUnitNodes     int
+	maxDeleteNodes   int
 	maxRollbackItems int
 }
 
 // JobRollbacks are what a rollback needs of the module (M11/P1 design
 // 3.18): its reads, its units' action, and its bounds, each zero the
-// domain's: MaxUnitNodes and MaxRollbackItems.
+// domain's: MaxUnitNodes, MaxDeleteFirstNodes and MaxRollbackItems.
 type JobRollbacks struct {
-	Reads    RollbackReads
-	Action   shared.Action
-	MaxNodes int
-	MaxItems int
+	Reads          RollbackReads
+	Action         shared.Action
+	MaxNodes       int
+	MaxDeleteNodes int
+	MaxItems       int
 }
 
 // NewJobWrites returns them, the domain's bounds where maxItems and
@@ -104,9 +109,11 @@ type JobRollbacks struct {
 func NewJobWrites(reads TrashReads, history History, writer *Writer, parser *ContentParser, sessions AliveSessions, maxItems,
 	maxHistory int, rollbacks JobRollbacks,
 ) *JobWrites {
+	maxUnitNodes := cmp.Or(rollbacks.MaxNodes, domain.MaxUnitNodes)
 	return &JobWrites{reads: reads, history: history, writer: writer, parser: parser, sessions: sessions,
 		maxItems: cmp.Or(maxItems, domain.MaxJobItems), maxHistory: cmp.Or(maxHistory, domain.MaxUnitHistory),
-		rollbacks: rollbacks.Reads, upgradeAction: rollbacks.Action, maxUnitNodes: cmp.Or(rollbacks.MaxNodes, domain.MaxUnitNodes),
+		rollbacks: rollbacks.Reads, upgradeAction: rollbacks.Action, maxUnitNodes: maxUnitNodes,
+		maxDeleteNodes:   min(cmp.Or(rollbacks.MaxDeleteNodes, domain.MaxDeleteFirstNodes), maxUnitNodes),
 		maxRollbackItems: cmp.Or(rollbacks.MaxItems, domain.MaxRollbackItems)}
 }
 

@@ -64,6 +64,22 @@ const (
 	// 2,857, 4,288, 5,703 and 7,284 ms analyzed while the item was alive.
 	// The bound is the most rows measured within 5 seconds, rounded down.
 	MaxUnitHistory = 400_000
+	// MaxDeleteFirstNodes bounds the nodes of the subtrees a rollback's
+	// unit that deletes first packs together (M11 decision 243), below
+	// MaxUnitNodes: such a unit deletes many small subtrees one by one,
+	// each a Subtree and a DeleteSubtree, 2 to 3 times as slow as a
+	// restore's or a revert's unit of as many nodes, and holds the
+	// notebook's row FOR NO KEY UPDATE, and its workspace's FOR SHARE,
+	// until it commits: the notebook's admin writes (a continuation, an
+	// end, a rename) wait for it, which must stay within the 15 s of a
+	// request (decision 153's 14 s). Measured by the rollback's cost guard
+	// (page/rollback_cost_test.go), 100,000 scattered pages: a unit of
+	// 10,000 took 10.8 to 12 s here once the statistics had seen deleted
+	// rows (more before), 21 to 43 s on CI's EPYC 7763, about twice as
+	// slow; a quarter of it took 2.7 to 3.2 s here, about 6 to 7 s there. A
+	// subtree past it alone, of MaxUnitNodes at most, is a unit's whole
+	// (M11/P1 design 3.18).
+	MaxDeleteFirstNodes = 2_500
 )
 
 // UnitTooLarge reports whether a unit's contents, copies of them, their

@@ -382,8 +382,9 @@ test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 
 	@# 读：10 万节点、10 万页，库里另有九本各 5 万页的笔记本与它们的升级的基线行；三种统计状态 × 自定义与通用的计划，先核对 RollbackLeft 与合成的一遍的六条读只经键
 	@# （upgrade_nodes 经主键的前缀，nodes 经 notebook_id 或逐行经主键，page_contents 逐行经主键，不顺序扫描），再核对 RollbackLeft 的中位数在请求的 4 秒、合成的读在本机两轮的三倍之内（决定 226）
 	cd server && go test -count=1 -v -run '^TestARollbacksReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
-	@# 先删：10 万个零散的新页装成十个单元、各 1 万棵子树（决定 231），整遍、单元的中位数与分配在本机两轮的三倍之内；本机一遍约 3 分钟，
-	@# 界 550 秒近 Go 默认的 10 分钟，所以这一行 -timeout 20m
+	@# 先删：10 万个零散的新页装成 40 个单元、各 2,500 棵子树（决定 231、243），种子先删 5,000 页，让统计见过已删的行，量稳态；每个单元不过 14 秒
+	@# （决定 153），整遍与分配在本机两轮的三倍之内，本机一遍约 110 秒、界 330 秒。统计没见过已删的行时单元一个比一个慢，本机一遍 645 秒，
+	@# 所以这一行仍 -timeout 20m：红在界上，不在 Go 默认的 10 分钟超时
 	cd server && go test -count=1 -timeout 20m -v -run '^TestARollbackDeletesAHundredThousandScatteredPagesFirst$$' ./internal/modules/page
 	go -C server/tools test -race -count=1 ./...
 
