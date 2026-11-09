@@ -44,6 +44,7 @@ type acmeTeam struct {
 	contract *apitest.Contract
 	tokens   map[string]string    // by name
 	members  map[string]uuid.UUID // the memberships, by name
+	batches  *batchGate           // on an app whose jobs write the test's batches
 }
 
 // newAcmeTeam is acme with bob and carol of the roles given; "" is none.
@@ -67,16 +68,21 @@ func newAcmeTeamWired(t *testing.T, bobRole, carolRole string, change func(*conf
 	return newAcmeTeamLogging(t, bobRole, carolRole, change, batch, slog.New(slog.DiscardHandler))
 }
 
-// newAcmeTeamLogging is newAcmeTeamWired on an app that logs to logger.
+// newAcmeTeamLogging is newAcmeTeamWired on an app that logs to logger;
+// with batch set, its jobs' Tree behind the team's batchGate.
 func newAcmeTeamLogging(t *testing.T, bobRole, carolRole string, change func(*config.Config), batch transfer.Batch,
 	logger *slog.Logger,
 ) acmeTeam {
 	t.Helper()
 	var w *wiring
+	var gate *batchGate
 	if batch != (transfer.Batch{}) {
-		w = &wiring{batch: batch}
+		gate = &batchGate{}
+		w = &wiring{batch: batch, transfer: func(d *transfer.Deps) { gate.Tree, d.Tree = d.Tree, gate }}
 	}
-	return newAcmeTeamOn(t, bobRole, carolRole, change, w, logger)
+	tm := newAcmeTeamOn(t, bobRole, carolRole, change, w, logger)
+	tm.batches = gate
+	return tm
 }
 
 // newAcmeTeamWiring is newAcmeTeam on an app wired with w: a reverse

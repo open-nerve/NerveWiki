@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5"
 
@@ -167,6 +169,76 @@ func newBatchedTeam(t *testing.T, bobRole, carolRole string) acmeTeam {
 	return newAcmeTeamWired(t, bobRole, carolRole, nil, transfer.Batch{Nodes: 3})
 }
 
+// batchGate is the transfer module's Tree on an app whose jobs write
+// batches of the test's (newAcmeTeamLogging), which holds a batch of a
+// background restore or revert of the notebook armed before it runs,
+// until the test lets it go. A write the test sends behind a batch, as
+// it waits for the notebook's row the batch holds, comes before the next
+// batch only so: once the batch commits, PostgreSQL wakes the write, but
+// the next batch, a lock asked anew, may take the row before the woken
+// write does (a lock its holder left is no queue; betweenUnits). Held at
+// the gate, the next batch has not asked yet (M9 story, found in M11:
+// M11/P1 S3 review C-M4). Unarmed, it is the Tree as it is.
+type batchGate struct {
+	transfer.Tree
+	mu    sync.Mutex
+	armed uuid.UUID
+	calls int
+	held  map[int]chan struct{}
+}
+
+// hold arms g for the notebook nb, its batches counted from the next
+// job's first, each a call of RunBatch, and holds each of the batches ns
+// there until letGo lets it go. The test's end lets go of any still held.
+func (g *batchGate) hold(t *testing.T, nb string, ns ...int) (letGo func(n int)) {
+	t.Helper()
+	if g == nil {
+		t.Fatal("the team's app has no batch gate: its jobs write the batches the app does")
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.armed, g.calls, g.held = uuid.MustParse(nb), 0, map[int]chan struct{}{}
+	held := g.held
+	for _, n := range ns {
+		held[n] = make(chan struct{})
+	}
+	var once sync.Map
+	letGo = func(n int) {
+		if _, gone := once.LoadOrStore(n, true); !gone && held[n] != nil {
+			close(held[n])
+		}
+	}
+	t.Cleanup(func() {
+		for _, n := range ns {
+			letGo(n)
+		}
+	})
+	return letGo
+}
+
+// wait is what the batch of the notebook nb RunBatch is called for waits
+// for: its channel when it is one held, else none.
+func (g *batchGate) wait(nb uuid.UUID) chan struct{} {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if nb != g.armed {
+		return nil
+	}
+	g.calls++
+	return g.held[g.calls]
+}
+
+func (g *batchGate) RunBatch(ctx context.Context, spec transfer.JobSpec, p transfer.JobPlan, from, to int) (transfer.BatchDone, error) {
+	if held := g.wait(spec.NotebookID); held != nil {
+		select {
+		case <-held:
+		case <-ctx.Done():
+			return transfer.BatchDone{}, ctx.Err()
+		}
+	}
+	return g.Tree.RunBatch(ctx, spec, p, from, to)
+}
+
 // shareNotebook begins a transaction of the test's own that holds the row
 // of the notebook nb FOR SHARE: a job's start shares it as well and goes
 // by, but each of its batches, and every tree's write, waits for it. The
@@ -199,10 +271,11 @@ func (tm acmeTeam) atFirstBatch(t *testing.T, nb string, c step, then func()) ba
 }
 
 // behindFirstBatch starts c as atFirstBatch does, and sends r, a tree's
-// write of the notebook, behind its first batch: PostgreSQL hands the
-// row to its waiters in the order they came, so r comes after the first
-// batch and before the second. It answers the job as it ended, as c's
-// sender reads it, and r's answer.
+// write of the notebook, behind its first batch: r comes after the first
+// batch, and before the second unless the second, a lock asked anew,
+// takes the row before the woken r does; its callers check that end too
+// (betweenUnits), or end alike either way. It answers the job as it
+// ended, as c's sender reads it, and r's answer.
 func (tm acmeTeam) behindFirstBatch(t *testing.T, nb string, c, r step) (backgroundJob, answer) {
 	t.Helper()
 	var got func() answer
