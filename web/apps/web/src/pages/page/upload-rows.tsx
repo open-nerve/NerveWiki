@@ -5,7 +5,7 @@ import { useRef, type FormEvent, type ReactNode } from "react";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { sourceTitleProblem, type SourceTitleProblem } from "../../lib/source-title";
 import { useForm } from "../../app/form";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { errorText, formErrors, type FieldMessage } from "../../app/problem-messages";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
@@ -46,8 +46,8 @@ export const UploadRows = observer(function UploadRows({
   const navigate = useNodeNavigate(pages);
   const explain = (error: unknown) => duplicateText(error, pages, openNode ?? navigate);
   const canRetry = () => {
-    const role = pages.notebook?.role;
-    return role !== undefined && writesPages(role);
+    const current = pages.notebook;
+    return current !== undefined && writesNotebook(current);
   };
   return (
     <ul aria-label={t("asset.uploads")} className="divide-y rounded-md border text-sm">

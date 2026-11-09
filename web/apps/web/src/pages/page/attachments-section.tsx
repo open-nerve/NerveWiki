@@ -6,7 +6,7 @@ import { useLocation } from "react-router";
 import useSWR from "swr";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { useFileDrop } from "../../app/file-drop";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -80,7 +80,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const heading = useRef<HTMLHeadingElement>(null);
   const gone = useLocated(list, section, heading, () => void mutate().catch(() => undefined));
   const goneNote = useId();
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
   const uploads = assets.uploads.filter(
     (upload) => upload.parent === parent && !(editorsElsewhere && upload.fromEditor)
   );
@@ -98,7 +98,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const [dialog, setDialog] = useState<Dialog | undefined>(undefined);
   const source = canAddSource(pages, parent);
   const upload = (files: readonly File[]) => {
-    if (!writesPages(pages.notebook?.role ?? "reader")) return;
+    if (pages.notebook === undefined || !writesNotebook(pages.notebook)) return;
     if (parent !== null && canAddSource(pages, parent)) {
       assets.uploadSources(parent, files, { untitled: t("asset.untitled"), maxBytes: instance.info?.asset_max_bytes });
     } else {

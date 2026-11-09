@@ -11,7 +11,7 @@ import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { NavLink, useParams } from "react-router";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
 import { canAddSource, canDeleteNode, canManageNode, canMoveNode, isAgentsPage } from "../../app/source-permissions";
 import {
@@ -82,7 +82,7 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
   const { slug } = useWorkspace();
   const t = useT();
   const name = useDistinctName(context, node);
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
   const agents = isAgentsPage(pages, node.id);
   const sourceRoot = notebook.mode === "llm_wiki" && node.id === notebook.source_root_id;
   const source = pages.isSource(node.id);
@@ -196,7 +196,7 @@ function useDrag(
 ): Instruction | null {
   const { notebook, pages } = context;
   const [instruction, setInstruction] = useState<Instruction | null>(null);
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
   useEffect(() => {
     const element = row.current;
     if (element === null || !writer) {

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 
 import { arrived } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { writesPages } from "../../app/effective-role";
+import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
 import type { HeldDialog } from "../../app/held-dialog";
 import { useMounted } from "../../app/mounted";
 import { canAddSource } from "../../app/source-permissions";
@@ -28,9 +28,17 @@ type Landing = NonNullable<LinkLanding["landing"]>;
 
 /**
  * Why a link's page is not created: the reader cannot, a read-only view (a version's, a page's in the trash) does
- * not, an embed or an image does not, or the server's reason.
+ * not, the notebook is being upgraded (M11/P1 design 4.4), an embed or an image does not, or the server's reason.
  */
-type Why = "reader" | "readerWiki" | "readOnly" | "embed" | "image" | "sourceArea" | NonNullable<LinkLanding["reason"]>;
+type Why =
+  | "reader"
+  | "readerWiki"
+  | "readOnly"
+  | "upgrading"
+  | "embed"
+  | "image"
+  | "sourceArea"
+  | NonNullable<LinkLanding["reason"]>;
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
@@ -122,9 +130,18 @@ export function useUnresolvedLinks({
         return;
       }
     }
-    if (readOnly || !writesPages(notebook.role)) {
-      // A reader asks for no landing, and in an LLM Wiki it decides whether a writer could create the page.
-      show({ why: readOnly ? "readOnly" : notebook.mode === "llm_wiki" ? "readerWiki" : "reader" });
+    if (readOnly || !writesNotebook(notebook)) {
+      // A reader asks for no landing, and in an LLM Wiki it decides whether a writer could create the page; a writer
+      // of a notebook being upgraded is told the upgrade keeps it read only (decision 247).
+      show({
+        why: readOnly
+          ? "readOnly"
+          : frozenByUpgrade(notebook)
+            ? "upgrading"
+            : notebook.mode === "llm_wiki"
+              ? "readerWiki"
+              : "reader",
+      });
       return;
     }
     asking.current = true;
@@ -286,6 +303,8 @@ function whyText(why: Why, t: Translate): string {
       return t("unresolved.readerWiki");
     case "readOnly":
       return t("unresolved.readOnly");
+    case "upgrading":
+      return t("unresolved.upgrading");
     case "sourceArea":
       return t("unresolved.sourceArea");
     case "embed":

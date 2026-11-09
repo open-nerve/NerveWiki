@@ -2,7 +2,8 @@ import { expect, test } from "vitest";
 
 import type { WorkspaceRole } from "../services/member.service";
 import type { NotebookRole, WorkspaceAccess } from "../services/notebook.service";
-import { effectiveNotebookRole, writesPages } from "./effective-role";
+import { upgradeOf } from "../test/fakes";
+import { effectiveNotebookRole, frozenByUpgrade, writesNotebook, writesPages } from "./effective-role";
 
 // The server's table (shared.TestEffectiveNotebookRole): for each role in
 // the workspace and the notebook's access, the effective role of no
@@ -29,3 +30,20 @@ test("editors and admins write a notebook's pages, readers and roles unknown do 
   // A role this client does not know yet writes nothing.
   expect(writesPages("owner" as NotebookRole)).toBe(false);
 });
+
+// An upgrade under way freezes the notebook for every role on the web, its initiator's too (M11/P1 design 4.4).
+test.each([
+  ["admin", null, true, false],
+  ["editor", null, true, false],
+  ["reader", null, false, false],
+  ["admin", "upgrading", false, true],
+  ["editor", "reviewing", false, true],
+  ["admin", "rolling_back", false, true],
+  ["reader", "upgrading", false, false],
+] as const)(
+  "a notebook's %s, its upgrade %s, writes from the web: %s; only the upgrade keeps it from it: %s",
+  (role, state, writes, frozen) => {
+    const notebook = { role, upgrade: state === null ? null : upgradeOf(state) };
+    expect([writesNotebook(notebook), frozenByUpgrade(notebook)]).toEqual([writes, frozen]);
+  }
+);

@@ -5,7 +5,7 @@ import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { canEditPageBody } from "../../app/source-permissions";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
@@ -151,7 +151,7 @@ const PageShell = observer(function PageShell({
   // The edit whose session is opening: one that opens once the shell is gone ends.
   const opening = useRef<PageEditing | undefined>(undefined);
   const mounted = useMounted();
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
   const editable = canEditPageBody(pages, page.id);
   const source = pages.isSource(page.id);
   const home = `/${slug}/notebooks/${notebook.id}`;

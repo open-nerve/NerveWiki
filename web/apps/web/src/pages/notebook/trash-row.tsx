@@ -4,7 +4,7 @@ import { useRef, useState, type Ref } from "react";
 import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
@@ -482,7 +482,7 @@ export const TrashRow = observer(function TrashRow({
         </p>
         <TrashFacts item={item} now={now} id={twin === "id" ? shortId(item.id) : undefined} />
       </div>
-      {writesPages(notebook.role) && <RestoreButton label={names.restore} restore={restore} left={left} />}
+      {writesNotebook(notebook) && <RestoreButton label={names.restore} restore={restore} left={left} />}
     </li>
   );
 });

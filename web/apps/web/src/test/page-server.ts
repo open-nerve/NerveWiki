@@ -155,6 +155,10 @@ type PageServerOptions = {
  * The workspace's search (M8/P5) finds Plans' nodes and those of the
  * other notebooks Ada sees, others, listed with Plans, which
  * search-server.ts answers.
+ *
+ * While Plans has an upgrade under way (its notebook's upgrade, which the
+ * test sets), the writes it freezes are 409 notebook.upgrading
+ * (frozenWhileUpgrading, M11/P1 design 3.6).
  */
 export function pageServer({
   role = "admin",
@@ -381,17 +385,74 @@ export function pageServer({
       server.unlock(idOf(request), ada);
       return new Response(null, { status: 204 });
     },
-    ...writeRoutes(server, role),
-    ...trashRoutes(server, role, (node) => assetJSON(node)),
-    ...historyRoutes(server, role),
+    ...frozenWhileUpgrading(server, {
+      ...writeRoutes(server, role),
+      ...trashRoutes(server, role, (node) => assetJSON(node)),
+      ...historyRoutes(server, role),
+      ...assetRoutes(server, role),
+      ...contentRoutes(server),
+      ...taskRoutes(server),
+      ...versionRoutes(server),
+    }),
     ...searchRoutes(server, (node) => assetJSON(node)),
-    ...assetRoutes(server, role),
-    ...contentRoutes(server),
-    ...taskRoutes(server),
-    ...versionRoutes(server),
     ...answers,
   });
   return Object.assign(server, { app });
+}
+
+/**
+ * The writes an upgrade under way freezes (M11/P1 design 3.6): Plans' page
+ * creations, a node's renaming, move, deletion and restore, an upload, a
+ * content's save, an edit session's opening, a version's restore, a task's
+ * toggle, a changeset's revert, and the starts of an import, a trash
+ * item's restore and a revert in the background (jobs-server.ts).
+ */
+const frozenRoutes: ReadonlySet<string> = new Set([
+  `POST /api/v0/notebooks/${notebookJSON.id}/pages`,
+  "PATCH /api/v0/nodes/*",
+  "POST /api/v0/nodes/*/move",
+  "DELETE /api/v0/nodes/*",
+  "POST /api/v0/nodes/*/restore",
+  `POST /api/v0/notebooks/${notebookJSON.id}/assets`,
+  "PUT /api/v0/pages/*/content",
+  "POST /api/v0/pages/*/edit-sessions",
+  "POST /api/v0/pages/*/versions/*/restore",
+  "POST /api/v0/pages/*/toggle-task",
+  "POST /api/v0/changesets/*/revert",
+  `POST /api/v0/notebooks/${notebookJSON.id}/imports`,
+  `POST /api/v0/notebooks/${notebookJSON.id}/trash-restores`,
+  `POST /api/v0/notebooks/${notebookJSON.id}/reverts`,
+]);
+
+/**
+ * frozenWhileUpgrading answers routes as the server does while Plans has
+ * an upgrade under way (05-lessons 2): each write it freezes is 409
+ * notebook.upgrading, logged in sent as "409 notebook.upgrading METHOD
+ * path", Plans gone or a reader's still answered by the route. The real
+ * server answers the freeze after the write unit's own conflicts (v0.1
+ * design 13.1, item 4); the fake answers it first of the 409s, which only
+ * a write refused for two reasons at once would tell apart.
+ */
+export function frozenWhileUpgrading(
+  server: { notebook: Notebook; notebookGone: boolean; sent: string[] },
+  routes: Record<string, Answer>
+): Record<string, Answer> {
+  return Object.fromEntries(
+    Object.entries(routes).map(([route, answer]): [string, Answer] =>
+      frozenRoutes.has(route)
+        ? [
+            route,
+            (request) => {
+              if (server.notebook.upgrade === null || server.notebookGone || server.notebook.role === "reader") {
+                return answer(request);
+              }
+              server.sent.push(`409 notebook.upgrading ${request.method} ${new URL(request.url).pathname}`);
+              return problem(409, "notebook.upgrading");
+            },
+          ]
+        : [route, answer]
+    )
+  );
 }
 
 // The nodes made: numbered past those the tests make (under 600), as a file's tests go on; an id's number stays three

@@ -6,7 +6,7 @@ import useSWR from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
@@ -44,7 +44,7 @@ export const NotebookHomePage = observer(function NotebookHomePage() {
         <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
           {notebook.name}
         </h1>
-        {writesPages(notebook.role) && (
+        {writesNotebook(notebook) && (
           <Button
             disabled={newPage.sending}
             onClick={() => {

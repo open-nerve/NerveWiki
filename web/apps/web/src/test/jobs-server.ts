@@ -1,9 +1,10 @@
+import type { Notebook } from "../services/notebook.service";
 import type { TransferJob, TransferJobDetail } from "../services/transfer.service";
 import { under as underWayNow } from "../stores/transfer.store";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
 import { orderedConflicts, sourceRevertRefusal } from "./history-server";
 import { sourceRestoreRefusal } from "./trash-server";
-import { ada, pageServer, sourceStatus } from "./page-server";
+import { ada, frozenWhileUpgrading, pageServer, sourceStatus } from "./page-server";
 import { formOf } from "./transfer";
 
 /** The kinds of the jobs that write a notebook's tree, one under way at once (M8/P4 design 3.2). */
@@ -161,7 +162,8 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
  * made now, by the server's clock, clockBehind the browser's. While
  * startsHeld is set, a start is answered once released;
  * lost, a start's job is written but its answer lost, a 500 or none at
- * all; listWaits holds the list's reads.
+ * all; listWaits holds the list's reads. While Plans has an upgrade under
+ * way, its starts are 409 notebook.upgrading (frozenWhileUpgrading).
  */
 export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options }: JobsServerOptions = {}) {
   const state = {
@@ -409,6 +411,21 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
         : problem(409, "transfer.not_cancellable");
     },
   };
-  const server = Object.assign(pageServer({ ...options, answers: { ...routes, ...answers } }), state);
+  // The starts frozen read Plans as the server holds it once it is made.
+  const frozen = {
+    get notebook(): Notebook {
+      return server.notebook;
+    },
+    get notebookGone(): boolean {
+      return server.notebookGone;
+    },
+    get sent(): string[] {
+      return server.sent;
+    },
+  };
+  const server = Object.assign(
+    pageServer({ ...options, answers: { ...frozenWhileUpgrading(frozen, routes), ...answers } }),
+    state
+  );
   return server;
 }

@@ -5,7 +5,7 @@ import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
@@ -175,7 +175,7 @@ export const TrashPage = observer(function TrashPage() {
     refused === undefined
       ? undefined
       : (sourceHistoryText(refused.error, pages, navigateNode) ?? refusedText(refused, t));
-  const offered = writesPages(notebook.role) ? offeredOf(refused) : undefined;
+  const offered = writesNotebook(notebook) ? offeredOf(refused) : undefined;
   const now = Date.now();
   return (
     <section className="space-y-4">

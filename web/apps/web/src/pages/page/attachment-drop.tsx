@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from "react";
 
 import { useFileDrop } from "../../app/file-drop";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { canAddSource } from "../../app/source-permissions";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
@@ -33,7 +33,7 @@ export function AttachmentDrop({
   // The section of parent says what began.
   const drop = useFileDrop(enabled, (dropped) => {
     setFolders(dropped.folders);
-    if (!writesPages(pages.notebook?.role ?? "reader")) return;
+    if (pages.notebook === undefined || !writesNotebook(pages.notebook)) return;
     if (parent !== null && canAddSource(pages, parent)) {
       assets.uploadSources(parent, dropped.files, {
         untitled: t("asset.untitled"),

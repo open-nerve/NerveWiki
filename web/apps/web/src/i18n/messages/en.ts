@@ -87,6 +87,7 @@ export const en = {
   "notebook.homeEmpty": "No pages yet.",
   "notebook.pages": "Pages",
   "notebook.places": "More of {notebook}",
+  "notebook.upgradeReadOnly": "This notebook is read-only until its upgrade ends.",
   "unresolved.createTitle": "Create page “{title}”?",
   "unresolved.under": "It goes under “{place}”.",
   "unresolved.underPage": "It goes under a page of the notebook.",
@@ -97,6 +98,8 @@ export const en = {
   "unresolved.missingTitle": "“{target}” does not exist",
   "unresolved.reader": "No page has this name. The notebook's editors can create it from this link.",
   "unresolved.readOnly": "No page has this name. This view is read only: no page is created from its links.",
+  "unresolved.upgrading":
+    "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
   "unresolved.readerWiki": "No page has this name. The notebook's editors may be able to create it from this link.",
   "unresolved.sourceArea":
     "No page has this name. Sources are added with Paste Markdown or Upload files, not from a link.",
