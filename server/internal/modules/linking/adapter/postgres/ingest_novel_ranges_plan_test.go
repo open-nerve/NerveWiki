@@ -467,6 +467,26 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 	if err := json.Unmarshal(ev.Plan, &doc); err != nil || len(doc) != 1 {
 		t.Fatalf("actual plan: %v", err)
 	}
+	// A Bitmap Index Scan counts every index entry in its ranges, dead
+	// versions too, before any visibility check. With no VACUUM after a
+	// Rebuild those entries stay until an earlier index scan has marked them
+	// dead, which depends on what else holds back the horizon (M11/P1: a main
+	// run counted 614 entries for 412 live in the reverse ranges). Allow the
+	// versions derived above: two for a reverse entry (old and new resolved)
+	// and three for a source entry after the streaming Rebuild, two for every
+	// main row after the buffered one. The heap still counts live rows only.
+	versions := func(scope string) float64 {
+		switch {
+		case state == bufferedRebuildState:
+			return 2
+		case !rebuilt:
+			return 1
+		case scope == "CTE digested" || scope == "CTE peers":
+			return 3
+		default:
+			return 2
+		}
+	}
 	visible, bitmap, seen := map[string]float64{}, map[string]float64{}, map[string]int{}
 	var visit func(node, string)
 	visit = func(n node, scope string) {
@@ -516,8 +536,12 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 			} else if n.Type == "Bitmap Index Scan" {
 				bitmap[scope] += math.Max(0, n.Rows-0.5) * n.Loops
 			}
-			if lower > allowed {
-				t.Errorf("%s actual range read lower bound %.0f exceeds %.0f: %+v", scope, lower, allowed, n)
+			limit := allowed
+			if n.Type == "Bitmap Index Scan" {
+				limit = allowed * versions(scope)
+			}
+			if lower > limit {
+				t.Errorf("%s actual range read lower bound %.0f exceeds %.0f: %+v", scope, lower, limit, n)
 			}
 		}
 		for _, child := range n.Plans {
@@ -529,8 +553,8 @@ func novelRangePhysical(t *testing.T, ev lintPlanEvidence, state string, indexes
 		if allowed > 0 && seen[scope] == 0 {
 			t.Errorf("no executed page_links range for %s", scope)
 		}
-		if visible[scope] > allowed || bitmap[scope] > allowed {
-			t.Errorf("%s complete visible/filter work: heapLower=%.0f bitmapLower=%.0f bound=%.0f", scope, visible[scope], bitmap[scope], allowed)
+		if visible[scope] > allowed || bitmap[scope] > allowed*versions(scope) {
+			t.Errorf("%s complete visible/filter work: heapLower=%.0f bitmapLower=%.0f bound=%.0f (bitmap %.0f)", scope, visible[scope], bitmap[scope], allowed, allowed*versions(scope))
 		}
 	}
 	lintEvidence(t, "novel-range-ledger", map[string]any{"live": live, "tuple_bound_with_versions": bound, "logical_range_probes": 808, "actual_work": ev.ExecutionWork, "explain_work": ev.ExplainWork, "planning_work": ev.PlanningWork, "visible_lower": visible, "bitmap_lower": bitmap, "rebuilt": rebuilt, "state": state, "note": "execution and EXPLAIN are distinct reads; generic is the helper's named EXECUTE, not a standalone raw-SQL label; blocks remain raw diagnostics"})

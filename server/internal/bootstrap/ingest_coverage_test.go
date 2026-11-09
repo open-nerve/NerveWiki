@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -48,11 +49,15 @@ func (q *ingestQueryTrace) start() {
 	q.rows = map[string]int64{}
 	q.active = true
 }
+
+// stop hands back copies: a query that started while the trace was active
+// (River's fetch shares the pool) may end after stop and still add its rows
+// under the lock, while the test reads what stop returned without it.
 func (q *ingestQueryTrace) stop() (map[string]int, map[string]int64) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.active = false
-	return q.calls, q.rows
+	return maps.Clone(q.calls), maps.Clone(q.rows)
 }
 
 func TestIngestCoverage(t *testing.T) {
