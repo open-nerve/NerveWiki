@@ -1,8 +1,10 @@
 import { titleKey } from "../lib/title-key";
 import type { Notebook } from "../services/notebook.service";
+import type { TransferJob } from "../services/transfer.service";
 import type { Upgrade } from "../services/upgrade.service";
+import { under } from "../stores/transfer.store";
 import { json, notebookJSON, problem, type Answer } from "./fakes";
-import { jobsServer, writing } from "./jobs-server";
+import { jobChangesetId, jobJSON, jobsServer, reportOf, underWay, writing } from "./jobs-server";
 import { ada, bob, pageNode } from "./page-server";
 
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
@@ -44,6 +46,25 @@ function summaryOf(upgrade: Upgrade | undefined): Notebook["upgrade"] {
     : { id: upgrade.id, state: upgrade.state, started_by: upgrade.started_by.user_id, started_at: upgrade.started_at };
 }
 
+/**
+ * rollbackJobJSON is the job n of an upgrade's rollback, Ada's, as the
+ * server answers it: named upgrade, with the rollback changeset it writes
+ * (jobChangesetId), done, its four nodes put back; more changes what it
+ * says.
+ */
+export function rollbackJobJSON(n: number, more: Partial<TransferJob> = {}): TransferJob {
+  return jobJSON(n, {
+    kind: "rollback",
+    name: "upgrade",
+    changeset_id: jobChangesetId(n),
+    report: reportOf(null, { put_back: 4 }),
+    ...more,
+  });
+}
+
+/** What a rollback left: none of the three. */
+const nothingLeft = { nodes: 0, pages: 0, created: 0 };
+
 type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
   /** Plans' upgrade under way, if any. */
   upgrade?: Upgrade;
@@ -66,9 +87,26 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  *   at the root, its baseline what was there, and answers the upgrade,
  *   started by Ada. Logged as "START <locale>".
  *
- * Plans as the list holds it carries the upgrade (withUpgrade keeps the
- * two together). It answers no capacity nor time out (server_busy) and
- * no stale index, which a test answers through answers.
+ * - its abandonment (POST upgrade/abandon): Plans gone 404
+ *   notebook.not_found; not its admin 403 forbidden; none under way 409
+ *   wiki.upgrade_state; its rollback's job under way 409 transfer.busy;
+ *   the queue full (queueFull) 503 server_busy; else its rollback's job,
+ *   Ada's, queued, first among the jobs, and the upgrade rolling back with
+ *   it, abandoned unless it was rejected. Logged as "ABANDON". Rolling
+ *   back with its job stopped, that is its continuation;
+ * - its rollback's end (POST upgrade/end-rollback): 404 and 403 as
+ *   above; not rolling back 409 wiki.upgrade_state; its job under way 409
+ *   transfer.busy; else the upgrade ends, rolled back, as the rollback
+ *   left it (left). Logged as "END ROLLBACK".
+ *
+ * A rolling back upgrade read says what its rollback left (left) once its
+ * job is neither queued nor running, as the server counts it then; none
+ * while it is. Plans as the list holds it carries the upgrade (withUpgrade
+ * keeps the two together). It answers no capacity nor time out
+ * (server_busy) on a start and no stale index, which a test answers
+ * through answers. The test moves the rollback's job as the server's work
+ * would (rollbackJob), and ends the upgrade as a rollback that put
+ * everything back does (rolledBack).
  */
 export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServerOptions = {}) {
   const routes: Record<string, Answer> = {
@@ -82,7 +120,7 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       }
       return server.upgrade === undefined || summaryOf(server.upgrade) === null
         ? problem(404, "wiki.upgrade_not_found")
-        : json(server.upgrade);
+        : json(read(server.upgrade));
     },
     [`POST ${plans}/upgrade`]: async (request) => {
       const { template_locale: locale } = (await request.clone().json()) as { template_locale?: string };
@@ -130,14 +168,91 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       server.withUpgrade(started);
       return json(started);
     },
+    [`POST ${plans}/upgrade/abandon`]: () => {
+      server.asked.push("ABANDON");
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      const held = server.upgrade;
+      if (held === undefined || summaryOf(held) === null) {
+        return problem(409, "wiki.upgrade_state");
+      }
+      if (rollingNow()) {
+        return problem(409, "transfer.busy");
+      }
+      if (server.queueFull) {
+        return problem(503, "server_busy", {}, { "Retry-After": "2" });
+      }
+      const job = underWay(rollbackJobJSON(++rollbacks, { created_at: "2026-10-06T08:00:00Z" }), 0, 0);
+      server.jobs = [job, ...server.jobs];
+      const rolling: Upgrade = {
+        ...held,
+        state: "rolling_back",
+        ending: held.ending ?? "abandoned",
+        rollback_job_id: job.id,
+      };
+      server.withUpgrade(rolling);
+      return json(read(rolling));
+    },
+    [`POST ${plans}/upgrade/end-rollback`]: () => {
+      server.asked.push("END ROLLBACK");
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      const held = server.upgrade;
+      if (held?.state !== "rolling_back") {
+        return problem(409, "wiki.upgrade_state");
+      }
+      if (rollingNow()) {
+        return problem(409, "transfer.busy");
+      }
+      const { left } = server;
+      const ended: Upgrade = {
+        ...held,
+        state: "rolled_back",
+        rollback_complete: left.nodes + left.pages + left.created === 0,
+        rollback_left: left,
+      };
+      server.withUpgrade(ended);
+      return json(ended);
+    },
   };
+  let rollbacks = 80;
+  // Plans gone, or the account not its admin.
+  const refusedChange = () =>
+    server.notebookGone
+      ? problem(404, "notebook.not_found")
+      : server.notebook.role === "admin"
+        ? undefined
+        : problem(403, "forbidden");
+  // The upgrade's rollback's job, if it has one under way.
+  const rollingNow = () => server.jobs.some((job) => job.id === server.upgrade?.rollback_job_id && under(job));
+  // The upgrade as a read answers it: rolling back, what its rollback left once its job is not under way.
+  const read = (held: Upgrade): Upgrade =>
+    held.state === "rolling_back" ? { ...held, rollback_left: rollingNow() ? null : server.left } : held;
   const server = Object.assign(jobsServer({ ...options, answers: { ...routes, ...answers } }), {
     /** Plans' upgrade: under way, or the last one, ended; none before its first. */
     upgrade: undefined as Upgrade | undefined,
+    /** What the upgrade's rollback left once its job stopped, as the server counts it then. */
+    left: nothingLeft as NonNullable<Upgrade["rollback_left"]>,
     /** withUpgrade gives Plans upgrade, or none, in its read and in the notebook the list holds. */
     withUpgrade(next: Upgrade | undefined): void {
       server.upgrade = next;
       server.notebook = { ...server.notebook, upgrade: summaryOf(next) };
+    },
+    /** rollbackJob changes the upgrade's rollback's job as the server's work would. */
+    rollbackJob(change: (job: TransferJob) => TransferJob): void {
+      server.jobs = server.jobs.map((job) => (job.id === server.upgrade?.rollback_job_id ? change(job) : job));
+    },
+    /** rolledBack has the rollback's job done, everything put back, and the upgrade ended with it, rolled back. */
+    rolledBack(): void {
+      server.rollbackJob((job) => rollbackJobJSON(0, { id: job.id, changeset_id: job.changeset_id }));
+      const held = server.upgrade;
+      if (held !== undefined) {
+        server.withUpgrade({ ...held, state: "rolled_back", rollback_complete: true, rollback_left: nothingLeft });
+      }
     },
   });
   server.withUpgrade(upgrade);

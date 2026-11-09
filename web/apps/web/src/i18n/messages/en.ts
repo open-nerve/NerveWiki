@@ -715,6 +715,40 @@ export const en = {
   "upgrade.seeded": "The pages it wrote:",
   "upgrade.pagesLocked":
     "These pages are being edited, so the upgrade cannot start. Try again once their editors leave; a notebook admin can also release a lock.",
+  "upgrade.agent": "Connect an agent",
+  "upgrade.agentYours":
+    "Until the upgrade ends, only your agent writes this notebook, over MCP. Connect it to this notebook as the README's section on connecting an agent (MCP) says.",
+  "upgrade.agentPrompt": "The prompt to give it:",
+  "upgrade.agentOthers":
+    "Only the agent of {name}, who started the upgrade, can write this notebook; you can abandon the upgrade.",
+  "upgrade.abandon": "Abandon this upgrade…",
+  "upgrade.abandonTitle": "Abandon the upgrade of “{name}”?",
+  "upgrade.abandonBody":
+    "A background job puts the notebook back as it was when the upgrade started: its pages and attachments go back to their places, names and content, and those created since go to the trash. The notebook stays read-only until the rollback ends.",
+  "upgrade.abandonConfirm": "Abandon the upgrade",
+  "upgrade.abandoning": "Abandoning…",
+  "upgrade.rollback": "Rollback",
+  "upgrade.rollbackJob": "The rollback's job",
+  "upgrade.rollbackStopped": "The rollback stopped before it put everything back. What is left:",
+  "upgrade.rollbackUnderWay": "The rollback is under way already.",
+  "upgrade.leftNodes": "Nodes not back in place",
+  "upgrade.leftPages": "Pages not written back",
+  "upgrade.leftCreated": "New nodes still there",
+  "upgrade.continue": "Continue the rollback…",
+  "upgrade.continueTitle": "Continue the rollback of “{name}”?",
+  "upgrade.continueBody":
+    "A new background job puts back what the stopped one did not. The notebook stays read-only until the rollback ends.",
+  "upgrade.continueConfirm": "Continue the rollback",
+  "upgrade.continuing": "Continuing…",
+  "upgrade.end": "End the rollback, keeping the notebook as it is…",
+  "upgrade.endTitle": "End the rollback of “{name}”?",
+  "upgrade.endBody":
+    "The upgrade ends and the notebook is no longer read-only; what the rollback has not put back stays as it is now.",
+  "upgrade.endLinks":
+    "In pages not yet written back, links the system rewrote may lead nowhere; the health panel lists them.",
+  "upgrade.endNothingLeft": "Everything is back already: ending it is all that is left.",
+  "upgrade.endConfirm": "End the rollback",
+  "upgrade.ending": "Ending…",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",

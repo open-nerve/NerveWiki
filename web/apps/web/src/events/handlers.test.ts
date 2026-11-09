@@ -260,3 +260,11 @@ test("any pages event asks the refresher for the notebook's history, its lists, 
     ].map(matches)
   ).toEqual([true, true, true, true, false, false, false, false, false, false]);
 });
+
+test("a mode event reads again the workspace's notebooks, by the workspace, and the notebook's upgrade, by the notebook (M11/P1 design 4.4)", () => {
+  const { requested, context: handled } = context([]);
+  eventHandlers.get("mode")?.({ workspace_id: "w1", notebook_id: "n1" }, handled);
+
+  expect(handled.mutate.mock.calls).toEqual([[["notebooks", "w1"]], [["upgrade", "n1"]]]);
+  expect(requested).toEqual([]);
+});

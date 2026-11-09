@@ -22,7 +22,9 @@ import { failureText, TransferReport } from "./transfer-report";
  * An export with an address downloads; a job under way cancels, until its
  * cancel is asked; an ended one shows its report. A job that wrote in a
  * changeset leads to it in the history, a revert to the change it undoes
- * too (M8/P4 design 4.3). A cancel refused says
+ * too (M8/P4 design 4.3). An upgrade's rollback only the notebook's admins
+ * cancel (M11/P1 design 4.4): one who started it, no longer one, sees it
+ * without. A cancel refused says
  * why in the row, and the list is read again. The row is named by name,
  * which tells it from the others, and so are its controls (v0.1 design
  * 13.2, item 17); a control gone with the focus gives it to the row. The
@@ -84,6 +86,8 @@ export const TransferJobRow = observer(function TransferJobRow({
   // heartbeat behind (review A-M7), but one the queue dropped before it began wrote nothing (P4B review B-M2).
   const wrote =
     job.changeset_id !== null && (done > 0 || (job.report?.failure === "interrupted" && job.started_at !== null));
+  const cancels =
+    under(job) && job.cancel_requested_at === null && (job.kind !== "rollback" || notebook.role === "admin");
 
   async function cancel() {
     if (busy.current) {
@@ -165,7 +169,7 @@ export const TransferJobRow = observer(function TransferJobRow({
               {t("transfer.reverted")}
             </Link>
           )}
-          {under(job) && job.cancel_requested_at === null && (
+          {cancels && (
             <Leaving left={toRow}>
               <Button
                 variant="outline"

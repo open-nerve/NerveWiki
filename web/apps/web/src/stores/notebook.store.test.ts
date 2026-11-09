@@ -26,7 +26,8 @@ type Upgrades = ConstructorParameters<typeof NotebookStore>[2];
 
 /**
  * A store of lab's notebooks over a service whose list answers list, whose writes answer what they are given, and
- * as overrides says; an upgrade's start answers its upgrade unless upgrades says otherwise.
+ * as overrides says; an upgrade's start, abandonment and rollback's end answer its upgrade unless upgrades says
+ * otherwise.
  */
 function storeOf(list: Notebook[], overrides: Partial<Service> = {}, upgrades: Partial<Upgrades> = {}) {
   return new NotebookStore(
@@ -40,7 +41,12 @@ function storeOf(list: Notebook[], overrides: Partial<Service> = {}, upgrades: P
       ...overrides,
     },
     "lab",
-    { start: async (id) => upgradeJSON({ notebook_id: id }), ...upgrades }
+    {
+      start: async (id) => upgradeJSON({ notebook_id: id }),
+      abandon: async (id) => upgradeJSON({ notebook_id: id, state: "rolling_back", ending: "abandoned" }),
+      endRollback: async (id) => upgradeJSON({ notebook_id: id, state: "rolled_back", ending: "abandoned" }),
+      ...upgrades,
+    }
   );
 }
 
@@ -620,3 +626,125 @@ test.each([
   expect(reads).toBe(1);
   expect(store.byId("beta")).toEqual(beta);
 });
+
+// An upgrade's abandonment and its stopped rollback's end (M11/P1 design
+// 4.4): each answers the upgrade, and reads the list again, as a start.
+
+const rollingBack = { ...beta, upgrade: upgradeOf("rolling_back") };
+const changes = [
+  ["abandonment", "abandon", (store: NotebookStore) => store.abandonUpgrade("beta")],
+  ["rollback's end", "endRollback", (store: NotebookStore) => store.endUpgradeRollback("beta")],
+] as const;
+
+test.each(changes)(
+  "an upgrade's %s answers the upgrade, the notebook read again as the list holds it now",
+  async (_, method, change) => {
+    let reads = 0;
+    const sent: string[] = [];
+    const after = method === "abandon" ? rollingBack : beta;
+    const store = storeOf(
+      [],
+      { list: async () => (++reads === 1 ? [upgraded] : [after]) },
+      {
+        [method]: async (id: string) => {
+          sent.push(`${method} ${id}`);
+          return upgradeJSON({ notebook_id: id, state: "rolling_back" });
+        },
+      }
+    );
+    await store.load();
+
+    await expect(change(store)).resolves.toEqual(upgradeJSON({ notebook_id: "beta", state: "rolling_back" }));
+
+    expect(sent).toEqual([`${method} beta`]);
+    expect(reads).toBe(2);
+    expect(store.byId("beta")).toEqual(after);
+  }
+);
+
+test.each(changes)("an upgrade's %s waits for the same notebook's renaming", async (_, method, change) => {
+  let answerRename: ((value: Notebook) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf(
+    [upgraded],
+    {
+      update: () => {
+        sent.push("rename");
+        return new Promise<Notebook>((resolve) => (answerRename = resolve));
+      },
+    },
+    {
+      [method]: async (id: string) => {
+        sent.push(method);
+        return upgradeJSON({ notebook_id: id, state: "rolling_back" });
+      },
+    }
+  );
+  await store.load();
+
+  const renaming = store.update("beta", { name: "Renamed" });
+  const changing = change(store);
+  await Promise.resolve();
+  expect(sent).toEqual(["rename"]);
+  answerRename?.({ ...upgraded, name: "Renamed" });
+  await renaming;
+  await changing;
+
+  expect(sent).toEqual(["rename", method]);
+});
+
+test.each(
+  changes.flatMap(([name, method, change]) =>
+    [
+      ["forbidden", refusal(403, "forbidden"), [{ ...upgraded, role: "editor" as const }]],
+      ["notebook.not_found", refusal(404, "notebook.not_found"), []],
+      ["wiki.upgrade_state", refusal(409, "wiki.upgrade_state"), [beta]],
+    ].map(([code, refused, after]) => [name, code, method, change, refused, after] as const)
+  )
+)(
+  "an upgrade's %s refused as %s reads the list again, as it is now, and is refused",
+  async (_, __, method, change, refused, after) => {
+    let reads = 0;
+    const store = storeOf(
+      [],
+      { list: async () => (++reads === 1 ? [upgraded] : (after as Notebook[])) },
+      { [method]: () => Promise.reject(refused) }
+    );
+    await store.load();
+
+    await expect(change(store)).rejects.toBe(refused);
+
+    expect(reads).toBe(2);
+    expect(store.list).toEqual(after);
+    expect(store.wasRemoved("beta")).toBe(false);
+  }
+);
+
+test.each(
+  changes.flatMap(([name, method, change]) =>
+    [writingBusy, refusal(503, "server_busy"), new TypeError("offline")].map(
+      (refused) => [name, refused, method, change] as const
+    )
+  )
+)(
+  "an upgrade's %s refused as %s does not read the list again: a rollback under way is the upgrade's to read",
+  async (_, refused, method, change) => {
+    let reads = 0;
+    const store = storeOf(
+      [],
+      {
+        list: async () => {
+          reads++;
+          return [upgraded];
+        },
+      },
+      { [method]: () => Promise.reject(refused) }
+    );
+    await store.load();
+
+    await expect(change(store)).rejects.toBe(refused);
+
+    expect(reads).toBe(1);
+    expect(store.byId("beta")).toEqual(upgraded);
+  }
+);

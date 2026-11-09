@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import type { TransferFailure, TransferJob } from "../../services/transfer.service";
-import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
-import { addressOf, cancelled, jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
+import { instanceJSON, json, notebookJSON, problem, upgradeOf } from "../../test/fakes";
+import { addressOf, cancelled, jobChangesetId, jobJSON, jobsServer, reportOf, underWay } from "../../test/jobs-server";
 import { bob, guide } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { pollInterval } from "./transfer-page";
@@ -188,6 +188,31 @@ test("each row, and each of its controls, is named by what the job does, who sta
     .map((id) => document.getElementById(id)?.textContent);
   expect(described).toEqual(["Done", `${started} · ${ended} · 2 KB · Kept until Oct 6, 2026, 10:20 AM`]);
 });
+
+test.each([
+  ["admin", true],
+  ["editor", false],
+] as const)(
+  "an upgrade's rollback under way cancels for the notebook's admins (M11/P1 design 4.4): its %s, %s; an export, for both",
+  async (role, cancels) => {
+    // Ada started the rollback as an admin: an editor since, she sees it, her own, and its cancel would be forbidden.
+    const server = jobsServer({
+      role,
+      jobs: [
+        underWay(jobJSON(1, { kind: "rollback", name: "upgrade", changeset_id: jobChangesetId(1) }), 0, 0),
+        underWay(jobJSON(2), 1, 4),
+      ],
+    });
+    server.notebook = { ...server.notebook, upgrade: upgradeOf("rolling_back") };
+    renderApp(transfer, server.app);
+
+    const rollback = await row("Undo the upgrade");
+    const exported = await row("Export of the whole notebook");
+    expect(within(rollback).getByText("Queued")).toBeTruthy();
+    expect(control(rollback, "button", "Cancel") !== null).toBe(cancels);
+    expect(control(exported, "button", "Cancel")).not.toBeNull();
+  }
+);
 
 test("a queued job cancels at once, a running one says it is cancelling; Cancel gone, the focus is on the row", async () => {
   const user = userEvent.setup();
