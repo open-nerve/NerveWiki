@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 	"testing"
+	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -18,7 +19,8 @@ import (
 // prepares by SQL before the request; TestThePermissionMatrixCoversEveryOperation
 // reads them with the others. The start's notebook has its edit sessions
 // cleared, the seeds' being alive; getUpgrade's notebook is being upgraded,
-// upgrading or reviewing, by its creator, as the start would leave it.
+// upgrading or reviewing, by its creator, as the start would leave it; the
+// rollback's rows' are rollbackMatrixRows'.
 
 // upgradeMatrixRow is a row of the upgrade's and how its cells' copy is
 // prepared.
@@ -93,7 +95,106 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 			prepare: upgradedBy(state),
 		})
 	}
-	return rows
+	return append(rows, rollbackMatrixRows(notebook, upgradedBy)...)
+}
+
+// rollbackJobVariants are the cancel rows' variants whose jobs seeded
+// names.
+func rollbackJobVariants() []string { return []string{"own", "another's"} }
+
+// rollbackMatrixRows are S3's (M11/P1 design 3.22), in the copies of lab
+// as S2's are (S2's deviation 5): the abandonment of an upgrade
+// upgrading; the end of a rollback whose job stopped; the cancel of the
+// column's own rollback, ended, which its starter, no admin now, is
+// forbidden; the cancel of another's, queued, the notebook rolling back.
+// Each cancel's job is the column's seeded id, the row written by SQL.
+func rollbackMatrixRows(notebook func(c caller, s seeded) string,
+	upgradedBy func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool),
+) []upgradeMatrixRow {
+	notFound, jobNotFound := cell{http.StatusNotFound, "notebook.not_found"}, cell{http.StatusNotFound, "transfer.not_found"}
+	jobPath := func(id uuid.UUID) string { return "/api/v0/transfer-jobs/" + id.String() + "/cancel" }
+	rollingBack := func(variant, state string, by func(c caller, s seeded) uuid.UUID) func(t *testing.T, c caller, s seeded,
+		pool *pgxpool.Pool) {
+		return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+			t.Helper()
+			job := uuid.NewV7()
+			if variant != "" {
+				job = s.rollbackJob(variant, c)
+			}
+			if err := rollingBackIn(context.Background(), pool, s.notebook(notebookOf(c)).String(), by(c, s).String(), job.String(),
+				state); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	creator := func(c caller, s seeded) uuid.UUID { return s.accounts[someoneElse] }
+	itself := func(c caller, s seeded) uuid.UUID { return s.accounts[c] }
+	return []upgradeMatrixRow{{
+		matrixRow: matrixRow{
+			op: "abandonUpgrade", variant: "upgrading", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/abandon", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var a rollbackAnswer
+				decodeAnswer(t, answer, &a)
+				if a.State != "rolling_back" || a.Ending == nil || *a.Ending != "abandoned" || a.RollbackJobID == nil {
+					t.Errorf("abandoned %s, want it rolling back, abandoned, with its job", answer)
+				}
+			},
+		},
+		prepare: upgradedBy("upgrading"),
+	}, {
+		matrixRow: matrixRow{
+			op: "endUpgradeRollback", variant: "rolling_back, its job stopped", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/end-rollback", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var a rollbackAnswer
+				decodeAnswer(t, answer, &a)
+				if a.State != "rolled_back" || a.RollbackComplete == nil || !*a.RollbackComplete {
+					t.Errorf("ended %s, want it rolled back, complete", answer)
+				}
+			},
+		},
+		prepare: rollingBack("", "failed", creator),
+	}, {
+		matrixRow: matrixRow{
+			op: "cancelTransferJob", variant: "its own rollback, ended", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, jobPath(s.rollbackJob("own", c)), ""
+			},
+			cells: adminsOnly(cell{http.StatusConflict, "transfer.not_cancellable"}, jobNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				t.Errorf("cancelled %s, want a problem", answer)
+			},
+		},
+		prepare: rollingBack("own", "failed", itself),
+	}, {
+		matrixRow: matrixRow{
+			op: "cancelTransferJob", variant: "another's rollback, queued", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, jobPath(s.rollbackJob("another's", c)), ""
+			},
+			cells: adminsSee(cellOK(), jobNotFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var j transferJobAnswer
+				decodeAnswer(t, answer, &j)
+				if j.ID != s.rollbackJob("another's", c).String() || j.Kind != "rollback" || j.State != "cancelled" ||
+					j.CreatedBy.UserID != s.accounts[someoneElse].String() {
+					t.Errorf("cancelled %s, want the rollback of %s, cancelled", answer, someoneElse)
+				}
+			},
+		},
+		prepare: rollingBack("another's", "queued", creator),
+	}}
 }
 
 // upgradeAnswer is an Upgrade answer, as much as the tests check.

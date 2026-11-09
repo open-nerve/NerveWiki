@@ -7,7 +7,7 @@ import { ada, pageServer, sourceStatus } from "./page-server";
 import { formOf } from "./transfer";
 
 /** The kinds of the jobs that write a notebook's tree, one under way at once (M8/P4 design 3.2). */
-const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert"]);
+const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert", "rollback"]);
 
 /** What the server parses as an id: a parent_id not like it is 400. */
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;

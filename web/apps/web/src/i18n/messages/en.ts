@@ -379,6 +379,7 @@ export const en = {
   "history.kind.version_restore": "Restore",
   "history.kind.trash_restore": "Restore from trash",
   "history.kind.revert": "Undo change",
+  "history.kind.rollback": "Upgrade rollback",
   "history.client.web": "Web",
   "history.client.api": "API",
   "history.client.cli": "CLI",
@@ -785,6 +786,7 @@ export const en = {
   "transfer.importOf": "Import of {name}",
   "transfer.restoreOf": "Restore of {name} from the trash",
   "transfer.revertOf": "Undo: {kind}",
+  "transfer.rollback": "Undo the upgrade",
   "transfer.state.queued": "Queued",
   "transfer.state.running": "Running",
   "transfer.state.succeeded": "Done",
@@ -934,6 +936,13 @@ export const en = {
   "transfer.revertFailure.forbidden": "The person who started it could no longer edit the notebook.",
   "transfer.revertFailure.tree_changed": "While the undo ran, the pages it was undoing changed.",
   "transfer.revertFailure.changeset_reverted": "What the undo had done was itself undone while it ran.",
+  "transfer.rollbackFailure.forbidden":
+    "The person who started the rollback is no longer an admin of the notebook: another admin can continue it.",
+  "transfer.rollbackFailure.revert_too_large":
+    "The upgrade changed too much, and the rollback stopped: you can end the rollback, keeping the notebook as it is.",
+  "transfer.rollbackFailure.internal": "The server failed, and the rollback stopped: you can continue it.",
+  "transfer.rollbackFailure.interrupted": "The rollback was interrupted: you can continue it.",
+  "transfer.rollbackFailure.timeout": "The rollback ran past the server's time limit: you can continue it.",
   "transfer.importProblemsTitle": "What was not imported as it was",
   "transfer.importProblem.renamed": "{path} was imported as {to}: links to its old name do not reach it.",
   "transfer.importProblem.other": "{path} was not imported as it was.",
@@ -1102,6 +1111,7 @@ export const en = {
     "An attachment at the root is titled raw or AGENTS: rename it first, then start the upgrade.",
   "problem.wiki.upgrade_stale_index":
     "The link index is out of date: ask a server admin to run nervewiki reindex, then start the upgrade.",
+  "problem.wiki.upgrade_state": "The upgrade's current state does not allow this.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",

@@ -202,6 +202,14 @@ async function getJob(api: ApiClient, credential: string, id: string) {
   return api.GET("/api/v0/transfer-jobs/{job_id}", { params: { path: { job_id: id } }, headers: bearer(credential) });
 }
 
+/** credential's cancel of the job id, as the API answers it. */
+export async function cancelJob(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/transfer-jobs/{job_id}/cancel", {
+    params: { path: { job_id: id } },
+    headers: bearer(credential),
+  });
+}
+
 /** The job id once it is running, as credential reads it, within timeout. */
 export async function runningJob(
   api: ApiClient,

@@ -24,7 +24,7 @@ const clockMargin = 60_000;
 export type Press = { at: number; known: ReadonlySet<string> };
 
 /** The kinds of the jobs that write a notebook's tree, one of which a notebook has under way at once (M8/P4 design 3.2). */
-const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert"]);
+const writingKinds: ReadonlySet<TransferJob["kind"]> = new Set(["import", "trash_restore", "revert", "rollback"]);
 
 /**
  * TransferStore holds the jobs of a notebook that the account sees, the

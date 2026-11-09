@@ -12,6 +12,34 @@ import (
 	"uuid"
 )
 
+const clearUpgrade = `-- name: ClearUpgrade :execrows
+UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL,
+    updated_by_id = $1::uuid, updated_at = $2::timestamptz
+WHERE id = $3 AND upgrade_id = $4::uuid
+`
+
+type ClearUpgradeParams struct {
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+	UpgradeID uuid.UUID
+}
+
+// A notebook's upgrade's end (M11/P1 design 3.20), under the row's lock: its four columns cleared together, the
+// notebook's upgrade still upgrade_id.
+func (q *Queries) ClearUpgrade(ctx context.Context, arg ClearUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, clearUpgrade,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.UpgradeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const createNotebook = `-- name: CreateNotebook :exec
 INSERT INTO notebooks (id, workspace_id, name, workspace_access, mode, source_root_id, created_by_id, updated_by_id,
     created_at, updated_at)
@@ -361,6 +389,35 @@ func (q *Queries) SetNotebookMode(ctx context.Context, arg SetNotebookModeParams
 		arg.ID,
 	)
 	return err
+}
+
+const setUpgradeState = `-- name: SetUpgradeState :execrows
+UPDATE notebooks SET upgrade_state = $1, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND upgrade_id = $5::uuid
+`
+
+type SetUpgradeStateParams struct {
+	State     *string
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+	UpgradeID uuid.UUID
+}
+
+// A notebook's upgrade's next state (M11/P1 design 3.20), under the row's lock: the notebook's upgrade is still
+// upgrade_id; who and when, as each change of the row.
+func (q *Queries) SetUpgradeState(ctx context.Context, arg SetUpgradeStateParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setUpgradeState,
+		arg.State,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.UpgradeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const shareNotebook = `-- name: ShareNotebook :one

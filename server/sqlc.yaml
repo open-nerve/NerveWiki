@@ -105,6 +105,7 @@ sql:
       - migrations/sql/00053_page_ingest.sql
       - migrations/sql/00054_page_content_compression.sql
       - migrations/sql/00056_page_upgrade_nodes.sql
+      - migrations/sql/00058_page_changesets_rollback.sql
     queries: internal/modules/page/adapter/postgres/queries
     gen:
       go:
@@ -182,6 +183,7 @@ sql:
       - migrations/sql/00031_transfer_one_import.sql
       - migrations/sql/00032_transfer_running_report.sql
       - migrations/sql/00039_transfer_background_jobs.sql
+      - migrations/sql/00059_transfer_rollback_jobs.sql
     queries: internal/modules/transfer/adapter/postgres/queries
     gen:
       go:

@@ -138,16 +138,16 @@ func (tm acmeTeam) background(t *testing.T, c step) backgroundJob {
 	return tm.endedBackground(t, c.by, tm.startedJob(t, c).ID)
 }
 
-// awaitBackground waits until River has completed every restore and
-// revert.
+// awaitBackground waits until River has completed every restore, revert
+// and rollback.
 func awaitBackground(t *testing.T, tm acmeTeam) {
 	t.Helper()
 	for deadline := time.Now().Add(jobWait); count(t, tm.pool,
-		"SELECT count(*) FROM river_job WHERE kind IN ('transfer.trash_restore', 'transfer.revert') AND state <> 'completed'") != 0; time.Sleep(
-		50 * time.Millisecond) {
+		"SELECT count(*) FROM river_job WHERE kind IN ('transfer.trash_restore', 'transfer.revert', 'transfer.rollback') AND "+
+			"state <> 'completed'") != 0; time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("background jobs not completed: %v", queryStrings(t, tm.pool,
-				"SELECT kind || ' ' || state FROM river_job WHERE kind IN ('transfer.trash_restore', 'transfer.revert')"))
+				"SELECT kind || ' ' || state FROM river_job WHERE kind IN ('transfer.trash_restore', 'transfer.revert', 'transfer.rollback')"))
 		}
 	}
 }

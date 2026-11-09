@@ -17,7 +17,9 @@ import (
 // each through the notebook module's read of its own: a notebook with no
 // upgrade has the zero id; one upgrading its upgrade's id; one rolling
 // back that id too, and RollingBack; a notebook not found is not found,
-// with the zero state; an error is answered as it is.
+// with the zero state; an error is answered as it is. LockByID, a
+// rollback's end's lock (M11/P1 design 3.19), is the notebook module's
+// own, found or not, its error as it is.
 func TestTransferNotebooksConvertTheState(t *testing.T) {
 	plain, upgrading, rolling, gone := uuid.NewV7(), uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	first, second, initiator := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
@@ -61,5 +63,14 @@ func TestTransferNotebooksConvertTheState(t *testing.T) {
 		if got, ok, err := r.of(failing)(context.Background(), plain); !errors.Is(err, failure) || ok || got != (transfer.NotebookState{}) {
 			t.Errorf("a failing read: %s() = %+v, %v, %v; want its error", r.name, got, ok, err)
 		}
+	}
+	for id, want := range map[uuid.UUID]bool{rolling: true, gone: false} {
+		calls = nil
+		if ok, err := n.LockByID(context.Background(), id); err != nil || ok != want || !slices.Equal(calls, []string{"LockByID"}) {
+			t.Errorf("LockByID(%v) = %v, %v by %v; want %v by LockByID", id, ok, err, calls, want)
+		}
+	}
+	if ok, err := failing.LockByID(context.Background(), plain); !errors.Is(err, failure) || ok {
+		t.Errorf("a failing LockByID() = %v, %v; want its error", ok, err)
 	}
 }

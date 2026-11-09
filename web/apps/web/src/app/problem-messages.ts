@@ -46,6 +46,7 @@ export const problemMessages = {
   "wiki.upgrade_pages_locked": "problem.wiki.upgrade_pages_locked",
   "wiki.upgrade_title_taken": "problem.wiki.upgrade_title_taken",
   "wiki.upgrade_stale_index": "problem.wiki.upgrade_stale_index",
+  "wiki.upgrade_state": "problem.wiki.upgrade_state",
   "page.not_found": "problem.page.not_found",
   "page.version_not_found": "problem.page.version_not_found",
   "asset.not_found": "problem.asset.not_found",

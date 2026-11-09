@@ -146,32 +146,52 @@ func (d StartDeps) claim(ctx context.Context, notebookID uuid.UUID) (func(), err
 }
 
 // startBackground writes job's row, queued, and enqueues it, as its
-// creator from its client asks: 503 server_busy when MaxQueued jobs wait
-// or run; then, under the workspace's row and the notebook's, FOR SHARE,
-// action decided again, notebook.upgrading for a notebook being upgraded
-// (M11 design 4.5), and the jobs' creations one at a time, room in the
-// queue and no job that writes the notebook's tree; the changeset it will
-// write decided (M8/P4 design 3.2).
+// creator from its client asks (queueBackground), then logs it and
+// answers its view.
 func (d StartDeps) startBackground(ctx context.Context, action shared.Action, job domain.Job,
 	enqueue func(ctx context.Context, id uuid.UUID) error,
 ) (JobView, error) {
-	actor, err := shared.RequireActor(ctx)
+	job, err := d.queueBackground(ctx, action, job, enqueue)
 	if err != nil {
 		return JobView{}, err
 	}
-	if err := d.room(ctx, job.NotebookID, false); err != nil {
+	d.Logger.InfoContext(ctx, string(job.Kind)+" queued", logged(job)...)
+	got, err := views{names: d.Names, signer: d.Signer, clock: d.Clock}.of(ctx, []domain.Job{job})
+	if err != nil {
 		return JobView{}, err
+	}
+	return got[0], nil
+}
+
+// queueBackground writes job's row, queued, and enqueues it, as its
+// creator from its client asks, and answers it: 503 server_busy when
+// MaxQueued jobs wait or run; then, under the workspace's row and the
+// notebook's, FOR SHARE, action decided again, notebook.upgrading for a
+// notebook being upgraded (M11 design 4.5) but to the upgrade's own
+// rollback as it rolls back (M11/P1 design 3.19), and the jobs' creations
+// one at a time, room in the queue and no job that writes the notebook's
+// tree; the changeset it will write decided (M8/P4 design 3.2). In the
+// caller's transaction when ctx carries one, the locks taken again.
+func (d StartDeps) queueBackground(ctx context.Context, action shared.Action, job domain.Job,
+	enqueue func(ctx context.Context, id uuid.UUID) error,
+) (domain.Job, error) {
+	actor, err := shared.RequireActor(ctx)
+	if err != nil {
+		return domain.Job{}, err
+	}
+	if err := d.room(ctx, job.NotebookID, false); err != nil {
+		return domain.Job{}, err
 	}
 	workspaceID, err := d.workspaceOf(ctx, job.NotebookID)
 	if err != nil {
-		return JobView{}, err
+		return domain.Job{}, err
 	}
 	err = d.Tx.WithinTx(ctx, func(ctx context.Context) error {
 		state, err := d.lock(ctx, actor, workspaceID, job.NotebookID, action)
 		if err != nil {
 			return err
 		}
-		if state.UpgradeID != (uuid.UUID{}) {
+		if state.UpgradeID != (uuid.UUID{}) && !rollsBack(job, state) {
 			return domain.ErrUpgrading
 		}
 		if err := d.Rows.LockQueue(ctx); err != nil {
@@ -192,14 +212,16 @@ func (d StartDeps) startBackground(ctx context.Context, action shared.Action, jo
 		return enqueue(ctx, job.ID)
 	})
 	if err != nil {
-		return JobView{}, err
+		return domain.Job{}, err
 	}
-	d.Logger.InfoContext(ctx, string(job.Kind)+" queued", logged(job)...)
-	got, err := views{names: d.Names, signer: d.Signer, clock: d.Clock}.of(ctx, []domain.Job{job})
-	if err != nil {
-		return JobView{}, err
-	}
-	return got[0], nil
+	return job, nil
+}
+
+// rollsBack reports whether job is the rollback of the notebook's upgrade
+// under way, which rolls back: the one job the freeze lets start (M11/P1
+// design 3.19).
+func rollsBack(job domain.Job, state NotebookState) bool {
+	return job.Kind == domain.KindRollback && job.UpgradeID != nil && *job.UpgradeID == state.UpgradeID && state.RollingBack
 }
 
 // logged are a background job's start's log attributes, with what it

@@ -188,7 +188,7 @@ func (r *run) names(ctx context.Context) (domain.Named, *domain.Named, error) {
 	case err != nil:
 		return domain.Named{}, nil, err
 	case !ok:
-		return domain.Named{}, nil, errGone
+		return domain.Named{}, nil, ErrJobGone
 	}
 	notebook := domain.Named{ID: r.job.NotebookID, Name: name}
 	if r.job.RootID == nil {

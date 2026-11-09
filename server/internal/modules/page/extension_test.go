@@ -73,27 +73,33 @@ func (n sqlNotebooks) WorkspaceOf(ctx context.Context, id uuid.UUID) (uuid.UUID,
 }
 
 func (n sqlNotebooks) ShareByID(ctx context.Context, id uuid.UUID) (page.NotebookState, bool, error) {
-	return n.state(ctx, "SELECT mode, source_root_id FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR SHARE", id)
+	return n.state(ctx, " FOR SHARE", id)
 }
 
 func (n sqlNotebooks) LockByID(ctx context.Context, id uuid.UUID) (page.NotebookState, bool, error) {
-	return n.state(ctx, "SELECT mode, source_root_id FROM notebooks WHERE id = $1 AND deleted_at IS NULL FOR NO KEY UPDATE", id)
+	return n.state(ctx, " FOR NO KEY UPDATE", id)
 }
 
 func (n sqlNotebooks) StateOf(ctx context.Context, id uuid.UUID) (page.NotebookState, bool, error) {
-	return n.state(ctx, "SELECT mode, source_root_id FROM notebooks WHERE id = $1 AND deleted_at IS NULL", id)
+	return n.state(ctx, "", id)
 }
 
-// state is the notebook id's mode and source root as query reads them.
-func (n sqlNotebooks) state(ctx context.Context, query string, id uuid.UUID) (page.NotebookState, bool, error) {
+// state is the notebook id's mode, source root and upgrade under way as
+// its row reads them, locked as lock says.
+func (n sqlNotebooks) state(ctx context.Context, lock string, id uuid.UUID) (page.NotebookState, bool, error) {
 	var s page.NotebookState
-	var root *uuid.UUID
-	err := postgres.DB(ctx, n.pool).QueryRow(ctx, query, id).Scan(&s.Mode, &root)
+	var root, upgrade, by *uuid.UUID
+	var state *string
+	err := postgres.DB(ctx, n.pool).QueryRow(ctx, "SELECT mode, source_root_id, upgrade_id, upgrade_state, upgrade_by_id FROM notebooks "+
+		"WHERE id = $1 AND deleted_at IS NULL"+lock, id).Scan(&s.Mode, &root, &upgrade, &state, &by)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return page.NotebookState{}, false, nil
 	}
 	if root != nil {
 		s.SourceRootID = *root
+	}
+	if upgrade != nil && state != nil && by != nil {
+		s.Upgrade = page.NotebookUpgrade{ID: *upgrade, State: page.UpgradeState(*state), By: *by}
 	}
 	return s, err == nil, err
 }
@@ -261,7 +267,7 @@ func (f fixture) module(guards []page.WriteGuard, participants []page.Participan
 		Markdown: f.md, Budget: budget, Guards: guards, Participants: participants, Observers: observers,
 		EditSessionVetoers: f.vetoers, EditSessionSubscribers: f.subscribers, EditSessionCleanupInterval: time.Hour,
 		Retention: 24 * time.Hour, Attachments: noAttachments{}, Snapshots: postgres.NewTxManager(f.pool, 5*time.Second),
-		VisibleNotebooks: noNotebooks{},
+		VisibleNotebooks: noNotebooks{}, UpgradeAction: "notebook.change_mode",
 	})
 }
 

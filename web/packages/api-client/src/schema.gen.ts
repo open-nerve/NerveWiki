@@ -1536,6 +1536,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
+         * @description An upgrade upgrading or reviewing rolls back, abandoned, its content frozen but for the rollback's job; one rolling back whose job stopped gets a new job. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade under way is wiki.upgrade_state; one whose rollback's job is queued or running is transfer.busy; a full job queue is server_busy. These checks occur in that order. The answer is the upgrade, rolling back, with its rollback's job.
+         */
+        post: operations["abandonUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/end-rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
+         * @description The upgrade ends, rolled back: its content is no longer frozen, and rollback_complete tells whether the rollback had put everything back, rollback_left what it had not. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one whose upgrade is not rolling back is wiki.upgrade_state; one whose rollback's job is queued or running is transfer.busy. These checks occur in that order.
+         */
+        post: operations["endUpgradeRollback"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -1792,7 +1838,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel a job
-         * @description Cancels the job: a queued one at once, a running one at its next heartbeat, within about a second, its state then cancelled, its report telling what it did, an export's archive not kept; a running job that ends first ends as it would have. Its starter and the notebook's admins can cancel it; one not found is transfer.not_found as getTransferJob's; a job that has ended is transfer.not_cancellable. A running job's cancel asked again is the first's.
+         * @description Cancels the job: a queued one at once, a running one at its next heartbeat, within about a second, its state then cancelled, its report telling what it did, an export's archive not kept; a running job that ends first ends as it would have. Its starter and the notebook's admins can cancel it; one not found is transfer.not_found as getTransferJob's; a job that has ended is transfer.not_cancellable. A running job's cancel asked again is the first's. An upgrade's rollback only a notebook admin may cancel: whoever else sees it gets forbidden.
          */
         post: operations["cancelTransferJob"];
         delete?: never;
@@ -2484,10 +2530,10 @@ export interface components {
             assets_expire_at: string | null;
         };
         /**
-         * @description What a changeset records: an edit, an import, a version restored, a node restored from the trash, or the revert of another changeset.
+         * @description What a changeset records: an edit, an import, a version restored, a node restored from the trash, the revert of another changeset, or rollback: an upgrade's rollback, which put the notebook back as the upgrade started.
          * @enum {string}
          */
-        ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert";
+        ChangesetKind: "edit" | "import" | "version_restore" | "trash_restore" | "revert" | "rollback";
         /** @description The changeset a version is of, and the account it is by. */
         VersionChangeset: {
             /** Format: uuid */
@@ -3320,7 +3366,7 @@ export interface components {
             ending: components["schemas"]["UpgradeEnding"] | null;
             /** @description Whether its rollback put everything back, once the rollback ended; null before. */
             rollback_complete: boolean | null;
-            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. null otherwise. */
+            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. Rolling back with its job stopped: counted now. null otherwise. */
             rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
         };
         UpgradeStart: {
@@ -3447,8 +3493,11 @@ export interface components {
              */
             root_id?: string | null;
         };
-        /** @enum {string} */
-        TransferKind: "import" | "export" | "trash_restore" | "revert";
+        /**
+         * @description What a job does: an import, an export, a trash item's restore, a changeset's revert, or an upgrade's rollback, which puts the notebook back as the upgrade started.
+         * @enum {string}
+         */
+        TransferKind: "import" | "export" | "trash_restore" | "revert" | "rollback";
         /** @enum {string} */
         TransferState: "queued" | "running" | "succeeded" | "failed" | "cancelled" | "expired";
         /**
@@ -3464,7 +3513,7 @@ export interface components {
             total: number;
         };
         /**
-         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes). A writing job's refused (a write of the job the notebook's contract as an LLM Wiki refused: its refusal says which and where). What a job wrote before it failed is kept.
+         * @description Why a job failed: interrupted (the server stopped or restarted, the job stopped beating, or the job queue dropped it before it began), timeout (it ran past the instance's limit), forbidden (its starter could no longer read the notebook as it ran, or write in it as an import, a restore or a revert ran, or a rollback's: its starter is no longer the notebook's admin, and another admin may continue it), root_not_found (the page exported, or imported under, was gone as it ran), storage_full, contributor_conflict (a file the server adds was where a node is), internal; for an import's archive as a whole, nothing written: not_zip (no zip, or its directory is broken), too_many_entries (more entries than the instance takes, or a directory larger than 64 MiB), unpacked_too_large (its entries unpack to more than the instance takes), too_many_nodes (its pages, attachments and the folders their paths imply are more nodes than one undo can revert, 60,000); tree_changed (a page an import created was deleted as it ran; a parent a restore restored was deleted, or moved so that its pages would nest deeper than 10 levels, as it ran), its later nodes not written; changeset_reverted (the changeset an import, a restore or a revert writes in was reverted as it ran, its later nodes not written). A restore's alone: trash_changed (the trash item is no longer as it was planned: restored, purged or deleted again as another, before its first batch, or a node left in the trash below what it restored no longer the root of its own item it made it); restore_expired (the item went past the time it can be restored in as it ran). A revert's alone: revert_conflict (a node it was about to change changed since, or would conflict, the report's conflicts listing them); changeset_trimmed (the purge took part of the changeset, a version it writes back or restores, or a trash item it restores); page_locked (an edit session holds a page it was about to delete or write back, the report's lock); revert_too_large (one of its segments, steps that must be in one batch, holds more pages, attachments, history or links than one batch writes; or a rollback's pass too large). A writing job's refused (a write of the job the notebook's contract as an LLM Wiki refused: its refusal says which and where). What a job wrote before it failed is kept.
          * @enum {string}
          */
         TransferFailure: "interrupted" | "timeout" | "forbidden" | "root_not_found" | "storage_full" | "contributor_conflict" | "internal" | "not_zip" | "too_many_entries" | "unpacked_too_large" | "too_many_nodes" | "tree_changed" | "changeset_reverted" | "trash_changed" | "restore_expired" | "revert_conflict" | "changeset_trimmed" | "page_locked" | "revert_too_large" | "refused";
@@ -3555,14 +3604,14 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade. */
             name: string;
             /**
              * Format: uuid
-             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             * @description The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
              */
             changeset_id: string | null;
             /**
@@ -3633,14 +3682,14 @@ export interface components {
             notebook_id: string;
             /**
              * Format: uuid
-             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert.
+             * @description The page exported with its subtree, or imported under; null for the whole notebook, or its root. A restore's, the root of the trash item it restores, a page or an attachment; null for a revert and a rollback.
              */
             root_id: string | null;
-            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts. */
+            /** @description What is exported, by name, the notebook's or the page's, which the archive is named after; for an import, the archive's file name; for a restore, the trash item's name as it was deleted; for a revert, the kind of the changeset it reverts; for an upgrade's rollback, upgrade. */
             name: string;
             /**
              * Format: uuid
-             * @description The changeset the job writes in, an import's, a restore's trash_restore or a revert's revert, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
+             * @description The changeset the job writes in, an import's, a restore's trash_restore, a revert's revert or a rollback's rollback, decided as the job was created: it exists once the job first wrote. Null for an export, and for an import created before the jobs had it.
              */
             changeset_id: string | null;
             /**
@@ -6010,6 +6059,55 @@ export interface operations {
                 };
             };
             503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    abandonUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolling back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    endUpgradeRollback: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolled back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
             default: components["responses"]["Problem"];
         };
     };

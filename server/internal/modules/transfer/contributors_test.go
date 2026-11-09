@@ -85,7 +85,8 @@ func (r root) start(t *testing.T, contributors []transfer.ExportContributor, tim
 	m := transfer.New(transfer.Deps{Pool: r.pool, Tx: tx, Snapshots: tx, Store: r.store, Inserter: inserter, Clock: clock{}, Logger: logger,
 		Authorizer: readers{}, Workspaces: workspaces{}, Notebooks: notebooks{eng: r.eng}, Names: names{}, Nodes: nodes{readme: r.readme},
 		Linked: linked{}, Blobs: blobs{}, Contributors: contributors, DownloadKey: bytes.Repeat([]byte{1}, 32), ExportTTL: 24 * time.Hour,
-		JobTimeout: timeout, HeartbeatTimeout: heartbeat, MaxQueued: 20, MinRate: 1})
+		JobTimeout: timeout, HeartbeatTimeout: heartbeat, MaxQueued: 20, MinRate: 1, RollbackAction: "notebook.change_mode",
+		RollbackEnd: noRollbackEnd{}})
 	runner, err := jobs.New(r.pool, jobs.Config{ShutdownTimeout: 5 * time.Second, Queues: map[string]int{transfer.QueueExport: 1},
 		RescueAfter: time.Hour, Logger: logger}, m.Jobs())
 	if err != nil {
@@ -298,6 +299,21 @@ func (n notebooks) ShareByID(_ context.Context, id uuid.UUID) (transfer.Notebook
 
 func (n notebooks) StateOf(_ context.Context, id uuid.UUID) (transfer.NotebookState, bool, error) {
 	return transfer.NotebookState{}, id == n.eng, nil
+}
+
+func (n notebooks) LockByID(_ context.Context, id uuid.UUID) (bool, error) {
+	return id == n.eng, nil
+}
+
+// noRollbackEnd ends no upgrade: these tests run no rollback.
+type noRollbackEnd struct{}
+
+func (noRollbackEnd) End(context.Context, uuid.UUID, uuid.UUID) (bool, func(), error) {
+	return false, nil, errors.New("no rollback runs here")
+}
+
+func (noRollbackEnd) Stopped(context.Context, uuid.UUID, uuid.UUID) error {
+	return errors.New("no rollback runs here")
 }
 
 func (n notebooks) NameOf(_ context.Context, id uuid.UUID) (string, bool, error) {

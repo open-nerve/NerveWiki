@@ -19,7 +19,7 @@ import (
 // jobs are the background jobs' writes over the fixture, the trash read
 // at at, of maxItems and maxHistory (0: the domain's).
 func (f *fixture) jobs(at time.Time, maxItems, maxHistory int) *app.JobWrites {
-	return app.NewJobWrites(f.trashReads(at), f.log, f.writer(), f.parser(), f.store, maxItems, maxHistory)
+	return app.NewJobWrites(f.trashReads(at), f.log, f.writer(), f.parser(), f.store, maxItems, maxHistory, app.JobRollbacks{})
 }
 
 // asJob is a context with alice as the job acting for her.

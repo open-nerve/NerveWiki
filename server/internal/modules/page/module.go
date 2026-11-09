@@ -222,6 +222,13 @@ type Deps struct {
 	// reverts: 0 is the domain's, domain.MaxJobItems, measured (M8/P4
 	// design 3.11); production leaves it 0.
 	MaxJobItems int
+	// UpgradeAction is the notebook module's notebook.change_mode, which
+	// an upgrade's rollback's units decide on (M11/P1 design 2.1 item 10):
+	// the page module's domain has no such action. MaxUnitNodes bounds a
+	// subtree its pass that deletes first deletes whole too, and caps
+	// domain.MaxDeleteFirstNodes, the nodes of the subtrees a unit of that
+	// pass packs (M11 decision 243).
+	UpgradeAction shared.Action
 	// MaxBatchRewrites bounds the pages a batch's deferred rewrite writes,
 	// MaxBatchRewriteLinks their links, MaxBatchRewriteBytes their bytes:
 	// 0 is the domain's, domain.MaxBatchRewrites,
@@ -353,8 +360,9 @@ func New(d Deps) *Module {
 	}, gate: app.NewNotebookGate(d.Notebooks, d.Authorizer), notebooks: d.Notebooks, jobs: []jobs.Job{
 		riveradapter.CleanupJob(app.NewCleanupEditSessions(store, d.Clock, d.Logger), d.EditSessionCleanupInterval),
 	}, assets: app.NewAssetWrites(writer, store), imports: app.NewImportWrites(writer, parser, md), seeds: app.NewSeedWrites(writer, md),
-		targetPath:   app.NewSourceTargetPath(d.Notebooks, store, d.Authorizer),
-		jobWrites:    app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory),
+		targetPath: app.NewSourceTargetPath(d.Notebooks, store, d.Authorizer),
+		jobWrites: app.NewJobWrites(trash, store, writer, parser, store, d.MaxJobItems, d.MaxUnitHistory,
+			app.JobRollbacks{Reads: store, Action: d.UpgradeAction, MaxNodes: d.MaxUnitNodes}),
 		list:         app.NewListByPattern(d.Notebooks, store, store, d.Attachments, d.Authorizer),
 		read:         app.NewReadPath(d.Notebooks, store, store, d.Authorizer, d.Snapshots),
 		write:        app.NewWritePath(writer, parser, store, store, store, d.Notebooks, d.Authorizer, d.Logger),

@@ -118,3 +118,98 @@ func (s *Store) LiveSessionsOfNotebook(ctx context.Context, notebookID uuid.UUID
 	}
 	return out, int(rows[0].Total), nil
 }
+
+// RollbackFreeForest implements app.RollbackReads: the new nodes alive in
+// the notebook that hold no baseline node of the upgrade, with their
+// parents (M11/P1 design 3.18).
+func (s *Store) RollbackFreeForest(ctx context.Context, upgradeID, notebookID uuid.UUID) ([]domain.FreeNode, error) {
+	rows, err := s.queries(ctx).RollbackFreeForest(ctx, gen.RollbackFreeForestParams{UpgradeID: upgradeID, NotebookID: notebookID})
+	if err != nil {
+		return nil, fmt.Errorf("read a rollback's free nodes: %w", err)
+	}
+	out := make([]domain.FreeNode, len(rows))
+	for i, r := range rows {
+		out[i] = domain.FreeNode{ID: r.ID, ParentID: r.ParentID}
+	}
+	return out, nil
+}
+
+// RollbackHolders implements app.RollbackReads: the new nodes alive
+// holding the upgrade's baseline nodes alive, as they are now.
+func (s *Store) RollbackHolders(ctx context.Context, upgradeID uuid.UUID) ([]domain.Node, error) {
+	rows, err := s.queries(ctx).RollbackHolders(ctx, upgradeID)
+	if err != nil {
+		return nil, fmt.Errorf("read a rollback's holders: %w", err)
+	}
+	out := make([]domain.Node, len(rows))
+	for i, r := range rows {
+		out[i] = nodeOf(gen.FindNodeRow(r))
+	}
+	return out, nil
+}
+
+// RollbackNow implements app.RollbackReads: the upgrade's baseline nodes
+// alive and its pages' contents, as they are now.
+func (s *Store) RollbackNow(ctx context.Context, upgradeID uuid.UUID) (map[uuid.UUID]domain.NodeNow, map[uuid.UUID]domain.ContentNow,
+	error,
+) {
+	nodes, err := s.queries(ctx).RollbackNodesNow(ctx, upgradeID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read a baseline's nodes now: %w", err)
+	}
+	now := make(map[uuid.UUID]domain.NodeNow, len(nodes))
+	for _, r := range nodes {
+		now[r.ID] = domain.NodeNow{Node: nodeOf(gen.FindNodeRow(r))}
+	}
+	contents, err := s.queries(ctx).RollbackContentsNow(ctx, upgradeID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("read a baseline's contents now: %w", err)
+	}
+	out := make(map[uuid.UUID]domain.ContentNow, len(contents))
+	for _, r := range contents {
+		out[r.NodeID] = domain.ContentNow{Revision: int(r.Revision), Hash: r.ContentHash, Bytes: int(r.ByteSize)}
+	}
+	return now, out, nil
+}
+
+// RollbackBaseline implements app.RollbackReads: the upgrade's baseline
+// rows, every one.
+func (s *Store) RollbackBaseline(ctx context.Context, upgradeID uuid.UUID) ([]domain.BaselineNode, error) {
+	rows, err := s.queries(ctx).RollbackBaseline(ctx, upgradeID)
+	if err != nil {
+		return nil, fmt.Errorf("read an upgrade's baseline: %w", err)
+	}
+	out := make([]domain.BaselineNode, len(rows))
+	for i, r := range rows {
+		b := domain.BaselineNode{NodeID: r.NodeID, Kind: domain.Kind(r.Kind), ParentID: r.ParentID, Hash: r.ContentHash}
+		if r.Name == nil || r.SortOrder == nil {
+			return nil, fmt.Errorf("the baseline row of node %s without its place", r.NodeID)
+		}
+		b.Name, b.SortOrder = *r.Name, *r.SortOrder
+		if r.Revision != nil && r.ByteSize != nil {
+			b.Revision, b.Bytes = int(*r.Revision), int(*r.ByteSize)
+		}
+		out[i] = b
+	}
+	return out, nil
+}
+
+// RollbackLeft implements app.RollbackReads: what the rollback of the
+// upgrade has left to do in the notebook (M11 decision 226).
+func (s *Store) RollbackLeft(ctx context.Context, upgradeID, notebookID uuid.UUID) (domain.RollbackLeft, error) {
+	r, err := s.queries(ctx).RollbackLeft(ctx, gen.RollbackLeftParams{UpgradeID: upgradeID, NotebookID: notebookID})
+	if err != nil {
+		return domain.RollbackLeft{}, fmt.Errorf("read what a rollback has left: %w", err)
+	}
+	return domain.RollbackLeft{Nodes: int(r.Nodes), Pages: int(r.Pages), Created: int(r.Created)}, nil
+}
+
+// DeleteUpgradeNodes deletes the upgrade's rows, as it ends (M11 design
+// 4.10), in the transaction ctx carries, and answers how many.
+func (s *Store) DeleteUpgradeNodes(ctx context.Context, upgradeID uuid.UUID) (int64, error) {
+	n, err := s.queries(ctx).DeleteUpgradeNodes(ctx, upgradeID)
+	if err != nil {
+		return 0, fmt.Errorf("delete an upgrade's rows: %w", err)
+	}
+	return n, nil
+}

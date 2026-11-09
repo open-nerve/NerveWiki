@@ -84,6 +84,7 @@ type (
 	SessionHolder     = app.SessionHolder
 	RootNode          = app.RootNode
 	WritingJobs       = app.WritingJobs
+	Rollbacks         = app.Rollbacks
 	Names             = app.Names
 	UpgradeView       = app.UpgradeView
 	UpgradeState      = domain.UpgradeState
@@ -99,9 +100,11 @@ const (
 // Deps supplies the runtime's actual read ports and its process-wide bounds.
 // RunObserver is nil in production; tests observe transitions without controls.
 // Pool is the module's own table's; Tx through StartTimeout an upgrade's
-// start's and read's (M11/P1 design 3.15): UpgradeAction is the notebook
-// module's notebook.change_mode, StartTimeout bounds the start's
-// transaction, Template is the one bootstrap built for the creation.
+// start's, read's, abandonment's and rollback's end's (M11/P1 design
+// 3.15, 3.20): UpgradeAction is the notebook module's
+// notebook.change_mode, Rollbacks the transfer module's, StartTimeout
+// bounds the start's transaction, Template is the one bootstrap built for
+// the creation.
 type Deps struct {
 	Notebooks   Notebooks
 	Sources     Sources
@@ -122,7 +125,9 @@ type Deps struct {
 	Workspaces    UpgradeWorkspaces
 	UpgradeStates UpgradeStates
 	Upgrades      UpgradePages
+	RollbackPages RollbackPages
 	Writing       WritingJobs
+	Rollbacks     Rollbacks
 	Names         Names
 	UpgradeAction shared.Action
 	StartTimeout  time.Duration
@@ -137,6 +142,8 @@ type Module struct {
 	playbooks    *app.Playbooks
 	startUpgrade *app.StartUpgrade
 	getUpgrade   *app.GetUpgrade
+	abandon      *app.AbandonUpgrade
+	endRollback  *app.EndUpgradeRollback
 }
 
 func New(d Deps) *Module {
@@ -147,9 +154,10 @@ func New(d Deps) *Module {
 		Snapshots: d.Snapshots, Authorizer: d.Authorizer, Clock: d.Clock, Runs: runs,
 	})
 	upgrades := app.UpgradeDeps{
-		Tx: d.Tx, Notebooks: d.Notebooks, Workspaces: d.Workspaces, States: d.UpgradeStates, Pages: d.Upgrades,
-		Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Names: d.Names, Authorizer: d.Authorizer,
-		Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger, Timeout: d.StartTimeout,
+		Tx: d.Tx, Snapshots: d.Snapshots, Notebooks: d.Notebooks, Workspaces: d.Workspaces, States: d.UpgradeStates, Pages: d.Upgrades,
+		Rollback: d.RollbackPages, Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Rollbacks: d.Rollbacks, Names: d.Names,
+		Authorizer: d.Authorizer, Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger,
+		Timeout: d.StartTimeout,
 	}
 	return &Module{
 		lint:         lint,
@@ -157,6 +165,8 @@ func New(d Deps) *Module {
 		playbooks:    app.NewPlaybooks(d.Notebooks, d.Authorizer),
 		startUpgrade: app.NewStartUpgrade(upgrades, lint, runs),
 		getUpgrade:   app.NewGetUpgrade(upgrades),
+		abandon:      app.NewAbandonUpgrade(upgrades),
+		endRollback:  app.NewEndUpgradeRollback(upgrades),
 	}
 }
 
@@ -173,6 +183,18 @@ func (m *Module) StartUpgrade(ctx context.Context, id uuid.UUID, locale string) 
 // GetUpgrade reads notebook id's upgrade under way, for its admins.
 func (m *Module) GetUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
 	return m.getUpgrade.Execute(ctx, id)
+}
+
+// AbandonUpgrade abandons notebook id's upgrade, or continues its stopped
+// rollback (M11 design 4.10).
+func (m *Module) AbandonUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.abandon.Execute(ctx, id)
+}
+
+// EndUpgradeRollback ends the stopped rollback of notebook id's upgrade,
+// keeping the notebook as it is (M11 design 4.10).
+func (m *Module) EndUpgradeRollback(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.endRollback.Execute(ctx, id)
 }
 
 // Stop closes the same owner used by Execute, including expired workers still
