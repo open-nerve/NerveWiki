@@ -186,9 +186,11 @@ func TestTheBackgroundRevertOfANameCycleKeepsItsSegments(t *testing.T) {
 // interleaving of a batch's changeset with a name cycle and the writes
 // between its batches): the job holds O, its first batch's first write;
 // the web's writes wait for the notebook its batch holds, and land after
-// it, before the next (PostgreSQL hands the row to its waiters in the
-// order they came). The pages', the links' and the search's invariants
-// hold after.
+// it. The next batch waits at the team's batchGate until they answered,
+// so they land before it: let go of the row, it could take the row
+// before the web's woken write did (M9 story, found in M11: M11/P1 S3
+// review C-M4). The pages', the links' and the search's invariants hold
+// after.
 func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 	// In batches of two, [put O back, delete the new Plan], [write E back,
 	// put Old back], then the cycle: the web writes E and renames Old as the
@@ -202,6 +204,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		ids := tm.seed(t, nb, cyclePages()...)
 		c, made := tm.cycleBatch(t, nb, true)
 		h := tm.holdNodes(t, ids["O"])
+		next := tm.batches.hold(t, nb, 2)
 		j := tm.startedJob(t, revertStart("alice", nb, c, ""))
 		h.waited(t)
 		e := tm.content(t, "alice", ids["E"])
@@ -213,6 +216,8 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a, b := wrote(), renamed(); a.status != http.StatusOK || b.status != http.StatusOK {
 			t.Fatalf("the web's write = %d %s, its rename = %d %s; want both done", a.status, a.body, b.status, b.body)
 		}
+		tm.batches.came(t, 2)
+		next(2)
 		got := tm.endedBackground(t, "alice", j.ID)
 		reasons, names := map[string]string{}, map[string]string{}
 		for _, x := range got.Conflicts {
@@ -241,12 +246,12 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 	})
 	// A step a batch: put O back, delete the new Plan, write E back. The web
 	// writes E to other bytes as the first waits, then back to the batch's
-	// as the second waits, each landing after the batch it waited for: E is
-	// two revisions on, at the bytes the batch wrote, which L lets go; the
-	// write back is on the revision just checked, and the job ends, E as
-	// before the batch. On the job's first Current, the store would refuse
-	// it (review N-M3 = NC-M1: a write of the same bytes once makes no
-	// revision).
+	// as the second waits, each landing after the batch it waited for and
+	// before the next, held until it answered: E is two revisions on, at
+	// the bytes the batch wrote, which L lets go; the write back is on the
+	// revision just checked, and the job ends, E as before the batch. On
+	// the job's first Current, the store would refuse it (review N-M3 =
+	// NC-M1: a write of the same bytes once makes no revision).
 	t.Run("written away and back between batches", func(t *testing.T) {
 		tm := newAcmeTeamWired(t, "member", "", nil, transfer.Batch{Nodes: 1})
 		nb := tm.openNotebook(t, "alice", "Eng")
@@ -255,6 +260,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		c, made := tm.cycleBatch(t, nb, true)
 		sets := tm.changesetsIn(t, nb)
 		h := tm.holdNodes(t, ids["O"], made)
+		next := tm.batches.hold(t, nb, 2, 3)
 		j := tm.startedJob(t, revertStart("alice", nb, c, ""))
 		if at := h.waited(t); at != ids["O"] {
 			t.Fatalf("the first batch waits for %s, want O", at)
@@ -266,6 +272,8 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a := away(); a.status != http.StatusOK {
 			t.Fatalf("the web's write = %d %s", a.status, a.body)
 		}
+		tm.batches.came(t, 2)
+		next(2)
 		if at := h.waited(t); at != made {
 			t.Fatalf("the second batch waits for %s, want the new Plan", at)
 		}
@@ -275,6 +283,8 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		if a := back(); a.status != http.StatusOK {
 			t.Fatalf("the web's write back = %d %s", a.status, a.body)
 		}
+		tm.batches.came(t, 3)
+		next(3)
 		got := tm.endedBackground(t, "alice", j.ID)
 		if got.State != "succeeded" {
 			t.Fatalf("the revert = %s, want it succeeded", got)
@@ -292,11 +302,11 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 		checkSearch(t, tm.pool)
 	})
 	// A step a batch, the first holding O: the web's write lands after it,
-	// before the batch it meets, whose premise alone sees it, L reading
-	// only the batch's own nodes (review C-I1; the cycle and the depths,
-	// review C1-M1: D9 is nine levels deep, MaxDepth ten). Each stops the
-	// job there, its one conflict the step's, named as in S*, the first
-	// batch's work kept, nothing aside.
+	// before the batch it meets, held until the write answered, whose
+	// premise alone sees it, L reading only the batch's own nodes (review
+	// C-I1; the cycle and the depths, review C1-M1: D9 is nine levels deep,
+	// MaxDepth ten). Each stops the job there, its one conflict the step's,
+	// named as in S*, the first batch's work kept, nothing aside.
 	deep := "D1/D2/D3/D4/D5/D6/D7/D8/D9"
 	under := func(pages ...restPage) []restPage {
 		for i := range strings.Split(deep, "/") {
@@ -346,6 +356,7 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 			ids := tm.seed(t, nb, tt.seed...)
 			b := tm.agent(t, "alice", nb).batchDone(t, tt.ops...)
 			h := tm.holdNodes(t, ids["O"])
+			next := tm.batches.hold(t, nb, 2)
 			j := tm.startedJob(t, revertStart("alice", nb, *b.ChangesetID, ""))
 			if at := h.waited(t); at != ids["O"] {
 				t.Fatalf("the first batch waits for %s, want O", at)
@@ -357,6 +368,8 @@ func TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches(t *testing.T) {
 			if a.status != http.StatusOK && a.status != http.StatusNoContent && a.status != http.StatusCreated {
 				t.Fatalf("the web's write = %d %s", a.status, a.body)
 			}
+			tm.batches.came(t, 2)
+			next(2)
 			got := tm.endedBackground(t, "alice", j.ID)
 			name := tt.node[strings.LastIndex(tt.node, "/")+1:]
 			if got.State != "failed" || got.failure() != "revert_conflict" || len(got.Conflicts) != 1 || got.Conflicts[0].NodeID != ids[tt.node] ||

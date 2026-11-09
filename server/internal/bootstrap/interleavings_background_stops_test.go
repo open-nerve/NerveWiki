@@ -22,10 +22,13 @@ import (
 // items 6, 7, 8, 11, 12, 15, 17, 18, 19 and 20), through serve and River,
 // the jobs writing batches of three nodes. A job is held at its first
 // batch as it waits for its notebook's row, which the test shares; what
-// must come between two batches queues behind the first, PostgreSQL
-// handing the row to its waiters in the order they came; a later batch is
-// held by a row of a node it writes, which the test locks. Each ends on
-// the invariants.
+// must come between two batches queues behind the first, and comes
+// before the second where the second waits at the team's batchGate until
+// it answered: let go of the row, the second could take it before the
+// woken waiter did (M9 story, found in M11: M11/P1 S3 review C-M4); where
+// it does not, the test checks that end too and tries again
+// (betweenUnits). A later batch is held by a row of a node it writes,
+// which the test locks. Each ends on the invariants.
 
 // stopsTeam is acme on an app whose jobs write batches of three nodes,
 // bob a member, and alice's notebook Eng.
@@ -82,9 +85,10 @@ func (tm acmeTeam) stopAtFirst(t *testing.T, nb string, c step, then func(j back
 
 // stopPaused starts c as stopAtFirst does, with a transaction of the
 // test's own queued behind its first batch for the notebook's row: it
-// takes the row once the first batch commits, before the second, which
-// then waits; then runs with the job as it started, and lets the job end.
-// It answers the job as it ended.
+// takes the row once the first batch commits, before the second, held at
+// the team's batchGate until then, which then waits for it; then runs
+// with the job as it started, and lets the job end. It answers the job as
+// it ended.
 func (tm acmeTeam) stopPaused(t *testing.T, nb string, c step, then func(j backgroundJob)) backgroundJob {
 	t.Helper()
 	ctx := context.Background()
@@ -94,6 +98,7 @@ func (tm acmeTeam) stopPaused(t *testing.T, nb string, c step, then func(j backg
 	}
 	t.Cleanup(func() { _ = pause.Rollback(ctx) })
 	took := make(chan error, 1)
+	next := tm.batches.hold(t, nb, 2)
 	j := tm.stopAtFirst(t, nb, c, func(backgroundJob) {
 		go func() {
 			_, err := pause.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR NO KEY UPDATE", nb)
@@ -109,6 +114,8 @@ func (tm acmeTeam) stopPaused(t *testing.T, nb string, c step, then func(j backg
 	case <-time.After(interleavingWait):
 		t.Fatal("the job's first batch did not end")
 	}
+	tm.batches.came(t, 2)
+	next(2)
 	pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
 	then(j)
 	commit(t, pause)
@@ -436,11 +443,11 @@ func TestTheWritingJobsExcludeEachOther(t *testing.T) {
 
 // Interleaving 15: each job and its notebook's deletion between two
 // batches. The deletion, behind the first batch, deletes the notebook
-// with the job's row; the next batch finds no notebook, or the heartbeat
-// the row gone, and the job stops writing nothing more and no end: the
-// items the first batch left stay in the trash with the notebook, each a
-// root at its time, beside the nodes the notebook's deletion took, none
-// a root.
+// with the job's row, the next batch held at the team's batchGate until
+// it answered; the next batch finds no notebook, or the heartbeat the row
+// gone, and the job stops writing nothing more and no end: the items the
+// first batch left stay in the trash with the notebook, each a root at
+// its time, beside the nodes the notebook's deletion took, none a root.
 func TestABackgroundJobAndItsNotebooksDeletion(t *testing.T) {
 	for _, kind := range []string{"trash_restore", "revert"} {
 		t.Run(kind, func(t *testing.T) {
@@ -455,6 +462,7 @@ func TestABackgroundJobAndItsNotebooksDeletion(t *testing.T) {
 				start, roots = revertStart("bob", nb, c, ""), []string{"p0000", "p0001", "p0002"}
 			}
 			var deleted func() answer
+			next := tm.batches.hold(t, nb, 2)
 			j := tm.stopAtFirst(t, nb, start, func(backgroundJob) {
 				deleted = tm.inBackground(t, request("alice", http.MethodDelete, "/api/v0/notebooks/"+nb, ""))
 				pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 2, interleavingWait)
@@ -462,6 +470,9 @@ func TestABackgroundJobAndItsNotebooksDeletion(t *testing.T) {
 			if a := deleted(); a.status != http.StatusNoContent {
 				t.Fatalf("the notebook's deletion = %d %s, want 204", a.status, a.body)
 			}
+			// Not came: the notebook deleted, the heartbeat may stop the job
+			// before its second batch asks.
+			next(2)
 			awaitBackground(t, tm)
 			if got := queryStrings(t, tm.pool, "SELECT state || ' ' || (deleted_at IS NOT NULL) FROM transfer_jobs WHERE id = $1",
 				j.ID); !slices.Equal(got, []string{"running true"}) {
