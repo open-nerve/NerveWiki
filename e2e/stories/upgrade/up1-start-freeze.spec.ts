@@ -3,18 +3,31 @@ import type { TreeNode } from "@nervewiki/api-client";
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebook } from "../../fixtures/assert/notebook";
 import { expectBaseline, expectChangesetOf } from "../../fixtures/assert/page";
-import { expectUpgrade } from "../../fixtures/assert/wiki";
+import { expectUpgrade, upgradesOf } from "../../fixtures/assert/wiki";
 import { pngBytes, uploadAsset } from "../../fixtures/assets";
 import { emailFor } from "../../fixtures/auth";
+import { answerTo, countAnswers } from "../../fixtures/browser";
+import { followStreams, holdStream } from "../../fixtures/events";
 import { listChangesets } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, postPage, putContent, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import {
+  bannerText,
+  modeSection,
+  startDialog,
+  upgradeBanner,
+  upgradePath,
+  upgradeSection,
+  upgradeTitle,
+} from "../../fixtures/upgrade-pages";
 import { getUpgrade, startUpgrade } from "../../fixtures/upgrades";
-import { newTeam } from "../../fixtures/workspaces";
+import { editorContent, wikiPagePath } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // UP1, an upgrade's start and its freeze (M11/P1 design 5): an admin
 // starts the upgrade of a standard notebook; the start writes the raw and
@@ -152,4 +165,66 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
     "Plan",
     "raw",
   ]);
+});
+
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, without a reload; nothing is refused", async ({
+  api,
+  db,
+  signedInPage,
+  anotherTab,
+  pageWatch,
+}, testInfo) => {
+  const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Field notes");
+  const plan = await createPage(api, pat, notebook.id, "Plan", null, "# Plan\n");
+  await createPage(api, pat, notebook.id, "Notes", plan.id, "# Notes\n");
+  const page = await signedInPage(tokens);
+  const tab = await anotherTab(page);
+  const streams = followStreams(page.context());
+  const notebookReads = countAnswers(tab, "GET", `/api/v0/workspaces/${workspace.slug}/notebooks`);
+
+  // The other tab opens first and holds the login's stream, let in once the page shows: its connection reads
+  // the notebooks again, and from then on only the mode event does.
+  const letStreamIn = await holdStream(tab);
+  const edit = tab.getByRole("main").getByRole("button", { name: "Edit", exact: true });
+  try {
+    await tab.goto(wikiPagePath(workspace.slug, notebook.id, plan.id));
+    await expect(edit).toBeVisible();
+    letStreamIn();
+    await expect.poll(streams.count).toBe(1);
+    await expect.poll(notebookReads).toBeGreaterThanOrEqual(2);
+  } finally {
+    letStreamIn();
+  }
+  await tab.evaluate(() => Object.assign(window, { up1Document: true }));
+  const opened = streams.opened();
+
+  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  const start = modeSection(page).getByRole("button", { name: "Upgrade to an LLM Wiki…", exact: true });
+  await start.click();
+  const dialog = startDialog(page, notebook.name);
+  await expect(dialog).toContainText("only your agent writes it, over MCP");
+  const started = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade`);
+  await dialog.getByRole("button", { name: "Start the upgrade", exact: true }).click();
+  expect((await started).status()).toBe(200);
+
+  await expect(page).toHaveURL(upgradePath(workspace.slug, notebook.id));
+  await expect(upgradeTitle(page)).toBeFocused();
+  await expect(upgradeBanner(page, bannerText.upgrading)).toBeVisible();
+  await expect(upgradeSection(page, "Connect an agent").getByText("upgrade", { exact: true })).toBeVisible();
+  const read = await getUpgrade(api, pat, notebook.id);
+  expect([read.data?.state, read.data?.started_by.user_id]).toEqual(["upgrading", adminId]);
+  if (!read.data) {
+    throw new Error("the upgrade started on the page reads none");
+  }
+  await expectUpgrade(db, read.data);
+  expect(await upgradesOf(db, notebook.id)).toEqual(["upgrading"]);
+
+  await expect(upgradeBanner(tab, bannerText.upgrading)).toBeVisible();
+  await expect(edit).toHaveCount(0);
+  await tab.keyboard.press("ControlOrMeta+e");
+  await expect(editorContent(tab)).toHaveCount(0);
+  expect(await tab.evaluate(() => "up1Document" in window)).toBe(true);
+  expect(streams.opened()).toBe(opened);
+  expect(pageWatch.apiFailures).toEqual([]);
 });

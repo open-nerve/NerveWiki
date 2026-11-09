@@ -1,15 +1,25 @@
 import type { TransferJob, TransferJobDetail, TreeNode, Upgrade } from "@nervewiki/api-client";
 
 import { expectBackgroundJob } from "../../fixtures/assert/transfer";
-import { expectUpgrade } from "../../fixtures/assert/wiki";
+import { expectUpgrade, upgradesOf } from "../../fixtures/assert/wiki";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, postPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { cancelJob, endedJob, holdNotebookRow, listJobs, runningJob, startImport } from "../../fixtures/transfer";
+import {
+  bannerText,
+  countsIn,
+  upgradeBanner,
+  upgradePath,
+  upgradeSection,
+  upgradeTitle,
+} from "../../fixtures/upgrade-pages";
 import { abandonUpgrade, endUpgradeRollback, getUpgrade, startUpgrade } from "../../fixtures/upgrades";
-import { newTeam } from "../../fixtures/workspaces";
+import { pageTree } from "../../fixtures/wiki-pages";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 import { zipOf } from "../../fixtures/zip-write";
 
 // UP3, an upgrade abandoned and rolled back (M11/P1 design 5): its
@@ -207,4 +217,118 @@ test("UP3 (API): with the server's import worker held by another notebook's impo
     [continued, ended].map((notebook) => postPage(api, pat, notebook.id, { parent_id: null, title: "After" }))
   );
   expect(after.map((a) => a.response.status)).toEqual([201, 201]);
+});
+
+/** The job of the rollback of the notebook notebookId's upgrade, as credential reads it. */
+async function jobIdOf(api: Parameters<typeof getUpgrade>[0], credential: string, notebookId: string): Promise<string> {
+  const read = await getUpgrade(api, credential, notebookId);
+  const job = read.data?.rollback_job_id;
+  if (!job) {
+    throw new Error(`the upgrade of ${notebookId} reads no rollback's job: ${read.response.status}`);
+  }
+  return job;
+}
+
+test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queued behind another notebook's import, shows as a job; cancelled, the page, not reloaded, reads it stopped: what is left, Continue and End; ended, keeping the notebook as it is, the upgrade is gone with its banner, and the notebook is editable again", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  test.slow();
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const other = await createNotebook(api, pat, workspace.slug, "Other notes");
+  const notebook = await createNotebook(api, pat, workspace.slug, "Field notes");
+  await createPage(api, pat, notebook.id, "Plan", null, "# Plan\n");
+  await startUpgrade(api, pat, notebook.id);
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  resultOf(await agent.call("move", { from: "Plan.md", to: "Plan 2.md" }), "the agent's rename of Plan");
+  resultOf(await agent.call("write", { path: "Fresh.md", content: "# Fresh\n" }), "the agent's write of Fresh");
+  // Ended, the upgrade is gone: its page's read again after the end, and the mode event's, answer 404.
+  pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404)] });
+  const page = await signedInPage(tokens);
+  await page.goto(upgradePath(workspace.slug, notebook.id));
+  await expect(upgradeBanner(page, bannerText.upgrading)).toBeVisible();
+  const abandon = page.getByRole("button", { name: "Abandon this upgrade…", exact: true });
+  await expect(abandon).toBeVisible();
+  await page.evaluate(() => Object.assign(window, { up3Document: true }));
+  const rollback = upgradeSection(page, "Rollback");
+  const end = rollback.getByRole("button", { name: "End the rollback, keeping the notebook as it is…", exact: true });
+
+  // The server has one import worker, which the rollbacks share: the other
+  // notebook's import holds it in a write of its tree, leaving the rollback
+  // queued.
+  let release: (() => Promise<void>) | undefined;
+  const jobs: TransferJob[] = [];
+  let cleanupErrors: unknown[] = [];
+  let failed = false;
+  try {
+    release = await holdNotebookRow(db, other.id);
+    const occupying = await startImport(api, pat, other.id, zipOf([{ name: "Other.md", data: "Other notes\n" }]));
+    jobs.push(occupying);
+    await runningJob(api, pat, occupying.id);
+
+    await abandon.click();
+    const abandonDialog = page.getByRole("alertdialog", { name: "Abandon the upgrade of “Field notes”?", exact: true });
+    const abandoned = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/abandon`);
+    await abandonDialog.getByRole("button", { name: "Abandon the upgrade", exact: true }).click();
+    expect((await abandoned).status()).toBe(200);
+    const job = rollback.getByRole("listitem", { name: /^Undo the upgrade/ });
+    await expect(job.getByRole("progressbar", { name: "Queued", exact: true })).toBeVisible();
+    await expect(upgradeTitle(page)).toBeFocused();
+    await expect(upgradeBanner(page, bannerText.rolling_back)).toBeVisible();
+    await expect(abandon).toHaveCount(0);
+    await expect(end).toHaveCount(0);
+
+    const cancelled = answerTo(page, "POST", `/api/v0/transfer-jobs/${await jobIdOf(api, pat, notebook.id)}/cancel`);
+    await job.getByRole("button", { name: /^Cancel Undo the upgrade/ }).click();
+    expect((await cancelled).status()).toBe(200);
+    await expect(end).toBeVisible();
+    await expect(job).toContainText("Cancelled");
+    await expect(rollback.getByRole("button", { name: "Continue the rollback…", exact: true })).toBeVisible();
+    expect(await countsIn(rollback)).toEqual([
+      ["Nodes not back in place", "1"],
+      ["Pages not written back", "0"],
+      ["New nodes still there", "3"],
+    ]);
+    expect(await page.evaluate(() => "up3Document" in window)).toBe(true);
+  } catch (error) {
+    failed = true;
+    throw error;
+  } finally {
+    const released = await Promise.allSettled(release === undefined ? [] : [release()]);
+    const finished = await Promise.allSettled(jobs.map((job) => endedJob(api, pat, job.id)));
+    cleanupErrors = [...released, ...finished].flatMap((result) =>
+      result.status === "rejected" ? [result.reason as unknown] : []
+    );
+    if (failed && cleanupErrors.length > 0) {
+      testInfo.annotations.push({ type: "cleanup", description: cleanupErrors.map(String).join("\n") });
+    }
+  }
+  if (cleanupErrors.length > 0) {
+    throw new AggregateError(cleanupErrors, "release the held notebook and finish the import");
+  }
+
+  await end.click();
+  const endDialog = page.getByRole("alertdialog", { name: "End the rollback of “Field notes”?", exact: true });
+  expect(await countsIn(endDialog)).toEqual([
+    ["Nodes not back in place", "1"],
+    ["Pages not written back", "0"],
+    ["New nodes still there", "3"],
+  ]);
+  await expect(endDialog).toContainText("links the system rewrote may lead nowhere");
+  const ended = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/end-rollback`);
+  await endDialog.getByRole("button", { name: "End the rollback", exact: true }).click();
+  expect((await ended).status()).toBe(200);
+  await expect(page.getByText("This notebook has no upgrade under way.", { exact: true })).toBeVisible();
+  await expect(upgradeTitle(page)).toBeFocused();
+  await expect(upgradeBanner(page, bannerText.rolling_back)).toHaveCount(0);
+  expect(await upgradesOf(db, notebook.id)).toEqual(["rolled_back"]);
+  const gone = `404 GET /api/v0/notebooks/${notebook.id}/upgrade`;
+  await expect.poll(() => pageWatch.apiFailures).toEqual([gone, gone]);
+
+  await pageTree(page, notebook.name).getByRole("link", { name: "Plan 2", exact: true }).click();
+  await expect(page.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => "up3Document" in window)).toBe(true);
 });
