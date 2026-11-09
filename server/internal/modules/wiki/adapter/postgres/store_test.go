@@ -62,8 +62,8 @@ func started(notebook, by uuid.UUID, at time.Time) domain.Upgrade {
 }
 
 // An upgrade's row (M11/P1 design 3.15): what its start writes reads back
-// as the notebook's upgrade under way, and only that notebook's; one
-// that ended is under way no more; a notebook's deletion deletes its
+// as the notebook's upgrade under way, and only that notebook's, rolling
+// back too; one that ended is under way no more; a notebook's deletion deletes its
 // upgrades at its time, by its actor, another notebook's stay; the purge
 // takes those deleted before its time, and no other.
 func TestTheUpgradesRows(t *testing.T) {
@@ -85,6 +85,17 @@ func TestTheUpgradesRows(t *testing.T) {
 	}
 	if _, ok, err := f.store.Current(ctx, uuid.NewV7()); ok || err != nil {
 		t.Errorf("Current(no notebook) = %v, %v; want none", ok, err)
+	}
+	// Rolling back, as its step sets it (S3): still under way.
+	job := uuid.NewV7()
+	if _, err := f.pool.Exec(ctx, `UPDATE notebook_upgrades SET state = 'rolling_back', ending = 'abandoned', rollback_job_id = $2
+		WHERE notebook_id = $1`, f.eng, job); err != nil {
+		t.Fatal(err)
+	}
+	rolling := eng
+	rolling.State, rolling.Ending, rolling.RollbackJobID = domain.UpgradeRollingBack, domain.UpgradeAbandoned, &job
+	if got, ok, err := f.store.Current(ctx, f.eng); err != nil || !ok || !reflect.DeepEqual(got, rolling) {
+		t.Errorf("Current(eng, rolling back) = %+v, %v, %v; want %+v", got, ok, err, rolling)
 	}
 
 	if _, err := f.pool.Exec(ctx, `UPDATE notebook_upgrades SET state = 'approved', submission_id = gen_random_uuid(),

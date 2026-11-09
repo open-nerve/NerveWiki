@@ -36,14 +36,17 @@ CREATE TABLE notebook_upgrades (
         CHECK (state IN ('upgrading', 'reviewing', 'rolling_back', 'approved', 'rolled_back')),
     CONSTRAINT notebook_upgrades_ending_check CHECK (ending IN ('abandoned', 'rejected')),
     CONSTRAINT notebook_upgrades_locale_check CHECK (locale IN ('zh-CN', 'en')),
+    -- baseline_nodes >= 0 follows from 0 <= baseline_pages <= baseline_nodes, kept to be read.
     CONSTRAINT notebook_upgrades_baseline_check CHECK (baseline_nodes >= 0 AND baseline_pages BETWEEN 0 AND baseline_nodes
         AND baseline_wanted BETWEEN 0 AND 10000 AND baseline_wanted_capped = (baseline_wanted = 10000)),
     CONSTRAINT notebook_upgrades_ending_state_check
         CHECK ((state IN ('rolling_back', 'rolled_back')) = (ending IS NOT NULL)),
     CONSTRAINT notebook_upgrades_submission_check CHECK ((submission_id IS NULL) = (submitted_at IS NULL)
         AND (submitted_at IS NULL) = (submitted_by_id IS NULL)),
+    -- 'approved' in the second conjunct follows from approved_check with report_check, kept to be read.
     CONSTRAINT notebook_upgrades_submission_state_check CHECK ((state <> 'upgrading' OR submission_id IS NULL)
         AND (state NOT IN ('reviewing', 'approved') OR submission_id IS NOT NULL)),
+    -- state <> 'upgrading' follows from submission_id IS NOT NULL with submission_state_check, kept to be read.
     CONSTRAINT notebook_upgrades_report_check CHECK (report IS NULL OR submission_id IS NOT NULL AND state <> 'upgrading'
         AND jsonb_typeof(report) = 'object' AND octet_length(report::text) <= 65536),
     CONSTRAINT notebook_upgrades_approved_check CHECK (state <> 'approved' OR report IS NOT NULL),
