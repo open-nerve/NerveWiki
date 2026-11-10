@@ -290,6 +290,33 @@ func TestUpgradeGuardrails(t *testing.T) {
 		g.refused(t, "a batch's move of A, then an edit of P undoing the rewrite", batchRewrite, "batch",
 			batched(opMove("A.md", "Map.md"), opEdit("P.md", "[[Map]]", "[[A]]")), 1)
 	})
+	// g26: N, a page the agent wrote since the start, not of the baseline,
+	// linking to A: a batch's move of A, then N's own bytes, which the unit
+	// writes not but has the guards judge, other bytes, an edit undoing the
+	// rewrite folded in, each done, N holding what the agent wrote; P, of
+	// the baseline, which the batch does not write, rewritten by its
+	// deferred rewrite. A guard refusing a reached page before it reads
+	// whether it is of the baseline fails here (review P2S1C-N5).
+	t.Run("g26", func(t *testing.T) {
+		const n = "See [[A]].\n"
+		for _, tt := range []struct {
+			what  string
+			op    func(g upgradedNotebook) map[string]any
+			holds string
+		}{
+			{"N's own bytes", func(g upgradedNotebook) map[string]any { return opWriteOn("N.md", n, g.version(t, "N")) }, n},
+			{"other bytes", func(g upgradedNotebook) map[string]any {
+				return opWriteOn("N.md", "---\ntype: x\n---\n"+n, g.version(t, "N"))
+			}, "---\ntype: x\n---\n" + n},
+			{"an edit undoing the rewrite", func(upgradedNotebook) map[string]any { return opEdit("N.md", "[[Map]]", "[[A]]") }, n},
+		} {
+			g := tm.upgradedNotebook(t, linked...)
+			g.done(t, "N written", "write", map[string]any{"path": "N.md", "content": n})
+			g.done(t, "a batch's move of A, then "+tt.what+" of N", "batch", batched(opMove("A.md", "Map.md"), tt.op(g)))
+			g.holds(t, "N", tt.holds)
+			g.holds(t, "P", "---\ntype: a\n---\nSee [[Map]].\n")
+		}
+	})
 	// g27: decision 270, P's link taken out by an edit, A renamed, the link
 	// put back: the rename reaches no link P holds in the batch then, but
 	// one it had before it, by the index; page.upgrade_batch_rewrite at

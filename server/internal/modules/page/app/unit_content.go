@@ -118,8 +118,10 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 	return c.Revision, err
 }
 
-// contentStep is shared by changed writes and the few no-ops whose
-// contract still applies. A no-op never enters apply or the edit lock.
+// contentStep is shared by changed writes, the few no-ops whose contract
+// still applies, and a batch's no-ops a move reached while upgrading,
+// which meet every guard (guarded), the edit lock's too, writing nothing.
+// A no-op never enters apply.
 func (u *Unit) contentStep(n domain.Node, before ContentLock, c Content, w ContentWrite, session EditSession) Step {
 	state := n.State()
 	step := u.step(domain.OpContent, domain.Change{NodeID: n.ID, Before: &state, After: &state, Revision: c.Revision, Facts: w.Facts})
