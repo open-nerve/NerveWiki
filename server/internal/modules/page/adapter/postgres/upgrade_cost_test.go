@@ -250,7 +250,8 @@ const (
 // rollbackReadProblems says: upgrade_nodes by upgrade_nodes_pkey's prefix,
 // upgrade_id in its condition; nodes and page_contents by their keys on a
 // Nested Loop's inner side, by the outer row's key; changesets by
-// changesets_upgrade_id_idx alone; nothing read again whole for each row.
+// changesets_upgrade_id_idx alone; nothing read again whole for each row;
+// and, as gateNodesProblems says, nodes by nodes_pkey alone.
 // UpgradePreserved's Sort of this upgrade's rows for its array_agg is no
 // problem (design 3.9). A problem fails the test before the reads run.
 // Then, on a connection of their own forced to each plan, each read
@@ -345,7 +346,7 @@ func TestTheUpgradeGateReadsPlansAtAnyStatistics(t *testing.T) {
 				} else {
 					plan, raw = f.explain(t, `EXPLAIN (FORMAT JSON, VERBOSE, COSTS OFF) `+s.sql, s.args, nil)
 				}
-				if problems := rollbackReadProblems(&plan); len(problems) > 0 {
+				if problems := append(rollbackReadProblems(&plan), gateNodesProblems(&plan)...); len(problems) > 0 {
 					planned = true
 					t.Errorf("%s, %s, generic %v: %s\n%s\n%.3000s", statistics, name, generic, strings.Join(problems, "; "),
 						planShape(&plan), raw)
@@ -364,6 +365,78 @@ func TestTheUpgradeGateReadsPlansAtAnyStatistics(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("upgrade gate reads cost %s", b)
+}
+
+// gateNodesProblems are the problems of a gate read's plan that
+// rollbackReadProblems lets by (review P2S2B-M1): a gate read reads a node
+// by its id alone, so each scan of nodes, each bitmap of one, is by
+// nodes_pkey on id; one by an index on notebook_id, or on notebook_id and
+// parent_id, reads a notebook's or a folder's nodes for each row, which
+// rollbackReadProblems takes for a read by the outer row's key.
+func gateNodesProblems(plan *planNode) []string {
+	var problems []string
+	var visit func(n *planNode)
+	visit = func(n *planNode) {
+		if n.Relation == "nodes" {
+			scans := []*planNode{n}
+			if n.Type == "Bitmap Heap Scan" {
+				scans = rollbackBitmaps(n)
+			}
+			for _, ix := range scans {
+				if ix.Index != "nodes_pkey" || !strings.Contains(ix.IndexCond, "id = ") {
+					problems = append(problems, fmt.Sprintf("nodes read by %s %s on %q, not by nodes_pkey on id", ix.Type, ix.Index,
+						ix.IndexCond))
+				}
+			}
+		}
+		for i := range n.Plans {
+			visit(&n.Plans[i])
+		}
+	}
+	visit(plan)
+	return problems
+}
+
+// gateNodesProblems on plans written by hand, without a database: a
+// node's key for each baseline row is no problem; the baseline row's
+// notebook's nodes, or its folder's, for each row are, though
+// rollbackReadProblems lets them by (review P2S2B-M1).
+func TestTheGateReadsReadANodeByItsKey(t *testing.T) {
+	scan := func(kind, index, cond string) string {
+		return `{"Node Type":"` + kind + `","Relation Name":"nodes","Index Name":"` + index + `","Index Cond":"` + cond + `"}`
+	}
+	loop := func(inner string) string {
+		return `{"Node Type":"Nested Loop","Plans":[{"Node Type":"Index Scan","Relation Name":"upgrade_nodes",` +
+			`"Index Name":"upgrade_nodes_pkey","Index Cond":"(b.upgrade_id = $1)","Parent Relationship":"Outer"},` +
+			`{"Node Type":"Limit","Parent Relationship":"Inner","Plans":[` + inner + `]}]}`
+	}
+	for _, tt := range []struct {
+		name, plan string
+		ok         bool
+	}{
+		{"a node's key for each row", loop(scan("Index Scan", "nodes_pkey", "(n.id = b.node_id)")), true},
+		{"a node's key by a bitmap", loop(`{"Node Type":"Bitmap Heap Scan","Relation Name":"nodes","Plans":[` +
+			scan("Bitmap Index Scan", "nodes_pkey", "(id = b.node_id)") + `]}`), true},
+		{"the row's notebook's nodes", loop(scan("Index Scan", "nodes_notebook_id_name_key_idx", "(n.notebook_id = b.notebook_id)")),
+			false},
+		{"the row's folder's nodes", loop(scan("Index Scan", "nodes_notebook_id_parent_id_idx",
+			"((n.notebook_id = b.notebook_id) AND (n.parent_id = b.parent_id))")), false},
+		{"a Seq Scan", loop(scan("Seq Scan", "", "")), false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var plan planNode
+			if err := json.Unmarshal([]byte(tt.plan), &plan); err != nil {
+				t.Fatal(err)
+			}
+			problems := gateNodesProblems(&plan)
+			if (len(problems) == 0) != tt.ok {
+				t.Errorf("problems %v, want ok %t", problems, tt.ok)
+			}
+			if strings.HasPrefix(tt.name, "the row's") && len(rollbackReadProblems(&plan)) != 0 {
+				t.Errorf("rollbackReadProblems = %v, want none: the gap gateNodesProblems closes", rollbackReadProblems(&plan))
+			}
+		})
+	}
 }
 
 // gateTimed are the medians of three of each gate read, in ms, on a
