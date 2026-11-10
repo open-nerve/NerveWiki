@@ -87,6 +87,14 @@ type StepContent struct {
 	Hash                       []byte
 	Bytes, BeforeBytes, Merged int
 	BeforeRevision             int
+	// BodyHash is UpgradeBodyHash of the content written, while the
+	// notebook is upgrading, but for a system's rewrite (Rewrite), which the
+	// guardrails let by unread; nil otherwise (M11 design 4.6).
+	BodyHash []byte
+	// BeforeHash is the hash of the content the step writes over, as the
+	// unit locked it (ContentLock.Hash), in a notebook being upgraded: the
+	// ledger takes the step's only over it (M11/P2 design 3.5).
+	BeforeHash []byte
 }
 
 // StepLines are the operation root's ancestors on each side. Nil Lines means

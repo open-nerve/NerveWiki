@@ -50,8 +50,19 @@ func (m *Markdown) Links(facts app.Facts) int {
 
 // FrontmatterEnd implements app.Markdown.
 func (m *Markdown) FrontmatterEnd(content string) int {
-	return markdown.FrontmatterEnd([]byte(content))
+	return FrontmatterEnd(content)
 }
+
+// FrontmatterEnd is where content's frontmatter ends, past its closing
+// line, as the parse reads it; 0 without one. It needs none of the parse's
+// settings: the freeze guard, built from the pool, has it too.
+func FrontmatterEnd(content string) int { return markdown.FrontmatterEnd([]byte(content)) }
+
+// Frontmatter is FrontmatterEnd as a port (app.Frontmatters).
+type Frontmatter struct{}
+
+// FrontmatterEnd implements app.Frontmatters.
+func (Frontmatter) FrontmatterEnd(content string) int { return FrontmatterEnd(content) }
 
 // Tasks implements app.Markdown: what the tasks extension took. A Markdown
 // without the extension, or facts that Facts did not return, have none.

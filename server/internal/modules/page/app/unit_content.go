@@ -120,6 +120,16 @@ func (u *Unit) contentStep(n domain.Node, before ContentLock, c Content, w Conte
 	}
 	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: before.ByteSize, BeforeRevision: before.Revision, Merged: merged}
 	step.Rewrite = w.Rewrite
+	// An upgrade's guardrails compare the body of what the initiator's
+	// agent writes, but a system's rewrite's, which they let by unread: a
+	// single move's rewrite writes as many pages as link to it (M11/P2
+	// design 3.3). Its ledger takes the step over the hash locked.
+	if up := u.write.Notebook.Upgrade; up.ID != (uuid.UUID{}) {
+		step.Content.BeforeHash = before.Hash
+		if up.State == domain.UpgradeUpgrading && !w.Rewrite {
+			step.Content.BodyHash = domain.UpgradeBodyHash(w.Content, u.w.d.Markdown.FrontmatterEnd(w.Content))
+		}
+	}
 	return step
 }
 

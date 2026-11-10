@@ -12,6 +12,48 @@ import (
 	"uuid"
 )
 
+const acceptUpgradeContent = `-- name: AcceptUpgradeContent :one
+WITH b AS (
+    SELECT 1 FROM upgrade_nodes r
+    WHERE r.upgrade_id = $1 AND r.node_id = $2 AND r.baseline AND r.kind = 'page'
+), u AS (
+    UPDATE upgrade_nodes w SET accepted_hash = $3
+    WHERE w.upgrade_id = $1 AND w.node_id = $2 AND w.baseline AND w.kind = 'page'
+        AND ($4::bytea IS NULL OR w.accepted_hash = $4::bytea)
+    RETURNING 1
+)
+SELECT (SELECT count(*) FROM b)::integer AS baseline, (SELECT count(*) FROM u)::integer AS accepted
+`
+
+type AcceptUpgradeContentParams struct {
+	UpgradeID uuid.UUID
+	NodeID    uuid.UUID
+	After     []byte
+	Before    []byte
+}
+
+type AcceptUpgradeContentRow struct {
+	Baseline int32
+	Accepted int32
+}
+
+// The ledger (M11 design 4.6, decision 191): a content written in a notebook being upgraded, of a page of the
+// upgrade's baseline, is the one its guardrails accepted. With before (upgrading) only over the hash accepted last,
+// which the content written over must have (M11/P2 design 3.5): a baseline row whose hash is another counts
+// baseline 1, accepted 0, its caller's defect. No row for a page not of the baseline. In the unit's transaction, by
+// upgrade_nodes_pkey; b reads the row as the statement started, u writes it.
+func (q *Queries) AcceptUpgradeContent(ctx context.Context, arg AcceptUpgradeContentParams) (AcceptUpgradeContentRow, error) {
+	row := q.db.QueryRow(ctx, acceptUpgradeContent,
+		arg.UpgradeID,
+		arg.NodeID,
+		arg.After,
+		arg.Before,
+	)
+	var i AcceptUpgradeContentRow
+	err := row.Scan(&i.Baseline, &i.Accepted)
+	return i, err
+}
+
 const analyzeUpgradeNodes = `-- name: AnalyzeUpgradeNodes :exec
 ANALYZE upgrade_nodes
 `
@@ -489,6 +531,30 @@ type SetBaselineWantedParams struct {
 func (q *Queries) SetBaselineWanted(ctx context.Context, arg SetBaselineWantedParams) error {
 	_, err := q.db.Exec(ctx, setBaselineWanted, arg.UpgradeID, arg.NodeIds, arg.Wanted)
 	return err
+}
+
+const upgradeBaselineContent = `-- name: UpgradeBaselineContent :one
+SELECT c.content FROM upgrade_nodes b
+JOIN LATERAL (
+    SELECT c.content FROM page_contents c WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+) c ON true
+WHERE b.upgrade_id = $1 AND b.node_id = $2 AND b.baseline AND b.kind = 'page'
+`
+
+type UpgradeBaselineContentParams struct {
+	UpgradeID uuid.UUID
+	NodeID    uuid.UUID
+}
+
+// The content now of the page node_id when it is of the upgrade upgrade_id's baseline (M11 design 4.6): an upgrade's
+// guardrail compares its body with a write's, in the unit's transaction, under the page's content row lock the unit
+// holds. By upgrade_nodes_pkey, then page_contents_pkey; no row for a page not of the baseline, whose content is not
+// read. A seeded source root's protection row is not of the baseline.
+func (q *Queries) UpgradeBaselineContent(ctx context.Context, arg UpgradeBaselineContentParams) (string, error) {
+	row := q.db.QueryRow(ctx, upgradeBaselineContent, arg.UpgradeID, arg.NodeID)
+	var content string
+	err := row.Scan(&content)
+	return content, err
 }
 
 const upgradeProtected = `-- name: UpgradeProtected :many

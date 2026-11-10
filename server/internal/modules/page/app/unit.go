@@ -46,6 +46,12 @@ type WriterDeps struct {
 	SourcePrecheck *SourcePrecheck
 	Sources        SourceStore
 	Attachments    AttachmentInfos
+	// Markdown tells where a content's frontmatter ends: the body an
+	// upgrade's guardrails compare (M11/P2 design 3.3). Ledger is the
+	// upgrade's ledger, which each content step of a notebook with an
+	// upgrade writes (M11/P2 design 3.5).
+	Markdown Frontmatters
+	Ledger   UpgradeLedger
 	// Names gives the name of who released a session's lock (M5 design
 	// 4.3).
 	Names        Names
@@ -410,6 +416,9 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 	if err := u.writeSourceHashes(ctx, s); err != nil {
 		return err
 	}
+	if err := u.acceptUpgradeContent(ctx, s); err != nil {
+		return err
+	}
 	if err := u.recordItems(ctx, s.Changes); err != nil {
 		return err
 	}
@@ -426,6 +435,24 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 		}
 	}
 	return nil
+}
+
+// acceptUpgradeContent writes a content step's hash to the ledger of the
+// notebook's upgrade (M11 design 4.6, decision 191; M11/P2 design 3.5):
+// every content step, the participants' rewrites too, upgrading only over
+// the hash the ledger accepted last, which the content written over must
+// have; a rollback's unit writes it anyway. A notebook with no upgrade,
+// and any other step, writes none.
+func (u *Unit) acceptUpgradeContent(ctx context.Context, s Step) error {
+	up := u.write.Notebook.Upgrade
+	if s.Operation != domain.OpContent || up.ID == (uuid.UUID{}) {
+		return nil
+	}
+	var before []byte // a rollback's unit writes it anyway
+	if up.State == domain.UpgradeUpgrading {
+		before = s.Content.BeforeHash
+	}
+	return u.w.d.Ledger.AcceptUpgradeContent(ctx, up.ID, s.Changes[0].NodeID, before, s.Content.Hash)
 }
 
 // inUnit refuses a ctx without the unit's transaction: an operation would

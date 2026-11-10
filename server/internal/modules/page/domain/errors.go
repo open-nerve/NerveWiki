@@ -128,6 +128,10 @@ var (
 	// initiator's agent's, MCP's own code.
 	ErrUpgradeProtected = shared.NewError(shared.KindConflict, "page.upgrade_protected",
 		"The node was there when the upgrade started, or is its source root: an upgrade may not delete it.")
+	// ErrUpgradeImmutable: a write of a page the upgrade started with whose
+	// body, past its frontmatter, changed (M11 design 4.6).
+	ErrUpgradeImmutable = shared.NewError(shared.KindConflict, "page.upgrade_immutable",
+		"The page was there when the upgrade started: an upgrade may change its frontmatter, not the content after it.")
 	// ErrUpgradeKeepLinks: a move or rename that leaves the links to the
 	// node as they are, while upgrading (M11 design 4.6).
 	ErrUpgradeKeepLinks = shared.NewError(shared.KindConflict, "page.upgrade_keep_links",

@@ -79,6 +79,111 @@ func TestUpgradeGuardrails(t *testing.T) {
 		}
 	})
 
+	// g1: a baseline page's frontmatter written, its body as it was: done,
+	// the ledger the new content's hash. g2, g3: an edit and a write of its
+	// body.
+	const immutable = "page.upgrade_immutable"
+	t.Run("g1", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n\nText.\n"})
+		const written = "---\ntype: note\nsummary: The plan.\n---\n# Plan\n\nText.\n"
+		g.done(t, "the write of Plan's frontmatter", "write", map[string]any{"path": "Plan.md", "content": written,
+			"base_version": g.version(t, "Plan")})
+		g.holds(t, "Plan", written)
+		g.accepted(t, "Plan")
+	})
+	t.Run("g2", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n\nText.\n"})
+		g.refused(t, "an edit of Plan's body", immutable, "edit", map[string]any{"path": "Plan.md", "old_string": "Text",
+			"new_string": "TexT"}, -1)
+	})
+	t.Run("g3", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n\nText.\n"})
+		g.refused(t, "a write of Plan's body", immutable, "write", map[string]any{"path": "Plan.md",
+			"content": "---\ntype: note\n---\n# Plan\n\nOther text.\n", "base_version": g.version(t, "Plan")}, -1)
+	})
+	// g4: a rename of a page that two baseline pages link to: done, the
+	// system's rewrite of their links let by, unread, and the ledger each
+	// one's hash after it.
+	t.Run("g4", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n"},
+			upgradedPage{title: "Notes", content: "---\ntype: note\n---\nSee [[Plan]].\n"},
+			upgradedPage{title: "Guide", content: "Also [[Plan]].\n"})
+		g.done(t, "the rename of Plan to Map", "move", map[string]any{"from": "Plan.md", "to": "Map.md"})
+		g.holds(t, "Notes", "---\ntype: note\n---\nSee [[Map]].\n")
+		g.holds(t, "Guide", "Also [[Map]].\n")
+		g.accepted(t, "Notes", "Guide", "Plan")
+	})
+	// g7: a page the agent created, its body written again; g8: the body
+	// of the source root the start seeded, whose protection row is not of
+	// the baseline.
+	t.Run("g7", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n"})
+		g.done(t, "the write of New", "write", map[string]any{"path": "New.md", "content": "x\n"})
+		g.done(t, "a write of New's body", "write", map[string]any{"path": "New.md", "content": "y\n", "base_version": g.version(t, "New")})
+		g.holds(t, "New", "y\n")
+	})
+	t.Run("g8", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n"}, upgradedPage{title: "raw", content: "Sources.\n"})
+		g.seeded(t, "raw")
+		g.done(t, "a write of raw's body", "write", map[string]any{"path": "raw.md", "content": "Other sources.\n",
+			"base_version": g.version(t, "raw")})
+		g.holds(t, "raw", "Other sources.\n")
+		if got := queryStrings(t, tm.pool, `SELECT coalesce(encode(accepted_hash, 'hex'), '-') FROM upgrade_nodes WHERE upgrade_id = $1
+			AND node_id = $2`, g.upgrade, g.ids["raw"]); !slices.Equal(got, []string{"-"}) {
+			t.Errorf("raw's protection row has the accepted hash %v, want none", got)
+		}
+	})
+	// g14: a page opening with a lone "---", a valid frontmatter written
+	// above it: the old page whole is the body, its bytes kept. g15: an
+	// invalid frontmatter with its closing line fixed in place; another
+	// pushed below a new block, its body then the old block.
+	t.Run("g14", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Old", content: "---\nText\n"})
+		g.done(t, "a frontmatter written above Old's lone opening line", "write", map[string]any{"path": "Old.md",
+			"content": "---\ntype: x\n---\n---\nText\n", "base_version": g.version(t, "Old")})
+		g.accepted(t, "Old")
+	})
+	t.Run("g15", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Broken", content: "---\na: [\n---\nText\n"},
+			upgradedPage{title: "Other", content: "---\na: [\n---\nText\n"})
+		g.done(t, "Broken's frontmatter fixed in place", "write", map[string]any{"path": "Broken.md",
+			"content": "---\nraw: \"a: [\"\n---\nText\n", "base_version": g.version(t, "Broken")})
+		g.accepted(t, "Broken")
+		g.refused(t, "a frontmatter written above Other's", immutable, "write", map[string]any{"path": "Other.md",
+			"content": "---\ntype: x\n---\n---\na: [\n---\nText\n", "base_version": g.version(t, "Other")}, -1)
+	})
+	// g16: a write of the bytes a baseline page holds is done, writing
+	// nothing.
+	t.Run("g16", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n"})
+		before := g.rows(t)
+		g.done(t, "a write of Plan's bytes", "write", map[string]any{"path": "Plan.md", "content": "# Plan\n",
+			"base_version": g.version(t, "Plan")})
+		if after := g.rows(t); !slices.Equal(after, before) {
+			t.Errorf("a write of Plan's bytes changed the notebook's rows or its upgrade's")
+		}
+	})
+	// g17, g18: a baseline page's body changed by SQL, past the units (the
+	// tripwire of M11 design 4.6): the agent's write of its frontmatter
+	// alone, which the guard lets by, its body being the one there, and a
+	// rename that the system rewrites it for, which the guard does not
+	// read, are both a defect's error, internal_error, the ledger's write
+	// finding the hash written over not the one it accepted (M11/P2 design
+	// 3.5); nothing written, the ledger as it was.
+	t.Run("g17", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "---\ntype: a\n---\nBody.\n"})
+		g.bypass(t, "Plan", "---\ntype: a\n---\nBody bypassed.\n")
+		g.refused(t, "the write of Plan's frontmatter, its body changed past the units", "internal_error", "write",
+			map[string]any{"path": "Plan.md", "content": "---\ntype: b\n---\nBody bypassed.\n", "base_version": g.version(t, "Plan")}, -1)
+	})
+	t.Run("g18", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, upgradedPage{title: "Plan", content: "# Plan\n"},
+			upgradedPage{title: "Notes", content: "---\ntype: a\n---\nSee [[Plan]].\n"})
+		g.bypass(t, "Notes", "---\ntype: a\n---\nSee [[Plan]]. Bypassed.\n")
+		g.refused(t, "the rename of Plan, Notes changed past the units", "internal_error", "move",
+			map[string]any{"from": "Plan.md", "to": "Map.md"}, -1)
+	})
+
 	// g5, g6: a single move, to another parent and to another name under
 	// its parent, with update_links false; g13: a batch's.
 	const keepLinks = "page.upgrade_keep_links"
@@ -151,6 +256,68 @@ func (g upgradedNotebook) refused(t *testing.T, what, code, tool string, args ma
 	if after := g.rows(t); !slices.Equal(after, before) {
 		t.Errorf("%s, refused, changed the notebook's rows or its upgrade's", what)
 	}
+}
+
+// version is the version token of the page titled title now.
+func (g upgradedNotebook) version(t *testing.T, title string) string {
+	t.Helper()
+	id := g.idOf(t, title)
+	return id + ":" + queryStrings(t, g.tm.pool, "SELECT revision::text FROM page_contents WHERE node_id = $1", id)[0]
+}
+
+// idOf is the id of the page titled title, alive in the notebook.
+func (g upgradedNotebook) idOf(t *testing.T, title string) string {
+	t.Helper()
+	if id, ok := g.ids[title]; ok {
+		return id
+	}
+	ids := queryStrings(t, g.tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = $2 AND deleted_at IS NULL", g.id, title)
+	if len(ids) != 1 {
+		t.Fatalf("the pages titled %s: %v", title, ids)
+	}
+	g.ids[title] = ids[0]
+	return ids[0]
+}
+
+// holds fails t unless the page titled title holds content.
+func (g upgradedNotebook) holds(t *testing.T, title, content string) {
+	t.Helper()
+	if got := queryStrings(t, g.tm.pool, "SELECT content FROM page_contents WHERE node_id = $1", g.idOf(t, title)); len(got) != 1 ||
+		got[0] != content {
+		t.Errorf("%s holds %q, want %q", title, got, content)
+	}
+}
+
+// accepted fails t unless the upgrade's ledger accepted the hash of the
+// content each page titled titles holds.
+func (g upgradedNotebook) accepted(t *testing.T, titles ...string) {
+	t.Helper()
+	for _, title := range titles {
+		if n := count(t, g.tm.pool, `SELECT count(*) FROM upgrade_nodes b JOIN page_contents c ON c.node_id = b.node_id
+			WHERE b.upgrade_id = $1 AND b.node_id = $2 AND b.accepted_hash = c.content_hash`, g.upgrade, g.idOf(t, title)); n != 1 {
+			t.Errorf("the ledger accepted %s's hash %d times, want once", title, n)
+		}
+	}
+}
+
+// seeded has the page titled title stand for the source root the
+// upgrade's start created (M11/P1 design 3.12): its row protects it, not
+// of the baseline.
+func (g upgradedNotebook) seeded(t *testing.T, title string) {
+	t.Helper()
+	g.tm.exec(t, `UPDATE upgrade_nodes SET baseline = false, parent_id = NULL, name = NULL, sort_order = NULL, revision = NULL,
+		content_hash = NULL, byte_size = NULL, wanted = NULL, accepted_hash = NULL WHERE upgrade_id = $1 AND node_id = $2`,
+		g.upgrade, g.ids[title])
+	g.tm.exec(t, `UPDATE notebook_upgrades SET seeded_root = true, source_root_id = $2, baseline_nodes = baseline_nodes - 1,
+		baseline_pages = baseline_pages - 1 WHERE id = $1`, g.upgrade, g.ids[title])
+}
+
+// bypass writes content to the page titled title by SQL, past the units:
+// its revision, its index and the ledger as they were.
+func (g upgradedNotebook) bypass(t *testing.T, title, content string) {
+	t.Helper()
+	g.tm.exec(t, `UPDATE page_contents SET content = $2, content_hash = sha256(convert_to($2, 'UTF8')), byte_size = octet_length($2)
+		WHERE node_id = $1`, g.ids[title], content)
 }
 
 // done is the agent's call of tool with args, which must be done.
