@@ -3,6 +3,7 @@ package mcpadapter
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -35,11 +36,12 @@ type checkRead struct {
 // bigCheck is a check whose eight rules have five items of paths of
 // pathBytes each and start cursors of 2,048 bytes, and whose three gates
 // name fourteen nodes of paths of gateBytes, the first of each gate's not
-// in the live tree.
+// in the live tree; each of its counts its own value, the wanted pages
+// as the upgrade started 5, now capped.
 func bigCheck(pathBytes, gateBytes int) domain.UpgradeCheck {
 	c := domain.UpgradeCheck{ComputedAt: lintTime(), Paths: map[uuid.UUID]string{},
-		Counts: domain.UpgradeCounts{Sources: 1, WikiPages: 2, NewPages: 3, Changesets: 4,
-			WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
+		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 6, WikiPages: 2, NewPages: 3, Changesets: 4,
+			WantedBefore: domain.LintCount{Value: 5}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
 	n := byte(100)
 	ids := func(k int) []uuid.UUID {
 		out := make([]uuid.UUID, k)
@@ -93,12 +95,24 @@ func readCheck(t *testing.T, res mcpserver.Result) checkRead {
 func TestTheCheckFits(t *testing.T) {
 	c := readCheck(t, mustFit(t, bigCheck(10, 10)))
 	if len(c.Rules) != 8 || len(c.Rules[0].Items) != 5 || len(c.Gates["links"].Paths) != 5 || c.Gates["links"].Paths[0] != nil ||
-		c.Gates["links"].Paths[1] == nil || *c.Gates["links"].Paths[1] != strings.Repeat("g", 10) || c.Counts["new_pages"] != float64(3) ||
-		c.Counts["wanted_now"].(map[string]any)["count_capped"] != true {
+		c.Gates["links"].Paths[1] == nil || *c.Gates["links"].Paths[1] != strings.Repeat("g", 10) {
 		t.Fatalf("a small check = %+v", c)
 	}
 	if c.Rules[1].Items[0]["path"] != strings.Repeat("p", 10) {
 		t.Fatalf("an orphan = %v, want its path", c.Rules[1].Items[0])
+	}
+	// The counts whole, so that none answers another's (review P2S2C-M5);
+	// then the wanted pages the other way round: capped as the upgrade
+	// started, now not.
+	if got, want := fmt.Sprint(c.Counts), "map[changesets:4 moved_into_sources:6 new_pages:3 sources:1 "+
+		"wanted_before:map[count:5 count_capped:false] wanted_now:map[count:10000 count_capped:true] wiki_pages:2]"; got != want {
+		t.Errorf("counts %s, want %s", got, want)
+	}
+	before := bigCheck(10, 10)
+	before.Counts.WantedBefore, before.Counts.WantedNow = domain.LintCount{Value: 10000, Capped: true}, domain.LintCount{Value: 7}
+	if got, want := fmt.Sprint(readCheck(t, mustFit(t, before)).Counts), "map[changesets:4 moved_into_sources:6 new_pages:3 sources:1 "+
+		"wanted_before:map[count:10000 count_capped:true] wanted_now:map[count:7 count_capped:false] wiki_pages:2]"; got != want {
+		t.Errorf("counts, capped before, %s, want %s", got, want)
 	}
 
 	// Items of 2 KiB paths: some of each rule's cut, the gates whole.

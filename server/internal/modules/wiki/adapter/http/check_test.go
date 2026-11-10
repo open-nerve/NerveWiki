@@ -76,15 +76,15 @@ func TestTheCheckIsAnswered(t *testing.T) {
 	gates, counts := got["gates"].(map[string]any), got["counts"].(map[string]any)
 	if got["passed"] != false || got["stale_pages"] != float64(2) || len(got["rules"].([]any)) != 8 || len(gates) != 8 ||
 		len(gates["links"].(map[string]any)["node_ids"].([]any)) != 5 || gates["preserved"].(map[string]any)["nodes_kept"] != float64(8) ||
-		gates["agents"].(map[string]any)["passed"] != true || counts["moved_into_sources"] != float64(2) ||
-		strings.Contains(string(body), "index.md") {
+		gates["agents"].(map[string]any)["passed"] != true || strings.Contains(string(body), "index.md") {
 		t.Errorf("check = %s", body)
 	}
-	// One of the wanted counts capped, the other not, so that each is its
-	// own (review P2S2C-M4); the report's test has them the other way.
-	if before, now := fmt.Sprint(counts["wanted_before"]), fmt.Sprint(counts["wanted_now"]); before != "map[count:10000 count_capped:true]" ||
-		now != "map[count:6 count_capped:false]" {
-		t.Errorf("wanted before %s, now %s; want 10,000 capped, then 6", before, now)
+	// The counts whole, each its own value, so that none answers another's
+	// (reviews P2S2C-M4, M5); one of the wanted counts capped, the other
+	// not, the report's test the other way round.
+	if got, want := fmt.Sprint(counts), "map[changesets:5 moved_into_sources:2 new_pages:4 sources:1 "+
+		"wanted_before:map[count:10000 count_capped:true] wanted_now:map[count:6 count_capped:false] wiki_pages:3]"; got != want {
+		t.Errorf("counts %s, want %s", got, want)
 	}
 	if len(f.queries) != 1 || f.queries[0] != (app.LintQuery{}) {
 		t.Errorf("the check asked %+v", f.queries)

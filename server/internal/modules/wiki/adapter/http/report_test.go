@@ -34,7 +34,7 @@ func reportedView() app.UpgradeView {
 			Links:          domain.LinksGate{Passed: true, NodeIDs: []uuid.UUID{lintID(61), lintID(62)}},
 			Preserved:      domain.PreservedGate{Passed: true, Nodes: 7, NodesKept: 7, Pages: 5, PagesKept: 5, NodeIDs: []uuid.UUID{lintID(63)}}},
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 2, WikiPages: 3, NewPages: 4, Changesets: 5,
-			WantedBefore: domain.LintCount{Value: 5}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
+			WantedBefore: domain.LintCount{Value: 8}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
 	hash := strings.Repeat("a", 64)
 	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
 		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 5}}
@@ -88,13 +88,14 @@ func TestTheReportIsAnswered(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.State != "reviewing" || len(got.Report.Rules) != 8 || len(got.Report.Gates["links"].NodeIDs) != 2 ||
-			len(got.Report.Gates["agents"].NodeIDs) != 0 || got.Report.Counts["new_pages"] != float64(4) {
+			len(got.Report.Gates["agents"].NodeIDs) != 0 {
 			t.Fatalf("answered %s", body)
 		}
-		// The wanted counts the check's test's other way round (P2S2C-M4).
-		if before, now := fmt.Sprint(got.Report.Counts["wanted_before"]), fmt.Sprint(got.Report.Counts["wanted_now"]); before !=
-			"map[count:5 count_capped:false]" || now != "map[count:10000 count_capped:true]" {
-			t.Fatalf("wanted before %s, now %s; want 5, then 10,000 capped", before, now)
+		// The counts whole, each its own value (reviews P2S2C-M4, M5); the
+		// wanted counts the check's test's other way round.
+		if counts, want := fmt.Sprint(got.Report.Counts), "map[changesets:5 moved_into_sources:2 new_pages:4 sources:1 "+
+			"wanted_before:map[count:8 count_capped:false] wanted_now:map[count:10000 count_capped:true] wiki_pages:3]"; counts != want {
+			t.Fatalf("counts %s, want %s", counts, want)
 		}
 		for _, rule := range got.Report.Rules {
 			if len(rule.Items) != 5 || rule.Items[0]["rule"] != rule.Rule {

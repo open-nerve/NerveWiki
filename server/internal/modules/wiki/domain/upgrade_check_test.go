@@ -229,6 +229,24 @@ func TestJudgeUpgradesCounts(t *testing.T) {
 			t.Errorf("counts = %+v, want %+v", c.Counts, want)
 		}
 	})
+	// Each count its own value, so that none is another's (review
+	// P2S2C-M5): a page made under the sources since, more changesets, more
+	// wanted pages before and now.
+	t.Run("each count its own", func(t *testing.T) {
+		r := passingRead()
+		deep, made := checkID(13), checkID(14)
+		r.Baseline = append(r.Baseline, domain.BaselineNode{ID: deep, ParentID: checkPtr(checkID(12)), Kind: page})
+		r.Nodes = append(r.Nodes, domain.GateNode{ID: deep, ParentID: checkPtr(checkID(12)), Kind: page, Key: "deep"},
+			domain.GateNode{ID: made, ParentID: checkPtr(checkID(12)), Kind: page, Key: "since"})
+		r.Area = []uuid.UUID{checkID(12), deep, made, checkID(21)}
+		r.Changesets, r.Upgrade.BaselineWanted = 5, 6
+		count(&r, domain.RuleWanted, 7)
+		want := domain.UpgradeCounts{Sources: 4, MovedIntoSources: 1, WikiPages: 2, NewPages: 3, Changesets: 5,
+			WantedBefore: domain.LintCount{Value: 6}, WantedNow: domain.LintCount{Value: 7}}
+		if c := domain.JudgeUpgrade(r); c.Counts != want {
+			t.Errorf("counts = %+v, want %+v", c.Counts, want)
+		}
+	})
 	t.Run("raw seeded, two pages moved in", func(t *testing.T) {
 		r := passingRead()
 		seeded := checkID(11)
