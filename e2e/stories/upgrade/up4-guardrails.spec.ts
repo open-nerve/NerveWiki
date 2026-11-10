@@ -60,14 +60,16 @@ test("UP4 (MCP): the initiator's agent's deletion of a page of the baseline is p
   );
 });
 
-/** The content a page holds now and its version token, as an agent's write names it. */
-async function pageNow(db: Database, id: string): Promise<{ content: string; version: string }> {
-  const rows = await db.query<{ content: string; revision: number }>(
-    "SELECT content, revision FROM page_contents WHERE node_id = $1",
-    [id]
-  );
+/** A page's version token as an agent's write names it, from the page REST answered. */
+function versionOf(page: { id: string; revision: number }): string {
+  return `${page.id}:${page.revision}`;
+}
+
+/** The content a page holds now, as the story asserts it. */
+async function contentNow(db: Database, id: string): Promise<string> {
+  const rows = await db.query<{ content: string }>("SELECT content FROM page_contents WHERE node_id = $1", [id]);
   expect(rows, `the content of ${id}`).toHaveLength(1);
-  return { content: rows[0]!.content, version: `${id}:${rows[0]!.revision}` };
+  return rows[0]!.content;
 }
 
 test("UP4 (MCP): the initiator's agent changes a baseline page's frontmatter, not its body; it moves and renames with the links rewritten by the system; it writes a page it created as it likes; an invalid frontmatter is fixed in place, not pushed below another", async ({
@@ -94,7 +96,7 @@ test("UP4 (MCP): the initiator's agent changes a baseline page's frontmatter, no
   await done("Plan's frontmatter", "write", {
     path: "Plan.md",
     content: planned,
-    base_version: (await pageNow(db, plan.id)).version,
+    base_version: versionOf(plan),
   });
   expect(
     await code("an edit of Plan's body", "edit", {
@@ -119,19 +121,19 @@ test("UP4 (MCP): the initiator's agent changes a baseline page's frontmatter, no
   await done("a frontmatter written above Legacy's lone opening line", "write", {
     path: "Legacy.md",
     content: legacy,
-    base_version: (await pageNow(db, old.id)).version,
+    base_version: versionOf(old), // the rename wrote Notes, not Legacy's content
   });
   const fixed = '---\nraw: "a: ["\n---\nBroken text.\n';
   await done("Broken's frontmatter fixed in place", "write", {
     path: "Broken.md",
     content: fixed,
-    base_version: (await pageNow(db, broken.id)).version,
+    base_version: versionOf(broken),
   });
   expect(
     await code("a frontmatter written above Other's", "write", {
       path: "Other.md",
       content: "---\ntype: note\n---\n---\na: [\n---\nOther text.\n",
-      base_version: (await pageNow(db, other.id)).version,
+      base_version: versionOf(other),
     })
   ).toBe("page.upgrade_immutable");
 
@@ -183,6 +185,6 @@ test("UP4 (MCP): a batch that moves Plan, then edits the frontmatter of Notes, w
   expect(await state()).toEqual(before);
 
   resultOf<unknown>(await agent.call("batch", { message: "Plan in Work", ops: [edit, move] }), "edit, then move");
-  expect((await pageNow(db, notes.id)).content).toBe("---\ntype: summary\n---\nSee [the plan](/Work/Plan.md).\n");
+  expect(await contentNow(db, notes.id)).toBe("---\ntype: summary\n---\nSee [the plan](/Work/Plan.md).\n");
   await expectBaselineKept(db, upgrade.id, 3);
 });
