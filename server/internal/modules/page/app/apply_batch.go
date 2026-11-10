@@ -735,7 +735,7 @@ func (a *batchAttempt) content(ctx context.Context, u *Unit, i int) error {
 		return a.differs(i, "version", nil, &domain.VersionToken{Node: at.Node.ID, Revision: lock.Revision})
 	}
 	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID], Base: lock.Revision,
-		Merged: &pg.Merged, Folded: pg.Folded})
+		Merged: &pg.Merged, Reached: pg.Reached})
 	switch {
 	case errors.Is(err, domain.ErrRevisionMismatch):
 		// The row is locked and its revision compared: a defect, no 409,

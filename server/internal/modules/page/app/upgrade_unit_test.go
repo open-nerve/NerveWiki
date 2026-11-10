@@ -165,3 +165,65 @@ func TestTheUnitKeepsTheLedger(t *testing.T) {
 		t.Errorf("a unit whose ledger fails = %v, rolled back %v; want its error, rolled back", err, f.tx.rolledBack)
 	}
 }
+
+// A batch's write of the bytes a page holds, after a rename or move that
+// rewrote the page (ContentWrite.Reached), writes nothing but meets the
+// guards while upgrading, as a write would (M11/P2 decision 268): the
+// step they see is the content's, Reached and its body hashed, and their
+// refusal is the write's, nothing written. Not reached, or with no
+// upgrade, the guards see nothing: the write is done, as ever.
+func TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds(t *testing.T) {
+	const content = "---\na: 1\n---\nSee [[A]]."
+	current := uuid.NewV7()
+	refusal := domain.Refuse(domain.ErrUpgradeBatchRewrite, uuid.NewV7())
+	for _, tt := range []struct {
+		name     string
+		state    domain.UpgradeState // none: no upgrade
+		reached  bool
+		refuse   error
+		judged   bool
+		wantsErr bool
+	}{
+		{"upgrading, reached", domain.UpgradeUpgrading, true, nil, true, false},
+		{"upgrading, reached, refused", domain.UpgradeUpgrading, true, refusal, true, true},
+		{"upgrading, not reached", domain.UpgradeUpgrading, false, refusal, false, false},
+		{"no upgrade, reached", "", true, refusal, false, false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			f.grant(domain.ActionRename)
+			if tt.state != "" {
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(tt.state, current)}
+			}
+			p := f.page("P", nil, 0)
+			f.content(p.ID, content, 2)
+			g := &guard{recorder: f.rec, err: tt.refuse}
+			f.guards = []app.WriteGuard{g}
+			var revision int
+			_, err := f.run(f.asAlice(), agent, func(ctx context.Context, u *app.Unit) error {
+				var err error
+				revision, err = u.WriteContent(ctx, app.ContentWrite{NodeID: p.ID, Content: content, Base: 2, Reached: tt.reached})
+				return err
+			})
+			if (err != nil) != tt.wantsErr || tt.wantsErr && codeOf(err) != "page.upgrade_batch_rewrite" {
+				t.Fatalf("the write = %v, want an error %v", err, tt.wantsErr)
+			}
+			if !tt.wantsErr && revision != 2 {
+				t.Errorf("the write's revision = %d, want 2: nothing written", revision)
+			}
+			if got := f.store.contents[p.ID]; got.Revision != 2 || got.Content != content {
+				t.Errorf("the page holds revision %d, %q; want 2, as it was", got.Revision, got.Content)
+			}
+			if !tt.judged {
+				if len(g.steps) != 0 {
+					t.Errorf("the guards saw %d steps, want none", len(g.steps))
+				}
+				return
+			}
+			if len(g.steps) != 1 || g.steps[0].Operation != domain.OpContent || g.steps[0].Content == nil ||
+				!g.steps[0].Content.Reached || !sameBytes(g.steps[0].Content.BodyHash, domain.UpgradeBodyHash(content, len("---\na: 1\n---\n"))) {
+				t.Errorf("the guards saw %+v, want one content step, Reached, its body hashed", g.steps)
+			}
+		})
+	}
+}

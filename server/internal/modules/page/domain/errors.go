@@ -132,11 +132,12 @@ var (
 	// body, past its frontmatter, changed (M11 design 4.6).
 	ErrUpgradeImmutable = shared.NewError(shared.KindConflict, "page.upgrade_immutable",
 		"The page was there when the upgrade started: an upgrade may change its frontmatter, not the content after it.")
-	// ErrUpgradeBatchRewrite: a batch folded a rename's or move's rewrite of
-	// the links of a page the upgrade started with into the content it
-	// writes (M11 design 4.6, decision 190).
+	// ErrUpgradeBatchRewrite: a batch's write of a page the upgrade started
+	// with whose links a rename or move earlier in the batch rewrote,
+	// whatever it writes (M11 design 4.6, decision 190; M11/P2 decision
+	// 268).
 	ErrUpgradeBatchRewrite = shared.NewError(shared.KindConflict, "page.upgrade_batch_rewrite",
-		"A move earlier in the batch rewrote this page's links into its content, which was there when the upgrade started: write the page first and move after, or in two batches; the page's body itself may not change either.")
+		"A move earlier in the batch rewrote the links of this page, which was there when the upgrade started; the batch may not write it after that: write the page first and move after, or use two batches. The page's body itself may not change either.")
 	// ErrUpgradeKeepLinks: a move or rename that leaves the links to the
 	// node as they are, while upgrading (M11 design 4.6).
 	ErrUpgradeKeepLinks = shared.NewError(shared.KindConflict, "page.upgrade_keep_links",

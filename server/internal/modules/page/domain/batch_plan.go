@@ -271,16 +271,19 @@ type PlannedPage struct {
 	Content     string
 	// Merged counts user byte changes made while this page was a source.
 	Merged int
-	// Folded says the page's content at its last content op carries a
-	// rewrite of its links that a rename or a move before folded in: an
-	// edit's after one that changed the page, a write's that is the
-	// rewrite's bytes; a later write of other bytes replaced it (M11 design
-	// 4.6, decisions 190, 254). It says the rewrite is in the content, not
-	// that it is all the content's difference: the guardrails answer
-	// page.upgrade_batch_rewrite on any change of the body then (decision
-	// 265). Not ps.Moved: that is any move between two content ops, even
-	// one that rewrote nothing.
-	Folded bool
+	// Reached says a rename or a move earlier in the batch rewrote the
+	// page's links before one of its content ops: an edit's after a move
+	// whose rewrite changed the page, a write's after one whose rewrite
+	// would have, whatever the write's bytes. It sticks: a later write
+	// does not clear it. While upgrading, the guardrails answer
+	// page.upgrade_batch_rewrite for a page of the baseline so reached,
+	// whatever its content (M11/P2 decision 268, which withdrew decision
+	// 254's clearing): the batch's deferred rewrite follows only the moves
+	// after the page's last content op, so a write after the rename leaves
+	// the page's links on the old name, its bytes those the page holds,
+	// which no comparison of its body tells. Not ps.Moved: that is any move
+	// between two content ops, even one that rewrote nothing.
+	Reached bool
 }
 
 // plannedPage is a page's content as the contents' pass goes: its head
@@ -295,7 +298,7 @@ type plannedPage struct {
 	merged      int
 	known       bool
 	whole       bool
-	folded      bool
+	reached     bool
 	head        *PageHead
 }
 
@@ -1012,7 +1015,7 @@ func (p *BatchPlan) Pages() []PlannedPage {
 	for _, id := range p.order {
 		pg := p.pages[id]
 		out = append(out, PlannedPage{ID: id, First: pg.first, Last: pg.last, Created: pg.created, Revision: pg.revision,
-			Content: pg.content, Merged: pg.merged, Folded: pg.folded})
+			Content: pg.content, Merged: pg.merged, Reached: pg.reached})
 	}
 	return out
 }

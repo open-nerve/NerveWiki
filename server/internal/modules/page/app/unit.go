@@ -389,17 +389,9 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 	if err := u.inUnit(ctx); err != nil {
 		return err
 	}
-	var err error
-	if s, err = u.withSourceLines(ctx, s); err != nil {
+	s, err := u.guarded(ctx, s)
+	if err != nil {
 		return err
-	}
-	if s, err = u.withSourceHashes(ctx, s); err != nil {
-		return err
-	}
-	for _, g := range u.w.d.Guards {
-		if err := g.GuardWrite(ctx, s); err != nil {
-			return refusalOf(err, s)
-		}
 	}
 	if err := u.rememberIngestBefore(ctx, s); err != nil {
 		return err
@@ -435,6 +427,25 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 		}
 	}
 	return nil
+}
+
+// guarded is s with its source lines and hashes, as its guards judge it,
+// and their judgment: a refusal, a problem, marked with the node it is
+// about (refusalOf).
+func (u *Unit) guarded(ctx context.Context, s Step) (Step, error) {
+	var err error
+	if s, err = u.withSourceLines(ctx, s); err != nil {
+		return s, err
+	}
+	if s, err = u.withSourceHashes(ctx, s); err != nil {
+		return s, err
+	}
+	for _, g := range u.w.d.Guards {
+		if err := g.GuardWrite(ctx, s); err != nil {
+			return s, refusalOf(err, s)
+		}
+	}
+	return s, nil
 }
 
 // acceptUpgradeContent writes a content step's hash to the ledger of the

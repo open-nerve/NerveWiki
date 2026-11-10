@@ -22,7 +22,7 @@ type ContentWrite struct {
 	EditSession uuid.UUID
 	Merged      *int // internal batch count; nil is an ordinary single write
 	Rewrite     bool // internal system rewrite, or a revert of one; ordinary writes leave it false
-	Folded      bool // internal: a batch's page whose content carries a rewrite it folded in
+	Reached     bool // internal: a batch's page a rename or move earlier in it rewrote (PlannedPage.Reached)
 }
 
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
@@ -32,7 +32,8 @@ type ContentWrite struct {
 // page.edit_session_taken_over or page.edit_session_unlocked for the
 // writer's own session taken over or unlocked (M5/P1); nothing
 // written when the page holds the content already, whatever the base: the
-// write is done; 409 page.revision_mismatch for a base that is not the
+// write is done, but that the guards judge a batch's page a move reached
+// while upgrading (ContentWrite.Reached); 409 page.revision_mismatch for a base that is not the
 // page's revision. It returns the page's revision as the write leaves it.
 //
 // An edit session's writes go to one changeset, its page's one version
@@ -74,6 +75,15 @@ func (u *Unit) writeContent(ctx context.Context, w ContentWrite, participate boo
 			}
 			if v := domain.CheckContract(u.write.Notebook, step.contractFacts()); v.Err != nil {
 				return 0, domain.Refuse(v.Err, v.NodeID)
+			}
+		}
+		if w.Reached && u.write.Notebook.Upgrade.State == domain.UpgradeUpgrading {
+			// A batch's write after a rename or move that rewrote the page,
+			// of the bytes the page holds: it drops the rewrite as a write
+			// of other bytes would, so the guards judge it as one, writing
+			// nothing (M11/P2 decision 268).
+			if _, err := u.guarded(ctx, u.contentStep(n, current, c, w, session)); err != nil {
+				return 0, err
 			}
 		}
 		return current.Revision, nil
@@ -120,7 +130,7 @@ func (u *Unit) contentStep(n domain.Node, before ContentLock, c Content, w Conte
 		merged = *w.Merged
 	}
 	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: before.ByteSize, BeforeRevision: before.Revision, Merged: merged,
-		Folded: w.Folded}
+		Reached: w.Reached}
 	step.Rewrite = w.Rewrite
 	// An upgrade's guardrails compare the body of what the initiator's
 	// agent writes, but a system's rewrite's, which they let by unread: a

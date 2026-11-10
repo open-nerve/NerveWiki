@@ -83,7 +83,8 @@ func (g *FreezeGuard) GuardWrite(ctx context.Context, s Step) error {
 // (P1's, deletion); a move or a rename that leaves the links to it as they
 // are, page.upgrade_keep_links marked with the step's root; a write of a
 // page of the baseline whose body, past its frontmatter, is not what it
-// was before the step, but for the system's rewrite of its links (body).
+// was before the step, or that a move earlier in its batch reached, but
+// for the system's rewrite of its links (body).
 func (g *FreezeGuard) guardrails(ctx context.Context, s Step) error {
 	switch s.Operation {
 	case domain.OpDelete:
@@ -100,14 +101,15 @@ func (g *FreezeGuard) guardrails(ctx context.Context, s Step) error {
 	return nil
 }
 
-// body refuses a write of a page of the baseline whose body is not the one
-// before the step, marked with the page: page.upgrade_batch_rewrite when a
-// batch folded a move's rewrite into it, page.upgrade_immutable otherwise
-// (M11 design 4.6). It compares the body of the content the page holds
-// now, under the lock of its content row the unit took, with the step's,
-// which the unit hashed (StepContent.BodyHash). A page not of the baseline
-// it lets by, reading no content; a step without the body's hash is a
-// defect's error.
+// body refuses a write of a page of the baseline, marked with the page:
+// page.upgrade_batch_rewrite when a rename or move earlier in its batch
+// rewrote its links (StepContent.Reached), whatever the write (M11/P2
+// decision 268); page.upgrade_immutable when its body is not the one
+// before the step (M11 design 4.6). It compares the body of the content
+// the page holds now, under the lock of its content row the unit took,
+// with the step's, which the unit hashed (StepContent.BodyHash). A page
+// not of the baseline it lets by, reading no content; a step without the
+// body's hash is a defect's error.
 func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	id := s.Changes[0].NodeID
 	if s.Content == nil || s.Content.BodyHash == nil {
@@ -117,11 +119,11 @@ func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	if err != nil || !baseline {
 		return err
 	}
+	if s.Content.Reached {
+		return domain.Refuse(domain.ErrUpgradeBatchRewrite, id)
+	}
 	if bytes.Equal(domain.UpgradeBodyHash(before, g.md.FrontmatterEnd(before)), s.Content.BodyHash) {
 		return nil
-	}
-	if s.Content.Folded {
-		return domain.Refuse(domain.ErrUpgradeBatchRewrite, id)
 	}
 	return domain.Refuse(domain.ErrUpgradeImmutable, id)
 }

@@ -310,14 +310,16 @@ func TestTheFreezeGuard(t *testing.T) {
 	})
 	// The body's guardrail (M11/P2 design 3.3, 3.4): a write of a baseline
 	// page whose body, past its frontmatter, is not the one it holds now is
-	// page.upgrade_immutable marked with the page, page.upgrade_batch_rewrite
-	// when a batch folded a move's rewrite into it; one that changes its
-	// frontmatter alone goes; each reads the page's content once, of the
-	// notebook's upgrade, and no other row. The system's rewrite (Rewrite)
-	// goes unread, though its body changed and it carries no hash; a page
-	// not of the baseline goes, its one read answering none; a step of the
-	// initiator's without the body's hash is a defect's error, no problem,
-	// reading nothing; the reader's error is answered as it is.
+	// page.upgrade_immutable marked with the page; one that changes its
+	// frontmatter alone goes; a batch's write of a baseline page a move
+	// earlier in it reached (Reached) is page.upgrade_batch_rewrite
+	// whatever its body, the same one too (decision 268); each reads the
+	// page's content once, of the notebook's upgrade, and no other row. The
+	// system's rewrite (Rewrite) goes unread, though its body changed and it
+	// carries no hash; a page not of the baseline goes, its one read
+	// answering none, reached or not; a step of the initiator's without the
+	// body's hash is a defect's error, no problem, reading nothing; the
+	// reader's error is answered as it is.
 	t.Run("the body's guardrail", func(t *testing.T) {
 		f := newFixture()
 		f.grant(changeMode)
@@ -334,25 +336,26 @@ func TestTheFreezeGuard(t *testing.T) {
 			name, content string
 			refused       bool
 		}{
+			{"nothing changed", "---\na: 1\n---\nText", false},
 			{"its frontmatter alone changed", "---\na: 2\nb: 3\n---\nText", false},
 			{"a frontmatter added before the old one", "---\nb: 3\n---\n---\na: 1\n---\nText", true},
 			{"its body changed", "---\na: 1\n---\nTexT", true},
 		} {
-			for _, folded := range []bool{false, true} {
+			for _, reached := range []bool{false, true} {
 				nodes.contents = nil
 				s := step(plan, tt.content, false)
-				s.Content.Folded = folded
+				s.Content.Reached = reached
 				err := guard.GuardWrite(f.asAlice(), s)
 				code := "page.upgrade_immutable"
-				if folded {
-					code = "page.upgrade_batch_rewrite" // a batch folded a move's rewrite into it
+				if reached {
+					code = "page.upgrade_batch_rewrite" // a move earlier in the batch rewrote it: whatever the write
 				}
 				var r *domain.Refused
 				switch {
-				case tt.refused && (codeOf(err) != code || !errors.As(err, &r) || r.NodeID != plan):
-					t.Errorf("a write of Plan, %s, folded %v = %v (%+v), want %s marked with Plan", tt.name, folded, err, r, code)
-				case !tt.refused && err != nil:
-					t.Errorf("a write of Plan, %s, folded %v = %v, want nil", tt.name, folded, err)
+				case (tt.refused || reached) && (codeOf(err) != code || !errors.As(err, &r) || r.NodeID != plan):
+					t.Errorf("a write of Plan, %s, reached %v = %v (%+v), want %s marked with Plan", tt.name, reached, err, r, code)
+				case !tt.refused && !reached && err != nil:
+					t.Errorf("a write of Plan, %s, reached %v = %v, want nil", tt.name, reached, err)
 				}
 				if want := [][2]uuid.UUID{{current, plan}}; !slices.Equal(nodes.contents, want) || len(nodes.reads) != 0 {
 					t.Errorf("a write of Plan, %s, read the contents %v and the rows %v; want %v alone", tt.name, nodes.contents,
@@ -366,9 +369,13 @@ func TestTheFreezeGuard(t *testing.T) {
 		if err := guard.GuardWrite(f.asAlice(), rewrite); err != nil || len(nodes.contents) != 0 {
 			t.Errorf("the system's rewrite of Plan's links = %v, read %v; want nil, reading nothing", err, nodes.contents)
 		}
-		if err := guard.GuardWrite(f.asAlice(), step(fresh, "new", false)); err != nil ||
-			!slices.Equal(nodes.contents, [][2]uuid.UUID{{current, fresh}}) {
-			t.Errorf("a write of a page created since = %v, read %v; want nil, its one read", err, nodes.contents)
+		for _, reached := range []bool{false, true} {
+			nodes.contents = nil
+			s := step(fresh, "new", false)
+			s.Content.Reached = reached
+			if err := guard.GuardWrite(f.asAlice(), s); err != nil || !slices.Equal(nodes.contents, [][2]uuid.UUID{{current, fresh}}) {
+				t.Errorf("a write of a page created since, reached %v = %v, read %v; want nil, its one read", reached, err, nodes.contents)
+			}
 		}
 		nodes.contents = nil
 		hashless := step(plan, "---\na: 2\n---\nText", false)

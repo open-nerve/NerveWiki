@@ -377,21 +377,21 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	}
 }
 
-// Folded is the page's content at its last content op carrying a rewrite
-// of its links that a move before folded in (M11/P2 design 3.4, decisions
-// 190, 254, 265), each shape with its counterexample: an edit after a move
-// that rewrote the page; not after a move that reached no link of it, its
-// step Moved though, nor after one whose rewrite the stale index left
-// undone; a write of the rewrite's bytes, not of other bytes; a later
-// write of other bytes clears it, of the same bytes or an edit keeps it; a
-// move after the page's last content op folds nothing, its rewrite the
-// deferred one's; a page the batch creates is not; a write before the
-// moves and an edit after them is; a write of the rewritten body under a
-// new frontmatter is not, its bytes not the rewrite's; nor is a write of
-// the bytes the page holds after a move that reached no link of it, the
-// page's body changed by an edit before (a write's fold is the rewrite's
-// change, not the move's).
-func TestThePlanTellsAFoldedRewrite(t *testing.T) {
+// Reached is a rename's or move's rewrite of the page's links coming
+// before one of its content ops in the batch (M11/P2 design 3.4,
+// decisions 190, 268), each shape with its counterexample: an edit after
+// a move that rewrote the page; not after a move that reached no link of
+// it, its step Moved though, nor after one whose rewrite the stale index
+// left undone; a write after a move that rewrote the page, whatever its
+// bytes: the rewrite's, others, the page's own; it sticks, a later write
+// of other bytes or of the same, an edit, an edit after a move that
+// rewrote nothing keeping it; a move after the page's last content op
+// reaches nothing, its rewrite the deferred one's; a page the batch
+// creates is not; a write before the moves and an edit after them is; a
+// write of the bytes the page holds after a move that reached no link of
+// it is not, though the page's body changed by an edit before (a write is
+// reached by the rewrite's change, not by the move).
+func TestThePlanTellsAPageAMoveReached(t *testing.T) {
 	nb := newNotebook("A.md", "B.md", "P.md")
 	pID := nb.id(t, "P.md")
 	const before, rewritten = "---\nt: 1\n---\nSee [[A]].", "---\nt: 1\n---\nSee [[A2]]."
@@ -401,32 +401,37 @@ func TestThePlanTellsAFoldedRewrite(t *testing.T) {
 	moveA, moveB := moveOp("A.md", "A2.md"), moveOp("B.md", "B2.md")
 	frontmatter := editOp("P.md", "t: 1", "t: 2")
 	for _, tt := range []struct {
-		name   string
-		ops    []domain.BatchArgs
-		whole  bool // P's first content op a write, read whole for the moves before it
-		stale  bool // P's index not current
-		folded bool
-		moved  int  // an op whose step is Moved, -1 for none
-		onlyB  bool // the moves rewrite links to B alone: P's to A lead where they led
+		name    string
+		ops     []domain.BatchArgs
+		whole   bool // P's first content op a write, read whole for the moves before it
+		stale   bool // P's index not current
+		reached bool
+		moved   []int // the ops whose steps are Moved
+		onlyB   bool  // the moves rewrite links to B alone: P's to A lead where they led
 	}{
-		{"a move of A, an edit of P linking to it", []domain.BatchArgs{moveA, frontmatter}, false, false, true, 1, false},
-		{"a move P links to none of, an edit", []domain.BatchArgs{moveB, frontmatter}, false, false, false, 1, true},
-		{"a move of A, P's index stale, an edit", []domain.BatchArgs{moveA, frontmatter}, false, true, false, 1, false},
-		{"a move of A, a write of the rewrite's bytes", []domain.BatchArgs{moveA, write(rewritten)}, true, false, true, 1, false},
-		{"a move of A, a write of other bytes", []domain.BatchArgs{moveA, write("---\nt: 2\n---\nSee [[A]].")}, true, false, false, 1, false},
-		{"an edit folding it in, a write of other bytes", []domain.BatchArgs{moveA, frontmatter, write("other")}, false, false, false, 1, false},
-		{"an edit folding it in, a write of the same bytes", []domain.BatchArgs{moveA, frontmatter,
-			write("---\nt: 2\n---\nSee [[A2]].")}, false, false, true, 1, false},
-		{"an edit folding it in, an edit of another word", []domain.BatchArgs{moveA, frontmatter, editOp("P.md", "See", "Read")}, false,
-			false, true, 1, false},
-		{"an edit, then a move of A", []domain.BatchArgs{frontmatter, moveA}, false, false, false, -1, false},
-		{"a move of A, an edit of P's body", []domain.BatchArgs{moveA, editOp("P.md", "See", "Read")}, false, false, true, 1, false},
+		{"a move of A, an edit of P linking to it", []domain.BatchArgs{moveA, frontmatter}, false, false, true, []int{1}, false},
+		{"a move P links to none of, an edit", []domain.BatchArgs{moveB, frontmatter}, false, false, false, []int{1}, true},
+		{"a move of A, P's index stale, an edit", []domain.BatchArgs{moveA, frontmatter}, false, true, false, []int{1}, false},
+		{"a move of A, a write of the rewrite's bytes", []domain.BatchArgs{moveA, write(rewritten)}, true, false, true, []int{1}, false},
+		{"a move of A, a write of other bytes", []domain.BatchArgs{moveA, write("---\nt: 2\n---\nSee [[A]].")}, true, false, true,
+			[]int{1}, false},
+		{"a move of A, a write of the bytes P holds", []domain.BatchArgs{moveA, write(before)}, true, false, true, []int{1}, false},
+		{"an edit reached, a write of other bytes", []domain.BatchArgs{moveA, frontmatter, write("other")}, false, false, true,
+			[]int{1}, false},
+		{"an edit reached, a write of the same bytes", []domain.BatchArgs{moveA, frontmatter, write("---\nt: 2\n---\nSee [[A2]].")},
+			false, false, true, []int{1}, false},
+		{"an edit reached, an edit of another word", []domain.BatchArgs{moveA, frontmatter, editOp("P.md", "See", "Read")}, false,
+			false, true, []int{1}, false},
+		{"an edit reached, a move P links to none of, another edit", []domain.BatchArgs{moveA, frontmatter, moveB,
+			editOp("P.md", "t: 2", "t: 3")}, false, false, true, []int{1, 3}, false},
+		{"an edit, then a move of A", []domain.BatchArgs{frontmatter, moveA}, false, false, false, nil, false},
+		{"a move of A, an edit of P's body", []domain.BatchArgs{moveA, editOp("P.md", "See", "Read")}, false, false, true, []int{1}, false},
 		{"a write linking to A and B, their moves, an edit", []domain.BatchArgs{write("x [[A]] [[B]]"), moveA, moveB,
-			editOp("P.md", "x", "y")}, false, false, true, 3, false},
+			editOp("P.md", "x", "y")}, false, false, true, []int{3}, false},
 		{"a move of A, a write of a new frontmatter and the rewritten body", []domain.BatchArgs{moveA,
-			write("---\nt: 2\n---\nSee [[A2]].")}, true, false, false, 1, false},
+			write("---\nt: 2\n---\nSee [[A2]].")}, true, false, true, []int{1}, false},
 		{"an edit of P's body, a move P links to none of, a write of the same bytes", []domain.BatchArgs{editOp("P.md", "See", "Read"),
-			moveB, write("---\nt: 1\n---\nRead [[A]].")}, false, false, false, 2, true},
+			moveB, write("---\nt: 1\n---\nRead [[A]].")}, false, false, false, []int{2}, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			p, _ := planOf(t, nb, tt.ops...)
@@ -443,20 +448,20 @@ func TestThePlanTellsAFoldedRewrite(t *testing.T) {
 				t.Fatalf("Failed = %+v", failed(t, p))
 			}
 			pages := p.Pages()
-			if len(pages) != 1 || pages[0].ID != pID || pages[0].Folded != tt.folded {
-				t.Errorf("the pages %+v, want P's Folded %v", pages, tt.folded)
+			if len(pages) != 1 || pages[0].ID != pID || pages[0].Reached != tt.reached {
+				t.Errorf("the pages %+v, want P's Reached %v", pages, tt.reached)
 			}
 			for i, s := range p.Steps {
-				if s.Moved != (i == tt.moved) {
-					t.Errorf("ops[%d]'s Moved = %v, want %v", i, s.Moved, i == tt.moved)
+				if want := slices.Contains(tt.moved, i); s.Moved != want {
+					t.Errorf("ops[%d]'s Moved = %v, want %v", i, s.Moved, want)
 				}
 			}
 		})
 	}
 	p, _ := planOf(t, nb, moveA, writeOp("New.md", "See [[A]]."))
 	contentsOf(t, p, nil, nil, &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]"}})
-	if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Created || pages[0].Folded {
-		t.Errorf("a page the batch creates: Failed %v, the pages %+v; want one created, not Folded", p.Failed, pages)
+	if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Created || pages[0].Reached {
+		t.Errorf("a page the batch creates: Failed %v, the pages %+v; want one created, not Reached", p.Failed, pages)
 	}
 }
 

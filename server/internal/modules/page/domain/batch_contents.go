@@ -87,11 +87,8 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 		}
 		pg.content, pg.known, ps.Changed = s.Content, true, !same
 		beforeBytes, changed = size, !same
-		switch {
-		case rewrote && same:
-			pg.folded = true // the write is the rewrite's bytes: the content carries it
-		case !same:
-			pg.folded = false // the write replaced whatever was folded in before
+		if rewrote {
+			pg.reached = true // whatever it writes, the rewrite reached the page first (decision 268)
 		}
 	default:
 		if s.Base != nil && s.Base.Revision != pg.revision {
@@ -105,7 +102,7 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 				return err
 			}
 			if rewritten != content {
-				pg.folded = true // the edit replaces on the rewritten content, the rest of it kept
+				pg.reached = true // the edit replaces on the rewritten content, the rest of it kept
 			}
 			content = rewritten
 		}

@@ -24,7 +24,8 @@ import (
 // agent created goes. Each refusal leaves the notebook's rows as they
 // were.
 //
-// P2/S1's cells, g1 to g22 of its design's table (3.6), each in a notebook
+// P2/S1's cells, g1 to g22 of its design's table (3.6) and g23 to g25 of
+// decision 268, each in a notebook
 // of its own that alice upgrades, its pages written over REST before: each
 // refusal answers its code, at its op for a batch, and leaves the
 // notebook's rows and the upgrade's ledger as they were; each cell done
@@ -221,14 +222,15 @@ func TestUpgradeGuardrails(t *testing.T) {
 			batched(opEdit("P.md", "See", "Read"), opEdit("P.md", "Read", "See")))
 		g.holds(t, "P", "---\ntype: a\n---\nSee [[A]].\n")
 	})
-	// g19-g21: the coarse judgment of decision 265. g19: a move of A, then
-	// an edit of P's body: page.upgrade_batch_rewrite; split, the edit is
-	// page.upgrade_immutable. g20: a write of P's body linking to A and B,
-	// their moves, an edit of its frontmatter: page.upgrade_batch_rewrite;
-	// split, the write is page.upgrade_immutable. g21: a move of A, then a
-	// write of P of a new frontmatter and the rewritten body:
-	// page.upgrade_immutable, the write not the rewrite's bytes; in two
-	// batches, the move then the write, done.
+	// g19-g21: the coarse judgment of decisions 265 and 268. g19: a move of
+	// A, then an edit of P's body: page.upgrade_batch_rewrite; split, the
+	// edit is page.upgrade_immutable. g20: a write of P's body linking to A
+	// and B, their moves, an edit of its frontmatter:
+	// page.upgrade_batch_rewrite; split, the write is
+	// page.upgrade_immutable. g21: a move of A, then a write of P of a new
+	// frontmatter and the rewritten body: page.upgrade_batch_rewrite, the
+	// move having reached P, whatever the write; in two batches, the move
+	// then the write, done.
 	t.Run("g19", func(t *testing.T) {
 		g := tm.upgradedNotebook(t, linked...)
 		g.refused(t, "a batch's move of A, then an edit of P's body", batchRewrite, "batch",
@@ -246,12 +248,45 @@ func TestUpgradeGuardrails(t *testing.T) {
 	t.Run("g21", func(t *testing.T) {
 		g := tm.upgradedNotebook(t, linked...)
 		const content = "---\ntype: b\n---\nSee [[Map]].\n"
-		g.refused(t, "a batch's move of A, then a write of P's new frontmatter and rewritten body", immutable, "batch",
+		g.refused(t, "a batch's move of A, then a write of P's new frontmatter and rewritten body", batchRewrite, "batch",
 			batched(opMove("A.md", "Map.md"), opWriteOn("P.md", content, g.version(t, "P"))), 1)
 		g.done(t, "a batch's move of A", "batch", batched(opMove("A.md", "Map.md")))
 		g.done(t, "then a batch's write of P", "batch", batched(opWriteOn("P.md", content, g.version(t, "P"))))
 		g.holds(t, "P", content)
 		g.accepted(t, "P")
+	})
+	// g23-g25: decision 268, a baseline page a rename earlier in the batch
+	// rewrote, then written, whatever the write, is
+	// page.upgrade_batch_rewrite at its last content op, nothing written;
+	// else the batch's deferred rewrite would not follow the rename, which
+	// comes before the page's last content op, and the page's links would
+	// stay on the old name. g23: the link broken: a write of P's new
+	// frontmatter over the body it holds, and a write of the very bytes it
+	// holds, which writes nothing; split, the write and then the move, the
+	// rename rewrites P. g24: the link led elsewhere: a new A.md written
+	// after the rename, then P written the same. g25: the edit undoing the
+	// rewrite folded into P, its content then the bytes P holds.
+	unwritten := "---\ntype: b\n---\nSee [[A]].\n"
+	t.Run("g23", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of A, then a write of P's new frontmatter over its body", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opWriteOn("P.md", unwritten, g.version(t, "P"))), 1)
+		g.refused(t, "a batch's move of A, then a write of the bytes P holds", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opWriteOn("P.md", "---\ntype: a\n---\nSee [[A]].\n", g.version(t, "P"))), 1)
+		g.done(t, "a batch's write of P's new frontmatter, then the move of A", "batch",
+			batched(opWriteOn("P.md", unwritten, g.version(t, "P")), opMove("A.md", "Map.md")))
+		g.holds(t, "P", "---\ntype: b\n---\nSee [[Map]].\n")
+		g.accepted(t, "P")
+	})
+	t.Run("g24", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of A, a new A, then a write of P", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opWrite("A.md", "# Another A\n"), opWriteOn("P.md", unwritten, g.version(t, "P"))), 2)
+	})
+	t.Run("g25", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of A, then an edit of P undoing the rewrite", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opEdit("P.md", "[[Map]]", "[[A]]")), 1)
 	})
 
 	// g22: a batch's blind writes of three baseline pages, each taking off
