@@ -1,9 +1,12 @@
 package bootstrap
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
 )
 
 // The initiator's agent's guardrails through the whole program (M11/P1
@@ -182,6 +185,42 @@ func TestUpgradeGuardrails(t *testing.T) {
 		g.bypass(t, "Notes", "---\ntype: a\n---\nSee [[Plan]]. Bypassed.\n")
 		g.refused(t, "the rename of Plan, Notes changed past the units", "internal_error", "move",
 			map[string]any{"from": "Plan.md", "to": "Map.md"}, -1)
+	})
+
+	// g22: a batch's blind writes of three baseline pages, each taking off
+	// a frontmatter of some 5 MiB, which the guard would read whole: their
+	// heads pass the reads' bound at the third, page.batch_too_large there,
+	// nothing written (M11/P2 decision 266); the same batch in a notebook
+	// not upgraded is done. The pages are written by SQL, a request's
+	// parse of 15 MiB being past the test's deadline under the race
+	// detector (05-lessons 1).
+	t.Run("g22", func(t *testing.T) {
+		big := func(name string) sqlPage {
+			body := "\n---\nBody.\n"
+			return sqlPage{"", name, "---\nk: " + strings.Repeat("x", page.MaxContentBytes-len("---\nk: ")-len(body)-100) + body}
+		}
+		ops := func(ids []string) []map[string]any {
+			var out []map[string]any
+			for i, id := range ids {
+				out = append(out, opWriteOn(fmt.Sprint("P", i, ".md"), "---\ntype: x\n---\nBody.\n", id+":1"))
+			}
+			return out
+		}
+		seeded := func(nb string) []string {
+			seedPagesSQL(t, tm.pool, nb, []sqlPage{big("P0"), big("P1"), big("P2")})
+			return queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 ORDER BY name", nb)
+		}
+		g := upgradedNotebook{tm: tm, id: tm.openNotebook(t, "alice", "g22"), ids: map[string]string{}}
+		ids := seeded(g.id)
+		g.upgrade = tm.upgrade(t, g.id, "alice", "upgrading")
+		g.agent = tm.agent(t, "alice", g.id)
+		g.refused(t, "a batch's blind writes of three baseline pages of 5 MiB", "page.batch_too_large", "batch", batched(ops(ids)...), 2)
+		standard := tm.openNotebook(t, "alice", "g22 standard")
+		m := *g.agent
+		m.notebook = standard
+		if r := m.use(t, "batch", batched(ops(seeded(standard))...)).result(t); r["isError"] == true {
+			t.Errorf("the same batch in a notebook not upgraded = %v, want it done", r)
+		}
 	})
 
 	// g5, g6: a single move, to another parent and to another name under

@@ -212,10 +212,14 @@ type batchAttempt struct {
 	client      domain.Client
 	session     *ParseSession
 	plan        *domain.BatchPlan
-	base        map[uuid.UUID]domain.Node
-	pages       map[uuid.UUID]domain.PlannedPage
-	facts       map[uuid.UUID]Facts
-	empty       Facts
+	// upgrade is the state of the notebook's upgrade as the plan read it,
+	// unlocked: its reads' bound counts on it (M11/P2 decision 266), so
+	// the unit plans again under another.
+	upgrade domain.UpgradeState
+	base    map[uuid.UUID]domain.Node
+	pages   map[uuid.UUID]domain.PlannedPage
+	facts   map[uuid.UUID]Facts
+	empty   Facts
 	// decided is the pages the batch's content ops decided: each page with
 	// a content op, alive after the batch, whatever bytes its last one left
 	// it, with where its links led at that op and its own changes since
@@ -294,7 +298,7 @@ func (a *batchAttempt) planned(ctx context.Context) error {
 			}
 		}
 	}
-	a.plan = domain.PlanBatch(nodes, a.steps, ids, state)
+	a.plan, a.upgrade = domain.PlanBatch(nodes, a.steps, ids, state), state.Upgrade.State
 	// The plan's refusal comes before its reads, so that a batch answers the
 	// first op that separate calls would refuse (M10/P1 review B-M3); the
 	// plan is the authority, the guard in the unit asks again under the lock
@@ -556,8 +560,14 @@ func (a *batchAttempt) linksBefore(ctx context.Context) error {
 // apply is the batch's unit (M9/P3 design 3.6.2): the former parents'
 // paths, read before any op; each op done again, but those merged into a
 // later delete, finding what the plan found; the deferred rewrite, once;
-// what it changed back dropped; and the answer's reads.
+// what it changed back dropped; and the answer's reads. An upgrade's state
+// under the notebook's lock not the plan's is a difference, the batch
+// planned again on it: the plan's bound on its reads counts on it (M11/P2
+// decision 266, review P2A-N8).
 func (a *batchAttempt) apply(ctx context.Context, u *Unit) error {
+	if u.write.Notebook.Upgrade.State != a.upgrade {
+		return a.differs(0, "state", nil, nil)
+	}
 	last := len(a.steps) - 1
 	var formers []uuid.UUID
 	for _, c := range slices.Concat(a.plan.MovesBetween(-1, last), a.plan.FrozenMovesBetween(-1, last)) {

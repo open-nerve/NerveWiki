@@ -377,6 +377,60 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	}
 }
 
+// While the notebook is being upgraded, the reads' bound counts the pages
+// a batch's writes replace blind, by their heads, with those read whole,
+// in their first ops' order (M11/P2 decision 266): blind writes of three
+// pages of 5 MiB pass it at the third, page.batch_too_large there, saying
+// why; with no upgrade, reviewing or rolling back, the same batch is
+// within it, its heads alone counted none. A blind write and an edit
+// count in their ops' order: the edit that passes it is the one refused.
+// A page the batch creates is not counted, whatever a head of its id
+// says.
+func TestTheReadsBoundCountsBlindWritesWhileUpgrading(t *testing.T) {
+	nb := newNotebook("P1.md", "P2.md", "P3.md")
+	ids := []uuid.UUID{nb.id(t, "P1.md"), nb.id(t, "P2.md"), nb.id(t, "P3.md")}
+	five := domain.MaxContentBytes
+	heads := func(sizes ...int) map[uuid.UUID]domain.PageHead {
+		out := map[uuid.UUID]domain.PageHead{}
+		for i, n := range sizes {
+			out[ids[i]] = domain.PageHead{Revision: 1, Bytes: n}
+		}
+		return out
+	}
+	write := func(path string, id uuid.UUID) domain.BatchArgs {
+		return with(writeOp(path, "x"), func(o *domain.BatchArgs) { o.Base = tokenOf(id, 1) })
+	}
+	in := func(state domain.UpgradeState) domain.NotebookState {
+		n := domain.NotebookState{Mode: domain.ModeStandard}
+		if state != "" {
+			n.Upgrade = domain.NotebookUpgrade{ID: uuid.NewV7(), State: state, By: uuid.NewV7()}
+		}
+		return n
+	}
+	const hint = "at most 14680064: while the notebook is being upgraded, each page a write replaces is read whole: split the batch."
+	p, _ := planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), write("P2.md", ids[1]), write("P3.md", ids[2]))
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 || p.Failed != failed ||
+		!strings.HasSuffix(failed.Error(), hint) {
+		t.Errorf("upgrading, blind writes of three pages of 5 MiB: %v, want page.batch_too_large at ops[2], saying why", failed)
+	}
+	for _, state := range []domain.UpgradeState{"", domain.UpgradeReviewing, domain.UpgradeRollingBack} {
+		p, _ := planIn(t, nb, in(state), write("P1.md", ids[0]), write("P2.md", ids[1]), write("P3.md", ids[2]))
+		if failed := p.CheckReads(heads(five, five, five)); failed != nil {
+			t.Errorf("%q, the same blind writes: %v, want none", state, failed)
+		}
+	}
+	p, _ = planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), write("P2.md", ids[1]), editOp("P3.md", "o", "n"))
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 || !strings.HasSuffix(failed.Error(), hint) {
+		t.Errorf("upgrading, two blind writes and an edit after them: %v, want the edit refused at ops[2]", failed)
+	}
+	p, made := planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), writeOp("New.md", "x"), write("P2.md", ids[1]))
+	created := heads(five, domain.MaxBatchReadBytes-five)
+	created[made[1][0]] = domain.PageHead{Bytes: five}
+	if failed := p.CheckReads(created); failed != nil {
+		t.Errorf("upgrading, a page created between blind writes at the bound: %v, want none", failed)
+	}
+}
+
 // The unit's bounds on the plan (M9/P3 design 3.4.4, 3.8): the final
 // contents, each page and hash once with the plan's parses, past
 // MaxUnitBytes for more pages than one, never for a lone page.

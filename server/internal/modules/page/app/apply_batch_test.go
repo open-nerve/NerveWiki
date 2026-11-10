@@ -599,6 +599,59 @@ func TestABatchsPlanReadsATreeAcrossItsCreations(t *testing.T) {
 	}
 }
 
+// An upgrade started between a batch's plan and its unit (M11/P2 decision
+// 266, review P2A-N8): the plan read the notebook with none, the unit
+// under the lock finds it upgrading, and the batch is planned again, whose
+// reads' bound counts its blind writes: past it, page.batch_too_large at
+// the page that passes it, nothing written; within it, the writes done.
+// An upgrade the plan read as the unit finds it plans once.
+func TestTheBatchPlansAgainOnceTheUpgradeStarted(t *testing.T) {
+	five := strings.Repeat("x", domain.MaxContentBytes)
+	for _, tt := range []struct {
+		name    string
+		content string
+		refused bool
+	}{
+		{"past the bound", five, true},
+		{"within it", "small", false},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture()
+			var pages []domain.Node
+			var ops []domain.BatchArgs
+			for i := range 3 {
+				pg := f.page(fmt.Sprint("P", i), nil, float64(i))
+				f.content(pg.ID, tt.content, 1)
+				pages = append(pages, pg)
+				ops = append(ops, writeOn(fmt.Sprint("P", i, ".md"), "new", tokenOf(pg.ID, 1)))
+			}
+			f.notebooks.states = map[uuid.UUID]domain.NotebookState{} // standard, as the plan reads it
+			f.rec.before = map[string]func(){"LockNotebook in tx": func() {
+				f.notebooks.states[f.eng] = f.upgrading(domain.UpgradeUpgrading, uuid.NewV7())
+			}}
+			_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, ops...)
+			planned := f.count("ListNodes")
+			switch {
+			case tt.refused && (opOf(err) != "2 page.batch_too_large" || planned != 2 || f.store.contents[pages[0].ID].Content != five):
+				t.Errorf("a batch whose upgrade started since its plan, %s = %s (%v), planned %d times, P0 %.20q; want it planned "+
+					"again, page.batch_too_large at ops[2], nothing written", tt.name, opOf(err), err, planned, f.store.contents[pages[0].ID].Content)
+			case !tt.refused && (err != nil || planned != 2 || f.store.contents[pages[2].ID].Content != "new"):
+				t.Errorf("a batch whose upgrade started since its plan, %s = %v, planned %d times, P2 %q; want it planned again, "+
+					"written", tt.name, err, planned, f.store.contents[pages[2].ID].Content)
+			}
+		})
+	}
+
+	f := newFixture()
+	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(domain.UpgradeUpgrading, uuid.NewV7())}
+	pg := f.page("P", nil, 1)
+	f.content(pg.ID, "old", 1)
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, writeOn("P.md", "new", tokenOf(pg.ID, 1))); err != nil ||
+		f.count("ListNodes") != 1 {
+		t.Errorf("a batch of an upgrade its plan read = %v, planned %d times; want it done, planned once", err, f.count("ListNodes"))
+	}
+}
+
 // A batch's unit that finds the notebook other than its plan had it is
 // made again once, from the read of the tree (M9/P3 design 3.6.2): a page
 // written since, a node at a path that is another since, two names
