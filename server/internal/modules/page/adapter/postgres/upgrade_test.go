@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"maps"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -362,4 +363,109 @@ func queryAll(t *testing.T, f fixture, query string, args ...any) []string {
 func sortedIDs(ids ...uuid.UUID) []uuid.UUID {
 	slices.SortFunc(ids, uuid.UUID.Compare)
 	return ids
+}
+
+// An upgrade's check's reads of its gates (M11/P2 design 3.9): its
+// baseline rows, each node's kind and parent then, a page's wanted count,
+// none of an attachment; gate 7 in one pass: the baseline's nodes and
+// pages, those alive and those whose content is the ledger's, the first
+// five not kept by id, a protection row and another upgrade's rows not
+// counted; the changesets of this upgrade only.
+func TestTheUpgradeGateReads(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	upgrade, other := uuid.NewV7(), uuid.NewV7()
+	a := f.page(t, f.eng, nil, "A", 0)
+	b := f.page(t, f.eng, &a.ID, "B", 0)
+	x := f.asset(t, f.eng, &a.ID, "x.png", 1)
+	pages := []domain.Node{a, b}
+	for i, name := range []string{"C", "D", "E", "F", "G"} {
+		pages = append(pages, f.page(t, f.eng, nil, name, float64(i+1)))
+	}
+	raw := f.page(t, f.eng, nil, "raw", 9)
+	f.exec(t, `INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+			content_hash, byte_size, wanted, accepted_hash)
+		SELECT $1, n.id, n.notebook_id, true, n.kind, n.parent_id, n.name, n.sort_order, c.revision, c.content_hash, c.byte_size,
+			CASE WHEN n.kind = 'page' THEN 0 END, c.content_hash
+		FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id WHERE n.notebook_id = $2 AND n.id <> $3`, upgrade, f.eng, raw.ID)
+	f.exec(t, "INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind) VALUES ($1, $2, $3, false, 'page')",
+		upgrade, raw.ID, f.eng)
+	f.exec(t, "UPDATE upgrade_nodes SET wanted = 3 WHERE upgrade_id = $1 AND node_id = $2", upgrade, b.ID)
+	// Another upgrade's rows of the same nodes, none of them kept.
+	f.exec(t, `INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+			content_hash, byte_size, wanted, accepted_hash)
+		SELECT $1, node_id, notebook_id, true, kind, parent_id, name, sort_order, revision, content_hash, byte_size, wanted,
+			CASE WHEN kind = 'page' THEN sha256('another') END
+		FROM upgrade_nodes WHERE upgrade_id = $2 AND baseline`, other, upgrade)
+	read := func() ([]app.BaselineNode, app.Preserved, int) {
+		t.Helper()
+		var base []app.BaselineNode
+		var kept app.Preserved
+		var n int
+		if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinSnapshot(ctx, func(ctx context.Context) error {
+			var err error
+			if base, err = f.s.UpgradeGateBaseline(ctx, upgrade); err != nil {
+				return err
+			}
+			if kept, err = f.s.UpgradePreserved(ctx, upgrade); err != nil {
+				return err
+			}
+			n, err = f.s.UpgradeChangesets(ctx, upgrade)
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		return base, kept, n
+	}
+	base, kept, _ := read()
+	byID := map[uuid.UUID]app.BaselineNode{}
+	for _, n := range base {
+		byID[n.ID] = n
+	}
+	if len(base) != 8 || len(byID) != 8 {
+		t.Fatalf("the baseline has %d rows, want the 8 nodes but raw's protection: %+v", len(base), base)
+	}
+	if n := byID[b.ID]; n.Kind != domain.KindPage || n.ParentID == nil || *n.ParentID != a.ID || n.Wanted != 3 {
+		t.Errorf("B's row = %+v, want a page under A wanting 3", n)
+	}
+	if n := byID[x.ID]; n.Kind != domain.KindAsset || n.ParentID == nil || *n.ParentID != a.ID || n.Wanted != 0 {
+		t.Errorf("x.png's row = %+v, want an attachment under A, no wanted count", n)
+	}
+	if n := byID[a.ID]; n.ParentID != nil || n.Kind != domain.KindPage {
+		t.Errorf("A's row = %+v, want a page at the root", n)
+	}
+	if !reflect.DeepEqual(kept, app.Preserved{Nodes: 8, NodesKept: 8, Pages: 7, PagesKept: 7, NotKept: []uuid.UUID{}}) {
+		t.Fatalf("all kept = %+v", kept)
+	}
+	// An attachment of the baseline deleted; a page's content changed by
+	// SQL, its ledger as it was; another's ledger changed, its content as
+	// it was.
+	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", x.ID)
+	f.exec(t, "UPDATE page_contents SET content = 'changed', content_hash = sha256('changed'), byte_size = 7 WHERE node_id = $1", b.ID)
+	f.exec(t, "UPDATE upgrade_nodes SET accepted_hash = sha256('else') WHERE upgrade_id = $1 AND node_id = $2", upgrade, pages[2].ID)
+	_, kept, _ = read()
+	if want := (app.Preserved{Nodes: 8, NodesKept: 7, Pages: 7, PagesKept: 5, NotKept: sortedIDs(x.ID, b.ID, pages[2].ID)}); !reflect.DeepEqual(kept, want) {
+		t.Fatalf("one deleted, two pages not the ledger's = %+v, want %+v", kept, want)
+	}
+	// Seven not kept: the first five, by id.
+	for _, p := range pages[3:] {
+		f.exec(t, "UPDATE page_contents SET content_hash = sha256('changed') WHERE node_id = $1", p.ID)
+	}
+	f.exec(t, "UPDATE page_contents SET deleted_at = now() WHERE node_id = $1", a.ID)
+	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", a.ID)
+	_, kept, _ = read()
+	all := sortedIDs(x.ID, a.ID, b.ID, pages[2].ID, pages[3].ID, pages[4].ID, pages[5].ID, pages[6].ID)
+	if want := (app.Preserved{Nodes: 8, NodesKept: 6, Pages: 7, PagesKept: 0, NotKept: all[:5]}); !reflect.DeepEqual(kept, want) {
+		t.Fatalf("eight not kept = %+v, want %+v", kept, want)
+	}
+	// The changesets: this upgrade's, not another's, not of none.
+	for i, u := range []uuid.UUID{upgrade, upgrade, other, {}} {
+		if err := f.s.CreateChangeset(ctx, app.Changeset{ID: uuid.NewV7(), NotebookID: f.eng, Kind: domain.ChangesetEdit,
+			Client: domain.MCPClient("claude-code"), By: f.alice, At: now().Add(time.Duration(i) * time.Second), UpgradeID: u}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, _, n := read(); n != 2 {
+		t.Errorf("the upgrade's changesets = %d, want 2", n)
+	}
 }

@@ -557,6 +557,105 @@ func (q *Queries) UpgradeBaselineContent(ctx context.Context, arg UpgradeBaselin
 	return content, err
 }
 
+const upgradeChangesets = `-- name: UpgradeChangesets :one
+SELECT count(*)::integer FROM changesets WHERE upgrade_id = $1
+`
+
+// How many changesets an upgrade wrote (M11 design 4.7's report), by changesets_upgrade_id_idx alone. No
+// deleted_at: a changeset's goes only with its notebook's (nodes.sql:315-316), whose upgrade's wiki row goes in the
+// same moment, so a check that read the upgrade under way reads a live notebook's; with it, the planner meets the
+// condition with the partial index of every notebook's live changesets (00037) in a BitmapAnd when the statistics
+// were never gathered (design review P2B-M1: 132-140 ms at two million changesets, 0 ms without).
+func (q *Queries) UpgradeChangesets(ctx context.Context, upgradeID *uuid.UUID) (int32, error) {
+	row := q.db.QueryRow(ctx, upgradeChangesets, upgradeID)
+	var column_1 int32
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
+const upgradeGateBaseline = `-- name: UpgradeGateBaseline :many
+SELECT node_id, kind, parent_id, wanted FROM upgrade_nodes
+WHERE upgrade_id = $1 AND baseline
+`
+
+type UpgradeGateBaselineRow struct {
+	NodeID   uuid.UUID
+	Kind     string
+	ParentID *uuid.UUID
+	Wanted   *int32
+}
+
+// An upgrade's baseline rows for its check (M11 design 4.7 gate 6 and the report's counts), by upgrade_nodes_pkey's
+// prefix: each node's kind and parent as it started, a page's distinct wanted targets then.
+func (q *Queries) UpgradeGateBaseline(ctx context.Context, upgradeID uuid.UUID) ([]UpgradeGateBaselineRow, error) {
+	rows, err := q.db.Query(ctx, upgradeGateBaseline, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []UpgradeGateBaselineRow
+	for rows.Next() {
+		var i UpgradeGateBaselineRow
+		if err := rows.Scan(
+			&i.NodeID,
+			&i.Kind,
+			&i.ParentID,
+			&i.Wanted,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upgradePreserved = `-- name: UpgradePreserved :one
+SELECT count(*)::integer AS nodes,
+    (count(*) FILTER (WHERE n.alive))::integer AS nodes_kept,
+    (count(*) FILTER (WHERE b.kind = 'page'))::integer AS pages,
+    (count(*) FILTER (WHERE b.kind = 'page' AND c.content_hash = b.accepted_hash))::integer AS pages_kept,
+    COALESCE((array_agg(b.node_id ORDER BY b.node_id) FILTER (
+        WHERE n.alive IS NULL OR b.kind = 'page' AND c.content_hash IS DISTINCT FROM b.accepted_hash))[1:5],
+        '{}')::uuid[] AS not_kept
+FROM upgrade_nodes b
+LEFT JOIN LATERAL (
+    SELECT true AS alive FROM nodes n WHERE n.id = b.node_id AND n.deleted_at IS NULL LIMIT 1
+) n ON true
+LEFT JOIN LATERAL (
+    SELECT c.content_hash FROM page_contents c WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+) c ON b.kind = 'page'
+WHERE b.upgrade_id = $1 AND b.baseline
+`
+
+type UpgradePreservedRow struct {
+	Nodes     int32
+	NodesKept int32
+	Pages     int32
+	PagesKept int32
+	NotKept   []uuid.UUID
+}
+
+// Gate 7 of an upgrade's check (M11 design 4.7, decision 191): its baseline's nodes and pages, those alive, the
+// pages whose content now is the one the guardrails last accepted, and the first five not kept, by id: dead, or a
+// page whose content is not the ledger's. The baseline rows by upgrade_nodes_pkey's prefix, each row's node by
+// nodes_pkey and its content by page_contents_pkey, one row at a time (decisions 240, 244): the LIMIT 1 keeps each
+// LATERAL from being pulled up into a join. No content is read; one pass, a failing gate's ids included.
+func (q *Queries) UpgradePreserved(ctx context.Context, upgradeID uuid.UUID) (UpgradePreservedRow, error) {
+	row := q.db.QueryRow(ctx, upgradePreserved, upgradeID)
+	var i UpgradePreservedRow
+	err := row.Scan(
+		&i.Nodes,
+		&i.NodesKept,
+		&i.Pages,
+		&i.PagesKept,
+		&i.NotKept,
+	)
+	return i, err
+}
+
 const upgradeProtected = `-- name: UpgradeProtected :many
 SELECT node_id FROM upgrade_nodes
 WHERE upgrade_id = $1 AND node_id = ANY($2::uuid[])
