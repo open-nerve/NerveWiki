@@ -55,10 +55,13 @@ func lintByPageFixture() (*lintData, app.ReadInput) {
 // relative one by its page's parents' keys, a page without one is absent;
 // the area's pages are counted in a second pass only, never in the rule's
 // count, which a preparation that does not ask for the counts never reads.
+// The second pass is asked on its own (M11/P2 design 3.8): an upgrade's
+// check asks the summary with the first pass's counts only.
 func TestTheWantedCountsByPage(t *testing.T) {
 	t.Run("an-llm-contract", func(t *testing.T) {
 		f, in := lintByPageFixture()
-		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true})
+		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true,
+			AreaWantedByPage: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -116,14 +119,16 @@ func TestTheWantedCountsByPage(t *testing.T) {
 	t.Run("a-page-outside-the-area-answered", func(t *testing.T) {
 		f, in := lintByPageFixture()
 		f.areaStray = lintID(20)
-		if _, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true}); !errors.Is(err, app.ErrLintRows) {
+		if _, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true,
+			AreaWantedByPage: true}); !errors.Is(err, app.ErrLintRows) {
 			t.Fatalf("prepared %v, want the rows refused", err)
 		}
 	})
 	t.Run("a-resolved-link-answered", func(t *testing.T) {
 		f, in := lintByPageFixture()
 		f.areaResolved = true
-		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true})
+		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{Rule: lintPtr(domain.Wanted), Limit: 1, WantedByPage: true,
+			AreaWantedByPage: true})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -131,9 +136,51 @@ func TestTheWantedCountsByPage(t *testing.T) {
 			t.Fatalf("a's wanted count = %d, want 3: its resolved link counted", got)
 		}
 	})
-	t.Run("only-with-the-wanted-rule", func(t *testing.T) {
+	// The summary with the counts, as an upgrade's check asks it: the first
+	// pass's pages only, the rules' counts and items as without them, and
+	// no second pass.
+	t.Run("the-summary-without-the-second-pass", func(t *testing.T) {
 		f, in := lintByPageFixture()
-		for _, q := range []app.RuleQuery{{WantedByPage: true}, {Rule: lintPtr(domain.Orphans), WantedByPage: true}} {
+		p, err := f.rules().Prepare(t.Context(), in, app.RuleQuery{WantedByPage: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want := map[uuid.UUID]int{lintID(20): 2, lintID(21): 3}
+		if got := p.WantedByPage(); !maps.Equal(got, want) {
+			t.Fatalf("wanted by page = %v, want %v: the first pass's only", got, want)
+		}
+		if slices.Contains(f.calls, "area-heads") || len(f.areaCalls) != 0 {
+			t.Fatalf("the summary ran the second pass: %v, %+v", f.calls, f.areaCalls)
+		}
+		g, in := lintByPageFixture()
+		plain, err := g.rules().Prepare(t.Context(), in, app.RuleQuery{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, rule := range domain.ApplicableRules(domain.ModeLLM) {
+			a, _ := p.RuleCount(t.Context(), rule)
+			b, _ := plain.RuleCount(t.Context(), rule)
+			if a != b {
+				t.Errorf("%s counts %+v with the counts asked, %+v without", rule, a, b)
+			}
+		}
+		if got := plain.WantedByPage(); got != nil {
+			t.Fatalf("a summary that did not ask for the counts has them: %v", got)
+		}
+	})
+	t.Run("only-with-the-summary-or-the-wanted-rule", func(t *testing.T) {
+		f, in := lintByPageFixture()
+		for _, q := range []app.RuleQuery{{Rule: lintPtr(domain.Orphans), WantedByPage: true},
+			{Rule: lintPtr(domain.Orphans), WantedByPage: true, AreaWantedByPage: true}} {
+			if _, err := f.rules().Prepare(t.Context(), in, q); err == nil {
+				t.Errorf("%+v was prepared", q)
+			}
+		}
+	})
+	// The second pass alone is no query: it adds to the first pass's.
+	t.Run("the-second-pass-alone", func(t *testing.T) {
+		f, in := lintByPageFixture()
+		for _, q := range []app.RuleQuery{{AreaWantedByPage: true}, {Rule: lintPtr(domain.Wanted), Limit: 1, AreaWantedByPage: true}} {
 			if _, err := f.rules().Prepare(t.Context(), in, q); err == nil {
 				t.Errorf("%+v was prepared", q)
 			}

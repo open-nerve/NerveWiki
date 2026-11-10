@@ -472,7 +472,8 @@ func TestUpgradeStart(t *testing.T) {
 			t.Errorf("protected %s, want the seeded raw %s", f.protected, raw)
 		}
 		llm, wanted := domain.ModeLLMWiki, domain.RuleWanted
-		if !reflect.DeepEqual(f.query, app.RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true}) ||
+		// Both passes (M11/P2 design 3.8): the area's baseline pages too.
+		if !reflect.DeepEqual(f.query, app.RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true, AreaWantedByPage: true}) ||
 			f.input.EffectiveMode != llm || !f.input.Explicit || f.input.AreaRootID == nil || *f.input.AreaRootID != raw ||
 			f.stateOutsideTransaction || f.sourcesOutsideTransaction {
 			t.Errorf("prepared %+v of %+v (outside the transaction: %t %t)", f.query, f.input, f.stateOutsideTransaction, f.sourcesOutsideTransaction)

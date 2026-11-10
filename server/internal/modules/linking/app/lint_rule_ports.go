@@ -36,13 +36,17 @@ type ReadInput struct {
 // RuleQuery binds a preparation to a summary or one rule's requested page.
 // Summary has nil Rule/After and zero Limit. A rule's zero Limit means 50;
 // explicit limits are 1..100. A validated Begin position means the first item.
-// WantedByPage, with the wanted rule only, also counts each page's distinct
-// wanted targets, an LLM contract's area included (M11 design 4.7 gate 6).
+// WantedByPage, with the summary or with the wanted rule, also counts each
+// general emitter's distinct wanted targets: an upgrade's check compares
+// them with its baseline (M11 design 4.7 gate 6). AreaWantedByPage, with
+// WantedByPage only, adds an LLM contract's area's current pages, as an
+// upgrade's start records them (the second pass, M11/P2 design 3.8).
 type RuleQuery struct {
-	Rule         *domain.Rule
-	After        *domain.Position
-	Limit        int
-	WantedByPage bool
+	Rule             *domain.Rule
+	After            *domain.Position
+	Limit            int
+	WantedByPage     bool
+	AreaWantedByPage bool
 }
 
 // PageRuleInput contains complete sorted, unique eligibility relations. Only

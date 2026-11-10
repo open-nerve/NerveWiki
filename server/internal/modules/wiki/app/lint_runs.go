@@ -37,7 +37,7 @@ type lintFlight struct {
 	started    time.Time
 	done       chan struct{}
 	published  bool
-	result     domain.LintResult
+	result     RunResult
 	err        error
 	outcome    string
 }
@@ -58,21 +58,22 @@ func NewRuns(max int, timeout time.Duration, log Logger, observe RunObserver) *R
 }
 
 // Do joins before competing for a slot. Every caller has an independent
-// wait budget; its cancellation never cancels the shared worker.
-func (r *Runs) Do(ctx context.Context, key RunKey, run func(context.Context) (RunOutput, error)) (domain.LintResult, error) {
+// wait budget; its cancellation never cancels the shared worker. Each
+// caller gets its own copy of the flight's result.
+func (r *Runs) Do(ctx context.Context, key RunKey, run func(context.Context) (RunOutput, error)) (RunResult, error) {
 	if err := ctx.Err(); err != nil {
-		return domain.LintResult{}, err
+		return RunResult{}, err
 	}
 	budget := r.timeout
 	if deadline, ok := ctx.Deadline(); ok {
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
-			return domain.LintResult{}, context.DeadlineExceeded
+			return RunResult{}, context.DeadlineExceeded
 		}
 		budget = min(budget, remaining/2)
 	}
 	if budget <= 0 {
-		return domain.LintResult{}, shared.ServerBusy(time.Second)
+		return RunResult{}, shared.ServerBusy(time.Second)
 	}
 	wait, cancelWait := context.WithTimeout(ctx, budget)
 	defer cancelWait()
@@ -84,7 +85,7 @@ func (r *Runs) Do(ctx context.Context, key RunKey, run func(context.Context) (Ru
 	r.mu.Lock()
 	if r.closed {
 		r.mu.Unlock()
-		return domain.LintResult{}, shared.ServerBusy(time.Second)
+		return RunResult{}, shared.ServerBusy(time.Second)
 	}
 	f, joined := r.flights[key]
 	if !joined {
@@ -106,20 +107,20 @@ func (r *Runs) Do(ctx context.Context, key RunKey, run func(context.Context) (Ru
 	select {
 	case <-wait.Done():
 		if err := ctx.Err(); err != nil {
-			return domain.LintResult{}, err
+			return RunResult{}, err
 		}
-		return domain.LintResult{}, shared.ServerBusy(time.Second)
+		return RunResult{}, shared.ServerBusy(time.Second)
 	case <-f.done:
 		if err := ctx.Err(); err != nil {
-			return domain.LintResult{}, err
+			return RunResult{}, err
 		}
 		if wait.Err() != nil {
-			return domain.LintResult{}, shared.ServerBusy(time.Second)
+			return RunResult{}, shared.ServerBusy(time.Second)
 		}
 		if f.err != nil {
-			return domain.LintResult{}, f.err
+			return RunResult{}, f.err
 		}
-		return domain.CloneLintResult(f.result), nil
+		return cloneRunResult(f.result), nil
 	}
 }
 
@@ -187,7 +188,7 @@ func (r *Runs) expire(f *lintFlight) {
 	expired := !f.published
 	if expired {
 		r.forget(f)
-		r.publish(f, domain.LintResult{}, shared.ServerBusy(time.Second), "expired")
+		r.publish(f, RunResult{}, shared.ServerBusy(time.Second), "expired")
 	}
 	r.mu.Unlock()
 	if expired {
@@ -209,11 +210,11 @@ func (r *Runs) finish(f *lintFlight, output RunOutput, runErr error, acquired bo
 		switch {
 		case f.ctx.Err() != nil:
 			expired = true
-			r.publish(f, domain.LintResult{}, shared.ServerBusy(time.Second), "expired")
+			r.publish(f, RunResult{}, shared.ServerBusy(time.Second), "expired")
 		case runErr != nil:
-			r.publish(f, domain.LintResult{}, runErr, "error")
+			r.publish(f, RunResult{}, runErr, "error")
 		default:
-			r.publish(f, domain.CloneLintResult(output.Result), nil, "success")
+			r.publish(f, cloneRunResult(RunResult{Lint: output.Result, Check: output.Check}), nil, "success")
 		}
 	}
 	outcome := f.outcome
@@ -241,9 +242,14 @@ func (r *Runs) forget(f *lintFlight) {
 	}
 }
 
-func (*Runs) publish(f *lintFlight, result domain.LintResult, err error, outcome string) {
+func (*Runs) publish(f *lintFlight, result RunResult, err error, outcome string) {
 	f.result, f.err, f.outcome, f.published = result, err, outcome, true
 	close(f.done)
+}
+
+// cloneRunResult is r with slices, maps and pointers of its own.
+func cloneRunResult(r RunResult) RunResult {
+	return RunResult{Lint: domain.CloneLintResult(r.Lint), Check: domain.CloneUpgradeCheck(r.Check)}
 }
 
 // Stop closes admission once and cancels all workers, including expired
@@ -258,7 +264,7 @@ func (r *Runs) Stop(ctx context.Context) error {
 			cancels = append(cancels, f.cancel)
 		}
 		for _, f := range r.flights {
-			r.publish(f, domain.LintResult{}, shared.ServerBusy(time.Second), "stopped")
+			r.publish(f, RunResult{}, shared.ServerBusy(time.Second), "stopped")
 			stopped = append(stopped, f)
 		}
 		clear(r.flights)
@@ -298,11 +304,20 @@ func (r *Runs) logFinished(f *lintFlight, stats RunStats, runErr error, waited t
 		mode = string(stats.Mode)
 	}
 	kind, rule := "unknown", "unknown"
+	upgrade := false
 	switch f.key.Kind {
 	case domain.LintSummary:
 		kind, rule = "summary", "summary"
 	case domain.LintItems:
 		kind = "items"
+	case domain.LintUpgradeCheck:
+		kind, rule, upgrade = "upgrade_check", "summary", true
+	case domain.LintUpgradeItems:
+		kind, upgrade = "upgrade_items", true
+	case domain.LintUpgradeSubmit:
+		kind, rule, upgrade = "upgrade_submit", "summary", true
+	}
+	if f.key.Kind == domain.LintItems || f.key.Kind == domain.LintUpgradeItems {
 		if known, ok := domain.ParseLintRule(string(f.key.Rule)); ok {
 			rule = string(known)
 		}
@@ -318,6 +333,10 @@ func (r *Runs) logFinished(f *lintFlight, stats RunStats, runErr error, waited t
 		slog.String("query_kind", kind), slog.String("rule", rule), slog.String("outcome", outcome),
 		slog.String("fault", fault), slog.String("cleanup", cleanup),
 		slog.Int64("wait_ms", waited.Milliseconds()), slog.Int64("elapsed_ms", time.Since(f.started).Milliseconds()),
+	}
+	if upgrade {
+		// An upgrade's or a submission's id (M11/P2 design 3.16): only an id.
+		attrs = append(attrs, slog.String("upgrade_scope", f.key.Scope.String()))
 	}
 	if stats.StalePages != nil {
 		attrs = append(attrs, slog.Int64("stale_pages", *stats.StalePages))

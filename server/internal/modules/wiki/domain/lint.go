@@ -59,11 +59,17 @@ type LintCount struct {
 }
 
 // LintQueryKind separates a summary from one rule's list. Zero is invalid.
+// The upgrade's three are a run's key's only (M11/P2 design 3.8): an
+// upgrade's check, a rule's items in its scope and a submission's check;
+// their results' Kind is LintSummary or LintItems.
 type LintQueryKind uint8
 
 const (
 	LintSummary LintQueryKind = iota + 1
 	LintItems
+	LintUpgradeCheck
+	LintUpgradeItems
+	LintUpgradeSubmit
 )
 
 // LintPosition holds a decoded cursor's sorting fields. An ID pointer may

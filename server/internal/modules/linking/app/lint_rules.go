@@ -28,6 +28,7 @@ type lintPlan struct {
 	after  *domain.Position
 	limit  int
 	byPage bool
+	area   bool
 }
 
 func lintCopyQuery(q RuleQuery) RuleQuery {
@@ -41,14 +42,14 @@ func lintCopyQuery(q RuleQuery) RuleQuery {
 
 func lintQuery(q RuleQuery, s *ReadScope) (lintPlan, error) {
 	allowed := domain.ApplicableRules(s.mode)
-	if q.WantedByPage && (q.Rule == nil || *q.Rule != domain.Wanted) {
+	if q.WantedByPage && q.Rule != nil && *q.Rule != domain.Wanted || q.AreaWantedByPage && !q.WantedByPage {
 		return lintPlan{}, errLintQuery
 	}
 	if q.Rule == nil {
 		if q.After != nil || q.Limit != 0 {
 			return lintPlan{}, errLintQuery
 		}
-		return lintPlan{rules: allowed, limit: 5}, nil
+		return lintPlan{rules: allowed, limit: 5, byPage: q.WantedByPage}, nil
 	}
 	if !slices.Contains(allowed, *q.Rule) || q.Limit < 0 || q.Limit > 100 {
 		return lintPlan{}, errLintQuery
@@ -67,7 +68,7 @@ func lintQuery(q RuleQuery, s *ReadScope) (lintPlan, error) {
 			q.After = nil
 		}
 	}
-	return lintPlan{rules: []domain.Rule{*q.Rule}, after: q.After, limit: limit, byPage: q.WantedByPage}, nil
+	return lintPlan{rules: []domain.Rule{*q.Rule}, after: q.After, limit: limit, byPage: q.WantedByPage, area: q.AreaWantedByPage}, nil
 }
 
 // Prepare completes every requested count/page before publishing a result.
@@ -117,7 +118,7 @@ func (r *Rules) Prepare(ctx context.Context, input ReadInput, query RuleQuery) (
 		switch rule {
 		case domain.Wanted:
 			result, out.wantedByPage, err = r.prepareWanted(ctx, scope, plan)
-			if err == nil && plan.byPage && scope.mode == domain.ModeLLM {
+			if err == nil && plan.area && scope.mode == domain.ModeLLM {
 				err = r.prepareAreaWanted(ctx, scope, out.wantedByPage)
 			}
 		case domain.Ambiguous:

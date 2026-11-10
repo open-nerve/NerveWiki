@@ -254,8 +254,8 @@ func (s *StartUpgrade) start(ctx context.Context, actor shared.Actor, client str
 		}
 	}
 	llm, wanted := domain.ModeLLMWiki, domain.RuleWanted
-	prepared, _, err := s.lint.prepareIn(ctx, LintScope{NotebookID: id, Contract: &llm, AreaRootID: &up.SourceRootID},
-		RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true})
+	prepared, _, _, err := s.lint.prepareIn(ctx, LintScope{NotebookID: id, Contract: &llm, AreaRootID: &up.SourceRootID},
+		RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true, AreaWantedByPage: true})
 	if err != nil {
 		return startOutcome{}, err
 	}

@@ -79,14 +79,17 @@ type ReadInput struct {
 	SourceIDs     []uuid.UUID
 }
 
-// RuleQuery's WantedByPage, with the wanted rule only, also counts each
-// page's distinct wanted targets, an LLM contract's area included: an
-// upgrade's start records them (M11 design 4.7 gate 6).
+// WantedByPage, with the summary or with the wanted rule, also counts each
+// general emitter's distinct wanted targets: an upgrade's check compares
+// them with its baseline (M11 design 4.7 gate 6). AreaWantedByPage, with
+// WantedByPage only, adds an LLM contract's area's current pages, as an
+// upgrade's start records them (the second pass).
 type RuleQuery struct {
-	Rule         *domain.LintRule
-	After        *domain.LintPosition
-	Limit        int
-	WantedByPage bool
+	Rule             *domain.LintRule
+	After            *domain.LintPosition
+	Limit            int
+	WantedByPage     bool
+	AreaWantedByPage bool
 }
 
 type RuleTiming struct {
@@ -128,7 +131,7 @@ type Cursors interface {
 type Clock interface{ Now() time.Time }
 
 type Runner interface {
-	Do(context.Context, RunKey, func(context.Context) (RunOutput, error)) (domain.LintResult, error)
+	Do(context.Context, RunKey, func(context.Context) (RunOutput, error)) (RunResult, error)
 }
 
 type LintDeps struct {

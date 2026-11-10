@@ -139,7 +139,7 @@ func (r wikiRules) PrepareRules(ctx context.Context, in wiki.ReadInput, query wi
 		input.Nodes[i] = linking.CompactNode{ID: node.ID, ParentID: wikiCopy(node.ParentID), Kind: kind,
 			NameKey: node.NameKey, Linkable: node.Linkable, CreatedAt: node.CreatedAt, PageBytes: node.PageBytes}
 	}
-	q := linking.RuleQuery{Limit: query.Limit, WantedByPage: query.WantedByPage}
+	q := linking.RuleQuery{Limit: query.Limit, WantedByPage: query.WantedByPage, AreaWantedByPage: query.AreaWantedByPage}
 	if query.Rule != nil {
 		rule := linking.Rule(*query.Rule)
 		q.Rule = &rule

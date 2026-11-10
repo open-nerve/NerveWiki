@@ -661,9 +661,20 @@ func TestComputeInTakesItsMoment(t *testing.T) {
 		t.Fatalf("computeIn called %v, want it to project the item and the cursor", got)
 	}
 	l, trace = fixture(t)
-	prepared, stats, err := l.prepareIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, query)
+	var given ReadInput
+	rules := l.deps.Rules
+	l.deps.Rules = lintExecRules(func(ctx context.Context, in ReadInput, q RuleQuery) (PreparedRules, error) {
+		given = in
+		return rules.PrepareRules(ctx, in, q)
+	})
+	prepared, stats, input, err := l.prepareIn(t.Context(), LintScope{NotebookID: lintExecID(1)}, query)
 	if err != nil || prepared == nil || stats.StalePages == nil || stats.PrepareElapsed == nil {
 		t.Fatalf("prepareIn = %v, %+v, %v", prepared, stats, err)
+	}
+	// It answers what it read, the rules' input (M11/P2 design 3.8): an
+	// upgrade's check judges its gates by it.
+	if input.NotebookID != lintExecID(1) || input.EffectiveMode != domain.ModeStandard || !reflect.DeepEqual(input, given) {
+		t.Fatalf("prepareIn read %+v, the rules were given %+v", input, given)
 	}
 	if got := trace.copy(); !slices.Equal(got, []string{"state", "nodes", "prepare"}) {
 		t.Fatalf("prepareIn called %v: it projected", got)
