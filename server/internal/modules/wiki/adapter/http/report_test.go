@@ -2,6 +2,7 @@ package httpadapter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -33,7 +34,7 @@ func reportedView() app.UpgradeView {
 			Links:          domain.LinksGate{Passed: true, NodeIDs: []uuid.UUID{lintID(61), lintID(62)}},
 			Preserved:      domain.PreservedGate{Passed: true, Nodes: 7, NodesKept: 7, Pages: 5, PagesKept: 5, NodeIDs: []uuid.UUID{lintID(63)}}},
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 2, WikiPages: 3, NewPages: 4, Changesets: 5,
-			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
+			WantedBefore: domain.LintCount{Value: 5}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
 	hash := strings.Repeat("a", 64)
 	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
 		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 5}}
@@ -87,9 +88,13 @@ func TestTheReportIsAnswered(t *testing.T) {
 			t.Fatal(err)
 		}
 		if got.State != "reviewing" || len(got.Report.Rules) != 8 || len(got.Report.Gates["links"].NodeIDs) != 2 ||
-			len(got.Report.Gates["agents"].NodeIDs) != 0 || got.Report.Counts["new_pages"] != float64(4) ||
-			got.Report.Counts["wanted_now"].(map[string]any)["count_capped"] != true {
+			len(got.Report.Gates["agents"].NodeIDs) != 0 || got.Report.Counts["new_pages"] != float64(4) {
 			t.Fatalf("answered %s", body)
+		}
+		// The wanted counts the check's test's other way round (P2S2C-M4).
+		if before, now := fmt.Sprint(got.Report.Counts["wanted_before"]), fmt.Sprint(got.Report.Counts["wanted_now"]); before !=
+			"map[count:5 count_capped:false]" || now != "map[count:10000 count_capped:true]" {
+			t.Fatalf("wanted before %s, now %s; want 5, then 10,000 capped", before, now)
 		}
 		for _, rule := range got.Report.Rules {
 			if len(rule.Items) != 5 || rule.Items[0]["rule"] != rule.Rule {

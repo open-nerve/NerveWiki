@@ -2,6 +2,7 @@ package httpadapter_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -53,7 +54,7 @@ func aCheck() *domain.UpgradeCheck {
 				NodeIDs: []uuid.UUID{lintID(47), lintID(48)}}},
 		Rules: checkRules(),
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 2, WikiPages: 3, NewPages: 4, Changesets: 5,
-			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 10000, Capped: true}},
+			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 6}},
 		Paths: map[uuid.UUID]string{lintID(40): "index.md"},
 	}
 }
@@ -76,9 +77,14 @@ func TestTheCheckIsAnswered(t *testing.T) {
 	if got["passed"] != false || got["stale_pages"] != float64(2) || len(got["rules"].([]any)) != 8 || len(gates) != 8 ||
 		len(gates["links"].(map[string]any)["node_ids"].([]any)) != 5 || gates["preserved"].(map[string]any)["nodes_kept"] != float64(8) ||
 		gates["agents"].(map[string]any)["passed"] != true || counts["moved_into_sources"] != float64(2) ||
-		counts["wanted_before"].(map[string]any)["count_capped"] != true ||
-		counts["wanted_now"].(map[string]any)["count_capped"] != true || strings.Contains(string(body), "index.md") {
+		strings.Contains(string(body), "index.md") {
 		t.Errorf("check = %s", body)
+	}
+	// One of the wanted counts capped, the other not, so that each is its
+	// own (review P2S2C-M4); the report's test has them the other way.
+	if before, now := fmt.Sprint(counts["wanted_before"]), fmt.Sprint(counts["wanted_now"]); before != "map[count:10000 count_capped:true]" ||
+		now != "map[count:6 count_capped:false]" {
+		t.Errorf("wanted before %s, now %s; want 10,000 capped, then 6", before, now)
 	}
 	if len(f.queries) != 1 || f.queries[0] != (app.LintQuery{}) {
 		t.Errorf("the check asked %+v", f.queries)

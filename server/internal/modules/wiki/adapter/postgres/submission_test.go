@@ -108,7 +108,9 @@ func TestTheSubmissionsRows(t *testing.T) {
 // fullReport is a report of every rule, each with five items of its
 // shape, at the bounds the contract sets when worst (M11/P2 design 3.10):
 // targets of 256 control characters, each written \u00XX; item keys of
-// 140 bytes; every gate naming its most nodes; counts at their caps.
+// 140 bytes; every gate naming its most nodes; counts at their caps. Not
+// worst, the wanted pages now are 7, not capped, so that the two wanted
+// counts are not the same (review P2S2C-M4).
 func fullReport(worst bool) domain.UpgradeReport {
 	at := time.Date(2026, 11, 10, 9, 0, 0, 123456000, time.UTC)
 	target, key := "Plan", func(prefix string) string { return prefix + uuid.NewV7().String() }
@@ -123,13 +125,17 @@ func fullReport(worst bool) domain.UpgradeReport {
 		}
 		return out
 	}
+	now := domain.LintCount{Value: 10000, Capped: true}
+	if !worst {
+		now = domain.LintCount{Value: 7}
+	}
 	r := domain.UpgradeReport{
 		ComputedAt: at, StalePages: 0, Passed: true,
 		Gates: domain.UpgradeGates{Agents: true, SourceRoot: true, Frontmatter: true, Sources: true, Index: true,
 			ReservedTitles: domain.NodesGate{NodeIDs: ids(4)}, Links: domain.LinksGate{PagesWorse: 12, NodeIDs: ids(5)},
 			Preserved: domain.PreservedGate{Nodes: 100000, NodesKept: 99990, Pages: 90000, PagesKept: 89990, NodeIDs: ids(5)}},
 		Counts: domain.UpgradeCounts{Sources: 100000, MovedIntoSources: 100000, WikiPages: 100000, NewPages: 100000, Changesets: 100000,
-			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 10000, Capped: true}},
+			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: now},
 	}
 	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
 		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 10000, Capped: true}}
@@ -244,10 +250,27 @@ func TestTheReportRoundTrips(t *testing.T) {
 		"[passed]":                               keys(stored.Gates["agents"]),
 		`[]`:                                     string(stored.Gates["preserved"]["node_ids"]),
 		`{"count": 10000, "count_capped": true}`: string(stored.Counts["wanted_before"]),
+		`{"count": 7, "count_capped": false}`:    string(stored.Counts["wanted_now"]),
 	} {
 		if got != what {
 			t.Errorf("stored %s, want %s", got, what)
 		}
+	}
+
+	// The wanted counts the other way round, kept again by the same
+	// submission once its report is cleared: the pages wanted as the
+	// upgrade started 5, not capped, now capped (review P2S2C-M4).
+	other := fullReport(false)
+	other.Counts.WantedBefore, other.Counts.WantedNow = domain.LintCount{Value: 5}, domain.LintCount{Value: 10000, Capped: true}
+	if _, err := f.pool.Exec(ctx, "UPDATE notebook_upgrades SET report = NULL WHERE id = $1", eng.ID); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := f.store.KeepReport(ctx, eng.ID, sub, other, f.alice, at); !ok || err != nil {
+		t.Fatalf("KeepReport(the other way round) = %v, %v", ok, err)
+	}
+	got, _, err = f.store.Current(ctx, f.eng)
+	if err != nil || got.Report == nil || !reflect.DeepEqual(got.Report.Counts, other.Counts) {
+		t.Fatalf("read back the counts %+v, %v; want %+v", got.Report, err, other.Counts)
 	}
 }
 
