@@ -25,6 +25,7 @@ type abandonTxKey struct{}
 // would; whether a job writes the tree; what the rollback left; the
 // calls in order, each write's with what it wrote.
 type abandonFake struct {
+	unsubmitted
 	calls []string
 
 	at                   time.Time

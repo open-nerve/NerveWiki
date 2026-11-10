@@ -1171,8 +1171,10 @@ export const en = {
   "problem.wiki.upgrade_title_taken":
     "An attachment at the root is titled raw or AGENTS: rename it first, then start the upgrade.",
   "problem.wiki.upgrade_stale_index":
-    "The link index is out of date: ask a server admin to run nervewiki reindex, then start the upgrade.",
+    "The link index is out of date: ask the server's administrator to run nervewiki reindex, then try again.",
   "problem.wiki.upgrade_state": "The upgrade's current state does not allow this.",
+  "problem.wiki.upgrade_not_ready":
+    "The upgrade does not pass its checks yet: it is upgrading again. Check it, fix what did not pass, then submit it again.",
   "problem.page.not_found": "This page does not exist, or you have no access to it.",
   "problem.page.version_not_found": "This page has no such version.",
   "problem.asset.not_found": "This attachment does not exist, or you have no access to it.",

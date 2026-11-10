@@ -60,6 +60,7 @@ type startTxKey struct{}
 // calls in order, and at four of them whether the start held the lint's
 // only slot.
 type startFake struct {
+	unsubmitted
 	mu    sync.Mutex
 	calls []string
 	runs  *app.Runs

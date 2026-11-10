@@ -108,18 +108,28 @@ type Names interface {
 
 // UpgradeRows are the module's notebook_upgrades: Insert writes an
 // upgrade's row by by at at; Current reads a notebook's upgrade under way,
-// false for none; RollBack sets the upgrade id upgrading or reviewing
-// rolling back for ending, its rollback's job jobID, in one statement;
-// ContinueRollback sets the job of the upgrade id rolling back;
-// EndRollback ends the upgrade id rolling back, rolled back, complete for
-// left nil, and answers when its row changed before. Each write is by by
-// at at, false for no row in the state it wants.
+// its submission and report too, false for none; RollBack sets the
+// upgrade id upgrading or reviewing rolling back for ending, its
+// rollback's job jobID, in one statement; ContinueRollback sets the job of
+// the upgrade id rolling back; EndRollback ends the upgrade id rolling
+// back, rolled back, complete for left nil, and answers when its row
+// changed before. Each write is by by at at, false for no row in the
+// state it wants.
 type UpgradeRows interface {
 	Insert(ctx context.Context, u domain.Upgrade, by uuid.UUID, at time.Time) error
 	Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgrade, bool, error)
 	RollBack(ctx context.Context, id uuid.UUID, ending domain.UpgradeEnding, jobID, by uuid.UUID, at time.Time) (bool, error)
 	ContinueRollback(ctx context.Context, id, jobID, by uuid.UUID, at time.Time) (bool, error)
 	EndRollback(ctx context.Context, id uuid.UUID, left *domain.RollbackLeft, by uuid.UUID, at time.Time) (time.Time, bool, error)
+	// Submit sets the upgrade id reviewing, submission submissionID by by
+	// at at: from upgrading, or from reviewing without a report submitted
+	// at takenOver or before (M11 design 4.8 step 1); false for no row so.
+	Submit(ctx context.Context, id, submissionID, by uuid.UUID, at, takenOver time.Time) (bool, error)
+	// KeepReport keeps report as the submission submissionID's, reviewing
+	// without one; Unsubmit sets it upgrading again, its submission
+	// cleared. False for no row so.
+	KeepReport(ctx context.Context, id, submissionID uuid.UUID, report domain.UpgradeReport, by uuid.UUID, at time.Time) (bool, error)
+	Unsubmit(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error)
 }
 
 // Rollbacks start an upgrade's rollback's job, the transfer module's

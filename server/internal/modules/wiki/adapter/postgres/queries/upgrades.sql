@@ -9,10 +9,11 @@ VALUES (sqlc.arg(id), sqlc.arg(notebook_id), 'upgrading', sqlc.arg(source_root_i
 
 -- name: CurrentUpgrade :one
 -- The notebook's upgrade under way, by notebook_upgrades_notebook_id_key: upgrading, reviewing or rolling back, its
--- notebook not deleted. Its report is P2's.
+-- notebook not deleted; its submission and the report it kept (M11/P2 design 3.12).
 SELECT id, notebook_id, state, ending, source_root_id, seeded_root, seeded_agents_id, locale, baseline_nodes,
-    baseline_pages, baseline_wanted, baseline_wanted_capped, submitted_by_id, submitted_at, rollback_job_id,
-    rollback_complete, rollback_left_nodes, rollback_left_pages, rollback_left_created, created_by_id, created_at
+    baseline_pages, baseline_wanted, baseline_wanted_capped, submission_id, submitted_by_id, submitted_at, report,
+    rollback_job_id, rollback_complete, rollback_left_nodes, rollback_left_pages, rollback_left_created, created_by_id,
+    created_at
 FROM notebook_upgrades
 WHERE notebook_id = sqlc.arg(notebook_id) AND state IN ('upgrading', 'reviewing', 'rolling_back') AND deleted_at IS NULL;
 
@@ -62,3 +63,27 @@ WHERE id = sqlc.arg(id) AND state IN ('upgrading', 'reviewing') AND deleted_at I
 UPDATE notebook_upgrades
 SET rollback_job_id = sqlc.arg(job_id)::uuid, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
 WHERE id = sqlc.arg(id) AND state = 'rolling_back' AND deleted_at IS NULL;
+
+-- name: SubmitUpgrade :execrows
+-- An upgrade's submission's first transaction (M11 design 4.8 step 1), under the notebook's row lock: reviewing, a new
+-- submission, who and when; from upgrading, or from reviewing without a report whose submission was taken over.
+UPDATE notebook_upgrades
+SET state = 'reviewing', submission_id = sqlc.arg(submission_id), submitted_by_id = sqlc.arg(by)::uuid,
+    submitted_at = sqlc.arg(now)::timestamptz, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL
+    AND (state = 'upgrading' OR state = 'reviewing' AND report IS NULL AND submitted_at <= sqlc.arg(taken_over)::timestamptz);
+
+-- name: KeepUpgradeReport :execrows
+-- A submission's report, as its check passed (M11 design 4.8 step 4), under the notebook's row lock.
+UPDATE notebook_upgrades
+SET report = sqlc.arg(report)::jsonb, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND submission_id = sqlc.arg(submission_id) AND state = 'reviewing' AND report IS NULL
+    AND deleted_at IS NULL;
+
+-- name: UnsubmitUpgrade :execrows
+-- A submission whose check did not pass, or failed (M11 design 4.8 step 4): upgrading again, its submission cleared.
+UPDATE notebook_upgrades
+SET state = 'upgrading', submission_id = NULL, submitted_by_id = NULL, submitted_at = NULL,
+    updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND submission_id = sqlc.arg(submission_id) AND state = 'reviewing' AND report IS NULL
+    AND deleted_at IS NULL;

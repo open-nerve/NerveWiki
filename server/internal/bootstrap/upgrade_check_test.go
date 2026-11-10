@@ -131,15 +131,22 @@ type upgradeRuns struct {
 }
 
 // upgradeRunsOn is upgradeRuns on the configuration change alters, whose
-// lint must have slots slots and runs of timeout (the wiring asserts
-// both: the design's arithmetic of 7.2 holds only for them).
-func upgradeRunsOn(t *testing.T, change func(*config.Config), slots int, timeout time.Duration) upgradeRuns {
+// lint must have slots slots and runs of timeout, a submission's part
+// apart from its request submit, its default for 0, lint's and ten
+// seconds (the wiring asserts them: the design's arithmetic of 7.2 holds
+// only for them).
+func upgradeRunsOn(t *testing.T, change func(*config.Config), slots int, timeout, submit time.Duration) upgradeRuns {
 	t.Helper()
 	r := upgradeRuns{rules: &heldRules{held: make(chan struct{}, 1), free: make(chan struct{})},
 		events: make(chan wiki.RunEvent, 4096), logs: &syncBuffer{}}
-	r.tm = newAcmeTeamOn(t, "member", "", change, &wiring{wiki: func(d *wiki.Deps) {
-		if d.MaxLintRuns != slots || d.LintTimeout != timeout {
-			t.Fatalf("lint's runs = %d of %s, want %d of %s", d.MaxLintRuns, d.LintTimeout, slots, timeout)
+	want := submit
+	if want == 0 {
+		want = timeout + 10*time.Second
+	}
+	r.tm = newAcmeTeamOn(t, "member", "", change, &wiring{submitTimeout: submit, wiki: func(d *wiki.Deps) {
+		if d.MaxLintRuns != slots || d.LintTimeout != timeout || d.SubmitTimeout != want {
+			t.Fatalf("lint's runs = %d of %s, a submission's %s; want %d of %s, %s", d.MaxLintRuns, d.LintTimeout, d.SubmitTimeout, slots,
+				timeout, want)
 		}
 		r.rules.Rules, d.Rules = d.Rules, r.rules
 		d.RunObserver = func(e wiki.RunEvent) {
@@ -154,12 +161,13 @@ func upgradeRunsOn(t *testing.T, change func(*config.Config), slots int, timeout
 
 // submitApp is acme on the separate app of M11/P2 design 7.2: requests of
 // 20 s, written in 60 s, eight connections; so lint has two slots and
-// runs of 10 s, and a caller waits for one about 9.9 s.
+// runs of 10 s, a caller waits for one about 9.9 s, and a submission's
+// part apart from its request has 20 s.
 func submitApp(t *testing.T) upgradeRuns {
 	t.Helper()
 	return upgradeRunsOn(t, func(c *config.Config) {
 		c.Server.RequestTimeout, c.Server.WriteTimeout, c.Database.MaxConns = 20*time.Second, 60*time.Second, 8
-	}, 2, 10*time.Second)
+	}, 2, 10*time.Second, 0)
 }
 
 // held sends c with lint's rules armed and waits until its run holds a
@@ -248,7 +256,7 @@ func (tm acmeTeam) reviewing(t *testing.T, nb, up string) {
 // root its rollback deleted, is bad_request; one of a raw both upgrades
 // propose is read. Last, interleaving #8 on the separate app (7.2).
 func TestUpgradeCheck(t *testing.T) {
-	r := upgradeRunsOn(t, nil, 1, 2*time.Second)
+	r := upgradeRunsOn(t, nil, 1, 2*time.Second, 0)
 	tm := r.tm
 	orphans := func(t *testing.T, name string, pages ...string) string {
 		t.Helper()

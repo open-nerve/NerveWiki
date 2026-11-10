@@ -33,8 +33,9 @@ const (
 // 4.2): who started it and when, the source root it proposes, the pages
 // its start wrote (SeededRoot: the source root is one; SeededAgentsID: the
 // AGENTS page, nil for none), its template's language, its baseline's
-// counts, its submission, its rollback's job and how the rollback ended.
-// Ending is "" for none; the pointers are nil until their step.
+// counts, its submission and the report it kept (M11/P2 design 3.12), its
+// rollback's job and how the rollback ended. Ending is "" for none; the
+// pointers are nil until their step.
 type Upgrade struct {
 	ID                   uuid.UUID
 	NotebookID           uuid.UUID
@@ -48,8 +49,10 @@ type Upgrade struct {
 	BaselinePages        int
 	BaselineWanted       int
 	BaselineWantedCapped bool
+	SubmissionID         *uuid.UUID
 	SubmittedBy          *uuid.UUID
 	SubmittedAt          *time.Time
+	Report               *UpgradeReport
 	RollbackJobID        *uuid.UUID
 	RollbackComplete     *bool
 	RollbackLeft         *RollbackLeft

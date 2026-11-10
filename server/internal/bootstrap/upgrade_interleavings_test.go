@@ -44,18 +44,26 @@ func (c *stoppedClock) Now() time.Time {
 }
 
 // heldRules are lint's rules, which, armed, hold the lint slot of the
-// next preparation until let go.
+// next preparation until let go; failing, fail the next one (M11/P2
+// design 7.1: a submission whose check answers an error).
 type heldRules struct {
 	wiki.Rules
-	armed atomic.Bool
-	held  chan struct{}
-	free  chan struct{}
+	armed   atomic.Bool
+	failing atomic.Bool
+	held    chan struct{}
+	free    chan struct{}
 }
+
+// errRulesFailed is the error the rules answer, failing.
+var errRulesFailed = errors.New("the rules failed, as the test asked")
 
 func (r *heldRules) PrepareRules(ctx context.Context, in wiki.ReadInput, q wiki.RuleQuery) (wiki.PreparedRules, error) {
 	if r.armed.CompareAndSwap(true, false) {
 		r.held <- struct{}{}
 		<-r.free
+	}
+	if r.failing.CompareAndSwap(true, false) {
+		return nil, errRulesFailed
 	}
 	return r.Rules.PrepareRules(ctx, in, q)
 }

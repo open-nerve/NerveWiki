@@ -20,7 +20,10 @@ const maxUpgradeLocks = 100
 // notebook module's notebook.change_mode; Timeout bounds the start's
 // transaction (decisions 227, 232). Its check's (M11/P2 design 3.11):
 // Gates are the page module's reads, Cursors and Paths lint's,
-// ReservedKeys the root's title keys gate 3 judges.
+// ReservedKeys the root's title keys gate 3 judges; its submission's
+// (3.12): SubmitTimeout bounds the part apart from the request, from the
+// moment the submission was written, and decides when one left reviewing
+// without a report may be taken over.
 type UpgradeDeps struct {
 	Tx         shared.TxManager
 	Snapshots  shared.Snapshots
@@ -40,10 +43,11 @@ type UpgradeDeps struct {
 	Logger     Logger
 	Timeout    time.Duration
 
-	Gates        UpgradeGatePages
-	Cursors      Cursors
-	Paths        Paths
-	ReservedKeys []string
+	Gates         UpgradeGatePages
+	Cursors       Cursors
+	Paths         Paths
+	ReservedKeys  []string
+	SubmitTimeout time.Duration
 }
 
 // locked locks notebook id's workspace's row FOR SHARE and its row FOR NO

@@ -1630,6 +1630,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
+         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over or an upgrade abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, with Retry-After: 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
+         */
+        post: operations["submitUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -3380,50 +3403,6 @@ export interface components {
             pages: number;
             created: number;
         };
-        /** @description A notebook's upgrade to an LLM Wiki, as its admins read it. */
-        Upgrade: {
-            /** Format: uuid */
-            id: string;
-            /** Format: uuid */
-            notebook_id: string;
-            state: components["schemas"]["UpgradeState"];
-            started_by: components["schemas"]["UserRef"];
-            /** Format: date-time */
-            started_at: string;
-            /**
-             * Format: uuid
-             * @description The source root the upgrade proposes, a page at the root titled raw.
-             */
-            source_root_id: string;
-            /** @description The pages the start wrote, raw then AGENTS, those the notebook lacked. */
-            seeded_page_ids: string[];
-            baseline: components["schemas"]["UpgradeBaseline"];
-            /** @description Who submitted it for review; null before. */
-            submitted_by: components["schemas"]["UserRef"] | null;
-            /**
-             * Format: date-time
-             * @description When it was submitted for review; null before.
-             */
-            submitted_at: string | null;
-            /**
-             * Format: uuid
-             * @description The job that rolls it back; null when it does not roll back.
-             */
-            rollback_job_id: string | null;
-            /** @description Why it rolls back; null when it does not. */
-            ending: components["schemas"]["UpgradeEnding"] | null;
-            /** @description Whether its rollback put everything back, once the rollback ended; null before. */
-            rollback_complete: boolean | null;
-            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. Rolling back with its job stopped: counted now. null otherwise. */
-            rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
-        };
-        UpgradeStart: {
-            /**
-             * @description The language of the pages the start writes, AGENTS and raw, when the notebook lacks them; en when absent.
-             * @enum {string}
-             */
-            template_locale?: "zh-CN" | "en";
-        };
         UpgradeGate: {
             passed: boolean;
         };
@@ -3462,6 +3441,114 @@ export interface components {
             /** @description The link index is fresh (stale_pages is 0). */
             index: components["schemas"]["UpgradeGate"];
         };
+        /** @enum {string} */
+        LintRule: "wanted" | "orphans" | "ambiguous" | "invalid_frontmatter" | "missing_type" | "missing_summary" | "undigested_sources" | "invalid_sources";
+        UpgradeReportWantedItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "wanted";
+            item_key: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /**
+             * Format: int64
+             * @description The number of distinct referring pages in this complete target group.
+             */
+            pages: number;
+        };
+        UpgradeReportOrphansItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "orphans";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportAmbiguousItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "ambiguous";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+        };
+        UpgradeReportInvalidFrontmatterItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_frontmatter";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportMissingTypeItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_type";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportMissingSummaryItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_summary";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportUndigestedSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "undigested_sources";
+            item_key: string;
+            /** Format: uuid */
+            node_id: string;
+            kind: components["schemas"]["LintNodeKind"];
+            /** Format: int64 */
+            bytes: number;
+            /**
+             * Format: date-time
+             * @description The source node's original creation time.
+             */
+            created_at: string;
+        };
+        UpgradeReportInvalidSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_sources";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /** @description True for a non-link JSON value; false for a link that fails qualification. */
+            not_link: boolean;
+        };
+        UpgradeReportItem: components["schemas"]["UpgradeReportWantedItem"] | components["schemas"]["UpgradeReportOrphansItem"] | components["schemas"]["UpgradeReportAmbiguousItem"] | components["schemas"]["UpgradeReportInvalidFrontmatterItem"] | components["schemas"]["UpgradeReportMissingTypeItem"] | components["schemas"]["UpgradeReportMissingSummaryItem"] | components["schemas"]["UpgradeReportUndigestedSourcesItem"] | components["schemas"]["UpgradeReportInvalidSourcesItem"];
+        UpgradeReportRule: {
+            rule: components["schemas"]["LintRule"];
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["UpgradeReportItem"][];
+        };
         /** @description The distinct pages links lead to that do not exist yet, as the wanted health check counts them. */
         UpgradeWanted: {
             count: components["schemas"]["LintCount"];
@@ -3480,6 +3567,63 @@ export interface components {
             changesets: number;
             wanted_before: components["schemas"]["UpgradeWanted"];
             wanted_now: components["schemas"]["UpgradeWanted"];
+        };
+        /** @description The check a submission kept, its rules' first five items without cursors. */
+        UpgradeReport: {
+            /** Format: date-time */
+            computed_at: string;
+            /** Format: int64 */
+            stale_pages: number;
+            passed: boolean;
+            gates: components["schemas"]["UpgradeGates"];
+            rules: components["schemas"]["UpgradeReportRule"][];
+            counts: components["schemas"]["UpgradeCounts"];
+        };
+        /** @description A notebook's upgrade to an LLM Wiki, as its admins read it. */
+        Upgrade: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            notebook_id: string;
+            state: components["schemas"]["UpgradeState"];
+            started_by: components["schemas"]["UserRef"];
+            /** Format: date-time */
+            started_at: string;
+            /**
+             * Format: uuid
+             * @description The source root the upgrade proposes, a page at the root titled raw.
+             */
+            source_root_id: string;
+            /** @description The pages the start wrote, raw then AGENTS, those the notebook lacked. */
+            seeded_page_ids: string[];
+            baseline: components["schemas"]["UpgradeBaseline"];
+            /** @description Who submitted it for review; null before. */
+            submitted_by: components["schemas"]["UserRef"] | null;
+            /**
+             * Format: date-time
+             * @description When it was submitted for review; null before.
+             */
+            submitted_at: string | null;
+            /**
+             * Format: uuid
+             * @description The job that rolls it back; null when it does not roll back.
+             */
+            rollback_job_id: string | null;
+            /** @description Why it rolls back; null when it does not. */
+            ending: components["schemas"]["UpgradeEnding"] | null;
+            /** @description Whether its rollback put everything back, once the rollback ended; null before. */
+            rollback_complete: boolean | null;
+            /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. Rolling back with its job stopped: counted now. null otherwise. */
+            rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
+            /** @description The report its submission kept once its check passed, kept after, through an abandonment too; null before, and while a submission is still checked. */
+            report: components["schemas"]["UpgradeReport"] | null;
+        };
+        UpgradeStart: {
+            /**
+             * @description The language of the pages the start writes, AGENTS and raw, when the notebook lacks them; en when absent.
+             * @enum {string}
+             */
+            template_locale?: "zh-CN" | "en";
         };
         /** @description An upgrade's check, from one read snapshot. */
         UpgradeCheck: {
@@ -4073,15 +4217,27 @@ export type UpgradeState = components['schemas']['UpgradeState'];
 export type UpgradeBaseline = components['schemas']['UpgradeBaseline'];
 export type UpgradeEnding = components['schemas']['UpgradeEnding'];
 export type UpgradeRollbackLeft = components['schemas']['UpgradeRollbackLeft'];
-export type Upgrade = components['schemas']['Upgrade'];
-export type UpgradeStart = components['schemas']['UpgradeStart'];
 export type UpgradeGate = components['schemas']['UpgradeGate'];
 export type UpgradeTitlesGate = components['schemas']['UpgradeTitlesGate'];
 export type UpgradeLinksGate = components['schemas']['UpgradeLinksGate'];
 export type UpgradePreservedGate = components['schemas']['UpgradePreservedGate'];
 export type UpgradeGates = components['schemas']['UpgradeGates'];
+export type LintRule = components['schemas']['LintRule'];
+export type UpgradeReportWantedItem = components['schemas']['UpgradeReportWantedItem'];
+export type UpgradeReportOrphansItem = components['schemas']['UpgradeReportOrphansItem'];
+export type UpgradeReportAmbiguousItem = components['schemas']['UpgradeReportAmbiguousItem'];
+export type UpgradeReportInvalidFrontmatterItem = components['schemas']['UpgradeReportInvalidFrontmatterItem'];
+export type UpgradeReportMissingTypeItem = components['schemas']['UpgradeReportMissingTypeItem'];
+export type UpgradeReportMissingSummaryItem = components['schemas']['UpgradeReportMissingSummaryItem'];
+export type UpgradeReportUndigestedSourcesItem = components['schemas']['UpgradeReportUndigestedSourcesItem'];
+export type UpgradeReportInvalidSourcesItem = components['schemas']['UpgradeReportInvalidSourcesItem'];
+export type UpgradeReportItem = components['schemas']['UpgradeReportItem'];
+export type UpgradeReportRule = components['schemas']['UpgradeReportRule'];
 export type UpgradeWanted = components['schemas']['UpgradeWanted'];
 export type UpgradeCounts = components['schemas']['UpgradeCounts'];
+export type UpgradeReport = components['schemas']['UpgradeReport'];
+export type Upgrade = components['schemas']['Upgrade'];
+export type UpgradeStart = components['schemas']['UpgradeStart'];
 export type UpgradeCheck = components['schemas']['UpgradeCheck'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
@@ -6291,6 +6447,31 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LintPage"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    submitUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, reviewing, with its report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
                 };
             };
             503: components["responses"]["Problem"];

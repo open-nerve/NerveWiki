@@ -302,6 +302,58 @@ paths:
           $ref: "#/components/responses/Problem"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/submit:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: submitUpgrade
+      tags: [wiki]
+      summary: >-
+        Submits the upgrade for its admins' review: freezes it for everyone,
+        checks it again and keeps the report once every gate passes.
+      description: >-
+        The upgrade, upgrading, goes to reviewing, its content then frozen
+        for everyone, the initiator's agent too; it is checked from a
+        snapshot of that moment, apart from the request, and stays reviewing
+        with its report kept once every gate passes. Otherwise it is
+        upgrading again: wiki.upgrade_stale_index for an old link index,
+        wiki.upgrade_not_ready for a gate that did not pass (detail names
+        them), or the check's own error. Its admins can (forbidden). A
+        notebook that does not exist, is deleted, or that the caller cannot
+        see is notebook.not_found; one without an upgrade upgrading is
+        wiki.upgrade_state, also while a previous submission is still
+        checked (detail says so; a reviewing upgrade without a report may be
+        submitted again once its check is surely over); an exhausted
+        computation or waiting budget is server_busy. These checks occur in
+        that order. Once the check is done, a submission taken over or an
+        upgrade abandoned meanwhile is wiki.upgrade_state, before the
+        check's own answer; the second step past its deadline, which is no
+        later than the request's, is server_busy, with Retry-After: 1. Its
+        admins are asked again before the answer, as the report is kept: a
+        caller no longer one is notebook.not_found or forbidden then, the
+        report kept all the same. The answer is the upgrade, reviewing,
+        with its report.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          notebook.not_found,
+          forbidden,
+          wiki.upgrade_state,
+          server_busy,
+          wiki.upgrade_stale_index,
+          wiki.upgrade_not_ready,
+        ]
+      responses:
+        "200":
+          description: The upgrade, reviewing, with its report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearer:
@@ -877,6 +929,7 @@ components:
           ending,
           rollback_complete,
           rollback_left,
+          report,
         ]
       properties:
         id:
@@ -934,6 +987,14 @@ components:
             Rolling back with its job stopped: counted now. null otherwise.
           oneOf:
             - $ref: "#/components/schemas/UpgradeRollbackLeft"
+            - type: "null"
+        report:
+          description: >-
+            The report its submission kept once its check passed, kept after,
+            through an abandonment too; null before, and while a submission is
+            still checked.
+          oneOf:
+            - $ref: "#/components/schemas/UpgradeReport"
             - type: "null"
     UpgradeCheck:
       description: An upgrade's check, from one read snapshot.
@@ -1105,4 +1166,213 @@ components:
         count:
           $ref: "#/components/schemas/LintCount"
         count_capped:
+          type: boolean
+    UpgradeReport:
+      description: The check a submission kept, its rules' first five items without cursors.
+      type: object
+      additionalProperties: false
+      required: [computed_at, stale_pages, passed, gates, rules, counts]
+      properties:
+        computed_at:
+          type: string
+          format: date-time
+        stale_pages:
+          type: integer
+          format: int64
+          minimum: 0
+        passed:
+          type: boolean
+        gates:
+          $ref: "#/components/schemas/UpgradeGates"
+        rules:
+          type: array
+          minItems: 8
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/UpgradeReportRule"
+        counts:
+          $ref: "#/components/schemas/UpgradeCounts"
+    UpgradeReportRule:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items]
+      properties:
+        rule:
+          $ref: "#/components/schemas/LintRule"
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/UpgradeReportItem"
+    UpgradeReportItem:
+      oneOf:
+        - $ref: "#/components/schemas/UpgradeReportWantedItem"
+        - $ref: "#/components/schemas/UpgradeReportOrphansItem"
+        - $ref: "#/components/schemas/UpgradeReportAmbiguousItem"
+        - $ref: "#/components/schemas/UpgradeReportInvalidFrontmatterItem"
+        - $ref: "#/components/schemas/UpgradeReportMissingTypeItem"
+        - $ref: "#/components/schemas/UpgradeReportMissingSummaryItem"
+        - $ref: "#/components/schemas/UpgradeReportUndigestedSourcesItem"
+        - $ref: "#/components/schemas/UpgradeReportInvalidSourcesItem"
+      discriminator:
+        propertyName: rule
+        mapping:
+          wanted: "#/components/schemas/UpgradeReportWantedItem"
+          orphans: "#/components/schemas/UpgradeReportOrphansItem"
+          ambiguous: "#/components/schemas/UpgradeReportAmbiguousItem"
+          invalid_frontmatter: "#/components/schemas/UpgradeReportInvalidFrontmatterItem"
+          missing_type: "#/components/schemas/UpgradeReportMissingTypeItem"
+          missing_summary: "#/components/schemas/UpgradeReportMissingSummaryItem"
+          undigested_sources: "#/components/schemas/UpgradeReportUndigestedSourcesItem"
+          invalid_sources: "#/components/schemas/UpgradeReportInvalidSourcesItem"
+    UpgradeReportWantedItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, target, target_cut, pages]
+      properties:
+        rule:
+          type: string
+          enum: [wanted]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^w:[0-9a-f]{64}$"
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        pages:
+          description: The number of distinct referring pages in this complete target group.
+          type: integer
+          format: int64
+          minimum: 1
+    UpgradeReportOrphansItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [orphans]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportAmbiguousItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id, target, target_cut]
+      properties:
+        rule:
+          type: string
+          enum: [ambiguous]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^a:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+    UpgradeReportInvalidFrontmatterItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_frontmatter]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportMissingTypeItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_type]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportMissingSummaryItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_summary]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportUndigestedSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, node_id, kind, bytes, created_at]
+      properties:
+        rule:
+          type: string
+          enum: [undigested_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^n:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        node_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/LintNodeKind"
+        bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          description: The source node's original creation time.
+          type: string
+          format: date-time
+    UpgradeReportInvalidSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id, target, target_cut, not_link]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^s:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        not_link:
+          description: True for a non-link JSON value; false for a link that fails qualification.
           type: boolean

@@ -175,6 +175,8 @@ paths:
     $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1upgrade~1check"
   /api/v0/notebooks/{notebook_id}/upgrade/check/{rule}:
     $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1upgrade~1check~1{rule}"
+  /api/v0/notebooks/{notebook_id}/upgrade/submit:
+    $ref: "modules/wiki.yaml#/paths/~1api~1v0~1notebooks~1{notebook_id}~1upgrade~1submit"
   /api/v0/events:
     $ref: "modules/events.yaml#/paths/~1api~1v0~1events"
   /api/v0/notebooks/{notebook_id}/assets:

@@ -57,6 +57,9 @@ func (s wikiUpgradeStates) SetState(ctx context.Context, id, upgradeID uuid.UUID
 ) error {
 	var to notebook.UpgradeState
 	switch state {
+	case wiki.UpgradeUpgrading:
+		// A submission set upgrading again (M11/P2 design 3.12 step 5).
+		to = notebook.UpgradeUpgrading
 	case wiki.UpgradeReviewing:
 		to = notebook.UpgradeReviewing
 	case wiki.UpgradeRollingBack:

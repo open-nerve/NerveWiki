@@ -76,3 +76,71 @@ func upgradeCountsOf(c domain.UpgradeCounts) gen.UpgradeCounts {
 		WantedBefore: gen.UpgradeWanted{Count: gen.LintCount(c.WantedBefore.Value), CountCapped: c.WantedBefore.Capped},
 		WantedNow:    gen.UpgradeWanted{Count: gen.LintCount(c.WantedNow.Value), CountCapped: c.WantedNow.Capped}}
 }
+
+// reportOf is r as the contract's UpgradeReport: its gates and counts as a
+// check's, each rule's count and items as lint's but their cursors.
+func reportOf(r domain.UpgradeReport) (gen.UpgradeReport, error) {
+	out := gen.UpgradeReport{ComputedAt: r.ComputedAt, StalePages: r.StalePages, Passed: r.Passed, Gates: upgradeGatesOf(r.Gates),
+		Counts: upgradeCountsOf(r.Counts), Rules: make([]gen.UpgradeReportRule, len(r.Rules))}
+	for i, rule := range r.Rules {
+		rr := gen.UpgradeReportRule{Rule: gen.LintRule(rule.Rule), Count: gen.LintCount(rule.Count.Value), CountCapped: rule.Count.Capped,
+			Items: make([]gen.UpgradeReportItem, len(rule.Items))}
+		for j, item := range rule.Items {
+			var err error
+			if rr.Items[j], err = reportItem(item); err != nil {
+				return gen.UpgradeReport{}, err
+			}
+		}
+		out.Rules[i] = rr
+	}
+	return out, nil
+}
+
+// reportItem is item as its rule's UpgradeReport item: lint's item but its
+// cursor.
+func reportItem(item domain.LintItem) (gen.UpgradeReportItem, error) {
+	var out gen.UpgradeReportItem
+	if item.Rule == domain.RuleUndigestedSources {
+		if item.NodeID == nil {
+			return out, errLintProjection
+		}
+		err := out.FromUpgradeReportUndigestedSourcesItem(gen.UpgradeReportUndigestedSourcesItem{
+			Rule: gen.UpgradeReportUndigestedSourcesItemRuleUndigestedSources, ItemKey: item.ItemKey, NodeID: *item.NodeID,
+			Kind: gen.LintNodeKind(item.Kind), Bytes: item.Bytes, CreatedAt: item.CreatedAt})
+		return out, err
+	}
+	if item.Rule == domain.RuleWanted {
+		err := out.FromUpgradeReportWantedItem(gen.UpgradeReportWantedItem{Rule: gen.UpgradeReportWantedItemRuleWanted,
+			ItemKey: item.ItemKey, Target: item.Target, TargetCut: item.TargetCut, Pages: item.Pages})
+		return out, err
+	}
+	if item.PageID == nil {
+		return out, errLintProjection
+	}
+	page := *item.PageID
+	var err error
+	switch item.Rule {
+	case domain.RuleOrphans:
+		err = out.FromUpgradeReportOrphansItem(gen.UpgradeReportOrphansItem{Rule: gen.UpgradeReportOrphansItemRuleOrphans,
+			ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleAmbiguous:
+		err = out.FromUpgradeReportAmbiguousItem(gen.UpgradeReportAmbiguousItem{Rule: gen.UpgradeReportAmbiguousItemRuleAmbiguous,
+			ItemKey: item.ItemKey, PageID: page, Target: item.Target, TargetCut: item.TargetCut})
+	case domain.RuleInvalidFrontmatter:
+		err = out.FromUpgradeReportInvalidFrontmatterItem(gen.UpgradeReportInvalidFrontmatterItem{
+			Rule: gen.UpgradeReportInvalidFrontmatterItemRuleInvalidFrontmatter, ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleMissingType:
+		err = out.FromUpgradeReportMissingTypeItem(gen.UpgradeReportMissingTypeItem{Rule: gen.UpgradeReportMissingTypeItemRuleMissingType,
+			ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleMissingSummary:
+		err = out.FromUpgradeReportMissingSummaryItem(gen.UpgradeReportMissingSummaryItem{
+			Rule: gen.UpgradeReportMissingSummaryItemRuleMissingSummary, ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleInvalidSources:
+		err = out.FromUpgradeReportInvalidSourcesItem(gen.UpgradeReportInvalidSourcesItem{
+			Rule: gen.UpgradeReportInvalidSourcesItemRuleInvalidSources, ItemKey: item.ItemKey, PageID: page, Target: item.Target,
+			TargetCut: item.TargetCut, NotLink: item.NotLink})
+	default:
+		err = errLintProjection
+	}
+	return out, err
+}

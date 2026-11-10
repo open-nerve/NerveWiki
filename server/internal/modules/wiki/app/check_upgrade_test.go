@@ -25,6 +25,7 @@ type checkSnapshotKey struct{}
 // runs the worker at once or answers runErr; each call traced, "@" marking
 // those in a snapshot, which it counts.
 type checkFake struct {
+	unsubmitted
 	mu        sync.Mutex
 	calls     []string
 	snapshots int
@@ -43,6 +44,8 @@ type checkFake struct {
 	preserved                  domain.Preserved
 	runErr                     error
 	paths                      map[uuid.UUID]string
+	stale                      int64 // the preparation's stale pages
+	clean                      bool  // no page misses its type
 }
 
 func newCheckFake() *checkFake {
@@ -186,15 +189,15 @@ func (f *checkFake) PrepareRules(ctx context.Context, in app.ReadInput, q app.Ru
 
 type checkPrepared struct{ f *checkFake }
 
-func (p checkPrepared) StalePages() int64 { return 0 }
+func (p checkPrepared) StalePages() int64 { return p.f.stale }
 func (p checkPrepared) RuleCount(_ context.Context, rule domain.LintRule) (domain.LintCount, error) {
-	if rule == domain.RuleMissingType {
+	if rule == domain.RuleMissingType && !p.f.clean {
 		return domain.LintCount{Value: 1}, nil
 	}
 	return domain.LintCount{}, nil
 }
 func (p checkPrepared) RuleItems(_ context.Context, rule domain.LintRule) ([]domain.LintItem, bool, error) {
-	if rule != domain.RuleMissingType {
+	if rule != domain.RuleMissingType || p.f.clean {
 		return nil, false, nil
 	}
 	return []domain.LintItem{{Rule: rule, ItemKey: "p:" + p.f.page.String(), Cursor: "c", PageID: &p.f.page}}, false, nil

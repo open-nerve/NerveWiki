@@ -23,10 +23,12 @@ import (
 // rollback's rows' are rollbackMatrixRows'.
 
 // upgradeMatrixRow is a row of the upgrade's and how its cells' copy is
-// prepared.
+// prepared; left, when set, reads what each cell, answered or refused,
+// left there.
 type upgradeMatrixRow struct {
 	matrixRow
 	prepare func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool)
+	left    func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool)
 }
 
 func upgradeMatrixRows() []upgradeMatrixRow {
@@ -100,9 +102,10 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 }
 
 // checkMatrixRows are M11/P2/S2's (design 3.15): the check of an upgrade
-// upgrading and of one reviewing, and a rule's items of one upgrading, its
-// admins' alone. The seeds' notebooks hold no AGENTS: the check answers
-// its gates, not passed, 200.
+// upgrading and of one reviewing, its submission, and a rule's items of
+// one upgrading, its admins' alone. The seeds' notebooks hold no AGENTS:
+// the check answers its gates, not passed, 200; the submission
+// wiki.upgrade_not_ready (2.1 item 12).
 func checkMatrixRows(notebook func(c caller, s seeded) string,
 	upgradedBy func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool),
 ) []upgradeMatrixRow {
@@ -128,6 +131,32 @@ func checkMatrixRows(notebook func(c caller, s seeded) string,
 			prepare: upgradedBy(state),
 		})
 	}
+	rows = append(rows, upgradeMatrixRow{
+		matrixRow: matrixRow{
+			op: "submitUpgrade", variant: "upgrading", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/submit", ""
+			},
+			cells: adminsOnly(cell{http.StatusConflict, "wiki.upgrade_not_ready"}, notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				t.Errorf("submitted %s, want a problem: the seeds pass no gate of AGENTS", answer)
+			},
+		},
+		prepare: upgradedBy("upgrading"),
+		// Refused or not ready, the upgrade is upgrading, no submission
+		// left (M11/P2 design 3.15).
+		left: func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+			t.Helper()
+			for _, row := range queryStrings(t, pool, `SELECT u.state || ' ' || n.upgrade_state || ' ' || (u.submission_id IS NULL)::text || ' ' ||
+					(u.submitted_by_id IS NULL)::text || ' ' || (u.submitted_at IS NULL)::text || ' ' || (u.report IS NULL)::text
+				FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id WHERE u.notebook_id = $1`, s.notebook(notebookOf(c))) {
+				if row != "upgrading upgrading true true true true" {
+					t.Errorf("the upgrade left %s, want it upgrading, no submission", row)
+				}
+			}
+		},
+	})
 	return append(rows, upgradeMatrixRow{
 		matrixRow: matrixRow{
 			op: "listUpgradeCheckItems", variant: "upgrading", columns: notebookColumns(), write: true,
@@ -304,6 +333,9 @@ func TestUpgradePermissionMatrix(t *testing.T) {
 							return ask(t, contract, http.MethodGet, base+path, d.tokens[c], "")
 						})
 					}
+				}
+				if r.left != nil {
+					r.left(t, c, d.seeded.in(t), pool)
 				}
 				for _, v := range pageViolations(t, pool) {
 					if strings.Contains(v, "upgrade") {

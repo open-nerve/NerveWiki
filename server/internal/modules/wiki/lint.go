@@ -115,7 +115,8 @@ const (
 // notebook.change_mode, Rollbacks the transfer module's, StartTimeout
 // bounds the start's transaction, Template is the one bootstrap built for
 // the creation. Gates are the page module's reads of an upgrade's check,
-// ReservedKeys its root's reserved title keys (M11/P2 design 3.11).
+// ReservedKeys its root's reserved title keys (M11/P2 design 3.11);
+// SubmitTimeout bounds a submission's part apart from its request (3.12).
 type Deps struct {
 	Notebooks   Notebooks
 	Sources     Sources
@@ -145,6 +146,7 @@ type Deps struct {
 	Template      *Template
 	Gates         UpgradeGatePages
 	ReservedKeys  []string
+	SubmitTimeout time.Duration
 }
 
 // Module owns one runtime shared by every internal caller. Construction does
@@ -155,6 +157,7 @@ type Module struct {
 	playbooks    *app.Playbooks
 	startUpgrade *app.StartUpgrade
 	checkUpgrade *app.CheckUpgrade
+	submit       *app.SubmitUpgrade
 	getUpgrade   *app.GetUpgrade
 	abandon      *app.AbandonUpgrade
 	endRollback  *app.EndUpgradeRollback
@@ -172,13 +175,16 @@ func New(d Deps) *Module {
 		Rollback: d.RollbackPages, Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Rollbacks: d.Rollbacks, Names: d.Names,
 		Authorizer: d.Authorizer, Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger,
 		Timeout: d.StartTimeout, Gates: d.Gates, Cursors: d.Cursors, Paths: d.Paths, ReservedKeys: d.ReservedKeys,
+		SubmitTimeout: d.SubmitTimeout,
 	}
+	check := app.NewCheckUpgrade(upgrades, lint, runs)
 	return &Module{
 		lint:         lint,
 		runs:         runs,
 		playbooks:    app.NewPlaybooks(d.Notebooks, d.Authorizer),
 		startUpgrade: app.NewStartUpgrade(upgrades, lint, runs),
-		checkUpgrade: app.NewCheckUpgrade(upgrades, lint, runs),
+		checkUpgrade: check,
+		submit:       app.NewSubmitUpgrade(upgrades, check, runs),
 		getUpgrade:   app.NewGetUpgrade(upgrades),
 		abandon:      app.NewAbandonUpgrade(upgrades),
 		endRollback:  app.NewEndUpgradeRollback(upgrades),
@@ -199,6 +205,12 @@ func (m *Module) StartUpgrade(ctx context.Context, id uuid.UUID, locale string) 
 // items in its scope (M11 design 4.7).
 func (m *Module) CheckUpgrade(ctx context.Context, id uuid.UUID, query LintQuery) (UpgradeChecked, error) {
 	return m.checkUpgrade.Execute(ctx, id, query)
+}
+
+// SubmitUpgrade submits notebook id's upgrade for its admins' review
+// (M11 design 4.8).
+func (m *Module) SubmitUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.submit.Execute(ctx, id)
 }
 
 // GetUpgrade reads notebook id's upgrade under way, for its admins.
