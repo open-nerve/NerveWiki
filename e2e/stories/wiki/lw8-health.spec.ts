@@ -364,7 +364,7 @@ async function agentFor(
   const token = await createToken(api, credential, { name: `LW8 ${entry}` });
   const agent = await mcpClient(baseURL, token.token, entry === "notebook" ? { notebook } : {});
   const actual = await agent.listTools();
-  expect(actual).toHaveLength(entry === "notebook" ? 16 : 18);
+  expect(actual).toHaveLength(entry === "notebook" ? 18 : 20);
   expect(byName(actual)).toEqual(byName(toolLists[entry]));
   return agent;
 }

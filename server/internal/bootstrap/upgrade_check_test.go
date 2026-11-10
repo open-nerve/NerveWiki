@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -245,12 +246,39 @@ func (tm acmeTeam) reviewing(t *testing.T, nb, up string) {
 	tm.exec(t, "UPDATE notebooks SET upgrade_state = 'reviewing' WHERE id = $1", nb)
 }
 
+// verifyArgs are upgrade_verify's arguments of a REST read of the check
+// at suffix: its rule, limit and cursor.
+func verifyArgs(t *testing.T, suffix string) map[string]any {
+	t.Helper()
+	u, err := url.Parse(suffix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	args := map[string]any{}
+	if rule := strings.TrimPrefix(u.Path, "/"); rule != "" {
+		args["rule"] = rule
+	}
+	q := u.Query()
+	if q.Has("limit") {
+		limit, err := strconv.Atoi(q.Get("limit"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		args["limit"] = limit
+	}
+	if q.Has("cursor") {
+		args["cursor"] = q.Get("cursor")
+	}
+	return args
+}
+
 // The check's and the items' codes in M11/P2 design 3.11's order, a cell
 // for each code ahead of the next: a cursor that does not decode before
 // the notebook, the notebook and its admins before the rule, the rule
 // before the upgrade, the upgrade before the cursor's binding (a lint's,
-// which binds no proposed root), the binding before the limit; one
-// lint slot, held, server_busy; the runs' lines name their kind and the
+// which binds no proposed root), the binding before the limit; the
+// same through upgrade_verify in both entries, which answers a limit
+// without a rule validation_failed; one lint slot, held, server_busy; the runs' lines name their kind and the
 // upgrade's scope; an upgrade reviewing is checked too. A cursor binds the
 // proposed source root, not the upgrade: the previous upgrade's, whose
 // root its rollback deleted, is bad_request; one of a raw both upgrades
@@ -278,7 +306,7 @@ func TestUpgradeCheck(t *testing.T) {
 		lintCursor := url.QueryEscape(*lint.NextCursor)
 		tm.upgraded(t, "alice", up)
 		none := uuid.NewV7().String()
-		for _, tc := range []struct {
+		cases := []struct {
 			what, by, nb, suffix string
 			want                 cell
 		}{
@@ -296,9 +324,35 @@ func TestUpgradeCheck(t *testing.T) {
 			{"a limit past 100", "alice", up, "/orphans?limit=101", cell{http.StatusUnprocessableEntity, "validation_failed"}},
 			{"the check", "alice", up, "", cellOK()},
 			{"the items", "alice", up, "/orphans?limit=100", cellOK()},
-		} {
+		}
+		for _, tc := range cases {
 			status, answer := tm.checkUpgrade(t, tc.by, tc.nb, tc.suffix)
 			wantCode(t, tc.what, status, answer, tc.want)
+		}
+		// The same calls through upgrade_verify answer the same codes in
+		// the account entry; in the notebook entry the same, but a
+		// notebook the caller does not see, the edge's 404 (13.4 #3).
+		agents := map[string]*mcpApp{}
+		for _, by := range []string{"alice", "bob", "carol"} {
+			agents[by] = tm.agent(t, by, up)
+		}
+		for _, scope := range []string{"notebook", "account"} {
+			for _, tc := range cases {
+				want := mcpCell{code: tc.want.code}
+				if scope == "notebook" && (tc.nb == none || tc.by == "carol") {
+					want = mcpCell{http: http.StatusNotFound, code: "notebook.not_found"}
+				}
+				m := *agents[tc.by]
+				m.notebook = tc.nb
+				a := sourceMCPCall(t, &m, scope, "upgrade_verify", verifyArgs(t, tc.suffix))
+				if got := mcpCellOf(t, a); got != want {
+					t.Errorf("%s: %s through upgrade_verify = %s (%.300s), want %s", scope, tc.what, got, a.body, want)
+				}
+			}
+			a := sourceMCPCall(t, agents["alice"], scope, "upgrade_verify", map[string]any{"limit": 10})
+			if got := mcpCellOf(t, a); got != (mcpCell{code: "validation_failed"}) {
+				t.Errorf("%s: a limit without a rule = %s (%.300s), want validation_failed", scope, got, a.body)
+			}
 		}
 		page := tm.listedCheck(t, "alice", up, "/orphans?limit=1")
 		if page.Mode != "llm_wiki" || len(page.Data) != 1 || page.NextCursor == nil {

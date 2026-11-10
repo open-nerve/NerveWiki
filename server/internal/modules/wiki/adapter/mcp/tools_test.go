@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// The four expected objects were written before the first tools/list call.
+// The eight expected objects were written before the first tools/list call.
 // They include the nullable scalar schemas and each entry's notebook binding.
 func TestLintToolObjects(t *testing.T) {
 	raw, err := os.ReadFile("testdata/tools.json")
@@ -32,7 +32,7 @@ func TestLintToolObjects(t *testing.T) {
 			if err := json.Unmarshal(body, &listed); err != nil {
 				t.Fatal(err)
 			}
-			if len(listed.Tools) != 2 || !reflect.DeepEqual(listed.Tools, expected[entry]) {
+			if len(listed.Tools) != 4 || !reflect.DeepEqual(listed.Tools, expected[entry]) {
 				t.Fatalf("complete %s tool objects = %s; want %s", entry, body, raw)
 			}
 		})

@@ -87,28 +87,15 @@ type lintRuleView struct {
 // fitLint computes no rule twice. Every candidate has its own rule/item slices
 // and continuation pointers; Fit never writes the input or an earlier candidate.
 func fitLint(result domain.LintResult) (mcpserver.Result, error) {
-	views := make([]lintRuleView, len(result.Rules))
-	for i, rule := range result.Rules {
-		view := lintRuleView{rule: rule.Rule, count: rule.Count, next: lintCopyCursor(rule.NextCursor), start: lintCopyCursor(rule.StartCursor), items: make([]lintWireItem, len(rule.Items))}
-		for j, item := range rule.Items {
-			if item.Rule != rule.Rule {
-				return mcpserver.Result{}, errLintProjection
-			}
-			projected, err := lintProjectItem(item)
-			if err != nil {
-				return mcpserver.Result{}, err
-			}
-			view.items[j] = projected
-		}
-		views[i] = view
+	views, err := lintViews(result.Rules)
+	if err != nil {
+		return mcpserver.Result{}, err
 	}
 	envelope := lintEnvelope{Mode: result.Mode, ComputedAt: result.ComputedAt, StalePages: result.StalePages}
 	switch result.Kind {
 	case domain.LintSummary:
-		for _, view := range views {
-			if view.count.Value > 0 && (view.start == nil || *view.start == "") {
-				return mcpserver.Result{}, errLintProjection
-			}
+		if err := lintStarts(views); err != nil {
+			return mcpserver.Result{}, err
 		}
 		out, _, err := mcpserver.Fit(5, func(k int) any { return lintSummaryCandidate(envelope, views, k) })
 		return out, err
@@ -129,6 +116,37 @@ func fitLint(result domain.LintResult) (mcpserver.Result, error) {
 		return out, nil
 	}
 	return mcpserver.Result{}, errLintProjection
+}
+
+// lintViews are rules' views, their items projected, each its own copy.
+func lintViews(rules []domain.LintRuleResult) ([]lintRuleView, error) {
+	views := make([]lintRuleView, len(rules))
+	for i, rule := range rules {
+		view := lintRuleView{rule: rule.Rule, count: rule.Count, next: lintCopyCursor(rule.NextCursor), start: lintCopyCursor(rule.StartCursor), items: make([]lintWireItem, len(rule.Items))}
+		for j, item := range rule.Items {
+			if item.Rule != rule.Rule {
+				return nil, errLintProjection
+			}
+			projected, err := lintProjectItem(item)
+			if err != nil {
+				return nil, err
+			}
+			view.items[j] = projected
+		}
+		views[i] = view
+	}
+	return views, nil
+}
+
+// lintStarts fails a summary's rule that counts items without a start
+// cursor, which its answer of no item needs.
+func lintStarts(views []lintRuleView) error {
+	for _, view := range views {
+		if view.count.Value > 0 && (view.start == nil || *view.start == "") {
+			return errLintProjection
+		}
+	}
+	return nil
 }
 
 func lintSummaryCandidate(envelope lintEnvelope, views []lintRuleView, k int) lintSummary {

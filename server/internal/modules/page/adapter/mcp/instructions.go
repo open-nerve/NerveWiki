@@ -50,6 +50,8 @@ Tools
 - changeset: one change. People restore or revert in the web; agent history is read-only.
 - lint: health counts/previews, or rule items continued with next_cursor. Capped counts are lower bounds.
 - pending_sources: LLM Wiki sources still undigested, with path/kind/bytes/created_at; follow next_cursor. Empty source pages are omitted.
+- upgrade_verify: an upgrading notebook's LLM Wiki checks, or one rule's items with next_cursor.
+- upgrade_submit: submit the upgrade for an admin's review once every check passes.
 - Versions are <node id>:<revision>. If base_version is stale, read again.
 - Web editing, including your own, refuses writes, edits, deletes and moves that rewrite links. Wait for edit mode to end; the lock cannot be taken over.
 - Calls over 64 KiB run one at a time per token; the next waits at most 2s. Send large writes sequentially.`

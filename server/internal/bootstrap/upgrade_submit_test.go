@@ -125,7 +125,8 @@ func submitLines(t *testing.T, logs *syncBuffer, before int, nb string) []map[st
 // an info line. On the separate app (7.2): a client gone while its check
 // runs still has its report kept, stored; a check that answers an error
 // sets the upgrade upgrading again, failed, and it is submitted again.
-// Last, the deadline (7.1): REST's request deadline first.
+// Last, the deadline (7.1), through REST and MCP, each its request's
+// deadline first; and the first transaction's, as another write's.
 func TestUpgradeSubmit(t *testing.T) {
 	r := upgradeRunsOn(t, nil, 1, 2*time.Second, 6*time.Second)
 	tm := r.tm
@@ -312,40 +313,131 @@ func TestUpgradeSubmit(t *testing.T) {
 		s.tm.submitted(t, "alice", nb)
 	})
 
-	// The deadline (7.1): alice's submission's check held, dana's
-	// submission is "still being checked"; the test holds the notebook's
-	// row, lets the check go: alice's second transaction waits on the row
-	// to REST's request deadline, earlier than its submission's moment
-	// plus 6 s, and answers server_busy, a warn line, nothing written.
-	// The row let go, past that moment dana takes the submission over.
-	t.Run("the deadline", func(t *testing.T) {
-		nb := notebook(t, "Deadline", cleanNote)
-		tm.addNotebookMember(t, "alice", nb, "dana", "admin")
+	// The deadline (7.1), through REST, then MCP: alice's submission's
+	// check held, dana's submission is "still being checked"; the test
+	// holds the notebook's row, lets the check go: alice's second
+	// transaction waits on the row to its request's deadline, earlier
+	// than its submission's moment plus 6 s (MCP's too: its 4 s run from
+	// its body read, before that moment), and answers server_busy, a warn
+	// line, nothing written. The row let go, past that moment dana takes
+	// the submission over.
+	for _, entry := range []string{"REST", "MCP"} {
+		t.Run("the deadline, "+entry, func(t *testing.T) {
+			nb := notebook(t, "Deadline "+entry, cleanNote)
+			tm.addNotebookMember(t, "alice", nb, "dana", "admin")
+			tm.upgraded(t, "alice", nb)
+			alice, dana := tm.agent(t, "alice", nb), tm.agent(t, "dana", nb)
+			before := len((&mcpApp{logs: r.logs}).logLines(t))
+			r.rules.armed.Store(true)
+			req := newRequest(t, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/upgrade/submit", tm.tokens["alice"], nil)
+			type sent struct {
+				res  *http.Response
+				body []byte
+				mcp  mcpAnswer
+				at   time.Time
+			}
+			answered := make(chan sent, 1)
+			go func() {
+				if entry == "MCP" {
+					a := alice.use(t, "upgrade_submit", map[string]any{})
+					answered <- sent{mcp: a, at: time.Now()}
+					return
+				}
+				res, body := sendRequest(t, req)
+				answered <- sent{res: res, body: body, at: time.Now()}
+			}()
+			select {
+			case <-r.rules.held:
+			case <-time.After(interleavingWait):
+				t.Fatal("the submission's check took no slot")
+			}
+			first := tm.submissionID(t, nb)
+			if entry == "MCP" {
+				member := dana.use(t, "upgrade_submit", map[string]any{}).toolError(t)
+				if message, _ := member["message"].(string); member["code"] != "wiki.upgrade_state" ||
+					!strings.Contains(message, "still being checked") {
+					t.Errorf("dana's submission while alice's is checked = %v, want wiki.upgrade_state, still being checked", member)
+				}
+			} else {
+				status, answer := tm.submitUpgrade(t, "dana", nb)
+				wantCode(t, "dana's submission while alice's is checked", status, answer, cell{http.StatusConflict, "wiki.upgrade_state"})
+				if !strings.Contains(answer, "still being checked") {
+					t.Errorf("dana's submission = %s, want the detail of a submission still checked", answer)
+				}
+			}
+			ctx := context.Background()
+			holder, err := tm.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer func() { _ = holder.Rollback(ctx) }()
+			if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR NO KEY UPDATE", nb); err != nil {
+				t.Fatal(err)
+			}
+			r.rules.free <- struct{}{}
+			pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+			var at time.Time
+			if err := tm.pool.QueryRow(ctx, "SELECT submitted_at FROM notebook_upgrades WHERE notebook_id = $1 AND state = 'reviewing'",
+				nb).Scan(&at); err != nil {
+				t.Fatal(err)
+			}
+			var got sent
+			select {
+			case got = <-answered:
+			case <-time.After(interleavingWait):
+				t.Fatal("alice's submission did not answer")
+			}
+			moment := at.Add(6 * time.Second)
+			if entry == "MCP" {
+				member := got.mcp.toolError(t)
+				if member["code"] != "server_busy" || member["retry_after_seconds"] != float64(1) || !got.at.Before(moment) {
+					t.Errorf("alice's agent's submission = %v at %s, want server_busy before %s", member, got.at, moment)
+				}
+			} else {
+				tm.contract.CheckResponse(t, req, got.res)
+				if got.res.StatusCode != http.StatusServiceUnavailable || problemCodeOf(string(got.body)) != "server_busy" ||
+					got.res.Header.Get("Retry-After") != "1" || !got.at.Before(moment) {
+					t.Errorf("alice's submission = %d %s %v at %s, want server_busy before %s", got.res.StatusCode, got.body,
+						got.res.Header, got.at, moment)
+				}
+			}
+			warn := upgradeLines(t, r.logs, before, "upgrade submission timed out")
+			if len(warn) != 1 || warn[0]["submission_id"] != first || len(submitLines(t, r.logs, before, nb)) != 0 {
+				t.Errorf("logged %v, want one warn line of alice's submission and no other", warn)
+			}
+			if got, id := tm.submission(t, nb), tm.submissionID(t, nb); got != "reviewing reviewing true false false" || id != first {
+				t.Errorf("past its deadline alice's submission left %s of %s, want reviewing without a report, %s", got, id, first)
+			}
+			if err := holder.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			time.Sleep(time.Until(moment.Add(10 * time.Millisecond)))
+			if entry == "MCP" {
+				if a := answerOf[submittedAnswer](t, dana.use(t, "upgrade_submit", map[string]any{})); a.State != "reviewing" ||
+					a.SubmittedAt == nil {
+					t.Errorf("dana's agent's takeover = %+v, want it reviewing", a)
+				}
+			} else {
+				tm.submitted(t, "dana", nb)
+			}
+			if id := tm.submissionID(t, nb); id == first || id == "" {
+				t.Errorf("dana's takeover kept the submission %s, want one of hers", id)
+			}
+			if got := tm.submission(t, nb); got != reviewedReported {
+				t.Errorf("dana's takeover left %s", got)
+			}
+			checkPages(t, tm.pool)
+		})
+	}
+
+	// The first transaction on REST's request deadline, as another write:
+	// the test holds the notebook's row, the submission waits on it to its
+	// request's deadline and answers 500, the platform's warn line,
+	// nothing written.
+	t.Run("the first transaction's deadline", func(t *testing.T) {
+		nb := notebook(t, "First", cleanNote)
 		tm.upgraded(t, "alice", nb)
 		before := len((&mcpApp{logs: r.logs}).logLines(t))
-		r.rules.armed.Store(true)
-		req := newRequest(t, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/upgrade/submit", tm.tokens["alice"], nil)
-		type sent struct {
-			res  *http.Response
-			body []byte
-			at   time.Time
-		}
-		answered := make(chan sent, 1)
-		go func() {
-			res, body := sendRequest(t, req)
-			answered <- sent{res, body, time.Now()}
-		}()
-		select {
-		case <-r.rules.held:
-		case <-time.After(interleavingWait):
-			t.Fatal("the submission's check took no slot")
-		}
-		first := tm.submissionID(t, nb)
-		status, answer := tm.submitUpgrade(t, "dana", nb)
-		wantCode(t, "dana's submission while alice's is checked", status, answer, cell{http.StatusConflict, "wiki.upgrade_state"})
-		if !strings.Contains(answer, "still being checked") {
-			t.Errorf("dana's submission = %s, want the detail of a submission still checked", answer)
-		}
 		ctx := context.Background()
 		holder, err := tm.pool.Begin(ctx)
 		if err != nil {
@@ -355,39 +447,17 @@ func TestUpgradeSubmit(t *testing.T) {
 		if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR NO KEY UPDATE", nb); err != nil {
 			t.Fatal(err)
 		}
-		r.rules.free <- struct{}{}
-		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
-		var at time.Time
-		if err := tm.pool.QueryRow(ctx, "SELECT submitted_at FROM notebook_upgrades WHERE notebook_id = $1 AND state = 'reviewing'",
-			nb).Scan(&at); err != nil {
+		status, answer := tm.submitUpgrade(t, "alice", nb)
+		wantCode(t, "a submission on its request's deadline", status, answer, cell{http.StatusInternalServerError, "internal_error"})
+		if err := holder.Rollback(ctx); err != nil {
 			t.Fatal(err)
 		}
-		var got sent
-		select {
-		case got = <-answered:
-		case <-time.After(interleavingWait):
-			t.Fatal("alice's submission did not answer")
+		if warn := upgradeLines(t, r.logs, before, "API request deadline exceeded"); len(warn) != 1 ||
+			len(upgradeLines(t, r.logs, before, "upgrade submission timed out")) != 0 || len(submitLines(t, r.logs, before, nb)) != 0 {
+			t.Errorf("logged %v, want the platform's one warn line and no submission's", warn)
 		}
-		tm.contract.CheckResponse(t, req, got.res)
-		if got.res.StatusCode != http.StatusServiceUnavailable || problemCodeOf(string(got.body)) != "server_busy" ||
-			got.res.Header.Get("Retry-After") != "1" || !got.at.Before(at.Add(6*time.Second)) {
-			t.Errorf("alice's submission = %d %s %v at %s, want server_busy before %s", got.res.StatusCode, got.body, got.res.Header,
-				got.at, at.Add(6*time.Second))
-		}
-		warn := upgradeLines(t, r.logs, before, "upgrade submission timed out")
-		if len(warn) != 1 || warn[0]["submission_id"] != first || len(submitLines(t, r.logs, before, nb)) != 0 {
-			t.Errorf("logged %v, want one warn line of alice's submission and no other", warn)
-		}
-		if got, id := tm.submission(t, nb), tm.submissionID(t, nb); got != "reviewing reviewing true false false" || id != first {
-			t.Errorf("past its deadline alice's submission left %s of %s, want reviewing without a report, %s", got, id, first)
-		}
-		if err := holder.Commit(ctx); err != nil {
-			t.Fatal(err)
-		}
-		time.Sleep(time.Until(at.Add(6*time.Second + 10*time.Millisecond)))
-		tm.submitted(t, "dana", nb)
-		if id := tm.submissionID(t, nb); id == first || id == "" {
-			t.Errorf("dana's takeover kept the submission %s, want one of hers", id)
+		if got := tm.submission(t, nb); got != backToUpgrading {
+			t.Errorf("a submission on its request's deadline left %s, want it upgrading, no submission", got)
 		}
 		checkPages(t, tm.pool)
 	})

@@ -22,6 +22,23 @@ import (
 // upgrading or reviewing, by its creator, as the start would leave it; the
 // rollback's rows' are rollbackMatrixRows'.
 
+// upgradedBy prepares a cell's copy: its column's notebook being upgraded,
+// in state, by its creator, as the start would leave it; a deleted one
+// has no upgrade.
+func upgradedBy(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+	return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+		t.Helper()
+		nb := s.notebook(notebookOf(c)).String()
+		if count(t, pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NULL", nb) == 0 {
+			return // a deleted notebook has no upgrade to read
+		}
+		by := queryStrings(t, pool, "SELECT created_by_id::text FROM notebooks WHERE id = $1", nb)[0]
+		if _, err := upgradeIn(context.Background(), pool, nb, by, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // upgradeMatrixRow is a row of the upgrade's and how its cells' copy is
 // prepared; left, when set, reads what each cell, answered or refused,
 // left there.
@@ -36,19 +53,6 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 		return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() + "/upgrade"
 	}
 	notFound := cell{http.StatusNotFound, "notebook.not_found"}
-	upgradedBy := func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
-		return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
-			t.Helper()
-			nb := s.notebook(notebookOf(c)).String()
-			if count(t, pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NULL", nb) == 0 {
-				return // a deleted notebook has no upgrade to read
-			}
-			by := queryStrings(t, pool, "SELECT created_by_id::text FROM notebooks WHERE id = $1", nb)[0]
-			if _, err := upgradeIn(context.Background(), pool, nb, by, state); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	read := func(state string) func(t *testing.T, c caller, s seeded, answer string) {
 		return func(t *testing.T, c caller, s seeded, answer string) {
 			t.Helper()

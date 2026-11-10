@@ -269,7 +269,7 @@ const (
 		`checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its ` +
 		`bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines ` +
 		`too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, ` +
-		`a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or ` +
+		`a background restore or revert, a server update) are not searched until the index catches up. A page moved or ` +
 		`written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ` +
 		`ranks pages and gives excerpts.` +
 		` Generated index.md and log.md in an LLM Wiki are not searched by grep or search.`
@@ -279,6 +279,6 @@ const (
 		`one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, ` +
 		`about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call ` +
 		`checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a ` +
-		`batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. ` +
+		`batch, an import, a background restore or revert, a server update) are not searched until the index catches up. ` +
 		`For patterns, exact text and line numbers, use grep.`
 )
