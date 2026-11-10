@@ -13,7 +13,7 @@ type toolCode struct{ tool, code string }
 // tool and code: they
 // fall in the rows of the five writes, so they cannot be told apart by
 // tool. The fifth shard's TestTheMCPToolsErrorsCarryTheirCodes, whose app
-// has no upgrade, answers mcpToolCodes but these; the seventh shard's
+// has no upgrade, answers mcpToolCodes but these; the eighth shard's
 // TestUpgradeToolsErrorsCarryTheirCodes answers these. Both subtract from
 // this one table, so that the two together answer every code of every row.
 func upgradeToolCodes() map[toolCode]bool {

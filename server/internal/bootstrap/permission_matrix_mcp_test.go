@@ -92,7 +92,7 @@ func mcpRows() []mcpRow {
 // freeze's codes (M11/P2 design 3.6): page.upgrade_immutable to write,
 // edit and batch, page.upgrade_batch_rewrite to batch,
 // page.upgrade_keep_links to move and batch.
-// upgradeToolCodes lists them, the seventh shard answers them.
+// upgradeToolCodes lists them, the eighth shard answers them.
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
