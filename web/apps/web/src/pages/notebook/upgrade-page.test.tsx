@@ -11,6 +11,7 @@ import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { cancelled, reportOf, underWay } from "../../test/jobs-server";
 import { guide, install, notes } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { under } from "../../stores/transfer.store";
 import {
   bobsUpgrade,
   rollbackJobJSON,
@@ -222,22 +223,39 @@ test("abandoned, the upgrade rolls back: the page reads it again and shows its j
   ]);
 });
 
-test("abandoned, the page's read again still out, the focus is on the title, not on Abandon still shown", async () => {
-  const user = userEvent.setup();
-  const reread = deferred<void>();
+/**
+ * secondReadHeld is upgradeServer of options whose second read of the
+ * upgrade, the one after a change, is answered once held resolves, as the
+ * server holds the upgrade then.
+ */
+function secondReadHeld(options: Parameters<typeof upgradeServer>[0]) {
+  const held = deferred<void>();
   let answered = 0;
   const server: ReturnType<typeof upgradeServer> = upgradeServer({
-    upgrade: upgradeJSON(),
+    ...options,
     answers: {
       [`GET ${plans}/upgrade`]: async () => {
         server.asked.push("GET upgrade");
         if (++answered === 2) {
-          await reread.promise;
+          await held.promise;
         }
-        return json({ ...server.upgrade, rollback_left: null });
+        const upgrade = server.upgrade;
+        if (upgrade === undefined || server.notebook.upgrade === null) {
+          return problem(404, "wiki.upgrade_not_found");
+        }
+        const rolling = server.jobs.some((job) => job.id === upgrade.rollback_job_id && under(job));
+        return json(
+          upgrade.state === "rolling_back" ? { ...upgrade, rollback_left: rolling ? null : server.left } : upgrade
+        );
       },
     },
   });
+  return { server, held };
+}
+
+test("abandoned, the page shows the rollback the abandonment answered while it reads the upgrade again; the focus is on the title", async () => {
+  const user = userEvent.setup();
+  const { server, held } = secondReadHeld({ upgrade: upgradeJSON() });
   renderApp(upgradePath, server.app);
   const button = await screen.findByRole("button", { name: abandon });
 
@@ -245,11 +263,59 @@ test("abandoned, the page's read again still out, the focus is on the title, not
   const dialog = await screen.findByRole("alertdialog", { name: "Abandon the upgrade of “Plans”?" });
   await user.click(within(dialog).getByRole("button", { name: "Abandon the upgrade" }));
 
+  const rollback = await section("Rollback");
+  expect(await within(rollback).findByText("Queued")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(document.activeElement).toBe(title());
+  expect(button.isConnected).toBe(false);
+  expect(screen.queryByRole("heading", { level: 2, name: "Connect an agent" })).toBeNull();
+  expect(reads(server, "GET upgrade")).toBe(2);
+  held.resolve();
+  await act(() => held.promise);
+  expect(within(await section("Rollback")).getByText("Queued")).toBeTruthy();
+});
+
+test("continued, the page shows the job the continuation answered while it reads the upgrade again; the focus is on the title", async () => {
+  const user = userEvent.setup();
+  const job = stopped(70);
+  const { server, held } = secondReadHeld({ jobs: [job], upgrade: rollbackOf(job) });
+  server.left = { nodes: 2, pages: 1, created: 3 };
+  renderApp(upgradePath, server.app);
+  const button = await screen.findByRole("button", { name: continues });
+
+  await user.click(button);
+  const dialog = await screen.findByRole("alertdialog", { name: "Continue the rollback of “Plans”?" });
+  await user.click(within(dialog).getByRole("button", { name: "Continue the rollback" }));
+
+  const rollback = await section("Rollback");
+  expect(await within(rollback).findByText("Queued")).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(document.activeElement).toBe(title());
+  expect(button.isConnected).toBe(false);
+  expect(counts(rollback)).toEqual([]);
+  expect(reads(server, "GET upgrade")).toBe(2);
+  held.resolve();
+  await act(() => held.promise);
+  expect(within(await section("Rollback")).getByText("Queued")).toBeTruthy();
+});
+
+test("ended, the page's read again still out, the focus is on the title, not on End still shown", async () => {
+  const user = userEvent.setup();
+  const job = stopped(70);
+  const { server, held } = secondReadHeld({ jobs: [job], upgrade: rollbackOf(job) });
+  server.left = { nodes: 2, pages: 1, created: 3 };
+  renderApp(upgradePath, server.app);
+  const button = await screen.findByRole("button", { name: ends });
+
+  await user.click(button);
+  const dialog = await screen.findByRole("alertdialog", { name: "End the rollback of “Plans”?" });
+  await user.click(within(dialog).getByRole("button", { name: "End the rollback" }));
+
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(button.isConnected).toBe(true);
   expect(document.activeElement).toBe(title());
-  reread.resolve();
-  await section("Rollback");
+  held.resolve();
+  expect(await screen.findByText(noneUnderWay)).toBeTruthy();
   expect(button.isConnected).toBe(false);
 });
 
@@ -301,6 +367,54 @@ test("a rollback's job seen done, everything put back, reads the upgrade again: 
   await act(() => vi.advanceTimersByTimeAsync(1_000));
 
   expect(await screen.findByText(noneUnderWay)).toBeTruthy();
+  expect(reads(server, "GET upgrade")).toBe(2);
+});
+
+test("a rollback's job seen stopped, the upgrade's read again refused as busy: it is read once, and the page offers to try again", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const job = underWay(rollbackJobJSON(70), 1, 4);
+  let answered = 0;
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    jobs: [job],
+    upgrade: rollbackOf(job),
+    answers: {
+      [`GET ${plans}/upgrade`]: () => {
+        server.asked.push("GET upgrade");
+        return ++answered === 1 ? json(rollbackOf(job)) : problem(503, "server_busy");
+      },
+    },
+  });
+  renderApp(upgradePath, server.app);
+  await screen.findByRole("progressbar", { name: "Progress: 1 of 4" });
+
+  server.rollbackJob(() => stopped(70));
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+
+  expect(await screen.findByRole("button", { name: "Try again" })).toBeTruthy();
+  // Short of SWR's first retry, five seconds after the failure.
+  await act(() => vi.advanceTimersByTimeAsync(3_000));
+  expect(reads(server, "GET upgrade")).toBe(2);
+});
+
+test("a rollback's job seen stopped reads the upgrade again once, however often the page renders before the read answers", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const job = underWay(rollbackJobJSON(70), 1, 4);
+  const { server, held } = secondReadHeld({ jobs: [job], upgrade: rollbackOf(job) });
+  server.left = { nodes: 2, pages: 1, created: 3 };
+  renderApp(upgradePath, server.app);
+  await screen.findByRole("progressbar", { name: "Progress: 1 of 4" });
+
+  server.rollbackJob(() => stopped(70));
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(2));
+  // The page renders again, its read still out: its language changes.
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await screen.findByRole("heading", { level: 1, name: "升级为 LLM Wiki" });
+  await act(() => vi.advanceTimersByTimeAsync(1_000));
+  expect(reads(server, "GET upgrade")).toBe(2);
+
+  held.resolve();
+  expect(await within(await section("回滚")).findByRole("button", { name: "结束回滚，保留现在的样子…" })).toBeTruthy();
   expect(reads(server, "GET upgrade")).toBe(2);
 });
 

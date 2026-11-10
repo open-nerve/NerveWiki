@@ -141,8 +141,9 @@ const AccessForm = observer(function AccessForm({ workspace, notebook }: Noteboo
  * read: what the start makes of a page raw at the root comes from it.
  * Each dialog stays, with its refusal, when a read again removes its
  * trigger. Started, the upgrade's page shows, its title taking the
- * focus. While an upgrade is under way the section says where it is, and
- * its admins get its page (decision 246).
+ * focus, with the upgrade the start answered until it is read. While an
+ * upgrade is under way the section says where it is, and its admins get
+ * its page (decision 246).
  */
 const ModeSection = observer(function ModeSection({ workspace, notebook }: NotebookProps) {
   const notebooks = useNotebooks(workspace);
@@ -233,10 +234,11 @@ const ModeSection = observer(function ModeSection({ workspace, notebook }: Noteb
         sendingLabel={t("upgrade.starting")}
         cancelLabel={t("notebookSettings.cancel")}
         confirm={async () => {
-          await notebooks.startUpgrade(notebook.id, preferences.locale);
+          const started = await notebooks.startUpgrade(notebook.id, preferences.locale);
+          // The upgrade's page shows what the start answered, not what was read before it; it reads it as it opens.
+          void mutate(["upgrade", notebook.id], started, { revalidate: false });
           // The settings left meanwhile stay left: the upgrade shows in the banner and the list.
           if (mounted()) {
-            void mutate(["upgrade", notebook.id]);
             void navigate(`${home}/upgrade`, { state: arrived });
           }
         }}

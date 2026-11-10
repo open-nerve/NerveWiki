@@ -463,8 +463,9 @@ test("an admin starts the upgrade, in the page's language, and lands on its page
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}/upgrade`);
   await waitFor(() => expect(document.activeElement).toBe(heading));
   expect(server.asked.filter((line) => line.startsWith("START"))).toEqual(["START zh-CN"]);
+  // What the start answered shows at once; the page reads it anew a frame later (SWR, with data cached).
   await screen.findByText("Ada 于", { exact: false });
-  expect(server.asked).toContain("GET upgrade");
+  await waitFor(() => expect(server.asked).toContain("GET upgrade"));
   expect(screen.queryByRole("alertdialog")).toBeNull();
 });
 
@@ -565,9 +566,21 @@ test("a start answered once the settings were left takes no one anywhere: the no
   expect(router.state.location.pathname).toBe(home);
 });
 
-test("an admin told no upgrade is under way who starts one at once lands on it read anew, not on what was read", async () => {
+test("an admin told no upgrade is under way who starts one at once lands on what the start answered, not on what was read, while it is read anew", async () => {
   const user = userEvent.setup();
-  const server = upgradeServer();
+  const read = deferred<void>();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    answers: {
+      [`GET ${plans}/upgrade`]: async () => {
+        server.asked.push("GET upgrade");
+        if (server.upgrade === undefined) {
+          return problem(404, "wiki.upgrade_not_found");
+        }
+        await read.promise;
+        return json(server.upgrade);
+      },
+    },
+  });
   const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}/upgrade`, server.app);
   expect(await screen.findByText("This notebook has no upgrade under way.")).toBeTruthy();
   await act(() => router.navigate(general));
@@ -579,8 +592,13 @@ test("an admin told no upgrade is under way who starts one at once lands on it r
     })
   );
 
-  expect(await screen.findByRole("heading", { level: 2, name: "Where it is" })).toBeTruthy();
+  const state = (await screen.findByRole("heading", { level: 2, name: "Where it is" })).parentElement as HTMLElement;
+  expect(within(state).getByText("Started by Ada on Oct 5, 2026, 8:00 AM.")).toBeTruthy();
   expect(screen.queryByText("This notebook has no upgrade under way.")).toBeNull();
+  await waitFor(() => expect(server.asked).toEqual(["GET upgrade", "START en", "GET upgrade"]));
+  read.resolve();
+  await act(() => read.promise);
+  expect(screen.getByRole("heading", { level: 2, name: "Where it is" })).toBeTruthy();
   expect(server.asked).toEqual(["GET upgrade", "START en", "GET upgrade"]);
 });
 

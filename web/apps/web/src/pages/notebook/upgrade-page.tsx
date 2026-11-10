@@ -98,11 +98,15 @@ const UpgradeRead = observer(function UpgradeRead({
   /**
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
-   * or the upgrade in another state.
+   * or the upgrade in another state. The upgrade an abandonment or a
+   * continuation answers, rolling back, is shown meanwhile (shows), not the
+   * one read before it; an end's, ended, is not: the read says none is
+   * under way.
    */
-  async function change(send: () => Promise<Upgrade>): Promise<void> {
+  async function change(send: () => Promise<Upgrade>, shows: boolean): Promise<void> {
+    let answered: Upgrade;
     try {
-      await send();
+      answered = await send();
     } catch (refusal) {
       if (
         mounted() &&
@@ -112,6 +116,9 @@ const UpgradeRead = observer(function UpgradeRead({
         void reread();
       }
       throw refusal;
+    }
+    if (shows) {
+      void mutate(["upgrade", notebook.id], answered, { revalidate: false });
     }
     if (mounted()) {
       void reread();
@@ -168,7 +175,7 @@ const UpgradeRead = observer(function UpgradeRead({
         confirmLabel={t("upgrade.abandonConfirm")}
         sendingLabel={t("upgrade.abandoning")}
         cancelLabel={t("notebookSettings.cancel")}
-        confirm={() => change(() => notebooks.abandonUpgrade(notebook.id))}
+        confirm={() => change(() => notebooks.abandonUpgrade(notebook.id), true)}
         texts={texts}
       />
       <ConfirmDialog
@@ -178,7 +185,7 @@ const UpgradeRead = observer(function UpgradeRead({
         confirmLabel={t("upgrade.continueConfirm")}
         sendingLabel={t("upgrade.continuing")}
         cancelLabel={t("notebookSettings.cancel")}
-        confirm={() => change(() => notebooks.abandonUpgrade(notebook.id))}
+        confirm={() => change(() => notebooks.abandonUpgrade(notebook.id), true)}
         texts={texts}
         tone="default"
       />
@@ -199,7 +206,7 @@ const UpgradeRead = observer(function UpgradeRead({
         confirmLabel={t("upgrade.endConfirm")}
         sendingLabel={t("upgrade.ending")}
         cancelLabel={t("notebookSettings.cancel")}
-        confirm={() => change(() => notebooks.endUpgradeRollback(notebook.id))}
+        confirm={() => change(() => notebooks.endUpgradeRollback(notebook.id), false)}
         texts={texts}
       />
     </>
