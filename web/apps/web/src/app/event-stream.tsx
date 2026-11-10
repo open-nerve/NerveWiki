@@ -15,7 +15,7 @@ import { useSession } from "./guards";
 const refreshedOnConnect = [
   ["workspaces"],
   ["notebooks"],
-  ["pages", "tag-pages"],
+  ["pages", "tag-pages", "upgrade"],
   [
     "page-view",
     "edit-lock",

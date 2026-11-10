@@ -199,6 +199,14 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
+                            // The notebook's upgrade under way, its admins' (M11/P1 design 4.4).
+                            path: "upgrade",
+                            lazy: async () => {
+                              const { UpgradePage } = await import("../pages/notebook/upgrade-page");
+                              return { Component: UpgradePage };
+                            },
+                          },
+                          {
                             // The notebook's history, its filters in the query (M8/P3 design 4.2).
                             path: "history",
                             lazy: async () => {

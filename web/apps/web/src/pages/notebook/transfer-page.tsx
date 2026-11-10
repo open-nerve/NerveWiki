@@ -6,7 +6,7 @@ import useSWR from "swr";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
-import { writesPages } from "../../app/effective-role";
+import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
@@ -98,7 +98,7 @@ function ImportSection({
     <section className="max-w-2xl space-y-3">
       <h2 className="text-lg font-semibold">{t("transfer.importTitle")}</h2>
       <p className="text-sm text-muted-foreground">{t("transfer.importBody")}</p>
-      {writesPages(notebook.role) ? (
+      {writesNotebook(notebook) ? (
         <ImportDialog
           notebook={notebook}
           trigger={<Button variant="outline">{t("transfer.importZip")}</Button>}
@@ -111,7 +111,9 @@ function ImportSection({
           mounted={mounted}
         />
       ) : (
-        <p className="text-sm">{t("transfer.importReaders")}</p>
+        <p className="text-sm">
+          {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "transfer.importReaders")}
+        </p>
       )}
     </section>
   );

@@ -5,7 +5,7 @@ import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { Alert } from "../../components/ui/alert";
@@ -194,7 +194,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   // What the server answers now, read again, comes before what it answered before, unless a restore from here is
   // out: pressed on the item shown, which SWR keeps through a read that fails.
   const out = (restoring !== undefined && "out" in restoring) || starting;
-  const offered = writesPages(notebook.role) ? (lostStart?.item ?? offeredOf(refusal)) : undefined;
+  const offered = writesNotebook(notebook) ? (lostStart?.item ?? offeredOf(refusal)) : undefined;
   if (error instanceof ApiError && !out) {
     switch (error.code) {
       case "page.not_found":
@@ -316,7 +316,7 @@ const Preview = observer(function Preview({
             <ItemIcon item={item} />
             {item.name}
           </h1>
-          {writesPages(notebook.role) && (
+          {writesNotebook(notebook) && (
             <div className="flex flex-wrap justify-end gap-2">
               <RestoreButton
                 label={namesOf(item, "none", t, preferences.locale).restore}

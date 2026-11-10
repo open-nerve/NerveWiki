@@ -21,7 +21,8 @@ export const editSessionHeartbeat = 20_000;
  * Why an edit may no longer write (M5 design 4.3, 4.9): its session was
  * taken over by the account elsewhere; an admin unlocked it (by, their
  * name); it lapsed and holder took the lock meanwhile; the page is gone;
- * the account may no longer edit it; the page has become a source.
+ * the account may no longer edit it; the page has become a source; its
+ * notebook is being upgraded (M11/P1 design 4.4).
  */
 export type EditLost =
   | { reason: "taken_over" }
@@ -29,6 +30,7 @@ export type EditLost =
   | { reason: "taken"; holder: EditLockHolder }
   | { reason: "gone" }
   | { reason: "source" }
+  | { reason: "upgrading" }
   | { reason: "no_access" };
 
 /** What opening the session answered: the lock, or who holds it. */
@@ -63,6 +65,11 @@ function refused(error: unknown, status: number, code?: string): error is ApiErr
 function lostBy(error: unknown): EditLost | undefined {
   if (refused(error, 409, "page.source_immutable")) {
     return { reason: "source" };
+  }
+  // An opening refused by an upgrade's freeze (M11/P1 design 4.4): an upgrade starts only once the notebook's
+  // sessions lapsed, and deletes them, so a save then finds its session ended and opens one anew, which is refused.
+  if (refused(error, 409, "notebook.upgrading")) {
+    return { reason: "upgrading" };
   }
   if (refused(error, 409, "page.edit_session_taken_over")) {
     return { reason: "taken_over" };
@@ -175,9 +182,11 @@ export class EditSession {
     }
     const lost = lostBy(error);
     if (lost !== undefined && !this.ended) {
-      // A source still holds our session. end captures its id and also marks
-      // an opening session for release when its answer arrives.
-      if (lost.reason === "source") {
+      // A source still holds our session. end captures its id and also
+      // marks an opening session for release when its answer arrives. A
+      // notebook being upgraded holds none, the opening is what it refused:
+      // end there is a defense, which has nothing to end.
+      if (lost.reason === "source" || lost.reason === "upgrading") {
         void this.end();
       } else {
         // The other refusals say this session has ceased to be ours.

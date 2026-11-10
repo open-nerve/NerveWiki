@@ -102,6 +102,23 @@ export const notebookJSON: Notebook = {
   updated_at: "2026-10-02T08:00:00Z",
 };
 
+/**
+ * upgradeOf is a notebook's upgrade under way as its readers see it (M11/P1
+ * design 4.4), in state, started by startedBy (userJSON unless said) on
+ * 2026-10-05.
+ */
+export function upgradeOf(
+  state: NonNullable<Notebook["upgrade"]>["state"] = "upgrading",
+  startedBy: string = userJSON.id
+): NonNullable<Notebook["upgrade"]> {
+  return {
+    id: "0199a2b4-0000-7000-8000-0000000a0001",
+    state,
+    started_by: startedBy,
+    started_at: "2026-10-05T08:00:00Z",
+  };
+}
+
 /** bobProfile is the public profile of Bob, a member of workspaceJSON's, as its admins see it. */
 const bobProfile = { user_id: "0199a2b4-0000-7000-8000-000000000002", display_name: "Bob", email: "bob@example.com" };
 

@@ -87,6 +87,7 @@ export const en = {
   "notebook.homeEmpty": "No pages yet.",
   "notebook.pages": "Pages",
   "notebook.places": "More of {notebook}",
+  "notebook.upgradeReadOnly": "This notebook is read-only until its upgrade ends.",
   "unresolved.createTitle": "Create page “{title}”?",
   "unresolved.under": "It goes under “{place}”.",
   "unresolved.underPage": "It goes under a page of the notebook.",
@@ -97,6 +98,8 @@ export const en = {
   "unresolved.missingTitle": "“{target}” does not exist",
   "unresolved.reader": "No page has this name. The notebook's editors can create it from this link.",
   "unresolved.readOnly": "No page has this name. This view is read only: no page is created from its links.",
+  "unresolved.upgrading":
+    "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
   "unresolved.readerWiki": "No page has this name. The notebook's editors may be able to create it from this link.",
   "unresolved.sourceArea":
     "No page has this name. Sources are added with Paste Markdown or Upload files, not from a link.",
@@ -596,6 +599,8 @@ export const en = {
   "editor.lostUnlocked": "{name} released your edit of this page: this editor saves no more.",
   "editor.lostGone": "This page no longer exists: this editor saves no more.",
   "editor.lostSource": "This page is now a source. Its original content is read-only.",
+  "editor.lostUpgrading":
+    "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more.",
   "editor.lostTaken": "Your edit lapsed, and {name} is editing this page now: this editor saves no more.",
   "editor.lostTakenSelf": "Your edit lapsed, and you are editing this page elsewhere now: this editor saves no more.",
   "editor.lostUnsaved": "Your changes here are not saved: copy them before you leave.",
@@ -688,6 +693,62 @@ export const en = {
   "notebookSettings.deleteConfirm": "Delete",
   "notebookSettings.deleting": "Deleting…",
   "notebookSettings.cancel": "Cancel",
+  "upgrade.bannerUpgrading": "This notebook is being upgraded to an LLM Wiki: it is read-only for now.",
+  "upgrade.bannerReviewing":
+    "This notebook's upgrade is submitted and waits for an admin's review: it is read-only for now.",
+  "upgrade.bannerRollingBack": "This notebook's upgrade is being undone: it is read-only for now.",
+  "upgrade.bannerAnyAdmin": "Any admin of the notebook can abandon this upgrade.",
+  "upgrade.view": "View the upgrade",
+  "upgrade.start": "Upgrade to an LLM Wiki…",
+  "upgrade.startTitle": "Upgrade “{name}” to an LLM Wiki?",
+  "upgrade.startBody":
+    "Until the upgrade ends, approved or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed.",
+  "upgrade.startRaw":
+    "The page raw at the root becomes the source area ({count} nodes under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.",
+  "upgrade.startConfirm": "Start the upgrade",
+  "upgrade.starting": "Starting…",
+  "upgrade.title": "Upgrade to an LLM Wiki",
+  "upgrade.adminsOnly": "Only the notebook's admins can see its upgrade.",
+  "upgrade.state": "Where it is",
+  "upgrade.startedBy": "Started by {name} on {time}.",
+  "upgrade.sourceRoot": "Its source area:",
+  "upgrade.seeded": "The pages it wrote:",
+  "upgrade.pagesLocked":
+    "These pages are being edited, so the upgrade cannot start. Try again once their editors leave; a notebook admin can also release a lock.",
+  "upgrade.agent": "Connect an agent",
+  "upgrade.agentYours":
+    "Until the upgrade ends, only your agent writes this notebook, over MCP. Connect it to this notebook as the README's section on connecting an agent (MCP) says.",
+  "upgrade.agentPrompt": "The prompt to give it:",
+  "upgrade.agentOthers":
+    "Only the agent of {name}, who started the upgrade, can write this notebook; you can abandon the upgrade.",
+  "upgrade.abandon": "Abandon this upgrade…",
+  "upgrade.abandonTitle": "Abandon the upgrade of “{name}”?",
+  "upgrade.abandonBody":
+    "A background job puts the notebook back as it was when the upgrade started: its pages and attachments go back to their places, names and content, and those created since go to the trash. The notebook stays read-only until the rollback ends.",
+  "upgrade.abandonConfirm": "Abandon the upgrade",
+  "upgrade.abandoning": "Abandoning…",
+  "upgrade.rollback": "Rollback",
+  "upgrade.rollbackJob": "The rollback's job",
+  "upgrade.rollbackStopped": "The rollback stopped before it put everything back. What is left:",
+  "upgrade.rollbackUnderWay": "The rollback is under way already.",
+  "upgrade.leftNodes": "Nodes not back in place",
+  "upgrade.leftPages": "Pages not written back",
+  "upgrade.leftCreated": "New nodes still there",
+  "upgrade.continue": "Continue the rollback…",
+  "upgrade.continueTitle": "Continue the rollback of “{name}”?",
+  "upgrade.continueBody":
+    "A new background job puts back what the stopped one did not. The notebook stays read-only until the rollback ends.",
+  "upgrade.continueConfirm": "Continue the rollback",
+  "upgrade.continuing": "Continuing…",
+  "upgrade.end": "End the rollback, keeping the notebook as it is…",
+  "upgrade.endTitle": "End the rollback of “{name}”?",
+  "upgrade.endBody":
+    "The upgrade ends and the notebook is no longer read-only; what the rollback has not put back stays as it is now.",
+  "upgrade.endLinks":
+    "In pages not yet written back, links the system rewrote may lead nowhere; the health panel lists them.",
+  "upgrade.endNothingLeft": "Everything is back already: ending it is all that is left.",
+  "upgrade.endConfirm": "End the rollback",
+  "upgrade.ending": "Ending…",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",

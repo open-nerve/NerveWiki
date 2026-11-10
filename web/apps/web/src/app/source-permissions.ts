@@ -1,13 +1,13 @@
 import type { PageTreeStore } from "../stores/page-tree.store";
 import { titleKey } from "../lib/title-key";
-import { writesPages } from "./effective-role";
+import { writesNotebook } from "./effective-role";
 
 /** A writer may add sources under the nominated root or a current source page. */
 export function canAddSource(pages: PageTreeStore, parent: string | null): boolean {
   const notebook = pages.notebook;
   return (
     notebook !== undefined &&
-    writesPages(notebook.role) &&
+    writesNotebook(notebook) &&
     notebook.mode === "llm_wiki" &&
     parent !== null &&
     pages.nodeById(parent)?.kind === "page" &&
@@ -19,7 +19,7 @@ export function canAddSource(pages: PageTreeStore, parent: string | null): boole
 export function canEditPageBody(pages: PageTreeStore, id: string): boolean {
   const notebook = pages.notebook;
   return (
-    notebook !== undefined && writesPages(notebook.role) && pages.nodeById(id)?.kind === "page" && !pages.isSource(id)
+    notebook !== undefined && writesNotebook(notebook) && pages.nodeById(id)?.kind === "page" && !pages.isSource(id)
   );
 }
 
@@ -39,7 +39,7 @@ export function canManageNode(pages: PageTreeStore, id: string): boolean {
   const notebook = pages.notebook;
   if (
     notebook === undefined ||
-    !writesPages(notebook.role) ||
+    !writesNotebook(notebook) ||
     pages.nodeById(id) === undefined ||
     isAgentsPage(pages, id)
   )

@@ -271,11 +271,15 @@ const lockChanged: EventHandler = (data, { cache, mutate, stopped }) => {
 /**
  * modeChanged reads the workspace's notebooks again (M10 design 4.5): a
  * notebook's mode, and with it what its pages show, comes from the list,
- * which is keyed by its workspace (v0.1 design 13.2, item 15). Only that:
- * a downgrade writes no page.
+ * which is keyed by its workspace (v0.1 design 13.2, item 15); so does its
+ * upgrade, whose own read, by the notebook, is read again too (M11/P1
+ * design 4.4). Only that: a change of mode or of an upgrade's state
+ * writes no page.
  */
 function modeChanged(data: unknown, { mutate }: EventContext): void {
-  void mutate(["notebooks", (data as EventMode).workspace_id]);
+  const { workspace_id: workspace, notebook_id: notebook } = data as EventMode;
+  void mutate(["notebooks", workspace]);
+  void mutate(["upgrade", notebook]);
 }
 
 /**

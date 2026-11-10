@@ -1,8 +1,10 @@
 import { makeAutoObservable, runInAction } from "mobx";
 
+import type { Locale } from "../i18n/locale";
 import { oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
 import type { Notebook, NotebookCreate, NotebookService, NotebookUpdate } from "../services/notebook.service";
+import type { Upgrade, UpgradeService } from "../services/upgrade.service";
 import type { Workspace } from "../services/workspace.service";
 import { byName } from "./order";
 
@@ -47,11 +49,14 @@ export class NotebookStore {
   constructor(
     private readonly service: Pick<NotebookService, "list" | "create" | "update" | "downgrade" | "remove" | "leave">,
     /** The slug of the workspace whose notebooks these are. */
-    private readonly slug: string
+    private readonly slug: string,
+    /** The changes of the notebooks' upgrades, which answer the upgrade (M11/P1 design 4.4). */
+    private readonly upgrades: Pick<UpgradeService, "start" | "abandon" | "endRollback">
   ) {
-    makeAutoObservable<this, "service" | "slug" | "changesAnswered" | "removed" | "inTurn">(this, {
+    makeAutoObservable<this, "service" | "slug" | "upgrades" | "changesAnswered" | "removed" | "inTurn">(this, {
       service: false,
       slug: false,
+      upgrades: false,
       changesAnswered: false,
       removed: false,
       inTurn: false,
@@ -123,23 +128,80 @@ export class NotebookStore {
         ) {
           throw error;
         }
-        let list: Notebook[];
         try {
-          list = await this.service.list(this.slug);
+          await this.reread(id);
         } catch {
           throw error;
-        }
-        const seen = list.find((notebook) => notebook.id === id);
-        if (seen === undefined) {
-          this.changed((current) => current.filter((notebook) => notebook.id !== id));
-        } else {
-          this.put(seen);
         }
         if (error.code !== "notebook.not_llm_wiki") {
           throw error;
         }
       }
     });
+  }
+
+  /**
+   * startUpgrade starts upgrading the standard notebook id to an LLM Wiki,
+   * the pages it lacks written in locale, in its turn (M11/P1 design 4.4),
+   * and answers the upgrade. The answer is the upgrade, not the notebook:
+   * the list is read again, which holds the notebook's upgrade now; a read
+   * that fails leaves it to the next (the mode event's). A refusal that
+   * says the list is behind (forbidden, notebook.not_found, an LLM Wiki
+   * already, an upgrade under way already) reads it again too, as a
+   * downgrade's does, and is thrown. The upgrade's own read (SWR's) is
+   * its page's to read again.
+   */
+  async startUpgrade(id: string, locale: Locale): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.start(id, locale), behindStart));
+  }
+
+  /**
+   * abandonUpgrade rolls back the notebook id's upgrade, upgrading or
+   * reviewing, or continues its stopped rollback, in its turn (M11/P1
+   * design 4.4), and answers the upgrade, rolling back: the list is read
+   * again, as after a start. A refusal that says the list is behind
+   * (forbidden, notebook.not_found, no upgrade it may abandon) reads it
+   * again too, and is thrown; a rollback under way already
+   * (transfer.busy) is the upgrade's to read again, not the list's.
+   */
+  async abandonUpgrade(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.abandon(id), behindRollback));
+  }
+
+  /**
+   * endUpgradeRollback ends the notebook id's stopped rollback, keeping it
+   * as it is, in its turn (M11/P1 design 4.4), and answers the upgrade,
+   * rolled back: the list, read again, holds the notebook without it. Its
+   * refusals read the list again as abandonUpgrade's.
+   */
+  async endUpgradeRollback(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.endRollback(id), behindRollback));
+  }
+
+  /** upgraded answers the upgrade change answers, the list read again after it, and after a refusal of behind. */
+  private async upgraded(id: string, change: () => Promise<Upgrade>, behind: ReadonlySet<string>): Promise<Upgrade> {
+    let answered: Upgrade;
+    try {
+      answered = await change();
+    } catch (error) {
+      if (error instanceof ApiError && error.code !== undefined && behind.has(error.code)) {
+        await this.reread(id).catch(() => undefined);
+      }
+      throw error;
+    }
+    await this.reread(id).catch(() => undefined);
+    return answered;
+  }
+
+  /** reread reads the list again and places the notebook id as it holds it, or drops it, no longer seen. */
+  private async reread(id: string): Promise<void> {
+    const list = await this.service.list(this.slug);
+    const seen = list.find((notebook) => notebook.id === id);
+    if (seen === undefined) {
+      this.changed((current) => current.filter((notebook) => notebook.id !== id));
+    } else {
+      this.put(seen);
+    }
   }
 
   /** remove deletes the notebook id; one deleted already, or no longer seen, is gone as well. */
@@ -218,6 +280,21 @@ export class NotebookStore {
     });
   }
 }
+
+/** The refusals of an upgrade's start that say the list is behind: the notebook's role, its being, its mode, its upgrade. */
+const behindStart: ReadonlySet<string> = new Set([
+  "forbidden",
+  "notebook.not_found",
+  "notebook.already_llm_wiki",
+  "notebook.upgrading",
+]);
+
+/**
+ * The refusals of an upgrade's abandonment and of its rollback's end that
+ * say the list is behind: the notebook's role, its being, its upgrade's
+ * state.
+ */
+const behindRollback: ReadonlySet<string> = new Set(["forbidden", "notebook.not_found", "wiki.upgrade_state"]);
 
 /** isNotFound tells whether error is the notebook's 404: deleted, or not seen. */
 function isNotFound(error: unknown): boolean {

@@ -1,4 +1,4 @@
-import { useRef, useState, type ReactElement } from "react";
+import { useRef, useState, type ReactElement, type ReactNode } from "react";
 
 import { FormField } from "../components/form-field";
 import { Alert } from "../components/ui/alert";
@@ -27,6 +27,12 @@ type Opening =
 type ConfirmDialogProps = Opening & {
   title: string;
   description: string;
+  /**
+   * What more the dialog says below its description, such as what an
+   * upgrade's start makes of a page (M11/P1): it describes the dialog with
+   * the description.
+   */
+  more?: ReactNode;
   confirmLabel: string;
   /** The confirm button's label while confirm is out. */
   sendingLabel: string;
@@ -41,8 +47,8 @@ type ConfirmDialogProps = Opening & {
   typedConfirmation?: { label: string; value: string };
   /** The dialog's own texts for some problem codes of a refusal. */
   texts?: ProblemTexts;
-  /** The dialog's own text of a refusal, where it has one: one that names more than its code does. */
-  explain?: (error: unknown) => string | undefined;
+  /** The dialog's own text of a refusal, where it has one: one that names more than its code does, a list of them. */
+  explain?: (error: unknown) => ReactNode | undefined;
   /** How the confirm button looks: destructive, by default, or plain for what is not, a page's creation. */
   tone?: "destructive" | "default";
 };
@@ -61,6 +67,7 @@ export function ConfirmDialog({
   held,
   title,
   description,
+  more,
   confirmLabel,
   sendingLabel,
   cancelLabel,
@@ -137,7 +144,17 @@ export function ConfirmDialog({
         }}
       >
         <AlertDialogTitle>{title}</AlertDialogTitle>
-        <AlertDialogDescription>{description}</AlertDialogDescription>
+        {more === undefined ? (
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        ) : (
+          // What more it says describes the dialog too, read with its name.
+          <AlertDialogDescription asChild>
+            <div className="space-y-4">
+              <p>{description}</p>
+              <div className="space-y-2 text-foreground">{more}</div>
+            </div>
+          </AlertDialogDescription>
+        )}
         {typedConfirmation !== undefined && (
           <FormField
             ref={typedField}

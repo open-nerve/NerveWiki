@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import useSWR from "swr";
 
-import { writesPages } from "../../app/effective-role";
+import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
@@ -62,7 +62,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const [focusing, setFocusing] = useState<string>();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.tree !== undefined;
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
   const { move: sourceMove, confirmation } = useSourceMove(pages);
   useEffect(() => {
     if (pageId !== undefined && read) {

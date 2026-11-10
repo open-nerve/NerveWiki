@@ -22,6 +22,7 @@ import { OwnerlessService } from "../services/ownerless.service";
 import { EditLeaveService, PageService } from "../services/page.service";
 import { TransferService } from "../services/transfer.service";
 import { WorkspaceService, type Workspace } from "../services/workspace.service";
+import { UpgradeService } from "../services/upgrade.service";
 import { WikiService } from "../services/wiki.service";
 import type { Session } from "../session/session";
 import { AccountStore } from "./account.store";
@@ -85,6 +86,8 @@ export class RootStore {
   readonly workspaces: WorkspaceStore | undefined;
   /** Health reads use this login's client; their results belong to SWR. */
   readonly wiki: WikiService | undefined;
+  /** A notebook's upgrade's reads use this login's client, their results SWR's; its changes go through the notebooks. */
+  readonly upgrades: UpgradeService | undefined;
   /** The edits of this generation, from as they begin until they end or are not opened (M5/P4 design 3.4). */
   readonly edits = observable.set<PageEditing>([], { deep: false });
   private readonly members: MemberService | undefined;
@@ -141,6 +144,7 @@ export class RootStore {
     this.apiTokens = client && new ApiTokenStore(new ApiTokenService(client));
     this.workspaces = client && new WorkspaceStore(new WorkspaceService(client));
     this.wiki = client && new WikiService(client);
+    this.upgrades = client && new UpgradeService(client);
     this.members = client && new MemberService(client);
     this.invitations = client && new InvitationService(client);
     this.notebooks = client && new NotebookService(client);
@@ -288,9 +292,13 @@ export class RootStore {
    */
   notebooksOf(workspace: Workspace): NotebookStore | undefined {
     const service = this.notebooks;
+    const upgrades = this.upgrades;
     return (
       service &&
-      runInAction(() => once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug)))
+      upgrades &&
+      runInAction(() =>
+        once(this.notebookLists, workspace.id, () => new NotebookStore(service, workspace.slug, upgrades))
+      )
     );
   }
 

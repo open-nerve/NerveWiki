@@ -1,5 +1,5 @@
 import type { WorkspaceRole } from "../services/member.service";
-import type { NotebookRole, WorkspaceAccess } from "../services/notebook.service";
+import type { Notebook, NotebookRole, WorkspaceAccess } from "../services/notebook.service";
 
 /** The order of the roles, lowest first. */
 const rank: Record<NotebookRole, number> = { reader: 1, editor: 2, admin: 3 };
@@ -39,4 +39,25 @@ export function effectiveNotebookRole(
  */
 export function writesPages(role: NotebookRole): boolean {
   return role === "editor" || role === "admin";
+}
+
+/**
+ * writesNotebook tells whether the account writes notebook's pages from
+ * the web: its role writes them (writesPages), and no upgrade is under
+ * way, which freezes the notebook but for its initiator's MCP writes, its
+ * initiator's web included (M11/P1 design 4.4). Each control of the web
+ * that writes asks this, not the role alone.
+ */
+export function writesNotebook(notebook: Pick<Notebook, "role" | "upgrade">): boolean {
+  return writesPages(notebook.role) && notebook.upgrade === null;
+}
+
+/**
+ * frozenByUpgrade tells whether only the upgrade under way keeps the
+ * account from writing notebook's pages: its role writes them. What the
+ * web says of a control it does not offer then names the upgrade, not the
+ * role (decision 247).
+ */
+export function frozenByUpgrade(notebook: Pick<Notebook, "role" | "upgrade">): boolean {
+  return writesPages(notebook.role) && notebook.upgrade !== null;
 }

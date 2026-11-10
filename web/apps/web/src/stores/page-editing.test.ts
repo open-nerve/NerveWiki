@@ -7,9 +7,9 @@ import { autosavePause } from "../editor/autosave";
 import { editorExtensions, type EditorControls, type EditorExtension } from "../editor/registry";
 import { ApiError } from "../services/api";
 import type { PageContent } from "../services/page.service";
-import { problem, type Answer as HttpAnswer } from "../test/fakes";
+import { problem, upgradeOf, type Answer as HttpAnswer } from "../test/fakes";
 import { pageEditor } from "../test/page-editor";
-import { ada, guide, notes, pagePath, pageServer } from "../test/page-server";
+import { ada, bob, guide, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 import { editSessionHeartbeat } from "./edit-session";
 import { PageEditing, type EditingService } from "./page-editing";
@@ -482,6 +482,40 @@ test("source loss locks the mounted editor and preserves unsaved text: real regi
     "OPEN Notes",
     'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
     "END session-1",
+  ]);
+});
+
+test("a save once an upgrade started finds its session ended, and its opening anew refused as frozen: the mounted editor locks, keeps its text, and saves no more", async () => {
+  const server = pageServer({ role: "editor", nodes: [guide, notes] });
+  const { view, type, controls, editing } = await mountedSourceEdit(server);
+  const save = vi.spyOn(controls, "save");
+  act(() => type(" my unsaved text"));
+  // The session lapsed, and another admin started the upgrade, which starts only with no session alive and deletes
+  // those that lapsed (M11/P1 design 4.4).
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  server.sessions.clear();
+  const from = server.sent.length;
+  const writes = () => server.sent.slice(from).filter((line) => !line.startsWith("GET "));
+
+  await act(() => controls.save());
+
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more."
+  );
+  expect(editing.session.lost).toEqual({ reason: "upgrading" });
+  expect(view.state.readOnly).toBe(true);
+  expect(view.state.facet(EditorView.editable)).toBe(false);
+  expect(view.state.doc.toString()).toBe(sourceDraft);
+  expect(editing.unsaved).toBe(true);
+  expect(editing.failure).toBeUndefined();
+  const before = writes();
+  await act(() => vi.advanceTimersByTimeAsync(Math.max(autosavePause, editSessionHeartbeat) * 3));
+  // Not tried again: the autosave's timer does not call save, and nothing more goes out; no session to end.
+  expect(save).toHaveBeenCalledOnce();
+  expect(writes()).toEqual(before);
+  expect(before).toEqual([
+    'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
+    `409 notebook.upgrading POST /api/v0/pages/${notes.id}/edit-sessions`,
   ]);
 });
 

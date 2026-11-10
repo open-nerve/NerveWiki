@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useDocumentTitle } from "../../app/document-title";
-import { writesPages } from "../../app/effective-role";
+import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { sourceHistoryText } from "./duplicate-text";
@@ -115,7 +115,7 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   }
   const home = `/${slug}/notebooks/${notebook.id}`;
   const href = (changeset: string) => `${home}/history/${changeset}`;
-  const writer = writesPages(notebook.role);
+  const writer = writesNotebook(notebook);
 
   // saying is setSaid for the undo sent last as it is called, which says nothing once a later one said something.
   function saying(): (said: Said) => void {
@@ -235,7 +235,9 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
             {data.reverted_by.length > 0 && <p className="text-sm text-muted-foreground">{t("history.revertAgain")}</p>}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">{t("history.readersNote")}</p>
+          <p className="text-sm text-muted-foreground">
+            {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "history.readersNote")}
+          </p>
         ))}
       {/* There before it says anything: a status that comes with its region is not always read. */}
       <output id={status} className="block text-sm empty:sr-only">

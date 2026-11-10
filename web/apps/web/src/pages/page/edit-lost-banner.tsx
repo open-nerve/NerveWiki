@@ -19,9 +19,9 @@ type EditLostBannerProps = {
  * EditLostBanner says why the edit saves no more (M5 design 4.9; M5/P4
  * design 3.8), above the editor, now read-only: taken over elsewhere,
  * unlocked by an admin, the lock taken while it lapsed, the page gone,
- * the account's access to it. Its page focuses it as it shows; with
- * changes not saved, it says to copy them. Back to reading leaves the
- * edit.
+ * the account's access to it, its notebook being upgraded. Its page
+ * focuses it as it shows; with changes not saved, it says to copy them.
+ * Back to reading leaves the edit.
  */
 export function EditLostBanner({ lost, unsaved, back, ref }: EditLostBannerProps) {
   const t = useT();
@@ -57,6 +57,8 @@ function lostText(lost: EditLost, t: Translate, me: string | undefined): string 
       return t("editor.lostGone");
     case "source":
       return t("editor.lostSource");
+    case "upgrading":
+      return t("editor.lostUpgrading");
     case "no_access":
       return t("editor.lostAccess");
   }
