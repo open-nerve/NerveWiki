@@ -362,9 +362,10 @@ func refusalOf(err error, s Step) error {
 	return domain.Refuse(err, s.Changes[0].NodeID)
 }
 
-// step is an operation of the unit.
+// step is an operation of the unit: a move or a rename of a batch's with
+// update_links false (Relocate's Placement.KeepLinks) keeps the links.
 func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
-	return Step{Write: u.write, Operation: op, Changes: changes}
+	return Step{Write: u.write, Operation: op, Changes: changes, KeepLinks: u.keepLinks}
 }
 
 // apply runs an operation whose checks passed: the guards, its write, its

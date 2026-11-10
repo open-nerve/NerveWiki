@@ -238,6 +238,31 @@ func TestABatchsWriteSeesItsPageAsTheMovesBeforeItLeaveIt(t *testing.T) {
 	}
 }
 
+// A batch's move with update_links false is a step that keeps its links
+// (M11/P2 design 3.2, Unit.step): its rename's step carries KeepLinks, the
+// guards see it so; a rename after it with update_links, a write's
+// creation and a content op carry none, Relocate having cleared it.
+func TestTheUnitStepCarriesKeepLinks(t *testing.T) {
+	f := newFixture()
+	p := f.page("P", nil, 1)
+	f.page("X", nil, 2)
+	f.page("A", nil, 3)
+	f.content(p.ID, "a", 2)
+	g := &guard{recorder: f.rec}
+	f.guards = []app.WriteGuard{g}
+	if _, err := f.applyBatch(&fakeLinks{recorder: f.rec}, keepOp("X.md", "Y.md"), moveOp("A.md", "B.md"), writeOp("N.md", "n"),
+		editOp("P.md", "a", "b")); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range g.steps {
+		got = append(got, fmt.Sprint(s.Operation, " ", s.KeepLinks))
+	}
+	if want := []string{"rename true", "rename false", "create false", "content false"}; !slices.Equal(got, want) {
+		t.Errorf("the guards saw %v, want %v", got, want)
+	}
+}
+
 // A batch's content ops of one page are one write (M9/P3 design 3.5.2): at
 // its first content op, of its last content, through the guards once, one
 // version; the later ops find the page alone. A write without a token of

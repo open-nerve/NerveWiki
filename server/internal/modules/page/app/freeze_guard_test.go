@@ -219,7 +219,9 @@ func TestTheFreezeGuard(t *testing.T) {
 		}
 		nodes.reads = nil
 		for _, op := range []domain.Operation{domain.OpMove, domain.OpRename, domain.OpContent, domain.OpCreate} {
-			if err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, op, subtree[1])); err != nil {
+			s := f.freezeStep(n, agent, &app.Grants{}, op, subtree[1])
+			s.Options.UpdateLinks = true
+			if err := guard.GuardWrite(f.asAlice(), s); err != nil {
 				t.Errorf("a %s of a baseline page = %v, want nil (P2/S1's guardrails)", op, err)
 			}
 		}
@@ -230,6 +232,47 @@ func TestTheFreezeGuard(t *testing.T) {
 		nodes.err = failure
 		if err := guard.GuardWrite(f.asAlice(), f.freezeStep(n, agent, &app.Grants{}, domain.OpDelete, subtree...)); !errors.Is(err, failure) {
 			t.Errorf("the deletion, the reader failing = %v, want its error", err)
+		}
+	})
+	// The moves' and renames' guardrail (M11/P2 design 3.2): a move or a
+	// rename of a baseline page with what it carries that leaves the links
+	// to them as they are, a single move's (Options.UpdateLinks false) or a
+	// batch's (KeepLinks, its unit's UpdateLinks true), is
+	// page.upgrade_keep_links marked with the step's root; one that
+	// rewrites them goes. Neither reads a row.
+	t.Run("the moves' and renames' guardrail", func(t *testing.T) {
+		f := newFixture()
+		f.grant(changeMode)
+		root, carried := uuid.NewV7(), uuid.NewV7()
+		nodes := &upgradeNodes{protected: map[uuid.UUID]bool{root: true, carried: true}}
+		guard := app.NewFreezeGuard(f.auth, changeMode, nodes)
+		n := f.upgrading(domain.UpgradeUpgrading, current)
+		changes := []domain.Change{{NodeID: root, Before: &domain.TreeState{Name: "Guide"}, After: &domain.TreeState{Name: "Map"}},
+			{NodeID: carried, Before: &domain.TreeState{ParentID: &root, Name: "Kept"}, After: &domain.TreeState{ParentID: &root, Name: "Kept"}}}
+		for _, op := range []domain.Operation{domain.OpMove, domain.OpRename} {
+			for _, tt := range []struct {
+				name         string
+				update, keep bool
+				refused      bool
+			}{
+				{"a single one with update_links false", false, false, true},
+				{"a batch's with update_links false", true, true, true},
+				{"one that rewrites the links", true, false, false},
+			} {
+				s := f.freezeStep(n, agent, &app.Grants{}, op, changes...)
+				s.Options.UpdateLinks, s.KeepLinks = tt.update, tt.keep
+				err := guard.GuardWrite(f.asAlice(), s)
+				var r *domain.Refused
+				switch {
+				case tt.refused && (codeOf(err) != "page.upgrade_keep_links" || !errors.As(err, &r) || r.NodeID != root):
+					t.Errorf("%s, %s = %v (%+v), want page.upgrade_keep_links marked with Guide", op, tt.name, err, r)
+				case !tt.refused && err != nil:
+					t.Errorf("%s, %s = %v, want nil", op, tt.name, err)
+				}
+			}
+		}
+		if len(nodes.reads) != 0 {
+			t.Errorf("the moves and renames read %v, want nothing", nodes.reads)
 		}
 	})
 	t.Run("the vetoer", func(t *testing.T) {

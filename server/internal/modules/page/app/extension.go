@@ -60,6 +60,11 @@ type Step struct {
 	Changes   []domain.Change
 	Content   *StepContent
 	Rewrite   bool
+	// KeepLinks is a batch's move or rename with update_links false
+	// (Placement.KeepLinks): its unit's deferred rewrite follows neither
+	// the node nor what it carries. A single move's is Options.UpdateLinks
+	// false. M11's guardrails refuse both (M11 design 4.6).
+	KeepLinks bool
 	Lines     *StepLines
 	Kinds     map[uuid.UUID]domain.Kind
 	// AreaHashes is prepared once before guards and maintained after the write.

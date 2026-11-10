@@ -68,16 +68,29 @@ func (g *FreezeGuard) GuardWrite(ctx context.Context, s Step) error {
 	return g.guardrails(ctx, s)
 }
 
-// guardrails are the initiator's agent's limits (M11 design 4.6): P1's is
-// the delete's, which keeps every node the upgrade started with and the
-// source root its start created, page.upgrade_protected marked with the
-// first of them in the subtree's order (Changes, top-down), not the
-// subtree's root, which may be a node the agent created; a node created
-// since may go. P2/S1 adds the rest.
+// guardrails are the initiator's agent's limits (M11 design 4.6): a
+// delete of a node the upgrade started with or of its seeded source root
+// (P1's, deletion); a move or a rename that leaves the links to it as they
+// are, page.upgrade_keep_links marked with the step's root. P2/S1 adds the
+// rest.
 func (g *FreezeGuard) guardrails(ctx context.Context, s Step) error {
-	if s.Operation != domain.OpDelete {
-		return nil
+	switch s.Operation {
+	case domain.OpDelete:
+		return g.deletion(ctx, s)
+	case domain.OpMove, domain.OpRename:
+		if !s.Options.UpdateLinks || s.KeepLinks {
+			return domain.Refuse(domain.ErrUpgradeKeepLinks, s.Changes[0].NodeID)
+		}
 	}
+	return nil
+}
+
+// deletion keeps every node the upgrade started with and the source root
+// its start created (M11/P1), page.upgrade_protected marked with the first
+// of them in the subtree's order (Changes, top-down), not the subtree's
+// root, which may be a node the agent created; a node created since may
+// go.
+func (g *FreezeGuard) deletion(ctx context.Context, s Step) error {
 	ids := make([]uuid.UUID, len(s.Changes))
 	for i, c := range s.Changes {
 		ids[i] = c.NodeID

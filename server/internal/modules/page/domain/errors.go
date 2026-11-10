@@ -128,6 +128,10 @@ var (
 	// initiator's agent's, MCP's own code.
 	ErrUpgradeProtected = shared.NewError(shared.KindConflict, "page.upgrade_protected",
 		"The node was there when the upgrade started, or is its source root: an upgrade may not delete it.")
+	// ErrUpgradeKeepLinks: a move or rename that leaves the links to the
+	// node as they are, while upgrading (M11 design 4.6).
+	ErrUpgradeKeepLinks = shared.NewError(shared.KindConflict, "page.upgrade_keep_links",
+		"While the notebook is being upgraded, a move or rename rewrites the links to what it moves: leave update_links true.")
 )
 
 // ErrStaleUpgradeWrite is a unit of an upgrade the notebook no longer has:

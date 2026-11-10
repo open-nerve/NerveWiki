@@ -9,7 +9,8 @@ import (
 type toolCode struct{ tool, code string }
 
 // upgradeToolCodes are the codes of mcpToolCodes' rows that an upgrade's
-// freeze and guardrails answer (M11/P1 design 3.6), by tool and code: they
+// freeze and guardrails answer (M11/P1 design 3.6, M11/P2 design 3.6), by
+// tool and code: they
 // fall in the rows of the five writes, so they cannot be told apart by
 // tool. The fifth shard's TestTheMCPToolsErrorsCarryTheirCodes, whose app
 // has no upgrade, answers mcpToolCodes but these; the seventh shard's
@@ -20,6 +21,7 @@ func upgradeToolCodes() map[toolCode]bool {
 		{"write", "notebook.upgrading"}: true, {"edit", "notebook.upgrading"}: true, {"move", "notebook.upgrading"}: true,
 		{"delete", "notebook.upgrading"}: true, {"batch", "notebook.upgrading"}: true,
 		{"delete", "page.upgrade_protected"}: true, {"batch", "page.upgrade_protected"}: true,
+		{"move", "page.upgrade_keep_links"}: true, {"batch", "page.upgrade_keep_links"}: true,
 	}
 }
 
@@ -27,9 +29,10 @@ func upgradeToolCodes() map[toolCode]bool {
 // entry (M11/P1 design 3.6): in a notebook being upgraded by bob, alice's
 // agent's write, edit, move, delete and batch are notebook.upgrading; in
 // one being upgraded by alice, whose baseline has Guide, her agent's
-// delete of Guide, alone or in a batch, is page.upgrade_protected; each
-// refused before it wrote anything; and each pair listed is a code of its
-// tool's row.
+// delete of Guide, alone or in a batch, is page.upgrade_protected; her
+// agent's move of Other with update_links false, alone or in a batch, is
+// page.upgrade_keep_links; each refused before it wrote anything; and
+// each pair listed is a code of its tool's row.
 func TestUpgradeToolsErrorsCarryTheirCodes(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	others := tm.openNotebook(t, "alice", "Others")
@@ -38,6 +41,7 @@ func TestUpgradeToolsErrorsCarryTheirCodes(t *testing.T) {
 	tm.upgrade(t, others, "bob", "upgrading")
 	own := tm.openNotebook(t, "alice", "Own")
 	tm.createPageWith(t, "alice", own, "", "Guide", "a\n")
+	tm.createPage(t, "alice", own, "", "Other")
 	tm.upgrade(t, own, "alice", "upgrading")
 	agent := tm.agent(t, "alice", others)
 	answered := answeredCodes{}
@@ -53,6 +57,8 @@ func TestUpgradeToolsErrorsCarryTheirCodes(t *testing.T) {
 			{others, "batch", "notebook.upgrading", batched(opWrite("New.md", "x"))},
 			{own, "delete", "page.upgrade_protected", map[string]any{"path": "Guide.md"}},
 			{own, "batch", "page.upgrade_protected", batched(opWrite("New.md", "x"), opDelete("Guide.md"))},
+			{own, "move", "page.upgrade_keep_links", map[string]any{"from": "Other.md", "to": "Moved.md", "update_links": false}},
+			{own, "batch", "page.upgrade_keep_links", batched(opWith(opMove("Other.md", "Moved.md"), "update_links", false))},
 		} {
 			m := *agent
 			m.notebook = tt.notebook
