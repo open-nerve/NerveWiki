@@ -501,13 +501,24 @@ func TestTheSecondTransactionWritesOnlyItsOwn(t *testing.T) {
 // answers as its transaction decided: the decision came before it, a
 // domain's conflict too.
 func TestTheSubmissionsDeadline(t *testing.T) {
+	// Its Retry-After is the whole seconds from the clock as it answers to
+	// the submission's moment plus SubmitTimeout, at least one (decision
+	// 274): the clock moved on as the check runs.
 	for _, tc := range []struct {
-		name             string
-		timeout, request time.Duration
-	}{{"the request alive", 50 * time.Millisecond, 0}, {"the request expired", time.Hour, 50 * time.Millisecond}} {
+		name                      string
+		timeout, request, elapsed time.Duration
+		retry                     time.Duration
+	}{
+		{"the request alive", 50 * time.Millisecond, 0, 0, time.Second},
+		{"the request expired", time.Hour, 50 * time.Millisecond, 0, time.Hour},
+		{"the request expired 7.5 s in", 10 * time.Second, 50 * time.Millisecond, 7500 * time.Millisecond, 3 * time.Second},
+		{"the request expired as it may be taken over", 10 * time.Second, 50 * time.Millisecond, 10 * time.Second, time.Second},
+		{"the request expired past that", 10 * time.Second, 50 * time.Millisecond, 12 * time.Second, time.Second},
+	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newSubmitFake().passing()
 			f.blockSecond = true
+			f.duringRun = func(context.Context) { f.checkFake.at = f.at().Add(tc.elapsed) }
 			log := &startLog{}
 			submit, ctx := newSubmit(f, tc.timeout, log)
 			if tc.request > 0 {
@@ -515,8 +526,9 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				ctx, cancel = context.WithTimeout(ctx, tc.request)
 				defer cancel()
 			}
-			if _, err := submit.Execute(ctx, f.nb); codeOf(err) != "server_busy" {
-				t.Fatalf("answered %v, want server_busy", err)
+			_, err := submit.Execute(ctx, f.nb)
+			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
+				t.Fatalf("answered %v, want server_busy, Retry-After %s", err, tc.retry)
 			}
 			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil {
 				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report", w, f.row)

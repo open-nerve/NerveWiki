@@ -328,7 +328,8 @@ paths:
         that order. Once the check is done, a submission taken over or an
         upgrade abandoned meanwhile is wiki.upgrade_state, before the
         check's own answer; the second step past its deadline, which is no
-        later than the request's, is server_busy, with Retry-After: 1. Its
+        later than the request's, is server_busy, its Retry-After the
+        seconds until another submission may take it over, at least 1. Its
         admins are asked again before the answer, as the report is kept: a
         caller no longer one is notebook.not_found or forbidden then, the
         report kept all the same. The answer is the upgrade, reviewing,

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"time"
 	"uuid"
 
@@ -77,7 +78,8 @@ type submitEnd struct {
 //     a passed one keeps its report; the mode's subscribers told; then,
 //     before the COMMIT, notebook.change_mode again, which decides only
 //     the answer;
-//  6. that transaction past the deadline is server_busy, a warn line;
+//  6. that transaction past the deadline is server_busy, its Retry-After
+//     the seconds until a submission may take it over, a warn line;
 //  7. after the commit, an info line, whatever the answer.
 func (s *SubmitUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
 	actor, err := shared.RequireActor(ctx)
@@ -127,7 +129,7 @@ func (s *SubmitUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView,
 		if errors.Is(err, context.DeadlineExceeded) && detached.Err() != nil {
 			s.d.Logger.WarnContext(ctx, "upgrade submission timed out", append(ids, slog.Int64("elapsed_ms", elapsed.Milliseconds()),
 				slog.Int64("timeout_ms", deadline.Sub(first.at).Milliseconds()))...)
-			return UpgradeView{}, shared.ServerBusy(time.Second)
+			return UpgradeView{}, shared.ServerBusy(s.retryAfter(first.at))
 		}
 		return UpgradeView{}, err
 	}
@@ -146,6 +148,16 @@ func (s *SubmitUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView,
 		return UpgradeView{}, end.answer
 	}
 	return end.view, nil
+}
+
+// retryAfter is the Retry-After of a submission at at past its deadline
+// (step 6, decision 274): the whole seconds until at plus SubmitTimeout,
+// when another submission may take it over, at least one. A deadline the
+// request's, earlier, leaves seconds to wait: a retry a second on would
+// be "still being checked".
+func (s *SubmitUpgrade) retryAfter(at time.Time) time.Duration {
+	wait := at.Add(s.d.SubmitTimeout).Sub(s.d.Clock.Now())
+	return max(time.Second, time.Duration(math.Ceil(wait.Seconds()))*time.Second)
 }
 
 // first is the submission's first transaction, step 2.

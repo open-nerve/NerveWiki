@@ -3,8 +3,10 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -319,8 +321,9 @@ func TestUpgradeSubmit(t *testing.T) {
 	// transaction waits on the row to its request's deadline, earlier
 	// than its submission's moment plus 6 s (MCP's too: its 4 s run from
 	// its body read, before that moment), and answers server_busy, a warn
-	// line, nothing written. The row let go, past that moment dana takes
-	// the submission over.
+	// line, nothing written, its Retry-After the seconds to that moment
+	// (decision 274). The row let go, after those seconds dana takes the
+	// submission over.
 	for _, entry := range []string{"REST", "MCP"} {
 		t.Run("the deadline, "+entry, func(t *testing.T) {
 			nb := notebook(t, "Deadline "+entry, cleanNote)
@@ -387,18 +390,26 @@ func TestUpgradeSubmit(t *testing.T) {
 			case <-time.After(interleavingWait):
 				t.Fatal("alice's submission did not answer")
 			}
+			// The server's clock as it answered was no later than got.at, so
+			// its seconds to the moment are at least those from got.at.
 			moment := at.Add(6 * time.Second)
+			least := max(1, int(math.Ceil(moment.Sub(got.at).Seconds())))
+			var retry int
 			if entry == "MCP" {
 				member := got.mcp.toolError(t)
-				if member["code"] != "server_busy" || member["retry_after_seconds"] != float64(1) || !got.at.Before(moment) {
-					t.Errorf("alice's agent's submission = %v at %s, want server_busy before %s", member, got.at, moment)
+				seconds, _ := member["retry_after_seconds"].(float64)
+				retry = int(seconds)
+				if member["code"] != "server_busy" || retry < least || !got.at.Before(moment) {
+					t.Errorf("alice's agent's submission = %v at %s, want server_busy before %s, retry after %d s or more", member,
+						got.at, moment, least)
 				}
 			} else {
 				tm.contract.CheckResponse(t, req, got.res)
+				retry, _ = strconv.Atoi(got.res.Header.Get("Retry-After"))
 				if got.res.StatusCode != http.StatusServiceUnavailable || problemCodeOf(string(got.body)) != "server_busy" ||
-					got.res.Header.Get("Retry-After") != "1" || !got.at.Before(moment) {
-					t.Errorf("alice's submission = %d %s %v at %s, want server_busy before %s", got.res.StatusCode, got.body,
-						got.res.Header, got.at, moment)
+					retry < least || !got.at.Before(moment) {
+					t.Errorf("alice's submission = %d %s %v at %s, want server_busy before %s, retry after %d s or more",
+						got.res.StatusCode, got.body, got.res.Header, got.at, moment, least)
 				}
 			}
 			warn := upgradeLines(t, r.logs, before, "upgrade submission timed out")
@@ -411,7 +422,8 @@ func TestUpgradeSubmit(t *testing.T) {
 			if err := holder.Commit(ctx); err != nil {
 				t.Fatal(err)
 			}
-			time.Sleep(time.Until(moment.Add(10 * time.Millisecond)))
+			t.Logf("%s: retry after %d s, the moment %s after the answer", entry, retry, moment.Sub(got.at))
+			time.Sleep(time.Until(got.at.Add(time.Duration(retry) * time.Second)))
 			if entry == "MCP" {
 				if a := answerOf[submittedAnswer](t, dana.use(t, "upgrade_submit", map[string]any{})); a.State != "reviewing" ||
 					a.SubmittedAt == nil {
