@@ -27,7 +27,11 @@ type Opening =
 type ConfirmDialogProps = Opening & {
   title: string;
   description: string;
-  /** What more the dialog says below its description, such as what an upgrade's start makes of a page (M11/P1). */
+  /**
+   * What more the dialog says below its description, such as what an
+   * upgrade's start makes of a page (M11/P1): it describes the dialog with
+   * the description.
+   */
   more?: ReactNode;
   confirmLabel: string;
   /** The confirm button's label while confirm is out. */
@@ -140,8 +144,17 @@ export function ConfirmDialog({
         }}
       >
         <AlertDialogTitle>{title}</AlertDialogTitle>
-        <AlertDialogDescription>{description}</AlertDialogDescription>
-        {more !== undefined && <div className="space-y-2 text-sm">{more}</div>}
+        {more === undefined ? (
+          <AlertDialogDescription>{description}</AlertDialogDescription>
+        ) : (
+          // What more it says describes the dialog too, read with its name.
+          <AlertDialogDescription asChild>
+            <div className="space-y-4">
+              <p>{description}</p>
+              <div className="space-y-2 text-foreground">{more}</div>
+            </div>
+          </AlertDialogDescription>
+        )}
         {typedConfirmation !== undefined && (
           <FormField
             ref={typedField}

@@ -485,15 +485,17 @@ test("source loss locks the mounted editor and preserves unsaved text: real regi
   ]);
 });
 
-test("an upgrade's freeze refusing a save locks the mounted editor, keeps its text, and saves no more", async () => {
+test("a save once an upgrade started finds its session ended, and its opening anew refused as frozen: the mounted editor locks, keeps its text, and saves no more", async () => {
   const server = pageServer({ role: "editor", nodes: [guide, notes] });
   const { view, type, controls, editing } = await mountedSourceEdit(server);
   const save = vi.spyOn(controls, "save");
   act(() => type(" my unsaved text"));
-  // Another admin starts the upgrade, which deletes the sessions lapsed meanwhile (M11/P1 design 4.4).
+  // The session lapsed, and another admin started the upgrade, which starts only with no session alive and deletes
+  // those that lapsed (M11/P1 design 4.4).
   server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
   server.sessions.clear();
-  const writes = () => server.sent.filter((line) => !line.startsWith("GET "));
+  const from = server.sent.length;
+  const writes = () => server.sent.slice(from).filter((line) => !line.startsWith("GET "));
 
   await act(() => controls.save());
 
@@ -508,10 +510,13 @@ test("an upgrade's freeze refusing a save locks the mounted editor, keeps its te
   expect(editing.failure).toBeUndefined();
   const before = writes();
   await act(() => vi.advanceTimersByTimeAsync(Math.max(autosavePause, editSessionHeartbeat) * 3));
-  // Not tried again: the autosave's timer does not call save, and nothing more goes out.
+  // Not tried again: the autosave's timer does not call save, and nothing more goes out; no session to end.
   expect(save).toHaveBeenCalledOnce();
   expect(writes()).toEqual(before);
-  expect(before.filter((line) => line.startsWith("409 notebook.upgrading PUT"))).toHaveLength(1);
+  expect(before).toEqual([
+    'PUT Notes "Notes\\n my unsaved text" on 1 in session-1',
+    `409 notebook.upgrading POST /api/v0/pages/${notes.id}/edit-sessions`,
+  ]);
 });
 
 test("source loss locks the mounted editor and preserves unsaved text: pending autosave stops before end answers", async () => {

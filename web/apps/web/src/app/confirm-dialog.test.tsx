@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { expect, test } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
@@ -136,4 +136,44 @@ test("the dialog says more below its description, and a refusal its explain make
       .getAllByRole("listitem")
       .map((item) => item.textContent)
   ).toEqual(["Notes", "Guide"]);
+});
+
+/** A dialog by its trigger that says more, if any, below its description. */
+const saying = (more?: ReactNode) => (
+  <I18nProvider locale="en">
+    <ConfirmDialog
+      trigger={<button type="button">Open</button>}
+      title="Start it?"
+      description="It starts."
+      more={more}
+      confirmLabel="Start"
+      sendingLabel="Starting…"
+      cancelLabel="Cancel"
+      confirm={() => Promise.resolve()}
+      tone="default"
+    />
+  </I18nProvider>
+);
+
+test("what more the dialog says describes it with its description; without more, the description alone does", async () => {
+  const user = userEvent.setup();
+  const { rerender } = render(
+    saying(
+      <>
+        <p>Its page raw holds 3 nodes.</p>
+        <p>Links may lead nowhere.</p>
+      </>
+    )
+  );
+
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  expect(
+    await screen.findByRole("alertdialog", {
+      name: "Start it?",
+      description: "It starts. Its page raw holds 3 nodes. Links may lead nowhere.",
+    })
+  ).toBeTruthy();
+
+  rerender(saying());
+  expect(screen.getByRole("alertdialog", { name: "Start it?", description: "It starts." })).toBeTruthy();
 });

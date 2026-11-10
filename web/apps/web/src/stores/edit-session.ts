@@ -66,7 +66,8 @@ function lostBy(error: unknown): EditLost | undefined {
   if (refused(error, 409, "page.source_immutable")) {
     return { reason: "source" };
   }
-  // A save, or the opening of a session that lapsed, refused by an upgrade's freeze (M11/P1 design 4.4).
+  // An opening refused by an upgrade's freeze (M11/P1 design 4.4): an upgrade starts only once the notebook's
+  // sessions lapsed, and deletes them, so a save then finds its session ended and opens one anew, which is refused.
   if (refused(error, 409, "notebook.upgrading")) {
     return { reason: "upgrading" };
   }
@@ -181,9 +182,10 @@ export class EditSession {
     }
     const lost = lostBy(error);
     if (lost !== undefined && !this.ended) {
-      // A source, or a notebook being upgraded, still holds our session. end
-      // captures its id and also marks an opening session for release when
-      // its answer arrives.
+      // A source still holds our session. end captures its id and also
+      // marks an opening session for release when its answer arrives. A
+      // notebook being upgraded holds none, the opening is what it refused:
+      // end there is a defense, which has nothing to end.
       if (lost.reason === "source" || lost.reason === "upgrading") {
         void this.end();
       } else {

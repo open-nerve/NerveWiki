@@ -358,6 +358,32 @@ test("a stopped rollback that left nothing: its end's dialog says ending is all 
   expect(within(dialog).queryByText(linksMayFail)).toBeNull();
 });
 
+test.each([
+  ["a node not back in place", { nodes: 1, pages: 0, created: 0 }],
+  ["a page not written back", { nodes: 0, pages: 1, created: 0 }],
+  ["the raw and AGENTS its start wrote", { nodes: 0, pages: 0, created: 2 }],
+])(
+  "a stopped rollback that left only %s: its end's dialog lists the three counts and that links may lead nowhere",
+  async (_, left) => {
+    const user = userEvent.setup();
+    const job = stopped(70);
+    const server = upgradeServer({ jobs: [job], upgrade: rollbackOf(job) });
+    server.left = left;
+    renderApp(upgradePath, server.app);
+
+    await user.click(await screen.findByRole("button", { name: ends }));
+    const dialog = await screen.findByRole("alertdialog", { name: "End the rollback of “Plans”?" });
+
+    expect(counts(dialog)).toEqual([
+      ["Nodes not back in place", `${left.nodes}`],
+      ["Pages not written back", `${left.pages}`],
+      ["New nodes still there", `${left.created}`],
+    ]);
+    expect(within(dialog).getByText(linksMayFail)).toBeTruthy();
+    expect(within(dialog).queryByText(nothingLeft)).toBeNull();
+  }
+);
+
 test("continuing a stopped rollback starts its job anew: Continue and End go, its new job shows, the focus is on the title", async () => {
   const user = userEvent.setup();
   const job = stopped(70);

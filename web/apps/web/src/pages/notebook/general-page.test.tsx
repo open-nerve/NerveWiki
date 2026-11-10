@@ -415,6 +415,8 @@ test.each([
 test.each([
   ["a page raw at the root with nodes under it, at any depth", [raw, rawPage, rawDeep, rawFile], 3],
   ["a page raw at the root with none under it", [raw], 0],
+  // The server finds raw by its title's key (start_upgrade.go), as the root's titles are told apart.
+  ["a page Raw at the root with nodes under it", [{ ...raw, name: "Raw" }, rawPage, rawDeep], 2],
   [
     "a page raw elsewhere",
     [

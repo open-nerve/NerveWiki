@@ -406,6 +406,7 @@ test.each(["save", "heartbeat"] as const)(
 );
 
 test("a save refused by an upgrade's freeze loses the edit and ends the server session exactly once", async () => {
+  // The server refuses no save so while the session is alive (an upgrade starts with none alive): settle's defense.
   const { session, sent, answers, page, events } = await opened();
   const ended = deferred<void>();
   answers.end = () => ended.promise;

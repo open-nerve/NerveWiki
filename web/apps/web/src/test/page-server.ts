@@ -158,7 +158,8 @@ type PageServerOptions = {
  *
  * While Plans has an upgrade under way (its notebook's upgrade, which the
  * test sets), the writes it freezes are 409 notebook.upgrading
- * (frozenWhileUpgrading, M11/P1 design 3.6).
+ * (frozenWhileUpgrading, M11/P1 design 3.6); a content's save once its
+ * page, session and base pass, as the server orders it.
  */
 export function pageServer({
   role = "admin",
@@ -401,11 +402,13 @@ export function pageServer({
 }
 
 /**
- * The writes an upgrade under way freezes (M11/P1 design 3.6): Plans' page
- * creations, a node's renaming, move, deletion and restore, an upload, a
- * content's save, an edit session's opening, a version's restore, a task's
- * toggle, a changeset's revert, and the starts of an import, a trash
- * item's restore and a revert in the background (jobs-server.ts).
+ * The writes an upgrade under way freezes (M11/P1 design 3.6) that
+ * frozenWhileUpgrading refuses before their routes: Plans' page creations,
+ * a node's renaming, move, deletion and restore, an upload, an edit
+ * session's opening, a version's restore, a task's toggle, a changeset's
+ * revert, and the starts of an import, a trash item's restore and a revert
+ * in the background (jobs-server.ts). A content's save, frozen too, is
+ * refused in its route, after its session's refusals (contentRoutes).
  */
 const frozenRoutes: ReadonlySet<string> = new Set([
   `POST /api/v0/notebooks/${notebookJSON.id}/pages`,
@@ -414,7 +417,6 @@ const frozenRoutes: ReadonlySet<string> = new Set([
   "DELETE /api/v0/nodes/*",
   "POST /api/v0/nodes/*/restore",
   `POST /api/v0/notebooks/${notebookJSON.id}/assets`,
-  "PUT /api/v0/pages/*/content",
   "POST /api/v0/pages/*/edit-sessions",
   "POST /api/v0/pages/*/versions/*/restore",
   "POST /api/v0/pages/*/toggle-task",
@@ -424,35 +426,38 @@ const frozenRoutes: ReadonlySet<string> = new Set([
   `POST /api/v0/notebooks/${notebookJSON.id}/reverts`,
 ]);
 
+/** What tells whether Plans' writes are frozen: its upgrade, whether it is gone, the account's role; and what went out. */
+type FrozenState = { notebook: Notebook; notebookGone: boolean; sent: string[] };
+
 /**
  * frozenWhileUpgrading answers routes as the server does while Plans has
- * an upgrade under way (05-lessons 2): each write it freezes is 409
- * notebook.upgrading, logged in sent as "409 notebook.upgrading METHOD
- * path", Plans gone or a reader's still answered by the route. The real
- * server answers the freeze after the write unit's own conflicts (v0.1
- * design 13.1, item 4); the fake answers it first of the 409s, which only
- * a write refused for two reasons at once would tell apart.
+ * an upgrade under way (05-lessons 2): each write of frozenRoutes is
+ * refused before its route (frozenAnswer). The real server answers the
+ * freeze of an upload and of a job's start first (their prechecks), and
+ * that of the other writes after the write unit's own conflicts (v0.1
+ * design 13.1, item 4): the fake answers it first, which only a write
+ * refused for two reasons at once would tell apart.
  */
-export function frozenWhileUpgrading(
-  server: { notebook: Notebook; notebookGone: boolean; sent: string[] },
-  routes: Record<string, Answer>
-): Record<string, Answer> {
+export function frozenWhileUpgrading(server: FrozenState, routes: Record<string, Answer>): Record<string, Answer> {
   return Object.fromEntries(
     Object.entries(routes).map(([route, answer]): [string, Answer] =>
-      frozenRoutes.has(route)
-        ? [
-            route,
-            (request) => {
-              if (server.notebook.upgrade === null || server.notebookGone || server.notebook.role === "reader") {
-                return answer(request);
-              }
-              server.sent.push(`409 notebook.upgrading ${request.method} ${new URL(request.url).pathname}`);
-              return problem(409, "notebook.upgrading");
-            },
-          ]
-        : [route, answer]
+      frozenRoutes.has(route) ? [route, (request) => frozenAnswer(server, request) ?? answer(request)] : [route, answer]
     )
   );
+}
+
+/**
+ * frozenAnswer is 409 notebook.upgrading for request while Plans has an
+ * upgrade under way, logged in sent as "409 notebook.upgrading METHOD
+ * path"; undefined, for the route to answer, when it has none, is gone, or
+ * the account only reads it.
+ */
+function frozenAnswer(server: FrozenState, request: Request): Response | undefined {
+  if (server.notebook.upgrade === null || server.notebookGone || server.notebook.role === "reader") {
+    return undefined;
+  }
+  server.sent.push(`409 notebook.upgrading ${request.method} ${new URL(request.url).pathname}`);
+  return problem(409, "notebook.upgrading");
 }
 
 // The nodes made: numbered past those the tests make (under 600), as a file's tests go on; an id's number stays three
@@ -812,12 +817,12 @@ function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-type ContentState = SourceState & {
-  sent: string[];
-  contents: Map<string, { content: string; revision: number }>;
-  sessions: Map<string, FakeSession>;
-  writesDown: boolean;
-};
+type ContentState = SourceState &
+  FrozenState & {
+    contents: Map<string, { content: string; revision: number }>;
+    sessions: Map<string, FakeSession>;
+    writesDown: boolean;
+  };
 
 /** The answers to the contents and the edit sessions of server, which change it. */
 function contentRoutes(server: ContentState): Record<string, Answer> {
@@ -868,6 +873,13 @@ function contentRoutes(server: ContentState): Record<string, Answer> {
       const changed = current.content !== write.content;
       if (changed && write.base_revision !== current.revision) {
         return problem(409, "page.revision_mismatch");
+      }
+      // The freeze is the first of the guards, which a change meets once its page, its session and its base pass; a
+      // write of what the page holds is no change (unit_content.go). An upgrade starts only once the notebook's
+      // sessions lapsed, and deletes them: an edit's next save finds its session ended, refused above.
+      const frozen = changed ? frozenAnswer(server, request) : undefined;
+      if (frozen !== undefined) {
+        return frozen;
       }
       if (sourceArea(server, node) && (session !== undefined || (changed && current.content.length > 0))) {
         return problem(409, "page.source_immutable");
