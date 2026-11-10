@@ -71,6 +71,7 @@ jobs:
             timeout: 25
           # M11/P2/S2：升级的检查、闸门、提交与工具（TestUpgrade(Check|Gates|Submit|Tools)…）单列一份（Makefile 的 BOOTSTRAP_EIGHTH，00-M11 第 261 条）：
           # 不开时第七份在 7763 上约 375–420 秒，邻份没有余量
+          # M11/P2/S2 第一轮修复（00-M11 第 272 条）：第二份在 7763 上 Test 一步 457 秒过线，它的 TestVirtualExport 挪来这一份（7763 上约 85 秒），时限不变
           - leg: bootstrap-8
             timeout: 25
           # 不带竞态检测的预算与界线的守卫、server/tools；静态检查与生成物的检查也只在这一份里跑一次。M9/P4 S1 加 grep 的守卫，

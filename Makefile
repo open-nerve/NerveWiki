@@ -245,7 +245,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 仅上述 11 个测试从第一份移到第二份，第三、四、五份现有成员不变；测试名、五份、竞态/count/15m 与作业时限不变。
 # 新候选的编译清单、各份单独双轮和指定两次 main Test 均值的实际核验见 P4-S1 审查记录；历史原件不替代候选验收。
 BOOTSTRAP_FIRST = ^Test[A-D]
-BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
+BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # M10/P3/S1 五份待测候选：分支 f64 的 CI 41068871923 attempt1 中，四份 Test 为
@@ -262,7 +262,8 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 542 个顶层（竞态构建，M11/P2/S2 开第八份时）静态分配为 145/51/121/124/62/11/27/1（见第五份、第七份与第八份的说明）；各份双轮与指定 main pair 仍须实际核验。
+# 当前 547 个顶层（竞态构建，M11/P2/S2 第一轮修复挪 TestVirtualExport 的提交时的 go test -race -list）静态分配为 145/50/121/124/62/11/27/7
+# （见第五份、第七份与第八份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 # M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），都以 TestUpgrade 起名。第三份的 [U-Z] 收得下它，所以第三份跳过它；
 # 第四份是补集，跳过第三份的模式时已跳过它；第一、二、五、六份的模式都不收它（TestUploading… 也不匹配 ^TestUpgrade）。
@@ -279,13 +280,20 @@ BOOTSTRAP_SIXTH = ^TestIngest
 # 别的份的模式不收它们。本机两轮（make -j1，包的时间）第一份 295.0/292.0 → 231.0/230.3 秒，第七份 116.4/120.6 → 168.9/171.1 秒；
 # 照分支的 7763 上第七份与本机之比（测试一步 211/118.5≈1.78），第七份约 300 秒，在约 330 秒之下，13 个都挪。第一份照 main 的 7763
 # 与本机之比（442/287.4≈1.54）约 355 秒。第二份暂不动，合并之后看两次 main。不提高 -timeout。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground)
+# M11/P2/S2 第一轮修复（00-M11 第 272 条）：第二份的 TestVirtualExport 挪到第八份；第八份是第七份的子集，所以第七份的模式也收它，第三份 -skip
+# 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
 # 的七份均值 307.5/434/397/376/397/311/218.5 秒（P2 设计 10.1），都在 450 秒之下；第二份最贴线（438、430），照 M9/P2 设计 6.5 不过线不挪，
 # 第二份不动（挪前挪后的估计见 S2 的记录）。不提高 -timeout。这个提交时本机两轮（make -j1，包的时间）第七份 173.8/177.6 秒、第八份 4.2/4.2 秒。
-BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)
+# M11/P2/S2 第一轮修复（00-M11 第 272 条，审查 B 的 Q1）：分支的 CI（42882105107）第二份在 EPYC 7763 上 Test 一步 457 秒，过了 450 秒的线；本机第二份
+# 在 S2 之前 250.8/252.7 秒、之后 263.2/264.4 秒，多的约 5% 摊在许多测试上（每建一个应用读一次契约，契约变大，审查 B 的 4.4），合并之后两次 main
+# 多半也过线。照 M9/P2 设计 6.5 挪给空着的第八份（CI 上 97 秒），挪得最少：第二份里最大的 TestVirtualExport 一个（本机 -v 48.2/51.7 秒）。
+# 挪后本机两轮（make -j1，包的时间）第二份 204.4/202.0 秒、第八份 98.6/99.8 秒；照分支 CI 的第二份与本机之比（包 423.8/263.8≈1.61，Test 一步
+# 另多约 33 秒）折到 7763，第二份约 360 秒、第八份约 195 秒。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Check|Gates|Submit|Tools)|VirtualExport$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -322,7 +330,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交与工具（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交与工具，第二份让出的 TestVirtualExport（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
