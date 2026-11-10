@@ -423,6 +423,7 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		}
 		read[id] = domain.PageHead{Revision: s.Revision, Bytes: s.Bytes, Hash: s.Hash}
 	}
+	asked := map[uuid.UUID]bool{}
 	for _, id := range heads {
 		moves := a.plan.MovesBetween(-1, firsts[id])
 		if len(moves) == 0 {
@@ -433,12 +434,18 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		if err != nil {
 			return nil, nil, err
 		}
+		asked[id] = reached
 		if reached {
 			a.plan.ReadWhole(id)
 		}
 	}
 	if failed := a.plan.CheckReads(read); failed != nil {
 		return nil, nil, failed
+	}
+	if a.upgrade == domain.UpgradeUpgrading {
+		if err := a.reachedBefore(ctx, read, asked); err != nil {
+			return nil, nil, err
+		}
 	}
 	texts, _ = a.plan.Reads()
 	out := make(map[uuid.UUID]domain.PageText, len(texts))
@@ -455,6 +462,42 @@ func (a *batchAttempt) read(ctx context.Context) (map[uuid.UUID]domain.PageText,
 		out[id] = domain.PageText{Content: c.Content, Revision: c.Revision}
 	}
 	return out, read, nil
+}
+
+// reachedBefore marks Reached each page the batch does not create whose
+// links before the batch a rename or move before its last content op
+// reaches, by the index, as the deferred rewrite would follow them (M11/P2
+// decision 270): while upgrading, the plan's state, a page whose link the
+// batch takes out, renames its target and puts back holds its old bytes,
+// which the contents' pass sees no rewrite reach. One read of the index a
+// page with such moves at most, a write's asked already before its first
+// content op, its only one, answered by that ask (asked); in the pages'
+// last ops' order, the trees the reads keep then asked in their order.
+func (a *batchAttempt) reachedBefore(ctx context.Context, read map[uuid.UUID]domain.PageHead, asked map[uuid.UUID]bool) error {
+	pages := a.plan.Pages()
+	slices.SortStableFunc(pages, func(x, y domain.PlannedPage) int { return x.Last - y.Last })
+	for _, pg := range pages {
+		if pg.Created {
+			continue
+		}
+		reached, ok := asked[pg.ID]
+		if !ok || pg.First != pg.Last {
+			moves := a.plan.MovesBetween(-1, pg.Last)
+			if len(moves) == 0 {
+				continue
+			}
+			var err error
+			reached, err = a.b.links.Reached(ctx, a.notebookID, pg.ID, read[pg.ID].Revision, moves, a.plan.FrozenBetween(-1, pg.Last),
+				a.plan.CreatedAfterMoves(-1, pg.Last), a.plan.TreeAt(pg.Last), a.readsAt(pg.Last))
+			if err != nil {
+				return err
+			}
+		}
+		if reached {
+			a.plan.MarkReached(pg.ID)
+		}
+	}
+	return nil
 }
 
 // locked is the edit locks' precheck (M9/P3 design 3.4.5): the pages
@@ -957,9 +1000,10 @@ func (r *planLinks) Rewrite(id uuid.UUID, content string, before domain.LinksBef
 // created after the node's last such op, which its spread leaves out
 // anyway (CreatedAfterMoves); a creation before a later move is read
 // anew with that move. Only the last tree's are kept: the plan asks for
-// its trees in their ops' order, the reads' check and then the contents'
-// pass, so a tree's reads go once it has passed it, and a tree asked for
-// again is read again. A batch of many renames of a large folder holds one
+// its trees in their ops' order, the reads' check, the reached pages'
+// while upgrading (reachedBefore) and then the contents' pass, so a
+// tree's reads go once it has passed it, and a tree asked for again is
+// read again. A batch of many renames of a large folder holds one
 // tree's subtrees and reaches, not one a rename (M9/P3 fix round 3: 50
 // renames of a folder of 100,000, each with a content op after it, held
 // some 1.1 to 1.45 GB); one rename and many creations between its content

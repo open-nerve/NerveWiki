@@ -24,8 +24,8 @@ import (
 // agent created goes. Each refusal leaves the notebook's rows as they
 // were.
 //
-// P2/S1's cells, g1 to g22 of its design's table (3.6) and g23 to g25 of
-// decision 268, each in a notebook
+// P2/S1's cells, g1 to g22 of its design's table (3.6), g23 to g25 of
+// decision 268 and g27 of decision 270, each in a notebook
 // of its own that alice upgrades, its pages written over REST before: each
 // refusal answers its code, at its op for a batch, and leaves the
 // notebook's rows and the upgrade's ledger as they were; each cell done
@@ -289,6 +289,35 @@ func TestUpgradeGuardrails(t *testing.T) {
 		g := tm.upgradedNotebook(t, linked...)
 		g.refused(t, "a batch's move of A, then an edit of P undoing the rewrite", batchRewrite, "batch",
 			batched(opMove("A.md", "Map.md"), opEdit("P.md", "[[Map]]", "[[A]]")), 1)
+	})
+	// g27: decision 270, P's link taken out by an edit, A renamed, the link
+	// put back: the rename reaches no link P holds in the batch then, but
+	// one it had before it, by the index; page.upgrade_batch_rewrite at
+	// P's last op, nothing written, the link broken, or led to a new A
+	// written after the rename. Put back before the rename, the batch is
+	// done, the rename rewriting P.
+	t.Run("g27", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		out, back := opEdit("P.md", "[[A]]", "(A)"), opEdit("P.md", "(A)", "[[A]]")
+		g.refused(t, "a batch taking P's link out, renaming A, putting it back", batchRewrite, "batch",
+			batched(out, opMove("A.md", "Map.md"), back), 2)
+		g.refused(t, "the same, a new A written after the rename", batchRewrite, "batch",
+			batched(out, opMove("A.md", "Map.md"), opWrite("A.md", "# Another A\n"), back), 3)
+		g.done(t, "a batch taking P's link out and putting it back, then renaming A", "batch",
+			batched(out, back, opMove("A.md", "Map.md")))
+		g.holds(t, "P", "---\ntype: a\n---\nSee [[Map]].\n")
+		g.accepted(t, "P")
+		// A link to A the batch adds, in Q's frontmatter, which the index
+		// has not before the batch: the contents' pass alone marks Q, the
+		// rename rewriting the link in the batch (decision 268); an edit
+		// after the rename, or a write of the link on the old name,
+		// page.upgrade_batch_rewrite at Q's last op.
+		q := tm.upgradedNotebook(t, append(slices.Clone(linked), upgradedPage{title: "Q", content: "---\ntype: a\n---\nQ.\n"})...)
+		add, linking := opEdit("Q.md", "type: a", "type: a\nsee: \"[[A]]\""), "---\ntype: a\nsee: \"[[A]]\"\n---\nQ.\n"
+		q.refused(t, "a batch adding a link to A to Q, renaming A, editing Q", batchRewrite, "batch",
+			batched(add, opMove("A.md", "Map.md"), opEdit("Q.md", "type: a", "type: b")), 2)
+		q.refused(t, "the same, writing Q's link on the old name", batchRewrite, "batch",
+			batched(add, opMove("A.md", "Map.md"), opWriteOn("Q.md", linking, q.version(t, "Q"))), 2)
 	})
 
 	// g22: a batch's blind writes of three baseline pages, each taking off

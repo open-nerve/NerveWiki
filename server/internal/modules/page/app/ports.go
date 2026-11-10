@@ -285,9 +285,11 @@ type BatchLinks interface {
 	// nodes of frozen left, the nodes of createdAfter out of the subtrees
 	// of the nodes they key (BatchRewrite.CreatedAfter): the plan then
 	// reads the page whole and compares the write with its content
-	// rewritten for them. False when the index is not of revision or not
-	// of the current extractor, as Indexed. What it reads of tree it keeps
-	// in reads.
+	// rewritten for them. While upgrading, the plan asks it again of the
+	// renames and moves before a page's last content op, its edits' too,
+	// and marks a page so reached (M11/P2 decision 270). False when the
+	// index is not of revision or not of the current extractor, as
+	// Indexed. What it reads of tree it keeps in reads.
 	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
 		createdAfter map[uuid.UUID][]uuid.UUID, tree domain.PlanTree, reads *TreeReads) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on

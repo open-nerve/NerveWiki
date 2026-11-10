@@ -458,10 +458,28 @@ func TestThePlanTellsAPageAMoveReached(t *testing.T) {
 			}
 		})
 	}
-	p, _ := planOf(t, nb, moveA, writeOp("New.md", "See [[A]]."))
+	p, made := planOf(t, nb, moveA, writeOp("New.md", "See [[A]]."))
+	p.MarkReached(made[1][0])
 	contentsOf(t, p, nil, nil, &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]"}})
 	if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Created || pages[0].Reached {
-		t.Errorf("a page the batch creates: Failed %v, the pages %+v; want one created, not Reached", p.Failed, pages)
+		t.Errorf("a page the batch creates, marked: Failed %v, the pages %+v; want one created, not Reached", p.Failed, pages)
+	}
+
+	// A page marked before the contents' pass (MarkReached, decision 270:
+	// a move before its last op reaches a link it had before the batch)
+	// stays Reached whatever its ops write: a link taken out and put back,
+	// the move reaching nothing it holds then.
+	for _, ops := range [][]domain.BatchArgs{
+		{editOp("P.md", "[[A]]", "(A)"), moveB, editOp("P.md", "(A)", "[[A]]")},
+		{write("See (A)."), moveB, write(before)},
+	} {
+		p, _ := planOf(t, nb, ops...)
+		p.MarkReached(pID)
+		contentsOf(t, p, map[uuid.UUID]domain.PageText{pID: {Content: before, Revision: 1}},
+			map[uuid.UUID]domain.PageHead{pID: headOf(before, 1)}, &fakeRewriter{subs: map[string]string{"[[B]]": "[[B2]]"}})
+		if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Reached {
+			t.Errorf("P marked, then %d ops: Failed %v, the pages %+v; want P Reached", len(ops), p.Failed, pages)
+		}
 	}
 }
 

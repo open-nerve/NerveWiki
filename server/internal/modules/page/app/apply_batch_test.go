@@ -27,6 +27,7 @@ type fakeLinks struct {
 	subs       map[string]string
 	notIndexed bool
 	reached    bool
+	answers    []bool                               // Reached's answers in turn, reached's after them
 	frozen     map[string][]uuid.UUID               // the frozen nodes Reached and Rewrite were last given
 	created    map[string]map[uuid.UUID][]uuid.UUID // the nodes created after moves they were last given, by call and page
 	reads      []*app.TreeReads                     // the reads Reached and Rewrite were given, in their order
@@ -44,6 +45,11 @@ func (l *fakeLinks) Reached(ctx context.Context, _, id uuid.UUID, _ int, _ []dom
 	l.record(ctx, "Reached")
 	l.saw("Reached", frozen)
 	l.made("Reached", id, created)
+	if len(l.answers) > 0 {
+		answer := l.answers[0]
+		l.answers = l.answers[1:]
+		return answer && !l.notIndexed, nil
+	}
 	return l.reached && !l.notIndexed, nil
 }
 
@@ -660,6 +666,95 @@ func TestTheBatchPlansAgainOnceTheUpgradeStarted(t *testing.T) {
 		f.count("ListNodes") != 1 {
 		t.Errorf("a batch of an upgrade its plan read = %v, planned %d times; want it done, planned once", err, f.count("ListNodes"))
 	}
+}
+
+// While upgrading, a page is Reached by a rename or move before its last
+// content op that reaches a link it had before the batch, by the index,
+// whatever the page holds in the batch then (M11/P2 decision 270): edits
+// taking the link out of P, renaming A and putting it back, or writes of P
+// without it and with it again, are page.upgrade_batch_rewrite at P's last
+// op, nothing written, one read of the index each. A move whose rewrite
+// reaches none of P's links before the batch leaves it unmarked, done. A
+// write after the move alone is asked once, its ask before its first
+// content op answering both; writes of P after a move reaching none of
+// its links are asked twice, the ask before the first write answering for
+// the moves before it alone. In a notebook not upgraded the same batches
+// are done with no read of the index more.
+func TestTheBatchJudgesAPageByItsLinksBeforeIt(t *testing.T) {
+	const content = "See [[A]]."
+	type shape struct {
+		name string
+		ops  func(p uuid.UUID) []domain.BatchArgs
+	}
+	takenOut := shape{"edits taking the link out and putting it back", func(uuid.UUID) []domain.BatchArgs {
+		return []domain.BatchArgs{editOp("P.md", "[[A]]", "(A)"), moveOp("A.md", "Map.md"), editOp("P.md", "(A)", "[[A]]")}
+	}}
+	written := shape{"writes without the link and with it", func(p uuid.UUID) []domain.BatchArgs {
+		return []domain.BatchArgs{writeOn("P.md", "See (A).", tokenOf(p, 2)), moveOp("A.md", "Map.md"), writeOn("P.md", content, tokenOf(p, 2))}
+	}}
+	after := shape{"a write after the move alone", func(p uuid.UUID) []domain.BatchArgs {
+		return []domain.BatchArgs{moveOp("A.md", "Map.md"), writeOn("P.md", "---\nt: 1\n---\n"+content, tokenOf(p, 2))}
+	}}
+	askedFirst := shape{"writes after a move of B", func(p uuid.UUID) []domain.BatchArgs {
+		return []domain.BatchArgs{moveOp("B.md", "B2.md"), writeOn("P.md", "See (A).", tokenOf(p, 2)), moveOp("A.md", "Map.md"),
+			writeOn("P.md", content, tokenOf(p, 2))}
+	}}
+	yes, no := []bool{true}, []bool{false}
+	for _, tt := range []struct {
+		shape     shape
+		upgrading bool
+		reaches   []bool // the index's answers in turn, the last one again after them: a move reaches a link of P
+		want      string // the refusal, "" for done
+		asked     int
+	}{
+		{takenOut, true, yes, "2 page.upgrade_batch_rewrite", 1},
+		{written, true, yes, "2 page.upgrade_batch_rewrite", 1},
+		{takenOut, true, no, "", 1},
+		{written, true, no, "", 1},
+		{after, true, yes, "1 page.upgrade_batch_rewrite", 1},
+		{askedFirst, true, []bool{false, true}, "3 page.upgrade_batch_rewrite", 2},
+		{askedFirst, true, no, "", 2},
+		{takenOut, false, yes, "", 0},
+		{written, false, yes, "", 0},
+		{askedFirst, false, []bool{false, true}, "", 1},
+	} {
+		name := fmt.Sprintf("%s, upgrading %v, reaching %v", tt.shape.name, tt.upgrading, tt.reaches)
+		t.Run(name, func(t *testing.T) {
+			f := newFixture()
+			f.page("A", nil, 1)
+			p := f.page("P", nil, 2)
+			f.page("B", nil, 3)
+			f.content(p.ID, content, 2)
+			if tt.upgrading {
+				f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(domain.UpgradeUpgrading, uuid.NewV7())}
+			}
+			f.guards = []app.WriteGuard{refuseReached{}}
+			last := len(tt.reaches) - 1
+			links := &fakeLinks{recorder: f.rec, answers: slices.Clone(tt.reaches[:last]), reached: tt.reaches[last]}
+			_, err := f.applyBatch(links, tt.shape.ops(p.ID)...)
+			got := ""
+			if err != nil {
+				got = opOf(err)
+			}
+			if got != tt.want || f.count("Reached") != tt.asked {
+				t.Errorf("the batch = %q (%v), the index asked %d times; want %q, asked %d", got, err, f.count("Reached"), tt.want, tt.asked)
+			}
+			if tt.want != "" && (f.store.contents[p.ID].Content != content || f.store.contents[p.ID].Revision != 2) {
+				t.Errorf("P holds %q at %d, want it as it was", f.store.contents[p.ID].Content, f.store.contents[p.ID].Revision)
+			}
+		})
+	}
+}
+
+// refuseReached refuses each content step a move earlier in its batch
+// reached, as the freeze guard does a baseline page's while upgrading.
+type refuseReached struct{}
+
+func (refuseReached) GuardWrite(_ context.Context, s app.Step) error {
+	if s.Operation == domain.OpContent && s.Content != nil && s.Content.Reached {
+		return domain.Refuse(domain.ErrUpgradeBatchRewrite, s.Changes[0].NodeID)
+	}
+	return nil
 }
 
 // A guard's refusal of a page's body, page.upgrade_immutable or

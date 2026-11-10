@@ -274,8 +274,12 @@ type PlannedPage struct {
 	// Reached says a rename or a move earlier in the batch rewrote the
 	// page's links before one of its content ops: an edit's after a move
 	// whose rewrite changed the page, a write's after one whose rewrite
-	// would have, whatever the write's bytes. It sticks: a later write
-	// does not clear it. While upgrading, the guardrails answer
+	// would have, whatever the write's bytes; and, while upgrading, a move
+	// before its last content op that reaches a link the page had before
+	// the batch, whatever the page holds in the batch then (MarkReached,
+	// M11/P2 decision 270: a link taken out and put back follows the move
+	// no more than one kept). It sticks: a later write does not clear it.
+	// While upgrading, the guardrails answer
 	// page.upgrade_batch_rewrite for a page of the baseline so reached,
 	// whatever its content (M11/P2 decision 268, which withdrew decision
 	// 254's clearing): the batch's deferred rewrite follows only the moves
@@ -873,6 +877,17 @@ func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
 		}
 	}
 	return texts, heads
+}
+
+// MarkReached marks the page id Reached before the contents' pass, which
+// leaves the mark (M11/P2 decision 270): while upgrading, a rename or move
+// before its last content op reaches a link it had before the batch, by
+// the index (BatchLinks.Reached), whatever it holds in the batch then. A
+// page the batch creates has no such link.
+func (p *BatchPlan) MarkReached(id uuid.UUID) {
+	if pg, ok := p.pages[id]; ok && !pg.created {
+		pg.reached = true
+	}
 }
 
 // ReadWhole has the plan read the page id whole, though its first content
