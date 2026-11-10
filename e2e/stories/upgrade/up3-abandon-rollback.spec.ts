@@ -274,7 +274,8 @@ test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queue
     const abandoned = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/abandon`);
     await abandonDialog.getByRole("button", { name: "Abandon the upgrade", exact: true }).click();
     expect((await abandoned).status()).toBe(200);
-    const job = rollback.getByRole("listitem", { name: /^Undo the upgrade/ });
+    // The job's name is what it does, then its time, after a comma (jobRow).
+    const job = rollback.getByRole("listitem", { name: /^Undo the upgrade, / });
     await expect(job.getByRole("progressbar", { name: "Queued", exact: true })).toBeVisible();
     await expect(upgradeTitle(page)).toBeFocused();
     await expect(upgradeBanner(page, bannerText.rolling_back)).toBeVisible();
@@ -282,7 +283,7 @@ test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queue
     await expect(end).toHaveCount(0);
 
     const cancelled = answerTo(page, "POST", `/api/v0/transfer-jobs/${await jobIdOf(api, pat, notebook.id)}/cancel`);
-    await job.getByRole("button", { name: /^Cancel Undo the upgrade/ }).click();
+    await job.getByRole("button", { name: /^Cancel Undo the upgrade, / }).click();
     expect((await cancelled).status()).toBe(200);
     await expect(end).toBeVisible();
     await expect(job).toContainText("Cancelled");
@@ -320,7 +321,16 @@ test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queue
   await expect(endDialog).toContainText("links the system rewrote may lead nowhere");
   const ended = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/end-rollback`);
   await endDialog.getByRole("button", { name: "End the rollback", exact: true }).click();
-  expect((await ended).status()).toBe(200);
+  const endAnswer = await ended;
+  expect(endAnswer.status()).toBe(200);
+  // What the page said is left is what the end answered, and what the upgrade's row keeps.
+  const endedUpgrade = (await endAnswer.json()) as Upgrade;
+  expect([endedUpgrade.state, endedUpgrade.rollback_complete, endedUpgrade.rollback_left]).toEqual([
+    "rolled_back",
+    false,
+    { nodes: 1, pages: 0, created: 3 },
+  ]);
+  await expectUpgrade(db, endedUpgrade);
   await expect(page.getByText("This notebook has no upgrade under way.", { exact: true })).toBeVisible();
   await expect(upgradeTitle(page)).toBeFocused();
   await expect(upgradeBanner(page, bannerText.rolling_back)).toHaveCount(0);
