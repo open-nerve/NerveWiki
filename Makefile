@@ -354,7 +354,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起与两种护栏的读（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -372,9 +372,12 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 	@# M11/P2/S1：正文与账本两种护栏的读，一页基线页的正文的读与账本的写各 1,000 次，对着两次升级各十万行、另九本各五万页的笔记本与它们的升级；三种统计 × 自定义与通用的计划：upgrade_nodes 只经 upgrade_nodes_pkey、两列都在索引条件里，page_contents 只经主键在嵌套循环的内侧，中位数在本机两轮的三倍（5 ms）之内；带 -v 打出中位数（P2 设计 7.1，决定 236、240）；本机约 17 秒，种子 12.7 秒
 	cd server && go test -count=1 -v -run '^TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# M11/P2/S2：检查，lint 的成本夹具取 5 万页、改成普通笔记本、以 SQL 设成升级中，1,000 个这次升级的变更集、10 万个普通的，另九本各 5 万页的笔记本与它们的升级（决定 240、262）；
+	@# 发起之后分析过，两份种子（全保全、一页的账本不符）各三次整个检查的中位数在本机两轮的三倍与 worker 的 80% 中较小的（1.5 秒）之内；本机约 0.49 秒，种子约 12 秒
+	cd server && go test -count=1 -v -run '^TestUpgradeCheckTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
-test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）
+test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）
 	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
@@ -402,6 +405,9 @@ test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 
 	@# 逐行经主键，不顺序扫描；在内侧逐行重复的读经外行的键，不逐行重读整个集合，决定 244），计划有问题就停在计时之前；再核对 RollbackLeft 的中位数在请求的 4 秒、
 	@# 合成的读在本机两轮的三倍之内（决定 226、236）
 	cd server && go test -count=1 -v -run '^TestARollbacksReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# M11/P2/S2：闸门的三条读（基线、保全、变更集数），10 万页的笔记本与它的升级、1,000 个这次升级的与 10 万个普通的变更集，另九本各 5 万页的笔记本与它们的升级；
+	@# 三种统计 × 自定义与通用的计划只经键（changesets 只经 changesets_upgrade_id_idx，决定 240、244），不设时长的界，-v 打出每条读的中位数；本机约 22 秒
+	cd server && go test -count=1 -v -run '^TestTheUpgradeGateReadsPlansAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
 	@# 先删：10 万个零散的新页装成 40 个单元、各 2,500 棵子树（决定 231、243），种子先删 5,000 页，让统计见过已删的行，量稳态；每个单元不过 14 秒
 	@# （决定 153），整遍与分配在本机两轮的三倍之内，本机一遍约 110 秒、界 330 秒。统计没见过已删的行时单元一个比一个慢，本机一遍 645 秒，
 	@# 所以这一行仍 -timeout 20m：红在界上，不在 Go 默认的 10 分钟超时

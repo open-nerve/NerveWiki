@@ -342,9 +342,13 @@ var rollbackJoined = regexp.MustCompile(`= [a-z_][a-z0-9_]*\.[a-z_][a-z0-9_]*\)`
 // (M11/P1 design 7.1, decisions 236, 240, 244): upgrade_nodes read other
 // than by upgrade_nodes_pkey with upgrade_id in its condition; nodes other
 // than by an index with notebook_id in its condition or by nodes_pkey on
-// id; page_contents other than by page_contents_pkey on node_id; a read by
-// a column of a join's other side not repeated on a Nested Loop's inner
-// side, for each of its rows; any other scan, a Seq Scan, of them. And
+// id; page_contents other than by page_contents_pkey on node_id;
+// changesets other than by changesets_upgrade_id_idx on upgrade_id, each
+// bitmap of a Bitmap Heap Scan's that one (M11/P2 design 7.1: a BitmapAnd
+// with the partial index of every notebook's live changesets, no
+// condition of its own, reads them all); a read by a column of a join's
+// other side not repeated on a Nested Loop's inner side, for each of its
+// rows; any other scan, a Seq Scan, of them. And
 // what is read again for each row, on a Nested Loop's inner side or under
 // a SubPlan that is not hashed (run for each row of the node it filters):
 // a scan of them by no column of the outer row, its rows the same each
@@ -363,7 +367,7 @@ func rollbackReadProblems(plan *planNode) []string {
 			repeated = false
 		}
 		switch n.Relation {
-		case "upgrade_nodes", "nodes", "page_contents":
+		case "upgrade_nodes", "nodes", "page_contents", "changesets":
 			problems = append(problems, rollbackScanProblems(n, repeated)...)
 		}
 		for i := range n.Plans {
@@ -418,6 +422,8 @@ func rollbackScanProblems(n *planNode, repeated bool) []string {
 			keyed = strings.Contains(cond, "notebook_id = ") || ix.Index == "nodes_pkey" && strings.Contains(cond, "id = ")
 		case "page_contents":
 			keyed = ix.Index == "page_contents_pkey" && strings.Contains(cond, "node_id = ")
+		case "changesets":
+			keyed = ix.Index == "changesets_upgrade_id_idx" && strings.Contains(cond, "upgrade_id = ")
 		}
 		switch {
 		case !keyed:
@@ -458,7 +464,10 @@ func rollbackBitmaps(n *planNode) []*planNode {
 // for each row by no key of it, reviewer A's three and reviewer B's
 // (M11/P1 S3 review A-N2, B-M1), and a CTE read whole for each row by a
 // SubPlan not hashed, the NOT IN of RollbackFreeForest once analyzed
-// (B-I1).
+// (B-I1). An upgrade's changesets by their index, alone or by its bitmap,
+// are accepted; by a BitmapAnd with the partial index of the live
+// changesets, UpgradeChangesets' plan never analyzed with deleted_at in
+// its condition (M11/P2 design review P2B-M1), or by the notebook's, not.
 func TestTheRollbackGuardJudgesThePlans(t *testing.T) {
 	scan := func(kind, relation, index, cond, parent string) string {
 		return `{"Node Type":"` + kind + `","Relation Name":"` + relation + `","Index Name":"` + index + `","Index Cond":"` + cond +
@@ -511,6 +520,16 @@ func TestTheRollbackGuardJudgesThePlans(t *testing.T) {
 			"(b.upgrade_id = $1)", "Outer")), false},
 		{"a CTE read whole for each row, a SubPlan not hashed", notIn(""), false},
 		{"a CTE read once, a hashed SubPlan", notIn("hashed "), true},
+		{"an upgrade's changesets by their index", scan("Index Only Scan", "changesets", "changesets_upgrade_id_idx",
+			"(changesets.upgrade_id = $1)", ""), true},
+		{"an upgrade's changesets by their index's bitmap", `{"Node Type":"Bitmap Heap Scan","Relation Name":"changesets","Plans":[` +
+			scan("Bitmap Index Scan", "", "changesets_upgrade_id_idx", "(changesets.upgrade_id = $1)", "Outer") + `]}`, true},
+		{"an upgrade's changesets by a BitmapAnd with the live ones", `{"Node Type":"Bitmap Heap Scan","Relation Name":"changesets",` +
+			`"Plans":[{"Node Type":"BitmapAnd","Parent Relationship":"Outer","Plans":[` +
+			scan("Bitmap Index Scan", "", "changesets_upgrade_id_idx", "(changesets.upgrade_id = $1)", "Member") + `,` +
+			scan("Bitmap Index Scan", "", "changesets_notebook_id_created_by_id_created_at_id_idx", "", "Member") + `]}]}`, false},
+		{"an upgrade's changesets by the notebook's", scan("Index Scan", "changesets", "changesets_notebook_id_created_at_id_idx",
+			"(changesets.notebook_id = $1)", ""), false},
 		{"a set materialized, read whole for each row", `{"Node Type":"Nested Loop","Plans":[` + baseline +
 			`,{"Node Type":"Materialize","Parent Relationship":"Inner","Plans":[` +
 			scan("Index Scan", "nodes", "nodes_notebook_id_name_key_idx", "(n.notebook_id = $2)", "Outer") + `]}]}`, false},
