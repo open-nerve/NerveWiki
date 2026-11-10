@@ -21,7 +21,8 @@ type checkSnapshotKey struct{}
 
 // checkFake is every port of an upgrade's check (M11/P2 design 3.11): the
 // notebook, its grants, its upgrade's row (another, in the snapshot, when
-// snapUp is set), its page reads, lint's reads and rules, a runner that
+// snapUp is set), its page reads, lint's reads (extra nodes at the root
+// besides) and rules (counts set, besides missing_type's), a runner that
 // runs the worker at once or answers runErr; each call traced, "@" marking
 // those in a snapshot, which it counts.
 type checkFake struct {
@@ -46,6 +47,9 @@ type checkFake struct {
 	paths                      map[uuid.UUID]string
 	stale                      int64 // the preparation's stale pages
 	clean                      bool  // no page misses its type
+	extra                      []app.CompactNode
+	counts                     map[domain.LintRule]int64
+	moreWanted                 int // the page's wanted targets now beyond its baseline's one
 }
 
 func newCheckFake() *checkFake {
@@ -168,8 +172,8 @@ func (f *checkFake) LintData(ctx context.Context, _ uuid.UUID, root uuid.UUID) (
 	if root != f.root {
 		return app.SourceData{}, errors.New("another root")
 	}
-	return app.SourceData{Nodes: []app.CompactNode{{ID: f.root, Kind: domain.NodePage, NameKey: "raw"},
-		{ID: f.agents, Kind: domain.NodePage, NameKey: "agents"}, {ID: f.page, Kind: domain.NodePage, NameKey: "page"}}}, nil
+	return app.SourceData{Nodes: append([]app.CompactNode{{ID: f.root, Kind: domain.NodePage, NameKey: "raw"},
+		{ID: f.agents, Kind: domain.NodePage, NameKey: "agents"}, {ID: f.page, Kind: domain.NodePage, NameKey: "page"}}, f.extra...)}, nil
 }
 
 func (f *checkFake) Nodes(ctx context.Context, _ uuid.UUID) ([]app.CompactNode, error) {
@@ -191,6 +195,9 @@ type checkPrepared struct{ f *checkFake }
 
 func (p checkPrepared) StalePages() int64 { return p.f.stale }
 func (p checkPrepared) RuleCount(_ context.Context, rule domain.LintRule) (domain.LintCount, error) {
+	if n, ok := p.f.counts[rule]; ok {
+		return domain.LintCount{Value: n}, nil
+	}
 	if rule == domain.RuleMissingType && !p.f.clean {
 		return domain.LintCount{Value: 1}, nil
 	}
@@ -203,7 +210,9 @@ func (p checkPrepared) RuleItems(_ context.Context, rule domain.LintRule) ([]dom
 	return []domain.LintItem{{Rule: rule, ItemKey: "p:" + p.f.page.String(), Cursor: "c", PageID: &p.f.page}}, false, nil
 }
 func (p checkPrepared) Timings() app.PreparationTimings { return app.PreparationTimings{} }
-func (p checkPrepared) WantedByPage() map[uuid.UUID]int { return map[uuid.UUID]int{p.f.page: 1} }
+func (p checkPrepared) WantedByPage() map[uuid.UUID]int {
+	return map[uuid.UUID]int{p.f.page: 1 + p.f.moreWanted}
+}
 func (f *checkFake) Decode(raw string) (app.DecodedCursor, error) {
 	if raw == "bad" {
 		return nil, shared.InvalidCursor()

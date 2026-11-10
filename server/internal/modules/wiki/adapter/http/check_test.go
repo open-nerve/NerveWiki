@@ -53,7 +53,7 @@ func aCheck() *domain.UpgradeCheck {
 				NodeIDs: []uuid.UUID{lintID(47), lintID(48)}}},
 		Rules: checkRules(),
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 2, WikiPages: 3, NewPages: 4, Changesets: 5,
-			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 6}},
+			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 10000, Capped: true}},
 		Paths: map[uuid.UUID]string{lintID(40): "index.md"},
 	}
 }
@@ -76,7 +76,8 @@ func TestTheCheckIsAnswered(t *testing.T) {
 	if got["passed"] != false || got["stale_pages"] != float64(2) || len(got["rules"].([]any)) != 8 || len(gates) != 8 ||
 		len(gates["links"].(map[string]any)["node_ids"].([]any)) != 5 || gates["preserved"].(map[string]any)["nodes_kept"] != float64(8) ||
 		gates["agents"].(map[string]any)["passed"] != true || counts["moved_into_sources"] != float64(2) ||
-		counts["wanted_before"].(map[string]any)["count_capped"] != true || strings.Contains(string(body), "index.md") {
+		counts["wanted_before"].(map[string]any)["count_capped"] != true ||
+		counts["wanted_now"].(map[string]any)["count_capped"] != true || strings.Contains(string(body), "index.md") {
 		t.Errorf("check = %s", body)
 	}
 	if len(f.queries) != 1 || f.queries[0] != (app.LintQuery{}) {

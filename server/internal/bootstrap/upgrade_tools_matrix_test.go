@@ -93,6 +93,9 @@ func TestUpgradeToolsMatrix(t *testing.T) {
 	apps := make(chan struct{}, matrixApps)
 	for _, r := range upgradeMCPRows() {
 		for _, entry := range []mcpserver.Entry{mcpserver.NotebookEntry, mcpserver.AccountEntry} {
+			if r.entries&entry == 0 {
+				continue
+			}
 			for _, c := range notebookColumns() {
 				t.Run(r.tool+"/"+entry.String()+"/"+string(c), func(t *testing.T) {
 					t.Parallel()

@@ -253,6 +253,9 @@ func firstWrites() []string { return []string{"1 SetState reviewing", "1 Submit"
 // over at SubmitTimeout exactly; then the check's own error, a stale
 // index, gates not passed, AGENTS's alone too, each setting the upgrade
 // upgrading again; a passed one keeps its report. Neighbours answer the first.
+// Then each gate but index's alone not passed: wiki.upgrade_not_ready
+// naming it, the upgrade upgrading again (review A-M1; index's is the
+// stale index's cell, which the check answers first).
 func TestSubmitUpgradeAnswersInOrder(t *testing.T) {
 	const timeout = time.Minute
 	type tweak func(f *submitFake)
@@ -337,12 +340,83 @@ func TestSubmitUpgradeAnswersInOrder(t *testing.T) {
 			}
 		})
 	}
+	for _, tc := range []struct {
+		gate  domain.UpgradeGateKey
+		tweak tweak
+	}{
+		{domain.GateAgents, bodiless},
+		{domain.GateSourceRoot, func(f *submitFake) { f.roots.AgentsID = &f.root }},
+		{domain.GateReservedTitles, func(f *submitFake) {
+			f.extra = []app.CompactNode{{ID: uuid.NewV7(), Kind: domain.NodePage, NameKey: "index"}}
+		}},
+		{domain.GateFrontmatter, func(f *submitFake) { f.clean = false }},
+		{domain.GateSources, func(f *submitFake) { f.counts = map[domain.LintRule]int64{domain.RuleInvalidSources: 1} }},
+		{domain.GateLinks, func(f *submitFake) { f.moreWanted = 1 }},
+		{domain.GatePreserved, func(f *submitFake) {
+			f.preserved = domain.Preserved{Nodes: 3, NodesKept: 3, Pages: 3, PagesKept: 2, NotKept: []uuid.UUID{f.page}}
+		}},
+	} {
+		t.Run(string(tc.gate)+" alone not passed", func(t *testing.T) {
+			f := newSubmitFake().passing()
+			tc.tweak(f)
+			submit, ctx := newSubmit(f, timeout, &startLog{})
+			_, err := submit.Execute(ctx, f.nb)
+			want := "These gates did not pass: " + string(tc.gate) + ". The upgrade is upgrading again: check it, then submit it again."
+			if e := (*shared.Error)(nil); codeOf(err) != "wiki.upgrade_not_ready" || !errors.As(err, &e) || e.Detail != want {
+				t.Fatalf("answered %v, want wiki.upgrade_not_ready naming %s alone", err, tc.gate)
+			}
+			if w := f.written(); !slices.Equal(w, upgrading) {
+				t.Errorf("wrote %v, want %v", w, upgrading)
+			}
+		})
+	}
 	// The takeover's bound is the one the first transaction judged.
 	f := newSubmitFake().passing()
 	reviewed(timeout, false)(f)
 	submit, ctx := newSubmit(f, timeout, &startLog{})
 	if _, err := submit.Execute(ctx, f.nb); err != nil || !f.takenOver.Equal(f.at().Add(-timeout)) {
 		t.Fatalf("taken over %v by %s, want at %s", err, f.takenOver, f.at().Add(-timeout))
+	}
+}
+
+// The submission's check reads the upgrade again in its snapshot, which
+// must still be this submission's, reviewing without a report (M11/P2
+// design 3.12 step 4; review A-M3): one rolling back, another submission's
+// or one reported while its run queued reads no gate and is
+// wiki.upgrade_state; the second transaction writes nothing, superseded.
+func TestTheSubmissionsSnapshotIsItsOwn(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(up *domain.Upgrade)
+	}{
+		{"rolling back", func(up *domain.Upgrade) { up.State = domain.UpgradeRollingBack }},
+		{"another submission", func(up *domain.Upgrade) { other := uuid.NewV7(); up.SubmissionID = &other }},
+		{"a report kept", func(up *domain.Upgrade) { up.Report = &domain.UpgradeReport{Passed: true} }},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := newSubmitFake().passing()
+			f.duringRun = func(context.Context) {
+				f.mu.Lock()
+				defer f.mu.Unlock()
+				tc.change(&f.row)
+			}
+			log := &startLog{}
+			submit, ctx := newSubmit(f, time.Hour, log)
+			if _, err := submit.Execute(ctx, f.nb); codeOf(err) != "wiki.upgrade_state" {
+				t.Fatalf("answered %v, want wiki.upgrade_state", err)
+			}
+			if w := f.written(); !slices.Equal(w, firstWrites()) {
+				t.Errorf("wrote %v, want the first transaction's alone", w)
+			}
+			if lines := submitLines(t, log, "upgrade submitted"); len(lines) != 1 || lines[0]["outcome"] != "superseded" {
+				t.Errorf("logged %v, want one line, superseded", lines)
+			}
+			for _, call := range f.trace() {
+				if call == "Roots@" || call == "prepare@" || call == "Preserved@" {
+					t.Errorf("the check read %s on an upgrade not this submission's: %v", call, f.trace())
+				}
+			}
+		})
 	}
 }
 

@@ -129,7 +129,7 @@ func fullReport(worst bool) domain.UpgradeReport {
 			ReservedTitles: domain.NodesGate{NodeIDs: ids(4)}, Links: domain.LinksGate{PagesWorse: 12, NodeIDs: ids(5)},
 			Preserved: domain.PreservedGate{Nodes: 100000, NodesKept: 99990, Pages: 90000, PagesKept: 89990, NodeIDs: ids(5)}},
 		Counts: domain.UpgradeCounts{Sources: 100000, MovedIntoSources: 100000, WikiPages: 100000, NewPages: 100000, Changesets: 100000,
-			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 3}},
+			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 10000, Capped: true}},
 	}
 	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
 		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 10000, Capped: true}}

@@ -47,6 +47,13 @@ func passingRead() domain.UpgradeRead {
 	}
 }
 
+// withAttachment adds to r's baseline an attachment below Plan, Pic (25),
+// the upgrade's nodes one more than its pages.
+func withAttachment(r *domain.UpgradeRead) {
+	r.Upgrade.BaselineNodes = 5
+	r.Baseline = append(r.Baseline, domain.BaselineNode{ID: checkID(25), ParentID: checkPtr(checkID(20)), Kind: domain.NodeAsset})
+}
+
 // count sets rule's count in r's summary.
 func count(r *domain.UpgradeRead, rule domain.LintRule, value int64) {
 	rules := slices.Clone(r.Lint.Rules)
@@ -139,6 +146,31 @@ func TestJudgeUpgrade(t *testing.T) {
 				t.Errorf("preserved = %+v", p)
 			}
 		}},
+		// An attachment of the baseline (review A-M2): kept, a pass; deleted,
+		// a node not kept alone; its row gone, the nodes' denominator alone.
+		{"a baseline attachment kept", func(r *domain.UpgradeRead) {
+			withAttachment(r)
+			r.Nodes = append(r.Nodes, domain.GateNode{ID: checkID(25), ParentID: checkPtr(checkID(20)), Kind: asset, Key: "pic.png"})
+			r.Preserved = domain.Preserved{Nodes: 5, NodesKept: 5, Pages: 4, PagesKept: 4, NotKept: []uuid.UUID{}}
+		}, "", nil},
+		{"a baseline attachment deleted", func(r *domain.UpgradeRead) {
+			withAttachment(r)
+			r.Preserved = domain.Preserved{Nodes: 5, NodesKept: 4, Pages: 4, PagesKept: 4, NotKept: []uuid.UUID{checkID(25)}}
+		}, domain.GatePreserved, func(t *testing.T, c domain.UpgradeCheck) {
+			if p := c.Gates.Preserved; p.Nodes != 5 || p.NodesKept != 4 || p.Pages != 4 || p.PagesKept != 4 ||
+				!slices.Equal(p.NodeIDs, []uuid.UUID{checkID(25)}) {
+				t.Errorf("preserved = %+v, want Pic not kept", p)
+			}
+		}},
+		{"an attachment's baseline row gone", func(r *domain.UpgradeRead) {
+			withAttachment(r)
+			r.Nodes = append(r.Nodes, domain.GateNode{ID: checkID(25), ParentID: checkPtr(checkID(20)), Kind: asset, Key: "pic.png"})
+			r.Preserved = domain.Preserved{Nodes: 4, NodesKept: 4, Pages: 4, PagesKept: 4, NotKept: []uuid.UUID{}}
+		}, domain.GatePreserved, func(t *testing.T, c domain.UpgradeCheck) {
+			if p := c.Gates.Preserved; p.Nodes != 5 || p.NodesKept != 4 || p.Pages != 4 || p.PagesKept != 4 {
+				t.Errorf("preserved = %+v, want the wiki row's 5 nodes over the 4 kept", p)
+			}
+		}},
 		{"a page's content not the ledger's", func(r *domain.UpgradeRead) {
 			r.Preserved = domain.Preserved{Nodes: 4, NodesKept: 4, Pages: 4, PagesKept: 3, NotKept: []uuid.UUID{checkID(20)}}
 		}, domain.GatePreserved, nil},
@@ -208,6 +240,14 @@ func TestJudgeUpgradesCounts(t *testing.T) {
 			WantedBefore: domain.LintCount{Value: 10000, Capped: true}, WantedNow: domain.LintCount{Value: 1}}
 		if c := domain.JudgeUpgrade(r); c.Counts != want {
 			t.Errorf("counts = %+v, want %+v", c.Counts, want)
+		}
+	})
+	// The wanted pages now are the summary's, its cap too (review C-M2).
+	t.Run("the wanted pages now capped", func(t *testing.T) {
+		r := passingRead()
+		count(&r, domain.RuleWanted, 10000)
+		if c := domain.JudgeUpgrade(r); c.Counts.WantedNow != (domain.LintCount{Value: 10000, Capped: true}) {
+			t.Errorf("wanted now = %+v, want 10,000 capped", c.Counts.WantedNow)
 		}
 	})
 }

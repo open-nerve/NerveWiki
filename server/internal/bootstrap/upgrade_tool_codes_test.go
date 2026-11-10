@@ -13,8 +13,9 @@ type toolCode struct{ tool, code string }
 // upgradeToolCodes are the codes of mcpToolCodes' rows that an upgrade's
 // freeze and guardrails answer (M11/P1 design 3.6, M11/P2 design 3.6), by
 // tool and code: they fall in the rows of the five writes, so they cannot
-// be told apart by tool; and every code of the upgrade's tools' rows. The fifth shard's TestTheMCPToolsErrorsCarryTheirCodes, whose app
-// has no upgrade, answers mcpToolCodes but these; the eighth shard's
+// be told apart by tool; and every code of the upgrade's tools' rows. The
+// fifth shard's TestTheMCPToolsErrorsCarryTheirCodes, whose app has no
+// upgrade, answers mcpToolCodes but these; the eighth shard's
 // TestUpgradeToolsErrorsCarryTheirCodes answers these. Both subtract from
 // this one table, so that the two together answer every code of every row.
 func upgradeToolCodes() map[toolCode]bool {

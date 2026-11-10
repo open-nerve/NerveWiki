@@ -38,7 +38,8 @@ type checkRead struct {
 // in the live tree.
 func bigCheck(pathBytes, gateBytes int) domain.UpgradeCheck {
 	c := domain.UpgradeCheck{ComputedAt: lintTime(), Paths: map[uuid.UUID]string{},
-		Counts: domain.UpgradeCounts{Sources: 1, WikiPages: 2, NewPages: 3, Changesets: 4, WantedNow: domain.LintCount{Value: 5}}}
+		Counts: domain.UpgradeCounts{Sources: 1, WikiPages: 2, NewPages: 3, Changesets: 4,
+			WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
 	n := byte(100)
 	ids := func(k int) []uuid.UUID {
 		out := make([]uuid.UUID, k)
@@ -92,7 +93,8 @@ func readCheck(t *testing.T, res mcpserver.Result) checkRead {
 func TestTheCheckFits(t *testing.T) {
 	c := readCheck(t, mustFit(t, bigCheck(10, 10)))
 	if len(c.Rules) != 8 || len(c.Rules[0].Items) != 5 || len(c.Gates["links"].Paths) != 5 || c.Gates["links"].Paths[0] != nil ||
-		c.Gates["links"].Paths[1] == nil || *c.Gates["links"].Paths[1] != strings.Repeat("g", 10) || c.Counts["new_pages"] != float64(3) {
+		c.Gates["links"].Paths[1] == nil || *c.Gates["links"].Paths[1] != strings.Repeat("g", 10) || c.Counts["new_pages"] != float64(3) ||
+		c.Counts["wanted_now"].(map[string]any)["count_capped"] != true {
 		t.Fatalf("a small check = %+v", c)
 	}
 	if c.Rules[1].Items[0]["path"] != strings.Repeat("p", 10) {
