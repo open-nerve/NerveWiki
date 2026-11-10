@@ -11,7 +11,8 @@ import type { Database } from "../db";
  * notebook_upgrades, notebooks: upgrade's row is as the API answered it, its state, ending, rollback's job, source
  * root, the pages its start wrote and its baseline's three numbers, started by its initiator at its time; while it is
  * under way its notebook's four columns name it, its initiator and its time. Its submission's submitter and time are
- * the answer's, a submission's id kept exactly while it is reviewing; its report is kept when the answer has one,
+ * the answer's, a submission's id kept exactly when the answer has its time (approved, rejected or abandoned, an upgrade
+ * keeps its submission: M11/P2/S2 review C-M3); its report is kept when the answer has one,
  * its passed, gates and counts the answer's (M11/P2 design 5: its time and items are the report's encoding's, which
  * the server's tests hold).
  */
@@ -19,7 +20,7 @@ export async function expectUpgrade(db: Database, upgrade: Upgrade): Promise<voi
   const rows = await db.query(
     `SELECT u.notebook_id, u.state, u.ending, u.rollback_job_id, u.rollback_complete,
             u.submitted_by_id, u.submitted_at IS NOT DISTINCT FROM $3::timestamptz AS submitted_at_answer,
-            (u.submission_id IS NOT NULL) = (u.state = 'reviewing') AS submission_while_reviewing,
+            (u.submission_id IS NOT NULL) = ($3::timestamptz IS NOT NULL) AS submission_answer,
             CASE WHEN u.report IS NOT NULL THEN jsonb_build_object('passed', u.report->'passed', 'gates', u.report->'gates',
               'counts', u.report->'counts') END AS report,
             CASE WHEN u.rollback_left_nodes IS NOT NULL THEN jsonb_build_object('nodes', u.rollback_left_nodes,
@@ -44,7 +45,7 @@ export async function expectUpgrade(db: Database, upgrade: Upgrade): Promise<voi
       rollback_complete: upgrade.rollback_complete,
       submitted_by_id: upgrade.submitted_by?.user_id ?? null,
       submitted_at_answer: true,
-      submission_while_reviewing: true,
+      submission_answer: true,
       report:
         upgrade.report === null
           ? null
