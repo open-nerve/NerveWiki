@@ -42,7 +42,11 @@ func guardrailUnitBounds() map[string]time.Duration {
 //
 //	a. a rename whose rewrite writes MaxBatchRewrites pages of the full
 //	   load (84 KB, 200 links): the system's, unread by the guard, a
-//	   ledger's write a page;
+//	   ledger's write a page. Its bound keeps M9's rewrite above all (400
+//	   pages of 200 links, TestABatchAtItsRewriteBoundTakesItsTime's):
+//	   the 15 to 65 ms the guardrails add, a ledger's write a page, are
+//	   within the run's jitter, which this shape cannot tell; b to e
+//	   measure the guardrails' share (review P2S1B-N1);
 //	b. 100 edits, each taking a frontmatter line of some 62 KB off a page
 //	   of some 145 KB, the pages' heads together just within
 //	   MaxBatchReadBytes, their final contents within MaxUnitBytes: the

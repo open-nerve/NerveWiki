@@ -604,16 +604,22 @@ func TestABatchsPlanReadsATreeAcrossItsCreations(t *testing.T) {
 // under the lock finds it upgrading, and the batch is planned again, whose
 // reads' bound counts its blind writes: past it, page.batch_too_large at
 // the page that passes it, nothing written; within it, the writes done.
-// An upgrade the plan read as the unit finds it plans once.
+// So too from reviewing, the same upgrade's, back to upgrading (a
+// submission answered not ready meanwhile, review P2S1A-N1): the state is
+// compared, not whether there is an upgrade. An upgrade the plan read as
+// the unit finds it plans once.
 func TestTheBatchPlansAgainOnceTheUpgradeStarted(t *testing.T) {
 	five := strings.Repeat("x", domain.MaxContentBytes)
 	for _, tt := range []struct {
 		name    string
 		content string
 		refused bool
+		from    domain.UpgradeState // as the plan reads it; none: no upgrade
 	}{
-		{"past the bound", five, true},
-		{"within it", "small", false},
+		{"past the bound", five, true, ""},
+		{"within it", "small", false, ""},
+		{"from reviewing, past the bound", five, true, domain.UpgradeReviewing},
+		{"from reviewing, within it", "small", false, domain.UpgradeReviewing},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()
@@ -625,9 +631,13 @@ func TestTheBatchPlansAgainOnceTheUpgradeStarted(t *testing.T) {
 				pages = append(pages, pg)
 				ops = append(ops, writeOn(fmt.Sprint("P", i, ".md"), "new", tokenOf(pg.ID, 1)))
 			}
+			upgrade := uuid.NewV7()
 			f.notebooks.states = map[uuid.UUID]domain.NotebookState{} // standard, as the plan reads it
+			if tt.from != "" {
+				f.notebooks.states[f.eng] = f.upgrading(tt.from, upgrade)
+			}
 			f.rec.before = map[string]func(){"LockNotebook in tx": func() {
-				f.notebooks.states[f.eng] = f.upgrading(domain.UpgradeUpgrading, uuid.NewV7())
+				f.notebooks.states[f.eng] = f.upgrading(domain.UpgradeUpgrading, upgrade)
 			}}
 			_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, ops...)
 			planned := f.count("ListNodes")

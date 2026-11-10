@@ -145,6 +145,7 @@ func TestUpgradeGuardrails(t *testing.T) {
 		g := tm.upgradedNotebook(t, upgradedPage{title: "Old", content: "---\nText\n"})
 		g.done(t, "a frontmatter written above Old's lone opening line", "write", map[string]any{"path": "Old.md",
 			"content": "---\ntype: x\n---\n---\nText\n", "base_version": g.version(t, "Old")})
+		g.holds(t, "Old", "---\ntype: x\n---\n---\nText\n")
 		g.accepted(t, "Old")
 	})
 	t.Run("g15", func(t *testing.T) {
@@ -152,6 +153,7 @@ func TestUpgradeGuardrails(t *testing.T) {
 			upgradedPage{title: "Other", content: "---\na: [\n---\nText\n"})
 		g.done(t, "Broken's frontmatter fixed in place", "write", map[string]any{"path": "Broken.md",
 			"content": "---\nraw: \"a: [\"\n---\nText\n", "base_version": g.version(t, "Broken")})
+		g.holds(t, "Broken", "---\nraw: \"a: [\"\n---\nText\n")
 		g.accepted(t, "Broken")
 		g.refused(t, "a frontmatter written above Other's", immutable, "write", map[string]any{"path": "Other.md",
 			"content": "---\ntype: x\n---\n---\na: [\n---\nText\n", "base_version": g.version(t, "Other")}, -1)
