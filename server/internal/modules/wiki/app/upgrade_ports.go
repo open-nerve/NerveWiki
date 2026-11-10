@@ -139,3 +139,22 @@ type UpgradeView struct {
 	StartedByName   string
 	SubmittedByName string
 }
+
+// UpgradeGatePages are the page module's reads of an upgrade's check (M11
+// design 4.7), each in the snapshot ctx carries.
+type UpgradeGatePages interface {
+	// Roots are gates 1 and 2's: the page at the notebook's root keyed
+	// agents, nil for none (an attachment is none), whether its body past
+	// its frontmatter and a BOM, trimmed, is not empty; whether rootID is
+	// a live page of the notebook.
+	Roots(ctx context.Context, notebookID, rootID uuid.UUID) (domain.UpgradeRoots, error)
+	// Baseline is the upgrade's baseline rows: each node's kind and parent
+	// then, a page's wanted count then.
+	Baseline(ctx context.Context, upgradeID uuid.UUID) ([]domain.BaselineNode, error)
+	// Preserved is gate 7's (M11 design 4.7): the baseline's nodes and
+	// pages, those alive and those whose content is the ledger's, and the
+	// first five that are not, by id, in one pass.
+	Preserved(ctx context.Context, upgradeID uuid.UUID) (domain.Preserved, error)
+	// Changesets is how many changesets the upgrade wrote.
+	Changesets(ctx context.Context, upgradeID uuid.UUID) (int, error)
+}

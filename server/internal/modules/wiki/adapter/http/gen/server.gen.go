@@ -700,8 +700,97 @@ type UpgradeBaseline struct {
 	Wanted LintCount `json:"wanted"`
 }
 
+// UpgradeCheck An upgrade's check, from one read snapshot.
+type UpgradeCheck struct {
+	ComputedAt time.Time     `json:"computed_at"`
+	Counts     UpgradeCounts `json:"counts"`
+	Gates      UpgradeGates  `json:"gates"`
+
+	// Passed Every gate passed.
+	Passed bool `json:"passed"`
+
+	// Rules The eight health checks of an LLM Wiki, in their fixed order, including zero counts.
+	Rules []LintRuleSummary `json:"rules"`
+
+	// StalePages Pages with an old link index; an administrator can reindex them.
+	StalePages int64 `json:"stale_pages"`
+}
+
+// UpgradeCounts defines model for UpgradeCounts.
+type UpgradeCounts struct {
+	// Changesets The changes the upgrade wrote.
+	Changesets int `json:"changesets"`
+
+	// MovedIntoSources The nodes the upgrade started with moved into the source area since.
+	MovedIntoSources int `json:"moved_into_sources"`
+
+	// NewPages The pages written since the upgrade started, the ones its start wrote included.
+	NewPages int `json:"new_pages"`
+
+	// Sources The nodes in the source area.
+	Sources int `json:"sources"`
+
+	// WantedBefore The distinct pages links lead to that do not exist yet, as the wanted health check counts them.
+	WantedBefore UpgradeWanted `json:"wanted_before"`
+
+	// WantedNow The distinct pages links lead to that do not exist yet, as the wanted health check counts them.
+	WantedNow UpgradeWanted `json:"wanted_now"`
+
+	// WikiPages The pages outside the source area, but the source root and the root's AGENTS.
+	WikiPages int `json:"wiki_pages"`
+}
+
 // UpgradeEnding Why an upgrade rolls back, abandoned by an admin or rejected at its review.
 type UpgradeEnding string
+
+// UpgradeGate defines model for UpgradeGate.
+type UpgradeGate struct {
+	Passed bool `json:"passed"`
+}
+
+// UpgradeGates defines model for UpgradeGates.
+type UpgradeGates struct {
+	// Agents An AGENTS page at the root whose body is not empty.
+	Agents UpgradeGate `json:"agents"`
+
+	// Frontmatter Each page outside the source area has frontmatter that parses, with type and summary but at the source root and the root's AGENTS.
+	Frontmatter UpgradeGate `json:"frontmatter"`
+
+	// Index The link index is fresh (stale_pages is 0).
+	Index UpgradeGate `json:"index"`
+
+	// Links No page the upgrade started with, outside the source area now, leads to more distinct pages that do not exist than as it started; how many do, and the first five, by id.
+	Links UpgradeLinksGate `json:"links"`
+
+	// Preserved Each node the upgrade started with is alive, each page's content the one the guardrails let by; the nodes and pages, those kept, and the first five not, by id.
+	Preserved UpgradePreservedGate `json:"preserved"`
+
+	// ReservedTitles No node at the root holds a title an LLM Wiki keeps, index, log, index.md or log.md; those that do.
+	ReservedTitles UpgradeTitlesGate `json:"reserved_titles"`
+
+	// SourceRoot The proposed source root is a page, not the root's AGENTS.
+	SourceRoot UpgradeGate `json:"source_root"`
+
+	// Sources Each sources reference leads to a node of the source area.
+	Sources UpgradeGate `json:"sources"`
+}
+
+// UpgradeLinksGate No page the upgrade started with, outside the source area now, leads to more distinct pages that do not exist than as it started; how many do, and the first five, by id.
+type UpgradeLinksGate struct {
+	NodeIds    []uuid.UUID `json:"node_ids"`
+	PagesWorse int         `json:"pages_worse"`
+	Passed     bool        `json:"passed"`
+}
+
+// UpgradePreservedGate Each node the upgrade started with is alive, each page's content the one the guardrails let by; the nodes and pages, those kept, and the first five not, by id.
+type UpgradePreservedGate struct {
+	NodeIds   []uuid.UUID `json:"node_ids"`
+	Nodes     int         `json:"nodes"`
+	NodesKept int         `json:"nodes_kept"`
+	Pages     int         `json:"pages"`
+	PagesKept int         `json:"pages_kept"`
+	Passed    bool        `json:"passed"`
+}
 
 // UpgradeRollbackLeft Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere.
 type UpgradeRollbackLeft struct {
@@ -722,6 +811,19 @@ type UpgradeStartTemplateLocale string
 // UpgradeState Where an upgrade is: upgrading while its initiator's agent rearranges the notebook, reviewing once submitted, rolling_back while the notebook is put back as it was when it started; approved and rolled_back once it ended.
 type UpgradeState string
 
+// UpgradeTitlesGate No node at the root holds a title an LLM Wiki keeps, index, log, index.md or log.md; those that do.
+type UpgradeTitlesGate struct {
+	NodeIds []uuid.UUID `json:"node_ids"`
+	Passed  bool        `json:"passed"`
+}
+
+// UpgradeWanted The distinct pages links lead to that do not exist yet, as the wanted health check counts them.
+type UpgradeWanted struct {
+	// Count The count capped at 10000. A count of 10000 always has count_capped true and is a lower bound; pagination still includes later items.
+	Count       LintCount `json:"count"`
+	CountCapped bool      `json:"count_capped"`
+}
+
 // NotebookID defines model for NotebookID.
 type NotebookID = uuid.UUID
 
@@ -733,6 +835,15 @@ type Problem = externalRef0.Problem
 
 // ListLintItemsParams defines parameters for ListLintItems.
 type ListLintItemsParams struct {
+	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
+	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor.
+	Cursor *externalRef0.Cursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListUpgradeCheckItemsParams defines parameters for ListUpgradeCheckItems.
+type ListUpgradeCheckItemsParams struct {
 	// Limit The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit.
 	Limit *externalRef0.Limit `form:"limit,omitempty" json:"limit,omitempty"`
 
@@ -1394,6 +1505,12 @@ type ServerInterface interface {
 	// AbandonUpgrade Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/abandon)
 	AbandonUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// CheckUpgrade Check the upgrade against an LLM Wiki's contract, for its admins.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check)
+	CheckUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// ListUpgradeCheckItems Read more items of a rule of the upgrade's check.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check/{rule})
+	ListUpgradeCheckItems(w http.ResponseWriter, r *http.Request, notebookID NotebookID, rule Rule, params ListUpgradeCheckItemsParams)
 	// EndUpgradeRollback Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/end-rollback)
 	EndUpgradeRollback(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -1576,6 +1693,96 @@ func (siw *ServerInterfaceWrapper) AbandonUpgrade(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// CheckUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) CheckUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CheckUpgrade(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListUpgradeCheckItems operation middleware
+func (siw *ServerInterfaceWrapper) ListUpgradeCheckItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "rule" -------------
+	var rule Rule
+
+	err = runtime.BindStyledParameterWithOptions("simple", "rule", r.PathValue("rule"), &rule, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rule", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListUpgradeCheckItemsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListUpgradeCheckItems(w, r, notebookID, rule, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // EndUpgradeRollback operation middleware
 func (siw *ServerInterfaceWrapper) EndUpgradeRollback(w http.ResponseWriter, r *http.Request) {
 
@@ -1728,6 +1935,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade", wrapper.StartUpgrade)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/abandon", wrapper.AbandonUpgrade)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/end-rollback", wrapper.EndUpgradeRollback)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/check", wrapper.CheckUpgrade)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}", wrapper.ListUpgradeCheckItems)
 
 	return m
 }
@@ -2083,6 +2292,154 @@ func (response AbandonUpgradedefaultApplicationProblemPlusJSONResponse) VisitAba
 	return err
 }
 
+type CheckUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type CheckUpgradeResponseObject interface {
+	VisitCheckUpgradeResponse(w http.ResponseWriter) error
+}
+
+type CheckUpgrade200JSONResponse UpgradeCheck
+
+func (response CheckUpgrade200JSONResponse) VisitCheckUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckUpgrade503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response CheckUpgrade503ApplicationProblemPlusJSONResponse) VisitCheckUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CheckUpgradedefaultResponseHeaders struct {
+	RetryAfter      *int
+	WWWAuthenticate *string
+}
+
+type CheckUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    CheckUpgradedefaultResponseHeaders
+	StatusCode int
+}
+
+func (response CheckUpgradedefaultApplicationProblemPlusJSONResponse) VisitCheckUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUpgradeCheckItemsRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+	Rule       Rule       `json:"rule"`
+	Params     ListUpgradeCheckItemsParams
+}
+
+type ListUpgradeCheckItemsResponseObject interface {
+	VisitListUpgradeCheckItemsResponse(w http.ResponseWriter) error
+}
+
+type ListUpgradeCheckItems200JSONResponse LintPage
+
+func (response ListUpgradeCheckItems200JSONResponse) VisitListUpgradeCheckItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUpgradeCheckItems503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ListUpgradeCheckItems503ApplicationProblemPlusJSONResponse) VisitListUpgradeCheckItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListUpgradeCheckItemsdefaultResponseHeaders struct {
+	RetryAfter      *int
+	WWWAuthenticate *string
+}
+
+type ListUpgradeCheckItemsdefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ListUpgradeCheckItemsdefaultResponseHeaders
+	StatusCode int
+}
+
+func (response ListUpgradeCheckItemsdefaultApplicationProblemPlusJSONResponse) VisitListUpgradeCheckItemsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type EndUpgradeRollbackRequestObject struct {
 	NotebookID NotebookID `json:"notebook_id"`
 }
@@ -2146,6 +2503,12 @@ type StrictServerInterface interface {
 	// AbandonUpgrade Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/abandon)
 	AbandonUpgrade(ctx context.Context, request AbandonUpgradeRequestObject) (AbandonUpgradeResponseObject, error)
+	// CheckUpgrade Check the upgrade against an LLM Wiki's contract, for its admins.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check)
+	CheckUpgrade(ctx context.Context, request CheckUpgradeRequestObject) (CheckUpgradeResponseObject, error)
+	// ListUpgradeCheckItems Read more items of a rule of the upgrade's check.
+	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check/{rule})
+	ListUpgradeCheckItems(ctx context.Context, request ListUpgradeCheckItemsRequestObject) (ListUpgradeCheckItemsResponseObject, error)
 	// EndUpgradeRollback Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/end-rollback)
 	EndUpgradeRollback(ctx context.Context, request EndUpgradeRollbackRequestObject) (EndUpgradeRollbackResponseObject, error)
@@ -2322,6 +2685,60 @@ func (sh *strictHandler) AbandonUpgrade(w http.ResponseWriter, r *http.Request, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AbandonUpgradeResponseObject); ok {
 		if err := validResponse.VisitAbandonUpgradeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CheckUpgrade operation middleware
+func (sh *strictHandler) CheckUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request CheckUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CheckUpgrade(ctx, request.(CheckUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CheckUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CheckUpgradeResponseObject); ok {
+		if err := validResponse.VisitCheckUpgradeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListUpgradeCheckItems operation middleware
+func (sh *strictHandler) ListUpgradeCheckItems(w http.ResponseWriter, r *http.Request, notebookID NotebookID, rule Rule, params ListUpgradeCheckItemsParams) {
+	var request ListUpgradeCheckItemsRequestObject
+
+	request.NotebookID = notebookID
+	request.Rule = rule
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListUpgradeCheckItems(ctx, request.(ListUpgradeCheckItemsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListUpgradeCheckItems")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListUpgradeCheckItemsResponseObject); ok {
+		if err := validResponse.VisitListUpgradeCheckItemsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

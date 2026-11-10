@@ -1582,6 +1582,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check the upgrade against an LLM Wiki's contract, for its admins.
+         * @description Every gate, the health checks of an LLM Wiki whose source root is the one the upgrade proposes, with their counts and first five items, and what the notebook holds, from one read snapshot; passed or not, 200. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading or reviewing is wiki.upgrade_state; an exhausted computation or waiting budget is server_busy, with Retry-After: 1. These checks occur in that order; the upgrade, read again in the check's snapshot once a computation slot is had, may still be wiki.upgrade_state then. Checks of one upgrade share a computation.
+         */
+        get: operations["checkUpgrade"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read more items of a rule of the upgrade's check.
+         * @description One page of a rule in the upgrade's check's scope, an LLM Wiki whose source root is the one the upgrade proposes, from the current read snapshot. A malformed cursor is bad_request; then a notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; a caller not its admin forbidden; an unknown rule wiki.lint_rule_not_found; an upgrade not upgrading or reviewing wiki.upgrade_state; a cursor bound to another notebook, rule or scope, including a lint's, bad_request; a limit outside 1-100 validation_failed; an exhausted computation or waiting budget server_busy, with Retry-After: 1. These checks occur in that order; the upgrade, read again in the snapshot once a computation slot is had, may still be wiki.upgrade_state then. A cursor is bound to the proposed source root, not to the upgrade. The limit is 50 when absent. Continue with next_cursor.
+         */
+        get: operations["listUpgradeCheckItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -3376,6 +3424,79 @@ export interface components {
              */
             template_locale?: "zh-CN" | "en";
         };
+        UpgradeGate: {
+            passed: boolean;
+        };
+        /** @description No node at the root holds a title an LLM Wiki keeps, index, log, index.md or log.md; those that do. */
+        UpgradeTitlesGate: {
+            passed: boolean;
+            node_ids: string[];
+        };
+        /** @description No page the upgrade started with, outside the source area now, leads to more distinct pages that do not exist than as it started; how many do, and the first five, by id. */
+        UpgradeLinksGate: {
+            passed: boolean;
+            pages_worse: number;
+            node_ids: string[];
+        };
+        /** @description Each node the upgrade started with is alive, each page's content the one the guardrails let by; the nodes and pages, those kept, and the first five not, by id. */
+        UpgradePreservedGate: {
+            passed: boolean;
+            nodes: number;
+            nodes_kept: number;
+            pages: number;
+            pages_kept: number;
+            node_ids: string[];
+        };
+        UpgradeGates: {
+            /** @description An AGENTS page at the root whose body is not empty. */
+            agents: components["schemas"]["UpgradeGate"];
+            /** @description The proposed source root is a page, not the root's AGENTS. */
+            source_root: components["schemas"]["UpgradeGate"];
+            reserved_titles: components["schemas"]["UpgradeTitlesGate"];
+            /** @description Each page outside the source area has frontmatter that parses, with type and summary but at the source root and the root's AGENTS. */
+            frontmatter: components["schemas"]["UpgradeGate"];
+            /** @description Each sources reference leads to a node of the source area. */
+            sources: components["schemas"]["UpgradeGate"];
+            links: components["schemas"]["UpgradeLinksGate"];
+            preserved: components["schemas"]["UpgradePreservedGate"];
+            /** @description The link index is fresh (stale_pages is 0). */
+            index: components["schemas"]["UpgradeGate"];
+        };
+        /** @description The distinct pages links lead to that do not exist yet, as the wanted health check counts them. */
+        UpgradeWanted: {
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+        };
+        UpgradeCounts: {
+            /** @description The nodes in the source area. */
+            sources: number;
+            /** @description The nodes the upgrade started with moved into the source area since. */
+            moved_into_sources: number;
+            /** @description The pages outside the source area, but the source root and the root's AGENTS. */
+            wiki_pages: number;
+            /** @description The pages written since the upgrade started, the ones its start wrote included. */
+            new_pages: number;
+            /** @description The changes the upgrade wrote. */
+            changesets: number;
+            wanted_before: components["schemas"]["UpgradeWanted"];
+            wanted_now: components["schemas"]["UpgradeWanted"];
+        };
+        /** @description An upgrade's check, from one read snapshot. */
+        UpgradeCheck: {
+            /** Format: date-time */
+            computed_at: string;
+            /**
+             * Format: int64
+             * @description Pages with an old link index; an administrator can reindex them.
+             */
+            stale_pages: number;
+            /** @description Every gate passed. */
+            passed: boolean;
+            gates: components["schemas"]["UpgradeGates"];
+            /** @description The eight health checks of an LLM Wiki, in their fixed order, including zero counts. */
+            rules: components["schemas"]["LintRuleSummary"][];
+            counts: components["schemas"]["UpgradeCounts"];
+        };
         /** @description The data of hello, the first frame. */
         EventHello: {
             /** @description Seconds between two heartbeats. */
@@ -3954,6 +4075,14 @@ export type UpgradeEnding = components['schemas']['UpgradeEnding'];
 export type UpgradeRollbackLeft = components['schemas']['UpgradeRollbackLeft'];
 export type Upgrade = components['schemas']['Upgrade'];
 export type UpgradeStart = components['schemas']['UpgradeStart'];
+export type UpgradeGate = components['schemas']['UpgradeGate'];
+export type UpgradeTitlesGate = components['schemas']['UpgradeTitlesGate'];
+export type UpgradeLinksGate = components['schemas']['UpgradeLinksGate'];
+export type UpgradePreservedGate = components['schemas']['UpgradePreservedGate'];
+export type UpgradeGates = components['schemas']['UpgradeGates'];
+export type UpgradeWanted = components['schemas']['UpgradeWanted'];
+export type UpgradeCounts = components['schemas']['UpgradeCounts'];
+export type UpgradeCheck = components['schemas']['UpgradeCheck'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
@@ -6108,6 +6237,63 @@ export interface operations {
                     "application/json": components["schemas"]["Upgrade"];
                 };
             };
+            default: components["responses"]["Problem"];
+        };
+    };
+    checkUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCheck"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    listUpgradeCheckItems: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the rule, with null after its last item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LintPage"];
+                };
+            };
+            503: components["responses"]["Problem"];
             default: components["responses"]["Problem"];
         };
     };

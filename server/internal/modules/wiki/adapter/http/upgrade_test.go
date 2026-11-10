@@ -26,10 +26,22 @@ import (
 // rollback's end with view or err, and records the locale the start was
 // asked for.
 type upgradeFake struct {
-	mu     sync.Mutex
-	view   app.UpgradeView
-	err    error
-	locale []string
+	mu      sync.Mutex
+	view    app.UpgradeView
+	checked app.UpgradeChecked
+	err     error
+	locale  []string
+	queries []app.LintQuery
+}
+
+func (f *upgradeFake) CheckUpgrade(_ context.Context, id uuid.UUID, query app.LintQuery) (app.UpgradeChecked, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queries = append(f.queries, query)
+	if id != lintID(10) {
+		return app.UpgradeChecked{}, domain.ErrNotebookNotFound
+	}
+	return f.checked, f.err
 }
 
 func (f *upgradeFake) StartUpgrade(_ context.Context, id uuid.UUID, locale string) (app.UpgradeView, error) {

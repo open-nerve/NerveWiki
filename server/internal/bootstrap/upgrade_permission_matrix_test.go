@@ -95,7 +95,59 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 			prepare: upgradedBy(state),
 		})
 	}
+	rows = append(rows, checkMatrixRows(notebook, upgradedBy)...)
 	return append(rows, rollbackMatrixRows(notebook, upgradedBy)...)
+}
+
+// checkMatrixRows are M11/P2/S2's (design 3.15): the check of an upgrade
+// upgrading and of one reviewing, and a rule's items of one upgrading, its
+// admins' alone. The seeds' notebooks hold no AGENTS: the check answers
+// its gates, not passed, 200.
+func checkMatrixRows(notebook func(c caller, s seeded) string,
+	upgradedBy func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool),
+) []upgradeMatrixRow {
+	notFound := cell{http.StatusNotFound, "notebook.not_found"}
+	var rows []upgradeMatrixRow
+	for _, state := range []string{"upgrading", "reviewing"} {
+		rows = append(rows, upgradeMatrixRow{
+			matrixRow: matrixRow{
+				op: "checkUpgrade", variant: state, columns: notebookColumns(), write: true,
+				request: func(c caller, s seeded) (string, string, string) {
+					return http.MethodGet, notebook(c, s) + "/check", ""
+				},
+				cells: adminsOnly(cellOK(), notFound),
+				check: func(t *testing.T, c caller, s seeded, answer string) {
+					t.Helper()
+					var a upgradeCheckAnswer
+					decodeAnswer(t, answer, &a)
+					if len(a.Gates) != 8 || len(a.Rules) != 8 || a.Gates["agents"].Passed {
+						t.Errorf("checked %s, want eight gates and eight rules, AGENTS failed", answer)
+					}
+				},
+			},
+			prepare: upgradedBy(state),
+		})
+	}
+	return append(rows, upgradeMatrixRow{
+		matrixRow: matrixRow{
+			op: "listUpgradeCheckItems", variant: "upgrading", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, notebook(c, s) + "/check/wanted", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var page struct {
+					Mode string `json:"mode"`
+				}
+				decodeAnswer(t, answer, &page)
+				if page.Mode != "llm_wiki" {
+					t.Errorf("listed %s, want the LLM Wiki's", answer)
+				}
+			},
+		},
+		prepare: upgradedBy("upgrading"),
+	})
 }
 
 // rollbackJobVariants are the cancel rows' variants whose jobs seeded

@@ -18,7 +18,9 @@ const maxUpgradeLocks = 100
 // UpgradeDeps are what an upgrade's start and read, its abandonment and
 // its rollback's end need (M11/P1 design 3.14, 3.15, 3.20): Action is the
 // notebook module's notebook.change_mode; Timeout bounds the start's
-// transaction (decisions 227, 232).
+// transaction (decisions 227, 232). Its check's (M11/P2 design 3.11):
+// Gates are the page module's reads, Cursors and Paths lint's,
+// ReservedKeys the root's title keys gate 3 judges.
 type UpgradeDeps struct {
 	Tx         shared.TxManager
 	Snapshots  shared.Snapshots
@@ -37,6 +39,11 @@ type UpgradeDeps struct {
 	Clock      Clock
 	Logger     Logger
 	Timeout    time.Duration
+
+	Gates        UpgradeGatePages
+	Cursors      Cursors
+	Paths        Paths
+	ReservedKeys []string
 }
 
 // locked locks notebook id's workspace's row FOR SHARE and its row FOR NO

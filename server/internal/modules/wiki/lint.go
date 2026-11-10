@@ -90,6 +90,16 @@ type (
 	UpgradeState      = domain.UpgradeState
 )
 
+// An upgrade's check (M11/P2 design 3.9, 3.11): the page module's reads,
+// which bootstrap converts, and what the check answers.
+type (
+	UpgradeGatePages = app.UpgradeGatePages
+	UpgradeRoots     = domain.UpgradeRoots
+	BaselineNode     = domain.BaselineNode
+	Preserved        = domain.Preserved
+	UpgradeChecked   = app.UpgradeChecked
+)
+
 // The upgrade's states under way, for bootstrap's conversions.
 const (
 	UpgradeUpgrading   = domain.UpgradeUpgrading
@@ -104,7 +114,8 @@ const (
 // 3.15, 3.20): UpgradeAction is the notebook module's
 // notebook.change_mode, Rollbacks the transfer module's, StartTimeout
 // bounds the start's transaction, Template is the one bootstrap built for
-// the creation.
+// the creation. Gates are the page module's reads of an upgrade's check,
+// ReservedKeys its root's reserved title keys (M11/P2 design 3.11).
 type Deps struct {
 	Notebooks   Notebooks
 	Sources     Sources
@@ -132,6 +143,8 @@ type Deps struct {
 	UpgradeAction shared.Action
 	StartTimeout  time.Duration
 	Template      *Template
+	Gates         UpgradeGatePages
+	ReservedKeys  []string
 }
 
 // Module owns one runtime shared by every internal caller. Construction does
@@ -141,6 +154,7 @@ type Module struct {
 	runs         *app.Runs
 	playbooks    *app.Playbooks
 	startUpgrade *app.StartUpgrade
+	checkUpgrade *app.CheckUpgrade
 	getUpgrade   *app.GetUpgrade
 	abandon      *app.AbandonUpgrade
 	endRollback  *app.EndUpgradeRollback
@@ -157,13 +171,14 @@ func New(d Deps) *Module {
 		Tx: d.Tx, Snapshots: d.Snapshots, Notebooks: d.Notebooks, Workspaces: d.Workspaces, States: d.UpgradeStates, Pages: d.Upgrades,
 		Rollback: d.RollbackPages, Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Rollbacks: d.Rollbacks, Names: d.Names,
 		Authorizer: d.Authorizer, Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger,
-		Timeout: d.StartTimeout,
+		Timeout: d.StartTimeout, Gates: d.Gates, Cursors: d.Cursors, Paths: d.Paths, ReservedKeys: d.ReservedKeys,
 	}
 	return &Module{
 		lint:         lint,
 		runs:         runs,
 		playbooks:    app.NewPlaybooks(d.Notebooks, d.Authorizer),
 		startUpgrade: app.NewStartUpgrade(upgrades, lint, runs),
+		checkUpgrade: app.NewCheckUpgrade(upgrades, lint, runs),
 		getUpgrade:   app.NewGetUpgrade(upgrades),
 		abandon:      app.NewAbandonUpgrade(upgrades),
 		endRollback:  app.NewEndUpgradeRollback(upgrades),
@@ -178,6 +193,12 @@ func (m *Module) Execute(ctx context.Context, scope LintScope, query LintQuery) 
 // from its template in locale, "" for en (M11 design 4.4).
 func (m *Module) StartUpgrade(ctx context.Context, id uuid.UUID, locale string) (UpgradeView, error) {
 	return m.startUpgrade.Execute(ctx, id, locale)
+}
+
+// CheckUpgrade checks notebook id's upgrade under way, or reads one rule's
+// items in its scope (M11 design 4.7).
+func (m *Module) CheckUpgrade(ctx context.Context, id uuid.UUID, query LintQuery) (UpgradeChecked, error) {
+	return m.checkUpgrade.Execute(ctx, id, query)
 }
 
 // GetUpgrade reads notebook id's upgrade under way, for its admins.

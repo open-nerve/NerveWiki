@@ -273,6 +273,10 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		UpgradeAction: notebook.ActionChangeMode,
 		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,
 		Template:      template,
+		// An upgrade's check (M11/P2 design 3.11): the page module's reads
+		// and its root's reserved title keys, not a copy of them.
+		Gates:        wikiUpgradePages{page.NewUpgrades(pool)},
+		ReservedKeys: page.ReservedKeys(),
 	}
 	if w.wiki != nil {
 		w.wiki(&wikiDeps)
