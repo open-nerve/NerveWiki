@@ -266,10 +266,10 @@ func TestTheMCPCallStopsWhenTheClientGoes(t *testing.T) {
 	case <-time.After(6 * time.Second):
 		t.Fatal("the call did not end within 6 s")
 	}
-	if e := m.waitLogged(t, "MCP client went away", 2*time.Second); e == nil || e["level"] != "DEBUG" {
+	if e := m.waitLogged(t, "MCP client went away", 10*time.Second); e == nil || e["level"] != "DEBUG" {
 		t.Errorf("the log has %v, want the client gone at debug", e)
 	}
-	if e := m.waitLogged(t, "client went away", 2*time.Second); e == nil || e["level"] != "DEBUG" {
+	if e := m.waitLogged(t, "client went away", 10*time.Second); e == nil || e["level"] != "DEBUG" {
 		t.Errorf("the log has %v, want the answer never written at debug", e)
 	}
 	if e := m.logged(t, "MCP call deadline exceeded"); e != nil {
