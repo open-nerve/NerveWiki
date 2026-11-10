@@ -22,6 +22,7 @@ type ContentWrite struct {
 	EditSession uuid.UUID
 	Merged      *int // internal batch count; nil is an ordinary single write
 	Rewrite     bool // internal system rewrite, or a revert of one; ordinary writes leave it false
+	Folded      bool // internal: a batch's page whose content carries a rewrite it folded in
 }
 
 // WriteContent writes w under the page's gate, its content row FOR NO KEY
@@ -118,7 +119,8 @@ func (u *Unit) contentStep(n domain.Node, before ContentLock, c Content, w Conte
 	if w.Merged != nil {
 		merged = *w.Merged
 	}
-	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: before.ByteSize, BeforeRevision: before.Revision, Merged: merged}
+	step.Content = &StepContent{Hash: c.Hash, Bytes: c.ByteSize, BeforeBytes: before.ByteSize, BeforeRevision: before.Revision, Merged: merged,
+		Folded: w.Folded}
 	step.Rewrite = w.Rewrite
 	// An upgrade's guardrails compare the body of what the initiator's
 	// agent writes, but a system's rewrite's, which they let by unread: a

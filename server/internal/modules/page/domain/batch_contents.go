@@ -76,7 +76,7 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 	case s.Kind == OpKindWrite && len(ps.Created) > 0:
 		pg.content, pg.known, changed = s.Content, true, s.Content != ""
 	case s.Kind == OpKindWrite:
-		same, size, err := p.holdsAt(pg, j, rw, s.Content)
+		same, size, rewrote, err := p.holdsAt(pg, j, rw, s.Content)
 		switch {
 		case err != nil:
 			return err
@@ -87,6 +87,12 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 		}
 		pg.content, pg.known, ps.Changed = s.Content, true, !same
 		beforeBytes, changed = size, !same
+		switch {
+		case rewrote && same:
+			pg.folded = true // the write is the rewrite's bytes: the content carries it
+		case !same:
+			pg.folded = false // the write replaced whatever was folded in before
+		}
 	default:
 		if s.Base != nil && s.Base.Revision != pg.revision {
 			return &VersionMismatch{Path: s.Path.Written, Current: VersionToken{Node: pg.id, Revision: pg.revision}, Why: Changed}
@@ -97,6 +103,9 @@ func (p *BatchPlan) content(j int, texts map[uuid.UUID]PageText, heads map[uuid.
 			rewritten, err := p.rewrite(pg, ps.Previous, j, rw)
 			if err != nil {
 				return err
+			}
+			if rewritten != content {
+				pg.folded = true // the edit replaces on the rewritten content, the rest of it kept
 			}
 			content = rewritten
 		}
@@ -179,21 +188,22 @@ func (pg *plannedPage) load(kind OpKind, texts map[uuid.UUID]PageText, heads map
 // content as the ops before leave it, rewritten for the renames and moves
 // since its previous content op where they reach its links, as an edit's
 // is (M9/P3 review A-I1); its head's size and hash for a page the plan read
-// no text of, which none of them reaches.
-func (p *BatchPlan) holdsAt(pg *plannedPage, j int, rw LinkRewriter, content string) (bool, int, error) {
+// no text of, which none of them reaches. rewrote says such a rewrite
+// changed the page (M11/P2 design 3.4).
+func (p *BatchPlan) holdsAt(pg *plannedPage, j int, rw LinkRewriter, content string) (same bool, size int, rewrote bool, err error) {
 	ps := &p.Steps[j]
 	if !pg.known {
-		return pg.holds(content), pg.head.Bytes, nil
+		return pg.holds(content), pg.head.Bytes, false, nil
 	}
 	if len(p.MovesBetween(ps.Previous, j)) == 0 {
-		return pg.holds(content), len(pg.content), nil
+		return pg.holds(content), len(pg.content), false, nil
 	}
 	ps.Moved = true
 	rewritten, err := p.rewrite(pg, ps.Previous, j, rw)
 	if err != nil {
-		return false, 0, err
+		return false, 0, false, err
 	}
-	return rewritten == content, len(rewritten), nil
+	return rewritten == content, len(rewritten), rewritten != pg.content, nil
 }
 
 // holds reports whether the page holds content's bytes as the batch has it

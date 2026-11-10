@@ -187,6 +187,73 @@ func TestUpgradeGuardrails(t *testing.T) {
 			map[string]any{"from": "Plan.md", "to": "Map.md"}, -1)
 	})
 
+	// g9: a batch's move of A, then an edit of the frontmatter of P, a
+	// baseline page linking to A: the move's rewrite folded into P's
+	// content, page.upgrade_batch_rewrite at P's last content op. g10: the
+	// two the other way round, done, P rewritten by the batch's deferred
+	// rewrite, the ledger its hash. g11: a move P links to none of, then an
+	// edit of P's body: page.upgrade_immutable, nothing folded. g12: two
+	// edits of P's body, the second back: done, the batch writing its last
+	// content alone (decision 208).
+	const batchRewrite = "page.upgrade_batch_rewrite"
+	linked := []upgradedPage{{title: "A", content: "# A\n"}, {title: "B", content: "# B\n"},
+		{title: "P", content: "---\ntype: a\n---\nSee [[A]].\n"}}
+	t.Run("g9", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of A, then an edit of P's frontmatter", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opEdit("P.md", "type: a", "type: b"), opEdit("P.md", "type: b", "type: c")), 2)
+	})
+	t.Run("g10", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.done(t, "a batch's edit of P's frontmatter, then a move of A", "batch",
+			batched(opEdit("P.md", "type: a", "type: b"), opMove("A.md", "Map.md")))
+		g.holds(t, "P", "---\ntype: b\n---\nSee [[Map]].\n")
+		g.accepted(t, "P")
+	})
+	t.Run("g11", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of B, then an edit of P's body", immutable, "batch",
+			batched(opMove("B.md", "Map.md"), opEdit("P.md", "See", "Read")), 1)
+	})
+	t.Run("g12", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.done(t, "a batch's two edits of P's body, the second back", "batch",
+			batched(opEdit("P.md", "See", "Read"), opEdit("P.md", "Read", "See")))
+		g.holds(t, "P", "---\ntype: a\n---\nSee [[A]].\n")
+	})
+	// g19-g21: the coarse judgment of decision 265. g19: a move of A, then
+	// an edit of P's body: page.upgrade_batch_rewrite; split, the edit is
+	// page.upgrade_immutable. g20: a write of P's body linking to A and B,
+	// their moves, an edit of its frontmatter: page.upgrade_batch_rewrite;
+	// split, the write is page.upgrade_immutable. g21: a move of A, then a
+	// write of P of a new frontmatter and the rewritten body:
+	// page.upgrade_immutable, the write not the rewrite's bytes; in two
+	// batches, the move then the write, done.
+	t.Run("g19", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		g.refused(t, "a batch's move of A, then an edit of P's body", batchRewrite, "batch",
+			batched(opMove("A.md", "Map.md"), opEdit("P.md", "See", "Read")), 1)
+		g.refused(t, "a batch's edit of P's body, then a move of A", immutable, "batch",
+			batched(opEdit("P.md", "See", "Read"), opMove("A.md", "Map.md")), 0)
+	})
+	t.Run("g20", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		written := opWriteOn("P.md", "---\ntype: a\n---\nNew [[A]] and [[B]].\n", g.version(t, "P"))
+		g.refused(t, "a batch's write of P's body, moves of A and B, an edit of P's frontmatter", batchRewrite, "batch",
+			batched(written, opMove("A.md", "Map.md"), opMove("B.md", "Key.md"), opEdit("P.md", "type: a", "type: b")), 3)
+		g.refused(t, "a batch's write of P's body alone", immutable, "batch", batched(written), 0)
+	})
+	t.Run("g21", func(t *testing.T) {
+		g := tm.upgradedNotebook(t, linked...)
+		const content = "---\ntype: b\n---\nSee [[Map]].\n"
+		g.refused(t, "a batch's move of A, then a write of P's new frontmatter and rewritten body", immutable, "batch",
+			batched(opMove("A.md", "Map.md"), opWriteOn("P.md", content, g.version(t, "P"))), 1)
+		g.done(t, "a batch's move of A", "batch", batched(opMove("A.md", "Map.md")))
+		g.done(t, "then a batch's write of P", "batch", batched(opWriteOn("P.md", content, g.version(t, "P"))))
+		g.holds(t, "P", content)
+		g.accepted(t, "P")
+	})
+
 	// g22: a batch's blind writes of three baseline pages, each taking off
 	// a frontmatter of some 5 MiB, which the guard would read whole: their
 	// heads pass the reads' bound at the third, page.batch_too_large there,

@@ -338,7 +338,8 @@ func declaredCodes(t testing.TB) []string {
 // initiator's agent meets, REST's writes frozen (M11/P1 design 3.6, M11/P2
 // design 3.6).
 func mcpOwnCodes() []string {
-	return []string{"page.batch_too_large", "page.upgrade_protected", "page.upgrade_immutable", "page.upgrade_keep_links"}
+	return []string{"page.batch_too_large", "page.upgrade_protected", "page.upgrade_immutable", "page.upgrade_batch_rewrite",
+		"page.upgrade_keep_links"}
 }
 
 // undeclaredToolCode is the error of a tool error's code that codes do

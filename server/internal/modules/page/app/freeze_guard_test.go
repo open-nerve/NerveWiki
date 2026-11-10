@@ -308,9 +308,10 @@ func TestTheFreezeGuard(t *testing.T) {
 			t.Errorf("the moves and renames read %v, want nothing", nodes.reads)
 		}
 	})
-	// The body's guardrail (M11/P2 design 3.3): a write of a baseline page
-	// whose body, past its frontmatter, is not the one it holds now is
-	// page.upgrade_immutable marked with the page; one that changes its
+	// The body's guardrail (M11/P2 design 3.3, 3.4): a write of a baseline
+	// page whose body, past its frontmatter, is not the one it holds now is
+	// page.upgrade_immutable marked with the page, page.upgrade_batch_rewrite
+	// when a batch folded a move's rewrite into it; one that changes its
 	// frontmatter alone goes; each reads the page's content once, of the
 	// notebook's upgrade, and no other row. The system's rewrite (Rewrite)
 	// goes unread, though its body changed and it carries no hash; a page
@@ -337,18 +338,26 @@ func TestTheFreezeGuard(t *testing.T) {
 			{"a frontmatter added before the old one", "---\nb: 3\n---\n---\na: 1\n---\nText", true},
 			{"its body changed", "---\na: 1\n---\nTexT", true},
 		} {
-			nodes.contents = nil
-			err := guard.GuardWrite(f.asAlice(), step(plan, tt.content, false))
-			var r *domain.Refused
-			switch {
-			case tt.refused && (codeOf(err) != "page.upgrade_immutable" || !errors.As(err, &r) || r.NodeID != plan):
-				t.Errorf("a write of Plan, %s = %v (%+v), want page.upgrade_immutable marked with Plan", tt.name, err, r)
-			case !tt.refused && err != nil:
-				t.Errorf("a write of Plan, %s = %v, want nil", tt.name, err)
-			}
-			if want := [][2]uuid.UUID{{current, plan}}; !slices.Equal(nodes.contents, want) || len(nodes.reads) != 0 {
-				t.Errorf("a write of Plan, %s, read the contents %v and the rows %v; want %v alone", tt.name, nodes.contents, nodes.reads,
-					want)
+			for _, folded := range []bool{false, true} {
+				nodes.contents = nil
+				s := step(plan, tt.content, false)
+				s.Content.Folded = folded
+				err := guard.GuardWrite(f.asAlice(), s)
+				code := "page.upgrade_immutable"
+				if folded {
+					code = "page.upgrade_batch_rewrite" // a batch folded a move's rewrite into it
+				}
+				var r *domain.Refused
+				switch {
+				case tt.refused && (codeOf(err) != code || !errors.As(err, &r) || r.NodeID != plan):
+					t.Errorf("a write of Plan, %s, folded %v = %v (%+v), want %s marked with Plan", tt.name, folded, err, r, code)
+				case !tt.refused && err != nil:
+					t.Errorf("a write of Plan, %s, folded %v = %v, want nil", tt.name, folded, err)
+				}
+				if want := [][2]uuid.UUID{{current, plan}}; !slices.Equal(nodes.contents, want) || len(nodes.reads) != 0 {
+					t.Errorf("a write of Plan, %s, read the contents %v and the rows %v; want %v alone", tt.name, nodes.contents,
+						nodes.reads, want)
+				}
 			}
 		}
 		nodes.contents = nil

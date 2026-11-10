@@ -95,6 +95,9 @@ type StepContent struct {
 	// unit locked it (ContentLock.Hash), in a notebook being upgraded: the
 	// ledger takes the step's only over it (M11/P2 design 3.5).
 	BeforeHash []byte
+	// Folded says a batch folded an earlier move's rewrite of this page's
+	// links into the content it writes (ContentWrite.Folded).
+	Folded bool
 }
 
 // StepLines are the operation root's ancestors on each side. Nil Lines means

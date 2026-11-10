@@ -377,6 +377,89 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	}
 }
 
+// Folded is the page's content at its last content op carrying a rewrite
+// of its links that a move before folded in (M11/P2 design 3.4, decisions
+// 190, 254, 265), each shape with its counterexample: an edit after a move
+// that rewrote the page; not after a move that reached no link of it, its
+// step Moved though, nor after one whose rewrite the stale index left
+// undone; a write of the rewrite's bytes, not of other bytes; a later
+// write of other bytes clears it, of the same bytes or an edit keeps it; a
+// move after the page's last content op folds nothing, its rewrite the
+// deferred one's; a page the batch creates is not; a write before the
+// moves and an edit after them is; a write of the rewritten body under a
+// new frontmatter is not, its bytes not the rewrite's; nor is a write of
+// the bytes the page holds after a move that reached no link of it, the
+// page's body changed by an edit before (a write's fold is the rewrite's
+// change, not the move's).
+func TestThePlanTellsAFoldedRewrite(t *testing.T) {
+	nb := newNotebook("A.md", "B.md", "P.md")
+	pID := nb.id(t, "P.md")
+	const before, rewritten = "---\nt: 1\n---\nSee [[A]].", "---\nt: 1\n---\nSee [[A2]]."
+	write := func(content string) domain.BatchArgs {
+		return with(writeOp("P.md", content), func(o *domain.BatchArgs) { o.Base = tokenOf(pID, 1) })
+	}
+	moveA, moveB := moveOp("A.md", "A2.md"), moveOp("B.md", "B2.md")
+	frontmatter := editOp("P.md", "t: 1", "t: 2")
+	for _, tt := range []struct {
+		name   string
+		ops    []domain.BatchArgs
+		whole  bool // P's first content op a write, read whole for the moves before it
+		stale  bool // P's index not current
+		folded bool
+		moved  int  // an op whose step is Moved, -1 for none
+		onlyB  bool // the moves rewrite links to B alone: P's to A lead where they led
+	}{
+		{"a move of A, an edit of P linking to it", []domain.BatchArgs{moveA, frontmatter}, false, false, true, 1, false},
+		{"a move P links to none of, an edit", []domain.BatchArgs{moveB, frontmatter}, false, false, false, 1, true},
+		{"a move of A, P's index stale, an edit", []domain.BatchArgs{moveA, frontmatter}, false, true, false, 1, false},
+		{"a move of A, a write of the rewrite's bytes", []domain.BatchArgs{moveA, write(rewritten)}, true, false, true, 1, false},
+		{"a move of A, a write of other bytes", []domain.BatchArgs{moveA, write("---\nt: 2\n---\nSee [[A]].")}, true, false, false, 1, false},
+		{"an edit folding it in, a write of other bytes", []domain.BatchArgs{moveA, frontmatter, write("other")}, false, false, false, 1, false},
+		{"an edit folding it in, a write of the same bytes", []domain.BatchArgs{moveA, frontmatter,
+			write("---\nt: 2\n---\nSee [[A2]].")}, false, false, true, 1, false},
+		{"an edit folding it in, an edit of another word", []domain.BatchArgs{moveA, frontmatter, editOp("P.md", "See", "Read")}, false,
+			false, true, 1, false},
+		{"an edit, then a move of A", []domain.BatchArgs{frontmatter, moveA}, false, false, false, -1, false},
+		{"a move of A, an edit of P's body", []domain.BatchArgs{moveA, editOp("P.md", "See", "Read")}, false, false, true, 1, false},
+		{"a write linking to A and B, their moves, an edit", []domain.BatchArgs{write("x [[A]] [[B]]"), moveA, moveB,
+			editOp("P.md", "x", "y")}, false, false, true, 3, false},
+		{"a move of A, a write of a new frontmatter and the rewritten body", []domain.BatchArgs{moveA,
+			write("---\nt: 2\n---\nSee [[A2]].")}, true, false, false, 1, false},
+		{"an edit of P's body, a move P links to none of, a write of the same bytes", []domain.BatchArgs{editOp("P.md", "See", "Read"),
+			moveB, write("---\nt: 1\n---\nRead [[A]].")}, false, false, false, 2, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _ := planOf(t, nb, tt.ops...)
+			if tt.whole {
+				p.ReadWhole(pID)
+			}
+			rw := &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]", "[[B]]": "[[B2]]"}, stale: map[uuid.UUID]bool{pID: tt.stale}}
+			if tt.onlyB {
+				delete(rw.subs, "[[A]]")
+			}
+			contentsOf(t, p, map[uuid.UUID]domain.PageText{pID: {Content: before, Revision: 1}},
+				map[uuid.UUID]domain.PageHead{pID: headOf(before, 1)}, rw)
+			if p.Failed != nil {
+				t.Fatalf("Failed = %+v", failed(t, p))
+			}
+			pages := p.Pages()
+			if len(pages) != 1 || pages[0].ID != pID || pages[0].Folded != tt.folded {
+				t.Errorf("the pages %+v, want P's Folded %v", pages, tt.folded)
+			}
+			for i, s := range p.Steps {
+				if s.Moved != (i == tt.moved) {
+					t.Errorf("ops[%d]'s Moved = %v, want %v", i, s.Moved, i == tt.moved)
+				}
+			}
+		})
+	}
+	p, _ := planOf(t, nb, moveA, writeOp("New.md", "See [[A]]."))
+	contentsOf(t, p, nil, nil, &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]"}})
+	if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Created || pages[0].Folded {
+		t.Errorf("a page the batch creates: Failed %v, the pages %+v; want one created, not Folded", p.Failed, pages)
+	}
+}
+
 // While the notebook is being upgraded, the reads' bound counts the pages
 // a batch's writes replace blind, by their heads, with those read whole,
 // in their first ops' order (M11/P2 decision 266): blind writes of three

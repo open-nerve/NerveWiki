@@ -90,7 +90,8 @@ func mcpRows() []mcpRow {
 // 3.6), each after the row's guards' codes, and its deletion guardrail
 // page.upgrade_protected to delete and batch; its guardrails after the
 // freeze's codes (M11/P2 design 3.6): page.upgrade_immutable to write,
-// edit and batch, page.upgrade_keep_links to move and batch.
+// edit and batch, page.upgrade_batch_rewrite to batch,
+// page.upgrade_keep_links to move and batch.
 // upgradeToolCodes lists them, the seventh shard answers them.
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
@@ -111,7 +112,7 @@ func mcpToolCodes() map[string][]string {
 		"batch": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "page.revision_mismatch", "page.locked", "linking.pages_locked",
 			"page.batch_too_large", "page.protected", "page.virtual_file", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.source_duplicate",
-			"notebook.upgrading", "page.upgrade_protected", "page.upgrade_immutable", "page.upgrade_keep_links"},
+			"notebook.upgrading", "page.upgrade_protected", "page.upgrade_immutable", "page.upgrade_batch_rewrite", "page.upgrade_keep_links"},
 		"versions":        {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found", "page.virtual_file"},
 		"log":             {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
 		"changeset":       {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},

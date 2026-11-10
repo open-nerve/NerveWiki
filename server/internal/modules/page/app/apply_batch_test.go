@@ -652,6 +652,39 @@ func TestTheBatchPlansAgainOnceTheUpgradeStarted(t *testing.T) {
 	}
 }
 
+// A guard's refusal of a page's body, page.upgrade_immutable or
+// page.upgrade_batch_rewrite, is marked at the page's last content op,
+// whose content the unit writes at its first (M11/P2 design 3.4), the op's
+// kind the last's; a refusal of another code at the first, where the unit
+// wrote.
+func TestTheBatchMarksABodysRefusalAtTheLast(t *testing.T) {
+	for _, tt := range []struct {
+		err  error
+		want string
+	}{
+		{domain.ErrUpgradeImmutable, "2 page.upgrade_immutable"},
+		{domain.ErrUpgradeBatchRewrite, "2 page.upgrade_batch_rewrite"},
+		{domain.ErrLocked, "0 page.locked"},
+	} {
+		f := newFixture()
+		p := f.page("P", nil, 1)
+		f.page("X", nil, 2)
+		f.content(p.ID, "a", 2)
+		f.guards = []app.WriteGuard{refuseOn{op: domain.OpContent, err: domain.Refuse(tt.err, p.ID)}}
+		_, err := f.applyBatch(&fakeLinks{recorder: f.rec}, editOp("P.md", "a", "b"), moveOp("X.md", "Y.md"),
+			writeOn("P.md", "c", tokenOf(p.ID, 2)))
+		var failed *domain.OpFailed
+		wantTool := domain.OpKindWrite
+		if tt.want[0] == '0' {
+			wantTool = domain.OpKindEdit
+		}
+		if opOf(err) != tt.want || !errors.As(err, &failed) || failed.Tool != wantTool || f.store.contents[p.ID].Content != "a" {
+			t.Errorf("a batch whose page's write a guard refuses with %s = %s (%+v), P %q; want %s, the op's kind %s, nothing written",
+				tt.err, opOf(err), failed, f.store.contents[p.ID].Content, tt.want, wantTool)
+		}
+	}
+}
+
 // A batch's unit that finds the notebook other than its plan had it is
 // made again once, from the read of the tree (M9/P3 design 3.6.2): a page
 // written since, a node at a path that is another since, two names

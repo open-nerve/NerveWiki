@@ -734,12 +734,17 @@ func (a *batchAttempt) content(ctx context.Context, u *Unit, i int) error {
 	if lock.Revision != pg.Revision {
 		return a.differs(i, "version", nil, &domain.VersionToken{Node: at.Node.ID, Revision: lock.Revision})
 	}
-	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID], Base: lock.Revision, Merged: &pg.Merged})
+	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID], Base: lock.Revision,
+		Merged: &pg.Merged, Folded: pg.Folded})
 	switch {
 	case errors.Is(err, domain.ErrRevisionMismatch):
 		// The row is locked and its revision compared: a defect, no 409,
 		// so the problem is not wrapped.
 		return fmt.Errorf("page: the batch's write of page %s met another's under its content's lock: %s", at.Node.ID, err.Error())
+	case errors.Is(err, domain.ErrUpgradeImmutable), errors.Is(err, domain.ErrUpgradeBatchRewrite):
+		// The unit writes at the page's first content op what its last
+		// decided (M11 design 4.6): a refusal of its body is the last's.
+		return a.failed(pg.Last, err)
 	case err != nil:
 		return a.failed(i, err)
 	}

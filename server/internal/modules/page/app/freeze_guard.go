@@ -101,11 +101,13 @@ func (g *FreezeGuard) guardrails(ctx context.Context, s Step) error {
 }
 
 // body refuses a write of a page of the baseline whose body is not the one
-// before the step, page.upgrade_immutable marked with the page (M11 design
-// 4.6): it compares the body of the content the page holds now, under the
-// lock of its content row the unit took, with the step's, which the unit
-// hashed (StepContent.BodyHash). A page not of the baseline it lets by,
-// reading no content; a step without the body's hash is a defect's error.
+// before the step, marked with the page: page.upgrade_batch_rewrite when a
+// batch folded a move's rewrite into it, page.upgrade_immutable otherwise
+// (M11 design 4.6). It compares the body of the content the page holds
+// now, under the lock of its content row the unit took, with the step's,
+// which the unit hashed (StepContent.BodyHash). A page not of the baseline
+// it lets by, reading no content; a step without the body's hash is a
+// defect's error.
 func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	id := s.Changes[0].NodeID
 	if s.Content == nil || s.Content.BodyHash == nil {
@@ -117,6 +119,9 @@ func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	}
 	if bytes.Equal(domain.UpgradeBodyHash(before, g.md.FrontmatterEnd(before)), s.Content.BodyHash) {
 		return nil
+	}
+	if s.Content.Folded {
+		return domain.Refuse(domain.ErrUpgradeBatchRewrite, id)
 	}
 	return domain.Refuse(domain.ErrUpgradeImmutable, id)
 }

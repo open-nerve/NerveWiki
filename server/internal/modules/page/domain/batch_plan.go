@@ -271,6 +271,16 @@ type PlannedPage struct {
 	Content     string
 	// Merged counts user byte changes made while this page was a source.
 	Merged int
+	// Folded says the page's content at its last content op carries a
+	// rewrite of its links that a rename or a move before folded in: an
+	// edit's after one that changed the page, a write's that is the
+	// rewrite's bytes; a later write of other bytes replaced it (M11 design
+	// 4.6, decisions 190, 254). It says the rewrite is in the content, not
+	// that it is all the content's difference: the guardrails answer
+	// page.upgrade_batch_rewrite on any change of the body then (decision
+	// 265). Not ps.Moved: that is any move between two content ops, even
+	// one that rewrote nothing.
+	Folded bool
 }
 
 // plannedPage is a page's content as the contents' pass goes: its head
@@ -285,6 +295,7 @@ type plannedPage struct {
 	merged      int
 	known       bool
 	whole       bool
+	folded      bool
 	head        *PageHead
 }
 
@@ -1001,7 +1012,7 @@ func (p *BatchPlan) Pages() []PlannedPage {
 	for _, id := range p.order {
 		pg := p.pages[id]
 		out = append(out, PlannedPage{ID: id, First: pg.first, Last: pg.last, Created: pg.created, Revision: pg.revision,
-			Content: pg.content, Merged: pg.merged})
+			Content: pg.content, Merged: pg.merged, Folded: pg.folded})
 	}
 	return out
 }
