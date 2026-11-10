@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { Link } from "react-router";
-import useSWR, { useSWRConfig } from "swr";
+import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
@@ -73,7 +73,7 @@ const UpgradeRead = observer(function UpgradeRead({
   const upgrades = useUpgrades();
   const notebooks = useNotebooks(workspace);
   const { preferences } = useStore();
-  const { mutate } = useSWRConfig();
+  const { cache, mutate } = useSWRConfig();
   const mounted = useMounted();
   const t = useT();
   const [asked, setAsked] = useState<Change | undefined>(undefined);
@@ -99,11 +99,16 @@ const UpgradeRead = observer(function UpgradeRead({
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
    * or the upgrade in another state. The upgrade an abandonment or a
-   * continuation answers, rolling back, is shown meanwhile (shows), not the
-   * one read before it; an end's, ended, is not: the read says none is
-   * under way.
+   * continuation answers, rolling back, is shown meanwhile (shows), over
+   * what the page showed as it was sent, before the read again (SWR keeps
+   * no read sent before it); a read that answered meanwhile, a mode
+   * event's, is newer and stays. An end's answer, ended, is not shown: the
+   * read says none is under way. The answer is shown even once the page is
+   * left, which shows it when it is come back to.
    */
   async function change(send: () => Promise<Upgrade>, shows: boolean): Promise<void> {
+    const key = unstable_serialize(["upgrade", notebook.id]);
+    const sent = cache.get(key);
     let answered: Upgrade;
     try {
       answered = await send();
@@ -117,7 +122,10 @@ const UpgradeRead = observer(function UpgradeRead({
       }
       throw refusal;
     }
-    if (shows) {
+    // Its data and error, not the whole state, which a read under way replaces too. A function of the data would not
+    // do: SWR clears the error of whatever a mutate writes, a 404 a read answered meanwhile included.
+    const now = cache.get(key);
+    if (shows && now?.data === sent?.data && now?.error === sent?.error) {
       void mutate(["upgrade", notebook.id], answered, { revalidate: false });
     }
     if (mounted()) {

@@ -224,6 +224,22 @@ test("abandoned, the upgrade rolls back: the page reads it again and shows its j
 });
 
 /**
+ * upgradeRead answers the upgrade's read as upgradeServer does: none under
+ * way 404 wiki.upgrade_not_found; rolling back, what its rollback left
+ * once its job is not under way; as said, an upgrade a test changes.
+ */
+function upgradeRead(server: ReturnType<typeof upgradeServer>, said = (upgrade: Upgrade) => upgrade): Response {
+  const upgrade = server.upgrade;
+  if (upgrade === undefined || server.notebook.upgrade === null) {
+    return problem(404, "wiki.upgrade_not_found");
+  }
+  const rolling = server.jobs.some((job) => job.id === upgrade.rollback_job_id && under(job));
+  return json(
+    said(upgrade.state === "rolling_back" ? { ...upgrade, rollback_left: rolling ? null : server.left } : upgrade)
+  );
+}
+
+/**
  * secondReadHeld is upgradeServer of options whose second read of the
  * upgrade, the one after a change, is answered once held resolves, as the
  * server holds the upgrade then.
@@ -239,18 +255,43 @@ function secondReadHeld(options: Parameters<typeof upgradeServer>[0]) {
         if (++answered === 2) {
           await held.promise;
         }
-        const upgrade = server.upgrade;
-        if (upgrade === undefined || server.notebook.upgrade === null) {
-          return problem(404, "wiki.upgrade_not_found");
-        }
-        const rolling = server.jobs.some((job) => job.id === upgrade.rollback_job_id && under(job));
-        return json(
-          upgrade.state === "rolling_back" ? { ...upgrade, rollback_left: rolling ? null : server.left } : upgrade
-        );
+        return upgradeRead(server);
       },
     },
   });
   return { server, held };
+}
+
+/**
+ * heldServer is upgradeServer of options whose reads of the notebooks,
+ * logged as "GET notebooks (held)", and of the upgrade wait while the
+ * test holds them (holdList, holdReads), until it lets them go (list,
+ * reads); events is the stream's.
+ */
+function heldServer(options: Parameters<typeof upgradeServer>[0]) {
+  const events = eventServer();
+  const held = { holdList: false, holdReads: false, list: deferred<void>(), reads: deferred<void>() };
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    ...options,
+    answers: {
+      "GET /api/v0/events": events.answer,
+      "GET /api/v0/workspaces/lab/notebooks": async () => {
+        if (held.holdList) {
+          server.asked.push("GET notebooks (held)");
+          await held.list.promise;
+        }
+        return json({ data: [server.notebook] });
+      },
+      [`GET ${plans}/upgrade`]: async () => {
+        server.asked.push("GET upgrade");
+        if (held.holdReads) {
+          await held.reads.promise;
+        }
+        return upgradeRead(server);
+      },
+    },
+  });
+  return { server, events, held };
 }
 
 test("abandoned, the page shows the rollback the abandonment answered while it reads the upgrade again; the focus is on the title", async () => {
@@ -319,6 +360,122 @@ test("ended, the page's read again still out, the focus is on the title, not on 
   expect(button.isConnected).toBe(false);
 });
 
+test("abandoned, the read again shows what the server says then, not the abandonment's answer", async () => {
+  const user = userEvent.setup();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    upgrade: upgradeJSON(),
+    answers: {
+      [`GET ${plans}/upgrade`]: () => {
+        server.asked.push("GET upgrade");
+        // Read again after the abandonment, the upgrade names its initiator otherwise.
+        return upgradeRead(server, (upgrade) =>
+          reads(server, "GET upgrade") === 1
+            ? upgrade
+            : { ...upgrade, started_by: { ...upgrade.started_by, display_name: "Zed" } }
+        );
+      },
+    },
+  });
+  renderApp(upgradePath, server.app);
+
+  await user.click(await screen.findByRole("button", { name: abandon }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Abandon the upgrade of “Plans”?" });
+  await user.click(within(dialog).getByRole("button", { name: "Abandon the upgrade" }));
+
+  expect(await screen.findByText("Started by Zed on Oct 5, 2026, 8:00 AM.")).toBeTruthy();
+  expect(reads(server, "GET upgrade")).toBe(2);
+});
+
+/**
+ * abandonedAfterEvent abandons Plans' upgrade on its page, live, its
+ * answer waiting for the notebooks' read again; meanwhile the server moves
+ * on (move), and the mode event the abandonment published is read first,
+ * which the page shows (answered). Then the abandonment answers, the
+ * upgrade's reads held: the page shows what the cache holds.
+ */
+async function abandonedAfterEvent(
+  move: (server: ReturnType<typeof upgradeServer>) => void,
+  answered: () => Promise<unknown>
+) {
+  const user = userEvent.setup();
+  const { server, events, held } = heldServer({ upgrade: upgradeJSON() });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await section("Where it is");
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  await user.click(await screen.findByRole("button", { name: abandon }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Abandon the upgrade of “Plans”?" });
+  held.holdList = true;
+  await user.click(within(dialog).getByRole("button", { name: "Abandon the upgrade" }));
+  await waitFor(() => expect(server.asked).toContain("GET notebooks (held)"));
+  move(server);
+  events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+  await answered();
+  held.holdReads = true;
+  const before = reads(server, "GET upgrade");
+  held.list.resolve();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBeGreaterThan(before));
+  return held;
+}
+
+test("abandoned while a mode event's read answers first that the rollback stopped: what is left and Continue stay, the abandonment's answer, older, not put over them", async () => {
+  const held = await abandonedAfterEvent(
+    (server) => {
+      server.left = { nodes: 2, pages: 1, created: 3 };
+      server.rollbackJob((job) => cancelled(job));
+    },
+    // The dialog, still open, hides the rest from the accessibility tree.
+    () => screen.findByRole("button", { name: continues, hidden: true })
+  );
+
+  const rollback = await section("Rollback");
+  expect(within(rollback).getByRole("button", { name: continues })).toBeTruthy();
+  expect(counts(rollback)).toEqual(leftCounts);
+  held.reads.resolve();
+  await act(() => held.reads.promise);
+  expect(within(await section("Rollback")).getByRole("button", { name: continues })).toBeTruthy();
+});
+
+test("abandoned while a mode event's read answers first that the rollback ended: none under way stays, the abandonment's answer not put over it", async () => {
+  const held = await abandonedAfterEvent(
+    (server) => server.rolledBack(),
+    () => screen.findByText(noneUnderWay)
+  );
+
+  expect(screen.getByText(noneUnderWay)).toBeTruthy();
+  expect(screen.queryByRole("heading", { level: 2, name: "Rollback" })).toBeNull();
+  held.reads.resolve();
+  await act(() => held.reads.promise);
+  expect(screen.getByText(noneUnderWay)).toBeTruthy();
+});
+
+test("abandoned, the page left before the answer: come back to, the reads held, it shows the rollback answered, not the upgrade as it was", async () => {
+  const user = userEvent.setup();
+  const { server, held } = heldServer({ upgrade: upgradeJSON() });
+  const { router } = renderApp(upgradePath, server.app);
+  await user.click(await screen.findByRole("button", { name: abandon }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Abandon the upgrade of “Plans”?" });
+  held.holdList = true;
+  await user.click(within(dialog).getByRole("button", { name: "Abandon the upgrade" }));
+  await waitFor(() => expect(server.asked).toContain("GET notebooks (held)"));
+  const home = `/lab/notebooks/${notebookJSON.id}`;
+  await act(() => router.navigate(home));
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  // Held, a read the page makes as it comes back (past SWR's two seconds of deduplication) shows nothing yet.
+  held.holdReads = true;
+  held.list.resolve();
+  expect(await screen.findByText(rollingBanner)).toBeTruthy();
+
+  await act(() => router.navigate(upgradePath));
+
+  const rollback = await section("Rollback");
+  expect(await within(rollback).findByText("Queued")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: abandon })).toBeNull();
+  held.reads.resolve();
+  await act(() => held.reads.promise);
+  expect(within(await section("Rollback")).getByText("Queued")).toBeTruthy();
+});
+
 test("a rollback's job under way is read every second; seen stopped, the upgrade is read again once, the page staying: what is left, Continue and End; then nothing is read", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const job = underWay(rollbackJobJSON(70), 1, 4);
@@ -370,7 +527,7 @@ test("a rollback's job seen done, everything put back, reads the upgrade again: 
   expect(reads(server, "GET upgrade")).toBe(2);
 });
 
-test("a rollback's job seen stopped, the upgrade's read again refused as busy: it is read once, and the page offers to try again", async () => {
+test("a rollback's job seen stopped, the upgrade's read again failing: it is read once, and the page offers to try again", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const job = underWay(rollbackJobJSON(70), 1, 4);
   let answered = 0;
@@ -380,7 +537,7 @@ test("a rollback's job seen stopped, the upgrade's read again refused as busy: i
     answers: {
       [`GET ${plans}/upgrade`]: () => {
         server.asked.push("GET upgrade");
-        return ++answered === 1 ? json(rollbackOf(job)) : problem(503, "server_busy");
+        return ++answered === 1 ? json(rollbackOf(job)) : problem(500, "internal_error");
       },
     },
   });

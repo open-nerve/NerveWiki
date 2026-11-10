@@ -566,6 +566,52 @@ test("a start answered once the settings were left takes no one anywhere: the no
   expect(router.state.location.pathname).toBe(home);
 });
 
+test("a start answered once the settings were left shows on the upgrade's page later, its read out, not the none under way read before it", async () => {
+  const user = userEvent.setup();
+  const started = deferred<void>();
+  const read = deferred<void>();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    answers: {
+      [`POST ${plans}/upgrade`]: async () => {
+        await started.promise;
+        server.withUpgrade(upgradeJSON());
+        return json(server.upgrade);
+      },
+      [`GET ${plans}/upgrade`]: async () => {
+        server.asked.push("GET upgrade");
+        if (server.upgrade === undefined) {
+          return problem(404, "wiki.upgrade_not_found");
+        }
+        await read.promise;
+        return json(server.upgrade);
+      },
+    },
+  });
+  const upgradePage = `/lab/notebooks/${notebookJSON.id}/upgrade`;
+  const { router } = renderApp(upgradePage, server.app);
+  expect(await screen.findByText("This notebook has no upgrade under way.")).toBeTruthy();
+  await act(() => router.navigate(general));
+  await user.click(await (await modeOf()).findByRole("button", { name: startLabel }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: startTitle })).getByRole("button", {
+      name: "Start the upgrade",
+    })
+  );
+  await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}`));
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  started.resolve();
+  expect(
+    await screen.findByText("This notebook is being upgraded to an LLM Wiki: it is read-only for now.")
+  ).toBeTruthy();
+
+  await act(() => router.navigate(upgradePage));
+
+  expect(await screen.findByText("Started by Ada on Oct 5, 2026, 8:00 AM.")).toBeTruthy();
+  expect(screen.queryByText("This notebook has no upgrade under way.")).toBeNull();
+  await waitFor(() => expect(server.asked).toEqual(["GET upgrade", "GET upgrade"]));
+  read.resolve();
+});
+
 test("an admin told no upgrade is under way who starts one at once lands on what the start answered, not on what was read, while it is read anew", async () => {
   const user = userEvent.setup();
   const read = deferred<void>();
