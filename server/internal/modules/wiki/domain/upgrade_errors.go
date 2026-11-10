@@ -33,7 +33,7 @@ var (
 	// whose wanted counts the baseline would get wrong, or the check of a
 	// submission (M11/P2 design 3.12): the text names neither.
 	ErrUpgradeStaleIndex = shared.NewError(shared.KindConflict, "wiki.upgrade_stale_index",
-		"The link index is out of date: a server admin runs nervewiki reindex, then try again.")
+		"The link index is out of date: ask a server admin to run nervewiki reindex, then try again.")
 	// ErrUpgradeNotFound: the notebook has no upgrade under way.
 	ErrUpgradeNotFound = shared.NewError(shared.KindNotFound, "wiki.upgrade_not_found", "The notebook has no upgrade under way.")
 	// ErrUpgradeState: the notebook's upgrade is not in a state that

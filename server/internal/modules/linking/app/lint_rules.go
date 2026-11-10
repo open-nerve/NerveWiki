@@ -42,7 +42,7 @@ func lintCopyQuery(q RuleQuery) RuleQuery {
 
 func lintQuery(q RuleQuery, s *ReadScope) (lintPlan, error) {
 	allowed := domain.ApplicableRules(s.mode)
-	if q.WantedByPage && q.Rule != nil && *q.Rule != domain.Wanted || q.AreaWantedByPage && !q.WantedByPage {
+	if q.WantedByPage && q.Rule != nil && *q.Rule != domain.Wanted || q.AreaWantedByPage && (!q.WantedByPage || q.Rule == nil) {
 		return lintPlan{}, errLintQuery
 	}
 	if q.Rule == nil {

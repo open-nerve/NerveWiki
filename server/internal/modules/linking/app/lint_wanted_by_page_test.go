@@ -177,10 +177,12 @@ func TestTheWantedCountsByPage(t *testing.T) {
 			}
 		}
 	})
-	// The second pass alone is no query: it adds to the first pass's.
+	// The second pass alone is no query: it adds to the first pass's; nor
+	// with the summary, which runs no second pass (review A-N2).
 	t.Run("the-second-pass-alone", func(t *testing.T) {
 		f, in := lintByPageFixture()
-		for _, q := range []app.RuleQuery{{AreaWantedByPage: true}, {Rule: lintPtr(domain.Wanted), Limit: 1, AreaWantedByPage: true}} {
+		for _, q := range []app.RuleQuery{{AreaWantedByPage: true}, {Rule: lintPtr(domain.Wanted), Limit: 1, AreaWantedByPage: true},
+			{WantedByPage: true, AreaWantedByPage: true}} {
 			if _, err := f.rules().Prepare(t.Context(), in, q); err == nil {
 				t.Errorf("%+v was prepared", q)
 			}

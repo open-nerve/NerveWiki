@@ -39,8 +39,10 @@ type ReadInput struct {
 // WantedByPage, with the summary or with the wanted rule, also counts each
 // general emitter's distinct wanted targets: an upgrade's check compares
 // them with its baseline (M11 design 4.7 gate 6). AreaWantedByPage, with
-// WantedByPage only, adds an LLM contract's area's current pages, as an
-// upgrade's start records them (the second pass, M11/P2 design 3.8).
+// WantedByPage and the wanted rule only, adds an LLM contract's area's
+// current pages, as an upgrade's start records them (the second pass,
+// M11/P2 design 3.8); with the summary it would be dropped, so it is
+// refused (M11/P2/S2 review A-N2).
 type RuleQuery struct {
 	Rule             *domain.Rule
 	After            *domain.Position
