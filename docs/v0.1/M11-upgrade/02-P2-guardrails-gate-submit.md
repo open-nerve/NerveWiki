@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P2 护栏、闸门与提交（三个 Step：S1 护栏（服务端）；S2 闸门、检查与提交（服务端）；S3 网页） |
-| 日期 | 2026-11-10（初稿）；2026-11-10（照设计审查第一轮修订）；2026-11-10（照修订核对第一轮修订）；2026-11-10（照修订核对第二轮修订，加第 267 条） |
-| 状态 | 进行中（设计已审查，S1 开工；[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节） |
+| 日期 | 2026-11-10（初稿）；2026-11-10（照设计审查第一轮修订）；2026-11-10（照修订核对第一轮修订）；2026-11-10（照修订核对第二轮修订，加第 267 条）；2026-11-10（照 S1 的实施与审查修订） |
+| 状态 | 进行中（S1 已合并 `（待填）`，S2 开工；设计的[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节；S1 的审查记录 [P2-S1-guardrails-review.md](reviews/P2-S1-guardrails-review.md)；实施与审查之后与代码不同之处照实改在各节（3.19 列出），结果在 10.1） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.6、4.7、4.8 的提交、4.13 的两个工具与说明、4.14、4.15 的检查与提交、4.16–4.18、第 5、7、8、9、10 节、第 11 节（尤其 180、182、186–191、196、197、208、210、215、216、219、222、232、236、240、244、249）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P2 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.25–3.28 的修正，第 9 节交给 P2 的事）；[P1 的审查记录](reviews/)（设计与 S1–S4）；[v0.1 总体设计](../v0.1-design.md) 5.8、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1 设计：模块写作 `page/app/unit.go:392`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00056_page_upgrade_nodes.sql:9`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:144`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up4-guardrails.spec.ts:23`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P1 收尾之后的 `main` `f002672b` 的（它在初稿读的 `d589e5a2`、`455f692c` 与 `ce370441` 之上只改了文档：`git diff d589e5a2 f002672b -- server api`、`git diff 455f692c f002672b -- web e2e Makefile .github` 都为空），修订时照它复核过一遍 |
 | 工作笔记 | 代码的核对分四份（page 的单元、守卫与批的计划；wiki 的 lint、`Runs` 与升级的用例；MCP 的注册、码表与说明；网页、e2e、组合根的测试设施与 CI），本文引的每个行号都在其中核对过（附录）。设计不跑重的东西，要量的在 7.6；审查者 A、B、C 的实测（守卫读正文的代价、闸门的读的计划与时长、CI 各份的用时）写在审查记录里，本文引它们的数 |
@@ -18,7 +18,7 @@
 - **S1 护栏（服务端）**（`m11-p2-s1`）：
   - 不改写链接的移动与改名：`Step.KeepLinks`，`page.upgrade_keep_links`（3.2）；
   - 正文的切分与逐步的比较：`domain.UpgradeBody`、`StepContent.BodyHash`、守卫读基线页的正文（`UpgradeNodes.BaselineContent`），`page.upgrade_immutable`；升级中一次 `batch` 盲写的已有页按 head 的字节数计进读的界（第 266 条）（3.3）；
-  - `batch` 的折进：计划的 `Folded`、`ContentWrite.Folded`、两个正文的码标在 `Last`，`page.upgrade_batch_rewrite`（3.4）；
+  - `batch` 的到达：计划的 `Reached`（此前的移动或改名改写过这一页就带着，升级中另照批前的链接判；第 268、270 条）、`ContentWrite.Reached`、两个正文的码标在 `Last`，`page.upgrade_batch_rewrite`（3.4）；
   - 账本：单元在每个正文步之后写 `accepted_hash`，升级中先核对它等于写之前的哈希（3.5）；
   - 三个码进 `mcpToolCodes()`、`upgradeToolCodes()`、`mcpOwnCodes()`；`TestUpgradeGuardrails` 与 UP4 补全；护栏的成本守卫（3.6、7.1）。
   - 网页：不改。三个码只在 MCP（第 210 条），REST 的操作不声明它们，`problem-messages.test.ts` 不要它们的文字（同 P1 的 `page.upgrade_protected`，P1 设计 4.1）。
@@ -78,7 +78,7 @@
 照代码，00 号文档有下面几处要改（行号是 `f002672b` 的 00 号文档的；第 4–10 节的行号与 `d589e5a2` 的相同，第 11 节在第 838 行之后多了 P1/S4 的一节）。接受本文的文档提交以脚本照改（`p2-apply-00.py`，每处一个带标签的替换，一处不匹配就什么也不写），第 8 节与第 9 节在同一个提交里一并改：
 
 1. **`StepContent.Body []byte` 是哈希，并且守卫要自己的切分**（4.6"比较" `:193`、第 8 节 page 一条 `:649`）：比的是两份 `body` 的 SHA-256，单元只要交"之后的那份"的哈希，`StepContent` 加 `BodyHash []byte`（不是正文本身：一个写最多 `MaxContentBytes` 字节，守卫用不着它）。"之前的那份"由守卫读（00 号文档的写法），守卫也要算 `body`，所以它与单元都要 frontmatter 的切分：`FrontmatterEnd` 不用 platform 的 Markdown 的配置（`page/adapter/markdown/markdown.go:52-54`），适配器加一个包级的 `FrontmatterEnd` 与零大小的 `Frontmatter` 类型，模块根的 `NewFreezeGuard(pool, auth, admin)` 自己交它，签名不变；单元经 `WriterDeps.Markdown`（模块根已有的 `md`，`page/module.go:302`）。守卫读"之前的那份"与"是不是基线页"合成一条读（`UpgradeBaselineContent`，3.3），不是 `Nodes.PageContent` 加一次基线的读。单元只为 `upgrading` 中不是 `Rewrite` 的正文步算 `BodyHash`（守卫不比 `Rewrite` 的步，单个 `move` 的改写页数不设界）。`StepContent.Body []byte` 改为 `StepContent.BodyHash []byte`，第 8 节 page 一条加"`WriterDeps.Markdown`、`WriterDeps.Ledger`、`UpgradeNodes.BaselineContent`"（3.3、3.5）。
-2. **`Folded` 取这一页最后一个正文操作时的样子，只修"之后的写整个换掉"这一种**（4.6"`batch` 的折进" `:197`、第 190 条 `:772`）：00 号文档写"一页的任何正文操作有过这样的改写就是 `Folded`"。一页的写（`write`）会整个换掉正文：折进之后又被一个不等于改写结果的写换掉，最终的正文里已没有改写，这时正文变了是 agent 自己的写，该答 `page.upgrade_immutable`，照 00 号文档的写法答 `page.upgrade_batch_rewrite`、叫 agent 去拆，拆了还是被拒。改为：编辑的路径上改写真的改了这一页就设上（编辑保留其余的正文，此前的折进也留着）；写的路径上改写改了这一页、写的恰是改写的结果就设上，写的不等于这一页当时的正文就清掉（它换掉了此前折进的改写），等于当时的正文就不动（第 254 条，3.4）。`Folded` 仍只说"最终的正文里带着折进的改写"，不说"正文的差别只来自改写"：折进之后又改了正文、或折进之前就写过别的正文时，守卫照样答 `page.upgrade_batch_rewrite`，拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`；反过来，"移动之后写下新的 frontmatter 与改写之后的正文"答 `page.upgrade_immutable`，分两个 `batch` 才过。这几种形状保留粗的判据，由码的文字与 playbook 说清（第 265 条，3.4 的表）。
+2. **`Folded` 取这一页最后一个正文操作时的样子，只修"之后的写整个换掉"这一种**（4.6"`batch` 的折进" `:197`、第 190 条 `:772`）：00 号文档写"一页的任何正文操作有过这样的改写就是 `Folded`"。一页的写（`write`）会整个换掉正文：折进之后又被一个不等于改写结果的写换掉，最终的正文里已没有改写，这时正文变了是 agent 自己的写，该答 `page.upgrade_immutable`，照 00 号文档的写法答 `page.upgrade_batch_rewrite`、叫 agent 去拆，拆了还是被拒。改为：编辑的路径上改写真的改了这一页就设上（编辑保留其余的正文，此前的折进也留着）；写的路径上改写改了这一页、写的恰是改写的结果就设上，写的不等于这一页当时的正文就清掉（它换掉了此前折进的改写），等于当时的正文就不动（第 254 条，3.4）。`Folded` 仍只说"最终的正文里带着折进的改写"，不说"正文的差别只来自改写"：折进之后又改了正文、或折进之前就写过别的正文时，守卫照样答 `page.upgrade_batch_rewrite`，拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`；反过来，"移动之后写下新的 frontmatter 与改写之后的正文"答 `page.upgrade_immutable`，分两个 `batch` 才过。这几种形状保留粗的判据，由码的文字与 playbook 说清（第 265 条，3.4 的表）。**S1 之后**：这一条里"写的不等于这一页当时的正文就清掉"与"'移动之后写下新的 frontmatter 与改写之后的正文'答 `page.upgrade_immutable`，分两个 `batch` 才过"已由第 268 条收回：此前的移动或改名改写过一页基线页之后再写它，写什么都答 `page.upgrade_batch_rewrite`，升级中另照批前的链接判（第 270 条）；00 号文档 4.6 与第 190、254、265 条随之改（3.19）。
 3. **闸门 2 的"不是活着的页"是缺陷**（4.7 闸门表 `source_root` 一行的"从哪里读" `:220`）：00 号文档写"不过时第 4–6 条与提示不算、记为不过"。提议的来源根是发起时写下的 `raw`（有保护行）或已有的 `raw`（基线节点），守卫不许删，种类也变不了；`upgrade_title_taken` 挡掉了附件（4.4 第 8 步）。它不是活页只能是缺陷，这时 lint 的显式范围本身答错误（`page/adapter/postgres/lint_metadata.go:63-65`），检查答 500、记一行 error，不另造一份没有规则的报告（契约的 `rules` 恒为八项、`stale_pages` 恒有值）。闸门 2 照旧判"活着的页，且不是根下的 `AGENTS`"，后一半是到得了的（B-Q2 的改名）（第 256 条，3.10）。
 4. **检查的快照里只读 wiki 的行**（4.7"一个快照" `:209`"读笔记本的升级列与 wiki 的行"）：两边在同一个事务里写、`checkPages` 守着一致（P1/S2 的升级规则），升级的 id、状态与提交的 id 都在 wiki 的行里，多读笔记本的列只是第二份同样的东西。改为"读 wiki 的行（进行中的那一行）"（3.11）。
 5. **检查只要第一遍的按页的数，第二遍另成一项**（4.7 闸门 6 `:224`、第 8 节 linking 一条 `:652`）：闸门 6 只比"现在在来源区以外"的基线页，这些页都在第一遍（`generalEmitter`）里；第二遍（发起时来源区里的基线页）只有发起要。今天 `WantedByPage` 只许与 `wanted` 一条规则同用、在 LLM 契约下连带第二遍（`linking/app/lint_rules.go:44-46`、`:120-122`），检查要的是"八条规则的摘要 + 第一遍的按页的数"。改为：`RuleQuery.WantedByPage` 可与摘要（`Rule == nil`）或 `wanted` 一条同用，只有第一遍；新的 `RuleQuery.AreaWantedByPage` 是第二遍，只与 `WantedByPage` 同用；发起两个都设（行为不变），检查只设前一个（3.8）。
@@ -101,26 +101,26 @@
 
 ### 2.2 需要负责人确认
 
-无。上面的二十一条是照代码改说法、位置或做法，不改负责人与主持者的决定；第 2 条细化第 190 条的判据（码更准，拒绝的范围不变），第 3 条把一种只有缺陷才到得了的情形从"记为不过"改成"答 500"，第 7 条让第 215 条的期限不晚于请求，第 15 条让 00 号文档已定的注解真的写出来，第 17 条让第 191 条的绊线不被系统的改写洗掉，第 18 条让升级中 `batch` 的读有界（`page.batch_too_large` 是 `batch` 已有的码）。
+无。上面的二十一条是照代码改说法、位置或做法，不改负责人与主持者的决定；第 2 条细化第 190 条的判据（码更准，拒绝的范围不变；S1 的第 268 条之后拒绝的范围扩大了，3.19），第 3 条把一种只有缺陷才到得了的情形从"记为不过"改成"答 500"，第 7 条让第 215 条的期限不晚于请求，第 15 条让 00 号文档已定的注解真的写出来，第 17 条让第 191 条的绊线不被系统的改写洗掉，第 18 条让升级中 `batch` 的读有界（`page.batch_too_large` 是 `batch` 已有的码）。
 
 ### 2.3 本文的取舍（主持者的决定，负责人可以改判）
 
-00 号文档没有定、本文取的做法。254–263 是初稿的十条（P2-1 到 P2-10），设计审查之后照次序给了正式编号；264–266 是审查之后新定的三条；267 是主持者在提交之前加的。接受本文的文档提交把它们写进 00 号文档第 11 节（`p2-apply-00.py`）：
+00 号文档没有定、本文取的做法。254–263 是初稿的十条（P2-1 到 P2-10），设计审查之后照次序给了正式编号；264–266 是审查之后新定的三条；267 是主持者在提交之前加的。接受本文的文档提交把它们写进 00 号文档第 11 节（`p2-apply-00.py`）；S1 的取舍 268–271 与第 267 条的提前在 3.19，S1 的文档提交写进 00 号文档第 11 节：
 
-- **254　`Folded` 取这一页最后一个正文操作时的样子**（2.1 第 2 条，3.4）：它只修"折进的改写已被 agent 自己之后的写整个换掉"这一种，那时答 `page.upgrade_immutable` 而不是叫它去拆；拒绝的范围不变。其余的形状照第 265 条。
+- **254　`Folded` 取这一页最后一个正文操作时的样子**（2.1 第 2 条，3.4）：它只修"折进的改写已被 agent 自己之后的写整个换掉"这一种，那时答 `page.upgrade_immutable` 而不是叫它去拆；拒绝的范围不变。其余的形状照第 265 条。S1 的第 268 条收回了写的路径上的清除，"拒绝的范围不变"也不再成立（3.19）。
 - **255　守卫以一条读取"是不是基线页"与它现在的正文**（2.1 第 1 条，3.3）：`upgrade_nodes` 的主键连 `page_contents` 的主键，不是基线页就没有行、不读正文；不在发起时记下每个基线页的正文哈希（那要在发起的事务里读并解压整本笔记本的正文，发起的成本守卫已经贴着期限，第 232 条）。账本的核对不在守卫里，在账本的写里（2.1 第 17 条）。
 - **256　提议的根不是活页是缺陷，检查答 500**（2.1 第 3 条，3.10）。
 - **257　条目的游标绑定在状态之后答 400；绑定看根、不看升级**（2.1 第 8 条，3.11）。
 - **258　提交的第二段的期限是 `min(submitted_at + SubmitTimeout, 请求的期限)`，交付之前的判定在第二个事务里、`COMMIT` 之前**（2.1 第 7 条，3.12）。
 - **259　升级页的"检查"只在 `upgrading`；审阅中只读地显示存下的报告；提交经确认对话框**（2.1 第 13 条，4.3）。
 - **260　矩阵里提交的管理员一格答 `wiki.upgrade_not_ready`**（2.1 第 12 条，3.15）。
-- **261　S2 开第八份**（7.5）：P2 的新组合根测试都以 `TestUpgrade` 起名。不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒（审查 C 照 P1 的同类实测的估计，7.5），邻份没有余量（最坏的一次第一份 446、第二份 443、第三份 430、第四份 418、第五份 443 秒；第六份 354 秒，P1 刚因 460 秒挪出过 `TestIngestBefore`），P3 还要往这一份加批准、驳回、退回与 prompt 的测试。所以 S2 的第一个提交开第八份 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`（第七份 `-skip` 它；改动的每一处与新文字在 6.2 第 1 个提交，照 P1 设计 3.8 与 00 号文档第 186 条），不提高 `-timeout`，不挪别的份；第 222 条的 `TestUpgradeToolsMatrix` 随之进第八份（2.1 第 19 条）。S1 不开：它只给第七份加 `TestUpgradeGuardrails` 的二十二格。
+- **261　S2 开第八份**（7.5）：P2 的新组合根测试都以 `TestUpgrade` 起名。不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒（审查 C 照 P1 的同类实测的估计，7.5），邻份没有余量（最坏的一次第一份 446、第二份 443、第三份 430、第四份 418、第五份 443 秒；第六份 354 秒，P1 刚因 460 秒挪出过 `TestIngestBefore`），P3 还要往这一份加批准、驳回、退回与 prompt 的测试。所以 S2 的第一个提交开第八份 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`（第七份 `-skip` 它；改动的每一处与新文字在 6.2 第 1 个提交，照 P1 设计 3.8 与 00 号文档第 186 条），不提高 `-timeout`，不挪别的份；第 222 条的 `TestUpgradeToolsMatrix` 随之进第八份（2.1 第 19 条）。S1 不开：它只给第七份加 `TestUpgradeGuardrails` 的格（设计时二十二格；S1 的审查之后二十七格，3.19、7.5）。
 - **262　检查的成本守卫定在 5 万页，十万页进 M12 的性能移交**（2.1 第 21 条，7.1）：审查 B 实测十万页的检查另加的读本机约 0.31–0.34 秒（并进 `not_kept` 之后，含 PostgreSQL 16 起的预排序聚合的一次排序，3.9）、lint 摘要 0.785 秒，7763 与本机之比 2.2–2.6，折到 7763 约 2.5–3.0 秒（worker 3 秒的 84–100%）；5 万页约 1.3–1.5 秒。照负责人 2026-11-06 的话（`docs/v0.1/M10-llm-wiki/00-M10-design.md:907`）调量级而不再优化，同第 232 条的写法。
 - **263　存下的报告的大小由表的检查守着，用例不另量**（2.1 第 16 条，3.10）：去掉游标之后最坏约 33 KB，过 65,536 字节只能是缺陷，表的检查拒绝、答 500；`wiki/adapter/postgres` 的 `TestTheWorstReportFits` 以最坏的形状经真库写进去，钉住它在界之内。
 - **264　自己提交时，升级页照实显示审阅中**（审查 P2C-I1、P2C-Q1，4.3）：第一个事务发出 `mode` 之后，页面换成审阅中，报告一节写"正在核对…"；对话框留在原处，答复回来之前不动。理由：与服务端的真状态（`reviewing`、`report: null`）一致，最省，不必在 `UpgradeRead` 里压住重读。
-- **265　`Folded` 保留粗的判据，把话说准**（审查 P2A-M3，3.4）：码的文字加 "…; the page's body itself may not change either"；playbook（P3/S2）写明拆开之后正文本身的改动仍被拒为 `immutable`；3.4 的表写出三种偏严的形状各自的码。理由：准确的做法要为每页带一份影子正文，代价与复杂度都高；粗的判据只在少数形状上给出偏严的码，文字与 playbook 能让 agent 读懂（负责人 2026-11-06：不要无限优化）。
+- **265　`Folded` 保留粗的判据，把话说准**（审查 P2A-M3，3.4）：码的文字加 "…; the page's body itself may not change either"；playbook（P3/S2）写明拆开之后正文本身的改动仍被拒为 `immutable`；3.4 的表写出三种偏严的形状各自的码。理由：准确的做法要为每页带一份影子正文，代价与复杂度都高；粗的判据只在少数形状上给出偏严的码，文字与 playbook 能让 agent 读懂（负责人 2026-11-06：不要无限优化）。S1 的第 268 条之后，g21 那一种（移动之后写下新的 frontmatter 与改写之后的正文）改答 `page.upgrade_batch_rewrite`，码的文字随之改写（3.19）。
 - **266　升级中 `batch` 的盲写按 head 的字节数计进读的界**（审查 P2A-M4，2.1 第 18 条，3.3）：计划读到的状态是 `upgrading` 时，`CheckReads` 把盲写的已有页的 head 也加进 `MaxBatchReadBytes` 的和，过了答 `page.batch_too_large`。计划不知道哪些页是基线页，已有页里不是基线的只有升级以来新建的页，一并计入只会让升级中的批略早被拒，agent 拆开即可；不多一次读。计划的状态不加锁读，单元在锁下看到的状态与它不同就重新计划，界没有例外（审查 P2A-N8）。
-- **267　costs-2 的作业时限从 35 分钟提到 45 分钟**（主持者在提交之前加；6.2 第 8 个提交，7.5）：`main` 的 CI 上 costs-2 在 EPYC 7763 上 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），在 EPYC 9V74 上 16:42（run 42749131694）。P2 往这一份加护栏的读（约 3 秒）与检查的守卫（估 40–70 秒，在 7763 上约 1.5 倍），作业在快机上约 18.5 分钟、在 7763 上约 25–26 分钟，35 分钟不到 `ci.yml` 注释里"约两倍"的规则。P1/S2 的审查 C 已经提过，当时说合并之后看 `main` 上的数。理由：负责人 2026-11-06 的话，调时限，不挪测试、不优化。
+- **267　costs-2 的作业时限从 35 分钟提到 45 分钟**（主持者在提交之前加；原在 6.2 第 8 个提交，S1 的修复 `80da6b1f` 已改，提前到 S1，3.19、7.5）：`main` 的 CI 上 costs-2 在 EPYC 7763 上 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），在 EPYC 9V74 上 16:42（run 42749131694）。P2 往这一份加护栏的读（约 3 秒）与检查的守卫（估 40–70 秒，在 7763 上约 1.5 倍），作业在快机上约 18.5 分钟、在 7763 上约 25–26 分钟，35 分钟不到 `ci.yml` 注释里"约两倍"的规则。P1/S2 的审查 C 已经提过，当时说合并之后看 `main` 上的数。理由：负责人 2026-11-06 的话，调时限，不挪测试、不优化。
 
 ## 3. 服务端
 
@@ -130,12 +130,12 @@
 |---|---|
 | `page/domain/errors.go` | 三个码（3.6） |
 | 新的 `page/domain/upgrade_body.go` | `UpgradeBody`、`UpgradeBodyHash`（3.3） |
-| `page/domain/batch_plan.go`、`batch_contents.go` | `plannedPage.folded`、`PlannedPage.Folded`、`holdsAt` 交回改写是否改了这一页（3.4）；`CheckReads` 在升级中把盲写的已有页计进读的界（3.3，第 266 条） |
-| `page/app/extension.go` | `Step.KeepLinks`、`StepContent.BodyHash`、`StepContent.BeforeHash`、`StepContent.Folded`（3.2–3.5） |
-| `page/app/unit.go`、`unit_content.go` | `step()` 带 `keepLinks`；`WriterDeps.Markdown`、`WriterDeps.Ledger`；`ContentWrite.Folded`；`writeContent` 算 `BodyHash`；`applyStep` 写账本（3.2–3.5） |
-| `page/app/apply_batch.go` | `content` 交 `Folded`、两个正文的码标在 `Last`（3.4） |
+| `page/domain/batch_plan.go`、`batch_contents.go` | `plannedPage.reached`、`PlannedPage.Reached`、`MarkReached`（第 268、270 条）、`holdsAt` 交回改写是否改了这一页（3.4）；`CheckReads` 在升级中把盲写的已有页计进读的界（3.3，第 266 条） |
+| `page/app/extension.go` | `Step.KeepLinks`、`StepContent.BodyHash`、`StepContent.BeforeHash`、`StepContent.Reached`（3.2–3.5） |
+| `page/app/unit.go`、`unit_content.go` | `step()` 带 `keepLinks`；`WriterDeps.Markdown`、`WriterDeps.Ledger`；`ContentWrite.Reached`；`writeContent` 算 `BodyHash`，升级中带 `Reached` 的字节不变的写也过守卫，守卫的准备与判定从 `applyStep` 抽成 `Unit.guarded`；`applyStep` 写账本（3.2–3.5，第 268 条） |
+| `page/app/apply_batch.go` | `content` 交 `Reached`、两个正文的码标在 `Last`；升级中 `reachedBefore` 照批前的链接问 `BatchLinks.Reached`（3.4，第 270 条）；`batchAttempt.upgrade` 记下计划读到的状态（3.3） |
 | `page/app/freeze_guard.go` | `guardrails` 加移动与改名、正文；`UpgradeNodes.BaselineContent`；`Frontmatters`（3.2、3.3） |
-| `page/app/ports.go` | `UpgradeLedger`（3.5） |
+| `page/app/ports.go` | `UpgradeLedger`（3.5）；`BatchLinks.Reached` 的注释（第 270 条） |
 | `page/adapter/markdown/markdown.go` | 包级的 `FrontmatterEnd` 与 `Frontmatter`（3.3） |
 | `page/adapter/postgres/queries/upgrade.sql`、`upgrade.go` | `UpgradeBaselineContent`、`AcceptUpgradeContent`（3.3、3.5） |
 | `page/freeze_guard.go`、`page/module.go` | 模块根交 `Frontmatter`；`WriterDeps` 交 `md` 与 `store`（3.3、3.5） |
@@ -234,12 +234,14 @@ func (Frontmatter) FrontmatterEnd(content string) int { return FrontmatterEnd(co
 	// unit locked it (ContentLock.Hash), in a notebook being upgraded: the
 	// ledger takes the step's only over it (M11/P2 design 3.5).
 	BeforeHash []byte
-	// Folded says a batch folded an earlier move's rewrite of this page's
-	// links into the content it writes (ContentWrite.Folded).
-	Folded bool
+	// Reached says a rename or move earlier in the step's batch rewrote
+	// this page's links (ContentWrite.Reached, PlannedPage.Reached).
+	Reached bool
 ```
 
-`WriterDeps`（`page/app/unit.go:25-58`）加 `Markdown Frontmatters`（新的窄端口，`app.Markdown` 已含它，`page/app/ports.go:786-788`；模块根交 `md`，`page/module.go:302-304`）。`writeContent`（`unit_content.go:50-107`）在 `contentStep`（`:111-122`）里：`u.write.Notebook.Upgrade.State == domain.UpgradeUpgrading && !w.Rewrite` 时设 `BodyHash: domain.UpgradeBodyHash(w.Content, u.w.d.Markdown.FrontmatterEnd(w.Content))`（参与者的改写守卫不比，不为它算一次全文的哈希：单个 `move` 的改写页数不设界，`batch_plan.go:41`）；笔记本有升级时设 `BeforeHash: current.Hash`（`LockContent` 已交回，`:51`，不多读）；`Folded: w.Folded`。字节不变的写在 `:66-78` 已返回，不算。会被冻结拒掉的写（别人的）在守卫之前分不出来，照算，不管。
+`WriterDeps`（`page/app/unit.go:25-58`）加 `Markdown Frontmatters`（新的窄端口，`app.Markdown` 已含它，`page/app/ports.go:786-788`；模块根交 `md`，`page/module.go:302-304`）。`writeContent`（`unit_content.go:50-107`）在 `contentStep`（`:111-122`）里：`u.write.Notebook.Upgrade.State == domain.UpgradeUpgrading && !w.Rewrite` 时设 `BodyHash: domain.UpgradeBodyHash(w.Content, u.w.d.Markdown.FrontmatterEnd(w.Content))`（参与者的改写守卫不比，不为它算一次全文的哈希：单个 `move` 的改写页数不设界，`batch_plan.go:41`）；笔记本有升级时设 `BeforeHash: current.Hash`（`LockContent` 已交回，`:51`，不多读）；`Reached: w.Reached`。字节不变的写在 `:66-78` 已返回，不算 `BodyHash`；例外见下一段。会被冻结拒掉的写（别人的）在守卫之前分不出来，照算，不管。
+
+**字节不变、被到达的写**（第 268 条；实施者在 S1 的修复一轮加，三位审查者都判它必要、不误拒）：写下的字节与库里相同时 `writeContent` 在第一个分支就返回，不造正文步，守卫看不到。一个 `batch` 改名之后写回一页基线页原来的字节（g23 的后一种），或把折进的 `[[Map]]` 编辑回 `[[A]]`（g25），推后的改写又只跟这一页最后一个正文操作之后的移动，链接就留在旧的名字上。所以升级中（`upgrading`）带 `Reached` 的这种写照一次写去过单元的守卫（`unit_content.go:80-89`）：`contentStep` 照真的写造步（`Change.Revision` 是 `current+1`，`BodyHash`、`BeforeHash`、`Reached` 都有），`Unit.guarded`（从 `applyStep` 抽出：来源行 → 来源哈希 → 守卫 → `refusalOf`，`unit.go:432-449`，`applyStep` 与它共用）判它，什么也不写、不写账本，返回原来的版本。基线页答 `page.upgrade_batch_rewrite`；不是基线页的，冻结放过（读一次基线行），之后模式与锁两个守卫照一次真的写判：升级中笔记本必定是 `standard`，模式守卫立即返回；升级中开不了编辑会话，锁守卫没有可拒的。没有升级、`reviewing`、`rolling_back` 与不带标记的写照旧不过守卫。
 
 **之前的那份与比较**（`page/app/freeze_guard.go`）：
 
@@ -259,9 +261,15 @@ type UpgradeNodes interface {
 
 func NewFreezeGuard(auth shared.Authorizer, admin shared.Action, nodes UpgradeNodes, md Frontmatters) *FreezeGuard
 
-// body refuses a write of a page of the baseline whose body is not the one
-// before the step: page.upgrade_batch_rewrite when a batch folded a move's
-// rewrite into it, page.upgrade_immutable otherwise (M11 design 4.6).
+// body refuses a write of a page of the baseline, marked with the page:
+// page.upgrade_batch_rewrite when a rename or move earlier in its batch
+// rewrote its links (StepContent.Reached), whatever the write (M11/P2
+// decision 268); page.upgrade_immutable when its body is not the one
+// before the step (M11 design 4.6). It compares the body of the content
+// the page holds now, under the lock of its content row the unit took,
+// with the step's, which the unit hashed (StepContent.BodyHash). A page
+// not of the baseline it lets by, reading no content; a step without the
+// body's hash is a defect's error.
 func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	id := s.Changes[0].NodeID
 	if s.Content == nil || s.Content.BodyHash == nil {
@@ -271,11 +279,11 @@ func (g *FreezeGuard) body(ctx context.Context, s Step) error {
 	if err != nil || !baseline {
 		return err
 	}
+	if s.Content.Reached {
+		return domain.Refuse(domain.ErrUpgradeBatchRewrite, id)
+	}
 	if bytes.Equal(domain.UpgradeBodyHash(before, g.md.FrontmatterEnd(before)), s.Content.BodyHash) {
 		return nil
-	}
-	if s.Content.Folded {
-		return domain.Refuse(domain.ErrUpgradeBatchRewrite, id)
 	}
 	return domain.Refuse(domain.ErrUpgradeImmutable, id)
 }
@@ -357,36 +365,44 @@ WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = sqlc.arg(node_id) AND 
 | 空的正文 | `---\na: 1\n---\n` | `---\na: 2\n---\n` | 是 |
 | 空的正文写进一字 | `---\na: 1\n---\n` | `---\na: 1\n---\nx` | 否 |
 
-`page/app` 的 `TestTheFreezeGuard` 加：基线页的正文变了答 `page.upgrade_immutable`、`Folded` 时答 `page.upgrade_batch_rewrite`、标在那一页；只改 frontmatter 放过；`Rewrite` 的步放过、不读；不是基线页放过、只读一次 `BaselineContent`、不读正文以外的东西；`BodyHash` 为空答缺陷的错误；移动与改名的两种不改写链接（`Options.UpdateLinks` 为假；`KeepLinks`）各答 `page.upgrade_keep_links`、标在这一步的根，改写链接的移动与改名放过、什么也不读。`page/app` 的 `TestTheUnitHashesTheBodyWhileUpgrading`：`upgrading` 时 `StepContent.BodyHash` 是 `UpgradeBodyHash`、`BeforeHash` 是锁到的哈希；`upgrading` 中 `Rewrite` 的步、`reviewing`、`rolling_back` 与没有升级时 `BodyHash` 为空；没有升级时 `BeforeHash` 也为空。`page/adapter/postgres` 的 `TestUpgradeBaselineContent`（基线页答正文；新建的页、保护行、附件的基线行、已删的页都答 `false`）。`page/domain` 的 `TestTheReadsBoundCountsBlindWritesWhileUpgrading`：同一个批（盲写的已有页 head 合计过 14 MiB，编辑的页在界内）在 `upgrading` 时答 `page.batch_too_large`、标在跨过界的那一页的第一个正文操作，在没有升级、`reviewing` 与 `rolling_back` 时过；升级中新建的页（批里新建的）不计。`page/app` 的 `TestTheBatchPlansAgainOnceTheUpgradeStarted`：计划时假的笔记本答没有升级，单元的 `Write.Notebook` 是 `upgrading`（计划之后、单元之前发起），单元重新计划一次，第二次计划把盲写计进和：过界时答 `page.batch_too_large`、什么也没写，在界内时照写。
+`page/app` 的 `TestTheFreezeGuard` 加：基线页的正文变了答 `page.upgrade_immutable`；带 `Reached` 时不论正文都答 `page.upgrade_batch_rewrite`（只改 frontmatter、"什么也没改"也答），都标在那一页；不是基线页的带不带 `Reached` 都放过；只改 frontmatter 放过；`Rewrite` 的步放过、不读；不是基线页放过、只读一次 `BaselineContent`、不读正文以外的东西；`BodyHash` 为空答缺陷的错误；移动与改名的两种不改写链接（`Options.UpdateLinks` 为假；`KeepLinks`）各答 `page.upgrade_keep_links`、标在这一步的根，改写链接的移动与改名放过、什么也不读。`page/app` 的 `TestTheUnitHashesTheBodyWhileUpgrading`：`upgrading` 时 `StepContent.BodyHash` 是 `UpgradeBodyHash`、`BeforeHash` 是锁到的哈希；`upgrading` 中 `Rewrite` 的步、`reviewing`、`rolling_back` 与没有升级时 `BodyHash` 为空；没有升级时 `BeforeHash` 也为空。`page/app` 的 `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`（第 268 条）：升级中带 `Reached` 的字节不变的写，守卫看到一个带 `Reached`、带 `BodyHash` 的正文步，守卫放过时照常做完、拒绝时答它、什么也没写；不带标记、或没有升级，守卫什么也看不到。`page/adapter/postgres` 的 `TestUpgradeBaselineContent`（基线页答正文；新建的页、保护行、附件的基线行、已删的页都答 `false`）。`page/domain` 的 `TestTheReadsBoundCountsBlindWritesWhileUpgrading`：同一个批（盲写的已有页 head 合计过 14 MiB，编辑的页在界内）在 `upgrading` 时答 `page.batch_too_large`、标在跨过界的那一页的第一个正文操作，在没有升级、`reviewing` 与 `rolling_back` 时过；升级中新建的页（批里新建的）不计。`page/app` 的 `TestTheBatchPlansAgainOnceTheUpgradeStarted`：计划时假的笔记本答没有升级，单元的 `Write.Notebook` 是 `upgrading`（计划之后、单元之前发起），单元重新计划一次，第二次计划把盲写计进和：过界时答 `page.batch_too_large`、什么也没写，在界内时照写。
 
 ### 3.4 S1：`batch` 的折进
 
-**计划**（`page/domain`）：`plannedPage`（`batch_plan.go:279-290`）加 `folded bool`，`PlannedPage`（`:265-274`）加
+**计划**（`page/domain`）：`plannedPage`（`batch_plan.go:279-290`）加 `reached bool`，`PlannedPage`（`:265-274`）加
 
 ```go
-	// Folded says the page's content at its last content op carries a
-	// rewrite of its links that a rename or a move before folded in: an
-	// edit's after one that changed the page, a write's that is the
-	// rewrite's bytes; a later write of other bytes replaced it (M11 design
-	// 4.6, decisions 190, 254). It says the rewrite is in the content, not
-	// that it is all the content's difference: the guardrails answer
-	// page.upgrade_batch_rewrite on any change of the body then (decision
-	// 265). Not ps.Moved: that is any move between two content ops, even
-	// one that rewrote nothing.
-	Folded bool
+	// Reached says a rename or a move earlier in the batch rewrote the
+	// page's links before one of its content ops: an edit's after a move
+	// whose rewrite changed the page, a write's after one whose rewrite
+	// would have, whatever the write's bytes; and, while upgrading, a move
+	// before its last content op that reaches a link the page had before
+	// the batch, whatever the page holds in the batch then (MarkReached,
+	// M11/P2 decision 270: a link taken out and put back follows the move
+	// no more than one kept). It sticks: a later write does not clear it.
+	// While upgrading, the guardrails answer
+	// page.upgrade_batch_rewrite for a page of the baseline so reached,
+	// whatever its content (M11/P2 decision 268, which withdrew decision
+	// 254's clearing): the batch's deferred rewrite follows only the moves
+	// after the page's last content op, so a write after the rename leaves
+	// the page's links on the old name, its bytes those the page holds,
+	// which no comparison of its body tells. Not ps.Moved: that is any move
+	// between two content ops, even one that rewrote nothing.
+	Reached bool
 ```
 
 由 `:986` 照抄。`holdsAt`（`batch_contents.go:183-197`）多交回一项 `rewrote bool`：有移动、改写的结果不等于改写之前的内容。`content`（`:65-`）里：
 
-- 写的路径（`:78-89`）：`same, size, rewrote, err := p.holdsAt(…)`；之后 `switch { case rewrote && same: pg.folded = true; case !same: pg.folded = false }`（写恰是改写的结果：最终的正文带着折进的改写；写的不是当时的正文：它换掉了此前的一切；等于当时的正文、又没有改写：不动）。
-- 编辑的路径（`:90-108`）：`rewritten != content` 时 `pg.folded = true`（编辑在改写之后的正文上替换，其余留着）；没有移动或改写什么也没改时不动。
+- 写的路径（`:78-89`）：`same, size, rewrote, err := p.holdsAt(…)`；之后 `if rewrote { pg.reached = true }`，不论写的字节，之后不清（第 268 条：写恰是改写的结果、写别的、写回这一页原来的字节，都可能让链接留在旧的名字上；初稿的 `case !same: pg.folded = false` 已删）。
+- 编辑的路径（`:90-108`）：`rewritten != content` 时 `pg.reached = true`（编辑在改写之后的正文上替换，其余留着），只设不清；没有移动或改写什么也没改时不动。
 - 新建的页（`:76-77`）不设：它们没有基线行，护栏不比。
+- 批前的链接（第 270 条，修复核对 P2S1A-M1）：一个 `batch` 先把 P 的 `[[A]]` 编辑成 `(A)`、再改名 A、再编辑回 `[[A]]`，改名的那一刻 P 在批里的内容不链向 A，正文的一遍设不上标记，最终的字节与库里相同，链接留在旧名字上。所以计划读到的状态是 `upgrading` 时，批的读（`apply_batch.go` 的 `read`）在 `CheckReads` 之后调 `reachedBefore`：按各页最后一个正文操作的次序，对本批不新建、最后一个正文操作之前有移动的页，以现有的 `BatchLinks.Reached` 按批前的索引问一次那些移动够不够得着它（移动、冻结的节点、移动之后新建的节点与树都取到 `pg.Last`，树的读用 `readsAt(pg.Last)` 的缓存）；写的页第一个正文操作就是最后一个、头已经问过时用头的答案，不再读。够得着就 `plan.MarkReached(id)`，在正文的一遍之前设上，之后照第 268 条粘住；新建的页不设。一页至多两次索引的读，整批不过 `MaxBatchOps` 减去移动数；普通笔记本、`reviewing`、`rolling_back` 一个操作也不多读。索引不是当前修订或当前抽取器时 `Reached` 答否，与批的改写看的是同一份索引（M6 的跳过），护栏不比改写更松、也不更严。新的读就是 `BatchLinks.Reached`，它的计划由 costs-2 的 `TestLinksReachedReadPlans`、`TestLinksReachedDenseReadPlans` 守着；单元守卫的五种形状里没有"移动之后写同一页"，量不到它，界不动。代价（第 271 条）：M9/P3 已接受、交给 M12 的"许多次改名之间的带链接的页"在升级中的计划约翻倍，本机 7.5 s 对 3.5–3.8 s，调用 10.1 s，照 7763 的比估约 18.6 s，过 15 秒的请求期限；过期限时什么也不写，拆开就能过（3.19，第 9 节）。正文的一遍在升级中仍有用：被够着的链接是本批加的、批前的索引里没有（只能在 frontmatter 里，g27 的 Q）。
 
-**单元**：`ContentWrite`（`unit_content.go:17-25`）加 `Folded bool // internal: a batch's page whose content carries a rewrite it folded in`，随 `contentStep` 进 `StepContent.Folded`（3.3）。`apply_batch.go` 的 `content`（`:706-739`）：
+**单元**：`ContentWrite`（`unit_content.go:17-25`）加 `Reached bool // internal: a batch's page a rename or move earlier in it rewrote (PlannedPage.Reached)`，随 `contentStep` 进 `StepContent.Reached`（3.3）。`apply_batch.go` 的 `content`（`:706-739`）：
 
 ```go
 	revision, err := u.WriteContent(ctx, ContentWrite{NodeID: at.Node.ID, Content: pg.Content, Facts: a.facts[pg.ID],
-		Base: lock.Revision, Merged: &pg.Merged, Folded: pg.Folded})
+		Base: lock.Revision, Merged: &pg.Merged, Reached: pg.Reached})
 	switch {
 	case errors.Is(err, domain.ErrRevisionMismatch):
 		// … as it is
@@ -401,29 +417,33 @@ WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = sqlc.arg(node_id) AND 
 
 `errors.Is` 认得包在 `Refused` 里的码（`shared.Error.Is` 比较种类与码，`shared/error.go:215-218`；`Refused` 有 `Unwrap`）。`page.upgrade_keep_links` 由 `move`（`:744-776`）标在那个移动上，`page.upgrade_protected` 由 `delete` 标在那个删除上（P1），都是默认的 `a.failed(i, err)`。
 
-**粗的判据**（第 265 条）：`Folded` 只说"最终的正文里带着折进的改写"，不说"正文的差别只来自改写"。守卫在正文变了而 `Folded` 时一律答 `page.upgrade_batch_rewrite`，于是有三种形状给出偏严的码（审查 P2A-M3，下表的后三行）：折进之后又改了正文、折进之前就写过别的正文，这两种拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`；"移动之后写下新的 frontmatter 与改写之后的正文"答 `page.upgrade_immutable`，分两个 `batch`（先移动，系统以 `Rewrite` 改写、账本跟上；再写）才过。准确的做法要为每页带一份不折进改写的影子正文、编辑在影子上找不到原文时记为依赖改写，再把影子的 `body` 的哈希交给守卫；代价与复杂度都高，这几种形状只在 agent 同时改正文时出现，而正文本身本来就改不了。所以保留粗的判据，`page.upgrade_batch_rewrite` 的文字加一句"正文本身也不能改"（3.6），playbook（P3/S2）写明拆开之后正文的改动仍被拒（第 9 节）。
+**粗的判据**（第 265 条；第 268 条之后更粗）：`Reached` 只说"此前的移动或改名改写过这一页"，不看写下的正文。守卫对带标记的基线页一律答 `page.upgrade_batch_rewrite`，于是有几种形状的码偏严：折进之后又改了正文、折进之前就写过别的正文（g19、g20），这两种拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`；"移动之后写下新的 frontmatter 与改写之后的正文"（g21）分两个 `batch`（先移动，系统以 `Rewrite` 改写、账本跟上；再写）就过。初稿的"写的不是当时的正文，就换掉了此前的改写，答 `page.upgrade_immutable`"不成立：推后的改写只跟这一页最后一个正文操作之后的移动，改名之后的写不论写了什么，都可能让链接留在旧的名字上（g23 断链、g24 指向别处、g25 编辑改回），而字节可能与库里相同，比正文看不出（审查 P2S1A-I1，第 268 条）。准确的做法要为每页带一份不折进改写的影子正文、编辑在影子上找不到原文时记为依赖改写，再把影子的 `body` 的哈希交给守卫；代价与复杂度都高，而拆开的写法对 agent 总是可行。所以保留粗的判据，`page.upgrade_batch_rewrite` 的文字写明拆法、并说"正文本身也不能改"（3.6），playbook（P3/S2）写明拆开之后正文的改动仍被拒（第 9 节）。
 
-**为什么不是"改了又改回"**：同一页在一个 `batch` 里改了又改回，单元只写最终的正文（M10 的 `Merged`），护栏只比最终的，放过（第 208 条），与分开调用不同；playbook 与 5.8 写明（P3/S2）。
+**为什么不是"改了又改回"**：同一页在一个 `batch` 里改了又改回，单元只写最终的正文（M10 的 `Merged`），护栏只比最终的，放过（第 208 条），与分开调用不同；中间有移动改写过它（g25，第 268 条）、或中间的移动照它批前的链接够着它（g27，第 270 条）时不放过；playbook 与 5.8 写明（P3/S2）。
 
-**测试**：`page/domain` 的 `TestThePlanTellsAFoldedRewrite`（表，每种一个反例）：
+**测试**：`page/domain` 的 `TestThePlanTellsAPageAMoveReached`（原名 `TestThePlanTellsAFoldedRewrite`；表，每种一个反例）：
 
-| 形状 | `Folded` | 这一页是基线页时守卫答的码（编辑与写只改 frontmatter，除非另写） |
+| 形状 | `Reached` | 这一页是基线页时守卫答的码（编辑与写只改 frontmatter，除非另写） |
 |---|---|---|
-| 移动 A（这一页链向 A），再编辑这一页 | 真 | `page.upgrade_batch_rewrite` |
-| 无关的移动（这一页不链向它），再编辑这一页 | 假（`ps.Moved` 为真） | 放过（编辑改正文时 `page.upgrade_immutable`） |
+| 移动 A（这一页链向 A），再编辑这一页 | 真 | `page.upgrade_batch_rewrite`（g9） |
+| 无关的移动（这一页不链向它），再编辑这一页 | 假（`ps.Moved` 为真） | 放过（编辑改正文时 `page.upgrade_immutable`，g11） |
 | 链向 A 的这一页索引过时、改写什么也没改，再编辑 | 假 | 放过 |
 | 移动 A，再写这一页、内容恰是改写的结果 | 真 | `page.upgrade_batch_rewrite` |
-| 移动 A，再写这一页、内容不等于改写的结果 | 假 | 放过（写的是原来的正文，链接留着旧的路径）；正文另改时 `page.upgrade_immutable` |
-| 编辑（折进），再写别的内容 | 假（写换掉了折进的改写） | `page.upgrade_immutable` |
-| 编辑（折进），再写同样的内容 | 真 | `page.upgrade_batch_rewrite` |
-| 编辑（折进），再编辑一处无关的字 | 真 | `page.upgrade_batch_rewrite` |
-| 先编辑、后移动 A（改写由推后的参与者写） | 假 | 放过（改写以 `Rewrite` 写） |
-| 新建的页 | 假 | 放过（不是基线页） |
-| 移动 A，再编辑这一页的正文一处（折进之后又改了正文） | 真 | `page.upgrade_batch_rewrite`；拆开之后那个编辑单独被拒为 `page.upgrade_immutable`（第 265 条） |
-| 写这一页（正文变了、写下的内容链向 A 或 B），移动 A、移动 B，再编辑这一页 | 真（编辑处 `MovesBetween` 非空、改写改了内容，与此前的写无关） | `page.upgrade_batch_rewrite`；拆开之后那个写被拒为 `page.upgrade_immutable`（第 265 条） |
-| 移动 A，再写这一页 = 新的 frontmatter 与改写之后的正文 | 假（写的不是改写的原样） | `page.upgrade_immutable`；分两个 `batch` 过（第 265 条） |
+| 移动 A，再写这一页、内容是别的字节 | 真（第 268 条） | `page.upgrade_batch_rewrite`（g23 的前一种，g24） |
+| 移动 A，再写这一页原来的字节 | 真（第 268 条） | `page.upgrade_batch_rewrite`：字节不变，单元照一次写过守卫（g23 的后一种） |
+| 编辑（被到达），再写别的内容 | 真（第 268 条，不清） | `page.upgrade_batch_rewrite` |
+| 编辑（被到达），再写同样的内容 | 真 | `page.upgrade_batch_rewrite` |
+| 编辑（被到达），再编辑一处无关的字 | 真 | `page.upgrade_batch_rewrite` |
+| 编辑（被到达），一次这一页不链向的移动，再编辑 | 真（`Moved` 是 op 1 与 op 3） | `page.upgrade_batch_rewrite`（审查 P2S1C-M1） |
+| 先编辑、后移动 A（改写由推后的参与者写） | 假 | 放过（改写以 `Rewrite` 写；移动在最后一个正文操作之后，批前的链接也不问） |
+| 移动 A，再编辑这一页的正文一处（折进之后又改了正文） | 真 | `page.upgrade_batch_rewrite`；拆开之后那个编辑单独被拒为 `page.upgrade_immutable`（g19，第 265 条） |
+| 写这一页（正文变了、写下的内容链向 A 或 B），移动 A、移动 B，再编辑这一页 | 真（编辑处 `MovesBetween` 非空、改写改了内容） | `page.upgrade_batch_rewrite`；拆开之后那个写被拒为 `page.upgrade_immutable`（g20，第 265 条） |
+| 移动 A，再写这一页 = 新的 frontmatter 与改写之后的正文 | 真（第 268 条） | `page.upgrade_batch_rewrite`；分两个 `batch` 过（g21） |
+| 编辑这一页的正文，一次这一页不链向的移动，再写同样的字节 | 假（`Moved` 是那个写） | `page.upgrade_immutable`（正文变了；实施的变异 o9 补的一行） |
+| 新建的页（`MarkReached` 也不标） | 假 | 放过（不是基线页） |
+| 正文的一遍之前已标上（`MarkReached`，第 270 条），之后拿掉链接、一次无关的移动、放回；或写别的字节、一次无关的移动、写回 | 真（粘住） | `page.upgrade_batch_rewrite`（g27） |
 
-`page/domain` 的表断言 `Folded`；第三列的码由 `TestUpgradeGuardrails` 的 g9、g11、g19–g21 经整个程序断言（3.6）。`page/app` 的 `TestTheBatchMarksABodysRefusalAtTheLast`（替身的守卫在 `Folded` 的写上答两个码之一）：失败项的 `Op` 是这一页的 `Last`，别的码仍标在 `First`。
+`page/domain` 的表断言 `Reached`；第三列的码由 `TestUpgradeGuardrails` 的 g9、g11、g19–g21、g23–g25、g27 经整个程序断言（3.6）。`page/app` 的 `TestTheBatchMarksABodysRefusalAtTheLast`（替身的守卫在带 `Reached` 的写上答两个码之一）：失败项的 `Op` 是这一页的 `Last`，别的码仍标在 `First`。`page/app` 的 `TestTheBatchJudgesAPageByItsLinksBeforeIt`（第 270 条，十格；替身照冻结的守卫拒带标记的正文步）：A 的两种形状（编辑拿掉→改名→编辑放回；写不带链接的字节→改名→写原来的字节）在升级中、索引说够得着时答 `page.upgrade_batch_rewrite`、标在 P 的最后一个操作、P 没被写、问一次，够不着时做完；头的页只写一次时用头的答案；头的页有后来的正文操作时问两次（`askedFirst` 两格）；普通笔记本的格做完、只有头的问（数读）。字节不变、被到达的写由 `page/app` 的 `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds` 钉住（3.3）。
 
 ### 3.5 S1：账本
 
@@ -492,11 +512,12 @@ SELECT (SELECT count(*) FROM b)::integer AS baseline, (SELECT count(*) FROM u)::
 	// body, past its frontmatter, changed (M11 design 4.6).
 	ErrUpgradeImmutable = shared.NewError(shared.KindConflict, "page.upgrade_immutable",
 		"The page was there when the upgrade started: an upgrade may change its frontmatter, not the content after it.")
-	// ErrUpgradeBatchRewrite: a batch folded a rename's or move's rewrite of
-	// the links of a page the upgrade started with into the content it
-	// writes (M11 design 4.6, decision 190).
+	// ErrUpgradeBatchRewrite: a batch's write of a page the upgrade started
+	// with whose links a rename or move earlier in the batch rewrote,
+	// whatever it writes (M11 design 4.6, decision 190; M11/P2 decision
+	// 268).
 	ErrUpgradeBatchRewrite = shared.NewError(shared.KindConflict, "page.upgrade_batch_rewrite",
-		"A move earlier in the batch rewrote this page's links into its content, which was there when the upgrade started: write the page first and move after, or in two batches; the page's body itself may not change either.")
+		"A move earlier in the batch rewrote the links of this page, which was there when the upgrade started; the batch may not write it after that: write the page first and move after, or use two batches. The page's body itself may not change either.")
 	// ErrUpgradeKeepLinks: a move or rename that leaves the links to the
 	// node as they are, while upgrading (M11 design 4.6).
 	ErrUpgradeKeepLinks = shared.NewError(shared.KindConflict, "page.upgrade_keep_links",
@@ -535,13 +556,18 @@ SELECT (SELECT count(*) FROM b)::integer AS baseline, (SELECT count(*) FROM u)::
 | g13 | `batch` 带 `update_links: false` 的移动 | `page.upgrade_keep_links`，`op` 是那个移动 |
 | g14 | 一页以 `---` 起、没有收尾行的基线页：前面加一块有效的 frontmatter | 成功（旧的整页成了正文，字节不变） |
 | g15 | 一页带收尾行的无效 frontmatter 的基线页：就地改成有效的；另一页在前面另加一块 | 前者成功，后者 `page.upgrade_immutable` |
-| g16 | 字节不变的写 | 成功、什么也没写（第 211 条） |
+| g16 | 字节不变的写（没有被同一个 `batch` 里的移动到达；被到达的见 g23 的后一种） | 成功、什么也没写（第 211 条） |
 | g17 | 以 SQL 绕过单元改一页基线页 P 的正文（`UPDATE page_contents` 的正文与哈希），再由发起人只改 P 的 frontmatter | 工具答 `internal_error`，什么也没写，账本照旧（护栏放过，账本的写核对 `before` 不等，3.5）；S2 的 `TestUpgradeGates` 以同一个绕过核对闸门 7 不过 |
 | g18 | 以 SQL 同样绕过 P，再 `move` 一页 P 链向的页（`update_links` 缺省） | 工具答 `internal_error`，什么也没写（参与者以 `Rewrite` 改写 P，守卫不读，账本的写核对 `before` 不等，3.5；审查 P2A-M2） |
 | g19 | `batch`：移动 A、再编辑链向 A 的基线页 P 的正文一处 | `page.upgrade_batch_rewrite`；拆开（先编辑、再移动）答 `page.upgrade_immutable`（第 265 条） |
 | g20 | `batch`：写 P（正文变了、链向 A）、移动 A、移动 B、再编辑 P 的 frontmatter | `page.upgrade_batch_rewrite`；拆开之后那个写答 `page.upgrade_immutable`（第 265 条） |
-| g21 | `batch`：移动 A、再写 P = 新的 frontmatter 与改写之后的正文 | `page.upgrade_immutable`；分两个 `batch`（先移动、再写）成功（第 265 条） |
-| g22 | `batch`：盲写 3 页基线页，各删掉一块约 5 MiB 的 frontmatter（发起之前经 REST 写下这三页），head 合计过 14 MiB | `page.batch_too_large`，标在跨过界的那一页的第一个正文操作，什么也没写（第 266 条）；同一个批在没有升级的笔记本上过计划的界 |
+| g21 | `batch`：移动 A、再写 P = 新的 frontmatter 与改写之后的正文 | `page.upgrade_batch_rewrite`（第 268 条；原来是 `page.upgrade_immutable`）；分两个 `batch`（先移动、再写）成功（第 265 条） |
+| g22 | `batch`：盲写 3 页基线页，各删掉一块约 5 MiB 的 frontmatter（发起之前以 SQL 写下这三页：经 REST 在竞态下解析约 15 MiB，贴着测试的请求期限，3.19），head 合计过 14 MiB | `page.batch_too_large`，标在跨过界的那一页的第一个正文操作，什么也没写（第 266 条）；同一个批在没有升级的笔记本上过计划的界 |
+| g23 | `batch`：移动 A、再以原来的正文加新的 frontmatter 写 P；或写 P 原来的字节（第 268 条，断链） | 两种都答 `page.upgrade_batch_rewrite`，`op` 1，什么也没写（后一种字节不变，单元照一次写过守卫）；拆成先写后移动的一个 `batch` 做完，P 是 `type: b` 与 `[[Map]]`，账本相符 |
+| g24 | `batch`：移动 A、新写一页 `A.md`、再同样写 P（第 268 条，指向别处） | `page.upgrade_batch_rewrite`，`op` 2 |
+| g25 | `batch`：移动 A、再编辑 P 把 `[[Map]]` 改回 `[[A]]`（第 268 条） | `page.upgrade_batch_rewrite`，`op` 1 |
+| g26 | agent 升级以来写的页 N 链向 A；`batch` 移动 A 之后写 N 原来的字节、写别的字节、或编辑把改写改回，各在自己的笔记本里（审查 P2S1C-N5） | 都做完，N 是 agent 写的样子；P（基线页、本批不写）由推后的改写写成 `[[Map]]`。守卫在读基线行之前就看 `Reached` 时在这里失败 |
+| g27 | `batch`：编辑把 P 的 `[[A]]` 拿掉成 `(A)`、改名 A、再放回；同样的形状，改名之后另写 `A.md`；另一本里基线页 Q 由本批在 frontmatter 加 `see: "[[A]]"`、改名 A、再编辑 Q 的 `type`，或以旧名写回整个 Q（第 270 条） | 前两种答 `page.upgrade_batch_rewrite`，`op` 2、3，什么也没写；先放回、后改名做完，P 是 `[[Map]]`，账本相符；Q 的两种在 `op` 2 答 `page.upgrade_batch_rewrite`（这条链接批前的索引里没有，只有正文的一遍标得上，第 268 条） |
 
 ### 3.7 S2 的文件
 
@@ -1393,7 +1419,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 - 正文的比较：形状表 `TestTheUpgradeBodyShapes`；g2、g3、g15 的后一半；只改 frontmatter 放过（g1、g14、g15 的前一半）与 `Rewrite` 放过（g4、g10）各是反向的钉。
 - 账本的写核对写之前的哈希：g17、g18；`TestAcceptUpgradeContent` 的不等一格；`TestTheUnitKeepsTheLedger` 的 `before`。
 - 升级中盲写计进读的界：`TestTheReadsBoundCountsBlindWritesWhileUpgrading`；单元看到的状态与计划时的不同就重新计划：`TestTheBatchPlansAgainOnceTheUpgradeStarted`；g22。
-- `Folded`：`TestThePlanTellsAFoldedRewrite` 的表；g9 与 g11（码不同）、g19–g21（第 265 条的三种）；标在 `Last`：g9 的 `op`、`TestTheBatchMarksABodysRefusalAtTheLast`。
+- `Reached`：`TestThePlanTellsAPageAMoveReached` 的表；g9 与 g11（码不同）、g19–g21（第 265 条的三种）、g23–g25（第 268 条）；字节不变、被到达的写也过守卫：`TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`、g23 的后一种、g25；不是基线页照常做完：g26；照批前的链接判：`TestTheBatchJudgesAPageByItsLinksBeforeIt`、g27；标在 `Last`：g9 的 `op`、`TestTheBatchMarksABodysRefusalAtTheLast`。
 - 账本：g4、g10 的账本；`TestTheUnitKeepsTheLedger`。
 - 闸门：`TestJudgeUpgrade` 的每格；整个程序的 `TestUpgradeGates`（7.1）。
 - 快照里的核对：交错第 8 条；`TestTheCheckRefusesAnotherUpgradesSnapshot`。
@@ -1404,6 +1430,43 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 - 报告的大小：`TestTheWorstReportFits`。
 - 闸门的读的计划：`TestTheUpgradeGateReadsPlansAtAnyStatistics`（7.1）；`changesets` 只经 `changesets_upgrade_id_idx`：它的"从未分析"一格与 `TestTheRollbackGuardJudgesThePlans` 的合成的 `BitmapAnd` 一格。
 - 自己的提交在算时页面照实显示、再检查恰读一次；检查的视图从 `data` 推出，检查在飞时卸下又装回也显示结果；同一页的链接再点一次是新的一次进入：4.3 的 vitest。
+
+### 3.19 S1 的实施对设计的修正
+
+S1 的审查与两轮修复核对见 [S1 的审查记录](reviews/P2-S1-guardrails-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里（第 0 节，2.1 第 2 条与 2.2、2.3，3.1–3.4、3.6、3.18，第 5 节，6.1、6.2，7.1、7.3、7.5、7.6，第 8、9 节）。S1 新写的代码多写文件与名字；写了行号的，是修复第二轮之后的头 `198b0cd5` 的。
+
+- **S1，实施时定下的**（实施者的 14 条偏离，括号里是它的号。三位审查者各在自己的范围里判过：A 判第 3、5、6、7、12、13 条，B 判第 1、2、4、9、11、13 条，C 判第 3、9、12、13 条，都对；第 8、10 条没有人提出异议，B 核过五种形状的算术；第 14 条由审查 P2S1C-N1 改回）：
+  - 7.1：单元守卫的期限取 14 秒，不是"守卫配置下的请求期限 6 s"。批的 bench 用生产的 15 秒请求（`TestABatchAtItsRewriteBoundTakesItsTime` 在同一个 bench 上，自己的界 11 秒），14 秒是在这个请求里留 1 秒（决定 153、243）。最大的单元（形状 a）本机 1.7 秒、7763 上 3.2 秒。回归的界另取本机两轮较大的中位数的三倍、向上取到 100 毫秒：a 5.2 s、b 1.1 s、c 200 ms、d 100 ms、e 100 ms（1）。
+  - 7.1：形状 b 照字面（100 页各约 140 KB 的 frontmatter 编辑），最终内容合计约 14 MiB，过 `MaxUnitBytes`（8 MiB），`CheckUnit` 答 `page.batch_too_large`，单元不会跑。改为每页一行约 62 KB 的 frontmatter 由编辑删掉：`old_string` 合计约 6 MiB，在 `MaxBatchStringBytes` 之内；头合计约 13.8 MiB，最终约 8 MiB。这是计划整读一次、守卫再读一次的最大的编辑单元（2）。B 核过算术：头 14,502,300 ≤ 14,680,064，最终 8,301,900 ≤ 8,388,608，删掉的 6,200,400 ≤ 6,291,456。
+  - 3.3：`CheckReads` 一遍按 `p.order`（第一个正文操作的次序）计，盲写插在其中；过界时标的页与已有的注释"at the page that passes it"一致。设计的草稿是先计整读的、再计盲写的，会把一个排在盲写之后、跨过界的编辑标到更早的盲写上（3）。
+  - 7.1、7.6：读的守卫是三种统计 × 两种计划。第四种（`force_generic_plan`）就是"通用计划"那一列；每格既判计划又计时（4）。
+  - 3.6：g22 的三页以 SQL 种下（`seedPagesSQL`）。三页各约 5 MiB 的 frontmatter 经 REST 在竞态下要解析约 15 MiB，贴着测试 4 秒的请求期限（05-lessons 第 1 节"大的种子用 SQL"）（5）。
+  - 6.1：`StepContent.Folded` 在 4 号提交加，它在 4 号才有写者与读者（6）。
+  - 3.5：`AcceptUpgradeContent` 的两个 CTE 带表的别名（`b` 里叫 `r`，`u` 里叫 `w`）。两个 CTE 都读写 `upgrade_nodes`，不带别名时 sqlc 报 `upgrade_id` 有歧义；语义不变（7）。
+  - 7.1：形状 c 是一个 `edit` 操作的 `batch`，在批的 bench 上与单独的 `edit` 走同一个单元（8）。批的 bench 给 `/mcp` 以 wire 的请求体上限（`mcpBodyLimit`）；bench 原来用默认的 1 MiB，形状 b 的约 6 MiB 的 `old_string` 会答 413（9）。
+  - 7.1：单元守卫的种子：b–e 的页以 SQL 写，每轮之间以 SQL 写回（账本一起）；a 与 c 由下一轮自己写回；e 的 100 页以一条 `generate_series` 写。不另逐页核对，只断言账本与最后一个变更集带升级（10）。
+  - 7.5：读的守卫本机约 17 秒（种子 12.7 秒），不是"约 3 秒"。照决定 240 种了两次升级各 10 万行的基线，另有九本各 5 万页的笔记本与它们的升级（11）。
+  - 3.2、7.3 第 3 条：多一个 `TestTheUnitStepCarriesKeepLinks`（`page/app`），钉住单元的每一步带 `keepLinks`，第二个改名为假（清掉的那一步）（12）。
+  - 第 5 节：UP4 的 Notes 以从根起的路径链向 Plan（`[the plan](/Plan.md)`），改名的一半照旧用 `[[Old]]`；文件夹是先写的一页 `Work.md`（MCP 的 `move` 不建父页）（13）。只写名字的链接（`Plan.md`、`[[Plan]]`）在 Plan 移进文件夹之后照样解析到它（`linking/domain/rewrite.go` 的 `markdownTarget`），系统不改写。设计没有写错：00 号文档 4.6、决定 190 都没说"移动改写每一条链接"。但第 5 节照字面会写出按名字链接的 Notes，所以第 5 节与第 9 节的 playbook 各补一句（审查 P2S1C-N2）。
+  - 第 5 节：实施读版本号用数据库（14）。审查 P2S1C-N1 照 00 号文档第 9 节"值来自答复"改为从 `createPage` 的答复取（`bff70ffc`），库只为断言读。
+- **S1，审查与两轮修复带来的**（编号是 S1 的审查记录的；主持者的决定 268–271 与第 267 条的提前见审查记录与 00 号文档第 11 节）：
+  - **第 268 条**（P2S1A-I1、P2S1C-M1；`060b365a`）：一个 `batch` 里前面的改名或移动改写过一页基线页的链接，之后对这一页的正文操作一律答 `page.upgrade_batch_rewrite`，不论写下什么。情形：先改名 A，再以原来的正文写链向 A 的基线页 P；正文与库里的相同（改名的改写还没写进库），推后的改写又只跟 P 最后一个正文操作之后的移动，P 的链接于是断了，或静静地指向改名之后另建的 A，闸门 6、7 都看不出。设计 3.4 的表第 5 行"放过"本身就错（它是设计修订核对时 P2A-N6 建议的文字）。
+    - 计划的 `PlannedPage.Folded` 改名为 `Reached`：这一页某个正文操作之前、上一个正文操作之后，有改名或移动改写了它，就设上，之后不清。写的路径是 `holdsAt` 的 `rewrote` 为真，不论写的字节；编辑的路径照旧是改写改了内容。`ContentWrite.Reached` 经 `StepContent.Reached` 到守卫（3.3、3.4）。
+    - 守卫 `body` 先判缺陷（没有 `BodyHash`），再读基线行（不是基线页就放过，不读正文），再看 `Reached`（带标记答 `page.upgrade_batch_rewrite`），最后比正文（不同答 `page.upgrade_immutable`）（3.3）。
+    - 码的英文文字改成写下的正文不带改写时也成立的说法（3.6）。
+    - 3.4 的表的第 5、6、13 行与 g21 改为带标记、答 `page.upgrade_batch_rewrite`；整个程序加 g23（断链）、g24（指向别处）、g25（编辑改回）（3.6）。
+    - 它收回第 254 条写的路径上的清除，第 265 条说的偏严形状里 g21 那一种改了，2.2 的"拒绝的范围不变"不再成立（2.1 第 2 条、2.2、2.3 的注）。
+  - **字节不变、被到达的写也过守卫**（实施者在修复一轮自加，说明里没写；三位修复核对都判它必要、不误拒；`060b365a`）：写下的字节与库里相同时，`writeContent` 在第一个分支就返回，不造正文步，守卫根本看不到。g23 的"写 P 原来的字节"与 g25 的"编辑把 `[[Map]]` 改回 `[[A]]`"只改守卫的次序挡不住。所以升级中带 `Reached` 的这种写照一次写去过单元的守卫，什么也不写。守卫的准备与判定从 `applyStep` 抽成 `Unit.guarded`，两处共用（3.3）。
+  - **第 270 条**（修复核对一轮的 P2S1A-M1；`0b016421`）：升级中判"这一页被够着过"，还要看这一页在 `batch` 之前的链接。情形：先把 P 里的 `[[A]]` 编辑成 `(A)`，再改名 A，再编辑回 `[[A]]`；改名的那一刻 P 在批里的内容不链向 A，标记设不上，最终的字节与库里相同，链接留在旧名字上。批的读在 `CheckReads` 之后调 `reachedBefore`：照现有的 `BatchLinks.Reached` 按批前的索引问到各页最后一个正文操作为止，够得着就 `plan.MarkReached`，在正文的一遍之前设上，之后照第 268 条粘住。只在计划读到的状态是 `upgrading` 时做（3.4）。代价（第 271 条，修复核对 P2S1B-M2）：最后一个正文操作之前有移动的已有页各多一次索引的问，在计划里、至多到解析的界；一般的最大规模上很便宜（改名一页、再编辑 49 页满负载的页，合计约 36–40 ms），但 M9/P3 已接受、交给 M12 的"许多次改名之间的带链接的页"在升级中的计划约翻倍：本机 7.5 s 对 3.5–3.8 s，调用 10.1 s，照 7763 的比估约 18.6 s，过 15 秒的请求期限；过期限时什么也不写，拆开就能过；不改代码，写进 M12 的性能移交（第 9 节）。
+  - **第 269 条与第 267 条的提前**（P2S1B-M1；`80da6b1f`）：guards-core 的作业时限 30 → 40 分钟，costs-2 35 → 45 分钟。7763 上 guards-core 的末行在第 19.4 分钟才开始，costs-2 加了 S1 的一行之后末行约在第 23–24.3 分钟开始；卡住时 Go 默认的 10 分钟超时离作业时限只剩约半分钟到 1 分钟，runner 先把作业杀掉，打不出卡住的测试。6.2 第 8 个提交的"改 `timeout: 45`"改为"S1 已改"（6.2、7.1、7.5）。
+  - **测试**：重新计划加"从同一个升级的 `reviewing` 到 `upgrading`"两格（P2S1A-N1）；g14、g15 成功的一半各加 `holds`（P2S1A-N2）；形状 a 的注释写明这条界守的主要是 M9 的改写（P2S1B-N1）；`contentStep` 的注释照字节不变、被到达的那一种改（P2S1C-N4）；组合根加 g26，钉住"不是基线页、被移动到达"的写照常做完（P2S1C-N5）；g27 钉住第 270 条，其中 Q 的两格让第 268 条正文一遍的判据在组合根上也被抓到（3.6、7.3）。
+  - **只记下、不改历史的**：`90134668` 改了 `Makefile` 与 `ci.yml`，范围只写 `server`，部件该写 `build`、`ci`（P2S1C-N3）。6.1 第 5 条、6.2 第 1、8 条的范围随之写成 `server, build, ci`（6.2 第 1 条另有 `docs`）。
+  - **交给后面的**：
+    - guards-sources 下次改到它时，照第 269 条的写法提到 40 分钟（审查 B：7763 上作业 16.7–16.9 分钟，时限 30 分钟，约 1.8 倍）。
+    - S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上末行约第 34 分钟开始，卡住时约第 44 分钟打出，离 45 分钟约 1 分钟）。
+    - P3/S2 的 playbook 写拆法与只写名字的链接（第 9 节）。
+    - P2/S2 的一个测试提交把 `mcp_test.go:269`、`:272` 等日志的两个 2 秒改成 10 秒（`TestTheMCPCallStopsWhenTheClientGoes` 在本机负载下第三次失败，`heavy.sh` 挡不住；S1 的审查记录"推后"）。
+    - M12 的性能移交：第 271 条的数，接在 M9 那一项之后（第 9 节）。
 
 ## 4. 网页
 
@@ -1506,7 +1569,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 | 故事（`e2e/stories/upgrade/`） | 版本与 Step | 内容 |
 |---|---|---|
-| `up4-guardrails.spec.ts` UP4 护栏 | MCP：S1 补全（P1 的删除一个测试照旧） | 两个新的测试。**正文与移动**：一本有 Plan、Notes（链向 Plan 与 Old）、Old（以 `---` 起、没有收尾行）、Broken（带收尾行的无效 frontmatter）、Other（同样无效）的笔记本，经 REST 种下、发起；发起人的 agent：给 Plan 加 frontmatter（成功）；`edit` Plan 的正文一字（`page.upgrade_immutable`）；`move` Plan 带 `update_links: false`（`page.upgrade_keep_links`）；`move` Plan 进一个新的文件夹（成功，Notes 被系统改写）；`move` Old 改名为 `Legacy.md`（成功，Notes 里指向 Old 的链接被系统改写；00 号文档第 9 节 UP4 一行的"改名放行"，审查 P2C-M4）；新建一页、改它的正文（成功）；Legacy（原 Old）前面加一块（成功）；Broken 就地改成有效的（成功）、Other 前面另加一块（`page.upgrade_immutable`）。数据库：被拒的页的正文不变，Old 的名字是 `Legacy`、Legacy 的正文（切掉 frontmatter 之后）不变，Notes 的正文是两次改写之后的，`expectBaselineKept`。**`batch`**：一个 `batch` 先把 Plan 移走、再改 Notes 的 frontmatter，答 `page.upgrade_batch_rewrite`、`op` 是 Notes 的那个操作、什么也没写；拆成先改 Notes、再移 Plan 的一个 `batch`，成功，Notes 带着新的链接；`expectBaselineKept`。API 豁免：REST 的写在冻结里就被拒（P1 设计第 5 节） |
+| `up4-guardrails.spec.ts` UP4 护栏 | MCP：S1 补全（P1 的删除一个测试照旧） | 两个新的测试。**正文与移动**：一本有 Plan、Notes（链向 Plan 与 Old）、Old（以 `---` 起、没有收尾行）、Broken（带收尾行的无效 frontmatter）、Other（同样无效）的笔记本，经 REST 种下、发起（基线页的 `base_version` 取 `createPage` 的答复，审查 P2S1C-N1）；发起人的 agent：给 Plan 加 frontmatter（成功）；`edit` Plan 的正文一字（`page.upgrade_immutable`）；`move` Plan 带 `update_links: false`（`page.upgrade_keep_links`）；`move` Plan 进一个新的文件夹（成功，Notes 被系统改写：Notes 以从根起的路径 `[the plan](/Plan.md)` 链向 Plan，文件夹是先写的一页 `Work.md`。只写名字的链接，移动之后照样解析，系统不改写；"移动之后系统改写链接"只对写了路径的链接成立，审查 P2S1C-N2）；`move` Old 改名为 `Legacy.md`（成功，Notes 里指向 Old 的链接被系统改写；00 号文档第 9 节 UP4 一行的"改名放行"，审查 P2C-M4）；新建一页、改它的正文（成功）；Legacy（原 Old）前面加一块（成功）；Broken 就地改成有效的（成功）、Other 前面另加一块（`page.upgrade_immutable`）。数据库：被拒的页的正文不变，Old 的名字是 `Legacy`、Legacy 的正文（切掉 frontmatter 之后）不变，Notes 的正文是两次改写之后的，`expectBaselineKept`。**`batch`**：一个 `batch` 先把 Plan 移走、再改 Notes 的 frontmatter，答 `page.upgrade_batch_rewrite`、`op` 是 Notes 的那个操作、什么也没写；拆成先改 Notes、再移 Plan 的一个 `batch`，成功，Notes 带着新的链接；`expectBaselineKept`。API 豁免：REST 的写在冻结里就被拒（P1 设计第 5 节） |
 | `up5-check-submit.spec.ts` UP5 检查与提交 | API（MCP 写作准备）、MCP：S2；页面：S3 | **API**：一本有 Plan（链向一个不存在的 Missing）与六页 Note 1–6 的笔记本，经 REST 种下、发起；`checkUpgrade` 答 200、`passed` 为假、`frontmatter` 不过、`missing_type` 七项（摘要五项、`next_cursor`）；`listUpgradeCheckItems` 以那个游标读到其余两项；`submitUpgrade` 答 409 `wiki.upgrade_not_ready`（`detail` 列出 `frontmatter`），`getUpgrade` 是 `upgrading`、`submitted_by` 为空；agent 经 MCP 给七页加 `type` 与 `summary`；再检查 `passed` 为真、`counts.wanted_before` 与 `wanted_now` 都是 1、`new_pages` 是 2（补写的两页）；`submitUpgrade` 答 200 `reviewing`、带报告；`getUpgrade` 的报告等于提交的答复的；`expectUpgrade`；agent 的写答 `notebook.upgrading`（审阅中对所有人冻结）。**MCP**：同样的一本，经 `upgrade_verify`（不带 `rule`：闸门与路径；带 `rule: "missing_type", limit: 1`：一项与 `next_cursor`）、`upgrade_submit`（工具的错误 `wiki.upgrade_not_ready`；修好之后 `{state: "reviewing", submitted_at}`），审阅中 `upgrade_verify` 照答、`passed` 为真，`write` 答 `notebook.upgrading`；`expectUpgrade` 读 REST 的 `getUpgrade`。**页面**（Chromium）：管理员打开升级页，按"检查"，`frontmatter` 没有通过、"缺少 type"一卡五项与"更多"，按"更多"读到其余两项；按"提交审阅…"、确认，对话框写 `upgrade.notReady`，检查自动重读一次（计算之中页面可能照实闪过审阅中，第 264 条；断言只看结局：对话框的拒绝、检查一节回来、读到的是新的一代）；关上，焦点在"提交审阅…"；agent 经 MCP 修好；"再检查一次"全部通过；提交，对话框关上、焦点在标题，页面显示审阅中与报告，横幅写"已提交，等待管理员审阅"。刻意的 409 一个，以 `pageWatch.expectConsole({ errors: [failedToLoad(409)] })` 声明，另断言 `apiFailures` 恰是这一条（13.2 第 9 条） |
 
 UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只给 UP1 与 UP7；对话框与 LW12 是同一个 `ConfirmDialog`）。`wiki.upgrade_stale_index` 不进 e2e：故事里造不出过时的索引（要以 SQL 记旧，同 P1 的发起），由 `TestUpgradeSubmit` 盖住。对话框与按钮按确切的名字找（05-lessons 第 6 节）。`make e2e` 从 518 个到 523 个（UP4 两个、UP5 三个）。
@@ -1528,17 +1591,18 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 1. `server: an upgrade's move or rename rewrites the links to what it moves (M11/P2/S1)`：3.2；`page.upgrade_keep_links`：`mcpToolCodes()` 的 `move`、`batch` 两行、`upgradeToolCodes()` 的两对、`mcpOwnCodes()`；`TestUpgradeToolsErrorsCarryTheirCodes` 的两种情形（`move`、`batch` 带 `update_links: false`，两个入口各一次）；`TestTheFreezeGuard` 的两种不改写链接；`TestUpgradeGuardrails` 的 g5、g6、g13。
 2. `server: an upgrade's agent changes a page's frontmatter, not its body, and the ledger checks each write (M11/P2/S1)`：3.3（读的上界除外）、3.5；`page.upgrade_immutable`：`mcpToolCodes()` 的 `write`、`edit`、`batch` 三行、`upgradeToolCodes()` 的三对、`mcpOwnCodes()`；`TestUpgradeToolsErrorsCarryTheirCodes` 的三种情形（`write`、`edit`、`batch` 改基线页的正文）；g1–g4、g7、g8、g14–g18；`TestTheUpgradeBodyShapes`、`TestTheFreezeGuard` 的加项、`TestTheUnitHashesTheBodyWhileUpgrading`、`TestTheUnitKeepsTheLedger`、`TestUpgradeBaselineContent`、`TestAcceptUpgradeContent`。
 3. `server: while upgrading, a batch's blind writes count in its reads' bound (M11/P2/S1)`：3.3 的"读的上界"（第 266 条）；`CheckReads`；单元比计划时的状态（`differs(…, "state")`）；`TestTheReadsBoundCountsBlindWritesWhileUpgrading`、`TestTheBatchPlansAgainOnceTheUpgradeStarted`；g22。码是 `batch` 已有的 `page.batch_too_large`，码表不变。
-4. `server: a batch's rewrite folded into a page's body is refused at its last content op (M11/P2/S1)`：3.4；`page.upgrade_batch_rewrite`：`batch` 一行、一对、`mcpOwnCodes()`；`TestUpgradeToolsErrorsCarryTheirCodes` 的一种情形（先移动后编辑折进的改写）；g9–g12、g19–g21；`TestThePlanTellsAFoldedRewrite`、`TestTheBatchMarksABodysRefusalAtTheLast`。
-5. `server: the guardrails' reads and units take their time (M11/P2/S1)`：7.1 的两个守卫。成本分份的说明（行号是 `f002672b` 的）：
+4. `server: a batch's rewrite folded into a page's body is refused at its last content op (M11/P2/S1)`：3.4；`page.upgrade_batch_rewrite`：`batch` 一行、一对、`mcpOwnCodes()`；`TestUpgradeToolsErrorsCarryTheirCodes` 的一种情形（先移动后编辑折进的改写）；g9–g12、g19–g21；`TestThePlanTellsAFoldedRewrite`、`TestTheBatchMarksABodysRefusalAtTheLast`。（记录：`f6de159e` 照这里写的 `Folded` 实施；修复一轮的 `060b365a` 照第 268 条改成粘住的 `Reached`，`TestThePlanTellsAFoldedRewrite` 改名 `TestThePlanTellsAPageAMoveReached`，加 g23–g25；第二轮的 `0b016421` 照第 270 条补批前的链接与 g27，3.19。）
+5. `server, build, ci: the guardrails' reads and units take their time (M11/P2/S1)`：7.1 的两个守卫（已推的 `90134668` 范围只写 `server`，部件该写 `build`、`ci`，不改写，审查 P2S1C-N3）。成本分份的说明（行号是 `f002672b` 的）：
    - `Makefile`：`test-go-costs-2` 末尾（`:362` 之后）加一行与它的注释；说明（`:347`）"原成本命令第 14–20 条、LinksReached 物理守卫与删除护栏的读（CI 第二份；需要 Docker）"改为"原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起与两种护栏的读（CI 第二份；需要 Docker）"（发起的守卫是 P1/S2 加的，说明当时没改，一并补上）。`test-go-guards-core` 在 `TestABatchAtItsRewriteBoundTakesItsTime` 那一行（`:456-461`）之后加一行与它的注释。
    - `ci.yml`：costs 的注释（`:72-84`）末尾加"M11/P2/S1：costs-2 末尾加护栏的读一条（本机约 N 秒）；现共40条（13/12/15），时限不变。"；guards-core 的注释（`:94-98`）末尾加"M11/P2/S1：加护栏在界上的单元一行（本机约 N 秒），时限不变。"。
+   - S1 的修复（`80da6b1f`，范围 `ci`）另把 guards-core 的时限从 30 分钟提到 40 分钟、costs-2 从 35 分钟提到 45 分钟，注释各一段，带 run 号、作业用时与 runner（第 269 条，第 267 条提前，审查 P2S1B-M1）。
    - `06-environment.md`：第 50 行只列 CI 的各项，成本分份的条数与内容不在里面，不改。
 6. `e2e: UP4, the guardrails over MCP (M11/P2/S1)`：第 5 节；`expectBaselineKept`。
 7. `docs: …`（第 8 节第 4、5 条）。
 
 ### 6.2 S2（`m11-p2-s2`）
 
-1. `server, docs: the composition root's eighth shard (M11/P2/S2)`：第 261 条。照 P1 设计 3.8 的写法，每一处的旧文字与新文字（行号是 `f002672b` 的；审查 P2C-M3）：
+1. `server, build, ci, docs: the composition root's eighth shard (M11/P2/S2)`：第 261 条。照 P1 设计 3.8 的写法，每一处的旧文字与新文字（行号是 `f002672b` 的；审查 P2C-M3）：
    - `Makefile`：
      - `BOOTSTRAP_SEVENTH`（`:282`）之后加一段注释与 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`。注释："M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒（P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的 [U-Z] 时已跳过它们，别的份的模式不收它们。"之后接 S2 第 1 个提交时两轮的数。
      - `test-go-bootstrap-7`（`:315-316`）：说明"名字匹配 BOOTSTRAP_SEVENTH 的：升级的，……"改为"名字匹配 BOOTSTRAP_SEVENTH 且不匹配 BOOTSTRAP_EIGHTH 的：升级的（检查、闸门、提交与工具除外），……"；命令加 `-skip '$(BOOTSTRAP_EIGHTH)'`。
@@ -1561,9 +1625,9 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 5. `server, api, web: an upgrade's check and its rules' items (M11/P2/S2)`：3.11、3.13 的两个操作与 schema、HTTP 适配器、接线；`checkUpgrade`、`listUpgradeCheckItems` 的矩阵的行；`TestUpgradeCheck`、`TestUpgradeGates`；7.2 的另配的应用与第 8 条。
 6. `server, api, web: an upgrade's submission keeps its report (M11/P2/S2)`：3.12、`Upgrade.report`、`wiki.upgrade_not_ready`；网页的 `report: null` 与两处文字（4.2）；`submitUpgrade` 的矩阵的行；`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`（第 5、6、7、15 条、降级、检查跨过一次提交）、`TestUpgradeStatesReachTheStreams` 的提交三格；日志（3.16）；`wiring.submitTimeout`。
 7. `server, api, web: the agent checks and submits the upgrade (M11/P2/S2)`：3.14、3.15 的 MCP 部分；`mcpserver` 的 `destructiveHint` 与 `TestTheAnnotationsAreTheHints` 的一格、两处注释；"server update"（`events.yaml` 改了，所以带 `web`）；`TestUpgradeToolsMatrix`、`coveredMCPRows()`；`upgrade_submit` 的两行码、`upgradeToolCodes()` 的两对与 `TestUpgradeToolsErrorsCarryTheirCodes` 的情形。
-8. `server: an upgrade's check of fifty thousand pages takes its time, its reads plan by their keys (M11/P2/S2)`：7.1 的两个守卫（闸门的读的计划，检查的时长）；lint 的成本夹具的页数做成参数；`rollbackReadProblems` 加 `changesets` 与 `TestTheRollbackGuardJudgesThePlans` 的合成的一格。成本分份的说明（行号是 `f002672b` 的，S1 之后的文字）：
+8. `server, build, ci: an upgrade's check of fifty thousand pages takes its time, its reads plan by their keys (M11/P2/S2)`：7.1 的两个守卫（闸门的读的计划，检查的时长）；lint 的成本夹具的页数做成参数；`rollbackReadProblems` 加 `changesets` 与 `TestTheRollbackGuardJudgesThePlans` 的合成的一格。成本分份的说明（行号是 `f002672b` 的，S1 之后的文字）：
    - `Makefile`：`test-go-costs-2` 末尾加检查的守卫一行，说明改为"原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）"；`test-go-costs-3` 在 `TestARollbacksReadsTakeTheirTimeAtAnyStatistics` 那一行（`:392`）之后加计划的守卫一行，说明（`:365`）"原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）"改为"原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）"。
-   - `ci.yml`：costs-2 一项（`:87-88`）改 `timeout: 45`（第 267 条）；costs 的注释末尾加"M11/P2/S2：costs-2 末尾加检查的守卫一条（5 万页，本机约 N 秒）；costs-3 在回滚的读之后加闸门的读的计划一条（本机约 N 秒）；现共42条（13/13/16）。costs-2 在 main 上 EPYC 7763 22.2 分钟（42530568840）、23:17（42752100006），9V74 16:42（42749131694），加这一条之后估快机约 18.5 分钟、7763 约 25–26 分钟，照约两倍的规则时限从 35 分钟提到 45 分钟（00-M11 第 267 条）；costs-1、costs-3 不变。"。
+   - `ci.yml`：costs-2 的时限 S1 已改（45 分钟，第 267 条提前到 S1 的修复 `80da6b1f`，注释在那里）；costs 的注释末尾加"M11/P2/S2：costs-2 末尾加检查的守卫一条（5 万页，本机约 N 秒）；costs-3 在回滚的读之后加闸门的读的计划一条（本机约 N 秒）；现共42条（13/13/16），时限不变。"；加了这一条之后 costs-2 在 7763 上的作业用时与末行开始的时刻写进 S2 的记录（S1 的审查 B：慢三成的实例上卡住时离 45 分钟约 1 分钟）。
    - `06-environment.md`：同 S1，不改。
 9. `e2e: UP5 over the API and MCP (M11/P2/S2)`：第 5 节；`expectUpgrade` 的加项。
 10. `docs: …`（第 8 节第 4、5 条）。
@@ -1587,12 +1651,15 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 项 | 测试 | 在哪里 | Step |
 |---|---|---|---|
 | 正文的切分 | `TestTheUpgradeBodyShapes`（3.3 的形状表） | `page/adapter/markdown` | S1 |
-| 守卫：移动与改名、正文、`Folded` 的码 | `TestTheFreezeGuard` 的加项（3.3） | `page/app` | S1 |
+| 守卫：移动与改名、正文、`Reached` 的码（带标记的基线页一律 `batch_rewrite`，不是基线页的带不带都放过） | `TestTheFreezeGuard` 的加项（3.3） | `page/app` | S1 |
+| 单元的每一步带 `keepLinks` | `TestTheUnitStepCarriesKeepLinks`（3.2） | `page/app` | S1 |
 | 单元算 `BodyHash`（不为 `Rewrite`）、交 `BeforeHash`、写账本 | `TestTheUnitHashesTheBodyWhileUpgrading`、`TestTheUnitKeepsTheLedger` | `page/app` | S1 |
+| 升级中带 `Reached` 的字节不变的写也过守卫、什么也不写（第 268 条） | `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`（3.3） | `page/app` | S1 |
 | 升级中盲写计进读的界；单元看到的状态与计划时的不同就重新计划 | `TestTheReadsBoundCountsBlindWritesWhileUpgrading`、`TestTheBatchPlansAgainOnceTheUpgradeStarted`（3.3） | `page/domain`、`page/app` | S1 |
-| 计划的 `Folded` 与批的标记 | `TestThePlanTellsAFoldedRewrite`、`TestTheBatchMarksABodysRefusalAtTheLast` | `page/domain`、`page/app` | S1 |
+| 计划的 `Reached` 与批的标记 | `TestThePlanTellsAPageAMoveReached`、`TestTheBatchMarksABodysRefusalAtTheLast` | `page/domain`、`page/app` | S1 |
+| 升级中照批前的链接判"到达过"（第 270 条） | `TestTheBatchJudgesAPageByItsLinksBeforeIt`（3.4） | `page/app` | S1 |
 | 两条新读写 | `TestUpgradeBaselineContent`、`TestAcceptUpgradeContent`（`before` 等、不等、为空） | `page/adapter/postgres` | S1 |
-| 护栏经 MCP | `TestUpgradeGuardrails` 的 g1–g22（3.6） | 第七份 | S1 |
+| 护栏经 MCP | `TestUpgradeGuardrails` 的 g1–g27（3.6） | 第七份 | S1 |
 | MCP 的码 | `TestUpgradeToolsErrorsCarryTheirCodes`（S1 六种，S2 两行的全部）；第五份的 `TestTheMCPToolsErrorsCarryTheirCodes` 照旧减去 `upgradeToolCodes()` | 第七份（S2 起第八份）、第五份 | S1、S2 |
 | `Runs` 的键、结果、日志的名字；第二遍另成一项 | `TestTheUpgradeKeysJoinOnlyTheirOwn`、`TestTheRunsCopyACheck`、`TestTheUpgradeKindsAreNamed`；linking 的 `TestTheWantedCountsByPage` 两格 | `wiki/app`、`linking/app` | S2 |
 | 闸门的读 | `TestTheUpgradeGateReads`（含 `not_kept`：不在的节点、正文不是账本的页）、`TestTheUpgradeRoots` | `page/adapter/postgres`、`page` | S2 |
@@ -1630,12 +1697,12 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 
 | 守卫 | 规模 | Step | 判什么 |
 |---|---|---|---|
-| 护栏的读（`TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics`，`page/adapter/postgres`，`test-go-costs-2` 一行，紧接 P1 的删除护栏的读） | 照 P1 的删除护栏的夹具：两次升级各 10 万行基线（这一次的与另一本笔记本的），另种九本各 5 万页的笔记本作不该读的行；读 1,000 个基线页的 `UpgradeBaselineContent`、写 1,000 次 `AcceptUpgradeContent`（`before` 等于账本） | S1 | 四种统计状态（从未分析、分析过、只有另一次升级的统计、`force_generic_plan`）× 自定义与通用两种计划：`upgrade_nodes` 只经 `upgrade_nodes_pkey`、两列都在索引条件里；`page_contents` 只经 `page_contents_pkey`、在嵌套循环的内侧以外行的 `node_id` 读（`LATERAL … LIMIT 1` 不被拉成连接）；没有顺序扫描，一格计划有问题就停在计时之前。时长：每次读、每次写的中位数，界取本机两轮较大的中位数 × 3、向上取整到 5 ms |
-| 护栏在界上的单元（`TestUpgradeGuardrailsAtTheBatchBoundTakeTheirTime`，组合根，`test-go-guards-core` 一行，紧接 `TestABatchAtItsRewriteBoundTakesItsTime`） | 升级中的笔记本上由发起人的 agent 跑五种（审查 P2A-M4）：a. 一次改名改写 M9 的界上的那么多基线页（`MaxBatchRewrites` 页、每页 84 KB 与 200 条链接，`page/domain/batch_plan.go:33-45`；系统改写：不比正文，每页一次账本的写）；b. 一个 `batch` 编辑基线页的 frontmatter，这些页的 head 合计恰在 `MaxBatchReadBytes`（14 MiB）之内（100 页、各约 140 KB；计划读一次、守卫再读一次、两次哈希）；c. 一页 `MaxContentBytes` 的基线页改 frontmatter；d. 一个 `batch` 盲写基线页、各删掉一块大的 frontmatter，head 合计恰在 14 MiB 之内（两页 5 MiB、一页约 4 MiB）：升级中放得进的最大的单元；e. 100 个盲写、各删掉一页 5 MiB 基线页的大 frontmatter（A 实测本机 1.58 秒的那一种）：现在由计划答 `page.batch_too_large`，什么也没写。d、e 的页以 SQL 种下（100 页 × 5 MiB，lz4 之后约 207 MiB） | S1 | 单元持着笔记本行：a–d 每种的单元短于守卫配置下的请求期限 6 s（决定 153、243 判最大的单元；不取三倍的规则作上限），三倍的规则另作回归的界（本机两轮较大的中位数 × 3）；e 答它的码，用时在三倍的界之内（只有计划，不进单元）；同一形状在普通笔记本上的中位数一起打出，增量写进记录 |
+| 护栏的读（`TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics`，`page/adapter/postgres`，`test-go-costs-2` 一行，紧接 P1 的删除护栏的读） | 照 P1 的删除护栏的夹具：两次升级各 10 万行基线（这一次的与另一本笔记本的），另种九本各 5 万页的笔记本作不该读的行；读 1,000 个基线页的 `UpgradeBaselineContent`、写 1,000 次 `AcceptUpgradeContent`（`before` 等于账本） | S1 | 三种统计状态（从未分析、分析过、只有另一次升级的统计）× 自定义与通用两种计划（第四种 `force_generic_plan` 就是通用计划那一列，3.19），每格先判计划再计时：`upgrade_nodes` 只经 `upgrade_nodes_pkey`、两列都在索引条件里；`page_contents` 只经 `page_contents_pkey`、在嵌套循环的内侧以外行的 `node_id` 读（`LATERAL … LIMIT 1` 不被拉成连接）；没有顺序扫描，一格计划有问题就停在计时之前。时长：每次读、每次写的中位数，界取本机两轮较大的中位数 × 3、向上取整到 5 ms |
+| 护栏在界上的单元（`TestUpgradeGuardrailsAtTheBatchBoundTakeTheirTime`，组合根，`test-go-guards-core` 一行，紧接 `TestABatchAtItsRewriteBoundTakesItsTime`） | 升级中的笔记本上由发起人的 agent 跑五种（审查 P2A-M4）：a. 一次改名改写 M9 的界上的那么多基线页（`MaxBatchRewrites` 页、每页 84 KB 与 200 条链接，`page/domain/batch_plan.go:33-45`；系统改写：不比正文，每页一次账本的写）；b. 一个 `batch` 的 100 个编辑各删掉基线页 frontmatter 里一行约 62 KB，这些页的 head 合计约 13.8 MiB、恰在 `MaxBatchReadBytes`（14 MiB）之内，最终约 8 MiB（计划读一次、守卫再读一次、两次哈希；照字面的 140 KB 编辑过 `MaxUnitBytes`，单元不会跑，3.19）；c. 一页 `MaxContentBytes` 的基线页改 frontmatter（一个 `edit` 操作的 `batch`）；d. 一个 `batch` 盲写基线页、各删掉一块大的 frontmatter，head 合计恰在 14 MiB 之内（两页 5 MiB、一页约 4 MiB）：升级中放得进的最大的单元；e. 100 个盲写、各删掉一页 5 MiB 基线页的大 frontmatter（A 实测本机 1.58 秒的那一种）：现在由计划答 `page.batch_too_large`，什么也没写。b–e 的页以 SQL 种下、每轮之间以 SQL 写回（e 的 100 页 × 5 MiB 一条 `generate_series`，lz4 之后约 207 MiB）；批的 bench 给 `/mcp` 以 wire 的请求体上限 | S1 | 单元持着笔记本行：a–d 每种的单元短于 14 s（批的 bench 是生产的 15 秒请求，留 1 秒，3.19；决定 153、243 判最大的单元；不取三倍的规则作上限），三倍的规则另作回归的界（本机两轮较大的中位数 × 3、向上取到 100 ms：a 5.2 s、b 1.1 s、c 200 ms、d 100 ms、e 100 ms；a 的界守的主要是 M9 的改写，护栏多出的约 15–65 ms 在抖动之内，护栏的那一份由 b–e 量，审查 P2S1B-N1）；e 答它的码，用时在三倍的界之内（只有计划，不进单元）；同一形状在普通笔记本上的中位数一起打出，增量写进记录 |
 | 闸门的读的计划（`TestTheUpgradeGateReadsPlansAtAnyStatistics`，`page/adapter/postgres/upgrade_cost_test.go`，与帮手 `rollbackReadProblems` 同包，写法同 P1/S3 的 `TestARollbacksReadsTakeTheirTimeAtAnyStatistics`；`test-go-costs-3` 一行，紧接它；审查 P2B-N4） | 以 SQL 种下一本 10 万页的笔记本与它的升级的 10 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集、这本笔记本的 10 万个普通变更集；另九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集（决定 240，审查 B 的种子） | S2 | `UpgradeGateBaseline`、`UpgradePreserved`、`UpgradeChangesets` 在三种统计状态（从未分析、发起之后分析过、只有别的升级的统计）× 自定义与通用计划下：`upgrade_nodes` 只经 `upgrade_nodes_pkey` 的前缀、索引条件含 `upgrade_id`；`nodes`、`page_contents` 只经主键、在嵌套循环的内侧以外行的键读；`changesets` 只经 `changesets_upgrade_id_idx`（帮手的关系表加 `changesets`：`Index Scan`、`Bitmap Heap Scan` 之下的每一个 `Bitmap Index Scan` 都是它，条件里含 `upgrade_id =`）；在内侧逐行重复的扫描必须经外行的键，不许逐行重读整个集合（非 hashed 的 SubPlan、内侧的 `Materialize`、`CTE Scan`）。`UpgradePreserved` 的预排序聚合的 `Sort` 只在这次升级的行上，不判为问题（3.9）。一格计划有问题就失败；每条读的中位数带 `-v` 打出，不设时长的界，时长由下一行判 |
 | 检查（`TestUpgradeCheckTakesItsTimeAtAnyStatistics`，组合根，`test-go-costs-2` 一行，紧接发起的守卫） | 第 262 条：5 万页（审查 P2B-M2）。lint 的成本夹具（`bootstrap/wiki_lint_cost_fixture_test.go:41`）的页数做成参数（lint 的守卫照旧 10 万），这里取 5 万、改成普通笔记本、以 SQL 设成升级中：5 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集；另种九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集，这本笔记本另有 10 万个普通的变更集（决定 240，B 的种子）；配置照 lint 的守卫（请求 6 s、worker 3 s，`bootstrap/wiki_lint_cost_test.go:31-34`，M10 决定 160）；另一份种子里闸门 7 不过（一个基线页的正文不是账本的） | S2 | 只量时长，计划由上一行判（组合根导入不了 `page/adapter/postgres` 测试包里的帮手，审查 P2B-N4）：整个检查（`Module.CheckUpgrade`，经 `Runs`）在两份种子上（发起之后分析过）各三格的中位数，界取本机两轮较大的 × 3（向上取整到 100 ms）与 worker 的 80%（2.4 s）中较小的（B 的建议）。估计：B 实测十万页的检查另加的读并进 `not_kept` 之后本机约 0.31–0.34 秒（lint 摘要 0.785 秒），5 万页约一半；7763 与本机之比 2.2–2.6，折到 7763 约 1.3–1.5 秒，在 2.4 s 之内 |
 
-`Makefile` 的四行各带一行注释（规模、判什么、本机的数），同 P1 的写法；成本分份的说明随之改（6.1 第 5 个提交、6.2 第 8 个提交写出旧文字与新文字），costs-3 照旧 35 分钟、guards-core 照旧 30 分钟；costs-2 由 S2 第 8 个提交从 35 分钟提到 45 分钟（第 267 条，7.5）。
+`Makefile` 的四行各带一行注释（规模、判什么、本机的数），同 P1 的写法；成本分份的说明随之改（6.1 第 5 个提交、6.2 第 8 个提交写出旧文字与新文字），costs-3 照旧 35 分钟；guards-core 与 costs-2 由 S1 的修复（`80da6b1f`）从 30、35 分钟提到 40、45 分钟（第 269 条；第 267 条提前到 S1，审查 P2S1B-M1，7.5）。
 
 ### 7.2 交错
 
@@ -1666,13 +1733,13 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 
 ### 7.3 变异
 
-每个变异是实施时在本机对代码的一处改动，跑它旁边写的测试，要它失败（不提交；改回从备份复原）；第 10 节记下结果。第 84–86 行是修订核对第一轮之后加的，接在表尾、不重编前面的号（审查记录与对照里引的行号照旧）。
+每个变异是实施时在本机对代码的一处改动，跑它旁边写的测试，要它失败（不提交；改回从备份复原）；第 10 节记下结果。第 84–86 行是修订核对第一轮之后加的，接在表尾、不重编前面的号（审查记录与对照里引的行号照旧）。S1 的审查之后照第 268 条改第 17–20 行（第 19 行即修复一轮的 n1）；表尾接 S1 的两轮修复与审查者留下的变异，照它们在 [S1 的审查记录](reviews/P2-S1-guardrails-review.md) 里的名字记、不编号（3.19）。
 
 | # | 变异 | 让它失败的测试 | Step |
 |---|---|---|---|
 | 1 | `guardrails` 不判移动与改名 | `TestTheFreezeGuard`；g5、g6 | S1 |
 | 2 | 只看 `Options.UpdateLinks`、不看 `KeepLinks` | `TestTheFreezeGuard` 的 `KeepLinks` 一格；g13（批的单元 `UpdateLinks` 恒为真，只有 `KeepLinks` 说它不改写） | S1 |
-| 3 | `step()` 不带 `keepLinks` | g13 | S1 |
+| 3 | `step()` 不带 `keepLinks` | g13；`TestTheUnitStepCarriesKeepLinks` | S1 |
 | 4 | 正文不去 BOM | `TestTheUpgradeBodyShapes` 的两个 BOM 的格 | S1 |
 | 5 | 去掉开头的全部 BOM | 同上"两个 BOM 只去一个" | S1 |
 | 6 | 比全文的哈希 | g1、g14、g15 的前一半；`TestTheFreezeGuard` 的"只改 frontmatter 放过" | S1 |
@@ -1686,10 +1753,10 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 14 | `BaselineContent` 不限 `baseline`（保护行也比） | `TestUpgradeBaselineContent` 的保护行；g8 | S1 |
 | 15 | `CheckReads` 不计盲写 | `TestTheReadsBoundCountsBlindWritesWhileUpgrading`；g22 | S1 |
 | 16 | 盲写在没有升级时也计 | `TestTheReadsBoundCountsBlindWritesWhileUpgrading` 的"没有升级时过"；g22 的后一半 | S1 |
-| 17 | `Folded` 取 `Moved` | `TestThePlanTellsAFoldedRewrite` 的"无关的移动"；g11 | S1 |
-| 18 | 不传 `Folded`（`ContentWrite` 到 `StepContent`） | g9 | S1 |
-| 19 | 写的路径不清 `Folded`（第 254 条反过来） | `TestThePlanTellsAFoldedRewrite` 的"编辑（折进），再写别的内容" | S1 |
-| 20 | 写的路径只看此前有没有改写够着这一页，不看写的是不是改写的原样 | g21（答 `batch_rewrite` 而不是 `immutable`）；`TestThePlanTellsAFoldedRewrite` 的"移动 A，再写这一页、内容不等于改写的结果"与最后一行 | S1 |
+| 17 | `Reached` 取 `Moved` | `TestThePlanTellsAPageAMoveReached` 的"无关的移动"；g11 | S1 |
+| 18 | 不传 `Reached`（`ContentWrite` 到 `StepContent`） | g9；g23 | S1 |
+| 19 | 写的路径清掉标记（第 254 条的清除，第 268 条收回；修复一轮记作 n1） | `TestThePlanTellsAPageAMoveReached` 的"写别的字节"一类；g21；g23 | S1 |
+| 20 | 写的路径照第 254 条的规则，只在写的是改写的原样时设（`rewrote && same`） | `TestThePlanTellsAPageAMoveReached` 的"写别的字节"一类；g27 的 Q 格（第 270 条之后 g21、g23 分不出：批前的链接先把 P 标上） | S1 |
 | 21 | 正文的拒绝标在 `First` | `TestTheBatchMarksABodysRefusalAtTheLast` | S1 |
 | 22 | 所有错误都标在 `Last` | 同上的"别的码仍标在 `First`" | S1 |
 | 23 | 账本不在改写时更新（只在 `!Rewrite` 时写） | g4（账本不等于改写之后的哈希）；`TestTheUnitKeepsTheLedger` | S1 |
@@ -1756,6 +1823,29 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 84 | 单元不比计划时的状态（`apply` 开头的 `differs(…, "state")` 去掉） | `TestTheBatchPlansAgainOnceTheUpgradeStarted`（审查 P2A-N8） | S1 |
 | 85 | 检查一节的视图在 `onSuccess` 里建（同健康度页） | `upgrade-check.test.tsx` 的"检查在飞时自己提交"（审查 C 在修订核对里的怀疑） | S3 |
 | 86 | `UpgradePage` 不以 `key={location.key}` 渲染 `UpgradeRead` | `upgrade-check.test.tsx` 的"再点一次同一页的链接"（审查 P2C-N8） | S3 |
+| n2 | 编辑的路径清掉标记（`pg.reached = rewritten != content`） | `TestThePlanTellsAPageAMoveReached` 的"编辑被到达、一次不链向的移动、再编辑"；`page/domain` 全包 | S1 |
+| mv | 审查 C 的，同 n2（审查时写作 `pg.folded = rewritten != content`，审查 P2S1C-M1） | 同 n2 | S1 |
+| n3 | 守卫先比正文、相同就放过（第 268 条之前的次序） | `TestTheFreezeGuard`；g23；g25 | S1 |
+| n4 | 标记只在写的路径设，编辑的路径不设 | `TestThePlanTellsAPageAMoveReached`；g27 的 Q 格（第 270 条之后 g9、g25 分不出） | S1 |
+| n5 | 字节不变、被到达的写不过守卫 | `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`；g23 的后一种；g25 | S1 |
+| n6 | 字节不变时不论有没有升级都过守卫 | `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds` 的"no upgrade, reached" | S1 |
+| n7 | 字节不变时升级中不论标记都过守卫 | 同上的"upgrading, not reached" | S1 |
+| o9 | `holdsAt` 的 `rewrote` 恒真 | `TestThePlanTellsAPageAMoveReached` 的"编辑正文、一次没够着的移动、再写同样的字节" | S1 |
+| an2 | 升级中非改写的写一律当作字节不变、什么也不写 | g14、g15 的 `holds`（审查 P2S1A-N2） | S1 |
+| MA1 | 单元只比有没有升级（`(State == "") != (a.upgrade == "")`） | `TestTheBatchPlansAgainOnceTheUpgradeStarted` 的"from reviewing"两格（审查 P2S1A-N1） | S1 |
+| MA2 | 只在"计划没有升级、单元 `upgrading`"时重新计划 | 同上 | S1 |
+| ra | `body` 在读基线行之前先看 `Reached` | `TestTheFreezeGuard` 的 `fresh × reached`；g26（审查 P2S1C-N5） | S1 |
+| rw | 写的路径只在 `rewrote && !same` 时设 | `TestThePlanTellsAPageAMoveReached` | S1 |
+| rg | `applyStep` 扔掉 `guarded` 交回的步 | `page/app` 全包（`TestSourceGuardKeepsTheFirstKeyAcrossRewrites` 等） | S1 |
+| x1 | 升级中不照批前的链接判 | `TestTheBatchJudgesAPageByItsLinksBeforeIt`；g27 | S1 |
+| x2a | `reachedBefore` 的移动、冻结、新建、树与读都只取到 `pg.First`（原来的范围） | 同上 | S1 |
+| x2b | 只把 `MovesBetween` 的终点改成 `pg.First` | 同上 | S1 |
+| x2c | 头问过就用头的答案（去掉 `First != Last`） | `TestTheBatchJudgesAPageByItsLinksBeforeIt` 的 `askedFirst` 两格 | S1 |
+| x3 | 照批前的链接判在普通笔记本里也做 | 同上，普通笔记本的格（数读） | S1 |
+| x4a | 判出来不交给计划 | 同上；g27 | S1 |
+| x4b | 正文的一遍在写的路径上清掉标记（`pg.reached = rewrote`） | `TestThePlanTellsAPageAMoveReached` 的 `MarkReached` 格；`TestTheBatchJudgesAPageByItsLinksBeforeIt` | S1 |
+| x4c | 正文的一遍在编辑的路径上清掉标记 | 同上；g27 | S1 |
+| x4d | `MarkReached` 只标新建的页 | `TestThePlanTellsAPageAMoveReached`；`TestTheBatchJudgesAPageByItsLinksBeforeIt` | S1 |
 
 ### 7.4 门禁
 
@@ -1773,16 +1863,16 @@ P1 末（`f002672b`，服务端同 `ce370441`）：七份是 145、51、121、12
 
 初稿写的"CI 在 9V45 上 211 秒"是 S3 分支的运行 42635761979 在 7763 上、`ABackground` 挪入之前的数，标错了 runner（审查 P2C-N5）。7763 与本机之比约 285/170 ≈ 1.68。邻份最坏的一次：第一份 446、第二份 443、第三份 430、第四份 418、第五份 443 秒；第六份 354 秒，它在 P1 刚因 460 秒挪出过 `TestIngestBefore`。
 
-- **S1**：第七份只加 `TestUpgradeGuardrails` 的二十二格（每格一次 MCP 调用，夹具按格各一本笔记本、一次发起）。照 P1 的同类（每次发起本机约 0.3 秒，`TestUpgradeStart` 五格 1.1 秒）估 7763 上加 15–25 秒，到约 300–315 秒。不开新份。
+- **S1**：第七份只加 `TestUpgradeGuardrails` 的二十二格（每格一次 MCP 调用，夹具按格各一本笔记本、一次发起）。照 P1 的同类（每次发起本机约 0.3 秒，`TestUpgradeStart` 五格 1.1 秒）估 7763 上加 15–25 秒，到约 300–315 秒。不开新份。实测（3.19、10.1）：S1 加了二十七格（g23–g25 由第 268 条、g26 由审查 P2S1C-N5、g27 由第 270 条加）；建成时本机两轮 172.4、174.6 秒，分支 CI 的 7763 上 Test 一步 292 秒（包 259.0 秒，比 P1 末多 4–8 秒，少于估的）；修复一轮之后本机 181.6、176.4 秒，CI 的 9V45 上包 180.5 秒；修复第二轮之后本机 183.9、181.4 秒（审查 B 一轮 171.6 秒），CI 的 9V74 上 Test 一步 240 秒。
 - **S2**：新的 `TestUpgradeCheck`、`TestUpgradeGates`、`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`、`TestUpgradeToolsMatrix`、`TestUpgradePermissionMatrix` 的三个操作、`TestUpgradeToolsErrorsCarryTheirCodes` 的两行。照 P1 的同类（`TestUpgradePermissionMatrix` 92 格并行、本机墙钟 7.65 秒；P1 的 12 条交错共 7.0 秒、最长 2.8 秒）估 7763 上加 75–120 秒（审查 C）；另有期限一格的等待（REST 约 4 秒、MCP 约 6 秒，再等过期限接管，两个入口共约 15 秒墙钟，不占 CPU）。不开第八份时第七份到约 375–420 秒，余量小于 P3 要加的，邻份又没有地方挪，所以 S2 的第一个提交开第八份（第 261 条）：第八份收 `^TestUpgrade(Check|Gates|Submit|Tools)`（含 P1 的 `TestUpgradeToolsErrorsCarryTheirCodes`），7763 上估约 100–150 秒；第七份留 P1 的与 `TestUpgradeGuardrails`、`TestUpgradePermissionMatrix`、`TestUpgradeStatesReachTheStreams`，约 305–320 秒。数由 S2 的记录实测。
 - **第五份**：只改 `TestTheWikiToolsContract` 的计数与 `TestTheToolListsAreTheContract` 读的文件，不加运行的时间；第三份的 `TestThePermissionMatrixCoversEveryTool` 是静态的核对。
 - 每个 Step 的记录写出各份的 `go test -race -list`（合起来等于全部，新的测试只在第七、八份）与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均在 450 秒之下，否则照 06-environment 第 50 行处理之后才开下一个 Step。
-- 成本守卫：S1 的两行进 costs-2（约 3 秒）与 guards-core（五种形状与 100 × 5 MiB 的种子，估 40–90 秒）；S2 的一行进 costs-2（5 万页加九本各 5 万页的种子，照发起的守卫估 40–70 秒，在 7763 上约 1.5 倍）；一行进 costs-3（10 万行基线加九本各 5 万页的种子、十八格计划，照回滚的读的守卫估 40–60 秒），作业约 18 分钟加约 1 分钟，时限照旧 35 分钟。costs-2 在 `main` 的 CI 上：EPYC 7763 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），EPYC 9V74 16:42（run 42749131694）；加上 P2 的两条，快机约 18.5 分钟、7763 约 25–26 分钟，35 分钟的时限不到 `ci.yml` 里"约两倍"的规则，所以 S2 第 8 个提交把它提到 45 分钟（第 267 条；P1/S2 的审查 C 提过，当时说合并之后看 `main` 上的数）。
+- 成本守卫：S1 的两行进 costs-2（估约 3 秒；实测本机约 17 秒，种子 12.7 秒是大头，CI 上 9V45 22.7 秒、9V74 36.5 秒，3.19）与 guards-core（五种形状与 100 × 5 MiB 的种子，估 40–90 秒；实测本机约 21 秒，7763 上 37.8 秒）；S2 的一行进 costs-2（5 万页加九本各 5 万页的种子，照发起的守卫估 40–70 秒，在 7763 上约 1.5 倍）；一行进 costs-3（10 万行基线加九本各 5 万页的种子、十八格计划，照回滚的读的守卫估 40–60 秒），作业约 18 分钟加约 1 分钟，时限照旧 35 分钟。costs-2 在 `main` 的 CI 上：EPYC 7763 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），EPYC 9V74 16:42（run 42749131694）；加上 P2 的两条，快机约 18.5 分钟、7763 约 25–26 分钟，35 分钟的时限不到 `ci.yml` 里"约两倍"的规则，所以把它提到 45 分钟（第 267 条；P1/S2 的审查 C 提过，当时说合并之后看 `main` 上的数）。S1 的审查 P2S1B-M1 之后提前到 S1 的修复（`80da6b1f`），guards-core 同时从 30 分钟提到 40 分钟（第 269 条：7763 上作业约 20 分钟，末行在第 19.4 分钟才开始，卡住时 Go 默认的 10 分钟只比 30 分钟早约半分钟）；P2/S2 的 `main` 上 costs-2 在 7763 上 23:45（42762546769，`c37a3faf`）。S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上约 1 分钟）；guards-sources（7763 上约 1.8 倍）下次改到时照第 269 条提到 40 分钟。
 - e2e：S1 加 UP4 两个、S2 加 UP5 两个、S3 加一个，都只在 Chromium；作业的 20 分钟照 P1/S4 的量有余。
 
 ### 7.6 P2 怎样量
 
-- S1：第七份两轮；两个护栏的守卫的本机中位数（四种统计 × 两种计划的每格；单元的五种形状与它们在普通笔记本上的对照）；`go test -race -list`。
+- S1：第七份两轮；两个护栏的守卫的本机中位数（三种统计 × 两种计划的每格；单元的五种形状与它们在普通笔记本上的对照）；`go test -race -list`。
 - S2：第八份开之前与之后八份的 `go test -race -list`；第七、八份各两轮；闸门的读的计划守卫三种统计 × 两种计划的计划与每条读的本机中位数；检查的守卫两份种子的本机中位数、它在 2.4 s 之内的余量，各段（`Roots`、`prepareIn` 与 `PreparationTimings`、`Baseline`、`Preserved`、`Changesets`、判定）分开记；`TestTheWorstReportFits` 打出的字节数；两个入口的内置说明的 SDK 实测字节数；合并之后两次 `main` 上 costs-2 的作业用时与 runner（第 267 条的余量）。
 - S3：vitest 的文件与测试数；`make e2e` 的个数与用时；UP5 的页面版本单独三轮。
 
@@ -1803,7 +1893,7 @@ P2 完成，当且仅当：
    - **每个 Step 的文档提交**（在 Step 的分支上、合并之前）：第 12 节的 P2 一行的"状态"写到这个 Step、"审查"一格加它的记录 `reviews/P2-S<m>-<slug>-review.md`，"合并"一格写"见本文第 12 节"的占位，合并之后在 `main` 的小文档提交里填入合并的提交号；第 13 节加一行（实施的结果、照实与设计不同之处、随之改的节）；本文第 3 节加"3.19 S<m> 的实施对设计的修正"、第 10 节填这个 Step。
    - **`docs: M11/P2 done (M11/P2)`**：第 12 节的 P2 一行"完成"；头的"状态"改为"进行中（P2 完成，P3 设计中；…）"；第 13 节加"P2 完成"一行。
 5. **v0.1 总体设计**（`docs/v0.1/v0.1-design.md`；00 号文档第 7 节"总体设计的修订"第 30 条里属于 P2 的部分，各在实现它的 Step 的文档提交里改，用脚本断言锚点恰好出现一次；下面的行号照 `f002672b` 复核过，与 `455f692c` 的相同）：
-   - 13.1 第 1 条（`:1049`）末尾加——S1："M11 起升级中发起人的写另过护栏：移动与改名必须改写链接（`Step.KeepLinks`）；基线页只许改 frontmatter，比的是切掉 frontmatter 与一个 BOM 之后的正文（单元交 `StepContent.BodyHash`，守卫读当前的正文），系统的链接改写放行；`batch` 把移动的改写折进基线页时答它自己的码（`ContentWrite.Folded`）；每个正文步写升级的账本，升级中先核对账本等于写之前的哈希；升级中一次 `batch` 盲写的已有页也计进读的界（M11/P2）。"
+   - 13.1 第 1 条（`:1049`）末尾加——S1（照第 268、270 条，S1 的文档提交已写进）："升级中发起人的写另过护栏：移动与改名必须改写链接（单独的移动看 `Options.UpdateLinks`，`batch` 的看 `Step.KeepLinks`）；基线页只许改 frontmatter，比的是切掉 frontmatter 与一个 BOM 之后的正文（单元交 `StepContent.BodyHash`，守卫只为基线页读当前的正文），系统的链接改写放行；`batch` 里此前的移动或改名改写过一页基线页的链接（照它在批里的内容，升级中另照它批前的链接），之后再写它，写什么都一样，答它自己的码（`ContentWrite.Reached`），字节与库里相同的这种写也照一次写过守卫、什么也不写；正文的两个码标在这一页最后一个正文操作；每个正文步写升级的账本，升级中先核对账本等于写之前的哈希；升级中一次 `batch` 盲写的已有页也计进读的界，计划读到的升级状态与单元在锁下读到的不同时重新计划（M11/P2）。"
    - 13.1 第 4 条（`:1071`）末尾加——S2："升级的检查照 lint 的次序，条目的游标在读到升级之后核对它绑定的根；提交的码：404 → 403 → 状态的 409 → 503 → 内容的 409（索引、闸门）（M11/P2）。"
    - 13.1 第 5 条（`:1073`）末尾加——S2："升级的提交分两个事务，都在笔记本行的 `FOR NO KEY UPDATE` 之下，中间的计算不持行；第二个事务脱离请求的取消，期限取第一个事务读的时刻加 `SubmitTimeout` 与请求的期限中较早的，交付之前的判定在它的 `COMMIT` 之前，只写它自己那一次提交（M11/P2）。"
    - 13.1 第 8 条（`:1100`）末尾加——S1："`page.upgrade_immutable`、`page.upgrade_batch_rewrite`、`page.upgrade_keep_links` 只在 MCP，进 `mcpOwnCodes()`（M11/P2）。"S2："`wiki.upgrade_not_ready` 的 `detail` 只列出不过的闸门的键（M11/P2）。"
@@ -1814,7 +1904,7 @@ P2 完成，当且仅当：
    - 13.4 第 3 条（`:1264`）末尾加——S1："M11/P2：UP4 只有 MCP 版本。"S2："UP5 的 API 版本以 MCP 写作准备（REST 的写在冻结里被拒）。"S3："UP5 的页面版本只在 Chromium。"
    - 13.4 第 4 条（`:1265`）末尾加——S2："M11/P2：提交与发起人的 `batch`、检查的快照与之后的写、两个事务之间的放弃与接管、排队中的检查与放弃、两次提交、提交人被降级、检查跨过提交各一个确定的交错；停住检查的计算用包住 lint 的规则的钩子，停住的窗口短于被停一方的 `Do` 预算，要等的一方以 `RunCreated` 等到，名额与期限不够时另配一个应用。"
    - 13.4 第 6 条（`:1273`）末尾加——S2："M11/P2：MCP 的升级工具的行另成一组（`upgradeMCPRows()`），在升级的变体上跑，覆盖的检查读 `coveredMCPRows()`。"
-   - 13.4 第 8 条（`:1275`）末尾加——S1："M11/P2：护栏的两条读；护栏在批的界上的单元短于请求期限，升级中盲写计进读的界。"S2："检查在 5 万页上，库里另有九本笔记本的升级的行；`changesets` 进判计划的帮手（十万页在 M12）。"
+   - 13.4 第 8 条（`:1275`）末尾加——S1（照实施的 14 秒，S1 的文档提交已写进）："护栏的两条读，三种统计 × 两种计划；护栏在批的界上的五种单元各短于 14 秒（批的 bench 的生产请求 15 秒之内，决定 153、243），中位数另有三倍的界；升级中盲写计进读的界（M11/P2）。"S2："检查在 5 万页上，库里另有九本笔记本的升级的行；`changesets` 进判计划的帮手（十万页在 M12）。"
    - 第 15 节：每个 Step 的文档提交加一行（日期、改了上面哪几条、依据是本文与 Step 的审查记录、`M11/P2/S<m>`）。
 6. `docs/v0.1/claude_to_codex/06-environment.md` 的分份两条（第 27、50 行）在 S2 的第一个提交里照 6.2 第 1 个提交写的新文字改（第 261 条）。
 
@@ -1826,19 +1916,74 @@ P2 完成，当且仅当：
   - `TestUpgradeSubmitInterleavings` 第 7 条的"退回"一格与第 9 条（批准与驳回）在 P3/S1 加；第 8 条的"批准"一半同样。停住计算的照 7.2 的"名额与期限"，在另配的应用上跑。
   - **P3 的整个程序测试落在哪一份**（审查 P2C-N5）：`TestUpgradeApprove`、`TestUpgradeReject`、`TestUpgradeSendBack` 与它们的交错照名字落在第七份（`^TestUpgrade` 去掉第八份的模式），`TestUpgradePromptMatrix` 照第 222 条在第七份。P3 的设计照 P2/S2 合并之后两次 `main` 的第七、八份的数定：第七份放不下时扩第八份的模式（例如加 `Approve|Reject|SendBack`），扩了还过线就照 06-environment 第 50 行再分一份。
 - **P3/S2**：
-  - playbook 写明：护栏的三个码；无效 frontmatter 的两种改法（00 号文档 4.6"核实"）；"同一页在一个 `batch` 里改了又改回放过"（第 208 条，3.4）；`page.upgrade_batch_rewrite` 的拆法，以及拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`、"移动之后写下新的 frontmatter 与改写之后的正文"要分两个 `batch`（第 265 条，3.4 的表）；升级中一次 `batch` 盲写的大页计进读的界、过了答 `page.batch_too_large`，拆开即可（第 266 条）。
+  - playbook 写明：护栏的三个码；无效 frontmatter 的两种改法（00 号文档 4.6"核实"）；"同一页在一个 `batch` 里改了又改回放过"（第 208 条，3.4），中间有移动改写过它、或中间的移动照它批前的链接够着它时不放过（g25、g27）；`page.upgrade_batch_rewrite` 的拆法：一个 `batch` 里改名或移动之后，再写链向它的原有页一律要拆开（先写这一页、再移动，或分两个 `batch`），写回原来的字节、在批里先拿掉再放回链接也一样（第 268、270 条，3.4）；拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`（第 265 条）；只写名字的链接，移动之后照样解析，系统不改写；"移动之后系统改写链接"只对写了路径的链接成立，改名则两种都改写（审查 P2S1C-N2）；升级中一次 `batch` 盲写的大页计进读的界、过了答 `page.batch_too_large`，拆开即可（第 266 条）。
   - prompt `upgrade` 让 agent 先 `upgrade_verify`、通过之后 `upgrade_submit`、`wiki.upgrade_state` 的"正在计算"时等一会再检查。
   - MCP 人工清单的 K3 记 `page.upgrade_immutable` 在客户端里的样子与 `upgrade_submit` 的 `destructiveHint: false` 是否让客户端少问一次。
 - **P3/S3（网页）**：审阅一节复用 `UpgradeReportSection`（4.3），加"更多"（`HealthRule` 的 `read` 已是参数，"从第一页读"再做成一个参数：存下的报告没有游标，`health-rule.tsx:210` 在 `cursor === null` 时藏起"更多"）与三个动作；"退回"的"上一次提交正在计算"的文字与 20 s 的重读（00 号文档 4.15）。`upgrade-check.tsx` 的 `UpgradeGates`、`UpgradeCounts` 与 `HealthRule` 的 `level` 照用；审阅一节的缓存照 4.3 的"这一次进入"。
-- **M12**：检查的十万页（第 262 条）写进 M12 的性能移交，同第 232 条的写法：审查 B 实测十万页的检查折到 7763 约 2.5–3.0 秒，是 worker 3 秒的 84–100%。
+- **M12**：检查的十万页（第 262 条）写进 M12 的性能移交，同第 232 条的写法：审查 B 实测十万页的检查折到 7763 约 2.5–3.0 秒，是 worker 3 秒的 84–100%。第 270 条的代价（第 271 条，S1 的修复核对 P2S1B-M2）同样写进 M12 的性能移交，接在 M9 那一项（第 18 条"MCP"）之后：M9/P3 已接受的"许多次改名之间的带链接的页"（50 次改名一个 10 万个节点的文件夹、每次之后编辑一页带链接的页，`M9-mcp/03-P3-batch-revert.md`"许多次改名之间的带链接的页"一段）在升级中计划约翻倍，本机 7.5 s 对 3.5–3.8 s，调用 10.1 s 对 6.1–6.4 s，照 7763 的比估约 18.6 s，过 15 秒的请求期限；过期限时什么也不写，拆开就能过。
 
 ## 10. 结果
 
 （每个 Step 的文档提交填写：做了什么、照实与设计不同之处、测试与变异、量到的数、审查的结果。）
 
-### 10.1 S1：护栏（服务端）
+### 10.1 S1：护栏（服务端）（2026-11-10，合并 `（待填）`）
 
-（待填）
+- 提交（从 main 的 `c37a3faf` 开始，照 6.1 的次序，6 个；Step 的文档提交是主持者的）：
+  - 移动与改名必须改写链接：`Step.KeepLinks`（批的移动的 `update_links: false`，单元的每一步带它），单独的移动看 `Options.UpdateLinks`；不改写答 `page.upgrade_keep_links`，标在步的根；`guardrails` 按操作分支，P1 的删除抽成 `deletion` 照旧（`54b1be8b`）。
+  - 基线页只许改 frontmatter：`domain.UpgradeBody`（切掉 frontmatter 与一个 BOM）、markdown 适配器的包级 `FrontmatterEnd`；单元在升级中、不是系统改写时交 `StepContent.BodyHash`，守卫只为基线页读一次当前正文（`UpgradeBaselineContent`），不同答 `page.upgrade_immutable`，没有 `BodyHash` 答缺陷；每个正文步写升级的账本（`AcceptUpgradeContent`），升级中只在账本等于写之前的哈希（`StepContent.BeforeHash`）时写，基线页对不上是缺陷，回滚的单元照写（`8ad3fe43`）。
+  - 升级中 `batch` 盲写的已有页按第一个正文操作的次序计进 `MaxBatchReadBytes`（第 266 条）；批记下计划读到的升级状态，单元在锁下读到的不同就重新计划（设计审查 P2A-N8）（`937a257c`）。
+  - `batch` 把移动的改写折进基线页：计划的 `PlannedPage.Folded`（编辑在改写改了这一页之后设，写的是改写的原样时设、写别的内容时清），`ContentWrite.Folded` → `StepContent.Folded`，守卫答 `page.upgrade_batch_rewrite`；正文的两个码标在这一页最后一个正文操作（第 254、265 条）（`f6de159e`）。审查之后照第 268 条改成粘住的 `Reached`（修复一轮）。
+  - 两个成本守卫：护栏的两条读（costs-2）与护栏在批的界上的五种单元（guards-core）；`Makefile` 两行与说明，`ci.yml` 两段注释，时限不变（`90134668`）。这个提交改了 `Makefile` 与 `ci.yml`，范围只写 `server`，部件该写 `build`、`ci`（P2S1C-N3；已推的，不改写）。
+  - e2e：UP4 的两个新测试与 `expectBaselineKept`（`f4d88dd4`）。
+  - 三个码进 `mcpToolCodes()`（write、edit、move、batch 四行）、`upgradeToolCodes()`、`mcpOwnCodes()`；`TestUpgradeToolsErrorsCarryTheirCodes` 在两个入口答出六种情形。
+  - 每个提交单独在工作树里 build、vet、`make lint-go`、`make gen-check`、short 测试都通过，另跑它自己的组合根测试（2 号另跑 page 模块的全部竞态测试，5 号两个守卫，6 号 `make lint-web`、`make knip`、vitest、`make build` 与 UP4）。推送之前改写过一次 4 号（`f940065a` → `f6de159e`：补变异 o9 抓不到的一行表），5、6 号原样重放。审查 C 另在 `54b1be8b`、`937a257c`、`f6de159e` 上各自跑 build、vet、`make lint-go`、short、page 模块（不带竞态）与竞态下的组合根六个测试（含第五份的 `TestTheMCPToolsErrorsCarryTheirCodes`）。
+  - 修复一轮另有 4 个、第二轮 2 个（下面），一共 12 个；合并 `（待填）`。
+- 与设计不同之处（都是最小的改动；已改在各节，3.19 列出）：
+  1. 单元守卫的期限 14 秒（决定 153、243；批的 bench 是生产的 15 秒请求），不是"守卫配置下的 6 s"；最大的单元本机 1.7 秒、7763 上 3.2 秒（7.1）。
+  2. 形状 b：100 页各删一行约 62 KB 的 frontmatter，头合计约 13.8 MiB、最终约 8 MiB（照字面的 140 KB 编辑过 `MaxUnitBytes`，单元不会跑）（7.1）。
+  3. `CheckReads` 一遍按第一个正文操作的次序计（3.3）。
+  4. 读的守卫是三种统计 × 两种计划，每格判计划又计时（7.1、7.6）。
+  5. g22 的三页以 SQL 种下（3.6）。
+  6. `StepContent.Folded` 在 4 号提交加（6.1）。
+  7. `AcceptUpgradeContent` 的两个 CTE 带表的别名（sqlc）（3.5）。
+  8. 形状 c 是一个操作的 `batch`（7.1）。
+  9. 批的 bench 给 `/mcp` 以 wire 的请求体上限（7.1）。
+  10. 单元守卫的种子以 SQL 写回，不另逐页核对（7.1）。
+  11. 读的守卫本机约 17 秒（种子 12.7 秒），不是"约 3 秒"（7.5）。
+  12. 多一个 `TestTheUnitStepCarriesKeepLinks`（7.3 第 3 条）。
+  13. UP4 的 Notes 以从根起的路径链向 Plan：只写名字的链接在移动之后照样解析，系统不改写（第 5 节，审查 P2S1C-N2）。
+  14. UP4 的版本号原来从库里拼，审查之后改从答复取（第 5 节，P2S1C-N1）。
+- 实测（本机，经 `heavy.sh`；出处见 [S1 的审查记录](reviews/P2-S1-guardrails-review.md)"实测"）：
+  - 建成时：`go test -race -list` 542 个顶层测试，七份 145、51、121、124、62、11、28，各在恰好一份（同 P1 末）；第七份两轮 172.4、174.6 秒（P1 末 168.9、171.1）。护栏的读：三种统计 × 两种计划，计划都合规，读的中位数 0.12–0.16 ms、写 0.15–0.19 ms（界 5 ms），种子 12.7 秒。护栏在批的界上的单元（ms，两轮，升级中 / 普通笔记本）：a 1,701、1,712 / 1,686、1,647（界 5.2 s）；b 343、348 / 293、294（1.1 s）；c 47、44 / 35、36（200 ms）；d 23、26 / 15、17（100 ms）；e 2、3（计划先拒）/ 251、252（100 ms）；期限 14 秒。vitest 192 个文件、4,341 个测试；`make e2e` 520 个，2.3 分钟。
+  - 修复一轮之后：第七份两轮 181.6、176.4 秒（g23–g25 三格各一本笔记本与一次发起，加上 g14、g15 的两句；审查 B 一轮 179.5 秒）；顶层的归类不变；单元守卫的形状不变，逐个提交与 `make test` 里的三次都在界内。
+  - 修复第二轮之后：第七份两轮 183.9、181.4 秒（g26 多三本笔记本、g27 的 Q 多一本；量时刚跑完 `make test`，审查 B 一轮 171.6 秒）；顶层的归类不变（542 个，145、51、121、124、62、11、28）。新的读不落在任何成本守卫的形状里（形状 a 只有一次移动、没有正文操作，b–e 没有移动），不另量；`0b016421` 的逐个提交核对里单元的守卫照常过（升级中 / 普通笔记本，ms：a 1,763 / 1,682，b 352 / 300，c 51 / 44，d 37 / 15，e 3 / 247）。第 270 条的代价由审查 B 量出（第 271 条，3.19）：M9 已接受的"许多次改名之间的带链接的页"在升级中计划 7.5 s 对 3.5–3.8 s，调用 10.1 s。
+- 反向对照（每一条的结果见 S1 的审查记录"反向对照"）：
+  - 建成时：7.3 的 S1 各行（1–24、84）每个点名的测试各跑一次（共 44 条，12 号拆成两种改坏），加实施者自己的 11 种（o1–o11，12 条），共 56 条。第一轮 o9（`holdsAt` 的 `rewrote` 恒真）没抓到、o4 的规格编不过；表补一行（编辑正文、一次没够着这一页的移动、再写同样的字节，标记为假）之后两条都抓到；其余都被点名的测试抓到，组合根的各格单独跑、点名到格。
+  - 修复一轮：第 268 条的四条（n1–n4）、字节不变那一处的三条（n5–n7）、第 17、18、20–22 条与 o9 照新的语义重跑、审查者留下的 MA1、MA2、`mv`、an2，共 31 条，都抓到。原来的第 19、20 条照第 268 条已是规定：第 19 行换成 n1，第 20 行换成"照原来的规则只在写的是改写的原样时设"。
+  - 修复第二轮：第 270 条的九条（x1、x2a–x2c、x3、x4a–x4d），第一轮的照新代码重跑，C 的 `ra`、`rw`、`rg`；在 `35478201` 上共 52 条，48 条抓到，n4、20 在 g9、g25、g21、g23 上活下来（第 270 条的索引判据先把 P 标上，这几格分不出正文一遍的判据），它们被计划的单元测试抓到；g27 补了 Q 的两格之后，n4、20 在 g27 上也死。`x2c`（头问过就用头的答案）在第一版的测试上活下来，补了 `askedFirst` 两格。整轮没有在最后的头上重跑：`0b016421` 与 `35478201` 的提交 1 只差 g27 的 11 行测试、代码相同；修复核对第二轮 A 在头上另跑 n4、20 与去掉 `reachedBefore` 三条，都死在 g27。
+  - 审查者的变异里存活的（A 的 MA1、MA2，C 的 `mv`；修复核对一轮 C 的 `ra` 在组合根上）各成了一条发现，修复之后都被抓到。
+- 门禁（本机）：
+  - 建成时头 `f4d88dd4` 上 `make lint gen-check knip build` 通过；经 `heavy.sh`：`make test` 3,359 秒通过，`make test-go-short` 39 秒，`make e2e` 139 秒（520 个）。
+  - 修复一轮头 `bff70ffc`：`make lint gen-check knip build` 8 秒；`make test` 3,579 秒，`make test-go-short` 44 秒，`make e2e` 145 秒（520 个）。
+  - 修复第二轮头 `198b0cd5`：`make lint gen-check knip build` 10 秒；第一次 `make test` 576 秒停在第五份的 `TestTheMCPCallStopsWhenTheClientGoes`（负载下 2 秒之内没等到日志，与本轮无关，单独五次都过），整个重跑 3,457 秒全绿；`make test-go-short` 44 秒；`make e2e` 147 秒（520 个）。
+- CI：
+  - 分支的 run 42770402937（`f4d88dd4`）18 项全绿；第七份在 EPYC 7763 上 Test 一步 292 秒（包 259.0 秒；P1 末 282–288 秒）；costs-2 在 9V45 上 13:03，读的守卫 22.7 秒；guards-core 在 7763 上 19:53，单元的守卫 37.8 秒，a 的中位数 3,165 ms（界 5.2 s，余量最小，约 1.64 倍）。
+  - 修复一轮的 run 42787571274（`bff70ffc`）18 项全绿；第七份在 9V45 上包 180.5 秒、Test 一步 201 秒；costs-2 在 9V74 上 22:01（新的时限 45 分钟），读的守卫 36.47 秒（种子 28.6 秒）；guards-core 在 7763 上 19:46（新的时限 40 分钟），a 3,152 ms。
+  - 修复第二轮的 run 42819115296（`198b0cd5`）18 项全绿；组合根七份的 Test 一步 240–409 秒（第七份在 9V74 上 240 秒）；costs-2 在 9V74 上 17:14；guards-core 在 Xeon 8573C 上 17:54，单元的守卫 34.03 秒，a 2,606 ms（约 2.0 倍）；`TestLinksReachedReadPlans`、`TestLinksReachedDenseReadPlans` 都过。
+- **修复一轮**（2026-11-10，`bff70ffc`；三份审查与主持者的修复说明 `fix-1.md`，决定 268、269 与第 267 条提前）：从 `f4d88dd4` 起 4 个提交，一组一个，普通推送，没有改写已推的历史：
+  - `060b365a`：`PlannedPage.Folded` 改名 `Reached`，粘住（写的路径 `rewrote` 为真就设，删掉清除；编辑的路径照旧只设不清）；`ContentWrite.Reached` → `StepContent.Reached`；守卫先看标记、再比正文；码的英文文字改写；升级中带 `Reached` 的字节不变的写也照一次写过守卫、什么也不写（`Unit.guarded`）；`TestThePlanTellsAPageAMoveReached`（原名 `TestThePlanTellsAFoldedRewrite`，`moved` 改 `[]int`，加 A 的三种与 C 的一行）、`TestTheFreezeGuard` 的"什么也没改"与带不带标记、新的 `TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`；g21 改码，加 g23–g25（P2S1A-I1、P2S1C-M1，决定 268）。
+  - `8d739bbd`：重新计划加"从 `reviewing`"两格；g14、g15 加 `holds`；形状 a 的注释（P2S1A-N1、P2S1A-N2、P2S1B-N1）。
+  - `80da6b1f`：`ci.yml` 的 guards-core 30 → 40 分钟、costs-2 35 → 45 分钟，注释各一段，带 run 号、作业用时与 runner（P2S1B-M1，决定 269，第 267 条提前）。guards-sources 不改，数写在报告里。
+  - `bff70ffc`：UP4 的 `base_version` 从 `createPage` 的答复取（P2S1C-N1）。
+  - 只改文档的在本 Step 的文档提交：P2S1C-N2、N3；设计 2.1 第 2 条、2.2、2.3、3.1、3.3、3.4、3.6、3.18、6.1、6.2、7.1、7.3、7.5 与第 8、9 节；00 号文档 4.6、第 5、8、9 节与第 11 节。
+- **修复核对一轮**（2026-11-10，三位各在 `bff70ffc` 的自己的工作树里）：三位都判旧发现里要改代码的都已关闭（P2S1C-N2、N3 的文档部分在本提交），都判实施者自加的"字节不变、被到达的写也过守卫"必要、不误拒、造出的步与真的写一致。A 以探针第二版试了几条可能绕过第 268 条的路（移动文件夹、P 自己移动、同一页写多次、删除之后重建、带 `Merged` 的写、不是基线页的页），都被挡住或不在范围里；"拿掉、改名、放回"绕得过去（P2S1A-M1）。B 从日志与 API 重算 `ci.yml` 注释里的数，都相符；guards-sources 约 1.8 倍不记作发现，建议下次改到时提到 40 分钟。C 照新代码重跑 `mv` 三处都抓到；加 `ra`、`rw`、`rg` 与关掉字节不变那一处的两条，`ra` 在整个 `TestUpgradeGuardrails` 下活下来（P2S1C-N5）；留给文档提交的清单漏了第 268 条要改的多处（P2S1C-M2）；`contentStep` 的注释过时（P2S1C-N4）。
+- **修复第二轮**（2026-11-10，`198b0cd5`；`fix-2.md`，决定 270）：从 `bff70ffc` 起 2 个提交，普通推送：
+  - `0b016421`：升级中 `reachedBefore` 照批前的链接问 `BatchLinks.Reached`（到各页最后一个正文操作为止；写的页只有一个正文操作、头已问过时用头的答案），够得着就 `plan.MarkReached`；`TestTheBatchJudgesAPageByItsLinksBeforeIt` 十格（替身照冻结守卫拒带标记的正文步，普通笔记本的格数读）、`TestThePlanTellsAPageAMoveReached` 的 `MarkReached` 各格、g27（含 Q 的两格）（P2S1A-M1，决定 270）。
+  - `198b0cd5`：`contentStep` 的注释；g26（P2S1C-N4、P2S1C-N5）。
+  - 推之前改订过两次，旧的都没推过：第一版 `ac13346e`、`9761259e`（`x2c` 存活，补 `askedFirst` 两格）；第二版 `1960105e`、`35478201`（n4、20 在组合根上存活，补 g27 的 Q 两格）。中途磁盘剩 14G，停下修剪 Go 的构建缓存（审查记录"环境"）。
+- **修复核对第二轮**（2026-11-10，三位各在 `198b0cd5` 的自己的工作树里）：A 判 P2S1A-M1 关：第 270 条的判法范围正好到最后一个正文操作、头的答案复用的条件对、不偏严、新建的页不设、状态变了会重新计划，试过的别的路都被拒，没有新发现；g27 的 Q 两格让 n4、20 在组合根上也死（A 重跑）。C 判 P2S1C-N4、N5 关（`ra` 在 g26 上死），两个提交逐个都绿；P2S1C-M2 部分，另报文档稿的三条 Nit（P2S1C-N6–N8），都在本提交改了。B 判报告的数相符，新的 P2S1B-M2：第 270 条让 M9 已接受的一个形状在升级中计划翻倍，代价没写出，由决定 271 关上（只改文档）；`TestTheMCPCallStopsWhenTheClientGoes` 那次失败与本轮无关，它的两个日志等待推后到 P2/S2 改成 10 秒。之后不再有修复轮。
+- **审查的结论**：Important 1（P2S1A-I1），Minor 2（P2S1B-M1、P2S1C-M1），Nit 6；修复核对一轮另 Minor 2（P2S1A-M1、P2S1C-M2）、Nit 2（P2S1C-N4、N5）；修复核对第二轮另 Minor 1（P2S1B-M2）、Nit 3（P2S1C-N6–N8）。都已改或记下。问题在一处规则（第 254 条的"写别的就清掉"让改名之后的写漏过护栏）与它的两个变体（字节不变的写、批里先拿掉再放回）、第 270 条在一个已接受的形状上的代价、两份 CI 的时限与几处测试；守卫的次序、码、账本与两条读的计划三位都没有查出错。
+- 实施者留下的五项：Step 的文档提交是本提交；形状 a 在 7763 上余量最小（约 1.64 倍），界守的主要是 M9 的改写，若来了更慢的 runner 最先红的是它（P2S1B-N1）；读的守卫的种子比估的重，costs-2 的时限照第 267 条提前到 S1；UP4 的 Notes 以路径链向 Plan，playbook 照第 9 节写；S2、S3 照设计。
 
 ### 10.2 S2：闸门、检查与提交（服务端）
 
