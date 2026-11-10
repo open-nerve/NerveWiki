@@ -271,6 +271,23 @@ type PlannedPage struct {
 	Content     string
 	// Merged counts user byte changes made while this page was a source.
 	Merged int
+	// Reached says a rename or a move earlier in the batch rewrote the
+	// page's links before one of its content ops: an edit's after a move
+	// whose rewrite changed the page, a write's after one whose rewrite
+	// would have, whatever the write's bytes; and, while upgrading, a move
+	// before its last content op that reaches a link the page had before
+	// the batch, whatever the page holds in the batch then (MarkReached,
+	// M11/P2 decision 270: a link taken out and put back follows the move
+	// no more than one kept). It sticks: a later write does not clear it.
+	// While upgrading, the guardrails answer
+	// page.upgrade_batch_rewrite for a page of the baseline so reached,
+	// whatever its content (M11/P2 decision 268, which withdrew decision
+	// 254's clearing): the batch's deferred rewrite follows only the moves
+	// after the page's last content op, so a write after the rename leaves
+	// the page's links on the old name, its bytes those the page holds,
+	// which no comparison of its body tells. Not ps.Moved: that is any move
+	// between two content ops, even one that rewrote nothing.
+	Reached bool
 }
 
 // plannedPage is a page's content as the contents' pass goes: its head
@@ -285,6 +302,7 @@ type plannedPage struct {
 	merged      int
 	known       bool
 	whole       bool
+	reached     bool
 	head        *PageHead
 }
 
@@ -861,6 +879,17 @@ func (p *BatchPlan) Reads() (texts, heads []uuid.UUID) {
 	return texts, heads
 }
 
+// MarkReached marks the page id Reached before the contents' pass, which
+// leaves the mark (M11/P2 decision 270): while upgrading, a rename or move
+// before its last content op reaches a link it had before the batch, by
+// the index (BatchLinks.Reached), whatever it holds in the batch then. A
+// page the batch creates has no such link.
+func (p *BatchPlan) MarkReached(id uuid.UUID) {
+	if pg, ok := p.pages[id]; ok && !pg.created {
+		pg.reached = true
+	}
+}
+
 // ReadWhole has the plan read the page id whole, though its first content
 // op is a write: one that the renames and moves of the ops before it
 // reach by the index, as its caller tells (M9/P3 review A-I1). Reads then
@@ -879,23 +908,40 @@ func (p *BatchPlan) ReadWhole(id uuid.UUID) {
 // passes it, in Failed, and the contents' pass is not run. Among them a
 // write read whole for the renames and moves before it (ReadWhole), the
 // refusal says why, a read the agent did not ask for (M9/P3 review A's
-// N3). It answers that failure, nil for none; a plan that failed for good
-// already is left as it is.
+// N3). While the notebook is being upgraded, the freeze guard reads whole
+// the page each content op of the initiator's agent writes (M11 design
+// 4.6): its blind writes of pages there count too, by their heads (M11/P2
+// decision 266), the pages it created none. It answers that failure, nil
+// for none; a plan that failed for good already is left as it is.
 func (p *BatchPlan) CheckReads(heads map[uuid.UUID]PageHead) *OpFailed {
 	if p.final {
 		return nil
 	}
-	texts, _ := p.Reads()
-	sum, whole := 0, false
-	for _, id := range texts {
-		first := p.pages[id].first
-		whole = whole || p.steps[first].Kind != OpKindEdit
+	upgrading := p.notebook.Upgrade.State == UpgradeUpgrading
+	sum, whole, blind := 0, false, false
+	for _, id := range p.order {
+		pg := p.pages[id]
+		edit := p.steps[pg.first].Kind == OpKindEdit
+		switch {
+		case pg.created:
+			continue
+		case !edit && !pg.whole:
+			if !upgrading {
+				continue // a blind write: its head alone is read
+			}
+			blind = true
+		case !edit:
+			whole = true
+		}
 		if sum += heads[id].Bytes; sum > MaxBatchReadBytes {
 			hint := "split the batch"
-			if whole {
+			switch {
+			case blind:
+				hint = "while the notebook is being upgraded, each page a write replaces is read whole: split the batch"
+			case whole:
 				hint = "a write after a rename or move that reaches its page reads the page whole: send the renames or moves in another batch"
 			}
-			p.Failed = &OpFailed{Op: first, Tool: p.steps[first].Kind,
+			p.Failed = &OpFailed{Op: pg.first, Tool: p.steps[pg.first].Kind,
 				Err: BatchTooLarge("bytes in the pages its ops read", sum, MaxBatchReadBytes, hint)}
 			p.final = true
 			return p.Failed
@@ -984,7 +1030,7 @@ func (p *BatchPlan) Pages() []PlannedPage {
 	for _, id := range p.order {
 		pg := p.pages[id]
 		out = append(out, PlannedPage{ID: id, First: pg.first, Last: pg.last, Created: pg.created, Revision: pg.revision,
-			Content: pg.content, Merged: pg.merged})
+			Content: pg.content, Merged: pg.merged, Reached: pg.reached})
 	}
 	return out
 }

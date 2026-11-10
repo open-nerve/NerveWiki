@@ -2,9 +2,12 @@ package postgresadapter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres/gen"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
@@ -24,6 +27,36 @@ func (s *Store) Protected(ctx context.Context, upgradeID uuid.UUID, ids []uuid.U
 		protected[id] = true
 	}
 	return protected, nil
+}
+
+// BaselineContent implements app.UpgradeNodes: the content now of the
+// page id when it is of the upgrade's baseline, false when it is not, in
+// the transaction ctx carries (M11/P2 design 3.3).
+func (s *Store) BaselineContent(ctx context.Context, upgradeID, id uuid.UUID) (string, bool, error) {
+	content, err := s.queries(ctx).UpgradeBaselineContent(ctx, gen.UpgradeBaselineContentParams{UpgradeID: upgradeID, NodeID: id})
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return "", false, nil
+	case err != nil:
+		return "", false, fmt.Errorf("read an upgrade's baseline page's content: %w", err)
+	}
+	return content, true, nil
+}
+
+// AcceptUpgradeContent implements app.UpgradeLedger: after is the hash the
+// guardrails accepted of the baseline page nodeID, over before when it is
+// not nil (M11/P2 design 3.5); a baseline page whose accepted hash is not
+// before is a defect's error, nothing written.
+func (s *Store) AcceptUpgradeContent(ctx context.Context, upgradeID, nodeID uuid.UUID, before, after []byte) error {
+	r, err := s.queries(ctx).AcceptUpgradeContent(ctx, gen.AcceptUpgradeContentParams{UpgradeID: upgradeID, NodeID: nodeID,
+		After: after, Before: before})
+	switch {
+	case err != nil:
+		return fmt.Errorf("write an upgrade's ledger: %w", err)
+	case r.Baseline == 1 && r.Accepted == 0:
+		return fmt.Errorf("page: page %s of the upgrade's baseline holds content its guardrails never accepted", nodeID)
+	}
+	return nil
 }
 
 // DeleteNotebooksUpgradeNodes implements app.NotebookPages: the deleted

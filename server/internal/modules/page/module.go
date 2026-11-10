@@ -304,7 +304,7 @@ func New(d Deps) *Module {
 	writer := app.NewWriter(app.WriterDeps{
 		Tx: d.Tx, Clock: d.Clock, Auth: d.Authorizer, Workspaces: d.Workspaces, Notebooks: d.Notebooks,
 		Nodes: store, RevertTrees: store, IngestNow: store, Paths: store, NodeWriter: store, Trash: store, History: store, Changesets: store, SessionWriter: store, Search: store,
-		Sources: store, Attachments: d.Attachments,
+		Sources: store, Attachments: d.Attachments, Markdown: md, Ledger: store,
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: d.Snapshots, Sources: store, Attachments: d.Attachments}),
 		Names:          d.Names,
 		Guards:         d.Guards, Participants: d.Participants, Observers: d.Observers,

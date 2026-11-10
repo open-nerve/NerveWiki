@@ -88,8 +88,11 @@ func mcpRows() []mcpRow {
 // to move/batch, and source_duplicate to write/move/batch, in both entries.
 // M11's freeze adds notebook.upgrading to the five writes (M11/P1 design
 // 3.6), each after the row's guards' codes, and its deletion guardrail
-// page.upgrade_protected to delete and batch; upgradeToolCodes lists them,
-// the seventh shard answers them.
+// page.upgrade_protected to delete and batch; its guardrails after the
+// freeze's codes (M11/P2 design 3.6): page.upgrade_immutable to write,
+// edit and batch, page.upgrade_batch_rewrite to batch,
+// page.upgrade_keep_links to move and batch.
+// upgradeToolCodes lists them, the seventh shard answers them.
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
@@ -98,18 +101,18 @@ func mcpToolCodes() map[string][]string {
 		"open_notebook": {"bad_request", "notebook.not_found"},
 		"write": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.too_deep", "page.revision_mismatch", "page.locked", "page.virtual_file", "page.source_immutable", "page.source_duplicate",
-			"notebook.upgrading"},
+			"notebook.upgrading", "page.upgrade_immutable"},
 		"edit": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
-			"page.revision_mismatch", "page.locked", "page.source_immutable", "page.virtual_file", "notebook.upgrading"},
+			"page.revision_mismatch", "page.locked", "page.source_immutable", "page.virtual_file", "notebook.upgrading", "page.upgrade_immutable"},
 		"move": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "linking.pages_locked", "page.protected", "page.virtual_file",
-			"page.source_admin_only", "page.source_too_large", "page.source_duplicate", "notebook.upgrading"},
+			"page.source_admin_only", "page.source_too_large", "page.source_duplicate", "notebook.upgrading", "page.upgrade_keep_links"},
 		"delete": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "page.locked",
 			"page.protected", "page.source_admin_only", "page.virtual_file", "notebook.upgrading", "page.upgrade_protected"},
 		"batch": {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "forbidden", "server_busy",
 			"page.title_taken", "page.cycle", "page.too_deep", "page.revision_mismatch", "page.locked", "linking.pages_locked",
 			"page.batch_too_large", "page.protected", "page.virtual_file", "page.source_admin_only", "page.source_immutable", "page.source_too_large", "page.source_duplicate",
-			"notebook.upgrading", "page.upgrade_protected"},
+			"notebook.upgrading", "page.upgrade_protected", "page.upgrade_immutable", "page.upgrade_batch_rewrite", "page.upgrade_keep_links"},
 		"versions":        {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.version_not_found", "page.virtual_file"},
 		"log":             {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
 		"changeset":       {"bad_request", "validation_failed", "notebook.not_found", "page.changeset_not_found"},

@@ -454,6 +454,24 @@ func (f *fakeStore) LockContent(ctx context.Context, notebookID, id uuid.UUID) (
 	return app.ContentLock{Revision: c.Revision, Hash: c.Hash, ByteSize: c.ByteSize}, nil
 }
 
+// fakeLedger is an upgrade's ledger in memory: the writes it took, each
+// its upgrade, its page and the hashes before and after; err fails each.
+type fakeLedger struct {
+	writes []ledgerWrite
+	err    error
+}
+
+// ledgerWrite is a write of the ledger.
+type ledgerWrite struct {
+	upgrade, node uuid.UUID
+	before, after []byte
+}
+
+func (l *fakeLedger) AcceptUpgradeContent(_ context.Context, upgradeID, nodeID uuid.UUID, before, after []byte) error {
+	l.writes = append(l.writes, ledgerWrite{upgrade: upgradeID, node: nodeID, before: before, after: after})
+	return l.err
+}
+
 // fakeMarkdown takes a content's facts as the content itself and renders
 // it in a <p>, with the page it rendered for; err, when set, is Render's.
 type fakeMarkdown struct {
@@ -1389,6 +1407,7 @@ type fixture struct {
 	enders     []app.EditSessionSubscriber
 	names      fakeNames
 	infos      map[uuid.UUID]app.AttachmentInfo
+	ledger     *fakeLedger
 	// wait is the parse budget's wait.
 	wait      time.Duration
 	alice     uuid.UUID
@@ -1411,6 +1430,7 @@ func newFixture() *fixture {
 	f.notebooks = fakeNotebooks{recorder: rec, workspaces: map[uuid.UUID]uuid.UUID{f.eng: f.acme}, gone: map[uuid.UUID]bool{}}
 	f.log = &fakeHistory{recorder: rec, store: f.store, notebook: f.eng, versions: map[domain.VersionRef]string{}}
 	f.md = &fakeMarkdown{recorder: rec}
+	f.ledger = &fakeLedger{}
 	f.budget = &fakeBudget{recorder: rec}
 	f.wait = time.Second
 	return f
@@ -1422,7 +1442,7 @@ func (f *fixture) writer() *app.Writer {
 	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store, Paths: f.store,
 		NodeWriter: f.store, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
-		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
+		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}, Markdown: f.md, Ledger: f.ledger,
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
 		Guards:         f.guards, Participants: f.partakers, Observers: f.observers, SessionVetoers: f.vetoers,
 		SessionSubscribers: f.enders,

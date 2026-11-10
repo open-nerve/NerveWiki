@@ -60,6 +60,11 @@ type Step struct {
 	Changes   []domain.Change
 	Content   *StepContent
 	Rewrite   bool
+	// KeepLinks is a batch's move or rename with update_links false
+	// (Placement.KeepLinks): its unit's deferred rewrite follows neither
+	// the node nor what it carries. A single move's is Options.UpdateLinks
+	// false. M11's guardrails refuse both (M11 design 4.6).
+	KeepLinks bool
 	Lines     *StepLines
 	Kinds     map[uuid.UUID]domain.Kind
 	// AreaHashes is prepared once before guards and maintained after the write.
@@ -82,6 +87,17 @@ type StepContent struct {
 	Hash                       []byte
 	Bytes, BeforeBytes, Merged int
 	BeforeRevision             int
+	// BodyHash is UpgradeBodyHash of the content written, while the
+	// notebook is upgrading, but for a system's rewrite (Rewrite), which the
+	// guardrails let by unread; nil otherwise (M11 design 4.6).
+	BodyHash []byte
+	// BeforeHash is the hash of the content the step writes over, as the
+	// unit locked it (ContentLock.Hash), in a notebook being upgraded: the
+	// ledger takes the step's only over it (M11/P2 design 3.5).
+	BeforeHash []byte
+	// Reached says a rename or move earlier in the step's batch rewrote
+	// this page's links (ContentWrite.Reached, PlannedPage.Reached).
+	Reached bool
 }
 
 // StepLines are the operation root's ancestors on each side. Nil Lines means

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,6 +28,7 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/clock"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/markdown"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
@@ -159,7 +161,10 @@ func newTrashBenchOf(tb testing.TB, configure func(c *config.Config), set func(d
 	set(&deps)
 	pg := page.New(deps)
 	router := httpserver.NewRouter(logger)
-	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, pg.BodyLimits()))
+	// /mcp's body is a call's, as wire gives it: the batch bench mounts it.
+	bodies := maps.Clone(pg.BodyLimits())
+	bodies[mcpserver.Pattern] = mcpBodyLimit
+	api, err := httpserver.NewAPI(apiConfig(cfg, logger, ratelimit.New(time.Now), benchAuth{b.alice}, nil, nil, bodies))
 	if err != nil {
 		tb.Fatal(err)
 	}

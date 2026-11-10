@@ -377,6 +377,166 @@ func TestBatchPlanChecksItsReads(t *testing.T) {
 	}
 }
 
+// Reached is a rename's or move's rewrite of the page's links coming
+// before one of its content ops in the batch (M11/P2 design 3.4,
+// decisions 190, 268), each shape with its counterexample: an edit after
+// a move that rewrote the page; not after a move that reached no link of
+// it, its step Moved though, nor after one whose rewrite the stale index
+// left undone; a write after a move that rewrote the page, whatever its
+// bytes: the rewrite's, others, the page's own; it sticks, a later write
+// of other bytes or of the same, an edit, an edit after a move that
+// rewrote nothing keeping it; a move after the page's last content op
+// reaches nothing, its rewrite the deferred one's; a page the batch
+// creates is not; a write before the moves and an edit after them is; a
+// write of the bytes the page holds after a move that reached no link of
+// it is not, though the page's body changed by an edit before (a write is
+// reached by the rewrite's change, not by the move).
+func TestThePlanTellsAPageAMoveReached(t *testing.T) {
+	nb := newNotebook("A.md", "B.md", "P.md")
+	pID := nb.id(t, "P.md")
+	const before, rewritten = "---\nt: 1\n---\nSee [[A]].", "---\nt: 1\n---\nSee [[A2]]."
+	write := func(content string) domain.BatchArgs {
+		return with(writeOp("P.md", content), func(o *domain.BatchArgs) { o.Base = tokenOf(pID, 1) })
+	}
+	moveA, moveB := moveOp("A.md", "A2.md"), moveOp("B.md", "B2.md")
+	frontmatter := editOp("P.md", "t: 1", "t: 2")
+	for _, tt := range []struct {
+		name    string
+		ops     []domain.BatchArgs
+		whole   bool // P's first content op a write, read whole for the moves before it
+		stale   bool // P's index not current
+		reached bool
+		moved   []int // the ops whose steps are Moved
+		onlyB   bool  // the moves rewrite links to B alone: P's to A lead where they led
+	}{
+		{"a move of A, an edit of P linking to it", []domain.BatchArgs{moveA, frontmatter}, false, false, true, []int{1}, false},
+		{"a move P links to none of, an edit", []domain.BatchArgs{moveB, frontmatter}, false, false, false, []int{1}, true},
+		{"a move of A, P's index stale, an edit", []domain.BatchArgs{moveA, frontmatter}, false, true, false, []int{1}, false},
+		{"a move of A, a write of the rewrite's bytes", []domain.BatchArgs{moveA, write(rewritten)}, true, false, true, []int{1}, false},
+		{"a move of A, a write of other bytes", []domain.BatchArgs{moveA, write("---\nt: 2\n---\nSee [[A]].")}, true, false, true,
+			[]int{1}, false},
+		{"a move of A, a write of the bytes P holds", []domain.BatchArgs{moveA, write(before)}, true, false, true, []int{1}, false},
+		{"an edit reached, a write of other bytes", []domain.BatchArgs{moveA, frontmatter, write("other")}, false, false, true,
+			[]int{1}, false},
+		{"an edit reached, a write of the same bytes", []domain.BatchArgs{moveA, frontmatter, write("---\nt: 2\n---\nSee [[A2]].")},
+			false, false, true, []int{1}, false},
+		{"an edit reached, an edit of another word", []domain.BatchArgs{moveA, frontmatter, editOp("P.md", "See", "Read")}, false,
+			false, true, []int{1}, false},
+		{"an edit reached, a move P links to none of, another edit", []domain.BatchArgs{moveA, frontmatter, moveB,
+			editOp("P.md", "t: 2", "t: 3")}, false, false, true, []int{1, 3}, false},
+		{"an edit, then a move of A", []domain.BatchArgs{frontmatter, moveA}, false, false, false, nil, false},
+		{"a move of A, an edit of P's body", []domain.BatchArgs{moveA, editOp("P.md", "See", "Read")}, false, false, true, []int{1}, false},
+		{"a write linking to A and B, their moves, an edit", []domain.BatchArgs{write("x [[A]] [[B]]"), moveA, moveB,
+			editOp("P.md", "x", "y")}, false, false, true, []int{3}, false},
+		{"a move of A, a write of a new frontmatter and the rewritten body", []domain.BatchArgs{moveA,
+			write("---\nt: 2\n---\nSee [[A2]].")}, true, false, true, []int{1}, false},
+		{"an edit of P's body, a move P links to none of, a write of the same bytes", []domain.BatchArgs{editOp("P.md", "See", "Read"),
+			moveB, write("---\nt: 1\n---\nRead [[A]].")}, false, false, false, []int{2}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			p, _ := planOf(t, nb, tt.ops...)
+			if tt.whole {
+				p.ReadWhole(pID)
+			}
+			rw := &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]", "[[B]]": "[[B2]]"}, stale: map[uuid.UUID]bool{pID: tt.stale}}
+			if tt.onlyB {
+				delete(rw.subs, "[[A]]")
+			}
+			contentsOf(t, p, map[uuid.UUID]domain.PageText{pID: {Content: before, Revision: 1}},
+				map[uuid.UUID]domain.PageHead{pID: headOf(before, 1)}, rw)
+			if p.Failed != nil {
+				t.Fatalf("Failed = %+v", failed(t, p))
+			}
+			pages := p.Pages()
+			if len(pages) != 1 || pages[0].ID != pID || pages[0].Reached != tt.reached {
+				t.Errorf("the pages %+v, want P's Reached %v", pages, tt.reached)
+			}
+			for i, s := range p.Steps {
+				if want := slices.Contains(tt.moved, i); s.Moved != want {
+					t.Errorf("ops[%d]'s Moved = %v, want %v", i, s.Moved, want)
+				}
+			}
+		})
+	}
+	p, made := planOf(t, nb, moveA, writeOp("New.md", "See [[A]]."))
+	p.MarkReached(made[1][0])
+	contentsOf(t, p, nil, nil, &fakeRewriter{subs: map[string]string{"[[A]]": "[[A2]]"}})
+	if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Created || pages[0].Reached {
+		t.Errorf("a page the batch creates, marked: Failed %v, the pages %+v; want one created, not Reached", p.Failed, pages)
+	}
+
+	// A page marked before the contents' pass (MarkReached, decision 270:
+	// a move before its last op reaches a link it had before the batch)
+	// stays Reached whatever its ops write: a link taken out and put back,
+	// the move reaching nothing it holds then.
+	for _, ops := range [][]domain.BatchArgs{
+		{editOp("P.md", "[[A]]", "(A)"), moveB, editOp("P.md", "(A)", "[[A]]")},
+		{write("See (A)."), moveB, write(before)},
+	} {
+		p, _ := planOf(t, nb, ops...)
+		p.MarkReached(pID)
+		contentsOf(t, p, map[uuid.UUID]domain.PageText{pID: {Content: before, Revision: 1}},
+			map[uuid.UUID]domain.PageHead{pID: headOf(before, 1)}, &fakeRewriter{subs: map[string]string{"[[B]]": "[[B2]]"}})
+		if pages := p.Pages(); p.Failed != nil || len(pages) != 1 || !pages[0].Reached {
+			t.Errorf("P marked, then %d ops: Failed %v, the pages %+v; want P Reached", len(ops), p.Failed, pages)
+		}
+	}
+}
+
+// While the notebook is being upgraded, the reads' bound counts the pages
+// a batch's writes replace blind, by their heads, with those read whole,
+// in their first ops' order (M11/P2 decision 266): blind writes of three
+// pages of 5 MiB pass it at the third, page.batch_too_large there, saying
+// why; with no upgrade, reviewing or rolling back, the same batch is
+// within it, its heads alone counted none. A blind write and an edit
+// count in their ops' order: the edit that passes it is the one refused.
+// A page the batch creates is not counted, whatever a head of its id
+// says.
+func TestTheReadsBoundCountsBlindWritesWhileUpgrading(t *testing.T) {
+	nb := newNotebook("P1.md", "P2.md", "P3.md")
+	ids := []uuid.UUID{nb.id(t, "P1.md"), nb.id(t, "P2.md"), nb.id(t, "P3.md")}
+	five := domain.MaxContentBytes
+	heads := func(sizes ...int) map[uuid.UUID]domain.PageHead {
+		out := map[uuid.UUID]domain.PageHead{}
+		for i, n := range sizes {
+			out[ids[i]] = domain.PageHead{Revision: 1, Bytes: n}
+		}
+		return out
+	}
+	write := func(path string, id uuid.UUID) domain.BatchArgs {
+		return with(writeOp(path, "x"), func(o *domain.BatchArgs) { o.Base = tokenOf(id, 1) })
+	}
+	in := func(state domain.UpgradeState) domain.NotebookState {
+		n := domain.NotebookState{Mode: domain.ModeStandard}
+		if state != "" {
+			n.Upgrade = domain.NotebookUpgrade{ID: uuid.NewV7(), State: state, By: uuid.NewV7()}
+		}
+		return n
+	}
+	const hint = "at most 14680064: while the notebook is being upgraded, each page a write replaces is read whole: split the batch."
+	p, _ := planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), write("P2.md", ids[1]), write("P3.md", ids[2]))
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 || p.Failed != failed ||
+		!strings.HasSuffix(failed.Error(), hint) {
+		t.Errorf("upgrading, blind writes of three pages of 5 MiB: %v, want page.batch_too_large at ops[2], saying why", failed)
+	}
+	for _, state := range []domain.UpgradeState{"", domain.UpgradeReviewing, domain.UpgradeRollingBack} {
+		p, _ := planIn(t, nb, in(state), write("P1.md", ids[0]), write("P2.md", ids[1]), write("P3.md", ids[2]))
+		if failed := p.CheckReads(heads(five, five, five)); failed != nil {
+			t.Errorf("%q, the same blind writes: %v, want none", state, failed)
+		}
+	}
+	p, _ = planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), write("P2.md", ids[1]), editOp("P3.md", "o", "n"))
+	if failed := p.CheckReads(heads(five, five, five)); failed == nil || failed.Op != 2 || !strings.HasSuffix(failed.Error(), hint) {
+		t.Errorf("upgrading, two blind writes and an edit after them: %v, want the edit refused at ops[2]", failed)
+	}
+	p, made := planIn(t, nb, in(domain.UpgradeUpgrading), write("P1.md", ids[0]), writeOp("New.md", "x"), write("P2.md", ids[1]))
+	created := heads(five, domain.MaxBatchReadBytes-five)
+	created[made[1][0]] = domain.PageHead{Bytes: five}
+	if failed := p.CheckReads(created); failed != nil {
+		t.Errorf("upgrading, a page created between blind writes at the bound: %v, want none", failed)
+	}
+}
+
 // The unit's bounds on the plan (M9/P3 design 3.4.4, 3.8): the final
 // contents, each page and hash once with the plan's parses, past
 // MaxUnitBytes for more pages than one, never for a lone page.

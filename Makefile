@@ -344,7 +344,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫与删除护栏的读（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起与两种护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -360,6 +360,8 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeProtectedReadsInTimeAtTheUnitsBound$$' ./internal/modules/page/adapter/postgres
 	@# M11/P1/S2：发起，5 万页、1.5 万页在 raw 里各带 10 条待建（10 万页在最慢的 runner 上过 4.5 s，照决定 232 进 M12 的移交）；upgrade_nodes 三种统计状态 × 自定义与通用的计划：先在发起的事务里核对 SetBaselineWanted 的计划只读 upgrade_nodes 一遍或逐个 id 经主键，再核对三次发起都答 200、中位数在本机两轮的三倍之内；带 -v 打出各段（P1 设计 7.1，决定 232、236）
 	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
+	@# M11/P2/S1：正文与账本两种护栏的读，一页基线页的正文的读与账本的写各 1,000 次，对着两次升级各十万行、另九本各五万页的笔记本与它们的升级；三种统计 × 自定义与通用的计划：upgrade_nodes 只经 upgrade_nodes_pkey、两列都在索引条件里，page_contents 只经主键在嵌套循环的内侧，中位数在本机两轮的三倍（5 ms）之内；带 -v 打出中位数（P2 设计 7.1，决定 236、240）；本机约 17 秒，种子 12.7 秒
+	cd server && go test -count=1 -v -run '^TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
 
 .PHONY: test-go-costs-3
 test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）
@@ -459,6 +461,9 @@ test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守�
 	@# batch 写过的页按它最后的内容的大小计（修正的第 6 轮，B3-N1）；与改写的页留下的解析额度：三条界线之内、改写过的页留下的份额旁放不下下一次解析时
 	@# 立即被拒，别人的份额挡着时 server_busy，额度够大时做完（修正的第 6 轮，B3-M1）
 	cd server && go test -count=1 -v -run '^(TestABatchAtItsRewriteBoundTakesItsTime|TestABatchPastItsLinksBoundIsRefused|TestABatchPastItsBytesBoundIsRefused|TestABatchCountsThePagesItWroteAtTheirFinalSize|TestABatchWhosePagesOutgrowTheParseBudgetIsRefused)$$' ./internal/bootstrap
+	@# M11/P2/S1：护栏在批的界上的单元单独一行、带 -v：升级中发起人的 agent 的五种形状（400 页的改名改写、读的界上的 100 个编辑、一页 5 MiB 的编辑、读的界上的三个盲写、
+	@# 100 个 5 MiB 的盲写由计划拒），每个单元短于 14 秒（决定 153、243）、中位数在本机两轮的三倍之内，同一形状在普通笔记本上的中位数一起打出（P2 设计 7.1，决定 266）；本机约 21 秒
+	cd server && go test -count=1 -v -run '^TestUpgradeGuardrailsAtTheBatchBoundTakeTheirTime$$' ./internal/bootstrap
 	@# grep 的三个守卫一行、带 -v：一行 5 MiB 的页（匹配到 MaxGrepLineWork）、500 页各 64 KiB 的页（停在 MaxGrepWork）、10 万个候选
 	@# 前两个工作界为 S1 本机测量的三倍；GrepCandidates 三种统计下各三次中位数的界为 600 ms（M10 期间 CI 最慢中位数 389.483274 ms，留约 54% 余量），
 	@# 走到第 500 个候选的三次完整调用中位数的界仍为 1 s（M9/P4 设计 6.1，3.6.4）；两种预算独立，不改变候选数、计划与范围的检查。

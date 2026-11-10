@@ -2,12 +2,16 @@ package postgresadapter_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"maps"
 	"slices"
 	"strings"
 	"testing"
 	"time"
 	"uuid"
+
+	"github.com/jackc/pgx/v5"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
@@ -248,4 +252,114 @@ func TestTheNotebooksSessionsAsAnUpgradeStarts(t *testing.T) {
 	if holders, total, err := f.s.LiveSessionsOfNotebook(ctx, f.ops, at); err != nil || total != 0 || len(holders) != 0 {
 		t.Errorf("ops' live sessions = %v of %d, %v; want none", holders, total, err)
 	}
+}
+
+// The body's guardrail's read (M11/P2 design 3.3): the content now of a
+// page of the upgrade's baseline; none of its seeded source root's
+// protection row, an attachment's baseline row, a baseline page deleted
+// since, a page created since, or a page of another upgrade's baseline.
+func TestUpgradeBaselineContent(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	upgrade, other := uuid.NewV7(), uuid.NewV7()
+	guide, raw, gone, fresh := f.page(t, f.eng, nil, "Guide", 0), f.page(t, f.eng, nil, "raw", 1), f.page(t, f.eng, nil, "Gone", 2),
+		f.page(t, f.eng, nil, "New", 3)
+	asset := f.asset(t, f.eng, nil, "a.png", 4)
+	f.exec(t, "UPDATE page_contents SET content = 'guide', content_hash = sha256('guide'), byte_size = 5 WHERE node_id = $1", guide.ID)
+	f.exec(t, "UPDATE page_contents SET content = 'raw', content_hash = sha256('raw'), byte_size = 3 WHERE node_id = $1", raw.ID)
+	f.exec(t, `INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+			content_hash, byte_size, wanted, accepted_hash) VALUES
+		($1, $3, $8, true, 'page', NULL, 'Guide', 0, 1, sha256('guide'), 5, 0, sha256('guide')),
+		($1, $4, $8, false, 'page', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+		($1, $5, $8, true, 'page', NULL, 'Gone', 2, 1, sha256(''), 0, 0, sha256('')),
+		($1, $7, $8, true, 'asset', NULL, 'a.png', 4, NULL, NULL, NULL, NULL, NULL),
+		($2, $6, $8, true, 'page', NULL, 'New', 3, 1, sha256(''), 0, 0, sha256(''))`,
+		upgrade, other, guide.ID, raw.ID, gone.ID, fresh.ID, asset.ID, f.eng)
+	f.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", gone.ID)
+	f.exec(t, "UPDATE page_contents SET deleted_at = now() WHERE node_id = $1", gone.ID)
+	if err := postgres.NewTxManager(f.pool, 5*time.Second).WithinTx(ctx, func(ctx context.Context) error {
+		content, ok, err := f.s.BaselineContent(ctx, upgrade, guide.ID)
+		if err != nil || !ok || content != "guide" {
+			t.Errorf("BaselineContent of Guide = %q, %v, %v; want its content", content, ok, err)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for name, id := range map[string]uuid.UUID{"raw's protection row": raw.ID, "an attachment": asset.ID, "a page deleted since": gone.ID,
+		"a page created since, of another upgrade's baseline": fresh.ID} {
+		if content, ok, err := f.s.BaselineContent(ctx, upgrade, id); err != nil || ok || content != "" {
+			t.Errorf("BaselineContent of %s = %q, %v, %v; want none", name, content, ok, err)
+		}
+	}
+}
+
+// The ledger's write (M11/P2 design 3.5): a baseline page's accepted hash
+// becomes after over before, the hash it accepted last; over another, it
+// is a defect's error and the row is as it was; with no before, after is
+// taken anyway, a rollback's. A seeded source root's protection row, an
+// attachment's baseline row and a page with no row are left as they are,
+// no error.
+func TestAcceptUpgradeContent(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	upgrade := uuid.NewV7()
+	guide, raw, fresh := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
+	asset := uuid.NewV7()
+	f.exec(t, `INSERT INTO upgrade_nodes (upgrade_id, node_id, notebook_id, baseline, kind, parent_id, name, sort_order, revision,
+			content_hash, byte_size, wanted, accepted_hash) VALUES
+		($1, $2, $5, true, 'page', NULL, 'Guide', 0, 1, sha256('one'), 3, 0, sha256('one')),
+		($1, $3, $5, false, 'page', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
+		($1, $4, $5, true, 'asset', NULL, 'a.png', 1, NULL, NULL, NULL, NULL, NULL)`, upgrade, guide, raw, asset, f.eng)
+	sum := func(s string) []byte { h := sha256.Sum256([]byte(s)); return h[:] }
+	accepted := func() string {
+		return strings.Join(queryAll(t, f, `SELECT coalesce(encode(accepted_hash, 'hex'), '-') FROM upgrade_nodes WHERE upgrade_id = $1
+			ORDER BY node_id`, upgrade), " ")
+	}
+	hex := func(s string) string { return fmt.Sprintf("%x", sum(s)) }
+	order := map[uuid.UUID]int{}
+	for i, id := range sortedIDs(guide, raw, asset) {
+		order[id] = i
+	}
+	want := func(guideHash string) string {
+		out := make([]string, 3)
+		out[order[guide]], out[order[raw]], out[order[asset]] = guideHash, "-", "-"
+		return strings.Join(out, " ")
+	}
+	if err := f.s.AcceptUpgradeContent(ctx, upgrade, guide, sum("one"), sum("two")); err != nil || accepted() != want(hex("two")) {
+		t.Errorf("Guide over its accepted hash = %v, the ledger %s; want two's", err, accepted())
+	}
+	if err := f.s.AcceptUpgradeContent(ctx, upgrade, guide, sum("one"), sum("three")); err == nil || accepted() != want(hex("two")) {
+		t.Errorf("Guide over another hash = %v, the ledger %s; want a defect's error, two's kept", err, accepted())
+	}
+	if err := f.s.AcceptUpgradeContent(ctx, upgrade, guide, nil, sum("four")); err != nil || accepted() != want(hex("four")) {
+		t.Errorf("Guide over none = %v, the ledger %s; want four's", err, accepted())
+	}
+	for name, id := range map[string]uuid.UUID{"raw's protection row": raw, "an attachment": asset, "a page with no row": fresh} {
+		for _, before := range [][]byte{nil, sum("four")} {
+			if err := f.s.AcceptUpgradeContent(ctx, upgrade, id, before, sum("five")); err != nil || accepted() != want(hex("four")) {
+				t.Errorf("%s over %x = %v, the ledger %s; want nothing written, no error", name, before, err, accepted())
+			}
+		}
+	}
+}
+
+// queryAll is the first column of each row of query on f's pool, as text.
+func queryAll(t *testing.T, f fixture, query string, args ...any) []string {
+	t.Helper()
+	rows, err := f.pool.Query(context.Background(), query, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+// sortedIDs are ids in their order.
+func sortedIDs(ids ...uuid.UUID) []uuid.UUID {
+	slices.SortFunc(ids, uuid.UUID.Compare)
+	return ids
 }

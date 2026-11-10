@@ -113,6 +113,17 @@ type ContentLock struct {
 	ByteSize int
 }
 
+// UpgradeLedger keeps the hash of each baseline page's content that the
+// guardrails last let by (M11 design 4.6, decision 191), in the unit's
+// transaction: none for a page not of the baseline. With before, the hash
+// of the content the step writes over, it takes after only over the hash
+// it accepted last, and is a defect's error for a baseline page whose
+// accepted hash is another: a content written by the units (M11/P2 design
+// 3.5). Nil before takes it anyway, a rollback's.
+type UpgradeLedger interface {
+	AcceptUpgradeContent(ctx context.Context, upgradeID, nodeID uuid.UUID, before, after []byte) error
+}
+
 // ContentMeta is what a page tells of its content besides the content.
 type ContentMeta struct {
 	Revision  int
@@ -274,9 +285,11 @@ type BatchLinks interface {
 	// nodes of frozen left, the nodes of createdAfter out of the subtrees
 	// of the nodes they key (BatchRewrite.CreatedAfter): the plan then
 	// reads the page whole and compares the write with its content
-	// rewritten for them. False when the index is not of revision or not
-	// of the current extractor, as Indexed. What it reads of tree it keeps
-	// in reads.
+	// rewritten for them. While upgrading, the plan asks it again of the
+	// renames and moves before a page's last content op, its edits' too,
+	// and marks a page so reached (M11/P2 decision 270). False when the
+	// index is not of revision or not of the current extractor, as
+	// Indexed. What it reads of tree it keeps in reads.
 	Reached(ctx context.Context, notebookID, id uuid.UUID, revision int, changes []domain.Change, frozen []uuid.UUID,
 		createdAfter map[uuid.UUID][]uuid.UUID, tree domain.PlanTree, reads *TreeReads) (bool, error)
 	// Resolve is where each link of q's content, the page's at its path on

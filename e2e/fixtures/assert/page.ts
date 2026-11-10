@@ -288,6 +288,24 @@ export async function expectBaseline(
 }
 
 /**
+ * upgrade_nodes, nodes, page_contents: every node of the upgrade upgradeId's baseline, nodes of them, is alive, and every
+ * page of it holds the content whose hash its ledger accepted last (M11/P2 design 3.5): the guardrails' tripwire did not
+ * go off.
+ */
+export async function expectBaselineKept(db: Database, upgradeId: string, nodes: number): Promise<void> {
+  const rows = await db.query<{ nodes: number; dead: number; unkept: number }>(
+    `SELECT count(*)::integer AS nodes, (count(*) FILTER (WHERE n.id IS NULL))::integer AS dead,
+            (count(*) FILTER (WHERE b.kind = 'page' AND c.content_hash IS DISTINCT FROM b.accepted_hash))::integer AS unkept
+       FROM upgrade_nodes b
+       LEFT JOIN nodes n ON n.id = b.node_id AND n.deleted_at IS NULL
+       LEFT JOIN page_contents c ON c.node_id = b.node_id AND c.deleted_at IS NULL
+      WHERE b.upgrade_id = $1 AND b.baseline`,
+    [upgradeId]
+  );
+  expect(rows).toEqual([{ nodes, dead: 0, unkept: 0 }]);
+}
+
+/**
  * The names a revert puts nodes aside under (M9/P3 design 3.17): a node's name, " ~", 8 or 32 hex digits of its id, the
  * 32 maybe with a count ("-2"), and an attachment's extension.
  */

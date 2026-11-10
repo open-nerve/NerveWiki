@@ -19,7 +19,7 @@ func TestASeedForAnUpgradeIsItsOwn(t *testing.T) {
 	f := newFixture()
 	f.grant(domain.ActionCreate)
 	f.notebooks.states = map[uuid.UUID]domain.NotebookState{f.eng: f.upgrading(domain.UpgradeUpgrading, current)}
-	f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{})}
+	f.guards = []app.WriteGuard{app.NewFreezeGuard(f.auth, changeMode, &upgradeNodes{}, frontmatters{})}
 	seeds := app.NewSeedWrites(f.writer(), f.md)
 	seed := func(upgrade uuid.UUID, titles ...string) ([]uuid.UUID, error) {
 		pages := make([]app.PageDraft, len(titles))

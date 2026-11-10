@@ -46,6 +46,12 @@ type WriterDeps struct {
 	SourcePrecheck *SourcePrecheck
 	Sources        SourceStore
 	Attachments    AttachmentInfos
+	// Markdown tells where a content's frontmatter ends: the body an
+	// upgrade's guardrails compare (M11/P2 design 3.3). Ledger is the
+	// upgrade's ledger, which each content step of a notebook with an
+	// upgrade writes (M11/P2 design 3.5).
+	Markdown Frontmatters
+	Ledger   UpgradeLedger
 	// Names gives the name of who released a session's lock (M5 design
 	// 4.3).
 	Names        Names
@@ -362,9 +368,10 @@ func refusalOf(err error, s Step) error {
 	return domain.Refuse(err, s.Changes[0].NodeID)
 }
 
-// step is an operation of the unit.
+// step is an operation of the unit: a move or a rename of a batch's with
+// update_links false (Relocate's Placement.KeepLinks) keeps the links.
 func (u *Unit) step(op domain.Operation, changes ...domain.Change) Step {
-	return Step{Write: u.write, Operation: op, Changes: changes}
+	return Step{Write: u.write, Operation: op, Changes: changes, KeepLinks: u.keepLinks}
 }
 
 // apply runs an operation whose checks passed: the guards, its write, its
@@ -382,17 +389,9 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 	if err := u.inUnit(ctx); err != nil {
 		return err
 	}
-	var err error
-	if s, err = u.withSourceLines(ctx, s); err != nil {
+	s, err := u.guarded(ctx, s)
+	if err != nil {
 		return err
-	}
-	if s, err = u.withSourceHashes(ctx, s); err != nil {
-		return err
-	}
-	for _, g := range u.w.d.Guards {
-		if err := g.GuardWrite(ctx, s); err != nil {
-			return refusalOf(err, s)
-		}
 	}
 	if err := u.rememberIngestBefore(ctx, s); err != nil {
 		return err
@@ -407,6 +406,9 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 		return err
 	}
 	if err := u.writeSourceHashes(ctx, s); err != nil {
+		return err
+	}
+	if err := u.acceptUpgradeContent(ctx, s); err != nil {
 		return err
 	}
 	if err := u.recordItems(ctx, s.Changes); err != nil {
@@ -425,6 +427,43 @@ func (u *Unit) applyStep(ctx context.Context, s Step, participate bool, write fu
 		}
 	}
 	return nil
+}
+
+// guarded is s with its source lines and hashes, as its guards judge it,
+// and their judgment: a refusal, a problem, marked with the node it is
+// about (refusalOf).
+func (u *Unit) guarded(ctx context.Context, s Step) (Step, error) {
+	var err error
+	if s, err = u.withSourceLines(ctx, s); err != nil {
+		return s, err
+	}
+	if s, err = u.withSourceHashes(ctx, s); err != nil {
+		return s, err
+	}
+	for _, g := range u.w.d.Guards {
+		if err := g.GuardWrite(ctx, s); err != nil {
+			return s, refusalOf(err, s)
+		}
+	}
+	return s, nil
+}
+
+// acceptUpgradeContent writes a content step's hash to the ledger of the
+// notebook's upgrade (M11 design 4.6, decision 191; M11/P2 design 3.5):
+// every content step, the participants' rewrites too, upgrading only over
+// the hash the ledger accepted last, which the content written over must
+// have; a rollback's unit writes it anyway. A notebook with no upgrade,
+// and any other step, writes none.
+func (u *Unit) acceptUpgradeContent(ctx context.Context, s Step) error {
+	up := u.write.Notebook.Upgrade
+	if s.Operation != domain.OpContent || up.ID == (uuid.UUID{}) {
+		return nil
+	}
+	var before []byte // a rollback's unit writes it anyway
+	if up.State == domain.UpgradeUpgrading {
+		before = s.Content.BeforeHash
+	}
+	return u.w.d.Ledger.AcceptUpgradeContent(ctx, up.ID, s.Changes[0].NodeID, before, s.Content.Hash)
 }
 
 // inUnit refuses a ctx without the unit's transaction: an operation would

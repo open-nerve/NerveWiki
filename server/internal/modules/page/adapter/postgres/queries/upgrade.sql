@@ -4,6 +4,34 @@
 SELECT node_id FROM upgrade_nodes
 WHERE upgrade_id = sqlc.arg(upgrade_id) AND node_id = ANY(sqlc.arg(node_ids)::uuid[]);
 
+-- name: UpgradeBaselineContent :one
+-- The content now of the page node_id when it is of the upgrade upgrade_id's baseline (M11 design 4.6): an upgrade's
+-- guardrail compares its body with a write's, in the unit's transaction, under the page's content row lock the unit
+-- holds. By upgrade_nodes_pkey, then page_contents_pkey; no row for a page not of the baseline, whose content is not
+-- read. A seeded source root's protection row is not of the baseline.
+SELECT c.content FROM upgrade_nodes b
+JOIN LATERAL (
+    SELECT c.content FROM page_contents c WHERE c.node_id = b.node_id AND c.deleted_at IS NULL LIMIT 1
+) c ON true
+WHERE b.upgrade_id = sqlc.arg(upgrade_id) AND b.node_id = sqlc.arg(node_id) AND b.baseline AND b.kind = 'page';
+
+-- name: AcceptUpgradeContent :one
+-- The ledger (M11 design 4.6, decision 191): a content written in a notebook being upgraded, of a page of the
+-- upgrade's baseline, is the one its guardrails accepted. With before (upgrading) only over the hash accepted last,
+-- which the content written over must have (M11/P2 design 3.5): a baseline row whose hash is another counts
+-- baseline 1, accepted 0, its caller's defect. No row for a page not of the baseline. In the unit's transaction, by
+-- upgrade_nodes_pkey; b reads the row as the statement started, u writes it.
+WITH b AS (
+    SELECT 1 FROM upgrade_nodes r
+    WHERE r.upgrade_id = sqlc.arg(upgrade_id) AND r.node_id = sqlc.arg(node_id) AND r.baseline AND r.kind = 'page'
+), u AS (
+    UPDATE upgrade_nodes w SET accepted_hash = sqlc.arg(after)
+    WHERE w.upgrade_id = sqlc.arg(upgrade_id) AND w.node_id = sqlc.arg(node_id) AND w.baseline AND w.kind = 'page'
+        AND (sqlc.narg(before)::bytea IS NULL OR w.accepted_hash = sqlc.narg(before)::bytea)
+    RETURNING 1
+)
+SELECT (SELECT count(*) FROM b)::integer AS baseline, (SELECT count(*) FROM u)::integer AS accepted;
+
 -- name: DeleteUpgradeNodesOfNotebooks :exec
 -- The notebooks' deletion (M11/P1 design 3.12): their upgrades' baseline and protected rows go, by
 -- upgrade_nodes_notebook_id_idx. The rows have no deleted_at: an upgrade's ending deletes them too.
