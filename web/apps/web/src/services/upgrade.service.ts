@@ -1,9 +1,9 @@
-import type { ApiClient, Upgrade } from "@nervewiki/api-client";
+import type { ApiClient, Upgrade, UpgradeReportItem } from "@nervewiki/api-client";
 
 import type { Locale } from "../i18n/locale";
 import { unwrap } from "./api";
 
-export type { Upgrade };
+export type { Upgrade, UpgradeReportItem };
 
 /**
  * UpgradeService starts a notebook's upgrade to an LLM Wiki, reads it,

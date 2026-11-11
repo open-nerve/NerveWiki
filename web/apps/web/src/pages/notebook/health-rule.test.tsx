@@ -1,11 +1,21 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { observer } from "mobx-react-lite";
+import { useState } from "react";
+import type { RouteObject } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { routes } from "../../app/routes";
+import { ApiError } from "../../services/api";
+import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
+import { usePageTree } from "../../stores/context";
 import { json, notebookJSON, problem } from "../../test/fakes";
-import { deferred, healthPath, healthServer, wantedFacts } from "../../test/health-server";
+import { deferred, healthHome, healthPath, healthServer, wantedFacts } from "../../test/health-server";
 import { guide } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import type { HealthScope } from "./health-request";
+import { HealthRule, type HealthCard } from "./health-rule";
+import { useNotebook } from "./notebook-layout";
 
 afterEach(() => vi.useRealTimers());
 
@@ -354,5 +364,141 @@ test.each([false, true])(
       await screen.findByText("Missing 001");
       expect(wanted().getAllByRole("listitem")).toHaveLength(50);
     }
+  }
+);
+
+// What a caller gives the rule (M11/P2 design 4.3): how a page of its items
+// is read, which refusal says its scope is gone, its heading's level. A
+// probe renders one card of the wanted pages, the first five shown, under
+// the notebook, with what the test gives.
+
+type Probe = {
+  read: (rule: LintRule, cursor: string, signal: AbortSignal) => Promise<LintPage>;
+  moved: string;
+  level?: 2 | 3;
+  mismatch: () => void;
+};
+
+/** probed renders the probe's card of the wanted pages over the health page's server, and waits for its heading. */
+async function probed(probe: Probe, level: 2 | 3) {
+  const facts = wantedFacts(6);
+  const summary: LintRuleSummary = {
+    rule: "wanted",
+    count: 6,
+    count_capped: false,
+    items: facts.slice(0, 5),
+    next_cursor: facts[4]?.cursor ?? null,
+  };
+  const scope: HealthScope = { key: ["rule-probe"], current: () => true, controllers: new Set() };
+  const Card = observer(function Card() {
+    const pages = usePageTree(useNotebook());
+    const [card, setCard] = useState<HealthCard>({
+      items: summary.items,
+      cursor: summary.next_cursor,
+      told: "",
+      again: false,
+    });
+    return (
+      <HealthRule
+        summary={summary}
+        pages={pages}
+        readingTree={false}
+        scope={scope}
+        card={card}
+        mode="llm_wiki"
+        disabled={false}
+        change={async (update) => {
+          setCard(update);
+          return undefined;
+        }}
+        mismatch={probe.mismatch}
+        paths={() => undefined}
+        read={probe.read}
+        moved={probe.moved}
+        level={probe.level}
+      />
+    );
+  });
+  const withProbe = (entries: RouteObject[]): RouteObject[] =>
+    entries.map((entry) =>
+      entry.index === true
+        ? entry
+        : entry.path === "notebooks/:id"
+          ? { ...entry, children: [...(entry.children ?? []), { path: "rule-probe", Component: Card }] }
+          : entry.children === undefined
+            ? entry
+            : { ...entry, children: withProbe(entry.children) }
+    );
+  const fixture = healthServer();
+  renderApp(`${healthHome}/rule-probe`, fixture.server.app, { routes: withProbe(routes) });
+  await screen.findByRole("heading", { level, name: "Wanted pages" });
+  return { fixture, facts };
+}
+
+test("a rule's More reads its next page as its caller says, not the health check's items", async () => {
+  const user = userEvent.setup();
+  const asked: [LintRule, string, boolean][] = [];
+  const { fixture, facts } = await probed(
+    {
+      read: async (rule, cursor, signal) => {
+        asked.push([rule, cursor, signal instanceof AbortSignal]);
+        return {
+          mode: "llm_wiki",
+          computed_at: "2026-10-31T09:10:00Z",
+          stale_pages: 0,
+          data: facts.slice(5),
+          next_cursor: null,
+        };
+      },
+      moved: "wiki.upgrade_state",
+      mismatch: () => undefined,
+    },
+    2
+  );
+
+  await user.click(wanted().getByRole("button", { name: "More" }));
+
+  expect(await screen.findByText("Missing 006")).toBeTruthy();
+  expect(asked).toEqual([["wanted", facts[4]?.cursor, true]]);
+  expect(fixture.pages).toEqual([]);
+});
+
+test.each([
+  ["wiki.upgrade_state", "wiki.upgrade_state", 1],
+  ["wiki.upgrade_state", "notebook.not_llm_wiki", 0],
+  ["notebook.not_llm_wiki", "notebook.not_llm_wiki", 1],
+])(
+  "a rule told its scope is gone by %s, its More refused as %s, says so to its caller %i times; the card keeps its items",
+  async (moved, code, said) => {
+    const user = userEvent.setup();
+    let mismatches = 0;
+    await probed(
+      {
+        read: () => Promise.reject(new ApiError(409, { status: 409, code, title: "" })),
+        moved,
+        mismatch: () => mismatches++,
+      },
+      2
+    );
+
+    await user.click(wanted().getByRole("button", { name: "More" }));
+
+    expect(await wanted().findByRole("alert")).toBeTruthy();
+    expect(mismatches).toBe(said);
+    expect(wanted().getAllByRole("listitem")).toHaveLength(5);
+  }
+);
+
+test.each([[undefined, 2] as const, [2, 2] as const, [3, 3] as const])(
+  "a rule's heading, its level given as %s, is of level %i",
+  async (level, shown) => {
+    await probed(
+      { read: () => new Promise(() => undefined), moved: "wiki.upgrade_state", level, mismatch: () => undefined },
+      shown
+    );
+
+    const heading = screen.getByRole("heading", { name: "Wanted pages" });
+    expect(heading.tagName).toBe(`H${shown}`);
+    expect(screen.queryByRole("heading", { level: shown === 2 ? 3 : 2, name: "Wanted pages" })).toBeNull();
   }
 );

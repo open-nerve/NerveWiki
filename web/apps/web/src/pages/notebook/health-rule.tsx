@@ -6,8 +6,8 @@ import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { useT, type PlainKey } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
-import type { LintItem, LintRule, LintRuleSummary } from "../../services/wiki.service";
-import { useStore, useWiki } from "../../stores/context";
+import type { LintItem, LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
+import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { LoadMoreButton } from "../load-more";
 import { HealthItem } from "./health-item";
@@ -44,7 +44,12 @@ const labels: Record<LintRule, { title: PlainKey; description: PlainKey }> = {
   invalid_sources: { title: "health.invalidSources", description: "health.invalidSourcesDescription" },
 };
 
-/** One applicable check, including the checks with no findings in the shared disclosure. */
+/**
+ * One applicable check, including the checks with no findings in the shared
+ * disclosure: the health page's, or an upgrade's check's (M11/P2 design
+ * 4.3), whose caller says how a page of its items is read, which refusal
+ * says the scope it was read in is gone, and its heading's level.
+ */
 export const HealthRule = observer(function HealthRule({
   summary,
   pages,
@@ -56,6 +61,9 @@ export const HealthRule = observer(function HealthRule({
   change,
   mismatch,
   paths,
+  read,
+  moved,
+  level = 2,
 }: {
   summary: LintRuleSummary;
   pages: PageTreeStore;
@@ -67,10 +75,15 @@ export const HealthRule = observer(function HealthRule({
   change: (update: (was: HealthCard) => HealthCard) => Promise<HealthCard | undefined>;
   mismatch: () => void;
   paths: (items: readonly LintItem[]) => void;
+  /** Reads a page of the rule's items after cursor. */
+  read: (rule: LintRule, cursor: string, signal: AbortSignal) => Promise<LintPage>;
+  /** The code that says the scope the summary was read in is gone. */
+  moved: string;
+  /** The card's heading's level: 2 on a page of its own, 3 under a section's. */
+  level?: 2 | 3;
 }) {
   const t = useT();
   const { locale } = useStore().preferences;
-  const wiki = useWiki();
   const heading = useRef<HTMLHeadingElement>(null);
   const elements = useRef(new Map<string, HTMLLIElement>());
   const identity = unstable_serialize([...scope.key, summary.rule]);
@@ -91,7 +104,7 @@ export const HealthRule = observer(function HealthRule({
       try {
         const page = await healthRequest(
           scope,
-          (signal) => wiki.items(scope.notebookId, summary.rule, op.cursor, signal),
+          (signal) => read(summary.rule, op.cursor, signal),
           () => enabled.current && operation.current === op
         );
         return { page, id: op.id, cursor: op.cursor };
@@ -111,7 +124,7 @@ export const HealthRule = observer(function HealthRule({
       },
       onError: (error) => {
         if (!active() || healthCancelled(error)) return;
-        if (error instanceof ApiError && error.code === "notebook.not_llm_wiki") mismatch();
+        if (error instanceof ApiError && error.code === moved) mismatch();
         void change((was) => ({ ...was, error }));
       },
       onSuccess: ({ page, id, cursor }) => {
@@ -174,15 +187,16 @@ export const HealthRule = observer(function HealthRule({
   const text = labels[summary.rule];
   const title = t(text.title);
   const count = new Intl.NumberFormat(locale).format(summary.count) + (summary.count_capped ? "+" : "");
+  const Heading = level === 3 ? "h3" : "h2";
   return (
     <section
       id={summary.rule}
       aria-labelledby={`${summary.rule}-heading`}
       className="min-w-0 space-y-2 rounded-md border p-4"
     >
-      <h2 ref={heading} id={`${summary.rule}-heading`} tabIndex={-1} className="font-semibold outline-none">
+      <Heading ref={heading} id={`${summary.rule}-heading`} tabIndex={-1} className="font-semibold outline-none">
         {title}
-      </h2>
+      </Heading>
       <p className="text-sm text-muted-foreground">
         {t(summary.rule === "orphans" && mode === "llm_wiki" ? "health.orphansDescriptionWiki" : text.description)}
       </p>

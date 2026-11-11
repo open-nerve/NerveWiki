@@ -2,15 +2,19 @@ import { observer } from "mobx-react-lite";
 
 import { formatBytes, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
-import type { LintItem } from "../../services/wiki.service";
+import type { UpgradeReportItem } from "../../services/upgrade.service";
 import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { nodeTarget, useNodeNavigate } from "../node-target";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 
-/** A wanted group has no node; every other result names a page or source. */
-export function healthNodeId(item: LintItem): string | undefined {
+/**
+ * A wanted group has no node; every other result names a page or source.
+ * A health check's item and an upgrade's report's, which has no cursor
+ * (M11/P2 design 4.3), are read alike.
+ */
+export function healthNodeId(item: UpgradeReportItem): string | undefined {
   return item.rule === "wanted" ? undefined : item.rule === "undigested_sources" ? item.node_id : item.page_id;
 }
 
@@ -21,7 +25,7 @@ export const HealthItem = observer(function HealthItem({
   readingTree,
   itemRef,
 }: {
-  item: LintItem;
+  item: UpgradeReportItem;
   pages: PageTreeStore;
   readingTree: boolean;
   itemRef?: (element: HTMLLIElement | null) => void;
