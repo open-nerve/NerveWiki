@@ -364,7 +364,7 @@ test-go-costs: ## 顺序运行三份成本守卫及 server/tools（需要 Docker
 	@$(MAKE) --no-print-directory -j1 test-go-costs-1 test-go-costs-2 test-go-costs-3
 
 .PHONY: test-go-costs-1
-test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker）
+test-go-costs-1: ## 原成本命令第 1–13 条与批准的守卫（CI 第一份；需要 Docker）
 	@# 原 32 条命令按连续边界分份，公共入口仍串行；每条 argv、Go timeout 与预算不变。
 	@# 竞态检测让同一段代码的分配多出数倍、耗时慢数倍：分配与耗时的预算，以及阅读视图在各种解析下的 HTML 检查与体积上限，在不带它的构建中另测一次
 	cd server && go test -count=1 -run '^TestCheckCostsAboutTheBody$$' ./internal/platform/httpserver/bodyshape
@@ -386,6 +386,12 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestIngestNovelSourceRanges$$/^analyzed$$/^app_rebuild$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^no_statistics$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
+	@# M11/P3/S1：批准，5 万个来源（raw 下 500 个带正文的文件夹各 90 页带正文、5 页空页、4 个附件）与根下 1 万页笔记，另九本 LLM Wiki 各 5 万页、
+	@# 2,000 个附件与一次升级的基线；三种统计（从未分析、发起留下的、这本笔记本在统计之后才写入）× 自定义与通用的计划，每次批准在模板的一份新副本上：
+	@# 先在批准的事务里核对闸门的读、重建与删基线的计划，再核对三次批准都答 200、服务端的中位数在本机两轮的三倍（3.9 秒）之内；另一个种子（另四本，
+	@# 这本约占 nodes 的 22%）只核对重建的计划；带 -v 打出各段（P3 设计 7.1，决定 280、292）。本机约 2 分钟，7763 上估约 4–5 分钟，加上这个作业里
+	@# 第一次编译不带竞态的组合根约 1 分钟，过了 Go 默认的 10 分钟超时的一半，所以这一行 -timeout 15m：红在守卫自己的界上，不在 Go 默认的超时上
+	cd server && go test -count=1 -v -timeout 15m -run '^TestUpgradeApprovalTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-2
 test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
