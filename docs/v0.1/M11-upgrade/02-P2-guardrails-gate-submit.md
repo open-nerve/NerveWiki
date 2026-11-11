@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M11/P2 护栏、闸门与提交（三个 Step：S1 护栏（服务端）；S2 闸门、检查与提交（服务端）；S3 网页） |
 | 日期 | 2026-11-10（初稿）；2026-11-10（照设计审查第一轮修订）；2026-11-10（照修订核对第一轮修订）；2026-11-10（照修订核对第二轮修订，加第 267 条）；2026-11-10（照 S1 的实施与审查修订）；2026-11-11（照 S2 的实施与审查修订） |
-| 状态 | 进行中（S1 已合并 `8cf7af36`，S2 已合并 `（待填）`，S3 开工；设计的[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节；S1、S2 的审查记录 [P2-S1-guardrails-review.md](reviews/P2-S1-guardrails-review.md)、[P2-S2-gate-check-submit-review.md](reviews/P2-S2-gate-check-submit-review.md)；实施与审查之后与代码不同之处照实改在各节（3.19、3.20 列出），结果在 10.1、10.2） |
+| 状态 | 进行中（S1 已合并 `8cf7af36`，S2 已合并 `c61df45a`，S3 开工；设计的[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节；S1、S2 的审查记录 [P2-S1-guardrails-review.md](reviews/P2-S1-guardrails-review.md)、[P2-S2-gate-check-submit-review.md](reviews/P2-S2-gate-check-submit-review.md)；实施与审查之后与代码不同之处照实改在各节（3.19、3.20 列出），结果在 10.1、10.2） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.6、4.7、4.8 的提交、4.13 的两个工具与说明、4.14、4.15 的检查与提交、4.16–4.18、第 5、7、8、9、10 节、第 11 节（尤其 180、182、186–191、196、197、208、210、215、216、219、222、232、236、240、244、249）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P2 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.25–3.28 的修正，第 9 节交给 P2 的事）；[P1 的审查记录](reviews/)（设计与 S1–S4）；[v0.1 总体设计](../v0.1-design.md) 5.8、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1 设计：模块写作 `page/app/unit.go:392`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00056_page_upgrade_nodes.sql:9`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:144`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up4-guardrails.spec.ts:23`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P1 收尾之后的 `main` `f002672b` 的（它在初稿读的 `d589e5a2`、`455f692c` 与 `ce370441` 之上只改了文档：`git diff d589e5a2 f002672b -- server api`、`git diff 455f692c f002672b -- web e2e Makefile .github` 都为空），修订时照它复核过一遍 |
 | 工作笔记 | 代码的核对分四份（page 的单元、守卫与批的计划；wiki 的 lint、`Runs` 与升级的用例；MCP 的注册、码表与说明；网页、e2e、组合根的测试设施与 CI），本文引的每个行号都在其中核对过（附录）。设计不跑重的东西，要量的在 7.6；审查者 A、B、C 的实测（守卫读正文的代价、闸门的读的计划与时长、CI 各份的用时）写在审查记录里，本文引它们的数 |
@@ -2061,7 +2061,7 @@ P2 完成，当且仅当：
 - **合并之后**（2026-11-10）：`main` 在分支开出之后没有动过，分支不用先合 `main`；Step 的文档提交 `6808d8db` 的分支 CI（run 42828548509）18 项全绿之后 `--no-ff` 合进 `main`（`8cf7af36`，树与分支头相同）。`main` 上合并那次的 CI（run 42834026668）18 项一次全绿：七份的测试一步 254、438、405、396、403、318、197 秒；与它之前那次 `main`（42762546769，`c37a3faf`：361、430、389、356、391、304、240 秒）平均 307.5、434、397、376、397、311、218.5 秒，都在 450 秒之下。第二份两次都在 430 秒以上，最贴近界；S2 的第一个提交开第八份（第 261 条）时，照 06-environment 的规矩看要不要从第二份挪测试过去。costs-2 两次 24:41、24:40（时限 45 分钟），guards-core 12:51、12:58（时限 40 分钟）。记合并号的 `ba72cda4` 那次 `main`（run 42839913448）同样全绿：七份 355、346、342、304、287、320、382 秒（第七份换了 runner），与合并那次平均 304.5、392、373.5、350、345、319、289.5 秒，都在 450 秒之下；guards-core 19:44、guards-sources 16:38、costs-2 24:21。
 - 实施者留下的五项：Step 的文档提交是本提交；形状 a 在 7763 上余量最小（约 1.64 倍），界守的主要是 M9 的改写，若来了更慢的 runner 最先红的是它（P2S1B-N1）；读的守卫的种子比估的重，costs-2 的时限照第 267 条提前到 S1；UP4 的 Notes 以路径链向 Plan，playbook 照第 9 节写；S2、S3 照设计。
 
-### 10.2 S2：闸门、检查与提交（服务端）（2026-11-11，合并 `（待填）`）
+### 10.2 S2：闸门、检查与提交（服务端）（2026-11-11，合并 `c61df45a`）
 
 - 提交（从 main 的 `ba72cda4` 开始，照 6.2 的次序，S1 留下的测试提交排第 2，10 个；Step 的文档提交是主持者的）：
   - 第八份 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`：第七份 `-skip` 它，`test-go`、`test-go-bootstrap` 与 CI 的 `bootstrap-8`（25 分钟），06-environment 的两行（第 261 条）（`9ff43717`）。
@@ -2075,7 +2075,7 @@ P2 完成，当且仅当：
   - 两个成本守卫：闸门的读的计划（costs-3）、5 万页的检查（costs-2）；`rollbackReadProblems` 认 `changesets`；`Makefile` 两行、`ci.yml` 的注释，时限不变（7.1）（`a6e8cb67`）。
   - e2e：UP5 的 API 与 MCP 两个版本（第 5 节）（`c3c35bbc`）。
   - 每个提交单独在工作树里 build、vet、`make lint-go`、`make gen-check`、short 测试都通过，另跑它自己的（单元、组合根、网页三项、守卫、UP 的故事）；审查 B 另在 3、6、7、8 号上各自跑同样的四项，8 号另跑竞态的 `^TestToolStrings` 与 `TestUpgradeToolsErrorsCarryTheirCodes`。推送之前改写过两次 7–10 号，旧的都没推过：补变异 o1 抓不到的"只有 `AGENTS` 不过"两格（7 号）；修第一轮门禁的三处（7 号的交错第 7 条，8 号的 `validToolArguments` 与 LW8 的工具数）。
-  - 修复一轮另有 9 个、第二至五轮各 1 个（下面），一共 23 个；合并 `（待填）`。
+  - 修复一轮另有 9 个、第二至五轮各 1 个（下面），一共 23 个；合并 `c61df45a`。
 - 与设计不同之处（实施者的号，同 3.20；都是最小的改动，已改在各节）：
   1. 检查的类型在 3 号提交（6.2）。
   2. `wiki.upgrade_stale_index` 的服务端 `detail` 不说是哪个动作，同网页（4.2）；修复一轮改顺语气。
@@ -2130,7 +2130,7 @@ P2 完成，当且仅当：
 - **修复第五轮**（2026-11-11，`43caa32a`；`fix-5.md`）：1 个只改测试的提交，三条一起改：`TestUpgradeGates` 加一格"a baseline attachment deleted past the units"（以 SQL 删一个基线附件，`preserved` 整值 4/3/2/2，断言后还原）；`reportedView()` 加一项 `kind: page`，规则页的 `mode` 以 `standard` 再答一次；提交的日志断言 `user_id`。11 条变异改前活 4 条、改后全死，第四轮的 555 条在新头上仍全死；三处转换本身都没有错。
 - **修复核对第五轮**（C，`43caa32a`）：P2S2C-M7、N9、N10 关（wp1、k1、lg1 改后死，wp2、k2、k3 照旧死，`hi-MD=llm` 死；新格 4/3/2/2 的取法与"`pages` 必等于 `pages_kept`"的理由对，规则页以 `standard` 再答一次合理）；补查 S2 其余的逐字段转换（ws1、wl1、mv1 死，wb3 等价），这一类收尾。新的 P2S2C-N11（Nit）：`TestUpgradeGates` 以 SQL 改库的两格把还原写在 `check` 里，那一格先 `Fatal` 时后面各格跟着红；不改（只在那一格已经红时影响诊断），以后改这个测试时两格的 `change` 里另用 `t.Cleanup` 注册同一句幂等的还原（7.1）。修复核对到第五轮为止，没有 Important、Minor 留下。
 - 实施者留下的八项（报告第 9 节）：Step 的文档提交是本提交；MCP 的提交到不了 `at + SubmitTimeout`，即第 273 条；`TestTheMCPCallStopsWhenTheClientGoes` 与 `TestARestoreJobSkipsAnItemRestoredBetweenItsBatches` 的根因在审查里查清，修复一轮改；第二份过线，即第 272 条；第七、八份合并之后看两次 `main`；costs-2 的余量审查 B 看过，不再提；S3 照设计（网页 `wiki.upgrade_not_ready` 两种语言的文字与 `upgrade_stale_index` 的新文字已在 7 号，契约已生成进 `api-client`）。
-- **合并之后**：（待填）。
+- **合并之后**（2026-11-11）：`main` 在分支开出之后没有动过，分支不用先合 `main`；Step 的文档提交 `788cc874` 的分支 CI（run 42956107070）19 项全绿之后 `--no-ff` 合进 `main`（`c61df45a`，树与分支头相同）。`main` 上合并那次的 CI（run 42959287160）19 项一次全绿：八份的测试一步 317、298、457、367、434、235、293、186 秒；同一棵树的分支 run 是 270、363、443、314、469、287、213、187 秒。第三份两次都在 EPYC 7763 上（457、443 秒，均值 450 秒），第五份在 7763 上 469 秒、在 Xeon 8573C 上 434 秒（均值 451.5 秒），都到了 450 秒的线；S2 没有改这两份的测试，是契约变大让各份按比例变慢（审查 P2S2B-Q2）。挪后的第二份在 7763 上 363 秒、在 9V74 上 298 秒；第八份两次都在 7763 上，186、187 秒。照 06-environment 第 4 节，开 S3 之前先把第三、第五份的一部分测试挪到第八份（00 号文档第 276 条），不提高 `-timeout`。costs-2 两次 17:39、18:44（时限 45 分钟），costs-3 11:30、14:25（时限 40 分钟），guards-core 15:36、20:29（时限 40 分钟）。
 
 ### 10.3 S3：网页
 
