@@ -83,7 +83,9 @@ type Change = "abandon" | "continue" | "end" | "submit";
  * report the submission kept.
  *
  * It is one entry to the page (M11/P2 design 4.3): the check it shows is
- * of its generation, which a new check moves on, in a cache of its own
+ * of its generation, which a new check moves on, of the upgrade it was
+ * asked for (another upgrade shown in the entry is not checked until
+ * Check is pressed), in a cache of its own
  * that wraps the check alone, mounted as long as the entry, so that the
  * check gone and back finds its read; leaving the page aborts the check's
  * requests and drops that cache. The upgrade, the notebooks and the tree
@@ -110,7 +112,7 @@ const UpgradeRead = observer(function UpgradeRead({
   const [nonce] = useState(() => ++nextCheckEntry);
   const control = useRef<CheckControl>({ alive: true, generation: 0, controllers: new Set() });
   const entry = useMemo(() => ({ nonce, control, locationKey }), [nonce, locationKey]);
-  const [generation, setGeneration] = useState(0);
+  const [checked, setChecked] = useState({ generation: 0, upgrade: "" });
   const [checks] = useState(() => new Map());
   const [checksConfig] = useState(() => ({ provider: () => checks }));
   useLayoutEffect(() => {
@@ -123,14 +125,18 @@ const UpgradeRead = observer(function UpgradeRead({
       checks.clear();
     };
   }, [checks]);
-  /** recheck checks the upgrade again: the next generation, read once the check is shown, its last one's requests aborted. */
-  function recheck() {
+  /**
+   * recheck checks the upgrade upgrade again: the entry's next generation,
+   * of that upgrade, read once the check is shown, its last one's requests
+   * aborted. Another upgrade the entry shows later has none until checked.
+   */
+  function recheck(upgrade: string) {
     const owner = control.current;
     if (!owner.alive) return;
     owner.generation += 1;
     for (const controller of owner.controllers) controller.abort();
     owner.controllers.clear();
-    setGeneration(owner.generation);
+    setChecked({ generation: owner.generation, upgrade });
   }
   const [asked, setAsked] = useState<Change | undefined>(undefined);
   const buttons = {
@@ -204,14 +210,16 @@ const UpgradeRead = observer(function UpgradeRead({
    * shown, as the page reads the upgrade again.
    */
   async function submit(): Promise<void> {
+    const submitted = data?.id;
     try {
       await change(() => notebooks.submitUpgrade(notebook.id), true);
     } catch (refusal) {
       if (
         refusal instanceof ApiError &&
-        (refusal.code === "wiki.upgrade_not_ready" || refusal.code === "wiki.upgrade_stale_index")
+        (refusal.code === "wiki.upgrade_not_ready" || refusal.code === "wiki.upgrade_stale_index") &&
+        submitted !== undefined
       ) {
-        recheck();
+        recheck(submitted);
       }
       throw refusal;
     }
@@ -246,8 +254,8 @@ const UpgradeRead = observer(function UpgradeRead({
         notebook={notebook}
         upgrade={data}
         entry={entry}
-        generation={generation}
-        recheck={recheck}
+        generation={checked.upgrade === data.id ? checked.generation : 0}
+        recheck={() => recheck(data.id)}
         rereadUpgrade={() => void reread()}
         rereadNotebooks={rereadNotebooks}
         pages={pages}

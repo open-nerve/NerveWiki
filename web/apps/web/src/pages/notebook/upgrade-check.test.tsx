@@ -616,6 +616,29 @@ test("a check under way as another's submission takes the check away and gives i
   expect(checks(server)).toBe(1);
 });
 
+test("checked, the upgrade ended and another started while the page is open: the new one's check is not read until Check is pressed, then read anew", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = serverOf(checkJSON(), { events });
+  const section = await live(server, events);
+  await checked(user, section, passedAt);
+
+  // Abandoned and rolled back, then started again by another admin.
+  server.withUpgrade(undefined);
+  mode(events);
+  expect(await screen.findByText("This notebook has no upgrade under way.")).toBeTruthy();
+  server.withUpgrade(upgradeJSON({ id: "0199a000-0000-7000-8000-00000000beef" }));
+  server.check = checkJSON({ computed_at: "2026-10-06T11:15:00Z" });
+  mode(events);
+  const next = await checkSection();
+
+  expect(resultOf(next)).toBe("");
+  expect(within(next).getByRole("button", { name: "Check" })).toBeTruthy();
+  expect(checks(server)).toBe(1);
+  await checked(user, next, passedAt.replace("9:30", "11:15"));
+  expect(checks(server)).toBe(2);
+});
+
 test("a check refused as busy, its section taken away and given back, is not read again: Try again is still offered", async () => {
   const user = userEvent.setup();
   const events = eventServer();
