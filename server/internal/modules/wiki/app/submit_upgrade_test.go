@@ -33,6 +33,16 @@ func (unsubmitted) Unsubmit(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, ti
 	return false, errUnsubmitted
 }
 
+// Approve and SendBack are UpgradeRows' writes of a review (M11/P3 design
+// 3.5): the use cases that never review write none either.
+func (unsubmitted) Approve(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) (bool, error) {
+	return false, errUnsubmitted
+}
+
+func (unsubmitted) SendBack(context.Context, uuid.UUID, uuid.UUID, time.Time, time.Time) (bool, error) {
+	return false, errUnsubmitted
+}
+
 // unapproved are the fakes' UpgradeStates, theirs but Approve, a defect:
 // the use cases that never approve. Their fakes are their UpgradeRows too,
 // whose Approve (M11/P3 design 3.5) another signature has; one type

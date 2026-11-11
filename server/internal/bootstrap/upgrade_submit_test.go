@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
@@ -623,6 +624,121 @@ func TestUpgradeSubmitInterleavings(t *testing.T) {
 		if j := tm.endedBackground(t, "alice", job); j.State != "succeeded" {
 			t.Errorf("the rollback = %+v, want it done", j)
 		}
+	})
+
+	// #7 of the send-back (M11/P3 design 7.2), one: alice's submission's
+	// check held, dana's send-back reads it reviewing without a report,
+	// within its time: wiki.upgrade_state, "still being checked", no new
+	// flight. Let go, alice's keeps its report.
+	t.Run("7 a send-back while the submission is checked", func(t *testing.T) {
+		nb := gated(t, "Seven sent back", cleanNote)
+		letGo := s.held(t, submitStep("alice", nb))
+		s.drain()
+		status, answer := tm.sendBackUpgrade(t, "dana", nb)
+		wantCode(t, "dana's send-back", status, answer, cell{http.StatusConflict, "wiki.upgrade_state"})
+		if !strings.Contains(answer, "still being checked") {
+			t.Errorf("dana's send-back = %s, want the detail of a submission still checked", answer)
+		}
+		select {
+		case e := <-s.events:
+			t.Errorf("dana's refused send-back made a run: %+v", e)
+		default:
+		}
+		wantAnswer(t, "alice's submission", letGo(), cellOK())
+		if got := tm.submission(t, nb); got != reviewedReported {
+			t.Errorf("the submission left %s", got)
+		}
+	})
+
+	// #7 of the send-back, two: on an app of its own whose submission's
+	// part apart from its request is 3 s, alice's submission's check held,
+	// the test holds the notebook's row before the caller gives up (half
+	// of those 3 s), then lets the check go: the second transaction waits
+	// on the row, dana's send-back after it. Past the submission's moment
+	// plus 3 s, the second transaction is past its deadline: server_busy,
+	// Retry-After at least 1 (decision 274), a warn line, nothing written.
+	// The row let go, the send-back reads the submission taken over: 200,
+	// the upgrade upgrading again.
+	t.Run("7 a send-back while the second transaction waits", func(t *testing.T) {
+		r := upgradeRunsOn(t, func(c *config.Config) {
+			c.Server.RequestTimeout, c.Server.WriteTimeout, c.Database.MaxConns = 20*time.Second, 60*time.Second, 8
+		}, 2, 10*time.Second, 3*time.Second)
+		tm := r.tm
+		tm.join(t, "dana", "member")
+		nb := tm.openNotebook(t, "alice", "Seven waits")
+		tm.createPageWith(t, "alice", nb, "", "Note", cleanNote)
+		tm.addNotebookMember(t, "alice", nb, "dana", "admin")
+		tm.upgraded(t, "alice", nb)
+		before := len((&mcpApp{logs: r.logs}).logLines(t))
+		aside := func(c step) chan answer {
+			send := tm.sender(t, c)
+			done := make(chan answer, 1)
+			go func() { done <- send() }()
+			return done
+		}
+		wait := func(what string, done chan answer) answer {
+			t.Helper()
+			select {
+			case a := <-done:
+				if a.err == nil {
+					tm.contract.CheckResponse(t, a.req, a.res)
+				}
+				return a
+			case <-time.After(interleavingWait):
+				t.Fatalf("%s did not answer", what)
+				return answer{}
+			}
+		}
+		r.rules.armed.Store(true)
+		submitted := aside(submitStep("alice", nb))
+		select {
+		case <-r.rules.held:
+		case <-time.After(interleavingWait):
+			t.Fatal("the submission's check took no slot")
+		}
+		ctx := context.Background()
+		holder, err := tm.pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() { _ = holder.Rollback(ctx) }()
+		if _, err := holder.Exec(ctx, "SELECT 1 FROM notebooks WHERE id = $1 FOR NO KEY UPDATE", nb); err != nil {
+			t.Fatal(err)
+		}
+		first := tm.submissionID(t, nb)
+		r.rules.free <- struct{}{}
+		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 1, interleavingWait)
+		sentBack := aside(sendBackStep("dana", nb))
+		pgtest.WaitForLockWaitsOn(t, tm.pool, "notebooks", 2, interleavingWait)
+		var at time.Time
+		if err := tm.pool.QueryRow(ctx, "SELECT submitted_at FROM notebook_upgrades WHERE notebook_id = $1 AND state = 'reviewing'",
+			nb).Scan(&at); err != nil {
+			t.Fatal(err)
+		}
+		a := wait("alice's submission", submitted)
+		if a.err != nil {
+			t.Fatalf("alice's submission: %v", a.err)
+		}
+		retry, _ := strconv.Atoi(a.res.Header.Get("Retry-After"))
+		if a.status != http.StatusServiceUnavailable || a.code != "server_busy" || retry < 1 {
+			t.Errorf("alice's submission = %d %s %v, want server_busy, retry after a second or more", a.status, a.body, a.res.Header)
+		}
+		warn := upgradeLines(t, r.logs, before, "upgrade submission timed out")
+		if len(warn) != 1 || warn[0]["submission_id"] != first || len(submitLines(t, r.logs, before, nb)) != 0 {
+			t.Errorf("logged %v, want one warn line of alice's submission and no other", warn)
+		}
+		if got := tm.submission(t, nb); got != "reviewing reviewing true false false" {
+			t.Errorf("past its deadline alice's submission left %s, want reviewing without a report", got)
+		}
+		time.Sleep(time.Until(at.Add(3 * time.Second)))
+		if err := holder.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+		wantAnswer(t, "dana's send-back", wait("dana's send-back", sentBack), cellOK())
+		if got := tm.submission(t, nb); got != backToUpgrading {
+			t.Errorf("the send-back left %s", got)
+		}
+		checkPages(t, tm.pool)
 	})
 
 	// #15: alice's submission's check held; dana's submission reads it

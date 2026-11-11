@@ -1644,9 +1644,78 @@ export interface paths {
         put?: never;
         /**
          * Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
-         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over or an upgrade abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, its Retry-After the seconds until another submission may take it over, at least 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
+         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over, or an upgrade sent back, rejected or abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, its Retry-After the seconds until another submission may take it over, at least 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
          */
         post: operations["submitUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approves the upgrade in review: the notebook becomes an LLM Wiki whose source root is the upgrade's, its content no longer frozen.
+         * @description An upgrade in review whose submission kept its report is approved: in one transaction the notebook becomes an LLM Wiki, its sources' hashes are rebuilt and the upgrade's baseline is dropped. There is no undoing it as a whole: each of its changesets can still be reverted as an LLM Wiki's rules allow; downgrading makes it a standard notebook again. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review, or whose submission is still checked or never finished, is wiki.upgrade_state; one whose AGENTS page, source root or root titles no longer pass is wiki.upgrade_not_ready, its detail naming the gates, the upgrade still in review. These checks occur in that order. An approval that does not finish within its time, at any step, waiting for the notebook too, is server_busy with Retry-After: 1, with nothing written: rebuilding the hashes of tens of thousands of sources takes seconds.
+         */
+        post: operations["approveUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rejects the upgrade in review: puts the notebook back as the upgrade started, in a background job.
+         * @description An upgrade in review, with its report or not, rolls back, rejected, its content frozen but for the rollback's job; a submission still checked then stores nothing. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review is wiki.upgrade_state; a full job queue is server_busy. These checks occur in that order. The answer is the upgrade, rolling back, with its rollback's job.
+         */
+        post: operations["rejectUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/send-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sends the upgrade in review back: upgrading again, its submission and report cleared, its initiator's agent able to write again.
+         * @description An upgrade in review that has its report, or has none and whose submission may be taken over, goes back to upgrading, its submission and report cleared: a submission still checked is wiki.upgrade_state, its detail saying so; send it back a little later. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review is wiki.upgrade_state. These checks occur in that order.
+         */
+        post: operations["sendBackUpgrade"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6475,6 +6544,80 @@ export interface operations {
                 };
             };
             503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    approveUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, approved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    rejectUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolling back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    sendBackUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, upgrading. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
             default: components["responses"]["Problem"];
         };
     };

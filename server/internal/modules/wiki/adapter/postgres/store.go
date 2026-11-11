@@ -162,6 +162,28 @@ func (s *Store) Unsubmit(ctx context.Context, id, submissionID, by uuid.UUID, at
 	return n == 1, nil
 }
 
+// Approve sets the upgrade id approved, by by at at (M11 design 4.9 step
+// 6): in review, its submission submissionID with its report; false for no
+// row so.
+func (s *Store) Approve(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error) {
+	n, err := s.queries(ctx).ApproveUpgrade(ctx, gen.ApproveUpgradeParams{ID: id, SubmissionID: &submissionID, By: by, Now: at})
+	if err != nil {
+		return false, fmt.Errorf("approve an upgrade: %w", err)
+	}
+	return n == 1, nil
+}
+
+// SendBack sets the upgrade id upgrading again, its submission and report
+// cleared, by by at at (M11 design 4.8): in review with a report, or
+// without one submitted at takenOver or before; false for no row so.
+func (s *Store) SendBack(ctx context.Context, id, by uuid.UUID, at, takenOver time.Time) (bool, error) {
+	n, err := s.queries(ctx).SendBackUpgrade(ctx, gen.SendBackUpgradeParams{ID: id, By: by, Now: at, TakenOver: takenOver})
+	if err != nil {
+		return false, fmt.Errorf("send an upgrade back: %w", err)
+	}
+	return n == 1, nil
+}
+
 // SoftDeleteOf deletes the notebooks' upgrades, under way or ended, by by
 // at at: their deletion's (M11/P1 design 3.15).
 func (s *Store) SoftDeleteOf(ctx context.Context, notebookIDs []uuid.UUID, by uuid.UUID, at time.Time) error {

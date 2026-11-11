@@ -88,6 +88,7 @@ type (
 	Names             = app.Names
 	UpgradeView       = app.UpgradeView
 	UpgradeState      = domain.UpgradeState
+	SourceHashes      = app.SourceHashes
 )
 
 // An upgrade's check (M11/P2 design 3.9, 3.11): the page module's reads,
@@ -117,6 +118,8 @@ const (
 // the creation. Gates are the page module's reads of an upgrade's check,
 // ReservedKeys its root's reserved title keys (M11/P2 design 3.11);
 // SubmitTimeout bounds a submission's part apart from its request (3.12).
+// An upgrade's approval (M11/P3 design 3.6): SourceHashes are the page
+// module's source hashes' rebuild, ApproveTimeout bounds its transaction.
 type Deps struct {
 	Notebooks   Notebooks
 	Sources     Sources
@@ -147,6 +150,9 @@ type Deps struct {
 	Gates         UpgradeGatePages
 	ReservedKeys  []string
 	SubmitTimeout time.Duration
+
+	SourceHashes   SourceHashes
+	ApproveTimeout time.Duration
 }
 
 // Module owns one runtime shared by every internal caller. Construction does
@@ -161,6 +167,9 @@ type Module struct {
 	getUpgrade   *app.GetUpgrade
 	abandon      *app.AbandonUpgrade
 	endRollback  *app.EndUpgradeRollback
+	approve      *app.ApproveUpgrade
+	reject       *app.RejectUpgrade
+	sendBack     *app.SendBackUpgrade
 }
 
 func New(d Deps) *Module {
@@ -175,7 +184,7 @@ func New(d Deps) *Module {
 		Rollback: d.RollbackPages, Rows: postgresadapter.New(d.Pool), Writing: d.Writing, Rollbacks: d.Rollbacks, Names: d.Names,
 		Authorizer: d.Authorizer, Action: d.UpgradeAction, Template: d.Template, Clock: d.Clock, Logger: d.Logger,
 		Timeout: d.StartTimeout, Gates: d.Gates, Cursors: d.Cursors, Paths: d.Paths, ReservedKeys: d.ReservedKeys,
-		SubmitTimeout: d.SubmitTimeout,
+		SubmitTimeout: d.SubmitTimeout, SourceHashes: d.SourceHashes, ApproveTimeout: d.ApproveTimeout,
 	}
 	check := app.NewCheckUpgrade(upgrades, lint, runs)
 	return &Module{
@@ -188,6 +197,9 @@ func New(d Deps) *Module {
 		getUpgrade:   app.NewGetUpgrade(upgrades),
 		abandon:      app.NewAbandonUpgrade(upgrades),
 		endRollback:  app.NewEndUpgradeRollback(upgrades),
+		approve:      app.NewApproveUpgrade(upgrades),
+		reject:       app.NewRejectUpgrade(upgrades),
+		sendBack:     app.NewSendBackUpgrade(upgrades),
 	}
 }
 
@@ -228,6 +240,24 @@ func (m *Module) AbandonUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView,
 // keeping the notebook as it is (M11 design 4.10).
 func (m *Module) EndUpgradeRollback(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
 	return m.endRollback.Execute(ctx, id)
+}
+
+// ApproveUpgrade approves notebook id's upgrade in review: the notebook
+// an LLM Wiki (M11 design 4.9).
+func (m *Module) ApproveUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.approve.Execute(ctx, id)
+}
+
+// RejectUpgrade rejects notebook id's upgrade in review: its rollback
+// (M11 design 4.10).
+func (m *Module) RejectUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.reject.Execute(ctx, id)
+}
+
+// SendBackUpgrade sends notebook id's upgrade in review back to
+// upgrading (M11 design 4.8).
+func (m *Module) SendBackUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, error) {
+	return m.sendBack.Execute(ctx, id)
 }
 
 // Stop closes the same owner used by Execute, including expired workers still

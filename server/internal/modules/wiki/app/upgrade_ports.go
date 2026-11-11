@@ -133,6 +133,21 @@ type UpgradeRows interface {
 	// cleared. False for no row so.
 	KeepReport(ctx context.Context, id, submissionID uuid.UUID, report domain.UpgradeReport, by uuid.UUID, at time.Time) (bool, error)
 	Unsubmit(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error)
+	// Approve sets the upgrade id approved, by by at at: in review, its
+	// submission submissionID with its report. SendBack sets it upgrading
+	// again, its submission and report cleared: in review with a report,
+	// or without one submitted at takenOver or before (M11 design 4.8).
+	// False for no row so (M11/P3 design 3.5).
+	Approve(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error)
+	SendBack(ctx context.Context, id, by uuid.UUID, at, takenOver time.Time) (bool, error)
+}
+
+// SourceHashes are the page module's source hashes, rebuilt as an
+// approval makes the notebook an LLM Wiki whose source root is rootID, in
+// the transaction ctx carries: how many it set (M11 design 4.9 step 4,
+// M11/P3 design 3.4). Its errors wrap a deadline as one.
+type SourceHashes interface {
+	Rebuild(ctx context.Context, notebookID, rootID uuid.UUID) (int, error)
 }
 
 // Rollbacks start an upgrade's rollback's job, the transfer module's

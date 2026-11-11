@@ -102,7 +102,105 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 		})
 	}
 	rows = append(rows, checkMatrixRows(notebook, upgradedBy)...)
+	rows = append(rows, reviewMatrixRows(notebook, upgradedBy)...)
 	return append(rows, rollbackMatrixRows(notebook, upgradedBy)...)
+}
+
+// reviewMatrixRows are M11/P3/S1's (design 3.13): the approval, the
+// rejection and the send-back of an upgrade reviewing, its submission
+// just made and without a report, its admins' alone. The admin's approval
+// is wiki.upgrade_state, no report to approve; the rejection is done, its
+// rollback then running as any other, so the admin's cell is left
+// rolling back or rolled back; the send-back's upgrade is one whose
+// submission was taken over, an hour ago.
+func reviewMatrixRows(notebook func(c caller, s seeded) string,
+	upgradedBy func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool),
+) []upgradeMatrixRow {
+	notFound := cell{http.StatusNotFound, "notebook.not_found"}
+	// left reads the cell's upgrade by query: an admin's cell as admin
+	// wants, another's other; a deleted notebook has none.
+	left := func(query string, admin func(row string) bool, other string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+		return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+			t.Helper()
+			role, _ := roleIn(c)
+			for _, row := range queryStrings(t, pool, query, s.notebook(notebookOf(c))) {
+				if role == "admin" && !admin(row) || role != "admin" && row != other {
+					t.Errorf("the upgrade left %s", row)
+				}
+			}
+		}
+	}
+	const reviewing = `SELECT u.state || ' ' || coalesce(u.ending, '-') || ' ' || coalesce(n.upgrade_state, '-') || ' ' || n.mode || ' ' ||
+			(u.submission_id IS NOT NULL AND u.submitted_by_id IS NOT NULL AND u.submitted_at IS NOT NULL)::text
+		FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id WHERE u.notebook_id = $1`
+	const unchanged = "reviewing - reviewing standard true"
+	return []upgradeMatrixRow{{
+		matrixRow: matrixRow{
+			op: "approveUpgrade", variant: "reviewing", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/approve", ""
+			},
+			cells: adminsOnly(cell{http.StatusConflict, "wiki.upgrade_state"}, notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				t.Errorf("approved %s, want a problem: no report to approve", answer)
+			},
+		},
+		prepare: upgradedBy("reviewing"),
+		left:    left(reviewing, func(row string) bool { return row == unchanged }, unchanged),
+	}, {
+		matrixRow: matrixRow{
+			op: "rejectUpgrade", variant: "reviewing", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/reject", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var a rollbackAnswer
+				decodeAnswer(t, answer, &a)
+				if a.State != "rolling_back" || a.Ending == nil || *a.Ending != "rejected" || a.RollbackJobID == nil {
+					t.Errorf("rejected %s, want it rolling back, rejected, with its job", answer)
+				}
+			},
+		},
+		prepare: upgradedBy("reviewing"),
+		// Its rollback runs as any other: the baseline being the notebook
+		// as it is, it may be done already (M11/P3 design 3.13, review
+		// P3A-M1).
+		left: left(reviewing, func(row string) bool {
+			return row == "rolling_back rejected rolling_back standard true" || row == "rolled_back rejected - standard true"
+		}, unchanged),
+	}, {
+		matrixRow: matrixRow{
+			op: "sendBackUpgrade", variant: "reviewing, taken over", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/send-back", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var a map[string]any
+				decodeAnswer(t, answer, &a)
+				if a["notebook_id"] != s.notebook(notebookOf(c)).String() || a["state"] != "upgrading" || a["submitted_at"] != nil ||
+					a["submitted_by"] != nil || a["report"] != nil {
+					t.Errorf("sent back %s, want it upgrading, no submission", answer)
+				}
+			},
+		},
+		prepare: func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+			t.Helper()
+			upgradedBy("reviewing")(t, c, s, pool)
+			if _, err := pool.Exec(context.Background(), `UPDATE notebook_upgrades SET submitted_at = submitted_at - interval '1 hour'
+				WHERE notebook_id = $1`, s.notebook(notebookOf(c))); err != nil {
+				t.Fatal(err)
+			}
+		},
+		left: left(`SELECT u.state || ' ' || n.upgrade_state || ' ' ||
+				(u.submission_id IS NULL AND u.submitted_by_id IS NULL AND u.submitted_at IS NULL)::text
+			FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id WHERE u.notebook_id = $1`,
+			func(row string) bool { return row == "upgrading upgrading true" }, "reviewing reviewing false"),
+	}}
 }
 
 // checkMatrixRows are M11/P2/S2's (design 3.15): the check of an upgrade

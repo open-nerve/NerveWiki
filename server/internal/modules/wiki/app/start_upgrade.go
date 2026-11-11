@@ -23,7 +23,9 @@ const maxUpgradeLocks = 100
 // ReservedKeys the root's title keys gate 3 judges; its submission's
 // (3.12): SubmitTimeout bounds the part apart from the request, from the
 // moment the submission was written, and decides when one left reviewing
-// without a report may be taken over.
+// without a report may be taken over. Its approval's (M11/P3 design 3.6):
+// SourceHashes rebuild the source hashes, ApproveTimeout bounds its
+// transaction (decision 279).
 type UpgradeDeps struct {
 	Tx         shared.TxManager
 	Snapshots  shared.Snapshots
@@ -48,6 +50,9 @@ type UpgradeDeps struct {
 	Paths         Paths
 	ReservedKeys  []string
 	SubmitTimeout time.Duration
+
+	SourceHashes   SourceHashes
+	ApproveTimeout time.Duration
 }
 
 // locked locks notebook id's workspace's row FOR SHARE and its row FOR NO

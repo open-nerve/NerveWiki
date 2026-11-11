@@ -12,6 +12,35 @@ import (
 	"uuid"
 )
 
+const approveUpgrade = `-- name: ApproveUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'approved', updated_by_id = $1::uuid, updated_at = $2::timestamptz
+WHERE id = $3 AND submission_id = $4 AND state = 'reviewing' AND report IS NOT NULL
+    AND deleted_at IS NULL
+`
+
+type ApproveUpgradeParams struct {
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+	SubmissionID *uuid.UUID
+}
+
+// An upgrade approved (M11 design 4.9 step 6), under the notebook's row lock: approved, who and when; the submission
+// the approval read, in review with its report (notebook_upgrades_approved_check wants the report too).
+func (q *Queries) ApproveUpgrade(ctx context.Context, arg ApproveUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, approveUpgrade,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.SubmissionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const continueUpgradeRollback = `-- name: ContinueUpgradeRollback :execrows
 UPDATE notebook_upgrades
 SET rollback_job_id = $1::uuid, updated_by_id = $2::uuid, updated_at = $3::timestamptz
@@ -271,6 +300,37 @@ func (q *Queries) RollBackUpgrade(ctx context.Context, arg RollBackUpgradeParams
 		arg.By,
 		arg.Now,
 		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const sendBackUpgrade = `-- name: SendBackUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'upgrading', submission_id = NULL, submitted_by_id = NULL, submitted_at = NULL, report = NULL,
+    updated_by_id = $1::uuid, updated_at = $2::timestamptz
+WHERE id = $3 AND state = 'reviewing' AND deleted_at IS NULL
+    AND (report IS NOT NULL OR submitted_at <= $4::timestamptz)
+`
+
+type SendBackUpgradeParams struct {
+	By        uuid.UUID
+	Now       time.Time
+	ID        uuid.UUID
+	TakenOver time.Time
+}
+
+// An upgrade sent back (M11 design 4.8), under the notebook's row lock: upgrading again, its submission and report
+// cleared; from reviewing with a report, or without one whose submission was taken over (submitted at taken_over or
+// before), as SubmitUpgrade judges it.
+func (q *Queries) SendBackUpgrade(ctx context.Context, arg SendBackUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, sendBackUpgrade,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.TakenOver,
 	)
 	if err != nil {
 		return 0, err

@@ -102,7 +102,7 @@ func (a *AbandonUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView
 // locked the notebook's row: the notebook's state, the mode's subscribers
 // told, the rollback's job started (server_busy for a full queue), then
 // the module's row, rolling back with the job in one statement. It
-// answers the job's id. The abandonment's, and the rejection's (P3).
+// answers the job's id. The abandonment's and the rejection's.
 func (d UpgradeDeps) rollBack(ctx context.Context, actor shared.Actor, client string, workspace, id, upgradeID uuid.UUID,
 	ending domain.UpgradeEnding, at time.Time,
 ) (uuid.UUID, error) {
