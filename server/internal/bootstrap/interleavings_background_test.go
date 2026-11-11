@@ -11,6 +11,7 @@ import (
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
+	"github.com/open-nerve/NerveWiki/server/internal/platform/jobs"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres/pgtest"
 )
 
@@ -301,6 +302,9 @@ func TestARestoreJobSkipsAnItemRestoredBetweenItsBatches(t *testing.T) {
 func TestARestoreJobAndThePurge(t *testing.T) {
 	retention := 24 * time.Hour
 	tm := newAcmeTeamWired(t, "member", "", func(c *config.Config) { c.Jobs.PurgeRetention = retention }, transfer.Batch{Nodes: 3})
+	// The purge's start run would take Old if it came after trashedAgo: the
+	// purge between the batches would then delete nothing. It goes first.
+	awaitJob(t, tm.pool, jobs.PurgeKind)
 	t.Run("between two batches", func(t *testing.T) {
 		nb := tm.openNotebook(t, "alice", "Between")
 		old := tm.createPage(t, "alice", nb, "", "Old")

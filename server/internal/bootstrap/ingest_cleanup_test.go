@@ -150,16 +150,16 @@ func TestIngestInvariants(t *testing.T) {
 // deleting the last source and its parent; retained history always forbids it.
 func TestIngestInvariantCleanupWindow(t *testing.T) {
 	tm := newAcmeTeam(t, "", "")
-	// The purge runs when the server starts, then hourly. Its start run takes a
-	// trimmed live changeset with nothing left and one deleted past the
-	// retention, the shapes of live_trimmed_empty and old_empty: run between a
-	// case's writes and its checks, it leaves the default checker nothing to
-	// find. So the cases begin after it.
+	// The purge runs when the server starts, then hourly. Its cutoff is later
+	// than before, so its start run takes the changeset of every empty case
+	// and of old_with_item before its item: run between a case's writes and
+	// its checks, it deletes the row the checks are about. So the cases begin
+	// after it.
 	awaitJob(t, tm.pool, jobs.PurgeKind)
 	nb := tm.openNotebook(t, "alice", "Window")
 	node := tm.createPage(t, "alice", nb, "", "Output")
 	ctx := context.Background()
-	exec := func(sql string, args ...any) {
+	exec := func(t *testing.T, sql string, args ...any) {
 		t.Helper()
 		if _, err := tm.pool.Exec(ctx, sql, args...); err != nil {
 			t.Fatal(err)
@@ -188,12 +188,12 @@ func TestIngestInvariantCleanupWindow(t *testing.T) {
 			if tt.name == "old_with_revision" {
 				cs = original
 			} else {
-				exec(`INSERT INTO changesets(id,notebook_id,kind,client,created_by_id,created_at,updated_at)
+				exec(t, `INSERT INTO changesets(id,notebook_id,kind,client,created_by_id,created_at,updated_at)
 					VALUES($1,$2,'edit','api',$3,now(),now())`, cs, nb, actor)
 			}
-			exec("UPDATE changesets SET ingest_count=1,deleted_at=$2,trimmed=$3 WHERE id=$1", cs, tt.deleted, tt.trimmed)
+			exec(t, "UPDATE changesets SET ingest_count=1,deleted_at=$2,trimmed=$3 WHERE id=$1", cs, tt.deleted, tt.trimmed)
 			if tt.name == "old_with_item" {
-				exec(`INSERT INTO changeset_items(id,changeset_id,node_id,after_name,after_sort_order,created_at,updated_at)
+				exec(t, `INSERT INTO changeset_items(id,changeset_id,node_id,after_name,after_sort_order,created_at,updated_at)
 					VALUES(gen_random_uuid(),$1,$2,'Output',0,now(),now())`, cs, node)
 			}
 			has := func(found []string) bool {
@@ -211,18 +211,18 @@ func TestIngestInvariantCleanupWindow(t *testing.T) {
 				t.Errorf("same cutoff diagnostic=%v, cleanup exemption=%v", got, tt.allowed)
 			}
 			if cs == original {
-				exec("UPDATE changesets SET ingest_count=0,deleted_at=NULL,trimmed=false WHERE id=$1", cs)
+				exec(t, "UPDATE changesets SET ingest_count=0,deleted_at=NULL,trimmed=false WHERE id=$1", cs)
 			} else {
-				exec("DELETE FROM changeset_items WHERE changeset_id=$1", cs)
-				exec("DELETE FROM changesets WHERE id=$1", cs)
+				exec(t, "DELETE FROM changeset_items WHERE changeset_id=$1", cs)
+				exec(t, "DELETE FROM changesets WHERE id=$1", cs)
 			}
 		})
 	}
 	t.Run("existing_deleted_cs_and_purged_source", func(t *testing.T) {
 		cs := uuid.NewV7()
-		exec(`INSERT INTO changesets(id,notebook_id,kind,client,created_by_id,created_at,updated_at,deleted_at,ingest_count)
+		exec(t, `INSERT INTO changesets(id,notebook_id,kind,client,created_by_id,created_at,updated_at,deleted_at,ingest_count)
 			VALUES($1,$2,'edit','api',$3,now(),now(),now(),1)`, cs, nb, actor)
-		exec("INSERT INTO changeset_sources VALUES($1,1,$2)", cs, uuid.NewV7())
+		exec(t, "INSERT INTO changeset_sources VALUES($1,1,$2)", cs, uuid.NewV7())
 		for _, v := range pageViolations(t, tm.pool) {
 			if strings.Contains(v, "ingest ") {
 				t.Errorf("valid persistent mark flagged: %s", v)
