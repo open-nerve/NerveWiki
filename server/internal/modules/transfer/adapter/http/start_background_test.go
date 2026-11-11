@@ -110,6 +110,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		{"conflicts", nil, revertsPath(), "bob", revert(conflicting().String()), http.StatusConflict, "page.revert_conflict"},
 		{"an immutable source", nil, revertsPath(), "bob", revert(refusing("page.source_immutable")), http.StatusConflict, "page.source_immutable"},
 		{"a protected page", nil, revertsPath(), "bob", revert(refusing("page.protected")), http.StatusConflict, "page.protected"},
+		{"a reserved title at the root", nil, revertsPath(), "bob", revert(refusing("page.virtual_file")), http.StatusConflict, "page.virtual_file"},
 		{"a source root", nil, revertsPath(), "bob", revert(refusing("page.source_admin_only")), http.StatusForbidden, "page.source_admin_only"},
 		{"a source entry too large", nil, revertsPath(), "bob", revert(refusing("page.source_too_large")), http.StatusUnprocessableEntity, "page.source_too_large"},
 		{"a page locked", nil, revertsPath(), "bob", revert(locking().String()), http.StatusConflict, "page.locked"},

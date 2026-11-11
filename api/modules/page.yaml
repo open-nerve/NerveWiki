@@ -1065,7 +1065,10 @@ paths:
         page.revert_conflict for what changed meanwhile. In an LLM Wiki,
         each step of a revert is judged as its operation is: one that would
         delete its AGENTS page or its source root, a page whose subtree holds
-        it, or rename or move AGENTS is page.protected; one of a writer that
+        it, or rename or move AGENTS is page.protected; one that would
+        restore, rename or move a node back to the notebook's root under a
+        title the LLM Wiki reserves for its generated pages (index or log,
+        index.md or log.md) is page.virtual_file; one of a writer that
         would rename or move the source root, rename, move or delete an
         existing source, or move a page whose subtree holds the root under
         another parent, is page.source_admin_only. Writing back changed
@@ -1100,6 +1103,7 @@ paths:
           page.revert_conflict,
           notebook.upgrading,
           page.protected,
+          page.virtual_file,
           page.source_admin_only,
           page.source_too_large,
           server_busy,
