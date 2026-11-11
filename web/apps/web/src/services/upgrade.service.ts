@@ -1,14 +1,25 @@
-import type { ApiClient, Upgrade } from "@nervewiki/api-client";
+import type {
+  ApiClient,
+  LintPage,
+  LintRule,
+  Upgrade,
+  UpgradeCheck,
+  UpgradeCounts,
+  UpgradeGates,
+  UpgradeReport,
+  UpgradeReportItem,
+} from "@nervewiki/api-client";
 
 import type { Locale } from "../i18n/locale";
 import { unwrap } from "./api";
 
-export type { Upgrade };
+export type { Upgrade, UpgradeCheck, UpgradeCounts, UpgradeGates, UpgradeReport, UpgradeReportItem };
 
 /**
  * UpgradeService starts a notebook's upgrade to an LLM Wiki, reads it,
- * abandons it and ends its stopped rollback, for its admins (M11/P1
- * design 4.4). Each change answers the upgrade.
+ * abandons it and ends its stopped rollback (M11/P1 design 4.4), checks it,
+ * reads its rules' items and submits it for review (M11/P2 design 4.3), for
+ * its admins. Each change answers the upgrade.
  */
 export class UpgradeService {
   constructor(private readonly api: ApiClient) {}
@@ -39,6 +50,40 @@ export class UpgradeService {
   async endRollback(notebookId: string): Promise<Upgrade> {
     return unwrap(
       await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/end-rollback", {
+        params: { path: { notebook_id: notebookId } },
+      })
+    );
+  }
+
+  /** check checks the notebook's upgrade, upgrading or reviewing, against an LLM Wiki's contract: passed or not. */
+  async check(notebookId: string, signal?: AbortSignal): Promise<UpgradeCheck> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/upgrade/check", {
+        params: { path: { notebook_id: notebookId } },
+        signal,
+      })
+    );
+  }
+
+  /** checkItems reads the page of rule's items of the upgrade's check after cursor, a check's or a page's. */
+  async checkItems(notebookId: string, rule: LintRule, cursor: string, signal?: AbortSignal): Promise<LintPage> {
+    return unwrap(
+      await this.api.GET("/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}", {
+        params: { path: { notebook_id: notebookId, rule }, query: { cursor } },
+        signal,
+      })
+    );
+  }
+
+  /**
+   * submit submits the notebook's upgrade, upgrading, for review: it is
+   * reviewing at once, checked, and answered reviewing with its report
+   * once every gate passes; else upgrading again, refused
+   * (wiki.upgrade_not_ready, wiki.upgrade_stale_index, the check's error).
+   */
+  async submit(notebookId: string): Promise<Upgrade> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/submit", {
         params: { path: { notebook_id: notebookId } },
       })
     );

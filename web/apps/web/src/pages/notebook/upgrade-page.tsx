@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Link } from "react-router";
-import useSWR, { unstable_serialize, useSWRConfig } from "swr";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { Link, useLocation } from "react-router";
+import useSWR, { SWRConfig, unstable_serialize, useSWRConfig } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
@@ -23,16 +23,19 @@ import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
+import { UpgradeCheckSection, UpgradeReportSection, type CheckControl } from "./upgrade-check";
 
 /**
  * UpgradePage is the notebook's upgrade to an LLM Wiki under way (M11/P1
  * design 4.4), its admins' alone (UpgradeRead). Its title takes the focus
  * when the page is arrived at, from the start of the upgrade, and once a
- * change asked here is done.
+ * change asked here is done. Each arrival is an entry of its own, a link
+ * to the page followed on it too (M11/P2 design 4.3, as the health page's).
  */
 export const UpgradePage = observer(function UpgradePage() {
   const notebook = useNotebook();
   const workspace = useWorkspace();
+  const location = useLocation();
   const t = useT();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(t("upgrade.title"), notebook.name);
@@ -41,13 +44,24 @@ export const UpgradePage = observer(function UpgradePage() {
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
         {t("upgrade.title")}
       </h1>
-      <UpgradeRead notebook={notebook} workspace={workspace} heading={heading} />
+      <UpgradeRead
+        key={location.key}
+        notebook={notebook}
+        workspace={workspace}
+        heading={heading}
+        locationKey={location.key}
+      />
     </div>
   );
 });
 
-/** The changes asked on the page: abandoning the upgrade, continuing its stopped rollback, ending it. */
-type Change = "abandon" | "continue" | "end";
+let nextCheckEntry = 0;
+
+/**
+ * The changes asked on the page: abandoning the upgrade, continuing its
+ * stopped rollback, ending it; submitting it for review (M11/P2).
+ */
+type Change = "abandon" | "continue" | "end" | "submit";
 
 /**
  * UpgradeRead reads the upgrade (SWR's key ["upgrade", notebook id], which
@@ -60,15 +74,33 @@ type Change = "abandon" | "continue" | "end";
  * again takes their buttons, the upgrade, or the account's role away:
  * closed, the focus goes back to the button, or to the title once it is
  * gone or the change is done.
+ *
+ * Upgrading, it offers to submit the upgrade for review (decision 259):
+ * once its first step is done, the upgrade is reviewing, as the mode event
+ * reads it again, its check gone, the dialog staying until the answer
+ * (decision 264); refused as not ready or of an old index, the upgrade is
+ * upgrading again, read again, and checked again. Reviewing, it shows the
+ * report the submission kept.
+ *
+ * It is one entry to the page (M11/P2 design 4.3): the check it shows is
+ * of its generation, which a new check moves on, of the upgrade it was
+ * asked for (another upgrade shown in the entry is not checked until
+ * Check is pressed), in a cache of its own
+ * that wraps the check alone, mounted as long as the entry, so that the
+ * check gone and back finds its read; leaving the page aborts the check's
+ * requests and drops that cache. The upgrade, the notebooks and the tree
+ * are read in the public provider, as the left column's.
  */
 const UpgradeRead = observer(function UpgradeRead({
   notebook,
   workspace,
   heading,
+  locationKey,
 }: {
   notebook: Notebook;
   workspace: Workspace;
   heading: RefObject<HTMLHeadingElement | null>;
+  locationKey: string;
 }) {
   const upgrades = useUpgrades();
   const notebooks = useNotebooks(workspace);
@@ -76,13 +108,45 @@ const UpgradeRead = observer(function UpgradeRead({
   const { cache, mutate } = useSWRConfig();
   const mounted = useMounted();
   const t = useT();
+  const pages = usePageTree(notebook);
+  const [nonce] = useState(() => ++nextCheckEntry);
+  const control = useRef<CheckControl>({ alive: true, generation: 0, controllers: new Set() });
+  const entry = useMemo(() => ({ nonce, control, locationKey }), [nonce, locationKey]);
+  const [checked, setChecked] = useState({ generation: 0, upgrade: "" });
+  const [checks] = useState(() => new Map());
+  const [checksConfig] = useState(() => ({ provider: () => checks }));
+  useLayoutEffect(() => {
+    const owner = control.current;
+    owner.alive = true;
+    return () => {
+      owner.alive = false;
+      for (const controller of owner.controllers) controller.abort();
+      owner.controllers.clear();
+      checks.clear();
+    };
+  }, [checks]);
+  /**
+   * recheck checks the upgrade upgrade again: the entry's next generation,
+   * of that upgrade, read once the check is shown, its last one's requests
+   * aborted. Another upgrade the entry shows later has none until checked.
+   */
+  function recheck(upgrade: string) {
+    const owner = control.current;
+    if (!owner.alive) return;
+    owner.generation += 1;
+    for (const controller of owner.controllers) controller.abort();
+    owner.controllers.clear();
+    setChecked({ generation: owner.generation, upgrade });
+  }
   const [asked, setAsked] = useState<Change | undefined>(undefined);
   const buttons = {
     abandon: useRef<HTMLButtonElement>(null),
     continue: useRef<HTMLButtonElement>(null),
     end: useRef<HTMLButtonElement>(null),
+    submit: useRef<HTMLButtonElement>(null),
   };
   const admin = notebook.role === "admin";
+  const rereadNotebooks = () => void mutate(["notebooks", workspace.id]);
   const {
     data,
     error,
@@ -90,15 +154,18 @@ const UpgradeRead = observer(function UpgradeRead({
   } = useSWR(admin ? ["upgrade", notebook.id] : null, () => upgrades.get(notebook.id), {
     onError: (refusal: unknown) => {
       if (refusal instanceof ApiError && refusal.code === "forbidden") {
-        void mutate(["notebooks", workspace.id]);
+        rereadNotebooks();
       }
     },
   });
+  const tree = useSWR(admin ? ["pages", notebook.id] : null, () => pages.load());
+  const readingTree = pages.nodes === undefined || tree.isValidating;
 
   /**
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
-   * or the upgrade in another state. The upgrade an abandonment or a
+   * the upgrade in another state, or upgrading again after a submission
+   * not ready or of an old index. The upgrade an abandonment, a submission or a
    * continuation answers, rolling back, is shown meanwhile (shows), over
    * what the page showed as it was sent, before the read again (SWR keeps
    * no read sent before it); a read that answered meanwhile, a mode
@@ -116,7 +183,10 @@ const UpgradeRead = observer(function UpgradeRead({
       if (
         mounted() &&
         refusal instanceof ApiError &&
-        (refusal.code === "transfer.busy" || refusal.code === "wiki.upgrade_state")
+        (refusal.code === "transfer.busy" ||
+          refusal.code === "wiki.upgrade_state" ||
+          refusal.code === "wiki.upgrade_not_ready" ||
+          refusal.code === "wiki.upgrade_stale_index")
       ) {
         void reread();
       }
@@ -133,6 +203,28 @@ const UpgradeRead = observer(function UpgradeRead({
     }
   }
 
+  /**
+   * submit submits the upgrade for review as change does; refused as not
+   * ready or of an old index, the upgrade, upgrading again, is checked
+   * again (M11 design 4.8): the next generation, read once its check is
+   * shown, as the page reads the upgrade again.
+   */
+  async function submit(): Promise<void> {
+    const submitted = data?.id;
+    try {
+      await change(() => notebooks.submitUpgrade(notebook.id), true);
+    } catch (refusal) {
+      if (
+        refusal instanceof ApiError &&
+        (refusal.code === "wiki.upgrade_not_ready" || refusal.code === "wiki.upgrade_stale_index") &&
+        submitted !== undefined
+      ) {
+        recheck(submitted);
+      }
+      throw refusal;
+    }
+  }
+
   function dialogOf(which: Change) {
     return {
       open: asked === which,
@@ -142,6 +234,8 @@ const UpgradeRead = observer(function UpgradeRead({
   }
 
   let shown: ReactNode;
+  let check: ReactNode = null;
+  let rest: ReactNode = null;
   if (!admin) {
     shown = <p>{t("upgrade.adminsOnly")}</p>;
   } else if (error instanceof ApiError && error.code === "wiki.upgrade_not_found") {
@@ -153,6 +247,23 @@ const UpgradeRead = observer(function UpgradeRead({
       <>
         <UpgradeState notebook={notebook} upgrade={data} />
         {data.state === "upgrading" && <AgentSection upgrade={data} />}
+      </>
+    );
+    check = data.state === "upgrading" && (
+      <UpgradeCheckSection
+        notebook={notebook}
+        upgrade={data}
+        entry={entry}
+        generation={checked.upgrade === data.id ? checked.generation : 0}
+        recheck={() => recheck(data.id)}
+        rereadUpgrade={() => void reread()}
+        rereadNotebooks={rereadNotebooks}
+        pages={pages}
+        readingTree={readingTree}
+      />
+    );
+    rest = (
+      <>
         {data.state === "rolling_back" && (
           <RollbackSection
             notebook={notebook}
@@ -163,10 +274,20 @@ const UpgradeRead = observer(function UpgradeRead({
             endButton={buttons.end}
           />
         )}
+        {data.state === "reviewing" && (
+          <UpgradeReportSection report={data.report} pages={pages} readingTree={readingTree} />
+        )}
         {(data.state === "upgrading" || data.state === "reviewing") && (
-          <Button ref={buttons.abandon} variant="destructive" onClick={() => setAsked("abandon")}>
-            {t("upgrade.abandon")}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            {data.state === "upgrading" && (
+              <Button ref={buttons.submit} onClick={() => setAsked("submit")}>
+                {t("upgrade.submit")}
+              </Button>
+            )}
+            <Button ref={buttons.abandon} variant="destructive" onClick={() => setAsked("abandon")}>
+              {t("upgrade.abandon")}
+            </Button>
+          </div>
         )}
       </>
     );
@@ -176,6 +297,8 @@ const UpgradeRead = observer(function UpgradeRead({
   return (
     <>
       {shown}
+      <SWRConfig value={checksConfig}>{check}</SWRConfig>
+      {rest}
       <ConfirmDialog
         held={dialogOf("abandon")}
         title={t("upgrade.abandonTitle", { name: notebook.name })}
@@ -216,6 +339,17 @@ const UpgradeRead = observer(function UpgradeRead({
         cancelLabel={t("notebookSettings.cancel")}
         confirm={() => change(() => notebooks.endUpgradeRollback(notebook.id), false)}
         texts={texts}
+      />
+      <ConfirmDialog
+        held={dialogOf("submit")}
+        title={t("upgrade.submitTitle")}
+        description={t("upgrade.submitBody")}
+        confirmLabel={t("upgrade.submitConfirm")}
+        sendingLabel={t("upgrade.submitting")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={submit}
+        texts={{ "wiki.upgrade_not_ready": "upgrade.notReady" }}
+        tone="default"
       />
     </>
   );

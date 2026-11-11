@@ -4,16 +4,17 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import type { TransferJob } from "../../services/transfer.service";
-import type { Upgrade } from "../../services/upgrade.service";
+import type { Upgrade, UpgradeReport } from "../../services/upgrade.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { deferred } from "../../test/health-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { cancelled, reportOf, underWay } from "../../test/jobs-server";
-import { guide, install, notes } from "../../test/page-server";
+import { bob, guide, install, notes } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { under } from "../../stores/transfer.store";
 import {
   bobsUpgrade,
+  reportJSON,
   rollbackJobJSON,
   seededAgents,
   seededRaw,
@@ -160,13 +161,13 @@ test("the upgrade's initiator is told to connect their agent as the README says,
   expect(agent.textContent).toContain("The prompt to give it: upgrade");
 });
 
-test("another admin is told whose agent writes and that they can abandon the upgrade, not the prompt", async () => {
+test("another admin is told whose agent writes and that they can check, submit or abandon the upgrade, not the prompt", async () => {
   const server = upgradeServer({ upgrade: bobsUpgrade() });
   renderApp(upgradePath, server.app);
 
   const agent = await section("Connect an agent");
   expect(agent.textContent).toBe(
-    "Connect an agentOnly the agent of Bob, who started the upgrade, can write this notebook; you can abandon the upgrade."
+    "Connect an agentOnly the agent of Bob, who started the upgrade, can write this notebook; you can check the upgrade, submit it for review, or abandon it."
   );
   expect(within(agent).queryByText("upgrade")).toBeNull();
 });
@@ -830,4 +831,483 @@ test("a connection that finds the account no longer the notebook's admin reads n
   // The tree, read again at the upgrade's level, is the last of the connection's reads.
   await waitFor(() => expect(server.sent).toContain("GET nodes"));
   expect(server.asked).toEqual(["GET notebooks"]);
+});
+
+// The check and the submission (M11/P2 design 4.3, decisions 259, 264):
+// the check and Submit for review while upgrading, the report kept in
+// review; the submission's first step shows the upgrade reviewing, its
+// dialog staying until the answer.
+
+const submits = "Submit for review…";
+const notReady = "The check did not pass, and the upgrade is upgrading again. The check below is read again.";
+const pending = "Being checked, or the last submission did not finish.";
+const passedAt = "Every check passed: the upgrade can be submitted for review. Checked on Oct 6, 2026, 9:30 AM.";
+const reviewingBanner =
+  "This notebook's upgrade is submitted and waits for an admin's review: it is read-only for now.";
+/** What the check's result says, the rest of the page hidden by a dialog or not. */
+const resultOf = (check: HTMLElement) =>
+  within(check).getByRole("status", { name: "The check's result", hidden: true }).textContent;
+/** The check's section, hidden by a dialog or not. */
+const checkOf = async () =>
+  (await screen.findByRole("heading", { level: 2, name: "Check", hidden: true })).closest("section") as HTMLElement;
+const checks = (server: { asked: string[] }) => reads(server, "CHECK");
+
+/** The order of the upgrade page's sections and its two buttons below the state, by their names. */
+function sectionsInOrder(): string[] {
+  const headings = ["Where it is", "Connect an agent", "Check", "Check report", "Rollback"];
+  const buttons = [submits, "Abandon this upgrade…"];
+  return [...document.querySelectorAll("h2, button")].flatMap((each) => {
+    const name = each.textContent ?? "";
+    return (each.tagName === "H2" ? headings : buttons).includes(name) ? [name] : [];
+  });
+}
+
+test.each([
+  ["upgrading", true, false, ["Where it is", "Connect an agent", "Check", submits, "Abandon this upgrade…"]],
+  ["reviewing", false, true, ["Where it is", "Check report", "Abandon this upgrade…"]],
+  ["rolling_back", false, false, ["Where it is", "Rollback"]],
+] as const)(
+  "an upgrade %s: the check and Submit for review %s, the report %s, the sections in order",
+  async (state, checking, reported, order) => {
+    const job = stopped(70);
+    const server = upgradeServer({
+      jobs: state === "rolling_back" ? [job] : [],
+      upgrade: state === "rolling_back" ? rollbackOf(job) : upgradeJSON({ state, report: reportJSON() }),
+    });
+    renderApp(upgradePath, server.app);
+
+    await section("Where it is");
+    if (state === "rolling_back") {
+      await screen.findByRole("button", { name: ends });
+    }
+    expect(screen.queryByRole("heading", { level: 2, name: "Check" }) !== null).toBe(checking);
+    expect(screen.queryByRole("button", { name: "Check" }) !== null).toBe(checking);
+    expect(screen.queryByRole("button", { name: submits }) !== null).toBe(checking);
+    expect(screen.queryByRole("heading", { level: 2, name: "Check report" }) !== null).toBe(reported);
+    expect(sectionsInOrder()).toEqual(order);
+    expect(server.asked.filter((asked) => asked !== "GET job upgrade")).toEqual(["GET upgrade"]);
+  }
+);
+
+/**
+ * A report every value of which is its own: the gates passed, the hints'
+ * counts, capped or not, their first items, as many as the server keeps of a
+ * rule (at most five: all of a count of five or fewer).
+ */
+const keptReport = reportJSON({
+  computed_at: "2026-10-06T09:41:00Z",
+  gates: {
+    agents: { passed: true },
+    source_root: { passed: true },
+    reserved_titles: { passed: true, node_ids: [] },
+    frontmatter: { passed: true },
+    sources: { passed: true },
+    links: { passed: true, pages_worse: 0, node_ids: [] },
+    preserved: { passed: true, nodes: 8, nodes_kept: 8, pages: 5, pages_kept: 5, node_ids: [] },
+    index: { passed: true },
+  },
+  counts: {
+    sources: 31,
+    moved_into_sources: 32,
+    wiki_pages: 33,
+    new_pages: 34,
+    changesets: 35,
+    wanted_before: { count: 36, count_capped: false },
+    wanted_now: { count: 37, count_capped: true },
+  },
+  // In another order than shown.
+  rules: (
+    [
+      {
+        rule: "wanted",
+        count: 41,
+        count_capped: true,
+        items: [
+          { rule: "wanted", item_key: `w:${"a".repeat(64)}`, target: "Missing", target_cut: false, pages: 2 },
+          { rule: "wanted", item_key: `w:${"c".repeat(64)}`, target: "Other", target_cut: false, pages: 3 },
+          { rule: "wanted", item_key: `w:${"e".repeat(64)}`, target: "Roadmap", target_cut: false, pages: 4 },
+          { rule: "wanted", item_key: `w:${"f".repeat(64)}`, target: "Glossary", target_cut: false, pages: 6 },
+          { rule: "wanted", item_key: `w:${"9".repeat(64)}`, target: "Changelog", target_cut: false, pages: 7 },
+        ],
+      },
+      {
+        rule: "orphans",
+        count: 1,
+        count_capped: false,
+        items: [{ rule: "orphans", item_key: `p:${notes.id}`, page_id: notes.id }],
+      },
+      {
+        rule: "ambiguous",
+        count: 2,
+        count_capped: true,
+        items: [
+          {
+            rule: "ambiguous",
+            item_key: `a:${guide.id}:${"b".repeat(64)}`,
+            page_id: guide.id,
+            target: "Plan",
+            target_cut: false,
+          },
+          {
+            rule: "ambiguous",
+            item_key: `a:${install.id}:${"e".repeat(64)}`,
+            page_id: install.id,
+            target: "Setup",
+            target_cut: false,
+          },
+        ],
+      },
+      { rule: "invalid_frontmatter", count: 0, count_capped: false, items: [] },
+      {
+        rule: "missing_type",
+        count: 3,
+        count_capped: false,
+        items: [notes, guide, install].map((page) => ({
+          rule: "missing_type" as const,
+          item_key: `p:${page.id}`,
+          page_id: page.id,
+        })),
+      },
+      {
+        rule: "missing_summary",
+        count: 4,
+        count_capped: false,
+        items: [guide, seededRaw, install, notes].map((page) => ({
+          rule: "missing_summary" as const,
+          item_key: `p:${page.id}`,
+          page_id: page.id,
+        })),
+      },
+      {
+        rule: "undigested_sources",
+        count: 6,
+        count_capped: false,
+        items: [
+          {
+            rule: "undigested_sources",
+            item_key: `n:${install.id}`,
+            node_id: install.id,
+            kind: "page",
+            bytes: 2048,
+            created_at: "2026-10-03T08:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${notes.id}`,
+            node_id: notes.id,
+            kind: "asset",
+            bytes: 10240,
+            created_at: "2026-10-04T09:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${guide.id}`,
+            node_id: guide.id,
+            kind: "page",
+            bytes: 512,
+            created_at: "2026-10-05T10:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${seededRaw.id}`,
+            node_id: seededRaw.id,
+            kind: "page",
+            bytes: 3072,
+            created_at: "2026-10-05T11:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${seededAgents.id}`,
+            node_id: seededAgents.id,
+            kind: "asset",
+            bytes: 20480,
+            created_at: "2026-10-05T12:00:00Z",
+          },
+        ],
+      },
+      {
+        rule: "invalid_sources",
+        count: 5,
+        count_capped: false,
+        items: (
+          [
+            [install, "Broken", "d"],
+            [guide, "Gone", "1"],
+            [notes, "Lost", "2"],
+            [seededAgents, "Moved", "3"],
+            [install, "Renamed", "4"],
+          ] as const
+        ).map(([page, target, hex]) => ({
+          rule: "invalid_sources" as const,
+          item_key: `s:${page.id}:${hex.repeat(64)}`,
+          page_id: page.id,
+          target,
+          target_cut: false,
+          not_link: false,
+        })),
+      },
+    ] satisfies UpgradeReport["rules"]
+  ).toReversed(),
+});
+
+test("in review, the page shows the report kept, read only: each gate, each count, each rule's count and first items, no More", async () => {
+  const server = upgradeServer({
+    nodes: [guide, install, notes, seededRaw, seededAgents],
+    upgrade: upgradeJSON({ state: "reviewing", report: keptReport }),
+  });
+  renderApp(upgradePath, server.app);
+
+  const report = await section("Check report");
+  await within(report).findAllByText("Guide/Install.md");
+  expect(report.querySelector("p")?.textContent).toBe(
+    "The check at its submission (Oct 6, 2026, 9:41 AM): every check passed."
+  );
+  const gates = within(report).getByRole("list", { name: "The checks" });
+  expect([...gates.children].map((gate) => [...gate.children].map((part) => part.textContent))).toEqual([
+    ["The AGENTS page at the root has a body: passed"],
+    ["The source root is a page, not the root's AGENTS: passed"],
+    ["No node at the root is named index, log, index.md or log.md: passed"],
+    [
+      "Each page outside the source area, the source root and the root's AGENTS included, has frontmatter that parses; each except these two has a type and a summary: passed",
+    ],
+    ["Each sources reference leads to a node of the source area: passed"],
+    ["No page the upgrade started with leads to more pages that do not exist: passed"],
+    [
+      "Each node the upgrade started with is there, and no page's body changed: passed",
+      "Nodes kept: 8 of 8; pages kept: 5 of 5.",
+    ],
+    ["The link index is fresh: passed"],
+  ]);
+  expect(counts(report)).toEqual([
+    ["Nodes in the source area", "31"],
+    ["Nodes it started with, moved into the source area", "32"],
+    ["Pages outside the source area", "33"],
+    ["Pages created since the upgrade started", "34"],
+    ["Changes of the upgrade", "35"],
+    ["Wanted pages as the upgrade started", "36"],
+    ["Wanted pages now", "37+"],
+  ]);
+  const rules = [...report.querySelectorAll("section")].map((rule) => [
+    rule.querySelector("h2, h3, h4")?.tagName,
+    rule.querySelector("h2, h3, h4")?.textContent,
+    rule.querySelector("p")?.textContent,
+    [...rule.querySelectorAll("li")].map((item) => item.textContent),
+  ]);
+  expect(rules).toEqual([
+    [
+      "H3",
+      "Wanted pages",
+      "41+ issues",
+      [
+        "MissingReferenced by 2 pages",
+        "OtherReferenced by 3 pages",
+        "RoadmapReferenced by 4 pages",
+        "GlossaryReferenced by 6 pages",
+        "ChangelogReferenced by 7 pages",
+      ],
+    ],
+    ["H3", "Orphan pages", "1 issue", ["Notes.md"]],
+    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan", "Guide/Install.mdSetup"]],
+    ["H3", "Invalid frontmatter", "0 issues", []],
+    ["H3", "Missing type", "3 issues", ["Notes.md", "Guide.md", "Guide/Install.md"]],
+    ["H3", "Missing summary", "4 issues", ["Guide.md", "raw.md", "Guide/Install.md", "Notes.md"]],
+    [
+      "H3",
+      "Undigested sources",
+      "6 issues",
+      [
+        "Guide/Install.mdPage2 KBCreated Oct 3, 2026, 8:00 AM",
+        "Notes.mdAttachment10 KBCreated Oct 4, 2026, 9:00 AM",
+        "Guide.mdPage512 BCreated Oct 5, 2026, 10:00 AM",
+        "raw.mdPage3 KBCreated Oct 5, 2026, 11:00 AM",
+        "AGENTS.mdAttachment20 KBCreated Oct 5, 2026, 12:00 PM",
+      ],
+    ],
+    [
+      "H3",
+      "Invalid sources",
+      "5 issues",
+      ["Guide/Install.mdBroken", "Guide.mdGone", "Notes.mdLost", "AGENTS.mdMoved", "Guide/Install.mdRenamed"],
+    ],
+  ]);
+  expect(within(report).queryByRole("button")).toBeNull();
+  expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+});
+
+test("in review without a report, the page says it is being checked, or that the last submission did not finish", async () => {
+  const server = upgradeServer({ upgrade: upgradeJSON({ state: "reviewing", submitted_by: bob }) });
+  renderApp(upgradePath, server.app);
+
+  const report = await section("Check report");
+  expect(report.textContent).toBe(`Check report${pending}`);
+});
+
+/**
+ * submitting renders the upgrade's page of Plans, upgrading, live, its
+ * stream connected, whose submission ends as outcome, its second step
+ * waiting for checked, its second mode event and its answer for the
+ * promises given; it opens the submission's dialog.
+ */
+async function submitting(
+  outcome: (typeof upgradeServer extends (...args: never[]) => infer S ? S : never)["submission"]["outcome"],
+  waits: { mode?: Promise<void>; answered?: Promise<void> } = {}
+) {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = upgradeServer({ upgrade: upgradeJSON(), events });
+  const checked = deferred<void>();
+  server.submission = { ...server.submission, outcome, checked: checked.promise, ...waits };
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await section("Where it is");
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  await user.click(await screen.findByRole("button", { name: submits }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+  // Submitting is no destructive change (decision 259): its confirmation is not styled as one.
+  expect(within(dialog).getByRole("button", { name: "Submit for review" }).className).not.toMatch(/bg-destructive/);
+  expect(dialog.textContent).toContain(
+    "Once submitted, this notebook is frozen for everyone, the initiator's agent too. The system checks it again from that moment: once every check passes, it is in review, waiting for an admin's approval; otherwise it is upgrading again."
+  );
+  return { user, server, checked, dialog };
+}
+
+/** firstStep confirms the submission: its first step's mode event shows the upgrade reviewing, its check gone, the dialog waiting. */
+async function firstStep(user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) {
+  await user.click(within(dialog).getByRole("button", { name: "Submit for review" }));
+  expect(await screen.findByText(pending)).toBeTruthy();
+  expect(screen.queryByRole("heading", { level: 2, name: "Check", hidden: true })).toBeNull();
+  expect(screen.queryByRole("button", { name: submits, hidden: true })).toBeNull();
+  expect(within(dialog).getByRole("button", { name: "Submitting…" })).toBeTruthy();
+}
+
+test.each([
+  ["wiki.upgrade_not_ready", "not_ready", notReady],
+  [
+    "wiki.upgrade_stale_index",
+    "stale_index",
+    "The link index is out of date: ask the server's administrator to run nervewiki reindex, then try again.",
+  ],
+] as const)(
+  "submitted, refused as %s before its second step's mode event: the refusal reads the upgrade again, upgrading, its check back, read once; closed, the focus is on Submit for review",
+  async (_, outcome, said) => {
+    const mode = deferred<void>();
+    const { user, server, checked, dialog } = await submitting(outcome, { mode: mode.promise });
+    await firstStep(user, dialog);
+    expect(checks(server)).toBe(0);
+
+    checked.resolve();
+
+    expect(await within(dialog).findByText(said)).toBeTruthy();
+    const check = await checkOf();
+    await waitFor(() => expect(resultOf(check)).toBe(passedAt));
+    expect(checks(server)).toBe(1);
+    expect(screen.queryByText(pending)).toBeNull();
+    mode.resolve();
+    await waitFor(() => expect(reads(server, "GET upgrade")).toBe(4));
+    expect(checks(server)).toBe(1);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: submits }));
+  }
+);
+
+test("submitted and not ready, its second step's mode event read before the refusal: the check is back, and read once the refusal comes", async () => {
+  const answered = deferred<void>();
+  const { user, server, checked, dialog } = await submitting("not_ready", { answered: answered.promise });
+  await firstStep(user, dialog);
+
+  checked.resolve();
+
+  const check = await checkOf();
+  expect(resultOf(check)).toBe("");
+  expect(checks(server)).toBe(0);
+  answered.resolve();
+  expect(await within(dialog).findByText(notReady)).toBeTruthy();
+  await waitFor(() => expect(resultOf(check)).toBe(passedAt));
+  expect(checks(server)).toBe(1);
+});
+
+test("submitted and passed, the reads of the upgrade after the first held: the answer shows the report at once, the dialog closed, the focus on the title; the banner follows", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const held = deferred<void>();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    upgrade: upgradeJSON(),
+    events,
+    answers: {
+      [`GET ${plans}/upgrade`]: async () => {
+        server.asked.push("GET upgrade");
+        if (reads(server, "GET upgrade") > 1) {
+          await held.promise;
+        }
+        return upgradeRead(server);
+      },
+    },
+  });
+  server.submission = { ...server.submission, report: keptReport };
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await section("Where it is");
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  await user.click(await screen.findByRole("button", { name: submits }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+
+  await user.click(within(dialog).getByRole("button", { name: "Submit for review" }));
+
+  const kept = "The check at its submission (Oct 6, 2026, 9:41 AM): every check passed.";
+  expect(await screen.findByText(kept)).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(document.activeElement).toBe(title());
+  expect(reads(server, "GET upgrade")).toBeGreaterThanOrEqual(2);
+  expect(screen.queryByRole("heading", { level: 2, name: "Check" })).toBeNull();
+  expect(screen.queryByRole("button", { name: submits })).toBeNull();
+  expect(await screen.findByText(reviewingBanner)).toBeTruthy();
+  held.resolve();
+  await act(() => held.promise);
+  expect(screen.getByText(kept)).toBeTruthy();
+  expect(server.asked.filter((asked) => asked === "SUBMIT")).toHaveLength(1);
+});
+
+test("submitting an upgrade another admin submitted meanwhile is refused for its state: the page read again shows it in review; closed, the focus is on the title", async () => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ upgrade: upgradeJSON() });
+  renderApp(upgradePath, server.app);
+  await user.click(await screen.findByRole("button", { name: submits }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+  server.withUpgrade(
+    upgradeJSON({ state: "reviewing", submitted_by: bob, submitted_at: "2026-10-06T09:35:00Z", report: keptReport })
+  );
+
+  await user.click(within(dialog).getByRole("button", { name: "Submit for review" }));
+
+  expect(await within(dialog).findByText("The upgrade's current state does not allow this.")).toBeTruthy();
+  expect(
+    await screen.findByText("The check at its submission (Oct 6, 2026, 9:41 AM): every check passed.")
+  ).toBeTruthy();
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(document.activeElement).toBe(title());
+  expect(checks(server)).toBe(0);
+});
+
+test.each([
+  ["busy", "The server is busy. Try again in a moment."],
+  ["forbidden", "You do not have permission to do this."],
+] as const)("a submission refused as %s: the dialog says so, the check is not read again", async (refused, said) => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ upgrade: upgradeJSON() });
+  server.submission = { ...server.submission, outcome: "busy" };
+  renderApp(upgradePath, server.app);
+  await user.click(await screen.findByRole("button", { name: submits }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+  if (refused === "forbidden") {
+    // Another admin made Ada an editor meanwhile.
+    server.notebook = { ...server.notebook, role: "editor" };
+  }
+
+  await user.click(within(dialog).getByRole("button", { name: "Submit for review" }));
+
+  expect(await within(dialog).findByText(said)).toBeTruthy();
+  if (refused === "forbidden") {
+    await waitFor(() => expect(screen.getByText(adminsOnly, { exact: true })).toBeTruthy());
+  }
+  expect([reads(server, "SUBMIT"), checks(server)]).toEqual([1, 0]);
 });

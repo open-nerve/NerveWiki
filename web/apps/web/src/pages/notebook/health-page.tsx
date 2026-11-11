@@ -125,7 +125,6 @@ const HealthResults = observer(function HealthResults({
   const scope = useMemo<HealthScope>(
     () => ({
       key: ["lint", store.loginId, workspaceId, notebook.id, locationKey, entry.nonce, generation],
-      notebookId: notebook.id,
       controllers: {
         add: (controller) => entry.control.current.controllers.add(controller),
         delete: (controller) => entry.control.current.controllers.delete(controller),
@@ -246,6 +245,8 @@ const HealthResults = observer(function HealthResults({
         readingTree={pages.nodes === undefined || tree.reading}
         disabled={view.checking || mismatch}
         paths={paths}
+        read={(which, cursor, signal) => wiki.items(notebook.id, which, cursor, signal)}
+        moved="notebook.not_llm_wiki"
         mismatch={() => {
           void change((was) => ({ ...was, mismatch: true }));
         }}

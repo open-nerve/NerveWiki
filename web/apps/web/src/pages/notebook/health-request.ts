@@ -6,7 +6,6 @@ import { ApiError } from "../../services/api";
 /** Request ownership only: health results live in the entry's SWR provider. */
 export type HealthScope = {
   key: readonly unknown[];
-  notebookId: string;
   current: () => boolean;
   controllers: Pick<Set<AbortController>, "add" | "delete">;
 };

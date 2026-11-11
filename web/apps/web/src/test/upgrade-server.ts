@@ -1,10 +1,14 @@
+import type { LintItem, LintPage, LintRule, LintRuleSummary } from "@nervewiki/api-client";
+
 import { titleKey } from "../lib/title-key";
 import type { Notebook } from "../services/notebook.service";
 import type { TransferJob } from "../services/transfer.service";
-import type { Upgrade } from "../services/upgrade.service";
+import type { Upgrade, UpgradeCheck, UpgradeReport } from "../services/upgrade.service";
 import { under } from "../stores/transfer.store";
-import { json, notebookJSON, problem, type Answer } from "./fakes";
+import type { eventServer } from "./event-server";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "./fakes";
 import { jobChangesetId, jobJSON, jobsServer, reportOf, underWay, writing } from "./jobs-server";
+import { after, cursorOf, isRule } from "./lint-server";
 import { ada, bob, pageNode } from "./page-server";
 
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
@@ -40,6 +44,105 @@ export function upgradeJSON(more: Partial<Upgrade> = {}): Upgrade {
   };
 }
 
+/** The rules of an LLM Wiki's health, in their order (M10/P3). */
+const lintRules: readonly LintRule[] = [
+  "wanted",
+  "orphans",
+  "ambiguous",
+  "invalid_frontmatter",
+  "missing_type",
+  "missing_summary",
+  "undigested_sources",
+  "invalid_sources",
+];
+
+/** checkCursor is the cursor of rule's item at the node id in a check of Plans' upgrade: bound to its source root. */
+function checkCursor(rule: LintRule, id: string): string {
+  const text = JSON.stringify({
+    v: 1,
+    p: { v: 1, r: rule, n: notebookJSON.id, s: `E:llm_wiki:${seededRaw.id}`, i: id },
+  });
+  return btoa(text).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+/** missingTypes are the items of missing_type of the pages ids, in their order, as a check of Plans' upgrade has them. */
+export function missingTypes(ids: readonly string[]): Extract<LintItem, { rule: "missing_type" }>[] {
+  return ids.map((id) => ({
+    rule: "missing_type",
+    item_key: `p:${id}`,
+    page_id: id,
+    cursor: checkCursor("missing_type", id),
+  }));
+}
+
+/** ruleOf is a check's rule of count issues, its first items shown, more after the last of them unless said. */
+export function ruleOf(
+  rule: LintRule,
+  count: number,
+  items: readonly LintItem[] = [],
+  more: Partial<LintRuleSummary> = {}
+): LintRuleSummary {
+  return {
+    rule,
+    count,
+    count_capped: false,
+    items,
+    next_cursor: count > items.length ? (items.at(-1)?.cursor ?? null) : null,
+    ...more,
+  } as LintRuleSummary;
+}
+
+/**
+ * checkJSON is a check of Plans' upgrade as its admins read it (M11/P2
+ * design 4.3): every gate passed, of the four nodes and three pages it
+ * started with, no rule with an issue; more says otherwise.
+ */
+export function checkJSON(more: Partial<UpgradeCheck> = {}): UpgradeCheck {
+  return {
+    computed_at: "2026-10-06T09:30:00Z",
+    stale_pages: 0,
+    passed: true,
+    gates: {
+      agents: { passed: true },
+      source_root: { passed: true },
+      reserved_titles: { passed: true, node_ids: [] },
+      frontmatter: { passed: true },
+      sources: { passed: true },
+      links: { passed: true, pages_worse: 0, node_ids: [] },
+      preserved: { passed: true, nodes: 4, nodes_kept: 4, pages: 3, pages_kept: 3, node_ids: [] },
+      index: { passed: true },
+    },
+    rules: lintRules.map((rule) => ruleOf(rule, 0)),
+    counts: {
+      sources: 0,
+      moved_into_sources: 0,
+      wiki_pages: 3,
+      new_pages: 2,
+      changesets: 1,
+      wanted_before: { count: 0, count_capped: false },
+      wanted_now: { count: 0, count_capped: false },
+    },
+    ...more,
+  };
+}
+
+/** reportJSON is the report a submission of Plans' upgrade kept: checkJSON's, its rules' items without cursors. */
+export function reportJSON(more: Partial<UpgradeReport> = {}): UpgradeReport {
+  const { rules, ...check } = checkJSON();
+  return {
+    ...check,
+    rules: rules.map(({ rule, count, count_capped }) => ({ rule, count, count_capped, items: [] })),
+    ...more,
+  };
+}
+
+/**
+ * How a submission's second step ends (M11/P2 design 3.12): its report
+ * kept; upgrading again, a gate not passed, an old index, the check's
+ * computations busy.
+ */
+type SubmitOutcome = "stored" | "not_ready" | "stale_index" | "busy";
+
 /** summaryOf is the upgrade as Plans' readers see it in the notebook (Notebook.upgrade), or none once it ended. */
 function summaryOf(upgrade: Upgrade | undefined): Notebook["upgrade"] {
   return upgrade === undefined || upgrade.state === "approved" || upgrade.state === "rolled_back"
@@ -69,6 +172,8 @@ const nothingLeft = { nodes: 0, pages: 0, created: 0 };
 type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
   /** Plans' upgrade under way, if any. */
   upgrade?: Upgrade;
+  /** The event stream (GET events), whose last connection a submission's two steps each tell (mode). */
+  events?: ReturnType<typeof eventServer>;
 };
 
 /**
@@ -100,6 +205,34 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  *   transfer.busy; else the upgrade ends, rolled back, as the rollback
  *   left it (left). Logged as "END ROLLBACK".
  *
+ * Its check (M11/P2 design 4.3), as the server answers it, in the
+ * contract's order of codes:
+ *
+ * - the check (GET upgrade/check): Plans gone 404 notebook.not_found; not
+ *   its admin 403 forbidden; no upgrade upgrading or reviewing 409
+ *   wiki.upgrade_state; the computations busy (checkBusy) 503
+ *   server_busy; else the check (check). Logged as "CHECK";
+ * - a rule's items (GET upgrade/check/{rule}): a limit not an integer or
+ *   a cursor that does not decode 400 bad_request; then 404 and 403 as
+ *   the check's; a rule unknown 404 wiki.lint_rule_not_found; no upgrade
+ *   upgrading or reviewing 409 wiki.upgrade_state; a cursor bound to
+ *   another notebook, rule or scope than the explicit LLM Wiki's of the
+ *   upgrade's source root (a lint's) 400 bad_request; a limit past 1-100
+ *   422 validation_failed; busy 503; else the rule's items (checkItems)
+ *   after the cursor. Logged as "CHECK <rule> <cursor>";
+ * - its submission (POST upgrade/submit), in the server's two steps:
+ *   404 and 403 as above; not upgrading 409 wiki.upgrade_state; else the
+ *   upgrade is reviewing, submitted by Ada, without a report, and the
+ *   mode event is sent; once the submission's check is released
+ *   (submission.checked), an upgrade no longer that submission's (taken
+ *   over, abandoned) is 409 wiki.upgrade_state, nothing written; else, as
+ *   submission.outcome says, its report kept (submission.report), or
+ *   upgrading again, the submission's columns cleared, 409
+ *   wiki.upgrade_not_ready naming the gates, 409 wiki.upgrade_stale_index,
+ *   503 server_busy; the mode event is sent again once submission.mode is
+ *   released, and the answer once submission.answered is. Logged as
+ *   "SUBMIT".
+ *
  * A rolling back upgrade read says what its rollback left (left) once its
  * job is neither queued nor running, as the server counts it then; none
  * while it is. Plans as the list holds it carries the upgrade (withUpgrade
@@ -109,8 +242,9 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  * would (rollbackJob), and ends the upgrade as a rollback that put
  * everything back does (rolledBack).
  */
-export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServerOptions = {}) {
+export function upgradeServer({ upgrade, events, answers = {}, ...options }: UpgradeServerOptions = {}) {
   const routes: Record<string, Answer> = {
+    ...(events === undefined ? {} : { "GET /api/v0/events": events.answer }),
     [`GET ${plans}/upgrade`]: () => {
       server.asked.push("GET upgrade");
       if (server.notebookGone) {
@@ -196,6 +330,103 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       server.withUpgrade(rolling);
       return json(read(rolling));
     },
+    [`GET ${plans}/upgrade/check`]: () => {
+      server.asked.push("CHECK");
+      const refused = refusedChange() ?? (checked() ? undefined : problem(409, "wiki.upgrade_state"));
+      if (refused !== undefined) {
+        return refused;
+      }
+      return server.checkBusy ? problem(503, "server_busy", {}, { "Retry-After": "1" }) : json(server.check);
+    },
+    [`GET ${plans}/upgrade/check/*`]: (request) => {
+      const url = new URL(request.url);
+      const rule = decodeURIComponent(url.pathname.split("/").at(-1) ?? "");
+      const raw = url.searchParams.get("cursor");
+      const limitText = url.searchParams.get("limit");
+      server.asked.push(`CHECK ${rule} ${raw ?? "none"}`);
+      const position = raw === null ? undefined : cursorOf(raw);
+      if ((limitText !== null && !/^[+-]?\d+$/.test(limitText)) || (raw !== null && position === undefined)) {
+        return problem(400, "bad_request");
+      }
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      if (!isRule(rule)) {
+        return problem(404, "wiki.lint_rule_not_found");
+      }
+      if (!checked()) {
+        return problem(409, "wiki.upgrade_state");
+      }
+      const scope = `E:llm_wiki:${server.upgrade?.source_root_id ?? ""}`;
+      if (
+        position !== undefined &&
+        (position.notebook !== notebookJSON.id || position.rule !== rule || position.scope !== scope)
+      ) {
+        return problem(400, "bad_request");
+      }
+      const limit = limitText === null ? 50 : Number(limitText);
+      if (limit < 1 || limit > 100) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "limit", code: "out_of_range", message: "must be between 1 and 100" }],
+        });
+      }
+      if (server.checkBusy) {
+        return problem(503, "server_busy", {}, { "Retry-After": "1" });
+      }
+      const all = (server.checkItems[rule] ?? []).filter((item) => position === undefined || after(item, position));
+      const data = all.slice(0, limit);
+      const page: LintPage = {
+        mode: "llm_wiki",
+        computed_at: server.check.computed_at,
+        stale_pages: server.check.stale_pages,
+        data,
+        next_cursor: all.length > data.length ? (data.at(-1)?.cursor ?? null) : null,
+      };
+      return json(page);
+    },
+    [`POST ${plans}/upgrade/submit`]: async () => {
+      server.asked.push("SUBMIT");
+      const refused =
+        refusedChange() ?? (server.upgrade?.state === "upgrading" ? undefined : problem(409, "wiki.upgrade_state"));
+      if (refused !== undefined || server.upgrade === undefined) {
+        return refused ?? problem(409, "wiki.upgrade_state");
+      }
+      const submitted: Upgrade = {
+        ...server.upgrade,
+        state: "reviewing",
+        submitted_by: ada,
+        submitted_at: "2026-10-06T09:40:00Z",
+        report: null,
+      };
+      server.withUpgrade(submitted);
+      sendMode();
+      const { outcome, report, checked, mode, answered } = server.submission;
+      await checked;
+      if (server.upgrade !== submitted) {
+        return problem(409, "wiki.upgrade_state");
+      }
+      let answer: Response;
+      if (outcome === "stored") {
+        const kept: Upgrade = { ...submitted, report };
+        server.withUpgrade(kept);
+        answer = json(kept);
+      } else {
+        server.withUpgrade({ ...submitted, state: "upgrading", submitted_by: null, submitted_at: null });
+        answer =
+          outcome === "not_ready"
+            ? problem(409, "wiki.upgrade_not_ready", {
+                detail:
+                  "These gates did not pass: frontmatter. The upgrade is upgrading again: check it, then submit it again.",
+              })
+            : outcome === "stale_index"
+              ? problem(409, "wiki.upgrade_stale_index")
+              : problem(503, "server_busy", {}, { "Retry-After": "1" });
+      }
+      void mode.then(sendMode);
+      await answered;
+      return answer;
+    },
     [`POST ${plans}/upgrade/end-rollback`]: () => {
       server.asked.push("END ROLLBACK");
       const refused = refusedChange();
@@ -228,6 +459,15 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       : server.notebook.role === "admin"
         ? undefined
         : problem(403, "forbidden");
+  // The mode event a submission's step sends its notebook's subscribers: the last stream's, while connected.
+  const sendMode = () => {
+    const stream = events?.streams.at(-1);
+    if (stream !== undefined && !stream.ended) {
+      stream.send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+    }
+  };
+  // An upgrade a check reads: upgrading or reviewing.
+  const checked = () => server.upgrade?.state === "upgrading" || server.upgrade?.state === "reviewing";
   // The upgrade's rollback's job, if it has one under way.
   const rollingNow = () => server.jobs.some((job) => job.id === server.upgrade?.rollback_job_id && under(job));
   // The upgrade as a read answers it: rolling back, what its rollback left once its job is not under way.
@@ -238,6 +478,20 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
     upgrade: undefined as Upgrade | undefined,
     /** What the upgrade's rollback left once its job stopped, as the server counts it then. */
     left: nothingLeft as NonNullable<Upgrade["rollback_left"]>,
+    /** What the upgrade's check answers. */
+    check: checkJSON(),
+    /** Each rule's items of the check, all of them, in their order: its pages read past a cursor. */
+    checkItems: {} as Partial<Record<LintRule, LintItem[]>>,
+    /** Whether the check's computations are busy: 503 server_busy. */
+    checkBusy: false,
+    /** How a submission's second step ends, and what it waits for: nothing unless a test holds it. */
+    submission: {
+      outcome: "stored" as SubmitOutcome,
+      report: reportJSON(),
+      checked: Promise.resolve(),
+      mode: Promise.resolve(),
+      answered: Promise.resolve(),
+    },
     /** withUpgrade gives Plans upgrade, or none, in its read and in the notebook the list holds. */
     withUpgrade(next: Upgrade | undefined): void {
       server.upgrade = next;

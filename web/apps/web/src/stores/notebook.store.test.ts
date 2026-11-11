@@ -3,7 +3,7 @@ import { expect, test } from "vitest";
 import { ApiError } from "../services/api";
 import type { Notebook } from "../services/notebook.service";
 import { upgradeOf } from "../test/fakes";
-import { upgradeJSON } from "../test/upgrade-server";
+import { reportJSON, upgradeJSON } from "../test/upgrade-server";
 import { groupNotebooks, NotebookStore } from "./notebook.store";
 
 const notebook = (id: string, name: string, overrides: Partial<Notebook> = {}): Notebook => ({
@@ -26,8 +26,8 @@ type Upgrades = ConstructorParameters<typeof NotebookStore>[2];
 
 /**
  * A store of lab's notebooks over a service whose list answers list, whose writes answer what they are given, and
- * as overrides says; an upgrade's start, abandonment and rollback's end answer its upgrade unless upgrades says
- * otherwise.
+ * as overrides says; an upgrade's start, abandonment, rollback's end and submission answer its upgrade unless
+ * upgrades says otherwise.
  */
 function storeOf(list: Notebook[], overrides: Partial<Service> = {}, upgrades: Partial<Upgrades> = {}) {
   return new NotebookStore(
@@ -45,6 +45,7 @@ function storeOf(list: Notebook[], overrides: Partial<Service> = {}, upgrades: P
       start: async (id) => upgradeJSON({ notebook_id: id }),
       abandon: async (id) => upgradeJSON({ notebook_id: id, state: "rolling_back", ending: "abandoned" }),
       endRollback: async (id) => upgradeJSON({ notebook_id: id, state: "rolled_back", ending: "abandoned" }),
+      submit: async (id) => upgradeJSON({ notebook_id: id, state: "reviewing", report: reportJSON() }),
       ...upgrades,
     }
   );
@@ -748,3 +749,128 @@ test.each(
     expect(store.byId("beta")).toEqual(upgraded);
   }
 );
+
+// An upgrade's submission (M11/P2 design 4.3): it answers the upgrade,
+// reviewing with its report, and reads the list again, as an abandonment.
+// Not ready, or of an old index, the upgrade is upgrading again, which the
+// mode event tells the list: none of those is read again here.
+
+const reviewing = { ...beta, upgrade: upgradeOf("reviewing") };
+const submitted = upgradeJSON({ notebook_id: "beta", state: "reviewing", report: reportJSON() });
+
+test("an upgrade's submission answers the upgrade, reviewing with its report, the notebook read again as the list holds it now", async () => {
+  let reads = 0;
+  const sent: string[] = [];
+  const store = storeOf(
+    [],
+    { list: async () => (++reads === 1 ? [upgraded] : [reviewing]) },
+    {
+      submit: async (id) => {
+        sent.push(`submit ${id}`);
+        return submitted;
+      },
+    }
+  );
+  await store.load();
+
+  await expect(store.submitUpgrade("beta")).resolves.toBe(submitted);
+
+  expect(sent).toEqual(["submit beta"]);
+  expect(reads).toBe(2);
+  expect(store.byId("beta")).toEqual(reviewing);
+});
+
+test("an upgrade's submission waits for the same notebook's renaming", async () => {
+  let answerRename: ((value: Notebook) => void) | undefined;
+  const sent: string[] = [];
+  const store = storeOf(
+    [upgraded],
+    {
+      update: () => {
+        sent.push("rename");
+        return new Promise<Notebook>((resolve) => (answerRename = resolve));
+      },
+    },
+    {
+      submit: async () => {
+        sent.push("submit");
+        return submitted;
+      },
+    }
+  );
+  await store.load();
+
+  const renaming = store.update("beta", { name: "Renamed" });
+  const submitting = store.submitUpgrade("beta");
+  await Promise.resolve();
+  expect(sent).toEqual(["rename"]);
+  answerRename?.({ ...upgraded, name: "Renamed" });
+  await renaming;
+  await submitting;
+
+  expect(sent).toEqual(["rename", "submit"]);
+});
+
+test.each([
+  ["forbidden", refusal(403, "forbidden"), [{ ...upgraded, role: "editor" as const }]],
+  ["notebook.not_found", refusal(404, "notebook.not_found"), []],
+  ["wiki.upgrade_state", refusal(409, "wiki.upgrade_state"), [reviewing]],
+])(
+  "an upgrade's submission refused as %s reads the list again, as it is now, and is refused",
+  async (_, refused, after) => {
+    let reads = 0;
+    const store = storeOf(
+      [],
+      { list: async () => (++reads === 1 ? [upgraded] : after) },
+      { submit: () => Promise.reject(refused) }
+    );
+    await store.load();
+
+    await expect(store.submitUpgrade("beta")).rejects.toBe(refused);
+
+    expect(reads).toBe(2);
+    expect(store.list).toEqual(after);
+    expect(store.wasRemoved("beta")).toBe(false);
+  }
+);
+
+test("an upgrade's submission refused whose read again fails keeps that refusal and the notebook", async () => {
+  let reads = 0;
+  const refused = refusal(409, "wiki.upgrade_state");
+  const store = storeOf(
+    [],
+    { list: () => (++reads === 1 ? Promise.resolve([upgraded]) : Promise.reject(new TypeError("offline"))) },
+    { submit: () => Promise.reject(refused) }
+  );
+  await store.load();
+
+  await expect(store.submitUpgrade("beta")).rejects.toBe(refused);
+
+  expect(reads).toBe(2);
+  expect(store.byId("beta")).toEqual(upgraded);
+});
+
+test.each([
+  refusal(409, "wiki.upgrade_not_ready"),
+  refusal(409, "wiki.upgrade_stale_index"),
+  refusal(503, "server_busy"),
+  new TypeError("offline"),
+])("an upgrade's submission refused as %s does not read the list again", async (refused) => {
+  let reads = 0;
+  const store = storeOf(
+    [],
+    {
+      list: async () => {
+        reads++;
+        return [upgraded];
+      },
+    },
+    { submit: () => Promise.reject(refused) }
+  );
+  await store.load();
+
+  await expect(store.submitUpgrade("beta")).rejects.toBe(refused);
+
+  expect(reads).toBe(1);
+  expect(store.byId("beta")).toEqual(upgraded);
+});

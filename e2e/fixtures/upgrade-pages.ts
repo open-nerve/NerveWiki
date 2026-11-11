@@ -7,6 +7,7 @@ import type { Locator, Page } from "@playwright/test";
 /** What the banner says by the upgrade's state. */
 export const bannerText = {
   upgrading: "This notebook is being upgraded to an LLM Wiki: it is read-only for now.",
+  reviewing: "This notebook's upgrade is submitted and waits for an admin's review: it is read-only for now.",
   rolling_back: "This notebook's upgrade is being undone: it is read-only for now.",
 } as const;
 
