@@ -100,7 +100,7 @@ const gateText: Record<Gate, string> = {
   source_root: "The source root is a page, not the root's AGENTS",
   reserved_titles: "No node at the root is named index, log, index.md or log.md",
   frontmatter:
-    "Each page outside the source area has frontmatter that parses, with a type and a summary (but the source root and the root's AGENTS)",
+    "Each page outside the source area, the source root and the root's AGENTS included, has frontmatter that parses; each except these two has a type and a summary",
   sources: "Each sources reference leads to a node of the source area",
   links: "No page the upgrade started with leads to more pages that do not exist",
   preserved: "Each node the upgrade started with is there, and no page's body changed",
@@ -230,7 +230,7 @@ test.each(rows)(
               ? [line]
               : [
                   line,
-                  "3 pages lead to more pages that do not exist than as the upgrade started.",
+                  "3 pages lead to more pages that do not exist than when the upgrade started.",
                   ["Notes.md", "Guide.md"],
                 ];
           case "preserved":
@@ -306,7 +306,7 @@ test.each([
       "Nodes in the source area",
       "Nodes it started with, moved into the source area",
       "Pages outside the source area",
-      "Pages written since the upgrade started",
+      "Pages created since the upgrade started",
       "Changes of the upgrade",
       "Wanted pages as the upgrade started",
       "Wanted pages now",

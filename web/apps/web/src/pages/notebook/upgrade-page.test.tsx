@@ -167,7 +167,7 @@ test("another admin is told whose agent writes and that they can abandon the upg
 
   const agent = await section("Connect an agent");
   expect(agent.textContent).toBe(
-    "Connect an agentOnly the agent of Bob, who started the upgrade, can write this notebook; you can abandon the upgrade."
+    "Connect an agentOnly the agent of Bob, who started the upgrade, can write this notebook; you can check the upgrade, submit it for review, or abandon it."
   );
   expect(within(agent).queryByText("upgrade")).toBeNull();
 });
@@ -839,7 +839,7 @@ test("a connection that finds the account no longer the notebook's admin reads n
 // dialog staying until the answer.
 
 const submits = "Submit for review…";
-const notReady = "The check did not pass, and the upgrade is upgrading again. The check below was read again.";
+const notReady = "The check did not pass, and the upgrade is upgrading again. The check below is read again.";
 const pending = "Being checked, or the last submission did not finish.";
 const passedAt = "Every check passed: the upgrade can be submitted for review. Checked on Oct 6, 2026, 9:30 AM.";
 const reviewingBanner =
@@ -967,7 +967,7 @@ test("in review, the page shows the report kept, read only: each gate, each coun
     ["The source root is a page, not the root's AGENTS: passed"],
     ["No node at the root is named index, log, index.md or log.md: passed"],
     [
-      "Each page outside the source area has frontmatter that parses, with a type and a summary (but the source root and the root's AGENTS): passed",
+      "Each page outside the source area, the source root and the root's AGENTS included, has frontmatter that parses; each except these two has a type and a summary: passed",
     ],
     ["Each sources reference leads to a node of the source area: passed"],
     ["No page the upgrade started with leads to more pages that do not exist: passed"],
@@ -981,7 +981,7 @@ test("in review, the page shows the report kept, read only: each gate, each coun
     ["Nodes in the source area", "31"],
     ["Nodes it started with, moved into the source area", "32"],
     ["Pages outside the source area", "33"],
-    ["Pages written since the upgrade started", "34"],
+    ["Pages created since the upgrade started", "34"],
     ["Changes of the upgrade", "35"],
     ["Wanted pages as the upgrade started", "36"],
     ["Wanted pages now", "37+"],

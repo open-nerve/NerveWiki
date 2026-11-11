@@ -197,7 +197,7 @@ function countsOf(counts: UpgradeCheck["counts"]): string[][] {
       counted({ count: counts.moved_into_sources, count_capped: false }),
     ],
     ["Pages outside the source area", counted({ count: counts.wiki_pages, count_capped: false })],
-    ["Pages written since the upgrade started", counted({ count: counts.new_pages, count_capped: false })],
+    ["Pages created since the upgrade started", counted({ count: counts.new_pages, count_capped: false })],
     ["Changes of the upgrade", counted({ count: counts.changesets, count_capped: false })],
     ["Wanted pages as the upgrade started", counted(counts.wanted_before)],
     ["Wanted pages now", counted(counts.wanted_now)],
@@ -242,7 +242,7 @@ test("UP5 (page): the admin checks the upgrade, the frontmatter gate not passed,
   expect(Object.entries(first.gates).flatMap(([gate, { passed }]) => (passed ? [] : [gate]))).toEqual(["frontmatter"]);
   await expect(result).toHaveText(/^1 check did not pass\. Checked on .+\.$/);
   await expect(check.getByRole("list", { name: "The checks", exact: true }).locator(":scope > li > p")).toContainText([
-    "Each page outside the source area has frontmatter that parses, with a type and a summary (but the source root and the root's AGENTS): not passed",
+    "Each page outside the source area, the source root and the root's AGENTS included, has frontmatter that parses; each except these two has a type and a summary: not passed",
   ]);
   expect(await countsIn(check)).toEqual(countsOf(first.counts));
   const firstTypes = first.rules.find((rule) => rule.rule === "missing_type");
@@ -266,7 +266,7 @@ test("UP5 (page): the admin checks the upgrade, the frontmatter gate not passed,
   await confirm.click();
   expect((await refusal).status()).toBe(409);
   await expect(dialog).toContainText(
-    "The check did not pass, and the upgrade is upgrading again. The check below was read again."
+    "The check did not pass, and the upgrade is upgrading again. The check below is read again."
   );
   const second = (await (await recheck).json()) as UpgradeCheck;
   expect([second.passed, second.gates.frontmatter.passed]).toEqual([false, false]);
