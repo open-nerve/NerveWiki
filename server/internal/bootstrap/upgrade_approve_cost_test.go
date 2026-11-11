@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -77,7 +76,11 @@ const (
 // 1.29 s is 3.86 s. Of an approval, in both rounds, SetSourceHashes took
 // 0.74-0.94 s in its five chunks, SourceRebuildHeads 0.11-0.18 s,
 // LintNodeMetadata 0.10-0.15 s, DeleteUpgradeNodes 15-32 ms. Each template
-// took 10-29 s to seed, the whole guard 121 s.
+// took 10-29 s to seed, the whole guard 121 s. The bound stays (decision
+// 298): if a run of costs-1 on main, on an EPYC 7763 or a slower runner,
+// shows any cell's median past 3.25 s (a margin under 1.2), it goes to
+// 4.5 s, as the owner said on 2026-11-06; not another order, and no
+// optimization. The branch's run on a Xeon 8370C showed 2.25-2.51 s.
 const approveCostBound = 3900 * time.Millisecond
 
 // The approval's cost guard (M11/P3 design 7.1, decisions 280, 292): the
@@ -90,12 +93,13 @@ const approveCostBound = 3900 * time.Millisecond
 // custom and in generic plans, set for the copy's database, which the
 // app's connections show. Each approval on a fresh copy of its template
 // on an app of its own, its jobs at start done first. Plans first: in the
-// first approval of each, inside its transaction, the plans for their
-// arguments and generic of the statements approveCostPlanned names read
-// nodes only by an index whose first column is notebook_id or by its key,
-// page_contents, asset_blobs and upgrade_nodes only by their keys, never
-// a Seq Scan, a scan repeated on a Nested Loop's inner side by the outer
-// row's key, SetSourceHashes the notebook's nodes once at most,
+// first approval of each, each statement approveCostPlanned names, just
+// before its first run, on its connection, inside the transaction, its
+// plans for its arguments and generic read nodes only by its key or by an
+// index whose first column is notebook_id, each with its key in the
+// condition, page_contents, asset_blobs and upgrade_nodes only by their
+// keys, never a Seq Scan, a scan repeated on a Nested Loop's inner side by
+// the outer row's key, SetSourceHashes the notebook's nodes once at most,
 // SourceRebuildHeads its nodes and contents only by their keys. Time
 // second: each approval answers 200, its 47,500 hashes set, the median of
 // three of the server's elapsed_ms within approveCostBound. Then the
@@ -344,8 +348,8 @@ func approveCostNotebookSeed(t *testing.T, exec func(string, ...any), nb, raw, n
 }
 
 // approveCostApp is an app on url under production's request, its tokens
-// alive an hour; with trace, its statements traced and its baseline's
-// deletion wrapped (approveCostRollback).
+// alive an hour; with trace, its statements traced, their plans judged as
+// trace says, and its baseline's deletion wrapped (approveCostRollback).
 func approveCostApp(t *testing.T, url, keyFile string, trace *approveCostTrace, logger *slog.Logger) *app {
 	t.Helper()
 	cfg := testConfig(t, url, false)
@@ -407,14 +411,16 @@ func approveCostApprove(t *testing.T, contract *apitest.Contract, keyFile string
 		trace.begin(plans)
 		status, answer := ask(t, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade/approve", tm.token, "")
 		out.parts = trace.end()
+		// The plans' error first: an EXPLAIN that fails leaves the
+		// transaction failed, and the approval answers 500.
+		if plans && out.parts.PlanErr != nil {
+			t.Fatalf("the approval's plans (the approval answered %d): %v", status, out.parts.PlanErr)
+		}
 		if status != http.StatusOK {
 			t.Fatalf("the approval = %d %s", status, answer)
 		}
 		if out.parts.Mode != mode {
 			t.Errorf("the approval's connection planned by %q, want %q", out.parts.Mode, mode)
-		}
-		if plans && (!out.parts.Planned || out.parts.PlanErr != nil) {
-			t.Fatalf("the approval's plans, checked %v: %v", out.parts.Planned, out.parts.PlanErr)
 		}
 		lines := upgradeLines(t, logs, 0, "upgrade approved")
 		if len(lines) != 1 || lines[0]["sources_hashed"] != float64(approveCostSources) {
@@ -446,24 +452,26 @@ func approveCostSettle(t *testing.T, pool *pgxpool.Pool) {
 }
 
 // approveCostTrace keeps, while armed, each statement's time by its sqlc
-// name and the text and arguments of the first run of each planned one:
-// the rebuild's are chunked, its first chunk full.
+// name, and, when plans, judges the plans of each planned one just before
+// its first run, on its connection (decision 296 as review P3S1B-M2
+// revised it): the rebuild's are chunked, their first chunk full. The
+// statement's time starts after its EXPLAINs.
 type approveCostTrace struct {
 	mu      sync.Mutex
 	armed   bool
 	plans   bool
 	planned []string
 	parts   approveCostParts
-	first   map[string]startCostQuery
 }
 
 // approveCostParts are an approval's statements' times by name, the plan
-// mode its connection showed, and its plans' check.
+// mode its connection showed, and its plans' check: the plans by name,
+// the EXPLAINs' time, and the first error, a plan the rules refuse, an
+// EXPLAIN that failed, or a planned statement that did not run.
 type approveCostParts struct {
 	Took    map[string]float64
 	Mode    string
 	Explain time.Duration
-	Planned bool
 	PlanErr error
 	Plans   map[string][]string // custom, generic
 }
@@ -471,22 +479,52 @@ type approveCostParts struct {
 func (s *approveCostTrace) begin(plans bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.armed, s.plans, s.parts, s.first = true, plans, approveCostParts{Took: map[string]float64{}}, map[string]startCostQuery{}
+	s.armed, s.plans = true, plans
+	s.parts = approveCostParts{Took: map[string]float64{}, Plans: map[string][]string{}}
 }
 
 func (s *approveCostTrace) end() approveCostParts {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.armed = false
+	for _, name := range s.planned {
+		if _, judged := s.parts.Plans[name]; s.plans && !judged && s.parts.PlanErr == nil {
+			s.parts.PlanErr = fmt.Errorf("the approval ran no %s", name)
+		}
+	}
 	return s.parts
 }
 
-func (s *approveCostTrace) TraceQueryStart(ctx context.Context, _ *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
+// judges reports whether the trace judges the plans of name's run now, its
+// first while armed, and marks it judged. After an error it judges none:
+// an EXPLAIN that failed leaves the transaction failed.
+func (s *approveCostTrace) judges(name string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, judged := s.parts.Plans[name]; !s.armed || !s.plans || judged || s.parts.PlanErr != nil || !slices.Contains(s.planned, name) {
+		return false
+	}
+	s.parts.Plans[name] = nil
+	return true
+}
+
+func (s *approveCostTrace) TraceQueryStart(ctx context.Context, conn *pgx.Conn, data pgx.TraceQueryStartData) context.Context {
 	rest, ok := strings.CutPrefix(data.SQL, "-- name: ")
 	if !ok {
-		return ctx
+		return ctx // an EXPLAIN of the trace's own among them
 	}
 	name, _, _ := strings.Cut(rest, " ")
+	if s.judges(name) {
+		started := time.Now()
+		shapes, err := approveCostPlans(ctx, conn, name, data.SQL, data.Args)
+		s.mu.Lock()
+		s.parts.Explain += time.Since(started)
+		s.parts.Plans[name] = shapes
+		if err != nil && s.parts.PlanErr == nil {
+			s.parts.PlanErr = err
+		}
+		s.mu.Unlock()
+	}
 	return context.WithValue(ctx, startCostKey{}, startCostQuery{name, time.Now(), data.SQL, data.Args})
 }
 
@@ -502,14 +540,10 @@ func (s *approveCostTrace) TraceQueryEnd(ctx context.Context, _ *pgx.Conn, data 
 		return
 	}
 	s.parts.Took[q.name] += ms(took)
-	if _, seen := s.first[q.name]; !seen && slices.Contains(s.planned, q.name) {
-		s.first[q.name] = q
-	}
 }
 
 // approveCostRollback shows, after the baseline's deletion, inside the
-// approval's transaction, the plan mode of its connection, and checks the
-// plans of the statements the trace kept when it asks.
+// approval's transaction, the plan mode of its connection.
 type approveCostRollback struct {
 	wiki.RollbackPages
 	s *approveCostTrace
@@ -528,74 +562,63 @@ func (p approveCostRollback) DeleteBaseline(ctx context.Context, upgradeID uuid.
 		return err
 	}
 	p.s.mu.Lock()
-	armed, plans, planned, first := p.s.armed, p.s.plans, slices.Clone(p.s.planned), maps.Clone(p.s.first)
 	p.s.parts.Mode = mode
 	p.s.mu.Unlock()
-	if !armed || !plans {
-		return nil
-	}
-	started := time.Now()
-	shapes, err := approveCostPlans(ctx, tx, planned, first)
-	p.s.mu.Lock()
-	p.s.parts.Planned, p.s.parts.Explain, p.s.parts.PlanErr, p.s.parts.Plans = true, time.Since(started), err, shapes
-	p.s.mu.Unlock()
-	return nil // the test reports err; an EXPLAIN's error leaves the transaction failed
+	return nil
 }
 
-// approveCostPlans returns the shapes of the plans of planned in tx, for
-// the arguments of their first run and generic, and an error, which the
-// test reports, unless each ran and reads as approveCostScans says.
-func approveCostPlans(ctx context.Context, tx pgx.Tx, planned []string, first map[string]startCostQuery) (map[string][]string, error) {
-	shapes := map[string][]string{}
-	for _, name := range planned {
-		q, ok := first[name]
-		if !ok {
-			return shapes, fmt.Errorf("the approval ran no %s before the baseline's deletion ended", name)
+// approveCostPlans returns the shapes of the plans of the statement name,
+// sql, on conn, for args and generic, and an error, which the test
+// reports, unless each reads as approveCostScans says. conn is the
+// statement's own, idle: pgx traces a query's start before it uses the
+// connection.
+func approveCostPlans(ctx context.Context, conn *pgx.Conn, name, sql string, args []any) ([]string, error) {
+	var shapes []string
+	for _, generic := range []bool{false, true} {
+		var raw []byte
+		if generic {
+			// A generic plan's parameters have no values: the simple protocol.
+			results, err := conn.PgConn().Exec(ctx, "EXPLAIN (GENERIC_PLAN, FORMAT JSON) "+sql).ReadAll()
+			if err != nil {
+				return shapes, fmt.Errorf("%s's generic plan: %w", name, err)
+			}
+			if len(results) != 1 || len(results[0].Rows) != 1 {
+				return shapes, fmt.Errorf("%s's generic plan: %d results", name, len(results))
+			}
+			raw = results[0].Rows[0][0]
+		} else if err := conn.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+sql, args...).Scan(&raw); err != nil {
+			return shapes, fmt.Errorf("%s's plan: %w", name, err)
 		}
-		for _, generic := range []bool{false, true} {
-			var raw []byte
-			if generic {
-				// A generic plan's parameters have no values: the simple protocol.
-				results, err := tx.Conn().PgConn().Exec(ctx, "EXPLAIN (GENERIC_PLAN, FORMAT JSON) "+q.sql).ReadAll()
-				if err != nil {
-					return shapes, fmt.Errorf("%s's generic plan: %w", name, err)
-				}
-				if len(results) != 1 || len(results[0].Rows) != 1 {
-					return shapes, fmt.Errorf("%s's generic plan: %d results", name, len(results))
-				}
-				raw = results[0].Rows[0][0]
-			} else if err := tx.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+q.sql, q.args...).Scan(&raw); err != nil {
-				return shapes, fmt.Errorf("%s's plan: %w", name, err)
-			}
-			var plans []struct {
-				Plan startCostNode `json:"Plan"`
-			}
-			if err := json.Unmarshal(raw, &plans); err != nil {
-				return shapes, fmt.Errorf("%s's plan, generic %v: %s: %w", name, generic, raw, err)
-			}
-			if len(plans) != 1 {
-				return shapes, fmt.Errorf("%s's plan, generic %v: %d plans: %s", name, generic, len(plans), raw)
-			}
-			shapes[name] = append(shapes[name], plans[0].Plan.shape())
-			var scans []startCostScan
-			plans[0].Plan.scans(false, &scans)
-			if err := approveCostScans(name, scans); err != nil {
-				return shapes, fmt.Errorf("%s's plan, generic %v: %w: %s", name, generic, err, raw)
-			}
+		var plans []struct {
+			Plan startCostNode `json:"Plan"`
+		}
+		if err := json.Unmarshal(raw, &plans); err != nil {
+			return shapes, fmt.Errorf("%s's plan, generic %v: %s: %w", name, generic, raw, err)
+		}
+		if len(plans) != 1 {
+			return shapes, fmt.Errorf("%s's plan, generic %v: %d plans: %s", name, generic, len(plans), raw)
+		}
+		shapes = append(shapes, plans[0].Plan.shape())
+		var scans []startCostScan
+		plans[0].Plan.scans(false, &scans)
+		if err := approveCostScans(name, scans); err != nil {
+			return shapes, fmt.Errorf("%s's plan, generic %v: %w: %s", name, generic, err, raw)
 		}
 	}
 	return shapes, nil
 }
 
-// approveCostScans fails unless each scan of nodes is by nodes_pkey or by
-// an index whose first column is notebook_id with it in its condition,
+// approveCostScans fails unless each scan of nodes is by nodes_pkey with
+// id in its condition or by an index whose first column is notebook_id
+// with it in its condition (review P3S1B-M1),
 // each of page_contents by page_contents_pkey, of asset_blobs by
 // asset_blobs_node_id_key, of upgrade_nodes by upgrade_nodes_pkey with
 // upgrade_id in its condition; a scan repeated on a Nested Loop's inner
 // side reads by the outer row's key, nodes with id in its condition
 // (nodes_pkey, or nodes_notebook_id_id_key with both), upgrade_nodes with
-// node_id in its condition, not the notebook's rows again for each;
-// SetSourceHashes reads the notebook's nodes once at most; and
+// node_id in its condition, not the notebook's rows again for each, nor a
+// set of nodes by = ANY again for each; SetSourceHashes reads the
+// notebook's nodes once at most; and
 // SourceRebuildHeads reads its nodes and their contents only by their keys,
 // each read keyed as on an inner side, the notebook's nodes not even once
 // (decision 292).
@@ -614,7 +637,7 @@ func approveCostScans(name string, scans []startCostScan) error {
 			var ok, keyed bool
 			switch s.Relation {
 			case "nodes":
-				pkey := ix.Index == "nodes_pkey"
+				pkey := ix.Index == "nodes_pkey" && strings.Contains(ix.Cond, "(id = ")
 				ok = pkey || strings.HasPrefix(ix.Index, "nodes_notebook_id_") && strings.Contains(ix.Cond, "notebook_id = ")
 				keyed = pkey || strings.Contains(ix.Cond, "(id = ")
 			case "page_contents":
@@ -632,6 +655,9 @@ func approveCostScans(name string, scans []startCostScan) error {
 			}
 			if s.repeated && !keyed {
 				return fmt.Errorf("%s read again for each outer row by a %s of %s on %q", s.Relation, s.Type, ix.Index, ix.Cond)
+			}
+			if s.repeated && s.Relation == "nodes" && strings.Contains(ix.Cond, "= ANY") {
+				return fmt.Errorf("%s read again for each outer row by a %s of %s on %q, a set each time", s.Relation, s.Type, ix.Index, ix.Cond)
 			}
 			if name == "SourceRebuildHeads" && !keyed {
 				return fmt.Errorf("%s read by a %s of %s on %q, not by its key", s.Relation, s.Type, ix.Index, ix.Cond)
@@ -651,10 +677,13 @@ func approveCostScans(name string, scans []startCostScan) error {
 // written by hand, without a database, so that it runs in the short line,
 // which builds this file without race: a key read for each row on a
 // Nested Loop's inner side, by nodes_pkey or by the notebook and the id,
-// and the notebook's nodes read once are accepted; the notebook's nodes
-// read again for each row, a Seq Scan, a read by another index,
-// SetSourceHashes reading the notebook twice, and SourceRebuildHeads reading
-// it even once are refused.
+// the notebook's nodes read once, and a set of nodes by their key once are
+// accepted; the notebook's nodes read again for each row, a Seq Scan, a
+// read by another index, SetSourceHashes reading the notebook twice, and
+// SourceRebuildHeads reading it even once are refused, and so is each
+// read whose condition lacks the key the rules ask of it, once and for
+// each row, and a set of nodes read again for each row: a cell for each
+// of the rules (review P3S1B-M1).
 func TestTheApprovalGuardJudgesItsReads(t *testing.T) {
 	scan := func(relation, index, cond, parent string) string {
 		return `{"Node Type":"Index Scan","Relation Name":"` + relation + `","Index Name":"` + index + `","Index Cond":"` + cond +
@@ -689,6 +718,23 @@ func TestTheApprovalGuardJudgesItsReads(t *testing.T) {
 		{"the notebook's nodes twice", "SetSourceHashes",
 			`{"Node Type":"Hash Join","Plans":[` + notebook + `,{"Node Type":"Hash","Parent Relationship":"Inner","Plans":[` +
 				scan("nodes", "nodes_notebook_id_parent_id_idx", "(notebook_id = $1)", "Outer") + `]}]}`, false},
+		{"a set of nodes by their key once", "SetSourceHashes", scan("nodes", "nodes_pkey", "(id = ANY ($1))", ""), true},
+		{"the whole of nodes by their key once", "LintNodeMetadata",
+			loop(scan("nodes", "nodes_pkey", "", "Outer"), scan("page_contents", "page_contents_pkey", "(node_id = n.id)", "Inner")), false},
+		{"the whole of nodes by their key for each id", "SetSourceHashes", loop(values, scan("nodes", "nodes_pkey", "", "Inner")), false},
+		{"nodes by the notebook's index with the id alone", "SetSourceHashes",
+			loop(values, scan("nodes", "nodes_notebook_id_id_key", "(id = v.id)", "Inner")), false},
+		{"a set of nodes by their key again for each id", "SetSourceHashes",
+			loop(values, scan("nodes", "nodes_pkey", "(id = ANY ($1))", "Inner")), false},
+		{"the notebook's nodes again for each row of another statement", "LintNodeMetadata",
+			loop(values, scan("nodes", "nodes_notebook_id_parent_id_idx", "(notebook_id = $1)", "Inner")), false},
+		{"the whole of page_contents by its key for each node", "LintNodeMetadata",
+			loop(notebook, scan("page_contents", "page_contents_pkey", "", "Inner")), false},
+		{"asset_blobs by its node's key without a node", "AttachmentInfos", scan("asset_blobs", "asset_blobs_node_id_key", "", ""), false},
+		{"the baseline by the notebook's index", "DeleteUpgradeNodes",
+			scan("upgrade_nodes", "upgrade_nodes_notebook_id_idx", "(notebook_id = $1)", ""), false},
+		{"the baseline by its key's prefix again for each node", "DeleteUpgradeNodes",
+			loop(values, scan("upgrade_nodes", "upgrade_nodes_pkey", "(upgrade_id = $1)", "Inner")), false},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			var plan startCostNode
