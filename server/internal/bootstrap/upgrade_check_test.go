@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -530,11 +531,12 @@ func typed(summary, body string) string {
 // moved out of the start's raw keeps the count its second pass recorded
 // (B2-I1), and one moved into raw, more links wanted since, is not judged
 // (the check runs no second pass). Gate 7 is the ledger: only SQL past the
-// units fails it (decision 191). Then the seven counts.
+// units fails it (decision 191), a page's body or an attachment gone. Then
+// the seven counts.
 func TestUpgradeGates(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	plan := upgradedPage{title: "Plan", content: typed("The plan.", "Plan.\n")}
-	var asset string
+	var asset, gone string
 	for _, tc := range []struct {
 		name   string
 		before func(t *testing.T, nb string)
@@ -631,6 +633,32 @@ func TestUpgradeGates(t *testing.T) {
 				!slices.Equal(p.NodeIDs, []string{g.idOf(t, "Note")}) {
 				t.Errorf("the preserved gate = %+v, want Note not kept", p)
 			}
+		},
+	}, {
+		// Gate 7's nodes (review P2S2C-M7): an attachment of the baseline
+		// deleted past the units, the other attachment and both pages
+		// kept, so that the nodes kept are none of the gate's other
+		// numbers: four nodes, three kept, two pages, both kept.
+		name: "a baseline attachment deleted past the units",
+		before: func(t *testing.T, nb string) {
+			t.Helper()
+			tm.upload(t, "alice", nb, "", "kept.png", pngHead)
+			gone = tm.upload(t, "alice", nb, "", "gone.png", pngHead).ID
+		},
+		pages: []upgradedPage{plan, {title: "Note", content: typed("A note.", "Note.\n")}},
+		change: func(t *testing.T, g upgradedNotebook) {
+			t.Helper()
+			g.tm.exec(t, "UPDATE nodes SET deleted_at = now() WHERE id = $1", gone)
+		},
+		failed: []string{"preserved"},
+		check: func(t *testing.T, g upgradedNotebook, a upgradeCheckAnswer) {
+			t.Helper()
+			want := upgradeGateAnswer{Nodes: 4, NodesKept: 3, Pages: 2, PagesKept: 2, NodeIDs: []string{gone}}
+			if p := a.Gates["preserved"]; !reflect.DeepEqual(p, want) {
+				t.Errorf("the preserved gate = %+v, want %+v", p, want)
+			}
+			// A node deleted with no trash item is no state the units leave.
+			g.tm.exec(t, "UPDATE nodes SET deleted_at = NULL WHERE id = $1", gone)
 		},
 	}, {
 		name: "a stale index", pages: []upgradedPage{plan},

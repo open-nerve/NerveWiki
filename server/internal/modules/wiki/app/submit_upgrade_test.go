@@ -587,9 +587,14 @@ func TestTheSubmitterIsDecidedBeforeTheAnswer(t *testing.T) {
 			t.Fatalf("wrote %v, the row %+v; want the report kept", f.written(), f.row)
 		}
 		lines := submitLines(t, log, "upgrade submitted")
+		actor, err := shared.RequireActor(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
 		if len(lines) != 1 || lines[0]["level"] != "INFO" || lines[0]["outcome"] != "stored" || lines[0]["passed"] != true ||
 			lines[0]["upgrade_id"] != f.up.ID.String() || lines[0]["submission_id"] != f.row.SubmissionID.String() ||
 			lines[0]["notebook_id"] != f.nb.String() || lines[0]["workspace_id"] != f.ws.String() ||
+			lines[0]["user_id"] != actor.UserID.String() || // review P2S2C-N10
 			fmt.Sprint(lines[0]["failed_gates"]) != "[]" || lines[0]["stale_pages"] != float64(0) {
 			t.Fatalf("logged %v", lines)
 		}

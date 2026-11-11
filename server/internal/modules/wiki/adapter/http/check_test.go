@@ -166,6 +166,13 @@ func TestTheCheckIsAnswered(t *testing.T) {
 		t.Fatalf("the items = %d %s", response.StatusCode, body)
 	}
 	sameJSON(t, body, wantCheckItems)
+	// The page's mode its own: the check runs LLM Wiki's rules, so its
+	// page is llm_wiki in use; standard here, so that the mode is the
+	// page's, not a constant (review P2S2C-N9's kind).
+	items.Mode = domain.ModeStandard
+	h = upgradeServer(t, &upgradeFake{checked: app.UpgradeChecked{Items: &items}})
+	_, body = upgradeCallAt(t, h, http.MethodGet, lintID(10), "/check/missing_type?limit=2&cursor=c", "")
+	sameJSON(t, body, strings.Replace(wantCheckItems, `"mode": "llm_wiki"`, `"mode": "standard"`, 1))
 	if q := f.queries; len(q) != 1 || q[0].Rule == nil || *q[0].Rule != "missing_type" || q[0].Limit == nil || *q[0].Limit != 2 ||
 		q[0].Cursor == nil || *q[0].Cursor != "c" {
 		t.Errorf("the items asked %+v", q)

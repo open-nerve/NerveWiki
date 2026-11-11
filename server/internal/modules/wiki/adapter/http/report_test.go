@@ -21,12 +21,13 @@ import (
 
 // reportedView is an upgrade reviewing with a report kept, each number
 // in it its own (review P2S2C-M6): each of the eight rules with items of
-// its shape, the orphans five, the most a report keeps; each rule's count
-// none of its items' number, capped or not apart from its value; each
-// boolean of an item's rule both ways, an item's two booleans apart; three
-// gates naming nodes. The gates are gateRows' third: the projection
-// judges nothing, and the report passed with an agents gate that did not
-// tells the two apart.
+// its shape, the orphans five, the most a report keeps, the sources' an
+// attachment and a page (review P2S2C-N9); each rule's count none of its
+// items' number, capped or not apart from its value; each boolean of an
+// item's rule both ways, an item's two booleans apart; three gates naming
+// nodes. The gates are gateRows' third: the projection judges nothing,
+// and the report passed with an agents gate that did not tells the two
+// apart.
 func reportedView() app.UpgradeView {
 	view := upgradeView()
 	up := &view.Upgrade
@@ -56,7 +57,7 @@ func reportedView() app.UpgradeView {
 		return domain.LintItem{Rule: domain.RuleInvalidSources, ItemKey: "s:" + page.String() + ":" + h, PageID: &page, Target: target,
 			TargetCut: cut, NotLink: notLink}
 	}
-	node := lintID(58)
+	node, source := lintID(58), lintID(64)
 	items := map[domain.LintRule][]domain.LintItem{
 		domain.RuleWanted: {
 			{Rule: domain.RuleWanted, ItemKey: "w:" + hash, Target: "Missing", TargetCut: true, Pages: 37},
@@ -67,8 +68,11 @@ func reportedView() app.UpgradeView {
 		domain.RuleInvalidFrontmatter: {pageItem(domain.RuleInvalidFrontmatter, 55)},
 		domain.RuleMissingType:        {pageItem(domain.RuleMissingType, 56)},
 		domain.RuleMissingSummary:     {pageItem(domain.RuleMissingSummary, 57)},
-		domain.RuleUndigestedSources: {{Rule: domain.RuleUndigestedSources, ItemKey: "n:" + node.String(), NodeID: &node,
-			Kind: domain.NodeAsset, Bytes: 38, CreatedAt: lintTime().Add(-time.Hour)}},
+		domain.RuleUndigestedSources: {
+			{Rule: domain.RuleUndigestedSources, ItemKey: "n:" + node.String(), NodeID: &node, Kind: domain.NodeAsset, Bytes: 38,
+				CreatedAt: lintTime().Add(-time.Hour)},
+			{Rule: domain.RuleUndigestedSources, ItemKey: "n:" + source.String(), NodeID: &source, Kind: domain.NodePage, Bytes: 36,
+				CreatedAt: lintTime().Add(-2 * time.Hour)}},
 		domain.RuleInvalidSources: {sources(hash, "literal", false, true), sources(other, "Cut", true, false)},
 	}
 	for i, rule := range domain.LintRules(domain.ModeLLMWiki) {
@@ -151,7 +155,9 @@ const wantReport = `{
 			{"rule": "missing_summary", "item_key": "p:00000000-0000-0000-0000-000000000039", "page_id": "00000000-0000-0000-0000-000000000039"}]},
 		{"rule": "undigested_sources", "count": 47, "count_capped": false, "items": [
 			{"rule": "undigested_sources", "item_key": "n:00000000-0000-0000-0000-00000000003a", "node_id": "00000000-0000-0000-0000-00000000003a", "kind": "asset", "bytes": 38,
-				"created_at": "2026-01-02T02:04:05Z"}]},
+				"created_at": "2026-01-02T02:04:05Z"},
+			{"rule": "undigested_sources", "item_key": "n:00000000-0000-0000-0000-000000000040", "node_id": "00000000-0000-0000-0000-000000000040", "kind": "page", "bytes": 36,
+				"created_at": "2026-01-02T01:04:05Z"}]},
 		{"rule": "invalid_sources", "count": 48, "count_capped": true, "items": [
 			{"rule": "invalid_sources", "item_key": "s:00000000-0000-0000-0000-00000000003b:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "page_id": "00000000-0000-0000-0000-00000000003b", "target": "literal", "target_cut": false,
 				"not_link": true},
