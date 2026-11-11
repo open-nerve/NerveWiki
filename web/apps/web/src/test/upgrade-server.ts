@@ -416,7 +416,8 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
         answer =
           outcome === "not_ready"
             ? problem(409, "wiki.upgrade_not_ready", {
-                detail: "The upgrade does not pass its checks yet: frontmatter.",
+                detail:
+                  "These gates did not pass: frontmatter. The upgrade is upgrading again: check it, then submit it again.",
               })
             : outcome === "stale_index"
               ? problem(409, "wiki.upgrade_stale_index")

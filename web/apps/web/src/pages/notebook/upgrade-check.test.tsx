@@ -116,6 +116,16 @@ const first: Record<Gate, boolean> = {
   preserved: false,
   index: false,
 };
+const secondRow: Record<Gate, boolean> = {
+  agents: true,
+  source_root: true,
+  reserved_titles: false,
+  frontmatter: true,
+  sources: true,
+  links: true,
+  preserved: false,
+  index: true,
+};
 /**
  * The gates' rows: each column (a gate) passed in some and not in others,
  * no two alike; each row with its own number of gates not passed, and its
@@ -123,21 +133,7 @@ const first: Record<Gate, boolean> = {
  */
 const rows: [string, Record<Gate, boolean>, string, { worse: number; stale: number }][] = [
   ["the first", first, "4 checks did not pass.", { worse: 3, stale: 4 }],
-  [
-    "the second",
-    {
-      agents: true,
-      source_root: true,
-      reserved_titles: false,
-      frontmatter: true,
-      sources: true,
-      links: true,
-      preserved: false,
-      index: true,
-    },
-    "2 checks did not pass.",
-    { worse: 0, stale: 0 },
-  ],
+  ["the second", secondRow, "2 checks did not pass.", { worse: 0, stale: 0 }],
   [
     "the third",
     {
@@ -469,12 +465,96 @@ test("a check refused as busy is not tried again on its own: Try again reads it"
   await user.click(within(section).getByRole("button", { name: "Check" }));
 
   expect(await within(section).findByText("The server is busy. Try again in a moment.")).toBeTruthy();
+  // Refused, the check is not under way: its result says nothing, its button is not busy.
+  expect(resultOf(section)).toBe("");
+  expect(within(section).getByRole("button", { name: "Check again" }).getAttribute("aria-busy")).toBeNull();
   await act(() => vi.advanceTimersByTimeAsync(300_000));
   expect(checks(server)).toBe(1);
   server.checkBusy = false;
   await user.click(within(section).getByRole("button", { name: "Try again" }));
   await waitFor(() => expect(resultOf(section)).toBe(passedAt));
   expect(checks(server)).toBe(2);
+});
+
+test("a check refused as the upgrade no longer under way says the upgrade's state changed, offers no Try again, and reads the upgrade again: it ended", async () => {
+  const user = userEvent.setup();
+  const reread = deferred<void>();
+  let reads = 0;
+  const server: ReturnType<typeof upgradeServer> = serverOf(checkJSON(), {
+    answers: {
+      [`GET ${plans}/upgrade`]: async () => {
+        server.asked.push("GET upgrade");
+        reads += 1;
+        if (reads === 2) {
+          await reread.promise;
+          return problem(404, "wiki.upgrade_not_found");
+        }
+        return json(server.upgrade);
+      },
+    },
+  });
+  const { section } = await opened(server);
+  // Another admin abandoned it meanwhile; its rollback ended.
+  server.withUpgrade(upgradeJSON({ state: "rolled_back", ending: "abandoned", rollback_complete: true }));
+
+  await user.click(within(section).getByRole("button", { name: "Check" }));
+
+  expect(await within(section).findByText("The upgrade's state changed.")).toBeTruthy();
+  expect(resultOf(section)).toBe("");
+  expect(within(section).queryByRole("button", { name: "Try again" })).toBeNull();
+  await waitFor(() => expect(asked(server, "GET upgrade")).toBe(2));
+  reread.resolve();
+  expect(await screen.findByText("This notebook has no upgrade under way.")).toBeTruthy();
+  expect(checks(server)).toBe(1);
+});
+
+test("a gate's node, the tree still read, says it is loading; read, it leads to its node or says it is no longer there", async () => {
+  const user = userEvent.setup();
+  const held = deferred<void>();
+  let reads = 0;
+  const server: ReturnType<typeof upgradeServer> = serverOf(checkOf(secondRow), {
+    answers: {
+      [`GET ${plans}/nodes`]: async () => {
+        server.sent.push("GET nodes");
+        reads += 1;
+        await held.promise;
+        return json({ data: tree });
+      },
+    },
+  });
+  renderApp(upgradePath, server.app);
+  const section = await checkSection();
+  await waitFor(() => expect(reads).toBe(1));
+
+  await checked(user, section, "2 checks did not pass. Checked on Oct 6, 2026, 9:30 AM.");
+
+  expect(gateLines(section)[2]).toEqual([expect.any(String), ["Loading…", "Loading…"]]);
+  held.resolve();
+  await waitFor(() => expect(gateLines(section)[2]).toEqual([expect.any(String), ["index.md", "(no longer there)"]]));
+});
+
+test("a check under way, the page left: its request is aborted", async () => {
+  const user = userEvent.setup();
+  const late = deferred<Response>();
+  const signals: AbortSignal[] = [];
+  const server: ReturnType<typeof upgradeServer> = serverOf(checkJSON(), {
+    answers: {
+      [`GET ${plans}/upgrade/check`]: (request: Request) => {
+        server.asked.push("CHECK");
+        signals.push(request.signal);
+        return late.promise;
+      },
+    },
+  });
+  const { router, section } = await opened(server);
+  await user.click(within(section).getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(signals).toHaveLength(1));
+
+  await act(() => router.navigate(home));
+
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  expect(signals[0]?.aborted).toBe(true);
+  late.resolve(json(checkJSON()));
 });
 
 test("a check refused as forbidden reads the notebooks again in the public provider: the account no longer the admin, the page says who can see it", async () => {

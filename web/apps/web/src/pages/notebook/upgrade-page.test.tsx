@@ -852,28 +852,42 @@ const checkOf = async () =>
   (await screen.findByRole("heading", { level: 2, name: "Check", hidden: true })).closest("section") as HTMLElement;
 const checks = (server: { asked: string[] }) => reads(server, "CHECK");
 
-test.each([
-  ["upgrading", true, false],
-  ["reviewing", false, true],
-  ["rolling_back", false, false],
-] as const)("an upgrade %s: the check and Submit for review %s, the report %s", async (state, checking, reported) => {
-  const job = stopped(70);
-  const server = upgradeServer({
-    jobs: state === "rolling_back" ? [job] : [],
-    upgrade: state === "rolling_back" ? rollbackOf(job) : upgradeJSON({ state, report: reportJSON() }),
+/** The order of the upgrade page's sections and its two buttons below the state, by their names. */
+function sectionsInOrder(): string[] {
+  const headings = ["Where it is", "Connect an agent", "Check", "Check report", "Rollback"];
+  const buttons = [submits, "Abandon this upgrade…"];
+  return [...document.querySelectorAll("h2, button")].flatMap((each) => {
+    const name = each.textContent ?? "";
+    return (each.tagName === "H2" ? headings : buttons).includes(name) ? [name] : [];
   });
-  renderApp(upgradePath, server.app);
+}
 
-  await section("Where it is");
-  if (state === "rolling_back") {
-    await screen.findByRole("button", { name: ends });
+test.each([
+  ["upgrading", true, false, ["Where it is", "Connect an agent", "Check", submits, "Abandon this upgrade…"]],
+  ["reviewing", false, true, ["Where it is", "Check report", "Abandon this upgrade…"]],
+  ["rolling_back", false, false, ["Where it is", "Rollback"]],
+] as const)(
+  "an upgrade %s: the check and Submit for review %s, the report %s, the sections in order",
+  async (state, checking, reported, order) => {
+    const job = stopped(70);
+    const server = upgradeServer({
+      jobs: state === "rolling_back" ? [job] : [],
+      upgrade: state === "rolling_back" ? rollbackOf(job) : upgradeJSON({ state, report: reportJSON() }),
+    });
+    renderApp(upgradePath, server.app);
+
+    await section("Where it is");
+    if (state === "rolling_back") {
+      await screen.findByRole("button", { name: ends });
+    }
+    expect(screen.queryByRole("heading", { level: 2, name: "Check" }) !== null).toBe(checking);
+    expect(screen.queryByRole("button", { name: "Check" }) !== null).toBe(checking);
+    expect(screen.queryByRole("button", { name: submits }) !== null).toBe(checking);
+    expect(screen.queryByRole("heading", { level: 2, name: "Check report" }) !== null).toBe(reported);
+    expect(sectionsInOrder()).toEqual(order);
+    expect(server.asked.filter((asked) => asked !== "GET job upgrade")).toEqual(["GET upgrade"]);
   }
-  expect(screen.queryByRole("heading", { level: 2, name: "Check" }) !== null).toBe(checking);
-  expect(screen.queryByRole("button", { name: "Check" }) !== null).toBe(checking);
-  expect(screen.queryByRole("button", { name: submits }) !== null).toBe(checking);
-  expect(screen.queryByRole("heading", { level: 2, name: "Check report" }) !== null).toBe(reported);
-  expect(server.asked.filter((asked) => asked !== "GET job upgrade")).toEqual(["GET upgrade"]);
-});
+);
 
 /** A report every value of which is its own: the gates passed, the hints' counts, capped or not, their first items. */
 const keptReport = reportJSON({
@@ -1090,6 +1104,8 @@ async function submitting(
   await waitFor(() => expect(events.streams).toHaveLength(1));
   await user.click(await screen.findByRole("button", { name: submits }));
   const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+  // Submitting is no destructive change (decision 259): its confirmation is not styled as one.
+  expect(within(dialog).getByRole("button", { name: "Submit for review" }).className).not.toMatch(/bg-destructive/);
   expect(dialog.textContent).toContain(
     "Once submitted, this notebook is frozen for everyone, the initiator's agent too. The system checks it again from that moment: once every check passes, it is in review, waiting for an admin's approval; otherwise it is upgrading again."
   );
