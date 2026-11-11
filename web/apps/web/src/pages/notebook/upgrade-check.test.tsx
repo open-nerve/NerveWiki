@@ -611,6 +611,18 @@ async function live(server: ReturnType<typeof upgradeServer>, events: ReturnType
   await waitFor(() => expect(server.sent).toContain("GET nodes"));
   return section;
 }
+/**
+ * What the missing types' card lists and offers, read from the page as it
+ * is, the rest of the page hidden by a dialog or not.
+ */
+function missingCard(holder: HTMLElement) {
+  const card = holder.querySelector('section[aria-labelledby="missing_type-heading"]');
+  return {
+    items: [...(card?.querySelectorAll("li") ?? [])].map((item) => item.textContent),
+    buttons: [...(card?.querySelectorAll("button") ?? [])].map((button) => button.textContent),
+  };
+}
+const firstFive = { items: ["Note 1.md", "Note 2.md", "Note 3.md", "Note 4.md", "Note 5.md"], buttons: ["More"] };
 const mode = (events: ReturnType<typeof eventServer>) =>
   events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
 
@@ -643,7 +655,7 @@ test("a check under way as another's submission takes the check away and gives i
   answer.resolve();
 
   await waitFor(() => expect(resultOf(back)).toBe(passedAt));
-  expect(cardsOf(back).map((each) => each[1])).toContain("Missing type");
+  expect(missingCard(back)).toEqual(firstFive);
   expect(checks(server)).toBe(1);
 });
 
@@ -690,6 +702,34 @@ test("a check refused as busy, its section taken away and given back, is not rea
   expect(await within(back).findByText("The server is busy. Try again in a moment.")).toBeTruthy();
   expect(within(back).getByRole("button", { name: "Try again" })).toBeTruthy();
   expect(checks(server)).toBe(1);
+});
+
+test("a card's More read, the check taken away and given back: the card keeps what More read, nothing read again", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const types = missingTypes(notePages.map((page) => page.id));
+  const server = serverOf(rulesCheck(), { events });
+  server.checkItems = { missing_type: types };
+  const section = await live(server, events);
+  await checked(user, section, passedAt);
+  await user.click(cardOf(section, "Missing type").getByRole("button", { name: "More" }));
+  await waitFor(() => expect(cardOf(section, "Missing type").getAllByRole("listitem")).toHaveLength(7));
+  const read = server.asked.filter((each) => each.startsWith("CHECK"));
+
+  // Another admin's submission is checked, then sent back upgrading.
+  server.withUpgrade(upgradeJSON({ state: "reviewing", submitted_by: { user_id: "bob", display_name: "Bob" } }));
+  mode(events);
+  await waitFor(() => expect(screen.queryByRole("heading", { level: 2, name: "Check" })).toBeNull());
+  server.withUpgrade(upgradeJSON());
+  mode(events);
+  const back = await checkSection();
+
+  expect(missingCard(back)).toEqual({
+    items: ["Note 1.md", "Note 2.md", "Note 3.md", "Note 4.md", "Note 5.md", "Note 6.md", "Note 7.md"],
+    buttons: [],
+  });
+  expect(server.asked.filter((each) => each.startsWith("CHECK"))).toEqual(read);
+  expect(read).toEqual(["CHECK", `CHECK missing_type ${types[4]?.cursor}`]);
 });
 
 const resultBehind = (section: HTMLElement) =>
@@ -741,9 +781,10 @@ test.each([
     }
 
     await waitFor(() => expect(resultBehind(back)).toBe(passedAt));
+    expect(missingCard(back)).toEqual(firstFive);
     expect(checks(server)).toBe(1);
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
-    expect(cardsOf(back).map((each) => each[1])).toContain("Missing type");
+    expect(cardOf(back, "Missing type").getAllByRole("listitem")).toHaveLength(5);
   }
 );
