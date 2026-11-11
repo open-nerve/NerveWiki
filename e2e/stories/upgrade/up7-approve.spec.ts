@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { ApiClient, Page } from "@nervewiki/api-client";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
@@ -20,7 +22,8 @@ import { newTeam } from "../../fixtures/workspaces";
 // submitted upgrade of a notebook whose index at the root was deleted
 // before it started, with a page and an attachment in raw and a note the
 // agent gives its frontmatter. The notebook is an LLM Wiki whose source
-// root is raw, its sources hashed, the upgrade's baseline gone; the
+// root is raw, its sources hashed as the SHA-256 of the bytes the test
+// wrote, the upgrade's baseline gone; the
 // deletion's revert, which would bring index back at the root, is
 // page.virtual_file, in the request and in the background (decision 181).
 // Through MCP, the agent lists the LLM Wiki's virtual index.md and
@@ -86,17 +89,21 @@ async function modeOf(db: Database, notebookId: string) {
   return db.query("SELECT mode, source_root_id, upgrade_id FROM notebooks WHERE id = $1", [notebookId]);
 }
 
-/** The notebook notebookId's nodes with a source hash, each its name and whether the hash is its content's or file's. */
+/** The notebook notebookId's nodes with a source hash, each its name and the hash in hex. */
 async function hashed(db: Database, notebookId: string) {
   return db.query(
-    `SELECT n.name, n.source_hash = coalesce(c.content_hash, b.sha256) AS its_own
-       FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id LEFT JOIN asset_blobs b ON b.node_id = n.id
-      WHERE n.notebook_id = $1 AND n.source_hash IS NOT NULL ORDER BY n.name`,
+    `SELECT name, encode(source_hash, 'hex') AS hash FROM nodes
+      WHERE notebook_id = $1 AND source_hash IS NOT NULL ORDER BY name`,
     [notebookId]
   );
 }
 
-test("UP7 (API): a second admin approves the submitted upgrade; the notebook is an LLM Wiki whose source root is raw, its page and attachment hashed as their bytes, the baseline gone and the upgrade read no more; reverting the deletion of index at the root is page.virtual_file, in the request and in the background", async ({
+/** The SHA-256 of bytes, in hex. */
+function sha256(bytes: string | Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+test("UP7 (API): a second admin approves the submitted upgrade; the notebook is an LLM Wiki whose source root is raw, its page and attachment hashed as the SHA-256 of the bytes written, the baseline gone and the upgrade read no more; reverting the deletion of index at the root is page.virtual_file, in the request and in the background", async ({
   api,
   db,
   nervewiki,
@@ -110,8 +117,8 @@ test("UP7 (API): a second admin approves the submitted upgrade; the notebook is 
   await expectUpgrade(db, approved);
   expect(await modeOf(db, notebook.id)).toEqual([{ mode: "llm_wiki", source_root_id: raw.id, upgrade_id: null }]);
   expect(await hashed(db, notebook.id)).toEqual([
-    { name: "Paper", its_own: true },
-    { name: "chart.png", its_own: true },
+    { name: "Paper", hash: sha256("The paper.\n") },
+    { name: "chart.png", hash: sha256(pngBytes) },
   ]);
   expect(
     await db.query("SELECT count(*)::int AS rows FROM upgrade_nodes WHERE upgrade_id = $1", [approved.id])
