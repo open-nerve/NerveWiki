@@ -261,4 +261,4 @@ S1 开工之前 `main` 的几次 CI（详见 [P3 设计](../03-P3-review-approve
 
 实施者开工时 `df` 28G，照 06-environment 经 `heavy.sh` 删了 go-build 缓存里 12 小时没用过的条目（可用 28G → 56G，缓存 32G → 4.6G）；之后整轮在 51–56G 之间，门禁每一项之前判 `df`。量用的临时工作树已 `git worktree remove`，`GOTMPDIR` 的目录（`~/.cache/nw-gotmp-p3s1`）已删；这一 Step 没有手动起容器（库都由测试经 testcontainers 起、收），机器上 3 天前留下的已退出的 `postgres` 容器不是这一轮的，没有动。三位审查者的重的运行都经 `heavy.sh`，每次之前看 `df`（50–51G 可用）；A 的 `GOTMPDIR` 设在磁盘上、用完删了；B 的临时探针文件（`b/zz_reviewb_test.go.txt`）已从工作树删掉，守卫文件从备份复原（sha256 核对）；C 的逐个提交最后回到头。三个工作树最后都回到 `d7b85bae`、`git status` 干净、没有 `*.mutbak`。修复一轮：每项之前判 `df`（48–49G），`GOTMPDIR`（`~/.cache/nw-gotmp-p3s1-fix1`）已删，没有手动起容器，工作树干净、没有 `*.mutbak`，分支头与远端相同、`main` 没有动。修复核对一轮：三个工作树最后都在 `a44602b0`、`git status` 干净、没有 `*.mutbak`；A 的 `GOTMPDIR` 用完删了，B 的临时探针文件跑完删掉，C 的临时旧 spec 已删、`bin/` 由干净的树重建。
 
-合并之后 `main` 的第一次 CI：（待填）。
+合并之后 `main` 的第一次 CI：run 43112344486（`daf14dd1`）19 项第一次 attempt 全绿；八份的 Test 一步 392（EPYC 7763）、367（7763）、393（7763）、284（EPYC 9V45）、279（Xeon 6973P-C）、373（7763）、317（7763）、263（Xeon 8573C）秒，都在 450 之下，第四份挪走四个之后不再贴线（第 278 条）；costs-1 在 EPYC 9V74 上 16:16（Test 一步 13:19），批准的守卫六格中位数 1.79–1.91 s（界 3.9 s；第 298 条的条件看 7763 上的数，这一次不在 7763 上）；e2e 7:55（E2E 6:14）。
