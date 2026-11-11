@@ -23,7 +23,7 @@ const rules: Rule[] = [
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const hash = /^[0-9a-f]{64}$/;
 
-function isRule(value: unknown): value is Rule {
+export function isRule(value: unknown): value is Rule {
   return typeof value === "string" && rules.some((rule) => rule === value);
 }
 
@@ -67,7 +67,7 @@ interface Cursor {
 }
 
 /** Decode the wire shape only; binding belongs before notebook lookup, for known rules only. */
-function cursorOf(raw: string): Cursor | undefined {
+export function cursorOf(raw: string): Cursor | undefined {
   if (raw.length > 2048) return undefined;
   const text = unbase64(raw);
   if (text === undefined) return undefined;
@@ -141,7 +141,7 @@ function compare(a: string | bigint, b: string | bigint): number {
   return a === b ? 0 : a < b ? -1 : 1;
 }
 
-function after(item: LintItem, position: Cursor): boolean {
+export function after(item: LintItem, position: Cursor): boolean {
   if (position.begin) return true;
   const next = cursorOf(item.cursor);
   if (!next || next.begin) throw new Error("Lint fixture needs an actual item cursor");
