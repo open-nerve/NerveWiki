@@ -262,7 +262,7 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 547 个顶层（竞态构建，M11/P2/S2 第一轮修复挪 TestVirtualExport 的提交时的 go test -race -list）静态分配为 145/50/121/124/62/11/27/7
+# 当前 547 个顶层（竞态构建，M11/P2 的分份挪第三、第五份各一个的提交时的 go test -race -list）静态分配为 145/50/120/124/61/11/27/9
 # （见第五份、第七份与第八份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 # M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），都以 TestUpgrade 起名。第三份的 [U-Z] 收得下它，所以第三份跳过它；
@@ -282,7 +282,9 @@ BOOTSTRAP_SIXTH = ^TestIngest
 # 与本机之比（442/287.4≈1.54）约 355 秒。第二份暂不动，合并之后看两次 main。不提高 -timeout。
 # M11/P2/S2 第一轮修复（00-M11 第 272 条）：第二份的 TestVirtualExport 挪到第八份；第八份是第七份的子集，所以第七份的模式也收它，第三份 -skip
 # 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$)
+# M11/P2 的分份（00-M11 第 276 条）：第三份的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与第五份的 TestTheMCPToolsErrorsCarryTheirCodes
+# 挪到第八份，同样也进第七份的模式（数与各份怎么跳过它们见第八份的说明）。
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
@@ -293,7 +295,19 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$)
 # 多半也过线。照 M9/P2 设计 6.5 挪给空着的第八份（CI 上 97 秒），挪得最少：第二份里最大的 TestVirtualExport 一个（本机 -v 48.2/51.7 秒）。
 # 挪后本机两轮（make -j1，包的时间）第二份 204.4/202.0 秒、第八份 98.6/99.8 秒；照分支 CI 的第二份与本机之比（包 423.8/263.8≈1.61，Test 一步
 # 另多约 33 秒）折到 7763，第二份约 360 秒、第八份约 195 秒。不提高 -timeout。
-BOOTSTRAP_EIGHTH = ^Test(Upgrade(Check|Gates|Submit|Tools)|VirtualExport$$)
+# M11/P2 的分份（00-M11 第 276 条）：S2 合并那次 main（42959287160）与同一棵树的分支 run（42956107070）第三份都在 EPYC 7763 上，Test 一步 457/443 秒，
+# 均值 450；第五份在 7763 上 469 秒、在 Xeon 8573C 上 434 秒，均值 451.5，都到了 450 秒的线（S2 没改这两份的测试，契约变大，各份按比例变慢，
+# 审查 P2S2B-Q2）。本机两轮（make -j1，-v，包的时间）第三份 266.1/260.9 秒、第五份 274.6/257.9 秒、第八份 99.5/102.5 秒；7763 与本机之比第三份
+# 450/263.5≈1.71、第五份 469/266.3≈1.76、第八份 186.5/101.0≈1.85。照 M9/P2 设计 6.5 挪给余量最大的第八份（7763 上 186、187 秒），挪得最少，各一个：
+# 第三份最大的 TestTheSourceRebuildMatchesSuccessfulRandomSteps（本机 28.0/27.4 秒，折到 7763 约 47 秒），第五份最大的
+# TestTheMCPToolsErrorsCarryTheirCodes（37.2/36.7 秒，约 65 秒；TestTheMCPBatchIsRefusedWhole 均值相近，但两轮 44.9/28.4 秒，它的一个子测试时而
+# 16.5 秒时而 0.6 秒，不挑它）。两个都不是所在份里第一个跑的测试，挪走不换付冷启动的测试。第七份的模式也收它们（第八份是第七份的子集，第七份 -skip
+# 第八份）；第三份 -skip 第七份时跳过前一个；第五份从此 -skip 第七份，跳过后一个（第五份与第七份的模式只在它上重合）；第二份 -skip 第五份时仍跳过
+# 后一个（它也匹配 TheMCP[C-Z]）；第四份跳过第三份的 The[F-Z] 时已跳过两个；第一、六份的模式不收它们。挪后本机两轮（make -j1，-v，包的时间）
+# 第三份 238.0/233.7 秒、第五份 224.5/221.6 秒、第八份 167.2/164.0 秒，照上面各份的比折到 7763 约 403、393、306 秒（第五份那两轮
+# TestTheMCPBatchIsRefusedWhole 都是 28.5 秒，慢的那种约多 16 秒、折到 7763 约 29 秒；第八份里挪来的 TestTheMCPToolsErrorsCarryTheirCodes
+# 排第一，37 → 40 秒，原来排第一的 TestUpgradeCheck 6.8 → 4.7 秒）。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Check|Gates|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -318,8 +332,8 @@ test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SIXTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-5
-test-go-bootstrap-5: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIFTH 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIFTH)' ./internal/bootstrap
+test-go-bootstrap-5: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIFTH 且不匹配 BOOTSTRAP_SEVENTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_FIFTH)' -skip '$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-6
 test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SIXTH 且不匹配 BOOTSTRAP_FIFTH/SEVENTH 的（CI 的一份；需要 Docker）
@@ -330,7 +344,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交与工具，第二份让出的 TestVirtualExport（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
