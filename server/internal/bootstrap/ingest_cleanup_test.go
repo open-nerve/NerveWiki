@@ -150,6 +150,12 @@ func TestIngestInvariants(t *testing.T) {
 // deleting the last source and its parent; retained history always forbids it.
 func TestIngestInvariantCleanupWindow(t *testing.T) {
 	tm := newAcmeTeam(t, "", "")
+	// The purge runs when the server starts, then hourly. Its start run takes a
+	// trimmed live changeset with nothing left and one deleted past the
+	// retention, the shapes of live_trimmed_empty and old_empty: run between a
+	// case's writes and its checks, it leaves the default checker nothing to
+	// find. So the cases begin after it.
+	awaitJob(t, tm.pool, jobs.PurgeKind)
 	nb := tm.openNotebook(t, "alice", "Window")
 	node := tm.createPage(t, "alice", nb, "", "Output")
 	ctx := context.Background()
