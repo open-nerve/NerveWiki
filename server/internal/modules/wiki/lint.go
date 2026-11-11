@@ -158,18 +158,19 @@ type Deps struct {
 // Module owns one runtime shared by every internal caller. Construction does
 // not launch a worker; a flight starts only after Execute authorizes its caller.
 type Module struct {
-	lint         *app.Lint
-	runs         *app.Runs
-	playbooks    *app.Playbooks
-	startUpgrade *app.StartUpgrade
-	checkUpgrade *app.CheckUpgrade
-	submit       *app.SubmitUpgrade
-	getUpgrade   *app.GetUpgrade
-	abandon      *app.AbandonUpgrade
-	endRollback  *app.EndUpgradeRollback
-	approve      *app.ApproveUpgrade
-	reject       *app.RejectUpgrade
-	sendBack     *app.SendBackUpgrade
+	lint            *app.Lint
+	runs            *app.Runs
+	playbooks       *app.Playbooks
+	upgradePlaybook *app.UpgradePlaybook
+	startUpgrade    *app.StartUpgrade
+	checkUpgrade    *app.CheckUpgrade
+	submit          *app.SubmitUpgrade
+	getUpgrade      *app.GetUpgrade
+	abandon         *app.AbandonUpgrade
+	endRollback     *app.EndUpgradeRollback
+	approve         *app.ApproveUpgrade
+	reject          *app.RejectUpgrade
+	sendBack        *app.SendBackUpgrade
 }
 
 func New(d Deps) *Module {
@@ -188,18 +189,19 @@ func New(d Deps) *Module {
 	}
 	check := app.NewCheckUpgrade(upgrades, lint, runs)
 	return &Module{
-		lint:         lint,
-		runs:         runs,
-		playbooks:    app.NewPlaybooks(d.Notebooks, d.Authorizer),
-		startUpgrade: app.NewStartUpgrade(upgrades, lint, runs),
-		checkUpgrade: check,
-		submit:       app.NewSubmitUpgrade(upgrades, check, runs),
-		getUpgrade:   app.NewGetUpgrade(upgrades),
-		abandon:      app.NewAbandonUpgrade(upgrades),
-		endRollback:  app.NewEndUpgradeRollback(upgrades),
-		approve:      app.NewApproveUpgrade(upgrades),
-		reject:       app.NewRejectUpgrade(upgrades),
-		sendBack:     app.NewSendBackUpgrade(upgrades),
+		lint:            lint,
+		runs:            runs,
+		playbooks:       app.NewPlaybooks(d.Notebooks, d.Authorizer),
+		upgradePlaybook: app.NewUpgradePlaybook(d.Notebooks, d.Authorizer, upgrades.Rows),
+		startUpgrade:    app.NewStartUpgrade(upgrades, lint, runs),
+		checkUpgrade:    check,
+		submit:          app.NewSubmitUpgrade(upgrades, check, runs),
+		getUpgrade:      app.NewGetUpgrade(upgrades),
+		abandon:         app.NewAbandonUpgrade(upgrades),
+		endRollback:     app.NewEndUpgradeRollback(upgrades),
+		approve:         app.NewApproveUpgrade(upgrades),
+		reject:          app.NewRejectUpgrade(upgrades),
+		sendBack:        app.NewSendBackUpgrade(upgrades),
 	}
 }
 
