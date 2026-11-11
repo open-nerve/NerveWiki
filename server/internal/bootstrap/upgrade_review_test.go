@@ -1,7 +1,9 @@
 package bootstrap
 
 import (
+	"encoding/json"
 	"log/slog"
+	"maps"
 	"net/http"
 	"slices"
 	"strings"
@@ -64,14 +66,14 @@ func (tm acmeTeam) ended(t *testing.T, nb string) string {
 
 // The send-back's and the rejection's codes in M11/P3 design 3.7 and
 // 3.8's orders, each refusal leaving the upgrade as it was; then each
-// done, through the whole program: sent back, the upgrade upgrading, its
-// submission and report gone, one mode frame, the initiator's agent able
-// to write a page's frontmatter, a submission then keeping a report of its
-// own; rejected, with
-// its report and without one, rolling back with its job, the rollback
-// done putting the notebook back (AGENTS the start wrote gone, the note as
-// it was), two mode frames in all, the submission kept. One info line of
-// each, whole.
+// done, through the whole program: sent back, the answer the upgrade as
+// read after, upgrading, its submission and report gone, one mode frame,
+// the initiator's agent able to write a page's frontmatter, a submission
+// then keeping a report of its own; rejected, with its report (the note's
+// frontmatter written after a send-back) and without one, rolling back
+// with its job, the rollback done putting the notebook back (AGENTS the
+// start wrote gone, the note as it was), two mode frames in all, the
+// submission kept. One info line of each, whole.
 func TestUpgradeReview(t *testing.T) {
 	logs := &syncBuffer{}
 	tm := newAcmeTeamOn(t, "member", "", nil, nil, slog.New(slog.NewJSONHandler(logs, nil))).withReviewers(t)
@@ -154,6 +156,16 @@ func TestUpgradeReview(t *testing.T) {
 			a["ending"] != nil || a["rollback_job_id"] != nil {
 			t.Errorf("sent back %s, want it upgrading, no submission, no report", answer)
 		}
+		// The answer whole: the upgrade as read after it (review P3S1A-N5).
+		status, read := tm.getUpgrade(t, "dana", r.id)
+		if status != http.StatusOK {
+			t.Fatalf("the upgrade sent back read = %d %s", status, read)
+		}
+		var after map[string]any
+		decodeAnswer(t, read, &after)
+		if !maps.EqualFunc(a, after, func(x, y any) bool { p, _ := json.Marshal(x); q, _ := json.Marshal(y); return string(p) == string(q) }) {
+			t.Errorf("sent back %s\nwant the upgrade as read after it: %s", answer, read)
+		}
 		if got := tm.submission(t, r.id); got != backToUpgrading {
 			t.Errorf("the send-back left %s", got)
 		}
@@ -189,6 +201,23 @@ func TestUpgradeReview(t *testing.T) {
 
 	t.Run("rejected", func(t *testing.T) {
 		r := tm.reviewed(t, "Rejected")
+		// Sent back, the initiator's agent gives the note other clean
+		// frontmatter, and the upgrade is submitted again: the rollback has
+		// a baseline page to put back (review P3S1A-N4).
+		if status, answer := tm.sendBackUpgrade(t, "dana", r.id); status != http.StatusOK {
+			t.Fatalf("the send-back = %d %s", status, answer)
+		}
+		version := queryStrings(t, tm.pool, "SELECT n.id::text || ':' || c.revision FROM nodes n JOIN page_contents c ON c.node_id = n.id "+
+			"WHERE n.id = $1", r.note)[0]
+		if w := tm.agent(t, "alice", r.id).use(t, "write", map[string]any{"path": "Note.md", "content": "---\ntype: note\nsummary: A note rejected.\n---\nA note.\n",
+			"base_version": version}).result(t); w["isError"] == true {
+			t.Fatalf("the initiator's agent's write after the send-back = %v", w)
+		}
+		if c := tm.content(t, "alice", r.note).Content; c == cleanNote {
+			t.Fatalf("the note after the agent's write = %q, want it written", c)
+		}
+		tm.submitted(t, "erin", r.id)
+		r.submission = tm.submissionID(t, r.id)
 		lines := len((&mcpApp{logs: logs}).logLines(t))
 		var job string
 		if modes := tm.modesOf(t, r.id, eng, marker, func() {

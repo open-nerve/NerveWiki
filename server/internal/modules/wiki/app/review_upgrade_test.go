@@ -76,6 +76,8 @@ func TestApproveUpgrade(t *testing.T) {
 	}{
 		{"AGENTS without a body", func(x *reviewFixture) { x.f.roots.AgentsBody = false }, "agents"},
 		{"the source root no live page", func(x *reviewFixture) { x.f.roots.RootPage = false }, "source_root"},
+		// The approval judges the upgrade's own source root (review P3S1A-N1).
+		{"the source root the root's AGENTS", func(x *reviewFixture) { x.f.roots.AgentsID = &x.root }, "source_root"},
 		{"a page keyed index at the root", func(x *reviewFixture) {
 			x.f.reserved = []app.RootNode{{ID: uuid.NewV7(), Kind: domain.NodePage, Key: "index"}}
 		}, "reserved_titles"},
@@ -268,22 +270,32 @@ func TestRejectUpgrade(t *testing.T) {
 // back and whether it had its report. The row not sent back is a defect;
 // a COMMIT that fails answers its failure, no line.
 func TestSendBackUpgrade(t *testing.T) {
-	for _, tt := range append(reviewRefusals(), struct {
+	for _, tt := range append(reviewRefusals(), []struct {
 		name   string
 		change func(x *reviewFixture)
 		code   string
 		last   string
-	}{"reviewing, its submission still checked", func(x *reviewFixture) {
-		x.f.row.Report, *x.f.row.SubmittedAt = nil, x.f.at.Add(-16*time.Second).Truncate(time.Microsecond)
-	}, "wiki.upgrade_state", "current"}) {
+	}{
+		{"reviewing, its submission still checked", func(x *reviewFixture) {
+			x.f.row.Report, *x.f.row.SubmittedAt = nil, x.f.at.Add(-16*time.Second).Truncate(time.Microsecond)
+		}, "wiki.upgrade_state", "current"},
+		// As the approval's (review P3S1A-N2).
+		{"a row of another upgrade", func(x *reviewFixture) { x.f.row.ID = uuid.NewV7() }, "a defect", "current"},
+	}...) {
 		x := newReviewFixture(tt.change)
 		_, err := app.NewSendBackUpgrade(x.d).Execute(x.ctx(), x.nb)
+		code := codeOf(err)
+		var e *shared.Error
+		if !errors.As(err, &e) {
+			code = "a defect"
+		}
 		calls := x.f.noted()
-		if codeOf(err) != tt.code || !refusedAfter(calls, tt.last) || wrote(calls) != "" || len(x.f.lines) != 0 {
+		if code != tt.code || !refusedAfter(calls, tt.last) || wrote(calls) != "" || len(x.f.lines) != 0 {
 			t.Errorf("%s: %v after %v; want %s after %s, rolled back, nothing written or logged", tt.name, err, calls, tt.code, tt.last)
 		}
-		if checking := strings.Contains(fmt.Sprint(err), "still being checked"); checking != (tt.last == "current") {
-			t.Errorf("%s: %v, want still being checked %v", tt.name, err, tt.last == "current")
+		checked := tt.code == "wiki.upgrade_state" && tt.last == "current"
+		if checking := strings.Contains(fmt.Sprint(err), "still being checked"); checking != checked {
+			t.Errorf("%s: %v, want still being checked %v", tt.name, err, checked)
 		}
 	}
 	for _, reported := range []bool{true, false} {

@@ -216,6 +216,8 @@ func TestUpgradeApproval(t *testing.T) {
 		}
 		assertSourceHashesMatchRebuild(t, context.Background(), tm.pool)
 		checkPages(t, tm.pool)
+		checkLinks(t, tm.pool)
+		checkSearch(t, tm.pool)
 		status, read := tm.getUpgrade(t, "dana", r.id)
 		wantCode(t, "the upgrade approved", status, read, cell{http.StatusNotFound, "wiki.upgrade_not_found"})
 		_, read = ask(t, tm.contract, http.MethodGet, tm.base+"/api/v0/notebooks/"+r.id, tm.tokens["dana"], "")
@@ -292,6 +294,11 @@ func TestUpgradeApproval(t *testing.T) {
 		logs := &syncBuffer{}
 		held := &heldRebuild{}
 		tm := newAcmeTeamOn(t, "member", "", nil, &wiring{wiki: func(d *wiki.Deps) {
+			// The composition root's three quarters of the request, seen
+			// here too, not only in costs-1 (review P3S1A-N6).
+			if d.ApproveTimeout != 3*time.Second {
+				t.Errorf("the approval's deadline is %v, want 3s, three quarters of the request's 4 s", d.ApproveTimeout)
+			}
 			held.SourceHashes = d.SourceHashes
 			d.SourceHashes, d.ApproveTimeout = held, 2*time.Second
 		}}, slog.New(slog.NewJSONHandler(logs, nil))).withReviewers(t)
