@@ -35,6 +35,29 @@ func (s *Store) SourceHeads(ctx context.Context, notebook uuid.UUID, ids []uuid.
 	return out, nil
 }
 
+// SourceRebuildHeads reads the heads of an upgrade's approval's rebuild in
+// the caller's transaction (M11/P3 design 3.4, decision 292): each id by
+// its key, a node of another notebook, deleted or missing not answered; a
+// page its content's hash and size, an attachment no hash and 0. Not
+// planned: its plan does not follow the statistics or the arguments.
+func (s *Store) SourceRebuildHeads(ctx context.Context, notebook uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]app.SourceValue, error) {
+	if len(ids) > domain.MaxUnitNodes {
+		return nil, errors.New("source rebuild heads exceed the node bound")
+	}
+	out := make(map[uuid.UUID]app.SourceValue, len(ids))
+	if len(ids) == 0 {
+		return out, nil
+	}
+	rows, err := s.queries(ctx).SourceRebuildHeads(ctx, gen.SourceRebuildHeadsParams{NodeIds: ids, NotebookID: notebook})
+	if err != nil {
+		return nil, fmt.Errorf("read the rebuild's source heads: %w", err)
+	}
+	for _, row := range rows {
+		out[row.ID] = app.SourceValue{ID: row.ID, Kind: domain.Kind(row.Kind), Hash: row.ContentHash, Bytes: row.ByteSize}
+	}
+	return out, nil
+}
+
 // ProbeSources finds bounded matches by source key and ID cursor.
 func (s *Store) ProbeSources(ctx context.Context, notebook uuid.UUID, probes []app.SourceProbe) ([]app.SourceMatch, error) {
 	if len(probes) > domain.MaxUnitNodes {

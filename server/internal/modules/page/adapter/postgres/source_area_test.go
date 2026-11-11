@@ -85,6 +85,43 @@ func TestSourceHeadsReadBoundedMetadata(t *testing.T) {
 	}
 }
 
+// The rebuild's heads (M11/P3 design 3.4, decision 292) answer this
+// notebook's live nodes alone, each read by its key: a page with a body its
+// content's hash and size, an empty page (a folder) the empty content's
+// hash and 0 (each live page has its one content row), an attachment no
+// hash and 0 (no content row); a node of another notebook, a deleted one
+// and a missing id not at all. The node's own source hash is not read.
+func TestSourceRebuildHeadsReadTheirKeys(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	body := f.page(t, f.eng, nil, "Body", 0)
+	folder := f.page(t, f.eng, nil, "Folder", 1)
+	file := f.asset(t, f.eng, &folder.ID, "file.txt", 0)
+	gone := f.page(t, f.eng, nil, "Gone", 2)
+	other := f.page(t, f.ops, nil, "Other", 0)
+	for _, n := range []domain.Node{body, gone, other} {
+		text := n.Name + " 正文"
+		f.exec(t, "UPDATE page_contents SET content = $2, content_hash = $3, byte_size = $4 WHERE node_id = $1",
+			n.ID, text, sourceSum(text), len(text))
+	}
+	f.exec(t, "UPDATE nodes SET source_hash = $2 WHERE id = $1", body.ID, sourceSum("old"))
+	f.exec(t, "UPDATE nodes SET deleted_at = $2 WHERE id = $1", gone.ID, now())
+	f.exec(t, "UPDATE page_contents SET deleted_at = $2 WHERE node_id = $1", gone.ID, now())
+	got, err := f.s.SourceRebuildHeads(ctx, f.eng, []uuid.UUID{other.ID, file.ID, gone.ID, uuid.NewV7(), folder.ID, body.ID})
+	want := map[uuid.UUID]app.SourceValue{
+		body.ID:   {ID: body.ID, Kind: domain.KindPage, Hash: sourceSum("Body 正文"), Bytes: int64(len("Body 正文"))},
+		folder.ID: {ID: folder.ID, Kind: domain.KindPage, Hash: sourceSum(""), Bytes: 0},
+		file.ID:   {ID: file.ID, Kind: domain.KindAsset},
+	}
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Errorf("SourceRebuildHeads = %+v, %v; want %+v", got, err, want)
+	}
+	if got, err := f.s.SourceRebuildHeads(ctx, f.ops, []uuid.UUID{body.ID, other.ID}); err != nil || len(got) != 1 ||
+		!bytes.Equal(got[other.ID].Hash, sourceSum("Other 正文")) {
+		t.Errorf("SourceRebuildHeads(ops) = %+v, %v; want Other alone", got, err)
+	}
+}
+
 // Explicit UUID endpoints catch an exclusive first lower bound and cursor
 // repetition. Probe order differs from ID order; page/asset and notebooks
 // have equal hashes so either missing namespace filter changes the answer.
@@ -250,6 +287,12 @@ func TestSourcePortsKeepTheirBounds(t *testing.T) {
 	}
 	if _, err := s.SourceHeads(ctx, id, make([]uuid.UUID, domain.MaxUnitNodes+1)); err == nil {
 		t.Error("10001 heads accepted, want a bounded request error")
+	}
+	if got, err := s.SourceRebuildHeads(ctx, id, nil); err != nil || len(got) != 0 {
+		t.Errorf("empty rebuild heads = %v, %v", got, err)
+	}
+	if _, err := s.SourceRebuildHeads(ctx, id, make([]uuid.UUID, domain.MaxUnitNodes+1)); err == nil {
+		t.Error("10001 rebuild heads accepted, want a bounded request error")
 	}
 	if _, err := s.SetSourceHashes(ctx, id, make([]app.SourceValue, domain.MaxUnitNodes+1)); err == nil {
 		t.Error("10001 hash writes accepted, want a bounded request error")
