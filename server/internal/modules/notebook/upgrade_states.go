@@ -103,6 +103,30 @@ func (u *UpgradeStates) Clear(ctx context.Context, id, upgradeID, by uuid.UUID, 
 	return nil
 }
 
+// Approve ends the notebook's upgrade upgradeID, in review, as an LLM Wiki
+// whose source root is rootID, by by at at (M11 design 4.9 step 3, M11/P3
+// design 3.3): the notebook is locked and its upgrade is upgradeID in
+// review, which its caller judged under the lock; a row unchanged is a
+// defect, as a zero root (00048's check would refuse no root, and the zero
+// id is none). It tells no subscriber: its caller publishes once the
+// source hashes are rebuilt (4.9 step 7).
+func (u *UpgradeStates) Approve(ctx context.Context, id, upgradeID, rootID, by uuid.UUID, at time.Time) error {
+	if !postgres.InTx(ctx) {
+		return errors.New("approve the notebook's upgrade: not in a transaction")
+	}
+	if rootID == (uuid.UUID{}) {
+		return fmt.Errorf("notebook: the upgrade %s's approval of notebook %s without a source root, a defect", upgradeID, id)
+	}
+	n, err := u.store.ApproveUpgrade(ctx, id, upgradeID, rootID, by, at)
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return fmt.Errorf("notebook: the upgrade %s's approval changed %d rows of notebook %s, a defect: its caller judged it the notebook's, in review", upgradeID, n, id)
+	}
+	return nil
+}
+
 // Publish tells the mode's subscribers of c in their order, as the
 // downgrade does: the change of an upgrade's state is one with From ==
 // To.

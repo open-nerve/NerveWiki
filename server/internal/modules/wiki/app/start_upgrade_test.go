@@ -373,7 +373,7 @@ func newStartFixture(t *testing.T, timeout time.Duration, change func(*startFake
 	}
 	seeds.parsed = nil
 	lint := app.NewLint(app.LintDeps{Notebooks: f, Sources: f, Nodes: f, Rules: f, Authorizer: f, Clock: f, Runs: runs})
-	start := app.NewStartUpgrade(app.UpgradeDeps{Tx: f, Notebooks: f, Workspaces: f, States: f, Pages: f, Rows: f, Writing: f,
+	start := app.NewStartUpgrade(app.UpgradeDeps{Tx: f, Notebooks: f, Workspaces: f, States: unapproved{f}, Pages: f, Rows: f, Writing: f,
 		Names: f, Authorizer: f, Action: "notebook.change_mode", Template: template, Clock: f, Logger: logger, Timeout: timeout}, lint, runs)
 	return startFixture{f: f, seeds: seeds, start: start, runs: runs, log: log, actor: uuid.NewV7(), nb: uuid.NewV7()}
 }

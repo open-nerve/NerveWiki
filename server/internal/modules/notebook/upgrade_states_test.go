@@ -3,7 +3,9 @@ package notebook_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 	"uuid"
@@ -195,6 +197,102 @@ func TestTheUpgradeStatesSetAndClearTheirUpgradeOnly(t *testing.T) {
 	}
 	if err := tx.WithinTx(ctx, func(ctx context.Context) error { return states.Clear(ctx, f.eng, up.ID, f.alice, latest) }); err == nil {
 		t.Error("Clear of an upgrade ended = nil, want a defect's error")
+	}
+}
+
+// Approve ends the notebook's upgrade in review as an LLM Wiki (M11/P3
+// design 3.3, decision 281): outside a transaction, the upgrade in
+// review, it fails and writes nothing; another upgrade's id, the upgrade
+// upgrading or rolling back, and a zero root each change no row and are a
+// defect's error; in review, the row whole: llm_wiki, the root, the four
+// columns cleared, who and when the approval's, its name and the rest as
+// they were; it goes with its caller's rollback. Each id and time is its
+// own.
+func TestAnUpgradeIsApproved(t *testing.T) {
+	ctx := context.Background()
+	f := newFixture(t)
+	states := notebook.NewUpgradeStates(f.pool, nil)
+	tx := postgres.NewTxManager(f.pool, 5*time.Second)
+	up := notebook.Upgrade{ID: uuid.NewV7(), State: notebook.UpgradeUpgrading, By: f.bob, At: testNow()}
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error { return states.Start(ctx, f.eng, up) }); err != nil {
+		t.Fatal(err)
+	}
+	root := uuid.NewV7()
+	// row is eng's row as the approval writes it, and what it leaves.
+	read := func() string {
+		t.Helper()
+		var out string
+		if err := f.pool.QueryRow(ctx, `SELECT concat_ws(' ', mode, coalesce(source_root_id::text, '-'), coalesce(upgrade_id::text, '-'),
+				coalesce(upgrade_state, '-'), coalesce(upgrade_by_id::text, '-'), coalesce(to_char(upgrade_at AT TIME ZONE 'UTC', 'HH24:MI:SS.US'), '-'),
+				updated_by_id, to_char(updated_at AT TIME ZONE 'UTC', 'HH24:MI:SS.US'), name, workspace_access, workspace_id, created_by_id,
+				to_char(created_at AT TIME ZONE 'UTC', 'HH24:MI:SS.US'), (deleted_at IS NULL)::text)
+			FROM notebooks WHERE id = $1`, f.eng).Scan(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	set := func(state notebook.UpgradeState) {
+		t.Helper()
+		if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+			return states.SetState(ctx, f.eng, up.ID, state, f.bob, testNow())
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	at := testNow().Add(3 * time.Minute)
+	approve := func(ctx context.Context) error { return states.Approve(ctx, f.eng, up.ID, root, f.alice, at) }
+	tail := fmt.Sprintf("%s %s Notes none %s %s 09:00:00.123456 true", f.bob, "10:00:00.123456", f.acme, f.alice)
+	upgrading := fmt.Sprintf("standard - %s upgrading %s 10:00:00.123456 %s", up.ID, f.bob, tail)
+	if got := read(); got != upgrading {
+		t.Fatalf("eng as started = %s, want %s", got, upgrading)
+	}
+	if err := tx.WithinTx(ctx, approve); err == nil {
+		t.Error("Approve(upgrading) = nil, want a defect's error")
+	}
+	set(notebook.UpgradeRollingBack)
+	if err := tx.WithinTx(ctx, approve); err == nil {
+		t.Error("Approve(rolling back) = nil, want a defect's error")
+	}
+	set(notebook.UpgradeReviewing)
+	reviewing := strings.Replace(upgrading, " upgrading ", " reviewing ", 1)
+	if err := approve(ctx); err == nil {
+		t.Error("Approve() outside a transaction = nil, want an error")
+	}
+	for name, write := range map[string]func(ctx context.Context) error{
+		"Approve of another upgrade": func(ctx context.Context) error { return states.Approve(ctx, f.eng, uuid.NewV7(), root, f.alice, at) },
+		"Approve with a zero root":   func(ctx context.Context) error { return states.Approve(ctx, f.eng, up.ID, uuid.UUID{}, f.alice, at) },
+		"Approve of a notebook of none": func(ctx context.Context) error {
+			return states.Approve(ctx, f.ops, up.ID, root, f.alice, at)
+		},
+	} {
+		if err := tx.WithinTx(ctx, write); err == nil {
+			t.Errorf("%s = nil, want a defect's error", name)
+		}
+	}
+	if got := read(); got != reviewing {
+		t.Fatalf("eng after the refused approvals = %s, want %s", got, reviewing)
+	}
+	rolledBack := errors.New("the caller rolls back")
+	if err := tx.WithinTx(ctx, func(ctx context.Context) error {
+		if err := approve(ctx); err != nil {
+			return err
+		}
+		return rolledBack
+	}); !errors.Is(err, rolledBack) {
+		t.Fatal(err)
+	}
+	if got := read(); got != reviewing {
+		t.Fatalf("eng after its caller rolled back = %s, want %s", got, reviewing)
+	}
+	if err := tx.WithinTx(ctx, approve); err != nil {
+		t.Fatal(err)
+	}
+	want := fmt.Sprintf("llm_wiki %s - - - - %s 10:03:00.123456 Notes none %s %s 09:00:00.123456 true", root, f.alice, f.acme, f.alice)
+	if got := read(); got != want {
+		t.Errorf("eng approved = %s\nwant %s", got, want)
+	}
+	if err := tx.WithinTx(ctx, approve); err == nil {
+		t.Error("Approve of an upgrade ended = nil, want a defect's error")
 	}
 }
 

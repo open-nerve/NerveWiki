@@ -201,6 +201,35 @@ type UpgradeRead struct {
 // maxGateNodes is how many nodes a gate names, the first by id.
 const maxGateNodes = 5
 
+// RootGates are gates 1 to 3 (M11 design 4.7): the root's AGENTS page with
+// a body; the proposed source root a live page, not the root's AGENTS; no
+// node at the root keyed a reserved title, the ones there by id.
+type RootGates struct {
+	Agents, SourceRoot bool
+	ReservedTitles     NodesGate
+}
+
+// JudgeRoots judges gates 1 to 3 from what they read: roots, the proposed
+// source root, and the ids of the nodes at the root keyed a reserved
+// title, in any order. The check's and the approval's (M11/P3 design 3.2,
+// decision 284).
+func JudgeRoots(roots UpgradeRoots, sourceRootID uuid.UUID, reserved []uuid.UUID) RootGates {
+	g := RootGates{
+		Agents:     roots.AgentsID != nil && roots.AgentsBody,
+		SourceRoot: roots.RootPage && (roots.AgentsID == nil || *roots.AgentsID != sourceRootID),
+	}
+	g.ReservedTitles.NodeIDs = slices.Clone(reserved)
+	slices.SortFunc(g.ReservedTitles.NodeIDs, uuid.UUID.Compare)
+	g.ReservedTitles.Passed = len(reserved) == 0
+	return g
+}
+
+// Failed are the gates of g that did not pass, in their order.
+func (g RootGates) Failed() []UpgradeGateKey {
+	return UpgradeGates{Agents: g.Agents, SourceRoot: g.SourceRoot, ReservedTitles: g.ReservedTitles, Frontmatter: true, Sources: true,
+		Links: LinksGate{Passed: true}, Preserved: PreservedGate{Passed: true}, Index: true}.Failed()
+}
+
 // JudgeUpgrade is the check of r (M11 design 4.7), but its time and paths.
 func JudgeUpgrade(r UpgradeRead) UpgradeCheck {
 	counts := map[LintRule]LintCount{}
@@ -219,16 +248,15 @@ func JudgeUpgrade(r UpgradeRead) UpgradeCheck {
 	for _, b := range r.Baseline {
 		baseline[b.ID] = b
 	}
-	var g UpgradeGates
-	g.Agents = r.Roots.AgentsID != nil && r.Roots.AgentsBody
-	g.SourceRoot = r.Roots.RootPage && (r.Roots.AgentsID == nil || *r.Roots.AgentsID != r.Upgrade.SourceRootID)
+	var reserved []uuid.UUID
 	for _, n := range r.Nodes {
 		if n.ParentID == nil && slices.Contains(r.Reserved, n.Key) {
-			g.ReservedTitles.NodeIDs = append(g.ReservedTitles.NodeIDs, n.ID)
+			reserved = append(reserved, n.ID)
 		}
 	}
-	slices.SortFunc(g.ReservedTitles.NodeIDs, uuid.UUID.Compare)
-	g.ReservedTitles.Passed = len(g.ReservedTitles.NodeIDs) == 0
+	roots := JudgeRoots(r.Roots, r.Upgrade.SourceRootID, reserved)
+	var g UpgradeGates
+	g.Agents, g.SourceRoot, g.ReservedTitles = roots.Agents, roots.SourceRoot, roots.ReservedTitles
 	g.Frontmatter = zero(RuleInvalidFrontmatter, RuleMissingType, RuleMissingSummary)
 	g.Sources = zero(RuleInvalidSources)
 	var worse []uuid.UUID

@@ -136,7 +136,7 @@ func TestTheRollbackEnd(t *testing.T) {
 			change(f)
 		}
 		log := &startLog{}
-		end := app.NewRollbackEnd(app.RollbackEndDeps{Notebooks: f, States: f, Pages: f, Rows: f, Clock: f,
+		end := app.NewRollbackEnd(app.RollbackEndDeps{Notebooks: f, States: unapproved{f}, Pages: f, Rows: f, Clock: f,
 			Logger: slog.New(slog.NewJSONHandler(log, nil))})
 		return f, end, log
 	}

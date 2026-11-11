@@ -50,12 +50,15 @@ type ModeChange struct {
 // 3.11, 3.20): Lock locks the notebook's row FOR NO KEY UPDATE and answers
 // its state, false for none; Start sets its upgrade; SetState its next
 // state and Clear ends it, each of the notebook's upgrade upgradeID by by
-// at at; Publish tells the mode's subscribers.
+// at at; Approve ends it, in review, the notebook an LLM Wiki whose source
+// root is rootID, in one write (M11/P3 design 3.3); Publish tells the
+// mode's subscribers.
 type UpgradeStates interface {
 	Lock(ctx context.Context, id uuid.UUID) (UpgradeNotebook, bool, error)
 	Start(ctx context.Context, id uuid.UUID, up NotebookUpgrade) error
 	SetState(ctx context.Context, id, upgradeID uuid.UUID, state domain.UpgradeState, by uuid.UUID, at time.Time) error
 	Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error
+	Approve(ctx context.Context, id, upgradeID, rootID, by uuid.UUID, at time.Time) error
 	Publish(ctx context.Context, c ModeChange) error
 }
 

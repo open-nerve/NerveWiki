@@ -121,3 +121,13 @@ WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id)::uuid;
 UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL,
     updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
 WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id)::uuid;
+
+-- name: ApproveUpgrade :execrows
+-- A notebook's upgrade approved (M11 design 4.9 step 3), under the row's lock: an LLM Wiki with the upgrade's source
+-- root, its four upgrade columns cleared, in one statement; the notebook's upgrade is still upgrade_id, in review.
+-- notebooks_upgrade_check keeps a notebook with an upgrade standard. SetNotebookMode, the downgrade's, stays as it is
+-- (M11/P3 decision 281).
+UPDATE notebooks
+SET mode = 'llm_wiki', source_root_id = sqlc.arg(source_root_id)::uuid, upgrade_id = NULL, upgrade_state = NULL,
+    upgrade_by_id = NULL, upgrade_at = NULL, updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND upgrade_id = sqlc.arg(upgrade_id)::uuid AND upgrade_state = 'reviewing';

@@ -74,6 +74,12 @@ func (s wikiUpgradeStates) Clear(ctx context.Context, id, upgradeID, by uuid.UUI
 	return s.states.Clear(ctx, id, upgradeID, by, at)
 }
 
+// Approve is the notebook module's approval of the upgrade upgradeID
+// (M11/P3 design 3.3), each id in its place.
+func (s wikiUpgradeStates) Approve(ctx context.Context, id, upgradeID, rootID, by uuid.UUID, at time.Time) error {
+	return s.states.Approve(ctx, id, upgradeID, rootID, by, at)
+}
+
 func (s wikiUpgradeStates) Publish(ctx context.Context, c wiki.ModeChange) error {
 	from, err := notebookModeOf(c.From)
 	if err != nil {

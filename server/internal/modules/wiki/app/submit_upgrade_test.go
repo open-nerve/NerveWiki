@@ -33,6 +33,25 @@ func (unsubmitted) Unsubmit(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, ti
 	return false, errUnsubmitted
 }
 
+// unapproved are the fakes' UpgradeStates, theirs but Approve, a defect:
+// the use cases that never approve. Their fakes are their UpgradeRows too,
+// whose Approve (M11/P3 design 3.5) another signature has; one type
+// cannot have both, so the states are this wrapper.
+type unapproved struct{ statesButApproval }
+
+// statesButApproval are UpgradeStates but Approve.
+type statesButApproval interface {
+	Lock(ctx context.Context, id uuid.UUID) (app.UpgradeNotebook, bool, error)
+	Start(ctx context.Context, id uuid.UUID, up app.NotebookUpgrade) error
+	SetState(ctx context.Context, id, upgradeID uuid.UUID, state domain.UpgradeState, by uuid.UUID, at time.Time) error
+	Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error
+	Publish(ctx context.Context, c app.ModeChange) error
+}
+
+func (unapproved) Approve(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID, time.Time) error {
+	return errors.New("a use case that does not approve approved")
+}
+
 type submitTxKey struct{}
 
 // submitFake is every port of an upgrade's submission (M11/P2 design
@@ -223,7 +242,7 @@ func newSubmit(f *submitFake, timeout time.Duration, log *startLog) (*app.Submit
 	logger := slog.New(slog.NewJSONHandler(log, nil))
 	lint := app.NewLint(app.LintDeps{Notebooks: f, Sources: f, Nodes: f, Rules: f, Cursors: f, Paths: f, Snapshots: f, Authorizer: f,
 		Clock: f, Runs: f})
-	d := app.UpgradeDeps{Tx: f, Snapshots: f, Notebooks: f, Workspaces: f, States: f, Rows: f, Names: f, Authorizer: f,
+	d := app.UpgradeDeps{Tx: f, Snapshots: f, Notebooks: f, Workspaces: f, States: unapproved{f}, Rows: f, Names: f, Authorizer: f,
 		Action: "notebook.change_mode", Clock: f, Logger: logger, Gates: f, Cursors: f, Paths: f,
 		ReservedKeys: []string{"index", "log", "index.md", "log.md"}, SubmitTimeout: timeout}
 	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
