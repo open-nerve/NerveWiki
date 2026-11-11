@@ -161,7 +161,7 @@ test("the upgrade's initiator is told to connect their agent as the README says,
   expect(agent.textContent).toContain("The prompt to give it: upgrade");
 });
 
-test("another admin is told whose agent writes and that they can abandon the upgrade, not the prompt", async () => {
+test("another admin is told whose agent writes and that they can check, submit or abandon the upgrade, not the prompt", async () => {
   const server = upgradeServer({ upgrade: bobsUpgrade() });
   renderApp(upgradePath, server.app);
 
@@ -889,7 +889,11 @@ test.each([
   }
 );
 
-/** A report every value of which is its own: the gates passed, the hints' counts, capped or not, their first items. */
+/**
+ * A report every value of which is its own: the gates passed, the hints'
+ * counts, capped or not, their first items, as many as the server keeps of a
+ * rule (at most five: all of a count of five or fewer).
+ */
 const keptReport = reportJSON({
   computed_at: "2026-10-06T09:41:00Z",
   gates: {
@@ -921,6 +925,9 @@ const keptReport = reportJSON({
         items: [
           { rule: "wanted", item_key: `w:${"a".repeat(64)}`, target: "Missing", target_cut: false, pages: 2 },
           { rule: "wanted", item_key: `w:${"c".repeat(64)}`, target: "Other", target_cut: false, pages: 3 },
+          { rule: "wanted", item_key: `w:${"e".repeat(64)}`, target: "Roadmap", target_cut: false, pages: 4 },
+          { rule: "wanted", item_key: `w:${"f".repeat(64)}`, target: "Glossary", target_cut: false, pages: 6 },
+          { rule: "wanted", item_key: `w:${"9".repeat(64)}`, target: "Changelog", target_cut: false, pages: 7 },
         ],
       },
       {
@@ -941,6 +948,13 @@ const keptReport = reportJSON({
             target: "Plan",
             target_cut: false,
           },
+          {
+            rule: "ambiguous",
+            item_key: `a:${install.id}:${"e".repeat(64)}`,
+            page_id: install.id,
+            target: "Setup",
+            target_cut: false,
+          },
         ],
       },
       { rule: "invalid_frontmatter", count: 0, count_capped: false, items: [] },
@@ -958,7 +972,11 @@ const keptReport = reportJSON({
         rule: "missing_summary",
         count: 4,
         count_capped: false,
-        items: [{ rule: "missing_summary", item_key: `p:${guide.id}`, page_id: guide.id }],
+        items: [guide, seededRaw, install, notes].map((page) => ({
+          rule: "missing_summary" as const,
+          item_key: `p:${page.id}`,
+          page_id: page.id,
+        })),
       },
       {
         rule: "undigested_sources",
@@ -989,22 +1007,44 @@ const keptReport = reportJSON({
             bytes: 512,
             created_at: "2026-10-05T10:00:00Z",
           },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${seededRaw.id}`,
+            node_id: seededRaw.id,
+            kind: "page",
+            bytes: 3072,
+            created_at: "2026-10-05T11:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${seededAgents.id}`,
+            node_id: seededAgents.id,
+            kind: "asset",
+            bytes: 20480,
+            created_at: "2026-10-05T12:00:00Z",
+          },
         ],
       },
       {
         rule: "invalid_sources",
         count: 5,
         count_capped: false,
-        items: [
-          {
-            rule: "invalid_sources",
-            item_key: `s:${install.id}:${"d".repeat(64)}`,
-            page_id: install.id,
-            target: "Broken",
-            target_cut: false,
-            not_link: false,
-          },
-        ],
+        items: (
+          [
+            [install, "Broken", "d"],
+            [guide, "Gone", "1"],
+            [notes, "Lost", "2"],
+            [seededAgents, "Moved", "3"],
+            [install, "Renamed", "4"],
+          ] as const
+        ).map(([page, target, hex]) => ({
+          rule: "invalid_sources" as const,
+          item_key: `s:${page.id}:${hex.repeat(64)}`,
+          page_id: page.id,
+          target,
+          target_cut: false,
+          not_link: false,
+        })),
       },
     ] satisfies UpgradeReport["rules"]
   ).toReversed(),
@@ -1054,12 +1094,23 @@ test("in review, the page shows the report kept, read only: each gate, each coun
     [...rule.querySelectorAll("li")].map((item) => item.textContent),
   ]);
   expect(rules).toEqual([
-    ["H3", "Wanted pages", "41+ issues", ["MissingReferenced by 2 pages", "OtherReferenced by 3 pages"]],
+    [
+      "H3",
+      "Wanted pages",
+      "41+ issues",
+      [
+        "MissingReferenced by 2 pages",
+        "OtherReferenced by 3 pages",
+        "RoadmapReferenced by 4 pages",
+        "GlossaryReferenced by 6 pages",
+        "ChangelogReferenced by 7 pages",
+      ],
+    ],
     ["H3", "Orphan pages", "1 issue", ["Notes.md"]],
-    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan"]],
+    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan", "Guide/Install.mdSetup"]],
     ["H3", "Invalid frontmatter", "0 issues", []],
     ["H3", "Missing type", "3 issues", ["Notes.md", "Guide.md", "Guide/Install.md"]],
-    ["H3", "Missing summary", "4 issues", ["Guide.md"]],
+    ["H3", "Missing summary", "4 issues", ["Guide.md", "raw.md", "Guide/Install.md", "Notes.md"]],
     [
       "H3",
       "Undigested sources",
@@ -1068,9 +1119,16 @@ test("in review, the page shows the report kept, read only: each gate, each coun
         "Guide/Install.mdPage2 KBCreated Oct 3, 2026, 8:00 AM",
         "Notes.mdAttachment10 KBCreated Oct 4, 2026, 9:00 AM",
         "Guide.mdPage512 BCreated Oct 5, 2026, 10:00 AM",
+        "raw.mdPage3 KBCreated Oct 5, 2026, 11:00 AM",
+        "AGENTS.mdAttachment20 KBCreated Oct 5, 2026, 12:00 PM",
       ],
     ],
-    ["H3", "Invalid sources", "5 issues", ["Guide/Install.mdBroken"]],
+    [
+      "H3",
+      "Invalid sources",
+      "5 issues",
+      ["Guide/Install.mdBroken", "Guide.mdGone", "Notes.mdLost", "AGENTS.mdMoved", "Guide/Install.mdRenamed"],
+    ],
   ]);
   expect(within(report).queryByRole("button")).toBeNull();
   expect(screen.queryByRole("button", { name: "More" })).toBeNull();

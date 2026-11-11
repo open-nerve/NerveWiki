@@ -428,6 +428,7 @@ test("a card's More refused as the upgrade no longer under way says the upgrade'
   const user = userEvent.setup();
   const reread = deferred<void>();
   let reads = 0;
+  let lists = 0;
   const server: ReturnType<typeof upgradeServer> = serverOf(rulesCheck(), {
     answers: {
       [`GET ${plans}/upgrade`]: async () => {
@@ -438,10 +439,15 @@ test("a card's More refused as the upgrade no longer under way says the upgrade'
         }
         return json(server.upgrade);
       },
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        lists++;
+        return json({ data: [server.notebook] });
+      },
     },
   });
   const { section } = await opened(server);
   await checked(user, section, passedAt);
+  const before = lists;
   // Another admin abandoned it meanwhile, and its rollback ended.
   server.withUpgrade(upgradeJSON({ state: "rolled_back", ending: "abandoned", rollback_complete: true }));
 
@@ -453,6 +459,8 @@ test("a card's More refused as the upgrade no longer under way says the upgrade'
   reread.resolve();
   expect(await screen.findByText("This notebook has no upgrade under way.")).toBeTruthy();
   expect(screen.queryByRole("heading", { level: 2, name: "Check" })).toBeNull();
+  // Refused for its state, not its role: the notebooks are not read again.
+  expect(lists).toBe(before);
 });
 
 test("a check refused as busy is not tried again on its own: Try again reads it", async () => {
