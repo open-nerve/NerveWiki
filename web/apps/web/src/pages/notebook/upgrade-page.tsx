@@ -23,7 +23,7 @@ import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
-import { UpgradeCheckSection, type CheckControl } from "./upgrade-check";
+import { UpgradeCheckSection, UpgradeReportSection, type CheckControl } from "./upgrade-check";
 
 /**
  * UpgradePage is the notebook's upgrade to an LLM Wiki under way (M11/P1
@@ -57,8 +57,11 @@ export const UpgradePage = observer(function UpgradePage() {
 
 let nextCheckEntry = 0;
 
-/** The changes asked on the page: abandoning the upgrade, continuing its stopped rollback, ending it. */
-type Change = "abandon" | "continue" | "end";
+/**
+ * The changes asked on the page: abandoning the upgrade, continuing its
+ * stopped rollback, ending it; submitting it for review (M11/P2).
+ */
+type Change = "abandon" | "continue" | "end" | "submit";
 
 /**
  * UpgradeRead reads the upgrade (SWR's key ["upgrade", notebook id], which
@@ -71,6 +74,13 @@ type Change = "abandon" | "continue" | "end";
  * again takes their buttons, the upgrade, or the account's role away:
  * closed, the focus goes back to the button, or to the title once it is
  * gone or the change is done.
+ *
+ * Upgrading, it offers to submit the upgrade for review (decision 259):
+ * once its first step is done, the upgrade is reviewing, as the mode event
+ * reads it again, its check gone, the dialog staying until the answer
+ * (decision 264); refused as not ready or of an old index, the upgrade is
+ * upgrading again, read again, and checked again. Reviewing, it shows the
+ * report the submission kept.
  *
  * It is one entry to the page (M11/P2 design 4.3): the check it shows is
  * of its generation, which a new check moves on, in a cache of its own
@@ -127,6 +137,7 @@ const UpgradeRead = observer(function UpgradeRead({
     abandon: useRef<HTMLButtonElement>(null),
     continue: useRef<HTMLButtonElement>(null),
     end: useRef<HTMLButtonElement>(null),
+    submit: useRef<HTMLButtonElement>(null),
   };
   const admin = notebook.role === "admin";
   const rereadNotebooks = () => void mutate(["notebooks", workspace.id]);
@@ -147,7 +158,8 @@ const UpgradeRead = observer(function UpgradeRead({
   /**
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
-   * or the upgrade in another state. The upgrade an abandonment or a
+   * the upgrade in another state, or upgrading again after a submission
+   * not ready or of an old index. The upgrade an abandonment, a submission or a
    * continuation answers, rolling back, is shown meanwhile (shows), over
    * what the page showed as it was sent, before the read again (SWR keeps
    * no read sent before it); a read that answered meanwhile, a mode
@@ -165,7 +177,10 @@ const UpgradeRead = observer(function UpgradeRead({
       if (
         mounted() &&
         refusal instanceof ApiError &&
-        (refusal.code === "transfer.busy" || refusal.code === "wiki.upgrade_state")
+        (refusal.code === "transfer.busy" ||
+          refusal.code === "wiki.upgrade_state" ||
+          refusal.code === "wiki.upgrade_not_ready" ||
+          refusal.code === "wiki.upgrade_stale_index")
       ) {
         void reread();
       }
@@ -179,6 +194,26 @@ const UpgradeRead = observer(function UpgradeRead({
     }
     if (mounted()) {
       void reread();
+    }
+  }
+
+  /**
+   * submit submits the upgrade for review as change does; refused as not
+   * ready or of an old index, the upgrade, upgrading again, is checked
+   * again (M11 design 4.8): the next generation, read once its check is
+   * shown, as the page reads the upgrade again.
+   */
+  async function submit(): Promise<void> {
+    try {
+      await change(() => notebooks.submitUpgrade(notebook.id), true);
+    } catch (refusal) {
+      if (
+        refusal instanceof ApiError &&
+        (refusal.code === "wiki.upgrade_not_ready" || refusal.code === "wiki.upgrade_stale_index")
+      ) {
+        recheck();
+      }
+      throw refusal;
     }
   }
 
@@ -231,10 +266,20 @@ const UpgradeRead = observer(function UpgradeRead({
             endButton={buttons.end}
           />
         )}
+        {data.state === "reviewing" && (
+          <UpgradeReportSection report={data.report} pages={pages} readingTree={readingTree} />
+        )}
         {(data.state === "upgrading" || data.state === "reviewing") && (
-          <Button ref={buttons.abandon} variant="destructive" onClick={() => setAsked("abandon")}>
-            {t("upgrade.abandon")}
-          </Button>
+          <div className="flex flex-wrap gap-3">
+            {data.state === "upgrading" && (
+              <Button ref={buttons.submit} onClick={() => setAsked("submit")}>
+                {t("upgrade.submit")}
+              </Button>
+            )}
+            <Button ref={buttons.abandon} variant="destructive" onClick={() => setAsked("abandon")}>
+              {t("upgrade.abandon")}
+            </Button>
+          </div>
         )}
       </>
     );
@@ -286,6 +331,17 @@ const UpgradeRead = observer(function UpgradeRead({
         cancelLabel={t("notebookSettings.cancel")}
         confirm={() => change(() => notebooks.endUpgradeRollback(notebook.id), false)}
         texts={texts}
+      />
+      <ConfirmDialog
+        held={dialogOf("submit")}
+        title={t("upgrade.submitTitle")}
+        description={t("upgrade.submitBody")}
+        confirmLabel={t("upgrade.submitConfirm")}
+        sendingLabel={t("upgrade.submitting")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={submit}
+        texts={{ "wiki.upgrade_not_ready": "upgrade.notReady" }}
+        tone="default"
       />
     </>
   );

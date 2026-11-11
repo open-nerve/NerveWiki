@@ -612,3 +612,59 @@ test("a check refused as busy, its section taken away and given back, is not rea
   expect(within(back).getByRole("button", { name: "Try again" })).toBeTruthy();
   expect(checks(server)).toBe(1);
 });
+
+const resultBehind = (section: HTMLElement) =>
+  within(section).getByRole("status", { name: "The check's result", hidden: true }).textContent;
+
+test.each([
+  ["after its check is given back", false],
+  ["while its check is away", true],
+])(
+  "a check under way as the admin's own submission is refused as busy, the check answered %s: the check given back shows what it read, read once",
+  async (_, away) => {
+    const user = userEvent.setup();
+    const events = eventServer();
+    const answer = deferred<void>();
+    const second = deferred<void>();
+    const server: ReturnType<typeof upgradeServer> = serverOf(rulesCheck(), {
+      events,
+      answers: {
+        [`GET ${plans}/upgrade/check`]: async () => {
+          server.asked.push("CHECK");
+          await answer.promise;
+          return json(server.check);
+        },
+      },
+    });
+    server.submission = { ...server.submission, outcome: "busy", checked: second.promise };
+    const section = await live(server, events);
+    await user.click(within(section).getByRole("button", { name: "Check" }));
+    await waitFor(() => expect(checks(server)).toBe(1));
+    await user.click(screen.getByRole("button", { name: "Submit for review…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
+
+    // The submission's first step takes the check away; its second, the
+    // server too busy, gives it back.
+    await user.click(within(dialog).getByRole("button", { name: "Submit for review" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { level: 2, name: "Check", hidden: true })).toBeNull());
+    if (away) {
+      answer.resolve();
+      await act(() => answer.promise);
+    }
+    second.resolve();
+    expect(await within(dialog).findByText("The server is busy. Try again in a moment.")).toBeTruthy();
+    const back = (await screen.findByRole("heading", { level: 2, name: "Check", hidden: true })).closest(
+      "section"
+    ) as HTMLElement;
+    if (!away) {
+      expect(resultBehind(back)).toBe("Checking…");
+      answer.resolve();
+    }
+
+    await waitFor(() => expect(resultBehind(back)).toBe(passedAt));
+    expect(checks(server)).toBe(1);
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(cardsOf(back).map((each) => each[1])).toContain("Missing type");
+  }
+);

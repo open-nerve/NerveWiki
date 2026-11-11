@@ -9,7 +9,12 @@ import { formatDateTime } from "../../i18n/format";
 import { useT, type PlainKey } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
-import type { Upgrade, UpgradeCounts as Counts, UpgradeGates as Gates } from "../../services/upgrade.service";
+import type {
+  Upgrade,
+  UpgradeCounts as Counts,
+  UpgradeGates as Gates,
+  UpgradeReport,
+} from "../../services/upgrade.service";
 import type { LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { useStore, useUpgrades } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
@@ -17,7 +22,8 @@ import { nodeTarget } from "../node-target";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { HealthRule, healthRuleOrder, type HealthCard } from "./health-rule";
+import { HealthItem } from "./health-item";
+import { HealthRule, healthRuleOrder, issueCount, ruleTitle, type HealthCard } from "./health-rule";
 
 /**
  * CheckControl is what one entry to the upgrade's page holds of its checks
@@ -202,6 +208,63 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
               {clear.map(card)}
             </details>
           )}
+        </>
+      )}
+    </section>
+  );
+});
+
+/**
+ * UpgradeReportSection is the report the upgrade's submission kept, while
+ * it is reviewing (M11/P2 design 4.3, decision 259): read only, its gates
+ * and counts as a check's, each rule's count and first items, without
+ * More (the review's own, M11/P3). None yet: a submission is being
+ * checked, or the last one did not finish.
+ */
+export const UpgradeReportSection = observer(function UpgradeReportSection({
+  report,
+  pages,
+  readingTree,
+}: {
+  report: UpgradeReport | null;
+  pages: PageTreeStore;
+  readingTree: boolean;
+}) {
+  const t = useT();
+  const { locale } = useStore().preferences;
+  return (
+    <section aria-labelledby="upgrade-report-heading" className="min-w-0 space-y-4">
+      <h2 id="upgrade-report-heading" className="text-lg font-semibold">
+        {t("upgrade.report")}
+      </h2>
+      {report === null ? (
+        <p>{t("upgrade.reportPending")}</p>
+      ) : (
+        <>
+          <p>{t("upgrade.reportPassed", { time: formatDateTime(report.computed_at, locale) })}</p>
+          <UpgradeGates gates={report.gates} stalePages={report.stale_pages} pages={pages} readingTree={readingTree} />
+          <UpgradeCounts counts={report.counts} />
+          {healthRuleOrder
+            .flatMap((rule) => report.rules.find((found) => found.rule === rule) ?? [])
+            .map((rule) => (
+              <section
+                key={rule.rule}
+                aria-labelledby={`report-${rule.rule}-heading`}
+                className="min-w-0 space-y-2 rounded-md border p-4"
+              >
+                <h3 id={`report-${rule.rule}-heading`} className="font-semibold">
+                  {t(ruleTitle(rule.rule))}
+                </h3>
+                <p className="text-sm">{issueCount(t, locale, rule)}</p>
+                {rule.items.length > 0 && (
+                  <ul aria-label={t(ruleTitle(rule.rule))} className="divide-y">
+                    {rule.items.map((item) => (
+                      <HealthItem key={item.item_key} item={item} pages={pages} readingTree={readingTree} />
+                    ))}
+                  </ul>
+                )}
+              </section>
+            ))}
         </>
       )}
     </section>

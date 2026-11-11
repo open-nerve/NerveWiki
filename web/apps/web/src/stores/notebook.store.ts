@@ -51,7 +51,7 @@ export class NotebookStore {
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string,
     /** The changes of the notebooks' upgrades, which answer the upgrade (M11/P1 design 4.4). */
-    private readonly upgrades: Pick<UpgradeService, "start" | "abandon" | "endRollback">
+    private readonly upgrades: Pick<UpgradeService, "start" | "abandon" | "endRollback" | "submit">
   ) {
     makeAutoObservable<this, "service" | "slug" | "upgrades" | "changesAnswered" | "removed" | "inTurn">(this, {
       service: false,
@@ -178,6 +178,19 @@ export class NotebookStore {
     return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.endRollback(id), behindRollback));
   }
 
+  /**
+   * submitUpgrade submits the notebook id's upgrade for review, in its turn
+   * (M11/P2 design 4.3), and answers the upgrade, reviewing with its report:
+   * the list is read again, which holds its new state. A refusal that says
+   * the list is behind (forbidden, notebook.not_found, the upgrade in
+   * another state) reads it again too, and is thrown; a submission not
+   * ready, or of an old index, is upgrading again, which the mode event
+   * tells the list; busy, nothing to read.
+   */
+  async submitUpgrade(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.submit(id), behindSubmit));
+  }
+
   /** upgraded answers the upgrade change answers, the list read again after it, and after a refusal of behind. */
   private async upgraded(id: string, change: () => Promise<Upgrade>, behind: ReadonlySet<string>): Promise<Upgrade> {
     let answered: Upgrade;
@@ -295,6 +308,9 @@ const behindStart: ReadonlySet<string> = new Set([
  * state.
  */
 const behindRollback: ReadonlySet<string> = new Set(["forbidden", "notebook.not_found", "wiki.upgrade_state"]);
+
+/** The refusals of an upgrade's submission that say the list is behind: the notebook's role, its being, its upgrade's state. */
+const behindSubmit: ReadonlySet<string> = new Set(["forbidden", "notebook.not_found", "wiki.upgrade_state"]);
 
 /** isNotFound tells whether error is the notebook's 404: deleted, or not seen. */
 function isNotFound(error: unknown): boolean {

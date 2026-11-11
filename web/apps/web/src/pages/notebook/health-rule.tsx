@@ -4,7 +4,8 @@ import useSWR, { unstable_serialize } from "swr";
 
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
-import { useT, type PlainKey } from "../../i18n/i18n";
+import { useT, type PlainKey, type Translate } from "../../i18n/i18n";
+import type { Locale } from "../../i18n/locale";
 import { ApiError } from "../../services/api";
 import type { LintItem, LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { useStore } from "../../stores/context";
@@ -43,6 +44,22 @@ const labels: Record<LintRule, { title: PlainKey; description: PlainKey }> = {
   undigested_sources: { title: "health.undigestedSources", description: "health.undigestedSourcesDescription" },
   invalid_sources: { title: "health.invalidSources", description: "health.invalidSourcesDescription" },
 };
+
+/** ruleTitle is the title of rule's check: its card's heading, an upgrade's report's too. */
+export function ruleTitle(rule: LintRule): PlainKey {
+  return labels[rule].title;
+}
+
+/** issueCount is what a rule's check found: one issue, or how many, with a + once capped. */
+export function issueCount(
+  t: Translate,
+  locale: Locale,
+  { count, count_capped: capped }: Pick<LintRuleSummary, "count" | "count_capped">
+): string {
+  return count === 1 && !capped
+    ? t("health.oneIssue")
+    : t("health.count", { count: new Intl.NumberFormat(locale).format(count) + (capped ? "+" : "") });
+}
 
 /**
  * One applicable check, including the checks with no findings in the shared
@@ -186,7 +203,6 @@ export const HealthRule = observer(function HealthRule({
   );
   const text = labels[summary.rule];
   const title = t(text.title);
-  const count = new Intl.NumberFormat(locale).format(summary.count) + (summary.count_capped ? "+" : "");
   const Heading = level === 3 ? "h3" : "h2";
   return (
     <section
@@ -200,9 +216,7 @@ export const HealthRule = observer(function HealthRule({
       <p className="text-sm text-muted-foreground">
         {t(summary.rule === "orphans" && mode === "llm_wiki" ? "health.orphansDescriptionWiki" : text.description)}
       </p>
-      <p className="text-sm">
-        {summary.count === 1 && !summary.count_capped ? t("health.oneIssue") : t("health.count", { count })}
-      </p>
+      <p className="text-sm">{issueCount(t, locale, summary)}</p>
       {card.items.length > 0 && (
         <ul aria-label={title} className="divide-y">
           {card.items.map((item) => (

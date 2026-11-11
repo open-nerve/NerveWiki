@@ -3,9 +3,10 @@ import type { LintItem, LintPage, LintRule, LintRuleSummary } from "@nervewiki/a
 import { titleKey } from "../lib/title-key";
 import type { Notebook } from "../services/notebook.service";
 import type { TransferJob } from "../services/transfer.service";
-import type { Upgrade, UpgradeCheck } from "../services/upgrade.service";
+import type { Upgrade, UpgradeCheck, UpgradeReport } from "../services/upgrade.service";
 import { under } from "../stores/transfer.store";
-import { json, notebookJSON, problem, type Answer } from "./fakes";
+import type { eventServer } from "./event-server";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "./fakes";
 import { jobChangesetId, jobJSON, jobsServer, reportOf, underWay, writing } from "./jobs-server";
 import { after, cursorOf, isRule } from "./lint-server";
 import { ada, bob, pageNode } from "./page-server";
@@ -125,6 +126,23 @@ export function checkJSON(more: Partial<UpgradeCheck> = {}): UpgradeCheck {
   };
 }
 
+/** reportJSON is the report a submission of Plans' upgrade kept: checkJSON's, its rules' items without cursors. */
+export function reportJSON(more: Partial<UpgradeReport> = {}): UpgradeReport {
+  const { rules, ...check } = checkJSON();
+  return {
+    ...check,
+    rules: rules.map(({ rule, count, count_capped }) => ({ rule, count, count_capped, items: [] })),
+    ...more,
+  };
+}
+
+/**
+ * How a submission's second step ends (M11/P2 design 3.12): its report
+ * kept; upgrading again, a gate not passed, an old index, the check's
+ * computations busy.
+ */
+type SubmitOutcome = "stored" | "not_ready" | "stale_index" | "busy";
+
 /** summaryOf is the upgrade as Plans' readers see it in the notebook (Notebook.upgrade), or none once it ended. */
 function summaryOf(upgrade: Upgrade | undefined): Notebook["upgrade"] {
   return upgrade === undefined || upgrade.state === "approved" || upgrade.state === "rolled_back"
@@ -154,6 +172,8 @@ const nothingLeft = { nodes: 0, pages: 0, created: 0 };
 type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
   /** Plans' upgrade under way, if any. */
   upgrade?: Upgrade;
+  /** The event stream (GET events), whose last connection a submission's two steps each tell (mode). */
+  events?: ReturnType<typeof eventServer>;
 };
 
 /**
@@ -199,7 +219,19 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  *   another notebook, rule or scope than the explicit LLM Wiki's of the
  *   upgrade's source root (a lint's) 400 bad_request; a limit past 1-100
  *   422 validation_failed; busy 503; else the rule's items (checkItems)
- *   after the cursor. Logged as "CHECK <rule> <cursor>".
+ *   after the cursor. Logged as "CHECK <rule> <cursor>";
+ * - its submission (POST upgrade/submit), in the server's two steps:
+ *   404 and 403 as above; not upgrading 409 wiki.upgrade_state; else the
+ *   upgrade is reviewing, submitted by Ada, without a report, and the
+ *   mode event is sent; once the submission's check is released
+ *   (submission.checked), an upgrade no longer that submission's (taken
+ *   over, abandoned) is 409 wiki.upgrade_state, nothing written; else, as
+ *   submission.outcome says, its report kept (submission.report), or
+ *   upgrading again, the submission's columns cleared, 409
+ *   wiki.upgrade_not_ready naming the gates, 409 wiki.upgrade_stale_index,
+ *   503 server_busy; the mode event is sent again once submission.mode is
+ *   released, and the answer once submission.answered is. Logged as
+ *   "SUBMIT".
  *
  * A rolling back upgrade read says what its rollback left (left) once its
  * job is neither queued nor running, as the server counts it then; none
@@ -210,8 +242,9 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  * would (rollbackJob), and ends the upgrade as a rollback that put
  * everything back does (rolledBack).
  */
-export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServerOptions = {}) {
+export function upgradeServer({ upgrade, events, answers = {}, ...options }: UpgradeServerOptions = {}) {
   const routes: Record<string, Answer> = {
+    ...(events === undefined ? {} : { "GET /api/v0/events": events.answer }),
     [`GET ${plans}/upgrade`]: () => {
       server.asked.push("GET upgrade");
       if (server.notebookGone) {
@@ -352,6 +385,47 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       };
       return json(page);
     },
+    [`POST ${plans}/upgrade/submit`]: async () => {
+      server.asked.push("SUBMIT");
+      const refused =
+        refusedChange() ?? (server.upgrade?.state === "upgrading" ? undefined : problem(409, "wiki.upgrade_state"));
+      if (refused !== undefined || server.upgrade === undefined) {
+        return refused ?? problem(409, "wiki.upgrade_state");
+      }
+      const submitted: Upgrade = {
+        ...server.upgrade,
+        state: "reviewing",
+        submitted_by: ada,
+        submitted_at: "2026-10-06T09:40:00Z",
+        report: null,
+      };
+      server.withUpgrade(submitted);
+      sendMode();
+      const { outcome, report, checked, mode, answered } = server.submission;
+      await checked;
+      if (server.upgrade !== submitted) {
+        return problem(409, "wiki.upgrade_state");
+      }
+      let answer: Response;
+      if (outcome === "stored") {
+        const kept: Upgrade = { ...submitted, report };
+        server.withUpgrade(kept);
+        answer = json(kept);
+      } else {
+        server.withUpgrade({ ...submitted, state: "upgrading", submitted_by: null, submitted_at: null });
+        answer =
+          outcome === "not_ready"
+            ? problem(409, "wiki.upgrade_not_ready", {
+                detail: "The upgrade does not pass its checks yet: frontmatter.",
+              })
+            : outcome === "stale_index"
+              ? problem(409, "wiki.upgrade_stale_index")
+              : problem(503, "server_busy", {}, { "Retry-After": "1" });
+      }
+      void mode.then(sendMode);
+      await answered;
+      return answer;
+    },
     [`POST ${plans}/upgrade/end-rollback`]: () => {
       server.asked.push("END ROLLBACK");
       const refused = refusedChange();
@@ -384,6 +458,13 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
       : server.notebook.role === "admin"
         ? undefined
         : problem(403, "forbidden");
+  // The mode event a submission's step sends its notebook's subscribers: the last stream's, while connected.
+  const sendMode = () => {
+    const stream = events?.streams.at(-1);
+    if (stream !== undefined && !stream.ended) {
+      stream.send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+    }
+  };
   // An upgrade a check reads: upgrading or reviewing.
   const checked = () => server.upgrade?.state === "upgrading" || server.upgrade?.state === "reviewing";
   // The upgrade's rollback's job, if it has one under way.
@@ -402,6 +483,14 @@ export function upgradeServer({ upgrade, answers = {}, ...options }: UpgradeServ
     checkItems: {} as Partial<Record<LintRule, LintItem[]>>,
     /** Whether the check's computations are busy: 503 server_busy. */
     checkBusy: false,
+    /** How a submission's second step ends, and what it waits for: nothing unless a test holds it. */
+    submission: {
+      outcome: "stored" as SubmitOutcome,
+      report: reportJSON(),
+      checked: Promise.resolve(),
+      mode: Promise.resolve(),
+      answered: Promise.resolve(),
+    },
     /** withUpgrade gives Plans upgrade, or none, in its read and in the notebook the list holds. */
     withUpgrade(next: Upgrade | undefined): void {
       server.upgrade = next;
