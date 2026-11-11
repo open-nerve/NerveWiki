@@ -262,7 +262,7 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 547 个顶层（竞态构建，M11/P3/S1 的第一个提交时的 go test -race -list）静态分配为 145/50/120/120/61/15/27/9
+# 当前 551 个顶层（竞态构建，M11/P3/S1 末的 go test -race -list）静态分配为 145/50/120/120/61/15/28/12
 # （见第五份、第六份、第七份与第八份的说明）；各份双轮与指定 main pair 仍须实际核验。
 # M11/P3/S1（00-M11 第 278 条）：P2/S3 合并之后两次 main 的第四份都在 EPYC 7763 上，Test 一步 445/440 秒，最贴近 450 秒的线。照 M9/P2 设计 6.5
 # 挪给有余量、P3 不往里加测试的第六份（7763 上 327 秒），挪四个不是第四份第一个跑的、本机两轮稳定的：TestTheBackgroundRevertStopsAtAWriteBetweenItsBatches、
@@ -318,7 +318,8 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|The
 # 排第一，37 → 40 秒，原来排第一的 TestUpgradeCheck 6.8 → 4.7 秒）。不提高 -timeout。
 # M11/P3/S1（00-M11 第 290 条）：P3 的审阅的整个程序测试分在第七、八两份。第八份的模式加 Approval 与 Review：较重的 TestUpgradeApproval、
 # TestUpgradeReview 与 TestUpgradeReviewInterleavings 进第八份（7763 上 289 秒，P3 设计 7.5 估之后约 350–375 秒）；TestUpgradeTrashReservedTitles 等
-# 名字不在这里的 TestUpgrade… 留在第七份。第七份照旧 -skip 第八份，别的份照旧。开这一行时这两个名字还没有测试，各份的数不变。不提高 -timeout。
+# 名字不在这里的 TestUpgrade… 留在第七份。第七份照旧 -skip 第八份，别的份照旧。S1 末第八份 12 个（多了这三个）、第七份 28 个（多了
+# TestUpgradeTrashReservedTitles）；本机两轮第七份 182.8/185.9 秒、第八份 187.2/185.8 秒。不提高 -timeout。
 BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
