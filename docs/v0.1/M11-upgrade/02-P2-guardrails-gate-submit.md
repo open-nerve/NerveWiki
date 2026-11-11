@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P2 护栏、闸门与提交（三个 Step：S1 护栏（服务端）；S2 闸门、检查与提交（服务端）；S3 网页） |
-| 日期 | 2026-11-10（初稿）；2026-11-10（照设计审查第一轮修订）；2026-11-10（照修订核对第一轮修订）；2026-11-10（照修订核对第二轮修订，加第 267 条）；2026-11-10（照 S1 的实施与审查修订） |
-| 状态 | 进行中（S1 已合并 `8cf7af36`，S2 开工；设计的[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节；S1 的审查记录 [P2-S1-guardrails-review.md](reviews/P2-S1-guardrails-review.md)；实施与审查之后与代码不同之处照实改在各节（3.19 列出），结果在 10.1） |
+| 日期 | 2026-11-10（初稿）；2026-11-10（照设计审查第一轮修订）；2026-11-10（照修订核对第一轮修订）；2026-11-10（照修订核对第二轮修订，加第 267 条）；2026-11-10（照 S1 的实施与审查修订）；2026-11-11（照 S2 的实施与审查修订） |
+| 状态 | 进行中（S1 已合并 `8cf7af36`，S2 已合并 `（待填）`，S3 开工；设计的[审查记录](reviews/P2-design-review.md)，两轮修订核对在它的末两节；S1、S2 的审查记录 [P2-S1-guardrails-review.md](reviews/P2-S1-guardrails-review.md)、[P2-S2-gate-check-submit-review.md](reviews/P2-S2-gate-check-submit-review.md)；实施与审查之后与代码不同之处照实改在各节（3.19、3.20 列出），结果在 10.1、10.2） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.6、4.7、4.8 的提交、4.13 的两个工具与说明、4.14、4.15 的检查与提交、4.16–4.18、第 5、7、8、9、10 节、第 11 节（尤其 180、182、186–191、196、197、208、210、215、216、219、222、232、236、240、244、249）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P2 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.25–3.28 的修正，第 9 节交给 P2 的事）；[P1 的审查记录](reviews/)（设计与 S1–S4）；[v0.1 总体设计](../v0.1-design.md) 5.8、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1 设计：模块写作 `page/app/unit.go:392`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00056_page_upgrade_nodes.sql:9`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:144`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up4-guardrails.spec.ts:23`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P1 收尾之后的 `main` `f002672b` 的（它在初稿读的 `d589e5a2`、`455f692c` 与 `ce370441` 之上只改了文档：`git diff d589e5a2 f002672b -- server api`、`git diff 455f692c f002672b -- web e2e Makefile .github` 都为空），修订时照它复核过一遍 |
 | 工作笔记 | 代码的核对分四份（page 的单元、守卫与批的计划；wiki 的 lint、`Runs` 与升级的用例；MCP 的注册、码表与说明；网页、e2e、组合根的测试设施与 CI），本文引的每个行号都在其中核对过（附录）。设计不跑重的东西，要量的在 7.6；审查者 A、B、C 的实测（守卫读正文的代价、闸门的读的计划与时长、CI 各份的用时）写在审查记录里，本文引它们的数 |
@@ -580,18 +580,18 @@ SELECT (SELECT count(*) FROM b)::integer AS baseline, (SELECT count(*) FROM u)::
 | `wiki/app/upgrade_ports.go`、`start_upgrade.go` | `UpgradeGatePages`、`UpgradeRows` 的三个写；`UpgradeDeps.Gates`、`SubmitTimeout`、`ReservedKeys`；发起设 `AreaWantedByPage`（3.8–3.12） |
 | 新的 `wiki/app/check_upgrade.go`、`submit_upgrade.go` 与它们的测试 | 两个用例（3.11、3.12） |
 | `wiki/adapter/postgres/queries/upgrades.sql`、`store.go`；新的 `wiki/adapter/postgres/report.go` | `CurrentUpgrade` 多选两列、三个写、报告的编码（3.12、3.13） |
-| `wiki/lint.go`、`wiki/module.go` | `Deps` 加 `Gates`、`ReservedKeys`；模块的三个方法（3.11、3.12） |
+| `wiki/lint.go` | `Deps` 加 `Gates`、`ReservedKeys`；模块的两个方法 `CheckUpgrade`、`SubmitUpgrade`（`wiki/lint.go:206-215`）；`wiki/module.go` 不改（3.11、3.12；S2 的实施，审查 P2S2C-N2） |
 | `wiki/adapter/http/handler.go`、`upgrade.go`、新的 `check.go` | 三个操作、`Upgrade.report`（3.13） |
 | `wiki/adapter/mcp/tools.go`、新的 `upgrade.go`、`upgrade_projection.go`、`testdata/tools.json` | 两个工具与投影（3.14） |
 | `linking/app/lint_rule_ports.go`、`lint_rules.go`；`bootstrap/wiki_lint.go` | 第二遍另成一项（3.8） |
-| `page/upgrades.go`、`page/module.go`；`page/adapter/postgres/queries/upgrade.sql`、`upgrade.go` | 闸门的读、模块根导出 `ReservedKeys`（3.9） |
+| `page/upgrades.go`（`ReservedKeys` 在 `:42`；`page/module.go` 不改）、`page/app/upgrades.go`；`page/adapter/postgres/queries/upgrade.sql`、`upgrade.go` | 闸门的读、模块根导出 `ReservedKeys`（3.9） |
 | `page/adapter/mcp/instructions.go`、`page/adapter/mcp/tools.go`、`linking/adapter/mcp/tools.go`、`platform/httpserver/mcpserver/tool.go`、`tools_test.go` | 说明的两行、"server update"、`destructiveHint` 与它的单元一格（3.14） |
 | `api/modules/wiki.yaml`、`api/openapi.yaml`、`api/modules/events.yaml`、`api/mcp/tools.json` | 契约（3.13、3.14） |
 | `bootstrap/wire.go`、`bootstrap/wiki_upgrade.go` | 接线（3.11） |
-| 新的 `bootstrap/upgrade_check_test.go`、`upgrade_submit_test.go`、`upgrade_submit_interleavings_test.go`、`upgrade_tools_matrix_test.go`、`upgrade_check_cost_test.go`；`upgrade_permission_matrix_test.go`、`upgrade_tool_codes_test.go`、`permission_matrix_mcp_test.go`、`mcp_tools_test.go`、`upgrade_fixtures_test.go`、`wiki_lint_cost_fixture_test.go`（页数做成参数） | 测试（第 7 节）；另配的应用（7.2 的"名额与期限"）的帮手随 6.2 第 5 个提交加（第 8 条先用它）；`wiring` 加 `submitTimeout`（第 6 个提交） |
+| 新的 `bootstrap/upgrade_check_test.go`、`upgrade_submit_test.go`（`TestUpgradeSubmit` 与交错的 `TestUpgradeSubmitInterleavings` 都在这里，没有另开 `upgrade_submit_interleavings_test.go`，审查 P2S2A-N3）、`upgrade_tools_matrix_test.go`、`upgrade_check_cost_test.go`；`upgrade_permission_matrix_test.go`、`upgrade_tool_codes_test.go`、`permission_matrix_mcp_test.go`、`permission_matrix_coverage_test.go`（`/upgrade/check/{rule}`）、`mcp_tools_test.go`、`mcp_reads_test.go`（`validToolArguments`）、`upgrade_interleavings_test.go`、`wiki_lint_cost_fixture_test.go`（页数做成参数）；`upgrade_fixtures_test.go` 不改 | 测试（第 7 节）；另配的应用（7.2 的"名额与期限"）的帮手随 6.2 第 5 个提交加（第 8 条先用它）；`wiring` 加 `submitTimeout`（第 6 个提交） |
 | `page/adapter/postgres/upgrade_cost_test.go`、`rollback_cost_test.go` | 闸门的读的计划；判计划的帮手认 `changesets`（3.9、7.1） |
 | `Makefile`、`.github/workflows/ci.yml`、`docs/v0.1/claude_to_codex/06-environment.md` | 第八份（6.2 第 1 个提交）；检查的守卫的一行（7.1） |
-| `W/…`（4.2）、`e2e/…`（第 5 节） | 随服务端的部分 |
+| `W/…`（4.2）、`e2e/…`（第 5 节） | 随服务端的部分；e2e 的 LW8（`e2e/stories/wiki/lw8-health.spec.ts`）的工具数随工具表改（3.14） |
 
 ### 3.8 S2：lint 与 `Runs`
 
@@ -649,7 +649,7 @@ type RuleQuery struct {
 }
 ```
 
-linking 的 `lintQuery`（`lint_rules.go:43-71`）：`AreaWantedByPage && !WantedByPage`、`WantedByPage` 而规则既不是空也不是 `wanted` 时答 `errLintQuery`；摘要的计划带 `byPage`（今天 `:44-46` 拒它）；`Prepare`（`:120-122`）只在 `plan.area && scope.mode == LLM` 时跑第二遍。组合根的 `wikiRules`（`bootstrap/wiki_lint.go:142`）多抄一项。发起（`wiki/app/start_upgrade.go:258`）两项都设，行为不变（`TestUpgradeStart` 与 P1 的第二遍的测试照旧过）。测试：`linking/app` 的 `TestTheWantedCountsByPage` 加"摘要带按页的数、不跑第二遍""`AreaWantedByPage` 单独答 `errLintQuery`"两格。
+linking 的 `lintQuery`（`lint_rules.go:43-71`）：`AreaWantedByPage && !WantedByPage`、`AreaWantedByPage` 而没有规则（摘要不跑第二遍，不拒就静静丢掉它；审查 P2S2A-N2，修复一轮）、`WantedByPage` 而规则既不是空也不是 `wanted` 时答 `errLintQuery`；摘要的计划带 `byPage`（今天 `:44-46` 拒它）；`Prepare`（`:120-122`）只在 `plan.area && scope.mode == LLM` 时跑第二遍。组合根的 `wikiRules`（`bootstrap/wiki_lint.go:142`）多抄一项。发起（`wiki/app/start_upgrade.go:258`）两项都设，行为不变（`TestUpgradeStart` 与 P1 的第二遍的测试照旧过）。测试：`linking/app` 的 `TestTheWantedCountsByPage` 加"摘要带按页的数、不跑第二遍""`AreaWantedByPage` 单独答 `errLintQuery`"两格；修复一轮另加"摘要带 `AreaWantedByPage` 答 `errLintQuery`"一格。
 
 **`prepareIn` 交回它读到的输入**（`wiki/app/lint.go:239-298`）：签名改为 `prepareIn(ctx, scope, query) (PreparedRules, RunStats, ReadInput, error)`，交回 `input`（全部活节点 `Nodes` 与区里的 `SourceIDs`，已是副本，`:279-283`）；`computeIn` 与发起忽略它，检查用它（闸门 3 与报告的计数）。
 
@@ -726,6 +726,7 @@ SELECT count(*)::integer FROM changesets WHERE upgrade_id = sqlc.arg(upgrade_id)
 - 不过的前五个与计数在同一遍里（初稿另有一条 `UpgradeNotPreserved`，闸门 7 不过时再走一遍全部基线行，审查 B 实测十万行另 212–241 毫秒；照 B 的可选建议并进来，失败的情形不慢一倍）。`array_agg … FILTER` 只收不过的行，通常是空的；但它的 `ORDER BY b.node_id` 让 PostgreSQL 16 起的预排序聚合先把这次升级的全部基线行按 `node_id` 排好，闸门过与不过都付这一笔（审查 B 在修订核对里实测，十万行：六格里五格是 `Aggregate ← Sort ← Nested Loop`，按 `upgrade_nodes_pkey` 有序读的那一格不排）。排序只作用于这次升级的行，计划仍只经键；`UpgradePreserved` 247–316 毫秒（并进之前 217–261 毫秒），三条读在一个快照里 312–343 毫秒（之前 271–283 毫秒）；闸门 7 不过时仍只走一遍，比两遍（约 0.44 秒）省（审查 P2B-N5，只改数，不在 Go 里排序）。
 - 审查 B 在设计审查里实测（并进之前；十万行基线，另九本各五万页与它们的升级；这次升级 1,000 个、别的升级各 1,000 个、普通的 10 万个变更集，另一个变体 200 万个活的变更集；三种统计 × 两种计划）：`UpgradeGateBaseline` 28–50 毫秒，`UpgradePreserved` 的两次十万个 `LATERAL` 217–261 毫秒，`UpgradeChangesets` 0–3 毫秒；计划都只经键。初稿的 `UpgradeChangesets` 带 `deleted_at IS NULL`，从未分析时两种计划都是 `BitmapAnd`（`changesets_upgrade_id_idx` 与没有索引条件的 `changesets_notebook_id_created_by_id_created_at_id_idx … WHERE deleted_at IS NULL`，`00037_page_changesets_log.sql:11-12`），把全库活的变更集读进位图；去掉之后只经 `changesets_upgrade_id_idx`。
 - `Preserved` 的 `Nodes`、`Pages` 是现读的行数，闸门 7 的分母是 wiki 行的 `baseline_nodes`、`baseline_pages`（3.10）。
+- `Changesets` 数的是这次升级写下、历史里还留着的变更集：拖过回收站保留期（`jobs.purge_retention`，默认 60 天、至少 24 小时）的升级，其中内容已被清掉的（`PurgeTrimmedChangesets` 删 `trimmed`、条目与版本都已清掉的）不再计入；`DropEmptyChangeset` 删的是单元在自己的事务里建了又没写下东西、从没提交过的变更集，不影响它。这只是报告里的一个数、不是闸门，与审阅的人在历史里能看到的一致（审查 B 的未核实的怀疑，修复一轮查代码、B 核过，3.20）。
 - **测试**（`page/adapter/postgres/upgrade_test.go`）：`TestTheUpgradeGateReads`（基线行带 `parent_id` 与 `wanted`、附件没有 `wanted`；保全：全在、删一个基线附件、以 SQL 改一页的正文而账本不变、改账本而正文不变、保护行不算，前五个按 id；变更集的数只数这次升级的、不数别的升级的）；`page` 模块根的 `TestTheUpgradeRoots`（根下的 `AGENTS` 是页、正文只有 frontmatter、只有 BOM 与空白、是附件、没有；来源根是活页、已删、是另一本笔记本的页）。
 
 ### 3.10 S2：闸门与报告的判定
@@ -811,7 +812,7 @@ type UpgradeReport struct {
 type ReportRule struct {
 	Rule  LintRule
 	Count LintCount
-	Items []LintItem // Cursor "", at most five
+	Items []LintItem // no cursor nor path, at most five
 }
 
 // ReportOf is the report a submission keeps of c.
@@ -872,14 +873,14 @@ func JudgeUpgrade(r UpgradeRead) UpgradeCheck
 | `frontmatter` | `invalid_frontmatter`、`missing_type`、`missing_summary` 三条的数都是 0、都不封顶 | 三条各一 |
 | `sources` | `invalid_sources` 的数是 0 | 一个 |
 | `links` | 对 `WantedByPage` 里每一页：有基线行（页）且现在的数大于 `Baseline.Wanted` 的算"更差"；没有更差的就过；`PagesWorse` 是数，`NodeIDs` 是按 id 的前五个 | 抵消（一页多一个待建、另一页少一个：不过，第 180 条）；一页的待建到 10,000（一页的链接数的上限，`linking/domain/facts.go:114`，与 `upgrade_nodes_wanted_check` 同界，所以不封顶，第 188 条）：基线 10,000、现在 10,000 过，基线 3、现在 4 不过；新建页的待建不算；基线页不在表里（现在 0）过；从发起时的 `raw` 移出、基线 `wanted` 是第二遍记下的 1、现在 1：过 |
-| `preserved` | `Preserved.Nodes == Upgrade.BaselineNodes && Preserved.Pages == Upgrade.BaselinePages && NodesKept == Nodes && PagesKept == Pages`；`NodeIDs` 是 `NotKept` | 删了一个（缺陷之外到不了）；一页的正文不是账本的；现读的行数少一行（分母取 wiki 行） |
+| `preserved` | `Preserved.Nodes == Upgrade.BaselineNodes && Preserved.Pages == Upgrade.BaselinePages && NodesKept == Nodes && PagesKept == Pages`；`NodeIDs` 是 `NotKept` | 删了一页（缺陷之外到不了）；一个基线附件保留着（过）、已删、它的基线行没了（经 `withAttachment` 带一个基线附件，后两格各单独不过；审查 P2S2A-M2，修复一轮）；一页的正文不是账本的；现读的行数少一行（分母取 wiki 行） |
 | `index` | `Lint.StalePages == 0` | 一页过时 |
 
-`Passed` 是八格都过。计数：`Sources` 是 `len(Area)`；`MovedIntoSources` 是现在在 `Area` 里的基线节点、减去发起时就在提议的根之下的（以 `Baseline` 的 `ParentID` 在 Go 里重建发起时的树，提议的根没有基线行即发起时补写的 `raw`，发起时它之下没有节点，审查 B-N8）；`WikiPages` 是 `Nodes` 里不在 `Area` 里的页、除去提议的根与 `AgentsID`；`NewPages` 是 `Nodes` 里没有基线行的页（2.1 第 6 条）；`WantedBefore` 是 wiki 行的 `baseline_wanted` 与是否封顶；`WantedNow` 是 `wanted` 规则的数。计数各有一格：`raw` 原有、下面的两页发起时就在（不算移进）、agent 再移进一页（算一）；补写的 `raw`，移进两页（算二）。
+`Passed` 是八格都过。计数：`Sources` 是 `len(Area)`；`MovedIntoSources` 是现在在 `Area` 里的基线节点、减去发起时就在提议的根之下的（以 `Baseline` 的 `ParentID` 在 Go 里重建发起时的树，提议的根没有基线行即发起时补写的 `raw`，发起时它之下没有节点，审查 B-N8）；`WikiPages` 是 `Nodes` 里不在 `Area` 里的页、除去提议的根与 `AgentsID`；`NewPages` 是 `Nodes` 里没有基线行的页（2.1 第 6 条）；`WantedBefore` 是 wiki 行的 `baseline_wanted` 与是否封顶；`WantedNow` 是 `wanted` 规则的数。计数各有一格（S2 拆成 `TestJudgeUpgradesCounts`）：`raw` 原有、下面的两页发起时就在（不算移进）、agent 再移进一页（算一）；补写的 `raw`，移进两页（算二）；`wanted` 的数封顶（`{10000, true}`）时 `WantedNow` 照样封顶（审查 P2S2C-M2，修复一轮）。
 
-**报告的大小**（第 263 条）：`ReportOf` 去掉游标之后，最坏是三条带目标的规则（`wanted`、`ambiguous`、`invalid_sources`）各 5 项、目标各 256 字节而全是要转义的控制字符（`jsonb` 的文本把它们写成 `\u00XX`，至多 6 倍，约 1.5 KB），其余五条各 5 项（`item_key` 至多 140 字节加 id），加闸门与计数，约 33 KB，在 `notebook_upgrades_report_check` 的 65,536 字节之内。用例与适配器不另量（2.1 第 16 条）：过了界只能是缺陷，表的检查拒绝、答 500。`wiki/adapter/postgres` 的 `TestTheWorstReportFits` 以这个最坏的形状编码、经真库写进去、读回来相等，并打出编码之后的字节数（S2 的记录写下它）。
+**报告的大小**（第 263 条）：`ReportOf` 去掉游标与条目的 `path`（REST 的条目本来就没有它，3.13）之后，最坏是三条带目标的规则（`wanted`、`ambiguous`、`invalid_sources`）各 5 项、目标各 256 字节而全是要转义的控制字符（`jsonb` 的文本把它们写成 `\u00XX`，至多 6 倍，约 1.5 KB），其余五条各 5 项（`item_key` 至多 140 字节加 id），加闸门与计数，约 33 KB，在 `notebook_upgrades_report_check` 的 65,536 字节之内。用例与适配器不另量（2.1 第 16 条）：过了界只能是缺陷，表的检查拒绝、答 500。`wiki/adapter/postgres` 的 `TestTheWorstReportFits` 以这个最坏的形状编码、经真库写进去、读回来相等，并打出编码之后的字节数（S2 实测 35,125 字节；修复一轮把它的 `wanted_now` 也封顶之后 35,128 字节，后四轮不变）。
 
-**测试**：`TestJudgeUpgrade`（上表）、`TestReportOf`（游标都去掉、每条至多五项、计数与闸门照抄、`Paths` 不进）、`TestTheGatesFailInTheirOrder`（`Failed()` 的次序）。
+**测试**：`TestJudgeUpgrade`（上表）、`TestJudgeUpgradesCounts`（计数；七个值互不相同的一格在修复第三轮加，审查 P2S2C-M5）、`TestReportOf`（游标与条目的 `path` 都去掉、每条至多五项、计数与闸门照抄、`Paths` 不进；修复第四轮改成整个结构体与写死的 `UpgradeReport` 比，计数与闸门的值互不相同，审查 P2S2C-M6）、`TestTheGatesFailInTheirOrder`（`Failed()` 的次序）。
 
 ### 3.11 S2：检查与条目
 
@@ -966,15 +967,15 @@ func (m *Module) SubmitUpgrade(ctx context.Context, id uuid.UUID) (UpgradeView, 
    defer cancel()
    ```
 
-   之后都用 `detached`。接管的安全只要求第二段在 `submitted_at + SubmitTimeout` 之前结束，取较早的那一个不破坏它。默认配置（`request_timeout: 15s`，`LintTimeout` 7.5 s，`SubmitTimeout` 17.5 s）下 REST 的第二段到请求的期限为止，第 4 步 `Do` 的预算 `min(7.5 s, (15 s − e)/2) ≈ 7.47 s`（`e` 是请求开始到调用 `Do` 的时长），与 `LintTimeout` 几乎相同，第二个事务还剩约 7.5 秒；MCP 的请求期限另加 `BodyReadTimeout`（`/mcp` 带请求体上限，`platform/httpserver/api.go:297-310`），第二段到 `submitted_at + SubmitTimeout` 为止。`at` 由用例的时钟读，ctx 的期限按运行的时钟走，生产里两者是同一个；用例的测试的假时钟要以"现在"起算（审查 P2A-N5）。
+   之后都用 `detached`。接管的安全只要求第二段在 `submitted_at + SubmitTimeout` 之前结束，取较早的那一个不破坏它。默认配置（`request_timeout: 15s`，`LintTimeout` 7.5 s，`SubmitTimeout` 17.5 s）下两个入口的第二段都到请求的期限为止，第 4 步 `Do` 的预算 `min(7.5 s, (15 s − e)/2) ≈ 7.47 s`（`e` 是请求开始到调用 `Do` 的时长），与 `LintTimeout` 几乎相同，第二个事务还剩约 7.5 秒。MCP 的工具调用的期限是读完请求体之后的 `RequestTimeout`（`platform/httpserver/mcpserver/call.go:46-53`；`/mcp` 路由的期限另加 `BodyReadTimeout`，`platform/httpserver/api.go:297-310`，总晚于它），`at` 又在读完请求体之后，所以 `request_timeout` 不超过 20 秒（默认配置在内）时两个入口都是请求的期限先到；超过 20 秒时 `SubmitTimeout` 恒为 20 秒，第二段到 `submitted_at + SubmitTimeout` 为止；两种情形接管都安全（第 273 条，审查 P2S2A-M4、P2S2C-N1；初稿写"MCP 的请求期限另加 `BodyReadTimeout`，第二段到 `submitted_at + SubmitTimeout` 为止"，不对）。`at` 由用例的时钟读，ctx 的期限按运行的时钟走，生产里两者是同一个；用例的测试的假时钟要以"现在"起算（审查 P2A-N5）。
 4. `runs.Do(detached, RunKey{…检查的范围…, Kind: LintUpgradeSubmit, Scope: submission}, worker)`：worker 在快照里读 `Current`，要它是这一次升级、`reviewing`、`SubmissionID == submission`、没有报告，否则 `ErrUpgradeState`；之后照 `checkIn`（3.11）。
 5. 第二个事务（`detached`）：工作区 `FOR SHARE` → 笔记本 `FOR NO KEY UPDATE` → `Rows.Current(id)`；不是这一次提交（升级的 id、`reviewing`、`SubmissionID`、没有报告，任一不合）：什么也不写，`outcome = superseded`，答 409 `wiki.upgrade_state`。否则：
    - 第 4 步交回错误（503 或别的）：`unsubmit`（`States.SetState(…, upgrading, …)`、`Rows.Unsubmit(up.ID, submission, …)`、`Publish`），答那个错误，`outcome = failed`。
    - `StalePages > 0`：`unsubmit`，答 409 `wiki.upgrade_stale_index`，`outcome = stale`。
    - `!Passed`：`unsubmit`，答 409 `UpgradeNotReady(check.Gates.Failed())`（码 `wiki.upgrade_not_ready`，`detail` 列出不过的闸门的键，不带报告，第 182 条），`outcome = not_ready`。
    - 过：`Rows.KeepReport(up.ID, submission, domain.ReportOf(check), actor, at2)`（`at2` 是这个事务读的一刻；0 行是缺陷），`Publish`（`From == To`，第 216 条），`outcome = stored`。
-   - 写完之后、`COMMIT` 之前：交付之前的判定（同第 1、2 步的 404、403，同检查的"交付之前的授权"），在这个事务里、以 `detached` 读（`Authorize` 每次读库，`access/app/authorizer.go:27-48`）。它只决定答复：拒绝时答它（404 或 403），写下的照样提交、报告照样存下；不拒时答上面的结果。初稿把它放在提交之后，那时 `detached` 可能已到期、REST 的请求也已到期，判定本身失败，存下了报告却答 500（审查 P2A-I1）。
-6. 第 5 步的 `WithinTx` 交回包着 `context.DeadlineExceeded` 的错误、而 `detached` 已到期：记一行 warn（3.16），答 503 `server_busy`（`shared.ServerBusy`，`Retry-After: 1`）。它是 `ProblemError`，请求的期限过了平台也照样写出（`platform/httpserver/apierrors.go:266-268`）；REST 与 MCP 答同样的码（13.4 第 3 条）。客户端已断开（请求的 ctx 被取消）时没有人收答复，照平台的 `FaultGone`。行留在"审阅中、没有报告"，过了 `submitted_at + SubmitTimeout` 任何管理员与发起人的 agent 都可以再提交（第 2 步认这种状态）。`WithinTx` 交回 nil 就是已提交：`COMMIT` 脱开取消（`tx.go:199-203`），落在期限之后照样答它的结果（判定已在 `COMMIT` 之前做过）；这时若已有人接管，接管的第一个事务在笔记本行上等这个 `COMMIT`，之后看到报告、答 `wiki.upgrade_state`。`COMMIT` 自己在 `commitTimeout` 内没有返回时（`tx.go:176-178`），它可能其实成功了：这时答 503 而行可能已存下报告，下一次提交读到报告、答 `wiki.upgrade_state`，不出错，只是 warn 那一行的"行留着"不一定成立（审查 A 的未核实的怀疑，不另处理）。
+   - 写完之后、`COMMIT` 之前：交付之前的判定（同第 1、2 步的 404、403，同检查的"交付之前的授权"），在这个事务里、以 `detached` 读（`Authorize` 每次读库，`access/app/authorizer.go:27-48`）。它只决定答复：拒绝时答它（404 或 403），写下的照样提交、报告照样存下；不拒时答上面的结果。初稿把它放在提交之后，那时 `detached` 可能已到期、REST 的请求也已到期，判定本身失败，存下了报告却答 500（审查 P2A-I1）。每种结局（含 `superseded`）都照这个判定、照 13.1 第 4 条的码序，拒绝时答它；这个事务里锁不到笔记本（已删）时记 `superseded`、什么也不写，答 `notebook.not_found`、不再判（同第一个事务的锁会答的）。退回经组合根的 `wikiUpgradeStates.SetState`，它原来只认 `reviewing`、`rolling_back`，加 `upgrading`（S2 的实施，3.20）。
+6. 第 5 步的 `WithinTx` 交回包着 `context.DeadlineExceeded` 的错误、而 `detached` 已到期：记一行 warn（3.16），答 503 `server_busy`（`shared.ServerBusy`；`Retry-After` 是到能接管为止的秒数 `max(1 s, ceil(at + SubmitTimeout − now))`，第 274 条：两个入口在默认配置下都在请求的期限答，这一刻离能接管还有约 2.5 秒，初稿的 1 秒让重试落进"正在计算"的 409，审查 P2S2A-N1；契约 `submitUpgrade` 的说明同改；lint 的名额满时的 503 照旧 1 秒）。它是 `ProblemError`，请求的期限过了平台也照样写出（`platform/httpserver/apierrors.go:266-268`）；REST 与 MCP 答同样的码（13.4 第 3 条）。客户端已断开（请求的 ctx 被取消）时没有人收答复，照平台的 `FaultGone`。行留在"审阅中、没有报告"，过了 `submitted_at + SubmitTimeout` 任何管理员与发起人的 agent 都可以再提交（第 2 步认这种状态）。`WithinTx` 交回 nil 就是已提交：`COMMIT` 脱开取消（`tx.go:199-203`），落在期限之后照样答它的结果（判定已在 `COMMIT` 之前做过）；这时若已有人接管，接管的第一个事务在笔记本行上等这个 `COMMIT`，之后看到报告、答 `wiki.upgrade_state`。`COMMIT` 自己在 `commitTimeout` 内没有返回时（`tx.go:176-178`），它可能其实成功了：这时答 503 而行可能已存下报告，下一次提交读到报告、答 `wiki.upgrade_state`，不出错，只是 warn 那一行的"行留着"不一定成立（审查 A 的未核实的怀疑，不另处理）。
 7. 第二个事务提交之后：记一行 info（3.16，带 `outcome`，与第 5 步的判定的结果无关）；答第 5 步定下的答复：200 `Upgrade`（MCP 答 `{state, submitted_at}`），或判定的拒绝，或领域的 409、503。
 
 `UpgradeRows`（`upgrade_ports.go:110-116`）加：
@@ -1037,7 +1038,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 `detail` 写"These gates did not pass: links, preserved. The upgrade is upgrading again: check it, then submit it again."（只有键，13.1 第 10 条的精神：不带标题与路径）。
 
-**测试**（`wiki/app/submit_upgrade_test.go`，假的端口、事务管理器与授权；假的时钟以 `time.Now()` 起算）：`TestSubmitUpgradeAnswersInOrder`（404、403、`upgrade_state`（没有、回滚中、有报告）、"正在计算"、接管（恰在 `submitted_at + SubmitTimeout` 时接管、早一微秒答"正在计算"）、503、`stale_index`、`not_ready`，每格断言写了什么、发了几次 `mode`）；`TestTheSubmissionDetaches`（请求的 ctx 在计算中取消，第二个事务照样写下报告；期限是 `min(T + SubmitTimeout, 请求的期限)`：请求的期限较晚时 worker 看到的 ctx 的期限恰是 `T + SubmitTimeout`，较早时恰是请求的期限；`T` 是截到微秒的）；`TestTheSecondTransactionWritesOnlyItsOwn`（读到别的 `SubmissionID`、`rolling_back`、已有报告，各什么也不写、答 409）；`TestTheSubmissionsDeadline`（第 6 步：`WithinTx` 交回包着期限的错误而 `detached` 到期，请求的 ctx 活着与已到期两格都答 503 并记 warn；晚到的 `COMMIT`：`fn` 在期限之前返回、`COMMIT` 在期限之后返回 nil，假的授权在它的 ctx 到期时答错误，答 200，钉住判定在 `COMMIT` 之前；领域的 409 在期限之后照答）；`TestTheSubmitterIsDecidedBeforeTheAnswer`（第 5 步：报告写下了，第二个事务里的判定答 `forbidden`，提交照样、报告留着、info 一行 `outcome = stored`，答 403）。
+**测试**（`wiki/app/submit_upgrade_test.go`，假的端口、事务管理器与授权；假的时钟以 `time.Now()` 起算）：`TestSubmitUpgradeAnswersInOrder`（404、403、`upgrade_state`（没有、回滚中、有报告）、"正在计算"、接管（恰在 `submitted_at + SubmitTimeout` 时接管、早一微秒答"正在计算"）、503、`stale_index`、`not_ready`，每格断言写了什么、发了几次 `mode`）；`TestTheSubmissionDetaches`（请求的 ctx 在计算中取消，第二个事务照样写下报告；期限是 `min(T + SubmitTimeout, 请求的期限)`：请求的期限较晚时 worker 看到的 ctx 的期限恰是 `T + SubmitTimeout`，较早时恰是请求的期限；`T` 是截到微秒的）；`TestTheSecondTransactionWritesOnlyItsOwn`（读到别的 `SubmissionID`、`rolling_back`、已有报告，各什么也不写、答 409）；`TestTheSubmissionsDeadline`（第 6 步：`WithinTx` 交回包着期限的错误而 `detached` 到期，请求的 ctx 活着与已到期两格都答 503 并记 warn；晚到的 `COMMIT`：`fn` 在期限之前返回、`COMMIT` 在期限之后返回 nil，假的授权在它的 ctx 到期时答错误，答 200，钉住判定在 `COMMIT` 之前；领域的 409 在期限之后照答）；`TestTheSubmitterIsDecidedBeforeTheAnswer`（第 5 步：报告写下了，第二个事务里的判定答 `forbidden`，提交照样、报告留着、info 一行 `outcome = stored`，答 403）。S2 另有：`TestSubmitUpgradeAnswersInOrder` 的"只有 `AGENTS` 不过"一格（变异 o1），修复一轮在它末尾加每格只让一道闸门不过的七格（`agents`、`source_root`、`reserved_titles`、`frontmatter`、`sources`、`links`、`preserved`，各答 `wiki.upgrade_not_ready`、`detail` 恰列出那一道、写下退回的三步；`index` 由 stale 一格盖住，那一格断言 `stale_index` 的整句；审查 P2S2A-M1、P2S2C-N4）；新的 `TestTheSubmissionsSnapshotIsItsOwn`：第一个事务之后、计算的快照之前经 `duringRun` 钩子把行改成 `rolling_back`、别的 `SubmissionID` 或已有报告，各答 `wiki.upgrade_state`，第二个事务什么也不写、`outcome = superseded`，trace 里没有闸门的读（审查 P2S2A-M3）；`TestTheSubmissionsDeadline` 加时钟前进的几格，钉住期限的 503 的秒数（第 274 条）。
 
 ### 3.13 S2：契约
 
@@ -1124,7 +1125,8 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
         that order. Once the check is done, a submission taken over or an
         upgrade abandoned meanwhile is wiki.upgrade_state, before the
         check's own answer; the second step past its deadline, which is no
-        later than the request's, is server_busy, with Retry-After: 1. Its
+        later than the request's, is server_busy, its Retry-After the
+        seconds until another submission may take it over, at least 1. Its
         admins are asked again before the answer, as the report is kept: a
         caller no longer one is notebook.not_found or forbidden then, the
         report kept all the same. The answer is the upgrade, reviewing,
@@ -1280,7 +1282,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 `events.yaml` 的 `mode` 的说明（`:48-51`）已写"submission"，不改。`common.yaml` 不改。
 
-**HTTP 适配器**：`handler.go:21-26` 的 `UpgradeUseCases` 加 `CheckUpgrade`、`SubmitUpgrade`；`check.go` 的 `CheckUpgrade`（`UpgradeCheck` 的投影，规则照 `lintSummary`，`projection.go:21`）、`ListUpgradeCheckItems`（照 `ListLintItems`，`handler.go:65-87`）、`SubmitUpgrade`；`upgradeOf`（`upgrade.go:55`）投影 `report`（条目照 `lintItem`，`projection.go:80`，去掉游标）。每个声明的码在 `wiki/adapter/http` 的测试里经 `apitest.CheckResponse` 答出（假的用例），一份存下的报告（八条规则各五项、三道闸门带节点）经它核对（00 号文档第 9 节"契约"）。
+**HTTP 适配器**：`handler.go:21-26` 的 `UpgradeUseCases` 加 `CheckUpgrade`、`SubmitUpgrade`；`check.go` 的 `CheckUpgrade`（`UpgradeCheck` 的投影，规则照 `lintSummary`，`projection.go:21`）、`ListUpgradeCheckItems`（照 `ListLintItems`，`handler.go:65-87`）、`SubmitUpgrade`；`upgradeOf`（`upgrade.go:55`）投影 `report`（条目照 `lintItem`，`projection.go:80`，去掉游标；REST 的条目本来就没有 `path`，它只在 MCP 的投影里，`ReportOf` 也去掉它：存下的路径会随改名、移动与回滚变旧，带上它最坏的报告会过 64 KiB，S2 的实施，3.10、3.20）。每个声明的码在 `wiki/adapter/http` 的测试里经 `apitest.CheckResponse` 答出（假的用例），一份存下的报告（八条规则各五项、三道闸门带节点）经它核对（00 号文档第 9 节"契约"）。
 
 ### 3.14 S2：MCP 的两个工具、说明与措辞
 
@@ -1336,12 +1338,12 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
       "name": "upgrade_submit",
       "title": "Submit the notebook's upgrade",
       "description": "Submit this notebook's upgrade for its admins' review: it freezes the notebook for everyone, your writes too, and checks it again from that moment; once every gate passes it stays in review with its report kept, an admin approves or rejects it in the web. Otherwise it is upgrading again, refused with wiki.upgrade_not_ready (detail names the gates) or wiki.upgrade_stale_index. Run upgrade_verify first. wiki.upgrade_state whose detail says a previous submission is still being checked: wait, then upgrade_verify.",
-      "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false},
+      "inputSchema": {"type": "object", "additionalProperties": false},
       "annotations": {"destructiveHint": false, "idempotentHint": false, "openWorldHint": false, "readOnlyHint": false}
     }
 ```
 
-账户入口的两项另有 `notebook`（第一个属性、`required: ["notebook"]`，`mcpserver/schema.go:49-56` 自动加）。描述是 Go 的 `upgradeVerifyDescription`、`upgradeSubmitDescription`（`wiki/adapter/mcp/tools.go:31` 旁），`tools.json` 由 `TestTheToolListsAreTheContract`（`bootstrap/mcp_tools_test.go:156-160`）逐项对照。
+笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`：SDK 对空结构体就这样编码，账户入口的 `notebooks` 自 M9 就是这样（S2 的实施；初稿写 `"properties": {}`）。账户入口的两项另有 `notebook`（第一个属性、`required: ["notebook"]`，`mcpserver/schema.go:49-56` 自动加）。描述是 Go 的 `upgradeVerifyDescription`、`upgradeSubmitDescription`（`wiki/adapter/mcp/tools.go:31` 旁），`tools.json` 由 `TestTheToolListsAreTheContract`（`bootstrap/mcp_tools_test.go:156-160`）逐项对照。
 
 **内置的说明**（`page/adapter/mcp/instructions.go:51-52` 之后，`pending_sources` 一行下）：
 
@@ -1354,7 +1356,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 **"server update"**（00 号文档 4.13）：`page/adapter/mcp/tools.go:271-272` 与 `:281-282` 的"an upgrade"改为"a server update"，`linking/adapter/mcp/tools.go:63-64` 的"after an upgrade"改为"after a server update"，`tools.json` 的六处（`grep` 的 `:205`、`:782`，`search` 的 `:409`、`:1048`，`index` 的 `:242`、`:823`）随之改；`api/modules/events.yaml:35` 的"after an upgrade"改为"after a server update"（`make gen` 之后生成的类型的注释随之变）。
 
-**测试的计数**：`TestTheWikiToolsContract`（`bootstrap/mcp_tools_test.go:344-409`）的 16、18（`:347-353`）改为 18、20，名字（`:355`）照旧只核对 `lint`、`pending_sources`，另加一段核对两个新工具的属性、`required` 与注解（`upgrade_submit` 在笔记本入口没有属性、在账户入口只有 `notebook`）；`wiki/adapter/mcp/tools_test.go:35` 的 2 改为 4，`testdata/tools.json` 加两项；`TestTheBuiltInInstructionsNameEveryTool`（`:193-205`）照旧要每个工具有一行。
+**测试的计数**：`TestTheWikiToolsContract`（`bootstrap/mcp_tools_test.go:344-409`）的 16、18（`:347-353`）改为 18、20，名字（`:355`）照旧只核对 `lint`、`pending_sources`，另加一段核对两个新工具的属性、`required` 与注解（`upgrade_submit` 在笔记本入口没有属性、在账户入口只有 `notebook`）；`wiki/adapter/mcp/tools_test.go:35` 的 2 改为 4，`testdata/tools.json` 加两项；`TestTheBuiltInInstructionsNameEveryTool`（`:193-205`）照旧要每个工具有一行。工具表的长度另驱动两处，同一个提交改：第三份的 `TestToolStringsDoNotAnswerInternalErrors`、`TestToolStringsCatchASchemaRefusal` 要每个工具一组能到用例的参数（`bootstrap/mcp_reads_test.go` 的 `validToolArguments` 加 `upgrade_verify`、`upgrade_submit`），e2e 的 LW8 断言两个入口的工具数（16、18 → 18、20）（S2 的实施，第一轮门禁才查出）。
 
 ### 3.15 S2：矩阵的行与码
 
@@ -1368,7 +1370,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 管理员的 200 一格以 `check` 断言答复的形状（八个闸门、八条规则）；`submitUpgrade` 的 409 一格之后断言升级回到 `upgrading`、没有提交的列（`after`）。覆盖的检查 `coveredMatrixRows()`（`bootstrap/permission_matrix_coverage_test.go:158`）已读 `upgradeMatrixRows()`，不改。
 
-**MCP**（新的 `TestUpgradeToolsMatrix`，`bootstrap/upgrade_tools_matrix_test.go`，第八份）：`upgradeMCPRow{mcpRow; prepare}` 与 `upgradeMCPRows()`；`TestThePermissionMatrixCoversEveryTool`（`bootstrap/permission_matrix_mcp_test.go:444-448`）改读 `coveredMCPRows()`（`mcpRows()` 加 `upgradeMCPRows()` 的 `mcpRow`）。跑法照 `TestThePermissionMatrixOverMCP`（`:559-646`：列 × 两个入口，笔记本入口里看不到的列是 `notebook.not_found`，写的行每格一个库的副本），只多一步 `prepare`。
+**MCP**（新的 `TestUpgradeToolsMatrix`，`bootstrap/upgrade_tools_matrix_test.go`，第八份）：`upgradeMCPRow{mcpRow; prepare}` 与 `upgradeMCPRows()`；`TestThePermissionMatrixCoversEveryTool`（`bootstrap/permission_matrix_mcp_test.go:444-448`）改读 `coveredMCPRows()`（`mcpRows()` 加 `upgradeMCPRows()` 的 `mcpRow`）。跑法照 `TestThePermissionMatrixOverMCP`（`:559-646`：列 × 两个入口，笔记本入口里看不到的列是 `notebook.not_found`，写的行每格一个库的副本），只多一步 `prepare`；读的一行也每格一个库的副本（`prepare` 以 SQL 设这一格的笔记本，并行的格共用一个库会互相踩；S2 的实施），每行照 `r.entries` 只在它的入口跑（同 `:610`；审查 P2S2C-N6，修复一轮）。
 
 | 工具 | 变体 | 管理员 | 看得到而不是管理员 | 看不到 |
 |---|---|---|---|---|
@@ -1394,7 +1396,7 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 
 - 提交：info "upgrade submitted"，在第二个事务提交之后、答复之前，与第二个事务里交付之前的判定的结果无关（S3A-N1 的教训；审查 P2A-I1：初稿把判定放在日志之前，判定一失败、存下了报告的提交就没有这一行）：`workspace_id`、`notebook_id`、`upgrade_id`、`submission_id`、`user_id`、`outcome`（`stored`、`stale`、`not_ready`、`failed`、`superseded`）、`passed`、`failed_gates`（键的数组，没有时为空）、`stale_pages`、`elapsed_ms`（从第一个事务读时钟算起）。warn "upgrade submission timed out"（3.12 第 6 步）：同样的 id、`elapsed_ms`、`timeout_ms`（`detached` 的期限减第一个事务读的时刻，请求的期限较早时是它）。
 - 检查与条目：`Runs` 的"lint computed"/"lint stopped"一行，`query_kind` 是 `upgrade_check`、`upgrade_items` 或 `upgrade_submit`，带 `upgrade_scope`（3.8）。
-- 缺陷：error "upgrade source root is no live page"（3.11）；error "upgrade baseline rows not its counts"（`nodes`、`pages` 现读的与 wiki 行的四个数）。
+- 缺陷：error "upgrade source root is no live page"（3.11）；error "upgrade baseline rows not its counts"（`nodes`、`pages` 现读的与 wiki 行的四个数）。两行经 `ErrorContext` 记：wiki 的 `Logger`（`wiki/app/lint_run_types.go:68`）加这一个方法（`*slog.Logger` 本来就有；S2 的实施）。
 
 ### 3.17 每个操作改后的码
 
@@ -1421,14 +1423,15 @@ func UpgradeNotReady(failed []UpgradeGateKey) error
 - 升级中盲写计进读的界：`TestTheReadsBoundCountsBlindWritesWhileUpgrading`；单元看到的状态与计划时的不同就重新计划：`TestTheBatchPlansAgainOnceTheUpgradeStarted`；g22。
 - `Reached`：`TestThePlanTellsAPageAMoveReached` 的表；g9 与 g11（码不同）、g19–g21（第 265 条的三种）、g23–g25（第 268 条）；字节不变、被到达的写也过守卫：`TestTheUnitJudgesAReachedWriteOfTheBytesAPageHolds`、g23 的后一种、g25；不是基线页照常做完：g26；照批前的链接判：`TestTheBatchJudgesAPageByItsLinksBeforeIt`、g27；标在 `Last`：g9 的 `op`、`TestTheBatchMarksABodysRefusalAtTheLast`。
 - 账本：g4、g10 的账本；`TestTheUnitKeepsTheLedger`。
-- 闸门：`TestJudgeUpgrade` 的每格；整个程序的 `TestUpgradeGates`（7.1）。
-- 快照里的核对：交错第 8 条；`TestTheCheckRefusesAnotherUpgradesSnapshot`。
+- 闸门：`TestJudgeUpgrade` 的每格（闸门 7 的附件三格经 `withAttachment`，在修复一轮加，审查 P2S2A-M2）；整个程序的 `TestUpgradeGates`（7.1）；提交只看 `Passed`：`TestSubmitUpgradeAnswersInOrder` 的每格一道闸门不过的表（修复一轮，审查 P2S2A-M1）。
+- 快照里的核对：交错第 8 条；`TestTheCheckRefusesAnotherUpgradesSnapshot`；提交的那一份：`TestTheSubmissionsSnapshotIsItsOwn`（修复一轮，审查 P2S2A-M3）。
 - 提交的两个事务：交错第 5、6、7、15 条；`TestTheSecondTransactionWritesOnlyItsOwn`。
 - 脱离请求、期限取较早的：`TestUpgradeSubmit` 的"断开"与期限两格；`TestTheSubmissionDetaches`。
 - 键：`TestTheUpgradeKeysJoinOnlyTheirOwn`；交错第 6 条。
 - 交付前的判定：`TestTheCheckAuthorizesBeforeItsAnswer`、`TestTheSubmitterIsDecidedBeforeTheAnswer`；提交的判定在 `COMMIT` 之前：`TestTheSubmissionsDeadline` 的晚到的 `COMMIT`。
 - 报告的大小：`TestTheWorstReportFits`。
-- 闸门的读的计划：`TestTheUpgradeGateReadsPlansAtAnyStatistics`（7.1）；`changesets` 只经 `changesets_upgrade_id_idx`：它的"从未分析"一格与 `TestTheRollbackGuardJudgesThePlans` 的合成的 `BitmapAnd` 一格。
+- 检查与报告的投影与编码（REST 的检查、规则页、报告与带报告的视图，MCP 的检查，存与读，`ReportOf`）不把一个成员写成另一个或常量：各自的测试的夹具每个标量互不相同、闸门排成真假交错的四行，整个答复与写死的期望比（修复第三、四轮，审查 P2S2C-M4–M6；7.1）；组合根把 page 的 `Preserved` 转成 wiki 的那一行：`TestUpgradeGates` 删一个基线附件的一格，四个数里 `nodes_kept` 与别的都不同（修复第五轮，审查 P2S2C-M7）。
+- 闸门的读的计划：`TestTheUpgradeGateReadsPlansAtAnyStatistics`（7.1；`nodes` 只经主键在修复一轮另判，判法本身由 `TestTheGateReadsReadANodeByItsKey` 钉住，审查 P2S2B-M1）；`changesets` 只经 `changesets_upgrade_id_idx`：它的"从未分析"一格与 `TestTheRollbackGuardJudgesThePlans` 的合成的 `BitmapAnd` 一格。
 - 自己的提交在算时页面照实显示、再检查恰读一次；检查的视图从 `data` 推出，检查在飞时卸下又装回也显示结果；同一页的链接再点一次是新的一次进入：4.3 的 vitest。
 
 ### 3.19 S1 的实施对设计的修正
@@ -1463,10 +1466,52 @@ S1 的审查与两轮修复核对见 [S1 的审查记录](reviews/P2-S1-guardrai
   - **只记下、不改历史的**：`90134668` 改了 `Makefile` 与 `ci.yml`，范围只写 `server`，部件该写 `build`、`ci`（P2S1C-N3）。6.1 第 5 条、6.2 第 1、8 条的范围随之写成 `server, build, ci`（6.2 第 1 条另有 `docs`）。
   - **交给后面的**：
     - guards-sources 下次改到它时，照第 269 条的写法提到 40 分钟（审查 B：7763 上作业 16.7–16.9 分钟，时限 30 分钟，约 1.8 倍）。
-    - S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上末行约第 34 分钟开始，卡住时约第 44 分钟打出，离 45 分钟约 1 分钟）。
+    - S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上末行约第 34 分钟开始，卡住时约第 44 分钟打出，离 45 分钟约 1 分钟）。S2 看过：审查 B 估 7763 上末行约第 24.5 分钟开始，卡住时第 34.5 分钟打出，先于 45 分钟，不再提（3.20）。
     - P3/S2 的 playbook 写拆法与只写名字的链接（第 9 节）。
-    - P2/S2 的一个测试提交把 `mcp_test.go:269`、`:272` 等日志的两个 2 秒改成 10 秒（`TestTheMCPCallStopsWhenTheClientGoes` 在本机负载下第三次失败，`heavy.sh` 挡不住；S1 的审查记录"推后"）。
+    - P2/S2 的一个测试提交把 `mcp_test.go:269`、`:272` 等日志的两个 2 秒改成 10 秒（`TestTheMCPCallStopsWhenTheClientGoes` 在本机负载下第三次失败，`heavy.sh` 挡不住；S1 的审查记录"推后"）。S2 做了（`967fdbea`），没有治好：失败时 SDK 已在客户端走后把答复写进断开的连接，"答复没写出"那一行根本不会来；修复一轮照审查 P2S2C-M1 删掉那一条断言，这一条关上（3.20）。
     - M12 的性能移交：第 271 条的数，接在 M9 那一项之后（第 9 节）。
+
+### 3.20 S2 的实施对设计的修正
+
+S2 的审查与修复见 [S2 的审查记录](reviews/P2-S2-gate-check-submit-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里（3.7–3.10、3.12–3.16、3.18、3.19 的"交给后面的"，4.2，第 5 节，6.2，7.1–7.3、7.5，第 9 节）。写了行号的，是实施的头 `c3c35bbc` 的；修复的提交见 10.2。
+
+- **S2，实施时定下的**（实施者的 26 条偏离，括号里是它的号。三位审查者各在自己的范围里判过：A 判第 4、5、11、12、16、22、25 条，B 判第 18、19 条，C 判第 2、7、13、15、20、23、24 条，都对；第 11 条的"总早于"只在 `request_timeout` 不超过 20 秒时成立，由第 273 条写对；第 26 条的根因由审查 P2S2C-M1 查清；其余没有人提出异议）：
+  - 6.2：检查的类型（`domain.UpgradeCheck` 等，`wiki/domain/upgrade_check.go`）随 `RunResult{Lint, Check}` 与 `CloneUpgradeCheck` 提前到 3 号提交，判定与报告仍在 5 号（1）。
+  - 4.2：`wiki.upgrade_stale_index` 的服务端 `detail` 原写"…, then the upgrade can start."，提交也答它，改成不说是哪个动作，同网页（2）；修复一轮照审查 P2S2C-N4 改顺语气。
+  - 3.16：wiki 的 `Logger`（`wiki/app/lint_run_types.go:68`）加 `ErrorContext`，检查的两行 error 要它（`*slog.Logger` 本来就有）（3）。
+  - 3.12：第二个事务的每种结局（含 `superseded`）都照 13.1 第 4 条的码序判，拒绝时答它；第二个事务里锁不到笔记本（已删）时记 `superseded`、什么也不写，答 `notebook.not_found`、不再判，同第一个事务的锁会答的（4）。
+  - 3.12：组合根的 `wikiUpgradeStates.SetState` 认 `upgrading`（原来只认 `reviewing`、`rolling_back`；"回到 `upgrading`"要它）（5）。提交的答复的 `submitted_by` 照用已有的 `named`（6，不是偏离）。
+  - 6.2：`permission_matrix_coverage_test.go` 的 `targetViolation` 照 lint 的 `/lint/{rule}` 放过 `/upgrade/check/{rule}`（设计写"不改"）；`TestLintMatrixTargets` 另有反例，不在 `upgrade` 之下的 `/check/{rule}` 照旧报出（7）。
+  - 组合根测试里的第二位管理员 dana 是工作区的成员、笔记本的管理员：`notebook.change_mode` 要笔记本的管理员，工作区管理员不够；降级经 `PATCH /api/v0/notebook-members/{id}` 改成 `editor`（8）。
+  - 7.2：交错第 5 条以 `interleaveOn` 持住笔记本行、批的命令一步，不另包 `States`、不停在 `SetState` 之后（9）。
+  - 6.2：`TestUpgradeCheck`、`TestUpgradeSubmit` 的 MCP 一半在 8 号（两个工具那时才有），8 号另给码依次加"不带 `rule` 的 `limit`"（10）；期限的"另一格"（第一个事务落在请求的期限上：平台答 500、warn 一行、没有提交的两行日志、行照旧 `upgrading`）也在 8 号加（12）。
+  - 3.12、7.1、7.2：MCP 的工具调用的期限是读完请求体之后的 `RequestTimeout`（`platform/httpserver/mcpserver/call.go:46-53`），不是开始加 `BodyReadTimeout + RequestTimeout`，`at` 又在读完请求体之后；期限一格的 MCP 一半因此照 REST 断言（11）。第 273 条照审查 P2S2A-M4、P2S2C-N1 写出条件：`request_timeout ≤ 20 s`（默认配置在内）时两个入口都是请求的期限先到，`> 20 s` 时是 `submitted_at + SubmitTimeout`。设计审查记录核对 P2A-I1 时算的"MCP 4 s + `ReadTimeout` 5 s = 9 s"同样不对，在这里更正，那份记录不改。
+  - 3.14：`upgrade_submit` 笔记本入口的 `inputSchema` 是 `{"type":"object","additionalProperties":false}`，没有 `properties`：SDK 对空结构体就这样编码，账户入口的 `notebooks` 自 M9 就是这样（13）。
+  - 7.1：`TestUpgradeStatesReachTheStreams` 的提交是两格、各两帧（不过的提交：第一个事务一帧、退回一帧；补好之后通过的提交：第一个事务一帧、存下报告一帧），不是"三格"（14）。
+  - 3.10、3.13：`ReportOf` 也去掉条目的 `path`：REST 的 lint 条目本来没有它（`path` 只在 MCP 的投影里），存下的路径会随改名、移动与回滚变旧，带上它最坏的报告（每条至多 `MaxDepth` 段名称，40 项）会过 64 KiB；最坏的报告 35,125 字节，修复一轮把它的 `wanted_now` 也改成封顶之后 35,128 字节（15）。
+  - 7.3：`TestJudgeUpgrade` 的计数一格拆成 `TestJudgeUpgradesCounts`（`raw` 原有、下面两页发起时就在、一页移进来；`raw` 是补写的、两页移进来），变异 33 由它抓到（16）。
+  - 3.15：`TestUpgradeToolsErrorsCarryTheirCodes` 的几种情形：`notebook.not_found` 只在账户入口、用一个不存在的 id（笔记本入口是边缘的 404）；`server_busy` 的名额由另一次升级的条目读占着（lint 读标准笔记本不占名额，先答 `notebook.not_llm_wiki`）；`wiki.upgrade_stale_index` 以 SQL 把一页的 `extractor` 记旧、测试末尾写回（17）。
+  - 7.1：检查的守卫的"另一份种子"是同一个库里以 SQL 把一页的账本记成别的哈希：正文与账本不一致的两种写法对闸门 7 一样，改账本不动页、不用再种一份 5 万页（18）；守卫在 costs-2 的末尾，与发起的守卫之间隔护栏的读一行（19）。
+  - 第 5 节：UP5 审阅中的冻结用 `edit`：`write` 不带 `base_version` 是创建，路径上已有页时先答 `page.title_taken`，到不了冻结（20）；页名用 `Page.name`，生成的 `Page` 类型没有 `title`（21）。
+  - 7.3：变异 46 改在 linking 的 `LintCursor.PositionFor`（不比范围）：用例只经它绑定游标，没有单独"核对根"的一句；`TestCheckUpgradeAnswersInOrder` 的假游标自己判根，看不到这个变异，46 只对 `TestUpgradeCheck` 跑（22）。
+  - 3.15：`TestUpgradeToolsMatrix` 读的一行也每格一个库的副本：`prepare` 以 SQL 设这一格的笔记本，并行的格共用一个库会互相踩（23）。
+  - 6.2、3.14：8 号的范围带 `e2e`，并改第三份的 `validToolArguments`：工具表多了两个工具，LW8 断言的两个入口的工具数（16、18 → 18、20）与 `TestToolStrings*` 要的"每个工具一组能到用例的参数"跟着变；逐个提交的核对没跑它们，第一轮门禁才查出（24）。
+  - 7.2：交错第 7 条读放弃之后的行不看回滚到了哪一步：`state` 在 `rolling_back` 或 `rolled_back`、提交的三列还在、没有报告，之后照旧等回滚的作业 `succeeded`；回滚的 worker 在本机常常在测试读之前就做完（25）。
+  - 3.19：2 号提交的 10 秒没有治好 `TestTheMCPCallStopsWhenTheClientGoes`，第一轮 `make test` 里它又失败一次、10 秒里一行也没等到（26）；根因与修复见下。
+- **S2，审查与修复带来的**（编号是 S2 的审查记录的；主持者的决定 272–275 见审查记录与 00 号文档第 11 节）：
+  - **第 272 条**（分支 CI 上第二份 457 秒；审查 P2S2B-Q1；`d7c82c01`）：合并之前把第二份最大的 `TestVirtualExport` 挪进第七份与第八份的模式，第八份仍是第七份的子集：`BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents))`，`BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$)`，`BOOTSTRAP_EIGHTH = ^Test(Upgrade(Check|Gates|Submit|Tools)|VirtualExport$$)`。只改 `SECOND` 与 `EIGHTH` 时它在第三份（`[U-Z]`）与第八份各跑一次。第二份慢约 5% 的原因审查 B 查清：契约变大，组合根每建一个应用就 `apitest.Load` 一次，竞态构建下每次多约 62 ms，不是产品的热路径（7.5、第 9 节）。`Makefile` 的计数注释照挪后的 `-list` 写（547 个，145/50/121/124/62/11/27/7；P2S2B-N1、P2S2C-N5）。挪后本机第二份约 203 秒、第八份约 100 秒，折到 7763 约 360、193 秒；修复第三、四轮的 CI 上第二份、第八份各有一次落在 7763：Test 一步 400、187 秒，都在 450 秒之下（7.5）。
+  - **第 273 条**（P2S2A-M4、P2S2C-N1）：MCP 的期限只改说法（上面第 11 条），3.12 第 3 步、7.1 的期限一格与"正在计算"的那一段、7.2 第 7 条照改。
+  - **第 274 条**（P2S2A-N1、P2S2A-Q1；`968bb586`）：提交的期限答 503 时，`Retry-After` 取到能接管为止的秒数 `max(1 s, ceil(first.at + SubmitTimeout − now))`（`wiki/app/submit_upgrade.go:130`）：默认配置下这一刻离能接管还有约 2.5 秒，1 秒的重试落进"正在计算"的 409（3.12 第 6 步、3.13 的契约说明、7.1 第 5 步、第 9 节的 playbook）。契约 `submitUpgrade` 的说明原写 `Retry-After: 1`，同改，所以这个提交的范围带 `api`、`web`。秒数随服务端答复的那一刻差一秒（本机 REST 2 秒、MCP 3 秒），组合根的期限一格只断言下界、再照它等过让另一位管理员接管，精确值由单元 `TestTheSubmissionsDeadline` 钉住（实施者的修复报告第 9 节第 1 条，A 判对）。
+  - **第 275 条**（P2S2B-M2；`f962a593`）：costs-3 的作业时限 35 → 40 分钟：S2 在 `-timeout 20m` 那一行之前加了闸门的读的计划一行，7763 上那一行的超时落在作业的第 33.5–35.2 分钟（6.2、7.1、7.5）。
+  - **`TestTheMCPCallStopsWhenTheClientGoes`**（P2S2C-M1；`701c736d`）：不是等得不够久。客户端走的那一刻，go-sdk 的 `release` 与工具交回错误的结果在同一把锁上竞争：后者先拿到时 SDK 把答复写进已断的连接、`wrote` 为真，"答复没写出"那一行（`mcpserver/server.go:208-219`）就不会来；平台两种结局都对，测试只认其中一种。M9/P1 在单元里已照两种结局改过（`mcpserver/call_test.go:385-389`，"没写出"那一支由 `stubborn` 钉住）。修复一轮删掉组合根的那一条断言，3.19 交下的那一条关上；修复核对一轮 C 在审查时复现它的负载下 40 次全过。
+  - **`expectUpgrade`**（P2S2C-M3）：第 5 节原写"`submission_id IS NOT NULL` 恰在 `reviewing`"，不是表的不变式：批准、驳回与审阅中放弃之后提交的三列都留着（`00057` 的两条检查、`RollBackUpgrade` 不清它们）；改成"`submission_id` 有无与答复的 `submitted_at` 有无相同"，夹具在修复一轮改（`b6ef8599`）。
+  - **测试**（修复一轮，每条以审查者的变异核对改前活、改后死）：`TestSubmitUpgradeAnswersInOrder` 每格只让一道闸门不过的七格（P2S2A-M1，a6）；`TestJudgeUpgrade` 经 `withAttachment` 带一个基线附件的三格（保留着、已删、基线行没了；P2S2A-M2，a1、a2；3.10 的表）；新的 `TestTheSubmissionsSnapshotIsItsOwn` 三格（P2S2A-M3，a4；3.18），它经 `submitFake` 已有的 `duringRun` 钩子改行，第二个事务也读到改过的行（只改快照的钩子造出的是整个程序里到不了的状态）；`wanted_now.count_capped` 四层各一个封顶的夹具（P2S2C-M2，c1、c11–c13；`48bb2e18`）；闸门的读的计划守卫另判 `nodes` 只经主键，另加不要数据库的 `TestTheGateReadsReadANodeByItsKey`（P2S2B-M1，gm3、gm7；`3893c318`；7.1）；`TestUpgradeToolsMatrix` 照 `r.entries` 只在它的入口跑（P2S2C-N6；3.15）；M8 留下的 `TestARestoreJobSkipsAnItemRestoredBetweenItsBatches` 与 `TestARevertJobSkipsAMemberRestoredBetweenItsBatches` 认负载下的另一种码（审查 B 的 4.7；`e88cf289`）。
+  - **修复第二轮**（P2S2C-M4，修复核对一轮的新发现；`9dce4658`）：修复一轮把三个夹具的 `WantedNow` 改成封顶之后，它们的 `wanted_before` 与 `wanted_now` 完全相同（封顶时值必是 10,000），存与读、REST 投影把两个成员弄混，单元测试照过（C 的 s1、s2）；s1 在组合根与 e2e 也没有测试抓。改成每层让一个成员封顶、另一个不封顶，两个方向各一个夹具；最坏的报告保留两个都封顶（35,128 字节），另一个方向由 `TestTheReportRoundTrips` 末尾的另一格往返承担。s1、s2 改后死。修复核对第二轮 C 判它关上，另加的五条两个方向的探针也都死。
+  - **修复第三、四轮**（P2S2C-M5、M6，修复核对第二、三轮的新发现；`ef8ac10f`、`d4324ab8`，都只改测试）：与 M4 是同一类：投影或编码把一个成员写成另一个、或写成常量，因为夹具里有重复的值、或只断言了部分成员，测试照过，组合根与 e2e 也看不到。M5 是 S2 建成时就有的：存下的报告的五个计数在夹具里都是 100000，MCP 投影的计数只断言两项（C 的 p1、p2、m1–m3）；M6 在计数之外：REST 报告的规则的 `count` 与 `count_capped`、`preserved` 的 `nodes` 与 `nodes_kept`、MCP 投影的闸门（hr1–hr3、hg1、xg1–xg3）。第三轮让检查与报告的计数在判定、REST、存与读、MCP 每一层互不相同、整值断言（72 条变异，改前活 28 条）；第四轮不再按成员补，按投影收尾：S2 新写的七个投影（REST 的检查、规则页、报告与带报告的视图，MCP 的检查，存与读，判定的 `ReportOf`）的夹具每个标量互不相同（`count_capped` 有真有假、与值无关，规则的数不等于条目数），八道闸门与 `passed` 排成四行、每道闸门那一列互不相同，整个答复与 JSON 字面或写死的结构体比，MCP 另加 `TestTheCheckIsAnsweredWhole`；555 条对调与常量的变异改前活 217 条、改后全死，没有发现投影本身有错（3.10、3.18、7.1、7.3）。最坏的报告两轮都不变（35,128 字节）。修复核对第四轮 C 判 M6 关，整轮重跑 555 条全死，七个投影里这一类收尾。这一类的教训记进 05-lessons。
+  - **修复第五轮**（P2S2C-M7、N9、N10，修复核对第四轮的新发现；`43caa32a`，只改测试）：C 把范围放宽到 S2 写的所有逐字段转换。组合根把 page 的 `Preserved` 转成 wiki 的那一行（`bootstrap/wiki_upgrade.go:188`）是跨模块的转换，单元碰不到，组合根读闸门 7 的两格 `nodes` 都等于 `nodes_kept`，把 `NodesKept` 写成 `Nodes` 整个程序照过（wp1），删掉的基线附件就会过闸门 7；`TestUpgradeGates` 加一格"a baseline attachment deleted past the units"（以 SQL 绕过单元删一个基线附件，`preserved` 整值 4/3/2/2，断言后还原；7.1）。另两条 Nit：REST 报告条目的 `kind` 写成常量（夹具里只有 `asset`，加一项 `page`；规则页的 `mode` 同样以 `standard` 再答一次），提交的日志补断言 `user_id`。11 条变异改前活 4 条、改后全死，第四轮的 555 条在新头上仍全死；三处转换本身都没有错。修复核对第五轮 C 判三条都关上，并补查了 S2 其余的逐字段转换（组合根的 `SetState` 与 `AreaWantedByPage`、MCP `upgrade_verify` 的参数都有测试分得出；`Baseline` 的 `kind` 恒为 page 是等价变异），这一类收尾；新的 P2S2C-N11（Nit，不改）：`TestUpgradeGates` 以 SQL 改库的两格把还原写在 `check` 里，那一格先 `Fatal` 时后面各格跟着红，以后改这个测试时另用 `t.Cleanup` 注册同一句还原（7.1）。修复核对到第五轮为止，没有 Important、Minor 留下。05-lessons 那一条补上跨模块的逐字段转换。
+  - **代码**（修复一轮，`debec8dc`）：linking 的 `lintQuery` 拒绝摘要带 `AreaWantedByPage`（P2S2A-N2；3.8）；`wiki.upgrade_stale_index` 的服务端文字改为"ask a server admin to run nervewiki reindex, then try again."，单元的 stale 一格断言整句（P2S2C-N4；4.2）。
+  - **只记下的**：P2S2C-N7（MCP 矩阵的提交一格不读它留下的行，别处已盖住）不改；P2S2B-N2（`TestTheGateReadsReadANodeByItsKey` 断言了共用帮手 `rollbackReadProblems` 的口子，以后收紧帮手时它会失败）不改，收紧帮手时一并改（7.1）；`PurgeTrimmedChangesets`、`DropEmptyChangeset` 与进行中的升级的变更集（审查 B 的未核实的怀疑）：不是错误，实施者查代码、B 核过，3.9 记一句；C 的 eg2（存下的报告的两道闸门对调）在生产里看不到（只有通过的检查才存报告），修复第四轮的往返仍钉住它。
+  - **交给后面的**：契约每长一截组合根各份都慢一截，P3 定分份时算进去（P2S2B-Q2，第 9 节）；P3/S2 的 playbook 写照 `retry_after_seconds` 等过再交，K3 看客户端是否接受没有 `properties` 的 `inputSchema`（第 9 节）；guards-sources 的时限 S2 没有改到，照旧下次改到时照第 269 条提到 40 分钟；costs-2 的余量 S2 看过（审查 B：7763 上末行约第 24.5 分钟开始，卡住时第 34.5 分钟打出，先于 45 分钟），不再提；e2e 的 L1（带修饰键点链接、等新标签页 30 秒超时，修复一轮的 CI 上第四次记下的旧偶发）交给 P2/S3 另查（主持者定）。
 
 ## 4. 网页
 
@@ -1481,7 +1526,7 @@ S1 的审查与两轮修复核对见 [S1 的审查记录](reviews/P2-S1-guardrai
 - `make gen-web` 重新生成 `web/packages/api-client/src/schema.gen.ts`：`UpgradeCheck`、`UpgradeGates` 等十几个 schema 与三个操作；`Upgrade` 加必填的 `report`。没有 service 用它们（S3 才加），生成的类型经 `export type *` 再导出，knip 看不到（同 P1 设计 4.2）。
 - `Upgrade` 必填 `report` 之后 tsc 报出的字面量：`W/test/upgrade-server.ts:22-40` 的 `upgradeJSON` 加 `report: null`（别的测试与 e2e 都由它或已有的升级展开得到，`upgrade-page.test.tsx:238`、`e2e/stories/upgrade/up3-abandon-rollback.spec.ts:59-60`）。
 - `wiki.upgrade_not_ready` 的文字：`W/app/problem-messages.ts` 的表（`:44-49` 的 wiki 码之后）加 `"wiki.upgrade_not_ready": "problem.wiki.upgrade_not_ready"`；`W/i18n/messages/zh-CN.ts`（`:1115` 旁）"升级还没有通过检查，已回到升级中：检查一次，修好没通过的，再提交。"，`en.ts`（`:1175` 旁）"The upgrade does not pass its checks yet: it is upgrading again. Check it, fix what did not pass, then submit it again."。`problem-messages.test.ts` 读契约，核对 `submitUpgrade` 声明的每个码都有文字。
-- `wiki.upgrade_stale_index` 的文字今天写"……再开始升级"（`zh-CN.ts:1114`、`en.ts:1173`），`submitUpgrade` 也声明它，改为不说是哪个动作："链接的索引过时了：请服务器管理员运行 nervewiki reindex，再试一次。"、"The link index is out of date: ask the server's administrator to run nervewiki reindex, then try again."。
+- `wiki.upgrade_stale_index` 的文字今天写"……再开始升级"（`zh-CN.ts:1114`、`en.ts:1173`），`submitUpgrade` 也声明它，改为不说是哪个动作："链接的索引过时了：请服务器管理员运行 nervewiki reindex，再试一次。"、"The link index is out of date: ask the server's administrator to run nervewiki reindex, then try again."。服务端的 `detail`（`wiki/domain/upgrade_errors.go`）原写"…, then the upgrade can start."，同样不说是哪个动作，改为"The link index is out of date: ask a server admin to run nervewiki reindex, then try again."（S2 的实施；修复一轮照审查 P2S2C-N4 改顺语气）；发起与提交都答它。
 - "server update"改了 `events.yaml` 的一处说明（3.14），生成的类型的注释随之变，`make gen-check-web` 照过。
 
 ### 4.3 S3：网页
@@ -1565,14 +1610,14 @@ S1 的审查与两轮修复核对见 [S1 的审查记录](reviews/P2-S1-guardrai
 
 ## 5. e2e
 
-**夹具**：`e2e/fixtures/upgrades.ts` 加（S2）`checkUpgrade`、`getUpgradeCheckItems`、`postSubmit` 与 `submitUpgrade`（照 `postUpgrade`、`startUpgrade`，`:11`、`:20`）；`e2e/fixtures/assert/wiki.ts` 的 `expectUpgrade`（`:15`）加 `submitted_by_id`、`submitted_at` 与答复相同（时刻在 SQL 里比到微秒）、`submission_id IS NOT NULL` 恰在 `reviewing`、报告：有无与答复相同，有时 `report->'passed'`、`report->'gates'`、`report->'counts'` 与答复的相同（时刻与条目不比：时刻的写法两边各自定，条目由 `TestTheReportRoundTrips` 管）；`e2e/fixtures/assert/page.ts` 加 `expectBaselineKept(db, upgradeId)`（S1）：每个基线节点活着、每个基线页的 `content_hash = accepted_hash`（账本的绊线没有响）。MCP 照 `e2e/fixtures/mcp.ts` 的 `mcpClient`（`:152`）、`errorOf`（`:227`）、`resultOf`（`:220`）。
+**夹具**：`e2e/fixtures/upgrades.ts` 加（S2）`checkUpgrade`、`getUpgradeCheckItems`、`postSubmit` 与 `submitUpgrade`（照 `postUpgrade`、`startUpgrade`，`:11`、`:20`）；`e2e/fixtures/assert/wiki.ts` 的 `expectUpgrade`（`:15`）加 `submitted_by_id`、`submitted_at` 与答复相同（时刻在 SQL 里比到微秒）、`submission_id` 有无与答复的 `submitted_at` 有无相同（批准、驳回与审阅中放弃之后提交的三列都留着：`00057` 的两条检查要它们，`RollBackUpgrade` 不清它们；初稿写的"`submission_id IS NOT NULL` 恰在 `reviewing`"不是表的不变式，审查 P2S2C-M3，修复一轮改夹具）、报告：有无与答复相同，有时 `report->'passed'`、`report->'gates'`、`report->'counts'` 与答复的相同（时刻与条目不比：时刻的写法两边各自定，条目由 `TestTheReportRoundTrips` 管）；`e2e/fixtures/assert/page.ts` 加 `expectBaselineKept(db, upgradeId)`（S1）：每个基线节点活着、每个基线页的 `content_hash = accepted_hash`（账本的绊线没有响）。MCP 照 `e2e/fixtures/mcp.ts` 的 `mcpClient`（`:152`）、`errorOf`（`:227`）、`resultOf`（`:220`）。
 
 | 故事（`e2e/stories/upgrade/`） | 版本与 Step | 内容 |
 |---|---|---|
 | `up4-guardrails.spec.ts` UP4 护栏 | MCP：S1 补全（P1 的删除一个测试照旧） | 两个新的测试。**正文与移动**：一本有 Plan、Notes（链向 Plan 与 Old）、Old（以 `---` 起、没有收尾行）、Broken（带收尾行的无效 frontmatter）、Other（同样无效）的笔记本，经 REST 种下、发起（基线页的 `base_version` 取 `createPage` 的答复，审查 P2S1C-N1）；发起人的 agent：给 Plan 加 frontmatter（成功）；`edit` Plan 的正文一字（`page.upgrade_immutable`）；`move` Plan 带 `update_links: false`（`page.upgrade_keep_links`）；`move` Plan 进一个新的文件夹（成功，Notes 被系统改写：Notes 以从根起的路径 `[the plan](/Plan.md)` 链向 Plan，文件夹是先写的一页 `Work.md`。只写名字的链接，移动之后照样解析，系统不改写；"移动之后系统改写链接"只对写了路径的链接成立，审查 P2S1C-N2）；`move` Old 改名为 `Legacy.md`（成功，Notes 里指向 Old 的链接被系统改写；00 号文档第 9 节 UP4 一行的"改名放行"，审查 P2C-M4）；新建一页、改它的正文（成功）；Legacy（原 Old）前面加一块（成功）；Broken 就地改成有效的（成功）、Other 前面另加一块（`page.upgrade_immutable`）。数据库：被拒的页的正文不变，Old 的名字是 `Legacy`、Legacy 的正文（切掉 frontmatter 之后）不变，Notes 的正文是两次改写之后的，`expectBaselineKept`。**`batch`**：一个 `batch` 先把 Plan 移走、再改 Notes 的 frontmatter，答 `page.upgrade_batch_rewrite`、`op` 是 Notes 的那个操作、什么也没写；拆成先改 Notes、再移 Plan 的一个 `batch`，成功，Notes 带着新的链接；`expectBaselineKept`。API 豁免：REST 的写在冻结里就被拒（P1 设计第 5 节） |
-| `up5-check-submit.spec.ts` UP5 检查与提交 | API（MCP 写作准备）、MCP：S2；页面：S3 | **API**：一本有 Plan（链向一个不存在的 Missing）与六页 Note 1–6 的笔记本，经 REST 种下、发起；`checkUpgrade` 答 200、`passed` 为假、`frontmatter` 不过、`missing_type` 七项（摘要五项、`next_cursor`）；`listUpgradeCheckItems` 以那个游标读到其余两项；`submitUpgrade` 答 409 `wiki.upgrade_not_ready`（`detail` 列出 `frontmatter`），`getUpgrade` 是 `upgrading`、`submitted_by` 为空；agent 经 MCP 给七页加 `type` 与 `summary`；再检查 `passed` 为真、`counts.wanted_before` 与 `wanted_now` 都是 1、`new_pages` 是 2（补写的两页）；`submitUpgrade` 答 200 `reviewing`、带报告；`getUpgrade` 的报告等于提交的答复的；`expectUpgrade`；agent 的写答 `notebook.upgrading`（审阅中对所有人冻结）。**MCP**：同样的一本，经 `upgrade_verify`（不带 `rule`：闸门与路径；带 `rule: "missing_type", limit: 1`：一项与 `next_cursor`）、`upgrade_submit`（工具的错误 `wiki.upgrade_not_ready`；修好之后 `{state: "reviewing", submitted_at}`），审阅中 `upgrade_verify` 照答、`passed` 为真，`write` 答 `notebook.upgrading`；`expectUpgrade` 读 REST 的 `getUpgrade`。**页面**（Chromium）：管理员打开升级页，按"检查"，`frontmatter` 没有通过、"缺少 type"一卡五项与"更多"，按"更多"读到其余两项；按"提交审阅…"、确认，对话框写 `upgrade.notReady`，检查自动重读一次（计算之中页面可能照实闪过审阅中，第 264 条；断言只看结局：对话框的拒绝、检查一节回来、读到的是新的一代）；关上，焦点在"提交审阅…"；agent 经 MCP 修好；"再检查一次"全部通过；提交，对话框关上、焦点在标题，页面显示审阅中与报告，横幅写"已提交，等待管理员审阅"。刻意的 409 一个，以 `pageWatch.expectConsole({ errors: [failedToLoad(409)] })` 声明，另断言 `apiFailures` 恰是这一条（13.2 第 9 条） |
+| `up5-check-submit.spec.ts` UP5 检查与提交 | API（MCP 写作准备）、MCP：S2；页面：S3 | **API**：一本有 Plan（链向一个不存在的 Missing）与六页 Note 1–6 的笔记本，经 REST 种下、发起；`checkUpgrade` 答 200、`passed` 为假、`frontmatter` 不过、`missing_type` 七项（摘要五项、`next_cursor`）；`listUpgradeCheckItems` 以那个游标读到其余两项；`submitUpgrade` 答 409 `wiki.upgrade_not_ready`（`detail` 列出 `frontmatter`），`getUpgrade` 是 `upgrading`、`submitted_by` 为空；agent 经 MCP 给七页加 `type` 与 `summary`；再检查 `passed` 为真、`counts.wanted_before` 与 `wanted_now` 都是 1、`new_pages` 是 2（补写的两页）；`submitUpgrade` 答 200 `reviewing`、带报告；`getUpgrade` 的报告等于提交的答复的；`expectUpgrade`；agent 的 `edit` 答 `notebook.upgrading`（审阅中对所有人冻结；`write` 不带 `base_version` 是创建，路径上已有页时先答 `page.title_taken`，到不了冻结，S2 的实施）。**MCP**：同样的一本，经 `upgrade_verify`（不带 `rule`：闸门与路径；带 `rule: "missing_type", limit: 1`：一项与 `next_cursor`）、`upgrade_submit`（工具的错误 `wiki.upgrade_not_ready`；修好之后 `{state: "reviewing", submitted_at}`），审阅中 `upgrade_verify` 照答、`passed` 为真，`edit` 答 `notebook.upgrading`；`expectUpgrade` 读 REST 的 `getUpgrade`。**页面**（Chromium）：管理员打开升级页，按"检查"，`frontmatter` 没有通过、"缺少 type"一卡五项与"更多"，按"更多"读到其余两项；按"提交审阅…"、确认，对话框写 `upgrade.notReady`，检查自动重读一次（计算之中页面可能照实闪过审阅中，第 264 条；断言只看结局：对话框的拒绝、检查一节回来、读到的是新的一代）；关上，焦点在"提交审阅…"；agent 经 MCP 修好；"再检查一次"全部通过；提交，对话框关上、焦点在标题，页面显示审阅中与报告，横幅写"已提交，等待管理员审阅"。刻意的 409 一个，以 `pageWatch.expectConsole({ errors: [failedToLoad(409)] })` 声明，另断言 `apiFailures` 恰是这一条（13.2 第 9 条） |
 
-UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只给 UP1 与 UP7；对话框与 LW12 是同一个 `ConfirmDialog`）。`wiki.upgrade_stale_index` 不进 e2e：故事里造不出过时的索引（要以 SQL 记旧，同 P1 的发起），由 `TestUpgradeSubmit` 盖住。对话框与按钮按确切的名字找（05-lessons 第 6 节）。`make e2e` 从 518 个到 523 个（UP4 两个、UP5 三个）。
+UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只给 UP1 与 UP7；对话框与 LW12 是同一个 `ConfirmDialog`）。`wiki.upgrade_stale_index` 不进 e2e：故事里造不出过时的索引（要以 SQL 记旧，同 P1 的发起），由 `TestUpgradeSubmit` 盖住。对话框与按钮按确切的名字找（05-lessons 第 6 节）。`make e2e` 从 518 个到 523 个（UP4 两个、UP5 三个；实测 S1 末 520 个、S2 末 522 个）。S2 的 UP5 以 `Page.name` 认页（生成的 `Page` 类型没有 `title`）。
 
 ## 6. 实施步骤
 
@@ -1602,6 +1647,8 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 
 ### 6.2 S2（`m11-p2-s2`）
 
+实施时 S1 留下的测试提交（`TestTheMCPCallStopsWhenTheClientGoes` 的两个日志等待，3.19）排在第 2 个，下面第 2–9 个是实施的 3–10 号，第 10 个是本 Step 的文档提交；修复一轮的提交见 10.2（3.20）。
+
 1. `server, build, ci, docs: the composition root's eighth shard (M11/P2/S2)`：第 261 条。照 P1 设计 3.8 的写法，每一处的旧文字与新文字（行号是 `f002672b` 的；审查 P2C-M3）：
    - `Makefile`：
      - `BOOTSTRAP_SEVENTH`（`:282`）之后加一段注释与 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`。注释："M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒（P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的 [U-Z] 时已跳过它们，别的份的模式不收它们。"之后接 S2 第 1 个提交时两轮的数。
@@ -1618,16 +1665,16 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
      - `:27`"`make test-go-bootstrap-1`（`-2` 到 `-7` 同理）"改为"（`-2` 到 `-8` 同理）"。
      - `:50`"组合根现在分七份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_SEVENTH`），CI 共 18 项：15 个 server 的 leg（race、bootstrap-1 到 bootstrap-7、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。"改为"组合根现在分八份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_EIGHTH`），CI 共 19 项：16 个 server 的 leg（race、bootstrap-1 到 bootstrap-8、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。"；同一条的"`make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-7`"改为"到 `test-go-bootstrap-8`"。
    - 测试的注释：`bootstrap/upgrade_tool_codes_test.go:15-16`"the seventh shard's TestUpgradeToolsErrorsCarryTheirCodes answers these"改为"the eighth shard's"；`bootstrap/permission_matrix_mcp_test.go:91-92`"upgradeToolCodes lists them, the seventh shard answers them"改为"the eighth shard answers them"。`permission_matrix_coverage_test.go:156` 与 `wiki/app/start_upgrade_test.go:439` 说的是 `TestUpgradePermissionMatrix`、`TestUpgradeStart`，它们留在第七份，不改。
-   - 还没有新的测试。记录里写出八份各自的 `go test -race -list`，合起来等于全部、每个恰在一份。
-2. `server: the lint's runs key and answer an upgrade's check, and the second pass is asked on its own (M11/P2/S2)`：3.8。
+   - 还没有新的测试。记录里写出八份各自的 `go test -race -list`，合起来等于全部、每个恰在一份。第 272 条在修复一轮把 `TestVirtualExport` 挪进第七、八份的模式（`BOOTSTRAP_SECOND` 去掉它），计数的注释照挪后的 `-list` 写（3.20）。
+2. `server: the lint's runs key and answer an upgrade's check, and the second pass is asked on its own (M11/P2/S2)`：3.8；检查的类型（`domain.UpgradeCheck` 等，3.10）随 `RunResult` 提前到这个提交（`wiki/domain/upgrade_check.go`），判定与报告仍在第 4 个（S2 的实施）。
 3. `server: the page module reads an upgrade's gates (M11/P2/S2)`：3.9（模块根的四个方法与 `ReservedKeys`，测试是它们的调用者）。
 4. `server: an upgrade's gates and report are judged (M11/P2/S2)`：3.10 的 `wiki/domain`。
-5. `server, api, web: an upgrade's check and its rules' items (M11/P2/S2)`：3.11、3.13 的两个操作与 schema、HTTP 适配器、接线；`checkUpgrade`、`listUpgradeCheckItems` 的矩阵的行；`TestUpgradeCheck`、`TestUpgradeGates`；7.2 的另配的应用与第 8 条。
-6. `server, api, web: an upgrade's submission keeps its report (M11/P2/S2)`：3.12、`Upgrade.report`、`wiki.upgrade_not_ready`；网页的 `report: null` 与两处文字（4.2）；`submitUpgrade` 的矩阵的行；`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`（第 5、6、7、15 条、降级、检查跨过一次提交）、`TestUpgradeStatesReachTheStreams` 的提交三格；日志（3.16）；`wiring.submitTimeout`。
-7. `server, api, web: the agent checks and submits the upgrade (M11/P2/S2)`：3.14、3.15 的 MCP 部分；`mcpserver` 的 `destructiveHint` 与 `TestTheAnnotationsAreTheHints` 的一格、两处注释；"server update"（`events.yaml` 改了，所以带 `web`）；`TestUpgradeToolsMatrix`、`coveredMCPRows()`；`upgrade_submit` 的两行码、`upgradeToolCodes()` 的两对与 `TestUpgradeToolsErrorsCarryTheirCodes` 的情形。
+5. `server, api, web: an upgrade's check and its rules' items (M11/P2/S2)`：3.11、3.13 的两个操作与 schema、HTTP 适配器、接线；`checkUpgrade`、`listUpgradeCheckItems` 的矩阵的行；`TestUpgradeCheck`、`TestUpgradeGates`（`TestUpgradeCheck` 的 MCP 一半在第 7 个提交，两个工具那时才有）；7.2 的另配的应用与第 8 条。
+6. `server, api, web: an upgrade's submission keeps its report (M11/P2/S2)`：3.12、`Upgrade.report`、`wiki.upgrade_not_ready`；网页的 `report: null` 与两处文字（4.2）；`submitUpgrade` 的矩阵的行；`TestUpgradeSubmit`（MCP 的一半与第一个事务的期限一格在第 7 个提交）、`TestUpgradeSubmitInterleavings`（第 5、6、7、15 条、降级、检查跨过一次提交）、`TestUpgradeStatesReachTheStreams` 的提交两格；日志（3.16）；`wiring.submitTimeout`。
+7. `server, api, web, e2e: the agent checks and submits the upgrade (M11/P2/S2)`：3.14、3.15 的 MCP 部分；`mcpserver` 的 `destructiveHint` 与 `TestTheAnnotationsAreTheHints` 的一格、两处注释；"server update"（`events.yaml` 改了，所以带 `web`）；`TestUpgradeToolsMatrix`、`coveredMCPRows()`；`upgrade_submit` 的两行码、`upgradeToolCodes()` 的两对与 `TestUpgradeToolsErrorsCarryTheirCodes` 的情形；工具表的长度驱动的两处同在这个提交：第三份的 `validToolArguments` 与 e2e LW8 的工具数（16、18 → 18、20），所以范围带 `e2e`（S2 的实施，第一轮门禁才查出）；`TestUpgradeCheck`、`TestUpgradeSubmit` 的 MCP 一半与第一个事务的期限一格也在这里。
 8. `server, build, ci: an upgrade's check of fifty thousand pages takes its time, its reads plan by their keys (M11/P2/S2)`：7.1 的两个守卫（闸门的读的计划，检查的时长）；lint 的成本夹具的页数做成参数；`rollbackReadProblems` 加 `changesets` 与 `TestTheRollbackGuardJudgesThePlans` 的合成的一格。成本分份的说明（行号是 `f002672b` 的，S1 之后的文字）：
    - `Makefile`：`test-go-costs-2` 末尾加检查的守卫一行，说明改为"原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）"；`test-go-costs-3` 在 `TestARollbacksReadsTakeTheirTimeAtAnyStatistics` 那一行（`:392`）之后加计划的守卫一行，说明（`:365`）"原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）"改为"原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）"。
-   - `ci.yml`：costs-2 的时限 S1 已改（45 分钟，第 267 条提前到 S1 的修复 `80da6b1f`，注释在那里）；costs 的注释末尾加"M11/P2/S2：costs-2 末尾加检查的守卫一条（5 万页，本机约 N 秒）；costs-3 在回滚的读之后加闸门的读的计划一条（本机约 N 秒）；现共42条（13/13/16），时限不变。"；加了这一条之后 costs-2 在 7763 上的作业用时与末行开始的时刻写进 S2 的记录（S1 的审查 B：慢三成的实例上卡住时离 45 分钟约 1 分钟）。
+   - `ci.yml`：costs-2 的时限 S1 已改（45 分钟，第 267 条提前到 S1 的修复 `80da6b1f`，注释在那里）；costs 的注释末尾加"M11/P2/S2：costs-2 末尾加检查的守卫一条（5 万页，本机约 N 秒）；costs-3 在回滚的读之后加闸门的读的计划一条（本机约 N 秒）；现共42条（13/13/16），时限不变。"；加了这一条之后 costs-2 在 7763 上的作业用时与末行开始的时刻写进 S2 的记录（S1 的审查 B：慢三成的实例上卡住时离 45 分钟约 1 分钟）。修复一轮照第 275 条把 costs-3 的时限从 35 分钟提到 40 分钟，注释写 run 号、runner 与 `-timeout 20m` 那一行开始的分钟数（审查 P2S2B-M2，范围 `ci`）。
    - `06-environment.md`：同 S1，不改。
 9. `e2e: UP5 over the API and MCP (M11/P2/S2)`：第 5 节；`expectUpgrade` 的加项。
 10. `docs: …`（第 8 节第 4、5 条）。
@@ -1664,32 +1711,34 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | `Runs` 的键、结果、日志的名字；第二遍另成一项 | `TestTheUpgradeKeysJoinOnlyTheirOwn`、`TestTheRunsCopyACheck`、`TestTheUpgradeKindsAreNamed`；linking 的 `TestTheWantedCountsByPage` 两格 | `wiki/app`、`linking/app` | S2 |
 | 闸门的读 | `TestTheUpgradeGateReads`（含 `not_kept`：不在的节点、正文不是账本的页）、`TestTheUpgradeRoots` | `page/adapter/postgres`、`page` | S2 |
 | 判计划的帮手认得 `changesets` | `TestTheRollbackGuardJudgesThePlans` 加一格手写的计划：`BitmapAnd` 里有一个没有条件的部分索引，判为有问题（审查 P2B-M1） | `page/adapter/postgres` | S2 |
-| 判定与报告 | `TestJudgeUpgrade`、`TestReportOf`、`TestTheGatesFailInTheirOrder` | `wiki/domain` | S2 |
+| 判定与报告 | `TestJudgeUpgrade`（闸门 7 的附件三格经 `withAttachment`，在修复一轮加，审查 P2S2A-M2）、`TestJudgeUpgradesCounts`（计数，S2 从 `TestJudgeUpgrade` 拆出；封顶的 `wanted` 一格在修复一轮加，七个值互不相同的一格在修复第三轮加）、`TestReportOf`（修复第四轮整值比）、`TestTheGatesFailInTheirOrder` | `wiki/domain` | S2 |
 | 报告的存与读 | `TestTheReportRoundTrips`、`TestTheWorstReportFits`；`CurrentUpgrade` 的测试加两列 | `wiki/adapter/postgres` | S2 |
 | 报告的条目与 lint 的条目 | `TestTheReportItemsAreTheLintItemsButTheirCursor` | `wiki/adapter/http` | S2 |
+| `wanted_now` 的封顶 | 判定、REST 的投影、存与读、MCP 的投影各一个封顶的夹具（审查 P2S2C-M2，修复一轮）；REST 与存与读两个方向各一个夹具，`wanted_before` 与 `wanted_now` 一个封顶、一个不封顶，两个成员分得开（审查 P2S2C-M4，修复第二轮） | `wiki/domain`、`wiki/adapter/http`、`wiki/adapter/postgres`、`wiki/adapter/mcp` | S2 |
+| 检查与报告的每个投影整值断言 | REST 的 `TestTheCheckIsAnswered`（检查与规则页）、`TestTheReportIsAnswered`（报告与带报告的视图）；MCP 的 `TestTheCheckIsAnsweredWhole`、`TestTheCheckFits`；存与读的 `TestTheReportRoundTrips`；判定的 `TestReportOf`：夹具里每个标量互不相同（`count_capped` 有真有假、与值无关，规则的数不等于条目数），八道闸门与 `passed` 排成四行（`gateRows`，每道闸门那一列互不相同、都不全真全假），各投影四行各过一遍；整个答复与 JSON 字面或写死的结构体比（审查 P2S2C-M5、M6，修复第三、四轮；对调与常量的变异 555 条全死；REST 报告条目的 `kind` 与规则页的 `mode` 两种值各有一项在修复第五轮补，审查 P2S2C-N9） | `wiki/adapter/http`、`wiki/adapter/mcp`、`wiki/adapter/postgres`、`wiki/domain` | S2 |
 | 检查的码、快照、交付前的判定 | `TestCheckUpgradeAnswersInOrder`、`TestTheCheckReadsInOneSnapshot`、`TestTheCheckAuthorizesBeforeItsAnswer`、`TestTheCheckRefusesAnotherUpgradesSnapshot` | `wiki/app` | S2 |
-| 提交的码、脱离、两个事务、期限、判定在 `COMMIT` 之前 | `TestSubmitUpgradeAnswersInOrder`、`TestTheSubmissionDetaches`、`TestTheSecondTransactionWritesOnlyItsOwn`、`TestTheSubmissionsDeadline`、`TestTheSubmitterIsDecidedBeforeTheAnswer`（3.12） | `wiki/app` | S2 |
+| 提交的码、脱离、两个事务、期限、判定在 `COMMIT` 之前 | `TestSubmitUpgradeAnswersInOrder`（修复一轮加每格一道闸门不过的七格，审查 P2S2A-M1）、`TestTheSubmissionDetaches`、`TestTheSecondTransactionWritesOnlyItsOwn`、`TestTheSubmissionsDeadline`（修复一轮加钉住期限的 503 的秒数的几格，第 274 条）、`TestTheSubmissionsSnapshotIsItsOwn`（提交在快照里的核对，修复一轮，审查 P2S2A-M3）、`TestTheSubmitterIsDecidedBeforeTheAnswer`（3.12） | `wiki/app` | S2 |
 | 注解 | `TestTheAnnotationsAreTheHints` 加 `{Annotations{}, {"destructiveHint":false,"idempotentHint":false,"openWorldHint":false,"readOnlyHint":false}}` 一格（3.14，审查 P2C-N1） | `platform/httpserver/mcpserver` | S2 |
 | 检查经整个程序 | `TestUpgradeCheck`：3.11 的码依次（REST 与 MCP 两种入口各答同样的码与次序，13.4 第 3 条）；条目的游标：普通 `lint` 的游标答 400；上一次升级的游标，那次的根是发起时补写、已随回滚删去的 `raw`，答 400（根不同）；已有的 `raw` 先后被两次升级提议，上一次的游标被接受（绑定看根、不看升级，审查 P2B-N1）；`limit` 越界 422；名额占满 503（标准应用的一个名额，`heldRules` 停住的那一次占着它）；日志的 `query_kind` 与 `upgrade_scope`；`reviewing` 时也答 | 第八份 | S2 |
-| 闸门经整个程序 | `TestUpgradeGates`：每道闸门过与不过各一格（不过的经发起人的 agent 或 SQL 造出：根下的 `AGENTS` 只有 frontmatter；来源根改名为 `AGENTS`；根下的 `index.md` 附件；一页缺 `summary`；一个 `sources` 指向区外；抵消的两页（第 180 条）；以 SQL 绕过单元改一页基线页的正文（闸门 7，第 191 条，`node_ids` 是那一页；只有它杀得掉"闸门 7 不比账本"）；以 SQL 把一页的索引记旧）；一页在发起时的 `raw` 里、带一个解析不到的链接，agent 把它移出来，闸门 6 照过（第二遍记下的 1，核对 B2-I1）；一页基线页移进 `raw`、它的待建变多，闸门 6 照过（第二遍不进检查）；七个数各有一格；每格结束 `checkPages`、`checkLinks` | 第八份 | S2 |
-| 提交经整个程序 | `TestUpgradeSubmit`：码依次（404、403、`upgrade_state` 的三种、"正在计算"、`stale_index`、`not_ready`，后两种之后升级回到 `upgrading`、提交的列为空、`mode` 两次）；通过：`reviewing`、报告、`mode` 两次（第一个事务与存下报告，第 216 条）、一行 info 的日志。**另配的应用**（7.2）上：客户端在计算中断开（`heldRules` 停住、取消请求的 ctx、放开），报告照样存下、日志的 `outcome` 是 `stored`；计算答错误（`heldRules` 让规则答错误）之后第二个事务退回 `upgrading`、`outcome = failed`、可以再提交。**期限一格**（审查 P2A-I1、P2A-M1、P2C-I2；标准应用，`wiring.submitTimeout` 6 s）见下 | 第八份 | S2 |
+| 闸门经整个程序 | `TestUpgradeGates`：每道闸门过与不过各一格（不过的经发起人的 agent 或 SQL 造出：根下的 `AGENTS` 只有 frontmatter；来源根改名为 `AGENTS`；根下的 `index.md` 附件；一页缺 `summary`；一个 `sources` 指向区外；抵消的两页（第 180 条）；以 SQL 绕过单元改一页基线页的正文（闸门 7，第 191 条，`node_ids` 是那一页；只有它杀得掉"闸门 7 不比账本"）；以 SQL 把一页的索引记旧）；一页在发起时的 `raw` 里、带一个解析不到的链接，agent 把它移出来，闸门 6 照过（第二遍记下的 1，核对 B2-I1）；一页基线页移进 `raw`、它的待建变多，闸门 6 照过（第二遍不进检查）；七个数各有一格；以 SQL 绕过单元删一个基线附件，`preserved` 整值 4/3/2/2、`node_ids` 恰是它，断言之后还原（组合根把 page 的 `Preserved` 转成 wiki 的那一行把 `NodesKept` 写成 `Nodes` 时，原有的格都照过；审查 P2S2C-M7，修复第五轮）；这一格与"以 SQL 把一页的索引记旧"那一格的还原写在 `check` 里，`tm.checked` 先 `Fatal` 时被跳过，后面各格跟着红，以后改这个测试时两格的 `change` 里另用 `t.Cleanup` 注册同一句幂等的还原（审查 P2S2C-N11，不改）；每格结束 `checkPages`、`checkLinks` | 第八份 | S2 |
+| 提交经整个程序 | `TestUpgradeSubmit`：码依次（404、403、`upgrade_state` 的三种、"正在计算"、`stale_index`、`not_ready`（一页缺 `type` 与只有 `AGENTS` 不过各一格，变异 o1），后两种之后升级回到 `upgrading`、提交的列为空、`mode` 两次）；通过：`reviewing`、报告、`mode` 两次（第一个事务与存下报告，第 216 条）、一行 info 的日志。**另配的应用**（7.2）上：客户端在计算中断开（`heldRules` 停住、取消请求的 ctx、放开），报告照样存下、日志的 `outcome` 是 `stored`；计算答错误（`heldRules` 让规则答错误）之后第二个事务退回 `upgrading`、`outcome = failed`、可以再提交。**期限一格**（审查 P2A-I1、P2A-M1、P2C-I2；标准应用，`wiring.submitTimeout` 6 s）见下 | 第八份 | S2 |
 | 提交的交错 | `TestUpgradeSubmitInterleavings`（7.2） | 第八份 | S2 |
-| 状态到流 | `TestUpgradeStatesReachTheStreams` 加提交的三格：提交、存下报告、退回各发一次 `mode` | 第七份 | S2 |
+| 状态到流 | `TestUpgradeStatesReachTheStreams` 加提交的两格、各两帧：不过的提交（第一个事务一帧、退回一帧），补好之后通过的提交（第一个事务一帧、存下报告一帧）（S2 的实施；初稿写"三格"） | 第七份 | S2 |
 | 矩阵 | `TestUpgradePermissionMatrix` 的三个操作（3.15）；`TestUpgradeToolsMatrix`；覆盖的检查改读 `coveredMCPRows()` | 第七份、第八份、第三份 | S2 |
 | 工具的契约、说明 | `TestTheToolListsAreTheContract`、`TestTheWikiToolsContract`、`TestTheBuiltInInstructionsAreShort`、`TestTheBuiltInInstructionsNameEveryTool`；`wiki/adapter/mcp` 的 `TestTheCheckFits` 与工具数 | 第五份、`wiki/adapter/mcp`、`page/adapter/mcp` | S2 |
 | 网页 | 4.3 的 vitest | `web` | S2、S3 |
 | 故事 | UP4（S1）、UP5（S2 的 API 与 MCP，S3 的页面） | e2e | S1–S3 |
 
-**`TestUpgradeSubmit` 的期限一格**照默认配置的比例造期限。默认配置下 REST 的请求期限（15 s）早于 `submitted_at + SubmitTimeout`（17.5 s 之后），MCP 的（另加 `BodyReadTimeout`）晚于它。标准应用的请求 4 s、`BodyReadTimeout` 5 s（`ReadTimeout`，`bootstrap/deps.go:304`），`wiring.submitTimeout` 设 6 s：REST 的 4 s 早于 `submitted_at + 6 s`，MCP 的 9 s 晚于它，比例同默认；6 s 大于两倍的计算时长（`Do` 只等余下的一半），`Do` 的预算仍约 2 秒。REST 与 MCP 各一次，依次：
+**`TestUpgradeSubmit` 的期限一格**照默认配置的比例造期限。默认配置下两个入口的请求期限（15 s；MCP 的工具调用是读完请求体之后的 `RequestTimeout`，3.12 第 3 步）都早于 `submitted_at + SubmitTimeout`（17.5 s 之后）。标准应用的请求 4 s，`wiring.submitTimeout` 设 6 s：两个入口的 4 s 都早于 `submitted_at + 6 s`，比例同默认（初稿以为 MCP 另加 `BodyReadTimeout` 5 s、9 s 才到，晚于它；第 273 条，审查 P2S2A-M4）；6 s 大于两倍的计算时长（`Do` 只等余下的一半），`Do` 的预算仍约 2 秒。REST 与 MCP 各一次，依次：
 
 1. `heldRules` 停住提交的计算（`held`；窗口只有下面两步，远短于 `Do` 的预算）；
 2. 这时计算停住、笔记本行没有人持：另一位管理员提交，第一个事务读到"审阅中、没有报告"、未过期，答 409 `wiki.upgrade_state`、`detail` 是"正在计算"的那句，不建 flight（一次短请求，远短于 `Do` 约 2 秒的预算）；
 3. 测试在自己的事务里持住笔记本行（`SELECT … FOR NO KEY UPDATE`；第一个事务已提交，行是空的）；
 4. 放开计算；`pgtest.WaitForLockWaits` 等到第二个事务在锁上等；
-5. 过期限：REST 在它的请求期限答 503 `server_busy`、`Retry-After: 1`，答复在 `submitted_at + 6 s` 之前到（期限取了较早的那一个）；MCP 在 `submitted_at + 6 s` 答同样的码（工具的错误）。各 warn 一行，什么也没写：行在"审阅中、没有报告"，`submission_id` 是这一次的；
+5. 过期限：REST 与 MCP 都在各自请求的期限答 503 `server_busy`（MCP 是工具的错误），早于 `submitted_at + 6 s`（期限取了较早的那一个）；`Retry-After` 是到能接管为止的秒数（第 274 条，修复一轮；实施时是 1）：秒数随服务端答复的那一刻差一秒（本机 REST 2 秒、MCP 3 秒），所以断言它不小于从收到答复到 `submitted_at + 6 s` 的秒数（向上取整、至少 1），收到答复之后再恰等那么多秒，让第 6 步的接管成功；精确值由单元 `TestTheSubmissionsDeadline` 钉住。各 warn 一行，什么也没写：行在"审阅中、没有报告"，`submission_id` 是这一次的；
 6. 测试放开锁；过了 `submitted_at + 6 s`，另一位管理员提交成功（接管）：报告存下，`submission_id` 是第二次的（7.2 第 7 条的"另一次提交"）。
 
-"正在计算"的探测放在第 2 步、两个入口一样（审查 P2A-M5、P2C-M5）：测试持着笔记本行时，另一次提交的第一个事务要在同一把锁上等，等到自己的请求期限答 500，或等到放锁时已过期限、成了接管；MCP 那一次第 5 步恰在 `submitted_at + 6 s` 才答，"期限之内、不持锁"的窗口根本没有。
+"正在计算"的探测放在第 2 步、两个入口一样（审查 P2A-M5、P2C-M5）：测试持着笔记本行时，另一次提交的第一个事务要在同一把锁上等，等到自己的请求期限答 500，或等到放锁时已过期限、成了接管。两个入口第 5 步都在请求的期限答，之后到 `submitted_at + 6 s` 之间再提交答"正在计算"，那时什么也没在算，第 274 条的 `Retry-After` 因此取到能接管为止（初稿另写"MCP 那一次第 5 步恰在 `submitted_at + 6 s` 才答"，照第 273 条不对）。
 
 另一格：第一个事务落在请求的期限上，同别的写（平台答 500、warn 一行），什么也没写。
 
@@ -1699,10 +1748,10 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 |---|---|---|---|
 | 护栏的读（`TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics`，`page/adapter/postgres`，`test-go-costs-2` 一行，紧接 P1 的删除护栏的读） | 照 P1 的删除护栏的夹具：两次升级各 10 万行基线（这一次的与另一本笔记本的），另种九本各 5 万页的笔记本作不该读的行；读 1,000 个基线页的 `UpgradeBaselineContent`、写 1,000 次 `AcceptUpgradeContent`（`before` 等于账本） | S1 | 三种统计状态（从未分析、分析过、只有另一次升级的统计）× 自定义与通用两种计划（第四种 `force_generic_plan` 就是通用计划那一列，3.19），每格先判计划再计时：`upgrade_nodes` 只经 `upgrade_nodes_pkey`、两列都在索引条件里；`page_contents` 只经 `page_contents_pkey`、在嵌套循环的内侧以外行的 `node_id` 读（`LATERAL … LIMIT 1` 不被拉成连接）；没有顺序扫描，一格计划有问题就停在计时之前。时长：每次读、每次写的中位数，界取本机两轮较大的中位数 × 3、向上取整到 5 ms |
 | 护栏在界上的单元（`TestUpgradeGuardrailsAtTheBatchBoundTakeTheirTime`，组合根，`test-go-guards-core` 一行，紧接 `TestABatchAtItsRewriteBoundTakesItsTime`） | 升级中的笔记本上由发起人的 agent 跑五种（审查 P2A-M4）：a. 一次改名改写 M9 的界上的那么多基线页（`MaxBatchRewrites` 页、每页 84 KB 与 200 条链接，`page/domain/batch_plan.go:33-45`；系统改写：不比正文，每页一次账本的写）；b. 一个 `batch` 的 100 个编辑各删掉基线页 frontmatter 里一行约 62 KB，这些页的 head 合计约 13.8 MiB、恰在 `MaxBatchReadBytes`（14 MiB）之内，最终约 8 MiB（计划读一次、守卫再读一次、两次哈希；照字面的 140 KB 编辑过 `MaxUnitBytes`，单元不会跑，3.19）；c. 一页 `MaxContentBytes` 的基线页改 frontmatter（一个 `edit` 操作的 `batch`）；d. 一个 `batch` 盲写基线页、各删掉一块大的 frontmatter，head 合计恰在 14 MiB 之内（两页 5 MiB、一页约 4 MiB）：升级中放得进的最大的单元；e. 100 个盲写、各删掉一页 5 MiB 基线页的大 frontmatter（A 实测本机 1.58 秒的那一种）：现在由计划答 `page.batch_too_large`，什么也没写。b–e 的页以 SQL 种下、每轮之间以 SQL 写回（e 的 100 页 × 5 MiB 一条 `generate_series`，lz4 之后约 207 MiB）；批的 bench 给 `/mcp` 以 wire 的请求体上限 | S1 | 单元持着笔记本行：a–d 每种的单元短于 14 s（批的 bench 是生产的 15 秒请求，留 1 秒，3.19；决定 153、243 判最大的单元；不取三倍的规则作上限），三倍的规则另作回归的界（本机两轮较大的中位数 × 3、向上取到 100 ms：a 5.2 s、b 1.1 s、c 200 ms、d 100 ms、e 100 ms；a 的界守的主要是 M9 的改写，护栏多出的约 15–65 ms 在抖动之内，护栏的那一份由 b–e 量，审查 P2S1B-N1）；e 答它的码，用时在三倍的界之内（只有计划，不进单元）；同一形状在普通笔记本上的中位数一起打出，增量写进记录 |
-| 闸门的读的计划（`TestTheUpgradeGateReadsPlansAtAnyStatistics`，`page/adapter/postgres/upgrade_cost_test.go`，与帮手 `rollbackReadProblems` 同包，写法同 P1/S3 的 `TestARollbacksReadsTakeTheirTimeAtAnyStatistics`；`test-go-costs-3` 一行，紧接它；审查 P2B-N4） | 以 SQL 种下一本 10 万页的笔记本与它的升级的 10 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集、这本笔记本的 10 万个普通变更集；另九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集（决定 240，审查 B 的种子） | S2 | `UpgradeGateBaseline`、`UpgradePreserved`、`UpgradeChangesets` 在三种统计状态（从未分析、发起之后分析过、只有别的升级的统计）× 自定义与通用计划下：`upgrade_nodes` 只经 `upgrade_nodes_pkey` 的前缀、索引条件含 `upgrade_id`；`nodes`、`page_contents` 只经主键、在嵌套循环的内侧以外行的键读；`changesets` 只经 `changesets_upgrade_id_idx`（帮手的关系表加 `changesets`：`Index Scan`、`Bitmap Heap Scan` 之下的每一个 `Bitmap Index Scan` 都是它，条件里含 `upgrade_id =`）；在内侧逐行重复的扫描必须经外行的键，不许逐行重读整个集合（非 hashed 的 SubPlan、内侧的 `Materialize`、`CTE Scan`）。`UpgradePreserved` 的预排序聚合的 `Sort` 只在这次升级的行上，不判为问题（3.9）。一格计划有问题就失败；每条读的中位数带 `-v` 打出，不设时长的界，时长由下一行判 |
-| 检查（`TestUpgradeCheckTakesItsTimeAtAnyStatistics`，组合根，`test-go-costs-2` 一行，紧接发起的守卫） | 第 262 条：5 万页（审查 P2B-M2）。lint 的成本夹具（`bootstrap/wiki_lint_cost_fixture_test.go:41`）的页数做成参数（lint 的守卫照旧 10 万），这里取 5 万、改成普通笔记本、以 SQL 设成升级中：5 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集；另种九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集，这本笔记本另有 10 万个普通的变更集（决定 240，B 的种子）；配置照 lint 的守卫（请求 6 s、worker 3 s，`bootstrap/wiki_lint_cost_test.go:31-34`，M10 决定 160）；另一份种子里闸门 7 不过（一个基线页的正文不是账本的） | S2 | 只量时长，计划由上一行判（组合根导入不了 `page/adapter/postgres` 测试包里的帮手，审查 P2B-N4）：整个检查（`Module.CheckUpgrade`，经 `Runs`）在两份种子上（发起之后分析过）各三格的中位数，界取本机两轮较大的 × 3（向上取整到 100 ms）与 worker 的 80%（2.4 s）中较小的（B 的建议）。估计：B 实测十万页的检查另加的读并进 `not_kept` 之后本机约 0.31–0.34 秒（lint 摘要 0.785 秒），5 万页约一半；7763 与本机之比 2.2–2.6，折到 7763 约 1.3–1.5 秒，在 2.4 s 之内 |
+| 闸门的读的计划（`TestTheUpgradeGateReadsPlansAtAnyStatistics`，`page/adapter/postgres/upgrade_cost_test.go`，与帮手 `rollbackReadProblems` 同包，写法同 P1/S3 的 `TestARollbacksReadsTakeTheirTimeAtAnyStatistics`；`test-go-costs-3` 一行，紧接它；审查 P2B-N4） | 以 SQL 种下一本 10 万页的笔记本与它的升级的 10 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集、这本笔记本的 10 万个普通变更集；另九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集（决定 240，审查 B 的种子） | S2 | `UpgradeGateBaseline`、`UpgradePreserved`、`UpgradeChangesets` 在三种统计状态（从未分析、发起之后分析过、只有别的升级的统计）× 自定义与通用计划下：`upgrade_nodes` 只经 `upgrade_nodes_pkey` 的前缀、索引条件含 `upgrade_id`；`nodes`、`page_contents` 只经主键、在嵌套循环的内侧以外行的键读；`changesets` 只经 `changesets_upgrade_id_idx`（帮手的关系表加 `changesets`：`Index Scan`、`Bitmap Heap Scan` 之下的每一个 `Bitmap Index Scan` 都是它，条件里含 `upgrade_id =`）；在内侧逐行重复的扫描必须经外行的键，不许逐行重读整个集合（非 hashed 的 SubPlan、内侧的 `Materialize`、`CTE Scan`）。`UpgradePreserved` 的预排序聚合的 `Sort` 只在这次升级的行上，不判为问题（3.9）。修复一轮另判每个 `Relation == "nodes"` 的扫描都经 `nodes_pkey`、条件含 `id = `，在计时之前：帮手对 `nodes` 认任何以 `notebook_id =` 为条件的索引，内侧每行按笔记本读整本的 `nodes` 它看不出（审查 P2S2B-M1；帮手本身不改）。这一判法由不要数据库的 `TestTheGateReadsReadANodeByItsKey`（`make test-go-short` 跑到）以五格手写的计划钉住：按键、按键的位图过，按外行的笔记本、按笔记本与 `parent_id`、Seq Scan 不过；它也断言共用的 `rollbackReadProblems` 放过前两种不过的，以写明补的是哪个口子，以后收紧帮手时这一段要一并改（审查 P2S2B-N2，不改）。一格计划有问题就失败；每条读的中位数带 `-v` 打出，不设时长的界，时长由下一行判 |
+| 检查（`TestUpgradeCheckTakesItsTimeAtAnyStatistics`，组合根，`test-go-costs-2` 的末尾，与发起的守卫之间隔护栏的读一行，S2 的实施） | 第 262 条：5 万页（审查 P2B-M2）。lint 的成本夹具（`bootstrap/wiki_lint_cost_fixture_test.go:41`）的页数做成参数（lint 的守卫照旧 10 万），这里取 5 万、改成普通笔记本、以 SQL 设成升级中：5 万行基线（各带 `parent_id`，页带 `wanted`）、1,000 个本次升级的变更集；另种九本各 5 万页的笔记本与它们的升级的基线行、各 1,000 个变更集，这本笔记本另有 10 万个普通的变更集（决定 240，B 的种子）；配置照 lint 的守卫（请求 6 s、worker 3 s，`bootstrap/wiki_lint_cost_test.go:31-34`，M10 决定 160）；另一份种子里闸门 7 不过（S2 以 SQL 把一页的账本记成别的哈希：正文与账本不一致的两种写法对闸门 7 一样，不用再种一份 5 万页） | S2 | 只量时长，计划由上一行判（组合根导入不了 `page/adapter/postgres` 测试包里的帮手，审查 P2B-N4）：整个检查（`Module.CheckUpgrade`，经 `Runs`）在两份种子上（发起之后分析过）各三格的中位数，界取本机两轮较大的 × 3（向上取整到 100 ms）与 worker 的 80%（2.4 s）中较小的（B 的建议）。S2 取 1.5 s（`checkCostBound`：本机两轮较大的中位数 489 ms × 3）。估计：B 实测十万页的检查另加的读并进 `not_kept` 之后本机约 0.31–0.34 秒（lint 摘要 0.785 秒），5 万页约一半；7763 与本机之比 2.2–2.6，折到 7763 约 1.3–1.5 秒，在 2.4 s 之内 |
 
-`Makefile` 的四行各带一行注释（规模、判什么、本机的数），同 P1 的写法；成本分份的说明随之改（6.1 第 5 个提交、6.2 第 8 个提交写出旧文字与新文字），costs-3 照旧 35 分钟；guards-core 与 costs-2 由 S1 的修复（`80da6b1f`）从 30、35 分钟提到 40、45 分钟（第 269 条；第 267 条提前到 S1，审查 P2S1B-M1，7.5）。
+`Makefile` 的四行各带一行注释（规模、判什么、本机的数），同 P1 的写法；成本分份的说明随之改（6.1 第 5 个提交、6.2 第 8 个提交写出旧文字与新文字），costs-3 照旧 35 分钟（修复一轮照第 275 条提到 40 分钟，审查 P2S2B-M2）；guards-core 与 costs-2 由 S1 的修复（`80da6b1f`）从 30、35 分钟提到 40、45 分钟（第 269 条；第 267 条提前到 S1，审查 P2S1B-M1，7.5）。
 
 ### 7.2 交错
 
@@ -1723,9 +1772,9 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 
 | # | 交错 | 怎样逼出 | Step |
 |---|---|---|---|
-| 5 | 提交的第一个事务与发起人正在跑的 `batch` | 标准应用。照 `acmeTeam.interleaveOn`（`bootstrap/interleavings_workspace_test.go:191`）：`batch` 先持笔记本行，提交等它，存下的报告看得到它写的（一页补上 `type` 之后 `missing_type` 少一）；提交先（照 P1 第 14 条停在 `Start` 之后的写法，包住 wiki 的 `States`、停在 `SetState` 之后），`batch` 等笔记本行，之后答 `notebook.upgrading`、什么也没写 | S2 |
+| 5 | 提交的第一个事务与发起人正在跑的 `batch` | 标准应用。照 `acmeTeam.interleaveOn`（`bootstrap/interleavings_workspace_test.go:191`）：`batch` 先持笔记本行，提交等它，存下的报告看得到它写的（一页补上 `type` 之后 `missing_type` 少一）；提交先（S2 以 `interleaveOn` 持住笔记本行、批的命令一步，不另包 wiki 的 `States`；初稿写照 P1 第 14 条包住 `States`、停在 `SetState` 之后），`batch` 等笔记本行，之后答 `notebook.upgrading`、什么也没写 | S2 |
 | 6 | 检查的快照已取 → 发起人的写提交 → 提交的第一个事务 → 放开 | 另配的应用。`heldRules` 装上，管理员检查，等它停住（`held`）：它的快照取在写之前，占一个名额；发起人的 agent 补上最后一页的 `summary`；管理员提交：第一个事务、`mode`；提交的 flight（键带提交的 id）建起（`RunCreated`），拿另一个名额算完，存下的报告看得到那一次写、`passed` 为真，答 200；放开：先停住的那次检查答它自己的旧结果（快照里是 `upgrading`，合法；`passed` 为假）。变异"提交并入已有的检查"在这里失败：提交只有 `RunJoined`、没有自己的 `RunCreated`，等它的那一步失败 | S2 |
-| 7 | 提交的两个事务之间的放弃与另一次提交 | **放弃**（另配的应用）：`heldRules` 停住管理员 A 的提交的计算；管理员 B 放弃（`rolling_back`，回滚的任务排上）；放开：第二个事务读到别的状态，什么也不写，答 409 `wiki.upgrade_state`，日志的 `outcome` 是 `superseded`；回滚照常做完。**另一次提交**：就是 7.1 `TestUpgradeSubmit` 的期限一格，不另造。第一次的第二个事务在测试持住的笔记本行上等到期限，答 503、什么也没写；放开锁、过了期限之后，第二次提交接管、存下报告，`submission_id` 是第二次的。`heldRules` 停住计算造不出这一种：第一次的 `Do` 在 `submitted_at + SubmitTimeout/2` 前后就答 `server_busy`，它的第二个事务在期限之内退回 `upgrading`，已没有"审阅中、没有报告"可接管（审查 P2A-M1、P2C-I2）。提交的 id 的核对另由 `TestTheSecondTransactionWritesOnlyItsOwn` 钉住：接管只在前一次的期限之后，期限照存下的 `submitted_at` 算（截到微秒），前一次的第二个事务那时已到期，所以整个程序里到不了"期限之内读到别的提交"（2.1 第 7 条） | S2 |
+| 7 | 提交的两个事务之间的放弃与另一次提交 | **放弃**（另配的应用）：`heldRules` 停住管理员 A 的提交的计算；管理员 B 放弃（`rolling_back`，回滚的任务排上）；放开：第二个事务读到别的状态，什么也不写，答 409 `wiki.upgrade_state`，日志的 `outcome` 是 `superseded`；回滚照常做完（读放弃之后的行不看回滚到了哪一步：`state` 在 `rolling_back` 或 `rolled_back`、提交的三列还在、没有报告，之后照旧等回滚的作业 `succeeded`；回滚的 worker 常在测试读之前就做完，S2 的实施）。**另一次提交**：就是 7.1 `TestUpgradeSubmit` 的期限一格，不另造。第一次的第二个事务在测试持住的笔记本行上等到请求的期限（两个入口都是，第 273 条），答 503、什么也没写；放开锁、过了期限之后，第二次提交接管、存下报告，`submission_id` 是第二次的。`heldRules` 停住计算造不出这一种：第一次的 `Do` 在 `submitted_at + SubmitTimeout/2` 前后就答 `server_busy`，它的第二个事务在期限之内退回 `upgrading`，已没有"审阅中、没有报告"可接管（审查 P2A-M1、P2C-I2）。提交的 id 的核对另由 `TestTheSecondTransactionWritesOnlyItsOwn` 钉住：接管只在前一次的期限之后，期限照存下的 `submitted_at` 算（截到微秒），前一次的第二个事务那时已到期，所以整个程序里到不了"期限之内读到别的提交"（2.1 第 7 条） | S2 |
 | 8 | 检查排队等名额时升级被放弃 | 另配的应用，两个名额都要占着：`heldRules` 依次装上两次，管理员读两条规则的条目（`listUpgradeCheckItems` 的 `missing_type`、`missing_summary`，键不同，两个 flight），各停住；管理员检查，它的 flight 建起（`RunCreated`）而拿不到名额，在 `Do` 里等；管理员放弃；放开两次：检查的 worker 拿到名额，在快照里读到 `rolling_back`，答 409 `wiki.upgrade_state`（审查 B-M3；批准的一半在 P3/S1） | S2 |
 | 15 | 第一次提交在算、第二次提交 | 另配的应用。`heldRules` 停住第一次的计算；第二次（另一位管理员）的第一个事务读到审阅中、没有报告、未过期，答 409 `wiki.upgrade_state`、`detail` 是"正在计算"的那句，不建 flight；放开，第一次存下报告。期限之后的一半在 `TestUpgradeSubmit` 的期限一格 | S2 |
 | — | 提交人在两个事务之间被降为写者 | 另配的应用。`heldRules` 停住计算；另一位管理员把提交人降为写者；放开：第二个事务写下报告，`COMMIT` 之前的判定答 403 `forbidden`；报告照样存下，info 一行、`outcome` 是 `stored`；升级停在审阅中、带报告（之后任何管理员都可以放弃，P3 的批准照常） | S2 |
@@ -1733,7 +1782,7 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 
 ### 7.3 变异
 
-每个变异是实施时在本机对代码的一处改动，跑它旁边写的测试，要它失败（不提交；改回从备份复原）；第 10 节记下结果。第 84–86 行是修订核对第一轮之后加的，接在表尾、不重编前面的号（审查记录与对照里引的行号照旧）。S1 的审查之后照第 268 条改第 17–20 行（第 19 行即修复一轮的 n1）；表尾接 S1 的两轮修复与审查者留下的变异，照它们在 [S1 的审查记录](reviews/P2-S1-guardrails-review.md) 里的名字记、不编号（3.19）。
+每个变异是实施时在本机对代码的一处改动，跑它旁边写的测试，要它失败（不提交；改回从备份复原）；第 10 节记下结果。第 84–86 行是修订核对第一轮之后加的，接在表尾、不重编前面的号（审查记录与对照里引的行号照旧）。S1 的审查之后照第 268 条改第 17–20 行（第 19 行即修复一轮的 n1）；表尾接 S1 的两轮修复与审查者留下的变异，照它们在 [S1 的审查记录](reviews/P2-S1-guardrails-review.md) 里的名字记、不编号（3.19）。S2 的审查之后，第 25、42 行的后一个测试改正归属，第 33、46、61 行照实施改；表尾再接 S2 的实施者的 o1、审查者留下的与修复新加的变异（修复第三、四轮的对调与常量的变异 72、555 条只记审查者点名的几条，全部见审查记录），照它们在 [S2 的审查记录](reviews/P2-S2-gate-check-submit-review.md) 里的名字记（3.20）。
 
 | # | 变异 | 让它失败的测试 | Step |
 |---|---|---|---|
@@ -1761,7 +1810,7 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 22 | 所有错误都标在 `Last` | 同上的"别的码仍标在 `First`" | S1 |
 | 23 | 账本不在改写时更新（只在 `!Rewrite` 时写） | g4（账本不等于改写之后的哈希）；`TestTheUnitKeepsTheLedger` | S1 |
 | 24 | 账本的写不限 `baseline` 与 `kind` | `TestAcceptUpgradeContent` 的保护行与附件 | S1 |
-| 25 | `RunKey` 不带 `Scope` | `TestTheUpgradeKeysJoinOnlyTheirOwn`；7.2 第 6 条 | S2 |
+| 25 | `RunKey` 不带 `Scope` | `TestTheUpgradeKeysJoinOnlyTheirOwn`（初稿另写 7.2 第 6 条，那是第 26 行的：提交的键的 `Kind` 与检查的不同，去掉 `Scope` 也不并入） | S2 |
 | 26 | 提交并入已有的检查（键用 `LintUpgradeCheck` 与升级的 id） | 7.2 第 6 条（提交没有自己的 `RunCreated`） | S2 |
 | 27 | `Runs` 交给每个调用者同一个 `Check` | `TestTheRunsCopyACheck` | S2 |
 | 28 | `logFinished` 不认新的种类 | `TestTheUpgradeKindsAreNamed` | S2 |
@@ -1769,7 +1818,7 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 30 | 发起不设 `AreaWantedByPage` | `TestUpgradeStart` 的第二遍（基线 `wanted` 是 1 而不是 0） | S2 |
 | 31 | 闸门 6 改回全本的净数 | `TestJudgeUpgrade` 的抵消；`TestUpgradeGates` 的抵消 | S2 |
 | 32 | 闸门 6 算新建页 | `TestJudgeUpgrade` 的新建页 | S2 |
-| 33 | `MovedIntoSources` 不重建发起时的树（只数现在在区里的基线节点） | `TestJudgeUpgrade` 的计数"`raw` 原有、下面的两页发起时就在"（审查 P2B-N3；初稿的"闸门 6 不认封顶"没有可改的代码，删去） | S2 |
+| 33 | `MovedIntoSources` 不重建发起时的树（只数现在在区里的基线节点） | `TestJudgeUpgradesCounts`（S2 从 `TestJudgeUpgrade` 拆出）的计数"`raw` 原有、下面的两页发起时就在"（审查 P2B-N3；初稿的"闸门 6 不认封顶"没有可改的代码，删去） | S2 |
 | 34 | 闸门 7 的分母取现读的行 | `TestJudgeUpgrade` 的"现读的行数少一行" | S2 |
 | 35 | 闸门 7 不比账本 | `TestUpgradeGates` 的 SQL 绕过（只有它，第 191 条）；`TestTheUpgradeGateReads` 的"改正文而账本不变" | S2 |
 | 36 | `UpgradePreserved` 的 `not_kept` 只收不在的节点、不收正文不是账本的页 | `TestTheUpgradeGateReads` 的"改正文而账本不变"（`not_kept` 是那一页）；`TestUpgradeGates` 的 SQL 绕过的 `node_ids` | S2 |
@@ -1778,11 +1827,11 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 39 | 闸门 2 不查 `AGENTS` | `TestJudgeUpgrade` 的"来源根改名为 `AGENTS`" | S2 |
 | 40 | 闸门 3 不限根下 | `TestJudgeUpgrade` 的"不在根下的 `index`" | S2 |
 | 41 | 闸门 1 不切 frontmatter | `TestTheUpgradeRoots` 的"正文只有 frontmatter" | S2 |
-| 42 | 索引一格不看 `stale_pages` | `TestJudgeUpgrade`；`TestUpgradeSubmit` 的 `stale_index` | S2 |
+| 42 | 索引一格不看 `stale_pages` | `TestJudgeUpgrade` 的一页过时（提交答 `stale_index` 看的是检查的 `StalePages`、不经闸门 8，所以初稿另写的 `TestUpgradeSubmit` 的 `stale_index` 抓不到它） | S2 |
 | 43 | 快照里不核对升级的 id 与状态 | 7.2 第 8 条（两个名额由停住的条目读占着，检查排队之后读到 `rolling_back`）；`TestTheCheckRefusesAnotherUpgradesSnapshot` | S2 |
 | 44 | 闸门的读不在快照里（在 `WithinSnapshot` 之外读） | `TestTheCheckReadsInOneSnapshot` | S2 |
 | 45 | 检查交付之前不再判定 | `TestTheCheckAuthorizesBeforeItsAnswer` | S2 |
-| 46 | 条目不核对游标绑定的根 | `TestUpgradeCheck` 的普通 `lint` 的游标与"上一次升级补写的 `raw`"的游标；`TestCheckUpgradeAnswersInOrder` | S2 |
+| 46 | 条目不核对游标绑定的根（改在 linking 的 `LintCursor.PositionFor`：用例只经它绑定游标，没有单独"核对根"的一句） | `TestUpgradeCheck` 的普通 `lint` 的游标与"上一次升级补写的 `raw`"的游标（`TestCheckUpgradeAnswersInOrder` 的假游标自己判根，看不到它） | S2 |
 | 47 | 提交的第二个事务不核 `submission_id` | `TestTheSecondTransactionWritesOnlyItsOwn` | S2 |
 | 48 | 第二个事务不核状态 | 7.2 第 7 条的放弃 | S2 |
 | 49 | 提交的第二段用请求的上下文 | `TestUpgradeSubmit` 的断开；`TestTheSubmissionDetaches` | S2 |
@@ -1797,7 +1846,7 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | 58 | 提交的日志记在第二个事务之前 | 7.2 第 7 条的放弃（日志写了 `stored`，应是 `superseded`；审查 P2C-M2） | S2 |
 | 59 | 期限之内的再提交顶掉正在算的那一次 | 7.2 第 15 条；`TestUpgradeSubmit` 的期限一格的第 2 步；`TestSubmitUpgradeAnswersInOrder` | S2 |
 | 60 | 不过时不退回（留在 `reviewing`） | `TestUpgradeSubmit` 的 `not_ready` | S2 |
-| 61 | 存下报告不发 `mode` | `TestUpgradeStatesReachTheStreams` 的提交三格 | S2 |
+| 61 | 存下报告不发 `mode` | `TestUpgradeStatesReachTheStreams` 的提交两格（通过的那一格） | S2 |
 | 62 | 报告不去游标 | `TestReportOf`；契约的 `apitest`（`additionalProperties: false`） | S2 |
 | 63 | `destructiveHint` 照旧只在真时写 | `TestTheAnnotationsAreTheHints` 的 `Annotations{}` 一格；`TestTheToolListsAreTheContract` | S2 |
 | 64 | 说明少一行 | `TestTheBuiltInInstructionsNameEveryTool` | S2 |
@@ -1846,6 +1895,32 @@ UP5 的页面版本只在 Chromium（00 号文档第 9 节：三种浏览器只�
 | x4b | 正文的一遍在写的路径上清掉标记（`pg.reached = rewrote`） | `TestThePlanTellsAPageAMoveReached` 的 `MarkReached` 格；`TestTheBatchJudgesAPageByItsLinksBeforeIt` | S1 |
 | x4c | 正文的一遍在编辑的路径上清掉标记 | 同上；g27 | S1 |
 | x4d | `MarkReached` 只标新建的页 | `TestThePlanTellsAPageAMoveReached`；`TestTheBatchJudgesAPageByItsLinksBeforeIt` | S1 |
+| o1 | 提交只看 `frontmatter` 一道闸门（`case !check.Passed` → `!check.Gates.Frontmatter`；实施者的） | `TestSubmitUpgradeAnswersInOrder` 的"只有 `AGENTS` 不过"；`TestUpgradeSubmit` 的码依次的同一格 | S2 |
+| a6 | 提交只看 `frontmatter` 与 `agents` 两道（`!check.Gates.Frontmatter \|\| !check.Gates.Agents`，审查 P2S2A-M1） | `TestSubmitUpgradeAnswersInOrder` 的每格只让一道闸门不过的表 | S2 |
+| a1 | 闸门 7 不比 `NodesKept == Nodes`（审查 P2S2A-M2） | `TestJudgeUpgrade` 的"a baseline attachment deleted" | S2 |
+| a2 | 闸门 7 不比 `Nodes == BaselineNodes` | `TestJudgeUpgrade` 的"an attachment's baseline row gone" | S2 |
+| a4 | 提交在快照里只核对升级的 id（审查 P2S2A-M3） | `TestTheSubmissionsSnapshotIsItsOwn` 三格 | S2 |
+| c1 | REST 的投影丢掉 `wanted_now.count_capped`（审查 P2S2C-M2） | `TestTheCheckIsAnswered`、`TestTheReportIsAnswered` | S2 |
+| c11 | 判定的 `WantedNow` 去掉封顶 | `TestJudgeUpgradesCounts` 的"the wanted pages now capped" | S2 |
+| c12 | 存报告时丢掉 `wanted_now.count_capped` | `TestTheReportRoundTrips`、`TestTheWorstReportFits` | S2 |
+| c13 | MCP 的投影丢掉 `wanted_now.count_capped` | `TestTheCheckFits` | S2 |
+| s1 | 存报告时 `wanted_before` 取 `WantedNow`（审查 P2S2C-M4） | `TestTheReportRoundTrips`（两个方向的夹具） | S2 |
+| s2 | REST 的投影的 `wanted_before` 取 `WantedNow` | `TestTheCheckIsAnswered`、`TestTheReportIsAnswered` | S2 |
+| gm3 | `UpgradePreserved` 的内侧按 `n.notebook_id = b.notebook_id` 读 `nodes`（审查 P2S2B-M1） | `TestTheUpgradeGateReadsPlansAtAnyStatistics` 另判 `nodes` 只经主键 | S2 |
+| gm7 | 同上，另按 `n.parent_id = b.parent_id` 读一个文件夹（B 的未核实的怀疑） | 同上（规划器选只有 `parent_id` 的索引时，改前的帮手也判得出；"按笔记本与文件夹"的那一种由 `TestTheGateReadsReadANodeByItsKey` 手写的一格盖住） | S2 |
+| r274a | 提交的期限的 503 的 `Retry-After` 取回 1 秒（第 274 条） | `TestTheSubmissionsDeadline` | S2 |
+| r274b | 同上 | `TestUpgradeSubmit` 的期限两格（REST、MCP） | S2 |
+| n9 | `lintQuery` 不拒摘要带 `AreaWantedByPage`（审查 P2S2A-N2） | `TestTheWantedCountsByPage` 的 the-second-pass-alone | S2 |
+| p1 | 存报告时 `WikiPages` 取 `NewPages`（审查 P2S2C-M5） | `TestTheReportRoundTrips` | S2 |
+| p2 | 读报告时 `Sources` 取 `Changesets` | `TestTheReportRoundTrips` | S2 |
+| m1–m3 | MCP 的投影 `wanted_before` 取 `WantedNow`、`wanted_before.count_capped` 恒假、`wiki_pages` 取 `Sources` | `TestTheCheckFits`（m1、m3 另有 `TestTheCheckIsAnsweredWhole`） | S2 |
+| hr1–hr3 | REST 的报告的规则 `count_capped` 恒真、恒假，`count` 取条目的个数（审查 P2S2C-M6） | `TestTheReportIsAnswered` | S2 |
+| hg1 | REST 的 `preserved` 的 `nodes` 取 `nodes_kept` | `TestTheCheckIsAnswered`、`TestTheReportIsAnswered` | S2 |
+| xg1–xg3 | MCP 的 `preserved` 的 `nodes_kept` 与 `pages` 对调、`frontmatter` 取 `sources`、`index` 取 `agents` | `TestTheCheckIsAnsweredWhole` | S2 |
+| wp1 | 组合根把 page 的 `Preserved` 转成 wiki 时 `NodesKept` 取 `Nodes`（审查 P2S2C-M7） | `TestUpgradeGates` 的"a baseline attachment deleted past the units" | S2 |
+| k1 | REST 的报告条目的 `kind` 恒为 `asset`（审查 P2S2C-N9） | `TestTheReportIsAnswered` | S2 |
+| hi-MD=llm | REST 的规则页的 `mode` 恒为 `llm_wiki` | `TestTheCheckIsAnswered` | S2 |
+| lg1 | 提交的日志的 `user_id` 取工作区的 id（审查 P2S2C-N10） | `TestTheSubmitterIsDecidedBeforeTheAnswer` | S2 |
 
 ### 7.4 门禁
 
@@ -1864,10 +1939,10 @@ P1 末（`f002672b`，服务端同 `ce370441`）：七份是 145、51、121、12
 初稿写的"CI 在 9V45 上 211 秒"是 S3 分支的运行 42635761979 在 7763 上、`ABackground` 挪入之前的数，标错了 runner（审查 P2C-N5）。7763 与本机之比约 285/170 ≈ 1.68。邻份最坏的一次：第一份 446、第二份 443、第三份 430、第四份 418、第五份 443 秒；第六份 354 秒，它在 P1 刚因 460 秒挪出过 `TestIngestBefore`。
 
 - **S1**：第七份只加 `TestUpgradeGuardrails` 的二十二格（每格一次 MCP 调用，夹具按格各一本笔记本、一次发起）。照 P1 的同类（每次发起本机约 0.3 秒，`TestUpgradeStart` 五格 1.1 秒）估 7763 上加 15–25 秒，到约 300–315 秒。不开新份。实测（3.19、10.1）：S1 加了二十七格（g23–g25 由第 268 条、g26 由审查 P2S1C-N5、g27 由第 270 条加）；建成时本机两轮 172.4、174.6 秒，分支 CI 的 7763 上 Test 一步 292 秒（包 259.0 秒，比 P1 末多 4–8 秒，少于估的）；修复一轮之后本机 181.6、176.4 秒，CI 的 9V45 上包 180.5 秒；修复第二轮之后本机 183.9、181.4 秒（审查 B 一轮 171.6 秒），CI 的 9V74 上 Test 一步 240 秒。
-- **S2**：新的 `TestUpgradeCheck`、`TestUpgradeGates`、`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`、`TestUpgradeToolsMatrix`、`TestUpgradePermissionMatrix` 的三个操作、`TestUpgradeToolsErrorsCarryTheirCodes` 的两行。照 P1 的同类（`TestUpgradePermissionMatrix` 92 格并行、本机墙钟 7.65 秒；P1 的 12 条交错共 7.0 秒、最长 2.8 秒）估 7763 上加 75–120 秒（审查 C）；另有期限一格的等待（REST 约 4 秒、MCP 约 6 秒，再等过期限接管，两个入口共约 15 秒墙钟，不占 CPU）。不开第八份时第七份到约 375–420 秒，余量小于 P3 要加的，邻份又没有地方挪，所以 S2 的第一个提交开第八份（第 261 条）：第八份收 `^TestUpgrade(Check|Gates|Submit|Tools)`（含 P1 的 `TestUpgradeToolsErrorsCarryTheirCodes`），7763 上估约 100–150 秒；第七份留 P1 的与 `TestUpgradeGuardrails`、`TestUpgradePermissionMatrix`、`TestUpgradeStatesReachTheStreams`，约 305–320 秒。数由 S2 的记录实测。
+- **S2**：新的 `TestUpgradeCheck`、`TestUpgradeGates`、`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`、`TestUpgradeToolsMatrix`、`TestUpgradePermissionMatrix` 的三个操作、`TestUpgradeToolsErrorsCarryTheirCodes` 的两行。照 P1 的同类（`TestUpgradePermissionMatrix` 92 格并行、本机墙钟 7.65 秒；P1 的 12 条交错共 7.0 秒、最长 2.8 秒）估 7763 上加 75–120 秒（审查 C）；另有期限一格的等待（REST 约 4 秒、MCP 约 6 秒，再等过期限接管，两个入口共约 15 秒墙钟，不占 CPU）。不开第八份时第七份到约 375–420 秒，余量小于 P3 要加的，邻份又没有地方挪，所以 S2 的第一个提交开第八份（第 261 条）：第八份收 `^TestUpgrade(Check|Gates|Submit|Tools)`（含 P1 的 `TestUpgradeToolsErrorsCarryTheirCodes`），7763 上估约 100–150 秒；第七份留 P1 的与 `TestUpgradeGuardrails`、`TestUpgradePermissionMatrix`、`TestUpgradeStatesReachTheStreams`，约 305–320 秒。数由 S2 的记录实测。实测（3.20、10.2）：S2 加了五个顶层（`TestUpgradeCheck`、`TestUpgradeGates`、`TestUpgradeSubmit`、`TestUpgradeSubmitInterleavings`、`TestUpgradeToolsMatrix`），P1 的 `TestUpgradeToolsErrorsCarryTheirCodes` 挪进第八份：`go test -race -list` 547 个，八份 145、51、121、124、62、11、27、6；本机第七份两轮 185.1、179.5 秒，第八份 46.7、46.3 秒；分支 CI（42882105107）第七份在 9V74 上 Test 一步 260 秒，第八份在 Xeon 8573C 上 97 秒。第二份没有加测试，却在 7763 上 Test 一步 457 秒，过了 450 秒的线（`main` 上 438、430 秒）：本机 `ba72cda4` 上 250.8、252.7 秒，`c3c35bbc` 上 263.2、264.4 秒，慢约 5%，摊在许多小测试上；审查 B 查出原因是契约变大（`api/dist/openapi.yaml` 286,572 → 306,033 字节），组合根的夹具每建一个应用就 `apitest.Load` 一次，竞态构建下每次多约 62 ms（第 9 节交给 P3）。第 272 条在合并之前把第二份最大的 `TestVirtualExport`（本机约 52 秒）挪进第七份与第八份的模式（第八份仍是第七份的子集；只挪进 `EIGHTH` 时它在第三份与第八份各跑一次，审查 P2S2B-Q1）；B 估挪后第二份在 7763 上约 374 秒，第八份约 190 秒。挪后（3.20、10.2）：`-list` 547 个，145、50、121、124、62、11、27、7；本机第二份 204.4、202.0、204.1、202.6 秒，第八份 98.6、99.8、99.3、100.3 秒，B 照 1.61 加 33 秒折到 7763 约 360、193 秒；修复的五次 CI 上第二份在 Xeon 8573C 上 288 秒、9V74 上 292、292 秒、9V45 上 229 秒，第八份在 9V45 上 147、138、132 秒、9V74 上 170 秒（B 照第一次的两个 runner 交叉核对，折到 7763 第二份约 357 秒、第八份约 185–205 秒）；落在 7763 上的各一次：第二份 400 秒（修复第三轮，挪后第一次，在线下，比两个估计都高，那一轮第二份的测试没有动），第八份 187 秒（修复第四轮，与估的相符）。合并之后照第 8 节第 1 条看两次 `main`。
 - **第五份**：只改 `TestTheWikiToolsContract` 的计数与 `TestTheToolListsAreTheContract` 读的文件，不加运行的时间；第三份的 `TestThePermissionMatrixCoversEveryTool` 是静态的核对。
 - 每个 Step 的记录写出各份的 `go test -race -list`（合起来等于全部，新的测试只在第七、八份）与本机在 heavy 锁下各跑两轮的平均（`make -j1 test-go-bootstrap-<n>`）；合并之后两次 `main` 的 CI 里每份 Test 一步的平均在 450 秒之下，否则照 06-environment 第 50 行处理之后才开下一个 Step。
-- 成本守卫：S1 的两行进 costs-2（估约 3 秒；实测本机约 17 秒，种子 12.7 秒是大头，CI 上 9V45 22.7 秒、9V74 36.5 秒，3.19）与 guards-core（五种形状与 100 × 5 MiB 的种子，估 40–90 秒；实测本机约 21 秒，7763 上 37.8 秒）；S2 的一行进 costs-2（5 万页加九本各 5 万页的种子，照发起的守卫估 40–70 秒，在 7763 上约 1.5 倍）；一行进 costs-3（10 万行基线加九本各 5 万页的种子、十八格计划，照回滚的读的守卫估 40–60 秒），作业约 18 分钟加约 1 分钟，时限照旧 35 分钟。costs-2 在 `main` 的 CI 上：EPYC 7763 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），EPYC 9V74 16:42（run 42749131694）；加上 P2 的两条，快机约 18.5 分钟、7763 约 25–26 分钟，35 分钟的时限不到 `ci.yml` 里"约两倍"的规则，所以把它提到 45 分钟（第 267 条；P1/S2 的审查 C 提过，当时说合并之后看 `main` 上的数）。S1 的审查 P2S1B-M1 之后提前到 S1 的修复（`80da6b1f`），guards-core 同时从 30 分钟提到 40 分钟（第 269 条：7763 上作业约 20 分钟，末行在第 19.4 分钟才开始，卡住时 Go 默认的 10 分钟只比 30 分钟早约半分钟）；P2/S2 的 `main` 上 costs-2 在 7763 上 23:45（42762546769，`c37a3faf`）。S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上约 1 分钟）；guards-sources（7763 上约 1.8 倍）下次改到时照第 269 条提到 40 分钟。
+- 成本守卫：S1 的两行进 costs-2（估约 3 秒；实测本机约 17 秒，种子 12.7 秒是大头，CI 上 9V45 22.7 秒、9V74 36.5 秒，3.19）与 guards-core（五种形状与 100 × 5 MiB 的种子，估 40–90 秒；实测本机约 21 秒，7763 上 37.8 秒）；S2 的一行进 costs-2（5 万页加九本各 5 万页的种子，照发起的守卫估 40–70 秒，在 7763 上约 1.5 倍）；一行进 costs-3（10 万行基线加九本各 5 万页的种子、十八格计划，照回滚的读的守卫估 40–60 秒），作业约 18 分钟加约 1 分钟，时限照旧 35 分钟。costs-2 在 `main` 的 CI 上：EPYC 7763 22.2 分钟（run 42530568840）、23:17（run 42752100006，`f002672b`），EPYC 9V74 16:42（run 42749131694）；加上 P2 的两条，快机约 18.5 分钟、7763 约 25–26 分钟，35 分钟的时限不到 `ci.yml` 里"约两倍"的规则，所以把它提到 45 分钟（第 267 条；P1/S2 的审查 C 提过，当时说合并之后看 `main` 上的数）。S1 的审查 P2S1B-M1 之后提前到 S1 的修复（`80da6b1f`），guards-core 同时从 30 分钟提到 40 分钟（第 269 条：7763 上作业约 20 分钟，末行在第 19.4 分钟才开始，卡住时 Go 默认的 10 分钟只比 30 分钟早约半分钟）；P2/S2 的 `main` 上 costs-2 在 7763 上 23:45（42762546769，`c37a3faf`）。S2 加检查的守卫之后再看 costs-2 的余量（审查 B：慢三成的实例上约 1 分钟）；guards-sources（7763 上约 1.8 倍）下次改到时照第 269 条提到 40 分钟。S2 实测：costs-2 在 9V45 上 14:48（检查的守卫 30.7 秒）；审查 B 估它在 7763 上作业约 25.4 分钟、末行约第 24.5 分钟开始，卡住时 Go 默认的 10 分钟在第 34.5 分钟，先于 45 分钟，不再提。costs-3 在 9V74 上 14:46（闸门的读的计划 34.3 秒）；`main` 上落在 7763 时 `-timeout 20m` 那一行在第 12.7–14.4 分钟开始，S2 在它之前再加约 0.75 分钟，它的超时落在第 33.5–35.2 分钟，贴着 35 分钟，第 275 条提到 40 分钟（审查 P2S2B-M2；修复一、二轮的 CI 上 costs-3 都在 Xeon 8573C 上，15:11、16:33，那一行在第 11.7、12.7 分钟开始，三至五轮在 9V74 上 13:42、13:38、13:55）；修复第三轮的 CI 上 costs-2 落在 7763：24:54，与 B 估的约 25.4 分钟相符。guards-sources S2 没有改到。
 - e2e：S1 加 UP4 两个、S2 加 UP5 两个、S3 加一个，都只在 Chromium；作业的 20 分钟照 P1/S4 的量有余。
 
 ### 7.6 P2 怎样量
@@ -1914,11 +1989,11 @@ P2 完成，当且仅当：
   - 批准在笔记本行下读"审阅中、带报告"、且报告的 `passed` 为真（`Upgrade.Report`，3.12）；批准不再算检查（存下的报告就是依据，00 号文档 4.9），`wiki.upgrade_not_ready` 已在 S2 定义、两种语言的文字已有，P3/S1 照用。
   - 退回（`sendBackUpgrade`）的"审阅中、没有报告"的接管用同一个 `SubmitTimeout`（`UpgradeDeps.SubmitTimeout`，`submitted_at + SubmitTimeout` 之后，期限照存下的 `submitted_at` 算），清提交的列的写可照 `UnsubmitUpgrade`（3.12）另写一条（它要的是不论 `submission_id`）。
   - `TestUpgradeSubmitInterleavings` 第 7 条的"退回"一格与第 9 条（批准与驳回）在 P3/S1 加；第 8 条的"批准"一半同样。停住计算的照 7.2 的"名额与期限"，在另配的应用上跑。
-  - **P3 的整个程序测试落在哪一份**（审查 P2C-N5）：`TestUpgradeApprove`、`TestUpgradeReject`、`TestUpgradeSendBack` 与它们的交错照名字落在第七份（`^TestUpgrade` 去掉第八份的模式），`TestUpgradePromptMatrix` 照第 222 条在第七份。P3 的设计照 P2/S2 合并之后两次 `main` 的第七、八份的数定：第七份放不下时扩第八份的模式（例如加 `Approve|Reject|SendBack`），扩了还过线就照 06-environment 第 50 行再分一份。
+  - **P3 的整个程序测试落在哪一份**（审查 P2C-N5）：`TestUpgradeApprove`、`TestUpgradeReject`、`TestUpgradeSendBack` 与它们的交错照名字落在第七份（`^TestUpgrade` 去掉第八份的模式），`TestUpgradePromptMatrix` 照第 222 条在第七份。P3 的设计照 P2/S2 合并之后两次 `main` 的第七、八份的数定：第七份放不下时扩第八份的模式（例如加 `Approve|Reject|SendBack`），扩了还过线就照 06-environment 第 50 行再分一份。第八份另有第 272 条从第二份挪来的 `TestVirtualExport`（B 估 7763 上约 190 秒）。契约每长一截，组合根里每建一个应用就 `apitest.Load` 一次（读、校验、建路由整份 `api/dist/openapi.yaml`，竞态构建下约 0.63 秒），各份照比例慢一截：S2 让契约长约 6.8%，第二份慢约 5%（审查 P2S2B-Q2）；P3 定分份时把这一项算进去，要不要把契约在进程里只读一次是测试设施的取舍。
 - **P3/S2**：
   - playbook 写明：护栏的三个码；无效 frontmatter 的两种改法（00 号文档 4.6"核实"）；"同一页在一个 `batch` 里改了又改回放过"（第 208 条，3.4），中间有移动改写过它、或中间的移动照它批前的链接够着它时不放过（g25、g27）；`page.upgrade_batch_rewrite` 的拆法：一个 `batch` 里改名或移动之后，再写链向它的原有页一律要拆开（先写这一页、再移动，或分两个 `batch`），写回原来的字节、在批里先拿掉再放回链接也一样（第 268、270 条，3.4）；拆开之后正文本身的改动仍被拒为 `page.upgrade_immutable`（第 265 条）；只写名字的链接，移动之后照样解析，系统不改写；"移动之后系统改写链接"只对写了路径的链接成立，改名则两种都改写（审查 P2S1C-N2）；升级中一次 `batch` 盲写的大页计进读的界、过了答 `page.batch_too_large`，拆开即可（第 266 条）。
-  - prompt `upgrade` 让 agent 先 `upgrade_verify`、通过之后 `upgrade_submit`、`wiki.upgrade_state` 的"正在计算"时等一会再检查。
-  - MCP 人工清单的 K3 记 `page.upgrade_immutable` 在客户端里的样子与 `upgrade_submit` 的 `destructiveHint: false` 是否让客户端少问一次。
+  - prompt `upgrade` 让 agent 先 `upgrade_verify`、通过之后 `upgrade_submit`、`wiki.upgrade_state` 的"正在计算"时等一会再检查。提交答 `server_busy` 时照它的 `retry_after_seconds` 等过再交：第 274 条让它取到能接管为止，不必另写"等几秒再交"（审查 P2S2A-N1）。
+  - MCP 人工清单的 K3 记 `page.upgrade_immutable` 在客户端里的样子与 `upgrade_submit` 的 `destructiveHint: false` 是否让客户端少问一次；笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`（同账户入口的 `notebooks`），看客户端是否接受（审查 C 的未核实的怀疑）。
 - **P3/S3（网页）**：审阅一节复用 `UpgradeReportSection`（4.3），加"更多"（`HealthRule` 的 `read` 已是参数，"从第一页读"再做成一个参数：存下的报告没有游标，`health-rule.tsx:210` 在 `cursor === null` 时藏起"更多"）与三个动作；"退回"的"上一次提交正在计算"的文字与 20 s 的重读（00 号文档 4.15）。`upgrade-check.tsx` 的 `UpgradeGates`、`UpgradeCounts` 与 `HealthRule` 的 `level` 照用；审阅一节的缓存照 4.3 的"这一次进入"。
 - **M12**：检查的十万页（第 262 条）写进 M12 的性能移交，同第 232 条的写法：审查 B 实测十万页的检查折到 7763 约 2.5–3.0 秒，是 worker 3 秒的 84–100%。第 270 条的代价（第 271 条，S1 的修复核对 P2S1B-M2）同样写进 M12 的性能移交，接在 M9 那一项（第 18 条"MCP"）之后：M9/P3 已接受的"许多次改名之间的带链接的页"（50 次改名一个 10 万个节点的文件夹、每次之后编辑一页带链接的页，`M9-mcp/03-P3-batch-revert.md`"许多次改名之间的带链接的页"一段）在升级中计划约翻倍，本机 7.5 s 对 3.5–3.8 s，调用 10.1 s 对 6.1–6.4 s，照 7763 的比估约 18.6 s，过 15 秒的请求期限；过期限时什么也不写，拆开就能过。
 
@@ -1983,12 +2058,79 @@ P2 完成，当且仅当：
   - 推之前改订过两次，旧的都没推过：第一版 `ac13346e`、`9761259e`（`x2c` 存活，补 `askedFirst` 两格）；第二版 `1960105e`、`35478201`（n4、20 在组合根上存活，补 g27 的 Q 两格）。中途磁盘剩 14G，停下修剪 Go 的构建缓存（审查记录"环境"）。
 - **修复核对第二轮**（2026-11-10，三位各在 `198b0cd5` 的自己的工作树里）：A 判 P2S1A-M1 关：第 270 条的判法范围正好到最后一个正文操作、头的答案复用的条件对、不偏严、新建的页不设、状态变了会重新计划，试过的别的路都被拒，没有新发现；g27 的 Q 两格让 n4、20 在组合根上也死（A 重跑）。C 判 P2S1C-N4、N5 关（`ra` 在 g26 上死），两个提交逐个都绿；P2S1C-M2 部分，另报文档稿的三条 Nit（P2S1C-N6–N8），都在本提交改了。B 判报告的数相符，新的 P2S1B-M2：第 270 条让 M9 已接受的一个形状在升级中计划翻倍，代价没写出，由决定 271 关上（只改文档）；`TestTheMCPCallStopsWhenTheClientGoes` 那次失败与本轮无关，它的两个日志等待推后到 P2/S2 改成 10 秒。之后不再有修复轮。
 - **审查的结论**：Important 1（P2S1A-I1），Minor 2（P2S1B-M1、P2S1C-M1），Nit 6；修复核对一轮另 Minor 2（P2S1A-M1、P2S1C-M2）、Nit 2（P2S1C-N4、N5）；修复核对第二轮另 Minor 1（P2S1B-M2）、Nit 3（P2S1C-N6–N8）。都已改或记下。问题在一处规则（第 254 条的"写别的就清掉"让改名之后的写漏过护栏）与它的两个变体（字节不变的写、批里先拿掉再放回）、第 270 条在一个已接受的形状上的代价、两份 CI 的时限与几处测试；守卫的次序、码、账本与两条读的计划三位都没有查出错。
-- **合并之后**（2026-11-10）：`main` 在分支开出之后没有动过，分支不用先合 `main`；Step 的文档提交 `6808d8db` 的分支 CI（run 42828548509）18 项全绿之后 `--no-ff` 合进 `main`（`8cf7af36`，树与分支头相同）。`main` 上合并那次的 CI（run 42834026668）18 项一次全绿：七份的测试一步 254、438、405、396、403、318、197 秒；与它之前那次 `main`（42762546769，`c37a3faf`：361、430、389、356、391、304、240 秒）平均 307.5、434、397、376、397、311、218.5 秒，都在 450 秒之下。第二份两次都在 430 秒以上，最贴近界；S2 的第一个提交开第八份（第 261 条）时，照 06-environment 的规矩看要不要从第二份挪测试过去。costs-2 两次 24:41、24:40（时限 45 分钟），guards-core 12:51、12:58（时限 40 分钟）。
+- **合并之后**（2026-11-10）：`main` 在分支开出之后没有动过，分支不用先合 `main`；Step 的文档提交 `6808d8db` 的分支 CI（run 42828548509）18 项全绿之后 `--no-ff` 合进 `main`（`8cf7af36`，树与分支头相同）。`main` 上合并那次的 CI（run 42834026668）18 项一次全绿：七份的测试一步 254、438、405、396、403、318、197 秒；与它之前那次 `main`（42762546769，`c37a3faf`：361、430、389、356、391、304、240 秒）平均 307.5、434、397、376、397、311、218.5 秒，都在 450 秒之下。第二份两次都在 430 秒以上，最贴近界；S2 的第一个提交开第八份（第 261 条）时，照 06-environment 的规矩看要不要从第二份挪测试过去。costs-2 两次 24:41、24:40（时限 45 分钟），guards-core 12:51、12:58（时限 40 分钟）。记合并号的 `ba72cda4` 那次 `main`（run 42839913448）同样全绿：七份 355、346、342、304、287、320、382 秒（第七份换了 runner），与合并那次平均 304.5、392、373.5、350、345、319、289.5 秒，都在 450 秒之下；guards-core 19:44、guards-sources 16:38、costs-2 24:21。
 - 实施者留下的五项：Step 的文档提交是本提交；形状 a 在 7763 上余量最小（约 1.64 倍），界守的主要是 M9 的改写，若来了更慢的 runner 最先红的是它（P2S1B-N1）；读的守卫的种子比估的重，costs-2 的时限照第 267 条提前到 S1；UP4 的 Notes 以路径链向 Plan，playbook 照第 9 节写；S2、S3 照设计。
 
-### 10.2 S2：闸门、检查与提交（服务端）
+### 10.2 S2：闸门、检查与提交（服务端）（2026-11-11，合并 `（待填）`）
 
-（待填）
+- 提交（从 main 的 `ba72cda4` 开始，照 6.2 的次序，S1 留下的测试提交排第 2，10 个；Step 的文档提交是主持者的）：
+  - 第八份 `BOOTSTRAP_EIGHTH = ^TestUpgrade(Check|Gates|Submit|Tools)`：第七份 `-skip` 它，`test-go`、`test-go-bootstrap` 与 CI 的 `bootstrap-8`（25 分钟），06-environment 的两行（第 261 条）（`9ff43717`）。
+  - `TestTheMCPCallStopsWhenTheClientGoes` 的两个日志等待 2 秒 → 10 秒（3.19 交给 S2 的那一条）（`967fdbea`）。没有治好：第一轮 `make test` 里它又失败一次，10 秒里一行也没等到；根因是 SDK 在客户端走后可能照样把答复写进已断的连接，"答复没写出"那一行就不会来（审查 P2S2C-M1），修复一轮删掉那一条断言，3.19 的那一条由此关上（3.20）。
+  - `Runs` 认升级的检查、条目与提交：`RunKey.Scope`（检查与条目是升级的 id，提交是提交的 id）、三个 `LintQueryKind`；`Do` 交 `RunResult{Lint, Check}`，各调用者一份自己的；`logFinished` 带 `upgrade_scope`；按页的待建数与第二遍分开问（`WantedByPage`、`AreaWantedByPage`）；检查的类型提前到这里（3.8）（`5d804808`）。
+  - page 模块的四条读：`Roots`、`Baseline`、`Preserved`（`LATERAL … LIMIT 1` 逐行经键）、`Changesets`（只经 `changesets_upgrade_id_idx`）；`ReservedKeys()`（3.9）（`8fa3b7c7`）。
+  - `JudgeUpgrade`（八道闸门、计数）、`Failed`、`ReportOf`（每条规则的数与前五项，不带游标与路径）（3.10）（`29b1124a`）。
+  - 检查与条目：`CheckUpgrade` 照 lint 的码序，经 `Runs`、在快照里再读升级、经 `UpgradeGatePages` 读、判定、取闸门节点的路径，交付之前再判 `notebook.change_mode`；契约 `checkUpgrade`、`listUpgradeCheckItems`；HTTP 适配器；矩阵两行（3.11、3.13）（`223e7d09`）。
+  - 提交：两个事务，中间的计算脱离请求的取消，期限取 `submitted_at + SubmitTimeout` 与请求的期限中较早的；第二个事务只写自己那一次提交，交付之前的判定在 `COMMIT` 之前，过期限答 503 与 warn，提交之后 info 一行；`Upgrade.report` 与它存下的编码；网页 `wiki.upgrade_not_ready` 两种语言的文字（3.12、3.13、3.16）（`74a3057a`）。
+  - MCP：`upgrade_verify`（lint 的参数；不带 `rule` 答检查，闸门以路径列出节点）、`upgrade_submit`（`{state, submitted_at}`）；非只读的工具带 `destructiveHint: false`；"server update" 的措辞；内置说明两行；`TestUpgradeToolsMatrix`、`coveredMCPRows()`；两行码进 `upgradeToolCodes()`；`validToolArguments` 与 LW8 的工具数（3.14、3.15）（`d8d2bbaf`，范围带 `e2e`）。
+  - 两个成本守卫：闸门的读的计划（costs-3）、5 万页的检查（costs-2）；`rollbackReadProblems` 认 `changesets`；`Makefile` 两行、`ci.yml` 的注释，时限不变（7.1）（`a6e8cb67`）。
+  - e2e：UP5 的 API 与 MCP 两个版本（第 5 节）（`c3c35bbc`）。
+  - 每个提交单独在工作树里 build、vet、`make lint-go`、`make gen-check`、short 测试都通过，另跑它自己的（单元、组合根、网页三项、守卫、UP 的故事）；审查 B 另在 3、6、7、8 号上各自跑同样的四项，8 号另跑竞态的 `^TestToolStrings` 与 `TestUpgradeToolsErrorsCarryTheirCodes`。推送之前改写过两次 7–10 号，旧的都没推过：补变异 o1 抓不到的"只有 `AGENTS` 不过"两格（7 号）；修第一轮门禁的三处（7 号的交错第 7 条，8 号的 `validToolArguments` 与 LW8 的工具数）。
+  - 修复一轮另有 9 个、第二至五轮各 1 个（下面），一共 23 个；合并 `（待填）`。
+- 与设计不同之处（实施者的号，同 3.20；都是最小的改动，已改在各节）：
+  1. 检查的类型在 3 号提交（6.2）。
+  2. `wiki.upgrade_stale_index` 的服务端 `detail` 不说是哪个动作，同网页（4.2）；修复一轮改顺语气。
+  3. `Logger` 加 `ErrorContext`（3.16）。
+  4. 第二个事务每种结局都照码序判；锁不到笔记本时 `superseded`、答 `notebook.not_found`、不再判（3.12）。
+  5. 组合根的 `SetState` 认 `upgrading`（3.12）。
+  6. 提交的答复的 `submitted_by` 照用 `named`（不是偏离）。
+  7. 覆盖测试认 `/upgrade/check/{rule}`（6.2"不改"）。
+  8. 组合根测试的第二位管理员是笔记本的管理员。
+  9. 交错第 5 条以 `interleaveOn` 持笔记本行，不包 `States`（7.2）。
+  10. `TestUpgradeCheck`、`TestUpgradeSubmit` 的 MCP 一半在 8 号（6.2）。
+  11. MCP 的期限是读完请求体之后的 `RequestTimeout`：`request_timeout` 不超过 20 秒时两个入口都是请求的期限先到，期限一格的 MCP 一半照 REST 断言（3.12、7.1；第 273 条）。
+  12. 第一个事务的期限一格在 8 号加（7.1）。
+  13. `upgrade_submit` 笔记本入口的 `inputSchema` 没有 `properties`（SDK 对空结构体的编码）（3.14）。
+  14. `TestUpgradeStatesReachTheStreams` 的提交两格、各两帧（7.1"三格"）。
+  15. 报告的条目也不带 `path`（3.10、3.13）。
+  16. `TestJudgeUpgrade` 的计数拆成 `TestJudgeUpgradesCounts`（7.3 第 33 行）。
+  17. `TestUpgradeToolsErrorsCarryTheirCodes` 的几种情形（3.15）。
+  18. 检查的守卫的另一份种子以 SQL 改一页的账本（7.1）。
+  19. 检查的守卫在 costs-2 的末尾（7.1）。
+  20. UP5 审阅中的冻结用 `edit`（第 5 节）。
+  21. UP5 的页名用 `Page.name`（第 5 节）。
+  22. 变异 46 改在 `LintCursor.PositionFor`（7.3）。
+  23. `TestUpgradeToolsMatrix` 读的行也每格一个库的副本（3.15）。
+  24. 8 号的范围带 `e2e`，改 `validToolArguments` 与 LW8 的工具数（6.2、3.14）。
+  25. 交错第 7 条读放弃之后的行不看回滚到了哪一步（7.2）。
+  26. 2 号的 10 秒没有治好 `TestTheMCPCallStopsWhenTheClientGoes`（3.19；审查 P2S2C-M1）。
+- 实测（本机，经 `heavy.sh`；出处见 [S2 的审查记录](reviews/P2-S2-gate-check-submit-review.md)"实测"）：`go test -race -list` 547 个顶层测试，八份 145、51、121、124、62、11、27、6，各在恰好一份；第七份两轮 185.1、179.5 秒，第八份 46.7、46.3 秒；第二份 263.2、264.4 秒（`ba72cda4` 上 250.8、252.7 秒，多的约 5% 摊在许多小测试上：契约变大，组合根每建一个应用就 `apitest.Load` 一次，竞态构建下每次多约 62 ms，审查 B 查清）。5 万页的检查：中位数（每页都保留 / 一页没保留）定界两轮 487 / 487、489 / 485 ms，之后三次 491–501 / 487–494 ms，界 1.5 s（本机三倍与 worker 的八成中较小的）；一次里规则 285–312 ms、来源 76–92 ms、`UpgradePreserved` 86–96 ms，种子约 12 秒。闸门的读：三种统计 × 两种计划，计划都合规，基线 33–63 ms、保留 241–314 ms、变更集 0.3–0.5 ms（十万行的基线，另九本），种子约 14 秒。最坏的报告 35,125 字节（界 65,536；修复一轮之后 35,128 字节）。内置说明经 SDK 3,276、3,346 字节（界 3,796）。vitest 192 个文件、4,345 个测试；`make e2e` 522 个，2.3 分钟。修复一轮之后（第 272 条挪后）：547 个，145、50、121、124、62、11、27、7；第二份 204.4、202.0 秒（f1）、204.1、202.6 秒（头），第八份 98.6、99.8、99.3、100.3 秒（修复第五轮加一格之后 97.9 秒），折到 7763 约 360、193 秒；检查的中位数 474、473 ms。
+- 反向对照：7.3 的 S2 各行（25–66）每个点名的测试各跑一次（42 行 59 条）加实施者自己的 10 种（o1、o3–o11，15 条），共 74 条；第一轮 69 条抓到。没抓到的：25b、42b（7.3 把别的条的测试归到这两行，它们由 25a、42a 抓到；7.3 已改）；33 对 `TestJudgeUpgrade`（计数拆进 `TestJudgeUpgradesCounts`，另跑抓到）；o1a、o1b（提交只看 `frontmatter` 一道闸门）是真的缺口，补"只有 `AGENTS` 不过"的单元一格与组合根一格之后都抓到。交错第 7 条的断言改过之后，48、58 在它上面重跑，都抓到。审查者的变异里活下来的 a1、a2、a4、a6、c1、c11–c13、gm3 各成了一条发现（P2S2A-M1–M3、P2S2C-M2、P2S2B-M1）；修复一轮：它们与 B 的怀疑写成的 gm7 在新测试上都死，另加第 274 条的 r274a、r274b 与第 9 条的 n9，13 条都死；修复核对一轮 A 另加 a4b、a6b 与三条改坏秒数的变异，都死；C 的 s1、s2（`wanted_before` 与 `wanted_now` 弄混）在修复一轮的夹具上活，修复第二轮之后死（P2S2C-M4）；修复核对第二、三轮 C 又找到同一类的 p1、p2、m1–m3（P2S2C-M5）与 hr1–hr3、hg1、xg1–xg3（P2S2C-M6）；修复第三轮 72 条（改前活 28 条）、第四轮按投影写的 555 条对调与常量的变异（改前活 217 条），改后都全死；修复核对第四轮 C 把范围放宽到所有逐字段转换，又找到组合根的 wp1（P2S2C-M7）与 k1、lg1（N9、N10），修复第五轮 11 条改前活 4 条、改后全死。
+- 门禁（本机，头 `c3c35bbc`）：`make lint gen-check knip build` 8 秒；经 `heavy.sh`：`make test` 3,501 秒通过，`make test-go-short` 41 秒，`make e2e` 138 秒（522 个）。第一轮（`c3bfdd54`）红在 `TestToolStrings*` 两个、LW8 的三个、交错第 7 条，都改了；另有两次偶发：`TestTheMCPCallStopsWhenTheClientGoes`（3.19 交给 S2 的那一个，2 号的 10 秒没有治好，见上）与 M8 留下的 `TestARestoreJobSkipsAnItemRestoredBetweenItsBatches`（负载下作业抢先拿到锁，请求的恢复答它说明里的另一个 409，测试只认一种；审查 B 的 4.7，修复一轮改测试）。修复一轮（头 `b6ef8599`）：`make lint gen-check knip build` 7 秒，`make test` 3,342 秒通过，`make test-go-short` 41 秒，`make e2e` 135 秒（522 个），那两次偶发都没有再出；修复第二轮（`9dce4658`，只改单元测试的夹具）：`make test-go-short` 39 秒与 wiki 模块全部竞态单元 48 秒；第三至五轮（`ef8ac10f`、`d4324ab8`、`43caa32a`）同样跑 build、vet、`make lint-go`、`make gen-check`、`make test-go-short` 与 wiki 模块全部竞态单元（第四轮 40 秒、52 秒），都 rc=0；第五轮改了组合根的一格，另经 `heavy.sh` 跑 `TestUpgradeGates` 与第八份一轮（包 97.9 秒）。
+- CI：分支的 run 42882105107（`c3c35bbc`）19 项全绿；第七份在 9V74 上 Test 一步 260 秒（包 234.0 秒），第八份在 Xeon 8573C 上 97 秒（包 66.9 秒）；第二份在 7763 上 457 秒（包 423.8 秒），过 450 秒的线（`main` 上 438、430 秒），即第 272 条；costs-2 在 9V45 上 14:48，检查的守卫 30.7 秒，中位数 726、720 ms（界 1.5 s）；costs-3 在 9V74 上 14:46，闸门的读的计划 34.3 秒，六格合规，`-timeout 20m` 一行在第 11.8 分钟开始（7763 上贴着 35 分钟，第 275 条）。修复一轮的 run 42913206700（`b6ef8599`）第一次 attempt e2e 红在 L1 的旧偶发（带修饰键点链接、等新标签页 30 秒超时，这一轮没有碰网页），只重跑 e2e 之后 19 项全绿，L1 交给 P2/S3 另查；第二份在 Xeon 8573C 上 Test 一步 288 秒，第八份在 9V45 上 147 秒，costs-3 在 Xeon 8573C 上 15:11（时限 40 分钟）。修复第二轮的 run 42921758062（`9dce4658`）19 项一次全绿；第二份在 9V74 上 292 秒，第八份在 9V74 上 170 秒，costs-3 在 Xeon 8573C 上 16:33。修复第三轮的 run 42927783261（`ef8ac10f`）19 项一次全绿：第二份落在 7763 上，Test 一步 400 秒（第 272 条挪后第一次落在 7763，在 450 秒的线之下，比估的 360–374 秒高），第八份在 9V45 上 138 秒，costs-3 在 9V74 上 13:42，costs-2 在 7763 上 24:54。修复第四轮的 run 42940795835（`d4324ab8`）19 项一次全绿：第八份落在 7763 上，187 秒（B 估约 190 秒），第二份在 9V74 上 292 秒，costs-3 在 9V74 上 13:38。修复第五轮的 run 42951453163（`43caa32a`）19 项一次全绿：第二份在 9V45 上 229 秒，第八份在 9V45 上 132 秒，costs-3 在 9V74 上 13:55。
+- **审查**（2026-11-11，三位各在 `c3c35bbc` 的自己的工作树里）：A 审检查与提交的正确性，B 审读、成本与份，C 审契约、MCP、矩阵与码、网页的文字、e2e 与文档稿。Important 0，Minor 9（P2S2A-M1–M4、P2S2B-M1、M2、P2S2C-M1–M3），Nit 11，Q 4；修复核对一轮另 Minor 1（P2S2C-M4）、Nit 2（P2S2B-N2、P2S2C-N8），第二、三轮各 Minor 1（P2S2C-M5、M6，与 M4 同一类），第四轮 Minor 1、Nit 2（P2S2C-M7、N9、N10），第五轮 Nit 1（P2S2C-N11）；P2S2B-N2、P2S2C-N7、N11 不改，其余都已改或记下。问题在三处只钉住了一部分的判断（提交的"过没过"、闸门 7 的附件、提交的快照核对）与一个四层都没钉住的成员（`wanted_now.count_capped`）、判计划的帮手对 `nodes` 的口子、设计对 MCP 期限的假定与它带出的 `Retry-After`、costs-3 的时限、两个偶发的根因、e2e 夹具的一个错的不变式；两个事务、期限、码序、键与合并、报告的编码与大小、两个工具与 `Fit` 三位都没有查出错。主持者的决定 272–275（审查记录"主持者的决定"、00 号文档第 11 节）。
+- **修复一轮**（2026-11-11，`b6ef8599`；三份审查与主持者的修复说明 `fix-1.md`，决定 272–275）：从 `c3c35bbc` 起 9 个提交，一类事一个，普通推送，没有改写已推的历史：
+  - `d7c82c01`（`build, ci`）：第 272 条，照 P2S2B-Q1 改三个模式，`TestVirtualExport` 进第七、八份，各份的命令不改；计数的注释照挪后的 `-list` 写（P2S2B-N1、P2S2C-N5），`SEVENTH`、`EIGHTH` 前的说明、`ci.yml` 的 bootstrap-8 注释、`shards8.py`。
+  - `f962a593`（`ci`）：第 275 条，costs-3 35 → 40 分钟，注释写 run 号、runner 与 `-timeout 20m` 那一行开始的分钟数（P2S2B-M2）。
+  - `701c736d`：`TestTheMCPCallStopsWhenTheClientGoes` 删掉"答复没写出"那一条断言，注释写明两种结局都对（P2S2C-M1）。
+  - `e88cf289`：M8 的两个后台任务的交错，"第三批在先"一支同时认 `page.trash_changed`（审查 B 的 4.7）。
+  - `48bb2e18`：测试的缺口：`TestSubmitUpgradeAnswersInOrder` 每格一道闸门不过的七格（P2S2A-M1），`TestJudgeUpgrade` 经 `withAttachment` 的附件三格（P2S2A-M2），新的 `TestTheSubmissionsSnapshotIsItsOwn` 三格（P2S2A-M3），`wanted_now` 四层封顶的夹具（P2S2C-M2），`TestUpgradeToolsMatrix` 照 `r.entries` 与注释折行（P2S2C-N6）。
+  - `3893c318`：闸门的读的计划另判 `nodes` 只经 `nodes_pkey`（`gateNodesProblems`），不要数据库的 `TestTheGateReadsReadANodeByItsKey`（P2S2B-M1）。
+  - `968bb586`（`server, api, web`）：第 274 条，`retryAfter`；`Execute` 与契约 `submitUpgrade` 的说明同改；`TestTheSubmissionsDeadline` 钉住秒数，组合根两格断言下界并照它等过接管。
+  - `debec8dc`：`lintQuery` 拒绝摘要带 `AreaWantedByPage`（P2S2A-N2）；`wiki.upgrade_stale_index` 的服务端文字与它的断言（P2S2C-N4）。
+  - `b6ef8599`（`e2e`）：`expectUpgrade` 的 `submission_id` 与答复的 `submitted_at` 有无相同（P2S2C-M3）。
+  - 每个提交单独跑 build、vet、`make lint-go`、`make gen-check`、short 测试与它碰到的测试，每一项 rc=0。实施者查了修复说明第 12 条：清掉的变更集不是错误，3.9 记一句。
+  - 只改文档的在本 Step 的文档提交：P2S2A-M4、N3，P2S2C-N1–N3、N8 与第 5 节的 P2S2C-M3 那一句；设计 3.7–3.10、3.12–3.16、3.18、3.19、4.2、第 5 节、6.2、7.1–7.3、7.5、第 9 节，加 3.20；00 号文档第 3、5、7、9 节、4.8 与第 11 节。
+- **修复核对一轮**（2026-11-11，三位各在 `b6ef8599` 的自己的工作树里）：A 判 P2S2A-M1–M3、N1、N2 关，第 274 条的秒数、契约与两层测试对，组合根断言下界不会偶发，没有新发现。B 判 P2S2B-M1、M2、N1、Q1 与 B 的 4.7 关，挪后的数够，清掉的变更集的结论对；新的 P2S2B-N2（Nit）：`TestTheGateReadsReadANodeByItsKey` 断言了共用帮手的口子，不改，收紧帮手时一并改（7.1）。C 判 P2S2C-M1–M3、N4–N6 关，C-M1 在审查时的负载下 40 次全过；文档稿里 N1–N3 与 P2S2A-M4、N3 都落对了；新的 P2S2C-M4（Minor，下面）与 P2S2C-N8（Nit：稿子里几处测试名与格数，本提交改）。
+- **修复第二轮**（2026-11-11，`9dce4658`；`fix-2.md`）：1 个只改测试的提交：REST 与存储的夹具让 `wanted_before`、`wanted_now` 一个封顶、一个不封顶，两个方向各一个（P2S2C-M4）；最坏的报告不变（35,128 字节）。s1、s2 改前活、改后死，c1、c11–c13 照旧死。
+- **修复核对第二轮**（C，`9dce4658`）：P2S2C-M4 关（s1、s2 与另加的五条两个方向的探针都死，最坏的报告的取法对）；新的 P2S2C-M5（Minor，S2 建成时就有）：存下的报告的五个计数在夹具里都是 100000，MCP 投影的计数只断言两项，把一个成员写成另一个照过（p1、p2、m1–m3）。
+- **修复第三轮**（2026-11-11，`ef8ac10f`；`fix-3.md`）：1 个只改测试的提交，一次扫清计数这一类：判定、REST 的检查与报告、存与读、MCP 的检查，计数的每个成员在夹具里互不相同、整值断言（判定加"each count its own"一格，`fullReport` 的五个数取 11–15，MCP 的 `bigCheck` 七个成员互不相同并另加前封顶、后不封顶一格）；72 条变异改前活 28 条、改后全死；最坏的报告不变。
+- **修复核对第三轮**（C，`ef8ac10f`）：P2S2C-M5 关，实施者的 72 条整轮重跑全死、换回旧夹具抽 8 条与改前相同；新的 P2S2C-M6（Minor）：计数之外同类的三处：REST 报告的规则的 `count` 与 `count_capped`（hr1–hr3），`preserved` 的 `nodes` 与 `nodes_kept`（REST 的 hg1、MCP 的 xg1），MCP 投影的闸门的布尔值（xg2、xg3）。
+- **修复第四轮**（2026-11-11，`d4324ab8`；`fix-4.md`）：M4、M5、M6 是同一类，这一轮按投影收尾：1 个只改测试的提交，S2 新写的七个投影的夹具每个标量互不相同，八道闸门与 `passed` 排成真假交错的四行，整个答复与写死的期望比，MCP 另加 `TestTheCheckIsAnsweredWhole`；555 条对调与常量的变异改前活 217 条、改后全死，没有发现投影本身有错；最坏的报告不变（35,128 字节）。
+- **修复核对第四轮**（C，`d4324ab8`）：P2S2C-M6 关，555 条整轮重跑全死，`gateRows` 九列互不相同，七个投影里这一类收尾。C 再把范围放宽到 S2 写的所有逐字段转换：新的 P2S2C-M7（Minor）：组合根把 page 的 `Preserved` 转成 wiki 的那一行，`NodesKept` 写成 `Nodes` 整个程序照过（wp1），删掉的基线附件会过闸门 7；P2S2C-N9（Nit）：REST 报告条目的 `kind` 写成常量，夹具里只有 `asset`（k1）；P2S2C-N10（Nit）：提交的日志的 `user_id` 没有断言（lg1）。
+- **修复第五轮**（2026-11-11，`43caa32a`；`fix-5.md`）：1 个只改测试的提交，三条一起改：`TestUpgradeGates` 加一格"a baseline attachment deleted past the units"（以 SQL 删一个基线附件，`preserved` 整值 4/3/2/2，断言后还原）；`reportedView()` 加一项 `kind: page`，规则页的 `mode` 以 `standard` 再答一次；提交的日志断言 `user_id`。11 条变异改前活 4 条、改后全死，第四轮的 555 条在新头上仍全死；三处转换本身都没有错。
+- **修复核对第五轮**（C，`43caa32a`）：P2S2C-M7、N9、N10 关（wp1、k1、lg1 改后死，wp2、k2、k3 照旧死，`hi-MD=llm` 死；新格 4/3/2/2 的取法与"`pages` 必等于 `pages_kept`"的理由对，规则页以 `standard` 再答一次合理）；补查 S2 其余的逐字段转换（ws1、wl1、mv1 死，wb3 等价），这一类收尾。新的 P2S2C-N11（Nit）：`TestUpgradeGates` 以 SQL 改库的两格把还原写在 `check` 里，那一格先 `Fatal` 时后面各格跟着红；不改（只在那一格已经红时影响诊断），以后改这个测试时两格的 `change` 里另用 `t.Cleanup` 注册同一句幂等的还原（7.1）。修复核对到第五轮为止，没有 Important、Minor 留下。
+- 实施者留下的八项（报告第 9 节）：Step 的文档提交是本提交；MCP 的提交到不了 `at + SubmitTimeout`，即第 273 条；`TestTheMCPCallStopsWhenTheClientGoes` 与 `TestARestoreJobSkipsAnItemRestoredBetweenItsBatches` 的根因在审查里查清，修复一轮改；第二份过线，即第 272 条；第七、八份合并之后看两次 `main`；costs-2 的余量审查 B 看过，不再提；S3 照设计（网页 `wiki.upgrade_not_ready` 两种语言的文字与 `upgrade_stale_index` 的新文字已在 7 号，契约已生成进 `api-client`）。
+- **合并之后**：（待填）。
 
 ### 10.3 S3：网页
 
