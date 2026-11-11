@@ -15,7 +15,7 @@ import type {
   UpgradeGates as Gates,
   UpgradeReport,
 } from "../../services/upgrade.service";
-import type { LintRule, LintRuleSummary } from "../../services/wiki.service";
+import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { useStore, useUpgrades } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { nodeTarget } from "../node-target";
@@ -54,8 +54,9 @@ const noPaths = () => undefined;
  * with issues as the health page's cards, their More reading the check's
  * items, the others in a disclosure. The upgrade no longer under way (its
  * check or a card's More refused for its state) says so and reads the
- * upgrade again; refused as forbidden, the account is no longer the
- * notebook's admin: the workspace's notebooks are read again.
+ * upgrade again; the check or a card's More refused as forbidden, the
+ * account is no longer the notebook's admin: the workspace's notebooks are
+ * read again.
  */
 export const UpgradeCheckSection = observer(function UpgradeCheckSection({
   notebook,
@@ -150,6 +151,19 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
       t("upgrade.checkedAt", { time: formatDateTime(data.computed_at, locale) }),
     ].join(" ");
   }
+  /**
+   * readItems reads a rule's items of the check after cursor for its card;
+   * refused as forbidden, the account is no longer the notebook's admin:
+   * the workspace's notebooks are read again, as for the check itself.
+   */
+  async function readItems(which: LintRule, cursor: string, signal: AbortSignal): Promise<LintPage> {
+    try {
+      return await upgrades.checkItems(notebook.id, which, cursor, signal);
+    } catch (refusal) {
+      if (refusal instanceof ApiError && refusal.code === "forbidden" && scope.current()) rereadNotebooks();
+      throw refusal;
+    }
+  }
   const rules = healthRuleOrder.flatMap((rule) => data?.rules.find((found) => found.rule === rule) ?? []);
   const found = rules.filter((rule) => rule.count > 0);
   const clear = rules.filter((rule) => rule.count === 0);
@@ -177,7 +191,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
           }));
           return changed?.cards[rule.rule];
         }}
-        read={(which, cursor, signal) => upgrades.checkItems(notebook.id, which, cursor, signal)}
+        read={readItems}
         moved="wiki.upgrade_state"
         level={3}
       />

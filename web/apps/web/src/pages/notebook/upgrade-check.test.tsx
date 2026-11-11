@@ -469,6 +469,31 @@ test("a check refused as forbidden reads the notebooks again in the public provi
   expect(checks(server)).toBe(1);
 });
 
+test("a card's More refused as forbidden reads the notebooks again too: the account no longer the admin, the page says who can see it", async () => {
+  const user = userEvent.setup();
+  let lists = 0;
+  const server: ReturnType<typeof upgradeServer> = serverOf(rulesCheck(), {
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        lists++;
+        return json({ data: [server.notebook] });
+      },
+    },
+  });
+  server.checkItems = { missing_type: missingTypes(notePages.map((page) => page.id)) };
+  const { section } = await opened(server);
+  await checked(user, section, passedAt);
+  const before = lists;
+  // Another admin made Ada an editor meanwhile.
+  server.notebook = { ...server.notebook, role: "editor" };
+
+  await user.click(cardOf(section, "Missing type").getByRole("button", { name: "More" }));
+
+  expect(await screen.findByText("Only the notebook's admins can see its upgrade.")).toBeTruthy();
+  expect(lists).toBe(before + 1);
+  expect(checks(server)).toBe(1);
+});
+
 test("checked again, the last check's request is aborted, and its answer, late, is not shown", async () => {
   const user = userEvent.setup();
   const late = deferred<Response>();
