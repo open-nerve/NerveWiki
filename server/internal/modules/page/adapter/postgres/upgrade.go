@@ -246,3 +246,42 @@ func (s *Store) DeleteUpgradeNodes(ctx context.Context, upgradeID uuid.UUID) (in
 	}
 	return n, nil
 }
+
+// UpgradeGateBaseline is the upgrade's baseline rows, each node's kind and
+// parent as it started, a page's wanted count then (M11/P2 design 3.9), in
+// the transaction ctx carries.
+func (s *Store) UpgradeGateBaseline(ctx context.Context, upgradeID uuid.UUID) ([]app.BaselineNode, error) {
+	rows, err := s.queries(ctx).UpgradeGateBaseline(ctx, upgradeID)
+	if err != nil {
+		return nil, fmt.Errorf("read an upgrade's baseline: %w", err)
+	}
+	out := make([]app.BaselineNode, len(rows))
+	for i, r := range rows {
+		out[i] = app.BaselineNode{ID: r.NodeID, ParentID: r.ParentID, Kind: domain.Kind(r.Kind)}
+		if r.Wanted != nil {
+			out[i].Wanted = int(*r.Wanted)
+		}
+	}
+	return out, nil
+}
+
+// UpgradePreserved is gate 7 of the upgrade's check (M11/P2 design 3.9),
+// in one pass, in the transaction ctx carries.
+func (s *Store) UpgradePreserved(ctx context.Context, upgradeID uuid.UUID) (app.Preserved, error) {
+	r, err := s.queries(ctx).UpgradePreserved(ctx, upgradeID)
+	if err != nil {
+		return app.Preserved{}, fmt.Errorf("read what an upgrade kept: %w", err)
+	}
+	return app.Preserved{Nodes: int(r.Nodes), NodesKept: int(r.NodesKept), Pages: int(r.Pages), PagesKept: int(r.PagesKept),
+		NotKept: r.NotKept}, nil
+}
+
+// UpgradeChangesets is how many changesets the upgrade wrote (M11/P2
+// design 3.9), in the transaction ctx carries.
+func (s *Store) UpgradeChangesets(ctx context.Context, upgradeID uuid.UUID) (int, error) {
+	n, err := s.queries(ctx).UpgradeChangesets(ctx, &upgradeID)
+	if err != nil {
+		return 0, fmt.Errorf("count an upgrade's changesets: %w", err)
+	}
+	return int(n), nil
+}

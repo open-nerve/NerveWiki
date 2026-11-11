@@ -2,14 +2,19 @@ package page
 
 import (
 	"context"
+	"errors"
 	"slices"
+	"strings"
 	"time"
 	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	markdownadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/markdown"
 	postgresadapter "github.com/open-nerve/NerveWiki/server/internal/modules/page/adapter/postgres"
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // Baseline, SessionHolder and RootNode are what an upgrade's start reads
@@ -20,6 +25,21 @@ type (
 	SessionHolder = app.SessionHolder
 	RootNode      = app.KeyedRootNode
 )
+
+// UpgradeRoots, BaselineNode and Preserved are what an upgrade's check
+// reads of the notebook's pages (M11 design 4.7, M11/P2 design 3.9): its
+// root's AGENTS and its proposed source root, its baseline rows, what of
+// them it kept.
+type (
+	UpgradeRoots = app.UpgradeRoots
+	BaselineNode = app.BaselineNode
+	Preserved    = app.Preserved
+)
+
+// ReservedKeys are the title keys no node may take at an LLM Wiki's root
+// (M10 design 4.9): an upgrade's check's gate 3 reads them here, not in a
+// copy of the wiki module's (M11 design 4.7).
+func ReservedKeys() []string { return domain.ReservedKeys() }
 
 // Upgrades are the page module's part in an upgrade's start (M11/P1
 // design 3.12), built from the pool alone (v0.1 design 13.1 item 11):
@@ -102,4 +122,55 @@ func (u *Upgrades) DeleteBaseline(ctx context.Context, upgradeID uuid.UUID) erro
 // are among keys (M11 design 4.4 step 8).
 func (u *Upgrades) RootNodes(ctx context.Context, notebookID uuid.UUID, keys []string) ([]RootNode, error) {
 	return u.store.RootNodesByKey(ctx, notebookID, keys)
+}
+
+// Roots are gates 1 and 2 of the upgrade's check (M11/P2 design 3.9): the
+// page at the notebook's root keyed agents, none for an attachment, and
+// whether its body past its frontmatter and a byte order mark, trimmed, is
+// not empty, as AgentsBody reads it; whether rootID is a live page of the
+// notebook. Each by its key, in the snapshot ctx carries.
+func (u *Upgrades) Roots(ctx context.Context, notebookID, rootID uuid.UUID) (UpgradeRoots, error) {
+	var out UpgradeRoots
+	nodes, err := u.store.RootNodesByKey(ctx, notebookID, []string{shared.TitleKey(domain.AgentsTitle)})
+	if err != nil {
+		return UpgradeRoots{}, err
+	}
+	for _, n := range nodes {
+		if n.Kind != domain.KindPage {
+			continue
+		}
+		c, err := u.store.PageContent(ctx, n.ID)
+		if err != nil {
+			return UpgradeRoots{}, err
+		}
+		out.AgentsID = &n.ID
+		out.AgentsBody = strings.TrimSpace(domain.UpgradeBody(c.Content, markdownadapter.FrontmatterEnd(c.Content))) != ""
+	}
+	root, err := u.store.FindNodeIn(ctx, notebookID, rootID)
+	switch {
+	case errors.Is(err, app.ErrNotFound):
+	case err != nil:
+		return UpgradeRoots{}, err
+	default:
+		out.RootPage = root.Kind == domain.KindPage
+	}
+	return out, nil
+}
+
+// Baseline is the upgrade's baseline rows (M11/P2 design 3.9), in the
+// snapshot ctx carries.
+func (u *Upgrades) Baseline(ctx context.Context, upgradeID uuid.UUID) ([]BaselineNode, error) {
+	return u.store.UpgradeGateBaseline(ctx, upgradeID)
+}
+
+// Preserved is gate 7 of the upgrade's check, in one pass (M11/P2 design
+// 3.9), in the snapshot ctx carries.
+func (u *Upgrades) Preserved(ctx context.Context, upgradeID uuid.UUID) (Preserved, error) {
+	return u.store.UpgradePreserved(ctx, upgradeID)
+}
+
+// Changesets is how many changesets the upgrade wrote (M11/P2 design 3.9),
+// in the snapshot ctx carries.
+func (u *Upgrades) Changesets(ctx context.Context, upgradeID uuid.UUID) (int, error) {
+	return u.store.UpgradeChangesets(ctx, upgradeID)
 }

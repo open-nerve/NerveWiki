@@ -1,0 +1,146 @@
+package httpadapter
+
+import (
+	"context"
+	"uuid"
+
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/adapter/http/gen"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/app"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/domain"
+)
+
+func (h handler) CheckUpgrade(ctx context.Context, req gen.CheckUpgradeRequestObject) (gen.CheckUpgradeResponseObject, error) {
+	checked, err := h.upgrades.CheckUpgrade(ctx, req.NotebookID, app.LintQuery{})
+	if err != nil {
+		return nil, err
+	}
+	c := checked.Check
+	if c == nil {
+		return nil, errLintProjection
+	}
+	out := gen.CheckUpgrade200JSONResponse{ComputedAt: c.ComputedAt, StalePages: c.StalePages, Passed: c.Passed,
+		Gates: upgradeGatesOf(c.Gates), Counts: upgradeCountsOf(c.Counts), Rules: make([]gen.LintRuleSummary, len(c.Rules))}
+	for i, rule := range c.Rules {
+		if out.Rules[i], err = lintSummary(rule); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+func (h handler) ListUpgradeCheckItems(ctx context.Context, req gen.ListUpgradeCheckItemsRequestObject) (gen.ListUpgradeCheckItemsResponseObject,
+	error,
+) {
+	checked, err := h.upgrades.CheckUpgrade(ctx, req.NotebookID, app.LintQuery{
+		Rule: &req.Rule, Limit: req.Params.Limit, Cursor: req.Params.Cursor,
+	})
+	if err != nil {
+		return nil, err
+	}
+	result := checked.Items
+	if result == nil || len(result.Rules) != 1 {
+		return nil, errLintProjection
+	}
+	rule := result.Rules[0]
+	out := gen.ListUpgradeCheckItems200JSONResponse{
+		Mode: gen.LintMode(result.Mode), ComputedAt: result.ComputedAt, StalePages: result.StalePages,
+		Data: make([]gen.LintItem, len(rule.Items)), NextCursor: lintNextCursor(rule.NextCursor),
+	}
+	for i, item := range rule.Items {
+		if out.Data[i], err = lintItem(item); err != nil {
+			return nil, err
+		}
+	}
+	return out, nil
+}
+
+// upgradeGatesOf is g as the contract's UpgradeGates: each gate's nodes a
+// list, [] for none.
+func upgradeGatesOf(g domain.UpgradeGates) gen.UpgradeGates {
+	ids := func(in []uuid.UUID) []uuid.UUID { return append([]uuid.UUID{}, in...) }
+	return gen.UpgradeGates{
+		Agents: gen.UpgradeGate{Passed: g.Agents}, SourceRoot: gen.UpgradeGate{Passed: g.SourceRoot},
+		ReservedTitles: gen.UpgradeTitlesGate{Passed: g.ReservedTitles.Passed, NodeIds: ids(g.ReservedTitles.NodeIDs)},
+		Frontmatter:    gen.UpgradeGate{Passed: g.Frontmatter}, Sources: gen.UpgradeGate{Passed: g.Sources},
+		Links: gen.UpgradeLinksGate{Passed: g.Links.Passed, PagesWorse: g.Links.PagesWorse, NodeIds: ids(g.Links.NodeIDs)},
+		Preserved: gen.UpgradePreservedGate{Passed: g.Preserved.Passed, Nodes: g.Preserved.Nodes, NodesKept: g.Preserved.NodesKept,
+			Pages: g.Preserved.Pages, PagesKept: g.Preserved.PagesKept, NodeIds: ids(g.Preserved.NodeIDs)},
+		Index: gen.UpgradeGate{Passed: g.Index},
+	}
+}
+
+// upgradeCountsOf is c as the contract's UpgradeCounts.
+func upgradeCountsOf(c domain.UpgradeCounts) gen.UpgradeCounts {
+	return gen.UpgradeCounts{Sources: c.Sources, MovedIntoSources: c.MovedIntoSources, WikiPages: c.WikiPages, NewPages: c.NewPages,
+		Changesets:   c.Changesets,
+		WantedBefore: gen.UpgradeWanted{Count: gen.LintCount(c.WantedBefore.Value), CountCapped: c.WantedBefore.Capped},
+		WantedNow:    gen.UpgradeWanted{Count: gen.LintCount(c.WantedNow.Value), CountCapped: c.WantedNow.Capped}}
+}
+
+// reportOf is r as the contract's UpgradeReport: its gates and counts as a
+// check's, each rule's count and items as lint's but their cursors.
+func reportOf(r domain.UpgradeReport) (gen.UpgradeReport, error) {
+	out := gen.UpgradeReport{ComputedAt: r.ComputedAt, StalePages: r.StalePages, Passed: r.Passed, Gates: upgradeGatesOf(r.Gates),
+		Counts: upgradeCountsOf(r.Counts), Rules: make([]gen.UpgradeReportRule, len(r.Rules))}
+	for i, rule := range r.Rules {
+		rr := gen.UpgradeReportRule{Rule: gen.LintRule(rule.Rule), Count: gen.LintCount(rule.Count.Value), CountCapped: rule.Count.Capped,
+			Items: make([]gen.UpgradeReportItem, len(rule.Items))}
+		for j, item := range rule.Items {
+			var err error
+			if rr.Items[j], err = reportItem(item); err != nil {
+				return gen.UpgradeReport{}, err
+			}
+		}
+		out.Rules[i] = rr
+	}
+	return out, nil
+}
+
+// reportItem is item as its rule's UpgradeReport item: lint's item but its
+// cursor.
+func reportItem(item domain.LintItem) (gen.UpgradeReportItem, error) {
+	var out gen.UpgradeReportItem
+	if item.Rule == domain.RuleUndigestedSources {
+		if item.NodeID == nil {
+			return out, errLintProjection
+		}
+		err := out.FromUpgradeReportUndigestedSourcesItem(gen.UpgradeReportUndigestedSourcesItem{
+			Rule: gen.UpgradeReportUndigestedSourcesItemRuleUndigestedSources, ItemKey: item.ItemKey, NodeID: *item.NodeID,
+			Kind: gen.LintNodeKind(item.Kind), Bytes: item.Bytes, CreatedAt: item.CreatedAt})
+		return out, err
+	}
+	if item.Rule == domain.RuleWanted {
+		err := out.FromUpgradeReportWantedItem(gen.UpgradeReportWantedItem{Rule: gen.UpgradeReportWantedItemRuleWanted,
+			ItemKey: item.ItemKey, Target: item.Target, TargetCut: item.TargetCut, Pages: item.Pages})
+		return out, err
+	}
+	if item.PageID == nil {
+		return out, errLintProjection
+	}
+	page := *item.PageID
+	var err error
+	switch item.Rule {
+	case domain.RuleOrphans:
+		err = out.FromUpgradeReportOrphansItem(gen.UpgradeReportOrphansItem{Rule: gen.UpgradeReportOrphansItemRuleOrphans,
+			ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleAmbiguous:
+		err = out.FromUpgradeReportAmbiguousItem(gen.UpgradeReportAmbiguousItem{Rule: gen.UpgradeReportAmbiguousItemRuleAmbiguous,
+			ItemKey: item.ItemKey, PageID: page, Target: item.Target, TargetCut: item.TargetCut})
+	case domain.RuleInvalidFrontmatter:
+		err = out.FromUpgradeReportInvalidFrontmatterItem(gen.UpgradeReportInvalidFrontmatterItem{
+			Rule: gen.UpgradeReportInvalidFrontmatterItemRuleInvalidFrontmatter, ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleMissingType:
+		err = out.FromUpgradeReportMissingTypeItem(gen.UpgradeReportMissingTypeItem{Rule: gen.UpgradeReportMissingTypeItemRuleMissingType,
+			ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleMissingSummary:
+		err = out.FromUpgradeReportMissingSummaryItem(gen.UpgradeReportMissingSummaryItem{
+			Rule: gen.UpgradeReportMissingSummaryItemRuleMissingSummary, ItemKey: item.ItemKey, PageID: page})
+	case domain.RuleInvalidSources:
+		err = out.FromUpgradeReportInvalidSourcesItem(gen.UpgradeReportInvalidSourcesItem{
+			Rule: gen.UpgradeReportInvalidSourcesItemRuleInvalidSources, ItemKey: item.ItemKey, PageID: page, Target: item.Target,
+			TargetCut: item.TargetCut, NotLink: item.NotLink})
+	default:
+		err = errLintProjection
+	}
+	return out, err
+}

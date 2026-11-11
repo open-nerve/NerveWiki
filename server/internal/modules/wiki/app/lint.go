@@ -122,7 +122,7 @@ func (l *Lint) Execute(ctx context.Context, scope LintScope, query LintQuery) (d
 	if err := ctx.Err(); err != nil {
 		return domain.LintResult{}, err
 	}
-	return domain.CloneLintResult(result), nil
+	return domain.CloneLintResult(result.Lint), nil
 }
 
 func (l *Lint) authorize(ctx context.Context, actor shared.Actor, notebook uuid.UUID) error {
@@ -218,7 +218,7 @@ func (l *Lint) compute(ctx context.Context, scope LintScope, query RuleQuery, ki
 // write transaction (M11 design 4.7).
 func (l *Lint) computeIn(ctx context.Context, scope LintScope, query RuleQuery, kind domain.LintQueryKind,
 	at time.Time) (RunOutput, error) {
-	prepared, stats, err := l.prepareIn(ctx, scope, query)
+	prepared, stats, _, err := l.prepareIn(ctx, scope, query)
 	output := RunOutput{Stats: stats}
 	if err != nil {
 		return output, err
@@ -236,35 +236,38 @@ func (l *Lint) computeIn(ctx context.Context, scope LintScope, query RuleQuery, 
 
 // prepareIn reads the notebook's state and scope and prepares query's
 // rules through the transaction ctx carries, projecting nothing: an
-// upgrade's start reads only the stale pages and the wanted counts.
-func (l *Lint) prepareIn(ctx context.Context, scope LintScope, query RuleQuery) (PreparedRules, RunStats, error) {
+// upgrade's start reads only the stale pages and the wanted counts. It
+// answers the input it read too, the copies the rules were given: an
+// upgrade's check judges its gates by its nodes and area (M11/P2 design
+// 3.8).
+func (l *Lint) prepareIn(ctx context.Context, scope LintScope, query RuleQuery) (PreparedRules, RunStats, ReadInput, error) {
 	var stats RunStats
 	state, found, err := l.deps.Notebooks.StateOf(ctx, scope.NotebookID)
 	if err != nil {
-		return nil, stats, err
+		return nil, stats, ReadInput{}, err
 	}
 	if !found {
-		return nil, stats, domain.ErrNotebookNotFound
+		return nil, stats, ReadInput{}, domain.ErrNotebookNotFound
 	}
 	mode, root, err := lintEffective(scope, state)
 	if err != nil {
-		return nil, stats, err
+		return nil, stats, ReadInput{}, err
 	}
 	stats.Mode = mode
 	if query.Rule != nil && lintExclusive(*query.Rule) && mode != domain.ModeLLMWiki {
-		return nil, stats, domain.ErrNotLLMWiki
+		return nil, stats, ReadInput{}, domain.ErrNotLLMWiki
 	}
 	input := ReadInput{NotebookID: scope.NotebookID, EffectiveMode: mode, Explicit: scope.Contract != nil, AreaRootID: root}
 	var nodes []CompactNode
 	if mode == domain.ModeLLMWiki {
 		data, err := l.deps.Sources.LintData(ctx, scope.NotebookID, *root)
 		if err != nil {
-			return nil, stats, err
+			return nil, stats, ReadInput{}, err
 		}
 		input.SourceIDs = make([]uuid.UUID, len(data.Sources))
 		for i, source := range data.Sources {
 			if err := ctx.Err(); err != nil {
-				return nil, stats, err
+				return nil, stats, ReadInput{}, err
 			}
 			input.SourceIDs[i] = source.ID
 		}
@@ -272,7 +275,7 @@ func (l *Lint) prepareIn(ctx context.Context, scope LintScope, query RuleQuery) 
 	} else {
 		nodes, err = l.deps.Nodes.Nodes(ctx, scope.NotebookID)
 		if err != nil {
-			return nil, stats, err
+			return nil, stats, ReadInput{}, err
 		}
 	}
 	input.Nodes = slices.Clone(nodes)
@@ -284,15 +287,15 @@ func (l *Lint) prepareIn(ctx context.Context, scope LintScope, query RuleQuery) 
 	elapsed := time.Since(started)
 	stats.PrepareElapsed = &elapsed
 	if err != nil {
-		return nil, stats, err
+		return nil, stats, ReadInput{}, err
 	}
 	if prepared == nil {
-		return nil, stats, errLintInvariant
+		return nil, stats, ReadInput{}, errLintInvariant
 	}
 	stale := prepared.StalePages()
 	if stale < 0 {
-		return nil, stats, errLintInvariant
+		return nil, stats, ReadInput{}, errLintInvariant
 	}
 	stats.StalePages = &stale
-	return prepared, stats, nil
+	return prepared, stats, input, nil
 }

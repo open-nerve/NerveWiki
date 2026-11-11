@@ -42,8 +42,9 @@ func (q *Queries) ContinueUpgradeRollback(ctx context.Context, arg ContinueUpgra
 
 const currentUpgrade = `-- name: CurrentUpgrade :one
 SELECT id, notebook_id, state, ending, source_root_id, seeded_root, seeded_agents_id, locale, baseline_nodes,
-    baseline_pages, baseline_wanted, baseline_wanted_capped, submitted_by_id, submitted_at, rollback_job_id,
-    rollback_complete, rollback_left_nodes, rollback_left_pages, rollback_left_created, created_by_id, created_at
+    baseline_pages, baseline_wanted, baseline_wanted_capped, submission_id, submitted_by_id, submitted_at, report,
+    rollback_job_id, rollback_complete, rollback_left_nodes, rollback_left_pages, rollback_left_created, created_by_id,
+    created_at
 FROM notebook_upgrades
 WHERE notebook_id = $1 AND state IN ('upgrading', 'reviewing', 'rolling_back') AND deleted_at IS NULL
 `
@@ -61,8 +62,10 @@ type CurrentUpgradeRow struct {
 	BaselinePages        int32
 	BaselineWanted       int32
 	BaselineWantedCapped bool
+	SubmissionID         *uuid.UUID
 	SubmittedByID        *uuid.UUID
 	SubmittedAt          *time.Time
+	Report               []byte
 	RollbackJobID        *uuid.UUID
 	RollbackComplete     *bool
 	RollbackLeftNodes    *int32
@@ -73,7 +76,7 @@ type CurrentUpgradeRow struct {
 }
 
 // The notebook's upgrade under way, by notebook_upgrades_notebook_id_key: upgrading, reviewing or rolling back, its
-// notebook not deleted. Its report is P2's.
+// notebook not deleted; its submission and the report it kept (M11/P2 design 3.12).
 func (q *Queries) CurrentUpgrade(ctx context.Context, notebookID uuid.UUID) (CurrentUpgradeRow, error) {
 	row := q.db.QueryRow(ctx, currentUpgrade, notebookID)
 	var i CurrentUpgradeRow
@@ -90,8 +93,10 @@ func (q *Queries) CurrentUpgrade(ctx context.Context, notebookID uuid.UUID) (Cur
 		&i.BaselinePages,
 		&i.BaselineWanted,
 		&i.BaselineWantedCapped,
+		&i.SubmissionID,
 		&i.SubmittedByID,
 		&i.SubmittedAt,
+		&i.Report,
 		&i.RollbackJobID,
 		&i.RollbackComplete,
 		&i.RollbackLeftNodes,
@@ -185,6 +190,36 @@ func (q *Queries) InsertUpgrade(ctx context.Context, arg InsertUpgradeParams) er
 	return err
 }
 
+const keepUpgradeReport = `-- name: KeepUpgradeReport :execrows
+UPDATE notebook_upgrades
+SET report = $1::jsonb, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND submission_id = $5 AND state = 'reviewing' AND report IS NULL
+    AND deleted_at IS NULL
+`
+
+type KeepUpgradeReportParams struct {
+	Report       []byte
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+	SubmissionID *uuid.UUID
+}
+
+// A submission's report, as its check passed (M11 design 4.8 step 4), under the notebook's row lock.
+func (q *Queries) KeepUpgradeReport(ctx context.Context, arg KeepUpgradeReportParams) (int64, error) {
+	result, err := q.db.Exec(ctx, keepUpgradeReport,
+		arg.Report,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.SubmissionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const purgeUpgrades = `-- name: PurgeUpgrades :execrows
 DELETE FROM notebook_upgrades
 WHERE id IN (
@@ -259,4 +294,65 @@ type SoftDeleteUpgradesOfParams struct {
 func (q *Queries) SoftDeleteUpgradesOf(ctx context.Context, arg SoftDeleteUpgradesOfParams) error {
 	_, err := q.db.Exec(ctx, softDeleteUpgradesOf, arg.At, arg.By, arg.NotebookIds)
 	return err
+}
+
+const submitUpgrade = `-- name: SubmitUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'reviewing', submission_id = $1, submitted_by_id = $2::uuid,
+    submitted_at = $3::timestamptz, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND deleted_at IS NULL
+    AND (state = 'upgrading' OR state = 'reviewing' AND report IS NULL AND submitted_at <= $5::timestamptz)
+`
+
+type SubmitUpgradeParams struct {
+	SubmissionID *uuid.UUID
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+	TakenOver    time.Time
+}
+
+// An upgrade's submission's first transaction (M11 design 4.8 step 1), under the notebook's row lock: reviewing, a new
+// submission, who and when; from upgrading, or from reviewing without a report whose submission was taken over.
+func (q *Queries) SubmitUpgrade(ctx context.Context, arg SubmitUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, submitUpgrade,
+		arg.SubmissionID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.TakenOver,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const unsubmitUpgrade = `-- name: UnsubmitUpgrade :execrows
+UPDATE notebook_upgrades
+SET state = 'upgrading', submission_id = NULL, submitted_by_id = NULL, submitted_at = NULL,
+    updated_by_id = $1::uuid, updated_at = $2::timestamptz
+WHERE id = $3 AND submission_id = $4 AND state = 'reviewing' AND report IS NULL
+    AND deleted_at IS NULL
+`
+
+type UnsubmitUpgradeParams struct {
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+	SubmissionID *uuid.UUID
+}
+
+// A submission whose check did not pass, or failed (M11 design 4.8 step 4): upgrading again, its submission cleared.
+func (q *Queries) UnsubmitUpgrade(ctx context.Context, arg UnsubmitUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, unsubmitUpgrade,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.SubmissionID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }

@@ -258,7 +258,11 @@ func TestARestoreJobWhoseRestoredPartMovesTooDeep(t *testing.T) {
 // of a page of its item that its first batch left in the trash, an item
 // of its own. Between the second batch and the third: the third skips
 // it, the job succeeds, skipped counted. The third first: the request is
-// page.not_in_trash.
+// page.not_in_trash, or page.trash_changed, the trash read before its
+// lock as it was before the third batch (restore_node.go): let go, the
+// job, which commits its batch and takes the row again at once, may come
+// before the request woken on it, more often under load (M11/P2/S2
+// review B 4.7).
 func TestARestoreJobSkipsAnItemRestoredBetweenItsBatches(t *testing.T) {
 	tm := newBatchedTeam(t, "member", "")
 	for try := range betweenUnits {
@@ -268,7 +272,7 @@ func TestARestoreJobSkipsAnItemRestoredBetweenItsBatches(t *testing.T) {
 		then, restored := tm.bgAfterSecondBatch(t, nodeRestore("bob", kids[5]))
 		j, _ := tm.bgBetweenBatches(t, nb, trashRestoreStart("bob", nb, box), nil, then)
 		r := restored()
-		if r.is(http.StatusConflict, "page.not_in_trash") {
+		if r.is(http.StatusConflict, "page.not_in_trash") || r.is(http.StatusConflict, "page.trash_changed") {
 			if j.State != "succeeded" || j.counts()["pages"] != 8 || j.counts()["skipped"] != 0 {
 				t.Errorf("the third batch first: the restore = %s, want it whole", j)
 			}
@@ -587,7 +591,8 @@ func TestARevertJobOfAGroupDeletedAgainSinceItsPlan(t *testing.T) {
 // item of its own: C6 goes back where the deletion took it from. Between
 // the second batch and the third: the third skips it, and the job
 // succeeds, the notebook as it was before the deletion. The third first:
-// the request is page.not_in_trash.
+// the request is page.not_in_trash, or page.trash_changed, as in
+// interleaving 4.
 func TestARevertJobSkipsAMemberRestoredBetweenItsBatches(t *testing.T) {
 	tm := newBatchedTeam(t, "member", "")
 	for try := range betweenUnits {
@@ -599,7 +604,7 @@ func TestARevertJobSkipsAMemberRestoredBetweenItsBatches(t *testing.T) {
 		then, restored := tm.bgAfterSecondBatch(t, nodeRestore("bob", kids[5]))
 		j, _ := tm.bgBetweenBatches(t, nb, revertStart("bob", nb, deletion, ""), nil, then)
 		r := restored()
-		if r.is(http.StatusConflict, "page.not_in_trash") {
+		if r.is(http.StatusConflict, "page.not_in_trash") || r.is(http.StatusConflict, "page.trash_changed") {
 			if j.State != "succeeded" || j.counts()["restored"] != 8 || j.counts()["skipped"] != 0 {
 				t.Errorf("the third batch first: the revert = %s, want it whole", j)
 			}

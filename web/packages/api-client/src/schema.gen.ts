@@ -1582,6 +1582,77 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v0/notebooks/{notebook_id}/upgrade/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Check the upgrade against an LLM Wiki's contract, for its admins.
+         * @description Every gate, the health checks of an LLM Wiki whose source root is the one the upgrade proposes, with their counts and first five items, and what the notebook holds, from one read snapshot; passed or not, 200. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading or reviewing is wiki.upgrade_state; an exhausted computation or waiting budget is server_busy, with Retry-After: 1. These checks occur in that order; the upgrade, read again in the check's snapshot once a computation slot is had, may still be wiki.upgrade_state then. Checks of one upgrade share a computation.
+         */
+        get: operations["checkUpgrade"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        /**
+         * Read more items of a rule of the upgrade's check.
+         * @description One page of a rule in the upgrade's check's scope, an LLM Wiki whose source root is the one the upgrade proposes, from the current read snapshot. A malformed cursor is bad_request; then a notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; a caller not its admin forbidden; an unknown rule wiki.lint_rule_not_found; an upgrade not upgrading or reviewing wiki.upgrade_state; a cursor bound to another notebook, rule or scope, including a lint's, bad_request; a limit outside 1-100 validation_failed; an exhausted computation or waiting budget server_busy, with Retry-After: 1. These checks occur in that order; the upgrade, read again in the snapshot once a computation slot is had, may still be wiki.upgrade_state then. A cursor is bound to the proposed source root, not to the upgrade. The limit is 50 when absent. Continue with next_cursor.
+         */
+        get: operations["listUpgradeCheckItems"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
+         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over or an upgrade abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, its Retry-After the seconds until another submission may take it over, at least 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
+         */
+        post: operations["submitUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v0/events": {
         parameters: {
             query?: never;
@@ -1596,7 +1667,7 @@ export interface paths {
          *     - hello: the first frame; heartbeat_seconds is how often a heartbeat comes, a comment line. The server authenticates the credential again at each.
          *     - pages: a write of a notebook's pages; tree tells whether the tree changed (a page created, renamed, moved or deleted), pages lists the pages whose content was written with their new revisions, empty for none, null for more than 20, when the client takes every page as written.
          *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
-         *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after an upgrade once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
+         *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after a server update once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
          *     - mode: a notebook's mode or its upgrade changed: a downgrade, an upgrade's start, submission, return, approval, rejection, abandonment, and its rollback's stop and end. Its data is the notebook's ids. Read the notebook again, its mode, its upgrade and the caller's role in it with it.
          *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
          *
@@ -3332,6 +3403,182 @@ export interface components {
             pages: number;
             created: number;
         };
+        UpgradeGate: {
+            passed: boolean;
+        };
+        /** @description No node at the root holds a title an LLM Wiki keeps, index, log, index.md or log.md; those that do. */
+        UpgradeTitlesGate: {
+            passed: boolean;
+            node_ids: string[];
+        };
+        /** @description No page the upgrade started with, outside the source area now, leads to more distinct pages that do not exist than as it started; how many do, and the first five, by id. */
+        UpgradeLinksGate: {
+            passed: boolean;
+            pages_worse: number;
+            node_ids: string[];
+        };
+        /** @description Each node the upgrade started with is alive, each page's content the one the guardrails let by; the nodes and pages, those kept, and the first five not, by id. */
+        UpgradePreservedGate: {
+            passed: boolean;
+            nodes: number;
+            nodes_kept: number;
+            pages: number;
+            pages_kept: number;
+            node_ids: string[];
+        };
+        UpgradeGates: {
+            /** @description An AGENTS page at the root whose body is not empty. */
+            agents: components["schemas"]["UpgradeGate"];
+            /** @description The proposed source root is a page, not the root's AGENTS. */
+            source_root: components["schemas"]["UpgradeGate"];
+            reserved_titles: components["schemas"]["UpgradeTitlesGate"];
+            /** @description Each page outside the source area has frontmatter that parses, with type and summary but at the source root and the root's AGENTS. */
+            frontmatter: components["schemas"]["UpgradeGate"];
+            /** @description Each sources reference leads to a node of the source area. */
+            sources: components["schemas"]["UpgradeGate"];
+            links: components["schemas"]["UpgradeLinksGate"];
+            preserved: components["schemas"]["UpgradePreservedGate"];
+            /** @description The link index is fresh (stale_pages is 0). */
+            index: components["schemas"]["UpgradeGate"];
+        };
+        /** @enum {string} */
+        LintRule: "wanted" | "orphans" | "ambiguous" | "invalid_frontmatter" | "missing_type" | "missing_summary" | "undigested_sources" | "invalid_sources";
+        UpgradeReportWantedItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "wanted";
+            item_key: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /**
+             * Format: int64
+             * @description The number of distinct referring pages in this complete target group.
+             */
+            pages: number;
+        };
+        UpgradeReportOrphansItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "orphans";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportAmbiguousItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "ambiguous";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+        };
+        UpgradeReportInvalidFrontmatterItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_frontmatter";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportMissingTypeItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_type";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportMissingSummaryItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "missing_summary";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+        };
+        UpgradeReportUndigestedSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "undigested_sources";
+            item_key: string;
+            /** Format: uuid */
+            node_id: string;
+            kind: components["schemas"]["LintNodeKind"];
+            /** Format: int64 */
+            bytes: number;
+            /**
+             * Format: date-time
+             * @description The source node's original creation time.
+             */
+            created_at: string;
+        };
+        UpgradeReportInvalidSourcesItem: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            rule: "invalid_sources";
+            item_key: string;
+            /** Format: uuid */
+            page_id: string;
+            target: components["schemas"]["LintTarget"];
+            target_cut: boolean;
+            /** @description True for a non-link JSON value; false for a link that fails qualification. */
+            not_link: boolean;
+        };
+        UpgradeReportItem: components["schemas"]["UpgradeReportWantedItem"] | components["schemas"]["UpgradeReportOrphansItem"] | components["schemas"]["UpgradeReportAmbiguousItem"] | components["schemas"]["UpgradeReportInvalidFrontmatterItem"] | components["schemas"]["UpgradeReportMissingTypeItem"] | components["schemas"]["UpgradeReportMissingSummaryItem"] | components["schemas"]["UpgradeReportUndigestedSourcesItem"] | components["schemas"]["UpgradeReportInvalidSourcesItem"];
+        UpgradeReportRule: {
+            rule: components["schemas"]["LintRule"];
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+            items: components["schemas"]["UpgradeReportItem"][];
+        };
+        /** @description The distinct pages links lead to that do not exist yet, as the wanted health check counts them. */
+        UpgradeWanted: {
+            count: components["schemas"]["LintCount"];
+            count_capped: boolean;
+        };
+        UpgradeCounts: {
+            /** @description The nodes in the source area. */
+            sources: number;
+            /** @description The nodes the upgrade started with moved into the source area since. */
+            moved_into_sources: number;
+            /** @description The pages outside the source area, but the source root and the root's AGENTS. */
+            wiki_pages: number;
+            /** @description The pages written since the upgrade started, the ones its start wrote included. */
+            new_pages: number;
+            /** @description The changes the upgrade wrote. */
+            changesets: number;
+            wanted_before: components["schemas"]["UpgradeWanted"];
+            wanted_now: components["schemas"]["UpgradeWanted"];
+        };
+        /** @description The check a submission kept, its rules' first five items without cursors. */
+        UpgradeReport: {
+            /** Format: date-time */
+            computed_at: string;
+            /** Format: int64 */
+            stale_pages: number;
+            passed: boolean;
+            gates: components["schemas"]["UpgradeGates"];
+            rules: components["schemas"]["UpgradeReportRule"][];
+            counts: components["schemas"]["UpgradeCounts"];
+        };
         /** @description A notebook's upgrade to an LLM Wiki, as its admins read it. */
         Upgrade: {
             /** Format: uuid */
@@ -3368,6 +3615,8 @@ export interface components {
             rollback_complete: boolean | null;
             /** @description Where a rollback ended short: the nodes not back in place, the pages not written back, the new nodes still there. In pages not yet written back, links the system rewrote may lead nowhere. Rolling back with its job stopped: counted now. null otherwise. */
             rollback_left: components["schemas"]["UpgradeRollbackLeft"] | null;
+            /** @description The report its submission kept once its check passed, kept after, through an abandonment too; null before, and while a submission is still checked. */
+            report: components["schemas"]["UpgradeReport"] | null;
         };
         UpgradeStart: {
             /**
@@ -3375,6 +3624,22 @@ export interface components {
              * @enum {string}
              */
             template_locale?: "zh-CN" | "en";
+        };
+        /** @description An upgrade's check, from one read snapshot. */
+        UpgradeCheck: {
+            /** Format: date-time */
+            computed_at: string;
+            /**
+             * Format: int64
+             * @description Pages with an old link index; an administrator can reindex them.
+             */
+            stale_pages: number;
+            /** @description Every gate passed. */
+            passed: boolean;
+            gates: components["schemas"]["UpgradeGates"];
+            /** @description The eight health checks of an LLM Wiki, in their fixed order, including zero counts. */
+            rules: components["schemas"]["LintRuleSummary"][];
+            counts: components["schemas"]["UpgradeCounts"];
         };
         /** @description The data of hello, the first frame. */
         EventHello: {
@@ -3952,8 +4217,28 @@ export type UpgradeState = components['schemas']['UpgradeState'];
 export type UpgradeBaseline = components['schemas']['UpgradeBaseline'];
 export type UpgradeEnding = components['schemas']['UpgradeEnding'];
 export type UpgradeRollbackLeft = components['schemas']['UpgradeRollbackLeft'];
+export type UpgradeGate = components['schemas']['UpgradeGate'];
+export type UpgradeTitlesGate = components['schemas']['UpgradeTitlesGate'];
+export type UpgradeLinksGate = components['schemas']['UpgradeLinksGate'];
+export type UpgradePreservedGate = components['schemas']['UpgradePreservedGate'];
+export type UpgradeGates = components['schemas']['UpgradeGates'];
+export type LintRule = components['schemas']['LintRule'];
+export type UpgradeReportWantedItem = components['schemas']['UpgradeReportWantedItem'];
+export type UpgradeReportOrphansItem = components['schemas']['UpgradeReportOrphansItem'];
+export type UpgradeReportAmbiguousItem = components['schemas']['UpgradeReportAmbiguousItem'];
+export type UpgradeReportInvalidFrontmatterItem = components['schemas']['UpgradeReportInvalidFrontmatterItem'];
+export type UpgradeReportMissingTypeItem = components['schemas']['UpgradeReportMissingTypeItem'];
+export type UpgradeReportMissingSummaryItem = components['schemas']['UpgradeReportMissingSummaryItem'];
+export type UpgradeReportUndigestedSourcesItem = components['schemas']['UpgradeReportUndigestedSourcesItem'];
+export type UpgradeReportInvalidSourcesItem = components['schemas']['UpgradeReportInvalidSourcesItem'];
+export type UpgradeReportItem = components['schemas']['UpgradeReportItem'];
+export type UpgradeReportRule = components['schemas']['UpgradeReportRule'];
+export type UpgradeWanted = components['schemas']['UpgradeWanted'];
+export type UpgradeCounts = components['schemas']['UpgradeCounts'];
+export type UpgradeReport = components['schemas']['UpgradeReport'];
 export type Upgrade = components['schemas']['Upgrade'];
 export type UpgradeStart = components['schemas']['UpgradeStart'];
+export type UpgradeCheck = components['schemas']['UpgradeCheck'];
 export type EventHello = components['schemas']['EventHello'];
 export type EventPageRevision = components['schemas']['EventPageRevision'];
 export type EventPages = components['schemas']['EventPages'];
@@ -6108,6 +6393,88 @@ export interface operations {
                     "application/json": components["schemas"]["Upgrade"];
                 };
             };
+            default: components["responses"]["Problem"];
+        };
+    };
+    checkUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The check. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpgradeCheck"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    listUpgradeCheckItems: {
+        parameters: {
+            query?: {
+                /** @description The page size, 1–100; 50 when absent. Outside that range the answer is 422 validation_failed on limit. */
+                limit?: components["parameters"]["Limit"];
+                /** @description The next_cursor of the page before; absent for the first page. A cursor that does not decode, has an unknown version or a payload of another shape than this list's, or is not spelled as the server writes it is 400 bad_request on cursor. */
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+                /** @description wanted, orphans, ambiguous, invalid_frontmatter, missing_type, missing_summary, undigested_sources or invalid_sources. An unknown value is checked by the use case after the cursor and notebook, not rejected while binding this path parameter. */
+                rule: components["parameters"]["Rule"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of the rule, with null after its last item. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LintPage"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    submitUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, reviewing, with its report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
             default: components["responses"]["Problem"];
         };
     };

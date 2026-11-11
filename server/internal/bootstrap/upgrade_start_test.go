@@ -382,7 +382,9 @@ func TestUpgradeStates(t *testing.T) {
 // composition root hands the start the mode's subscribers: without them,
 // no mode frame comes. So does each of the rollback's steps (3.20): the
 // abandonment, the job's stop, the continuation, the rollback done; and,
-// a second upgrade abandoned and stopped, the rollback's end.
+// a second upgrade abandoned and stopped, the rollback's end. And each of
+// a submission's two transactions (M11/P2 design 3.12): not ready, then
+// stored, before that upgrade's abandonment.
 func TestUpgradeStatesReachTheStreams(t *testing.T) {
 	stops := &rollbackStops{}
 	tm := newAcmeTeamOn(t, "member", "member", nil, &wiring{transfer: func(d *transfer.Deps) { stops.Tree, d.Tree = d.Tree, stops }},
@@ -414,12 +416,16 @@ func TestUpgradeStatesReachTheStreams(t *testing.T) {
 	}
 	tm.quiet(t, eng, marker, alice, bob, carol)
 
-	steps := func(what string, step func()) {
+	stepsOf := func(what string, n int, step func()) {
 		t.Helper()
 		step()
-		if got := tm.modeFrames(t, nb, eng, marker, alice, bob, carol); !slices.Equal(got, []int{1, 1, 0}) {
-			t.Errorf("%s: mode frames %v to alice, bob and carol, want one to each who sees the notebook", what, got)
+		if got := tm.modeFrames(t, nb, eng, marker, alice, bob, carol); !slices.Equal(got, []int{n, n, 0}) {
+			t.Errorf("%s: mode frames %v to alice, bob and carol, want %d to each who sees the notebook", what, got, n)
 		}
+	}
+	steps := func(what string, step func()) {
+		t.Helper()
+		stepsOf(what, 1, step)
 	}
 	var job string
 	stopped := func(plan, batch int) func() {
@@ -448,6 +454,22 @@ func TestUpgradeStatesReachTheStreams(t *testing.T) {
 		}
 	})
 	steps("a second start", func() { tm.upgraded(t, "alice", nb) })
+	// A submission (M11/P2 design 3.12): its first transaction's frame,
+	// then its second's, whether it sets the upgrade upgrading again or
+	// keeps its report.
+	stepsOf("a submission not ready", 2, func() {
+		if status, answer := tm.submitUpgrade(t, "alice", nb); status != http.StatusConflict {
+			t.Fatalf("the submission = %d %s, want it not ready: Page has no type", status, answer)
+		}
+	})
+	page := queryStrings(t, tm.pool, `SELECT n.id::text || ' ' || c.revision::text || ' ' || c.content FROM nodes n
+		JOIN page_contents c ON c.node_id = n.id WHERE n.notebook_id = $1 AND n.name = 'Page'`, nb)[0]
+	fields := strings.SplitN(page, " ", 3)
+	if r := tm.agent(t, "alice", nb).use(t, "write", map[string]any{"path": "Page.md", "content": "---\ntype: note\nsummary: A page.\n---\n" +
+		fields[2], "base_version": fields[0] + ":" + fields[1]}).result(t); r["isError"] == true {
+		t.Fatalf("the agent's write of Page's frontmatter = %v", r)
+	}
+	stepsOf("a submission stored", 2, func() { tm.submitted(t, "alice", nb) })
 	steps("its abandonment", stopped(1, 0))
 	steps("its job's stop", cancelled)
 	steps("its rollback's end", func() {

@@ -76,5 +76,15 @@ func TestLintMatrixTargets(t *testing.T) {
 		if violation := targetViolation(pattern, path, "lab", seed); !strings.Contains(violation, "{rule} is no target the matrix knows") {
 			t.Fatalf("a rule outside lint was incorrectly exempted: %q", violation)
 		}
+		// An upgrade's check's rule is none either (M11/P2 design 3.15); a
+		// check's rule but an upgrade's is.
+		pattern, path = strings.Replace(pattern, "/checks/", "/upgrade/check/", 1), strings.Replace(path, "/checks/", "/upgrade/check/", 1)
+		if violation := targetViolation(pattern, path, "lab", seed); violation != "" {
+			t.Fatalf("an upgrade's check's rule segment changed notebook target checking: %s", violation)
+		}
+		pattern, path = strings.Replace(pattern, "/upgrade/", "/", 1), strings.Replace(path, "/upgrade/", "/", 1)
+		if violation := targetViolation(pattern, path, "lab", seed); !strings.Contains(violation, "{rule} is no target the matrix knows") {
+			t.Fatalf("a check's rule but an upgrade's was incorrectly exempted: %q", violation)
+		}
 	})
 }

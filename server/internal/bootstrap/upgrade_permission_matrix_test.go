@@ -22,11 +22,30 @@ import (
 // upgrading or reviewing, by its creator, as the start would leave it; the
 // rollback's rows' are rollbackMatrixRows'.
 
+// upgradedBy prepares a cell's copy: its column's notebook being upgraded,
+// in state, by its creator, as the start would leave it; a deleted one
+// has no upgrade.
+func upgradedBy(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+	return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+		t.Helper()
+		nb := s.notebook(notebookOf(c)).String()
+		if count(t, pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NULL", nb) == 0 {
+			return // a deleted notebook has no upgrade to read
+		}
+		by := queryStrings(t, pool, "SELECT created_by_id::text FROM notebooks WHERE id = $1", nb)[0]
+		if _, err := upgradeIn(context.Background(), pool, nb, by, state); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // upgradeMatrixRow is a row of the upgrade's and how its cells' copy is
-// prepared.
+// prepared; left, when set, reads what each cell, answered or refused,
+// left there.
 type upgradeMatrixRow struct {
 	matrixRow
 	prepare func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool)
+	left    func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool)
 }
 
 func upgradeMatrixRows() []upgradeMatrixRow {
@@ -34,19 +53,6 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 		return "/api/v0/notebooks/" + s.notebook(notebookOf(c)).String() + "/upgrade"
 	}
 	notFound := cell{http.StatusNotFound, "notebook.not_found"}
-	upgradedBy := func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
-		return func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
-			t.Helper()
-			nb := s.notebook(notebookOf(c)).String()
-			if count(t, pool, "SELECT count(*) FROM notebooks WHERE id = $1 AND deleted_at IS NULL", nb) == 0 {
-				return // a deleted notebook has no upgrade to read
-			}
-			by := queryStrings(t, pool, "SELECT created_by_id::text FROM notebooks WHERE id = $1", nb)[0]
-			if _, err := upgradeIn(context.Background(), pool, nb, by, state); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
 	read := func(state string) func(t *testing.T, c caller, s seeded, answer string) {
 		return func(t *testing.T, c caller, s seeded, answer string) {
 			t.Helper()
@@ -95,7 +101,86 @@ func upgradeMatrixRows() []upgradeMatrixRow {
 			prepare: upgradedBy(state),
 		})
 	}
+	rows = append(rows, checkMatrixRows(notebook, upgradedBy)...)
 	return append(rows, rollbackMatrixRows(notebook, upgradedBy)...)
+}
+
+// checkMatrixRows are M11/P2/S2's (design 3.15): the check of an upgrade
+// upgrading and of one reviewing, its submission, and a rule's items of
+// one upgrading, its admins' alone. The seeds' notebooks hold no AGENTS:
+// the check answers its gates, not passed, 200; the submission
+// wiki.upgrade_not_ready (2.1 item 12).
+func checkMatrixRows(notebook func(c caller, s seeded) string,
+	upgradedBy func(state string) func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool),
+) []upgradeMatrixRow {
+	notFound := cell{http.StatusNotFound, "notebook.not_found"}
+	var rows []upgradeMatrixRow
+	for _, state := range []string{"upgrading", "reviewing"} {
+		rows = append(rows, upgradeMatrixRow{
+			matrixRow: matrixRow{
+				op: "checkUpgrade", variant: state, columns: notebookColumns(), write: true,
+				request: func(c caller, s seeded) (string, string, string) {
+					return http.MethodGet, notebook(c, s) + "/check", ""
+				},
+				cells: adminsOnly(cellOK(), notFound),
+				check: func(t *testing.T, c caller, s seeded, answer string) {
+					t.Helper()
+					var a upgradeCheckAnswer
+					decodeAnswer(t, answer, &a)
+					if len(a.Gates) != 8 || len(a.Rules) != 8 || a.Gates["agents"].Passed {
+						t.Errorf("checked %s, want eight gates and eight rules, AGENTS failed", answer)
+					}
+				},
+			},
+			prepare: upgradedBy(state),
+		})
+	}
+	rows = append(rows, upgradeMatrixRow{
+		matrixRow: matrixRow{
+			op: "submitUpgrade", variant: "upgrading", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodPost, notebook(c, s) + "/submit", ""
+			},
+			cells: adminsOnly(cell{http.StatusConflict, "wiki.upgrade_not_ready"}, notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				t.Errorf("submitted %s, want a problem: the seeds pass no gate of AGENTS", answer)
+			},
+		},
+		prepare: upgradedBy("upgrading"),
+		// Refused or not ready, the upgrade is upgrading, no submission
+		// left (M11/P2 design 3.15).
+		left: func(t *testing.T, c caller, s seeded, pool *pgxpool.Pool) {
+			t.Helper()
+			for _, row := range queryStrings(t, pool, `SELECT u.state || ' ' || n.upgrade_state || ' ' || (u.submission_id IS NULL)::text || ' ' ||
+					(u.submitted_by_id IS NULL)::text || ' ' || (u.submitted_at IS NULL)::text || ' ' || (u.report IS NULL)::text
+				FROM notebook_upgrades u JOIN notebooks n ON n.id = u.notebook_id WHERE u.notebook_id = $1`, s.notebook(notebookOf(c))) {
+				if row != "upgrading upgrading true true true true" {
+					t.Errorf("the upgrade left %s, want it upgrading, no submission", row)
+				}
+			}
+		},
+	})
+	return append(rows, upgradeMatrixRow{
+		matrixRow: matrixRow{
+			op: "listUpgradeCheckItems", variant: "upgrading", columns: notebookColumns(), write: true,
+			request: func(c caller, s seeded) (string, string, string) {
+				return http.MethodGet, notebook(c, s) + "/check/wanted", ""
+			},
+			cells: adminsOnly(cellOK(), notFound),
+			check: func(t *testing.T, c caller, s seeded, answer string) {
+				t.Helper()
+				var page struct {
+					Mode string `json:"mode"`
+				}
+				decodeAnswer(t, answer, &page)
+				if page.Mode != "llm_wiki" {
+					t.Errorf("listed %s, want the LLM Wiki's", answer)
+				}
+			},
+		},
+		prepare: upgradedBy("upgrading"),
+	})
 }
 
 // rollbackJobVariants are the cancel rows' variants whose jobs seeded
@@ -252,6 +337,9 @@ func TestUpgradePermissionMatrix(t *testing.T) {
 							return ask(t, contract, http.MethodGet, base+path, d.tokens[c], "")
 						})
 					}
+				}
+				if r.left != nil {
+					r.left(t, c, d.seeded.in(t), pool)
 				}
 				for _, v := range pageViolations(t, pool) {
 					if strings.Contains(v, "upgrade") {

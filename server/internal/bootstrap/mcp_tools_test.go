@@ -339,20 +339,23 @@ func TestTheMCPToolsBuildBothServers(t *testing.T) {
 	}
 }
 
-// Independent shape expectations for the two new complete contract objects.
-// The existing toolListDiff also compares every member with real tools/list.
+// Independent shape expectations for the wiki's complete contract objects:
+// lint and pending_sources, upgrade_verify (lint's arguments) and
+// upgrade_submit (none but the account entry's notebook; a write that
+// destroys nothing, M11/P2 design 3.14). The existing toolListDiff also
+// compares every member with real tools/list.
 func TestTheWikiToolsContract(t *testing.T) {
 	lists := readToolLists(t)
 	for _, entry := range []string{"notebook", "account"} {
-		wantCount := 16
+		wantCount := 18
 		if entry == "account" {
-			wantCount = 18
+			wantCount = 20
 		}
 		if len(lists[entry]) != wantCount {
 			t.Fatalf("%s contract has %d tools, want %d", entry, len(lists[entry]), wantCount)
 		}
 		objects, _ := toolsByName(lists[entry], entry)
-		for _, name := range []string{"lint", "pending_sources"} {
+		for _, name := range []string{"lint", "pending_sources", "upgrade_verify", "upgrade_submit"} {
 			tool, ok := objects[name].(map[string]any)
 			if !ok {
 				t.Fatalf("%s missing complete tool %s", entry, name)
@@ -363,8 +366,11 @@ func TestTheWikiToolsContract(t *testing.T) {
 			}
 			props, _ := schema["properties"].(map[string]any)
 			expected := []string{"cursor", "limit"}
-			if name == "lint" {
+			switch name {
+			case "lint", "upgrade_verify":
 				expected = append(expected, "rule")
+			case "upgrade_submit":
+				expected = nil
 			}
 			if entry == "account" {
 				expected = append(expected, "notebook")
@@ -398,6 +404,9 @@ func TestTheWikiToolsContract(t *testing.T) {
 				t.Fatalf("%s notebook entry has required fields: %v", name, schema)
 			}
 			annotations := map[string]any{"idempotentHint": false, "openWorldHint": false, "readOnlyHint": true}
+			if name == "upgrade_submit" {
+				annotations = map[string]any{"destructiveHint": false, "idempotentHint": false, "openWorldHint": false, "readOnlyHint": false}
+			}
 			if !reflect.DeepEqual(tool["annotations"], annotations) {
 				t.Fatalf("%s/%s annotations=%v", entry, name, tool["annotations"])
 			}

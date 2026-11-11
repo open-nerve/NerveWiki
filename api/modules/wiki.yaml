@@ -222,6 +222,139 @@ paths:
                 $ref: "#/components/schemas/Upgrade"
         default:
           $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/check:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    get:
+      operationId: checkUpgrade
+      tags: [wiki]
+      summary: Check the upgrade against an LLM Wiki's contract, for its admins.
+      description: >-
+        Every gate, the health checks of an LLM Wiki whose source root is the
+        one the upgrade proposes, with their counts and first five items,
+        and what the notebook holds, from one read snapshot; passed or not,
+        200. Its admins can (forbidden). A notebook that does not exist, is
+        deleted, or that the caller cannot see is notebook.not_found; one
+        without an upgrade upgrading or reviewing is wiki.upgrade_state; an
+        exhausted computation or waiting budget is server_busy, with
+        Retry-After: 1. These checks occur in that order; the upgrade, read
+        again in the check's snapshot once a computation slot is had, may
+        still be wiki.upgrade_state then. Checks of one upgrade share a
+        computation.
+      security: [{ bearer: [] }]
+      x-problem-codes: [notebook.not_found, forbidden, wiki.upgrade_state, server_busy]
+      responses:
+        "200":
+          description: The check.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpgradeCheck"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/check/{rule}:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+      - $ref: "#/components/parameters/Rule"
+    get:
+      operationId: listUpgradeCheckItems
+      tags: [wiki]
+      summary: Read more items of a rule of the upgrade's check.
+      description: >-
+        One page of a rule in the upgrade's check's scope, an LLM Wiki whose
+        source root is the one the upgrade proposes, from the current read
+        snapshot. A malformed cursor is bad_request; then a notebook that
+        does not exist, is deleted, or that the caller cannot see is
+        notebook.not_found; a caller not its admin forbidden; an unknown
+        rule wiki.lint_rule_not_found; an upgrade not upgrading or reviewing
+        wiki.upgrade_state; a cursor bound to another notebook, rule or
+        scope, including a lint's, bad_request; a limit outside 1-100
+        validation_failed; an exhausted computation or waiting budget
+        server_busy, with Retry-After: 1. These checks occur in that order;
+        the upgrade, read again in the snapshot once a computation slot is
+        had, may still be wiki.upgrade_state then. A cursor is bound to the
+        proposed source root, not to the upgrade. The limit is 50 when
+        absent. Continue with next_cursor.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          bad_request,
+          notebook.not_found,
+          forbidden,
+          wiki.lint_rule_not_found,
+          wiki.upgrade_state,
+          validation_failed,
+          server_busy,
+        ]
+      parameters:
+        - $ref: "../common.yaml#/components/parameters/Limit"
+        - $ref: "../common.yaml#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: A page of the rule, with null after its last item.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LintPage"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
+  /api/v0/notebooks/{notebook_id}/upgrade/submit:
+    parameters:
+      - $ref: "#/components/parameters/NotebookID"
+    post:
+      operationId: submitUpgrade
+      tags: [wiki]
+      summary: >-
+        Submits the upgrade for its admins' review: freezes it for everyone,
+        checks it again and keeps the report once every gate passes.
+      description: >-
+        The upgrade, upgrading, goes to reviewing, its content then frozen
+        for everyone, the initiator's agent too; it is checked from a
+        snapshot of that moment, apart from the request, and stays reviewing
+        with its report kept once every gate passes. Otherwise it is
+        upgrading again: wiki.upgrade_stale_index for an old link index,
+        wiki.upgrade_not_ready for a gate that did not pass (detail names
+        them), or the check's own error. Its admins can (forbidden). A
+        notebook that does not exist, is deleted, or that the caller cannot
+        see is notebook.not_found; one without an upgrade upgrading is
+        wiki.upgrade_state, also while a previous submission is still
+        checked (detail says so; a reviewing upgrade without a report may be
+        submitted again once its check is surely over); an exhausted
+        computation or waiting budget is server_busy. These checks occur in
+        that order. Once the check is done, a submission taken over or an
+        upgrade abandoned meanwhile is wiki.upgrade_state, before the
+        check's own answer; the second step past its deadline, which is no
+        later than the request's, is server_busy, its Retry-After the
+        seconds until another submission may take it over, at least 1. Its
+        admins are asked again before the answer, as the report is kept: a
+        caller no longer one is notebook.not_found or forbidden then, the
+        report kept all the same. The answer is the upgrade, reviewing,
+        with its report.
+      security: [{ bearer: [] }]
+      x-problem-codes:
+        [
+          notebook.not_found,
+          forbidden,
+          wiki.upgrade_state,
+          server_busy,
+          wiki.upgrade_stale_index,
+          wiki.upgrade_not_ready,
+        ]
+      responses:
+        "200":
+          description: The upgrade, reviewing, with its report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Upgrade"
+        "503":
+          $ref: "#/components/responses/Problem"
+        default:
+          $ref: "#/components/responses/Problem"
 components:
   securitySchemes:
     bearer:
@@ -797,6 +930,7 @@ components:
           ending,
           rollback_complete,
           rollback_left,
+          report,
         ]
       properties:
         id:
@@ -855,3 +989,391 @@ components:
           oneOf:
             - $ref: "#/components/schemas/UpgradeRollbackLeft"
             - type: "null"
+        report:
+          description: >-
+            The report its submission kept once its check passed, kept after,
+            through an abandonment too; null before, and while a submission is
+            still checked.
+          oneOf:
+            - $ref: "#/components/schemas/UpgradeReport"
+            - type: "null"
+    UpgradeCheck:
+      description: An upgrade's check, from one read snapshot.
+      type: object
+      additionalProperties: false
+      required: [computed_at, stale_pages, passed, gates, rules, counts]
+      properties:
+        computed_at:
+          type: string
+          format: date-time
+        stale_pages:
+          description: Pages with an old link index; an administrator can reindex them.
+          type: integer
+          format: int64
+          minimum: 0
+        passed:
+          description: Every gate passed.
+          type: boolean
+        gates:
+          $ref: "#/components/schemas/UpgradeGates"
+        rules:
+          description: The eight health checks of an LLM Wiki, in their fixed order, including zero counts.
+          type: array
+          minItems: 8
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/LintRuleSummary"
+        counts:
+          $ref: "#/components/schemas/UpgradeCounts"
+    UpgradeGates:
+      type: object
+      additionalProperties: false
+      required: [agents, source_root, reserved_titles, frontmatter, sources, links, preserved, index]
+      properties:
+        agents:
+          description: An AGENTS page at the root whose body is not empty.
+          allOf:
+            - $ref: "#/components/schemas/UpgradeGate"
+        source_root:
+          description: The proposed source root is a page, not the root's AGENTS.
+          allOf:
+            - $ref: "#/components/schemas/UpgradeGate"
+        reserved_titles:
+          $ref: "#/components/schemas/UpgradeTitlesGate"
+        frontmatter:
+          description: >-
+            Each page outside the source area has frontmatter that parses,
+            with type and summary but at the source root and the root's
+            AGENTS.
+          allOf:
+            - $ref: "#/components/schemas/UpgradeGate"
+        sources:
+          description: Each sources reference leads to a node of the source area.
+          allOf:
+            - $ref: "#/components/schemas/UpgradeGate"
+        links:
+          $ref: "#/components/schemas/UpgradeLinksGate"
+        preserved:
+          $ref: "#/components/schemas/UpgradePreservedGate"
+        index:
+          description: The link index is fresh (stale_pages is 0).
+          allOf:
+            - $ref: "#/components/schemas/UpgradeGate"
+    UpgradeGate:
+      type: object
+      additionalProperties: false
+      required: [passed]
+      properties:
+        passed:
+          type: boolean
+    UpgradeTitlesGate:
+      description: No node at the root holds a title an LLM Wiki keeps, index, log, index.md or log.md; those that do.
+      type: object
+      additionalProperties: false
+      required: [passed, node_ids]
+      properties:
+        passed:
+          type: boolean
+        node_ids:
+          type: array
+          maxItems: 4
+          items:
+            type: string
+            format: uuid
+    UpgradeLinksGate:
+      description: >-
+        No page the upgrade started with, outside the source area now, leads
+        to more distinct pages that do not exist than as it started; how many
+        do, and the first five, by id.
+      type: object
+      additionalProperties: false
+      required: [passed, pages_worse, node_ids]
+      properties:
+        passed:
+          type: boolean
+        pages_worse:
+          type: integer
+          minimum: 0
+        node_ids:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uuid
+    UpgradePreservedGate:
+      description: >-
+        Each node the upgrade started with is alive, each page's content the
+        one the guardrails let by; the nodes and pages, those kept, and the
+        first five not, by id.
+      type: object
+      additionalProperties: false
+      required: [passed, nodes, nodes_kept, pages, pages_kept, node_ids]
+      properties:
+        passed:
+          type: boolean
+        nodes:
+          type: integer
+          minimum: 0
+        nodes_kept:
+          type: integer
+          minimum: 0
+        pages:
+          type: integer
+          minimum: 0
+        pages_kept:
+          type: integer
+          minimum: 0
+        node_ids:
+          type: array
+          maxItems: 5
+          items:
+            type: string
+            format: uuid
+    UpgradeCounts:
+      type: object
+      additionalProperties: false
+      required: [sources, moved_into_sources, wiki_pages, new_pages, changesets, wanted_before, wanted_now]
+      properties:
+        sources:
+          description: The nodes in the source area.
+          type: integer
+          minimum: 0
+        moved_into_sources:
+          description: The nodes the upgrade started with moved into the source area since.
+          type: integer
+          minimum: 0
+        wiki_pages:
+          description: The pages outside the source area, but the source root and the root's AGENTS.
+          type: integer
+          minimum: 0
+        new_pages:
+          description: The pages written since the upgrade started, the ones its start wrote included.
+          type: integer
+          minimum: 0
+        changesets:
+          description: The changes the upgrade wrote.
+          type: integer
+          minimum: 0
+        wanted_before:
+          $ref: "#/components/schemas/UpgradeWanted"
+        wanted_now:
+          $ref: "#/components/schemas/UpgradeWanted"
+    UpgradeWanted:
+      description: The distinct pages links lead to that do not exist yet, as the wanted health check counts them.
+      type: object
+      additionalProperties: false
+      required: [count, count_capped]
+      properties:
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+    UpgradeReport:
+      description: The check a submission kept, its rules' first five items without cursors.
+      type: object
+      additionalProperties: false
+      required: [computed_at, stale_pages, passed, gates, rules, counts]
+      properties:
+        computed_at:
+          type: string
+          format: date-time
+        stale_pages:
+          type: integer
+          format: int64
+          minimum: 0
+        passed:
+          type: boolean
+        gates:
+          $ref: "#/components/schemas/UpgradeGates"
+        rules:
+          type: array
+          minItems: 8
+          maxItems: 8
+          items:
+            $ref: "#/components/schemas/UpgradeReportRule"
+        counts:
+          $ref: "#/components/schemas/UpgradeCounts"
+    UpgradeReportRule:
+      type: object
+      additionalProperties: false
+      required: [rule, count, count_capped, items]
+      properties:
+        rule:
+          $ref: "#/components/schemas/LintRule"
+        count:
+          $ref: "#/components/schemas/LintCount"
+        count_capped:
+          type: boolean
+        items:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/UpgradeReportItem"
+    UpgradeReportItem:
+      oneOf:
+        - $ref: "#/components/schemas/UpgradeReportWantedItem"
+        - $ref: "#/components/schemas/UpgradeReportOrphansItem"
+        - $ref: "#/components/schemas/UpgradeReportAmbiguousItem"
+        - $ref: "#/components/schemas/UpgradeReportInvalidFrontmatterItem"
+        - $ref: "#/components/schemas/UpgradeReportMissingTypeItem"
+        - $ref: "#/components/schemas/UpgradeReportMissingSummaryItem"
+        - $ref: "#/components/schemas/UpgradeReportUndigestedSourcesItem"
+        - $ref: "#/components/schemas/UpgradeReportInvalidSourcesItem"
+      discriminator:
+        propertyName: rule
+        mapping:
+          wanted: "#/components/schemas/UpgradeReportWantedItem"
+          orphans: "#/components/schemas/UpgradeReportOrphansItem"
+          ambiguous: "#/components/schemas/UpgradeReportAmbiguousItem"
+          invalid_frontmatter: "#/components/schemas/UpgradeReportInvalidFrontmatterItem"
+          missing_type: "#/components/schemas/UpgradeReportMissingTypeItem"
+          missing_summary: "#/components/schemas/UpgradeReportMissingSummaryItem"
+          undigested_sources: "#/components/schemas/UpgradeReportUndigestedSourcesItem"
+          invalid_sources: "#/components/schemas/UpgradeReportInvalidSourcesItem"
+    UpgradeReportWantedItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, target, target_cut, pages]
+      properties:
+        rule:
+          type: string
+          enum: [wanted]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^w:[0-9a-f]{64}$"
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        pages:
+          description: The number of distinct referring pages in this complete target group.
+          type: integer
+          format: int64
+          minimum: 1
+    UpgradeReportOrphansItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [orphans]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportAmbiguousItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id, target, target_cut]
+      properties:
+        rule:
+          type: string
+          enum: [ambiguous]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^a:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+    UpgradeReportInvalidFrontmatterItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_frontmatter]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportMissingTypeItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_type]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportMissingSummaryItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id]
+      properties:
+        rule:
+          type: string
+          enum: [missing_summary]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^p:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        page_id:
+          type: string
+          format: uuid
+    UpgradeReportUndigestedSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, node_id, kind, bytes, created_at]
+      properties:
+        rule:
+          type: string
+          enum: [undigested_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^n:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+        node_id:
+          type: string
+          format: uuid
+        kind:
+          $ref: "#/components/schemas/LintNodeKind"
+        bytes:
+          type: integer
+          format: int64
+          minimum: 0
+        created_at:
+          description: The source node's original creation time.
+          type: string
+          format: date-time
+    UpgradeReportInvalidSourcesItem:
+      type: object
+      additionalProperties: false
+      required: [rule, item_key, page_id, target, target_cut, not_link]
+      properties:
+        rule:
+          type: string
+          enum: [invalid_sources]
+        item_key:
+          type: string
+          maxLength: 140
+          pattern: "^s:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{64}$"
+        page_id:
+          type: string
+          format: uuid
+        target:
+          $ref: "#/components/schemas/LintTarget"
+        target_cut:
+          type: boolean
+        not_link:
+          description: True for a non-link JSON value; false for a link that fails qualification.
+          type: boolean

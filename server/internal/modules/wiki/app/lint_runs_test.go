@@ -18,6 +18,7 @@ import (
 
 type lintRunAnswer struct {
 	result domain.LintResult
+	check  *domain.UpgradeCheck
 	err    error
 }
 
@@ -86,7 +87,7 @@ func lintRunAsync(r *Runs, ctx context.Context, key RunKey, run func(context.Con
 	done := make(chan lintRunAnswer, 1)
 	go func() {
 		result, err := r.Do(ctx, key, run)
-		done <- lintRunAnswer{result, err}
+		done <- lintRunAnswer{result.Lint, result.Check, err}
 	}()
 	return done
 }
@@ -538,7 +539,7 @@ func TestLintWorkerRecovers(t *testing.T) {
 			result, err := r.Do(t.Context(), lintRunKey(), func(context.Context) (RunOutput, error) {
 				return RunOutput{Result: domain.LintResult{Mode: domain.ModeStandard}}, nil
 			})
-			if err != nil || result.Mode != domain.ModeStandard {
+			if err != nil || result.Lint.Mode != domain.ModeStandard {
 				t.Fatalf("owner did not recover its slot/key after panic: %+v, %v", result, err)
 			}
 		})
@@ -558,7 +559,7 @@ func TestLintWorkerErrorsStayErrors(t *testing.T) {
 			result, err := r.Do(t.Context(), lintRunKey(), func(context.Context) (RunOutput, error) {
 				return RunOutput{Result: domain.LintResult{Mode: domain.ModeLLMWiki, Rules: []domain.LintRuleResult{{Rule: domain.RuleWanted}}}}, want
 			})
-			if !errors.Is(err, want) || result.Mode != "" || result.Rules != nil {
+			if !errors.Is(err, want) || result.Lint.Mode != "" || result.Lint.Rules != nil || result.Check != nil {
 				t.Fatalf("ordinary error became busy/success or exposed partial data: %+v, %v", result, err)
 			}
 			events.take(t, RunFinished, 0)

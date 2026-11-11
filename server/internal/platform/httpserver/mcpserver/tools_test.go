@@ -416,7 +416,8 @@ func TestNewRefusesItsWiringFaults(t *testing.T) {
 }
 
 // annotations are a tool's hints on the wire: openWorldHint false always,
-// destructiveHint only for a write.
+// destructiveHint written for every write, false for one that destroys
+// nothing.
 func TestTheAnnotationsAreTheHints(t *testing.T) {
 	for _, tt := range []struct {
 		a    Annotations
@@ -424,6 +425,9 @@ func TestTheAnnotationsAreTheHints(t *testing.T) {
 	}{
 		{Annotations{ReadOnly: true, Idempotent: true}, `{"idempotentHint":true,"openWorldHint":false,"readOnlyHint":true}`},
 		{Annotations{Destructive: true}, `{"destructiveHint":true,"idempotentHint":false,"openWorldHint":false,"readOnlyHint":false}`},
+		// A write that destroys nothing says so: the protocol reads a write
+		// without destructiveHint as destructive (M11/P2 design 3.14).
+		{Annotations{}, `{"destructiveHint":false,"idempotentHint":false,"openWorldHint":false,"readOnlyHint":false}`},
 	} {
 		if got, _ := json.Marshal(annotationsOf(tt.a)); string(got) != tt.want {
 			t.Errorf("annotations of %+v = %s, want %s", tt.a, got, tt.want)

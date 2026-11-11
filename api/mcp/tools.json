@@ -202,7 +202,7 @@
     {
       "name": "grep",
       "title": "Find lines by a regular expression",
-      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts. Generated index.md and log.md in an LLM Wiki are not searched by grep or search.",
+      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, a server update) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts. Generated index.md and log.md in an LLM Wiki are not searched by grep or search.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -239,7 +239,7 @@
     {
       "name": "index",
       "title": "List the notebook's pages by type, tag or parent",
-      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name ignoring ASCII case; type requires valid frontmatter and text nonempty after JS whitespace trimming, summary requires text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after an upgrade, is not listed. Go on with next_cursor while it is set. This lists real pages, without the generated index.md and log.md. In an LLM Wiki, a generated root file cannot be parent: page.virtual_file.",
+      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name ignoring ASCII case; type requires valid frontmatter and text nonempty after JS whitespace trimming, summary requires text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after a server update, is not listed. Go on with next_cursor while it is set. This lists real pages, without the generated index.md and log.md. In an LLM Wiki, a generated root file cannot be parent: page.virtual_file.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -406,7 +406,7 @@
     {
       "name": "search",
       "title": "Search the notebook's words",
-      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
+      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, a server update) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -553,6 +553,49 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upgrade_verify",
+      "title": "Check the notebook's upgrade",
+      "description": "Check this notebook's upgrade to an LLM Wiki, from a snapshot for this call, against an LLM Wiki's contract with the source root the upgrade proposes. Omit rule for every gate, each health check's count and first items, and the counts; limit and cursor require rule. Set rule to read its items, then continue with next_cursor. passed is true once every gate passes: then upgrade_submit. The notebook's admins only, while it is upgrading or reviewing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": ["null", "string"],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upgrade_submit",
+      "title": "Submit the notebook's upgrade",
+      "description": "Submit this notebook's upgrade for its admins' review: it freezes the notebook for everyone, your writes too, and checks it again from that moment; once every gate passes it stays in review with its report kept, an admin approves or rejects it in the web. Otherwise it is upgrading again, refused with wiki.upgrade_not_ready (detail names the gates) or wiki.upgrade_stale_index. Run upgrade_verify first. wiki.upgrade_state whose detail says a previous submission is still being checked: wait, then upgrade_verify.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     }
   ],
@@ -779,7 +822,7 @@
     {
       "name": "grep",
       "title": "Find lines by a regular expression",
-      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts. Generated index.md and log.md in an LLM Wiki are not searched by grep or search.",
+      "description": "Find the lines of the notebook's pages that a Go regular expression (RE2 syntax, as ripgrep's default) matches, page by page in path order. Each hit has the page's path, the line's number as read counts lines (read with that offset and limit 1 gives the line) and the line's text as stored, without its \\r and, on the first line, its byte order mark; a line over 1000 bytes is cut around its first match, cut true; column, when the text does not start at the line's first byte, is the byte it starts at, as read's column. Contents include their frontmatter; titles are not searched (list's glob finds them), nor attachments. glob keeps the pages whose paths it matches, as list's; ignore_case matches without case, as (?i). The pattern is at most 1024 bytes, without a newline, each line matched alone; one too complex, as large repeats, is refused. A call checks a bounded amount: go on with next_cursor while it is set. incomplete says the call stopped at its bounds before it checked every page it had to, so no hit is then no proof of none. partial_lines are lines too long to match whole within a call: read them. building says pages queued in bulk (by a batch, an import, a background restore or revert, a server update) are not searched until the index catches up. A page moved or written between calls, with its subpages, may be skipped or checked again. For words and Chinese text, search ranks pages and gives excerpts. Generated index.md and log.md in an LLM Wiki are not searched by grep or search.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -820,7 +863,7 @@
     {
       "name": "index",
       "title": "List the notebook's pages by type, tag or parent",
-      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name ignoring ASCII case; type requires valid frontmatter and text nonempty after JS whitespace trimming, summary requires text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after an upgrade, is not listed. Go on with next_cursor while it is set. This lists real pages, without the generated index.md and log.md. In an LLM Wiki, a generated root file cannot be parent: page.virtual_file.",
+      "description": "List the notebook's pages as its link index holds them: each with its path; its frontmatter's type and summary, the first key of that name ignoring ASCII case; type requires valid frontmatter and text nonempty after JS whitespace trimming, summary requires text; its tags, 20 at most; when its content last changed; how many other pages link to it (1000 means 1000 or more); and its parent page's path. type, summary and each tag are cut to 256 bytes, cut naming what was cut. type keeps the pages of exactly that type; tag those with that tag or one under it (\"plan\" takes \"plan/q4\"; a leading # is dropped); parent the child pages of that page, \"/\" those at the root. Omit a filter rather than give it empty: \"\" is refused. The pages with a type come first, by type, then the others. A page the index has not read yet, as one written before nervewiki reindex after a server update, is not listed. Go on with next_cursor while it is set. This lists real pages, without the generated index.md and log.md. In an LLM Wiki, a generated root file cannot be parent: page.virtual_file.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1045,7 +1088,7 @@
     {
       "name": "search",
       "title": "Search the notebook's words",
-      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, an upgrade) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
+      "description": "Full-text search of the notebook for words: the pages and attachments whose titles hold every term come first, then the pages whose contents do, each newest first, a page with an excerpt around its first hit. Terms are parted by spaces and match without case; Chinese text matches by pairs of characters, so a term of one Chinese character finds titles only. q is at most 256 bytes and 8 terms. The first page has count: exact, about or at_least. A page may hold fewer results than limit, even none, and still a next_cursor: a call checks a bounded number of contents; go on while next_cursor is set. building says pages queued in bulk (by a batch, an import, a background restore or revert, a server update) are not searched until the index catches up. For patterns, exact text and line numbers, use grep.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1214,6 +1257,61 @@
         "idempotentHint": false,
         "openWorldHint": false,
         "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upgrade_verify",
+      "title": "Check the notebook's upgrade",
+      "description": "Check this notebook's upgrade to an LLM Wiki, from a snapshot for this call, against an LLM Wiki's contract with the source root the upgrade proposes. Omit rule for every gate, each health check's count and first items, and the counts; limit and cursor require rule. Set rule to read its items, then continue with next_cursor. passed is true once every gate passes: then upgrade_submit. The notebook's admins only, while it is upgrading or reviewing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "rule": {
+            "type": ["null", "string"],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["notebook"]
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upgrade_submit",
+      "title": "Submit the notebook's upgrade",
+      "description": "Submit this notebook's upgrade for its admins' review: it freezes the notebook for everyone, your writes too, and checks it again from that moment; once every gate passes it stays in review with its report kept, an admin approves or rejects it in the web. Otherwise it is upgrading again, refused with wiki.upgrade_not_ready (detail names the gates) or wiki.upgrade_stale_index. Run upgrade_verify first. wiki.upgrade_state whose detail says a previous submission is still being checked: wait, then upgrade_verify.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          }
+        },
+        "required": ["notebook"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
       }
     }
   ]

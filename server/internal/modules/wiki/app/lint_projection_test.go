@@ -285,6 +285,6 @@ func TestLintListUsesActualLastCursor(t *testing.T) {
 
 func lintExecAsync(l *Lint, ctx context.Context, scope LintScope, query LintQuery) <-chan lintRunAnswer {
 	done := make(chan lintRunAnswer, 1)
-	go func() { result, err := l.Execute(ctx, scope, query); done <- lintRunAnswer{result, err} }()
+	go func() { result, err := l.Execute(ctx, scope, query); done <- lintRunAnswer{result: result, err: err} }()
 	return done
 }

@@ -180,19 +180,19 @@ GO_TEST_RACE = go test -race -count=1 -timeout 15m
 
 .PHONY: test-go
 test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检测，不用测试缓存；需要 Docker）
-	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名七份、各一个 go test 二进制、各受 15 分钟，
-	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这八个最多六个同时跑
-	@# （保留 -j6 的并发上限；macOS 的 make 3.81 也有 -j），之后成本与守卫各份依次跑，不与竞态检测下的构建抢 CPU；guards 入口依次运行 core 与 sources；costs 的三组也串行，各份之和就是下面 CI 的十四份
+	@# 本机与 CI 同样分份（M9/P2 设计 6.5）：组合根之外的包一个 go test，组合根按测试名八份、各一个 go test 二进制、各受 15 分钟，
+	@# 同一条规则管两处（之前组合根是一个二进制，本机 8 到 9.5 分钟，比 CI 的任何一份先到 15 分钟）。竞态检测的这九个最多六个同时跑
+	@# （保留 -j6 的并发上限；macOS 的 make 3.81 也有 -j），之后成本与守卫各份依次跑，不与竞态检测下的构建抢 CPU；guards 入口依次运行 core 与 sources；costs 的三组也串行，各份之和就是下面 CI 的十五份
 	@# （M8/P3A 审查 C 的 I-1）。M9/P2 S1 各量两次：两份时竞态检测的三个同时跑（-j3）整个 759 与 754 秒、依次 1031 与 1061 秒，
 	@# 只快 4.8 分钟，不到设计定的 5 分钟，所以先是依次；分成三份之后（S1 修复第一轮）四个同时跑整个 698 与 730 秒、依次 1024 与 1058 秒，
 	@# 同时的平均快 5.45 分钟，过了 5 分钟，所以同时（四个里第一份最长，284 与 319 秒）。同时跑的输出交错：找 --- FAIL、FAIL 与 make 的 Error 三种行
 	@# M10/P2/S2 增为四份时沿用随份数的并发规则；上述加速幅度属于 M9/P2 三份时的历史测量。
-	@$(MAKE) --no-print-directory -j6 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 test-go-bootstrap-7
+	@$(MAKE) --no-print-directory -j6 test-go-race test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 test-go-bootstrap-7 test-go-bootstrap-8
 	@$(MAKE) --no-print-directory test-go-costs
 	@$(MAKE) --no-print-directory test-go-costs-lint
 	@$(MAKE) --no-print-directory test-go-guards
 
-# CI 的十四份（short 是第十五份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
+# CI 的十五份（short 是第十六份，只跑单元测试，不在 make test-go 里，见 test-go-short）：一个作业跑全部时超过了 25 分钟的时限（M8/P3A，竞态检测下的组合根占了一半）。
 # 组合根之外的包由 go list 列出，以后新加的包自动归入第一份。不带竞态检测的那一份在 M8/P4A 之前作业已到 15 分钟
 # （测试一步 13:37），超过 15 分钟就分（M8/P4 设计 3.11）：组合根的预算与守卫各自编译、各起数据库，分作一份。
 # 竞态检测下的组合根在 M8/P4A 的 CI 上测试一步 12:00–12:05，离 go test 的 15 分钟只剩约两成，P5 还要加测试（M8/P4A 审查 C 的 M-6）：
@@ -245,7 +245,7 @@ test-go: ## 运行 Go 测试，含集成测试与 server/tools（开启竞态检
 # 仅上述 11 个测试从第一份移到第二份，第三、四、五份现有成员不变；测试名、五份、竞态/count/15m 与作业时限不变。
 # 新候选的编译清单、各份单独双轮和指定两次 main Test 均值的实际核验见 P4-S1 审查记录；历史原件不替代候选验收。
 BOOTSTRAP_FIRST = ^Test[A-D]
-BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents)|VirtualExport$$)
+BOOTSTRAP_SECOND = ^Test(E|Source|The(MCP[C-Z]|Contents))
 # M9/P2 S1：第二份的测试一步过了 go test 的 15 分钟的一半（CI 的两次运行 7:15 与 8:33），照规则按测试名再分一份，不提高 -timeout（M9/P2 设计 6.5）
 BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # M10/P3/S1 五份待测候选：分支 f64 的 CI 41068871923 attempt1 中，四份 Test 为
@@ -262,7 +262,8 @@ BOOTSTRAP_THIRD = ^Test(The[F-Z]|T[i-z]|[U-Z])
 # 之后两次 main 第五份 436/470 秒（470 那次在 7763 上），均值 453 秒过了线；第六份 398/363 秒，TestIngestCoverage（折到 7763 约 25–40 秒）退回第六份，两边都在线之下。
 BOOTSTRAP_FIFTH = ^Test(The(MCP|Lint|WikiTools)|Rebuild|RewriteWindowNativeWriter|StableLinkRetention|IngestCandidates$$)
 # M10/P4/S2 六份候选：新增 TestIngest 单列，原 S1 的 499 个顶层归属不变。
-# 当前 542 个顶层（竞态构建，M11/P1/S3 审查修复之后）静态分配为 145/51/121/124/62/11/28（见第五份与第七份的说明）；各份双轮与指定 main pair 仍须实际核验。
+# 当前 547 个顶层（竞态构建，M11/P2/S2 第一轮修复挪 TestVirtualExport 的提交时的 go test -race -list）静态分配为 145/50/121/124/62/11/27/7
+# （见第五份、第七份与第八份的说明）；各份双轮与指定 main pair 仍须实际核验。
 BOOTSTRAP_SIXTH = ^TestIngest
 # M11/P1/S1：升级的整个程序测试单列一份（00-M11 第 186 条），都以 TestUpgrade 起名。第三份的 [U-Z] 收得下它，所以第三份跳过它；
 # 第四份是补集，跳过第三份的模式时已跳过它；第一、二、五、六份的模式都不收它（TestUploading… 也不匹配 ^TestUpgrade）。
@@ -279,13 +280,26 @@ BOOTSTRAP_SIXTH = ^TestIngest
 # 别的份的模式不收它们。本机两轮（make -j1，包的时间）第一份 295.0/292.0 → 231.0/230.3 秒，第七份 116.4/120.6 → 168.9/171.1 秒；
 # 照分支的 7763 上第七份与本机之比（测试一步 211/118.5≈1.78），第七份约 300 秒，在约 330 秒之下，13 个都挪。第一份照 main 的 7763
 # 与本机之比（442/287.4≈1.54）约 355 秒。第二份暂不动，合并之后看两次 main。不提高 -timeout。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground)
+# M11/P2/S2 第一轮修复（00-M11 第 272 条）：第二份的 TestVirtualExport 挪到第八份；第八份是第七份的子集，所以第七份的模式也收它，第三份 -skip
+# 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$)
+# M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
+# （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
+# [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
+# 的七份均值 307.5/434/397/376/397/311/218.5 秒（P2 设计 10.1），都在 450 秒之下；第二份最贴线（438、430），照 M9/P2 设计 6.5 不过线不挪，
+# 第二份不动（挪前挪后的估计见 S2 的记录）。不提高 -timeout。这个提交时本机两轮（make -j1，包的时间）第七份 173.8/177.6 秒、第八份 4.2/4.2 秒。
+# M11/P2/S2 第一轮修复（00-M11 第 272 条，审查 B 的 Q1）：分支的 CI（42882105107）第二份在 EPYC 7763 上 Test 一步 457 秒，过了 450 秒的线；本机第二份
+# 在 S2 之前 250.8/252.7 秒、之后 263.2/264.4 秒，多的约 5% 摊在许多测试上（每建一个应用读一次契约，契约变大，审查 B 的 4.4），合并之后两次 main
+# 多半也过线。照 M9/P2 设计 6.5 挪给空着的第八份（CI 上 97 秒），挪得最少：第二份里最大的 TestVirtualExport 一个（本机 -v 48.2/51.7 秒）。
+# 挪后本机两轮（make -j1，包的时间）第二份 204.4/202.0 秒、第八份 98.6/99.8 秒；照分支 CI 的第二份与本机之比（包 423.8/263.8≈1.61，Test 一步
+# 另多约 33 秒）折到 7763，第二份约 360 秒、第八份约 195 秒。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Check|Gates|Submit|Tools)|VirtualExport$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
 
 .PHONY: test-go-bootstrap
-test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 test-go-bootstrap-7 ## 竞态检测下运行组合根的整个程序测试，七份依次（需要 Docker）
+test-go-bootstrap: test-go-bootstrap-1 test-go-bootstrap-2 test-go-bootstrap-3 test-go-bootstrap-4 test-go-bootstrap-5 test-go-bootstrap-6 test-go-bootstrap-7 test-go-bootstrap-8 ## 竞态检测下运行组合根的整个程序测试，八份依次（需要 Docker）
 
 .PHONY: test-go-bootstrap-1
 test-go-bootstrap-1: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIRST 且不匹配 BOOTSTRAP_SEVENTH 的（CI 的一份；需要 Docker）
@@ -312,8 +326,12 @@ test-go-bootstrap-6: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SIXTH)' -skip '$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-7
-test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SEVENTH 的：升级的，第六份让出的 TestIngestBefore，第一份让出的 TestABackground…（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
+test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_SEVENTH 且不匹配 BOOTSTRAP_EIGHTH 的：升级的（检查、闸门、提交与工具除外），第六份让出的 TestIngestBefore，第一份让出的 TestABackground…（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
+
+.PHONY: test-go-bootstrap-8
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交与工具，第二份让出的 TestVirtualExport（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
 test-go-costs: ## 顺序运行三份成本守卫及 server/tools（需要 Docker）
@@ -344,7 +362,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条（CI 第一份；需要 Docker
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^analyzed$$)' ./internal/modules/linking/adapter/postgres
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起与两种护栏的读（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -362,9 +380,12 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeStartTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 	@# M11/P2/S1：正文与账本两种护栏的读，一页基线页的正文的读与账本的写各 1,000 次，对着两次升级各十万行、另九本各五万页的笔记本与它们的升级；三种统计 × 自定义与通用的计划：upgrade_nodes 只经 upgrade_nodes_pkey、两列都在索引条件里，page_contents 只经主键在嵌套循环的内侧，中位数在本机两轮的三倍（5 ms）之内；带 -v 打出中位数（P2 设计 7.1，决定 236、240）；本机约 17 秒，种子 12.7 秒
 	cd server && go test -count=1 -v -run '^TestUpgradeGuardrailReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# M11/P2/S2：检查，lint 的成本夹具取 5 万页、改成普通笔记本、以 SQL 设成升级中，1,000 个这次升级的变更集、10 万个普通的，另九本各 5 万页的笔记本与它们的升级（决定 240、262）；
+	@# 发起之后分析过，两份种子（全保全、一页的账本不符）各三次整个检查的中位数在本机两轮的三倍与 worker 的 80% 中较小的（1.5 秒）之内；本机约 0.49 秒，种子约 12 秒
+	cd server && go test -count=1 -v -run '^TestUpgradeCheckTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
-test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 第三份；需要 Docker）
+test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）
 	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
@@ -392,6 +413,9 @@ test-go-costs-3: ## 原成本命令第 21–32 条与回滚的三个守卫（CI 
 	@# 逐行经主键，不顺序扫描；在内侧逐行重复的读经外行的键，不逐行重读整个集合，决定 244），计划有问题就停在计时之前；再核对 RollbackLeft 的中位数在请求的 4 秒、
 	@# 合成的读在本机两轮的三倍之内（决定 226、236）
 	cd server && go test -count=1 -v -run '^TestARollbacksReadsTakeTheirTimeAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
+	@# M11/P2/S2：闸门的三条读（基线、保全、变更集数），10 万页的笔记本与它的升级、1,000 个这次升级的与 10 万个普通的变更集，另九本各 5 万页的笔记本与它们的升级；
+	@# 三种统计 × 自定义与通用的计划只经键（changesets 只经 changesets_upgrade_id_idx，决定 240、244），不设时长的界，-v 打出每条读的中位数；本机约 22 秒
+	cd server && go test -count=1 -v -run '^TestTheUpgradeGateReadsPlansAtAnyStatistics$$' ./internal/modules/page/adapter/postgres
 	@# 先删：10 万个零散的新页装成 40 个单元、各 2,500 棵子树（决定 231、243），种子先删 5,000 页，让统计见过已删的行，量稳态；每个单元不过 14 秒
 	@# （决定 153），整遍与分配在本机两轮的三倍之内，本机一遍约 110 秒、界 330 秒。统计没见过已删的行时单元一个比一个慢，本机一遍 645 秒，
 	@# 所以这一行仍 -timeout 20m：红在界上，不在 Go 默认的 10 分钟超时

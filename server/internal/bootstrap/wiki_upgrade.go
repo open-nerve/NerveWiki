@@ -57,6 +57,9 @@ func (s wikiUpgradeStates) SetState(ctx context.Context, id, upgradeID uuid.UUID
 ) error {
 	var to notebook.UpgradeState
 	switch state {
+	case wiki.UpgradeUpgrading:
+		// A submission set upgrading again (M11/P2 design 3.12 step 5).
+		to = notebook.UpgradeUpgrading
 	case wiki.UpgradeReviewing:
 		to = notebook.UpgradeReviewing
 	case wiki.UpgradeRollingBack:
@@ -155,6 +158,38 @@ func (p wikiUpgradePages) RootNodes(ctx context.Context, notebookID uuid.UUID, k
 		out[i] = wiki.RootNode{ID: n.ID, Kind: kind, Key: n.Key}
 	}
 	return out, nil
+}
+
+// Roots, Baseline, Preserved and Changesets are the page module's reads
+// of an upgrade's check (M11/P2 design 3.9), converted.
+func (p wikiUpgradePages) Roots(ctx context.Context, notebookID, rootID uuid.UUID) (wiki.UpgradeRoots, error) {
+	r, err := p.upgrades.Roots(ctx, notebookID, rootID)
+	return wiki.UpgradeRoots{AgentsID: r.AgentsID, AgentsBody: r.AgentsBody, RootPage: r.RootPage}, err
+}
+
+func (p wikiUpgradePages) Baseline(ctx context.Context, upgradeID uuid.UUID) ([]wiki.BaselineNode, error) {
+	rows, err := p.upgrades.Baseline(ctx, upgradeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]wiki.BaselineNode, len(rows))
+	for i, r := range rows {
+		kind, err := wikiPageKind(r.Kind)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = wiki.BaselineNode{ID: r.ID, ParentID: r.ParentID, Kind: kind, Wanted: r.Wanted}
+	}
+	return out, nil
+}
+
+func (p wikiUpgradePages) Preserved(ctx context.Context, upgradeID uuid.UUID) (wiki.Preserved, error) {
+	r, err := p.upgrades.Preserved(ctx, upgradeID)
+	return wiki.Preserved{Nodes: r.Nodes, NodesKept: r.NodesKept, Pages: r.Pages, PagesKept: r.PagesKept, NotKept: r.NotKept}, err
+}
+
+func (p wikiUpgradePages) Changesets(ctx context.Context, upgradeID uuid.UUID) (int, error) {
+	return p.upgrades.Changesets(ctx, upgradeID)
 }
 
 // wikiRollbackPages are page.Upgrades as the wiki module's rollback's end

@@ -41,9 +41,16 @@ func (lintNotebookGate) Instructions(context.Context, uuid.UUID) (string, error)
 
 func lintServer(t *testing.T, uc LintUseCase) http.Handler {
 	t.Helper()
+	return toolServer(t, uc, nil)
+}
+
+// toolServer is the module's tools over lint and upgrades, as the SDK
+// serves them.
+func toolServer(t *testing.T, uc LintUseCase, upgrades UpgradeUseCase) http.Handler {
+	t.Helper()
 	log := slog.New(slog.DiscardHandler)
 	api := httpservertest.NewAPI(t, httpservertest.APIOptions{Authenticator: lintAuth{}})
-	server := mcpserver.New(mcpserver.Options{Name: "wiki-test", Version: "test", Tools: Tools(uc), Credentials: func(context.Context) (mcpserver.Credential, bool) {
+	server := mcpserver.New(mcpserver.Options{Name: "wiki-test", Version: "test", Tools: Tools(uc, upgrades), Credentials: func(context.Context) (mcpserver.Credential, bool) {
 		return mcpserver.Credential{UserID: lintID(1), TokenID: lintID(2)}, true
 	}, Notebooks: lintNotebookGate{}, Errors: api.Errors, RequestTimeout: 4 * time.Second, MaxBodyBytes: 1 << 20, Logger: log})
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

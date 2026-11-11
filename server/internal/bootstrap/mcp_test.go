@@ -248,9 +248,9 @@ func TestTheMCPCallRunsOutOfTime(t *testing.T) {
 }
 
 // A client that goes away ends its call long before the call's deadline:
-// the request's end cancels it (AfterFunc), the client gone at debug, the
-// deadline's warn never written, and no line at error: the answer never
-// written is the client's, not a fault (M9/P1 design review A-M12, A N-2).
+// the request's end cancels it (AfterFunc), the call's client gone at
+// debug, the deadline's warn never written, and no line at error: the
+// client's going is no fault (M9/P1 design review A-M12, A N-2).
 func TestTheMCPCallStopsWhenTheClientGoes(t *testing.T) {
 	seen := newMCPSeen()
 	m := startMCPApp(t, mcpTestTools(seen))
@@ -266,12 +266,16 @@ func TestTheMCPCallStopsWhenTheClientGoes(t *testing.T) {
 	case <-time.After(6 * time.Second):
 		t.Fatal("the call did not end within 6 s")
 	}
-	if e := m.waitLogged(t, "MCP client went away", 2*time.Second); e == nil || e["level"] != "DEBUG" {
+	if e := m.waitLogged(t, "MCP client went away", 10*time.Second); e == nil || e["level"] != "DEBUG" {
 		t.Errorf("the log has %v, want the client gone at debug", e)
 	}
-	if e := m.waitLogged(t, "client went away", 2*time.Second); e == nil || e["level"] != "DEBUG" {
-		t.Errorf("the log has %v, want the answer never written at debug", e)
-	}
+	// The slow tool stops on its context, and the SDK may or may not write
+	// its error into the closed connection before the request lets its
+	// stream go (go-sdk's streamable.go, "a brief race between request
+	// cancellation and releasing the stream"), so the unwritten answer's
+	// line, "client went away", is not this call's to promise; a tool that
+	// outlives its client always leaves it, which TestAnUnwrittenAnswerIsAProblem's
+	// stubborn tool holds (mcpserver/call_test.go; M11/P2/S2 review C-M1).
 	if e := m.logged(t, "MCP call deadline exceeded"); e != nil {
 		t.Errorf("the log has %v: the call ran to its deadline", e)
 	}

@@ -85,6 +85,10 @@ type wiring struct {
 	wikiReady func(*wiki.Module)
 	// transfer wraps real ports for whole-program boundary interleavings.
 	transfer func(*transfer.Deps)
+	// submitTimeout, when set, is an upgrade's submission's bound apart
+	// from its request: TestUpgradeSubmit's deadline sets it between the
+	// standard app's REST and MCP deadlines (M11/P2 design 7.1).
+	submitTimeout time.Duration
 }
 
 // wireApp is newApp with a test's wiring.
@@ -273,6 +277,16 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		UpgradeAction: notebook.ActionChangeMode,
 		StartTimeout:  cfg.Server.RequestTimeout * 3 / 4,
 		Template:      template,
+		// An upgrade's check (M11/P2 design 3.11): the page module's reads
+		// and its root's reserved title keys, not a copy of them.
+		Gates:        wikiUpgradePages{page.NewUpgrades(pool)},
+		ReservedKeys: page.ReservedKeys(),
+		// A submission's part apart from its request (M11/P2 design 3.12):
+		// lint's bound and ten seconds more for its second transaction.
+		SubmitTimeout: lintTimeout + 10*time.Second,
+	}
+	if w.submitTimeout > 0 {
+		wikiDeps.SubmitTimeout = w.submitTimeout
 	}
 	if w.wiki != nil {
 		w.wiki(&wikiDeps)

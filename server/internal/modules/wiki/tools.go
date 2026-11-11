@@ -5,5 +5,6 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/httpserver/mcpserver"
 )
 
-// Tools uses this module's existing runtime for both MCP entries.
-func (m *Module) Tools() []mcpserver.Tool { return mcpadapter.Tools(m) }
+// Tools uses this module's existing runtime for both MCP entries, its
+// upgrade's check and submission too.
+func (m *Module) Tools() []mcpserver.Tool { return mcpadapter.Tools(m, m) }

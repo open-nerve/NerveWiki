@@ -51,6 +51,49 @@
         "openWorldHint": false,
         "readOnlyHint": true
       }
+    },
+    {
+      "name": "upgrade_submit",
+      "title": "Submit the notebook's upgrade",
+      "description": "Submit this notebook's upgrade for its admins' review: it freezes the notebook for everyone, your writes too, and checks it again from that moment; once every gate passes it stays in review with its report kept, an admin approves or rejects it in the web. Otherwise it is upgrading again, refused with wiki.upgrade_not_ready (detail names the gates) or wiki.upgrade_stale_index. Run upgrade_verify first. wiki.upgrade_state whose detail says a previous submission is still being checked: wait, then upgrade_verify.",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "upgrade_verify",
+      "title": "Check the notebook's upgrade",
+      "description": "Check this notebook's upgrade to an LLM Wiki, from a snapshot for this call, against an LLM Wiki's contract with the source root the upgrade proposes. Omit rule for every gate, each health check's count and first items, and the counts; limit and cursor require rule. Set rule to read its items, then continue with next_cursor. passed is true once every gate passes: then upgrade_submit. The notebook's admins only, while it is upgrading or reviewing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "rule": {
+            "type": ["null", "string"],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
     }
   ],
   "account": [
@@ -97,6 +140,61 @@
           "notebook": {
             "type": "string",
             "description": "The notebook's id, from notebooks."
+          },
+          "limit": {
+            "type": ["null", "integer"],
+            "description": "At most this many items, 1 to 100. Default 50."
+          },
+          "cursor": {
+            "type": ["null", "string"],
+            "description": "next_cursor of the previous answer, to continue after its last item."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["notebook"]
+      },
+      "annotations": {
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": true
+      }
+    },
+    {
+      "name": "upgrade_submit",
+      "title": "Submit the notebook's upgrade",
+      "description": "Submit this notebook's upgrade for its admins' review: it freezes the notebook for everyone, your writes too, and checks it again from that moment; once every gate passes it stays in review with its report kept, an admin approves or rejects it in the web. Otherwise it is upgrading again, refused with wiki.upgrade_not_ready (detail names the gates) or wiki.upgrade_stale_index. Run upgrade_verify first. wiki.upgrade_state whose detail says a previous submission is still being checked: wait, then upgrade_verify.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["notebook"]
+      },
+      "annotations": {
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false,
+        "readOnlyHint": false
+      }
+    },
+    {
+      "name": "upgrade_verify",
+      "title": "Check the notebook's upgrade",
+      "description": "Check this notebook's upgrade to an LLM Wiki, from a snapshot for this call, against an LLM Wiki's contract with the source root the upgrade proposes. Omit rule for every gate, each health check's count and first items, and the counts; limit and cursor require rule. Set rule to read its items, then continue with next_cursor. passed is true once every gate passes: then upgrade_submit. The notebook's admins only, while it is upgrading or reviewing.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "notebook": {
+            "type": "string",
+            "description": "The notebook's id, from notebooks."
+          },
+          "rule": {
+            "type": ["null", "string"],
+            "description": "An exact health check rule. Omit for counts and previews; limit and cursor require a rule."
           },
           "limit": {
             "type": ["null", "integer"],

@@ -40,6 +40,14 @@ func wikiCostID(kind, n int) uuid.UUID {
 // copied properties are actual prototype facts, never rule answers.
 func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	t.Helper()
+	return newWikiCostFixtureOf(t, "Hundred thousand pages", 100000)
+}
+
+// newWikiCostFixtureOf is the fixture of an LLM Wiki named name of pages
+// pages: lint's guard's of 100,000, an upgrade's check's of 50,000 (M11/P2
+// design 7.1, decision 262).
+func newWikiCostFixtureOf(t *testing.T, name string, pages int) *wikiCostFixture {
+	t.Helper()
 	trace := &wikiCostTrace{}
 	runtimeFixture := newLintRuntime(t, func(d *wiki.Deps) {
 		d.LintTimeout = wikiCostWorker
@@ -52,7 +60,7 @@ func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	runtimeFixture.trace.previous = trace
 	f := &wikiCostFixture{lintRuntimeFixture: runtimeFixture, trace: trace}
 	started := time.Now()
-	f.book = f.tm.llmWiki(t, "Hundred thousand pages")
+	f.book = f.tm.llmWiki(t, name)
 	f.prototype = f.tm.createPageWith(t, "alice", f.book.id, "", "Prototype", wikiCostBody)
 	assetPrototype := f.tm.upload(t, "alice", f.book.id, f.prototype, "needle.js", "cost bytes")
 	f.source = f.tm.createPageWith(t, "alice", f.book.id, f.book.raw, "Source", "source payload")
@@ -62,7 +70,7 @@ func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	// asset and must not be a wanted page even with thousands of candidates.
 	f.emitter = f.tm.createPageWith(t, "alice", f.book.id, "", "Emitter", wikiCostBody+
 		"[[missing/needle.js]]\n[[missing/needle.js.md]]\n[[truly-wanted]]\n")
-	f.bulkPages = 100000 - 5 // raw, AGENTS, prototype, Source, Emitter.
+	f.bulkPages = pages - 5 // raw, AGENTS, prototype, Source, Emitter.
 	for first := 0; first < f.bulkPages; first += 10000 {
 		f.seedPages(t, first, min(10000, f.bulkPages-first))
 	}
@@ -74,7 +82,7 @@ func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	} {
 		lintCostExec(t, f.tm.pool, query)
 	}
-	f.checkSeed(t)
+	f.checkSeed(t, pages)
 	if t.Failed() {
 		t.FailNow()
 	}
@@ -92,7 +100,7 @@ func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 		ElapsedNS                                                       int64
 		Pages, BulkPages, BulkAssets, LiveAssets, PageDepth, AssetDepth int
 		Statistics                                                      string
-	}{int64(time.Since(started)), 100000, f.bulkPages, f.bulkAssets, f.bulkAssets + 2, 10, 11, "ANALYZE; ordinary production DescribeExec; warm fixture validation excluded from Execute"})
+	}{int64(time.Since(started)), pages, f.bulkPages, f.bulkAssets, f.bulkAssets + 2, 10, 11, "ANALYZE; ordinary production DescribeExec; warm fixture validation excluded from Execute"})
 	return f
 }
 
@@ -181,7 +189,7 @@ func (f *wikiCostFixture) seedAssets(t *testing.T, prototype string) {
 	}
 }
 
-func (f *wikiCostFixture) checkSeed(t *testing.T) {
+func (f *wikiCostFixture) checkSeed(t *testing.T, pages int) {
 	t.Helper()
 	checks := []struct {
 		name, query string
@@ -189,12 +197,12 @@ func (f *wikiCostFixture) checkSeed(t *testing.T) {
 		args        []any
 	}{
 		{"live current pages", `SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id=n.id JOIN indexed_pages i ON i.node_id=n.id
- WHERE n.notebook_id=$1 AND n.kind='page' AND n.deleted_at IS NULL AND c.deleted_at IS NULL AND i.notebook_id=n.notebook_id AND i.revision=c.revision AND i.extractor=2`, 100000, []any{f.book.id}},
+ WHERE n.notebook_id=$1 AND n.kind='page' AND n.deleted_at IS NULL AND c.deleted_at IS NULL AND i.notebook_id=n.notebook_id AND i.revision=c.revision AND i.extractor=2`, pages, []any{f.book.id}},
 		{"current history", `SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id=n.id JOIN page_revisions r ON r.node_id=n.id AND r.revision=c.revision
  WHERE n.notebook_id=$1 AND r.deleted_at IS NULL AND (r.content,r.content_hash,r.byte_size)=(c.content,c.content_hash,c.byte_size)
- AND c.content_hash=sha256(convert_to(c.content,'UTF8')) AND c.byte_size=octet_length(c.content)`, 100000, []any{f.book.id}},
+ AND c.content_hash=sha256(convert_to(c.content,'UTF8')) AND c.byte_size=octet_length(c.content)`, pages, []any{f.book.id}},
 		{"page creation items", `SELECT count(DISTINCT n.id) FROM nodes n JOIN changeset_items i ON i.node_id=n.id AND i.revision=1 JOIN changesets s ON s.id=i.changeset_id
- WHERE n.notebook_id=$1 AND n.kind='page' AND i.after_name=n.name AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id AND s.notebook_id=n.notebook_id`, 100000, []any{f.book.id}},
+ WHERE n.notebook_id=$1 AND n.kind='page' AND i.after_name=n.name AND i.after_parent_id IS NOT DISTINCT FROM n.parent_id AND s.notebook_id=n.notebook_id`, pages, []any{f.book.id}},
 		{"prototype properties", `SELECT count(*) FROM page_properties WHERE source_id=$1 AND ((position=0 AND key='type' AND value='"note"'::jsonb) OR (position=1 AND key='summary' AND value='"cost"'::jsonb))`, 2, []any{f.prototype}},
 		{"bulk prototype body", `SELECT count(*) FROM nodes n JOIN page_contents c ON c.node_id=n.id WHERE n.notebook_id=$1 AND n.id<'00000000-0000-7001-8000-000000000000'::uuid AND c.content=$2`, f.bulkPages, []any{f.book.id, wikiCostBody}},
 		{"bulk prototype properties", `SELECT count(*) FROM page_properties p JOIN page_properties template ON template.source_id=$2 AND template.position=p.position

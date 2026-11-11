@@ -18,7 +18,12 @@ const maxUpgradeLocks = 100
 // UpgradeDeps are what an upgrade's start and read, its abandonment and
 // its rollback's end need (M11/P1 design 3.14, 3.15, 3.20): Action is the
 // notebook module's notebook.change_mode; Timeout bounds the start's
-// transaction (decisions 227, 232).
+// transaction (decisions 227, 232). Its check's (M11/P2 design 3.11):
+// Gates are the page module's reads, Cursors and Paths lint's,
+// ReservedKeys the root's title keys gate 3 judges; its submission's
+// (3.12): SubmitTimeout bounds the part apart from the request, from the
+// moment the submission was written, and decides when one left reviewing
+// without a report may be taken over.
 type UpgradeDeps struct {
 	Tx         shared.TxManager
 	Snapshots  shared.Snapshots
@@ -37,6 +42,12 @@ type UpgradeDeps struct {
 	Clock      Clock
 	Logger     Logger
 	Timeout    time.Duration
+
+	Gates         UpgradeGatePages
+	Cursors       Cursors
+	Paths         Paths
+	ReservedKeys  []string
+	SubmitTimeout time.Duration
 }
 
 // locked locks notebook id's workspace's row FOR SHARE and its row FOR NO
@@ -254,8 +265,8 @@ func (s *StartUpgrade) start(ctx context.Context, actor shared.Actor, client str
 		}
 	}
 	llm, wanted := domain.ModeLLMWiki, domain.RuleWanted
-	prepared, _, err := s.lint.prepareIn(ctx, LintScope{NotebookID: id, Contract: &llm, AreaRootID: &up.SourceRootID},
-		RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true})
+	prepared, _, _, err := s.lint.prepareIn(ctx, LintScope{NotebookID: id, Contract: &llm, AreaRootID: &up.SourceRootID},
+		RuleQuery{Rule: &wanted, Limit: 1, WantedByPage: true, AreaWantedByPage: true})
 	if err != nil {
 		return startOutcome{}, err
 	}

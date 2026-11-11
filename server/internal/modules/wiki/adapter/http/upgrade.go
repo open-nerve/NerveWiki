@@ -17,7 +17,11 @@ func (h handler) GetUpgrade(ctx context.Context, req gen.GetUpgradeRequestObject
 	if err != nil {
 		return nil, err
 	}
-	return gen.GetUpgrade200JSONResponse(upgradeOf(view)), nil
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.GetUpgrade200JSONResponse(out), nil
 }
 
 func (h handler) StartUpgrade(ctx context.Context, req gen.StartUpgradeRequestObject) (gen.StartUpgradeResponseObject, error) {
@@ -29,7 +33,11 @@ func (h handler) StartUpgrade(ctx context.Context, req gen.StartUpgradeRequestOb
 	if err != nil {
 		return nil, err
 	}
-	return gen.StartUpgrade200JSONResponse(upgradeOf(view)), nil
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.StartUpgrade200JSONResponse(out), nil
 }
 
 func (h handler) AbandonUpgrade(ctx context.Context, req gen.AbandonUpgradeRequestObject) (gen.AbandonUpgradeResponseObject, error) {
@@ -37,7 +45,11 @@ func (h handler) AbandonUpgrade(ctx context.Context, req gen.AbandonUpgradeReque
 	if err != nil {
 		return nil, err
 	}
-	return gen.AbandonUpgrade200JSONResponse(upgradeOf(view)), nil
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.AbandonUpgrade200JSONResponse(out), nil
 }
 
 func (h handler) EndUpgradeRollback(ctx context.Context, req gen.EndUpgradeRollbackRequestObject) (gen.EndUpgradeRollbackResponseObject,
@@ -47,12 +59,28 @@ func (h handler) EndUpgradeRollback(ctx context.Context, req gen.EndUpgradeRollb
 	if err != nil {
 		return nil, err
 	}
-	return gen.EndUpgradeRollback200JSONResponse(upgradeOf(view)), nil
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.EndUpgradeRollback200JSONResponse(out), nil
+}
+
+func (h handler) SubmitUpgrade(ctx context.Context, req gen.SubmitUpgradeRequestObject) (gen.SubmitUpgradeResponseObject, error) {
+	view, err := h.upgrades.SubmitUpgrade(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.SubmitUpgrade200JSONResponse(out), nil
 }
 
 // upgradeOf is view as the contract's Upgrade: the pages the start wrote,
-// raw then AGENTS; each step's fields null until it.
-func upgradeOf(view app.UpgradeView) gen.Upgrade {
+// raw then AGENTS; each step's fields null until it; the report kept.
+func upgradeOf(view app.UpgradeView) (gen.Upgrade, error) {
 	up := view.Upgrade
 	out := gen.Upgrade{
 		ID: up.ID, NotebookID: up.NotebookID, State: gen.UpgradeState(up.State),
@@ -65,6 +93,7 @@ func upgradeOf(view app.UpgradeView) gen.Upgrade {
 		Ending:           nullable.NewNullNullable[gen.UpgradeEnding](),
 		RollbackComplete: nullable.NewNullNullable[bool](),
 		RollbackLeft:     nullable.NewNullNullable[gen.UpgradeRollbackLeft](),
+		Report:           nullable.NewNullNullable[gen.UpgradeReport](),
 	}
 	if up.SeededRoot {
 		out.SeededPageIds = append(out.SeededPageIds, up.SourceRootID)
@@ -90,5 +119,12 @@ func upgradeOf(view app.UpgradeView) gen.Upgrade {
 	if left := up.RollbackLeft; left != nil {
 		out.RollbackLeft = nullable.NewNullableWithValue(gen.UpgradeRollbackLeft{Nodes: left.Nodes, Pages: left.Pages, Created: left.Created})
 	}
-	return out
+	if up.Report != nil {
+		report, err := reportOf(*up.Report)
+		if err != nil {
+			return gen.Upgrade{}, err
+		}
+		out.Report = nullable.NewNullableWithValue(report)
+	}
+	return out, nil
 }

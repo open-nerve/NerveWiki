@@ -1,11 +1,12 @@
-import type { ApiClient, Upgrade, UpgradeStart } from "@nervewiki/api-client";
+import type { ApiClient, Upgrade, UpgradeCheck, UpgradeStart } from "@nervewiki/api-client";
 import { expect } from "@playwright/test";
 
 import { bearer } from "./auth";
 
 // A notebook's upgrade to an LLM Wiki in the stories, through the API
 // (M11/P1 design 5): its start and its read; its abandonment, which also
-// continues a stopped rollback, and its rollback's end (S3).
+// continues a stopped rollback, and its rollback's end (S3); its check, a
+// rule's items of it, and its submission (M11/P2 design 5).
 
 /** credential's start of the upgrade of the notebook id, as the API answers it, including a refusal. */
 export async function postUpgrade(api: ApiClient, credential: string, id: string, body: UpgradeStart = {}) {
@@ -66,6 +67,51 @@ export async function endUpgradeRollback(api: ApiClient, credential: string, id:
   expect(response.status, `end the rollback of ${id}: ${JSON.stringify(error)}`).toBe(200);
   if (!data) {
     throw new Error(`end the rollback of ${id} answered 200 without it`);
+  }
+  return data;
+}
+
+/** Checks the upgrade of the notebook id with credential, and returns the check, passed or not. */
+export async function checkUpgrade(api: ApiClient, credential: string, id: string): Promise<UpgradeCheck> {
+  const { data, error, response } = await api.GET("/api/v0/notebooks/{notebook_id}/upgrade/check", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+  expect(response.status, `check the upgrade of ${id}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`check the upgrade of ${id} answered 200 without it`);
+  }
+  return data;
+}
+
+/** credential's read of a page of rule's items of the check of the upgrade of the notebook id, as the API answers it. */
+export async function getUpgradeCheckItems(
+  api: ApiClient,
+  credential: string,
+  id: string,
+  rule: string,
+  query: { limit?: number; cursor?: string } = {}
+) {
+  return api.GET("/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}", {
+    params: { path: { notebook_id: id, rule }, query },
+    headers: bearer(credential),
+  });
+}
+
+/** credential's submission of the upgrade of the notebook id for review, as the API answers it, including a refusal. */
+export async function postSubmit(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/upgrade/submit", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+}
+
+/** Submits the upgrade of the notebook id with credential, and returns it, reviewing with its report. */
+export async function submitUpgrade(api: ApiClient, credential: string, id: string): Promise<Upgrade> {
+  const { data, error, response } = await postSubmit(api, credential, id);
+  expect(response.status, `submit the upgrade of ${id}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`submit the upgrade of ${id} answered 200 without it`);
   }
   return data;
 }

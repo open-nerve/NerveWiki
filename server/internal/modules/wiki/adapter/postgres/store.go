@@ -60,8 +60,14 @@ func (s *Store) Current(ctx context.Context, notebookID uuid.UUID) (domain.Upgra
 		ID: r.ID, NotebookID: r.NotebookID, State: domain.UpgradeState(r.State), SourceRootID: r.SourceRootID,
 		SeededRoot: r.SeededRoot, SeededAgentsID: r.SeededAgentsID, Locale: domain.Locale(r.Locale),
 		BaselineNodes: int(r.BaselineNodes), BaselinePages: int(r.BaselinePages), BaselineWanted: int(r.BaselineWanted),
-		BaselineWantedCapped: r.BaselineWantedCapped, SubmittedBy: r.SubmittedByID, SubmittedAt: r.SubmittedAt,
-		RollbackJobID: r.RollbackJobID, RollbackComplete: r.RollbackComplete, CreatedBy: r.CreatedByID, CreatedAt: r.CreatedAt,
+		BaselineWantedCapped: r.BaselineWantedCapped, SubmissionID: r.SubmissionID, SubmittedBy: r.SubmittedByID,
+		SubmittedAt: r.SubmittedAt, RollbackJobID: r.RollbackJobID, RollbackComplete: r.RollbackComplete, CreatedBy: r.CreatedByID,
+		CreatedAt: r.CreatedAt,
+	}
+	if r.Report != nil {
+		if u.Report, err = decodeReport(r.Report); err != nil {
+			return domain.Upgrade{}, false, err
+		}
 	}
 	if r.Ending != nil {
 		u.Ending = domain.UpgradeEnding(*r.Ending)
@@ -113,6 +119,45 @@ func (s *Store) ContinueRollback(ctx context.Context, id, jobID, by uuid.UUID, a
 	n, err := s.queries(ctx).ContinueUpgradeRollback(ctx, gen.ContinueUpgradeRollbackParams{ID: id, JobID: jobID, By: by, Now: at})
 	if err != nil {
 		return false, fmt.Errorf("continue an upgrade's rollback: %w", err)
+	}
+	return n == 1, nil
+}
+
+// Submit sets the upgrade id reviewing, its submission submissionID by by
+// at at: from upgrading, or from reviewing without a report submitted at
+// takenOver or before (M11 design 4.8 step 1); false for no row so.
+func (s *Store) Submit(ctx context.Context, id, submissionID, by uuid.UUID, at, takenOver time.Time) (bool, error) {
+	n, err := s.queries(ctx).SubmitUpgrade(ctx, gen.SubmitUpgradeParams{ID: id, SubmissionID: &submissionID, By: by, Now: at,
+		TakenOver: takenOver})
+	if err != nil {
+		return false, fmt.Errorf("submit an upgrade: %w", err)
+	}
+	return n == 1, nil
+}
+
+// KeepReport keeps report as the submission submissionID's of the upgrade
+// id, reviewing without one, by by at at; false for no row so.
+func (s *Store) KeepReport(ctx context.Context, id, submissionID uuid.UUID, report domain.UpgradeReport, by uuid.UUID, at time.Time,
+) (bool, error) {
+	raw, err := encodeReport(report)
+	if err != nil {
+		return false, err
+	}
+	n, err := s.queries(ctx).KeepUpgradeReport(ctx, gen.KeepUpgradeReportParams{ID: id, SubmissionID: &submissionID, Report: raw,
+		By: by, Now: at})
+	if err != nil {
+		return false, fmt.Errorf("keep an upgrade's report: %w", err)
+	}
+	return n == 1, nil
+}
+
+// Unsubmit sets the upgrade id upgrading again, its submission
+// submissionID, reviewing without a report, cleared, by by at at; false
+// for no row so.
+func (s *Store) Unsubmit(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error) {
+	n, err := s.queries(ctx).UnsubmitUpgrade(ctx, gen.UnsubmitUpgradeParams{ID: id, SubmissionID: &submissionID, By: by, Now: at})
+	if err != nil {
+		return false, fmt.Errorf("unsubmit an upgrade: %w", err)
 	}
 	return n == 1, nil
 }

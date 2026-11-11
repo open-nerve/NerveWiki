@@ -66,6 +66,17 @@ func mcpRows() []mcpRow {
 	return slices.Concat(pageMCPRows(), pageWriteMCPRows(), linkingMCPRows(), notebookMCPRows(), wikiMCPRows())
 }
 
+// coveredMCPRows are the rows the coverage reads: the matrix's, and the
+// upgrade's, which run in the eighth shard's TestUpgradeToolsMatrix
+// (M11/P2 design 3.15).
+func coveredMCPRows() []mcpRow {
+	rows := mcpRows()
+	for _, r := range upgradeMCPRows() {
+		rows = append(rows, r.mcpRow)
+	}
+	return rows
+}
+
 // mcpToolCodes are the codes each MCP tool's error may carry besides
 // internal_error (M9 design 4.7; M9/P1 S2 review C's table), beside the
 // matrix's rows: each one the contract declares, each tool of tools.json
@@ -91,8 +102,10 @@ func mcpRows() []mcpRow {
 // page.upgrade_protected to delete and batch; its guardrails after the
 // freeze's codes (M11/P2 design 3.6): page.upgrade_immutable to write,
 // edit and batch, page.upgrade_batch_rewrite to batch,
-// page.upgrade_keep_links to move and batch.
-// upgradeToolCodes lists them, the seventh shard answers them.
+// page.upgrade_keep_links to move and batch. M11/P2/S2's upgrade_verify
+// and upgrade_submit have rows of their own (design 3.15), the wiki's
+// codes declared by REST.
+// upgradeToolCodes lists them, the eighth shard answers them.
 func mcpToolCodes() map[string][]string {
 	return map[string][]string{
 		"list":          {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
@@ -122,6 +135,10 @@ func mcpToolCodes() map[string][]string {
 		"index":           {"bad_request", "validation_failed", "notebook.not_found", "page.not_found", "page.virtual_file"},
 		"lint":            {"bad_request", "validation_failed", "notebook.not_found", "wiki.lint_rule_not_found", "notebook.not_llm_wiki", "server_busy"},
 		"pending_sources": {"bad_request", "validation_failed", "notebook.not_found", "notebook.not_llm_wiki", "server_busy"},
+		"upgrade_verify": {"bad_request", "validation_failed", "notebook.not_found", "forbidden",
+			"wiki.lint_rule_not_found", "wiki.upgrade_state", "server_busy"},
+		"upgrade_submit": {"bad_request", "notebook.not_found", "forbidden", "wiki.upgrade_state", "server_busy",
+			"wiki.upgrade_stale_index", "wiki.upgrade_not_ready"},
 	}
 }
 
@@ -445,7 +462,7 @@ func mcpMatrixViolations(lists toolLists, rows []mcpRow) []string {
 }
 
 func TestThePermissionMatrixCoversEveryTool(t *testing.T) {
-	for _, v := range mcpMatrixViolations(readToolLists(t), mcpRows()) {
+	for _, v := range mcpMatrixViolations(readToolLists(t), coveredMCPRows()) {
 		t.Error(v)
 	}
 }

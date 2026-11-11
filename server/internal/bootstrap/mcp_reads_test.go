@@ -797,6 +797,8 @@ func validToolArguments(created string) map[string]map[string]any {
 		"index":           {},
 		"lint":            {"rule": "wanted"},
 		"pending_sources": {},
+		"upgrade_verify":  {"rule": "wanted"},
+		"upgrade_submit":  {},
 	}
 }
 

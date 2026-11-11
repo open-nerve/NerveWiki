@@ -19,6 +19,7 @@ import (
 // state says, none when noLock; what is left; whether the module's row
 // still rolls back; the calls in order and what each wrote.
 type endFake struct {
+	unsubmitted
 	calls     []string
 	ws        uuid.UUID
 	at, since time.Time

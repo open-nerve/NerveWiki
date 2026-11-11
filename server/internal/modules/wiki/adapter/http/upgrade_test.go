@@ -26,10 +26,22 @@ import (
 // rollback's end with view or err, and records the locale the start was
 // asked for.
 type upgradeFake struct {
-	mu     sync.Mutex
-	view   app.UpgradeView
-	err    error
-	locale []string
+	mu      sync.Mutex
+	view    app.UpgradeView
+	checked app.UpgradeChecked
+	err     error
+	locale  []string
+	queries []app.LintQuery
+}
+
+func (f *upgradeFake) CheckUpgrade(_ context.Context, id uuid.UUID, query app.LintQuery) (app.UpgradeChecked, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.queries = append(f.queries, query)
+	if id != lintID(10) {
+		return app.UpgradeChecked{}, domain.ErrNotebookNotFound
+	}
+	return f.checked, f.err
 }
 
 func (f *upgradeFake) StartUpgrade(_ context.Context, id uuid.UUID, locale string) (app.UpgradeView, error) {
@@ -56,6 +68,13 @@ func (f *upgradeFake) AbandonUpgrade(_ context.Context, id uuid.UUID) (app.Upgra
 	return f.view, f.err
 }
 
+func (f *upgradeFake) SubmitUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.view, f.err
+}
+
 func (f *upgradeFake) EndUpgradeRollback(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
 	if id != lintID(10) {
 		return app.UpgradeView{}, domain.ErrNotebookNotFound
@@ -76,8 +95,9 @@ func upgradeCall(t *testing.T, h lintHTTP, method string, nb uuid.UUID, body str
 	return upgradeCallAt(t, h, method, nb, "", body)
 }
 
-// upgradeCallAt calls the upgrade's path, then sub ("/abandon" or
-// "/end-rollback"), and checks the answer against the contract.
+// upgradeCallAt calls the upgrade's path, then sub ("/abandon",
+// "/end-rollback" or "/submit"), and checks the answer against the
+// contract.
 func upgradeCallAt(t *testing.T, h lintHTTP, method string, nb uuid.UUID, sub, body string) (*http.Response, []byte) {
 	t.Helper()
 	var reader io.Reader
@@ -112,15 +132,15 @@ func upgradeView() app.UpgradeView {
 	}, StartedByName: "Ada", SubmittedByName: "Bo"}
 }
 
-// The upgrade's four operations answer the use cases' views in the
+// The upgrade's five operations answer the use cases' views in the
 // contract's shape: the pages the start wrote, raw then AGENTS; each
 // step's field null until it; the template's language passed as sent.
-// The abandonment and the rollback's end take no body.
+// The abandonment, the rollback's end and the submission take no body.
 func TestTheUpgradeIsAnswered(t *testing.T) {
 	f := &upgradeFake{view: upgradeView()}
 	h := upgradeServer(t, f)
 	for _, call := range []struct{ method, sub, body string }{{http.MethodGet, "", ""}, {http.MethodPost, "", `{"template_locale":"zh-CN"}`},
-		{http.MethodPost, "/abandon", ""}, {http.MethodPost, "/end-rollback", ""}} {
+		{http.MethodPost, "/abandon", ""}, {http.MethodPost, "/end-rollback", ""}, {http.MethodPost, "/submit", ""}} {
 		response, body := upgradeCallAt(t, h, call.method, lintID(10), call.sub, call.body)
 		if response.StatusCode != http.StatusOK {
 			t.Fatalf("%s %s: %d %s", call.method, call.sub, response.StatusCode, body)
@@ -130,7 +150,7 @@ func TestTheUpgradeIsAnswered(t *testing.T) {
 			t.Fatal(err)
 		}
 		want := `{"baseline":{"nodes":7,"pages":5,"wanted":10000},"ending":"rejected","id":"00000000-0000-0000-0000-00000000001e",` +
-			`"notebook_id":"00000000-0000-0000-0000-00000000000a","rollback_complete":false,"rollback_job_id":"00000000-0000-0000-0000-000000000028",` +
+			`"notebook_id":"00000000-0000-0000-0000-00000000000a","report":null,"rollback_complete":false,"rollback_job_id":"00000000-0000-0000-0000-000000000028",` +
 			`"rollback_left":{"created":3,"nodes":1,"pages":2},"seeded_page_ids":["00000000-0000-0000-0000-000000000014","00000000-0000-0000-0000-00000000001f"],` +
 			`"source_root_id":"00000000-0000-0000-0000-000000000014","started_at":"2026-01-02T03:04:05Z",` +
 			`"started_by":{"display_name":"Ada","user_id":"00000000-0000-0000-0000-000000000001"},"state":"rolling_back",` +
@@ -146,7 +166,7 @@ func TestTheUpgradeIsAnswered(t *testing.T) {
 		t.Fatalf("start: %d %s", response.StatusCode, body)
 	}
 	for _, field := range []string{`"seeded_page_ids":[]`, `"submitted_by":null`, `"submitted_at":null`, `"rollback_job_id":null`,
-		`"ending":null`, `"rollback_complete":null`, `"rollback_left":null`} {
+		`"ending":null`, `"rollback_complete":null`, `"rollback_left":null`, `"report":null`} {
 		if !strings.Contains(string(body), field) {
 			t.Errorf("an upgrade just started lacks %s: %s", field, body)
 		}
@@ -195,6 +215,13 @@ func TestTheUpgradesCodesAreAnswered(t *testing.T) {
 		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/end-rollback"},
 		{http.MethodPost, domain.ErrUpgradeState, 409, "wiki.upgrade_state", "/end-rollback"},
 		{http.MethodPost, domain.ErrRollbackWriting, 409, "transfer.busy", "/end-rollback"},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/submit"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/submit"},
+		{http.MethodPost, domain.ErrUpgradeSubmitting, 409, "wiki.upgrade_state", "/submit"},
+		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy", "/submit"},
+		{http.MethodPost, domain.ErrUpgradeStaleIndex, 409, "wiki.upgrade_stale_index", "/submit"},
+		{http.MethodPost, domain.UpgradeNotReady([]domain.UpgradeGateKey{domain.GateLinks, domain.GatePreserved}), 409,
+			"wiki.upgrade_not_ready", "/submit"},
 	} {
 		t.Run(tt.method+tt.sub+"/"+tt.code, func(t *testing.T) {
 			h := upgradeServer(t, &upgradeFake{err: tt.err})
@@ -220,6 +247,10 @@ func TestTheUpgradesCodesAreAnswered(t *testing.T) {
 			}
 			if tt.code == "server_busy" && response.Header.Get("Retry-After") != "1" {
 				t.Errorf("server_busy without Retry-After: 1: %v", response.Header)
+			}
+			if tt.code == "wiki.upgrade_not_ready" && problem.Detail != "These gates did not pass: links, preserved. "+
+				"The upgrade is upgrading again: check it, then submit it again." {
+				t.Errorf("the gates named: %s", got)
 			}
 			if tt.code == "wiki.upgrade_pages_locked" && (len(problem.Locks) != 1 || problem.Locks[0].DisplayName != "Bo" ||
 				!strings.HasPrefix(problem.Detail, "101 pages")) {

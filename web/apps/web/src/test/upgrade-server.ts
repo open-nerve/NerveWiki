@@ -35,6 +35,7 @@ export function upgradeJSON(more: Partial<Upgrade> = {}): Upgrade {
     ending: null,
     rollback_complete: null,
     rollback_left: null,
+    report: null,
     ...more,
   };
 }

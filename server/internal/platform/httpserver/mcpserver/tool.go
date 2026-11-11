@@ -26,7 +26,8 @@ const (
 )
 
 // Annotations are a tool's hints (M9 design 5): openWorldHint is always
-// false, destructiveHint only for a write.
+// false; destructiveHint is written for every write, false for one that
+// destroys nothing (M11/P2 design 3.14), and for no read.
 type Annotations struct{ ReadOnly, Destructive, Idempotent bool }
 
 // Spec describes a tool to its clients.
@@ -149,8 +150,9 @@ func (s *Server) addTools(tools []Tool) {
 // annotationsOf is a's hints as the SDK writes them.
 func annotationsOf(a Annotations) *mcp.ToolAnnotations {
 	hints := &mcp.ToolAnnotations{ReadOnlyHint: a.ReadOnly, IdempotentHint: a.Idempotent, OpenWorldHint: new(false)}
-	if a.Destructive {
-		hints.DestructiveHint = new(true)
+	if !a.ReadOnly {
+		// The protocol reads a write without it as destructive.
+		hints.DestructiveHint = new(a.Destructive)
 	}
 	return hints
 }
