@@ -109,9 +109,13 @@ func TestTheSubmissionsRows(t *testing.T) {
 // shape, at the bounds the contract sets when worst (M11/P2 design 3.10):
 // targets of 256 control characters, each written \u00XX; item keys of
 // 140 bytes; every gate naming its most nodes; counts at their caps. Not
-// worst, each count is its own value, so that none is read or kept as
-// another (reviews P2S2C-M4, M5): the five 11 to 15, the wanted pages as
-// the upgrade started capped, now 7.
+// worst, each number is its own value, so that none is read or kept as
+// another (reviews P2S2C-M4, M5, M6): the five counts 11 to 15, the
+// wanted pages as the upgrade started capped, now 7; the stale pages 3,
+// the links' pages worse 22; each rule's count its own, not its items'
+// five, capped or not apart from its value; each boolean of an item's
+// rule both ways, an item's two booleans apart; the sources' created an
+// hour before the check. Its gates are the tests' to set (gateRows).
 func fullReport(worst bool) domain.UpgradeReport {
 	at := time.Date(2026, 11, 10, 9, 0, 0, 123456000, time.UTC)
 	target, key := "Plan", func(prefix string) string { return prefix + uuid.NewV7().String() }
@@ -133,27 +137,38 @@ func fullReport(worst bool) domain.UpgradeReport {
 		counts = domain.UpgradeCounts{Sources: 100000, MovedIntoSources: 100000, WikiPages: 100000, NewPages: 100000,
 			Changesets: 100000, WantedBefore: capped, WantedNow: capped}
 	}
+	stale, worse, created := int64(3), 22, at.Add(-time.Hour)
+	if worst {
+		stale, worse, created = 0, 12, at
+	}
 	r := domain.UpgradeReport{
-		ComputedAt: at, StalePages: 0, Passed: true,
+		ComputedAt: at, StalePages: stale, Passed: true,
 		Gates: domain.UpgradeGates{Agents: true, SourceRoot: true, Frontmatter: true, Sources: true, Index: true,
-			ReservedTitles: domain.NodesGate{NodeIDs: ids(4)}, Links: domain.LinksGate{PagesWorse: 12, NodeIDs: ids(5)},
+			ReservedTitles: domain.NodesGate{NodeIDs: ids(4)}, Links: domain.LinksGate{PagesWorse: worse, NodeIDs: ids(5)},
 			Preserved: domain.PreservedGate{Nodes: 100000, NodesKept: 99990, Pages: 90000, PagesKept: 89990, NodeIDs: ids(5)}},
 		Counts: counts,
 	}
-	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
+	for i, rule := range domain.LintRules(domain.ModeLLMWiki) {
 		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 10000, Capped: true}}
-		for range 5 {
+		if !worst {
+			rr.Count = domain.LintCount{Value: int64(31 + i), Capped: i%3 == 2}
+		}
+		for j := range 5 {
 			page, node := uuid.NewV7(), uuid.NewV7()
 			item := domain.LintItem{Rule: rule}
+			cut, notLink, pages := worst || j%2 == 0, worst || j%2 == 1, int64(10000)
+			if !worst {
+				pages = int64(41 + j)
+			}
 			switch rule {
 			case domain.RuleWanted:
-				item.ItemKey, item.Target, item.TargetCut, item.Pages = key("w:"), target, worst, 10000
+				item.ItemKey, item.Target, item.TargetCut, item.Pages = key("w:"), target, cut, pages
 			case domain.RuleAmbiguous:
-				item.ItemKey, item.PageID, item.Target, item.TargetCut = key("a:"), &page, target, worst
+				item.ItemKey, item.PageID, item.Target, item.TargetCut = key("a:"), &page, target, cut
 			case domain.RuleInvalidSources:
-				item.ItemKey, item.PageID, item.Target, item.TargetCut, item.NotLink = key("s:"), &page, target, worst, true
+				item.ItemKey, item.PageID, item.Target, item.TargetCut, item.NotLink = key("s:"), &page, target, cut, notLink
 			case domain.RuleUndigestedSources:
-				item.ItemKey, item.NodeID, item.Kind, item.Bytes, item.CreatedAt = key("n:"), &node, domain.NodeAsset, 1<<40, at
+				item.ItemKey, item.NodeID, item.Kind, item.Bytes, item.CreatedAt = key("n:"), &node, domain.NodeAsset, 1<<40, created
 			default:
 				item.ItemKey, item.PageID = key("p:"), &page
 			}
@@ -180,7 +195,7 @@ func TestTheReportRoundTrips(t *testing.T) {
 		t.Fatalf("Submit = %v, %v", ok, err)
 	}
 	want := fullReport(false)
-	want.Passed, want.Gates.Links.Passed = false, false
+	withGates(&want, gateRows()[0])
 	want.Gates.Preserved.NodeIDs = nil // none read back as none
 	if ok, err := f.store.KeepReport(ctx, eng.ID, sub, want, f.alice, at); !ok || err != nil {
 		t.Fatalf("KeepReport = %v, %v", ok, err)
@@ -224,20 +239,22 @@ func TestTheReportRoundTrips(t *testing.T) {
 		if err := json.Unmarshal(rule["rule"], &name); err != nil {
 			t.Fatal(err)
 		}
-		items[name] = keys(list[0])
+		items[name] = keys(list[0]) + keys(list[1])
 		if got := keys(rule); got != "[count count_capped items rule]" {
 			t.Errorf("the rule %s's members %s", name, got)
 		}
 	}
+	// The first two items of each rule: the first's target cut, the
+	// second's not; the second's not a link, the first's not.
 	for name, want := range map[string]string{
-		"wanted":              "[item_key pages rule target]",
-		"orphans":             "[item_key page_id rule]",
-		"ambiguous":           "[item_key page_id rule target]",
-		"invalid_frontmatter": "[item_key page_id rule]",
-		"missing_type":        "[item_key page_id rule]",
-		"missing_summary":     "[item_key page_id rule]",
-		"undigested_sources":  "[bytes created_at item_key kind node_id rule]",
-		"invalid_sources":     "[item_key not_link page_id rule target]",
+		"wanted":              "[item_key pages rule target target_cut][item_key pages rule target]",
+		"orphans":             "[item_key page_id rule][item_key page_id rule]",
+		"ambiguous":           "[item_key page_id rule target target_cut][item_key page_id rule target]",
+		"invalid_frontmatter": "[item_key page_id rule][item_key page_id rule]",
+		"missing_type":        "[item_key page_id rule][item_key page_id rule]",
+		"missing_summary":     "[item_key page_id rule][item_key page_id rule]",
+		"undigested_sources":  "[bytes created_at item_key kind node_id rule][bytes created_at item_key kind node_id rule]",
+		"invalid_sources":     "[item_key page_id rule target target_cut][item_key not_link page_id rule target]",
 	} {
 		if items[name] != want {
 			t.Errorf("an item of %s has %s, want %s (false and zero members left out)", name, items[name], want)
@@ -265,21 +282,50 @@ func TestTheReportRoundTrips(t *testing.T) {
 		}
 	}
 
-	// The wanted counts the other way round, kept again by the same
-	// submission once its report is cleared: the pages wanted as the
+	// The other gateRows, each kept again by the same submission once its
+	// report is cleared, read back whole. Only a check that passed keeps a
+	// report, so a report's gates all pass in use; kept here as any, so
+	// that each gate is its own (review P2S2C-M6). The first of them has
+	// the wanted counts the other way round: the pages wanted as the
 	// upgrade started 5, not capped, now capped (review P2S2C-M4).
-	other := fullReport(false)
-	other.Counts.WantedBefore, other.Counts.WantedNow = domain.LintCount{Value: 5}, domain.LintCount{Value: 10000, Capped: true}
-	if _, err := f.pool.Exec(ctx, "UPDATE notebook_upgrades SET report = NULL WHERE id = $1", eng.ID); err != nil {
-		t.Fatal(err)
+	for i, row := range gateRows()[1:] {
+		other := fullReport(false)
+		withGates(&other, row)
+		if i == 0 {
+			other.Counts.WantedBefore, other.Counts.WantedNow = domain.LintCount{Value: 5}, domain.LintCount{Value: 10000, Capped: true}
+		}
+		if _, err := f.pool.Exec(ctx, "UPDATE notebook_upgrades SET report = NULL WHERE id = $1", eng.ID); err != nil {
+			t.Fatal(err)
+		}
+		if ok, err := f.store.KeepReport(ctx, eng.ID, sub, other, f.alice, at); !ok || err != nil {
+			t.Fatalf("KeepReport(row %d) = %v, %v", i+1, ok, err)
+		}
+		got, _, err = f.store.Current(ctx, f.eng)
+		if err != nil || got.Report == nil || !reflect.DeepEqual(*got.Report, other) {
+			t.Fatalf("read back row %d's %+v, %v; want %+v", i+1, got.Report, err, other)
+		}
 	}
-	if ok, err := f.store.KeepReport(ctx, eng.ID, sub, other, f.alice, at); !ok || err != nil {
-		t.Fatalf("KeepReport(the other way round) = %v, %v", ok, err)
+}
+
+// gateRows are four patterns of a report's passed and its eight gates, in
+// UpgradeGates' order. Each gate's column is its own and neither all
+// passed nor all failed, so that any two gates exchanged, or a gate made
+// constant, show in one row (review P2S2C-M6).
+func gateRows() [][9]bool {
+	return [][9]bool{
+		// passed, agents, source root, reserved titles, frontmatter, sources, links, preserved, index
+		{true, true, false, true, false, true, false, true, false},
+		{false, true, true, false, false, false, true, true, false},
+		{true, false, true, true, true, false, false, true, false},
+		{true, false, false, false, true, true, true, false, true},
 	}
-	got, _, err = f.store.Current(ctx, f.eng)
-	if err != nil || got.Report == nil || !reflect.DeepEqual(got.Report.Counts, other.Counts) {
-		t.Fatalf("read back the counts %+v, %v; want %+v", got.Report, err, other.Counts)
-	}
+}
+
+// withGates sets r's passed and gates to row.
+func withGates(r *domain.UpgradeReport, row [9]bool) {
+	g := &r.Gates
+	r.Passed, g.Agents, g.SourceRoot, g.ReservedTitles.Passed, g.Frontmatter, g.Sources, g.Links.Passed, g.Preserved.Passed, g.Index =
+		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
 }
 
 // The worst report fits notebook_upgrades_report_check's 65,536 bytes of

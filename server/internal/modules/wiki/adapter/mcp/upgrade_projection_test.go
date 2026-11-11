@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -36,10 +37,10 @@ type checkRead struct {
 // bigCheck is a check whose eight rules have five items of paths of
 // pathBytes each and start cursors of 2,048 bytes, and whose three gates
 // name fourteen nodes of paths of gateBytes, the first of each gate's not
-// in the live tree; each of its counts its own value, the wanted pages
-// as the upgrade started 5, now capped.
+// in the live tree; each of its numbers its own value, the wanted pages
+// as the upgrade started 5, now capped; its gates gateRows' fourth.
 func bigCheck(pathBytes, gateBytes int) domain.UpgradeCheck {
-	c := domain.UpgradeCheck{ComputedAt: lintTime(), Paths: map[uuid.UUID]string{},
+	c := domain.UpgradeCheck{ComputedAt: lintTime(), StalePages: 8, Paths: map[uuid.UUID]string{},
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 6, WikiPages: 2, NewPages: 3, Changesets: 4,
 			WantedBefore: domain.LintCount{Value: 5}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
 	n := byte(100)
@@ -55,11 +56,13 @@ func bigCheck(pathBytes, gateBytes int) domain.UpgradeCheck {
 		return out
 	}
 	c.Gates = domain.UpgradeGates{ReservedTitles: domain.NodesGate{NodeIDs: ids(4)},
-		Links:     domain.LinksGate{PagesWorse: 9, NodeIDs: ids(5)},
-		Preserved: domain.PreservedGate{Nodes: 7, NodesKept: 2, Pages: 6, PagesKept: 1, NodeIDs: ids(5)}}
+		Links:     domain.LinksGate{PagesWorse: 19, NodeIDs: ids(5)},
+		Preserved: domain.PreservedGate{Nodes: 17, NodesKept: 14, Pages: 16, PagesKept: 13, NodeIDs: ids(5)}}
+	withGates(&c, gateRows()[3])
 	start := strings.Repeat("s", 2048)
-	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
-		r := domain.LintRuleResult{Rule: rule, Count: domain.LintCount{Value: 9}, StartCursor: &start, NextCursor: &start}
+	for i, rule := range domain.LintRules(domain.ModeLLMWiki) {
+		r := domain.LintRuleResult{Rule: rule, Count: domain.LintCount{Value: int64(21 + i), Capped: i%3 == 2}, StartCursor: &start,
+			NextCursor: &start}
 		for i := range 5 {
 			page, path := lintID(byte(10+i)), strings.Repeat("p", pathBytes)
 			item := domain.LintItem{Rule: rule, ItemKey: "k", Cursor: strings.Repeat("c", 512), PageID: &page, NodeID: &page, Path: &path,
@@ -70,6 +73,109 @@ func bigCheck(pathBytes, gateBytes int) domain.UpgradeCheck {
 	}
 	return c
 }
+
+// gateRows are four patterns of a check's passed and its eight gates, in
+// UpgradeGates' order. Each gate's column is its own and neither all
+// passed nor all failed, so that any two gates exchanged, or a gate made
+// constant, show in one row (review P2S2C-M6).
+func gateRows() [][9]bool {
+	return [][9]bool{
+		// passed, agents, source root, reserved titles, frontmatter, sources, links, preserved, index
+		{true, true, false, true, false, true, false, true, false},
+		{false, true, true, false, false, false, true, true, false},
+		{true, false, true, true, true, false, false, true, false},
+		{true, false, false, false, true, true, true, false, true},
+	}
+}
+
+// withGates sets c's passed and gates to row.
+func withGates(c *domain.UpgradeCheck, row [9]bool) {
+	g := &c.Gates
+	c.Passed, g.Agents, g.SourceRoot, g.ReservedTitles.Passed, g.Frontmatter, g.Sources, g.Links.Passed, g.Preserved.Passed, g.Index =
+		row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+}
+
+// smallCheck is a check that fits whole, each of its numbers its own:
+// its gates gateRows' third, each naming a node not in the live tree
+// first; each rule's count its own, capped or not apart from its value,
+// its start and continuation its own, the orphans' one item.
+func smallCheck() domain.UpgradeCheck {
+	page, path := lintID(30), "Notes/Orphan.md"
+	c := domain.UpgradeCheck{ComputedAt: lintTime(), StalePages: 18,
+		Gates: domain.UpgradeGates{ReservedTitles: domain.NodesGate{NodeIDs: []uuid.UUID{lintID(31), lintID(32)}},
+			Links:     domain.LinksGate{PagesWorse: 29, NodeIDs: []uuid.UUID{lintID(33), lintID(34)}},
+			Preserved: domain.PreservedGate{Nodes: 27, NodesKept: 24, Pages: 26, PagesKept: 23, NodeIDs: []uuid.UUID{lintID(35), lintID(36)}}},
+		Counts: domain.UpgradeCounts{Sources: 11, MovedIntoSources: 16, WikiPages: 12, NewPages: 13, Changesets: 14,
+			WantedBefore: domain.LintCount{Value: 15}, WantedNow: domain.LintCount{Value: 10000, Capped: true}},
+		Paths: map[uuid.UUID]string{lintID(32): "index.md", lintID(34): "Plan.md", lintID(36): "raw/Kept.md"}}
+	withGates(&c, gateRows()[2])
+	for i, rule := range domain.LintRules(domain.ModeLLMWiki) {
+		start, next := "start:"+string(rule), "next:"+string(rule)
+		r := domain.LintRuleResult{Rule: rule, Count: domain.LintCount{Value: int64(41 + i), Capped: i%3 == 0}, Items: []domain.LintItem{},
+			StartCursor: &start, NextCursor: &next}
+		if rule == domain.RuleOrphans {
+			r.Items = []domain.LintItem{{Rule: rule, ItemKey: "p:" + page.String(), Cursor: "c:orphan", PageID: &page, Path: &path}}
+		}
+		c.Rules = append(c.Rules, r)
+	}
+	return c
+}
+
+// The check is answered whole when it fits (reviews P2S2C-M5, M6): each
+// gate's paths, null for a node not in the live tree; the rules lint's
+// summary's; the counts. Each gate is its own in one of gateRows.
+func TestTheCheckIsAnsweredWhole(t *testing.T) {
+	res := mustFit(t, smallCheck())
+	raw, ok := res.Structured.(json.RawMessage)
+	if !ok {
+		t.Fatalf("structured %T", res.Structured)
+	}
+	var got, want any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal([]byte(wantSmallCheck), &want); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("answered\n%s\nwant\n%s", raw, wantSmallCheck)
+	}
+	for i, row := range gateRows() {
+		c := smallCheck()
+		withGates(&c, row)
+		read := readCheck(t, mustFit(t, c))
+		got := [9]bool{read.Passed}
+		for j, gate := range []string{"agents", "source_root", "reserved_titles", "frontmatter", "sources", "links", "preserved", "index"} {
+			got[j+1] = read.Gates[gate].Passed
+		}
+		if got != row {
+			t.Errorf("row %d: passed and gates %v, want %v", i, got, row)
+		}
+	}
+}
+
+const wantSmallCheck = `{
+	"computed_at": "2026-01-02T03:04:05Z", "stale_pages": 18, "passed": true,
+	"gates": {
+		"agents": {"passed": false}, "source_root": {"passed": true},
+		"reserved_titles": {"passed": true, "paths": [null, "index.md"]},
+		"frontmatter": {"passed": true}, "sources": {"passed": false},
+		"links": {"passed": false, "pages_worse": 29, "paths": [null, "Plan.md"]},
+		"preserved": {"passed": true, "nodes": 27, "nodes_kept": 24, "pages": 26, "pages_kept": 23, "paths": [null, "raw/Kept.md"]},
+		"index": {"passed": false}},
+	"rules": [
+		{"rule": "wanted", "count": 41, "count_capped": true, "items": [], "next_cursor": "next:wanted"},
+		{"rule": "orphans", "count": 42, "count_capped": false, "next_cursor": "next:orphans", "items": [
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-00000000001e", "cursor": "c:orphan", "page_id": "00000000-0000-0000-0000-00000000001e", "path": "Notes/Orphan.md"}]},
+		{"rule": "ambiguous", "count": 43, "count_capped": false, "items": [], "next_cursor": "next:ambiguous"},
+		{"rule": "invalid_frontmatter", "count": 44, "count_capped": true, "items": [], "next_cursor": "next:invalid_frontmatter"},
+		{"rule": "missing_type", "count": 45, "count_capped": false, "items": [], "next_cursor": "next:missing_type"},
+		{"rule": "missing_summary", "count": 46, "count_capped": false, "items": [], "next_cursor": "next:missing_summary"},
+		{"rule": "undigested_sources", "count": 47, "count_capped": true, "items": [], "next_cursor": "next:undigested_sources"},
+		{"rule": "invalid_sources", "count": 48, "count_capped": false, "items": [], "next_cursor": "next:invalid_sources"}],
+	"counts": {"sources": 11, "moved_into_sources": 16, "wiki_pages": 12, "new_pages": 13, "changesets": 14,
+		"wanted_before": {"count": 15, "count_capped": false}, "wanted_now": {"count": 10000, "count_capped": true}}
+}`
 
 func readCheck(t *testing.T, res mcpserver.Result) checkRead {
 	t.Helper()
@@ -132,12 +238,12 @@ func TestTheCheckFits(t *testing.T) {
 	// gates' counts whole; each rule continues from its start.
 	c = readCheck(t, mustFit(t, bigCheck(2048, 4096)))
 	links, preserved := c.Gates["links"], c.Gates["preserved"]
-	if len(links.Paths) >= 5 || len(links.Paths) != len(preserved.Paths) || links.PagesWorse != 9 || preserved.Nodes != 7 ||
-		preserved.PagesKept != 1 {
+	if len(links.Paths) >= 5 || len(links.Paths) != len(preserved.Paths) || links.PagesWorse != 19 || preserved.Nodes != 17 ||
+		preserved.PagesKept != 13 {
 		t.Fatalf("a check of long paths kept the gates %+v", c.Gates)
 	}
-	for _, rule := range c.Rules {
-		if len(rule.Items) != 0 || rule.Next == nil || *rule.Next != strings.Repeat("s", 2048) || rule.Count != 9 {
+	for i, rule := range c.Rules {
+		if len(rule.Items) != 0 || rule.Next == nil || *rule.Next != strings.Repeat("s", 2048) || rule.Count != int64(21+i) {
 			t.Fatalf("the rule %s = %+v, want no item, continued from its start", rule.Rule, rule)
 		}
 	}
@@ -176,7 +282,7 @@ func TestTheUpgradeToolsAnswer(t *testing.T) {
 		tool, want string
 		fake       upgradeFake
 	}{
-		{"upgrade_verify", `"pages_worse":9`, upgradeFake{checked: app.UpgradeChecked{Check: &check}}},
+		{"upgrade_verify", `"pages_worse":19`, upgradeFake{checked: app.UpgradeChecked{Check: &check}}},
 		{"upgrade_verify", `"data":[{"rule":"orphans"`, upgradeFake{checked: app.UpgradeChecked{Items: &page}}},
 		{"upgrade_submit", `{"state":"reviewing","submitted_at":"2026-01-02T04:04:05Z"}`, upgradeFake{view: app.UpgradeView{
 			Upgrade: domain.Upgrade{State: domain.UpgradeReviewing, SubmittedAt: &at}}}},

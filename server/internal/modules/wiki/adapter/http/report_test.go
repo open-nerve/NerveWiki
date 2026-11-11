@@ -2,7 +2,6 @@ package httpadapter_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -11,6 +10,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 	"uuid"
 
 	"go.yaml.in/yaml/v3"
@@ -19,51 +19,70 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki/domain"
 )
 
-// reportedView is an upgrade reviewing with a report kept: each of the
-// eight rules with five items of its shape, three gates naming nodes.
+// reportedView is an upgrade reviewing with a report kept, each number
+// in it its own (review P2S2C-M6): each of the eight rules with items of
+// its shape, the orphans five, the most a report keeps; each rule's count
+// none of its items' number, capped or not apart from its value; each
+// boolean of an item's rule both ways, an item's two booleans apart; three
+// gates naming nodes. The gates are gateRows' third: the projection
+// judges nothing, and the report passed with an agents gate that did not
+// tells the two apart.
 func reportedView() app.UpgradeView {
 	view := upgradeView()
 	up := &view.Upgrade
 	sub := lintID(41)
 	up.State, up.Ending, up.RollbackJobID, up.RollbackComplete, up.RollbackLeft = domain.UpgradeReviewing, "", nil, nil, nil
 	up.SubmissionID = &sub
-	page, node := lintID(50), lintID(51)
-	r := &domain.UpgradeReport{ComputedAt: lintTime(), Passed: true,
-		Gates: domain.UpgradeGates{Agents: true, SourceRoot: true, Frontmatter: true, Sources: true, Index: true,
-			ReservedTitles: domain.NodesGate{Passed: true, NodeIDs: []uuid.UUID{lintID(60)}},
-			Links:          domain.LinksGate{Passed: true, NodeIDs: []uuid.UUID{lintID(61), lintID(62)}},
-			Preserved:      domain.PreservedGate{Passed: true, Nodes: 7, NodesKept: 7, Pages: 5, PagesKept: 5, NodeIDs: []uuid.UUID{lintID(63)}}},
+	r := &domain.UpgradeReport{ComputedAt: lintTime().Add(30 * time.Minute), StalePages: 21,
+		Gates: domain.UpgradeGates{
+			ReservedTitles: domain.NodesGate{NodeIDs: []uuid.UUID{lintID(60)}},
+			Links:          domain.LinksGate{PagesWorse: 22, NodeIDs: []uuid.UUID{lintID(61), lintID(62)}},
+			Preserved:      domain.PreservedGate{Nodes: 29, NodesKept: 28, Pages: 26, PagesKept: 25, NodeIDs: []uuid.UUID{lintID(63)}}},
 		Counts: domain.UpgradeCounts{Sources: 1, MovedIntoSources: 2, WikiPages: 3, NewPages: 4, Changesets: 5,
 			WantedBefore: domain.LintCount{Value: 8}, WantedNow: domain.LintCount{Value: 10000, Capped: true}}}
-	hash := strings.Repeat("a", 64)
-	for _, rule := range domain.LintRules(domain.ModeLLMWiki) {
-		rr := domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: 5}}
-		for range 5 {
-			item := domain.LintItem{Rule: rule, PageID: &page}
-			switch rule {
-			case domain.RuleWanted:
-				item.ItemKey, item.PageID, item.Target, item.Pages = "w:"+hash, nil, "Missing", 2
-			case domain.RuleAmbiguous:
-				item.ItemKey, item.Target, item.TargetCut = "a:"+page.String()+":"+hash, "Twin", true
-			case domain.RuleInvalidSources:
-				item.ItemKey, item.Target, item.NotLink = "s:"+page.String()+":"+hash, "literal", true
-			case domain.RuleUndigestedSources:
-				item.ItemKey, item.PageID, item.NodeID, item.Kind, item.Bytes, item.CreatedAt = "n:"+node.String(), nil, &node,
-					domain.NodeAsset, 12, lintTime()
-			default:
-				item.ItemKey = "p:" + page.String()
-			}
-			rr.Items = append(rr.Items, item)
-		}
-		r.Rules = append(r.Rules, rr)
+	withGates(&r.Passed, &r.Gates, gateRows()[2])
+	hash, other := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	pageItem := func(rule domain.LintRule, n byte) domain.LintItem {
+		page := lintID(n)
+		return domain.LintItem{Rule: rule, ItemKey: "p:" + page.String(), PageID: &page}
+	}
+	ambiguous := func(n byte, target string, cut bool) domain.LintItem {
+		page := lintID(n)
+		return domain.LintItem{Rule: domain.RuleAmbiguous, ItemKey: "a:" + page.String() + ":" + hash, PageID: &page, Target: target,
+			TargetCut: cut}
+	}
+	sources := func(h, target string, cut, notLink bool) domain.LintItem {
+		page := lintID(59)
+		return domain.LintItem{Rule: domain.RuleInvalidSources, ItemKey: "s:" + page.String() + ":" + h, PageID: &page, Target: target,
+			TargetCut: cut, NotLink: notLink}
+	}
+	node := lintID(58)
+	items := map[domain.LintRule][]domain.LintItem{
+		domain.RuleWanted: {
+			{Rule: domain.RuleWanted, ItemKey: "w:" + hash, Target: "Missing", TargetCut: true, Pages: 37},
+			{Rule: domain.RuleWanted, ItemKey: "w:" + other, Target: "Gone", Pages: 39}},
+		domain.RuleOrphans: {pageItem(domain.RuleOrphans, 50), pageItem(domain.RuleOrphans, 51), pageItem(domain.RuleOrphans, 52),
+			pageItem(domain.RuleOrphans, 53), pageItem(domain.RuleOrphans, 54)},
+		domain.RuleAmbiguous:          {ambiguous(50, "Twin", true), ambiguous(51, "Pair", false)},
+		domain.RuleInvalidFrontmatter: {pageItem(domain.RuleInvalidFrontmatter, 55)},
+		domain.RuleMissingType:        {pageItem(domain.RuleMissingType, 56)},
+		domain.RuleMissingSummary:     {pageItem(domain.RuleMissingSummary, 57)},
+		domain.RuleUndigestedSources: {{Rule: domain.RuleUndigestedSources, ItemKey: "n:" + node.String(), NodeID: &node,
+			Kind: domain.NodeAsset, Bytes: 38, CreatedAt: lintTime().Add(-time.Hour)}},
+		domain.RuleInvalidSources: {sources(hash, "literal", false, true), sources(other, "Cut", true, false)},
+	}
+	for i, rule := range domain.LintRules(domain.ModeLLMWiki) {
+		r.Rules = append(r.Rules, domain.ReportRule{Rule: rule, Count: domain.LintCount{Value: int64(41 + i), Capped: i%3 == 1},
+			Items: items[rule]})
 	}
 	up.Report = r
 	return view
 }
 
 // A report kept is answered with the upgrade, as the contract's
-// UpgradeReport (apitest checks every member): eight rules of five items
-// each, none with a cursor, the gates' nodes.
+// UpgradeReport (apitest checks every member), whole: no item with a
+// cursor (reviews P2S2C-M4, M5, M6). Its passed and gates as each of
+// gateRows.
 func TestTheReportIsAnswered(t *testing.T) {
 	h := upgradeServer(t, &upgradeFake{view: reportedView()})
 	for _, call := range []struct{ method, sub string }{{http.MethodPost, "/submit"}, {http.MethodGet, ""}} {
@@ -72,41 +91,75 @@ func TestTheReportIsAnswered(t *testing.T) {
 			t.Fatalf("%s %s: %d %s", call.method, call.sub, response.StatusCode, body)
 		}
 		var got struct {
-			State  string `json:"state"`
-			Report struct {
-				Gates map[string]struct {
-					NodeIDs []string `json:"node_ids"`
-				} `json:"gates"`
-				Rules []struct {
-					Rule  string           `json:"rule"`
-					Items []map[string]any `json:"items"`
-				} `json:"rules"`
-				Counts map[string]any `json:"counts"`
-			} `json:"report"`
+			State  string          `json:"state"`
+			Report json.RawMessage `json:"report"`
 		}
 		if err := json.Unmarshal(body, &got); err != nil {
 			t.Fatal(err)
 		}
-		if got.State != "reviewing" || len(got.Report.Rules) != 8 || len(got.Report.Gates["links"].NodeIDs) != 2 ||
-			len(got.Report.Gates["agents"].NodeIDs) != 0 {
+		if got.State != "reviewing" {
 			t.Fatalf("answered %s", body)
 		}
-		// The counts whole, each its own value (reviews P2S2C-M4, M5); the
-		// wanted counts the check's test's other way round.
-		if counts, want := fmt.Sprint(got.Report.Counts), "map[changesets:5 moved_into_sources:2 new_pages:4 sources:1 "+
-			"wanted_before:map[count:8 count_capped:false] wanted_now:map[count:10000 count_capped:true] wiki_pages:3]"; counts != want {
-			t.Fatalf("counts %s, want %s", counts, want)
+		sameJSON(t, got.Report, wantReport)
+	}
+	// Each of gateRows, the report's passed with them: only a check that
+	// passed keeps a report, so a report passes in use; answered here as
+	// any, so that the projection's passed and gates are each their own.
+	for i, row := range gateRows() {
+		view := reportedView()
+		withGates(&view.Upgrade.Report.Passed, &view.Upgrade.Report.Gates, row)
+		_, body := upgradeCallAt(t, upgradeServer(t, &upgradeFake{view: view}), http.MethodGet, lintID(10), "", "")
+		var got struct {
+			Report json.RawMessage `json:"report"`
 		}
-		for _, rule := range got.Report.Rules {
-			if len(rule.Items) != 5 || rule.Items[0]["rule"] != rule.Rule {
-				t.Fatalf("the rule %s answered %v", rule.Rule, rule.Items)
-			}
-			if _, cursor := rule.Items[0]["cursor"]; cursor {
-				t.Fatalf("an item of %s has a cursor", rule.Rule)
-			}
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		if passed := gatesPassed(t, got.Report); passed != row {
+			t.Errorf("row %d: the report's passed and gates %v, want %v", i, passed, row)
 		}
 	}
 }
+
+const wantReport = `{
+	"computed_at": "2026-01-02T03:34:05Z", "stale_pages": 21, "passed": true,
+	"gates": {
+		"agents": {"passed": false}, "source_root": {"passed": true},
+		"reserved_titles": {"passed": true, "node_ids": ["00000000-0000-0000-0000-00000000003c"]},
+		"frontmatter": {"passed": true}, "sources": {"passed": false},
+		"links": {"passed": false, "pages_worse": 22, "node_ids": ["00000000-0000-0000-0000-00000000003d", "00000000-0000-0000-0000-00000000003e"]},
+		"preserved": {"passed": true, "nodes": 29, "nodes_kept": 28, "pages": 26, "pages_kept": 25, "node_ids": ["00000000-0000-0000-0000-00000000003f"]},
+		"index": {"passed": false}},
+	"rules": [
+		{"rule": "wanted", "count": 41, "count_capped": false, "items": [
+			{"rule": "wanted", "item_key": "w:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "target": "Missing", "target_cut": true, "pages": 37},
+			{"rule": "wanted", "item_key": "w:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "target": "Gone", "target_cut": false, "pages": 39}]},
+		{"rule": "orphans", "count": 42, "count_capped": true, "items": [
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-000000000032", "page_id": "00000000-0000-0000-0000-000000000032"},
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-000000000033", "page_id": "00000000-0000-0000-0000-000000000033"},
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-000000000034", "page_id": "00000000-0000-0000-0000-000000000034"},
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-000000000035", "page_id": "00000000-0000-0000-0000-000000000035"},
+			{"rule": "orphans", "item_key": "p:00000000-0000-0000-0000-000000000036", "page_id": "00000000-0000-0000-0000-000000000036"}]},
+		{"rule": "ambiguous", "count": 43, "count_capped": false, "items": [
+			{"rule": "ambiguous", "item_key": "a:00000000-0000-0000-0000-000000000032:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "page_id": "00000000-0000-0000-0000-000000000032", "target": "Twin", "target_cut": true},
+			{"rule": "ambiguous", "item_key": "a:00000000-0000-0000-0000-000000000033:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "page_id": "00000000-0000-0000-0000-000000000033", "target": "Pair", "target_cut": false}]},
+		{"rule": "invalid_frontmatter", "count": 44, "count_capped": false, "items": [
+			{"rule": "invalid_frontmatter", "item_key": "p:00000000-0000-0000-0000-000000000037", "page_id": "00000000-0000-0000-0000-000000000037"}]},
+		{"rule": "missing_type", "count": 45, "count_capped": true, "items": [
+			{"rule": "missing_type", "item_key": "p:00000000-0000-0000-0000-000000000038", "page_id": "00000000-0000-0000-0000-000000000038"}]},
+		{"rule": "missing_summary", "count": 46, "count_capped": false, "items": [
+			{"rule": "missing_summary", "item_key": "p:00000000-0000-0000-0000-000000000039", "page_id": "00000000-0000-0000-0000-000000000039"}]},
+		{"rule": "undigested_sources", "count": 47, "count_capped": false, "items": [
+			{"rule": "undigested_sources", "item_key": "n:00000000-0000-0000-0000-00000000003a", "node_id": "00000000-0000-0000-0000-00000000003a", "kind": "asset", "bytes": 38,
+				"created_at": "2026-01-02T02:04:05Z"}]},
+		{"rule": "invalid_sources", "count": 48, "count_capped": true, "items": [
+			{"rule": "invalid_sources", "item_key": "s:00000000-0000-0000-0000-00000000003b:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "page_id": "00000000-0000-0000-0000-00000000003b", "target": "literal", "target_cut": false,
+				"not_link": true},
+			{"rule": "invalid_sources", "item_key": "s:00000000-0000-0000-0000-00000000003b:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "page_id": "00000000-0000-0000-0000-00000000003b", "target": "Cut", "target_cut": true,
+				"not_link": false}]}],
+	"counts": {"sources": 1, "moved_into_sources": 2, "wiki_pages": 3, "new_pages": 4, "changesets": 5,
+		"wanted_before": {"count": 8, "count_capped": false}, "wanted_now": {"count": 10000, "count_capped": true}}
+}`
 
 // Each UpgradeReport item of the contract is its rule's Lint item but its
 // cursor (M11/P2 design 3.13): read from api/modules/wiki.yaml, pair by

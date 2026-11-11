@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -293,43 +294,59 @@ func passingGates() domain.UpgradeGates {
 		ReservedTitles: domain.NodesGate{Passed: true}, Links: domain.LinksGate{Passed: true}, Preserved: domain.PreservedGate{Passed: true}}
 }
 
-// The report a submission keeps (M11 design 4.7): the check's time, stale
-// pages, gates and counts as they are, each rule's count and first five
-// items without their cursors and paths; its own copy.
+// The report a submission keeps (M11 design 4.7), whole: the check's
+// time, stale pages, passed, gates and counts as they are, each rule's
+// count and first five items without their cursors and paths; its own
+// copy. Each number its own, each rule's count not its items' number,
+// so that none is kept as another (review P2S2C-M6); a check that did
+// not pass and one that did.
 func TestReportOf(t *testing.T) {
-	page, path, next := checkID(20), "Plan.md", "after:5"
+	path, next := "Plan.md", "after:5"
+	pages := make([]uuid.UUID, 7)
 	items := make([]domain.LintItem, 7)
 	for i := range items {
-		items[i] = domain.LintItem{Rule: domain.RuleOrphans, ItemKey: "o", Cursor: "c", PageID: &page, Path: &path}
+		pages[i] = checkID(byte(40 + i))
+		items[i] = domain.LintItem{Rule: domain.RuleOrphans, ItemKey: fmt.Sprintf("o:%d", i), Cursor: fmt.Sprintf("c:%d", i),
+			PageID: &pages[i], Path: &path}
 	}
-	gates := passingGates()
-	gates.Links = domain.LinksGate{Passed: false, PagesWorse: 1, NodeIDs: []uuid.UUID{checkID(20)}}
-	c := domain.UpgradeCheck{ComputedAt: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC), StalePages: 0, Passed: false, Gates: gates,
-		Rules: []domain.LintRuleResult{
-			{Rule: domain.RuleWanted, Count: domain.LintCount{Value: 0}, Items: []domain.LintItem{}},
-			{Rule: domain.RuleOrphans, Count: domain.LintCount{Value: 10000, Capped: true}, Items: items, NextCursor: &next, StartCursor: &next},
-		},
-		Counts: domain.UpgradeCounts{Sources: 2, NewPages: 1, WantedNow: domain.LintCount{Value: 3}},
-		Paths:  map[uuid.UUID]string{checkID(20): path},
+	gates := func(passed bool) domain.UpgradeGates {
+		g := passingGates()
+		g.Links = domain.LinksGate{Passed: passed, PagesWorse: 21, NodeIDs: []uuid.UUID{checkID(20)}}
+		return g
 	}
-	r := domain.ReportOf(c)
-	if !r.ComputedAt.Equal(c.ComputedAt) || r.StalePages != 0 || r.Passed || !reflect.DeepEqual(r.Gates, c.Gates) || r.Counts != c.Counts {
-		t.Fatalf("report = %+v of %+v", r, c)
-	}
-	if len(r.Rules) != 2 || r.Rules[0].Rule != domain.RuleWanted || len(r.Rules[0].Items) != 0 || r.Rules[1].Count != c.Rules[1].Count {
-		t.Fatalf("report's rules = %+v", r.Rules)
-	}
-	if len(r.Rules[1].Items) != 5 {
-		t.Fatalf("report keeps %d items of seven, want five", len(r.Rules[1].Items))
-	}
-	for _, item := range r.Rules[1].Items {
-		if item.Cursor != "" || item.Path != nil || item.PageID == nil || *item.PageID != page || item.ItemKey != "o" {
-			t.Fatalf("a kept item = %+v, want no cursor, no path", item)
+	counts := domain.UpgradeCounts{Sources: 11, MovedIntoSources: 12, WikiPages: 13, NewPages: 14, Changesets: 15,
+		WantedBefore: domain.LintCount{Value: 16}, WantedNow: domain.LintCount{Value: 17}}
+	check := func(passed bool) domain.UpgradeCheck {
+		return domain.UpgradeCheck{ComputedAt: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC), StalePages: 4, Passed: passed,
+			Gates: gates(passed),
+			Rules: []domain.LintRuleResult{
+				{Rule: domain.RuleWanted, Count: domain.LintCount{Value: 6}, Items: []domain.LintItem{}},
+				{Rule: domain.RuleOrphans, Count: domain.LintCount{Value: 10000, Capped: true}, Items: slices.Clone(items), NextCursor: &next,
+					StartCursor: &next},
+			},
+			Counts: counts, Paths: map[uuid.UUID]string{checkID(20): path},
 		}
 	}
+	kept := make([]domain.LintItem, 5)
+	for i := range kept {
+		kept[i] = domain.LintItem{Rule: domain.RuleOrphans, ItemKey: fmt.Sprintf("o:%d", i), PageID: &pages[i]}
+	}
+	for _, passed := range []bool{false, true} {
+		want := domain.UpgradeReport{ComputedAt: time.Date(2026, 11, 10, 9, 0, 0, 0, time.UTC), StalePages: 4, Passed: passed,
+			Gates: gates(passed), Counts: counts,
+			Rules: []domain.ReportRule{
+				{Rule: domain.RuleWanted, Count: domain.LintCount{Value: 6}, Items: []domain.LintItem{}},
+				{Rule: domain.RuleOrphans, Count: domain.LintCount{Value: 10000, Capped: true}, Items: kept},
+			}}
+		if r := domain.ReportOf(check(passed)); !reflect.DeepEqual(r, want) {
+			t.Fatalf("passed %v: report = %+v, want %+v", passed, r, want)
+		}
+	}
+	c := check(false)
+	r := domain.ReportOf(c)
 	c.Gates.Links.NodeIDs[0] = checkID(99)
 	*c.Rules[1].Items[0].PageID = checkID(99)
-	if r.Gates.Links.NodeIDs[0] != checkID(20) || *r.Rules[1].Items[0].PageID != checkID(20) {
+	if r.Gates.Links.NodeIDs[0] != checkID(20) || *r.Rules[1].Items[0].PageID != checkID(40) {
 		t.Fatal("the report shares the check's slices")
 	}
 }
