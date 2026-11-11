@@ -904,7 +904,10 @@ const keptReport = reportJSON({
         rule: "wanted",
         count: 41,
         count_capped: true,
-        items: [{ rule: "wanted", item_key: `w:${"a".repeat(64)}`, target: "Missing", target_cut: false, pages: 2 }],
+        items: [
+          { rule: "wanted", item_key: `w:${"a".repeat(64)}`, target: "Missing", target_cut: false, pages: 2 },
+          { rule: "wanted", item_key: `w:${"c".repeat(64)}`, target: "Other", target_cut: false, pages: 3 },
+        ],
       },
       {
         rule: "orphans",
@@ -914,7 +917,7 @@ const keptReport = reportJSON({
       },
       {
         rule: "ambiguous",
-        count: 1,
+        count: 2,
         count_capped: true,
         items: [
           {
@@ -927,8 +930,22 @@ const keptReport = reportJSON({
         ],
       },
       { rule: "invalid_frontmatter", count: 0, count_capped: false, items: [] },
-      { rule: "missing_type", count: 0, count_capped: false, items: [] },
-      { rule: "missing_summary", count: 0, count_capped: false, items: [] },
+      {
+        rule: "missing_type",
+        count: 3,
+        count_capped: false,
+        items: [notes, guide, install].map((page) => ({
+          rule: "missing_type" as const,
+          item_key: `p:${page.id}`,
+          page_id: page.id,
+        })),
+      },
+      {
+        rule: "missing_summary",
+        count: 4,
+        count_capped: false,
+        items: [{ rule: "missing_summary", item_key: `p:${guide.id}`, page_id: guide.id }],
+      },
       {
         rule: "undigested_sources",
         count: 6,
@@ -942,9 +959,39 @@ const keptReport = reportJSON({
             bytes: 2048,
             created_at: "2026-10-03T08:00:00Z",
           },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${notes.id}`,
+            node_id: notes.id,
+            kind: "asset",
+            bytes: 10240,
+            created_at: "2026-10-04T09:00:00Z",
+          },
+          {
+            rule: "undigested_sources",
+            item_key: `n:${guide.id}`,
+            node_id: guide.id,
+            kind: "page",
+            bytes: 512,
+            created_at: "2026-10-05T10:00:00Z",
+          },
         ],
       },
-      { rule: "invalid_sources", count: 0, count_capped: false, items: [] },
+      {
+        rule: "invalid_sources",
+        count: 5,
+        count_capped: false,
+        items: [
+          {
+            rule: "invalid_sources",
+            item_key: `s:${install.id}:${"d".repeat(64)}`,
+            page_id: install.id,
+            target: "Broken",
+            target_cut: false,
+            not_link: false,
+          },
+        ],
+      },
     ] satisfies UpgradeReport["rules"]
   ).toReversed(),
 });
@@ -957,7 +1004,7 @@ test("in review, the page shows the report kept, read only: each gate, each coun
   renderApp(upgradePath, server.app);
 
   const report = await section("Check report");
-  await within(report).findByText("Guide/Install.md");
+  await within(report).findAllByText("Guide/Install.md");
   expect(report.querySelector("p")?.textContent).toBe(
     "The check at its submission (Oct 6, 2026, 9:41 AM): every check passed."
   );
@@ -993,14 +1040,23 @@ test("in review, the page shows the report kept, read only: each gate, each coun
     [...rule.querySelectorAll("li")].map((item) => item.textContent),
   ]);
   expect(rules).toEqual([
-    ["H3", "Wanted pages", "41+ issues", ["MissingReferenced by 2 pages"]],
+    ["H3", "Wanted pages", "41+ issues", ["MissingReferenced by 2 pages", "OtherReferenced by 3 pages"]],
     ["H3", "Orphan pages", "1 issue", ["Notes.md"]],
-    ["H3", "Ambiguous links", "1+ issues", ["Guide.mdPlan"]],
+    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan"]],
     ["H3", "Invalid frontmatter", "0 issues", []],
-    ["H3", "Missing type", "0 issues", []],
-    ["H3", "Missing summary", "0 issues", []],
-    ["H3", "Undigested sources", "6 issues", ["Guide/Install.mdPage2 KBCreated Oct 3, 2026, 8:00 AM"]],
-    ["H3", "Invalid sources", "0 issues", []],
+    ["H3", "Missing type", "3 issues", ["Notes.md", "Guide.md", "Guide/Install.md"]],
+    ["H3", "Missing summary", "4 issues", ["Guide.md"]],
+    [
+      "H3",
+      "Undigested sources",
+      "6 issues",
+      [
+        "Guide/Install.mdPage2 KBCreated Oct 3, 2026, 8:00 AM",
+        "Notes.mdAttachment10 KBCreated Oct 4, 2026, 9:00 AM",
+        "Guide.mdPage512 BCreated Oct 5, 2026, 10:00 AM",
+      ],
+    ],
+    ["H3", "Invalid sources", "5 issues", ["Guide/Install.mdBroken"]],
   ]);
   expect(within(report).queryByRole("button")).toBeNull();
   expect(screen.queryByRole("button", { name: "More" })).toBeNull();

@@ -116,35 +116,57 @@ const first: Record<Gate, boolean> = {
   preserved: false,
   index: false,
 };
-const rows: [string, Record<Gate, boolean>, string][] = [
-  ["the first", first, "4 checks did not pass."],
+/**
+ * The gates' rows: each column (a gate) passed in some and not in others,
+ * no two alike; each row with its own number of gates not passed, and its
+ * own pages worse off and pages of an old index where those gates fail.
+ */
+const rows: [string, Record<Gate, boolean>, string, { worse: number; stale: number }][] = [
+  ["the first", first, "4 checks did not pass.", { worse: 3, stale: 4 }],
   [
     "the second",
     {
       agents: true,
-      source_root: false,
+      source_root: true,
       reserved_titles: false,
       frontmatter: true,
       sources: true,
       links: true,
       preserved: false,
-      index: false,
+      index: true,
     },
-    "4 checks did not pass.",
+    "2 checks did not pass.",
+    { worse: 0, stale: 0 },
   ],
   [
     "the third",
     {
-      agents: false,
-      source_root: true,
-      reserved_titles: false,
-      frontmatter: true,
+      agents: true,
+      source_root: false,
+      reserved_titles: true,
+      frontmatter: false,
       sources: true,
       links: false,
       preserved: true,
+      index: true,
+    },
+    "3 checks did not pass.",
+    { worse: 7, stale: 0 },
+  ],
+  [
+    "the fourth",
+    {
+      agents: false,
+      source_root: false,
+      reserved_titles: false,
+      frontmatter: false,
+      sources: true,
+      links: true,
+      preserved: true,
       index: false,
     },
-    "4 checks did not pass.",
+    "5 checks did not pass.",
+    { worse: 0, stale: 12 },
   ],
   [
     "every one",
@@ -159,6 +181,7 @@ const rows: [string, Record<Gate, boolean>, string][] = [
       index: true,
     },
     "Every check passed: the upgrade can be submitted for review.",
+    { worse: 0, stale: 0 },
   ],
   [
     "the frontmatter alone",
@@ -173,13 +196,14 @@ const rows: [string, Record<Gate, boolean>, string][] = [
       index: true,
     },
     "1 check did not pass.",
+    { worse: 0, stale: 0 },
   ],
 ];
 
-/** checkOf is a check whose gates passed as passed says, each failing one naming what it names. */
-function checkOf(passed: Record<Gate, boolean>): UpgradeCheck {
+/** checkOf is a check whose gates passed as passed says, each failing one naming what it names, its pages worse off and stale as given. */
+function checkOf(passed: Record<Gate, boolean>, { worse, stale } = { worse: 3, stale: 4 }): UpgradeCheck {
   return checkJSON({
-    stale_pages: passed.index ? 0 : 4,
+    stale_pages: passed.index ? 0 : stale,
     passed: gateKeys.every((key) => passed[key]),
     gates: {
       agents: { passed: passed.agents },
@@ -192,7 +216,7 @@ function checkOf(passed: Record<Gate, boolean>): UpgradeCheck {
       sources: { passed: passed.sources },
       links: passed.links
         ? { passed: true, pages_worse: 0, node_ids: [] }
-        : { passed: false, pages_worse: 3, node_ids: [notes.id, guide.id] },
+        : { passed: false, pages_worse: worse, node_ids: [notes.id, guide.id] },
       preserved: passed.preserved
         ? { passed: true, nodes: 9, nodes_kept: 9, pages: 6, pages_kept: 6, node_ids: [] }
         : { passed: false, nodes: 9, nodes_kept: 7, pages: 6, pages_kept: 5, node_ids: [install.id] },
@@ -213,9 +237,9 @@ function gateLines(section: HTMLElement) {
 
 test.each(rows)(
   "a check whose gates passed as %s: each gate's line, what it names; the result",
-  async (_, passed, said) => {
+  async (_, passed, said, pages) => {
     const user = userEvent.setup();
-    const { section } = await opened(serverOf(checkOf(passed)));
+    const { section } = await opened(serverOf(checkOf(passed, pages)));
 
     await checked(user, section, `${said} Checked on Oct 6, 2026, 9:30 AM.`);
 
@@ -230,7 +254,7 @@ test.each(rows)(
               ? [line]
               : [
                   line,
-                  "3 pages lead to more pages that do not exist than when the upgrade started.",
+                  `${pages.worse} pages lead to more pages that do not exist than when the upgrade started.`,
                   ["Notes.md", "Guide.md"],
                 ];
           case "preserved":
@@ -240,7 +264,10 @@ test.each(rows)(
           case "index":
             return passed[key]
               ? [line]
-              : [line, "4 pages have an outdated index. Ask the server administrator to run nervewiki reindex."];
+              : [
+                  line,
+                  `${pages.stale} pages have an outdated index. Ask the server administrator to run nervewiki reindex.`,
+                ];
           default:
             return [line];
         }
@@ -321,7 +348,11 @@ const cardsOf = (holder: HTMLElement) =>
     return [heading?.tagName, heading?.textContent, each.querySelectorAll("p")[1]?.textContent];
   });
 
-/** A check whose four rules have issues, the wanted pages' and the ambiguous links' capped, seven missing types. */
+/**
+ * A check whose four rules have issues, the wanted pages' and the
+ * ambiguous links' capped, seven missing types; its rules in another order
+ * than shown.
+ */
 function rulesCheck(): UpgradeCheck {
   const types = missingTypes(notePages.map((page) => page.id));
   return checkJSON({
@@ -334,7 +365,7 @@ function rulesCheck(): UpgradeCheck {
       ruleOf("missing_summary", 1),
       ruleOf("undigested_sources", 0),
       ruleOf("invalid_sources", 0),
-    ],
+    ].toReversed(),
   });
 }
 
