@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P3 审阅、批准与 playbook（三个 Step：S1 审阅（服务端）；S2 playbook 与文档（服务端）；S3 网页） |
-| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条） |
-| 状态 | 进行中（设计已审查，S1 开工；[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节） |
+| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条）；2026-11-12（照 S1 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `（待填）`；设计的[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节；S1 的审查记录 [P3-S1-review-actions-review.md](reviews/P3-S1-review-actions-review.md)；实施与审查之后与代码不同之处照实改在各节（3.23 列出），结果在 10.1） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.3 审阅之后的几条转移、4.8 的退回、4.9、4.10 的驳回、4.11–4.20 里属于 P3 的部分、第 5、7、8、9、10 节、第 11 节（尤其 176、181、183–185、195、196、201、202、204、212、216、222、232、236、240、243、244、258、259、262、264、274、276、277）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P3 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.19、3.20 的回滚与结束）；[P2 设计](02-P2-guardrails-gate-submit.md)（3.12 的提交、3.19–3.21 的修正、第 9 节交给 P3 的事）；[审查记录](reviews/)（P1、P2 的设计与各 Step）；[v0.1 总体设计](../v0.1-design.md) 5.8、5.9、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1、P2 设计：模块写作 `wiki/app/abandon_upgrade.go:106`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00057_wiki_notebook_upgrades.sql:52`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:277`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up5-check-submit.spec.ts:312`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P2 完成之后的 `main` `955fa579`（`docs: M11/P2 done`）的 |
 | 工作笔记 | 代码的核对分四份（wiki、notebook、page 的升级用例与 SQL；网页的升级页、检查一节与 `HealthRule`；组合根的测试设施、分份与 CI；MCP 的 prompt、README、人工清单与移交），本文引的每个行号都在其中核对过（附录）。实测在临时的 worktree 里、经 `heavy.sh`：批准的哈希重建在 10 万与 5 万个来源上的各段时长与计划（3.4、7.6），组合根第四、六、七、八份的本机两轮（7.5）；修订时另量决定 292 的读头语句在这本笔记本约占一成与约占四分之一的两个种子上的计划（3.4） |
@@ -134,12 +134,12 @@
 | `page/app/source_rebuild.go`、`page/source_rebuild.go`（新） | `RebuildSources`、`SourceRebuild`、`NewSourceRebuild`（3.4） |
 | `page/adapter/postgres/queries/sources.sql`、`source_area.go`、`gen/` | `SourceRebuildHeads`（决定 292，3.4）；`SourceHeads` 不动 |
 | `page/domain/contract.go` | 第 181 条（3.10） |
-| `api/modules/wiki.yaml`、`page.yaml`、`transfer.yaml`；`api/dist/openapi.yaml`；各模块的 `adapter/http/gen` | 三个操作；两个撤销的 `page.virtual_file`（3.11） |
+| `api/modules/wiki.yaml`、`page.yaml`、`transfer.yaml`；`api/openapi.yaml`（打包的根，加三个路径；初稿漏了，S1 的实施，3.23）；`api/dist/openapi.yaml`；各模块的 `adapter/http/gen` | 三个操作；两个撤销的 `page.virtual_file`（3.11） |
 | `bootstrap/wiki_upgrade.go`、`bootstrap/wire.go` | `wikiUpgradeStates.Approve`；`SourceHashes`、`ApproveTimeout` 的接线（3.12） |
 | `Makefile`、`.github/workflows/ci.yml` | 第四份挪四个测试到第六份、第八份的模式扩大（第 1 个提交，第 278、290 条，7.5）；costs-1 加批准的守卫一行（7.1），作业时限 35 → 45 分钟（第 294 条） |
 | `web/packages/api-client/src/schema.gen.ts` | 生成（4.1） |
 | `e2e/fixtures/upgrades.ts`、`e2e/stories/upgrade/up6-…`、`up7-…`、`up8-…` | UP6–UP8 的 API 与 UP6、UP7 的 MCP 版本（第 5 节） |
-| 测试 | 各节写出；组合根的在 7.1 |
+| 测试 | 各节写出；组合根的在 7.1；三个用例的单元测试在 `wiki/app/review_upgrade_test.go`，共用的替身在 `review_fake_test.go`（S1 的实施，3.23） |
 
 ### 3.2 S1：wiki 的判定
 
@@ -479,7 +479,7 @@ func (a *ApproveUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView
 
 **为什么不分批提交、不脱离请求**：模式与哈希要在同一个事务里成立（2.1 第 1 条）。批准不像提交那样有"断开之后还要存下"的需要：断开时整个回滚，升级留在审阅中，再点一次即可；所以用请求的上下文，不脱离。
 
-**测试**（单元，`wiki/app/approve_upgrade_test.go`，替身的端口，照 `submit_upgrade_test.go` 的写法）：调用的次序整列断言（锁、`Current`、`Roots`、`RootNodes`、名字、`Approve`、`Rebuild`、`DeleteBaseline`、`Rows.Approve`、`Publish`）；`Publish` 的值整值断言（`From`、`To`、`By`、`At` 互不相同）；每个码一格且什么也没写；`ReviewChecking`、`ReviewStale` 各一格答 `wiki.upgrade_state`；报告不通过一格答缺陷；三道闸门各一格不过：答 409 `wiki.upgrade_not_ready`，error 一行整值断言（`notebook_id`、`upgrade_id`、`failed_gates` 恰是那一道的键，没有多余的键），没有 info、没有 warn（决定 293）；回调答 409 而替身的事务回滚失败一格：答回滚的那个错误（不是 409），答复照 `WithinTx` 交回的错误（设计审查 P3A-N11）；`Rows.Approve` 答假是缺陷；提交失败一格：替身的事务在回调成功之后提交失败（`submit_upgrade_test.go:59`、`:100-103` 的 `commit` 钩子），答那个错误，没有 info，也没有 warn，调用的次序里 info 在 `commit` 之后（设计审查 P3A-M3 = P3B-M3 第 1 条）；期限：替身的 `Rebuild` 等到 ctx 到期，答 503 与 warn 一行、没有 info；请求的 ctx 先被取消时不记 warn、不答 503。整个程序的在 7.1。
+**测试**（单元，`wiki/app/review_upgrade_test.go` 的 `TestApproveUpgrade`（三个用例的单元测试在一个文件里，共用的替身在 `review_fake_test.go`；已有的四个替身包一层 `unapproved`：两个端口的 `Approve` 同名不同签名，一个类型装不下；初稿写 `approve_upgrade_test.go`，S1 的实施，3.23），替身的端口，照 `submit_upgrade_test.go` 的写法）：调用的次序整列断言（锁、`Current`、`Roots`、`RootNodes`、名字、`Approve`、`Rebuild`、`DeleteBaseline`、`Rows.Approve`、`Publish`）；`Publish` 的值整值断言（`From`、`To`、`By`、`At` 互不相同）；每个码一格且什么也没写；`ReviewChecking`、`ReviewStale` 各一格答 `wiki.upgrade_state`；报告不通过一格答缺陷；三道闸门各一格不过（闸门 2 另有"来源根是根下的 `AGENTS`"一格，钉住批准交给 `JudgeRoots` 的来源根；审查 P3S1A-N1，修复一轮）：答 409 `wiki.upgrade_not_ready`，error 一行整值断言（`notebook_id`、`upgrade_id`、`failed_gates` 恰是那一道的键，没有多余的键），没有 info、没有 warn（决定 293）；回调答 409 而替身的事务回滚失败一格：答回滚的那个错误（不是 409），答复照 `WithinTx` 交回的错误（设计审查 P3A-N11）；`Rows.Approve` 答假是缺陷；提交失败一格：替身的事务在回调成功之后提交失败（`submit_upgrade_test.go:59`、`:100-103` 的 `commit` 钩子），答那个错误，没有 info，也没有 warn，调用的次序里 info 在 `commit` 之后（设计审查 P3A-M3 = P3B-M3 第 1 条）；期限：替身的 `Rebuild` 等到 ctx 到期，答 503 与 warn 一行、没有 info；请求的 ctx 先被取消时不记 warn、不答 503。整个程序的在 7.1。
 
 ### 3.7 S1：驳回
 
@@ -493,7 +493,7 @@ func (a *ApproveUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView
 
 `rollBack` 的注释改为"The abandonment's and the rejection's"。码：404、403、409 `wiki.upgrade_state`、503 `server_busy`。不声明 `transfer.busy`：审阅中没有写入的任务（冻结，P1），`startBackground` 的写入键答不出它。
 
-单元测试 `reject_upgrade_test.go`：每个码一格；`upgrading` 一格答 `wiki.upgrade_state`、什么也没写；`rollBack` 的调用带 `UpgradeRejected`（替身记下结局，整值断言）；提交失败一格（同 3.6：答那个错误，没有 info，也没有 warn；调用的次序里 info 在 `commit` 之后）。
+单元测试 `TestRejectUpgrade`（`wiki/app/review_upgrade_test.go`，与批准、退回的在一个文件里；S1 的实施，3.23）：每个码一格；`upgrading` 一格答 `wiki.upgrade_state`、什么也没写；`rollBack` 的调用带 `UpgradeRejected`（替身记下结局，整值断言）；提交失败一格（同 3.6：答那个错误，没有 info，也没有 warn；调用的次序里 info 在 `commit` 之后）。
 
 ### 3.8 S1：退回
 
@@ -505,7 +505,7 @@ func (a *ApproveUpgrade) Execute(ctx context.Context, id uuid.UUID) (UpgradeView
 
 码：404、403、409 `wiki.upgrade_state`。退回之后发起人的 agent 又能写（冻结只放过 `upgrading` 中发起人的 MCP 写，P1），UP6 走这一步。
 
-单元测试 `send_back_upgrade_test.go`：每个码一格；三种 `Review` 各一格（`ReviewChecking` 的 `detail` 是"still being checked"）；`SendBack` 收到的 `takenOver` 等于 `at - SubmitTimeout`（整值断言，`at` 带纳秒、断言截过的值）；答复是写之后读的行（提交与报告为空）；info 的 `submission_id`、`reported` 是写之前的；提交失败一格（同 3.6）。
+单元测试 `TestSendBackUpgrade`（`wiki/app/review_upgrade_test.go`，3.23；拒绝表另有"别的升级的行"一格，审查 P3S1A-N2，修复一轮）：每个码一格；三种 `Review` 各一格（`ReviewChecking` 的 `detail` 是"still being checked"）；`SendBack` 收到的 `takenOver` 等于 `at - SubmitTimeout`（整值断言，`at` 带纳秒、断言截过的值）；答复是写之后读的行（提交与报告为空）；info 的 `submission_id`、`reported` 是写之前的；提交失败一格（同 3.6）。
 
 ### 3.9 S1：提交的第一个事务改用 `ReviewOf`
 
@@ -534,7 +534,7 @@ one that would restore, rename or move a node back to the notebook's root under 
 
 **测试**：
 
-- `page/domain/contract_test.go`：`OpRestore`、`ChangesetRevert`、`After` 在根下、键 `index` 答 `ErrVirtualFile`；同样而键是 `log.md` 一格（`Reserved` 的另一种形状）；同样而不在根下放过；同样而 `ChangesetTrashRestore` 放过；同样而笔记本是普通的放过；`OpRestore`、`ChangesetRevert` 回到根下一个不保留的键放过。每格一个反例只钉一种形状（05-lessons）。
+- `page/domain/contract_test.go`：`OpRestore`、`ChangesetRevert`、`After` 在根下、键 `index` 答 `ErrVirtualFile`；同样而键是 `log.md` 一格（`Reserved` 的另一种形状）；同样而不在根下放过；同样而 `ChangesetTrashRestore` 放过；同样而笔记本是普通的放过；`OpRestore`、`ChangesetRevert` 回到根下一个不保留的键放过。每格一个反例只钉一种形状（05-lessons）。 S1 建成：新加四格（根下 `index`、根下 `log.md`、`Notes` 下的 `index`、根下不保留的 `Logs`），原来"撤销把一页恢复到根下名为 log"一格由放过改为答 `page.virtual_file`；"`ChangesetTrashRestore` 放过"由已有的 `:171` 一格、"普通笔记本放过"由 `:205` 的循环对每一格都判一次盖住，覆盖等价（审查 C，3.23）。
 - 模块的 `adapter/http`：`page/adapter/http/history_test.go:182` 的表加 `domain.Refuse(domain.ErrVirtualFile, id(13))` 答 409 `page.virtual_file`；`transfer/adapter/http/start_background_test.go:112` 的表加 `refusing("page.virtual_file")` 答 409（13.1 第 8 条）。
 - 整个程序 `TestUpgradeTrashReservedTitles`（7.1）。
 
@@ -644,7 +644,7 @@ one that would restore, rename or move a node back to the notebook's root under 
 
 `Upgrade` 与它的枚举不改（`approved`、`rejected` 已有）。`submitUpgrade` 的说明（`wiki.yaml:328-329`）"a submission taken over or an upgrade abandoned meanwhile"改为"a submission taken over, or an upgrade sent back, rejected or abandoned meanwhile"：P3 之后提交算完时多了两种读到别的状态的原因（设计审查 P3C-N4）。`make gen` 重新生成 `api/dist/openapi.yaml`、wiki 的 `adapter/http/gen` 与 `web/packages/api-client/src/schema.gen.ts`。
 
-处理函数（`wiki/adapter/http/upgrade.go`）照 `AbandonUpgrade`（`:43-53`）各一个，答复经 `upgradeOf`（`:83-130`）。`UpgradeUseCases`（`handler.go:22-28`）加 `ApproveUpgrade`、`RejectUpgrade`、`SendBackUpgrade`。`TestTheUpgradesCodesAreAnswered`（`wiki/adapter/http/upgrade_test.go:187`）的表加三个操作的每个声明的码（approve 五个、reject 四个、send-back 三个），替身 `upgradeFake`（`:25`）加三个方法；`TestTheUpgradeIsAnswered`（`:139`）加三个操作各一格答 200 的投影（`approved`、`rolling_back` 带 `ending: rejected`、`upgrading` 没有提交），夹具的每个值互不相同、整值断言；`:138-143` 的"不收请求体"一格加三个路径。
+处理函数（`wiki/adapter/http/upgrade.go`）照 `AbandonUpgrade`（`:43-53`）各一个，答复经 `upgradeOf`（`:83-130`）。`UpgradeUseCases`（`handler.go:22-28`）加 `ApproveUpgrade`、`RejectUpgrade`、`SendBackUpgrade`。`TestTheUpgradesCodesAreAnswered`（`wiki/adapter/http/upgrade_test.go:187`）的表加三个操作的每个声明的码（approve 五个、reject 四个、send-back 三个），替身 `upgradeFake`（`:25`）加三个方法；`TestTheUpgradeIsAnswered`（`:139`）加三个操作各一格答 200 的投影（`approved`、`rolling_back` 带 `ending: rejected`、`upgrading` 没有提交），夹具的每个值互不相同、整值断言；`:138-143` 的"不收请求体"一格加三个路径（S1 另起一个循环，三个路径都不带请求体、各自断言整份投影，`upgrade_test.go:197-247`，比加进原来那一格强，3.23）。打包的根 `api/openapi.yaml` 逐个 `$ref` 模块的路径，三个操作的路径也要加进去，不然不进 `api/dist`、`TestAPIRoutesAreTheContractsOperations` 等答"no documented operation"（S1 的实施，3.23）。
 
 ### 3.12 S1：组合根
 
@@ -873,7 +873,7 @@ MCP 的工具不改，`mcpToolCodes()`、`upgradeToolCodes()`、`mcpOwnCodes()` 
 | 锁下再核闸门 1–3 | `TestUpgradeApproval` 的"以 SQL 清空根下 `AGENTS` 的正文之后批准"（同 7.1 第 4 格；以 SQL 软删除会同时违反 `checkPages` 的几条，设计审查 P3B-N4）答 `wiki.upgrade_not_ready`、`detail` 写着 `agents` 与 "still in review"、什么也没写、记一行 error（决定 293）；单元的三格 |
 | 批准重建哈希 | `TestUpgradeApproval` 的 `checkPages` 与 `assertSourceHashesMatchRebuild`；`wiring.wiki` 把 `SourceHashes` 换成什么也不做的替身时 `sourceHashRebuildMismatches` 答出这本笔记本的来源（00 号文档第 9 节） |
 | 重建先清区外 | `TestTheSourceRebuildIsTheInvariant` 的"区外带旧哈希"一格 |
-| 重建的读头只经键（决定 292） | 守卫（7.1）：调用换回 `SourceHeads` 时两个种子都以"没跑过 `SourceRebuildHeads`"失败；SQL 改回连接的形状时只核对计划的种子上分析过的自定义计划顺序读 `page_contents` |
+| 重建的读头只经键（决定 292） | 守卫（7.1）：调用换回 `SourceHeads` 时两个种子都以"没跑过 `SourceRebuildHeads`"失败；SQL 改成普通的连接（16a）或 `SourceHeads` 的形状（16b）时两个种子的每格都失败（这本笔记本的 `nodes` 按笔记本的索引读、不按键），16b 在只核对计划的种子"发起留下的统计"的两格另顺序读 `page_contents`（"读头只经键"一条，S1 的变异第一轮补的，3.23）；短测试 `TestTheApprovalGuardJudgesItsReads` 的"读头连上读一次的这本笔记本"一格 |
 | 批准删掉基线 | `TestUpgradeApproval` 断言 `upgrade_nodes` 没有这次升级的行；`checkPages` 的升级规则（`upgradeRules()`）对已结束的升级的基线报违规 |
 | 批准发 `mode` | `TestUpgradeStatesReachTheStreams` 的"approval"一步（1 帧）；`TestUpgradeApproval` 的另一个标签页的流 |
 | 批准自己的期限 | `TestUpgradeApproval` 的"its own deadline"三格（语句之中等笔记本行、语句之中等一个来源的行、两条语句之间） |
@@ -883,6 +883,43 @@ MCP 的工具不改，`mcpToolCodes()`、`upgradeToolCodes()`、`mcpOwnCodes()` 
 | 第 181 条 | `TestUpgradeTrashReservedTitles` 的同步与后台两格答 `page.virtual_file`；`contract_test.go` 的各格；两个模块的 `adapter/http` 表；撤销改名的一格守着今天就有的 `OpRename` 一支在批准之后走得到 |
 | 第 181 条不碰回收站的恢复 | 同一个测试的 `restoreNode`、`startTrashRestore` 两格答 200、名为 `index 2`、`log 2`；`contract_test.go` 的 `ChangesetTrashRestore` 一格 |
 | prompt 只在 `upgrading` | `TestUpgradePromptMatrix` 的 `reviewing`、`standard`、`llm_wiki` 三列；`TestUpgradePrompt` 的各格 |
+
+### 3.23 S1 的实施对设计的修正
+
+S1 的审查与修复见 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里（3.1、3.6–3.8、3.10、3.11、3.22，6.1，7.1–7.3、7.5、7.6）。写了行号的，是实施的头 `d7b85bae` 的；修复的提交见 10.1。
+
+- **S1，实施时定下的**（实施者的 16 条偏离，括号里是它的号；三位审查者各在自己的范围里判过：A 判第 1–3、5–8 条，B 判第 9–13、16 条，C 逐条判进不进本节、判第 4、14 条；都对。第 3 条的断言不靠回滚也成立，修复一轮改（审查 P3S1A-N4）。第 8 条"退回之后 agent 的写只改 frontmatter"不是与设计不同：设计 7.1 本来就写"写一页原有页的 frontmatter"，是实施中改掉的测试错误，只记在 10.1；第 15 条"第四、六份只在 1 号提交上量"是过程，也在 10.1（审查 C 的判断））：
+  - 3.3、3.6 的测试：已有的四个替身（发起、放弃、提交、回滚的结束）包一层 `unapproved`。wiki 的端口 `UpgradeStates.Approve(ctx, id, upgradeID, rootID, by, at) error` 与 `UpgradeRows.Approve(ctx, id, submissionID, by, at) (bool, error)` 同名而签名不同，生产里是两个类型；测试里一个类型同时当 `States` 与 `Rows`，Go 的一个类型装不下两个同名方法。名字照设计不改，`States: unapproved{f}`（它的 `Approve` 是缺陷），批准的替身另用 `reviewStates`；只动测试（1）。
+  - 7.1：`stops.arm` 有四个参数（`nb, plan, batch, idle`），设计写三个；流的驳回一步照代码 `stops.arm(nb, 1, 0, false)`（2）。
+  - 7.1 `TestUpgradeReview` 第 4 格的"基线复原（发起时的 frontmatter）"：`tm.reviewed` 的升级里发起只写了 `AGENTS`，实施时断言为 `AGENTS` 不在、笔记页的正文同发起时（3）。"正文同发起时"不靠回滚也成立，真正证明回滚做了事的只有"`AGENTS` 不在"；修复一轮在驳回之前先由 dana 退回（审阅中冻结 agent 的写），alice 的 agent 再经 MCP 改 `Note` 的 frontmatter（仍干净，同"sent back"那一格的写法），erin 再交，然后驳回，断言正文回到 `cleanNote`；回滚不写回正文的变异 n4 改前活、改后死（审查 P3S1A-N4，`cc751dca`；`fix-1.md` 与文档稿的初稿都没写"先退回"，修复核对一轮 P3S1C-N7）。
+  - 3.1、3.11：`api/openapi.yaml` 加三个路径。打包的根逐个 `$ref` 模块的路径，不加的话三个操作不进 `api/dist`，`TestAPIRoutesAreTheContractsOperations` 等答"no documented operation"；设计的文件表与 3.11 漏了这个文件（4；审查 C 判必要）。
+  - 7.1 `TestUpgradeApproval` 第 6 格：期限的三格共用一个应用、都取 2 s（设计写第一、三格 300 ms、第二格 2 s）。第二格必须 2 s（设计审查 P3B-N9），另起一个 300 ms 的应用只为两格各快约 1.7 秒，不值；2 s 下第一格（等笔记本行）与第三格（在 `Rebuild` 里等 ctx）一样确定。三格照设计各断言 503、`Retry-After: 1`、warn 一行（`timeout_ms` 2000）、没有 error、什么也没写、`checkPages`；第二格另断言包住 `SourceHashes` 的一层记下了进入、`WaitForLockWaitsOn(nodes, 1)` 看到批准等在那一行上（5；A 判对，只多约 3.4 秒）。换期限的钩子里原来不看组合根交的值，竞态的八份里没有一格看 `ApproveTimeout = RequestTimeout * 3 / 4`，只有 costs-1 的守卫看；修复一轮在钩子里先断言它是 3 s（测试应用的请求 4 s 的四分之三），再换成 2 s，o6 在第八份里也死（审查 P3S1A-N6，`cc751dca`）。
+  - 7.1 `TestUpgradeApproval` 第 2、3 格合成一格（"approved, another tab told"）：同一次批准，alice 的流在批准之前打开（`tm.modesOf`），一帧 `mode`；其余断言照第 2 格（6）。
+  - 3.6–3.8、7.3：三个用例的单元测试在一个文件里（`wiki/app/review_upgrade_test.go` 的 `TestApproveUpgrade`、`TestRejectUpgrade`、`TestSendBackUpgrade`，共用的替身在 `review_fake_test.go`）；7.3 写的 `reject_upgrade_test.go`、`send_back_upgrade_test.go` 的格在后两个测试里（7）。
+  - 7.1 守卫：另几本是 LLM Wiki，每本根下 `raw`（来源根）收 45,000 页与 2,000 个附件、带哈希，另 4,999 页在根下，各页有正文；基线行用一个没有行的升级 id（`md5(notebook_id)`，照设计审查 B 的探针），每个节点一行（第 295 条，实施中定；9）。设计只写了"九本各 5 万页、来源带哈希的 LLM Wiki……各另有 2,000 个附件"，没说页与附件放在哪里；B 判合 7.1 的意图：附件节点、`asset_blobs` 的行与带哈希的来源都在别本里，丢了键会读到。
+  - 7.1 守卫：计划在哪里判（第 296 条，实施中定，审查之后改写；10）。实施时在第一次批准的事务里、删基线之后，在同一个事务里 `SHOW plan_cache_mode` 并 `EXPLAIN` 记下的语句。审查 B 指出那时 `SetSourceHashes` 已写完 47,500 行（非 HOT，`nodes` 的堆与每个索引都长了），被判的九条里有八条在写之前或写之中真跑，判的是生产那一刻不在的状态：B 的探针在每条第一次真跑之前、同一连接上 `EXPLAIN`，两个种子 × 三种统计 × 两种方式共 84 条，82 条形状相同，2 条不同（计时种子"从未分析"的 `ForgetSources`，真跑时经 `nodes_notebook_id_name_key_idx`、守卫判的是 `nodes_notebook_id_kind_source_hash_idx`，都合规则；审查 P3S1B-M2）。修复一轮照 B 改：`EXPLAIN` 挪到 tracer 的 `TraceQueryStart`，每条被判的语句第一次真跑之前、在同一连接上判（自定义带它的参数，通用经 simple protocol 的 `EXPLAIN (GENERIC_PLAN)`），用时照旧从 `elapsed_ms` 里减；`SHOW plan_cache_mode` 留在包住 `DeleteBaseline` 的一层，每次批准断言；`EXPLAIN` 本身出错时先报计划的错误，不只报"批准答 500"（审查 P3S1B-N1）（`9c637540`；守卫一轮 117.8 秒，B 的那两条 `ForgetSources` 现在判的是真跑时的 `nodes_notebook_id_name_key_idx`，每格第一次批准的 `EXPLAIN` 约 12–14 ms，计划都合规）。
+  - 7.1 守卫：判计划时内侧逐行的 `nodes` 认条件里的 `(id = `（第 297 条，实施中定；11）：`SetSourceHashes` 的通用计划在内侧经 `nodes_notebook_id_id_key`（`(notebook_id, id)` 的唯一约束）以 `notebook_id = $1 AND id = v.id` 逐行读，这是按外行的键读、合 7.1 的规则；第一版只认 `nodes_pkey`，把它判错了。审查之后另一面收紧，见下面"判计划的规则与它的短测试"。
+  - 7.1 守卫：批准之前先 `awaitJob(jobs.PurgeKind)`（`RunOnStart` 的周期作业是一起插入的，purge 做完时别的都已在表里），再等 `river_job` 里到期的作业都不在 `available`、`running`、`retryable`（设计写"等启动时的周期作业做完"；12）。
+  - 6.1、7.1、7.5：守卫比估的快，本机整个 111–121 秒（设计估 4–5 分钟；种子 9–28 秒一份，副本与应用每次约 1.5 秒）；`Makefile` 的说明照实测写（6.1 规定的"本机约 4–5 分钟、7763 上约 7–9 分钟"），`ci.yml` 的时限照第 294 条仍是 45 分钟（13；数在 10.1）。
+  - 第 5 节：UP6、UP7 的 API 版本由 alice 经 API 提交，MCP 版本经 `upgrade_submit`（设计写"agent … `upgrade_submit`"，没分版本）；UP6、UP7、UP8 另加四处 409 `wiki.upgrade_state` 的拒绝（审阅外的驳回、回滚中的退回、批准之后的驳回、提交之前的批准），`postReject`、`postSendBack`、`postApprove` 因此有用处（`knip` 要导出的都被用到，设计审查 P3C-N8 要它们在），也让 e2e 看见状态的 409 经过 HTTP 的边（14；C 判都照契约）。
+  - 7.3 第 16 行做成两条（16）：16a 把 `SourceRebuildHeads` 写成"`unnest` 连 `nodes`、左连 `page_contents`"的普通连接，16b 换成 `SourceHeads` 自己的形状（"改回连接的形状"的字面）；见下一条。
+- **"读头只经键"一条的来历**（7.1、7.3 第 16 行、3.22）：设计 7.1 写"`SourceRebuildHeads` 两种计划都只经键"，比判计划的通用规则严；实施的第一版只有通用规则，而通用规则放行"按笔记本的索引读一次这本笔记本的 `nodes`"（`LintNodeMetadata`、`SetSourceHashes` 正需要它）。变异第一轮的 16a 因此没抓到：它的计划正是把这本笔记本的节点读进哈希表、`page_contents` 逐行经主键（3.4 表的"每块一次"），不顺序扫描 `page_contents`。实施者在推送之前改写 6 号提交（`232cd613` → `bba17208`）：`approveCostScans` 对 `SourceRebuildHeads` 要求每个 `nodes`、`page_contents` 的读都按行的键（`nodes_pkey`，或条件里有 `(id = `；`page_contents_pkey` 带 `node_id = `），这本笔记本的 `nodes` 一次也不读；`TestTheApprovalGuardJudgesItsReads` 加一格"读头连上读一次的这本笔记本"答拒绝。第二轮 16a、16b 都抓到：计时种子的六格都以"nodes read by … not by its key"失败；16b 在 22% 的种子"发起留下的统计"的两格是 `page_contents` 的 `Seq Scan`（3.4 与设计审查 B 说的那一格），其余以按笔记本读 `nodes` 失败；o8（去掉这一条）由新的一格抓到。四轮守卫里 `SourceRebuildHeads` 的计划只有一种（`Function Scan` → 逐行 `nodes_pkey` → `Memoize` → 逐行 `page_contents_pkey`），这一条不拒它。7.3 第 16 行原写"SQL 改回连接的形状……在一成的种子上抓不到"，是加这一条之前的说法，照实拆成 16a、16b。
+- **S1，实施者自己加的测试**（实施报告第 8 节；审查者在各自的范围里看过都对）：`TestTheReviewsRows` 多三格（`Approve(another upgrade)`、`Approve(approved)`、`SendBack(another upgrade)`：设计列的是 3.5 每个合取项与析取项一个反例，`id = $n` 一项没单列，去掉它时别的升级的行会被改）；判计划的短测试 `TestTheApprovalGuardJudgesItsReads`（组合根，与守卫同文件、`//go:build !race`，不要数据库，在 short 一行里跑：守卫只在 costs-1、两分钟，规则写错（第 297 条那一次）要在短测试里先看见；修复一轮为每个子条件补一格反例，见下面）；守卫的应用断言自己的 `ApproveTimeout`（`approveCostApp`：15 s 的请求下 11.25 s，变异 o6 由它抓）；七条变异 o1–o7（7.3）；e2e 的四处拒绝（上面第 14 条）。
+- **审查另指出、也进本节的**（审查 C 的第 3 节）：
+  - 7.1 `TestUpgradeApproval` 第 2 格：设计列了 `checkLinks`、`checkSearch`，实施只调了 `assertSourceHashesMatchRebuild` 与 `checkPages`，报告也没列这处不同（审查 P3S1A-N3 = P3S1C-N3）；修复一轮补上两行（`cc751dca`）。7.2：`TestUpgradeReviewInterleavings` 在全部交错之后对整个库查一次 `checkPages`、`checkLinks`、`checkSearch`（`upgrade_review_test.go:349-352`），不是"每个交错结束时"；检查读的是整个库，库里有每个交错的笔记本，效果相同，7.2 照实改。
+  - 3.10、7.1：`contract_test.go` 的"六格"是新加四格（根下 `index`、根下 `log.md`、`Notes` 下的 `index`、根下不保留的 `Logs`）与原来"撤销把一页恢复到根下名为 log"一格由放过改为答 `page.virtual_file`；设计要的"`ChangesetTrashRestore` 放过"由已有的 `:171` 一格盖住，"普通笔记本放过"由 `:205` 的循环对每一格都判一次盖住，覆盖等价。
+  - 3.11："不收请求体"一格没有加三个路径，另起一个循环（`wiki/adapter/http/upgrade_test.go:197-247`），三个路径都不带请求体、各自断言整份投影，比加进原来那一格强。
+  - 7.1 `TestUpgradeStatesReachTheStreams`：设计写批准一步"1，`From standard`、`To llm_wiki`"。`mode` 帧里没有前后模式（`bootstrap/events_registrants.go:63-66` 发的是 `{}`，`EventMode` 只有 `workspace_id`、`notebook_id`，M10-mode 移交第 3 条），流的测试只数帧；`Publish` 的 `From`、`To` 由单元 `TestApproveUpgrade` 整值断言（`review_upgrade_test.go:123-125`）。照实改（审查 P3S1A-N7 = P3S1C-N2）。
+- **S1，审查与修复带来的**（编号是 S1 的审查记录的；修复一轮照主持者的修复说明 `fix-1.md`，提交见 10.1）：
+  - **判计划的规则与它的短测试**（P3S1B-M1）：`approveCostScans` 对 `nodes_pkey` 不看条件（`upgrade_approve_cost_test.go:616-619`），没有条件的 `Index Scan using nodes_pkey`（Merge Join 或按 `id` 排序时按键序读整张 `nodes`）在任何一条被判的语句里都放过，"读头只经键"一条也放过它；这正是 P1/S2 的 S2A-N4 对 `page_contents` 补上的那一种，这里对 `nodes` 漏了。短测试有六个子条件各自去掉照过（B 的 r1–r6）。修复一轮：`nodes_pkey` 只在条件里有 `(id = ` 时才认；内侧逐行的 `nodes` 读条件含 `= ANY` 的拒绝（B 的第五种；守卫在真的计划上照样绿，所以加了）；短测试照 S2A-N4 的做法为每个子条件补一格反例（无条件的 `nodes_pkey` 一次与内侧逐行各一、只以 `id` 用 `nodes_notebook_id_id_key`、无条件的 `page_contents_pkey`、不带 `node_id` 的 `asset_blobs_node_id_key`、`upgrade_nodes` 的 `Seq Scan` 或经 `upgrade_nodes_notebook_id_idx`、内侧逐行不带 `node_id` 的 `upgrade_nodes_pkey`、非 `SourceRebuildHeads` 的语句内侧逐行按笔记本读 `nodes`），r1–r6 与新的 `nodes_pkey` 条件各自去掉时都有一格失败（`9c637540`；短测试 9 → 19 格，另一格正例"一次按键读一组节点"放行，钉住 `= ANY` 那一条只管内侧；r1–r6 在 `d7b85bae` 上活、修复之后死，r7（`nodes_pkey` 不看条件）、r8（去掉"内侧不许 `= ANY`"）死，B 在核对时另加的 r9（`= ANY` 连只读一次的也拒）被那一格正例抓到）。
+  - **计划在真跑之前判**（P3S1B-M2、N1）：见上面第 296 条。
+  - **界**（P3S1B-Q1 → 第 298 条，主持者的决定）：3.9 s 不改；合并之后看两次 `main` 的 costs-1，任一次在 EPYC 7763 或更慢的 runner 上任一格的中位数过 3.25 s（余量不到 1.2 倍），就照负责人 2026-11-06 的话把界调到 4.5 s，不调量级、不做优化；守卫里界的注释写明这个条件（`9c637540`；修复一轮的分支 CI 上 costs-1 在 Xeon 8573C，六格中位数 2.01–2.23 s，余量约 1.75 倍）。
+  - **测试补全**（P3S1A-N1、N2、N5，C-N4；N4、N6 见上面第 3、5 条）：批准的闸门表加"来源根是根下的 `AGENTS`"一格（批准交给 `JudgeRoots` 的来源根换成零值时照过，a1）；退回的拒绝表加"别的升级的行"一格（a2）；退回一格照批准的做法与 `getUpgrade` 之后的读整值比较；UP7 以 `node:crypto` 对 `"The paper.\n"` 与附件的字节各算 SHA-256、与 `source_hash` 比（7 号提交原写"hashed as their bytes"，比的却是库里的两列）（`cc751dca`、`9dac9244`；a1、a2 改前活、改后死；UP7 一条由审查 C 以变异核过：上传时的 SHA-256 每块前多喂一个字节，库里两列一起错，旧的 UP7 照过、新的失败）。
+  - **注释**（P3S1C-N5）：`Makefile` 的计数注释改为头上的 551 个、145/50/120/120/61/15/28/12（6.1 第 1 条与 1 号提交时的是 547 个、…/27/9）（`a44602b0`；另写第七、八份本机两轮的数）。
+  - **文档稿**（本提交）：P3S1A-N7 = C-N2（上面一条）；P3S1C-N1：v0.1 总体设计 13.4 第 8 条写"5 万个来源（47,500 个要写的哈希……）"，设计 2.1、第 280 条、`Makefile` 与守卫里笔记本的名字都叫"5 万个来源"，守卫的常量 `approveCostSources` 叫的是要写的哈希；"约占四分之一"改为 22%（60,003 / 268,003）；P3S1C-N6：13.1 第 1 条写"审阅的三个动作（批准、驳回、退回）"，不写"三个动作与批准"，第 8 条写"回收站的恢复（同步与后台）照旧加序号"（后台的撤销 `startRevert` 是被拒的那一个）。
+  - **修复一轮**（4 个提交，头 `a44602b0`，10.1）与 `fix-1.md` 不同之处（实施者的号，主持者都接受）：内侧逐行不许 `= ANY` 一条加了，守卫在真的计划上照样绿（1）；短测试多一格正例"一次按键读一组节点"，钉住那一条只管内侧（2）；A-N4 先退回再写：审阅中冻结 agent 的写，"改 frontmatter、再交、再驳回"只能在退回之后，驳回一格因此多一次退回与一次提交，退回在 `modesOf` 之外、驳回一段照旧数两帧（3，见上面第 3 条）；A-N5 保留逐项断言，整值比较加在后面（4）；C-N5 的注释另写第七、八份本机两轮的数（5）；"the approval ran no %s"挪进 `end()` 判，错误文字去掉"before the baseline's deletion ended"（6）；第 296 条的说法照改（7，本提交）。
+  - **修复核对一轮**（三位各在 `a44602b0`）：A 判 P3S1A-N1–N6 关上（a1、a2、n4、o6 在 `d7b85bae` 上活、在头上死），没有新发现；B 判 P3S1B-M1、M2、N1、Q1 关上（短测试 19 格，r1–r8 各有一格失败，第一轮的 5 个探针都被拒；24 次判计划里"内侧不许 `= ANY`"没拒掉真的计划）；C 判 P3S1C-N3–N5 关上，文档稿里 N1、N2、N6 与 A-N7 落对。新的 Nit 两条：P3S1B-N2（批准在跑到被判的语句之前就失败时，`PlanErr` 先报、只有状态码，丢了答复的正文）不改，只影响守卫失败时的诊断、不影响判定；P3S1C-N7（A-N4 的修复在本节、7.1 与审查记录漏了"先退回"）在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
+- **交给后面的**：守卫在慢的 runner 上的余量与第四、六、八份在 7763 上的数，以合并之后两次 `main` 为准（第 298 条，第 8 节第 1 条，10.1）；`TestTheApprovalGuardJudgesItsReads` 在 short 一行，不在组合根的竞态八份里，`-list` 看不到它；S2、S3 的部分照第 0 节。
 
 ## 4. 网页
 
@@ -1031,14 +1068,20 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 6.1 S1（`m11-p3-s1`）
 
-1. `build, ci: move four of the fourth shard's tests to the sixth, and the review's tests to the eighth (M11/P3/S1)`：`Makefile` 的 `BOOTSTRAP_SIXTH`（第 278 条）、`BOOTSTRAP_EIGHTH`（第 290 条）、两处的 `##` 与 `#` 说明、计数注释（`Makefile:265-266`）145/50/120/124/61/11/27/9 → 145/50/120/120/61/15/27/9；`ci.yml` 的 bootstrap-4、bootstrap-6、bootstrap-8 一项前的说明。核对：`go test -race -list . ./internal/bootstrap` 的全部名字照 `make -n test-go` 展开的 `-run`/`-skip` 归一次，每个恰在一份（P2 的分份旁支的做法，`tools/shards8-p2.py`），只有这四个换了份；`make -n test-go` rc=0。
+实施照这个次序，第 1–7 个是 `f86b7a6d`、`9432d60a`、`8abb2a1d`、`34d77c98`、`63cc0b84`、`bba17208`、`d7b85bae`（推送之前改写过一次 2–7 号，补变异第一轮的 o1、16a，10.1）；之后修复一轮 4 个（第 8–11 个，头 `a44602b0`，10.1），连实施的 7 个一共 11 个；第 12 个是本 Step 的文档提交，在它们之后（3.23）。
+
+1. `build, ci: move four of the fourth shard's tests to the sixth, and the review's tests to the eighth (M11/P3/S1)`：`Makefile` 的 `BOOTSTRAP_SIXTH`（第 278 条）、`BOOTSTRAP_EIGHTH`（第 290 条）、两处的 `##` 与 `#` 说明、计数注释（`Makefile:265-266`）145/50/120/124/61/11/27/9 → 145/50/120/120/61/15/27/9（1 号提交时的数；头上 551 个、145/50/120/120/61/15/28/12，修复一轮照审查 P3S1C-N5 改注释，`a44602b0`）；`ci.yml` 的 bootstrap-4、bootstrap-6、bootstrap-8 一项前的说明。核对：`go test -race -list . ./internal/bootstrap` 的全部名字照 `make -n test-go` 展开的 `-run`/`-skip` 归一次，每个恰在一份（P2 的分份旁支的做法，`tools/shards8-p2.py`），只有这四个换了份；`make -n test-go` rc=0。
 2. `server: the review's judgments, and the approval's write of the notebook (M11/P3/S1)`：3.2 的 `ReviewOf`、`JudgeRoots`、`ApprovalNotReady` 与测试；`JudgeUpgrade` 改用 `JudgeRoots`；提交的第一个事务改用 `ReviewOf`（3.9）；3.3 的 notebook 的 SQL、`UpgradeStates.Approve`、wiki 的端口与 `wikiUpgradeStates.Approve`、测试。
 3. `server: rebuild an approved notebook's source hashes (M11/P3/S1)`：3.4 的 `RebuildSources`、`SourceRebuild`、`SourceRebuildHeads`（SQL、store、`gen/`，决定 292）与三组测试。
 4. `server, api, web: approve, reject and send back an upgrade (M11/P3/S1)`：3.5 的 SQL 与 store；3.6–3.8 的用例与单元测试；3.11 的契约、处理函数、`make gen`（含 `schema.gen.ts`）与模块的码的测试；3.12 的接线；3.13 的矩阵的行；3.14 的日志（含决定 293 的 error 一行）；组合根的 `TestUpgradeApproval`、`TestUpgradeReview`、`TestUpgradeReviewInterleavings`、`TestUpgradeStatesReachTheStreams` 加的步、`TestUpgradeSubmitInterleavings` 第 7 条的退回与 `TestUpgradeCheck` 第 8 条的批准（7.1、7.2）。
 5. `server, api, web: a revert does not bring a node back to a reserved root title (M11/P3/S1)`：3.10 的 `CheckContract`、两个操作的契约与 `make gen`（说明进 `schema.gen.ts` 的 JSDoc，所以带 `web`，设计审查 P3C-N2）、模块的码的测试、`TestUpgradeTrashReservedTitles`（含撤销改名的一格）。
-6. `server, ci: the approval's cost guard (M11/P3/S1)`：`bootstrap/upgrade_approve_cost_test.go`（7.1）、`Makefile` 的 `test-go-costs-1` 加一行（带 `-v` 与显式的 `-timeout 15m`；说明照 `Makefile:433-436` 回滚先删那一行与 `:471-478` 的写法："本机约 4–5 分钟、7763 上约 7–9 分钟，过了 Go 默认的 10 分钟超时的一半，所以这一行 -timeout 15m：红在守卫自己的界上，不在 Go 默认的超时上"；设计审查 P3B-M7）、`.github/workflows/ci.yml` 的 costs-1：`timeout` 从 35 分钟提到 45 分钟（第 294 条），那一行的注释写实测的三次（14:31、15:06、15:41）与估计（P3 之后约 23–26 分钟，照约两倍的规则取 45；开始约第 15–17 分钟，加 `-timeout 15m` 到第 30–32 分钟，Go 的超时先于作业时限到）。不拆行：只核对计划的种子与计时的在同一个测试里，一个二进制。本机两轮，界照实写进说明与 10.1。
-7. `e2e: approve, reject and send back through the API and MCP (M11/P3/S1)`：UP6、UP7、UP8 的 API 版本与 UP6、UP7 的 MCP 版本、`fixtures/upgrades.ts` 的三个帮手。
-8. Step 的文档提交（第 8 节第 4、5 条）。
+6. `server, build, ci: the approval's cost guard (M11/P3/S1)`（改了 `Makefile`，范围带 `build`，S1 的实施）：`bootstrap/upgrade_approve_cost_test.go`（7.1）、`Makefile` 的 `test-go-costs-1` 加一行（带 `-v` 与显式的 `-timeout 15m`；说明照 `Makefile:433-436` 回滚先删那一行与 `:471-478` 的写法："本机约 4–5 分钟、7763 上约 7–9 分钟，过了 Go 默认的 10 分钟超时的一半，所以这一行 -timeout 15m：红在守卫自己的界上，不在 Go 默认的超时上"；设计审查 P3B-M7；S1 照实测改写，`Makefile:389-393`，守卫本机约 2 分钟，3.23）、`.github/workflows/ci.yml` 的 costs-1：`timeout` 从 35 分钟提到 45 分钟（第 294 条），那一行的注释写实测的三次（14:31、15:06、15:41）与估计（P3 之后约 23–26 分钟，照约两倍的规则取 45；开始约第 15–17 分钟，加 `-timeout 15m` 到第 30–32 分钟，Go 的超时先于作业时限到）。不拆行：只核对计划的种子与计时的在同一个测试里，一个二进制。本机两轮，界照实写进说明与 10.1。
+7. `e2e: approve, reject and send back through the API and MCP (M11/P3/S1)`：UP6、UP7、UP8 的 API 版本与 UP6、UP7 的 MCP 版本、`fixtures/upgrades.ts` 的帮手（每个动作导出原样答复的 `post*` 与断言成功的一个，共六个，另导出 `postRevert`；`post*` 各配一处 409 的用法，S1 的实施，3.23）。
+8. `server: the approval's guard judges each plan just before its statement runs, and each read by the key it needs (M11/P3/S1)`（修复一轮，`9c637540`）：`approveCostScans` 的 `nodes_pkey` 要条件里有 `(id = `、内侧逐行的 `nodes` 不许 `= ANY`；判计划挪到 `TraceQueryStart`，每条被判的语句第一次真跑之前、同一连接上判（第 296 条）；`EXPLAIN` 出错时先报计划的错误；界的注释写第 298 条的条件；短测试 9 → 19 格（审查 P3S1B-M1、M2、N1、Q1）。
+9. `server: the review's tests see the approval's source root, the send-back's row, the rollback's page and the wired deadline (M11/P3/S1)`（`cc751dca`）：只改测试，审查 P3S1A-N1–N6（驳回一格先退回、再改、再交，3.23）。
+10. `e2e: UP7 checks the sources' hashes against the SHA-256 of the bytes written (M11/P3/S1)`（`9dac9244`）：审查 P3S1C-N4。
+11. `build: the shards' count comments as of S1's end (M11/P3/S1)`（`a44602b0`）：`Makefile` 的两处计数注释，审查 P3S1C-N5。
+12. Step 的文档提交（第 8 节第 4、5 条）。
 
 ### 6.2 S2（`m11-p3-s2`）
 
@@ -1070,7 +1113,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 | wiki 的两条 SQL | `TestTheReviewsRows` | `wiki/adapter/postgres`（真库） |
 | 三个用例与提交的改动 | 3.6–3.9 的单元测试；`submit_upgrade_test.go` 照旧 | `wiki/app` |
 | 契约与码 | `TestTheUpgradesCodesAreAnswered`、`TestTheUpgradeIsAnswered`、`history_test.go`、`start_background_test.go` | 各模块的 `adapter/http` |
-| 第 181 条的判定 | `contract_test.go` 的六格 | `page/domain` |
+| 第 181 条的判定 | `contract_test.go` 的六格（S1 建成：新加四格、原来的一格改答 `page.virtual_file`，另两种放过由已有的格盖住，3.23） | `page/domain` |
 | **批准**（整个程序） | `TestUpgradeApproval` | 第八份 |
 | **退回与驳回**（整个程序） | `TestUpgradeReview` | 第八份 |
 | 交错第 9 条与新的两条 | `TestUpgradeReviewInterleavings` | 第八份 |
@@ -1086,11 +1129,11 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 **`TestUpgradeApproval`**（`bootstrap/upgrade_approve_test.go`，新）。夹具 `tm.reviewed(t, title)`：一本普通笔记本，根下一页带干净 frontmatter 的笔记（`cleanNote`）与一页 `raw`，`raw` 下：两页带正文的来源、一页空页、一页带正文的页与它下面一页空的子页、一个附件（`tm.upload`）、一个零字节的附件；`tm.upgraded` 发起（认出 `raw`、补写 `AGENTS`）、`tm.submitted` 提交通过；交回笔记本、升级与提交的 id。发起、提交、批准是三个不同的账户：alice 发起，第三位管理员 erin 提交，dana 批准（erin 不在 acme 的四个账户里，`interleavings_workspace_test.go:120` 只注册 alice、bob、carol、dana，`tm.join` 只写成员行、要求账户已经存在，`:141-147`：夹具先以 `registerAccount` 注册 erin，再加入工作区、加为这本笔记本的管理员；设计审查 P3A-N12）（每个标量互不相同；dana 既提交又批准时，变异"`Rows.Approve` 把 `updated_by_id` 写成 `submitted_by_id`"抓不到，设计审查 P3A-N5）。子测试：
 
 1. **码的次序**：没有笔记本 404；carol 看不到 404；bob（编辑者）403；没有升级 409；`upgrading` 409；审阅中没有报告、刚提交 409（`detail` 不是"still being checked"）；同样而以 SQL 把 `submitted_at` 拨回一小时 409；每格之后行与笔记本不变（`tm.submission` 与模式）。
-2. **批准**：dana（第二位管理员）批准，答 200，答复整值断言（`state: approved`、`submitted_by` 是 erin、`report` 原样、`ending`、`rollback_*` 为空；`started_by`、`submitted_by` 与批准人是三个不同的人）；笔记本 `mode = llm_wiki`、`source_root_id` 是 `raw`、升级的四列为空；`upgrade_nodes` 没有这次升级的行；`notebook_upgrades` 的行 `approved`、审计列是 dana 与时刻；`assertSourceHashesMatchRebuild`、`checkPages`（含 `sourceHashGap` 与升级规则）、`checkLinks`、`checkSearch`；`getUpgrade` 答 404 `wiki.upgrade_not_found`；笔记本的读答 `mode: llm_wiki`、`upgrade: null`；之后 LLM Wiki 的契约生效：删除根下的 `AGENTS` 答 `page.protected`、编辑一页来源答 `page.source_immutable`；info 一行（3.14），`sources_hashed` 等于期望的数（五：两页、一页带正文的文件夹页、两个附件）。
-3. **另一个标签页**：alice 的流在批准之前打开，批准之后收到一帧 `mode`（`tm.modesOf` 开的是 alice 的流，`upgrade_submit_test.go:98-106`；设计审查 P3A-N9）。
+2. **批准**：dana（第二位管理员）批准，答 200，答复整值断言（`state: approved`、`submitted_by` 是 erin、`report` 原样、`ending`、`rollback_*` 为空；`started_by`、`submitted_by` 与批准人是三个不同的人）；笔记本 `mode = llm_wiki`、`source_root_id` 是 `raw`、升级的四列为空；`upgrade_nodes` 没有这次升级的行；`notebook_upgrades` 的行 `approved`、审计列是 dana 与时刻；`assertSourceHashesMatchRebuild`、`checkPages`（含 `sourceHashGap` 与升级规则）、`checkLinks`、`checkSearch`（后两个 S1 建成时漏了，修复一轮补上，审查 P3S1A-N3 = C-N3）；`getUpgrade` 答 404 `wiki.upgrade_not_found`；笔记本的读答 `mode: llm_wiki`、`upgrade: null`；之后 LLM Wiki 的契约生效：删除根下的 `AGENTS` 答 `page.protected`、编辑一页来源答 `page.source_immutable`；info 一行（3.14），`sources_hashed` 等于期望的数（五：两页、一页带正文的文件夹页、两个附件）。
+3. **另一个标签页**：alice 的流在批准之前打开，批准之后收到一帧 `mode`（`tm.modesOf` 开的是 alice 的流，`upgrade_submit_test.go:98-106`；设计审查 P3A-N9）。与第 2 格是同一次批准，S1 合成一格"approved, another tab told"（3.23）。
 4. **闸门在锁下再核**：另一本 `tm.reviewed`，以 SQL 把根下 `AGENTS` 的正文清空（绕过冻结，模拟缺陷；同时改 `byte_size` 与 `content_hash`，`00013_page_page_contents.sql:12-15` 的检查），批准答 409 `wiki.upgrade_not_ready`，`detail` 写着 `agents` 与"still in review"；行与模式不变、没有 info；error 一行整行断言（`notebook_id`、`upgrade_id`、`failed_gates` 是 `["agents"]`，决定 293）。
 5. **空的重建**（00 号文档第 9 节的反向对照）：另配一个应用，`wiring.wiki` 把 `SourceHashes` 换成什么也不做、交回 0 的替身；批准答 200，而 `sourceHashRebuildMismatches`（`source_hash_invariant_test.go:43`）答出的节点的集合恰是这本笔记本的来源（`checkPages` 只给每条规则的计数句子，读不出集合；设计审查 P3B-N5），不是调 `checkPages` 让测试失败。
-6. **自己的期限**（照发起的"its own deadline"，`upgrade_start_test.go:216-280`）：另配应用，第一、三格 `ApproveTimeout` 300 ms，第二格 2 s（见下）；三格各答 503、`Retry-After: 1`、warn 一行（`timeout_ms` 是这一格的期限）、没有 error 行、什么也没写（模式、四列、哈希、基线行、wiki 的行）、`checkPages`：
+6. **自己的期限**（照发起的"its own deadline"，`upgrade_start_test.go:216-280`）：另配一个应用，三格的 `ApproveTimeout` 都取 2 s（初稿写第一、三格 300 ms、第二格 2 s：第二格必须 2 s，另起一个 300 ms 的应用只为两格各快约 1.7 秒，不值，2 s 下第一、三格一样确定；S1 的实施，3.23）；配应用的钩子先断言组合根交的 `ApproveTimeout` 是测试应用的请求 4 s 的四分之三，再换成 2 s，竞态的八份里也看得见 `* 3 / 4`（审查 P3S1A-N6，修复一轮）；三格各答 503、`Retry-After: 1`、warn 一行（`timeout_ms` 是这一格的期限）、没有 error 行、什么也没写（模式、四列、哈希、基线行、wiki 的行）、`checkPages`：
    - 语句之中、判定之前：测试持着笔记本行（`tm.holdNotebook`），批准等在锁上到期；
    - 语句之中、写了之后：测试持着 `raw` 下一页来源的 `nodes` 行（`SELECT … FOR UPDATE`），批准写了模式、清了哈希之后，`SetSourceHashes` 等在那一行上到期（`ForgetSources` 不碰它：普通笔记本的哈希都是空，`WHERE source_hash IS NOT NULL` 不匹配）。钉住"写了之后到期"，不只看 503 与"什么也没写"（期限在更早的一步到期，例如慢的 runner 上 300 ms 在 `SourceNodes` 就用完，也一样绿）：包住 `SourceHashes` 的一层在进 `Rebuild` 时记下（不拦，照 `slowCapture.waited`），并以 `pgtest.WaitForLockWaitsOn(nodes, 1)` 看到批准等在那一行上，两样都断言（设计审查 P3B-N6）。这一格的 `ApproveTimeout` 取 2 s：这个等待只在"走到 `SetSourceHashes`"与期限到期之间，`WaitForLockWaitsOn` 每 10 ms 轮询、到它自己的时限就 `t.Fatal`（`pgtest/lockwait.go:45`、`:136-155`），300 ms 在慢的 runner 上可能还没走到这一步就到期，会偶发地红；2 s 下等待者在锁上一直等到期限，这一格只多约 2 秒（设计审查 P3B-N9）；
    - 两条语句之间：包住 `SourceHashes` 的替身在 `Rebuild` 里等 ctx 到期（照 `slowCapture`，`:286-298`）。
@@ -1101,7 +1144,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 1. **退回的码**：404、404（carol）、403（bob）、没有升级 409、`upgrading` 409、`rolling_back` 409；审阅中没有报告、刚提交：409、`detail` 含"still being checked"；以 SQL 拨回一小时：200（接管）。
 2. **退回**：有报告的升级，dana 退回，答复整值断言（`upgrading`，提交与报告为空）；行是 `backToUpgrading`（`upgrade_submit_test.go:88-91`）；一帧 `mode`；之后 alice 的 agent 经 MCP 写一页原有页的 frontmatter 被放行（`tm.agent`），再交通过、存下新的报告（`submission_id` 不同）；info 一行（`reported: true`）。
 3. **驳回的码**：404、404、403、没有升级 409、`upgrading` 409（什么也没写、没有任务）。
-4. **驳回**：有报告的升级，dana 驳回：答 `rolling_back`、`ending: rejected`、带任务；info 一行带 `job_id`；回滚做完（`tm.endedBackground`）之后数 `mode`，共 2 帧（驳回一帧、做完一帧：回滚不停住时小笔记本几十毫秒就做完，在做完之前数会读到 1 或 2 帧，所以等做完再数；设计审查 P3A-M4，取"在 `endedBackground` 之后数"的那一种）；行是 `rolled_back`、`rejected`、`rollback_complete = true`，提交与报告留着（`notebook_upgrades_rejected_check`），基线复原（发起时的 frontmatter），`checkPages`。审阅中没有报告的也可以驳回：答 200、之后同样做完。
+4. **驳回**：有报告的升级，dana 驳回：答 `rolling_back`、`ending: rejected`、带任务；info 一行带 `job_id`；回滚做完（`tm.endedBackground`）之后数 `mode`，共 2 帧（驳回一帧、做完一帧：回滚不停住时小笔记本几十毫秒就做完，在做完之前数会读到 1 或 2 帧，所以等做完再数；设计审查 P3A-M4，取"在 `endedBackground` 之后数"的那一种）；行是 `rolled_back`、`rejected`、`rollback_complete = true`，提交与报告留着（`notebook_upgrades_rejected_check`），基线复原（驳回之前先由 dana 退回，alice 的 agent 经 MCP 改 `Note` 的 frontmatter（仍干净），erin 再交，再驳回；之后正文回到 `cleanNote`、发起写的 `AGENTS` 不在。审阅中冻结 agent 的写，所以要先退回（审查 P3S1C-N7）。S1 建成时只断言后者与正文同发起时，不靠回滚也成立，审查 P3S1A-N4，修复一轮 `cc751dca`），`checkPages`。审阅中没有报告的也可以驳回：答 200、之后同样做完。
 5. **日志**：三种 info 的字段整行断言（3.14）。
 
 **`TestUpgradeTrashReservedTitles`**（`bootstrap/upgrade_trash_test.go`，新，第七份）：一本普通笔记本，根下建 `index`、`log` 两页并各自删掉（两个变更集），再建一页笔记；发起、交、批准（同 `tm.reviewed` 的做法）。之后：
@@ -1113,25 +1156,25 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 - 撤销改名（设计审查 P3A-M5）：同一本笔记本根下另有一页 `index.md`，发起之前就在、不删；升级中 alice 的 agent 经 MCP 把它改名为 `Index notes`（闸门 3 才过），再交、批准。之后 `revertChangeset` 那次改名：409 `page.virtual_file`，名字仍是 `Index notes`。同步撤销一次就够，后台撤销由上面恢复的那一格盖住；
 - `checkPages`（根下没有保留的键，00 号文档的 LLM Wiki 规则 `:150-152`）。
 
-**`TestUpgradeStatesReachTheStreams`**（`upgrade_start_test.go:388-480`）在现有的一串之后加：发起、交（存下报告，2 帧）、退回（1）、交（2）、驳回（1）、回滚做完（1）、发起、交（2）、批准（1，`From standard`、`To llm_wiki`）。驳回的一步照现有的放弃（`:425-450`）：`stops.arm(nb, 1, 0)` 之后驳回，任务停在第一个计划，数 1 帧；`stops.goOn()` 之后回滚做完，再数 1 帧（设计审查 P3A-M4）。三个流（alice 管理员、bob 读者、carol 看不到）照旧 `[n, n, 0]`。反向对照：组合根交给 `notebook.NewUpgradeStates` 空的订阅者时这些步收不到帧（同现有的步，P1 设计 3.15）。
+**`TestUpgradeStatesReachTheStreams`**（`upgrade_start_test.go:388-480`）在现有的一串之后加：发起、交（存下报告，2 帧）、退回（1）、交（2）、驳回（1）、回滚做完（1）、发起、交（2）、批准（1；帧里没有前后模式，`Publish` 的 `From standard`、`To llm_wiki` 由单元 `TestApproveUpgrade` 整值断言，初稿写在这里，审查 P3S1A-N7 = C-N2）。驳回的一步照现有的放弃（`:425-450`）：`stops.arm(nb, 1, 0, false)`（四个参数，S1 的实施）之后驳回，任务停在第一个计划，数 1 帧；`stops.goOn()` 之后回滚做完，再数 1 帧（设计审查 P3A-M4）。三个流（alice 管理员、bob 读者、carol 看不到）照旧 `[n, n, 0]`。反向对照：组合根交给 `notebook.NewUpgradeStates` 空的订阅者时这些步收不到帧（同现有的步，P1 设计 3.15）。
 
 **成本守卫 `TestUpgradeApprovalTakesItsTimeAtAnyStatistics`**（`bootstrap/upgrade_approve_cost_test.go`，`//go:build !race`，costs-1，第 280 条）：
 
-- **种子**（SQL，05-lessons 第 1 节；照设计时的探针，7.6）：一本普通笔记本，根下 `AGENTS`（正文非空）、`raw` 下 500 个文件夹页（带正文）、每个下面 90 页带正文、5 页空页、4 个附件（`asset_blobs` 的行）：约 4.75 万个要写的哈希、约 6 万个节点；根下另一个文件夹里 1 万页带干净 frontmatter 的笔记。库里另有九本各 5 万页、来源带哈希的 LLM Wiki 与它们各自一次升级的基线行（约 51 万行 `upgrade_nodes`），各另有 2,000 个附件（附件节点与 `asset_blobs` 的行），让 `AttachmentInfos` 丢了键时读到别本的行（决定 240；设计审查 P3B-I1：库里只有这一本的附件时，`asset_blobs` 的顺序扫描本来就最便宜，丢了键看不出来）。之后经 REST 发起与提交（真的路径，报告由提交存下），再以这个库作模板。模板里照发起的守卫关掉这几张表的 autovacuum（表的存储参数随副本复制）。
+- **种子**（SQL，05-lessons 第 1 节；照设计时的探针，7.6）：一本普通笔记本，根下 `AGENTS`（正文非空）、`raw` 下 500 个文件夹页（带正文）、每个下面 90 页带正文、5 页空页、4 个附件（`asset_blobs` 的行）：约 4.75 万个要写的哈希、约 6 万个节点；根下另一个文件夹里 1 万页带干净 frontmatter 的笔记。库里另有九本各 5 万页、来源带哈希的 LLM Wiki 与它们各自一次升级的基线行（约 51 万行 `upgrade_nodes`；第 295 条：每本根下 `raw` 收 45,000 页与 2,000 个附件、带哈希，另 4,999 页在根下，基线行用一个没有行的升级 id），各另有 2,000 个附件（附件节点与 `asset_blobs` 的行），让 `AttachmentInfos` 丢了键时读到别本的行（决定 240；设计审查 P3B-I1：库里只有这一本的附件时，`asset_blobs` 的顺序扫描本来就最便宜，丢了键看不出来）。之后经 REST 发起与提交（真的路径，报告由提交存下），再以这个库作模板。模板里照发起的守卫关掉这几张表的 autovacuum（表的存储参数随副本复制）。
 - **配置**：生产的请求 15 秒（`ApproveTimeout` 11.25 秒），同 `bootstrap/wiki_lint_cost_test.go:27-34` 的写法另配；`wiring.wiki` 里断言 `d.ApproveTimeout == 15 s × 3/4`，守住组合根的 `* 3 / 4`（同发起的守卫断言 `StartTimeout`，`upgrade_start_cost_test.go:114-117`）。
-- **统计状态 × 计划**（设计审查 P3B-M2）：三种状态——"从未分析"（在副本上清 `nodes`、`page_contents`、`asset_blobs`、`upgrade_nodes`、`notebook_upgrades` 的统计）；"发起留下的统计"（种子之后 `ANALYZE`，发起自己分析 `upgrade_nodes`；模板原样）；"这本笔记本的页在统计之后才写入"（另一个模板：另九本种好就 `ANALYZE`，再种这一本、经 REST 发起与提交，统计以为它很小：批准真会遇到的过时，一本刚导入的大笔记本）——× `plan_cache_mode` 自定义与通用（05-lessons 第 4 节）。初稿的"只在别的升级的统计下（发起之前分析）"经 REST 发起做不出来（发起在提交之后 `ANALYZE upgrade_nodes`，`start_upgrade.go:178`），删掉。每一格三次批准，每次在模板的一份新副本上（`pgtest.NewDatabaseFrom`，第 280 条），新起一个应用。每份副本上 `ALTER DATABASE <副本> SET plan_cache_mode`：副本不继承模板的库级设置（`CREATE DATABASE … TEMPLATE` 不复制它），新应用的连接以 `SHOW plan_cache_mode` 断言是这一格的方式。新应用先 `awaitJob` 等启动时的周期作业做完（`assets_jobs_test.go:122`），再批准、计时。
-- **计划为主**（决定 236、240、244；设计审查 P3B-I1）：经 `wiring.queryTracer`（同 `startCostTrace`，`upgrade_start_cost_test.go:311`）记下批准的事务里的语句与它们的参数，在同一状态、同一计划方式下 `EXPLAIN`（通用计划用 `EXPLAIN (GENERIC_PLAN)`，同 `startCostPlans`，`:441-496`）。照 `startCostPlanned()` 的写法列出被判的语句，不写"每条语句"：
-  - **判**：`ForgetSources`、`LintNodeMetadata`、`SourceRebuildHeads`（决定 292）、`AttachmentInfos`、`SetSourceHashes`、`DeleteUpgradeNodes`、`RootNodesByKey`、`FindNodeIn`、`PageContent`。`nodes` 只经首列是 `notebook_id` 的索引或 `nodes_pkey`，`page_contents` 只经 `page_contents_pkey`，`asset_blobs` 只经 `asset_blobs_node_id_key`（`AttachmentInfos` 按 `node_id = ANY(…)` 读，走这个唯一约束，不是主键 `id`，`00027_asset_asset_blobs.sql:10-11`），`upgrade_nodes` 只经 `upgrade_nodes_pkey` 的前缀；都不顺序扫描；嵌套循环内侧逐行重复的扫描以外行的键为条件（不逐行重读整个集合）；`SetSourceHashes` 每块的计划至多读这本笔记本一遍（哈希建在哪一边都可以），或逐行经键（3.4 的"界与分块"：自定义计划把哈希建在这本笔记本上，通用计划逐行经键或把哈希建在这一块上；设计审查 P3B-M1）。
+- **统计状态 × 计划**（设计审查 P3B-M2）：三种状态——"从未分析"（在副本上清 `nodes`、`page_contents`、`asset_blobs`、`upgrade_nodes`、`notebook_upgrades` 的统计）；"发起留下的统计"（种子之后 `ANALYZE`，发起自己分析 `upgrade_nodes`；模板原样）；"这本笔记本的页在统计之后才写入"（另一个模板：另九本种好就 `ANALYZE`，再种这一本、经 REST 发起与提交，统计以为它很小：批准真会遇到的过时，一本刚导入的大笔记本）——× `plan_cache_mode` 自定义与通用（05-lessons 第 4 节）。初稿的"只在别的升级的统计下（发起之前分析）"经 REST 发起做不出来（发起在提交之后 `ANALYZE upgrade_nodes`，`start_upgrade.go:178`），删掉。每一格三次批准，每次在模板的一份新副本上（`pgtest.NewDatabaseFrom`，第 280 条），新起一个应用。每份副本上 `ALTER DATABASE <副本> SET plan_cache_mode`：副本不继承模板的库级设置（`CREATE DATABASE … TEMPLATE` 不复制它），新应用的连接以 `SHOW plan_cache_mode` 断言是这一格的方式。新应用先 `awaitJob(jobs.PurgeKind)`（`assets_jobs_test.go:122`），再等 `river_job` 里到期的作业都不在 `available`、`running`、`retryable`（启动时的周期作业做完；S1 的实施），再批准、计时。
+- **计划为主**（决定 236、240、244；设计审查 P3B-I1）：经 `wiring.queryTracer`（同 `startCostTrace`，`upgrade_start_cost_test.go:311`）记下批准的事务里的语句与它们的参数；每条被判的语句在它第一次真跑之前，在 tracer 的 `TraceQueryStart` 里、同一连接上 `EXPLAIN`（自定义带它的参数，通用计划经 simple protocol 用 `EXPLAIN (GENERIC_PLAN)`，同 `startCostPlans`，`:441-496`），用时从 `elapsed_ms` 里减；`SHOW plan_cache_mode` 在包住 `DeleteBaseline` 的一层、每次批准断言（第 296 条：S1 建成时在删基线之后判，`SetSourceHashes` 已写完，判的不是生产那一刻的状态，审查 P3S1B-M2，修复一轮改）。`EXPLAIN` 本身出错时先报计划的错误（审查 P3S1B-N1）。规则另由不要数据库的短测试 `TestTheApprovalGuardJudgesItsReads`（short 一行）以手写的计划逐条判，每个子条件一格反例（S1 的实施者加的，修复一轮补全，审查 P3S1B-M1）。照 `startCostPlanned()` 的写法列出被判的语句，不写"每条语句"：
+  - **判**：`ForgetSources`、`LintNodeMetadata`、`SourceRebuildHeads`（决定 292）、`AttachmentInfos`、`SetSourceHashes`、`DeleteUpgradeNodes`、`RootNodesByKey`、`FindNodeIn`、`PageContent`。`nodes` 只经首列是 `notebook_id` 的索引（条件里有 `notebook_id = `）或条件里有 `(id = ` 的 `nodes_pkey`（没有条件的 `nodes_pkey` 按键序读整张表；S1 建成时不看条件，审查 P3S1B-M1，修复一轮），`page_contents` 只经 `page_contents_pkey`，`asset_blobs` 只经 `asset_blobs_node_id_key`（`AttachmentInfos` 按 `node_id = ANY(…)` 读，走这个唯一约束，不是主键 `id`，`00027_asset_asset_blobs.sql:10-11`），`upgrade_nodes` 只经 `upgrade_nodes_pkey` 的前缀；都不顺序扫描；嵌套循环内侧逐行重复的扫描以外行的键为条件（不逐行重读整个集合；内侧逐行的 `nodes` 认条件里的 `(id = `，经 `nodes_notebook_id_id_key` 也算，第 297 条；条件含 `= ANY` 的拒绝，每行重读一组，修复一轮加的）；`SourceRebuildHeads` 另更严：每个 `nodes`、`page_contents` 的读都按行的键，这本笔记本的 `nodes` 一次也不读（"读头只经键"，S1 的变异 16a 补的，3.23）；`SetSourceHashes` 每块的计划至多读这本笔记本一遍（哈希建在哪一边都可以），或逐行经键（3.4 的"界与分块"：自定义计划把哈希建在这本笔记本上，通用计划逐行经键或把哈希建在这一块上；设计审查 P3B-M1）。
   - **不判**：`notebooks`、`notebook_upgrades`、`workspaces`、`users` 与成员表的点读（`LockNotebook`、`CurrentUpgrade`、`ShareByID`、`named`、判定）：守卫的库里它们只有几行，顺序扫描是对的计划（审查 B 实测分析过的两种状态下 `LockNotebook`、`CurrentUpgrade` 两种计划都是 `Seq Scan`），判它们要另种上千本笔记本，不值。
   - **分块的语句判第一块**（满的一块，一万个）：`SourceRebuildHeads`、`SetSourceHashes` 每次批准跑五、六块，`startCostTrace` 那样按名字存只留最后一块（7,000 或附件那一块），块的大小不同自定义计划可以不同；这个守卫的 tracer 按名字留第一次的参数。
   - 列出的语句在记下的语句里没有出现就失败（照 `startCostPlans`，`upgrade_start_cost_test.go:447-450` 的"the start ran no %s"；设计审查 P3B-N11）。计划有问题就停在计时之前。自定义计划由设计时的探针、通用计划由审查 B 的探针核对过（`asset_blobs` 与小表除外，见上），`SourceRebuildHeads` 的两种由修订时的探针核对过（3.4）。
 - **只核对计划的种子**（决定 292）：同上的形状，另几本只有四本（这一本约占 `nodes` 的 22%，审查 B 的变体：`SourceHeads` 在这里换成每块顺序读整张 `page_contents`），三种统计状态 × 两种计划，每格一次批准（在副本上），只判重建的几条语句（`ForgetSources`、`LintNodeMetadata`、`SourceRebuildHeads`、`AttachmentInfos`、`SetSourceHashes`）的计划，同上的断言，不计时（同决定 244 的"原来的形状只核对计划"）。`SourceRebuildHeads` 两种计划都只经键，`page_contents` 不顺序扫描。不判 `DeleteUpgradeNodes`、`RootNodesByKey`、`FindNodeIn`、`PageContent`：这一本占比大时，删基线读走整张 `upgrade_nodes` 是对的计划（设计者的日志里 22% 时分析过的自定义计划与"统计之后才写入"的通用计划都是如此），照上面的清单全判会在对的计划上失败（设计审查 P3B-N8）。三种状态照上面的做法得到，所以这一种子也要两个模板：一个是另四本与这一本都种好再 `ANALYZE`、经 REST 发起与提交（"发起留下的统计"，副本上清统计就是"从未分析"）；另一个是另四本种好就 `ANALYZE`，再种这一本、经 REST 发起与提交（"这本笔记本在统计之后才写入"；设计审查 P3B-N12）。
-- **时长为辅**：每格三次的服务端 `elapsed_ms`（`upgrade approved` 一行）的中位数在界之内，每次都答 200；界取本机两轮较大的中位数 × 3（设计时探针里 5 万个来源的重建与删基线本机 0.99–1.19 秒，整个批准估 1.2–1.4 秒，界约 4 秒，远在 11.25 秒之下）；带 `-v` 打出每格的中位数与各段。
-- 本机估计约 4–5 分钟（四个模板：计时的两个、只核对计划的两个，种子各约 10–20 秒，发起与提交各约 3 秒，另一个模板约 20–30 秒，审查 B 估；18 次计时的批准与 6 次只核对计划的，各一份副本，副本约 0.5 秒一份，审查 B 实测）。`Makefile` 的这一行显式带 `-timeout 15m`（下面与 7.5；设计审查 P3B-M7）。
+- **时长为辅**：每格三次的服务端 `elapsed_ms`（`upgrade approved` 一行）的中位数在界之内，每次都答 200；界取本机两轮较大的中位数 × 3（S1 建成时 1.285 s × 3，向上取整到 100 ms，3.9 s；合并之后两次 `main` 的 costs-1 任一次在 EPYC 7763 或更慢的 runner 上任一格的中位数过 3.25 s，就调到 4.5 s，第 298 条；设计时探针里 5 万个来源的重建与删基线本机 0.99–1.19 秒，整个批准估 1.2–1.4 秒，界约 4 秒，远在 11.25 秒之下）；带 `-v` 打出每格的中位数与各段。
+- 本机估计约 4–5 分钟（S1 实测 111–121 秒，`Makefile` 的说明照实测写，10.1；四个模板：计时的两个、只核对计划的两个，种子各约 10–20 秒，发起与提交各约 3 秒，另一个模板约 20–30 秒，审查 B 估；18 次计时的批准与 6 次只核对计划的，各一份副本，副本约 0.5 秒一份，审查 B 实测）。`Makefile` 的这一行显式带 `-timeout 15m`（下面与 7.5；设计审查 P3B-M7）。
 
 ### 7.2 交错
 
-05-lessons 第 3 节：持住双方都要的行（`pgtest.WaitForLockWaits`），再放开，先后在共用的日志里断言；每个交错结束时 `checkPages`、`checkLinks`、`checkSearch`。编号照 00 号文档 4.16。
+05-lessons 第 3 节：持住双方都要的行（`pgtest.WaitForLockWaits`），再放开，先后在共用的日志里断言；`checkPages`、`checkLinks`、`checkSearch` 在全部交错之后对整个库查一次（`TestUpgradeReviewInterleavings` 的末尾；库里有每个交错的笔记本，与每个交错结束时各查一次效果相同；初稿写"每个交错结束时"，S1 的实施，审查 P3S1C-N3，3.23）。编号照 00 号文档 4.16。
 
 | # | 交错 | 怎样逼出 | 断言 | 在哪里 |
 |---|---|---|---|---|
@@ -1147,7 +1190,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 7.3 变异
 
-照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。
+照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。S1 的实施与审查之后，"读头"一行拆成 16a、16b，三处单元测试的名字照实；S1 的各行之后接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S1 的审查记录](reviews/P3-S1-review-actions-review.md) 里的名字记（3.23）。
 
 | 变异 | 抓它的测试 |
 |---|---|
@@ -1166,7 +1209,8 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 | 重建跳过缺文件行的附件 | 同上的缺附件一格；`source_rebuild_test.go` |
 | 重建不核每块写的行数 | `source_rebuild_test.go` 的"写少一个" |
 | 重建的调用换回 `SourceHeads`（决定 292） | 守卫的两个种子都以"没跑过 `SourceRebuildHeads`"失败（列出的语句没出现就失败，7.1；设计审查 P3B-N11） |
-| `SourceRebuildHeads` 名字不变、SQL 改回连接的形状（决定 292） | 守卫的只核对计划的种子（这一本约占 22%，分析过、自定义计划顺序读 `page_contents`）；在一成的种子上抓不到（审查 B 的探针：三种状态都逐个经 `page_contents_pkey`） |
+| `SourceRebuildHeads` 名字不变、SQL 改成"`unnest` 连 `nodes`、左连 `page_contents`"的普通连接（16a；决定 292） | 守卫的两个种子的每格（这本笔记本的 `nodes` 按笔记本的索引读、不按键）。"读头只经键"一条之前抓不到：通用规则放行"按笔记本读一次 `nodes`"，`page_contents` 逐行经主键、不顺序扫描；S1 的变异第一轮发现，补了这一条与短测试一格（3.23） |
+| `SourceRebuildHeads` 换成 `SourceHeads` 的形状（16b；初稿写的"改回连接的形状"，决定 292） | 同上的每格；只核对计划的种子（这一本约占 22%）"发起留下的统计"的两格另顺序读 `page_contents`（自定义计划）。初稿写"在一成的种子上抓不到"（审查 B 的探针：三种状态都逐个经 `page_contents_pkey`），是"读头只经键"一条之前的说法 |
 | 重建以 `%v` 包 store 的错误 | `source_rebuild_test.go` 的 `DeadlineExceeded` 一格（批准会把 503 答成 500） |
 | 重建给零字节的页写哈希 | `TestTheSourceRebuildIsTheInvariant`（空页一格）；`checkPages` |
 | 重建不给零字节的附件写哈希 | 同上（零字节附件一格） |
@@ -1177,16 +1221,30 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 | 批准用请求的 ctx、不另设期限 | `TestUpgradeApproval` 第 6 格（等笔记本行的那一格在请求的 4 秒上答 500） |
 | 期限的判断不看 `ctx.Err() == nil` | 单元"请求的 ctx 先到期"一格 |
 | 批准的 info 在提交之前记 | 单元的提交失败一格（替身的 `commit` 钩子：回调成功之后提交失败，没有 info；调用的次序里 info 在 `commit` 之后；设计审查 P3A-M3 = P3B-M3 第 1 条：把 info 挪进回调的末尾时，"`Rows.Approve` 答假"一格在 info 之前就返回了，看不见） |
-| 驳回的 info 在提交之前记 | `reject_upgrade_test.go` 的提交失败一格 |
-| 退回的 info 在提交之前记 | `send_back_upgrade_test.go` 的提交失败一格 |
+| 驳回的 info 在提交之前记 | `TestRejectUpgrade` 的提交失败一格（`review_upgrade_test.go`，3.23） |
+| 退回的 info 在提交之前记 | `TestSendBackUpgrade` 的提交失败一格（`review_upgrade_test.go`，3.23） |
 | 驳回接受 `upgrading` | `TestUpgradeReview` 驳回的码的 `upgrading` 一格（`notebook_upgrades_rejected_check` 会让它 500，而测试要 409） |
 | 驳回记 `abandoned` | `TestUpgradeReview` 第 4 格的 `ending`；单元 |
 | 退回不判 `ReviewChecking` | `TestUpgradeReview` 退回的码"刚提交"一格；交错 7 之退回（一） |
 | 退回的 SQL 不清报告 | `TestTheReviewsRows`（`notebook_upgrades_report_check` 会让写失败，测试要整行） |
-| 退回的 `taken_over` 用 `at` 不减 `SubmitTimeout` | `send_back_upgrade_test.go` 的整值一格（`TestTheReviewsRows` 以显式的 `taken_over` 测 SQL，看不见用例传了什么；`TestUpgradeReview` 里 `ReviewOf` 先答 409，到不了 SQL；设计审查 P3B-N2） |
+| 退回的 `taken_over` 用 `at` 不减 `SubmitTimeout` | `TestSendBackUpgrade` 的整值一格（`TestTheReviewsRows` 以显式的 `taken_over` 测 SQL，看不见用例传了什么；`TestUpgradeReview` 里 `ReviewOf` 先答 409，到不了 SQL；设计审查 P3B-N2） |
 | 退回不 `SetState`（笔记本留在审阅中） | `TestUpgradeReview` 第 2 格：agent 的写仍被冻结 |
 | 第 181 条不限 `ChangesetRevert` | `TestUpgradeTrashReservedTitles` 的 `restoreNode` 与 `startTrashRestore` 两格（答 `page.virtual_file` 而不是 200）；`contract_test.go` |
 | 去掉第 181 条的改动 | 同一个测试的两个撤销格 |
+| `UpgradeStates.Approve` 不判事务（o1，实施者加的） | `TestAnUpgradeIsApproved` 的"事务外"一格（放在升级进了审阅之后；第一轮放在 `upgrading` 上，事务外的写本来就改不到行，没抓到，推送之前改） |
+| `SourceRebuild.Rebuild` 不判事务（o2） | `TestTheSourceRebuildIsTheInvariant` |
+| `SourceRebuildHeads` 不判笔记本、不判删除（o3、o4，生成的常量） | `TestSourceRebuildHeadsReadTheirKeys` |
+| 退回的 info 的 `reported` 恒为假（o5） | `TestUpgradeReview` 的退回一格 |
+| 组合根的 `ApproveTimeout` 取整个请求（o6） | 守卫（`approveCostApp` 断言 11.25 s）；修复一轮之后另由 `TestUpgradeApproval` 换期限的钩子（第八份，审查 P3S1A-N6） |
+| 驳回的处理函数调退回的用例（o7） | `TestTheUpgradeIsAnswered` |
+| 守卫去掉"读头只经键"一条（o8，对照） | `TestTheApprovalGuardJudgesItsReads` 的"读头连上读一次的这本笔记本"一格 |
+| 判计划的规则的子条件各自去掉（审查 B 的 r1–r6：`nodes_notebook_id_*` 不要求 `notebook_id = `、`page_contents_pkey` 不要求 `node_id = `、`asset_blobs_node_id_key` 不要求 `node_id = `、`upgrade_nodes` 怎么读都放行、`upgrade_nodes` 内侧不要求 `node_id = `、去掉通用的"内侧逐行按外行的键"）；`nodes_pkey` 不看条件 | `TestTheApprovalGuardJudgesItsReads` 的反例各一格（S1 建成时都照过，审查 P3S1B-M1；修复一轮 `9c637540` 补全之后都死） |
+| 去掉"内侧逐行的 `nodes` 不许 `= ANY`"（修复一轮加的一条，r8） | `TestTheApprovalGuardJudgesItsReads` 的"a set of nodes by their key again for each id"一格 |
+| "内侧逐行不许 `= ANY`"连只读一次的也拒（审查 B 在修复核对时加的 r9） | 短测试的正例"a set of nodes by their key once"（修复一轮） |
+| 批准交给 `JudgeRoots` 的来源根换成零值（审查 A 的 a1） | `TestApproveUpgrade` 的"来源根是根下的 `AGENTS`"一格（修复一轮，审查 P3S1A-N1） |
+| 退回的"行不是这次升级的"判断只剩 `!ok`（a2） | `TestSendBackUpgrade` 的"别的升级的行"一格（修复一轮，审查 P3S1A-N2） |
+| 驳回的回滚不写回正文（审查 P3S1A-N4；n4：`RollbackState` 不出正文的版本） | `TestUpgradeReview` 的驳回一格（驳回之前先退回、改过 `Note` 的 frontmatter、再交，修复一轮 `cc751dca`；n4 改前活、改后死：任务以 `internal` 停、行留在 `rolling_back`、正文仍是改过的） |
+| `SourceRebuildHeads` 的 `page_contents` 改为普通的 `LEFT JOIN`、保留 `nodes` 的 `LATERAL … LIMIT 1`（审查 B 的 b-16c） | 没有（等价：两个种子上 24 个计划与原样相同，只少 `Memoize` 下的一个 `Limit`） |
 | `UpgradePlaybook` 在 `reviewing` 也答文字 | `TestUpgradePromptMatrix` 的 `reviewing` 列 |
 | `UpgradePlaybook` 不判 `lint.read` | `upgrade_playbook_test.go` 的"看不到答 `notebook.not_found`"一格与调用的次序（替身的判定）。整个程序里看不到的、删掉的笔记本在 HTTP 的边上由 `Gate`（`node.list`，`page/mcp_entry.go:29-31`、`mcpserver/edge.go:232-249`）就答 404，到不了用例（设计审查 P3B-M3 第 2 条 = P3C-N6） |
 | `upgrade` 的 prompt 经 `Playbooks.Execute`（`PlaybookText` 收进它） | `TestUpgradePromptMatrix` 的 `llm_wiki` 列（答文字而期望 `wiki.upgrade_state`）与 `upgrading` 列（答 `notebook.not_llm_wiki` 而期望文字）。只给 `PlaybookText` 的 `switch` 加一支而没有调用者是等价变异（设计审查 P3B-N3） |
@@ -1249,9 +1307,11 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 都在 450 之下，最贴近的约 407（第四份，余 43 秒）；挪四个的结论不变，初稿附注里"只挪三个"的退路删掉。审查 B 以本机实测折回（包的比再加约 32 秒的构建）：第四份 192.3 × 1.828 + 32 ≈ 384，第六份 240.4 × 1.383 + 32 ≈ 364，都在上面的区间之内或之下。全放进第七份时约 317 + (15 + [38, 53]) × 1.565 = 400–423，再加契约约 405–430；分摊之后两份都在 345–375，给 M11 收尾与 M12 留的余量更多（第 290 条）。
 
+**S1 的实测**（10.1）：本机第四份挪后 193.9、191.8 秒、第六份 242.2、242.2 秒，用本机挪前的两轮算比、折到 7763 约 394、370 秒；第七份 182.8、185.9 秒、第八份 187.2、185.8 秒，折到约 321、318 秒；P3 加的测试比上面估的少（`TestUpgradeApproval` 10.0 秒、`TestUpgradeReviewInterleavings` 2.7 秒、`TestUpgradeReview` 1.9 秒、`TestUpgradeTrashReservedTitles` 1.1 秒）。分支 CI（43088294571）八份的 Test 一步 377、238、411、345、308、333、322、307 秒：第七份在 7763 上 322 秒；第四、六、八份都在 9V74 上，照第八份的 9V74 → 7763 之比 1.189 折约 411、396、359 秒，都在 450 之下，最贴近的是第四份；以合并之后两次 `main` 为准（第 8 节第 1 条）。
+
 **要不要把契约在进程里只读一次**（P2 第 9 节：每建一个应用 `apitest.Load` 一次，竞态构建下约 0.63 秒）：P3 不做。它是测试设施的取舍，牵动全部组合根的测试；这一轮挪测试已够，留给 M12 的测试设施（第 9 节）。
 
-**成本的作业**：costs-1 加批准的守卫：本机约 4–5 分钟（四个模板，7.1；7763 上约 7–9 分钟），另加这个作业里第一次编译不带竞态的 `bootstrap` 测试（costs-1 今天各行都是 platform 与 linking 的；costs-2、costs-3 已有这次编译），7763 上约 1 分钟（设计审查 P3B-N7）。基数取 S3 的三次运行（修订核对第二轮 B 以 `gh run view` 取）：
+**成本的作业**：costs-1 加批准的守卫：本机约 4–5 分钟（四个模板，7.1；7763 上约 7–9 分钟；S1 实测本机 111–121 秒，分支 CI 在 Xeon 8370C 上守卫一行包 253 秒、作业 20:05，10.1），另加这个作业里第一次编译不带竞态的 `bootstrap` 测试（costs-1 今天各行都是 platform 与 linking 的；costs-2、costs-3 已有这次编译），7763 上约 1 分钟（设计审查 P3B-N7）。基数取 S3 的三次运行（修订核对第二轮 B 以 `gh run view` 取）：
 
 | 运行 | CPU | 作业 | Test 一步 |
 |---|---|---|---|
@@ -1274,7 +1334,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
   - 组合根第四、六、七、八份：`make -j1 test-go-bootstrap-<n> GO_TEST_RACE="go test -race -count=1 -timeout 15m -v"`，每份两轮，P2 的分份旁支的 `measure.sh` 与 `times.py`；数在 7.5。
   - 批准的重建：一个只在临时 worktree 里的探针测试（`page/adapter/postgres`，真库）：上面的种子在 10 万个来源（1,000 个文件夹）与 5 万个来源（500 个）各跑；两种统计（从未分析；分析过）× 两种方式（`plan_cache_mode` 的 `force_custom_plan` 与 `force_generic_plan`），每格三次，在一个回滚的事务里依次计时 `ForgetSources`、`SourceNodes`、十块 `SourceHeads`、附件的读、十块 `SetSourceHashes`、`DeleteUpgradeNodes`，并 `EXPLAIN` 每一条。结果：10 万个来源合计 2.44–3.68 秒（两轮），5 万个来源 0.99–1.19 秒（两轮，几乎相同）；`SetSourceHashes` 的几种写法都省不下（3.4）。计划（只是自定义计划：带参数经扩展协议发的 `EXPLAIN` 把参数当常量折进计划，`plan_cache_mode` 管不到它，探针的 `force_generic_plan` 一栏其实也是自定义计划；通用计划由审查 B 以 `EXPLAIN (GENERIC_PLAN)` 补量，`nodes`、`page_contents`、`upgrade_nodes` 都经键，见设计审查记录与 3.4 的"界与分块"；设计审查 P3B-M1）：5 万个来源、每格之前 `VACUUM ANALYZE` 的两轮里没有顺序扫描，`nodes` 经 `nodes_notebook_id_*` 的索引与 `nodes_pkey`，`ForgetSources` 在分析过之后经 `nodes_notebook_id_kind_source_hash_idx`；10 万个来源的第二轮在同一个库里反复回滚、关着 autovacuum 之后再 `ANALYZE`，`ForgetSources` 与 `LintNodeMetadata` 换成了整表的顺序扫描（这本笔记本占 `nodes` 的约 20%：110,003 / 560,003，设计审查 P3B-N10 改正初稿的"约 16%"；表里堆着几百万条死行），所以守卫每次批准用一份新副本（第 280 条）。
 - **修订时**（设计审查之后）：临时 worktree（`955fa579`），经 `heavy.sh`，`df` 27–28G；以审查 B 的探针为底，比决定 292 的读头的四种写法在两个种子（这一本占 `nodes` 11.4% 与 22.4%）× 三种统计状态 × 自定义与通用（`EXPLAIN (GENERIC_PLAN)`）上的计划，只看计划、不计时；结果在 3.4。
-- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。
+- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。 S1 照做：第四、六份在 `75f5d077` 与它加 1 号的 `Makefile` 上交替各两轮（`measure.sh`），第七、八份在头上各两轮，守卫四轮（两轮定界，3.9 s），`-list` 的归类用 `m11/tools/shards8-p3.py`；数在 10.1 与 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)"实测"。
 
 ## 8. 完成标准
 
@@ -1321,7 +1381,61 @@ P3 完成，当且仅当：
 
 ## 10. 结果
 
-（空，S1–S3 合并之后填。）
+### 10.1 S1：审阅（服务端）（2026-11-12，合并 `（待填）`）
+
+- **P2 完成之后的 `main`**（S1 开工之前）：记合并号的 `0ffe1758` 与 `docs: M11/P2 done` 的 `955fa579` 一起推，那次的 CI（run 43033276772）e2e 四次（attempt 1–4）都卡在"Install the Playwright browsers"：apt 的镜像 azure.archive.ubuntu.com 每个包都超时，作业到 20 分钟被取消，E2E 一步没有跑；其余 18 项第一次就绿，八份的 Test 一步 376、218、403、310、351、227、203、242 秒。外部故障，代码不改、不开旁支；attempt 2–4 只重跑 e2e。代码与它相同、只多本文的 `75f5d077`（run 43060437171）19 项一次全绿，e2e 8:41（镜像恢复），作为这份代码的 e2e 证据；那一次第四份在 EPYC 7763 上 439 秒（S3 之后三次 445、440、439），第三份 398、第五份 417 秒（都在 7763 上）。S3 之后两次 `main`（43027580603、43033276772）八份的 Test 一步平均 365.5、294.5、369.5、377.5、389、277、234、265.5 秒，都在 450 秒之下（P2 设计第 8 节第 1 条）。S1 从 `75f5d077` 开出。
+- 提交（从 `main` 的 `75f5d077` 开始，照 6.1 的次序，7 个；Step 的文档提交是主持者的；修复一轮另有 4 个（下面），一共 11 个）：
+  - 第 278 条：第四份的四个（两个后台撤销的停止、撤销最新的变更集、唯一的管理员停用时有人加入）挪进第六份；第 290 条：第八份加 `Approval|Review`；`Makefile` 的计数注释与量出的数，`ci.yml` 三行注释，时限不变（`f86b7a6d`）。
+  - 审阅的判定：`ReviewOf`（`Reported`、`Checking`、`Stale`，第 283 条）、`JudgeRoots` 与 `RootGates.Failed`（第 284 条，`JudgeUpgrade` 改用它）、`ApprovalNotReady`（第 282 条，与 `UpgradeNotReady` 共用 `keysOf`）；提交的第一个事务改问 `ReviewOf`（3.9）；notebook 的 `ApproveUpgrade` 一条 `UPDATE`（第 281 条）与 `UpgradeStates.Approve`（事务外拒绝、根为零拒绝、写了不是一行是缺陷），wiki 的端口与组合根的转发；已有的四个替身包一层 `unapproved`（`9432d60a`）。
+  - 批准的哈希重建：`page/app.RebuildSources`（先清全本、再按块读头与附件的文件、写每块核行数，缺头、缺文件、写少都是错误，store 的错误以 `%w` 包）、按键的 `SourceRebuildHeads`（第 292 条）、模块根 `page.NewSourceRebuild` 与它的 `Rebuild`（事务外拒绝）；三组测试（替身、store、真库的不变式）（`8abb2a1d`）。
+  - 批准、驳回、退回：wiki 的两条 SQL 与 `TestTheReviewsRows`；三个用例（3.6–3.8）与单元测试（一个文件，共用的替身 `review_fake_test.go`）；`UpgradeDeps.SourceHashes`、`ApproveTimeout`（请求的四分之三）；契约 `approveUpgrade`、`rejectUpgrade`、`sendBackUpgrade`（`wiki.yaml`，`api/openapi.yaml` 加三个路径，`submitUpgrade` 的一句）与生成物；HTTP 适配器与码的测试；`wiki.Deps` 与组合根；矩阵三行；`TestUpgradeApproval`、`TestUpgradeReview`、`TestUpgradeReviewInterleavings`，流的九步，交错第 7 条的两种退回、第 8 条的批准（`34d77c98`，范围带 `api`、`web`）。
+  - 第 181 条：`CheckContract` 把撤销里的恢复当创建判，`revertChangeset`、`startRevert` 声明 `page.virtual_file`，两个模块的码的测试；`contract_test.go` 四格新加、一格改答；`TestUpgradeTrashReservedTitles`（第七份）（`63cc0b84`，范围带 `api`、`web`）。
+  - 批准的成本守卫（costs-1 的末尾一行，`-v`、`-timeout 15m`）与判计划的短测试 `TestTheApprovalGuardJudgesItsReads`；costs-1 的作业时限 35 → 45 分钟（第 294 条）（`bba17208`，范围 `server, build, ci`）。
+  - e2e：UP6（API、MCP）、UP7（API、MCP）、UP8（API）与六个夹具（`postApprove`/`approveUpgrade`、`postReject`/`rejectUpgrade`、`postSendBack`/`sendBackUpgrade`），导出 `postRevert`（`d7b85bae`）。
+  - 每个提交单独在工作树里 build、vet、`make lint-go`、`make gen-check`、short 测试都通过，另跑它自己的（单元、真库、组合根、网页三项、守卫、UP 的故事）；审查 C 在改写之后的 2–6 号上逐个重跑过一轮（S1 的审查记录"门禁与 CI"）。推送之前改写过一次 2–7 号（旧的都没推过，旧头 `4b852247`）：补变异第一轮抓不到的两处（2 号的 `TestAnUpgradeIsApproved` 事务外一格挪到审阅中；6 号的守卫对 `SourceRebuildHeads` 只许按键读），逐个 `cherry-pick`、不用交互的 rebase。说明写进文件再 `git commit -F`；没有推 `main`，没有 force-push。
+- 与设计不同之处（实施者的号；都是最小的改动，3.23 列出）：
+  1. 已有的四个替身包一层 `unapproved`：两个端口的 `Approve` 同名不同签名，一个类型装不下（3.3）。
+  2. `stops.arm` 四个参数（7.1）。
+  3. 驳回之后"基线复原"断言为发起写的 `AGENTS` 不在、笔记页的正文同发起时（7.1）；不靠回滚也成立，修复一轮改（审查 P3S1A-N4）。
+  4. `api/openapi.yaml` 加三个路径（3.1、3.11）。
+  5. `TestUpgradeApproval` 期限的三格共用一个 2 s 的应用（7.1；设计审查 P3B-N9）。
+  6. "批准"与"另一个标签页"合成一格（7.1）。
+  7. 三个用例的单元测试在一个文件里（3.6–3.8、7.3）。
+  8. 退回之后 agent 的写只改 frontmatter：起初写了正文，答 `page.upgrade_immutable`，是测试写错，照设计改；不是与设计不同（审查 C），不进 3.23。
+  9. 守卫的另几本是根下 `raw` 收 45,000 页与 2,000 个附件的 LLM Wiki（第 295 条，实施中定；7.1）。
+  10. 守卫的计划在第一次批准的事务里、删基线之后判（第 296 条，实施中定）；审查之后改为每条被判的语句第一次真跑之前、在同一连接上判（审查 P3S1B-M2，修复一轮；7.1）。
+  11. 判计划时内侧逐行的 `nodes` 认条件里的 `(id = `（`nodes_notebook_id_id_key`）（第 297 条，实施中定；7.1）。
+  12. 守卫在批准之前等启动时的作业（7.1）。
+  13. 守卫本机 121 秒（设计估 4–5 分钟），`Makefile` 的说明照实测写（6.1、7.5）。
+  14. UP6、UP7 的 API 版本经 API 提交、MCP 版本经 `upgrade_submit`；另加四处 409 的拒绝（第 5 节）。
+  15. 第四、六份只在 1 号提交上量了挪前挪后，没有在头上再量：2–7 号给这两份加的只有契约里的三个操作（逐个操作的几个测试各多三次），设计估约 1.5%；七、八份才是新测试所在，在头上量了（下面"实测"）。
+  16. 7.3 第 16 行做成两条（普通的连接与 `SourceHeads` 的形状）；16a 让变异第一轮发现了守卫的缺口（"读头只经键"，3.23）。
+- 实测（本机，经 `heavy.sh`；出处见 S1 的审查记录"实测"）：`go test -race -list` 551 个顶层测试，八份 145、50、120、120、61、15、28、12，各在恰好一份（基点 547 个，新模式下 145、50、120、120、61、15、27、9；与旧模式比，换份的恰是第 278 条的四个）；第四份挪前 215.4、221.4 秒、挪后 193.9、191.8 秒，第六份 211.5、210.8 → 242.2、242.2 秒（四个在第六份里 29.3、29.1 秒，在第四份里 29.5、29.7 秒），用本机挪前的两轮算比、折到 7763 约 394、370 秒（设计预计 394–407、374–387）；第七份 182.8、185.9 秒、第八份 187.2、185.8 秒，折到 7763 约 321、318 秒（设计预计约 345、350–375）；第八份的新测试 `TestUpgradeApproval` 10.0 秒、`TestUpgradeReviewInterleavings` 2.7 秒、`TestUpgradeReview` 1.9 秒，第七份 `TestUpgradeTrashReservedTitles` 1.1 秒，比设计估的 38–53 秒少（设计按 `TestUpgradeSubmit` 一类估）。批准的守卫：四个模板，四轮六格的中位数 1.08–1.29 s，界 3.9 s（本机两轮最大的中位数 1.285 s 的三倍，向上取整到 100 ms），远在 `ApproveTimeout` 11.25 s 之内；72 次计时的批准里 `SetSourceHashes`（五块合计）0.74–0.94 s、`SourceRebuildHeads` 0.14–0.18 s、`LintNodeMetadata` 0.11–0.15 s；22% 的种子上 `SourceRebuildHeads` 两种计划都只经两个主键（`Function Scan` → 逐行 `nodes_pkey` → `Memoize` → 逐行 `page_contents_pkey`），`SetSourceHashes` 每块至多读这本笔记本一遍；整个守卫 111–121 秒。
+- 反向对照：7.3 的 S1 各行（1–36）每个点名的测试各跑一次（36 行 46 条，设计列几个测试的各一条）加实施者自己的 7 条，共 53 条；第一轮 51 条抓到。没抓到的两条都是真的缺口：o1（`UpgradeStates.Approve` 不判事务：事务外的一格放在 `upgrading` 上，本来就改不到行；挪到审阅中）；16a（`SourceRebuildHeads` 写成普通的连接：守卫的通用规则放行"按笔记本读一次 `nodes`"，没有落实 7.1 的"读头只经键"；补这一条与短测试一格）。第二轮 4 条（o1、16a、16b 即 `SourceHeads` 的形状、o8 即去掉新规则的对照）都抓到；16b 在 22% 的种子、分析过的自定义计划上正是 `Seq Scan on page_contents`。7.3 里没有等价的变异：第 2 行实施者改的是把报告一支挪到期限之后，不是设计点名的等价对调，抓到。
+- 门禁（本机，头 `d7b85bae`，改写之后）：`make lint gen-check knip build` 8 秒；经 `heavy.sh`：`make test` 3,549 秒通过（vitest 193 个文件、4,447 个测试；批准的守卫 112.6 秒，六格中位数 1.09–1.22 s，计划都合规），`make test-go-short` 41 秒（含判计划的短测试九格），`make e2e` 138 秒（528 个；UP6 API 341 ms、MCP 355 ms，UP7 API 134 ms、MCP 108 ms，UP8 51 ms）；一轮全绿，没有偶发。
+- CI：分支的 run 43088294571（`d7b85bae`）19 项一次全绿；组合根八份的 Test 一步 377、238、411、345、308、333、322、307 秒（第三、七份在 EPYC 7763 上 411、322 秒，第七份与本机折的 321 秒相合；第四、六、八份都在 EPYC 9V74 上，照第八份的 9V74 → 7763 之比 1.189 折约 411、396、359 秒，比本机折的高 10–40 秒，都在 450 之下，以合并之后两次 `main` 为准）；costs-1 在 Xeon 8370C 上 20:05（设计估 23–26 分钟，时限 45 分钟），批准的守卫那一行在作业的第 15.7 分钟开始、包 253 秒，六格中位数 2.25–2.51 s（界 3.9 s，余量约 1.55 倍），`SetSourceHashes` 1.54–1.71 s，计划都合规；costs-2 24:33；e2e 10:43（E2E 7:43，528 个），"Install the Playwright browsers" 2:16 装好。
+- **审查**（2026-11-12，三位各在 `d7b85bae` 的自己的工作树里，重的经 `heavy.sh`）：A 审服务端行为的正确性，B 审成本、计划、分份与变异的抓手，C 审契约、HTTP、MCP、矩阵、e2e 与文档稿。A 0I 0M 7N，B 0I 2M 1N 1Q，C 0I 0M 6N；去重之后 Important 0，Minor 2（判计划的规则对 `nodes_pkey` 不看条件、短测试的六个子条件没有反例，P3S1B-M1；第 296 条判的是写过之后的状态下的计划，84 条里 2 条与真跑时不同，P3S1B-M2），Nit 12（去重之后：三份合计 14，P3S1A-N3 = C-N3，A-N7 = C-N2）。三位都没有查出用户或数据会碰到的问题；16 条偏离都判对，第 8 条不是偏离、第 15 条是过程（审查 C），另有 C 列的三处与 A-N3 = C-N3 进 3.23。主持者的修复说明 `fix-1.md`：代码与测试的四个提交（守卫、测试、e2e、注释）；P3S1B-Q1 定为第 298 条；文档的发现（A-N7 = C-N2、C-N1、C-N6）在本提交。
+- **修复一轮**（2026-11-12，`a44602b0`；主持者的修复说明 `fix-1.md`）：从 `d7b85bae` 起 4 个提交，普通推送，没有改写已推的历史；6 个文件、加 210 行、减 108 行，没有改产品代码：
+  - 守卫与它的短测试：`approveCostScans` 的 `nodes_pkey` 只在条件里有 `(id = ` 时才认，内侧逐行的 `nodes` 条件含 `= ANY` 的拒绝；判计划挪到 tracer 的 `TraceQueryStart`，每条被判的语句第一次真跑之前、在同一连接上判，`SHOW plan_cache_mode` 留在包住 `DeleteBaseline` 的一层（第 296 条）；`EXPLAIN` 出错时先报计划的错误；界的注释写第 298 条的条件；短测试 9 → 19 格（每个子条件一格反例，另一格正例）（P3S1B-M1、M2、N1、Q1）（`9c637540`）。
+  - 测试：批准的闸门表加"来源根是根下的 `AGENTS`"；退回的拒绝表加"别的升级的行"；批准一格补 `checkLinks`、`checkSearch`；驳回一格先退回、agent 改 `Note` 的 frontmatter、再交、再驳回，断言正文回到 `cleanNote`；退回一格与 `getUpgrade` 之后的读整值比较；换期限的钩子先断言 `ApproveTimeout` 是 3 s（P3S1A-N1–N6）（`cc751dca`）。
+  - UP7 以 `node:crypto` 对写下的字节算的 SHA-256 比 `source_hash`，测试名照实（P3S1C-N4）（`9dac9244`）。
+  - `Makefile` 的两处计数注释改为头上的数（P3S1C-N5）（`a44602b0`）。
+  - 与 `fix-1.md` 不同之处 7 条（3.23）："内侧不许 `= ANY`"加了；短测试多一格正例；A-N4 先退回再写（审阅中冻结 agent 的写）；A-N5 保留逐项断言；注释多写第七、八份的数；"ran no %s"挪进 `end()`；第 296 条的说法。
+  - 变异（`mut.py`，经 `heavy.sh`，改前在 `d7b85bae`、改后在 `a44602b0`，12 条）：B 的 r1–r6、A 的 a1、a2、n4（回滚的 `RollbackState` 不出正文的版本）、o6（第八份的那一格）改前活、改后死；r7（`nodes_pkey` 不看条件）、r8（去掉"内侧不许 `= ANY`"）改后死。
+  - 逐个提交（`verify.sh`，经 `heavy.sh`）：四个各自 `make lint-go`、`make gen-check`、`make test-go-short`（40–41 秒）rc=0；1 号守卫一轮 117.8 秒（六格中位数 1.07–1.17 s，计划都合规，短测试 19 格）；2 号 `wiki/...` 与竞态的 `TestUpgradeApproval`、`TestUpgradeReview`（11.2、2.0 秒）；3 号 `lint-web`、`knip` 与 UP7 的两个；4 号 `make -n test-go`。
+  - 门禁（头 `a44602b0`）：`make lint gen-check knip build` 9 秒；经 `heavy.sh`：`make test-go-short` 40 秒，`make e2e` 133 秒（528 个）；照修复说明不跑整轮 `make test`。
+  - CI：run 43099927925（`a44602b0`）19 项一次全绿；八份的 Test 一步 393、337、401、308、415、370、268、213 秒，第六份在 EPYC 7763 上 370 秒（本机折的约 370 秒），第四份在 Xeon 6973P-C 上；costs-1 在 Xeon 8573C 上 18:46，批准的守卫 222.6 秒，六格中位数 2.01–2.23 s（界 3.9 s，余量约 1.75 倍），计划在每条语句真跑之前判、都合规；e2e 9:06（E2E 7:20，528 个），L1 没有出。
+- **修复核对一轮**（2026-11-12，三位各在 `a44602b0` 的自己的工作树里，C 另核文档稿）：A 判 P3S1A-N1–N6 关上，a1、a2、n4、o6 在头上都死，没有新发现；B 判 P3S1B-M1、M2、N1、Q1 关上（短测试 19 格过，r1–r8 各有一格失败，另加的 r9 被正例抓到，第一轮的 5 个探针都被拒；24 次判计划里"内侧不许 `= ANY`"没拒掉真的计划；第一轮探针的两条 `ForgetSources` 现在判的是真跑时的计划），新的 P3S1B-N2（Nit：批准在跑到被判的语句之前就失败时，`PlanErr` 先报、只有状态码，丢了答复的正文）不改：只影响守卫失败时的诊断，不影响判定；C 判 P3S1C-N3–N5 关上（N4 由上传时的 SHA-256 多喂一个字节的变异核过：旧的 UP7 照过、新的失败），文档稿里 N1、N2、N6 与 A-N7 落对、本节与 00 号文档第 13 节的 CI 数经 `gh api` 逐项核过，新的 P3S1C-N7（Nit，文档稿：A-N4 的修复漏了"先退回"）在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
+- 实施者留下的（报告第 9 节）：Step 的文档提交是本提交（3.23、10.1、7.3 第 16 行的措辞、"读头只经键"的出处、00 号文档第 11 节的 295–297、移交与总体设计）；守卫在慢的 runner 上的余量（第 298 条）；第四、六、八份没有 7763 的样本（合并之后两次 `main` 为准）；`TestTheApprovalGuardJudgesItsReads` 在 short 一行；S2、S3 的部分。量用的临时工作树与 `GOTMPDIR` 的目录已删；这一 Step 没有手动起容器。
+- **合并之后**（待填）。
+
+### 10.2 S2：playbook 与文档（服务端）
+
+（S2 合并之后填。）
+
+### 10.3 S3：网页
+
+（S3 合并之后填。）
 
 ## 附录：核对过的代码
 
