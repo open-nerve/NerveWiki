@@ -289,6 +289,51 @@ func TestTheGatesFailInTheirOrder(t *testing.T) {
 	}
 }
 
+// Gates 1 to 3 as the check and the approval judge them (M11/P3 design
+// 3.2, decision 284): each fails alone by one change of roots that pass,
+// the others still passing; the nodes keyed a reserved title, given out of
+// order, come back by id, a copy of their own; Failed lists the gates in
+// their order.
+func TestJudgeRoots(t *testing.T) {
+	agents, root := checkID(30), checkID(10)
+	passing := domain.UpgradeRoots{AgentsID: &agents, AgentsBody: true, RootPage: true}
+	if g := domain.JudgeRoots(passing, root, nil); !g.Agents || !g.SourceRoot || !g.ReservedTitles.Passed ||
+		g.ReservedTitles.NodeIDs != nil || len(g.Failed()) != 0 {
+		t.Errorf("passing roots = %+v, failed %v", g, g.Failed())
+	}
+	for _, tc := range []struct {
+		name     string
+		roots    domain.UpgradeRoots
+		root     uuid.UUID
+		reserved []uuid.UUID
+		fails    []domain.UpgradeGateKey
+	}{
+		{"no AGENTS", domain.UpgradeRoots{RootPage: true, AgentsBody: true}, root, nil, []domain.UpgradeGateKey{domain.GateAgents}},
+		{"AGENTS without a body", domain.UpgradeRoots{AgentsID: &agents, RootPage: true}, root, nil,
+			[]domain.UpgradeGateKey{domain.GateAgents}},
+		{"the source root the root's AGENTS", passing, agents, nil, []domain.UpgradeGateKey{domain.GateSourceRoot}},
+		{"the source root no live page", domain.UpgradeRoots{AgentsID: &agents, AgentsBody: true}, root, nil,
+			[]domain.UpgradeGateKey{domain.GateSourceRoot}},
+		{"a node at the root keyed a reserved title", passing, root, []uuid.UUID{checkID(41)},
+			[]domain.UpgradeGateKey{domain.GateReservedTitles}},
+		{"all three", domain.UpgradeRoots{}, root, []uuid.UUID{checkID(41)},
+			[]domain.UpgradeGateKey{domain.GateAgents, domain.GateSourceRoot, domain.GateReservedTitles}},
+	} {
+		if got := domain.JudgeRoots(tc.roots, tc.root, tc.reserved).Failed(); !slices.Equal(got, tc.fails) {
+			t.Errorf("%s: failed %v, want %v", tc.name, got, tc.fails)
+		}
+	}
+	reserved := []uuid.UUID{checkID(43), checkID(41), checkID(42)}
+	g := domain.JudgeRoots(passing, root, reserved)
+	reserved[0] = checkID(99)
+	if g.ReservedTitles.Passed || !slices.Equal(g.ReservedTitles.NodeIDs, []uuid.UUID{checkID(41), checkID(42), checkID(43)}) {
+		t.Errorf("reserved titles = %+v, want the three by id, not passed, a copy", g.ReservedTitles)
+	}
+	if !slices.Equal(reserved, []uuid.UUID{checkID(99), checkID(41), checkID(42)}) {
+		t.Errorf("JudgeRoots changed the ids it was given: %v", reserved)
+	}
+}
+
 func passingGates() domain.UpgradeGates {
 	return domain.UpgradeGates{Agents: true, SourceRoot: true, Frontmatter: true, Sources: true, Index: true,
 		ReservedTitles: domain.NodesGate{Passed: true}, Links: domain.LinksGate{Passed: true}, Preserved: domain.PreservedGate{Passed: true}}

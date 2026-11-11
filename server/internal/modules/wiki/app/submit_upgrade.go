@@ -178,13 +178,16 @@ func (s *SubmitUpgrade) first(ctx context.Context, actor shared.Actor, workspace
 		return submitted{}, fmt.Errorf("wiki: the notebook %s's upgrade %s has no row in its state %s, a defect", id, state.Upgrade.ID,
 			state.Upgrade.State)
 	}
+	// Reviewing: none reported and past the moment, taken over (M11/P3
+	// design 3.9).
 	if up.State == domain.UpgradeReviewing {
+		review, err := domain.ReviewOf(up, at, s.d.SubmitTimeout)
 		switch {
-		case up.Report != nil:
+		case err != nil:
+			return submitted{}, err
+		case review == domain.ReviewReported:
 			return submitted{}, domain.ErrUpgradeState
-		case up.SubmittedAt == nil:
-			return submitted{}, fmt.Errorf("wiki: the upgrade %s reviewing has no submission, a defect", up.ID)
-		case at.Before(up.SubmittedAt.Add(s.d.SubmitTimeout)):
+		case review == domain.ReviewChecking:
 			return submitted{}, domain.ErrUpgradeSubmitting
 		}
 	}

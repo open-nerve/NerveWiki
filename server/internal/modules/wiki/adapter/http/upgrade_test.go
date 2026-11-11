@@ -22,16 +22,26 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// upgradeFake answers an upgrade's start, read, abandonment and
-// rollback's end with view or err, and records the locale the start was
-// asked for.
+// upgradeFake answers an upgrade's start, read, abandonment, rollback's
+// end and submission with view, its approval, rejection and send-back
+// each with a view of its own (zero: view), or each with err, and records
+// the locale the start was asked for.
 type upgradeFake struct {
-	mu      sync.Mutex
-	view    app.UpgradeView
-	checked app.UpgradeChecked
-	err     error
-	locale  []string
-	queries []app.LintQuery
+	mu                         sync.Mutex
+	view                       app.UpgradeView
+	approved, rejected, backed *app.UpgradeView
+	checked                    app.UpgradeChecked
+	err                        error
+	locale                     []string
+	queries                    []app.LintQuery
+}
+
+// own is view, or the fake's view for nil.
+func (f *upgradeFake) own(view *app.UpgradeView) app.UpgradeView {
+	if view == nil {
+		return f.view
+	}
+	return *view
 }
 
 func (f *upgradeFake) CheckUpgrade(_ context.Context, id uuid.UUID, query app.LintQuery) (app.UpgradeChecked, error) {
@@ -82,6 +92,27 @@ func (f *upgradeFake) EndUpgradeRollback(_ context.Context, id uuid.UUID) (app.U
 	return f.view, f.err
 }
 
+func (f *upgradeFake) ApproveUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.own(f.approved), f.err
+}
+
+func (f *upgradeFake) RejectUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.own(f.rejected), f.err
+}
+
+func (f *upgradeFake) SendBackUpgrade(_ context.Context, id uuid.UUID) (app.UpgradeView, error) {
+	if id != lintID(10) {
+		return app.UpgradeView{}, domain.ErrNotebookNotFound
+	}
+	return f.own(f.backed), f.err
+}
+
 func upgradeServer(t *testing.T, f *upgradeFake) lintHTTP {
 	t.Helper()
 	router := httpserver.NewRouter(slog.New(slog.DiscardHandler))
@@ -96,8 +127,8 @@ func upgradeCall(t *testing.T, h lintHTTP, method string, nb uuid.UUID, body str
 }
 
 // upgradeCallAt calls the upgrade's path, then sub ("/abandon",
-// "/end-rollback" or "/submit"), and checks the answer against the
-// contract.
+// "/end-rollback", "/submit", "/approve", "/reject" or "/send-back"), and
+// checks the answer against the contract.
 func upgradeCallAt(t *testing.T, h lintHTTP, method string, nb uuid.UUID, sub, body string) (*http.Response, []byte) {
 	t.Helper()
 	var reader io.Reader
@@ -132,10 +163,14 @@ func upgradeView() app.UpgradeView {
 	}, StartedByName: "Ada", SubmittedByName: "Bo"}
 }
 
-// The upgrade's five operations answer the use cases' views in the
-// contract's shape: the pages the start wrote, raw then AGENTS; each
-// step's field null until it; the template's language passed as sent.
-// The abandonment, the rollback's end and the submission take no body.
+// The upgrade's operations answer the use cases' views in the contract's
+// shape: the pages the start wrote, raw then AGENTS; each step's field
+// null until it; the template's language passed as sent. The abandonment,
+// the rollback's end, the submission, the approval, the rejection and the
+// send-back take no body. The approval, the rejection and the send-back
+// each answer its own use case's view, whole, every value its own
+// (M11/P3 design 3.11): approved, its submission kept; rolling back,
+// rejected, with its job; upgrading, no submission.
 func TestTheUpgradeIsAnswered(t *testing.T) {
 	f := &upgradeFake{view: upgradeView()}
 	h := upgradeServer(t, f)
@@ -157,6 +192,57 @@ func TestTheUpgradeIsAnswered(t *testing.T) {
 			`"submitted_at":"2026-01-02T04:04:05Z","submitted_by":{"display_name":"Bo","user_id":"00000000-0000-0000-0000-000000000005"}}`
 		if normalized, _ := json.Marshal(got); string(normalized) != want {
 			t.Errorf("%s %s answered %s\nwant %s", call.method, call.sub, normalized, want)
+		}
+	}
+	agents, by := lintID(51), lintID(52)
+	submitted := lintTime().Add(2 * time.Hour)
+	f.approved = &app.UpgradeView{Upgrade: domain.Upgrade{
+		ID: lintID(53), NotebookID: lintID(10), State: domain.UpgradeApproved, SourceRootID: lintID(54), SeededAgentsID: &agents,
+		Locale: domain.LocaleEn, BaselineNodes: 17, BaselinePages: 13, BaselineWanted: 11, SubmittedBy: &by, SubmittedAt: &submitted,
+		CreatedBy: lintID(55), CreatedAt: lintTime().Add(time.Minute),
+	}, StartedByName: "Cy", SubmittedByName: "Di"}
+	job, rejecter := lintID(62), lintID(61)
+	rejected := lintTime().Add(4 * time.Hour)
+	f.rejected = &app.UpgradeView{Upgrade: domain.Upgrade{
+		ID: lintID(59), NotebookID: lintID(10), State: domain.UpgradeRollingBack, Ending: domain.UpgradeRejected, SourceRootID: lintID(60),
+		Locale: domain.LocaleEn, BaselineNodes: 23, BaselinePages: 21, BaselineWanted: 2, SubmittedBy: &rejecter, SubmittedAt: &rejected,
+		RollbackJobID: &job, CreatedBy: lintID(63), CreatedAt: lintTime().Add(5 * time.Minute),
+	}, StartedByName: "Fa", SubmittedByName: "Gi"}
+	f.backed = &app.UpgradeView{Upgrade: domain.Upgrade{
+		ID: lintID(56), NotebookID: lintID(10), State: domain.UpgradeUpgrading, SourceRootID: lintID(57), SeededRoot: true,
+		Locale: domain.LocaleZhCN, BaselineNodes: 19, BaselinePages: 18, BaselineWanted: 3, CreatedBy: lintID(58),
+		CreatedAt: lintTime().Add(3 * time.Minute),
+	}, StartedByName: "Ed"}
+	for _, call := range []struct{ sub, want string }{
+		{"/approve", `{"baseline":{"nodes":17,"pages":13,"wanted":11},"ending":null,"id":"00000000-0000-0000-0000-000000000035",` +
+			`"notebook_id":"00000000-0000-0000-0000-00000000000a","report":null,"rollback_complete":null,"rollback_job_id":null,` +
+			`"rollback_left":null,"seeded_page_ids":["00000000-0000-0000-0000-000000000033"],` +
+			`"source_root_id":"00000000-0000-0000-0000-000000000036","started_at":"2026-01-02T03:05:05Z",` +
+			`"started_by":{"display_name":"Cy","user_id":"00000000-0000-0000-0000-000000000037"},"state":"approved",` +
+			`"submitted_at":"2026-01-02T05:04:05Z","submitted_by":{"display_name":"Di","user_id":"00000000-0000-0000-0000-000000000034"}}`},
+		{"/reject", `{"baseline":{"nodes":23,"pages":21,"wanted":2},"ending":"rejected","id":"00000000-0000-0000-0000-00000000003b",` +
+			`"notebook_id":"00000000-0000-0000-0000-00000000000a","report":null,"rollback_complete":null,` +
+			`"rollback_job_id":"00000000-0000-0000-0000-00000000003e","rollback_left":null,"seeded_page_ids":[],` +
+			`"source_root_id":"00000000-0000-0000-0000-00000000003c","started_at":"2026-01-02T03:09:05Z",` +
+			`"started_by":{"display_name":"Fa","user_id":"00000000-0000-0000-0000-00000000003f"},"state":"rolling_back",` +
+			`"submitted_at":"2026-01-02T07:04:05Z","submitted_by":{"display_name":"Gi","user_id":"00000000-0000-0000-0000-00000000003d"}}`},
+		{"/send-back", `{"baseline":{"nodes":19,"pages":18,"wanted":3},"ending":null,"id":"00000000-0000-0000-0000-000000000038",` +
+			`"notebook_id":"00000000-0000-0000-0000-00000000000a","report":null,"rollback_complete":null,"rollback_job_id":null,` +
+			`"rollback_left":null,"seeded_page_ids":["00000000-0000-0000-0000-000000000039"],` +
+			`"source_root_id":"00000000-0000-0000-0000-000000000039","started_at":"2026-01-02T03:07:05Z",` +
+			`"started_by":{"display_name":"Ed","user_id":"00000000-0000-0000-0000-00000000003a"},"state":"upgrading",` +
+			`"submitted_at":null,"submitted_by":null}`},
+	} {
+		response, body := upgradeCallAt(t, h, http.MethodPost, lintID(10), call.sub, "")
+		if response.StatusCode != http.StatusOK {
+			t.Fatalf("POST %s: %d %s", call.sub, response.StatusCode, body)
+		}
+		var got map[string]any
+		if err := json.Unmarshal(body, &got); err != nil {
+			t.Fatal(err)
+		}
+		if normalized, _ := json.Marshal(got); string(normalized) != call.want {
+			t.Errorf("POST %s answered %s\nwant %s", call.sub, normalized, call.want)
 		}
 	}
 	f.view = app.UpgradeView{Upgrade: domain.Upgrade{ID: lintID(30), NotebookID: lintID(10), State: domain.UpgradeUpgrading,
@@ -222,6 +308,19 @@ func TestTheUpgradesCodesAreAnswered(t *testing.T) {
 		{http.MethodPost, domain.ErrUpgradeStaleIndex, 409, "wiki.upgrade_stale_index", "/submit"},
 		{http.MethodPost, domain.UpgradeNotReady([]domain.UpgradeGateKey{domain.GateLinks, domain.GatePreserved}), 409,
 			"wiki.upgrade_not_ready", "/submit"},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/approve"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/approve"},
+		{http.MethodPost, domain.ErrUpgradeState, 409, "wiki.upgrade_state", "/approve"},
+		{http.MethodPost, domain.ApprovalNotReady([]domain.UpgradeGateKey{domain.GateAgents, domain.GateReservedTitles}), 409,
+			"wiki.upgrade_not_ready", "/approve"},
+		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy", "/approve"},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/reject"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/reject"},
+		{http.MethodPost, domain.ErrUpgradeState, 409, "wiki.upgrade_state", "/reject"},
+		{http.MethodPost, shared.ServerBusy(time.Second), 503, "server_busy", "/reject"},
+		{http.MethodPost, domain.ErrNotebookNotFound, 404, "notebook.not_found", "/send-back"},
+		{http.MethodPost, shared.Forbidden(), 403, "forbidden", "/send-back"},
+		{http.MethodPost, domain.ErrUpgradeSubmitting, 409, "wiki.upgrade_state", "/send-back"},
 	} {
 		t.Run(tt.method+tt.sub+"/"+tt.code, func(t *testing.T) {
 			h := upgradeServer(t, &upgradeFake{err: tt.err})
@@ -248,9 +347,17 @@ func TestTheUpgradesCodesAreAnswered(t *testing.T) {
 			if tt.code == "server_busy" && response.Header.Get("Retry-After") != "1" {
 				t.Errorf("server_busy without Retry-After: 1: %v", response.Header)
 			}
-			if tt.code == "wiki.upgrade_not_ready" && problem.Detail != "These gates did not pass: links, preserved. "+
+			if tt.code == "wiki.upgrade_not_ready" && tt.sub == "/submit" && problem.Detail != "These gates did not pass: links, preserved. "+
 				"The upgrade is upgrading again: check it, then submit it again." {
 				t.Errorf("the gates named: %s", got)
+			}
+			if tt.code == "wiki.upgrade_not_ready" && tt.sub == "/approve" && problem.Detail != "These gates did not pass: agents, "+
+				"reserved_titles. The upgrade is still in review: send it back, or reject it." {
+				t.Errorf("the gates named: %s", got)
+			}
+			if tt.sub == "/send-back" && tt.code == "wiki.upgrade_state" &&
+				problem.Detail != "The previous submission is still being checked: check again in a moment." {
+				t.Errorf("a send-back while the submission is checked: %s", got)
 			}
 			if tt.code == "wiki.upgrade_pages_locked" && (len(problem.Locks) != 1 || problem.Locks[0].DisplayName != "Bo" ||
 				!strings.HasPrefix(problem.Detail, "101 pages")) {

@@ -6,7 +6,8 @@ import { bearer } from "./auth";
 // A notebook's upgrade to an LLM Wiki in the stories, through the API
 // (M11/P1 design 5): its start and its read; its abandonment, which also
 // continues a stopped rollback, and its rollback's end (S3); its check, a
-// rule's items of it, and its submission (M11/P2 design 5).
+// rule's items of it, and its submission (M11/P2 design 5); its approval,
+// rejection and send-back (M11/P3 design 5).
 
 /** credential's start of the upgrade of the notebook id, as the API answers it, including a refusal. */
 export async function postUpgrade(api: ApiClient, credential: string, id: string, body: UpgradeStart = {}) {
@@ -112,6 +113,60 @@ export async function submitUpgrade(api: ApiClient, credential: string, id: stri
   expect(response.status, `submit the upgrade of ${id}: ${JSON.stringify(error)}`).toBe(200);
   if (!data) {
     throw new Error(`submit the upgrade of ${id} answered 200 without it`);
+  }
+  return data;
+}
+
+/** credential's approval of the upgrade of the notebook id, as the API answers it, including a refusal. */
+export async function postApprove(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/upgrade/approve", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+}
+
+/** Approves the upgrade of the notebook id with credential, and returns it, approved. */
+export async function approveUpgrade(api: ApiClient, credential: string, id: string): Promise<Upgrade> {
+  const { data, error, response } = await postApprove(api, credential, id);
+  expect(response.status, `approve the upgrade of ${id}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`approve the upgrade of ${id} answered 200 without it`);
+  }
+  return data;
+}
+
+/** credential's rejection of the upgrade of the notebook id, as the API answers it, including a refusal. */
+export async function postReject(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/upgrade/reject", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+}
+
+/** Rejects the upgrade of the notebook id with credential, and returns it, rolling back. */
+export async function rejectUpgrade(api: ApiClient, credential: string, id: string): Promise<Upgrade> {
+  const { data, error, response } = await postReject(api, credential, id);
+  expect(response.status, `reject the upgrade of ${id}: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`reject the upgrade of ${id} answered 200 without it`);
+  }
+  return data;
+}
+
+/** credential's send-back of the upgrade of the notebook id, as the API answers it, including a refusal. */
+export async function postSendBack(api: ApiClient, credential: string, id: string) {
+  return api.POST("/api/v0/notebooks/{notebook_id}/upgrade/send-back", {
+    params: { path: { notebook_id: id } },
+    headers: bearer(credential),
+  });
+}
+
+/** Sends the upgrade of the notebook id back with credential, and returns it, upgrading again. */
+export async function sendBackUpgrade(api: ApiClient, credential: string, id: string): Promise<Upgrade> {
+  const { data, error, response } = await postSendBack(api, credential, id);
+  expect(response.status, `send the upgrade of ${id} back: ${JSON.stringify(error)}`).toBe(200);
+  if (!data) {
+    throw new Error(`send the upgrade of ${id} back answered 200 without it`);
   }
   return data;
 }

@@ -18,7 +18,8 @@ type LintUseCase interface {
 
 // UpgradeUseCases are an upgrade's start and read (M11/P1 design 3.14),
 // its abandonment and its rollback's end (3.20), its check and its rules'
-// items, its submission (M11/P2 design 3.13).
+// items, its submission (M11/P2 design 3.13), its approval, rejection and
+// send-back (M11/P3 design 3.11).
 type UpgradeUseCases interface {
 	StartUpgrade(ctx context.Context, id uuid.UUID, locale string) (app.UpgradeView, error)
 	CheckUpgrade(ctx context.Context, id uuid.UUID, query app.LintQuery) (app.UpgradeChecked, error)
@@ -26,6 +27,9 @@ type UpgradeUseCases interface {
 	GetUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
 	AbandonUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
 	EndUpgradeRollback(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+	ApproveUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+	RejectUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
+	SendBackUpgrade(ctx context.Context, id uuid.UUID) (app.UpgradeView, error)
 }
 
 // Register mounts the generated strict routes behind the platform's middlewares.

@@ -1266,7 +1266,7 @@ export interface paths {
         put?: never;
         /**
          * Revert a changeset
-         * @description Puts every node the changeset changed back as it was before it, in a changeset of its own, a revert, whose message is the request's, whole or not at all. Its notebook's editors and admins can, whoever made the changeset. Each node is compared by its state, not by when it changed: it must be as the changeset left it, where it put it and with the content it wrote, a node it deleted still in its trash item where and as it deleted it, else it is changed; a node another changeset put back as it was before is changed too. A trash item that the revert of its restore, by a trash restore or by a revert, deleted again, wherever the restore had put it, is compared by its nodes alone. Nodes it created or restored go to the trash, at the revert's time; nodes it deleted come back where they were, with the names they had, their trash item whole, at its time; nodes it renamed or moved go back where they were, under the same name and order; pages whose content it wrote get back the content they had, as a new version. The links written by a rename or a move stay as they are. What stops a revert is a conflict, listed in conflicts, the first 100 of conflict_count: a node changed since, a trash item past its restorable_until (expired), a node that would go back under a parent no longer there (parent_gone) or into a cycle (cycle) or deeper than ten levels of pages (too_deep), a node another changeset put under one the revert deletes (children_added), a name another node took where one would go back (title_taken, naming the holder in holder_id). One revert puts back at most 10,000 nodes, in at most 1,500 steps, each a node put back where it was, a subtree deleted or a trash item restored; restores trash items whose versions and records in changesets are 400,000 at most; and, of more than one page, writes back or restores at most 100 pages, 8 MiB of content and 20,000 links. A message that is empty, longer than 4,096 bytes, not UTF-8 or with a NUL is validation_failed; then a changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found; a reader is forbidden; then a changeset part or all of which the purge took is page.changeset_trimmed; then one past the bounds of its nodes, its pages and bytes, or its history is page.revert_too_large; then the conflicts, page.revert_conflict; then a version to compare or write back that the purge took is page.changeset_trimmed; then one of more steps than 1,500 is page.revert_too_large, known once the revert is planned; then a content to write back or restore that the purge took is page.changeset_trimmed, before any content is parsed; when the server parses as much content as it can at once, the revert waits a moment, then is server_busy: the links are counted as the contents are parsed, so that their page.revert_too_large may come after it. The revert reads and checks it all again as it writes: page.changeset_trimmed, page.revert_too_large and page.revert_conflict for what changed meanwhile. In an LLM Wiki, each step of a revert is judged as its operation is: one that would delete its AGENTS page or its source root, a page whose subtree holds it, or rename or move AGENTS is page.protected; one of a writer that would rename or move the source root, rename, move or delete an existing source, or move a page whose subtree holds the root under another parent, is page.source_admin_only. Writing back changed content to a nonempty source is page.source_immutable, including for admins, unless the reverted version records a system rewrite. Each placement or temporary move of an existing subtree from outside into sources may carry at most 10,000 nodes at that step, including its root, empty pages and attachments; above that it is 422 page.source_too_large. This source-entry bound also applies when the revert checks the current tree as it writes; it does not limit an entire restore plan or change ordinary, within-source or source-out moves. Move smaller subtrees into sources separately. The contract is checked before edit locks. Then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock. A changeset that, as it left its nodes, changed nothing, as an edit session that wrote its bytes back, writes nothing: changed is false. Source entries and first writes are checked for identical bytes within their kind (page.source_duplicate, 409). The duplicate_of target, when present, already had matching source bytes at this unit's start; it never names a source that only this refused operation would create.
+         * @description Puts every node the changeset changed back as it was before it, in a changeset of its own, a revert, whose message is the request's, whole or not at all. Its notebook's editors and admins can, whoever made the changeset. Each node is compared by its state, not by when it changed: it must be as the changeset left it, where it put it and with the content it wrote, a node it deleted still in its trash item where and as it deleted it, else it is changed; a node another changeset put back as it was before is changed too. A trash item that the revert of its restore, by a trash restore or by a revert, deleted again, wherever the restore had put it, is compared by its nodes alone. Nodes it created or restored go to the trash, at the revert's time; nodes it deleted come back where they were, with the names they had, their trash item whole, at its time; nodes it renamed or moved go back where they were, under the same name and order; pages whose content it wrote get back the content they had, as a new version. The links written by a rename or a move stay as they are. What stops a revert is a conflict, listed in conflicts, the first 100 of conflict_count: a node changed since, a trash item past its restorable_until (expired), a node that would go back under a parent no longer there (parent_gone) or into a cycle (cycle) or deeper than ten levels of pages (too_deep), a node another changeset put under one the revert deletes (children_added), a name another node took where one would go back (title_taken, naming the holder in holder_id). One revert puts back at most 10,000 nodes, in at most 1,500 steps, each a node put back where it was, a subtree deleted or a trash item restored; restores trash items whose versions and records in changesets are 400,000 at most; and, of more than one page, writes back or restores at most 100 pages, 8 MiB of content and 20,000 links. A message that is empty, longer than 4,096 bytes, not UTF-8 or with a NUL is validation_failed; then a changeset that does not exist, whose notebook is deleted, or whose notebook the caller has no role in is page.changeset_not_found; a reader is forbidden; then a changeset part or all of which the purge took is page.changeset_trimmed; then one past the bounds of its nodes, its pages and bytes, or its history is page.revert_too_large; then the conflicts, page.revert_conflict; then a version to compare or write back that the purge took is page.changeset_trimmed; then one of more steps than 1,500 is page.revert_too_large, known once the revert is planned; then a content to write back or restore that the purge took is page.changeset_trimmed, before any content is parsed; when the server parses as much content as it can at once, the revert waits a moment, then is server_busy: the links are counted as the contents are parsed, so that their page.revert_too_large may come after it. The revert reads and checks it all again as it writes: page.changeset_trimmed, page.revert_too_large and page.revert_conflict for what changed meanwhile. In an LLM Wiki, each step of a revert is judged as its operation is: one that would delete its AGENTS page or its source root, a page whose subtree holds it, or rename or move AGENTS is page.protected; one that would restore, rename or move a node back to the notebook's root under a title the LLM Wiki reserves for its generated pages (index or log, index.md or log.md) is page.virtual_file; one of a writer that would rename or move the source root, rename, move or delete an existing source, or move a page whose subtree holds the root under another parent, is page.source_admin_only. Writing back changed content to a nonempty source is page.source_immutable, including for admins, unless the reverted version records a system rewrite. Each placement or temporary move of an existing subtree from outside into sources may carry at most 10,000 nodes at that step, including its root, empty pages and attachments; above that it is 422 page.source_too_large. This source-entry bound also applies when the revert checks the current tree as it writes; it does not limit an entire restore plan or change ordinary, within-source or source-out moves. Move smaller subtrees into sources separately. The contract is checked before edit locks. Then a page whose lock an edit session holds, the caller's elsewhere among them, is page.locked, naming the holder in lock. A changeset that, as it left its nodes, changed nothing, as an edit session that wrote its bytes back, writes nothing: changed is false. Source entries and first writes are checked for identical bytes within their kind (page.source_duplicate, 409). The duplicate_of target, when present, already had matching source bytes at this unit's start; it never names a source that only this refused operation would create.
          */
         post: operations["revertChangeset"];
         delete?: never;
@@ -1644,9 +1644,78 @@ export interface paths {
         put?: never;
         /**
          * Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
-         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over or an upgrade abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, its Retry-After the seconds until another submission may take it over, at least 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
+         * @description The upgrade, upgrading, goes to reviewing, its content then frozen for everyone, the initiator's agent too; it is checked from a snapshot of that moment, apart from the request, and stays reviewing with its report kept once every gate passes. Otherwise it is upgrading again: wiki.upgrade_stale_index for an old link index, wiki.upgrade_not_ready for a gate that did not pass (detail names them), or the check's own error. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade upgrading is wiki.upgrade_state, also while a previous submission is still checked (detail says so; a reviewing upgrade without a report may be submitted again once its check is surely over); an exhausted computation or waiting budget is server_busy. These checks occur in that order. Once the check is done, a submission taken over, or an upgrade sent back, rejected or abandoned meanwhile is wiki.upgrade_state, before the check's own answer; the second step past its deadline, which is no later than the request's, is server_busy, its Retry-After the seconds until another submission may take it over, at least 1. Its admins are asked again before the answer, as the report is kept: a caller no longer one is notebook.not_found or forbidden then, the report kept all the same. The answer is the upgrade, reviewing, with its report.
          */
         post: operations["submitUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approves the upgrade in review: the notebook becomes an LLM Wiki whose source root is the upgrade's, its content no longer frozen.
+         * @description An upgrade in review whose submission kept its report is approved: in one transaction the notebook becomes an LLM Wiki, its sources' hashes are rebuilt and the upgrade's baseline is dropped. There is no undoing it as a whole: each of its changesets can still be reverted as an LLM Wiki's rules allow; downgrading makes it a standard notebook again. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review, or whose submission is still checked or never finished, is wiki.upgrade_state; one whose AGENTS page, source root or root titles no longer pass is wiki.upgrade_not_ready, its detail naming the gates, the upgrade still in review. These checks occur in that order. An approval that does not finish within its time, at any step, waiting for the notebook too, is server_busy with Retry-After: 1, with nothing written: rebuilding the hashes of tens of thousands of sources takes seconds.
+         */
+        post: operations["approveUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rejects the upgrade in review: puts the notebook back as the upgrade started, in a background job.
+         * @description An upgrade in review, with its report or not, rolls back, rejected, its content frozen but for the rollback's job; a submission still checked then stores nothing. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review is wiki.upgrade_state; a full job queue is server_busy. These checks occur in that order. The answer is the upgrade, rolling back, with its rollback's job.
+         */
+        post: operations["rejectUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v0/notebooks/{notebook_id}/upgrade/send-back": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Sends the upgrade in review back: upgrading again, its submission and report cleared, its initiator's agent able to write again.
+         * @description An upgrade in review that has its report, or has none and whose submission may be taken over, goes back to upgrading, its submission and report cleared: a submission still checked is wiki.upgrade_state, its detail saying so; send it back a little later. Its admins can (forbidden). A notebook that does not exist, is deleted, or that the caller cannot see is notebook.not_found; one without an upgrade in review is wiki.upgrade_state. These checks occur in that order.
+         */
+        post: operations["sendBackUpgrade"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1840,7 +1909,7 @@ export interface paths {
         put?: never;
         /**
          * Revert a changeset in the background
-         * @description Starts a job that reverts the changeset changeset_id of the notebook as revertChangeset does one a request holds, of up to the instance's bound of items, whatever its pages, bytes, history or steps: revertChangeset's checks are made first, in the request, but past its unit's bounds; a changeset of more items than the bound is page.revert_too_large, which no job reverts. The job plans the revert once, as it starts, as revertChangeset plans one: nodes put back, a node renamed aside, where it is or at the root, under a temporary name until it is put back, subtrees deleted, trash items restored, pages written back. It writes those steps in their order in batches, each a unit of one changeset, a revert of it with the message, which the job's changeset_id names. A batch ends only between segments, the steps no batch splits: from a step aside to its node's last put back, a page's restore and its write back, a write back and the deletion that takes its page. Each batch, under the lock, compares its own nodes as revertChangeset does, then checks each of its steps in their order on the tree as it is then: a node changed since, or a step that no longer holds, stops the job (revert_conflict, the report's conflicts: as the job starts, all of them; in a batch, its nodes', else the first step's that fails), as does a page of the batch an edit session holds (page_locked, the report's lock), a changeset the purge trimmed (changeset_trimmed), and a segment past what one batch writes, of the nodes it restores, its pages and bytes, history or links (revert_too_large). A top deleted goes to the trash whole; a trash item's members a batch restores come back at once, those a later batch restores trash items of their own until then, a member someone restored where it goes skipped. What the job reverted is kept as it stops; its changeset can be reverted. The notebook's editors and admins can revert, a reader cannot (forbidden). In this order: a message that breaks its rules is validation_failed; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a reader forbidden; a changeset of no notebook or of another page.changeset_not_found; one the purge trimmed page.changeset_trimmed; one of more items than the bound page.revert_too_large; then, before anything else is read, a job that writes the notebook's tree queued or running, or an import uploading or another start under way into it, transfer.busy; then as revertChangeset reads it (gone meanwhile: notebook.not_found or forbidden as first, else page.changeset_trimmed): the conflicts (page.revert_conflict with conflicts and conflict_count), a version the purge took (page.changeset_trimmed); a page the revert deletes another account's edit session holds, or a page it writes back any session holds, the first in the round's order (page.locked with lock); as many jobs queued or running, with the imports uploading, as the instance takes server_busy. The checks but the changeset's are made again as the job is created. The job is named after the changeset's kind, its target_changeset_id is the changeset; it runs in the background: read it with getTransferJob until it ends. In an LLM Wiki, an undo whose steps the notebook's contract refuses is refused at its start, with the code its first refused step would get (page.protected, page.source_immutable, page.source_admin_only, or page.source_too_large), before edit locks. A source's content remains immutable for admins too; managing existing source pages or attachments requires an admin. Each placement or temporary move from outside into sources may carry at most 10,000 nodes at that step, including its root, empty pages and attachments; above that it is 422 page.source_too_large, with no job queued. This does not cap the whole restore plan or ordinary, within-source or source-out moves. Each worker batch checks the current mode, permissions and source-entry size again. If a later batch finds a subtree that grew past the bound, the job fails as refused with page.source_too_large and the moved root in its report; earlier committed batches stay, and the refused batch writes nothing. Move smaller subtrees into sources separately. The nominal batches of an LLM Wiki are checked for duplicate sources (page.source_duplicate, 409) after admission, before locks and queue capacity. Each actual batch checks again; a refusal rolls back that batch, leaving earlier completed batches in place.
+         * @description Starts a job that reverts the changeset changeset_id of the notebook as revertChangeset does one a request holds, of up to the instance's bound of items, whatever its pages, bytes, history or steps: revertChangeset's checks are made first, in the request, but past its unit's bounds; a changeset of more items than the bound is page.revert_too_large, which no job reverts. The job plans the revert once, as it starts, as revertChangeset plans one: nodes put back, a node renamed aside, where it is or at the root, under a temporary name until it is put back, subtrees deleted, trash items restored, pages written back. It writes those steps in their order in batches, each a unit of one changeset, a revert of it with the message, which the job's changeset_id names. A batch ends only between segments, the steps no batch splits: from a step aside to its node's last put back, a page's restore and its write back, a write back and the deletion that takes its page. Each batch, under the lock, compares its own nodes as revertChangeset does, then checks each of its steps in their order on the tree as it is then: a node changed since, or a step that no longer holds, stops the job (revert_conflict, the report's conflicts: as the job starts, all of them; in a batch, its nodes', else the first step's that fails), as does a page of the batch an edit session holds (page_locked, the report's lock), a changeset the purge trimmed (changeset_trimmed), and a segment past what one batch writes, of the nodes it restores, its pages and bytes, history or links (revert_too_large). A top deleted goes to the trash whole; a trash item's members a batch restores come back at once, those a later batch restores trash items of their own until then, a member someone restored where it goes skipped. What the job reverted is kept as it stops; its changeset can be reverted. The notebook's editors and admins can revert, a reader cannot (forbidden). In this order: a message that breaks its rules is validation_failed; a notebook that does not exist, is deleted, or that the caller has no role in is notebook.not_found; a reader forbidden; a changeset of no notebook or of another page.changeset_not_found; one the purge trimmed page.changeset_trimmed; one of more items than the bound page.revert_too_large; then, before anything else is read, a job that writes the notebook's tree queued or running, or an import uploading or another start under way into it, transfer.busy; then as revertChangeset reads it (gone meanwhile: notebook.not_found or forbidden as first, else page.changeset_trimmed): the conflicts (page.revert_conflict with conflicts and conflict_count), a version the purge took (page.changeset_trimmed); a page the revert deletes another account's edit session holds, or a page it writes back any session holds, the first in the round's order (page.locked with lock); as many jobs queued or running, with the imports uploading, as the instance takes server_busy. The checks but the changeset's are made again as the job is created. The job is named after the changeset's kind, its target_changeset_id is the changeset; it runs in the background: read it with getTransferJob until it ends. In an LLM Wiki, an undo whose steps the notebook's contract refuses is refused at its start, with the code its first refused step would get (page.protected, page.virtual_file, page.source_immutable, page.source_admin_only, or page.source_too_large), before edit locks. A source's content remains immutable for admins too; managing existing source pages or attachments requires an admin. Each placement or temporary move from outside into sources may carry at most 10,000 nodes at that step, including its root, empty pages and attachments; above that it is 422 page.source_too_large, with no job queued. This does not cap the whole restore plan or ordinary, within-source or source-out moves. Each worker batch checks the current mode, permissions and source-entry size again. If a later batch finds a subtree that grew past the bound, the job fails as refused with page.source_too_large and the moved root in its report; earlier committed batches stay, and the refused batch writes nothing. Move smaller subtrees into sources separately. The nominal batches of an LLM Wiki are checked for duplicate sources (page.source_duplicate, 409) after admission, before locks and queue capacity. Each actual batch checks again; a refusal rolls back that batch, leaving earlier completed batches in place.
          */
         post: operations["startRevert"];
         delete?: never;
@@ -6475,6 +6544,80 @@ export interface operations {
                 };
             };
             503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    approveUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, approved. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    rejectUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, rolling back. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
+            503: components["responses"]["Problem"];
+            default: components["responses"]["Problem"];
+        };
+    };
+    sendBackUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The notebook's id. */
+                notebook_id: components["parameters"]["NotebookID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The upgrade, upgrading. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Upgrade"];
+                };
+            };
             default: components["responses"]["Problem"];
         };
     };

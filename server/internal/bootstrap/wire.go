@@ -284,6 +284,14 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 		// A submission's part apart from its request (M11/P2 design 3.12):
 		// lint's bound and ten seconds more for its second transaction.
 		SubmitTimeout: lintTimeout + 10*time.Second,
+		// An upgrade's approval (M11/P3 design 3.12): the page module's
+		// rebuild of the source hashes, the attachments' files the units'
+		// (Deps.Attachments); its transaction has a deadline of its own,
+		// three quarters of the request's, as the start's, the rest for the
+		// COMMIT and a 503 (decision 279): the rebuild of 100,000 sources
+		// takes seconds under the notebook's row lock (M11/P3 design 7.6).
+		SourceHashes:   page.NewSourceRebuild(pool, attachmentInfos{asset.NewAttachmentInfos(pool)}),
+		ApproveTimeout: cfg.Server.RequestTimeout * 3 / 4,
 	}
 	if w.submitTimeout > 0 {
 		wikiDeps.SubmitTimeout = w.submitTimeout

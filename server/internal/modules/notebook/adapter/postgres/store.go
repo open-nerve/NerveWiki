@@ -284,3 +284,16 @@ func (s *Store) ClearUpgrade(ctx context.Context, id, upgradeID, by uuid.UUID, a
 	}
 	return n, nil
 }
+
+// ApproveUpgrade makes the notebook an LLM Wiki whose source root is
+// rootID, its upgrade upgradeID, in review, ended, by by at at (M11 design
+// 4.9 step 3), and answers how many rows it changed: none when the
+// notebook's upgrade is another, none, or not in review.
+func (s *Store) ApproveUpgrade(ctx context.Context, id, upgradeID, rootID, by uuid.UUID, at time.Time) (int64, error) {
+	n, err := s.queries(ctx).ApproveUpgrade(ctx, gen.ApproveUpgradeParams{ID: id, UpgradeID: upgradeID, SourceRootID: rootID, By: by,
+		Now: at})
+	if err != nil {
+		return 0, fmt.Errorf("approve the notebook's upgrade: %w", err)
+	}
+	return n, nil
+}

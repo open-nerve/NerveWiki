@@ -384,7 +384,8 @@ func TestUpgradeStates(t *testing.T) {
 // abandonment, the job's stop, the continuation, the rollback done; and,
 // a second upgrade abandoned and stopped, the rollback's end. And each of
 // a submission's two transactions (M11/P2 design 3.12): not ready, then
-// stored, before that upgrade's abandonment.
+// stored, before that upgrade's abandonment. And the review's (M11/P3
+// design 7.1): a send-back, a rejection and its rollback, an approval.
 func TestUpgradeStatesReachTheStreams(t *testing.T) {
 	stops := &rollbackStops{}
 	tm := newAcmeTeamOn(t, "member", "member", nil, &wiring{transfer: func(d *transfer.Deps) { stops.Tree, d.Tree = d.Tree, stops }},
@@ -477,6 +478,38 @@ func TestUpgradeStatesReachTheStreams(t *testing.T) {
 			t.Fatalf("the end = %d %s", status, answer)
 		}
 	})
+	// The review's (M11/P3 design 3.6 to 3.8): a send-back's one frame; a
+	// rejection's, its job stopped at its first plan, then its rollback
+	// done; an approval's, the notebook then an LLM Wiki.
+	steps("a third start", func() { tm.upgraded(t, "alice", nb) })
+	stepsOf("its submission", 2, func() { tm.submitted(t, "alice", nb) })
+	steps("its send-back", func() {
+		if status, answer := tm.sendBackUpgrade(t, "alice", nb); status != http.StatusOK {
+			t.Fatalf("the send-back = %d %s", status, answer)
+		}
+	})
+	stepsOf("its submission again", 2, func() { tm.submitted(t, "alice", nb) })
+	steps("its rejection", func() {
+		stops.arm(nb, 1, 0, false)
+		job = tm.rejected(t, "alice", nb)
+		stops.stopped(t)
+	})
+	steps("its rollback done", func() {
+		stops.goOn()
+		if j := tm.endedBackground(t, "alice", job); j.State != "succeeded" {
+			t.Fatalf("the rollback = %s, want it succeeded", j)
+		}
+	})
+	steps("a fourth start", func() { tm.upgraded(t, "alice", nb) })
+	stepsOf("its submission", 2, func() { tm.submitted(t, "alice", nb) })
+	steps("its approval", func() {
+		if status, answer := tm.approveUpgrade(t, "alice", nb); status != http.StatusOK {
+			t.Fatalf("the approval = %d %s", status, answer)
+		}
+	})
+	if mode := tm.notebookMode(t, nb); !strings.HasPrefix(mode, "llm_wiki ") || !strings.HasSuffix(mode, " false") {
+		t.Errorf("approved, the notebook is %s, want an LLM Wiki", mode)
+	}
 }
 
 // modeFrames writes the marker of eng, and answers, for each stream, how

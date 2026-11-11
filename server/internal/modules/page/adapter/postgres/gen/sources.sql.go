@@ -238,3 +238,61 @@ func (q *Queries) SourceHeads(ctx context.Context, arg SourceHeadsParams) ([]Sou
 	}
 	return items, nil
 }
+
+const sourceRebuildHeads = `-- name: SourceRebuildHeads :many
+SELECT n.id, n.kind, c.content_hash, COALESCE(c.byte_size, 0)::bigint AS byte_size
+FROM unnest($1::uuid[]) AS i(id)
+CROSS JOIN LATERAL (
+    SELECT x.id, x.kind, x.notebook_id, x.deleted_at FROM nodes x WHERE x.id = i.id LIMIT 1
+) n
+LEFT JOIN LATERAL (
+    SELECT y.content_hash, y.byte_size FROM page_contents y
+    WHERE y.node_id = n.id AND y.deleted_at IS NULL LIMIT 1
+) c ON true
+WHERE n.notebook_id = $2::uuid AND n.deleted_at IS NULL
+`
+
+type SourceRebuildHeadsParams struct {
+	NodeIds    []uuid.UUID
+	NotebookID uuid.UUID
+}
+
+type SourceRebuildHeadsRow struct {
+	ID          uuid.UUID
+	Kind        string
+	ContentHash []byte
+	ByteSize    int64
+}
+
+// An upgrade's approval's heads (M11/P3 design 3.4, decision 292): each id
+// read by its own key, nodes by nodes_pkey and its content by
+// page_contents_pkey, whatever the statistics; the notebook and the
+// deletion are judged on the row read. A node of another notebook, deleted
+// or missing is not answered. The two LIMIT 1 keep the subqueries from
+// being pulled up into a join, whose custom plan hashes this notebook's
+// nodes or page_contents whole once it holds a fifth of them. SourceHeads
+// stays the units' and the precheck's.
+func (q *Queries) SourceRebuildHeads(ctx context.Context, arg SourceRebuildHeadsParams) ([]SourceRebuildHeadsRow, error) {
+	rows, err := q.db.Query(ctx, sourceRebuildHeads, arg.NodeIds, arg.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SourceRebuildHeadsRow
+	for rows.Next() {
+		var i SourceRebuildHeadsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Kind,
+			&i.ContentHash,
+			&i.ByteSize,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}

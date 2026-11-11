@@ -218,7 +218,7 @@ func newAbandonFixture(change func(*abandonFake)) abandonFixture {
 	if change != nil {
 		change(x.f)
 	}
-	x.d = app.UpgradeDeps{Tx: x.f, Snapshots: x.f, Notebooks: x.f, Workspaces: x.f, States: x.f, Rollback: x.f, Rows: x.f, Writing: x.f,
+	x.d = app.UpgradeDeps{Tx: x.f, Snapshots: x.f, Notebooks: x.f, Workspaces: x.f, States: unapproved{x.f}, Rollback: x.f, Rows: x.f, Writing: x.f,
 		Rollbacks: abandonRollbacks{x.f}, Names: x.f, Authorizer: x.f, Action: "notebook.change_mode", Clock: x.f,
 		Logger: slog.New(slog.NewJSONHandler(x.log, nil))}
 	return x

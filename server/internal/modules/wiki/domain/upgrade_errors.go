@@ -71,11 +71,25 @@ func UpgradePagesLocked(locks []shared.LockHolder, total int) error {
 // by their keys only (M11/P2 design 3.12: no title, no path).
 func UpgradeNotReady(failed []UpgradeGateKey) error {
 	e := *ErrUpgradeNotReady
+	e.Detail = "These gates did not pass: " + keysOf(failed) + ". The upgrade is upgrading again: check it, then submit it again."
+	return &e
+}
+
+// ApprovalNotReady is ErrUpgradeNotReady at an approval: gates 1 to 3,
+// checked again under the notebook's row lock, do not pass (M11 design 4.9
+// step 2), which only a defect reaches, the upgrade frozen in review; it
+// is still in review (M11/P3 decision 282).
+func ApprovalNotReady(failed []UpgradeGateKey) error {
+	e := *ErrUpgradeNotReady
+	e.Detail = "These gates did not pass: " + keysOf(failed) + ". The upgrade is still in review: send it back, or reject it."
+	return &e
+}
+
+// keysOf is the gates' keys, comma separated, in their order.
+func keysOf(failed []UpgradeGateKey) string {
 	keys := make([]string, len(failed))
 	for i, k := range failed {
 		keys[i] = string(k)
 	}
-	e.Detail = "These gates did not pass: " + strings.Join(keys, ", ") +
-		". The upgrade is upgrading again: check it, then submit it again."
-	return &e
+	return strings.Join(keys, ", ")
 }

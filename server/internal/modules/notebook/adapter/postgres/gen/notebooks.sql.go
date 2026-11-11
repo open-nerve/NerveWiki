@@ -12,6 +12,39 @@ import (
 	"uuid"
 )
 
+const approveUpgrade = `-- name: ApproveUpgrade :execrows
+UPDATE notebooks
+SET mode = 'llm_wiki', source_root_id = $1::uuid, upgrade_id = NULL, upgrade_state = NULL,
+    upgrade_by_id = NULL, upgrade_at = NULL, updated_by_id = $2::uuid, updated_at = $3::timestamptz
+WHERE id = $4 AND upgrade_id = $5::uuid AND upgrade_state = 'reviewing'
+`
+
+type ApproveUpgradeParams struct {
+	SourceRootID uuid.UUID
+	By           uuid.UUID
+	Now          time.Time
+	ID           uuid.UUID
+	UpgradeID    uuid.UUID
+}
+
+// A notebook's upgrade approved (M11 design 4.9 step 3), under the row's lock: an LLM Wiki with the upgrade's source
+// root, its four upgrade columns cleared, in one statement; the notebook's upgrade is still upgrade_id, in review.
+// notebooks_upgrade_check keeps a notebook with an upgrade standard. SetNotebookMode, the downgrade's, stays as it is
+// (M11/P3 decision 281).
+func (q *Queries) ApproveUpgrade(ctx context.Context, arg ApproveUpgradeParams) (int64, error) {
+	result, err := q.db.Exec(ctx, approveUpgrade,
+		arg.SourceRootID,
+		arg.By,
+		arg.Now,
+		arg.ID,
+		arg.UpgradeID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const clearUpgrade = `-- name: ClearUpgrade :execrows
 UPDATE notebooks SET upgrade_id = NULL, upgrade_state = NULL, upgrade_by_id = NULL, upgrade_at = NULL,
     updated_by_id = $1::uuid, updated_at = $2::timestamptz

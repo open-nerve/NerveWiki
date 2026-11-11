@@ -2110,6 +2110,9 @@ type ServerInterface interface {
 	// AbandonUpgrade Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/abandon)
 	AbandonUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// ApproveUpgrade Approves the upgrade in review: the notebook becomes an LLM Wiki whose source root is the upgrade's, its content no longer frozen.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/approve)
+	ApproveUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// CheckUpgrade Check the upgrade against an LLM Wiki's contract, for its admins.
 	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check)
 	CheckUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -2119,6 +2122,12 @@ type ServerInterface interface {
 	// EndUpgradeRollback Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/end-rollback)
 	EndUpgradeRollback(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// RejectUpgrade Rejects the upgrade in review: puts the notebook back as the upgrade started, in a background job.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/reject)
+	RejectUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
+	// SendBackUpgrade Sends the upgrade in review back: upgrading again, its submission and report cleared, its initiator's agent able to write again.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/send-back)
+	SendBackUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
 	// SubmitUpgrade Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/submit)
 	SubmitUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID)
@@ -2301,6 +2310,32 @@ func (siw *ServerInterfaceWrapper) AbandonUpgrade(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ApproveUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) ApproveUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveUpgrade(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // CheckUpgrade operation middleware
 func (siw *ServerInterfaceWrapper) CheckUpgrade(w http.ResponseWriter, r *http.Request) {
 
@@ -2408,6 +2443,58 @@ func (siw *ServerInterfaceWrapper) EndUpgradeRollback(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.EndUpgradeRollback(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RejectUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) RejectUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RejectUpgrade(w, r, notebookID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendBackUpgrade operation middleware
+func (siw *ServerInterfaceWrapper) SendBackUpgrade(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "notebook_id" -------------
+	var notebookID NotebookID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "notebook_id", r.PathValue("notebook_id"), &notebookID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "notebook_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendBackUpgrade(w, r, notebookID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2572,6 +2659,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/check", wrapper.CheckUpgrade)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}", wrapper.ListUpgradeCheckItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/submit", wrapper.SubmitUpgrade)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/approve", wrapper.ApproveUpgrade)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/reject", wrapper.RejectUpgrade)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/v0/notebooks/{notebook_id}/upgrade/send-back", wrapper.SendBackUpgrade)
 
 	return m
 }
@@ -2927,6 +3017,79 @@ func (response AbandonUpgradedefaultApplicationProblemPlusJSONResponse) VisitAba
 	return err
 }
 
+type ApproveUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type ApproveUpgradeResponseObject interface {
+	VisitApproveUpgradeResponse(w http.ResponseWriter) error
+}
+
+type ApproveUpgrade200JSONResponse Upgrade
+
+func (response ApproveUpgrade200JSONResponse) VisitApproveUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveUpgrade503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ApproveUpgrade503ApplicationProblemPlusJSONResponse) VisitApproveUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ApproveUpgradedefaultResponseHeaders struct {
+	RetryAfter      *int
+	WWWAuthenticate *string
+}
+
+type ApproveUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ApproveUpgradedefaultResponseHeaders
+	StatusCode int
+}
+
+func (response ApproveUpgradedefaultApplicationProblemPlusJSONResponse) VisitApproveUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type CheckUpgradeRequestObject struct {
 	NotebookID NotebookID `json:"notebook_id"`
 }
@@ -3121,6 +3284,125 @@ func (response EndUpgradeRollbackdefaultApplicationProblemPlusJSONResponse) Visi
 	return err
 }
 
+type RejectUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type RejectUpgradeResponseObject interface {
+	VisitRejectUpgradeResponse(w http.ResponseWriter) error
+}
+
+type RejectUpgrade200JSONResponse Upgrade
+
+func (response RejectUpgrade200JSONResponse) VisitRejectUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectUpgrade503ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RejectUpgrade503ApplicationProblemPlusJSONResponse) VisitRejectUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RejectUpgradedefaultResponseHeaders struct {
+	RetryAfter      *int
+	WWWAuthenticate *string
+}
+
+type RejectUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    RejectUpgradedefaultResponseHeaders
+	StatusCode int
+}
+
+func (response RejectUpgradedefaultApplicationProblemPlusJSONResponse) VisitRejectUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBackUpgradeRequestObject struct {
+	NotebookID NotebookID `json:"notebook_id"`
+}
+
+type SendBackUpgradeResponseObject interface {
+	VisitSendBackUpgradeResponse(w http.ResponseWriter) error
+}
+
+type SendBackUpgrade200JSONResponse Upgrade
+
+func (response SendBackUpgrade200JSONResponse) VisitSendBackUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendBackUpgradedefaultApplicationProblemPlusJSONResponse struct {
+	Body       externalRef0.Problem
+	Headers    ProblemResponseHeaders
+	StatusCode int
+}
+
+func (response SendBackUpgradedefaultApplicationProblemPlusJSONResponse) VisitSendBackUpgradeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	if response.Headers.RetryAfter != nil {
+		w.Header().Set("Retry-After", fmt.Sprint(*response.Headers.RetryAfter))
+	}
+	if response.Headers.WWWAuthenticate != nil {
+		w.Header().Set("WWW-Authenticate", fmt.Sprint(*response.Headers.WWWAuthenticate))
+	}
+	w.WriteHeader(response.StatusCode)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SubmitUpgradeRequestObject struct {
 	NotebookID NotebookID `json:"notebook_id"`
 }
@@ -3211,6 +3493,9 @@ type StrictServerInterface interface {
 	// AbandonUpgrade Abandons the upgrade, or continues its stopped rollback: puts the notebook back as the upgrade started, in a background job.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/abandon)
 	AbandonUpgrade(ctx context.Context, request AbandonUpgradeRequestObject) (AbandonUpgradeResponseObject, error)
+	// ApproveUpgrade Approves the upgrade in review: the notebook becomes an LLM Wiki whose source root is the upgrade's, its content no longer frozen.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/approve)
+	ApproveUpgrade(ctx context.Context, request ApproveUpgradeRequestObject) (ApproveUpgradeResponseObject, error)
 	// CheckUpgrade Check the upgrade against an LLM Wiki's contract, for its admins.
 	// (GET /api/v0/notebooks/{notebook_id}/upgrade/check)
 	CheckUpgrade(ctx context.Context, request CheckUpgradeRequestObject) (CheckUpgradeResponseObject, error)
@@ -3220,6 +3505,12 @@ type StrictServerInterface interface {
 	// EndUpgradeRollback Ends a stopped rollback, keeping the notebook as it is: the upgrade's original pages and nodes are all there; some may not be back in place, and in pages not yet written back, links the system rewrote may lead nowhere.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/end-rollback)
 	EndUpgradeRollback(ctx context.Context, request EndUpgradeRollbackRequestObject) (EndUpgradeRollbackResponseObject, error)
+	// RejectUpgrade Rejects the upgrade in review: puts the notebook back as the upgrade started, in a background job.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/reject)
+	RejectUpgrade(ctx context.Context, request RejectUpgradeRequestObject) (RejectUpgradeResponseObject, error)
+	// SendBackUpgrade Sends the upgrade in review back: upgrading again, its submission and report cleared, its initiator's agent able to write again.
+	// (POST /api/v0/notebooks/{notebook_id}/upgrade/send-back)
+	SendBackUpgrade(ctx context.Context, request SendBackUpgradeRequestObject) (SendBackUpgradeResponseObject, error)
 	// SubmitUpgrade Submits the upgrade for its admins' review: freezes it for everyone, checks it again and keeps the report once every gate passes.
 	// (POST /api/v0/notebooks/{notebook_id}/upgrade/submit)
 	SubmitUpgrade(ctx context.Context, request SubmitUpgradeRequestObject) (SubmitUpgradeResponseObject, error)
@@ -3403,6 +3694,32 @@ func (sh *strictHandler) AbandonUpgrade(w http.ResponseWriter, r *http.Request, 
 	}
 }
 
+// ApproveUpgrade operation middleware
+func (sh *strictHandler) ApproveUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request ApproveUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ApproveUpgrade(ctx, request.(ApproveUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ApproveUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ApproveUpgradeResponseObject); ok {
+		if err := validResponse.VisitApproveUpgradeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // CheckUpgrade operation middleware
 func (sh *strictHandler) CheckUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
 	var request CheckUpgradeRequestObject
@@ -3476,6 +3793,58 @@ func (sh *strictHandler) EndUpgradeRollback(w http.ResponseWriter, r *http.Reque
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(EndUpgradeRollbackResponseObject); ok {
 		if err := validResponse.VisitEndUpgradeRollbackResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RejectUpgrade operation middleware
+func (sh *strictHandler) RejectUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request RejectUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RejectUpgrade(ctx, request.(RejectUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RejectUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RejectUpgradeResponseObject); ok {
+		if err := validResponse.VisitRejectUpgradeResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendBackUpgrade operation middleware
+func (sh *strictHandler) SendBackUpgrade(w http.ResponseWriter, r *http.Request, notebookID NotebookID) {
+	var request SendBackUpgradeRequestObject
+
+	request.NotebookID = notebookID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendBackUpgrade(ctx, request.(SendBackUpgradeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendBackUpgrade")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendBackUpgradeResponseObject); ok {
+		if err := validResponse.VisitSendBackUpgradeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

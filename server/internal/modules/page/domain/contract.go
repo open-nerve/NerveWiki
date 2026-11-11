@@ -107,7 +107,10 @@ const agentsKey = "agents"
 //     not deleted, nor any page above it: page.protected.
 //   - No node comes to its root under a reserved key (ReservedKeys) by a
 //     creation, a rename or a move; an import's creations number theirs
-//     instead (M10/P1/S3): page.virtual_file.
+//     instead (M10/P1/S3): page.virtual_file. A revert's restore is judged
+//     as a creation: it brings a node back under its old name (M11 design
+//     4.11); a restore from the trash numbers a reserved key in its unit
+//     instead.
 //   - One existing subtree moved from outside into sources has at most
 //     MaxUnitNodes nodes, including empty pages and attachments. Restore,
 //     import, source-out and membership-preserving moves keep their bounds.
@@ -134,7 +137,8 @@ func CheckContract(n NotebookState, s StepFacts) Verdict {
 			return Verdict{Err: ErrProtected, NodeID: x.ID}
 		}
 	}
-	if s.Operation == OpCreate && s.Kind != ChangesetImport || s.Operation == OpRename || s.Operation == OpMove {
+	if s.Operation == OpCreate && s.Kind != ChangesetImport || s.Operation == OpRename || s.Operation == OpMove ||
+		s.Operation == OpRestore && s.Kind == ChangesetRevert {
 		for _, x := range s.Nodes {
 			if x.After.atRoot() && Reserved(x.After.Key) && (!x.Before.atRoot() || x.Before.Key != x.After.Key) {
 				return Verdict{Err: ErrVirtualFile, NodeID: x.ID}

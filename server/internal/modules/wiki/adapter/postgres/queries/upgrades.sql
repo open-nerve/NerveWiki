@@ -87,3 +87,21 @@ SET state = 'upgrading', submission_id = NULL, submitted_by_id = NULL, submitted
     updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
 WHERE id = sqlc.arg(id) AND submission_id = sqlc.arg(submission_id) AND state = 'reviewing' AND report IS NULL
     AND deleted_at IS NULL;
+
+-- name: ApproveUpgrade :execrows
+-- An upgrade approved (M11 design 4.9 step 6), under the notebook's row lock: approved, who and when; the submission
+-- the approval read, in review with its report (notebook_upgrades_approved_check wants the report too).
+UPDATE notebook_upgrades
+SET state = 'approved', updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND submission_id = sqlc.arg(submission_id) AND state = 'reviewing' AND report IS NOT NULL
+    AND deleted_at IS NULL;
+
+-- name: SendBackUpgrade :execrows
+-- An upgrade sent back (M11 design 4.8), under the notebook's row lock: upgrading again, its submission and report
+-- cleared; from reviewing with a report, or without one whose submission was taken over (submitted at taken_over or
+-- before), as SubmitUpgrade judges it.
+UPDATE notebook_upgrades
+SET state = 'upgrading', submission_id = NULL, submitted_by_id = NULL, submitted_at = NULL, report = NULL,
+    updated_by_id = sqlc.arg(by)::uuid, updated_at = sqlc.arg(now)::timestamptz
+WHERE id = sqlc.arg(id) AND state = 'reviewing' AND deleted_at IS NULL
+    AND (report IS NOT NULL OR submitted_at <= sqlc.arg(taken_over)::timestamptz);

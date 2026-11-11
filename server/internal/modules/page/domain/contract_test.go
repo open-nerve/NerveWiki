@@ -184,12 +184,19 @@ func TestCheckContract(t *testing.T) {
 			move(x.inner, &x.notes, "log", nil, "log"), virtual(x.inner)},
 		{"a revert's put back of another page", domain.OpMove, domain.ChangesetRevert, move(x.inner, &x.other, "Inner", &x.notes, "Inner"),
 			let},
-		// A revert's deletion and restore.
+		// A revert's deletion and restore: its restore as a creation, under
+		// its old name (decision 181; M11/P3 design 3.10).
 		{"a revert deletes AGENTS", domain.OpDelete, domain.ChangesetRevert, remove(x.agents, nil, "AGENTS"), protected(x.agents)},
 		{"a revert deletes raw", domain.OpDelete, domain.ChangesetRevert, remove(x.raw, nil, "raw"), protected(x.raw)},
 		{"a revert deletes Notes, raw under it", domain.OpDelete, domain.ChangesetRevert, remove(x.notes, nil, "Notes", x.raw),
 			protected(x.raw)},
-		{"a revert restores a page at the root as log", domain.OpRestore, domain.ChangesetRevert, restore(fresh, nil, "log"), let},
+		{"a revert restores a page at the root as index", domain.OpRestore, domain.ChangesetRevert, restore(fresh, nil, "index"),
+			virtual(fresh)},
+		{"a revert restores a page at the root as log.md", domain.OpRestore, domain.ChangesetRevert, restore(fresh, nil, "log.md"),
+			virtual(fresh)},
+		{"a revert restores a page under Notes as index", domain.OpRestore, domain.ChangesetRevert, restore(fresh, &x.notes, "index"),
+			let},
+		{"a revert restores a page at the root as Logs", domain.OpRestore, domain.ChangesetRevert, restore(fresh, nil, "Logs"), let},
 	} {
 		facts := domain.FactsOf(tt.op, tt.kind, tt.changes)
 		if got := domain.CheckContract(wiki, facts); got != tt.want {

@@ -6,6 +6,26 @@ FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id
 WHERE n.notebook_id = sqlc.arg(notebook_id)
     AND n.id = ANY(sqlc.arg(node_ids)::uuid[]);
 
+-- name: SourceRebuildHeads :many
+-- An upgrade's approval's heads (M11/P3 design 3.4, decision 292): each id
+-- read by its own key, nodes by nodes_pkey and its content by
+-- page_contents_pkey, whatever the statistics; the notebook and the
+-- deletion are judged on the row read. A node of another notebook, deleted
+-- or missing is not answered. The two LIMIT 1 keep the subqueries from
+-- being pulled up into a join, whose custom plan hashes this notebook's
+-- nodes or page_contents whole once it holds a fifth of them. SourceHeads
+-- stays the units' and the precheck's.
+SELECT n.id, n.kind, c.content_hash, COALESCE(c.byte_size, 0)::bigint AS byte_size
+FROM unnest(sqlc.arg(node_ids)::uuid[]) AS i(id)
+CROSS JOIN LATERAL (
+    SELECT x.id, x.kind, x.notebook_id, x.deleted_at FROM nodes x WHERE x.id = i.id LIMIT 1
+) n
+LEFT JOIN LATERAL (
+    SELECT y.content_hash, y.byte_size FROM page_contents y
+    WHERE y.node_id = n.id AND y.deleted_at IS NULL LIMIT 1
+) c ON true
+WHERE n.notebook_id = sqlc.arg(notebook_id)::uuid AND n.deleted_at IS NULL;
+
 -- name: ProbeSources :many
 -- The two tuple bounds pin kind/hash exactly while retaining the composite
 -- order: direct equalities let ANALYZE/generic plans choose a primary-index

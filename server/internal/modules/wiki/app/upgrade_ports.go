@@ -50,12 +50,15 @@ type ModeChange struct {
 // 3.11, 3.20): Lock locks the notebook's row FOR NO KEY UPDATE and answers
 // its state, false for none; Start sets its upgrade; SetState its next
 // state and Clear ends it, each of the notebook's upgrade upgradeID by by
-// at at; Publish tells the mode's subscribers.
+// at at; Approve ends it, in review, the notebook an LLM Wiki whose source
+// root is rootID, in one write (M11/P3 design 3.3); Publish tells the
+// mode's subscribers.
 type UpgradeStates interface {
 	Lock(ctx context.Context, id uuid.UUID) (UpgradeNotebook, bool, error)
 	Start(ctx context.Context, id uuid.UUID, up NotebookUpgrade) error
 	SetState(ctx context.Context, id, upgradeID uuid.UUID, state domain.UpgradeState, by uuid.UUID, at time.Time) error
 	Clear(ctx context.Context, id, upgradeID, by uuid.UUID, at time.Time) error
+	Approve(ctx context.Context, id, upgradeID, rootID, by uuid.UUID, at time.Time) error
 	Publish(ctx context.Context, c ModeChange) error
 }
 
@@ -130,6 +133,21 @@ type UpgradeRows interface {
 	// cleared. False for no row so.
 	KeepReport(ctx context.Context, id, submissionID uuid.UUID, report domain.UpgradeReport, by uuid.UUID, at time.Time) (bool, error)
 	Unsubmit(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error)
+	// Approve sets the upgrade id approved, by by at at: in review, its
+	// submission submissionID with its report. SendBack sets it upgrading
+	// again, its submission and report cleared: in review with a report,
+	// or without one submitted at takenOver or before (M11 design 4.8).
+	// False for no row so (M11/P3 design 3.5).
+	Approve(ctx context.Context, id, submissionID, by uuid.UUID, at time.Time) (bool, error)
+	SendBack(ctx context.Context, id, by uuid.UUID, at, takenOver time.Time) (bool, error)
+}
+
+// SourceHashes are the page module's source hashes, rebuilt as an
+// approval makes the notebook an LLM Wiki whose source root is rootID, in
+// the transaction ctx carries: how many it set (M11 design 4.9 step 4,
+// M11/P3 design 3.4). Its errors wrap a deadline as one.
+type SourceHashes interface {
+	Rebuild(ctx context.Context, notebookID, rootID uuid.UUID) (int, error)
 }
 
 // Rollbacks start an upgrade's rollback's job, the transfer module's

@@ -78,6 +78,42 @@ func (h handler) SubmitUpgrade(ctx context.Context, req gen.SubmitUpgradeRequest
 	return gen.SubmitUpgrade200JSONResponse(out), nil
 }
 
+func (h handler) ApproveUpgrade(ctx context.Context, req gen.ApproveUpgradeRequestObject) (gen.ApproveUpgradeResponseObject, error) {
+	view, err := h.upgrades.ApproveUpgrade(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.ApproveUpgrade200JSONResponse(out), nil
+}
+
+func (h handler) RejectUpgrade(ctx context.Context, req gen.RejectUpgradeRequestObject) (gen.RejectUpgradeResponseObject, error) {
+	view, err := h.upgrades.RejectUpgrade(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.RejectUpgrade200JSONResponse(out), nil
+}
+
+func (h handler) SendBackUpgrade(ctx context.Context, req gen.SendBackUpgradeRequestObject) (gen.SendBackUpgradeResponseObject, error) {
+	view, err := h.upgrades.SendBackUpgrade(ctx, req.NotebookID)
+	if err != nil {
+		return nil, err
+	}
+	out, err := upgradeOf(view)
+	if err != nil {
+		return nil, err
+	}
+	return gen.SendBackUpgrade200JSONResponse(out), nil
+}
+
 // upgradeOf is view as the contract's Upgrade: the pages the start wrote,
 // raw then AGENTS; each step's fields null until it; the report kept.
 func upgradeOf(view app.UpgradeView) (gen.Upgrade, error) {

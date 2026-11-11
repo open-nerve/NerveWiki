@@ -499,6 +499,46 @@ func TestUpgradeCheck(t *testing.T) {
 		checkLinks(t, s.tm.pool)
 		checkSearch(t, s.tm.pool)
 	})
+
+	// #8 of the approval (M11/P3 design 7.2): as #8, the upgrade in review
+	// with its report; dana approves it while the check's flight queues;
+	// let go, the check's worker reads the upgrade approved in its
+	// snapshot, gone: wiki.upgrade_state.
+	t.Run("8 the check queued and the approval", func(t *testing.T) {
+		s := submitApp(t)
+		s.tm.join(t, "dana", "member")
+		nb := s.tm.openNotebook(t, "alice", "Eight approved")
+		s.tm.createPageWith(t, "alice", nb, "", "Note", cleanNote)
+		s.tm.addNotebookMember(t, "alice", nb, "dana", "admin")
+		s.tm.upgraded(t, "alice", nb)
+		s.tm.submitted(t, "alice", nb)
+		types := s.held(t, checkStep("alice", nb, "/missing_type"))
+		summaries := s.held(t, checkStep("alice", nb, "/missing_summary"))
+		s.drain()
+		check := s.tm.sender(t, checkStep("alice", nb, ""))
+		checked := make(chan answer, 1)
+		go func() { checked <- check() }()
+		flight := s.event(t, wiki.RunCreated, nb, 0).FlightID
+		if status, answer := s.tm.approveUpgrade(t, "dana", nb); status != http.StatusOK {
+			t.Fatalf("dana's approval = %d %s, want 200", status, answer)
+		}
+		for _, a := range []answer{types(), summaries()} {
+			wantAnswer(t, "a held read", a, cellOK())
+		}
+		s.event(t, wiki.RunAcquired, nb, flight)
+		select {
+		case a := <-checked:
+			if a.err == nil {
+				s.tm.contract.CheckResponse(t, a.req, a.res)
+			}
+			wantAnswer(t, "the check queued, the upgrade approved", a, cell{http.StatusConflict, "wiki.upgrade_state"})
+		case <-time.After(interleavingWait):
+			t.Fatal("the queued check did not answer")
+		}
+		checkPages(t, s.tm.pool)
+		checkLinks(t, s.tm.pool)
+		checkSearch(t, s.tm.pool)
+	})
 }
 
 // gated is a notebook of alice's holding pages, written over REST in

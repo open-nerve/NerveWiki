@@ -157,7 +157,7 @@ export async function startTrashRestore(
 }
 
 /** credential's start of the revert of the changeset changesetId in the background, with message, as answered. */
-async function postRevert(
+export async function postRevert(
   api: ApiClient,
   credential: string,
   notebookId: string,

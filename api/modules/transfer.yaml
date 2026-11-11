@@ -260,8 +260,8 @@ paths:
         in the background: read it with getTransferJob until it ends.
         In an LLM Wiki, an undo whose steps the notebook's contract refuses
         is refused at its start, with the code its first refused step would
-        get (page.protected, page.source_immutable, page.source_admin_only,
-        or page.source_too_large),
+        get (page.protected, page.virtual_file, page.source_immutable,
+        page.source_admin_only, or page.source_too_large),
         before edit locks. A source's content remains
         immutable for admins too; managing existing source pages or
         attachments requires an admin. Each placement or temporary move
@@ -294,6 +294,7 @@ paths:
           transfer.busy,
           page.revert_conflict,
           page.protected,
+          page.virtual_file,
           page.source_admin_only,
           page.source_too_large,
           page.locked,
