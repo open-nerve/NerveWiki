@@ -388,7 +388,7 @@ test("a pending tree does not hide the summary: target and counts are visible wh
   expect(fixture.requests).toHaveLength(1);
 });
 
-test("tree failure has its own retry and preserves health results without running lint again", async () => {
+test("tree failure has its own retry, leaves the items' paths empty meanwhile, and preserves health results without running lint again", async () => {
   const user = userEvent.setup();
   const fixture = healthServer();
   fixture.server.nodesDown = true;
@@ -399,6 +399,14 @@ test("tree failure has its own retry and preserves health results without runnin
     "Cannot reach the server. Check the connection and try again."
   );
   expect(rule("Wanted pages").getAllByRole("listitem")).toHaveLength(2);
+  // The tree failed to read: an item's path is left empty, neither loading nor gone (decision 301).
+  expect(
+    rule("Orphan pages")
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual([""]);
+  expect(health().queryByText("Loading…")).toBeNull();
+  expect(health().queryByText("This node is no longer available.")).toBeNull();
   fixture.server.nodesDown = false;
   await user.click(health().getByRole("button", { name: "Try again" }));
   expect(await rule("Orphan pages").findByRole("link", { name: "Guide/Install/Linux.md" })).toBeTruthy();

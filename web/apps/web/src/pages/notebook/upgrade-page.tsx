@@ -94,10 +94,13 @@ const sendBackWaitMs = 20_000;
  * report, to send it back for more work, and to reject it, in place of
  * abandoning it (decisions 288, 291; M11/P3 design 4.3). Approved, the
  * upgrade is no longer under way: the page, still there, goes to the
- * notebook's home, whose title takes the focus (decision 289). Sent back,
- * the check of the submission's time is not shown again; refused while
- * the submission is still checked, the dialog says so, and the upgrade is
- * read once more after sendBackWaitMs.
+ * notebook's home, whose title takes the focus (decision 289), and the
+ * upgrade, in review, is dropped from the cache. Sent back, by this
+ * admin or another, the check of the submission's time is not shown
+ * again (decision 300); refused while the submission is still checked,
+ * as the upgrade read again after the refusal says, the dialog says so
+ * until it closes, and that submission, still checked, is read once more
+ * after sendBackWaitMs.
  *
  * It is one entry to the page (M11/P2 design 4.3): the check it shows is
  * of its generation, which a new check moves on, of the upgrade it was
@@ -192,7 +195,9 @@ const UpgradeRead = observer(function UpgradeRead({
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
    * the upgrade in another state, or upgrading again after a submission
-   * not ready or of an old index. The upgrade an abandonment, a submission or a
+   * not ready or of an old index, read before the refusal is thrown, so
+   * that what the dialog says of it is of the upgrade as it is read
+   * again. The upgrade an abandonment, a submission or a
    * continuation answers, rolling back, is shown meanwhile (shows), over
    * what the page showed as it was sent, before the read again (SWR keeps
    * no read sent before it); a read that answered meanwhile, a mode
@@ -215,7 +220,7 @@ const UpgradeRead = observer(function UpgradeRead({
           refusal.code === "wiki.upgrade_not_ready" ||
           refusal.code === "wiki.upgrade_stale_index")
       ) {
-        void reread();
+        await reread();
       }
       throw refusal;
     }
@@ -258,7 +263,8 @@ const UpgradeRead = observer(function UpgradeRead({
    * upgrade is read again, as change does; approved, it is no longer under
    * way, its read answering 404, and nothing is read again nor shown over
    * it: the page, still there, goes to the notebook's home, its title
-   * taking the focus.
+   * taking the focus; gone, the upgrade, in review, is dropped from the
+   * cache, read by no hook then, so that Back does not show it meanwhile.
    */
   async function approve(): Promise<void> {
     try {
@@ -274,40 +280,86 @@ const UpgradeRead = observer(function UpgradeRead({
       throw refusal;
     }
     if (mounted()) {
-      void navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
+      await navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
+      void mutate(["upgrade", notebook.id], undefined, { revalidate: false });
     }
   }
 
-  // The send-backs refused for the upgrade's state since the last one sent, or the last read again after them.
-  const [sentBackRefused, setSentBackRefused] = useState(0);
-  // In review without a report, as the page reads it now: its submission is still checked, or did not finish.
-  const checking = error === undefined && data?.state === "reviewing" && data.report === null;
+  // The last send-back's refusal while its submission was still checked, as the upgrade read again after it says.
+  const [stillChecked, setStillChecked] = useState<ApiError | undefined>(undefined);
+  // The submission whose check the page waits for, to read the upgrade once more; none once it has.
+  const [waiting, setWaiting] = useState<string | undefined>(undefined);
+  // That submission is shown in review without a report: still checked, or it did not finish.
+  const due =
+    error === undefined &&
+    data?.state === "reviewing" &&
+    data.report === null &&
+    waiting !== undefined &&
+    data.submitted_at === waiting;
   useEffect(() => {
-    if (sentBackRefused === 0 || !checking) {
+    if (!due) {
       return undefined;
     }
     const timer = setTimeout(() => {
-      setSentBackRefused(0);
+      setWaiting(undefined);
       void reread();
     }, sendBackWaitMs);
     return () => clearTimeout(timer);
-  }, [sentBackRefused, checking, reread]);
+  }, [due, reread]);
+
+  // What the page showed of the upgrade's review (decision 300): upgrading again once its report was shown, or another
+  // submission was, it was sent back, by this admin or another, and the check of the submission's time is not shown
+  // again; upgrading again after a submission refused as not ready or of an old index, its check is the one asked then.
+  const review = useRef<{ submitted: string | null; reported: boolean; changed: boolean } | undefined>(undefined);
+  useEffect(() => {
+    if (data === undefined || error !== undefined) {
+      return;
+    }
+    const was = review.current;
+    if (data.state === "reviewing") {
+      review.current = {
+        submitted: data.submitted_at,
+        reported: (was?.reported ?? false) || data.report !== null,
+        changed: (was?.changed ?? false) || (was !== undefined && was.submitted !== data.submitted_at),
+      };
+      return;
+    }
+    review.current = undefined;
+    if (data.state === "upgrading" && was !== undefined && (was.reported || was.changed)) {
+      setChecked({ generation: 0, upgrade: "" });
+    }
+  }, [data, error]);
 
   /**
    * sendBack sends the upgrade back, as change does (M11/P3 design 4.3):
    * done, upgrading again, the check of the entry is none again, Check to
-   * be pressed (design review P3C-N15). Refused for its state, the upgrade
-   * read again still in review without a report, its submission is still
-   * checked: it is read once more after sendBackWaitMs, unless its state
-   * changes, the page goes, or it is sent back again first.
+   * be pressed (design review P3C-N15). Refused for its state, and the
+   * upgrade, as change read it again, in review without a report, its
+   * submission is still checked: the dialog says so of this refusal, what
+   * is read after it notwithstanding (design review P3C-N14), and that
+   * submission is read once more after sendBackWaitMs, unless it is no
+   * longer shown in review without a report, the page goes, or it is sent
+   * back again first. A read again that failed says nothing of it.
    */
   async function sendBack(): Promise<void> {
-    setSentBackRefused(0);
+    setStillChecked(undefined);
+    setWaiting(undefined);
     try {
       await change(() => notebooks.sendBackUpgrade(notebook.id), true);
     } catch (refusal) {
-      if (mounted() && refusal instanceof ApiError && refusal.code === "wiki.upgrade_state") {
-        setSentBackRefused((refused) => refused + 1);
+      const read = cache.get(unstable_serialize(["upgrade", notebook.id]));
+      const now = read?.data as Upgrade | undefined;
+      if (
+        mounted() &&
+        refusal instanceof ApiError &&
+        refusal.code === "wiki.upgrade_state" &&
+        read?.error === undefined &&
+        now?.state === "reviewing" &&
+        now.report === null &&
+        now.submitted_at !== null
+      ) {
+        setStillChecked(refusal);
+        setWaiting(now.submitted_at);
       }
       throw refusal;
     }
@@ -487,11 +539,9 @@ const UpgradeRead = observer(function UpgradeRead({
         sendingLabel={t("upgrade.sendingBack")}
         cancelLabel={t("notebookSettings.cancel")}
         confirm={sendBack}
-        // As the upgrade is read now, again after the refusal, not as it was when the dialog opened (P3C-N14).
+        // As the upgrade was read again after this refusal, not as it was when the dialog opened, nor as read since (P3C-N14).
         explain={(refusal) =>
-          refusal instanceof ApiError && refusal.code === "wiki.upgrade_state" && checking
-            ? t("upgrade.sendBackChecking")
-            : undefined
+          stillChecked !== undefined && refusal === stillChecked ? t("upgrade.sendBackChecking") : undefined
         }
         tone="default"
       />

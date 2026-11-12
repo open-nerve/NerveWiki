@@ -229,8 +229,9 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  *   after the cursor. Logged as "CHECK <rule> <cursor>";
  * - its submission (POST upgrade/submit), in the server's two steps:
  *   404 and 403 as above; not upgrading 409 wiki.upgrade_state; else the
- *   upgrade is reviewing, submitted by Ada, without a report, and the
- *   mode event is sent; once the submission's check is released
+ *   upgrade is reviewing, submitted by Ada, without a report, at a time
+ *   of its own (the first at 09:40, each next a minute later, as the
+ *   server writes each submission's time), and the mode event is sent; once the submission's check is released
  *   (submission.checked), an upgrade no longer that submission's (taken
  *   over, abandoned) is 409 wiki.upgrade_state, nothing written; else, as
  *   submission.outcome says, its report kept (submission.report), or
@@ -269,6 +270,8 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  * everything back does (rolledBack).
  */
 export function upgradeServer({ upgrade, events, answers = {}, ...options }: UpgradeServerOptions = {}) {
+  // The submissions made through the server: each is at a time of its own.
+  let submissions = 0;
   const routes: Record<string, Answer> = {
     ...(events === undefined ? {} : { "GET /api/v0/events": events.answer }),
     [`GET ${plans}/upgrade`]: () => {
@@ -422,7 +425,9 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
         ...server.upgrade,
         state: "reviewing",
         submitted_by: ada,
-        submitted_at: "2026-10-06T09:40:00Z",
+        submitted_at: new Date(Date.parse("2026-10-06T09:40:00Z") + 60_000 * submissions++)
+          .toISOString()
+          .replace(".000Z", "Z"),
         report: null,
       };
       server.withUpgrade(submitted);

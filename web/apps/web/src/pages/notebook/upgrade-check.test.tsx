@@ -940,6 +940,31 @@ test("the report's More reads the check's items from their first page, without a
   expect(server.asked).toEqual(["GET upgrade", "CHECK missing_type none"]);
 });
 
+test("the report's More under way, the page left: its request is aborted", async () => {
+  const user = userEvent.setup();
+  const late = deferred<Response>();
+  const signals: AbortSignal[] = [];
+  const server: ReturnType<typeof upgradeServer> = reviewOf({
+    answers: {
+      [`GET ${plans}/upgrade/check/*`]: (request: Request) => {
+        server.asked.push("CHECK held");
+        signals.push(request.signal);
+        return late.promise;
+      },
+    },
+  });
+  const { router } = renderApp(upgradePath, server.app);
+  const report = await reportSection();
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+  await waitFor(() => expect(signals).toHaveLength(1));
+
+  await act(() => router.navigate(home));
+
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  expect(signals[0]?.aborted).toBe(true);
+  late.resolve(json({ data: [], next_cursor: null, mode: "llm_wiki" }));
+});
+
 test("the report's More refused as forbidden reads the notebooks again: the account no longer the admin, the page says who can see it", async () => {
   const user = userEvent.setup();
   let lists = 0;

@@ -1356,6 +1356,26 @@ const rejectTitle = "Reject the upgrade of “Plans”?";
 const approveBody = (root: string) =>
   `The notebook becomes an LLM Wiki: the pages and attachments under its source area (${root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changesets can still be reverted one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.`;
 const stillChecked = "The previous submission is still being checked: try again in a moment.";
+
+/** jobRowOf is what a job's row says (M11/P3 design 4.3): its name, its texts in order, its progress, its controls. */
+const jobRowOf = (row: HTMLElement) => ({
+  name: row.getAttribute("aria-label"),
+  texts: within(row)
+    .queryAllByText((_, element) => element !== null && element.children.length === 0 && element.textContent !== "")
+    .map((element) => element.textContent),
+  progress: within(row).getByRole("progressbar").getAttribute("aria-label"),
+  buttons: within(row)
+    .queryAllByRole("button")
+    .map((button) => button.getAttribute("aria-label")),
+});
+
+/** The row of the rollback a rejection queued: started by the account, so not said by whom. */
+const rejectedJobRow = {
+  name: "Undo the upgrade, Oct 6, 2026, 8:00 AM",
+  texts: ["Undo the upgrade", "Queued", "Started Oct 6, 2026, 8:00 AM", "Cancel"],
+  progress: "Queued",
+  buttons: ["Cancel Undo the upgrade, Oct 6, 2026, 8:00 AM"],
+};
 /** What the upgrade's page asked the server, but the rollback's job's reads. */
 const askedOf = (server: { asked: string[] }) => server.asked.filter((asked) => asked !== "GET job upgrade");
 
@@ -1435,10 +1455,17 @@ test("the approval's dialog, the tree not read yet, names the proposed source ro
   expect(await within(dialog).findByText(approveBody("raw.md"))).toBeTruthy();
 });
 
-test("approved, the page goes to the notebook's home, its title focused, Plans an LLM Wiki without its banner; the upgrade, no longer under way, is not read again", async () => {
+test("approved, the page goes to the notebook's home, its title focused, Plans an LLM Wiki without its banner; the upgrade, no longer under way, is not read again, by the approval's mode event nor by a connection after it", async () => {
   const user = userEvent.setup();
-  const server = upgradeServer({ nodes: reviewTree, upgrade: reviewed() });
-  const { router } = renderApp(upgradePath, server.app);
+  // The stream is the test's: the mode event comes once the approval is answered, as when it is late.
+  const events = eventServer();
+  const server = upgradeServer({
+    nodes: reviewTree,
+    upgrade: reviewed(),
+    answers: { "GET /api/v0/events": events.answer },
+  });
+  const { router } = renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
   const dialog = await opened(user, approves, approveTitle);
 
   await user.click(within(dialog).getByRole("button", { name: "Approve the upgrade" }));
@@ -1451,6 +1478,67 @@ test("approved, the page goes to the notebook's home, its title focused, Plans a
   expect(await within(tree).findByRole("link", { name: "Directory" })).toBeTruthy();
   expect(screen.queryByText(reviewingBanner)).toBeNull();
   expect(askedOf(server)).toEqual(["GET upgrade", "APPROVE"]);
+
+  // The approval's mode event, then a connection: each reads what is shown again, the tree last, not the upgrade.
+  const treeReads = server.sent.filter((sent) => sent === "GET nodes").length;
+  events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+  events.last().hello();
+  await waitFor(() => expect(server.sent.filter((sent) => sent === "GET nodes").length).toBeGreaterThan(treeReads));
+  expect(askedOf(server)).toEqual(["GET upgrade", "APPROVE"]);
+});
+
+test("approved, then Back to the upgrade's page: it shows no review while it reads the upgrade, and then that none is under way", async () => {
+  const user = userEvent.setup();
+  const { server, held } = secondReadHeld({ nodes: reviewTree, upgrade: reviewed() });
+  const { router } = renderApp(upgradePath, server.app);
+  await screen.findByRole("button", { name: approves });
+  // Past SWR's two seconds of deduplication since the page read the upgrade, as a reader of the report is.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 2_100)));
+  const dialog = await opened(user, approves, approveTitle);
+  await user.click(within(dialog).getByRole("button", { name: "Approve the upgrade" }));
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+  await act(() => router.navigate(-1));
+
+  await screen.findByRole("heading", { level: 1, name: "Upgrade to an LLM Wiki" });
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(2));
+  for (const name of [approves, sendsBack, rejects]) {
+    expect(screen.queryByRole("button", { name })).toBeNull();
+  }
+  expect(screen.queryByRole("heading", { level: 2, name: "Check report" })).toBeNull();
+  held.resolve();
+  expect(await screen.findByText(noneUnderWay)).toBeTruthy();
+});
+
+test("approved once the page is left, its answer late: the account stays where it went", async () => {
+  const user = userEvent.setup();
+  const answered = deferred<void>();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    nodes: reviewTree,
+    upgrade: reviewed(),
+    answers: {
+      [`POST ${plans}/upgrade/approve`]: async () => {
+        server.asked.push("APPROVE");
+        await answered.promise;
+        const approved: Upgrade = { ...reviewed(), state: "approved" };
+        server.withUpgrade(approved);
+        return json(approved);
+      },
+    },
+  });
+  const { router } = renderApp(upgradePath, server.app);
+  const dialog = await opened(user, approves, approveTitle);
+  await user.click(within(dialog).getByRole("button", { name: "Approve the upgrade" }));
+  await waitFor(() => expect(server.asked).toContain("APPROVE"));
+  const elsewhere = `/lab/notebooks/${notebookJSON.id}/settings/general`;
+  await act(() => router.navigate(elsewhere));
+  await waitFor(() => expect(router.state.location.pathname).toBe(elsewhere));
+
+  answered.resolve();
+  await act(() => answered.promise);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+
+  expect(router.state.location.pathname).toBe(elsewhere);
 });
 
 test.each([
@@ -1502,7 +1590,7 @@ test("rejected, the upgrade rolls back, rejected: the page shows its job queued,
 
   const rollback = await section("Rollback");
   const job = within(rollback).getByRole("listitem", { name: (name) => name.startsWith("Undo the upgrade") });
-  expect(within(job).getByText("Queued")).toBeTruthy();
+  expect(jobRowOf(job)).toEqual(rejectedJobRow);
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(document.activeElement).toBe(title());
   expect(screen.queryByRole("button", { name: rejects })).toBeNull();
@@ -1510,6 +1598,44 @@ test("rejected, the upgrade rolls back, rejected: the page shows its job queued,
   expect(await screen.findByText(rollingBanner)).toBeTruthy();
   expect(server.upgrade?.ending).toBe("rejected");
   expect(askedOf(server)).toEqual(["GET upgrade", "REJECT", "GET upgrade"]);
+});
+
+test("rejected, the page shows the rollback the rejection answered while it reads the upgrade again: its job, Reject gone", async () => {
+  const user = userEvent.setup();
+  const { server, held } = secondReadHeld({ nodes: reviewTree, upgrade: reviewed() });
+  renderApp(upgradePath, server.app);
+  const dialog = await opened(user, rejects, rejectTitle);
+
+  await user.click(within(dialog).getByRole("button", { name: "Reject the upgrade" }));
+
+  const rollback = await section("Rollback");
+  const job = await within(rollback).findByRole("listitem", { name: (name) => name.startsWith("Undo the upgrade") });
+  expect(jobRowOf(job)).toEqual(rejectedJobRow);
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(screen.queryByRole("button", { name: rejects })).toBeNull();
+  expect(screen.queryByRole("heading", { level: 2, name: "Check report" })).toBeNull();
+  expect(reads(server, "GET upgrade")).toBe(2);
+  held.resolve();
+  await act(() => held.promise);
+  expect(within(await section("Rollback")).getByText("Queued")).toBeTruthy();
+});
+
+test("sent back, the page shows the upgrade the send-back answered while it reads it again: the agent's section, Send back gone", async () => {
+  const user = userEvent.setup();
+  const { server, held } = secondReadHeld({ nodes: reviewTree, upgrade: reviewed() });
+  renderApp(upgradePath, server.app);
+  const dialog = await opened(user, sendsBack, sendBackTitle);
+
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+
+  expect(await screen.findByRole("heading", { level: 2, name: "Connect an agent" })).toBeTruthy();
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(screen.queryByRole("button", { name: sendsBack })).toBeNull();
+  expect(screen.getByRole("button", { name: submits })).toBeTruthy();
+  expect(reads(server, "GET upgrade")).toBe(2);
+  held.resolve();
+  await act(() => held.promise);
+  expect(screen.getByRole("heading", { level: 2, name: "Connect an agent" })).toBeTruthy();
 });
 
 test("sent back, the upgrade is upgrading again: its agent's section and Submit for review are back, the banner follows, the focus is on the title", async () => {
@@ -1551,17 +1677,50 @@ test("checked, submitted and sent back, the check shows nothing of before: Check
   expect(checks(server)).toBe(1);
 });
 
+test("checked, submitted, and sent back by another admin, the mode event reading it again: the check shows nothing of before (decision 300)", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = upgradeServer({ nodes: reviewTree, upgrade: upgradeJSON(), events });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const check = await checkOf();
+  await user.click(within(check).getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(resultOf(check)).toBe(passedAt));
+  const submit = await opened(user, submits, "Submit for review?");
+  await user.click(within(submit).getByRole("button", { name: "Submit for review" }));
+  await section("Check report");
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+
+  // Another admin sent it back.
+  server.withUpgrade(upgradeJSON());
+  events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+
+  const again = await checkOf();
+  await waitFor(() => expect(screen.queryByRole("heading", { level: 2, name: "Check report" })).toBeNull());
+  expect(resultOf(again)).toBe("");
+  expect(within(again).getByRole("button", { name: "Check" })).toBeTruthy();
+  expect(within(again).queryByRole("list", { name: "The checks" })).toBeNull();
+  expect(checks(server)).toBe(1);
+});
+
 /**
  * inReviewChecked renders the upgrade's page of Plans in review without a report, its submission still checked, and
  * opens Send back's dialog; given events, its stream connected.
  */
 async function inReviewChecked(
   events?: ReturnType<typeof eventServer>,
-  answers: NonNullable<Parameters<typeof upgradeServer>[0]>["answers"] = {}
+  answers: (
+    server: () => ReturnType<typeof upgradeServer>
+  ) => NonNullable<Parameters<typeof upgradeServer>[0]>["answers"] = () => ({})
 ) {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-  const server = upgradeServer({ nodes: reviewTree, upgrade: reviewed({ report: null }), events, answers });
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    nodes: reviewTree,
+    upgrade: reviewed({ report: null }),
+    events,
+    answers: answers(() => server),
+  });
   const view =
     events === undefined
       ? renderApp(upgradePath, server.app)
@@ -1610,7 +1769,7 @@ test("sent back while its submission is still checked, refused, the page left an
   expect(askedOf(server)).toEqual(["GET upgrade", "SEND BACK", "GET upgrade", "GET upgrade"]);
 });
 
-test("sent back while its submission is still checked, refused, then its report kept, shown by the mode event: nothing is read after 20 seconds", async () => {
+test("sent back while its submission is still checked, refused, then its report kept, shown by the mode event: the dialog still says it was checked; nothing is read after 20 seconds", async () => {
   const events = eventServer();
   const { user, server, dialog } = await inReviewChecked(events);
   await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
@@ -1620,6 +1779,8 @@ test("sent back while its submission is still checked, refused, then its report 
   server.withUpgrade(reviewed());
   events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
   await screen.findByRole("button", { name: approves, hidden: true });
+  // What the refusal was, as the upgrade was read again after it, the dialog still says (design review P3C-N14).
+  expect(within(dialog).getByRole("alert").textContent).toBe(stillChecked);
   await act(() => vi.advanceTimersByTimeAsync(60_000));
 
   expect(askedOf(server).filter((asked) => asked.startsWith("GET upgrade") || asked === "SEND BACK")).toEqual([
@@ -1630,13 +1791,102 @@ test("sent back while its submission is still checked, refused, then its report 
   ]);
 });
 
-test("sent back while its submission is still checked, the network failing: the dialog says so; the upgrade is not read again, after 20 seconds neither", async () => {
-  const { user, server, dialog } = await inReviewChecked(undefined, {
+test("sent back while its submission was still checked, refused as another admin rejected it meanwhile, the read again held: the dialog says nothing of the refusal until it is read, and then not that it is checked", async () => {
+  const held = deferred<void>();
+  let gets = 0;
+  const { user, server, dialog } = await inReviewChecked(undefined, (answering) => ({
+    [`GET ${plans}/upgrade`]: async () => {
+      answering().asked.push("GET upgrade");
+      if (++gets === 2) {
+        await held.promise;
+      }
+      return upgradeRead(answering());
+    },
+  }));
+  const job = underWay(rollbackJobJSON(71), 0, 0);
+  server.jobs = [job];
+  server.withUpgrade(reviewed({ report: null, state: "rolling_back", ending: "rejected", rollback_job_id: job.id }));
+
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+  await waitFor(() => expect(gets).toBe(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  expect(within(dialog).getByRole("button", { name: "Sending back…" })).toBeTruthy();
+  held.resolve();
+  expect(await within(dialog).findByText(stateRefused)).toBeTruthy();
+  expect(within(dialog).queryByText(stillChecked)).toBeNull();
+});
+
+test("sent back while the page shows its submission still checked, the server having kept its report and another admin approved it meanwhile: read again, none is under way, and the dialog says the state does not allow it; nothing is read after 20 seconds", async () => {
+  const { user, server, dialog } = await inReviewChecked();
+  server.withUpgrade(reviewed({ state: "approved" }));
+
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+
+  expect(await screen.findByText(noneUnderWay)).toBeTruthy();
+  expect(await within(dialog).findByText(stateRefused)).toBeTruthy();
+  expect(within(dialog).queryByText(stillChecked)).toBeNull();
+  await act(() => vi.advanceTimersByTimeAsync(25_000));
+  expect(askedOf(server)).toEqual(["GET upgrade", "SEND BACK", "GET upgrade"]);
+});
+
+test("sent back while its submission is still checked, refused; its report kept, sent back by another admin and submitted again, the new submission still checked: nothing is read after 20 seconds, none refused for it", async () => {
+  const events = eventServer();
+  const { user, server, dialog } = await inReviewChecked(events);
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+  await within(dialog).findByText(stillChecked);
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(2));
+  await dismissed(user, dialog);
+  const mode = () => events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+  server.withUpgrade(reviewed());
+  mode();
+  await screen.findByRole("button", { name: approves });
+  server.withUpgrade(upgradeJSON());
+  mode();
+  await screen.findByRole("button", { name: submits });
+  server.withUpgrade(reviewed({ report: null, submitted_at: "2026-10-06T10:40:00Z" }));
+  mode();
+  await screen.findByText(pending);
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(5));
+
+  await act(() => vi.advanceTimersByTimeAsync(25_000));
+
+  expect(reads(server, "GET upgrade")).toBe(5);
+});
+
+test("sent back while its submission is still checked, refused, then sent back again, the network failing: the next send-back clears the read once more, nothing is read after 20 seconds", async () => {
+  let sends = 0;
+  const { user, server, dialog } = await inReviewChecked(undefined, (answering) => ({
     [`POST ${plans}/upgrade/send-back`]: () => {
-      server.asked.push("SEND BACK");
+      answering().asked.push("SEND BACK");
+      if (++sends === 1) {
+        return problem(409, "wiki.upgrade_state", {
+          detail: "The previous submission is still being checked: check again in a moment.",
+        });
+      }
       throw new TypeError("offline");
     },
-  });
+  }));
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+  await within(dialog).findByText(stillChecked);
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(2));
+  await act(() => vi.advanceTimersByTimeAsync(10_000));
+
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+
+  expect(await within(dialog).findByText("Cannot reach the server. Check the connection and try again.")).toBeTruthy();
+  await act(() => vi.advanceTimersByTimeAsync(25_000));
+  expect(askedOf(server)).toEqual(["GET upgrade", "SEND BACK", "GET upgrade", "SEND BACK"]);
+});
+
+test("sent back while its submission is still checked, the network failing: the dialog says so; the upgrade is not read again, after 20 seconds neither", async () => {
+  const { user, server, dialog } = await inReviewChecked(undefined, (held) => ({
+    [`POST ${plans}/upgrade/send-back`]: () => {
+      held().asked.push("SEND BACK");
+      throw new TypeError("offline");
+    },
+  }));
 
   await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
 

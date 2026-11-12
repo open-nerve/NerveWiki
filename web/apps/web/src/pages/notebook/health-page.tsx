@@ -242,7 +242,9 @@ const HealthResults = observer(function HealthResults({
         scope={scope}
         mode={notebook.mode}
         pages={pages}
-        readingTree={pages.nodes === undefined || tree.reading}
+        // The tree failed to read, an item's path is left empty, not said to be loading (decision 301).
+        readingTree={(pages.nodes === undefined && tree.error === undefined) || tree.reading}
+        treeFailed={tree.error !== undefined}
         disabled={view.checking || mismatch}
         paths={paths}
         read={(which, cursor, signal) => {
