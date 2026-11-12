@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"net/http"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -146,10 +147,12 @@ func promptCellOf(t *testing.T, a mcpAnswer, first string) mcpCell {
 	return mcpCell{}
 }
 
-// Each prompt of the contract's file is read where lint is, in the
+// Each of the LLM Wiki's three prompts is read where lint is, in the
 // notebook entry alone (M10 decision 165): the same 13 callers, the LLM
 // Wiki's text and the standard notebook's refusal behind the same HTTP
-// 404. A prompt added to the file without its first line here fails.
+// 404. The contract's file holds these three and the upgrade's, whose
+// states TestUpgradePromptMatrix reads (M11/P3 design 3.18): a prompt
+// added to the file without its row here or there fails.
 func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
 	d := prepareMatrix(t)
 	contract := apitest.Load(t)
@@ -168,14 +171,17 @@ func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
 		"lint":   "Check and maintain this LLM Wiki.",
 		"query":  "Answer a question from this LLM Wiki.",
 	}
-	prompts := readPromptLists(t)["notebook"]
+	var listed []string
+	for _, p := range readPromptLists(t)["notebook"] {
+		listed = append(listed, p.(map[string]any)["name"].(string))
+	}
+	if !slices.Equal(listed, []string{"ingest", "lint", "query", "upgrade"}) {
+		t.Fatalf("the contract's prompts = %v, want the LLM Wiki's three, read here, and the upgrade's, read by TestUpgradePromptMatrix", listed)
+	}
+	prompts := []string{"ingest", "lint", "query"}
 	checked := 0
-	for _, p := range prompts {
-		prompt := p.(map[string]any)["name"].(string)
-		first, ok := firstLines[prompt]
-		if !ok {
-			t.Fatalf("no row of the prompt %s", prompt)
-		}
+	for _, prompt := range prompts {
+		first := firstLines[prompt]
 		args := map[string]string{"question": "Why?"} // what query requires; the others take it as any argument of no use
 		for _, mode := range []string{"llm_wiki", "standard"} {
 			for _, c := range notebookColumns() {
@@ -202,7 +208,7 @@ func TestThePromptReadsLLMWikiMatrix(t *testing.T) {
 			}
 		}
 	}
-	if want := 2 * 13 * len(prompts); len(prompts) != 3 || checked != want {
-		t.Fatalf("checked %d answers of %d prompts, want 13 columns in two modes of each of three", checked, len(prompts))
+	if checked != 2*13*3 {
+		t.Fatalf("checked %d answers, want 13 columns in two modes of each of three prompts", checked)
 	}
 }

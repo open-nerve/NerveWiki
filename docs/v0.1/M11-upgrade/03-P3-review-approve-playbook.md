@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P3 审阅、批准与 playbook（三个 Step：S1 审阅（服务端）；S2 playbook 与文档（服务端）；S3 网页） |
-| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条）；2026-11-12（照 S1 的实施与审查修订） |
-| 状态 | 进行中（设计已审查，S1 已合并 `daf14dd1`；设计的[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节；S1 的审查记录 [P3-S1-review-actions-review.md](reviews/P3-S1-review-actions-review.md)；实施与审查之后与代码不同之处照实改在各节（3.23 列出），结果在 10.1） |
+| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条）；2026-11-12（照 S1 的实施与审查修订）；2026-11-12（照 S2 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `daf14dd1`，S2 已合并 `（待填）`；设计的[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节；S1、S2 的审查记录 [P3-S1-review-actions-review.md](reviews/P3-S1-review-actions-review.md)、[P3-S2-playbook-docs-review.md](reviews/P3-S2-playbook-docs-review.md)；实施与审查之后与代码不同之处照实改在各节（3.23、3.24 列出），结果在 10.1、10.2） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.3 审阅之后的几条转移、4.8 的退回、4.9、4.10 的驳回、4.11–4.20 里属于 P3 的部分、第 5、7、8、9、10 节、第 11 节（尤其 176、181、183–185、195、196、201、202、204、212、216、222、232、236、240、243、244、258、259、262、264、274、276、277）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P3 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.19、3.20 的回滚与结束）；[P2 设计](02-P2-guardrails-gate-submit.md)（3.12 的提交、3.19–3.21 的修正、第 9 节交给 P3 的事）；[审查记录](reviews/)（P1、P2 的设计与各 Step）；[v0.1 总体设计](../v0.1-design.md) 5.8、5.9、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1、P2 设计：模块写作 `wiki/app/abandon_upgrade.go:106`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00057_wiki_notebook_upgrades.sql:52`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:277`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up5-check-submit.spec.ts:312`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P2 完成之后的 `main` `955fa579`（`docs: M11/P2 done`）的 |
 | 工作笔记 | 代码的核对分四份（wiki、notebook、page 的升级用例与 SQL；网页的升级页、检查一节与 `HealthRule`；组合根的测试设施、分份与 CI；MCP 的 prompt、README、人工清单与移交），本文引的每个行号都在其中核对过（附录）。实测在临时的 worktree 里、经 `heavy.sh`：批准的哈希重建在 10 万与 5 万个来源上的各段时长与计划（3.4、7.6），组合根第四、六、七、八份的本机两轮（7.5）；修订时另量决定 292 的读头语句在这本笔记本约占一成与约占四分之一的两个种子上的计划（3.4） |
@@ -694,13 +694,13 @@ one that would restore, rename or move a node back to the notebook's root under 
 | `wiki/domain/playbook-upgrade.md`（新）、`wiki/domain/playbook.go` | playbook 与 `UpgradePlaybookText`（3.17） |
 | `wiki/app/upgrade_playbook.go`（新） | `UpgradePlaybook`（3.16） |
 | `wiki/adapter/mcp/prompts.go` | `Prompts(p, u)` 加 `upgrade` |
-| `wiki/prompts.go`、`wiki/lint.go` | `Module` 加 `upgradePlaybook`，`Prompts()` 交它 |
+| `wiki/prompts.go`、`wiki/lint.go` | `Module` 加 `upgradePlaybook`，`Prompts()` 交它；模块根另导出 `UpgradePlaybookText`、`PlaybookText`、`Playbook` 与三个常量，给组合根的测试整值比（S2 的实施，3.24） |
 | `api/mcp/prompts.json` | 笔记本一项加 `upgrade` |
 | `bootstrap/permission_matrix_mcp_wiki_test.go`、`mcp_prompts_test.go`、`upgrade_prompt_test.go`（新） | 3.18 |
 | `README.md` | "升级为 LLM Wiki"一节，连同 `:214`、`:234`、`:236`、`:246` 与 MCP 一节的两个工具（3.19） |
-| `api/mcp/tools.json` | `upgrade_submit` 的说明加"or sends it back"（两个入口各一项，`:589`、`:1298`；设计审查 P3C-N4） |
+| `api/mcp/tools.json`；`wiki/adapter/mcp/tools.go`、`wiki/adapter/mcp/testdata/tools.json` | `upgrade_submit` 的说明加"or sends it back"（契约两个入口各一项，`:589`、`:1298`；设计审查 P3C-N4）；常量与 testdata 的两个入口同改，初稿漏了这两个文件（S2 的实施，3.24） |
 | `docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md` | K（3.20） |
-| `e2e/stories/upgrade/up9-playbook.spec.ts`（新）、`e2e/fixtures/mcp.ts` | UP9（第 5 节） |
+| `e2e/stories/upgrade/up9-playbook.spec.ts`（新）、`e2e/fixtures/mcp.ts` | UP9（第 5 节）；LW11 的 `textOf` 挪进 `fixtures/mcp.ts`、导出为 `promptTextOf`，两个故事共用（S2 的实施，3.24） |
 | `e2e/stories/wiki/lw11-playbook.spec.ts` | 标题与 `:10`、`:62` 两处注释的"three"（第 5 节末；设计审查 P3C-N5） |
 
 ### 3.16 S2：prompt `upgrade` 与它的用例
@@ -763,18 +763,18 @@ func Prompts(p PlaybooksUseCase, u UpgradePlaybookUseCase) []mcpserver.Prompt
     }
 ```
 
-单元测试：`wiki/app/upgrade_playbook_test.go`：调用的次序（"workspace""authorize lint.read""current"）；看不到答 `notebook.not_found`；没有升级、`reviewing`、`rolling_back` 各答 `wiki.upgrade_state`；`upgrading` 答文字。`wiki/adapter/mcp/prompts_test.go`：四个 prompt 的名字与次序；`upgrade` 的 `Get` 把笔记本交给用例、错误原样交回（`:67-70` 的拒绝一格改按名字取，不按下标）。`wiki/domain/playbook_test.go`（`playbooks_test.go:129-152` 那几格）：`UpgradePlaybookText` 的第一行、每段要有的句子（3.17 的"必有的句子"）、不过 `MaxPlaybookBytes`、已去掉首尾空白。
+单元测试：`wiki/app/upgrade_playbook_test.go`：调用的次序（"workspace""authorize lint.read""current"）；看不到答 `notebook.not_found`；没有升级、`reviewing`（没有报告与有报告各一格，后者修复一轮加，审查 P3S2A-N1）、`rolling_back` 各答 `wiki.upgrade_state`；`upgrading` 答文字。`wiki/adapter/mcp/prompts_test.go`：四个 prompt 的名字与次序；`upgrade` 的 `Get` 把笔记本交给用例、错误原样交回（`:67-70` 的拒绝一格改按名字取，不按下标）。`wiki/domain/playbook_test.go`（`playbooks_test.go:129-152` 那几格）：`UpgradePlaybookText` 的第一行、每段要有的句子（3.17 的"必有的句子"：修复一轮之后每句或分句一格，47 格，各恰好出现一次；审查 P3S2B-M1 = C-M1）、不过 `MaxPlaybookBytes`、已去掉首尾空白。
 
 ### 3.17 S2：playbook 的正文
 
-`wiki/domain/playbook-upgrade.md`，英文（第 176 条），照三份已有的 playbook 的写法：第一行一句祈使的标题，之后平铺的段落，没有小标题，直呼工具与码的名字。初稿（去掉首尾空白 4,827 字节，离 16 KiB 的界很远；设计审查 P3C-N3 改正初稿写的"约 5.6 KB"）：
+`wiki/domain/playbook-upgrade.md`，英文（第 176 条），照三份已有的 playbook 的写法：第一行一句祈使的标题，之后平铺的段落，没有小标题，直呼工具与码的名字。初稿去掉首尾空白 4,827 字节（离 16 KiB 的界很远；设计审查 P3C-N3 改正初稿写的"约 5.6 KB"），S2 建成时逐字照它。修复一轮（`8321734b`）照审查 P3S2C-N3、N4 改了三处：闸门 4 写成来源根与 `AGENTS` 之外的页才要 `type`、`summary`；`server_busy` 对两个工具都适用；`notebook.upgrading` 那一句后接"and forbidden from upgrade_verify or upgrade_submit means your user is not an admin of it"（写"is not"：读者也取得到这份 playbook，他的 agent 调这两个工具答 `forbidden` 是因为从来不是管理员；写两个工具的名字：这一段还没讲到 `upgrade_submit`，"either tool"无所指；3.24）。下面是修复之后的全文，去掉首尾空白 4,979 字节，与 `wiki/domain/playbook-upgrade.md` 逐字相同：
 
 ```
 Upgrade this notebook to an LLM Wiki.
 
-Read and follow AGENTS.md and this notebook's instructions. The notebook is standard while it upgrades, and frozen: only the agent of the admin who started the upgrade, through MCP, may write, and only while the upgrade is upgrading. notebook.upgrading means you are not that agent, the upgrade is no longer upgrading, or your user is no longer an admin of this notebook: stop and tell your user. The upgrade proposed a source root, raw at the notebook's root, and AGENTS at the root; it may have written them.
+Read and follow AGENTS.md and this notebook's instructions. The notebook is standard while it upgrades, and frozen: only the agent of the admin who started the upgrade, through MCP, may write, and only while the upgrade is upgrading. notebook.upgrading means you are not that agent, the upgrade is no longer upgrading, or your user is no longer an admin of this notebook, and forbidden from upgrade_verify or upgrade_submit means your user is not an admin of it: stop and tell your user. The upgrade proposed a source root, raw at the notebook's root, and AGENTS at the root; it may have written them.
 
-Start with upgrade_verify without a rule. It names eight gates and eight rules: AGENTS has a body; the source root is a live page and not AGENTS; no node at the root is titled index, log, index.md or log.md; every page outside the source root has valid frontmatter with type and summary; every sources reference is a link to a page or attachment under the source root; no original page links to more missing pages than when the upgrade started; every original page and node is still there, its body unchanged; and the link index is up to date. Read one rule's items with upgrade_verify and that rule, and continue next_cursor until it is null. Call upgrade_verify again after each round of changes.
+Start with upgrade_verify without a rule. It names eight gates and eight rules: AGENTS has a body; the source root is a live page and not AGENTS; no node at the root is titled index, log, index.md or log.md; every page outside the source root has valid frontmatter, and every one but the source root and AGENTS has type and summary; every sources reference is a link to a page or attachment under the source root; no original page links to more missing pages than when the upgrade started; every original page and node is still there, its body unchanged; and the link index is up to date. Read one rule's items with upgrade_verify and that rule, and continue next_cursor until it is null. Call upgrade_verify again after each round of changes.
 
 Sort the original pages: a source is evidence you keep as it is; a wiki page is knowledge you maintain. Move each source, with the pages under it, under the source root. Pages already under the source root that are not sources: move them out of it; after the approval, everything under it is a source, read-only. Give each wiki page, folder pages too, frontmatter with type and summary; a page that rests on sources also lists them in sources, quoted links to their paths under the source root, for example sources: ["[[raw/Note.md]]"]. You may change an original page's frontmatter only: its body after the frontmatter, and after a byte order mark, must stay byte for byte, or the write is page.upgrade_immutable. A page that starts with --- and has no closing --- line has no frontmatter: add a valid block before it. A page whose block between two --- lines is not valid YAML: rewrite that block in place, for example keeping its old text in a quoted property, or move the page under the source root, where frontmatter is not checked; a new block before it would make the old one part of the body.
 
@@ -784,20 +784,20 @@ Moves and renames must let the system rewrite the links that lead to what moved:
 
 In a batch, once a move or a rename has rewritten an original page's links, or would by the links the page had before the batch, writing that page later in the same batch is page.upgrade_batch_rewrite, whatever you write: write the page first and move afterwards, or use two batches. A page changed and changed back within one batch passes, unless a move in between rewrote it or reached it. Splitting the batch does not make a body change acceptable: it is still page.upgrade_immutable. Large original pages that a batch writes whole count toward its read bound; page.batch_too_large means split the batch.
 
-When upgrade_verify reports every gate passed, call upgrade_submit. It checks again and puts the upgrade in review, where nothing can be written. wiki.upgrade_not_ready names the gates that did not pass: the upgrade is upgrading again, so verify, fix and submit again. wiki.upgrade_stale_index means the link index is out of date: tell your user that a server admin runs nervewiki reindex; once upgrade_verify passes the index gate, submit again. wiki.upgrade_state saying the previous submission is still being checked means wait a moment and call upgrade_verify before submitting again; wiki.upgrade_state otherwise means the upgrade is already in review or no longer under way: tell your user. server_busy means wait retry_after_seconds, then submit again.
+When upgrade_verify reports every gate passed, call upgrade_submit. It checks again and puts the upgrade in review, where nothing can be written. wiki.upgrade_not_ready names the gates that did not pass: the upgrade is upgrading again, so verify, fix and submit again. wiki.upgrade_stale_index means the link index is out of date: tell your user that a server admin runs nervewiki reindex; once upgrade_verify passes the index gate, submit again. wiki.upgrade_state saying the previous submission is still being checked means wait a moment and call upgrade_verify before submitting again; wiki.upgrade_state otherwise means the upgrade is already in review or no longer under way: tell your user. server_busy from either tool means wait retry_after_seconds and call it again.
 
 Once submitted, an admin reviews the upgrade in the web app, then approves it, sends it back for more work, or rejects it, which puts the notebook back as it was. Report what you changed, which gates passed, and what remains for your user to decide. Never claim a gate passed that upgrade_verify did not report as passed.
 ```
 
-**必有的句子**（单元测试逐句断言，一句一格，防止改写时漏掉一类）：第一行；"only the agent of the admin who started the upgrade"；`notebook.upgrading`；八道闸门的那一段里每道闸门的说法；`next_cursor`；`page.upgrade_immutable`、`page.upgrade_protected`、`page.upgrade_keep_links`、`page.upgrade_batch_rewrite`、`page.batch_too_large`；"has no closing --- line"与"is not valid YAML"两种 frontmatter；"A new page's title becomes the target"；`wiki.upgrade_not_ready`、`wiki.upgrade_stale_index`、"still being checked"、`retry_after_seconds`；最后一句；设计审查 P3C-M6 的三句："is a link to a page or attachment under the source root"、"tell your user that a server admin runs nervewiki reindex"、"Pages already under the source root that are not sources"（决定 214）。设计审查之后改了六处（P3C-M6 的三处、P3C-N18 的三处：每一轮改动之后再验、建页之后读 `ambiguous` 的条目、只留正文非空的原有 `AGENTS`，空正文的改不了正文，只能改名另建，第 172 条）。逐项对着 P2 第 9 节"P3/S2"的四条与 00 号文档 4.13 的清单核对过：护栏的三个码、无效 frontmatter 的两种改法、改了又改回、拆的写法、拆开之后仍是 `immutable`、只写名字的链接、盲写计进读的界、`retry_after_seconds`、"正在计算"时等一会再检查、已在审阅中就告诉用户。
+**必有的句子**（单元测试逐句断言，一句一格，防止改写时漏掉一类）：修复一轮之后每格是一整句，一句里有两件事时是一个分句，共 47 格（`94db07e4` 46 格，`8321734b` 把 `notebook.upgrading` 那一句拆成两格；审查 P3S2B-N2），每格断言恰好出现一次（一个码出现在两句里时，一句不能顶替另一句）；47 格合起来覆盖第一行之外的整段正文（第一行另判），改任何一句都要同时改测试里那一格。00 号文档 4.13 清单的每一项因此都有一格：只改 frontmatter（`page.upgrade_immutable` 钉在这一句）、来源移进来源根、把原有页归为来源或 wiki 页、先 `upgrade_verify`、全过再 `upgrade_submit`、审阅中冻结。测试钉的是该有的句子在，不看有没有多出来的句子（新加一句相反的话照过，审查 P3S2B-N3，不改：新加的文字由审查看 diff）。S2 建成时片段止于条件与码，这几项删掉、做法换成错的都照过，`page.upgrade_immutable` 一格被"拆开仍是 `immutable`"那一句代为满足（审查 P3S2B-M1 = C-M1、B-N1，修复一轮照改，3.24）。初稿列的是：第一行；"only the agent of the admin who started the upgrade"；`notebook.upgrading`；八道闸门的那一段里每道闸门的说法；`next_cursor`；`page.upgrade_immutable`、`page.upgrade_protected`、`page.upgrade_keep_links`、`page.upgrade_batch_rewrite`、`page.batch_too_large`；"has no closing --- line"与"is not valid YAML"两种 frontmatter；"A new page's title becomes the target"；`wiki.upgrade_not_ready`、`wiki.upgrade_stale_index`、"still being checked"、`retry_after_seconds`；最后一句；设计审查 P3C-M6 的三句："is a link to a page or attachment under the source root"、"tell your user that a server admin runs nervewiki reindex"、"Pages already under the source root that are not sources"（决定 214）。设计审查之后改了六处（P3C-M6 的三处、P3C-N18 的三处：每一轮改动之后再验、建页之后读 `ambiguous` 的条目、只留正文非空的原有 `AGENTS`，空正文的改不了正文，只能改名另建，第 172 条）。逐项对着 P2 第 9 节"P3/S2"的四条与 00 号文档 4.13 的清单核对过：护栏的三个码、无效 frontmatter 的两种改法、改了又改回、拆的写法、拆开之后仍是 `immutable`、只写名字的链接、盲写计进读的界、`retry_after_seconds`、"正在计算"时等一会再检查、已在审阅中就告诉用户。
 
 ### 3.18 S2：prompt 的测试改写
 
 - **`TestThePromptReadsLLMWikiMatrix`**（`bootstrap/permission_matrix_mcp_wiki_test.go:153-208`，第三份）：循环改为只取 `ingest`、`query`、`lint` 三个（按名字列出，不是 `prompts.json` 的每一项）；`:177` 的"没有行就失败"随之只对这三个；`:205-206` 的断言改为"`prompts.json` 里恰有这三个与 `upgrade`，`checked == 2 * 13 * 3`"，加一个 prompt 而没有在这里或 `TestUpgradePromptMatrix` 里有期望时失败。
 - **`TestThePromptListsAreTheContract`**（`bootstrap/mcp_prompts_test.go:101`，第三份）：`:105-106` 的 `!= 3` 改为 `!= 4`，注释（`:97-100`）"lists the three"改为"lists the four"。
 - **`TestTheWikiPromptsAreReached`**（`:145-259`）：注释与表（`:140-144`、`:167-173`）照旧是三个 LLM Wiki 的 prompt；`upgrade` 的到达在新的测试里。
-- **`TestUpgradePromptMatrix`**（新，`bootstrap/upgrade_prompt_test.go`，第七份，第 222 条）：四个 prompt × 四种状态（`llm_wiki`；没有升级的 `standard`；`upgrading`；`reviewing`）× 13 个笔记本列。期望表：`ingest`、`query`、`lint` 在 `llm_wiki` 照 `promptCellOf`（`permission_matrix_mcp_wiki_test.go:131-147`）答文字，在后三种答 `notebook.not_llm_wiki`；`upgrade` 只在 `upgrading` 答文字，别的三种答 `wiki.upgrade_state`；看不到的列在 HTTP 的边上答 404。升级的两种状态在升级的变体上（`TestUpgradePermissionMatrix` 的同一组建法）：每种升级状态一份库的副本（`upgradedBy` 的建法），矩阵的几本笔记本在副本上以 `upgradeIn` 设好，4 个 prompt × 13 列在同一份上读，不为每格复制（prompt 只读；设计审查 P3C-N10）。计数断言 `checked == 4 * 4 * 13`。变异"prompt 在审阅中也答"由 `reviewing` 一格抓住（00 号文档 4.13）。
-- **`TestUpgradePrompt`**（新，同一个文件）：经真的笔记本入口：`upgrading` 的笔记本取 `upgrade`，一条 `user` 的消息、文字等于 `UpgradePlaybookText()`、`description` 等于 `prompts.json` 的；读者（能读、不是管理员）也取得到（`lint.read`）；没有升级的普通笔记本、审阅中、回滚中、LLM Wiki 各答 `-32602`、`data` 是 `wiki.upgrade_state`；`prompts/list` 在 LLM Wiki 与普通笔记本里都列出它；取用的日志一行（`prompt` 是 `upgrade`，不记参数，照 `:240-258`）。
+- **`TestUpgradePromptMatrix`**（新，`bootstrap/upgrade_prompt_test.go`，第七份，第 222 条）：四个 prompt × 四种状态（`llm_wiki`；没有升级的 `standard`；`upgrading`；`reviewing`）× 13 个笔记本列。期望表：`ingest`、`query`、`lint` 在 `llm_wiki` 照 `promptCellOf`（`permission_matrix_mcp_wiki_test.go:131-147`）答文字，在后三种答 `notebook.not_llm_wiki`；`upgrade` 只在 `upgrading` 答文字，别的三种答 `wiki.upgrade_state`；看不到的列在 HTTP 的边上答 404。升级的两种状态在升级的变体上（`TestUpgradePermissionMatrix` 的同一组建法）：每种升级状态一份库的副本（`upgradedBy` 的建法），矩阵的几本笔记本在副本上以 `upgradeIn` 设好，4 个 prompt × 13 列在同一份上读，不为每格复制（prompt 只读；设计审查 P3C-N10）。计数断言 `checked == 4 * 4 * 13`。变异"prompt 在审阅中也答"由 `reviewing` 一格抓住（00 号文档 4.13）。S2 建成：两份副本在任何应用连上准备好的库之前做（`pgtest.NewDatabaseFrom` 要求没有人连着模板），每份设四本活着的矩阵笔记本（13 列落在五本上，`gone-nb` 已删）并断言副本里恰有四个这种状态的升级，`llm_wiki`、`standard` 在准备好的库上读，三个应用各建 13 个 PAT；种的审阅中没有报告（3.24）。
+- **`TestUpgradePrompt`**（新，同一个文件）：经真的笔记本入口：`upgrading` 的笔记本取 `upgrade`，一条 `user` 的消息、文字等于 `UpgradePlaybookText()`、`description` 等于 `prompts.json` 的；读者（能读、不是管理员）也取得到（`lint.read`）；没有升级的普通笔记本、审阅中、回滚中、LLM Wiki 各答 `-32602`、`data` 是 `wiki.upgrade_state`；`prompts/list` 在 LLM Wiki 与普通笔记本里都列出它；取用的日志一行（`prompt` 是 `upgrade`，不记参数，照 `:240-258`）。 S2 建成：审阅中由 alice 经 REST 真的提交（存下报告），回滚中以 SQL 设（真的驳回之后小笔记本很快回滚完，`rolling_back` 与 `rolled_back` 同码，钉不住要测的那一种）；整值比的 `UpgradePlaybookText()` 经模块根导出（组合根只能 import 模块根）（3.24）。
 
 ### 3.19 S2：README 的"升级为 LLM Wiki"一节
 
@@ -809,14 +809,14 @@ Once submitted, an admin reviews the upgrade in the web app, then approves it, s
 一本普通笔记本可以升级为 LLM Wiki：笔记本的管理员在"设置 → 模式"里点"升级为 LLM Wiki…"。升级中笔记本对所有人只读，只有发起人自己的 agent 经 MCP 能写（提交审阅之前）；冻结没有时限，任何笔记本管理员都可以随时放弃（审阅中网页上由"驳回"代替，效果相同）。REST 的路径都在 `/api/v0/notebooks/{notebook_id}/upgrade` 之下：`POST` 它发起、`GET` 它读，另有 `check`、`submit`、`approve`、`send-back`、`reject`、`abandon`、`end-rollback`（`api/modules/wiki.yaml`）。
 
 1. **发起**：根下有标题为 `raw` 的页时，它成为来源区（批准之后它下面的都是只读的来源）；没有就补写一页 `raw`。根下没有 `AGENTS` 时补写一页（取界面语言的模板）。原有页的正文不改。
-2. **接 agent**：照下面"接入 agent（MCP）"一节，用发起人自己的访问令牌，把 agent 连到这本笔记本的入口 `/mcp?notebook=<id>`（id 在网页地址 `/notebooks/` 之后），运行 prompt `upgrade`。agent 照它把来源移进 `raw`、给其余的页补上 frontmatter（`type`、`summary`、`sources`），反复用 `upgrade_verify` 检查。升级中原有的页只能改 frontmatter、不能删，移动与改名必须改写链接；被拒时工具的错误说明怎么改。
+2. **接 agent**：照下面"接入 agent（MCP）"一节，用发起人自己的访问令牌，把 agent 连到这本笔记本的入口 `/mcp?notebook=<id>`（id 在网页地址 `/notebooks/` 之后），运行 prompt `upgrade`。agent 照它把来源移进 `raw`、给来源区之外的 wiki 页补上 `type`、`summary`（依据来源的页另列 `sources`），反复用 `upgrade_verify` 检查。升级中原有的页只能改 frontmatter、不能删，移动与改名必须改写链接；被拒时工具的错误说明怎么改。
 3. **提交**：八道闸门都过了，agent 调 `upgrade_submit`，或在升级页上点"提交审阅…"。服务端再检查一次，通过就进入审阅，存下这次的报告；不过就回到升级中。
 4. **审阅**：任何笔记本管理员在升级页上看报告，然后"批准"（笔记本成为 LLM Wiki，来源区只读、`AGENTS` 与来源根受保护）、"退回继续修改"（回到升级中，agent 可以再写）或"驳回"（在后台撤销这次升级的全部改动）。批准之后没有整体的撤销：升级的变更集仍可在历史里照 LLM Wiki 的规则逐个撤销；要回到普通笔记本用降级。
 5. **放弃与回滚**：放弃与驳回都在后台按发起时记下的样子把笔记本放回去；回滚停下时可以继续，或者"结束回滚，保留现在的样子"。
 
 批准时服务端为来源区里每一页正文非空的页与每个附件算一次来源的哈希，数万个来源要几秒；批准的期限是 `server.request_timeout` 的四分之三，太短时答 503 `server_busy`、什么也不写（`server/configs/config.yaml` 的 15 秒在十万个来源上有余）。
 
-**已有的笔记库**：要把一份按 LLM Wiki 整理过的库（例如从另一个实例导出的 LLM Wiki）搬进来，先导入一本新建的普通笔记本（根下正好是 `AGENTS` 与 `raw`，导入不加序号；根下已有 `raw`、`AGENTS` 的笔记本照样加序号），再升级：发起认出根下的 `raw` 作来源区、留着原有的 `AGENTS`，agent 只需补齐 frontmatter。根下的 `index`、`log`、`index.md`、`log.md` 要由 agent 改名，闸门才会过。
+**已有的笔记库**：要把一份按 LLM Wiki 整理过的库（例如从另一个实例导出的 LLM Wiki）搬进来，先导入一本新建的普通笔记本（根下正好是 `AGENTS` 与 `raw`，导入不加序号；根下已有 `raw`、`AGENTS` 的笔记本照样加序号），再升级：发起认出根下的 `raw` 作来源区、留着原有的 `AGENTS`，agent 只需补齐 frontmatter。根下若有 `index`、`log`、`index.md`、`log.md`，要由 agent 改名，闸门才会过。
 ```
 
 同一个提交一并改 README 里 S2 让它不实的几处（设计审查 P3C-M7）：
@@ -824,10 +824,10 @@ Once submitted, an admin reviews the upgrade in the web app, then approves it, s
 - `:234`"`prompts/list` 提供英文的 `ingest`、`query`、`lint`"改为"提供英文的 `ingest`、`query`、`lint` 与 `upgrade`（`upgrade` 只在升级中取得到，见'升级为 LLM Wiki'）"；
 - `:236`"普通笔记本也列出同样三个名字，取用答 JSON-RPC -32602，码是 `notebook.not_llm_wiki`"改为"普通笔记本也列出同样四个名字，取用前三个答 JSON-RPC -32602、码是 `notebook.not_llm_wiki`；`upgrade` 不在升级中时同样答 -32602、码是 `wiki.upgrade_state`"；
 - `:214` 的内置说明的字节数照 S2 实测时 `TestTheBuiltInInstructionsAreShort -v` 的数写（审查 C 在 `955fa579` 上量到 notebook 3225/3276、account 3294/3346，距 4 KiB 余 820、750；S2 不改内置说明，它不列 prompt），"保留M11至少300B余量"改为写实测的余量；
-- MCP 一节的工具（`:219` 一条之后）加一句："升级中的笔记本入口另有 `upgrade_verify`（只读，检查闸门与规则）与 `upgrade_submit`（提交审阅），见'升级为 LLM Wiki'"；`:299` 的工具数（"笔记本入口有 14 个工具（账户入口 16 个）"）与 `:319` 的注解列表 S2 照 `api/mcp/tools.json` 一并核对（M10、M11 都加过工具）；
+- MCP 一节的工具（`:219` 一条之后）加一句："升级中的笔记本入口另有 `upgrade_verify`（只读，检查闸门与规则）与 `upgrade_submit`（提交审阅），见'升级为 LLM Wiki'"（S2 建成时照第 196 条写"两个入口另有"、另起一条"**升级**"放在"工具"一条之后；修复一轮照审查 P3S2C-N2 写"笔记本的管理员在升级中用得上（`upgrade_verify` 审阅中也可）"；3.24）；`:299` 的工具数（"笔记本入口有 14 个工具（账户入口 16 个）"）与 `:319` 的注解列表 S2 照 `api/mcp/tools.json` 一并核对（M10、M11 都加过工具）；
 - `:246`"**重新导入的限制**"一段末尾加"要这样的库成为 LLM Wiki：导进新的普通笔记本再升级，见下一节"，新的一节不再重复 `AGENTS 2`、`raw 2` 那一句。
 
-文字照 00 号文档 4.4、4.8–4.10、4.19 与负责人的四个回答写；"导入不加序号"一句照 `bootstrap/virtual_export_import_test.go:33-36` 核对过。S2 的文档提交另核对 `README.md:157`、`:169-172`、`:481-525` 的"升级"指的是服务端的升级（第 4.13 条的"server update"只改了工具的措辞，README 的中文不歧义），不改。
+上面的第 2 步与"已有的笔记库"末句是修复一轮照审查 P3S2C-N1、N6 改过的（初稿写"给其余的页补上 frontmatter（`type`、`summary`、`sources`）"，读来每页都要 `sources`；"根下的……要由 agent 改名"读来一定要改名；3.24）。文字照 00 号文档 4.4、4.8–4.10、4.19 与负责人的四个回答写；"导入不加序号"一句照 `bootstrap/virtual_export_import_test.go:33-36` 核对过。S2 的文档提交另核对 `README.md:157`、`:169-172`、`:481-525` 的"升级"指的是服务端的升级（第 4.13 条的"server update"只改了工具的措辞，README 的中文不歧义），不改。
 
 ### 3.20 S2：MCP 人工清单的 K
 
@@ -838,18 +838,20 @@ Once submitted, an admin reviews the upgrade in the web app, then approves it, s
 
 这一节由 M11/P3 加。每步只记客户端实际做了什么、显示了什么，不评判 agent 整理得好不好。
 
-准备：在网页上以一位管理员在一本普通笔记本上发起升级（设置 → 模式 → 升级为 LLM Wiki），笔记本里留一页正文非空的原有页。接入用的 PAT 必须是发起人的，否则所有写都被冻结（`notebook.upgrading`）。另备一本没有升级的普通笔记本。
+准备：沿用上面隔离的客户端环境，记下 Claude Code 与 Codex 的版本和日期，不碰自己的配置。两个客户端各用自己的一本：同一位管理员在网页上在两本普通笔记本上各发起一次升级（设置 → 模式 → 升级为 LLM Wiki），每本留一页正文非空的原有页。一个客户端做完 K4，它那本就进入审阅、对所有人冻结，所以另一个客户端从 K1 做起用的是另一本。接入用的 PAT 必须是发起人的，否则所有写都被冻结（`notebook.upgrading`）。另备一本没有升级的普通笔记本，K5 两个客户端共用它。
 
 | 步 | 做什么 | 看什么 |
 |---|---|---|
 | K1 | 在升级中的笔记本接笔记本入口 | prompt 列表里 `upgrade` 怎样列出（名字、标题、说明） |
 | K2 | 取 `upgrade` | 文字是否完整显示；客户端是否把它当作一条用户消息 |
 | K3 | 让客户端照它调 `upgrade_verify`，并让它改一页原有页的正文（在提交之前） | `upgrade_verify` 的审批怎样问（只读）；`page.upgrade_immutable` 在客户端里怎样显示，agent 是否读懂、改为只改 frontmatter |
-| K4 | 让客户端调 `upgrade_submit` | 审批怎样问（`upgrade_submit` 不是毁坏性的：`destructiveHint: false` 是否让客户端少问一次）；笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`，客户端是否接受；提交通过之后再写答 `notebook.upgrading` 怎样显示 |
+| K4 | 让客户端调 `upgrade_submit` | 审批怎样问（`upgrade_submit` 不是毁坏性的：`destructiveHint: false` 是否让客户端少问一次）；笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`，客户端是否接受；提交不过时（多半是 frontmatter 没补齐：答 `wiki.upgrade_not_ready`，说明列出没过的闸门，升级回到升级中）它怎样显示、agent 是否照它补齐，补齐之后再交，直到通过；提交通过之后再写答 `notebook.upgrading` 怎样显示 |
 | K5 | 在没有升级的普通笔记本上取 `upgrade` | `wiki.upgrade_state` 怎样显示 |
+
+逐客户端记通过或失败和处置。发现 upgrade playbook 的措辞有偏差，记下原文，由负责人定怎样改，不放松服务端的守卫。
 ```
 
-同时把 `:308` 的"…M11 的 upgrade prompt 不在这一节。"改为"…M11 的 upgrade prompt 在 K。"，`:323`"M11 的 upgrade prompt 由 M11 登记。"改为"M11 的 upgrade prompt 在 K（M11/P3 加）。"；头（`:8`）把 J 的结果交 M10 收尾审查的那一句之后加"K 的结果交 M11 的收尾审查"。K3、K4 落实 P2 第 9 节"P3/S2"的第三条与审查 C 的未核实的怀疑。改正文在提交之前：提交通过之后升级进入审阅、对所有人冻结，再改答的是 `notebook.upgrading`，看不到 `page.upgrade_immutable`（设计审查 P3C-M9；00 号文档 4.20 照改，2.1 第 11 条）。K 与 J 一起在 v0.1 的最后执行（00 号文档 4.20）。
+同时把 `:308` 的"…M11 的 upgrade prompt 不在这一节。"改为"…M11 的 upgrade prompt 在 K。"，`:323`"M11 的 upgrade prompt 由 M11 登记。"改为"M11 的 upgrade prompt 在 K（M11/P3 加）。"；头（`:8`）把 J 的结果交 M10 收尾审查的那一句之后加"K 的结果交 M11 的收尾审查"。K3、K4 落实 P2 第 9 节"P3/S2"的第三条与审查 C 的未核实的怀疑。改正文在提交之前：提交通过之后升级进入审阅、对所有人冻结，再改答的是 `notebook.upgrading`，看不到 `page.upgrade_immutable`（设计审查 P3C-M9；00 号文档 4.20 照改，2.1 第 11 条）。K 与 J 一起在 v0.1 的最后执行（00 号文档 4.20）。 上面的块是修复一轮照审查 P3S2C-M2、N5 改过的（`7daa3452`）：初稿只备一本升级中的笔记本，第一个客户端的 K4 把升级送进审阅之后，第二个的 K2、K3 看不到要看的东西；修复之后准备照 J 加"沿用上面隔离的客户端环境……不碰自己的配置"，两个客户端各用自己的一本、K5 共用那本普通笔记本，K4 写明提交不过（`wiki.upgrade_not_ready`）时记什么、补齐再交，表后照 J 加"逐客户端记……"（3.24）。
 
 ### 3.21 每个操作改后的码
 
@@ -882,7 +884,8 @@ MCP 的工具不改，`mcpToolCodes()`、`upgradeToolCodes()`、`mcpOwnCodes()` 
 | 退回清掉报告 | `TestUpgradeReview` 断言行回到 `backToUpgrading`；之后再提交通过并存下新的报告（`submission_id` 不同） |
 | 第 181 条 | `TestUpgradeTrashReservedTitles` 的同步与后台两格答 `page.virtual_file`；`contract_test.go` 的各格；两个模块的 `adapter/http` 表；撤销改名的一格守着今天就有的 `OpRename` 一支在批准之后走得到 |
 | 第 181 条不碰回收站的恢复 | 同一个测试的 `restoreNode`、`startTrashRestore` 两格答 200、名为 `index 2`、`log 2`；`contract_test.go` 的 `ChangesetTrashRestore` 一格 |
-| prompt 只在 `upgrading` | `TestUpgradePromptMatrix` 的 `reviewing`、`standard`、`llm_wiki` 三列；`TestUpgradePrompt` 的各格 |
+| prompt 只在 `upgrading` | `TestUpgradePromptMatrix` 的 `reviewing`、`standard`、`llm_wiki` 三列（种的审阅中没有报告）；`TestUpgradePrompt` 的各格（审阅中由真的提交，有报告）；单元的 `reviewing` 两格（没有报告、有报告，后者修复一轮加，审查 P3S2A-N1） |
+| playbook 的每一类建议（00 号文档 4.13 的清单） | `TestUpgradePlaybookText` 的"必有的句子"，每句或分句一格（47 格，合起来覆盖第一行之外的全文）、各恰好出现一次（3.17；审查 P3S2B-M1 = C-M1，修复一轮） |
 
 ### 3.23 S1 的实施对设计的修正
 
@@ -920,6 +923,32 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P3-S1-review-actions-revie
   - **修复一轮**（4 个提交，头 `a44602b0`，10.1）与 `fix-1.md` 不同之处（实施者的号，主持者都接受）：内侧逐行不许 `= ANY` 一条加了，守卫在真的计划上照样绿（1）；短测试多一格正例"一次按键读一组节点"，钉住那一条只管内侧（2）；A-N4 先退回再写：审阅中冻结 agent 的写，"改 frontmatter、再交、再驳回"只能在退回之后，驳回一格因此多一次退回与一次提交，退回在 `modesOf` 之外、驳回一段照旧数两帧（3，见上面第 3 条）；A-N5 保留逐项断言，整值比较加在后面（4）；C-N5 的注释另写第七、八份本机两轮的数（5）；"the approval ran no %s"挪进 `end()` 判，错误文字去掉"before the baseline's deletion ended"（6）；第 296 条的说法照改（7，本提交）。
   - **修复核对一轮**（三位各在 `a44602b0`）：A 判 P3S1A-N1–N6 关上（a1、a2、n4、o6 在 `d7b85bae` 上活、在头上死），没有新发现；B 判 P3S1B-M1、M2、N1、Q1 关上（短测试 19 格，r1–r8 各有一格失败，第一轮的 5 个探针都被拒；24 次判计划里"内侧不许 `= ANY`"没拒掉真的计划）；C 判 P3S1C-N3–N5 关上，文档稿里 N1、N2、N6 与 A-N7 落对。新的 Nit 两条：P3S1B-N2（批准在跑到被判的语句之前就失败时，`PlanErr` 先报、只有状态码，丢了答复的正文）不改，只影响守卫失败时的诊断、不影响判定；P3S1C-N7（A-N4 的修复在本节、7.1 与审查记录漏了"先退回"）在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
 - **交给后面的**：守卫在慢的 runner 上的余量与第四、六、八份在 7763 上的数，以合并之后两次 `main` 为准（第 298 条，第 8 节第 1 条，10.1）；`TestTheApprovalGuardJudgesItsReads` 在 short 一行，不在组合根的竞态八份里，`-list` 看不到它；S2、S3 的部分照第 0 节。
+
+### 3.24 S2 的实施对设计的修正
+
+S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里（3.15–3.20，6.2，7.3、7.5、7.6）。写了行号的，是实施的头 `d2512eeb` 的；修复的提交见 10.2。
+
+- **S2，实施时定下的**（实施者的 8 条偏离，括号里是它的号；三位审查者各在自己的范围里判过，都对：A 判第 3–5 条与第 2 条，B 判第 1、2、4、6、8 条，C 逐条判进不进本节。第 2 条不是与设计不同：3.16 写的就是 `wiki/domain/playbook_test.go`，括号里的 `playbooks_test.go:129-152` 是照着写的那几格（审查 A），不列；第 8 条"1、2 号提交的标题写行为的改变、1 号范围带 `build`"是过程，只记在 10.2（审查 C）；实施者没有要编号的产品决定）：
+  - 3.15：`upgrade_submit` 的说明改在三处：契约的两个入口、`wiki/adapter/mcp/tools.go` 的常量、`wiki/adapter/mcp/testdata/tools.json` 的两个入口；3.15 的文件表只列了 `api/mcp/tools.json`。三处不一致时 `TestTheToolListsAreTheContract`（服务 ↔ 契约）或 `TestLintToolObjects`（服务 ↔ testdata）失败（实施者的 o14，审查 A 的 a4、a5，B 的 c1、c2）。措辞"an admin approves or rejects it in the web, or sends it back for more work."，与 playbook 的"sends it back for more work"一致（1）。
+  - 3.18：模块根 `wiki/prompts.go` 导出 `UpgradePlaybookText`、`PlaybookText` 与 `Playbook` 的别名、三个常量：`TestUpgradePrompt` 要整值比 `UpgradePlaybookText()`，组合根只能 import 模块根（archtest"bootstrap imports only a module's root"）；先例是 `TemplatePages`。组合根拿它们作期望值，只验证"哪个 prompt 答哪份文字、参数怎么带"，文字本身由 `wiki/domain` 与 `wiki/app` 的单元测试验证（3；审查 A 判对，不是同义反复）。
+  - 3.18 `TestUpgradePromptMatrix`：两份副本（`upgrading`、`reviewing`）在任何应用连上准备好的库之前做（`pgtest.NewDatabaseFrom` 要求没有人连着模板）；13 列落在五本笔记本上，`gone-nb` 已删，所以每份副本设四本，每本照 `upgradedBy(state)` 由它的创建人设一次，并断言副本里恰有四个这种状态的升级；`llm_wiki`、`standard` 两种状态照 `TestThePromptReadsLLMWikiMatrix` 在准备好的库上读；三个应用各建 13 个 PAT（PAT 存在各自的库里），应用在顶层起（4；审查 B 的 t3、t4 证明副本的自我核对是活的）。
+  - 3.18 `TestUpgradePrompt`：审阅中由 alice 经 REST 真的提交（一页干净的笔记就能过闸门，存下报告）；回滚中以 SQL 设（同 `upgrade_start_test.go:358-360` 的做法，并断言行是 `rolling_back rolling_back true false true`）：真的驳回之后小笔记本几十毫秒就回滚完，`rolling_back` 与 `rolled_back` 答的是同一个码，钉不住要测的那一种状态（5）。审查 A 的 a1 说明真提交不可替代：矩阵与单元当时都只有"没有报告"的审阅中（P3S2A-N1，修复一轮在单元补"有报告"一格）。
+  - 第 5 节、3.15：LW11 的 `textOf` 挪进 `e2e/fixtures/mcp.ts`，导出为 `promptTextOf`，UP9 共用；LW11 的断言不变（6）。
+  - 3.19：README 写"两个入口另有 `upgrade_verify` 与 `upgrade_submit`"，另起一条"**升级**"放在"工具"一条之后：两个工具在两个入口都登记（第 196 条），3.19 写的"升级中的笔记本入口另有"不对（7；审查 C）。修复一轮另照审查 P3S2C-N2 写"笔记本的管理员在升级中用得上（`upgrade_verify` 审阅中也可）"。
+- **S2，实施者自己加的**（实施报告第 8 节；审查者在各自的范围里看过都对）：`TestUpgradePlaybookText` 在 3.17 的"必有的句子"之外另测设计审查 P3C-N18 的三处与 3.17 末尾说逐项核对过的几样，另断言最后一句在末尾、文件本身带首尾空白（否则"去掉空白"的变异 o12 看不见）；用例的单元多三格（别的状态、`Current` 出错原样交回、`detail` 是普通的那一句）、替身的 `StateOf` 被调到会记下（钉住"不读模式"）；适配器的 `TestThePromptsAreTheFour`、`TestTheUpgradePromptPassesItsNotebook`；`TestUpgradePrompt` 的看不到的 carol、被拒的一次也有日志一行、日志的键整值比、`prompts/list` 在升级中的笔记本也比；矩阵另比 `description`、`prompts.json` 多一个没有期望的 prompt 就失败；UP9 另断言整个文字与 `description`；README 的 `permissions.allow` 样例加 `lint`、`pending_sources`、`upgrade_verify`（"读的十二个"之后样例还只有九个，人工清单的 D2 照样例写设置）；人工清单 A1、A3、A5、B1 的工具数（笔记本入口 16 → 18、账户入口 18 → 20，M11/P2 加了两个工具时没改）（审查 C 逐项数过）。
+- **README 先写了 S3 才有的事**（实施报告第 9 节第 2 条）：3.19 的新一节写审阅中网页上由"驳回"代替与升级页上的"批准""退回继续修改""驳回"三个按钮，这些在 S3 才有；S2 合并到 S3 合并之间，`main` 的 README 比网页先走一步（审阅中网页上仍是"放弃"，三个动作只经 REST）。照第 207 条与 P2/S2 的同类处理接受（主持者），措辞与 4.3、决定 291 一致（审查 C 核过）。playbook 末段的"an admin reviews the upgrade in the web app"与 `upgrade_submit` 说明的"in the web, or sends it back"同样先于网页，属于同一类，同样接受（核对一轮的审查 C）。
+- **S2，审查与修复带来的**（编号是 S2 的审查记录的；修复一轮照主持者的修复说明 `fix-1.md`，提交见 10.2）：
+  - **playbook 的"必有的句子"钉做法**（P3S2B-M1 = P3S2C-M1，P3S2B-N1）：测试对每个片段只判 `strings.Contains`，片段多止于条件或码。00 号文档 4.13 清单里五项各自删掉照过（只改 frontmatter、来源移进来源根、归类、先 `upgrade_verify`、全过再 `upgrade_submit`），审阅中冻结的一句删掉也照过；`page.upgrade_immutable` 在两句里出现，删掉"只改 frontmatter"那一句之后，它的一格由"拆开仍是 `immutable`"那一句满足（实施者的 s16 把每一处都换掉，所以看起来抓到了）。保留条件、把做法换成错的（审查 C 的 c1–c7，其中两条正是设计审查 P3C-M6、N18 修过的那两句）或相反的（审查 B 的 pb01–pb20），都照过；UP9 与 `TestUpgradePrompt` 拿嵌入的同一份文字比，也看不见。3.17 的清单本身没有覆盖 4.13 的这几项，又止于码。修复一轮（`94db07e4`）：每格是 playbook 的一整句，一句里有两件事时是一个分句，4.13 清单的六项各有一格（`page.upgrade_immutable` 钉在"只改 frontmatter"那一句），每格断言恰好出现一次；`8321734b` 把 `notebook.upgrading` 那一句拆成两格之后共 47 格（实施报告写 46，是 `94db07e4` 上的数，审查 P3S2B-N2），合起来覆盖第一行之外的整段正文，改任何一句都要同时改测试里那一格（3.17 的"必有的句子"照改）。C 的 c1–c7、B 的 pb01–pb20、B 的逐句删除里照过的五段与 A 的 a1 共 33 条变异改前活、改后死（`8321734b` 之后 38 条，另 5 条盖新的措辞），B 的逐句删除 30 段改前 9 段照过、改后都失败。测试钉的是该有的句子在，不看有没有多出来的句子：新加一句相反的话照过（核对一轮的 P3S2B-N3），不改，新加的文字由审查看 diff。
+  - **playbook 的两处措辞**（P3S2C-N3、N4）：闸门 4 写成"every page outside the source root has valid frontmatter, and every one but the source root and AGENTS has type and summary"（`invalid_frontmatter` 管来源区外的每一页，`missing_type`、`missing_summary` 不管来源根与根下 `AGENTS`）；`server_busy` 写成"server_busy from either tool means wait retry_after_seconds and call it again"，`forbidden` 并进"your user is no longer an admin"那一句："… or your user is no longer an admin of this notebook, and forbidden from upgrade_verify or upgrade_submit means your user is not an admin of it: stop and tell your user."（3.17 照改；`8321734b`，playbook 4,827 → 4,979 字节）。
+  - **单元的"审阅中、有报告"一格**（P3S2A-N1，a1 在单元一层就死）与**注释**（P3S2A-N2：适配器的 `Prompts` 写笔记本入口的四个，组合根的 `TestTheWikiPromptsAreReached` 写 LLM Wiki 的三个、`upgrade` 由 `TestUpgradePrompt` 测）（`94db07e4`）。
+  - **人工清单的 K**（P3S2C-M2、N5）：两个客户端各用自己的一本升级中的笔记本（同一位管理员各发起一次升级），K5 共用那本普通笔记本，照 J 加"逐客户端记"与"沿用上面隔离的客户端环境……不碰自己的配置"；K4 写明提交不过（`wiki.upgrade_not_ready`）时记什么、补齐再交（3.20 的块照改；`7daa3452`）。
+  - **README 的三处**（P3S2C-N1、N2、N6）：第 2 步写"给来源区之外的 wiki 页补上 `type`、`summary`（依据来源的页另列 `sources`）"（设计 3.19 的原文就读来每页都要 `sources`，同设计审查 P3C-M6 第 2 处在 playbook 里修掉的那一种）；MCP 一节写"笔记本的管理员在升级中用得上（`upgrade_verify` 审阅中也可）"；"已有的笔记库"末句写"根下若有……"（3.19 照改；`7daa3452`）。
+  - **决定 299**（P3S2A-Q1，主持者的决定）：`AGENTS` 的两份模板照旧写"三个 prompt"，S2 不改；升级中发起补写的 `AGENTS` 由握手的说明读到，中文按字面不实，进 M12 的打磨移交（本提交）。
+  - **第三份**（P3S2B-Q1）：在 7763 上的样本记进 10.2，合并之后看两次 `main`，现在不挪。
+  - **文档稿**（P3S2C-N7，本提交）：10.2 写明 README 的行号是哪一版的，`:214` 的数是一并改的，第 8 条只进 10.2。
+  - **修复一轮与 `fix-1.md` 不同之处**（修复报告第 5 节）：片段走到整句或分句，不只延长修复说明点名的那几句（上面）；`forbidden` 一句写"is not"不写"no longer"（读者也取得到这份 playbook，`TestUpgradePrompt` 的 bob；他的 agent 调这两个工具答 `forbidden`，是因为从来不是管理员），写两个工具的名字不写"either tool"（这一段还没讲到 `upgrade_submit`，"either tool"无所指）；K 表后连 J 的第二句一起抄来（"发现 upgrade playbook 的措辞有偏差……不放松服务端的守卫"）；B 的 pb02、pb16 的原文随 `8321734b` 改写，在新原文上做同一种改法，另加 5 条盖新的措辞。都与修复说明的意思一致，审查核对过。
+  - **修复核对一轮**：三位把各自的发现都关上；新的 Nit 五条：P3S2B-N2（格数是 47）与 P3S2C-N8–N10（文档稿：3.17 的块漏了 `forbidden` 那半句；3.20 的块还是初稿，照改在原处；决定 299 的一条理由"改模板要动 LW1 等读模板的断言"不实，没有断言钉这一句，去掉）在本提交；P3S2B-N3（新加一句相反的话照过）不改，见上。没有 Important、Minor 留下，不再有修复轮。
+- **交给后面的**：`AGENTS` 模板的"三个 prompt"（第 299 条，M12 的打磨）；第三份贴线，以合并之后两次 `main` 为准（第 8 节第 1 条，10.2）；S3 的部分照第 0 节。
 
 ## 4. 网页
 
@@ -1085,10 +1114,15 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 6.2 S2（`m11-p3-s2`）
 
-1. `server, api: the upgrade prompt and its playbook (M11/P3/S2)`：3.16 的用例、`playbook-upgrade.md`、`UpgradePlaybookText`、`prompts.go`、`prompts.json` 与单元测试；3.18 的四处组合根测试（第三份的 `TestThePromptReadsLLMWikiMatrix`、`TestThePromptListsAreTheContract`，第七份的 `TestUpgradePromptMatrix`、`TestUpgradePrompt`），计数注释 +2；`upgrade_submit` 的工具说明加"or sends it back"（`api/mcp/tools.json:589` 与账户入口的同一项 `:1298`，设计审查 P3C-N4）。
-2. `e2e: the upgrade playbook over MCP (M11/P3/S2)`：UP9；LW11 的标题与 `:10`、`:62` 的注释（第 5 节末；设计审查 P3C-N25）。
+实施照这个次序，第 1–3 个是 `567f1201`、`9d7e9004`、`d2512eeb`（1、2 号的标题照实施说明写行为的改变，下面照实写）；之后修复一轮 3 个（第 4–6 个，头 `7daa3452`，10.2），连实施的 3 个一共 6 个；第 7 个是本 Step 的文档提交，在它们之后（3.24）。
+
+1. `server, api, build: the notebook entry serves the upgrade prompt, its playbook only while the notebook upgrades (M11/P3/S2)`（初稿的标题是名词短语；改了 `Makefile` 的计数注释，范围带 `build`）：3.16 的用例、`playbook-upgrade.md`、`UpgradePlaybookText`、`prompts.go`、`prompts.json` 与单元测试；3.18 的四处组合根测试（第三份的 `TestThePromptReadsLLMWikiMatrix`、`TestThePromptListsAreTheContract`，第七份的 `TestUpgradePromptMatrix`、`TestUpgradePrompt`），计数注释 +2；`upgrade_submit` 的工具说明加"or sends it back"（`api/mcp/tools.json:589` 与账户入口的同一项 `:1298`，设计审查 P3C-N4），连同 `wiki/adapter/mcp/tools.go` 的常量与 `testdata/tools.json` 的两个入口；模块根导出 playbook 的文字给组合根的测试（3.24）。
+2. `e2e: UP9, the agent of an upgrading notebook takes the upgrade playbook, a notebook not upgrading refuses it (M11/P3/S2)`：UP9；LW11 的 `textOf` 挪进 `fixtures/mcp.ts`（`promptTextOf`），两个故事共用；LW11 的标题与 `:10`、`:62` 的注释（第 5 节末；设计审查 P3C-N25）。
 3. `docs: README's upgrade section and the MCP checklist's K (M11/P3/S2)`：3.19（新的一节，连同 `README.md:214`、`:234`、`:236`、`:246` 与 MCP 一节的两个工具）、3.20（K1–K5）。
-4. Step 的文档提交。
+4. `server: the upgrade playbook's test pins each sentence's advice, once; the prompt's unit sees a reported review (M11/P3/S2)`（修复一轮，`94db07e4`）：只改测试与注释：`TestUpgradePlaybookText` 每句或分句一格、各恰好出现一次（46 格）；单元表加"审阅中、有报告"一格；两处注释（审查 P3S2B-M1 = C-M1、B-N1，A-N1、N2）。
+5. `server: the upgrade playbook's gate 4 leaves AGENTS and the source root without type and summary; server_busy and forbidden from either tool (M11/P3/S2)`（`8321734b`）：playbook 的三处措辞与测试的三格，47 格，4,979 字节（审查 P3S2C-N3、N4；3.17）。
+6. `docs: README's upgrade lines and the MCP checklist's K for two clients (M11/P3/S2)`（`7daa3452`）：README 的三处与 K（审查 P3S2C-M2、N1、N2、N5、N6；3.19、3.20）。
+7. Step 的文档提交（第 8 节第 4、5 条）。
 
 ### 6.3 S3（`m11-p3-s3`）
 
@@ -1190,7 +1224,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 7.3 变异
 
-照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。S1 的实施与审查之后，"读头"一行拆成 16a、16b，三处单元测试的名字照实；S1 的各行之后接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S1 的审查记录](reviews/P3-S1-review-actions-review.md) 里的名字记（3.23）。
+照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。S1 的实施与审查之后，"读头"一行拆成 16a、16b，三处单元测试的名字照实；S1 的各行之后接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S1 的审查记录](reviews/P3-S1-review-actions-review.md) 里的名字记（3.23）。S2 的各行之后同样接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md) 里的名字记（3.24）。
 
 | 变异 | 抓它的测试 |
 |---|---|
@@ -1245,9 +1279,18 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 | 退回的"行不是这次升级的"判断只剩 `!ok`（a2） | `TestSendBackUpgrade` 的"别的升级的行"一格（修复一轮，审查 P3S1A-N2） |
 | 驳回的回滚不写回正文（审查 P3S1A-N4；n4：`RollbackState` 不出正文的版本） | `TestUpgradeReview` 的驳回一格（驳回之前先退回、改过 `Note` 的 frontmatter、再交，修复一轮 `cc751dca`；n4 改前活、改后死：任务以 `internal` 停、行留在 `rolling_back`、正文仍是改过的） |
 | `SourceRebuildHeads` 的 `page_contents` 改为普通的 `LEFT JOIN`、保留 `nodes` 的 `LATERAL … LIMIT 1`（审查 B 的 b-16c） | 没有（等价：两个种子上 24 个计划与原样相同，只少 `Memoize` 下的一个 `Limit`） |
-| `UpgradePlaybook` 在 `reviewing` 也答文字 | `TestUpgradePromptMatrix` 的 `reviewing` 列 |
+| `UpgradePlaybook` 在 `reviewing` 也答文字 | `TestUpgradePromptMatrix` 的 `reviewing` 列（种的审阅中没有报告）；单元的 `reviewing` 一格；`TestUpgradePrompt` 的审阅中（真的提交，有报告） |
 | `UpgradePlaybook` 不判 `lint.read` | `upgrade_playbook_test.go` 的"看不到答 `notebook.not_found`"一格与调用的次序（替身的判定）。整个程序里看不到的、删掉的笔记本在 HTTP 的边上由 `Gate`（`node.list`，`page/mcp_entry.go:29-31`、`mcpserver/edge.go:232-249`）就答 404，到不了用例（设计审查 P3B-M3 第 2 条 = P3C-N6） |
 | `upgrade` 的 prompt 经 `Playbooks.Execute`（`PlaybookText` 收进它） | `TestUpgradePromptMatrix` 的 `llm_wiki` 列（答文字而期望 `wiki.upgrade_state`）与 `upgrading` 列（答 `notebook.not_llm_wiki` 而期望文字）。只给 `PlaybookText` 的 `switch` 加一支而没有调用者是等价变异（设计审查 P3B-N3） |
+| 只给 `PlaybookText` 的 `switch` 加 `upgrade` 一支、没有调用者（e1） | 没有（等价：适配器只把三个固定的 `Playbook` 交给 `Playbooks.Execute`；对照是上一行，同一处加上调用者就抓到） |
+| 没有升级、回滚中也答文字；读升级出错当成状态；先读后判；答 `wiki.upgrade_not_found`；拒绝用"still being checked"的 `detail`（实施者的 o1–o6） | 单元 `TestUpgradePlaybookAuthorizesAndRequiresUpgrading`；o1、o2、o5、o6 另由矩阵或 `TestUpgradePrompt` |
+| `Get` 交零值的笔记本、不交 `description`；`Prompts()` 漏了 `upgrade`、登记在两个入口（o7–o10） | 适配器的 `TestTheUpgradePromptPassesItsNotebook`、`TestThePromptsAreTheFour`；矩阵、`TestUpgradePrompt`、`TestThePromptListsAreTheContract` |
+| `Playbooks.Execute` 放过普通笔记本（o11，另一处复写的判断） | `TestPlaybooksAuthorizeAndRequireMode`；矩阵的 `standard` 列 |
+| `UpgradePlaybookText` 不去首尾空白；`MaxPlaybookBytes` 缩到 4 KiB（对照）；用例答 lint 的文字；第一行改掉（o12、o13、x1、x2） | `TestUpgradePlaybookText`；x1 另由单元、矩阵与 `TestUpgradePrompt` |
+| `upgrade_submit` 的说明只改了一处（o14；审查 A 的 a4、a5 与 B 的 c1、c2：契约或 testdata 只改一个入口） | `TestTheToolListsAreTheContract`、`TestLintToolObjects` |
+| `prompts.json` 多一个没有期望的 prompt（o15） | `TestThePromptReadsLLMWikiMatrix`、`TestUpgradePromptMatrix` |
+| 审阅中而有报告也答文字（审查 A 的 a1） | `TestUpgradePrompt` 的审阅中（真的提交）；修复一轮之后另由单元的"审阅中、有报告"一格（审查 P3S2A-N1） |
+| playbook 的一句删掉，或保留条件、把做法换成错的（实施者的 s01–s36 每一处都换；审查 B 的逐句删与 pb01–pb20，C 的 c1–c7） | `TestUpgradePlaybookText` 的"必有的句子"，每句一格。S2 建成时 s01–s36 都抓到，而 B 单删的 9 句、pb01–pb20 与 c1–c7 照过（片段止于条件与码，`page.upgrade_immutable` 被另一句顶替；审查 P3S2B-M1 = C-M1）；修复一轮之后每句或分句一格、各恰好一次（47 格），c1–c7、pb01–pb20、B 单删的那几句与 a1 都抓到，B 的逐句删除 30 段、逐分句删除 52 个都失败，实施者盖新措辞的五条也抓到；新加一句相反的话照过（审查 P3S2B-N3，不改：测试钉的是该有的句子在，新加的文字由审查看 diff） |
 | `HealthRule` 在 `cursor === undefined` 时不渲染"更多" | `upgrade-check.test.tsx` 的"更多从第一页读" |
 | 审阅一节的读不经 `itemsReader`（403 不重读列表） | `upgrade-check.test.tsx` 审阅一节的 403 一格 |
 | 审阅一节留在这一次进入的 `SWRConfig` 之外 | `upgrade-check.test.tsx` 的"离开再进入从存下的报告重新开始"（审阅一节的键不带这一次进入的 `nonce`，留在外面就接着旧的条目，4.3） |
@@ -1309,6 +1352,8 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 **S1 的实测**（10.1）：本机第四份挪后 193.9、191.8 秒、第六份 242.2、242.2 秒，用本机挪前的两轮算比、折到 7763 约 394、370 秒；第七份 182.8、185.9 秒、第八份 187.2、185.8 秒，折到约 321、318 秒；P3 加的测试比上面估的少（`TestUpgradeApproval` 10.0 秒、`TestUpgradeReviewInterleavings` 2.7 秒、`TestUpgradeReview` 1.9 秒、`TestUpgradeTrashReservedTitles` 1.1 秒）。分支 CI（43088294571）八份的 Test 一步 377、238、411、345、308、333、322、307 秒：第七份在 7763 上 322 秒；第四、六、八份都在 9V74 上，照第八份的 9V74 → 7763 之比 1.189 折约 411、396、359 秒，都在 450 之下，最贴近的是第四份；以合并之后两次 `main` 为准（第 8 节第 1 条）。
 
+**S2 的实测**（10.2）：本机第三份 236.9、231.7 秒（S2 几乎没有增减），第七份 191.8、190.4 秒（比 S1 多 6.8 秒，两个新测试合 3.6 秒，上面估约 6 秒），折到 7763 约 400、331 秒；分支 CI（43129936469）第三、七份都在 7763 上，412、325 秒（第七份比上面预计的约 345 少）。第三份是离 450 秒最近的一份：在 7763 上 411、401、393、419、412 秒，合并之后两次 `main` 看它（审查 P3S2B-Q1）。
+
 **要不要把契约在进程里只读一次**（P2 第 9 节：每建一个应用 `apitest.Load` 一次，竞态构建下约 0.63 秒）：P3 不做。它是测试设施的取舍，牵动全部组合根的测试；这一轮挪测试已够，留给 M12 的测试设施（第 9 节）。
 
 **成本的作业**：costs-1 加批准的守卫：本机约 4–5 分钟（四个模板，7.1；7763 上约 7–9 分钟；S1 实测本机 111–121 秒，分支 CI 在 Xeon 8370C 上守卫一行包 253 秒、作业 20:05，10.1），另加这个作业里第一次编译不带竞态的 `bootstrap` 测试（costs-1 今天各行都是 platform 与 linking 的；costs-2、costs-3 已有这次编译），7763 上约 1 分钟（设计审查 P3B-N7）。基数取 S3 的三次运行（修订核对第二轮 B 以 `gh run view` 取）：
@@ -1334,7 +1379,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
   - 组合根第四、六、七、八份：`make -j1 test-go-bootstrap-<n> GO_TEST_RACE="go test -race -count=1 -timeout 15m -v"`，每份两轮，P2 的分份旁支的 `measure.sh` 与 `times.py`；数在 7.5。
   - 批准的重建：一个只在临时 worktree 里的探针测试（`page/adapter/postgres`，真库）：上面的种子在 10 万个来源（1,000 个文件夹）与 5 万个来源（500 个）各跑；两种统计（从未分析；分析过）× 两种方式（`plan_cache_mode` 的 `force_custom_plan` 与 `force_generic_plan`），每格三次，在一个回滚的事务里依次计时 `ForgetSources`、`SourceNodes`、十块 `SourceHeads`、附件的读、十块 `SetSourceHashes`、`DeleteUpgradeNodes`，并 `EXPLAIN` 每一条。结果：10 万个来源合计 2.44–3.68 秒（两轮），5 万个来源 0.99–1.19 秒（两轮，几乎相同）；`SetSourceHashes` 的几种写法都省不下（3.4）。计划（只是自定义计划：带参数经扩展协议发的 `EXPLAIN` 把参数当常量折进计划，`plan_cache_mode` 管不到它，探针的 `force_generic_plan` 一栏其实也是自定义计划；通用计划由审查 B 以 `EXPLAIN (GENERIC_PLAN)` 补量，`nodes`、`page_contents`、`upgrade_nodes` 都经键，见设计审查记录与 3.4 的"界与分块"；设计审查 P3B-M1）：5 万个来源、每格之前 `VACUUM ANALYZE` 的两轮里没有顺序扫描，`nodes` 经 `nodes_notebook_id_*` 的索引与 `nodes_pkey`，`ForgetSources` 在分析过之后经 `nodes_notebook_id_kind_source_hash_idx`；10 万个来源的第二轮在同一个库里反复回滚、关着 autovacuum 之后再 `ANALYZE`，`ForgetSources` 与 `LintNodeMetadata` 换成了整表的顺序扫描（这本笔记本占 `nodes` 的约 20%：110,003 / 560,003，设计审查 P3B-N10 改正初稿的"约 16%"；表里堆着几百万条死行），所以守卫每次批准用一份新副本（第 280 条）。
 - **修订时**（设计审查之后）：临时 worktree（`955fa579`），经 `heavy.sh`，`df` 27–28G；以审查 B 的探针为底，比决定 292 的读头的四种写法在两个种子（这一本占 `nodes` 11.4% 与 22.4%）× 三种统计状态 × 自定义与通用（`EXPLAIN (GENERIC_PLAN)`）上的计划，只看计划、不计时；结果在 3.4。
-- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。 S1 照做：第四、六份在 `75f5d077` 与它加 1 号的 `Makefile` 上交替各两轮（`measure.sh`），第七、八份在头上各两轮，守卫四轮（两轮定界，3.9 s），`-list` 的归类用 `m11/tools/shards8-p3.py`；数在 10.1 与 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)"实测"。
+- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。 S1 照做：第四、六份在 `75f5d077` 与它加 1 号的 `Makefile` 上交替各两轮（`measure.sh`），第七、八份在头上各两轮，守卫四轮（两轮定界，3.9 s），`-list` 的归类用 `m11/tools/shards8-p3.py`；数在 10.1 与 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)"实测"。 S2：第三、七份在头上交替各两轮（`shards/measure.sh`，S2 没改 `Makefile` 的模式），`-list` 照旧用 `shards8-p3.py`；数在 10.2 与 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md)"实测"。
 
 ## 8. 完成标准
 
@@ -1427,11 +1472,43 @@ P3 完成，当且仅当：
   - CI：run 43099927925（`a44602b0`）19 项一次全绿；八份的 Test 一步 393、337、401、308、415、370、268、213 秒，第六份在 EPYC 7763 上 370 秒（本机折的约 370 秒），第四份在 Xeon 6973P-C 上；costs-1 在 Xeon 8573C 上 18:46，批准的守卫 222.6 秒，六格中位数 2.01–2.23 s（界 3.9 s，余量约 1.75 倍），计划在每条语句真跑之前判、都合规；e2e 9:06（E2E 7:20，528 个），L1 没有出。
 - **修复核对一轮**（2026-11-12，三位各在 `a44602b0` 的自己的工作树里，C 另核文档稿）：A 判 P3S1A-N1–N6 关上，a1、a2、n4、o6 在头上都死，没有新发现；B 判 P3S1B-M1、M2、N1、Q1 关上（短测试 19 格过，r1–r8 各有一格失败，另加的 r9 被正例抓到，第一轮的 5 个探针都被拒；24 次判计划里"内侧不许 `= ANY`"没拒掉真的计划；第一轮探针的两条 `ForgetSources` 现在判的是真跑时的计划），新的 P3S1B-N2（Nit：批准在跑到被判的语句之前就失败时，`PlanErr` 先报、只有状态码，丢了答复的正文）不改：只影响守卫失败时的诊断，不影响判定；C 判 P3S1C-N3–N5 关上（N4 由上传时的 SHA-256 多喂一个字节的变异核过：旧的 UP7 照过、新的失败），文档稿里 N1、N2、N6 与 A-N7 落对、本节与 00 号文档第 13 节的 CI 数经 `gh api` 逐项核过，新的 P3S1C-N7（Nit，文档稿：A-N4 的修复漏了"先退回"）在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
 - 实施者留下的（报告第 9 节）：Step 的文档提交是本提交（3.23、10.1、7.3 第 16 行的措辞、"读头只经键"的出处、00 号文档第 11 节的 295–297、移交与总体设计）；守卫在慢的 runner 上的余量（第 298 条）；第四、六、八份没有 7763 的样本（合并之后两次 `main` 为准）；`TestTheApprovalGuardJudgesItsReads` 在 short 一行；S2、S3 的部分。量用的临时工作树与 `GOTMPDIR` 的目录已删；这一 Step 没有手动起容器。
-- **合并之后**：run 43112344486（`daf14dd1`）19 项第一次 attempt 全绿；八份的 Test 一步 392（EPYC 7763）、367（7763）、393（7763）、284（EPYC 9V45）、279（Xeon 6973P-C）、373（7763）、317（7763）、263（Xeon 8573C）秒，都在 450 之下，第四份挪走四个之后不再贴线（第 278 条）；costs-1 在 EPYC 9V74 上 16:16（Test 一步 13:19），批准的守卫六格中位数 1.79–1.91 s（界 3.9 s；第 298 条的条件看 7763 上的数，这一次不在 7763 上）；e2e 7:55（E2E 6:14）。第二次是记合并号的文档提交的 run，第 298 条与第四、六、八份在 7763 上的数以两次为准。
+- **合并之后**：run 43112344486（`daf14dd1`）19 项第一次 attempt 全绿；八份的 Test 一步 392（EPYC 7763）、367（7763）、393（7763）、284（EPYC 9V45）、279（Xeon 6973P-C）、373（7763）、317（7763）、263（Xeon 8573C）秒，都在 450 之下，第四份挪走四个之后不再贴线（第 278 条）；costs-1 在 EPYC 9V74 上 16:16（Test 一步 13:19），批准的守卫六格中位数 1.79–1.91 s（界 3.9 s；第 298 条的条件看 7763 上的数，这一次不在 7763 上）；e2e 7:55（E2E 6:14）。第二次是记合并号的文档提交的 run，第 298 条与第四、六、八份在 7763 上的数以两次为准。 第二次：run 43117118697（`d33b4544`）19 项第一次 attempt 全绿；八份的 Test 一步 383、363、419（EPYC 7763）、396（7763）、422（7763）、255、312、213 秒；两次的平均 387.5、365、406、340、350.5、314、314.5、238 秒，都在 450 之下，第四份挪走四个之后在 7763 上 396 秒，第三份两次 393、419 秒是离线最近的一份（10.2）；costs-1 这一次在 EPYC 7763 上 21:24（Test 一步 17:53），批准的守卫六格中位数 2.23–2.37 s，都在 3.25 s 之下，第 298 条不触发、界不改；e2e 9:02。
 
-### 10.2 S2：playbook 与文档（服务端）
+### 10.2 S2：playbook 与文档（服务端）（2026-11-12，合并 `（待填）`）
 
-（S2 合并之后填。）
+- **S1 合并之后的 `main`**：见 10.1 末条（`daf14dd1` 与记合并号的 `d33b4544`，两次都一次全绿，第 298 条不触发）；S2 从 `d33b4544` 开出。
+- 提交（从 `main` 的 `d33b4544` 开始，照 6.2 的次序，3 个；Step 的文档提交是主持者的；修复一轮另有 3 个（下面），一共 6 个）：
+  - prompt `upgrade`：`wiki/domain/playbook-upgrade.md`（3.17 的正文，去掉首尾空白 4,827 字节）与 `UpgradePlaybookText`（第 286 条，不进 `PlaybookText` 的 `switch`）；用例 `UpgradePlaybook`（`lint.read` 之后读 wiki 的行，只在 `upgrading` 答文字，别的答 `wiki.upgrade_state`，不读模式）；笔记本入口的第四个 prompt（`NotebookEntry`、没有参数），`api/mcp/prompts.json` 一项；`upgrade_submit` 的说明加"or sends it back for more work"（契约两个入口、`wiki/adapter/mcp/tools.go` 的常量与 `testdata/tools.json`，设计审查 P3C-N4）；模块根导出两个 playbook 的文字给组合根的测试；单元测试三组；`TestThePromptReadsLLMWikiMatrix` 只读三个、`TestThePromptListsAreTheContract` 改为四；第七份新的 `TestUpgradePromptMatrix`（四个 prompt × 四种状态 × 13 列，每种升级状态一份库的副本，答文字的格整值比较）与 `TestUpgradePrompt`；`Makefile` 的计数注释（`567f1201`，范围 `server, api, build`）。
+  - e2e：UP9（MCP）；LW11 的帮手挪进 `fixtures/mcp.ts`（`promptTextOf`），标题与两处注释照第 5 节末（`9d7e9004`）。
+  - 文档：README 的"升级为 LLM Wiki"一节与它让之不实的几处（`:234`、`:236`、`:246`、MCP 一节的两个工具、`:299` 的工具数 18 与 20、`:319` 的注解与放行的样例；行号是 `d33b4544` 的 README 的，合并之后 `:299`、`:319` 是 `:314`、`:334`），一并改的 `:214`（内置说明的字节数照实测，它从 P2 起就过时，不是 S2 让它不实）；MCP 人工清单的 K1–K5、`:8`、`:308`、`:323` 与 A1、A3、A5、B1 的工具数（`d2512eeb`）。
+  - 每个提交单独在它的树上 build、vet、`make lint-go`、`make gen-check`、short 测试都通过；1、2 号另跑 `lint-web`、`knip`、`test-web`；1 号另跑它的组合根测试与读工具表、契约的测试（竞态，16 个顶层）和 e2e 的 MC1、LW8、LW11，2 号跑 UP9、LW11、MC1，3 号跑链接检查；审查 B 在 1、2 号上各自检出另跑过一轮。没有改写历史。1、2 号的标题照实施说明写行为的改变（6.2 写的是名词短语），1 号改了 `Makefile` 的注释，范围带 `build`（实施者的第 8 条，过程，不进 3.24）。
+- 与设计不同之处（实施者的号；都是最小的改动，3.24 列出）：
+  1. `upgrade_submit` 的说明改在三处：常量在 `tools.go`，`TestLintToolObjects` 读 `testdata/tools.json`（3.15）。
+  2. `UpgradePlaybookText` 的测试在新的 `wiki/domain/playbook_test.go`：设计引的 `playbooks_test.go` 是 `wiki/app` 的。设计 3.16 写的就是这个文件，不是偏离（审查 A），不进 3.24。
+  3. 模块根导出 `UpgradePlaybookText`、`PlaybookText`：组合根只能 import 模块根（3.18）。
+  4. `TestUpgradePromptMatrix` 的两份副本在任何应用连上准备好的库之前做；每份副本设四本活着的矩阵笔记本；三个应用各建 13 个 PAT（3.18）。
+  5. `TestUpgradePrompt` 的审阅中由真的提交得到、回滚中以 SQL 设（3.18）。
+  6. LW11 的 `textOf` 挪进 `fixtures/mcp.ts`，UP9 共用（3.15、第 5 节）。
+  7. README 写"两个入口另有 `upgrade_verify` 与 `upgrade_submit`"：两个工具在两个入口都登记（第 196 条；3.19 写"升级中的笔记本入口"）。
+  8. 1、2 号提交的标题写行为的改变，1 号范围带 `build`（6.2；过程，只记在这里）。
+- 实测（本机，经 `heavy.sh`）：`go test -race -list` 553 个顶层测试，八份 145、50、120、120、61、15、30、12，各在恰好一份，与 S1 末比只多了第七份的两个；第三份 236.9、231.7 秒（均值 234.3，折到 7763 约 400 秒），第七份 191.8、190.4 秒（S1 末 182.8、185.9，折到 7763 约 331 秒）；`TestUpgradePromptMatrix` 2.6 秒、`TestUpgradePrompt` 1.0 秒（设计估约 4、2 秒）。playbook 4,827 字节（界 16 KiB）。内置说明照旧：笔记本入口 SDK 3,276、账户入口 3,346 字节，余 820、750。
+- 反向对照：7.3 的 S2 三行，第 1 行跑矩阵、单元与 `TestUpgradePrompt` 三条，第 2 行单元一条（矩阵另跑一条作对照：照设计看不见，看不到的笔记本在 HTTP 的边上就 404），第 3 行跨两个文件（`multi.py`）；等价的"只给 `PlaybookText` 加一支"照过，以第 3 行作对照（设计审查 P3B-N3）。实施者自己的 17 条（没有升级、回滚中也答文字，读升级出错当成状态，先读后判，`wiki.upgrade_not_found`，"still being checked"的 `detail`，交错笔记本，丢 `description`，漏登记，登记在两个入口，`Playbooks.Execute` 放过普通笔记本，不去空白，界缩到 4 KiB 的对照，说明只改一边，契约多一个 prompt，答 lint 的文字，第一行）与 playbook 要的 36 句每句一条（每一处都换掉），都抓到。审查之后知道，36 句那一组把出现两次的码两处都换，掩住了"一句顶替另一句"；片段止于条件与码，做法换掉照过（审查 P3S2B-M1 = C-M1，下面）。
+- 门禁（本机，头 `d2512eeb`）：`make lint gen-check knip build` 9 秒；经 `heavy.sh`：`make test` 3,491 秒通过（vitest 193 个文件、4,447 个测试；批准的守卫 117.5 秒，六格中位数 1.08–1.20 s），`make test-go-short` 41 秒，`make e2e` 136 秒（529 个，UP9 55 ms）；一轮全绿。
+- CI：分支的 run 43129936469（`d2512eeb`）19 项第一次 attempt 全绿；八份的 Test 一步 363、230、412、283、254、374、325、267 秒，S2 碰的第三、七份都在 EPYC 7763 上（412、325 秒，本机折的约 400、331 秒），都在 450 之下；costs-1 在 EPYC 9V74 上 15:31，批准的守卫六格中位数 1.64–1.80 s；e2e 9:12（E2E 7:35，529 个），L1 没有出。
+- **第三份**（审查 P3S2B-Q1）：S2 没有改动它的时长（`TestThePromptReadsLLMWikiMatrix` 78 格同前，契约的 `api/dist` 没变），但它是八份里离 450 秒最近的一份：在 EPYC 7763 上 411（S1 分支）、401（S1 修复一轮）、393（S1 合并之后的 `main`）、419（S1 记合并号的 `main`）、412（S2 分支）秒，平均约 407（S2 修复一轮的分支 CI 第三份在 EPYC 9V45 上，282 秒，不算 7763 的样本）。合并之后两次 `main` 看它（第 8 节第 1 条），现在不挪；要腾地方时，`TestThePromptReadsLLMWikiMatrix` 的 78 格是 `TestUpgradePromptMatrix` 同样 78 格的子集，可以只留它对 `prompts.json` 的名单断言（审查 A、B 的"过度设计"）。
+- **审查**（2026-11-12，三位各在 `d2512eeb` 的自己的工作树里，重的经 `heavy.sh`）：A 审用例、登记与组合根的 prompt 测试，B 审测试看不看得见、e2e 与分份，C 审 playbook、README、人工清单的 K 与文档稿。A 0I 0M 2N 1Q，B 0I 1M 1N 1Q，C 0I 2M 7N；去重之后 Important 0，Minor 2（playbook 的"必有的句子"只钉条件与码、不钉做法，4.13 清单里五项删掉照过，`page.upgrade_immutable` 被另一句顶替，P3S2B-M1 = C-M1；人工清单的 K 没写第二个客户端怎样做，P3S2C-M2），Nit 10，Q 2（`AGENTS` 模板的"三个 prompt"，P3S2A-Q1 → 第 299 条；第三份贴线，P3S2B-Q1）。三位都没有查出 playbook、README 或 K 说错码的意思、指错路；8 条偏离都判对，第 2 条不是偏离、第 8 条是过程。主持者的修复说明 `fix-1.md`：三个提交（只改测试与注释；playbook 的两处措辞；README 与人工清单）；文档的发现（P3S2C-N7）、决定 299 的移交与 3.24 的取舍在本提交。
+- **修复一轮**（2026-11-12，`7daa3452`；主持者的修复说明 `fix-1.md`）：从 `d2512eeb` 起 3 个提交，普通推送，没有改写已推的历史；7 个文件、加 96 行、减 69 行，产品代码只改 playbook 的文字：
+  - 测试与注释：`TestUpgradePlaybookText` 的"必有的句子"每格是一整句，一句里有两件事时是一个分句，4.13 清单的六项各有一格（`page.upgrade_immutable` 钉在"只改 frontmatter"那一句），每格断言恰好出现一次（`strings.Count`），合起来覆盖第一行之外的整段正文；单元表加"审阅中、有报告"一格；适配器 `prompts.go` 与组合根 `TestTheWikiPromptsAreReached` 的注释（P3S2B-M1 = C-M1、B-N1，A-N1、N2）（`94db07e4`，46 格）。
+  - playbook 的三处措辞：闸门 4 写"every page outside the source root has valid frontmatter, and every one but the source root and AGENTS has type and summary"；"server_busy from either tool means wait retry_after_seconds and call it again"；`notebook.upgrading` 那一句后接"and forbidden from upgrade_verify or upgrade_submit means your user is not an admin of it"；测试的三格随之改，`notebook.upgrading` 那一句拆成两格，共 47 格；4,827 → 4,979 字节（P3S2C-N3、N4）（`8321734b`）。
+  - README 的三处（第 2 步的 frontmatter、MCP 一节的"笔记本的管理员在升级中用得上"、"根下若有……"）与人工清单的 K（两个客户端各用自己的一本、K5 共用普通笔记本、照 J 的准备与"逐客户端记"、K4 的提交不过）（P3S2C-M2、N1、N2、N5、N6）（`7daa3452`）。
+  - 与 `fix-1.md` 不同之处 4 条（3.24）：片段走到整句或分句；`forbidden` 写"is not"、点出两个工具名；K 表后连 J 的第二句一起抄来；pb02、pb16 随新原文换写法，另加 5 条盖新的措辞。另有过程一条：2 号的标题约 150 字符，写全了三处措辞的行为变化。实施报告写 46 格，是 1 号上的数，2 号起是 47（核对一轮的 P3S2B-N2）。
+  - 变异（`mut.py`，经 `heavy.sh`，改前在 `d2512eeb`）：C 的 c1–c7、B 的 pb01–pb20、B 的逐句删除里照过的五段与 A 的 a1 共 33 条改前活，1 号之后都死；2 号之后 38 条（pb02、pb16 换成新原文上的同一种改法，另 5 条盖新的措辞）都死。逐句删除 30 段：改前 9 段照过，1、2 号之后都失败。
+  - 逐个提交（`verify.sh`，经 `heavy.sh`）：1、2 号各自 `make lint-go`、`make gen-check`、`make test-go-short`（40 秒）、`wiki/...` 的单元、组合根四个 prompt 测试（竞态，包 7.8、7.7 秒）rc=0；2 号另 `make build` 之后 UP9、LW11；3 号只改 README 与人工清单。
+  - 门禁（头 `7daa3452`）：`make lint gen-check knip build` 8 秒；经 `heavy.sh`：`make test-go-short` 41 秒，第三份 236 秒、第七份 189 秒（同建成时），`make e2e` 133 秒（529 个）；照修复说明不跑整轮 `make test`。
+  - CI：run 43138853267（`7daa3452`）19 项一次全绿；八份的 Test 一步 274、374、282、316、247、374、223、210 秒，第三份这一次在 EPYC 9V45 上（282 秒，不是 7763 的样本），第二、六份在 7763 上各 374 秒；costs-1 在 EPYC 9V74 上 20:11（Test 一步 16:42），批准的守卫六格中位数 2.14–2.41 s（界 3.9 s；不在 7763 上，第 298 条不看）；e2e 8:05（E2E 6:26），L1 没有出。
+- **修复核对一轮**（2026-11-12，三位各在 `7daa3452` 的自己的工作树里，C 另核文档稿）：A 判 P3S2A-N1、N2 关上（a1 在头上单元失败），新的三处措辞与代码的码一致，没有新发现；B 判 P3S2B-M1、N1 关上（逐句删除 30 段、逐分句 52 个、pb01–pb20 在头上都失败，47 格各恰好一次，4.13 的六项各有一格），新的 P3S2B-N2（Nit：格数是 47，不是 46）在本提交，P3S2B-N3（Nit：新加一句相反的话照过）不改：这个测试钉的是"该有的句子在"，新加的文字由审查看 diff；C 判 P3S2C-M1、M2、N1–N6 关上（c1–c7 改前活、改后死），N7 在文档稿里关上，文档稿的取舍、10.1 的第二次 `main` 与第三份的样本核过（S1 修复一轮的 401 秒从作业日志查明在 7763 上），新的 P3S2C-N8（3.17 的块漏了 `forbidden` 那半句）、N9（3.20 的块还是初稿）、N10（决定 299 与 M12 第 40 条的一条理由不实：没有断言钉这一句）都在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
+- 实施者留下的（报告第 9 节）：没有要编号的产品决定；Step 的文档提交是本提交（3.24、10.2、00 号文档、两份移交与总体设计）；README 先于网页说了 S3 的事（3.24）；UP9 只有 MCP 版本（第 5 节、10.1 的例外）；`GOTMPDIR` 已删，没有手动起容器，没有修剪 Go 的缓存。
+- **合并之后**（待填）。
 
 ### 10.3 S3：网页
 

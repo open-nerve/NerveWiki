@@ -211,12 +211,13 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 ### MCP
 
-`lint` 与 `pending_sources` 已在notebook/account两入口注册，复用同一个健康检查执行入口与授权规则。真实SDK答复上限48KiB，分页裁剪保留真实末项游标；摘要完全裁空时仍可用StartCursor取非空规则。当前内置说明notebook raw/SDK为3044/3093B、account为3113/3163B，实际SDK距4KiB余1003/933B，保留M11至少300B余量。
+`lint` 与 `pending_sources` 已在notebook/account两入口注册，复用同一个健康检查执行入口与授权规则。真实SDK答复上限48KiB，分页裁剪保留真实末项游标；摘要完全裁空时仍可用StartCursor取非空规则。当前内置说明notebook raw/SDK为3225/3276B、account为3294/3346B，实际SDK距4KiB余820/750B（M11/P3/S2 时 `TestTheBuiltInInstructionsAreShort -v` 实测；测试要求至少余300B）。
 
 - **两种地址**：`/mcp` 是整个账户（账户入口），`/mcp?notebook=<笔记本 id>` 是一本笔记本（笔记本入口）。`notebook` 只能出现一次、是 UUID，否则答 404 `notebook.not_found`，不查库；看不到或已删除的笔记本同样答 404，在握手之前。
 - **只收个人访问令牌**：`Authorization: Bearer <PAT>`。会话的访问令牌答 403 `forbidden`（它 15 分钟就过期，服务端没有 OAuth，经 MCP 续不了期），没有、无效、已撤销的令牌答 401。服务端没有 OAuth：`/.well-known/` 之下都答 404，`POST /register` 答 OAuth 的错误 `invalid_client_metadata`。一个 POST 在限流里算一次请求，与 REST 共用这个令牌的桶。
 - **传输**：无状态的 Streamable HTTP，每个 POST 一个 JSON 答复，没有会话：服务重启之后客户端照常调用，不用重新连接。协议版本到 2025-11-25，更新的版本协商降到它；GET 答 405，JSON-RPC 的批答 400；每个答复带 `Cache-Control: no-store`。一个工具的答复至多 48 KiB，到了就停并给出继续的游标或标出截断；超过 64 KiB 的请求体只能是这个入口的工具的调用，否则答 413。这样大的请求体整个服务同时至多两个（超过 1 MiB 的正文写，网页的保存与 REST 的，也算在内）、每个凭证（令牌或登录会话）一个，取不到名额的等 2 秒后答 503 `server_busy`（`Retry-After: 1`）：这是 HTTP 的答复，不是工具的结果（官方 TypeScript SDK 的客户端把它当作传输的错误；Claude Code、Codex 怎样显示未核对，见下文"HTTP 的答复"），稍后重发即可；一个 agent 的大的写一个接一个地发。请求体至多 10,000 个 JSON 值（每个对象、数组、字符串、数字与字面量各算一个），过了答 400。
 - **工具**：笔记本入口有 `list`（根或一页的子节点，或按 glob 列路径）与 `read`（页的行；附件的元数据与图片或下载的地址）；账户入口另有 `notebooks`（看得到的笔记本，带工作区与角色）与 `open_notebook`（一本笔记本的说明与概况），这个入口里 `list`、`read` 与 `open_notebook` 要 `notebook`（笔记本的 id）。路径从笔记本的根写起，段之间是 `/`：页是它的标题加 `.md`（`Projects/Roadmap.md`），附件是它的名称，每段不分大小写。清单与输入的 schema 在 `api/mcp/tools.json`。写的四个工具、`batch` 与历史的读见下三条；读与找（`grep`、`search`、`index`、`backlinks`）见再下两条。
+- **升级**：两个入口另有 `upgrade_verify`（只读，检查升级中的笔记本的闸门与规则）与 `upgrade_submit`（提交审阅），账户入口里同样要 `notebook`；笔记本的管理员在升级中用得上（`upgrade_verify` 审阅中也可），见"升级为 LLM Wiki"。
 - **写**：两个入口都有 `write`（整页的正文）、`edit`（替换正文里的一段）、`move`（移动、改名或两者）与 `delete`（进回收站），账户入口里同样要 `notebook`；路径照上一条写，页的版本是 `list`、`read`、`write` 的答复里不透明的 `version`。`write` 不带 `base_version` 是新建：缺的上级页一并建成空的页，在同一个变更集里；路径已是一页时，内容相同答未改动（`changed: false`），不同答 `page.title_taken`。带 `base_version` 是覆盖正文：这个路径现在是另一页时答 `page.revision_mismatch`（带现在的版本）；是这一页时，内容与它现在的相同就什么也不写、答未改动（`changed: false`），`base_version` 过时了、页正被编辑也一样；不同时，这一页之后被写过答 `page.revision_mismatch`，重读再写。正文至多 5 MiB、不含 NUL。`edit` 的 `old_string`（至多 1 MiB）要逐字节出现恰好一次（重叠的也算；`replace_all` 从左到右替换每一处），从 `read` 给的照抄，引号与空白照原样匹配；全是 CRLF 的页上，不带 `\r` 的 `old_string` 里的 `\n` 照 `\r\n` 找，`new_string` 里的照 `\r\n` 写。不带 `base_version` 的 `edit` 改现在的正文（做的期间被写过就在新的正文上再做一次，再做的期间又被写过时答 `page.revision_mismatch`），带了的在那之后被写过答 `page.revision_mismatch`。`move` 的 `to` 是节点完整的新路径（不是移进去的文件夹），上级页要已存在；附件改名要带一个扩展名，扩展名可以换；链接照"改名与移动改写链接"改写。有子页或附件的页，`delete` 要 `recursive: true`。正在网页上编辑的页（包括自己在别处编辑的）拒绝 MCP 的写（与页现在的内容相同的 `write` 除外：它什么也不写）、编辑与删除，答 `page.locked` 并说出持锁人（删除列出子树里每个被持着的页，至多 20 个，另给总数）；`move` 要改写的页正被编辑时答 `linking.pages_locked`。锁不能经 MCP 接管：结束编辑，或请笔记本的管理员强制解锁。
 - **batch**：两个入口都有，账户入口里同样要 `notebook`。至多 100 项写、编辑、移动与删除（`op` 是工具的名称，别的成员是那个工具的参数）与一句说明（`message`，1–4,096 字节，历史里随变更集显示），一个变更集，全成或全不成；每项看到前面各项留下的路径与正文，`base_version` 是 batch 之前的版本，batch 新建的页不带。字符串合计至多 6 MiB，其中正文与 `new_string` 合计至多 5 MiB；新建、删除、移动与改名的节点至多 10,000 个，不止一次移到别的父节点下时，这些移动带着走的节点合计也至多 10,000 个；要读正文的页（`edit` 的，与之前的改名、移动碰到它的链接的 `write` 的）合计至多 14 MiB，过了时提示说为什么、把改名或移动放进另一个 batch；写了不止一页时，这些页最后的正文合计至多 100 页、8 MiB、20,000 条链接；跟着前面的改名、移动改写要写的页时，计划为此解析的正文也算在里面（同一页的另一份正文多算一页），这些解析另外合计至多 10 MiB（只写一页时前一条不限，10 MiB 仍限）。改名与移动的链接改写在读树之前数三样：改写的页至多 400 个（batch 写了、它的改名或移动碰到其链接的页算 2，写回 batch 之前的字节的算 1）、链接至多 120,000 条、页合计至多 34,406,400 字节（400 × 84 KiB，写了的页按它最后的大小算一次）；三个之内，逐页改写时一次解析在已改写的页留着的解析预算的份额旁放不下，也拒绝（别人占着预算时照旧答 `server_busy`）。过了这些答 `page.batch_too_large`，说出过了什么、界线与怎样拆开。一项被拒时答出第几项（`op`，从 0 起）与那个工具的码；batch 整体的界线（项数、字符串与正文的合计、说明、写的页的合计与它们的链接）被拒时不带 `op`；被拒时什么都不写。先删子孙、再删祖先合成一次删除（前面那一项答 `merged_into`）；不能删除这个 batch 新建、改名或移动的。与分开调用的不同在两处。一是链接：链接跟着 batch 按节点合并的改名与移动，从 batch 之前、或写了的页最后一次写时的去向跟起，其间别的项对去向做的（新建、改名、移动或删除一页）与 batch 改的别名都看不到，`update_links` 为假的节点的链接在每一页里都不改。二是锁：batch 里写一页已有的字节、而这一页正被编辑时，整个 batch 答 `page.locked`（单独的 `write` 答 `changed: false`）。batch 写或删除的页正被编辑时，在第一个写或删除它的项答 `page.locked`；只被链接的改写碰到的页在它的改名、移动之后才查，在第一个改名或移动的项答 `linking.pages_locked`。答复有变更集的 id 与时刻和各项的结果（放得下的那些，`results_count` 是全部的数，其余用 `changeset` 读）；每项的 `changed` 是它的工具在那一步会答的，batch 的 `changed` 说它留没留下改动；batch 写的要几秒之后才搜得到，其间答复的 `building` 为真。batch 的变更集在网页上可以整组撤销（上文"整组撤销"）。
 - **历史**：两个入口都有 `versions`（一页的版本列表，带 `revision` 时读那个版本的行，`offset`、`column` 与 `limit` 同 `read`）、`log`（这本笔记本的变更集，新的在前，可按 `path`、`actor`（账户的 id，`"me"` 是自己）与 `client`（`mcp` 是全部的 agent）筛选）与 `changeset`（一个变更集与它对每个节点做了什么，节点带它现在的路径），账户入口里同样要 `notebook`。只读：还原版本、从回收站恢复与撤销变更集是人在网页上做的，经 MCP 的一次移动加改名在网页上一步撤销，一个 `batch` 在网页上整组撤销。`changeset` 只认这本笔记本的，别的笔记本的变更集答 `page.changeset_not_found`；回收站里的页与附件没有路径（`versions`、`log` 按路径找不到它，`changeset` 里它的路径为 null），它们的变更集在不筛选的 `log` 里；一个答复放不下的变更集在 `log` 里单独来、变化截短并带 `changes_cut: true`，用 `changeset` 读全。
@@ -231,9 +232,9 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 新建笔记本时可以选择 LLM Wiki（`POST /api/v0/workspaces/{slug}/notebooks` 带 `mode: "llm_wiki"` 与模板的语言 `template_locale`，`zh-CN` 或 `en`；笔记本的答复带 `mode` 与 `source_root_id`）。它有来源区和根下的 `AGENTS` 约定：来源添加后不修改，知识页由人或 agent 按约定维护；`AGENTS` 的正文可以更新，但在这种模式下不能删除、改名或移动。`index.md` 与 `log.md` 是系统生成的视图，不是要写回的页面。
 
-在这本笔记本的 MCP 入口 `/mcp?notebook=<id>`，`prompts/list` 提供英文的 `ingest`、`query`、`lint`。`ingest` 可带 `source` 路径，省略时先列 `pending_sources`，读完来源之后用一个带说明的 `batch` 更新知识页，写明 `type`、`summary` 与带引号的 `sources`，再做 lint。`query` 带 `question`，查找并引用页和来源。`lint` 先做能机械修的，再看最近的变更集，报告其余。
+在这本笔记本的 MCP 入口 `/mcp?notebook=<id>`，`prompts/list` 提供英文的 `ingest`、`query`、`lint` 与 `upgrade`（`upgrade` 只在升级中取得到，见"升级为 LLM Wiki"）。`ingest` 可带 `source` 路径，省略时先列 `pending_sources`，读完来源之后用一个带说明的 `batch` 更新知识页，写明 `type`、`summary` 与带引号的 `sources`，再做 lint。`query` 带 `question`，查找并引用页和来源。`lint` 先做能机械修的，再看最近的变更集，报告其余。
 
-普通笔记本也列出同样三个名字，取用答 JSON-RPC -32602，码是 `notebook.not_llm_wiki`。账户入口 `/mcp` 没有 prompt，`open_notebook` 的说明给出对应笔记本的入口。
+普通笔记本也列出同样四个名字，取用前三个答 JSON-RPC -32602、码是 `notebook.not_llm_wiki`；`upgrade` 不在升级中时同样答 -32602、码是 `wiki.upgrade_state`。账户入口 `/mcp` 没有 prompt，`open_notebook` 的说明给出对应笔记本的入口。
 
 握手和 `open_notebook` 的说明先是一段系统的文字，后面跟 `AGENTS` 去掉 frontmatter 的正文，空正文时用内置说明。系统的文字写当前的来源根和生成的视图，来源根改名或移动之后下一次读取就更新。`AGENTS` 太长时被截短并提示用 `read` 读全，系统的文字不截；来源根的路径太长时，这段文字改写它的标题。
 
@@ -243,7 +244,21 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 
 **降级**：管理员可以把 LLM Wiki 降级成普通笔记本（`POST /api/v0/notebooks/{notebook_id}/downgrade`，网页在笔记本的设置里），有写入任务排队或运行时拒绝（`transfer.busy`）。降级不动页面，`AGENTS` 与来源都留着，守卫和生成的视图不再生效，下一次握手不再带系统的文字。`AGENTS` 的正文仍是原来写的，里面可能还写着"这是 LLM Wiki"。
 
-**重新导入的限制**：把 LLM Wiki 的导出导进一本新的 LLM Wiki，根下的 `AGENTS.md` 因为已有 `AGENTS` 成为 `AGENTS 2`，档案的 `raw/` 因为已有 `raw` 成为 `raw 2`，它里面的来源落在来源区之外。这是 v0.1 写明的限制。
+**重新导入的限制**：把 LLM Wiki 的导出导进一本新的 LLM Wiki，根下的 `AGENTS.md` 因为已有 `AGENTS` 成为 `AGENTS 2`，档案的 `raw/` 因为已有 `raw` 成为 `raw 2`，它里面的来源落在来源区之外。这是 v0.1 写明的限制。要这样的库成为 LLM Wiki：导进新的普通笔记本再升级，见下一节。
+
+### 升级为 LLM Wiki
+
+一本普通笔记本可以升级为 LLM Wiki：笔记本的管理员在"设置 → 模式"里点"升级为 LLM Wiki…"。升级中笔记本对所有人只读，只有发起人自己的 agent 经 MCP 能写（提交审阅之前）；冻结没有时限，任何笔记本管理员都可以随时放弃（审阅中网页上由"驳回"代替，效果相同）。REST 的路径都在 `/api/v0/notebooks/{notebook_id}/upgrade` 之下：`POST` 它发起、`GET` 它读，另有 `check`、`submit`、`approve`、`send-back`、`reject`、`abandon`、`end-rollback`（`api/modules/wiki.yaml`）。
+
+1. **发起**：根下有标题为 `raw` 的页时，它成为来源区（批准之后它下面的都是只读的来源）；没有就补写一页 `raw`。根下没有 `AGENTS` 时补写一页（取界面语言的模板）。原有页的正文不改。
+2. **接 agent**：照下面"接入 agent（MCP）"一节，用发起人自己的访问令牌，把 agent 连到这本笔记本的入口 `/mcp?notebook=<id>`（id 在网页地址 `/notebooks/` 之后），运行 prompt `upgrade`。agent 照它把来源移进 `raw`、给来源区之外的 wiki 页补上 `type`、`summary`（依据来源的页另列 `sources`），反复用 `upgrade_verify` 检查。升级中原有的页只能改 frontmatter、不能删，移动与改名必须改写链接；被拒时工具的错误说明怎么改。
+3. **提交**：八道闸门都过了，agent 调 `upgrade_submit`，或在升级页上点"提交审阅…"。服务端再检查一次，通过就进入审阅，存下这次的报告；不过就回到升级中。
+4. **审阅**：任何笔记本管理员在升级页上看报告，然后"批准"（笔记本成为 LLM Wiki，来源区只读、`AGENTS` 与来源根受保护）、"退回继续修改"（回到升级中，agent 可以再写）或"驳回"（在后台撤销这次升级的全部改动）。批准之后没有整体的撤销：升级的变更集仍可在历史里照 LLM Wiki 的规则逐个撤销；要回到普通笔记本用降级。
+5. **放弃与回滚**：放弃与驳回都在后台按发起时记下的样子把笔记本放回去；回滚停下时可以继续，或者"结束回滚，保留现在的样子"。
+
+批准时服务端为来源区里每一页正文非空的页与每个附件算一次来源的哈希，数万个来源要几秒；批准的期限是 `server.request_timeout` 的四分之三，太短时答 503 `server_busy`、什么也不写（`server/configs/config.yaml` 的 15 秒在十万个来源上有余）。
+
+**已有的笔记库**：要把一份按 LLM Wiki 整理过的库（例如从另一个实例导出的 LLM Wiki）搬进来，先导入一本新建的普通笔记本（根下正好是 `AGENTS` 与 `raw`，导入不加序号；根下已有 `raw`、`AGENTS` 的笔记本照样加序号），再升级：发起认出根下的 `raw` 作来源区、留着原有的 `AGENTS`，agent 只需补齐 frontmatter。根下若有 `index`、`log`、`index.md`、`log.md`，要由 agent 改名，闸门才会过。
 
 ## 接入 agent（MCP）
 
@@ -296,7 +311,7 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
 
   写好之后 `grep nwk_pat_ .mcp.json` 应当什么也找不到。项目里的服务第一次用时，Claude Code 先问要不要启用它（照 Claude Code 的文档）。
 
-- **看连上没有**：`claude mcp list`，或在会话里输入 `/mcp`：`nervewiki` 已连上，笔记本入口有 14 个工具（账户入口 16 个）。工具在 Claude Code 里叫 `mcp__nervewiki__read` 一类（照 Claude Code 的文档）。
+- **看连上没有**：`claude mcp list`，或在会话里输入 `/mcp`：`nervewiki` 已连上，笔记本入口有 18 个工具（账户入口 20 个）。工具在 Claude Code 里叫 `mcp__nervewiki__read` 一类（照 Claude Code 的文档）。
 - Claude Code 把一次 MCP 工具的结果限在约 25,000 个 token，环境变量 `MAX_MCP_OUTPUT_TOKENS` 可以调（照 Claude Code 的文档）；服务端的每个答复的文字至多 48 KiB（`read` 直接放进答复的图片另算，至多 3 MiB），`read` 一次至多约 45 KiB 的正文，中文约 1.5 万字。
 
 ### Codex
@@ -316,7 +331,7 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
 
 ### 审批
 
-工具带着 MCP 的注解：读的九个（`list`、`read`、`grep`、`search`、`index`、`backlinks`、`versions`、`log`、`changeset`；账户入口另有 `notebooks`、`open_notebook`）是 `readOnlyHint`；写的五个（`write`、`edit`、`move`、`delete`、`batch`）是 `destructiveHint`，其中 `write`、`move`、`delete` 另是 `idempotentHint`（同样的参数再调一次不再改变什么）。调用之前问不问人由客户端与它的设置定；两个客户端是否照注解区别对待未核对。
+工具带着 MCP 的注解：读的十二个（`list`、`read`、`grep`、`search`、`index`、`backlinks`、`versions`、`log`、`changeset`、`lint`、`pending_sources`、`upgrade_verify`；账户入口另有 `notebooks`、`open_notebook`）是 `readOnlyHint`；写的五个（`write`、`edit`、`move`、`delete`、`batch`）是 `destructiveHint`，其中 `write`、`move`、`delete` 另是 `idempotentHint`（同样的参数再调一次不再改变什么）；`upgrade_submit` 不是只读的，`destructiveHint` 为假（它只把升级交给审阅，不改页）。调用之前问不问人由客户端与它的设置定；两个客户端是否照注解区别对待未核对。
 
 - **不要一律放行**：放行了写的工具，agent 不经人确认就能以这个账户的权限改写、删除、移动它看得到的每一本笔记本里的页。读的工具可以免问；写的工具照常问，除非这个 agent 要无人值守地工作，而你接受事后在网页的历史里检查、撤销它做的（下面的"历史只读"）。审批只管 MCP 的工具：agent 能执行命令时，它启动的命令照常继承启动它的环境（这是 shell 的），里面就有令牌的变量，可以直接调 REST；客户端是否把自己的环境交给它执行的命令（或滤掉一些变量）未核对，当作交了。
 - **Claude Code**：一个工具在调用之前问；回答"不再问"之后这个工具不再问（照 Claude Code 的文档）。要事先放行读的工具，写进设置（项目的 `.claude/settings.json` 或自己的 `~/.claude/settings.json`）的 `permissions.allow`：
@@ -333,7 +348,10 @@ Claude Code、Codex 一类的 agent 经 `/mcp` 读写笔记本。工具、路径
         "mcp__nervewiki__backlinks",
         "mcp__nervewiki__versions",
         "mcp__nervewiki__log",
-        "mcp__nervewiki__changeset"
+        "mcp__nervewiki__changeset",
+        "mcp__nervewiki__lint",
+        "mcp__nervewiki__pending_sources",
+        "mcp__nervewiki__upgrade_verify"
       ]
     }
   }

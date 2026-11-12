@@ -96,14 +96,15 @@ func promptRefusal(t testing.TB, a mcpAnswer) (code float64, message, dataCode s
 
 // The prompts each entry lists are the contract's, api/mcp/prompts.json,
 // member by member, in both modes (M10 design 4.15): the notebook entry
-// lists the three in a standard notebook too, the account entry none, and
-// only the notebook entry says prompts.
+// lists the four, the LLM Wiki's three and the upgrade's (M11/P3 design
+// 3.18), in a standard notebook too, the account entry none, and only the
+// notebook entry says prompts.
 func TestThePromptListsAreTheContract(t *testing.T) {
 	m := startMCPApp(t, nil)
 	wiki := m.createLLMWiki(t)
 	want := readPromptLists(t)
-	if len(want["notebook"]) != 3 || len(want["account"]) != 0 {
-		t.Fatalf("the file has %d and %d prompts, want 3 and 0", len(want["notebook"]), len(want["account"]))
+	if len(want["notebook"]) != 4 || len(want["account"]) != 0 {
+		t.Fatalf("the file has %d and %d prompts, want 4 and 0", len(want["notebook"]), len(want["account"]))
 	}
 	for name, notebook := range map[string]string{"an LLM Wiki": wiki, "a standard notebook": m.notebook} {
 		got := m.listedPrompts(t, notebook)
@@ -137,11 +138,11 @@ func TestThePromptListsAreTheContract(t *testing.T) {
 	}
 }
 
-// The three prompts of the composition root reach their handlers through
-// the notebook entry (M10 design 4.15): each its text, an argument once;
-// a standard notebook's refusal; the arguments' bound before it; the
-// account entry's unknown prompt; and a notebook no one lets the caller
-// see stops at the HTTP edge.
+// The LLM Wiki's three prompts reach their handlers through the notebook
+// entry (M10 design 4.15): each its text, an argument once; a standard
+// notebook's refusal; the arguments' bound before it; the account entry's
+// unknown prompt; and a notebook no one lets the caller see stops at the
+// HTTP edge. The upgrade's: TestUpgradePrompt.
 func TestTheWikiPromptsAreReached(t *testing.T) {
 	m := startMCPApp(t, nil)
 	wiki := m.createLLMWiki(t)

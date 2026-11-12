@@ -210,6 +210,16 @@ export async function mcpClient(
   };
 }
 
+/** The one message's text of a prompt's answer, which must be no error and the user's (LW11, UP9). */
+export function promptTextOf(answer: { result: McpPromptResult } | { error: McpRpcError }): string {
+  if ("error" in answer) {
+    throw new Error(`the prompt was refused: ${JSON.stringify(answer.error)}`);
+  }
+  expect(answer.result.messages).toHaveLength(1);
+  expect(answer.result.messages[0]?.role).toBe("user");
+  return answer.result.messages[0]?.content.text ?? "";
+}
+
 /** A tool's error as its structuredContent.error has it (M9 design 4.7): its code, its text, and its tool's members. */
 export interface McpError {
   code: string;

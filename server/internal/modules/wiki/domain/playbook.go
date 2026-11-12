@@ -27,7 +27,15 @@ var (
 	queryPlaybook string
 	//go:embed playbook-lint.md
 	lintPlaybook string
+	//go:embed playbook-upgrade.md
+	upgradePlaybook string
 )
+
+// UpgradePlaybookText is the upgrade playbook, trimmed (M11 design 4.13):
+// the upgrade prompt's text for a notebook upgrading. It is not a
+// Playbook: PlaybookText answers an LLM Wiki's three alone, so that their
+// use case never answers it (M11/P3 decision 286).
+func UpgradePlaybookText() string { return strings.TrimSpace(upgradePlaybook) }
 
 // PlaybookText is kind's message: its text, and argument, when the caller
 // gave one, once and as it is, after the words that say what it is.

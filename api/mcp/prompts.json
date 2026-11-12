@@ -27,6 +27,11 @@
           "required": true
         }
       ]
+    },
+    {
+      "name": "upgrade",
+      "title": "Upgrade to an LLM Wiki",
+      "description": "Organize this standard notebook into an LLM Wiki with the upgrade tools until every check passes, then submit it for an admin's review. Upgrading notebooks only."
     }
   ],
   "account": []
