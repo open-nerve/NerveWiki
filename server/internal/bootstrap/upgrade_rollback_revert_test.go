@@ -18,8 +18,9 @@ import (
 // folder for its top, which the trash's group of the folder does not hold.
 //
 // flat: the new folder Made holds only Guide, moved under it; the first
-// pass deletes Fresh, at the root, alone. Reverted, in the request, the
-// notebook is as the agent left it.
+// pass deletes the new subtrees that hold no baseline node, Fresh and the
+// raw and AGENTS the start wrote, none of them under Made. Reverted, in
+// the request, the notebook is as the agent left it.
 //
 // nested: Made holds Guide, moved under it, and Inner, new. The revert, in
 // the request and in the background, answers 409 page.revert_conflict of

@@ -208,17 +208,22 @@ func (n *randomNode) source() bool {
 // it a tree a few levels deep of pages with content, empty pages, pages
 // with content and children, pages that are only folders, and attachments,
 // zero-byte ones among them; some nodes deleted through the unit, a
-// deleted page's subtree with it; nodes outside raw, raw itself among
-// them, given an old hash by SQL; and another notebook whose sources have
-// hashes. Rebuilt in one transaction, one SQL read of every node's
+// deleted page's subtree with it; about half the nodes, under raw and
+// outside it, raw itself among them, given an old hash by SQL, which the
+// unit's deletion clears; and another notebook whose sources have hashes.
+// Rebuilt in one transaction, one SQL read of every node's
 // (id, source_hash) equals the model's: under raw, each strict live
-// descendant that is a page with content its content's hash, each
-// attachment its file's SHA-256; this notebook's other nodes none; every
-// other node, the other notebooks' and the earlier shapes', as it was.
-// The rebuild answers how many it set. The shapes the mutants of the
-// rebuild show in are counted, each in enough of them: an empty page
-// under raw, a source two levels down or more, a source deleted through
-// the unit, a node outside raw with an old hash.
+// descendant that is a page with content its content's hash, an old one
+// written over, each attachment its file's SHA-256; this notebook's other
+// nodes none, the empty pages and folders under raw with an old hash
+// cleared; every other node, the other notebooks' and the earlier
+// shapes', as it was. The rebuild answers how many it set. The shapes the
+// mutants of the rebuild show in are counted, each in enough of them: an
+// empty page under raw, a source two levels down or more, a source
+// deleted through the unit, a node outside raw with an old hash, a node
+// under raw that is no source with an old hash, and one that is raw's
+// child (M11 closeout, review A-M2: without them, a ForgetSources that
+// spares raw's children passed).
 func TestTheSourceRebuildOnRandomTrees(t *testing.T) {
 	ctx := context.Background()
 	f := newFixture(t)
@@ -357,7 +362,7 @@ func TestTheSourceRebuildOnRandomTrees(t *testing.T) {
 		}
 		all = append(all, raw)
 		add(nb, raw)
-		grow(nb, raw, 1, 6, 4, false)
+		grow(nb, raw, 1, 10, 4, true)
 		grow(nb, nil, 0, 4, 3, true)
 		ours := len(all)
 		// The other notebook: its own raw, its sources hashed, as an LLM
@@ -423,6 +428,12 @@ func TestTheSourceRebuildOnRandomTrees(t *testing.T) {
 			if n.source() && n.below > 1 {
 				kinds["a source two levels down or more"] = true
 			}
+			if !n.deleted && n.below > 0 && !n.source() && n.old != nil {
+				kinds["a node under raw that is no source with an old hash"] = true
+				if n.below == 1 {
+					kinds["a child of raw that is no source with an old hash"] = true
+				}
+			}
 		}
 		for k := range kinds {
 			seen[k]++
@@ -449,7 +460,8 @@ func TestTheSourceRebuildOnRandomTrees(t *testing.T) {
 	}
 	for _, k := range []string{"an empty page under raw", "a folder under raw", "a page with content and children under raw",
 		"a zero-byte attachment under raw", "a source two levels down or more", "a source deleted through the unit",
-		"a node outside raw with an old hash"} {
+		"a node outside raw with an old hash", "a node under raw that is no source with an old hash",
+		"a child of raw that is no source with an old hash"} {
 		if seen[k] < 10 {
 			t.Errorf("%d of %d shapes hold %s, want 10 at least", seen[k], shapes, k)
 		}
