@@ -179,13 +179,18 @@ const nothingLeft = { nodes: 0, pages: 0, created: 0 };
 type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
   /** Plans' upgrade under way, if any. */
   upgrade?: Upgrade;
-  /** The event stream (GET events), whose last connection a submission's two steps each tell (mode). */
+  /** The event stream (GET events), whose last connection each change of the upgrade tells (mode), as the server does. */
   events?: ReturnType<typeof eventServer>;
 };
 
 /**
  * upgradeServer is jobsServer with Plans' upgrade (M11/P1 design 4.4), as
- * the server answers its admins, in the contract's order of codes:
+ * the server answers its admins, in the contract's order of codes. As the
+ * server publishes one for each (M11 design 4.3), every change of the
+ * upgrade it writes sends the mode event to the last connection of the
+ * stream (events) as it writes it: the start, the abandonment and the
+ * continuation of its rollback, the rollback's end, each step of a
+ * submission, the approval, the rejection and the send-back.
  *
  * - its read (GET upgrade): Plans gone 404 notebook.not_found; not its
  *   admin 403 forbidden; none under way 404 wiki.upgrade_not_found; else
@@ -330,6 +335,7 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
         },
       });
       server.withUpgrade(started);
+      sendMode();
       return json(started);
     },
     [`POST ${plans}/upgrade/abandon`]: () => {
@@ -357,6 +363,7 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
         rollback_job_id: job.id,
       };
       server.withUpgrade(rolling);
+      sendMode();
       return json(read(rolling));
     },
     [`GET ${plans}/upgrade/check`]: () => {
@@ -543,6 +550,7 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
         rollback_left: left,
       };
       server.withUpgrade(ended);
+      sendMode();
       return json(ended);
     },
   };
@@ -554,7 +562,7 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
       : server.notebook.role === "admin"
         ? undefined
         : problem(403, "forbidden");
-  // The mode event a submission's step sends its notebook's subscribers: the last stream's, while connected.
+  // The mode event each change of the upgrade sends its notebook's subscribers: the last stream's, while connected.
   const sendMode = () => {
     const stream = events?.streams.at(-1);
     if (stream !== undefined && !stream.ended) {
