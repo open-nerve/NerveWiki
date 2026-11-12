@@ -1487,6 +1487,86 @@ test("approved, the page goes to the notebook's home, its title focused, Plans a
   expect(askedOf(server)).toEqual(["GET upgrade", "APPROVE"]);
 });
 
+/**
+ * approvingHeld is the review on the page, its stream connected, whose
+ * approval, as the server writes it, publishes the mode event once it is
+ * done (done), and answers (answer) once the test lets it (answered): the
+ * event comes first, its read answering that none is under way. The page's
+ * body is watched for "none under way" (said) from the approval's press.
+ */
+async function approvingHeld(done: (server: ReturnType<typeof upgradeServer>) => void, answer: () => Response) {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const answered = deferred<void>();
+  const server: ReturnType<typeof upgradeServer> = upgradeServer({
+    nodes: reviewTree,
+    upgrade: reviewed(),
+    events,
+    answers: {
+      [`POST ${plans}/upgrade/approve`]: async () => {
+        server.asked.push("APPROVE");
+        done(server);
+        events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+        await answered.promise;
+        return answer();
+      },
+    },
+  });
+  const { router } = renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const dialog = await opened(user, approves, approveTitle);
+  const said: string[] = [];
+  const observer = new MutationObserver(() => {
+    if (document.body.textContent?.includes(noneUnderWay) && said.length === 0) said.push(noneUnderWay);
+  });
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+  await user.click(within(dialog).getByRole("button", { name: "Approve the upgrade" }));
+  // The mode event's read again answered 404, the approval's answer held.
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  return { server, router, dialog, said, observer, answered };
+}
+
+test("approving, the approval's mode event comes before its answer, its read answering that none is under way: the page shows the review, not that none is, until the answer, then goes to the notebook's home", async () => {
+  const { server, router, dialog, said, observer, answered } = await approvingHeld(
+    (approving) => {
+      approving.withUpgrade({ ...reviewed(), state: "approved" });
+      approving.notebook = { ...approving.notebook, mode: "llm_wiki", source_root_id: seededRaw.id };
+    },
+    () => json({ ...reviewed(), state: "approved" })
+  );
+
+  expect(said).toEqual([]);
+  expect(screen.getByRole("heading", { level: 2, name: "Check report", hidden: true })).toBeTruthy();
+  expect(screen.getByRole("button", { name: approves, hidden: true })).toBeTruthy();
+  expect(within(dialog).getByRole("button", { name: "Approving…" })).toBeTruthy();
+  answered.resolve();
+
+  const home = await screen.findByRole("heading", { level: 1, name: "Plans" });
+  expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}`);
+  await waitFor(() => expect(document.activeElement).toBe(home));
+  observer.disconnect();
+  expect(said).toEqual([]);
+  expect(askedOf(server)).toEqual(["GET upgrade", "APPROVE", "GET upgrade"]);
+});
+
+test("approving, the mode event's read answering that none is under way, then refused for its state, another admin having rejected it and its rollback done: the page reads it again and says none is under way", async () => {
+  const { server, router, dialog, said, observer, answered } = await approvingHeld(
+    (approving) =>
+      approving.withUpgrade({ ...reviewed(), state: "rolled_back", ending: "rejected", rollback_complete: true }),
+    () => problem(409, "wiki.upgrade_state")
+  );
+  expect(said).toEqual([]);
+  answered.resolve();
+
+  expect(await within(dialog).findByText(stateRefused)).toBeTruthy();
+  expect(await screen.findByText(noneUnderWay)).toBeTruthy();
+  observer.disconnect();
+  expect(router.state.location.pathname).toBe(upgradePath);
+  expect(screen.queryByRole("heading", { level: 2, name: "Check report", hidden: true })).toBeNull();
+  await waitFor(() => expect(askedOf(server)).toEqual(["GET upgrade", "APPROVE", "GET upgrade", "GET upgrade"]));
+});
+
 test("approved, then Back to the upgrade's page: it shows no review while it reads the upgrade, and then that none is under way", async () => {
   const user = userEvent.setup();
   const { server, held } = secondReadHeld({ nodes: reviewTree, upgrade: reviewed() });
