@@ -403,7 +403,7 @@ test("a completed More never refocuses its old addition after reader action and 
   expect(fixture.pages).toHaveLength(1);
 });
 
-test("missing More nodes share one tree reread, stay after its failure, and tree retry never reruns lint", async () => {
+test("missing More nodes share one tree reread, stay after its failure, their paths left empty, and tree retry never reruns lint", async () => {
   const user = userEvent.setup();
   let reads = 0;
   let down = true;
@@ -440,7 +440,9 @@ test("missing More nodes share one tree reread, stay after its failure, and tree
   await health.findByRole("alert");
   expect(reads).toBe(2);
   expect(card.getAllByRole("listitem")).toHaveLength(7);
-  expect(card.getAllByText("This node is no longer available.")).toHaveLength(2);
+  // The tree failed to read again: whether the two nodes are there is not known, neither loading nor gone (decision 301).
+  expect(card.queryAllByText("This node is no longer available.")).toHaveLength(0);
+  expect(card.queryAllByText("Loading…")).toHaveLength(0);
   expect(card.getByText("7 issues")).toBeTruthy();
   down = false;
   fixture.server.nodes.push(...lost);

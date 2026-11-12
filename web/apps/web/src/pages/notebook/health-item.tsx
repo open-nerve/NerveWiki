@@ -18,16 +18,23 @@ export function healthNodeId(item: UpgradeReportItem): string | undefined {
   return item.rule === "wanted" ? undefined : item.rule === "undigested_sources" ? item.node_id : item.page_id;
 }
 
-/** A snapshot's finding, with its node's path and navigation taken from the current tree. */
+/**
+ * A snapshot's finding, with its node's path and navigation taken from the
+ * current tree; a node the tree lacks is loading while the tree is read,
+ * else unavailable, or left empty once the tree failed to read: whether it
+ * is there is not known (M11/P3 design 4.3).
+ */
 export const HealthItem = observer(function HealthItem({
   item,
   pages,
   readingTree,
+  treeFailed = false,
   itemRef,
 }: {
   item: UpgradeReportItem;
   pages: PageTreeStore;
   readingTree: boolean;
+  treeFailed?: boolean;
   itemRef?: (element: HTMLLIElement | null) => void;
 }) {
   const t = useT();
@@ -59,11 +66,11 @@ export const HealthItem = observer(function HealthItem({
             >
               {target.path}
             </a>
-          ) : (
+          ) : readingTree || !treeFailed ? (
             <span className="text-muted-foreground">
               {t(readingTree ? "status.loading" : "health.nodeUnavailable")}
             </span>
-          )}
+          ) : null}
         </div>
       )}
       {"target" in item && (

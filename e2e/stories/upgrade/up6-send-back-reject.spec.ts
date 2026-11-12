@@ -3,14 +3,26 @@ import type { ApiClient, Page, TransferJob, Upgrade } from "@nervewiki/api-clien
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectUpgrade } from "../../fixtures/assert/wiki";
 import { emailFor } from "../../fixtures/auth";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
-import { joinAs } from "../../fixtures/invitations";
+import { holdStream } from "../../fixtures/events";
+import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, type McpClient, mcpClient, resultOf } from "../../fixtures/mcp";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
+import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, holdNotebookRow, listJobs, runningJob, startImport } from "../../fixtures/transfer";
+import {
+  bannerText,
+  changeButtons,
+  reviewDialog,
+  upgradeBanner,
+  upgradePath,
+  upgradeSection,
+  upgradeTitle,
+} from "../../fixtures/upgrade-pages";
 import {
   getUpgrade,
   postReject,
@@ -29,8 +41,8 @@ import { zipOf } from "../../fixtures/zip-write";
 // report of its own; rejected, its rollback queued behind another
 // notebook's import, which holds the server's one import worker, the
 // notebook frozen until the rollback is done; then the notebook as it was
-// when the upgrade started. Through the API, then through MCP; the page
-// version is S3's.
+// when the upgrade started. Through the API, then through MCP, then on the
+// upgrade's page (S3), in Chromium alone.
 
 /** The story's notebook: Plan without frontmatter, and dana, a second admin, with a token of hers. */
 async function reviewed(api: ApiClient, db: Database, testInfo: Parameters<typeof newTeam>[1]) {
@@ -42,6 +54,18 @@ async function reviewed(api: ApiClient, db: Database, testInfo: Parameters<typeo
   await addedNotebookMember(api, pat, notebook.id, await accountIdOf(db, danaEmail), "admin");
   const plan = await createPage(api, pat, notebook.id, "Plan", null, "# Plan\n");
   return { pat, dana, other, notebook, plan };
+}
+
+/** reviewed's, dana onboarded: her tokens, for her page, and the workspace's slug. */
+async function reviewedOnPage(api: ApiClient, db: Database, testInfo: Parameters<typeof newTeam>[1]) {
+  const { pat, workspace } = await newTeam(api, testInfo);
+  const danaEmail = emailFor(testInfo, "dana");
+  const dana = await joinOnboarded(api, pat, workspace.slug, danaEmail, "member");
+  const other = await createNotebook(api, pat, workspace.slug, "Other notes");
+  const notebook = await createNotebook(api, pat, workspace.slug, "Field notes");
+  await addedNotebookMember(api, pat, notebook.id, await accountIdOf(db, danaEmail), "admin");
+  const plan = await createPage(api, pat, notebook.id, "Plan", null, "# Plan\n");
+  return { pat, dana, slug: workspace.slug, other, notebook, plan };
 }
 
 /** The agent writes Plan's frontmatter with summary above its body, from the version the server holds. */
@@ -208,4 +232,99 @@ test("UP6 (MCP): sent back, the agent's write passes and upgrade_submit keeps a 
     "the agent's write once the rollback is done"
   );
   expect((await readContent(api, pat, plan.id)).content).toBe("# Plan\n");
+});
+
+test("UP6 (page): a second admin sends the submitted upgrade back on its page, the agent's section back; submitted again, the page, opened again with its stream held, offers Approve, Send back and Reject, not Abandon; rejected with the import worker held, it shows the rollback's job queued; the worker let go and the rollback done, it says no upgrade is under way, its one read of the ended upgrade 404", async ({
+  api,
+  db,
+  nervewiki,
+  signedInPage,
+  pageWatch,
+}, testInfo) => {
+  test.slow();
+  const { pat, dana, slug, other, notebook, plan } = await reviewedOnPage(api, db, testInfo);
+  await startUpgrade(api, pat, notebook.id);
+  const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id });
+  resultOf(await frontmatter(api, pat, agent, plan, "The plan."), "the agent's frontmatter of Plan");
+  await submitUpgrade(api, pat, notebook.id);
+  const upgradeAt = upgradePath(slug, notebook.id);
+  const upgradeRead = `/api/v0/notebooks/${notebook.id}/upgrade`;
+  // The rollback done, its job seen ended reads the upgrade, ended, again (M11/P3 design 5): its stream held, no
+  // mode event reads it, and the import worker held, the rejection's read again is of the rollback queued.
+  pageWatch.expectConsole({ errors: [failedToLoad(404)] });
+  const page = await signedInPage(dana);
+
+  // Sent back on the page, its stream connected: upgrading again, the agent's section back.
+  await page.goto(upgradeAt);
+  await expect(upgradeBanner(page, bannerText.reviewing)).toBeVisible();
+  await page.getByRole("button", { name: "Send back for more work…", exact: true }).click();
+  const backDialog = reviewDialog(page, "Send back", notebook.name);
+  const sentBack = answerTo(page, "POST", `${upgradeRead}/send-back`);
+  await backDialog.getByRole("button", { name: "Send it back", exact: true }).click();
+  const backAnswer = await sentBack;
+  expect(backAnswer.status()).toBe(200);
+  const back = (await backAnswer.json()) as Upgrade;
+  expect([back.state, back.submitted_at, back.submitted_by, back.report]).toEqual(["upgrading", null, null, null]);
+  await expectUpgrade(db, back);
+  await expect(backDialog).toBeHidden();
+  await expect(upgradeTitle(page)).toBeFocused();
+  await expect(upgradeSection(page, "Connect an agent")).toBeVisible();
+  await expect(upgradeBanner(page, bannerText.upgrading)).toBeVisible();
+
+  resultOf(await frontmatter(api, pat, agent, plan, "The plan, again."), "the agent's write after the send-back");
+  const again = await submitUpgrade(api, pat, notebook.id);
+  // The submission's mode event read on the page before it is opened again: no read of it cut short by the load.
+  await expect(upgradeBanner(page, bannerText.reviewing)).toBeVisible();
+  await expect(upgradeSection(page, "Check report")).toContainText("): every check passed.");
+
+  // Opened again, its stream held: what the rejection and its rollback send reach it as no event.
+  const letStreamIn = await holdStream(page);
+  try {
+    await page.goto(upgradeAt);
+    await expect(upgradeSection(page, "Check report")).toContainText("): every check passed.");
+    expect(await changeButtons(page)).toEqual(["Approve…", "Send back for more work…", "Reject…"]);
+    await expect(page.getByRole("button", { name: "Abandon this upgrade…", exact: true })).toHaveCount(0);
+
+    let rejected: Upgrade | undefined;
+    await withWorkerHeld(api, db, pat, other.id, testInfo, async () => {
+      await page.getByRole("button", { name: "Reject…", exact: true }).click();
+      const dialog = reviewDialog(page, "Reject", notebook.name);
+      const answer = answerTo(page, "POST", `${upgradeRead}/reject`);
+      await dialog.getByRole("button", { name: "Reject the upgrade", exact: true }).click();
+      const response = await answer;
+      expect(response.status()).toBe(200);
+      rejected = (await response.json()) as Upgrade;
+      expect([rejected.state, rejected.ending, rejected.submitted_by?.user_id, rejected.report?.passed]).toEqual([
+        "rolling_back",
+        "rejected",
+        again.submitted_by?.user_id,
+        true,
+      ]);
+      await expectUpgrade(db, rejected);
+      const job = upgradeSection(page, "Rollback").getByRole("listitem", { name: /^Undo the upgrade, / });
+      await expect(job.getByRole("progressbar", { name: "Queued", exact: true })).toBeVisible();
+      await expect(dialog).toBeHidden();
+      await expect(upgradeTitle(page)).toBeFocused();
+      await expect(upgradeBanner(page, bannerText.rolling_back)).toBeVisible();
+      const queued = (await listJobs(api, pat, notebook.id)).find((j) => j.id === rejected?.rollback_job_id);
+      expect(queued?.state).toBe("queued");
+    });
+    if (!rejected) {
+      throw new Error("the upgrade was not rejected on the page");
+    }
+    expect((await endedJob(api, pat, rejected.rollback_job_id ?? "")).state).toBe("succeeded");
+    await expect(page.getByText("This notebook has no upgrade under way.", { exact: true })).toBeVisible();
+    await expect.poll(() => pageWatch.apiFailures).toEqual([`404 GET ${upgradeRead}`]);
+    await expectUpgrade(db, rolledBack(rejected));
+    expect((await readContent(api, pat, plan.id)).content).toBe("# Plan\n");
+    expect(await trashedNames(db, notebook.id)).toEqual(["AGENTS", "raw"]);
+
+    // The page lets its stream in only once it has left the upgrade's page.
+    await page.goto(notebookPath(slug, notebook.id));
+    await expect(notebookHeading(page, notebook.name)).toBeVisible();
+  } finally {
+    letStreamIn();
+  }
+  await expect(upgradeBanner(page, bannerText.rolling_back)).toHaveCount(0);
+  expect(pageWatch.apiFailures).toEqual([`404 GET ${upgradeRead}`]);
 });

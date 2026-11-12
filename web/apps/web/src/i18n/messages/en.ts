@@ -698,11 +698,12 @@ export const en = {
     "This notebook's upgrade is submitted and waits for an admin's review: it is read-only for now.",
   "upgrade.bannerRollingBack": "This notebook's upgrade is being undone: it is read-only for now.",
   "upgrade.bannerAnyAdmin": "Any admin of the notebook can abandon this upgrade.",
+  "upgrade.bannerAnyAdminReject": "Any admin of the notebook can reject this upgrade.",
   "upgrade.view": "View the upgrade",
   "upgrade.start": "Upgrade to an LLM Wiki…",
   "upgrade.startTitle": "Upgrade “{name}” to an LLM Wiki?",
   "upgrade.startBody":
-    "Until the upgrade ends, approved or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed.",
+    "Until the upgrade ends, approved, rejected or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed.",
   "upgrade.startRaw":
     "The page raw at the root becomes the source area ({count} nodes under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.",
   "upgrade.startConfirm": "Start the upgrade",
@@ -793,6 +794,28 @@ export const en = {
   "upgrade.report": "Check report",
   "upgrade.reportPassed": "The check at its submission ({time}): every check passed.",
   "upgrade.reportPending": "Being checked, or the last submission did not finish.",
+  "upgrade.approve": "Approve…",
+  "upgrade.approveTitle": "Approve the upgrade of “{name}”?",
+  "upgrade.approveBody":
+    "The notebook becomes an LLM Wiki: the pages and attachments under its source area ({root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changesets can still be reverted one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.",
+  "upgrade.approveRootUnread": "the proposed source root",
+  "upgrade.approveConfirm": "Approve the upgrade",
+  "upgrade.approving": "Approving…",
+  "upgrade.approveNotReady":
+    "Checked again before the approval, a check did not pass; the upgrade is still in review: send it back, or reject it.",
+  "upgrade.sendBack": "Send back for more work…",
+  "upgrade.sendBackTitle": "Send back the upgrade of “{name}”?",
+  "upgrade.sendBackBody":
+    "The upgrade is upgrading again, and its initiator's agent can go on with it; this report is not kept, and the upgrade is to be submitted again.",
+  "upgrade.sendBackConfirm": "Send it back",
+  "upgrade.sendingBack": "Sending back…",
+  "upgrade.sendBackChecking": "The previous submission is still being checked: try again in a moment.",
+  "upgrade.reject": "Reject…",
+  "upgrade.rejectTitle": "Reject the upgrade of “{name}”?",
+  "upgrade.rejectBody":
+    "A background job puts the notebook back as it was when the upgrade started: its pages and attachments go back to their places, names and content, and those created since go to the trash. The notebook stays read-only until the rollback ends. A rollback that stops can be continued, or ended, keeping the notebook as it is then.",
+  "upgrade.rejectConfirm": "Reject the upgrade",
+  "upgrade.rejecting": "Rejecting…",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",

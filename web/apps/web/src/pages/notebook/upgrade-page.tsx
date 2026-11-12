@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Link, useLocation } from "react-router";
+import { Link, useLocation, useNavigate } from "react-router";
 import useSWR, { SWRConfig, unstable_serialize, useSWRConfig } from "swr";
 
-import { useArrivalFocus } from "../../app/arrival";
+import { arrived, useArrivalFocus } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useDocumentTitle } from "../../app/document-title";
 import { useMounted } from "../../app/mounted";
@@ -18,12 +18,13 @@ import type { Upgrade } from "../../services/upgrade.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useNotebooks, usePageTree, useStore, useTransfers, useUpgrades } from "../../stores/context";
 import { under } from "../../stores/transfer.store";
+import { nodeTarget } from "../node-target";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
-import { UpgradeCheckSection, UpgradeReportSection, type CheckControl } from "./upgrade-check";
+import { UpgradeCheckSection, UpgradeReportSection, type CheckControl, type TreeRead } from "./upgrade-check";
 
 /**
  * UpgradePage is the notebook's upgrade to an LLM Wiki under way (M11/P1
@@ -59,9 +60,18 @@ let nextCheckEntry = 0;
 
 /**
  * The changes asked on the page: abandoning the upgrade, continuing its
- * stopped rollback, ending it; submitting it for review (M11/P2).
+ * stopped rollback, ending it; submitting it for review (M11/P2);
+ * approving it, sending it back, rejecting it (M11/P3).
  */
-type Change = "abandon" | "continue" | "end" | "submit";
+type Change = "abandon" | "continue" | "end" | "submit" | "approve" | "sendBack" | "reject";
+
+/**
+ * How long after a send-back refused while the submission is still
+ * checked the upgrade is read once more: the bound of a submission's
+ * check, LintTimeout plus 10 seconds, LintTimeout at most 10 seconds (M11
+ * design 4.15); the page does not know the instance's.
+ */
+const sendBackWaitMs = 20_000;
 
 /**
  * UpgradeRead reads the upgrade (SWR's key ["upgrade", notebook id], which
@@ -80,16 +90,28 @@ type Change = "abandon" | "continue" | "end" | "submit";
  * reads it again, its check gone, the dialog staying until the answer
  * (decision 264); refused as not ready or of an old index, the upgrade is
  * upgrading again, read again, and checked again. Reviewing, it shows the
- * report the submission kept.
+ * report the submission kept, and offers to approve it, once it has its
+ * report, to send it back for more work, and to reject it, in place of
+ * abandoning it (decisions 288, 291; M11/P3 design 4.3). Approved, the
+ * upgrade is no longer under way: the page, still there, goes to the
+ * notebook's home, whose title takes the focus (decision 289), and the
+ * upgrade, in review, is dropped from the cache. Sent back, by this
+ * admin or another, the check of the submission's time is not shown
+ * again (decision 300); refused while the submission is still checked,
+ * as the upgrade read again after the refusal says, the dialog says so
+ * until it closes, and that submission, still checked, is read once more
+ * after sendBackWaitMs.
  *
  * It is one entry to the page (M11/P2 design 4.3): the check it shows is
  * of its generation, which a new check moves on, of the upgrade it was
  * asked for (another upgrade shown in the entry is not checked until
- * Check is pressed), in a cache of its own
- * that wraps the check alone, mounted as long as the entry, so that the
- * check gone and back finds its read; leaving the page aborts the check's
- * requests and drops that cache. The upgrade, the notebooks and the tree
- * are read in the public provider, as the left column's.
+ * Check is pressed), in a cache of its own that wraps the check and the
+ * report (M11/P3 design 4.3), mounted as long as the entry, so that the
+ * check gone and back finds its read; leaving the page aborts the
+ * requests of the check and of the report's cards and drops that cache.
+ * The upgrade, the notebooks and the tree are read in the public
+ * provider, as the left column's; the tree failed to read, the sections
+ * say so above their nodes, and read it again when asked.
  */
 const UpgradeRead = observer(function UpgradeRead({
   notebook,
@@ -144,7 +166,11 @@ const UpgradeRead = observer(function UpgradeRead({
     continue: useRef<HTMLButtonElement>(null),
     end: useRef<HTMLButtonElement>(null),
     submit: useRef<HTMLButtonElement>(null),
+    approve: useRef<HTMLButtonElement>(null),
+    sendBack: useRef<HTMLButtonElement>(null),
+    reject: useRef<HTMLButtonElement>(null),
   };
+  const navigate = useNavigate();
   const admin = notebook.role === "admin";
   const rereadNotebooks = () => void mutate(["notebooks", workspace.id]);
   const {
@@ -159,13 +185,19 @@ const UpgradeRead = observer(function UpgradeRead({
     },
   });
   const tree = useSWR(admin ? ["pages", notebook.id] : null, () => pages.load());
-  const readingTree = pages.nodes === undefined || tree.isValidating;
+  const treeRead: TreeRead = {
+    error: tree.error,
+    reading: (pages.nodes === undefined && tree.error === undefined) || tree.isValidating,
+    retry: () => void tree.mutate(),
+  };
 
   /**
    * change sends what a dialog asks, then reads the upgrade again; so does
    * a refusal that says the page is behind: a rollback under way already,
    * the upgrade in another state, or upgrading again after a submission
-   * not ready or of an old index. The upgrade an abandonment, a submission or a
+   * not ready or of an old index, read before the refusal is thrown, so
+   * that what the dialog says of it is of the upgrade as it is read
+   * again. The upgrade an abandonment, a submission or a
    * continuation answers, rolling back, is shown meanwhile (shows), over
    * what the page showed as it was sent, before the read again (SWR keeps
    * no read sent before it); a read that answered meanwhile, a mode
@@ -188,7 +220,7 @@ const UpgradeRead = observer(function UpgradeRead({
           refusal.code === "wiki.upgrade_not_ready" ||
           refusal.code === "wiki.upgrade_stale_index")
       ) {
-        void reread();
+        await reread();
       }
       throw refusal;
     }
@@ -225,6 +257,132 @@ const UpgradeRead = observer(function UpgradeRead({
     }
   }
 
+  // Approved, the page goes: unmounted, the upgrade in review leaves the cache.
+  const approvedAway = useRef(false);
+  useEffect(
+    () => () => {
+      if (approvedAway.current) void mutate(["upgrade", notebook.id], undefined, { revalidate: false });
+    },
+    [mutate, notebook.id]
+  );
+
+  /**
+   * approve approves the upgrade (decision 289; design review P3C-M2):
+   * refused for its state, or a gate checked again not passing, the
+   * upgrade is read again, as change does; approved, it is no longer under
+   * way, its read answering 404, and nothing is read again nor shown over
+   * it: the page, still there, goes to the notebook's home, its title
+   * taking the focus; once it is unmounted, the upgrade, in review, is
+   * dropped from the cache, read by no hook then, so that Back does not
+   * show it meanwhile (cleared before, the page would show it loading as
+   * it goes).
+   */
+  async function approve(): Promise<void> {
+    try {
+      await notebooks.approveUpgrade(notebook.id);
+    } catch (refusal) {
+      if (
+        mounted() &&
+        refusal instanceof ApiError &&
+        (refusal.code === "wiki.upgrade_state" || refusal.code === "wiki.upgrade_not_ready")
+      ) {
+        void reread();
+      }
+      throw refusal;
+    }
+    if (mounted()) {
+      approvedAway.current = true;
+      await navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
+    }
+  }
+
+  // The last send-back's refusal while its submission was still checked, as the upgrade read again after it says.
+  const [stillChecked, setStillChecked] = useState<ApiError | undefined>(undefined);
+  // The submission whose check the page waits for, to read the upgrade once more; none once it has.
+  const [waiting, setWaiting] = useState<string | undefined>(undefined);
+  // That submission is shown in review without a report: still checked, or it did not finish.
+  const due =
+    error === undefined &&
+    data?.state === "reviewing" &&
+    data.report === null &&
+    waiting !== undefined &&
+    data.submitted_at === waiting;
+  useEffect(() => {
+    if (!due) {
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      setWaiting(undefined);
+      void reread();
+    }, sendBackWaitMs);
+    return () => clearTimeout(timer);
+  }, [due, reread]);
+
+  // What the page showed of the upgrade's review (decision 300): upgrading again once its report was shown, or another
+  // submission was, it was sent back, by this admin or another, and the check of the submission's time is not shown
+  // again; upgrading again after a submission refused as not ready or of an old index, its check is the one asked then.
+  const review = useRef<{ submitted: string | null; reported: boolean; changed: boolean } | undefined>(undefined);
+  useEffect(() => {
+    if (data === undefined || error !== undefined) {
+      return;
+    }
+    const was = review.current;
+    if (data.state === "reviewing") {
+      review.current = {
+        submitted: data.submitted_at,
+        reported: (was?.reported ?? false) || data.report !== null,
+        changed: (was?.changed ?? false) || (was !== undefined && was.submitted !== data.submitted_at),
+      };
+      return;
+    }
+    review.current = undefined;
+    if (data.state === "upgrading" && was !== undefined && (was.reported || was.changed)) {
+      setChecked({ generation: 0, upgrade: "" });
+    }
+  }, [data, error]);
+
+  /**
+   * sendBack sends the upgrade back, as change does (M11/P3 design 4.3):
+   * done, upgrading again, the check of the entry is none again, Check to
+   * be pressed (design review P3C-N15). Refused for its state, and the
+   * upgrade, as change read it again, in review without a report, its
+   * submission is still checked: the dialog says so of this refusal, what
+   * is read after it notwithstanding (design review P3C-N14), and that
+   * submission is read once more after sendBackWaitMs, unless it is no
+   * longer shown in review without a report, the page goes, or it is sent
+   * back again first. A read again that failed says nothing of it; one
+   * overtaken by a newer read, its answer dropped, is read once more.
+   */
+  async function sendBack(): Promise<void> {
+    setStillChecked(undefined);
+    setWaiting(undefined);
+    try {
+      await change(() => notebooks.sendBackUpgrade(notebook.id), true);
+    } catch (refusal) {
+      const key = unstable_serialize(["upgrade", notebook.id]);
+      if (mounted() && cache.get(key)?.isValidating === true) {
+        // change's read again was overtaken by a newer one, a mode event's: its answer dropped, the cache is as before.
+        await reread();
+      }
+      const read = cache.get(key);
+      const now = read?.data as Upgrade | undefined;
+      if (
+        mounted() &&
+        refusal instanceof ApiError &&
+        refusal.code === "wiki.upgrade_state" &&
+        read?.error === undefined &&
+        now?.state === "reviewing" &&
+        now.report === null &&
+        now.submitted_at !== null
+      ) {
+        setStillChecked(refusal);
+        setWaiting(now.submitted_at);
+      }
+      throw refusal;
+    }
+    setChecked({ generation: 0, upgrade: "" });
+  }
+
   function dialogOf(which: Change) {
     return {
       open: asked === which,
@@ -234,7 +392,8 @@ const UpgradeRead = observer(function UpgradeRead({
   }
 
   let shown: ReactNode;
-  let check: ReactNode = null;
+  // The check, upgrading, or the report, reviewing: this entry's own, in its cache.
+  let entryOwn: ReactNode = null;
   let rest: ReactNode = null;
   if (!admin) {
     shown = <p>{t("upgrade.adminsOnly")}</p>;
@@ -249,19 +408,33 @@ const UpgradeRead = observer(function UpgradeRead({
         {data.state === "upgrading" && <AgentSection upgrade={data} />}
       </>
     );
-    check = data.state === "upgrading" && (
-      <UpgradeCheckSection
-        notebook={notebook}
-        upgrade={data}
-        entry={entry}
-        generation={checked.upgrade === data.id ? checked.generation : 0}
-        recheck={() => recheck(data.id)}
-        rereadUpgrade={() => void reread()}
-        rereadNotebooks={rereadNotebooks}
-        pages={pages}
-        readingTree={readingTree}
-      />
-    );
+    if (data.state === "upgrading") {
+      entryOwn = (
+        <UpgradeCheckSection
+          notebook={notebook}
+          upgrade={data}
+          entry={entry}
+          generation={checked.upgrade === data.id ? checked.generation : 0}
+          recheck={() => recheck(data.id)}
+          rereadUpgrade={() => void reread()}
+          rereadNotebooks={rereadNotebooks}
+          pages={pages}
+          tree={treeRead}
+        />
+      );
+    } else if (data.state === "reviewing") {
+      entryOwn = (
+        <UpgradeReportSection
+          notebook={notebook}
+          upgrade={data}
+          entry={entry}
+          rereadUpgrade={() => void reread()}
+          rereadNotebooks={rereadNotebooks}
+          pages={pages}
+          tree={treeRead}
+        />
+      );
+    }
     rest = (
       <>
         {data.state === "rolling_back" && (
@@ -274,18 +447,29 @@ const UpgradeRead = observer(function UpgradeRead({
             endButton={buttons.end}
           />
         )}
-        {data.state === "reviewing" && (
-          <UpgradeReportSection report={data.report} pages={pages} readingTree={readingTree} />
-        )}
-        {(data.state === "upgrading" || data.state === "reviewing") && (
+        {data.state === "upgrading" && (
           <div className="flex flex-wrap gap-3">
-            {data.state === "upgrading" && (
-              <Button ref={buttons.submit} onClick={() => setAsked("submit")}>
-                {t("upgrade.submit")}
-              </Button>
-            )}
+            <Button ref={buttons.submit} onClick={() => setAsked("submit")}>
+              {t("upgrade.submit")}
+            </Button>
             <Button ref={buttons.abandon} variant="destructive" onClick={() => setAsked("abandon")}>
               {t("upgrade.abandon")}
+            </Button>
+          </div>
+        )}
+        {data.state === "reviewing" && (
+          // Rejecting stands for abandoning in review (decision 291); approving waits for the report (decision 288).
+          <div className="flex flex-wrap gap-3">
+            {data.report !== null && (
+              <Button ref={buttons.approve} onClick={() => setAsked("approve")}>
+                {t("upgrade.approve")}
+              </Button>
+            )}
+            <Button ref={buttons.sendBack} variant="outline" onClick={() => setAsked("sendBack")}>
+              {t("upgrade.sendBack")}
+            </Button>
+            <Button ref={buttons.reject} variant="destructive" onClick={() => setAsked("reject")}>
+              {t("upgrade.reject")}
             </Button>
           </div>
         )}
@@ -294,10 +478,12 @@ const UpgradeRead = observer(function UpgradeRead({
   }
   const left = data?.rollback_left ?? null;
   const texts = { "transfer.busy": "upgrade.rollbackUnderWay" } as const;
+  // The source area the approval makes read only, by its path, once the tree has it (design review P3C-N13).
+  const sourceRoot = data === undefined ? undefined : nodeTarget(pages, data.source_root_id)?.path;
   return (
     <>
       {shown}
-      <SWRConfig value={checksConfig}>{check}</SWRConfig>
+      <SWRConfig value={checksConfig}>{entryOwn}</SWRConfig>
       {rest}
       <ConfirmDialog
         held={dialogOf("abandon")}
@@ -350,6 +536,40 @@ const UpgradeRead = observer(function UpgradeRead({
         confirm={submit}
         texts={{ "wiki.upgrade_not_ready": "upgrade.notReady" }}
         tone="default"
+      />
+      <ConfirmDialog
+        held={dialogOf("approve")}
+        title={t("upgrade.approveTitle", { name: notebook.name })}
+        description={t("upgrade.approveBody", { root: sourceRoot ?? t("upgrade.approveRootUnread") })}
+        confirmLabel={t("upgrade.approveConfirm")}
+        sendingLabel={t("upgrade.approving")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={approve}
+        texts={{ "wiki.upgrade_not_ready": "upgrade.approveNotReady" }}
+        tone="default"
+      />
+      <ConfirmDialog
+        held={dialogOf("sendBack")}
+        title={t("upgrade.sendBackTitle", { name: notebook.name })}
+        description={t("upgrade.sendBackBody")}
+        confirmLabel={t("upgrade.sendBackConfirm")}
+        sendingLabel={t("upgrade.sendingBack")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={sendBack}
+        // As the upgrade was read again after this refusal, not as it was when the dialog opened, nor as read since (P3C-N14).
+        explain={(refusal) =>
+          stillChecked !== undefined && refusal === stillChecked ? t("upgrade.sendBackChecking") : undefined
+        }
+        tone="default"
+      />
+      <ConfirmDialog
+        held={dialogOf("reject")}
+        title={t("upgrade.rejectTitle", { name: notebook.name })}
+        description={t("upgrade.rejectBody")}
+        confirmLabel={t("upgrade.rejectConfirm")}
+        sendingLabel={t("upgrade.rejecting")}
+        cancelLabel={t("notebookSettings.cancel")}
+        confirm={() => change(() => notebooks.rejectUpgrade(notebook.id), true)}
       />
     </>
   );

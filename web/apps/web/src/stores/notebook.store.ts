@@ -51,7 +51,10 @@ export class NotebookStore {
     /** The slug of the workspace whose notebooks these are. */
     private readonly slug: string,
     /** The changes of the notebooks' upgrades, which answer the upgrade (M11/P1 design 4.4). */
-    private readonly upgrades: Pick<UpgradeService, "start" | "abandon" | "endRollback" | "submit">
+    private readonly upgrades: Pick<
+      UpgradeService,
+      "start" | "abandon" | "endRollback" | "submit" | "approve" | "reject" | "sendBack"
+    >
   ) {
     makeAutoObservable<this, "service" | "slug" | "upgrades" | "changesAnswered" | "removed" | "inTurn">(this, {
       service: false,
@@ -191,6 +194,39 @@ export class NotebookStore {
     return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.submit(id), behindSubmit));
   }
 
+  /**
+   * approveUpgrade approves the notebook id's upgrade in review, in its turn
+   * (M11/P3 design 4.3), and answers it, approved: the list is read again,
+   * which holds the notebook an LLM Wiki without an upgrade. A refusal that
+   * says the list is behind (forbidden, notebook.not_found, the upgrade in
+   * another state) reads it again too, and is thrown; a gate checked again
+   * not passing (wiki.upgrade_not_ready) leaves the upgrade in review, as
+   * the list has it; busy, nothing was written.
+   */
+  async approveUpgrade(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.approve(id), behindReview));
+  }
+
+  /**
+   * rejectUpgrade rejects the notebook id's upgrade in review, in its turn
+   * (M11/P3 design 4.3), and answers it, rolling back: the list is read
+   * again, as after an abandonment, and after a refusal of behind.
+   */
+  async rejectUpgrade(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.reject(id), behindReview));
+  }
+
+  /**
+   * sendBackUpgrade sends the notebook id's upgrade in review back, in its
+   * turn (M11/P3 design 4.3), and answers it, upgrading: the list is read
+   * again, and after a refusal of behind; a submission still checked is
+   * wiki.upgrade_state too, which reads the list, as it holds the upgrade
+   * in review.
+   */
+  async sendBackUpgrade(id: string): Promise<Upgrade> {
+    return this.inTurn(id, () => this.upgraded(id, () => this.upgrades.sendBack(id), behindReview));
+  }
+
   /** upgraded answers the upgrade change answers, the list read again after it, and after a refusal of behind. */
   private async upgraded(id: string, change: () => Promise<Upgrade>, behind: ReadonlySet<string>): Promise<Upgrade> {
     let answered: Upgrade;
@@ -311,6 +347,14 @@ const behindRollback: ReadonlySet<string> = new Set(["forbidden", "notebook.not_
 
 /** The refusals of an upgrade's submission that say the list is behind: the notebook's role, its being, its upgrade's state. */
 const behindSubmit: ReadonlySet<string> = new Set(["forbidden", "notebook.not_found", "wiki.upgrade_state"]);
+
+/**
+ * The refusals of an upgrade's approval, rejection and send-back that say
+ * the list is behind: the notebook's role, its being, its upgrade's state.
+ * Not an approval's gates not passing, which only a defect reaches, the
+ * upgrade still in review as the list has it (M11/P3 design 4.3).
+ */
+const behindReview: ReadonlySet<string> = new Set(["forbidden", "notebook.not_found", "wiki.upgrade_state"]);
 
 /** isNotFound tells whether error is the notebook's 404: deleted, or not seen. */
 function isNotFound(error: unknown): boolean {

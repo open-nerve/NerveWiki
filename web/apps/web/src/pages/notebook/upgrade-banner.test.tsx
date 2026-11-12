@@ -13,7 +13,9 @@ import { renderApp } from "../../test/render";
 
 // The banner of a notebook's upgrade under way, above each of its pages
 // (M11/P1 design 4.4): what it says by the upgrade's state, and what more
-// it gives the notebook's admins (decision 246).
+// it gives the notebook's admins (decision 246): that any of them can
+// abandon it while it is upgrading, reject it while it is in review
+// (decision 291).
 
 const said = {
   upgrading: "This notebook is being upgraded to an LLM Wiki: it is read-only for now.",
@@ -21,6 +23,9 @@ const said = {
   rolling_back: "This notebook's upgrade is being undone: it is read-only for now.",
 } as const;
 const anyAdmin = "Any admin of the notebook can abandon this upgrade.";
+const anyAdminRejects = "Any admin of the notebook can reject this upgrade.";
+/** What the banner tells the notebook's admins any of them can do, by the upgrade's state: nothing once it rolls back. */
+const anyAdminSays = { upgrading: anyAdmin, reviewing: anyAdminRejects, rolling_back: undefined } as const;
 const upgradePath = `/lab/notebooks/${notebookJSON.id}/upgrade`;
 
 type State = keyof typeof said;
@@ -46,10 +51,11 @@ test.each(
   const admin = role === "admin";
   const link = within(banner as HTMLElement).queryByRole("link", { name: "View the upgrade" });
   expect(link?.getAttribute("href") ?? null).toBe(admin ? upgradePath : null);
-  // Who may abandon it, while it may be abandoned: not once it rolls back.
-  expect(within(banner as HTMLElement).queryByText(anyAdmin, { exact: false }) !== null).toBe(
-    admin && state !== "rolling_back"
+  // Who may abandon it, while it is upgrading, or reject it, in review: neither once it rolls back.
+  const says = [anyAdmin, anyAdminRejects].filter(
+    (text) => within(banner as HTMLElement).queryByText(text, { exact: false }) !== null
   );
+  expect(says).toEqual(admin && anyAdminSays[state] !== undefined ? [anyAdminSays[state]] : []);
   for (const other of Object.keys(said) as State[]) {
     if (other !== state) {
       expect(screen.queryByText(said[other])).toBeNull();
@@ -124,8 +130,9 @@ test.each(["upgrading", "reviewing", "rolling_back"] as const)(
     const banner = bannerOf(said[state]);
     expect(banner).not.toBeNull();
     expect(within(banner as HTMLElement).queryByRole("link")).toBeNull();
-    expect(within(banner as HTMLElement).queryByText(anyAdmin, { exact: false }) !== null).toBe(
-      state !== "rolling_back"
+    const says = [anyAdmin, anyAdminRejects].filter(
+      (text) => within(banner as HTMLElement).queryByText(text, { exact: false }) !== null
     );
+    expect(says).toEqual(anyAdminSays[state] === undefined ? [] : [anyAdminSays[state]]);
   }
 );

@@ -47,3 +47,40 @@ export function countsIn(holder: Locator): Promise<string[][]> {
     .locator("dt")
     .evaluateAll((terms) => terms.map((term) => [term.textContent ?? "", term.nextElementSibling?.textContent ?? ""]));
 }
+
+/**
+ * The names of the buttons of the upgrade's page that open a dialog, in their order: its changes, each ending with
+ * an ellipsis (M11/P3 design 4.3); not a card's More.
+ */
+export async function changeButtons(page: Page): Promise<string[]> {
+  return (await page.getByRole("main").getByRole("button").allTextContents()).filter((name) => name.endsWith("…"));
+}
+
+/** The dialog of the change of the upgrade of the notebook named notebook: its approval, send-back or rejection. */
+export function reviewDialog(page: Page, change: "Approve" | "Send back" | "Reject", notebook: string): Locator {
+  return page.getByRole("alertdialog", { name: `${change} the upgrade of “${notebook}”?`, exact: true });
+}
+
+/**
+ * letInAtHome lets in the held stream (letIn) of page, at the notebook notebookId's home, and waits until its
+ * connection has read again what the home shows, level by level, its attachments last (the web's refreshedOnConnect):
+ * it answers the API requests page sent since, which watch's apiRequests holds.
+ */
+export async function letInAtHome(
+  page: Page,
+  watch: { apiRequests: string[] },
+  notebookId: string,
+  letIn: () => void
+): Promise<string[]> {
+  const from = watch.apiRequests.length;
+  // The connection's own: after its first read, of the workspaces, which nothing else on the home reads again.
+  const last = page.waitForRequest(
+    (request) =>
+      request.method() === "GET" &&
+      new URL(request.url()).pathname === `/api/v0/notebooks/${notebookId}/assets` &&
+      watch.apiRequests.slice(from).includes("GET /api/v0/workspaces")
+  );
+  letIn();
+  await (await last).response();
+  return watch.apiRequests.slice(from);
+}
