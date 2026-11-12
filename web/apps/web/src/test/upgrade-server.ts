@@ -143,6 +143,13 @@ export function reportJSON(more: Partial<UpgradeReport> = {}): UpgradeReport {
  */
 type SubmitOutcome = "stored" | "not_ready" | "stale_index" | "busy";
 
+/**
+ * How an approval of an upgrade in review with its report ends (M11/P3
+ * design 3.6): approved; a gate checked again under the notebook's lock
+ * not passing, which only a defect reaches; past its own time.
+ */
+type ApproveOutcome = "approved" | "not_ready" | "busy";
+
 /** summaryOf is the upgrade as Plans' readers see it in the notebook (Notebook.upgrade), or none once it ended. */
 function summaryOf(upgrade: Upgrade | undefined): Notebook["upgrade"] {
   return upgrade === undefined || upgrade.state === "approved" || upgrade.state === "rolled_back"
@@ -232,6 +239,25 @@ type UpgradeServerOptions = NonNullable<Parameters<typeof jobsServer>[0]> & {
  *   503 server_busy; the mode event is sent again once submission.mode is
  *   released, and the answer once submission.answered is. Logged as
  *   "SUBMIT".
+ *
+ * Its review (M11/P3 design 4.3), as the server answers it, in the
+ * contract's order of codes, each change sending the mode event:
+ *
+ * - its approval (POST upgrade/approve): 404 and 403 as above; not
+ *   reviewing, or reviewing without a report, 409 wiki.upgrade_state;
+ *   then as approval says, 409 wiki.upgrade_not_ready naming the gate
+ *   checked again, or 503 server_busy, nothing written; else the upgrade
+ *   is approved, no longer under way, and Plans an LLM Wiki whose source
+ *   root is the upgrade's. Logged as "APPROVE";
+ * - its rejection (POST upgrade/reject): 404 and 403; not reviewing 409
+ *   wiki.upgrade_state; the queue full (queueFull) 503 server_busy; else
+ *   it rolls back, rejected, in its rollback's job, Ada's, queued, first
+ *   among the jobs. Logged as "REJECT";
+ * - its send-back (POST upgrade/send-back): 404 and 403; not reviewing
+ *   409 wiki.upgrade_state; reviewing without a report before its
+ *   submission may be taken over (takenOver false) 409
+ *   wiki.upgrade_state, still being checked; else it is upgrading again,
+ *   its submission and report cleared. Logged as "SEND BACK".
  *
  * A rolling back upgrade read says what its rollback left (left) once its
  * job is neither queued nor running, as the server counts it then; none
@@ -427,6 +453,70 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
       await answered;
       return answer;
     },
+    [`POST ${plans}/upgrade/approve`]: () => {
+      server.asked.push("APPROVE");
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      const held = server.upgrade;
+      if (held?.state !== "reviewing" || held.report === null) {
+        return problem(409, "wiki.upgrade_state");
+      }
+      if (server.approval === "not_ready") {
+        return problem(409, "wiki.upgrade_not_ready", {
+          detail: "These gates did not pass: agents. The upgrade is still in review: send it back, or reject it.",
+        });
+      }
+      if (server.approval === "busy") {
+        return problem(503, "server_busy", {}, { "Retry-After": "1" });
+      }
+      const approved: Upgrade = { ...held, state: "approved" };
+      server.withUpgrade(approved);
+      server.notebook = { ...server.notebook, mode: "llm_wiki", source_root_id: held.source_root_id };
+      sendMode();
+      return json(approved);
+    },
+    [`POST ${plans}/upgrade/reject`]: () => {
+      server.asked.push("REJECT");
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      const held = server.upgrade;
+      if (held?.state !== "reviewing") {
+        return problem(409, "wiki.upgrade_state");
+      }
+      if (server.queueFull) {
+        return problem(503, "server_busy", {}, { "Retry-After": "2" });
+      }
+      const job = underWay(rollbackJobJSON(++rollbacks, { created_at: "2026-10-06T08:00:00Z" }), 0, 0);
+      server.jobs = [job, ...server.jobs];
+      const rolling: Upgrade = { ...held, state: "rolling_back", ending: "rejected", rollback_job_id: job.id };
+      server.withUpgrade(rolling);
+      sendMode();
+      return json(read(rolling));
+    },
+    [`POST ${plans}/upgrade/send-back`]: () => {
+      server.asked.push("SEND BACK");
+      const refused = refusedChange();
+      if (refused !== undefined) {
+        return refused;
+      }
+      const held = server.upgrade;
+      if (held?.state !== "reviewing") {
+        return problem(409, "wiki.upgrade_state");
+      }
+      if (held.report === null && !server.takenOver) {
+        return problem(409, "wiki.upgrade_state", {
+          detail: "The previous submission is still being checked: check again in a moment.",
+        });
+      }
+      const back: Upgrade = { ...held, state: "upgrading", submitted_by: null, submitted_at: null, report: null };
+      server.withUpgrade(back);
+      sendMode();
+      return json(back);
+    },
     [`POST ${plans}/upgrade/end-rollback`]: () => {
       server.asked.push("END ROLLBACK");
       const refused = refusedChange();
@@ -492,6 +582,10 @@ export function upgradeServer({ upgrade, events, answers = {}, ...options }: Upg
       mode: Promise.resolve(),
       answered: Promise.resolve(),
     },
+    /** How an approval of the upgrade in review with its report ends. */
+    approval: "approved" as ApproveOutcome,
+    /** Whether a submission without a report may be taken over, sent back: past its submission's time to check. */
+    takenOver: false,
     /** withUpgrade gives Plans upgrade, or none, in its read and in the notebook the list holds. */
     withUpgrade(next: Upgrade | undefined): void {
       server.upgrade = next;

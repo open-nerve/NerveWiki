@@ -18,8 +18,9 @@ export type { Upgrade, UpgradeCheck, UpgradeCounts, UpgradeGates, UpgradeReport,
 /**
  * UpgradeService starts a notebook's upgrade to an LLM Wiki, reads it,
  * abandons it and ends its stopped rollback (M11/P1 design 4.4), checks it,
- * reads its rules' items and submits it for review (M11/P2 design 4.3), for
- * its admins. Each change answers the upgrade.
+ * reads its rules' items and submits it for review (M11/P2 design 4.3),
+ * approves it, rejects it or sends it back (M11/P3 design 4.3), for its
+ * admins. Each change answers the upgrade.
  */
 export class UpgradeService {
   constructor(private readonly api: ApiClient) {}
@@ -93,6 +94,43 @@ export class UpgradeService {
   async submit(notebookId: string): Promise<Upgrade> {
     return unwrap(
       await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/submit", {
+        params: { path: { notebook_id: notebookId } },
+      })
+    );
+  }
+
+  /**
+   * approve approves the notebook's upgrade in review, its report kept: the
+   * notebook is an LLM Wiki, and the upgrade, approved, is no longer under
+   * way (wiki.upgrade_state without a report; wiki.upgrade_not_ready, a
+   * gate checked again not passing, still in review; server_busy past its
+   * time, nothing written).
+   */
+  async approve(notebookId: string): Promise<Upgrade> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/approve", {
+        params: { path: { notebook_id: notebookId } },
+      })
+    );
+  }
+
+  /** reject rolls the notebook's upgrade in review back, rejected, in a background job, as an abandonment does. */
+  async reject(notebookId: string): Promise<Upgrade> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/reject", {
+        params: { path: { notebook_id: notebookId } },
+      })
+    );
+  }
+
+  /**
+   * sendBack sends the notebook's upgrade in review back, upgrading, its
+   * submission and report cleared; one whose submission is still checked is
+   * wiki.upgrade_state.
+   */
+  async sendBack(notebookId: string): Promise<Upgrade> {
+    return unwrap(
+      await this.api.POST("/api/v0/notebooks/{notebook_id}/upgrade/send-back", {
         params: { path: { notebook_id: notebookId } },
       })
     );

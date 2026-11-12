@@ -18,9 +18,10 @@ export const upgradeStateText: Record<UpgradeState, PlainKey> = {
  * under way keeps it read only, by the upgrade's state (M11/P1 design
  * 4.4): to whoever reads the notebook, from the notebook as the list
  * holds it, which the mode event and each connection read again. Its
- * admins also get the upgrade's page, but on it, and, while the upgrade
- * may be abandoned, that any of them can (decision 246): not while it
- * rolls back. A status (output), not an alert: it is not read out again on
+ * admins also get the upgrade's page, but on it, and that any of them can
+ * abandon it while it is upgrading, reject it while it is in review
+ * (decisions 246, 291): neither while it rolls back. A status (output),
+ * not an alert: it is not read out again on
  * each page, and it takes no focus (v0.1 design 13.2, item 26). No MCP
  * address nor prompt (decision 184).
  */
@@ -39,7 +40,9 @@ export function UpgradeBanner({ notebook }: { notebook: Notebook }) {
       <span className="block">{t(upgradeStateText[upgrade.state])}</span>
       {admin && (upgrade.state !== "rolling_back" || !onItsPage) && (
         <span className="block">
-          {upgrade.state !== "rolling_back" && <>{t("upgrade.bannerAnyAdmin")} </>}
+          {upgrade.state !== "rolling_back" && (
+            <>{t(upgrade.state === "reviewing" ? "upgrade.bannerAnyAdminReject" : "upgrade.bannerAnyAdmin")} </>
+          )}
           {!onItsPage && (
             <Link to={`/${slug}/notebooks/${notebook.id}/upgrade`} className="font-medium underline underline-offset-4">
               {t("upgrade.view")}

@@ -436,7 +436,7 @@ test.each([
 
   expect(
     within(dialog).getByText(
-      "Until the upgrade ends, approved or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed."
+      "Until the upgrade ends, approved, rejected or abandoned, the notebook is read-only on the web: only your agent writes it, over MCP. The upgrade writes the pages AGENTS and raw at the root where the notebook lacks them; the contents of its pages are not changed."
     )
   ).toBeTruthy();
   const said = within(dialog).queryByText(/^The page raw at the root becomes the source area/u);
