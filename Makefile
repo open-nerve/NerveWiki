@@ -293,7 +293,7 @@ BOOTSTRAP_SIXTH = ^Test(Ingest|TheBackgroundRevertStopsAtAWriteBetweenItsBatches
 # 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
 # M11/P2 的分份（00-M11 第 276 条）：第三份的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与第五份的 TestTheMCPToolsErrorsCarryTheirCodes
 # 挪到第八份，同样也进第七份的模式（数与各份怎么跳过它们见第八份的说明）。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$)
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
@@ -321,7 +321,11 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|The
 # 名字不在这里的 TestUpgrade… 留在第七份。第七份照旧 -skip 第八份，别的份照旧。S1 末第八份 12 个（多了这三个）、第七份 28 个（多了
 # TestUpgradeTrashReservedTitles）；本机两轮第七份 182.8/185.9 秒、第八份 187.2/185.8 秒。不提高 -timeout。
 # M11/P3/S2：prompt 的 TestUpgradePromptMatrix 与 TestUpgradePrompt 进第七份（第 222、290 条），第七份 30 个，别的份不变。
-BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$)
+# M11 收尾（决定 302）：TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages 钉住回滚的变更集的撤销，进余量最大的第八份
+# （最近两次 main 第八份 Test 一步 210、315 秒）；照第八份的老规矩也进第七份的模式（第七份 -skip 第八份）。它以 TestR 起名，别的份的模式都不收它，
+# 原来落在补集的第四份，所以第四份从此也 -skip 第七份：第七份原有的名字都已被第一、三、六份的模式收下（ABackground、[U-Z]、The[F-Z]、Ingest），
+# 加上它只多跳过这一个。八份照旧，554 个顶层（竞态构建）145/50/120/120/61/15/30/13，每个恰在一份。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -342,8 +346,8 @@ test-go-bootstrap-3: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_THIRD)' -skip '$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-4
-test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中名字不匹配 FIRST/SECOND/THIRD/FIFTH/SIXTH 的（CI 的一份；需要 Docker）
-	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SIXTH)' ./internal/bootstrap
+test-go-bootstrap-4: ## 竞态检测下运行组合根的整个程序测试中名字不匹配 FIRST/SECOND/THIRD/FIFTH/SIXTH/SEVENTH 的（CI 的一份；需要 Docker）
+	cd server && $(GO_TEST_RACE) -skip '$(BOOTSTRAP_FIRST)|$(BOOTSTRAP_SECOND)|$(BOOTSTRAP_THIRD)|$(BOOTSTRAP_FIFTH)|$(BOOTSTRAP_SIXTH)|$(BOOTSTRAP_SEVENTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-5
 test-go-bootstrap-5: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_FIFTH 且不匹配 BOOTSTRAP_SEVENTH 的（CI 的一份；需要 Docker）
@@ -358,7 +362,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes，回滚的变更集的撤销（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
