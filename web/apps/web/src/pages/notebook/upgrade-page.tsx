@@ -257,14 +257,25 @@ const UpgradeRead = observer(function UpgradeRead({
     }
   }
 
+  // Approved, the page goes: unmounted, the upgrade in review leaves the cache.
+  const approvedAway = useRef(false);
+  useEffect(
+    () => () => {
+      if (approvedAway.current) void mutate(["upgrade", notebook.id], undefined, { revalidate: false });
+    },
+    [mutate, notebook.id]
+  );
+
   /**
    * approve approves the upgrade (decision 289; design review P3C-M2):
    * refused for its state, or a gate checked again not passing, the
    * upgrade is read again, as change does; approved, it is no longer under
    * way, its read answering 404, and nothing is read again nor shown over
    * it: the page, still there, goes to the notebook's home, its title
-   * taking the focus; gone, the upgrade, in review, is dropped from the
-   * cache, read by no hook then, so that Back does not show it meanwhile.
+   * taking the focus; once it is unmounted, the upgrade, in review, is
+   * dropped from the cache, read by no hook then, so that Back does not
+   * show it meanwhile (cleared before, the page would show it loading as
+   * it goes).
    */
   async function approve(): Promise<void> {
     try {
@@ -280,8 +291,8 @@ const UpgradeRead = observer(function UpgradeRead({
       throw refusal;
     }
     if (mounted()) {
+      approvedAway.current = true;
       await navigate(`/${workspace.slug}/notebooks/${notebook.id}`, { state: arrived });
-      void mutate(["upgrade", notebook.id], undefined, { revalidate: false });
     }
   }
 
@@ -339,7 +350,8 @@ const UpgradeRead = observer(function UpgradeRead({
    * is read after it notwithstanding (design review P3C-N14), and that
    * submission is read once more after sendBackWaitMs, unless it is no
    * longer shown in review without a report, the page goes, or it is sent
-   * back again first. A read again that failed says nothing of it.
+   * back again first. A read again that failed says nothing of it; one
+   * overtaken by a newer read, its answer dropped, is read once more.
    */
   async function sendBack(): Promise<void> {
     setStillChecked(undefined);
@@ -347,7 +359,12 @@ const UpgradeRead = observer(function UpgradeRead({
     try {
       await change(() => notebooks.sendBackUpgrade(notebook.id), true);
     } catch (refusal) {
-      const read = cache.get(unstable_serialize(["upgrade", notebook.id]));
+      const key = unstable_serialize(["upgrade", notebook.id]);
+      if (mounted() && cache.get(key)?.isValidating === true) {
+        // change's read again was overtaken by a newer one, a mode event's: its answer dropped, the cache is as before.
+        await reread();
+      }
+      const read = cache.get(key);
       const now = read?.data as Upgrade | undefined;
       if (
         mounted() &&

@@ -1510,6 +1510,27 @@ test("approved, then Back to the upgrade's page: it shows no review while it rea
   expect(await screen.findByText(noneUnderWay)).toBeTruthy();
 });
 
+test("approved, the upgrade's page goes without showing the upgrade loading: it leaves the cache once the page is gone", async () => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ nodes: reviewTree, upgrade: reviewed() });
+  renderApp(upgradePath, server.app);
+  const dialog = await opened(user, approves, approveTitle);
+  const loading: string[] = [];
+  const observer = new MutationObserver(() => {
+    if (document.querySelector("h1")?.textContent !== "Upgrade to an LLM Wiki") return;
+    for (const output of document.querySelectorAll("output")) {
+      if (output.textContent === "Loading…") loading.push(output.textContent);
+    }
+  });
+  observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+
+  await user.click(within(dialog).getByRole("button", { name: "Approve the upgrade" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  observer.disconnect();
+  expect(loading).toEqual([]);
+});
+
 test("approved once the page is left, its answer late: the account stays where it went", async () => {
   const user = userEvent.setup();
   const answered = deferred<void>();
@@ -1703,6 +1724,39 @@ test("checked, submitted, and sent back by another admin, the mode event reading
   expect(checks(server)).toBe(1);
 });
 
+test("checked, then submitted by the agent and taken over and submitted again, each still checked, and sent back by another admin, the mode events reading it: the check shows nothing of before (decision 300)", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = upgradeServer({ nodes: reviewTree, upgrade: upgradeJSON(), events });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const check = await checkOf();
+  await user.click(within(check).getByRole("button", { name: "Check" }));
+  await waitFor(() => expect(resultOf(check)).toBe(passedAt));
+  const mode = () => events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+
+  // The agent submitted it, its report not kept yet.
+  server.withUpgrade(reviewed({ report: null }));
+  mode();
+  await screen.findByText(pending);
+  // Taken over and submitted again: another submission, its report not kept yet either.
+  server.withUpgrade(reviewed({ report: null, submitted_at: "2026-10-06T09:50:00Z" }));
+  mode();
+  await waitFor(() => expect(reads(server, "GET upgrade")).toBe(3));
+  // That read shown before the next one is sent, which would drop its answer.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // Another admin sent it back.
+  server.withUpgrade(upgradeJSON());
+  mode();
+
+  const again = await checkOf();
+  await waitFor(() => expect(screen.queryByText(pending)).toBeNull());
+  expect(resultOf(again)).toBe("");
+  expect(within(again).getByRole("button", { name: "Check" })).toBeTruthy();
+  expect(within(again).queryByRole("list", { name: "The checks" })).toBeNull();
+  expect(checks(server)).toBe(1);
+});
+
 /**
  * inReviewChecked renders the upgrade's page of Plans in review without a report, its submission still checked, and
  * opens Send back's dialog; given events, its stream connected.
@@ -1816,6 +1870,49 @@ test("sent back while its submission was still checked, refused as another admin
   held.resolve();
   expect(await within(dialog).findByText(stateRefused)).toBeTruthy();
   expect(within(dialog).queryByText(stillChecked)).toBeNull();
+});
+
+test("sent back while its submission was still checked, refused as another admin rejected it meanwhile, its read again overtaken by the rejection's mode event: read once more, the dialog says only that the state does not allow it", async () => {
+  const events = eventServer();
+  const gates: Array<ReturnType<typeof deferred<void>>> = [];
+  const { user, server, dialog } = await inReviewChecked(events, (answering) => ({
+    [`GET ${plans}/upgrade`]: async () => {
+      answering().asked.push("GET upgrade");
+      const read = upgradeRead(answering());
+      if (reads(answering(), "GET upgrade") > 1) {
+        const gate = deferred<void>();
+        gates.push(gate);
+        await gate.promise;
+      }
+      return read;
+    },
+  }));
+  const job = underWay(rollbackJobJSON(71), 0, 0);
+  server.jobs = [job];
+  server.withUpgrade(reviewed({ report: null, state: "rolling_back", ending: "rejected", rollback_job_id: job.id }));
+  const said: string[] = [];
+  const observer = new MutationObserver(() => {
+    const text = dialog.querySelector('[role="alert"]')?.textContent;
+    if (text && said.at(-1) !== text) said.push(text);
+  });
+  observer.observe(dialog, { subtree: true, childList: true, characterData: true });
+
+  await user.click(within(dialog).getByRole("button", { name: "Send it back" }));
+  // The send-back's read again is out; the rejection's mode event comes late, its read after it.
+  await waitFor(() => expect(gates).toHaveLength(1));
+  events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+  await waitFor(() => expect(gates).toHaveLength(2));
+  // The read again answers first, the cache as before: SWR drops its answer, the mode event's read being newer.
+  gates[0]?.resolve();
+  await waitFor(() => expect(gates).toHaveLength(3));
+  gates[1]?.resolve();
+  gates[2]?.resolve();
+
+  expect(await screen.findByRole("heading", { level: 2, name: "Rollback", hidden: true })).toBeTruthy();
+  expect(await within(dialog).findByText(stateRefused)).toBeTruthy();
+  observer.disconnect();
+  expect(said).toEqual([stateRefused]);
+  expect(reads(server, "GET upgrade")).toBe(4);
 });
 
 test("sent back while the page shows its submission still checked, the server having kept its report and another admin approved it meanwhile: read again, none is under way, and the dialog says the state does not allow it; nothing is read after 20 seconds", async () => {
