@@ -311,15 +311,17 @@ done
 
 这一节由 M11/P3 加。每步只记客户端实际做了什么、显示了什么，不评判 agent 整理得好不好。
 
-准备：在网页上以一位管理员在一本普通笔记本上发起升级（设置 → 模式 → 升级为 LLM Wiki），笔记本里留一页正文非空的原有页。接入用的 PAT 必须是发起人的，否则所有写都被冻结（`notebook.upgrading`）。另备一本没有升级的普通笔记本。
+准备：沿用上面隔离的客户端环境，记下 Claude Code 与 Codex 的版本和日期，不碰自己的配置。两个客户端各用自己的一本：同一位管理员在网页上在两本普通笔记本上各发起一次升级（设置 → 模式 → 升级为 LLM Wiki），每本留一页正文非空的原有页。一个客户端做完 K4，它那本就进入审阅、对所有人冻结，所以另一个客户端从 K1 做起用的是另一本。接入用的 PAT 必须是发起人的，否则所有写都被冻结（`notebook.upgrading`）。另备一本没有升级的普通笔记本，K5 两个客户端共用它。
 
 | 步 | 做什么 | 看什么 |
 |---|---|---|
 | K1 | 在升级中的笔记本接笔记本入口 | prompt 列表里 `upgrade` 怎样列出（名字、标题、说明） |
 | K2 | 取 `upgrade` | 文字是否完整显示；客户端是否把它当作一条用户消息 |
 | K3 | 让客户端照它调 `upgrade_verify`，并让它改一页原有页的正文（在提交之前） | `upgrade_verify` 的审批怎样问（只读）；`page.upgrade_immutable` 在客户端里怎样显示，agent 是否读懂、改为只改 frontmatter |
-| K4 | 让客户端调 `upgrade_submit` | 审批怎样问（`upgrade_submit` 不是毁坏性的：`destructiveHint: false` 是否让客户端少问一次）；笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`，客户端是否接受；提交通过之后再写答 `notebook.upgrading` 怎样显示 |
+| K4 | 让客户端调 `upgrade_submit` | 审批怎样问（`upgrade_submit` 不是毁坏性的：`destructiveHint: false` 是否让客户端少问一次）；笔记本入口的 `upgrade_submit` 的 `inputSchema` 没有 `properties`，客户端是否接受；提交不过时（多半是 frontmatter 没补齐：答 `wiki.upgrade_not_ready`，说明列出没过的闸门，升级回到升级中）它怎样显示、agent 是否照它补齐，补齐之后再交，直到通过；提交通过之后再写答 `notebook.upgrading` 怎样显示 |
 | K5 | 在没有升级的普通笔记本上取 `upgrade` | `wiki.upgrade_state` 怎样显示 |
+
+逐客户端记通过或失败和处置。发现 upgrade playbook 的措辞有偏差，记下原文，由负责人定怎样改，不放松服务端的守卫。
 
 ## 做完
 
