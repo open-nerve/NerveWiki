@@ -18,7 +18,6 @@ import type { Upgrade } from "../../services/upgrade.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useNotebooks, usePageTree, useStore, useTransfers, useUpgrades } from "../../stores/context";
 import { under } from "../../stores/transfer.store";
-import { nodeTarget } from "../node-target";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
@@ -492,8 +491,9 @@ const UpgradeRead = observer(function UpgradeRead({
   }
   const left = data?.rollback_left ?? null;
   const texts = { "transfer.busy": "upgrade.rollbackUnderWay" } as const;
-  // The source area the approval makes read only, by its path, once the tree has it (design review P3C-N13).
-  const sourceRoot = data === undefined ? undefined : nodeTarget(pages, data.source_root_id)?.path;
+  // The source area the approval makes read only, once the tree has it (design review P3C-N13), named as the state
+  // section names it, not by its MCP path (M11 closeout, review B-N3).
+  const sourceRoot = data === undefined ? undefined : distinctName(pages.tree, notebook, data.source_root_id, t);
   return (
     <>
       {shown}

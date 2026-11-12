@@ -9,7 +9,7 @@ import { eventServer, withEvents } from "../../test/event-server";
 import { deferred } from "../../test/health-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { cancelled, reportOf, underWay } from "../../test/jobs-server";
-import { bob, guide, install, notes } from "../../test/page-server";
+import { bob, guide, install, notes, pageNode } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { under } from "../../stores/transfer.store";
 import {
@@ -1391,13 +1391,13 @@ async function dismissed(user: ReturnType<typeof userEvent.setup>, dialog: HTMLE
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
 }
 
-test("the review's dialogs: Approve, plain, names the source area it makes read only by its path; Send back, plain; Reject, destructive, says what its rollback does, and that one stopped goes on or ends; closed, the focus is on the button", async () => {
+test("the review's dialogs: Approve, plain, names the source area it makes read only as the state section does; Send back, plain; Reject, destructive, says what its rollback does, and that one stopped goes on or ends; closed, the focus is on the button", async () => {
   const user = userEvent.setup();
   const server = upgradeServer({ nodes: reviewTree, upgrade: reviewed() });
   renderApp(upgradePath, server.app);
   await waitFor(() => expect(server.sent).toContain("GET nodes"));
   const dialogs = [
-    [approves, approveTitle, "Approve the upgrade", false, approveBody("raw.md")],
+    [approves, approveTitle, "Approve the upgrade", false, approveBody("raw")],
     [
       sendsBack,
       sendBackTitle,
@@ -1452,7 +1452,24 @@ test("the approval's dialog, the tree not read yet, names the proposed source ro
 
   expect(within(dialog).getByText(approveBody("the proposed source root"))).toBeTruthy();
   tree.resolve();
-  expect(await within(dialog).findByText(approveBody("raw.md"))).toBeTruthy();
+  expect(await within(dialog).findByText(approveBody("raw"))).toBeTruthy();
+});
+
+test("the approval's dialog names the source area as the state section does, where another page is titled raw too, in either language", async () => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ nodes: [...reviewTree, pageNode(92, "raw", guide)], upgrade: reviewed() });
+  renderApp(upgradePath, server.app);
+  const state = await section("Where it is");
+  // The source root and, the upgrade having written it, among the pages it wrote.
+  expect(await within(state).findAllByRole("link", { name: "raw (in Plans)" })).toHaveLength(2);
+
+  const dialog = await opened(user, approves, approveTitle);
+  expect(within(dialog).getByText(approveBody("raw (in Plans)"))).toBeTruthy();
+  await dismissed(user, dialog);
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  const zh = await opened(user, "批准…", "批准「Plans」的升级？");
+
+  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（Plans 下））下的页与附件只读");
 });
 
 test("approved, the page goes to the notebook's home, its title focused, Plans an LLM Wiki without its banner; the upgrade, no longer under way, is not read again, by the approval's mode event nor by a connection after it", async () => {

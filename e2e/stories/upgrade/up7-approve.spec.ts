@@ -241,7 +241,7 @@ test("UP7 (page): a second admin approves the submitted upgrade on its page, its
     await expect(upgradeSection(page, "Check report")).toContainText("): every check passed.");
     await page.getByRole("button", { name: "Approve…", exact: true }).click();
     const dialog = reviewDialog(page, "Approve", notebook.name);
-    await expect(dialog).toContainText("the pages and attachments under its source area (raw.md) are read-only");
+    await expect(dialog).toContainText("the pages and attachments under its source area (raw) are read-only");
     const approval = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/upgrade/approve`);
     await dialog.getByRole("button", { name: "Approve the upgrade", exact: true }).click();
     const answer = await approval;
