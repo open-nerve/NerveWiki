@@ -424,7 +424,7 @@ func TestTheMCPReadsWithAPublicURLEndingInASlash(t *testing.T) {
 // holds, was waited for a second (M9/P4 design 3.12; grepCodeCalls);
 // backlinks and index theirs, and their path's or parent's page.not_found
 // (linkCodeCalls). The codes of an upgrade's freeze and guardrails, which
-// upgradeToolCodes lists, the seventh shard's TestUpgradeToolsErrorsCarryTheirCodes
+// upgradeToolCodes lists, the eighth shard's TestUpgradeToolsErrorsCarryTheirCodes
 // answers (M11/P1 design 3.6): this app has no upgrade.
 func TestTheMCPToolsErrorsCarryTheirCodes(t *testing.T) {
 	slots := page.NewGrepSlots(1)
