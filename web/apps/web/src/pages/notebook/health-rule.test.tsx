@@ -11,7 +11,7 @@ import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.se
 import { usePageTree } from "../../stores/context";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { deferred, healthHome, healthPath, healthServer, wantedFacts } from "../../test/health-server";
-import { guide } from "../../test/page-server";
+import { guide, pageNode } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import type { HealthScope } from "./health-request";
 import { HealthRule, type HealthCard } from "./health-rule";
@@ -373,14 +373,19 @@ test.each([false, true])(
 // the notebook, with what the test gives.
 
 type Probe = {
-  read: (rule: LintRule, cursor: string, signal: AbortSignal) => Promise<LintPage>;
+  read: (rule: LintRule, cursor: string | undefined, signal: AbortSignal) => Promise<LintPage>;
   moved: string;
   level?: 2 | 3;
   mismatch: () => void;
+  /** The rule's summary and card unless said: the wanted pages, the first five of six shown, more after them. */
+  summary?: Pick<LintRuleSummary, "rule" | "count" | "count_capped">;
+  card?: HealthCard;
+  readingTree?: boolean;
+  treeFailed?: boolean;
 };
 
-/** probed renders the probe's card of the wanted pages over the health page's server, and waits for its heading. */
-async function probed(probe: Probe, level: 2 | 3) {
+/** probed renders the probe's card, of the wanted pages unless said, over the health page's server, and waits for its heading. */
+async function probed(probe: Probe, level: 2 | 3, heading = "Wanted pages") {
   const facts = wantedFacts(6);
   const summary: LintRuleSummary = {
     rule: "wanted",
@@ -392,17 +397,20 @@ async function probed(probe: Probe, level: 2 | 3) {
   const scope: HealthScope = { key: ["rule-probe"], current: () => true, controllers: new Set() };
   const Card = observer(function Card() {
     const pages = usePageTree(useNotebook());
-    const [card, setCard] = useState<HealthCard>({
-      items: summary.items,
-      cursor: summary.next_cursor,
-      told: "",
-      again: false,
-    });
+    const [card, setCard] = useState<HealthCard>(
+      probe.card ?? {
+        items: summary.items,
+        cursor: summary.next_cursor,
+        told: "",
+        again: false,
+      }
+    );
     return (
       <HealthRule
-        summary={summary}
+        summary={probe.summary ?? summary}
         pages={pages}
-        readingTree={false}
+        readingTree={probe.readingTree ?? false}
+        treeFailed={probe.treeFailed}
         scope={scope}
         card={card}
         mode="llm_wiki"
@@ -431,13 +439,13 @@ async function probed(probe: Probe, level: 2 | 3) {
     );
   const fixture = healthServer();
   renderApp(`${healthHome}/rule-probe`, fixture.server.app, { routes: withProbe(routes) });
-  await screen.findByRole("heading", { level, name: "Wanted pages" });
+  await screen.findByRole("heading", { level, name: heading });
   return { fixture, facts };
 }
 
 test("a rule's More reads its next page as its caller says, not the health check's items", async () => {
   const user = userEvent.setup();
-  const asked: [LintRule, string, boolean][] = [];
+  const asked: [LintRule, string | undefined, boolean][] = [];
   const { fixture, facts } = await probed(
     {
       read: async (rule, cursor, signal) => {
@@ -500,5 +508,130 @@ test.each([[undefined, 2] as const, [2, 2] as const, [3, 3] as const])(
     const heading = screen.getByRole("heading", { name: "Wanted pages" });
     expect(heading.tagName).toBe(`H${shown}`);
     expect(screen.queryByRole("heading", { level: shown === 2 ? 3 : 2, name: "Wanted pages" })).toBeNull();
+  }
+);
+
+// A stored report's rule (M11/P3 design 4.3): its first items have no
+// cursor, its card none either while there are more, and its More reads
+// from the first page; the items read again are not listed twice.
+
+/** The wanted pages' first n items as a stored report keeps them: without their cursors. */
+function stored(n: number) {
+  return wantedFacts(8)
+    .slice(0, n)
+    .map(({ cursor: _, ...item }) => item);
+}
+
+test("a card whose cursor is undefined offers More, which reads from the first page, the items there not listed twice, then on from the page's cursor", async () => {
+  const user = userEvent.setup();
+  const asked: [LintRule, string | undefined][] = [];
+  const facts = wantedFacts(8);
+  const pageOf = (data: typeof facts, next: string | null): LintPage => ({
+    mode: "llm_wiki",
+    computed_at: "2026-10-31T09:10:00Z",
+    stale_pages: 0,
+    data,
+    next_cursor: next,
+  });
+  const { fixture } = await probed(
+    {
+      read: async (rule, cursor) => {
+        asked.push([rule, cursor]);
+        return cursor === undefined
+          ? pageOf(facts.slice(0, 7), facts[6]?.cursor ?? null)
+          : pageOf(facts.slice(7), null);
+      },
+      moved: "wiki.upgrade_state",
+      mismatch: () => undefined,
+      level: 3,
+      summary: { rule: "wanted", count: 8, count_capped: false },
+      card: { items: stored(5), cursor: undefined, told: "", again: false },
+    },
+    3
+  );
+  expect(
+    wanted()
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual([1, 2, 3, 4, 5].map((n) => `Missing 00${n}Referenced by 1 pages`));
+
+  await user.click(wanted().getByRole("button", { name: "More" }));
+
+  await waitFor(() => expect(wanted().getAllByRole("listitem")).toHaveLength(7));
+  expect(
+    wanted()
+      .getAllByRole("listitem")
+      .map((item) => item.textContent)
+  ).toEqual([1, 2, 3, 4, 5, 6, 7].map((n) => `Missing 00${n}Referenced by 1 pages`));
+  expect(document.activeElement).toBe(wanted().getAllByRole("listitem")[5]);
+  expect(asked).toEqual([["wanted", undefined]]);
+
+  await user.click(wanted().getByRole("button", { name: "More" }));
+
+  await waitFor(() => expect(wanted().getAllByRole("listitem")).toHaveLength(8));
+  expect(asked).toEqual([
+    ["wanted", undefined],
+    ["wanted", facts[6]?.cursor],
+  ]);
+  expect(wanted().queryByRole("button", { name: "More" })).toBeNull();
+  expect(fixture.pages).toEqual([]);
+});
+
+test("a card whose cursor is null offers no More, and reads nothing", async () => {
+  const read = vi.fn<Probe["read"]>();
+  await probed(
+    {
+      read,
+      moved: "wiki.upgrade_state",
+      mismatch: () => undefined,
+      level: 3,
+      summary: { rule: "wanted", count: 5, count_capped: false },
+      card: { items: stored(5), cursor: null, told: "", again: false },
+    },
+    3
+  );
+
+  expect(wanted().getAllByRole("listitem")).toHaveLength(5);
+  expect(wanted().queryByRole("button", { name: "More" })).toBeNull();
+  expect(read).not.toHaveBeenCalled();
+});
+
+test.each([
+  [false, false, "This node is no longer available."],
+  [true, false, "Loading…"],
+  [false, true, ""],
+  [true, true, "Loading…"],
+] as const)(
+  "an item whose node the tree lacks, the tree read %s and failed %s, says %j: a tree that failed to read does not tell",
+  async (readingTree, treeFailed, said) => {
+    const gone = pageNode(77, "Gone");
+    const known = guide;
+    await probed(
+      {
+        read: () => new Promise(() => undefined),
+        moved: "wiki.upgrade_state",
+        mismatch: () => undefined,
+        level: 3,
+        summary: { rule: "orphans", count: 2, count_capped: false },
+        card: {
+          items: [gone, known].map((page) => ({
+            rule: "orphans" as const,
+            item_key: `p:${page.id}`,
+            page_id: page.id,
+          })),
+          cursor: null,
+          told: "",
+          again: false,
+        },
+        readingTree,
+        treeFailed,
+      },
+      3,
+      "Orphan pages"
+    );
+
+    const card = within(screen.getByRole("heading", { name: "Orphan pages" }).closest("section") as HTMLElement);
+    await waitFor(() => expect(card.getAllByRole("listitem")[1]?.textContent).toBe("Guide.md"));
+    expect(card.getAllByRole("listitem")[0]?.textContent).toBe(said);
   }
 );

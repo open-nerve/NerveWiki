@@ -1050,7 +1050,17 @@ const keptReport = reportJSON({
   ).toReversed(),
 });
 
-test("in review, the page shows the report kept, read only: each gate, each count, each rule's count and first items, no More", async () => {
+/** Each card under holder: its heading's level and text, its count (after its description), its items, whether it offers More. */
+const cardsIn = (holder: Element) =>
+  [...holder.querySelectorAll<HTMLElement>("section[aria-labelledby]")].map((rule) => [
+    rule.querySelector("h2, h3, h4")?.tagName,
+    rule.querySelector("h2, h3, h4")?.textContent,
+    rule.querySelectorAll("p")[1]?.textContent,
+    [...rule.querySelectorAll("li")].map((item) => item.textContent),
+    within(rule).queryByRole("button", { name: "More" }) !== null,
+  ]);
+
+test("in review, the page shows the report kept: each gate, each count, each rule a card of its count and first items, More where the report keeps fewer than there are, the rules without an issue in a disclosure", async () => {
   const server = upgradeServer({
     nodes: [guide, install, notes, seededRaw, seededAgents],
     upgrade: upgradeJSON({ state: "reviewing", report: keptReport }),
@@ -1087,13 +1097,10 @@ test("in review, the page shows the report kept, read only: each gate, each coun
     ["Wanted pages as the upgrade started", "36"],
     ["Wanted pages now", "37+"],
   ]);
-  const rules = [...report.querySelectorAll("section")].map((rule) => [
-    rule.querySelector("h2, h3, h4")?.tagName,
-    rule.querySelector("h2, h3, h4")?.textContent,
-    rule.querySelector("p")?.textContent,
-    [...rule.querySelectorAll("li")].map((item) => item.textContent),
-  ]);
-  expect(rules).toEqual([
+  const clear = report.querySelector("details") as HTMLElement;
+  expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 checks)");
+  expect(cardsIn(clear)).toEqual([["H3", "Invalid frontmatter", "0 issues", [], false]]);
+  expect(cardsIn(report)).toEqual([
     [
       "H3",
       "Wanted pages",
@@ -1105,12 +1112,12 @@ test("in review, the page shows the report kept, read only: each gate, each coun
         "GlossaryReferenced by 6 pages",
         "ChangelogReferenced by 7 pages",
       ],
+      true,
     ],
-    ["H3", "Orphan pages", "1 issue", ["Notes.md"]],
-    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan", "Guide/Install.mdSetup"]],
-    ["H3", "Invalid frontmatter", "0 issues", []],
-    ["H3", "Missing type", "3 issues", ["Notes.md", "Guide.md", "Guide/Install.md"]],
-    ["H3", "Missing summary", "4 issues", ["Guide.md", "raw.md", "Guide/Install.md", "Notes.md"]],
+    ["H3", "Orphan pages", "1 issue", ["Notes.md"], false],
+    ["H3", "Ambiguous links", "2+ issues", ["Guide.mdPlan", "Guide/Install.mdSetup"], true],
+    ["H3", "Missing type", "3 issues", ["Notes.md", "Guide.md", "Guide/Install.md"], false],
+    ["H3", "Missing summary", "4 issues", ["Guide.md", "raw.md", "Guide/Install.md", "Notes.md"], false],
     [
       "H3",
       "Undigested sources",
@@ -1122,16 +1129,19 @@ test("in review, the page shows the report kept, read only: each gate, each coun
         "raw.mdPage3 KBCreated Oct 5, 2026, 11:00 AM",
         "AGENTS.mdAttachment20 KBCreated Oct 5, 2026, 12:00 PM",
       ],
+      true,
     ],
     [
       "H3",
       "Invalid sources",
       "5 issues",
       ["Guide/Install.mdBroken", "Guide.mdGone", "Notes.mdLost", "AGENTS.mdMoved", "Guide/Install.mdRenamed"],
+      false,
     ],
+    ["H3", "Invalid frontmatter", "0 issues", [], false],
   ]);
-  expect(within(report).queryByRole("button")).toBeNull();
-  expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+  // Shown, the report reads nothing more: its rules' items come from it.
+  expect(server.asked.filter((asked) => asked !== "GET job upgrade")).toEqual(["GET upgrade"]);
 });
 
 test("in review without a report, the page says it is being checked, or that the last submission did not finish", async () => {

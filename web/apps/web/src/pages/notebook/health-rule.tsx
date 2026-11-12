@@ -7,6 +7,7 @@ import { Alert } from "../../components/ui/alert";
 import { useT, type PlainKey, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { ApiError } from "../../services/api";
+import type { UpgradeReportItem } from "../../services/upgrade.service";
 import type { LintItem, LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
@@ -15,9 +16,13 @@ import { HealthItem } from "./health-item";
 import { useHealthLoadMore } from "./health-load-more";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
 
+/** An item a rule's card lists: lint's, or a stored report's, which has no cursor (M11/P3 design 4.3). */
+export type HealthRuleItem = LintItem | UpgradeReportItem;
+
 export type HealthCard = {
-  items: readonly LintItem[];
-  cursor: string | null;
+  items: readonly HealthRuleItem[];
+  /** The next page's cursor; undefined: the next read starts from the first page; null: there is no more. */
+  cursor: string | null | undefined;
   error?: unknown;
   told: string;
   again: boolean;
@@ -45,13 +50,8 @@ const labels: Record<LintRule, { title: PlainKey; description: PlainKey }> = {
   invalid_sources: { title: "health.invalidSources", description: "health.invalidSourcesDescription" },
 };
 
-/** ruleTitle is the title of rule's check: its card's heading, an upgrade's report's too. */
-export function ruleTitle(rule: LintRule): PlainKey {
-  return labels[rule].title;
-}
-
 /** issueCount is what a rule's check found: one issue, or how many, with a + once capped. */
-export function issueCount(
+function issueCount(
   t: Translate,
   locale: Locale,
   { count, count_capped: capped }: Pick<LintRuleSummary, "count" | "count_capped">
@@ -63,9 +63,13 @@ export function issueCount(
 
 /**
  * One applicable check, including the checks with no findings in the shared
- * disclosure: the health page's, or an upgrade's check's (M11/P2 design
- * 4.3), whose caller says how a page of its items is read, which refusal
- * says the scope it was read in is gone, and its heading's level.
+ * disclosure: the health page's, an upgrade's check's (M11/P2 design 4.3),
+ * or a rule of the report an upgrade's submission kept (M11/P3 design 4.3),
+ * whose caller says how a page of its items is read, which refusal says
+ * the scope it was read in is gone, its heading's level, and whether the
+ * tree its items' paths come from failed to read. A card whose cursor is
+ * undefined reads its next page from the first: a stored report's first
+ * items have none; those read again are not listed twice.
  */
 export const HealthRule = observer(function HealthRule({
   summary,
@@ -81,8 +85,9 @@ export const HealthRule = observer(function HealthRule({
   read,
   moved,
   level = 2,
+  treeFailed,
 }: {
-  summary: LintRuleSummary;
+  summary: Pick<LintRuleSummary, "rule" | "count" | "count_capped">;
   pages: PageTreeStore;
   readingTree: boolean;
   scope: HealthScope;
@@ -91,20 +96,24 @@ export const HealthRule = observer(function HealthRule({
   disabled: boolean;
   change: (update: (was: HealthCard) => HealthCard) => Promise<HealthCard | undefined>;
   mismatch: () => void;
-  paths: (items: readonly LintItem[]) => void;
-  /** Reads a page of the rule's items after cursor. */
-  read: (rule: LintRule, cursor: string, signal: AbortSignal) => Promise<LintPage>;
+  paths: (items: readonly HealthRuleItem[]) => void;
+  /** Reads a page of the rule's items after cursor; from the first, without one. */
+  read: (rule: LintRule, cursor: string | undefined, signal: AbortSignal) => Promise<LintPage>;
   /** The code that says the scope the summary was read in is gone. */
   moved: string;
   /** The card's heading's level: 2 on a page of its own, 3 under a section's. */
   level?: 2 | 3;
+  /** Whether the tree failed to read: an item's path is then left empty, not said to be unavailable. */
+  treeFailed?: boolean;
 }) {
   const t = useT();
   const { locale } = useStore().preferences;
   const heading = useRef<HTMLHeadingElement>(null);
   const elements = useRef(new Map<string, HTMLLIElement>());
   const identity = unstable_serialize([...scope.key, summary.rule]);
-  const operation = useRef<{ identity: string; id: number; cursor: string; inFlight: boolean } | undefined>(undefined);
+  const operation = useRef<{ identity: string; id: number; cursor: string | undefined; inFlight: boolean } | undefined>(
+    undefined
+  );
   const sequence = useRef(0);
   const enabled = useRef(!disabled);
   useLayoutEffect(() => {
@@ -225,6 +234,7 @@ export const HealthRule = observer(function HealthRule({
               item={item}
               pages={pages}
               readingTree={readingTree}
+              treeFailed={treeFailed}
               itemRef={(element) => {
                 if (element === null) elements.current.delete(item.item_key);
                 else elements.current.set(item.item_key, element);

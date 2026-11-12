@@ -65,11 +65,20 @@ export class UpgradeService {
     );
   }
 
-  /** checkItems reads the page of rule's items of the upgrade's check after cursor, a check's or a page's. */
-  async checkItems(notebookId: string, rule: LintRule, cursor: string, signal?: AbortSignal): Promise<LintPage> {
+  /**
+   * checkItems reads the page of rule's items of the upgrade's check after
+   * cursor, a check's or a page's; without one, its first page, as a
+   * stored report's More does (M11/P3 design 4.3).
+   */
+  async checkItems(
+    notebookId: string,
+    rule: LintRule,
+    cursor: string | undefined,
+    signal?: AbortSignal
+  ): Promise<LintPage> {
     return unwrap(
       await this.api.GET("/api/v0/notebooks/{notebook_id}/upgrade/check/{rule}", {
-        params: { path: { notebook_id: notebookId, rule }, query: { cursor } },
+        params: { path: { notebook_id: notebookId, rule }, query: cursor === undefined ? {} : { cursor } },
         signal,
       })
     );

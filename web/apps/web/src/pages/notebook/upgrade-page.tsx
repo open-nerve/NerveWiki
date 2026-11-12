@@ -23,7 +23,7 @@ import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
 import { TransferJobRow } from "./transfer-job-row";
 import { jobNames } from "./transfer-names";
-import { UpgradeCheckSection, UpgradeReportSection, type CheckControl } from "./upgrade-check";
+import { UpgradeCheckSection, UpgradeReportSection, type CheckControl, type TreeRead } from "./upgrade-check";
 
 /**
  * UpgradePage is the notebook's upgrade to an LLM Wiki under way (M11/P1
@@ -85,11 +85,13 @@ type Change = "abandon" | "continue" | "end" | "submit";
  * It is one entry to the page (M11/P2 design 4.3): the check it shows is
  * of its generation, which a new check moves on, of the upgrade it was
  * asked for (another upgrade shown in the entry is not checked until
- * Check is pressed), in a cache of its own
- * that wraps the check alone, mounted as long as the entry, so that the
- * check gone and back finds its read; leaving the page aborts the check's
- * requests and drops that cache. The upgrade, the notebooks and the tree
- * are read in the public provider, as the left column's.
+ * Check is pressed), in a cache of its own that wraps the check and the
+ * report (M11/P3 design 4.3), mounted as long as the entry, so that the
+ * check gone and back finds its read; leaving the page aborts the
+ * requests of the check and of the report's cards and drops that cache.
+ * The upgrade, the notebooks and the tree are read in the public
+ * provider, as the left column's; the tree failed to read, the sections
+ * say so above their nodes, and read it again when asked.
  */
 const UpgradeRead = observer(function UpgradeRead({
   notebook,
@@ -159,7 +161,11 @@ const UpgradeRead = observer(function UpgradeRead({
     },
   });
   const tree = useSWR(admin ? ["pages", notebook.id] : null, () => pages.load());
-  const readingTree = pages.nodes === undefined || tree.isValidating;
+  const treeRead: TreeRead = {
+    error: tree.error,
+    reading: (pages.nodes === undefined && tree.error === undefined) || tree.isValidating,
+    retry: () => void tree.mutate(),
+  };
 
   /**
    * change sends what a dialog asks, then reads the upgrade again; so does
@@ -234,7 +240,8 @@ const UpgradeRead = observer(function UpgradeRead({
   }
 
   let shown: ReactNode;
-  let check: ReactNode = null;
+  // The check, upgrading, or the report, reviewing: this entry's own, in its cache.
+  let entryOwn: ReactNode = null;
   let rest: ReactNode = null;
   if (!admin) {
     shown = <p>{t("upgrade.adminsOnly")}</p>;
@@ -249,19 +256,33 @@ const UpgradeRead = observer(function UpgradeRead({
         {data.state === "upgrading" && <AgentSection upgrade={data} />}
       </>
     );
-    check = data.state === "upgrading" && (
-      <UpgradeCheckSection
-        notebook={notebook}
-        upgrade={data}
-        entry={entry}
-        generation={checked.upgrade === data.id ? checked.generation : 0}
-        recheck={() => recheck(data.id)}
-        rereadUpgrade={() => void reread()}
-        rereadNotebooks={rereadNotebooks}
-        pages={pages}
-        readingTree={readingTree}
-      />
-    );
+    if (data.state === "upgrading") {
+      entryOwn = (
+        <UpgradeCheckSection
+          notebook={notebook}
+          upgrade={data}
+          entry={entry}
+          generation={checked.upgrade === data.id ? checked.generation : 0}
+          recheck={() => recheck(data.id)}
+          rereadUpgrade={() => void reread()}
+          rereadNotebooks={rereadNotebooks}
+          pages={pages}
+          tree={treeRead}
+        />
+      );
+    } else if (data.state === "reviewing") {
+      entryOwn = (
+        <UpgradeReportSection
+          notebook={notebook}
+          upgrade={data}
+          entry={entry}
+          rereadUpgrade={() => void reread()}
+          rereadNotebooks={rereadNotebooks}
+          pages={pages}
+          tree={treeRead}
+        />
+      );
+    }
     rest = (
       <>
         {data.state === "rolling_back" && (
@@ -273,9 +294,6 @@ const UpgradeRead = observer(function UpgradeRead({
             continueButton={buttons.continue}
             endButton={buttons.end}
           />
-        )}
-        {data.state === "reviewing" && (
-          <UpgradeReportSection report={data.report} pages={pages} readingTree={readingTree} />
         )}
         {(data.state === "upgrading" || data.state === "reviewing") && (
           <div className="flex flex-wrap gap-3">
@@ -297,7 +315,7 @@ const UpgradeRead = observer(function UpgradeRead({
   return (
     <>
       {shown}
-      <SWRConfig value={checksConfig}>{check}</SWRConfig>
+      <SWRConfig value={checksConfig}>{entryOwn}</SWRConfig>
       {rest}
       <ConfirmDialog
         held={dialogOf("abandon")}

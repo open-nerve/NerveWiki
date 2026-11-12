@@ -3,15 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
-import type { UpgradeCheck } from "../../services/upgrade.service";
+import type { UpgradeCheck, UpgradeReport } from "../../services/upgrade.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { deferred } from "../../test/health-server";
-import { guide, install, notes, pageNode } from "../../test/page-server";
+import { ada, guide, install, notes, pageNode } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import {
   checkJSON,
   missingTypes,
+  reportJSON,
   ruleOf,
   seededAgents,
   seededRaw,
@@ -874,5 +875,313 @@ test.each([
     await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(cardOf(back, "Missing type").getAllByRole("listitem")).toHaveLength(5);
+  }
+);
+
+// The report a submission kept, in review (M11/P3 design 4.3, decision
+// 287): its rules are the check's cards, their More reading the check's
+// items from the first page; its cards are this entry's and this
+// submission's.
+
+/** reportSection is the upgrade page's report, by its heading. */
+async function reportSection(): Promise<HTMLElement> {
+  return (await screen.findByRole("heading", { level: 2, name: "Check report" })).closest("section") as HTMLElement;
+}
+
+/** The missing types' items of a check of Plans' upgrade, all seven, with their cursors. */
+const allTypes = missingTypes(notePages.map((page) => page.id));
+
+/**
+ * keptTypes is a report whose missing types are seven, the first five kept,
+ * without their cursors; computed at computedAt; its other rules without an
+ * issue.
+ */
+function keptTypes(computedAt = "2026-10-06T09:41:00Z"): UpgradeReport {
+  const report = reportJSON({ computed_at: computedAt });
+  return {
+    ...report,
+    rules: report.rules.map((rule) =>
+      rule.rule === "missing_type"
+        ? {
+            rule: "missing_type",
+            count: 7,
+            count_capped: false,
+            items: allTypes.slice(0, 5).map(({ cursor: _, ...item }) => item),
+          }
+        : rule
+    ),
+  };
+}
+
+/** inReview is Plans' upgrade in review, submitted by Ada at submittedAt, its report report. */
+const inReview = (report: UpgradeReport | null = keptTypes(), submittedAt = "2026-10-06T09:40:00Z") =>
+  upgradeJSON({ state: "reviewing", submitted_by: ada, submitted_at: submittedAt, report });
+
+/** reviewOf is the upgrade server of Plans in review, as inReview, its tree tree, the check's items all seven types. */
+function reviewOf(answers: Parameters<typeof upgradeServer>[0] = {}) {
+  const server = upgradeServer({ nodes: tree, upgrade: inReview(), ...answers });
+  server.checkItems = { missing_type: allTypes };
+  return server;
+}
+
+const sevenTypes = ["Note 1.md", "Note 2.md", "Note 3.md", "Note 4.md", "Note 5.md", "Note 6.md", "Note 7.md"];
+const keptFive = { items: sevenTypes.slice(0, 5), buttons: ["More"] };
+
+test("the report's More reads the check's items from their first page, without a cursor: the items read follow the report's, none twice, and there is no more", async () => {
+  const user = userEvent.setup();
+  const server = reviewOf();
+  renderApp(upgradePath, server.app);
+  const report = await reportSection();
+  await waitFor(() => expect(missingCard(report)).toEqual(keptFive));
+
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+
+  await waitFor(() => expect(missingCard(report)).toEqual({ items: sevenTypes, buttons: [] }));
+  expect(server.asked).toEqual(["GET upgrade", "CHECK missing_type none"]);
+});
+
+test("the report's More refused as forbidden reads the notebooks again: the account no longer the admin, the page says who can see it", async () => {
+  const user = userEvent.setup();
+  let lists = 0;
+  const server: ReturnType<typeof upgradeServer> = reviewOf({
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        lists++;
+        return json({ data: [server.notebook] });
+      },
+    },
+  });
+  renderApp(upgradePath, server.app);
+  const report = await reportSection();
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  const before = lists;
+  // Another admin made Ada an editor meanwhile.
+  server.notebook = { ...server.notebook, role: "editor" };
+
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+
+  expect(await screen.findByText("Only the notebook's admins can see its upgrade.")).toBeTruthy();
+  expect(lists).toBe(before + 1);
+  expect(server.asked).toEqual(["GET upgrade", "CHECK missing_type none"]);
+});
+
+test("the report's More refused as forbidden once another submission is shown reads nothing again: that card's section is no longer current", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const refused = deferred<void>();
+  const settled = deferred<void>();
+  let lists = 0;
+  const server: ReturnType<typeof upgradeServer> = reviewOf({
+    events,
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        lists++;
+        return json({ data: [server.notebook] });
+      },
+      [`GET ${plans}/upgrade/check/*`]: async () => {
+        server.asked.push("CHECK held");
+        await refused.promise;
+        settled.resolve();
+        return problem(403, "forbidden");
+      },
+    },
+  });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  const report = await reportSection();
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+  await waitFor(() => expect(server.asked).toContain("CHECK held"));
+
+  // Another admin sent it back; it was submitted again, its report kept and shown.
+  const listed = lists;
+  server.withUpgrade(inReview(keptTypes("2026-10-06T10:21:00Z"), "2026-10-06T10:20:00Z"));
+  mode(events);
+  const next = await reportSection();
+  await within(next).findByText("The check at its submission (Oct 6, 2026, 10:21 AM): every check passed.");
+  // The mode event reads the notebooks again, once.
+  await waitFor(() => expect(lists).toBe(listed + 1));
+  const before = lists;
+  refused.resolve();
+  await act(() => settled.promise);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(lists).toBe(before);
+  expect(screen.queryByText("Only the notebook's admins can see its upgrade.")).toBeNull();
+  await waitFor(() => expect(missingCard(next)).toEqual(keptFive));
+});
+
+test("the report's More refused as the upgrade no longer in review says its state changed and reads the upgrade again: it rolls back", async () => {
+  const user = userEvent.setup();
+  let lists = 0;
+  const server: ReturnType<typeof upgradeServer> = reviewOf({
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        lists++;
+        return json({ data: [server.notebook] });
+      },
+    },
+  });
+  renderApp(upgradePath, server.app);
+  const report = await reportSection();
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  const before = lists;
+  // Another admin rejected it meanwhile: it rolls back.
+  server.withUpgrade(inReview(keptTypes()));
+  server.upgrade = { ...inReview(keptTypes()), state: "rolling_back", ending: "rejected" };
+
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+
+  expect(await within(report).findByText("The upgrade's state changed.")).toBeTruthy();
+  expect((cardOf(report, "Missing type").getByRole("group") as HTMLFieldSetElement).disabled).toBe(true);
+  expect(await screen.findByRole("heading", { level: 2, name: "Rollback" })).toBeTruthy();
+  expect(server.asked.filter((each) => each !== "GET job upgrade")).toEqual([
+    "GET upgrade",
+    "CHECK missing_type none",
+    "GET upgrade",
+  ]);
+  // Refused for its state, not its role: the notebooks are not read again.
+  expect(lists).toBe(before);
+});
+
+test("the report's cards are this entry's: More read, the page left and come back to starts again from the report, nothing read", async () => {
+  const user = userEvent.setup();
+  const server = reviewOf();
+  const { router } = renderApp(upgradePath, server.app);
+  const report = await reportSection();
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+  await waitFor(() => expect(missingCard(report)).toEqual({ items: sevenTypes, buttons: [] }));
+
+  await act(() => router.navigate(home));
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+  await act(() => router.navigate(-1));
+
+  const again = await reportSection();
+  await waitFor(() => expect(missingCard(again)).toEqual(keptFive));
+  expect(server.asked.filter((each) => each.startsWith("CHECK"))).toEqual(["CHECK missing_type none"]);
+});
+
+test("the report's cards are its submission's: sent back and submitted again, the new report starts from what it keeps, not from what More read of the last", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = reviewOf({ events });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  const report = await reportSection();
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  await user.click(cardOf(report, "Missing type").getByRole("button", { name: "More" }));
+  await waitFor(() => expect(missingCard(report)).toEqual({ items: sevenTypes, buttons: [] }));
+
+  // Another admin sent it back; it was submitted again, its report kept.
+  server.withUpgrade(inReview(keptTypes("2026-10-06T10:21:00Z"), "2026-10-06T10:20:00Z"));
+  mode(events);
+
+  const next = await reportSection();
+  await within(next).findByText("The check at its submission (Oct 6, 2026, 10:21 AM): every check passed.");
+  await waitFor(() => expect(missingCard(next)).toEqual(keptFive));
+  expect(server.asked.filter((each) => each.startsWith("CHECK"))).toEqual(["CHECK missing_type none"]);
+});
+
+test("in review without a report, a mode event shows the report once kept: its cards, More offered", async () => {
+  const events = eventServer();
+  const server = reviewOf({ events, upgrade: inReview(null) });
+  renderApp(upgradePath, withEvents(server.app), { eventHandlers });
+  const report = await reportSection();
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  expect(within(report).getByText("Being checked, or the last submission did not finish.")).toBeTruthy();
+
+  server.withUpgrade(inReview());
+  mode(events);
+
+  await within(report).findByText("The check at its submission (Oct 6, 2026, 9:41 AM): every check passed.");
+  await waitFor(() => expect(missingCard(report)).toEqual(keptFive));
+});
+
+// The tree failed to read (M11/P3 design 4.3): the sections say so above
+// their nodes, which are left empty, neither loading nor gone, until it
+// is read again.
+
+/**
+ * treeFailing is answers whose first read of the tree fails, the server
+ * failing, and whose later ones answer it once retried is resolved;
+ * counted in reads.
+ */
+function treeFailing(
+  server: () => ReturnType<typeof upgradeServer>,
+  reads: { count: number },
+  retried: Promise<void> = Promise.resolve()
+) {
+  return {
+    [`GET ${plans}/nodes`]: async () => {
+      server().sent.push("GET nodes");
+      reads.count += 1;
+      if (reads.count === 1) {
+        return problem(500, "internal_error");
+      }
+      await retried;
+      return json({ data: tree });
+    },
+  };
+}
+
+/** What a section's gates and cards name, without the tree's failure: their nodes' cells. */
+function namesIn(section: HTMLElement) {
+  return {
+    gates: [...within(section).getByRole("list", { name: "The checks" }).querySelectorAll(":scope > li > ul > li")].map(
+      (each) => each.textContent
+    ),
+    items: missingCard(section).items,
+  };
+}
+
+test.each([
+  ["the check, checked", "upgrading"],
+  ["the report", "reviewing"],
+] as const)(
+  "the tree failed to read: %s says so above its nodes, left empty; Try again reads it, they say they are loading meanwhile, and then lead to their paths",
+  async (_, state) => {
+    const user = userEvent.setup();
+    const reads = { count: 0 };
+    const retried = deferred<void>();
+    const failing: ReturnType<typeof upgradeServer> = upgradeServer({
+      nodes: tree,
+      upgrade: state === "upgrading" ? upgradeJSON() : inReview(),
+      answers: treeFailing(() => failing, reads, retried.promise),
+    });
+    failing.checkItems = { missing_type: allTypes };
+    // A check whose reserved titles name index and a node gone, a node not kept, its missing types five of seven.
+    failing.check = { ...checkOf(secondRow), rules: rulesCheck().rules };
+    renderApp(upgradePath, failing.app);
+    let section: HTMLElement;
+    if (state === "upgrading") {
+      section = await checkSection();
+      await waitFor(() => expect(reads.count).toBe(1));
+      await user.click(within(section).getByRole("button", { name: "Check" }));
+      await within(section).findByRole("list", { name: "The checks" });
+    } else {
+      section = await reportSection();
+      await waitFor(() => expect(reads.count).toBe(1));
+    }
+
+    const paths = await within(section).findByRole("group", { name: "Page paths" });
+    expect(within(paths).getByText("Something went wrong on the server. Try again.")).toBeTruthy();
+    await waitFor(() => expect(missingCard(section).items).toEqual(["", "", "", "", ""]));
+    expect(namesIn(section).gates).toEqual(state === "upgrading" ? ["", "", ""] : []);
+    expect(within(section).queryByText("(no longer there)")).toBeNull();
+    expect(within(section).queryByText("This node is no longer available.")).toBeNull();
+    expect(within(section).queryByText("Loading…")).toBeNull();
+
+    await user.click(within(paths).getByRole("button", { name: "Try again" }));
+
+    // Read again, the tree is loading, not failed: the nodes say so, the failure is no longer said.
+    await waitFor(() => expect(missingCard(section).items).toEqual(Array.from({ length: 5 }, () => "Loading…")));
+    expect(namesIn(section).gates).toEqual(state === "upgrading" ? ["Loading…", "Loading…", "Loading…"] : []);
+    expect(within(section).queryByRole("group", { name: "Page paths" })).toBeNull();
+    retried.resolve();
+
+    await waitFor(() => expect(missingCard(section).items).toEqual(sevenTypes.slice(0, 5)));
+    expect(namesIn(section).gates).toEqual(
+      state === "upgrading" ? ["index.md", "(no longer there)", "Guide/Install.md"] : []
+    );
+    expect(within(section).queryByRole("group", { name: "Page paths" })).toBeNull();
+    expect(reads.count).toBe(2);
   }
 );

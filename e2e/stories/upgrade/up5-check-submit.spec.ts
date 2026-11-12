@@ -306,19 +306,29 @@ test("UP5 (page): the admin checks the upgrade, the frontmatter gate not passed,
     report.getByRole("list", { name: "The checks", exact: true }).locator(":scope > li > p:first-child")
   ).toHaveText(Array.from({ length: 8 }, () => /: passed$/));
   expect(await countsIn(report)).toEqual(countsOf(submitted.report?.counts ?? first.counts));
+  // Each rule a card (M11/P3 design 4.3): its title, then its count, after its description; the rules with an
+  // issue first, those without one after, in the disclosure.
   const ruleLines = await report
     .locator("section")
     .evaluateAll((sections) =>
-      sections.map((section) => [section.querySelector("h3")?.textContent, section.querySelector("p")?.textContent])
+      sections.map((section) => [
+        section.querySelector("h3")?.textContent,
+        section.querySelectorAll(":scope > p")[1]?.textContent,
+      ])
     );
+  const kept = ruleTitles.map(([rule, title]) => {
+    const found = submitted.report?.rules.find((each) => each.rule === rule);
+    const issues = found === undefined ? "" : counted(found);
+    return { title, found, said: found?.count === 1 && !found.count_capped ? "1 issue" : `${issues} issues` };
+  });
   expect(ruleLines).toEqual(
-    ruleTitles.map(([rule, title]) => {
-      const found = submitted.report?.rules.find((each) => each.rule === rule);
-      const issues = found === undefined ? "" : counted(found);
-      return [title, found?.count === 1 && !found.count_capped ? "1 issue" : `${issues} issues`];
-    })
+    [...kept.filter(({ found }) => (found?.count ?? 0) > 0), ...kept.filter(({ found }) => found?.count === 0)].map(
+      ({ title, said }) => [title, said]
+    )
   );
-  await expect(report.getByRole("button")).toHaveCount(0);
+  // A rule whose report keeps all its items offers no More.
+  const fewer = (submitted.report?.rules ?? []).filter((rule) => rule.count > rule.items.length || rule.count_capped);
+  await expect(report.getByRole("button", { name: "More", exact: true })).toHaveCount(fewer.length);
   await expect(check).toHaveCount(0);
   await expect(submit).toHaveCount(0);
   const read = await getUpgrade(api, pat, notebook.id);

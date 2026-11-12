@@ -9,7 +9,7 @@ import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
-import type { LintItem, LintRule, LintSummary } from "../../services/wiki.service";
+import type { LintRule, LintSummary } from "../../services/wiki.service";
 import { usePageTree, useStore, useWiki } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { nodeTarget } from "../node-target";
@@ -17,7 +17,7 @@ import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthNodeId } from "./health-item";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { HealthRule, healthRuleOrder, type HealthCard } from "./health-rule";
+import { HealthRule, healthRuleOrder, type HealthCard, type HealthRuleItem } from "./health-rule";
 import { useNotebook } from "./notebook-layout";
 
 type HealthView = {
@@ -196,7 +196,7 @@ const HealthResults = observer(function HealthResults({
     setGeneration(next);
   }
   const attempted = useRef(false);
-  function paths(items: readonly LintItem[]) {
+  function paths(items: readonly HealthRuleItem[]) {
     if (!scope.current() || attempted.current || pages.nodes === undefined || tree.reading || tree.error !== undefined)
       return;
     if (
@@ -245,7 +245,11 @@ const HealthResults = observer(function HealthResults({
         readingTree={pages.nodes === undefined || tree.reading}
         disabled={view.checking || mismatch}
         paths={paths}
-        read={(which, cursor, signal) => wiki.items(notebook.id, which, cursor, signal)}
+        read={(which, cursor, signal) => {
+          // A health card's first page is the summary's: it reads on from its cursor alone (M11/P2 design 4.3).
+          if (cursor === undefined) throw new Error("a health card reads on from its cursor");
+          return wiki.items(notebook.id, which, cursor, signal);
+        }}
         moved="notebook.not_llm_wiki"
         mismatch={() => {
           void change((was) => ({ ...was, mismatch: true }));

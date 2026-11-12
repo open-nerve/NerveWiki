@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useMemo, type RefObject } from "react";
+import { useMemo, useRef, type RefObject } from "react";
 import { Link } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
@@ -13,7 +13,7 @@ import type {
   Upgrade,
   UpgradeCounts as Counts,
   UpgradeGates as Gates,
-  UpgradeReport,
+  UpgradeService,
 } from "../../services/upgrade.service";
 import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { useStore, useUpgrades } from "../../stores/context";
@@ -22,8 +22,7 @@ import { nodeTarget } from "../node-target";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { HealthItem } from "./health-item";
-import { HealthRule, healthRuleOrder, issueCount, ruleTitle, type HealthCard } from "./health-rule";
+import { HealthRule, healthRuleOrder, type HealthCard } from "./health-rule";
 
 /**
  * CheckControl is what one entry to the upgrade's page holds of its checks
@@ -36,12 +35,53 @@ export type CheckControl = { alive: boolean; generation: number; controllers: Se
 /** CheckEntry is one entry to the upgrade's page: its nonce, its control, the location it was entered at. */
 export type CheckEntry = { nonce: number; control: RefObject<CheckControl>; locationKey: string };
 
-/** What a check's cards hold past their first pages, and whether the upgrade moved on meanwhile. */
+/**
+ * TreeRead is what the upgrade's page read of the notebook's tree, which
+ * its sections' nodes take their paths from (M11/P3 design 4.3, as the
+ * health page's): why its read failed, if it did; whether it is read; how
+ * to read it again.
+ */
+export type TreeRead = { error: unknown; reading: boolean; retry: () => void };
+
+/** What a check's cards, or a report's, hold past their first pages, and whether the upgrade moved on meanwhile. */
 type CheckView = { cards: Partial<Record<LintRule, HealthCard>>; moved: boolean };
 const noView: CheckView = { cards: {}, moved: false };
 const unchanging = { revalidateIfStale: false, revalidateOnFocus: false, revalidateOnReconnect: false };
 // The upgrade's page keeps its tree as the left column's: an item's node not in it is not read again here.
 const noPaths = () => undefined;
+
+/**
+ * itemsReader reads a rule's items of the upgrade's check for a section of
+ * the upgrade's page, after a cursor or from the first page (M11/P3 design
+ * 4.3): refused as forbidden while the section is current, the account is
+ * no longer the notebook's admin, and the workspace's notebooks are read
+ * again, in the public provider, before the refusal is thrown.
+ */
+function itemsReader(
+  upgrades: Pick<UpgradeService, "checkItems">,
+  notebookId: string,
+  current: () => boolean,
+  rereadNotebooks: () => void
+): (rule: LintRule, cursor: string | undefined, signal: AbortSignal) => Promise<LintPage> {
+  return async (rule, cursor, signal) => {
+    try {
+      return await upgrades.checkItems(notebookId, rule, cursor, signal);
+    } catch (refusal) {
+      if (refusal instanceof ApiError && refusal.code === "forbidden" && current()) rereadNotebooks();
+      throw refusal;
+    }
+  };
+}
+
+/** TreeFailure says, above a section's nodes, that the tree they take their paths from failed to read: try again. */
+function TreeFailure({ tree }: { tree: TreeRead }) {
+  const t = useT();
+  return tree.error === undefined || tree.reading ? null : (
+    <fieldset aria-label={t("health.paths")}>
+      <NotLoaded error={tree.error} retry={tree.retry} />
+    </fieldset>
+  );
+}
 
 /**
  * UpgradeCheckSection checks the upgrade, upgrading, against an LLM Wiki's
@@ -56,7 +96,8 @@ const noPaths = () => undefined;
  * check or a card's More refused for its state) says so and reads the
  * upgrade again; the check or a card's More refused as forbidden, the
  * account is no longer the notebook's admin: the workspace's notebooks are
- * read again.
+ * read again. The tree failed to read, it says so above the nodes, which
+ * are left without their paths.
  */
 export const UpgradeCheckSection = observer(function UpgradeCheckSection({
   notebook,
@@ -67,7 +108,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
   rereadUpgrade,
   rereadNotebooks,
   pages,
-  readingTree,
+  tree,
 }: {
   notebook: Notebook;
   upgrade: Upgrade;
@@ -80,7 +121,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
   /** Reads the workspace's notebooks again, in the public provider. */
   rereadNotebooks: () => void;
   pages: PageTreeStore;
-  readingTree: boolean;
+  tree: TreeRead;
 }) {
   const store = useStore();
   const upgrades = useUpgrades();
@@ -151,19 +192,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
       t("upgrade.checkedAt", { time: formatDateTime(data.computed_at, locale) }),
     ].join(" ");
   }
-  /**
-   * readItems reads a rule's items of the check after cursor for its card;
-   * refused as forbidden, the account is no longer the notebook's admin:
-   * the workspace's notebooks are read again, as for the check itself.
-   */
-  async function readItems(which: LintRule, cursor: string, signal: AbortSignal): Promise<LintPage> {
-    try {
-      return await upgrades.checkItems(notebook.id, which, cursor, signal);
-    } catch (refusal) {
-      if (refusal instanceof ApiError && refusal.code === "forbidden" && scope.current()) rereadNotebooks();
-      throw refusal;
-    }
-  }
+  const readItems = itemsReader(upgrades, notebook.id, scope.current, rereadNotebooks);
   const rules = healthRuleOrder.flatMap((rule) => data?.rules.find((found) => found.rule === rule) ?? []);
   const found = rules.filter((rule) => rule.count > 0);
   const clear = rules.filter((rule) => rule.count === 0);
@@ -177,7 +206,8 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
         scope={scope}
         mode="llm_wiki"
         pages={pages}
-        readingTree={readingTree}
+        readingTree={tree.reading}
+        treeFailed={tree.error !== undefined}
         disabled={moved}
         paths={noPaths}
         mismatch={() => {
@@ -213,7 +243,8 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
       {failed !== undefined && !moved && <NotLoaded error={failed} retry={recheck} />}
       {data !== undefined && (
         <>
-          <UpgradeGates gates={data.gates} stalePages={data.stale_pages} pages={pages} readingTree={readingTree} />
+          <TreeFailure tree={tree} />
+          <UpgradeGates gates={data.gates} stalePages={data.stale_pages} pages={pages} tree={tree} />
           <UpgradeCounts counts={data.counts} />
           {found.map(card)}
           {clear.length > 0 && (
@@ -231,21 +262,107 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
 /**
  * UpgradeReportSection is the report the upgrade's submission kept, while
  * it is reviewing (M11/P2 design 4.3, decision 259): read only, its gates
- * and counts as a check's, each rule's count and first items, without
- * More (the review's own, M11/P3). None yet: a submission is being
+ * and counts as a check's, its rules as the check's cards (M11/P3 design
+ * 4.3, decision 287), whose More reads the check's items from their first
+ * page, the report keeping none of their cursors: a rule whose first items
+ * are all of them has none. Its cards are of this entry to the page, in
+ * its cache, and of the submission shown: left and come back to, or
+ * another submission's report shown, they start again from the report.
+ * The upgrade no longer in review (a card's More refused for its state)
+ * says so and reads the upgrade again; a More refused as forbidden reads
+ * the workspace's notebooks again. None yet: a submission is being
  * checked, or the last one did not finish.
  */
 export const UpgradeReportSection = observer(function UpgradeReportSection({
-  report,
+  notebook,
+  upgrade,
+  entry,
+  rereadUpgrade,
+  rereadNotebooks,
   pages,
-  readingTree,
+  tree,
 }: {
-  report: UpgradeReport | null;
+  notebook: Notebook;
+  upgrade: Upgrade;
+  entry: CheckEntry;
+  rereadUpgrade: () => void;
+  /** Reads the workspace's notebooks again, in the public provider. */
+  rereadNotebooks: () => void;
   pages: PageTreeStore;
-  readingTree: boolean;
+  tree: TreeRead;
 }) {
+  const store = useStore();
+  const upgrades = useUpgrades();
+  const workspace = useWorkspace();
   const t = useT();
-  const { locale } = useStore().preferences;
+  const { locale } = store.preferences;
+  const { mutate } = useSWRConfig();
+  const report = upgrade.report;
+  // The submission an upgrade answers is known by when it was submitted: each, a takeover too, has its own time.
+  const submitted = upgrade.submitted_at;
+  // The submission shown, as each render shows it: a card's request for another one is not current.
+  const shown = useRef(submitted);
+  shown.current = submitted;
+  const scope = useMemo<HealthScope>(
+    () => ({
+      key: ["upgrade-report", store.loginId, workspace.id, notebook.id, upgrade.id, submitted],
+      controllers: {
+        add: (controller) => entry.control.current.controllers.add(controller),
+        delete: (controller) => entry.control.current.controllers.delete(controller),
+      },
+      current: () =>
+        entry.control.current.alive && store.auth.state.loginId === store.loginId && shown.current === submitted,
+    }),
+    [store, workspace.id, notebook.id, upgrade.id, submitted, entry]
+  );
+  const viewKey = [...scope.key, "view"];
+  const { data: view = noView } = useSWR<CheckView>(viewKey, null, { fallbackData: noView });
+  function changeView(update: (was: CheckView) => CheckView): Promise<CheckView | undefined> {
+    if (!scope.current()) return Promise.resolve(undefined);
+    return mutate<CheckView>(viewKey, (was) => (scope.current() ? update(was ?? noView) : was), {
+      revalidate: false,
+    });
+  }
+  const readItems = itemsReader(upgrades, notebook.id, scope.current, rereadNotebooks);
+  const rules = healthRuleOrder.flatMap((rule) => report?.rules.find((found) => found.rule === rule) ?? []);
+  const found = rules.filter((rule) => rule.count > 0);
+  const clear = rules.filter((rule) => rule.count === 0);
+  function card(rule: (typeof rules)[number]) {
+    const first: HealthCard = {
+      items: rule.items,
+      cursor: rule.count > rule.items.length || rule.count_capped ? undefined : null,
+      told: "",
+      again: false,
+    };
+    return (
+      <HealthRule
+        key={`${rule.rule}:${submitted}`}
+        summary={rule}
+        card={view.cards[rule.rule] ?? first}
+        scope={scope}
+        mode="llm_wiki"
+        pages={pages}
+        readingTree={tree.reading}
+        treeFailed={tree.error !== undefined}
+        disabled={view.moved}
+        paths={noPaths}
+        mismatch={() => {
+          void changeView((was) => ({ ...was, moved: true }));
+          rereadUpgrade();
+        }}
+        change={async (update) => {
+          const changed = await changeView((was) => ({
+            ...was,
+            cards: { ...was.cards, [rule.rule]: update(was.cards[rule.rule] ?? first) },
+          }));
+          return changed?.cards[rule.rule];
+        }}
+        read={readItems}
+        moved="wiki.upgrade_state"
+        level={3}
+      />
+    );
+  }
   return (
     <section aria-labelledby="upgrade-report-heading" className="min-w-0 space-y-4">
       <h2 id="upgrade-report-heading" className="text-lg font-semibold">
@@ -256,29 +373,17 @@ export const UpgradeReportSection = observer(function UpgradeReportSection({
       ) : (
         <>
           <p>{t("upgrade.reportPassed", { time: formatDateTime(report.computed_at, locale) })}</p>
-          <UpgradeGates gates={report.gates} stalePages={report.stale_pages} pages={pages} readingTree={readingTree} />
+          {view.moved && <p className="text-sm">{t("upgrade.checkStateChanged")}</p>}
+          <TreeFailure tree={tree} />
+          <UpgradeGates gates={report.gates} stalePages={report.stale_pages} pages={pages} tree={tree} />
           <UpgradeCounts counts={report.counts} />
-          {healthRuleOrder
-            .flatMap((rule) => report.rules.find((found) => found.rule === rule) ?? [])
-            .map((rule) => (
-              <section
-                key={rule.rule}
-                aria-labelledby={`report-${rule.rule}-heading`}
-                className="min-w-0 space-y-2 rounded-md border p-4"
-              >
-                <h3 id={`report-${rule.rule}-heading`} className="font-semibold">
-                  {t(ruleTitle(rule.rule))}
-                </h3>
-                <p className="text-sm">{issueCount(t, locale, rule)}</p>
-                {rule.items.length > 0 && (
-                  <ul aria-label={t(ruleTitle(rule.rule))} className="divide-y">
-                    {rule.items.map((item) => (
-                      <HealthItem key={item.item_key} item={item} pages={pages} readingTree={readingTree} />
-                    ))}
-                  </ul>
-                )}
-              </section>
-            ))}
+          {found.map(card)}
+          {clear.length > 0 && (
+            <details className="space-y-3">
+              <summary className="cursor-pointer font-medium">{t("health.clear", { count: clear.length })}</summary>
+              {clear.map(card)}
+            </details>
+          )}
         </>
       )}
     </section>
@@ -319,12 +424,12 @@ const UpgradeGates = observer(function UpgradeGates({
   gates,
   stalePages,
   pages,
-  readingTree,
+  tree,
 }: {
   gates: Gates;
   stalePages: number;
   pages: PageTreeStore;
-  readingTree: boolean;
+  tree: TreeRead;
 }) {
   const t = useT();
   const number = new Intl.NumberFormat(useStore().preferences.locale);
@@ -355,7 +460,7 @@ const UpgradeGates = observer(function UpgradeGates({
               <ul className="space-y-1 ps-4">
                 {gate.node_ids.map((id) => (
                   <li key={id}>
-                    <GateNode id={id} pages={pages} readingTree={readingTree} />
+                    <GateNode id={id} pages={pages} readingTree={tree.reading} treeFailed={tree.error !== undefined} />
                   </li>
                 ))}
               </ul>
@@ -367,20 +472,27 @@ const UpgradeGates = observer(function UpgradeGates({
   );
 });
 
-/** GateNode leads to a gate's node by its path while the tree has it; else it is loading, or no longer there. */
+/**
+ * GateNode leads to a gate's node by its path while the tree has it; else
+ * it is loading, or no longer there; left empty once the tree failed to
+ * read, which does not tell (M11/P3 design 4.3).
+ */
 const GateNode = observer(function GateNode({
   id,
   pages,
   readingTree,
+  treeFailed,
 }: {
   id: string;
   pages: PageTreeStore;
   readingTree: boolean;
+  treeFailed: boolean;
 }) {
   const t = useT();
   const { slug } = useWorkspace();
   const target = nodeTarget(pages, id);
   if (target === undefined) {
+    if (!readingTree && treeFailed) return null;
     return <span className="text-muted-foreground">{t(readingTree ? "status.loading" : "upgrade.gateNodeGone")}</span>;
   }
   const open = openOf(
