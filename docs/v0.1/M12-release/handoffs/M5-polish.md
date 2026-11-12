@@ -264,5 +264,6 @@ created: 2026-10-03
     - 375 宽下历史的第一个筛选下拉仍然跑出去：Chromium 75、WebKit 122，`max-w-full` 管不到，下拉与它的 `div.space-y-2` 一起超宽。
     - 选定之后，下拉框把长路径截在约 39 个字符，开头相同的两项看起来一样。
 39. **真实的读屏软件**（[M10/P4 S3 审查](../../M10-llm-wiki/reviews/P4-S3-web-review.md)）：目录、健康度与历史的状态只查过 `aria-live` 与角色，没有用真实的读屏软件走过。
+40. **升级中的笔记本，`AGENTS` 写"三个 prompt"**（[M11/P3 S2 审查](../../M11-upgrade/reviews/P3-S2-playbook-docs-review.md) A-Q1，[M11 总设计](../../M11-upgrade/00-M11-design.md)第 11 节主持者的决定第 299 条）：`AGENTS` 的两份模板（`wiki/domain/template-en-agents.md:33` 的"Three prompts are served there:"，`template-zh-CN-agents.md:33` 的"那里有三个 prompt："）写的是 LLM Wiki 建成之后的样子；发起升级时补写的 `AGENTS` 也取它（`wiki/app/template.go:112`），握手的说明含 `AGENTS` 的正文，所以升级中的 agent 一握手读到"有三个 prompt：ingest、query、lint"，这时它们都答 `notebook.not_llm_wiki`，答文字的 `upgrade` 没提。英文的"served"照 LLM Wiki 读仍可算对，中文按字面不实。S2 不改，进 M12 的打磨。改法：两份模板同改成"三个为 LLM Wiki 服务的 prompt"一类说法（或另提升级中的 `upgrade`）；已有笔记本里的 `AGENTS` 不随之改。
 
 之后的 M 推迟的体验事项照样追加到这份移交。
