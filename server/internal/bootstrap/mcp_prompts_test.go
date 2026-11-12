@@ -138,11 +138,11 @@ func TestThePromptListsAreTheContract(t *testing.T) {
 	}
 }
 
-// The three prompts of the composition root reach their handlers through
-// the notebook entry (M10 design 4.15): each its text, an argument once;
-// a standard notebook's refusal; the arguments' bound before it; the
-// account entry's unknown prompt; and a notebook no one lets the caller
-// see stops at the HTTP edge.
+// The LLM Wiki's three prompts reach their handlers through the notebook
+// entry (M10 design 4.15): each its text, an argument once; a standard
+// notebook's refusal; the arguments' bound before it; the account entry's
+// unknown prompt; and a notebook no one lets the caller see stops at the
+// HTTP edge. The upgrade's: TestUpgradePrompt.
 func TestTheWikiPromptsAreReached(t *testing.T) {
 	m := startMCPApp(t, nil)
 	wiki := m.createLLMWiki(t)

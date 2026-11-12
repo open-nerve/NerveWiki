@@ -53,9 +53,10 @@ func upgradePlaybookOf(calls *playbookCalls, found bool, auth error, up domain.U
 // The upgrade playbook is the reader's of a notebook upgrading alone
 // (M11/P3 design 3.16): lint.read decided as the other prompts decide it,
 // one who cannot see the notebook told it is not found; then the upgrade
-// under way, read once, no mode read; none, one in review or rolling back
-// is wiki.upgrade_state; an upgrading one answers the text. Each refusal
-// comes before the next port is asked.
+// under way, read once, no mode read; none, one in review (its submission
+// still being checked or reported) or rolling back is wiki.upgrade_state;
+// an upgrading one answers the text. Each refusal comes before the next
+// port is asked.
 func TestUpgradePlaybookAuthorizesAndRequiresUpgrading(t *testing.T) {
 	ctx := shared.WithActor(context.Background(), shared.Actor{UserID: lintExecID(3), SessionID: lintExecID(4)})
 	failure := errors.New("the database is gone")
@@ -63,6 +64,12 @@ func TestUpgradePlaybookAuthorizesAndRequiresUpgrading(t *testing.T) {
 	read := playbookCalls{"workspace " + nb, "authorize lint.read", "current " + nb}
 	upgrade := func(state domain.UpgradeState) domain.Upgrade {
 		return domain.Upgrade{ID: lintExecID(5), NotebookID: lintExecID(2), State: state}
+	}
+	// A submission that came back with its report: still in review, no text
+	// (M11/P3/S2 fix 1, P3S2A-N1).
+	reported := func(up domain.Upgrade) domain.Upgrade {
+		up.Report = &domain.UpgradeReport{Passed: true}
+		return up
 	}
 	for _, tt := range []struct {
 		name    string
@@ -88,6 +95,8 @@ func TestUpgradePlaybookAuthorizesAndRequiresUpgrading(t *testing.T) {
 			failure: failure, want: failure, calls: read},
 		{name: "no upgrade", ctx: ctx, found: true, want: domain.ErrUpgradeState, calls: read},
 		{name: "reviewing", ctx: ctx, found: true, ok: true, up: upgrade(domain.UpgradeReviewing), want: domain.ErrUpgradeState, calls: read},
+		{name: "reviewing, reported", ctx: ctx, found: true, ok: true, up: reported(upgrade(domain.UpgradeReviewing)),
+			want: domain.ErrUpgradeState, calls: read},
 		{name: "rolling back", ctx: ctx, found: true, ok: true, up: upgrade(domain.UpgradeRollingBack), want: domain.ErrUpgradeState, calls: read},
 		{name: "an upgrade of the row's another state", ctx: ctx, found: true, ok: true, up: upgrade(domain.UpgradeApproved),
 			want: domain.ErrUpgradeState, calls: read},

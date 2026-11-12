@@ -27,13 +27,13 @@ const (
 	upgradePlaybookDescription = `Organize this standard notebook into an LLM Wiki with the upgrade tools until every check passes, then submit it for an admin's review. Upgrading notebooks only.`
 )
 
-// Prompts are the LLM Wiki's three prompts, in the notebook entry alone
-// (M10 design 4.15): the account entry has no notebook to read them for,
-// and its open_notebook points at this one. A standard notebook lists them
-// too: the list is static, and a get answers notebook.not_llm_wiki. The
-// upgrade's prompt is listed for every notebook too, after them (M11
-// design 4.13); a get answers wiki.upgrade_state unless the notebook is
-// upgrading.
+// Prompts are the notebook entry's four: the LLM Wiki's three and the
+// upgrade's, in the notebook entry alone (M10 design 4.15): the account
+// entry has no notebook to read them for, and its open_notebook points at
+// this one. A standard notebook lists the LLM Wiki's three too: the list
+// is static, and a get answers notebook.not_llm_wiki. The upgrade's prompt
+// is listed for every notebook, after them (M11 design 4.13); a get
+// answers wiki.upgrade_state unless the notebook is upgrading.
 func Prompts(p PlaybooksUseCase, u UpgradePlaybookUseCase) []mcpserver.Prompt {
 	return []mcpserver.Prompt{
 		{Name: "ingest", Title: "Ingest a source", Description: ingestPlaybookDescription, Entry: mcpserver.NotebookEntry,
