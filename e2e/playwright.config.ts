@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const threeBrowsers = /stories\/(wiki\/lw(3|4|8|9|10|12|13)-|identity\/a10-|workspace\/w5-|upgrade\/up1-)/;
+const threeBrowsers =
+  /stories\/(wiki\/lw(3|4|8|9|10|12|13)-|identity\/a10-|workspace\/w5-|upgrade\/up1-|upgrade\/up7-)/;
 
 export default defineConfig({
   testDir: "stories",

@@ -47,3 +47,16 @@ export function countsIn(holder: Locator): Promise<string[][]> {
     .locator("dt")
     .evaluateAll((terms) => terms.map((term) => [term.textContent ?? "", term.nextElementSibling?.textContent ?? ""]));
 }
+
+/**
+ * The names of the buttons of the upgrade's page that open a dialog, in their order: its changes, each ending with
+ * an ellipsis (M11/P3 design 4.3); not a card's More.
+ */
+export async function changeButtons(page: Page): Promise<string[]> {
+  return (await page.getByRole("main").getByRole("button").allTextContents()).filter((name) => name.endsWith("…"));
+}
+
+/** The dialog of the change of the upgrade of the notebook named notebook: its approval, send-back or rejection. */
+export function reviewDialog(page: Page, change: "Approve" | "Send back" | "Reject", notebook: string): Locator {
+  return page.getByRole("alertdialog", { name: `${change} the upgrade of “${notebook}”?`, exact: true });
+}
