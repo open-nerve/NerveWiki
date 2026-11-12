@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M11/P3 审阅、批准与 playbook（三个 Step：S1 审阅（服务端）；S2 playbook 与文档（服务端）；S3 网页） |
-| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条）；2026-11-12（照 S1 的实施与审查修订）；2026-11-12（照 S2 的实施与审查修订） |
-| 状态 | 进行中（设计已审查，S1 已合并 `daf14dd1`，S2 已合并 `7d2e895a`；设计的[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节；S1、S2 的审查记录 [P3-S1-review-actions-review.md](reviews/P3-S1-review-actions-review.md)、[P3-S2-playbook-docs-review.md](reviews/P3-S2-playbook-docs-review.md)；实施与审查之后与代码不同之处照实改在各节（3.23、3.24 列出），结果在 10.1、10.2） |
+| 日期 | 2026-11-11（初稿）；2026-11-12（照设计审查第一轮修订；同日照修订核对第一、二轮再修订，加第 294 条）；2026-11-12（照 S1 的实施与审查修订）；2026-11-12（照 S2 的实施与审查修订）；2026-11-12（照 S3 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `daf14dd1`，S2 已合并 `7d2e895a`，S3 已合并 `（待填）`；设计的[审查记录](reviews/P3-design-review.md)，三轮修订核对在它的末三节；S1、S2、S3 的审查记录 [P3-S1-review-actions-review.md](reviews/P3-S1-review-actions-review.md)、[P3-S2-playbook-docs-review.md](reviews/P3-S2-playbook-docs-review.md)、[P3-S3-web-review.md](reviews/P3-S3-web-review.md)；实施与审查之后与代码不同之处照实改在各节（3.23、3.24、3.25 列出），结果在 10.1、10.2、10.3） |
 | 上级文档 | [M11 总设计](00-M11-design.md) 4.3 审阅之后的几条转移、4.8 的退回、4.9、4.10 的驳回、4.11–4.20 里属于 P3 的部分、第 5、7、8、9、10 节、第 11 节（尤其 176、181、183–185、195、196、201、202、204、212、216、222、232、236、240、243、244、258、259、262、264、274、276、277）与"移交的落实""写给后面的 M""总体设计的修订"里属于 P3 的条目；[P1 设计](01-P1-freeze-start-rollback.md)（写法，3.19、3.20 的回滚与结束）；[P2 设计](02-P2-guardrails-gate-submit.md)（3.12 的提交、3.19–3.21 的修正、第 9 节交给 P3 的事）；[审查记录](reviews/)（P1、P2 的设计与各 Step）；[v0.1 总体设计](../v0.1-design.md) 5.8、5.9、6.3、13.1–13.4 |
 | 代码位置的写法 | 同 00 号文档与 P1、P2 设计：模块写作 `wiki/app/abandon_upgrade.go:106`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；迁移写作 `00057_wiki_notebook_upgrades.sql:52`（`server/migrations/sql/`）；前端写作 `W/pages/notebook/upgrade-page.tsx:277`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/upgrade/up5-check-submit.spec.ts:312`；契约写作 `api/modules/wiki.yaml:163`。行号都是 P2 完成之后的 `main` `955fa579`（`docs: M11/P2 done`）的 |
 | 工作笔记 | 代码的核对分四份（wiki、notebook、page 的升级用例与 SQL；网页的升级页、检查一节与 `HealthRule`；组合根的测试设施、分份与 CI；MCP 的 prompt、README、人工清单与移交），本文引的每个行号都在其中核对过（附录）。实测在临时的 worktree 里、经 `heavy.sh`：批准的哈希重建在 10 万与 5 万个来源上的各段时长与计划（3.4、7.6），组合根第四、六、七、八份的本机两轮（7.5）；修订时另量决定 292 的读头语句在这本笔记本约占一成与约占四分之一的两个种子上的计划（3.4） |
@@ -950,6 +950,34 @@ S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-playbook-docs-review
   - **修复核对一轮**：三位把各自的发现都关上；新的 Nit 五条：P3S2B-N2（格数是 47）与 P3S2C-N8–N10（文档稿：3.17 的块漏了 `forbidden` 那半句；3.20 的块还是初稿，照改在原处；决定 299 的一条理由"改模板要动 LW1 等读模板的断言"不实，没有断言钉这一句，去掉）在本提交；P3S2B-N3（新加一句相反的话照过）不改，见上。没有 Important、Minor 留下，不再有修复轮。
 - **交给后面的**：`AGENTS` 模板的"三个 prompt"（第 299 条，M12 的打磨）；第三份贴线，以合并之后两次 `main` 为准（第 8 节第 1 条，10.2）；S3 的部分照第 0 节。
 
+### 3.25 S3 的实施对设计的修正
+
+S3 的审查与修复见 [S3 的审查记录](reviews/P3-S3-web-review.md)，结果在 10.3。与上文最初的设计不同之处已改在各节里（4.3，第 5 节，6.3，7.3、7.5、7.6，第 8 节第 6 条）。写了行号的，是实施的头 `05423d08` 的；修复的提交见 10.3。
+
+- **S3，实施时定下的**（实施者的 9 条偏离，括号里是它的号；三位审查者各在自己的范围里判过：A 判第 1、4、5、7 条对、第 6 条不对，B 判第 1、2、8 条对、第 3 条的理由不成立，C 逐条判进不进本节。第 6 条不对，由修复一轮改代码，不列（下面"审查与修复带来的"第 1 条）；第 8 条"UP7 的 API、MCP 版本也在三种浏览器里跑"不是偏离：7.5 本就写"UP7 的整个文件（页面、API、MCP 三个版本）在三种浏览器里跑"，与它不一致的是第 5 节的"UP7（三种浏览器…）"与第 8 节第 6 条 S3 的那一句，两处照 7.5 改（审查 C）；第 9 条"提交的标题写行为的改变"是过程，只记在 10.3（审查 C）。实施者没有要编号的产品决定，"实施中定"的几条都记在本节）：
+  - 4.3 `HealthScope`：提交的标识是这次提交的时刻 `submitted_at`，不是 `submission_id`：契约的 `Upgrade` 没有 `submission_id`（只有 `submitted_by`、`submitted_at`，`api/modules/wiki.yaml`），S3 不碰服务端；每次提交（接管也是）在笔记本行的锁下写新的 `now`（`upgrades.sql` 的 `SubmitUpgrade`），退回把它清成空、再交写新的，一次提交至多存一份报告（`KeepUpgradeReport` 要 `report IS NULL` 与这次的 `submission_id`），所以它就是"这一次提交"；同一次提交从"没有报告"到"有报告"键不变。"退回之后再交的新报告不接着旧的条目"由"the report's cards are its submission's"一格与变异 o05 钉住。4.3 的 `key`、`current()` 与 vitest 清单、00 号文档决定 287 写 `submission_id` 的四处照改（审查 P3S3C-N3；设计审查记录里 P3C-M4 的原话是历史，不改）（1）。
+  - 4.3 假服务端：`reportJSON` 没有加形状：`upgrade-page.test.tsx` 已有的 `keptReport` 就是"每个值互不相同、带条目、`count` 比条目多"的报告；`upgrade-check.test.tsx` 要的报告（缺 type 七条、存五条）在测试文件里组，放进 `upgrade-server.ts` 只有一处用，knip 要它不导出（2）。
+  - 第 5 节 UP7、UP8 的页面版本：批准那一页照第 5 节在笔记本首页放开流，之后等这次连接的最后一层（`GET …/assets`）答了，才断言连接没有读升级、UP7 才去下一页（`e2e/fixtures/upgrade-pages.ts` 的 `letInAtHome`：放开之前登记 `waitForRequest`，等它的 `response()`）。第 5 节没写这个"等"：不等的话，下一次载入会截断还在飞的读（WebKit、Firefox 的 `Load request cancelled`），断言也可能早于重连的读（3，修复一轮重写）。经过：实施时照第 5 节在首页放开、不等，WebKit 失败一次，改为撤销那一段之后才放开，说"放开之后的重连只重读装着的键"照样看得见；审查 B 判这个理由不成立：`page.goto` 是一次文档载入，SWR 的缓存每个文档一份，变更集页的新文档从没装过升级页，"没有读升级"无论怎样都成立（P3S3B-I1，下面）。修复一轮改回首页放开、加上等；UP7 三种浏览器本机 12 次、核对时 27 次都过。
+  - 4.3 树读失败：提示在列节点的地方之上（设计写"整节的顶上一处"）：检查一节在按"检查"、读到检查之后才列闸门与条目，提示在闸门之上；审阅一节在存下的报告之下、闸门之上；按"检查"之前与没有报告时没有节点要说（4）。重试时"读着"先于"失败"：`tree.error` 还在、`isValidating` 为真，格子写"加载中"、提示收起，读完仍失败才空着，`HealthItem`、`GateNode`、`TreeFailure` 三处判法一致；变异 o09 由重试挡住的一格钉住（5）。
+  - 4.3 审阅一节：卡的"更多"被拒为 `wiki.upgrade_state` 时写"升级的状态变了"并重读升级，同检查一节；设计只写了重读升级（7）。
+  - 4.3 三个动作："退回继续修改…"是 `outline`（批准是默认的实心、驳回是 `destructive`），三个按钮的轻重照后果排，与回滚一节"继续" `outline`、"结束" `destructive` 一致（实施中定，审查 C）。
+- **S3，实施者自己加的**（实施报告第 8 节；审查者在各自的范围里看过都对）：UP6 的页面版本重新打开之前先等页面经 `mode` 显示新的报告（不然发起人经 API 再交的 `mode` 的重读可能被 `page.goto` 截断，Chromium 记成 `net::ERR_ABORTED`）；20 秒的计时器的两格（第一轮变异 s3-12b 活下来之后补：卸下之后 SWR 绑定的 `mutate` 对没有 hook 挂着的键什么也不做，设计的"卸下之后不再读"看不见计时器没清，改成"离开之后 5 秒再回来：打开时读一次，之后 60 秒不再读"，另加"`mode` 带来报告之后不再读"一格，s3-12c、s3-12d 各被一格抓到）；树的重试挡住的一格（o09）；换了一次提交之后才到的 403 不重读（o29）；断网时退回不挂计时器（o30）；store 的"不重读"按动作各列真服务端答得出的码（批准 `not_ready`、503、断网，驳回 503、断网，退回断网）；e2e 的帮手 `changeButtons`、`reviewDialog`（`fixtures/upgrade-pages.ts`）。实施时 UP7 的页面版本末尾另有一段"最后才放开、断言不读升级"，修复一轮删去（上面第 3 条）。
+- **S3，审查与修复带来的**（编号是 S3 的审查记录的；修复一轮照主持者的修复说明 `fix-1.md`，提交见 10.3）：
+  - **退回的说明在拒绝的那一次重读回来时定一次**（P3S3A-I1 = P3S3C-M1；实施者的第 6 条）：实现的 `explain` 每次渲染读页面此刻的升级：重读回来之前先按旧的说（别人刚驳回时先写"正在计算"），之后报告经 `mode` 或 20 秒的再读到了，开着的对话框改说"状态不允许"，而这时恰恰可以退回；`Alert` 是 `role="alert"`，读屏先后读出两句矛盾的话。修复一轮：`change` 对这几个码等它的那一次重读回来再抛出，不另发第二个读；`sendBack` 按重读到的升级判，"审阅中、没有报告"时记下这一次拒绝与它的提交（`submitted_at`）、挂计时器；说明只认这一次拒绝，重读失败或读到别的状态时写通用的文字；20 秒只在同一次提交仍"审阅中、没有报告"时挂（P3S3A-N1 = P3S3C-N2：次数在状态变了之后不清，之后又回到"审阅中、没有报告"时没有新的拒绝也再读一次）；重读答 404 时不是"正在计算"（P3S3C-N1，c21）（4.3 照改；`a040dcc1`）。说明从 SWR 的缓存里读这一次重读的结果（组件的 `data` 在闭包里是旧的），记下的是那个 `ApiError` 对象与这次提交的 `submitted_at`，下一次退回开始时清掉两者。变异：c21、ra05 改前活、改后死；A1（`explain` 按此刻）、A2（`change` 不等重读）、A3（计时器不看 `submitted_at`）改后死（改前是缺的行为，由 A、C 的临时测试复现）。ra05（退回开始时不清）第一轮判作"照 N1 改了之后等价"，改后仍活，不是等价的：被拒、计时器挂着，再按一次退回、这次断网，留着旧的提交，到点多读一次；补"refused, then sent back again, the network failing"一格。核对一轮另查出一个窄的竞态：拒绝之后的重读被 `mode` 事件的读超过时，SWR 丢掉先发的那一个的答复，`catch` 读到的缓存仍是旧的"审阅中、没有报告"，对话框一直写"正在计算"（P3S3A-M3）；修复二轮：这一项仍 `isValidating`（有更新的读在飞）时再等一次重读、再读缓存（`a25fef6d`）。
+  - **批准之后重连不读升级要看得见**（P3S3B-I1）：UP8 在首页放开流之后等这次连接的最后一层读答了，再断言放开之后没有 `GET …/upgrade`、`apiFailures` 为空；vitest 的"approved"一格带事件流，批准之后发 `mode`、断开重连，请求记录仍只有批准之前的；UP7 见上第 3 条（第 5 节照改；`bc1a24e5`，vitest 那一格在 `a040dcc1`）。B 的 `leak` 改后在 UP8 与 UP7 三种浏览器 4 个全红（红在 `not.toContain(GET …/upgrade)`），vitest 里它挂着页面时就多读、改前改后都被原有的格抓到；另一条只在卸下之后才读的 `leak-after-unmount`（B 的 `leakA`、`leakM` 同类）只有新的"approved"一格抓得到；o27（批准之后重读升级）在 e2e 照旧 4 个全红。
+  - **三处缺测试**：批准答复时页面已离开就不跳转（P3S3A-M1 = P3S3B-M2，去掉 `mounted()` 照过）；离开页面时审阅一节的"更多"被中止（P3S3A-M2 = P3S3B-M3，`controllers` 换成不登记照过）；驳回、退回先盖住答复再重读（P3S3A-N4 = P3S3B-M1，`change(…, false)` 照过）。修复一轮各补一格（4.3 的测试清单照改；`a040dcc1`）：ra01（A5）、ra04、ra10、ra11 改前活、改后死。
+  - **批准之后按"后退"**（P3S3A-N2）：以 `mutate(["upgrade", id], undefined, { revalidate: false })` 清掉这一项，按"后退"回来不再先显示审阅中的旧按钮（4.3；`a040dcc1`，A4 一格；那一格批准之前等 2.1 秒，SWR 的 `dedupingInterval` 2 秒内不重发同一个键）。修复一轮在 `await navigate(…)` 之后就清，说那时页面已卸下；核对一轮查明不成立：react-router 以 `startTransition` 提交新的路由，`navigate` 回来时升级页还挂着，清掉之后它闪成"加载中"（P3S3A-N5）；修复二轮改为批准成功、页面还装着时先记下，`UpgradeRead` 卸下时才清（`a25fef6d`）。
+  - **假服务端的提交每次给新的 `submitted_at`**（P3S3A-N3：S3 以它认"这一次提交"，写死同一个值时"同一次进入里提交、退回、再提交"的格子会接着旧的条目；从 `2026-10-06T09:40:00Z` 起每次加一分钟）（4.3；`a040dcc1`）。
+  - **UP6 末段的注释**照实写"离开之后才放开"（P3S3B-N1）；**驳回之后断言任务的整行**（P3S3B-N2：名字、状态、开始的时刻、"取消"；驳回是本账号发起的，行里本就不写"由谁"）（`a040dcc1`、`bc1a24e5`）。
+  - **决定 300**（P3S3A-Q1，主持者的决定）：别的管理员退回之后，检查一节同样清掉提交之前的结果；只在回到 `upgrading` 的那一次读之前显示过报告、或 `submitted_at` 换过时清，提交被拒为 `not_ready`、`stale_index` 时照旧保留 `recheck` 的那一代（4.3；`a040dcc1`，A6 一格；A6（不清）、A6b（回到 `upgrading` 一律清）改后都死，后者死在 `upgrade-check.test.tsx` 别人的提交拿走又还回检查一节的两格）。"显示过报告"按这一次进入的页面读到的算：页面只读到"审阅中、没有报告"就看到 `upgrading`，分不出是提交被拒还是过了接管时刻的退回，不清（审查 A 判对，是这一判法固有的边界）。"换过提交"一支没有测试（核对一轮 P3S3A-N6，rb04 活），修复二轮补一格（`a25fef6d`）。
+  - **决定 301**（P3S3C-Q1，主持者的决定）：健康度页在树第一次读失败时条目不再一直写"加载中"：`readingTree` 照升级页加 `tree.error === undefined`，交 `treeFailed={tree.error !== undefined}`（4.3 那一句"健康度页不交 `treeFailed`，照旧"照改；`a040dcc1`，REVIEWC-H 一格，H1（不交）、H2（`readingTree` 不看 `tree.error`）改后死）。交了 `treeFailed`，树**再读**失败时也一样："更多"带来、树里没有的节点同样空着，不再写"节点已不可用"（树没读到，说它不可用是假话，同 P3C-N12）；`health-page-lifecycle.test.tsx` 的"missing More nodes…"一格随之改（逐个提交的核对抓到的；核对一轮 P3S3C-N7 要文字写上这一半）。
+  - **文档稿**（本提交）：`submission_id` 的四处（P3S3C-N3，见上第 1 条）；v0.1 总体设计 13.2 第 18 条加审阅一节"更多"的 403、第 9 条的括号写成不在首页放开的理由、第 15 节加一行（P3S3C-N4）；"No issues (1 checks)"进 M12 的打磨移交第 41 条（P3S3C-N5）。
+  - **修复一轮与 `fix-1.md` 不同之处**（修复报告第 5 节；审查 A 判第 1、3 条，C 判第 4 条）：所有经 `change` 的对话框（放弃、接着做、结束回滚、提交、驳回、退回，六个；修复报告写五个，漏了结束回滚，审查 A）遇到 `transfer.busy`、`wiki.upgrade_state`、`wiki.upgrade_not_ready`、`wiki.upgrade_stale_index` 都等重读回来再抛出，按钮的"正在…"到那时才收起，取消与 Esc 也挡着；批准走自己的函数，不等。修复说明要的是退回，代价是拒绝的文字晚一次读出现，重读挂住时对话框跟着挂住（与 POST 挂住同一类），好处是文字与身后的页面一致，P1、P2 的格都照过（审查 A 判可以接受）（1）。批准之后先跳转、再清缓存（2；核对一轮查明会闪，修复二轮改，见上）。决定 300 的"显示过报告"按这一次进入读到的算（3，见上）。决定 301 也管树再读失败（4，见上）。另：ra05 不是等价的，补了一格（见上）。
+  - **修复核对一轮**：A 判 I1、M1、M2、N1–N4 关上、决定 300 做对了，新的 P3S3A-M3（Minor：拒绝之后的重读被 `mode` 的读超过时说明读到旧的缓存）、N5（Nit：批准之后清缓存时升级页还挂着、闪成"加载中"）、N6（Nit：决定 300 的"换过提交"没有测试），由修复二轮改（`fix-2.md`）；B 判 I1、M1–M3、N1、N2 都关上，UP7 三种浏览器 27 次全过，`leak` 与它的两种变体 `leakA`、`leakM` 改前活、改后死，新测试没有同类的空断言，没有新发现；C 判 M1、N1、N2、Q1（决定 301）关上，N3–N5 在文档稿里关上，新的 P3S3C-N6–N9 都在文档稿（UP7 的说法照修复之后写、决定 301 与 4.3 加上树再读失败、4.3 写明六个对话框都等重读、M12 第 41 条不用 `W/`），在本提交。
+  - **修复二轮**（`fix-2.md`，P3S3A-M3、N5、N6，一个 `web` 提交 `a25fef6d`）：退回被拒之后，缓存里这一项仍 `isValidating` 时再 `await reread()` 一次（新发的读比 `mode` 的那一次新，答复不会被丢），再读缓存、定说明；批准成功、页面还装着时记下 `approvedAway`，`UpgradeRead` 一个只有清理的 effect（依赖在这一页的一生里不变，只在卸下时跑）为真时清缓存；决定 300 的"换过提交"一格（审阅中没有报告，经 `mode` 换了提交，再经 `mode` 回到 `upgrading`）。变异：rb04 与"清缓存挪到跳转之前"改前活，A 的 A8 原样在 `bc1a24e5` 上过、A10 失败；改后 6 条全死（不再读一次、A8 原样的期望、照修复一轮在跳转之后清、跳转之前清、从不清、rb04）。修复报告另更正修复一轮第 5 节第 1 条：受影响的是六个对话框（上面）。
+  - **修复核对二轮**（审查 A）：P3S3A-M3、N5、N6 关上，A8、A10、rb04 改前活、改后死，新加的 4 条变异都被抓到；"再读一次"只剩第二个 `mode` 又晚于这次再读的更窄的一种，不再追；卸下时才清的 effect 只在卸下时跑，跳转被打断时留到离开时清，也对。新的 P3S3A-N7（Nit："再读一次"不看拒绝的码，断网等拒绝碰上有读在飞时也多读一次升级）不改：只在断网而有读在飞时多读一次，无害。没有 Important、Minor 留下，修复到此为止。
+- **交给后面的**：英文的"1 checks"（M12 的打磨第 41 条）；P3 的完成由之后的 `docs: M11/P3 done` 写（第 8 节第 5 条）；M11 收尾照第 9 节。
+
 ## 4. 网页
 
 ### 4.1 S1 随服务端的部分
@@ -969,7 +997,7 @@ S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-playbook-docs-review
 | 文件 | 改动 |
 |---|---|
 | `W/pages/notebook/health-rule.tsx` | `HealthRuleItem`、`HealthCard.cursor` 可为 `undefined`、`summary`/`paths`/`read` 的类型；可缺的 `treeFailed`，原样交给 `HealthItem`（下面） |
-| `W/pages/notebook/health-page.tsx` | `paths` 的参数放宽；`read` 在没有游标时抛缺陷（下面） |
+| `W/pages/notebook/health-page.tsx` | `paths` 的参数放宽；`read` 在没有游标时抛缺陷（下面）；树读失败时交 `treeFailed`、`readingTree` 不再恒真（决定 301，修复一轮） |
 | `W/pages/notebook/health-rule.test.tsx` | 替身的 `read` 的类型（`:416`）；`undefined` 游标的几格 |
 | `W/pages/notebook/health-item.tsx`、`W/pages/notebook/upgrade-check.tsx` | 树读失败时路径一格空着（`treeFailed`）；`UpgradeReportSection` 经 `HealthRule`、它的 `HealthScope`；`itemsReader` |
 | `W/pages/notebook/upgrade-page.tsx` | 审阅一节挪进这一次进入的 `SWRConfig`；三个动作与批准自己的函数；审阅中不给"放弃"（决定 291）；退回的说明与 20 秒的再读；退回之后清掉 `checked` |
@@ -977,7 +1005,7 @@ S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-playbook-docs-review
 | `W/services/upgrade.service.ts`、`W/stores/notebook.store.ts` | 三个动作；`checkItems` 的游标可缺 |
 | `W/i18n/messages/en.ts`、`zh-CN.ts` | 三个按钮、三个对话框、`upgrade.approveNotReady`、`upgrade.sendBackChecking`、`upgrade.bannerAnyAdminReject`、`upgrade.approveRootUnread`；`upgrade.startBody` 的"批准或放弃"改为"批准、驳回或放弃"（en"approved, rejected or abandoned"，`en.ts:704-705`、`zh-CN.ts:680`；设计审查 P3C-N23） |
 | `W/pages/notebook/general-page.test.tsx` | `:439` 断言发起对话框的正文，随 `upgrade.startBody` 改 |
-| `W/test/upgrade-server.ts` | 三条路由；`reportJSON` 加一个形状 |
+| `W/test/upgrade-server.ts` | 三条路由；提交路由每次给新的 `submitted_at`（修复一轮）；`reportJSON` 不加形状（3.25） |
 | `W/pages/notebook/upgrade-page.test.tsx`、`upgrade-check.test.tsx`、`upgrade-banner.test.tsx`、`W/stores/notebook.store.test.ts` | vitest（下面；`upgrade-page.test.tsx:175-196`、`:856-867` 与 `upgrade-banner.test.tsx:49-51`、`:127-129` 随决定 291 改） |
 | `e2e/stories/upgrade/up5-check-submit.spec.ts` | 两处断言（本节末） |
 | `e2e/stories/upgrade/up6-…`、`up7-…`、`up8-…`、`e2e/playwright.config.ts` | 页面版本；`threeBrowsers` 加 `upgrade\/up7-`（第 5 节） |
@@ -1001,18 +1029,18 @@ export interface HealthCard {
 //   summary: Pick<LintRuleSummary, "rule" | "count" | "count_capped">;
 //   paths: (items: readonly HealthRuleItem[]) => void;
 //   read: (rule: LintRule, cursor: string | undefined, signal: AbortSignal) => Promise<LintPage>;
-//   treeFailed?: boolean; // passed on to each HealthItem as is (:223-232); the health page passes none
+//   treeFailed?: boolean; // passed on to each HealthItem as is (:223-232); the health page passes its tree's too (decision 301)
 ```
 
 "更多"照旧在 `card.cursor !== null` 时渲染（`:238`），读之前同样判（`:178`），把 `card.cursor`（可能是 `undefined`）交给 `read`。从第一页读到的前几项与存下的重复，`HealthRule` 已按 `item_key` 去重（`:155-160`、`:181`、`:194`），不多出行。`HealthRule` 内部记下的读的游标（`operation` 的 `cursor`，`:107`）随之是 `string | undefined`。健康度页随之改两处（审查 C 只改类型、`tsc --noEmit` 报出三处，设计审查 P3C-M3；初稿说"行为不变、tsc 守着"不对）：`paths`（`health-page.tsx:247`）的参数放宽为 `readonly HealthRuleItem[]`（`healthNodeId` 本就收 `UpgradeReportItem`，`health-item.tsx:17`）；`read`（`:248`）在游标为 `undefined` 时抛一个缺陷（`throw new Error("a health card reads on from its cursor")`），不放宽 `WikiService.items`（`W/services/wiki.service.ts:21`）：健康度页的卡的游标只会是 `string | null`，第一页在摘要里，抛缺陷守住 P2 4.3 的这个用意（主持者倾向的那一种）。`health-rule.test.tsx:416` 的替身的 `read` 的类型随之放宽。检查一节的卡的游标是 `string | null`，行为不变。`UpgradeService.checkItems`（`W/services/upgrade.service.ts:69`）的游标改为可缺，缺时不带 `cursor` 这个查询参数（契约里它本就可缺，`api/dist/openapi.yaml` 的 `listUpgradeCheckItems`）。
 
 **审阅一节**（`UpgradeReportSection`，`W/pages/notebook/upgrade-check.tsx:238-286`）：
 
-- 规则改由 `HealthRule` 渲染（`level={3}`、`mode="llm_wiki"`、`moved="wiki.upgrade_state"`、`paths={noPaths}`，同检查一节的 `card()`，`:170-199`），替掉自己渲染的 `h3`、数与 `HealthItem`（`:261-281`）。卡的初值：`items` 是存下的条目；`cursor` 在 `count > items.length` 或 `count_capped` 时是 `undefined`，否则是 `null`；其余成员照检查一节的 `card()`。规则照检查一节分两组（`:167-169`、`:219-224`）：计数大于 0 的照 `healthRuleOrder` 列出，计数为 0 的收进 `<details>`（`health.clear`）。
+- 规则改由 `HealthRule` 渲染（`level={3}`、`mode="llm_wiki"`、`moved="wiki.upgrade_state"`、`paths={noPaths}`，同检查一节的 `card()`，`:170-199`），替掉自己渲染的 `h3`、数与 `HealthItem`（`:261-281`）。卡的初值：`items` 是存下的条目；`cursor` 在 `count > items.length` 或 `count_capped` 时是 `undefined`，否则是 `null`；其余成员照检查一节的 `card()`。规则照检查一节分两组（`:167-169`、`:219-224`）：计数大于 0 的照 `healthRuleOrder` 列出，计数为 0 的收进 `<details>`（`health.clear`）。卡的"更多"被拒为 `wiki.upgrade_state` 时写"升级的状态变了"并重读升级，同检查一节（S3 的实施，3.25）。
 - 挪进这一次进入的 `<SWRConfig value={checksConfig}>`（`upgrade-page.tsx:300` 那一个；P2 第 9 节第 4 条）：卡的状态与"更多"读到的条目随这一次进入，离开升级页再回来从存下的报告重新开始。
 - 审阅一节的 `HealthScope`（`HealthRule` 的键、"更多"的取舍与 403 的重读都靠它，`health-rule.tsx:106-137`；设计审查 P3C-M4）：
-  - `key`：`["upgrade-report", store.loginId, workspace.id, notebook.id, upgrade.id, upgrade.submission_id]`。不带这一次进入的 `locationKey`、`nonce`（检查一节带，`upgrade-check.tsx:93-101`）：缓存已是这一次进入的（`checksConfig`），键里不再带它，"审阅一节留在 `SWRConfig` 之外"的变异才会让离开再进入接着旧的条目、被那一格抓到。带 `submission_id`：退回之后再提交存下的新报告不接着旧的条目。
-  - `current()`：这一次进入还活着（`entry.control.current.alive`）、登录没变（`store.auth.state.loginId === store.loginId`）、显示的升级的 `submission_id` 等于键里的（每次渲染写入的 ref）。不看检查一节的 `generation`：审阅中没有检查。
+  - `key`：`["upgrade-report", store.loginId, workspace.id, notebook.id, upgrade.id, upgrade.submitted_at]`。不带这一次进入的 `locationKey`、`nonce`（检查一节带，`upgrade-check.tsx:93-101`）：缓存已是这一次进入的（`checksConfig`），键里不再带它，"审阅一节留在 `SWRConfig` 之外"的变异才会让离开再进入接着旧的条目、被那一格抓到。带这次提交的时刻 `submitted_at`（契约的 `Upgrade` 没有 `submission_id`；每次提交、接管也是，在笔记本行的锁下写新的 `submitted_at`，一次提交至多存一份报告；S3 的实施，审查 P3S3C-N3，3.25）：退回之后再提交存下的新报告不接着旧的条目。
+  - `current()`：这一次进入还活着（`entry.control.current.alive`）、登录没变（`store.auth.state.loginId === store.loginId`）、显示的升级的 `submitted_at` 等于键里的（每次渲染写入的 ref）。不看检查一节的 `generation`：审阅中没有检查。
   - `controllers`：这一次进入的（`entry.control.current.controllers`，同检查一节）。
 - `readItems` 提成模块里的一个函数（P2 第 9 节第 5 条）：
 
@@ -1025,7 +1053,7 @@ export interface HealthCard {
   ```
 
   检查一节与审阅一节各以自己的 `current()` 调它；`UpgradeReportSection` 从 `UpgradeRead` 收 `rereadNotebooks`（外层的 `mutate(["notebooks", ws])`，`upgrade-page.tsx:149`，不是这一次进入的缓存的）。两节各一格 403 的测试（同一个判断两处用，各自测）。
-- 树读失败（P2 第 9 节第 7 条）：`UpgradeRead` 把 `tree={{ error, reading, retry }}` 交给检查与审阅两节，照健康度页（`W/pages/notebook/health-page.tsx:51`、`:60`、`:245`、`:292-294`）：`reading` 是 `pages.nodes === undefined && tree.error === undefined || tree.isValidating`，失败时整节的顶上一处显示"加载失败"与"重试"（`NotLoaded`），不再一直写"加载中"；闸门的节点（`GateNode`，`upgrade-check.tsx:384`）与条目的路径（`HealthItem`，`health-item.tsx:64`）收一个可缺的 `treeFailed`，为真时那一格空着，不写"（已不在）"（`upgrade.gateNodeGone`）、"节点已不可用"（`health.nodeUnavailable`）：树没读到，说节点不在是假话（设计审查 P3C-N12）。检查与审阅两节的条目都经 `HealthRule` 渲染，`HealthRule` 给 `HealthItem` 今天只交 `readingTree`（`health-rule.tsx:223-232`），所以 `HealthRule` 的 props 加可缺的 `treeFailed`、原样交给 `HealthItem`（设计审查 P3C-N20）。健康度页不交 `treeFailed`，照旧。
+- 树读失败（P2 第 9 节第 7 条）：`UpgradeRead` 把 `tree={{ error, reading, retry }}` 交给检查与审阅两节，照健康度页（`W/pages/notebook/health-page.tsx:51`、`:60`、`:245`、`:292-294`）：`reading` 是 `pages.nodes === undefined && tree.error === undefined || tree.isValidating`，失败时列节点的地方之上一处显示"加载失败"与"重试"（`fieldset aria-label="Page paths"` 里的 `NotLoaded`，同健康度页；检查一节在闸门之上，审阅一节在存下的报告之下、闸门之上：按"检查"之前与没有报告时没有节点要说，3.25），不再一直写"加载中"；闸门的节点（`GateNode`，`upgrade-check.tsx:384`）与条目的路径（`HealthItem`，`health-item.tsx:64`）收一个可缺的 `treeFailed`，为真时那一格空着，不写"（已不在）"（`upgrade.gateNodeGone`）、"节点已不可用"（`health.nodeUnavailable`）：树没读到，说节点不在是假话（设计审查 P3C-N12）。检查与审阅两节的条目都经 `HealthRule` 渲染，`HealthRule` 给 `HealthItem` 今天只交 `readingTree`（`health-rule.tsx:223-232`），所以 `HealthRule` 的 props 加可缺的 `treeFailed`、原样交给 `HealthItem`（设计审查 P3C-N20）。健康度页同样交：`readingTree` 照升级页加 `tree.error === undefined`，交 `treeFailed={tree.error !== undefined}`（决定 301，修复一轮；初稿写"健康度页不交 `treeFailed`，照旧"，它的树第一次读失败时 `pages.nodes` 一直没有，条目一直写"加载中"，审查 P3S3C-Q1）；树再读失败时同样，"更多"带来、树里没有的节点空着，不写"节点已不可用"（树没读到，说它不可用是假话，同 P3C-N12）。重试时 `tree.error` 还在、`isValidating` 为真，"读着"先于"失败"：格子写"加载中"、提示收起，读完仍失败才空着（S3 的实施，3.25）。
 - 没有报告时照旧写"正在核对，或上一次提交没有做完。"（`upgrade.reportPending`）。
 
 **三个动作**（第 288、291 条）：`reviewing` 时按钮一行（`upgrade-page.tsx:280-291`）依次是"批准…"（en"Approve…"，只在有报告时）、"退回继续修改…"（"Send back for more work…"）、"驳回…"（"Reject…"）；不给"放弃这次升级…"（决定 291：今天 `:280-291` 在 `reviewing` 也给它，这一处改为只在 `upgrading`）。`upgrading` 照旧是"提交审阅…"与"放弃这次升级…"。对话框都是 `ConfirmDialog`，`held={dialogOf(which)}`（`:228-234`），`type Change`（`:64`）加 `"approve" | "sendBack" | "reject"`：
@@ -1040,9 +1068,9 @@ export interface HealthCard {
 
 拒绝的文字：驳回与退回经 `change`（`:176-204`），它对 `wiki.upgrade_state`、`wiki.upgrade_not_ready` 重读升级再抛出（`:183-192`），对话框照 `problemMessages` 显示。批准有自己的函数（设计审查 P3C-M2：`change` 成功之后在页面还装着时一定 `reread()`、`shows` 时还先把答复写进缓存，`:198-203`，批准经它就在跳转之前多读一次升级、答 404，UP7、UP8 会因为未声明的 404 失败，`holdStream` 挡不住它）：拒绝那一支照 `change`（`wiki.upgrade_state`、`wiki.upgrade_not_ready` 重读升级再抛出）；成功那一支不写缓存、不 `reread`，只在 `mounted()` 时跳转（下面）。批准答 `wiki.upgrade_not_ready` 时对话框显示 `upgrade.approveNotReady`（zh"批准前重新核对时有检查没有通过，升级仍在审阅中：可以退回继续修改，或者驳回。"，en"Checked again before the approval, a check did not pass; the upgrade is still in review: send it back, or reject it."；批准的 `texts` 照提交的 `:343-353` 写）：`upgrade.notReady` 与通用的 `problem.wiki.upgrade_not_ready` 都写"已回到升级中"，批准时不实（同 2.1 第 4 条在服务端改掉的那一句；设计审查 P3C-M1）。`server_busy` 显示通用的忙的文字，不自动重试（同发起）。
 
-**退回在提交正在计算时**（00 号文档 4.15，核对 C3-M2）：退回答 409 `wiki.upgrade_state`、而 `change` 重读之后的升级仍是"审阅中、没有报告"时（经 `ConfirmDialog` 的 `explain` 按重读之后的状态定，不按打开对话框时的：409 也可能来自别的管理员刚驳回或退回；设计审查 P3C-N14），对话框显示自己的文字 `upgrade.sendBackChecking`（zh"上一次提交正在计算，稍后再试。"，en"The previous submission is still being checked: try again in a moment."），不显示服务端英文的 `detail`；`change` 已重读升级；另在 20 秒之后再自动重读一次（`setTimeout`，`UpgradeRead` 卸下、升级的状态变了或下一次退回时清掉；20 秒是 `LintTimeout + 10 s` 的上界，网页拿不到实例的 `LintTimeout`）。有报告时的 409（例如别人已经批准）照通用的文字。
+**退回在提交正在计算时**（00 号文档 4.15，核对 C3-M2）：退回答 409 `wiki.upgrade_state`、而 `change` 重读之后的升级仍是"审阅中、没有报告"时（经 `ConfirmDialog` 的 `explain` 按重读之后的状态定，不按打开对话框时的：409 也可能来自别的管理员刚驳回或退回；设计审查 P3C-N14。所有经 `change` 的对话框（放弃、接着做、结束回滚、提交、驳回、退回，六个）遇到 `transfer.busy`、`wiki.upgrade_state`、`wiki.upgrade_not_ready`、`wiki.upgrade_stale_index` 都等它的那一次重读回来再抛出，不另发第二个读，按钮的"正在…"到那时才收起；批准走自己的函数，不等（修复一轮，3.25）。`sendBack` 从缓存里读这一次重读的结果，"审阅中、没有报告"时记下这一次拒绝与它的提交（`submitted_at`）；这一项仍 `isValidating`（拒绝之后的重读被 `mode` 事件的读超过，SWR 丢掉先发的那一个的答复）时再等一次重读、再读缓存（审查 P3S3A-M3，修复二轮；"再读一次"不看拒绝的码，断网等拒绝碰上有读在飞时也多读一次升级，无害，审查 P3S3A-N7，不改）；说明只认这一次拒绝，之后的读不再改它，重读失败（例如答 404）或读到别的状态时写通用的文字。S3 建成时 `explain` 每次渲染读页面此刻的升级：重读回来之前先按旧的说，报告到了之后改说"状态不允许"，`role="alert"` 先后读出两句矛盾的话；审查 P3S3A-I1 = C-M1、C-N1，修复一轮，3.25），对话框显示自己的文字 `upgrade.sendBackChecking`（zh"上一次提交正在计算，稍后再试。"，en"The previous submission is still being checked: try again in a moment."），不显示服务端英文的 `detail`；`change` 已重读升级；另在 20 秒之后再自动重读一次（`setTimeout`，只在被拒的那一次提交仍"审阅中、没有报告"时挂，`UpgradeRead` 卸下、升级的状态变了或下一次退回时清掉，状态变了之后不再挂（S3 建成时次数不清，之后又回到"审阅中、没有报告"时没有新的拒绝也再读一次，审查 P3S3A-N1 = C-N2，修复一轮）；20 秒是 `LintTimeout + 10 s` 的上界，网页拿不到实例的 `LintTimeout`）。有报告时的 409（例如别人已经批准）照通用的文字。
 
-**批准之后**（第 289 条）：`store.approveUpgrade` 成功之后，若页面还装着（`useMounted`，`W/app/mounted.ts:12`），`navigate(\`/${slug}/notebooks/${id}\`, { state: arrived })`，笔记本首页的标题接到达的焦点（`notebook-home.tsx:34`、`:44`）；对话框随页面卸下，不走 `onClosed` 的焦点。不再读 `["upgrade", id]`（批准之后它答 404 `wiki.upgrade_not_found`）。驳回与退回留在升级页，照现有的 `change` 盖住答复再重读，焦点照 `dialogOf` 回到按钮或标题。退回成功之后清掉这一次进入的 `checked`（`upgrade-page.tsx:115`，`setChecked({ generation: 0, upgrade: "" })`），检查一节回到"还没有检查"：不显示提交之前缓存里的结果，那容易让人误读（设计审查 P3C-N15，主持者倾向的那一种）。
+**批准之后**（第 289 条）：`store.approveUpgrade` 成功之后，若页面还装着（`useMounted`，`W/app/mounted.ts:12`），`navigate(\`/${slug}/notebooks/${id}\`, { state: arrived })`，笔记本首页的标题接到达的焦点（`notebook-home.tsx:34`、`:44`）；对话框随页面卸下，不走 `onClosed` 的焦点。不再读 `["upgrade", id]`（批准之后它答 404 `wiki.upgrade_not_found`）。批准成功、页面还装着时先记下，`UpgradeRead` 卸下时（只在卸下时跑的 effect 的清理里）以 `mutate(["upgrade", id], undefined, { revalidate: false })` 清掉这一项：没有装着的 hook，不发请求，按"后退"回到升级页不再先显示审阅中的旧按钮（审查 P3S3A-N2，修复一轮；修复一轮在 `await navigate(…)` 之后就清，react-router 以 `startTransition` 提交新的路由，那时升级页还挂着，闪成"加载中"，审查 P3S3A-N5，修复二轮改为卸下时清；清理所在的 effect 的依赖在这一页的一生里不变，只在卸下时跑）。驳回与退回留在升级页，照现有的 `change` 盖住答复再重读，焦点照 `dialogOf` 回到按钮或标题。退回成功之后清掉这一次进入的 `checked`（`upgrade-page.tsx:115`，`setChecked({ generation: 0, upgrade: "" })`），检查一节回到"还没有检查"：不显示提交之前缓存里的结果，那容易让人误读（设计审查 P3C-N15，主持者倾向的那一种）。别的管理员退回（页面经 `mode` 看到）同样清掉：只在回到 `upgrading` 的那一次读之前显示过报告、或 `submitted_at` 换过时清；提交被拒为 `not_ready`、`stale_index` 时也从审阅中回到 `upgrading`，那时照旧保留 `submit` 故意 `recheck` 的那一代（决定 300，修复一轮）。"显示过报告"按这一次进入的页面读到的算：页面只读到"审阅中、没有报告"就看到 `upgrading` 时，分不出是提交被拒还是过了接管时刻的退回，不清。
 
 **横幅**（决定 291）：`upgrade-banner.tsx:42` 的管理员那一句按状态：`upgrading` 照旧 `upgrade.bannerAnyAdmin`；`reviewing` 用新的 `upgrade.bannerAnyAdminReject`（zh"任何笔记本管理员都可以驳回这次升级。"，en"Any admin of the notebook can reject this upgrade."）；`rolling_back` 照旧不写（决定 246）。
 
@@ -1057,14 +1085,16 @@ export interface HealthCard {
 - `POST …/upgrade/reject`：403；不是 `reviewing` 409；否则 200 `rolling_back`、`ending: "rejected"`、带 `rollbackJobJSON`（`:159`），发一次 `mode`。
 - `POST …/upgrade/send-back`：403；不是 `reviewing` 409；没有报告而没有设"已过接管的时刻"时 409 `wiki.upgrade_state`、`detail` 是"The previous submission is still being checked: check again in a moment."；否则 200 `upgrading`、提交与报告清空，发一次 `mode`。
 - `GET …/upgrade/check/{rule}`：不带游标时答第一页、`reviewing` 时也答，今天已是如此（`upgrade-server.ts:350-356`、`:470`），不改（设计审查 P3C-N7）。
-- `reportJSON`（`:130`）加一个带条目、`count` 比条目多的形状，每个值互不相同。
+- `reportJSON`（`:130`）不加形状：`upgrade-page.test.tsx` 已有的 `keptReport` 就是"每个值互不相同、带条目、`count` 比条目多"的报告，`upgrade-check.test.tsx` 的报告在测试文件里组（S3 的实施，3.25；初稿写"加一个……的形状"）。
+- 提交路由每次给新的 `submitted_at`：审阅一节以它认"这一次提交"（S3 建成时写死同一个值，审查 P3S3A-N3，修复一轮）。
 
 **测试**（vitest；夹具的标量互不相同、整值断言，05-lessons 的"投影的测试"）：
 
 - `health-rule.test.tsx`：游标为 `undefined` 的卡渲染"更多"、点它以 `undefined` 调 `read`、第一页里与已有条目同 `item_key` 的不重复、之后照答复的 `next_cursor` 继续；游标为 `null` 的不渲染、不读；`UpgradeReportItem` 的条目照样渲染（没有 `cursor` 成员）。
-- `upgrade-check.test.tsx`：审阅一节经 `HealthRule` 渲染每条规则（数、至多五项）；"更多"从第一页读、请求不带 `cursor`；读到的追加在存下的之后；条目已是全部的规则没有"更多"；审阅一节的"更多"答 403 时重读笔记本列表（且只在这一代当前时）；检查一节的 403 一格照旧；树读失败时两节显示"加载失败"与"重试"，点重试之后读出路径；离开再进入，审阅一节从存下的报告重新开始（这一次进入的缓存）；退回之后再提交的新报告不带旧的条目（键带 `submission_id`）；计数为 0 的规则在 `<details>` 里；树读失败时闸门的节点与条目的路径一格空着、没有"（已不在）"与"节点已不可用"。
-- `upgrade-page.test.tsx`：审阅中有报告时三个按钮依次在、没有"放弃这次升级…"（`:175-196` 的 `reviewing` 一行改为断言没有"放弃"；`:856-867` 的 `sectionsInOrder` 的按钮表加三个名字，审阅一行是 `["Where it is", "Check report", "Approve…", "Send back for more work…", "Reject…"]`）；没有报告时没有"批准"、有另两个；`upgrading` 照旧有"放弃"；每个对话框的语气、标题与正文（树没读到时 `{root}` 是"提议的来源根"）；批准成功之后在笔记本首页、焦点在标题、不再读升级（请求的记录里批准之后没有 `GET upgrade`）；批准答 `wiki.upgrade_not_ready` 时对话框留着、显示 `upgrade.approveNotReady`、升级被重读；退回成功之后检查一节没有提交之前的结果；退回答 409 而重读之后已不在审阅中时显示通用的文字、不是 `sendBackChecking`；批准答 503 的文字；驳回之后页面是回滚一节（任务的整行）；退回之后回到升级中、接入一节与"提交审阅…"出现；没有报告时退回答 409：显示 `upgrade.sendBackChecking`、重读一次、20 秒之后再读一次（假的计时器），卸下之后不再读；有报告时的 409 显示通用的文字；`mode` 事件之后审阅一节随新的报告更新。
+- `upgrade-check.test.tsx`：审阅一节经 `HealthRule` 渲染每条规则（数、至多五项）；"更多"从第一页读、请求不带 `cursor`；读到的追加在存下的之后；条目已是全部的规则没有"更多"；审阅一节的"更多"答 403 时重读笔记本列表（且只在这一代当前时）；检查一节的 403 一格照旧；树读失败时两节显示"加载失败"与"重试"，点重试之后读出路径；离开再进入，审阅一节从存下的报告重新开始（这一次进入的缓存）；退回之后再提交的新报告不带旧的条目（键带 `submitted_at`）；离开升级页时审阅一节的"更多"被中止（审查 P3S3A-M2 = B-M3，修复一轮）；计数为 0 的规则在 `<details>` 里；树读失败时闸门的节点与条目的路径一格空着、没有"（已不在）"与"节点已不可用"。
+- `upgrade-page.test.tsx`：审阅中有报告时三个按钮依次在、没有"放弃这次升级…"（`:175-196` 的 `reviewing` 一行改为断言没有"放弃"；`:856-867` 的 `sectionsInOrder` 的按钮表加三个名字，审阅一行是 `["Where it is", "Check report", "Approve…", "Send back for more work…", "Reject…"]`）；没有报告时没有"批准"、有另两个；`upgrading` 照旧有"放弃"；每个对话框的语气、标题与正文（树没读到时 `{root}` 是"提议的来源根"）；批准成功之后在笔记本首页、焦点在标题、不再读升级（请求的记录里批准之后没有 `GET upgrade`）；批准答 `wiki.upgrade_not_ready` 时对话框留着、显示 `upgrade.approveNotReady`、升级被重读；退回成功之后检查一节没有提交之前的结果；退回答 409 而重读之后已不在审阅中时显示通用的文字、不是 `sendBackChecking`；批准答 503 的文字；驳回之后页面是回滚一节（任务的整行）；退回之后回到升级中、接入一节与"提交审阅…"出现；没有报告时退回答 409：显示 `upgrade.sendBackChecking`、重读一次、20 秒之后再读一次（假的计时器），卸下之后不再读；有报告时的 409 显示通用的文字；`mode` 事件之后审阅一节随新的报告更新。修复一轮另加：退回被拒为"正在计算"之后报告到了、对话框仍写 `sendBackChecking`，挡住重读时从头到尾不写它，重读答 404 时不是"正在计算"，状态变了之后没有新的拒绝不再挂 20 秒（审查 P3S3A-I1 = C-M1、C-N1、A-N1 = C-N2）；批准答复时页面已离开不跳转（P3S3A-M1 = B-M2）；驳回、退回先盖住答复（挡住之后的那次 `GET upgrade`，P3S3A-N4 = B-M1）；批准之后按"后退"不先显示旧按钮（P3S3A-N2）；"approved"一格带事件流，批准之后发 `mode`、断开重连，请求记录仍只有批准之前的（P3S3B-I1）；驳回之后断言任务的整行（P3S3B-N2）；别的管理员退回之后检查一节清掉（决定 300）；退回被拒、计时器挂着时再退回而断网，不留旧的提交（ra05）。修复二轮另加：拒绝之后的重读被 `mode` 的读超过时只出现通用的文字（P3S3A-M3）；批准之后跳转之前升级页不闪成"加载中"（P3S3A-N5）；决定 300的"换过提交"：审阅中没有报告、经 `mode` 换了提交、再经 `mode` 回到 `upgrading`，检查一节清掉、不重读检查（P3S3A-N6）。
 - `upgrade-banner.test.tsx`：`:49-51` 与 `:127-129` 两格改为：管理员在 `upgrading` 看到"Any admin of the notebook can abandon this upgrade."，在 `reviewing` 看到"Any admin of the notebook can reject this upgrade."、没有"abandon"那一句，`rolling_back` 两句都没有（决定 291）。
+- 健康度页（决定 301，修复一轮）：树第一次读失败时条目不写"加载中"、节点一格空着（`health-page.test.tsx`，审查 C 的 REVIEWC-H 一格）；树再读失败时"更多"带来、树里没有的节点空着，不写"节点已不可用"（`health-page-lifecycle.test.tsx` 的"missing More nodes…"一格照改）。
 - `notebook.store.test.ts`：三个动作各照降级的七条（`:761`、`:783`、`:837` 那几组）：成功之后重读列表、拒绝之后按各自的码重读、轮到它才发、并发时的次序。
 - `upgrade.service` 的测试（若有，`checkItems` 不带游标时的查询串；三个动作的路径与方法）。
 
@@ -1086,8 +1116,8 @@ export interface HealthCard {
 **页面版本**（S3）：
 
 - UP6：dana 在升级页上退回（对话框、答复之后是升级中、接入一节出现）。agent 再交之后，dana 的那一页以 `holdStream` 重新打开（不放开，或离开升级页之后才放开）；审阅中按钮一行恰是"批准…""退回继续修改…""驳回…"，没有"放弃这次升级…"（决定 291）。照 API 版本占住唯一的导入 worker，回滚的任务因此排队。dana 驳回：对话框、回滚一节的任务整行（排队），再放开 worker。之后唯一的 404 是 `RollbackJob` 看到任务结束之后的那一次重读（`upgrade-page.tsx:518-525`），以 `pageWatch.expectConsole({ errors: [failedToLoad(404)] })` 声明（13.2 第 9 条），等"没有进行中的升级"出现。流不通，就没有两条 `mode` 引起的重读（驳回的与回滚做完的）；worker 被占住，`change()` 之后的重读一定是 200；剩下 `RollbackJob` 的那一次恰好一次（设计审查 P3C-I1；初稿照 UP3 写"两个刻意的 404"，在这里先后与次数都不定）。
-- UP7（三种浏览器，`playwright.config.ts:3` 的 `threeBrowsers` 加一支 `upgrade\/up7-`）：dana 批准的那一页以 `holdStream`（`e2e/fixtures/events.ts:214`）打开，它的事件流在跳转到笔记本首页之后才放开：`mode` 可能早于批准的答复到达，那时升级页还装着，会重读升级、多出一条先后不定的 404；放开之后的重连只重读装着的键，升级页已卸下。断言跳转之后焦点在笔记本首页的标题、横幅消失、首页是 LLM Wiki 的样子。alice 的另一个标签页停在笔记本首页，先等它的事件流连上（照 UP1 的写法），批准之后不刷新就看到横幅消失。撤销 `index` 的那次删除在历史页上点"撤销"，答 409 `page.virtual_file`，以 `expectConsole({ errors: [failedToLoad(409)] })` 声明，对话框显示它的文字。
-- UP8：发起、检查、提交、批准都在网页上；批准的那一页同 UP7 以 `holdStream` 打开；对话框与按钮按确切的名字找（05-lessons 第 6 节）。
+- UP7（三种浏览器，`playwright.config.ts:3` 的 `threeBrowsers` 加一支 `upgrade\/up7-`；`threeBrowsers` 按文件，整个文件（API、MCP 与页面三个版本）都在三种浏览器里跑，同 7.5，审查 C 判实施者的第 8 条不是偏离）：dana 批准的那一页以 `holdStream`（`e2e/fixtures/events.ts:214`）打开，它的事件流在跳转到笔记本首页之后才放开：`mode` 可能早于批准的答复到达，那时升级页还装着，会重读升级、多出一条先后不定的 404；放开之后的重连只重读装着的键，升级页已卸下。放开之后等这次连接的最后一层（`GET …/assets`）答了，才断言它不读升级、才去下一页（`e2e/fixtures/upgrade-pages.ts` 的 `letInAtHome`：放开之前登记 `waitForRequest`、等它的 `response()`）：不等的话，下一次载入会截断还在飞的读（WebKit、Firefox 的 `Load request cancelled`），断言也可能早于重连的读（S3 建成时流挪到撤销那一段之后才放开，那时连接在变更集页的新文档里，SWR 的缓存每个文档一份，"没有读升级"无论怎样都成立，审查 P3S3B-I1；修复一轮改回首页放开、加上等，3.25）。断言跳转之后焦点在笔记本首页的标题、横幅消失、首页是 LLM Wiki 的样子。alice 的另一个标签页停在笔记本首页，先等它的事件流连上（照 UP1 的写法），批准之后不刷新就看到横幅消失。撤销 `index` 的那次删除在历史页上点"撤销"，答 409 `page.virtual_file`，以 `expectConsole({ errors: [failedToLoad(409)] })` 声明，对话框显示它的文字。
+- UP8：发起、检查、提交、批准都在网页上；批准的那一页同 UP7 以 `holdStream` 打开；对话框与按钮按确切的名字找（05-lessons 第 6 节）。跳到首页之后放开流，同 UP7 以 `letInAtHome` 等这次连接的最后一层读答了，再断言放开之后的请求里没有 `GET …/upgrade`、`apiFailures` 为空：UP8 放开之后不再换页，"批准之后重连不读升级"在这里看得见（S3 建成时放开之后只做两次 API 调用就断言，不等连接，审查 P3S3B-I1，修复一轮）。
 
 UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11（`e2e/stories/wiki/lw11-playbook.spec.ts:27-81`）按契约文件比较 prompt 的列表，加了 `upgrade` 照样通过（普通笔记本一格只取 `lint`）；它的标题写着"three playbooks"，`:10` 的注释"takes the three prompts"、`:62` 的"A standard notebook lists the same three"也随 S2 不实：S2 的第 2 个提交改为"the LLM Wiki's playbooks""takes the LLM Wiki's three prompts""lists the same prompts"，不改断言（设计审查 P3C-N5）。
 
@@ -1126,10 +1156,15 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 6.3 S3（`m11-p3-s3`）
 
-1. `web, e2e: a stored report's rules through HealthRule, More from their first page (M11/P3/S3)`：`HealthRule` 的类型与游标、健康度页随之改的两处（`paths` 的参数、`read` 在没有游标时抛缺陷）、`checkItems` 的可缺的游标、`itemsReader`、审阅一节挪进这一次进入的 `SWRConfig`（它的 `HealthScope`）、树读失败；对应的 vitest；UP5 的页面版本的两处断言。
-2. `web: approve, send back and reject an upgrade (M11/P3/S3)`：service、store、按钮与对话框（批准自己的函数）、审阅中收起"放弃"与横幅的"驳回"一句（决定 291）、两种语言的文字、退回的说明与 20 秒的再读、批准之后的跳转、假服务端的三条路由；vitest。
-3. `e2e: approve, send back and reject in the web app (M11/P3/S3)`：UP6–UP8 的页面版本、`threeBrowsers` 加 `upgrade\/up7-`。
-4. Step 的文档提交。
+实施照这个次序，第 1–3 个是 `4484ca7c`、`ee298a0a`、`05423d08`（标题照实施说明写行为的改变，下面照实写；推送之前改写过两次，补变异抓不到的测试，并进 1、2 号，10.3）；之后修复一轮 2 个（第 4、5 个）、修复二轮 1 个（第 6 个，头 `a25fef6d`），连实施的 3 个一共 6 个（10.3）；第 7 个是本 Step 的文档提交，在它们之后（3.25）。
+
+1. `web, e2e: the report in review shows its rules as cards whose More reads from the first page, in this entry's cache; a tree that failed to read says so (M11/P3/S3)`（初稿的标题是名词短语）：`HealthRule` 的类型与游标、健康度页随之改的两处（`paths` 的参数、`read` 在没有游标时抛缺陷）、`checkItems` 的可缺的游标、`itemsReader`、审阅一节挪进这一次进入的 `SWRConfig`（它的 `HealthScope`）、树读失败；对应的 vitest；UP5 的页面版本的两处断言。
+2. `web: an admin approves, sends back or rejects the upgrade in review on its page, Reject standing for Abandon; approved, the page goes to the notebook's home (M11/P3/S3)`：service、store、按钮与对话框（批准自己的函数）、审阅中收起"放弃"与横幅的"驳回"一句（决定 291）、两种语言的文字、退回的说明与 20 秒的再读、批准之后的跳转、假服务端的三条路由；vitest。
+3. `e2e: UP6-UP8 on the upgrade's page, an admin sending back, rejecting and approving it; UP7's in the three browsers (M11/P3/S3)`：UP6–UP8 的页面版本、`threeBrowsers` 加 `upgrade\/up7-`、`fixtures/upgrade-pages.ts` 的 `changeButtons`、`reviewDialog`。
+4. `web: a send-back refused while checked says so as the upgrade read again after it says, until closed; another admin's send-back clears the check too; approved, the upgrade leaves the cache; the health page leaves a failed tree's paths empty (M11/P3/S3)`（修复一轮，`a040dcc1`）：退回的说明在拒绝之后那一次重读回来时定一次（所有经 `change` 的对话框等重读），20 秒只为被拒的那一次提交；决定 300、301；批准之后清缓存；假服务端每次提交给新的 `submitted_at`；vitest 加的各格（审查 P3S3A-I1 = C-M1、C-N1、A-N1 = C-N2、A-M1 = B-M2、A-M2 = B-M3、A-N4 = B-M1、A-N2、A-N3、B-N2，B-I1 的 vitest 一半）。
+5. `e2e: UP7 and UP8 let the approving page's stream in at the notebook's home and see its connection read no upgrade (M11/P3/S3)`（`bc1a24e5`）：`fixtures/upgrade-pages.ts` 的 `letInAtHome`，UP7、UP8 照它放开与断言，UP6 末段的注释（审查 P3S3B-I1、N1）。
+6. `web: a send-back refused as its read again is overtaken by a mode event's reads the upgrade once more before it says why; approved, the upgrade leaves the cache once the page is gone (M11/P3/S3)`（修复二轮，`a25fef6d`）：拒绝之后的重读被超过时再读一次再定说明；批准之后卸下时才清缓存；决定 300 的"换过提交"一格（审查 P3S3A-M3、N5、N6）。
+7. Step 的文档提交（第 8 节第 4、5 条）。
 
 ### 6.4 合并的门禁
 
@@ -1224,7 +1259,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 ### 7.3 变异
 
-照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。S1 的实施与审查之后，"读头"一行拆成 16a、16b，三处单元测试的名字照实；S1 的各行之后接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S1 的审查记录](reviews/P3-S1-review-actions-review.md) 里的名字记（3.23）。S2 的各行之后同样接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md) 里的名字记（3.24）。
+照 `tools/mut.py`，每条在 `server/` 或 `web/` 下改一处、跑抓它的测试、期望失败。S1 的实施与审查之后，"读头"一行拆成 16a、16b，三处单元测试的名字照实；S1 的各行之后接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S1 的审查记录](reviews/P3-S1-review-actions-review.md) 里的名字记（3.23）。S2 的各行之后同样接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md) 里的名字记（3.24）。S3 的各行之后同样接实施者自己的与审查者留下、修复一轮杀的变异，照它们在 [S3 的审查记录](reviews/P3-S3-web-review.md) 里的名字记（3.25）。
 
 | 变异 | 抓它的测试 |
 |---|---|
@@ -1293,18 +1328,34 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 | playbook 的一句删掉，或保留条件、把做法换成错的（实施者的 s01–s36 每一处都换；审查 B 的逐句删与 pb01–pb20，C 的 c1–c7） | `TestUpgradePlaybookText` 的"必有的句子"，每句一格。S2 建成时 s01–s36 都抓到，而 B 单删的 9 句、pb01–pb20 与 c1–c7 照过（片段止于条件与码，`page.upgrade_immutable` 被另一句顶替；审查 P3S2B-M1 = C-M1）；修复一轮之后每句或分句一格、各恰好一次（47 格），c1–c7、pb01–pb20、B 单删的那几句与 a1 都抓到，B 的逐句删除 30 段、逐分句删除 52 个都失败，实施者盖新措辞的五条也抓到；新加一句相反的话照过（审查 P3S2B-N3，不改：测试钉的是该有的句子在，新加的文字由审查看 diff） |
 | `HealthRule` 在 `cursor === undefined` 时不渲染"更多" | `upgrade-check.test.tsx` 的"更多从第一页读" |
 | 审阅一节的读不经 `itemsReader`（403 不重读列表） | `upgrade-check.test.tsx` 审阅一节的 403 一格 |
-| 审阅一节留在这一次进入的 `SWRConfig` 之外 | `upgrade-check.test.tsx` 的"离开再进入从存下的报告重新开始"（审阅一节的键不带这一次进入的 `nonce`，留在外面就接着旧的条目，4.3） |
+| 审阅一节留在这一次进入的 `SWRConfig` 之外 | `upgrade-check.test.tsx` 的"离开再进入从存下的报告重新开始"（审阅一节的键不带这一次进入的 `nonce`，留在外面就接着旧的条目，4.3）。实施者的两种写法：审阅中整个不经 `SWRConfig` 连带让它在进出审阅时卸下又装上，先被检查一节的两格抓到（s3-03）；`SWRConfig` 一直挂着、审阅一节放在它外面才是这一行（s3-03b），被这一格抓到 |
 | 没有报告时也显示"批准" | `upgrade-page.test.tsx` 的按钮一格 |
 | 审阅中仍显示"放弃"（决定 291） | `upgrade-page.test.tsx` 的 `reviewing` 一行（`:175-196`）与 `sectionsInOrder` 的审阅一行（`:856-867`） |
 | `reviewing` 的横幅仍写"放弃"（决定 291） | `upgrade-banner.test.tsx` 的两格（`:49-51`、`:127-129`） |
 | 批准用 `upgrade.notReady` | `upgrade-page.test.tsx` 的"批准答 `wiki.upgrade_not_ready`"一格（设计审查 P3C-M1） |
 | 批准成功之后又读升级（经 `change`） | `upgrade-page.test.tsx` 的"不再读升级"一格（设计审查 P3C-M2）；UP7、UP8 的页面版本 |
-| 退回的说明按打开对话框时的状态定 | `upgrade-page.test.tsx` 的"重读之后已不在审阅中"一格（设计审查 P3C-N14） |
+| 退回的说明按打开对话框时的状态定 | `upgrade-page.test.tsx` 的"重读之后已不在审阅中"一格（设计审查 P3C-N14；实施者的 s3-09）。"按页面此刻的升级定"是 S3 建成时的实现，这一格看不见（审查 P3S3A-I1 = C-M1，下面） |
 | 退回之后不清 `checked` | `upgrade-page.test.tsx` 的"退回之后检查一节没有提交之前的结果"一格（设计审查 P3C-N15） |
 | 退回的 409 显示服务端的 `detail` | `upgrade-page.test.tsx` 的 `sendBackChecking` 一格 |
-| 不设 20 秒的再读、或卸下之后不清 | 同上（假的计时器两格） |
+| 不设 20 秒的再读、或卸下之后不清 | 同上（假的计时器）；实施者拆成 s3-12a–d（不读、不清、卸下时不清、状态变了不清）：卸下之后 SWR 绑定的 `mutate` 对没挂着的键不发请求，"卸下之后不再读"看不见计时器没清，改为"离开 5 秒再回来"一格，另加"`mode` 带来报告之后不再读"一格（3.25） |
 | 批准之后不跳转、或不交 `arrived` | `upgrade-page.test.tsx` 的焦点一格 |
 | 假服务端的退回在没有报告时答 200 | `upgrade-page.test.tsx` 的 409 一格（替身要在真东西会失败的地方失败） |
+| `HealthScope` 的键不带提交的时刻（实施者的 o05）；报告的卡的 React 键只是规则（o20） | o05：`upgrade-check.test.tsx` 的"the report's cards are its submission's"；o20 没有（等价：卡的状态在按提交分的缓存里，`HealthRule` 内部按 `identity` 重置，同一格在 o20 下通过；对照 o05） |
+| 卡的初值的游标不看 `count_capped`、条目已全也给"更多"、计数为 0 的不收进 `<details>`、卡的标题是 `h2`、初值的条目为空、时刻写提交的、数不写"+"（o01–o04、o21–o23） | `upgrade-page.test.tsx` 审阅中的报告一格（每张卡整组）；`upgrade-check.test.tsx` 的"更多从第一页读" |
+| 审阅一节不显示树读失败、卡不交 `treeFailed`、`GateNode` 不看它、`reading` 不看 `isValidating`（o06–o09） | `upgrade-check.test.tsx` 树读失败两格与重试挡住的一格 |
+| 报告一节不写"升级的状态变了"（o10）；`itemsReader` 的 403 不看 `current()`（o29） | `upgrade-check.test.tsx` 的 409 一格与"换了一次提交之后才到的 403 不重读"一格 |
+| 批准的 `not_ready` 不重读、任何拒绝都重读、`wiki.upgrade_state` 不重读、假服务端从不答 `not_ready`（o11、o12、o28、o18）；store 的 `behindReview` 少 `wiki.upgrade_state`、多 `not_ready`（o16、o17） | `upgrade-page.test.tsx` 批准的拒绝表；`notebook.store.test.ts` |
+| 对话框的正文与语气、三个按钮没有 ref、批准成功之后 `reread()`、"更多"不按 `item_key` 去重、退回的任何拒绝都挂计时器（o13–o15、o24–o27、o19、o30） | `upgrade-page.test.tsx` 三个对话框、批准成功、断网一格；`health-rule.test.tsx`；o27 另由 UP7、UP8 的页面版本 |
+| 批准答复时页面已离开也跳转（审查 A 的 ra01、B 的 b12：去掉 `mounted()`） | S3 建成时没有（P3S3A-M1 = B-M2）；修复一轮之后 `upgrade-page.test.tsx` 的"approved once the page is left…" |
+| 离开页面时审阅一节的"更多"不中止（ra04、b08：`controllers` 登记到别的 `Set`） | S3 建成时没有（P3S3A-M2 = B-M3）；修复一轮之后 `upgrade-check.test.tsx` 的"the report's More under way, the page left…" |
+| 驳回、退回不先盖住答复（ra10、ra11、b06、b07：`change(…, false)`） | S3 建成时没有（P3S3A-N4 = B-M1）；修复一轮之后"rejected / sent back, the page shows the … answered while it reads … again"两格 |
+| 退回的说明随之后的读改变、重读回来之前先说"正在计算"（审查 A 的 A1、A2，C 的 REVIEWC-1、2）；`checking` 不看 `error`（c21） | S3 建成时实现就是这样（P3S3A-I1 = C-M1），c21 照过（P3S3C-N1）；修复一轮之后"refused, then its report kept…""…the read again held""…another admin approved it meanwhile"三格（C 的 k1–k3 同） |
+| 拒绝之后的重读被 `mode` 事件的读超过时，说明读到旧的缓存（审查 A 的 A8，修复核对一轮） | S3 修复一轮之后没有（P3S3A-M3）；修复二轮之后"…its read again overtaken by the rejection's mode event…"一格（不再读一次、A8 原样的期望都死） |
+| 20 秒的次数在状态变了之后不清（A 的 A3、C 的 REVIEWC-4）；`sendBack` 开头不把次数归零（ra05） | S3 建成时实现就是这样（P3S3A-N1 = C-N2），ra05 照过；修复一轮之后"…the new submission still checked"与"…then sent back again, the network failing"两格（ra05 不是等价的）；计时器到点不清 `waiting`（A 的 rb08）没有（等价：到点之后不再挂，只有读出错又好了才会再挂一次） |
+| 卸下之后仍在重连时读升级（审查 B 的 `leak`、`leakA`、`leakM`，实施者的 `leak-after-unmount`） | S3 建成时 UP7、UP8 的页面版本都照过（P3S3B-I1）；修复一轮之后 UP8 与 UP7 三种浏览器（`letInAtHome`），vitest 带事件流的"approved, …nor by a connection after it" |
+| 批准之后不清缓存（A4）；跳转之前就清（A 的 A10，修复核对一轮） | 修复一轮之后"approved, then Back…"；跳转之前就清是修复一轮的实现（P3S3A-N5），修复二轮之后"approved, the upgrade's page goes without showing the upgrade loading…"一格（跳转之后清、跳转之前清都死；从不清死在"approved, then Back…"） |
+| 别的管理员退回之后检查一节仍是提交之前的结果（A 的 A6），回到 `upgrading` 一律清（A6b），只看换过提交（A 的 rb05），只看显示过报告（rb04）（决定 300）；健康度页不交 `treeFailed`、`readingTree` 不看 `tree.error`（H1、H2，C 的 k5、k6，决定 301） | 修复一轮之后"…sent back by another admin…"一格、`upgrade-check.test.tsx` 别人的提交拿走又还回检查一节的两格、健康度页的"tree failure has its own retry…"与 lifecycle 的"missing More nodes…"；rb04 活（P3S3A-N6），修复二轮之后死在"…taken over and submitted again…(decision 300)"一格 |
+| 审阅一节 `current()` 不看登录、不看 `alive`（ra03、b09、b10，检查一节的 c01、c02 同）；键去掉 `upgrade.id`（ra08）；批准的拒绝不看 `mounted()` 就重读（ra12）；审阅一节闸门的节点不看 `treeFailed`（b01）；批准答 `forbidden`、`notebook.not_found` 也重读升级（b11）；`checkItems` 恒带 `{ cursor }`（c05） | 没有（等价：换登录是新一代的 providers、整页重挂，`alive` 为假时这一次进入的缓存已清；`submitted_at` 唯一；卸下之后绑定的 `mutate` 对没挂着的键不发请求；存下的报告只在闸门全过时有，带节点的闸门通过时节点表为空；store 先重读列表、`useSWR` 的键随之为 `null`；openapi-fetch 跳过 `undefined`） |
 
 等价的变异（改了而行为不变的）照 05-lessons 的"等价变异的对照"写明理由，记在 10.x，不算漏网。
 
@@ -1371,7 +1422,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
 
 （第一轮修订照"开始的时刻加 Go 的时限早于 35 分钟"写了"作业时限不改"，漏了约两倍的那一条。）
 
-**e2e 的作业**（设计审查 P3C-N16）：P3 加 UP6–UP9，UP7 的整个文件（页面、API、MCP 三个版本）在三种浏览器里跑，约多 12–14 个用例、本机约多 40–60 秒；P2/S3 的分支 CI 的 e2e 作业 8:42（E2E 一步 7:09），估 P3 之后约 10–11 分钟，作业限 20 分钟（`ci.yml:255`），不改。实测写进 10.3。
+**e2e 的作业**（设计审查 P3C-N16）：P3 加 UP6–UP9，UP7 的整个文件（页面、API、MCP 三个版本）在三种浏览器里跑，约多 12–14 个用例、本机约多 40–60 秒；P2/S3 的分支 CI 的 e2e 作业 8:42（E2E 一步 7:09），估 P3 之后约 10–11 分钟，作业限 20 分钟（`ci.yml:255`），不改。实测写进 10.3：S3 的分支 CI（43169439216）e2e 作业 7:58（E2E 一步 6:41，538 个），余约 12 分钟；本机比 S2 末多 9 个、合约 11 秒（UP6、UP8 的页面版本，UP7 的页面版本在三种浏览器，UP7 的 API、MCP 版本的 Firefox、WebKit；UP9 在 S2），比上面估的少。UP7 的 API、MCP 版本也在三种浏览器里跑是这里写好的，实施者把它列为偏离（第 8 条），审查 C 判不是。
 
 ### 7.6 P3 怎样量
 
@@ -1379,7 +1430,7 @@ UP5 的页面版本随 S3 的第 1 个提交改两处断言（4.3 末）。LW11�
   - 组合根第四、六、七、八份：`make -j1 test-go-bootstrap-<n> GO_TEST_RACE="go test -race -count=1 -timeout 15m -v"`，每份两轮，P2 的分份旁支的 `measure.sh` 与 `times.py`；数在 7.5。
   - 批准的重建：一个只在临时 worktree 里的探针测试（`page/adapter/postgres`，真库）：上面的种子在 10 万个来源（1,000 个文件夹）与 5 万个来源（500 个）各跑；两种统计（从未分析；分析过）× 两种方式（`plan_cache_mode` 的 `force_custom_plan` 与 `force_generic_plan`），每格三次，在一个回滚的事务里依次计时 `ForgetSources`、`SourceNodes`、十块 `SourceHeads`、附件的读、十块 `SetSourceHashes`、`DeleteUpgradeNodes`，并 `EXPLAIN` 每一条。结果：10 万个来源合计 2.44–3.68 秒（两轮），5 万个来源 0.99–1.19 秒（两轮，几乎相同）；`SetSourceHashes` 的几种写法都省不下（3.4）。计划（只是自定义计划：带参数经扩展协议发的 `EXPLAIN` 把参数当常量折进计划，`plan_cache_mode` 管不到它，探针的 `force_generic_plan` 一栏其实也是自定义计划；通用计划由审查 B 以 `EXPLAIN (GENERIC_PLAN)` 补量，`nodes`、`page_contents`、`upgrade_nodes` 都经键，见设计审查记录与 3.4 的"界与分块"；设计审查 P3B-M1）：5 万个来源、每格之前 `VACUUM ANALYZE` 的两轮里没有顺序扫描，`nodes` 经 `nodes_notebook_id_*` 的索引与 `nodes_pkey`，`ForgetSources` 在分析过之后经 `nodes_notebook_id_kind_source_hash_idx`；10 万个来源的第二轮在同一个库里反复回滚、关着 autovacuum 之后再 `ANALYZE`，`ForgetSources` 与 `LintNodeMetadata` 换成了整表的顺序扫描（这本笔记本占 `nodes` 的约 20%：110,003 / 560,003，设计审查 P3B-N10 改正初稿的"约 16%"；表里堆着几百万条死行），所以守卫每次批准用一份新副本（第 280 条）。
 - **修订时**（设计审查之后）：临时 worktree（`955fa579`），经 `heavy.sh`，`df` 27–28G；以审查 B 的探针为底，比决定 292 的读头的四种写法在两个种子（这一本占 `nodes` 11.4% 与 22.4%）× 三种统计状态 × 自定义与通用（`EXPLAIN (GENERIC_PLAN)`）上的计划，只看计划、不计时；结果在 3.4。
-- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。 S1 照做：第四、六份在 `75f5d077` 与它加 1 号的 `Makefile` 上交替各两轮（`measure.sh`），第七、八份在头上各两轮，守卫四轮（两轮定界，3.9 s），`-list` 的归类用 `m11/tools/shards8-p3.py`；数在 10.1 与 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)"实测"。 S2：第三、七份在头上交替各两轮（`shards/measure.sh`，S2 没改 `Makefile` 的模式），`-list` 照旧用 `shards8-p3.py`；数在 10.2 与 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md)"实测"。
+- **实施时**：S1 的第 1 个提交照 P2 的分份旁支量挪前挪后（第四、六份各两轮），写进 10.1；守卫照 7.1 量两轮定界；P3 的新测试在第七、八份的实际用时在 S1、S2 的记录里。 S1 照做：第四、六份在 `75f5d077` 与它加 1 号的 `Makefile` 上交替各两轮（`measure.sh`），第七、八份在头上各两轮，守卫四轮（两轮定界，3.9 s），`-list` 的归类用 `m11/tools/shards8-p3.py`；数在 10.1 与 [S1 的审查记录](reviews/P3-S1-review-actions-review.md)"实测"。 S2：第三、七份在头上交替各两轮（`shards/measure.sh`，S2 没改 `Makefile` 的模式），`-list` 照旧用 `shards8-p3.py`；数在 10.2 与 [S2 的审查记录](reviews/P3-S2-playbook-docs-review.md)"实测"。 S3：没有改服务端，不量组合根的份；UP6–UP8 的页面版本在头上经 `heavy.sh` 单独跑三轮（`tools/pages3.sh`，UP7 三种浏览器），数在 10.3 与 [S3 的审查记录](reviews/P3-S3-web-review.md)"实测"。
 
 ## 8. 完成标准
 
@@ -1403,7 +1454,7 @@ P3 完成，当且仅当：
    - 13.1 第 21 条（`:1127`）末尾加——S1："批准的哈希重建 `page.NewSourceRebuild(pool, attachments)` 另带附件的元数据（组合根交单元的那一个），wiki 经 `Deps.SourceHashes` 调它（M11/P3）。"S2：在"MCP 工具与 prompt 的注册表"一条（`:1135`）末尾加"M11 的 prompt `upgrade` 登记在 wiki 的 `Prompts()`、只在笔记本入口，取它只在升级中答文字（M11/P3）。"
    - 13.1 第 31 条（`:1164`）末尾加——S2："playbook 至多 16 KiB，升级的那份由单元测试量（M11/P3）。"
    - 13.2 第 9 条（`:1199`）末尾加——S3："UP6 的页面版本一个刻意的 404（流以 `holdStream` 挡住、回滚排队到页面显示任务之后）、UP7 的一个刻意的 409，以 `pageWatch.expectConsole` 声明；批准的那一页的事件流以 `holdStream` 推迟到跳转之后，不留先后不定的 404（M11/P3）。"第 18 条（`:1209`）末尾加——S3："审阅一节读存下的报告，'更多'从第一页读条目，缓存按这一次进入；批准之后去笔记本首页（M11/P3）。"
-   - 13.4 第 3 条（`:1264`）末尾加——S1："M11/P3：UP6、UP7 的 API 与 MCP 版本、UP8 的 API 版本；UP6 的'驳回之后 MCP 写被拒'以另一本笔记本的导入占住导入 worker、回滚排队时确定地断言。"S2："UP9 只有 MCP 版本。"S3："UP7 的页面版本在三种浏览器里跑。"
+   - 13.4 第 3 条（`:1264`）末尾加——S1："M11/P3：UP6、UP7 的 API 与 MCP 版本、UP8 的 API 版本；UP6 的'驳回之后 MCP 写被拒'以另一本笔记本的导入占住导入 worker、回滚排队时确定地断言。"S2："UP9 只有 MCP 版本。"S3："UP7 整个文件（API、MCP 与页面三个版本）在三种浏览器里跑，UP6、UP8 的页面版本只在 Chromium。"（照 7.5 改，审查 C）
    - 13.4 第 4 条（`:1265`）末尾加——S1："M11/P3：提交在算时的退回与第二个事务等着笔记本行时过了接管时刻的退回、排队中的检查与批准、批准与驳回、批准与退回、批准与删除笔记本、批准与等着笔记本行的写，各一个确定的交错。"
    - 13.4 第 6 条（`:1273`）末尾加——S1："M11/P3：批准、驳回、退回的行在升级的变体上；批准的管理员一格答状态的 409（变体都没有存下的报告）。"S2："prompt 的矩阵按'prompt × 状态'，在第七份的 `TestUpgradePromptMatrix`。"
    - 13.4 第 8 条（`:1275`）末尾加——S1："批准在 5 万个来源上，三种统计 × 两种计划，每次在库的一份新副本上；计划为主，被判的语句列出来；另有一个这本笔记本约占四分之一、只核对计划的种子（十万个来源在 M12）（M11/P3）。"
@@ -1508,11 +1559,49 @@ P3 完成，当且仅当：
   - CI：run 43138853267（`7daa3452`）19 项一次全绿；八份的 Test 一步 274、374、282、316、247、374、223、210 秒，第三份这一次在 EPYC 9V45 上（282 秒，不是 7763 的样本），第二、六份在 7763 上各 374 秒；costs-1 在 EPYC 9V74 上 20:11（Test 一步 16:42），批准的守卫六格中位数 2.14–2.41 s（界 3.9 s；不在 7763 上，第 298 条不看）；e2e 8:05（E2E 6:26），L1 没有出。
 - **修复核对一轮**（2026-11-12，三位各在 `7daa3452` 的自己的工作树里，C 另核文档稿）：A 判 P3S2A-N1、N2 关上（a1 在头上单元失败），新的三处措辞与代码的码一致，没有新发现；B 判 P3S2B-M1、N1 关上（逐句删除 30 段、逐分句 52 个、pb01–pb20 在头上都失败，47 格各恰好一次，4.13 的六项各有一格），新的 P3S2B-N2（Nit：格数是 47，不是 46）在本提交，P3S2B-N3（Nit：新加一句相反的话照过）不改：这个测试钉的是"该有的句子在"，新加的文字由审查看 diff；C 判 P3S2C-M1、M2、N1–N6 关上（c1–c7 改前活、改后死），N7 在文档稿里关上，文档稿的取舍、10.1 的第二次 `main` 与第三份的样本核过（S1 修复一轮的 401 秒从作业日志查明在 7763 上），新的 P3S2C-N8（3.17 的块漏了 `forbidden` 那半句）、N9（3.20 的块还是初稿）、N10（决定 299 与 M12 第 40 条的一条理由不实：没有断言钉这一句）都在本提交改。一轮之后没有 Important、Minor 留下，不再有修复轮。
 - 实施者留下的（报告第 9 节）：没有要编号的产品决定；Step 的文档提交是本提交（3.24、10.2、00 号文档、两份移交与总体设计）；README 先于网页说了 S3 的事（3.24）；UP9 只有 MCP 版本（第 5 节、10.1 的例外）；`GOTMPDIR` 已删，没有手动起容器，没有修剪 Go 的缓存。
-- **合并之后**：run 43149201273（`7d2e895a`）19 项第一次 attempt 全绿；八份的 Test 一步 375（Xeon 8573C）、290（EPYC 9V74）、407（EPYC 7763）、393（7763）、262（EPYC 9V45）、253（9V45）、238（9V45）、216（9V45）秒，都在 450 之下，第三份在 7763 上仍是最贴近的一份（B-Q1）；costs-1 在 Xeon 8573C 上 15:53（Test 一步 13:07），批准的守卫六格中位数 1.67–1.74 s（界 3.9 s，第 298 条不触发）；e2e 8:49（E2E 7:19）。第二次是记合并号的文档提交的 run，第三份的均值以两次为准。
+- **合并之后**：run 43149201273（`7d2e895a`）19 项第一次 attempt 全绿；八份的 Test 一步 375（Xeon 8573C）、290（EPYC 9V74）、407（EPYC 7763）、393（7763）、262（EPYC 9V45）、253（9V45）、238（9V45）、216（9V45）秒，都在 450 之下，第三份在 7763 上仍是最贴近的一份（B-Q1）；costs-1 在 Xeon 8573C 上 15:53（Test 一步 13:07），批准的守卫六格中位数 1.67–1.74 s（界 3.9 s，第 298 条不触发）；e2e 8:49（E2E 7:19）。第二次是记合并号的文档提交的 run，第三份的均值以两次为准。 第二次：run 43153150986（`5a303fde`）19 项第一次 attempt 全绿；八份的 Test 一步 390（EPYC 7763）、291（EPYC 9V74）、400（7763）、407（7763）、310（9V74）、319（9V74）、330（7763）、210（EPYC 9V45）秒；两次的平均 382.5、290.5、403.5、400、286、286、284、213 秒，都在 450 之下，第三份（两次都在 7763 上）403.5、第四份 400 秒最贴近（B-Q1）；costs-1 这一次在 Xeon 8370C 上 19:40（Test 一步 16:17），批准的守卫六格中位数 2.23–2.50 s，都在 3.25 s 之下，第 298 条不触发、界不改；e2e 8:01（E2E 6:47）。
 
-### 10.3 S3：网页
+### 10.3 S3：网页（2026-11-12，合并 `（待填）`）
 
-（S3 合并之后填。）
+- **S2 合并之后的 `main`**：见 10.2 末条（`7d2e895a` 与记合并号的 `5a303fde`，两次都一次全绿，第 298 条不触发）；S3 从 `5a303fde` 开出。
+- 提交（从 `main` 的 `5a303fde` 开始，照 6.3 的次序，3 个；Step 的文档提交是主持者的；修复一轮另有 2 个、修复二轮 1 个（下面），一共 6 个）：
+  - 报告经 `HealthRule`：`HealthRuleItem`、游标可为 `undefined`（下一次从第一页读）、`summary`/`paths`/`read` 的类型、可缺的 `treeFailed`；健康度页的两处（`paths` 放宽，`read` 没有游标时抛缺陷）；`checkItems` 的游标可缺；`itemsReader`；审阅一节经 `HealthRule`（初值的游标照 `count > items.length || count_capped`，计数为 0 的在 `<details>`），在这一次进入的 `SWRConfig` 里，`HealthScope` 的键带这次提交的时刻；树读失败两节说失败、节点空着、重试时"加载中"；UP5 页面版本的两处断言（`4484ca7c`，范围 `web, e2e`）。
+  - 三个动作：service、store（`behindReview` 是 `forbidden`、`notebook.not_found`、`wiki.upgrade_state`，批准不收 `not_ready`）、审阅中的按钮一行（批准只在有报告时，不给放弃，决定 291）、三个对话框、批准自己的函数（成功不写缓存不重读，页面还装着时跳到首页、`arrived`）、退回之后清 `checked`、退回在算时的文字与 20 秒的再读、横幅的"驳回"一句、两种语言、假服务端的三条路由（`ee298a0a`）。
+  - e2e：UP6–UP8 的页面版本，`threeBrowsers` 加 `upgrade\/up7-`，`fixtures/upgrade-pages.ts` 的 `changeButtons`、`reviewDialog`（`05423d08`）。
+  - 每个提交单独在干净的临时 worktree 里 `make build`、`lint-web`、`knip`、`test-web`、`gen-check` 与全部升级故事、LW8 都通过；审查 B 在 1、2 号上各自检出另跑过一轮。推送之前改写过两次（变异有活下来的，补的测试并进 1、2 号；3 号另 `--amend` 一次），都非交互地重建、核对新头的树等于旧头加改动，推过的历史没有改写。标题照实施说明写行为的改变（6.3 写的是名词短语；实施者的第 9 条，过程，不进 3.25）。
+- 与设计不同之处（实施者的号；3.25 列出）：
+  1. 提交的标识是 `submitted_at`：契约的 `Upgrade` 没有 `submission_id`，S3 不碰服务端（4.3；00 号文档决定 287 与 4.3 的另三处照改，审查 P3S3C-N3）。
+  2. `reportJSON` 不加形状：`keptReport` 已是要的形状，`upgrade-check.test.tsx` 的报告在测试里组（4.3）。
+  3. UP7 的批准那一页的流最后才放开：首页放开时下一次载入截断连接的重读（WebKit）；"放开之后的连接不读升级照样看得见"的理由不成立（审查 P3S3B-I1）。修复一轮改回首页放开、等连接的最后一层答了再断言、再去下一页，偏离照此重写：第 5 节没写的只是这个"等"（第 5 节）。
+  4. 树读失败的提示在列节点的地方之上（4.3）。
+  5. 重试时"读着"先于"失败"（4.3）。
+  6. 退回的说明按页面此刻显示的升级定：审查判不对（P3S3A-I1 = C-M1），修复一轮改代码，修复报告删去这一条，不进 3.25。
+  7. 报告一节的卡被拒为状态变了时写"升级的状态变了"，同检查一节（4.3）。
+  8. UP7 的 API、MCP 版本也在三种浏览器里跑：不是偏离，7.5 本就这样写；第 5 节与第 8 节第 6 条的句子照 7.5 改（审查 C）。
+  9. 提交的标题写行为的改变（过程，只记在这里）。
+- 实测（本机，经 `heavy.sh`）：vitest 193 个文件、4,521 个测试（S3 多 74 个，没有新文件），`make test-web` 57–58 秒；`make e2e` 538 个、142 秒（S2 末 529 个、136 秒）；UP6–UP8 的页面版本三轮每轮 7.2–7.6 秒（UP6 2.4–2.9 秒，UP7 Chromium 1.6–1.7、Firefox 2.4–2.5、WebKit 2.5 秒，UP8 约 1 秒），都通过；审查 B 另以 `--repeat-each=5` 跑 25 个，全过。
+- 反向对照：7.3 的 S3 14 行 19 条（"不设或不清"拆成四条，"不跳转或不交 `arrived`"两条，"留在 `SWRConfig` 之外"两种写法）与实施者自己的 30 条，共 49 条；48 条抓到，没抓到的 o20（报告的卡的 React 键不带提交的时刻）是等价的，以 o05（`HealthScope` 的键不带它）作对照。写代码时活下来的四条各补了测试：计时器不清（卸下之后 SWR 对没挂着的键不发请求，"卸下之后不读"看不见，改为离开再回来，另加状态变了一格）、`reading` 不看 `isValidating`（重试挡住的一格）、`itemsReader` 的 403 不看 `current()`（换了提交之后才到的 403）、退回的任何拒绝都挂计时器（断网一格）。审查之后知道，"不跳转""不中止""不先盖住答复"三处没有测试（去掉 `mounted()`、`controllers` 登记到别处、`change(…, false)` 都照过），"卸下之后仍在重连时读升级"的 `leak` 在 UP7、UP8 都照过，`checking` 不看 `error`（c21）也照过（下面）。
+- 门禁（本机，头 `05423d08`）：`make lint gen-check knip build` 8 秒；经 `heavy.sh`：`make test` 3,652 秒（vitest 4,521 个；批准的守卫六格中位数 1.15–1.29 s），`make test-go-short` 43 秒，`make e2e` 142 秒（538 个）；一轮全绿。
+- CI：分支的 run 43169439216（`05423d08`）19 项第一次 attempt 全绿；八份的 Test 一步 389（EPYC 7763）、292（EPYC 9V74）、270（EPYC 9V45）、338（Xeon 8573C）、377（8573C）、395（7763）、230（9V45）、271（9V74）秒，都在 450 之下，S3 没改服务端，各份与 S2 的差别来自机器；costs-1 在 EPYC 9V74 上 16:06（Test 一步 13:16），批准的守卫六格中位数 1.65–1.96 s；e2e 7:58（E2E 6:41，538 个），作业限 20 分钟（7.5），L1 没有出。
+- **审查**（2026-11-12，三位各在 `05423d08` 的自己的工作树里，重的经 `heavy.sh`）：A 审网页的行为，B 审测试看不看得见、e2e 与逐个提交，C 审设计一致、文字、无障碍、回归与文档稿。A 1I 2M 4N 1Q，B 1I 3M 2N，C 0I 1M 5N 1Q；去重之后 Important 2（退回的说明随页面此刻的升级变，P3S3A-I1 = C-M1；批准之后重连不读升级没有测试看得见，P3S3B-I1），Minor 3（不跳转、不中止、不先盖住答复三处没有测试），Nit 9，Q 2（别人退回之后清检查一节，P3S3A-Q1 → 第 300 条；健康度页树读失败时一直"加载中"，P3S3C-Q1 → 第 301 条）。三位都没有查出码、请求次数、投影或焦点上的错；偏离第 1、2、4、5、7 条判对，第 3 条的理由不成立，第 6 条不对，第 8 条不是偏离，第 9 条是过程。主持者的修复说明 `fix-1.md`：两条 Important、三条 Minor 与 Nit 里改代码或测试的几条，加两个决定，按 `web` 与 `e2e` 分提交；文档的发现（P3S3C-N3–N5）与 3.25 的取舍在本提交。
+- **修复一轮**（2026-11-12，`bc1a24e5`；主持者的修复说明 `fix-1.md`）：从 `05423d08` 起 2 个提交，普通推送，没有改写已推的历史；11 个文件、加 440 行、减 61 行，没有服务端的改动：
+  - 网页：退回的说明在拒绝之后那一次重读回来时定一次（`change` 对四个码等重读再抛出，`sendBack` 从缓存读这一次重读的结果，记下那个拒绝与它的提交），20 秒只为被拒的那一次提交挂，重读答 404 时写通用的文字；别的管理员退回之后同样清掉检查一节（决定 300）；批准之后把升级从缓存里清掉；健康度页树读失败时交 `treeFailed`（决定 301）；假服务端每次提交给新的 `submitted_at`；vitest 4,531 个（多 10 个），新加或改写的格：A1、A2、REVIEWC-3、REVIEWC-4、ra05 的断网一格，批准时已离开、后退、带事件流的"approved"，驳回、退回先盖住答复，审阅一节的"更多"离开时中止，决定 300、301 各一格，驳回的任务整行（P3S3A-I1 = C-M1、C-N1、A-N1 = C-N2、A-M1 = B-M2、A-M2 = B-M3、A-N4 = B-M1、A-N2、A-N3、B-N2、B-I1 的 vitest 一半，决定 300、301）（`a040dcc1`）。
+  - e2e：`fixtures/upgrade-pages.ts` 的 `letInAtHome`；UP7、UP8 的批准那一页在首页放开流、等连接的第四层答了再断言不读升级，UP7 再去变更集页，末段的放开与断言删去；UP6 末段的注释（P3S3B-I1、N1）（`bc1a24e5`）。
+  - 推送之前在本地改写过两次：删掉一个没人读的字段；逐个提交的核对在 `make test-web` 里红了一格（`health-page-lifecycle.test.tsx` 的"missing More nodes…"，决定 301 的后果：树再读失败时"更多"带来的节点也空着），改了那一格并进网页那一个。
+  - 与 `fix-1.md` 不同之处 4 条（3.25）：`change` 等重读影响六个对话框（修复报告写五个，漏了结束回滚，审查 A）；批准之后先跳转再清缓存（核对一轮查明会闪，修复二轮改）；决定 300 的"显示过报告"按这一次进入读到的算；决定 301 也管树再读失败。实施者的偏离 3 照最后的做法重写，偏离 6 删去。
+  - 变异（`mut.py`，经 `heavy.sh`，改前在 `05423d08`、基线 270 个，改后基线 280 个）：ra01（A5）、ra04、ra05、ra10、ra11、c21 改前活；A1–A4、A6、REVIEWC-4、REVIEWC-H 对应的是改前缺的行为，由 A、C 的临时测试在 `05423d08` 上复现；改后 16 条全死（A1–A6、A6b、ra05、ra10、ra11、ra04、c21、H1、H2、`leak`、`leak-after-unmount`）。e2e：B 的 `leak` 改前 UP7、UP8 都过，改后 UP8 与 UP7 三种浏览器 4 个全红；o27 照旧 4 个全红。
+  - 逐个提交（干净的 worktree，经 `heavy.sh`）：两个各自 `make build`、`lint-web`、`knip`、`test-web`（4,531 个，58 秒）、`gen-check` rc=0，升级的全部故事与 LW8 107 个通过（36 秒）。UP6–UP8 页面版本 `--repeat-each=3` 一次与三轮各起一次 Playwright（每轮 6.6–7.4 秒），UP7 三种浏览器 12 次都过。
+  - 门禁（头 `bc1a24e5`）：`make lint gen-check knip build` 12 秒；经 `heavy.sh`：`make test-web` 59 秒（4,531 个），`make e2e` 139 秒（538 个）；照修复说明不跑整轮 `make test`。
+  - CI：run 43181567930（`bc1a24e5`）19 项一次全绿；八份的 Test 一步 385（EPYC 7763）、366（7763）、327（EPYC 9V74）、344（9V74）、290（Xeon 6973P-C）、373（7763）、242（EPYC 9V45）、323（7763）秒，都在 450 之下；costs-1 这一次在 EPYC 7763 上 21:09（Test 一步 17:37），批准的守卫六格中位数 2.21–2.40 s，都在 3.25 s 之下（第 298 条的条件看合并之后的 `main`，这是分支的一次）；e2e 9:24（E2E 7:32），L1 没有出。
+- **修复核对一轮**（2026-11-12，三位各在 `bc1a24e5` 的自己的工作树里，C 另核文档稿）：A 判 P3S3A-I1、M1、M2、N1–N4 关上（A1–A6 在头上照新的期望过；变异里 rb04 活、rb08 等价，其余改坏的都死），决定 300 做对了，偏离 1 可以接受，新的 P3S3A-M3（Minor：拒绝之后的重读被 `mode` 事件的读超过时，说明读到旧的缓存、一直写"正在计算"）、N5（Nit：批准之后清缓存时升级页还挂着，跳转之前闪成"加载中"）、N6（Nit：决定 300 的"换过提交"一支没有测试）由修复二轮改；B 判 P3S3B-I1、M1–M3、N1、N2 关上（7 条变异改后全死，`leak` 在 e2e 4 个全红，头上 UP6–UP8 页面版本三次各 `--repeat-each=3`、45 个全过，UP7 三种浏览器各 9 次；`a040dcc1` 单独绿），新测试没有同类的空断言，没有新发现；C 判 P3S3C-M1、N1、N2、Q1 关上（6 条变异都死），N3–N5 在文档稿里关上，新的 P3S3C-N6–N9（Nit，文档稿：UP7 的说法照修复之后写、决定 301 与 4.3 加上树再读失败、4.3 写明六个对话框都等重读、M12 第 41 条不用 `W/`）在本提交改。
+- **修复二轮**（2026-11-12，`a25fef6d`；主持者的修复说明 `fix-2.md`）：从 `bc1a24e5` 起 1 个提交，普通推送；只改 `upgrade-page.tsx` 与它的测试，2 个文件、加 119 行、减 5 行：
+  - 退回被拒之后，缓存里这一项仍 `isValidating`（拒绝之后的重读被 `mode` 事件的读超过，SWR 丢了它的答复）时再 `await reread()` 一次，再读缓存、定说明（P3S3A-M3）；批准成功、页面还装着时记下 `approvedAway`，`UpgradeRead` 卸下时才清缓存（P3S3A-N5）；决定 300 的"换过提交"一格（P3S3A-N6）；vitest 多 3 格（A8、A10 的写法与"换过提交"），新的三格连跑 15 次都过。修复报告另更正修复一轮第 5 节第 1 条：受影响的是六个对话框。
+  - 变异（`mut.py`，经 `heavy.sh`，改前在 `bc1a24e5`、基线 280 个，改后 283 个）：rb04、"清缓存挪到跳转之前"改前活，新的 M3、N5 两格放到 `bc1a24e5` 的页面上红（复现 A8、A10）；改后 6 条全死（不再读一次、A8 原样的期望、照修复一轮在跳转之后清、跳转之前清、从不清、rb04）。
+  - 核对（干净的 worktree，经 `heavy.sh`）：`make build`、`lint-web`、`knip`、`test-web`（4,534 个，59 秒）、`gen-check` rc=0，升级的全部故事与 LW8 107 个通过（34 秒）；UP6–UP8 页面版本一轮 5 个全过（7.5 秒）。
+  - CI：run 43189150092（`a25fef6d`）19 项一次全绿；八份的 Test 一步 393（EPYC 9V74）、369（EPYC 7763）、324（9V74）、342（9V74）、349（9V74）、363（9V74）、232（EPYC 9V45）、311（7763）秒，都在 450 之下；costs-1 在 EPYC 7763 上 21:31（Test 一步 17:57），批准的守卫六格中位数 2.21–2.37 s，都在 3.25 s 之下；e2e 8:19（E2E 6:32），L1 没有出。
+- **修复核对二轮**（2026-11-12，审查 A 在 `a25fef6d` 的自己的工作树里）：P3S3A-M3、N5、N6 关上（A8、A10、rb04 改前活、改后死，新加的 4 条变异都被抓到），没有新的竞态；新的 P3S3A-N7（Nit："再读一次"不看拒绝的码，断网等拒绝碰上有读在飞时也多读一次升级）不改：只在断网而有读在飞时多读一次，无害。两轮之后没有 Important、Minor 留下，修复到此为止。
+- 实施者留下的（报告第 9 节）：提交的标识（第 1 条，S3 用 `submitted_at`；要 `submission_id` 是服务端与契约的改动，不在 S3，审查与主持者照 `submitted_at`）；没有要编号的产品决定（"实施中定"的几条记在 3.25）；Step 的文档提交是本提交（3.25、10.3、00 号文档、两份移交、总体设计与 M12 的打磨）；o20 的 React 键留着与检查一节一个写法；4.3 的 `upgrade.service` 的测试（"若有"）没有这个文件，三个动作的路径与方法、`checkItems` 不带游标由页面的测试经假服务端的请求记录看住；没有手动起容器，临时 worktree 已删，没有修剪缓存。
+- **合并之后**（待填）。
 
 ## 附录：核对过的代码
 
