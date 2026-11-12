@@ -253,4 +253,4 @@ S3 开工之前 `main` 的两次 CI（详见 [P3 设计](../03-P3-review-approve
 
 实施者整轮根分区约 43–44G 可用，没有修剪任何缓存；逐个提交的临时 worktree 放在根分区上、跑完删掉；没有手动起容器（库都由测试经 testcontainers 起、收，e2e 的 PostgreSQL 由 `global-setup` 起停）；大的日志已 `gzip`（门禁的 `gates/`）。三位审查者：A、C 没有跑重的，只直接跑单个 vitest 文件；B 的重的都经 `heavy.sh`，每次之前看 `df`（43G），改坏的都从 `.mutbak` 复原，没有自己起容器；A 的两个临时测试文件、C 的探针跑完复原；三个工作树最后都回到 `05423d08`、`git status` 干净、没有 `*.mutbak`。修复一轮：每项之前判 `df`（43G）；逐个提交的 worktree 干净、跑完删掉；`git status` 干净，没有 `*.mutbak`；e2e 的变异之后 `bin/` 从没改的树重建；大的日志已 `gzip`；普通推送，没有改写已推的历史。修复核对一轮：三个工作树最后都在 `bc1a24e5`、`git status` 干净、没有 `*.mutbak`；B 的 `GOTMPDIR` 已删、e2e 变异之后重建了 `bin/`，C 换回旧代码跑探针之后复原。修复二轮：每项之前判 `df`；`git status` 干净，没有 `*.mutbak`；改前那一轮放进树里的 `bc1a24e5` 的两个文件跑完从副本放回、`cmp` 相同；临时的 worktree 已删；普通推送。修复核对二轮：A 的工作树在 `a25fef6d`、`git status` 干净、没有 `*.mutbak`，临时文件已删。
 
-合并之后 `main` 的第一次 CI：（待填）。
+合并之后 `main` 的第一次 CI：run 43199957538（`07abd0f7`）19 项第一次 attempt 全绿；八份的 Test 一步 336（EPYC 9V74）、367（EPYC 7763）、380（Xeon 8573C）、419（7763）、302（9V74）、273（EPYC 9V45）、238（9V45）、315（7763）秒，都在 450 之下；costs-1 在 9V45 上 12:51（Test 一步 10:18），批准的守卫六格中位数 1.43–1.57 s（第 298 条不触发）；e2e 6:52（E2E 5:38）。
