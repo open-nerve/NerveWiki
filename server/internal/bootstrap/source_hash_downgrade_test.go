@@ -275,7 +275,7 @@ func sourceDowngradeHandler(t *testing.T, tm acmeTeam, cfg config.Config, logger
 		t.Fatal(err)
 	}
 	authorizer := access.New(access.Deps{Memberships: workspace.NewMemberships(tm.pool), Notebooks: notebookFacts{notebook.NewFacts(tm.pool)}})
-	deps := notebookDeps(cfg, tm.pool, logger, authorizer, []notebook.Seeder{sourceDowngradeUnusedSeeder{}})
+	deps := notebookDeps(cfg, tm.pool, logger, authorizer, notebookRegistrants(tm.pool), []notebook.Seeder{sourceDowngradeUnusedSeeder{}})
 	deps.ModeSubscribers = append(deps.ModeSubscribers, subscribers...)
 	api, err := httpserver.NewAPI(apiConfig(cfg, logger, limiter, ident.Authenticator(), nil, nil, nil))
 	if err != nil {
