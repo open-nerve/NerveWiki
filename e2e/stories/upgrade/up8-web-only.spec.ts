@@ -9,6 +9,7 @@ import { listNodes } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import {
   bannerText,
+  letInAtHome,
   modeSection,
   reviewDialog,
   startDialog,
@@ -68,7 +69,7 @@ test("UP8 (API): an empty notebook's admin starts, checks, submits and approves 
   );
 });
 
-test("UP8 (page): an empty notebook's admin starts the upgrade in its settings, checks it, submits it and approves it on its page, its stream held, with no agent; approved, the page goes to the notebook's home, its title focused, an LLM Wiki whose root holds the raw and AGENTS the start wrote", async ({
+test("UP8 (page): an empty notebook's admin starts the upgrade in its settings, checks it, submits it and approves it on its page, its stream held, with no agent; approved, the page goes to the notebook's home, its title focused, its stream let in there reading no upgrade, an LLM Wiki whose root holds the raw and AGENTS the start wrote", async ({
   api,
   db,
   signedInPage,
@@ -78,7 +79,8 @@ test("UP8 (page): an empty notebook's admin starts the upgrade in its settings, 
   const notebook = await createNotebook(api, pat, workspace.slug, "Field notes");
   const upgradeRead = `/api/v0/notebooks/${notebook.id}/upgrade`;
   const page = await signedInPage(tokens);
-  // The stream held throughout, as the approving page's in UP7: no mode event reads the upgrade, approved, again.
+  // The stream held until the page is at the notebook's home, as the approving page's in UP7: no mode event reads the
+  // upgrade, approved, again.
   const letStreamIn = await holdStream(page);
   let started: Upgrade | undefined;
   try {
@@ -130,6 +132,15 @@ test("UP8 (page): an empty notebook's admin starts the upgrade in its settings, 
     await expect(notebookHeading(page, notebook.name)).toBeFocused();
     await expect(upgradeBanner(page, bannerText.reviewing)).toHaveCount(0);
     await expect(pageTree(page, notebook.name).getByRole("link", { name: "Directory", exact: true })).toBeVisible();
+
+    // Let in at the notebook's home, the upgrade's page unmounted: its connection reads what the home shows, not the
+    // upgrade, which answers 404 now (M11/P3 design 5).
+    const connection = await letInAtHome(page, pageWatch, notebook.id, letStreamIn);
+    expect(connection).toEqual(
+      expect.arrayContaining(["GET /api/v0/workspaces", `GET /api/v0/notebooks/${notebook.id}/nodes`])
+    );
+    expect(connection).not.toContain(`GET ${upgradeRead}`);
+    expect(pageWatch.apiFailures).toEqual([]);
   } finally {
     letStreamIn();
   }

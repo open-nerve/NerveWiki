@@ -319,7 +319,7 @@ test("UP6 (page): a second admin sends the submitted upgrade back on its page, t
     expect((await readContent(api, pat, plan.id)).content).toBe("# Plan\n");
     expect(await trashedNames(db, notebook.id)).toEqual(["AGENTS", "raw"]);
 
-    // Left for the notebook's home, the page lets its stream in: its connection reads what is shown, not the upgrade.
+    // The page lets its stream in only once it has left the upgrade's page.
     await page.goto(notebookPath(slug, notebook.id));
     await expect(notebookHeading(page, notebook.name)).toBeVisible();
   } finally {
