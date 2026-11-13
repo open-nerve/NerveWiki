@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M8/P4
 to: M11
 created: 2026-10-15
@@ -26,3 +26,4 @@ M11 回滚一次升级，照从新到旧逐个撤销它的变更集（[M8 总设
 - P1/S3（2026-11-10，合并 `8af1bff6`）：第 1、2 条由回滚取代、做完：一个回滚任务（种类 `rollback`、带 `upgrade_id`），每一遍先删不含基线节点的新建子树（不计入界），没有了就由基线合成一遍撤销，至多 `MaxRollbackItems = 300,000` 个条目，复用撤销的批；没有恢复、没有"停在一组中间"，继续就是重新算差，确定性的停下可以结束回滚（`TestUpgradeRollback`）；第 4 条：回滚的单元设 `UpgradeOwn`，冻结按它放过，升级换了时单元答 `ErrStaleUpgradeWrite`（交错第 16 条），"任务的批"的 `rolling_back` 一行里别的任务的一批被拒、回滚自己的批放过；第 5 条：放弃经 REST，回滚任务的客户端是 `web` 或 `api`。仍是 `open`。
 - P1/S4（2026-11-10，合并 `ce370441`）：第 2 条的网页一半：升级页以任务页的整行 `TransferJobRow` 显示回滚的任务（进度、状态、报告），停下之后不刷新页面就出现"继续回滚…"与"结束回滚，保留现在的样子…"（结束的对话框写剩下的三个数与链接可能指不到的一句，三个都为 0 时只写"已经复原完"）；任务页与升级页的"取消"对回滚的任务只给笔记本管理员（第 229 条）。仍是 `open`。
 - P3/S1（2026-11-12，合并 `daf14dd1`）：第 5 条的驳回一半：驳回经 REST（`rejectUpgrade`），回滚任务的客户端照 `shared.ClientOf` 是 `web` 或 `api`（3.7，单元断言"from web"）；任务排在别的写入任务之后时笔记本冻结到回滚做完（UP6 以另一本笔记本的导入占住导入 worker、确定地断言 agent 的写答 `notebook.upgrading`）。仍是 `open`。
+- M11 收尾（2026-11-13）：做完，状态改为 `done`。第 1、2 条由回滚取代：一个 `rollback` 任务，先删新建的子树，计划由基线合成，停下之后继续就是重算，确定性的停下可以结束回滚（00-M11 第 178、193、212 条；`TestUpgradeRollback`、`TestRollbackPlansPutTheBaselineBack`）；第 3 条不适用（回滚中冻结，回滚的任务是唯一的写者）；第 4 条由 `Write.UpgradeOwn` 取代（第 177 条），冻结不看 `Kind`（`page/domain/freeze.go`，`TestUpgradeFreezeLetsOnlyItsOwnWrites`、`TestTheFreezeLetsItsOwnUnits`）；第 5 条照旧，放弃与驳回经 REST，任务的客户端是 `web` 或 `api`。第 2 条的"之后撤销 R"对回滚的变更集在一种常见的形状下答冲突（第 302 条），v0.1 由一个整个程序的测试钉住，修好在 [M12 的历史移交](../../M12-release/handoffs/M8-history.md)第 6 条。证据逐项记在[收尾审查](../reviews/M11-closeout-review.md)。

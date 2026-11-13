@@ -7,7 +7,7 @@ created: 2026-10-03
 
 # 推迟到 v0.1 收官之后统一打磨的体验事项
 
-负责人在 2026-10-03 决定：体验上的小问题不在各 M 里停下来，v0.1 全部收官之后统一打磨。M5 推迟的几项记在这里，免得关掉移交之后丢失（之后的 M 推迟的同样追加：第 7 条是 M4–M5 的 Codex 评审，第 8–14 条 M6，第 15–20 条 M7，第 21–29 条 M8，第 30–32 条 M9）：
+负责人在 2026-10-03 决定：体验上的小问题不在各 M 里停下来，v0.1 全部收官之后统一打磨。M5 推迟的几项记在这里，免得关掉移交之后丢失（之后的 M 推迟的同样追加：第 7 条是 M4–M5 的 Codex 评审，第 8–14 条 M6，第 15–20 条 M7，第 21–29 条 M8，第 30–32 条 M9，第 33–39 条 M10，第 40–50 条 M11）：
 
 1. **"某某正在编辑"的其余位置**：M5 只在页面本身显示；页面树、笔记本首页上的标记，在线状态（[M5 总设计](../../M5-collab-editing/00-M5-design.md)第 2 节）。
 2. **删除与新建之后的导航**：删除之后的去向由旧位置渲染的 `<Navigate>` 决定，可能覆盖用户刚发起的导航；新建的答复只看已提交的地址（[M4/P6 编辑器移交](../../M5-collab-editing/handoffs/M4-P6-editor.md)第 7 项，[P5 审查](../../M4-pages/reviews/P5-tree-reading-review.md) Q3）。
@@ -252,7 +252,7 @@ created: 2026-10-03
 38. **M10 收尾审查 B 看到的小事**（[收尾审查](../../M10-llm-wiki/reviews/M10-closeout-review.md)）：
     - 来源页的只读说明是红色的 `role="alert"`，读者也看到：日常的状态显示和读出成了错误。
     - 另一个标签页降级之后，开着的粘贴对话框悄悄禁用"添加来源"，没有说明。
-    - 只有横幅的拒绝让焦点落到 `<body>`：粘贴重复的对话框、降级遇到任务的对话框，同第 9 条。
+    - 只有横幅的拒绝让焦点落到 `<body>`：粘贴重复的对话框、降级遇到任务的对话框，同第 9 条。M11 加的升级的八个对话框（发起、放弃、继续、结束回滚、提交、批准、退回、驳回）被拒之后同样（[M11 收尾审查](../../M11-upgrade/reviews/M11-closeout-review.md) B-N4），拒绝在这里是常事（会话锁着、状态已变、`not_ready`、`transfer.busy`）。根在 `ConfirmDialog`：`web/apps/web/src/app/confirm-dialog.tsx:92-102` 的 `run` 失败只 `setFailure`、`setSending(false)`；`:176-183` 发送中两个按钮都 `disabled`，焦点所在的按钮被禁用，浏览器把焦点交给 `<body>`，之后不还（行号是 `9e787bab` 的）。改法例如失败之后把焦点交给确认按钮，或给 `Alert` 加 `tabIndex={-1}` 并聚焦。
     - 目录里写成 `raw.md · N 个来源` 与 `没有类型 · raw.md`，文件夹一样的页带着文件后缀。
     - 树里"目录"与"历史"两行不标当前，也不与页的行对齐。
     - `.md` 超限说 5 MB，粘贴说 5 MiB。
@@ -265,6 +265,15 @@ created: 2026-10-03
     - 选定之后，下拉框把长路径截在约 39 个字符，开头相同的两项看起来一样。
 39. **真实的读屏软件**（[M10/P4 S3 审查](../../M10-llm-wiki/reviews/P4-S3-web-review.md)）：目录、健康度与历史的状态只查过 `aria-live` 与角色，没有用真实的读屏软件走过。
 40. **升级中的笔记本，`AGENTS` 写"三个 prompt"**（[M11/P3 S2 审查](../../M11-upgrade/reviews/P3-S2-playbook-docs-review.md) A-Q1，[M11 总设计](../../M11-upgrade/00-M11-design.md)第 11 节主持者的决定第 299 条）：`AGENTS` 的两份模板（`wiki/domain/template-en-agents.md:33` 的"Three prompts are served there:"，`template-zh-CN-agents.md:33` 的"那里有三个 prompt："）写的是 LLM Wiki 建成之后的样子；发起升级时补写的 `AGENTS` 也取它（`wiki/app/template.go:112`），握手的说明含 `AGENTS` 的正文，所以升级中的 agent 一握手读到"有三个 prompt：ingest、query、lint"，这时它们都答 `notebook.not_llm_wiki`，答文字的 `upgrade` 没提。英文的"served"照 LLM Wiki 读仍可算对，中文按字面不实。S2 不改，进 M12 的打磨。改法：两份模板同改成"三个为 LLM Wiki 服务的 prompt"一类说法（或另提升级中的 `upgrade`）；已有笔记本里的 `AGENTS` 不随之改。
-41. **英文的"No issues (1 checks)"**（[M11/P3 S3 审查](../../M11-upgrade/reviews/P3-S3-web-review.md) C-N5）：`web/apps/web/src/i18n/messages/en.ts:346` 的 `health.clear` 是"No issues ({count} checks)"，只有一条计数为 0 的规则时写"1 checks"；健康度页（M10）、升级页的检查一节（M11/P2/S3）早就这样，审阅一节（M11/P3/S3）照用，`web/apps/web/src/pages/notebook/upgrade-page.test.tsx:1113` 把它写进了断言。改法：一条时另用一个键（同 `upgrade.checkFailedOne` 的写法），两种语言；那一处断言随之改。
+41. **英文的单复数："No issues (1 checks)""1 pages lead to …""(1 nodes under it now)"**（[M11/P3 S3 审查](../../M11-upgrade/reviews/P3-S3-web-review.md) C-N5；后两处是 [M11 收尾审查](../../M11-upgrade/reviews/M11-closeout-review.md) B-N2，"1 nodes"另见 M11/P1/S4 修复一轮的报告）：`web/apps/web/src/i18n/messages/en.ts:346` 的 `health.clear` 是"No issues ({count} checks)"，只有一条计数为 0 的规则时写"1 checks"；健康度页（M10）、升级页的检查一节（M11/P2/S3）早就这样，审阅一节（M11/P3/S3）照用，`web/apps/web/src/pages/notebook/upgrade-page.test.tsx:1113` 把它写进了断言。改法：一条时另用一个键（同 `upgrade.checkFailedOne` 的写法），两种语言；那一处断言随之改。 同样的还有两处（行号是 `9e787bab` 的）：闸门 6 只有一页变坏时，`web/apps/web/src/i18n/messages/en.ts:778` 的 `upgrade.gateLinksWorse`（"{count} pages lead to more pages that do not exist than when the upgrade started."，`web/apps/web/src/pages/notebook/upgrade-check.tsx:446` 以 `pages_worse` 填）写"1 pages lead to …"；根下的 `raw` 下只有一个节点时，发起对话框的 `upgrade.startRaw`（`en.ts:707`，`web/apps/web/src/pages/notebook/general-page.tsx:230`）写"(1 nodes under it now)"。vitest 的夹具都用 3、7 页与 2 个节点，看不到；中文没有这个问题。改法同上，各加一个单数的键。
+42. **历史里标出升级的变更集**（[M11 总设计](../../M11-upgrade/00-M11-design.md)"写给后面的 M"，M11 第 179 条）：agent 在升级中的写照旧是 `edit` 的变更集，所属的升级已记在 `changesets.upgrade_id`（迁移 00056），网页的历史不标出它们。
+43. **退回时附一段说明**（M11 第 183 条）：退回不带文字，发起人只能另外问管理员为什么。要附时加一个文字输入框，输入法清单随之加步。
+44. **MCP 的 `notebooks`、`open_notebook` 与握手的说明标出升级中**（M11 第 196 条）：今天 agent 只能从写被拒的码（`notebook.upgrading`）或 prompt `upgrade` 知道这本笔记本在升级中。
+45. **升级页里的类型分布与逐页的清单**（M11 第 197 条）：存下的报告不含它们，今天在目录视图里看。
+46. **已结束的升级的报告**（含结束回滚时剩下的数；[M11 收尾审查](../../M11-upgrade/reviews/M11-closeout-review.md) B-Q1）：别的管理员批准，或驳回之后回滚很快做完时，开着的升级页只写"这本笔记本没有进行中的升级"，不说发生了什么；结束回滚时剩下的三个数只在答复与那一刻的页上。
+47. **网页上显示 MCP 地址**（M11 第 184 条）：升级页的接入一节只写 prompt 的名字与 README 的那一节，不写地址；同第 31 条。
+48. **横幅出现时正文跳动**（M11 第 224 条，[M11/P1 S4 审查](../../M11-upgrade/reviews/P1-S4-web-review.md) S4C-Q2）：P1/S4 实测正在读的段落在三种浏览器里都往下跳 94 像素（横幅 70 加间距 24），`scrollY` 不变。原因不在横幅：阅读视图（`web/apps/web/src/pages/page/reading-view.tsx`）的 layout effect 依赖 `editable`（也依赖 `role`），`writesNotebook` 一变就以 `innerHTML` 重写正文，浏览器选中的锚点被移除，这一帧不补偿；升级开始、结束与角色变化都会跳。改法（审查 C 给的）：`editable` 不进那个 effect 的依赖，任务勾选框的 `disabled` 由另一个 effect 改，`toggleTask` 经 ref 读当时的可编辑性；改时对照 M6 以来阅读视图依赖 `editable` 的增强逐一核对（如任务勾选的焦点恢复）。
+49. **撤销对话框的 `history.revertLinks` 不在可访问描述里**（[M11/P1 S4 审查](../../M11-upgrade/reviews/P1-S4-web-review.md) S4A-N4）：M8 的先例；`ConfirmDialog` 的 `more` 在 P1/S4 已进描述，这一句没有。
+50. **e2e 偶发的 `net::ERR_NETWORK_CHANGED`**（M11/P1/S4 修复两轮，S4C-Q3、S4B-N3、S4C-N3）：每一轮的 PostgreSQL 容器的 veth 得到 IPv6 链路本地地址时，新开的 Chromium 正载的第一批模块失败（M10 的两次与 P1/S4 的一次都是它）。`e2e/global-setup.ts` 已缓解：起容器之后等主机上没有 tentative 的 IPv6 地址（排除 `dadfailed`）再放 worker，`ip` 带 1 秒超时，判不了时从 `startPostgres()` 返回起等 3 秒；等待与迁移并行，本机每轮约多 0.2 秒。审查 C 在两轮核对里共以 15 轮探针核对，等待都跨过了窗口；CI 的 runner 上等待有没有触发没有查。
 
 之后的 M 推迟的体验事项照样追加到这份移交。

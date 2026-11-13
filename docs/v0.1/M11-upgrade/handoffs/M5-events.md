@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M5 收尾
 to: M11
 created: 2026-10-04
@@ -18,3 +18,4 @@ created: 2026-10-04
 - P1/S4（2026-11-10，合并 `ce370441`）：网页的 `modeChanged` 另以笔记本 id 重读 `["upgrade", notebook_id]`（`handlers.test.ts`），`refreshedOnConnect` 的第三层加 `upgrade`（与 `pages` 同层、在笔记本列表之后）；回滚的进度没有事件，升级页按 `rollback_job_id` 轮询任务（排队或在跑时每秒），看到它结束就重读一次升级；UP1 的页面版本里另一个标签页的横幅只能经 `mode` 来（`holdStream`）。仍是 `open`。
 - P3/S1（2026-11-12，合并 `daf14dd1`）：批准、驳回、退回经模式变化的订阅链发 `mode`，`EventMode` 不加字段，帧里没有前后模式；`TestUpgradeStatesReachTheStreams` 加九步（发起、交、退回、交、驳回、回滚做完、发起、交、批准；三个流照旧 `[n, n, 0]`），去掉批准的 `Publish` 被它抓到；批准一帧的 `Publish` 的 `From standard`、`To llm_wiki` 由单元 `TestApproveUpgrade` 整值断言。网页一半在 S3。仍是 `open`。
 - P3/S3（2026-11-12，合并 `07abd0f7`）：网页一半：批准之后页面跳到笔记本首页，升级页卸下，之后的 `mode` 与重连只重读装着的键（笔记本列表、树），不再读升级（vitest 断言批准之后的 `mode` 与之后的一次重连都不读升级；UP7、UP8 的页面版本里批准那一页的流以 `holdStream` 挡住，到首页才放开，等连接的最后一层答了，断言没有读升级；S3 建成时 UP7 在变更集页的新文档里放开、UP8 不等，都看不见这一半，审查 P3S3B-I1）；另一个停在首页的标签页随批准的 `mode` 失去横幅、不刷新、不读升级（UP7，那一页没有未声明的 404）；退回、驳回之后的 `mode` 照旧重读升级。仍是 `open`。
+- M11 收尾（2026-11-13）：做完，状态改为 `done`。M10 建的 `mode` 是升级的每个状态变化的事件：发起、提交的两个事务、退回、批准、驳回、放弃、回滚的停下、继续、做完与结束回滚，都经 `notebook.NewUpgradeStates` 在写笔记本行的事务里 `Publish`（`notebook/upgrade_states.go:133`），`EventMode` 不加字段（`api/modules/events.yaml` 的说明写了升级）；最后一跳 `TestUpgradeStatesReachTheStreams`（`bootstrap/upgrade_start_test.go:389`，订阅者交空时失败）；网页的 `modeChanged` 另重读升级、批准之后不再读（`handlers.test.ts`，UP7、UP8 的页面版本）。证据逐项记在[收尾审查](../reviews/M11-closeout-review.md)。

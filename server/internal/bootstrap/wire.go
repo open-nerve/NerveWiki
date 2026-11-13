@@ -207,10 +207,13 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	if err != nil {
 		return nil, err
 	}
+	// The notebook module's registrants, once: its use cases and the
+	// upgrade's states tell the same mode's subscribers (M11 design 4.1).
+	notebookExt := notebookRegistrants(pool)
 	// An upgrade's rollback's job ends the upgrade through the wiki module
 	// (M11/P1 design 3.20), which comes after the transfer module: its end
 	// comes first, from the pool.
-	upgradeStates := wikiUpgradeStates{notebook.NewUpgradeStates(pool, notebookRegistrants(pool).modeSubscribers)}
+	upgradeStates := wikiUpgradeStates{notebook.NewUpgradeStates(pool, notebookExt.modeSubscribers)}
 	rollbackEnd := wiki.NewRollbackEnd(pool, wikiLintNotebooks{notebooks: notebook.NewNotebooks(pool)}, upgradeStates,
 		wikiRollbackPages{page.NewUpgrades(pool)}, clock.System{}, logger)
 	trDeps := transferDeps(cfg, pool, logger, authorizer, store, inserter, pg.TreeWrites(), keys.Derive(transfer.DownloadKeyInfo))
@@ -223,7 +226,7 @@ func wireApp(ctx context.Context, cfg config.Config, logger *slog.Logger, migrat
 	tr := transfer.New(trDeps)
 	// The notebook module comes last: its creation's seeder writes the
 	// template through the page module's units (M10 design 4.1).
-	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer, []notebook.Seeder{wikiTemplate{template}}))
+	nb := notebook.New(notebookDeps(cfg, pool, logger, authorizer, notebookExt, []notebook.Seeder{wikiTemplate{template}}))
 	ev, listener := eventsModule(cfg, pool, logger)
 	runner, err := jobs.New(pool, jobsConfig(cfg, logger),
 		slices.Concat(ident.Jobs(), pg.Jobs(), as.Jobs(), tr.Jobs(), []jobs.Job{purgeJob(cfg, pool, store, logger)}))

@@ -18,7 +18,6 @@ import type { Upgrade } from "../../services/upgrade.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useAccount, useNotebooks, usePageTree, useStore, useTransfers, useUpgrades } from "../../stores/context";
 import { under } from "../../stores/transfer.store";
-import { nodeTarget } from "../node-target";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { distinctName } from "./distinct-name";
 import { useNotebook } from "./notebook-layout";
@@ -259,6 +258,8 @@ const UpgradeRead = observer(function UpgradeRead({
 
   // Approved, the page goes: unmounted, the upgrade in review leaves the cache.
   const approvedAway = useRef(false);
+  // An approval sent, not refused: its mode event may come before its answer, its read again answering 404.
+  const approving = useRef(false);
   useEffect(
     () => () => {
       if (approvedAway.current) void mutate(["upgrade", notebook.id], undefined, { revalidate: false });
@@ -275,12 +276,21 @@ const UpgradeRead = observer(function UpgradeRead({
    * taking the focus; once it is unmounted, the upgrade, in review, is
    * dropped from the cache, read by no hook then, so that Back does not
    * show it meanwhile (cleared before, the page would show it loading as
-   * it goes).
+   * it goes). While it is sent, the approval's mode event may come before
+   * its answer (the server publishes it as its transaction commits), its
+   * read again answering that none is under way: the page shows what it
+   * read before, the review and the dialog over it, until the approval is
+   * refused, or, approved, until the page is gone (M11 closeout, review
+   * B-N1). Approved, that stays so: the navigation resolves before its
+   * route is shown, and the dialog, closing then, renders the page once
+   * more.
    */
   async function approve(): Promise<void> {
+    approving.current = true;
     try {
       await notebooks.approveUpgrade(notebook.id);
     } catch (refusal) {
+      approving.current = false;
       if (
         mounted() &&
         refusal instanceof ApiError &&
@@ -395,11 +405,14 @@ const UpgradeRead = observer(function UpgradeRead({
   // The check, upgrading, or the report, reviewing: this entry's own, in its cache.
   let entryOwn: ReactNode = null;
   let rest: ReactNode = null;
+  // None under way, read while an approval is sent: SWR keeps the data read before, shown until it is refused.
+  const approvedMeanwhile =
+    approving.current && data !== undefined && error instanceof ApiError && error.code === "wiki.upgrade_not_found";
   if (!admin) {
     shown = <p>{t("upgrade.adminsOnly")}</p>;
-  } else if (error instanceof ApiError && error.code === "wiki.upgrade_not_found") {
+  } else if (error instanceof ApiError && error.code === "wiki.upgrade_not_found" && !approvedMeanwhile) {
     shown = <p>{t("problem.wiki.upgrade_not_found")}</p>;
-  } else if (data === undefined || error !== undefined) {
+  } else if (data === undefined || (error !== undefined && !approvedMeanwhile)) {
     shown = <NotLoaded error={error} retry={() => void reread()} />;
   } else {
     shown = (
@@ -478,8 +491,9 @@ const UpgradeRead = observer(function UpgradeRead({
   }
   const left = data?.rollback_left ?? null;
   const texts = { "transfer.busy": "upgrade.rollbackUnderWay" } as const;
-  // The source area the approval makes read only, by its path, once the tree has it (design review P3C-N13).
-  const sourceRoot = data === undefined ? undefined : nodeTarget(pages, data.source_root_id)?.path;
+  // The source area the approval makes read only, once the tree has it (design review P3C-N13), named as the state
+  // section names it, not by its MCP path (M11 closeout, review B-N3).
+  const sourceRoot = data === undefined ? undefined : distinctName(pages.tree, notebook, data.source_root_id, t);
   return (
     <>
       {shown}

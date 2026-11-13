@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M9 收尾
 to: M11
 created: 2026-10-23
@@ -23,3 +23,4 @@ M9 建了 MCP 的工具与 prompt 的注册表（[M9 总设计](../../M9-mcp/00-
 - P2/S1（2026-11-10，合并 `8cf7af36`）：第 2 条的 P2 一半：发起人经 MCP 的写放行之后再过护栏，`batch` 是一个单元、守卫看到它的每一步，被拒时整个回滚：不改写链接的移动答 `page.upgrade_keep_links`，标在那个移动上；基线页的正文变了答 `page.upgrade_immutable`；此前的移动或改名改写过的基线页再被写答 `page.upgrade_batch_rewrite`（第 268、270 条），正文的两个码标在这一页最后一个正文操作（`TestUpgradeGuardrails` 的 g9–g13、g19–g27，`TestUpgradeToolsErrorsCarryTheirCodes`，UP4 的 `batch`）；放行时整个 `batch` 一起写下。仍是 `open`。
 - P2/S2（2026-11-11，合并 `c61df45a`）：第 1 条：`upgrade_verify`、`upgrade_submit` 登记在 wiki 的 `Tools()`，两个入口，先写进 `api/mcp/tools.json`（`TestTheToolListsAreTheContract`、`TestTheWikiToolsContract`）；矩阵的两行另成一组 `upgradeMCPRows()`，覆盖的检查读 `coveredMCPRows()`（`TestUpgradeToolsMatrix`、`TestThePermissionMatrixCoversEveryTool`）；两行码整行进 `mcpToolCodes()` 与 `upgradeToolCodes()`，`TestUpgradeToolsErrorsCarryTheirCodes` 在两个入口答出；`upgrade_verify` 的答复经两段的 `Fit`（先截规则的条目，再截闸门的路径）；注解：`upgrade_verify` 照只读的工具，`upgrade_submit` 带 `destructiveHint: false`（`mcpserver` 改为每个写的工具都写这一项）；内置的说明各一行，SDK 的编码下笔记本入口 3,276、账户入口 3,346 字节，距 3,796 的界各剩约 520、450（每个入口至少 300 字节的预留守住）。仍是 `open`。
 - P3/S2（2026-11-12，合并 `7d2e895a`）：第 1 项末句：upgrade 的 prompt 走 M10/P5 已有的按入口注册（`mcpserver.Prompt` 的 `Entry: NotebookEntry`，wiki 的 `Prompts()`），只在笔记本入口，取它在升级中之外答 `wiki.upgrade_state`；`upgrade_submit` 的说明加上管理员也可以退回（契约两个入口、`wiki/adapter/mcp/tools.go` 的常量与 testdata，设计审查 P3C-N4）。仍是 `open`。
+- M11 收尾（2026-11-13）：做完，状态改为 `done`。第 1 条：`upgrade_verify`、`upgrade_submit` 在两个入口，矩阵、码、内置说明（每个入口至少剩 300 字节，`TestTheBuiltInInstructionsAreShort`）与 `Fit` 照 M9 的每个工具；prompt `upgrade` 走按入口的注册，只在升级中答文字；第 2 条：冻结放行发起人在升级中的 MCP 写与回滚自己的单元（`UpgradeOwn`，不看 `Kind` 与名称），`batch` 整个放行或整个回滚，放行之后过护栏；第 3 条：回滚照用 `PlanRevert` 与 `schedule`，`ErrRevertUnordered` 是缺陷；第 4 条不适用（MCP 不放弃、不开任务）。证据逐项记在[收尾审查](../reviews/M11-closeout-review.md)。
