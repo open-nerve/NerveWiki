@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P1 地基（两个 Step：S1 e2e 的帮手；S2 工具链与安全更新） |
-| 日期 | 2026-11-15（初稿；同日照设计审查修订，再照修订核对第 1、2 轮修订） |
-| 状态 | 进行中（设计已审查，S1 开工；[审查记录](reviews/P1-design-review.md)，两轮修订核对在它的末两节） |
+| 日期 | 2026-11-15（初稿；同日照设计审查修订，再照修订核对第 1、2 轮修订；同日照 S1 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `（待填：S1 的合并号）`；设计的[审查记录](reviews/P1-design-review.md)，两轮修订核对在它的末两节；S1 的[审查记录](reviews/P1-S1-e2e-navigation-review.md)；实施与审查之后与代码不同之处照实改在各节（3.15 列出），结果在 10.1） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.3、4.4、第 3 节第 1、2、11 条、5.3、第 7 节 P1 一行与"分份""移交的落实""总体设计的修订"第 4、5、12、18 条、9.3、9.6、9.7、第 10 节、第 11 节决定 308、310、311、334；[P1 设计审查](reviews/P1-design-review.md)；[M12 设计审查](reviews/M12-design-review.md)的 C-I3、C 的 U1–U3、B-I1、B-I2、B-M1、B-M3、B-M12、B-M13、B-M15、B-N9、B-N11、B-N12、C-N8；[移交](handoffs/)：M5-polish 第 50、51 条，M0-P6-image-release 第 4 条；[v0.1 总体设计](../v0.1-design.md) 7.1、13.1 第 32 条、13.4 第 1、3 条、13.5 第 2 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/grep.go:149`（`server/internal/modules/` 之下）；`platform/…` 在 `server/internal/` 之下；前端写作 `W/session/token-manager.ts:289`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/browser.ts:123`；其余写仓库根起的路径。行号都是 `main` 的 `a22adfd2` 的（代码与 `5e8af5b5` 相同，其后只改了文档与 `docs/v0.1/claude_to_codex/tools/`），00 号文档与总体设计的行号也是它的 |
 | 工作笔记 | 本文引的每个行号都在 `a22adfd2` 上读过（附录）。P1 的设计不跑重的东西，要量的在 7.5；第一次修订的 A15 原型是唯一经 `heavy.sh` 的运行。只读地查了公开的版本：go.dev 的下载列表（最新 go1.27.4）、proxy.golang.org（`golang.org/x/vuln` 最新 v1.9.0）、四个镜像的摘要（`docker buildx imagetools inspect`）、pnpm 12 的 `audit` 文档；没有跑 `govulncheck`、`pnpm audit`、`pnpm outdated`。续期的两个探针的数据是 M12 设计审查 C 的（00 号文档 4.4、`m12/review-c/`）；各引擎在"下一个文档已请求"时的行为是 P1 设计审查 C 的探针（`m12/p1-review-c/`），`sessionWaits` 在三个窗口里的读数是 P1 设计审查 A 的（`m12/p1-review-a/`）。第一次修订在 scratchpad 的临时 worktree（`a22adfd2`）里跑了 A15 新的第 3、4、6 格的原型，三种浏览器各三轮，帮手完整与去掉一样各一组（经 `heavy.sh`；`m12/p1-rev1/`，3.6） |
@@ -16,11 +16,11 @@
 照 00 号文档第 7 节，P1 分两个 Step，各自一个分支（`m12-p1-s<m>`）、一次审查与修复核对、一次合并；S2 从 S1 合并之后的 `main` 开始。每个提交单独为绿（02-workflow 第 3.1 节）。
 
 - **S1 e2e 的帮手**（`m12-p1-s1`）：
-  - 帮手 `e2e/fixtures/navigation.ts`：`goto`、`reload` 先等页面没有在途的接口请求、这个文档的第一次续期已答、续期的锁空着，再换文档；显式的逃生口 `{ inFlight: "leave" }`（3.2）；
+  - 帮手 `e2e/fixtures/navigation.ts`：`goto`、`reload` 先等页面没有在途的接口请求、续期的锁空着（没有 Web Locks 时看租约）、这个文档有了给它令牌的答复（第一次续期，或在这个文档里登录、注册），再换文档；显式的逃生口 `{ inFlight: "leave" }`（3.2）；
   - `watchPage` 登记每个页面的在途请求，并记下页面落到 `/sign-in` 的每一次（3.3）；
   - 110 个文件换上帮手：109 个故事、`e2e/fixtures/wiki-health.ts`（3.4）；
   - 门禁 `tools/e2e-navigation/check.mjs`，进 `make lint-web`：整个 `e2e/` 里只有帮手的模块直接调 `goto`、`reload`；逃生口按表核对个数；先在样例上证明它看得见违例（3.5）；
-  - 新故事 A15：离开续期在途的页面会被登出，经帮手不会；六格，三种浏览器，第 3 格只在 Chromium 与 Firefox（3.6）；
+  - 新故事 A15：离开续期在途的页面会被登出，经帮手不会；九格，三种浏览器，第 3 格只在 Chromium 与 Firefox（3.6）；
   - `e2e/global-setup.ts` 的网络等待触发时打一行日志（3.7，第 50 条）；
   - **单独为绿**：只改 `e2e/`、`tools/`、`Makefile` 的 `lint-web` 一行与 `knip.jsonc`。产品代码、契约与组合根不变。CI 的 `web` 一项（`make lint-web`、`make knip`）与 `e2e` 一项证明它。
 - **S2 工具链与安全更新**（`m12-p1-s2`）：
@@ -109,10 +109,10 @@
 
 - **337（P1-1）帮手是函数，不是 `page` 的方法**：`goto(page, url, options)`、`reload(page, options)`，模块 `e2e/fixtures/navigation.ts`。不改写 `page` 夹具给它换方法：`anotherPage`、`anotherTab` 与故事自己开的标签页也要它，包一层 `Page` 会让 Playwright 的类型与 `page.context()` 的页面对不上。替换是机械的：`X.goto(` → `goto(X, `（3.4）。
 - **338（P1-2）在途的请求只算接口的 fetch 与 XHR**：`/api/v0/` 之下、事件流 `/api/v0/events` 除外、资源类型是 `fetch` 或 `xhr`。图片、媒体与附件的内容（阅读视图里的 `<img>`、`<video>`）不算：它们打断不了续期，媒体的请求还可能一直开着。
-- **339（P1-3）帮手的三样等待**：在途的接口请求答完；这个文档有会话的记录时，它的第一次续期已答（文档的 `performance` 里有 `/api/v0/auth/refresh` 的一条）；续期的锁空着（`navigator.locks.query()` 里没有 `nwiki.auth.refresh`；没有 Web Locks 时租约 `nwiki.auth.lease` 不在或已过期）。后两样在页面里读，与 Playwright 何时开始监视无关：L1 的新标签页晚于加载才被监视（`l1-links.spec.ts:183`），照样等得对（3.2）。三样各有 A15 的一格只在它去掉时失败：在途的读是第 5 格，第一次续期是第 4 格，锁是第 6 格（3.6 的表）；只从在途的集合里去掉续期是等价的变异（7.2）。
+- **339（P1-3）帮手的三样等待**：在途的接口请求答完；续期的锁空着（`navigator.locks.query()` 里没有 `nwiki.auth.refresh`；没有 Web Locks 时租约 `nwiki.auth.lease` 不在或已过期），有没有会话的记录都看：登录、注册在锁里写第一份记录；这个文档有会话的记录时，它有了给它令牌的答复（文档的 `performance` 里有续期、登录或注册的一条：`/api/v0/auth/refresh`、`/api/v0/auth/login`、`/api/v0/auth/register`）。后两样在页面里读，与 Playwright 何时开始监视无关：L1 的新标签页晚于加载才被监视（`l1-links.spec.ts:183`），照样等得对（3.2）。三样各有 A15 的格只在它去掉时失败：在途的读是第 5 格，第一次续期是第 4 格，锁是第 6、8 格，租约是第 9 格，令牌的答复里注册一支是第 7 格（登录一支是 A3、S4 与第 8 格）（3.6 的表）；只从在途的集合里去掉续期是等价的变异（7.2）。P1/S1 实施改，原来是"这个文档有会话的记录时，它的第一次续期已答（文档的 `performance` 里有 `/api/v0/auth/refresh` 的一条）；续期的锁空着"，先看记录：在这个文档里登录、注册的不发第一次续期，照原来的写法 A3、S4 在登录页登录之后换文档时等满 10 秒失败；登录、注册在锁里写记录，先看记录会在写之前放行，A15 第 8 格（3.15 第 2、9 条）。
 - **340（P1-4）帮手等 10 秒，然后失败并写出在等什么**：比续期自己的 8 秒（`token-manager.ts:24`）长。故事的默认时限 30 秒，帮手的错误先于测试的超时出来，写明"传 `{ inFlight: "leave" }` 才能不等"。在页面里读的那一次也受这个时限：Chromium 在下一个文档还没提交时 `page.evaluate` 不返回（第 1 节），所以它与剩下的时间赛跑，没答就算在等"the next document (pending)"（3.2；P1 设计审查 C-N2）。
 - **341（P1-5）没被监视的页面，帮手直接失败**：帮手在 `watchPage` 登记的页面上才知道在途的请求；故事自己开的标签页先 `watchPage`（今天的四处都这样，第 1 节）。不在第一次调用时才开始监视：那时已在途的请求看不到。
-- **342（P1-6）落到 `/sign-in` 只写进失败时的页面状态，不让通过的测试失败**：很多故事有意走到登录页（退出、A5、停用、改密码），让它们都声明会让 50 多个文件跟着改。失败时的状态第一行写"sent back to sign in: …"，带之前那次续期答没答 401（3.3）；收尾数"被跳回登录页"红过几次，照 CI 注解里这一行数（决定 334）。
+- **342（P1-6）落到 `/sign-in` 只写进失败时的页面状态，不让通过的测试失败**：很多故事有意走到登录页（退出、A5、停用、改密码），让它们都声明会让 50 多个文件跟着改。失败时的状态第一行写"sent back to sign in: …"，带之前那次续期答没答 401（3.3）；收尾数"被跳回登录页"红过几次，照 CI 注解里这一行数：数这一行带 ` after a refresh answered 401` 的失败，再除去有意造重用的故事（A5）（决定 334）。P1/S1 实施改：这一行只在页面落到过 `/sign-in` 时写，故事自己去登录页的也有，原来写"照这一行数"（3.15 第 10 条）。
 - **343（P1-7）门禁是一个读源码的 Node 脚本，不是 oxlint 的规则**：oxlint 1.86 有 `no-restricted-properties`（本机的二进制里有这个规则名），能禁 `.goto`，却数不了逃生口、核不了表。一个脚本做全两件事，照 `tools/md-fixtures/check.mjs` 的先例进 `make lint-web`。脚本先在内置的样例上跑一遍，看不见样例里的违例就失败，所以它不会因为什么也没读到而通过（3.5）。
 - **344（P1-8）门禁不看注释与字符串，一律按文字找；帮手的模块整个例外**：`.goto(`、`.reload(`、`inFlight: "leave"` 出现在 `e2e/` 的任何地方都算，注释与字符串也算。今天注释里没有这样写的（第 1 节）；写说明时不写成调用或逃生口的样子（写"the escape""逃生口"）即可。帮手的模块两样都不查：它的报错信息要写出逃生口怎样写，oxfmt 把那个字符串改成单引号之后，源码里就有 `inFlight: "leave"` 这段文字（P1 设计审查 A-M1、C-M2 实测）；内置样例 7 核对这一条（3.5）。不引入 TypeScript 的解析器（e2e 用的 TypeScript 7 没有稳定的 JS 接口）。
 - **345（P1-9）A15 放在身份的分组，三种浏览器**：它是一个用户看得到的行为（续期途中离开会被登出，发布说明的已知限制），又是帮手的对照。探针显示三种引擎的窗口不同（Firefox 0/15），所以三种都跑；第 3 格例外，见决定 351。不放进 A5：A5 的第二格的控制台期望是 Chromium 的原文（`a5-refresh-reuse.spec.ts:56`），整个文件进 `threeBrowsers` 会红。
@@ -157,19 +157,25 @@ interface Leaving {
 /** How long settle waits before it fails, naming what it waits for: longer than a refresh's own 8 s. */
 const settleMs = 10_000;
 const pollMs = 25;
-// The session's record, its refresh lock, the lease without Web Locks, and the refresh's path
-// (W/session/token-manager.ts:16, W/session/refresh-lock.ts:14, :25).
+/** How long one read in the page may take at least, even past settleMs: what it reads names the wait. */
+const readMs = 1_000;
+// The session's record, its refresh lock, the lease without Web Locks (W/session/token-manager.ts:16,
+// W/session/refresh-lock.ts:14, :25), and the answers that give a document its tokens: the first refresh of one
+// that started with the record (token-manager.ts:221-229), or the sign-in or sign-up that wrote it there
+// (token-manager.ts:164-172, W/services/auth.service.ts:17, :26), after which no first refresh comes.
 const authKey = "nwiki.auth";
 const lockName = "nwiki.auth.refresh";
 const leaseKey = "nwiki.auth.lease";
-const refreshPath = "/api/v0/auth/refresh";
+const tokenPaths = ["/api/v0/auth/refresh", "/api/v0/auth/login", "/api/v0/auth/register"];
 
 /** Each watched page's API requests not answered yet. */
 const unanswered = new WeakMap<Page, Set<Request>>();
 
 /**
  * Follows page's API requests from now on: fetch and XHR under /api/v0/, but the event stream, which stays
- * open. watchPage calls it before the page's first navigation.
+ * open. watchPage calls it before the page's first navigation. A request that a route holds and never
+ * answers stays here once its document is gone where the browser reports no failure for it (Chromium): the
+ * page's next goto or reload waits for it, and fails.
  */
 export function followRequests(page: Page): void {
   const open = new Set<Request>();
@@ -212,7 +218,7 @@ export async function reload(
 1. 取 `unanswered.get(page)`；没有就抛错："goto, reload: the page is not watched; call watchPage before its first navigation"（决定 341）。
 2. 循环，每 25 ms 看一次：
    - 在途的集合不空：等的是它们（`"<方法> <路径>"`）。
-   - 空了：在页面里看会话（下面的 `sessionWaits`），与剩下的时间赛跑：到 10 秒还没答，就算在等 `"the next document (pending)"`（Chromium 在下一个文档还没提交时 `page.evaluate` 不返回，第 1 节；P1 设计审查 C-N2）。
+   - 空了：在页面里看会话（下面的 `sessionWaits`），与剩下的时间赛跑，至少 1 秒（`readMs`：最后一圈剩下的只有几毫秒时，读总输给计时，报错就写不出真在等的一样，3.15 第 3 条）：到时还没答，就算在等 `"the next document (pending)"`（Chromium 在下一个文档还没提交时 `page.evaluate` 不返回，第 1 节；P1 设计审查 C-N2）。
    - 两样都没有要等的：返回。
    - 过了 10 秒：抛错，写出在等的每一样，与"a story that leaves it on purpose passes { inFlight: \"leave\" }"。
    - 循环里的 `await` 照仓库的写法带 `// oxlint-disable-next-line no-await-in-loop -- …` 的理由（`e2e/global-setup.ts:50-53` 的先例）。
@@ -220,30 +226,35 @@ export async function reload(
 `sessionWaits(page)` 以一次 `page.evaluate` 在页面里读，交回在等的几样（空就是没有）：
 
 ```ts
-async ({ authKey, lockName, leaseKey, refreshPath }) => {
-  let record: string | null;
+async ({ authKey, lockName, leaseKey, tokenPaths }) => {
   try {
-    record = localStorage.getItem(authKey);
+    localStorage.getItem(authKey);
   } catch {
     return []; // an opaque origin (an attachment shown sandboxed at its address, about:blank): no session here
   }
-  // No session's record, or not the app (W/main.tsx:17 mounts on #root): no refresh to lose.
-  if (record === null || document.getElementById("root") === null) return [];
-  const refreshed = performance
-    .getEntriesByType("resource")
-    .some((entry) => new URL(entry.name).pathname === refreshPath);
-  if (!refreshed) return ["the document's first refresh"];
+  // Not the app (W/main.tsx:17 mounts on #root): no session to lose.
+  if (document.getElementById("root") === null) return [];
+  // A refresh, a sign-in or a sign-up writes the record under the lock (W/session/token-manager.ts:164-172,
+  // :288-310): a document whose sign-in was answered has no record until it holds it.
   if ("locks" in navigator) {
     const { held = [], pending = [] } = await navigator.locks.query();
-    return [...held, ...pending].some((lock) => lock.name === lockName) ? ["the refresh lock"] : [];
+    if ([...held, ...pending].some((lock) => lock.name === lockName)) return ["the refresh lock"];
+  } else {
+    const lease = JSON.parse(localStorage.getItem(leaseKey) ?? "null") as { expires?: number } | null;
+    if (lease !== null && (lease.expires ?? 0) > Date.now()) return ["the refresh lease"];
   }
-  const lease = JSON.parse(localStorage.getItem(leaseKey) ?? "null") as { expires?: number } | null;
-  return lease !== null && (lease.expires ?? 0) > Date.now() ? ["the refresh lease"] : [];
+  // Read after the lock: no session's record by then, no refresh to lose.
+  if (localStorage.getItem(authKey) === null) return [];
+  // A document's resource timings are its own requests, each added once its answer was read.
+  const tokens = performance
+    .getEntriesByType("resource")
+    .some((entry) => tokenPaths.includes(new URL(entry.name).pathname));
+  return tokens ? [] : ["the document's first refresh"];
 }
 ```
 
-- **第一次续期**：文档的 `PerformanceResourceTiming` 只记这个文档自己发的请求、在答复读完时加，所以"有一条 `/api/v0/auth/refresh`"就是"这个文档的续期答过了"，单页应用里换路由也还在。缓冲默认 250 条，第一次续期是文档最早的接口请求之一（别的读都等访问令牌），落在缓冲里。续期在网络一层失败的（没有答复）不留这一条，帮手会等满 10 秒后失败：今天没有故事在这种文档上再换文档（第 1 节；A5 的第二格在那之后不再导航）；有了就用逃生口。
-- **锁**：`navigator.locks.query()` 列出这个浏览器上下文里所有标签页持有与等着的锁。续期在锁里读记录、发请求、写回（`token-manager.ts:288-310`），所以锁空着就没有写了一半的续期；别的标签页正在续期时也等，它很短，等了无害。没有 Web Locks 时（A4 的一种，`a4-refresh.spec.ts:105-109` 删掉了 `Navigator.prototype.locks`）看租约：用完删掉（`refresh-lock.ts:99-105`），留着的过期就不算。
+- **给文档令牌的答复**：开始时就有记录的文档（`token-manager.ts:221-229`）先续期，令牌来自第一次续期的答复；在这个文档里登录或注册的，令牌来自那次答复（`token-manager.ts:164-172` 的 `signIn` 在锁里写记录），不发第一次续期（3.15 第 2 条）。给文档令牌的只有这三种答复（S1 的审查 A 逐个数过入口）。文档的 `PerformanceResourceTiming` 只记这个文档自己发的请求、在答复读完时加，所以"有一条续期、登录或注册"就是"这个文档的令牌到了"，单页应用里换路由也还在；答复的码不看（被拒的登录也留一条，今天没有在那之后换文档的流程，S1 的记录"接受与推后的"）。开始时没有记录、之后跟着别的标签页登录的文档，在它下一次读（`me`）时于锁里续期，帮手等的是那次续期（S1 的审查 A 的探针）。缓冲默认 250 条，第一次续期是文档最早的接口请求之一（别的读都等访问令牌），落在缓冲里。续期在网络一层失败的（没有答复）不留这一条，帮手会等满 10 秒后失败：今天没有故事在这种文档上再换文档（第 1 节；A5 的第二格在那之后不再导航）；有了就用逃生口。
+- **锁**：`navigator.locks.query()` 列出这个浏览器上下文里所有标签页持有与等着的锁。续期在锁里读记录、发请求、写回（`token-manager.ts:288-310`），所以锁空着就没有写了一半的续期；别的标签页正在续期时也等，它很短，等了无害。没有 Web Locks 时（A4 的一种，`a4-refresh.spec.ts:105-109` 删掉了 `Navigator.prototype.locks`）看租约：用完删掉（`refresh-lock.ts:99-105`），留着的过期就不算。锁先于记录看，有没有记录都看：登录、注册的答复读完之后，`signIn` 在锁里写第一份记录（`token-manager.ts:164-172`），锁被别的标签页持着的那一段文档还没有记录，先看记录就会放行，新文档丢了这次登录（3.15 第 9 条，A15 第 8 格）；记录在锁之后才读。没有记录的应用文档在别的标签页持锁时也等：持锁的只有续期、登录、退出，至多 8 秒。
 - **读不了**：`page.evaluate` 抛出"Execution context was destroyed"（页面正被别的导航换掉，例如故事刚点了一个跨文档的链接）时，交回 `["the next document"]`，下一圈看新的文档；到时限还没答时交回 `["the next document (pending)"]`，帮手照时限失败、写出它（上面第 2 步）。这一条没有专门的测试：要造它，得让故事扣住下一个文档再调帮手、等满 10 秒；它只决定帮手失败时写出什么，不决定等得对不对；别的错误交回空：读不了的文档跑不了应用，也就没有会话可丢。这一条若掩住了帮手自己的错，A15 的帮手几格会失败（7.2）。
 - **沙箱里的附件**：AS5 打开一个 SVG 附件的地址（`as5-content-safety.spec.ts:176`），它的文档是不透明的源，`localStorage` 抛错，交回空；它的下一个 `goto`（`:183`，一次下载）照常。`expectQuietPage` 在那个文档上 `page.evaluate` 今天就通（AS5 为绿），所以读得进去。
 - **`Leaving` 不导出**：故事不写它的名字，只写 `{ inFlight: "leave" }`。导出时只要它用在有人导入的函数签名里，knip 也不报（A 的探针；C-M1 的前提不成立，P1 修订核对第 1 轮 C 的 M5），不导出更简单；不导出时 `tsc`、knip、oxlint 都干净（第一次修订在临时 worktree 里核对：`navigation.ts` 的 `goto`、`reload` 签名用不导出的 `Leaving`，`watchPage` 调 `followRequests`，一个故事换上帮手；`m12/p1-rev1/leaving-static-checks.txt`）。
@@ -264,8 +275,8 @@ async ({ authKey, lockName, leaseKey, refreshPath }) => {
   ```
 
 - 答复的处理（`:163-169`）里，遇到 `POST /api/v0/auth/refresh` 就记下它是不是 401（一个变量 `refusedRefresh`，每次续期的答复改写它）。
-- 加 `page.on("framenavigated", …)`：主框架的地址的路径是 `/sign-in` 时，记一条 `${pathname}${search}`，`refusedRefresh` 时后面加 `" after a refresh answered 401"`；与上一条相同就不重复记（`replaceState` 会再报一次）。单页应用的路由改地址也会报 `framenavigated`，所以会话结束后应用自己跳到 `/sign-in` 也记得到。
-- `pageState`（`:251-280`）的第一行加 `sent back to sign in: ${watch.signInLandings.join(", ") || "no"}`，在 `url:` 之前。失败的测试的错误与附件都带它（`pageStatesOf` `:296-314`），CI 的注解里读得到。
+- 加 `page.on("framenavigated", …)`：主框架的地址的路径是 `/sign-in` 时，记一条 `${pathname}${search}`，`refusedRefresh` 时后面加 `" after a refresh answered 401"`；与上一次主框架的地址相同就不记（`replaceState` 会再报一次同一地址）；`/sign-in` → 别处 → 同一个 `/sign-in` 照记两次（3.15 第 5 条）。单页应用的路由改地址也会报 `framenavigated`，所以会话结束后应用自己跳到 `/sign-in` 也记得到。
+- `pageState`（`:251-280`）在页面落到过 `/sign-in` 时，第一行加 `sent back to sign in: ${watch.signInLandings.join(", ")}`，在 `url:` 之前；没有落点时没有这一行（3.15 第 10 条）。故事自己去登录页的也有这一行：数被跳回的失败，数带 ` after a refresh answered 401` 的，再除去有意造重用的故事（A5）（决定 342）。失败的测试的错误与附件都带它（`pageStatesOf` `:296-314`），CI 的注解里读得到。
 
 ### 3.4 S1：换 110 个文件
 
@@ -281,7 +292,7 @@ async ({ authKey, lockName, leaseKey, refreshPath }) => {
 - 改之前：`grep -rcE '\.goto\('` 合计 259（故事）加 1（夹具），`\.reload\(` 合计 10；文件 110 个。改之后：门禁报出 0 处直接调用（3.5），这是"一处不漏"的证明；新写法的个数用不按行的脚本数，允许跨行的空白：oxfmt 会把长的调用拆成几行（例如 `lw6-source-history.spec.ts:356` 拆成 `await goto(\n  page,\n  …)`），按行的 `grep` 改之后只数得到 259（P1 修订核对第 1 轮 C 的 M4）。正则是 `(?<![.\w$])goto\(\s*[A-Za-z_$][\w$]*\s*[,)]`，对整个文件的内容匹配（例如 Python 的 `re.findall` 读整个文件），`reload` 同样；改之前是 0 与 0，改之后要是 260 与 10。`\bgoto\(` 不能用：`.` 与 `g` 之间也是词的边界，改之前就是 260；不带前面的排除，`\b(goto|reload)\([A-Za-z_$]…` 改之前也有 28 处（`page.goto(变量)`）（P1 设计审查 A-N9、C-N1；第一次修订在 `a22adfd2` 上数过）。第 1 个提交的 `git diff --stat` 是 112 个文件：这 110 个，加 `navigation.ts`、`browser.ts`。
 - **只做了这一种改动**：另一个一次性的脚本把每个改过的文件做反向的变换（`goto(X, ` → `X.goto(`、`reload(X)` → `X.reload()`、去掉那一行导入），与改之前的文件比较，两边都去掉全部空白之后逐字相同；反向的变换同样不按行：`goto(` 之后与接收者后面的逗号之后都可能换行（`lw6-source-history.spec.ts:356`），正则写成 `goto\(\s*X\s*,\s*`，110 个文件才都相同（P1 修订核对第 1 轮 C 的 M4，第 2 轮 C 的 N6）。110 个文件都相同，才算替换是机械的。
 - `pnpm -r run check:types` 为绿（漏了导入、接收者不是 `Page` 都会报）；`make knip` 为绿。
-- 行为由全量 `make e2e` 证明：故事的个数不变（加 A15 之前与之后各记一次；A15 是六格乘三种浏览器共 18 个，其中 WebKit 的第 3 格跳过），全绿。
+- 行为由全量 `make e2e` 证明：故事的个数不变（加 A15 之前与之后各记一次；A15 是九格乘三种浏览器共 27 个，其中 WebKit 的第 3 格跳过（3.15 第 6 条）），全绿。
 
 **会碰到的**（设计时看过，实施时以全量运行为准）：
 
@@ -298,21 +309,27 @@ async ({ authKey, lockName, leaseKey, refreshPath }) => {
 // loses the refreshed token, and the next document ends the session as reuse. Only e2e/fixtures/navigation.ts
 // calls page.goto and page.reload; everything else under e2e/ goes through its goto and reload, which wait
 // first. A story that leaves mid-request on purpose passes the escape: LEAVES lists each file that does, how
-// many times, and why. The helper's module is not read at all: its calls are the ones allowed, and its message
-// names the escape. Elsewhere comments and strings count too, so they name it in words, not in its form.
-// Closing a tab leaves a document as well; the helper does not cover it (the stories close tabs once a page
-// showed what only a signed-in session reads). The check first runs on samples of each breach and fails
-// unless it sees them, so it cannot pass by reading nothing.
+// many times, and why. The escape counts written with any quote, a backtick too. The helper's module is read
+// but not checked: its calls are the ones allowed, and its message names the escape; the exception is its whole
+// path, not every module of that name. Elsewhere comments and strings count too, so they name it in words, not
+// in its form. It reads every file with an extension Playwright runs by default (.ts, .tsx, .mts, .cts and the
+// .js ones). Closing a tab leaves a document as well; the helper does not cover it (the stories close tabs
+// once a page showed what only a signed-in session reads). The check first runs on samples of each breach and
+// on the extensions, and fails unless it sees them, and fails unless the tree it read holds the helper's
+// module, so it cannot pass by reading nothing, or by missing e2e/fixtures/ or the stories the table names.
 // Usage: node tools/e2e-navigation/check.mjs
 import { readFileSync, readdirSync } from "node:fs";
-import { dirname, join, relative } from "node:path";
+import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const HELPER = "e2e/fixtures/navigation.ts";
 const SKIP = new Set(["node_modules", "test-results", "playwright-report"]);
+// Playwright's default testMatch is **/*.@(spec|test).?(c|m)[jt]s?(x); e2e/playwright.config.ts narrows it
+// only for Firefox and WebKit.
+const SOURCE = /\.[cm]?[jt]sx?$/;
 const DIRECT = /\.(goto|reload)\s*\(/g;
-const LEAVE = /inFlight:\s*"leave"/g;
+const LEAVE = /inFlight:\s*["'`]leave["'`]/g;
 
 /** Each file under e2e/ that leaves a document mid-request on purpose, and how many times. */
 const LEAVES = {
@@ -342,23 +359,27 @@ function check(files, leaves) {
 }
 ```
 
-- **样例**（每次运行先跑，任一条与期望不符就失败，写"the gate does not see …"）：
+- **样例**（每次运行先跑，任一条报出的问题与期望的整张表不同就失败，写"the gate does not see …"；只比个数时，报错了地方或种类的变异也会过，3.15 第 7 条）：
   1. 故事里 `await page.goto("/");` → 一处；
   2. 帮手之外的夹具里跨行的 `await tab\n  .reload();` → 一处；
   3. 帮手的模块里 `return page.goto(url, rest);` → 没有；
   4. 故事里 `goto(page, "/", { inFlight: "leave" })`、表是空的 → 一处（表外的逃生口）；
   5. 同一个文件、表里写 2 → 一处（个数不对）；
   6. 表里写着、文件里没有 → 一处（表里的过时）；
-  7. 帮手的模块里一句报错信息 `throw new Error('… passes { inFlight: "leave" }');`（oxfmt 之后的单引号写法）、表是空的 → 没有（帮手整个例外）。
+  7. 帮手的模块里一句报错信息 `throw new Error('… passes { inFlight: "leave" }');`（oxfmt 之后的单引号写法）、表是空的 → 没有（帮手整个例外）；
+  8. 故事里反引号写的逃生口 `` goto(page, `/`, { inFlight: `leave` }) ``、表是空的 → 一处（逃生口认三种引号；oxfmt 不把反引号改成双引号）；
+  9. 另一个叫 `navigation.ts` 的模块（`e2e/perf/navigation.ts`）里的直接 `goto` → 一处（帮手按整个路径例外，不按名字）。
+
+  第 8、9 条由 S1 的修复一轮加（3.15 第 7 条）。
 
   第一次修订把这个 `check()` 与七个样例原样跑过，七个都对；在只换了一个故事、帮手带着那句信息的树上，帮手报 0 处（`m12/p1-rev1/gate-check.mjs`、`gate-check.log`）。初稿只让直接调用跳过帮手，逃生口照数，第 2 个提交就红（P1 设计审查 A-M1、C-M2）。
-- **真的运行**：从 `e2e/` 递归读 `.ts`、`.mts`、`.js`、`.mjs`（跳过 `SKIP`），路径写成仓库根起的。有问题就逐条打出、退出码 1；没有就打一行：`e2e navigation: <n> files, no direct goto or reload; leaving mid-request: <file> ×<k>, … (<total>)`。
+- **真的运行**：从 `e2e/` 递归读 Playwright 默认 `testMatch` 的八种结尾（`.ts`、`.tsx`、`.mts`、`.cts` 与 `.js`、`.jsx`、`.mjs`、`.cjs`，跳过 `SKIP`），每次运行先核对 `x1-sample.spec.<结尾>` 八个名字都被 `SOURCE` 取到（3.15 第 7 条），路径写成仓库根起的。读到的文件里没有帮手的模块就失败，写"the gate did not read e2e/fixtures/navigation.ts: it reads every source file under e2e/"：内置样例直接交给 `check()`，证明不了遍历读到了 `e2e/`（3.15 第 7 条）。有问题就逐条打出、退出码 1；没有就打一行：`e2e navigation: <n> files, no direct goto or reload; leaving mid-request: <file> ×<k>, … (<total>)`。
 - **不导出**：入口文件，knip 只要它在 `entry` 里（3.1）。
-- **反向对照**：除了内置的样例，7.2 的变异 4–8、19 各在真的树上改一处、看它失败。
+- **反向对照**：除了内置的样例，7.2 的变异 4–8、19、x6、x7、g1、g1b、g2、c3 各在真的树上改一处、看它失败。
 
 ### 3.6 S1：A15（对照测试）
 
-`e2e/stories/identity/a15-leave-mid-refresh.spec.ts`，页面版本，六格。文件头写：A15，离开续期在途的页面（M1 第 10 节：会话结束，用户重新登录；发布说明的已知限制）；故事经 `fixtures/navigation.ts` 换文档，它先等；这里把答复、文档与第一次续期扣住，让次序确定地发生，不靠重复跑（05-lessons 第 6 节）。接口那一面是 A5 (API)。
+`e2e/stories/identity/a15-leave-mid-refresh.spec.ts`，页面版本，九格。文件头写：A15，离开续期在途的页面（M1 第 10 节：会话结束，用户重新登录；发布说明的已知限制）；故事经 `fixtures/navigation.ts` 换文档，它先等；这里把答复、文档与第一次续期扣住，让次序确定地发生，不靠重复跑（05-lessons 第 6 节）。接口那一面是 A5 (API)。
 
 每格新注册一个账户（`registerOnboarded`），`signedInPage` 给出页面。文件里两个路由的帮手，都在第一次导航之前装好（免得碰上第 1 节"路由"的第一条）。
 
@@ -384,12 +405,15 @@ function check(files, leaves) {
 
 | # | 格 | 浏览器 | 做法 | 断言 |
 |---|---|---|---|---|
-| 1 | 续期的答复在途时经逃生口重新加载：登出 | 三种 | `routeTheRefreshAgainstTheNextDocument`；`goto(page, "/settings/profile")`；等 `fetched`；`reload(page, { inFlight: "leave" })` | h1 是"Sign in"，地址 `/sign-in?next=%2Fsettings%2Fprofile`；记录为空（`recordOf`）；`expectRevoked(db, tokens.refresh_token, "reuse_detected")`；`pageWatch.signInLandings` 是 `["/sign-in?next=%2Fsettings%2Fprofile after a refresh answered 401"]`；`apiFailures` 含 `401 POST /api/v0/auth/refresh`；控制台以 `expectConsole({ errors: [failedToLoad(401)] })` 声明；`problems` 为空 |
+| 1 | 续期的答复在途时经逃生口重新加载：登出 | 三种 | `routeTheRefreshAgainstTheNextDocument`；`goto(page, "/settings/profile")`；等 `fetched`；`reload(page, { inFlight: "leave" })` | h1 是"Sign in"，地址 `/sign-in?next=%2Fsettings%2Fprofile`；记录为空（`recordOf`）；`expectRevoked(db, tokens.refresh_token, "reuse_detected")`；`pageWatch.signInLandings` 是 `["/sign-in?next=%2Fsettings%2Fprofile after a refresh answered 401"]`；`apiFailures` 含 `401 POST /api/v0/auth/refresh`；控制台以 `expectConsole({ errors: [failedToLoad(401)] })` 声明；`problems` 为空；之后在登录页上以它自己的地址 `replaceState`，`signInLandings` 仍是那一条；再 `pushState` 到 `/`、回到同一个登录页地址（各等一次 `framenavigated`），是两条相同的落点（3.15 第 5 条） |
 | 2 | 同样的时刻经帮手重新加载：不登出 | 三种 | 同上，但 `reload(page)`：帮手等那个答复（2 秒后交回）、等锁空了、等随后的读，再重新加载 | 地址 `/settings/profile`，h1 是"Settings"、h2 有"Profile"；`generationOf((await recordOf(page)).refresh_token)` 是 2；`sessionOf(db, tokens.refresh_token).revoked_at` 为空；`signInLandings` 为空 |
 | 3 | 第一次续期还没发出时经逃生口换页：登出（U1） | Chromium、Firefox | 两个路由的帮手都装；`goto(page, "/settings/profile")`；不 `await` 地 `goto(page, "/settings/security", { inFlight: "leave" })`；等 `nextDocument`（新文档已请求、被扣着）；`release()`。旧文档开闸、发出第一次续期，服务端换了令牌，`fetched`；新文档放过；旧文档走了，答复交不回 | 同第 1 格，地址 `/sign-in?next=%2Fsettings%2Fsecurity` |
 | 4 | 同样的时刻经帮手换页：不登出（U1） | 三种 | 同第 3 格，但 `goto(page, "/settings/security")`（帮手），不 `await`；等"`nextDocument` 或 1 秒"先到的一个；`release()`；等帮手的 `goto` | `problems` 为空；地址 `/settings/security`，h1 是"Settings"、h2 有"Password"；代数 2；会话没有撤销；`signInLandings` 为空 |
-| 5 | 读在途时经帮手换页：等读答完 | 三种 | 不装上面两个（续期照常）；只装 `**/api/v0/me` 的路由与文档请求的信号（`page.on("request")` 里主框架的文档请求）。读的路由第一次 `fetch`，扣着答复："下一个文档被请求"先到就不交回，2 秒先到就交回。`goto(page, "/settings/profile")`；等那次读到达路由；`goto(page, "/settings/security")` | 那次读的 `response()` 是 200；`pageWatch.apiFailures` 为空（读没有被换文档打断）；地址 `/settings/security`，h2 有"Password" |
+| 5 | 读在途时经帮手换页：等读答完 | 三种 | 不装上面两个（续期照常）；只装 `**/api/v0/me` 的路由与文档请求的信号（`page.on("request")` 里主框架的文档请求）。读的路由第一次 `fetch`，扣着答复："下一个文档被请求"先到就不交回，2 秒先到就交回。`goto(page, "/settings/profile")`；等那次读到达路由；`goto(page, "/settings/security")` | 路由记下的结局是"answered"（不是"dropped"：被丢掉的读在 Chromium 里既不答也不报失败，3.15 第 4 条），再断言那次读的 `response()` 是 200；`pageWatch.apiFailures` 为空（读没有被换文档打断）；地址 `/settings/security`，h2 有"Password" |
 | 6 | 续期的锁被持住时经帮手换页：等锁放开 | 三种 | 不装路由，续期照常；记下主框架请求 `/settings/security` 那个文档的时刻。`goto(page, "/settings/profile")`；等文档的 `performance` 里有 `/api/v0/auth/refresh` 一条（第一次续期已答）；`page.evaluate` 在页面里 `navigator.locks.request("nwiki.auth.refresh", …)` 持住锁，放开的函数挂在 `window` 上；不 `await` 地 `goto(page, "/settings/security")`；等"下一个文档被请求或 1 秒"先到的一个；记下时刻，`page.evaluate` 放开（写成 `?.()`，出错不管：错的帮手已经换了文档，这里没有扣着的导航，`evaluate` 不会卡住）；等帮手的 `goto` | 文档请求的时刻晚于放开的时刻；地址 `/settings/security`，h2 有"Password"；会话没有撤销 |
+| 7 | 在这个文档里注册之后经帮手重新加载：不等，不登出 | 三种 | 不装路由；`goto(page, "/sign-up")`；`signUpWith` 注册（201），应用到 `/onboarding`、h1 是"Your name"；记录是注册的代数 0，`pageWatch.apiRequests` 里没有 `POST /api/v0/auth/refresh`（令牌来自注册的答复，这个文档不发第一次续期）；`reload(page)` | 地址 `/onboarding`，h1 是"Your name"；新文档续期一次，代数是 1（`expect.poll`）；会话没有撤销 |
+| 8 | 登录答 200 之后、写记录还在等锁时经帮手换页：等锁放开 | 三种 | 不装路由；没登录的页面 `goto(page, "/settings/profile")`，守卫送到登录页（h1 是"Sign in"）；照第 6 格持住锁（`holdTheRefreshLock`）；在登录页登录（`signInWith`，200），记录还是空的（应用在锁里写它）；不 `await` 地 `goto(page, "/settings/security")`；等"下一个文档被请求或 1 秒"先到的一个；记下时刻、放开；等帮手的 `goto` | 文档请求的时刻晚于放开的时刻（"the next document is asked for once the sign-in wrote its record"）；地址 `/settings/security`，h2 有"Password"；代数 1；会话没有撤销；`signInLandings` 只有起初那一条 `/sign-in?next=%2Fsettings%2Fprofile` |
+| 9 | 没有 Web Locks 时，别的标签页的租约有效时经帮手换页：等租约放开 | 三种 | 上下文的 init script 删掉 `Navigator.prototype.locks`（同 A4），先断言页面里 `"locks" in navigator` 为假；`goto(page, "/settings/profile")`；等第一次续期已答；写下别的标签页的租约（`owner: "another-tab"`，5 秒）；不 `await` 地 `goto(page, "/settings/security")`；等"下一个文档被请求或 1 秒"先到的一个；记下时刻、删掉租约；等帮手的 `goto` | 文档请求的时刻晚于删掉租约的时刻（"the next document is asked for once the lease is let go"）；地址 `/settings/security`，h2 有"Password"；会话没有撤销 |
 
 **每一格在哪里跑、去掉帮手的哪一样它失败**（"原型"是第一次修订在三种浏览器里各跑三轮的，`m12/p1-rev1/a15-proto.log`；"C 的原型"是 P1 设计审查 C 各跑两轮的，`m12/p1-review-c/proto25.log`）：
 
@@ -401,6 +425,9 @@ function check(files, leaves) {
 | 4 | 三种 | 绿：原型 9/9，帮手等了 3.06–3.23 秒，代数 2 | 不等第一次续期（2）：Chromium、Firefox 6/6 落到 `/sign-in`（错的帮手 6–27 ms 内就请求了新文档）；WebKit 3/3 以 `problems` = `["the old document never sent its refresh"]` 失败。什么也不等（1）同样 | 不看锁（18）：原型 9/9 照过 | 原型 |
 | 5 | 三种 | 绿 | 不等在途的（3）；什么也不等（1）：读被换文档打断 | 不等第一次续期（2）、不看锁（18）：读不在会话的检查里 | C 的原型 proto 5；失败的一侧照 proto 5 的路由推出 |
 | 6 | 三种 | 绿：原型 9/9，新文档在放开之后 5–40 ms 才请求 | 不看锁（18）：原型 9/9 在放开之前 12–23 ms 就请求了；什么也不等（1）同样 | 不等第一次续期（2）：原型 9/9 照过 | 原型 |
+| 7 | 三种 | 绿：S1 三轮 0.4–0.8 秒，帮手什么也不用等 | `tokenPaths` 去掉注册（x1）：三种 9/9 以帮手 10 秒的报错"the document's first refresh"失败；只认续期（设计原来的写法）同样 | 什么也不等（1）、不看 `performance`（2）、不等在途的（3）、不看锁（18）：本就没有要等的 | S1（`ce2cc0fc`）与它的记录 |
+| 8 | 三种 | 绿：修复一轮三轮 1.4–1.9 秒 | 先看记录再看锁（m20，`8e128a2d` 的次序）、只去掉锁（m18a）、锁与租约都不看（18）、什么也不等（1）：三种 9/9，"once the sign-in wrote its record"；`tokenPaths` 去掉登录（x2）、不记落点（17）也抓 | 不等第一次续期（2）、不等在途的（3） | 修复一轮（`6ec05d13`）；审查 A 的探针 |
+| 9 | 三种 | 绿：修复一轮三轮 1.4–1.8 秒 | 去掉租约一支（m21）、租约的键改名（m22）、锁与租约都不看（18）、什么也不等（1）：三种 9/9，"once the lease is let go" | 只去掉锁（m18a）、不等第一次续期（2）、不等在途的（3） | 修复一轮（`995ebf02`）；审查 B 的探针 |
 
 - **WebKit 为什么不跑第 3 格**（决定 351）：WebKit 在请求下一个文档之后，旧文档的请求一个也发不出去，没有 U1 的窗口。
   - P1 设计审查 C 的探针 D：下一个文档被扣 1 秒，旧文档每 50 ms 发的请求到了路由 0 次（Chromium 20 次、Firefox 20–21 次）。探针 B：WebKit 里旧文档的请求报 "TypeError: Load failed"。
@@ -413,7 +440,7 @@ function check(files, leaves) {
   - 第 4、6 格的 1 秒只决定"什么时候放开"：错的帮手在调用后 30 ms 之内就请求新文档（原型的第 4、6 格），`nextDocument` 先到；对的帮手在等，1 秒之后才放开。只有一台机器慢到错的帮手过了 1 秒才请求新文档，这两格才会放过它。这只影响变异抓不抓得到，不影响对的帮手为绿。
 - **第 5 格的读**：取应用登录之后读账户的 `GET /api/v0/me`（`W/services/account.service.ts:12`）。P1 设计审查 C 的原型核对过 `/settings/profile` 发它（`proto25.log` 的请求列表）。
 - **标题**：设置页的 h1 是"Settings"（`W/pages/settings/settings-layout.tsx:27`），各栏的标题是 h2：个人资料是"Profile"（`profile-page.tsx:26`），安全是"Password"与"Deactivate account"（`security-page.tsx:18`、`:22`）。断言照这个写，并核对地址（P1 设计审查 C-N3；第一次修订的原型先按 h2"Security"写，没找到）。
-- **控制台与失败的请求**：第 1、3 格的 401 在 Chromium 与 WebKit 的控制台各一行（`failedToLoad(401)` 照引擎处理，Firefox 不出，`browser.ts:141-146`）。旧文档那次没交回的续期，各引擎报不报中止不一样，断言只要求 `apiFailures` 含那条 401；确切的列表照实写进 S1 的记录。两个原型看到的：
+- **控制台与失败的请求**：第 1、3 格的 401 在 Chromium 与 WebKit 的控制台各一行（`failedToLoad(401)` 照引擎处理，Firefox 不出，`browser.ts:141-146`）。旧文档那次没交回的续期，各引擎报不报中止不一样，断言只要求 `apiFailures` 含那条 401；确切的列表照实写进 S1 的记录，与两个原型看到的相同：
 
   | 格 | Chromium | Firefox | WebKit |
   |---|---|---|---|
@@ -433,7 +460,7 @@ function check(files, leaves) {
 - `tentative()` 交回 `undefined`（`ip` 判不了）：打 `global setup: ip could not tell the host's tentative IPv6 addresses; waiting <ms> ms from PostgreSQL's start`，再睡。
 - 第一次就是空的：什么也不打（决定 349）。
 - 日志走 `console.log`：Playwright 的 list 报告器打出全局准备的标准输出，CI 的 e2e 作业日志里看得见。这一句没有核过，由下面的正向对照核。
-- **正向对照**（P1 设计审查 A-M5）：今天本机多数轮第一次就是空的，日志的分支走不到，"没看到这一行"还不能当作"没触发"。S1 的第 5 个提交之前，本机临时让 `tentative()` 第一次交回一行固定的文字（例如 `inet6 fe80::1/64 scope link tentative`）、之后交回空，跑一个故事（`cd e2e && pnpm exec playwright test stories/smoke/s1-`，经 `heavy.sh`），看那一行 `global setup: waited … ms for the host's tentative IPv6 addresses (inet6 fe80::1/64 …)` 出现在输出里；再让它交回 `undefined` 跑一次，看另一行。复原之后跑一次，看不到。三次的输出摘进 S1 的记录。之后 CI 的 e2e 作业日志里没有这一行，才算那次没触发。
+- **正向对照**（P1 设计审查 A-M5）：今天本机多数轮第一次就是空的，日志的分支走不到，"没看到这一行"还不能当作"没触发"。S1 的 `c330217f`（6.1 第 6 步）之前，本机临时让 `tentative()` 第一次交回一行固定的文字（例如 `inet6 fe80::1/64 scope link tentative`）、之后交回空，跑一个故事（`cd e2e && pnpm exec playwright test stories/smoke/s1-`，经 `heavy.sh`），看那一行 `global setup: waited … ms for the host's tentative IPv6 addresses (inet6 fe80::1/64 …)` 出现在输出里；再让它交回 `undefined` 跑一次，看另一行。复原之后跑一次，看不到（S1 在本机做不出：复原后每次都真的等了，改由恒交回空的一次证明，3.15 第 8 条）。三次的输出摘进 S1 的记录。之后 CI 的 e2e 作业日志里没有这一行，才算那次没触发。
 
 ### 3.8 S2 的文件
 
@@ -673,17 +700,31 @@ jobs:
 
 | 检查 | 反向对照 | 在哪里 |
 |---|---|---|
-| 门禁 | 内置的七个样例每次运行先跑；7.2 的变异 4–8、19 在真的树上各改一处 | 3.5、7.2 |
-| 帮手 | A15 的第 1、3 格经逃生口确定地落到 `/sign-in`（第 3 格在 Chromium 与 Firefox）；第 2、4、5、6 格经帮手不落；7.2 的变异 1–3、16、18 各去掉帮手的一样，3.6 的表里写的那几格就失败 | 3.6、7.2 |
-| `signInLandings` | A15 的第 1、3 格断言它的内容；变异 17 | 3.3、7.2 |
-| 第 50 条的日志 | 本机临时让等待发生一次，看到那一行；复原后看不到 | 3.7 |
+| 门禁 | 内置的九个样例每次运行先跑，比整张问题表；八种结尾都读；读到的文件里没有帮手的模块就失败；7.2 的变异 4–8、19、x6、x7、g1、g1b、g2、c3 在真的树上各改一处 | 3.5、7.2 |
+| 帮手 | A15 的第 1、3 格经逃生口确定地落到 `/sign-in`（第 3 格在 Chromium 与 Firefox）；第 2、4、5、6、8、9 格经帮手不落，第 7 格经帮手立刻换；7.2 的变异 1–3、16、18、x1、x2、m18a、m20–m22 各去掉帮手的一样，3.6 的表里写的那几格（x2 另有 A3、S4）就失败 | 3.6、7.2 |
+| `signInLandings` | A15 的第 1、3、8 格断言它的内容，第 1 格另断言同一地址再报一次不记、离开又回到记两条；变异 17、x3、x4、m23 | 3.3、7.2 |
+| 第 50 条的日志 | 本机临时让等待发生一次，看到那一行；`tentative()` 恒交回空时没有（复原后本机每次都真的等了，3.15 第 8 条） | 3.7 |
 | Go 版本的守卫 | 变异 9–12；变异 13 由构建时的断言抓 | 3.9、7.2 |
 | PostgreSQL 的守卫加 README | 变异 14 | 3.10、7.2 |
 | `make vuln`、`make outdated` 在本机拒绝 | 本机各跑一次；变异 15（PATH 里的桩，不联网） | 3.12、7.2 |
 
 ### 3.15 S1 的实施对设计的修正
 
-（实施后补）
+S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里（头的状态，第 0 节，2.3 的决定 339、342，3.2–3.7，3.14，第 4、5 节，6.1，7.1、7.2、7.4，第 8 节第 3、5、7 条）；00 号文档的 4.4、第 7 节 S1 一行、第 7 节"总体设计的修订"第 12 条与第 11 节的决定 339、342 同改；设计 3.4 的脚本与输出贴在 S1 的记录。写了行号的，网页与已有故事的是 S1 开始时 `179a7aed` 的，S1 的代码是头 `937df215` 的；提交见 10.1。
+
+- **S1，实施时定下的**（第 1–8 条：实施报告第 7 节的 8 条与第 8 节自己加的；三位审查者各在自己的范围里判过，都对：A 判第 1–3、5 条，B 判第 4、6 条与变异，C 判第 7 条与替换、逐条判进不进本节。第 50 条那一行写 `ip` 第一次看到的全文、时限的秒数取 `settleMs`，与 3.7 写的相同，不列；实施者没有要编号的产品决定，"实施中定"的几条都记在本节，主持者可以给号或改判）：
+  1. **A6 的第二个页面测试自己开的标签页先 `watchPage`**：第 1 节与决定 341 说故事自己开的标签页都先受监视，`a6-sign-out.spec.ts:88` 的 `tabB` 没有（`context.newPage()` 之后直接载 `/favicon.svg`）。照决定 341 帮手对它直接失败，所以另加一个提交给它加上（同 `:46-47`、`:120-121`），替换的提交仍是纯机械的。不给帮手开"没被监视、还在 `about:blank` 的页面放过"的口子：那样决定 341 就有了例外（6.1 第 1 步）。
+  2. **帮手等"这个文档有了给它令牌的答复"，不只是第一次续期**（3.2 的 `sessionWaits`、决定 339）：在这个文档里登录或注册的，令牌来自那次答复（`W/session/token-manager.ts:164-172` 的 `signIn` 在锁里写记录），不发第一次续期；照原来的写法，第一次全量 `make e2e` 里 A3 (page) 与 S4 在登录页登录之后换文档时等满 10 秒失败（538 个里 2 个）。设计以为"有记录的文档都先续期"，只对开始时就有记录的文档（`token-manager.ts:221-229`）成立。改为文档的 `performance` 里有 `/api/v0/auth/refresh`、`/api/v0/auth/login`、`/api/v0/auth/register` 任一条即可（常量 `tokenPaths`）。给文档令牌的只有这三种答复（审查 A 逐个数过入口）。注册一支由 A15 第 7 格守（变异 x1），登录一支由 A3、S4 与 A15 第 8 格守（变异 x2）。开始时没有记录、之后跟着别的标签页登录的文档，在它下一次读（`me`）时于锁里续期，帮手等的是那次续期（审查 A 的探针，三种浏览器在 42–242 ms 内换了文档；实施报告说它会等满 10 秒，不成立，P1S1A-M2）。
+  3. **页面里的一次读至少 1 秒**（3.2 第 2 步）：与"剩下的时间"赛跑时，最后一圈的读总输给几毫秒的计时，报错写成 "the next document (pending)"，不是真在等的一样；改为 `Math.max(1_000, 剩下的)`（常量 `readMs`），帮手最多约 11 秒才失败（测试 30 秒）。Chromium 里下一个文档没提交时读不答，照旧算作 "the next document (pending)"。
+  4. **A15 的第 5 格先断言路由记下的结局**（"answered" 或 "dropped"），再断言答复是 200（3.6）：被换文档丢掉的、路由扣着不交回的请求，Chromium 既不报答复也不报失败，只等 `response()` 会等到测试超时；错的帮手立刻以 `Expected "answered", Received "dropped"` 失败（变异 1、3）。
+  5. **`signInLandings` 按上一次主框架的地址去重**（3.3 写"与上一条相同就不重复记"）：`replaceState` 再报同一地址时一样不记；`/sign-in` → 别处 → 同一个 `/sign-in` 照记两次，按"上一条"会漏掉第二次。A15 的流程里应用从不再报同一地址（守卫以 `<Navigate replace>` 从设置页换到登录页，地址不同，`W/app/guards.tsx:53`），去掉去重的变异 x4 原来全照过；第 1 格末尾把登录页的地址以它自己 `replaceState`，断言仍是一条（`8e128a2d`，x4 由此抓到）；再 `pushState` 到 `/`、回到同一个登录页的地址，断言两条相同的落点（修复一轮 `6e48227d`，审查 C-N6：设计的写法 m23 在 `8e128a2d` 上活、在头上第 1 格三种浏览器 9/9 失败）。
+  6. **A15 九格**（3.6、第 5 节）：第 7 格"自己注册的文档没有第一次续期，帮手立刻换"，钉住 `tokenPaths` 里的注册一支，也钉住"什么也不用等时帮手不等"；第 8 格"登录答 200 之后、写记录还在等锁时经帮手换文档，等锁放开"（第 9 条）；第 9 格"没有 Web Locks 时，别的标签页的租约有效时经帮手换文档，等租约放开"（审查 B-M1：原来没有一格走到租约，去掉租约一支或改了它的键，全部故事照过）。27 个测试，WebKit 的第 3 格跳过；`make e2e` 565 个（538 + 27）。
+  7. **门禁**（3.5）：另核对读到了帮手的模块（`e3059737`）：内置样例直接交给 `check()`，证明的是 `check()` 看得见，不是遍历读到了 `e2e/`；只读 `e2e/stories` 的变异 5 原来只有"在 `wiki-health.ts` 手写一处"的探针抓得到，读错了目录时样例照绿、真的树 0 个文件也照过。内置样例比较整张问题表，不只比个数。修复一轮（`91718e48`，审查 C-N5）：读 Playwright 默认 `testMatch` 的八种结尾（`.ts`、`.tsx`、`.mts`、`.cts` 与 `.js`、`.jsx`、`.mjs`、`.cjs`；3.5 写的四种之外，`.spec.tsx`、`.spec.cts` 等的故事照跑、门禁看不见），每次运行先核对八种结尾都读；逃生口认三种引号（反引号 oxfmt 不改）；九个样例，新的两个是反引号写的逃生口、另一个叫 `navigation.ts` 的模块里的直接 `goto`（帮手按整个路径例外，不按名字）。
+  8. **3.7 的"复原之后看不到"在本机做不出**：今天本机复原后的代码每次都真的等了（0.2–1.1 秒，容器 veth 的链路本地地址），这一行照实出现；"没有就不打"改由让 `tentative()` 恒交回空的一次运行证明（没有这一行）。
+- **审查与修复带来的**（修复一轮，照主持者的修复说明；提交见 10.1）：
+  9. **帮手先看续期的锁（或租约），再看记录**（3.2 的 `sessionWaits` 原来先看记录，没有就交回空，走不到锁）：登录、注册的答复读完之后，`signIn` 在锁里写记录（`token-manager.ts:164-172`）；锁被别的标签页持着的那一段，文档还没有记录，原来的写法不等就换文档，新文档丢了这次登录、落到 `/sign-in`（审查 A-M1：探针在三种浏览器里都在放开之前约 1 秒就请求了新文档）。锁之后才读记录，连"读到记录为空之后、看锁之前记录被写下"的那一刻也盖住了（修复核对 A）。A15 第 8 格守它：原来的写法三种浏览器各三轮都失败（`6ec05d13`）。没有记录的应用文档在别的标签页持锁时也等，持锁的只有续期、登录、退出，至多 8 秒；有记录、第一次续期正排在锁上的文档，报错写 "the refresh lock"，等的东西不变（修复核对 A）。
+  10. **失败时页面状态的 `sent back to sign in:` 一行只在页面落到过 `/sign-in` 时写**（3.3 写 `|| "no"`，每个失败都带这一行；审查 C-N7，`3c2425c1`）。故事自己去登录页的也有这一行（没登录被守卫转去、在 UI 上登录、有意退出或停用；A15 第 8 格即是一例）：数"被跳回登录页"红过几次（决定 334、342），数这一行带 ` after a refresh answered 401` 的失败，再除去有意造重用的故事（A5）。`3c2425c1` 的提交说明写"有这一行的失败就是被跳回的"，不对，已推、不改；`937df215` 的说明更正了它，代码的注释随之（修复核对 A-N2 = C-N8）。修复一轮取"只在落到过时写"，不改成计数：计数的写法（`sent back to sign in: 0`）还得读出数来比（实施中定）。
+- 修复一轮另定的（实施中定，主持者可以给号或改判）：第 9 格照审查 B 的探针，上下文的 init script 删掉 `Navigator.prototype.locks`，先断言页面里 `"locks" in navigator` 为假，租约写成别的标签页的（`owner: "another-tab"`，5 秒，长于帮手的 1 秒窗口）；门禁的八种结尾不进 `SAMPLES`（`SOURCE` 用在遍历里，不在 `check()` 里），每次运行另核对 `x1-sample.spec.<结尾>` 八个名字都被 `SOURCE` 取到；`page["goto"](…)`、`.bind`、`location.href = …` 照决定 344（按文字找）不管，今天 `e2e/` 里一处也没有（审查 C 也这样建议）。
 
 ### 3.16 S2 的实施对设计的修正
 
@@ -691,17 +732,17 @@ jobs:
 
 ## 4. 网页
 
-不改网页的代码与测试。帮手读网页的两样东西（会话的记录与锁的名字、`#root`），照它们今天的值写成常量，注释写出处（3.2）；网页改了它们，A15 会先失败。
+不改网页的代码与测试。帮手读网页的几样东西（会话的记录、锁与租约的名字、`#root`、给文档令牌的三个接口的路径），照它们今天的值写成常量，注释写出处（3.2）；网页改了它们，A15 会先失败（登录的路径另有 A3、S4；租约的键是第 9 格，S1 的审查 B 之后加）。
 
 ## 5. e2e
 
 | 故事 | 版本与 Step | 内容 |
 |---|---|---|
-| `identity/a15-leave-mid-refresh.spec.ts` A15 续期途中离开 | 页面：S1（三种浏览器；第 3 格只在 Chromium 与 Firefox） | 3.6 的六格。接口版本豁免：接口那一面是 A5 (API)（`a5-refresh-reuse.spec.ts:68`）；MCP 豁免：MCP 不经浏览器的会话 |
+| `identity/a15-leave-mid-refresh.spec.ts` A15 续期途中离开 | 页面：S1（三种浏览器；第 3 格只在 Chromium 与 Firefox） | 3.6 的九格。接口版本豁免：接口那一面是 A5 (API)（`a5-refresh-reuse.spec.ts:68`）；MCP 豁免：MCP 不经浏览器的会话 |
 | 109 个故事与 `wiki-health.ts` | S1 | 换上帮手（3.4），断言不变 |
 
 - `e2e/playwright.config.ts:3-4` 的 `threeBrowsers` 加 `|identity\/a15-`。
-- 故事的个数：A15 加 6 格乘 3 种浏览器，共 18 个，其中 WebKit 的第 3 格跳过（报告里算 skipped）；S1 的记录写出 `make e2e` 改之前与之后的个数。
+- 故事的个数：A15 加 9 格乘 3 种浏览器，共 27 个，其中 WebKit 的第 3 格跳过（报告里算 skipped）；`make e2e` 改之前 538 个，之后 565 个（10.1）。
 - README 的 e2e 一节（`README.md:492-493`）加一条（第 8 节第 6 条）。
 
 ## 6. 实施步骤
@@ -712,12 +753,21 @@ jobs:
 
 ### 6.1 S1（`m12-p1-s1`）
 
-1. `e2e: the stories leave a page once its requests and its refresh are answered (M12/P1/S1)`：`navigation.ts`、`watchPage` 调 `followRequests`、110 个文件的替换（3.2–3.4）。本机 `make e2e` 全绿（经 `heavy.sh`）。
-2. `e2e, tools, build: a gate keeps the e2e's gotos and reloads on the helper (M12/P1/S1)`：`tools/e2e-navigation/check.mjs`、`Makefile` 的 `lint-web` 一行、`knip.jsonc`（3.5）；表是空的。
-3. `e2e: a failed test's page state says when it was sent back to sign in (M12/P1/S1)`：`signInLandings` 与 `pageState` 的一行（3.3）。
-4. `e2e: A15, a page left while its refresh is out, in three browsers (M12/P1/S1)`：A15 的六格、`threeBrowsers`、门禁的表写 2（3.5、3.6）。之前照 3.6 末条先在三种浏览器跑第 3、4、6 格。
-5. `e2e: the run says when it waited for the host's network (M12/P1/S1)`：3.7。正向对照在这个提交之前的工作树上做、复原，不提交（3.7）。
-6. `docs: … (M12/P1/S1)`：审查记录、10.1、3.15、00 号文档与总体设计的 S1 部分、README 与 05-lessons、移交（第 8 节）。
+1. `e2e: A6's tab that keeps another sign-in is watched from its start (M12/P1/S1)`：`a6-sign-out.spec.ts:88` 的标签页先 `watchPage`，下一步的替换才单独为绿（3.15 第 1 条；实施时加，`479d14e5`）。
+2. `e2e: the stories leave a page once its requests and its refresh are answered (M12/P1/S1)`：`navigation.ts`、`watchPage` 调 `followRequests`、110 个文件的替换（3.2–3.4）。本机 `make e2e` 全绿（经 `heavy.sh`）（`bafbd418`）。
+3. `e2e, tools, build: a gate keeps the e2e's gotos and reloads on the helper (M12/P1/S1)`：`tools/e2e-navigation/check.mjs`、`Makefile` 的 `lint-web` 一行、`knip.jsonc`（3.5）；表是空的（`c18562fe`）。
+4. `e2e: a failed test's page state says when it was sent back to sign in (M12/P1/S1)`：`signInLandings` 与 `pageState` 的一行（3.3）（`6cf1c32c`）。
+5. `e2e: A15, a page left while its refresh is out, in three browsers (M12/P1/S1)`：A15 的七格、`threeBrowsers`、门禁的表写 2（3.5、3.6）。之前照 3.6 末条先在三种浏览器跑第 3、4、6 格（`ce2cc0fc`）。
+6. `e2e: the run says when it waited for the host's network (M12/P1/S1)`：3.7。正向对照在这个提交之前的工作树上做、复原，不提交（3.7）（`c330217f`）。
+7. `tools: the gate fails unless it read the helper's module (M12/P1/S1)`：3.5（3.15 第 7 条；实施时加，`e3059737`）。
+8. `e2e: A15 checks that an address replaced with itself is one sign-in landing (M12/P1/S1)`：A15 第 1 格末尾的 `replaceState`（3.15 第 5 条；实施时加，`8e128a2d`）。
+9. `e2e: the helper waits for the refresh lock before it reads the record, which a sign-in writes under it (M12/P1/S1)`：先看锁或租约、再看记录，A15 第 8 格，帮手的说明（3.15 第 9 条；审查 A-M1、A-N1、C-N4，修复一轮，`6ec05d13`）。
+10. `e2e: A15 checks that without Web Locks the helper waits for another tab's lease (M12/P1/S1)`：A15 第 9 格（3.15 第 6 条；审查 B-M1，修复一轮，`995ebf02`）。
+11. `tools: the gate reads every file Playwright runs and counts an escape in backticks (M12/P1/S1)`：八种结尾、三种引号、九个样例与文件头（3.15 第 7 条；审查 C-N4、C-N5，修复一轮，`91718e48`）。
+12. `e2e: A15 checks that away and back to the sign-in page is a second landing (M12/P1/S1)`：第 1 格末尾的来回（3.15 第 5 条；审查 C-N6，修复一轮，`6e48227d`）。
+13. `e2e: a failed test's page state names the sign-in page only when it was sent there (M12/P1/S1)`：那一行只在落到过 `/sign-in` 时写（3.15 第 10 条；审查 C-N7，修复一轮，`3c2425c1`）。
+14. `e2e: the sign-in line in a failed test's page state is counted by its 401 mark (M12/P1/S1)`：`pageState` 的说明，只改注释（修复核对 A-N2 = C-N8；主持者，`937df215`）。
+15. `docs: … (M12/P1/S1)`：审查记录、10.1、3.15、00 号文档与总体设计的 S1 部分、移交、README 与 05-lessons（第 8 节）。
 
 ### 6.2 S2（`m12-p1-s2`）
 
@@ -743,15 +793,16 @@ jobs:
 | 项 | 测试 | 在哪里 | Step |
 |---|---|---|---|
 | 帮手等在途的续期 | A15 第 2 格（经 `reload`） | e2e，三种浏览器 | S1 |
-| 帮手等这个文档的第一次续期（U1） | A15 第 4 格（经 `goto`；WebKit 里只证明等第一次续期，3.6） | 同上 | S1 |
-| 帮手等续期的锁 | A15 第 6 格 | 同上 | S1 |
+| 帮手等这个文档的令牌：第一次续期（U1），或在这个文档里登录、注册的答复 | A15 第 4 格（经 `goto`；WebKit 里只证明等第一次续期，3.6）；第 7 格（注册之后不等第一次续期）；A3 (page)、S4（登录之后，Chromium）（3.15 第 2 条） | 同上 | S1 |
+| 帮手等续期的锁，先于记录 | A15 第 6 格（第一次续期之后）、第 8 格（登录答复之后、写记录之前，3.15 第 9 条） | 同上 | S1 |
+| 没有 Web Locks 时帮手等租约 | A15 第 9 格 | 同上 | S1 |
 | 帮手等在途的读 | A15 第 5 格 | 同上 | S1 |
 | 经逃生口离开就登出（M1 第 10 节；已知限制） | A15 第 1 格；第 3 格（U1） | 第 1 格三种浏览器，第 3 格 Chromium 与 Firefox | S1 |
 | 帮手不改变故事的结果 | 全量 `make e2e`，个数与改之前相同（加 A15） | e2e | S1 |
 | 替换是机械的、一个不漏 | 3.4 的计数与反向变换的比较；`check:types` | S1 的记录 | S1 |
-| 门禁 | 内置样例；变异 4–8 | `make lint-web`，CI 的 `web` | S1 |
-| 落到 `/sign-in` 写进页面状态 | A15 第 1、3 格断言 `signInLandings`；第 2、4 格断言它为空 | e2e | S1 |
-| 第 50 条的日志 | 正向对照：本机临时让等待发生一次与 `ip` 判不了一次，各看到那一行，复原后看不到（3.7）；之后 CI 的 e2e 作业日志里照实记 | S1 的记录 | S1 |
+| 门禁 | 内置样例（比整张问题表）；读到帮手的模块；八种结尾；变异 4–8、19、x6、x7、g1、g1b、g2、c3 | `make lint-web`，CI 的 `web` | S1 |
+| 落到 `/sign-in` 写进页面状态 | A15 第 1、3 格断言 `signInLandings`，第 1 格另断言同一地址再报一次不记、离开又回到记两条；第 2、4 格断言它为空，第 8 格只有起初那一条；那一行只在落到过时写（修复一轮的探针，S1 的记录） | e2e | S1 |
+| 第 50 条的日志 | 正向对照：本机临时让等待发生一次与 `ip` 判不了一次，各看到那一行，`tentative()` 恒交回空时没有（3.7；复原后本机每次都真的等了，3.15 第 8 条）；之后 CI 的 e2e 作业日志里照实记 | S1 的记录 | S1 |
 | Go 版本一致 | `TestTheImageBuildsWithTheModulesToolchain` | `platform/buildinfo`，`test-go-short` 与 `race` | S2 |
 | 镜像真的用 1.27.4 构建 | Dockerfile 的断言；CI 的 `image` 一项，构建日志里 `RUN test …` 一步为绿 | `make image` | S2 |
 | CI 用 1.27.4 | 各份的 `Go version` 一步（`ci.yml:155-157`）打出 `go1.27.4` | S2 的分支 CI | S2 |
@@ -768,11 +819,11 @@ jobs:
 
 | # | 变异 | 让它失败的测试 | 浏览器 | Step |
 |---|---|---|---|---|
-| 1 | 帮手什么也不等（`settle` 直接返回） | A15 第 2、4、5、6 格 | 三种 | S1 |
+| 1 | 帮手什么也不等（`settle` 直接返回） | A15 第 2、4、5、6、8、9 格 | 三种 | S1 |
 | 2 | 帮手不等这个文档的第一次续期（`sessionWaits` 不看 `performance`） | A15 第 4 格：Chromium 与 Firefox 落到 `/sign-in`，WebKit 以 `problems` 失败（原型各三轮）；第 2、5、6 格照过 | 三种 | S1 |
 | 3 | 帮手不等在途的请求（集合不看），只看页面里的会话 | A15 第 5 格（读被打断）；第 2 格照过：第一次续期的检查等着那次续期 | 三种 | S1 |
 | 4 | 门禁放过故事里直接的 `goto` | 内置样例 1；在 `a5-refresh-reuse.spec.ts` 里改回一处 `page.goto`，`make lint-web` 失败 | — | S1 |
-| 5 | 门禁不看 `e2e/fixtures/`（目录的遍历只读 `e2e/stories`） | 在 `wiki-health.ts` 改回 `page.goto`，`make lint-web` 失败。内置样例抓不到它：样例直接交给 `check()`，不经遍历（P1 设计审查 A-N10） | — | S1 |
+| 5 | 门禁不看 `e2e/fixtures/`（目录的遍历只读 `e2e/stories`） | 门禁自己：读到的文件里没有帮手的模块就失败（3.15 第 7 条）；另在 `wiki-health.ts` 改回 `page.goto`，`make lint-web` 失败。内置样例抓不到它：样例直接交给 `check()`，不经遍历（P1 设计审查 A-N10）；S1 加那条核对之前，提交的门禁照过它 | — | S1 |
 | 6 | 门禁对帮手以外的文件也例外（例外按目录而不是按文件） | 内置样例 2 | — | S1 |
 | 7 | 门禁不核对逃生口的表 | 内置样例 4–6；在 A15 多写一处逃生口 | — | S1 |
 | 8 | 门禁的正则不认跨行的 `.reload(` | 内置样例 2 | — | S1 |
@@ -784,9 +835,26 @@ jobs:
 | 14 | README 的 PostgreSQL 改回 18.6 | `TestContainerMatchesTheOtherDatabases` | — | S2 |
 | 15 | `ci-only` 的判断去掉 | 本机 `make vuln`，PATH 前面放两个桩（放在 `TMPDIR` 下自己的目录）：`go` 把参数写进一个文件、退出 3，`pnpm` 写参数、退出 0。原样时在调用桩之前就拒绝（文件是空的，退出码 1）；去掉判断后两个桩都被调到（文件里是 `run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...` 与 `audit --prod --audit-level=low`），什么也没发出。另用同一套桩加 `GITHUB_ACTIONS=true` 跑原样的 `make vuln`：两侧都跑，合起来退出 1（`status` 的累计，3.12）。不必请主持者同意（P1 设计审查 A-M3、B-N3） | — | S2 |
 | 16 | `reload` 不先等（只 `goto` 等） | A15 第 2 格 | 三种 | S1 |
-| 17 | `framenavigated` 里不记 `/sign-in` | A15 第 1、3 格的 `signInLandings` 断言 | 第 1 格三种，第 3 格 Chromium 与 Firefox | S1 |
-| 18 | 帮手不看续期的锁（`sessionWaits` 不调 `navigator.locks.query()`，也不看租约） | A15 第 6 格：新文档在放开之前就请求了（原型三种各三轮）；第 4 格照过 | 三种 | S1 |
+| 17 | `framenavigated` 里不记 `/sign-in` | A15 第 1、3、8 格的 `signInLandings` 断言 | 第 1、8 格三种，第 3 格 Chromium 与 Firefox | S1 |
+| 18 | 帮手不看续期的锁（`sessionWaits` 不调 `navigator.locks.query()`，也不看租约） | A15 第 6、8、9 格：新文档在放开之前就请求了（原型三种各三轮）；第 4 格照过。审查时只有第 6 格，只由锁那一半抓到：没有 Web Locks 的故事走不到租约（P1S1B-M1）；修复一轮加了第 8、9 格 | 三种 | S1 |
 | 19 | 门禁数帮手模块里的逃生口（`LEAVE` 不跳过帮手） | 内置样例 7；真的树上帮手的报错信息被算作一处，`make lint-web` 失败 | — | S1 |
+| x1 | `tokenPaths` 去掉注册 | A15 第 7 格：帮手 10 秒后报"the document's first refresh" | 三种 | S1 |
+| x2 | `tokenPaths` 去掉登录 | A3 (page)、S4 与 A15 第 8 格：同上的报错 | A3、S4 在 Chromium；第 8 格三种 | S1 |
+| x3 | `refusedRefresh` 恒为假 | A15 第 1、3 格：落点少了" after a refresh answered 401" | 第 1 格三种，第 3 格 Chromium 与 Firefox | S1 |
+| x4 | 落点不去重 | A15 第 1 格：两条相同的落点（`8e128a2d` 之前全照过，3.15 第 5 条） | 三种 | S1 |
+| x5 | 事件流也算在途 | A15 第 2、4–9 格（多数 9/9）：帮手报 `GET /api/v0/events` | 三种 | S1 |
+| x6 | 门禁的 `check()` 什么也不报 | 内置样例 | — | S1 |
+| x7 | 门禁的遍历读 `web/apps/web/src/session` | 读到帮手的模块的核对；表里 A15 一行也对不上 | — | S1 |
+| m18a | 只去掉锁的一支（租约留着） | A15 第 6、8 格 | 三种 | S1 |
+| m20 | 先看记录再看锁（`8e128a2d` 的次序） | A15 第 8 格："the next document is asked for once the sign-in wrote its record" | 三种 | S1 |
+| m21 | 去掉租约一支 | A15 第 9 格："the next document is asked for once the lease is let go" | 三种 | S1 |
+| m22 | 租约的键改名 `nwiki.auth.lease.v2` | A15 第 9 格 | 三种 | S1 |
+| m23 | 落点按上一条去重（3.3 原来的写法） | A15 第 1 格：少了第二条落点 | 三种 | S1 |
+| g1 | 门禁的 `SOURCE` 改回四种结尾（g1b：少 `x`） | 八种结尾的核对："the gate does not read a story ending .spec.tsx" 等 | — | S1 |
+| g2 | `LEAVE` 只认双引号 | 内置样例 8 | — | S1 |
+| c3 | 门禁的例外按名字 `navigation.ts`，不按整个路径 | 内置样例 9 | — | S1 |
+
+x1–x7 是 S1 的实施者加的（实施报告第 4 节）；m18a、m20–m23、g1、g1b、g2、c3 是修复一轮照审查加的（修复报告第 3 节），m20–m23 在 `8e128a2d` 上都活着（m20 即那时的帮手；审查 B 的 mL、mLK 即 m21、m22），g1、g2、c3 的探针那时门禁都看不见。
 
 等价的、不列的：只从在途的集合里去掉续期（`/api/v0/auth/refresh` 不进集合）。在途的续期若是这个文档的第一次，"第一次续期"一样等它：答复读完之前 `performance` 里没有那一条。若是后来的，它在锁里发、写完记录才放锁（`token-manager.ts:288-310`），锁的检查等它。记录里写明它是等价的。
 
@@ -802,9 +870,9 @@ jobs:
 ### 7.4 CI 的余量
 
 - **S1**：组合根不变。e2e 作业今天 6:52–9:23（00 号文档第 7 节 P1），时限 20 分钟（`ci.yml:263`）。
-  - A15 加 17 个要跑的测试（18 个里 WebKit 的第 3 格跳过）。有四格在等：第 2、5 格各约 2 秒，第 4 格约 1 秒加 2 秒，第 6 格约 1 秒。本机原型量到的每格用时（含注册与登录）：第 1 格 0.3–1 秒、第 2 格 2.3–2.9 秒、第 5 格 2.3–2.9 秒（P1 设计审查 C 的原型），第 3 格 0.8–1.5 秒、第 4 格 3.9–4.5 秒、第 6 格 1.9–2.3 秒（第一次修订的原型）。三种浏览器加起来串行约 40 秒。
-  - `playwright.config.ts` 没有设 `workers`，Playwright 默认用一半的逻辑 CPU，CI 的 4 核 runner 上是 2 个；同一个文件里的测试串行。所以 A15 在 CI 上约多 20–40 秒。这是推断：CPU 不同，并且没在 CI 上量过（P1 设计审查 A-N1）。
-  - 帮手对已有的故事估多 0–30 秒（推断，3.4）。合计估多 1 分钟以内。S1 的记录写出分支 CI 与合并之后两次 `main` 的 E2E 一步。
+  - A15 加 26 个要跑的测试（27 个里 WebKit 的第 3 格跳过；S1 加了第 7–9 格，第 7 格每次 0.4–0.8 秒，第 8、9 格 1.4–1.9 秒）。有四格在等：第 2、5 格各约 2 秒，第 4 格约 1 秒加 2 秒，第 6 格约 1 秒。本机原型量到的每格用时（含注册与登录）：第 1 格 0.3–1 秒、第 2 格 2.3–2.9 秒、第 5 格 2.3–2.9 秒（P1 设计审查 C 的原型），第 3 格 0.8–1.5 秒、第 4 格 3.9–4.5 秒、第 6 格 1.9–2.3 秒（第一次修订的原型）。三种浏览器加起来串行约 40 秒。
+  - `playwright.config.ts` 没有设 `workers`，Playwright 默认用一半的逻辑 CPU，CI 的 4 核 runner 上是 2 个；同一个文件里的测试串行。所以 A15 在 CI 上约多 20–40 秒。这是推断：CPU 不同，并且没在 CI 上量过（P1 设计审查 A-N1）。S1 的分支 CI 上 A15 一轮串行约 41 秒（七格，`8e128a2d`），修复之后约 68 秒（九格，`3c2425c1`，那台 runner 慢约 1.5 倍）（10.1）。
+  - 帮手对已有的故事估多 0–30 秒（推断，3.4）。合计估多 1 分钟以内。S1 的记录写出分支 CI 与合并之后两次 `main` 的 E2E 一步。S1 实测：A15 之外帮手只真的等过 6 次、合计 0.23 秒（审查 B 插记录的全量）；分支 CI 的 e2e 作业 7:35（E2E 6:03），S1 之前 `main` 的三次 6:48–8:16，在机器的差别之内；修复之后 9:58（E2E 8:25），慢在 runner（10.1）。合并之后两次 `main` 记在 S2 的记录（7.5 的"之前"）。
 - **S2**：组合根各份照新的 Go 与 PostgreSQL 重量（7.5）。第五份收尾之后两次在 EPYC 7763 上平均 425 秒，余量 25 秒（00 号文档第 7 节"分份"）：Go 小版本与 PostgreSQL 小版本的变化通常在噪声之内，但余量小，所以照数据看。过 450 秒照 06-environment 第 4 节先挪给邻份，挪不下再分一份，不提高 `-timeout`。第五份落在别的 CPU 上时看不出 7763 上的影响，所以另照决定 352 看它第一次落在 7763 上的那次（第 8 节第 1 条）。`vuln.yml` 与 `ci.yml` 并行，不算进各份。`image` 一项要拉新的基础镜像，第一次多十几秒。
 
 ### 7.5 P1 怎样量
@@ -824,13 +892,13 @@ P1 完成，当且仅当：
 
 1. 两个 Step 各自合并进 `main`，合并之前 6.3 的门禁全绿、审查与修复核对结束；每个 Step 合并之后两次 `main` 的组合根每一份的 Test 一步平均在 450 秒之下（7.4），否则照 06-environment 第 4 节处理之后才开下一个 Step（S2 合并之后：才开 P2–P5 的并行的几个）。第五份另照决定 352：S2 合并之后，`main` 的第五份第一次落在 EPYC 7763 上时，记下它的 Test 一步，与收尾之后的 425 秒比；两次落在 7763 上的平均过 450 秒时，照 06-environment 第 4 节挪份。不为等 7763 拖住 S2 的合并；那一次来时若已开了后面的 Step，挪份记在当时进行中的 Step 里。
 2. 第 3、5 节的每个测试在，7.2 的每个变异被它旁边的测试抓到（第 10 节记下）；3.14 的每个反向对照在。
-3. 00 号文档第 3 节第 1、2 条里 P1 的部分有证据：`vuln.yml` 在 S2 分支上为绿的运行号；门禁报出的逃生口个数与表；A15 三种浏览器为绿。第 2 条的"P1/S1 合并之后到 M12 收尾，`main` 的 e2e 没有一次因为被跳回登录页而红"由收尾记录核对（决定 334）：S1 的记录写明从哪个提交起数（S1 的合并），怎样数（`gh run list --workflow ci.yml --branch main`，红了的看 E2E 的注解里 `sent back to sign in:` 一行）。
+3. 00 号文档第 3 节第 1、2 条里 P1 的部分有证据：`vuln.yml` 在 S2 分支上为绿的运行号；门禁报出的逃生口个数与表；A15 三种浏览器为绿。第 2 条的"P1/S1 合并之后到 M12 收尾，`main` 的 e2e 没有一次因为被跳回登录页而红"由收尾记录核对（决定 334）：S1 的记录写明从哪个提交起数（S1 的合并），怎样数（`gh run list --workflow ci.yml --branch main`，红了的看 E2E 的注解里 `sent back to sign in:` 一行，数这一行带 ` after a refresh answered 401` 的失败，再除去有意造重用的故事（A5）；故事自己去登录页的也有这一行，3.15 第 10 条）。
 4. **00 号文档**（`docs/v0.1/M12-release/00-M12-design.md`）：
    - **接受本文的文档提交**：2.1 的各条照写的新文字改（第 10 条撤回，不改）；2.3 的取舍 337–352 写进第 11 节，接在"2026-11-15：设计审查之后新加的主持者的决定 332–336"之后，另起一节"P1 的设计审查之后的取舍 337–352（主持者的决定，负责人可以改判）"，每条一句、带它在本文与审查记录里的位置（审查记录用临时号 P1-1–P1-16，对照在它的"主持者的决定"一节）；头的"状态"（`:7`）改为"进行中（P1 设计已审查，S1 开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过）"；第 12 节的 P1 一行 `| P1 地基（S1、S2） | — | 未开始 | — | — |`（`:1234`）改为 `| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（设计已审查） | [设计](reviews/P1-design-review.md) | — |`；第 13 节加一行"P1 设计已审查，S1 开工；2.1 的修订落进本文"，依据是 P1 的设计与它的审查记录。
    - **每个 Step 的文档提交**（在 Step 的分支上、合并之前）：第 12 节的 P1 一行的"状态"写到这个 Step，"审查"一格加它的记录 `reviews/P1-S<m>-<slug>-review.md`，"合并"一格写"见本文第 12 节"的占位，合并之后在 `main` 的小文档提交里填入合并的提交号；第 13 节加一行。
    - **`docs: M12/P1 done (M12/P1)`**：第 12 节的 P1 一行"完成"；头的"状态"改为"进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工；…）"；第 13 节加"P1 完成"一行。
 5. **v0.1 总体设计**（`docs/v0.1/v0.1-design.md`；00 号文档第 7 节"总体设计的修订"里标给 P1 的第 4、5、12、18 条，各在实现它的 Step 的文档提交里，用脚本断言锚点恰好出现一次）：
-   - **S1，13.4 第 3 条**（`:1265`）：末尾（`UP6、UP8 的页面版本只在 Chromium（M11/P3）。` 之后）加 " M12/P1/S1：e2e 换文档只经 `e2e/fixtures/navigation.ts` 的 `goto` 与 `reload`：它们先等页面没有在途的接口请求、这个文档的第一次续期已答、续期的锁空着，再换；有意在请求途中离开的写显式的逃生口 `{ inFlight: \"leave\" }`。门禁 `tools/e2e-navigation/check.mjs`（`make lint-web`）不许 `e2e/` 里别处直接调 `page.goto`、`page.reload`，按表核对每个文件的逃生口；同一个文档里的后退与前进不经帮手。A15 演示续期途中离开会被登出（M1 第 10 节），并核对帮手等的每一样；只有页面版本，接口那一面是 A5 (API)；在三种浏览器里跑，第一次续期发出之前离开的那一格只在 Chromium 与 Firefox（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。"
+   - **S1，13.4 第 3 条**（`:1265`）：末尾（`UP6、UP8 的页面版本只在 Chromium（M11/P3）。` 之后）加 " M12/P1/S1：e2e 换文档只经 `e2e/fixtures/navigation.ts` 的 `goto` 与 `reload`：它们先等页面没有在途的接口请求、续期的锁（没有 Web Locks 时是租约）空着、这个文档有了给它令牌的答复（第一次续期，或在这个文档里登录、注册），再换；有意在请求途中离开的写显式的逃生口 `{ inFlight: "leave" }`。门禁 `tools/e2e-navigation/check.mjs`（`make lint-web`）不许 `e2e/` 里别处直接调 `page.goto`、`page.reload`，按表核对每个文件的逃生口，并核对它读到了帮手的模块；同一个文档里的后退与前进不经帮手。A15 演示续期途中离开会被登出（M1 第 10 节），并核对帮手等的每一样（含在锁里写记录的登录、没有 Web Locks 时的租约）、自己注册的文档不必等；只有页面版本，接口那一面是 A5 (API)；在三种浏览器里跑，第一次续期发出之前离开的那一格只在 Chromium 与 Firefox（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。"（S1 照实施改了几处：锁先于令牌（没有 Web Locks 时是租约）、令牌的答复、门禁核对读到了帮手；A15 一句多了锁里写记录的登录、租约与自己注册的文档不必等，3.15）
    - **S2，7.1**（`:722`）：`例如 \`postgres:18.6-trixie\`` → `例如 \`postgres:18.7-trixie\``（第 4 条）。
    - **S2，13.5 第 2 条**（`:1286`）：`Node 本身按大版本（\`.node-version\`）。` → `Node 本身按大版本（\`.node-version\`）。Dockerfile 的 golang 镜像的版本（tag 与 server 阶段构建时断言的 \`go env GOVERSION\`）与 README 写给贡献者的版本等于两份 \`go.mod\` 的 \`toolchain\`（golang 镜像设了 \`GOTOOLCHAIN=local\`，\`FROM\` 里生效的是摘要）；测试、开发、部署样例与 smoke 的 PostgreSQL 镜像相同，\`pgtest/image_test.go\` 列出要核对的各处；都由测试核对（M12）。`（第 5 条，加了 2.1 第 11 条的 README）。
    - **S2，13.1 第 32 条**（`:1179`）：从 `go1.27.1 里它在默认打开的 GOEXPERIMENT \`jsonv2\` 之后` 起的那一句（恰好出现一次）照 1.27.4 的核对结果写：仍在实验之后时是"go1.27.4 里它仍在默认打开的 GOEXPERIMENT `jsonv2` 之后（实验关掉时 `encoding/json/v2` 不存在，mcpserver 编译不过，CI 的每一份都会红）：升级工具链时核对它仍打开、或已离开实验（M12/P1）。"；已离开实验时照实写（第 18 条）。
@@ -844,7 +912,7 @@ P1 完成，当且仅当：
    - **S2，`05-lessons.md:89`**：`在 \`golang:1.27.1-trixie\` 容器里复现` → `在与 \`go.mod\` 的 \`toolchain\` 同版本的 golang 镜像里复现`。
    - **S2，`03-project-background.md:15`**：`Go 1.27（toolchain go1.27.1）` → `Go 1.27（\`toolchain\` 见 \`server/go.mod\`）`。
 7. **移交的"处理进展"**各加一行（状态仍是 `open`）。引号里以反引号括起的链接是它在 `handoffs/` 里的写法，写进移交时去掉反引号：
-   - **S1**，`handoffs/M5-polish.md`："- M12/P1/S1（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 51 条做完：帮手 `e2e/fixtures/navigation.ts` 的 `goto`、`reload` 先等在途的请求、第一次续期与续期的锁，110 个文件换上，门禁 `tools/e2e-navigation/check.mjs`，A15 在三种浏览器里演示续期途中离开会被登出；"重新看 M1 第 10 节"进 v0.2 的 `M12-release.md`（收尾时写）。第 50 条：`networkSettled` 等待时打一行，CI 上 <触发与否>（`[P1 设计](../01-P1-foundation.md)` 10.1）。"
+   - **S1**，`handoffs/M5-polish.md`："- M12/P1/S1（2026-11-15，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 51 条做完：帮手 `e2e/fixtures/navigation.ts` 的 `goto`、`reload` 先等在途的请求、续期的锁（或租约）与这个文档的令牌（第一次续期，或在这个文档里登录、注册的答复），110 个文件换上，门禁 `tools/e2e-navigation/check.mjs`，A15 在三种浏览器里演示续期途中离开会被登出；"重新看 M1 第 10 节"进 v0.2 的 `M12-release.md`（收尾时写）。第 50 条：`networkSettled` 等待时打一行；分支的两次 CI 一次触发了（等了 0.42 秒，容器 veth 的链路本地地址）、一次没有（那台 runner 没有暂定的地址）（`[P1 设计](../01-P1-foundation.md)` 10.1）。"
    - **S2**，`handoffs/M0-P6-image-release.md`："- M12/P1/S2（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 4 条的安全一半做完：Go 1.27.4（镜像的断言与守卫）、PostgreSQL 18.7、node 与 distroless 的摘要、setup-node 7.1.0 与 upload-artifact 7.0.2；`make vuln`（Go 与 npm）与 `make outdated` 在 `vuln.yml` 里，<报出的与处置>。Node 26、功能性的大版本与 Dependabot 的版本更新，收尾时写进 v0.2 的 `M12-release.md`（`[P1 设计](../01-P1-foundation.md)` 10.2）。"
 
 ## 9. 交给后面的 Phase
@@ -866,9 +934,29 @@ P1 完成，当且仅当：
 
 每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
 
-### 10.1 S1：e2e 的帮手
+### 10.1 S1：e2e 的帮手（2026-11-15，合并见 00 号文档第 12 节）
 
-（实施后补）
+- 提交（从 `main` 的 `179a7aed` 开始，14 个，6.1 的第 1–14 步：设计的五个照次序，实施时另加三个，审查之后修复一轮五个，主持者另加一个只改注释的；Step 的文档提交是主持者的）：
+  - A6 第二个页面测试自己开的标签页先受监视（`479d14e5`，3.15 第 1 条）。
+  - 帮手 `e2e/fixtures/navigation.ts`：`goto`、`reload` 先等在途的接口请求、续期的锁（没有 Web Locks 时是租约）、这个文档有了给它令牌的答复（第一次续期，或在这个文档里登录、注册），至多 10 秒（页面里的一次读至少 1 秒），之后失败并写出在等什么；`watchPage` 调 `followRequests`；109 个故事与 `wiki-health.ts` 机械地换上（改之前旧写法 260、10，改之后新写法 260、10，反向变换 110/110 相同，diffstat 112 个文件；脚本与输出在 S1 的记录）（`bafbd418`）。审查之后先看锁再看记录、帮手的说明照新代码写（`6ec05d13`，3.15 第 9 条）。
+  - 门禁 `tools/e2e-navigation/check.mjs`，进 `make lint-web` 与 knip 的入口，内置样例比整张问题表（`c18562fe`）；另核对读到了帮手的模块（`e3059737`，3.15 第 7 条）；审查之后读 Playwright 默认的八种结尾、逃生口认三种引号、九个样例、文件头照代码写（`91718e48`）。
+  - `PageWatch.signInLandings` 与失败时页面状态的 `sent back to sign in:` 一行（`6cf1c32c`）；审查之后那一行只在落到过 `/sign-in` 时写（`3c2425c1`，3.15 第 10 条）；修复核对之后 `pageState` 的说明改为按 ` after a refresh answered 401` 数（`937df215`，只改注释）。
+  - A15，`threeBrowsers` 加 `identity\/a15-`，门禁的表写 A15 两处（`ce2cc0fc`）；第 1 格末尾的 `replaceState`（`8e128a2d`）；审查之后加第 8 格（`6ec05d13`）、第 9 格（`995ebf02`），第 1 格末尾的来回（`6e48227d`）。
+  - `networkSettled` 等待时打一行（`c330217f`）。
+  - 每个提交单独在干净的 worktree 里 `make lint-web`、`make knip` 与碰到的故事都绿（改帮手与 `browser.ts` 的跑全部故事：`bafbd418` 538 个，`6ec05d13` 561 个通过、1 个跳过，`3c2425c1` 564 个通过、1 个跳过）；审查 B 另逐个跑了 `pnpm -r run check:types`，修复一轮的五个由修复核对 B、C 再逐个跑过。
+- 与设计不同之处（3.15 列出）：A6 的标签页；令牌的答复认登录与注册（照原写法 A3、S4 在登录页登录之后换文档时等满 10 秒失败）；页面里的读至少 1 秒；第 5 格先断言路由的结局；落点按上一次主框架的地址去重；A15 九格（27 个测试）；门禁核对读到了帮手、读八种结尾、认三种引号；3.7 的"复原之后看不到"在本机做不出（每次都真的等了）；先看锁再看记录；那一行只在落到过 `/sign-in` 时写。
+- 反向对照（7.2）：S1 的 12 行（1–8、16–19）、实施者的 7 条（x1–x7）与修复一轮的 9 条都抓到。A15 的变异在三种浏览器各三轮，每条只在该失败的格失败（修复一轮在头 `3c2425c1` 上重跑了整张表）：只去掉锁的一支（m18a）第 6、8 格，先看记录再看锁（m20）第 8 格，去掉租约一支（m21）或把租约的键改名（m22）第 9 格，设计的去重（m23，比上一条落点）第 1 格；m20–m23 在审查之前的 `8e128a2d` 上都活着（审查 B 的 mL、mLK 即 m21、m22）。门禁的新变异：只读四种结尾（g1、g1b）、逃生口只认双引号（g2）、例外按名字 `navigation.ts`（c3），各由内置的核对报出；审查之前的门禁对 `.spec.tsx`、`.spec.cts`、`.spec.jsx` 里的 `page.goto` 与反引号的逃生口都看不见。写代码时活下来的两条各补了：门禁只读 `e2e/stories`（变异 5）补了"读到帮手的模块"；落点不去重（x4）补了第 1 格的 `replaceState`。
+- 第 50 条的正向对照（3.7）：让 `tentative()` 交回固定的文字、到时限、`undefined` 各一次，都看到那一行；恒交回空时没有。复原后的代码在本机每次都真的等了 0.2–1.1 秒（容器 veth 的链路本地地址），这一行照实出现。CI 上：分支的 e2e 作业（run 43632495423）在 "Running 559 tests" 之前打了 `global setup: waited 423 ms for the host's tentative IPv6 addresses (… veth … fe80::…/64 scope link tentative …)`，即在 runner 上触发了；审查之后的 run 43642007840 没有打（那台 runner 没有暂定的地址）。合并之后两次 `main` 的 e2e 与这一行，记在 S2 的记录（7.5 的"之前"）。
+- 实测（本机，经 `heavy.sh`）：`make e2e` 改之前 538 个、142 秒；帮手之后 538 个、140 秒；`8e128a2d` 559 个、149 秒；头 `3c2425c1` 565 个（564 个通过、WebKit 的 A15 第 3 格跳过）、151 秒（修复核对 B：148 秒）。帮手对已有故事的花费（审查 B 在 `8e128a2d` 上给帮手插记录跑一次全量量到）：帮手被调 485 次，A15 之外 450 次，只真的等过 6 次（N7、PG13、LW3、LW6 ×3，都是在途的读或写，每次 30–55 毫秒），合计 0.23 秒；不用等的读页面每次最多 69 毫秒、合计约 2.7 秒。A15 三轮全绿（78 个通过、3 个跳过），每格（三种浏览器）：第 1 格 0.5–1.2 秒，第 2 格 2.3–2.8，第 3 格 0.3–0.5，第 4 格 3.3–3.8，第 5 格 2.3–2.8，第 6 格 1.3–1.8，第 7 格 0.4–0.8，第 8 格 1.4–1.9，第 9 格 1.4–1.8；九格一轮串行约 45 秒（各格之和）。审查 B 在 `8e128a2d` 上跑七格的 A15 共 220 次（含 8 个 worker 六轮），0 次失败。
+- 门禁（本机）：头 `8e128a2d`：`make lint gen-check knip build` 9 秒；经 `heavy.sh`：`make e2e` 149 秒（559 个）；A15 三轮 40 秒。头 `3c2425c1`：`make lint gen-check knip build` 8 秒；`make e2e` 151 秒（565 个）；A15 三轮 50 秒。门禁报出：175 个文件，没有直接的 `goto`、`reload`，逃生口 A15 ×2（表一行，理由写在表里）；今天 `e2e/` 下没有另四种结尾的文件，读的个数不变。
+- CI：
+  - 审查之前，run 43632495423（`8e128a2d`）：19 项第一次 attempt 全绿；e2e 作业 7:35（E2E 一步 6:03，559 个、1 个跳过，2 个 worker），作业限 20 分钟；S1 之前 `main` 的三次是 7:21（E2E 6:10）、8:16（6:51）与 6:48（5:16），帮手与 A15 多出的时间在机器的差别之内。A15 在 CI 上一轮串行约 41 秒。
+  - 修复一轮之后，run 43642007840（`3c2425c1`）：19 项第一次 attempt 全绿，e2e 没有卡在 apt 镜像；e2e 作业 9:58（E2E 一步 8:25，565 个、1 个跳过，2 个 worker），余量 10 分钟。慢在 runner：同一批测试逐个比，A15 之外每个测试的用时中位数是上次的 1.45 倍（修复核对 B 重算 502 个，1.48 倍，四分位 1.29–1.68），不经帮手的纯接口测试约 1.5 倍（标题带 `(API)` 的 152 个，中位数 1.53）。A15 在 CI 上一轮串行约 68 秒，新加的第 8、9 格 6 个测试共约 15 秒。八份组合根的 Test 一步 4:29、4:15、4:49、5:38、6:21、4:33、5:20、4:27（S1 不改服务端）。
+  - 主持者的 `937df215`（只改注释）：run 43645603202，19 项第一次 attempt 全绿；e2e 作业 8:48（E2E 一步 7:15，565 个、1 个跳过），第 50 条那一行打出（waited 733 ms）
+- **审查**（2026-11-15，三位各在 `8e128a2d` 的自己的工作树里，重的经 `heavy.sh`）：A 审帮手与偏离，B 审测试、变异、浏览器与 CI，C 审替换、门禁与文档稿。A 0I 2M 1N，B 0I 1M 2N，C 0I 1M 7N；去重之后 Important 0，Minor 4：在这个文档里登录、注册时，帮手在记录还没写、锁还被持着时就换文档（P1S1A-M1）；"跟着别的标签页登录的文档会等满 10 秒"不成立（P1S1A-M2）；租约一支没有测试（P1S1B-M1）；文档稿漏了照实改的各节（P1S1C-M1）。Nit 9（三份合计 10，B-N2 = C-N1）。三位都确认偏离对且必要、替换机械、门禁抓得到、自己加的三个提交必要、每个提交单独为绿。
+- **修复一轮**（2026-11-15，照主持者的修复说明，从 `8e128a2d` 起 5 个提交，普通推送，没有改写已推的历史；4 个文件，加 185 行、减 50 行，只改 `e2e/fixtures/`、A15 与门禁）：先看锁或租约、再看记录，A15 第 8 格，帮手的说明（A-M1、A-N1、C-N4，`6ec05d13`）；A15 第 9 格（B-M1，`995ebf02`）；门禁的八种结尾、三种引号、两个新样例、文件头（C-N4、C-N5，`91718e48`）；第 1 格末尾的来回（C-N6，`6e48227d`）；那一行只在落到过 `/sign-in` 时写（C-N7，`3c2425c1`）。第 8 格在旧帮手上三种浏览器各三轮 9 个全失败，报 "the next document is asked for once the sign-in wrote its record"；文档一侧的（A-M2、C-M1、C-N1–N3、B-N1、B-N2）在本提交。
+- **修复核对**（一轮，2026-11-15，三位各在 `3c2425c1` 的自己的工作树里）：没有 Important、Minor。A 判 M1、M2、N1 关上：审查的探针三种浏览器都绿（新文档在放开之后 36–134 ms 才请求），换回旧帮手三种都失败；第 8 格 9/9，`stories/identity/` 75 个通过、1 个跳过。B 判 M1、N1、N2 关上：m21、m22 只有第 9 格 9/9 失败，A15 九格三种各三轮 78 个通过、3 个跳过，五个提交逐个 `lint-web`、`knip`、`check:types` 为 0，全量 565 个、148 秒。C 判 M1、N1–N7 关上：第一轮的 16 个探针在新门禁上都报出，门禁的 20 条变异照旧，五个提交从 `git archive` 的树上门禁都 rc=0。新的 Nit 三条，都在本提交：A-N2 = C-N8（"有那一行就是被跳回"不对，故事自己去登录页也有；`937df215` 改注释，文档写按 ` after a refresh answered 401` 数），C-N9（决定 342 在本文里另写锚；修复报告说明 13.4 新句的差别时漏了"、自己注册的文档不必等"，说明补上），B-N3（纯接口测试是约 1.5 倍，不是 1.35 倍）。
+- 留下的：Chromium 里路由扣着、从没交回的请求留在在途的集合里，同一页面之后再经帮手换文档会等满 10 秒（只有 A15 的两处逃生口，之后不再换文档；`followRequests` 的说明写了）；续期在网络一层失败的文档帮手等满 10 秒（3.2）；WebKit 把编辑页 `pagehide` 里 keepalive 的 `DELETE` 报成 `Load request cancelled`，服务端是否收到没有查（审查 A，产品一侧，交主持者）。从 S1 的合并起数 `main` 的 e2e 因为被跳回登录页而红的次数（决定 334、342）：`gh run list --workflow ci.yml --branch main`，红了的看 E2E 注解里 `sent back to sign in:` 一行，数带 ` after a refresh answered 401` 的失败，再除去有意造重用的故事（A5）。
 
 ### 10.2 S2：工具链与安全更新
 
