@@ -2,12 +2,14 @@
 // loses the refreshed token, and the next document ends the session as reuse. Only e2e/fixtures/navigation.ts
 // calls page.goto and page.reload; everything else under e2e/ goes through its goto and reload, which wait
 // first. A story that leaves mid-request on purpose passes the escape: LEAVES lists each file that does, how
-// many times, and why. The helper's module is not read at all: its calls are the ones allowed, and its message
-// names the escape. Elsewhere comments and strings count too, so they name it in words, not in its form.
-// Closing a tab leaves a document as well; the helper does not cover it (the stories close tabs once a page
-// showed what only a signed-in session reads). The check first runs on samples of each breach and fails
-// unless it sees them, and fails unless the tree it read holds the helper's module, so it cannot pass by
-// reading nothing, or only a part of e2e/.
+// many times, and why. The escape counts written with any quote, a backtick too. The helper's module is read
+// but not checked: its calls are the ones allowed, and its message names the escape; the exception is its whole
+// path, not every module of that name. Elsewhere comments and strings count too, so they name it in words, not
+// in its form. It reads every file with an extension Playwright runs by default (.ts, .tsx, .mts, .cts and the
+// .js ones). Closing a tab leaves a document as well; the helper does not cover it (the stories close tabs
+// once a page showed what only a signed-in session reads). The check first runs on samples of each breach and
+// on the extensions, and fails unless it sees them, and fails unless the tree it read holds the helper's
+// module, so it cannot pass by reading nothing, or by missing e2e/fixtures/ or the stories the table names.
 // Usage: node tools/e2e-navigation/check.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -16,9 +18,11 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const HELPER = "e2e/fixtures/navigation.ts";
 const SKIP = new Set(["node_modules", "test-results", "playwright-report"]);
-const SOURCE = /\.(ts|mts|js|mjs)$/;
+// Playwright's default testMatch is **/*.@(spec|test).?(c|m)[jt]s?(x); e2e/playwright.config.ts narrows it
+// only for Firefox and WebKit.
+const SOURCE = /\.[cm]?[jt]sx?$/;
 const DIRECT = /\.(goto|reload)\s*\(/g;
-const LEAVE = /inFlight:\s*"leave"/g;
+const LEAVE = /inFlight:\s*["'`]leave["'`]/g;
 
 /** Each file under e2e/ that leaves a document mid-request on purpose, and how many times. */
 const LEAVES = {
@@ -98,6 +102,18 @@ const SAMPLES = [
     leaves: {},
     want: [],
   },
+  {
+    name: "an escape written with backticks",
+    files: [{ path: story, text: "await goto(page, `/`, { inFlight: `leave` });" }],
+    leaves: {},
+    want: [`${story}: leaves mid-request 1 times, LEAVES says 0`],
+  },
+  {
+    name: "a direct goto in another module named like the helper",
+    files: [{ path: "e2e/perf/navigation.ts", text: 'await page.goto("/");' }],
+    leaves: {},
+    want: [`e2e/perf/navigation.ts:1: calls goto directly; use goto or reload from ${HELPER}`],
+  },
 ];
 
 const problems = [];
@@ -106,6 +122,10 @@ for (const { name, files, leaves, want } of SAMPLES) {
   if (JSON.stringify(got) !== JSON.stringify(want)) {
     problems.push(`the gate does not see ${name}: got ${JSON.stringify(got)}, want ${JSON.stringify(want)}`);
   }
+}
+// Each ending Playwright's default testMatch takes.
+for (const ext of ["ts", "tsx", "mts", "cts", "js", "jsx", "mjs", "cjs"]) {
+  if (!SOURCE.test(`x1-sample.spec.${ext}`)) problems.push(`the gate does not read a story ending .spec.${ext}`);
 }
 
 /** Every source file under dir, as { path from the repository's root, text }. */
