@@ -84,8 +84,9 @@ test("A6 (page): another tab signs another account in without signing out: every
   const xHeld = (await recordOf(tabA))?.refresh_token ?? "";
 
   // Tab B, any page of the site, keeps a sign-in of Y as a tab does: a new record, written under the
-  // refresh lock, with a new login_id.
+  // refresh lock, with a new login_id. Watched from its start, as the stories' own tabs are.
   const tabB = await context.newPage();
+  await watchPage(tabB);
   await tabB.goto("/favicon.svg");
   await writeRecord(tabB, newRecord(await login(api, y)));
 
