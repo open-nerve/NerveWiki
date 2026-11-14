@@ -209,12 +209,22 @@ test("A15 (page): reloading through the escape while the refresh's answer is out
 
   await expectSentBackToSignIn(page, pageWatch, db, tokens, "/settings/profile");
   expect(routes.problems).toEqual([]);
-  // The address replaced with itself, as a router may, is no second landing.
+  // The address replaced with itself, as a router may, is no second landing; away and back to it is one, though
+  // the same as the last: what counts is the top document's address before, not the last landing.
+  const landing = "/sign-in?next=%2Fsettings%2Fprofile after a refresh answered 401";
+  const moveTo = (address: string) =>
+    Promise.all([
+      page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+      page.evaluate((to) => history.pushState(history.state, "", to), address),
+    ]);
   await Promise.all([
     page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
     page.evaluate(() => history.replaceState(history.state, "", location.href)),
   ]);
-  expect(pageWatch.signInLandings).toEqual(["/sign-in?next=%2Fsettings%2Fprofile after a refresh answered 401"]);
+  expect(pageWatch.signInLandings).toEqual([landing]);
+  await moveTo("/");
+  await moveTo("/sign-in?next=%2Fsettings%2Fprofile");
+  expect(pageWatch.signInLandings).toEqual([landing, landing]);
 });
 
 test("A15 (page): reloading through the helper at that moment waits for the answer, and the page stays signed in", async ({
