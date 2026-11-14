@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { bearer, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { leave } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { expectCreatePage, switchWorkspace, switcherChoices, workspaceHeading } from "../../fixtures/workspace-pages";
 import { createWorkspace, deleteWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
@@ -71,7 +72,7 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   const page = await signedInPage(tokens);
 
   // A device that showed none lands on the first by name.
-  await page.goto("/");
+  await goto(page, "/");
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${acme.slug}`);
   expect(await shellColumn(page)).toEqual({ mains: 1, inMain: 0, beside: 1 });
@@ -85,24 +86,24 @@ test("W3 (page): / lands on the workspace shown last, else the first by name, el
   await expect(workspaceHeading(page, "zeta")).toBeVisible();
   await expect(page).toHaveURL(`/${zeta.slug}`);
   expect(await page.evaluate(() => localStorage.getItem("nwiki.workspace"))).toBe(zeta.slug);
-  await page.goto("/");
+  await goto(page, "/");
   await expect(workspaceHeading(page, "zeta")).toBeVisible();
   await expect(page).toHaveURL(`/${zeta.slug}`);
 
   // Once it is gone, / lands on the first again.
   await deleteWorkspace(api, credential, zeta.slug);
-  await page.goto("/");
+  await goto(page, "/");
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect(page).toHaveURL(`/${acme.slug}`);
 
   // Another account's workspace is no page of this one's.
-  await page.goto(`/${others.slug}`);
+  await goto(page, `/${others.slug}`);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 
   // Without a workspace, / lands on the creation page.
   await deleteWorkspace(api, credential, acme.slug);
   await deleteWorkspace(api, credential, beta.slug);
-  await page.goto("/");
+  await goto(page, "/");
   await expectCreatePage(page);
   expect(await shellColumn(page)).toEqual({ mains: 1, inMain: 0, beside: 0 });
 });

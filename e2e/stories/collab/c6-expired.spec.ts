@@ -6,6 +6,7 @@ import { signOutThroughMenu } from "../../fixtures/auth-pages";
 import { readLock } from "../../fixtures/collab";
 import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -59,9 +60,9 @@ test("C6 (page): A done editing, B edits at once; A's tab closed while it edits,
   const aEditing = b.getByText(`${displayNameOf(adminEmail)} is editing this page.`, { exact: true });
   const done = (editor: typeof b) => editor.getByRole("main").getByRole("button", { name: "Done", exact: true });
 
-  await tab.goto(path);
+  await goto(tab, path);
   await startEditing(tab);
-  await b.goto(path);
+  await goto(b, path);
   await expect(aEditing).toBeVisible();
   await done(tab).click();
   await expect(aEditing).toBeHidden();
@@ -94,7 +95,7 @@ test("C6 (page, signed out elsewhere): A's edit of Notes has unsaved text as A s
   // No stream: the sign-out goes by the tabs' channel and storage, and the event of A's save, had A heard it,
   // would read the tree again as the logout goes out, its answer a 401 or not.
   await holdStream(page);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await startEditing(page);
   const [session] = await aliveSessionsOf(db, notes.id);
   await page.keyboard.press("ControlOrMeta+End");
@@ -108,7 +109,7 @@ test("C6 (page, signed out elsewhere): A's edit of Notes has unsaved text as A s
   });
 
   const tab = await anotherTab(page);
-  await tab.goto(`/${workspace.slug}`);
+  await goto(tab, `/${workspace.slug}`);
   await signOutThroughMenu(tab, displayNameOf(adminEmail));
   // The other tabs' answers come within 100 ms; autosave would take 2 seconds.
   await page.clock.runFor(200);
@@ -134,7 +135,7 @@ test("C6 (page, idle): A's edit of Notes goes 30 minutes without input: what A t
   const page = await signedInPage(tokens);
   await page.clock.install();
 
-  await page.goto(path);
+  await goto(page, path);
   await startEditing(page);
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("One");
@@ -148,6 +149,6 @@ test("C6 (page, idle): A's edit of Notes goes 30 minutes without input: what A t
   await expect.poll(() => sessionsOf(db, notes.id)).not.toContain(held);
   await expectSessionGone(db, held ?? "");
   expect((await readContent(api, a, notes.id)).content).toBe("Drafted.\nOne");
-  await b.goto(path);
+  await goto(b, path);
   await startEditing(b);
 });

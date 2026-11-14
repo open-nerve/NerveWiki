@@ -14,6 +14,7 @@ import { answerTo } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { deleteNotebookWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import { ownerlessNotebooks } from "../../fixtures/ownerless";
@@ -196,7 +197,7 @@ test("AS4 (page): a page's deletion counts the attachments under it and takes th
   const shallow = await uploadAsset(api, pat, notebook.id, text("shallow.txt"), guide.id);
   const kept = await uploadAsset(api, pat, notebook.id, text("kept.txt"));
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, install.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, install.id));
   await expect(pageHeading(page, "Install")).toBeVisible();
   await expect(attachments(page).getByRole("link", { name: "deep.png (opens in a new tab)" })).toBeVisible();
 
@@ -216,7 +217,7 @@ test("AS4 (page): a page's deletion counts the attachments under it and takes th
   }
   expect((await download(nervewiki.baseURL, kept.content_url)).status).toBe(200);
 
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   expect(await deleteNotebookWith(page, notebook.id, "Plans")).toBe(204);
   await expectAssetsDeletedWithNodes(db, [kept.id]);
   await expectAssetsDeletedWithNotebook(db, notebook.id, [kept.id]);
@@ -250,7 +251,7 @@ test("AS4 (page): the ownerless list gives the notebook's size with its attachme
   );
   const page = await signedInPage(tokens);
 
-  await page.goto(ownerlessPath(workspace.slug));
+  await goto(page, ownerlessPath(workspace.slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 0)]);
   const size = Buffer.byteLength(content) + pngBytes.length;

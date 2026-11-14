@@ -4,6 +4,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { readLock, releaseLock } from "../../fixtures/collab";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent } from "../../fixtures/pages";
@@ -67,7 +68,7 @@ test("C3 (page): A, an editor, sees no Release lock; the notebook's admin, readi
   const path = wikiPagePath(workspace.slug, notebook.id, notes.id);
   await page.clock.install();
 
-  await page.goto(path);
+  await goto(page, path);
   await startEditing(page);
   await page.keyboard.press("ControlOrMeta+End");
   await page.keyboard.type("One");
@@ -76,12 +77,12 @@ test("C3 (page): A, an editor, sees no Release lock; the notebook's admin, readi
   await expectAliveSessions(db, notes.id, [held ?? ""]);
   // Only the notebook's admins release a lock (M5 design 4.2): A, an editor, reading Notes in another tab, cannot.
   const elsewhere = await anotherTab(page);
-  await elsewhere.goto(path);
+  await goto(elsewhere, path);
   await expect(elsewhere.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
   await expect(elsewhere.getByRole("main").getByRole("button", { name: "Release lock" })).toHaveCount(0);
   await elsewhere.close();
   const adminPage = await anotherPage(tokens);
-  await adminPage.goto(path);
+  await goto(adminPage, path);
   const aEditing = adminPage.getByText(`${displayNameOf(emailFor(testInfo, "a"))} is editing this page.`, {
     exact: true,
   });

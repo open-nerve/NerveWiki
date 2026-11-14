@@ -6,6 +6,7 @@ import { emailFor } from "../../fixtures/auth";
 import { answerTo, eventStreamPath, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getPage, listNodes, moveNode, postMove } from "../../fixtures/pages";
@@ -187,7 +188,7 @@ test("PG3 (page): an editor drags a page before another and into another, after 
   // The event stream held, as when another tab's write has not reached this one yet: the tree does not
   // foresee it (below).
   await page.route(`**${eventStreamPath}`, () => undefined);
-  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["A", "B", "C", "X", "Level 8"]);
 
   const cLast = await placeOf(db, c.id);

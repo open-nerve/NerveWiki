@@ -4,6 +4,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { postTakeOver, takeOver } from "../../fixtures/collab";
 import { joinAs } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -76,7 +77,7 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   const first = await signedInPage(tokens);
   await first.clock.install();
 
-  await first.goto(path);
+  await goto(first, path);
   await startEditing(first);
   await first.keyboard.press("ControlOrMeta+End");
   await first.keyboard.type("One");
@@ -84,7 +85,7 @@ test("C2 (page): A edits Notes in one tab; in a second, Edit says A edits it els
   const [held] = await aliveSessionsOf(db, notes.id);
   await expectAliveSessions(db, notes.id, [held ?? ""]);
   const second = await anotherTab(first);
-  await second.goto(path);
+  await goto(second, path);
   await editRefused(second, "You are editing this page elsewhere.");
   watchOf(second).expectConsole({ errors: [failedToLoad(409)] });
   // The first tab beats now: its next beat is 20 seconds off, so that what it hears sooner comes as an event.

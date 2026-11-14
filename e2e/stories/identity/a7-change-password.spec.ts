@@ -18,6 +18,7 @@ import {
 } from "../../fixtures/auth";
 import { accountMenu } from "../../fixtures/auth-pages";
 import { failedToLoad, noteOf } from "../../fixtures/browser";
+import { goto, reload } from "../../fixtures/navigation";
 import { changePasswordWith } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -90,7 +91,7 @@ test("A7 (page): the settings change the password: the other sessions end, this 
   const status = async (credential: string) =>
     (await api.GET("/api/v0/me", { headers: bearer(credential) })).response.status;
   const page = await signedInPage(own);
-  await page.goto("/settings/security");
+  await goto(page, "/settings/security");
   const current = page.getByLabel("Current password", { exact: true });
   const next = page.getByLabel("New password", { exact: true });
 
@@ -113,7 +114,7 @@ test("A7 (page): the settings change the password: the other sessions end, this 
   expect(await status(other.access_token)).toBe(401);
   const refreshed = await api.POST("/api/v0/auth/refresh", { body: { refresh_token: other.refresh_token } });
   expect(refreshed.response.status).toBe(401);
-  await page.reload();
+  await reload(page);
   await expect(accountMenu(page, displayNameOf(email))).toBeVisible();
   await expect(page).toHaveURL("/settings/security");
   expect(await status(token.token)).toBe(200);

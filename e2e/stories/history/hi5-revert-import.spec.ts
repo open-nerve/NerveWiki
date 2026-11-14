@@ -6,6 +6,7 @@ import { displayNameOf } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { revertChangeset } from "../../fixtures/history";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes } from "../../fixtures/pages";
@@ -152,7 +153,7 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
   await createPage(api, pat, notebook.id, "Index");
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "transfer"));
   const queued = await importWith(page, notebook.id, vault(), { name: "notes.zip" });
   const changeset = queued.changeset_id ?? "";
   const imports = jobRow(page, "Import of notes.zip");

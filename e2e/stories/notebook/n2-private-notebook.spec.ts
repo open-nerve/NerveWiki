@@ -1,6 +1,7 @@
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { notebookGroups, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
@@ -68,17 +69,17 @@ test("N2 (page): a private notebook is in no one else's left column, nor found a
   const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, secondEmail, "member"));
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Diary");
 
-  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
 
   // The owner sees it as their own, until the second member comes in; the owner's tab stays quiet too.
   const ownerPage = await anotherPage(ownerTokens);
-  await ownerPage.goto(`/${workspace.slug}`);
+  await goto(ownerPage, `/${workspace.slug}`);
   await expect.poll(() => notebookGroups(ownerPage, "Acme")).toEqual({ "My notebooks": ["Diary"] });
   await addedNotebookMember(api, ownerTokens.access_token, notebook.id, await accountIdOf(db, secondEmail), "editor");
 
-  await Promise.all([page, ownerPage].map((tab) => tab.goto(`/${workspace.slug}`)));
+  await Promise.all([page, ownerPage].map((tab) => goto(tab, `/${workspace.slug}`)));
   await Promise.all(
     [page, ownerPage].map((tab) =>
       expect.poll(() => notebookGroups(tab, "Acme")).toEqual({ "Team notebooks": ["Diary"] })

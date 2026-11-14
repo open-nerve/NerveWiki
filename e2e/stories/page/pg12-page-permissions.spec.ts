@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { assertRealPage, errorOf, mcpClient, postMcp, readPage, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -249,7 +250,7 @@ test("PG12 (page): a reader goes through the notebook's pages without New page, 
   const roadmap = await createPage(api, adminPat, notebook.id, "Roadmap");
   const q4 = await createPage(api, adminPat, notebook.id, "Q4", roadmap.id);
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, q4.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, q4.id));
   await expect(pageHeading(page, "Q4")).toBeVisible();
   const tree = pageTree(page, "Plans");
   await expect(tree.getByRole("link")).toHaveText(["Roadmap", "Q4"]);
@@ -261,14 +262,14 @@ test("PG12 (page): a reader goes through the notebook's pages without New page, 
   await expect(page.getByRole("article")).toBeAttached();
   await expect(editorContent(page)).toHaveCount(0);
 
-  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   await expect(page.getByRole("main").getByRole("button", { name: "New page" })).toHaveCount(0);
   expect(await quickSwitchFor(page, "q4")).toEqual([["Q4", "Roadmap"]]);
 
   const secret = await createNotebook(api, adminPat, workspace.slug, "Secret", "none");
   const hidden = await createPage(api, adminPat, secret.id, "Hidden");
-  await page.goto(wikiPagePath(workspace.slug, secret.id, hidden.id));
+  await goto(page, wikiPagePath(workspace.slug, secret.id, hidden.id));
   await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
   await expect(pageTree(page, "Secret")).toHaveCount(0);
   await expect(pageHeading(page, "Hidden")).toHaveCount(0);

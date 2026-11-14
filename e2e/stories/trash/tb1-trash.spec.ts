@@ -5,6 +5,7 @@ import { download, getAsset, pngBytes, uploadAsset } from "../../fixtures/assets
 import { displayNameOf } from "../../fixtures/auth";
 import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
 import { holdStream, settleEvents } from "../../fixtures/events";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getVersionView, listNodes, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -237,7 +238,7 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await expectIndexedLinks(db, handbook.id, handbookLinks);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, handbook.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, handbook.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Handbook", "Elsewhere"]);
 
   await choosePageAction(page, "Plans", "Handbook", "Delete");
@@ -357,7 +358,7 @@ test("TB1 (preview): a page restored from its preview, its own event reading it 
   const main = page.getByRole("main");
   // The stream let in once the preview shows: its connection reads the item again; the refresher has read nothing.
   const letIn = await holdStream(page);
-  await page.goto(trashPath(workspace.slug, notebook.id, handbook.id));
+  await goto(page, trashPath(workspace.slug, notebook.id, handbook.id));
   await expect(main.getByRole("article", { name: "Handbook", exact: true })).toContainText("Hello.");
   const itemPath = `/api/v0/nodes/${handbook.id}/trash-item`;
   const reread = answerTo(page, "GET", itemPath);

@@ -4,6 +4,7 @@ import { countAnswers } from "../../fixtures/browser";
 import { holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -218,7 +219,7 @@ test("C7 (page): B, reading a page of Eng, sees A's writes as A makes them: the 
   const other = await createPage(api, a, eng.id, "Other");
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${notes.id}/view`);
-  await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   const content = page.getByRole("article", { name: "Notes" });
   await expect(content).toHaveText("Drafted.");

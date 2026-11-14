@@ -8,6 +8,7 @@ import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, type McpClient, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -255,7 +256,7 @@ test("UP6 (page): a second admin sends the submitted upgrade back on its page, t
   const page = await signedInPage(dana);
 
   // Sent back on the page, its stream connected: upgrading again, the agent's section back.
-  await page.goto(upgradeAt);
+  await goto(page, upgradeAt);
   await expect(upgradeBanner(page, bannerText.reviewing)).toBeVisible();
   await page.getByRole("button", { name: "Send back for more work…", exact: true }).click();
   const backDialog = reviewDialog(page, "Send back", notebook.name);
@@ -280,7 +281,7 @@ test("UP6 (page): a second admin sends the submitted upgrade back on its page, t
   // Opened again, its stream held: what the rejection and its rollback send reach it as no event.
   const letStreamIn = await holdStream(page);
   try {
-    await page.goto(upgradeAt);
+    await goto(page, upgradeAt);
     await expect(upgradeSection(page, "Check report")).toContainText("): every check passed.");
     expect(await changeButtons(page)).toEqual(["Approve…", "Send back for more work…", "Reject…"]);
     await expect(page.getByRole("button", { name: "Abandon this upgrade…", exact: true })).toHaveCount(0);
@@ -320,7 +321,7 @@ test("UP6 (page): a second admin sends the submitted upgrade back on its page, t
     expect(await trashedNames(db, notebook.id)).toEqual(["AGENTS", "raw"]);
 
     // The page lets its stream in only once it has left the upgrade's page.
-    await page.goto(notebookPath(slug, notebook.id));
+    await goto(page, notebookPath(slug, notebook.id));
     await expect(notebookHeading(page, notebook.name)).toBeVisible();
   } finally {
     letStreamIn();

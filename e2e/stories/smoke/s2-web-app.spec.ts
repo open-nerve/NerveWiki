@@ -1,5 +1,6 @@
 import { displayNameOf, emailFor, password, registerOnboarded } from "../../fixtures/auth";
 import { accountMenu, signInWith } from "../../fixtures/auth-pages";
+import { goto } from "../../fixtures/navigation";
 import { expect, stampedVersion, test } from "../../fixtures/test";
 import { expectCreatePage } from "../../fixtures/workspace-pages";
 
@@ -40,7 +41,7 @@ test("S2: a user opens the home page, signs in, lands in the app, and sees what 
     }
   });
 
-  const document = await page.goto("/");
+  const document = await goto(page, "/");
 
   expect(document?.status()).toBe(200);
   expect(document?.headers()["content-type"]).toBe("text/html; charset=utf-8");

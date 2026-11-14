@@ -1,6 +1,7 @@
 import type { TreeNode } from "@nervewiki/api-client";
 
 import { assertRealPage, errorOf, mcpClient, readPage, resultOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getPage, listNodes, postPage } from "../../fixtures/pages";
@@ -133,7 +134,7 @@ test("PG11 (page): a page shows where it is in its breadcrumbs, which go up, and
   await createPage(api, pat, notebook.id, "Notes");
   const page = await signedInPage(tokens);
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, install.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, install.id));
   await expect(pageHeading(page, "Install")).toBeVisible();
   expect(await breadcrumbs(page)).toEqual(["Plans", "Guide", "Install"]);
   expect(await subpages(page)).toEqual(["Linux"]);

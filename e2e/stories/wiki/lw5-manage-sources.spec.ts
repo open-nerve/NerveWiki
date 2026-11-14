@@ -21,6 +21,7 @@ import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -540,7 +541,7 @@ for (const role of ["writer", "admin"] as const) {
     const before = await pageStateOf(db, notebook.id);
     const bodies = await bodiesOf(db, notebook.id);
     const page = await signedInPage(tokens);
-    await page.goto(wikiPagePath(workspace.slug, notebook.id, nested.id));
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, nested.id));
     await expect(pageHeading(page, "AGENTS")).toBeVisible();
     await expect(page.getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await expect(browserRow(page, notebook.name, nested.id).getByRole("link")).toHaveAccessibleName("AGENTS (source)");
@@ -641,7 +642,7 @@ test("LW5 (page): a writer's Move and tree drag each wait for confirmation, canc
   const moved = await createPage(api, tokens.access_token, notebook.id, "Moved", null, "Move evidence.\n");
   const dragged = await createPage(api, tokens.access_token, notebook.id, "Dragged", null, "Dragged evidence.\n");
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, moved.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, moved.id));
   await expect(pageHeading(page, "Moved")).toBeVisible();
   const confirmation = page.getByRole("alertdialog", { name: "Move into sources?", exact: true });
   const writes = (id: string) => watchOf(page).apiRequests.filter((line) => line === `POST /api/v0/nodes/${id}/move`);
@@ -738,7 +739,7 @@ test("LW5 (page): page move, tree drag and attachment move reject a duplicate at
   const before = await pageStateOf(db, notebook.id);
   const files = storedBlobs(nervewiki.storageDir);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, incoming.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, incoming.id));
   await expect(pageHeading(page, "Incoming")).toBeVisible();
   await choosePageAction(page, notebook.name, "Incoming", "Move to…");
   const dialog = page.getByRole("dialog", { name: "Move Incoming", exact: true });

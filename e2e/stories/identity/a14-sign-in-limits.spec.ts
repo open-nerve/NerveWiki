@@ -4,6 +4,7 @@ import { countIdentity, expectNothingAdded } from "../../fixtures/assert/identit
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import { formError, signInWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 
 // A14, sign-in limits (M1 design 3, M1/P2 design 3.2, 3.3).
@@ -135,7 +136,7 @@ test("A14 (page): the sign-in form says how long to wait once the attempts run o
   });
   const email = emailFor(testInfo);
   await register(api, email);
-  await page.goto(new URL("/sign-in", limited.baseURL).href);
+  await goto(page, new URL("/sign-in", limited.baseURL).href);
 
   const refused = async () => {
     expect((await signInWith(page, email, "Wr0ng-password")).status()).toBe(401);

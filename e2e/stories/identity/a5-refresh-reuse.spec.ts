@@ -1,6 +1,7 @@
 import { expectRevoked, forgedFrom, sessionOf } from "../../fixtures/assert/identity";
 import { bearer, emailFor, recordOf, refresh, register, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
+import { goto, reload } from "../../fixtures/navigation";
 import { profileStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -13,7 +14,7 @@ test("A5 (page): once a copy of the page's refresh token was used, the page's ne
   signedInPage,
 }, testInfo) => {
   const page = await signedInPage(await register(api, emailFor(testInfo)));
-  await page.goto("/onboarding");
+  await goto(page, "/onboarding");
   await expect(profileStep(page)).toBeVisible();
 
   // Someone with a copy of the page's refresh token uses it first: nervewiki rotates the session to them.
@@ -21,7 +22,7 @@ test("A5 (page): once a copy of the page's refresh token was used, the page's ne
   await refresh(api, held);
   // The page's next refresh, as it loads again, presents the retired token: nervewiki ends the session,
   // and the page goes to the sign-in page, which comes back here; the record is gone.
-  await page.reload();
+  await reload(page);
   await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
   await expect(page).toHaveURL("/sign-in?next=%2Fonboarding");
   expect(await recordOf(page)).toBeNull();
@@ -55,7 +56,7 @@ test("A5 (page): a refresh whose answer is lost ends the session as reuse; the p
   });
   pageWatch.expectConsole({ errors: ["Failed to load resource: net::ERR_CONNECTION_RESET", failedToLoad(401)] });
 
-  await page.goto("/settings/profile");
+  await goto(page, "/settings/profile");
 
   await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
   await expect(page).toHaveURL("/sign-in?next=%2Fsettings%2Fprofile");

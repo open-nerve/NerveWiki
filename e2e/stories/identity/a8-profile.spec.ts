@@ -2,6 +2,7 @@ import { accountIdOf, expectDisplayName } from "../../fixtures/assert/identity";
 import { bearer, createToken, displayNameOf, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { accountMenu } from "../../fixtures/auth-pages";
 import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
+import { goto, reload } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 
 // A8, the profile and the preferences (M1 design 3); the theme and the language are this browser's (M1/P6 design 3.3).
@@ -48,7 +49,7 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   const email = emailFor(testInfo);
   const page = await signedInPage(await registerOnboarded(api, email));
   const userId = await accountIdOf(db, email);
-  await page.goto("/settings/profile");
+  await goto(page, "/settings/profile");
   const name = page.getByLabel("Display name", { exact: true });
   await expect(name).toHaveValue(displayNameOf(email));
   const save = async () => {
@@ -79,7 +80,7 @@ test("A8 (page): the settings change the display name, and this browser's theme 
 
   // All of it holds after a reload: the name on the server, the preferences in this browser, as the top bar's
   // theme menu shows too.
-  await page.reload();
+  await reload(page);
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();

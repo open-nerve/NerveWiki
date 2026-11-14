@@ -6,6 +6,7 @@ import { grantClipboardPermissions } from "../../fixtures/clipboard";
 import { copyLinkWith, inviteWith, linkTo, withdrawWith } from "../../fixtures/invitation-pages";
 import { invite, joinAs, joinOnboarded, listInvitations, preview, withdraw } from "../../fixtures/invitations";
 import { membersList } from "../../fixtures/member-pages";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
@@ -89,7 +90,7 @@ test("W5 (page): the admin invites an address and copies its link; an address re
   const { slug } = await createWorkspace(api, tokens.access_token, "Acme", slugFor(testInfo));
   const page = await signedInPage(tokens);
   await grantClipboardPermissions(page.context(), browserName);
-  await page.goto(`/${slug}/settings/members`);
+  await goto(page, `/${slug}/settings/members`);
 
   const email = emailFor(testInfo, "invitee");
   const { status, invitation } = await inviteWith(page, slug, email.toUpperCase(), "guest");
@@ -128,7 +129,7 @@ test("W5 (page): a member sees no invitations, which the page does not ask for",
   const tokens = await joinOnboarded(api, pat, workspace.slug, email, "member");
   const page = await signedInPage(tokens);
 
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   await expect(membersList(page).getByRole("listitem")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Invitations" })).toHaveCount(0);

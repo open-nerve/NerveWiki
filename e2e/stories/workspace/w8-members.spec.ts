@@ -4,6 +4,7 @@ import { displayNameOf, emailFor, registerOnboarded } from "../../fixtures/auth"
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { changeRoleWith, membersListed, roleOf, who } from "../../fixtures/member-pages";
 import { listMembers, memberOf, updateMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
@@ -59,7 +60,7 @@ test("W8 (page): the admin sees the members, changes a guest's role, and has no 
   await joinOnboarded(api, tokens.access_token, workspace.slug, guestEmail, "guest");
   const page = await signedInPage(tokens);
 
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   // By when they joined, each with the address; the admin's own row marked, with no control.
   await expect.poll(() => membersListed(page)).toHaveLength(3);
@@ -88,7 +89,7 @@ test("W8 (page): a guest sees the members and their roles, without their address
   const guestEmail = emailFor(testInfo, "guest");
   const page = await signedInPage(await joinOnboarded(api, pat, workspace.slug, guestEmail, "guest"));
 
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   await expect.poll(() => membersListed(page)).toHaveLength(2);
   expect((await membersListed(page)).map(([name, line]) => [name, line?.includes("@")])).toEqual([

@@ -11,6 +11,7 @@ import { followStreams, holdStream } from "../../fixtures/events";
 import { listChangesets } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
@@ -188,7 +189,7 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   const letStreamIn = await holdStream(tab);
   const edit = tab.getByRole("main").getByRole("button", { name: "Edit", exact: true });
   try {
-    await tab.goto(wikiPagePath(workspace.slug, notebook.id, plan.id));
+    await goto(tab, wikiPagePath(workspace.slug, notebook.id, plan.id));
     await expect(edit).toBeVisible();
     letStreamIn();
     await expect.poll(streams.count).toBe(1);
@@ -199,7 +200,7 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   await tab.evaluate(() => Object.assign(window, { up1Document: true }));
   const opened = streams.opened();
 
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   const start = modeSection(page).getByRole("button", { name: "Upgrade to an LLM Wiki…", exact: true });
   await start.click();
   const dialog = startDialog(page, notebook.name);

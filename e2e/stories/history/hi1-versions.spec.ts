@@ -1,6 +1,7 @@
 import { expectVersions } from "../../fixtures/assert/page";
 import { displayNameOf } from "../../fixtures/auth";
 import { assertRealPage, errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -237,7 +238,7 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
   const main = page.getByRole("main");
   const admin = displayNameOf(adminEmail);
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, tasks.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, tasks.id));
   await expect(versionsListed(page)).toHaveCount(1);
   // A writer ticks the page's own task items.
   await expect(main.getByRole("article").getByRole("checkbox", { name: "open", exact: true })).toBeEnabled();
@@ -270,7 +271,7 @@ test("HI1 (page): two edits, the page left between them, are two more versions i
   await expect(read.getByRole("checkbox").nth(1)).toBeDisabled();
   await expect(main.getByRole("tab")).toHaveText(["Read", "Compare with the current"]);
 
-  await page.goto(versionPath(workspace.slug, notebook.id, tasks.id, 2));
+  await goto(page, versionPath(workspace.slug, notebook.id, tasks.id, 2));
   await expect(main.getByRole("article", { name: "Version 2", exact: true })).toContainText("First");
   await main.getByRole("tab", { name: "Compare with the previous", exact: true }).click();
   await expect(main.getByRole("tabpanel")).toContainText("Version 1 → Version 2");
@@ -314,7 +315,7 @@ for (const now of [false, true]) {
     });
     const page = await signedInPage(tokens);
 
-    await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+    await goto(page, versionPath(workspace.slug, notebook.id, source.id, 1));
     const version = page.getByRole("main").getByRole("article", { name: "Version 1", exact: true });
     await expect(version.getByRole("link", { name: "OldAlias", exact: true })).toHaveAttribute(
       "href",
@@ -322,7 +323,7 @@ for (const now of [false, true]) {
     );
     // Another tab shows Target: once it shows the write, the write's events have come.
     const other = await anotherTab(page);
-    await other.goto(wikiPagePath(workspace.slug, notebook.id, target.id));
+    await goto(other, wikiPagePath(workspace.slug, notebook.id, target.id));
     const shown = other.getByRole("main").getByRole("article", { name: "Target", exact: true });
     await expect(shown).toContainText("Initial");
     await writeContent(api, pat, target.id, { content: "Alias removed\n", base_revision: 1 });

@@ -4,6 +4,7 @@ import { nervewikiWorkspaces, nervewikiWorkspacesFails } from "../../fixtures/ad
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { countWorkspaces, expectNewWorkspace, expectNoWorkspaceAdded } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register, registerOnboarded } from "../../fixtures/auth";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { expectCreatePage, nameField, switcherChoices, workspaceHeading } from "../../fixtures/workspace-pages";
 import { slugFor } from "../../fixtures/workspaces";
@@ -93,7 +94,7 @@ test("W2 (page): with creation off, an account without a workspace reads how to 
   const email = emailFor(testInfo);
   const page = await signedInPage(await registerOnboarded(createClient({ baseUrl: baseURL }), email), baseURL);
 
-  await page.goto(`${baseURL}/`);
+  await goto(page, `${baseURL}/`);
   await expectCreatePage(page, baseURL);
   await expect(page.getByText(/workspaces are created by its administrator/)).toBeVisible();
   await expect(nameField(page)).toHaveCount(0);
@@ -101,7 +102,7 @@ test("W2 (page): with creation off, an account without a workspace reads how to 
   // The server's administrator creates one for the account: the switcher lists it, and offers no creation.
   const slug = slugFor(testInfo);
   await nervewikiWorkspaces(db, ["create", "--slug", slug, "--name", "Acme", "--admin", email], closed);
-  await page.goto(`${baseURL}/`);
+  await goto(page, `${baseURL}/`);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   expect(await switcherChoices(page, "Acme")).toEqual({ workspaces: ["Acme"], others: [] });
 });

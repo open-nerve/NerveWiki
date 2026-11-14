@@ -5,6 +5,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import { invite, joinAs, joinOnboarded, tryAccept } from "../../fixtures/invitations";
 import { leaveWith, membersListed, removeMemberWith, who } from "../../fixtures/member-pages";
 import { leave, memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/admin";
 import { expectCreatePage, workspaceHeading } from "../../fixtures/workspace-pages";
@@ -74,7 +75,7 @@ test("W9 (page): the admin removes the other member, whose invitation pending go
   await nervewikiUsers(db, ["set-email", "--email", memberEmail, "--new-email", newEmail]);
   const membership = await memberOf(api, tokens.access_token, workspace.slug, newEmail);
   const page = await signedInPage(tokens);
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   const invitations = page.getByRole("list", { name: "Invitations", exact: true });
   await expect(invitations.getByText(newEmail, { exact: true })).toBeVisible();
@@ -103,13 +104,13 @@ test("W9 (page): a guest leaves and lands where / sends them; the workspace is n
   const guestEmail = emailFor(testInfo, "guest");
   const tokens = await joinOnboarded(api, pat, workspace.slug, guestEmail, "guest");
   const page = await signedInPage(tokens);
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   expect(await leaveWith(page, workspace.slug)).toBe(204);
 
   await expectCreatePage(page);
   await expectMembership(db, workspace.id, await accountIdOf(db, guestEmail), "ended");
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
   await expect(page.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
   await expect(workspaceHeading(page, "Acme")).toHaveCount(0);
 });

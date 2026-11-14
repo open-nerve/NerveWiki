@@ -22,6 +22,7 @@ import { holdStream } from "../../fixtures/events";
 import { listChangesets, revertChangeset } from "../../fixtures/history";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -292,7 +293,7 @@ for (const role of ["writer", "admin"] as const) {
     const before = await pageStateOf(db, notebook.id);
     const page = await signedInPage(role === "writer" ? writer : tokens);
     try {
-      await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+      await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
       const article = page.getByRole("article", { name: "Source", exact: true });
       await expect(article).toContainText("evidence");
       await expect(page.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
@@ -304,7 +305,7 @@ for (const role of ["writer", "admin"] as const) {
       await page.keyboard.press("ControlOrMeta+e");
       await expect(editorContent(page)).toHaveCount(0);
 
-      await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+      await goto(page, versionPath(workspace.slug, notebook.id, source.id, 1));
       await expect(page.getByRole("article", { name: "Version 1", exact: true })).toContainText("Previous evidence");
       await expect(
         page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })
@@ -337,9 +338,9 @@ test("LW4 (page): a link to a page not there creates no source, from a source or
     await expect(dialog.getByRole("button", { name: "Create page", exact: true })).toHaveCount(0);
     await dialog.getByRole("button", { name: "OK", exact: true }).click();
   };
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await notice("Missing page");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, wiki.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, wiki.id));
   await notice("raw/New one");
   await page.getByRole("article").getByRole("button", { name: "Elsewhere", exact: true }).click();
   await expect(page.getByRole("alertdialog").getByRole("button", { name: "Create page", exact: true })).toBeVisible();
@@ -360,7 +361,7 @@ test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root ins
   const writable = async (id: string, name: string) => {
     const previous = await readContent(api, pat, id);
     const base = await writeContent(api, pat, id, { content: evidence, base_revision: previous.revision });
-    await page.goto(wikiPagePath(workspace.slug, notebook.id, id));
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, id));
     const article = page.getByRole("article", { name, exact: true });
     const checkbox = article.getByRole("checkbox", { name: "evidence", exact: true });
     await expect(checkbox).toBeEnabled();
@@ -388,7 +389,7 @@ test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root ins
     await expectContentWritten(db, await writes.saved(), "- [x] evidence\nA saved explanation.\n", writerId);
     await expectSessionGone(db, session.id);
 
-    await page.goto(versionPath(workspace.slug, notebook.id, id, base.revision));
+    await goto(page, versionPath(workspace.slug, notebook.id, id, base.revision));
     await expect(
       page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })
     ).toBeVisible();
@@ -402,7 +403,7 @@ test("LW4 (page): a writer can toggle, shortcut-edit and restore source-root ins
 
   // The source case above suppresses Edit here; the same own lock on an ordinary page offers and executes it.
   const old = await openSession(api, writer.access_token, ordinary.id);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, ordinary.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, ordinary.id));
   await expect(page.getByText("You are editing this page elsewhere.", { exact: true })).toBeVisible();
   const opened = answerTo(page, "POST", `/api/v0/pages/${ordinary.id}/edit-sessions`);
   await page.getByRole("main").getByRole("button", { name: "Edit here", exact: true }).click();
@@ -441,7 +442,7 @@ test("LW4 (page): source loss locks the mounted editor, automatically releases i
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${ordinary.id}/view`);
   try {
-    await page.goto(wikiPagePath(workspace.slug, notebook.id, ordinary.id));
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, ordinary.id));
     await expect.poll(viewReads).toBe(1);
     letStreamIn();
     await expect.poll(viewReads).toBeGreaterThanOrEqual(2);

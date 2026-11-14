@@ -3,6 +3,7 @@ import { countNotebooks, expectNewNotebook } from "../../fixtures/assert/noteboo
 import { bearer, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import {
   createNotebookWith,
   notebookGroups,
@@ -78,7 +79,7 @@ test("N1 (page): a member creates a notebook from the left column and arrives on
   const memberEmail = emailFor(testInfo, "member");
   const page = await signedInPage(await joinOnboarded(api, adminPat, workspace.slug, memberEmail, "member"));
   const memberId = await accountIdOf(db, memberEmail);
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
   await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
 
   // The server's rule of a title shows under the name, the dialog open; nothing is added.
@@ -109,7 +110,7 @@ test("N1 (page): a guest is not offered New notebook", async ({ api, signedInPag
     await joinOnboarded(api, adminPat, workspace.slug, emailFor(testInfo, "guest"), "guest")
   );
 
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
 
   await expect(workspaceNav(page, "Acme").getByText("No notebooks yet.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "New notebook" })).toHaveCount(0);

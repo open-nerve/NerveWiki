@@ -3,6 +3,7 @@ import { expectChangesetOf } from "../../fixtures/assert/page";
 import { countAnswers, expectQuietPage, watchPage } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { mcpClient, readPage, resultOf } from "../../fixtures/mcp";
+import { goto, reload } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -159,7 +160,7 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     `[[Target]] and [[Target#Part Two|part two]] and [[Missing]] and [as a file](Target.md) and [by address](${baseURL}${targetPath})\n`
   );
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article");
   const toTarget = article.getByRole("link", { name: "Target", exact: true });
   await expect(toTarget).toHaveAttribute("href", targetPath);
@@ -181,7 +182,7 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   await expect.poll(() => pageHeading(opened, "Target").isVisible()).toBe(true);
   // Watched from its start, as the stories' own tabs are: loaded again, it is quiet.
   const openedWatch = await watchPage(opened);
-  await opened.reload();
+  await reload(opened);
   await expect(pageHeading(opened, "Target")).toBeVisible();
   await expectQuietPage(opened, openedWatch);
   await opened.close();
@@ -233,7 +234,7 @@ test("L1 (page): a link to a page not there leads to it once the page is created
   const page = await signedInPage(tokens);
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${source.id}/view`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article", { name: "Source" });
   await expect(article.getByText("Missing", { exact: true })).toHaveClass(/nw-unresolved/);
   // The stream connects, and its refresh reads the view again: from then on, the page created comes as events.
@@ -281,7 +282,7 @@ test("L1 (page): a link leads to its page once the page is renamed elsewhere: th
   const page = await signedInPage(tokens);
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${source.id}/view`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article", { name: "Source" });
   await expect(article.getByRole("link", { name: "Target", exact: true })).toHaveAttribute("href", targetPath);
   // The stream connects, and its refresh reads the view again: from then on, the rename comes as events.

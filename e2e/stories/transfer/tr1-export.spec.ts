@@ -1,5 +1,6 @@
 import { expectExpired, expectExported } from "../../fixtures/assert/transfer";
 import { pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, moveNode } from "../../fixtures/pages";
@@ -209,7 +210,7 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   const diagram = await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
 
   // From the notebook's settings, the third section.
-  await page.goto(notebookPath(workspace.slug, handbook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, handbook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
     .getByRole("link", { name: "Import, export and restore" })
@@ -253,7 +254,7 @@ test("TR1 (page): the notebook exports from its settings and downloads as its va
   });
 
   // From a page's menu: the page and its subtree; the jobs show, the new one's row focused.
-  await page.goto(wikiPagePath(workspace.slug, handbook.id, cafe.id));
+  await goto(page, wikiPagePath(workspace.slug, handbook.id, cafe.id));
   await expect(pageHeading(page, "Café")).toBeVisible();
   await page.getByRole("button", { name: "Page actions" }).click();
   await page.getByRole("menuitem", { name: "Export this page" }).click();

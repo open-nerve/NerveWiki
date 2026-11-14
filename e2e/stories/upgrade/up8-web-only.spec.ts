@@ -3,6 +3,7 @@ import type { Upgrade, UpgradeCheck } from "@nervewiki/api-client";
 import { expectUpgrade } from "../../fixtures/assert/wiki";
 import { answerTo } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
+import { goto } from "../../fixtures/navigation";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import { listNodes } from "../../fixtures/pages";
@@ -84,7 +85,7 @@ test("UP8 (page): an empty notebook's admin starts the upgrade in its settings, 
   const letStreamIn = await holdStream(page);
   let started: Upgrade | undefined;
   try {
-    await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+    await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
     await modeSection(page).getByRole("button", { name: "Upgrade to an LLM Wiki…", exact: true }).click();
     const start = answerTo(page, "POST", upgradeRead);
     await startDialog(page, notebook.name).getByRole("button", { name: "Start the upgrade", exact: true }).click();

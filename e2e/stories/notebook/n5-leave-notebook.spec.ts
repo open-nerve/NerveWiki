@@ -3,6 +3,7 @@ import { expectNotebookMember } from "../../fixtures/assert/notebook";
 import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember, leaveNotebook } from "../../fixtures/notebook-members";
 import { leaveNotebookWith, notebookGroups, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, updateNotebook } from "../../fixtures/notebooks";
@@ -62,7 +63,7 @@ test("N5 (page): a member leaves a private notebook, and lands on the workspace'
   const leaverId = await accountIdOf(db, leaverEmail);
   const notebook = await createNotebook(api, ownerPat, workspace.slug, "Diary");
   await addedNotebookMember(api, ownerPat, notebook.id, leaverId, "editor");
-  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "members"));
 
   expect(await leaveNotebookWith(page, notebook.id)).toBe(204);
 
@@ -84,7 +85,7 @@ test("N5 (page): the only admin cannot leave, alone in it: the dialog says why, 
   const ownerTokens = await joinOnboarded(api, adminPat, workspace.slug, ownerEmail, "member");
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Diary");
   const page = await signedInPage(ownerTokens);
-  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "members"));
 
   expect(await leaveNotebookWith(page, notebook.id)).toBe(409);
 

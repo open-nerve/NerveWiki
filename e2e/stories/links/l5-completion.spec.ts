@@ -4,6 +4,7 @@ import { expectIndexedAliases, expectIndexedLinks, expectIndexedTags } from "../
 import { countAnswers } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { getPageProperties, listLinkTargets, listTags } from "../../fixtures/links";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -108,7 +109,7 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await createPage(api, pat, notebook.id, "Tagged", null, "#project/alpha\n");
   const source = await createPage(api, pat, notebook.id, "Source", null, "");
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, "Source")).toBeVisible();
   await startEditing(page);
 
@@ -159,7 +160,7 @@ test("L5 (page, input method): a composition closes the completion, none opens w
   const source = await createPage(api, pat, notebook.id, "Source", null, "");
   const page = await signedInPage(tokens);
   const targetReads = countAnswers(page, "GET", `/api/v0/notebooks/${notebook.id}/link-targets`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, "Source")).toBeVisible();
   await startEditing(page);
   // Chromium's input method, as the DevTools protocol drives it.
@@ -202,7 +203,7 @@ test("L5 (page, frontmatter): a page and an alias picked in a property's quotes 
   );
   const source = await createPage(api, pat, notebook.id, "Source", null, "");
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, "Source")).toBeVisible();
   await startEditing(page);
 

@@ -9,6 +9,7 @@ import { abortFailedConsole, answerTo, countAnswers, failedToLoad } from "../../
 import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto, reload } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
@@ -225,7 +226,7 @@ for (const change of ["created", "moved in"] as const) {
     const createsPath = `/api/v0/notebooks/${notebook.id}/pages`;
     const nodeAnswers = countAnswers(page, "GET", nodesPath);
     try {
-      await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+      await goto(page, wikiPagePath(workspace.slug, notebook.id, inbox.id));
       await expect(pageHeading(page, "Inbox")).toBeVisible();
       await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
       const dialog = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
@@ -306,7 +307,7 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const page = await signedInPage(tokens);
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, spaced)).toBeVisible();
   await expect(page.locator(`[data-attachment="${file.id}"]`)).toBeAttached();
   const width = await page.evaluate(() => ({
@@ -318,7 +319,7 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const unbroken = "attention_is_all_you_need_vaswani_2017_neurips";
   await createPage(api, pat, notebook.id, unbroken, raw, "same bytes\n");
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, raw));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, raw));
   await choosePageAction(page, notebook.name, "raw", "Paste Markdown");
   await page.setViewportSize({ width: 375, height: 800 });
   const dialog = page.getByRole("dialog", { name: "Paste Markdown under raw", exact: true });
@@ -335,7 +336,7 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   // A select takes the width of its longest option, a long source's path among them.
   await createPage(api, pat, notebook.id, "Plain");
   await page.setViewportSize({ width: 1280, height: 800 });
-  await page.reload();
+  await reload(page);
   await choosePageAction(page, notebook.name, "Plain", "Move to…");
   await page.setViewportSize({ width: 375, height: 800 });
   const move = moveDialog(page, "Plain");
@@ -369,7 +370,7 @@ test("LW3 (page): paste creates the initial body once, and mixed uppercase Markd
   const uploadsPath = `/api/v0/notebooks/${notebook.id}/assets`;
   const creates = countAnswers(page, "POST", createsPath);
   const uploads = countAnswers(page, "POST", uploadsPath);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, inbox.id));
   await expect(pageHeading(page, "Inbox")).toBeVisible();
   await choosePageAction(page, notebook.name, "Inbox", "Paste Markdown");
   const paste = page.getByRole("dialog", { name: "Paste Markdown under Inbox", exact: true });
@@ -475,7 +476,7 @@ test("LW3 (page): a duplicate attachment dropped onto a source opens its complet
   const before = await pageStateOf(db, notebook.id);
   const files = storedBlobs(nervewiki.storageDir);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, inbox.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, inbox.id));
   await expect(pageHeading(page, "Inbox")).toBeVisible();
   watchOf(page).expectConsole({ errors: [failedToLoad(409)] });
   const uploadsPath = `/api/v0/notebooks/${notebook.id}/assets`;

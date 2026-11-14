@@ -5,6 +5,7 @@ import { expectImported, sha256Of, treeOf } from "../../fixtures/assert/transfer
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
@@ -84,7 +85,7 @@ for (const entryPoint of ["API", "page"] as const) {
       { name: "A.bin", data: "asset bytes" },
       { name: "B.bin", data: "asset bytes" },
     ]);
-    if (page !== undefined) await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+    if (page !== undefined) await goto(page, notebookPath(workspace.slug, notebook.id, "transfer"));
     const queued =
       page === undefined
         ? await startImport(api, writer, notebook.id, archive, raw)
@@ -173,7 +174,7 @@ for (const entryPoint of ["API", "page"] as const) {
       await expect(pageHeading(page, "Known")).toBeFocused();
       await expect(page.getByRole("article", { name: "Known", exact: true })).toContainText(duplicate.trimEnd());
 
-      await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+      await goto(page, notebookPath(workspace.slug, notebook.id, "transfer"));
       await openReport(jobRow(page, "Import of sources.zip"));
       await jobRow(page, "Import of sources.zip").getByRole("link", { name: "raw/known.bin", exact: true }).click();
       await expect(page).toHaveURL(new URL(wikiPagePath(workspace.slug, notebook.id, raw), nervewiki.baseURL).href);

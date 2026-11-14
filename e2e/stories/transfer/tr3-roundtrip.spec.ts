@@ -1,6 +1,7 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectImported, idsOf, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, moveNode } from "../../fixtures/pages";
@@ -123,14 +124,14 @@ test("TR3 (page): a notebook exported from its settings, its archive downloaded 
   await moveNode(api, pat, cafe.id, { parent_id: null, after_id: guide.id });
   await uploadAsset(api, pat, handbook.id, { name: "diagram.png", bytes: pngBytes }, guide.id);
 
-  await page.goto(notebookPath(workspace.slug, handbook.id, "transfer"));
+  await goto(page, notebookPath(workspace.slug, handbook.id, "transfer"));
   await page.getByRole("button", { name: "Export the whole notebook" }).click();
   await exportWith(page, handbook.id, "Export Handbook?");
   const { name, archive } = await downloadFrom(page, jobRow(page, "Export of the whole notebook"));
   expect(name).toBe("Handbook.zip");
 
   const copy = await createNotebook(api, pat, workspace.slug, "Copy");
-  await page.goto(notebookPath(workspace.slug, copy.id, "transfer"));
+  await goto(page, notebookPath(workspace.slug, copy.id, "transfer"));
   const job = await importWith(page, copy.id, archive, { name });
   await expect(jobRow(page, "Import of Handbook.zip").getByText("Done", { exact: true })).toBeVisible({
     timeout: 15_000,

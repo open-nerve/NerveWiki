@@ -7,6 +7,7 @@ import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
 import { accept, invite, joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
 import { auditEvents, deleteOwnerless, eventOf, takeOver } from "../../fixtures/ownerless";
@@ -130,7 +131,7 @@ test("N11 (page): the former owner, back by an invitation's link, finds its owne
   expect((await takeOver(api, adminPat, plans.id)).response.status).toBe(200);
   const invitation = await invite(api, adminPat, slug, ownerEmail, "member");
   const page = await signedInPage(ownerTokens);
-  await page.goto(linkTo(invitation));
+  await goto(page, linkTo(invitation));
 
   expect((await acceptWith(page, invitation.id)).status()).toBe(200);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
@@ -152,7 +153,7 @@ test("N11 (page): the former owner, back by an invitation's link, finds its owne
   ]);
 
   const adminPage = await anotherPage(adminTokens);
-  await adminPage.goto(ownerlessPath(slug));
+  await goto(adminPage, ownerlessPath(slug));
   await expect(adminPage.getByText("No ownerless notebooks.", { exact: true })).toBeVisible();
   const owner = who(displayNameOf(ownerEmail), ownerEmail);
   await expect

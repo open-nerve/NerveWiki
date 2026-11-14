@@ -12,6 +12,7 @@ import { abortFailedConsole, abortFailedRequestError, answerTo, eventStreamPath 
 import { settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
 import { downgradeWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, downgradeNotebook } from "../../fixtures/notebooks";
@@ -612,7 +613,7 @@ test.describe("LW8 (page)", () => {
       const reader = await healthReader(api, team.pat, team.workspace.slug, graph.notebook.id, info);
       const page = await signedInPage(reader.tokens);
       const reads = healthReads(page, graph.notebook.id);
-      await page.goto(wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id));
+      await goto(page, wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id));
       await page.evaluate(() => Object.assign(window, { lw8Document: true }));
       const active = mode === "standard" ? rules.slice(0, 4) : rules;
       checkSummary(
@@ -667,7 +668,7 @@ test.describe("LW8 (page)", () => {
       mode: "llm_wiki",
     });
     const page = await signedInPage(team.tokens);
-    await page.goto(notebookPath(team.workspace.slug, notebook.id));
+    await goto(page, notebookPath(team.workspace.slug, notebook.id));
     await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
     const details = page.getByRole("main").locator("details");
     await expect(details.locator("summary")).toHaveText("No issues (8 checks)");
@@ -677,7 +678,7 @@ test.describe("LW8 (page)", () => {
     expect(await details.locator("section[id]").evaluateAll((cards) => cards.map((card) => card.id))).toEqual(rules);
     await expect(details.getByText("0 issues", { exact: true })).toHaveCount(8);
     await expect(page.getByRole("button", { name: "More", exact: true })).toHaveCount(0);
-    await page.goto(`${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`);
+    await goto(page, `${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`);
     await healthShown(page);
     await expect(page.locator("#undigested_sources-heading")).toBeFocused();
     await expect(details).toHaveAttribute("open", "");
@@ -698,7 +699,7 @@ test.describe("LW8 (page)", () => {
       const pathname = `/api/v0/notebooks/${notebook.id}/lint`;
       const held = await holdHealthGet(page, pathname);
       try {
-        await page.goto(`${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`, { waitUntil: "load" });
+        await goto(page, `${healthPath(team.workspace.slug, notebook.id)}#undigested_sources`, { waitUntil: "load" });
         await held.entered;
         await expect(
           page.getByRole("main").getByRole("heading", { level: 1, name: "Health", exact: true })
@@ -775,7 +776,7 @@ test.describe("LW8 (page)", () => {
     const { notebook, overview, targets } = await healthPagination(api, team.pat, team.workspace.slug);
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
-    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
     const summary = await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
     const wantedSummary = summary.rules.find((rule) => rule.rule === "wanted")!;
     expect(wantedSummary.count).toBe(61);
@@ -823,7 +824,7 @@ test.describe("LW8 (page)", () => {
     const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
-    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
     await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
     const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint/wanted`);
     const card = healthCard(page, "wanted");
@@ -852,7 +853,7 @@ test.describe("LW8 (page)", () => {
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
     await page.setViewportSize({ width: 1280, height: 600 });
-    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
     await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
     const card = healthCard(page, "wanted");
     const more = card.getByRole("button", { name: "More", exact: true });
@@ -908,7 +909,7 @@ test.describe("LW8 (page)", () => {
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, graph.notebook.id);
     const initial = wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id);
-    await page.goto(initial);
+    await goto(page, initial);
     await page.evaluate(() => Object.assign(window, { lw8Document: true }));
     await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click());
     await healthCard(page, "orphans").getByRole("link", { name: "Lonely.md", exact: true }).click();
@@ -941,7 +942,7 @@ test.describe("LW8 (page)", () => {
     const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
-    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
     await page.evaluate(() => Object.assign(window, { lw8Document: true }));
     const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint`);
     try {
@@ -1124,7 +1125,7 @@ test.describe("LW8 (page)", () => {
     const owner = await signedInPage(team.tokens);
     const page = await anotherPage(reader.tokens);
     expect(owner.context()).not.toBe(page.context());
-    await owner.goto(notebookPath(team.workspace.slug, notebook.id, "general"));
+    await goto(owner, notebookPath(team.workspace.slug, notebook.id, "general"));
     const reads = healthReads(page, notebook.id);
     const connection = await connectedHealth(page, team.workspace.slug, notebook, overview.id);
     const before = { notebooks: connection.notebooks(), opened: connection.streams.opened() };
@@ -1212,7 +1213,7 @@ test.describe("LW8 (page)", () => {
     const { notebook, overview } = await healthPagination(api, team.pat, team.workspace.slug);
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
-    await page.goto(wikiPagePath(team.workspace.slug, notebook.id, overview.id));
+    await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
     let failedAt = 0;
     await page.route(
       (url) => url.pathname === `/api/v0/notebooks/${notebook.id}/lint`,

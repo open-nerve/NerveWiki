@@ -4,6 +4,7 @@ import { accountIdOf, countIdentity, expectNewSession, expectNothingAdded } from
 import { bearer, emailFor, login, password, register, registerOnboarded } from "../../fixtures/auth";
 import { emailField, formError, passwordField, signInWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { expectCreatePage } from "../../fixtures/workspace-pages";
 
@@ -107,7 +108,7 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
   await registerOnboarded(api, email);
   const before = await countIdentity(db);
   const deepLink = "/acme/notebooks/1?view=list#part";
-  await page.goto(deepLink);
+  await goto(page, deepLink);
   await expect(page).toHaveURL(`/sign-in?next=${encodeURIComponent(deepLink)}`);
 
   // A wrong password and an unknown address get the same words.
@@ -137,7 +138,7 @@ test("A3 (page): a deep link signs in and comes back; a refused sign-in keeps wh
 
   // A next that would leave the site, or run script, goes home instead: without a workspace, the creation page.
   const goesHome = async (next: string) => {
-    await page.goto(`/sign-in?next=${encodeURIComponent(next)}`);
+    await goto(page, `/sign-in?next=${encodeURIComponent(next)}`);
     await expectCreatePage(page);
   };
   await goesHome("//evil.example");

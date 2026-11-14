@@ -493,6 +493,7 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 - 每个测试的 `page` 从第一次导航之前就被监视；测试通过时，fixture 还核对页面是安静的：没有未捕获的异常、CSP 违规，控制台没有错误与警告，除了故事用 `pageWatch.expectConsole` 按顺序声明的（例如刻意引起的 4xx 在 Chromium 控制台的报告，`failedToLoad(status)`）。故事不用自己调用。
 - 失败的测试在 `e2e/playwright-report/` 中带着 trace 与截图；`e2e/test-results/` 中有每个 worker 的服务日志和失败时导出的数据库。持续集成在失败时把两者作为 artifact 上传，并把每个失败的测试与错误写成这次运行的注释（Playwright 的 `github` 报告器），不看任务日志也读得到。
 - `make e2e` 把 `VERSION` 交给故事核对注入的版本号；持续集成用 `0.0.0-ci.<运行号>`，与默认值不同。
+- 故事与夹具换文档用 `e2e/fixtures/navigation.ts` 的 `goto(page, url)`、`reload(page)`：先等页面在途的接口请求与续期答完，免得打断续期、被登出（M1 第 10 节）。直接调 `page.goto`、`page.reload` 过不了 `make lint-web` 的门禁；有意在请求途中离开的写 `{ inFlight: "leave" }`，并在 `tools/e2e-navigation/check.mjs` 的表里写明理由。
 
 ## 部署
 

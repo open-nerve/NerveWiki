@@ -4,6 +4,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -139,7 +140,7 @@ test("N10 (page): a workspace admin reads the audit log a page at a time, then d
     `${who(displayNameOf(adminEmail), adminEmail)} deleted ${name}; former owner: ${who(owner, ownerEmail)}.`;
   const newestFirst = drafts.map((draft) => sentence(draft.name)).toReversed();
   const page = await signedInPage(adminTokens);
-  await page.goto(ownerlessPath(slug));
+  await goto(page, ownerlessPath(slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 0)]);
   await expect.poll(() => auditLog(page)).toEqual(newestFirst.slice(0, 50));

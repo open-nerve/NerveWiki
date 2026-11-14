@@ -6,6 +6,7 @@ import { upgradesOf } from "../../fixtures/assert/wiki";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -128,7 +129,7 @@ test("UP2 (page): the start's dialog says raw at the root becomes the source are
   pageWatch.expectConsole({ errors: [failedToLoad(409), failedToLoad(409)] });
   const page = await signedInPage(tokens);
 
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   await modeSection(page).getByRole("button", { name: "Upgrade to an LLM Wiki…", exact: true }).click();
   const dialog = startDialog(page, notebook.name);
   await expect(dialog).toContainText(

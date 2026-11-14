@@ -4,6 +4,7 @@ import type { Route } from "@playwright/test";
 import { bearer, createToken, emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto, reload } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
@@ -152,7 +153,7 @@ test("LW13 (page): an ordinary reader opens Directory from Places, reads two gro
     page.waitForResponse(
       (response) => response.request().method() === "GET" && new URL(response.url()).pathname === indexAPI
     );
-  await page.goto(wikiPagePath(team.workspace.slug, notebook.id, notes[0]!.id));
+  await goto(page, wikiPagePath(team.workspace.slug, notebook.id, notes[0]!.id));
   await expect(pageHeading(page, notes[0]!.name)).toBeVisible();
   // Edit waits for the tree as well as the title: asked sooner, a writer has none either.
   await expect(pageTree(page, "Catalogue").getByRole("link", { name: notes[0]!.name, exact: true })).toBeVisible();
@@ -250,7 +251,7 @@ test("LW13 (page): the last More of untyped pages under two parents moves the re
     await createPage(api, team.pat, notebook.id, `Child ${String(i).padStart(2, "0")}`, parents[i % 2]!.id, `${i}\n`);
   }
   const page = await signedInPage(team.tokens);
-  await page.goto(`/${team.workspace.slug}/notebooks/${notebook.id}/index`);
+  await goto(page, `/${team.workspace.slug}/notebooks/${notebook.id}/index`);
   const pages = page.getByRole("region", { name: "Directory pages", exact: true });
   await expect(pages.getByRole("link")).toHaveCount(50);
   const more = page.getByRole("button", { name: "More", exact: true });
@@ -272,7 +273,7 @@ test("LW13 (page): the last More of untyped pages under two parents moves the re
     (url) => url.searchParams.has("cursor"),
     (route) => void held.push(route)
   );
-  await page.reload();
+  await reload(page);
   await expect(pages.getByRole("link")).toHaveCount(50);
   await more.focus();
   const read = page.waitForRequest((request) => new URL(request.url()).searchParams.has("cursor"));
@@ -303,7 +304,7 @@ test("LW13 (page): at 375 wide a long type and tag wrap inside the directory", a
   await createPage(api, team.pat, notebook.id, "Long", null, `---\ntype: ${long}\ntags: [${long}]\n---\nLong\n`);
   const page = await signedInPage(team.tokens);
   await page.setViewportSize({ width: 375, height: 800 });
-  await page.goto(`/${team.workspace.slug}/notebooks/${notebook.id}/index`);
+  await goto(page, `/${team.workspace.slug}/notebooks/${notebook.id}/index`);
   await expect(page.getByRole("region", { name: "Directory pages", exact: true }).getByRole("link")).toHaveText([
     "Long",
   ]);

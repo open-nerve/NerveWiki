@@ -42,18 +42,34 @@ const probeMs = 1_000;
  * stays tentative for good, flagged dadfailed: it is not waited for. Where
  * ip cannot tell, or takes over probeMs, it waits until settledAfterMs
  * after started, when startPostgres returned, the container up by then.
+ * It says so in the run's output when it waits, and nothing when no
+ * address was tentative to begin with: a run without the line did not
+ * wait (M5-polish item 50, M12/P1/S1).
  */
 async function networkSettled(started: number): Promise<void> {
-  const deadline = Date.now() + settleMs;
-  let addresses = await tentative();
+  const begun = Date.now();
+  const deadline = begun + settleMs;
+  const first = await tentative();
+  let addresses = first;
   while (addresses !== undefined && addresses !== "" && Date.now() < deadline) {
     // oxlint-disable-next-line no-await-in-loop -- polled until none is tentative
     await sleep(100);
     // oxlint-disable-next-line no-await-in-loop -- polled until none is tentative
     addresses = await tentative();
   }
+  if (first !== undefined && first !== "") {
+    const left =
+      addresses !== undefined && addresses !== "" ? `, some still tentative at the ${settleMs / 1_000} s deadline` : "";
+    console.log(
+      `global setup: waited ${Date.now() - begun} ms for the host's tentative IPv6 addresses (${first.replaceAll("\n", " | ")})${left}`
+    );
+  }
   if (addresses === undefined) {
-    await sleep(Math.max(0, started + settledAfterMs - Date.now()));
+    const wait = Math.max(0, started + settledAfterMs - Date.now());
+    console.log(
+      `global setup: ip could not tell the host's tentative IPv6 addresses; waiting ${wait} ms from PostgreSQL's start`
+    );
+    await sleep(wait);
   }
 }
 

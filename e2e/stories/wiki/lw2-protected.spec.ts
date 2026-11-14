@@ -6,6 +6,7 @@ import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf, writtenOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -157,7 +158,7 @@ test("LW2 (page): an LLM Wiki's tree protects AGENTS and its source root; an adm
   );
   const { notebook, raw, agents } = await protectedWiki(api, pat, workspace.slug);
   const notes = await createPage(api, pat, notebook.id, "Notes");
-  await writer.goto(wikiPagePath(workspace.slug, notebook.id, agents.id));
+  await goto(writer, wikiPagePath(workspace.slug, notebook.id, agents.id));
   const writersTree = pageTree(writer, notebook.name);
   const writersAgents = writersTree.getByRole("link", { name: "AGENTS (instructions for agents)", exact: true });
   const writersRaw = writersTree.getByRole("link", { name: "raw (source area)", exact: true });
@@ -181,7 +182,7 @@ test("LW2 (page): an LLM Wiki's tree protects AGENTS and its source root; an adm
   await writer.keyboard.press("Escape");
 
   const admin = await signedInPage(tokens);
-  await admin.goto(wikiPagePath(workspace.slug, notebook.id, raw.id));
+  await goto(admin, wikiPagePath(workspace.slug, notebook.id, raw.id));
   const adminsTree = pageTree(admin, notebook.name);
   const adminsRaw = adminsTree.getByRole("link", { name: "raw (source area)", exact: true });
   await expect(adminsRaw).toBeVisible();

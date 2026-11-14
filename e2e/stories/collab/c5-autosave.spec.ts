@@ -1,5 +1,6 @@
 import { aliveSessionsOf } from "../../fixtures/assert/collab";
 import { expectOneSessionRevision } from "../../fixtures/assert/page";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -25,7 +26,7 @@ test("C5 (page): A's typing is saved once it rests 2 seconds, no key pressed, an
   const writes = contentWrites(page, notes.id);
   await page.clock.install();
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await startEditing(page);
   await page.keyboard.press("ControlOrMeta+End");
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 1_000));

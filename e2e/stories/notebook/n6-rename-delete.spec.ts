@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebook, expectNotebookDeletedWithItsMembers } from "../../fixtures/assert/notebook";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import {
   deleteNotebookWith,
@@ -71,7 +72,7 @@ test("N6 (page): its admin renames the notebook, then deletes it once its name i
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Plans");
   await addedNotebookMember(api, ownerTokens.access_token, notebook.id, await accountIdOf(db, mateEmail), "editor");
   const page = await signedInPage(ownerTokens);
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
 
   const { status, renamed } = await renameNotebookWith(page, notebook.id, "  Plans 2027 ");
   expect(status).toBe(200);

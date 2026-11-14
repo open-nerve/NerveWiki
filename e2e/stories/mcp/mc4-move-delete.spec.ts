@@ -8,6 +8,7 @@ import {
   placeOf,
 } from "../../fixtures/assert/page";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -129,7 +130,7 @@ test("MC4 (MCP): an agent moves and renames Setup in one step, Index's links fol
   await expectTrashRoot(db, guides.id, { pages: 2, assets: 1, height: 2 });
 
   const page = await signedInPage(tokens);
-  await page.goto(trashPath(workspace.slug, notebook.id));
+  await goto(page, trashPath(workspace.slug, notebook.id));
   await expect(trashListed(page)).toHaveCount(1);
   await expect(trashListed(page).first()).toContainText("Guides");
 });

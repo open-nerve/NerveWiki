@@ -3,6 +3,7 @@ import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectChangesetOf, expectNoAsideNames, revertsOf } from "../../fixtures/assert/page";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -159,7 +160,7 @@ test("MC5 (page): the web reverts an agent's batch that swapped two pages' names
 
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(changesetPath(workspace.slug, notebook.id, batch));
+  await goto(page, changesetPath(workspace.slug, notebook.id, batch));
   await main.getByRole("button", { name: "Undo change", exact: true }).click();
   await expect(revertDialog(page)).toContainText(
     "Links written since to the new names or places are not changed back."

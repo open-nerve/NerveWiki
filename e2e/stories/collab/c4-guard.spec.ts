@@ -5,6 +5,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { notebookHeading } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import {
@@ -162,7 +163,7 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   const linuxPath = wikiPagePath(workspace.slug, notebook.id, linux.id);
   const page = await signedInPage(tokens);
 
-  await page.goto(linuxPath);
+  await goto(page, linuxPath);
   await startEditing(page);
   // A's writes are held: autosave's goes out and is not answered, so that what A types stays unsaved (M5/P5).
   const held = await holdContentWrites(page, linux.id);
@@ -171,7 +172,7 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   await held.sent();
   const [mine] = await aliveSessionsOf(db, linux.id);
 
-  await b.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(b, wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(b, "Guide")).toBeVisible();
   await choosePageAction(b, "Plans", "Guide", "Delete");
   const dialog = b.getByRole("alertdialog", { name: "Delete Guide?" });
@@ -203,7 +204,7 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
   // for the later rename or move event's attachment read.
   const letStreamIn = await holdStream(b);
   const initialAttachments = attachmentsRead([b]);
-  await b.goto(linuxPath);
+  await goto(b, linuxPath);
   await expect(pageHeading(b, "Linux")).toBeVisible();
   await initialAttachments;
   const connectedAttachments = attachmentsRead([b]);
@@ -223,7 +224,7 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
 
   // A's own edit does not refuse A's deletion (M5 design 4.4).
   const tab = await anotherTab(page);
-  await tab.goto(linuxPath);
+  await goto(tab, linuxPath);
   await expect(pageHeading(tab, "Kernel")).toBeVisible();
   await choosePageAction(tab, "Plans", "Kernel", "Delete");
   await tab
@@ -259,7 +260,7 @@ test("C4 (page, notebook): while A edits Notes, unsaved, the notebook's deletion
   const notebook = await createNotebook(api, a, workspace.slug, "Plans");
   const notes = await createPage(api, a, notebook.id, "Notes", null, "Drafted.\n");
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await startEditing(page);
   const held = await holdContentWrites(page, notes.id);
   await page.keyboard.press("ControlOrMeta+End");

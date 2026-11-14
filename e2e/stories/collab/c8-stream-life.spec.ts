@@ -7,6 +7,7 @@ import { countAnswers } from "../../fixtures/browser";
 import { fetchEvents, followStreams, holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember, removeNotebookMember } from "../../fixtures/notebook-members";
 import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
@@ -143,7 +144,7 @@ test("C8 (page): with access tokens of 3 s, B's stream ends as each expires and 
   const eng = await createNotebook(api, a, workspace.slug, "Eng");
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const notes = await createPage(api, a, eng.id, "Notes", null, "Drafted.\n");
-  await page.goto(`${shortLived.baseURL}${wikiPagePath(workspace.slug, eng.id, notes.id)}`);
+  await goto(page, `${shortLived.baseURL}${wikiPagePath(workspace.slug, eng.id, notes.id)}`);
   const content = page.getByRole("article", { name: "Notes" });
   await expect(content).toHaveText("Drafted.");
 
@@ -167,7 +168,7 @@ test("C8 (page): B, reading a page of Eng, is removed from it: the page is not f
   const eng = await createNotebook(api, a, workspace.slug, "Eng");
   const membership = await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
   const notes = await createPage(api, a, eng.id, "Notes");
-  await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   expect(Object.values(await notebookGroups(page, "Acme")).flat()).toContain("Eng");
 
@@ -193,7 +194,7 @@ test("C8 (page): B, reading a page of Acme, is removed from Acme: the workspace 
   const reads = ["view", "edit-lock", "backlinks", "properties"].map((what) =>
     countAnswers(page, "GET", `/api/v0/pages/${notes.id}/${what}`)
   );
-  await page.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, eng.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   // B's stream connects once the page shows, and its refresh reads it all again, the page's view, lock, backlinks and
   // properties last: once they have answered, B's tab reads nothing until an event comes. Removed sooner, B would have a read of the page
@@ -218,10 +219,10 @@ test("C8 (page): B signs out in a second tab: both tabs sign out, and B's stream
   const bEmail = emailFor(testInfo, "b");
   const page = await signedInPage(await joinOnboarded(api, a, workspace.slug, bEmail, "member"));
   const streams = followStreams(page.context());
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   const second = await anotherTab(page);
-  await second.goto(`/${workspace.slug}`);
+  await goto(second, `/${workspace.slug}`);
   await expect(workspaceHeading(second, "Acme")).toBeVisible();
   await expect.poll(() => streams.count()).toBe(1);
 
@@ -244,7 +245,7 @@ test("C8 (page): Eng deleted, it leaves B's notebooks", async ({ api, db, signed
   const page = await signedInPage(await joinOnboarded(api, a, workspace.slug, bEmail, "member"));
   const eng = await createNotebook(api, a, workspace.slug, "Eng");
   await addedNotebookMember(api, a, eng.id, await accountIdOf(db, bEmail), "reader");
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await expect.poll(async () => Object.values(await notebookGroups(page, "Acme")).flat()).toContain("Eng");
 

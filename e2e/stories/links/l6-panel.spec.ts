@@ -4,6 +4,7 @@ import type { Database } from "../../fixtures/db";
 import { holdStream, settleEvents } from "../../fixtures/events";
 import { getPageProperties, listBacklinks } from "../../fixtures/links";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -204,7 +205,7 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   const page = await signedInPage(tokens);
   const letStreamIn = await holdStream(page);
   const backlinkReads = countAnswers(page, "GET", `/api/v0/pages/${hub.id}/backlinks`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, doc.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
   const panel = page.getByRole("complementary", { name: "About this page", exact: true });
 
   // Beside the page's content.
@@ -274,7 +275,7 @@ test("L6 (page, keyboard): the last More adds the next page of backlinks and tak
     await createPage(api, pat, notebook.id, `P${String(n).padStart(2, "0")}`, null, "See [[Hub]]\n");
   }
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, hub.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, hub.id));
   const panel = page.getByRole("complementary", { name: "About this page", exact: true });
   const backlinks = panel.locator("details", { has: page.getByText("Backlinks", { exact: true }) });
   await expect(backlinks.getByRole("link")).toHaveCount(50);
@@ -314,13 +315,13 @@ test("L6 (page, large): properties of many strings at long paths show at once; a
   const panel = page.getByRole("complementary", { name: "About this page", exact: true });
 
   const started = Date.now();
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, strings.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, strings.id));
   await expect(panel.getByRole("heading", { level: 2, name: "Properties", exact: true })).toBeVisible();
   await expect(panel.locator("dl dt")).toHaveCount(1);
   expect(Date.now() - started).toBeLessThan(4_000);
 
   // More headings than a call takes arguments.
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, headings.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, headings.id));
   const outline = panel.getByRole("navigation", { name: "Outline", exact: true });
   const failed = page.getByText("Something went wrong");
   await expect(outline.or(failed)).toBeVisible({ timeout: 120_000 });

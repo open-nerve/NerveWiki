@@ -22,6 +22,7 @@ import {
 } from "../../fixtures/auth";
 import { accountMenu, signInWith, signOutThroughMenu } from "../../fixtures/auth-pages";
 import { expectQuietPage, followAccessToken, watchPage, type PageWatch } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { displayNameField, profileStep, saveProfileStep, workspaceStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -33,7 +34,7 @@ const signInPage = `/sign-in?next=${encodeURIComponent(where)}`;
 
 /** Opens where in tab, signed in as the account of email. */
 async function openSignedIn(tab: Page, email: string): Promise<void> {
-  await tab.goto(where);
+  await goto(tab, where);
   await expect(accountMenu(tab, displayNameOf(email))).toBeVisible();
   await expect(tab.getByRole("heading", { level: 1, name: "Page not found" })).toBeVisible();
 }
@@ -78,15 +79,16 @@ test("A6 (page): another tab signs another account in without signing out: every
   const y = emailFor(testInfo, "y");
   const tabA = await signedInPage(await register(api, x));
   await register(api, y);
-  await tabA.goto("/onboarding");
+  await goto(tabA, "/onboarding");
   await expect(accountMenu(tabA, displayNameOf(x))).toBeVisible();
   await expect(profileStep(tabA)).toBeVisible();
   const xHeld = (await recordOf(tabA))?.refresh_token ?? "";
 
   // Tab B, any page of the site, keeps a sign-in of Y as a tab does: a new record, written under the
-  // refresh lock, with a new login_id.
+  // refresh lock, with a new login_id. Watched from its start, as the stories' own tabs are.
   const tabB = await context.newPage();
-  await tabB.goto("/favicon.svg");
+  await watchPage(tabB);
+  await goto(tabB, "/favicon.svg");
   await writeRecord(tabB, newRecord(await login(api, y)));
 
   // Tab A follows: it shows Y, and what it writes from now on is Y's.

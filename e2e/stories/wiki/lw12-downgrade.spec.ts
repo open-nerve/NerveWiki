@@ -14,6 +14,7 @@ import { createToken, emailFor } from "../../fixtures/auth";
 import { answerTo, countAnswers } from "../../fixtures/browser";
 import { followStreams, holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { downgradeWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, downgradeNotebook, getNotebook } from "../../fixtures/notebooks";
@@ -156,8 +157,8 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
   const notebookReads = countAnswers(writer, "GET", `/api/v0/workspaces/${workspace.slug}/notebooks`);
   const letStreamIn = await holdStream(writer);
   try {
-    await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
-    await writer.goto(notebookPath(workspace.slug, notebook.id, "general"));
+    await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
+    await goto(writer, notebookPath(workspace.slug, notebook.id, "general"));
     const mode = page.locator("section", { has: page.getByRole("heading", { name: "Mode", exact: true }) });
     const otherMode = writer.locator("section", { has: writer.getByRole("heading", { name: "Mode", exact: true }) });
     const trigger = page.getByRole("button", { name: "Downgrade to a standard notebook…", exact: true });
@@ -175,7 +176,7 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     // Keep the original settings document and its stream holder. Another tab of this same login is already
     // reading an actual source when the mode event arrives: a fresh navigation must not supply its capability.
     const sourceTab = await anotherTab(writer);
-    await sourceTab.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+    await goto(sourceTab, wikiPagePath(workspace.slug, notebook.id, source.id));
     const originalArticle = sourceTab.getByRole("article", { name: "Evidence", exact: true });
     await expect(originalArticle).toContainText("Original source.");
     await expect(originalArticle.getByRole("checkbox")).toBeDisabled();

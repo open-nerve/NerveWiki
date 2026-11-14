@@ -5,6 +5,7 @@ import { expectNewWorkspace } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import type { Database } from "../../fixtures/db";
 import { accept, invite } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import {
   createFirstNotebookWith,
   notebookStep,
@@ -52,7 +53,7 @@ test("W11 (page): a new account creates a workspace in onboarding, then its firs
   const email = emailFor(testInfo);
   const page = await signedInPage(await register(api, email));
   const userId = await accountIdOf(db, email);
-  await page.goto("/");
+  await goto(page, "/");
   expect(await saveProfileStep(page)).toBe(200);
 
   await expect(workspaceStep(page)).toBeVisible();
@@ -82,7 +83,7 @@ test("W11 (page): an account that joined by an invitation goes on past the step,
   await accept(api, tokens.access_token, await invite(api, pat, workspace.slug, email, "member"));
   const userId = await accountIdOf(db, email);
   const page = await signedInPage(tokens);
-  await page.goto("/");
+  await goto(page, "/");
 
   // The workspace step records itself as it shows; past the notebook step, the account lands in its workspace.
   const recorded = stepRecorded(page, "workspace");
@@ -105,7 +106,7 @@ test("W11 (page): with creation off, an account without a workspace reads how to
   const email = emailFor(testInfo);
   const page = await signedInPage(await register(createClient({ baseUrl: baseURL }), email), baseURL);
   const userId = await accountIdOf(db, email);
-  await page.goto(`${baseURL}/`);
+  await goto(page, `${baseURL}/`);
   expect(await saveProfileStep(page)).toBe(200);
 
   await expect(workspaceStep(page)).toBeVisible();

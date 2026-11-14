@@ -11,6 +11,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { leaveWith, who } from "../../fixtures/member-pages";
 import { leave } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember, updateNotebookMember } from "../../fixtures/notebook-members";
 import { changeNotebookRoleWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -80,7 +81,7 @@ test("N7 (page): the only admin of a notebook with another member is refused lea
   const solo = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Solo");
   await addedNotebookMember(api, ownerTokens.access_token, plans.id, mateId, "reader");
   const page = await signedInPage(ownerTokens);
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   expect(await leaveWith(page, workspace.slug)).toBe(409);
@@ -91,9 +92,9 @@ test("N7 (page): the only admin of a notebook with another member is refused lea
   await expectNotebookMember(db, plans.id, ownerId, { role: "admin", active: true, writerId: ownerId });
 
   // As the dialog says: in the notebook's settings, the other member becomes its admin; then the account leaves.
-  await page.goto(notebookPath(workspace.slug, plans.id, "members"));
+  await goto(page, notebookPath(workspace.slug, plans.id, "members"));
   expect((await changeNotebookRoleWith(page, who(displayNameOf(mateEmail), mateEmail), "Admin")).status()).toBe(200);
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
   expect(await leaveWith(page, workspace.slug)).toBe(204);
   await expectCreatePage(page);
   await expectMembership(db, workspace.id, ownerId, "ended");
@@ -102,6 +103,6 @@ test("N7 (page): the only admin of a notebook with another member is refused lea
   await expectOwnerless(db, solo.id, ownerId);
 
   const adminPage = await anotherPage(adminTokens);
-  await adminPage.goto(ownerlessPath(workspace.slug));
+  await goto(adminPage, ownerlessPath(workspace.slug));
   await expect.poll(() => ownerlessListed(adminPage)).toEqual([listedOwnerless("Solo", ownerEmail, "Private", 0)]);
 });

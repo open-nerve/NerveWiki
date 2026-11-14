@@ -7,6 +7,7 @@ import { answerTo } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { listChangesets } from "../../fixtures/history";
 import { mcpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebookWith, notebookHeading, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { listNodes, readContent } from "../../fixtures/pages";
@@ -152,7 +153,7 @@ test("LW1 (page): an English LLM Wiki starts with its source area and instructio
   const page = await signedInPage(tokens);
   // Pass-through interception lets Chromium expose this POST's body to Playwright; install it before navigation.
   await page.route(`**/api/v0/workspaces/${workspace.slug}/notebooks`, (route) => route.continue());
-  await page.goto(`/${workspace.slug}`);
+  await goto(page, `/${workspace.slug}`);
 
   const answer = answerTo(page, "POST", `/api/v0/workspaces/${workspace.slug}/notebooks`);
   const { status, created } = await createNotebookWith(page, workspace, "Field notes", undefined, "llm_wiki");
@@ -193,7 +194,7 @@ test.describe("the Chinese creation page", () => {
     const page = await signedInPage(tokens);
     // As in the English story, observe the request body without replacing the request or its answer.
     await page.route(`**/api/v0/workspaces/${workspace.slug}/notebooks`, (route) => route.continue());
-    await page.goto(`/${workspace.slug}`);
+    await goto(page, `/${workspace.slug}`);
 
     await workspaceNav(page, workspace.name).getByRole("button", { name: "新建笔记本", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "新建笔记本", exact: true });

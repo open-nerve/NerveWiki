@@ -12,6 +12,7 @@ import { download, getAsset, pngBytes, uploadAsset } from "../../fixtures/assets
 import { displayNameOf } from "../../fixtures/auth";
 import type { Database } from "../../fixtures/db";
 import { listChangesets, revertChangeset } from "../../fixtures/history";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -144,7 +145,7 @@ test("HI4 (page): a page deleted from the tree, its deletion undone from the his
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
   const places = page.getByRole("navigation", { name: "More of Plans", exact: true });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, tree.handbook));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, tree.handbook));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "Handbook"]);
 
   await choosePageAction(page, "Plans", "Handbook", "Delete");

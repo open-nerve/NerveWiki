@@ -1,5 +1,6 @@
 import { expectChangesetOf, expectNewPage, expectVersions } from "../../fixtures/assert/page";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -92,7 +93,7 @@ test("MC3 (MCP): an agent writes a page with its missing parents in one changese
   await expectVersions(db, planId, [firstVersion]);
 
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, planId));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, planId));
   await expect(page.getByRole("article")).toContainText("ship");
   const second = resultOf<Written>(
     await agent.call("write", { path, content: updated, base_version: first.version }),
@@ -142,7 +143,7 @@ test("MC3 (MCP): an agent writes a page with its missing parents in one changese
     versions: [late.node_id],
   });
 
-  await page.goto(historyPath(workspace.slug, notebook.id, { client: "mcp" }));
+  await goto(page, historyPath(workspace.slug, notebook.id, { client: "mcp" }));
   // The agent's six: Plan created, written, edited twice; Notes edited; Later created. Notes' creation is REST's.
   const listed = historyListed(page);
   await expect(listed).toHaveCount(6);

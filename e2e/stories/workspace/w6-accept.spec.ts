@@ -6,6 +6,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
 import { accept, invite, joinAs, preview, previewOf, tryAccept } from "../../fixtures/invitations";
 import { leave, memberOf } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/admin";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
@@ -105,7 +106,7 @@ test("W6 (page): the invitee opens the link signed out, sees what it invites to,
     }
   });
 
-  await page.goto(linkTo(invitation));
+  await goto(page, linkTo(invitation));
   await expect(page.getByText("You are invited to join Acme.", { exact: true })).toBeVisible();
   await expect(page.getByText("Your role there: Member", { exact: true })).toBeVisible();
   expect((await signInWith(page, email, password)).status()).toBe(200);
@@ -135,7 +136,7 @@ test("W6 (page): an account of another address is told so, signs out there, and 
   await registerOnboarded(api, email);
   const invitation = await invite(api, pat, workspace.slug, email, "guest");
   const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo, "other")));
-  await page.goto(linkTo(invitation));
+  await goto(page, linkTo(invitation));
 
   pageWatch.expectConsole({ errors: [failedToLoad(403)] });
   expect((await acceptWith(page, invitation.id)).status()).toBe(403);

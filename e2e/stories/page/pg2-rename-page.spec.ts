@@ -4,6 +4,7 @@ import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, postPage, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -135,7 +136,7 @@ test("PG2 (page): an editor renames a page in its dialog; a title the rules refu
   const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "editor");
   const roadmap = await createPage(api, adminPat, notebook.id, "Roadmap");
   await createPage(api, adminPat, notebook.id, "Notes");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, roadmap.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, roadmap.id));
   await expect(pageHeading(page, "Roadmap")).toBeVisible();
 
   const dialog = renameDialog(page, "Roadmap");

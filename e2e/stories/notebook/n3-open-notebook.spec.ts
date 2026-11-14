@@ -4,6 +4,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebook } from "../../fixtures/assert/notebook";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { changeAccessWith, notebookGroups, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, listNotebooks, updateNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
@@ -62,7 +63,7 @@ test("N3 (page): its admin opens the notebook to the workspace on its general pa
   const guestPat = await joinAs(api, adminPat, workspace.slug, emailFor(testInfo, "guest"), "guest");
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Handbook");
   const page = await signedInPage(ownerTokens);
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "My notebooks": ["Handbook"] });
   /** The roles the workspace's member, its admin and its guest see the notebook with, as their lists have it. */
   const seen = () =>
