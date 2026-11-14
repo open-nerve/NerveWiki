@@ -42,6 +42,11 @@ export interface PageWatch {
   readonly consoleWarnings: string[];
   /** Content-Security-Policy violations, as "<directive> <blocked URI>". */
   readonly cspViolations: string[];
+  /**
+   * Each time the page's top document went to /sign-in, as "<path and query>", followed by " after a refresh
+   * answered 401" when the last refresh before it was refused: a session that ended under the story.
+   */
+  readonly signInLandings: string[];
   /** The console errors and warnings the story said would come, in order: see expectConsole. */
   readonly expectedConsole: { readonly errors: string[]; readonly warnings: string[] };
   /**
@@ -107,6 +112,9 @@ export function abortFailedRequestError(page: Page): string {
 /** The path of the event stream, GET /api/v0/events. */
 export const eventStreamPath = "/api/v0/events";
 
+/** The path of a refresh, POST /api/v0/auth/refresh. */
+const refreshPath = "/api/v0/auth/refresh";
+
 /** The path of request to the API, but the event stream's: undefined for any other request. */
 function apiPath(request: Request): string | undefined {
   const { pathname } = new URL(request.url());
@@ -137,6 +145,7 @@ export async function watchPage(page: Page): Promise<PageWatch> {
     consoleErrors: [],
     consoleWarnings: [],
     cspViolations: [],
+    signInLandings: [],
     expectedConsole: { errors: [], warnings: [] },
     expectConsole: ({ errors = [], warnings = [] }) => {
       for (const error of errors) {
@@ -164,11 +173,29 @@ export async function watchPage(page: Page): Promise<PageWatch> {
   // A request nervewiki answered is judged by its status: Chromium also reports one failed (net::ERR_ABORTED)
   // when the page leaves the body of its answer unread.
   const answered = new WeakSet<Request>();
+  // Whether the last refresh the page got an answer to was refused: the session ended.
+  let refusedRefresh = false;
   page.on("response", (response) => {
     answered.add(response.request());
     const path = apiPath(response.request());
+    if (path === refreshPath && response.request().method() === "POST") {
+      refusedRefresh = response.status() === 401;
+    }
     if (path !== undefined && response.status() >= 400) {
       watch.apiFailures.push(`${response.status()} ${response.request().method()} ${path}`);
+    }
+  });
+  // Each arrival of the top document at /sign-in: a load, or the app's own router (history), once for an
+  // address it only replaced with itself.
+  let topAddress = "";
+  page.on("framenavigated", (frame) => {
+    if (frame !== page.mainFrame() || frame.url() === topAddress) {
+      return;
+    }
+    topAddress = frame.url();
+    const { pathname, search } = new URL(topAddress);
+    if (pathname === "/sign-in") {
+      watch.signInLandings.push(`${pathname}${search}${refusedRefresh ? " after a refresh answered 401" : ""}`);
     }
   });
   page.on("requestfailed", (request) => {
@@ -249,8 +276,9 @@ export async function expectQuietPage(page: Page, watch: PageWatch): Promise<voi
 const snapshotLimit = 3000;
 
 /**
- * pageState is what page showed and did last, as text: its address, the element in focus, its last API
- * requests and their failures, its errors, and its ARIA snapshot cut short; none for a closed page.
+ * pageState is what page showed and did last, as text: each time it went to the sign-in page, its address,
+ * the element in focus, its last API requests and their failures, its errors, and its ARIA snapshot cut
+ * short; none for a closed page.
  */
 async function pageState(page: Page, watch: PageWatch): Promise<string | undefined> {
   if (page.isClosed()) {
@@ -272,6 +300,7 @@ async function pageState(page: Page, watch: PageWatch): Promise<string | undefin
     .catch((error: unknown) => `none: ${String(error)}`);
   const cut = snapshot.length > snapshotLimit ? `${snapshot.slice(0, snapshotLimit)}\n…` : snapshot;
   return [
+    `sent back to sign in: ${watch.signInLandings.join(", ") || "no"}`,
     `url: ${page.url()}`,
     `focused: ${focused}`,
     `api requests, the last 20: ${watch.apiRequests.slice(-20).join(", ") || "none"}`,
