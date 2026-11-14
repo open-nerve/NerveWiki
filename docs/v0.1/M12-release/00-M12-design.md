@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（总设计已审查，待开工 P1；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 设计已审查，S1 开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -84,7 +84,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
    - PostgreSQL 镜像在五处（`pgtest/pgtest.go:35`、`deploy/compose.dev.yaml:8`、`e2e/fixtures/db.ts:13`、`deploy/image-smoke.sh:86`、`README.md:629`）同是 `postgres:18.7-trixie`，由 `pgtest/image_test.go` 核对（今天只核对前四处，`pgtest/image_test.go:12-39`）。P5/S3 之后 README 那一处换成 `deploy/README.md`，另加 `deploy/compose.yaml` 的镜像与 initdb 参数。
    - `make vuln`（Go 一侧与 npm 一侧）在 S2 的分支上由 `vuln.yml` 的 `push` 触发跑一次为绿；证据是 S2 记录里的 run 号。之后的运行红了，照 4.3 开旁支或写进 `audit.ignore`；发布的闸门再跑一次（第 9 条）。
 2. **e2e 的帮手**（P1/S1）：
-   - 故事与夹具（`e2e/stories`、`e2e/fixtures`）里不再直接调 `page.goto` 与 `page.reload`，由一条门禁守住，有反向对照。豁免只经帮手显式的逃生口；门禁报出逃生口的个数，每一处的理由写在 S1 的记录里。帮手所在的那一个模块是唯一直接调用它们的地方，门禁对它例外，不算进逃生口。
+   - `e2e/` 里（故事、夹具与以后的 `e2e/perf/`）不再直接调 `page.goto` 与 `page.reload`，由一条门禁守住，有反向对照。豁免只经帮手显式的逃生口；门禁按它的表核对每个文件的逃生口的个数，理由写在表里。帮手所在的那一个模块是唯一直接调用它们的地方，门禁对它例外，不算进逃生口。
    - 帮手有一个对照测试：把续期的答复延后，经逃生口不等时页面落到 `/sign-in`，经帮手时不落（05-lessons 第 6 节："要复现这种竞态，把答复延后，不要靠重复跑"）。
    - P1/S1 合并之后到 M12 收尾，`main` 的 e2e 没有一次因为被跳回登录页而红；收尾记录列出红过的每一次（run 号与原因）与这期间 `main` 的 e2e 的总次数（主持者的决定 334）。
 3. **打磨**（P2，服务端的几项在 P3/S1）：
@@ -168,7 +168,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 
 - **Go 1.27.1 → 1.27.4**：1.27.2–1.27.4 修了 `net/http`、`crypto/tls`、`crypto/x509`、`html/template` 等的安全问题，都在服务端运行时的路径上（I1 第 5 节）。
   - 改 `server/go.mod:5`、`server/tools/go.mod:5` 的 `toolchain`，`deploy/Dockerfile:23` 换成 `golang:1.27.4-trixie` 的摘要，`README.md:16` 随之。
-  - golang 镜像设了 `GOTOOLCHAIN=local`：只改 `toolchain`、漏改 Dockerfile 时，镜像悄悄用旧的 Go 构建（I1 第 5 节）。`FROM` 同时写 tag 与摘要时，生效的是摘要，只比文字盖不住"tag 改了、摘要没换"。所以 Dockerfile 的 server 阶段加一行构建时的断言 `RUN [ "$(go env GOVERSION)" = go1.27.4 ]`；一个短测试核对 tag 与这一行的版本都等于两份 `go.mod` 的 `toolchain`（设计审查 B 改）。
+  - golang 镜像设了 `GOTOOLCHAIN=local`：只改 `toolchain`、漏改 Dockerfile 时，镜像悄悄用旧的 Go 构建（I1 第 5 节）。`FROM` 同时写 tag 与摘要时，生效的是摘要，只比文字盖不住"tag 改了、摘要没换"。所以 Dockerfile 的 server 阶段加一行构建时的断言 `RUN test "$(go env GOVERSION)" = go1.27.4 || { echo …; exit 1; }`；一个短测试核对 tag、这一行与 README 写的版本都等于两份 `go.mod` 的 `toolchain`（设计审查 B 改）。
   - 核对两处写着 1.27.1 的代码注释：`platform/httpserver/mcpserver/edge.go:106`（`encoding/json/v2` 在默认打开的 GOEXPERIMENT `jsonv2` 之后，M9/P1 要求升级时核对它仍打开），`page/domain/grep.go:149`（引了标准库 `regexp/syntax` 的行号）。
   - 文档里写着 1.27.1 的五处随之（设计审查 B 改）：总体设计 13.1 第 32 条（`v0.1-design.md:1178`，照 `jsonv2` 的核对结果写，第 7 节"总体设计的修订"第 18 条）；`06-environment.md:10`、`:52`，`05-lessons.md:89`，`03-project-background.md:15`。后四处写成"`go.mod` 的 `toolchain` 那个版本"，免得每次升级都要改。
 - **PostgreSQL 18.6 → 18.7**：18.7 有一批 CVE 与 GIN 的修复，正对着 `page_search` 的索引（I1-D12）。
@@ -181,11 +181,11 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **漏洞扫描**（主持者的决定 308，设计审查 B 改）：
   - **只在 GitHub 的 runner 上跑**：`govulncheck`、`pnpm audit` 与 `make outdated` 本机都不跑。理由照实写：M12 调查时，本机的权限分类器拒过 `govulncheck`；调查与审查的规矩是"不往外发"，而 `pnpm audit` 与 `make outdated` 同样把依赖清单发给 registry 或 proxy。初稿只禁了 `govulncheck`，理由写成"它把模块清单发给 vuln.go.dev"，与它的文档不符，又让送得更多的 `make outdated` 在本机跑。
   - **`make vuln` 的两侧**：
-    - Go 一侧：`go run golang.org/x/vuln/cmd/govulncheck@<固定版本> ./...`，只扫 `server/`。`server/tools/` 是不随镜像发出的代码生成器，又用 `tool` 指令，`./...` 扫不到工具本身；那里报出的问题既难修、又与发布物无关（设计审查 B 的过度设计）。不放进 `server/tools/go.mod`：那里的 kin-openapi 等跟着 oapi-codegen 的要求（`server/tools/go.mod` 的注释），新的工具依赖会牵动它们。
+    - Go 一侧：`go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...`，只扫 `server/`。`server/tools/` 是不随镜像发出的代码生成器，又用 `tool` 指令，`./...` 扫不到工具本身；那里报出的问题既难修、又与发布物无关（设计审查 B 的过度设计）。不放进 `server/tools/go.mod`：那里的 kin-openapi 等跟着 oapi-codegen 的要求（`server/tools/go.mod` 的注释），新的工具依赖会牵动它们。
     - npm 一侧：`pnpm audit --prod`。pnpm 读得懂两个文档的 `pnpm-lock.yaml`。GitHub 的依赖图读不出这种锁文件（`pnpm-lock.yaml:1`、`:158` 各有一个 `---`；GitHub 文档写明 pnpm 12 钉了版本时的这种格式认不出），Dependabot alerts 因此看不见 npm 的公告，不再当作手段。仓库是公开的，锁文件本来就公开。
     - npm 一侧的判据（修订核对第 1 轮 B 的 M15）：`pnpm audit` 默认 `low` 也以 1 退出，又不看我们是否调到了有问题的函数。`make vuln` 带一个级别（例如 `VULN_AUDIT_LEVEL`，默认 `low`）：`vuln.yml` 照 `low` 跑，报出来给人看；发布的闸门传 `high`，`--audit-level=high` 才挡。
     - 修不了（没有补丁，或要升 4.3 不升的功能性大版本）或确认与我们无关的公告，写进 `pnpm-workspace.yaml` 的 `audit.ignore`（GHSA 号），理由写在那个提交与收尾记录里。收尾之后为此加的忽略，算改了产品的依赖配置，照决定 324 问负责人。
-  - **不进每次推送的 CI**：Go 的小版本约每月一个，多数带安全修复；`govulncheck` 找到就非 0 退出。放进必绿的 `short` 一份，下一个安全版本一出，每个 Step 都红，连只改网页的 Step 也合并不了。`make vuln` 放在一个单独的工作流 `.github/workflows/vuln.yml` 里：`schedule` 每天一次，加 `workflow_dispatch`，另加一个 `push` 触发，`paths` 只写它自己与依赖清单（`.github/workflows/vuln.yml`、`server/go.mod`、`server/go.sum`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`，以及定义 `make vuln` 的 `Makefile`；修订核对第 2 轮 B 的 N12）。`workflow_dispatch` 与 `schedule` 只对已在默认分支上的工作流生效，引入它的 P1/S2 分支与升依赖的分支靠 `push` 跑（修订核对第 1 轮 B 的 M13）。发布的闸门硬挡（4.10）。
+  - **不进每次推送的 CI**：Go 的小版本约每月一个，多数带安全修复；`govulncheck` 找到就非 0 退出。放进必绿的 `short` 一份，下一个安全版本一出，每个 Step 都红，连只改网页的 Step 也合并不了。`make vuln` 放在一个单独的工作流 `.github/workflows/vuln.yml` 里：`schedule` 每天一次，加 `workflow_dispatch`，另加一个 `push` 触发，`paths` 只写它自己与依赖清单（`.github/workflows/vuln.yml`、`server/go.mod`、`server/go.sum`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`，以及定义 `make vuln` 的 `Makefile`、`make outdated` 的 `tools/outdated.sh`；修订核对第 2 轮 B 的 N12，P1 设计 2.1 第 13 条），只在分支的推送上（`branches: ["**"]`），tag 不触发。`workflow_dispatch` 与 `schedule` 只对已在默认分支上的工作流生效，引入它的 P1/S2 分支与升依赖的分支靠 `push` 跑（修订核对第 1 轮 B 的 M13）。发布的闸门硬挡（4.10）。
   - **红了先要有人看见**：定时运行的通知发给最后改 cron 那一行的人，也就是推送用的负责人的账户，主持者收不到（修订核对第 1 轮 B 的 N9）。所以每个 Step 合并之前（02-workflow 第 3.6 节的合并步骤），主持者看一眼 `vuln.yml` 最近一次的结论（`gh run list --workflow vuln.yml --branch main --limit 1`）。
   - **红了怎么办**：主持者开旁支 `m12-toolchain-<版本>`，照 P1/S2 的做法升（两份 `go.mod`、Dockerfile 的 tag、摘要与断言、README、守卫；npm 一侧升报出的包，或照上面写进 `audit.ignore`），提交写当时所在的 Phase。收尾合并之后才由闸门发现的，改了产品代码或依赖配置，照决定 324 再问负责人。
   - 公开仓库 60 天没有活动时，定时工作流会被自动停用。发布之后若久无提交，它会悄悄停掉：写进给 v0.1.1 的移交（4.13）。
@@ -194,7 +194,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   - Node 26：Node 只用于构建与 e2e，运行时镜像里没有；Node 24 维护到 2028-04-30；换 26 要改 corepack 的四处、`engines` 与 `@types/node`。移交 M0-P6 第 4 条的"Node 26 成为 LTS 之后评估"由此了结：评估过，v0.1.x 之后再换。
   - 功能性的大版本：River 0.51（可能带新的迁移，`server/migrations/river_test.go` 会失败）、katex 0.19 与 `@lezer/markdown` 1.8（要重核补丁，13.5 第 5 条）、mermaid 12、pgx、goose、`x/text`（换 Unicode 表就要 reindex，总体设计第 14 节）。
   - golangci-lint 2.15、pnpm 12.18：只用于开发，不涉安全。
-- **`make outdated`**（I1-D11）：只读地列出过时的 Go 模块、npm 包、actions 与镜像，做的就是 I1 第 5 节那张表。它在 `vuln.yml` 里一个只手动触发的作业上跑，每次发布之前跑一次。Dependabot 的版本更新 PR 不开：每个 PR 都触发 19 项的 CI，版本精确固定、补丁要人工核对，自动的 PR 大多会红。要不要开由负责人定（移交 M0-P6 第 4 条写明"由负责人决定"；第 11 节）。
+- **`make outdated`**（I1-D11）：只读地列出过时的 Go 模块、npm 包、actions 与镜像，做的就是 I1 第 5 节那张表。它在 `vuln.yml` 里一个手动触发、改了依赖清单的推送也跑的作业上（`continue-on-error`，它的失败不让运行变红），每次发布之前跑一次。Dependabot 的版本更新 PR 不开：每个 PR 都触发 19 项的 CI，版本精确固定、补丁要人工核对，自动的 PR 大多会红。要不要开由负责人定（移交 M0-P6 第 4 条写明"由负责人决定"；第 11 节）。
 
 ### 4.4 e2e 的帮手：`goto` 与 `reload`
 
@@ -204,12 +204,12 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **帮手**：
   - `page` 夹具记下每个在途的 `/api/v0/` 请求（`request`、`requestfinished`、`requestfailed`），事件流除外。
   - 帮手在 `goto` 与 `reload` 之前等这些请求答完，其中一定等 `POST /api/v0/auth/refresh`。这两个换掉文档，打断在途的请求。
-  - `goBack`、`goForward` 不一律算进来：故事里的 14 处多半是单页应用自己的历史条目，同一个文档里的 popstate，打断不了续期。帮手另给一种"跨文档的后退"，只在后退真的换文档时用，故事照实选。
-  - **逃生口**：帮手带一个显式的选项（例如 `navigate(page, url, { inFlight: "leave" })`），不等在途的请求就离开。只给有意在请求途中离开的故事与对照测试用。TR2 用一个永不放行的 route 扣住导入的 POST 再后退（`e2e/stories/transfer/tr2-import.spec.ts:241-259`），等在途的请求它就卡死。
-  - `pageWatch`（`e2e/fixtures/test.ts`）认出没有预期的 `/sign-in` 落点，失败时写明"被跳回登录页"。
-  - **第一次续期**（审查 C 未核实的怀疑 U1）：`goto` 返回时，新文档的第一次续期常还没发出（探针：Chromium 15 次里 9 次、WebKit 15 次里 8 次；续期在 `navigator.locks` 授予之后才发，`session/token-manager.ts:289`）。只等在途的请求时没有复现失败（三种引擎各 20 次，0 次落到登录页）。P1/S1 的设计考虑帮手再等"这个文档的第一次续期已答"，由实施时的对照测试定要不要。
-- **门禁**：故事与夹具（`e2e/stories`、`e2e/fixtures`）里不许直接调 `goto`、`reload`，只许经帮手。帮手所在的那一个模块是唯一直接调用它们的地方，门禁对它例外，不算进逃生口的计数（修订核对第 1 轮 C 的 N8）。逃生口要显式写，门禁报出它的个数，P1/S1 的记录写明每一处的理由。由 lint 或一个读源码的检查守住，带反向对照（13.4 第 1 条）。
-- **对照测试**：把续期的答复延后（`route.fetch()` 之后、`fulfill` 之前扣住，同 `a5-refresh-reuse.spec.ts` 的第二个测试），再 `goto`。经逃生口不等时落到 `/sign-in`，经帮手时不落。
+  - `goBack`、`goForward` 不一律算进来：故事里的 14 处多半是单页应用自己的历史条目，同一个文档里的 popstate，打断不了续期。14 处都在同一个文档里（P1 设计附录），帮手不另给跨文档的后退；以后要它的故事先在帮手里加，照 A15 加一格对照（P1 设计 2.1 第 1 条）。
+  - **逃生口**：帮手带一个显式的选项 `{ inFlight: "leave" }`，不等就离开，只给有意在请求途中离开的故事用；P1 里只有 A15 的两格（P1 设计 3.6）。TR2 扣住导入的 POST 之后的后退（`e2e/stories/transfer/tr2-import.spec.ts:241-259`）在同一个文档里，帮手与门禁都不管，用不到逃生口。
+  - `pageWatch`（`e2e/fixtures/browser.ts` 的 `watchPage`）认出没有预期的 `/sign-in` 落点，失败时写明"被跳回登录页"：它记下每一次落到 `/sign-in` 与之前那次续期是否答 401，失败时页面的状态第一行写出（P1 设计 3.3）。
+  - **第一次续期**（审查 C 未核实的怀疑 U1）：`goto` 返回时，新文档的第一次续期常还没发出（探针：Chromium 15 次里 9 次、WebKit 15 次里 8 次；续期在 `navigator.locks` 授予之后才发，`session/token-manager.ts:289`）。只等在途的请求时没有复现失败（三种引擎各 20 次，0 次落到登录页）。帮手再等这个文档的第一次续期已答、续期的锁空着。A15 的第 4 格不经锁推迟第一次续期，只看在途请求与锁的帮手在 Chromium 与 Firefox 里落到 `/sign-in`；第 6 格在第一次续期之后持住锁，不看锁的帮手在放开之前就换页。WebKit 在请求下一个文档之后旧文档发不出请求，没有这个窗口（P1 设计 3.2、3.6；P1 设计审查 A-I1、C-I1）。
+- **门禁**：`e2e/` 里（故事、夹具与以后的 `e2e/perf/`）不许直接调 `goto`、`reload`，只许经帮手。帮手所在的那一个模块是唯一直接调用它们的地方，门禁对它整个例外：不报它的直接调用，也不数它里面的逃生口（修订核对第 1 轮 C 的 N8；P1 设计审查 A-M1、C-M2）。逃生口要显式写，门禁按它的表核对每个文件的逃生口的个数，理由写在表里。门禁是 `tools/e2e-navigation/check.mjs`（`make lint-web`），先在样例上证明它看得见每一种违例，带反向对照（13.4 第 1 条）。
+- **对照测试**：把续期的答复延后（`route.fetch()` 之后、`fulfill` 之前扣住，同 `a5-refresh-reuse.spec.ts` 的第二个测试），再 `goto`。经逃生口不等时落到 `/sign-in`，经帮手时不落。对照测试是故事 A15（`e2e/stories/identity/`，三种浏览器）：续期的答复在途时、第一次续期还没发出时，经逃生口离开都落到 `/sign-in`（后一格只在 Chromium 与 Firefox：WebKit 在请求下一个文档之后旧文档发不出请求）；经帮手都不落；另几格各核对帮手等第一次续期、续期的锁与在途的读（P1 设计 3.6）。
 - **不改产品**：M1 第 10 节的取舍照旧。用户在续期途中刷新同样会被登出：写进已知限制，并进 v0.2 的移交 `M12-release.md`，留给 v0.2 重看 M1 第 10 节的取舍（设计审查 C 的 N6）。
 - **第 50 条**：`e2e/global-setup.ts:14-66` 的网络等待触发时打一行日志，看 CI 的 runner 上它到底触发了没有（I3 第 9 节第 50 条）。
 
@@ -671,13 +671,13 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 | 目标 | 做什么 | 在哪里跑 | Step |
 |---|---|---|---|
 | `make vuln` | Go 一侧 `govulncheck`，只扫 `server/`；npm 一侧 `pnpm audit --prod`，级别可传（默认 `low`）；版本固定 | `vuln.yml`（每天、`workflow_dispatch`、改了它自己或依赖清单的推送）；发布的闸门（npm 照 `high`）；**本机不跑** | P1/S2 |
-| `make outdated` | 只读地列出过时的 Go 模块、npm 包、actions 与镜像 | `vuln.yml` 里一个只手动触发的作业，发布之前跑一次；**本机不跑** | P1/S2 |
+| `make outdated` | 只读地列出过时的 Go 模块、npm 包、actions 与镜像 | `vuln.yml` 里一个手动触发、改了依赖清单的推送也跑的作业（`continue-on-error`，失败不让运行变红），发布之前手动触发一次；**本机不跑** | P1/S2 |
 | `make deploy-check` | `docker compose -f deploy/compose.yaml config -q` | CI 的 `image` 一份 | P5/S3 |
 | `make lint` 加 actionlint | 核对三份工作流；至少 1.7.10，`go run …@版本` | 本机与 CI | P5/S1 |
 | `release.yml` 的权限检查 | 读工作流，演练作业不许有 write，带反向对照 | `make lint` 的一步 | P5/S1 |
 | 性能的目标（名字在 P4 的设计里定） | 跑 4.7 的生成器、驱动与浏览器脚本 | 只在本机手跑 | P4/S1、S2 |
 
-- **工作流**：`ci.yml` 只在分支上跑（4.10）；`release.yml` 是新的，tag 走发布、分支与 `main` 走只读的演练（4.10）；`vuln.yml` 是新的，每天、手动与改了它自己或依赖清单的推送时跑 `make vuln`，手动触发时另可跑 `make outdated`（4.3）。
+- **工作流**：`ci.yml` 只在分支上跑（4.10）；`release.yml` 是新的，tag 走发布、分支与 `main` 走只读的演练（4.10）；`vuln.yml` 是新的，每天、手动与改了它自己或依赖清单的推送时跑 `make vuln`，手动触发与改了依赖清单的推送时另跑 `make outdated`（4.3）。
 - **`ci-wait.sh`**（`docs/v0.1/claude_to_codex/tools/`）：按工作流取运行，默认 `ci.yml`，第二个参数可改（已在 `b54cd679`，4.2）。
 
 ### 5.4 发布物
@@ -722,7 +722,7 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 
 | Step | 内容 | 改的部件 | 单独合并为绿 | 组合根与 CI 的用时 |
 |---|---|---|---|---|
-| S1 e2e 的帮手 | 4.4：夹具里的在途记录与帮手（`goto`、`reload`、跨文档的后退、显式的逃生口）；`pageWatch` 认出 `/sign-in`；109 个故事文件与 `e2e/fixtures/wiki-health.ts:157` 换上帮手；门禁（含 `e2e/fixtures/`，数逃生口）与它的反向对照；延后续期的对照测试；"等第一次续期"由对照测试定；`global-setup.ts` 的一行日志（第 50 条）；总体设计 13.4 第 3 条 | e2e、docs | 能：只改 e2e，CI 的 e2e 一份证明；TR2 经逃生口 | 组合根不变。e2e 作业预计多 0–30 秒（推断：多数 `goto` 之前没有在途的读；有任务时每秒轮询的设置页可能要多等几次，没有量；今天 6:52–9:23，时限 20 分钟） |
+| S1 e2e 的帮手 | 4.4：夹具里的在途记录与帮手（`goto`、`reload`、显式的逃生口）；`pageWatch` 认出 `/sign-in`；109 个故事文件与 `e2e/fixtures/wiki-health.ts:157` 换上帮手；门禁（含 `e2e/fixtures/`，数逃生口）与它的反向对照；延后续期的对照测试；等这个文档的第一次续期与续期的锁；`global-setup.ts` 的一行日志（第 50 条）；总体设计 13.4 第 3 条 | e2e、tools、build（`Makefile`、`knip.jsonc`）、docs | 能：只改 e2e，CI 的 e2e 一份证明；逃生口只有 A15 的两格 | 组合根不变。e2e 作业预计多 0–30 秒（推断：多数 `goto` 之前没有在途的读；有任务时每秒轮询的设置页可能要多等几次，没有量；今天 6:52–9:23，时限 20 分钟） |
 | S2 工具链与安全更新 | 4.3：Go 1.27.4（两份 `go.mod`；Dockerfile 的 tag、摘要与构建时的断言；README；文档里的五处：总体设计 13.1 第 32 条、06-environment 两处、05-lessons、03-project-background）；PostgreSQL 18.7（五处、守卫加 README）；三个镜像的摘要；两个 action；`make vuln`（Go 只扫 `server/`，npm 的 `pnpm audit --prod`）、新的 `vuln.yml` 与它报出的模块；`make outdated`；Dockerfile 的 Go 版本的守卫；两处注释的核对；总体设计 7.1 与 13.5 第 2 条 | server、deploy、e2e、CI、Makefile、README、docs | 能：一个分支、一次完整的 CI，`vuln.yml` 在同一个分支上由 `push` 触发跑一次；PostgreSQL 的五处由守卫一起改，漏一处就红 | 组合根各份照新的工具链与数据库重量：合并之后两次 `main`，过 450 秒照 06-environment 第 4 节挪份。`ci.yml` 不多跑 `make vuln`。`image` 一份要拉新的基础镜像 |
 
 - S1 先做：S2 要一次干净的完整 CI，不该被 `goto` 的偶发打红。
@@ -930,7 +930,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 2. **12.3**，设计定稿时：在 `- M11 依赖 M10（模式契约、守卫的框架、lint 的显式范围、模式变化的订阅者、来源的哈希）、M8（撤销的计划、后台任务与分批，用于回滚）、M9（MCP 的注册表、\`batch\`、多轮的调度）。` 之后加一行 `- M12 依赖 M0–M11 全部（发布的是它们）；改动前面 M 的地方逐项写在 [M12 总设计](M12-release/00-M12-design.md)第 8 节。`
 3. **12.6**：设计定稿时 `| M12 | 发布 | 未开始 | — |` → `| M12 | 发布 | 进行中 | [00-M12-design.md](M12-release/00-M12-design.md) |`；收尾之后照 4.12 是"实现完成，待人工验收"。
 4. **7.1**，随 P1/S2 改：`例如 \`postgres:18.6-trixie\`` → `例如 \`postgres:18.7-trixie\``。
-5. **13.5 第 2 条**，随 P1/S2 改：`Node 本身按大版本（\`.node-version\`）。` → `Node 本身按大版本（\`.node-version\`）。Dockerfile 的 golang 镜像的版本（tag 与 server 阶段构建时断言的 \`go env GOVERSION\`）等于两份 \`go.mod\` 的 \`toolchain\`（golang 镜像设了 \`GOTOOLCHAIN=local\`，\`FROM\` 里生效的是摘要）；测试、开发、部署样例与 smoke 的 PostgreSQL 镜像相同，\`pgtest/image_test.go\` 列出要核对的各处；都由测试核对（M12）。`
+5. **13.5 第 2 条**，随 P1/S2 改：`Node 本身按大版本（\`.node-version\`）。` → `Node 本身按大版本（\`.node-version\`）。Dockerfile 的 golang 镜像的版本（tag 与 server 阶段构建时断言的 \`go env GOVERSION\`）与 README 写给贡献者的版本等于两份 \`go.mod\` 的 \`toolchain\`（golang 镜像设了 \`GOTOOLCHAIN=local\`，\`FROM\` 里生效的是摘要）；测试、开发、部署样例与 smoke 的 PostgreSQL 镜像相同，\`pgtest/image_test.go\` 列出要核对的各处；都由测试核对（M12）。`
 6. **13.5** 加第 6 条，随 P5/S1、S2 改：`6. **版本号与发布**（M12）：版本号只由 ldflags 注入，Makefile、buildinfo 与 Dockerfile 的默认值相同，由测试核对；发布之后改为下一个补丁版本加 \`-dev\`。发布由推 \`v*\` 的 tag 触发 \`release.yml\`，闸门只放过 \`main\` 上 \`ci.yml\` 已绿、\`make vuln\` 为绿的提交；依赖的漏洞扫描另在每天的 \`vuln.yml\` 里跑，只在 runner 上。镜像两种架构，带签名、SBOM 与来源证明，只打确切的版本号，不打 \`latest\` 与浮动的"大版本.小版本"。推 tag 之前问负责人；收尾之后为发布做的改动在 \`m12-release\` 这样的分支上，合并之后才推 tag。`
 7. **第 11 节**，随 P5/S3 改：
    - 第一段，从 `**M10/P3/S1升级补充**` 到 `不以暖样本承诺生产停机。`（各恰好出现一次）整段换成 `部署、备份、升级与回退的步骤在 [deploy/README.md](../../deploy/README.md)（M12）；这里只列要点。`
@@ -944,7 +944,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 9. **第 14 节**，随 P4/S3、P5/S3 改：写着 M12 的十一行（搜索、渲染的内存、`FOR SHARE`、解析预算先到先得、lint 与 `index.md`、`NOTIFY`、保存串行与改名、附件与导入导出、页面树、版本的增长、升级的冻结时长）照实测的结论改写："M12 实测"与"M12 压测"改为量得的数、结论与已知限制。旧文字的锚点：`M12 压测`、`M12 实测；不达标时改为分层加载`、`v0.1 全部保留；M12 实测后在 v0.2 设计保留策略`、`配额与负载留给 M12（M7 写的移交）`、`10 万页与 30 万页由 M12 实测`，各恰好出现一次；其余几行在 P4/S3 的文档提交里照同样的办法先核对。13.4 第 8 条里的 `进 M12 的性能移交（00-M11 第 232 条）`、`检查的十万页在 M12` 与第 9 条里的 `旧generic返回2000却扫52000的失败和未成功实验仍移交M12`（各恰好出现一次）一并照结论改成量得的数或已知限制（设计审查 C 的 M7）。
 10. **13.1 第 28 条（标题键）与第 30 条（实时推送）**，随 P3/S1 改：标题键加切罗基文那一步；实时推送加每个凭证的上限与重置、每个账户的硬上限与 429。
 11. **13.2 第 12 条**，随 P2/S1 改：从 `` `ConfirmDialog` 发送中仍用 `disabled` `` 起、到它之后的第一个 `第 23 条）。` 为止的那一句（起头恰好出现一次；中间是指向 `M12-release/handoffs/M5-polish.md` 的链接）→ `` `ConfirmDialog` 发送中用 `aria-disabled`，被拒之后焦点还给确认按钮或说明；只有横幅的拒绝时焦点给横幅（M12/P2/S1）。``
-12. **13.4 第 3 条（端到端测试）**，随 P1/S1 改：加一句"故事与夹具经帮手 `goto` 与 `reload`（跨文档的后退同样），帮手先等在途的续期与读答完；有意在请求途中离开的经显式的逃生口；由门禁守住，门禁数逃生口（M12/P1/S1）"。
+12. **13.4 第 3 条（端到端测试）**，随 P1/S1 改：加一句（P1 设计第 8 节第 5 条）："M12/P1/S1：e2e 换文档只经 `e2e/fixtures/navigation.ts` 的 `goto` 与 `reload`：它们先等页面没有在途的接口请求、这个文档的第一次续期已答、续期的锁空着，再换；有意在请求途中离开的写显式的逃生口 `{ inFlight: "leave" }`。门禁 `tools/e2e-navigation/check.mjs`（`make lint-web`）不许 `e2e/` 里别处直接调 `page.goto`、`page.reload`，按表核对每个文件的逃生口；同一个文档里的后退与前进不经帮手。A15 演示续期途中离开会被登出（M1 第 10 节），并核对帮手等的每一样；只有页面版本，接口那一面是 A5 (API)；在三种浏览器里跑，第一次续期发出之前离开的那一格只在 Chromium 与 Firefox（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。"
 13. **1.2** 的末句，收尾时：`以下几项明确留给 v0.2：同步 CLI` 起的那一句末尾，加 `；M12 的已知限制与推后的事项在 [v0.2 的移交](../v0.2/handoffs/)`。
 14. **第 15 节**：设计定稿时加一行，写这些修订与依据；之后每次修订各加一行。
 15. **00-M11 第 302 条**（不是总体设计，同一个提交里改）：`负责人若要放弃也输入名称，在 M12 改。` → `负责人若要放弃也输入名称，在 M12 改。（M12 更正：这里的"v0.1 之内不修"本意是"M11 之内不修"；照负责人 2026-11-13 第 1 问（它点名了 302）在 M12 修，[00-M12](../M12-release/00-M12-design.md) 4.6.1。）`
@@ -1049,7 +1049,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 ### 9.3 e2e
 
 - P1/S1 的帮手有一个对照测试（4.4），经逃生口复现、经帮手不落。
-- 门禁有反向对照：在一个故事里写一个直接的 `page.goto`、在帮手之外的夹具里写一个直接的 `page.reload`，门禁都失败；帮手所在的模块直接调用它们，门禁不报、不计数；逃生口多一处，门禁报出的个数随之变。
+- 门禁有反向对照：在一个故事里写一个直接的 `page.goto`、在帮手之外的夹具里写一个直接的 `page.reload`，门禁都失败；帮手所在的模块直接调用它们，门禁不报、不计数；逃生口多一处、少一处，或出现在表外的文件里，门禁都失败。
 - M12 不加故事分组。打磨的断言加进那一页已有的故事；没有的，在它的分组里加一个故事（照 10.1，每个故事一个文件）。
 
 ### 9.4 实测
@@ -1079,7 +1079,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 ### 9.6 变异（每个 Phase 设计列全，这里是要列进去的）
 
-- P1/S1：去掉帮手的等待（对照测试抓）；帮手漏等 `refresh`；门禁放过直接的 `goto` 或 `reload`；门禁不看 `e2e/fixtures/`；逃生口不计数。
+- P1/S1：帮手什么也不等（A15 第 2、4、5、6 格抓）；帮手不等这个文档的第一次续期（第 4 格，Chromium 与 Firefox 落到 `/sign-in`、WebKit 报旧文档没发续期）；帮手不看续期的锁（第 6 格）；帮手不等在途的读（第 5 格）；`reload` 不先等（第 2 格）；门禁放过直接的 `goto` 或 `reload`；门禁不看 `e2e/fixtures/`；门禁不核对逃生口的表；门禁把帮手模块里的逃生口文字也算进去（P1 设计 7.2）。
 - P1/S2：Dockerfile 的 Go 版本的 tag 与 `toolchain` 不同（守卫抓）；摘要换成别的版本的（构建时的断言抓）；README 的 PostgreSQL 版本不同（守卫抓）。
 - P2：9.1 列的几种，每个 Step 照它的项补全。
 - P3/S1：`TitleKey` 不做切罗基文一步；三处只改一处；`PlainText` 仍跳过自动链接；`listTags` 列 `/`；日志或变更集详情的读不在快照里；流数按账户而不按凭证数、重置最新的那条、账户的硬上限不拒、先看账户再看凭证；整个名字的判断不认只由 U+200B、U+2060、U+3164 组成的名字；`index` 的 `parent:"/"` 被拒；`log` 的 `""` 被当作整本；超时的文字照旧。
@@ -1159,7 +1159,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **308 漏洞扫描**：`make vuln` 跑 `govulncheck`（只扫 `server/`）与 npm 一侧的 `pnpm audit --prod`，只在 runner 上：一个每天跑、可手动触发、改了依赖清单的推送也跑的 `vuln.yml`，与发布的闸门；不进每次推送的 `ci.yml`；npm 一侧闸门只挡 `high`，修不了或无关的写进 `audit.ignore`；每个 Step 合并之前看一眼它的结论；红了开旁支 `m12-toolchain-<版本>`。本机不跑它们与 `make outdated`：调查时权限分类器拒过，规矩是不往外发。GitHub 的依赖图读不出 pnpm 12 的两个文档的锁文件，不当作 npm 一侧的手段（I1-D10，4.3；设计审查 B 改，初稿是"`govulncheck` 进 CI 的 `short` 一份，npm 一侧靠依赖图告警"；修订核对第 1 轮补了 `push` 触发、npm 的级别与忽略、谁去看）。
 - **309 heavy.sh 的锁**固定在 `/tmp/nervewiki-heavy.lock`，仍可由 `NW_HEAVY_LOCK` 改；06-environment 写 `/tmp` 的配额与"改 `TMPDIR` 不再改变锁"。主持者已单独提交（`8c247237`，4.2）。
 - **310 工具链与依赖只做与安全相关的更新**（I1-D9、D10、D12）：Go 1.27.4、PostgreSQL 18.7、三个镜像的摘要、两个 action、`make vuln` 报出的模块与包；Node 26 与功能性的大版本不升；加 `make outdated`（I1-D11）。Dockerfile 的 Go 版本由 tag 与构建时的断言两处守住；文档里写着 1.27.1 的五处随之（4.3；设计审查 B 补）。
-- **311 e2e 的帮手**（I3 第 7 节第 14 条）：`goto` 与 `reload` 之前等在途的续期与读；跨文档的后退另给一种；显式的逃生口给 TR2 与对照测试，门禁数它；门禁含 `e2e/fixtures/`；M1 第 10 节的取舍不动（4.4；设计审查 C 改，初稿把 `goBack`、`goForward` 一律算进来，没有逃生口）。
+- **311 e2e 的帮手**（I3 第 7 节第 14 条）：`goto` 与 `reload` 之前等在途的续期与读；跨文档的后退另给一种；显式的逃生口只给有意在请求途中离开的故事（P1 里是 A15），门禁数它；门禁含 `e2e/fixtures/`；M1 第 10 节的取舍不动（4.4；设计审查 C 改，初稿把 `goBack`、`goForward` 一律算进来，没有逃生口；P1 设计 2.1 第 2 条改，原来是"显式的逃生口给 TR2 与对照测试"；P1 设计 2.1 第 1 条：没有故事要跨文档的后退，不做）。
 - **312 打磨的分级**（I3 第 7 节第 1、2、6、7、12、13、15 条）：照 I3 第 9 节的分类；只从 ARIA 推断的八项并进发布之后的读屏验收（负责人第 6 问），49 与 24.3 同改、留在 v0.1；H1、24.1 写成已知限制（负责人第 5 问）；第 48 条算 A；单复数用 `*One` 键；退出登录问"仍要退出吗"；第 40 条两份模板都改；M 类并进发布之后的人工验收，33.1 先排查（4.5；负责人第 5、6 问与设计审查 C 改）。
 - **313 标题键与标题 id 在 v0.1.0 之前改**（I3 第 7 节第 4、5 条）：三处折叠一起改，删掉 `searchFold` 的映射，不升分词的版本；10.2 不升提取规则的版本、不要 reindex（4.6.3；设计审查 A 补）。
 - **315 事件流的上限**（I2-D9）：每个凭证至多 4 条，超出以新的原因 `superseded` 重置同一凭证最老的一条；先按凭证判，只有净增一条时才看账户的上限：每个账户至多 64 条，超出答 429 带 `Retry-After`；两个都是常量（4.6.5；设计审查 A 改，初稿是"每个账户至多 16 条、配置项、超出重置最老的"）。
@@ -1191,6 +1191,27 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **334 收尾记录列出 P1/S1 之后 `main` 的 e2e 红过的每一次与总次数**，不逐次列全部（设计审查 C 的 Q3 与过度设计 O2）。
 - **335 MCP 调用超时的文字在 P3/S1 改，`batch` 不设单独的期限**（设计审查 C 的 I2；移交 M4-performance 第 22 条之后的补记 `:490`）：通用的"the call ran out of time"改为说明期限已到、什么也没有写、拆小再试，是误导的文字（B）；单独的期限进已知限制与 v0.2；硬件下限写进部署文档（4.6.4、4.8）。
 - **336 T2、T4 在 v0.1 修**（负责人 2026-11-14 第 5 问）：T2 是按人的常量上限，答一个新的码（例如 `transfer.too_many_jobs`，状态码推荐 429，P3/S3 照契约与码的约定定），有自己的两种语言的文字，网页照它显示，全局的 503 `server_busy` 照旧；T4 是启动时把上一个进程在 River 取到之后、开始之前停掉的任务记成失败，River 那一边照 `Job.DiscardRunning` 的先例、注意它的次序。都在 P3/S3（4.6.6；修订核对第 1 轮 A 的 M9、N12，C 的 M10 改，第一次修订是"同样答 503"）。
+
+### 2026-11-15：P1 的设计审查之后的取舍 337–352（主持者的决定，负责人可以改判）
+
+337–350 是 P1 初稿的十四条（P1-1 到 P1-14，P1-k 是 336 + k），设计审查之后照次序编号，344、347、349 照审查改写；351、352 是审查之后新定的（P1-15、P1-16）。每条在 [P1 设计](01-P1-foundation.md) 2.3，审查里的出处在 [P1 审查记录](reviews/P1-design-review.md)"主持者的决定"一节。
+
+- **337 e2e 换文档的帮手是函数 `goto(page, url, options)`、`reload(page, options)`，在 `e2e/fixtures/navigation.ts`，不是 `page` 的方法**（P1-1；P1 设计 3.2）：`anotherPage`、`anotherTab` 与故事自己开的标签页也要它，包一层 `Page` 会让 Playwright 的类型与 `page.context()` 的页面对不上。
+- **338 在途的请求只算 `/api/v0/` 之下的 fetch 与 XHR，事件流除外**（P1-2；P1 设计 3.2）：图片、媒体与附件的内容打断不了续期，媒体的请求还可能一直开着。
+- **339 帮手等三样：在途的接口请求答完、这个文档的第一次续期已答（文档的 `performance` 里有 `/api/v0/auth/refresh` 一条）、续期的锁空着（没有 Web Locks 时看租约）**（P1-3；设计审查 A-I1、C-I1 之后每一样各有 A15 的一格只在它去掉时失败；P1 设计 3.2、3.6）。
+- **340 帮手等 10 秒，然后失败并写出在等什么；在页面里读的那一次与剩下的时间赛跑**（P1-4；设计审查 C-N2；P1 设计 3.2）：比续期自己的 8 秒长、比测试的 30 秒短；Chromium 在下一个文档还没提交时 `page.evaluate` 不返回。
+- **341 没被监视的页面，帮手直接失败**（P1-5；P1 设计 3.2）：在第一次调用时才开始监视，那时已在途的请求看不到。
+- **342 落到 `/sign-in` 只写进失败时的页面状态，不让通过的测试失败**（P1-6；P1 设计 3.3）：有意走到登录页的故事很多；收尾照 CI 注解里 `sent back to sign in:` 一行数（决定 334）。
+- **343 门禁是读源码的 Node 脚本 `tools/e2e-navigation/check.mjs`，进 `make lint-web`，每次先在内置的样例上证明它看得见违例**（P1-7；P1 设计 3.5）：oxlint 的 `no-restricted-properties` 禁得了 `.goto`，却数不了逃生口、核不了表。
+- **344 门禁按文字找，注释与字符串也算；帮手的模块整个例外**（P1-8，照设计审查 A-M1、C-M2 改写；P1 设计 3.5）：oxfmt 把帮手的报错信息改成单引号之后，源码里就有逃生口的文字；不引入 TypeScript 的解析器。
+- **345 A15 是身份分组里的新故事，在三种浏览器里跑，第 3 格例外（351）**（P1-9；P1 设计 3.6）：它是用户看得到的行为，又是帮手的对照；不放进 A5，A5 的第二格的控制台期望是 Chromium 的原文。
+- **346 `make vuln`、`make outdated` 在 GitHub 的 runner 之外拒绝运行**（P1-10；设计审查 A-M3、B-N3 改了它的变异；P1 设计 3.12）：本机不往外发依赖清单（决定 308），拒绝比写在注释里可靠。
+- **347 Go 版本的守卫放在 `platform/buildinfo`；P5/S1 的版本号守卫放在哪里由 P5/S1 的设计定，P1 设计建议同一个包**（P1-11，照设计审查 A-M6 改写；P1 设计 3.9、第 9 节）。
+- **348 Dockerfile 构建时的版本断言放在 server 阶段 `FROM` 之后的第一行**（P1-12；P1 设计 3.9）：在 `go mod download` 之前，摘要不对时最早失败。
+- **349 第 50 条只在网络等待真的发生时打日志，S1 先做一次正向对照**（P1-13，照设计审查 A-M5 补；P1 设计 3.7）：有了正向对照，CI 上没看到这一行才算没触发。
+- **350 `search_guard_test.go:13` 的 "Go 1.27.1" 不改**（P1-14；P1 设计 2.3）：它记的是 M10 校准那一刻的环境，不是要求。
+- **351 A15 的第 3 格（第一次续期发出之前离开）只在 Chromium 与 Firefox 跑，WebKit 跳过并写明理由；第 4 格三种都跑，WebKit 里只证明帮手等第一次续期**（P1-15；设计审查 C-I1；P1 设计 3.6）：WebKit 在请求下一个文档之后，旧文档的请求一个也发不出去，没有这个窗口（审查 C 的探针 B、D 与修订时的原型）。
+- **352 S2 合并之后，`main` 的第五份第一次落在 EPYC 7763 上时，记下它的 Test 一步，与收尾之后的 425 秒比；两次落在 7763 上的平均过 450 秒时，照 06-environment 第 4 节挪份；不为等 7763 拖住 S2 的合并**（P1-16；设计审查 A-Q1，主持者定；P1 设计 7.4、7.5、第 8 节第 1 条）：照 7.5 写明、不硬比不同 CPU 的数。
 
 ### 对主持者说明的核实
 
@@ -1231,7 +1252,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 地基（S1、S2） | — | 未开始 | — | — |
+| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（设计已审查） | [设计](reviews/P1-design-review.md) | — |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
 | P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
@@ -1247,6 +1268,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-15 | 第二次修订。B5 只用 M8 写下的规则在本机判，最低配置的硬期限用 7763 上的实数加 `parse_max_wait`，规则没过不自动降常量；有硬期限的各行有实数时由实数定。T2 的拒绝用一个新的码与它自己的文字。24.1 进 `M12-transfer.md`，已知限制逐项有去处。`vuln.yml` 加 `push` 触发；`pnpm audit` 闸门只挡 `high`，修不了的写进 `audit.ignore`；每个 Step 合并之前看它的结论。演练在每次推送上都跑。`ci-wait.sh` 写成 P1 之前已改好（`b54cd679`）。reset 加原因 `superseded`；凭证与账户上限的先后；T4 照 `Job.DiscardRunning`；帮手所在的模块不受门禁；Release 的附件 `--clobber`；v0.1.1 的移交改名 `M12-after-release.md`，收 `vuln.yml` 的两件 | [审查记录](reviews/M12-design-review.md)"修订核对第 1 轮"（A 新 1I 1M 4N，B 新 4M 2N，C 新 2M 1N）；主持者的第二次修订说明 |
 | 2026-11-15 | 修订核对第二轮之后的修订（主持者）：实数要与预算同一规模，B7 在 10 万页上只能推断（A-N13）；升级的回滚不受按人的上限拒绝（A-N14）；B5 的硬期限只对请求一路的守卫核，`MaxJobItems` 只用规则一层（A-N15）；查 `vuln.yml` 结论的 `gh run list` 加 `--branch main`（B-N11）；`vuln.yml` 的 `push` 路径加 `pnpm-workspace.yaml` 与 `Makefile`（B-N12） | [审查记录](reviews/M12-design-review.md)"修订核对第 2 轮"（A 新 3N，B 新 3N，C 没有新发现） |
 | 2026-11-15 | 设计定稿：第 7 节"总体设计的修订"第 1–3、14 条以脚本落进 `v0.1-design.md`（每段旧文字在替换时恰好出现一次），其中 12.2 的 M12 一行是中、12.3 加 M12 的依赖、12.6 的 M12 一行是进行中、第 15 节加 M12 开工一行；第 16 条的前一半落进 `docs/README.md`（M12 的提交说明一句），目录结构的两行在收尾时加；其余各条随实现它们的 Step 或收尾改；六份移交各加"处理进展"，写到 Step（主持者的决定 333）；`06-environment.md` 里 `ci-wait.sh` 那一句改为"取最后建的那一次"（修订核对第 2 轮 B 的 N10）；第 7 节第 11、13 条引的链接改成不在本文件里成为断链的写法（`check_links.py`）；状态改为进行中 | 设计审查与两轮修订核对没有 Important 与 Minor（[审查记录](reviews/M12-design-review.md)）；`02-workflow.md` 第 1 节第 8 步 |
+| 2026-11-15 | P1 设计已审查，S1 开工；P1 设计 2.1 的修订落进本文：不做跨文档的后退；TR2 不用逃生口，逃生口只有 A15 的两格；帮手另等这个文档的第一次续期与续期的锁，各由 A15 的一格定下；门禁管整个 `e2e/`、按表核对逃生口、对帮手的模块整个例外；`pageWatch` 在 `browser.ts` 的 `watchPage`；对照测试是故事 A15；S1 另改 `tools/` 与构建；9.6 的变异照 P1 设计 7.2；`govulncheck@v1.9.0`；README 的 Go 版本进守卫、断言带一句错误信息；`make outdated` 也在改了依赖清单的推送上跑、`continue-on-error`；`vuln.yml` 的 `push` 只在分支上、路径加 `tools/outdated.sh`（2.1 第 10 条撤回）。第 11 节加 P1 的取舍 337–352 | [P1 设计](01-P1-foundation.md)；[P1 审查记录](reviews/P1-design-review.md)（A 2I 6M 10N 1Q、B 1M 4N、C 1I 3M 4N；两轮修订核对新 A 1N、C 2M 2N，都已改，没有 Important 与 Minor） |
 
 ---
 
