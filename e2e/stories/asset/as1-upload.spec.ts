@@ -7,6 +7,7 @@ import type { Locator, Page } from "@playwright/test";
 import { expectAssetsDeletedWithNodes, expectUploaded, storedBlobs } from "../../fixtures/assert/asset";
 import { download, getAsset, listAssets, pngBytes, uploadAsset, utf8 } from "../../fixtures/assets";
 import { countAnswers } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -112,7 +113,7 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   const guide = await createPage(api, pat, notebook.id, "Guide");
   const notesBytes = utf8("Notes beside the guide.\n");
   const uploads = countAnswers(page, "POST", uploadsPath(notebook.id));
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
   const section = attachments(page);
   await expect(section.getByText("Drop files here to upload them.")).toBeVisible();
@@ -209,7 +210,7 @@ test("AS1 (page): files chosen, or dropped on the reading view, upload to the pa
   await expectAssetsDeletedWithNodes(db, [notes2?.id ?? ""]);
 
   // On the notebook's home, the root's.
-  await page.goto(`/${workspace.slug}/notebooks/${notebook.id}`);
+  await goto(page, `/${workspace.slug}/notebooks/${notebook.id}`);
   const root = attachments(page);
   await expect(root.getByRole("button", { name: "Upload" })).toBeVisible();
   await root
@@ -243,7 +244,7 @@ test("AS1 (page): an upload going shows its progress, of the whole request; canc
     downloadThroughput: -1,
     uploadThroughput: 100_000,
   });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   const section = attachments(page);
   await expect(section.getByRole("button", { name: "Upload" })).toBeVisible();
   const before = storedBlobs(nervewiki.storageDir);
@@ -280,7 +281,7 @@ test("AS1 (page): a Markdown file is not sent: the section says to import it, un
       sent += 1;
     }
   });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   const section = attachments(page);
   await expect(section.getByRole("button", { name: "Upload" })).toBeVisible();
 

@@ -1,3 +1,4 @@
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -83,7 +84,7 @@ test("PG6 (page): in the browser the page runs no script, breaks no CSP rule and
     }
   });
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, created.id));
   await expect(pageHeading(page, "Unsafe")).toBeVisible();
   const article = page.getByRole("article");
   await expect(article.getByText("next", { exact: true })).toBeVisible();

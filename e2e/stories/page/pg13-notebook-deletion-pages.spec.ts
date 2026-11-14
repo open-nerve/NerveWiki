@@ -5,6 +5,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { deleteNotebookWith, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, deleteNotebook } from "../../fixtures/notebooks";
 import { deleteOwnerless } from "../../fixtures/ownerless";
@@ -95,17 +96,17 @@ test("PG13 (page): once its admin deletes the notebook, its pages leave the left
   const guide = await createPage(api, tokens.access_token, notebook.id, "Guide");
   await createPage(api, tokens.access_token, notebook.id, "Install", guide.id);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
   await expect(pageTree(page, "Plans").getByRole("link", { name: "Guide", exact: true })).toBeVisible();
 
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   expect(await deleteNotebookWith(page, notebook.id, "Plans")).toBe(204);
 
   await expect(workspaceHeading(page, "Acme")).toBeFocused();
   await expect(pageTree(page, "Plans")).toHaveCount(0);
   await expectPagesDeletedWith(db, notebook.id, 2);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
   await expect(pageTree(page, "Plans")).toHaveCount(0);
 });
@@ -128,11 +129,11 @@ test("PG13 (page): the workspace's admin deletes an ownerless notebook on the ow
   await tree(api, pat, notes);
   const page = await signedInPage(tokens);
 
-  await page.goto(ownerlessPath(workspace.slug));
+  await goto(page, ownerlessPath(workspace.slug));
   expect(await deleteOwnerlessWith(page, drafts.id, "Drafts", who(displayNameOf(leaverEmail), leaverEmail))).toBe(204);
   await expectPagesDeletedWith(db, drafts.id, 3);
 
-  await page.goto(`/${old.slug}/settings/general`);
+  await goto(page, `/${old.slug}/settings/general`);
   expect(await deleteWorkspaceWith(page, old.slug)).toBe(204);
   await expectPagesDeletedWith(db, notes.id, 3);
 });

@@ -3,6 +3,7 @@ import type { ApiClient, Page, Upgrade, UpgradeCheck } from "@nervewiki/api-clie
 import { expectUpgrade } from "../../fixtures/assert/wiki";
 import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
 import { errorOf, type McpClient, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -223,7 +224,7 @@ test("UP5 (page): the admin checks the upgrade, the frontmatter gate not passed,
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
   const page = await signedInPage(tokens);
   const checks = countAnswers(page, "GET", checkPath);
-  await page.goto(upgradePath(workspace.slug, notebook.id));
+  await goto(page, upgradePath(workspace.slug, notebook.id));
   await expect(upgradeBanner(page, bannerText.upgrading)).toBeVisible();
   const check = upgradeSection(page, "Check");
   const result = check.getByRole("status", { name: "The check's result", exact: true });

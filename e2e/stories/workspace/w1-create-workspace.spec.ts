@@ -2,6 +2,7 @@ import { accountIdOf } from "../../fixtures/assert/identity";
 import { countWorkspaces, expectNewWorkspace, expectNoWorkspaceAdded } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register, registerOnboarded } from "../../fixtures/auth";
 import { failedToLoad, noteOf } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import {
   createWorkspaceWith,
@@ -77,7 +78,7 @@ test("W1 (page): an account without a workspace lands on the creation page, whic
   const taken = slugFor(testInfo, "taken");
   await createWorkspace(api, (await registerOnboarded(api, emailFor(testInfo, "other"))).access_token, "Other", taken);
   const page = await signedInPage(tokens);
-  await page.goto("/");
+  await goto(page, "/");
   await expectCreatePage(page);
 
   // The slug follows the name; the server says whether a slug is free, under the field.

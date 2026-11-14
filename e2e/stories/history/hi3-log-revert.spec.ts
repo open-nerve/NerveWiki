@@ -9,6 +9,7 @@ import type { Database } from "../../fixtures/db";
 import { settleEvents } from "../../fixtures/events";
 import { getChangeset, listChanges, listChangesets, revertChangeset } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -306,7 +307,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   const of = await written(api, pat, b, adminEmail, notebook.id);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, of.alpha));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, of.alpha));
   await expect(pageHeading(page, "Alpha")).toBeVisible();
 
   await page
@@ -330,7 +331,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   expect(new URL(page.url()).search).toBe(`?actor=${bId}`);
   await expect(main.getByRole("status")).toHaveText("Listed: 1.");
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, of.alpha));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, of.alpha));
   await main.getByRole("button", { name: "Page actions", exact: true }).click();
   await page.getByRole("menuitem", { name: "This page's history", exact: true }).click();
   await expect(page).toHaveURL(historyPath(workspace.slug, notebook.id, { page: of.alpha }));
@@ -350,7 +351,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
 
   // The renamed page, open in another tab: its backlinks hold Alpha's line as the rename wrote it again.
   const renamedTab = await anotherTab(page);
-  await renamedTab.goto(wikiPagePath(workspace.slug, notebook.id, of.beta));
+  await goto(renamedTab, wikiPagePath(workspace.slug, notebook.id, of.beta));
   await expect(pageHeading(renamedTab, "Gamma")).toBeVisible();
   const backlinks = renamedTab
     .getByRole("complementary", { name: "About this page", exact: true })
@@ -382,7 +383,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
 
   // Notes written since the web's write: its undo is refused, the dialog naming Notes and why.
   await writeContent(api, pat, of.notes, { content: "Again.\n", base_revision: 2 });
-  await page.goto(changesetPath(workspace.slug, notebook.id, of.write));
+  await goto(page, changesetPath(workspace.slug, notebook.id, of.write));
   const refused = await revertWith(page, of.write);
   expect(refused.status()).toBe(409);
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
@@ -397,7 +398,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   expect(await readContent(api, pat, of.notes)).toMatchObject({ content: "Again.\n", revision: 3 });
 
   // Notes written through the editor, an edit session: that session's changeset undone (00-M8 section 9).
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, of.notes));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, of.notes));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   await startEditing(page);
   await page.keyboard.press("ControlOrMeta+End");
@@ -409,7 +410,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   const [session] = (await listChangesets(api, pat, notebook.id)).data?.data ?? [];
   expect(session).toMatchObject({ kind: "edit", client: "web", node_count: 0, content_count: 1 });
   const sessionId = session?.id ?? "";
-  await page.goto(historyPath(workspace.slug, notebook.id));
+  await goto(page, historyPath(workspace.slug, notebook.id));
   await expect(listed.nth(0)).toContainText("Wrote “Notes”");
   await listed.nth(0).getByRole("link").first().click();
   await expect(page).toHaveURL(changesetPath(workspace.slug, notebook.id, sessionId));

@@ -3,6 +3,7 @@ import type { AuthTokens } from "@nervewiki/api-client";
 import { expectNewAccount, expectNewSession } from "../../fixtures/assert/identity";
 import { bearer, emailFor, password, recordOf, register } from "../../fixtures/auth";
 import { signUpWith } from "../../fixtures/auth-pages";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 
 // A1, a new account (M1 design 3).
@@ -44,7 +45,7 @@ test("A1 (page): a visitor signs up, lands on onboarding, and the browser keeps 
   const addresses: string[] = [];
   page.on("console", (message) => void console.push(message.text()));
   page.on("request", (request) => void addresses.push(request.url()));
-  await page.goto("/sign-up");
+  await goto(page, "/sign-up");
   await page.evaluate(() => Object.assign(window, { nervewikiE2eDocument: "sign-up" }));
 
   const answer = await signUpWith(page, email, password);

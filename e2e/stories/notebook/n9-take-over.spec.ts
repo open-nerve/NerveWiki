@@ -12,6 +12,7 @@ import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookGroups, notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
@@ -145,7 +146,7 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
   ).toBe(204);
   const page = await signedInPage(adminTokens);
   const listedAnswer = answerTo(page, "GET", `/api/v0/workspaces/${slug}/ownerless-notebooks`);
-  await page.goto(ownerlessPath(slug));
+  await goto(page, ownerlessPath(slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 1)]);
   const { data: listed } = (await (await listedAnswer).json()) as { data: OwnerlessNotebook[] };
@@ -182,11 +183,11 @@ test("N9 (page): a workspace admin takes the ownerless notebook over: its left c
 
   // A member: the workspace's settings have no ownerless notebooks, and their address says they are the admins'.
   const matePage = await anotherPage(mateTokens);
-  await matePage.goto(`/${slug}/settings/general`);
+  await goto(matePage, `/${slug}/settings/general`);
   const settings = matePage.getByRole("navigation", { name: "Workspace settings", exact: true });
   await expect(settings.getByRole("link", { name: "Members", exact: true })).toBeVisible();
   await expect(settings.getByRole("link", { name: "Ownerless notebooks", exact: true })).toHaveCount(0);
-  await matePage.goto(ownerlessPath(slug));
+  await goto(matePage, ownerlessPath(slug));
   await expect(
     matePage.getByText("Only the workspace's admins see its ownerless notebooks.", { exact: true })
   ).toBeVisible();

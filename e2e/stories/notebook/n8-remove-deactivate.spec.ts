@@ -11,6 +11,7 @@ import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { accept, invite, joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { removeMemberWith, who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
@@ -129,7 +130,7 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
   const membership = await memberOf(api, adminPat, workspace.slug, ownerEmail);
   const owner = who(displayNameOf(ownerEmail), ownerEmail);
   const page = await signedInPage(adminTokens);
-  await page.goto(`/${workspace.slug}/settings/members`);
+  await goto(page, `/${workspace.slug}/settings/members`);
 
   // The dialog says what becomes of the notebooks the member alone administers.
   await page.getByRole("button", { name: `Remove ${owner}`, exact: true }).click();
@@ -151,9 +152,9 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
 
   // Its reader reads it as before; its members page says it has no admin, and who can take it over.
   const matePage = await anotherPage(mateTokens);
-  await matePage.goto(notebookPath(workspace.slug, plans.id));
+  await goto(matePage, notebookPath(workspace.slug, plans.id));
   await expect(notebookHeading(matePage, "Plans")).toBeVisible();
-  await matePage.goto(notebookPath(workspace.slug, plans.id, "members"));
+  await goto(matePage, notebookPath(workspace.slug, plans.id, "members"));
   await expect(
     matePage.getByText("This notebook has no admin. A workspace admin can take it over.", { exact: true })
   ).toBeVisible();
@@ -179,7 +180,7 @@ test("N8 (page): the account's deactivation is refused while it is the only admi
   await accept(api, ownerTokens.access_token, await invite(api, adminPat, lab.slug, ownerEmail, "member"));
   const solo = await createNotebook(api, ownerTokens.access_token, lab.slug, "Solo");
   const page = await signedInPage(ownerTokens);
-  await page.goto("/settings/security");
+  await goto(page, "/settings/security");
 
   await page.getByRole("button", { name: "Deactivate account" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Deactivate your account?" });

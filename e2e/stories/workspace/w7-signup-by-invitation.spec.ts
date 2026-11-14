@@ -7,6 +7,7 @@ import { formError, signUpWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
 import { acceptWith, linkTo } from "../../fixtures/invitation-pages";
 import { accept, invite } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createFirstNotebookWith, notebookStep, saveProfileStep, stepRecorded } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 import { workspaceHeading } from "../../fixtures/workspace-pages";
@@ -70,7 +71,7 @@ test("W7 (page): with sign-up closed, the invited address signs up on the link's
   const workspace = await createWorkspace(closed, pat, "Acme", slugFor(testInfo));
   const email = emailFor(testInfo, "invitee");
   const invitation = await invite(closed, pat, workspace.slug, email, "member");
-  await page.goto(linkTo(invitation, baseURL));
+  await goto(page, linkTo(invitation, baseURL));
   await expect(page.getByText("You are invited to join Acme.", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Sign up", exact: true }).click();
 

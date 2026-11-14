@@ -5,6 +5,7 @@ import { expectUpgrade, upgradesOf } from "../../fixtures/assert/wiki";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes, postPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -248,7 +249,7 @@ test("UP3 (page): an admin abandons the upgrade on its page; the rollback, queue
   // Ended, the upgrade is gone: its page's read again after the end, and the mode event's, answer 404.
   pageWatch.expectConsole({ errors: [failedToLoad(404), failedToLoad(404)] });
   const page = await signedInPage(tokens);
-  await page.goto(upgradePath(workspace.slug, notebook.id));
+  await goto(page, upgradePath(workspace.slug, notebook.id));
   await expect(upgradeBanner(page, bannerText.upgrading)).toBeVisible();
   const abandon = page.getByRole("button", { name: "Abandon this upgrade…", exact: true });
   await expect(abandon).toBeVisible();

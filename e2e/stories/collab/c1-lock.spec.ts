@@ -4,6 +4,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { readLock } from "../../fixtures/collab";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, openSession, postSession } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
@@ -57,11 +58,11 @@ test("C1 (page): while A edits Notes, B's Edit keeps the reading view, saying A 
   const path = wikiPagePath(workspace.slug, notebook.id, notes.id);
   const page = await signedInPage(tokens);
 
-  await page.goto(path);
+  await goto(page, path);
   await startEditing(page);
   await expect.poll(() => aliveSessionsOf(db, notes.id)).toHaveLength(1);
   const [held] = await aliveSessionsOf(db, notes.id);
-  await b.goto(path);
+  await goto(b, path);
   const aEditing = `${displayNameOf(adminEmail)} is editing this page.`;
   // B sees A editing as the page opens, before pressing Edit.
   await expect(b.getByText(aEditing, { exact: true })).toBeVisible();

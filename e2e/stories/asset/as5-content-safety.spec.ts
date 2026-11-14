@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import type { Request } from "@playwright/test";
 
 import { download, oggOpus, pngBytes, uploadAsset, utf8, webmHead, type UploadFile } from "../../fixtures/assets";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
@@ -173,14 +174,14 @@ test("AS5 (page): an SVG opened at its address runs no script and loads nothing 
   await page.route("https://example.com/**", (route) => route.abort());
 
   const svgURL = new URL(svg.content_url, nervewiki.baseURL).toString();
-  await page.goto(svgURL);
+  await goto(page, svgURL);
   await expect(page.locator("rect")).toBeAttached();
   expect(await page.title(), "the SVG's title, which its script would change").toBe("drawing");
 
   const htmlURL = new URL(html.content_url, nervewiki.baseURL).toString();
   const [downloaded] = await Promise.all([
     page.waitForEvent("download"),
-    page.goto(htmlURL).catch(() => undefined), // a download is no navigation
+    goto(page, htmlURL).catch(() => undefined), // a download is no navigation
   ]);
   expect(downloaded.suggestedFilename()).toBe("page.html");
   expect(readFileSync(await downloaded.path())).toEqual(Buffer.from(htmlBytes));

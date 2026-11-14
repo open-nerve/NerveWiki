@@ -7,6 +7,7 @@ import { expectBackgroundJob, idsOf } from "../../fixtures/assert/transfer";
 import { download, getAsset, listAssets, pngBytes } from "../../fixtures/assets";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -180,7 +181,7 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   const main = page.getByRole("main");
   // Big deleted from the tree as another page shows: shown, its own panels would be read again as the backlinks of
   // its hundred notes change (a links event naming no page, past MaxEventPages), and answer 404 (P4B fix check F-1).
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, index.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, index.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index", "Big"]);
 
   await choosePageAction(page, "Plans", "Big", "Delete");

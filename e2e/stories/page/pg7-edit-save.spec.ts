@@ -14,6 +14,7 @@ import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, getView, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -161,7 +162,7 @@ test("PG7 (page): an editor opens the editor with Ctrl+E and saves twice with Ct
   const notes = await createPage(api, adminPat, notebook.id, "Notes");
   await createPage(api, adminPat, notebook.id, "Other");
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await expect(pageHeading(page, "Notes")).toBeVisible();
   await page.keyboard.press("ControlOrMeta+e");
   const content = editorContent(page);

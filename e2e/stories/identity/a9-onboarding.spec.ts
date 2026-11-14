@@ -1,6 +1,7 @@
 import { accountIdOf, expectDisplayName, expectOnboardingSteps } from "../../fixtures/assert/identity";
 import { bearer, createToken, displayNameOf, emailFor, register } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import {
   createFirstNotebookWith,
   displayNameField,
@@ -49,7 +50,7 @@ test("A9 (page): a new account is taken through onboarding, then to where it was
   const email = emailFor(testInfo);
   const page = await signedInPage(await register(api, email));
   const userId = await accountIdOf(db, email);
-  await page.goto("/acme?view=list");
+  await goto(page, "/acme?view=list");
 
   // Every page waits for the steps left: the first comes with its progress and the name the account has.
   await expect(profileStep(page)).toBeVisible();
@@ -87,7 +88,7 @@ test("A9 (page): a new account is taken through onboarding, then to where it was
   await expect(page).toHaveURL("/acme?view=list");
   await expectOnboardingSteps(db, userId, ["profile", "workspace", "notebook"]);
   // Onboarding done, its page sends the account on: / lands on its workspace.
-  await page.goto("/onboarding");
+  await goto(page, "/onboarding");
   await expect(workspaceHeading(page, "Lab")).toBeVisible();
   await expect(page).toHaveURL(`/${slug}`);
 });

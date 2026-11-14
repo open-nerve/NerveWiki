@@ -1,4 +1,5 @@
 import { expectContentWritten } from "../../fixtures/assert/page";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -120,7 +121,7 @@ test("PG5 (page): the reading view shows the page's properties first, then its h
   const page = await signedInPage(tokens);
   const worker = page.waitForEvent("worker");
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, created.id));
 
   await expect(pageHeading(page, "Plan")).toBeVisible();
   const article = page.getByRole("article");

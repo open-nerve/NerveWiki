@@ -4,6 +4,7 @@ import { expectVersions, type StoredVersion } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, openSession, postRestore, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -89,7 +90,7 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
 
-  await page.goto(versionPath(workspace.slug, notebook.id, notes.id, 1));
+  await goto(page, versionPath(workspace.slug, notebook.id, notes.id, 1));
   await expect(main.getByRole("article", { name: "Version 1", exact: true })).toContainText("See Alpha.");
   await main.getByRole("button", { name: "Restore this version", exact: true }).click();
   const dialog = restoreDialog(page, 1);
@@ -119,7 +120,7 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   ];
   await expectVersions(db, notes.id, versions);
 
-  await page.goto(versionPath(workspace.slug, notebook.id, notes.id, 1));
+  await goto(page, versionPath(workspace.slug, notebook.id, notes.id, 1));
   const unchanged = await restoreWith(page, notes.id, 1);
   expect([unchanged.status(), await unchanged.json()]).toEqual([
     200,
@@ -129,9 +130,9 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   await expect(main.getByText("The page is the same as this version: nothing changed.", { exact: true })).toBeVisible();
   await expect(main.getByRole("button", { name: "Restore this version", exact: true })).toBeFocused();
 
-  await b.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(b, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await startEditing(b);
-  await page.goto(versionPath(workspace.slug, notebook.id, notes.id, 2));
+  await goto(page, versionPath(workspace.slug, notebook.id, notes.id, 2));
   const bEditing = displayNameOf(bEmail);
   await expect(main.getByText(`${bEditing} is editing this page.`, { exact: true })).toBeVisible();
   const refused = await restoreWith(page, notes.id, 2);

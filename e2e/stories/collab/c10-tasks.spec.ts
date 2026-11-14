@@ -6,6 +6,7 @@ import { expectContentWritten } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
@@ -132,7 +133,7 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   const page = await signedInPage(tokens);
   const boxesOf = (tab: typeof page) => tab.getByRole("main").getByRole("article").getByRole("checkbox");
 
-  await page.goto(path);
+  await goto(page, path);
   const boxes = boxesOf(page);
   await expect(boxes).toHaveCount(2);
   const toggles = `/api/v0/pages/${tasks.id}/toggle-task`;
@@ -152,7 +153,7 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
   await expectContentWritten(db, (await (await clear).json()) as Page, content, adminId);
   await expectToggleRevision(db, tasks.id, 3, adminId, "web");
 
-  await reader.goto(path);
+  await goto(reader, path);
   await expect(boxesOf(reader)).toHaveCount(2);
   await expect(boxesOf(reader).first()).toBeDisabled();
   await expect(boxesOf(reader).nth(1)).toBeDisabled();
@@ -186,7 +187,7 @@ test("C10 (page): A ticks a task item in the reading view, its checkbox named by
     }
     await route.fulfill({ response: answer });
   });
-  await b.goto(path);
+  await goto(b, path);
   await expect(boxesOf(b)).toHaveCount(2);
   holding = true;
   await expect.poll(() => answered).toBe(passed);

@@ -3,6 +3,7 @@ import type { Database } from "../../fixtures/db";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { getLinkLanding } from "../../fixtures/links";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, listNodes } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -71,7 +72,7 @@ test("L2 (page): a writer creates the page a link leads to where the server says
   const source = await createPage(api, pat, notebook.id, "Source", null, "[[Hub/Next]] and [[Elsewhere]]\n");
   const sourcePath = wikiPagePath(workspace.slug, notebook.id, source.id);
   const page = await signedInPage(tokens);
-  await page.goto(sourcePath);
+  await goto(page, sourcePath);
   const article = page.getByRole("article");
 
   // The keyboard opens the dialog; cancelled, the focus is back on the link.
@@ -110,7 +111,7 @@ test("L2 (page): a writer creates the page a link leads to where the server says
       landings.push(request.url());
     }
   });
-  await reader.goto(sourcePath);
+  await goto(reader, sourcePath);
   const missing = reader.getByRole("article").getByRole("button", { name: "Elsewhere", exact: true });
   await missing.click();
   const notice = reader.getByRole("alertdialog", { name: "“Elsewhere” does not exist" });

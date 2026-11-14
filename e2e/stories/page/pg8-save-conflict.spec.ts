@@ -6,6 +6,7 @@ import type { Database } from "../../fixtures/db";
 import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { assertRealPage, errorOf, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, openSession, putContent, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -152,7 +153,7 @@ test("PG8 (page): the edit's session expires and a token writes; the save opens 
 
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${kept.id}/view`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, kept.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, kept.id));
   await expect.poll(viewReads).toBe(1);
   // The event stream connects once the page shows, its refresh reading the page again, before the edit: a
   // connection after the session expired would have the edit beat and open another, which the token's write
@@ -186,7 +187,7 @@ test("PG8 (page): the edit's session expires and a token writes; the save opens 
   const [keptSession] = await sessionsOf(db, kept.id);
   await expectOneSessionRevision(db, keptSession ?? "", kept.id, 2, 3);
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, discarded.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, discarded.id));
   await startEditing(page);
   await expireSessionsOf(db, discarded.id);
   await writeContent(api, pat, discarded.id, { content: "Base\r\nTheirs\r\n", base_revision: 1 });

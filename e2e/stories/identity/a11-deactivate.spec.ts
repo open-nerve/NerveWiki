@@ -11,6 +11,7 @@ import {
 } from "../../fixtures/auth";
 import { formError, signInWith } from "../../fixtures/auth-pages";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { nervewikiUsers } from "../../fixtures/admin";
 
@@ -87,7 +88,7 @@ test("A11 (page): the settings deactivate the account: every session and token s
   const status = async (credential: string) =>
     (await api.GET("/api/v0/me", { headers: bearer(credential) })).response.status;
   const page = await signedInPage(own);
-  await page.goto("/settings/security");
+  await goto(page, "/settings/security");
 
   await page.getByRole("button", { name: "Deactivate account" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Deactivate your account?" });
@@ -133,7 +134,7 @@ test("A11 (page): a deactivation the server refuses keeps the dialog, its reason
       json: { status: 503, code: "server_busy", title: "Service Unavailable" },
     })
   );
-  await page.goto("/settings/security");
+  await goto(page, "/settings/security");
 
   await page.getByRole("button", { name: "Deactivate account" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Deactivate your account?" });

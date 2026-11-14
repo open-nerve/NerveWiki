@@ -3,6 +3,7 @@ import { expectNotebookMember } from "../../fixtures/assert/notebook";
 import { displayNameOf, emailFor, register } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { membersListed, roleOf, who } from "../../fixtures/member-pages";
+import { goto } from "../../fixtures/navigation";
 import {
   addedNotebookMember,
   addNotebookMember,
@@ -140,7 +141,7 @@ test("N4 (page): the admin adds a member and a guest, changes a role and removes
   ]);
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Team");
   const page = await signedInPage(ownerTokens);
-  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "members"));
   await expect.poll(() => membersListed(page)).toHaveLength(1);
   await expect(roleOf(page, who(displayNameOf(ownerEmail), ownerEmail))).toHaveCount(0);
 
@@ -177,7 +178,7 @@ test("N4 (page): an editor sees the members and their roles, and can change noth
   const notebook = await createNotebook(api, ownerPat, workspace.slug, "Team");
   await addedNotebookMember(api, ownerPat, notebook.id, await accountIdOf(db, editorEmail), "editor");
 
-  await page.goto(notebookPath(workspace.slug, notebook.id, "members"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "members"));
 
   await expect.poll(() => membersListed(page)).toHaveLength(2);
   await expect(page.getByText("Admin", { exact: true })).toBeVisible();

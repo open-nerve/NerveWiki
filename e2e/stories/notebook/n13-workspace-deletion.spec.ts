@@ -4,6 +4,7 @@ import { expectAuditEventsDeletedWith, expectNotebooksDeletedWith } from "../../
 import { emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { takeOver } from "../../fixtures/ownerless";
 import { deletedDaysAgo } from "../../fixtures/purge";
@@ -81,7 +82,7 @@ test("N13 (page): its admin deletes a workspace with notebooks on its general pa
   await createNotebook(api, memberPat, workspace.slug, "Notes", "viewer");
   await takenOver(api, pat, workspace.slug, emailFor(testInfo, "leaver"), "Drafts");
   const page = await signedInPage(tokens);
-  await page.goto(`/${workspace.slug}/settings/general`);
+  await goto(page, `/${workspace.slug}/settings/general`);
 
   expect(await deleteWorkspaceWith(page, workspace.slug)).toBe(204);
 

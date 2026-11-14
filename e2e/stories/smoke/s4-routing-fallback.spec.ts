@@ -1,5 +1,6 @@
 import { emailFor, password, registerOnboarded } from "../../fixtures/auth";
 import { signInWith } from "../../fixtures/auth-pages";
+import { goto, reload } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 
 /** A path that is no page of the app, nor a file: nervewiki answers it with index.html. */
@@ -14,7 +15,7 @@ test("S4: a user opens a deep link that is no page, signs in, and gets the app's
   const email = emailFor(testInfo);
   await registerOnboarded(api, email);
 
-  const document = await page.goto(deepLink);
+  const document = await goto(page, deepLink);
 
   expect(document?.status()).toBe(200);
   expect(document?.headers()["content-type"]).toBe("text/html; charset=utf-8");
@@ -30,7 +31,7 @@ test("S4: a user opens a deep link that is no page, signs in, and gets the app's
   const notFound = page.getByRole("heading", { level: 1, name: "Page not found" });
   await expect(notFound).toBeVisible();
   await expect(page).toHaveURL(deepLink);
-  await page.reload();
+  await reload(page);
   await expect(page).toHaveURL(deepLink);
   await expect(notFound).toBeVisible();
   expect(pageWatch.apiFailures).toEqual([]);

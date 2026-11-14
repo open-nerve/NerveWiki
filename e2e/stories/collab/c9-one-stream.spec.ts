@@ -5,6 +5,7 @@ import { emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
 import { followStreams } from "../../fixtures/events";
 import { joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
@@ -53,7 +54,7 @@ for (const locks of [true, false]) {
     // while the others hold on.
     const openTab = async () => {
       const tab = await anotherTab(page);
-      await tab.goto(wikiPagePath(workspace.slug, eng.id, notes.id));
+      await goto(tab, wikiPagePath(workspace.slug, eng.id, notes.id));
       await expect(pageHeading(tab, "Notes")).toBeVisible();
       await expect(content(tab)).toHaveText("Drafted.");
       expect(await tab.evaluate(() => "locks" in navigator)).toBe(locks);

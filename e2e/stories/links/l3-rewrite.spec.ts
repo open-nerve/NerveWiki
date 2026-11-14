@@ -6,6 +6,7 @@ import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, getPage, listNodes, openSession, readContent, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -161,7 +162,7 @@ test("L3 (page): a rename in the dialog, and a drag, whose links' page another e
   const session = await openSession(api, a, source.id);
   const editing = `${displayNameOf(aEmail)} is editing “Source”.`;
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   await expect(pageHeading(page, "Source")).toBeVisible();
 
   const refused = await renamePageWith(page, "Plans", target.id, "Target", "Renamed");

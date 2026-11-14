@@ -6,6 +6,7 @@ import { expectImported, sha256Of, treeOf } from "../../fixtures/assert/transfer
 import { errorOf, mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { bearer, emailFor } from "../../fixtures/auth";
 import { joinOnboarded } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -322,7 +323,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
       forbiddenCalls.push(`${request.method()} ${path}`);
   });
   const home = `/${team.workspace.slug}/notebooks/${wiki.id}`;
-  await reader.goto(wikiPagePath(team.workspace.slug, wiki.id, guide.id));
+  await goto(reader, wikiPagePath(team.workspace.slug, wiki.id, guide.id));
   await expect(pageHeading(reader, "Guide")).toBeVisible();
   const tree = pageTree(reader, wiki.name);
   // Edit waits for the tree as well as the title: asked sooner, a writer has none either.
@@ -362,7 +363,7 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   expect(forbiddenCalls, "virtual navigation never asks permission to create").toEqual([]);
 
   const writer = await signedInPage(team.tokens);
-  await writer.goto(notebookPath(team.workspace.slug, wiki.id, "transfer"));
+  await goto(writer, notebookPath(team.workspace.slug, wiki.id, "transfer"));
   await writer.getByRole("button", { name: "Export the whole notebook", exact: true }).click();
   const job = await exportWith(writer, wiki.id, "Export Browser virtual?");
   expect(job.client).toBe("web");

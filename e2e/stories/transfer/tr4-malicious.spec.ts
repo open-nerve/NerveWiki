@@ -5,6 +5,7 @@ import { createClient } from "@nervewiki/api-client";
 import { blobPath, storedBlobs } from "../../fixtures/assert/asset";
 import { expectImported, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes } from "../../fixtures/assets";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { listNodes } from "../../fixtures/pages";
@@ -218,7 +219,7 @@ test("TR4 (page): an archive's entries that cannot be imported safely are listed
     { name: "dup.md", data: "first\n" },
     { name: "dup.md", data: "second\n" },
   ]);
-  await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "transfer"));
 
   const job = await importWith(page, notebook.id, archive, { name: "inbox.zip" });
   const row = jobRow(page, "Import of inbox.zip");

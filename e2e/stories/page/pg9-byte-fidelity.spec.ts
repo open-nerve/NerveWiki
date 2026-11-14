@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import { expectContentWritten } from "../../fixtures/assert/page";
 import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -135,7 +136,7 @@ for (const [name, content] of [
     const page = await signedInPage(tokens);
     const writes = contentWrites(page, created.id);
 
-    await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, created.id));
     await startEditing(page);
     await page.keyboard.press("ControlOrMeta+Home");
     await page.keyboard.type("A");
@@ -167,7 +168,7 @@ test("PG9 (page): a composition at a CRLF line's end, by Chromium's input method
   const page = await signedInPage(tokens);
   const writes = contentWrites(page, created.id);
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, created.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, created.id));
   await startEditing(page);
   await page.keyboard.press("ControlOrMeta+Home");
   await page.keyboard.press("End");

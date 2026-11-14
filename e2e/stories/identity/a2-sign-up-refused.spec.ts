@@ -4,6 +4,7 @@ import { countIdentity, expectNothingAdded } from "../../fixtures/assert/identit
 import { emailFor, password, register } from "../../fixtures/auth";
 import { emailField, formError, passwordField, signUpWith } from "../../fixtures/auth-pages";
 import { failedToLoad } from "../../fixtures/browser";
+import { goto, reload } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 
 // A2, sign-up refused (M1 design 3).
@@ -89,7 +90,7 @@ test("A2 (page): a refused sign-up says why and keeps what was typed; a closed s
   const email = emailFor(testInfo);
   await register(api, email);
   const before = await countIdentity(db);
-  await page.goto("/sign-up");
+  await goto(page, "/sign-up");
 
   // A taken address: above the form, with what was typed still there.
   expect((await signUpWith(page, email.toUpperCase(), password)).status()).toBe(409);
@@ -103,10 +104,10 @@ test("A2 (page): a refused sign-up says why and keeps what was typed; a closed s
 
   // With sign-up off, the sign-in page has no way to it, and the sign-up page says it is closed.
   const closed = await nervewikiWith(db.url, { env: { NWIKI_AUTH__SIGNUP_ENABLED: "false" } });
-  await page.goto(new URL("/sign-in", closed.baseURL).href);
+  await goto(page, new URL("/sign-in", closed.baseURL).href);
   await expect(page.getByRole("heading", { level: 1, name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Sign up" })).toHaveCount(0);
-  await page.goto(new URL("/sign-up", closed.baseURL).href);
+  await goto(page, new URL("/sign-up", closed.baseURL).href);
   await expect(page.getByText("This server does not take new accounts.", { exact: false })).toBeVisible();
   await expect(passwordField(page)).toHaveCount(0);
   // A form sent all the same (sign-up closed after the page learned it was open) gets the 403's text.
@@ -114,7 +115,7 @@ test("A2 (page): a refused sign-up says why and keeps what was typed; a closed s
     const response = await route.fetch();
     await route.fulfill({ response, json: { ...(await response.json()), signup_enabled: true } });
   });
-  await page.reload();
+  await reload(page);
   expect((await signUpWith(page, emailFor(testInfo, "new"), password)).status()).toBe(403);
   await expect(formError(page)).toHaveText("Sign-up is disabled on this server.");
 

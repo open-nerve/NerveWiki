@@ -12,6 +12,7 @@ import { bearer, emailFor, registerOnboarded } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs } from "../../fixtures/invitations";
 import { memberOf, updateMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newTeam, slugFor } from "../../fixtures/workspaces";
 
@@ -118,7 +119,7 @@ test("W10 (page): the only admin's deactivation is refused in the dialog, which 
   const memberEmail = emailFor(testInfo, "member");
   await joinAs(api, tokens.access_token, workspace.slug, memberEmail, "member");
   const page = await signedInPage(tokens);
-  await page.goto("/settings/security");
+  await goto(page, "/settings/security");
 
   await page.getByRole("button", { name: "Deactivate account" }).click();
   const dialog = page.getByRole("alertdialog", { name: "Deactivate your account?" });

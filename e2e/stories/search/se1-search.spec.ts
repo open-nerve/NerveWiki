@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
 import { search } from "../../fixtures/search";
@@ -254,7 +255,7 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   const { notebook, storage, reports, report } = await written(api, pat, workspace.slug);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, storage.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, storage.id));
   await expect(pageHeading(page, "Storage")).toBeVisible();
   // The tab is not loaded again: what the page holds stays.
   await page.evaluate(() => {

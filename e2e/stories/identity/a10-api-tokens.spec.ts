@@ -12,6 +12,7 @@ import type { Page } from "@playwright/test";
 import { bearer, createToken, emailFor, password, register, registerOnboarded } from "../../fixtures/auth";
 import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
 import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
+import { goto, reload } from "../../fixtures/navigation";
 import { createTokenWith, holdAnswer } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -140,7 +141,7 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   const userId = await accountIdOf(db, email);
   const console: string[] = [];
   page.on("console", (message) => void console.push(message.text()));
-  await page.goto("/settings/tokens");
+  await goto(page, "/settings/tokens");
   await expect(page.getByText("You have no access tokens.")).toBeVisible();
 
   // A wrong password shows under it, and creates nothing.
@@ -169,7 +170,7 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   const row = page.getByRole("listitem").filter({ hasText: "CI deploy" });
   await expect(row).toContainText("Never used");
   await expectTokenGone(page, created.token);
-  await page.reload();
+  await reload(page);
   await expect(row).toContainText("Never used");
   await expectTokenGone(page, created.token);
   expect(console.filter((text) => text.includes(created.token))).toEqual([]);
@@ -177,7 +178,7 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   // Used once, the list says when (to the minute).
   expect((await api.GET("/api/v0/me", { headers: bearer(created.token) })).response.status).toBe(200);
   await expectTokenUsed(db, created.id);
-  await page.reload();
+  await reload(page);
   await expect(row).toContainText("Last used");
 
   // Revoked, it leaves the list and stops at once.
@@ -197,7 +198,7 @@ test("A10 (page): a creation answered after the dialog was cancelled shows its t
   signedInPage,
 }, testInfo) => {
   const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
-  await page.goto("/settings/tokens");
+  await goto(page, "/settings/tokens");
   await expect(page.getByText("You have no access tokens.")).toBeVisible();
   const release = await holdAnswer(page, "POST", "/api/v0/me/api-tokens");
 

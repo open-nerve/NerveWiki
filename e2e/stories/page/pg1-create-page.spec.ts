@@ -5,6 +5,7 @@ import { expectNewPage } from "../../fixtures/assert/page";
 import { emailFor } from "../../fixtures/auth";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember, addNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -172,7 +173,7 @@ test("PG1 (page): an editor creates Untitled, then Untitled 2, from the tree's N
   const editorId = await accountIdOf(db, editorEmail);
   const notebook = await createNotebook(api, adminPat, workspace.slug, "Plans", "viewer");
   await addedNotebookMember(api, adminPat, notebook.id, editorId, "editor");
-  await page.goto(notebookPath(workspace.slug, notebook.id));
+  await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   // The tree read, it has no page.
   await expect(page.getByRole("main").getByText("No pages yet.", { exact: true })).toBeVisible();

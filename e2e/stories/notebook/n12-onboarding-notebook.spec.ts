@@ -2,6 +2,7 @@ import { accountIdOf, expectOnboardingSteps } from "../../fixtures/assert/identi
 import { countNotebooks, expectNewNotebook } from "../../fixtures/assert/notebook";
 import { bearer, createToken, emailFor, register } from "../../fixtures/auth";
 import { accept, invite } from "../../fixtures/invitations";
+import { goto } from "../../fixtures/navigation";
 import { notebookGroups } from "../../fixtures/notebook-pages";
 import { createNotebook, listNotebooks } from "../../fixtures/notebooks";
 import {
@@ -46,7 +47,7 @@ test("N12 (page): a new account creates its workspace, then its first notebook, 
   const email = emailFor(testInfo);
   const page = await signedInPage(await register(api, email));
   const userId = await accountIdOf(db, email);
-  await page.goto("/");
+  await goto(page, "/");
   expect(await saveProfileStep(page)).toBe(200);
   await expect(workspaceStep(page)).toBeVisible();
   const slug = slugFor(testInfo);
@@ -79,7 +80,7 @@ test("N12 (page): an account that sees a notebook already goes on past the step,
   await accept(api, tokens.access_token, await invite(api, pat, workspace.slug, email, "member"));
   const userId = await accountIdOf(db, email);
   const page = await signedInPage(tokens);
-  await page.goto("/");
+  await goto(page, "/");
   const before = await countNotebooks(db);
 
   const recorded = stepRecorded(page, "notebook");
@@ -103,7 +104,7 @@ test("N12 (page): a guest everywhere reads where notebooks are created, and goes
   await accept(api, tokens.access_token, await invite(api, pat, workspace.slug, email, "guest"));
   const userId = await accountIdOf(db, email);
   const page = await signedInPage(tokens);
-  await page.goto("/");
+  await goto(page, "/");
   expect(await saveProfileStep(page)).toBe(200);
 
   await expect(notebookStep(page)).toBeVisible();

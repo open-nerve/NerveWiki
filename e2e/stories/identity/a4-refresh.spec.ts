@@ -4,6 +4,7 @@ import type { BrowserContext, Page, Request } from "@playwright/test";
 import { expectRefreshed, generationOf } from "../../fixtures/assert/identity";
 import { bearer, emailFor, login, recordOf, refresh, register } from "../../fixtures/auth";
 import { expectQuietPage, followAccessToken, watchPage } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { displayNameField, profileStep, saveProfileStep, workspaceStep } from "../../fixtures/onboarding-pages";
 import { expect, test } from "../../fixtures/test";
 
@@ -116,7 +117,7 @@ for (const locks of [true, false]) {
     // One tab after the other, so that the second finds the record the first refreshed.
     const openProfileStep = async (tab: Page) => {
       recorder.record(tab);
-      await tab.goto(`${shortLived.baseURL}/onboarding`);
+      await goto(tab, `${shortLived.baseURL}/onboarding`);
       await expect(profileStep(tab)).toBeVisible();
       expect(await tab.evaluate(() => "locks" in navigator)).toBe(locks);
       await displayNameField(tab).fill("Ada");

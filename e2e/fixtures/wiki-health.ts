@@ -3,6 +3,7 @@ import { expect, type Page, type Request } from "@playwright/test";
 
 import { answerTo, countAnswers, eventStreamPath } from "./browser";
 import { followStreams, holdStream } from "./events";
+import { goto } from "./navigation";
 import { createNotebook } from "./notebooks";
 import { createPage } from "./pages";
 import { wikiPagePath } from "./wiki-pages";
@@ -154,7 +155,7 @@ export async function connectedHealth(page: Page, slug: string, notebook: Notebo
   const release = await holdStream(page);
   let stream: Request;
   try {
-    await page.goto(wikiPagePath(slug, notebook.id, pageId));
+    await goto(page, wikiPagePath(slug, notebook.id, pageId));
     await healthLink(page, notebook).click();
     await healthShown(page);
     const before = { notebooks: notebooks(), nodes: nodes() };

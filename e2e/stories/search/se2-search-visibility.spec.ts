@@ -4,6 +4,7 @@ import { bearer, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
@@ -203,7 +204,7 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
 
-  await page.goto(wikiPagePath(workspace.slug, open.id, openPage));
+  await goto(page, wikiPagePath(workspace.slug, open.id, openPage));
   await expect(pageHeading(page, "Open plan")).toBeVisible();
   await expect(searchBox(page)).toHaveAccessibleDescription("Searches in “Open”.");
   expect((await searchFor(page, word)).status()).toBe(200);
@@ -225,7 +226,7 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
 
   // The private notebook, by its id in the address.
   pageWatch.expectConsole({ errors: [failedToLoad(404)] });
-  await page.goto(`/${workspace.slug}/search?q=${word}&notebook_id=${closed.id}`);
+  await goto(page, `/${workspace.slug}/search?q=${word}&notebook_id=${closed.id}`);
   await expect(main.getByRole("alert")).toHaveText(
     "This notebook is not found: it does not exist, or you have no access to it."
   );
@@ -238,7 +239,7 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   // The guest, from the page of the notebook it was added to: it finds that one's alone, which is all Where to look
   // lists, in it and in all it sees (M8 closeout B-M2, C-M5).
   const guestTab = await anotherPage(guestTokens);
-  await guestTab.goto(wikiPagePath(workspace.slug, guests.id, guestPage.id));
+  await goto(guestTab, wikiPagePath(workspace.slug, guests.id, guestPage.id));
   await expect(pageHeading(guestTab, "Guest plan")).toBeVisible();
   await expect(searchBox(guestTab)).toHaveAccessibleDescription("Searches in “Guests”.");
   expect((await searchFor(guestTab, word)).status()).toBe(200);

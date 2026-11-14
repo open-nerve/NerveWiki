@@ -7,6 +7,7 @@ import {
   expectRenamed,
 } from "../../fixtures/assert/workspace";
 import { bearer, createToken, emailFor, register, registerOnboarded } from "../../fixtures/auth";
+import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { invite, joinAs, joinOnboarded, preview } from "../../fixtures/invitations";
 import { deleteWorkspaceWith, renameWorkspaceWith, switcher, workspaceHeading } from "../../fixtures/workspace-pages";
@@ -107,7 +108,7 @@ test("W4 (page): the admin renames the workspace, then deletes it once its slug 
   await invite(api, tokens.access_token, slug, emailFor(testInfo, "invitee"));
   const page = await signedInPage(tokens);
 
-  await page.goto(`/${slug}/settings`);
+  await goto(page, `/${slug}/settings`);
   await expect(page).toHaveURL(`/${slug}/settings/general`);
   const { status, renamed } = await renameWorkspaceWith(page, slug, "  Acme Labs ");
   expect(status).toBe(200);
@@ -135,7 +136,7 @@ test("W4 (page): a member sees the workspace's name and address, and no way to c
   const tokens = await joinOnboarded(api, pat, workspace.slug, email, "member");
   const page = await signedInPage(tokens);
 
-  await page.goto(`/${workspace.slug}/settings/general`);
+  await goto(page, `/${workspace.slug}/settings/general`);
 
   await expect(page.getByText("Only the workspace's admins can rename it.", { exact: true })).toBeVisible();
   await expect(page.getByText(workspace.slug, { exact: true })).toBeVisible();

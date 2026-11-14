@@ -11,6 +11,7 @@ import { answerTo } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getPage, heartbeat, listNodes, openSession, postPage } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -180,7 +181,7 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   const mac = await createPage(api, adminPat, notebook.id, "Mac", linux.id);
   await createPage(api, adminPat, notebook.id, "FAQ", guide.id);
   await expire(db, (await openSession(api, adminPat, linux.id)).id);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, mac.id));
   await expect(pageHeading(page, "Mac")).toBeVisible();
 
   await choosePageAction(page, "Plans", "Install", "Delete");
@@ -194,6 +195,6 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   await expect(page).toHaveURL(wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Guide", "FAQ"]);
   await expectSubtreeDeleted(db, install.id, [install.id, linux.id, mac.id], editorId);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, mac.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, mac.id));
   await expect(page.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
 });

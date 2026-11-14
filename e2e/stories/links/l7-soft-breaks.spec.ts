@@ -1,5 +1,6 @@
 import type { Locator } from "@playwright/test";
 
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -52,7 +53,7 @@ test("L7 (page): a paragraph's lines and a callout body's are shown apart, the c
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const source = await createPage(api, pat, notebook.id, "Lines", null, lines);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article");
 
   await expect(article.locator("p").first()).toHaveJSProperty("innerText", "第一行\n第二行");

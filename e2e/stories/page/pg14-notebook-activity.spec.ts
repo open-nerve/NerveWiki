@@ -2,6 +2,7 @@ import { emailFor } from "../../fixtures/auth";
 import { joinAs } from "../../fixtures/invitations";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { memberOf, removeMember } from "../../fixtures/members";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { ownerlessNotebooks } from "../../fixtures/ownerless";
 import { listedOwnerless, ownerlessListed, ownerlessPath } from "../../fixtures/ownerless-pages";
@@ -129,7 +130,7 @@ test("PG14 (page): the ownerless list gives the notebook's size as its pages' by
   );
   const page = await signedInPage(tokens);
 
-  await page.goto(ownerlessPath(workspace.slug));
+  await goto(page, ownerlessPath(workspace.slug));
 
   await expect.poll(() => ownerlessListed(page)).toEqual([listedOwnerless("Plans", ownerEmail, "Private", 0)]);
   const size = contents.reduce((sum, content) => sum + Buffer.byteLength(content), 0);

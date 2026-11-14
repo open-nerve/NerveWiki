@@ -6,6 +6,7 @@ import { download, listAssets, pngBytes, uploadAsset } from "../../fixtures/asse
 import { countAnswers } from "../../fixtures/browser";
 import { getPageProperties, listTags } from "../../fixtures/links";
 import { assertRealPage, mcpClient, readPage, resultOf, writtenOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -174,7 +175,7 @@ test("AS2 (page): an image pasted into the editor and one dropped on it upload a
   const guide = await createPage(api, pat, notebook.id, "Guide", null, before);
   const uploads = countAnswers(page, "POST", `/api/v0/notebooks/${notebook.id}/assets`);
   const writes = contentWrites(page, guide.id);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, guide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, guide.id));
   await expect(pageHeading(page, "Guide")).toBeVisible();
   const content = await startEditing(page);
   await page.keyboard.press("ControlOrMeta+End");
@@ -280,7 +281,7 @@ test("AS2 (page, frontmatter): a file pasted in a property's quotes goes in as t
     "---\ntags: [retained]\nimage: ''\nref: '[[Guide]]'\n---\nBody\n"
   );
   const uploads = countAnswers(page, "POST", `/api/v0/notebooks/${notebook.id}/assets`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, board.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, board.id));
   await expect(pageHeading(page, "Board")).toBeVisible();
   const content = await startEditing(page);
   // Between the quotes of image's value.

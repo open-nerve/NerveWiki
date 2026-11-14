@@ -5,6 +5,7 @@ import { expectSourceHashes, pageStateOf } from "../../fixtures/assert/page";
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { bearer, emailFor } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { listChangesets, revertChangeset } from "../../fixtures/history";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
@@ -174,7 +175,7 @@ for (const entry of ["API", "page"] as const) {
     expect(pendingHistory.length).toBeGreaterThanOrEqual(201 * 3);
     if (page !== undefined) {
       pageWatch.expectConsole({ errors: [failedToLoad(422)] });
-      await page.goto(trashPath(workspace.slug, notebook.id, folder.id));
+      await goto(page, trashPath(workspace.slug, notebook.id, folder.id));
       expect((await restoreTrashWith(page, folder.id, "Archive", "From: raw")).status()).toBe(422);
       await expect(page.getByRole("main").getByRole("button", { name: /^Restore .* in the background/ })).toBeVisible();
     }
@@ -293,7 +294,7 @@ for (const entry of ["API", "page"] as const) {
       await expectSourceHashes(db, nervewiki.storageDir, notebook.id);
       expect(job.client).toBe(page === undefined ? "api" : "web");
       if (page !== undefined) {
-        await page.goto(notebookPath(workspace.slug, notebook.id, "transfer"));
+        await goto(page, notebookPath(workspace.slug, notebook.id, "transfer"));
         const row = jobRow(page, "Restore of Archive from the trash");
         await openReport(row);
         await expect(row).toContainText(/earlier completed batches are kept/i);
@@ -353,7 +354,8 @@ for (const kind of ["page", "asset"] as const) {
     // Each real UI request must be refused atomically before opening the current visible target.
     // oxlint-disable no-await-in-loop -- each refusal must be checked before navigating to the next entry point
     for (const surface of ["list", "preview", "undo"] as const) {
-      await page.goto(
+      await goto(
+        page,
         surface === "undo"
           ? changesetPath(workspace.slug, notebook.id, deletion.id)
           : trashPath(workspace.slug, notebook.id, surface === "preview" ? folder.id : undefined)
@@ -378,7 +380,7 @@ for (const kind of ["page", "asset"] as const) {
     }
     // oxlint-enable no-await-in-loop
     // Retry from the list after resolving the conflict; all three refusal surfaces were checked above.
-    await page.goto(trashPath(workspace.slug, notebook.id));
+    await goto(page, trashPath(workspace.slug, notebook.id));
     expect((await deleteNode(api, pat, known.id)).response.status).toBe(204);
     expect((await restoreTrashWith(page, folder.id, "Archived", "From: raw")).status()).toBe(200);
     await expect(page.getByRole("main").getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
@@ -414,7 +416,7 @@ test("LW6 (page): a writer undoes an admin's deletion of a source; an admin's re
   };
   const page = await signedInPage(tokens);
   const undo = async (id: string, status: number) => {
-    await page.goto(changesetPath(workspace.slug, notebook.id, id));
+    await goto(page, changesetPath(workspace.slug, notebook.id, id));
     await page.getByRole("button", { name: "Undo change", exact: true }).click();
     const answer = answerTo(page, "POST", `/api/v0/changesets/${id}/revert`);
     await page.getByRole("alertdialog").getByRole("button", { name: "Undo", exact: true }).click();
@@ -467,14 +469,14 @@ test("LW6 (page): even an admin restores source content outside the area before 
   const known = await createPage(api, pat, notebook.id, "Known first", raw, "first source bytes\n");
   const page = await signedInPage(tokens);
   pageWatch.expectConsole({ errors: [failedToLoad(409), failedToLoad(409)] });
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   expect((await movePageWith(page, notebook.name, source.id, "Draft", "raw", "Last")).status()).toBe(200);
-  await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+  await goto(page, versionPath(workspace.slug, notebook.id, source.id, 1));
   await expect(page.getByRole("article", { name: "Version 1", exact: true })).toContainText("first source bytes");
   await expect(page.getByRole("main").getByRole("button", { name: "Restore this version", exact: true })).toHaveCount(
     0
   );
-  await page.goto(changesetPath(workspace.slug, notebook.id, revision.changeset_id));
+  await goto(page, changesetPath(workspace.slug, notebook.id, revision.changeset_id));
   const before = await pageStateOf(db, notebook.id);
   const refused = await revertWith(page, revision.changeset_id);
   expect(refused.status()).toBe(409);
@@ -483,12 +485,12 @@ test("LW6 (page): even an admin restores source content outside the area before 
   await expect(revertDialog(page).getByRole("alert")).toContainText("outside the source area");
   await expect(revertDialog(page).getByRole("alert")).toContainText("Administrators");
 
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   expect((await movePageWith(page, notebook.name, source.id, "Draft", "Working", "Last")).status()).toBe(200);
-  await page.goto(versionPath(workspace.slug, notebook.id, source.id, 1));
+  await goto(page, versionPath(workspace.slug, notebook.id, source.id, 1));
   expect((await restoreVersionWith(page, source.id, 1)).status()).toBe(200);
   expect((await readContent(api, pat, source.id)).content).toBe("first source bytes\n");
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const restored = await pageStateOf(db, notebook.id);
   const moved = await movePageWith(page, notebook.name, source.id, "Draft", "raw", "Last");
   expect(moved.status()).toBe(409);

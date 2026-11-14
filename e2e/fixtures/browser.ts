@@ -2,6 +2,8 @@ import { STATUS_CODES } from "node:http";
 
 import { expect, type Locator, type Page, type Request, type Response, type TestInfo } from "@playwright/test";
 
+import { followRequests } from "./navigation";
+
 /** WebKit's note, under parallel workers, that the entry it preloaded was not used soon enough after load. */
 const preloadUnused =
   /^The resource \S+\/assets\/\S+ was preloaded using link preload but not used within a few seconds from the window's load event\. Please make sure it wasn't preloaded for nothing\.$/;
@@ -125,6 +127,8 @@ export async function watchPage(page: Page): Promise<PageWatch> {
   if (browserName !== "chromium" && browserName !== "firefox" && browserName !== "webkit") {
     throw new Error(`unsupported console browser: ${browserName}`);
   }
+  // The requests out, for the stories' goto and reload (navigation.ts).
+  followRequests(page);
   const watch: PageWatch = {
     apiRequests: [],
     apiFailures: [],

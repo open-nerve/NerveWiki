@@ -9,6 +9,7 @@ import { bearer, emailFor } from "../../fixtures/auth";
 import { changesetOfRevision, entryOfVirtualLog, getChangeset, listChangesets } from "../../fixtures/history";
 import { joinAs } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, readPage, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook, updateNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, endSession, openSession, readContent, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -452,7 +453,7 @@ test("LW9 (page): a wiki edit appears with its ingested source and remains under
   const source = await createPage(api, team.pat, wiki.id, "Evidence", wiki.source_root_id, "Original evidence.\n");
   const summary = await createPage(api, team.pat, wiki.id, "Summary", null, "Before.\n");
   const page = await signedInPage(team.tokens);
-  await page.goto(wikiPagePath(team.workspace.slug, wiki.id, summary.id));
+  await goto(page, wikiPagePath(team.workspace.slug, wiki.id, summary.id));
   await expect(pageHeading(page, "Summary")).toBeVisible();
   const writes = contentWrites(page, summary.id);
   const content = "Read [[raw/Evidence]].\n";

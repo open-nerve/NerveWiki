@@ -4,6 +4,7 @@ import {
   expectSessionGone,
   sessionsOf,
 } from "../../fixtures/assert/page";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import {
   createPage,
@@ -92,7 +93,7 @@ test("PG10 (page): the editor's heartbeat moves the lease on; a session expired 
 
   const letStreamIn = await holdStream(page);
   const viewReads = countAnswers(page, "GET", `/api/v0/pages/${notes.id}/view`);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, notes.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, notes.id));
   await expect.poll(viewReads).toBe(1);
   // The event stream connects once the page shows, its refresh reading the page again, before the edit (as in PG8).
   letStreamIn();

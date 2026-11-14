@@ -4,6 +4,7 @@ import { expectIndexedTags } from "../../fixtures/assert/links";
 import type { Database } from "../../fixtures/db";
 import { getTag, listTags } from "../../fixtures/links";
 import { mcpClient, resultOf, type McpClient } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
@@ -162,7 +163,7 @@ test("L4 (page): a tag leads to the pages of the tag and those under it; formula
   await expectTagged(db, source.id, deeper.id, other.id);
   const page = await signedInPage(tokens);
   const katex = page.waitForResponse((response) => /\/assets\/katex-[^/]*\.js$/.test(response.url()));
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, source.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, source.id));
   const article = page.getByRole("article");
 
   // The formulas, typeset: KaTeX's markup, and its MathML for a screen reader.
@@ -301,7 +302,7 @@ test("L4 (page): what a writer's formulas and diagrams could do to a reader's pa
   ].join("\n");
   const wide = await createPage(api, pat, notebook.id, "Wide", null, content);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, wide.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, wide.id));
   const article = page.getByRole("article");
   await expect(article.locator(".nw-math .katex")).toHaveCount(4);
 
@@ -420,7 +421,7 @@ test("L4 (page): a view's formulas take at most a while to lay out: past it, the
   const content = [...Array.from({ length: 30 }, (_, i) => `Heavy ${i}: $${heavy}$.\n`), "Last $y$.", ""].join("\n");
   const styled = await createPage(api, pat, notebook.id, "Styled", null, content);
   const page = await signedInPage(tokens);
-  await page.goto(wikiPagePath(workspace.slug, notebook.id, styled.id));
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, styled.id));
   const article = page.getByRole("article");
   const formulas = article.locator(".nw-math");
 
@@ -450,7 +451,7 @@ test("L4 (page): a page opened at a heading shows it once the formulas above it 
   ].join("\n");
   const matrices = await createPage(api, pat, notebook.id, "Matrices", null, content);
   const page = await signedInPage(tokens);
-  await page.goto(`${wikiPagePath(workspace.slug, notebook.id, matrices.id)}#nw-far`);
+  await goto(page, `${wikiPagePath(workspace.slug, notebook.id, matrices.id)}#nw-far`);
   const article = page.getByRole("article");
   const far = article.getByRole("heading", { name: "Far", exact: true });
 

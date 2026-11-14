@@ -12,6 +12,7 @@ import { followStreams, holdStream } from "../../fixtures/events";
 import { revertChangeset } from "../../fixtures/history";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, type McpClient, mcpClient, resultOf } from "../../fixtures/mcp";
+import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -219,7 +220,7 @@ test("UP7 (page): a second admin approves the submitted upgrade on its page, its
   const tabReads = countAnswers(tab, "GET", `/api/v0/workspaces/${slug}/notebooks`);
   const letTabIn = await holdStream(tab);
   try {
-    await tab.goto(home);
+    await goto(tab, home);
     await expect(upgradeBanner(tab, bannerText.reviewing)).toBeVisible();
     letTabIn();
     await expect.poll(streams.count).toBe(1);
@@ -237,7 +238,7 @@ test("UP7 (page): a second admin approves the submitted upgrade on its page, its
   expect(before.data?.state).toBe("reviewing");
   const letStreamIn = await holdStream(page);
   try {
-    await page.goto(upgradePath(slug, notebook.id));
+    await goto(page, upgradePath(slug, notebook.id));
     await expect(upgradeSection(page, "Check report")).toContainText("): every check passed.");
     await page.getByRole("button", { name: "Approve…", exact: true }).click();
     const dialog = reviewDialog(page, "Approve", notebook.name);
@@ -268,7 +269,7 @@ test("UP7 (page): a second admin approves the submitted upgrade on its page, its
 
     // The deletion of index, reverted on its changeset's page, would bring it back at the root (decision 181).
     pageWatch.expectConsole({ errors: [failedToLoad(409)] });
-    await page.goto(changesetPath(slug, notebook.id, deleted));
+    await goto(page, changesetPath(slug, notebook.id, deleted));
     const refused = await revertWith(page, deleted);
     expect([refused.status(), ((await refused.json()) as { code: string }).code]).toEqual([409, "page.virtual_file"]);
     await expect(revertDialog(page)).toContainText(

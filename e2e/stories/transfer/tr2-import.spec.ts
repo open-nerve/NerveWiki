@@ -7,6 +7,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { expectImported, idsOf, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes, utf8 } from "../../fixtures/assets";
+import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
@@ -196,7 +197,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   const index = await createPage(api, pat, notebook.id, "Index", null, "[[Alpha]]\n");
 
   // Reached in the app, the page before it in the tab's history is the app's too.
-  await page.goto(notebookPath(workspace.slug, notebook.id, "general"));
+  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   await page
     .getByRole("navigation", { name: "Notebook settings" })
     .getByRole("link", { name: "Import, export and restore" })
@@ -263,7 +264,7 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
   // Under a page, chosen by its path.
   const archive = await createNotebook(api, pat, workspace.slug, "Archive");
   const imports = await createPage(api, pat, archive.id, "Imports");
-  await page.goto(notebookPath(workspace.slug, archive.id, "transfer"));
+  await goto(page, notebookPath(workspace.slug, archive.id, "transfer"));
   const under = await importWith(page, archive.id, vault(), { place: "Imports" });
   expect(under.root_id).toBe(imports.id);
   await expect(jobRow(page, "Import of vault.zip").getByText("Done", { exact: true })).toBeVisible({ timeout: 15_000 });
