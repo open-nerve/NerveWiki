@@ -3,9 +3,10 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "workspaces": {
     ".": {
-      // 样例集自检由 make lint-web 调用；与 Obsidian 的核对、常见密码名单的生成由人手动运行。package.json 的脚本中都看不到
+      // 样例集自检与 e2e 换文档的门禁由 make lint-web 调用；与 Obsidian 的核对、常见密码名单的生成由人手动运行。package.json 的脚本中都看不到
       "entry": [
         "tools/md-fixtures/check.mjs",
+        "tools/e2e-navigation/check.mjs",
         "tools/md-fixtures/obsidian/verify.mjs",
         "tools/md-fixtures/obsidian/verify-resolve.mjs",
         "tools/md-fixtures/obsidian/verify-rename.mjs",
