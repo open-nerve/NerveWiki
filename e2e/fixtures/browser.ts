@@ -276,9 +276,9 @@ export async function expectQuietPage(page: Page, watch: PageWatch): Promise<voi
 const snapshotLimit = 3000;
 
 /**
- * pageState is what page showed and did last, as text: each time it went to the sign-in page, its address,
- * the element in focus, its last API requests and their failures, its errors, and its ARIA snapshot cut
- * short; none for a closed page.
+ * pageState is what page showed and did last, as text: each time it went to the sign-in page, on a line only
+ * a page sent there has (the failures sent back are counted by it), its address, the element in focus, its last
+ * API requests and their failures, its errors, and its ARIA snapshot cut short; none for a closed page.
  */
 async function pageState(page: Page, watch: PageWatch): Promise<string | undefined> {
   if (page.isClosed()) {
@@ -300,7 +300,7 @@ async function pageState(page: Page, watch: PageWatch): Promise<string | undefin
     .catch((error: unknown) => `none: ${String(error)}`);
   const cut = snapshot.length > snapshotLimit ? `${snapshot.slice(0, snapshotLimit)}\n…` : snapshot;
   return [
-    `sent back to sign in: ${watch.signInLandings.join(", ") || "no"}`,
+    ...(watch.signInLandings.length > 0 ? [`sent back to sign in: ${watch.signInLandings.join(", ")}`] : []),
     `url: ${page.url()}`,
     `focused: ${focused}`,
     `api requests, the last 20: ${watch.apiRequests.slice(-20).join(", ") || "none"}`,
