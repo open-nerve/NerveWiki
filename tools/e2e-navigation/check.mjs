@@ -6,7 +6,8 @@
 // names the escape. Elsewhere comments and strings count too, so they name it in words, not in its form.
 // Closing a tab leaves a document as well; the helper does not cover it (the stories close tabs once a page
 // showed what only a signed-in session reads). The check first runs on samples of each breach and fails
-// unless it sees them, so it cannot pass by reading nothing.
+// unless it sees them, and fails unless the tree it read holds the helper's module, so it cannot pass by
+// reading nothing, or only a part of e2e/.
 // Usage: node tools/e2e-navigation/check.mjs
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
@@ -119,6 +120,11 @@ function sources(dir) {
 }
 
 const files = sources(join(root, "e2e"));
+// The samples go to check() directly: what proves that the tree was read where the helper's callers are is
+// that its module was read with them, under e2e/ (the table's rows say the same for the stories).
+if (!files.some((file) => file.path === HELPER)) {
+  problems.push(`the gate did not read ${HELPER}: it reads every source file under e2e/`);
+}
 const real = check(files, LEAVES);
 problems.push(...real.problems);
 if (problems.length > 0) {
