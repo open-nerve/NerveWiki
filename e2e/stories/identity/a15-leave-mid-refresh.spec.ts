@@ -5,7 +5,7 @@ import type { Page, Request } from "@playwright/test";
 
 import { expectRevoked, generationOf, sessionOf } from "../../fixtures/assert/identity";
 import { emailFor, password, recordOf, registerOnboarded } from "../../fixtures/auth";
-import { signUpWith } from "../../fixtures/auth-pages";
+import { signInWith, signUpWith } from "../../fixtures/auth-pages";
 import { failedToLoad, type PageWatch } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { goto, reload } from "../../fixtures/navigation";
@@ -126,6 +126,26 @@ async function holdTheFirstRefresh(page: Page): Promise<() => void> {
   });
   return () => {
     go = true;
+  };
+}
+
+/**
+ * Holds the refresh lock in page's document, as another tab's refresh, sign-in or sign-out does. The function
+ * returned lets it go; a document already left has nothing to let go.
+ */
+async function holdTheRefreshLock(page: Page): Promise<() => Promise<void>> {
+  await page.evaluate((name) => {
+    void navigator.locks.request(
+      name,
+      () =>
+        new Promise<void>((resolve) => {
+          Object.assign(window, { a15Release: resolve });
+        })
+    );
+  }, "nwiki.auth.refresh");
+  await page.waitForFunction(() => "a15Release" in window);
+  return async () => {
+    await page.evaluate(() => (window as unknown as { a15Release?: () => void }).a15Release?.()).catch(() => undefined);
   };
 }
 
@@ -334,21 +354,12 @@ test("A15 (page): leaving through the helper while the refresh lock is held wait
     (path) => performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === path),
     "/api/v0/auth/refresh"
   );
-  await page.evaluate((name) => {
-    void navigator.locks.request(
-      name,
-      () =>
-        new Promise<void>((resolve) => {
-          Object.assign(window, { a15Release: resolve });
-        })
-    );
-  }, "nwiki.auth.refresh");
-  await page.waitForFunction(() => "a15Release" in window);
+  const letGo = await holdTheRefreshLock(page);
   const leaving = goto(page, "/settings/security");
   await within(nextDocument.settled, 1_000);
   const releasedAt = Date.now();
   // A helper that did not wait has left this document already: there is nothing to let go then.
-  await page.evaluate(() => (window as unknown as { a15Release?: () => void }).a15Release?.()).catch(() => undefined);
+  await letGo();
   await leaving;
 
   expect(requestedAt, "the next document is asked for once the lock is let go").toBeGreaterThan(releasedAt);
@@ -377,4 +388,47 @@ test("A15 (page): a page that signed up in its own document has no first refresh
   await expect(page.getByRole("heading", { level: 1, name: "Your name", exact: true })).toBeVisible();
   await expect.poll(() => generationIn(page)).toBe(1);
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
+});
+
+test("A15 (page): leaving through the helper while a sign-in waits for the refresh lock to write its record waits until it is written", async ({
+  api,
+  db,
+  page,
+  pageWatch,
+}, testInfo) => {
+  const email = emailFor(testInfo);
+  await registerOnboarded(api, email);
+  const nextDocument = signal();
+  let requestedAt = 0;
+  page.on("request", (request) => {
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 1, name: "Sign in", exact: true })).toBeVisible();
+  // The page holds the refresh lock, as another tab's refresh or sign-in does: the sign-in answered, its record
+  // waits for the lock to be written (W/session/token-manager.ts:164-172). Nothing is out, the document has no
+  // record yet, and only the lock holds the helper.
+  const letGo = await holdTheRefreshLock(page);
+  const answer = await signInWith(page, email, password);
+  expect(answer.status()).toBe(200);
+  const tokens = (await answer.json()) as AuthTokens;
+  expect(await recordOf(page)).toBeNull();
+  const leaving = goto(page, "/settings/security");
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  await letGo();
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once the sign-in wrote its record").toBeGreaterThan(releasedAt);
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+  // The next document found the sign-in's record and refreshed it: the session goes on, the page did not go back
+  // to sign in.
+  await expect.poll(() => generationIn(page)).toBe(1);
+  expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
+  expect(pageWatch.signInLandings).toEqual(["/sign-in?next=%2Fsettings%2Fprofile"]);
 });

@@ -5,8 +5,9 @@ import type { Page, Request, Response } from "@playwright/test";
 // How the stories leave a document (00-M12 4.4, M12/P1/S1). A document that leaves before its refresh's answer
 // comes back loses the refreshed token: the next document refreshes with the old one, nervewiki takes that for
 // reuse, and the session ends, the page on /sign-in (M1 design 10 accepts this; A15 shows it). So goto and reload
-// here wait first, until the page has no API request out, its document's first refresh has been answered and
-// no refresh holds the lock; a story that leaves mid-request on purpose says so with the escape, the option
+// here wait first, until the page has no API request out, its document has its tokens (the answer of its first
+// refresh, or of a sign-in or sign-up in it) and nothing holds the refresh lock, under which a refresh, a sign-in
+// or a sign-up writes its record; a story that leaves mid-request on purpose says so with the escape, the option
 // inFlight set to leave. A gate (tools/e2e-navigation/check.mjs, make lint-web) lets no other module under e2e/
 // call page.goto or page.reload, and counts the escapes. Back and forward within one document need none of this.
 // Closing a tab leaves a document too, and may lose its refresh the same way; the helper does not cover it:
@@ -81,8 +82,8 @@ export async function reload(
 
 /**
  * Waits until page's document has nothing out that leaving it would lose: no API request unanswered, and in
- * the page (sessionWaits) its first refresh answered and the refresh lock free. Fails after settleMs, naming
- * what it still waits for.
+ * the page (sessionWaits) the refresh lock free and its tokens answered. Fails after settleMs, naming what it
+ * still waits for.
  */
 async function settle(page: Page): Promise<void> {
   const open = unanswered.get(page);
@@ -109,34 +110,39 @@ async function settle(page: Page): Promise<void> {
 }
 
 /**
- * What page's document still has to finish before it may be left, read in the page: its first refresh, while
- * it has a session's record and no answer that gave it tokens (tokenPaths), and the refresh lock (the lease
- * without Web Locks); none when it has nothing. The read races remainingMs: Chromium does not answer it while
- * the next document is requested and not yet committed, which counts as waiting for that document.
+ * What page's document still has to finish before it may be left, read in the page: the refresh lock (the
+ * lease without Web Locks), held or asked for, with or without a record, since a sign-in or a sign-up writes the
+ * first one under it; then, while it has a session's record and no answer that gave it tokens (tokenPaths), its
+ * first refresh; none when it has nothing. The read races remainingMs: Chromium does not answer it while the
+ * next document is requested and not yet committed, which counts as waiting for that document.
  */
 async function sessionWaits(page: Page, remainingMs: number): Promise<string[]> {
   const read = page
     .evaluate(
       async (names) => {
-        let record: string | null;
         try {
-          record = localStorage.getItem(names.authKey);
+          localStorage.getItem(names.authKey);
         } catch {
           return []; // an opaque origin (an attachment shown sandboxed at its address, about:blank): no session here
         }
-        // No session's record, or not the app (W/main.tsx:17 mounts on #root): no refresh to lose.
-        if (record === null || document.getElementById("root") === null) return [];
+        // Not the app (W/main.tsx:17 mounts on #root): no session to lose.
+        if (document.getElementById("root") === null) return [];
+        // A refresh, a sign-in or a sign-up writes the record under the lock (W/session/token-manager.ts:164-172,
+        // :288-310): a document whose sign-in was answered has no record until it holds it.
+        if ("locks" in navigator) {
+          const { held = [], pending = [] } = await navigator.locks.query();
+          if ([...held, ...pending].some((lock) => lock.name === names.lockName)) return ["the refresh lock"];
+        } else {
+          const lease = JSON.parse(localStorage.getItem(names.leaseKey) ?? "null") as { expires?: number } | null;
+          if (lease !== null && (lease.expires ?? 0) > Date.now()) return ["the refresh lease"];
+        }
+        // Read after the lock: no session's record by then, no refresh to lose.
+        if (localStorage.getItem(names.authKey) === null) return [];
         // A document's resource timings are its own requests, each added once its answer was read.
         const tokens = performance
           .getEntriesByType("resource")
           .some((entry) => names.tokenPaths.includes(new URL(entry.name).pathname));
-        if (!tokens) return ["the document's first refresh"];
-        if ("locks" in navigator) {
-          const { held = [], pending = [] } = await navigator.locks.query();
-          return [...held, ...pending].some((lock) => lock.name === names.lockName) ? ["the refresh lock"] : [];
-        }
-        const lease = JSON.parse(localStorage.getItem(names.leaseKey) ?? "null") as { expires?: number } | null;
-        return lease !== null && (lease.expires ?? 0) > Date.now() ? ["the refresh lease"] : [];
+        return tokens ? [] : ["the document's first refresh"];
       },
       { authKey, lockName, leaseKey, tokenPaths }
     )
