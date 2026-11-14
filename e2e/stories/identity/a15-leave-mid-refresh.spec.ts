@@ -13,11 +13,12 @@ import { expect, test } from "../../fixtures/test";
 
 // A15, leaving a page while its refresh is out (M1 design 10: the session ends, and the user signs in again; a
 // known limitation in the release notes). The stories leave a document through fixtures/navigation.ts, which
-// waits first: two tests here leave through its escape and land on the sign-in page; four go through it and stay
-// signed in, each holding back one of the things the helper waits for; the last has none of them, its document
-// signed up itself, and is not kept waiting. The answer, the next document and the first refresh are held so
-// that each order happens for certain, not by running it again and again (05-lessons 6). Only the page has a
-// version: the API's side, a retired token used again, is A5 (API).
+// waits first: two tests here leave through its escape and land on the sign-in page; the others go through it and
+// stay signed in, each holding back one of the things the helper waits for (the refresh's answer, the first
+// refresh, a read, the lock after a refresh or under a sign-in, the lease without Web Locks), and one with none of
+// them, its document signed up itself, is not kept waiting. The answer, the next document, the first refresh,
+// the lock and the lease are held so that each order happens for certain, not by running it again and again
+// (05-lessons 6). Only the page has a version: the API's side, a retired token used again, is A5 (API).
 
 /** A promise, and the function that settles it. */
 function signal(): { settled: Promise<void>; settle: () => void } {
@@ -431,4 +432,48 @@ test("A15 (page): leaving through the helper while a sign-in waits for the refre
   await expect.poll(() => generationIn(page)).toBe(1);
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
   expect(pageWatch.signInLandings).toEqual(["/sign-in?next=%2Fsettings%2Fprofile"]);
+});
+
+test("A15 (page): without Web Locks, leaving through the helper while another tab's lease is live waits until it is let go", async ({
+  api,
+  db,
+  signedInPage,
+}, testInfo) => {
+  const tokens = await registerOnboarded(api, emailFor(testInfo));
+  const page = await signedInPage(tokens);
+  // A browser without Web Locks, as A4 has one: the tabs take turns by a lease in localStorage instead
+  // (W/session/refresh-lock.ts:25).
+  await page.context().addInitScript(() => {
+    Reflect.deleteProperty(Navigator.prototype, "locks");
+  });
+  const nextDocument = signal();
+  let requestedAt = 0;
+  page.on("request", (request) => {
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+
+  await goto(page, "/settings/profile");
+  expect(await page.evaluate(() => "locks" in navigator)).toBe(false);
+  // The document's first refresh has been answered; then another tab's refresh holds the lease, live for 5 s.
+  await page.waitForFunction(
+    (path) => performance.getEntriesByType("resource").some((entry) => new URL(entry.name).pathname === path),
+    "/api/v0/auth/refresh"
+  );
+  await page.evaluate(
+    (key) => localStorage.setItem(key, JSON.stringify({ owner: "another-tab", expires: Date.now() + 5_000 })),
+    "nwiki.auth.lease"
+  );
+  const leaving = goto(page, "/settings/security");
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  await page.evaluate((key) => localStorage.removeItem(key), "nwiki.auth.lease").catch(() => undefined);
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once the lease is let go").toBeGreaterThan(releasedAt);
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+  expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
 });
