@@ -20,7 +20,11 @@ const DIRECT = /\.(goto|reload)\s*\(/g;
 const LEAVE = /inFlight:\s*"leave"/g;
 
 /** Each file under e2e/ that leaves a document mid-request on purpose, and how many times. */
-const LEAVES = {};
+const LEAVES = {
+  // A15's two tests of what the helper prevents: one leaves while the refresh's answer is out, one before
+  // the document's first refresh has gone out (Chromium and Firefox only); both land on /sign-in (M12/P1/S1).
+  "e2e/stories/identity/a15-leave-mid-refresh.spec.ts": 2,
+};
 
 /** The line of text that index falls on, counting from 1. */
 function lineOf(text, index) {
