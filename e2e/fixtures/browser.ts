@@ -277,8 +277,10 @@ const snapshotLimit = 3000;
 
 /**
  * pageState is what page showed and did last, as text: each time it went to the sign-in page, on a line only
- * a page sent there has (the failures sent back are counted by it), its address, the element in focus, its last
- * API requests and their failures, its errors, and its ARIA snapshot cut short; none for a closed page.
+ * such a page has (a story that goes there itself has it too; a landing marked "after a refresh answered 401"
+ * is a session that ended under the story, so the failures sent back are counted by that mark), its address,
+ * the element in focus, its last API requests and their failures, its errors, and its ARIA snapshot cut short;
+ * none for a closed page.
  */
 async function pageState(page: Page, watch: PageWatch): Promise<string | undefined> {
   if (page.isClosed()) {
