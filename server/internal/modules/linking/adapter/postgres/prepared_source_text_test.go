@@ -42,14 +42,20 @@ const (
 // for 15 ms while it sends the query, pgx starts its background reader,
 // which reads the result into new 8 KiB buffers until the goroutine stops
 // it: up to the whole 6.4 MB result, as much as a copy (CI's race leg, M12).
-// The guard leaves that size class out, as nothing else in a call allocates
-// it, and takes the smallest of up to three calls for anything else that
-// happens only now and then. A copy happens in every call.
+// Each new buffer comes with a new 24-byte *[]byte, so the guard leaves out
+// as many 8 KiB blocks as there are new 24-byte objects. Nothing else in
+// these calls allocates 8 KiB blocks (profiled; pgx's chunkreader takes them
+// too, but only after a message over 8 KiB). It also takes the smallest of
+// up to three calls, for anything else that happens only now and then. So
+// two kinds of copy go unseen: one that allocates a 24-byte object besides
+// each 8 KiB block, and one that is not made in every one of the calls.
 func TestPreparedSourceDoesNotCopyTextForComparison(t *testing.T) {
 	const maxAllocatedBytes uint64 = 2 << 20
 	const maxMeasuredCalls = 3
-	// pgx v5.11.0's pgconn/internal/bgreader reads into iobufpool.Get(8192).
-	const backgroundReadBuffer = 8192
+	// pgx v5.11.0: pgconn/internal/bgreader's bgRead reads into
+	// iobufpool.Get(8192), and iobufpool's New returns each new buffer as a
+	// new *[]byte. Check both against these when pgx is upgraded.
+	const backgroundReadBuffer, backgroundReadHeader = 8192, 24
 	pool, trace := newLinksCollectorPool(t)
 	trace.sql = gen.InspectPageLinksForPreparation
 	p := app.Page{ID: uuid.UUID{15: 50}, NotebookID: uuid.UUID{15: 1}, Revision: 1}
@@ -179,21 +185,23 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 
 		var classes runtime.MemStats
 		runtime.ReadMemStats(&classes)
-		bufferClass := -1
+		bufferClass, headerClass := -1, -1
 		for i, class := range classes.BySize {
-			if class.Size == backgroundReadBuffer {
+			switch class.Size {
+			case backgroundReadBuffer:
 				bufferClass = i
+			case backgroundReadHeader:
+				headerClass = i
 			}
 		}
-		if bufferClass < 0 {
-			t.Fatal("PREPARED_TEXT_FIXTURE: MemStats.BySize has no 8 KiB size class")
+		if bufferClass < 0 || headerClass < 0 {
+			t.Fatal("PREPARED_TEXT_FIXTURE: MemStats.BySize has no 8 KiB or no 24-byte size class")
 		}
 
 		// The first call within the ceiling ends the measurements; a copy
 		// exceeds it in all of them. The overwrite runs after the last call,
 		// so every call starts from the same connection buffers.
-		totals := make([]uint64, 0, maxMeasuredCalls)
-		allocations := make([]uint64, 0, maxMeasuredCalls)
+		allocations := make([]preparedTextCopyAllocation, 0, maxMeasuredCalls)
 		reads := make([]preparedLinkRead, 0, maxMeasuredCalls)
 		for len(allocations) < maxMeasuredCalls {
 			measuredQuery, measuredNative := newObserver()
@@ -203,10 +211,11 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 			runtime.ReadMemStats(&before)
 			read, err := inspectPageLinksForPreparation(ctx, measuredQuery, arg, &incoming)
 			runtime.ReadMemStats(&after)
-			total := after.TotalAlloc - before.TotalAlloc
-			buffers := after.BySize[bufferClass].Mallocs - before.BySize[bufferClass].Mallocs
-			totals = append(totals, total)
-			allocations = append(allocations, total-buffers*backgroundReadBuffer)
+			a := preparedTextCopyAllocation{total: after.TotalAlloc - before.TotalAlloc,
+				blocks:  after.BySize[bufferClass].Mallocs - before.BySize[bufferClass].Mallocs,
+				headers: after.BySize[headerClass].Mallocs - before.BySize[headerClass].Mallocs}
+			a.counted = a.total - min(a.blocks, a.headers)*backgroundReadBuffer
+			allocations = append(allocations, a)
 			if err != nil {
 				return err
 			}
@@ -220,7 +229,7 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 			checkIncoming()
 			linksCollectorReusable(t, conn)
 			reads = append(reads, read)
-			if allocations[len(allocations)-1] <= maxAllocatedBytes {
+			if a.counted <= maxAllocatedBytes {
 				break
 			}
 		}
@@ -235,11 +244,14 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 			checkRead(read)
 		}
 		checkIncoming()
-		smallest := slices.Min(allocations)
-		t.Logf("prepared comparison: native rows=%d in each of %d calls, literal outputs and connection reuse verified, TotalAlloc=%v bytes, without 8 KiB buffers %v, fixed ceiling=%d bytes",
-			preparedTextCopyRows, len(allocations), totals, allocations, maxAllocatedBytes)
+		smallest := allocations[0].counted
+		for _, a := range allocations[1:] {
+			smallest = min(smallest, a.counted)
+		}
+		t.Logf("prepared comparison: native rows=%d in each of %d calls, literal outputs and connection reuse verified, %v, fixed ceiling=%d bytes",
+			preparedTextCopyRows, len(allocations), allocations, maxAllocatedBytes)
 		if smallest > maxAllocatedBytes {
-			t.Fatalf("PREPARED_TEXT_COPY: complete query+collector allocated at least %d bytes besides 8 KiB buffers in each of %d calls %v, fixed maximum %d for %d native rows",
+			t.Fatalf("PREPARED_TEXT_COPY: complete query+collector allocated at least %d bytes besides the reader's 8 KiB buffers in each of %d calls %v, fixed maximum %d for %d native rows",
 				smallest, len(allocations), allocations, maxAllocatedBytes, preparedTextCopyRows)
 		}
 		return nil
@@ -247,6 +259,16 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// One measured call: TotalAlloc's difference, the new 8 KiB blocks and
+// 24-byte objects, and what the guard counts of the total.
+type preparedTextCopyAllocation struct {
+	total, blocks, headers, counted uint64
+}
+
+func (a preparedTextCopyAllocation) String() string {
+	return fmt.Sprintf("TotalAlloc=%d 8KiB=%d 24B=%d counted=%d", a.total, a.blocks, a.headers, a.counted)
 }
 
 // The extra observer reads the native row while it is valid and forwards
