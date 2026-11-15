@@ -114,9 +114,11 @@ export async function reload(
 
 /**
  * Waits until page's document has nothing out that leaving it would lose: no API request unanswered, and in
- * the page (sessionWaits) the refresh lock free and its tokens answered, both in the same round: the page runs
- * on while it is read, and a request it sends meanwhile is waited for too. Fails after settleMs, naming what it
- * still waits for.
+ * the page (sessionWaits) the refresh lock free and its tokens answered, both in the same round. The page runs
+ * on while it is read: the requests are looked at again a poll after the read, since with a route on the page
+ * Playwright reports a request once the browser paused it, which can come after the read's answer. A request
+ * the page sends after that, until its next document commits, goes out unwaited for; the commit drops it
+ * (followRequests). Fails after settleMs, naming what it still waits for.
  */
 async function settle(page: Page): Promise<void> {
   const open = unanswered.get(page);
@@ -130,7 +132,11 @@ async function settle(page: Page): Promise<void> {
     if (waits.length === 0) {
       // oxlint-disable-next-line no-await-in-loop -- read again each round until nothing is left to wait for
       waits = await sessionWaits(page, Math.max(readMs, deadline - Date.now()));
-      if (waits.length === 0) waits = requests();
+      if (waits.length === 0) {
+        // oxlint-disable-next-line no-await-in-loop -- a request sent as the page was read is reported a little later
+        await sleep(pollMs);
+        waits = requests();
+      }
     }
     if (waits.length === 0) return;
     if (Date.now() >= deadline) {
