@@ -403,7 +403,8 @@ func TestListChangesetsAtPathListsAsExecute(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := uc.AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new("A.md"), Actor: &me}); err != nil ||
-		!slices.Equal(f.rec.calls[:5], []string{"WorkspaceOf", "Authorize page.history", "StateOf", "RootByKey", "ListChangesets actor page"}) {
+		!slices.Equal(f.rec.calls[:6], []string{"WorkspaceOf", "Authorize page.history", "WithinSnapshot", "StateOf in tx", "RootByKey in tx",
+			"ListChangesets actor page in tx"}) {
 		t.Errorf("calls = %v, %v; want the notebook, the node by its path, then the log", f.rec.calls, err)
 	}
 }
@@ -541,16 +542,16 @@ func TestGetChangesetInNotebook(t *testing.T) {
 		if len(want) == 0 {
 			return len(reads) == 0
 		}
-		return slices.Equal(reads, []string{"PathsOf " + strconv.Itoa(len(want))})
+		return slices.Equal(reads, []string{"PathsOf " + strconv.Itoa(len(want)) + " in tx"})
 	}
-	if want := pathsOf(first.Changes); !maps.Equal(first.Paths, want) || !f.called("ChangesetMoves") || !readOnce(want) {
+	if want := pathsOf(first.Changes); !maps.Equal(first.Paths, want) || !f.called("ChangesetMoves in tx") || !readOnce(want) {
 		t.Errorf("the first page's paths = %v after %v; want %v, read once, and the changeset's moves", first.Paths, f.rec.calls,
 			want)
 	}
 	f.rec.calls = nil
 	start, err := uc.InNotebook(f.asAlice(), f.eng, three.ID, &two, &first.Start)
 	if err != nil || start.Detail != nil || !slices.EqualFunc(start.Changes, first.Changes, sameChangeRow) ||
-		start.NextCursor != first.NextCursor || f.called("ChangesetMoves") || f.called("ChangesetFacts 1") ||
+		start.NextCursor != first.NextCursor || f.calledAtAll("ChangesetMoves") || f.calledAtAll("ChangesetFacts 1") ||
 		!maps.Equal(start.Paths, first.Paths) || !readOnce(start.Paths) {
 		t.Errorf("from Start = %+v, %v after %v; want the first page's changes and paths without the changeset", start, err,
 			f.rec.calls)
@@ -584,7 +585,7 @@ func TestGetChangesetInNotebook(t *testing.T) {
 	}
 	f.rec.calls = nil
 	if _, err := uc.InNotebook(f.asAlice(), f.eng, uuid.UUID{}, nil, nil); codeOf(err) != "page.changeset_not_found" ||
-		f.called("FindChangeset") {
+		f.calledAtAll("FindChangeset") {
 		t.Errorf("the zero id = %v after %v, want page.changeset_not_found without a read", err, f.rec.calls)
 	}
 }

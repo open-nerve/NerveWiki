@@ -31,13 +31,23 @@ func NewGetChangeset(r HistoryReads) *GetChangeset {
 // first items rename or move a node, which the log's lines do not read: a
 // changeset that does not exist, whose notebook is deleted, or whose
 // notebook the caller has no role in (page.history: any role) is
-// page.changeset_not_found. A read takes no lock and opens no transaction.
+// page.changeset_not_found. Its reads, from the first read of the answer
+// on, are one read-only snapshot: from FindChangeset, the decision with
+// them, which needs the changeset's notebook (M12 design 4.6.2).
 func (g *GetChangeset) Execute(ctx context.Context, id uuid.UUID) (ChangesetDetail, error) {
-	c, err := g.r.readableChangeset(ctx, id)
+	var out ChangesetDetail
+	err := g.r.Snapshots.WithinSnapshot(ctx, func(snap context.Context) error {
+		c, err := g.r.readableChangeset(snap, id)
+		if err != nil {
+			return err
+		}
+		out, err = g.r.detail(snap, c)
+		return err
+	})
 	if err != nil {
 		return ChangesetDetail{}, err
 	}
-	return g.r.detail(ctx, c)
+	return out, nil
 }
 
 // ChangesetPage is changeset's answer (M9 design 4.9): the changeset as
@@ -62,8 +72,9 @@ type ChangesetPage struct {
 // notebook, notebook.not_found (page.history, which every role may: no
 // 403); the changeset, page.changeset_not_found, the zero id unread; then
 // GetChangeset's reads without a cursor, ListChanges' reads, and the
-// paths of the nodes of the page's changes alive now, read once. A read
-// takes no lock and opens no transaction.
+// paths of the nodes of the page's changes alive now, read once. Its
+// reads, from the first read of the answer on, are one read-only
+// snapshot: from FindChangeset to the paths (M12 design 4.6.2).
 func (g *GetChangeset) InNotebook(ctx context.Context, notebookID, id uuid.UUID, limit *int, cursor *string) (ChangesetPage, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -85,34 +96,38 @@ func (g *GetChangeset) InNotebook(ctx context.Context, notebookID, id uuid.UUID,
 	if id == (uuid.UUID{}) {
 		return ChangesetPage{}, domain.ErrChangesetNotFound
 	}
-	c, err := g.r.History.FindChangeset(ctx, id)
-	switch {
-	case err != nil:
-		return ChangesetPage{}, found(err, domain.ErrChangesetNotFound)
-	case c.NotebookID != notebookID:
-		return ChangesetPage{}, domain.ErrChangesetNotFound
-	}
 	var out ChangesetPage
-	if cursor == nil {
-		d, err := g.r.detail(ctx, c)
-		if err != nil {
-			return ChangesetPage{}, err
+	err = g.r.Snapshots.WithinSnapshot(ctx, func(snap context.Context) error {
+		c, err := g.r.History.FindChangeset(snap, id)
+		switch {
+		case err != nil:
+			return found(err, domain.ErrChangesetNotFound)
+		case c.NotebookID != notebookID:
+			return domain.ErrChangesetNotFound
 		}
-		out.Detail = &d
-	}
-	l, err := g.r.changes(ctx, c.ID, after.After, size)
+		if cursor == nil {
+			d, err := g.r.detail(snap, c)
+			if err != nil {
+				return err
+			}
+			out.Detail = &d
+		}
+		l, err := g.r.changes(snap, c.ID, after.After, size)
+		if err != nil {
+			return err
+		}
+		out.Changes, out.NextCursor = l.Changes, l.NextCursor
+		var sources []*uuid.UUID
+		if out.Detail != nil {
+			sources = out.Detail.IngestSources
+		}
+		out.Paths, err = g.r.alivePaths(snap, notebookID, l.Changes, sources)
+		return err
+	})
 	if err != nil {
 		return ChangesetPage{}, err
 	}
-	out.Changes, out.NextCursor = l.Changes, l.NextCursor
-	if out.Cursors, err = cursorsAfter(l.Changes, func(r domain.ChangeRow) any { return domain.ChangeCursor{After: r.NodeID} }); err != nil {
-		return ChangesetPage{}, err
-	}
-	var sources []*uuid.UUID
-	if out.Detail != nil {
-		sources = out.Detail.IngestSources
-	}
-	if out.Paths, err = g.r.alivePaths(ctx, notebookID, l.Changes, sources); err != nil {
+	if out.Cursors, err = cursorsAfter(out.Changes, func(r domain.ChangeRow) any { return domain.ChangeCursor{After: r.NodeID} }); err != nil {
 		return ChangesetPage{}, err
 	}
 	if out.Start, err = shared.EncodeCursor(domain.ChangeCursor{}); err != nil { // after no id: from the first

@@ -48,7 +48,10 @@ func NewListChangesets(r HistoryReads) *ListChangesets {
 // in the trash, page.not_found; then the client and the limit, 422. One
 // changeset more than limit is read to tell whether another follows; then
 // their counts, reverts and first changes, and their actors' names, each
-// read once. A read takes no lock and opens no transaction.
+// read once. Its reads, from the first read of the answer on, are one
+// read-only snapshot: the changesets', from ListChangesets; the notebook's
+// and the node's, which the answer does not hold, come before it (M12
+// design 4.6.2).
 func (l *ListChangesets) Execute(ctx context.Context, notebookID uuid.UUID, q LogQuery) (ChangesetList, error) {
 	below := domain.ChangesetFrom()
 	if q.Cursor != nil {
@@ -90,7 +93,15 @@ func (l *ListChangesets) Execute(ctx context.Context, notebookID uuid.UUID, q Lo
 	if err != nil {
 		return ChangesetList{}, err
 	}
-	return l.page(ctx, notebookID, f, below, size)
+	var out ChangesetList
+	err = l.r.Snapshots.WithinSnapshot(ctx, func(snap context.Context) error {
+		out, err = l.page(snap, notebookID, f, below, size)
+		return err
+	})
+	if err != nil {
+		return ChangesetList{}, err
+	}
+	return out, nil
 }
 
 // PathLogQuery is log's arguments (M9 design 4.9): Path a node's path for
@@ -118,7 +129,10 @@ type PathLog struct {
 // actor; the cursor, 400; the path (a trailing "/" refused), the actor,
 // the client and the limit, 422 each; the notebook, notebook.not_found
 // (page.history: no 403); the node, page.not_found, found unlocked; then
-// Execute's reads.
+// Execute's reads. Its reads, from the first read of the answer on, are
+// one read-only snapshot: from the node's, its path's StateOf, or, with no
+// path, ListChangesets, to the paths of the changesets' sources (M12
+// design 4.6.2).
 func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q PathLogQuery) (PathLog, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -164,14 +178,26 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 	if err := decideNotebook(ctx, l.r.Notebooks, l.r.Auth, actor, domain.ActionHistory, notebookID); err != nil {
 		return PathLog{}, err
 	}
-	if pathed {
-		at, err := NewNodePaths(l.r.Paths, l.r.Notebooks).Find(ctx, notebookID, path)
-		if err != nil {
-			return PathLog{}, err
+	var list ChangesetList
+	var paths map[uuid.UUID]string
+	err = l.r.Snapshots.WithinSnapshot(ctx, func(snap context.Context) error {
+		if pathed {
+			at, err := NewNodePaths(l.r.Paths, l.r.Notebooks).Find(snap, notebookID, path)
+			if err != nil {
+				return err
+			}
+			f.PageID = &at.Node.ID
 		}
-		f.PageID = &at.Node.ID
-	}
-	list, err := l.page(ctx, notebookID, f, below, size)
+		if list, err = l.page(snap, notebookID, f, below, size); err != nil {
+			return err
+		}
+		var sources []*uuid.UUID
+		for _, c := range list.Changesets {
+			sources = append(sources, c.IngestSources...)
+		}
+		paths, err = l.r.alivePaths(snap, notebookID, nil, sources)
+		return err
+	})
 	if err != nil {
 		return PathLog{}, err
 	}
@@ -181,21 +207,14 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 	if err != nil {
 		return PathLog{}, err
 	}
-	var sources []*uuid.UUID
-	for _, c := range list.Changesets {
-		sources = append(sources, c.IngestSources...)
-	}
-	paths, err := l.r.alivePaths(ctx, notebookID, nil, sources)
-	if err != nil {
-		return PathLog{}, err
-	}
 	return PathLog{Changesets: list.Changesets, Cursors: cursors, NextCursor: list.NextCursor, Paths: paths}, nil
 }
 
 // page is a page of the notebook's log that f keeps, newer first, below
 // below, size at most: one changeset more is read to tell whether another
 // follows; then their counts, reverts and first changes, and their
-// actors' names, each read once.
+// actors' names, each read once. It opens no snapshot: Execute's and
+// AtPath's hold it, and a snapshot does not nest.
 func (l *ListChangesets) page(ctx context.Context, notebookID uuid.UUID, f domain.LogFilter, below domain.ChangesetCursor,
 	size int,
 ) (ChangesetList, error) {

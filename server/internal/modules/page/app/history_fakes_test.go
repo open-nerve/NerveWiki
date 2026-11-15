@@ -409,9 +409,17 @@ func (h *fakeHistory) VersionContents(ctx context.Context, refs []domain.Version
 	return out, nil
 }
 
-// historyReads are the log's reads over the fixture.
+// calledAtAll reports whether the fixture's fakes saw call, in a
+// transaction or a snapshot or out of it: a read the history's must not
+// make at all, now that its reads record " in tx".
+func (f *fixture) calledAtAll(call string) bool {
+	return f.called(call) || f.called(call+" in tx")
+}
+
+// historyReads are the log's reads over the fixture, their snapshot
+// recorded, the reads in it " in tx".
 func (f *fixture) historyReads() app.HistoryReads {
-	return app.HistoryReads{Notebooks: f.notebooks, History: f.log, Names: f.names, Auth: f.auth}
+	return app.HistoryReads{Notebooks: f.notebooks, History: f.log, Names: f.names, Auth: f.auth, Snapshots: fakeSnapshots{f.rec}}
 }
 
 func (h *fakeHistory) FirstIngestSources(ctx context.Context, ids []uuid.UUID, n int) (map[uuid.UUID][]*uuid.UUID, error) {

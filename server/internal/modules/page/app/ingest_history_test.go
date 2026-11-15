@@ -55,7 +55,7 @@ func TestIngestHistory(t *testing.T) {
 				got = append(got, call)
 			}
 		}
-		if !slices.Equal(got, []string{"FirstIngestSources 1 20"}) {
+		if !slices.Equal(got, []string{"FirstIngestSources 1 20 in tx"}) {
 			t.Errorf("detail preview calls=%v, want one batch20", got)
 		}
 		for _, ingest := range []*bool{nil, new(false)} {
@@ -118,7 +118,7 @@ func TestIngestHistory(t *testing.T) {
 			t.Errorf("preview failure=%v", err)
 		}
 		for _, call := range f2.rec.calls {
-			if call == "ChangesetMoves" || call == "ListChanges" || strings.HasPrefix(call, "PathsOf ") {
+			if call = strings.TrimSuffix(call, " in tx"); call == "ChangesetMoves" || call == "ListChanges" || strings.HasPrefix(call, "PathsOf ") {
 				t.Errorf("work after preview error: %s", call)
 			}
 		}
