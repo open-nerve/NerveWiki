@@ -1335,6 +1335,14 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
     - 代价：对推算的最大值只余 1.33–1.5 倍，比 249 自己的 1.4 倍还紧。失败那次比中位慢 25%，7763 上这样的尾巴会把偶发的红请回来。
     - 换来的：界离 7763 的常态更近。6.0 约是撤销 sample2 中位 3.47 秒的 1.7 倍，现在的 7.6 约是 2.2 倍；变慢在 1.7 倍到 2.2 倍之间的，压低之后才红。
 
+### 2026-11-16：`main` 上 pgtest 的一次读超时 360（主持者的决定，负责人可以改判）
+
+- **360 来源守卫的旁支合并之后第一次 `main` 的竞态一项红在 M1 的 `TestWaitForLockWaitsOnCountsTheRowsOfItsTable`：只重跑失败的项，不开旁支，记成观察的偶发；M12 收尾之前再出现一次就开旁支查**（run 43745380462）。
+  - 失败：`server/internal/platform/postgres/pgtest/lockwait_test.go:98`，测试 0.87 秒时"timeout: read tcp 127.0.0.1:…->127.0.0.1:…: i/o timeout"。那一行以 10 秒的期限等 `users` 的一行锁；它之前的一行以 300 毫秒的期限故意等不到（`advisory`）。
+  - 同一棵树在分支上的三次 CI 都绿；只重跑失败的项之后为绿。最近 80 次失败的 `ci.yml` 的注解里没有这个测试，也没有别的 `i/o timeout`。
+  - 推断（没有复现）：300 毫秒那一次的查询被期限打断时，连接上留着过期的读期限，又回到池里给了下一行。要查时先在本机竞态构建下大量重跑这个测试，看 pgx 在期限打断之后是否把连接关掉再还池。
+  - 理由：只出现一次，在测试帮手的测试里，不在产品的路径上；照 356、359 的先例，偶发只重跑失败的项；开旁支的代价大于一次重跑。收尾记录核对 P1 之后 `main` 的红时一并核对它（决定 334）。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1374,7 +1382,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `（待填：来源守卫的旁支的合并号）` |
+| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
 | P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
@@ -1402,6 +1410,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-15 | 帮手的旁支 `m12-p1-navigation-settle`（决定 356；七个提交：实施三个、修复一轮两个、改注释一个 `57d883d4`、合进 `main` 一个 `ea86d371`；合并见第 12 节）：帮手的 `settle` 读完页面为空时隔一个 `pollMs` 再看在途的请求，同一轮两样都空才放行；`followRequests` 在主框架提交它最后请求的那个文档时清掉留下的请求（Chromium 读完答复体才报结束，文档走了的两样都不报；Firefox 对下一个文档请求之后发的也不报），同文档的移动不清；A15 第 3 格在 Firefox 上确定（闸门每问各自发，离开之前等"Loading…"）；A15 加第 10–13 格，门禁的表 A15 ×3。旧文档在提交之前以同一地址 `replaceState` 的窄口不改，写进 P1 设计 3.17（决定 358）。审查（Important 0、Minor 3、Nit 3）：有路由时读完马上再看会漏；按地址配对与复位没有测试；照实改的清单不全。修复一轮 2 个提交（头 `5db08ef1`），分支 CI 43705519890 一次全绿，合进 `main` 之后 43721745639 一次全绿；修复核对一轮三位都没有 Important、Minor，新 Nit 六条（A-N1 = C-N4），一条由注释提交改，其余在本提交。4.4、第 7 节 S1 一行与决定 356 随之改，第 11 节加决定 358；第 12 节同时记分配守卫的旁支的合并号 `ad0bf40c`，它的审查记录补上文档提交的分支 CI；05-lessons 加五条。P1 设计随之改头、第 0 节、3.2、3.4、3.5、3.6、3.14、第 5 节、7.1、7.2、7.4、10.1，加 3.17，10.2 加 S2 合并之后的两次 `main` | [P1 设计](01-P1-foundation.md) 3.17、10.1 与[旁支的审查记录](reviews/P1-navigation-settle-review.md)（A 1M、B 1M、C 1M 3N；修复核对 A 2N、C 4N） |
 | 2026-11-15 | 帮手的旁支合并 `4fe6e523` 之后第一次 `main`，run 43729199362：19 项第一次 attempt 全绿（e2e 7:23，E2E 一步 6:12；guards-sources 落在 EPYC 9V74 上，13:52）。帮手的两种偶发失败（决定 356）合并之后在 `main` 上还没有再见；源文件撤销的守卫的旁支（决定 359）仍在审查 | [帮手的旁支的审查记录](reviews/P1-navigation-settle-review.md)；决定 356、359 |
 | 2026-11-16 | 来源守卫的旁支 `m12-p1-source-revert-deadline`（M10 的故事，在 M12 里发现；`83437b79`、`b0c80b74`、`80de075a`，合进 `main` 一个 `2308438e`；合并见第 12 节）：分配守卫的旁支合并之后第一次 `main`（run 43721644553 attempt 1）guards-sources 在 EPYC 7763 上红在 M10 的 `TestSourceRevertAtTenThousandTakesItsTime`，三个状态的 sample2 在 4.0 秒的请求期限答 500，`e2e`、`image` 被跳过。不是变慢：同一棵树的重跑也在 7763 上，3.54 秒；7763 上 M11 起 38 次，撤销的 sample2 一直只比 4 秒少 3–18%，失败那台每一项都最慢；9V74 与本机看不出与代码有关的台阶，7763 上 S2 之后高约 2–4%、分不出来源。4 秒的期限在 7.6 秒的界之下，起作用的是期限。恢复、撤销改在生产的 15 秒期限下跑，由不变的界来判；期限由界推出、与起应用的表对证；lint 的计时保存测试仍断言 4 秒；计时的请求经 `sendRequestBy` 用 30 秒的客户端（决定 359）。13.4 第 8 条的例外加这一个。审查 A 0I 3M 3N 1Q、B 0I 2M 2N、C 0I 5M 7N 2Q，修复一轮两个提交（B 的 M1、M2、N1、N2），分支 CI 43735796911 一次全绿；修复核对一轮三位都没有 Important、Minor，第一轮的都关上，新 Nit 七条（A 3、C 4）都是文档稿的措辞，在本提交。第 11 节的 359 补上旁支的做法、定因与理由，标题改为"来源的恢复与撤销的守卫"；总体设计 13.4 第 8 条与第 15 节、P1 设计的头与 10.2、05-lessons 两条、移交 M4-performance 的例外随之改 | 决定 359；[旁支的审查记录](reviews/P1-source-revert-deadline-review.md) |
+| 2026-11-16 | 来源守卫的旁支合并 `194ca350` 之后第一次 `main`，run 43745380462：第一次 attempt 16 项绿，`server (race)` 红在 M1 的 pgtest 测试 `TestWaitForLockWaitsOnCountsTheRowsOfItsTable`（读超时，0.87 秒），`e2e`、`image` 被跳过；第二次 attempt 只重跑失败的项，全绿（race 14:44，e2e 9:39，E2E 一步 8:10）。guards-sources 在 EPYC 7763 上，新期限下恢复的 sample2 2.82–2.93 秒、撤销 3.31–3.38 秒，18 个样本都是 200 | 决定 359、360 |
 
 ---
 
