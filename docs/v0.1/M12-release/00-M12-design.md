@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1 的 S1 已合并；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 的 S1、S2 已合并；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -185,7 +185,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
     - npm 一侧：`pnpm audit --prod`。pnpm 读得懂两个文档的 `pnpm-lock.yaml`。GitHub 的依赖图读不出这种锁文件（`pnpm-lock.yaml:1`、`:158` 各有一个 `---`；GitHub 文档写明 pnpm 12 钉了版本时的这种格式认不出），Dependabot alerts 因此看不见 npm 的公告，不再当作手段。仓库是公开的，锁文件本来就公开。
     - npm 一侧的判据（修订核对第 1 轮 B 的 M15）：`pnpm audit` 默认 `low` 也以 1 退出，又不看我们是否调到了有问题的函数。`make vuln` 带一个级别（例如 `VULN_AUDIT_LEVEL`，默认 `low`）：`vuln.yml` 照 `low` 跑，报出来给人看；发布的闸门传 `high`，`--audit-level=high` 才挡。
     - 修不了（没有补丁，或要升 4.3 不升的功能性大版本）或确认与我们无关的公告，写进 `pnpm-workspace.yaml` 的 `audit.ignore`（GHSA 号），理由写在那个提交与收尾记录里。收尾之后为此加的忽略，算改了产品的依赖配置，照决定 324 问负责人。
-  - **不进每次推送的 CI**：Go 的小版本约每月一个，多数带安全修复；`govulncheck` 找到就非 0 退出。放进必绿的 `short` 一份，下一个安全版本一出，每个 Step 都红，连只改网页的 Step 也合并不了。`make vuln` 放在一个单独的工作流 `.github/workflows/vuln.yml` 里：`schedule` 每天一次，加 `workflow_dispatch`，另加一个 `push` 触发，`paths` 只写它自己与依赖清单（`.github/workflows/vuln.yml`、`server/go.mod`、`server/go.sum`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`，以及定义 `make vuln` 的 `Makefile`、`make outdated` 的 `tools/outdated.sh`；修订核对第 2 轮 B 的 N12，P1 设计 2.1 第 13 条），只在分支的推送上（`branches: ["**"]`），tag 不触发。`workflow_dispatch` 与 `schedule` 只对已在默认分支上的工作流生效，引入它的 P1/S2 分支与升依赖的分支靠 `push` 跑（修订核对第 1 轮 B 的 M13）。发布的闸门硬挡（4.10）。
+  - **不进每次推送的 CI**：Go 的小版本约每月一个，多数带安全修复；`govulncheck` 找到就非 0 退出。放进必绿的 `short` 一份，下一个安全版本一出，每个 Step 都红，连只改网页的 Step 也合并不了。`make vuln` 放在一个单独的工作流 `.github/workflows/vuln.yml` 里：`schedule` 每天一次，加 `workflow_dispatch`，另加一个 `push` 触发，`paths` 只写它自己与依赖清单（`.github/workflows/vuln.yml`、`server/go.mod`、`server/go.sum`、`pnpm-lock.yaml`、`pnpm-workspace.yaml`，以及定义 `make vuln` 的 `Makefile`、`make outdated` 的 `tools/outdated.sh`，与以 `packageManager` 定了跑 `pnpm audit` 的 pnpm 的根 `package.json`；修订核对第 2 轮 B 的 N12，P1 设计 2.1 第 13 条；`package.json` 是 P1/S2 审查 C 的 N2，P1 设计 3.16 第 13 条），只在分支的推送上（`branches: ["**"]`），tag 不触发。`workflow_dispatch` 与 `schedule` 只对已在默认分支上的工作流生效，引入它的 P1/S2 分支与升依赖的分支靠 `push` 跑（修订核对第 1 轮 B 的 M13）。发布的闸门硬挡（4.10）。
   - **红了先要有人看见**：定时运行的通知发给最后改 cron 那一行的人，也就是推送用的负责人的账户，主持者收不到（修订核对第 1 轮 B 的 N9）。所以每个 Step 合并之前（02-workflow 第 3.6 节的合并步骤），主持者看一眼 `vuln.yml` 最近一次的结论（`gh run list --workflow vuln.yml --branch main --limit 1`）。
   - **红了怎么办**：主持者开旁支 `m12-toolchain-<版本>`，照 P1/S2 的做法升（两份 `go.mod`、Dockerfile 的 tag、摘要与断言、README、守卫；npm 一侧升报出的包，或照上面写进 `audit.ignore`），提交写当时所在的 Phase。收尾合并之后才由闸门发现的，改了产品代码或依赖配置，照决定 324 再问负责人。
   - 公开仓库 60 天没有活动时，定时工作流会被自动停用。发布之后若久无提交，它会悄悄停掉：写进给 v0.1.1 的移交（4.13）。
@@ -723,7 +723,7 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 | Step | 内容 | 改的部件 | 单独合并为绿 | 组合根与 CI 的用时 |
 |---|---|---|---|---|
 | S1 e2e 的帮手 | 4.4：夹具里的在途记录与帮手（`goto`、`reload`、显式的逃生口）；`pageWatch` 认出 `/sign-in`；109 个故事文件与 `e2e/fixtures/wiki-health.ts:157` 换上帮手；门禁（含 `e2e/fixtures/`，数逃生口）与它的反向对照；延后续期的对照测试；等续期的锁（或租约）与这个文档的令牌（第一次续期，或在它里面登录、注册的答复）；`global-setup.ts` 的一行日志（第 50 条）；总体设计 13.4 第 3 条 | e2e、tools、build（`Makefile`、`knip.jsonc`）、docs | 能：只改 e2e，CI 的 e2e 一份证明；逃生口只有 A15 的两格 | 组合根不变。e2e 作业预计多 0–30 秒（推断：多数 `goto` 之前没有在途的读；有任务时每秒轮询的设置页可能要多等几次，没有量；今天 6:52–9:23，时限 20 分钟） |
-| S2 工具链与安全更新 | 4.3：Go 1.27.4（两份 `go.mod`；Dockerfile 的 tag、摘要与构建时的断言；README；文档里的五处：总体设计 13.1 第 32 条、06-environment 两处、05-lessons、03-project-background）；PostgreSQL 18.7（五处、守卫加 README）；三个镜像的摘要；两个 action；`make vuln`（Go 只扫 `server/`，npm 的 `pnpm audit --prod`）、新的 `vuln.yml` 与它报出的模块；`make outdated`；Dockerfile 的 Go 版本的守卫；两处注释的核对；总体设计 7.1 与 13.5 第 2 条 | server、deploy、e2e、CI、Makefile、README、docs | 能：一个分支、一次完整的 CI，`vuln.yml` 在同一个分支上由 `push` 触发跑一次；PostgreSQL 的五处由守卫一起改，漏一处就红 | 组合根各份照新的工具链与数据库重量：合并之后两次 `main`，过 450 秒照 06-environment 第 4 节挪份。`ci.yml` 不多跑 `make vuln`。`image` 一份要拉新的基础镜像 |
+| S2 工具链与安全更新 | 4.3：Go 1.27.4（两份 `go.mod`；Dockerfile 的 tag、摘要与构建时的断言；README；文档里的五处：总体设计 13.1 第 32 条、06-environment 两处、05-lessons、03-project-background）；PostgreSQL 18.7（五处、守卫加 README）；三个镜像的摘要；两个 action；`make vuln`（Go 只扫 `server/`，npm 的 `pnpm audit --prod`）、新的 `vuln.yml` 与它报出的模块；`make outdated`；Dockerfile 的 Go 版本的守卫；两处注释的核对；总体设计 7.1 与 13.5 第 2 条 | server、deploy、e2e、CI、Makefile、README、docs | 能：一个分支、一次完整的 CI，`vuln.yml` 在同一个分支上由 `push` 触发跑一次；PostgreSQL 的五处由守卫一起改，漏一处就红 | 组合根各份照新的工具链与数据库重量：合并之后两次 `main`，过 450 秒照 06-environment 第 4 节挪份。`ci.yml` 不多跑 `make vuln`。`image` 一份要拉新的基础镜像。S2 实施：分支上多出的约 50 秒是编译（竞态的份没取回竞态的编译结果），`ci.yml` 只让竞态的九份取存 Go 的缓存（决定 355）；第三、第五份各挪一个给第八份（决定 354）；见"分份" |
 
 - S1 先做：S2 要一次干净的完整 CI，不该被 `goto` 的偶发打红。
 - **每个 Step 合并之前**（02-workflow 第 3.6 节）：主持者看一眼 `vuln.yml` 最近一次的结论（`gh run list --workflow vuln.yml --branch main --limit 1`）；定时运行的通知不发给主持者（4.3）。
@@ -814,6 +814,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
   - 第四份是补集，第五份收 `TestThe(MCP|Lint|WikiTools)`、`TestRebuild` 等（`Makefile:263`），新测试的名字要避开它们。
   - 第二份是 `-run SECOND -skip FIFTH`（`Makefile:342`），不跳过第七份：名字以 `E`、`Source`、`TheMCP[C-Z]`、`TheContents` 开头的新测试点名进第七份之后，会在第二份再跑一遍。事件流现有的整个程序测试叫 `TestEvery…`（`bootstrap/events*_test.go`），P3/S1 的流数测试不照这个习惯起名。避不开时，第二份的 `-skip` 加第七份的模式，同 M11 收尾给第四份加的（设计审查 A 的 N5）。
 - P1/S2 合并之后两次 `main` 重看各份；过 450 秒照 06-environment 第 4 节先挪给邻份，挪不下再分一份，不提高 `-timeout`。
+- P1/S2（决定 354、355）：分支 CI 上组合根在 7763 上 417–458 秒，多出的约 50 秒是编译：竞态的份取回的缓存里没有竞态的编译结果（第一、二次没有缓存，第三到五次取回 `vuln.yml` 先存下的 3 MB），包的时间没变。S2 之前 `main` 的键是 `bootstrap-1` 存的；改了 Go 与 `go.sum` 之后，不改的话由最先跑完、不带竞态的 `short` 存。`ci.yml` 从此只让竞态的九份取存 Go 的缓存，`vuln.yml` 不取不存。照包的时间折算，第三、第五份各挪一个给第八份，暖的时候 7763 上第三、四、五份约 396、396、382 秒（[P1 设计](01-P1-foundation.md) 3.16、10.2）。合并之后第一次 `main` 是冷的。
 
 ### 移交的落实
 
@@ -1213,6 +1214,14 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **351 A15 的第 3 格（第一次续期发出之前离开）只在 Chromium 与 Firefox 跑，WebKit 跳过并写明理由；第 4 格三种都跑，WebKit 里只证明帮手等第一次续期**（P1-15；设计审查 C-I1；P1 设计 3.6）：WebKit 在请求下一个文档之后，旧文档的请求一个也发不出去，没有这个窗口（审查 C 的探针 B、D 与修订时的原型）。
 - **352 S2 合并之后，`main` 的第五份第一次落在 EPYC 7763 上时，记下它的 Test 一步，与收尾之后的 425 秒比；两次落在 7763 上的平均过 450 秒时，照 06-environment 第 4 节挪份；不为等 7763 拖住 S2 的合并**（P1-16；设计审查 A-Q1，主持者定；P1 设计 7.4、7.5、第 8 节第 1 条）：照 7.5 写明、不硬比不同 CPU 的数。
 
+### 2026-11-15：S2 的决定 353–355（主持者的决定，负责人可以改判）
+
+353、354 在 S2 的实施中定，355 在审查之后定。每条在 [P1 设计](01-P1-foundation.md) 3.16，理由与审查里的出处在 [S2 的审查记录](reviews/P1-S2-toolchain-review.md)"主持者的决定"一节。
+
+- **353 katex 的 GHSA-238p-pmpm-9mq7（low，修在 0.18.2）写进 `pnpm-workspace.yaml` 的 `audit.ignore`**（`c654db5f`；P1 设计 3.13 第 5 步、3.16 第 9 条）：`math.ts:44` 的 `trust: false` 是选项对象自己的属性；`:123` 把 mermaid 给的选项放在前、我们的在后（`{ ...given, ...options }`）；`:318` 只有我们的选项与 `displayMode`（`{ ...options, displayMode: displayed }`）。继承来的 `trust` 盖不过它，公告剩下的风险要先有别的原型污染。0.16 线没有修，升 0.18 是 4.3 不升的功能性大版本、补丁要重做；发布的闸门用 `high`，本来不挡它。katex 0.18/0.19 与补丁重做，收尾时写进 v0.2 的 `M12-release.md`。
+- **354 审查之前就在 S2 里挪份：第三份的 TestTheSearchIsWhatEachReadAllows、第五份的 TestTheWikiToolsAnswerEveryCode 挪到第八份（也进第七份的模式），不分第九份**（`28980104`；P1 设计 3.16 第 3 条，第 7 节"分份"）：照 M11 决定 272、276 的先例；分支上慢的是编译，不是测试，照 7763 上包的时间折算只有这两份过约 400。八份、19 项不变。
+- **355 `ci.yml` 的 server 矩阵只让竞态构建的九份（`race`、`bootstrap-1`…`8`）取存 Go 的缓存，另外七份不取不存；`vuln.yml` 照旧 `cache: false`**（`0844464d`；S2 审查 B 的 I1；P1 设计 3.16 第 2 条）：setup-go 的键归先存下的那一份，竞态与不带竞态的编译结果不共用；不改的话合并之后 `main` 的新键由最先跑完、不带竞态的 `short` 存下，组合根每份从头编译。七份只少约 2 秒的模块下载。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1252,7 +1261,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md) | S1 `bbf3eb26` |
+| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md) | S1 `bbf3eb26`、S2 `（待填：S2 的合并号）` |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
 | P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
@@ -1271,6 +1280,8 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-15 | P1 设计已审查，S1 开工；P1 设计 2.1 的修订落进本文：不做跨文档的后退；TR2 不用逃生口，逃生口只有 A15 的两格；帮手另等这个文档的第一次续期与续期的锁，各由 A15 的一格定下；门禁管整个 `e2e/`、按表核对逃生口、对帮手的模块整个例外；`pageWatch` 在 `browser.ts` 的 `watchPage`；对照测试是故事 A15；S1 另改 `tools/` 与构建；9.6 的变异照 P1 设计 7.2；`govulncheck@v1.9.0`；README 的 Go 版本进守卫、断言带一句错误信息；`make outdated` 也在改了依赖清单的推送上跑、`continue-on-error`；`vuln.yml` 的 `push` 只在分支上、路径加 `tools/outdated.sh`（2.1 第 10 条撤回）。第 11 节加 P1 的取舍 337–352 | [P1 设计](01-P1-foundation.md)；[P1 审查记录](reviews/P1-design-review.md)（A 2I 6M 10N 1Q、B 1M 4N、C 1I 3M 4N；两轮修订核对新 A 1N、C 2M 2N，都已改，没有 Important 与 Minor） |
 | 2026-11-15 | P1 的 S1 实施、审查与修复（实施 8 个提交，修复一轮 5 个，主持者另加 1 个只改注释的，一共 14 个；合并见第 12 节）：帮手 `e2e/fixtures/navigation.ts` 的 `goto`、`reload` 先等在途的接口请求、续期的锁（或租约）、这个文档有了给它令牌的答复，至多 10 秒；`watchPage` 登记在途的请求与登录页的落点；110 个文件机械地换上；门禁 `tools/e2e-navigation/check.mjs`（`make lint-web`）核对读到了帮手的模块、读 Playwright 默认的八种结尾、认三种引号；A15 九格，三种浏览器；第 50 条的一行（分支的 CI 上触发了一次）。与设计不同之处 10 条（帮手另认登录、注册的答复且先看锁再看记录，A6 的一个标签页先受监视，页面里的读至少 1 秒，第 5 格先断言路由的结局，落点按上一次主框架的地址去重，A15 九格，门禁的核对与读的文件，3.7 的"复原之后看不到"在本机做不出，那一行只在落到过 `/sign-in` 时写）；实施中定的几条没有给号，记在 P1 设计 3.15；决定 339 照实施改，连粗体，决定 342 的数法改为按 ` after a refresh answered 401` 数。审查（Important 0、Minor 4、Nit 9）：在这个文档里登录、注册时帮手不等锁，租约一支没有测试，文档稿的两处；修复一轮 5 个提交（头 `3c2425c1`）照改，变异改前活、改后死，分支 CI 43642007840 一次全绿；修复核对一轮三位都没有 Important、Minor，新 Nit 三条（数法、锚、倍数），一条由 `937df215` 改注释，其余在本提交。4.4、第 7 节 S1 一行、"总体设计的修订"第 12 条与决定 339、342 随之改；总体设计 13.4 第 3 条与第 15 节，移交 M5-polish 一行；README 的 e2e 一节加帮手一条，05-lessons 加设计的一句与审查的三条。P1 设计随之改头、第 0 节、2.3、3.2–3.7、3.14、第 4、5 节、6.1、7.1、7.2、7.4、第 8 节第 3、5、7 条，加 3.15 与 10.1。合并之后两次 `main` 的 e2e 记在 S2 的记录 | [P1 设计](01-P1-foundation.md) 3.15、10.1 与 [S1 的审查记录](reviews/P1-S1-e2e-navigation-review.md)（A 2M 1N、B 1M 2N、C 1M 7N；修复核对 A 1N、B 1N、C 2N） |
 | 2026-11-15 | S1 合并 `bbf3eb26`，合并之后第一次 `main` 的 CI（run 43650412259）19 项第一次 attempt 全绿：八份的 Test 一步 253（EPYC 9V45）、285（EPYC 9V74）、422（EPYC 7763）、302（Xeon 6975P-C）、265（6975P-C）、372（7763）、328（7763）、236（6975P-C）秒，都在 450 之下，第三份在 7763 上最贴近；第五份这次在 6975P-C 上，决定 352 的 7763 那一次还没来；e2e 9:38（E2E 一步 8:08，565 个、1 个跳过），第 50 条那一行打出（waited 432 ms）。第二次是记合并号这个提交的 run，记在 S2 的记录 | [P1 设计](01-P1-foundation.md) 第 8 节第 1 条、7.5；决定 352 |
+| 2026-11-15 | S1 合并之后第二次 `main`（记合并号的 `0da2fb5d`，run 43653071437）19 项第一次 attempt 全绿：八份的 Test 一步 403（7763）、261（6975P）、410（7763）、297（6975P）、254（9V45）、383（7763）、240（6975P）、236（6975P）秒；两次的平均 328、273、416、299.5、259.5、377.5、284、236，都在 450 之下，第三份最贴近；第五份两次都没落在 7763 上，决定 352 的那一次还没来；e2e 8:29（E2E 一步 7:11），第 50 条那一行打出（waited 213 ms）。这两次是 S2 的"之前"（P1 设计 7.5） | [P1 设计](01-P1-foundation.md) 第 8 节第 1 条、7.5、10.1；决定 352 |
+| 2026-11-15 | P1 的 S2 实施、审查与修复（实施 12 个提交，修复一轮 6 个，一共 18 个；合并见第 12 节）：Go 1.27.4（两份 `go.mod`，Dockerfile 的 tag、摘要与构建时的断言，README；守卫 `TestTheImageBuildsWithTheModulesToolchain` 读整行的断言）；PostgreSQL 18.7 五处，守卫加 README；node（24.22.3）与 distroless 的摘要，setup-node 7.1.0、upload-artifact 7.0.2；`make vuln`、`make outdated`、`tools/outdated.sh` 与 `vuln.yml`，本机拒绝（判断与干活同一行，`outdated.sh` 自己也判）；`vuln.yml` 第一次报出的两个 Go 模块（只在测试里）与 dompurify 升了，katex 的公告进 `audit.ignore`（决定 353），之后为绿；第三、第五份各挪一个给第八份（决定 354）；`ci.yml` 只让竞态的九份取存 Go 的缓存，`vuln.yml` 不取不存（决定 355）。与设计不同之处 13 条，记在 P1 设计 3.16。审查（Important 1、Minor 4、Nit 11、Q 1）：合并之后 `main` 的缓存键会由不带竞态的 `short` 存下；守卫不核对报错里的版本；"取回 3 MB"说多了；`make -i` 绕过本机的拒绝；`outdated.sh` 没读到也写"没有过时的"。修复一轮 6 个提交（头 `80d76191`）照改，变异改前活、改后死，分支 CI 43681898393 一次全绿（冷的）；修复核对一轮三位都没有 Important、Minor，新 Nit 一条（反向对照没进 3.14 与 7.2），在本提交。4.3 的 `paths`、第 7 节 S2 一行与"分份"随之改，第 11 节加决定 353–355；总体设计 7.1、13.5 第 2 条、13.1 第 32 条与第 15 节；06-environment、05-lessons、03-project-background；移交 M0-P6-image-release 一行。P1 设计随之改头、第 0 节、2.3 的决定 346、3.8、3.9、3.10、3.12、3.13、3.14、6.2、7.1、7.2、7.4、第 8 节第 6、7 条，加 3.16 与 10.2，10.1 加 S1 合并之后的两次 `main`。S2 合并之后两次 `main` 的组合根照 P1 设计第 8 节第 1 条看 | [P1 设计](01-P1-foundation.md) 3.16、10.2 与 [S2 的审查记录](reviews/P1-S2-toolchain-review.md)（A 1M 3N、B 1I 1M 2N 1Q、C 2M 6N；修复核对 C 1N） |
 
 ---
 

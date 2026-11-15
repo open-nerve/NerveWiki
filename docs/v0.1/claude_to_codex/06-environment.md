@@ -7,7 +7,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 照 README 的"需要安装"一节装：
 
 - **Docker**（含 Compose v2）。适配器测试、整个程序的测试与 e2e 都经 testcontainers 起 PostgreSQL 18，没有 Docker 只能跑短测试。
-- **Go**：1.26 或更高，`GOTOOLCHAIN=auto`。第一次在 `server/` 下执行 Go 命令时，会自动下载 `go.mod` 锁定的 `go1.27.1`。竞态检测要 cgo，Linux 上要有 gcc。
+- **Go**：1.26 或更高，`GOTOOLCHAIN=auto`。第一次在 `server/` 下执行 Go 命令时，会自动下载 `go.mod` 的 `toolchain` 锁定的那个版本。竞态检测要 cgo，Linux 上要有 gcc。
 - **Node 24**：执行一次 `corepack enable`，pnpm 12.8.1 由 `package.json` 锁定；在仓库根执行 `pnpm install`。
 - **`make tools`**：把 golangci-lint 2.14.0 装进 `./bin`。`make lint` 用它，不用系统里的。
 - **Playwright 的三个浏览器**：`pnpm --filter @nervewiki/e2e exec playwright install chromium firefox webkit`。Linux 上照 CI 的写法带 `--with-deps` 装系统库。
@@ -48,9 +48,10 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 
 - 工作流是 `.github/workflows/ci.yml`。同一分支的新推送会取消正在跑的那次，等它跑完再推。
 - 读 CI 用 [tools/ci-wait.sh](tools/ci-wait.sh)：`tools/ci-wait.sh <完整的 sha> [工作流的文件名]`。它找到这个提交在那个工作流（默认 `ci.yml`）里的运行，等它完成，列出每个作业的结论与时间，以及 Test、E2E 两步的时间（组合根的各份看的就是各自 Test 一步，不是整个作业的时长）。装了 `gh` 并登录时用它；否则用公开的 REST API，每个 IP 每小时 60 次，所以它每 2 分钟才问一次。仓库默认 `open-nerve/NerveWiki`，可用 `NW_REPO` 改。一个提交可以有几个工作流的运行（M12 起有每天的漏洞检查与发布的演练）；M12 之前它不分工作流、取最后建的那一次，就可能等到别的工作流的绿。
-- **分份**：组合根现在分八份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_EIGHTH`），CI 共 19 项：16 个 server 的 leg（race、bootstrap-1 到 bootstrap-8、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。每一份两次 `main` 运行的 Test 一步的平均要在 450 秒之下，过线时先挪给邻份，挪不下就再分一份，不提高 `-timeout`。本机量时在同一把 heavy 锁下分别运行 `make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-8`，每份两轮；不要拿 `make test-go` 内部的 `-j6` 当这些串行的样本。更早的三份、四份与十项、十一项的记录保留当时的口径。
+- **依赖的漏洞**：`make vuln`、`make outdated` 只在 GitHub 的 runner 上跑：不在 runner 上，它们与 `tools/outdated.sh` 都拒绝，`make -i` 也一样。结论看 `vuln.yml`：`gh run list --workflow vuln.yml --branch main --limit 1`，或 `tools/ci-wait.sh <sha> vuln.yml`。每个 Step 合并之前看一眼（00-M12 4.3）。作业日志要认证：`gh run view <id> -R open-nerve/NerveWiki --log`（在仓库之外要带 `-R`）；`outdated` 一项带 `continue-on-error`，它的结论不算，读它的输出：六节各有结果、末行 `0 with errors`。
+- **分份**：组合根现在分八份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_EIGHTH`），CI 共 19 项：16 个 server 的 leg（race、bootstrap-1 到 bootstrap-8、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。每一份两次 `main` 运行的 Test 一步的平均要在 450 秒之下，过线时先挪给邻份，挪不下就再分一份，不提高 `-timeout`。本机量时在同一把 heavy 锁下分别运行 `make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-8`，每份两轮；不要拿 `make test-go` 内部的 `-j6` 当这些串行的样本。更早的三份、四份与十项、十一项的记录保留当时的口径。组合根的 Test 一步含编译：Test 一步减 bootstrap 包的 `ok` 行的时间，7763 上约 33 秒（别的 CPU 约 21–26 秒）。多出几十秒时，看这一份取回的 Go 缓存是哪一份存的（存的那一次 post 一步的 "Cache saved with the key"）：不带竞态的份存的键对竞态的构建没有用，大小不说明什么（M12/P1/S2）。
 - 失败的原因：作业日志要认证（`gh run view <id> --log-failed`）。不认证时，失败的作业的 annotations（`/repos/<repo>/check-runs/<作业 id>/annotations`）是公开的，Go 的失败与 Playwright 的 `github` 报告器都写在那里。
-- 只在 Linux 上失败的，在 `golang:1.27.1-trixie` 容器里复现（`--cpus=2`、`-race`），见 [05](05-lessons.md) 第 7 节。
+- 只在 Linux 上失败的，在与 `go.mod` 的 `toolchain` 同版本的 golang 镜像（`deploy/Dockerfile` 的 server 阶段那个）里复现（`--cpus=2`、`-race`），见 [05](05-lessons.md) 第 7 节。
 
 ## 5. tools/ 里的四个小工具
 

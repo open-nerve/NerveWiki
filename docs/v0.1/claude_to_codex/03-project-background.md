@@ -12,7 +12,7 @@ Nerve Wiki：面向团队的自部署在线 Markdown 笔记（单租户），工
 
 | 部分 | 技术 | 位置 |
 |---|---|---|
-| 服务端 | Go 1.27（toolchain go1.27.1），模块化单体、端口与适配器；PostgreSQL 18，sqlc；oapi-codegen 的契约；River 的后台任务；官方 Go SDK 的 MCP 服务 | `server/` |
+| 服务端 | Go 1.27（`toolchain` 见 `server/go.mod`），模块化单体、端口与适配器；PostgreSQL 18，sqlc；oapi-codegen 的契约；River 的后台任务；官方 Go SDK 的 MCP 服务 | `server/` |
 | 契约 | OpenAPI（每个模块一份 `api/modules/*.yaml`，根 `api/openapi.yaml`，生成 `api/dist/`）；MCP 的工具清单 `api/mcp/tools.json` | `api/` |
 | 网页 | TypeScript/React、React Router（数据路由）、MobX、SWR、Radix、CodeMirror 6；Node 24、pnpm 12.8.1（corepack）；oxlint、oxfmt、knip、vitest | `web/apps/web`，生成的客户端 `web/packages/api-client` |
 | e2e | Playwright，一个故事一个文件 | `e2e/stories/<分组>/`，夹具 `e2e/fixtures/` |
