@@ -1030,6 +1030,7 @@ P1 完成，当且仅当：
 - **审查**（2026-11-15，三位各在 `4a0c2585` 的自己的工作树里）：A 审工具链、镜像与 Go 模块，B 审分份、缓存与 CI，C 审 `make vuln`、`make outdated`、`vuln.yml`、npm 与文档稿。A 0I 1M 3N，B 1I 1M 2N 1Q，C 0I 2M 6N：Important 1（合并之后 `main` 的缓存键会由不带竞态的 `short` 存下，P1S2B-I1），Minor 4（守卫不核对报错里的版本，A-M1；"取回 3 MB"说多了，B-M1；`make -i` 绕过本机的拒绝，C-M1；`outdated.sh` 一项也没读到时照样写"没有过时的"，C-M2），Nit 11，Q 1（删不删分支上的 3 MB 键：主持者删了）。三位都确认挪份每个顶层测试恰在一份，摘要与 SHA 相同，两个 Go 模块不在二进制里，变异都抓到。
 - **修复核对**（一轮，2026-11-15，三位各在 `80d76191` 的自己的工作树里）：没有 Important、Minor。A 判 M1、N1、N2 关上，N3 在文档稿里关上；B 判 I1、M1、N1、N2 关上（`costs-3` 末行不取缓存约多 10 秒，可以接受）；C 判 M1、M2、N1–N6 关上，新 Nit C-N7（`outdated.sh` 自己拒绝的反向对照没进 3.14 与 7.2）在本提交。
 - 留下的：合并之后第一次 `main` 是冷的（新的 Go 与 `go.sum`），由第一个跑完的竞态份存键，第二次起竞态的份取回它，Test 减包回到几秒（缓存与代码同一棵树时 1–3 秒，之后改过的包越多越接近 S2 之前的约 33 秒）；看那一份 post 一步的 "Cache saved with the key"，并看 `short` 没有存。决定 352 的那一次若是冷的第一次，减去约 50 秒的编译再比。katex 0.18/0.19 与补丁重做、Node 26、功能性的大版本（mermaid 12 等）与 Dependabot 的版本更新，收尾时写进 v0.2 的 `M12-release.md`（决定 353）。开发库：18.x 之间不要 dump/restore，`make dev-db` 拉新镜像、沿用旧的卷即可。
+- 分配守卫的旁支：S2 合并之后，M10 的分配守卫 `TestPreparedSourceDoesNotCopyTextForComparison` 在旁支 `m12-p1-navigation-settle` 的 run 43694312336 上三次红在竞态一项，是 pgx 的后台读取器的 8 KiB 缓冲，不是复制；旁支 `m12-p1-prepared-alloc` 按 pgx 的分配形状减去它，界不变（00 号文档决定 357，[审查记录](reviews/P1-prepared-alloc-review.md)）。这是 M10 的故事，本文的设计不变。
 
 ## 附录：核对过的代码
 
