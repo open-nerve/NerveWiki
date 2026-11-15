@@ -4,7 +4,7 @@
 
 # 前端。先只复制包清单与锁文件安装依赖，源码变了这一层照样复用。
 # 只安装 @nervewiki/web 与它依赖的包；e2e 的清单也要复制，锁文件里有它；依赖的补丁（patches/：KaTeX 与 @lezer/markdown 的）在安装时打上
-FROM node:24-trixie-slim@sha256:8ec5d7557396cfe32d21c3f9c13072355ceab22b584578ca4bb28af31120cffe AS web
+FROM node:24-trixie-slim@sha256:af02d57b57719b9657a45199a79264a9437940cd55b3c7b3fc99615654f124a0 AS web
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable
 WORKDIR /src
@@ -41,7 +41,7 @@ RUN mkdir /out/data
 # 用不带 nonroot 的变体，由这里的 USER 声明非 root 用户：去掉它，image-smoke.sh 就会失败。
 # 写成数字（distroless 的 nonroot，uid 65532）：Kubernetes 的 runAsNonRoot 无法核对用户名。
 # 不写 HEALTHCHECK：镜像里没有能发请求的程序，编排系统用 /healthz、/readyz 做探针
-FROM gcr.io/distroless/static-debian13:latest@sha256:58133991db06659feaabe0f4e97a35cebf15ef4ea08f8a4c6d2ee5f75e4aa6a0 AS runtime
+FROM gcr.io/distroless/static-debian13:latest@sha256:1a64f46364620465ef9e9a8f5413757dfdf22695e050bbfd7303eeaf17a59383 AS runtime
 ARG VERSION=0.1.0-dev
 LABEL org.opencontainers.image.title="Nerve Wiki" \
       org.opencontainers.image.version="${VERSION}" \
