@@ -13,12 +13,15 @@ import { expect, test } from "../../fixtures/test";
 
 // A15, leaving a page while its refresh is out (M1 design 10: the session ends, and the user signs in again; a
 // known limitation in the release notes). The stories leave a document through fixtures/navigation.ts, which
-// waits first: two tests here leave through its escape and land on the sign-in page; the others go through it and
-// stay signed in, each holding back one of the things the helper waits for (the refresh's answer, the first
-// refresh, a read, the lock after a refresh or under a sign-in, the lease without Web Locks), and one with none of
-// them, its document signed up itself, is not kept waiting. The answer, the next document, the first refresh,
-// the lock and the lease are held so that each order happens for certain, not by running it again and again
-// (05-lessons 6). Only the page has a version: the API's side, a retired token used again, is A5 (API).
+// waits first: two tests here leave through its escape and land on the sign-in page, and one leaves a read out
+// through it that the next document is not to wait for; the others go through it and stay signed in, each
+// holding back one of the things the helper waits for (the refresh's answer, the first refresh, a read, one sent
+// while the helper reads the page, the lock after a refresh or under a sign-in, the lease without Web Locks), and
+// one with none of them, its document signed up itself, is not kept waiting; the last two hold a read across a
+// move within the document that the helper is not to take for its next document. The answer, the next
+// document, the first refresh, the reads, the lock and the lease are held so that each order happens for
+// certain, not by running it again and again (05-lessons 6). Only the page has a version: the API's side, a
+// retired token used again, is A5 (API).
 
 /** A promise, and the function that settles it. */
 function signal(): { settled: Promise<void>; settle: () => void } {
@@ -98,7 +101,9 @@ async function routeTheRefreshAgainstTheNextDocument(page: Page): Promise<Refres
  * navigation: the app's lock requests there wait for a gate, which the document opens itself once a test
  * address (not under /api/v0/, which the helper and pageWatch follow) answers "go". The function returned
  * makes it answer so. The document asks for itself: Chromium does not answer page.evaluate on a document
- * while its next one is requested and not yet committed.
+ * while its next one is requested and not yet committed. It asks every 25 ms, each time on its own, not once
+ * the last ask was answered: Firefox neither sends nor fails an ask made as a navigation starts, and a chain
+ * of asks would stop there (the third cell, about 1 in 30 runs, CI run 43689756257).
  */
 async function holdTheFirstRefresh(page: Page): Promise<() => void> {
   let go = false;
@@ -115,15 +120,20 @@ async function holdTheFirstRefresh(page: Page): Promise<() => void> {
     LockManager.prototype.request = function (this: LockManager, ...args: unknown[]) {
       return gate.then(() => request.apply(this, args));
     } as LockManager["request"];
-    const ask = (): void => {
+    const asking = setInterval(() => {
       fetch("/__a15/release", { cache: "no-store" })
         .then((answer) => answer.text())
         .then(
-          (word) => (word === "go" ? open?.() : void setTimeout(ask, 25)),
-          () => void setTimeout(ask, 25)
+          (word) => {
+            if (word === "go") {
+              clearInterval(asking);
+              open?.();
+            }
+            return word;
+          },
+          () => undefined
         );
-    };
-    ask();
+    }, 25);
   });
   return () => {
     go = true;
@@ -263,6 +273,10 @@ test("A15 (page): leaving through the escape before the document's first refresh
   const routes = await routeTheRefreshAgainstTheNextDocument(page);
 
   await goto(page, "/settings/profile");
+  // The session is starting, its first refresh held. The app shows that once the router has its route modules
+  // (it renders nothing before): Firefox fails an import the next document's request cuts off, and the app
+  // logs it as a route error.
+  await expect(page.getByRole("status")).toHaveText("Loading…");
   const leaving = goto(page, "/settings/security", { inFlight: "leave" });
   // The next document is asked for, and held; only then does the old one send its first refresh, which
   // nervewiki carries out and the old document never gets back.
@@ -486,4 +500,233 @@ test("A15 (page): without Web Locks, leaving through the helper while another ta
   await expect(page).toHaveURL("/settings/security");
   await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
+});
+
+test("A15 (page): leaving through the helper while a read goes out as the helper reads the page waits for its answer", async ({
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const nextDocument = signal();
+  let requestedAt = 0;
+  page.on("request", (request) => {
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+  // The read is answered by nervewiki and held until the test lets it go.
+  const reached = signal();
+  const letGo = signal();
+  await page.route("**/api/v0/instance?a15=during", async (route) => {
+    const response = await route.fetch();
+    reached.settle();
+    await letGo.settled;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  // As a page that renders again after the story's last step may (LW3 on CI run 43686031128): the document sends
+  // a read while the helper reads it, here from inside the helper's navigator.locks.query, 300 ms long.
+  await page.evaluate(() => {
+    const query = LockManager.prototype.query;
+    LockManager.prototype.query = async function (this: LockManager) {
+      LockManager.prototype.query = query;
+      // The answer is read, as the app reads each: Chromium reports a request finished only once its body is.
+      void fetch("/api/v0/instance?a15=during")
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return query.call(this);
+    };
+  });
+  const leaving = goto(page, "/settings/security");
+  await reached.settled;
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  letGo.settle();
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once the read was answered").toBeGreaterThan(releasedAt);
+  expect(pageWatch.apiFailures).toEqual([]);
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+});
+
+test("A15 (page): a read left out by the escape is not the next document's to wait for; a move within a document keeps its own", async ({
+  api,
+  browserName,
+  signedInPage,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const nextDocument = signal();
+  let requestedAt = 0;
+  const order: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("a15=left")) order.push("the read left out");
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) order.push(`at ${new URL(frame.url()).pathname}${new URL(frame.url()).search}`);
+  });
+  // The reload's document is held 1 s, and the old document sends a read 300 ms into it, which is never answered;
+  // the read after the move is held until the test lets it go.
+  let holdTheDocument = false;
+  await page.route("**/settings/profile", async (route) => {
+    if (holdTheDocument && route.request().isNavigationRequest()) {
+      holdTheDocument = false;
+      await sleep(1_000);
+    }
+    await route.fallback();
+  });
+  const letGo = signal();
+  await page.route("**/api/v0/instance?a15=*", async (route) => {
+    if (route.request().url().endsWith("a15=left")) return;
+    const response = await route.fetch();
+    await letGo.settled;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+  // With a fragment, which the reload's document request does not carry and its commit does.
+  await goto(page, "/settings/profile#a15");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await page.evaluate((url) => {
+    setTimeout(() => {
+      void fetch(url)
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+    }, 300);
+  }, "/api/v0/instance?a15=left");
+  order.length = 0;
+  holdTheDocument = true;
+  await reload(page, { inFlight: "leave" });
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  // Sent once the next document was asked for, before it came: Chromium and Firefox then report nothing more for
+  // the read. WebKit sends nothing from a document once the next one is asked for (the third cell), and the read
+  // never goes out.
+  expect(order[0]).toBe(browserName === "webkit" ? "at /settings/profile" : "the read left out");
+  expect(order).toContain("at /settings/profile");
+  // A read of this document, then a move within it, as the app's router makes: the read is still out.
+  await Promise.all([
+    page.waitForRequest((request) => request.url().endsWith("a15=kept")),
+    page.evaluate((url) => {
+      void fetch(url)
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+    }, "/api/v0/instance?a15=kept"),
+  ]);
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.evaluate(() => history.pushState(history.state, "", "/settings/profile?moved")),
+  ]);
+  const leaving = goto(page, "/settings/security");
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  letGo.settle();
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once this document's read was answered").toBeGreaterThan(
+    releasedAt
+  );
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+});
+
+/** What holdAReadOfThisDocument gives a test. */
+interface HeldRead {
+  /** Sends a read of page's document, held until leave lets it go. */
+  send(): Promise<unknown>;
+  /** Leaves for /settings/security through the helper, and checks it waited for the read until it was let go. */
+  leave(): Promise<void>;
+}
+
+/** Holds page's reads of /api/v0/instance?a15=held: answered by nervewiki, held until the test lets them go. */
+async function holdAReadOfThisDocument(page: Page): Promise<HeldRead> {
+  const nextDocument = signal();
+  let requestedAt = 0;
+  page.on("request", (request) => {
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+  const letGo = signal();
+  await page.route("**/api/v0/instance?a15=held", async (route) => {
+    const response = await route.fetch();
+    await letGo.settled;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+  return {
+    send: () =>
+      Promise.all([
+        page.waitForRequest((request) => request.url().endsWith("a15=held")),
+        page.evaluate(() => {
+          void fetch("/api/v0/instance?a15=held")
+            .then((answer) => answer.text())
+            .catch(() => undefined);
+        }),
+      ]),
+    leave: async () => {
+      const leaving = goto(page, "/settings/security");
+      await within(nextDocument.settled, 1_000);
+      const releasedAt = Date.now();
+      letGo.settle();
+      await leaving;
+      expect(requestedAt, "the next document is asked for once this document's read was answered").toBeGreaterThan(
+        releasedAt
+      );
+      await expect(page).toHaveURL("/settings/security");
+      await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+    },
+  };
+}
+
+test("A15 (page): after a navigation that never commits (204), a move within the document is not the next document: the helper waits for its read", async ({
+  signedInPage,
+  api,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const read = await holdAReadOfThisDocument(page);
+  await page.route("**/a15-no-content", (route) => route.fulfill({ status: 204 }));
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  // A document asked for and answered 204: the page stays where it is, and nothing commits.
+  const [noContent] = await Promise.all([
+    page.waitForRequest((request) => request.url().endsWith("/a15-no-content")),
+    page.evaluate(() => {
+      location.href = "/a15-no-content";
+    }),
+  ]);
+  expect(noContent.isNavigationRequest()).toBe(true);
+  // Answered (Firefox reports no response for it, only that it ended).
+  await noContent.response();
+  await expect(page).toHaveURL("/settings/profile");
+  await read.send();
+  // To another address than the one asked for last.
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.evaluate(() => history.pushState(history.state, "", "/settings/profile?moved")),
+  ]);
+  await read.leave();
+});
+
+test("A15 (page): a move within the document to the address it committed is not the next document: the helper waits for its read", async ({
+  signedInPage,
+  api,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const read = await holdAReadOfThisDocument(page);
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await read.send();
+  // The address the document committed, replaced with itself, as a router may.
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.evaluate(() => history.replaceState(history.state, "", location.href)),
+  ]);
+  await read.leave();
 });

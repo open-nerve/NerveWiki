@@ -28,7 +28,8 @@ const LEAVE = /inFlight:\s*["'`]leave["'`]/g;
 const LEAVES = {
   // A15's two tests of what the helper prevents: one leaves while the refresh's answer is out, one before
   // the document's first refresh has gone out (Chromium and Firefox only); both land on /sign-in (M12/P1/S1).
-  "e2e/stories/identity/a15-leave-mid-refresh.spec.ts": 2,
+  // And one leaves a read out, which the helper is then not to wait for in the next document (M12/P1).
+  "e2e/stories/identity/a15-leave-mid-refresh.spec.ts": 3,
 };
 
 /** The line of text that index falls on, counting from 1. */
