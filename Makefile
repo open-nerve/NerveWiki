@@ -318,7 +318,7 @@ BOOTSTRAP_SIXTH = ^Test(Ingest|TheBackgroundRevertStopsAtAWriteBetweenItsBatches
 # 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
 # M11/P2 的分份（00-M11 第 276 条）：第三份的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与第五份的 TestTheMCPToolsErrorsCarryTheirCodes
 # 挪到第八份，同样也进第七份的模式（数与各份怎么跳过它们见第八份的说明）。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
@@ -350,7 +350,19 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|The
 # （最近两次 main 第八份 Test 一步 210、315 秒）；照第八份的老规矩也进第七份的模式（第七份 -skip 第八份）。它以 TestR 起名，别的份的模式都不收它，
 # 原来落在补集的第四份，所以第四份从此也 -skip 第七份：第七份原有的名字都已被第一、三、六份的模式收下（ABackground、[U-Z]、The[F-Z]、Ingest），
 # 加上它只多跳过这一个。八份照旧，554 个顶层（竞态构建）145/50/120/120/61/15/30/13，每个恰在一份。不提高 -timeout。
-BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
+# M12/P1/S2（M12 决定 354）：S2 的分支 CI 三次里组合根在 EPYC 7763 上的 Test 一步 417–458 秒（第五份 458，第一、四份 449）。多出的不是测试：
+# 7763 上包自己的时间与 S1 之前相同或更短（第一份 369 → 348/361/356 秒，第六份 340/351 → 336/336 秒），Test 一步减包的时间从 32–35 秒变成
+# 81–88 秒，是 vuln.yml 的 outdated 一项以同一个 setup-go 的缓存键先存下 3 MB、各份取回它之后从头编译（vuln.yml 从此不存 Go 的缓存，S2 的
+# 上一个提交）。照 7763 上包的时间加 S1 之前的约 33 秒折算：第一份约 388、第四份约 396、第六份约 369、第七份约 329（S1 之前的包）、第八份约
+# 312 秒，第三份约 415（S1 之前 7763 上的包 387/376 秒）、第五份约 409 秒（376 秒）过了约 400。照 M9/P2 设计 6.5 挪给余量最大的第八份，挪得
+# 最少，各一个本机两轮稳定、不是所在份第一个跑的：第三份的 TestTheSearchIsWhatEachReadAllows（本机 -v 9.95/9.93 秒），第五份的
+# TestTheWikiToolsAnswerEveryCode（16.03/16.29 秒；不挑第五份的 TestTheMCPBatchIsRefusedWhole，两轮 28.7/45.7 秒，留下的余量给它的慢的一种）。
+# 本机八份两轮（make -j1，-v，包的时间）挪前第三份 235.8/239.7、第五份 223.4/240.8、第八份 188.2/184.2 秒；Go 1.27.1 与 1.27.4、PostgreSQL 18.6
+# 与 18.7 在本机第五份上没有差别（222.4–224.7 秒）。同第八份的老规矩也进第七份的模式（第七份 -skip 第八份）：第三份、第五份 -skip 第七份时跳过
+# 它们，第四份跳过第三份的 The[F-Z] 时已跳过它们，第一、二、六份的模式不收它们。挪后本机两轮第三份 227.2/225.2、第五份 207.0/208.0、第八份 212.5/213.2 秒；照各份 7763 上的包与本机之比
+# （第三份 381.5/237.8≈1.60、第五份 375.7/223.4≈1.68、第八份 279.0/186.2≈1.50）加约 33 秒，折到 7763 第三份约 396、第五份约 382（TestTheMCPBatchIsRefusedWhole 慢的一种约 411）、第八份约 352 秒。
+# 554 个顶层 145/50/119/120/60/15/30/15，每个恰在一份。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -387,7 +399,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes，回滚的变更集的撤销（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes 与 TestTheWikiToolsAnswerEveryCode，第三份让出的 TestTheSearchIsWhatEachReadAllows，回滚的变更集的撤销（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
