@@ -73,10 +73,29 @@ const outcomeOK = "ok"
 // The messages of a fault's internal_error: the request id goes with
 // them, for the logs.
 const (
-	internalGone     = "the client went away"
-	internalDeadline = "the call ran out of time"
-	internalFailed   = "the server failed"
+	internalGone = "the client went away"
+	// internalDeadline: a call past server.request_timeout. Its transaction
+	// rolled back whole; an agent should retry, a batch split smaller (M12
+	// design 4.6.4; M4-performance hand-off, after item 22).
+	internalDeadline = "the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones"
+	// internalDeadlineSaving: a call past server.request_timeout whose
+	// transaction's COMMIT got no answer within database.commit_timeout:
+	// its outcome is unknown (TxManager), its changes saved or not.
+	internalDeadlineSaving = "the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
+	internalFailed         = "the server failed"
 )
+
+// deadlineText is a deadline's message: a COMMIT's that failed, which the
+// platform's TxManager marks, may have saved its changes; any other
+// deadline changed nothing (M12/P3 design 3.7). The platform imports no
+// module: the mark is known by its method, as ProblemOf knows a problem.
+func deadlineText(err error) string {
+	var c interface{ TxCommitFailed() bool }
+	if errors.As(err, &c) && c.TxCommitFailed() {
+		return internalDeadlineSaving
+	}
+	return internalDeadline
+}
 
 // errorMember is structuredContent.error: the code and the message the
 // text block holds, and the problem's members.
@@ -98,7 +117,7 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		return s.internalError(ctx, internalGone), httpserver.CodeInternal
 	case httpserver.FaultDeadline:
 		s.logger.LogAttrs(ctx, slog.LevelWarn, "MCP call deadline exceeded", append(attrs, slog.Any("error", err))...)
-		return s.internalError(ctx, internalDeadline), httpserver.CodeInternal
+		return s.internalError(ctx, deadlineText(err)), httpserver.CodeInternal
 	case httpserver.FaultUnknown:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs, slog.Any("error", err))...)
 		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
@@ -357,7 +376,7 @@ func (s *Server) methodError(ctx context.Context, method string, err error) erro
 		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + internalGone}
 	case httpserver.FaultDeadline:
 		s.logger.LogAttrs(ctx, slog.LevelWarn, "MCP call deadline exceeded", append(attrs, slog.Any("error", err))...)
-		message = internalDeadline
+		message = deadlineText(err)
 	default:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP method failed", append(attrs, slog.Any("error", err))...)
 	}

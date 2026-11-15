@@ -495,11 +495,15 @@ func TestPromptErrorsAndLogs(t *testing.T) {
 			}}}
 		}})
 		code, message, data := rpcError(t, s.getPrompt(context.Background(), t, "p", nil))
-		if code != -32603 || !strings.HasPrefix(message, "internal_error: the call ran out of time; request id ") || data != nil {
-			t.Errorf("answer = %d %q %v", code, message, data)
-		}
-		if line := awaitLog(t, s.logs, "MCP call deadline exceeded"); line["level"] != "WARN" || line["method"] != methodGetPrompt {
+		line := awaitLog(t, s.logs, "MCP call deadline exceeded")
+		if line["level"] != "WARN" || line["method"] != methodGetPrompt {
 			t.Errorf("the log line = %v", line)
+		}
+		// The whole sentence, its request id the log's (M12/P3 design 3.7).
+		want := "internal_error: the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones; request id " +
+			fmt.Sprint(line["request_id"])
+		if code != -32603 || message != want || data != nil || line["request_id"] == nil || line["request_id"] == "" {
+			t.Errorf("answer = %d %q %v; want %q", code, message, data, want)
 		}
 		outcome(t, s, "internal_error")
 	})

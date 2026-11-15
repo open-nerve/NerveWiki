@@ -233,8 +233,11 @@ func TestTheMCPCallRunsOutOfTime(t *testing.T) {
 	m := startMCPApp(t, mcpTestTools(newMCPSeen()))
 	a := m.call(t, atNotebook(m.notebook), "slow", map[string]any{})
 	e := toolError(t, a.result(t))
-	if !strings.HasPrefix(e["message"].(string), "internal_error: the call ran out of time; request id ") {
-		t.Errorf("a call out of time = %v, want internal_error: the call ran out of time", e)
+	// The whole sentence, its request id the answer's (M12/P3 design 3.7).
+	id, _ := e["request_id"].(string)
+	if want := "internal_error: the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones; request id " +
+		id; e["message"] != want || id == "" {
+		t.Errorf("a call out of time = %v, want the message %q", e, want)
 	}
 	if a.took < 4*time.Second || a.took > 6*time.Second {
 		t.Errorf("the call answered after %v, want at server.request_timeout's 4 s", a.took)
