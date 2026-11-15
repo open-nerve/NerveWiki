@@ -100,7 +100,9 @@ async function routeTheRefreshAgainstTheNextDocument(page: Page): Promise<Refres
  * navigation: the app's lock requests there wait for a gate, which the document opens itself once a test
  * address (not under /api/v0/, which the helper and pageWatch follow) answers "go". The function returned
  * makes it answer so. The document asks for itself: Chromium does not answer page.evaluate on a document
- * while its next one is requested and not yet committed.
+ * while its next one is requested and not yet committed. It asks every 25 ms, each time on its own, not once
+ * the last ask was answered: Firefox neither sends nor fails an ask made as a navigation starts, and a chain
+ * of asks would stop there (the third cell, about 1 in 30 runs, CI run 43689756257).
  */
 async function holdTheFirstRefresh(page: Page): Promise<() => void> {
   let go = false;
@@ -117,15 +119,20 @@ async function holdTheFirstRefresh(page: Page): Promise<() => void> {
     LockManager.prototype.request = function (this: LockManager, ...args: unknown[]) {
       return gate.then(() => request.apply(this, args));
     } as LockManager["request"];
-    const ask = (): void => {
+    const asking = setInterval(() => {
       fetch("/__a15/release", { cache: "no-store" })
         .then((answer) => answer.text())
         .then(
-          (word) => (word === "go" ? open?.() : void setTimeout(ask, 25)),
-          () => void setTimeout(ask, 25)
+          (word) => {
+            if (word === "go") {
+              clearInterval(asking);
+              open?.();
+            }
+            return word;
+          },
+          () => undefined
         );
-    };
-    ask();
+    }, 25);
   });
   return () => {
     go = true;
@@ -265,6 +272,10 @@ test("A15 (page): leaving through the escape before the document's first refresh
   const routes = await routeTheRefreshAgainstTheNextDocument(page);
 
   await goto(page, "/settings/profile");
+  // The session is starting, its first refresh held. The app shows that once the router has its route modules
+  // (it renders nothing before): Firefox fails an import the next document's request cuts off, and the app
+  // logs it as a route error.
+  await expect(page.getByRole("status")).toHaveText("Loading…");
   const leaving = goto(page, "/settings/security", { inFlight: "leave" });
   // The next document is asked for, and held; only then does the old one send its first refresh, which
   // nervewiki carries out and the old document never gets back.
