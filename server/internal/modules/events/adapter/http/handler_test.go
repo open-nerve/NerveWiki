@@ -60,7 +60,11 @@ func (slowly) NotebooksIn(context.Context, uuid.UUID, uuid.UUID, shared.Workspac
 	return nil, nil
 }
 
-// tokens accepts "tok", and "short", which expires a minute from now;
+// fullUser is the account "full" authenticates as.
+func fullUser() uuid.UUID { return uuid.MustParse("01990000-0000-7000-8000-0000000000f1") }
+
+// tokens accepts "tok", and "short", which expires a minute from now, as
+// an account of its own each time, and "full", a new session of fullUser;
 // once revoked, it refuses both with a 401, once down with a fault; once
 // hung, it answers when its caller gives up, and tells hanging it has
 // begun to.
@@ -77,10 +81,14 @@ func (a *tokens) Authenticate(ctx context.Context, token string) (context.Contex
 		return nil, "", ctx.Err()
 	case a.down.Load():
 		return nil, "", errors.New("database is down")
-	case a.revoked.Load() || (token != "tok" && token != "short"):
+	case a.revoked.Load() || (token != "tok" && token != "short" && token != "full"):
 		return nil, "", shared.Unauthenticated()
 	}
-	ctx = shared.WithActor(ctx, shared.Actor{UserID: uuid.NewV7(), SessionID: uuid.NewV7()})
+	user := uuid.NewV7()
+	if token == "full" {
+		user = fullUser()
+	}
+	ctx = shared.WithActor(ctx, shared.Actor{UserID: user, SessionID: uuid.NewV7()})
 	if token == "short" {
 		ctx = httpserver.WithCredentialExpiry(ctx, now().Add(time.Minute))
 	}
@@ -512,5 +520,28 @@ func TestAStreamThatCannotOpenIsAProblem(t *testing.T) {
 	}
 	if res, _ := s.open(t, "nope"); res.StatusCode != http.StatusUnauthorized {
 		t.Errorf("GET with a bad token = %d, want 401", res.StatusCode)
+	}
+	// An account at its bound, 16 sessions of 4 streams: a new session's is
+	// 429 rate_limited, Retry-After 30, before the 200 and its hello (M12
+	// design 4.6.5).
+	s = newStream(t)
+	for range app.MaxAccountStreams / app.MaxCredentialStreams {
+		id := uuid.NewV7()
+		for range app.MaxCredentialStreams {
+			st, err := app.NewOpenStream(s.hub, everyone{}).Execute(shared.WithActor(context.Background(), shared.Actor{UserID: fullUser(), SessionID: id}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(st.Close)
+		}
+	}
+	res, r = s.open(t, "full")
+	if res.StatusCode == http.StatusOK { // a stream: reading it to its end would wait for ever
+		event, _ := frame(t, r)
+		t.Fatalf("GET past the account's streams = 200, its first frame %s; want 429 rate_limited, Retry-After 30, no hello", event)
+	}
+	body, _ = io.ReadAll(r)
+	if res.StatusCode != http.StatusTooManyRequests || res.Header.Get("Retry-After") != "30" || !strings.Contains(string(body), `"rate_limited"`) {
+		t.Errorf("GET past the account's streams = %d %v %s; want 429 rate_limited, Retry-After 30", res.StatusCode, res.Header, body)
 	}
 }

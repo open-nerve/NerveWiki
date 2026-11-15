@@ -27,6 +27,9 @@ const (
 	ResetReconnected ResetReason = "reconnected"
 	// ResetOverflow: the stream's client fell behind.
 	ResetOverflow ResetReason = "overflow"
+	// ResetSuperseded: the same credential opened its fifth stream: this,
+	// its oldest, ends (M12 design 4.6.5).
+	ResetSuperseded ResetReason = "superseded"
 )
 
 // HelloFrame is a stream's first frame: how often the server sends a

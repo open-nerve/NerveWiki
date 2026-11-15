@@ -1738,11 +1738,13 @@ export interface paths {
          *     - lock: an edit session of a page opened or ended; the client reads the page's lock again.
          *     - links: a write of a notebook's pages changed its link index; pages lists the pages of the index (so after a server update once nervewiki reindex has run) whose links resolve to other pages now, but for those whose content the write wrote, which a pages event lists; targets lists the pages whose backlinks changed. Each is empty for none, and null for more than 20 or for all of them, as after nervewiki reindex rebuilt the index, when the client takes every page of the notebook as changed. aliases tells whether the write changed the aliases of the notebook's pages, which links resolve by: a version's links, which the index does not hold, may resolve otherwise, so the client reads the views of the notebook's versions again. A write that changed the aliases alone sends one with both lists empty.
          *     - mode: a notebook's mode or its upgrade changed: a downgrade, an upgrade's start, submission, return, approval, rejection, abandonment, and its rollback's stop and end. Its data is the notebook's ids. Read the notebook again, its mode, its upgrade and the caller's role in it with it.
-         *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), or overflow (the client fell behind). A reset for access, notebooks_deleted, reconnected or overflow comes after the events the stream held.
+         *     - reset: the last frame; the client reconnects at once and refreshes all it shows. reason is access (the caller may see other notebooks now), notebooks_deleted, expired (the credential, at its expiry), unauthenticated (it failed at a heartbeat: revoked, signed out, the account deactivated), reconnected (the server missed events), overflow (the client fell behind), or superseded: the same credential (a sign-in's session or a token) opened a fifth stream, and this, its oldest, ends; connect again, as after any reset. A reset for access, notebooks_deleted, reconnected, overflow or superseded comes after the events the stream held.
          *
          *     The stream may also end without a reset: when the server stops, when the credential cannot be checked at a heartbeat, or when the client does not take a frame within a heartbeat. The client reconnects then too, and refreshes.
          *
          *     Other event types may come; a client ignores those it does not know. While the server cannot listen for events yet, starting or reconnecting, it answers not_ready with Retry-After.
+         *
+         *     A credential holds at most 4 streams, an account at most 64 over its credentials: a credential's fifth resets its oldest (superseded), and is never refused; an opening that would make the account's 65th is rate_limited, with Retry-After.
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3766,7 +3768,7 @@ export interface components {
         /** @description The data of reset, the last frame. */
         EventReset: {
             /** @enum {string} */
-            reason: "access" | "notebooks_deleted" | "expired" | "unauthenticated" | "reconnected" | "overflow";
+            reason: "access" | "notebooks_deleted" | "expired" | "unauthenticated" | "reconnected" | "overflow" | "superseded";
         };
         /** @description An attachment: its node in the notebook's tree, its file, and the addresses of its content, signed for anyone who has them. */
         Asset: {
