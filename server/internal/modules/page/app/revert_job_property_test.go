@@ -145,15 +145,20 @@ func (n jobNode) state() domain.TreeState {
 	return domain.TreeState{ParentID: n.parent, Name: n.name, SortOrder: n.order}
 }
 
-// jobModel is a notebook in the model: its nodes, and its trash items by
-// root, each member where its deletion left it.
+// jobModel is a notebook in the model: its nodes, its trash items by
+// root, each member where its deletion left it, and the times of trash
+// items by root, the trial's time for one it has none of: each item
+// deleted at its own, as a store reads the group of a root at its time
+// (M12/P3 design 3.10.7).
 type jobModel struct {
 	nodes map[uuid.UUID]jobNode
 	trash map[uuid.UUID]map[uuid.UUID]domain.TreeState
+	at    map[uuid.UUID]time.Time
 }
 
 func newJobModel() jobModel {
-	return jobModel{nodes: map[uuid.UUID]jobNode{}, trash: map[uuid.UUID]map[uuid.UUID]domain.TreeState{}}
+	return jobModel{nodes: map[uuid.UUID]jobNode{}, trash: map[uuid.UUID]map[uuid.UUID]domain.TreeState{},
+		at: map[uuid.UUID]time.Time{}}
 }
 
 func (m jobModel) clone() jobModel {
@@ -167,7 +172,17 @@ func (m jobModel) clone() jobModel {
 			out.trash[root][id] = at
 		}
 	}
+	maps.Copy(out.at, m.at)
 	return out
+}
+
+// timeOf is the time of the trash item of root in m: its own, or the
+// trial's.
+func (p *jobTrial) timeOf(m jobModel, root uuid.UUID) time.Time {
+	if at, ok := m.at[root]; ok {
+		return at
+	}
+	return p.at
 }
 
 // jobTrial is a trial: its seed and random source; every version a page wrote, its
@@ -356,12 +371,14 @@ type jobSlot struct {
 
 // jobEdit is a batch on the model m, as 4.11 lets one be (the domain's
 // generator, 3.16.4): what it created, moved or renamed, and wrote; the
-// trash items it made, by root; the places nodes left.
+// trash items it made, by root, and those of them it deleted apart, in
+// their order; the places nodes left.
 type jobEdit struct {
 	p                       *jobTrial
 	m                       jobModel
 	created, moved, written map[uuid.UUID]bool
 	groups                  map[uuid.UUID]map[uuid.UUID]domain.TreeState
+	apart                   []uuid.UUID
 	freed                   []jobSlot
 	serial                  int
 }
@@ -422,13 +439,15 @@ func (e *jobEdit) touched(ids []uuid.UUID) bool {
 }
 
 // del deletes the subtree of x, a trash item with those under it the
-// batch deleted before; none that the batch created or moved (B1, B3).
+// batch deleted before, but those it deleted apart; none that the batch
+// created or moved (B1, B3).
 func (e *jobEdit) del(x uuid.UUID) bool {
 	m, p := e.m, e.p
 	sub := p.subtree(m, x)
 	var absorbed []uuid.UUID
 	for _, top := range p.ids {
-		if g, ok := e.groups[top]; ok && g[top].ParentID != nil && slices.Contains(sub, *g[top].ParentID) {
+		if g, ok := e.groups[top]; ok && !slices.Contains(e.apart, top) && g[top].ParentID != nil &&
+			slices.Contains(sub, *g[top].ParentID) {
 			absorbed = append(absorbed, top)
 		}
 	}
@@ -456,8 +475,22 @@ func (e *jobEdit) del(x uuid.UUID) bool {
 	return true
 }
 
+// delApart is del, its trash item one of its own that no later deletion
+// of the batch takes in, deleted before the batch's others: a unit of its
+// own of the batch's changeset, as a rollback's pass deletes a new subtree
+// before the new folder over it (M12/P3 design 3.10.7).
+func (e *jobEdit) delApart(x uuid.UUID) bool {
+	if !e.del(x) {
+		return false
+	}
+	e.apart = append(e.apart, x)
+	return true
+}
+
 // done is the notebook after the batch, its trash items made, and the
-// batch's changeset as the store records it.
+// batch's changeset as the store records it. Of n items deleted apart,
+// the i-th in their order is at n-i seconds before the trial's time, the
+// others at it.
 func (e *jobEdit) done(t0 jobModel) (jobModel, []domain.ChangesetItem, []domain.ChangesetVersion) {
 	for top, g := range e.groups {
 		e.m.trash[top] = g
@@ -466,6 +499,9 @@ func (e *jobEdit) done(t0 jobModel) (jobModel, []domain.ChangesetItem, []domain.
 			n.trash = top
 			e.m.nodes[id] = n
 		}
+	}
+	for i, top := range e.apart {
+		e.m.at[top] = e.p.at.Add(-time.Duration(len(e.apart)-i) * time.Second)
 	}
 	items, versions := e.p.changesetOf(t0, e.m, e.written)
 	return e.m, items, versions
@@ -694,8 +730,8 @@ func (p *jobTrial) changesetOf(pre, post jobModel, written map[uuid.UUID]bool) (
 
 // load is a fixture whose store holds the notebook m, every version the
 // trial wrote in its history, and the changeset of items and versions,
-// made at the trial's time; the trash items' counts as a deletion
-// records them.
+// made at the trial's time; each trash item at its time in m, its counts
+// as a deletion records them.
 func (p *jobTrial) load(m jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion) (*fixture, *fakeChangeset) {
 	f := newFixture()
 	f.grant(domain.ActionRevert)
@@ -723,13 +759,13 @@ func (p *jobTrial) load(m jobModel, items []domain.ChangesetItem, versions []dom
 			}
 			continue
 		}
-		f.store.trash[id] = app.AnyNode{Node: node, DeletedAt: new(p.at), TrashRoot: n.trash == id}
+		f.store.trash[id] = app.AnyNode{Node: node, DeletedAt: new(p.timeOf(m, n.trash)), TrashRoot: n.trash == id}
 		if !n.asset {
 			f.store.trashed[id] = content
 		}
 	}
 	for root := range m.trash {
-		group, err := f.store.group(f.eng, root, p.at)
+		group, err := f.store.group(f.eng, root, p.timeOf(m, root))
 		if err != nil {
 			panic(err)
 		}
@@ -753,7 +789,7 @@ func groupOf(group []domain.TrashMember) []domain.GroupNode {
 
 // modelOf is the fixture's store as the model has it: its nodes alive and
 // in the trash, each trash item its members where their deletion left
-// them.
+// them, at its time.
 func (p *jobTrial) modelOf(f *fixture) jobModel {
 	m := newJobModel()
 	for _, id := range p.ids {
@@ -780,7 +816,7 @@ func (p *jobTrial) modelOf(f *fixture) jobModel {
 			m.nodes[n.ID] = jobNode{parent: n.ParentID, name: n.Name, order: n.SortOrder, asset: n.Kind == domain.KindAsset, trash: id,
 				revision: c.Revision, content: c.Content}
 		}
-		m.trash[id] = members
+		m.trash[id], m.at[id] = members, *t.DeletedAt
 	}
 	return m
 }
