@@ -32,3 +32,11 @@ allowBuilds:
 patchedDependencies:
   "@lezer/markdown@1.7.2": patches/@lezer__markdown@1.7.2.patch
   katex@0.16.47: patches/katex@0.16.47.patch
+
+# pnpm audit 不挡的公告，各注明理由（00-M12 4.3）：
+audit:
+  ignore:
+    # katex：low。只在页面已被别的漏洞做了原型污染时起作用（KaTeX 自己不造成污染），把继承的属性当作设置；
+    # 我们显式传 trust: false（web/apps/web/src/reading/math.ts，mermaid 的公式也经它）。修在 0.18.2，0.16 线没有修：
+    # 0.16 → 0.18 是 00-M12 4.3 不升的功能性大版本，补丁要重做（13.5 第 5 条）。3.13 的第 1、2、4 步走不通（M12/P1/S2）
+    - GHSA-238p-pmpm-9mq7

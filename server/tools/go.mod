@@ -2,7 +2,7 @@ module github.com/open-nerve/NerveWiki/server/tools
 
 go 1.27
 
-toolchain go1.27.1
+toolchain go1.27.4
 
 // The code generators, apart from the server module so that their
 // dependencies stay out of it: oapi-codegen for the API, sqlc for the

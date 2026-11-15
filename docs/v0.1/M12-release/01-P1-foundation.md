@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P1 地基（两个 Step：S1 e2e 的帮手；S2 工具链与安全更新） |
-| 日期 | 2026-11-15（初稿；同日照设计审查修订，再照修订核对第 1、2 轮修订；同日照 S1 的实施与审查修订） |
-| 状态 | 进行中（设计已审查，S1 已合并 `bbf3eb26`；设计的[审查记录](reviews/P1-design-review.md)，两轮修订核对在它的末两节；S1 的[审查记录](reviews/P1-S1-e2e-navigation-review.md)；实施与审查之后与代码不同之处照实改在各节（3.15 列出），结果在 10.1） |
+| 日期 | 2026-11-15（初稿；同日照设计审查修订，再照修订核对第 1、2 轮修订；同日照 S1、S2 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `bbf3eb26`，S2 已合并 `（待填：S2 的合并号）`；设计的[审查记录](reviews/P1-design-review.md)，两轮修订核对在它的末两节；S1 的[审查记录](reviews/P1-S1-e2e-navigation-review.md)；S2 的[审查记录](reviews/P1-S2-toolchain-review.md)；实施与审查之后与代码不同之处照实改在各节（3.15、3.16 列出），结果在 10.1、10.2） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.3、4.4、第 3 节第 1、2、11 条、5.3、第 7 节 P1 一行与"分份""移交的落实""总体设计的修订"第 4、5、12、18 条、9.3、9.6、9.7、第 10 节、第 11 节决定 308、310、311、334；[P1 设计审查](reviews/P1-design-review.md)；[M12 设计审查](reviews/M12-design-review.md)的 C-I3、C 的 U1–U3、B-I1、B-I2、B-M1、B-M3、B-M12、B-M13、B-M15、B-N9、B-N11、B-N12、C-N8；[移交](handoffs/)：M5-polish 第 50、51 条，M0-P6-image-release 第 4 条；[v0.1 总体设计](../v0.1-design.md) 7.1、13.1 第 32 条、13.4 第 1、3 条、13.5 第 2 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md)（写法） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/grep.go:149`（`server/internal/modules/` 之下）；`platform/…` 在 `server/internal/` 之下；前端写作 `W/session/token-manager.ts:289`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/browser.ts:123`；其余写仓库根起的路径。行号都是 `main` 的 `a22adfd2` 的（代码与 `5e8af5b5` 相同，其后只改了文档与 `docs/v0.1/claude_to_codex/tools/`），00 号文档与总体设计的行号也是它的 |
 | 工作笔记 | 本文引的每个行号都在 `a22adfd2` 上读过（附录）。P1 的设计不跑重的东西，要量的在 7.5；第一次修订的 A15 原型是唯一经 `heavy.sh` 的运行。只读地查了公开的版本：go.dev 的下载列表（最新 go1.27.4）、proxy.golang.org（`golang.org/x/vuln` 最新 v1.9.0）、四个镜像的摘要（`docker buildx imagetools inspect`）、pnpm 12 的 `audit` 文档；没有跑 `govulncheck`、`pnpm audit`、`pnpm outdated`。续期的两个探针的数据是 M12 设计审查 C 的（00 号文档 4.4、`m12/review-c/`）；各引擎在"下一个文档已请求"时的行为是 P1 设计审查 C 的探针（`m12/p1-review-c/`），`sessionWaits` 在三个窗口里的读数是 P1 设计审查 A 的（`m12/p1-review-a/`）。第一次修订在 scratchpad 的临时 worktree（`a22adfd2`）里跑了 A15 新的第 3、4、6 格的原型，三种浏览器各三轮，帮手完整与去掉一样各一组（经 `heavy.sh`；`m12/p1-rev1/`，3.6） |
@@ -28,6 +28,7 @@
   - PostgreSQL 18.7：五处，守卫加上 README（3.10）；
   - node 与 distroless 的摘要、两个 action（3.11）；
   - `make vuln`、`make outdated`、新的 `.github/workflows/vuln.yml`（3.12）；`vuln.yml` 报出的模块与包（3.13）；
+  - 实施与审查加的：`ci.yml` 只让竞态构建的九份取存 Go 的缓存（决定 355），第三、第五份各挪一个整个程序的测试给第八份（决定 354）（3.16 第 2、3 条）；
   - 两处代码注释与文档里写着 1.27.1 的五处；
   - **单独为绿**：一个分支、一次完整的 CI；`vuln.yml` 在同一个分支上由 `push` 触发，跑一次为绿。PostgreSQL 的五处由守卫一起改，漏一处就红。
 
@@ -116,7 +117,7 @@
 - **343（P1-7）门禁是一个读源码的 Node 脚本，不是 oxlint 的规则**：oxlint 1.86 有 `no-restricted-properties`（本机的二进制里有这个规则名），能禁 `.goto`，却数不了逃生口、核不了表。一个脚本做全两件事，照 `tools/md-fixtures/check.mjs` 的先例进 `make lint-web`。脚本先在内置的样例上跑一遍，看不见样例里的违例就失败，所以它不会因为什么也没读到而通过（3.5）。
 - **344（P1-8）门禁不看注释与字符串，一律按文字找；帮手的模块整个例外**：`.goto(`、`.reload(`、`inFlight: "leave"` 出现在 `e2e/` 的任何地方都算，注释与字符串也算。今天注释里没有这样写的（第 1 节）；写说明时不写成调用或逃生口的样子（写"the escape""逃生口"）即可。帮手的模块两样都不查：它的报错信息要写出逃生口怎样写，oxfmt 把那个字符串改成单引号之后，源码里就有 `inFlight: "leave"` 这段文字（P1 设计审查 A-M1、C-M2 实测）；内置样例 7 核对这一条（3.5）。不引入 TypeScript 的解析器（e2e 用的 TypeScript 7 没有稳定的 JS 接口）。
 - **345（P1-9）A15 放在身份的分组，三种浏览器**：它是一个用户看得到的行为（续期途中离开会被登出，发布说明的已知限制），又是帮手的对照。探针显示三种引擎的窗口不同（Firefox 0/15），所以三种都跑；第 3 格例外，见决定 351。不放进 A5：A5 的第二格的控制台期望是 Chromium 的原文（`a5-refresh-reuse.spec.ts:56`），整个文件进 `threeBrowsers` 会红。
-- **346（P1-10）`make vuln`、`make outdated` 在 runner 之外拒绝运行**：`GITHUB_ACTIONS` 不是 `true` 时打一句说明、退出码 1。规矩是本机不往外发依赖清单（决定 308）；目标存在就有人顺手在本机跑，拒绝比写在注释里可靠。它自己的反向对照就是在本机跑一次（3.12）。
+- **346（P1-10）`make vuln`、`make outdated` 在 runner 之外拒绝运行**：`GITHUB_ACTIONS` 不是 `true` 时打一句说明、退出码 1。规矩是本机不往外发依赖清单（决定 308）；目标存在就有人顺手在本机跑，拒绝比写在注释里可靠。它自己的反向对照就是在本机跑一次（3.12）。P1/S2 实施：判断与干活写在同一个 shell 行，`make -i` 绕不过；`tools/outdated.sh` 自己也判，直接执行也拒绝；"退出码 1"是配方的，`make` 自己以 2 退出（3.16 第 1、12 条）。
 - **347（P1-11）Go 版本的守卫放在 `platform/buildinfo`**：它管"镜像用哪个 Go 构建"，与版本号同属"构建出的是什么"。00 号文档第 3 节第 8 条只说版本号的默认值"由短测试守住"（`:120`），没定位置；本文建议 P5/S1 把那条守卫也放在这个包，与这条相邻，由 P5/S1 的设计定（第 9 节；P1 设计审查 A-M6）。不放在 `pgtest`：那是测试数据库的包。
 - **348（P1-12）断言放在 server 阶段 `FROM` 之后的第一行**：在 `go mod download` 之前，摘要不对时最早失败。
 - **349（P1-13）第 50 条只在等待真的发生时打日志**：没有 tentative 的地址时什么也不打（今天本机每轮约 0.2 秒、多数是这种）。"没看到这一行"要能当作"没触发过"，S1 先做一次正向对照：临时让等待真的发生一次，看到这一行出现在运行的输出里，再复原（3.7；P1 设计审查 A-M5）。有了它，CI 上一次也没看到这一行，才算没触发过。
@@ -469,12 +470,12 @@ function check(files, leaves) {
 | `server/go.mod`、`server/tools/go.mod` | `:5` 的 `toolchain go1.27.1` → `toolchain go1.27.4` |
 | `deploy/Dockerfile` | `:23` 换 tag 与摘要，下一行加构建时的断言；`:7`、`:41` 换摘要（3.9、3.11） |
 | `server/internal/platform/buildinfo/toolchain_test.go` | 新：`TestTheImageBuildsWithTheModulesToolchain`（3.9） |
-| `README.md` | `:16` 的 Go 版本；`:629` 的 PostgreSQL 镜像 |
+| `README.md` | `:16` 的 Go 版本；`:630` 的 PostgreSQL 镜像（3.16 第 10 条） |
 | `platform/httpserver/mcpserver/edge.go`、`modules/page/domain/grep.go` | `:106`、`:149` 的注释照 1.27.4 的核对写（3.9） |
 | `platform/postgres/pgtest/pgtest.go`、`image_test.go` | `:35` 的镜像；守卫加 README 一行（3.10） |
 | `deploy/compose.dev.yaml`、`e2e/fixtures/db.ts`、`deploy/image-smoke.sh` | `:8`、`:13`、`:86` 的镜像（3.10） |
-| `.github/workflows/ci.yml` | `setup-node` 两处、`upload-artifact` 两处的 SHA 与注释（3.11） |
-| `Makefile` | `vuln`、`outdated` 两个目标（3.12） |
+| `.github/workflows/ci.yml` | `setup-node` 两处、`upload-artifact` 两处的 SHA 与注释（3.11）；server 矩阵的 `setup-go` 只让竞态构建的九份取存 Go 的缓存（决定 355，3.16 第 2 条） |
+| `Makefile` | `vuln`、`outdated` 两个目标（3.12）；第三、第五份各挪一个整个程序的测试给第八份（决定 354，3.16 第 3 条） |
 | `tools/outdated.sh` | 新：`make outdated` 做的事（3.12） |
 | `.github/workflows/vuln.yml` | 新（3.12） |
 | `pnpm-workspace.yaml`、两份 `go.mod`/`go.sum`、`pnpm-lock.yaml` | 只在 `vuln.yml` 报出时（3.13） |
@@ -500,18 +501,19 @@ function check(files, leaves) {
   ```go
   // The image builds with the Go the modules ask for (00-M12 4.3, M12/P1/S2). The golang image sets
   // GOTOOLCHAIN=local, so a toolchain line that moves on while deploy/Dockerfile stays behind builds the
-  // release with the older Go, silently: the image's tag and the version its server stage asserts must both
-  // be the two modules' toolchain, and so must the version README.md tells contributors.
+  // release with the older Go, silently: the image's tag, the version its server stage asserts first thing
+  // and the version that assertion's message names must all be the two modules' toolchain, and so must the
+  // version README.md tells contributors.
   func TestTheImageBuildsWithTheModulesToolchain(t *testing.T)
   ```
 
   断言（文件都从 `../../../../` 读，同 `pgtest/image_test.go:31` 的写法）：
   1. `server/go.mod` 与 `server/tools/go.mod` 各恰有一行 `^toolchain (go\S+)$`，两者相同，记作 `want`；
-  2. `deploy/Dockerfile` 恰有一行 `^FROM golang:(\S+)-trixie@sha256:[0-9a-f]{64} AS server$`，`"go" + tag == want`；
-  3. 恰有一行 `^RUN test "\$\(go env GOVERSION\)" = (go\S+) \|\|`，捕获的等于 `want`；
-  4. `README.md` 里"指定的 Go " + `strings.TrimPrefix(want, "go")` + "。"恰出现一次。
+  2. `deploy/Dockerfile` 恰有一处匹配跨行的正则：server 阶段的 `^FROM golang:(\S+)-trixie@sha256:[0-9a-f]{64} AS server\n`，之后只许注释行（`(?:#.*\n)*`），接着整行的断言 `RUN test "\$\(go env GOVERSION\)" = (go\S+) \|\| \{ echo "golang 镜像是 \$\(go env GOVERSION\)，go\.mod 要 (go[^：\s]+)：换摘要" >&2; exit 1; \}$`。`"go" + tag`、比较的版本与报错里写的版本三个都等于 `want`，各有一句报错。这样断言是 server 阶段的第一条指令（决定 348），升版本时漏改报错里的一处也红（审查 A-M1、N1，3.16 第 11 条）；
+  3. 整个 Dockerfile 恰有一行 `^RUN test "\$\(go env GOVERSION\)".*$`（没有这一条，第 2 条放过"断言写两遍"）；
+  4. `README.md` 里 `指定的 Go (\S+?)。` 恰匹配一次，`"go" +` 取出的等于 `want`。
 
-  每条不符时写出文件、找到的与 `want`。
+  每条不符时写出文件、找到的与 `want`，README 一条写出它写着的版本（审查 A-N2）。匹配不是恰好一个时，多于一个列出每个匹配的分组，一个也没有时列出以给定前缀起头的行与行号（Dockerfile 是 `FROM golang:` 与 `RUN test `，`go.mod` 是 `toolchain`）。
 - **README**：`:16` 的"指定的 Go 1.27.1。"改为"指定的 Go 1.27.4。"。
 - **两处注释**：
   - `edge.go:106`：mcpserver 导入 `encoding/json/v2`（`:7`），那个包只在实验打开时存在，实验关了这个包编译不过（CI 的每一份都编译它）。所以核对的就是"S2 的构建为绿"；注释改为"In go1.27.4 it is still behind GOEXPERIMENT jsonv2, on by default …"。1.27.4 若已让它离开实验，照实写，并照总体设计 13.1 第 32 条改（第 8 节）。
@@ -522,7 +524,7 @@ function check(files, leaves) {
 
 写本文时 18 线最新是 18.7（postgresql.org，2026-11-12），`postgres:18.7-trixie` 在（摘要见第 1 节）。
 
-- 五处 `postgres:18.6-trixie` → `postgres:18.7-trixie`：`pgtest.go:35`、`compose.dev.yaml:8`、`e2e/fixtures/db.ts:13`、`image-smoke.sh:86`、`README.md:629`。这五处只按 tag 引用，同今天（总体设计 13.5 第 2 条只要求镜像相同；I1 第 8 节第 1 条）。
+- 五处 `postgres:18.6-trixie` → `postgres:18.7-trixie`：`pgtest.go:35`、`compose.dev.yaml:8`、`e2e/fixtures/db.ts:13`、`image-smoke.sh:86`、`README.md:629`（S2 时是 `:630`，3.16 第 10 条）。这五处只按 tag 引用，同今天（总体设计 13.5 第 2 条只要求镜像相同；I1 第 8 节第 1 条）。
 - `TestContainerMatchesTheOtherDatabases`（`pgtest/image_test.go:13-29`）加一行：`{file: "README.md", want: []string{"`" + image + "`"}}`。注释"The test container, the development database, the end-to-end stories and the image smoke test run the same image"加上"and README names it"。
 - **开发库**：18.x 之间不要 dump/restore（18.7 的发布说明）。`make dev-db` 拉新镜像、沿用旧的卷即可，S2 的记录写一句给本机的开发者。
 - **计划的测试**（13.4 第 9 条）在 18.7 上跑：它们在组合根之外的包里，CI 的 `race` 一份与几份成本守卫跑它们。计划换了就在 S2 里查清是哪条语句、为什么，不放宽测试（00 号文档 4.3）。
@@ -536,7 +538,7 @@ function check(files, leaves) {
 
 ### 3.12 S2：`make vuln`、`make outdated` 与 `vuln.yml`
 
-**Makefile**（放在 `knip` 目标之后，`Makefile:167-169`）：
+**Makefile**（放在 `knip` 目标之后，`Makefile:167-169`；下面是 S2 第一轮修复之后的样子，3.16 第 12 条）：
 
 ```make
 # 依赖的已知漏洞（00-M12 4.3、M12/P1/S2）。Go 一侧 govulncheck 只扫 server/，只报代码调用得到的
@@ -545,35 +547,35 @@ function check(files, leaves) {
 # pnpm-workspace.yaml 的 audit.ignore，理由写在那个提交）。两侧都跑完再合起来判。
 # pnpm audit 与 make outdated 把依赖的清单发给 npm registry 与 Go 的模块代理；govulncheck 只向 vuln.go.dev
 # 要数据库里已知有漏洞的模块的条目，本机的权限分类器拒过它（00-M12 4.3）。所以两个目标只在 GitHub 的
-# runner 上跑，本机拒绝；结论看 .github/workflows/vuln.yml
+# runner 上跑，本机拒绝；结论看 .github/workflows/vuln.yml。判断与干活写在同一个 shell 行里：make -i（或环境里的
+# MAKEFLAGS=i）只忽略一行的失败、接着跑下一行，分成两行时它绕得过去；tools/outdated.sh 自己也判一次（M12/P1/S2）
 GOVULNCHECK_VERSION := v1.9.0
 VULN_AUDIT_LEVEL ?= low
 ci-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：它把依赖的清单发给外部的服务。结论看 .github/workflows/vuln.yml"; exit 1; }
 
 .PHONY: vuln
 vuln: ## 依赖的已知漏洞：Go（govulncheck，server/）与 npm（pnpm audit --prod，级别 VULN_AUDIT_LEVEL）；只在 CI 上跑
-	@$(ci-only)
-	@status=0; \
+	@$(ci-only); \
+	status=0; \
 	(cd server && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...) || status=1; \
 	pnpm audit --prod --audit-level=$(VULN_AUDIT_LEVEL) || status=1; \
 	exit $$status
 
 .PHONY: outdated
 outdated: ## 只读地列出过时的 Go 模块、npm 包、actions、工具链与 PostgreSQL 的版本、基础镜像的摘要；不挡；只在 CI 上跑
-	@$(ci-only)
-	tools/outdated.sh
+	@$(ci-only); tools/outdated.sh
 ```
 
 - `go run …@版本` 不进 `server/tools/go.mod`（00 号文档 4.3）。`govulncheck` 找到调用得到的漏洞以 3 退出；`pnpm audit` 有达到级别的公告以 1 退出。
-- 写法照 GNU Make 3.81（`Makefile:2`）：`$@` 在配方里展开；`ci-only` 是普通变量。
+- 写法照 GNU Make 3.81（`Makefile:2`）：`$@` 在配方里展开；`ci-only` 是普通变量。判断与干活写在同一个 shell 行：判断单独一行时，`make -i` 或环境里的 `MAKEFLAGS=i` 忽略它的失败、接着跑下一行（审查 C-M1）。配方 `exit 1`，`make` 报 "Error 1"、自己以 2 退出（3.16 第 1 条）。
 
-**`tools/outdated.sh`**（可执行，`set -uo pipefail`；只读；一节出错照样往下，最后的退出码是 0，除非某一节的命令根本没有）：
+**`tools/outdated.sh`**（可执行，`set -uo pipefail`；只读；一节出错照样往下，最后的退出码是 0，除非某一节的命令根本没有；`GITHUB_ACTIONS` 不是 `true` 时自己也拒绝、以 1 退出，直接执行也绕不过；输出的写法与出错的认法见 3.16 第 5 条）：
 
 1. **Go 模块**：`server` 与 `server/tools` 各 `go list -m -u -f '{{if and (not .Main) (not .Indirect) .Update}}{{.Path}} {{.Version}} -> {{.Update.Version}}{{end}}' all`，行首写模块。
-2. **Go 工具链**：`server/go.mod` 的 `toolchain` 与 go.dev 的 `?mode=json` 里同一小版本线的最新（`curl … | jq`）。
+2. **Go 工具链**：`server/go.mod` 的 `toolchain` 与 go.dev 的 `?mode=json&include=all` 里同一小版本线的最新（`include=all` 让旧的小版本线也读得到，审查 C-N3；`curl` 取、`jq` 解析，分开跑）。
 3. **npm 包**：`pnpm outdated -r`（有过时的以 1 退出，接 `|| true`）。
-4. **actions**：从 `.github/workflows/*.yml` 取 `uses: <owner>/<repo>@<sha> # <版本>`，每个以 `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` 比较，不同就列出。
-5. **基础镜像**：`deploy/Dockerfile` 的每个 `FROM <镜像>:<tag>@sha256:<摘要>`，以 `docker buildx imagetools inspect <镜像>:<tag> --format '{{json .Manifest}}' | jq -r .digest` 比较，tag 指向了新的摘要（Debian 的安全更新会这样）就列出。
+4. **actions**：从 `.github/workflows/*.yml` 取 `uses: <owner>/<repo>@<sha> # <版本>`，每个以 `gh api repos/<owner>/<repo>/releases/latest --jq .tag_name` 比较，不同就列出。只对读到的写"没有过时的（n 个 action）"，读到一部分时写"读到 k 个，共 n 个"，一个也没读到只有 `!!` 行（审查 C-M2）。
+5. **基础镜像**：`deploy/Dockerfile` 的每个 `FROM <镜像>:<tag>@sha256:<摘要>`，以 `docker buildx imagetools inspect <镜像>:<tag> --format '{{json .Manifest}}'` 取、`jq -r .digest` 解析（分开跑），与摘要比较，tag 指向了新的摘要（Debian 的安全更新会这样）就列出；同第 4 节，只对读到的写"没有过时的"。
 6. **Node 与 PostgreSQL 的补丁版本**：`.node-version` 的大版本在 `nodejs.org/dist/index.json` 里的最新；`pgtest.go` 的镜像与 `postgresql.org/versions.json` 里 18 的最新（I1 用的同两个出处）。
 
 **`.github/workflows/vuln.yml`**：
@@ -602,6 +604,8 @@ on:
       - server/go.sum
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      # 它的 packageManager 定了 corepack 装哪个 pnpm 来跑 pnpm audit（audit.ignore 的读法随 pnpm 的版本）
+      - package.json
 
 permissions:
   contents: read
@@ -621,10 +625,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # 不取也不存 Go 的缓存（M12 决定 355）：setup-go 的键由 runner 的系统与架构、Go 的版本与所列 go.sum 的哈希组成，工作流之间共用，
+      # 键归先存下的那一份、存下就不再改。照设计列 go.sum 时，这一项的键与 ci.yml 的 e2e 相同，outdated 一项的与 ci.yml 竞态的各份相同；
+      # 它们一分钟内跑完，先存下的没有竞态的编译结果，竞态的各份取回它照样从头编译（道理写在 ci.yml 的 setup-go 旁边）（M12/P1/S2）
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
+          cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -646,12 +653,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # 同 vuln 一项：不存 Go 的缓存
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: |
-            server/go.sum
-            server/tools/go.sum
+          cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -663,7 +669,7 @@ jobs:
         run: make outdated
 ```
 
-- **`pnpm audit` 要不要先装**：pnpm 的文档说它查"已安装的包"，又说它对着锁文件判。`vuln` 一项先不装；S2 第一次推送时它若报要 `node_modules`，加一步 `pnpm install --frozen-lockfile`（同 `ci.yml:235-244` 的缓存），写进 S2 的偏离。`outdated` 一项装：`pnpm outdated` 比较的是装了的版本。
+- **`pnpm audit` 要不要先装**：pnpm 的文档说它查"已安装的包"，又说它对着锁文件判。`vuln` 一项先不装；S2 第一次推送时它若报要 `node_modules`，加一步 `pnpm install --frozen-lockfile`（同 `ci.yml:235-244` 的缓存），写进 S2 的偏离。S2：不装也跑得了，`vuln` 一项不加（3.16 第 6 条）。`outdated` 一项装：`pnpm outdated` 比较的是装了的版本。
 - **`audit.ignore`**：S2 不预先建这一节；`vuln.yml` 报出的公告照 3.13 的五步都修不了、或确认与我们无关时，在 `pnpm-workspace.yaml` 加
 
   ```yaml
@@ -673,10 +679,10 @@ jobs:
       - GHSA-xxxx-xxxx-xxxx # <包>：<为什么修不了或与我们无关；试过 3.13 的哪几步>
   ```
 
-  键的写法照 pnpm 12 的文档（`audit.ignore`）；加之后 `vuln.yml` 的下一次运行要不再报它，作为键写对了的证据。
+  键的写法照 pnpm 12 的文档（`audit.ignore`）；加之后 `vuln.yml` 的下一次运行要不再报它，作为键写对了的证据。S2 为 katex 的 GHSA-238p-pmpm-9mq7 建了这一节（决定 353），下一次运行 43664040257 为绿、"1 ignored: 1 low"。
 - **`ci-wait.sh`**：读 `vuln.yml` 的运行写 `ci-wait.sh <sha> vuln.yml`（`b54cd679`）。
 - **并发**（P1 设计审查 B-N1）：同一组里只留一个在跑、一个在排队，更晚来的替掉排队的那个，与 `cancel-in-progress` 无关。初稿在 `main` 上共用一个组，每天的定时运行与一次改了依赖清单的推送撞上时，可能有一次被取消，`gh run list --workflow vuln.yml --branch main --limit 1` 就看到 `cancelled`。照 `ci.yml:7-11` 的写法改。
-- **反向对照**：在本机跑 `make vuln` 与 `make outdated`，各自拒绝、退出码 1，什么也没发出。7.2 的变异 15 是它的反面：把判断去掉，用 PATH 里的桩证明配方真的往下走（不联网）；同一套桩加上 `GITHUB_ACTIONS=true`，证明原样的配方在 runner 上两侧都跑、合起来以 1 退出。`vuln.yml` 的 `push` 路径：S2 的分支改了它自己，第一次推送就该跑；S2 的记录写出那次运行的号。
+- **反向对照**：在本机跑 `make vuln` 与 `make outdated`，各自拒绝、`make` 以 2 退出（配方 `exit 1`，3.16 第 1 条），什么也没发出；`make -i`、`MAKEFLAGS=i` 与直接执行 `tools/outdated.sh` 一样拒绝（3.16 第 12 条）。7.2 的变异 15、15b–15e、split 是它的反面：把判断去掉，用 PATH 里的桩证明配方真的往下走（不联网）；同一套桩加上 `GITHUB_ACTIONS=true`，证明原样的配方在 runner 上两侧都跑、合起来失败（配方以 1、`make` 以 2 退出）。`vuln.yml` 的 `push` 路径：S2 的分支改了它自己，第一次推送就该跑；S2 的记录写出那次运行的号。
 
 ### 3.13 S2：`vuln.yml` 报出的模块与包
 
@@ -686,7 +692,7 @@ jobs:
 - **Go 一侧报出的模块**：升到修了的最小版本（`go get <模块>@<版本>`、`go mod tidy`，`make lint-go` 的 `go mod tidy -diff` 照过）。报的若是有连带的模块，写明连带、照做或请主持者定：River（新的版本若带新的迁移，`server/migrations/river_test.go` 的 `TestTheRiverMigrationIsRiversOwn` 会失败，要另加一条迁移）；`x/text`（换 Unicode 表就要 `nervewiki reindex`，总体设计第 14 节）；pgx、goose。
 - **Go 一侧报出的标准库**（P1 设计审查 B-N4）：`go get` 修不了，修法是把两份 `go.mod` 的 `toolchain` 升到修了它的 1.27.x，照 3.9 改每一处：Dockerfile 的 tag、摘要与断言，README 的版本，守卫照样核对；`edge.go`、`grep.go` 的两处注释照新版本重核。3.9 只写了"开工时若已有更新的就取最新"，这一条管"开工之后才出、由这次运行报出"的。提交写成 `server, deploy, docs: Go 1.27.<k> for <公告> (M12/P1/S2)`。S2 合并之后才报出的，照 00 号文档 4.3 走旁支（第 9 节）。
 - **npm 一侧报出的**（P1 设计审查 B-M1）：打进二进制的依赖在 `web/apps/web/package.json` 与 `web/packages/api-client/package.json` 的 `dependencies`，根的 `package.json` 只有 `devDependencies`（第 1 节）。照下面的次序修：
-  1. **声明的范围之内修得了的**：`pnpm update -r <包>@<修了的版本>`，或 `pnpm update --filter @nervewiki/web <包>@<版本>`。不带 `-r` 或 `--filter`，根目录的 `pnpm update` 只看根这一个项目，web 的那一份不动（`pnpm update --help`：`-r` 是"Run the command for every project in the workspace instead of only the project in `--dir`"）。版本照 13.5 第 2 条精确写。
+  1. **声明的范围之内修得了的**：`pnpm update -r <包>@<修了的版本>`，或 `pnpm update --filter @nervewiki/web <包>@<版本>`。不带 `-r` 或 `--filter`，根目录的 `pnpm update` 只看根这一个项目，web 的那一份不动（`pnpm update --help`：`-r` 是"Run the command for every project in the workspace instead of only the project in `--dir`"）。版本照 13.5 第 2 条精确写。对传递依赖（不是哪个项目的直接依赖），pnpm 12 不认带版本的写法（"is not a direct dependency, so the requested version cannot be recorded"）：写不带版本的 `pnpm update -r <包>`，它在上一级声明的范围之内取满 `minimumReleaseAge` 的最新（S2 的 dompurify，3.16 第 7 条）。
   2. **修好的版本在上一级声明的范围之外**（mermaid、katex 底下的传递依赖多是这样）：在 `pnpm-workspace.yaml` 手写 `overrides`，键写到报出的包与它的受影响范围（例如 `"<包>@<受影响的范围>": "<修了的版本>"`），注释写公告号与理由。不在本机跑 `pnpm audit --fix`：它要查审计的接口（决定 308）。
   3. **修复版本发布不满一天**：`minimumReleaseAge: 1440` 是严格的，太新的版本直接报错（`pnpm-workspace.yaml:12-16`）。等它满一天再装；急的写进 `minimumReleaseAgeExclude`，注明公告号与理由，满一天之后的下一个提交删掉这一项。
   4. **katex 与 `@lezer/markdown`**：补丁按确切的版本挂（`pnpm-workspace.yaml:33-34`，`katex@0.16.47`、`@lezer/markdown@1.7.2`）。哪怕只升一个补丁版本，补丁也要照 13.5 第 5 条重做、重核（补丁修的两件事各有测试，M6/P6、M6 收尾），文件名与键随版本改。
@@ -704,9 +710,11 @@ jobs:
 | 帮手 | A15 的第 1、3 格经逃生口确定地落到 `/sign-in`（第 3 格在 Chromium 与 Firefox）；第 2、4、5、6、8、9 格经帮手不落，第 7 格经帮手立刻换；7.2 的变异 1–3、16、18、x1、x2、m18a、m20–m22 各去掉帮手的一样，3.6 的表里写的那几格（x2 另有 A3、S4）就失败 | 3.6、7.2 |
 | `signInLandings` | A15 的第 1、3、8 格断言它的内容，第 1 格另断言同一地址再报一次不记、离开又回到记两条；变异 17、x3、x4、m23 | 3.3、7.2 |
 | 第 50 条的日志 | 本机临时让等待发生一次，看到那一行；`tentative()` 恒交回空时没有（复原后本机每次都真的等了，3.15 第 8 条） | 3.7 |
-| Go 版本的守卫 | 变异 9–12；变异 13 由构建时的断言抓 | 3.9、7.2 |
-| PostgreSQL 的守卫加 README | 变异 14 | 3.10、7.2 |
-| `make vuln`、`make outdated` 在本机拒绝 | 本机各跑一次；变异 15（PATH 里的桩，不联网） | 3.12、7.2 |
+| Go 版本的守卫 | 变异 9–12（10 分 10a、10b）、x2、x3、x7、x7b、x10、x11、r1–r3；r6–r8 不该报，照旧不报；变异 13 由构建时的断言抓 | 3.9、7.2 |
+| PostgreSQL 的守卫加 README | 变异 14；x6a–d（另四处） | 3.10、7.2 |
+| `make vuln`、`make outdated` 在本机拒绝 | 本机各跑一次，`make -i` 与 `MAKEFLAGS=i` 各一次；变异 15、15b、15c、split（PATH 里的桩，不联网）；`tools/outdated.sh` 自己拒绝：直接执行一次；变异 15d、15e | 3.12、7.2 |
+| `make vuln` 两侧都跑、合起来判 | `GITHUB_ACTIONS=true` 下桩的四种退出码；变异 x4、x5 | 3.12、7.2 |
+| `outdated.sh` 只对读到的写"没有过时的"，写出出错的命令 | 桩下的 O2、O4–O7（O4、O5 修前写"没有过时的"、修后不写） | 3.12、3.16 第 5 条 |
 
 ### 3.15 S1 的实施对设计的修正
 
@@ -728,7 +736,23 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-revie
 
 ### 3.16 S2 的实施对设计的修正
 
-（实施后补）
+S2 的审查与修复见 [S2 的审查记录](reviews/P1-S2-toolchain-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里（头的状态，第 0 节，2.3 的决定 346，3.8、3.9、3.10、3.12、3.13、3.14，6.2，7.1、7.2、7.4，第 8 节第 6、7 条）；00 号文档的 4.3（`vuln.yml` 的 `paths`）、第 7 节 S2 一行与"分份"、第 11 节的决定 353–355 同改。写了行号的，是 S2 的头 `80d76191` 的；提交见 10.2。
+
+- **S2，实施时定下的**（实施报告第 10 节的 8 条与第 11 节；三位审查者各在自己的范围里判过（A 工具链、镜像与 Go 模块，B 分份、缓存与 CI，C `make vuln`、`outdated.sh`、`vuln.yml` 与 npm）：第 2 条的理由经审查 B 推翻、照修复一轮改写，第 8 条的说法照审查 A 改，其余都对；实施者没有要编号的产品决定，"实施中定"的几条记在 S2 的记录）：
+  1. **本机拒绝时 `make` 以 2 退出**：配方 `exit 1`，`make` 报 "Error 1"、自己以 2 退出；3.12、决定 346 写的"退出码 1"是配方的。变异 15 看的同样是 2。
+  2. **Go 的缓存只给竞态构建的九份**（`ci.yml` 的 server 矩阵，决定 355；3.12 的 `vuln.yml` 写 `cache: false`）。setup-go 的键由 runner 的系统与架构、Go 的版本与 `cache-dependency-path` 所列文件（默认 `go.sum`）的哈希组成，工作流之间、`ci.yml` 的十六份之间共用；键归先跑完、先存下的那一份，存下就不再改。竞态与不带竞态的编译结果不共用（审查 B 的本机实验：先用 `go test -short ./...` 填满的缓存，对竞态的构建零收益，22.7 对 22.9 秒）。S2 之前 `main` 的键是 2026-10-17 的 `bootstrap-1` 存的；S2 改了 Go 与 `go.sum`，分支第一、二次没有缓存，第三到五次取回 `vuln.yml` 的 `outdated` 一项存下的 3 MB，组合根在 7763 上 Test 减包都是 81–88 秒，包的时间没变。不改的话合并之后 `main` 的新键由最先跑完的 `short`（不带竞态）存下，每一次都这样（审查 B 的 I1；实施时以为 3 MB 是原因，`2811d13d` 只让 `vuln.yml` 不存，P1S2B-M1）。改后七份（`short`、`costs-*`、`guards-*`）不取也不存，只少约 2 秒的模块下载；`vuln.yml` 的两项不取也不存。判断看是哪一份存的键（post 一步的 "Cache saved with the key"），不看大小。
+  3. **挪份（决定 354）**：第三份的 TestTheSearchIsWhatEachReadAllows、第五份的 TestTheWikiToolsAnswerEveryCode 挪到第八份（也进第七份的模式）。以竞态的份取回竞态的缓存为前提（第 2 条），折到 7763 暖的时候第三、四、五份约 396、396、382 秒，第八份约 352；冷的第一次加约 50 秒，两次的平均约 407–421，在 450 之下，不分第九份。八份、19 项不变。
+  4. **变异 10 两份 `go.mod` 各一格**（10a、10b）；**变异 13 用 Dockerfile 原来的 `golang:1.27.1-trixie` 的摘要 `3b77fc61…`**（这个 tag 今天指向 `8f58fd67…`；原摘要是"只改 tag、漏换摘要"的真样子，也正是 3.9 要摘要与断言并存的理由）。
+  5. **`tools/outdated.sh` 的输出**（3.12 只写了六节与"一节出错照样往下"）：每节一行 `== ` 标题，出错打 `!! ` 一行、照样往下，末行 `outdated: <n> sections, <k> with errors`；`go list -m -u -f` 对不列的模块也打一个空行，滤掉；`pnpm outdated -r --format list` 认 `ERR_PNPM` 或大于 1 的退出码为出错；Node 一节只列线上最新（镜像里的 Node 由第 5 节的摘要管）。第 2 节读 `go.dev/dl/?mode=json&include=all`（3.12 写 `?mode=json`：`include=all` 让旧的小版本线也读得到）（审查 C-N3）。第 4、5 节只对读到的写"没有过时的"（"5 个 action"，不是"5 处引用"），读到一部分时写"读到 k 个，共 n 个"；取与解析分开跑，`!!` 行写出出错的命令与它的退出码（修复一轮，审查 C-M2、C-N1）。
+  6. **`pnpm audit` 不装 `node_modules` 也跑得了**（3.12 的疑问），`vuln` 一项不加 `pnpm install`。
+  7. **3.13 第 1 步对传递依赖**：`pnpm update -r <包>@<版本>` 被 pnpm 12.8.1 拒绝（"is not a direct dependency, so the requested version cannot be recorded"）；不带版本的 `pnpm update -r <包>` 在声明的范围之内取满一天的最新（设计审查 B 留下的未核实一条，这里答了）。
+  8. **`vuln.yml` 报出的 Go 模块只在测试里**：`klauspost/compress`、`moby/go-archive` 只经 testcontainers-go 到 `pgtest`，二进制不含（`go list -deps ./cmd/nervewiki`）。二进制链接 goose 的 11 个包，不链接 `klauspost/compress`：goose 的 `go.mod` 以 indirect 要求它，我们链接的 goose 包没有一个导入它（`63de975d` 的说明写"两个都不链接"，不准，审查 A-N3）。3.13 没分这两种，照"升到修了的最小版本"做了，`moby/go-archive` 另带 `moby/sys/user` v0.4.1。
+  9. **katex 的 GHSA-238p-pmpm-9mq7 进 `audit.ignore`**（决定 353，3.13 第 5 步）：0.16 线没有修，升 0.18 是 4.3 不升的功能性大版本、补丁要重做；我们的选项以自有属性写 `trust: false`，mermaid 的公式也经它。
+  10. **行号**：README 的 PostgreSQL 一行是 `:630`（设计写 `:629`），`05-lessons.md` 的 golang 镜像一句是 `:92`（第 8 节写 `:89`）：S1 的文档提交在它们之前各加了行。
+- **审查与修复带来的**（修复一轮，照主持者的修复说明；提交见 10.2）：
+  11. **守卫读整行的断言**（审查 A-M1、N1、N2，`42e6ff6f`）：3.9 的第 2、3 条合成一个跨行的正则，钉住断言是 server 阶段的第一条指令（之前只许注释，决定 348），tag、比较的版本与报错里写的版本都等于两份 `toolchain`；另核对 Dockerfile 恰有一行断言；README 取出写着的版本放进报错；匹配不是恰好一个时写出找到的。Dockerfile 不变。
+  12. **本机的拒绝与干活在同一个 shell 行**（审查 C-M1，`e8b115c9`）：3.12 的 `Makefile` 原文把 `@$(ci-only)` 单独放一行，`make -i` 或 `MAKEFLAGS=i` 会接着跑下一行；改为 `@$(ci-only); \` 接干活的行，`outdated` 写成 `@$(ci-only); tools/outdated.sh`。`tools/outdated.sh` 自己也判 `GITHUB_ACTIONS`，直接执行也拒绝。
+  13. **`vuln.yml` 的 `paths` 加根 `package.json`**（审查 C-N2，`f480a9e5`）：它的 `packageManager` 定了跑 `pnpm audit` 的 pnpm（`audit.ignore` 的读法随 pnpm 的版本）；00 号文档 4.3 的清单随之加（2.1 第 13 条是当时的修订，不改）。
 
 ## 4. 网页
 
@@ -776,7 +800,7 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-revie
 3. `deploy: the node and distroless images' current digests (M12/P1/S2)`：3.11 的两个摘要。
 4. `build: setup-node 7.1.0 and upload-artifact 7.0.2 (M12/P1/S2)`：`ci.yml` 的四处（3.11）。
 5. `build: make vuln and make outdated, run daily, by hand and on a changed dependency list in vuln.yml (M12/P1/S2)`：Makefile、`tools/outdated.sh`、`vuln.yml`（3.12）。之后推送分支，读 `vuln.yml` 与 `ci.yml` 的两次运行。
-6. 视 `vuln.yml` 报出的而定：`server: <模块> <版本> for <公告> (M12/P1/S2)`、`server, deploy, docs: Go 1.27.<k> for <公告> (M12/P1/S2)`（标准库）、`web: <包> <版本> for <公告> (M12/P1/S2)`、`build: pnpm audit leaves <公告> aside, <理由> (M12/P1/S2)`（3.13）。
+6. 视 `vuln.yml` 报出的而定：`server: <模块> <版本> for <公告> (M12/P1/S2)`、`server, deploy, docs: Go 1.27.<k> for <公告> (M12/P1/S2)`（标准库）、`web: <包> <版本> for <公告> (M12/P1/S2)`、`build: pnpm audit leaves <公告> aside, <理由> (M12/P1/S2)`（3.13）。S2 实施时是四个（`63de975d`、`0f61a57f`、`f3e76505`、`c654db5f`）；之后另加 `vuln.yml` 的缓存（`2811d13d`）、挪份（`28980104`，决定 354）与改正注释（`4a0c2585`）三个；审查之后第一轮修复六个（10.2）。
 7. `docs: … (M12/P1/S2)`：审查记录、10.2、3.16、00 号文档与总体设计的 S2 部分、06-environment、05-lessons、03-project-background、移交（第 8 节）。
 
 ### 6.3 合并的门禁
@@ -811,7 +835,9 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-revie
 | 计划在 18.7 上照旧 | 13.4 第 9 条的计划测试照过 | CI 的 `race` 与成本几份 | S2 |
 | `make vuln` 为绿 | `vuln.yml` 在 S2 分支上由 `push` 触发的那次运行 | GitHub | S2 |
 | `make outdated` 跑得通 | 同一次运行的 `outdated` 一项。它带 `continue-on-error`，`outdated.sh` 一节出错也退 0，所以"作业为绿"不算证据：S2 的记录贴出它的输出，写明六节各有结果（列出的过时项，或"没有过时的"），没有一节报错（P1 设计审查 A-N6） | GitHub | S2 |
-| 本机不跑 | 本机 `make vuln`、`make outdated` 各拒绝一次；变异 15（PATH 里的桩） | S2 的记录 | S2 |
+| 本机不跑 | 本机 `make vuln`、`make outdated` 各拒绝一次，`make -i`、`MAKEFLAGS=i` 与直接执行 `tools/outdated.sh` 也拒绝；变异 15、15b–15e、split（PATH 里的桩） | S2 的记录 | S2 |
+| 竞态的份取回竞态的缓存 | 每份 setup-go 的 `cache` 输入（九份 `true`、七份 `false`）；存键的那一份 post 一步的 "Cache saved with the key" 是竞态的，`short` 不存；7763 上 Test 减包约 33 秒（决定 355） | S2 的分支 CI 与合并之后两次 `main` | S2 |
+| 挪份每个顶层测试恰在一份 | 实施者的 `shards.py` 与审查 B 用 Go 的匹配器另核；变异 p1、p1b | S2 的记录 | S2 |
 
 ### 7.2 变异
 
@@ -828,12 +854,12 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-revie
 | 7 | 门禁不核对逃生口的表 | 内置样例 4–6；在 A15 多写一处逃生口 | — | S1 |
 | 8 | 门禁的正则不认跨行的 `.reload(` | 内置样例 2 | — | S1 |
 | 9 | Dockerfile 的 golang 的 tag 改回 1.27.1，别的不动 | `TestTheImageBuildsWithTheModulesToolchain` | — | S2 |
-| 10 | 一份 `go.mod` 的 `toolchain` 改回 1.27.1 | 同上 | — | S2 |
+| 10 | 一份 `go.mod` 的 `toolchain` 改回 1.27.1（S2 两份各一格：10a、10b） | 同上 | — | S2 |
 | 11 | Dockerfile 的断言一行写 1.27.1 | 同上 | — | S2 |
 | 12 | README 的 Go 版本改回 1.27.1 | 同上 | — | S2 |
 | 13 | 摘要换成 `golang:1.27.1-trixie` 的（tag 与断言照旧写 1.27.4） | `make image`（普通的克隆里）：断言那一步失败，打出"golang 镜像是 go1.27.1" | — | S2 |
 | 14 | README 的 PostgreSQL 改回 18.6 | `TestContainerMatchesTheOtherDatabases` | — | S2 |
-| 15 | `ci-only` 的判断去掉 | 本机 `make vuln`，PATH 前面放两个桩（放在 `TMPDIR` 下自己的目录）：`go` 把参数写进一个文件、退出 3，`pnpm` 写参数、退出 0。原样时在调用桩之前就拒绝（文件是空的，退出码 1）；去掉判断后两个桩都被调到（文件里是 `run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...` 与 `audit --prod --audit-level=low`），什么也没发出。另用同一套桩加 `GITHUB_ACTIONS=true` 跑原样的 `make vuln`：两侧都跑，合起来退出 1（`status` 的累计，3.12）。不必请主持者同意（P1 设计审查 A-M3、B-N3） | — | S2 |
+| 15 | `ci-only` 的判断去掉 | 本机 `make vuln`，PATH 前面放两个桩（放在 `TMPDIR` 下自己的目录）：`go` 把参数写进一个文件、退出 3，`pnpm` 写参数、退出 0。原样时在调用桩之前就拒绝（文件是空的，`make` 以 2 退出，3.16 第 1 条）；去掉判断后两个桩都被调到（文件里是 `run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...` 与 `audit --prod --audit-level=low`），什么也没发出。另用同一套桩加 `GITHUB_ACTIONS=true` 跑原样的 `make vuln`：两侧都跑，合起来以 2 退出（配方以 1，`status` 的累计，3.12）。不必请主持者同意（P1 设计审查 A-M3、B-N3） | — | S2 |
 | 16 | `reload` 不先等（只 `goto` 等） | A15 第 2 格 | 三种 | S1 |
 | 17 | `framenavigated` 里不记 `/sign-in` | A15 第 1、3、8 格的 `signInLandings` 断言 | 第 1、8 格三种，第 3 格 Chromium 与 Firefox | S1 |
 | 18 | 帮手不看续期的锁（`sessionWaits` 不调 `navigator.locks.query()`，也不看租约） | A15 第 6、8、9 格：新文档在放开之前就请求了（原型三种各三轮）；第 4 格照过。审查时只有第 6 格，只由锁那一半抓到：没有 Web Locks 的故事走不到租约（P1S1B-M1）；修复一轮加了第 8、9 格 | 三种 | S1 |
@@ -853,8 +879,29 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P1-S1-e2e-navigation-revie
 | g1 | 门禁的 `SOURCE` 改回四种结尾（g1b：少 `x`） | 八种结尾的核对："the gate does not read a story ending .spec.tsx" 等 | — | S1 |
 | g2 | `LEAVE` 只认双引号 | 内置样例 8 | — | S1 |
 | c3 | 门禁的例外按名字 `navigation.ts`，不按整个路径 | 内置样例 9 | — | S1 |
+| x2 | Dockerfile 去掉断言那一行 | 守卫：第 2 条 0 个匹配，列出 `FROM` 那一行；"0 lines assert the Go version" | — | S2 |
+| x3 | 断言一行写两遍（相邻） | 守卫："2 lines assert the Go version"（第一轮修复之后由第 3 条抓） | — | S2 |
+| x4 | `make vuln` 的 Go 一侧失败不计 | 桩 go 退 3、`GITHUB_ACTIONS=true`：`make` 以 0 退出（原样 2） | — | S2 |
+| x5 | `make vuln` 的 npm 一侧失败不计 | 桩 pnpm 退 1：同上 | — | S2 |
+| x6a–d | `pgtest.go`、`compose.dev.yaml`、`db.ts`、`image-smoke.sh` 各自改回 18.6 | `TestContainerMatchesTheOtherDatabases` | — | S2 |
+| x7 | README 的"指定的 Go 1.27.4。"写两遍 | 守卫 | — | S2 |
+| x7b | README 另有一处"指定的 Go 1.27.1。" | 守卫："2 matches …; found ["1.27.4" "1.27.1"]" | — | S2 |
+| x10 | `server/tools/go.mod` 多一行 `toolchain go1.27.1` | 守卫："2 matches" | — | S2 |
+| x11 | `FROM … AS server` 之后先插一行 `WORKDIR /go` | 守卫：0 个匹配，列出 `FROM` 与断言两行 | — | S2 |
+| r1 | 只改断言报错里的版本（`go.mod 要 go1.27.1`） | 守卫："the assertion's message says go.mod asks for go1.27.1" | — | S2 |
+| r2 | 断言挪到 `RUN go mod download` 之后 | 守卫：0 个匹配，列出 `FROM` 与 `RUN test` 两行与行号 | — | S2 |
+| r3 | 断言挪进 web 阶段 | 同上 | — | S2 |
+| p1 | 挪份的两个名字只进第八份、不进第七份的模式 | `shards.py`："NOT IN EXACTLY ONE"（两份都跑） | — | S2 |
+| p1b | 第三份的 `-skip` 去掉第七份 | 同上，28 个 | — | S2 |
+| 15b | `vuln` 去掉 `$(ci-only);` | 本机 `make vuln` 调到两个桩 | — | S2 |
+| 15c | `outdated` 去掉 `$(ci-only);` | 行为上看不出：`tools/outdated.sh` 自己拒绝（第二层），15e 证明两层都要去掉才调到 | — | S2 |
+| 15d | `tools/outdated.sh` 去掉自己的判断 | 直接执行调到桩（14 次）；`make outdated` 仍由 `Makefile` 拒绝 | — | S2 |
+| 15e | 15c 加 15d | `make outdated` 调到桩（14 次） | — | S2 |
+| split | 判断挪回单独的一行（3.12 原来的写法），`make -i vuln` | 调到两个桩 | — | S2 |
 
 x1–x7 是 S1 的实施者加的（实施报告第 4 节）；m18a、m20–m23、g1、g1b、g2、c3 是修复一轮照审查加的（修复报告第 3 节），m20–m23 在 `8e128a2d` 上都活着（m20 即那时的帮手；审查 B 的 mL、mLK 即 m21、m22），g1、g2、c3 的探针那时门禁都看不见。
+
+S2 的 x 与 S1 的 x1–x7 不是同一组，看"Step"一列。x2–x7、p1、p1b 是 S2 的实施者加的（实施报告第 4 节）；r1–r3 出自审查 A，x7b、x10、x11 与 15b–15e、split 是第一轮修复的变异表里的（修复报告第 3 节）。r1–r3、x7b、x11 在 `4a0c2585` 上活着，守卫读整行的断言（`42e6ff6f`）之后死；r6–r8（另有 `golang:1.27.1 AS tools` 的阶段、注释里写旧的 `FROM` 与 `RUN test`、`go.mod` 的注释写旧的 `toolchain`）不该报，之前之后都不报。split 即 3.12 原来的 `Makefile`：`make -i vuln` 在 `e8b115c9` 之前调到两个桩（审查 C-M1）。修复核对 C 的 N7：15b–15e、split、x4、x5 与 3.14 的一格由 S2 的文档提交补上。p1、p1b 只由 `shards.py` 抓到，仓库里没有核对分份的测试。
 
 等价的、不列的：只从在途的集合里去掉续期（`/api/v0/auth/refresh` 不进集合）。在途的续期若是这个文档的第一次，"第一次续期"一样等它：答复读完之前 `performance` 里没有那一条。若是后来的，它在锁里发、写完记录才放锁（`token-manager.ts:288-310`），锁的检查等它。记录里写明它是等价的。
 
@@ -873,7 +920,7 @@ x1–x7 是 S1 的实施者加的（实施报告第 4 节）；m18a、m20–m23�
   - A15 加 26 个要跑的测试（27 个里 WebKit 的第 3 格跳过；S1 加了第 7–9 格，第 7 格每次 0.4–0.8 秒，第 8、9 格 1.4–1.9 秒）。有四格在等：第 2、5 格各约 2 秒，第 4 格约 1 秒加 2 秒，第 6 格约 1 秒。本机原型量到的每格用时（含注册与登录）：第 1 格 0.3–1 秒、第 2 格 2.3–2.9 秒、第 5 格 2.3–2.9 秒（P1 设计审查 C 的原型），第 3 格 0.8–1.5 秒、第 4 格 3.9–4.5 秒、第 6 格 1.9–2.3 秒（第一次修订的原型）。三种浏览器加起来串行约 40 秒。
   - `playwright.config.ts` 没有设 `workers`，Playwright 默认用一半的逻辑 CPU，CI 的 4 核 runner 上是 2 个；同一个文件里的测试串行。所以 A15 在 CI 上约多 20–40 秒。这是推断：CPU 不同，并且没在 CI 上量过（P1 设计审查 A-N1）。S1 的分支 CI 上 A15 一轮串行约 41 秒（七格，`8e128a2d`），修复之后约 68 秒（九格，`3c2425c1`，那台 runner 慢约 1.5 倍）（10.1）。
   - 帮手对已有的故事估多 0–30 秒（推断，3.4）。合计估多 1 分钟以内。S1 的记录写出分支 CI 与合并之后两次 `main` 的 E2E 一步。S1 实测：A15 之外帮手只真的等过 6 次、合计 0.23 秒（审查 B 插记录的全量）；分支 CI 的 e2e 作业 7:35（E2E 6:03），S1 之前 `main` 的三次 6:48–8:16，在机器的差别之内；修复之后 9:58（E2E 8:25），慢在 runner（10.1）。合并之后两次 `main` 记在 S2 的记录（7.5 的"之前"）。
-- **S2**：组合根各份照新的 Go 与 PostgreSQL 重量（7.5）。第五份收尾之后两次在 EPYC 7763 上平均 425 秒，余量 25 秒（00 号文档第 7 节"分份"）：Go 小版本与 PostgreSQL 小版本的变化通常在噪声之内，但余量小，所以照数据看。过 450 秒照 06-environment 第 4 节先挪给邻份，挪不下再分一份，不提高 `-timeout`。第五份落在别的 CPU 上时看不出 7763 上的影响，所以另照决定 352 看它第一次落在 7763 上的那次（第 8 节第 1 条）。`vuln.yml` 与 `ci.yml` 并行，不算进各份。`image` 一项要拉新的基础镜像，第一次多十几秒。
+- **S2**：组合根各份照新的 Go 与 PostgreSQL 重量（7.5）。第五份收尾之后两次在 EPYC 7763 上平均 425 秒，余量 25 秒（00 号文档第 7 节"分份"）：Go 小版本与 PostgreSQL 小版本的变化通常在噪声之内，但余量小，所以照数据看。过 450 秒照 06-environment 第 4 节先挪给邻份，挪不下再分一份，不提高 `-timeout`。第五份落在别的 CPU 上时看不出 7763 上的影响，所以另照决定 352 看它第一次落在 7763 上的那次（第 8 节第 1 条）。`vuln.yml` 与 `ci.yml` 并行，不算进各份。`image` 一项要拉新的基础镜像，第一次多十几秒。S2 实测：分支 CI 上组合根在 7763 上 417–458 秒，多出的约 50 秒是编译，竞态的份没取回竞态的编译结果（3.16 第 2 条）；改为只让竞态的九份取存 Go 的缓存（决定 355），并把第三、第五份各挪一个给第八份（决定 354），暖的时候 7763 上第三、四、五份约 396、396、382 秒。合并之后第一次 `main` 是冷的，约多 50 秒；看两次的平均（10.2）。
 
 ### 7.5 P1 怎样量
 
@@ -908,12 +955,12 @@ P1 完成，当且仅当：
    - **S1，`05-lessons.md:80`**：末尾加"M12/P1/S1 起换文档经帮手 `goto`、`reload`，它先等在途的请求与续期，门禁守着（`e2e/fixtures/navigation.ts`）；断言之前等一个肯定的东西照旧。"
    - **S2，`06-environment.md:10`**：`会自动下载 \`go.mod\` 锁定的 \`go1.27.1\`` → `会自动下载 \`go.mod\` 的 \`toolchain\` 锁定的那个版本`。
    - **S2，`06-environment.md:53`**：`在 \`golang:1.27.1-trixie\` 容器里复现` → `在与 \`go.mod\` 的 \`toolchain\` 同版本的 golang 镜像（\`deploy/Dockerfile\` 的 server 阶段那个）里复现`。
-   - **S2，`06-environment.md`** 第 4 节（读 CI，`:50` 之后）加一条："- **依赖的漏洞**：`make vuln`、`make outdated` 只在 GitHub 的 runner 上跑（本机拒绝），结论看 `vuln.yml`：`gh run list --workflow vuln.yml --branch main --limit 1`，或 `tools/ci-wait.sh <sha> vuln.yml`。每个 Step 合并之前看一眼（00-M12 4.3）。"
-   - **S2，`05-lessons.md:89`**：`在 \`golang:1.27.1-trixie\` 容器里复现` → `在与 \`go.mod\` 的 \`toolchain\` 同版本的 golang 镜像里复现`。
+   - **S2，`06-environment.md`** 第 4 节（读 CI，`:50` 之后）加一条："- **依赖的漏洞**：`make vuln`、`make outdated` 只在 GitHub 的 runner 上跑（本机拒绝），结论看 `vuln.yml`：`gh run list --workflow vuln.yml --branch main --limit 1`，或 `tools/ci-wait.sh <sha> vuln.yml`。每个 Step 合并之前看一眼（00-M12 4.3）。"S2 照实施另加：不在 runner 上三者都拒绝、`make -i` 也一样，作业日志的 `-R` 与读 `outdated` 一项的输出；"分份"一条另加 Test 一步含编译的读法（3.16 第 2 条）。
+   - **S2，`05-lessons.md:92`**（写本文时是 `:89`，3.16 第 10 条；第 7 节另加三条，S2 的记录）：`在 \`golang:1.27.1-trixie\` 容器里复现` → `在与 \`go.mod\` 的 \`toolchain\` 同版本的 golang 镜像里复现`。
    - **S2，`03-project-background.md:15`**：`Go 1.27（toolchain go1.27.1）` → `Go 1.27（\`toolchain\` 见 \`server/go.mod\`）`。
 7. **移交的"处理进展"**各加一行（状态仍是 `open`）。引号里以反引号括起的链接是它在 `handoffs/` 里的写法，写进移交时去掉反引号：
    - **S1**，`handoffs/M5-polish.md`："- M12/P1/S1（2026-11-15，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 51 条做完：帮手 `e2e/fixtures/navigation.ts` 的 `goto`、`reload` 先等在途的请求、续期的锁（或租约）与这个文档的令牌（第一次续期，或在这个文档里登录、注册的答复），110 个文件换上，门禁 `tools/e2e-navigation/check.mjs`，A15 在三种浏览器里演示续期途中离开会被登出；"重新看 M1 第 10 节"进 v0.2 的 `M12-release.md`（收尾时写）。第 50 条：`networkSettled` 等待时打一行；分支的两次 CI 一次触发了（等了 0.42 秒，容器 veth 的链路本地地址）、一次没有（那台 runner 没有暂定的地址）（`[P1 设计](../01-P1-foundation.md)` 10.1）。"
-   - **S2**，`handoffs/M0-P6-image-release.md`："- M12/P1/S2（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 4 条的安全一半做完：Go 1.27.4（镜像的断言与守卫）、PostgreSQL 18.7、node 与 distroless 的摘要、setup-node 7.1.0 与 upload-artifact 7.0.2；`make vuln`（Go 与 npm）与 `make outdated` 在 `vuln.yml` 里，<报出的与处置>。Node 26、功能性的大版本与 Dependabot 的版本更新，收尾时写进 v0.2 的 `M12-release.md`（`[P1 设计](../01-P1-foundation.md)` 10.2）。"
+   - **S2**，`handoffs/M0-P6-image-release.md`："- M12/P1/S2（2026-11-15，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 4 条的安全一半做完：Go 1.27.4（镜像的断言与守卫）、PostgreSQL 18.7、node（24.22.3）与 distroless 的摘要、setup-node 7.1.0 与 upload-artifact 7.0.2；`make vuln`（Go 与 npm）与 `make outdated` 在 `vuln.yml` 里，第一次运行报出的：`klauspost/compress` 1.20.2、`moby/go-archive` 0.3.0（只在测试里）、dompurify 3.4.17 升了，katex 的 GHSA-238p-pmpm-9mq7（low，修在 0.18.2）进 `audit.ignore`（决定 353），`vuln.yml` 为绿。Node 26、功能性的大版本（katex 0.18/0.19 与补丁重做在内）与 Dependabot 的版本更新，收尾时写进 v0.2 的 `M12-release.md`（`[P1 设计](../01-P1-foundation.md)` 10.2）。"
 
 ## 9. 交给后面的 Phase
 
@@ -953,14 +1000,36 @@ P1 完成，当且仅当：
   - 审查之前，run 43632495423（`8e128a2d`）：19 项第一次 attempt 全绿；e2e 作业 7:35（E2E 一步 6:03，559 个、1 个跳过，2 个 worker），作业限 20 分钟；S1 之前 `main` 的三次是 7:21（E2E 6:10）、8:16（6:51）与 6:48（5:16），帮手与 A15 多出的时间在机器的差别之内。A15 在 CI 上一轮串行约 41 秒。
   - 修复一轮之后，run 43642007840（`3c2425c1`）：19 项第一次 attempt 全绿，e2e 没有卡在 apt 镜像；e2e 作业 9:58（E2E 一步 8:25，565 个、1 个跳过，2 个 worker），余量 10 分钟。慢在 runner：同一批测试逐个比，A15 之外每个测试的用时中位数是上次的 1.45 倍（修复核对 B 重算 502 个，1.48 倍，四分位 1.29–1.68），不经帮手的纯接口测试约 1.5 倍（标题带 `(API)` 的 152 个，中位数 1.53）。A15 在 CI 上一轮串行约 68 秒，新加的第 8、9 格 6 个测试共约 15 秒。八份组合根的 Test 一步 4:29、4:15、4:49、5:38、6:21、4:33、5:20、4:27（S1 不改服务端）。
   - 主持者的 `937df215`（只改注释）：run 43645603202，19 项第一次 attempt 全绿；e2e 作业 8:48（E2E 一步 7:15，565 个、1 个跳过），第 50 条那一行打出（waited 733 ms）
+  - 合并之后两次 `main`（7.5 的"之前"，也记在 S2 的记录与 00 号文档第 13 节）：`bbf3eb26` 的 run 43650412259 与记合并号的 `0da2fb5d` 的 run 43653071437，19 项第一次 attempt 全绿；八份的 Test 一步两次的平均 328、273、416、299.5、259.5、377.5、284、236 秒，都在 450 之下，第三份（两次都在 EPYC 7763 上，422、410）最贴近；第五份两次都没落在 7763 上（6975P、9V45），决定 352 的那一次还没来；e2e 作业 9:38、8:29（E2E 一步 8:08、7:11），第 50 条那一行两次都打出（waited 432 ms、213 ms）。
 - **审查**（2026-11-15，三位各在 `8e128a2d` 的自己的工作树里，重的经 `heavy.sh`）：A 审帮手与偏离，B 审测试、变异、浏览器与 CI，C 审替换、门禁与文档稿。A 0I 2M 1N，B 0I 1M 2N，C 0I 1M 7N；去重之后 Important 0，Minor 4：在这个文档里登录、注册时，帮手在记录还没写、锁还被持着时就换文档（P1S1A-M1）；"跟着别的标签页登录的文档会等满 10 秒"不成立（P1S1A-M2）；租约一支没有测试（P1S1B-M1）；文档稿漏了照实改的各节（P1S1C-M1）。Nit 9（三份合计 10，B-N2 = C-N1）。三位都确认偏离对且必要、替换机械、门禁抓得到、自己加的三个提交必要、每个提交单独为绿。
 - **修复一轮**（2026-11-15，照主持者的修复说明，从 `8e128a2d` 起 5 个提交，普通推送，没有改写已推的历史；4 个文件，加 185 行、减 50 行，只改 `e2e/fixtures/`、A15 与门禁）：先看锁或租约、再看记录，A15 第 8 格，帮手的说明（A-M1、A-N1、C-N4，`6ec05d13`）；A15 第 9 格（B-M1，`995ebf02`）；门禁的八种结尾、三种引号、两个新样例、文件头（C-N4、C-N5，`91718e48`）；第 1 格末尾的来回（C-N6，`6e48227d`）；那一行只在落到过 `/sign-in` 时写（C-N7，`3c2425c1`）。第 8 格在旧帮手上三种浏览器各三轮 9 个全失败，报 "the next document is asked for once the sign-in wrote its record"；文档一侧的（A-M2、C-M1、C-N1–N3、B-N1、B-N2）在本提交。
 - **修复核对**（一轮，2026-11-15，三位各在 `3c2425c1` 的自己的工作树里）：没有 Important、Minor。A 判 M1、M2、N1 关上：审查的探针三种浏览器都绿（新文档在放开之后 36–134 ms 才请求），换回旧帮手三种都失败；第 8 格 9/9，`stories/identity/` 75 个通过、1 个跳过。B 判 M1、N1、N2 关上：m21、m22 只有第 9 格 9/9 失败，A15 九格三种各三轮 78 个通过、3 个跳过，五个提交逐个 `lint-web`、`knip`、`check:types` 为 0，全量 565 个、148 秒。C 判 M1、N1–N7 关上：第一轮的 16 个探针在新门禁上都报出，门禁的 20 条变异照旧，五个提交从 `git archive` 的树上门禁都 rc=0。新的 Nit 三条，都在本提交：A-N2 = C-N8（"有那一行就是被跳回"不对，故事自己去登录页也有；`937df215` 改注释，文档写按 ` after a refresh answered 401` 数），C-N9（决定 342 在本文里另写锚；修复报告说明 13.4 新句的差别时漏了"、自己注册的文档不必等"，说明补上），B-N3（纯接口测试是约 1.5 倍，不是 1.35 倍）。
 - 留下的：Chromium 里路由扣着、从没交回的请求留在在途的集合里，同一页面之后再经帮手换文档会等满 10 秒（只有 A15 的两处逃生口，之后不再换文档；`followRequests` 的说明写了）；续期在网络一层失败的文档帮手等满 10 秒（3.2）；WebKit 把编辑页 `pagehide` 里 keepalive 的 `DELETE` 报成 `Load request cancelled`，服务端是否收到没有查（审查 A，产品一侧，交主持者）。从 S1 的合并起数 `main` 的 e2e 因为被跳回登录页而红的次数（决定 334、342）：`gh run list --workflow ci.yml --branch main`，红了的看 E2E 注解里 `sent back to sign in:` 一行，数带 ` after a refresh answered 401` 的失败，再除去有意造重用的故事（A5）。
 
-### 10.2 S2：工具链与安全更新
+### 10.2 S2：工具链与安全更新（2026-11-15，合并见 00 号文档第 12 节）
 
-（实施后补）
+- 提交（从 `main` 的 `0da2fb5d` 开始，18 个：6.2 的五个照次序，`vuln.yml` 报出的四个，`vuln.yml` 的缓存一个，挪份一个，改正注释一个；第一轮修复六个；Step 的文档提交是主持者的）：
+  - Go 1.27.4：两份 `go.mod` 的 `toolchain`，Dockerfile 的 server 阶段 `golang:1.27.4-trixie` 的摘要与 `FROM` 之后第一行的断言，`TestTheImageBuildsWithTheModulesToolchain`（`platform/buildinfo`）核对 tag、断言与 README 都等于两份 `toolchain`；README、`edge.go`、`grep.go` 照 1.27.4 的核对写（`jsonv2` 仍在默认打开的实验之后，`parse.go:212` 不变）（`6dc814ea`）。这个提交的说明写 1.27.2–1.27.4 修的 `html/template` 在服务端的路径上，不准：二进制不链接它（`go list -deps ./cmd/nervewiki` 里是 `net/http`、`crypto/tls`、`crypto/x509` 与 `text/template`）；1.27.2 修了 crypto/tls、html/template、net/http、net/textproto、os 与 go 命令，1.27.3 修了 crypto/x509，1.27.4 修了 cgo、go 命令、编译器、链接器与 net/http（审查 A-N3；已推，不改写）。
+  - PostgreSQL 18.7 五处，守卫加 README（`69de9e08`）。
+  - node（Node 24.22.3，原摘要是 24.21.0）与 distroless 的摘要（`a7987bd0`）；setup-node 7.1.0、upload-artifact 7.0.2（`597b0729`）。
+  - `make vuln`、`make outdated`（本机拒绝）、`tools/outdated.sh`、`vuln.yml`（`ed5c1f56`）。
+  - `vuln.yml` 第一次运行（43657896140）报出的：GO-2026-6865 `klauspost/compress` 1.20.2（`63de975d`）、GO-2026-6253 `moby/go-archive` 0.3.0（`0f61a57f`），两个只在 `pgtest` 的测试里（3.16 第 8 条；`63de975d` 的说明写"二进制两个都不链接"，二进制其实链接 goose，不链接的是 `klauspost/compress`）；dompurify 3.4.17（`f3e76505`，GHSA-cg2g-xh64-v4q7 critical、GHSA-mrv2-3pqr-j5jr high、GHSA-c6gr-qvv4-5v3f low，mermaid 的范围之内）；katex 的 GHSA-238p-pmpm-9mq7（low）进 `audit.ignore`（`c654db5f`，决定 353）。`vuln.yml` 在 43664040257 为绿。
+  - `vuln.yml` 不取也不存 Go 的缓存（`2811d13d`；它的说明说"3 MB 是原因"、"五次都取回 3 MB"，不准，见 3.16 第 2 条与审查 B-M1）；第三、第五份各挪一个给第八份（`28980104`，决定 354，3.16 第 3 条）；这两处注释里比的"S1 之前"改为"S2 之前的 `main`"（`4a0c2585`）。
+  - 第一轮修复：竞态的九份才用 Go 的缓存（`0844464d`，决定 355，审查 B-I1；它的说明更正了 `2811d13d`）；守卫读整行的断言（`42e6ff6f`，A-M1、N1、N2）；拒绝与干活同一行、`outdated.sh` 自己拒绝（`e8b115c9`，C-M1）；`outdated.sh` 只对读到的写"没有过时的"、写出出错的命令（`d9ff11f6`，C-M2、N1）；`vuln.yml` 的 `paths` 加 `package.json`（`f480a9e5`，C-N2）；第八份的帮助文字（`80d76191`，B-N2）。
+  - 到 `28980104` 的 11 个提交单独在干净的 worktree 里 `make lint knip` 为绿，碰 Go 的 `make test-go-short`，`db.ts` 的用库的故事、锁文件的 web 测试与 L4、`Makefile` 的本机拒绝与份的核对都为绿；`4a0c2585` 只改注释，`make lint` 与份的核对为绿（审查 C-N4）；第一轮修复的 6 个在干净的 worktree 里各自 `make lint` 为绿，改守卫的跑 `make test-go-short` 与守卫，改 `Makefile`、`outdated.sh` 的跑桩的各种情形。
+- 版本与摘要在开工时重读（2026-11-15 UTC 00:01–00:03）：go1.27.4 仍是 1.27 线最新；四个镜像的摘要、两个 action 的 SHA（`git ls-remote`）与设计相同。
+- 与设计不同之处（3.16 列出）：本机拒绝时 `make` 以 2 退出；Go 的缓存只给竞态的九份、`vuln.yml` 不取不存；挪份不分第九份；变异 10 两格、变异 13 用原摘要；`outdated.sh` 的输出；`pnpm audit` 不必先装；传递依赖的 `pnpm update`；报出的 Go 模块只在测试里；katex 进 `audit.ignore`；守卫读整行的断言；拒绝与干活同一行；`vuln.yml` 的 `paths` 加 `package.json`。
+- 反向对照（7.2）：变异 9、10a、10b、11、12、14 由守卫抓到，报错写出文件、找到的与要的（变异 12 的报错在第一轮修复之后才写出 README 写着的版本）；13 由 `make image` 的断言一步抓到（"golang 镜像是 go1.27.1，go.mod 要 go1.27.4：换摘要"）；15 用 PATH 里的桩（不联网）：原样拒绝、桩没被调，去掉判断两个桩都被调到，`GITHUB_ACTIONS=true` 时两侧都跑、合起来失败。实施者另加 x2–x7、p1、p1b，都抓到（p1、p1b 只由实施者的份的核对抓到，仓库里没有核对分份的测试）。第一轮修复：A 的 r1、r2、r3 与 x7b、x11 在修之前活、修后死；`make -i vuln`、`MAKEFLAGS=i make vuln`、`make -i outdated` 与直接执行 `tools/outdated.sh` 修前调到桩、修后一个也不调；15b、15d、15e、split 抓到，15c 由 `outdated.sh` 自己的判断守住、行为上看不出（修复核对 C-N7：这几行与 3.14 的一格由本提交补上）；`outdated.sh` 的 O4、O5 修前写"没有过时的"、修后不写。
+- `outdated` 一项六次都六节各有结果、没有一节报错（第一次的输出贴在 S2 的记录）；第 7 个提交之后，两项都不取不存 Go 的缓存。
+- 实测：本机第五份在 Go 1.27.1/1.27.4、PostgreSQL 18.6/18.7 上没有差别（222.4–224.7 秒）。分支 CI 上组合根在 7763 上多出的约 50 秒，是竞态的份没取回竞态的编译结果（第一、二次没有缓存，第三到五次取回 3 MB），包的时间没变；第一轮修复之后由第一个跑完的竞态份存键。挪份照本机八份各两轮的顶层测试用时，挪后本机第三、五、八份 227.2/225.2、207.0/208.0、212.5/213.2 秒，折到 7763 暖的时候约 396、382、352 秒；分支 CI 上第三份在 7763 上包 347.6 秒。`vuln.yml` 两项 0:36–0:57；`make image` 48 秒（基础镜像已在本机）、`make image-smoke` 8 秒。
+- 门禁（本机）：头 `28980104`：`make lint gen-check knip build` 9 秒、`make test` 3,489 秒、`make test-go-short` 41 秒、`make e2e` 146 秒（564 个通过、1 个跳过），都为绿。头 `80d76191`：`make lint gen-check knip build` 8 秒、`make test-go-short` 40 秒（修复不碰产品代码与测试的分份）。
+- CI：
+  - 实施的五次（43657895833、43660640426、43664040225、43672581394、43676717979）19 项第一次 attempt 全绿；组合根在 7763 上 417–458 秒（Test 减包 81–88 秒，S2 之前的 `main` 32–35 秒）；e2e 的 E2E 一步 5:28–7:08（S2 之前的 `main` 7:11、8:08）；image 一项 65–77 秒（之前 61、72）。
+  - 第一轮修复之后（43681898393，`80d76191`）：19 项第一次 attempt 全绿，冷的（主持者先删了分支上 3 MB 的键）：九个竞态份取缓存、都 "Cache is not found"，`bootstrap-2` 第一个跑完、存下约 269 MB 的键，`short` 与另六份不取不存；7763 上第六、七、八份 431、369、389 秒（Test 减包 87、83、81）。`vuln.yml` 43681898372 为绿。
+  - 本提交（暖的第一次）：（待填：本提交的分支 CI 的 run 与 attempt；竞态的各份是否取回 `bootstrap-2` 存的键、约 269 MB；7763 上 Test 减包是否回到约 33 秒）
+- **审查**（2026-11-15，三位各在 `4a0c2585` 的自己的工作树里）：A 审工具链、镜像与 Go 模块，B 审分份、缓存与 CI，C 审 `make vuln`、`make outdated`、`vuln.yml`、npm 与文档稿。A 0I 1M 3N，B 1I 1M 2N 1Q，C 0I 2M 6N：Important 1（合并之后 `main` 的缓存键会由不带竞态的 `short` 存下，P1S2B-I1），Minor 4（守卫不核对报错里的版本，A-M1；"取回 3 MB"说多了，B-M1；`make -i` 绕过本机的拒绝，C-M1；`outdated.sh` 一项也没读到时照样写"没有过时的"，C-M2），Nit 11，Q 1（删不删分支上的 3 MB 键：主持者删了）。三位都确认挪份每个顶层测试恰在一份，摘要与 SHA 相同，两个 Go 模块不在二进制里，变异都抓到。
+- **修复核对**（一轮，2026-11-15，三位各在 `80d76191` 的自己的工作树里）：没有 Important、Minor。A 判 M1、N1、N2 关上，N3 在文档稿里关上；B 判 I1、M1、N1、N2 关上（`costs-3` 末行不取缓存约多 10 秒，可以接受）；C 判 M1、M2、N1–N6 关上，新 Nit C-N7（`outdated.sh` 自己拒绝的反向对照没进 3.14 与 7.2）在本提交。
+- 留下的：合并之后第一次 `main` 是冷的（新的 Go 与 `go.sum`），由第一个跑完的竞态份存键，第二次起竞态的份取回它，7763 上 Test 减包应回到约 33 秒；看那一份 post 一步的 "Cache saved with the key"，并看 `short` 没有存。决定 352 的那一次若是冷的第一次，减去约 50 秒的编译再比。katex 0.18/0.19 与补丁重做、Node 26、功能性的大版本（mermaid 12 等）与 Dependabot 的版本更新，收尾时写进 v0.2 的 `M12-release.md`（决定 353）。开发库：18.x 之间不要 dump/restore，`make dev-db` 拉新镜像、沿用旧的卷即可。
 
 ## 附录：核对过的代码
 

@@ -1,0 +1,86 @@
+name: Vulnerabilities
+
+# 依赖的已知漏洞（00-M12 4.3、M12/P1/S2）：每天、手动，与改了依赖清单或这里的推送时跑 make vuln。
+# 不在 ci.yml 里：Go 的下一个安全版本一出，每个 Step 都会一起红。发布的闸门另跑一次（P5/S1）。
+# pnpm audit 与 make outdated 把依赖的清单发给外部的服务，本机的权限分类器也拒过 govulncheck：只在这里跑，本机不跑（00-M12 4.3）。
+# 定时运行的通知只发给最后改 cron 的人：每个 Step 合并之前主持者看一眼
+#   gh run list --workflow vuln.yml --branch main --limit 1
+on:
+  schedule:
+    - cron: "23 4 * * *"
+  workflow_dispatch:
+  # workflow_dispatch 与 schedule 只对已在默认分支上的工作流生效：引入它的分支与升依赖的分支靠 push 跑。
+  # 只在分支上：推 tag 时发布的闸门自己跑 make vuln
+  push:
+    branches: ["**"]
+    paths:
+      - .github/workflows/vuln.yml
+      - Makefile
+      - tools/outdated.sh
+      - server/go.mod
+      - server/go.sum
+      - pnpm-lock.yaml
+      - pnpm-workspace.yaml
+      # 它的 packageManager 定了 corepack 装哪个 pnpm 来跑 pnpm audit（audit.ignore 的读法随 pnpm 的版本）
+      - package.json
+
+permissions:
+  contents: read
+
+# 同 ci.yml：分支上的新推送取消较早的运行；main 的每次运行各占一个组，定时的与推送的撞在一起时，
+# 排队的那个不会被更晚的替掉
+concurrency:
+  group: ${{ github.ref == 'refs/heads/main' && format('vuln-main-{0}', github.run_id) || format('vuln-{0}', github.ref) }}
+  cancel-in-progress: true
+
+jobs:
+  vuln:
+    name: vuln
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # 不取也不存 Go 的缓存（M12 决定 355）：setup-go 的键由 runner 的系统与架构、Go 的版本与所列 go.sum 的哈希组成，工作流之间共用，
+      # 键归先存下的那一份、存下就不再改。照设计列 go.sum 时，这一项的键与 ci.yml 的 e2e 相同，outdated 一项的与 ci.yml 竞态的各份相同；
+      # 它们一分钟内跑完，先存下的没有竞态的编译结果，竞态的各份取回它照样从头编译（道理写在 ci.yml 的 setup-go 旁边）（M12/P1/S2）
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        run: corepack enable
+      - name: Vulnerabilities
+        run: make vuln
+
+  # 只列出过时的，不挡：它自己出错也不让这次运行变红（continue-on-error），主持者看的是 vuln 一项的结论
+  outdated:
+    name: outdated
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # 同 vuln 一项：不存 Go 的缓存
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        run: corepack enable
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Outdated
+        run: make outdated

@@ -83,7 +83,7 @@ docker network create "$name" >/dev/null
 docker run -d --name "$db" --network "$name" \
   -e POSTGRES_USER=nervewiki -e POSTGRES_PASSWORD=nervewiki -e POSTGRES_DB=nervewiki \
   -e POSTGRES_INITDB_ARGS="--locale-provider=builtin --locale=C.UTF-8" \
-  postgres:18.6-trixie >/dev/null
+  postgres:18.7-trixie >/dev/null
 wait_for docker exec "$db" pg_isready -h 127.0.0.1 -U nervewiki -d nervewiki || fail "PostgreSQL 没有就绪"
 
 # 容器里的非 root 用户要能读私钥

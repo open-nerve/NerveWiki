@@ -146,7 +146,7 @@ func (p GrepPattern) Compile() (*regexp.Regexp, error) {
 }
 
 // GrepInsts is the instructions of re's program as calcSize estimates them
-// (regexp/syntax/parse.go:212 of Go 1.27.1, unexported, which the parser
+// (regexp/syntax/parse.go:212 of Go 1.27.4, unexported, which the parser
 // checks its maxSize with), and the program's start and match: never
 // fewer than syntax.Compile makes of re simplified (M9/P4 design 3.6.1).
 // A star counts 2 and the program needs 1 when its operand cannot be

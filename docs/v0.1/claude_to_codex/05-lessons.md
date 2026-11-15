@@ -89,10 +89,13 @@
 - **新的推送会取消同一分支上正在跑的 CI**（concurrency group）。等最新的那次跑完，不要连着推。
 - **作业日志要认证才能读**；失败的作业的 annotations（`/check-runs/<job id>/annotations`）与每一步的时间是公开的。Playwright 在 CI 上用 `github` reporter，e2e 的失败因此读得出来。
 - **testcontainers-go 在 `go test ./...` 的所有包之间共用一个 Ryuk 会话**；一次连接失败会让后来的包丢掉 Postgres。所以 CI 的 Test 一步设了 `TESTCONTAINERS_RYUK_DISABLED=true`。
-- **CI 的 Linux 回环在套接字缓冲小于 64 KiB 的 MSS 时被限到约 3 MB/s。** 只在 Linux 上失败的测试，在 `golang:1.27.1-trixie` 容器里复现（`--cpus=2`、`-race`）。
+- **CI 的 Linux 回环在套接字缓冲小于 64 KiB 的 MSS 时被限到约 3 MB/s。** 只在 Linux 上失败的测试，在与 `go.mod` 的 `toolchain` 同版本的 golang 镜像里复现（`--cpus=2`、`-race`）。
 - **同一棵树上，CI 的同一份测试可以差三成**（第一份 4:59–7:39）。判断挪不挪分份界线时，取两次运行的平均。
 - **CI 的 lint 失败会盖住数据库变异归到哪个测试**：变异的分支也要过 lint（例如 `_ = x`）。
 - **`make image-smoke` 会因为只被用户的全局 gitignore 忽略的文件报 `modified=true`。** 先看 `git -c core.excludesFile=/dev/null status --porcelain`。
+- **setup-go 的缓存键由 runner 的系统与架构、Go 的版本、`cache-dependency-path` 所列文件（默认 `go.sum`）的哈希组成，工作流之间、矩阵的各份之间共用；键归先存下的那一份，存下就不再改。竞态与不带竞态的编译结果不共用。** S2 改了 Go 与 `go.sum`，`main` 的新键会由最先跑完、不带竞态的 `short` 存下（之前的键碰巧是 `bootstrap-1` 存的），分支上又先被 `vuln.yml` 一分钟跑完的一项占了：组合根每份从头编译，Test 一步多约 50 秒，看起来像是 Go 升级让竞态的份变慢，包的 `ok` 行的时间其实没变。只让要用的那种构建取存缓存；判份的慢之前先拆开 Test 一步里的编译与包的时间，再看缓存是哪一份存的，不看大小（M12/P1/S2）。
+- **pnpm 12 的 `update` 对传递依赖不记版本**：`pnpm update -r <包>@<版本>` 对不是直接依赖的包报错；在上一级声明的范围之内修，写不带版本的 `pnpm update -r <包>`，它取满 `minimumReleaseAge` 的最新；范围之外的写 `overrides`（M12/P1/S2）。
+- **Make 的配方里，拒绝的判断与干活写在同一个 shell 行。** 判断单独一行时，`make -i` 或环境里的 `MAKEFLAGS=i` 忽略它的失败、接着跑下一行（M12/P1/S2 审查 C 的 M1）。
 
 ## 8. 流程
 

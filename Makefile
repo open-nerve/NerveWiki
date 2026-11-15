@@ -168,6 +168,30 @@ lint-web: ## Markdown 样例集自检；e2e 换文档只经帮手的门禁；oxl
 knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
+# 依赖的已知漏洞（00-M12 4.3、M12/P1/S2）。Go 一侧 govulncheck 只扫 server/，只报代码调用得到的
+# （server/tools 是不随镜像发出的生成器）；npm 一侧 pnpm audit 只看 dependencies，即打进二进制的前端，
+# VULN_AUDIT_LEVEL 以下的不挡（vuln.yml 照 low 报给人看，发布的闸门传 high；修不了或与我们无关的写进
+# pnpm-workspace.yaml 的 audit.ignore，理由写在那个提交）。两侧都跑完再合起来判。
+# pnpm audit 与 make outdated 把依赖的清单发给 npm registry 与 Go 的模块代理；govulncheck 只向 vuln.go.dev
+# 要数据库里已知有漏洞的模块的条目，本机的权限分类器拒过它（00-M12 4.3）。所以两个目标只在 GitHub 的
+# runner 上跑，本机拒绝；结论看 .github/workflows/vuln.yml。判断与干活写在同一个 shell 行里：make -i（或环境里的
+# MAKEFLAGS=i）只忽略一行的失败、接着跑下一行，分成两行时它绕得过去；tools/outdated.sh 自己也判一次（M12/P1/S2）
+GOVULNCHECK_VERSION := v1.9.0
+VULN_AUDIT_LEVEL ?= low
+ci-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：它把依赖的清单发给外部的服务。结论看 .github/workflows/vuln.yml"; exit 1; }
+
+.PHONY: vuln
+vuln: ## 依赖的已知漏洞：Go（govulncheck，server/）与 npm（pnpm audit --prod，级别 VULN_AUDIT_LEVEL）；只在 CI 上跑
+	@$(ci-only); \
+	status=0; \
+	(cd server && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...) || status=1; \
+	pnpm audit --prod --audit-level=$(VULN_AUDIT_LEVEL) || status=1; \
+	exit $$status
+
+.PHONY: outdated
+outdated: ## 只读地列出过时的 Go 模块、npm 包、actions、工具链与 PostgreSQL 的版本、基础镜像的摘要；不挡；只在 CI 上跑
+	@$(ci-only); tools/outdated.sh
+
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
 # 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
 # README 的写法；make check 与 CI 的 short 一份都跑它）
@@ -294,7 +318,7 @@ BOOTSTRAP_SIXTH = ^Test(Ingest|TheBackgroundRevertStopsAtAWriteBetweenItsBatches
 # 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
 # M11/P2 的分份（00-M11 第 276 条）：第三份的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与第五份的 TestTheMCPToolsErrorsCarryTheirCodes
 # 挪到第八份，同样也进第七份的模式（数与各份怎么跳过它们见第八份的说明）。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
@@ -326,7 +350,19 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|The
 # （最近两次 main 第八份 Test 一步 210、315 秒）；照第八份的老规矩也进第七份的模式（第七份 -skip 第八份）。它以 TestR 起名，别的份的模式都不收它，
 # 原来落在补集的第四份，所以第四份从此也 -skip 第七份：第七份原有的名字都已被第一、三、六份的模式收下（ABackground、[U-Z]、The[F-Z]、Ingest），
 # 加上它只多跳过这一个。八份照旧，554 个顶层（竞态构建）145/50/120/120/61/15/30/13，每个恰在一份。不提高 -timeout。
-BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$)
+# M12/P1/S2（M12 决定 354）：S2 的分支 CI 三次里组合根在 EPYC 7763 上的 Test 一步 417–458 秒（第五份 458，第一、四份 449）。多出的不是测试：
+# 7763 上包自己的时间与 S2 之前的 main 相同或更短（第一份 369 → 348/361/356 秒，第六份 340/351 → 336/336 秒），Test 一步减包的时间从 32–35 秒变成
+# 81–88 秒，是 vuln.yml 的 outdated 一项以同一个 setup-go 的缓存键先存下 3 MB、各份取回它之后从头编译（vuln.yml 从此不存 Go 的缓存，S2 的
+# 上一个提交）。照 7763 上包的时间加 S2 之前 main 上的约 33 秒折算：第一份约 388、第四份约 396、第六份约 369、第七份约 329（S2 之前 main 上的包）、第八份约
+# 312 秒，第三份约 415（S2 之前 main 在 7763 上的包 387/376 秒）、第五份约 409 秒（376 秒）过了约 400。照 M9/P2 设计 6.5 挪给余量最大的第八份，挪得
+# 最少，各一个本机两轮稳定、不是所在份第一个跑的：第三份的 TestTheSearchIsWhatEachReadAllows（本机 -v 9.95/9.93 秒），第五份的
+# TestTheWikiToolsAnswerEveryCode（16.03/16.29 秒；不挑第五份的 TestTheMCPBatchIsRefusedWhole，两轮 28.7/45.7 秒，留下的余量给它的慢的一种）。
+# 本机八份两轮（make -j1，-v，包的时间）挪前第三份 235.8/239.7、第五份 223.4/240.8、第八份 188.2/184.2 秒；Go 1.27.1 与 1.27.4、PostgreSQL 18.6
+# 与 18.7 在本机第五份上没有差别（222.4–224.7 秒）。同第八份的老规矩也进第七份的模式（第七份 -skip 第八份）：第三份、第五份 -skip 第七份时跳过
+# 它们，第四份跳过第三份的 The[F-Z] 时已跳过它们，第一、二、六份的模式不收它们。挪后本机两轮第三份 227.2/225.2、第五份 207.0/208.0、第八份 212.5/213.2 秒；照各份 7763 上的包与本机之比
+# （第三份 381.5/237.8≈1.60、第五份 375.7/223.4≈1.68、第八份 279.0/186.2≈1.50）加约 33 秒，折到 7763 第三份约 396、第五份约 382（TestTheMCPBatchIsRefusedWhole 慢的一种约 411）、第八份约 352 秒。
+# 554 个顶层 145/50/119/120/60/15/30/15，每个恰在一份。不提高 -timeout。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')
@@ -363,7 +399,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes，回滚的变更集的撤销（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与 TestTheSearchIsWhatEachReadAllows，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes 与 TestTheWikiToolsAnswerEveryCode，回滚的变更集的撤销（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
