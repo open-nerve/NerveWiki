@@ -21,6 +21,8 @@ on:
       - server/go.sum
       - pnpm-lock.yaml
       - pnpm-workspace.yaml
+      # 它的 packageManager 定了 corepack 装哪个 pnpm 来跑 pnpm audit（audit.ignore 的读法随 pnpm 的版本）
+      - package.json
 
 permissions:
   contents: read
