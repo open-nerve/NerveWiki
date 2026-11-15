@@ -40,9 +40,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # 不存 Go 的缓存：setup-go 的缓存键只看 Go 的版本与 go.sum，与 ci.yml 的 server 各份、e2e 的键相同。这里的两项一分钟内跑完，
-      # 先存下的几 MB（几乎只有模块的 go.mod）就占了那个键（键存下就不再改），ci.yml 的各份取回的是它：S2 的分支上组合根的 Test 一步
-      # 每份多约 50 秒的编译（S2 之前 main 上取回的是 254 MB）（M12/P1/S2）
+      # 不取也不存 Go 的缓存（M12 决定 355）：setup-go 的键由 runner 的系统与架构、Go 的版本与所列 go.sum 的哈希组成，工作流之间共用，
+      # 键归先存下的那一份、存下就不再改。照设计列 go.sum 时，这一项的键与 ci.yml 的 e2e 相同，outdated 一项的与 ci.yml 竞态的各份相同；
+      # 它们一分钟内跑完，先存下的没有竞态的编译结果，竞态的各份取回它照样从头编译（道理写在 ci.yml 的 setup-go 旁边）（M12/P1/S2）
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod

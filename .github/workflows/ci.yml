@@ -146,9 +146,16 @@ jobs:
         with:
           # 之后的步骤会运行第三方代码（pnpm install、golangci-lint 的安装脚本），不在 .git/config 里留下令牌
           persist-credentials: false
+      # Go 的缓存只给竞态构建的九份（race、bootstrap-1 到 bootstrap-8），不带竞态的七份（short、costs-*、guards-*）不取也不存
+      # （M12 决定 355）。setup-go 的键由 runner 的系统与架构、Go 的版本与下面两份 go.sum 的哈希组成，十六份同一个键；键归先跑完、
+      # 先存下的那一份，存下就不再改。竞态与不带竞态的编译结果不共用：S2 之前 main 的键是 2026-10-17 的 bootstrap-1 存的（那时还没有
+      # short），之后一个月没换，组合根在 EPYC 7763 上 Test 一步减包约 33 秒；S2 改了 Go 与 go.sum，七次运行里都是 short 最先跑完，
+      # 由它存的话竞态的各份照旧从头编译，分支上 7763 上是 81–88 秒（M12/P1/S2 审查 B 的 I1）。七份取回竞态的缓存只少约 2 秒的模块
+      # 下载；costs-3 末行带竞态的 server/tools 只有一个包。判断看是哪一份存的键（post 一步的 "Cache saved with the key"），不看大小
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
+          cache: ${{ matrix.leg == 'race' || startsWith(matrix.leg, 'bootstrap-') }}
           # server/tools 是独立的 Go 模块（oapi-codegen），生成物检查要用它
           cache-dependency-path: |
             server/go.sum
