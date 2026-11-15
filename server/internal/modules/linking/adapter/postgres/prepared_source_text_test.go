@@ -43,12 +43,13 @@ const (
 // which reads the result into new 8 KiB buffers until the goroutine stops
 // it: up to the whole 6.4 MB result, as much as a copy (CI's race leg, M12).
 // Each new buffer comes with a new 24-byte *[]byte, so the guard leaves out
-// as many 8 KiB blocks as there are new 24-byte objects. Nothing else in
-// these calls allocates 8 KiB blocks (profiled; pgx's chunkreader takes them
-// too, but only after a message over 8 KiB). It also takes the smallest of
-// up to three calls, for anything else that happens only now and then. So
-// two kinds of copy go unseen: one that allocates a 24-byte object besides
-// each 8 KiB block, and one that is not made in every one of the calls.
+// the new 8 KiB blocks, but no more of them than there are new 24-byte
+// objects. Nothing else in these calls allocates 8 KiB blocks (profiled;
+// pgx's chunkreader takes them too, but only after a message over 8 KiB).
+// It also takes the smallest of up to three calls, for anything else that
+// happens only now and then. So two kinds of copy go unseen: one that
+// allocates a 24-byte object besides each 8 KiB block, and one that is not
+// made in every one of the calls.
 func TestPreparedSourceDoesNotCopyTextForComparison(t *testing.T) {
 	const maxAllocatedBytes uint64 = 2 << 20
 	const maxMeasuredCalls = 3
@@ -268,7 +269,7 @@ type preparedTextCopyAllocation struct {
 }
 
 func (a preparedTextCopyAllocation) String() string {
-	return fmt.Sprintf("TotalAlloc=%d 8KiB=%d 24B=%d counted=%d", a.total, a.blocks, a.headers, a.counted)
+	return fmt.Sprintf("(TotalAlloc=%d 8KiB=%d 24B=%d counted=%d)", a.total, a.blocks, a.headers, a.counted)
 }
 
 // The extra observer reads the native row while it is valid and forwards
