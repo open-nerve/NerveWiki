@@ -168,6 +168,30 @@ lint-web: ## Markdown 样例集自检；e2e 换文档只经帮手的门禁；oxl
 knip: ## 检查未使用的文件、导出和依赖（需要 Node）
 	pnpm exec knip --treat-config-hints-as-errors
 
+# 依赖的已知漏洞（00-M12 4.3、M12/P1/S2）。Go 一侧 govulncheck 只扫 server/，只报代码调用得到的
+# （server/tools 是不随镜像发出的生成器）；npm 一侧 pnpm audit 只看 dependencies，即打进二进制的前端，
+# VULN_AUDIT_LEVEL 以下的不挡（vuln.yml 照 low 报给人看，发布的闸门传 high；修不了或与我们无关的写进
+# pnpm-workspace.yaml 的 audit.ignore，理由写在那个提交）。两侧都跑完再合起来判。
+# pnpm audit 与 make outdated 把依赖的清单发给 npm registry 与 Go 的模块代理；govulncheck 只向 vuln.go.dev
+# 要数据库里已知有漏洞的模块的条目，本机的权限分类器拒过它（00-M12 4.3）。所以两个目标只在 GitHub 的
+# runner 上跑，本机拒绝；结论看 .github/workflows/vuln.yml
+GOVULNCHECK_VERSION := v1.9.0
+VULN_AUDIT_LEVEL ?= low
+ci-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：它把依赖的清单发给外部的服务。结论看 .github/workflows/vuln.yml"; exit 1; }
+
+.PHONY: vuln
+vuln: ## 依赖的已知漏洞：Go（govulncheck，server/）与 npm（pnpm audit --prod，级别 VULN_AUDIT_LEVEL）；只在 CI 上跑
+	@$(ci-only)
+	@status=0; \
+	(cd server && go run golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION) ./...) || status=1; \
+	pnpm audit --prod --audit-level=$(VULN_AUDIT_LEVEL) || status=1; \
+	exit $$status
+
+.PHONY: outdated
+outdated: ## 只读地列出过时的 Go 模块、npm 包、actions、工具链与 PostgreSQL 的版本、基础镜像的摘要；不挡；只在 CI 上跑
+	@$(ci-only)
+	tools/outdated.sh
+
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
 # 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
 # README 的写法；make check 与 CI 的 short 一份都跑它）
