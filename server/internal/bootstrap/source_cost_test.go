@@ -3,10 +3,8 @@
 package bootstrap
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -83,7 +81,7 @@ func sourceCostAnalyze(t *testing.T, tm acmeTeam) {
 // sourceCostTimed is askTyped, timed as it was, by a client that outwaits
 // production's request deadline: client() gives up after 5s, and would
 // judge restore and revert in place of their 7.6s bound (00-M12 decision
-// 359). None of these answers is an event stream.
+// 359). It builds the request as askTyped does.
 func sourceCostTimed(t *testing.T, tm acmeTeam, label string, c step, want int) (string, time.Duration) {
 	t.Helper()
 	patient := &http.Client{Timeout: 2 * sourceHTTPProductionRequest}
@@ -96,16 +94,7 @@ func sourceCostTimed(t *testing.T, tm acmeTeam, label string, c step, want int) 
 	if c.contentType != "" {
 		req.Header.Set("Content-Type", c.contentType)
 	}
-	res, err := patient.Do(req)
-	if err != nil {
-		t.Fatal(err)
-	}
-	answer, err := io.ReadAll(res.Body)
-	_ = res.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	res.Body = io.NopCloser(bytes.NewReader(answer))
+	res, answer := sendRequestBy(t, patient, req)
 	tm.contract.CheckResponse(t, req, res)
 	took, status, body := time.Since(at), res.StatusCode, string(answer)
 	t.Logf("source-cost operation=%s elapsed_ns=%d status=%d", label, took.Nanoseconds(), status)
