@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工，P2、P3 设计中；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工，P3 设计已审查，P2、P4、P5 设计中；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -92,7 +92,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
    - 焦点的修复在三种 Playwright 引擎里探查过（05-lessons 第 6 节）；改到的故事照需要进 `threeBrowsers`。
    - 移到发布之后的项都在 `manual/` 的清单里；C 类都在 v0.2 的移交里。
 4. **第 302 条**（P3/S2）：
-   - `TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages`（`bootstrap/upgrade_rollback_revert_test.go:30`）的 nested 一格（`:87`）翻过来：请求的撤销与后台的撤销各在一本笔记本上成功，树回到回滚之前。测试随之改名，第七、第八份的模式（`Makefile:296`、`:328`）一并改。
+   - `TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages`（`bootstrap/upgrade_rollback_revert_test.go:30`）的 nested 一格（`:87`）翻过来：请求的撤销与后台的撤销各在一本笔记本上成功，树回到回滚之前。测试随之改名，第七、第八份的模式（`Makefile:296`、`:328`；`194ca350` 上是 `:321`、`:365`）一并改。
    - 两个已有的性质测试扩开：`TestTheRollbacksStepsReplayToTheBaseline`（`page/app/rollback_test.go:560`）在回滚 `Done` 之后撤销回滚的变更集，重放之后等于 agent 留下的状态；`TestTheJobsStepsReplayToStar`（`page/app/revert_job_property_test.go:64`）的生成器加嵌套回收站根的形状，带出现次数的下限。"去掉新规则""`topOf` 走过回收站根"两个变异都让它们失败。
    - 不是回滚的"恢复之后先删里面、再删外面"的变更集有一格确定的测试：照常撤销。
    - M8 原有的撤销测试与性质测试照过。
@@ -141,7 +141,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **P1 先做**：
   - e2e 的 `goto` 挡发布。发布要 `main` 的 CI 为绿，而 Playwright 不重试（`e2e/playwright.config.ts` 没有 `retries`）。M11 收尾之后 `main` 的 run 43339247136 里，LW4 落到了登录页，与 M10 查明的 LW6 同形；是不是续期没有核实（[M11 收尾审查](../M11-upgrade/reviews/M11-closeout-review.md)"门禁"一节；移交 M5-polish 第 51 条）。它先做，后面每个 Step 的 CI 才稳。
   - 工具链与 PostgreSQL 的升级随后。之后的实测、计划测试与成本守卫都在最终的工具链与数据库上跑（I1-D12）。
-- **P2、P3、P4/S1、P5/S1 可以并行**：它们改的部件除翻译文件外不重叠（第 7 节"次序与并行"）。重的运行照旧经 `heavy.sh` 串行。
+- **P2、P3、P4/S1、P5/S1 可以并行**：它们改的部件除翻译文件外不重叠，P3/S3 的网页部分另有几处与 P2 重叠（第 7 节"次序与并行"）。重的运行照旧经 `heavy.sh` 串行。
 - **页面树的结论先于 P2/S6**：P2/S6 改 `PageTreeStore` 的几项（12.12、27.2、22.14、23.10）。1 万页过不了 4.7.2 的界线时，树要改，它们排在改法之后（I3 第 8 节）。所以 P4/S2 先量页面树。
 - **服务端的实测（P4/S3）在 P3 合并之后**：P3 改了撤销的计划（302）、日志的读（H5）、标题键（25.1）与任务的入口（T2），量在改之后才算数。
 - **部署文档（P5/S3）在 P4/S3 之后**：它要内存、磁盘、WAL 与硬件下限的数。发布说明的已知限制取自 P2–P4。
@@ -259,7 +259,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **修法**（主持者的决定 304，设计审查 A 改）：**一个被这个变更集删了、现在本身是回收站根的节点，是它自己的顶。**
   - 改在 `readReverted`/`topOf`：往上走到这样的节点就停。`RevertGroups`、`scheduled`、`CheckRevertPart`、`CheckRevertSteps`、`RevertActionFacts` 传入 `Nodes`。
   - `groupIsDeleted`、`leftDeleted` 与调度都不改。调度自己先外后里：`canRestore` 要父节点活着。
-  - 后台撤销的 `revertSteps`/`needed`（`page/app/jobs.go:578-585`）随之改。它的注释写明的前提是"a restore under a member of another group is a nested trash item, which L refuses"，修法让 L 接受了嵌套的回收站项，前提不再成立。`needed` 也看段内后面的放回的父节点。审查 A 没有造出出错的交错，前提已不成立，照改（设计审查 A 的 M3）。
+  - 后台撤销的 `revertSteps`/`needed`（`page/app/jobs.go:578-585`）随之改。它的注释写明的前提是"a restore under a member of another group is a nested trash item, which L refuses"，修法让 L 接受了嵌套的回收站项，前提不再成立。`needed` 也看段内后面的放回的父节点。审查 A 没有造出出错的交错，前提已不成立，照改（设计审查 A 的 M3）。P3 的设计造出了出错的交错，它的审查 A 在原型上复现（不改时 400 次里 17 次失败），并沿操作推出生产里也走得到（推出的，没跑）：这是修正，不是防备。批的核对 `CheckRevertSteps` 整组放回，挡不住；`RestoreNodes` 的 SQL 不查父节点是否活着（推断真库也不挡，没在 PG 上跑）；只有 `needed` 挡（P3 设计 3.10.6）。
   - 不改 M11 的"一个任务一个变更集"与任务答复的 `changeset_id`，不改契约。
   - 审查 A 的原型（`split-tops.diff`，约 10 行）在 nested 形状上跑通：PlanRevert 给出 `[restore Made, restore Inner, place Guide]`；整个程序上请求的撤销答 200，后台的撤销 succeeded，笔记本等于 agent 留下的样子；page 模块的测试全过。原型只作参照，P3/S2 的 spec 照它核对，不是定稿。
 - **认出的形状**，照实写。初稿写"只认这一种"，列了三个条件；它们实际上就是"本身是回收站根、被这个变更集删的节点"（设计审查 A 的 M2）。认出的有三种：
@@ -268,11 +268,11 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   3. 不是回滚的：变更集 X 一次删了一个文件夹与它下面的页（一个回收站项）；之后有人恢复了这一项，先删那页，再删文件夹。撤销 X 今天答冲突，修了之后照常撤销。按状态比较的原则这是对的：今天"恢复之后整个再删"就照常撤销。spec 写明这一点，有测试钉住。
 - **测试**：
   - 性质测试走现成的路（设计审查 A 的 M2、M3）：
-    - `TestTheRollbacksStepsReplayToTheBaseline`（`page/app/rollback_test.go:560`）的 `whole` 本来就是 1–4，前两种形状自然出现。在回滚 `Done` 之后撤销回滚的变更集、重放，对照 agent 留下的状态。
-    - `TestTheJobsStepsReplayToStar`（`page/app/revert_job_property_test.go:64`）的生成器加嵌套回收站根的形状（含挂在组的中间节点下的），给它出现的次数加一个下限：数形状真的出现的次数，不是规则触发的次数（05-lessons 第 1 节）。
-  - 第三种形状一格确定的测试。
+    - `TestTheRollbacksStepsReplayToTheBaseline`（`page/app/rollback_test.go:560`）的 `whole` 本来就是 1–4，嵌套的根自然出现（前两种来源都算；P3 的设计审查 A 量过：每 400 次 14–30 次）。在回滚 `Done` 之后撤销回滚的变更集，请求与后台的撤销轮流，对照 agent 留下的状态。它只数嵌套的根：挂在中间节点下的与两个成员以上的嵌套组在这里每 400 次只有 0–3 次，交给下一个测试（P3 设计 3.10.7）。
+    - `TestTheJobsStepsReplayToStar`（`page/app/revert_job_property_test.go:64`）的生成器加嵌套回收站根的形状（含挂在组的中间节点下的、两个成员以上的与 `needed` 截短的段），各给它出现的次数加一个下限：数形状真的出现的次数，不是规则触发的次数（05-lessons 第 1 节）。装载要照每一项的时刻：今天的 `load` 把回收站的节点都记在一个时刻，嵌套的根会被读进外层的组；domain 测试的 `world` 同样按时刻读组（P3 设计 3.10.5、3.10.7）。
+  - 确定的测试：domain 的一张表（三种形状、反例与"太深"），后台撤销的 `needed` 形状一格（P3 设计 3.10.5、3.10.6）。
   - 变异：去掉新规则；`topOf` 走过回收站根；`needed` 不看段内后面的放回。初稿的"放宽到任何回收站根"与新规则等价，会活下来，删掉；"`RevertGroups` 不读里面的组"随修法不再适用，删掉。
-  - `TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages` 的 nested 一格翻过来。今天那一格在同一个变更集上先同步撤销、再后台撤销（`bootstrap/upgrade_rollback_revert_test.go:99-110`），只因两次都冲突才行得通；修好之后第二次撤的是已经撤过的变更集。改为两本笔记本，每条路各回滚一本（审查 A 的 `bootstrap_zz_m12review_test.go` 的做法）。测试照新的结论改名，`BOOTSTRAP_SEVENTH`（`Makefile:296`）与 `BOOTSTRAP_EIGHTH`（`:328`）的模式同时改；漏了的话新名字以 `TestR` 开头，落进补集的第四份（设计审查 A 的 N4）。
+  - `TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages` 的 nested 一格翻过来。今天那一格在同一个变更集上先同步撤销、再后台撤销（`bootstrap/upgrade_rollback_revert_test.go:99-110`），只因两次都冲突才行得通；修好之后第二次撤的是已经撤过的变更集。改为两本笔记本，每条路各回滚一本（审查 A 的 `bootstrap_zz_m12review_test.go` 的做法）。测试照新的结论改名，`BOOTSTRAP_SEVENTH`（`Makefile:296`；`194ca350` 上是 `:321`）与 `BOOTSTRAP_EIGHTH`（`:328`；`194ca350` 上是 `:365`）的模式同时改；漏了的话新名字以 `TestR` 开头，落进补集的第四份（设计审查 A 的 N4）。
 - **不去造的**：初稿要 P3/S2 的 spec 去造"后台恢复与后台撤销里的同一形状"。审查 A 已核对造不出，从 spec 里拿掉（设计审查 A 的过度设计 1）。理由：后台恢复的任务只放回、不删；后台撤销的一次删除是一个步、不跨批（`page/app/jobs.go:494-499`），`tops(s)` 不会先删"上级是本变更集新建且还活着"的节点（`page/domain/revert_schedule.go:370-384`）；MCP 的 `batch` 把"后删的上级盖住先删的子树"并成一次删除（`page/domain/batch_plan.go`）。只有回滚造得出，就是上面前两种形状。
 - **放弃要不要输入名称**：第 302 条让放弃照旧不要求输入名称。修好之后理由更足，不改。
 - **P3/S2 先写 spec**：计划是所有撤销都走的路，改动的边界要先定清。
@@ -280,7 +280,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 #### 4.6.2 日志的读放进一个快照（H5）
 
 - 日志的读不开事务、不加锁（`page/app/list_changesets.go:51` 的注释）。现在是五条读：`ListChangesets`（`:192`），加 `page/app/history.go:165-180` 的 `ChangesetFacts`、`FirstChanges`、`FirstIngestSources`、`DisplayNames`（I3 第 3 节 H5）。读跨过一次撤销的提交时，可能列出"已撤销"却没有那条撤销。
-- 修法（I3 的推荐）：`ListChangesets.page` 包一层 `WithinSnapshot`（`platform/postgres/tx.go:137-144`，搜索已在用，`page/app/search.go:222`）；`HistoryReads` 加 `Snapshots`。MCP 的 `log {path}` 也走 `page`，一并得到。
+- 修法（I3 的推荐，P3 的设计改了位置）：快照（`WithinSnapshot`，`platform/postgres/tx.go:137-144`，搜索已在用，`page/app/search.go:222`）放在四个用例里，从各自第一条属于答复的读起，到 `alivePaths` 为止：`ListChangesets.Execute` 从 `ListChangesets`，`AtPath`（MCP 的 `log {path}`）从找路径的 `StateOf`，`GetChangeset.Execute` 与 `InNotebook`（MCP 的 `changeset`）从 `FindChangeset`。只包 `page` 不会嵌套，但会把 `FindChangeset`、找路径与 `alivePaths` 留在快照之外，它们的结果都在答复里（P3 设计 3.8；P3 设计审查 B 的 N4）。REPEATABLE READ 的快照冻结在第一条读开始时、早于它隐含的表锁（P3 的设计与审查 B 实测）。`HistoryReads` 加 `Snapshots`。
 - 一个变更集的详情（`GetChangeset` 的 `detail`，`page/app/history.go:83-93`）同样调 `logged`，五条读不在快照里，会有同一种不一致。一并包上（设计审查 A 的 N2）。
 - 审查 A 核对过：`WithinSnapshot` 不许嵌套；`page` 只由 `Execute` 与 `AtPath` 调，都不在事务里；LLM Wiki 的虚拟 `log.md` 直接调 store（`page/virtual_files.go:108`），不经 `page`。
 - 代价：每次读多占一个只读快照的连接。P4/S3 的日志一项照新的读量。
@@ -291,10 +291,10 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 
 - **25.1**：`shared.TitleKey` 对切罗基文不幂等（`shared/title_key.go:18-28`）：`cases.Fold()` 把切罗基文的大写折成小写、小写折成大写，`TitleKey(TitleKey(x))` 不等于 `TitleKey(x)`。审查 A 复现了：`TitleKey("Ꭰ")` 得 `"ꭰ"`，`TitleKey("ꭰ")` 得 `"Ꭰ"`。
   - 三处同样的折叠一起改：`shared/title_key.go`、`shared/title_key_context.go:29`、`linking/domain/index.go:80,97`（I3 第 5 节第 6 条：移交只写了第一处；审查 A 核对过非测试代码里恰好这三处）。
-  - 改为在折叠之后把切罗基文的小写换成大写，同 `searchFold` 的映射；然后删掉 `searchFold` 的映射（`page/domain/search.go:245-256`）。删掉前后同一组查询的搜索结果相同，由测试比对。
+  - 改为在折叠之后把切罗基文的小写换成大写，同 `searchFold` 的映射；然后删掉 `searchFold` 的映射（`page/domain/search.go:245-256`）。删掉前后同一组查询的搜索结果相同，由测试比对：测试里留一份改之前的 `searchFold`，在一组语料上与改之后的 `TitleKey` 逐个比（P3 设计 3.2）。
   - 不升分词的版本，也不升 `Extractor`：改了之后 `searchFold` 的映射不再起作用，分出的词不变；升版本只会让 reindex 白白重建全部搜索的行（I3 第 5 节第 7 条；README:534：30 万页约 26 分钟）。
   - 网页的 `lib/title-key.ts` 把两种大小写都键成小写，等价类与服务端一致，不必改（审查 A 核对）。
-  - 13.1 第 28 条（标题键）随 P3/S1 改。发布说明写一句：v0.1.0 之前的试用库若有切罗基文的标题，跑一次 `nervewiki reindex`。
+  - 13.1 第 28 条（标题键）随 P3/S1 改。发布说明写一句：v0.1.0 之前的试用库若有切罗基文的标题，跑一次 `nervewiki reindex`。`reindex` 重算标题键；同一父页下已有只差切罗基文大小写的兄弟页时它报撞键、这本整个不重建，要先改名其中一页（P3 设计第 9 节；P3 设计审查 B 的 M2）。
 - **10.2**：标题的 id 丢了自动链接与原始 HTML 的文字（`platform/markdown/parse.go:83-103` 的 `PlainText` 跳过它们，`:174-177` 的 `AnchorID` 用全文）。改为带上它们的文字。
   - 不升提取规则的版本（13.3 第 6 条），不要 reindex。链接的锚点按文字存在 `Link.Anchor`（`linking/domain/facts.go`）；标题的 id 只在渲染时算，`PlainText`、`HeadingID` 在非测试代码里只有 `platform/markdown/parse.go:69` 一处调用；没有渲染的缓存（设计审查 A 的 N1）。
   - 发布说明写一句：这类标题的锚点 id 变了。
@@ -304,16 +304,16 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **10.1**：标签 `/`（写作 `#//`）列得出、叫不到。最小的改法：`listTags` 不列 `/`（`linking/adapter/postgres/queries/reads.sql:87-94`，按 `tag_key` 分组，加一个 `<> '/'`），补全随之不列（I3 第 9 节 10.1）。`TagPages` 的前缀比较对 `/` 本来就走不到（审查 A 核对）。
 - **30.2**：`shared/name.go:36-38` 的 `Unshowable` 只去掉 Cc、Zl、Zp 与 Bidi_Control。由看不见的字符组成的客户端名与显示名可以冒充空白（移交 M5-polish 第 30 条第 2 点）。改法（设计审查 A 改）：
   - `Unshowable` 不动。它不只管名字：标题（`shared/title.go:35`、`:71`、`:87`）、客户端名（`shared/client_name.go:30`）、库的 CHECK（`server/migrations/sql/00044_page_client_checks.sql:10-15`，由 `migrations/schema_test.go` 的 `TestChecksRejectCounterexamples` 逐码位核对）与网页的 `lib/upload-name.ts:17-19` 都是同一个集合。初稿要把它扩到默认可忽略的字符，会拒带 ❤️（U+FE0F）、ZWJ 的 emoji 与 ZWNJ 的波斯文的新标题与名字，与 `shared/name.go:29-35` 写明的取舍相反，还要迁移两张表的 CHECK。
-  - 改为对整个名字的判断，同移交的原意（"没有图形字符的名称算空"）：在 `CheckName` 与 `CleanClientName` 之后，去掉默认可忽略的字符与空白之后什么也不剩，显示名答 `required`，客户端名当作空的（`""`）。只管新的输入。
+  - 改为对整个名字的判断，同移交的原意（"没有图形字符的名称算空"）：在 `CheckName` 与 `CleanClientName` 之后，去掉默认可忽略的字符与空白之后什么也不剩，`CheckName` 答 `required`（它管显示名、工作区名与 PAT 的名字，三处一条规则），客户端名当作空的（`""`）。默认可忽略的字符照 Unicode 的推导精确地算（Other_Default_Ignorable_Code_Point ∪ Cf ∪ Variation_Selector，减去 White_Space、U+FFF9–FFFB、U+13430–13440 与 Prepended_Concatenation_Mark），`۝` 这类单独有字形的照旧通过；U+2800 是图形符号，不算空。只管新的输入（P3 设计 3.5、决定 367）。
   - 标题、库的 CHECK 与迁移都不变。
-  - 标签块 U+E0000–U+E007F 要不要一并去掉，是 P3/S1 实施时的小决定，记在 S1 的记录里。
+  - 标签块 U+E0000–U+E007F 不从客户端名里去掉：它们是苏格兰、威尔士这类旗帜的 emoji 序列的一部分；只由它们组成的名字算空（决定 367）。
 - **30.4、30.5**：MCP 的 `log {path:""}` 与 `{path:"/"}` 答"path is required"（`page/app/list_changesets.go:132-134`），文字误导（30.4，B）。`index` 的筛选给 `""` 答 `too_short`（`linking/app/list_index.go:196-201`），工具说明写着 `"" is refused` 与 `"/"` 是根（`linking/adapter/mcp/tools.go:61-62`）（30.5，C）。约定（主持者的决定 314，设计审查 A 改）：
   - `index` 不动：它的 `parent:"/"` 是根（`list_index.go:205-211`），写在工具说明里；`list` 同样以 `""` 与 `"/"` 表示根（`page/adapter/mcp/tools.go:170`）。初稿让 `"/"` 一律答字段错误，会让 agent 列根下页的现有写法 `index {parent:"/"}` 改答 422，是公开的 MCP 行为的回退。
   - 只改 `log` 的 `path`：省略是整本；`""` 答字段错误，文字写"省略它就是整本"（同 `index` 的 `""`）；`"/"` 当作整本（同 `list` 与 `index.parent` 的根）。
   - 细节在 P3/S1 的设计里。
 - **MCP 调用超时的文字**（移交 M4-performance 第 22 条之后的补记 `:490`；主持者的决定 335，设计审查 C 的 I2）：
   - 一次 MCP 调用超过 `server.request_timeout` 时答 `internal_error`，文字是通用的"the call ran out of time"（`platform/httpserver/mcpserver/errors.go:77`、`:101`）。最大合法的 `batch` 在慢的 4 核上就会这样：事务整个回滚，不留半截。只说内部错误，agent 不知道该拆小再试，属误导的文字（B）。
-  - P3/S1 改文字：说明这次调用超过了请求的期限、什么也没有写，`batch` 拆成几次再试。码照旧是 `internal_error`；要不要改码，由 P3/S1 的设计看契约定。
+  - P3/S1 改文字：说明这次调用超过了请求的期限、什么也没有写，`batch` 拆成几次再试。码照旧是 `internal_error`，不改：改码会改 MCP 的码表与每个工具的码的列表，agent 已有的处理随之失效（决定 369）。一处例外不说"什么也没有写"：写的事务在提交时跨过期限，结局未知；`TxManager` 给读写事务的提交错误加一个标记，MCP 认出它时另用一句，请 agent 先读笔记本看写下了没有（P3 设计 3.7；P3 设计修订核对 B 的 N14）。
   - 不给 `batch` 单独的期限：负责人 2026-11-06 的话是不无限优化。写进已知限制，进 v0.2。
   - 硬件的下限写进部署文档（4.8）。
 
@@ -323,9 +323,9 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - 加上限（I2-D9；主持者的决定 315，设计审查 A 改）：
   - **按凭证计数**：`shared.Actor` 的 `SessionID` 或 `APITokenID`（`shared/actor.go:15-23`）。每个凭证至多 4 条；第 5 条打开时，重置**同一凭证**最老的那条。被重置的客户端照常重连。
   - **先后**（修订核对第 1 轮 A 的 N10）：先按凭证判。凭证已有 4 条时，新开的顶掉它自己最老的一条，账户的总数不变，不看账户的上限；只有凭证不到 4 条、要净增一条时，才看账户的 64 条。否则账户满了时，睡眠的笔记本电脑留下半开连接、新开的标签页会被拒，这正是选"重置"而不选 429 的原因。
-  - **账户一级的硬上限** 64 条：超出时新开的答 429，带 `Retry-After`：一个凭证已被限在 4 条，这一层挡的是一个账户用很多会话或令牌开一批（移交的原意是挡一个账户开太多）。码与文字（沿用 `rate_limited` 或另加）在 P3/S1 的设计里定；网页的 `events/hub.ts` 对它怎样处理，一并核对。
+  - **账户一级的硬上限** 64 条：超出时新开的答 429，带 `Retry-After`：一个凭证已被限在 4 条，这一层挡的是一个账户用很多会话或令牌开一批（移交的原意是挡一个账户开太多）。沿用顶层的 `rate_limited`，`Retry-After` 30 秒（网页最长的退避），文字是它自己的；网页对任何状态码都照 `Retry-After` 等（`services/api.ts:61`、`:70`），不改代码、不加测试（P3 设计 3.9）。
   - 两个上限都是**常量**，不做配置项（设计审查 A 的过度设计 2）。
-  - 被重置的那一条记一行 `debug`，或限频的 `info`：带账户 id、凭证的种类与条数，不带令牌（13.1 第 10 条）。
+  - 被重置的那一条记一行 `debug`（限流本身也只记 `debug`，决定 371），不做限频的 `info`：带账户 id、凭证的种类与条数，不带令牌（13.1 第 10 条）。
 - **为什么按凭证**（设计审查 A 的 I1）：初稿按账户数，超出重置最老的。契约要客户端在任何 reset 之后立刻重连、整体刷新（`events/domain/frame.go:10-11`、`api/modules/events.yaml:54-55`），网页照此不退避（`events/hub.ts:217-219`）。一个账户有 17 个守契约的客户端时（17 个浏览器或配置文件，或照契约写的 PAT 脚本），它们会无限地轮流互顶；每一圈一次认证、几条读（`events/app/open_stream.go:46-60`）、一次全页刷新与一行日志。限流按凭证计（`platform/httpserver/limit.go:24-29`），挡不住。按凭证计数之后：
   - 同一浏览器睡眠之后留下的半开连接是同一凭证的，新开的标签页顶掉它，初稿不选 429 的理由照样满足；
   - 不同设备、不同令牌之间不互顶；
@@ -349,24 +349,24 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
      - 不是合法的 UTF-8。
      - 按 GBK 解出的结果里没有 U+FFFD。`golang.org/x/text` 的 GBK 解码器从不报错，非法字节写成 U+FFFD，所以"能解开"只能这样定义。
 
-     一个包里只要有一个非 UTF-8 的名字这样解不开，整个包都不回退，照旧跳过。
-  - 报告写明哪些名字是按 0x7075 或 GBK 解读的。
-- **已知限制**：日文的 Shift-JIS 名字按 GBK 也完整解开，没有 U+FFFD（审查 A 实测："テスト資料.md"成了"僥僗僩帒椏.md"）；Big5、EUC-KR 与 GBK 的双字节区大面积重叠，推断也是这样。这些包今天被清楚地跳过，修了之后会被建成乱码名的页，报告里另列。写进已知限制（4.13）。
+     一个包里只要有一个非 UTF-8 的名字这样解不开，整个包都不回退，照旧跳过。三条都满足的名字（候选）只用来判"这个包是不是 GBK 的"：是的话，没有标志、没有有效 0x7075、含非 ASCII 字节、按 GBK 解得开的名字都按 GBK 读，恰好也是合法 UTF-8 的一并读（GBK 的 `目录`、`图片` 就是合法的 UTF-8，只改不合法的会把同一个文件夹拆成两个；决定 376）。0x7075 对每个没有标志的名字都读。
+  - 报告写明哪些名字是按 0x7075 或 GBK 解读的：两种新原因 `name_unicode_path`、`name_gbk`，在任务结束时加，排在这次导入的别的问题之后，不挤掉真正跳过的条目。解码在 archive 适配器里（纯的层不许导入 `x/text/encoding`），文件夹按读出的名字判（GBK 的尾字节可以是 0x5C）（P3 设计 3.12、决定 372）。
+- **已知限制**：日文的 Shift-JIS 名字按 GBK 也完整解开，没有 U+FFFD（审查 A 实测："テスト資料.md"成了"僥僗僩帒椏.md"）；Big5、EUC-KR 与 GBK 的双字节区大面积重叠，推断也是这样。这些包今天被清楚地跳过，修了之后会被建成乱码名的页，报告里另列。另有两条（决定 376）：只有恰好合法 UTF-8 的 GBK 名字、没有一个候选的包认不出；一个包同时有 GBK 候选与没有标志的真 UTF-8 名字时，今天真 UTF-8 名字导入得对，之后会被读成 GBK，是相对今天的回归，报告里逐个列成 `name_gbk`。写进已知限制（4.13）。
 - **不做**：导入时选编码的选项；CP437（任何字节串都是合法的 CP437，要另定判别），进 v0.2。
-- 外来格式的读取照 13.4 第 11 条：解读只改原本不是合法 UTF-8 的名字，有差分的测试；预读与标准库的对照照旧。`golang.org/x/text` 已是依赖。
+- 外来格式的读取照 13.4 第 11 条，有差分的测试：没有候选的包，除了有效的 0x7075 一个字节也不改；有标志的名字不改；GBK 的包里改了的名字等于解码器对原始字节的输出（决定 376 之前这里写"解读只改原本不是合法 UTF-8 的名字"）；预读与标准库的对照照旧。`golang.org/x/text` 已是依赖。
 - 报告的新原因带两种语言的文字，与服务端一起加（13.2 第 4、11 条）。
 
 **T2 按人的队列上限**（主持者的决定 336；负责人 2026-11-14 第 5 问）
 
 - 现在：`room`（`transfer/app/start.go:212-227`）只比全局的 `CountActive` 加正在上传的导入，至多 `transfer.max_queued`（默认 20），超出答 503 `server_busy`（`ErrQueueFull`，`Retry-After` 5 分钟，`transfer/domain/errors.go:49-54`）。同一人同一本只有一个导出，一本笔记本只有一个写入的任务，跨笔记本不限：一个人可以占满全局的队列（I3 第 4 节 T2）。
-- 改法：`room` 另数这个人开始的排队与运行中的任务（`created_by_id`）与他正在上传的导入，到一个常量（例如 5）就拒。常量，不做配置项。
+- 改法：`room` 另数这个人开始的排队与运行中的任务（`created_by_id`）与他正在上传的导入，到一个常量（`MaxPersonJobs = 5`，P3 设计 3.13）就拒。常量，不做配置项。
 - **拒绝用一个新的码**（修订核对第 1 轮 A 的 M9、C 的 M10）：例如 `transfer.too_many_jobs`，有自己的两种语言的文字，说的是"你自己已有几个任务在排队或运行，等一个做完，或取消一个"。
   - 第一次修订让它沿用 503 `server_busy`、契约不加码。可网页按码出文字：导入对话框把 `server_busy` 显示成"Too many jobs are waiting on the server. Try again in a few minutes."（`pages/notebook/import-dialog.tsx:220`、`en.ts:905`），别处是"The server is busy. Try again in a moment."（`en.ts:1202`）。到了自己上限的人读到的是"服务器忙"，别人的任务却照常能开始，他自己的任务可能还要跑几个小时，`Retry-After` 却是 5 分钟。这是负责人第 1 问要在 v0.1 修的误导的文字，而且是 M12 自己新造的。
-  - 状态码推荐 429：这不是服务器忙，是这个人到了自己的份额。P3/S3 的设计照契约的 `x-problem-codes`、权限与码的矩阵、码的次序的约定核对之后定，写明理由。
+  - 状态码是 409，不带 `Retry-After`（决定 373）：按人的上限不随时间解除，要等自己的任务做完或取消一个，同模块的 `transfer.busy` 也是 409；429 带 `Retry-After`，会引着客户端几分钟后白试一次。码的次序照今天的检查：导出是 `transfer.too_many_jobs` → 503 → `transfer.busy`；导入、后台的恢复与撤销是 `transfer.busy`（撤销另有冲突、`page.locked`）→ `transfer.too_many_jobs` → 503（13.1 第 4 条随 P3/S3 改）。
   - 开任务的四个操作（导出、导入、后台的恢复与撤销，都在 `api/modules/transfer.yaml`）的 `x-problem-codes` 与说明随之；码与原因由 `problem-messages.test.ts` 读契约核对（13.2 第 11 条）。
   - 网页在开任务的各处照新码显示。MCP 的工具不开任务（各模块的 `adapter/mcp` 不调 transfer），不涉及。
   - 全局的 503 `server_busy`（`ErrQueueFull`）照旧。
-- **升级的回滚不受按人的上限拒绝**（修订核对第 2 轮 A 的 N14）：回滚的开始也走 `room`（`transfer/app/rollbacks.go:32`、`start_background.go:175-182`、`:200`），`abandonUpgrade` 与驳回因此今天就可能答 `server_busy`。按人的检查若不另作处理，一个人有 5 个任务时连放弃升级都被拒，笔记本停在冻结里，与负责人"任何管理员都能随时放弃、整体回滚"相悖。所以 `room` 对回滚的任务不做按人的检查。回滚算不算进别人的计数、计数与队列的锁的次序，在 P3/S3 的设计里定；若定为也拒，`wiki.yaml` 的 `abandonUpgrade`、驳回与网页的升级页都要列进去。
+- **升级的回滚不受按人的上限拒绝**（修订核对第 2 轮 A 的 N14）：回滚的开始也走 `room`（`transfer/app/rollbacks.go:32`、`start_background.go:175-182`、`:200`），`abandonUpgrade` 与驳回因此今天就可能答 `server_busy`。按人的检查若不另作处理，一个人有 5 个任务时连放弃升级都被拒，笔记本停在冻结里，与负责人"任何管理员都能随时放弃、整体回滚"相悖。所以 `room` 对回滚的任务不做按人的检查。回滚算进开始它的人的计数，但从不被拒；计数与全局的计数是同一条语句、同一把队列的锁（P3 设计 3.13）。
 - 测试：一个人到上限时他的下一个答新码，别人的照常开始；全局满了照旧答 `server_busy`；网页的文字由 vitest 整句比对。去掉按人计数、按人的拒绝答成通用的 `server_busy`，两个变异都让它们失败。
 
 **T4 启动时收拾上一个进程取到而没开始的任务**（主持者的决定 336；负责人 2026-11-14 第 5 问）
@@ -374,8 +374,8 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - 现在：服务启动时 `AtStart`（`transfer/app/maintain.go:84-95`）只把 `running` 的行记成失败。进程恰在 River 取到任务、任务开始之前停掉时，行仍是排队，River 把它的任务记成 running，直到救援（`transfer.job_timeout` 加 1 小时，默认 7 小时）。其间它占着队列的一个名额，这本笔记本开始不了新的导入、恢复与撤销（`README.md:193`）。
 - 改法：v0.1 只有一个实例（4.8）；`AtStart` 在 River 开始取任务之前跑，这时 River 记为 running 的导入导出任务都是上一个进程留下的。`AtStart` 把这些任务对应的、仍在排队的行也记成失败 `interrupted`，名额立刻空出。
 - River 那一边（修订核对第 1 轮 A 的 N12）：平台已有 `Job.DiscardRunning`（`platform/jobs/jobs.go:33-39`、`:134-148`），在 River 启动之前把某一种上一个进程留下的 `running` 任务记成 discarded，搜索的任务在用（`page/adapter/river/search.go:88`）。这是 River 那一边最自然的做法。
-- 要注意次序：discard 排在同一个任务自己的 `Start` 之前（`jobs.go:101-106`）。transfer 若照抄，`AtStart` 就看不到"River 记为 running"的那些了。所以要么 `AtStart` 自己先读、再 discard，要么按"discarded 且错误是 left running by a stopped server"来认。P3/S3 的设计选一种。
-- 测试：一个整个程序的测试造出"River 取到、没开始"的状态，重启之后行是失败、名额空出。名字照"分份"点名进第七或第八份。
+- 要注意次序：discard 排在同一个任务自己的 `Start` 之前（`jobs.go:101-106`）。transfer 若照抄，`AtStart` 就看不到"River 记为 running"的那些了。所以要么 `AtStart` 自己先读、再 discard，要么按"discarded 且错误是 left running by a stopped server"来认。P3/S3 取第三种（决定 374）：五种任务各设 `DiscardRunning`，它们在模块的任务表里排在收拾之前，收拾的 `AtStart` 运行时上一个进程留下的都已丢掉；`AtStart` 之后对每一种跑一次 `lost`（同 `Run` 每 5 分钟做的），River 不再持有的排队行记成失败 `interrupted`。它也碰到以 SQL 只种排队行、不种 River 行的已有测试，这些种子改为带一行 River 持有的任务（P3 设计 3.14.3；P3 设计审查 C 的 I3，主持者定）。
+- 测试：已有的 `TestServeFailsTheJobsLeftRunning` 加两种排队的行（River 的行在运行中的、River 不持有的），启动之后都是失败，River 持有的照旧排队；不另起一个应用（P3 设计 3.14.2；P3 设计审查 C 的过度设计）。
 - `README.md:193` 的那一句随之改。
 
 ### 4.7 性能与内存实测
@@ -623,7 +623,8 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **已知限制**写进 `CHANGELOG.md` 的 v0.1.0 一节，按主题写十来句，不逐条列（I3 第 2 节）。P5/S3 的记录里有一张逐条对照的表（第 3 节第 10 条）。来源：
   - P2 推后的 C 类（编辑时没有大纲、没有标签总览、相对时间不刷新、健康度不自动刷新、网页上不显示 MCP 地址等）；
   - 4.5 的 H1、24.1（负责人 2026-11-14 第 5 问）；
-  - 4.6.6 的 Shift-JIS、Big5、EUC-KR 会被误读，与 CP437；
+  - 4.6.6 的 Shift-JIS、Big5、EUC-KR 会被误读，与 CP437；决定 376 的两条：只有恰好合法 UTF-8 的 GBK 名字的包认不出，GBK 的包里没有标志的真 UTF-8 名字被读成 GBK（相对今天的回归）；
+  - 4.6.3 的切罗基文：升级之后要跑一次 `nervewiki reindex`，已有只差切罗基文大小写的兄弟页时它报撞键、要先改名；
   - 4.6.4 的 `batch` 没有单独的期限；
   - P4 只量的与超出而经负责人改判的；
   - 运维相关的（4.8 的第 8 项）；
@@ -635,7 +636,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   - `M12-transfer.md`：24.1（网页的任务列表在网络结果未知时可能指到别处的任务，负责人 2026-11-14 第 5 问）；T1、T5、T8；CP437 与别的编码的识别、导入的编码选项；
   - `M12-release.md`：Node 26、功能性的大版本依赖、Dependabot（看负责人的决定）、多实例、独立的二进制；续期途中刷新会被登出（重看 M1 第 10 节的取舍，设计审查 C 的 N6）。
 - **v0.1.1 的移交**：`docs/v0.1.1/handoffs/M12-after-release.md`：发布之后的人工验收（4.12 的各份清单）与读屏验收要确认的八项；`vuln.yml` 的两件（定时运行的通知发给最后改 cron 的人；公开仓库 60 天没有活动时定时工作流会被停用，4.3）。
-- **逐项核对去处**（修订核对第 1 轮 C 的 M9）：上面"已知限制"的每一项都在某一份移交里，P5/S3 的对照表写明是哪一份：H1 在 `M12-history.md`；24.1、T1、T5、T8、CP437 与别的编码在 `M12-transfer.md`；`batch` 的期限与 P4 只量的在 `M12-performance.md`；续期途中刷新被登出、单实例在 `M12-release.md`；C 类在 `M12-polish.md`；H4 的功能在 `M12-history.md`。T2、T4 在 v0.1 修，不进移交。
+- **逐项核对去处**（修订核对第 1 轮 C 的 M9）：上面"已知限制"的每一项都在某一份移交里，P5/S3 的对照表写明是哪一份：H1 在 `M12-history.md`；24.1、T1、T5、T8、CP437 与别的编码、决定 376 的两条在 `M12-transfer.md`；`batch` 的期限与 P4 只量的在 `M12-performance.md`；续期途中刷新被登出、单实例、切罗基文标题升级之后的 `reindex` 在 `M12-release.md`；C 类在 `M12-polish.md`；H4 的功能在 `M12-history.md`。T2、T4 在 v0.1 修，不进移交。
 - `docs/README.md` 的目录结构加 `v0.1.1/` 与 `v0.2/handoffs/` 两行。v0.2 的总体设计开工时先处理它们。
 
 ## 5. 接口
@@ -646,7 +647,7 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 
 | 处 | 改动 | Step |
 |---|---|---|
-| 节点的标题键（`shared.TitleKey`，三处） | 切罗基文的小写在折叠之后换成大写；只差切罗基文大小写的两个标题从此冲突（`page.name_taken` 照旧） | P3/S1 |
+| 节点的标题键（`shared.TitleKey`，三处） | 切罗基文的小写在折叠之后换成大写；只差切罗基文大小写的两个标题从此冲突（`page.title_taken` 照旧） | P3/S1 |
 | 阅读视图的标题 id | 含自动链接与原始 HTML 的文字；这类标题的锚点 id 变了 | P3/S1 |
 | 标签列表（linking 的 `listTags`） | 不再列 `/`；`api/modules/linking.yaml` 的说明随之 | P3/S1 |
 | 显示名与客户端名 | 去掉默认可忽略的字符与空白之后什么也不剩的新的显示名答 `required`，这样的客户端名当作空的；标题与库的 CHECK 不变 | P3/S1 |
@@ -656,7 +657,7 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 | 事件流（`GET /api/v0/events`） | 一个凭证至多 4 条，超出时以 `reset`（新的原因 `superseded`）结束同一凭证最老的那条；先按凭证判，只有净增一条时才看账户的上限：一个账户至多 64 条，超出答 429 带 `Retry-After`；`api/modules/events.yaml` 的枚举与说明随之 | P3/S1 |
 | 撤销（`revertChangeset`、`startRevert`） | 被这个变更集删了、本身是回收站根的节点自成一顶：回滚的变更集与"恢复之后先删里面、再删外面"的变更集照常撤销，不再答 `page.revert_conflict` | P3/S2 |
 | 导入的报告 | 按 Info-ZIP 的 Unicode 路径或 GBK 解读的名字另列，带新的原因；两种语言的文字随之 | P3/S3 |
-| 开始任务（导出、导入、后台的恢复与撤销） | 一个人排队与运行中的任务到上限（常量，例如 5）时答一个新的码（例如 `transfer.too_many_jobs`，状态码推荐 429，P3/S3 定），两种语言的文字说"你自己已有几个任务在排队或运行"；全局的 503 `server_busy` 照旧；`api/modules/transfer.yaml` 的 `x-problem-codes` 与说明随之 | P3/S3 |
+| 开始任务（导出、导入、后台的恢复与撤销） | 一个人排队与运行中的任务到上限（常量 5）时答一个新的码（`transfer.too_many_jobs`，409，不带 `Retry-After`；决定 373），两种语言的文字说"你自己已有几个任务在排队或运行"；全局的 503 `server_busy` 照旧；`api/modules/transfer.yaml` 的 `x-problem-codes` 与说明随之 | P3/S3 |
 | 服务启动 | 上一个进程在 River 取到之后、开始之前停掉的任务记成失败 `interrupted`，名额空出；README 的那一句随之 | P3/S3 |
 | `GET /api/v0/instance` 的 `version` 与 MCP 的 `serverInfo.version` | 发布的镜像是 `0.1.0`；`main` 之后是 `0.1.1-dev` | P5、发布 |
 
@@ -750,9 +751,9 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 |---|---|---|---|---|
 | S1 小的正确性 | 25.1（三处折叠，删 `searchFold` 的映射）、10.2、10.1、30.2（整个名字的判断）、`log` 的 `path` 约定（30.4、30.5）（4.6.3、4.6.4）；MCP 调用超时的文字（4.6.4）；H5 的快照，日志与变更集的详情（4.6.2）；每个凭证与账户的流数（4.6.5）；13.1 第 28、30 条 | server、api（说明）、web（若有新的文字；事件流的 429） | 能 | 单元与适配器的测试为主；流数的整个程序的测试点名进第七或第八份，名字避开第二份的模式（"分份"），推断多 5 秒以内 |
 | S2 第 302 条（**先写 spec**） | 4.6.1：`readReverted`/`topOf` 把本身是回收站根、被这个变更集删的节点当作它自己的顶，几处传 `Nodes`；后台撤销的 `revertSteps`/`needed`；两个性质测试扩开；第三种形状的一格；nested 一格翻过来（两本笔记本，第七、第八份的模式一并改）；总体设计 5.8 第 6 步与 13.1 第 2 条 | server（page 的 domain 与 app） | 能；nested 一格在同一个提交里翻过来 | 两个性质测试在 page 的 app。`make test-go-race` 对组合根之外的包不带 `-short`（`Makefile:179`），代价在 `race` 一份：各多至多约 15 秒，以同类为参照（`TestTheJobsStepsReplayToStar` 竞态下 13.99 秒、`TestTheRollbacksStepsReplayToTheBaseline` 1.85 秒）；`-short` 的次数照 `TestTheJobsStepsReplayToStar` 的 2,000 对 400（设计审查 A 的 M8）。组合根只改第八份已有的测试，推断不变 |
-| S3 导入导出的任务 | 4.6.6：名称的编码（先读 0x7075，再 GBK 回退，整包的判断）、报告的新原因与两种语言的文字、差分的测试；按人的队列上限（T2）；启动时收拾上一个进程取到而没开始的任务（T4）；`README.md:193` 那一句 | server（transfer）、api、web | 能 | 适配器与单元的测试；T4 的整个程序的测试点名进第七或第八份 |
+| S3 导入导出的任务 | 4.6.6：名称的编码（先读 0x7075，再 GBK 回退，整包的判断）、报告的新原因与两种语言的文字、差分的测试；按人的队列上限（T2）；启动时收拾上一个进程取到而没开始的任务（T4）；`README.md:193` 那一句 | server（transfer）、api、web | 能 | 适配器与单元的测试；T4 并进第四份已有的 `TestServeFailsTheJobsLeftRunning`，已有的种子带 River 的行（P3 设计 3.14.3；P3 设计修订核对 C 的 M6） |
 
-P3 的三个 Step 与 P2 除翻译文件外不重叠，可以并行；翻译文件照上面按序合并。S1 与 S2 都改 page 模块，S2 在 S1 之后开，或在合并时 `git merge main`。S3 只改 transfer，与 S1、S2 不重叠。
+P3 的 S1、S2 与 P2 除翻译文件外不重叠，可以并行；翻译文件照上面按序合并。S3 的网页部分改的文件（`problem-messages.ts`、`transfer-report.tsx`、`trash-row.tsx`，导出、导入、后台撤销与回收站的测试）P2 的 S1–S6 也改：S3 的网页部分在 P2/S1 合并之后写，谁后合并谁先 `git merge main`、重跑 `make test-web`（P3 设计第 0 节；P3 设计审查 C 的 M5）。S1 与 S2 都改 page 模块，S2 在 S1 之后开，或在合并时 `git merge main`。S3 只改 transfer，与 S1、S2 不重叠。
 
 ### P4 性能与内存实测
 
@@ -810,9 +811,9 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
   - 第五份两次都在 EPYC 7763 上（427、423），平均 425 秒，余量 25 秒。
   - 第四份这两次都不在 7763 上（339、285），平均 312 秒；再前两次（`07abd0f7`、`9e787bab`）都在 7763 上，平均 413.5 秒。
   - 第七、第八份的 257、267 秒是两次都不在 7763 上的数；在 7763 上是 315、318 秒（`9e787bab` 那一次）。
-- M12 新的整个程序的测试**逐个点名进第七或第八份的模式**（`Makefile:296`、`:328`），照收尾时 `TestRevertingARollback…` 的先例（主持者的决定 328）。
-  - 第四份是补集，第五份收 `TestThe(MCP|Lint|WikiTools)`、`TestRebuild` 等（`Makefile:263`），新测试的名字要避开它们。
-  - 第二份是 `-run SECOND -skip FIFTH`（`Makefile:342`），不跳过第七份：名字以 `E`、`Source`、`TheMCP[C-Z]`、`TheContents` 开头的新测试点名进第七份之后，会在第二份再跑一遍。事件流现有的整个程序测试叫 `TestEvery…`（`bootstrap/events*_test.go`），P3/S1 的流数测试不照这个习惯起名。避不开时，第二份的 `-skip` 加第七份的模式，同 M11 收尾给第四份加的（设计审查 A 的 N5）。
+- M12 新的整个程序的测试**逐个点名进第七或第八份的模式**（`Makefile:296`、`:328`；`194ca350` 上是 `:321`、`:365`），照收尾时 `TestRevertingARollback…` 的先例（主持者的决定 328）。
+  - 第四份是补集，第五份收 `TestThe(MCP|Lint|WikiTools)`、`TestRebuild` 等（`Makefile:263`；`194ca350` 上是 `:288`），新测试的名字要避开它们。
+  - 第二份是 `-run SECOND -skip FIFTH`（`Makefile:342`；`194ca350` 上是 `:379`），不跳过第七份：名字以 `E`、`Source`、`TheMCP[C-Z]`、`TheContents` 开头的新测试点名进第七份之后，会在第二份再跑一遍。事件流现有的整个程序测试叫 `TestEvery…`（`bootstrap/events*_test.go`），P3/S1 的流数测试不照这个习惯起名。避不开时，第二份的 `-skip` 加第七份的模式，同 M11 收尾给第四份加的（设计审查 A 的 N5）。
 - P1/S2 合并之后两次 `main` 重看各份；过 450 秒照 06-environment 第 4 节先挪给邻份，挪不下再分一份，不提高 `-timeout`。
 - P1/S2（决定 354、355）：分支 CI 上组合根在 7763 上 417–458 秒，多出的约 50 秒是编译：竞态的份取回的缓存里没有竞态的编译结果（第一、二次没有缓存，第三到五次取回 `vuln.yml` 先存下的 3 MB），包的时间没变。S2 之前 `main` 的键是 `bootstrap-1` 存的；改了 Go 与 `go.sum` 之后，不改的话由最先跑完、不带竞态的 `short` 存。`ci.yml` 从此只让竞态的九份取存 Go 的缓存，`vuln.yml` 不取不存。照包的时间折算，第三、第五份各挪一个给第八份，暖的时候 7763 上第三、四、五份约 396、396、382 秒（[P1 设计](01-P1-foundation.md) 3.16、10.2）。合并之后第一次 `main` 是冷的。
 
@@ -1044,7 +1045,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **流数**（P3/S1）：hub 的单元测试（4.6.5 的几格，含"17 条活流在有限步之内停下"与"账户满了时凭证自己顶掉自己的、不被拒"）；一个整个程序的测试经 `/api/v0/events`：同一凭证开 5 条，最老的那条收到原因是 `superseded` 的 `reset`。按账户而不按凭证数、上限交成很大、先看账户再看凭证，几个变异都让它们失败。
 - **名称的编码**（P3/S3）：
   - 测试里生成几种 zip：带 0x7075 的条目（CRC 对得上取它的名字，对不上不取）；没有 UTF-8 标志、名字是 GBK 字节的；有 UTF-8 标志却不是合法 UTF-8 的（照旧跳过，读 `Flags`、不读 `NonUTF8`）；一个名字按 GBK 解出 U+FFFD 的（整包不回退）。
-  - 合法的 UTF-8 名字不变；差分：解读只改原本不是合法 UTF-8 的名字（13.4 第 11 条）。
+  - 有标志的名字与没有候选的包里的名字（除了有效的 0x7075）不变；差分照此（13.4 第 11 条；决定 376）。
 - **T2、T4**（P3/S3）：一个人到上限时他的下一个答按人的新码、别人的照常开始，全局满了照旧答 503；网页的文字由 vitest 整句比对；整个程序的测试造出"River 取到、没开始"的状态，重启之后行是失败、名额空出。
 
 ### 9.3 e2e
@@ -1083,9 +1084,9 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - P1/S1：帮手什么也不等（A15 第 2、4、5、6 格抓）；帮手不等这个文档的第一次续期（第 4 格，Chromium 与 Firefox 落到 `/sign-in`、WebKit 报旧文档没发续期）；帮手不看续期的锁（第 6 格）；帮手不等在途的读（第 5 格）；`reload` 不先等（第 2 格）；门禁放过直接的 `goto` 或 `reload`；门禁不看 `e2e/fixtures/`；门禁不核对逃生口的表；门禁把帮手模块里的逃生口文字也算进去（P1 设计 7.2）。
 - P1/S2：Dockerfile 的 Go 版本的 tag 与 `toolchain` 不同（守卫抓）；摘要换成别的版本的（构建时的断言抓）；README 的 PostgreSQL 版本不同（守卫抓）。
 - P2：9.1 列的几种，每个 Step 照它的项补全。
-- P3/S1：`TitleKey` 不做切罗基文一步；三处只改一处；`PlainText` 仍跳过自动链接；`listTags` 列 `/`；日志或变更集详情的读不在快照里；流数按账户而不按凭证数、重置最新的那条、账户的硬上限不拒、先看账户再看凭证；整个名字的判断不认只由 U+200B、U+2060、U+3164 组成的名字；`index` 的 `parent:"/"` 被拒；`log` 的 `""` 被当作整本；超时的文字照旧。
-- P3/S2：去掉新规则；`topOf` 走过回收站根；`needed` 不看段内后面的放回。
-- P3/S3：不看 UTF-8 标志就按 GBK；读 `NonUTF8` 而不读 `Flags`；合法的 UTF-8 名字也被解读；结果里有 U+FFFD 也回退；一个名字解不开时其余的照样回退；0x7075 的 CRC 不核；报告不写；`room` 不按人数；按人的拒绝答成通用的 `server_busy`；`AtStart` 不收拾排队的行。
+- P3/S1：`TitleKey` 不做切罗基文一步；三处只改一处；`PlainText` 仍跳过自动链接；`listTags` 列 `/`；日志或变更集详情的读不在快照里；流数按账户而不按凭证数、重置最新的那条、账户的硬上限不拒、先看账户再看凭证；整个名字的判断不认只由 U+200B、U+2060、U+3164 组成的名字；`index` 的 `parent:"/"` 被拒；`log` 的 `""` 被当作整本；超时的文字照旧；`Blank` 不减 Prepended_Concatenation_Mark；`Find` 在快照之外；`alivePaths` 在快照之后；顶掉的流算到它关掉为止；提交的错误不带标记；只读的快照的提交错误也带标记；MCP 不看标记（P3 设计 7.3 的 S1-1–S1-34）。
+- P3/S2：去掉新规则；`topOf` 走过回收站根；`needed` 不看段内后面的放回；某一处构造计划不传 `Nodes`（三处非等价，两处等价；P3 设计 7.3 的 S2-1–S2-9）。
+- P3/S3：不看 UTF-8 标志就按 GBK；读 `NonUTF8` 而不读 `Flags`；没有候选的包里合法的 UTF-8 名字也按 GBK 读；结果里有 U+FFFD 也回退；一个名字解不开时其余的照样回退；0x7075 的 CRC 不核；报告不写；`room` 不按人数；按人的拒绝答成通用的 `server_busy`；`AtStart` 不收拾排队的行；按解读之前的名字判文件夹；解读过的名字的记录排在别的问题之前；回滚也被按人的上限拒绝；先判全局、再判按人；收拾的任务排在五种任务之前（P3 设计 7.3 的 S3-1–S3-18）。
 - P5/S1：四份默认值有一份不同（守卫抓）；MCP 的版本不取 buildinfo（短测试抓）；闸门的各条各去掉一条；闸门不分工作流；演练作业加了 write（权限检查抓）。
 
 ### 9.7 门禁与 CI
@@ -1109,11 +1110,11 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | **GHCR 设为公开不能撤回** | 只在 rc 核对之后做；之前核对镜像里没有机密：最后一层只有二进制与 `/licenses`（`deploy/Dockerfile:41-47`），构建参数只有版本与 label，`.git` 只在构建的阶段；Release 的说明与附件在 rc 上先看一遍；版本号的 tag 在签名与证明之后才打 |
 | **先发布、后验收**：v0.1.0 发出去之后，人工验收可能在输入法、真实的 MCP 客户端或读屏软件上找到问题 | 发布说明写明人工验收在发布之后、还没逐项核对过；v0.1.1 的移交与目录先定好（第 7 节"写给后面的 M"）；部署文档要求生产写确切的版本号，照升级的步骤换版本 |
 | **打磨的面宽**：约 113 项，焦点的修复常波及别处（M5–M7 的修复核对一再找到回归，05-lessons 第 8 节） | 按组件分六个 Step；焦点的修复在三种引擎里探查；阅读视图先写 spec；修复的核对一轮一轮做到干净 |
-| **第 302 条的修法改的是所有撤销都走的计划** | 先写 spec；改法小（`topOf` 在本身是回收站根的节点处停，审查 A 的原型约 10 行）；认出的三种形状写进 spec；两个现成的性质测试扩开；后台撤销的 `needed` 随之改；M8 原有的撤销测试照过；收尾审查 A 专看撤销的其余路径 |
+| **第 302 条的修法改的是所有撤销都走的计划** | 先写 spec；改法小（`topOf` 在本身是回收站根的节点处停，审查 A 的原型约 10 行）；认出的三种形状写进 spec；两个现成的性质测试扩开；后台撤销的 `needed` 随之改（批的核对挡不住，只有 `needed` 挡，P3 设计 3.10.6）；M8 原有的撤销测试照过；收尾审查 A 专看撤销的其余路径 |
 | **标题键与标题 id 改了已有的键** | 发布之前做；发布说明写明试用库要 reindex、这类锚点变了；不升分词与提取规则的版本，免得白白重建 |
 | **同一凭证上 5 个以上守契约的客户端轮流互顶** | 按凭证计数，不同设备与令牌不互顶；同一凭证的轮转受它自己的限流约束；被重置的一行是 `debug` 或限频；hub 的单元测试有"17 条活流在有限步之内停下" |
 | **GBK 回退把别的编码误读成中文** | 先读 0x7075；回退的条件写明"结果里没有 U+FFFD"，一个名字解不开整包不回退；Shift-JIS、Big5、EUC-KR 仍会被误读，写进已知限制；报告列出解读的名字 |
-| **T2、T4 改了任务的入口与启动** | 只改 `room` 与 `AtStart`；P3/S3 先写设计；T4 假定单实例，与部署文档一致；整个程序的测试 |
+| **T2、T4 改了任务的入口与启动** | 只改 `room` 与 `AtStart`，另给五种任务设 `DiscardRunning`、改已有测试的种子（带一行 River 持有的任务，P3 设计 3.14.3）；P3/S3 先写设计；T4 假定单实例，与部署文档一致；整个程序的测试 |
 | **B5 的规则在本机上可能过不了**：本机比 M5 Max 慢，界线处的撤销单次记过约 6.2 秒（移交 M4-performance 第 15 条，哪台机器没写明） | B5 只用 M8 的规则判，不再乘倍数；最低配置的硬期限用 7763 上的实数加 `parse_max_wait` 判；规则一层没过不自动降常量，照移交第 14 条的两种做法（降常量，或写进部署要求）列给主持者与负责人定（4.7.5） |
 | **实测的时长与机器**：搜索一批约 20 GB 的磁盘；交换已满，噪声大 | 范围先缩到有预算的与部署文档要的；独占时段跑、经 heavy 的锁；之前修剪 Go 的构建缓存；两轮取较差的；本机为参照，部署文档写明 |
 | **页面树 1 万页没过** | 4.7.2 先量它，结论先于 P2/S6；改法要设计，是一个大的 Step，M12 随之变长；负责人可以改判为已知限制 |
@@ -1191,7 +1192,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **333 移交的处理进展随设计定稿提交，写到 Step**（设计审查 C 的 Q1）：与 00-M12、审查记录与定稿时的总体设计修订同一个提交；初稿之前的单独提交不要了（第 7 节"设计定稿"）。
 - **334 收尾记录列出 P1/S1 之后 `main` 的 e2e 红过的每一次与总次数**，不逐次列全部（设计审查 C 的 Q3 与过度设计 O2）。
 - **335 MCP 调用超时的文字在 P3/S1 改，`batch` 不设单独的期限**（设计审查 C 的 I2；移交 M4-performance 第 22 条之后的补记 `:490`）：通用的"the call ran out of time"改为说明期限已到、什么也没有写、拆小再试，是误导的文字（B）；单独的期限进已知限制与 v0.2；硬件下限写进部署文档（4.6.4、4.8）。
-- **336 T2、T4 在 v0.1 修**（负责人 2026-11-14 第 5 问）：T2 是按人的常量上限，答一个新的码（例如 `transfer.too_many_jobs`，状态码推荐 429，P3/S3 照契约与码的约定定），有自己的两种语言的文字，网页照它显示，全局的 503 `server_busy` 照旧；T4 是启动时把上一个进程在 River 取到之后、开始之前停掉的任务记成失败，River 那一边照 `Job.DiscardRunning` 的先例、注意它的次序。都在 P3/S3（4.6.6；修订核对第 1 轮 A 的 M9、N12，C 的 M10 改，第一次修订是"同样答 503"）。
+- **336 T2、T4 在 v0.1 修**（负责人 2026-11-14 第 5 问）：T2 是按人的常量上限，答一个新的码（`transfer.too_many_jobs`，409，P3/S3 定；初稿推荐 429），有自己的两种语言的文字，网页照它显示，全局的 503 `server_busy` 照旧；T4 是启动时把上一个进程在 River 取到之后、开始之前停掉的任务记成失败，River 那一边照 `Job.DiscardRunning` 的先例、注意它的次序。都在 P3/S3（4.6.6；修订核对第 1 轮 A 的 M9、N12，C 的 M10 改，第一次修订是"同样答 503"）。
 
 ### 2026-11-15：P1 的设计审查之后的取舍 337–352（主持者的决定，负责人可以改判）
 
@@ -1343,13 +1344,35 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
   - 推断（没有复现）：300 毫秒那一次的查询被期限打断时，连接上留着过期的读期限，又回到池里给了下一行。要查时先在本机竞态构建下大量重跑这个测试，看 pgx 在期限打断之后是否把连接关掉再还池。
   - 理由：只出现一次，在测试帮手的测试里，不在产品的路径上；照 356、359 的先例，偶发只重跑失败的项；开旁支的代价大于一次重跑。收尾记录核对 P1 之后 `main` 的红时一并核对它（决定 334）。
 
+### 2026-11-16：P3 的设计审查之后的取舍 361–377（主持者的决定，负责人可以改判）
+
+361–377 是 P3 设计的十七条（P3-1 到 P3-17，P3-k 是 360 + k），设计审查之后照审查改写。每条在 [P3 设计](03-P3-server-correctness.md) 2.3，审查里的出处在 [P3 审查记录](reviews/P3-design-review.md)。P3-16 与 T4 的做法是主持者在第一次修订说明里定的（设计审查 C 的 Q1、Q2）。
+
+- **361 `readReverted` 只有一个签名，收 `Nodes`**（P3-1）：五处构造计划都传，`RevertWrites` 传 `nil`；`CheckRevertSteps`、`RevertActionFacts` 不读顶，它们的"不传"是等价的变异，证据是调用链上的代码事实与一个会被抓到的对照（设计审查 A 的 M3）。
+- **362 `needed` 也看段内后面的放回**（P3-2）：不改 `CheckRevertSteps` 的模拟；挡这一种的是 `needed` 与一格确定的测试。
+- **363 domain 的 `world` 按根的时刻读组**（P3-3），同 `TrashChildrenOfAll`。
+- **364 回滚的性质测试撤销回滚的变更集，请求与后台轮流，只数嵌套的根**（P3-4；设计审查 A 的 M2）：中间节点下的与两个成员以上的嵌套组交给后台撤销的性质测试。
+- **365 标题键的切罗基文一步用标准库的 `strings.Map`，`shared.CherokeeCapital` 三处共用，`IndexKeyer` 原地换；`searchFold` 删掉，不升分词与 `Extractor` 的版本**（P3-5）。
+- **366 标题 id 带上自动链接的标签与原始 HTML 的源文本**（P3-6），与 `AnchorID` 相遇；不升提取规则的版本。
+- **367 名字为空的判断放在 `CheckName` 与 `CleanClientName` 里，管显示名、工作区名与 PAT 的名字**（P3-7）：默认可忽略的字符照 Unicode 的推导精确地算（设计审查 B 的 M1），U+2800 不算空，标签块不去掉；先判空，只由 Bidi_Control 组成的名字从 `invalid_format` 变成 `required`。
+- **368 MCP `log` 的 `"/"` 是整本，`""` 答 `too_short`**（P3-8）。
+- **369 MCP 超时的文字说"没有写、拆小再试"，码照旧 `internal_error`；写的事务在提交时跨过期限的，`TxManager` 给提交的错误加标记，MCP 另用一句"结局未知，先读笔记本"**（P3-9；P3 设计修订核对 B 的 N14）。
+- **370 快照放在四个用例里，从各自第一条属于答复的读起，到 `alivePaths` 为止**（P3-10；设计审查 B 的 N3、N4）。
+- **371 事件流按凭证（会话、PAT、任务）计数，账户满了答 429 `rate_limited`、`Retry-After` 30 秒，顶掉的一条立刻不算、别的原因重置的算到处理器结束，顶掉记 `debug`**（P3-11；设计审查 B 的 M5、N10）。
+- **372 条目名的解读在 archive 适配器里，报告的两种新原因在任务结束时加、排在别的问题之后**（P3-12）。
+- **373 按人的上限答 409 `transfer.too_many_jobs`，不带 `Retry-After`，常量 5；回滚算进计数但从不被拒；码的次序照今天的检查**（P3-13；设计审查 C 的 I2）。
+- **374 T4：五种任务各设 `DiscardRunning`，`AtStart` 之后对每一种跑一次 `lost`；以 SQL 种排队行的测试同时种它的 River 行**（P3-14；设计审查 C 的 I3、Q2，主持者定）。
+- **375 新的整个程序的测试都点名进第七份；T4 并进已有的 `TestServeFailsTheJobsLeftRunning`**（P3-15）。
+- **376 GBK 的包里，没有标志、解得开的非 ASCII 名字都按 GBK 读，恰好合法 UTF-8 的也读**（P3-16；设计审查 C 的 Q1，主持者定）：偏离 4.6.6 第 2 步的"不是合法的 UTF-8"与末条"解读只改原本不是合法 UTF-8 的名字"，也偏离 05-lessons 第 5 节"宁可不做"。理由：中文 Windows 的包里 `图片`、`目录` 这类常用文件夹被拆成两个，是主要读者都会碰到的错；混合的包少（7-Zip、WinRAR、Python、Java、Go 写非 ASCII 名字都带标志，macOS 的包与本程序的导出没有候选）；误读的名字在报告里逐个列成 `name_gbk`。对"有 GBK 候选、又有没标志的真 UTF-8 名字"的包，这是相对今天的回归，已知限制照实写。
+- **377 回收站一行在后台开始答 `transfer.too_many_jobs` 时留着"在后台恢复"的按钮**（P3-17）。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
 - **heavy.sh 的锁**：`5e8af5b5` 的 `docs/v0.1/claude_to_codex/tools/heavy.sh:8` 是 `L=${NW_HEAVY_LOCK:-${TMPDIR:-/tmp}/nervewiki-heavy.lock}`，与说明一致；已由主持者改好、提交（`8c247237`）。
 - **`ci-wait.sh`**：`5e8af5b5` 的 `:13` 按提交取第一个运行，与审查 B 说的一致；已由主持者改为按工作流取、提交（`b54cd679`）。
 - **第四份 413.5 秒**：这是收尾之前那两次 `main`（`07abd0f7`、`9e787bab`，都在 7763 上）的平均。收尾之后的两次（`05dac827`、`a057b6ad`）第四份是 339、285 秒（平均 312，都不在 7763 上）；第五份 427、423 秒（平均 425，都在 7763 上）（[M11 收尾审查](../M11-upgrade/reviews/M11-closeout-review.md)"守卫与分份的数"一节的表）。第 7 节"分份"与第 10 节照此写。
-- **`TestRevertingARollback…` 在第八份**：`Makefile:296`、`:328` 都点了它的名。
+- **`TestRevertingARollback…` 在第八份**：`Makefile:296`、`:328` 都点了它的名（`5e8af5b5` 的行号；`194ca350` 上是 `:321`、`:365`）。
 - **Playwright 不重试**：`e2e/playwright.config.ts` 没有 `retries`。
 - **T2、T4 的代码**：`transfer/app/start.go:212-227` 的 `room` 只比全局的计数；`transfer/app/maintain.go:84-95` 的 `AtStart` 只失败 `running` 的行，`Run` 的注释写明了 River 取到之后的那个窗口（4.6.6）。
 - **MCP 超时的文字**：`platform/httpserver/mcpserver/errors.go:77` 的 `internalDeadline`，`:101` 用它（4.6.4）。
@@ -1384,7 +1407,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 |---|---|---|---|---|
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
-| P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
+| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 设计已审查（2026-11-16） | [设计](reviews/P3-design-review.md) | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
 | P5 部署文档与发布流水线（S1–S3） | — | 未开始 | — | — |
 | 收尾与发布 | — | 未开始 | — | — |
@@ -1412,6 +1435,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-16 | 来源守卫的旁支 `m12-p1-source-revert-deadline`（M10 的故事，在 M12 里发现；`83437b79`、`b0c80b74`、`80de075a`，合进 `main` 一个 `2308438e`；合并见第 12 节）：分配守卫的旁支合并之后第一次 `main`（run 43721644553 attempt 1）guards-sources 在 EPYC 7763 上红在 M10 的 `TestSourceRevertAtTenThousandTakesItsTime`，三个状态的 sample2 在 4.0 秒的请求期限答 500，`e2e`、`image` 被跳过。不是变慢：同一棵树的重跑也在 7763 上，3.54 秒；7763 上 M11 起 38 次，撤销的 sample2 一直只比 4 秒少 3–18%，失败那台每一项都最慢；9V74 与本机看不出与代码有关的台阶，7763 上 S2 之后高约 2–4%、分不出来源。4 秒的期限在 7.6 秒的界之下，起作用的是期限。恢复、撤销改在生产的 15 秒期限下跑，由不变的界来判；期限由界推出、与起应用的表对证；lint 的计时保存测试仍断言 4 秒；计时的请求经 `sendRequestBy` 用 30 秒的客户端（决定 359）。13.4 第 8 条的例外加这一个。审查 A 0I 3M 3N 1Q、B 0I 2M 2N、C 0I 5M 7N 2Q，修复一轮两个提交（B 的 M1、M2、N1、N2），分支 CI 43735796911 一次全绿；修复核对一轮三位都没有 Important、Minor，第一轮的都关上，新 Nit 七条（A 3、C 4）都是文档稿的措辞，在本提交。第 11 节的 359 补上旁支的做法、定因与理由，标题改为"来源的恢复与撤销的守卫"；总体设计 13.4 第 8 条与第 15 节、P1 设计的头与 10.2、05-lessons 两条、移交 M4-performance 的例外随之改 | 决定 359；[旁支的审查记录](reviews/P1-source-revert-deadline-review.md) |
 | 2026-11-16 | 来源守卫的旁支合并 `194ca350` 之后第一次 `main`，run 43745380462：第一次 attempt 16 项绿，`server (race)` 红在 M1 的 pgtest 测试 `TestWaitForLockWaitsOnCountsTheRowsOfItsTable`（读超时，0.87 秒），`e2e`、`image` 被跳过；第二次 attempt 只重跑失败的项，全绿（race 14:44，e2e 9:39，E2E 一步 8:10）。guards-sources 在 EPYC 7763 上，新期限下恢复的 sample2 2.82–2.93 秒、撤销 3.31–3.38 秒，18 个样本都是 200 | 决定 359、360 |
 | 2026-11-16 | P1 完成：两个 Step 都已合并（S1 `bbf3eb26`、S2 `4190bac0`），另有三条旁支（分配守卫 `m12-p1-prepared-alloc` 合并 `ad0bf40c`，决定 357；帮手 `m12-p1-navigation-settle` 合并 `4fe6e523`，决定 356、358；来源守卫 `m12-p1-source-revert-deadline` 合并 `194ca350`，决定 359）。P1 设计第 8 节的完成标准：第 1 条，两个 Step 合并之后各两次 `main` 的组合根每一份平均都在 450 秒之下（S1 最贴近的第三份 416，S2 最贴近的第五份 389）；决定 352 的第五份在 S2 合并之后第一次落在 EPYC 7763 上是 438 秒（冷的编译，暖的约 359），之后几次 `main` 的第五份 213–317 秒，没有两次落在 7763 上的平均过 450。第 2 条，第 3、5 节的测试与 7.2 的变异记在 10.1、10.2 与各旁支的记录。第 3 条，`vuln.yml` 在 S2 分支上为绿（10.2）；门禁报出逃生口只有 A15 的三格（第 1、3、11 格）；A15 十三格在三种浏览器里为绿（WebKit 跳过第 3 格）；"S1 合并之后 `main` 的 e2e 没有一次因为被跳回登录页而红"由收尾记录核对（决定 334），到这里 `main` 上 e2e 只红过一次（run 43689756257 第一次 attempt，A15 第 3 格在 Firefox 上该被登出而没有，是那一格的闸门写法，旁支的 `cb13cc9a` 修了，决定 356），不是被跳回登录页；另有两次因服务端的一项红而被跳过（43721644553、43745380462，决定 359、360）。第 4–7 条在各 Step 与旁支的文档提交里。主持者的决定编到 360（360：一次 pgtest 的读超时，只重跑、观察）。下一步：P2、P3 的设计已在写，P4/S1、P5/S1 的设计随后 | [P1 设计](01-P1-foundation.md) 第 8、10 节；两个 Step 与三条旁支的审查记录 |
+| 2026-11-16 | P3 设计已审查（三份审查：A 0I3M6N、B 0I5M13N、C 3I5M9N2Q；三次修订，修订核对三轮：第 1 轮 C 1 条 Minor、三位共 11 条 Nit，第 2 轮 B 1 条 Minor，都改了，第 3 轮没有新的）。P3 设计 2.1 的修订落进本文：`Makefile` 的行号括注 `194ca350` 的；302 的 `needed` 是修正，性质测试分时刻装载、回滚的只数嵌套的根；快照放在四个用例里，从第一条属于答复的读起；MCP 超时的码不改，提交时跨过期限的另用一句；30.2 照 Unicode 的推导、管三种名字，标签块不去掉；429 沿用 `rate_limited`、网页不改；T3 的报告在任务结束时加、解码在适配器里；GBK 的包里恰好合法 UTF-8 的名字也按 GBK 读（决定 376，相对今天的回归写进已知限制）；T2 答 409、码的次序照今天的检查；T4 取第三种做法，以 SQL 种排队行的测试带上 River 的行；`reindex` 与切罗基文的撞键；9.6 的变异；与 P2 的重叠；5.1 的 `page.title_taken`。P3 的取舍 361–377 写进第 11 节 | [P3 设计](03-P3-server-correctness.md)、[P3 审查记录](reviews/P3-design-review.md) |
 
 ---
 
