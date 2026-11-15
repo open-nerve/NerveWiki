@@ -13,13 +13,14 @@ import { expect, test } from "../../fixtures/test";
 
 // A15, leaving a page while its refresh is out (M1 design 10: the session ends, and the user signs in again; a
 // known limitation in the release notes). The stories leave a document through fixtures/navigation.ts, which
-// waits first: two tests here leave through its escape and land on the sign-in page; the others go through it and
-// stay signed in, each holding back one of the things the helper waits for (the refresh's answer, the first
-// refresh, a read, one sent while the helper reads the page, the lock after a refresh or under a sign-in, the
-// lease without Web Locks), and one with none of them, its document signed up itself, is not kept waiting. The
-// answer, the next document, the first refresh, the reads, the lock and the lease are held so that each order
-// happens for certain, not by running it again and again (05-lessons 6). Only the page has a version: the API's
-// side, a retired token used again, is A5 (API).
+// waits first: two tests here leave through its escape and land on the sign-in page, and one leaves a read out
+// through it that the next document is not to wait for; the others go through it and stay signed in, each
+// holding back one of the things the helper waits for (the refresh's answer, the first refresh, a read, one sent
+// while the helper reads the page, the lock after a refresh or under a sign-in, the lease without Web Locks), and
+// one with none of them, its document signed up itself, is not kept waiting. The answer, the next document, the
+// first refresh, the reads, the lock and the lease are held so that each order happens for certain, not by
+// running it again and again (05-lessons 6). Only the page has a version: the API's side, a retired token used
+// again, is A5 (API).
 
 /** A promise, and the function that settles it. */
 function signal(): { settled: Promise<void>; settle: () => void } {
@@ -538,6 +539,86 @@ test("A15 (page): leaving through the helper while a read goes out as the helper
 
   expect(requestedAt, "the next document is asked for once the read was answered").toBeGreaterThan(releasedAt);
   expect(pageWatch.apiFailures).toEqual([]);
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
+});
+
+test("A15 (page): a read left out by the escape is not the next document's to wait for; a move within a document keeps its own", async ({
+  api,
+  browserName,
+  signedInPage,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const nextDocument = signal();
+  let requestedAt = 0;
+  const order: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().endsWith("a15=left")) order.push("the read left out");
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) order.push(`at ${new URL(frame.url()).pathname}${new URL(frame.url()).search}`);
+  });
+  // The reload's document is held 1 s, and the old document sends a read 300 ms into it, which is never answered;
+  // the read after the move is held until the test lets it go.
+  let holdTheDocument = false;
+  await page.route("**/settings/profile", async (route) => {
+    if (holdTheDocument && route.request().isNavigationRequest()) {
+      holdTheDocument = false;
+      await sleep(1_000);
+    }
+    await route.fallback();
+  });
+  const letGo = signal();
+  await page.route("**/api/v0/instance?a15=*", async (route) => {
+    if (route.request().url().endsWith("a15=left")) return;
+    const response = await route.fetch();
+    await letGo.settled;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  await page.evaluate((url) => {
+    setTimeout(() => {
+      void fetch(url)
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+    }, 300);
+  }, "/api/v0/instance?a15=left");
+  order.length = 0;
+  holdTheDocument = true;
+  await reload(page, { inFlight: "leave" });
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  // Sent once the next document was asked for, before it came: Chromium and Firefox then report nothing more for
+  // the read. WebKit sends nothing from a document once the next one is asked for (the third cell), and the read
+  // never goes out.
+  expect(order[0]).toBe(browserName === "webkit" ? "at /settings/profile" : "the read left out");
+  expect(order).toContain("at /settings/profile");
+  // A read of this document, then a move within it, as the app's router makes: the read is still out.
+  await Promise.all([
+    page.waitForRequest((request) => request.url().endsWith("a15=kept")),
+    page.evaluate((url) => {
+      void fetch(url)
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+    }, "/api/v0/instance?a15=kept"),
+  ]);
+  await Promise.all([
+    page.waitForEvent("framenavigated", (frame) => frame === page.mainFrame()),
+    page.evaluate(() => history.pushState(history.state, "", "/settings/profile?moved")),
+  ]);
+  const leaving = goto(page, "/settings/security");
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  letGo.settle();
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once this document's read was answered").toBeGreaterThan(
+    releasedAt
+  );
   await expect(page).toHaveURL("/settings/security");
   await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
 });
