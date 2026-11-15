@@ -574,7 +574,8 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	@# 但整作业到 30 分钟被取消；将最后六行分出。两份仍各限 30 分钟，所有 Go argv、单项样本和预算不变。
 	@# M10/P2 来源的六项成功操作分别计时；五项HTTP与完整60k计划均三个DB设置各三次。
 	@# HTTP核实际应用池的auto/force_generic_plan设置；来源口仍Planned，不称为PREPARE通用计划。
-	@# 新预算来自本机原始样本的三倍；不修改原请求4s、提交2s或既有守卫。
+	@# 新预算来自本机原始样本的三倍；不修改提交2s或既有守卫。请求4s不变，只有 restore、revert 两行用生产的15s，
+	@# 让7.6s的界、而不是4s时的500来判（M12 旁支 m12-p1-source-revert-deadline，00-M12 决定 359）。
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceCreateAmongHundredThousandTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceMoveAtTenThousandTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceRestoreAtTenThousandTakesItsTime$$' ./internal/bootstrap

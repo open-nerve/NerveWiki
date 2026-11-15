@@ -34,7 +34,9 @@ import (
 // Within each state, create/move/restore/revert retain their original three
 // request/reset sequence and its history growth. Forget gets a new clone for
 // every sample. Setup, login, resets, observations and invariant scans are
-// outside the request timer; no request or commit deadline is increased.
+// outside the request timer. The commit deadline is the normal 2s; the
+// request deadline is the normal 4s except for restore and revert, which
+// run under production's (sourceHTTPRequestTimeout).
 func sourceHTTPCost(t *testing.T, shape string) {
 	t.Helper()
 	if testing.Short() {
@@ -83,17 +85,92 @@ type sourceHTTPApp struct {
 	requestTimeout, commitTimeout time.Duration
 }
 
+// The request deadlines a source cost app runs under: the test
+// configuration's, and production's (server.request_timeout). The commit
+// deadline is 2s in both, the test configuration's and production's.
+const (
+	sourceHTTPTestRequest       = 4 * time.Second
+	sourceHTTPProductionRequest = 15 * time.Second
+	sourceHTTPCommit            = 2 * time.Second
+)
+
+// sourceHTTPRequestTimeout is the request deadline of a shape's app. The
+// restore and revert bounds (7.6s) are above the test's 4s: on the slowest
+// CI runner (EPYC 7763) revert's sample2 took 3.3-3.9s and then answered
+// 500 at 4.0s, so the deadline judged them and recorded no time (00-M12
+// decision 359). They run under production's deadline, so that their own
+// bound judges them; the other shapes' bounds are below 4s.
+func sourceHTTPRequestTimeout(shape string) time.Duration {
+	switch shape {
+	case "restore", "revert":
+		return sourceHTTPProductionRequest
+	default:
+		return sourceHTTPTestRequest
+	}
+}
+
+// sourceHTTPBound is the bound on a shape's measured request.
+func sourceHTTPBound(t *testing.T, shape string) time.Duration {
+	t.Helper()
+	switch shape {
+	case "create":
+		return sourceCreateTime
+	case "move":
+		return sourceMoveTime
+	case "restore":
+		return sourceRestoreTime
+	case "revert":
+		return sourceRevertTime
+	case "forget":
+		return sourceForgetTime
+	default:
+		t.Fatalf("unknown HTTP source cost shape %q", shape)
+		return 0
+	}
+}
+
+// sourceHTTPDeadline is the request deadline a shape's app must run
+// under, worked out from its bound alone: the test's 4s for a bound below
+// it, production's 15s for one at or above it. It fails unless
+// sourceHTTPRequestTimeout, which starts the app, gives the same: either
+// table alone could say 15s for a shape whose bound is below 4s.
+func sourceHTTPDeadline(t *testing.T, shape string) time.Duration {
+	t.Helper()
+	want := sourceHTTPTestRequest
+	if sourceHTTPBound(t, shape) >= sourceHTTPTestRequest {
+		want = sourceHTTPProductionRequest
+	}
+	if got := sourceHTTPRequestTimeout(shape); got != want {
+		t.Fatalf("source HTTP %s: bound %s; request deadline %s, want %s", shape, sourceHTTPBound(t, shape), got, want)
+	}
+	return want
+}
+
+// sourceHTTPStartApp starts the app under the test's request deadline.
+func sourceHTTPStartApp(t *testing.T, database, mode, copyFrom string) sourceHTTPApp {
+	t.Helper()
+	return sourceHTTPStartAppWithin(t, database, mode, copyFrom, sourceHTTPTestRequest)
+}
+
 // The URL startup parameter reaches every connection the real app creates.
 // The page hook observes the already wired pool; it replaces no dependency.
 // The inspection pool is configured separately so it cannot stand in for
 // evidence from the measured app. force_generic_setting is only a setting:
 // source ports still use Planned; actual PREPARE-generic proof is elsewhere.
-func sourceHTTPStartApp(t *testing.T, database, mode, copyFrom string) sourceHTTPApp {
+func sourceHTTPStartAppWithin(t *testing.T, database, mode, copyFrom string, request time.Duration) sourceHTTPApp {
 	t.Helper()
 	cfg := testConfig(t, database, false)
 	cfg.Database.URL = sourceHTTPModeURL(t, database, mode)
-	if cfg.Server.RequestTimeout != 4*time.Second || cfg.Database.CommitTimeout != 2*time.Second {
-		t.Fatal("HTTP source costs must keep normal request4s/commit2s deadlines")
+	if cfg.Server.RequestTimeout != sourceHTTPTestRequest || cfg.Database.CommitTimeout != sourceHTTPCommit {
+		t.Fatal("HTTP source costs must start from the normal request4s/commit2s deadlines")
+	}
+	switch request {
+	case sourceHTTPTestRequest:
+	case sourceHTTPProductionRequest:
+		// The production's bounds of a request (server.*), as the trash bench.
+		cfg.Server.ReadTimeout, cfg.Server.WriteTimeout, cfg.Server.RequestTimeout = 30*time.Second, 60*time.Second, request
+	default:
+		t.Fatalf("HTTP source cost request deadline %s is neither the test's nor production's", request)
 	}
 	if copyFrom != "" {
 		sourceHTTPCopyFiles(t, copyFrom, cfg.Storage.Dir)
@@ -177,7 +254,7 @@ func sourceHTTPPrepare(t *testing.T, shape string) sourceHTTPSeed {
 	}
 	sourceHTTPCatalog(t, setup, "no_statistics")
 	setup.Close()
-	a := sourceHTTPStartApp(t, seed.database, "auto", "")
+	a := sourceHTTPStartAppWithin(t, seed.database, "auto", "", sourceHTTPRequestTimeout(shape))
 	tm := a.team
 	for _, name := range []string{"alice", "bob", "carol", "dana"} {
 		tm.tokens[name] = registerAccount(t, tm.contract, tm.base, name+"@example.com").AccessToken
@@ -209,7 +286,7 @@ func sourceHTTPPrepare(t *testing.T, shape string) sourceHTTPSeed {
 	}
 	sourceCostHealthy(t, tm)
 	sourceIndexSettle(t, tm.pool)
-	sourceHTTPBoundary(t, a, "no_statistics")
+	sourceHTTPBoundaryWithin(t, a, "no_statistics", sourceHTTPDeadline(t, shape))
 	seed.storage = tm.storage
 	a.stop()
 	// Fingerprint the completed, stopped seed. This temporary inspection pool
@@ -247,7 +324,7 @@ func sourceHTTPClone(t *testing.T, seed sourceHTTPSeed, stage string) sourceHTTP
 	if stage == "force_generic_setting" {
 		mode = "force_generic_plan"
 	}
-	a := sourceHTTPStartApp(t, database, mode, seed.storage)
+	a := sourceHTTPStartAppWithin(t, database, mode, seed.storage, sourceHTTPRequestTimeout(seed.shape))
 	tm := a.team
 	if files := sourceHTTPFiles(t, tm.storage); files != seed.files {
 		t.Fatalf("clone files=%+v want stopped seed %+v", files, seed.files)
@@ -266,7 +343,7 @@ func sourceHTTPClone(t *testing.T, seed sourceHTTPSeed, stage string) sourceHTTP
 	if stage != "no_statistics" {
 		sourceCostAnalyze(t, tm)
 	}
-	sourceHTTPBoundary(t, a, stage)
+	sourceHTTPBoundaryWithin(t, a, stage, sourceHTTPDeadline(t, seed.shape))
 	return a
 }
 
@@ -317,7 +394,17 @@ type sourceHTTPState struct {
 	InspectionMode        string
 }
 
+// sourceHTTPBoundary is sourceHTTPBoundaryWithin the test's 4s request
+// deadline, as every app sourceHTTPStartApp starts runs under.
 func sourceHTTPBoundary(t *testing.T, a sourceHTTPApp, stage string) sourceHTTPState {
+	t.Helper()
+	return sourceHTTPBoundaryWithin(t, a, stage, sourceHTTPTestRequest)
+}
+
+// sourceHTTPBoundaryWithin observes the tables' statistics and the actual
+// pool's plan cache mode, and fails unless the app runs under the request
+// deadline given and the 2s commit deadline.
+func sourceHTTPBoundaryWithin(t *testing.T, a sourceHTTPApp, stage string, deadline time.Duration) sourceHTTPState {
 	t.Helper()
 	state := sourceHTTPState{Tables: sourceHTTPCatalog(t, a.team.pool, stage)}
 	want := "auto"
@@ -368,8 +455,8 @@ func sourceHTTPBoundary(t *testing.T, a sourceHTTPApp, stage string) sourceHTTPS
 			t.Fatalf("source HTTP state %s actual application pool mode=%+v want %s", stage, state, want)
 		}
 	}
-	if a.requestTimeout != 4*time.Second || a.commitTimeout != 2*time.Second {
-		t.Fatal("HTTP source cost deadline changed")
+	if a.requestTimeout != deadline || a.commitTimeout != sourceHTTPCommit {
+		t.Fatalf("HTTP source cost deadline changed: request %s, commit %s; want %s, %s", a.requestTimeout, a.commitTimeout, deadline, sourceHTTPCommit)
 	}
 	return state
 }
@@ -550,30 +637,36 @@ func sourceHTTPSample(t *testing.T, a sourceHTTPApp, seed sourceHTTPSeed, stage 
 	tm := a.team
 	var command step
 	var content string
-	want, budget := http.StatusOK, sourceCreateTime
+	want, budget := http.StatusOK, sourceHTTPBound(t, seed.shape)
 	switch seed.shape {
 	case "create":
 		content = fmt.Sprintf("new-source-cost-%d", sample)
 		command = sourceCostCreate(t, tm, seed.wiki.id, seed.wiki.raw, fmt.Sprintf("New%d", sample), content)
 		want = http.StatusCreated
 	case "move":
-		command, budget = nodeMove("alice", seed.root, seed.wiki.raw), sourceMoveTime
+		command = nodeMove("alice", seed.root, seed.wiki.raw)
 	case "restore":
 		tm.send(t, nodeDeletion("alice", seed.root), http.StatusNoContent)
-		command, budget = request("alice", http.MethodPost, "/api/v0/nodes/"+seed.root+"/restore", ""), sourceRestoreTime
+		command = request("alice", http.MethodPost, "/api/v0/nodes/"+seed.root+"/restore", "")
 	case "revert":
 		tm.send(t, nodeDeletion("alice", seed.root), http.StatusNoContent)
-		command, budget = changesetRevert("alice", tm.newest(t, seed.wiki.id).ID), sourceRevertTime
+		command = changesetRevert("alice", tm.newest(t, seed.wiki.id).ID)
 	case "forget":
-		command, budget = request("alice", http.MethodPost, "/api/v0/notebooks/"+seed.wiki.id+"/downgrade", ""), sourceForgetTime
+		command = request("alice", http.MethodPost, "/api/v0/notebooks/"+seed.wiki.id+"/downgrade", "")
 	default:
 		t.Fatalf("unknown HTTP sample shape %q", seed.shape)
+	}
+	// The bound, not the deadline, judges the request: a request past the
+	// deadline answers 500 and records no time.
+	if deadline := sourceHTTPDeadline(t, seed.shape); a.requestTimeout != deadline || budget >= a.requestTimeout {
+		t.Fatalf("source HTTP %s: bound %s, request deadline %s; want deadline %s, above the bound",
+			seed.shape, budget, a.requestTimeout, deadline)
 	}
 	// State is checked after all fixture/reset HTTP work, immediately before
 	// the measured request. Neither observation below is inside its timer.
 	e := sourceHTTPRequestSample{Shape: seed.shape, Stage: stage, Sample: sample,
 		InitialRowSHA256: seed.fingerprint.SHA256, InitialFiles: seed.files,
-		Before: sourceHTTPCountsOf(t, tm, seed), State: sourceHTTPBoundary(t, a, stage),
+		Before: sourceHTTPCountsOf(t, tm, seed), State: sourceHTTPBoundaryWithin(t, a, stage, sourceHTTPDeadline(t, seed.shape)),
 		BudgetNS: budget.Nanoseconds(), RequestTimeout: a.requestTimeout, CommitTimeout: a.commitTimeout}
 	label := fmt.Sprintf("%s/%s/sample%d", seed.shape, stage, sample)
 	body, took := sourceCostTimed(t, tm, label, command, want)

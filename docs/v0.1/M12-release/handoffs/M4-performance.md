@@ -9,7 +9,7 @@ created: 2026-10-03
 
 ### M10/P3/S1当前实际成本与未解范围（2026-10-31）
 
-18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s当时未提高（之后的例外见M10决定150、153、159、160、168、170）。旧版本MVCC/generic物理范围仍留M12。 当前本地门禁/控制及精确18b分支13jobs已通过；三席及文档/集成接受按[S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)独立记录，不能借成本表预验后续main。
+18b本机costs17、costs-lint14×两轮、guards15均通过；100k summary wall中位895.245/873.887ms，TotalAlloc357.802/357.849MiB仍未达最初250MiB目标，固定guard与worker2s/request4s当时未提高（之后的例外见M10决定150、153、159、160、168、170与M12决定359）。旧版本MVCC/generic物理范围仍留M12。 当前本地门禁/控制及精确18b分支13jobs已通过；三席及文档/集成接受按[S1审查](../../M10-llm-wiki/reviews/P3-S1-lint-protocol-review.md)独立记录，不能借成本表预验后续main。
 
 **M12继续open。** 已知旧版本MVCC/generic返回2000却Seq Scan52000及未成功CTE实验保留；B本轮真实auto/custom有界、强制generic仍52000且结果正确，不修改当前查询掩盖边界。生产计划/负载、100k全reindex、部署停机、PG CPU/RSS及CI余量仍需实机复核；guards单次分支Test1479/job1501s、30分钟余299s，不作原因归因。
 

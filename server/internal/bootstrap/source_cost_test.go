@@ -18,7 +18,10 @@ import (
 // state's fastest create is150.124ms; maximum successful large operations are
 // move465.672ms/restore2531.534ms/revert2513.225ms/Forget1013.238ms.
 // New source limits are three times those baselines, rounded up to100ms.
-// Existing request4s/commit2s deadlines and all older guards are unchanged.
+// The commit deadline stays 2s and all older guards are unchanged. The
+// request deadline stays 4s except for restore and revert: their 7.6s
+// limits run under production's 15s, so that the limit and not a 500 at
+// 4s judges them (00-M12 decision 359).
 const (
 	sourceCreateTime  = 500 * time.Millisecond
 	sourceMoveTime    = 1400 * time.Millisecond
@@ -75,11 +78,25 @@ func sourceCostAnalyze(t *testing.T, tm acmeTeam) {
 	t.Log("source-cost setup: 100000 existing source pages, payload64 bytes, zero links; ANALYZE complete, setup and invariant scans excluded")
 }
 
+// sourceCostTimed is askTyped, timed as it was, by a client that outwaits
+// production's request deadline: client() gives up after 5s, and would
+// judge restore and revert in place of their 7.6s bound (00-M12 decision
+// 359). It builds the request as askTyped does.
 func sourceCostTimed(t *testing.T, tm acmeTeam, label string, c step, want int) (string, time.Duration) {
 	t.Helper()
+	patient := &http.Client{Timeout: 2 * sourceHTTPProductionRequest}
 	at := time.Now()
-	status, body := askTyped(t, tm.contract, c.method, tm.base+c.path, tm.tokens[c.by], c.contentType, c.body)
-	took := time.Since(at)
+	var payload []byte
+	if c.body != "" {
+		payload = []byte(c.body)
+	}
+	req := newRequest(t, c.method, tm.base+c.path, tm.tokens[c.by], payload)
+	if c.contentType != "" {
+		req.Header.Set("Content-Type", c.contentType)
+	}
+	res, answer := sendRequestBy(t, patient, req)
+	tm.contract.CheckResponse(t, req, res)
+	took, status, body := time.Since(at), res.StatusCode, string(answer)
 	t.Logf("source-cost operation=%s elapsed_ns=%d status=%d", label, took.Nanoseconds(), status)
 	if status != want {
 		t.Fatalf("source-cost %s = %d %s want%d", label, status, body, want)

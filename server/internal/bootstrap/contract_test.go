@@ -378,7 +378,13 @@ func newRequest(t *testing.T, method, url, token string, body []byte) *http.Requ
 // read, and is empty.
 func sendRequest(t *testing.T, req *http.Request) (*http.Response, []byte) {
 	t.Helper()
-	res, err := client().Do(req)
+	return sendRequestBy(t, client(), req)
+}
+
+// sendRequestBy is sendRequest by the client c.
+func sendRequestBy(t *testing.T, c *http.Client, req *http.Request) (*http.Response, []byte) {
+	t.Helper()
+	res, err := c.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
