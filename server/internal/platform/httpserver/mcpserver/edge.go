@@ -103,9 +103,9 @@ const maxIDBytes = 256
 //
 // encoding/json/v2, not encoding/json: it reads names by their exact
 // case, as the SDK's decoder does, where encoding/json would take a
-// METHOD for the method. In go1.27.1 it is behind GOEXPERIMENT jsonv2,
-// which is on by default: a toolchain bump checks that it still is, or
-// that the package has left the experiment.
+// METHOD for the method. In go1.27.4 it is still behind GOEXPERIMENT
+// jsonv2, which is on by default: a toolchain bump checks that it still
+// is, or that the package has left the experiment.
 func (s *Server) sizeError(r *http.Request) error {
 	body, ok := bodyshape.Bytes(r)
 	if !ok || len(body) <= MaxOtherBytes {
