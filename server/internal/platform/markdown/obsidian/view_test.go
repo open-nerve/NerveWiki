@@ -60,6 +60,12 @@ func TestLinksLeadWhereTheyResolve(t *testing.T) {
 				`<a class="nw-wikilink" ` + page + `>Page &gt; A# ^c</a></p>` + "\n",
 		},
 		{
+			// The heading "See https://a.example now" has the id of its
+			// autolink's text (M12 design 4.6.3, 10.2).
+			"an anchor alone to a heading with an autolink", "[[#See https://a.example now]]\n",
+			`<p><a class="nw-wikilink" href="#nw-see-httpsaexample-now">See https://a.example now</a></p>` + "\n",
+		},
+		{
 			"an anchor alone; a block's alone, a span", "[[#Part Two]] [[#^b]] ![[#c]]\n",
 			`<p><a class="nw-wikilink" href="#nw-part-two">Part Two</a> <span class="nw-wikilink">^b</span> ` +
 				`<a class="nw-wikilink nw-embed" href="#nw-c">c</a></p>` + "\n",

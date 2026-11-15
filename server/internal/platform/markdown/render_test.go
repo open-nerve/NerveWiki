@@ -132,6 +132,9 @@ func TestALinkToAnAnchorAloneLeadsToItsHeading(t *testing.T) {
 				`<a href="#nw-a23b">d</a> <a href="#nw-ref">e</a></p>` + "\n",
 		},
 		{"one written as an id", "[a](#nw-x) [b](#中文)\n", `<p><a href="#nw-nw-x">a</a> <a href="#nw-中文">b</a></p>` + "\n"},
+		// The heading "See https://a.example now" has the id of its
+		// autolink's text (M12 design 4.6.3, 10.2).
+		{"a heading's with an autolink", "[a](<#See https://a.example now>)\n", `<p><a href="#nw-see-httpsaexample-now">a</a></p>` + "\n"},
 		{"none", "[a](#^b) [b](#) [c](#%20) [d](#%ZZ)\n", `<p>a b c <a href="#nw-zz">d</a></p>` + "\n"},
 	})
 }
