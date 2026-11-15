@@ -2,11 +2,16 @@
 # make outdated（00-M12 4.3、M12/P1/S2）：只读地列出过时的 Go 模块、Go 工具链、npm 包、actions、基础镜像的摘要，
 # 与 Node、PostgreSQL 的补丁版本，即 M12 的调查 I1 第 5 节的那张表；改什么由人定，它不改文件。
 # 它把依赖的清单发给 Go 的模块代理与 npm registry，所以只经 make outdated 在 GitHub 的 runner 上跑（vuln.yml 的
-# outdated 一项，手动触发与改了依赖清单的推送），本机不跑（00-M12 4.3）。
+# outdated 一项，手动触发与改了依赖清单的推送），本机不跑（00-M12 4.3）；不在 runner 上时它自己也拒绝，直接执行
+# 或 make -i 都绕不过。
 # 六节各打一行 "== " 起头的标题，每节或列出过时的、或写"没有过时的"。一节里的命令出错时打一行 "!! " 起头的说明，
 # 照样往下；末行写出几节出了错。它只列出、不挡，退出码是 0，除非某一节要的命令根本没有。
 # 需要 go、pnpm（装好依赖）、gh（GH_TOKEN）、docker（buildx）、curl、jq。
 set -uo pipefail
+if [ "${GITHUB_ACTIONS:-}" != true ]; then
+  echo "tools/outdated.sh 只在 GitHub 的 runner 上跑：它把依赖的清单发给外部的服务。结论看 .github/workflows/vuln.yml"
+  exit 1
+fi
 cd "$(dirname "$0")/.." || exit 1
 
 sections=0
