@@ -178,7 +178,7 @@
   | 3 | `5db08ef1` | 43705519890 | 19 项第一次 attempt 全绿，`server (race)` 也绿 | 7:24（5:58，577 个；A15 38 个通过；第 3 格 Chromium 0.5、Firefox 0.9 秒，第 3 格的改动第一次在 CI 上跑 e2e；waited 213 ms） |
 
 - **合并 `main` 之后的分支 CI**：`ea86d371`，run 43721745639，19 项第一次 attempt 全绿，`server (race)` 也绿；e2e 作业 8:06；`server (guards-sources)` 在 EPYC 9V74 上绿（服务端与 `ad0bf40c` 相同，只差 e2e 的三个文件；`main` 上 `ad0bf40c` 的这一项在 7763 上红，见 00 号文档决定 359）
-- **本提交自己的分支 CI**：（待填：本提交的分支 CI 的 run 与 attempt）
+- **本提交自己的分支 CI**：run 43726327301，19 项第一次 attempt 全绿（`server (race)` 11:09，`server (guards-sources)` 13:46，e2e 9:45，E2E 一步 8:12）
 
 ## 环境
 

@@ -1320,7 +1320,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `（待填：旁支的合并号）` |
+| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523` |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
 | P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
@@ -1346,6 +1346,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-15 | 分配守卫的旁支合并 `ad0bf40c` 之后第一次 `main`，run 43721644553：第一次 attempt 16 项绿；`server (guards-sources)` 红在 EPYC 7763 上，`TestSourceRevertAtTenThousandTakesItsTime` 三个状态的 sample2 都撞上 4 秒的请求期限，答 500（"API request deadline exceeded … transaction abandoned after index page"），sample0、1 是 3.21–3.65 秒；`e2e`、`image` 被跳过。同一棵树在分支的 run 43719110918 上绿（EPYC 9V45，sample2 2.31–2.50 秒）。第二次 attempt 只重跑失败的一项与被跳过的 `e2e`、`image`，全绿：guards-sources 又落在 EPYC 7763 上，sample2 3.48–3.54 秒；e2e 7:11（E2E 一步 5:44）。守卫开旁支 `m12-p1-source-revert-deadline` 修，第 11 节加决定 359 | 决定 359 |
 | 2026-11-15 | S2 合并之后第二次 `main`（记合并号的 `5bbd2a56`，run 43693474739）19 项第一次 attempt 全绿：八份的 Test 一步 273（6975P）、223（9V45）、353（7763）、366（7763）、340（Intel）、257（6975P）、294（7763）、314（7763）秒；两次的平均 352、315.5、335、366.5、389、301.5、279.5、307，都在 450 之下，第五份最贴近；第五份这次不在 7763 上，决定 352 的第二次 7763 还没来（第一次是冷的 438 秒，暖的约 359）；e2e 7:17（E2E 一步 5:45）。S2 合并之后两次 `main` 的余量照 P1 设计第 8 节第 1 条成立 | [P1 设计](01-P1-foundation.md) 10.2、第 8 节第 1 条；决定 352 |
 | 2026-11-15 | 帮手的旁支 `m12-p1-navigation-settle`（决定 356；七个提交：实施三个、修复一轮两个、改注释一个 `57d883d4`、合进 `main` 一个 `ea86d371`；合并见第 12 节）：帮手的 `settle` 读完页面为空时隔一个 `pollMs` 再看在途的请求，同一轮两样都空才放行；`followRequests` 在主框架提交它最后请求的那个文档时清掉留下的请求（Chromium 读完答复体才报结束，文档走了的两样都不报；Firefox 对下一个文档请求之后发的也不报），同文档的移动不清；A15 第 3 格在 Firefox 上确定（闸门每问各自发，离开之前等"Loading…"）；A15 加第 10–13 格，门禁的表 A15 ×3。旧文档在提交之前以同一地址 `replaceState` 的窄口不改，写进 P1 设计 3.17（决定 358）。审查（Important 0、Minor 3、Nit 3）：有路由时读完马上再看会漏；按地址配对与复位没有测试；照实改的清单不全。修复一轮 2 个提交（头 `5db08ef1`），分支 CI 43705519890 一次全绿，合进 `main` 之后 43721745639 一次全绿；修复核对一轮三位都没有 Important、Minor，新 Nit 六条（A-N1 = C-N4），一条由注释提交改，其余在本提交。4.4、第 7 节 S1 一行与决定 356 随之改，第 11 节加决定 358；第 12 节同时记分配守卫的旁支的合并号 `ad0bf40c`，它的审查记录补上文档提交的分支 CI；05-lessons 加五条。P1 设计随之改头、第 0 节、3.2、3.4、3.5、3.6、3.14、第 5 节、7.1、7.2、7.4、10.1，加 3.17，10.2 加 S2 合并之后的两次 `main` | [P1 设计](01-P1-foundation.md) 3.17、10.1 与[旁支的审查记录](reviews/P1-navigation-settle-review.md)（A 1M、B 1M、C 1M 3N；修复核对 A 2N、C 4N） |
+| 2026-11-15 | 帮手的旁支合并 `4fe6e523` 之后第一次 `main`，run 43729199362：19 项第一次 attempt 全绿（e2e 7:23，E2E 一步 6:12；guards-sources 落在 EPYC 9V74 上，13:52）。帮手的两种偶发失败（决定 356）合并之后在 `main` 上还没有再见；源文件撤销的守卫的旁支（决定 359）仍在审查 | [帮手的旁支的审查记录](reviews/P1-navigation-settle-review.md)；决定 356、359 |
 
 ---
 
