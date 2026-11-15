@@ -27,6 +27,21 @@ func whole(typ string) string {
 	return key[:end]
 }
 
+// A type's key takes Cherokee's step as the title key does: a small letter
+// keys as its capital, and a key is its own key (M12 design 4.6.3, 25.1).
+func TestAnIndexKeyIsCherokeesCapitals(t *testing.T) {
+	small, capital := "\U0000AB70\U0000AB71 \U000013F8", "\U000013A0\U000013A1 \U000013F0"
+	if a, b := domain.IndexKey(small), domain.IndexKey(capital); a != b || a != capital {
+		t.Errorf("IndexKey(%q) = %q, IndexKey(%q) = %q; want both the capitals %q", small, a, capital, b, capital)
+	}
+	for _, typ := range []string{small, capital, "Project " + small, strings.Repeat("\U0000ABB3x", 40)} {
+		k := domain.IndexKey(typ)
+		if again := domain.IndexKey(k); again != k {
+			t.Errorf("IndexKey(IndexKey(%q)) = %q, want %q", typ, again, k)
+		}
+	}
+}
+
 // A type's key is its title key's first 64 bytes, taken from its first 128
 // characters alone (M9/P4 design 3.9.3; review B-N2): the longest types of
 // each shape there, each's key the whole type's: three characters a
@@ -72,7 +87,10 @@ func TestIndexKey(t *testing.T) {
 // costliest shape, a letter and 127 marks of four bytes, allocates its own
 // bytes and about two more.
 func TestAnIndexKeyerTakesEachKeyWithItsBuffers(t *testing.T) {
-	alphabet := []rune("aAßΣσς\u0301\u0316\u0308\u0304uU\u1100\u1161\u11a8項 /\U0001E000\U0001D167İ")
+	alphabet := append([]rune("aAßΣσς\u0301\u0316\u0308\u0304uU\u1100\u1161\u11a8項 /\U0001E000\U0001D167İ"),
+		// Cherokee, capitals and small letters of both blocks: the keyer
+		// swaps the small ones in place (M12 design 4.6.3, 25.1).
+		0x13A0, 0x13EF, 0x13F0, 0x13F5, 0xAB70, 0xABBF, 0x13F8, 0x13FD)
 	r := rand.New(rand.NewPCG(1, 2))
 	k := domain.NewIndexKeyer()
 	for range 2_000 {

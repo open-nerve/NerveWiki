@@ -11,7 +11,9 @@ import (
 
 // TitleKeyContext applies TitleKey's NFC, full Unicode fold and NFC pipeline
 // while observing cancellation during long inputs. One stateful transform
-// chain spans all chunks, including combining sequences and UTF-8 boundaries.
+// chain spans all chunks, including combining sequences and UTF-8 boundaries;
+// Cherokee's step (CherokeeCapital) maps the whole result, not a chunk at a
+// time, so that no chunk's edge cuts a letter.
 func TitleKeyContext(ctx context.Context, s string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -34,7 +36,7 @@ func TitleKeyContext(ctx context.Context, s string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
-	return string(out), nil
+	return cherokeeCapitals(string(out)), nil
 }
 
 type titleKeyReader struct {
