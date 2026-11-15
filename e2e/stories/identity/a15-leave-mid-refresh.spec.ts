@@ -15,10 +15,11 @@ import { expect, test } from "../../fixtures/test";
 // known limitation in the release notes). The stories leave a document through fixtures/navigation.ts, which
 // waits first: two tests here leave through its escape and land on the sign-in page; the others go through it and
 // stay signed in, each holding back one of the things the helper waits for (the refresh's answer, the first
-// refresh, a read, the lock after a refresh or under a sign-in, the lease without Web Locks), and one with none of
-// them, its document signed up itself, is not kept waiting. The answer, the next document, the first refresh,
-// the lock and the lease are held so that each order happens for certain, not by running it again and again
-// (05-lessons 6). Only the page has a version: the API's side, a retired token used again, is A5 (API).
+// refresh, a read, one sent while the helper reads the page, the lock after a refresh or under a sign-in, the
+// lease without Web Locks), and one with none of them, its document signed up itself, is not kept waiting. The
+// answer, the next document, the first refresh, the reads, the lock and the lease are held so that each order
+// happens for certain, not by running it again and again (05-lessons 6). Only the page has a version: the API's
+// side, a retired token used again, is A5 (API).
 
 /** A promise, and the function that settles it. */
 function signal(): { settled: Promise<void>; settle: () => void } {
@@ -486,4 +487,57 @@ test("A15 (page): without Web Locks, leaving through the helper while another ta
   await expect(page).toHaveURL("/settings/security");
   await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
+});
+
+test("A15 (page): leaving through the helper while a read goes out as the helper reads the page waits for its answer", async ({
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const page = await signedInPage(await registerOnboarded(api, emailFor(testInfo)));
+  const nextDocument = signal();
+  let requestedAt = 0;
+  page.on("request", (request) => {
+    if (requestedAt === 0 && documentAt(page, request, "/settings/security")) {
+      requestedAt = Date.now();
+      nextDocument.settle();
+    }
+  });
+  // The read is answered by nervewiki and held until the test lets it go.
+  const reached = signal();
+  const letGo = signal();
+  await page.route("**/api/v0/instance?a15=during", async (route) => {
+    const response = await route.fetch();
+    reached.settle();
+    await letGo.settled;
+    await route.fulfill({ response }).catch(() => undefined);
+  });
+
+  await goto(page, "/settings/profile");
+  await expect(page.getByRole("heading", { level: 2, name: "Profile", exact: true })).toBeVisible();
+  // As a page that renders again after the story's last step may (LW3 on CI run 43686031128): the document sends
+  // a read while the helper reads it, here from inside the helper's navigator.locks.query, 300 ms long.
+  await page.evaluate(() => {
+    const query = LockManager.prototype.query;
+    LockManager.prototype.query = async function (this: LockManager) {
+      LockManager.prototype.query = query;
+      // The answer is read, as the app reads each: Chromium reports a request finished only once its body is.
+      void fetch("/api/v0/instance?a15=during")
+        .then((answer) => answer.text())
+        .catch(() => undefined);
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return query.call(this);
+    };
+  });
+  const leaving = goto(page, "/settings/security");
+  await reached.settled;
+  await within(nextDocument.settled, 1_000);
+  const releasedAt = Date.now();
+  letGo.settle();
+  await leaving;
+
+  expect(requestedAt, "the next document is asked for once the read was answered").toBeGreaterThan(releasedAt);
+  expect(pageWatch.apiFailures).toEqual([]);
+  await expect(page).toHaveURL("/settings/security");
+  await expect(page.getByRole("heading", { level: 2, name: "Password", exact: true })).toBeVisible();
 });

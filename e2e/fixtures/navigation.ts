@@ -82,7 +82,8 @@ export async function reload(
 
 /**
  * Waits until page's document has nothing out that leaving it would lose: no API request unanswered, and in
- * the page (sessionWaits) the refresh lock free and its tokens answered. Fails after settleMs, naming what it
+ * the page (sessionWaits) the refresh lock free and its tokens answered, both in the same round: the page runs
+ * on while it is read, and a request it sends meanwhile is waited for too. Fails after settleMs, naming what it
  * still waits for.
  */
 async function settle(page: Page): Promise<void> {
@@ -90,12 +91,14 @@ async function settle(page: Page): Promise<void> {
   if (open === undefined) {
     throw new Error("goto, reload: the page is not watched; call watchPage before its first navigation");
   }
+  const requests = () => [...open].map((request) => `${request.method()} ${new URL(request.url()).pathname}`);
   const deadline = Date.now() + settleMs;
   for (;;) {
-    let waits = [...open].map((request) => `${request.method()} ${new URL(request.url()).pathname}`);
+    let waits = requests();
     if (waits.length === 0) {
       // oxlint-disable-next-line no-await-in-loop -- read again each round until nothing is left to wait for
       waits = await sessionWaits(page, Math.max(readMs, deadline - Date.now()));
+      if (waits.length === 0) waits = requests();
     }
     if (waits.length === 0) return;
     if (Date.now() >= deadline) {
