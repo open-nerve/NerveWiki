@@ -318,7 +318,7 @@ BOOTSTRAP_SIXTH = ^Test(Ingest|TheBackgroundRevertStopsAtAWriteBetweenItsBatches
 # 第七份时跳过它，第四份跳过第三份的 [U-Z] 时已跳过它。
 # M11/P2 的分份（00-M11 第 276 条）：第三份的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与第五份的 TestTheMCPToolsErrorsCarryTheirCodes
 # 挪到第八份，同样也进第七份的模式（数与各份怎么跳过它们见第八份的说明）。
-BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
+BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackPutsBackWhatTheAgentLeft$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 # M11/P2/S2：升级的检查、闸门、提交与 MCP 工具的整个程序测试单列一份（00-M11 第 261 条）：不开时 S2 之后第七份在 EPYC 7763 上约 375–420 秒
 # （P2 设计 7.5），邻份没有余量，P3 还要往 TestUpgrade 加测试。它是第七份的子集，第七份 -skip 它；第一、三、六份 -skip 第七份，第四份跳过第三份的
 # [U-Z] 时已跳过它们，别的份的模式不收它们。开份时（这个提交）只有 P1 的 TestUpgradeToolsErrorsCarryTheirCodes 一个顶层归它。S1 合并之后两次 main
@@ -362,7 +362,10 @@ BOOTSTRAP_SEVENTH = ^Test(Upgrade|IngestBefore$$|ABackground|VirtualExport$$|The
 # 它们，第四份跳过第三份的 The[F-Z] 时已跳过它们，第一、二、六份的模式不收它们。挪后本机两轮第三份 227.2/225.2、第五份 207.0/208.0、第八份 212.5/213.2 秒；照各份 7763 上的包与本机之比
 # （第三份 381.5/237.8≈1.60、第五份 375.7/223.4≈1.68、第八份 279.0/186.2≈1.50）加约 33 秒，折到 7763 第三份约 396、第五份约 382（TestTheMCPBatchIsRefusedWhole 慢的一种约 411）、第八份约 352 秒。
 # 554 个顶层 145/50/119/120/60/15/30/15，每个恰在一份。不提高 -timeout。
-BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
+# M12/P3/S2（决定 304）：第 302 条修好，M11 收尾的 TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages 改名为
+# TestRevertingARollbackPutsBackWhatTheAgentLeft，第七、八两份的模式都换成新名字，仍只在第八份（以 TestR 起名，漏了会落进第四份）；
+# nested 一格拆成请求与后台两本笔记本，多一次回滚与撤销。顶层的数与各份照旧。
+BOOTSTRAP_EIGHTH = ^Test(Upgrade(Approval|Check|Gates|Review|Submit|Tools)|VirtualExport$$|TheSourceRebuildMatchesSuccessfulRandomSteps$$|TheMCPToolsErrorsCarryTheirCodes$$|RevertingARollbackPutsBackWhatTheAgentLeft$$|TheSearchIsWhatEachReadAllows$$|TheWikiToolsAnswerEveryCode$$)
 .PHONY: test-go-race
 test-go-race: ## 竞态检测下运行组合根（internal/bootstrap）之外的全部 Go 包（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) $$(go list ./... | grep -v '/internal/bootstrap$$')

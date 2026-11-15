@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"slices"
 	"testing"
 	"time"
@@ -707,6 +708,184 @@ func TestPlanRevertConflicts(t *testing.T) {
 	}
 }
 
+// A trash item's root the changeset deleted is a top of its own (M12
+// design 4.6.1, decision 304; M12/P3 design 3.10.2): a rollback's new page
+// deleted a pass before the new folder over it; free subtrees deleted
+// bottom up, a pass a level, under a middle member of the group above; a
+// subtree restored and deleted again in two. Each such item is restored
+// alone, the outer first, its group read at its own time. Each node is
+// judged by its own item: an item filled since, or one whose root moved
+// since, or one restored since, is changed; one past its time is
+// expired, the inner the first to be. A nested root whose group goes too
+// deep is too deep with the outer when the deepest page is under it, the
+// outer alone otherwise. Before decision 304 each of these was changed.
+func TestPlanRevertOfNestedTrashRoots(t *testing.T) {
+	t1 := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC)
+	t1b, t2 := t1.Add(time.Minute), t1.Add(time.Hour)
+	t3, t4 := t2.Add(10*time.Minute), t2.Add(20*time.Minute)
+	expired := newWorld(t).at.Add(domain.TrashMargin - retention)
+	// rollback is Made{Inner, Guide}: Inner deleted at inner, Guide moved
+	// out to the root, then Made deleted (source 1).
+	rollback := func(w *world, inner time.Time) {
+		made := w.page("Made", nil, 5, 1, "made")
+		in := w.page("Inner", &made, 0, 2, "inner")
+		guide := w.page("Guide", &made, 1, 1, "guide")
+		w.trash(in, inner)
+		w.deleted(in)
+		w.move(guide, nil, 1)
+		w.placed(guide, domain.TreeState{ParentID: &made, Name: "Guide", SortOrder: 1})
+		w.trash(made, t2)
+		w.deleted(made)
+	}
+	// bottomUp is F{G{H1, H2}}: H1 and H2 deleted first, each an item,
+	// then F with G (source 2). It answers F and G.
+	bottomUp := func(w *world) (uuid.UUID, uuid.UUID) {
+		f := w.page("F", nil, 5, 1, "f")
+		g := w.page("G", &f, 0, 1, "g")
+		h1, h2 := w.page("H1", &g, 0, 1, "h1"), w.page("H2", &g, 1, 1, "h2")
+		w.trash(h1, t1)
+		w.trash(h2, t1b)
+		w.deleted(h1)
+		w.deleted(h2)
+		w.trash(f, t2)
+		w.deleted(f)
+		w.deleted(g)
+		return f, g
+	}
+	// twice is Made{Inner}, which the changeset deleted as one item,
+	// restored since (source 3). It answers Made and Inner.
+	twice := func(w *world) (uuid.UUID, uuid.UUID) {
+		made := w.page("Made", nil, 5, 1, "made")
+		inner := w.page("Inner", &made, 0, 3, "inner")
+		w.trash(made, t1)
+		w.deleted(made)
+		w.deleted(inner)
+		w.revive(made, inner)
+		return made, inner
+	}
+	// nested is F{G{H{J}}} under parent: H with J deleted first, then F
+	// with G, a nested group of two under a middle member.
+	nested := func(w *world, parent *uuid.UUID) {
+		f := w.page("F", parent, 5, 1, "f")
+		g := w.page("G", &f, 0, 1, "g")
+		h := w.page("H", &g, 0, 1, "h")
+		j := w.page("J", &h, 0, 1, "j")
+		w.trash(h, t1)
+		w.deleted(h)
+		w.deleted(j)
+		w.trash(f, t2)
+		w.deleted(f)
+		w.deleted(g)
+	}
+	// deeper moves the page p under a chain of n pages made at the root.
+	deeper := func(w *world, p uuid.UUID, n int) {
+		var at *uuid.UUID
+		for i := range n {
+			at = new(w.page(fmt.Sprintf("C%d", i+1), at, float64(10+i), 1, "c"))
+		}
+		w.move(p, at, 0)
+	}
+	for _, tt := range []struct {
+		name      string
+		build     func(w *world)
+		ops       []string
+		conflicts []string
+		groups    map[string]time.Time
+	}{
+		{"1 a rollback's new page deleted a pass before the new folder over it", func(w *world) {
+			rollback(w, t1)
+		}, []string{"restore Made", "restore Inner", "place Guide moved"}, nil, map[string]time.Time{"Made": t2, "Inner": t1}},
+		{"2 free subtrees deleted bottom up, under the outer group's middle member", func(w *world) {
+			bottomUp(w)
+		}, []string{"restore F", "restore H1", "restore H2"}, nil, map[string]time.Time{"F": t2, "H1": t1, "H2": t1b}},
+		{"3 an item restored, then deleted again in two, the inner first", func(w *world) {
+			made, inner := twice(w)
+			w.trash(inner, t3)
+			w.trash(made, t4)
+		}, []string{"restore Made", "restore Inner"}, nil, map[string]time.Time{"Made": t4, "Inner": t3}},
+		{"4 a nested group of two under the outer group's middle member", func(w *world) {
+			nested(w, nil)
+		}, []string{"restore F", "restore H"}, nil, map[string]time.Time{"F": t2, "H": t1}},
+		{"5 as 3, a page made under Made before it was deleted again", func(w *world) {
+			made, inner := twice(w)
+			w.trash(inner, t3)
+			w.page("Added", &made, 1, 1, "added")
+			w.trash(made, t4)
+		}, nil, []string{"changed Made"}, map[string]time.Time{"Inner": t3}},
+		{"6 as 3, Inner moved elsewhere before it was deleted again", func(w *world) {
+			other := w.page("Other", nil, 9, 1, "o")
+			made, inner := twice(w)
+			w.move(inner, &other, 0)
+			w.trash(inner, t3)
+			w.trash(made, t4)
+		}, nil, []string{"changed Inner"}, map[string]time.Time{"Made": t4, "Inner": t3}},
+		{"7 as 1, Inner's item past its time, Made's not", func(w *world) {
+			rollback(w, expired)
+		}, nil, []string{"expired Inner"}, map[string]time.Time{"Made": t2, "Inner": expired}},
+		{"8 as 3, Made's item restored since, Inner's still in the trash", func(w *world) {
+			made, inner := twice(w)
+			w.trash(inner, t3)
+			w.trash(made, t4)
+			w.revive(made)
+		}, nil, []string{"changed Made"}, map[string]time.Time{"Inner": t3}},
+		{"9a as 2, F's item restored, a page made under G, F deleted again", func(w *world) {
+			f, g := bottomUp(w)
+			w.revive(f, g)
+			w.page("N", &g, 2, 1, "n")
+			w.trash(f, t4)
+		}, nil, []string{"changed F"}, map[string]time.Time{"H1": t1, "H2": t1b}},
+		{"9b as 2, F's item restored, then deleted again as it was", func(w *world) {
+			f, g := bottomUp(w)
+			w.revive(f, g)
+			w.trash(f, t4)
+		}, []string{"restore F", "restore H1", "restore H2"}, nil, map[string]time.Time{"F": t4, "H1": t1, "H2": t1b}},
+		{"10 as 4 under P, P moved deeper since, the deepest page under H", func(w *world) {
+			p := w.page("P", nil, 1, 1, "p")
+			nested(w, &p)
+			deeper(w, p, 6)
+		}, nil, []string{"too_deep F", "too_deep H"}, map[string]time.Time{"F": t2, "H": t1}},
+		{"10b as 10, the deepest page under G's other child K, not under H", func(w *world) {
+			p := w.page("P", nil, 1, 1, "p")
+			f := w.page("F", &p, 5, 1, "f")
+			g := w.page("G", &f, 0, 1, "g")
+			h := w.page("H", &g, 0, 1, "h")
+			k := w.page("K", &g, 1, 1, "k")
+			k2 := w.page("K2", &k, 0, 1, "k2")
+			k3 := w.page("K3", &k2, 0, 1, "k3")
+			w.trash(h, t1)
+			w.deleted(h)
+			w.trash(f, t2)
+			for _, id := range []uuid.UUID{f, g, k, k2, k3} {
+				w.deleted(id)
+			}
+			deeper(w, p, 5)
+		}, nil, []string{"too_deep F"}, map[string]time.Time{"F": t2, "H": t1}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld(t)
+			tt.build(w)
+			state := w.state()
+			groups := map[string]time.Time{}
+			for root, at := range domain.RevertGroups(w.items, state.Nodes) {
+				groups[w.nodes[root].Name] = at
+			}
+			if !maps.EqualFunc(groups, tt.groups, time.Time.Equal) {
+				t.Errorf("RevertGroups = %v, want %v", groups, tt.groups)
+			}
+			plan, err := domain.PlanRevert(state)
+			if err != nil {
+				t.Fatalf("PlanRevert() = %v", err)
+			}
+			if got := w.ops(plan); !slices.Equal(got, tt.ops) || len(plan.Missing) != 0 {
+				t.Errorf("ops = %q, %d missing; want %q", got, len(plan.Missing), tt.ops)
+			}
+			if got := w.conflicts(plan); !slices.Equal(got, tt.conflicts) || plan.Count != len(tt.conflicts) {
+				t.Errorf("conflicts = %q (%d), want %q", got, plan.Count, tt.conflicts)
+			}
+		})
+	}
+}
+
 // A deletion whose trash item's group the reads did not find, gone
 // between the read of its root and of its group, is changed: a group is
 // never restored unread.
@@ -966,7 +1145,8 @@ func TestARevertOfAMoveThatRenamesIsOnePlace(t *testing.T) {
 }
 
 // The trash items a revert reads are its deletions' tops that are still
-// roots of as many pages and attachments; the versions it compares are a
+// roots of as many pages and attachments, each at its own time, one
+// deleted under another among them; the versions it compares are a
 // restored page's, a deleted page's at its item's revision and its
 // group's, and the bases it writes back.
 func TestRevertGroupsAndRefs(t *testing.T) {
@@ -1004,5 +1184,31 @@ func TestRevertGroupsAndRefs(t *testing.T) {
 		{NodeID: s, Revision: 4}, {NodeID: u, Revision: 1}}
 	if !slices.Equal(got, want) {
 		t.Errorf("RevertRefs = %v, want %v", got, want)
+	}
+
+	// A trash item's root the changeset deleted under another, a top of its
+	// own (M12/P3 design 3.10.5): Inner deleted an hour before Made over
+	// it. Each group is read at its own time, and each page compared at its
+	// item's revision and at its group's, the two in the trash at later
+	// revisions of the same bytes.
+	w = newWorld(t)
+	made := w.page("Made", nil, 0, 2, "made")
+	inner := w.page("Inner", &made, 0, 4, "inner")
+	early := deletedAt.Add(-time.Hour)
+	w.trash(inner, early)
+	w.deleted(inner)
+	w.trash(made, deletedAt)
+	w.deleted(made)
+	w.hashes[domain.VersionRef{NodeID: made, Revision: 5}] = hash("made")
+	w.hashes[domain.VersionRef{NodeID: inner, Revision: 7}] = hash("inner")
+	state = w.state()
+	if groups := domain.RevertGroups(w.items, state.Nodes); len(groups) != 2 || !groups[made].Equal(deletedAt) || !groups[inner].Equal(early) {
+		t.Errorf("RevertGroups = %v, want Made's at %v and Inner's at %v", groups, deletedAt, early)
+	}
+	got = domain.RevertRefs(w.items, w.versions, state.Groups)
+	want = []domain.VersionRef{{NodeID: made, Revision: 2}, {NodeID: made, Revision: 5}, {NodeID: inner, Revision: 4},
+		{NodeID: inner, Revision: 7}}
+	if !slices.Equal(got, want) {
+		t.Errorf("RevertRefs of a nested root = %v, want %v", got, want)
 	}
 }

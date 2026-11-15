@@ -2,32 +2,29 @@ package bootstrap
 
 import (
 	"net/http"
-	"reflect"
-	"slices"
-	"strings"
 	"testing"
 )
 
-// A rollback's changeset reverted afterwards, as it stands in v0.1 (M11
-// closeout, review A-M1; decision 302). The rollback writes its passes in
-// one changeset: the first deletes, in a unit of its own, the new subtrees
-// that hold no baseline node; a later one deletes, at another time, a new
-// node that holds the baseline's pages moved under it. M8's revert plan
-// finds the tops of a changeset's entries by their parents: a new page
-// deleted in the first pass under a new folder deleted later has that
-// folder for its top, which the trash's group of the folder does not hold.
+// A rollback's changeset reverted afterwards puts the notebook back as the
+// agent left it (M11 closeout, review A-M1; decision 302, which M12/P3/S2
+// fixed: M12 design 4.6.1, decision 304). The rollback writes its passes
+// in one changeset: the first deletes, in a unit of its own, the new
+// subtrees that hold no baseline node; a later one deletes, at another
+// time, a new node that holds the baseline's pages moved under it. A new
+// page deleted in the first pass under a new folder deleted later is a
+// trash item's root itself: the revert takes it for a top of its own, and
+// restores the folder's item, then the page's under it.
 //
 // flat: the new folder Made holds only Guide, moved under it; the first
 // pass deletes the new subtrees that hold no baseline node, Fresh and the
 // raw and AGENTS the start wrote, none of them under Made. Reverted, in
 // the request, the notebook is as the agent left it.
 //
-// nested: Made holds Guide, moved under it, and Inner, new. The revert, in
-// the request and in the background, answers 409 page.revert_conflict of
-// Made and Inner, changed, and writes nothing: the notebook is as before
-// the upgrade's start. This cell pins a known gap: once it is fixed (M12's
-// handoff), the revert answers 200 here too, and this cell turns over.
-func TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages(t *testing.T) {
+// nested: Made holds Guide, moved under it, and Inner, new, which the
+// first pass deletes, Made a later one. Reverted in the request, and in
+// the background in a notebook of its own, the notebook is as the agent
+// left it, one revert changeset each.
+func TestRevertingARollbackPutsBackWhatTheAgentLeft(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	// rolledBack is the notebook name, upgraded by alice, its agent's writes
 	// made, then abandoned and rolled back: the notebook, its state before
@@ -84,32 +81,38 @@ func TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages(t 
 		}
 	})
 
-	t.Run("nested", func(t *testing.T) {
-		nb, before, _, changeset := rolledBack(t, "Nested",
-			agentWrite{"write", map[string]any{"path": "Made/Inner.md", "content": "inner\n"}},
-			agentWrite{"move", map[string]any{"from": "Guide.md", "to": "Made/Guide.md"}})
-		var want []revertConflict
-		for _, name := range []string{"Inner", "Made"} {
-			ids := queryStrings(t, tm.pool, "SELECT id::text FROM nodes WHERE notebook_id = $1 AND name = $2 AND deleted_at IS NOT NULL", nb, name)
-			if len(ids) != 1 {
-				t.Fatalf("%s in the trash = %q, want one", name, ids)
-			}
-			want = append(want, revertConflict{NodeID: ids[0], Name: name, Reason: "changed"})
+	nested := []agentWrite{
+		{"write", map[string]any{"path": "Made/Inner.md", "content": "inner\n"}},
+		{"move", map[string]any{"from": "Guide.md", "to": "Made/Guide.md"}},
+	}
+	t.Run("nested, request", func(t *testing.T) {
+		nb, _, tidied, changeset := rolledBack(t, "Nested", nested...)
+		c := changesetRevert("alice", changeset)
+		status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], "")
+		var r revertAnswer
+		decodeAnswer(t, body, &r)
+		if status != http.StatusOK || !r.Changed || r.ChangesetID == nil {
+			t.Fatalf("the revert of the rollback's changeset = %d %s, want 200, changed", status, body)
 		}
-		for _, s := range []step{changesetRevert("alice", changeset), revertStart("alice", nb, changeset, "")} {
-			status, body := ask(t, tm.contract, s.method, tm.base+s.path, tm.tokens["alice"], s.body)
-			conflicts, n := conflictsOf(t, answer{body: body})
-			slices.SortFunc(conflicts, func(a, b revertConflict) int { return strings.Compare(a.Name, b.Name) })
-			if status != http.StatusConflict || problemCode(t, body) != "page.revert_conflict" || n != 2 ||
-				!reflect.DeepEqual(conflicts, want) {
-				t.Errorf("%s %s = %d %s, want 409 page.revert_conflict of %+v", s.method, s.path, status, body, want)
-			}
-			if now := tm.notebookState(t, nb); now != before {
-				t.Errorf("after %s %s, the notebook:\n%s\nwant as before the start:\n%s", s.method, s.path, now, before)
-			}
+		if now := tm.notebookState(t, nb); now != tidied {
+			t.Errorf("reverted, the notebook:\n%s\nwant as the agent left it:\n%s", now, tidied)
 		}
-		if n := reverts(t, nb); n != 0 {
-			t.Errorf("%d revert changesets, want none", n)
+		if n := reverts(t, nb); n != 1 {
+			t.Errorf("%d revert changesets, want the one", n)
+		}
+	})
+
+	t.Run("nested, background", func(t *testing.T) {
+		nb, _, tidied, changeset := rolledBack(t, "Nested Background", nested...)
+		j := tm.endedBackground(t, "alice", tm.startedJob(t, revertStart("alice", nb, changeset, "")).ID)
+		if j.State != "succeeded" || j.Kind != "revert" || j.counts()["restored"] != 4 || j.counts()["put_back"] != 1 {
+			t.Fatalf("the background revert of the rollback's changeset = %s, want it succeeded, 4 nodes restored, Guide put back", j)
+		}
+		if now := tm.notebookState(t, nb); now != tidied {
+			t.Errorf("reverted, the notebook:\n%s\nwant as the agent left it:\n%s", now, tidied)
+		}
+		if n := reverts(t, nb); n != 1 {
+			t.Errorf("%d revert changesets, want the one", n)
 		}
 	})
 	checkPages(t, tm.pool)
