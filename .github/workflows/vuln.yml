@@ -40,10 +40,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # 不存 Go 的缓存：setup-go 的缓存键只看 Go 的版本与 go.sum，与 ci.yml 的 server 各份、e2e 的键相同。这里的两项一分钟内跑完，
+      # 先存下的几 MB（几乎只有模块的 go.mod）就占了那个键（键存下就不再改），ci.yml 的各份取回的是它：S2 的分支上组合根的 Test 一步
+      # 每份多约 50 秒的编译（S1 之前取回的是 254 MB）（M12/P1/S2）
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: server/go.sum
+          cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
@@ -65,12 +68,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      # 同 vuln 一项：不存 Go 的缓存
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: server/go.mod
-          cache-dependency-path: |
-            server/go.sum
-            server/tools/go.sum
+          cache: false
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
