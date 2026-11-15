@@ -33,11 +33,30 @@ const (
 )
 
 // Restoring a string copy for each native comparison column must exceed
-// this fixed ceiling. The seed, incoming facts, Keys and complete warm-up
-// are outside TotalAlloc; the one measured call includes the real query,
-// all 4096 native rows, terminal Err, Close and every collector output.
+// this fixed ceiling in every call. The seed, incoming facts, Keys and
+// complete warm-up are outside TotalAlloc; each measured call includes the
+// real query, all 4096 native rows, terminal Err, Close and every collector
+// output.
+//
+// TotalAlloc is the whole process's. If this goroutine is held off the CPU
+// for 15 ms while it sends the query, pgx starts its background reader,
+// which reads the result into new 8 KiB buffers until the goroutine stops
+// it: up to the whole 6.4 MB result, as much as a copy (CI's race leg, M12).
+// Each new buffer comes with a new 24-byte *[]byte, so the guard leaves out
+// the new 8 KiB blocks, but no more of them than there are new 24-byte
+// objects. Nothing else in these calls allocates 8 KiB blocks (profiled;
+// pgx's chunkreader takes them too, but only after a message over 8 KiB).
+// It also takes the smallest of up to three calls, for anything else that
+// happens only now and then. So two kinds of copy go unseen: one that
+// allocates a 24-byte object besides each 8 KiB block, and one that is not
+// made in every one of the calls.
 func TestPreparedSourceDoesNotCopyTextForComparison(t *testing.T) {
 	const maxAllocatedBytes uint64 = 2 << 20
+	const maxMeasuredCalls = 3
+	// pgx v5.11.0: pgconn/internal/bgreader's bgRead reads into
+	// iobufpool.Get(8192), and iobufpool's New returns each new buffer as a
+	// new *[]byte. Check both against these when pgx is upgraded.
+	const backgroundReadBuffer, backgroundReadHeader = 8192, 24
 	pool, trace := newLinksCollectorPool(t)
 	trace.sql = gen.InspectPageLinksForPreparation
 	p := app.Page{ID: uuid.UUID{15: 50}, NotebookID: uuid.UUID{15: 1}, Revision: 1}
@@ -165,26 +184,56 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 		checkRead(warm)
 		checkIncoming()
 
-		measuredQuery, measuredNative := newObserver()
-		calls := trace.count()
-		var before, after runtime.MemStats
-		runtime.GC()
-		runtime.ReadMemStats(&before)
-		read, err := inspectPageLinksForPreparation(ctx, measuredQuery, arg, &incoming)
-		runtime.ReadMemStats(&after)
-		allocated := after.TotalAlloc - before.TotalAlloc
-		if err != nil {
-			return err
+		var classes runtime.MemStats
+		runtime.ReadMemStats(&classes)
+		bufferClass, headerClass := -1, -1
+		for i, class := range classes.BySize {
+			switch class.Size {
+			case backgroundReadBuffer:
+				bufferClass = i
+			case backgroundReadHeader:
+				headerClass = i
+			}
+		}
+		if bufferClass < 0 || headerClass < 0 {
+			t.Fatal("PREPARED_TEXT_FIXTURE: MemStats.BySize has no 8 KiB or no 24-byte size class")
 		}
 
-		// Every semantic/native assertion precedes the allocation failure.
-		checkObserved(measuredQuery, measuredNative)
-		if trace.count() != calls+1 {
-			t.Fatal("PREPARED_TEXT_NATIVE: measured call did not run exactly one original query")
+		// The first call within the ceiling ends the measurements; a copy
+		// exceeds it in all of them. The overwrite runs after the last call,
+		// so every call starts from the same connection buffers.
+		allocations := make([]preparedTextCopyAllocation, 0, maxMeasuredCalls)
+		reads := make([]preparedLinkRead, 0, maxMeasuredCalls)
+		for len(allocations) < maxMeasuredCalls {
+			measuredQuery, measuredNative := newObserver()
+			calls := trace.count()
+			var before, after runtime.MemStats
+			runtime.GC()
+			runtime.ReadMemStats(&before)
+			read, err := inspectPageLinksForPreparation(ctx, measuredQuery, arg, &incoming)
+			runtime.ReadMemStats(&after)
+			a := preparedTextCopyAllocation{total: after.TotalAlloc - before.TotalAlloc,
+				blocks:  after.BySize[bufferClass].Mallocs - before.BySize[bufferClass].Mallocs,
+				headers: after.BySize[headerClass].Mallocs - before.BySize[headerClass].Mallocs}
+			a.counted = a.total - min(a.blocks, a.headers)*backgroundReadBuffer
+			allocations = append(allocations, a)
+			if err != nil {
+				return err
+			}
+
+			// Every semantic/native assertion precedes the allocation failure.
+			checkObserved(measuredQuery, measuredNative)
+			if trace.count() != calls+1 {
+				t.Fatal("PREPARED_TEXT_NATIVE: measured call did not run exactly one original query")
+			}
+			checkRead(read)
+			checkIncoming()
+			linksCollectorReusable(t, conn)
+			reads = append(reads, read)
+			if a.counted <= maxAllocatedBytes {
+				break
+			}
 		}
-		checkRead(read)
-		checkIncoming()
-		linksCollectorReusable(t, conn)
 		var overwrite string
 		if err := conn.QueryRow(ctx, "SELECT repeat('x', 65536)").Scan(&overwrite); err != nil {
 			return err
@@ -192,19 +241,35 @@ VALUES ($1, $2, 1, 2, true)`, p.ID, p.NotebookID); err != nil {
 		if len(overwrite) != 65536 {
 			t.Fatal("PREPARED_TEXT_ORACLE: connection reuse did not return the overwrite payload")
 		}
-		checkRead(read)
+		for _, read := range reads {
+			checkRead(read)
+		}
 		checkIncoming()
-		t.Logf("prepared comparison: native rows=%d, literal outputs and connection reuse verified, TotalAlloc=%d bytes, fixed ceiling=%d bytes",
-			measuredNative.seen, allocated, maxAllocatedBytes)
-		if allocated > maxAllocatedBytes {
-			t.Fatalf("PREPARED_TEXT_COPY: complete query+collector allocated %d bytes, fixed maximum %d for %d native rows",
-				allocated, maxAllocatedBytes, preparedTextCopyRows)
+		smallest := allocations[0].counted
+		for _, a := range allocations[1:] {
+			smallest = min(smallest, a.counted)
+		}
+		t.Logf("prepared comparison: native rows=%d in each of %d calls, literal outputs and connection reuse verified, %v, fixed ceiling=%d bytes",
+			preparedTextCopyRows, len(allocations), allocations, maxAllocatedBytes)
+		if smallest > maxAllocatedBytes {
+			t.Fatalf("PREPARED_TEXT_COPY: complete query+collector allocated at least %d bytes besides the reader's 8 KiB buffers in each of %d calls %v, fixed maximum %d for %d native rows",
+				smallest, len(allocations), allocations, maxAllocatedBytes, preparedTextCopyRows)
 		}
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+// One measured call: TotalAlloc's difference, the new 8 KiB blocks and
+// 24-byte objects, and what the guard counts of the total.
+type preparedTextCopyAllocation struct {
+	total, blocks, headers, counted uint64
+}
+
+func (a preparedTextCopyAllocation) String() string {
+	return fmt.Sprintf("(TotalAlloc=%d 8KiB=%d 24B=%d counted=%d)", a.total, a.blocks, a.headers, a.counted)
 }
 
 // The extra observer reads the native row while it is valid and forwards
