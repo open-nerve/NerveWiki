@@ -79,5 +79,6 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **`main` 只推完成并核对过的状态**（合并加文档，CI 绿），从不强推，从不推做了一半的东西。分支随时可以推。
 - **不提交**本机的东西：agent 的设置与临时目录、量时间的输出、变异的备份（`*.mutbak`）。提交之前看一眼 `git status`。
 - **本目录是交接时的快照**，之后不必维护。进度写在仓库原本的地方：v0.1-design 12.6、各 00 号设计的第 12、13 节、各 Phase 设计的"结果"一节与审查记录。
+- **升 pgx 时**核对 `server/internal/modules/linking/adapter/postgres/prepared_source_text_test.go` 的两个常量：`backgroundReadBuffer`（8192）对 `pgconn/internal/bgreader` 的 `bgRead` 取的 `iobufpool.Get`；`backgroundReadHeader`（24）对 `internal/iobufpool` 的 `New` 返回的 `*[]byte`。pgx 改了缓冲的大小，`TestPreparedSourceDoesNotCopyTextForComparison` 就减不掉后台读取器的缓冲，在竞态一项上又会偶尔红。pgx 不再为每块分配 `*[]byte` 时，配对取到的只是平常的几个，守卫回到原来那样严，也是偶尔红。两种情形都不会放过复制（00-M12 决定 357）。
 
 M10/P2/S2 边界再平衡与恢复折叠之前的历史精确代码33b4，其CI40718770843全部11作业成功，四片Test444/419/302/271秒仅一个分支样本；两次main均值仍按上述规则另验。本机四份双轮及来源差异见[S2记录](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#33b4最终代码控制与本机验证)，不以本机量替代CI。 最新代码/门禁/CI及分支、main配对以[S2当前验证](../M10-llm-wiki/reviews/P2-S2-source-hash-review.md#最终验证与集成)为准，旧数不自动套用到后续修复头。
