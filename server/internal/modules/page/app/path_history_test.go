@@ -3,6 +3,7 @@ package app_test
 import (
 	"errors"
 	"maps"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -391,6 +392,15 @@ func TestListChangesetsAtPathListsAsExecute(t *testing.T) {
 	if err != nil || !slices.Equal(ids(got.Changesets), []uuid.UUID{uploaded.ID}) {
 		t.Errorf("the attachment's log = %v, %v; want its upload", ids(got.Changesets), err)
 	}
+	// "/" is the whole notebook, as list's and index's root: its answer is
+	// the one of no path, word for word (M12 design 4.6.4, 30.4).
+	whole, err := uc.AtPath(f.asAlice(), f.eng, app.PathLogQuery{})
+	if err != nil || len(whole.Changesets) < 5 {
+		t.Fatalf("the whole log = %v, %v; want the fixture's changesets", ids(whole.Changesets), err)
+	}
+	if root, err := uc.AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new("/")}); err != nil || !reflect.DeepEqual(root, whole) {
+		t.Errorf("the log of \"/\" = %+v, %v; want the whole log's %+v", root, err, whole)
+	}
 	f.rec.calls = nil
 	if _, err := uc.AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new("A.md"), Actor: &me}); err != nil ||
 		!slices.Equal(f.rec.calls[:5], []string{"WorkspaceOf", "Authorize page.history", "StateOf", "RootByKey", "ListChangesets actor page"}) {
@@ -456,6 +466,15 @@ func TestListChangesetsAtPathAnswersItsCodesInOrder(t *testing.T) {
 	f.trashed(f.b.ID, now(), f.alice)
 	if _, err := app.NewListChangesets(f.pathHistoryReads()).AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new("B.md")}); codeOf(err) != "page.not_found" {
 		t.Errorf("a page in the trash = %v, want page.not_found", err)
+	}
+	// "" is refused, too_short, as index's parent "" is: the path's 422,
+	// before the actor's, before any read (M12 design 4.6.4, 30.4).
+	f.rec.calls = nil
+	_, err := app.NewListChangesets(f.pathHistoryReads()).AtPath(f.asAlice(), f.eng, app.PathLogQuery{Path: new(""), Actor: new("you")})
+	want := shared.FieldError{Field: "path", Code: shared.FieldTooShort, Message: `must not be empty: omit it, or give "/", for the whole notebook`}
+	var e *shared.Error
+	if !errors.As(err, &e) || e.Code != shared.CodeValidationFailed || len(e.Fields) != 1 || e.Fields[0] != want || len(f.rec.calls) != 0 {
+		t.Errorf(`a path of "" = %+v after %v; want validation_failed %+v alone, before any read`, err, f.rec.calls, want)
 	}
 }
 

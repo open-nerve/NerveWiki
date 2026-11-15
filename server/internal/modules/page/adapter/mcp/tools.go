@@ -243,7 +243,8 @@ const (
 		`alive. ingest_sources_cut is always present and true only when the answer shortened that preview. ` +
 		`Sources take room before changes; changes_cut is true only when changes were shortened. ingest true ` +
 		`keeps only changesets with sources; false or omitted keeps all. path keeps the changesets that changed ` +
-		`that page or attachment; actor those of an account, "me" for yours; client those of a client, "mcp" for` +
+		`that page or attachment, "/" or no path keeps them all; actor those of an account, "me" for yours; ` +
+		`client those of a client, "mcp" for` +
 		` every agent. A page or an attachment in the trash has no path: find its changesets in the whole log. ` +
 		`Go on with next_cursor while it is set. changeset reads all of one's changes; its sources stay a preview ` +
 		`of the first twenty, without a cursor. History is read-only here: people restore versions and revert ` +

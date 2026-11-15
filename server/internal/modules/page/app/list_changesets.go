@@ -113,10 +113,12 @@ type PathLog struct {
 
 // AtPath lists the notebook's log as Execute does (M9/P2 design 3.16.2),
 // its node by its path, alive, page or attachment, and "me" the caller.
-// Its order: the actor; the cursor, 400; the path (a trailing "/"
-// refused), the actor, the client and the limit, 422 each; the notebook,
-// notebook.not_found (page.history: no 403); the node, page.not_found,
-// found unlocked; then Execute's reads.
+// The path "/" is the whole notebook, as no path, as list's and index's
+// root; "" is refused, too_short (M12 design 4.6.4, 30.4). Its order: the
+// actor; the cursor, 400; the path (a trailing "/" refused), the actor,
+// the client and the limit, 422 each; the notebook, notebook.not_found
+// (page.history: no 403); the node, page.not_found, found unlocked; then
+// Execute's reads.
 func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q PathLogQuery) (PathLog, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -129,10 +131,18 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 		}
 	}
 	var path domain.Path
-	if q.Path != nil {
+	pathed := false
+	switch {
+	case q.Path == nil || *q.Path == "/":
+		// The whole notebook, as list's and index's root (M12 design 4.6.4, 30.4).
+	case *q.Path == "":
+		return PathLog{}, shared.Invalid(shared.FieldError{Field: "path", Code: shared.FieldTooShort,
+			Message: `must not be empty: omit it, or give "/", for the whole notebook`})
+	default:
 		if path, err = domain.ParsePath("path", *q.Path, false); err != nil {
 			return PathLog{}, err
 		}
+		pathed = true
 	}
 	f := domain.LogFilter{Ingest: q.Ingest != nil && *q.Ingest}
 	if q.Actor != nil {
@@ -154,7 +164,7 @@ func (l *ListChangesets) AtPath(ctx context.Context, notebookID uuid.UUID, q Pat
 	if err := decideNotebook(ctx, l.r.Notebooks, l.r.Auth, actor, domain.ActionHistory, notebookID); err != nil {
 		return PathLog{}, err
 	}
-	if q.Path != nil {
+	if pathed {
 		at, err := NewNodePaths(l.r.Paths, l.r.Notebooks).Find(ctx, notebookID, path)
 		if err != nil {
 			return PathLog{}, err
