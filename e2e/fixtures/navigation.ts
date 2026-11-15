@@ -66,8 +66,9 @@ function asksForTheTopDocument(page: Page, request: Request): boolean {
 export function followRequests(page: Page): void {
   const open = new Set<Request>();
   unanswered.set(page, open);
-  // The address of the top document page asked for last, until it commits; a download or a 204 never does,
-  // and the next document asked for takes its place.
+  // The address of the top document page asked for last, until it commits. A download or a 204 never does: a
+  // move within the document to that very address would be taken for its commit, any other is not; the next
+  // document asked for takes its place.
   let asked: string | undefined;
   page.on("request", (request) => {
     if (asksForTheTopDocument(page, request)) {
