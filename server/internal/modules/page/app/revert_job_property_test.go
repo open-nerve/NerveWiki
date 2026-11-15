@@ -971,15 +971,21 @@ func (f *fixture) checkedJobs(c *checkedStore) *app.JobWrites {
 
 // checkedWrites are the job writes through c, of rollbacks.
 func (f *fixture) checkedWrites(c *checkedStore, rollbacks app.JobRollbacks) *app.JobWrites {
-	w := app.NewWriter(app.WriterDeps{
+	w := f.checkedWriter(c)
+	return app.NewJobWrites(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait), f.store, 0, 0,
+		rollbacks)
+}
+
+// checkedWriter is the jobs' writer over the fixture, its node writes
+// through c.
+func (f *fixture) checkedWriter(c *checkedStore) *app.Writer {
+	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
 		NodeWriter:     c, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Markdown: f.md, Ledger: f.ledger,
 	})
-	return app.NewJobWrites(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait), f.store, 0, 0,
-		rollbacks)
 }
 
 // recorded is the job's changeset id as the history holds it, a revert of
@@ -987,6 +993,12 @@ func (f *fixture) checkedWrites(c *checkedStore, rollbacks app.JobRollbacks) *ap
 // in the history; a deletion's item with its page's revision in the trash,
 // as the store records it (M8/P3 design 3.4).
 func (f *fixture) recorded(id, reverted uuid.UUID) *fakeChangeset {
+	return f.recordedAs(domain.ChangesetRevert, id, reverted)
+}
+
+// recordedAs is recorded, the changeset of kind: a rollback's, say, which
+// reverts none (M12/P3 design 3.10.7).
+func (f *fixture) recordedAs(kind domain.ChangesetKind, id, reverted uuid.UUID) *fakeChangeset {
 	var items []domain.ChangesetItem
 	for _, it := range f.store.recorded {
 		if it.ChangesetID == id {
@@ -1006,7 +1018,7 @@ func (f *fixture) recorded(id, reverted uuid.UUID) *fakeChangeset {
 				Rewrite: r.Rewrite})
 		}
 	}
-	c := f.log.changeset(domain.ChangesetRevert, f.alice, now(), items, versions...)
+	c := f.log.changeset(kind, f.alice, now(), items, versions...)
 	c.ID, c.RevertsID = id, reverted
 	return c
 }
