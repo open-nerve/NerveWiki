@@ -399,7 +399,7 @@ test-go-bootstrap-7: ## 竞态检测下运行组合根的整个程序测试中�
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_SEVENTH)' -skip '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-bootstrap-8
-test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes 与 TestTheWikiToolsAnswerEveryCode，第三份让出的 TestTheSearchIsWhatEachReadAllows，回滚的变更集的撤销（CI 的一份；需要 Docker）
+test-go-bootstrap-8: ## 竞态检测下运行组合根的整个程序测试中名字匹配 BOOTSTRAP_EIGHTH 的：升级的检查、闸门、提交、批准、审阅与工具，第二份让出的 TestVirtualExport，第三份让出的 TestTheSourceRebuildMatchesSuccessfulRandomSteps 与 TestTheSearchIsWhatEachReadAllows，第五份让出的 TestTheMCPToolsErrorsCarryTheirCodes 与 TestTheWikiToolsAnswerEveryCode，回滚的变更集的撤销（CI 的一份；需要 Docker）
 	cd server && $(GO_TEST_RACE) -run '$(BOOTSTRAP_EIGHTH)' ./internal/bootstrap
 
 .PHONY: test-go-costs
