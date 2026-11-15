@@ -10,7 +10,7 @@ import { Client, Pool, escapeIdentifier, type QueryResultRow } from "pg";
  * initialised the same way: nervewiki refuses a database whose locale is not
  * builtin C.UTF-8.
  */
-const image = "postgres:18.6-trixie";
+const image = "postgres:18.7-trixie";
 const initdbArgs = "--locale-provider=builtin --locale=C.UTF-8";
 
 /** The database global setup migrates once; every worker gets a copy of it. */

@@ -32,7 +32,7 @@ import (
 // (deploy/compose.dev.yaml, v0.1 design 7.1): every database created with
 // the defaults gets the builtin C.UTF-8 locale.
 const (
-	image      = "postgres:18.6-trixie"
+	image      = "postgres:18.7-trixie"
 	initdbArgs = "--locale-provider=builtin --locale=C.UTF-8"
 )
 
