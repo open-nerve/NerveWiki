@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工，P2、P3 设计已审查，P4、P5 设计中；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工，P2、P3、P5 设计已审查，P4 设计中；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -119,7 +119,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 8. **版本号**（P5/S1、发布）：
    - Makefile、buildinfo 与 Dockerfile 两个 `ARG` 的默认值一致，由短测试守住，有反向对照。
    - `0.1.0` 的镜像里 `nervewiki version` 与 `/api/v0/instance` 都是 `0.1.0`：两种架构上的 image-smoke 核对。
-   - MCP 的 `serverInfo.version` 取 `buildinfo.Get().Version`（`bootstrap/mcp.go:90`），一个短测试断言两者相等，有反向对照（P5/S1）。
+   - MCP 的 `serverInfo.version` 取 `buildinfo.Get().Version`（`bootstrap/mcp.go:90`），一个盖了版本号的短测试断言两者相等，有反向对照（P5/S1；P5 设计 2.1 第 6 条）。
    - 发布之后 `main` 的默认值是 `0.1.1-dev`，`README.md:43` 与生成的契约随之。
 9. **发布流水线**（P5/S1、S2、发布）：
    - `release.yml` 的演练作业只有 `contents: read`，在分支与 `main` 上两种架构都绿；读工作流的检查不许它有写权限，有反向对照。
@@ -476,16 +476,16 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 
 - **`deploy/README.md`** 作运维手册，目录：
   1. **要求**：
-     - 硬件分两档，默认配置与小机器（`page.parse_budget_bytes` 5 MiB 加 `GOMEMLIMIT`），数取自 P4。最低配置是 EPYC 7763 的 4 核一类，那一档的数用 CI 守卫在那里记下的实数（4.7.1）；写明最大合法的 `batch`、回收站与撤销在慢的 4 核上离 15 秒的期限不远（移交 M4-performance 第 22 条之后的补记 `:490`、`:492`）。
+     - 硬件分两档，默认配置与小机器（`page.parse_budget_bytes` 5 MiB 加 `GOMEMLIMIT`），数取自 P4；小机器一档是 P4/S3 批次 E 另量的一组（P4 设计的 P4-27：`page.parse_budget_bytes` 5 MiB 加 `GOMEMLIMIT=1536MiB`），不是推算（P5 设计 2.1 第 21 条）。最低配置是 EPYC 7763 的 4 核一类，那一档的数用 CI 守卫在那里记下的实数（4.7.1）；写明最大合法的 `batch`、回收站与撤销在慢的 4 核上离 15 秒的期限不远（移交 M4-performance 第 22 条之后的补记 `:490`、`:492`）。
      - PostgreSQL 18.7 或更新：18.7 的 GIN 修复正对着 `page_search`，还有一批 CVE（设计审查 B 的 N7）。以 builtin provider 的 `C.UTF-8` 建库、带 LZ4（`platform/postgres/check.go:53-66` 不满足就拒绝启动），托管的 PostgreSQL 要能这样建。
      - 磁盘：正文约 5 倍给搜索、版本的增长、导出与导入的临时文件、WAL。
      - v0.1 只支持单实例。
   2. **安装**：拉镜像并校验签名；建库；两个角色与 `deploy/runtime-grants.sql`；签名私钥；配置（`NWIKI_ENV=prod`、`server.public_url`、`server.trusted_proxies`）；`migrate up`；第一个管理员（`nervewiki users`，链到 README 的命令）；`serve`；`deploy/compose.yaml` 样例。
   3. **反向代理与 HTTPS**：nginx 与 Caddy 的整站样例，从根 README 移过来（`README.md:554-616`）；JSON 开压缩；几个 GB 的导出下载的超时与缓冲（移交 M7-transfer 第 3 条）；大的 MCP 请求体与正文写较多时推荐 nginx，经 Caddy 时早答的拒绝成 502 的代价写明（I1-D15、I2-D13；服务端的改法进 v0.2）。
   4. **备份与恢复**：命令（`pg_dump -Fc`、`pg_dumpall --roles-only`、先库后 `blobs/`）；恢复到 builtin 的库；恢复之后先 `ANALYZE` 再开放服务；私钥与配置也要备份；一次演练的步骤。
-  5. **升级与回退**：通用的升级（拉新镜像并校验、`docker stop -t 40`、备份、`migrate up`、补授权、有说明时 `reindex`、启动、看 `/readyz` 与版本号）；`nervewiki reindex` 在 30 万页约 26 分钟、约 290 GB 的 WAL，之后表约是原来的 1.7 倍；回退靠恢复备份，`migrate down` 不保证数据；PostgreSQL 的小版本（18.7 的 GIN 修复：怀疑损坏时 REINDEX；18.7 说明里 TOAST 索引的 REINDEX 提示）与大版本（`pg_upgrade` 或 dump/restore、builtin locale、复核"一个事务里几条 `NOTIFY` 只取一次全局锁"，移交 M5-performance 第 5 条）。
+  5. **升级与回退**：通用的升级（拉新镜像并校验、`docker stop -t 40`、备份、`migrate up`、补授权、有说明时 `reindex`、启动、看 `/readyz` 与版本号）；`nervewiki reindex` 在 30 万页约 26 分钟、约 290 GB 的 WAL，之后表约是原来的 1.7 倍（M8 的数，`README.md:534`，`86565dd6` 上是 `:535`，P4 不重量；P5 设计 2.1 第 21 条）；回退靠恢复备份，`migrate down` 不保证数据；PostgreSQL 的小版本（18.7 的 GIN 修复：怀疑损坏时 REINDEX；18.7 说明里 TOAST 索引的 REINDEX 提示）与大版本（`pg_upgrade` 或 dump/restore、builtin locale、复核"一个事务里几条 `NOTIFY` 只取一次全局锁"，移交 M5-performance 第 5 条）。
   6. **运行与监控**：探针；日志；磁盘与 507；停机的次序与 `docker stop -t 40`；`server.shutdown_timeout` 20 秒短于一次 `/mcp` 调用（至多约 45 秒），停机时还在传大请求体的调用被切断、整个回滚，要它们做完就把两者一起调长（移交 M7-transfer 第 6 条）；连接数；`GOMEMLIMIT`；连接池代理（PgBouncer）只能用会话模式（移交 M4-performance 第 10 条）；校时：下载地址的到期按客户端的时钟比较（移交 M7-transfer 第 4 条）。
-  7. **容量**：P4 的数（内存、磁盘、WAL、版本的增长的推算、10 万页的树被几个标签页重读时的 CPU 与出口）；搜索的索引约是正文的 5 倍。
+  7. **容量**：P4 的数（内存、磁盘、WAL、版本的增长的推算、10 万页的树被几个标签页重读时的 CPU 与出口、每 1,000 页的库的大小、树的 JSON 的压缩比、`GOMEMLIMIT` 的建议值；对照 P4 记录的"给部署文档"一节，P5 设计 3.18）；搜索的索引约是正文的 5 倍。
   8. **运维相关的已知限制**：单实例；没有总量配额，由管理员监控磁盘；结束的任务行不清理；没有永久删除与它的变通（I3 第 3 节 H4）；`batch` 没有单独的期限，最大合法的 `batch` 在慢的机器上可能超过请求的期限、整个回滚（4.6.4）。初稿的"队列按人不设上限"（T2）与"River 取到之后停掉的任务占名额约 7 小时"（T4）在 v0.1 修了，不再列（4.6.6）。
   - 附录"从 v0.1.0 之前的开发版升级"：只在负责人说有这样的实例时写（第 11 节"需要负责人确认"），照它实际所在的迁移号核对；那时 I2 的批次 H 才量。没有的话，根 README 的六节开发版升级说明（`README.md:526-543`）删掉，它们在 git 的历史里。删之前先把 `README.md:534` 里对新装也成立的数（`reindex` 的时长、WAL 与表的膨胀，索引约是正文的 5 倍）挪进上面的"升级"与"容量"（设计审查 B 的 N6；移交 M4-performance 第 17 条要 WAL 的实测进部署文档）。
 - **单实例**（I1-D18）：写明 v0.1 只支持单实例与原因：附件在本地磁盘；限流、大请求体的名额、正在上传的导入只在进程内计数；T4 的启动收拾也假定只有一个实例（4.6.6）。多实例之间的时钟一条（移交 M5-performance 第 2 条）因此不适用。
@@ -497,8 +497,8 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 - **`deploy/compose.yaml`**（设计审查 B 改）：
   - PostgreSQL（`postgres:18.7-trixie`，builtin locale 的 `POSTGRES_INITDB_ARGS`）、`serve`、卷、`stop_grace_period: 40s`。
   - `migrate` 放在 `profiles: [migrate]` 里，`docker compose up` 不启动它；备份之后显式执行 `docker compose run --rm migrate`。常见的写法是让 `serve` 依赖 `migrate: service_completed_successfully`：改了 tag 再 `up -d`，就在备份之前迁移了，分两个角色时也不补授权，正是 4.10 不打浮动标签想挡的"拉了就起"。
-  - 写明样例用一个角色还是两个；两个时 `deploy/runtime-grants.sql` 在哪一步执行。
-  - `make deploy-check` 跑 `docker compose -f deploy/compose.yaml config -q`，CI 的 `image` 一份跑它（13.5 第 1 条：新门禁同时进 Makefile 与 CI）。它只查语法，上面那一条由演练核对。
+  - 样例用一个不是超级用户的库角色：官方镜像的 `POSTGRES_USER` 总是超级用户，样例的初始化脚本另建 `NOSUPERUSER` 的 `nervewiki` 作库与表的所有者；两个角色的写法与 `deploy/runtime-grants.sql` 在哪一步执行写在 `deploy/README.md`。附件目录绑定到 compose 文件旁的 `./data`（属主 65532），`blobs/` 在宿主机上打包备份、放回；默认网络钉一个子网，`server.trusted_proxies` 信任它：宿主机上的代理经端口转发进来，服务看到的对端是这个网络的网关，不设时所有客户端共用按 IP 的限流（P5 设计 2.1 第 22 条，P5 设计审查 C 的 I1、M3、M4）。
+  - `make deploy-check` 跑 `docker compose -f deploy/compose.yaml config -q`，CI 的 `image` 一份跑它（13.5 第 1 条：新门禁同时进 Makefile 与 CI）。它只查语法与变量（插值与 schema 本来就覆盖整份文件，`--profile migrate` 另让 `migrate` 里的引用也核对，P5 设计 3.17），上面那一条由演练核对。
   - 它的 PostgreSQL 镜像与 initdb 参数进 `pgtest/image_test.go` 的守卫（4.3）。
 - **演练**：P5/S3 照 `deploy/README.md`，用 `deploy/compose.yaml` 本身在本机做三遍：从零装一遍；改镜像的 tag 升一次级（备份、`run --rm migrate`、启动）；备份再恢复一遍。用本地构建的镜像（`make image` 要在普通的克隆里跑，`Makefile:89`）。包设为公开之后，用 GHCR 的镜像再装一遍（4.11 第 5 步）。
 
@@ -506,11 +506,11 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 
 照 I1-D8（主持者的决定 321，设计审查 B 改）。
 
-- **唯一的注入点**是 ldflags 写 `buildinfo.version`。默认值 `0.1.0-dev` 有四份：`Makefile:13`、`platform/buildinfo/buildinfo.go:9`、`deploy/Dockerfile:29`、`:42`，没有守卫（I1 第 1 节）。
-- **守卫**：一个短测试核对四份一致，带反向对照（P5/S1）。不去掉 Dockerfile 的 `ARG` 默认值：直接 `docker build` 的人仍得到一个能用的镜像。
-- **MCP 的版本**：`serverInfo.version` 取 `buildinfo.Get().Version`（`bootstrap/mcp.go:90`）。image-smoke 只核对 `nervewiki version`（`deploy/image-smoke.sh:76-78`）与 `/api/v0/instance`（`:131-136`），不碰 `/mcp`；加一个短测试断言 MCP 的 `serverInfo.Version` 等于 `buildinfo.Get().Version`，来源相同，image-smoke 照旧（P5/S1；设计审查 B 的 M9、C 的 M2）。
+- **唯一的注入点**是 ldflags 写 `buildinfo.version`。默认值 `0.1.0-dev` 有四份：`Makefile:13`、`platform/buildinfo/buildinfo.go:9`、`deploy/Dockerfile:29`、`:42`（`86565dd6` 上是 `:32`、`:45`），没有守卫（I1 第 1 节）；`README.md:43` 写着这个默认值。
+- **守卫**：一个短测试核对四份与 README 写的一致，带反向对照（P5/S1；README 一项是 决定 432）。不去掉 Dockerfile 的 `ARG` 默认值：直接 `docker build` 的人仍得到一个能用的镜像。
+- **MCP 的版本**：`serverInfo.version` 取 `buildinfo.Get().Version`（`bootstrap/mcp.go:90`）。image-smoke 只核对 `nervewiki version`（`deploy/image-smoke.sh:76-78`）与 `/api/v0/instance`（`:131-136`），不碰 `/mcp`；加一个短测试断言 MCP 的 `serverInfo.Version` 等于 `buildinfo.Get().Version`，来源相同，image-smoke 照旧（P5/S1；设计审查 B 的 M9、C 的 M2）。测试的二进制不带 ldflags 时两边都是默认值，写死默认值的错抓不到：`make test-go-short` 以 `-ldflags -X …buildinfo.version=0.0.0-short` 构建测试并设 `NWIKI_TEST_VERSION`，测试先核对盖上了；mcpserver 另有一个握手测试读 `serverInfo`（P5 设计 2.1 第 6 条）。
 - **打 tag 时不改版本号**：发布的版本由 tag 经 ldflags 注入（4.10）。
-- **发布之后**，`main` 的四份默认值改为 `0.1.1-dev`（负责人第 4 问：验收发现的问题出 v0.1.1）。随之改的：`api/modules/instance.yaml:80` 的示例、`README.md:43` 写的默认值、`instance/domain/info.go:15` 的注释；`api/dist/openapi.yaml:3293` 与 `instance/adapter/http/gen/server.gen.go:63` 经 `make gen` 随之。提交的范围写 `build, api`（设计审查 B 的 N2）。
+- **发布之后**，`main` 的四份默认值改为 `0.1.1-dev`（负责人第 4 问：验收发现的问题出 v0.1.1）。随之改的：`api/modules/instance.yaml:80` 的示例、`README.md:43` 写的默认值、`instance/domain/info.go:15` 的注释；`api/dist/openapi.yaml:3293`、`instance/adapter/http/gen/server.gen.go:63` 与 `web/packages/api-client/src/schema.gen.ts:2211` 经 `make gen` 随之（最后一个是 P5 设计 2.1 第 11 条补的）。四份默认值与 README 漏一处，P5/S1 的守卫就红；示例与注释照这张清单改，生成物由 `make gen-check` 核对；`platform/httpserver/apitest/apitest_test.go:19`、`:110` 是独立的假数据，不改。提交的范围写 `build, api`（设计审查 B 的 N2）。
 - **Go 的模块**：`server/go.mod` 是子目录的模块，仓库根的 `v0.1.0` 不给它定版本；`go install` 出来的二进制没有内嵌前端（`webui/dist` 只提交了 `.gitkeep`）。不打 `server/v0.1.0`，发布说明不宣传 `go install`（I1 第 1 节）。
 - **接口的版本**：`api/openapi.yaml` 的 `info.version: v0` 是接口的版本，与产品版本无关，不改。
 
@@ -523,13 +523,13 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   - `release.yml`：`on: push: tags: ['v[0-9]+.[0-9]+.[0-9]+*']` 走发布；分支与 `main` 的推送只走演练（见下）。两种都不加路径条件，写在同一个 `on.push` 里。
   - `ci.yml` 改为 `on.push.branches: ['**']`，tag 不再触发（今天 `on: push` 不带过滤，`.github/workflows/ci.yml:3-5`，推 tag 会多跑一遍完整的 19 项）。
   - 不加 GitHub 的 environment 审批：负责人已要求推 tag 之前问他一次。
-- **`ci-wait.sh` 按工作流取**：P1 之前已改好（`b54cd679`，4.2）。读 `release.yml` 的演练时第二个参数写它。
+- **`ci-wait.sh` 按工作流取**：P1 之前已改好（`b54cd679`，4.2）。读 `release.yml` 的演练时第二个参数写它。读 tag 的那次运行用 `gh run list -R open-nerve/NerveWiki --workflow release.yml --branch <tag>`：tag 指的提交在 `main` 上已有一次演练，`ci-wait.sh` 取最后建的那一次，可能取到演练（P5 设计 2.1 第 13 条）。
 - **闸门**（第一个作业）：
-  - tag 名是 semver，`VERSION=${GITHUB_REF_NAME#v}`；
+  - tag 名是 `vX.Y.Z` 或 `vX.Y.Z-rc.N`（数字不带前导的 0，别的预发布写法不收；决定 434），`VERSION=${GITHUB_REF_NAME#v}`；
   - tag 指的提交是 `origin/main` 的祖先；
   - 这个 SHA 在 `main` 上 push 的 `ci.yml` 的运行已成功：只查 `ci.yml`（`/actions/workflows/ci.yml/runs?head_sha=$SHA&branch=main&event=push`），看最后一次尝试的结论；`release.yml` 的演练绿了不算（经 `gh api`，要 `actions: read`）；
   - `make vuln` 为绿（npm 一侧照 `--audit-level=high`，4.3）；
-  - `CHANGELOG.md` 里有这个版本的一节（rc 取去掉 `-rc.N` 之后那个版本的一节），在构建之前就核对。
+  - `CHANGELOG.md` 里有这个版本的一节、不是空的（rc 取去掉 `-rc.N` 之后那个版本的一节；正式版本的标题要写发布的日期），在构建之前就核对：闸门照说明脚本取一次这一节（决定 434、3.6）。
   - 闸门写成一个脚本（`deploy/release-gate.sh`），可以在本机与分支上对着假的输入跑。
 - **两种架构**（I1-D3）：矩阵 `ubuntu-24.04` 与 `ubuntu-24.04-arm`，各自原生构建。Dockerfile 不必改成交叉编译；smoke 在真的 arm64 上跑；公开仓库的 arm64 runner 免费。每个架构：
   1. 检出，`persist-credentials: false`；断言 `git status --porcelain` 为空：`image-smoke.sh:17-20` 照工作区算期望的 `modified`，脏的工作区也能过，发布的二进制要一定是 `modified=false`（设计审查 B 的 N5）；
@@ -538,12 +538,12 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   4. 以 `deploy/image-smoke.sh ghcr.io/open-nerve/nervewiki@<digest> $VERSION` 拉回刚推的摘要来 smoke。smoke 过的就是推上去的；失败时 GHCR 里只留一个没有 tag 的摘要。
 - **合并**：`docker buildx imagetools create` 用两个摘要建出多架构的索引，先只打一个不是版本号的 tag（`sha-<提交>`）。给人用的版本号最后打（见"次序与重跑"）。
 - **来源证明与 SBOM**（I1-D4、D5）：`actions/attest`，`subject-name: ghcr.io/open-nerve/nervewiki`、`subject-digest: <索引的摘要>`、`push-to-registry: true`。
-  - 镜像的 SBOM 由 syft（`anchore/sbom-action`）从镜像生成，覆盖二进制里的 Go 模块。
-  - 前端的生产依赖另出一份：打包进二进制的 npm 包在镜像里看不出来（vite 的产物里没有 `package.json`）。用什么工具，P5/S2 的设计里先做个小实验。
+  - 镜像的 SBOM 由 syft（`anchore/sbom-action`）从镜像生成，覆盖二进制里的 Go 模块。两份 SBOM 与取许可证在一个只读的作业里（`contents: read`、`packages: read`）：`pnpm install` 的安装脚本与 syft 不在能签名、能写 GHCR 的作业里跑（P5 设计 2.1 第 2 条）。
+  - 前端的生产依赖另出一份：打包进二进制的 npm 包在镜像里看不出来（vite 的产物里没有 `package.json`）。用 pnpm 自带的 `pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod`（SPDX 2.3；决定 438 的实验：要先装依赖，只读锁文件时许可证都是 NOASSERTION）。
   - 两份都作 attestation，也作 Release 的附件。
 - **签名**（I1-D4）：`sigstore/cosign-installer` 加 `cosign sign --yes ghcr.io/open-nerve/nervewiki@<digest>`，keyless。负责人原话列了"签名、SBOM 与来源证明"三样，这样做一一对应。
 - **第三方许可证**（I1-D14）：镜像里放一个 `/licenses`（Go 模块与前端生产依赖的许可证文本），同一份作 Release 的附件。理由（推断，非法律意见）：MIT、BSD、Apache-2.0 都要求分发时附上版权声明；SBOM 只列标识，不含文本。怎样收集在 P5/S2 的设计里定，只读本机的模块缓存与 `node_modules`，不往外发。
-- **Release**（I1-D6）：用 runner 自带的 `gh`。Release 没有就建（`gh release create "$GITHUB_REF_NAME" --verify-tag --notes-file <文件>`），有就改（`gh release edit`）；`gh release edit` 不换附件，附件用 `gh release upload --clobber` 传，重跑时换掉旧的（修订核对第 1 轮 B 的 N8）。rc 加 `--prerelease`。
+- **Release**（I1-D6；P5 设计 2.1 第 3 条改）：用 runner 自带的 `gh`，经脚本 `deploy/github-release.sh`。先建草稿：没有就建（`gh release create --draft --verify-tag`），是草稿就改说明；附件用 `gh release upload --clobber` 传；发布之后的核对过了，最后一个作业才公开它（`gh release edit --draft=false`）。已经公开的不再改，只核对附件都在；`gh release view` 的失败只有"release not found"当作没有，别的让这一步失败。原来是"没有就建、有就改，附件 `upload --clobber`"：GitHub 的 immutable releases 打开时，公开之后不能再传附件、tag 也不能再动，那样写整个失败；先草稿后公开在两种设置下都能用，核对失败时只留下一个没公开过的草稿（主持者定，P5 设计审查 B 的 Q1）。rc 加 `--prerelease`。
   - 说明由脚本 `deploy/release-notes.sh` 拼：取 `CHANGELOG.md` 里这个版本的一节；rc 取去掉 `-rc.N` 之后那个版本的一节，前面加一句"预发布"；后面接工作流生成的一段：索引的摘要与两条校验命令。脚本像闸门脚本一样在本机对着假的输入跑，缺这一节就拒（设计审查 B 的 M6）。
   - 附件：两份 SBOM、许可证。
   - 不附独立的二进制：部署文档只覆盖容器；附二进制要另做签名、证明与运行说明。
@@ -553,17 +553,19 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   1. 每个架构构建、smoke、按摘要推送；
   2. 合成索引，打 `sha-<提交>`；
   3. 按索引的摘要做来源证明、SBOM 与签名；
-  4. 用单个来源 `imagetools create` 复制出 `0.1.0`（只给一个来源时原样复制，摘要不变）；
-  5. 建或改 Release。
+  4. 用单个来源 `imagetools create` 复制出 `0.1.0`（只给一个来源时原样复制，摘要不变）；已有的 `0.1.0` 指着别的摘要时这一步失败、不改指，指着同一个时不动：整次运行重跑时构建得到新的摘要（P5 设计 2.1 第 4 条）；
+  5. 建或改 Release 的草稿，传附件；
+  6. 两种架构上按版本号的 tag 核对（见"发布之后的核对"）；
+  7. 公开 Release（P5 设计 2.1 第 3 条；原来第 5 步是最后一步，核对在它之后）。
   - 这样 `0.1.0` 出现时已经签好、证明好。包已设为公开时，不会有一段公开却没签名的 `0.1.0`。
-  - 一时的失败（Sigstore 或 GHCR 一时出错）在同一次运行上"Re-run failed jobs"，不重推 tag。每个作业都能重跑：`imagetools` 得到同一个摘要，证明与签名多一份无害，Release 没有就建、有就改。只有产品的问题才出下一个 rc 或 v0.1.1（4.11）。
-- **发布之后的核对**：最后一个作业是矩阵，在 `ubuntu-24.04` 与 `ubuntu-24.04-arm` 上各按 tag 拉索引，跑 `gh attestation verify oci://ghcr.io/open-nerve/nervewiki:<tag> -R open-nerve/NerveWiki` 与 `cosign verify …`（`--certificate-identity` 指 `release.yml` 在这个 tag 上，`--certificate-oidc-issuer=https://token.actions.githubusercontent.com`），再 smoke 一次。初稿让本机核对 arm64：rc 还是私有包时，本机拉取要负责人的令牌，本机也没装 cosign（设计审查 B 的 M8）。本机只在包设为公开之后不登录地拉一次（4.11）。
+  - 一时的失败（Sigstore 或 GHCR 一时出错）在同一次运行上"Re-run failed jobs"，不重推 tag。每个作业都能重跑：`imagetools` 对同样的来源大概得到同一个摘要（推断；不同时版本号的 tag 照第 4 步不改指），证明与签名多一份无害，Release 的草稿没有就建、有就改，已公开的不动（P5 设计 2.1 第 3 条）。产品的问题出下一个 rc，`v0.1.0` 之后出 v0.1.1（4.11）；流水线的问题出下一个 rc（决定 324），`v0.1.0` 上流水线自己的错不出 v0.1.1（4.11；P5 设计 2.1 第 3、16 条）。
+- **发布之后的核对**：公开 Release 之前的那个作业是矩阵（P5 设计 2.1 第 3 条；原来是最后一个作业），在 `ubuntu-24.04` 与 `ubuntu-24.04-arm` 上各按 tag 拉索引，跑 `gh attestation verify oci://ghcr.io/open-nerve/nervewiki:<版本> -R open-nerve/NerveWiki --cert-identity <同 cosign 的身份>`（来源证明；加 `--predicate-type https://spdx.dev/Document/v2.3` 是 SBOM 的证明，镜像的与前端的都要在；P5 设计 2.1 第 5 条）与 `cosign verify …`（`--certificate-identity` 指 `release.yml` 在这个 tag 上，`--certificate-oidc-issuer=https://token.actions.githubusercontent.com`），再 smoke 一次。初稿让本机核对 arm64：rc 还是私有包时，本机拉取要负责人的令牌，本机也没装 cosign（设计审查 B 的 M8）。本机只在包设为公开之后不登录地拉一次（4.11）。版本号的 tag 在核对之前就已出现（"次序与重跑"第 4 步）；核对失败时 Release 还是没公开过的草稿。
 - **演练**（I1-D7；设计审查 B 的 M4、M5，修订核对第 1 轮 B 的 M14）：
   - 单独的作业，只有 `contents: read`，用 `if` 只在不是 tag 的推送上跑。`jobs.<id>.permissions` 只能写字面值，不能随事件变；与 tag 共用一个作业定义的话，分支推送也拿到能写 GHCR 的令牌，与移交 M0-P6 第 1 条"写权限只在发布的触发条件下授予"相反。
   - 两种原生 runner 各自 `push: false`、`load: true` 构建，对本地的镜像跑 `image-smoke.sh`；核实路径上下文带上了 `.git`、VCS 信息在。
   - 在所有分支与 `main` 的每次推送上都跑，不加路径条件：`ci.yml` 的 `image` 一份只构建 amd64（`ci.yml:310-326`），Dockerfile 的 web 阶段在目标架构上 `pnpm install` 与构建，有按架构选的原生可选依赖（`deploy/Dockerfile:16-18`）。P2–P4 改 `web/`、`server/`、锁文件时，只在 arm64 上坏的构建在合并时就看得到，不等到 rc.1 才发现、又因改了产品代码要再问负责人。
   - 第一次修订写的"`main` 每次跑、分支只在改了工作流或 `deploy/` 时跑"，一个 `on.push` 写不出来：同时有 `branches` 与 `paths` 时两个都满足才跑，`paths` 对 `main` 与分支一样有效（GitHub 的 workflow syntax）。取最简单的一种（修订核对第 1 轮 B 的 M14）。
-  - 代价：每次推送（分支与 `main`）多两个并行的作业，推断各 10–15 分钟，与 `ci.yml` 并行，不进组合根；公开仓库不收钱（第 10 节）。
+  - 代价：每次推送（分支与 `main`）多两个并行的作业，推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟（`ci.yml` 的 `image` 一项构建加 smoke 是 68–80 秒，arm 的 runner 没有量过；P5/S2 在 amd64 上另加取许可证与两份 SBOM，约 1–2 分钟；P5 设计 2.1 第 1 条，原来推断各 10–15 分钟），与 `ci.yml` 并行，不进组合根；公开仓库不收钱（第 10 节）。
   - P5/S1 加一个读 `release.yml` 的检查：演练作业不许有任何 write，带反向对照。
 - **权限**：只用 `GITHUB_TOKEN`，不要别的机密。顶层 `permissions: {}`，各作业按需开：
 
@@ -572,12 +574,14 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   | 演练（两种架构的构建与 smoke，不推送） | 分支与 `main` | `contents: read` |
   | 闸门 | tag | `contents: read`、`actions: read` |
   | 每个架构的构建、smoke 与推送 | tag | `contents: read`、`packages: write` |
+  | 取许可证、生成两份 SBOM（P5 设计 2.1 第 2 条） | tag | `contents: read`、`packages: read` |
   | 合并、证明、签名、复制出版本号的 tag | tag | `contents: read`、`packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write` |
-  | 建或改 Release | tag | `contents: write` |
+  | 建或改 Release 的草稿、传附件 | tag | `contents: write` |
   | 发布之后的核对（两种架构） | tag | `contents: read`、`packages: read`、`attestations: read` |
+  | 公开 Release（P5 设计 2.1 第 3 条） | tag | `contents: write` |
 
-- **新加的 action**，按 SHA 引用、注释写 tag（13.5 第 2 条；版本与 SHA 见 I1 第 4 节的表与 `survey-i1/actions-new-shas.txt`）：`docker/setup-buildx-action` v4.4.1、`docker/build-push-action` v7.4.0、`docker/login-action` v4.8.0、`actions/attest` v4.2.2、`sigstore/cosign-installer` v4.1.3、`anchore/sbom-action` v0.24.3、`actions/download-artifact` v8.0.2。实施时再核一次最新版。初稿列的 `docker/metadata-action` 没有哪一步用它（label 由构建参数传，tag 由 `imagetools` 打），删掉（设计审查 B 的过度设计）。第三方的几个要负责人在"允许的 actions"里放行（第 11 节）。
-- **actionlint**：进 `make lint`，核对三份工作流。至少 1.7.10：`artifact-metadata` 权限到 1.7.10 才认，`ubuntu-24.04-arm` 到 1.7.7。同 `govulncheck`，用 `go run …@版本`，不进 `server/tools/go.mod`（设计审查 B 的 N4）。
+- **新加的 action**，按 SHA 引用、注释写 tag（13.5 第 2 条；版本与 SHA 见 I1 第 4 节的表与 `survey-i1/actions-new-shas.txt`）：`docker/setup-buildx-action` v4.4.1、`docker/build-push-action` v7.4.0、`docker/login-action` v4.8.0、`actions/attest` v4.2.2、`sigstore/cosign-installer` v4.1.3、`anchore/sbom-action` v0.24.3（自带 syft v1.54.0，不是 I1 写的 v1.57.1；工作流里显式写 `syft-version`，P5 设计 2.1 第 12 条）、`actions/download-artifact` v8.0.2。实施时再核一次最新版：这些 SHA 只与 I1 的记录、现有的工作流对照过，P5 的设计审查没能以公开仓库复核，P5/S1 实施时核对（P5 设计 3.21）。`docker/setup-buildx-action` 起的 BuildKit 以 `driver-opts: image=moby/buildkit:<版本>@sha256:…` 钉住，演练与构建是同一个；能签名的作业不用 `docker/login-action`，以 shell 的 `docker login` 登录（P5 设计 2.1 第 17 条）。初稿列的 `docker/metadata-action` 没有哪一步用它（label 由构建参数传，tag 由 `imagetools` 打），删掉（设计审查 B 的过度设计）。第三方的几个要负责人在"允许的 actions"里放行（第 11 节）。
+- **actionlint**：`make lint-actions`，只在 GitHub 的 runner 上跑：CI 的 `costs-1` 一份在 `make lint-go` 之后跑它，本机的 `make lint` 与逐个提交的门禁不含它，出错写成 GitHub 的注解（主持者照决定 308 的先例定：设计时在本机跑它被权限分类器拒过；P5 设计 2.1 第 10 条）。核对三份工作流，不调 shellcheck（`-shellcheck=`：runner 装了版本不由我们定的 shellcheck，actionlint 看到它才查 `run:`）。至少 1.7.10：`artifact-metadata` 权限到 1.7.10 才认，`ubuntu-24.04-arm` 到 1.7.7。同 `govulncheck`，用 `go run …@版本`，不进 `server/tools/go.mod`（设计审查 B 的 N4）。
 - **镜像的 label**：补 `org.opencontainers.image.revision`、`created`、`description`（今天只有 title、version、source、licenses，`deploy/Dockerfile:43-46`）。由构建参数传入，`make image` 与 `release.yml` 都传。
 - **`CHANGELOG.md`**（主持者的决定 323）：仓库根，一个版本一节，中文（同 README）。v0.1.0 一节写：做了什么（按 M 一句）、已知限制（4.13）、人工验收在发布之后（4.12）、两处改了已有键与 id 的事（4.6.3）。日期写在 `v0.1.0` 的 tag 指的那个提交里：rc 来回几天时，收尾时写下的日期会不对（设计审查 B 的 M6）。
 - **`SECURITY.md`**：怎样报告漏洞（经 GitHub 的私密漏洞报告，要负责人在仓库设置里开，第 11 节）、支持的版本（0.1.x）。
@@ -593,15 +597,15 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
 | 3 | 推 `v0.1.0-rc.1`：GHCR 里有了镜像（私有）、Sigstore 的公开透明日志里有了签名的记录、一个 pre-release 的 Release | 主持者 | **对外**（第 2 步已点头） |
 | 4 | 核对 rc：发布之后的核对作业（amd64 与 arm64 的矩阵）为绿；Release 的说明与附件看一遍 | 主持者 | 否 |
 | 5 | 负责人把 GHCR 的包设为公开（**不能撤回**）；之后本机不登录拉一次 rc，照 `deploy/README.md` 用它从零装一遍 | 负责人；主持者核对 | **对外**，负责人自己做 |
-| 6 | 在 `m12-release` 上写 `CHANGELOG.md` 的日期，合并，`main` 的 CI 绿；推 `v0.1.0`，同第 4 步核对，本机不登录再拉一次 | 主持者 | **对外**（第 2 步已点头） |
+| 6 | 在 `m12-release` 上写 `CHANGELOG.md` 的日期，合并（合并提交单独推上 `main`：闸门只认 tag 指的提交自己的 `ci.yml` 运行，P5 设计 3.23），`main` 的 CI 绿；推 `v0.1.0`，同第 4 步核对，本机不登录再拉一次 | 主持者 | **对外**（第 2 步已点头） |
 | 7 | 在 `m12-release` 上把 `main` 的默认值改为 `0.1.1-dev`，合并，`main` 的 CI 绿 | 主持者 | 否 |
 | 8 | 收尾记录写"发布"一节（负责人对两个 tag 的回答与日期、run 号、摘要、校验的输出、`m12-release` 上的每个改动）；12.6 写"实现完成，待人工验收"；推送；停下汇报 | 主持者 | 否 |
 
 - **第 2 步的点头盖住什么**（主持者的决定 324）：rc 有问题时，修了再推 `rc.2`、`rc.3`。只改发布流水线、部署文档或发布说明的，同一次点头盖住；改了产品代码的，再问一次。收尾合并之后由闸门的 `make vuln` 发现、要升 Go 或依赖的，算改了产品代码；为此往 `audit.ignore` 加的忽略，算改了产品的依赖配置；都再问（4.3）。
 - **发布期的改动走 `m12-release` 分支**（主持者的决定 332，设计审查 C 的 M6）：收尾合并之后为发布做的改动（rc 的修复、`CHANGELOG.md` 的日期、`0.1.1-dev`）都在分支 `m12-release` 上做。主持者读 diff、看分支的 CI，`git merge --no-ff` 合并进 `main`，`main` 的 CI 绿之后才推 tag。每一轮从 `main` 开分支，合并之后删。收尾记录的"发布"一节逐个列出。不直接提交到 `main`：`docs/README.md` 的 Git 一节要代码在分支上开发、门禁全绿再合并，这些改动又不在任何收尾审查之内。
 - **一时的失败**：在同一次运行上"Re-run failed jobs"，不重推 tag，不算重推（4.10）。
-- **rc 不过时**：不删 tag、不删 Release，标明作废，修了推下一个 rc。GHCR 里留着的 rc 镜像不影响 `0.1.0`。
-- **`v0.1.0` 推了之后发现产品的问题**：不重推同一个 tag，出 `v0.1.1`。
+- **rc 不过时**：不删 tag；已公开的 Release 不删、标明作废，没公开过的草稿删掉（P5 设计 3.23）；修了推下一个 rc。GHCR 里留着的 rc 镜像不影响 `0.1.0`。
+- **`v0.1.0` 推了之后发现产品的问题**：不重推同一个 tag，出 `v0.1.1`。流水线自己的错（例如校验的命令写错、一个 action 换了行为）而产品没有问题时，不出 `v0.1.1`：在 `m12-release` 上修流水线，照 Release 说明里的命令手动校验，记进收尾记录；手动公开留下的草稿是对外的一步，先问负责人（主持者定，P5 设计 2.1 第 16 条）。
 - **公开的时机**：包第一次推送时默认私有（GitHub 文档）。在 rc 核对过之后、`v0.1.0` 之前设为公开：这样匿名拉取在 rc 上就核对了，`v0.1.0` 的说明里的命令一发出就能用。
 
 ### 4.12 人工验收在发布之后
@@ -629,12 +633,13 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
   - P4 只量的与超出而经负责人改判的；
   - 运维相关的（4.8 的第 8 项）；
   - e2e 揭出的那一条：续期途中刷新会被登出（4.4）。
+  - 第三方许可证里没有文本的包（决定 439，今天三个），进 `M12-release.md`。
 - **v0.2 的移交**：M12 收尾时在 `docs/v0.2/handoffs/` 写（`status: open`、`from: M12`、`to: v0.2`），按主题分：
   - `M12-polish.md`：C 类 87 项与 3、12.2、11.6 的其余（附录 A）、D 类其余、Web Locks 的登记（第 7 条）；
   - `M12-performance.md`：只量的各项与它们的数、已知的改法（页面树的分层加载若没做、搜索尾巴的三种改法、按页日志的迁移、共用的参与者界线、MCP 名额的配置项、慢的发送者与 Caddy 早答的服务端改法、附件列表的重读、`batch` 单独的期限）；
   - `M12-history.md`：H1、H3、H4 的功能、版本的保留策略（带 P4 推算的增长）；
   - `M12-transfer.md`：24.1（网页的任务列表在网络结果未知时可能指到别处的任务，负责人 2026-11-14 第 5 问）；T1、T5、T8；CP437 与别的编码的识别、导入的编码选项；
-  - `M12-release.md`：Node 26、功能性的大版本依赖、Dependabot（看负责人的决定）、多实例、独立的二进制；续期途中刷新会被登出（重看 M1 第 10 节的取舍，设计审查 C 的 N6）。
+  - `M12-release.md`：Node 26、功能性的大版本依赖、Dependabot（看负责人的决定）、多实例、独立的二进制、actionlint 查 `run:` 的脚本、构建的缓存、`outdated.sh` 不列的工具（actionlint、syft、cosign、BuildKit）、第三方许可证里没有文本的包、rc 与 `v0.1.0` 留在 GHCR 里的 `sha-` 与没有 tag 的摘要清不清（P5 设计 第 9 节）；续期途中刷新会被登出（重看 M1 第 10 节的取舍，设计审查 C 的 N6）。
 - **v0.1.1 的移交**：`docs/v0.1.1/handoffs/M12-after-release.md`：发布之后的人工验收（4.12 的各份清单）与读屏验收要确认的八项；`vuln.yml` 的两件（定时运行的通知发给最后改 cron 的人；公开仓库 60 天没有活动时定时工作流会被停用，4.3）。
 - **逐项核对去处**（修订核对第 1 轮 C 的 M9）：上面"已知限制"的每一项都在某一份移交里，P5/S3 的对照表写明是哪一份：H1 在 `M12-history.md`；24.1、T1、T5、T8、CP437 与别的编码、决定 376 的两条在 `M12-transfer.md`；`batch` 的期限与 P4 只量的在 `M12-performance.md`；续期途中刷新被登出、单实例、切罗基文标题升级之后的 `reindex` 在 `M12-release.md`；C 类在 `M12-polish.md`；H4 的功能在 `M12-history.md`。T2、T4 在 v0.1 修，不进移交。
 - `docs/README.md` 的目录结构加 `v0.1.1/` 与 `v0.2/handoffs/` 两行。v0.2 的总体设计开工时先处理它们。
@@ -674,8 +679,8 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 | `make vuln` | Go 一侧 `govulncheck`，只扫 `server/`；npm 一侧 `pnpm audit --prod`，级别可传（默认 `low`）；版本固定 | `vuln.yml`（每天、`workflow_dispatch`、改了它自己或依赖清单的推送）；发布的闸门（npm 照 `high`）；**本机不跑** | P1/S2 |
 | `make outdated` | 只读地列出过时的 Go 模块、npm 包、actions 与镜像 | `vuln.yml` 里一个手动触发、改了依赖清单的推送也跑的作业（`continue-on-error`，失败不让运行变红），发布之前手动触发一次；**本机不跑** | P1/S2 |
 | `make deploy-check` | `docker compose -f deploy/compose.yaml config -q` | CI 的 `image` 一份 | P5/S3 |
-| `make lint` 加 actionlint | 核对三份工作流；至少 1.7.10，`go run …@版本` | 本机与 CI | P5/S1 |
-| `release.yml` 的权限检查 | 读工作流，演练作业不许有 write，带反向对照 | `make lint` 的一步 | P5/S1 |
+| `make lint-actions` | actionlint 核对三份工作流；至少 1.7.10，`go run …@版本`，`-shellcheck=` | CI 的 `costs-1` 一份；**本机不跑**（P5 设计 2.1 第 10 条） | P5/S1 |
+| 工作流与发布脚本的守卫（P5 设计 2.1 第 7 条） | Go 的短测试（`platform/buildinfo/release_test.go`）：读三份工作流，演练作业不许有 write，tag 的作业的权限、`if` 与调的脚本照表；闸门、说明与发布的脚本对着假的 `gh`、`docker` 与临时的仓库跑；都带反向对照 | `make test-go-short`、`make test`（CI 的 `short` 与 `race`）；本机与 CI | P5/S1、S2 |
 | 性能的目标（名字在 P4 的设计里定） | 跑 4.7 的生成器、驱动与浏览器脚本 | 只在本机手跑 | P4/S1、S2 |
 
 - **工作流**：`ci.yml` 只在分支上跑（4.10）；`release.yml` 是新的，tag 走发布、分支与 `main` 走只读的演练（4.10）；`vuln.yml` 是新的，每天、手动与改了它自己或依赖清单的推送时跑 `make vuln`，手动触发与改了依赖清单的推送时另跑 `make outdated`（4.3）。
@@ -683,12 +688,12 @@ M12 不加 REST 操作、MCP 工具与 prompt，也不加配置项。改的是�
 
 ### 5.4 发布物
 
-- **镜像**：`ghcr.io/open-nerve/nervewiki:0.1.0`，`linux/amd64` 与 `linux/arm64` 的索引；只有确切的版本号，没有 `0.1` 与 `latest`；label 加 `revision`、`created`、`description`。
+- **镜像**：`ghcr.io/open-nerve/nervewiki:0.1.0`，`linux/amd64` 与 `linux/arm64` 的索引；只有确切的版本号，没有 `0.1` 与 `latest`；label 加 `revision`、`created`、`description`；索引带 `description`、`source`、`licenses` 三个注解，值取自 amd64 那一份的 label（GHCR 的多架构镜像从索引的注解读说明；P5 设计 2.1 第 15 条）。
 - **证明与签名**：GitHub 的来源证明与 SBOM（推进 GHCR）、cosign 的 keyless 签名。校验：
-  - `gh attestation verify oci://ghcr.io/open-nerve/nervewiki:0.1.0 -R open-nerve/NerveWiki`
-  - `cosign verify ghcr.io/open-nerve/nervewiki:0.1.0 --certificate-identity=https://github.com/open-nerve/NerveWiki/.github/workflows/release.yml@refs/tags/v0.1.0 --certificate-oidc-issuer=https://token.actions.githubusercontent.com`
-- **Release**：说明取 `CHANGELOG.md` 的一节，加摘要与两条校验命令；附件是镜像的 SBOM、前端的 SBOM、第三方许可证。
-- **仓库里的文件**：`deploy/README.md`、`deploy/compose.yaml`、`deploy/release-gate.sh`、`deploy/release-notes.sh`、`CHANGELOG.md`、`SECURITY.md`、`docs/v0.1/M12-release/manual/` 的两份。
+  - `gh attestation verify oci://ghcr.io/open-nerve/nervewiki:0.1.0 -R open-nerve/NerveWiki --cert-identity https://github.com/open-nerve/NerveWiki/.github/workflows/release.yml@refs/tags/v0.1.0`（来源证明；加 `--predicate-type https://spdx.dev/Document/v2.3` 是两份 SBOM 的证明；要先 `gh auth login`；P5 设计 2.1 第 5 条）
+  - `cosign verify ghcr.io/open-nerve/nervewiki:0.1.0 --certificate-identity=https://github.com/open-nerve/NerveWiki/.github/workflows/release.yml@refs/tags/v0.1.0 --certificate-oidc-issuer=https://token.actions.githubusercontent.com`（cosign v3，流水线用 v3.1.4）
+- **Release**：说明取 `CHANGELOG.md` 的一节，加摘要与两条校验命令；附件是 `nervewiki-<版本>-image.spdx.json`（镜像的 SBOM）、`nervewiki-<版本>-web.spdx.json`（前端的 SBOM）、`nervewiki-<版本>-licenses.tar.gz`（第三方许可证，与镜像里的 `/licenses` 相同）（P5 设计 2.1 第 15 条）。
+- **仓库里的文件**：`deploy/README.md`、`deploy/compose.yaml`、`deploy/release-gate.sh`、`deploy/release-notes.sh`、`deploy/release-version-tag.sh`、`deploy/github-release.sh`、`deploy/compose-initdb.sh`、`tools/licenses/`、`CHANGELOG.md`、`SECURITY.md`、`docs/v0.1/M12-release/manual/` 的两份。
 
 ## 6. 从 Nerve 借鉴
 
@@ -770,8 +775,8 @@ S2、S3 的"实测"Step 照常有分支、审查与合并：审查者核对方�
 
 | Step | 内容 | 改的部件 | 单独合并为绿 | 组合根与 CI 的用时 |
 |---|---|---|---|---|
-| S1 版本号与流水线的构建部分 | 四份默认值的守卫与 MCP 版本的短测试（4.9）；Dockerfile 的三个 label 与 `make image` 传它们；`ci.yml` 只在分支上跑；`release.yml` 的闸门（`deploy/release-gate.sh`，只认 `ci.yml`，带"`ci.yml` 红、`release.yml` 绿"被拒的反向对照，核对 `CHANGELOG.md` 的一节）、说明脚本（`deploy/release-notes.sh`）、两种架构的构建与 smoke；只读的演练作业（每次推送）与读 `release.yml` 的权限检查；actionlint 进 `make lint` | deploy、CI、Makefile、server（守卫在 buildinfo 与 bootstrap 的测试） | 能：演练作业在分支上证明两种架构为绿；不推送 | 组合根不变；每次推送（分支与 `main`）多两个并行的演练作业（推断各 10–15 分钟，与 `ci.yml` 并行） |
-| S2 推送、签名、证明、SBOM、许可证与 Release | 合成索引（先打 `sha-<提交>`）；`actions/attest`；cosign；镜像与前端两份 SBOM；`/licenses`；最后复制出版本号的 tag；Release 没有就建、有就改；发布之后的核对作业（两种架构的矩阵） | CI、deploy | 合并时为绿（分支上不触发这部分）。这条路径**只有推 tag 才证明得了**，所以要 4.11 的 rc | 不变 |
+| S1 版本号与流水线的构建部分 | 四份默认值的守卫与 MCP 版本的短测试（4.9）；Dockerfile 的三个 label 与 `make image` 传它们；`ci.yml` 只在分支上跑；`release.yml` 的闸门（`deploy/release-gate.sh`，只认 `ci.yml`，带"`ci.yml` 红、`release.yml` 绿"被拒的反向对照，核对 `CHANGELOG.md` 的一节）、说明脚本（`deploy/release-notes.sh`）、两种架构的构建与 smoke；只读的演练作业（每次推送）与读 `release.yml` 的权限检查；actionlint 在 CI 上（`make lint-actions`，本机不跑） | deploy、CI、Makefile、server（守卫在 buildinfo 与 bootstrap 的测试） | 能：演练作业在分支上证明两种架构为绿；不推送 | 组合根不变；每次推送（分支与 `main`）多两个并行的演练作业（推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟，与 `ci.yml` 并行；P5 设计 2.1 第 1 条） |
+| S2 推送、签名、证明、SBOM、许可证与 Release | 合成索引（先打 `sha-<提交>`）；`actions/attest`；cosign；镜像与前端两份 SBOM；`/licenses`；最后复制出版本号的 tag；Release 先建草稿、传附件；发布之后的核对作业（两种架构的矩阵）；核对过了才公开 Release（P5 设计 2.1 第 3 条） | CI、deploy | 合并时为绿（分支上不触发这部分）。这条路径**只有推 tag 才证明得了**，所以要 4.11 的 rc | 不变 |
 | S3 部署文档与发布说明 | `deploy/README.md`（含硬件下限、从 `README.md:534` 挪来的数）；`deploy/compose.yaml`（`migrate` 在 profile 里）与 `make deploy-check`；PostgreSQL 镜像的守卫把 README 那一项换成 `deploy/README.md`、加 `compose.yaml`；根 README 缩写与改地址；第 7 节"移交的落实"的每条部署项；开发版的附录（看负责人的回答）；`CHANGELOG.md` 的 v0.1.0 一节（已知限制取自 P2–P4，逐条对照 4.13）；`SECURITY.md`；`manual/` 的读屏清单与汇总入口；用 `compose.yaml` 安装、升级、备份恢复的演练；总体设计第 11 节 | docs、deploy、README、CI、server（PostgreSQL 镜像的守卫） | 能：只改文档、一个检查与一个守卫 | `image` 一份多 `make deploy-check`，几秒 |
 
 P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
@@ -782,7 +787,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 
 1. 三位审查者并行：A 服务端（跨 Phase 的一致性、302 的修法与撤销的其余路径、任务的入口与启动）；B 网页与 e2e（打磨的回归、三种引擎的焦点）；C 完成标准、文档、移交的落实与发布流水线（对照第 3 节逐条，对照代码核对每份移交）。
 2. 修复在分支 `m12-closeout`，提交写 `(M12 closeout)`；核对一轮一轮做到干净；合并，`main` 的 CI 绿。
-3. 处理移交：六份改为 `done`；写 `docs/v0.2/handoffs/` 的五份与 `docs/v0.1.1/handoffs/` 的一份（4.13）。
+3. 处理移交：六份改为 `done`；写 `docs/v0.2/handoffs/` 的五份与 `docs/v0.1.1/handoffs/` 的一份（4.13）；P5/S3 之后才合并的 P2 的已知限制补进 `CHANGELOG.md`（P5 设计 2.1 第 9 条）。
 4. 4.11 的第 2–7 步；发布期的改动在 `m12-release` 分支上（主持者的决定 332）。
 5. 收尾记录 `reviews/M12-closeout-review.md`，加"发布"一节：负责人对两个 tag 的回答与日期；`m12-release` 上的每个改动；run 号、摘要与校验的输出；P1/S1 之后 `main` 的 e2e 红过的每一次与总次数（主持者的决定 334）。12.6 写"实现完成，待人工验收"；推送；停下，给负责人写中文汇报（02-workflow 第 6 节）。
 
@@ -796,7 +801,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 - P2/S6 等 P4/S2 的页面树结论；结论要改树时，等改法的 Step。
 - P3/S2 在 P3/S1 之后开，或在合并时 `git merge main`；P3/S3 不等 S1、S2。
 - P4/S2 在 P4/S1 之后；P4/S3 在 P3 全部合并、P4/S2 之后；P4/S4 起的条件修复在它们的结论之后。
-- P5/S2 在 P5/S1 之后；P5/S3 在 P4/S3（与它引出的条件修复）、P5/S2 之后。
+- P5/S2 在 P5/S1 之后；P5/S3 在 P4/S3（与它引出的条件修复）、P5/S2 之后，不等 P2 全部合并：P2 合并晚于 P5/S3 的部分（推后的 C 类等），收尾时补进 `CHANGELOG.md`（主持者定，P5 设计 2.1 第 9 条）。
 - 收尾在 P2–P5 全部合并之后；发布在收尾合并之后。
 
 其余：
@@ -933,17 +938,18 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 3. **12.6**：设计定稿时 `| M12 | 发布 | 未开始 | — |` → `| M12 | 发布 | 进行中 | [00-M12-design.md](M12-release/00-M12-design.md) |`；收尾之后照 4.12 是"实现完成，待人工验收"。
 4. **7.1**，随 P1/S2 改：`例如 \`postgres:18.6-trixie\`` → `例如 \`postgres:18.7-trixie\``。
 5. **13.5 第 2 条**，随 P1/S2 改：`Node 本身按大版本（\`.node-version\`）。` → `Node 本身按大版本（\`.node-version\`）。Dockerfile 的 golang 镜像的版本（tag 与 server 阶段构建时断言的 \`go env GOVERSION\`）与 README 写给贡献者的版本等于两份 \`go.mod\` 的 \`toolchain\`（golang 镜像设了 \`GOTOOLCHAIN=local\`，\`FROM\` 里生效的是摘要）；测试、开发、部署样例与 smoke 的 PostgreSQL 镜像相同，\`pgtest/image_test.go\` 列出要核对的各处；都由测试核对（M12）。`
-6. **13.5** 加第 6 条，随 P5/S1、S2 改：`6. **版本号与发布**（M12）：版本号只由 ldflags 注入，Makefile、buildinfo 与 Dockerfile 的默认值相同，由测试核对；发布之后改为下一个补丁版本加 \`-dev\`。发布由推 \`v*\` 的 tag 触发 \`release.yml\`，闸门只放过 \`main\` 上 \`ci.yml\` 已绿、\`make vuln\` 为绿的提交；依赖的漏洞扫描另在每天的 \`vuln.yml\` 里跑，只在 runner 上。镜像两种架构，带签名、SBOM 与来源证明，只打确切的版本号，不打 \`latest\` 与浮动的"大版本.小版本"。推 tag 之前问负责人；收尾之后为发布做的改动在 \`m12-release\` 这样的分支上，合并之后才推 tag。`
+6. **13.5** 加第 6 条，随 P5/S1、S2 改（S1 写到"合并之后才推 tag。"为止，S2 在末尾加后一句；P5 设计 2.1 第 18 条改，比定稿时多了 README、`CHANGELOG.md`、actionlint、写权限只在 tag 的作业里、版本号的 tag 不改指与 Release 先草稿）：`6. **版本号与发布**（M12）：版本号只由 ldflags 注入，\`Makefile\`、\`buildinfo\`、Dockerfile 的两个 \`ARG\` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 \`-dev\`。发布由推 \`vX.Y.Z\` 或 \`vX.Y.Z-rc.N\` 的 tag 触发 \`release.yml\`，闸门只放过 \`main\` 上 \`ci.yml\` 已绿、\`make vuln\` 为绿、\`CHANGELOG.md\` 有这一节的提交；依赖的漏洞扫描另在每天的 \`vuln.yml\` 里跑，actionlint 在 \`ci.yml\` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 \`m12-release\` 这样的分支上，合并之后才推 tag。 镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 \`latest\` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。`
 7. **第 11 节**，随 P5/S3 改：
    - 第一段，从 `**M10/P3/S1升级补充**` 到 `不以暖样本承诺生产停机。`（各恰好出现一次）整段换成 `部署、备份、升级与回退的步骤在 [deploy/README.md](../../deploy/README.md)（M12）；这里只列要点。`
    - 最后一段，从 `- **M10/P3来源表示升级（决定62）**` 到 `§3.0、§8.1a）。`（各恰好出现一次）整段删掉；开发版的升级若要写，在 `deploy/README.md` 的附录。
    - `**单实例**：v0.1 官方只支持单实例（附件在本地磁盘）。` → `**单实例**：v0.1 只支持单实例：附件在本地磁盘，限流、大请求体的名额与正在上传的导入只在进程内计数（M12）。`
    - `不可写时拒绝启动（M7）。` → `不可写时拒绝启动（M7）。M12 起发布到 \`ghcr.io/open-nerve/nervewiki\`：amd64 与 arm64，标签只是确切的版本号，不打 \`latest\`；带签名、SBOM 与来源证明，校验的命令在 deploy/README。`
    - `恢复时先恢复数据库，再放回附件目录。` → `恢复时先恢复数据库，再放回附件目录；恢复之后先 \`ANALYZE\` 再开放服务，命令与演练见 deploy/README（M12）。`
+   - 另有四处写着 `README 的部署一节`（`86565dd6` 上第 11 节的 `:923` 两处、`:929`，第 14 节的 `:1311`）：S3 把那一节缩成入口之后它们落空，改为 deploy/README（第 11 节里的写成链接 `[deploy/README.md](../../deploy/README.md)`；第 14 节的那一处不单独改，由第 9 条的 SSE 一行整句替换完成）；S3 时核对第 11 节里恰好三处、第 14 节里恰好一处（P5 设计 2.1 第 19 条，P5 设计审查 C 的 M8）。
 8. **5.8 第 6 步与 13.1 第 2 条**，随 P3/S2 改：
    - `回滚自己的变更集在"先删的子树落在收着基线节点的新建节点下"时也答冲突（M11 第 302 条，M12 修）。` → `回滚自己的变更集照常可以撤销（M11 第 302 条的冲突由 M12/P3/S2 修好，[M12 总设计](M12-release/00-M12-design.md) 4.6.1）。`
    - 13.1 第 2 条里从 `回滚的变更集由几遍、几个单元在不同时刻写下` 起的那一句（到 `第 6 条）。` 为止）换成照 P3/S2 实情写的一句：被这个变更集删了、现在本身是回收站根的节点，在撤销计划里是它自己的顶；后台撤销的分段随之。
-9. **第 14 节**，随 P4/S3、P5/S3 改：写着 M12 的十一行（搜索、渲染的内存、`FOR SHARE`、解析预算先到先得、lint 与 `index.md`、`NOTIFY`、保存串行与改名、附件与导入导出、页面树、版本的增长、升级的冻结时长）照实测的结论改写："M12 实测"与"M12 压测"改为量得的数、结论与已知限制。旧文字的锚点：`M12 压测`、`M12 实测；不达标时改为分层加载`、`v0.1 全部保留；M12 实测后在 v0.2 设计保留策略`、`配额与负载留给 M12（M7 写的移交）`、`10 万页与 30 万页由 M12 实测`，各恰好出现一次；其余几行在 P4/S3 的文档提交里照同样的办法先核对。13.4 第 8 条里的 `进 M12 的性能移交（00-M11 第 232 条）`、`检查的十万页在 M12` 与第 9 条里的 `旧generic返回2000却扫52000的失败和未成功实验仍移交M12`（各恰好出现一次）一并照结论改成量得的数或已知限制（设计审查 C 的 M7）。
+9. **第 14 节**，随 P4/S3、P5/S3 改：写着 M12 的十一行（搜索、渲染的内存、`FOR SHARE`、解析预算先到先得、lint 与 `index.md`、`NOTIFY`、保存串行与改名、附件与导入导出、页面树、版本的增长、升级的冻结时长）照实测的结论改写："M12 实测"与"M12 压测"改为量得的数、结论与已知限制。旧文字的锚点：`M12 压测`、`M12 实测；不达标时改为分层加载`、`v0.1 全部保留；M12 实测后在 v0.2 设计保留策略`、`配额与负载留给 M12（M7 写的移交）`、`10 万页与 30 万页由 M12 实测`，各恰好出现一次；其余几行在 P4/S3 的文档提交里照同样的办法先核对。13.4 第 8 条里的 `进 M12 的性能移交（00-M11 第 232 条）`、`检查的十万页在 M12` 与第 9 条里的 `旧generic返回2000却扫52000的失败和未成功实验仍移交M12`（各恰好出现一次）一并照结论改成量得的数或已知限制（设计审查 C 的 M7）。`NOTIFY` 与 SSE 两行不是实测的事，归 P5/S3 改、P4/S3 不改它们（主持者定，P5 设计审查 C 的 M7 与修订核对 C 的 N14，同 P4 设计的 P4-26）：锚点 `升级 PostgreSQL 大版本时复核（论证见` 与 `两份配置写在 README 的部署一节，M12 的部署文档沿用。`（各恰好出现一次），新文字写复核的步骤在 deploy/README 的"升级与回退"、两份配置在 deploy/README 的"反向代理与 HTTPS"（P5 设计 2.1 第 20 条、第 8 节第 5 条）。
 10. **13.1 第 28 条（标题键）与第 30 条（实时推送）**，随 P3/S1 改：标题键加切罗基文那一步；实时推送加每个凭证的上限与重置、每个账户的硬上限与 429。
 11. **13.2 第 12 条**，随 P2/S1 改：从 `` `ConfirmDialog` 发送中仍用 `disabled` `` 起、到它之后的第一个 `第 23 条）。` 为止的那一句（起头恰好出现一次；中间是指向 `M12-release/handoffs/M5-polish.md` 的链接）→ `` `ConfirmDialog` 在 M12 照此（M12/P2/S1）：发送中"确认"与"取消"用 `aria-disabled`（"确认"另带 `aria-busy`），忙的守卫让一次按下至多一个请求，Esc 与"取消"在发送中不关闭对话框；焦点留在按下的地方，被拒之后仍在"确认"上（丢了就还给它），拒绝由对话框里的 `role=alert` 说出。`useForm` 的表单发送中仍禁用按钮：失败而没有 `aria-invalid` 的字段（只有横幅说的拒绝），且拒绝到达时焦点已丢（在 `body`，或在发送中禁用的元素上）时，焦点给横幅；焦点没丢的（撤销的确认框）、读者放到别处的不动（第 26 条）。`aria-disabled` 的按钮与禁用的一样变暗（`components/ui/button.tsx`）。 ``（P2 设计 2.1 第 2 条、8.2）
 12. **13.4 第 3 条（端到端测试）**，随 P1/S1 改：加一句（P1 设计第 8 节第 5 条；S1 照实施改了几处：锁先于令牌（没有 Web Locks 时是租约）、令牌的答复、门禁核对读到了帮手；A15 一句多了锁里写记录的登录、租约与自己注册的文档不必等，P1 设计 3.15）："M12/P1/S1：e2e 换文档只经 `e2e/fixtures/navigation.ts` 的 `goto` 与 `reload`：它们先等页面没有在途的接口请求、续期的锁（没有 Web Locks 时是租约）空着、这个文档有了给它令牌的答复（第一次续期，或在这个文档里登录、注册），再换；有意在请求途中离开的写显式的逃生口 `{ inFlight: "leave" }`。门禁 `tools/e2e-navigation/check.mjs`（`make lint-web`）不许 `e2e/` 里别处直接调 `page.goto`、`page.reload`，按表核对每个文件的逃生口，并核对它读到了帮手的模块；同一个文档里的后退与前进不经帮手。A15 演示续期途中离开会被登出（M1 第 10 节），并核对帮手等的每一样（含在锁里写记录的登录、没有 Web Locks 时的租约）、自己注册的文档不必等；只有页面版本，接口那一面是 A5 (API)；在三种浏览器里跑，第一次续期发出之前离开的那一格只在 Chromium 与 Firefox（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。"
@@ -1076,9 +1082,9 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 推送、签名、证明与 Release 只有真的 tag 才走得到（I1-D7）。之前分两层核对，rc 是第三层：
 
 1. **静态**：
-   - actionlint 核对三份工作流（`make lint`）。
-   - 读 `release.yml` 的检查：演练作业没有 write。反向对照：给它加 `packages: write`，检查失败。
-   - 闸门脚本 `deploy/release-gate.sh` 在本机对着假的输入跑。tag 名不是 semver、提交不在 `main` 上、提交的 `ci.yml` 不绿、"`ci.yml` 红而 `release.yml` 绿"、`CHANGELOG.md` 没有这一节、`make vuln` 红（npm 一侧照 `high`：一个 `moderate` 的公告不挡、一个 `high` 的挡），各被拒或放过一次（反向对照）。
+   - actionlint 核对三份工作流（`make lint-actions`，只在 runner 上：CI 的 `costs-1` 一份；P5 设计 2.1 第 10 条）。
+   - 读三份工作流的守卫（Go 的短测试，P5 设计 2.1 第 7 条）：演练作业没有 write，tag 的作业照表。反向对照：给它加 `packages: write`，守卫失败。
+   - 闸门脚本 `deploy/release-gate.sh` 在本机对着假的输入跑。tag 名不是 semver、提交不在 `main` 上、提交的 `ci.yml` 不绿、"`ci.yml` 红而 `release.yml` 绿"、`CHANGELOG.md` 没有这一节或它是空的，各被拒或放过一次（反向对照）。`make vuln` 不在脚本里，是闸门作业的下一步（它只在 runner 上跑）：守卫核对那一步是 `make vuln VULN_AUDIT_LEVEL=high`；级别传到 `pnpm audit`，由 P1/S2 的变异 15 那样的 `go`、`pnpm` 两个桩核对一次；"`moderate` 不挡、`high` 挡"是 `pnpm audit --audit-level` 的行为，不是我们的代码（P5 设计 2.1 第 8 条）。
    - 说明脚本 `deploy/release-notes.sh` 对着假的 `CHANGELOG.md` 跑：rc 取到去掉 `-rc.N` 的那一节、前面有"预发布"；缺这一节就拒。
 2. **演练**（P5/S1）：单独的只读作业，两种原生 runner 各自 `push: false`、`load: true` 构建，对本地的镜像跑 `image-smoke.sh`；核实路径上下文带上了 `.git`、VCS 信息在。分支与 `main` 的每次推送都跑。
 3. **rc**：推 `v0.1.0-rc.1`，走完整条路，照 4.11 第 4、5 步核对。keyless 签名、`actions/attest`、GHCR、Release、复制出版本号的 tag 与重跑，只在这一层第一次真的跑。只改流水线的 rc.N 不再问负责人（决定 324），这一层因此便宜。
@@ -1093,7 +1099,8 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - P3/S1：`TitleKey` 不做切罗基文一步；三处只改一处；`PlainText` 仍跳过自动链接；`listTags` 列 `/`；日志或变更集详情的读不在快照里；流数按账户而不按凭证数、重置最新的那条、账户的硬上限不拒、先看账户再看凭证；整个名字的判断不认只由 U+200B、U+2060、U+3164 组成的名字；`index` 的 `parent:"/"` 被拒；`log` 的 `""` 被当作整本；超时的文字照旧；`Blank` 不减 Prepended_Concatenation_Mark；`Find` 在快照之外；`alivePaths` 在快照之后；顶掉的流算到它关掉为止；提交的错误不带标记；只读的快照的提交错误也带标记；MCP 不看标记（P3 设计 7.3 的 S1-1–S1-34）。
 - P3/S2：去掉新规则；`topOf` 走过回收站根；`needed` 不看段内后面的放回；某一处构造计划不传 `Nodes`（三处非等价，两处等价；P3 设计 7.3 的 S2-1–S2-9）。
 - P3/S3：不看 UTF-8 标志就按 GBK；读 `NonUTF8` 而不读 `Flags`；没有候选的包里合法的 UTF-8 名字也按 GBK 读；结果里有 U+FFFD 也回退；一个名字解不开时其余的照样回退；0x7075 的 CRC 不核；报告不写；`room` 不按人数；按人的拒绝答成通用的 `server_busy`；`AtStart` 不收拾排队的行；按解读之前的名字判文件夹；解读过的名字的记录排在别的问题之前；回滚也被按人的上限拒绝；先判全局、再判按人；收拾的任务排在五种任务之前（P3 设计 7.3 的 S3-1–S3-18）。
-- P5/S1：四份默认值有一份不同（守卫抓）；MCP 的版本不取 buildinfo（短测试抓）；闸门的各条各去掉一条；闸门不分工作流；演练作业加了 write（权限检查抓）。
+- P5/S1：照 P5 设计 7.2，其中：四份默认值与 README 写的有一处不同（守卫抓）；MCP 的版本写死成默认值（盖了版本号的 `make test-go-short` 抓，直接 `go test` 抓不到）；闸门的各条各去掉一条、闸门不分工作流、闸门放过空的一节（闸门的测试抓）；演练作业加了 write、tag 的作业的 `if` 放宽、闸门的漏洞一步 `continue-on-error`（守卫抓）（P5 设计 2.1 第 6、7 条）。
+- P5/S2、S3：照 P5 设计 7.2，其中：版本号的 tag 改指、Release 已公开时照样上传（发布脚本的测试抓）；`/licenses` 缺 Go 本身的许可证（image-smoke 抓）；`compose.yaml` 引用错的 secret（`make deploy-check` 抓）；它的 PostgreSQL 镜像不同（守卫抓）。
 
 ### 9.7 门禁与 CI
 
@@ -1111,7 +1118,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | **`vuln.yml` 在 M12 期间变红**：Go 的小版本约每月一个，多数带安全修复；npm 一侧 `low` 也报、不看可达性；定时运行的通知不发给主持者 | 不在每次推送的 CI 里，Step 照常合并；每个 Step 合并之前看一眼它最近一次的结论；旁支 `m12-toolchain-<版本>` 升，npm 一侧修不了的写进 `audit.ignore`，闸门只挡 `high`（4.3）；发布的闸门硬挡；收尾之后才发现的再问负责人 |
 | **第五份与第四份的余量**：收尾之后两次（`05dac827`、`a057b6ad`）第五份都在 EPYC 7763 上，平均 425 秒，余量 25 秒；第四份这两次不在 7763 上，平均 312 秒，再前两次在 7763 上平均 413.5 秒 | 新的整个程序的测试点名进第七、第八份（收尾之后两次 257、267 秒，在 7763 上 315、318 秒），名字避开第二、第五份的模式；第四、第五份不加；P1/S2 合并之后两次 `main` 重看；过线先挪份，不提高 `-timeout` |
 | **e2e 的偶发挡发布**：Playwright 不重试，`main` 的 CI 红了就不能打 tag | P1/S1 最先做；门禁数逃生口；`ERR_NETWORK_CHANGED` 加一行日志看它在 CI 上触发了没有；其余的偶发照 M11 第 277 条的做法只重跑 e2e，并在记录里写明 |
-| **演练作业的 CI 用时**：每次推送（分支与 `main`）多两个各约 10–15 分钟的作业（推断） | 与 `ci.yml` 并行，不进组合根；`ci-wait.sh` 按工作流取，不被它挡住也不被它冒充 |
+| **演练作业的 CI 用时**：每次推送（分支与 `main`）多两个作业，推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟（P5 设计 2.1 第 1 条；原来推断各 10–15 分钟） | 与 `ci.yml` 并行，不进组合根；`ci-wait.sh` 按工作流取，不被它挡住也不被它冒充 |
 | **推 tag 之后才走得到的路径**：keyless 签名、`actions/attest`、GHCR 的推送与权限、Release、复制版本号的 tag；`build-push-action` 的上下文 | 9.5 的三层；rc 先走一遍；一时的失败在同一次运行上重跑，不重推 tag（4.10）；允许的第三方 action 与组织的 Actions 设置由负责人在推 rc 之前核对（第 11 节） |
 | **GHCR 设为公开不能撤回** | 只在 rc 核对之后做；之前核对镜像里没有机密：最后一层只有二进制与 `/licenses`（`deploy/Dockerfile:41-47`），构建参数只有版本与 label，`.git` 只在构建的阶段；Release 的说明与附件在 rc 上先看一遍；版本号的 tag 在签名与证明之后才打 |
 | **先发布、后验收**：v0.1.0 发出去之后，人工验收可能在输入法、真实的 MCP 客户端或读屏软件上找到问题 | 发布说明写明人工验收在发布之后、还没逐项核对过；v0.1.1 的移交与目录先定好（第 7 节"写给后面的 M"）；部署文档要求生产写确切的版本号，照升级的步骤换版本 |
@@ -1177,7 +1184,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **319 测量的设施进仓库、不进 CI**；内存从外部采样，不加 pprof 或 metrics 端点；只写有预算的几项要的驱动（I2-D4、D5、D14，4.7.4；设计审查 A 改）。
 - **320 部署文档**：`deploy/README.md` 作运维手册，加 `deploy/compose.yaml` 与它的检查；`compose.yaml` 的 `migrate` 在 profile 里、备份之后显式跑；要求写 PostgreSQL 18.7 或更新与硬件下限；根 README 缩成入口，删开发版的说明之前先挪走对新装也成立的数；开发版的升级说明看负责人的回答；单实例写明原因、时钟一条不适用；Caddy 的 502 只写代价、推荐 nginx；小项都写进去（I1-D13、D15–D18，4.8；设计审查 B、C 改）。
 - **321 版本号**：tag 经 ldflags 注入，四份默认值有守卫，MCP 的版本由短测试守住，发布之后 `main` 是 `0.1.1-dev`；不打 `server/v0.1.0`，不宣传 `go install`（I1-D8，4.9；设计审查 B 补）。
-- **322 发布流水线**（I1-D1–D7、D14，4.10；设计审查 B 改）：`ghcr.io/open-nerve/nervewiki`，只打确切的版本号，不打 `0.1` 与 `latest`；tag 触发；闸门只认 `ci.yml`、加 `make vuln` 与 `CHANGELOG.md` 的一节；两种原生 runner；演练是只读的单独作业，分支与 `main` 的每次推送都跑、不加路径条件；先打 `sha-<提交>`，证明与签名之后才复制出版本号的 tag；一时的失败在同一次运行上重跑；发布之后的核对在两种架构上；`actions/attest` 的来源证明与 SBOM 加 cosign keyless；前端另出一份 SBOM；镜像与 Release 带第三方许可证；Release 不附二进制、没有就建有就改、附件 `upload --clobber`，`v0.1.0` 不标 pre-release；先推 rc；不用 `docker/metadata-action`。`ci-wait.sh` 按工作流取已在 `b54cd679`。
+- **322 发布流水线**（I1-D1–D7、D14，4.10；设计审查 B 改）：`ghcr.io/open-nerve/nervewiki`，只打确切的版本号，不打 `0.1` 与 `latest`；tag 触发；闸门只认 `ci.yml`、加 `make vuln` 与 `CHANGELOG.md` 的一节；两种原生 runner；演练是只读的单独作业，分支与 `main` 的每次推送都跑、不加路径条件；先打 `sha-<提交>`，证明与签名之后才复制出版本号的 tag，已有的不改指（P5 设计 2.1 第 4 条）；一时的失败在同一次运行上重跑；发布之后的核对在两种架构上、在公开 Release 之前；`actions/attest` 的来源证明与 SBOM 加 cosign keyless；前端另出一份 SBOM，SBOM 的生成在只读的作业里（P5 设计 2.1 第 2 条）；镜像与 Release 带第三方许可证；Release 不附二进制、先草稿后公开（P5 设计 2.1 第 3 条改，原来是"没有就建有就改、附件 `upload --clobber`"），`v0.1.0` 不标 pre-release；先推 rc；不用 `docker/metadata-action`。`ci-wait.sh` 按工作流取已在 `b54cd679`。
 - **325 T1、H4 写明、功能进 v0.2**（I3 第 7 节第 9、11 条）：结束的任务行不清理；永久删除写明与变通，界面写一句（4.5、4.8）。初稿里同一条的 T2 改为在 v0.1 修（负责人第 5 问，决定 336）。
 
 ### 2026-11-14：00-M12 的设计者的取舍 314、323、324、326–331（主持者的决定，负责人可以改判）
@@ -1429,6 +1436,34 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 - **428 9.5 的英文写"(at the top level of Plans)"**，不用所有格：以 s 结尾的笔记本名的所有格不好看（4.2 的 9.5）。（P2-51，P2 设计 2.3）
 - **429 20.2 留被拒的那一句**（`importBusy`，回答这次按下），压下常驻的 `importUnderWay`（4.5 的 20.2）。（P2-52，P2 设计 2.3）
 
+### 2026-11-16：P5 的设计审查之后的取舍 430–452（主持者的决定，负责人可以改判）
+
+430–452 是 [P5 设计](05-P5-deploy-release.md) 2.3 的二十三条（P5-1 到 P5-23，P5-k 是 429 + k）；P5-6、P5-11 的核对在公开之前、P5-21、P5-22、P5-23 是主持者在审查之后定的。每条的理由在 P5 设计 2.3，审查里的出处在 [P5 审查记录](reviews/P5-design-review.md)。
+
+- **430 发布的守卫都是 `platform/buildinfo` 的 Go 短测试**（P5-1）：版本号的默认值；三份工作流的权限、触发与调的脚本；闸门、说明、版本号的 tag 与 Release 的脚本对着假的 `gh`、`docker` 与临时的仓库；要 `bash`、`git`、`jq`。
+- **431 MCP 的版本由盖了版本号的 `make test-go-short` 守住**（P5-2）：`mcpOptions` 拆出来，测试的二进制盖 `0.0.0-short`；mcpserver 另有握手测试。
+- **432 README 写的默认值也进版本号的守卫**（P5-3）：示例与注释不进。
+- **433 镜像的三个 label**（P5-4）：`created` 是提交的时间，不是构建的时间；image-smoke 逐字核对。
+- **434 tag 只认 `vX.Y.Z` 与 `vX.Y.Z-rc.N`；`CHANGELOG.md` 的标题 `## X.Y.Z（日期）`，发布之前写"未发布"**（P5-5）：正式版本要写日期，这一节不能是空的。
+- **435 actionlint 只在 runner 上跑（`make lint-actions`，CI 的 `costs-1`），`-shellcheck=`**（P5-6）：主持者照决定 308 的先例定（P5 设计审查 A 的 I1、C 的 Q1）。
+- **436 演练与发布都不用构建的缓存与 pnpm 的 store 缓存；演练断言镜像是 runner 的架构**（P5-7）。
+- **437 SBOM 与许可证在只读的 `sbom` 作业里**（P5-8）：能签名的作业里第三方的只有 cosign-installer，登录用 shell。
+- **438 镜像的 SBOM 由 syft 从 amd64 的那一份生成，前端的由 `pnpm sbom --prod`；两份都是 SPDX 2.3**（P5-9）。
+- **439 镜像里的第三方许可证 `/licenses` 在 Dockerfile 里收集**（P5-10）：Go 一侧缺许可证文件让构建失败，npm 一侧照实记成"没有文本"。
+- **440 Release 先草稿、传附件，两种架构上核对过才公开；推荐打开 immutable releases**（P5-11）：核对在公开之前是主持者定的（P5 设计审查 B 的 Q1）。
+- **441 版本号的 tag 已在、指着别的摘要时失败，不改指**（P5-12）：判"不在"只认 registry 答的 not found。
+- **442 只签索引的摘要**（P5-13）。
+- **443 索引带 `description`、`source`、`licenses` 三个注解，值取自 label**（P5-14）。
+- **444 rc 失败时没公开过的草稿删掉，公开了的标"作废"；GHCR 里留下的不删**（P5-15）。
+- **445 `deploy/compose.yaml` 用一个不是超级用户的库角色，附件绑定 `./data`，默认网络钉子网、`trusted_proxies` 信任它**（P5-16）：P5 设计审查 C 的 I1、M3、M4；C 在 18.7 上照样例装过、恢复过。
+- **446 升级的演练从 M12 最早一条新迁移之前升上来；M12 没有新迁移时从 `5e8af5b5` 升**（P5-17）：P5 设计审查 C 的 M2。
+- **447 syft、cosign 与 BuildKit 的版本在工作流里显式写**（P5-18）。
+- **448 闸门不等 CI**（P5-19）：CI 绿了之后在同一次运行上重跑。
+- **449 版本号的 tag 与 Release 的两步写成脚本，对着假的 `docker`、`gh` 测试**（P5-20）：P5 设计审查 B 的 M2。
+- **450 `v0.1.0` 只因流水线自己的错没过核对时不出 `v0.1.1`**（P5-21）：修流水线、手动校验、记进收尾记录；公开草稿先问负责人。主持者定（P5 设计审查 B 的 Q2）。
+- **451 P5/S3 只等 P4/S3 与 P5/S2，不等 P2 全部合并**（P5-22）：P2 的部分收尾时补进 `CHANGELOG.md`。主持者定（P5 设计审查 C 的 Q2）。
+- **452 总体设计第 14 节的 `NOTIFY` 与 SSE 两行归 P5/S3 改，P4 不改它们**（P5-23）：主持者定（P5 设计审查 C 的 M7、修订核对 C 的 N14；同 P4 设计的 P4-26）。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1452,7 +1487,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | # | 事项 | 推荐 | 什么时候要 |
 |---|---|---|---|
 | 1 | 推 `v0.1.0-rc.1` 与 `v0.1.0` 两个 tag（4.11 第 2 步） | 照 4.11 | 收尾合并、`main` 的 CI 绿之后，推 rc 之前 |
-| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`（I1-D19；审查 B 指出最后一项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以） |
+| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write`（I1-D19；审查 B 指出这几项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以）；演练在每次推送上用 `docker/*`（P5/S1 起）与 `anchore/sbom-action`（P5/S2 起），"允许的 actions"受限时那个 Step 的分支 CI 就红（P5 设计 2.2） |
 | 3 | 给 `v*` 的 tag 加规则集，只有负责人与主持者能推（I1-D19） | 照做 | 推 rc 之前 |
 | 4 | 开私密的漏洞报告（`SECURITY.md` 指向它）；Dependabot alerts 可以开，只管 Go 与 actions：GitHub 的依赖图读不出 pnpm 12 的锁文件，npm 一侧靠 `make vuln` 里的 `pnpm audit --prod`（I1-D19；设计审查 B 改） | 照做 | 私密的漏洞报告在 P5/S3 写 `SECURITY.md` 之前；alerts 随时 |
 | 5 | 把 GHCR 的包设为公开，**不能撤回**（I1-D19） | rc 核对之后 | 4.11 第 5 步：rc 核对之后、推 `v0.1.0` 之前 |
@@ -1461,6 +1496,8 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 8 | 输入法清单（M4–M8 的 21 步）是否同样在发布之后验收（4.12） | 是：同 2026-10-13 的原话 | 写发布说明之前（P5/S3） |
 | 9 | 罕见的 A 类（H1、24.1、T4、T2）怎样处理 | **已确认（2026-11-14）**：T2、T4 在 v0.1 修，H1、24.1 进 v0.2（第 5 问） | — |
 | 10 | 只从 ARIA 推断的九项怎样处理 | **已确认（2026-11-14）**：并进发布之后的读屏验收（第 6 问）；其中 49 与 24.3 同一种问题，留在 v0.1 | — |
+| 11 | 打开仓库的 immutable releases（P5 设计 2.1 第 14 条） | 打开：公开之后 tag 与附件都不能改，与"不重推同一个 tag"一致；流水线先草稿后公开，打开不打开都能用 | 推 rc 之前 |
+| 12 | GHCR 的 `open-nerve` 下没有、也不要有手动推的 `nervewiki` 包：别的凭证推过的同名包，`GITHUB_TOKEN` 推不了（GitHub 文档；P5 设计 2.1 第 14 条） | 照做：第一次由 `release.yml` 推，包自动关联仓库 | 推 rc 之前 |
 
 改了负责人原话或负责人可能想自己定的，在 M12 的汇报里列出：315（流数的上限与重置）、324（rc 的重推不再问）、331（MCP 地址进 v0.2）、312 里 49 留在 v0.1（比第 6 问所选多做一项）、322 里不打 `0.1`（I1 推荐打）。
 
@@ -1472,7 +1509,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 设计已审查（2026-11-16） | [设计](reviews/P2-design-review.md) | — |
 | P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 设计已审查（2026-11-16） | [设计](reviews/P3-design-review.md) | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
-| P5 部署文档与发布流水线（S1–S3） | — | 未开始 | — | — |
+| P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查） | [设计](reviews/P5-design-review.md) | — |
 | 收尾与发布 | — | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -1500,6 +1537,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-16 | P1 完成：两个 Step 都已合并（S1 `bbf3eb26`、S2 `4190bac0`），另有三条旁支（分配守卫 `m12-p1-prepared-alloc` 合并 `ad0bf40c`，决定 357；帮手 `m12-p1-navigation-settle` 合并 `4fe6e523`，决定 356、358；来源守卫 `m12-p1-source-revert-deadline` 合并 `194ca350`，决定 359）。P1 设计第 8 节的完成标准：第 1 条，两个 Step 合并之后各两次 `main` 的组合根每一份平均都在 450 秒之下（S1 最贴近的第三份 416，S2 最贴近的第五份 389）；决定 352 的第五份在 S2 合并之后第一次落在 EPYC 7763 上是 438 秒（冷的编译，暖的约 359），之后几次 `main` 的第五份 213–317 秒，没有两次落在 7763 上的平均过 450。第 2 条，第 3、5 节的测试与 7.2 的变异记在 10.1、10.2 与各旁支的记录。第 3 条，`vuln.yml` 在 S2 分支上为绿（10.2）；门禁报出逃生口只有 A15 的三格（第 1、3、11 格）；A15 十三格在三种浏览器里为绿（WebKit 跳过第 3 格）；"S1 合并之后 `main` 的 e2e 没有一次因为被跳回登录页而红"由收尾记录核对（决定 334），到这里 `main` 上 e2e 只红过一次（run 43689756257 第一次 attempt，A15 第 3 格在 Firefox 上该被登出而没有，是那一格的闸门写法，旁支的 `cb13cc9a` 修了，决定 356），不是被跳回登录页；另有两次因服务端的一项红而被跳过（43721644553、43745380462，决定 359、360）。第 4–7 条在各 Step 与旁支的文档提交里。主持者的决定编到 360（360：一次 pgtest 的读超时，只重跑、观察）。下一步：P2、P3 的设计已在写，P4/S1、P5/S1 的设计随后 | [P1 设计](01-P1-foundation.md) 第 8、10 节；两个 Step 与三条旁支的审查记录 |
 | 2026-11-16 | P3 设计已审查（三份审查：A 0I3M6N、B 0I5M13N、C 3I5M9N2Q；三次修订，修订核对三轮：第 1 轮 C 1 条 Minor、三位共 11 条 Nit，第 2 轮 B 1 条 Minor，都改了，第 3 轮没有新的）。P3 设计 2.1 的修订落进本文：`Makefile` 的行号括注 `194ca350` 的；302 的 `needed` 是修正，性质测试分时刻装载、回滚的只数嵌套的根；快照放在四个用例里，从第一条属于答复的读起；MCP 超时的码不改，提交时跨过期限的另用一句；30.2 照 Unicode 的推导、管三种名字，标签块不去掉；429 沿用 `rate_limited`、网页不改；T3 的报告在任务结束时加、解码在适配器里；GBK 的包里恰好合法 UTF-8 的名字也按 GBK 读（决定 376，相对今天的回归写进已知限制）；T2 答 409、码的次序照今天的检查；T4 取第三种做法，以 SQL 种排队行的测试带上 River 的行；`reindex` 与切罗基文的撞键；9.6 的变异；与 P2 的重叠；5.1 的 `page.title_taken`。P3 的取舍 361–377 写进第 11 节 | [P3 设计](03-P3-server-correctness.md)、[P3 审查记录](reviews/P3-design-review.md) |
 | 2026-11-16 | P2 设计已审查（三份审查：A 2I9M7N2Q、B 0I5M6N1Q、C 1I8M7N2Q；三次修订，修订核对三轮：第 1 轮 A 7M5N、B 2M1N、C 1M7N，第 2 轮 A 2N、B 1N、C 1M4N，都改了；第 3 轮 C 只有一条 Nit，主持者改了）。P2 设计 2.1 的修订落进本文：次序改为一次合并一个、只守硬依赖，S6 在页面树的结论之后开，另三处"按序合并"随之改；S1 一行与修订第 11 条照 S1 的焦点规则；"总体设计的修订"加六条；S4、S5 的部件加 server；9.1 的阅读视图与超宽两句；附录 A 加菜单与选项的高亮（S3）与 P2 推后的几处。P2 的取舍 378–429 写进第 11 节 | [P2 设计](02-P2-web-polish.md)、[P2 审查记录](reviews/P2-design-review.md) |
+| 2026-11-16 | P5 设计已审查（三份审查：A 1I 8M 10N、B 6M 12N 2Q、C 1I 11M 11N 2Q；三次修订、两轮修订核对：第 1 轮 B 1 条、C 2 条 Minor，三位共 9 条 Nit；第 2 轮只有 3 条 Nit；都改了）。P5 设计 2.1 的修订落进本文：演练的用时改为分钟级；SBOM 与许可证在只读的作业里；Release 先草稿、两种架构上核对过才公开；版本号的 tag 不改指；核对与说明的 `gh attestation verify` 钉住身份、核对两份 SBOM；MCP 版本的短测试盖版本号；守卫是 Go 的短测试；actionlint 只在 runner 上（`make lint-actions`）；P5/S3 不等 P2；`0.1.1-dev` 的清单；syft 与 BuildKit 的版本；读 tag 的运行；负责人的设置加两项；发布物的名字与注解；流水线自己的错不出 `v0.1.1`；"总体设计的修订"第 6、7、9 条（第 14 节的 `NOTIFY` 与 SSE 两行归 P5/S3）；部署文档的数与 P4 对齐（小机器一档由 P4 另量）；compose 样例的库角色、附件目录与可信的代理；移交与已知限制的去处；闸门的写法与 tag 指的提交。第 11 节加 P5 的取舍 430–452，"需要负责人确认"加两项 | [P5 设计](05-P5-deploy-release.md)、[P5 审查记录](reviews/P5-design-review.md) |
 
 ---
 
