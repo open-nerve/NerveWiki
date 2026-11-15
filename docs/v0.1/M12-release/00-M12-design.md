@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1 的 S1、S2 已合并；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 完成；P2、P3、P4/S1、P5/S1 可以开工，P2、P3 设计中；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -1382,7 +1382,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 进行中（S1、S2 已合并） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
+| P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | — | 未开始 | — | — |
 | P3 服务端的正确性与历史（S1–S3） | — | 未开始 | — | — |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | — | 未开始 | — | — |
@@ -1411,6 +1411,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | 2026-11-15 | 帮手的旁支合并 `4fe6e523` 之后第一次 `main`，run 43729199362：19 项第一次 attempt 全绿（e2e 7:23，E2E 一步 6:12；guards-sources 落在 EPYC 9V74 上，13:52）。帮手的两种偶发失败（决定 356）合并之后在 `main` 上还没有再见；源文件撤销的守卫的旁支（决定 359）仍在审查 | [帮手的旁支的审查记录](reviews/P1-navigation-settle-review.md)；决定 356、359 |
 | 2026-11-16 | 来源守卫的旁支 `m12-p1-source-revert-deadline`（M10 的故事，在 M12 里发现；`83437b79`、`b0c80b74`、`80de075a`，合进 `main` 一个 `2308438e`；合并见第 12 节）：分配守卫的旁支合并之后第一次 `main`（run 43721644553 attempt 1）guards-sources 在 EPYC 7763 上红在 M10 的 `TestSourceRevertAtTenThousandTakesItsTime`，三个状态的 sample2 在 4.0 秒的请求期限答 500，`e2e`、`image` 被跳过。不是变慢：同一棵树的重跑也在 7763 上，3.54 秒；7763 上 M11 起 38 次，撤销的 sample2 一直只比 4 秒少 3–18%，失败那台每一项都最慢；9V74 与本机看不出与代码有关的台阶，7763 上 S2 之后高约 2–4%、分不出来源。4 秒的期限在 7.6 秒的界之下，起作用的是期限。恢复、撤销改在生产的 15 秒期限下跑，由不变的界来判；期限由界推出、与起应用的表对证；lint 的计时保存测试仍断言 4 秒；计时的请求经 `sendRequestBy` 用 30 秒的客户端（决定 359）。13.4 第 8 条的例外加这一个。审查 A 0I 3M 3N 1Q、B 0I 2M 2N、C 0I 5M 7N 2Q，修复一轮两个提交（B 的 M1、M2、N1、N2），分支 CI 43735796911 一次全绿；修复核对一轮三位都没有 Important、Minor，第一轮的都关上，新 Nit 七条（A 3、C 4）都是文档稿的措辞，在本提交。第 11 节的 359 补上旁支的做法、定因与理由，标题改为"来源的恢复与撤销的守卫"；总体设计 13.4 第 8 条与第 15 节、P1 设计的头与 10.2、05-lessons 两条、移交 M4-performance 的例外随之改 | 决定 359；[旁支的审查记录](reviews/P1-source-revert-deadline-review.md) |
 | 2026-11-16 | 来源守卫的旁支合并 `194ca350` 之后第一次 `main`，run 43745380462：第一次 attempt 16 项绿，`server (race)` 红在 M1 的 pgtest 测试 `TestWaitForLockWaitsOnCountsTheRowsOfItsTable`（读超时，0.87 秒），`e2e`、`image` 被跳过；第二次 attempt 只重跑失败的项，全绿（race 14:44，e2e 9:39，E2E 一步 8:10）。guards-sources 在 EPYC 7763 上，新期限下恢复的 sample2 2.82–2.93 秒、撤销 3.31–3.38 秒，18 个样本都是 200 | 决定 359、360 |
+| 2026-11-16 | P1 完成：两个 Step 都已合并（S1 `bbf3eb26`、S2 `4190bac0`），另有三条旁支（分配守卫 `m12-p1-prepared-alloc` 合并 `ad0bf40c`，决定 357；帮手 `m12-p1-navigation-settle` 合并 `4fe6e523`，决定 356、358；来源守卫 `m12-p1-source-revert-deadline` 合并 `194ca350`，决定 359）。P1 设计第 8 节的完成标准：第 1 条，两个 Step 合并之后各两次 `main` 的组合根每一份平均都在 450 秒之下（S1 最贴近的第三份 416，S2 最贴近的第五份 389）；决定 352 的第五份在 S2 合并之后第一次落在 EPYC 7763 上是 438 秒（冷的编译，暖的约 359），之后几次 `main` 的第五份 213–317 秒，没有两次落在 7763 上的平均过 450。第 2 条，第 3、5 节的测试与 7.2 的变异记在 10.1、10.2 与各旁支的记录。第 3 条，`vuln.yml` 在 S2 分支上为绿（10.2）；门禁报出逃生口只有 A15 的三格（第 1、3、11 格）；A15 十三格在三种浏览器里为绿（WebKit 跳过第 3 格）；"S1 合并之后 `main` 的 e2e 没有一次因为被跳回登录页而红"由收尾记录核对（决定 334），到这里 `main` 上 e2e 只红过一次（run 43689756257 第一次 attempt，A15 第 3 格在 Firefox 上该被登出而没有，是那一格的闸门写法，旁支的 `cb13cc9a` 修了，决定 356），不是被跳回登录页；另有两次因服务端的一项红而被跳过（43721644553、43745380462，决定 359、360）。第 4–7 条在各 Step 与旁支的文档提交里。主持者的决定编到 360（360：一次 pgtest 的读超时，只重跑、观察）。下一步：P2、P3 的设计已在写，P4/S1、P5/S1 的设计随后 | [P1 设计](01-P1-foundation.md) 第 8、10 节；两个 Step 与三条旁支的审查记录 |
 
 ---
 
