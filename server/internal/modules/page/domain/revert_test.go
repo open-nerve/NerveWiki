@@ -80,13 +80,30 @@ func (w *world) trash(root uuid.UUID, at time.Time) {
 }
 
 // subtree is the node id and the nodes under it, alive or deleted with
-// it, level by level, each level by order.
+// it, level by level, each level by id.
 func (w *world) subtree(id uuid.UUID) []uuid.UUID {
+	alive := w.nodes[id].DeletedAt == nil
+	return w.under(id, func(n domain.NodeNow) bool { return (n.DeletedAt == nil) == alive })
+}
+
+// group is the trash item of the root id as TrashGroup reads it: the root
+// and the nodes under it deleted at its time, level by level, each level
+// by id. A node deleted under it at another time, a trash item's root of
+// its own, is not of its group, nor are those under that node (M12/P3
+// design 3.10.5, decision 363).
+func (w *world) group(root uuid.UUID) []uuid.UUID {
+	at := *w.nodes[root].DeletedAt
+	return w.under(root, func(n domain.NodeNow) bool { return n.DeletedAt != nil && n.DeletedAt.Equal(at) })
+}
+
+// under is the node id and the nodes under it that keep holds for, each
+// under one it holds, level by level, each level by id.
+func (w *world) under(id uuid.UUID, keep func(domain.NodeNow) bool) []uuid.UUID {
 	out := []uuid.UUID{id}
 	for at := 0; at < len(out); at++ {
 		var level []domain.NodeNow
 		for _, n := range w.nodes {
-			if n.ParentID != nil && *n.ParentID == out[at] && (n.DeletedAt == nil) == (w.nodes[id].DeletedAt == nil) {
+			if n.ParentID != nil && *n.ParentID == out[at] && keep(n) {
 				level = append(level, n)
 			}
 		}
@@ -118,7 +135,7 @@ func (w *world) state() domain.RevertState {
 	}
 	for root := range domain.RevertGroups(w.items, s.Nodes) {
 		levels := map[uuid.UUID]int{root: 1}
-		for _, id := range w.subtree(root) {
+		for _, id := range w.group(root) {
 			n := w.nodes[id]
 			if id != root {
 				levels[id] = levels[*n.ParentID] + 1
