@@ -17,8 +17,8 @@ import { renderApp } from "../../test/render";
 // notebook of 1,000 pages at its root, an editor's, on its home, whose left column and main each list them all. What
 // is guarded is what renders, not how long it takes (design 2.4 辛): each list draws its first rows at once and the
 // rest a chunk at a time, another's change to the tree renders only the row it adds, a row holds no menu of its own
-// nor a router's link, a dialog chosen from the menu renders once as it opens. The full scale is measured by e2e/perf
-// (design 6.3).
+// nor a router's link, a dialog chosen from the menu renders once as it opens, and the lists all drawn render no more.
+// The full scale is measured by e2e/perf (design 6.3).
 
 /** Each time a row of the tree renders it calls useDrag once, an editor's row and a reader's alike: counted here. */
 const rendered = vi.hoisted(() => ({ rows: 0 }));
@@ -147,16 +147,37 @@ test("a notebook of 1,000 pages at its root shows the first 100 of each list at 
   expect(document.querySelector(`ul[aria-label="Pages"] a[href="${href}"]`)?.textContent).toBe("p1000");
 }, 30_000);
 
-test("a list of pages all shown, grown by 1,000 at once, shows them at most 400 a commit", async () => {
+test("a notebook of 1,000 pages, its lists all drawn, renders nothing more while idle", async () => {
+  let reactions = 0;
+  const stop = spy((event) => {
+    if (event.type === "reaction") {
+      reactions += 1;
+    }
+  });
+  try {
+    renderHome(pageServer({ nodes: flat(many) }));
+    await waitFor(() => expect([treeRows(), homeRows()]).toEqual([many, many]), wait);
+    // The count counts: each chunk is a render of the lists, which the spy reports.
+    expect(reactions).toBeGreaterThan(0);
+    reactions = 0;
+    // Some frames' worth: a list that drew its last chunk asks for no other.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 500)));
+  } finally {
+    stop();
+  }
+  expect(reactions).toBe(0);
+}, 30_000);
+
+test("a list of pages all shown, grown by 500 at once, shows them at most 400 a commit", async () => {
   const server = pageServer({ nodes: flat(10) });
   const view = renderHome(server);
   await waitFor(() => expect([treeRows(), homeRows()]).toEqual([10, 10]), wait);
   const watched = watchRows();
   try {
-    // As an import of a flat archive adds them, after the pages there.
-    server.nodes = [...server.nodes, ...flat(many, 11)];
+    // As an import of a flat archive adds them, after the pages there: just past a chunk, more than one at once.
+    server.nodes = [...server.nodes, ...flat(500, 11)];
     await view.readAgain();
-    await waitFor(() => expect([treeRows(), homeRows()]).toEqual([many + 10, many + 10]), wait);
+    await waitFor(() => expect([treeRows(), homeRows()]).toEqual([510, 510]), wait);
   } finally {
     watched.stop();
   }
@@ -252,12 +273,24 @@ test("a dialog chosen from a row's menu renders once as it opens, not again as t
   await user.click(within(nav).getByRole("button", { name: "Actions for p0500" }));
   const item = await screen.findByRole("menuitem", { name: "Move to…" });
   moving.renders = 0;
+  const focused: EventTarget[] = [];
+  const record = (event: FocusEvent) => void focused.push(event.target ?? document);
+  document.addEventListener("focusin", record, true);
 
-  await user.click(item);
+  try {
+    await user.click(item);
 
-  const dialog = await screen.findByRole("dialog", { name: "Move p0500" });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    const dialog = await screen.findByRole("dialog", { name: "Move p0500" });
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  } finally {
+    document.removeEventListener("focusin", record, true);
+  }
   // Once: the row rendering again as its button's menu closes leaves the dialog be.
   expect(moving.renders).toBe(1);
+  // The focus goes into the dialog once: the menu's closing does not ask the row's button for it, which the dialog's
+  // trap would take back, its first control focused again.
+  expect(focused.length).toBeGreaterThan(0);
+  expect(new Set(focused).size).toBe(focused.length);
 }, 30_000);

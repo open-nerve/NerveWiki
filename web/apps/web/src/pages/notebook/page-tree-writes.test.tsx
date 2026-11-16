@@ -779,7 +779,7 @@ async function readAgain() {
 const triggerOf = (nav: HTMLElement) =>
   nav.querySelector<HTMLElement>('[aria-haspopup="menu"][data-state]:not([data-actions-of])');
 
-test("the tree's menu is named by its row's button, says it is open there, opened by the keyboard on its first item, and gives the focus back on Escape", async () => {
+test("the tree's menu is named by its row's button, says it is open there, opened by Enter, Space or Down on its first item, and gives the focus back on Escape", async () => {
   const user = userEvent.setup();
   renderApp(home, pageServer().app);
   const nav = await tree();
@@ -788,24 +788,54 @@ test("the tree's menu is named by its row's button, says it is open there, opene
   expect(button.getAttribute("aria-expanded")).toBe("false");
   expect(button.getAttribute("aria-controls")).toBeNull();
 
-  button.focus();
-  await user.keyboard("{Enter}");
+  // The keys a menu's trigger opens on (Radix's): each opens it, Escape closes it.
+  for (const key of ["{Enter}", " ", "{ArrowDown}"]) {
+    button.focus();
+    // oxlint-disable-next-line no-await-in-loop -- one key at a time
+    await user.keyboard(key);
 
-  const menu = await screen.findByRole("menu", { name: "Actions for Notes" });
-  await waitFor(() => expect(button.getAttribute("aria-expanded")).toBe("true"));
-  expect(button.getAttribute("aria-controls")).toBe(menu.id);
-  await waitFor(() => expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]));
-  expect(document.activeElement?.textContent).toBe("New subpage");
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    const menu = await screen.findByRole("menu", { name: "Actions for Notes" });
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(button.getAttribute("aria-expanded")).toBe("true"));
+    expect(button.getAttribute("aria-controls")).toBe(menu.id);
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]));
+    expect(document.activeElement?.textContent).toBe("New subpage");
 
-  await user.keyboard("{Escape}");
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await user.keyboard("{Escape}");
 
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  await waitFor(() => expect(document.activeElement).toBe(button));
-  expect(button.getAttribute("aria-expanded")).toBe("false");
-  expect(button.getAttribute("aria-controls")).toBeNull();
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    // oxlint-disable-next-line no-await-in-loop -- as above
+    await waitFor(() => expect(document.activeElement).toBe(button));
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-controls")).toBeNull();
+  }
 });
 
-test("the tree's menu closed by a right click outside it leaves the focus where the click was", async () => {
+test("the tree's menu opens at a row's button by a press of the main button alone: a right press or one with Ctrl opens none", async () => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer().app);
+  const nav = await tree();
+  const button = await within(nav).findByRole("button", { name: "Actions for Notes" });
+
+  await user.pointer({ keys: "[MouseRight]", target: button });
+  // Ctrl and the main button is the right click of macOS.
+  await user.keyboard("{Control>}");
+  await user.pointer({ keys: "[MouseLeft]", target: button });
+  await user.keyboard("{/Control}");
+
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+  // The main button alone opens it: the presses above reached the button.
+  await user.pointer({ keys: "[MouseLeft]", target: button });
+  expect(await screen.findByRole("menu", { name: "Actions for Notes" })).toBeTruthy();
+});
+
+test("the tree's menu closed by a right click outside it, or Ctrl and the main button, leaves the focus where the click was", async () => {
   // The menu is modal: the page under it takes no pointer, which a click outside it is all the same.
   const user = userEvent.setup({ pointerEventsCheck: 0 });
   renderApp(home, pageServer().app);
@@ -821,6 +851,16 @@ test("the tree's menu closed by a right click outside it leaves the focus where 
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(document.activeElement).not.toBe(button);
   expect(button.getAttribute("aria-expanded")).toBe("false");
+
+  // Ctrl and the main button is the right click of macOS: the same.
+  await user.click(button);
+  await screen.findByRole("menu");
+  await user.keyboard("{Control>}");
+  await user.pointer({ keys: "[MouseLeft]", target: main });
+  await user.keyboard("{/Control}");
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).not.toBe(button);
 
   // A left click outside gives it back to the button, as Escape does.
   await user.click(button);
