@@ -35,6 +35,11 @@ import { perfEnv } from "./setup";
 // anew; the check of the fixes, B's C1-M1). Twenty measures, not five: in a page of their own the definitions'
 // first parses are their cheapest, their heap still small, and five took the median from those; parsed on, as one
 // types, two of them cost more, and so does a key in the editor (the second check, B's C2-I1).
+//
+// Changed on M12/P4/S5 (its design 4.2): the shapes its design and reviews found are among the costly ones, the
+// same as markdown.test.ts's; the two definitions that are one at the limit, over two lines and closed on the last,
+// are measured at referenceLimit, the definitions' own limit; and the check that the page parses with the limits is
+// a paragraph of 200,000 marks of emphasis of both kinds, not spaces, which the scans keep linear without a limit.
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 const warmUps = 2;
@@ -51,13 +56,20 @@ const outro = "\n\nAn ordinary paragraph after it.\n";
 /**
  * A shape: its document with its costly block, length long where its paragraph is the limit's (the two-line
  * definition's first line); the offset of what to look at in it, and where a character goes in its middle and at its
- * end; and what a parse within the limit has.
+ * end; and what a parse within the limit has. The limit is inlineLimit, or referenceLimit for a definition over lines
+ * that is one at it.
  */
 interface Shape {
   name: string;
   doc(length: number): { doc: string; at: number; middle: number; end: number };
   within(parsed: Parsed, length: number): boolean;
+  reference?: true;
 }
+
+/** The parse page's limits, read as the parse's test begins. */
+type Limits = Pick<NwParse, "inlineLimit" | "referenceLimit">;
+
+const limitOf = (shape: Shape, limits: Limits) => (shape.reference ? limits.referenceLimit : limits.inlineLimit);
 
 /** markdown.test.ts's costly shapes, each a paragraph about length long whose inline parse costs its square. */
 const costly: [string, (length: number) => string][] = [
@@ -85,6 +97,68 @@ const costly: [string, (length: number) => string][] = [
   ["nested emphasis", (length) => "*a ".repeat(length / 6) + "b* ".repeat(length / 6)],
   ["nested brackets", (length) => "[".repeat(length / 2) + "]".repeat(length / 2)],
   ["marks of emphasis and code only", (length) => "*`*`".repeat(length / 4)],
+  // Found by M12/P4/S5's design and its reviews, each its ending at length (review B's M1); those ending in a ">"
+  // end in "x>", at length and at length - 1 alike, never in a "?>", which would close the last "<?" (check B's C1-N1).
+  ["a www. URL ending in parentheses", (length) => `www.a.b/${")".repeat(length - 8)}`],
+  ["an http:// URL ending in parentheses", (length) => `http://a.b/${")".repeat(length - 11)}`],
+  ["an https:// URL ending in parentheses", (length) => `https://a.b/${")".repeat(length - 12)}`],
+  [
+    "a URL ending in entities",
+    (length) => {
+      const k = Math.floor((length - 8) / 3);
+      return `www.a.b/${"x".repeat(length - 8 - 3 * k)}${"&a;".repeat(k)}`;
+    },
+  ],
+  [
+    "a URL ending in entities and parentheses",
+    (length) => {
+      const k = Math.floor((length - 8) / 4);
+      return `www.a.b/${"x".repeat(length - 8 - 4 * k)}${"&a;)".repeat(k)}`;
+    },
+  ],
+  ["emphasis marks of both kinds", (length) => "*_".repeat(length / 2)],
+  ["brackets closing none, and emphasis marks", (length) => "]*".repeat(length / 2)],
+  [
+    "processing instructions, a > at the end",
+    (length) => `${`x${"<?".repeat(Math.floor((length - 3) / 2))}`.padEnd(length - 1, "x")}>`,
+  ],
+  [
+    "e-mail local parts after <?, a > at the end",
+    (length) => `${`x${"<?@".repeat(Math.floor((length - 3) / 3))}`.padEnd(length - 1, "x")}>`,
+  ],
+  [
+    "e-mail local parts of a letter after <?, a > at the end",
+    (length) => `${`x${"<?a@".repeat(Math.floor((length - 3) / 4))}`.padEnd(length - 1, "x")}>`,
+  ],
+  // lezer's own square, the scans or not: only recorded, not judged (the host's decision on M12/P4/S5).
+  [
+    "HTML autolinks not closed, a > after a space at the end",
+    (length) => {
+      const k = Math.floor((length - 3) / 4);
+      return `${"<ab:".repeat(k)}${"a".repeat(length - 2 - 4 * k)} >`;
+    },
+  ],
+  [
+    "URLs refused for an _ in their last two domain words",
+    (length) => {
+      const k = Math.floor((length - 2) / 6);
+      return `${"www.a.".repeat(k)}${"a".repeat(length - 2 - 6 * k)}x_`;
+    },
+  ],
+  [
+    "URLs refused, each after a hyphen",
+    (length) => {
+      const k = Math.floor((length - 4) / 6);
+      return `${"-www.a".repeat(k)}${"a".repeat(length - 4 - 6 * k)}._.b`;
+    },
+  ],
+  [
+    "URLs refused, a hyphen in their words",
+    (length) => {
+      const k = Math.floor((length - 2) / 6);
+      return `${"www.a-".repeat(k)}${"a".repeat(length - 2 - 6 * k)}._`;
+    },
+  ],
 ];
 
 /** text cut or padded with "x" to length, its last character not a space: a paragraph's trailing spaces are not its. */
@@ -133,9 +207,10 @@ function json(length: number): string {
 /**
  * A paragraph that may be a link reference definition, block length long: markdown.test.ts's three that never close,
  * each line reading the paragraph again from its start (M6 closeout FB3-I1). Within the limit: the paragraph is
- * length long and no definition. That it was read as one may be to its last line is markdown.ts's: a paragraph stops
- * being one once its lines before the next pass inlineLimit (LongReferenceAsText), which these, the limit long, never
- * do; the same lines closed on the last are a definition (the shape after these three).
+ * length long and no definition. markdown.ts reads it as one until its lines before the next pass referenceLimit
+ * (LongReferenceAsText), the rest as a paragraph: these, inlineLimit long, have the most of both, a definition read
+ * to its limit and a paragraph to its own (M12/P4/S5 design 4.2). The same lines closed on the last are a definition
+ * at referenceLimit (the shape after these three).
  */
 function neverClosed(block: (length: number) => string): Pick<Shape, "doc" | "within"> {
   return {
@@ -163,9 +238,10 @@ const shapes: Shape[] = [
     within: (parsed, length) => headed(parsed, length) && parsed.blocks.Blockquote === 98,
   },
   {
-    // A definition whose title ends on its second line, its first line length long: one up to the limit. Its end is
-    // its first line's. It has no head: a definition begins with its label.
+    // A definition whose title ends on its second line, its first line length long: one up to referenceLimit. Its
+    // end is its first line's. It has no head: a definition begins with its label.
     name: "a link reference definition over two lines",
+    reference: true,
     doc: (length) => {
       const at = intro.length;
       return {
@@ -181,9 +257,10 @@ const shapes: Shape[] = [
   { name: "a definition's title never closed, over lines", ...neverClosed((length) => lines('[a]: b "x', length)) },
   { name: "a JSON array, a definition's bracket never closed", ...neverClosed(json) },
   {
-    // The title never closed but on the last line: a definition the limit long, each line having read it again. Its
-    // end is before the closing quote.
+    // The title never closed but on the last line: a definition referenceLimit long, each line having read it again.
+    // Its end is before the closing quote.
     name: "a definition's title closed on its last line",
+    reference: true,
     doc: (length) => {
       const at = intro.length;
       return {
@@ -211,9 +288,9 @@ const shapes: Shape[] = [
   },
 ];
 
-/** The medians of the whole parse this run measured, by shape, and the limit: the editor's keys go to the costliest. */
+/** The medians of the whole parse this run measured, by shape, and the limits: the editor's keys go to the costliest. */
 const wholeMedians = new Map<string, number>();
-let parsedLimit = 0;
+let parsedLimits: Limits | undefined;
 
 /** A page of its own with the parse page's script, its heap collected: no parse before weighs on what it measures. */
 async function parsePage(context: BrowserContext, script: string): Promise<Page> {
@@ -252,28 +329,33 @@ test("the editor's parse at its limits", async ({ browser }) => {
   const context = await browser.newContext();
   try {
     const first = await parsePage(context, script);
-    const limit = await first.evaluate(() => (window as unknown as { nwParse: NwParse }).nwParse.inlineLimit);
+    const limits = await first.evaluate((): Limits => {
+      const { inlineLimit, referenceLimit } = (window as unknown as { nwParse: NwParse }).nwParse;
+      return { inlineLimit, referenceLimit };
+    });
     await first.close();
-    parsedLimit = limit;
-    // Without the limits, a paragraph of 200,000 spaces takes seconds: the page parses what the editor does.
-    const [spaces] = await parsesIn(context, script, {
-      doc: `x${" ".repeat(199_998)}y`,
+    parsedLimits = limits;
+    // Without the limits, a paragraph of 200,000 marks of emphasis of both kinds takes seconds, the scans or not
+    // (some 7 s at 100,000 in Node): the page parses what the editor does, its limits too.
+    const [marks] = await parsesIn(context, script, {
+      doc: "*_".repeat(100_000),
       at: 0,
       where: 0,
       cell: "whole",
       count: 1,
     });
-    record("b9-spaces", { round, ms: spaces?.ms });
-    expect(spaces?.ms, "a paragraph of 200,000 spaces parsed whole, in ms").toBeLessThan(1_000);
-    await measureShapes(context, script, limit);
+    record("b9-marks", { round, ms: marks?.ms });
+    expect(marks?.ms, "a paragraph of 200,000 marks of emphasis parsed whole, in ms").toBeLessThan(1_000);
+    await measureShapes(context, script, limits);
   } finally {
     await context.close();
   }
 });
 
 /** Each shape's four cells, each in a page of its own. */
-async function measureShapes(context: BrowserContext, script: string, limit: number): Promise<void> {
+async function measureShapes(context: BrowserContext, script: string, limits: Limits): Promise<void> {
   for (const shape of shapes) {
+    const limit = limitOf(shape, limits);
     for (const cell of ["whole", "parser", "middle", "end"] as const) {
       // The change of one character takes the paragraph from one under the limit to the limit (design 4.4).
       const length = cell === "whole" || cell === "parser" ? limit : limit - 1;
@@ -314,9 +396,9 @@ test("a key in the editor, on the costliest shapes", async ({ browser }) => {
   const env = perfEnv();
   const api = createClient({ baseUrl: env.baseURL });
   const admin = await login(api, env.admin);
-  const limit = parsedLimit;
+  const limits = parsedLimits;
   const costliest = [...wholeMedians].toSorted((a, b) => b[1] - a[1]).slice(0, 3);
-  test.skip(costliest.length === 0, "the parse's test runs first, in the same run");
+  test.skip(limits === undefined || costliest.length === 0, "the parse's test runs first, in the same run");
   const notebook = await createNotebook(api, admin.access_token, env.workspace, `Editor ${round}`, "editor");
   const context = await browser.newContext({ baseURL: env.baseURL });
   try {
@@ -325,7 +407,7 @@ test("a key in the editor, on the costliest shapes", async ({ browser }) => {
     await watchPage(page);
     for (const [name] of costliest) {
       const shape = shapes.find((each) => each.name === name);
-      if (shape === undefined) continue;
+      if (shape === undefined || limits === undefined) continue;
       // oxlint-disable-next-line no-await-in-loop -- one page at a time
       const created = await createPage(
         api,
@@ -333,7 +415,7 @@ test("a key in the editor, on the costliest shapes", async ({ browser }) => {
         notebook.id,
         `B9 ${name}`,
         null,
-        shape.doc(limit - 1).doc
+        shape.doc(limitOf(shape, limits) - 1).doc
       );
       // oxlint-disable-next-line no-await-in-loop -- the same
       await goto(page, `/${env.workspace}/notebooks/${notebook.id}/pages/${created.id}`);

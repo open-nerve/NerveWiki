@@ -1,7 +1,7 @@
 import { ensureSyntaxTree, language } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
 
-import { inlineLimit, markdownEditing } from "../../../web/apps/web/src/editor/markdown";
+import { inlineLimit, markdownEditing, referenceLimit } from "../../../web/apps/web/src/editor/markdown";
 
 // The parse page (M12/P4 design 4.4, B9): the editor's own Markdown (markdownEditing), built by parse/build.ts into
 // one script that a blank page in Chromium runs. It parses as the editor does: a whole document once, as a paste
@@ -28,9 +28,11 @@ export interface Parsed {
   blocks: Record<string, number>;
 }
 
-/** What the page puts on window: the limit, and the parses. */
+/** What the page puts on window: the limits, and the parses. */
 export interface NwParse {
   inlineLimit: number;
+  /** A definition's over lines (M12/P4/S5). */
+  referenceLimit: number;
   /** Parses doc whole, once, as a paste into an empty document; at is an offset in the paragraph to look at. */
   whole(doc: string, at: number): Parsed;
   /** The editor's parser alone parses doc, once, outside CodeMirror's state: a check on whole. */
@@ -81,6 +83,7 @@ function what(tree: Tree, at: number, ms: number): Parsed {
 
 const nwParse: NwParse = {
   inlineLimit,
+  referenceLimit,
   whole: (doc, at) => {
     const empty = EditorState.create({ extensions: markdownEditing() });
     treeOf(empty);
