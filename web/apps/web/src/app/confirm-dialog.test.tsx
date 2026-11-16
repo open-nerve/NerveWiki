@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactNode } from "react";
 import { expect, test } from "vitest";
@@ -176,4 +176,119 @@ test("what more the dialog says describes it with its description; without more,
 
   rerender(saying());
   expect(screen.getByRole("alertdialog", { name: "Start it?", description: "It starts." })).toBeTruthy();
+});
+
+/** held is a confirm the test settles: each call waits in calls until it is resolved or rejected. */
+function held() {
+  const calls: { resolve: () => void; reject: (error: unknown) => void }[] = [];
+  const confirm = () =>
+    new Promise<void>((resolve, reject) => {
+      calls.push({ resolve, reject });
+    });
+  return { calls, confirm };
+}
+
+/** deleting is a dialog by its trigger whose confirm is confirm, asking for a typed word when typed. */
+const deleting = (confirm: () => Promise<void>, typed = false) => (
+  <I18nProvider locale="en">
+    <ConfirmDialog
+      trigger={<button type="button">Open</button>}
+      title="Delete it?"
+      description="It goes."
+      confirmLabel="Delete"
+      sendingLabel="Deleting…"
+      cancelLabel="Cancel"
+      confirm={confirm}
+      typedConfirmation={typed ? { label: "Name of the notebook", value: "plans" } : undefined}
+    />
+  </I18nProvider>
+);
+
+/** opened is the dialog of deleting opened, by a click on its trigger. */
+async function opened(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(screen.getByRole("button", { name: "Open" }));
+  return screen.findByRole("alertdialog", { name: "Delete it?" });
+}
+
+// M12/P2/S1, 23.16: a disabled button drops the focus (Chromium gives it to the body at its next rendering), so the
+// buttons are aria-disabled while confirm is out (v0.1 design 13.2, item 12).
+test("while confirm is out, its buttons are aria-disabled, not disabled, the focus staying on confirm; pressed again, Esc and Cancel do nothing, and the dialog stays", async () => {
+  const user = userEvent.setup();
+  const { calls, confirm } = held();
+  render(deleting(confirm));
+  const dialog = await opened(user);
+
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  const sending = within(dialog).getByRole("button", { name: "Deleting…" });
+  const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+  expect([
+    sending.getAttribute("aria-disabled"),
+    sending.hasAttribute("disabled"),
+    sending.getAttribute("aria-busy"),
+    cancel.getAttribute("aria-disabled"),
+    cancel.hasAttribute("disabled"),
+  ]).toEqual(["true", false, "true", "true", false]);
+  expect(document.activeElement).toBe(sending);
+
+  await user.click(sending);
+  await user.keyboard("{Escape}");
+  await user.click(cancel);
+  expect(screen.getByRole("alertdialog", { name: "Delete it?" })).toBe(dialog);
+  expect(calls).toHaveLength(1);
+});
+
+test("a refusal stays in the dialog, the focus on confirm, which sends again", async () => {
+  const user = userEvent.setup();
+  const { calls, confirm } = held();
+  render(deleting(confirm));
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(calls).toHaveLength(1));
+
+  await act(async () => calls[0]?.reject(new Error("refused")));
+  expect((await within(dialog).findByRole("alert")).textContent).toBe("Something went wrong (Error).");
+  const again = within(dialog).getByRole("button", { name: "Delete" });
+  expect(document.activeElement).toBe(again);
+  expect(again.hasAttribute("aria-disabled")).toBe(false);
+
+  await user.click(again);
+  expect(calls).toHaveLength(2);
+});
+
+test("a refusal that finds the focus lost gives it back to confirm", async () => {
+  const user = userEvent.setup();
+  const { calls, confirm } = held();
+  render(deleting(confirm));
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(calls).toHaveLength(1));
+  // Chromium's focus fixup, which jsdom does not do: the focus falls to the body.
+  act(() => (document.activeElement as HTMLElement).blur());
+  expect(document.activeElement).toBe(document.body);
+
+  await act(async () => calls[0]?.reject(new Error("refused")));
+  await within(dialog).findByRole("alert");
+  await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: "Delete" })));
+});
+
+test("Enter in the typed word sends once, however often it is pressed; refused, the focus stays in the field", async () => {
+  const user = userEvent.setup();
+  const { calls, confirm } = held();
+  render(deleting(confirm, true));
+  const dialog = await opened(user);
+  const field = within(dialog).getByRole("textbox", { name: "Name of the notebook" });
+  await user.type(field, "plans");
+
+  // Twice before the dialog renders again, as a key held down repeats it: what is out is not state yet.
+  act(() => {
+    for (const _ of [1, 2]) {
+      field.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+    }
+  });
+  await user.keyboard("{Enter}");
+  expect(calls).toHaveLength(1);
+
+  await act(async () => calls[0]?.reject(new Error("refused")));
+  await within(dialog).findByRole("alert");
+  expect(document.activeElement).toBe(field);
 });

@@ -200,7 +200,7 @@ export const TransferJobRow = observer(function TransferJobRow({
           {refused}
         </p>
       )}
-      {reporting && job.report !== null && <TransferReport notebook={notebook} job={job} id={reportId} />}
+      {reporting && job.report !== null && <TransferReport notebook={notebook} job={job} id={reportId} name={name} />}
     </li>
   );
 });

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
@@ -11,6 +11,7 @@ import { linkOf } from "../app/invitation-link";
 import { useMounted } from "../app/mounted";
 import { NotLoaded } from "../app/not-loaded";
 import { SessionUnavailable } from "../app/session-unavailable";
+import { useSignOut } from "../app/sign-out";
 import { Loading } from "../components/loading";
 import { Alert } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
@@ -125,10 +126,10 @@ function SignInOrUp({ link }: { link: InvitationLink }) {
  * Accept accepts the invitation as the signed-in account, then goes into
  * the workspace, onboarding first if the account has steps left; an
  * account of another address is told so, and can sign out to sign in with
- * that one.
+ * that one, asked first while an edit has changes not saved (useSignOut).
  */
 const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
-  const { account, auth } = useStore();
+  const { account } = useStore();
   const workspaces = useWorkspaces();
   const t = useT();
   const navigate = useNavigate();
@@ -138,6 +139,8 @@ const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
   }
   const me = useSWR("me", () => account.load());
   const { ref, sending, banner, submit } = useForm([]);
+  const leave = useRef<HTMLButtonElement>(null);
+  const { signOut, dialog } = useSignOut(() => leave.current?.focus());
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -155,19 +158,22 @@ const Accept = observer(function Accept({ link }: { link: InvitationLink }) {
     return <NotLoaded error={me.error} retry={() => void me.mutate()} />;
   }
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {banner !== undefined && <Alert>{banner}</Alert>}
-      <p className="text-sm text-muted-foreground">
-        {t("invitation.signedInAs", { name: account.me.display_name, email: account.me.email })}
-      </p>
-      <div className="flex flex-wrap gap-2">
-        <Button type="submit" disabled={sending}>
-          {t("invitation.accept")}
-        </Button>
-        <Button type="button" variant="outline" onClick={() => void auth.signOut()}>
-          {t("invitation.signOut")}
-        </Button>
-      </div>
-    </form>
+    <>
+      <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+        {banner !== undefined && <Alert>{banner}</Alert>}
+        <p className="text-sm text-muted-foreground">
+          {t("invitation.signedInAs", { name: account.me.display_name, email: account.me.email })}
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={sending}>
+            {t("invitation.accept")}
+          </Button>
+          <Button ref={leave} type="button" variant="outline" onClick={signOut}>
+            {t("invitation.signOut")}
+          </Button>
+        </div>
+      </form>
+      {dialog}
+    </>
   );
 });

@@ -694,3 +694,64 @@ test("source uploads keep their queue and explicit title without admitting Markd
   expect(view.state.doc.toString()).toBe(before);
   expect(server.nodes).toHaveLength(base.length);
 });
+
+// M12/P2/S1, 9.1 and 38.3 (review A's M1): a source's retry in the upload dialog is the form's; refused, by a banner
+// alone, its alert takes the focus the form lost, from Add source, kept and disabled while the retry is out, or from
+// the title, disabled too.
+
+/** retried is evidence.md's row of the upload dialog refused once, its failure, and the store's upload. */
+async function retried(server: Server, refusal: string) {
+  const user = userEvent.setup();
+  const view = renderSources(server);
+  const dialog = await openUpload(user);
+  choose(dialog, [new File(["# Known source\r\n原始正文\n"], "evidence.md")]);
+  const title = (await within(dialog).findByRole("textbox", { name: "Title for evidence.md" })) as HTMLInputElement;
+  await within(dialog).findByText(refusal, { exact: false });
+  await waitFor(() => expect(title.disabled).toBe(false));
+  const upload = view.store().assetsOf(server.notebook)!.uploads[0]!;
+  return { user, dialog, title, row: title.closest("li") as HTMLElement, upload, first: upload.failure };
+}
+
+test.each(["Add source", "Enter in the title"] as const)(
+  "a source retried in the upload dialog refused as a duplicate (%s) gives the banner's alert the focus",
+  async (how) => {
+    const known = pageNode(28, "Known", install);
+    const server = pageServer({ mode: "llm_wiki", sourceRootId: guide.id, nodes: [...base, known] });
+    server.contents.set(known.id, { content: "# Known source\r\n原始正文\n", revision: 1 });
+    const { user, dialog, title, row, upload, first } = await retried(server, "This operation was not written.");
+    await user.clear(title);
+    await user.type(title, "Another chosen title");
+    if (how === "Add source") {
+      act(() => within(row).getByRole("button", { name: "Add source" }).focus());
+    }
+
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(upload.failure).not.toBe(first));
+    await within(dialog).findByRole("link", { name: "Guide/Install/Known.md" });
+    const alert = within(row).getByRole("alert");
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+    expect(alert.querySelector("[data-form-banner]")).not.toBeNull();
+    expect(within(row).getAllByRole("alert")).toHaveLength(1);
+  }
+);
+
+test.each(["Add source", "Enter in the title"] as const)(
+  "a source retried in the upload dialog refused as the server busy (%s) gives the banner's alert the focus",
+  async (how) => {
+    const server = pageServer({
+      mode: "llm_wiki",
+      sourceRootId: guide.id,
+      nodes: base,
+      answers: { [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () => problem(503, "server_busy") },
+    });
+    const { user, row, title, upload, first } = await retried(server, "The server is busy.");
+    act(() => (how === "Add source" ? within(row).getByRole("button", { name: "Add source" }) : title).focus());
+
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(upload.failure).not.toBe(first));
+    const alert = within(row).getByRole("alert");
+    await waitFor(() => expect(document.activeElement).toBe(alert));
+    expect(alert.querySelector("[data-form-banner]")).not.toBeNull();
+    expect(within(row).getAllByRole("alert")).toHaveLength(1);
+  }
+);

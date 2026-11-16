@@ -487,3 +487,17 @@ test("a source's read-only body still permits adding an attachment", async () =>
   expect(bodyWrites(server.sent)).toEqual([]);
   expect(server.contents.get(install.id)).toEqual({ content: "- [ ] Original\n", revision: 1 });
 });
+
+// M12/P2/S1, 38.1: how a source is changed is a note, said once as the page is read, not an error each time it opens.
+test("a source says how it is changed as a note: no alert, not in red", async () => {
+  const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("article", { name: "Install" });
+
+  const note = screen.getByText(
+    "Sources keep their original content for the wiki to use. To change one, an admin can move it out of the source area first."
+  );
+  expect(note.closest('[role="alert"]')).toBeNull();
+  expect(note.className).not.toContain("text-destructive");
+  expect(screen.queryByRole("alert")).toBeNull();
+});

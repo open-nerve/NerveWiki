@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -222,6 +222,47 @@ test("taking one over puts it among the account's notebooks, says so with a way 
   await user.click(within(status).getByRole("link", { name: "Open it" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Roadmap" })).toBeTruthy();
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${ownerlessJSON.id}`);
+});
+
+// M12/P2/S1, 22.17: the reader typing elsewhere as the answer comes keeps the focus and the keys (v0.1 design 13.2,
+// item 26).
+test("a take-over answered as the reader types in the search box leaves the focus and the keys there", async () => {
+  const user = userEvent.setup();
+  let answer: ((response: Response) => void) | undefined;
+  const server = ownerlessServer({
+    answers: { "take over": () => new Promise<Response>((resolve) => (answer = resolve)) },
+  });
+  renderApp(page, server.app);
+  await user.click(await screen.findByRole("button", { name: takeOver("Roadmap") }));
+  await waitFor(() => expect(answer).toBeDefined());
+  const box = screen.getByRole("searchbox", { name: "Search terms" }) as HTMLInputElement;
+  await user.click(box);
+  await user.keyboard("ab");
+
+  await act(async () => answer?.(json({ ...notebookJSON, id: ownerlessJSON.id, name: "Roadmap" })));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Roadmap taken over. Open it"));
+  await user.keyboard("c");
+  expect(document.activeElement).toBe(box);
+  expect(box.value).toBe("abc");
+});
+
+// M12/P2/S1, 22.17: the reader having scrolled meanwhile, the focus still on Take over, the heading takes none.
+test("a take-over answered after the reader scrolled meanwhile, the focus still on Take over, gives the heading no focus", async () => {
+  const user = userEvent.setup();
+  let answer: ((response: Response) => void) | undefined;
+  const server = ownerlessServer({
+    answers: { "take over": () => new Promise<Response>((resolve) => (answer = resolve)) },
+  });
+  renderApp(page, server.app);
+  const button = await screen.findByRole("button", { name: takeOver("Roadmap") });
+  await user.click(button);
+  await waitFor(() => expect(answer).toBeDefined());
+  expect(document.activeElement).toBe(button);
+  fireEvent.wheel(document.body);
+
+  await act(async () => answer?.(json({ ...notebookJSON, id: ownerlessJSON.id, name: "Roadmap" })));
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Roadmap taken over. Open it"));
+  expect(document.activeElement).not.toBe(await heading());
 });
 
 test("a take-over goes out once, however often it is pressed", async () => {

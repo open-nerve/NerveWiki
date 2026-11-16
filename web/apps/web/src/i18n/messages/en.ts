@@ -1074,6 +1074,7 @@ export const en = {
   "transfer.importProblemsTitle": "What was not imported as it was",
   "transfer.importProblem.renamed": "{path} was imported as {to}: links to its old name do not reach it.",
   "transfer.importProblem.other": "{path} was not imported as it was.",
+  "transfer.reportRetryOf": "Try again (report on {name})",
   "role.admin": "Admin",
   "role.member": "Member",
   "role.guest": "Guest",
@@ -1191,6 +1192,13 @@ export const en = {
   "tokens.copyFailed": "Could not copy. Select the token and copy it yourself.",
   "tokens.done": "Done",
   "userMenu.signOut": "Sign out",
+  "signOut.unsavedTitle": "Sign out anyway?",
+  "signOut.unsavedHere":
+    "A page you are editing in this tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost.",
+  "signOut.unsavedElsewhere":
+    "A page you are editing in another tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost.",
+  "signOut.confirm": "Sign out",
+  "signOut.signingOut": "Signing out…",
   "problem.bad_request": "The request was not understood.",
   "problem.payload_too_large": "The request is too large.",
   "problem.rate_limited": "Too many attempts. Try again later.",

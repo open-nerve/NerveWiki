@@ -55,10 +55,12 @@ export function eventServer() {
   };
 }
 
-/** withEvents is app with the event stream's deps of one tab, whose page the test shows and hides. */
-export function withEvents(app: AppStores, page = new FakePage()): AppStores {
+/**
+ * withEvents is app with the event stream's deps of one tab, tab-0, whose page the test shows and hides, over
+ * channels: a test that gives them opens another tab's ports on them.
+ */
+export function withEvents(app: AppStores, page = new FakePage(), channels = new FakeChannels()): AppStores {
   const storage = new SharedStorage().tab("tab-0");
-  const channels = new FakeChannels();
   const deps: EventDeps = {
     locks: new FakeLocks(),
     storage,

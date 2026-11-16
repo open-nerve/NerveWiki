@@ -351,13 +351,16 @@ test("LW10 (page): virtual tree links and unresolved reader links open Directory
   await expect(reader.getByRole("main").getByRole("heading", { level: 1, name: "History", exact: true })).toBeVisible();
   await tree.getByRole("link", { name: "Guide", exact: true }).click();
   const article = reader.getByRole("article", { name: "Guide", exact: true });
-  await article.getByRole("button", { name: "Open directory", exact: true }).click();
+  // A link the view goes to a page by is a link, no dialog popping up from it (M12/P2/S1, 35.2).
+  const toDirectory = article.getByRole("link", { name: "Open directory", exact: true });
+  await expect(toDirectory).not.toHaveAttribute("aria-haspopup");
+  await toDirectory.click();
   await expect(reader, "unresolved root index works for a reader").toHaveURL(`${home}/index`);
   await expect(
     reader.getByRole("main").getByRole("heading", { level: 1, name: "Directory", exact: true })
   ).toBeVisible();
   await tree.getByRole("link", { name: "Guide", exact: true }).click();
-  await article.getByRole("button", { name: "Open history", exact: true }).click();
+  await article.getByRole("link", { name: "Open history", exact: true }).click();
   await expect(reader).toHaveURL(`${home}/history`);
   await expect(reader.getByRole("main").getByRole("heading", { level: 1, name: "History", exact: true })).toBeVisible();
   expect(forbiddenCalls, "virtual navigation never asks permission to create").toEqual([]);

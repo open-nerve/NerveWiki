@@ -200,7 +200,18 @@ function stoppedText(job: TransferJob, left: string, t: Translate): string[] {
  * edits the page it was about to change (M8/P4 design 4.3). Counts are
  * written as the language writes numbers.
  */
-export function TransferReport({ notebook, job, id }: { notebook: Notebook; job: TransferJob; id: string }) {
+export function TransferReport({
+  notebook,
+  job,
+  id,
+  name,
+}: {
+  notebook: Notebook;
+  job: TransferJob;
+  id: string;
+  /** The row's name (transfer-names): several reports that cannot be read each name their Try again by it. */
+  name: string;
+}) {
   const transfers = useTransfers(notebook);
   const t = useT();
   const { locale } = useStore().preferences;
@@ -243,7 +254,7 @@ export function TransferReport({ notebook, job, id }: { notebook: Notebook; job:
         <Conflicts conflicts={data.conflicts} count={data.conflict_count} />
       )}
       {data === undefined ? (
-        <NotLoaded error={error} retry={() => void mutate()} />
+        <NotLoaded error={error} retry={() => void mutate()} retryLabel={t("transfer.reportRetryOf", { name })} />
       ) : (
         data.problems.length > 0 && (
           <section className="space-y-1">

@@ -1,13 +1,15 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import type { Notebook } from "../services/notebook.service";
 import { eventHandlers } from "../events/handlers";
 import { eventServer, withEvents } from "../test/event-server";
-import { notebookJSON, workspaceJSON } from "../test/fakes";
+import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
+import { indexFacts } from "../test/index-server";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
-import { arrived } from "./arrival";
+import { arrived, opened } from "./arrival";
 
 // The arrival focus (M3/P4 design 3.5): a page's heading takes it as the page shows, arrived at, on the first mount
 // for a navigation; one that shows later for the same navigation, the page deleted or restored elsewhere, takes it
@@ -20,11 +22,17 @@ const photo = assetNode(21, "photo.png", install);
 /** settle lets what an event or a navigation starts finish. */
 const settle = (ms = 100) => act(() => new Promise((resolve) => setTimeout(resolve, ms)));
 
-/** home is the workspace's home shown, its stream connected: another's writes come as events. */
-async function home(nodes = [guide, install, linux, notes, photo]) {
+/**
+ * home is the workspace's home shown, its stream connected: another's writes come as events. Plans is mode's, the
+ * server answering answers too.
+ */
+async function home(
+  nodes = [guide, install, linux, notes, photo],
+  { mode, answers = {} }: { mode?: Notebook["mode"]; answers?: Record<string, Answer> } = {}
+) {
   const user = userEvent.setup();
   const events = eventServer();
-  const server = pageServer({ nodes, answers: { "GET /api/v0/events": events.answer } });
+  const server = pageServer({ nodes, mode, answers: { ...answers, "GET /api/v0/events": events.answer } });
   const { router } = renderApp("/lab", withEvents(server.app), { eventHandlers });
   await waitFor(() => expect(events.streams).toHaveLength(1));
   events.last().hello();
@@ -174,4 +182,251 @@ test("Back on the results page, from a search asked again there to the one arriv
   await act(() => router.navigate(-1));
   await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
   await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
+/**
+ * late is home whose tree, read as a page of Plans shows first, waits until release: the page's title shows late.
+ * Held until the test holds it.
+ */
+async function late() {
+  const nodes = [guide, install, linux, notes, photo];
+  let holding = false;
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  const page = await home(nodes, {
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
+        if (holding) {
+          await released;
+        }
+        return json({ data: nodes });
+      },
+    },
+  });
+  holding = true;
+  return { ...page, release: () => act(async () => release()) };
+}
+
+// M12/P2/S1, 28.4: a title that shows late for a page arrived at, its notebook's tree still read, takes the focus
+// only from no one once the reader did something since the navigation committed (v0.1 design 13.2, item 26).
+test("a title that shows late for a page arrived at, the reader typing in the search box meanwhile, takes no focus: the keys stay in the box", async () => {
+  const { user, router, box, release } = await late();
+  await act(() => router.navigate(pagePath(install.id), { state: arrived }));
+  await user.click(box);
+  await user.keyboard("abc");
+
+  await release();
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await settle();
+  await user.keyboard("d");
+  expect(document.activeElement).toBe(box);
+  expect(box.value).toBe("abcd");
+});
+
+test("a title that shows late takes the focus wherever it is, the reader having done nothing", async () => {
+  const { router, box, release } = await late();
+  await act(() => router.navigate(pagePath(install.id), { state: arrived }));
+  // A screen reader moves the focus by no reader's event.
+  act(() => box.focus());
+
+  await release();
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("a replace of the entry's state alone is the same navigation: the keys typed before it still keep a late title from the box", async () => {
+  const { user, router, box, release } = await late();
+  await act(() => router.navigate(pagePath(install.id), { state: { ...arrived, said: 1 } }));
+  await user.click(box);
+  await user.keyboard("abc");
+  await act(() => router.navigate(pagePath(install.id), { replace: true, state: arrived }));
+
+  await release();
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await settle();
+  await user.keyboard("d");
+  expect(document.activeElement).toBe(box);
+  expect(box.value).toBe("abcd");
+});
+
+test("a replace of the entry's state alone is the same navigation: nor is a heading that mounts after it the navigation's first, Page not found taking the focus only from no one", async () => {
+  const page = await shown({ ...arrived, said: 1 });
+  const { router, heading, box } = page;
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  // Moved by no reader's event, as a screen reader moves it: no watch says the reader acted.
+  act(() => box.focus());
+  await act(() => router.navigate(pagePath(install.id), { replace: true, state: arrived }));
+
+  deleted(page);
+  await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await settle();
+  expect(document.activeElement).toBe(box);
+});
+
+// M12/P2/S1, 28.5: a page the tree opened keeps its mark in its entry; Back or Forward to it gives its title the focus
+// from no one, as the page left took the focus with it.
+test("a page the tree opened is no arrival; Back to it from a page arrived at from it gives its title the focus from no one", async () => {
+  const { user, router, heading } = await shown(arrived);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  const link = await treeLink("Notes");
+  await user.click(link);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await settle();
+  expect(document.activeElement).toBe(link);
+
+  await act(() => router.navigate(pagePath(linux.id), { state: arrived }));
+  const linuxHeading = await screen.findByRole("heading", { level: 1, name: "Linux" });
+  await waitFor(() => expect(document.activeElement).toBe(linuxHeading));
+  await act(() => router.navigate(-1));
+  const notesHeading = await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await waitFor(() => expect(document.activeElement).toBe(notesHeading));
+});
+
+test("Back to a page the tree opened, the focus on the tree's link, leaves it there", async () => {
+  const { user, router, heading } = await shown(arrived);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  await user.click(await treeLink("Notes"));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  const guideLink = await treeLink("Guide");
+  await user.click(guideLink);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await settle();
+  expect(document.activeElement).toBe(guideLink);
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await settle();
+  expect(document.activeElement).toBe(guideLink);
+});
+
+test("a page the tree opens, the click leaving the focus in the body (as Safari leaves it), is no arrival: its title takes no focus", async () => {
+  const { heading } = await shown(arrived);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  const link = await treeLink("Notes");
+  act(() => heading.blur());
+  expect(document.activeElement).toBe(document.body);
+
+  fireEvent.click(link);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await settle();
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("a page loaded first, its entry no arrival nor opened by the tree, takes no focus: it stays in the body", async () => {
+  const server = pageServer({ nodes: [guide, install, linux, notes] });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await settle();
+  expect(document.activeElement).toBe(document.body);
+});
+
+test.each([
+  [
+    "directory",
+    "Directory",
+    async (user: ReturnType<typeof userEvent.setup>) => {
+      await screen.findByRole("option", { name: "note (1)" });
+      await user.selectOptions(screen.getByRole("combobox", { name: "Type" }), "note");
+    },
+  ],
+  [
+    "history",
+    "History",
+    async (user: ReturnType<typeof userEvent.setup>) =>
+      user.selectOptions(await screen.findByRole("combobox", { name: "Client" }), "API"),
+  ],
+] as const)(
+  "the %s the tree opened keeps its mark through a filter: Back to it gives its title the focus",
+  async (_, title, filter) => {
+    const { user, router } = await home(undefined, {
+      mode: "llm_wiki",
+      answers: { [`GET /api/v0/notebooks/${notebookJSON.id}/index`]: () => json(indexFacts()) },
+    });
+    await act(() => router.navigate(pagePath(install.id), { state: arrived }));
+    await screen.findByRole("heading", { level: 1, name: "Install" });
+    const tree = screen.getByRole("navigation", { name: "Pages of Plans" });
+    await user.click(await within(tree).findByRole("link", { name: title }));
+    await screen.findByRole("heading", { level: 1, name: title });
+
+    await filter(user);
+    await waitFor(() => expect(router.state.location.search).not.toBe(""));
+    expect(router.state.location.state).toEqual({ opened: true });
+    await act(() => router.navigate(pagePath(linux.id), { state: arrived }));
+    const linuxHeading = await screen.findByRole("heading", { level: 1, name: "Linux" });
+    await waitFor(() => expect(document.activeElement).toBe(linuxHeading));
+    await act(() => router.navigate(-1));
+    const again = await screen.findByRole("heading", { level: 1, name: title });
+    await waitFor(() => expect(document.activeElement).toBe(again));
+  }
+);
+
+// M12/P2/S1, 26.4: Where to look replaces the entry, keeping its arrival.
+test("Where to look keeps the arrival of its entry: Back to the results from a page gone to from them gives their title the focus", async () => {
+  const { user, router, box } = await home();
+  await user.type(box, "Install{Enter}");
+  const title = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+
+  const where = screen.getByRole("combobox", { name: "Where to look" });
+  await user.selectOptions(where, "Plans");
+  await waitFor(() => expect(router.state.location.search).toContain("notebook_id="));
+  expect(document.activeElement).toBe(where);
+  expect(router.state.location.state).toEqual(arrived);
+
+  await act(() => router.navigate(pagePath(install.id)));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => router.navigate(-1));
+  const again = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
+  await waitFor(() => expect(document.activeElement).toBe(again));
+});
+
+// Review B's M1: a filter's replace changes the query of an entry arrived at, the page staying: a "Page not found"
+// that mounts later is no first mount, and takes the focus only from no one; the control without the filter.
+test.each([
+  ["no filter changed", false],
+  ["a filter changed first", true],
+] as const)(
+  "the history arrived at ([[log]]), %s, the focus moved to the search box by no reader's event, its notebook gone elsewhere: Page not found leaves the focus in the box",
+  async (_, filtered) => {
+    const gone = { notebooks: false };
+    const { user, events, router, box } = await home([guide, install, linux, notes], {
+      mode: "llm_wiki",
+      answers: {
+        "GET /api/v0/workspaces/lab/notebooks": () =>
+          json({ data: gone.notebooks ? [] : [{ ...notebookJSON, mode: "llm_wiki" }] }),
+      },
+    });
+    await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/history`, { state: arrived }));
+    const title = await screen.findByRole("heading", { level: 1, name: "History" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    if (filtered) {
+      await user.selectOptions(await screen.findByRole("combobox", { name: "Client" }), "API");
+      await waitFor(() => expect(router.state.location.search).not.toBe(""));
+      expect(router.state.location.state).toEqual({ arrived: true });
+    }
+    await settle();
+    // A screen reader moves the focus by no reader's event.
+    act(() => box.focus());
+
+    gone.notebooks = true;
+    events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+    await screen.findByRole("heading", { level: 1, name: "Page not found" });
+    await settle();
+    expect(document.activeElement).toBe(box);
+  }
+);
+
+// Review B's N1: the offered heading is carried to a replace of the state alone in the layout effect, before the
+// heading's effect of the same commit runs again: an entry the tree opened made an arrival so, its title shown, the
+// focus in the box, keeps the focus there.
+test("a replace of the state alone that makes a page the tree opened an arrival, its title shown, leaves the focus where it is", async () => {
+  const { router, box } = await home();
+  await act(() => router.navigate(pagePath(install.id), { state: opened }));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await settle();
+  act(() => box.focus());
+
+  await act(() => router.navigate(pagePath(install.id), { replace: true, state: arrived }));
+  await settle();
+  expect(document.activeElement).toBe(box);
 });

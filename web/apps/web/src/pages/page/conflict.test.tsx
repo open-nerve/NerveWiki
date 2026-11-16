@@ -118,9 +118,33 @@ test("differences that cannot load say so; the buttons still work, and Try again
 
   await within(region).findByText("The differences could not be shown. You can still keep your text or discard it.");
   expect(within(region).getByRole("button", { name: "Keep mine" })).toBeTruthy();
+  // No Reload: the editor holds the user's text.
+  expect(within(region).queryByRole("button", { name: "Reload" })).toBeNull();
+
+  // M12/P2/S1, 21.14: Try again, loading, stays, aria-disabled, the focus on it; failed again, still on it.
+  let release: (() => void) | undefined;
+  vi.doMock("../../editor/conflict-view", async () => {
+    await new Promise<void>((resolve) => (release = resolve));
+    throw new Error("offline");
+  });
+  const retry = within(region).getByRole("button", { name: "Try again" });
+  await user.click(retry);
+  expect(within(region).getByRole("alert").textContent).toBe("Loading…");
+  expect(retry.getAttribute("aria-disabled")).toBe("true");
+  expect(document.activeElement).toBe(retry);
+  await waitFor(() => expect(release).toBeDefined());
+  act(() => release?.());
+  await within(region).findByText("The differences could not be shown. You can still keep your text or discard it.");
+  expect(retry.hasAttribute("aria-disabled")).toBe(false);
+  expect(document.activeElement).toBe(retry);
+
+  // Loaded, the differences take the focus where the failure was: the panel's heading, not the page's start.
   vi.doUnmock("../../editor/conflict-view");
-  await user.click(within(region).getByRole("button", { name: "Try again" }));
+  await user.click(retry);
   await within(region).findByRole("textbox", { name: "Your text against the page as it is now" });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(region).getByRole("heading", { name: conflictTitle }))
+  );
 });
 
 test("Keep mine that fails says why, the focus in the editor", async () => {

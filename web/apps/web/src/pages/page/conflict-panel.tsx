@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useId, useState, type Ref } from "react";
+import { useCallback, useEffect, useId, useState, type RefObject } from "react";
 
 import { Loading } from "../../components/loading";
-import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Conflict } from "../../stores/page-editing";
+import { ChunkNotLoaded } from "./comparison";
 
 type Diff = typeof import("../../editor/conflict-view");
 
 type ConflictPanelProps = {
   conflict: Conflict;
   /** The panel's heading, which takes the focus as the conflict comes and when a save is asked for meanwhile. */
-  heading: Ref<HTMLHeadingElement>;
+  heading: RefObject<HTMLHeadingElement | null>;
   keep(): void;
   discard(): void;
 };
@@ -24,15 +24,19 @@ type ConflictPanelProps = {
  * folded; Show unchanged lines, which the keyboard reaches as it does not
  * a fold, shows them all. The diff comes in a chunk of its own; one that
  * cannot load says so, with Try again, and the two buttons still work:
- * the user's text is in the editor whatever happens here.
+ * the user's text is in the editor whatever happens here. Try again, as
+ * the comparison's, stays while the chunk loads, aria-disabled, the focus
+ * on it; loaded, the diff shown, the panel's heading takes the focus that
+ * left with it (M12/P2/S1, 21.14).
  */
 export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPanelProps) {
   const t = useT();
   const title = useId();
   const [diff, setDiff] = useState<Diff>();
-  const [failed, setFailed] = useState(false);
+  // Whether the chunk failed to load, and whether Try again loads it.
+  const [failed, setFailed] = useState<"failed" | "loading">();
   const [unfolded, setUnfolded] = useState(false);
-  const load = useCallback(() => import("../../editor/conflict-view").then(setDiff, () => setFailed(true)), []);
+  const load = useCallback(() => import("../../editor/conflict-view").then(setDiff, () => setFailed("failed")), []);
   useEffect(() => void load(), [load]);
   return (
     <section aria-labelledby={title} className="space-y-3 rounded-md border border-destructive/50 p-3">
@@ -47,19 +51,17 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
             {t("editor.showUnchanged")}
           </Button>
         </div>
-      ) : failed ? (
-        <div className="space-y-2">
-          <Alert>{t("editor.conflictDiffNotLoaded")}</Alert>
-          <Button
-            variant="outline"
-            onClick={() => {
-              setFailed(false);
-              void load();
-            }}
-          >
-            {t("status.retry")}
-          </Button>
-        </div>
+      ) : failed !== undefined ? (
+        <ChunkNotLoaded
+          loading={failed === "loading"}
+          retry={() => {
+            setFailed("loading");
+            void load();
+          }}
+          left={() => heading.current?.focus()}
+          text={t("editor.conflictDiffNotLoaded")}
+          reload={false}
+        />
       ) : (
         <Loading />
       )}

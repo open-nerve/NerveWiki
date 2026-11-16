@@ -2,7 +2,7 @@ import { observer } from "mobx-react-lite";
 import { Link } from "react-router";
 import useSWR from "swr";
 
-import { useArrivalFocus } from "../../app/arrival";
+import { arrived, useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { useFollowRole } from "../../app/follow-role";
 import { useMounted } from "../../app/mounted";
@@ -38,8 +38,11 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
         headingClassName="text-lg font-medium"
         listClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
         renderItem={(notebook) => (
+          // The card leaves with the home: the notebook's home is arrived at, its title taking the focus (v0.1
+          // design 13.2, item 17; M12/P2/S1).
           <Link
             to={`/${workspace.slug}/notebooks/${notebook.id}`}
+            state={arrived}
             className="rounded-lg border p-4 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
           >
             <span className="block truncate font-medium">{notebook.name}</span>

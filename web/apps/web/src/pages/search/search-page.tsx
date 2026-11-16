@@ -77,7 +77,8 @@ export const SearchPage = observer(function SearchPage() {
   const heading = useArrivalFocus<HTMLHeadingElement>();
   const ids = { status: useId(), scope: useId() };
   const [params, setParams] = useSearchParams();
-  const { key: entry } = useLocation();
+  const location = useLocation();
+  const entry = location.key;
   const q = params.get("q") ?? "";
   const asked = q.trim() !== "";
   // An id in capitals is the id, as the server reads it, and as the notebooks list it (M8/P3B review B-2).
@@ -176,7 +177,8 @@ export const SearchPage = observer(function SearchPage() {
     } else {
       next.set("notebook_id", id);
     }
-    setParams(next, { replace: true });
+    // The entry's state stays: Back to the results from a page gone to from them is still an arrival (M12/P2/S1).
+    setParams(next, { replace: true, state: location.state });
   }
 
   const listed = notebooks.list;

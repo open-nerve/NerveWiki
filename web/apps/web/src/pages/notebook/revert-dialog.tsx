@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState, type FormEvent, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent, type RefObject } from "react";
 import { Link } from "react-router";
 import { useSWRConfig } from "swr";
 
@@ -321,14 +321,18 @@ function RevertForm({
   const nodes = countText(changeset.node_count, t, locale);
   return (
     <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
-      {background ? (
-        <TooLarge nodes={nodes} />
-      ) : (
-        <AlertDialogDescription>
-          {t("history.revertBody", { nodes, contents: countText(changeset.content_count, t, locale) })}
-        </AlertDialogDescription>
-      )}
-      {(changeset.renames || changeset.moves) && <p className="text-sm">{t("history.revertLinks")}</p>}
+      {/* All it says describes the dialog, read with its name: what the undo does, or that it is too large and the
+          question, and that links written since stay (M12/P2/S1, 24.3, 49). */}
+      <AlertDialogDescription asChild>
+        <div className="space-y-4">
+          {background ? (
+            <TooLarge nodes={nodes} />
+          ) : (
+            <p>{t("history.revertBody", { nodes, contents: countText(changeset.content_count, t, locale) })}</p>
+          )}
+          {(changeset.renames || changeset.moves) && <p className="text-foreground">{t("history.revertLinks")}</p>}
+        </div>
+      </AlertDialogDescription>
       {banner !== undefined && <Alert>{banner}</Alert>}
       <FormField
         label={t("history.revertMessage")}
@@ -360,23 +364,26 @@ function RevertForm({
  * TooLarge says a changeset is too large to undo here, how many nodes it
  * touched, and asks whether to undo it in the background, which goes in
  * batches, what it undid kept when it stops on the way (M8 design section
- * 11, item 7): its title, the dialog's description, takes the focus as it
- * shows.
+ * 11, item 7): part of the dialog's description; its title takes the focus
+ * as it shows, described by the question, which a screen reader does not
+ * read again with the dialog's description as the focus moves in the open
+ * dialog (M12/P2/S1, 24.3).
  */
 function TooLarge({ nodes }: { nodes: string }) {
   const t = useT();
   const title = useRef<HTMLHeadingElement>(null);
+  const ask = useId();
   useEffect(() => {
     title.current?.focus();
   }, []);
   return (
     <>
-      <AlertDialogDescription asChild>
-        <h3 ref={title} tabIndex={-1} className="font-medium text-foreground outline-none">
-          {t("history.revertTooLarge", { nodes })}
-        </h3>
-      </AlertDialogDescription>
-      <p className="text-sm">{t("history.backgroundAsk")}</p>
+      <h3 ref={title} tabIndex={-1} aria-describedby={ask} className="font-medium text-foreground outline-none">
+        {t("history.revertTooLarge", { nodes })}
+      </h3>
+      <p id={ask} className="text-foreground">
+        {t("history.backgroundAsk")}
+      </p>
     </>
   );
 }

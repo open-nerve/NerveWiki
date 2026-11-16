@@ -1,7 +1,8 @@
-import { useState, type ReactNode } from "react";
+import { createElement, useState, type ReactNode } from "react";
 
 import { useFocusOnInvalid } from "../components/form-field";
 import { useT } from "../i18n/i18n";
+import { focusLost } from "../lib/focus-leaving";
 import type { FieldError } from "../services/api";
 import { formErrors, type FieldMessage, type ProblemTexts } from "./problem-messages";
 
@@ -16,7 +17,10 @@ export type LocalProblems<Field extends string> = Partial<Record<Field, FieldMes
  * failure the first invalid field gets the focus; texts says some problem
  * codes the form's way, fieldTexts some field codes of its fields, and
  * explain some problems more than a text does, above the form (M6/P4: the
- * pages a rename's links lock). The form gets ref.
+ * pages a rename's links lock). A refusal only the banner says, the focus
+ * lost as it came (in the body, or on the button disabled while the form
+ * was out), gives the banner the focus; a focus not lost stays (M12/P2/S1).
+ * The form gets ref.
  */
 export function useForm<Field extends string>(
   fields: readonly Field[],
@@ -38,15 +42,21 @@ export function useForm<Field extends string>(
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
   const [failures, setFailures] = useState(0);
-  const ref = useFocusOnInvalid(failures);
+  // Whether the focus was lost as the last failure came: judged then, before the button is enabled again.
+  const [lost, setLost] = useState(false);
+  const ref = useFocusOnInvalid(failures, lost);
   const server = formErrors(failure, t, fields, { onField, texts, fieldTexts });
-  const banner: ReactNode = (failure === undefined ? undefined : explain?.(failure)) ?? server.banner;
+  const said: ReactNode = (failure === undefined ? undefined : explain?.(failure)) ?? server.banner;
+  // Marked, for useFocusOnInvalid to find the banner's Alert by: a div, as what it says can be a list.
+  const banner: ReactNode =
+    said === undefined ? undefined : createElement("div", { "data-form-banner": "", className: "contents" }, said);
 
   /** submit shows found, or runs send when it is empty; it resolves whether send went through. */
   async function submit(found: LocalProblems<Field>, send: () => Promise<void>): Promise<boolean> {
     setLocal(found);
     setFailure(undefined);
     if (Object.keys(found).length > 0) {
+      setLost(false);
       setFailures((n) => n + 1);
       return false;
     }
@@ -55,6 +65,7 @@ export function useForm<Field extends string>(
       await send();
       return true;
     } catch (error) {
+      setLost(focusLost());
       setFailure(error);
       setFailures((n) => n + 1);
       return false;

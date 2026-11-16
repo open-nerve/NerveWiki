@@ -9,6 +9,7 @@ import { SessionChangedError } from "../session/token-manager";
 import { withEvents } from "../test/event-server";
 import { json, notebookJSON, storedSession, testApp, tokensJSON, workspaceJSON } from "../test/fakes";
 import type { transferTo } from "../test/transfer";
+import { closingAnswerWait } from "./edit-closing";
 import { AppStores, RootStore } from "./root.store";
 
 const tokens = (n: number) => ({
@@ -549,6 +550,62 @@ test("signing out in one tab saves and ends another tab's edit of the login befo
     ]);
     expect(a.edits.size).toBe(0);
     answering();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+// M12/P2/S1, item 7: before signing out the tab asks where an edit of the login has changes not saved.
+/** unsavedEditsOf is what tab's unsavedEdits answers once the other tabs' wait is out at most. */
+async function unsavedEditsOf(tab: RootStore): Promise<"here" | "elsewhere" | undefined> {
+  const where = tab.unsavedEdits();
+  await vi.advanceTimersByTimeAsync(closingAnswerWait);
+  return where;
+}
+
+test("unsavedEdits tells this tab's edit with changes not saved first, then another tab's of the login, else none", async () => {
+  vi.useFakeTimers();
+  try {
+    const base = testApp((request) => {
+      const { pathname } = new URL(request.url);
+      if (pathname === "/api/v0/auth/refresh") {
+        return json(tokensJSON);
+      }
+      if (request.method === "GET") {
+        return json({ content: "Saved.\n", revision: 1 });
+      }
+      return json({ id: "s1", page_id: "p1", expires_at: "2026-10-03T08:02:00Z" }, 201);
+    }, storedSession("login-0"));
+    await base.session.start();
+    const channels = new FakeChannels();
+    const tabOf = (tabId: string) => {
+      const storage = new SharedStorage().tab(tabId);
+      const deps: EventDeps = {
+        locks: undefined,
+        storage,
+        onStorage: storage.onStorage,
+        channel: (name) => channels.port(name),
+        page: new FakePage(),
+        now: () => Date.now(),
+        tabId,
+      };
+      return new RootStore(new AppStores(base.preferences, base.session, deps), "login-0");
+    };
+    const [a, b] = [tabOf("tab-a"), tabOf("tab-b")];
+    const answering = a.answerSignOuts();
+
+    expect([await unsavedEditsOf(a), await unsavedEditsOf(b)]).toEqual([undefined, undefined]);
+    const editing = a.editPage({ id: "n1", workspace_id: "w1" }, "p1");
+    await editing?.begin(false);
+    await vi.advanceTimersByTimeAsync(0);
+    // An edit open, nothing unsaved: none.
+    expect([await unsavedEditsOf(a), await unsavedEditsOf(b)]).toEqual([undefined, undefined]);
+
+    editing?.changed(1);
+    expect([await unsavedEditsOf(a), await unsavedEditsOf(b)]).toEqual(["here", "elsewhere"]);
+    answering();
+    // a no longer answers: b hears of none.
+    expect(await unsavedEditsOf(b)).toBeUndefined();
   } finally {
     vi.useRealTimers();
   }

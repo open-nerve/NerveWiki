@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
 import useSWR from "swr";
 
+import { opened } from "../../app/arrival";
 import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
@@ -147,12 +148,18 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       </div>
       {notebook.mode === "llm_wiki" && (
         <div className="space-y-1">
-          <Link to={`${home}/index`} className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent">
+          {/* Opened by the tree, as its pages are (M12/P2/S1). */}
+          <Link
+            to={`${home}/index`}
+            state={opened}
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+          >
             <List aria-hidden="true" className="size-4" />
             {t("index.title")}
           </Link>
           <Link
             to={`${home}/history`}
+            state={opened}
             className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
           >
             <History aria-hidden="true" className="size-4" />

@@ -172,3 +172,52 @@ test("a view without links to pages not there has nothing to undo", () => {
   const { context } = setUp();
   expect(unresolvedLinks(container, context)).toBeUndefined();
 });
+
+// M12/P2/S1, 11.7: a key held down repeats; the dialog opened would open again.
+test("Enter held down acts once: its repeats hand nothing", () => {
+  const { container, context, handed, link } = setUp();
+  unresolvedLinks(container, context);
+
+  link("x").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  link("x").dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", repeat: true, bubbles: true, cancelable: true })
+  );
+  link("x").dispatchEvent(
+    new KeyboardEvent("keydown", { key: "Enter", repeat: true, bubbles: true, cancelable: true })
+  );
+
+  expect(handed).toEqual([["Plans/x", "link", "x"]]);
+});
+
+// M12/P2/S1, 35.2: a link the view goes to a page by opens no dialog.
+test("a link the view goes to a page by, an LLM Wiki's directory, is a link: no dialog pops up from it, and Space is the page's; an embed's or an image's says it is not there", () => {
+  const { container, context, handed, link } = setUp();
+  container
+    .querySelector("p")
+    ?.insertAdjacentHTML("beforeend", ' <a class="nw-wikilink nw-unresolved" data-nw-target="index">index</a>');
+  const undo = unresolvedLinks(container, { ...context, leads: (target) => ["index", "E", "p.png"].includes(target) });
+
+  expect([link("index").getAttribute("role"), link("index").hasAttribute("aria-haspopup")]).toEqual(["link", false]);
+  expect(link("index").getAttribute("tabindex")).toBe("0");
+  expect(
+    ["x", "E", "p.png"].map((name) => [link(name).getAttribute("role"), link(name).getAttribute("aria-haspopup")])
+  ).toEqual([
+    ["button", "dialog"],
+    ["button", "dialog"],
+    ["button", "dialog"],
+  ]);
+  const down = new KeyboardEvent("keydown", { key: " ", bubbles: true, cancelable: true });
+  link("index").dispatchEvent(down);
+  link("index").dispatchEvent(new KeyboardEvent("keyup", { key: " ", bubbles: true, cancelable: true }));
+  expect(down.defaultPrevented).toBe(false);
+  expect(handed).toEqual([]);
+  link("index").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+  expect(handed).toEqual([["index", "link", "index"]]);
+
+  undo?.();
+  expect(["role", "tabindex", "aria-haspopup"].map((name) => link("index").hasAttribute(name))).toEqual([
+    false,
+    false,
+    false,
+  ]);
+});

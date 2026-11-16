@@ -120,10 +120,12 @@ export const ReadingView = observer(function ReadingView({
     report: (failure) => latestRefused.current(failure),
   });
   const latestUnresolved = useRef(links.unresolved);
+  const latestLeads = useRef(links.leads);
   useEffect(() => {
     latestRefused.current = refused;
     latestUnanchored.current = unanchored;
     latestUnresolved.current = links.unresolved;
+    latestLeads.current = links.leads;
   });
   const html = data?.html;
   const revision = data?.revision;
@@ -171,6 +173,7 @@ export const ReadingView = observer(function ReadingView({
         : undefined,
       report: (failure) => latestRefused.current(failure),
       unresolved: (link) => void latestUnresolved.current(link),
+      leads: (target) => latestLeads.current(target),
       assetsExpire,
       assetAddress: (id) => assets.address(id),
     });

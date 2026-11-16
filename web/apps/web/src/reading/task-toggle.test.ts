@@ -150,14 +150,18 @@ test("a toggle refused is reported, and the next click asks again", async () => 
   expect(toggles).toHaveLength(2);
 });
 
-test("without a toggle, a reader's, the checkboxes stay disabled, and a click asks nothing", async () => {
+test("without a toggle, a reader's, the checkboxes stay disabled, named by their items, and a click asks nothing", async () => {
   const { container, context, toggles, a, b } = setUp("reader");
-  expect(taskToggle(container, context)).toBeUndefined();
+  const undo = taskToggle(container, context);
 
   a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 
   expect([a.disabled, b.disabled]).toEqual([true, true]);
+  // Named all the same: a screen reader says which item a disabled checkbox is (M12/P2/S1, 6.3).
+  expect([a.getAttribute("aria-label"), b.getAttribute("aria-label")]).toEqual(["a", "b"]);
   expect(toggles).toEqual([]);
+  undo?.();
+  expect([a.hasAttribute("aria-label"), b.hasAttribute("aria-label")]).toEqual([false, false]);
 });
 
 test("a click elsewhere in the view is the view's", async () => {

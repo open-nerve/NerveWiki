@@ -111,6 +111,13 @@ test("C6 (page, signed out elsewhere): A's edit of Notes has unsaved text as A s
   const tab = await anotherTab(page);
   await goto(tab, `/${workspace.slug}`);
   await signOutThroughMenu(tab, displayNameOf(adminEmail));
+  // A's edit has changes not saved, which the other tab says over the tabs' channel at once, the clock paused: the
+  // sign-out asks first (M12/P2/S1, item 7).
+  const asked = tab.getByRole("alertdialog", { name: "Sign out anyway?" });
+  await expect(asked).toHaveAccessibleDescription(
+    "A page you are editing in another tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost."
+  );
+  await asked.getByRole("button", { name: "Sign out", exact: true }).click();
   // The other tabs' answers come within 100 ms; autosave would take 2 seconds.
   await page.clock.runFor(200);
 

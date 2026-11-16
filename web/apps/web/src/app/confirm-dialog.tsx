@@ -12,6 +12,7 @@ import {
 } from "../components/ui/alert-dialog";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
+import { focusLost } from "../lib/focus-leaving";
 import type { HeldDialog } from "./held-dialog";
 import { errorText, type ProblemTexts } from "./problem-messages";
 
@@ -60,7 +61,10 @@ type ConfirmDialogProps = Opening & {
  * often it is pressed, and nothing closes the dialog while it is out; a
  * refusal stays in the dialog. With typedConfirmation, the user types a
  * word first, in the field the dialog opens on, where Enter confirms;
- * closing the dialog clears it.
+ * closing the dialog clears it. While confirm is out its buttons are
+ * aria-disabled, not disabled: a disabled button drops the focus. After a
+ * refusal the focus is on confirm still (given back to it, lost), and the
+ * dialog's alert says why (v0.1 design 13.2, item 12; M12/P2/S1).
  */
 export function ConfirmDialog({
   trigger,
@@ -85,11 +89,18 @@ export function ConfirmDialog({
   const ready = typedConfirmation === undefined || typed === typedConfirmation.value;
   const [failure, setFailure] = useState<unknown>();
   const [sending, setSending] = useState(false);
+  // Out, whatever was rendered last: a second press, Esc, Cancel before sending shows do nothing.
+  const busy = useRef(false);
+  const confirmButton = useRef<HTMLButtonElement>(null);
   const confirmed = useRef(false);
   const typedField = useRef<HTMLInputElement>(null);
   const failed = failure === undefined ? undefined : (explain?.(failure) ?? errorText(failure, t, texts));
 
   async function run() {
+    if (busy.current || !ready) {
+      return;
+    }
+    busy.current = true;
     setSending(true);
     setFailure(undefined);
     try {
@@ -97,7 +108,12 @@ export function ConfirmDialog({
     } catch (error) {
       setFailure(error);
       setSending(false);
+      if (focusLost()) {
+        confirmButton.current?.focus();
+      }
       return;
+    } finally {
+      busy.current = false;
     }
     confirmed.current = true;
     setOpen(false);
@@ -117,7 +133,7 @@ export function ConfirmDialog({
     <AlertDialog
       open={open}
       onOpenChange={(next) => {
-        if (!sending) {
+        if (!busy.current) {
           setOpen(next);
           setFailure(undefined);
           setTyped("");
@@ -165,7 +181,7 @@ export function ConfirmDialog({
             value={typed}
             onChange={(event) => setTyped(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "Enter" && ready && !sending) {
+              if (event.key === "Enter") {
                 void run();
               }
             }}
@@ -173,12 +189,21 @@ export function ConfirmDialog({
         )}
         {failed !== undefined && <Alert>{failed}</Alert>}
         <div className="flex justify-end gap-2">
+          {/* Not disabled while confirm is out: a disabled button drops the focus. Without the typed word there is
+              no focus to keep. */}
           <AlertDialogCancel asChild>
-            <Button variant="outline" disabled={sending}>
+            <Button variant="outline" aria-disabled={sending || undefined}>
               {cancelLabel}
             </Button>
           </AlertDialogCancel>
-          <Button variant={tone} disabled={sending || !ready} onClick={() => void run()}>
+          <Button
+            ref={confirmButton}
+            variant={tone}
+            disabled={!ready}
+            aria-busy={sending || undefined}
+            aria-disabled={sending || undefined}
+            onClick={() => void run()}
+          >
             {sending ? sendingLabel : confirmLabel}
           </Button>
         </div>

@@ -182,7 +182,8 @@ test("a deactivation goes out once, however often it is pressed; cancel sends no
   await user.click(screen.getByRole("button", { name: "Deactivate account" }));
   await user.click(await screen.findByRole("button", { name: "Deactivate" }));
   const sending = await screen.findByRole("button", { name: "Deactivating…" });
-  expect(sending).toHaveProperty("disabled", true);
+  // aria-disabled, not disabled, keeping the focus (M12/P2/S1).
+  expect([sending.getAttribute("aria-disabled"), sending.hasAttribute("disabled")]).toEqual(["true", false]);
   await user.click(sending);
   // Nothing closes the dialog while it is out.
   await user.keyboard("{Escape}");

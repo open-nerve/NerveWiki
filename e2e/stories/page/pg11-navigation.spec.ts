@@ -143,6 +143,8 @@ test("PG11 (page): a page shows where it is in its breadcrumbs, which go up, and
 
   await page.getByRole("navigation", { name: "Breadcrumb", exact: true }).getByRole("link", { name: "Plans" }).click();
   await expect(page).toHaveURL(notebookPath(workspace.slug, notebook.id));
+  // The link left with the page: the notebook's home is arrived at, its title taking the focus (M12/P2/S1, 12.3).
+  await expect(page.getByRole("heading", { level: 1, name: "Plans", exact: true })).toBeFocused();
   await expect(page.getByRole("main").getByRole("list", { name: "Pages", exact: true }).getByRole("link")).toHaveText([
     "Guide",
     "Notes",

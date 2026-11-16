@@ -130,6 +130,12 @@ test("signing out saves what was typed since the last save, then ends the sessio
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(server.sent.filter((line) => line.startsWith("PUT") || line.startsWith("END"))).toEqual([
@@ -163,6 +169,12 @@ test("while the sign-out saves, the content is held as it is: what it saves is a
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
   await waitFor(() => expect(writes).toEqual(["Guide\n more"]));
   expect(view.state.readOnly).toBe(true);
   release?.();
@@ -221,6 +233,12 @@ test("signing out while the save is not answered ends the session after 1.5 seco
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
   await waitFor(() => expect(sent).toEqual(["PUT"]));
   // The save has a second at least; by 1.5 seconds the end is out, the logout after it.
   await act(() => vi.advanceTimersByTimeAsync(1_000));
@@ -230,6 +248,82 @@ test("signing out while the save is not answered ends the session after 1.5 seco
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(sent).toEqual(["PUT", "END", "LOGOUT"]);
+});
+
+// M12/P2/S1, item 7: what was typed not saved, the sign-out asks first.
+test("signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout, Signing out… meanwhile", async () => {
+  let loggedOut: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/auth/logout": async () => {
+        server.sent.push("LOGOUT");
+        await new Promise<void>((resolve) => (loggedOut = resolve));
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { type, view } = await pageEditor();
+  type(" more");
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  const dialog = await screen.findByRole("alertdialog", {
+    name: "Sign out anyway?",
+    description:
+      "A page you are editing in this tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost.",
+  });
+  await user.click(within(dialog).getByRole("button", { name: "Stay" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(view.state.readOnly).toBe(false);
+  expect(view.state.doc.toString()).toBe("Guide\n more");
+  expect(server.sent.filter((line) => /^(PUT|END|LOGOUT)/.test(line))).toEqual([]);
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  const asked = await screen.findByRole("alertdialog", { name: "Sign out anyway?" });
+  await user.click(within(asked).getByRole("button", { name: "Sign out" }));
+  // While it signs out, its button says so, busy (review C's M2: signOut.signingOut).
+  await waitFor(() => expect(loggedOut).toBeDefined());
+  const signingOut = within(asked).getByRole("button", { name: "Signing out…" });
+  expect([signingOut.getAttribute("aria-busy"), signingOut.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+  loggedOut?.();
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(server.sent.filter((line) => /^(PUT|END|LOGOUT)/.test(line))).toEqual([
+    'PUT Guide "Guide\\n more" on 1 in session-1',
+    "END session-1",
+    "LOGOUT",
+  ]);
+});
+
+test("signing out with what was typed not saved asks first in Chinese too, saying it is in this tab, and says it signs out", async () => {
+  let loggedOut: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/auth/logout": async () => {
+        await new Promise<void>((resolve) => (loggedOut = resolve));
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { type } = await pageEditor();
+  type(" more");
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+  const asked = await screen.findByRole("alertdialog", {
+    name: "仍要退出登录吗？",
+    description: "这个标签页里正在编辑的页面有还没有保存的修改。退出登录会先尽量保存，保存不了的会丢失。",
+  });
+  await user.click(within(asked).getByRole("button", { name: "退出登录" }));
+  await waitFor(() => expect(loggedOut).toBeDefined());
+  expect(within(asked).getByRole("button", { name: "正在退出登录…" }).getAttribute("aria-busy")).toBe("true");
+  loggedOut?.();
+  expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {
@@ -512,7 +606,9 @@ test("a page deleted while this tab edits it unsaved stays, saying so, until the
       name: "Leave",
     })
   );
-  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  // In place of the page this navigation showed, which took the focus with it (M12/P2/S1, 18.6).
+  await waitFor(() => expect(document.activeElement).toBe(notFound));
   // The page gone, its view is not read as the edit is left.
   expect(server.sent).not.toContain("GET view undefined");
 });
@@ -524,7 +620,9 @@ test("a page deleted while this tab edits it with nothing unsaved is no page at 
   server.sessions.clear();
   deleted(events);
 
-  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  // In place of the page this navigation showed, which took the focus with it (M12/P2/S1, 18.6).
+  await waitFor(() => expect(document.activeElement).toBe(notFound));
 });
 
 test.each<[string, (typeof workspaceJSON)[]]>([

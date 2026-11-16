@@ -371,10 +371,52 @@ test("a report whose problems cannot be read says why, its counts shown; Try aga
   );
   expect(within(job).getByText("Pages")).toBeTruthy();
   down = false;
-  await user.click(within(job).getByRole("button", { name: "Try again" }));
+  // Named by its row (M12/P2/S1, 19.3).
+  await user.click(
+    within(job).getByRole("button", {
+      name: "Try again (report on Export of the whole notebook, Oct 5, 2026, 8:00 AM)",
+    })
+  );
   await waitFor(() => expect(within(job).queryByRole("alert")).toBeNull());
   // Nothing befell the vault: no problems are listed.
   expect(within(job).queryByText("Where the vault differs")).toBeNull();
+});
+
+// M12/P2/S1, 19.3: reports that cannot be read show at once, each Try again named by its job, its visible text first.
+test.each([
+  [
+    "en",
+    [
+      "Try again (report on Export of the whole notebook, Oct 5, 2026, 9:00 AM)",
+      "Try again (report on Export of the whole notebook, Oct 5, 2026, 8:00 AM)",
+    ],
+  ],
+  ["zh-CN", ["重试：导出整个笔记本，2026年10月5日 09:00 的报告", "重试：导出整个笔记本，2026年10月5日 08:00 的报告"]],
+] as const)("reports that cannot be read each name their Try again by their job (%s)", async (locale, names) => {
+  const user = userEvent.setup();
+  const server = jobsServer({
+    jobs: [jobJSON(2, { created_at: "2026-10-05T09:00:00Z" }), jobJSON(1)],
+    answers: { "GET /api/v0/transfer-jobs/*": () => Promise.reject(new TypeError("offline")) },
+  });
+  renderApp(transfer, server.app);
+  const [second, first] = await rowsAt(0, 1);
+  for (const job of [second, first]) {
+    // oxlint-disable-next-line no-await-in-loop -- one row after the other
+    await user.click(control(job as HTMLElement, "button", "Report") as HTMLElement);
+  }
+  // The rows found and their reports opened in English, the page in the locale.
+  act(() => server.app.preferences.setLocale(locale));
+
+  await waitFor(() =>
+    expect(
+      [second, first].map((job) =>
+        within(job as HTMLElement)
+          .getAllByRole("button")
+          .map((button) => button.getAttribute("aria-label") ?? "")
+          .find((label) => label.startsWith(locale === "en" ? "Try again" : "重试"))
+      )
+    ).toEqual(names)
+  );
 });
 
 test("jobs that cannot be read say why, and Try again reads them; a read again that fails says so above the jobs held", async () => {
