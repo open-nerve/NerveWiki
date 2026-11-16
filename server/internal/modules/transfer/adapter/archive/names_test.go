@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io/fs"
 	"slices"
 	"testing"
 
@@ -53,11 +54,17 @@ func read(name string, from domain.NameSource, folder bool) string {
 	return fmt.Sprintf("%q %q %v", name, from, folder)
 }
 
+// symlink is h made a symbolic link's.
+func symlink(h *zip.FileHeader) *zip.FileHeader {
+	h.SetMode(fs.ModeSymlink | 0o777)
+	return h
+}
+
 // The import reads a name not flagged UTF-8 from its Unicode Path field,
 // when valid, else, in a zip whose names neither flagged, so read nor
 // UTF-8 all read as GBK, as GBK, valid UTF-8 or not (M12 design 4.6.6, T3;
-// M12/P3 design 3.12.1, decision 376); a folder by the name so read. Each
-// zip is archive/zip's, its flags checked first.
+// M12/P3 design 3.12.1, decision 376); a folder, and a special file, by
+// the name so read. Each zip is archive/zip's, its flags checked first.
 func TestTheImportReadsNamesNotInUTF8(t *testing.T) {
 	gbk := func(s string) string { return encoded(t, simplifiedchinese.GBK, s) }
 	const up, as, cn = domain.NameFromUnicodePath, domain.NameAsWritten, domain.NameFromGBK
@@ -91,9 +98,11 @@ func TestTheImportReadsNamesNotInUTF8(t *testing.T) {
 		{"10 a UTF-8 name not flagged, beside a GBK name", []*zip.FileHeader{header("ü.md", false), header(ziliao, false)},
 			[]string{read("眉.md", cn, false), read("测试资料.md", cn, false)}},
 		{"10 a UTF-8 name not flagged, alone", []*zip.FileHeader{header("ü.md", false)}, []string{read("ü.md", as, false)}},
+		// A symbolic link so named is special, as read, not a folder (review
+		// B's N1).
 		{"11 GBK names whose last byte is 0x5C", []*zip.FileHeader{header(gbk("乗.md"), false), header(gbk("资料/乗"), false),
-			header(gbk("资料/"), false)},
-			[]string{read("乗.md", cn, false), read("资料/乗", cn, false), read("资料/", cn, true)}},
+			header(gbk("资料/"), false), symlink(header(gbk("资料/俓"), false))},
+			[]string{read("乗.md", cn, false), read("资料/乗", cn, false), read("资料/", cn, true), read("资料/俓", cn, false) + " special"}},
 		{"12 a Shift-JIS name", []*zip.FileHeader{header(encoded(t, japanese.ShiftJIS, "テスト資料.md"), false)},
 			[]string{read("僥僗僩帒椏.md", cn, false)}},
 		{"13 GB18030's four bytes", []*zip.FileHeader{header("\x94\x39\xfc\x36.md", false), header(ceshi, false)},
@@ -125,7 +134,11 @@ func TestTheImportReadsNamesNotInUTF8(t *testing.T) {
 				if e.Index != i || e.Method != tt.files[i].Method && !e.Folder {
 					t.Errorf("entry %d = %+v", i, e)
 				}
-				got = append(got, read(e.Name, e.From, e.Folder))
+				line := read(e.Name, e.From, e.Folder)
+				if e.Special {
+					line += " special"
+				}
+				got = append(got, line)
 			}
 			if !slices.Equal(got, tt.want) {
 				t.Errorf("Entries() =\n%s\nwant\n%s", got, tt.want)
