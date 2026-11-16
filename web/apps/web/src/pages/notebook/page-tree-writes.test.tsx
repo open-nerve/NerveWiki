@@ -1,7 +1,12 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
+import { Outlet } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { routes } from "../../app/routes";
+import { useStore } from "../../stores/context";
+import type { RootStore } from "../../stores/root.store";
 import { instanceJSON, json, notebookJSON, problem } from "../../test/fakes";
 import {
   ada,
@@ -760,3 +765,308 @@ test("a page ten levels down offers no New subpage", async () => {
   await user.click(within(await tree()).getByRole("button", { name: "Actions for L9" }));
   expect((await screen.findByRole("menuitem", { name: "New subpage" })).hasAttribute("aria-disabled")).toBe(false);
 });
+
+// M12/P4/S4 design 3.4–3.6: one menu for the tree, at a row's button; the dialogs a row holds once chosen; the rows
+// of a long list drawn as far as the one the focus goes to.
+
+/** readAgain has the tree read again, as the tab's focus coming back does. */
+async function readAgain() {
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+}
+
+/** The menu's trigger: unseen, where the button it is open at is. */
+const triggerOf = (nav: HTMLElement) =>
+  nav.querySelector<HTMLElement>('[aria-haspopup="menu"][data-state]:not([data-actions-of])');
+
+test("the tree's menu is named by its row's button, says it is open there, opened by the keyboard on its first item, and gives the focus back on Escape", async () => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer().app);
+  const nav = await tree();
+  const button = await within(nav).findByRole("button", { name: "Actions for Notes" });
+  expect(button.getAttribute("aria-haspopup")).toBe("menu");
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+  expect(button.getAttribute("aria-controls")).toBeNull();
+
+  button.focus();
+  await user.keyboard("{Enter}");
+
+  const menu = await screen.findByRole("menu", { name: "Actions for Notes" });
+  await waitFor(() => expect(button.getAttribute("aria-expanded")).toBe("true"));
+  expect(button.getAttribute("aria-controls")).toBe(menu.id);
+  await waitFor(() => expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]));
+  expect(document.activeElement?.textContent).toBe("New subpage");
+
+  await user.keyboard("{Escape}");
+
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(button));
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+  expect(button.getAttribute("aria-controls")).toBeNull();
+});
+
+test("the tree's menu closed by a right click outside it leaves the focus where the click was", async () => {
+  // The menu is modal: the page under it takes no pointer, which a click outside it is all the same.
+  const user = userEvent.setup({ pointerEventsCheck: 0 });
+  renderApp(home, pageServer().app);
+  const nav = await tree();
+  const button = await within(nav).findByRole("button", { name: "Actions for Notes" });
+  const main = screen.getByRole("main");
+
+  await user.click(button);
+  await screen.findByRole("menu");
+  await user.pointer({ keys: "[MouseRight]", target: main });
+
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).not.toBe(button);
+  expect(button.getAttribute("aria-expanded")).toBe("false");
+
+  // A left click outside gives it back to the button, as Escape does.
+  await user.click(button);
+  await screen.findByRole("menu");
+  await user.pointer({ keys: "[MouseLeft]", target: main });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(button));
+});
+
+test("a row's menu open as another deletes its page closes, and does not open again as the page is restored", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const server = pageServer();
+  renderApp(home, server.app);
+  const nav = await tree();
+  await user.click(await within(nav).findByRole("button", { name: "Actions for Notes" }));
+  await screen.findByRole("menu");
+
+  server.trashNode(notes.id);
+  await readAgain();
+
+  await waitFor(() => expect(within(nav).queryByRole("link", { name: "Notes", hidden: true })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" })));
+
+  server.restoreElsewhere(notes.id);
+  await readAgain();
+
+  await within(nav).findByRole("link", { name: "Notes" });
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(nav.closest("[aria-hidden]")).toBeNull();
+  expect(within(nav).getByRole("button", { name: "Actions for Notes" }).getAttribute("aria-expanded")).toBe("false");
+});
+
+test("a row's menu open as another moves its page under another closes, and the focus goes to the page's button where it went", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const server = pageServer();
+  // Install's page shown: Guide is open, where Notes goes.
+  renderApp(pagePath(install.id), server.app);
+  const nav = await tree();
+  const before = await within(nav).findByRole("button", { name: "Actions for Notes" });
+  await user.click(before);
+  await screen.findByRole("menu");
+
+  server.nodes = [guide, install, linux, { ...notes, parent_id: guide.id }];
+  await readAgain();
+
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(before.isConnected).toBe(false));
+  const after = within(nav).getByRole("button", { name: "Actions for Notes" });
+  await waitFor(() => expect(document.activeElement).toBe(after));
+  const guideRow = within(nav).getByRole("link", { name: "Guide" }).closest("li");
+  expect(guideRow?.contains(after)).toBe(true);
+});
+
+/**
+ * renderReadingTree renders path over server, and how to read the tree again alone, as an event of another's change
+ * has it read: nothing else of the page renders again with it.
+ */
+function renderReadingTree(path: string, server: ReturnType<typeof pageServer>) {
+  let store: RootStore | undefined;
+  function CaptureStore() {
+    const current = useStore();
+    useEffect(() => {
+      store = current;
+    }, [current]);
+    return <Outlet />;
+  }
+  renderApp(path, server.app, { routes: [{ Component: CaptureStore, children: routes }] });
+  return () =>
+    act(async () => {
+      await store?.pagesOf(server.notebook)?.load();
+    });
+}
+
+test("a row's menu open as another adds a page above it stays at its row's button", async () => {
+  // jsdom lays nothing out: each Actions button 32 px below the one before it, in the document's order.
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  const laidOut = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: HTMLElement
+  ) {
+    if (!this.hasAttribute("data-actions-of")) {
+      return original.call(this);
+    }
+    const top = 100 + 32 * [...document.querySelectorAll("[data-actions-of]")].indexOf(this);
+    return DOMRect.fromRect({ x: 200, y: top, width: 24, height: 24 });
+  });
+  try {
+    const user = userEvent.setup();
+    const server = pageServer();
+    const readTree = renderReadingTree(home, server);
+    const nav = await tree();
+    const button = await within(nav).findByRole("button", { name: "Actions for Notes" });
+    await user.click(button);
+    await screen.findByRole("menu");
+    expect(button.getBoundingClientRect().top).toBe(132);
+    expect(triggerOf(nav)?.style.top).toBe("132px");
+    expect(triggerOf(nav)?.style.left).toBe("200px");
+
+    // The tree alone read again: the menu renders with the rows that move its button, before they are in the page.
+    server.nodes = [pageNode(9, "Atlas"), guide, install, linux, notes];
+    await readTree();
+
+    expect(within(nav).getByRole("link", { name: "Atlas", hidden: true })).toBeTruthy();
+    expect(screen.queryByRole("menu")).not.toBeNull();
+    expect(button.getBoundingClientRect().top).toBe(164);
+    expect(triggerOf(nav)?.style.top).toBe("164px");
+  } finally {
+    laidOut.mockRestore();
+  }
+});
+
+test("a row's menu stays open as another's change collapses that row", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  const server = pageServer();
+  renderApp(home, server.app);
+  const nav = await tree();
+  await user.click(await within(nav).findByRole("button", { name: "Subpages of Guide" }));
+  await user.click(await within(nav).findByRole("button", { name: "Subpages of Install" }));
+  await within(nav).findByRole("link", { name: "Linux" });
+  await user.click(within(nav).getByRole("button", { name: "Actions for Install" }));
+  await screen.findByRole("menu");
+
+  // Linux, Install's only child, deleted elsewhere: Install has no children to show.
+  server.nodes = [guide, install, notes];
+  await readAgain();
+
+  await waitFor(() =>
+    expect(within(nav).queryByRole("button", { name: "Subpages of Install", hidden: true })).toBeNull()
+  );
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(screen.queryByRole("menu")).not.toBeNull();
+  await user.keyboard("{Escape}");
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "Actions for Install" }))
+  );
+});
+
+test("the deletion's confirmation says the trash's period once the instance answers, open as it is", async () => {
+  const user = userEvent.setup();
+  let answer!: () => void;
+  const answered = new Promise<void>((resolve) => (answer = resolve));
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/instance": async () => {
+        await answered;
+        return json({ ...instanceJSON, trash_retention_seconds: 2 * 86_400 });
+      },
+    },
+  });
+  renderApp(pagePath(linux.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+
+  await choose(user, "Notes", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Notes?" });
+  expect(dialog.textContent).not.toContain("restored for");
+  await act(async () => answer());
+
+  await waitFor(() => expect(dialog.textContent).toContain("where it can be restored for 2 days;"));
+});
+
+test("a deletion of the page shown's ancestor, the reader gone back meanwhile to a page out of it, gives the focus to the tree's heading", async () => {
+  const user = userEvent.setup();
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  const server: ReturnType<typeof pageServer> = pageServer({
+    answers: {
+      "DELETE /api/v0/nodes/*": async (request) => {
+        const id = new URL(request.url).pathname.split("/")[4] ?? "";
+        server.sent.push(`DELETE held ${id}`);
+        await released;
+        server.trashNode(id);
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const { router } = renderApp([pagePath(notes.id), pagePath(linux.id)], server.app);
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+
+  await choose(user, "Install", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Install?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(server.sent).toContain(`DELETE held ${install.id}`));
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await act(async () => release());
+
+  await waitFor(() =>
+    expect(
+      within(screen.getByRole("navigation", { name: "Pages of Plans" })).queryByRole("link", { name: "Install" })
+    ).toBeNull()
+  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" })));
+  expect(router.state.location.pathname).toBe(pagePath(notes.id));
+});
+
+test("a page moved to the end of a folder of 150 opened by the move keeps the focus on its menu's button", async () => {
+  const user = userEvent.setup();
+  const big = pageNode(1, "Big");
+  const children = Array.from({ length: 150 }, (_, i) => pageNode(i + 10, `c${String(i + 1).padStart(3, "0")}`, big));
+  const mover = pageNode(2, "Mover");
+  renderApp(home, pageServer({ nodes: [big, mover, ...children] }).app);
+  const nav = await tree();
+
+  await choose(user, "Mover", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Mover" });
+  await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Big");
+  await user.selectOptions(within(dialog).getByLabelText("Position"), "Last");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "Actions for Mover" }))
+  );
+  expect(
+    document.activeElement
+      ?.closest("li")
+      ?.parentElement?.closest("li")
+      ?.contains(within(nav).getByRole("link", { name: "Big" }))
+  ).toBe(true);
+}, 15_000);
+
+test("a page moved under the 150th child of a folder of 150 closed keeps the focus on its menu's button", async () => {
+  const user = userEvent.setup();
+  const big = pageNode(1, "Big");
+  const children = Array.from({ length: 150 }, (_, i) => pageNode(i + 10, `c${String(i + 1).padStart(3, "0")}`, big));
+  const mover = pageNode(2, "Mover");
+  renderApp(home, pageServer({ nodes: [big, mover, ...children] }).app);
+  const nav = await tree();
+
+  await choose(user, "Mover", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Mover" });
+  await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Big / c150");
+  await user.click(within(dialog).getByRole("button", { name: "Move" }));
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() =>
+    expect(document.activeElement).toBe(within(nav).getByRole("button", { name: "Actions for Mover" }))
+  );
+  expect(
+    document.activeElement
+      ?.closest("li")
+      ?.parentElement?.closest("li")
+      ?.contains(within(nav).getByRole("link", { name: "c150" }))
+  ).toBe(true);
+}, 15_000);

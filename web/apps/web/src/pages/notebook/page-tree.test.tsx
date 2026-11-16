@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -19,6 +19,34 @@ const titles = (nav: HTMLElement) =>
   within(nav)
     .getAllByRole("link")
     .map((link) => link.textContent);
+
+/** readAgain has the tree and the notebooks read again, as the tab's focus coming back does. */
+async function readAgain() {
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+}
+
+/** The clicks a link leaves to the browser, as a router's link does: a modifier key, or the middle button. */
+const browsers = [{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }];
+
+/**
+ * leftToBrowser clicks link as click has it and answers whether the app left the click to the browser, not
+ * preventing it. Stopped then on the window, below the app's handlers: jsdom navigates no document.
+ */
+function leftToBrowser(link: HTMLElement, click: MouseEventInit = {}): boolean {
+  let left = false;
+  const stop = (event: Event) => {
+    left = !event.defaultPrevented;
+    event.preventDefault();
+  };
+  window.addEventListener("click", stop);
+  try {
+    fireEvent.click(link, click);
+  } finally {
+    window.removeEventListener("click", stop);
+  }
+  return left;
+}
 
 const raw = pageNode(5, "raw");
 const agents = pageNode(6, "AGENTS");
@@ -276,6 +304,89 @@ test("a write's failure in one notebook's tree is not carried into another's", a
   expect(within(atlasTree).queryByRole("alert")).toBeNull();
 });
 
+// M12/P4/S4 design 3.3: the tree's links are plain anchors its lists follow, as a router's links do.
+test("a link of the tree opened with a modifier or the middle button is the browser's: the app does not follow it", async () => {
+  const { router } = renderApp(home, pageServer().app);
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: "Notes" });
+
+  for (const click of browsers) {
+    // Not prevented: the browser opens it as it would any link.
+    expect(leftToBrowser(link, click)).toBe(true);
+  }
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(router.state.location.pathname).toBe(home);
+
+  // Followed by the app: prevented, the page opened by the tree.
+  expect(leftToBrowser(link)).toBe(false);
+  await waitFor(() => expect(router.state.location.pathname).toBe(pagePath(notes.id)));
+  expect(router.state.location.state).toEqual({ opened: true });
+});
+
+test("the link of the page shown, followed again, replaces its entry; with a hash or a query it pushes one", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(home, pageServer().app);
+  const nav = await tree();
+  /** follow clicks the tree's link to name and answers how the router took it, once it took it. */
+  const follow = async (name: string) => {
+    const before = router.state.location.key;
+    await user.click(within(nav).getByRole("link", { name }));
+    await waitFor(() => expect(router.state.location.key).not.toBe(before));
+    expect(router.state.location.pathname + router.state.location.search + router.state.location.hash).toBe(
+      within(nav).getByRole("link", { name }).getAttribute("href")
+    );
+    return router.state.historyAction;
+  };
+  await within(nav).findByRole("link", { name: "Guide" });
+
+  // The tree mounted on the home: the address it is followed from is the one as it is clicked.
+  expect(await follow("Guide")).toBe("PUSH");
+  expect(await follow("Notes")).toBe("PUSH");
+  expect(await follow("Notes")).toBe("REPLACE");
+  await act(() => router.navigate(`${pagePath(notes.id)}#h`));
+  expect(await follow("Notes")).toBe("PUSH");
+  await act(() => router.navigate(`${pagePath(notes.id)}?x=1`));
+  expect(await follow("Notes")).toBe("PUSH");
+  expect(router.state.location.state).toEqual({ opened: true });
+
+  // A link of a list inside another is followed once: Back returns to where it was followed from.
+  await act(() => router.navigate(`${pagePath(notes.id)}?x=1`));
+  await user.click(within(nav).getByRole("button", { name: "Subpages of Guide" }));
+  expect(await follow("Install")).toBe("PUSH");
+  await act(() => router.navigate(-1));
+  expect(router.state.location.pathname + router.state.location.search).toBe(`${pagePath(notes.id)}?x=1`);
+});
+
+test("on a version of a page, the tree marks that page's link as the page shown", async () => {
+  renderApp(`${pagePath(notes.id)}/versions/1`, pageServer().app);
+
+  const nav = await tree();
+  const link = await within(nav).findByRole("link", { name: "Notes" });
+  expect(link.getAttribute("aria-current")).toBe("page");
+  expect(link.className).toContain("font-medium");
+  expect(within(nav).getByRole("link", { name: "Guide" }).getAttribute("aria-current")).toBeNull();
+});
+
+test("an editor made a reader while the tree is shown loses each row's Actions; made an editor again, gets them back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  renderApp(home, server.app);
+  const nav = await tree();
+  expect(await within(nav).findByRole("button", { name: "Actions for Notes" })).toBeTruthy();
+
+  server.notebook = { ...server.notebook, role: "reader" };
+  await readAgain();
+  await waitFor(() => expect(within(nav).queryByRole("button", { name: "New page" })).toBeNull());
+  await waitFor(() => expect(within(nav).queryByRole("button", { name: "Actions for Notes" })).toBeNull());
+  expect(within(nav).queryByRole("button", { name: "Actions for Guide" })).toBeNull();
+  expect(within(nav).getByRole("link", { name: "Notes" }).getAttribute("draggable")).toBeNull();
+
+  server.notebook = { ...server.notebook, role: "editor" };
+  await readAgain();
+  expect(await within(nav).findByRole("button", { name: "Actions for Notes" })).toBeTruthy();
+  expect(within(nav).getByRole("button", { name: "Actions for Guide" })).toBeTruthy();
+});
+
 test("the notebook's home lists its root pages", async () => {
   renderApp(home, pageServer({ nodes: [guide, install, notes] }).app);
 
@@ -287,6 +398,23 @@ test("the notebook's home lists its root pages", async () => {
   ).toEqual(["Guide", "Notes"]);
   expect(within(list).getByRole("link", { name: "Guide" }).getAttribute("href")).toBe(pagePath(guide.id));
   expect(screen.queryByText("No pages yet.")).toBeNull();
+});
+
+// M12/P4/S4 design 3.7: the home's list is plain anchors it follows, as a router's links do.
+test("a link of the home's list opened with a modifier or the middle button is the browser's; one clicked arrives at its page", async () => {
+  const { router } = renderApp(home, pageServer().app);
+  const list = await within(screen.getByRole("main")).findByRole("list", { name: "Pages" });
+  const link = within(list).getByRole("link", { name: "Notes" });
+
+  for (const click of browsers) {
+    expect(leftToBrowser(link, click)).toBe(true);
+  }
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(router.state.location.pathname).toBe(home);
+
+  expect(leftToBrowser(link)).toBe(false);
+  await waitFor(() => expect(router.state.location.pathname).toBe(pagePath(notes.id)));
+  expect(router.state.location.state).toEqual({ arrived: true });
 });
 
 test("the tree read again shows another tab's changes, in the left column and on the home", async () => {
