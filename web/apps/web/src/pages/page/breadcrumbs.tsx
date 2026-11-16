@@ -1,7 +1,6 @@
 import { Link } from "react-router";
 
 import { arrived } from "../../app/arrival";
-
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";

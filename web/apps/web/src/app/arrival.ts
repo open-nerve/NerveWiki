@@ -84,7 +84,11 @@ function takeArrivalFocus(navigation: object, heading: HTMLElement | null): void
  * and hash the same, is the same navigation: the watch goes on, not
  * started again, and a heading already offered the focus stays offered
  * (M12/P2/S1, 28.4): a route's notice cleared by such a replace leaves a
- * later "Page not found" a later mount.
+ * later "Page not found" a later mount. A replace of the same path that
+ * changes its query or hash, a filter's, is a new navigation, watched
+ * anew; the page stays, its heading not mounting again, and it stays
+ * offered too: a later "Page not found" takes the focus from no one only
+ * (M12/P2/S1, review B's M1).
  */
 export function useArrivalWatch(): void {
   const location = useLocation();
@@ -110,6 +114,14 @@ export function useArrivalWatch(): void {
       }
       last.current = { location, reader: before.reader };
       return;
+    }
+    if (
+      before !== undefined &&
+      type === "REPLACE" &&
+      before.location.pathname === location.pathname &&
+      offered.has(before.location)
+    ) {
+      offered.add(location);
     }
     before?.reader?.end();
     const reader = isArrival(location.state) ? watchReader() : undefined;

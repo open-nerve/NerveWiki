@@ -9,7 +9,7 @@ import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
 import { indexFacts } from "../test/index-server";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
-import { arrived } from "./arrival";
+import { arrived, opened } from "./arrival";
 
 // The arrival focus (M3/P4 design 3.5): a page's heading takes it as the page shows, arrived at, on the first mount
 // for a navigation; one that shows later for the same navigation, the page deleted or restored elsewhere, takes it
@@ -378,4 +378,55 @@ test("Where to look keeps the arrival of its entry: Back to the results from a p
   await act(() => router.navigate(-1));
   const again = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
   await waitFor(() => expect(document.activeElement).toBe(again));
+});
+
+// Review B's M1: a filter's replace changes the query of an entry arrived at, the page staying: a "Page not found"
+// that mounts later is no first mount, and takes the focus only from no one; the control without the filter.
+test.each([
+  ["no filter changed", false],
+  ["a filter changed first", true],
+] as const)(
+  "the history arrived at ([[log]]), %s, the focus moved to the search box by no reader's event, its notebook gone elsewhere: Page not found leaves the focus in the box",
+  async (_, filtered) => {
+    const gone = { notebooks: false };
+    const { user, events, router, box } = await home([guide, install, linux, notes], {
+      mode: "llm_wiki",
+      answers: {
+        "GET /api/v0/workspaces/lab/notebooks": () =>
+          json({ data: gone.notebooks ? [] : [{ ...notebookJSON, mode: "llm_wiki" }] }),
+      },
+    });
+    await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}/history`, { state: arrived }));
+    const title = await screen.findByRole("heading", { level: 1, name: "History" });
+    await waitFor(() => expect(document.activeElement).toBe(title));
+    if (filtered) {
+      await user.selectOptions(await screen.findByRole("combobox", { name: "Client" }), "API");
+      await waitFor(() => expect(router.state.location.search).not.toBe(""));
+      expect(router.state.location.state).toEqual({ arrived: true });
+    }
+    await settle();
+    // A screen reader moves the focus by no reader's event.
+    act(() => box.focus());
+
+    gone.notebooks = true;
+    events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id });
+    await screen.findByRole("heading", { level: 1, name: "Page not found" });
+    await settle();
+    expect(document.activeElement).toBe(box);
+  }
+);
+
+// Review B's N1: the offered heading is carried to a replace of the state alone in the layout effect, before the
+// heading's effect of the same commit runs again: an entry the tree opened made an arrival so, its title shown, the
+// focus in the box, keeps the focus there.
+test("a replace of the state alone that makes a page the tree opened an arrival, its title shown, leaves the focus where it is", async () => {
+  const { router, box } = await home();
+  await act(() => router.navigate(pagePath(install.id), { state: opened }));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await settle();
+  act(() => box.focus());
+
+  await act(() => router.navigate(pagePath(install.id), { replace: true, state: arrived }));
+  await settle();
+  expect(document.activeElement).toBe(box);
 });
