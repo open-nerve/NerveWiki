@@ -107,6 +107,25 @@ test.each([
   expect(problemText(kind, problem, t)).toBe(says);
 });
 
+// An import's names read from elsewhere than their headers' bytes (M12/P3 design 4.2): no skip.
+test.each([
+  [
+    "en",
+    "name_unicode_path",
+    "测试.md: its name was not UTF-8 and was read from the Unicode name the zip tool stored with it.",
+  ],
+  [
+    "en",
+    "name_gbk",
+    "图片/截图.png: its name was not UTF-8 and was read as GBK, as Chinese Windows writes names. If it reads wrong, rename it.",
+  ],
+  ["zh-CN", "name_unicode_path", "测试.md：名称不是 UTF-8，取了压缩工具另存的 Unicode 名称。"],
+  ["zh-CN", "name_gbk", "图片/截图.png：名称不是 UTF-8，按 GBK（中文 Windows 的写法）读出；读错了的话，给它改个名。"],
+] as const)("an import's name read otherwise says how, in %s: %s", (language, code, says) => {
+  const path = code === "name_gbk" ? "图片/截图.png" : "测试.md";
+  expect(problemText("import", { path, code, to: null }, translator(language))).toBe(says);
+});
+
 test.each([
   ["en", "incoming.md was skipped: identical source content already exists at raw/existing.md."],
   ["zh-CN", "已跳过 incoming.md：raw/existing.md 已有字节相同的来源。"],

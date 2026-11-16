@@ -90,6 +90,13 @@ func (i *Import) Run(ctx context.Context, id uuid.UUID) error {
 	r.stats.end(ctx)
 	stop(nil)
 	<-beating
+	// The names read from elsewhere than their headers' bytes come after
+	// every other problem, so that a large zip's do not crowd out of the
+	// report the entries it skipped (M12/P3 design 3.12.2, decision 372);
+	// they are no skips.
+	for _, p := range r.read {
+		r.report.Add(p)
+	}
 	err = r.finish(ctx, running, err, attrs, nil)
 	i.drop(context.WithoutCancel(ctx), id)
 	return err
@@ -129,6 +136,10 @@ type importRun struct {
 	changeset uuid.UUID
 	stats     *statistics
 	buf       []byte
+	// read are the problems of the entries whose names were read from
+	// elsewhere than their headers' bytes, which the report lists at the
+	// end.
+	read []domain.Problem
 }
 
 // run reads the archive and writes its nodes: running is River's context
@@ -152,6 +163,7 @@ func (r *importRun) run(ctx, running context.Context) error {
 	for _, p := range sorted.Skipped {
 		r.skip(p)
 	}
+	r.read = sorted.Read
 	meta := r.meta(running, sorted.Meta)
 	entries, err := r.validate(running, sorted.Entries, meta)
 	if err != nil {

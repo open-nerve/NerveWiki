@@ -1090,6 +1090,10 @@ components:
         end of to, its path from where the import goes), duplicate_source
         (identical bytes already exist as a source of the same kind; path
         is the archive item and to is the matching notebook path).
+        name_unicode_path and name_gbk are no skip: the entry's name, not
+        UTF-8, was read from its Info-ZIP Unicode Path field, or as GBK (as
+        a Chinese Windows writes names), path being the name so read; they
+        come after every other problem.
       type: object
       additionalProperties: false
       required: [path, code, to]
@@ -1108,6 +1112,8 @@ components:
               unsupported_method,
               too_compressed,
               name_not_utf8,
+              name_unicode_path,
+              name_gbk,
               invalid_content,
               too_large,
               too_deep,

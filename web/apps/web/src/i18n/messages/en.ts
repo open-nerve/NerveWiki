@@ -974,6 +974,10 @@ export const en = {
   "transfer.problem.unsupported_method": "{path} was skipped: it is compressed in a way the server does not read.",
   "transfer.problem.too_compressed": "{path} was skipped: it unpacks to far more than its size in the zip.",
   "transfer.problem.name_not_utf8": "{path} was skipped: its name is not UTF-8.",
+  "transfer.problem.name_unicode_path":
+    "{path}: its name was not UTF-8 and was read from the Unicode name the zip tool stored with it.",
+  "transfer.problem.name_gbk":
+    "{path}: its name was not UTF-8 and was read as GBK, as Chinese Windows writes names. If it reads wrong, rename it.",
   "transfer.problem.invalid_content": "{path} was skipped: it is not UTF-8 text, or holds a NUL character.",
   "transfer.problem.too_large": "{path} was skipped: it is larger than the server takes.",
   "transfer.problem.too_deep": "{path} was skipped: it would sit more than 10 levels deep in the notebook.",

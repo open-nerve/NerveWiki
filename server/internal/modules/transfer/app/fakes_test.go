@@ -369,6 +369,9 @@ type archives struct {
 	imports     map[uuid.UUID][]byte
 	uploadFull  bool
 	openErr     error
+	// from are the names read from elsewhere than their headers' bytes,
+	// and how, as adapter/archive tells them (M12/P3 design 3.12.2).
+	from map[string]domain.NameSource
 }
 
 func newArchives() *archives {
@@ -440,7 +443,7 @@ func (a *archives) OpenImport(_ context.Context, id uuid.UUID, most int) (app.Im
 	case len(z.File) > most:
 		return nil, app.ErrTooManyEntries
 	}
-	return zipArchive{z}, nil
+	return zipArchive{z: z, from: a.from}, nil
 }
 
 // imported is the import id's archive, and whether it is there.
@@ -482,16 +485,20 @@ func (u *upload) Abort() error {
 	return nil
 }
 
-// zipArchive is an import's archive read as adapter/archive reads it.
-type zipArchive struct{ z *zip.Reader }
+// zipArchive is an import's archive read as adapter/archive reads it, the
+// names from tells read from elsewhere than their headers' bytes.
+type zipArchive struct {
+	z    *zip.Reader
+	from map[string]domain.NameSource
+}
 
 func (a zipArchive) Entries() []domain.RawEntry {
 	out := make([]domain.RawEntry, len(a.z.File))
 	for i, f := range a.z.File {
 		mode := f.Mode()
 		folder := strings.HasSuffix(f.Name, "/") || mode.IsDir()
-		out[i] = domain.RawEntry{Index: i, Name: f.Name, Folder: folder, Special: !folder && !mode.IsRegular(), Encrypted: f.Flags&0x1 != 0,
-			Method: f.Method}
+		out[i] = domain.RawEntry{Index: i, Name: f.Name, From: a.from[f.Name], Folder: folder, Special: !folder && !mode.IsRegular(),
+			Encrypted: f.Flags&0x1 != 0, Method: f.Method}
 	}
 	return out
 }

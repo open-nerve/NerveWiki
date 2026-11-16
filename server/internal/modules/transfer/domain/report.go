@@ -114,6 +114,13 @@ const (
 	ProblemTooCompressed ProblemCode = "too_compressed"
 	// ProblemNameNotUTF8 is an entry whose name is not UTF-8.
 	ProblemNameNotUTF8 ProblemCode = "name_not_utf8"
+	// ProblemNameUnicodePath is an entry whose name, not UTF-8, was read
+	// from its Info-ZIP Unicode Path field: no skip (M12 design 4.6.6, T3).
+	ProblemNameUnicodePath ProblemCode = "name_unicode_path"
+	// ProblemNameGBK is an entry whose name, not UTF-8, was read as GBK, as
+	// a Chinese Windows writes names; a name in another encoding may read
+	// wrong: no skip (M12 design 4.6.6, T3).
+	ProblemNameGBK ProblemCode = "name_gbk"
 	// ProblemInvalidContent is a page's file that is not UTF-8, or holds
 	// NUL.
 	ProblemInvalidContent ProblemCode = "invalid_content"

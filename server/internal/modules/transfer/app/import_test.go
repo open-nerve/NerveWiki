@@ -176,6 +176,32 @@ func TestAnImportSkipsTheEntriesItCannotRead(t *testing.T) {
 	}
 }
 
+// The names read from elsewhere than their headers' bytes are listed
+// after every other problem, each a problem of its source, in the
+// archive's order, and no skip: a large zip's do not crowd out of the
+// report what it skipped (M12/P3 design 3.12.2, decision 372).
+func TestAnImportListsTheNamesReadOtherwiseLast(t *testing.T) {
+	w := newImportWorld()
+	w.max.MaxEntries = 2000
+	w.archives.from = map[string]domain.NameSource{"大.md": domain.NameFromGBK}
+	pairs := []string{"大.md", noise(5<<20 + 1)}
+	for i := range 1100 {
+		name := fmt.Sprintf("图片/%04d.md", i)
+		pairs = append(pairs, name, "x")
+		w.archives.from[name] = domain.NameFromGBK
+	}
+	got := w.run(t, w.queuedImport(nil, zipOf(t, files(pairs...)...)))
+
+	listed := problems(got.Report)
+	want := []string{"too_large: 大.md", "name_gbk: 大.md", "name_gbk: 图片/0000.md"}
+	if got.State != domain.StateSucceeded || got.Report.Counts.Skipped != 1 || got.Report.Counts.Pages != 1101 || !got.Report.Truncated ||
+		len(listed) != domain.MaxProblems || !slices.Equal(listed[:3], want) || listed[len(listed)-1] != "name_gbk: 图片/0997.md" {
+		t.Errorf("job %s, counts %+v, truncated %v, %d problems from %q to %q; want succeeded, one skipped, 1,101 pages (图片 too), truncated, "+
+			"%d from %q to name_gbk: 图片/0997.md", got.State, got.Report.Counts, got.Report.Truncated, len(listed), listed[:min(3, len(listed))],
+			listed[len(listed)-1], domain.MaxProblems, want)
+	}
+}
+
 // sameProblems reports whether a and b hold the same problems, in any
 // order.
 func sameProblems(a, b []string) bool {

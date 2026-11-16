@@ -935,6 +935,8 @@ export const zhCN: Messages = {
   "transfer.problem.unsupported_method": "{path} 没有导入：服务器读不了它的压缩方式。",
   "transfer.problem.too_compressed": "{path} 没有导入：解压后比它在 zip 里大得太多。",
   "transfer.problem.name_not_utf8": "{path} 没有导入：名称不是 UTF-8。",
+  "transfer.problem.name_unicode_path": "{path}：名称不是 UTF-8，取了压缩工具另存的 Unicode 名称。",
+  "transfer.problem.name_gbk": "{path}：名称不是 UTF-8，按 GBK（中文 Windows 的写法）读出；读错了的话，给它改个名。",
   "transfer.problem.invalid_content": "{path} 没有导入：它不是 UTF-8 文本，或含有 NUL 字符。",
   "transfer.problem.too_large": "{path} 没有导入：超过了服务器的上限。",
   "transfer.problem.too_deep": "{path} 没有导入：它在笔记本中会超过 10 层深。",
