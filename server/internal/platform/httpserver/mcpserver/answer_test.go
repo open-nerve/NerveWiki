@@ -430,6 +430,13 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 			"internal_error: the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ",
 			map[string]any{"code": "internal_error", "message": "internal_error: the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ", "request_id": ""},
 			"MCP call deadline exceeded:WARN"},
+		// A COMMIT that failed before the call's deadline, past
+		// database.commit_timeout, may have saved its changes too (M12/P3/S1
+		// review B-M1); a fault with no mark is the server's failure.
+		{"a fault at a commit", context.Background(), fmt.Errorf("write: %w", failedCommit{context.DeadlineExceeded}),
+			"internal_error: the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ",
+			map[string]any{"code": "internal_error", "message": "internal_error: the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ", "request_id": ""},
+			"MCP tool failed:ERROR"},
 		{"another fault", context.Background(), errors.New("database is down"), "internal_error: the server failed; request id ",
 			map[string]any{"code": "internal_error", "message": "internal_error: the server failed; request id ", "request_id": ""},
 			"MCP tool failed:ERROR"},

@@ -462,6 +462,20 @@ func TestPromptErrorsAndLogs(t *testing.T) {
 	// On a context that lives they are the server's own, not the client's.
 	t.Run("bare_canceled", func(t *testing.T) { unknown(t, fmt.Errorf("reading: %w", context.Canceled), "reading") })
 	t.Run("bare_deadline", func(t *testing.T) { unknown(t, fmt.Errorf("reading: %w", context.DeadlineExceeded), "reading") })
+	// A COMMIT that failed, which TxManager marks, before the call's
+	// deadline: its changes may have been saved (M12/P3/S1 review B-M1).
+	// The whole sentence, its request id the log's.
+	t.Run("unknown_commit", func(t *testing.T) {
+		s, _ := promptServer(t, failing(fmt.Errorf("saving: %w", failedCommit{context.DeadlineExceeded})))
+		code, message, data := rpcError(t, s.getPrompt(context.Background(), t, "p", nil))
+		line := awaitLog(t, s.logs, "MCP method failed")
+		want := "internal_error: the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id " +
+			fmt.Sprint(line["request_id"])
+		if code != -32603 || message != want || data != nil || line["level"] != "ERROR" || line["request_id"] == nil || line["request_id"] == "" {
+			t.Errorf("answer = %d %q %v, log %v; want %q", code, message, data, line, want)
+		}
+		outcome(t, s, "internal_error")
+	})
 
 	t.Run("client_cancel", func(t *testing.T) {
 		entered := make(chan struct{})

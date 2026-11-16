@@ -89,8 +89,9 @@ var ErrTxInSnapshot = errors.New("postgres: a transaction within a snapshot")
 // have all finished therefore commits even if the request is cancelled
 // meanwhile, and a failed one is rolled back and its connection returned to
 // the pool in a known state. A COMMIT that gets no answer within
-// commitTimeout has an unknown outcome and returns an error, marked
-// TxCommitFailed when the transaction could write (commitError).
+// commitTimeout has an unknown outcome and returns an error. A read-write
+// transaction's COMMIT that fails is marked TxCommitFailed (commitError):
+// its outcome may be unknown.
 //
 // A ROLLBACK that fails is an infrastructure fault: WithinTx returns an error
 // that wraps the failure and keeps only the text of fn's error, so a domain
@@ -184,11 +185,13 @@ func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx con
 }
 
 // commitError is run's error when a read-write transaction's COMMIT
-// fails: its outcome is unknown, its writes saved or not (TxManager). Its
-// text and its cause are those of any other COMMIT's failure; TxCommitFailed
-// marks it so, for MCP's answer to a call past its deadline, which tells
-// it from a deadline that changed nothing (M12/P3 design 3.7). A
-// snapshot's COMMIT, which wrote nothing, is not marked.
+// fails: its outcome may be unknown (a COMMIT with no answer), its writes
+// saved or not; one whose connection ended before it was sent rolled
+// back. Its text and its cause are those of any other COMMIT's
+// failure; TxCommitFailed marks it so, for MCP's answer, which tells it
+// from a deadline or a fault that changed nothing (M12/P3 design 3.7;
+// M12/P3/S1 review B-M1). A snapshot's COMMIT, which wrote nothing, is not
+// marked.
 type commitError struct{ err error }
 
 func (e *commitError) Error() string { return "commit transaction: " + e.err.Error() }

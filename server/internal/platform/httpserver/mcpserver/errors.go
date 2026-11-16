@@ -83,18 +83,40 @@ const (
 	// its outcome is unknown (TxManager), its changes saved or not.
 	internalDeadlineSaving = "the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
 	internalFailed         = "the server failed"
+	// internalFailedSaving: a fault, the call's deadline not passed, whose
+	// transaction's COMMIT failed: past database.commit_timeout, shorter
+	// than server.request_timeout, its outcome is unknown, its changes saved
+	// or not (M12/P3/S1 review B-M1).
+	internalFailedSaving = "the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
 )
 
-// deadlineText is a deadline's message: a COMMIT's that failed, which the
-// platform's TxManager marks, may have saved its changes; any other
-// deadline changed nothing (M12/P3 design 3.7). The platform imports no
-// module: the mark is known by its method, as ProblemOf knows a problem.
-func deadlineText(err error) string {
+// committing reports whether err holds a read-write transaction's COMMIT
+// that failed, which the platform's TxManager marks: its changes may have
+// been saved. The platform imports no module: the mark is known by its
+// method, as ProblemOf knows a problem.
+func committing(err error) bool {
 	var c interface{ TxCommitFailed() bool }
-	if errors.As(err, &c) && c.TxCommitFailed() {
+	return errors.As(err, &c) && c.TxCommitFailed()
+}
+
+// deadlineText is a deadline's message: a COMMIT's that failed may have
+// saved its changes; any other deadline changed nothing (M12/P3 design
+// 3.7).
+func deadlineText(err error) string {
+	if committing(err) {
 		return internalDeadlineSaving
 	}
 	return internalDeadline
+}
+
+// failedText is a fault's message: a COMMIT's that failed before the
+// call's deadline may have saved its changes, as one past it may; any
+// other fault is the server's failure (M12/P3/S1 review B-M1).
+func failedText(err error) string {
+	if committing(err) {
+		return internalFailedSaving
+	}
+	return internalFailed
 }
 
 // errorMember is structuredContent.error: the code and the message the
@@ -120,7 +142,7 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		return s.internalError(ctx, deadlineText(err)), httpserver.CodeInternal
 	case httpserver.FaultUnknown:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs, slog.Any("error", err))...)
-		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
+		return s.internalError(ctx, failedText(err)), httpserver.CodeInternal
 	}
 	res, n, stray, merr := problemAnswer(a, err)
 	if stray {
@@ -367,7 +389,7 @@ func (s *Server) methodError(ctx context.Context, method string, err error) erro
 	a := httpserver.ProblemOf(ctx, err)
 	id := httpserver.RequestID(ctx)
 	attrs := []slog.Attr{slog.String("method", method), slog.String("request_id", id)}
-	message := internalFailed
+	var message string
 	switch a.Fault {
 	case httpserver.FaultNone:
 		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: a.Problem.Code + ": " + a.Problem.Detail}
@@ -379,6 +401,7 @@ func (s *Server) methodError(ctx context.Context, method string, err error) erro
 		message = deadlineText(err)
 	default:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP method failed", append(attrs, slog.Any("error", err))...)
+		message = failedText(err)
 	}
 	return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + message + "; request id " + id}
 }
