@@ -724,6 +724,12 @@ func prepareMatrix(t *testing.T) matrixData {
 				"\"missing\": 0, \"skipped\": 0}, \"problems\": [], \"problems_truncated\": false}'::jsonb END, "+
 				"CASE WHEN $4 = 'succeeded' THEN 22 END, $5 FROM notebooks n WHERE n.id = $3",
 				d.seeded.jobs[j.notebook+"/"+string(j.owner)], emailOf(j.owner), d.seeded.notebooks[j.notebook], j.state, now)
+			if j.state == "queued" {
+				// River holds it, an hour on: the start's lost leaves it
+				// queued (M12/P3 design 3.14.3).
+				kind, queue := riverJobOf("export")
+				exec(riverHoldsSQL, kind, d.seeded.jobs[j.notebook+"/"+string(j.owner)].String(), queue)
+			}
 		}
 		for _, e := range matrixSessions() {
 			exec("INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at) "+

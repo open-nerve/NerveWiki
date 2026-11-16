@@ -98,6 +98,8 @@ const problems: Record<TransferProblem["code"], (problem: TransferProblem, t: Tr
   unsupported_method: (problem, t) => t("transfer.problem.unsupported_method", { path: problem.path }),
   too_compressed: (problem, t) => t("transfer.problem.too_compressed", { path: problem.path }),
   name_not_utf8: (problem, t) => t("transfer.problem.name_not_utf8", { path: problem.path }),
+  name_unicode_path: (problem, t) => t("transfer.problem.name_unicode_path", { path: problem.path }),
+  name_gbk: (problem, t) => t("transfer.problem.name_gbk", { path: problem.path }),
   invalid_content: (problem, t) => t("transfer.problem.invalid_content", { path: problem.path }),
   too_large: (problem, t) => t("transfer.problem.too_large", { path: problem.path }),
   too_deep: (problem, t) => t("transfer.problem.too_deep", { path: problem.path }),

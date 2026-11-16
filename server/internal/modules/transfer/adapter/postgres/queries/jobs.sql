@@ -14,8 +14,12 @@ VALUES (sqlc.arg(id), sqlc.arg(notebook_id), sqlc.narg(root_id), sqlc.arg(kind),
 SELECT pg_advisory_xact_lock(7366512418245025792);
 
 -- name: CountActive :one
--- The jobs queued or running, of every notebook.
-SELECT count(*) FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL;
+-- The jobs queued or running, of every notebook, and of them those person started (M12 design 4.6.6, T2), both
+-- in one statement: the rows through transfer_jobs_state_idx, at most transfer.max_queued and the few more a start
+-- outside the queue's lock lets by.
+SELECT count(*)::integer AS active,
+    (count(*) FILTER (WHERE created_by_id = sqlc.arg(person)))::integer AS mine
+FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL;
 
 -- name: Exporting :one
 -- Whether the account has an export queued or running in the notebook.

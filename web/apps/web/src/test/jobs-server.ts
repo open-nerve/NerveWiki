@@ -149,9 +149,10 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
  *   one alive 409 page.not_in_trash, one deleted with a page above it 409
  *   page.not_trash_root naming its root, one past its time 409
  *   page.restore_expired; a job that writes the tree under way among the
- *   jobs, or another account's (busy), 409 transfer.busy; the queue full
- *   (queueFull) 503 server_busy; else the restore, queued, first, named
- *   after the item, its root_id the item's root;
+ *   jobs, or another account's (busy), 409 transfer.busy; the caller's
+ *   jobs at their bound (tooManyJobs) 409 transfer.too_many_jobs; the queue
+ *   full (queueFull) 503 server_busy; else the restore, queued, first,
+ *   named after the item, its root_id the item's root;
  * - a revert: a message empty, past 4,096 bytes or with a NUL 422 on
  *   message; then Plans gone 404 notebook.not_found; a reader's 403
  *   forbidden; a changeset not logged 404 page.changeset_not_found; one
@@ -159,9 +160,10 @@ type JobsServerOptions = NonNullable<Parameters<typeof pageServer>[0]> & {
  *   (jobTooLarge) 422 page.revert_too_large; busy as a restore's; then its
  *   conflicts 409 page.revert_conflict as the undo answers them; a version
  *   the purge took (purged) 409 page.changeset_trimmed; a page someone
- *   edits (lockedBy) 409 page.locked; the queue full 503; else the
- *   revert, queued, first, named after the changeset's kind, its
- *   target_changeset_id the changeset, with the message.
+ *   edits (lockedBy) 409 page.locked; the caller's jobs at their bound 409
+ *   transfer.too_many_jobs; the queue full 503; else the revert, queued,
+ *   first, named after the changeset's kind, its target_changeset_id the
+ *   changeset, with the message.
  *
  * Each started job has the changeset it writes (jobChangesetId) and is
  * made now, by the server's clock, clockBehind the browser's. While
@@ -184,6 +186,8 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
     busy: false,
     /** Whether the server's queue is full. */
     queueFull: false,
+    /** Whether the caller has as many jobs queued or running as one may (M12/P3 design 4.2). */
+    tooManyJobs: false,
     /** Whether the starts of restores and reverts wait to be released. */
     startsHeld: false,
     /** How a start's answer is lost once its job is written: a 500, or no answer at all; not lost without it. */
@@ -329,6 +333,7 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       if (admission?.status === 409) return admission;
       const duplicate = sourceRestoreRefusal(server, item);
       if (duplicate !== undefined) return problem(409, duplicate.code, duplicate);
+      if (server.tooManyJobs) return problem(409, "transfer.too_many_jobs");
       return admission ?? queued({ kind: "trash_restore", root_id: id, name: item.members[0]?.name ?? "" });
     },
     [`POST ${plans}/reverts`]: async (request) => {
@@ -383,6 +388,9 @@ export function jobsServer({ jobs = [], pageSize = 50, answers = {}, ...options 
       if (changeset.lockedBy !== undefined) {
         const { page, holder } = changeset.lockedBy;
         return problem(409, "page.locked", { lock: { page_id: page, ...holder } });
+      }
+      if (server.tooManyJobs) {
+        return problem(409, "transfer.too_many_jobs");
       }
       if (busy !== undefined) {
         return busy;

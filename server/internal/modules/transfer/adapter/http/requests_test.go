@@ -93,8 +93,9 @@ func TestStartExportQueuesTheJob(t *testing.T) {
 }
 
 // Each refusal of a start answers its code: a notebook that is not, a root
-// that is no page of it, an export of the caller's under way, the queue
-// full (after 5 minutes), the store full.
+// that is no page of it, five jobs of the caller's (no Retry-After: M12
+// design 4.6.6, T2), an export of the caller's under way, the queue full
+// (after 5 minutes), the store full.
 func TestStartExportRefusals(t *testing.T) {
 	for _, tt := range []struct {
 		name    string
@@ -111,6 +112,11 @@ func TestStartExportRefusals(t *testing.T) {
 			http.StatusNotFound, "page.not_found"},
 		{"an export under way", func(h *harness) { h.job(alice(), domain.StateRunning, now(), "") }, exportsPath(), "session", `{}`,
 			http.StatusConflict, "transfer.busy"},
+		{"five jobs of hers", func(h *harness) {
+			for range domain.MaxPersonJobs {
+				h.job(alice(), domain.StateQueued, now(), "")
+			}
+		}, exportsPath(), "session", `{}`, http.StatusConflict, "transfer.too_many_jobs"},
 		{"the queue full", func(h *harness) {
 			for range maxQueued {
 				h.job(bob(), domain.StateQueued, now(), "")
@@ -130,6 +136,9 @@ func TestStartExportRefusals(t *testing.T) {
 			}
 			if tt.code == "server_busy" && res.Header.Get("Retry-After") != strconv.Itoa(int(domain.QueueRetry/time.Second)) {
 				t.Errorf("Retry-After = %q, want %v", res.Header.Get("Retry-After"), domain.QueueRetry)
+			}
+			if tt.code == "transfer.too_many_jobs" && res.Header.Get("Retry-After") != "" {
+				t.Errorf("Retry-After = %q, want none", res.Header.Get("Retry-After"))
 			}
 			if ids := h.queue.enqueued(); len(ids) != 0 {
 				t.Errorf("enqueued %v, want none", ids)

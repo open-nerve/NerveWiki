@@ -131,18 +131,26 @@ func (w *jobWorker[T]) Work(ctx context.Context, j *river.Job[T]) error {
 	return w.uc.Run(ctx, j.Args.id())
 }
 
+// Each kind's worker discards, as the server starts, the jobs of its kind
+// River holds running (jobs.Job.DiscardRunning): v0.1 runs one server
+// (M12 design 4.8), so each is the last process's, which took it and
+// stopped before or as it ran. The runner discards them before the
+// rescue's Start, which comes after the five in the module's jobs; that
+// fails the rows still queued at once, rather than waiting for River's
+// rescue (M12 design 4.6.6, T4).
+
 // ExportJob is the exports' worker, each run within timeout.
 func ExportJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	return jobs.Job{Add: func(w *river.Workers) error {
 		return river.AddWorkerSafely(w, &jobWorker[ExportArgs]{uc: uc, timeout: timeout})
-	}}
+	}, DiscardRunning: ExportKind}
 }
 
 // ImportJob is the imports' worker, each run within timeout.
 func ImportJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	return jobs.Job{Add: func(w *river.Workers) error {
 		return river.AddWorkerSafely(w, &jobWorker[ImportArgs]{uc: uc, timeout: timeout})
-	}}
+	}, DiscardRunning: ImportKind}
 }
 
 // TrashRestoreJob is the background restores' worker, each run within
@@ -150,7 +158,7 @@ func ImportJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 func TrashRestoreJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	return jobs.Job{Add: func(w *river.Workers) error {
 		return river.AddWorkerSafely(w, &jobWorker[TrashRestoreArgs]{uc: uc, timeout: timeout})
-	}}
+	}, DiscardRunning: TrashRestoreKind}
 }
 
 // RevertJob is the background reverts' worker, each run within timeout,
@@ -158,7 +166,7 @@ func TrashRestoreJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 func RevertJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	return jobs.Job{Add: func(w *river.Workers) error {
 		return river.AddWorkerSafely(w, &jobWorker[RevertArgs]{uc: uc, timeout: timeout})
-	}}
+	}, DiscardRunning: RevertKind}
 }
 
 // RollbackJob is the upgrades' rollbacks' worker, each run within
@@ -166,7 +174,7 @@ func RevertJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 func RollbackJob(uc JobUseCase, timeout time.Duration) jobs.Job {
 	return jobs.Job{Add: func(w *river.Workers) error {
 		return river.AddWorkerSafely(w, &jobWorker[RollbackArgs]{uc: uc, timeout: timeout})
-	}}
+	}, DiscardRunning: RollbackKind}
 }
 
 // Queue enqueues the module's jobs in the caller's transaction, with the
@@ -292,8 +300,11 @@ func (w *rescueWorker) Work(ctx context.Context, _ *river.Job[rescueArgs]) error
 }
 
 // RescueJob fails the interrupted jobs: every running one as the server
-// starts, before River works any job; then every RescueInterval those
-// whose heartbeat is old, and the queued jobs River dropped.
+// starts, before River works any job, and the queued ones River no longer
+// holds, once each kind's worker has discarded those River held running
+// (it comes after them in the module's jobs, M12 design 4.6.6, T4); then
+// every RescueInterval those whose heartbeat is old, and the queued jobs
+// River dropped.
 func RescueJob(uc RescueUseCase) jobs.Job {
 	return jobs.Job{
 		Add: func(w *river.Workers) error { return river.AddWorkerSafely(w, &rescueWorker{uc: uc}) },

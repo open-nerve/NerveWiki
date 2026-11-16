@@ -36,8 +36,8 @@ type matrixJob struct {
 
 // matrixJobs are the seeded exports: each notebook column's own in its
 // notebook, succeeded, its archive not written; and in each notebook of
-// the columns someone else's, queued, never enqueued. gone-nb's are
-// deleted with it.
+// the columns someone else's, queued, River holding it later (it never
+// runs in a test). gone-nb's are deleted with it.
 func matrixJobs() []matrixJob {
 	var out []matrixJob
 	for _, c := range notebookColumns() {

@@ -293,17 +293,20 @@ type importArchive struct {
 	z *zip.Reader
 }
 
-// Entries implements app.ImportArchive: a name ending in "/" or "\" is a
-// folder, and so is a folder's mode; a mode neither a folder's nor a
-// regular file's is special; the first bit of the flags tells an
-// encrypted one.
+// Entries implements app.ImportArchive: each name as readNames reads it,
+// with its source; a name so read ending in "/" or "\" is a folder, and
+// so is a folder's mode (a GBK name's last byte may be 0x5C, "\", which
+// its reading does not end in: M12/P3 design 3.12.1); a mode neither a
+// folder's nor a regular file's is special; the first bit of the flags
+// tells an encrypted one.
 func (a *importArchive) Entries() []domain.RawEntry {
+	names := readNames(a.z.File)
 	out := make([]domain.RawEntry, len(a.z.File))
 	for i, f := range a.z.File {
-		mode := f.Mode()
-		folder := strings.HasSuffix(f.Name, "/") || strings.HasSuffix(f.Name, `\`) || mode.IsDir()
-		out[i] = domain.RawEntry{Index: i, Name: f.Name, Folder: folder, Special: !folder && !mode.IsRegular(), Encrypted: f.Flags&0x1 != 0,
-			Method: f.Method}
+		mode, name := f.Mode(), names[i].name
+		folder := strings.HasSuffix(name, "/") || strings.HasSuffix(name, `\`) || mode.IsDir()
+		out[i] = domain.RawEntry{Index: i, Name: name, From: names[i].from, Folder: folder, Special: !folder && !mode.IsRegular(),
+			Encrypted: f.Flags&0x1 != 0, Method: f.Method}
 	}
 	return out
 }

@@ -138,6 +138,11 @@ func TestStartImportRefusesBeforeTheFile(t *testing.T) {
 			h.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: notebookID(), Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: alice(),
 				Client: domain.ClientWeb, CreatedAt: now()})
 		}, importsPath(), "bob", nil, http.StatusConflict, "transfer.busy"},
+		{"five jobs of his", func(h *harness) {
+			for range domain.MaxPersonJobs {
+				h.job(bob(), domain.StateQueued, now(), "")
+			}
+		}, importsPath(), "bob", nil, http.StatusConflict, "transfer.too_many_jobs"},
 		{"the queue full", func(h *harness) {
 			for range maxQueued {
 				h.job(alice(), domain.StateQueued, now(), "")
@@ -158,6 +163,9 @@ func TestStartImportRefusesBeforeTheFile(t *testing.T) {
 			res, answer := h.post(t, tt.path, tt.token, contentType, bytes.NewReader(body))
 			if res.StatusCode != tt.status || code(answer) != tt.code || !res.Close {
 				t.Errorf("startImport = %d %s, closing %v; want %d %s, closing", res.StatusCode, answer, res.Close, tt.status, tt.code)
+			}
+			if tt.code == "transfer.too_many_jobs" && res.Header.Get("Retry-After") != "" {
+				t.Errorf("Retry-After = %q, want none", res.Header.Get("Retry-After"))
 			}
 			if len(h.archives.uploads) != 0 || len(h.queue.enqueued()) != queued {
 				t.Errorf("uploads %v, enqueued %v; want none", h.archives.uploads, h.queue.enqueued())
