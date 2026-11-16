@@ -282,21 +282,24 @@ func TestARevertJobsWrittenPageLeavesTheCut(t *testing.T) {
 
 // A restore within a segment of steps aside, under a member of a group
 // the segment's restore of it cut short, brings that member back first
-// (M12/P3 design 3.10.6, decision 362): G holds K, then P1; x and y under
-// K, z under P1, zz under z. A batch moves x and y out, deletes z apart,
-// a trash item of its own deleted first, deletes G, makes a new G and
-// moves y into it: a rollback's passes leave this, or a restore of G's
-// item and two deletions. The segment restores G and K for the places
-// under K, and z, its own top, under P1: P1 within it too, before z, the
-// rest of z's item after it. Cut at the segment's end, the job leaves no
-// page alive under a parent in the trash between its batches, and ends at
-// S*. Were the restore not counted, P1 would come back after the segment,
-// z alive under it in the trash after the first batch.
+// (M12/P3 design 3.10.6, decision 362), and no more of it: G holds K, P1,
+// then Q; x and y under K, z under P1, zz under z. A batch moves x and y
+// out, deletes z apart, a trash item of its own deleted first, deletes G,
+// makes a new G and moves y into it: a rollback's passes leave this, or a
+// restore of G's item and two deletions. The segment restores G and K for
+// the places under K, and z, its own top, under P1: P1 within it too,
+// before z; Q, after P1, and the rest of z's item after it. Cut at the
+// segment's end, the job leaves no page alive under a parent in the trash
+// between its batches, and ends at S*. Were the restore not counted, P1
+// would come back after the segment, z alive under it in the trash after
+// the first batch; were it counted as the whole group, Q would come back
+// within it (review P3S2A-M1).
 func TestARestoreUnderAMemberCutShortInASegmentBringsItBack(t *testing.T) {
 	s := newJobScene()
 	g := s.node("G", nil, false)
 	k := s.node("K", &g, false)
 	p1 := s.node("P1", &g, false)
+	s.node("Q", &g, false)
 	x, y := s.node("x", &k, false), s.node("y", &k, false)
 	z := s.node("z", &p1, false)
 	s.node("zz", &z, false)
@@ -317,7 +320,7 @@ func TestARestoreUnderAMemberCutShortInASegmentBringsItBack(t *testing.T) {
 	}
 	steps, groups := plan.RevertSteps()
 	want := []string{"aside y+", "delete G' [G']+", "restore G+", "restore K+", "restore P1+", "restore z+", "place x+", "place y",
-		"restore zz"}
+		"restore Q", "restore zz"}
 	if got := s.describe(steps, plan.Steps()); !slices.Equal(got, want) {
 		t.Errorf("the steps %v, want %v", got, want)
 	}
