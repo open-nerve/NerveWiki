@@ -453,9 +453,12 @@ func TestTheStoresMinimumIsTheConfigured(t *testing.T) {
 func TestTheQueuesLimitIsTheConfigured(t *testing.T) {
 	tm := newAcmeTeamWith(t, "", "", func(c *config.Config) { c.Transfer.MaxQueued = 1 })
 	nb := tm.openNotebook(t, "alice", "Eng")
-	if _, err := tm.pool.Exec(t.Context(), `INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
-		SELECT gen_random_uuid(), n.id, 'export', 'queued', n.name, u.id, 'web', now() FROM notebooks n, users u
-		WHERE n.id = $1 AND u.email = 'bob@example.com'`, nb); err != nil {
+	// River holds it, an hour on, written with it: the start's lost leaves
+	// it queued (M12/P3 design 3.14.3).
+	kind, queue := riverJobOf("export")
+	if _, err := tm.pool.Exec(t.Context(), riverHeldJobSQL(`INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
+		SELECT $2, n.id, 'export', 'queued', n.name, u.id, 'web', now() FROM notebooks n, users u
+		WHERE n.id = $1 AND u.email = 'bob@example.com'`), nb, uuid.NewV7(), kind, queue); err != nil {
 		t.Fatal(err)
 	}
 	status, answer := ask(t, tm.contract, http.MethodPost, tm.base+"/api/v0/notebooks/"+nb+"/exports", tm.tokens["alice"], `{}`)

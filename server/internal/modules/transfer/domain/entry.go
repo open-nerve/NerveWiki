@@ -32,12 +32,37 @@ func TooCompressed(unpacked, packed int64) bool {
 	return unpacked > RatioFloor && (unpacked-1)/MaxRatio >= packed
 }
 
+// NameSource is where an entry's name was read from, when its header's
+// bytes are not UTF-8 (M12 design 4.6.6, T3): its Info-ZIP Unicode Path
+// field, or the GBK reading of a zip that a Chinese Windows made.
+type NameSource string
+
+const (
+	NameAsWritten       NameSource = ""
+	NameFromUnicodePath NameSource = "unicode_path"
+	NameFromGBK         NameSource = "gbk"
+)
+
+// problem is the report's problem of a name read from s, but its header's
+// bytes; false for one as written.
+func (s NameSource) problem() (ProblemCode, bool) {
+	switch s {
+	case NameFromUnicodePath:
+		return ProblemNameUnicodePath, true
+	case NameFromGBK:
+		return ProblemNameGBK, true
+	}
+	return "", false
+}
+
 // RawEntry is an entry as the archive's directory lists it: its index
-// there, its name's bytes, whether it is a folder, a symbolic link or
-// another file that is no regular one, encrypted, and its method.
+// there, its name, as read, From says how, whether it is a folder, by the
+// name as read or the entry's mode, a symbolic link or another file that
+// is no regular one, encrypted, and its method.
 type RawEntry struct {
 	Index     int
 	Name      string
+	From      NameSource
 	Folder    bool
 	Special   bool
 	Encrypted bool
@@ -74,6 +99,11 @@ type Sorted struct {
 	Entries []ImportEntry
 	Meta    int
 	Skipped []Problem
+	// Read are the entries, but those ignored, whose names were read from
+	// elsewhere than their headers' bytes, each a problem of its source, in
+	// the archive's order: the report lists them after every other (M12
+	// design 4.6.6, T3).
+	Read []Problem
 }
 
 // Classify sorts raw, an archive's entries in its order. A name that is
@@ -88,7 +118,9 @@ type Sorted struct {
 // entry of more than MaxDepth+1 names, too deep wherever the import goes
 // (a page at its last folder's level, an attachment one below), by its
 // count of names: of each entry only the first keptNames are kept, so the
-// paths' bytes bound what Classify and the plan hold.
+// paths' bytes bound what Classify and the plan hold. An entry whose name
+// was read from elsewhere than its header's bytes is in Read, but one
+// ignored, whether it is imported or skipped.
 func Classify(raw []RawEntry) Sorted {
 	var out Sorted
 	out.Meta = -1
@@ -100,6 +132,9 @@ func Classify(raw []RawEntry) Sorted {
 			continue
 		}
 		path, ok := pathOf(r.Name)
+		if code, read := r.From.problem(); read && (!ok || !path.hidden) {
+			out.Read = append(out.Read, Problem{Path: r.Name, Code: code})
+		}
 		if !ok {
 			out.Skipped = append(out.Skipped, Problem{Path: shown, Code: ProblemUnsafePath})
 			continue

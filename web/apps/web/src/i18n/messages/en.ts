@@ -974,6 +974,10 @@ export const en = {
   "transfer.problem.unsupported_method": "{path} was skipped: it is compressed in a way the server does not read.",
   "transfer.problem.too_compressed": "{path} was skipped: it unpacks to far more than its size in the zip.",
   "transfer.problem.name_not_utf8": "{path} was skipped: its name is not UTF-8.",
+  "transfer.problem.name_unicode_path":
+    "{path}: its name was not UTF-8 and was read from the Unicode name the zip tool stored with it.",
+  "transfer.problem.name_gbk":
+    "{path}: its name was not UTF-8 and was read as GBK, as Chinese Windows writes names. If it reads wrong, rename it.",
   "transfer.problem.invalid_content": "{path} was skipped: it is not UTF-8 text, or holds a NUL character.",
   "transfer.problem.too_large": "{path} was skipped: it is larger than the server takes.",
   "transfer.problem.too_deep": "{path} was skipped: it would sit more than 10 levels deep in the notebook.",
@@ -999,7 +1003,7 @@ export const en = {
   "transfer.revertLeftTrimmed":
     "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history.",
   "transfer.revertLeftGroup":
-    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
+    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
   "transfer.conflictsTitle": "Nodes that stopped the undo: {count}",
   "transfer.conflictsAgain": "Undoing the change again from “The change undone” lists them with their links.",
   "transfer.openPage": "Open “{page}”",
@@ -1054,7 +1058,7 @@ export const en = {
     "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
   "transfer.importPlaceGone": "The page to import under no longer exists.",
   "transfer.importCut":
-    "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import, a restore or an undo under way in this notebook, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later.",
+    "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import, a restore or an undo under way in this notebook, 5 jobs of yours queued or running, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later.",
   "transfer.exportBusy": "You already have an export of this notebook under way. Wait for it to end, or cancel it.",
   "transfer.importFailure.forbidden": "The person who started it could no longer edit the notebook.",
   "transfer.importFailure.root_not_found": "The page imported under no longer exists.",
@@ -1257,6 +1261,8 @@ export const en = {
   "problem.transfer.busy":
     "An import, a restore or an undo is under way in this notebook, or an export of yours of it. Wait for it to end.",
   "problem.transfer.not_cancellable": "This job has already ended.",
+  "problem.transfer.too_many_jobs":
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
   "problem.page.cycle": "A page cannot move under itself or one of its subpages.",
   "problem.page.title_taken": "A page under the same parent already has this title (titles differ in more than case).",
   "problem.page.too_deep": "Pages nest at most 10 levels deep.",

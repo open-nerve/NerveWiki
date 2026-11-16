@@ -162,6 +162,13 @@ test.each<[string, (state: ReturnType<typeof large>) => void, string]>([
     "Too many jobs are waiting on the server. Try again in a few minutes.",
   ],
   [
+    "five jobs of the caller's",
+    ({ server }) => {
+      server.tooManyJobs = true;
+    },
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
+  ],
+  [
     "a changeset too large for the background too",
     ({ rework }) => {
       rework.jobTooLarge = true;
@@ -194,7 +201,7 @@ test.each<[string, (state: ReturnType<typeof large>) => void, string]>([
     expect(document.activeElement).toBe(start);
     expect(server.jobs).toEqual([]);
 
-    Object.assign(server, { busy: false, queueFull: false });
+    Object.assign(server, { busy: false, queueFull: false, tooManyJobs: false });
     Object.assign(rework, { jobTooLarge: false, lockedBy: undefined });
     await user.click(start);
     await waitFor(() =>

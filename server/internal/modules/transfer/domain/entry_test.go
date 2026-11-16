@@ -11,7 +11,8 @@ import (
 
 // raw are entries of the names given, in order, each a regular file
 // deflated, unless it ends with "/" (a folder); a name after "link:",
-// "lock:" or "bz2:" is a symbolic link, encrypted, or of bzip2.
+// "lock:" or "bz2:" is a symbolic link, encrypted, or of bzip2; one after
+// "up:" or "gbk:" was read from its Unicode Path field, or as GBK.
 func raw(names ...string) []domain.RawEntry {
 	out := make([]domain.RawEntry, len(names))
 	for i, name := range names {
@@ -25,6 +26,10 @@ func raw(names ...string) []domain.RawEntry {
 			name, e.Method = strings.TrimPrefix(name, "bz2:"), 12
 		case strings.HasPrefix(name, "store:"):
 			name, e.Method = strings.TrimPrefix(name, "store:"), domain.MethodStore
+		case strings.HasPrefix(name, "up:"):
+			name, e.From = strings.TrimPrefix(name, "up:"), domain.NameFromUnicodePath
+		case strings.HasPrefix(name, "gbk:"):
+			name, e.From = strings.TrimPrefix(name, "gbk:"), domain.NameFromGBK
 		}
 		e.Name, e.Folder = name, strings.HasSuffix(name, "/")
 		out[i] = e
@@ -33,7 +38,8 @@ func raw(names ...string) []domain.RawEntry {
 }
 
 // shown is sorted as lines: each entry kept "index path[/]", each problem
-// "code: path", and the meta's index.
+// "code: path", the meta's index, and each name read otherwise "read
+// code: path".
 func shown(s domain.Sorted) []string {
 	var out []string
 	for _, e := range s.Entries {
@@ -48,6 +54,9 @@ func shown(s domain.Sorted) []string {
 	}
 	if s.Meta >= 0 {
 		out = append(out, fmt.Sprintf("meta %d", s.Meta))
+	}
+	for _, p := range s.Read {
+		out = append(out, "read "+string(p.Code)+": "+p.Path)
 	}
 	return out
 }
@@ -88,6 +97,14 @@ func TestClassify(t *testing.T) {
 		// Only the first names are kept: an ignored one below them still ignores the entry.
 		{"an ignored name below the names kept", []string{"V/.obsidian/", "V/a/b/c/d/e/f/g/h/i/j/k/l/.git/m.md", "V/a/b/c/d/e/f/g/h/i/j/k/l/m.md"},
 			[]string{"too_deep: V/a/b/c/d/e/f/g/h/i/j/k/l/m.md"}},
+		// An entry whose name was read from elsewhere than its header's
+		// bytes is listed, imported or skipped, but ignored (M12/P3 design
+		// 3.12.2).
+		{"names read otherwise", []string{"up:测试.md", "gbk:图片/", "gbk:图片/a.png", "gbk:__MACOSX/图片/._a.png", "gbk:../越出.md",
+			"gbk:图片/a.png", "b.md"},
+			[]string{"0 测试.md", "1 图片/", "2 图片/a.png", "6 b.md", "unsafe_path: ../越出.md", "duplicate: 图片/a.png",
+				"read name_unicode_path: 测试.md", "read name_gbk: 图片/", "read name_gbk: 图片/a.png", "read name_gbk: ../越出.md",
+				"read name_gbk: 图片/a.png"}},
 		{"nothing", nil, nil},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

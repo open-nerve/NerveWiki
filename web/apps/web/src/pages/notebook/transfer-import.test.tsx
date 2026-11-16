@@ -272,6 +272,10 @@ test.each([
     "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
   ],
   [problem(404, "page.not_found"), "The page to import under no longer exists."],
+  [
+    problem(409, "transfer.too_many_jobs"),
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
+  ],
   [problem(503, "server_busy"), "Too many jobs are waiting on the server. Try again in a few minutes."],
   [problem(507, "storage_full"), "The server has no room for more files. Ask its administrator."],
   [problem(413, "payload_too_large"), "The zip is larger than the server takes."],
@@ -314,8 +318,8 @@ test("a connection cut, as a refusal before the file is read may reach the brows
 
   await user.click(within(shown).getByRole("button", { name: "Import" }));
 
-  expect((await within(shown).findByRole("alert")).textContent).toMatch(
-    /^The upload did not finish: the connection was cut\./u
+  expect((await within(shown).findByRole("alert")).textContent).toBe(
+    "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import, a restore or an undo under way in this notebook, 5 jobs of yours queued or running, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later."
   );
   expect(transfers(server.app).length).toBe(1);
   expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);

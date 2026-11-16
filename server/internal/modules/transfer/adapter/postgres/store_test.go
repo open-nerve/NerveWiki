@@ -234,8 +234,70 @@ func TestOneExportAtOnceForAReaderInANotebook(t *testing.T) {
 	if err := f.store.CreateJob(ctx, second); err != nil {
 		t.Errorf("CreateJob() once the first ended = %v", err)
 	}
-	if n, err := f.store.CountActive(ctx); n != 3 || err != nil {
-		t.Errorf("CountActive() = %d, %v; want 3", n, err)
+	if n, mine, err := f.store.CountActive(ctx, f.alice); n != 3 || mine != 2 || err != nil {
+		t.Errorf("CountActive(alice) = %d, %d, %v; want 3, 2", n, mine, err)
+	}
+}
+
+// A person's jobs queued or running, of every notebook, are counted with
+// all the jobs queued or running, in one statement (M12 design 4.6.6, T2):
+// neither the jobs that ended nor those deleted.
+func TestThePersonsJobsCountAmongAll(t *testing.T) {
+	f := newFixture(t)
+	ctx := context.Background()
+	notebook := func() uuid.UUID {
+		t.Helper()
+		id := uuid.NewV7()
+		if _, err := f.pool.Exec(ctx, `INSERT INTO notebooks (id, workspace_id, name, created_by_id, updated_by_id, created_at, updated_at)
+			SELECT $1, workspace_id, 'Other', created_by_id, created_by_id, now(), now() FROM notebooks WHERE id = $2`, id, f.eng); err != nil {
+			t.Fatal(err)
+		}
+		return id
+	}
+	running := func(by uuid.UUID) uuid.UUID {
+		t.Helper()
+		nb := notebook()
+		f.start(t, f.export(t, nb, by, at(0)).ID, at(0))
+		return nb
+	}
+	failed := func(by uuid.UUID) {
+		t.Helper()
+		j := f.export(t, notebook(), by, at(0))
+		f.start(t, j.ID, at(0))
+		if ok, err := f.store.FinishJob(ctx, j.ID, app.Ended{State: domain.StateFailed, At: at(0), Name: "x"}); !ok || err != nil {
+			t.Fatalf("FinishJob() = %v, %v", ok, err)
+		}
+	}
+	// alice: two queued, one running; one failed, one queued and one
+	// running deleted. bob: three queued, one running; one succeeded, one
+	// queued deleted.
+	f.export(t, notebook(), f.alice, at(0))
+	f.export(t, notebook(), f.alice, at(0))
+	running(f.alice)
+	failed(f.alice)
+	gone := []uuid.UUID{notebook(), running(f.alice), notebook()}
+	f.export(t, gone[0], f.alice, at(0))
+	for range 3 {
+		f.export(t, notebook(), f.bob, at(0))
+	}
+	running(f.bob)
+	f.done(t, notebook(), f.bob, at(0))
+	f.export(t, gone[2], f.bob, at(0))
+	if err := f.store.DeleteJobsOfNotebooks(ctx, gone, at(0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, tt := range []struct {
+		name         string
+		person       uuid.UUID
+		active, mine int
+	}{
+		{"alice", f.alice, 7, 3},
+		{"bob", f.bob, 7, 4},
+		{"no one's", uuid.NewV7(), 7, 0},
+	} {
+		if active, mine, err := f.store.CountActive(ctx, tt.person); active != tt.active || mine != tt.mine || err != nil {
+			t.Errorf("CountActive(%s) = %d, %d, %v; want %d, %d", tt.name, active, mine, err, tt.active, tt.mine)
+		}
 	}
 }
 
@@ -549,8 +611,8 @@ func TestTheJobsList(t *testing.T) {
 	if _, err := f.store.FindJob(ctx, a1.ID); !errors.Is(err, app.ErrNoRow) {
 		t.Errorf("FindJob() of a deleted job = %v, want ErrNoRow", err)
 	}
-	if n, err := f.store.CountActive(ctx); n != 0 || err != nil {
-		t.Errorf("CountActive() = %d, %v; want the deleted not counted", n, err)
+	if n, mine, err := f.store.CountActive(ctx, f.alice); n != 0 || mine != 0 || err != nil {
+		t.Errorf("CountActive(alice) = %d, %d, %v; want the deleted not counted", n, mine, err)
 	}
 }
 

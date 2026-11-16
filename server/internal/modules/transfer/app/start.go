@@ -52,10 +52,12 @@ func NewStartExport(d StartDeps) *StartExport {
 // workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.export (notebook.not_found); root is a page of the notebook not
 // deleted (page.not_found); then, the jobs' creations one at a time, the
-// jobs queued or running, with the imports' uploads under way, are fewer
-// than MaxQueued (503 server_busy), the caller has no export queued or
-// running in the notebook (transfer.busy), and the store has room, what
-// the uploads have yet to store counted (507 storage_full).
+// caller's jobs queued or running, with their imports' uploads under way,
+// are fewer than domain.MaxPersonJobs (transfer.too_many_jobs), all of
+// them, with the imports' uploads, fewer than MaxQueued (503
+// server_busy), the caller has no export queued or running in the
+// notebook (transfer.busy), and the store has room, what the uploads have
+// yet to store counted (507 storage_full).
 func (s *StartExport) Run(ctx context.Context, notebookID uuid.UUID, root *uuid.UUID, client domain.Client) (JobView, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
@@ -181,13 +183,13 @@ func (s *StartExport) nameOf(ctx context.Context, notebookID uuid.UUID, root *uu
 }
 
 // admit admits one more job, the jobs' creations one at a time: fewer
-// than MaxQueued wait or run, none of the caller's exports of the
-// notebook, and room in the store.
+// than domain.MaxPersonJobs of the caller's and MaxQueued wait or run,
+// none of the caller's exports of the notebook, and room in the store.
 func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) error {
 	if err := s.d.Rows.LockQueue(ctx); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx, uuid.Nil(), true); err != nil {
+	if err := s.d.room(ctx, uuid.Nil(), userID, true); err != nil {
 		return err
 	}
 	busy, err := s.d.Rows.Exporting(ctx, notebookID, userID)
@@ -200,26 +202,35 @@ func (s *StartExport) admit(ctx context.Context, notebookID, userID uuid.UUID) e
 	return s.d.free(ctx, 0, uuid.Nil(), true)
 }
 
-// room is 503 server_busy when the jobs queued or running, and the
-// uploads under way into notebooks but except, are MaxQueued; queueLocked
-// tells whether the caller holds the queue's lock. A Check reads the
-// uploads first: one told written by then had its row committed before
-// the count. A start under the lock counts the rows first: no row of an
-// upload commits while it holds the lock, and an upload a Check admits
-// meanwhile is counted. A Check and an export that decide at once may
-// still both pass: the queue is then one past its size, and the next
-// start under the lock is refused, an upload's Create among them.
-func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool) error {
-	var uploading int
+// room is 409 transfer.too_many_jobs when person (none for a rollback's,
+// which no person's bound refuses, though it counts as its starter's) has
+// domain.MaxPersonJobs jobs queued or running, with the uploads they have
+// under way into notebooks but except (M12 design 4.6.6, T2); then 503
+// server_busy when the jobs queued or running, and the uploads under way
+// into notebooks but except, are MaxQueued. Both are counted in one
+// statement: the person's first, so that one at their bound is told so,
+// whose cancel frees a place in the queue too. queueLocked tells whether
+// the caller holds the queue's lock. A Check reads the uploads first: one
+// told written by then had its row committed before the count. A start
+// under the lock counts the rows first: no row of an upload commits while
+// it holds the lock, and an upload a Check admits meanwhile is counted. A
+// Check and an export that decide at once may still both pass: the queue,
+// or the person's jobs, are then one past their bound, and the next start
+// under the lock is refused, an upload's Create among them.
+func (d StartDeps) room(ctx context.Context, except, person uuid.UUID, queueLocked bool) error {
+	var uploading, uploadingMine int
 	if !queueLocked {
-		uploading, _ = d.Uploads.others(except, false)
+		uploading, uploadingMine, _ = d.Uploads.others(except, person, false)
 	}
-	active, err := d.Rows.CountActive(ctx)
+	active, mine, err := d.Rows.CountActive(ctx, person)
 	if err != nil {
 		return err
 	}
 	if queueLocked {
-		uploading, _ = d.Uploads.others(except, true)
+		uploading, uploadingMine, _ = d.Uploads.others(except, person, true)
+	}
+	if person != (uuid.UUID{}) && mine+uploadingMine >= domain.MaxPersonJobs {
+		return domain.ErrTooManyJobs
 	}
 	if active+uploading >= d.MaxQueued {
 		return domain.ErrQueueFull
@@ -233,7 +244,7 @@ func (d StartDeps) room(ctx context.Context, except uuid.UUID, queueLocked bool)
 // uploads are read first: a byte stored meanwhile is counted twice, not
 // missed.
 func (d StartDeps) free(ctx context.Context, need int64, except uuid.UUID, queueLocked bool) error {
-	_, uploading := d.Uploads.others(except, queueLocked)
+	_, _, uploading := d.Uploads.others(except, uuid.UUID{}, queueLocked)
 	free, err := d.Archives.Free(ctx)
 	if err != nil {
 		return err

@@ -105,6 +105,21 @@ func TestARollbackStartsInItsUpgradeAlone(t *testing.T) {
 		t.Errorf("calls %v, enqueued %v; want %v, the job enqueued last", w.rec.calls, q.enqueued, want)
 	}
 
+	// The rollback counts among its starter's jobs, and their bound never
+	// refuses it (M12 design 4.6.6, T2): bob with five starts it; one of
+	// the five ended, his export is transfer.too_many_jobs all the same.
+	w, q, r = rolling(true)
+	w.jobsOf(w.bob, 4)
+	fifth := domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: domain.StateRunning, CreatedBy: w.bob}
+	w.rows.add(fifth)
+	if _, err := r.Start(as(w.bob), w.eng, up, domain.ClientWeb); err != nil || len(q.enqueued) != 1 {
+		t.Errorf("bob's rollback beside five of his = %v, enqueued %v; want it started", err, q.enqueued)
+	}
+	w.rows.set(fifth.ID, func(x *row) { x.job.State = domain.StateSucceeded })
+	if _, err := w.start(&queue{}, 20).Run(as(w.bob), w.eng, nil, domain.ClientWeb); !errors.Is(err, domain.ErrTooManyJobs) {
+		t.Errorf("bob's export beside four of his and his rollback = %v, want ErrTooManyJobs", err)
+	}
+
 	for name, start := range map[string]func(w *world, r app.Rollbacks) error{
 		"another upgrade's": func(w *world, r app.Rollbacks) error {
 			_, err := r.Start(as(w.bob), w.eng, uuid.NewV7(), domain.ClientWeb)

@@ -70,25 +70,31 @@ func newRoot(t *testing.T) root {
 	return r
 }
 
-// start wires the module on the root's database with the contributors,
-// job timeout and heartbeat timeout given, and starts its jobs on River:
-// stop stops them.
-func (r root) start(t *testing.T, contributors []transfer.ExportContributor, timeout, heartbeat time.Duration) (inserter *jobs.Inserter, stop func()) {
+// module wires the module on the root's database with the contributors,
+// job timeout and heartbeat timeout given, and its inserter.
+func (r root) module(t *testing.T, contributors []transfer.ExportContributor, timeout, heartbeat time.Duration) (*transfer.Module, *jobs.Inserter) {
 	t.Helper()
-	ctx := context.Background()
 	logger := slog.New(slog.DiscardHandler)
 	tx := postgres.NewTxManager(r.pool, 5*time.Second)
 	inserter, err := jobs.NewInserter(r.pool, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := transfer.New(transfer.Deps{Pool: r.pool, Tx: tx, Snapshots: tx, Store: r.store, Inserter: inserter, Clock: clock{}, Logger: logger,
+	return transfer.New(transfer.Deps{Pool: r.pool, Tx: tx, Snapshots: tx, Store: r.store, Inserter: inserter, Clock: clock{}, Logger: logger,
 		Authorizer: readers{}, Workspaces: workspaces{}, Notebooks: notebooks{eng: r.eng}, Names: names{}, Nodes: nodes{readme: r.readme},
 		Linked: linked{}, Blobs: blobs{}, Contributors: contributors, DownloadKey: bytes.Repeat([]byte{1}, 32), ExportTTL: 24 * time.Hour,
 		JobTimeout: timeout, HeartbeatTimeout: heartbeat, MaxQueued: 20, MinRate: 1, RollbackAction: "notebook.change_mode",
-		RollbackEnd: noRollbackEnd{}})
+		RollbackEnd: noRollbackEnd{}}), inserter
+}
+
+// start wires the module as module does, and starts its jobs on River:
+// stop stops them.
+func (r root) start(t *testing.T, contributors []transfer.ExportContributor, timeout, heartbeat time.Duration) (inserter *jobs.Inserter, stop func()) {
+	t.Helper()
+	ctx := context.Background()
+	m, inserter := r.module(t, contributors, timeout, heartbeat)
 	runner, err := jobs.New(r.pool, jobs.Config{ShutdownTimeout: 5 * time.Second, Queues: map[string]int{transfer.QueueExport: 1},
-		RescueAfter: time.Hour, Logger: logger}, m.Jobs())
+		RescueAfter: time.Hour, Logger: slog.New(slog.DiscardHandler)}, m.Jobs())
 	if err != nil {
 		t.Fatal(err)
 	}
