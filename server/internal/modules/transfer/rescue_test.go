@@ -2,6 +2,7 @@ package transfer_test
 
 import (
 	"context"
+	"slices"
 	"testing"
 	"time"
 	"uuid"
@@ -77,6 +78,53 @@ func TestTheRescueFailsTheJobsThatNoLongerRun(t *testing.T) {
 		if state, failure := r.state(t, tt.id); state != tt.state || failure != tt.reason {
 			t.Errorf("the job %s is %s %s, want %s %s", tt.name, state, failure, tt.state, tt.reason)
 		}
+	}
+}
+
+// A queued job whose River job is running as the server starts is one the
+// last process took and stopped before it started (M12 design 4.6.6, T4):
+// the runner discards the River job, and the rescue's start then fails
+// the row, interrupted, rather than leaving it to River's rescue. That
+// holds because each kind's worker, which discards, comes before the
+// rescue, whose Start runs after their discards, in the module's jobs.
+func TestAQueuedJobRiverHeldRunningFailsAtTheStart(t *testing.T) {
+	r := newRoot(t)
+	ctx := context.Background()
+	m, inserter := r.module(t, nil, time.Hour, time.Minute)
+	modules := m.Jobs()
+	rescue := slices.IndexFunc(modules, func(j jobs.Job) bool { return j.Start != nil })
+	var discards []string
+	for i, j := range modules {
+		if j.DiscardRunning != "" {
+			discards = append(discards, j.DiscardRunning)
+			if i > rescue {
+				t.Errorf("the job %d discards %s after the rescue's start (%d)", i, j.DiscardRunning, rescue)
+			}
+		}
+	}
+	slices.Sort(discards)
+	if want := []string{riveradapter.ExportKind, riveradapter.ImportKind, riveradapter.RevertKind, riveradapter.RollbackKind,
+		riveradapter.TrashRestoreKind}; rescue < 0 || !slices.Equal(discards, want) {
+		t.Errorf("the module's jobs discard %q, the rescue's at %d; want %q, each before the rescue", discards, rescue, want)
+	}
+
+	taken := r.jobOf(t, r.alice, domain.KindImport, "queued", time.Time{}, r.eng)
+	r.enqueue(t, inserter, riveradapter.ImportArgs{JobID: taken}, &river.InsertOpts{Queue: transfer.QueueImport, MaxAttempts: 1})
+	// What a server stopped as River took the job leaves: its River job
+	// running, its row queued.
+	if _, err := r.pool.Exec(ctx, "UPDATE river_job SET state = 'running', attempted_at = now(), attempt = 1 WHERE kind = $1",
+		riveradapter.ImportKind); err != nil {
+		t.Fatal(err)
+	}
+	_, stop := r.start(t, nil, time.Hour, time.Minute)
+	defer stop()
+	if state, failure := r.state(t, taken); state != "failed" || failure != "interrupted" {
+		t.Errorf("the job River held running is %s %s as the jobs start, want failed interrupted", state, failure)
+	}
+	var states []string
+	if err := r.pool.QueryRow(ctx, "SELECT coalesce(array_agg(state::text), '{}') FROM river_job WHERE kind = $1", riveradapter.ImportKind).
+		Scan(&states); err != nil || !slices.Equal(states, []string{"discarded"}) {
+		t.Errorf("its River job is %q, %v; want discarded", states, err)
 	}
 }
 

@@ -50,6 +50,30 @@ func TestTheWorkersRunTheRowWithinTheJobTimeout(t *testing.T) {
 	}
 }
 
+// Each kind's worker discards, as the server starts, the jobs of its kind
+// River holds running, of every kind (domain.Kinds: a kind it adds needs a
+// worker that discards too; M12 design 4.6.6, T4).
+func TestEachKindsWorkerDiscardsItsJobsLeftRunning(t *testing.T) {
+	uc := &runs{}
+	workers := map[domain.Kind]jobs.Job{
+		domain.KindExport:       ExportJob(uc, time.Hour),
+		domain.KindImport:       ImportJob(uc, time.Hour),
+		domain.KindTrashRestore: TrashRestoreJob(uc, time.Hour),
+		domain.KindRevert:       RevertJob(uc, time.Hour),
+		domain.KindRollback:     RollbackJob(uc, time.Hour),
+	}
+	for _, kind := range domain.Kinds() {
+		name, ok := riverKind(kind)
+		job, worked := workers[kind]
+		if !ok || !worked || job.DiscardRunning != name {
+			t.Errorf("the %s's worker discards %q, want %q", kind, job.DiscardRunning, name)
+		}
+	}
+	if len(workers) != len(domain.Kinds()) {
+		t.Errorf("%d workers, want one of each of %v", len(workers), domain.Kinds())
+	}
+}
+
 // A job is enqueued in its row's transaction alone: outside one, the
 // queue refuses before it reaches River.
 func TestQueueRefusesOutsideATransaction(t *testing.T) {

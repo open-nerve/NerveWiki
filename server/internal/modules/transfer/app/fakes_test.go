@@ -942,6 +942,7 @@ func (m *maintained) InterruptJobs(_ context.Context, beatBefore *time.Time, _ t
 		return nil, errors.New("the report is not an interruption's")
 	}
 	m.beatBefore = append(m.beatBefore, beatBefore)
+	m.rec.add("InterruptJobs")
 	return m.interrupted, nil
 }
 

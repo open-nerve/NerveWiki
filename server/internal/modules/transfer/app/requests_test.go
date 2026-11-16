@@ -338,19 +338,23 @@ func TestExportsExpireTheirArchives(t *testing.T) {
 // restores and reverts too (M8/P4 design 3.6); each logged.
 func TestTheRescue(t *testing.T) {
 	// Of each kind of job (domain.Kinds: a kind it adds is gone over too,
-	// M11/P1 design 3.19), one River holds and one it dropped: the rescue
-	// asks the rows, then River, kind by kind, and fails the dropped alone.
+	// M11/P1 design 3.19), one River holds and one it no longer does: as
+	// the server starts, after all the running jobs, the rescue asks the
+	// rows, then River, kind by kind, and fails the one River no longer
+	// holds (M12 design 4.6.6, T4: the runner discarded, before, those River
+	// held running). Each run does so again, after the running jobs whose
+	// heartbeat is old.
 	running := uuid.NewV7()
 	rec := &recorder{}
 	var l logs
 	m := &maintained{interrupted: []app.Interrupted{{ID: running}}, rec: rec, queued: map[domain.Kind][]uuid.UUID{}}
 	h := held{ids: map[domain.Kind][]uuid.UUID{}, rec: rec}
-	var calls []string
-	var dropped []uuid.UUID
+	calls := []string{"InterruptJobs"}
+	var left []uuid.UUID
 	for _, kind := range domain.Kinds() {
 		kept, lost := uuid.NewV7(), uuid.NewV7()
 		m.queued[kind], h.ids[kind] = []uuid.UUID{kept, lost}, []uuid.UUID{kept, uuid.NewV7()}
-		calls, dropped = append(calls, "QueuedJobs "+string(kind), "Held "+string(kind)), append(dropped, lost)
+		calls, left = append(calls, "QueuedJobs "+string(kind), "Held "+string(kind)), append(left, lost)
 	}
 	if !slices.Contains(domain.Kinds(), domain.KindRollback) {
 		t.Fatalf("domain.Kinds() = %v, want the rollback among them", domain.Kinds())
@@ -359,8 +363,23 @@ func TestTheRescue(t *testing.T) {
 	if err := r.AtStart(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(m.beatBefore) != 1 || m.beatBefore[0] != nil || len(rec.calls) != 0 {
-		t.Errorf("asked %v and %v at the start, want all the running jobs alone", m.beatBefore, rec.calls)
+	if len(m.beatBefore) != 1 || m.beatBefore[0] != nil || !slices.Equal(m.failed, left) || !slices.Equal(rec.calls, calls) {
+		t.Errorf("at the start asked %v, failed %v, calls %v; want all the running jobs, then %v, those River no longer holds of each "+
+			"kind, the rows read first (%v)", m.beatBefore, m.failed, rec.calls, left, calls)
+	}
+	text := l.String()
+	if strings.Count(text, "job interrupted") != 1 || strings.Count(text, "queued job left by a stopped server") != len(left) ||
+		strings.Contains(text, "queued job dropped by River") || !strings.Contains(text, left[len(left)-1].String()) {
+		t.Errorf("logs at the start %q", text)
+	}
+
+	// River dropped one of each kind since.
+	rec.calls, m.failed = nil, nil
+	var dropped []uuid.UUID
+	for _, kind := range domain.Kinds() {
+		lost := uuid.NewV7()
+		m.queued[kind] = []uuid.UUID{m.queued[kind][0], lost}
+		dropped = append(dropped, lost)
 	}
 	if err := r.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -372,9 +391,9 @@ func TestTheRescue(t *testing.T) {
 		t.Errorf("failed %v, calls %v; want %v, the jobs River dropped of each kind, the rows read first (%v)", m.failed, rec.calls,
 			dropped, calls)
 	}
-	text := l.String()
+	text = l.String()
 	if strings.Count(text, "job interrupted") != 2 || strings.Count(text, "queued job dropped by River") != len(dropped) ||
-		!strings.Contains(text, dropped[len(dropped)-1].String()) {
+		strings.Count(text, "queued job left by a stopped server") != len(left) || !strings.Contains(text, dropped[len(dropped)-1].String()) {
 		t.Errorf("logs %q", text)
 	}
 

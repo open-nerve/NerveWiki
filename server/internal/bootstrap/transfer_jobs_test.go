@@ -31,13 +31,37 @@ import (
 // the archives no export keeps, and the purge. Each test seeds its jobs
 // through SQL and their archives in the store before serve starts.
 
+// riverHoldsSQL writes the River row of a queued transfer job ($2) of
+// kind $1 on queue $3, scheduled an hour on: River holds it and does not
+// run it, so the start's lost leaves the job queued (M12/P3 design
+// 3.14.3). riverTakenSQL writes it running, as a stopped server left one
+// it took and never started. Each seed runs them on its own executor.
+const (
+	riverHoldsSQL = `INSERT INTO river_job (kind, args, queue, max_attempts, scheduled_at, state)
+		VALUES ($1, jsonb_build_object('job_id', $2::text), $3, 1, now() + interval '1 hour', 'scheduled')`
+	riverTakenSQL = `INSERT INTO river_job (kind, args, queue, max_attempts, state, attempt, attempted_at)
+		VALUES ($1, jsonb_build_object('job_id', $2::text), $3, 1, 'running', 1, now())`
+)
+
+// riverJobOf is River's kind and queue of the transfer jobs of kind: the
+// exports' queue of their own, the imports' for every other.
+func riverJobOf(kind domain.Kind) (string, string) {
+	if kind == domain.KindExport {
+		return "transfer.export", transfer.QueueExport
+	}
+	return "transfer." + string(kind), transfer.QueueImport
+}
+
 // seededJob is a job the tests seed, an export unless of another kind, of
 // a notebook of its own named after it: in state, created, started and
 // ended ago, its archive in the store, as old as archiveAgo, when
 // archived; a background restore of an item, or a revert of a changeset,
 // with its changeset (M8/P4 design 3.2), and the report its heartbeat
-// wrote when running and reported. A job of no state has no row: its
-// archive is an orphan's.
+// wrote when running and reported. A queued one held has its River job,
+// River holding it an hour on; one taken, its River job running, as a
+// server stopped as River took it left it (riverHoldsSQL, riverTakenSQL);
+// one neither has none, as River dropped it. A job of no state has no
+// row: its archive is an orphan's.
 type seededJob struct {
 	name       string
 	id         uuid.UUID
@@ -48,6 +72,8 @@ type seededJob struct {
 	archived   bool
 	archiveAgo time.Duration
 	reported   string
+	held       bool
+	taken      bool
 }
 
 // kind is the job's kind.
@@ -104,6 +130,13 @@ func seedJobs(t *testing.T, pool *pgxpool.Pool, dir string, seeded []seededJob) 
 						"missing": 0, "skipped": 0}, "problems": [], "problems_truncated": false}'::jsonb ELSE $12::jsonb END,
 					CASE WHEN $3 IN ('succeeded', 'expired') THEN 3 END, $6, $7, $9, $10, $11`,
 				j.id, nb, j.state, j.name, user, at, deletedAt, j.kind(), root, changeset, target, reported)
+			kind, queue := riverJobOf(j.kind())
+			if j.held {
+				exec(riverHoldsSQL, kind, j.id.String(), queue)
+			}
+			if j.taken {
+				exec(riverTakenSQL, kind, j.id.String(), queue)
+			}
 		}
 		if !j.archived {
 			continue
@@ -159,9 +192,10 @@ func jobStates(t *testing.T, pool *pgxpool.Pool) []string {
 }
 
 // As serve starts, before River works any job, every job left running is
-// failed, interrupted, whatever its heartbeat; a queued one stays queued.
-// A background restore's and revert's keep the report their heartbeat
-// wrote (M8/P4 design 3.6).
+// failed, interrupted, whatever its heartbeat; a queued one River holds
+// stays queued; one it does not, or held running, fails, interrupted, its
+// River job discarded (M12 design 4.6.6, T4). A background restore's and
+// revert's keep the report their heartbeat wrote (M8/P4 design 3.6).
 func TestServeFailsTheJobsLeftRunning(t *testing.T) {
 	url := pgtest.NewDatabase(t)
 	pool := connect(t, url)
@@ -170,7 +204,9 @@ func TestServeFailsTheJobsLeftRunning(t *testing.T) {
 		"deleted": 5, "put_back": 0, "written": 0}, "problems": [], "problems_truncated": false}`
 	seedJobs(t, pool, cfg.Storage.Dir, []seededJob{
 		{name: "beating", id: uuid.NewV7(), state: "running"},
-		{name: "waiting", id: uuid.NewV7(), state: "queued"},
+		{name: "waiting held", id: uuid.NewV7(), state: "queued", held: true},
+		{name: "waiting dropped", id: uuid.NewV7(), state: "queued"},
+		{name: "taken", id: uuid.NewV7(), of: domain.KindImport, state: "queued", taken: true},
 		{name: "restoring", id: uuid.NewV7(), of: domain.KindTrashRestore, state: "running", reported: reported},
 		{name: "reverting", id: uuid.NewV7(), of: domain.KindRevert, state: "running", reported: reported},
 	})
@@ -179,17 +215,23 @@ func TestServeFailsTheJobsLeftRunning(t *testing.T) {
 
 	// The jobs start beside HTTP: the rescue runs a moment after serve
 	// answers.
-	want := []string{"beating failed", "restoring failed", "reverting failed", "waiting queued"}
+	want := []string{"beating failed", "restoring failed", "reverting failed", "taken failed", "waiting dropped failed", "waiting held queued"}
 	for deadline := time.Now().Add(10 * time.Second); !slices.Equal(jobStates(t, pool), want); time.Sleep(50 * time.Millisecond) {
 		if time.Now().After(deadline) {
-			t.Fatalf("jobs %q, want the running ones failed, the queued one queued", jobStates(t, pool))
+			t.Fatalf("jobs %q, want the running ones failed, the queued one River holds queued, the others failed", jobStates(t, pool))
 		}
 	}
 	if got := queryStrings(t, pool, "SELECT name || ' ' || (report->>'failure') || ' ' || (report->'counts'->>'pages') || ' ' || "+
 		"coalesce(report->'counts'->>'restored', '-') || ' ' || coalesce(report->'counts'->>'deleted', '-') FROM transfer_jobs "+
 		"WHERE state = 'failed' AND finished_at IS NOT NULL ORDER BY name"); !slices.Equal(got,
-		[]string{"beating interrupted 0 0 0", "restoring interrupted 2 4 5", "reverting interrupted 2 4 5"}) {
+		[]string{"beating interrupted 0 0 0", "restoring interrupted 2 4 5", "reverting interrupted 2 4 5", "taken interrupted 0 0 0",
+			"waiting dropped interrupted 0 0 0"}) {
 		t.Errorf("the failures %q, want each interrupted, ended, the background jobs' counts kept", got)
+	}
+	if got := queryStrings(t, pool, "SELECT kind || ' ' || state FROM river_job WHERE kind LIKE 'transfer.%' AND kind NOT IN "+
+		"('transfer.rescue_interrupted', 'transfer.expire_exports', 'transfer.sweep_orphan_archives') ORDER BY kind"); !slices.Equal(got,
+		[]string{"transfer.export scheduled", "transfer.import discarded"}) {
+		t.Errorf("the River jobs %q, want the held one's scheduled, the taken one's discarded", got)
 	}
 }
 
@@ -234,7 +276,7 @@ func TestTheSweepDeletesTheArchivesNoJobKeeps(t *testing.T) {
 		{name: "upload", id: uuid.NewV7(), of: domain.KindImport, archived: true, archiveAgo: 48 * time.Hour},
 		{name: "new upload", id: uuid.NewV7(), of: domain.KindImport, archived: true, archiveAgo: time.Hour},
 		{name: "imported", id: uuid.NewV7(), of: domain.KindImport, state: "failed", ago: 48 * time.Hour, archived: true, archiveAgo: 48 * time.Hour},
-		{name: "importing", id: uuid.NewV7(), of: domain.KindImport, state: "queued", archived: true, archiveAgo: 48 * time.Hour},
+		{name: "importing", id: uuid.NewV7(), of: domain.KindImport, state: "queued", archived: true, archiveAgo: 48 * time.Hour, held: true},
 	}
 	// An export's archive of the queued import's id, no export's row: the
 	// import keeps none of it.

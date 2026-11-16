@@ -17,6 +17,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"uuid"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -373,8 +374,15 @@ func TestOneImportAtOnceThroughServe(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	nb := tm.openNotebook(t, "alice", "Eng")
 	ctx := context.Background()
+	// River holds it, an hour on: the start's lost leaves it queued
+	// (M12/P3 design 3.14.3).
+	job := uuid.NewV7()
+	kind, queue := riverJobOf("import")
 	if _, err := tm.pool.Exec(ctx, `INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
-		SELECT gen_random_uuid(), $1, 'import', 'queued', 'vault.zip', id, 'web', now() FROM users WHERE email = 'alice@example.com'`, nb); err != nil {
+		SELECT $2, $1, 'import', 'queued', 'vault.zip', id, 'web', now() FROM users WHERE email = 'alice@example.com'`, nb, job); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tm.pool.Exec(ctx, riverHoldsSQL, kind, job.String(), queue); err != nil {
 		t.Fatal(err)
 	}
 	if status, answer := tm.startImport(t, "bob", nb, "", vaultZip(t, vaultFile{"a.md", "a"})); status != http.StatusConflict ||
