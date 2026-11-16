@@ -372,6 +372,78 @@ func TestWithinTxReportsADeadlineDuringAStatement(t *testing.T) {
 	}
 }
 
+// committed reports whether err marks a COMMIT that failed: its outcome
+// unknown, what MCP's deadline tells apart (M12/P3 design 3.7).
+func committed(err error) bool {
+	var c interface{ TxCommitFailed() bool }
+	return errors.As(err, &c) && c.TxCommitFailed()
+}
+
+// endOwnBackend ends, from the pool's other connection, the backend of
+// ctx's transaction, and waits until it is gone: its next statement, the
+// COMMIT, reads the server's FATAL.
+func endOwnBackend(ctx context.Context, pool *pgxpool.Pool) error {
+	var backend int
+	if err := postgres.DB(ctx, pool).QueryRow(ctx, "SELECT pg_backend_pid()").Scan(&backend); err != nil {
+		return err
+	}
+	var gone bool
+	if err := pool.QueryRow(context.Background(), "SELECT pg_terminate_backend($1, 5000)", backend).Scan(&gone); err != nil || !gone {
+		return fmt.Errorf("terminate backend %d: %t, %w", backend, gone, err)
+	}
+	return nil
+}
+
+// A read-write transaction's COMMIT that fails is marked TxCommitFailed:
+// its outcome is unknown, its writes saved or not, where a statement's
+// failure rolled back whole (M12/P3 design 3.7). Its text and its cause
+// stay. (a) The transaction's backend ended within fn: the COMMIT fails,
+// marked. (b) The COMMIT runs past commitTimeout, a deferred constraint
+// trigger sleeping in it: marked, and a deadline's, as the request's
+// deadline answers it; pgx cancels the statement as its read times out,
+// so here it rolls back, which the test does not hold to (past the commit
+// point, or a cancel that never arrives, it is saved). (c) A read-only
+// snapshot's COMMIT that fails is not marked: it wrote nothing.
+func TestACommitThatFailsIsMarked(t *testing.T) {
+	t.Run("a", func(t *testing.T) {
+		pool := newNotes(t, 2)
+		err := postgres.NewTxManager(pool, commitTimeout).WithinTx(context.Background(), func(ctx context.Context) error {
+			if err := insertNote(ctx, pool, 1); err != nil {
+				return err
+			}
+			return endOwnBackend(ctx, pool)
+		})
+		cause := errors.Unwrap(err)
+		if !committed(err) || cause == nil || err.Error() != "commit transaction: "+cause.Error() {
+			t.Errorf("WithinTx() = %v (marked %v, cause %v); want the COMMIT's failure marked, \"commit transaction: \" and its cause", err,
+				committed(err), cause)
+		}
+	})
+	t.Run("b", func(t *testing.T) {
+		pool := newNotes(t, 2)
+		ctx := context.Background()
+		if _, err := pool.Exec(ctx, `CREATE FUNCTION slow() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN PERFORM pg_sleep(2); RETURN NULL; END $$;
+			CREATE CONSTRAINT TRIGGER slow AFTER INSERT ON notes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION slow();`); err != nil {
+			t.Fatal(err)
+		}
+		start := time.Now()
+		err := postgres.NewTxManager(pool, 100*time.Millisecond).WithinTx(ctx, func(ctx context.Context) error { return insertNote(ctx, pool, 1) })
+		if !committed(err) || !errors.Is(err, context.DeadlineExceeded) {
+			t.Errorf("WithinTx() = %v after %v (marked %v); want the COMMIT past its 100 ms marked, a deadline's", err,
+				time.Since(start), committed(err))
+		}
+	})
+	t.Run("c", func(t *testing.T) {
+		pool := newNotes(t, 2)
+		err := postgres.NewTxManager(pool, commitTimeout).WithinSnapshot(context.Background(), func(ctx context.Context) error {
+			return endOwnBackend(ctx, pool)
+		})
+		if err == nil || committed(err) || !strings.HasPrefix(err.Error(), "commit transaction: ") {
+			t.Errorf("WithinSnapshot() = %v (marked %v); want the COMMIT's failure, not marked", err, committed(err))
+		}
+	})
+}
+
 // A snapshot sees the database as of its first statement: a row committed
 // meanwhile on another connection is not in what it reads, though it is
 // there once the snapshot ends.

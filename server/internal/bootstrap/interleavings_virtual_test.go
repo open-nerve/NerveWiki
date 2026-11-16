@@ -204,8 +204,11 @@ func TestVirtualRead(t *testing.T) {
 		tm, p, _ := virtualReadTeam(t)
 		wiki := tm.llmWiki(t, "No nested virtual snapshot")
 		m := tm.agent(t, "alice", wiki.id)
+		// The read's own: llmWiki read the log, in a snapshot of its own
+		// since M12/P3/S1.
+		before := p.calls.Load()
 		res := sourceMCPCall(t, m, "notebook", "read", map[string]any{"path": "index.md"}).result(t)
-		if res["isError"] == true || p.calls.Load() != 1 {
+		if res["isError"] == true || p.calls.Load() != before+1 {
 			t.Fatalf("generator nested its normal snapshot: %v", res)
 		}
 		p.nest.Store(true)

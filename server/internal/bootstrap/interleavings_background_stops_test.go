@@ -769,7 +769,10 @@ func TestABackgroundJobStoppedAtEachBatch(t *testing.T) {
 // restored one by one, the group is as C's revert would leave it. R
 // reverted first, its part an item again at its time, the rest's parent
 // in the trash: that item restored first, then the rest, the group is so
-// too. Going back, R reverted, C's revert finds the group changed.
+// too. Going back, R reverted, C's revert puts the group back whole: R's
+// part an item of its own, each of the rest a trash item's root C
+// deleted, each a top of its own, restored after it (M12 design 4.6.1,
+// decision 304).
 func TestABackgroundRevertStoppedInAGroup(t *testing.T) {
 	tm, _ := stopsTeam(t)
 	stopped := func(t *testing.T, name string) (nb, deletion string, kids []string, before string, j backgroundJob) {
@@ -820,19 +823,18 @@ func TestABackgroundRevertStoppedInAGroup(t *testing.T) {
 		}
 	})
 	t.Run("going back", func(t *testing.T) {
-		nb, deletion, _, _, j := stopped(t, "Back")
+		nb, deletion, _, before, j := stopped(t, "Back")
 		tm.reverted(t, "alice", *j.ChangesetID)
-		r := changesetRevert("alice", deletion)
-		status, body := ask(t, tm.contract, r.method, tm.base+r.path, tm.tokens["alice"], "")
-		a := answer{status: status, body: body, code: problemCode(t, body)}
-		if conflicts, _ := conflictsOf(t, a); !a.is(http.StatusConflict, "page.revert_conflict") || len(conflicts) == 0 ||
-			conflicts[0].Reason != "changed" {
-			t.Errorf("C's revert after R's = %d %s, want 409 page.revert_conflict, changed", status, body)
+		if roots := tm.stopRoots(t, nb); !slices.Equal(roots, []string{"Box", "c3", "c4", "c5"}) {
+			t.Fatalf("trash items %q, want Box's part and c3, c4, c5", roots)
 		}
-		if n := tm.stopAlive(t, nb); n != 0 {
-			t.Errorf("%d nodes alive, want none", n)
+		tm.reverted(t, "alice", deletion)
+		if now := tm.notebookState(t, nb); now != before {
+			t.Errorf("the notebook C's revert after R's left:\n%s\nwant as before the deletion:\n%s", now, before)
 		}
-		tm.checkHistory(t)
+		if n := tm.stopAlive(t, nb); n != 6 {
+			t.Errorf("%d nodes alive, want Box and its five", n)
+		}
 	})
 	checkBackground(t, tm)
 }

@@ -74,7 +74,8 @@ func TestListChangesetsNewerFirst(t *testing.T) {
 	if want := []uuid.UUID{f.reverted.ID, f.written.ID, f.renamed.ID}; !slices.Equal(ids(got.Changesets), want) || got.NextCursor == "" {
 		t.Fatalf("first page = %v, next %q; want %v and a cursor", ids(got.Changesets), got.NextCursor, want)
 	}
-	if want := []string{"WorkspaceOf", "Authorize page.history", "ListChangesets", "ChangesetFacts 3", "FirstChanges 3 3", "FirstIngestSources 3 3"}; !slices.Equal(f.rec.calls, want) {
+	if want := []string{"WorkspaceOf", "Authorize page.history", "WithinSnapshot", "ListChangesets in tx", "ChangesetFacts 3 in tx",
+		"FirstChanges 3 3 in tx", "FirstIngestSources 3 3 in tx"}; !slices.Equal(f.rec.calls, want) {
 		t.Errorf("calls = %v, want %v", f.rec.calls, want)
 	}
 	rev := got.Changesets[0]
@@ -99,7 +100,7 @@ func TestListChangesetsNewerFirst(t *testing.T) {
 		made.Changes[0].Change() != domain.ChangeCreated {
 		t.Errorf("made = %+v, %+v; want two pages created", made.Facts, made.Changes)
 	}
-	if f.called("ChangesetMoves") {
+	if f.calledAtAll("ChangesetMoves") {
 		t.Error("the log read whether its changesets rename or move a node")
 	}
 }
@@ -126,7 +127,7 @@ func TestListChangesetsFilters(t *testing.T) {
 	} {
 		f.rec.calls = nil
 		got, err := uc.Execute(f.asAlice(), f.eng, tt.q)
-		if err != nil || !slices.Equal(ids(got.Changesets), tt.want) || !f.called(tt.call) {
+		if err != nil || !slices.Equal(ids(got.Changesets), tt.want) || !f.called(tt.call+" in tx") {
 			t.Errorf("%s = %v, %v after %v; want %v through %q", tt.name, ids(got.Changesets), err, f.rec.calls, tt.want, tt.call)
 		}
 	}
@@ -197,7 +198,8 @@ func TestGetChangeset(t *testing.T) {
 		if err != nil || got.Changeset.ID != tt.c.ID || got.Moves != tt.moves || got.Changeset.ByName == "" {
 			t.Errorf("GetChangeset(%s) = %+v, %v; want it with %+v", tt.c.ID, got, err, tt.moves)
 		}
-		want := []string{"FindChangeset", "WorkspaceOf", "Authorize page.history", "ChangesetFacts 1", "FirstChanges 1 3", "FirstIngestSources 1 20", "ChangesetMoves"}
+		want := []string{"WithinSnapshot", "FindChangeset in tx", "WorkspaceOf in tx", "Authorize page.history in tx", "ChangesetFacts 1 in tx",
+			"FirstChanges 1 3 in tx", "FirstIngestSources 1 20 in tx", "ChangesetMoves in tx"}
 		if !slices.Equal(f.rec.calls, want) {
 			t.Errorf("calls = %v, want %v", f.rec.calls, want)
 		}

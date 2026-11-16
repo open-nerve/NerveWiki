@@ -132,6 +132,16 @@ func TestALinkToAnAnchorAloneLeadsToItsHeading(t *testing.T) {
 				`<a href="#nw-a23b">d</a> <a href="#nw-ref">e</a></p>` + "\n",
 		},
 		{"one written as an id", "[a](#nw-x) [b](#中文)\n", `<p><a href="#nw-nw-x">a</a> <a href="#nw-中文">b</a></p>` + "\n"},
+		// The heading "See https://a.example now" has the id of its
+		// autolink's text (M12 design 4.6.3, 10.2).
+		{"a heading's with an autolink", "[a](<#See https://a.example now>)\n", `<p><a href="#nw-see-httpsaexample-now">a</a></p>` + "\n"},
+		// A www. autolink's label, not its URL, which has an http:// before
+		// it: the heading and the link to it meet (P3/S1 code review A-M1).
+		{
+			"a heading's with a www. autolink", "# Go www.example.com now\n\n[a](<#Go www.example.com now>)\n",
+			`<h1 id="nw-go-wwwexamplecom-now">Go <a href="http://www.example.com">www.example.com</a> now</h1>` + "\n" +
+				`<p><a href="#nw-go-wwwexamplecom-now">a</a></p>` + "\n",
+		},
 		{"none", "[a](#^b) [b](#) [c](#%20) [d](#%ZZ)\n", `<p>a b c <a href="#nw-zz">d</a></p>` + "\n"},
 	})
 }

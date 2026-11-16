@@ -16,8 +16,9 @@ const MaxClientNameChars = 128
 // client_name hold it (M9 design 4.5): its bytes that are not UTF-8 and its
 // characters unshowable in a name dropped, in NFC, without the white space
 // around it, cut to MaxClientNameChars at a normalization boundary, and
-// trimmed again; "" when nothing is left. It is idempotent: P2's
-// domain.MCPClient cleans a recorded name again.
+// trimmed again; "" when nothing is left, or nothing that shows (Blank:
+// M12 design 4.6.4, 30.2). It is idempotent: P2's domain.MCPClient cleans
+// a recorded name again.
 //
 // The order makes it so (M9/P1 design 2.1 item 2): NFC after dropping, so
 // that no character dropped leaves two to combine on a second clean. The
@@ -33,17 +34,20 @@ func CleanClientName(name string) string {
 		return r
 	}, strings.ToValidUTF8(name, ""))
 	s = strings.TrimSpace(norm.NFC.String(s))
-	if utf8.RuneCountInString(s) <= MaxClientNameChars {
-		return s
-	}
-	r := []rune(s)
-	cut := string(r[:MaxClientNameChars])
-	if !norm.NFC.PropertiesString(string(r[MaxClientNameChars])).BoundaryBefore() {
-		if b := norm.NFC.LastBoundary([]byte(cut)); b >= 0 {
-			cut = cut[:b]
+	if utf8.RuneCountInString(s) > MaxClientNameChars {
+		r := []rune(s)
+		cut := string(r[:MaxClientNameChars])
+		if !norm.NFC.PropertiesString(string(r[MaxClientNameChars])).BoundaryBefore() {
+			if b := norm.NFC.LastBoundary([]byte(cut)); b >= 0 {
+				cut = cut[:b]
+			}
 		}
+		s = strings.TrimSpace(cut)
 	}
-	return strings.TrimSpace(cut)
+	if Blank(s) {
+		return ""
+	}
+	return s
 }
 
 // ClientOf is where the request ctx carries came from, as a write's

@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // TestGrepTablesAreTheirDefinition computes the risky tails (M9/P4 design
@@ -30,7 +32,7 @@ func TestGrepTablesAreTheirDefinition(t *testing.T) {
 		if isSurrogate(m) || boundaryBefore(m) {
 			continue
 		}
-		changes := searchFold(string(m)) != string(m)
+		changes := shared.TitleKey(string(m)) != string(m)
 		if changes {
 			changing = append(changing, m)
 		}
@@ -47,7 +49,7 @@ func TestGrepTablesAreTheirDefinition(t *testing.T) {
 			continue
 		}
 		s := string(r)
-		fr := searchFold(s)
+		fr := shared.TitleKey(s)
 		// Where neither r nor m folds to another text, the folded pair is
 		// the pair, which NFC keeps apart: only the marks whose fold is
 		// another text can make r risky then.
@@ -57,7 +59,7 @@ func TestGrepTablesAreTheirDefinition(t *testing.T) {
 		}
 		for _, m := range candidates {
 			pair := s + string(m)
-			if norm.NFC.String(pair) == pair && !strings.HasPrefix(norm.NFC.String(fr+searchFold(string(m))), fr) {
+			if norm.NFC.String(pair) == pair && !strings.HasPrefix(norm.NFC.String(fr+shared.TitleKey(string(m))), fr) {
 				tails = append(tails, r)
 				break
 			}
@@ -65,7 +67,7 @@ func TestGrepTablesAreTheirDefinition(t *testing.T) {
 		// Every code point of an orbit folds alike: an atom under (?i) folds
 		// as its stored code point (step 3).
 		for f := unicode.SimpleFold(r); f != r; f = unicode.SimpleFold(f) {
-			if searchFold(string(f)) != fr {
+			if shared.TitleKey(string(f)) != fr {
 				orbits = append(orbits, r)
 				break
 			}
@@ -128,7 +130,7 @@ package domain
 
 // riskyTail reports whether r is one of the risky tails (M9/P4 design
 // 3.5.3): with some code point m without an NFC boundary before it, NFC
-// keeps r m apart, and joins searchFold(r) to searchFold(m).
+// keeps r m apart, and joins the title keys (shared.TitleKey) of r and m.
 func riskyTail(r rune) bool {
 	switch r {
 	case `)

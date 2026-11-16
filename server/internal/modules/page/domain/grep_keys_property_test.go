@@ -11,6 +11,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 // grepKeysSeed seeds TestGrepKeysAreASuperset; its expectations hold on
@@ -295,7 +297,7 @@ func grepTailCase(line string) bool {
 		for j < len(rs) && !boundaryBefore(rs[j]) {
 			j++
 		}
-		if j > i+1 && searchFold(string(rs[i:j])) != searchFold(string(rs[i]))+searchFold(string(rs[i+1:j])) {
+		if j > i+1 && shared.TitleKey(string(rs[i:j])) != shared.TitleKey(string(rs[i]))+shared.TitleKey(string(rs[i+1:j])) {
 			return true
 		}
 	}
@@ -335,8 +337,8 @@ func grepOrbitCase(re *syntax.Regexp, line string) bool {
 // unless an edge follows it, before its last (mutant 140 shows on such a
 // pattern). Computed here, not by the code it judges (review C-m2):
 // factsOf and pieces only locate the pieces; the rest is 3.5.3's step 3 as
-// it reads, each literal atom's code point searchFold-ed alone, joined,
-// then NFC, against searchFold of the code points joined.
+// it reads, each literal atom's code point keyed alone (shared.TitleKey),
+// joined, then NFC, against the key of the code points joined.
 func grepFoldCase(re *syntax.Regexp) bool {
 	f := factsOf(re)
 	segments := f.must
@@ -365,10 +367,10 @@ func grepFoldCase(re *syntax.Regexp) bool {
 			}
 			var each, joined strings.Builder
 			for _, r := range cps[lo:hi] {
-				each.WriteString(searchFold(string(r)))
+				each.WriteString(shared.TitleKey(string(r)))
 				joined.WriteRune(r)
 			}
-			if norm.NFC.String(each.String()) != searchFold(joined.String()) {
+			if norm.NFC.String(each.String()) != shared.TitleKey(joined.String()) {
 				return true
 			}
 		}

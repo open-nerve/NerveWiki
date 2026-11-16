@@ -23,7 +23,8 @@ export class EventService {
 
   /**
    * open answers the stream's body once its head is a 200; any other answer
-   * throws its ApiError, a 503 not_ready with its retryAfter.
+   * throws its ApiError: a 503 not_ready, or a 429 rate_limited (the request
+   * rate limit, or an account at its streams' bound), with its retryAfter.
    */
   async open(signal: AbortSignal): Promise<ReadableStream<Uint8Array>> {
     const body = unwrap(await this.api.GET("/api/v0/events", { parseAs: "stream", signal }));

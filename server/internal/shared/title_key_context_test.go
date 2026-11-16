@@ -42,6 +42,28 @@ func TestLintTitleKeyContext(t *testing.T) {
 			}
 		}
 	})
+	// A long title of Cherokee's small letters keys as TitleKey keys it,
+	// and as its capitals do: the streamed branch takes Cherokee's step
+	// too (M12 design 4.6.3, 25.1).
+	t.Run("cherokee", func(t *testing.T) {
+		var small, capitals strings.Builder
+		for range 18 {
+			for r := rune(0xAB70); r <= 0xABBF; r++ {
+				small.WriteRune(r)
+				capitals.WriteRune(r - 0xAB70 + 0x13A0)
+			}
+		}
+		if small.Len() <= 4096 {
+			t.Fatalf("the title is %d bytes, not past the streamed branch's 4096", small.Len())
+		}
+		got, err := shared.TitleKeyContext(t.Context(), small.String())
+		if err != nil || got != shared.TitleKey(small.String()) || got != capitals.String() {
+			t.Fatalf("context title key of %d small letters: %v; want TitleKey's, the capitals", small.Len()/3, err)
+		}
+		if again, err := shared.TitleKeyContext(t.Context(), capitals.String()); err != nil || again != got {
+			t.Fatalf("context title key of the capitals differs: %v", err)
+		}
+	})
 	t.Run("cancel-before", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()

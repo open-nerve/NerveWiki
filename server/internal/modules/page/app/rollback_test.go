@@ -482,7 +482,10 @@ func newRbTrial(seed uint64) *rbTrial {
 // levels, renames, the names of siblings in a cycle, reorders, new pages
 // (free, or holding baseline nodes once some move under them), writes,
 // some back to the baseline's content, deletes of new subtrees holding no
-// baseline node.
+// baseline node, each read whole before any of it goes: a node whose line
+// up to the top crossed one deleted first was left alive under no parent,
+// a state no store holds, which the rollback's checks or its revert's
+// parent_gone met on seeds of other bases (M12/P3/S2).
 func (p *rbTrial) agent(ops int) {
 	for range ops {
 		live := p.alive()
@@ -542,11 +545,10 @@ func (p *rbTrial) agent(ops int) {
 			if _, ok := p.reads.of(id); ok || p.holds(id) {
 				continue
 			}
-			for _, c := range p.alive() {
-				if p.under(c, id) {
-					delete(p.f.store.nodes, c)
-					delete(p.f.store.contents, c)
-				}
+			sub := slices.DeleteFunc(p.alive(), func(c uuid.UUID) bool { return !p.under(c, id) })
+			for _, c := range sub {
+				delete(p.f.store.nodes, c)
+				delete(p.f.store.contents, c)
 			}
 		}
 	}
@@ -557,65 +559,197 @@ func (p *rbTrial) agent(ops int) {
 // TestTheJobsStepsReplayToStar): the passes that delete first, then one
 // pass planned, then Done; every write as a store checks it; at the end
 // each baseline node where it was with its content, nothing else alive.
+// Then the rollback's changeset is reverted, as the owner may once the
+// upgrade ended (M11 decision 302, M12/P3 design 3.10.7, decision 364): by
+// request for an even seed, in the background for an odd one, its batches
+// cut at random; every write as a store checks it; the notebook is then
+// as the agent left it, each node alive there where and as it was, each
+// page of its content, nothing else alive. Not idle: half the trials or
+// more have passes that delete first, and planned passes; and the
+// reverts by request and in the background, and a trash item's root
+// under another, which a pass before deleted, each come up at least as
+// often as its floor counts it.
 func TestTheRollbacksStepsReplayToTheBaseline(t *testing.T) {
-	trials := 2000
-	if testing.Short() {
+	trials, short := 2_000, testing.Short()
+	if short {
 		trials = 400
 	}
-	var deletes, planned int
+	var counts rbCounts
 	for seed := range trials {
-		p := newRbTrial(uint64(seed))
-		p.agent(5 + p.rng.IntN(30))
-		up := uuid.NewV7()
-		p.f.rollingBack(up, domain.UpgradeRollingBack)
-		store := &checkedStore{fakeStore: p.f.store}
-		whole := 1 + p.rng.IntN(4)
-		w := p.f.checkedWrites(store, app.JobRollbacks{Reads: p.reads, Action: changeMode, MaxNodes: whole,
-			MaxDeleteNodes: 1 + p.rng.IntN(whole)})
-		spec := p.f.jobSpec()
-		spec.UpgradeID = up
-		plans := 0
-		for pass := 0; ; pass++ {
-			if pass > 30 {
-				t.Fatalf("seed %d: no end", seed)
-			}
-			plan, rb, err := w.PlanRollback(p.f.asJob(), spec)
-			if err != nil {
-				t.Fatalf("seed %d, pass %d: %v", seed, pass, err)
-			}
-			if rb.Done {
-				break
-			}
-			if rb.Deletes {
-				if plans > 0 {
-					t.Fatalf("seed %d, pass %d: deletes after a plan", seed, pass)
-				}
-				deletes++
-			} else {
-				if plans++; plans > 1 {
-					t.Fatalf("seed %d, pass %d: a second plan, left %+v", seed, pass, rb.Left)
-				}
-				planned++
-			}
-			if _, err := p.f.runPass(w, spec, plan, cutsBy(p.rng, plan.Steps())); err != nil || len(store.bad) > 0 {
-				t.Fatalf("seed %d, pass %d: %v, %v", seed, pass, err, store.bad)
-			}
-		}
-		for _, b := range p.reads.baseline {
-			n, ok := p.f.store.nodes[b.NodeID]
-			if !ok || !n.State().Same(b.State()) {
-				t.Fatalf("seed %d: %s at %+v, want the baseline's %+v", seed, b.NodeID, n.State(), b.State())
-			}
-			if c := p.f.store.contents[b.NodeID]; b.Kind == domain.KindPage && !bytes.Equal(c.Hash, b.Hash) {
-				t.Fatalf("seed %d: %s of another content", seed, b.NodeID)
-			}
-		}
-		if len(p.f.store.nodes) != len(p.reads.baseline) {
-			t.Fatalf("seed %d: %d nodes alive, the baseline's %d", seed, len(p.f.store.nodes), len(p.reads.baseline))
+		if bad := newRbTrial(uint64(seed)).run(uint64(seed), &counts); bad != "" {
+			t.Fatalf("seed %d: %s", seed, bad)
 		}
 	}
-	t.Logf("%d trials: %d passes deleting first, %d planned", trials, deletes, planned)
-	if deletes < trials/2 || planned < trials/2 {
-		t.Errorf("idle: %d passes deleting first, %d planned in %d trials", deletes, planned, trials)
+	t.Logf("%d trials: %d passes deleting first, %d planned; the rollback's changeset reverted by request %d, in the background %d, "+
+		"with a trash item's root under another %d", trials, counts.deletes, counts.planned, counts.requests, counts.background,
+		counts.nested)
+	if counts.deletes < trials/2 || counts.planned < trials/2 {
+		t.Errorf("idle: %d passes deleting first, %d planned in %d trials", counts.deletes, counts.planned, trials)
 	}
+	// The reverts' floors, as TestTheJobsStepsReplayToStar's: two thirds
+	// of the least count over 20 bases of 2,000 trials and 40 of 400, of
+	// M12/P3/S2's runs: 998, 998 and 92 of 2,000, 198, 199 and 13 of 400.
+	for _, c := range []struct {
+		what        string
+		n           int
+		full, short int
+	}{
+		{"reverts by request", counts.requests, 665, 132},
+		{"reverts in the background", counts.background, 665, 132},
+		{"trash items' roots under another", counts.nested, 61, 8},
+	} {
+		floor := c.full
+		if short {
+			floor = c.short
+		}
+		if c.n < floor {
+			t.Errorf("idle: %s %d, want %d", c.what, c.n, floor)
+		}
+	}
+}
+
+// rbCounts are what the rollback's trials did: the passes that deleted
+// first and those planned; the rollback's changesets reverted by request
+// and in the background, and those of them with a trash item's root the
+// changeset deleted under another it deleted.
+type rbCounts struct {
+	deletes, planned, requests, background, nested int
+}
+
+// rbNode is a node alive as the agent left it: where and as it was, and
+// a page's content's hash.
+type rbNode struct {
+	state domain.TreeState
+	hash  []byte
+}
+
+// left is the notebook now: each node alive, where and as it is, a page
+// with its content's hash.
+func (p *rbTrial) left() map[uuid.UUID]rbNode {
+	out := make(map[uuid.UUID]rbNode, len(p.f.store.nodes))
+	for id, n := range p.f.store.nodes {
+		out[id] = rbNode{state: n.State(), hash: p.f.store.contents[id].Hash}
+	}
+	return out
+}
+
+// run is the trial of seed: the agent's changes, then the rollback, each
+// pass in batches cut at random, to the baseline; then the revert of the
+// rollback's changeset back to the agent's notebook. "" when all is well,
+// else what went wrong.
+func (p *rbTrial) run(seed uint64, counts *rbCounts) string {
+	p.agent(5 + p.rng.IntN(30))
+	tidied := p.left()
+	up := uuid.NewV7()
+	p.f.rollingBack(up, domain.UpgradeRollingBack)
+	store := &checkedStore{fakeStore: p.f.store}
+	whole := 1 + p.rng.IntN(4)
+	w := p.f.checkedWrites(store, app.JobRollbacks{Reads: p.reads, Action: changeMode, MaxNodes: whole,
+		MaxDeleteNodes: 1 + p.rng.IntN(whole)})
+	spec := p.f.jobSpec()
+	spec.UpgradeID = up
+	plans := 0
+	for pass := 0; ; pass++ {
+		if pass > 30 {
+			return "no end"
+		}
+		plan, rb, err := w.PlanRollback(p.f.asJob(), spec)
+		if err != nil {
+			return fmt.Sprintf("pass %d: %v", pass, err)
+		}
+		if rb.Done {
+			break
+		}
+		if rb.Deletes {
+			if plans > 0 {
+				return fmt.Sprintf("pass %d: deletes after a plan", pass)
+			}
+			counts.deletes++
+		} else {
+			if plans++; plans > 1 {
+				return fmt.Sprintf("pass %d: a second plan, left %+v", pass, rb.Left)
+			}
+			counts.planned++
+		}
+		if _, err := p.f.runPass(w, spec, plan, cutsBy(p.rng, plan.Steps())); err != nil || len(store.bad) > 0 {
+			return fmt.Sprintf("pass %d: %v, %v", pass, err, store.bad)
+		}
+	}
+	for _, b := range p.reads.baseline {
+		n, ok := p.f.store.nodes[b.NodeID]
+		if !ok || !n.State().Same(b.State()) {
+			return fmt.Sprintf("%s at %+v, want the baseline's %+v", b.NodeID, n.State(), b.State())
+		}
+		if c := p.f.store.contents[b.NodeID]; b.Kind == domain.KindPage && !bytes.Equal(c.Hash, b.Hash) {
+			return fmt.Sprintf("%s of another content", b.NodeID)
+		}
+	}
+	if len(p.f.store.nodes) != len(p.reads.baseline) {
+		return fmt.Sprintf("%d nodes alive, the baseline's %d", len(p.f.store.nodes), len(p.reads.baseline))
+	}
+	return p.revert(seed, spec.Changeset, tidied, counts)
+}
+
+// revert reverts the rollback's changeset id, its items and versions as
+// the store recorded them, once the upgrade ended: by request for an even
+// seed, in the background for an odd one, its batches cut at random,
+// each write through a checked store. "" when then the notebook is
+// tidied, as the agent left it, else what went wrong; "" too for a
+// rollback that changed nothing.
+func (p *rbTrial) revert(seed uint64, id uuid.UUID, tidied map[uuid.UUID]rbNode, counts *rbCounts) string {
+	f := p.f
+	c := f.recordedAs(domain.ChangesetRollback, id, uuid.UUID{})
+	if len(c.items) == 0 && len(c.versions) == 0 {
+		return ""
+	}
+	deleted := map[uuid.UUID]bool{}
+	for _, it := range c.items {
+		deleted[it.NodeID] = it.After == nil
+	}
+	for _, it := range c.items {
+		if n := f.store.trash[it.NodeID]; deleted[it.NodeID] && n.TrashRoot && it.Before.ParentID != nil && deleted[*it.Before.ParentID] {
+			counts.nested++
+			break
+		}
+	}
+	f.notebooks.states[f.eng] = domain.NotebookState{Mode: domain.ModeStandard}
+	f.grant(domain.ActionRevert)
+	store := &checkedStore{fakeStore: f.store}
+	if seed%2 == 0 {
+		counts.requests++
+		w := f.checkedWriter(store)
+		if _, err := app.NewRevertChangeset(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait),
+			app.RevertBounds{}, f.logger()).Execute(f.asAlice(), id, nil, domain.ClientWeb); err != nil {
+			return fmt.Sprintf("the revert of the rollback's changeset: %v %+v", err, conflictsOf(err))
+		}
+	} else {
+		counts.background++
+		w, spec := f.checkedJobs(store), f.jobSpec()
+		plan, err := w.PlanRevert(f.asJob(), spec, id, allJobBatches)
+		if err != nil {
+			return fmt.Sprintf("the background revert of the rollback's changeset: %v %+v", err, conflictsOf(err))
+		}
+		if _, err := f.runPass(w, spec, plan, cutsBy(p.rng, plan.Steps())); err != nil {
+			steps, _ := plan.RevertSteps()
+			return fmt.Sprintf("the background revert of the rollback's changeset, steps %s: %v", describeSteps(steps), err)
+		}
+	}
+	if len(store.bad) > 0 {
+		return fmt.Sprintf("the revert of the rollback's changeset wrote %s", strings.Join(store.bad, "; "))
+	}
+	for id, want := range tidied {
+		n, ok := f.store.nodes[id]
+		switch {
+		case !ok:
+			return fmt.Sprintf("reverted, %s not alive, as the agent left it", id)
+		case !n.State().Same(want.state):
+			return fmt.Sprintf("reverted, %s at %+v, as the agent left it %+v", id, n.State(), want.state)
+		case !bytes.Equal(f.store.contents[id].Hash, want.hash):
+			return fmt.Sprintf("reverted, %s of another content than the agent left", id)
+		}
+	}
+	if len(f.store.nodes) != len(tidied) {
+		return fmt.Sprintf("reverted, %d nodes alive, as the agent left %d", len(f.store.nodes), len(tidied))
+	}
+	return ""
 }

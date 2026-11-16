@@ -230,10 +230,10 @@ func restoreLine() lineShape {
 // restored and written back to its content before, and that revert's
 // revert, which writes it again and deletes it, its content in the trash
 // the batch's. Two trash items one under the other no batch nor revert
-// makes: the changeset seeded so, the revert reads the two deletions as
-// one group, which the trash does not hold, and refuses it as changed,
-// writing nothing (TestARestoreWaitsForTheGroupItGoesUnder plans their
-// schedule).
+// makes: the changeset seeded so, each item's root a top of its own (M12
+// design 4.6.1, decision 304), the revert restores the outer, then the
+// inner under it, the notebook as before the two deletions
+// (TestARestoreWaitsForTheGroupItGoesUnder plans their schedule).
 func TestTheRevertOfEachBatchShape(t *testing.T) {
 	tm, logs := newAcmeTeamLogged(t)
 	agent := tm.agent(t, "alice", "")
@@ -379,6 +379,7 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 	})
 	each("two trash items one under the other, seeded", []restPage{{"A", "a"}, {"A/X", "x"}, {"A/X/B", "b"}},
 		func(t *testing.T, nb string, ids map[string]string, m *mcpApp) {
+			before := tm.shapeBefore(t, nb)
 			tm.send(t, nodeDeletion("alice", ids["A/X/B"]), http.StatusNoContent)
 			inner := tm.newest(t, nb).ID
 			tm.send(t, nodeDeletion("alice", ids["A"]), http.StatusNoContent)
@@ -394,22 +395,11 @@ func TestTheRevertOfEachBatchShape(t *testing.T) {
 					t.Fatalf("%s: %v", q.sql, err)
 				}
 			}
-			was, sets := tm.shapeState(t, nb), tm.changesetsIn(t, nb)
-			c := changesetRevert("alice", outer)
-			status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], c.body)
-			a := answer{status: status, body: body, code: problemCode(t, body)}
-			conflicts, n := conflictsOf(t, a)
-			reasons := map[string]string{}
-			for _, x := range conflicts {
-				reasons[x.NodeID] = x.Reason
+			if roots := queryStrings(t, tm.pool, `SELECT name FROM nodes WHERE notebook_id = $1 AND deleted_at IS NOT NULL AND trash_root
+				ORDER BY name`, nb); !slices.Equal(roots, []string{"A", "B"}) {
+				t.Fatalf("trash items %q, want A and B", roots)
 			}
-			if !a.is(http.StatusConflict, "page.revert_conflict") || n != 2 || reasons[ids["A"]] != "changed" || reasons[ids["A/X/B"]] != "changed" {
-				t.Errorf("the revert = %d %s; want 409 page.revert_conflict, A and B changed", status, body)
-			}
-			if tm.shapeState(t, nb) != was || tm.changesetsIn(t, nb) != sets {
-				t.Errorf("the revert refused changed the notebook")
-			}
-			tm.checkHistory(t)
+			tm.undoneFrom(t, nb, before, outer)
 		})
 }
 

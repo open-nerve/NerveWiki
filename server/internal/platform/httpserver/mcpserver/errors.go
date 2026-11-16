@@ -73,10 +73,52 @@ const outcomeOK = "ok"
 // The messages of a fault's internal_error: the request id goes with
 // them, for the logs.
 const (
-	internalGone     = "the client went away"
-	internalDeadline = "the call ran out of time"
-	internalFailed   = "the server failed"
+	internalGone = "the client went away"
+	// internalDeadline: a call past server.request_timeout. Its transaction
+	// rolled back whole; an agent should retry, a batch split smaller (M12
+	// design 4.6.4; M4-performance hand-off, after item 22).
+	internalDeadline = "the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones"
+	// internalDeadlineSaving: a call past server.request_timeout whose
+	// transaction's COMMIT got no answer within database.commit_timeout:
+	// its outcome is unknown (TxManager), its changes saved or not.
+	internalDeadlineSaving = "the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
+	internalFailed         = "the server failed"
+	// internalFailedSaving: a fault, the call's deadline not passed, whose
+	// read-write transaction's COMMIT failed, which TxManager marks: its
+	// outcome may be unknown, its changes saved or not, e.g. a COMMIT past
+	// database.commit_timeout, 2 s to the request's 15 s by default
+	// (M12/P3/S1 review B-M1).
+	internalFailedSaving = "the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
 )
+
+// committing reports whether err holds a read-write transaction's COMMIT
+// that failed, which the platform's TxManager marks: its changes may have
+// been saved. The platform imports no module: the mark is known by its
+// method, as ProblemOf knows a problem.
+func committing(err error) bool {
+	var c interface{ TxCommitFailed() bool }
+	return errors.As(err, &c) && c.TxCommitFailed()
+}
+
+// deadlineText is a deadline's message: a COMMIT's that failed may have
+// saved its changes; any other deadline changed nothing (M12/P3 design
+// 3.7).
+func deadlineText(err error) string {
+	if committing(err) {
+		return internalDeadlineSaving
+	}
+	return internalDeadline
+}
+
+// failedText is a fault's message: a COMMIT's that failed before the
+// call's deadline may have saved its changes, as one past it may; any
+// other fault is the server's failure (M12/P3/S1 review B-M1).
+func failedText(err error) string {
+	if committing(err) {
+		return internalFailedSaving
+	}
+	return internalFailed
+}
 
 // errorMember is structuredContent.error: the code and the message the
 // text block holds, and the problem's members.
@@ -98,10 +140,10 @@ func (s *Server) toolError(ctx context.Context, name string, err error) (*mcp.Ca
 		return s.internalError(ctx, internalGone), httpserver.CodeInternal
 	case httpserver.FaultDeadline:
 		s.logger.LogAttrs(ctx, slog.LevelWarn, "MCP call deadline exceeded", append(attrs, slog.Any("error", err))...)
-		return s.internalError(ctx, internalDeadline), httpserver.CodeInternal
+		return s.internalError(ctx, deadlineText(err)), httpserver.CodeInternal
 	case httpserver.FaultUnknown:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP tool failed", append(attrs, slog.Any("error", err))...)
-		return s.internalError(ctx, internalFailed), httpserver.CodeInternal
+		return s.internalError(ctx, failedText(err)), httpserver.CodeInternal
 	}
 	res, n, stray, merr := problemAnswer(a, err)
 	if stray {
@@ -348,7 +390,7 @@ func (s *Server) methodError(ctx context.Context, method string, err error) erro
 	a := httpserver.ProblemOf(ctx, err)
 	id := httpserver.RequestID(ctx)
 	attrs := []slog.Attr{slog.String("method", method), slog.String("request_id", id)}
-	message := internalFailed
+	var message string
 	switch a.Fault {
 	case httpserver.FaultNone:
 		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: a.Problem.Code + ": " + a.Problem.Detail}
@@ -357,9 +399,10 @@ func (s *Server) methodError(ctx context.Context, method string, err error) erro
 		return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + internalGone}
 	case httpserver.FaultDeadline:
 		s.logger.LogAttrs(ctx, slog.LevelWarn, "MCP call deadline exceeded", append(attrs, slog.Any("error", err))...)
-		message = internalDeadline
+		message = deadlineText(err)
 	default:
 		s.logger.LogAttrs(ctx, slog.LevelError, "MCP method failed", append(attrs, slog.Any("error", err))...)
+		message = failedText(err)
 	}
 	return &jsonrpc.Error{Code: jsonrpc.CodeInternalError, Message: httpserver.CodeInternal + ": " + message + "; request id " + id}
 }

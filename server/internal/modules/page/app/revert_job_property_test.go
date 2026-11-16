@@ -26,7 +26,10 @@ import (
 // changeset of a random batch, the domain's generator of 3.16.4, or of a
 // folder larger than the job's batches (a group whose members span them, a
 // page of it written back, a restore cut short in a segment of steps aside
-// with members after it), held by the fake store; the job's plan at its
+// with members after it), held by the fake store, some of its trash items
+// deleted apart under another, each at its own time (M12/P3 design 3.10.7:
+// a rollback's passes leave such; in the folder, one whose restore in the
+// segment goes under a member its places need not); the job's plan at its
 // start (PlanRevert). Its steps joined are the segments, no more: from a
 // step aside to its node's last place, a page's restore and its write back
 // right after it, a write back right before the deletion that takes its
@@ -59,8 +62,10 @@ import (
 // deleted, the restore's parent_gone (review C1-N1): the batch of that step
 // stops, its conflict that step's alone, named as in S*, nothing written
 // in it, no node aside. Not idle: each kind of segment, a restore cut
-// short, a group across batches, each movegone and each injection come up
-// at least as often as its floor counts it, each apart.
+// short, a group across batches, each movegone, each injection and each
+// kind of group restored under another's member (nesting), and one under
+// a group itself so restored, come up at least as often as its floor
+// counts it, each apart.
 func TestTheJobsStepsReplayToStar(t *testing.T) {
 	trials, short := 2_000, testing.Short()
 	if short {
@@ -80,32 +85,44 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 		counts.goneLater, counts.goneSame, counts.injected[injectRename], counts.injected[injectKey], counts.injected[injectChild],
 		counts.injected[injectTrash], counts.injected[injectCycle], counts.injected[injectDeepPlace], counts.injected[injectDeepRestore],
 		counts.injected[injectTrashRestore])
+	t.Logf("jobs that restore a group under another's member %d: under a member not its group's root %d, a group of two members "+
+		"or more %d, in a segment whose places need less of the other group %d, under a group itself so restored %d", counts.nested,
+		counts.nestedMid, counts.nestedGroup, counts.nestedCut, counts.nestedDeep)
 	// Each kind's floor, in full and under -short, is two thirds of its
 	// least count over seeds other than the test's: 20 bases of 2,000
 	// trials (from 0, 100,000, ..., 1,900,000) and 40 of 400 (from 0,
 	// 1,000, ..., 39,000), so a change that only reshuffles the trials
 	// keeps to them (review C2-N1). -short runs 400 trials, the fewest
-	// that keep each of its floors at 3 or more.
+	// that keep each of its floors at 3 or more. Each is of M12/P3/S2's
+	// runs after its fix round, the folder's third level in (reviews
+	// P3S2B-M1, P3S2B-Q1): its least counts are in M12/P3 design 10.2;
+	// those of nesting 172, 162, 73, 88 and 72 of 2,000 trials, 25, 22,
+	// 11, 11 and 9 of 400.
 	for _, c := range []struct {
 		what        string
 		n           int
 		full, short int
 	}{
-		{"segments of steps aside", counts.aside, 741, 138},
-		{"segments of a restore and its write back", counts.restoreWrite, 836, 157},
-		{"segments of a write back and its deletion", counts.writeDelete, 512, 86},
-		{"restores cut short", counts.cut, 176, 26},
-		{"groups across batches", counts.across, 548, 100},
-		{"movegone in a later batch", counts.goneLater, 73, 11},
-		{"movegone in one", counts.goneSame, 126, 22},
-		{"renames injected", counts.injected[injectRename], 427, 78},
-		{"names taken injected", counts.injected[injectKey], 364, 66},
-		{"children injected", counts.injected[injectChild], 235, 40},
-		{"places' parents deleted injected", counts.injected[injectTrash], 58, 8},
-		{"cycles injected", counts.injected[injectCycle], 28, 3},
-		{"places too deep injected", counts.injected[injectDeepPlace], 78, 11},
-		{"restores too deep injected", counts.injected[injectDeepRestore], 41, 5},
-		{"restores' parents deleted injected", counts.injected[injectTrashRestore], 66, 9},
+		{"segments of steps aside", counts.aside, 760, 137},
+		{"segments of a restore and its write back", counts.restoreWrite, 838, 144},
+		{"segments of a write back and its deletion", counts.writeDelete, 516, 86},
+		{"restores cut short", counts.cut, 180, 26},
+		{"groups across batches", counts.across, 550, 99},
+		{"movegone in a later batch", counts.goneLater, 70, 9},
+		{"movegone in one", counts.goneSame, 126, 20},
+		{"renames injected", counts.injected[injectRename], 434, 80},
+		{"names taken injected", counts.injected[injectKey], 386, 57},
+		{"children injected", counts.injected[injectChild], 236, 42},
+		{"places' parents deleted injected", counts.injected[injectTrash], 62, 9},
+		{"cycles injected", counts.injected[injectCycle], 30, 4},
+		{"places too deep injected", counts.injected[injectDeepPlace], 83, 10},
+		{"restores too deep injected", counts.injected[injectDeepRestore], 44, 6},
+		{"restores' parents deleted injected", counts.injected[injectTrashRestore], 66, 8},
+		{"groups restored under another's member", counts.nested, 114, 16},
+		{"groups restored under a member not its group's root", counts.nestedMid, 108, 14},
+		{"groups of two members or more restored under another's member", counts.nestedGroup, 48, 7},
+		{"groups restored in a segment under a member its places need not", counts.nestedCut, 58, 7},
+		{"groups restored under a group itself restored under another's member", counts.nestedDeep, 48, 6},
 	} {
 		floor := c.full
 		if short {
@@ -120,10 +137,12 @@ func TestTheJobsStepsReplayToStar(t *testing.T) {
 // jobCounts are what the trials did: jobs run and their batches; the
 // segments of each kind; the restores cut short in a segment, members of
 // their group after it; the groups whose members two batches or more
-// restore; and the movegone injected, B's deletion in a later batch than
-// A's or in A's.
+// restore; the movegone injected, B's deletion in a later batch than A's
+// or in A's; and the jobs that restore a group under another's member,
+// of each kind, and under a group itself so restored (nesting).
 type jobCounts struct {
 	jobs, batches, aside, restoreWrite, writeDelete, cut, across, goneLater, goneSame int
+	nested, nestedMid, nestedGroup, nestedCut, nestedDeep                             int
 	injected                                                                          [injects]int
 }
 
@@ -145,15 +164,20 @@ func (n jobNode) state() domain.TreeState {
 	return domain.TreeState{ParentID: n.parent, Name: n.name, SortOrder: n.order}
 }
 
-// jobModel is a notebook in the model: its nodes, and its trash items by
-// root, each member where its deletion left it.
+// jobModel is a notebook in the model: its nodes, its trash items by
+// root, each member where its deletion left it, and the times of trash
+// items by root, the trial's time for one it has none of: each item
+// deleted at its own, as a store reads the group of a root at its time
+// (M12/P3 design 3.10.7).
 type jobModel struct {
 	nodes map[uuid.UUID]jobNode
 	trash map[uuid.UUID]map[uuid.UUID]domain.TreeState
+	at    map[uuid.UUID]time.Time
 }
 
 func newJobModel() jobModel {
-	return jobModel{nodes: map[uuid.UUID]jobNode{}, trash: map[uuid.UUID]map[uuid.UUID]domain.TreeState{}}
+	return jobModel{nodes: map[uuid.UUID]jobNode{}, trash: map[uuid.UUID]map[uuid.UUID]domain.TreeState{},
+		at: map[uuid.UUID]time.Time{}}
 }
 
 func (m jobModel) clone() jobModel {
@@ -167,7 +191,17 @@ func (m jobModel) clone() jobModel {
 			out.trash[root][id] = at
 		}
 	}
+	maps.Copy(out.at, m.at)
 	return out
+}
+
+// timeOf is the time of the trash item of root in m: its own, or the
+// trial's.
+func (p *jobTrial) timeOf(m jobModel, root uuid.UUID) time.Time {
+	if at, ok := m.at[root]; ok {
+		return at
+	}
+	return p.at
 }
 
 // jobTrial is a trial: its seed and random source; every version a page wrote, its
@@ -356,12 +390,14 @@ type jobSlot struct {
 
 // jobEdit is a batch on the model m, as 4.11 lets one be (the domain's
 // generator, 3.16.4): what it created, moved or renamed, and wrote; the
-// trash items it made, by root; the places nodes left.
+// trash items it made, by root, and those of them it deleted apart, in
+// their order; the places nodes left.
 type jobEdit struct {
 	p                       *jobTrial
 	m                       jobModel
 	created, moved, written map[uuid.UUID]bool
 	groups                  map[uuid.UUID]map[uuid.UUID]domain.TreeState
+	apart                   []uuid.UUID
 	freed                   []jobSlot
 	serial                  int
 }
@@ -422,13 +458,15 @@ func (e *jobEdit) touched(ids []uuid.UUID) bool {
 }
 
 // del deletes the subtree of x, a trash item with those under it the
-// batch deleted before; none that the batch created or moved (B1, B3).
+// batch deleted before, but those it deleted apart; none that the batch
+// created or moved (B1, B3).
 func (e *jobEdit) del(x uuid.UUID) bool {
 	m, p := e.m, e.p
 	sub := p.subtree(m, x)
 	var absorbed []uuid.UUID
 	for _, top := range p.ids {
-		if g, ok := e.groups[top]; ok && g[top].ParentID != nil && slices.Contains(sub, *g[top].ParentID) {
+		if g, ok := e.groups[top]; ok && !slices.Contains(e.apart, top) && g[top].ParentID != nil &&
+			slices.Contains(sub, *g[top].ParentID) {
 			absorbed = append(absorbed, top)
 		}
 	}
@@ -456,8 +494,22 @@ func (e *jobEdit) del(x uuid.UUID) bool {
 	return true
 }
 
+// delApart is del, its trash item one of its own that no later deletion
+// of the batch takes in, deleted before the batch's others: a unit of its
+// own of the batch's changeset, as a rollback's pass deletes a new subtree
+// before the new folder over it (M12/P3 design 3.10.7).
+func (e *jobEdit) delApart(x uuid.UUID) bool {
+	if !e.del(x) {
+		return false
+	}
+	e.apart = append(e.apart, x)
+	return true
+}
+
 // done is the notebook after the batch, its trash items made, and the
-// batch's changeset as the store records it.
+// batch's changeset as the store records it. Of n items deleted apart,
+// the i-th in their order is at n-i seconds before the trial's time, the
+// others at it.
 func (e *jobEdit) done(t0 jobModel) (jobModel, []domain.ChangesetItem, []domain.ChangesetVersion) {
 	for top, g := range e.groups {
 		e.m.trash[top] = g
@@ -467,12 +519,16 @@ func (e *jobEdit) done(t0 jobModel) (jobModel, []domain.ChangesetItem, []domain.
 			e.m.nodes[id] = n
 		}
 	}
+	for i, top := range e.apart {
+		e.m.at[top] = e.p.at.Add(-time.Duration(len(e.apart)-i) * time.Second)
+	}
 	items, versions := e.p.changesetOf(t0, e.m, e.written)
 	return e.m, items, versions
 }
 
 // random is a random tree, T0, and a random batch on it, the domain's
-// generator: short, or long.
+// generator: short, or long. A third of its deletions are apart, each a
+// trash item of its own deleted before the others (M12/P3 design 3.10.7).
 func (p *jobTrial) random(long bool) (t0, post jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion) {
 	m := newJobModel()
 	size := p.between(3, 6)
@@ -566,7 +622,11 @@ func (p *jobTrial) random(long bool) (t0, post jobModel, items []domain.Changese
 				e.move(pick(), s.parent, s.name)
 			}
 		case 5:
-			e.del(pick())
+			if p.rng.IntN(3) == 0 {
+				e.delApart(pick())
+			} else {
+				e.del(pick())
+			}
 		case 6:
 			parents := append([]*uuid.UUID{nil}, p.pages(m, alive)...)
 			e.move(pick(), parents[p.rng.IntN(len(parents))], namePick())
@@ -597,7 +657,13 @@ func (p *jobTrial) random(long bool) (t0, post jobModel, items []domain.Changese
 // makes a new G at the root and moves y into it, so that the revert steps
 // y aside, deletes the new G, restores G, as far as K in its pre-order,
 // and puts x and y back, the rest of G after them (M9/P3 design 3.22.2,
-// review B-I2). Its trash item is a group across the job's batches.
+// review B-I2). Its trash item is a group across the job's batches. Half
+// the time a page z, and half of those zz under it, is under one of G's
+// pages after K in its pre-order, but x and y; the batch deletes z apart
+// before G, so that z's restore within the segment goes under a member of
+// G the places there do not need (M12/P3 design 3.10.6). Half of those,
+// a page w under z too, deleted apart before z: w's item under z's, z's
+// under G's, three levels, z's item whole (review P3S2B-M1).
 func (p *jobTrial) folder() (t0, post jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion) {
 	m := newJobModel()
 	o := p.create(m, nil, "O", false)
@@ -618,6 +684,33 @@ func (p *jobTrial) folder() (t0, post jobModel, items []domain.ChangesetItem, ve
 	}
 	x := p.create(m, &k, "x", false)
 	y := p.create(m, &k, "y", false)
+	var z, w *uuid.UUID
+	if p.rng.IntN(2) == 0 {
+		var after []uuid.UUID
+		seen := false
+		var walk func(id uuid.UUID)
+		walk = func(id uuid.UUID) {
+			if seen && !m.nodes[id].asset && id != x && id != y {
+				after = append(after, id)
+			}
+			seen = seen || id == k
+			for _, c := range p.children(m, id) {
+				walk(c)
+			}
+		}
+		walk(g)
+		if len(after) > 0 {
+			at := p.create(m, &after[p.rng.IntN(len(after))], "z", false)
+			if p.rng.IntN(2) == 0 {
+				p.create(m, &at, "zz", false)
+			}
+			if p.rng.IntN(2) == 0 {
+				under := p.create(m, &at, "w", false)
+				w = &under
+			}
+			z = &at
+		}
+	}
 	t0 = m.clone()
 	e := p.edit(m)
 	if p.rng.IntN(2) == 0 {
@@ -637,6 +730,12 @@ func (p *jobTrial) folder() (t0, post jobModel, items []domain.ChangesetItem, ve
 	}
 	if p.rng.IntN(3) == 0 {
 		e.write(g)
+	}
+	if w != nil {
+		e.delApart(*w)
+	}
+	if z != nil {
+		e.delApart(*z)
 	}
 	e.del(g)
 	if outY {
@@ -694,8 +793,8 @@ func (p *jobTrial) changesetOf(pre, post jobModel, written map[uuid.UUID]bool) (
 
 // load is a fixture whose store holds the notebook m, every version the
 // trial wrote in its history, and the changeset of items and versions,
-// made at the trial's time; the trash items' counts as a deletion
-// records them.
+// made at the trial's time; each trash item at its time in m, its counts
+// as a deletion records them.
 func (p *jobTrial) load(m jobModel, items []domain.ChangesetItem, versions []domain.ChangesetVersion) (*fixture, *fakeChangeset) {
 	f := newFixture()
 	f.grant(domain.ActionRevert)
@@ -723,13 +822,13 @@ func (p *jobTrial) load(m jobModel, items []domain.ChangesetItem, versions []dom
 			}
 			continue
 		}
-		f.store.trash[id] = app.AnyNode{Node: node, DeletedAt: new(p.at), TrashRoot: n.trash == id}
+		f.store.trash[id] = app.AnyNode{Node: node, DeletedAt: new(p.timeOf(m, n.trash)), TrashRoot: n.trash == id}
 		if !n.asset {
 			f.store.trashed[id] = content
 		}
 	}
 	for root := range m.trash {
-		group, err := f.store.group(f.eng, root, p.at)
+		group, err := f.store.group(f.eng, root, p.timeOf(m, root))
 		if err != nil {
 			panic(err)
 		}
@@ -753,7 +852,7 @@ func groupOf(group []domain.TrashMember) []domain.GroupNode {
 
 // modelOf is the fixture's store as the model has it: its nodes alive and
 // in the trash, each trash item its members where their deletion left
-// them.
+// them, at its time.
 func (p *jobTrial) modelOf(f *fixture) jobModel {
 	m := newJobModel()
 	for _, id := range p.ids {
@@ -780,7 +879,7 @@ func (p *jobTrial) modelOf(f *fixture) jobModel {
 			m.nodes[n.ID] = jobNode{parent: n.ParentID, name: n.Name, order: n.SortOrder, asset: n.Kind == domain.KindAsset, trash: id,
 				revision: c.Revision, content: c.Content}
 		}
-		m.trash[id] = members
+		m.trash[id], m.at[id] = members, *t.DeletedAt
 	}
 	return m
 }
@@ -885,15 +984,21 @@ func (f *fixture) checkedJobs(c *checkedStore) *app.JobWrites {
 
 // checkedWrites are the job writes through c, of rollbacks.
 func (f *fixture) checkedWrites(c *checkedStore, rollbacks app.JobRollbacks) *app.JobWrites {
-	w := app.NewWriter(app.WriterDeps{
+	w := f.checkedWriter(c)
+	return app.NewJobWrites(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait), f.store, 0, 0,
+		rollbacks)
+}
+
+// checkedWriter is the jobs' writer over the fixture, its node writes
+// through c.
+func (f *fixture) checkedWriter(c *checkedStore) *app.Writer {
+	return app.NewWriter(app.WriterDeps{
 		Tx: f.tx, Clock: f.clock, Auth: f.auth, Workspaces: f.workspaces, Notebooks: f.notebooks, Nodes: f.store, RevertTrees: f.store, IngestNow: f.store,
 		Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos},
 		SourcePrecheck: app.NewSourcePrecheck(app.SourcePrecheckDeps{Snapshots: fakeSnapshots{f.rec}, Sources: f.store, Attachments: fakeAttachments{recorder: f.rec, infos: f.infos}}),
 		NodeWriter:     c, Trash: f.store, History: f.log, Changesets: f.store, SessionWriter: f.store, Search: f.store, Names: f.names,
 		Markdown: f.md, Ledger: f.ledger,
 	})
-	return app.NewJobWrites(f.trashReads(now()), f.log, w, app.NewContentParser(w, f.md, f.budget, f.wait), f.store, 0, 0,
-		rollbacks)
 }
 
 // recorded is the job's changeset id as the history holds it, a revert of
@@ -901,6 +1006,12 @@ func (f *fixture) checkedWrites(c *checkedStore, rollbacks app.JobRollbacks) *ap
 // in the history; a deletion's item with its page's revision in the trash,
 // as the store records it (M8/P3 design 3.4).
 func (f *fixture) recorded(id, reverted uuid.UUID) *fakeChangeset {
+	return f.recordedAs(domain.ChangesetRevert, id, reverted)
+}
+
+// recordedAs is recorded, the changeset of kind: a rollback's, say, which
+// reverts none (M12/P3 design 3.10.7).
+func (f *fixture) recordedAs(kind domain.ChangesetKind, id, reverted uuid.UUID) *fakeChangeset {
 	var items []domain.ChangesetItem
 	for _, it := range f.store.recorded {
 		if it.ChangesetID == id {
@@ -920,7 +1031,7 @@ func (f *fixture) recorded(id, reverted uuid.UUID) *fakeChangeset {
 				Rewrite: r.Rewrite})
 		}
 	}
-	c := f.log.changeset(domain.ChangesetRevert, f.alice, now(), items, versions...)
+	c := f.log.changeset(kind, f.alice, now(), items, versions...)
 	c.ID, c.RevertsID = id, reverted
 	return c
 }
@@ -995,6 +1106,7 @@ func (p *jobTrial) job(f *fixture, id uuid.UUID, start, star jobModel, counts *j
 		return uuid.UUID{}, fmt.Sprintf("the steps on the model: %s; steps %s", bad, describeSteps(steps))
 	}
 	p.segments(plan.Steps(), steps, counts)
+	p.nesting(plan.Steps(), steps, groups, star, counts)
 	cuts := p.cuts(plan.Steps())
 	counts.jobs, counts.batches = counts.jobs+1, counts.batches+len(cuts)
 	batchOf := map[int]map[int]bool{}
@@ -1090,6 +1202,86 @@ func (p *jobTrial) segments(jobSteps []domain.JobStep, steps []app.RevertStep, c
 		last[s.Group] = k
 	}
 	counts.cut += len(cut)
+}
+
+// nesting counts the job's groups restored under another (M12/P3 design
+// 3.10.7), each kind once a job: nested, a group whose root's parent in
+// S* is a member of another group; nestedMid, that member not the other
+// group's root; nestedGroup, the nested group of two members or more,
+// where only a top's walk past a trash item's root above its start shows;
+// nestedCut, the nested root's restore in the segment of steps aside of
+// the other group's root's, its parent past the members the segment's
+// later places need of that group, as needed reads a segment without its
+// restores; nestedDeep, the other group itself nested so, three levels of
+// items deleted apart (review P3S2B-M1). Each counts the shape, whatever
+// needed makes of it.
+func (p *jobTrial) nesting(jobSteps []domain.JobStep, steps []app.RevertStep, groups [][]domain.GroupNode, star jobModel,
+	counts *jobCounts,
+) {
+	member := map[uuid.UUID][2]int{} // a node's group and place in it
+	for g, nodes := range groups {
+		for i, n := range nodes {
+			member[n.ID] = [2]int{g, i}
+		}
+	}
+	segment := make([]int, len(steps))
+	aside := map[int]bool{}
+	for k := range steps {
+		if k > 0 && !jobSteps[k-1].Joined {
+			segment[k] = segment[k-1] + 1
+		} else if k > 0 {
+			segment[k] = segment[k-1]
+		}
+		if steps[k].Kind == domain.RevertAside {
+			aside[segment[k]] = true
+		}
+	}
+	root := map[int]int{} // a group's root's restore, by group
+	for k, s := range steps {
+		if s.Kind == domain.RevertRestore && s.Member == 0 {
+			root[s.Group] = k
+		}
+	}
+	var nested, mid, two, cut bool
+	outerOf := map[int]int{} // a nested group's other group
+	for g, nodes := range groups {
+		parent := star.nodes[nodes[0].ID].parent
+		if parent == nil {
+			continue
+		}
+		in, ok := member[*parent]
+		if !ok || in[0] == g {
+			continue
+		}
+		nested, mid, two = true, mid || in[1] > 0, two || len(nodes) > 1
+		outerOf[g] = in[0]
+		k, outer := root[g], root[in[0]]
+		if !aside[segment[k]] || segment[outer] != segment[k] {
+			continue
+		}
+		need := 1
+		for j := outer + 1; j < len(steps) && segment[j] == segment[k]; j++ {
+			if s := steps[j]; s.Kind == domain.RevertPlace && s.Parent != (uuid.UUID{}) {
+				if at, ok := member[s.Parent]; ok && at[0] == in[0] {
+					need = max(need, at[1]+1)
+				}
+			}
+		}
+		cut = cut || in[1] >= need
+	}
+	deep := false
+	for _, h := range outerOf {
+		_, ok := outerOf[h]
+		deep = deep || ok
+	}
+	for _, c := range []struct {
+		n  *int
+		is bool
+	}{{&counts.nested, nested}, {&counts.nestedMid, mid}, {&counts.nestedGroup, two}, {&counts.nestedCut, cut}, {&counts.nestedDeep, deep}} {
+		if c.is {
+			*c.n++
+		}
+	}
 }
 
 // joints is "" when the steps joined are the segments (M9/P3 design

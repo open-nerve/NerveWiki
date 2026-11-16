@@ -580,6 +580,9 @@ func historyCodeCalls(t *testing.T, r readsApp) []codeCall {
 		{nb, "log", map[string]any{"limit": 0}, "validation_failed"},
 		{mcpserver.Pattern, "log", map[string]any{"notebook": r.hidden}, "notebook.not_found"},
 		{nb, "log", map[string]any{"path": "Missing.md"}, "page.not_found"},
+		// "" is refused; "/" or no path is the whole notebook (M12 design
+		// 4.6.4, 30.4).
+		{nb, "log", map[string]any{"path": ""}, "validation_failed"},
 		{nb, "changeset", map[string]any{"id": theirs, "cursor": "x"}, "bad_request"},
 		{nb, "changeset", map[string]any{"id": theirs, "limit": 0}, "validation_failed"},
 		{mcpserver.Pattern, "changeset", map[string]any{"notebook": r.hidden, "id": theirs}, "notebook.not_found"},
