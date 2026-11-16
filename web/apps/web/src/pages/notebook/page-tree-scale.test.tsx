@@ -17,7 +17,8 @@ import { renderApp } from "../../test/render";
 // notebook of 1,000 pages at its root, an editor's, on its home, whose left column and main each list them all. What
 // is guarded is what renders, not how long it takes (design 2.4 辛): each list draws its first rows at once and the
 // rest a chunk at a time, another's change to the tree renders only the row it adds, a row holds no menu of its own
-// nor a router's link. The full scale is measured by e2e/perf (design 6.3).
+// nor a router's link, a dialog chosen from the menu renders once as it opens. The full scale is measured by e2e/perf
+// (design 6.3).
 
 /** Each time a row of the tree renders it calls useDrag once, an editor's row and a reader's alike: counted here. */
 const rendered = vi.hoisted(() => ({ rows: 0 }));
@@ -28,6 +29,19 @@ vi.mock("./page-drag", async (importOriginal) => {
     useDrag: (...args: Parameters<typeof original.useDrag>) => {
       rendered.rows += 1;
       return original.useDrag(...args);
+    },
+  };
+});
+
+/** Each time the "Move to…" dialog a row mounts renders: counted here (its form reads each page of the tree). */
+const moving = vi.hoisted(() => ({ renders: 0 }));
+vi.mock("./move-page-dialog", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./move-page-dialog")>();
+  return {
+    ...original,
+    MovePageDialog: (props: Parameters<typeof original.MovePageDialog>[0]) => {
+      moving.renders += 1;
+      return <original.MovePageDialog {...props} />;
     },
   };
 });
@@ -228,4 +242,22 @@ test("following a page of a tree of 1,000 renders the two rows whose mark change
   expect(link(100)?.getAttribute("aria-current")).toBeNull();
   expect(rendered.rows).toBeGreaterThanOrEqual(1);
   expect(rendered.rows).toBeLessThanOrEqual(2);
+}, 30_000);
+
+test("a dialog chosen from a row's menu renders once as it opens, not again as the menu closes", async () => {
+  const user = userEvent.setup();
+  renderHome(pageServer({ nodes: flat(many) }));
+  await waitFor(() => expect([treeRows(), homeRows()]).toEqual([many, many]), wait);
+  const nav = screen.getByRole("navigation", { name: "Pages of Plans" });
+  await user.click(within(nav).getByRole("button", { name: "Actions for p0500" }));
+  const item = await screen.findByRole("menuitem", { name: "Move to…" });
+  moving.renders = 0;
+
+  await user.click(item);
+
+  const dialog = await screen.findByRole("dialog", { name: "Move p0500" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+  // Once: the row rendering again as its button's menu closes leaves the dialog be.
+  expect(moving.renders).toBe(1);
 }, 30_000);

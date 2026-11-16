@@ -9,8 +9,10 @@ import {
   useMemo,
   useRef,
   useState,
+  type Dispatch,
   type MouseEvent,
   type RefObject,
+  type SetStateAction,
 } from "react";
 import { createPath, useLocation, useParams, type NavigateFunction } from "react-router";
 
@@ -52,6 +54,9 @@ import { SourceAddDialog } from "./source-add-dialog";
 
 /** The dialogs a page's menu opens, each held by the page's row. */
 type Dialogs = "rename" | "move" | "delete" | "source-paste" | "source-files";
+
+/** The dialog chosen for a row, and whether it is open: shut, it is still mounted until it has closed. */
+type Chosen = { which: Dialogs; open: boolean };
 
 /**
  * What a row of a writer's tree registers by its page as it mounts: how
@@ -229,7 +234,7 @@ const PageRow = memo(function PageRow({
   const row = useRef<HTMLDivElement>(null);
   const instruction = useDrag(context.pages, id, row, open, canDrag, writer);
   const [expanded, setExpanded] = useState(false);
-  const [dialog, setDialog] = useState<{ which: Dialogs; open: boolean }>();
+  const [dialog, setDialog] = useState<Chosen>();
   // An effect of its own, not the drag's, which runs again as the row shows or hides its children: the menu open at
   // its button stays open as another's change collapses the row, and closes only as the row leaves the tree.
   useEffect(() => {
@@ -337,14 +342,9 @@ const PageRow = memo(function PageRow({
       </div>
       {open && <PageList context={context} parent={id} depth={depth + 1} id={listId} />}
       {dialog !== undefined && (
-        <PageDialogs
-          context={context}
-          id={id}
-          which={dialog.which}
-          open={dialog.open}
-          setOpen={(next) => setDialog((now) => now && { ...now, open: next })}
-          closed={() => setDialog(undefined)}
-        />
+        // Given the state's setter, the same at each render: the row rendering again (its button's menu closing as the
+        // dialog opens) leaves the dialog be, whose form may read each page of the tree.
+        <PageDialogs context={context} id={id} which={dialog.which} open={dialog.open} set={setDialog} />
       )}
     </li>
   );
@@ -495,16 +495,16 @@ const PageDialogs = observer(function PageDialogs({
   id,
   which,
   open,
-  setOpen,
-  closed,
+  set,
 }: {
   context: TreeContext;
   id: string;
   which: Dialogs;
   open: boolean;
-  setOpen: (open: boolean) => void;
-  closed: () => void;
+  set: Dispatch<SetStateAction<Chosen | undefined>>;
 }) {
+  const setOpen = (next: boolean) => set((now) => now && { ...now, open: next });
+  const closed = () => set(undefined);
   const { pages, heading, fail, focusActions } = context;
   const notebook = notebookOf(context);
   const { pageId } = useParams();
