@@ -181,10 +181,47 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
   await reload(page);
   await expect(row).toContainText("Last used");
 
-  // Revoked, it leaves the list and stops at once.
+  // The revocation refused once: Revoke, pressed by the keyboard, keeps the focus while it is out, aria-disabled,
+  // not disabled, and after the refusal, which the alert says (v0.1 design 13.2, item 12; M12/P2/S1, 23.16). The
+  // keyboard, as WebKit gives a clicked button no focus.
+  const revokePath = `/api/v0/api-tokens/${created.id}`;
+  let releaseRefusal: (() => void) | undefined;
+  const refusalHeld = new Promise<void>((resolve) => {
+    releaseRefusal = resolve;
+  });
+  let refused = false;
+  await page.route(`**${revokePath}`, async (route) => {
+    if (route.request().method() !== "DELETE" || refused) {
+      await route.fallback();
+      return;
+    }
+    refused = true;
+    await refusalHeld;
+    await route.fulfill({
+      status: 503,
+      contentType: "application/problem+json",
+      json: { status: 503, code: "server_busy", title: "Service Unavailable" },
+    });
+  });
   await page.getByRole("button", { name: "Revoke CI deploy" }).click();
-  const revoked = answerTo(page, "DELETE", `/api/v0/api-tokens/${created.id}`);
-  await page.getByRole("alertdialog", { name: "Revoke CI deploy?" }).getByRole("button", { name: "Revoke" }).click();
+  const revokeDialog = page.getByRole("alertdialog", { name: "Revoke CI deploy?" });
+  const revoke = revokeDialog.getByRole("button", { name: "Revoke", exact: true });
+  await revoke.focus();
+  const refusal = answerTo(page, "DELETE", revokePath);
+  await page.keyboard.press("Enter");
+  const revoking = revokeDialog.getByRole("button", { name: "Revoking…" });
+  await expect(revoking).toHaveAttribute("aria-disabled", "true");
+  await expect(revoking).toBeFocused();
+  releaseRefusal?.();
+  expect((await refusal).status()).toBe(503);
+  pageWatch.expectConsole({ errors: [failedToLoad(503)] });
+  await expect(revokeDialog.getByRole("alert")).toHaveText("The server is busy. Try again in a moment.");
+  await expect(revoke).not.toHaveAttribute("aria-disabled");
+  await expect(revoke).toBeFocused();
+
+  // Revoked, it leaves the list and stops at once.
+  const revoked = answerTo(page, "DELETE", revokePath);
+  await page.keyboard.press("Enter");
   expect((await revoked).status()).toBe(204);
   await expect(page.getByText("You have no access tokens.")).toBeVisible();
   await expectTokenRevoked(db, created.id);

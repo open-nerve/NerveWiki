@@ -440,6 +440,9 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   await expect(confirm).toHaveAttribute("aria-busy", "true");
   await expect(confirm).toHaveText("Undoing…");
   await expect(confirm).toBeFocused();
+  // aria-disabled, the buttons look it, as disabled ones do (M12/P2/S1, 23.17, 28.2).
+  await expect(sessionDialog.getByRole("button", { name: "Cancel", exact: true })).toHaveCSS("opacity", "0.5");
+  await expect(confirm).toHaveCSS("opacity", "0.5");
   await releaseHeld();
   expect((await locked).status()).toBe(409);
   pageWatch.expectConsole({ errors: [failedToLoad(409)] });
