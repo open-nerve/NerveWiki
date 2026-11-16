@@ -2,7 +2,7 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { createClient } from "@nervewiki/api-client";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { login, signInContext } from "../fixtures/auth";
 import { watchPage } from "../fixtures/browser";
@@ -29,7 +29,10 @@ import { perfEnv } from "./setup";
 // Changed after review B on M12/P4/S2: the whole document is parsed once (parse/entry.ts; it was twice, I1); the
 // definitions of many lines that never close, or close on their last, are among the shapes (I2: the first rounds had
 // only one over two lines); a character typed at the paragraph's end besides its middle (M2: in its middle a run of
-// spaces is split in two, half the cost); the line with a pipe has the head too (N3).
+// spaces is split in two, half the cost); the line with a pipe has the head too (N3). Each cell of each shape is
+// parsed in a page of its own, its heap collected first: in one page for all, a definition's cells read up to twice
+// what they read alone, after the shapes before it had filled the heap (each of its lines builds the paragraph's text
+// anew; the check of the fixes, B's C1-M1).
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 const warmUps = 2;
@@ -207,36 +210,77 @@ const shapes: Shape[] = [
 const wholeMedians = new Map<string, number>();
 let parsedLimit = 0;
 
-test("the editor's parse at its limits", async ({ page }) => {
-  const script = await buildParse(path.join(import.meta.dirname, "../test-results/perf/parse"));
+/** A page of its own with the parse page's script, its heap collected: no parse before weighs on what it measures. */
+async function parsePage(context: BrowserContext, script: string): Promise<Page> {
+  const page = await context.newPage();
   await page.setContent("<!doctype html><html><body></body></html>");
   await page.addScriptTag({ path: script });
-  const limit = await page.evaluate(() => (window as unknown as { nwParse: NwParse }).nwParse.inlineLimit);
-  parsedLimit = limit;
-  // Without the limits, a paragraph of 200,000 spaces takes seconds: the page parses what the editor does.
-  const spaces = await page.evaluate(
-    (doc) => (window as unknown as { nwParse: NwParse }).nwParse.whole(doc, 0).ms,
-    `x${" ".repeat(199_998)}y`
-  );
-  record("b9-spaces", { round, ms: spaces });
-  expect(spaces, "a paragraph of 200,000 spaces parsed whole, in ms").toBeLessThan(1_000);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("HeapProfiler.collectGarbage");
+  await cdp.detach();
+  return page;
+}
+
+/** In a page of its own, count parses of doc as cell has them. */
+async function parsesIn(
+  context: BrowserContext,
+  script: string,
+  arg: { doc: string; at: number; where: number; cell: string; count: number }
+): Promise<Parsed[]> {
+  const page = await parsePage(context, script);
+  try {
+    return await page.evaluate((each) => {
+      const parse = (window as unknown as { nwParse: NwParse }).nwParse;
+      return Array.from({ length: each.count }, () => {
+        if (each.cell === "whole") return parse.whole(each.doc, each.at);
+        if (each.cell === "parser") return parse.parser(each.doc, each.at);
+        return parse.insert(each.doc, each.at, each.where);
+      });
+    }, arg);
+  } finally {
+    await page.close();
+  }
+}
+
+test("the editor's parse at its limits", async ({ browser }) => {
+  const script = await buildParse(path.join(import.meta.dirname, "../test-results/perf/parse"));
+  const context = await browser.newContext();
+  try {
+    const first = await parsePage(context, script);
+    const limit = await first.evaluate(() => (window as unknown as { nwParse: NwParse }).nwParse.inlineLimit);
+    await first.close();
+    parsedLimit = limit;
+    // Without the limits, a paragraph of 200,000 spaces takes seconds: the page parses what the editor does.
+    const [spaces] = await parsesIn(context, script, {
+      doc: `x${" ".repeat(199_998)}y`,
+      at: 0,
+      where: 0,
+      cell: "whole",
+      count: 1,
+    });
+    record("b9-spaces", { round, ms: spaces?.ms });
+    expect(spaces?.ms, "a paragraph of 200,000 spaces parsed whole, in ms").toBeLessThan(1_000);
+    await measureShapes(context, script, limit);
+  } finally {
+    await context.close();
+  }
+});
+
+/** Each shape's four cells, each in a page of its own. */
+async function measureShapes(context: BrowserContext, script: string, limit: number): Promise<void> {
   for (const shape of shapes) {
     for (const cell of ["whole", "parser", "middle", "end"] as const) {
       // The change of one character takes the paragraph from one under the limit to the limit (design 4.4).
       const length = cell === "whole" || cell === "parser" ? limit : limit - 1;
       const { doc, at, middle, end } = shape.doc(length);
-      // oxlint-disable-next-line no-await-in-loop -- one shape at a time
-      const parses = await page.evaluate(
-        (arg) => {
-          const parse = (window as unknown as { nwParse: NwParse }).nwParse;
-          return Array.from({ length: arg.count }, () => {
-            if (arg.cell === "whole") return parse.whole(arg.doc, arg.at);
-            if (arg.cell === "parser") return parse.parser(arg.doc, arg.at);
-            return parse.insert(arg.doc, arg.at, arg.where);
-          });
-        },
-        { doc, at, where: cell === "end" ? end : middle, cell, count: warmUps + times }
-      );
+      // oxlint-disable-next-line no-await-in-loop -- one shape and cell at a time
+      const parses = await parsesIn(context, script, {
+        doc,
+        at,
+        where: cell === "end" ? end : middle,
+        cell,
+        count: warmUps + times,
+      });
       const measured = parses.slice(warmUps);
       const values = measured.map((parsed) => parsed.ms);
       const last = measured.at(-1);
@@ -259,7 +303,7 @@ test("the editor's parse at its limits", async ({ page }) => {
       if (cell === "whole") wholeMedians.set(shape.name, median(values));
     }
   }
-});
+}
 
 test("a key in the editor, on the costliest shapes", async ({ browser }) => {
   const env = perfEnv();
