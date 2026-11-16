@@ -38,6 +38,21 @@ test("a page shows where it is, its title, its reading view and its subpages, al
   expect(within(subpages).getByRole("link", { name: "Linux" }).getAttribute("href")).toBe(pagePath(linux.id));
 });
 
+// M12/P2/S1, 12.3: the link leaves with the page it is on; its page is arrived at.
+test("a subpage's link and a breadcrumb's lead to a page arrived at: its title takes the focus the link took with it", async () => {
+  const user = userEvent.setup();
+  renderApp(pagePath(install.id), pageServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+
+  const subpages = await within(main()).findByRole("list", { name: "Subpages" });
+  await user.click(within(subpages).getByRole("link", { name: "Linux" }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Linux" })));
+
+  const crumbs = within(main()).getByRole("navigation", { name: "Breadcrumb" });
+  await user.click(within(crumbs).getByRole("link", { name: "Guide" }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Guide" })));
+});
+
 test("a page without children lists none", async () => {
   renderApp(pagePath(linux.id), pageServer().app);
 

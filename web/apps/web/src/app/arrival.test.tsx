@@ -359,3 +359,23 @@ test.each([
     await waitFor(() => expect(document.activeElement).toBe(again));
   }
 );
+
+// M12/P2/S1, 26.4: Where to look replaces the entry, keeping its arrival.
+test("Where to look keeps the arrival of its entry: Back to the results from a page gone to from them gives their title the focus", async () => {
+  const { user, router, box } = await home();
+  await user.type(box, "Install{Enter}");
+  const title = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+
+  const where = screen.getByRole("combobox", { name: "Where to look" });
+  await user.selectOptions(where, "Plans");
+  await waitFor(() => expect(router.state.location.search).toContain("notebook_id="));
+  expect(document.activeElement).toBe(where);
+  expect(router.state.location.state).toEqual(arrived);
+
+  await act(() => router.navigate(pagePath(install.id)));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => router.navigate(-1));
+  const again = await screen.findByRole("heading", { level: 1, name: "Search “Install”" });
+  await waitFor(() => expect(document.activeElement).toBe(again));
+});

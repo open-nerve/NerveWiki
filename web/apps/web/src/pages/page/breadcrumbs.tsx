@@ -1,5 +1,7 @@
 import { Link } from "react-router";
 
+import { arrived } from "../../app/arrival";
+
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
@@ -35,7 +37,9 @@ export function Breadcrumbs({
 /**
  * BreadcrumbTrail is a trail of steps, each a link, then where the reader
  * is (current), marked as the current one: a page's (Breadcrumbs), a trash
- * item's preview (its notebook, the trash, the item).
+ * item's preview (its notebook, the trash, the item). A step leaves with
+ * the page it is on: the page it leads to is arrived at, its title taking
+ * the focus (v0.1 design 13.2, item 17; M5-polish 12.3).
  */
 export function BreadcrumbTrail({
   steps,
@@ -51,7 +55,7 @@ export function BreadcrumbTrail({
         {steps.map((step, i) => (
           <li key={step.key}>
             {i > 0 && <Separator />}
-            <Link to={step.to} className="hover:underline">
+            <Link to={step.to} state={arrived} className="hover:underline">
               {step.name}
             </Link>
           </li>
