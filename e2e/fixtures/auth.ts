@@ -144,9 +144,10 @@ export function displayNameOf(email: string): string {
 
 /**
  * The ids of the web app's onboarding steps, in order (web/apps/web/src/onboarding/steps.ts): a step added
- * there is added here, or the stories of onboarded accounts land on onboarding (A9 counts the steps).
+ * there is added here, or the stories of onboarded accounts land on onboarding (A9 counts the steps). perf's
+ * setup records them for the accounts it creates (e2e/perf/setup.ts).
  */
-const onboardingSteps = ["profile", "workspace", "notebook"];
+export const onboardingSteps = ["profile", "workspace", "notebook"];
 
 /** Signs email up through the API, done with onboarding as the web app would have it, and returns its tokens. */
 export async function registerOnboarded(api: ApiClient, email: string): Promise<AuthTokens> {

@@ -191,6 +191,12 @@ importers:
 
   e2e:
     devDependencies:
+      '@codemirror/language':
+        specifier: 6.12.4
+        version: 6.12.4
+      '@codemirror/state':
+        specifier: 6.7.6
+        version: 6.7.6
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.6.5)
