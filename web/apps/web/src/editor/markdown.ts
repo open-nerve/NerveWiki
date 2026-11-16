@@ -61,8 +61,9 @@ export const inlineLimit = 10_000;
  * 1.1, 1.5, 2.4). A writer sees it in the editor only, and only in a
  * definition over lines, closed or not, that long: it shows as a
  * paragraph, its inline parsed as a paragraph's, so that a "[[" in its URL
- * completes unless the URL is an autolink (www., or http(s):// and a
- * domain with a dot; design 3.3, review A's M1).
+ * completes unless the URL is a GFM autolink: www. or a lower-case
+ * http(s)://, then a domain of two words or more, as www.a.b or http://a.b
+ * (design 3.3, review A's M1 and its check's N1).
  */
 export const referenceLimit = 2_000;
 
