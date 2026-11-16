@@ -143,12 +143,28 @@ func TestASupersededStreamLeavesItsOwnAccount(t *testing.T) {
 	for range app.MaxCredentialStreams {
 		bobs = append(bobs, mustOpen(t, h, session(bob(), id)))
 	}
-	mustOpen(t, h, session(alice(), id))
+	alices := []*app.Stream{mustOpen(t, h, session(alice(), id))}
 	if resetFor(bobs[0]) != domain.ResetSuperseded {
 		t.Fatal("bob's oldest was not superseded")
 	}
 	if a, b := app.AccountStreams(h, alice()), app.AccountStreams(h, bob()); a != 1 || b != app.MaxCredentialStreams-1 {
 		t.Errorf("alice counts %d, bob %d; want 1 and %d", a, b, app.MaxCredentialStreams-1)
+	}
+	// Superseded down to none, an account is no entry, as one closed down to
+	// none is not; closed, every stream is forgotten (P3/S1 code review's
+	// check, C-C1-N2).
+	for range app.MaxCredentialStreams - 1 {
+		alices = append(alices, mustOpen(t, h, session(alice(), id)))
+	}
+	if credentials, accounts := app.HubCounts(h); credentials != 1 || accounts != 1 || app.AccountStreams(h, alice()) != app.MaxCredentialStreams {
+		t.Errorf("bob's all superseded: %d credentials, %d accounts counted, alice %d; want 1, 1 and %d", credentials, accounts,
+			app.AccountStreams(h, alice()), app.MaxCredentialStreams)
+	}
+	for _, s := range append(bobs, alices...) {
+		s.Close()
+	}
+	if credentials, accounts := app.HubCounts(h); credentials != 0 || accounts != 0 {
+		t.Errorf("all closed: %d credentials, %d accounts counted; want none", credentials, accounts)
 	}
 }
 

@@ -155,7 +155,7 @@ func (h *Hub) open(a shared.Actor) (*Stream, error) {
 		// account loses it, as close would take it off.
 		oldest := held[0]
 		h.held[c] = slices.Delete(held, 0, 1)
-		h.accounts[oldest.userID]--
+		h.uncount(oldest.userID)
 		oldest.resetFor(domain.ResetSuperseded)
 		h.logger.Debug("event stream superseded", slog.String("user_id", a.UserID.String()), slog.String("credential", c.kind),
 			slog.Int("streams", MaxCredentialStreams))
@@ -187,8 +187,14 @@ func (h *Hub) close(s *Stream) {
 	} else {
 		h.held[s.credential] = held
 	}
-	if h.accounts[s.userID]--; h.accounts[s.userID] == 0 {
-		delete(h.accounts, s.userID)
+	h.uncount(s.userID)
+}
+
+// uncount takes a stream off the count of the account userID, and forgets
+// an account that counts none; h.mu is held.
+func (h *Hub) uncount(userID uuid.UUID) {
+	if h.accounts[userID]--; h.accounts[userID] == 0 {
+		delete(h.accounts, userID)
 	}
 }
 
