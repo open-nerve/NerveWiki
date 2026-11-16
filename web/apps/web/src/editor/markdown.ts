@@ -38,15 +38,29 @@ const markdownHighlight = HighlightStyle.define([
  * (M6 closeout B-I1, FB-I2, FB2-I1); a run of spaces, a "<?" and a URL's
  * end cost only their length since (linearScans). At the limit the
  * costliest, "*_" over and over, takes about 60 ms a parse in Chromium
- * (M12/P4/S5 design 1.5). A paragraph that
- * may be a link reference definition stops being one once its lines before
- * the next pass the limit (one of one line, or whose last line crosses it,
- * stays one): each of its lines read it again from its start, and a JSON
- * array pasted as text, 20,000 lines, took 0.74 s a keystroke (FB3-I1,
- * FB4-N1). A table keeps its rows and cells, each cell bounded alone: link
- * completion needs them.
+ * (M12/P4/S5 design 1.5). A table keeps its rows and cells, each cell
+ * bounded alone: link completion needs them.
  */
 export const inlineLimit = 10_000;
+
+/**
+ * referenceLimit is how long a paragraph that may be a link reference
+ * definition grows, in UTF-16 code units, its line breaks and the marks of
+ * the blocks it is in counted, and still is one: once its lines before the
+ * next pass it, it is a paragraph (one of one line, or whose last line
+ * crosses it, stays one; M6 closeout FB4-N1). lezer's definition parser
+ * builds the paragraph's text anew at each line and reads it from its
+ * start (LinkReferenceParser.nextLine), so that one of many lines costs the
+ * square of its length: a JSON array pasted as text, 20,000 lines, took
+ * 0.74 s a keystroke (FB3-I1). Bounded by inlineLimit, a definition whose
+ * title never closes took 85-90 ms a character typed in Chromium, and a key
+ * in the editor 75-110 ms; at 2,000, some 5 ms and 18-32 ms. The repo's
+ * definitions are of one line, 24 code units at most (M12/P4/S5 design
+ * 1.1, 1.5, 2.4). A writer sees it in the editor only, and only in a
+ * definition over lines, closed or not, that long: it shows as a paragraph,
+ * a "[[" in its URL completes (design 3.3).
+ */
+export const referenceLimit = 2_000;
 
 /**
  * blockDepth is how deep in blocks (lists, their items, quotes) the editor
@@ -58,8 +72,9 @@ export const inlineLimit = 10_000;
 export const blockDepth = 100;
 
 /**
- * bounded reads what is past inlineLimit or blockDepth as plain text.
- * Exported for the tests, as the limits are.
+ * bounded reads what is past inlineLimit or blockDepth as plain text, and a
+ * definition over lines past referenceLimit as a paragraph. Exported for the
+ * tests, as the limits are.
  */
 export const bounded: MarkdownConfig = {
   parseBlock: [
@@ -86,7 +101,7 @@ export const bounded: MarkdownConfig = {
         }
         return {
           nextLine: (_cx, _line, longer) => {
-            if (longer.content.length > inlineLimit) {
+            if (longer.content.length > referenceLimit) {
               longer.parsers = longer.parsers.filter((parser) => !references.includes(parser));
             }
             return false;
@@ -320,9 +335,10 @@ const markdownEditor = new Language(
  * markdownEditing is the editor's Markdown (M4/P6 design 3.2): CommonMark
  * and GFM by lezer, without markdown()'s languages for HTML, CSS and
  * JavaScript, so that code blocks are not highlighted inside; an inline
- * text longer than inlineLimit, a line deeper than blockDepth, is plain.
- * Enter continues a list or a quote; Backspace at its mark takes the mark
- * away.
+ * text longer than inlineLimit, a line deeper than blockDepth, is plain, a
+ * definition over lines longer than referenceLimit a paragraph, and three
+ * of lezer's inline scans take a run once (linearScans). Enter continues a
+ * list or a quote; Backspace at its mark takes the mark away.
  */
 export function markdownEditing(): Extension {
   return [

@@ -5,7 +5,7 @@ import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { InlineContext, type InlineParser, type MarkdownConfig, type MarkdownParser } from "@lezer/markdown";
 import { expect, test } from "vitest";
 
-import { blockDepth, bounded, inlineLimit, linearScans, markdownEditing } from "./markdown";
+import { blockDepth, bounded, inlineLimit, linearScans, markdownEditing, referenceLimit } from "./markdown";
 
 /** The document after key is pressed with the cursor at the end of doc. */
 function press(doc: string, key: string): string {
@@ -487,14 +487,14 @@ test("lists in lists, quotes in quotes are read to blockDepth; past it the rest 
 /** A link reference definition whose title ends on its second line, its first before characters long. */
 const ending = (before: number) => `[a]: http://x "${"t".repeat(before - 15)}\nt"\n\ntext`;
 
-test("a link reference definition is one up to inlineLimit, over lines too; one still open past it is plain text; a table past it keeps its rows and cells", () => {
+test("a link reference definition over lines is one up to referenceLimit, one of one line past inlineLimit too; one still open past referenceLimit is plain text; a table past inlineLimit keeps its rows and cells", () => {
   expect(count('[a]: http://x "t"\n\ntext', "LinkReference")).toBe(1);
   expect(count('[a]:\n  http://x\n  "t"', "LinkReference")).toBe(1);
-  const open = `[a]: http://x "${"t\n".repeat(inlineLimit / 2)}"`;
+  const open = `[a]: http://x "${"t\n".repeat(referenceLimit / 2)}"`;
   expect([count(open, "LinkReference"), count(open, "Paragraph")]).toEqual([0, 1]);
   // Its lines are counted before the next is read: the line that ends it may cross the limit (M6 closeout FB4-N1).
-  expect(count(ending(inlineLimit), "LinkReference")).toBe(1);
-  expect(count(ending(inlineLimit + 1), "LinkReference")).toBe(0);
+  expect(count(ending(referenceLimit), "LinkReference")).toBe(1);
+  expect(count(ending(referenceLimit + 1), "LinkReference")).toBe(0);
   expect(count(`[a]: http://x "${"t".repeat(2 * inlineLimit)}"\n\ntext`, "LinkReference")).toBe(1);
   const rows = Array.from({ length: 1_000 }, (_, i) => `| [a](b) | ${i} |`);
   const table = ["| x | y |", "|---|---|", ...rows].join("\n");
