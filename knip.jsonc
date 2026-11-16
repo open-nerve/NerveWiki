@@ -15,6 +15,10 @@
         "tools/password-blocklist/build.mjs",
       ],
     },
+    "e2e": {
+      // perf/parse/build.ts 按路径载入 web 自己的 Vite 打解析页（M12/P4 设计 4.4）：e2e 不依赖它
+      "ignoreDependencies": ["vite"],
+    },
     "web/packages/api-client": {
       // 只参与类型检查、不被导入的用例
       "entry": ["test/*.typecheck.ts"],

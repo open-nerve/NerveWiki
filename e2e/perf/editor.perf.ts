@@ -1,0 +1,274 @@
+import path from "node:path";
+import { setTimeout as sleep } from "node:timers/promises";
+
+import { createClient } from "@nervewiki/api-client";
+import { expect, test, type Page } from "@playwright/test";
+
+import { login, signInContext } from "../fixtures/auth";
+import { watchPage } from "../fixtures/browser";
+import { goto } from "../fixtures/navigation";
+import { createNotebook } from "../fixtures/notebooks";
+import { createPage } from "../fixtures/pages";
+import { startEditing } from "../fixtures/wiki-pages";
+import { buildParse } from "./parse/build";
+import type { NwParse, Parsed } from "./parse/entry";
+import { median, record } from "./record";
+import { perfEnv } from "./setup";
+
+// B9, the editor's parse at its limits (M12/P4 design 4.4, decision 465): each costly shape of
+// W/editor/markdown.test.ts grown to the limit, in a paragraph between two ordinary ones, parsed in Chromium by the
+// parse page: whole, the paragraph inlineLimit long; and the change of one character, the paragraph inlineLimit - 1
+// long before it and inlineLimit after. Each measure asserts it parsed within the limit: the paragraph's length, and
+// the link, emphasis and code span of its head (inline() of markdown.test.ts), which a paragraph past the limit, plain
+// text, does not have. Two warm-ups and five measures a shape and a cell; the median of five, the larger of two
+// rounds, against 80 ms. Besides, only recorded: a key pressed in the real editor on the three costliest shapes,
+// from its keydown to the frame after next.
+
+const round = process.env.NW_PERF_ROUND ?? "1";
+const warmUps = 2;
+const times = 5;
+
+/** markdown.test.ts's inline() begins its paragraph with this: a link, emphasis and a code span. */
+const head = "[a](b) *e* `c` ";
+const intro = "An ordinary paragraph before it.\n\n";
+const outro = "\n\nAn ordinary paragraph after it.\n";
+
+/**
+ * A shape: its document with its costly block, length long where its paragraph is the limit's (the reference
+ * definition's first line); the offset of what to look at in it, and where a character goes in the middle; and what a
+ * parse within the limit has.
+ */
+interface Shape {
+  name: string;
+  doc(length: number): { doc: string; at: number; middle: number };
+  within(parsed: Parsed, length: number): boolean;
+}
+
+/** markdown.test.ts's costly shapes, each a paragraph about length long whose inline parse costs its square. */
+const costly: [string, (length: number) => string][] = [
+  ["links", (length) => "[[Page]] ".repeat(length / 9)],
+  ["links and brackets that close none", (length) => "[a](b) ] ".repeat(length / 9)],
+  ["emphasis that closes none", (length) => "a* ".repeat(length / 3)],
+  ["emphasis closed in part", (length) => "*a** ".repeat(length / 5)],
+  ["strong emphasis in emphasis", (length) => "***a*** ".repeat(length / 8)],
+  ["a run of spaces", (length) => `x${" ".repeat(length - 2)}y`],
+  ["an escape, then a run of spaces", (length) => `\\*${" ".repeat(length - 3)}y`],
+  ["processing instructions", (length) => `x${"<?".repeat(length / 2 - 1)}`],
+  ["images not closed", (length) => "![a](".repeat(length / 5)],
+  ["autolinks not closed", (length) => "<http://a".repeat(length / 9)],
+  ["link titles not closed", (length) => "[a](b (x ".repeat(length / 9)],
+  [
+    "code spans of distinct lengths",
+    (length) => {
+      let text = "";
+      for (let ticks = 1; text.length < length; ticks++) {
+        text += `${"`".repeat(ticks)}a`;
+      }
+      return text;
+    },
+  ],
+  ["nested emphasis", (length) => "*a ".repeat(length / 6) + "b* ".repeat(length / 6)],
+  ["nested brackets", (length) => "[".repeat(length / 2) + "]".repeat(length / 2)],
+  ["marks of emphasis and code only", (length) => "*`*`".repeat(length / 4)],
+];
+
+/** text cut or padded with "x" to length, its last character not a space: a paragraph's trailing spaces are not its. */
+function exactly(text: string, length: number): string {
+  const fitted = text.length >= length ? text.slice(0, length) : text + "x".repeat(length - text.length);
+  return /\s$/.test(fitted) ? `${fitted.slice(0, -1)}x` : fitted;
+}
+
+/** Within the limit: the paragraph is length long and has its head's link, emphasis and code span. */
+function headed(parsed: Parsed, length: number): boolean {
+  return parsed.paragraph === length && parsed.inline.join() === "Emphasis,InlineCode,Link";
+}
+
+/** A paragraph of head and fill, length long, after prefix on its line (the marks of the blocks it is in). */
+function paragraph(prefix: string, fill: (length: number) => string) {
+  return (length: number) => {
+    const text = head + exactly(fill(length - head.length), length - head.length);
+    const at = intro.length + prefix.length;
+    return { doc: `${intro}${prefix}${text}${outro}`, at, middle: at + Math.floor(length / 2) };
+  };
+}
+
+const shapes: Shape[] = [
+  ...costly.map(([name, fill]) => ({ name, doc: paragraph("", fill), within: headed })),
+  {
+    // 49 lists one in another, the deepest whose paragraph the editor still reads inline: a list and its item are two
+    // blocks, the document one; at 50 the paragraph is plain text (blockDepth).
+    name: "lists to blockDepth",
+    doc: paragraph("- ".repeat(49), (length) => "x".repeat(length)),
+    within: (parsed, length) => headed(parsed, length) && parsed.blocks.ListItem === 49,
+  },
+  {
+    // 98 quotes, the same: at 99 the paragraph is plain text.
+    name: "quotes to blockDepth",
+    doc: paragraph("> ".repeat(98), (length) => "x".repeat(length)),
+    within: (parsed, length) => headed(parsed, length) && parsed.blocks.Blockquote === 98,
+  },
+  {
+    // A definition whose title ends on its second line, its first line length long: one up to the limit.
+    name: "a link reference definition over two lines",
+    doc: (length) => {
+      const at = intro.length;
+      return {
+        doc: `${intro}[a]: http://x "${"t".repeat(length - 15)}\nt"${outro}`,
+        at,
+        middle: at + 15 + Math.floor((length - 15) / 2),
+      };
+    },
+    within: (parsed) => parsed.blocks.LinkReference === 1,
+  },
+  {
+    // A line with a pipe, then one of spaces: whether it heads a table cost the square of the spaces.
+    name: "a line with a pipe, then spaces",
+    doc: (length) => {
+      const at = intro.length;
+      return { doc: `${intro}a\nb|c\n${" ".repeat(length - 7)}x${outro}`, at, middle: at + Math.floor(length / 2) };
+    },
+    within: (parsed, length) => parsed.paragraph === length && parsed.blocks.Table === undefined,
+  },
+];
+
+/** The medians of the whole parse this run measured, by shape, and the limit: the editor's keys go to the costliest. */
+const wholeMedians = new Map<string, number>();
+let parsedLimit = 0;
+
+test("the editor's parse at its limits", async ({ page }) => {
+  const script = await buildParse(path.join(import.meta.dirname, "../test-results/perf/parse"));
+  await page.setContent("<!doctype html><html><body></body></html>");
+  await page.addScriptTag({ path: script });
+  const limit = await page.evaluate(() => (window as unknown as { nwParse: NwParse }).nwParse.inlineLimit);
+  parsedLimit = limit;
+  // Without the limits, a paragraph of 200,000 spaces takes seconds: the page parses what the editor does.
+  const spaces = await page.evaluate(
+    (doc) => (window as unknown as { nwParse: NwParse }).nwParse.whole(doc, 0).ms,
+    `x${" ".repeat(199_998)}y`
+  );
+  record("b9-spaces", { round, ms: spaces });
+  expect(spaces, "a paragraph of 200,000 spaces parsed whole, in ms").toBeLessThan(1_000);
+  for (const shape of shapes) {
+    for (const cell of ["whole", "insert"] as const) {
+      // The change of one character takes the paragraph from one under the limit to the limit (design 4.4).
+      const length = cell === "whole" ? limit : limit - 1;
+      const { doc, at, middle } = shape.doc(length);
+      // oxlint-disable-next-line no-await-in-loop -- one shape at a time
+      const parses = await page.evaluate(
+        (arg) => {
+          const parse = (window as unknown as { nwParse: NwParse }).nwParse;
+          return Array.from({ length: arg.count }, () =>
+            arg.cell === "whole" ? parse.whole(arg.doc, arg.at) : parse.insert(arg.doc, arg.at, arg.middle)
+          );
+        },
+        { doc, at, middle, cell, count: warmUps + times }
+      );
+      const measured = parses.slice(warmUps);
+      const values = measured.map((parsed) => parsed.ms);
+      const last = measured.at(-1);
+      record("b9", {
+        round,
+        shape: shape.name,
+        cell,
+        values,
+        median: median(values),
+        paragraph: last?.paragraph,
+        inline: last?.inline,
+        blocks: last?.blocks,
+      });
+      for (const parsed of measured) {
+        expect(shape.within(parsed, limit), `${shape.name}, ${cell}: within the limit ${JSON.stringify(parsed)}`).toBe(
+          true
+        );
+      }
+      if (cell === "whole") wholeMedians.set(shape.name, median(values));
+    }
+  }
+});
+
+test("a key in the editor, on the costliest shapes", async ({ browser }) => {
+  const env = perfEnv();
+  const api = createClient({ baseUrl: env.baseURL });
+  const admin = await login(api, env.admin);
+  const limit = parsedLimit;
+  const costliest = [...wholeMedians].toSorted((a, b) => b[1] - a[1]).slice(0, 3);
+  test.skip(costliest.length === 0, "the parse's test runs first, in the same run");
+  const notebook = await createNotebook(api, admin.access_token, env.workspace, `Editor ${round}`, "editor");
+  const context = await browser.newContext({ baseURL: env.baseURL });
+  try {
+    await signInContext(context, env.baseURL, admin);
+    const page = await context.newPage();
+    await watchPage(page);
+    for (const [name] of costliest) {
+      const shape = shapes.find((each) => each.name === name);
+      if (shape === undefined) continue;
+      // oxlint-disable-next-line no-await-in-loop -- one page at a time
+      const created = await createPage(
+        api,
+        admin.access_token,
+        notebook.id,
+        `B9 ${name}`,
+        null,
+        shape.doc(limit - 1).doc
+      );
+      // oxlint-disable-next-line no-await-in-loop -- the same
+      await goto(page, `/${env.workspace}/notebooks/${notebook.id}/pages/${created.id}`);
+      // oxlint-disable-next-line no-await-in-loop -- the same
+      const content = await startEditing(page);
+      // The block's line: the intro, a blank line, then it.
+      // oxlint-disable-next-line no-await-in-loop -- the same
+      await content.locator(".cm-line").nth(2).click();
+      const keys: { ms: number; longest: number }[] = [];
+      for (let i = 1; i <= times; i++) {
+        // oxlint-disable-next-line no-await-in-loop -- one key at a time, the editor at rest before it
+        keys.push(await keyOnce(page));
+        // oxlint-disable-next-line no-await-in-loop -- undone: the next key again takes the paragraph to the limit
+        await page.keyboard.press("ControlOrMeta+z");
+      }
+      record("b9-key", { round, shape: name, values: keys, median: median(keys.map((key) => key.ms)) });
+    }
+  } finally {
+    await context.close();
+  }
+});
+
+/** One key: once the page has rested a second, "a" pressed; from its keydown to two frames later, and the long tasks. */
+async function keyOnce(page: Page): Promise<{ ms: number; longest: number }> {
+  await sleep(1_000);
+  await page.evaluate(() => {
+    const w = window as unknown as {
+      nwKey?: { at: number; painted: number };
+      nwLong?: { start: number; end: number }[];
+    };
+    w.nwKey = undefined;
+    if (w.nwLong === undefined) {
+      const tasks: { start: number; end: number }[] = [];
+      w.nwLong = tasks;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries())
+          tasks.push({ start: entry.startTime, end: entry.startTime + entry.duration });
+      }).observe({ type: "longtask", buffered: true });
+    }
+    addEventListener(
+      "keydown",
+      (event) => {
+        const at = event.timeStamp;
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            w.nwKey = { at, painted: performance.now() };
+          })
+        );
+      },
+      { capture: true, once: true }
+    );
+  });
+  await page.keyboard.press("a");
+  await page.waitForFunction(() => (window as unknown as { nwKey?: unknown }).nwKey !== undefined, undefined, {
+    timeout: 30_000,
+  });
+  return page.evaluate(() => {
+    const w = window as unknown as { nwKey: { at: number; painted: number }; nwLong: { start: number; end: number }[] };
+    const during = w.nwLong.filter((task) => task.start >= w.nwKey.at && task.start <= w.nwKey.painted);
+    return { ms: w.nwKey.painted - w.nwKey.at, longest: Math.max(0, ...during.map((task) => task.end - task.start)) };
+  });
+}

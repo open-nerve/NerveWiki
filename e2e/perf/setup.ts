@@ -58,7 +58,11 @@ const quietForMs = 30_000;
 
 export default async function setup(): Promise<() => Promise<void>> {
   requireBinary();
-  const names = (process.env.NW_PERF_SHAPES ?? "flat,deep,attachments").split(",").map((name) => name.trim());
+  // Empty: no notebook, for what makes its own (the editor's keys of B9).
+  const names = (process.env.NW_PERF_SHAPES ?? "flat,deep,attachments")
+    .split(",")
+    .map((name) => name.trim())
+    .filter((name) => name !== "");
   const unknown = names.filter((name) => !isShapeName(name));
   if (unknown.length > 0) {
     throw new Error(`NW_PERF_SHAPES names no shape ${unknown.join(", ")}: one of ${Object.keys(shapes).join(", ")}`);
