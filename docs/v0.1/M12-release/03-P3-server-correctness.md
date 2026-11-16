@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P3 服务端的正确性与历史（三个 Step：S1 小的正确性；S2 第 302 条（先写 spec）；S3 导入导出的任务） |
-| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订；同日照 S2、S1 的实施与审查修订） |
-| 状态 | 进行中（设计已审查，S1 已合并 `f3e5a6de`、S2 已合并 `46b6940f`，S3 未开工；设计的[审查记录](reviews/P3-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S1 的[审查记录](reviews/P3-S1-small-correctness-review.md)、S2 的[审查记录](reviews/P3-S2-nested-trash-roots-review.md)；实施与审查之后与代码不同之处照实改在各节（3.21、3.22 列出），结果在 10.1、10.2） |
+| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订；同日照 S2、S1 的实施与审查修订）；2026-11-17 照 S3 的实施与审查修订 |
+| 状态 | 进行中（设计已审查，S1 已合并 `f3e5a6de`、S2 已合并 `46b6940f`、S3 已合并 `（待填：S3 的合并号）`；设计的[审查记录](reviews/P3-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S1 的[审查记录](reviews/P3-S1-small-correctness-review.md)、S2 的[审查记录](reviews/P3-S2-nested-trash-roots-review.md)、S3 的[审查记录](reviews/P3-S3-transfer-jobs-review.md)；实施与审查之后与代码不同之处照实改在各节（3.21、3.22、3.23 列出），结果在 10.1、10.2、10.3） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.5（H1、24.1 写成已知限制）、4.6、第 3 节第 4、5 条、5.1、第 7 节 P3 一行与"次序与并行""分份""移交的落实""总体设计的修订"第 8、10 条、9.2、9.6、第 10 节、第 11 节决定 304、313–316、328、335、336、357、359、附录 A 的 P3/S1 一行；[M12 设计审查](reviews/M12-design-review.md)的 A-M1–M3、A-M8、A-N1–N5、A-I1–I3、A-M4、C-I2；[移交](handoffs/)：M8-history 第 5、6 条，M7-transfer 第 5 条的三项，M5-polish 第 10、25、30 条，M5-performance 第 6 条，M4-performance 第 22 条之后的补记 `:490`；[v0.1 总体设计](../v0.1-design.md) 5.8 第 6 步、13.1 第 2、28、30 条、13.4 第 1、4、8、11 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md)第 3 节（服务端的写法）、[M12/P1](01-P1-foundation.md)（骨架） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/revert.go:309`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移的测试写作 `server/migrations/schema_test.go`；前端写作 `W/pages/notebook/transfer-report.tsx:100`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/transfer/tr4-malicious.spec.ts:105`；契约写作 `api/modules/transfer.yaml:1079`；其余写仓库根起的路径。基点是 `main` 的 `86565dd6`（P1 完成），它与 `194ca350` 只差文档（00 号文档、P1 设计与一份审查记录），代码相同：代码的行号都在 `194ca350` 上读过，在 `86565dd6` 上不变；00 号文档与总体设计的行号是 `86565dd6` 的 |
 | 工作笔记 | 本文引的行号都在 `194ca350` 上读过（附录 A）。第一次修订照三份审查改，审查者的原型与探针在 `m12/p3-review-{a,b,c}/`，修订时另跑的在 `m12/p3-rev1/`；第二次修订照修订核对改，另跑的（3.14.3 的四个测试的用时、00 号文档脚本的试跑）在 `m12/p3-rev2/`；第三次修订照修订核对第 2 轮改 3.7 的理由与 (b) 格，依据是审查 B 的探针 `m12/p3-check2-b/`。设计不跑重的东西；在 scratchpad 的临时 worktree（`194ca350`，不带竞态）里跑了几组小实验，另在一个用完即删的 `postgres:18.7-trixie` 容器里核对了快照冻结的时刻，原样留在 `m12/p3-design/`：第 302 条的四种形状与两个反例在 domain 上的结果（改前、审查 A 的原型 `split-tops.diff`、"`topOf` 只看起点"的变异）；后台撤销的 `needed` 在嵌套的回收站根下真的出错（模型与核对的替身都红，3.10.6）；GBK 解码器对 0x5C 尾字节、Shift-JIS、GB18030 四字节、0x80 与 0xFF 的行为，GBK 名字恰好是合法 UTF-8 的比例（3.12）；REPEATABLE READ 的快照在第一条读等锁之前冻结（3.8.2）。没有跑整个程序的测试，没有量时间 |
@@ -742,16 +742,16 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 
 | 文件 | 改动 |
 |---|---|
-| 新的 `transfer/adapter/archive/names.go`、`names_test.go`、`names_fuzz_internal_test.go`；`archive.go`（`Entries`） | 条目名的解读（3.12） |
+| 新的 `transfer/adapter/archive/names.go`、`names_test.go`、`names_fuzz_internal_test.go`；`archive.go`（`Entries`）；S3 实施另有新的 `names_internal_test.go`（差分，3.23 第 5 条） | 条目名的解读（3.12） |
 | `transfer/domain/entry.go`、`report.go`；`entry_test.go` | `RawEntry.From`、`Sorted.Read`、两种新原因（3.12） |
-| `transfer/app/import.go`；`import_test.go`、`import_fakes_test.go` | 解读过的名字在 `finish` 进报告（3.12） |
-| `transfer/domain/errors.go`；`transfer/app/start.go`、`start_import.go`、`start_background.go`、`uploads.go`、`ports.go`；`transfer/adapter/postgres/queries/jobs.sql`、生成的 `gen/jobs.sql.go`、`store.go`；各层的测试与替身（`app/fakes_test.go`、`adapter/http/fakes_test.go`） | 按人的上限（3.13） |
-| `transfer/adapter/river/jobs.go`；`transfer/app/maintain.go`（`AtStart`、`lost`、`Run` 的注释）；`transfer/rescue_test.go`、`transfer/adapter/river/jobs_test.go`、`transfer/app/requests_test.go`（`TestTheRescue`） | 启动时的收拾（3.14） |
-| `bootstrap/transfer_jobs_test.go`（`seedJobs` 与 `TestServeFailsTheJobsLeftRunning`、`TestTheSweepDeletesTheArchivesNoJobKeeps` 的种子）、`permission_matrix_seeded_test.go`、`upgrade_fixtures_test.go`（`rollingBackIn`）、`transfer_test.go`（`TestTheQueuesLimitIsTheConfigured`）、`transfer_import_test.go`（`TestOneImportAtOnceThroughServe`）；写 River 行的两条 SQL 常量 `riverHoldsSQL`、`riverTakenSQL`（3.14.3） | 种子带上 River 持有的行（3.14.3） |
+| `transfer/app/import.go`；`import_test.go`、`import_fakes_test.go`（S3 实施：替身改在 `fakes_test.go`，`import_fakes_test.go` 不改，3.23 第 3、4 条） | 解读过的名字在 `finish` 进报告（3.12） |
+| `transfer/domain/errors.go`；`transfer/app/start.go`、`start_import.go`、`start_background.go`、`uploads.go`、`ports.go`；`transfer/adapter/postgres/queries/jobs.sql`、生成的 `gen/jobs.sql.go`、`store.go`；各层的测试与替身（`app/fakes_test.go`、`adapter/http/fakes_test.go`）；S3 实施另改 `transfer/app/rollbacks.go` 的注释（回滚算进去、从不因此被拒） | 按人的上限（3.13） |
+| `transfer/adapter/river/jobs.go`；`transfer/app/maintain.go`（`AtStart`、`lost`、`Run` 的注释）；`transfer/rescue_test.go`、`transfer/adapter/river/jobs_test.go`、`transfer/app/requests_test.go`（`TestTheRescue`）；S3 实施另改 `transfer/contributors_test.go`（`root.module`，3.23 第 10 条） | 启动时的收拾（3.14） |
+| `bootstrap/transfer_jobs_test.go`（`seedJobs` 与 `TestServeFailsTheJobsLeftRunning`、`TestTheSweepDeletesTheArchivesNoJobKeeps` 的种子）、`permission_matrix_seeded_test.go`、`upgrade_fixtures_test.go`（`rollingBackIn`）、`transfer_test.go`（`TestTheQueuesLimitIsTheConfigured`）、`transfer_import_test.go`（`TestOneImportAtOnceThroughServe`）；写 River 行的两条 SQL 常量 `riverHoldsSQL`、`riverTakenSQL`（3.14.3）；修复第 1 轮加 `riverHeldJobSQL`（排队行与 River 行一条语句，3.23 第 13 条）；`permission_matrix_transfer_test.go` 的注释照改 | 种子带上 River 持有的行（3.14.3） |
 | `api/modules/transfer.yaml`；`make gen` 的生成物 | 3.15 |
 | 新的 `bootstrap/transfer_names_test.go`、`transfer_person_test.go` | 两个整个程序的测试（3.12、3.13）；T4 并进 `TestServeFailsTheJobsLeftRunning` |
-| `W/app/problem-messages.ts`、`W/i18n/messages/{en,zh-CN}.ts`（含 `transfer.importCut`）、`W/pages/notebook/transfer-report.tsx`、`trash-row.tsx`、`W/test/jobs-server.ts`；测试 `transfer-page.test.tsx`、`page-menu.test.tsx`、`transfer-import.test.tsx`、`trash-background.test.tsx`、`revert-background.test.tsx`、`transfer-report` 的测试 | 第 4 节 |
-| `Makefile`；`README.md:192`、`:193` | 3.19；第 8 节 |
+| `W/app/problem-messages.ts`、`W/i18n/messages/{en,zh-CN}.ts`（含 `transfer.importCut`）、`W/pages/notebook/transfer-report.tsx`、`trash-row.tsx`、`W/test/jobs-server.ts`；测试 `transfer-page.test.tsx`、`page-menu.test.tsx`、`transfer-import.test.tsx`、`trash-background.test.tsx`、`revert-background.test.tsx`、`transfer-report` 的测试（`transfer-report.test.ts`）；S3 实施另有决定 482 的 `transfer-background.test.tsx`（3.23 第 2 条） | 第 4 节 |
+| `Makefile`；`README.md:192`、`:193`（S3 实施：随 Step 的文档提交，决定 531） | 3.19；第 8 节 |
 
 ### 3.12 S3：名称不是 UTF-8 的导入条目（T3）
 
@@ -760,7 +760,7 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 对每个条目的名字（中央目录里的原始字节）：
 
 1. 有 UTF-8 的标志（`Flags&0x800 != 0`）：照原样，合法的照常导入，不合法的 `Classify` 照旧以 `name_not_utf8` 跳过。读 `Flags`，不读 `NonUTF8`：名字不合法时 `archive/zip` 不管标志就把 `NonUTF8` 设为真（Go 1.27.4 `archive/zip/reader.go:391-406`；00 号文档 4.6.6）。
-2. 没有标志、有一个有效的 Unicode Path 字段：取它的名字，来源 `unicode_path`（与原名逐字节相同时照原样，不记）。有效是：字段 ID 0x7075，长度够，版本 1，其后 4 字节的 CRC-32（IEEE）等于名字原始字节的 CRC-32，余下的是非空的合法 UTF-8（APPNOTE 4.6.9：CRC 对不上说明别的工具改过名字、留下了旧的字段，要忽略）。只读中央目录的扩展字段（`f.Extra`），同 `archive/zip` 读的那一份。原名是 ASCII 的也读：把写不出的字换成 `?` 的工具正是靠这个字段留下真名。
+2. 没有标志、有一个有效的 Unicode Path 字段：取它的名字，来源 `unicode_path`（与原名逐字节相同时照原样，不记）。有效是：字段 ID 0x7075，长度够，版本 1，其后 4 字节的 CRC-32（IEEE）等于名字原始字节的 CRC-32，余下的是非空的合法 UTF-8（APPNOTE 4.6.9：CRC 对不上说明别的工具改过名字、留下了旧的字段，要忽略）。只读中央目录的扩展字段（`f.Extra`），同 `archive/zip` 读的那一份。原名是 ASCII 的也读：把写不出的字换成 `?` 的工具正是靠这个字段留下真名。一个条目有几个 0x7075 时只看第一个，它无效就当没有（S3 实施，3.23 第 6 条）。
 3. 余下的没有标志的名字里，不是合法 UTF-8 的是 GBK 的**候选**。**整包**：有候选、而且每个候选按 GBK 解出来都没有 U+FFFD，这个包才算 GBK 的包；只要有一个候选解出 U+FFFD，没有一个名字按 GBK 读（候选随后都跳过）。`golang.org/x/text` 的 GBK 解码器从不报错，非法的字节写成 U+FFFD，所以"解得开"只能这样定义（审查 A 的 M4）。第 1 条的名字不算候选，不影响整包的判断。
 4. GBK 的包里，第 3 条的每个名字，含非 ASCII 字节、按 GBK 解出来没有 U+FFFD 的，都取 GBK 的读法，来源 `gbk`：候选之外，**也包括恰好是合法 UTF-8 的**（P3-16）。GBK 的双字节有一部分恰好是合法的 UTF-8：一级汉字里约 18% 的单字，两个字的名字约 3%（3.12.1 的计算）；常用的 `目录`（`c4 bf c2 bc`，UTF-8 读作 `Ŀ¼`）、`图片`（`cd bc c6 ac`，`ͼƬ`）都是。只改不合法的话，`图片/a.png` 进 `ͼƬ`、`图片/截图.png` 进 `图片`，同一个文件夹分成两个。解出 U+FFFD 的合法 UTF-8 名字照原样。
 5. 其余的照原样。
@@ -865,14 +865,14 @@ type readName struct {
 ```
 
 - `Entries`（`archive.go:296-309`）先 `readNames(a.z.File)`，再以读出的名字判 `Folder` 与 `Special`，交回带 `From` 的 `RawEntry`。
-- `Classify`（`entry.go:92-178`）：一个 `From` 不为空、没有被 `ignored` 滤掉的条目，往 `Read` 里加 `Problem{Path: r.Name, Code: <来源对应的码>}`；不论它之后被收下还是被跳过（被跳过的另有它的跳过的问题）。`Read` 按条目的次序。
+- `Classify`（`entry.go:92-178`）：一个 `From` 不为空、没有被 `ignored` 滤掉的条目，往 `Read` 里加 `Problem{Path: r.Name, Code: <来源对应的码>}`；不论它之后被收下还是被跳过（被跳过的另有它的跳过的问题）。`Read` 按条目的次序；作为库的顶层文件夹、本身不导入的那一个条目也进（S3 实施，3.23 第 7 条）。来源到码是 `NameSource` 的不导出方法 `problem()`（`gochecknoglobals` 不许包级的表，3.23 第 8 条）。
 - `importRun`（`transfer/app/import.go`）：记下 `sorted.Read`；`finish`（`:93` 调的那一个）在写结束的报告之前，把它们逐条 `r.report.Add`，排在这次导入找到的别的问题之后；不加 `Counts.Skipped`。进程中途停掉的导入没有这些记录（P3-12）。
-- app 的替身 `zipArchive`（`transfer/app/fakes_test.go:486-497`）照旧交回原始名字；app 的测试直接构造带 `From` 的 `RawEntry`。
+- app 的替身 `zipArchive`（`transfer/app/fakes_test.go:486-497`）认得来源（S3 实施，3.23 第 3 条）：替身的 `archives` 加一张 `from`（名字 → 来源），`Entries` 照它填 `From`；app 的测试照旧以 zip 造导入，经 `Import.Run` 的整条路走到报告。
 - 已知限制（P5/S3 的发布说明，4.13）：Shift-JIS、Big5、EUC-KR 的名字会被读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好是合法 UTF-8 的 GBK 名字、没有一个候选的包认不出（`ͼƬ`）；**相对今天的回归**：一个包同时有 GBK 候选与没有标志的真 UTF-8 名字时，今天真 UTF-8 名字导入得对，之后会被读成 GBK（P3-16），报告里逐个列成 `name_gbk`。
 
 #### 3.12.3 测试
 
-- **适配器的表**（`names_test.go`，`TestTheImportReadsNamesNotInUTF8`），每格一个 zip，由 `archive/zip` 的 Writer 写。Writer 给合法 UTF-8、又要多字节的名字自动设上标志（Go 1.27.4 `archive/zip/writer.go:313-320`；`detectUTF8` 对 0x5C、0x7E 也算要），所以凡要"没有标志"的条目都给 `FileHeader.NonUTF8: true`；要标志时给 `Flags: 0x800`。帮手 `zipEntry`（`import_fakes_test.go:28-70`）加一个 `noFlag` 字段，整个程序的 `vaultZip` 同样处理。每一格先断言读回的 `Flags&0x800` 是这一格要的，作为对照（审查 C 的 I1，`m12/p3-review-c/flagprobe/`）：
+- **适配器的表**（`names_test.go`，`TestTheImportReadsNamesNotInUTF8`），每格一个 zip，由 `archive/zip` 的 Writer 写。Writer 给合法 UTF-8、又要多字节的名字自动设上标志（Go 1.27.4 `archive/zip/writer.go:313-320`；`detectUTF8` 对 0x5C、0x7E 也算要），所以凡要"没有标志"的条目都给 `FileHeader.NonUTF8: true`；要标志时给 `Flags: 0x800`。帮手 `zipEntry`（`import_fakes_test.go:28-70`）加一个 `noFlag` 字段，整个程序的 `vaultZip` 同样处理（S3 实施：表直接交 `*zip.FileHeader`，整个程序的测试另有 `unflaggedZip`，`zipEntry`、`vaultZip` 不动，3.23 第 4 条）。每一格先断言读回的 `Flags&0x800` 是这一格要的，作为对照（审查 C 的 I1，`m12/p3-review-c/flagprobe/`）：
   1. 带有效 0x7075 的 GBK 名字：取字段的名字，`unicode_path`；
   2. 0x7075 的 CRC 对不上：不取，落到 GBK；
   3. 0x7075 的版本是 2：不取；
@@ -883,14 +883,14 @@ type readName struct {
   8. 有标志却不是合法 UTF-8 的：照原样；同一个包里第 5 格的名字照样按 GBK 读（它不算候选）；有标志的 `ü.md`（合法）在 GBK 的包里也照原样；
   9. 同一个包里多一个 `f\xff.md`（0xFF 不是 GBK 的首字节，读出 U+FFFD）：包里没有一个名字按 GBK 读，第 6 格的 `图片/a.png` 也照原样；
   10. 没有标志、合法 UTF-8 的 `ü.md`（`c3 bc`）在 GBK 的包里：按 GBK 读成 `眉.md`（P3-16 的代价，钉住）；在没有候选的包里：照原样；
-  11. `乗.md`（`81 5C …`）：读成 `乗.md`，是文件；`资料/乗`（`d7 ca c1 cf 2f 81 5c`，没有扩展名，最后一个字的尾字节是 0x5C）：读成 `资料/乗`，是附件、不是文件夹，`资料` 下有它；`资料/` 的 GBK 字节：文件夹。`乗.md` 的原始字节以 `.md` 结尾，抓不到 S3-8，`资料/乗` 抓得到（审查 C 的 M1）；
+  11. `乗.md`（`81 5C …`）：读成 `乗.md`，是文件；`资料/乗`（`d7 ca c1 cf 2f 81 5c`，没有扩展名，最后一个字的尾字节是 0x5C）：读成 `资料/乗`，是附件、不是文件夹，`资料` 下有它；`资料/` 的 GBK 字节：文件夹。`乗.md` 的原始字节以 `.md` 结尾，抓不到 S3-8，`资料/乗` 抓得到（审查 C 的 M1）；符号链接 `资料/俓`（`82 5C` 结尾）按读出的名字判，是特殊文件（修复第 1 轮，S3 审查 B 的 N1）；
   12. Shift-JIS 的 `テスト資料.md`：读成 `僥僗僩帒椏.md`（钉住已知限制：改了它的人要同时改发布说明）；
   13. GB18030 四字节：整包不按 GBK 读。
-- **差分**（`TestReadNamesReadsAsGBKOnlyAZipOfGBKNames`，随机生成的包，固定的几组种子，每组 1,000 个包）：名字取自合法的 UTF-8（含非 ASCII）、GBK 字节（含恰好合法 UTF-8 的）、Shift-JIS 字节与任意字节，标志与 0x7075 随机；"没有标志"那一支设 `NonUTF8: true`。断言：有标志的名字逐字节不变；没有候选的包里，只有带有效 0x7075 的名字会变；ASCII 的名字只因 0x7075 而变；一个包里的 GBK 候选要么全读、要么全不读，全不读时没有一个名字是 `gbk`；读出的 GBK 名字等于解码器对原始字节的输出、没有 U+FFFD（不断言往返，审查 C 的 M2）；读出的 `unicode_path` 名字等于字段里的、字段的 CRC 等于原始名字的。数各种情形出现的次数，各有下限（05-lessons 第 1 节），其中两种单独数、各带下限："没有候选的包里，无标志、非 ASCII 的合法 UTF-8 名字"与"GBK 的包里，无标志、恰好合法 UTF-8 的名字"；S3-3、S3-4 各在差分上红一次（审查 C 的 I1）。
-- **模糊**（`names_fuzz_internal_test.go`，`FuzzUnicodePathReadsOnlyAValidField`）：任意的 `extra` 与 `name` 从不 panic；交回真时，字段里的 CRC 等于 `name` 的、名字是合法的 UTF-8；种子由一个写字段的帮手造（有效、CRC 错、版本 2、截断、两个字段）。普通的 `go test` 跑种子，变异照文件头的命令手跑（13.4 第 11 条）。
+- **差分**（`TestReadNamesReadsAsGBKOnlyAZipOfGBKNames`，在内部测试 `names_internal_test.go` 里，随机生成的包，种子 1–3，每组 1,000 个包，`math/rand/v2` 的 PCG；3.23 第 5 条）：名字取自合法的 UTF-8（含非 ASCII）、GBK 字节（含恰好合法 UTF-8 的）、Shift-JIS 字节与任意字节，标志与 0x7075 随机；"没有标志"那一支设 `NonUTF8: true`。断言：有标志的名字逐字节不变；没有候选的包里，只有带有效 0x7075 的名字会变；ASCII 的名字只因 0x7075 而变；一个包里的 GBK 候选要么全读、要么全不读，全不读时没有一个名字是 `gbk`；读出的 GBK 名字等于解码器对原始字节的输出、没有 U+FFFD（不断言往返，审查 C 的 M2）；读出的 `unicode_path` 名字等于字段里的、字段的 CRC 等于原始名字的。数各种情形出现的次数，各有下限（05-lessons 第 1 节），其中两种单独数、各带下限："没有候选的包里，无标志、非 ASCII 的合法 UTF-8 名字"与"GBK 的包里，无标志、恰好合法 UTF-8 的名字"；S3-3、S3-4 各在差分上红一次（审查 C 的 I1）。13 个计数与下限在 10.3。
+- **模糊**（`names_fuzz_internal_test.go`，`FuzzUnicodePathReadsOnlyAValidField`）：任意的 `extra` 与 `name` 从不 panic；交回真时，字段里的 CRC 等于 `name` 的、名字是合法的 UTF-8；种子由一个写字段的帮手造（有效、CRC 错、版本 2、截断、两个字段）。S3 实施：断言是"当且仅当第一个有效才取，取的是它的名字"（3.23 第 6 条）；修复第 1 轮加三个钉边界的种子：只有 1 字节的字段、尺寸比余下的多 1 字节的、截在 CRC 与 `测` 之后的（S3 审查 B 的 M1）。普通的 `go test` 跑种子，变异照文件头的命令手跑（13.4 第 11 条）。
 - **domain**（`entry_test.go` 的 `TestClassify`，`:55`）：带 `From` 的条目进 `Read`，被忽略的（`__MACOSX/…`）不进，被跳过的（越出目录）进 `Read` 也进 `Skipped`。
-- **app**（`import_test.go`）：一个有 1,100 个 `gbk` 条目、其中一个过大的导入，报告里先是 `too_large`，再是 `name_gbk`，`Truncated` 为真；`Counts.Skipped` 只数那个过大的。
-- **整个程序**（新的 `bootstrap/transfer_names_test.go`，`TestAnImportReadsNamesNotInUTF8`）：一个 zip，每个条目都没有标志（`vaultZip` 给 `NonUTF8: true`）：`图片/截图.md`（GBK，不是合法 UTF-8）、`图片/a.md`（GBK 字节恰好是合法 UTF-8）、`测试资料.md`（GBK）、一页带 0x7075 的；导入之后四页的标题与位置对，`截图`、`a` 在同一个 `图片` 下（P3-16），报告依次是 `name_gbk` 与 `name_unicode_path`（照条目的次序），`to` 都是 `null`。约 1–2 秒（推断）。
+- **app**（`import_test.go`）：一个有 1,100 个 `gbk` 条目、其中一个过大的导入，报告里先是 `too_large`，再是 `name_gbk`，`Truncated` 为真；`Counts.Skipped` 只数那个过大的。修复第 1 轮另加：失败的导入（`too_many_nodes`）照样列出读过的名字（S3 审查 B 的 N2）。
+- **整个程序**（新的 `bootstrap/transfer_names_test.go`，`TestAnImportReadsNamesNotInUTF8`）：一个 zip，每个条目都没有标志（S3 实施：本文件的 `unflaggedZip` 给 `NonUTF8: true`）：`图片/截图.md`（GBK，不是合法 UTF-8）、`图片/a.md`（GBK 字节恰好是合法 UTF-8）、`测试资料.md`（GBK）、一页带 0x7075 的；导入之后四页的标题与位置对，`截图`、`a` 在同一个 `图片` 下（P3-16），报告依次是 `name_gbk` 与 `name_unicode_path`（照条目的次序），`to` 都是 `null`。约 1–2 秒（推断；实测 1.36 秒，10.3）。
 - e2e：TR4 的 `f\xff.md`（`tr4-malicious.spec.ts:68`、`:105`）照旧是 `name_not_utf8`：0xFF 读不出，整包不回退。全量 `make e2e` 证明它没变。
 
 ### 3.13 S3：按人的队列上限（T2）
@@ -965,10 +965,10 @@ func (d StartDeps) room(ctx context.Context, except, person uuid.UUID, queueLock
 
 #### 3.13.3 测试
 
-- **app**（`transfer/app/requests_test.go`、`start_import_test.go`、`start_background_test.go`、`rollbacks_test.go`）：四种开始各一格：这个人已有 5 个，答 `ErrTooManyJobs`，别人的照常开始；他有 4 个、全局满了，答 `ErrQueueFull`；他有 5 个、全局也满了，答 `ErrTooManyJobs`（先后）；他正在上传一个导入、另有 4 个任务，他的下一个答 `ErrTooManyJobs`（`Check` 与 `write` 两条路各一格）；回滚：他有 5 个时 `Rollbacks.Start` 照常开始，之后他的导出答 `ErrTooManyJobs`（回滚算进去）。另有"两样都在"的格钉住 3.13.1 的先后：导出在这个人有 5 个、又在这本笔记本里有一个导出时答 `ErrTooManyJobs`；导入、后台恢复与撤销在笔记本里有写入的任务、这个人又有 5 个时答 `transfer.busy`，撤销在 `page.locked` 与按人都在时答 `page.locked`（审查 C 的 I2）。
+- **app**（`transfer/app/requests_test.go`、`start_import_test.go`、`start_background_test.go`、`rollbacks_test.go`）：四种开始各一格：这个人已有 5 个，答 `ErrTooManyJobs`，别人的照常开始；他有 4 个、全局满了，答 `ErrQueueFull`；他有 5 个、全局也满了，答 `ErrTooManyJobs`（先后）；他正在上传一个导入、另有 4 个任务，他的下一个答 `ErrTooManyJobs`（`Check` 与 `write` 两条路各一格）；回滚：他有 5 个时 `Rollbacks.Start` 照常开始，之后他的导出答 `ErrTooManyJobs`（回滚算进去）。另有"两样都在"的格钉住 3.13.1 的先后：导出在这个人有 5 个、又在这本笔记本里有一个导出时答 `ErrTooManyJobs`；导入、后台恢复与撤销在笔记本里有写入的任务、这个人又有 5 个时答 `transfer.busy`，撤销在 `page.locked` 与按人都在时答 `page.locked`（审查 C 的 I2）。S3 实施：app 的格是三个新测试 `TestAPersonsSixthExportIsRefused`、`TestAPersonsSixthImportIsRefused`、`TestAPersonsSixthBackgroundStartIsRefused`，回滚一格在已有的 `TestARollbackStartsInItsUpgradeAlone`；修复第 1 轮加后台开始在锁下再数一次的一格（"four of his, his fifth after the first count"：替身在锁外的计数之后给他加第 5 个，S3 审查 C 的 M1；3.23 第 9 条）。
 - **适配器**（`transfer/adapter/postgres`）：`CountActive` 对两个人的排队、运行、已结束与已删除的行，交回的 `active` 与 `mine` 写死（每格的数互不相同，05-lessons 第 1 节）。
 - **http**（`transfer/adapter/http`）：四个操作各有一格答 409 `transfer.too_many_jobs`（经 `CheckResponse`；`apitest.Main` 要每个声明的码都有人答过，`apitest/problems.go:161-194`），没有 `Retry-After`。
-- **整个程序**（新的 `bootstrap/transfer_person_test.go`，`TestAPersonsSixthJobIsRefusedAndAnothersStarts`）：以 SQL 给 alice 在五本笔记本里各种一个排队的导出，每个带一行 River 持有的任务（3.14.3 的帮手；T4 之后不带的会与启动时的 `lost` 赛跑，审查 C 的 I3）；alice 在第六本开导出答 409 `transfer.too_many_jobs`、整句的 `detail`；bob 开导出答 202；取消 alice 的一个之后她的那一个答 202。约 1 秒（推断）。
+- **整个程序**（新的 `bootstrap/transfer_person_test.go`，`TestAPersonsSixthJobIsRefusedAndAnothersStarts`）：以 SQL 给 alice 在五本笔记本里各种一个排队的导出，每个带一行 River 持有的任务（3.14.3 的帮手，修复第 1 轮起与排队行写在同一条语句里，3.23 第 13 条；T4 之后不带的会与启动时的 `lost` 赛跑，审查 C 的 I3）；alice 在第六本开导出答 409 `transfer.too_many_jobs`、整句的 `detail`；bob 开导出答 202；取消 alice 的一个之后她的那一个答 202。约 1 秒（推断；实测 1.31 秒，10.3）。
 - 网页的几格在第 4 节。
 
 ### 3.14 S3：启动时收拾上一个进程取到而没开始的任务（T4）
@@ -1006,9 +1006,9 @@ func (r *Rescue) lost(ctx context.Context, kind domain.Kind, msg string) error
 
 #### 3.14.2 测试
 
-- **app**：`TestTheRescue`（`transfer/app/requests_test.go:339-380`）今天断言 `AtStart` 只做 `InterruptJobs`、不问行与 River（`:361-363`），T4 之后这一句红（审查 C 的 `rescue-probe.log`）。改为：`AtStart` 先 `InterruptJobs`，再照种类先读行、后问 River，失败每种被丢下的那一个，各记一行 `queued job left by a stopped server`；之后在替身里每种再加一个被丢下的，`Run` 照旧失败它们、记 `queued job dropped by River`（`Run` 那一半的断言照旧有东西可抓）。
+- **app**：`TestTheRescue`（`transfer/app/requests_test.go:339-380`）今天断言 `AtStart` 只做 `InterruptJobs`、不问行与 River（`:361-363`），T4 之后这一句红（审查 C 的 `rescue-probe.log`）。改为：`AtStart` 先 `InterruptJobs`，再照种类先读行、后问 River，失败每种被丢下的那一个，各记一行 `queued job left by a stopped server`；之后在替身里每种再加一个被丢下的，`Run` 照旧失败它们、记 `queued job dropped by River`（`Run` 那一半的断言照旧有东西可抓）。S3 实施：替身的 `InterruptJobs` 记进调用表，照调用的次序断言（3.23 第 10 条）；修复第 1 轮加末尾一格：River 的读失败时 `AtStart` 交回错误、没有任务被记失败（S3 审查 A 的 N4，3.23 第 14 条）。
 - **River 适配器**（`transfer/adapter/river/jobs_test.go`）：五个构造函数各自的 `DiscardRunning` 是它的种类（同 `page/adapter/river/search_test.go:64`）。
-- **模块**（`transfer/rescue_test.go`，真库与 River，`contributors_test.go:76-103` 的 `start` 以 `m.Jobs()` 起）：新的 `TestAQueuedJobRiverHeldRunningFailsAtTheStart`：写一个排队的导入的行与它的 River 行（`enqueue`，`:155-169`），把 River 行改成 `running`（同 `platform/jobs/jobs_test.go:305-317`），起 runner：行是失败 `interrupted`，River 行是 `discarded`。另一格：`m.Jobs()` 里五种任务都在收拾之前（数下标）。
+- **模块**（`transfer/rescue_test.go`，真库与 River，`contributors_test.go:76-103` 的 `start` 以 `m.Jobs()` 起）：新的 `TestAQueuedJobRiverHeldRunningFailsAtTheStart`：写一个排队的导入的行与它的 River 行（`enqueue`，`:155-169`），把 River 行改成 `running`（同 `platform/jobs/jobs_test.go:305-317`），起 runner：行是失败 `interrupted`，River 行是 `discarded`。另一格：`m.Jobs()` 里五种任务都在收拾之前（数下标）。S3 实施：`contributors_test.go` 加 `root.module`（交回模块与它的 `Inserter`），`start` 改调它（3.23 第 10 条）。
 - **整个程序**：不另起应用（审查 C 的过度设计），并进已有的 `TestServeFailsTheJobsLeftRunning`（`bootstrap/transfer_jobs_test.go:165-194`，第四份）。它的 `waiting` 拆成三种（3.14.3 的第 1 条）：
   - `waiting held`：排队，带一行 River 持有的任务（`scheduled`，一小时之后）：照旧排队；
   - `waiting dropped`：排队，没有 River 的行：失败 `interrupted`（启动时的 `lost`）；
@@ -1043,7 +1043,7 @@ const (
 | 3 | `TestPermissionMatrix` 的 `getTransferJob, another's` 与 `cancelTransferJob, another's, queued`（第四份） | `matrixJobs` 的"someone else's, queued, never enqueued"（`permission_matrix_transfer_test.go:36-49`、`permission_matrix_seeded_test.go:716-727`） | 读的格确定地红（`State:failed`）；取消的格随启动的先后偶发地红（409 `transfer.not_cancellable`）（`t4-matrix-probe.log`） | 种子里的排队导出各 `exec(riverHoldsSQL, …)`（种类 `transfer.export`，队列 `transfer_export`）；注释改为"queued, River holding it later" | 去掉 River 行，读的格红 |
 | 4 | `TestUpgradePermissionMatrix` 的 `cancelTransferJob, another's rollback, queued`（第七份） | `rollingBackIn(..., "queued")`（`upgrade_fixtures_test.go:79-99`，"written as River never enqueued it"），在 `startApp` 之前 | 偶发地红（409 `transfer.not_cancellable`） | `rollingBackIn` 在同一个事务里对排队的回滚 `tx.Exec(ctx, riverHoldsSQL, …)`（种类 `transfer.rollback`，队列 `transfer_import`）；注释照改 | 不确定：这是写的格，各起一个应用，取消的请求与启动时的 `lost` 赛跑，去掉 River 行之后修订核对 C 两次都红，但不保证每次都红（C 的 N11）。确定的反向对照在第 3 条读的那一格；`rollingBackIn` 这一支只能看它偶发地红，第 10 节照实记跑了几次、红了几次 |
 | 5 | `TestTheRescue`（`transfer/app`） | 断言 `AtStart` 不问行与 River | 确定地红 | 3.14.2 的 app 一条 | S3-16 下红 |
-| 6 | `TestTheQueuesLimitIsTheConfigured`（第三份，`transfer_test.go:453-465`）、`TestOneImportAtOnceThroughServe`（第四份，`transfer_import_test.go:372-386`） | 在 `newAcmeTeam` 之后以 SQL 种排队的导出、导入，没有 River 行 | 与启动时的 `lost` 赛跑：`newAcmeTeam` 不等 `jobs started`，平常准备比任务启动慢得多，没有复现（审查 C 的"未核实的怀疑"） | 种子各 `tm.pool.Exec(ctx, riverHoldsSQL, …)`，消掉赛跑 | 去掉 River 行，种子之后插一行收拾的任务让 `Run` 立刻跑一次（同 `bootstrap/upgrade_rollback_test.go:709`）并 `awaitJob` 它，这一格红；带着 River 行照绿 |
+| 6 | `TestTheQueuesLimitIsTheConfigured`（第三份，`transfer_test.go:453-465`）、`TestOneImportAtOnceThroughServe`（第四份，`transfer_import_test.go:372-386`） | 在 `newAcmeTeam` 之后以 SQL 种排队的导出、导入，没有 River 行 | 与启动时的 `lost` 赛跑：`newAcmeTeam` 不等 `jobs started`，平常准备比任务启动慢得多，没有复现（审查 C 的"未核实的怀疑"） | 种子各 `tm.pool.Exec(ctx, riverHoldsSQL, …)`，消掉赛跑。修复第 1 轮改为排队行与 River 行一条语句（`riverHeldJobSQL`：`WITH j AS (… RETURNING id) INSERT INTO river_job … FROM j`），T2 的整个程序的测试同样：两条语句之间仍有一个往返的窗口；审查 A 量得启动时的 `lost` 总比 `newAcmeTeam` 返回早约 0.7 秒，下面的 `-count=20` 证明的是"不偶发"（S3 审查 A 的 N3，3.23 第 13 条） | 去掉 River 行，种子之后插一行收拾的任务让 `Run` 立刻跑一次（同 `bootstrap/upgrade_rollback_test.go:709`）并 `awaitJob` 它，这一格红；带着 River 行照绿 |
 
 不改的：`holdExportWorker`、`holdImportWorker`（`interleavings_transfer_test.go:116-147`、`interleavings_import_test.go:174-…`）在团队建好、开了笔记本与页之后才写排队行，写下随即以 `FOR UPDATE` 锁住，再写 River 行；`FailQueued` 跳过被锁的行（`jobs.sql:138-147`）。剩下的窗口只是"写行到上锁"之间，而启动时那一次 `lost` 在十几次请求之前就跑完了（推断）。S3 的第 1 个提交在 `make test` 之外跑四个测试各 20 次（修订核对 C 的 N13）：`holdExportWorker` 只有 `TestDeletingANotebookAndStartingAnExport`（`interleavings_transfer_test.go:156`）用；`holdImportWorker` 的七处用者（`interleavings_wiki_test.go:211`、`:230`，`interleavings_background_stops_test.go:411`，`interleavings_background_test.go:332`，`interleavings_import_test.go:230`，`wiki_downgrade_test.go:39`，`upgrade_start_test.go:94`）里取最轻的 `TestTheDowngradeAnswersInItsOrder`（`wiki_downgrade_test.go:28`）：同一个帮手、同一个窗口，重的交错测试不各跑 20 次；再加第 6 条的两个。命令（经 `heavy.sh`）：`cd server && go test -race -count=20 -timeout 15m -run '^(TestDeletingANotebookAndStartingAnExport|TestTheDowngradeAnswersInItsOrder|TestTheQueuesLimitIsTheConfigured|TestOneImportAtOnceThroughServe)$' ./internal/bootstrap/`。用时：第二次修订在 `86565dd6` 上竞态下各跑一次（`m12/p3-rev2/time4.log`，负载 0.6，编译已缓存），3.31、0.99、0.78、0.79 秒，20 次约 2 分钟，另加编译。结果写进第 10 节。
 
@@ -1086,8 +1086,8 @@ S3：
                  duplicate_source, unreadable]
 ```
 
-- 四个操作的说明里讲 `server_busy` 的那一句（`:28-29`、`:88-90`、`:166-167`、`:256-257`）之前加：`One whose person has 5 jobs queued or running, with the imports they are uploading, over every notebook, is transfer.too_many_jobs: wait for one to end, or cancel one.`
-- `TransferProblem` 的说明（`:1055-1060`）加：`name_unicode_path and name_gbk are no skip: the entry's name, not UTF-8, was read from its Info-ZIP Unicode Path field, or as GBK (as a Chinese Windows writes names); they come after every other problem.`
+- 四个操作的说明里讲 `server_busy` 的那一句（`:28-29`、`:88-90`、`:166-167`、`:256-257`）之前加：`One whose person has 5 jobs queued or running, with the imports they are uploading, over every notebook, is transfer.too_many_jobs: wait for one to end, or cancel one.`S3 实施并进分号列着的那一串，写成 `caller`，导入的写 "the other imports they are uploading"，意思相同（3.23 第 11 条）。
+- `TransferProblem` 的说明（`:1055-1060`）加：`name_unicode_path and name_gbk are no skip: the entry's name, not UTF-8, was read from its Info-ZIP Unicode Path field, or as GBK (as a Chinese Windows writes names); they come after every other problem.`S3 实施多半句 "path being the name so read"（3.23 第 11 条）。
 - `wiki.yaml` 的 `abandonUpgrade`、`rejectUpgrade` 不改：回滚不受按人的上限拒绝。
 - 每处改动之后 `make gen`、`make gen-check`（05-lessons 第 8 节）。
 
@@ -1215,7 +1215,22 @@ S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-nested-trash-roots-r
 
 ### 3.23 S3 的实施对设计的修正
 
-（实施之后补。）
+S3 的审查与修复见 [S3 的审查记录](reviews/P3-S3-transfer-jobs-review.md)，结果在 10.3。与上文最初的设计不同之处已改在各节里（头的状态，3.11 的文件表，3.12.1 第 2 条，3.12.2、3.12.3、3.13.3、3.14.2，3.14.3 的第 6 行，3.15，4.2，6.3，7.1 的网页一行，7.3 的 S3 加实施与修复的变异，7.5，第 8 节"S3 另"与第 5、6、12、13 条，第 9 节的导入名称）；00 号文档第 7 节"总体设计的修订"加第 28 条并标已落，第 11 节加主持者的决定 530–532。写了行号的，代码是 S3 的头 `cbda8435` 的，文档是 `4136991c` 的（S3 不改 `docs/`）；提交见 10.3。
+
+1. **文档不随代码的提交**（6.3 把 `README.md:192`、`:193` 放进各自的代码提交）：文档的提交是主持者的，README 的两句与第 8 节第 5、6、12、13 条随 S3 的文档提交落；代码的提交不碰 `docs/` 与 `README.md`（决定 531）。
+2. **决定 482 是第 4 个代码提交**（`a48ace20`，6.3 没有列）：`transfer.revertLeftGroup` 的两种语言去掉后半句（英文止于 "completes that group."，中文止于"逐项恢复就完成这一组。"）。文字在 `W/i18n/messages/{en,zh-CN}.ts`（3.11 的文件），断言它的是 `W/pages/notebook/transfer-background.test.tsx` 的两处（3.11 没有列），一并改了；单独一个提交，留着（决定 530）。中文的那一句起初没有测试整句比对，修复第 1 轮由 `transfer-report.test.ts` 两种语言都比对（审查 A 的 N2）。M8/P4 `04-P4-background.md:912` 引着被去掉的后半句，本 Step 的文档提交照决定 481 的先例加后注（审查 A 的 N1）。
+3. **app 的替身认得来源**（3.12.2 写"替身照旧交回原始名字；app 的测试直接构造带 `From` 的 `RawEntry`"）：替身的 `archives` 加一张 `from`（名字 → 来源），`zipArchive.Entries` 照它填 `From`（`app/fakes_test.go`，不是 `import_fakes_test.go`）；app 的测试照旧以 zip 造导入，经 `Import.Run` 的整条路走到报告。
+4. **zip 的帮手**（3.12.3 写 `zipEntry` 加 `noFlag`、整个程序的 `vaultZip` 同样处理）：适配器的表直接交 `*zip.FileHeader`（`NonUTF8: !flagged`，要标志时 `Flags: 0x800`），已有的 `zipped` 收它；整个程序的测试在自己的文件里有 `unflaggedZip`（每个条目 `NonUTF8: true`，可带扩展字段），`vaultZip` 与它的用者不动。
+5. **差分在内部测试**（3.11 只列 `names_test.go`、`names_fuzz_internal_test.go`）：`readNames` 不导出，差分 `TestReadNamesReadsAsGBKOnlyAZipOfGBKNames` 在新的 `names_internal_test.go`（`package archiveadapter`）；表在 `names_test.go`（外部测试包，经 `Archives.OpenImport` 与 `Entries`）。生成器是 Go 的 `math/rand/v2` PCG（整数），种子 1–3，各 1,000 个包；13 个计数的下限是另 20 组种子（`3b+1`–`3b+3`，b 为 1–20）的最少次数的三分之二、向下取整，最少次数在 10.3。
+6. **第一个 0x7075 字段说了算**（3.12.1 第 2 条没说一个条目有几个时取哪个；实施中定）：只看第一个，它无效就当没有，不往后找；模糊的种子里有"第一个 CRC 错、第二个有效"的一格，模糊的断言是"当且仅当第一个有效才取，取的是它的名字"（比 3.12.3 写的"交回真时……"多了"只有"一半）。修复第 1 轮另加三个种子钉住 `unicodePath` 的三处边界（审查 B 的 M1）：整个只有 1 字节的字段（`75 70 01 00 01`，短于版本与 CRC）、尺寸比余下的多 1 字节的（`full[:len(full)-1]`）、截在 CRC 与名字的第一个字 `测` 之后的（`full[:12]`，放松了的边界会把 `测` 读成名字）。测试里这个种子的注释写成"截在 `测` 的中间"，不对；注释照旧，不另加提交（核对第 1 轮 B 的 C1-N1：真截在中间的 `full[:11]` 读出的不是合法 UTF-8，抓不到"把尺寸截到余下的"那个变异）。
+7. **`Read` 收哪些**（3.12.2"没有被 `ignored` 滤掉的"）：按 `pathOf` 的 `hidden` 判，被忽略的不进；越出目录等被跳过的进；作为库的顶层文件夹、本身不导入的那一个条目也进（它的名字确是这样读的；探针：`gbk:图片/`、`gbk:图片/.obsidian/app.json`、`gbk:图片/a.md` 三个条目，`Read` 是 `图片/` 与 `图片/a.md`）。`Read` 的路径是 zip 里读出的名字，含库的文件夹，同跳过的问题。修复第 1 轮另钉两处：表第 11 格加一个 GBK 名字以 0x5C 结尾的符号链接 `资料/俓`，它按读出的名字判 `Special`（审查 B 的 N1）；失败的导入（`too_many_nodes`）照样列出读过的名字（审查 B 的 N2）。
+8. **来源到码**：`NameSource` 的一个不导出的方法 `problem()`（一个 `switch`），不是包级的表：`gochecknoglobals` 不许包级的 `map`。
+9. **按人的上限的测试**（3.13 的格）：app 的格是三个新测试 `TestAPersonsSixthExportIsRefused`、`TestAPersonsSixthImportIsRefused`、`TestAPersonsSixthBackgroundStartIsRefused`，`Rollbacks.Start` 的一格在已有的 `TestARollbackStartsInItsUpgradeAlone` 里；http 的四格（导出、导入、恢复、撤销各一，"five jobs of …"）断言 409 `transfer.too_many_jobs`、没有 `Retry-After`；http 的替身 `maxQueued` 是 3，五个任务同时让全局也满了，所以这四格也守先后（S3-15 在它们上也红）。网页 `transfer-import.test.tsx` 里 `importCut` 那一格原来只断言包含，改为整句比对，没有另加一格。后台的"锁下再数一次"原来没有一格钉住（锁外那一次就拒了），修复第 1 轮加 "four of his, his fifth after the first count"：替身在锁外的计数之后给他加第 5 个，锁下那一次拒他的第 6 个（审查 C 的 M1）。
+10. **T4 的测试帮手**：模块的测试加 `root.module`（交回模块与它的 `Inserter`，`contributors_test.go`），`start` 改调它；app 的替身 `InterruptJobs` 记进调用表，`TestTheRescue` 照调用的次序断言。
+11. **契约说明的措辞**（审查 C 的 N1）：3.15 要在讲 `server_busy` 的那一句之前另加一句 "One whose person has 5 jobs queued or running, with the imports they are uploading, over every notebook, is transfer.too_many_jobs: wait for one to end, or cancel one."；实施把它并进分号列着的那一串，写成 "one whose caller has 5 jobs queued or running, with the imports they are uploading, over every notebook, is transfer.too_many_jobs: wait for one to end, or cancel one"，导入的写 "the other imports they are uploading"（自己这一次不算）；导出那一段的 `transfer.busy` 挪到 `server_busy` 之后，照 3.16 的次序。`TransferProblem` 的说明比 3.15 多半句 "path being the name so read"（`path` 是读出的名字）。意思与设计一致。
+12. **"不是 UTF-8"的文字不改**（审查 B 的 N3，主持者定）：契约、domain 的注释、网页两种语言都说这两种名字"不是 UTF-8"。从字段读出的 ASCII 名字（`??.md` → `说明.md`），决定 376 下读成 GBK 的合法 UTF-8 名字（`ü.md` → `眉.md`），其实也是合法 UTF-8；对读者，这几个字的意思是"名字照原样读不出"（决定 532）。
+13. **三处种子写成一条语句**（审查 A 的 N3，修复第 1 轮）：3.14.3 第 6 条的两个测试与 T2 的整个程序的测试，排队行与 River 行由 `riverHeldJobSQL` 写成一条语句（`WITH j AS (INSERT … RETURNING id) INSERT INTO river_job … FROM j`），不是 3.14.3 写的两条 `Exec`：启动时的 `lost` 先读行、再读 River，落在两条语句之间就把那一行记成失败。审查 A 量过，本机竞态下 20 次，`lost` 都比 `newAcmeTeam` 返回早约 0.7 秒，`-race -count=20` 证明的是"不偶发"，没有碰上赛跑；现在窗口没有了。`seedJobs` 在起应用之前写，`rollingBackIn` 在同一个事务里写；矩阵的排队导出在 prepare 的应用起来之后、以两条语句写，那时那个应用启动时的 `lost` 早已跑完、周期的收拾 5 分钟之后才跑，各格的应用在种完之后才在库的副本上起：都不改（核对第 1 轮 A 的 C1-N1）。
+14. **启动时 `lost` 失败就让启动失败**（审查 A 的 N4，修复第 1 轮）：T4 之后启动多读行与 River，任何一步出错都经 `jobs.Job.Start` 让启动失败（与 `InterruptJobs` 失败时一样，改之前同样的错只让每 5 分钟的 `Run` 失败一次）。`TestTheRescue` 末尾一格钉住。
 
 ## 4. 网页
 
@@ -1247,10 +1262,11 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
   - zh-CN：`"上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本有进行中的导入、恢复或撤销、你已有 5 个排队或进行中的任务、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。"`
 - **测试**（vitest；测试文件照实，审查 C 的 N1）：
   - `problem-messages.test.ts` 照过（它就是核对）；
-  - 导出（`transfer-page.test.tsx`、`page-menu.test.tsx`）与导入（`transfer-import.test.tsx`）各加一格：开始答 `transfer.too_many_jobs` 时横幅是新文字，对话框不关；`transfer-import.test.tsx` 另加一格，连接中断时的整句；横幅的几格照 P2/S1 合并之后的写法（第 0 节）；
+  - 导出（`transfer-page.test.tsx`、`page-menu.test.tsx`）与导入（`transfer-import.test.tsx`）各加一格：开始答 `transfer.too_many_jobs` 时横幅是新文字，对话框不关；`transfer-import.test.tsx` 里连接中断的那一格原来只断言包含，S3 实施改为整句比对、没有另加（3.23 第 9 条）；横幅的几格照 P2/S1 合并之后的写法（第 0 节）；
   - 回收站一行（`trash-background.test.tsx`）：后台开始答 `transfer.too_many_jobs` 时文字是新文字、按钮留着（`offeredOf` 交回那一项）；
   - 后台撤销（`revert-background.test.tsx`；`revert-dialog.test.tsx` 不管后台）：答 `transfer.too_many_jobs` 时横幅是新文字；
   - 报告（`transfer-report.test.ts`）：一个导入的报告带 `name_gbk` 与 `name_unicode_path` 各一条，文字照写死的期望；
+  - 决定 482（S3 实施，第 4 个提交 `a48ace20`，决定 530）：`transfer.revertLeftGroup` 去掉后半句，`transfer-background.test.tsx` 的两处断言照改；`transfer-report.test.ts` 两种语言整句比对它（修复第 1 轮，S3 审查 A 的 N2）；
   - 两种语言的键一致由现有的 i18n 测试核对。
 - 文字照 13.2 第 11 条：不写"请"之外的客套，不写实现的词（"River"、"队列"不出现）。
 
@@ -1308,9 +1324,10 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 1. 启动时的收拾（T4）：五种任务的 `DiscardRunning`、`AtStart` 的 `lost`、`lost` 带日志的话、`Run` 的注释；River 适配器、模块的测试，`TestTheRescue` 改断言；`riverHoldsSQL`、`riverTakenSQL` 与 3.14.3 的六处种子；`TestServeFailsTheJobsLeftRunning` 的三种排队行；`README.md:193` 讲窗口的那一句（第 8 节）。没有这六处种子这个提交就红（审查 C 的 I3），所以它们同在这个提交里。
 2. 按人的上限（T2）：`MaxPersonJobs`、`ErrTooManyJobs`、`CountActive`、`Uploads` 记人、`room` 与五处调用；`transfer.yaml` 的四处码与说明、`make gen`；网页的码、两种语言的文字（含 `transfer.importCut`）、`offeredOf`、`jobs-server.ts`（4.2）；各层的测试；`TestAPersonsSixthJobIsRefusedAndAnothersStarts`（种子带 River 的行）与 `SEVENTH`；`README.md:193` 讲队列的那一句。
 3. 名称的编码（T3）：`names.go`、`Entries`、domain 的 `NameSource` 与 `Read`、报告的两种原因、`importRun.finish`；`TransferProblem` 的枚举与说明、`make gen`；网页的报告与两种语言的文字（4.2）；适配器的表、差分、模糊，domain、app 的测试；`TestAnImportReadsNamesNotInUTF8` 与 `SEVENTH`；`README.md:192`。
-4. 文档：本文 3.23 与第 10 节。
+4. 决定 482（S3 实施加的，3.23 第 2 条，决定 530）：`transfer.revertLeftGroup` 去掉"不要先撤销这次撤销"，两种语言与 `transfer-background.test.tsx` 的两处断言（`a48ace20`）。
+5. 文档：本文 3.23 与第 10 节；S3 实施起还有 `README.md:192`、`:193` 的两句与第 8 节第 12、13 条，第 1–3 个代码提交不碰 `docs/` 与 `README.md`（决定 531）。
 
-第 2、3 个提交都改 `transfer.yaml`、`make gen` 的生成物、`en.ts`、`zh-CN.ts`、`Makefile` 的 `SEVENTH`，第 1、2 个都改 `README.md:193`（审查 C 的 N5）：照 1、2、3 的次序做，后一个在前一个之上改，不并行。第 2、3 个的网页部分在 P2/S1 合并之后写（第 0 节）。
+第 2、3 个提交都改 `transfer.yaml`、`make gen` 的生成物、`en.ts`、`zh-CN.ts`、`Makefile` 的 `SEVENTH`，第 1、2 个都改 `README.md:193`（审查 C 的 N5）：照 1、2、3 的次序做，后一个在前一个之上改，不并行。第 2、3 个的网页部分在 P2/S1 合并之后写（第 0 节）。S3 照此做了；`README.md:193` 改在第 5 个（决定 531）。
 
 ## 7. 测试与验证
 
@@ -1347,7 +1364,7 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | S3 | bootstrap | `TestAPersonsSixthJobIsRefusedAndAnothersStarts` | 真库上按人 |
 | S3 | transfer 各层 | 收拾的格（3.14.2）；`TestTheRescue` 改断言 | 丢弃与 `lost` 的次序 |
 | S3 | bootstrap | `TestServeFailsTheJobsLeftRunning` 的三种排队行；3.14.3 的五处种子 | 真的启动；已有的测试照旧绿 |
-| S3 | web | 4.2 的几格（五个测试文件） | 文字与按钮、连接中断的整句 |
+| S3 | web | 4.2 的几格（六个测试文件；决定 482 另改 `transfer-background.test.tsx`） | 文字与按钮、连接中断的整句；`revertLeftGroup` 两种语言的整句 |
 
 ### 7.2 交错
 
@@ -1453,6 +1470,29 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | S3-16 | `AtStart` 不收拾排队的行 | `TestTheRescue`；模块的测试；`TestServeFailsTheJobsLeftRunning` 的 `waiting dropped` 与 `taken` |
 | S3-17 | 某一种任务不设 `DiscardRunning` | River 适配器的五格之一；是导入时，模块的测试与 `TestServeFailsTheJobsLeftRunning` 的 `taken` 也红 |
 | S3-18 | 收拾的任务排在五种任务之前 | 模块的次序一格；`TestServeFailsTheJobsLeftRunning` 的 `taken` |
+| O-1 | 第一个 0x7075 无效时往后找（S3 实施加的，下同） | 模糊的种子 #4（第一个 CRC 错、第二个有效） |
+| O-2 | 空的名字也取 | 模糊的种子 #6 |
+| O-3 | 字段里不是 UTF-8 的名字也取 | 模糊的种子 #7 |
+| O-4 | 版本不核 | 表第 3 格；差分；模糊的种子 #2 |
+| O-5 | 字段与原名相同也记 `unicode_path` | 表第 4 格；差分 |
+| O-6 | ASCII 的名字也经 GBK | 差分 |
+| O-7 | `Read` 也收被忽略的 | domain 的格（`__MACOSX/…`） |
+| O-8 | 读出的名字记成跳过 | app 的 1,100 条一格 |
+| O-9 | `AtStart` 只收拾第一种 | `TestTheRescue` |
+| O-10 | 别人正在上传的也算我的 | `TestTheUploadsCountAsTheirRowsAreWritten`；三个新测试里别人的格 |
+| O-11 | 第六个也让过（`>` 代替 `>=`） | 同 S3-11 的 app 各格 |
+| O-12 | `CountActive` 的 `mine` 不按人 | `TestThePersonsJobsCountAmongAll` |
+| W-1 | `offeredOf` 不收 `transfer.too_many_jobs`（网页） | `trash-background.test.tsx` |
+| W-2 | 码到文字的表去掉 `transfer.too_many_jobs` | 五个测试文件各一格 |
+| W-3 | `name_gbk` 说成 `unicode_path` 的文字 | `transfer-report.test.ts` 两种语言 |
+| B5 | 去掉 `len(field) < 5`（S3 审查 B；修复第 1 轮之前绿，下同） | 模糊的种子 #9（越界 panic） |
+| B6 | `size > len(extra)-4` 改成 `size > len(extra)` | #10（越界 panic） |
+| B7 | 越界时把尺寸截到余下的 | #10、#11（`full[:12]`，读出完整的 `测`） |
+| B11 | `Special` 按原名结尾的 `\` 判 | 表第 11 格的 `资料/俓` |
+| B12 | 读过的名字只在成功时加进报告 | `TestAnImportListsTheNamesReadOtherwiseLast` 的失败的导入 |
+| MC-1 | 锁下的 `room` 不传人（S3 审查 C） | `TestAPersonsSixthBackgroundStartIsRefused` 的 "four of his, his fifth after the first count" |
+| A-N4 | 启动时 `lost` 失败照样往下（S3 审查 A） | `TestTheRescue` 末尾一格 |
+| A-N2 | 中文的 `transfer.revertLeftGroup` 放回后半句（S3 审查 A） | `transfer-report.test.ts` 的 zh-CN |
 
 00 号文档 9.6 的 P3 三行点名的变异，在上面的对应（初稿写"都在上面"，其实缺了 S1 的三条，审查 B 的 M3）：
 
@@ -1479,9 +1519,9 @@ CI 绿之后才合并（02-workflow 第 4 节）；合并之后 `main` 上两次
 
 | 份 | 今天（两次 `main` 的平均） | P3 加 | 之后 | 450 秒的余量 |
 |---|---|---|---|---|
-| 第七份 | 279.5 秒；落在 EPYC 7763 上约 315 秒 | 约 4–6 秒（四个新测试，3.19）；S1 的两个实测竞态共约 4.6 秒（10.1） | 7763 上约 321 秒 | 约 129 秒（按 7763 那一档，审查 C 的 N3） |
+| 第七份 | 279.5 秒；落在 EPYC 7763 上约 315 秒 | 约 4–6 秒（四个新测试，3.19）；S1 的两个实测竞态共约 4.6 秒（10.1），S3 的两个约 4.4 秒（10.3） | 7763 上约 321 秒；照 S1、S3 的实测推约 324 秒（10.3） | 约 129 秒（按 7763 那一档，审查 C 的 N3）；照实测约 126 秒（推断） |
 | 第八份 | 307 秒 | 约 2–4 秒（302 一格多一次回滚与撤销）；S2 实测竞态多 0.1 秒（10.2） | 约 311 秒 | 约 139 秒 |
-| 竞态 | 见 06-environment 第 4 节 | 后台撤销的性质测试多约 0.2 秒、回滚的多约 1.3 秒（审查 A 实测与推算，3.10.9；S2 实测多 0.34–0.40 秒与约 1.5 秒，10.2）；S3 的差分（几组种子，每组 1,000 个 zip）与模糊的种子也在这一份（审查 C 的 N9），S3 量 | S2、S3 各量一次 | S2、S3 量 |
+| 竞态 | 见 06-environment 第 4 节 | 后台撤销的性质测试多约 0.2 秒、回滚的多约 1.3 秒（审查 A 实测与推算，3.10.9；S2 实测多 0.34–0.40 秒与约 1.5 秒，10.2）；S3 的差分（几组种子，每组 1,000 个 zip）与模糊的种子也在这一份（审查 C 的 N9），S3 实测差分 0.14 秒、表 0.04 秒、模糊的种子不到 0.01 秒（10.3） | S2、S3 各量一次 | S2、S3 量；S3 的分支 CI 上竞态一份 9:04–9:08（10.3） |
 
 数是推断。每个新测试在实施时以 `go test -run '^Name$' -count=1 -v ./internal/bootstrap` 量一次（经 `heavy.sh`），写进第 10 节；竞态下的两个性质测试在 S2、S3 的差分与模糊在 S3 以 `make test-go-race` 的命令量（审查 A 的 13.79–14.09 秒与 1.83–1.85 秒是对照）。合并之后哪一份过了 400 秒，先挪给邻份：第七份的点名去掉之后 `TestA…` 回第一份、`TestTheL…` 回第三份，不提高 `-timeout`。
 
@@ -1496,7 +1536,7 @@ CI 绿之后才合并（02-workflow 第 4 节）；合并之后 `main` 上两次
 
 S2 另：3.10.7 的每个计数的下限在测试里、实测的最少次数在第 10 节；整个程序的 nested 两格在 `main` 上绿。S2：23 个下限在测试里，最少次数在 10.2 的表；两格在分支的 CI 上绿，`main` 上合并之后看（00 号文档第 13 节）。
 
-S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 条的不确定，照实记跑了几次、红了几次）；3.14.3 点名的四个测试的 `-count=20` 写进第 10 节。
+S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 条的不确定，照实记跑了几次、红了几次）；3.14.3 点名的四个测试的 `-count=20` 写进第 10 节。S3 照此做了：第 4 条 5 次 4 红，四个测试 80 次全过（10.3）。
 
 **文档的新文字**（各 Step 的文档提交用脚本逐条替换，断言旧文字恰好出现一次，02-workflow 第 1 节第 8 步；总体设计每改一次，第 15 节加一行，日期、变更、依据、`M12/P3/S<m>`）：
 
@@ -1504,26 +1544,26 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 2. **总体设计 13.1 第 30 条**（S1）：在 `   - **连接的建立**` 那一项之后加一项：`   - **流数**（M12/P3/S1）：每个凭证（登录会话、PAT、任务）至多 4 条，第 5 条顶掉它最老的一条（\`reset\`，原因 \`superseded\`），从不被拒；每个账户至多 64 条，净增的第 65 条答 429 \`rate_limited\`，\`Retry-After: 30\`。两个上限是常量；条数在打开、顶掉与关闭时维护，顶掉的那一条立刻不算。`S1 的文档提交照它落了。
 3. **总体设计 5.8 第 6 步**（S2）：照 00 号文档"总体设计的修订"第 8 条的第一项。S2 的文档提交照它落了。
 4. **总体设计 13.1 第 2 条**（S2）：从 `回滚的变更集由几遍、几个单元在不同时刻写下` 起、到 `没有造过。` 为止（`v0.1-design.md:1062`）换成：`回滚的变更集由几遍、几个单元在不同时刻写下：先删的子树在自己的单元里删成回收站根，收着基线节点的新建节点在后面一遍才删。撤销计划里，被这个变更集删了、现在本身是回收站根的节点是它自己的顶，几项依次放回（外层先）；后台撤销在一段"让开"里放回外层一组时，至少放回到段内后面的放回要用的成员（M11 第 302 条，M12/P3/S2 修，[M12 总设计](M12-release/00-M12-design.md) 4.6.1）。`S2 的文档提交照它落了。
-5. **`README.md:192`**（S3）：`不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。` → `不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、过深、过大等）跳过，报告逐条列出。没有 UTF-8 标志的名称先读 Info-ZIP 的 Unicode 路径；包里不是 UTF-8 的名称都能按 GBK（中文 Windows 打包的写法）读出时，按 GBK 读，报告列出每个这样读的名称；这样的包里，没有标志、恰好也是合法 UTF-8 的非 ASCII 名称一并按 GBK 读（GBK 的\`目录\`、\`图片\`就是合法的 UTF-8）。有一个读不出时，这个包不按 GBK 读，不是 UTF-8 的条目跳过。已知限制：日文、韩文、繁体中文的旧编码会被读成乱码的中文；同一个包里既有 GBK 名称、又有没有标志的 UTF-8 名称时，后者也会被读成 GBK。`（审查 C 的 N7）
+5. **`README.md:192`**（S3）：`不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。` → `不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、过深、过大等）跳过，报告逐条列出。没有 UTF-8 标志的名称先读 Info-ZIP 的 Unicode 路径；包里不是 UTF-8 的名称都能按 GBK（中文 Windows 打包的写法）读出时，按 GBK 读，报告列出每个这样读的名称；这样的包里，没有标志、恰好也是合法 UTF-8 的非 ASCII 名称一并按 GBK 读（GBK 的\`目录\`、\`图片\`就是合法的 UTF-8）。有一个读不出时，这个包不按 GBK 读，不是 UTF-8 的条目跳过。已知限制：日文、韩文、繁体中文的旧编码会被读成乱码的中文；同一个包里既有 GBK 名称、又有没有标志的 UTF-8 名称时，后者也会被读成 GBK。`（审查 C 的 N7）S3 的文档提交照它落了。
 6. **`README.md:193`**（S3），两处：
    - `全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；` → `一个人排队与运行中的任务（各笔记本合计，含正在上传的导入）至多 5 个，超出答 409 \`transfer.too_many_jobs\`（升级的回滚算进去，但从不因此被拒）；全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；`
-   - 从 `进程恰在 River 取到任务、任务开始之前停掉时，任务一直排队，` 到 `开始它的人与笔记本的管理员可以取消它；`（各恰好出现一次）换成 `进程恰在 River 取到任务、任务开始之前停掉时，任务在服务下次启动时记成失败 \`interrupted\`（M12）。开始它的人与笔记本的管理员可以取消排队的任务；`（其后的"升级的回滚只有…"一句不动）。
+   - 从 `进程恰在 River 取到任务、任务开始之前停掉时，任务一直排队，` 到 `开始它的人与笔记本的管理员可以取消它；`（各恰好出现一次）换成 `进程恰在 River 取到任务、任务开始之前停掉时，任务在服务下次启动时记成失败 \`interrupted\`（M12）。开始它的人与笔记本的管理员可以取消排队的任务；`（其后的"升级的回滚只有…"一句不动）。S3 的文档提交照它落了。
 7. **`README.md:198`**（S1）：`一个账户一条：` → `一个浏览器一条（每个凭证至多 4 条、每个账户至多 64 条，见下面"流数"）：`S1 的文档提交照它落了。
 8. **`README.md:207`**（S1），两处：`、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）。` → `、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）、\`superseded\`（同一个凭证开了第 5 条，这是它最老的一条）。`；`因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\` 而 \`reset\` 时，之前已经送到这条流的事件先写出` → `因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\`、\`superseded\` 而 \`reset\` 时，之前已经送到这条流的事件先写出`（审查 B 的 N9）。S1 的文档提交照它落了。
 9. **`README.md:210`** 之后（S1）加一条：`- **流数**：每个凭证（登录会话、PAT）至多 4 条，第 5 条让它最老的一条以 \`reset\`（\`superseded\`）结束；每个账户至多 64 条，再开答 429 \`rate_limited\`（\`Retry-After: 30\`）。网页一个浏览器只开一条（持有它的标签页转给其余的）。`S1 的文档提交照它落了。
 10. **`README.md:223`**（S1）：`可按 \`path\`、` → `可按 \`path\`（\`"/"\` 与不给相同，是整本；\`""\` 答字段错误）、`S1 的文档提交照它落了。
 11. **00 号文档**：Phase 设计合并时照 2.1 改（脚本 `apply_p3_design.py`，02-workflow 第 2 节第 3 步）；第 12 节的进度随每个 Step。
-12. **总体设计 13.1 第 4 条**（S3；审查 C 的 M3、I2）：`409 \`transfer.busy\` → 503 → 事务里再判定、写行，没有 422；` → `409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\`（M12）→ 503 → 事务里再判定、写行，没有 422；`；`409 \`page.locked\`（计划要删或写回的页）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。` → `409 \`page.locked\`（计划要删或写回的页）→ 409 \`transfer.too_many_jobs\`（M12）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。M12/P3/S3 的按人的上限在导出与导入里：\`startExport\` 是 409 \`transfer.too_many_jobs\` → 503 \`server_busy\` → 409 \`transfer.busy\`，\`startImport\` 在读文件之前是 409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\` → 503。`
-13. **总体设计 13.1 第 23 条**（S3；审查 C 的 M3）：`模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。` → `模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。M12/P3/S3 起 transfer 的五种任务也设 \`jobs.Job.DiscardRunning\`，平台在收拾的 \`Start\` 之前丢掉上一个进程留下的 \`running\` 的 River 行，收拾随即把 River 不再持有的排队行记成中断：上一个进程取到而没开始的任务不再等 River 的救援；以 SQL 种排队行的测试要同时种它的 River 行。`
+12. **总体设计 13.1 第 4 条**（S3；审查 C 的 M3、I2）：`409 \`transfer.busy\` → 503 → 事务里再判定、写行，没有 422；` → `409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\`（M12）→ 503 → 事务里再判定、写行，没有 422；`；`409 \`page.locked\`（计划要删或写回的页）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。` → `409 \`page.locked\`（计划要删或写回的页）→ 409 \`transfer.too_many_jobs\`（M12）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。M12/P3/S3 的按人的上限在导出与导入里：\`startExport\` 是 409 \`transfer.too_many_jobs\` → 503 \`server_busy\` → 409 \`transfer.busy\`，\`startImport\` 在读文件之前是 409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\` → 503。`S3 的文档提交照它落了。
+13. **总体设计 13.1 第 23 条**（S3；审查 C 的 M3）：`模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。` → `模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。M12/P3/S3 起 transfer 的五种任务也设 \`jobs.Job.DiscardRunning\`，平台在收拾的 \`Start\` 之前丢掉上一个进程留下的 \`running\` 的 River 行，收拾随即把 River 不再持有的排队行记成中断：上一个进程取到而没开始的任务不再等 River 的救援；以 SQL 种排队行的测试要同时种它的 River 行，应用起来之后种的写在同一条语句里。`S3 的文档提交照它落了（末句的后半照 S3 审查 A 的 N3 补，3.23 第 13 条）。
 
-第 1、2、4–10、12、13 条的旧文字在 `86565dd6` 上以脚本核对过，各恰好出现一次（修订时）；第 3 条的旧文字 00 号文档已核对过。实施时在当时的 `main` 上再核对一次，不唯一就带上前后文。
+第 1、2、4–10、12、13 条的旧文字在 `86565dd6` 上以脚本核对过，各恰好出现一次（修订时）；第 3 条的旧文字 00 号文档已核对过。实施时在当时的 `main` 上再核对一次，不唯一就带上前后文。S3 的第 5、6、12、13 条在 `4136991c` 上由 S3 的文档脚本再核对过，各恰好出现一次。
 
 ## 9. 移交
 
 | 给谁 | 什么 |
 |---|---|
 | P4/S3（性能实测） | 日志与变更集的详情改在只读的 REPEATABLE READ 快照里读（3.8），每次多一个事务的开销与一条连接的占用；日志的实测照新的读法量。事件流的 hub 多两张表，打开与关闭多一次常数时间的维护 |
-| P5/S3（发布说明的已知限制，4.13） | **切罗基文的标题键**（审查 B 的 M2，照代码）：(1) 升级之后不跑 `reindex` 时，已有的切罗基文标题留着旧键，按路径找（`RootByKey`、`ChildByKey`）与链接解析都找不到它（MCP 读 `Ꭰ.md` 答 `page.not_found`），同一父页下还能再建一个同名或只差切罗基文大小写的兄弟页（S1 的探针：旧键是对调的大小写，新键不撞它）；(2) `nervewiki reindex` 重算标题键，把它们改对；(3) 一本笔记本里已有只差切罗基文大小写的兄弟页（旧键下合法），或升级之后、`reindex` 之前建成的同名兄弟页时，`reindex` 报撞键、这本整个跳过（链接也不重建），要先给其中一页改名。发布说明写：有切罗基文标题的实例升级之后跑一次 `nervewiki reindex`，报撞键的照提示改名再跑。<br>**标题 id**：标题里有自动链接或原始 HTML 的，id 变了，旧的指向它的锚点链接要重写。<br>**导入名称**：Shift-JIS、Big5、EUC-KR 的名字读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好合法 UTF-8 的 GBK 名字的包认不出；**相对今天的回归**：GBK 的包里没有标志的真 UTF-8 名字会被读成 GBK（P3-16），报告里逐个列出。<br>**其余**：U+2800 单独作名字仍然通过；一个凭证至多 4 条事件流，一个账户至多 64 条、再开答 429（脚本或很多个配置文件才会碰到） |
+| P5/S3（发布说明的已知限制，4.13） | **切罗基文的标题键**（审查 B 的 M2，照代码）：(1) 升级之后不跑 `reindex` 时，已有的切罗基文标题留着旧键，按路径找（`RootByKey`、`ChildByKey`）与链接解析都找不到它（MCP 读 `Ꭰ.md` 答 `page.not_found`），同一父页下还能再建一个同名或只差切罗基文大小写的兄弟页（S1 的探针：旧键是对调的大小写，新键不撞它）；(2) `nervewiki reindex` 重算标题键，把它们改对；(3) 一本笔记本里已有只差切罗基文大小写的兄弟页（旧键下合法），或升级之后、`reindex` 之前建成的同名兄弟页时，`reindex` 报撞键、这本整个跳过（链接也不重建），要先给其中一页改名。发布说明写：有切罗基文标题的实例升级之后跑一次 `nervewiki reindex`，报撞键的照提示改名再跑。<br>**标题 id**：标题里有自动链接或原始 HTML 的，id 变了，旧的指向它的锚点链接要重写。<br>**导入名称**：Shift-JIS、Big5、EUC-KR 的名字读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好合法 UTF-8 的 GBK 名字的包认不出；**相对今天的回归**：GBK 的包里没有标志的真 UTF-8 名字会被读成 GBK（P3-16），报告里逐个列出。S3 的适配器的表第 7、10、12、13 格各钉一样，改了它们的人要同时改发布说明（10.3）。<br>**其余**：U+2800 单独作名字仍然通过；一个凭证至多 4 条事件流，一个账户至多 64 条、再开答 429（脚本或很多个配置文件才会碰到） |
 | v0.2 的 `M12-transfer.md`（收尾时写） | 导入时选编码的选项；CP437；Shift-JIS 等的识别；按人的上限做成配置项（若有人要） |
 | v0.2 的 `M12-history.md`（收尾时写） | "同一形状在后台恢复、后台撤销里"仍没有造过（00 号文档 4.6.1"不去造的"）：任务自己的变更集分批删出的那一种；交错 20 的"往回"与后台恢复停在组中间的那一例是来源 3，S2 照常撤销（3.22 第 1 条） |
 
@@ -1636,9 +1676,61 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 
 **第 8 节"S2 另"**：3.10.7 的每个计数的下限在测试里（上表的 23 个），实测的最少次数在上表；整个程序的 nested 两格在分支的 CI 与合并之后的 `main`（run 43812781960）上都绿。
 
-### 10.3 S3：导入导出的任务
+### 10.3 S3：导入导出的任务（2026-11-17，合并见 00 号文档第 12 节）
 
-（实施之后补。）
+- **提交**（分支 `m12-p3-s3`，从 `main` 的 `2d32d346`；实施 4 个：6.3 的第 1–3 个照次序，另加决定 482 的一个（决定 530）；修复第 1 轮 7 个；合并 `main` 一次；文档是本提交）：
+  - 启动时的收拾（T4）：五种任务设 `DiscardRunning`；`AtStart` 照 `domain.Kinds()` 逐种 `lost`；River 适配器、模块与 `TestTheRescue` 的测试；`riverHoldsSQL`、`riverTakenSQL` 与 3.14.3 的六处种子；`TestServeFailsTheJobsLeftRunning` 的三种排队行（`62e1416e`）。
+  - 按人的上限（T2）：`MaxPersonJobs`、`ErrTooManyJobs`、`CountActive` 的 `mine`、`Uploads` 记人、`room` 先按人再全局、回滚以零 UUID；契约四处、`make gen`；网页的码、两种语言的文字（含 `importCut`）、`offeredOf`、`jobs-server.ts`；`TestAPersonsSixthJobIsRefusedAndAnothersStarts`（`9aea99ec`）。
+  - 名称的编码（T3）：`names.go`（`unicodePath`、`readNames`）、`Entries` 以读出的名字判文件夹；`NameSource`、`RawEntry.From`、`Sorted.Read`、两种原因、`importRun` 在 `finish` 之前加进报告；契约的枚举与说明、`make gen`；网页的报告文字；适配器的表（13 格）、差分（13 个计数各带下限）、模糊；`TestAnImportReadsNamesNotInUTF8`（`292b238f`）。
+  - 决定 482：`transfer.revertLeftGroup` 去掉"不要先撤销这次撤销"，两种语言，`transfer-background.test.tsx` 的两处断言（`a48ace20`）。
+  - 每个提交在干净的 worktree 里 build、vet、`make lint`、`make test-go-short` 都是 0；第 1 个另跑 transfer 模块的库测试与 3.14.3 的四个 `-race -count=20`（80 次全过，包 100 秒）；第 2、3 个另跑 `gen-check`、各自的整个程序的测试（竞态）与分份（557、558 个）；第 4 个另跑 knip 与 `test-web`。第 2、3 个推送之前各改过一次（`oxfmt` 的格式、`gochecknoglobals`）：`9aea99ec` 的 `test-web`、`292b238f` 的 knip 与 `test-web` 是在改前的 `03b29219`、`fae5c81e` 上跑的（改的只是格式与 Go，都是 0），审查 C 在最终的 sha 上补跑，都是 0（4,608 与 4,614 个）。
+- **与设计不同之处**（3.23 列出）：文档不随代码的提交（决定 531）；决定 482 是第 4 个代码提交（决定 530）；app 的替身认得来源；zip 的帮手；差分在内部测试；第一个 0x7075 说了算，模糊的种子多三个钉边界的；`Read` 收库的顶层文件夹；来源到码是方法；T2 的测试分布与锁下的一格；T4 的测试帮手；契约说明的措辞；"不是 UTF-8"的文字不改（决定 532）；三处种子写成一条语句；启动时 `lost` 失败就让启动失败。
+- **先红后绿**：3.14.3 的六处种子各去掉 River 行都红（第 4 处 `rollingBackIn` 不确定：`TestUpgradePermissionMatrix -count=5` 里 4 次红、1 次绿；第 3 处读与取消两格这一次都红）；第 6 处带着 River 行、插一次收拾照绿。差分先在"没有标志的名字都按 GBK 读"上红。
+- **变异**（7.3；`mut.py`，每张表先在没改的树上把每个命令跑一遍为绿；头 `a48ace20`）：S3-1 到 S3-18（S3-9 分 domain 与 app 两条，S3-17 五种各一条）与实施者加的 O-1–O-12、网页的 W-1–W-3，服务端 50 条红（轻的 34、重的 16，含六处种子的对照）、2 条正向对照照预期绿，网页 3 条红；没有抓不到的。S3-15 在 http 的四格上也红（替身 `maxQueued` 3，五个任务让两样都满）。分份脚本的对照同 S1：去掉 `$$` 照绿，从 `SEVENTH` 去掉、加进 `EIGHTH`、只在 `EIGHTH` 都 rc=1。
+- **下限**（3.12.3；差分 `TestReadNamesReadsAsGBKOnlyAZipOfGBKNames`，种子 1–3，各 1,000 个包；下限是另 20 组 `3b+1`–`3b+3` 的最少次数的三分之二、向下取整）：
+
+  | 计数 | 测试自己的 | 20 组的最少 | 下限 |
+  |---|---|---|---|
+  | GBK 的包 | 991 | 906 | 604 |
+  | 没有候选的包 | 1,798 | 1,744 | 1,162 |
+  | 有候选解不开的包 | 211 | 200 | 133 |
+  | 其中旁边有解得开的候选（S3-6） | 110 | 82 | 54 |
+  | GBK 的包里有标志、解得开的名字（S3-1） | 455 | 399 | 266 |
+  | 其中不是 UTF-8 的（S3-2） | 253 | 214 | 142 |
+  | 没有候选的包里无标志、非 ASCII 的合法 UTF-8（S3-3） | 2,270 | 2,146 | 1,430 |
+  | GBK 的包里无标志、恰好合法 UTF-8、读成 GBK 的（S3-4） | 865 | 698 | 465 |
+  | CRC 错或版本 2 的字段（S3-7） | 2,095 | 2,002 | 1,334 |
+  | 从字段读的名字 | 1,570 | 1,598 | 1,065 |
+  | 其中原名是 ASCII 的 | 269 | 246 | 164 |
+  | 字段与原名相同的 | 46 | 32 | 21 |
+  | 读成 GBK 的名字 | 2,279 | 2,008 | 1,338 |
+
+- **实测**（7.5；本机 8 核 arm64，经 `heavy.sh`，头 `a48ace20`）：`TestAnImportReadsNamesNotInUTF8` 1.36 秒（`-race` 2.23 秒；设计推约 1–2 秒），`TestAPersonsSixthJobIsRefusedAndAnothersStarts` 1.31 秒（`-race` 2.17 秒）：第七份竞态下约多 4.4 秒，加上 S1 的 4.6 秒共约 9 秒，超出 7.5 的"约 4–6 秒"（那是 S1、S3 四个测试合起来的推断），第七份在 7763 上约 324 秒、余量约 126 秒（推断：7.5 的 315 秒加本机竞态下多的约 9 秒；这次 CI 上第七份落在 Xeon 6975P-C 上，Test 一步 4:10）。审查 B 另量：前者 1.42 秒、竞态 2.31 与 2.33 秒。审查 A 的探针（竞态下 20 次）：启动时的 `lost` 都比 `newAcmeTeam` 返回早 0.70–0.73 秒，所以 3.14.3 的 `-race -count=20` 证明的是"不偶发"，没碰上赛跑（3.23 第 13 条）。差分在竞态下 0.14 秒（非竞态 0.02 秒），模糊的 9 个种子 0.00 秒，表 0.04 秒；archive 包竞态下 1.32 秒（负载 2.4–4.5）。
+- **门禁**（本机，头 `a48ace20`）：`make lint gen-check knip build` 绿；`make test-go`（组合根八份、竞态、成本、守卫；185 个包 ok）与 `make test-web`（4,614 个）绿；`make test-go-short` 绿；`make e2e` 577 个（576 个通过、1 个跳过：WebKit 的 A15 第 3 格），TR4 的 `f\xff.md` 照旧 `name_not_utf8`；分份脚本 558 个，145/50/119/120/60/15/34/15，两个新测试在第七份。
+- **分支的 CI**：`a48ace20` 的 run 43919318998（`ci.yml`），第 1 次 attempt 19 项全绿，没有重跑，没有碰到已知的偶发。Test 一步（E2E 是那一步）与 runner 的 CPU（作业的 "Runner CPU" 一步）：
+
+  | 作业 | Test | CPU |
+  |---|---|---|
+  | bootstrap-1 | 6:29 | EPYC 9V45 |
+  | bootstrap-2 | 4:17 | Xeon 6975P-C |
+  | bootstrap-3 | 4:38 | Xeon 6975P-C |
+  | bootstrap-4 | 4:49 | Xeon 6975P-C |
+  | bootstrap-5 | 6:25 | EPYC 7763 |
+  | bootstrap-6 | 5:19 | Xeon Platinum 8573C |
+  | bootstrap-7（两个新测试） | 4:10 | Xeon 6975P-C |
+  | bootstrap-8 | 4:17 | Xeon 6975P-C |
+  | race（差分与模糊的种子） | 9:08 | Xeon 6975P-C |
+  | E2E 一步 | 6:15 | |
+
+  八份都在 450 秒之下（最慢的第一份 389 秒、第五份 385 秒，与 S3 无关的两份，分别落在 9V45 与 7763 上）。第七份这次没落在 EPYC 7763 上。别的作业：web 4:43，short 2:57，costs-1/2/3 11:06/24:48/14:17，costs-lint 8:03，guards-core 12:56，guards-sources 10:36。
+- **第 8 节"S3 另"**：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 处 5 次 4 红）；四个测试的 `-count=20` 在第 1 个提交上 80 次全过。
+- **审查**：三份（A T4 与决定 482 0I 0M 4N；B T3 0I 1M 3N；C T2、契约与网页、提交与文档草稿 0I 1M 3N）。主持者的决定 530–532。见 [S3 的审查记录](reviews/P3-S3-transfer-jobs-review.md)。
+- **修复第 1 轮** 7 个提交（`65315a27`–`cbda8435`，只改测试）：模糊的种子加三个钉边界的字段（1 字节的、尺寸多 1 字节的、截在 CRC 与 `测` 之后的），`unicodePath` 的三处边界（审查 B 的 M1）；表第 11 格加一个 GBK 名字以 0x5C 结尾的符号链接，`Special` 按读出的名字判（B-N1）；失败的导入照样列出读过的名字（B-N2）；后台开始在锁下再数一次的一格（C-M1）；启动时 `lost` 失败就让启动失败的一格（A-N4）；三处种子的行与 River 行写成一条语句（A-N3，3.23 第 13 条）；中文的 `revertLeftGroup` 整句比对（A-N2）。修复的变异 8 条（B5、B6、B7、B11、B12、MC-1、A-N4 的"失败照样往下"、A-N2 的"中文的后半句放回去"），修之前都绿（审查 B、C、A），修之后都红；种子的对照：照原样绿，每个种子之后插一次收拾、River 行照写的绿，不写 River 行的三个都红。逐个提交 build、vet、`make lint`、`make test-go-short` 都是 0，网页的那一个另跑 knip、`test-web`（4,616 个）；推送之前组合根的第三、四、七份（`make test-go-bootstrap-3/4/7`）与 transfer 模块的全部包 `-race` 都绿。分支的 CI：`cbda8435` 的 run 43948816167，第 1 次 attempt 19 项全绿，没有重跑（`ci-wait.sh` 轮询时一次答复不是 JSON，打出一段 traceback，接着照常等到结束）。Test 一步：第三份 4:37、第四份 4:53、第七份 4:05（都在 Xeon 6975P-C 上），竞态一份 9:04（Xeon 6975P-C）；最慢的第五份 6:26；E2E 一步 6:16。
+- **核对第 1 轮**：三位的旧发现都解决，A、B 各一条新的 Nit、C 没有新的，都只在文档，在本提交照审查者改：
+  - A 的 C1-N1：3.23 第 13 条说矩阵的种子"在起应用之前写"不对，它在 prepare 的应用起来之后写；改为照实写它不怕赛跑的原因。
+  - B 的 C1-N1：`full[:12]` 截在 CRC 与 `测` 之后，不是"截在 `测` 的中间"；文档照实写，测试里的注释照旧，不改（3.23 第 6 条）。
+- **合并 `main`**：`7dfb248a` 合进 P4/S2 的合并（`e2e/perf/`、e2e 的依赖与锁文件、knip 的配置）与 P4/S5 的设计（决定 519–529），没有冲突：S3 的提交不碰这些文件，也不碰 `docs/`。之后 `make lint gen-check knip build`、`make test-go-short`、`make test-web`（4,616 个）经 `heavy.sh` 都是 0；分支的 CI run 43969116486 第 1 次 attempt 19 项全绿，Test 一步第七份 4:05、竞态一份 9:11（都在 Xeon 6975P-C 上），最慢的第四份 6:25（Xeon Platinum 8370C），E2E 一步 6:18；各份与 CPU 在 S3 的审查记录。
+- **本提交自己的分支 CI**：（待填：本提交的分支 CI）。
 
 ---
 
