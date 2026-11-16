@@ -18,6 +18,10 @@ import type { ShapeName } from "./shapes";
 // round; a round is one run, NW_PERF_ROUND naming it. Besides: the tree's bytes, the heap after the fifth T1, and in
 // the deep shape the "Move to…" dialog of the big folder. NW_PERF_CONTROLS=1 runs the controls of the measures
 // instead (design 4.3, the six of them).
+//
+// T3 comes before T2, in the tab as it opened: "000 big" the first root, its children laid out from it down, some in
+// the viewport. After T2 it was the sixth, its children all below the viewport, and T3 measured a paint of none in it
+// (review B's M1 on M12/P4/S2). Scrolling it up instead would turn on how far the page scrolls, the folder closed.
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 const times = 5;
@@ -58,6 +62,16 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
         record("t1-profile", { shape, round, ...(await profiledOpen(context, env, home)) });
       }
       const tab = await openTab(context, home);
+      const t3: number[] = [];
+      const dialog: number[] = [];
+      if (notebook.big !== undefined) {
+        for (let i = 1; i <= times; i++) {
+          // oxlint-disable-next-line no-await-in-loop -- one opening at a time
+          const one = await openFolder(tab, nav, notebook.big, `t3-${i}`);
+          record("t3", { shape, round, i, ...one });
+          t3.push(one.t3);
+        }
+      }
       const scrolled = await firstRowInView(tab.page, nav);
       record("t2-scroll", { shape, round, ...scrolled });
       const t2: T2[] = [];
@@ -71,16 +85,6 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
       }
       const voided = t2.filter((one) => !one.intersects).length;
       expect(voided, "T2s whose new row was not in the viewport").toBeLessThanOrEqual(times / 2);
-      const t3: number[] = [];
-      const dialog: number[] = [];
-      if (notebook.big !== undefined) {
-        for (let i = 1; i <= times; i++) {
-          // oxlint-disable-next-line no-await-in-loop -- one opening at a time
-          const one = await openFolder(tab, nav, notebook.big, `t3-${i}`);
-          record("t3", { shape, round, i, ...one });
-          t3.push(one.t3);
-        }
-      }
       if (shape === "deep" && notebook.big !== undefined) {
         for (let i = 1; i <= times; i++) {
           // oxlint-disable-next-line no-await-in-loop -- one dialog at a time
@@ -291,8 +295,8 @@ function longestOf(tasks: LongTask[], from: number, to: number): number {
 
 /**
  * One T3 (design 4.3): once the tab is quiet for 1 s, a click on the button that opens big; T3 runs from the click
- * event's timeStamp to the paint of its children down to the viewport's bottom edge. Then it closes again, and the
- * tab rests a second.
+ * event's timeStamp to the paint of its children down to the viewport's bottom edge, at least one of them in it. Then
+ * it closes again, and the tab rests a second.
  */
 async function openFolder(tab: { page: Page; out: Set<Request> }, nav: string, big: string, key: string) {
   await quietFor(tab, 1_000);
@@ -305,6 +309,8 @@ async function openFolder(tab: { page: Page; out: Set<Request> }, nav: string, b
   const seen = await painted(tab.page, key, paintMs);
   const click = await tab.page.evaluate(() => window.nwPerf.lastClick());
   expect(click?.label, "the click's button").toBe(label);
+  // Children painted in the viewport: with none in it, the end holds once the list is there, whatever it paints.
+  expect(seen.inView, "the children in the viewport").toBeGreaterThanOrEqual(1);
   await button.click();
   await expect(button).toHaveAttribute("aria-expanded", "false");
   await sleep(1_000);
