@@ -1,12 +1,24 @@
 import { Bot, ChevronRight, Ellipsis, FileText, Library } from "lucide-react";
+import { computed, type IObservableValue } from "mobx";
 import { observer } from "mobx-react-lite";
-import { memo, useEffect, useId, useLayoutEffect, useRef, useState, type MouseEvent, type RefObject } from "react";
+import {
+  memo,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type RefObject,
+} from "react";
 import { createPath, useLocation, useParams, type NavigateFunction } from "react-router";
 
 import { opened } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
+import { useShownRows } from "../../app/shown-rows";
 import { canAddSource, canDeleteNode, canManageNode, isAgentsPage } from "../../app/source-permissions";
 import {
   DropdownMenu,
@@ -62,10 +74,10 @@ export type OpenMenu = { id: string; button: string; box: Box };
  * Its pages; its heading; the notebook's home, which the pages' addresses
  * are under; the notebook as the tree was last given it, where the store
  * no longer finds it (M5/P4 design 3.9); the id of the tree's menu; where
- * a write's failure shows; the focus given to a page's menu button once
- * the tree has it; the tree's menu opened at a page's button, and closed
- * as the page's row leaves; the router's navigation; and each row's
- * handles, by its page.
+ * a write's failure shows; the page whose menu button is to have the
+ * focus, observable, which the tree gives it once it has it; the tree's
+ * menu opened at a page's button, and closed as the page's row leaves;
+ * the router's navigation; and each row's handles, by its page.
  */
 export type TreeContext = {
   pages: PageTreeStore;
@@ -74,6 +86,7 @@ export type TreeContext = {
   lastNotebook: RefObject<Notebook>;
   menu: string;
   fail: (error: unknown) => void;
+  focusing: IObservableValue<string | undefined>;
   focusActions: (id: string) => void;
   openMenu: (id: string, button: HTMLElement) => void;
   left: (id: string) => void;
@@ -100,7 +113,9 @@ type ListProps = { context: TreeContext; parent: string | null; depth: number; i
  * the notebook, and follows a click on a row's link (M12/P4/S4 design 3.2,
  * 3.3). A page the tree opened is marked so (opened, M12/P2/S1); its link
  * followed again where the address is that link's replaces the entry, as
- * a router's link does.
+ * a router's link does. It draws its first rows at once and the rest a
+ * chunk after each paint (3.6); while not all are drawn, at once as far
+ * as its row on the way to the page whose button is to have the focus.
  */
 export const PageList = observer(function PageList({ context, parent, depth, id }: ListProps) {
   const { pages, home } = context;
@@ -110,6 +125,21 @@ export const PageList = observer(function PageList({ context, parent, depth, id 
   const t = useT();
   const tree = pages.tree;
   const writer = writesNotebook(notebook);
+  const children = pages.childrenOf(parent);
+  // How many rows to draw as far as this list's row on the way to the page whose button is to have the focus: that
+  // page, or the one above it here; none without one. Read only while not all are drawn (useShownRows).
+  const through = useMemo(
+    () =>
+      computed(() => {
+        const target = context.focusing.get();
+        const node = target === undefined ? undefined : pages.byId(target);
+        const here =
+          node === undefined ? undefined : [...pages.ancestorsOf(node.id), node].find((on) => on.parent_id === parent);
+        return here === undefined ? 0 : pages.childrenOf(parent).indexOf(here) + 1;
+      }),
+    [context, pages, parent]
+  );
+  const shown = useShownRows(children.length, () => through.get());
   const follow = (event: MouseEvent<HTMLUListElement>) => {
     const href = linkFollowed(event);
     if (href !== undefined) {
@@ -120,7 +150,7 @@ export const PageList = observer(function PageList({ context, parent, depth, id 
   return (
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- a click on one of its links, which Enter on a link is too
     <ul id={id} className="flex flex-col gap-0.5" onClick={follow}>
-      {pages.childrenOf(parent).map((node) => {
+      {children.slice(0, shown).map((node) => {
         const hasChildren = pages.childrenOf(node.id).length > 0;
         return (
           <PageRow

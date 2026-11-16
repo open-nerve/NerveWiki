@@ -15,8 +15,9 @@ import { renderApp } from "../../test/render";
 
 // The notebook's tree and its home's list at a tenth of the scale they are measured at (M12/P4/S4 design 4.1): a
 // notebook of 1,000 pages at its root, an editor's, on its home, whose left column and main each list them all. What
-// is guarded is what renders, not how long it takes (design 2.4 辛): another's change to the tree renders only the row
-// it adds, a row holds no menu of its own nor a router's link. The full scale is measured by e2e/perf (design 6.3).
+// is guarded is what renders, not how long it takes (design 2.4 辛): each list draws its first rows at once and the
+// rest a chunk at a time, another's change to the tree renders only the row it adds, a row holds no menu of its own
+// nor a router's link. The full scale is measured by e2e/perf (design 6.3).
 
 /** Each time a row of the tree renders it calls useDrag once, an editor's row and a reader's alike: counted here. */
 const rendered = vi.hoisted(() => ({ rows: 0 }));
@@ -60,6 +61,35 @@ const discovering = (root: Element) => root.querySelectorAll("a[data-discover]")
 /** The title of the page shown. */
 const shownTitle = () => document.querySelector("main h1")?.textContent;
 
+/** How a list's rows came, one change of the document at a time: the first it had, its last, the most added at once. */
+type Rows = { first?: number; last: number; most: number };
+
+/**
+ * watchRows watches the tree's rows and the home's, from now on, at each change of the document: a commit of React's
+ * is one, its observer called in a microtask after it; the next chunk is drawn in a task of its own, another change.
+ */
+function watchRows() {
+  const tree: Rows = { last: treeRows(), most: 0 };
+  const main: Rows = { last: homeRows(), most: 0 };
+  const lists: [Rows, () => number][] = [
+    [tree, treeRows],
+    [main, homeRows],
+  ];
+  const observer = new MutationObserver(() => {
+    for (const [rows, count] of lists) {
+      const now = count();
+      if (rows.first === undefined && rows.last === 0 && now > 0) {
+        rows.first = now;
+      } else {
+        rows.most = Math.max(rows.most, now - rows.last);
+      }
+      rows.last = now;
+    }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+  return { tree, home: main, stop: () => observer.disconnect() };
+}
+
 /** renderHome renders Plans' home over server, and how to read its tree again, as another's change has it read. */
 function renderHome(server: ReturnType<typeof pageServer>) {
   let store: RootStore | undefined;
@@ -79,6 +109,48 @@ function renderHome(server: ReturnType<typeof pageServer>) {
       }),
   };
 }
+
+test("a notebook of 1,000 pages at its root shows the first 100 of each list at once and the rest at most 400 a commit, all of them in the end", async () => {
+  // Watched before the app renders: the first commit that has rows is the first change that sees them.
+  const watched = watchRows();
+  try {
+    renderHome(pageServer({ nodes: flat(many) }));
+    await waitFor(() => expect([watched.tree.first, watched.home.first]).not.toContain(undefined), wait);
+    await waitFor(() => expect([treeRows(), homeRows()]).toEqual([many, many]), wait);
+  } finally {
+    watched.stop();
+  }
+  expect(watched.tree.first).toBeLessThanOrEqual(100);
+  expect(watched.home.first).toBeLessThanOrEqual(100);
+  // Drawn after the first: more than one change, none of more than a chunk.
+  expect(watched.tree.most).toBeGreaterThan(0);
+  expect(watched.home.most).toBeGreaterThan(0);
+  expect(watched.tree.most).toBeLessThanOrEqual(400);
+  expect(watched.home.most).toBeLessThanOrEqual(400);
+  const nav = screen.getByRole("navigation", { name: "Pages of Plans" });
+  const href = pagePath(manyPage(many).id);
+  expect(nav.querySelector(`a[href="${href}"]`)?.textContent).toBe("p1000");
+  expect(document.querySelector(`ul[aria-label="Pages"] a[href="${href}"]`)?.textContent).toBe("p1000");
+}, 30_000);
+
+test("a list of pages all shown, grown by 1,000 at once, shows them at most 400 a commit", async () => {
+  const server = pageServer({ nodes: flat(10) });
+  const view = renderHome(server);
+  await waitFor(() => expect([treeRows(), homeRows()]).toEqual([10, 10]), wait);
+  const watched = watchRows();
+  try {
+    // As an import of a flat archive adds them, after the pages there.
+    server.nodes = [...server.nodes, ...flat(many, 11)];
+    await view.readAgain();
+    await waitFor(() => expect([treeRows(), homeRows()]).toEqual([many + 10, many + 10]), wait);
+  } finally {
+    watched.stop();
+  }
+  expect(watched.tree.most).toBeGreaterThan(0);
+  expect(watched.home.most).toBeGreaterThan(0);
+  expect(watched.tree.most).toBeLessThanOrEqual(400);
+  expect(watched.home.most).toBeLessThanOrEqual(400);
+}, 30_000);
 
 test("another's change to a tree of 1,000 pages renders only the row it adds, and runs a few reactions", async () => {
   const server = pageServer({ nodes: flat(many) });
@@ -129,6 +201,9 @@ test("a row of the tree holds no menu of its own and no router link, until one i
   // A plain anchor does not say it discovers its route.
   expect(nav.querySelectorAll("li a")).toHaveLength(many);
   expect(discovering(nav.querySelector("ul") ?? nav)).toBe(0);
+  const list = document.querySelector('ul[aria-label="Pages"]') ?? document.body;
+  expect(list.querySelectorAll("a")).toHaveLength(many);
+  expect(discovering(list)).toBe(0);
   // The shell's router links do: this tells the guard still sees what a router's link is.
   expect(screen.getByRole("link", { name: "Notebook settings" }).getAttribute("data-discover")).toBe("true");
 }, 30_000);

@@ -1,6 +1,7 @@
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { extractInstruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/list-item";
 import { History, List, Plus } from "lucide-react";
+import { observable, runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router";
@@ -48,7 +49,9 @@ import { useSourceMove } from "./source-move-confirmation";
  * memo of plain values its list computes, which another's change to the
  * tree renders again only where they changed; its link is a plain anchor
  * its list follows; the tree has one menu, opened at a row's button, and
- * a row mounts a dialog only once it is chosen.
+ * a row mounts a dialog only once it is chosen. A list draws its first
+ * rows at once and the rest a chunk after each paint (useShownRows), and
+ * at once as far as the row the focus goes to.
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
@@ -65,7 +68,10 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const heading = useRef<HTMLHeadingElement>(null);
   const newPage = useNewPage(notebook);
   const [failure, setFailure] = useState<unknown>();
-  const [focusing, setFocusing] = useState<string>();
+  // The page whose menu button is to have the focus once the tree has it: observable, so that a list not all drawn
+  // draws the way to it (M12/P4/S4 design 3.6).
+  const [focusingBox] = useState(() => observable.box<string | undefined>(undefined));
+  const focusing = focusingBox.get();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.tree !== undefined;
   const writer = writesNotebook(notebook);
@@ -87,11 +93,11 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   // The page's item may be another by now: a move to another parent mounts it anew.
   useEffect(() => {
     if (focusing !== undefined) {
-      setFocusing(undefined);
+      runInAction(() => focusingBox.set(undefined));
       const actions = nav.current?.querySelector<HTMLElement>(`[data-actions-of="${focusing}"]`);
       (actions ?? heading.current)?.focus();
     }
-  }, [focusing]);
+  }, [focusingBox, focusing]);
   useEffect(() => {
     if (!writer) {
       return undefined;
@@ -138,13 +144,14 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       lastNotebook,
       menu: menuId,
       fail: setFailure,
-      focusActions: setFocusing,
+      focusing: focusingBox,
+      focusActions: (id) => runInAction(() => focusingBox.set(id)),
       openMenu: (id, button) => setMenu({ id, button: button.id, box: boxOf(button) }),
       left: (id) => setMenu((open) => (open?.id === id ? undefined : open)),
       go: navigate,
       rows: new Map(),
     }),
-    [pages, home, menuId, navigate]
+    [pages, home, menuId, navigate, focusingBox]
   );
   return (
     <nav ref={nav} aria-label={t("page.tree", { notebook: notebook.name })} className="space-y-1">
