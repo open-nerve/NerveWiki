@@ -512,7 +512,9 @@ test("a page deleted while this tab edits it unsaved stays, saying so, until the
       name: "Leave",
     })
   );
-  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  // In place of the page this navigation showed, which took the focus with it (M12/P2/S1, 18.6).
+  await waitFor(() => expect(document.activeElement).toBe(notFound));
   // The page gone, its view is not read as the edit is left.
   expect(server.sent).not.toContain("GET view undefined");
 });
@@ -524,7 +526,9 @@ test("a page deleted while this tab edits it with nothing unsaved is no page at 
   server.sessions.clear();
   deleted(events);
 
-  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const notFound = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  // In place of the page this navigation showed, which took the focus with it (M12/P2/S1, 18.6).
+  await waitFor(() => expect(document.activeElement).toBe(notFound));
 });
 
 test.each<[string, (typeof workspaceJSON)[]]>([

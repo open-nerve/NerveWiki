@@ -61,7 +61,8 @@ export const PageLayout = observer(function PageLayout() {
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
-    return <PageGone notebook={notebook} page={pageId} />;
+    // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
+    return <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />;
   }
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
@@ -70,14 +71,24 @@ export const PageLayout = observer(function PageLayout() {
  * PageGone answers the page id the notebook's tree does not have, a page's
  * shell or a part of it: no page of the app's, unless this tab deleted it;
  * it then goes to the deleted subtree's parent, or the notebook's home
- * when that is gone too, arrived at.
+ * when that is gone too, arrived at. In place of the page this navigation
+ * showed (replacing), "Page not found" takes the focus from no one
+ * (M12/P2/S1, 18.6).
  */
-export const PageGone = observer(function PageGone({ notebook, page }: { notebook: Notebook; page: string }) {
+export const PageGone = observer(function PageGone({
+  notebook,
+  page,
+  replacing = false,
+}: {
+  notebook: Notebook;
+  page: string;
+  replacing?: boolean;
+}) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
   const to = pages.removedTo(page);
   if (to === undefined) {
-    return <NotFoundPage />;
+    return <NotFoundPage replacing={replacing} />;
   }
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
@@ -223,16 +234,21 @@ const PageShell = observer(function PageShell({
     keys.current = { enter };
   });
   const reading = editing === undefined;
+  // Back from the edit, as the reading view shows: Edit takes the focus, or, without Edit (the account made a reader
+  // meanwhile), the page's title; an Edit that shows later, a writer again, takes nothing (M12/P2/S1, 18.6).
+  useEffect(() => {
+    if (!reading || back.current === false) {
+      return;
+    }
+    const focused = document.activeElement;
+    if (back.current === true || focused === null || focused === document.body) {
+      (editable ? edit : heading).current?.focus();
+    }
+    back.current = false;
+  }, [reading, editable, heading]);
   useEffect(() => {
     if (!editable || !reading) {
       return undefined;
-    }
-    if (back.current !== false) {
-      const focused = document.activeElement;
-      if (back.current === true || focused === null || focused === document.body) {
-        edit.current?.focus();
-      }
-      back.current = false;
     }
     const mac = onMac();
     const onKeyDown = (event: KeyboardEvent) => {
