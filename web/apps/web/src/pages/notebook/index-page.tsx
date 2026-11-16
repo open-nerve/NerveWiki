@@ -53,7 +53,8 @@ export const IndexPage = observer(function IndexPage() {
     const query = new URLSearchParams();
     if (next.type !== "") query.set("type", next.type);
     if (next.tag !== "") query.set("tag", next.tag);
-    void setParams(query, { replace: true, preventScrollReset: true });
+    // The entry's state stays: a directory the tree opened keeps its mark (M12/P2/S1, 28.5).
+    void setParams(query, { replace: true, preventScrollReset: true, state: location.state });
   }
   return (
     <section className="space-y-4">
