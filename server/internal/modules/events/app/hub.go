@@ -151,10 +151,11 @@ func (h *Hub) open(a shared.Actor) (*Stream, error) {
 	switch held := h.held[c]; {
 	case len(held) >= MaxCredentialStreams:
 		// The oldest ends; its handler writes the events it holds, then the
-		// reset, and closes it, which finds it counted no longer.
+		// reset, and closes it, which finds it counted no longer. Its own
+		// account loses it, as close would take it off.
 		oldest := held[0]
 		h.held[c] = slices.Delete(held, 0, 1)
-		h.accounts[a.UserID]--
+		h.accounts[oldest.userID]--
 		oldest.resetFor(domain.ResetSuperseded)
 		h.logger.Debug("event stream superseded", slog.String("user_id", a.UserID.String()), slog.String("credential", c.kind),
 			slog.Int("streams", MaxCredentialStreams))

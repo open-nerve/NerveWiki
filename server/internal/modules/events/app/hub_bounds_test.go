@@ -99,6 +99,59 @@ func TestACredentialsFifthStreamSupersedesItsOldest(t *testing.T) {
 	}
 }
 
+// Each personal access token is a credential of its own, as each
+// sign-in's session is (P3 design 3.9.1): alice's first token's fifth
+// stream supersedes that token's oldest alone; her second token's, bob's
+// token's and her session's streams, opened before them, are untouched,
+// and each account counts its own (P3/S1 code review C-M1).
+func TestEachTokenIsACredentialOfItsOwn(t *testing.T) {
+	h := listeningHub()
+	token := func(userID uuid.UUID) shared.Actor { return shared.Actor{UserID: userID, APITokenID: uuid.NewV7()} }
+	first, second, bobs := token(alice()), token(alice()), token(bob())
+	others := []*app.Stream{mustOpen(t, h, second), mustOpen(t, h, bobs), mustOpen(t, h, session(alice(), uuid.NewV7()))}
+	var streams []*app.Stream
+	for range app.MaxCredentialStreams {
+		streams = append(streams, mustOpen(t, h, first))
+	}
+	fifth := mustOpen(t, h, first)
+	for i, s := range append(others, streams...) {
+		want := domain.ResetReason("")
+		if s == streams[0] {
+			want = domain.ResetSuperseded
+		}
+		if got := resetFor(s); got != want {
+			t.Errorf("stream %d: reset %q, want %q", i, got, want)
+		}
+	}
+	if resetFor(fifth) != "" {
+		t.Error("the fifth was reset")
+	}
+	if a, b := app.AccountStreams(h, alice()), app.AccountStreams(h, bob()); a != app.MaxCredentialStreams+2 || b != 1 {
+		t.Errorf("alice counts %d, bob %d; want %d and 1", a, b, app.MaxCredentialStreams+2)
+	}
+}
+
+// A superseded stream leaves its own account's count, as its close would:
+// the counts stay right should a credential ever be shared by accounts,
+// as a credentialOf that lost a kind's case would make it (P3/S1 code
+// review C-M1). No sign-in nor token is shared: bob's session id given
+// to alice stands for such a fault.
+func TestASupersededStreamLeavesItsOwnAccount(t *testing.T) {
+	h := listeningHub()
+	id := uuid.NewV7()
+	var bobs []*app.Stream
+	for range app.MaxCredentialStreams {
+		bobs = append(bobs, mustOpen(t, h, session(bob(), id)))
+	}
+	mustOpen(t, h, session(alice(), id))
+	if resetFor(bobs[0]) != domain.ResetSuperseded {
+		t.Fatal("bob's oldest was not superseded")
+	}
+	if a, b := app.AccountStreams(h, alice()), app.AccountStreams(h, bob()); a != 1 || b != app.MaxCredentialStreams-1 {
+		t.Errorf("alice counts %d, bob %d; want 1 and %d", a, b, app.MaxCredentialStreams-1)
+	}
+}
+
 // An account holds MaxAccountStreams over its credentials: the first
 // stream of a seventeenth credential, past them, is refused,
 // ErrTooManyStreams; once one closes, it opens. Closed, every stream is
