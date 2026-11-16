@@ -62,7 +62,12 @@ func (p *paths) Check(field, path string) error {
 	switch {
 	case path == "" || strings.Contains(path, "//") || strings.ContainsRune(path, 0):
 		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "is no path"})
-	case strings.HasSuffix(path, "/"): // "/" too, as the real Check (ParsePath) refuses it (P3/S1 code review A-M2)
+	// As the real Check, ParsePath, answers them (P3/S1 code review A-M2
+	// and its check's A-C1-N1): "/", nothing once its leading "/" is gone,
+	// is required; any other path ending in "/" is no path.
+	case path == "/":
+		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldRequired, Message: "is required"})
+	case strings.HasSuffix(path, "/"):
 		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "must not end with /"})
 	}
 	return nil
