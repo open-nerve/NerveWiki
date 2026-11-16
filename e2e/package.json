@@ -5,7 +5,8 @@
   "license": "AGPL-3.0-only",
   "type": "module",
   "scripts": {
-    "check:types": "tsc --noEmit"
+    "check:types": "tsc --noEmit",
+    "perf": "playwright test -c perf/playwright.config.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.1",
