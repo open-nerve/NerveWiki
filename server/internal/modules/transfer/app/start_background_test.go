@@ -207,6 +207,13 @@ func TestAPersonsSixthBackgroundStartIsRefused(t *testing.T) {
 		{"five of his, the queue full", func(_ *testing.T, w *world, _ *jobTree) { w.jobsOf(w.bob, 5) }, 5, domain.ErrTooManyJobs, both},
 		{"four of his and an import he uploads", func(t *testing.T, w *world, _ *jobTree) { w.uploading(t, w.bob); w.jobsOf(w.bob, 4) }, 20,
 			domain.ErrTooManyJobs, both},
+		// His fifth comes between the count outside the queue's lock and
+		// the one under it: that one refuses his sixth (P3 design 3.13.1;
+		// review C's M1).
+		{"four of his, his fifth after the first count", func(_ *testing.T, w *world, _ *jobTree) {
+			w.jobsOf(w.bob, 4)
+			w.rows.onCount = func() { w.jobsOf(w.bob, 1) }
+		}, 20, domain.ErrTooManyJobs, both},
 		{"five of his and a write into the notebook", func(_ *testing.T, w *world, _ *jobTree) {
 			w.jobsOf(w.bob, 5)
 			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: w.alice})
