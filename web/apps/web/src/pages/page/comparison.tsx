@@ -84,19 +84,33 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
 }
 
 /**
- * ChunkNotLoaded says the diff's chunk could not load, and that a reload
- * usually helps, with Try again and Reload. Loading again, it says so, Try
- * again aria-disabled, doing nothing: the focus stays on it (v0.1 design
- * 13.2, item 12). Gone with the focus, it calls left before it leaves the
- * document (item 17).
+ * ChunkNotLoaded says the diff's chunk could not load (text, by default
+ * that a reload usually helps), with Try again and, with reload, Reload.
+ * Loading again, it says so, Try again aria-disabled, doing nothing: the
+ * focus stays on it (v0.1 design 13.2, item 12). Gone with the focus, it
+ * calls left before it leaves the document (item 17). The conflict's
+ * panel has it too, without Reload, which would lose the editor's text
+ * (M12/P2/S1, 21.14).
  */
-function ChunkNotLoaded({ loading, retry, left }: { loading: boolean; retry: () => void; left: () => void }) {
+export function ChunkNotLoaded({
+  loading,
+  retry,
+  left,
+  text,
+  reload = true,
+}: {
+  loading: boolean;
+  retry: () => void;
+  left: () => void;
+  text?: string;
+  reload?: boolean;
+}) {
   const t = useT();
   const own = useRef<HTMLDivElement>(null);
   useFocusLeaving(own, left);
   return (
     <div ref={own} className="space-y-2" aria-busy={loading || undefined}>
-      <Alert>{t(loading ? "status.loading" : "version.diffNotLoaded")}</Alert>
+      <Alert>{loading ? t("status.loading") : (text ?? t("version.diffNotLoaded"))}</Alert>
       <div className="flex gap-2">
         <Button
           variant="outline"
@@ -106,9 +120,11 @@ function ChunkNotLoaded({ loading, retry, left }: { loading: boolean; retry: () 
         >
           {t("status.retry")}
         </Button>
-        <Button variant="outline" onClick={() => window.location.reload()}>
-          {t("error.reload")}
-        </Button>
+        {reload && (
+          <Button variant="outline" onClick={() => window.location.reload()}>
+            {t("error.reload")}
+          </Button>
+        )}
       </div>
     </div>
   );

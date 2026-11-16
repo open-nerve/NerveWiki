@@ -1074,6 +1074,7 @@ export const en = {
   "transfer.importProblemsTitle": "What was not imported as it was",
   "transfer.importProblem.renamed": "{path} was imported as {to}: links to its old name do not reach it.",
   "transfer.importProblem.other": "{path} was not imported as it was.",
+  "transfer.reportRetryOf": "Try again (report on {name})",
   "role.admin": "Admin",
   "role.member": "Member",
   "role.guest": "Guest",

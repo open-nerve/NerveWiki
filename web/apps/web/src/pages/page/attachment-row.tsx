@@ -1,5 +1,5 @@
 import { Ellipsis, File, FileAudio, FileImage, FileText, FileVideo, type LucideIcon } from "lucide-react";
-import type { Ref } from "react";
+import { useEffect, useLayoutEffect, useRef, type Ref } from "react";
 
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { assetKind, embedOf, opensInline, type AssetKind } from "../../lib/asset-kind";
+import { focusLost } from "../../lib/focus-leaving";
 import type { Asset } from "../../services/asset.service";
 import { useStore } from "../../stores/context";
 
@@ -53,7 +54,10 @@ export type AssetAction = "rename" | "move" | "delete" | "copy";
  * its menu: Open, Download, Copy embed (for one a link leads to), and for
  * whoever can manage it Rename, Move to… and Delete, which the section
  * holds, as it does where the focus goes as the menu closes (menuClosed).
- * The row drags as its embed, into the editor.
+ * The row drags as its embed, into the editor. Taken away, the list read
+ * again without it, while the focus is in it or in its menu, which is a
+ * portal outside it, it gives the focus to left: it would fall to the
+ * body (M12/P2/S1, 16.1).
  */
 export function AttachmentRow({
   asset,
@@ -63,6 +67,7 @@ export function AttachmentRow({
   act,
   menuClosed,
   linkRef,
+  left,
 }: {
   asset: Asset;
   manage: boolean;
@@ -71,8 +76,38 @@ export function AttachmentRow({
   act: (action: AssetAction, asset: Asset) => void;
   menuClosed: (event: Event) => void;
   linkRef?: Ref<HTMLAnchorElement>;
+  /** Where the focus goes as the row leaves the document holding it, or its menu does. */
+  left: () => void;
 }) {
   const t = useT();
+  const row = useRef<HTMLLIElement>(null);
+  // The menu's content as it last opened: closed, it is out of the document.
+  const menu = useRef<HTMLElement | null>(null);
+  const leaving = useRef(left);
+  useEffect(() => {
+    leaving.current = left;
+  });
+  // Whether the focus was in the row or its menu as it left: the layout effect's cleanup runs before the row's nodes,
+  // and the menu's portal under it, leave the document, the focus still there.
+  const held = useRef(false);
+  useLayoutEffect(
+    () => () => {
+      const at = document.activeElement;
+      held.current =
+        row.current?.contains(at) === true || (menu.current?.isConnected === true && menu.current.contains(at));
+    },
+    []
+  );
+  // The passive effect's runs once they left: given then, the focus stays. Given earlier, the open menu's focus trap,
+  // whose listeners go with its passive effects, would take it back to the item about to leave.
+  useEffect(
+    () => () => {
+      if (held.current && focusLost()) {
+        leaving.current();
+      }
+    },
+    []
+  );
   const { preferences } = useStore();
   const inline = opensInline(asset.mime);
   const link = asset.link;
@@ -82,6 +117,7 @@ export function AttachmentRow({
   return (
     // oxlint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- dragged into the editor; Copy embed is the keyboard's way
     <li
+      ref={row}
       className="flex items-center gap-2 px-3 py-2 text-sm"
       draggable={link !== null || undefined}
       onDragStart={(event) => {
@@ -124,7 +160,15 @@ export function AttachmentRow({
             <Ellipsis className="size-4" />
           </button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" onCloseAutoFocus={menuClosed}>
+        <DropdownMenuContent
+          ref={(element) => {
+            if (element !== null) {
+              menu.current = element;
+            }
+          }}
+          align="end"
+          onCloseAutoFocus={menuClosed}
+        >
           <DropdownMenuItem asChild>
             <a {...opening}>
               {t("asset.open")}

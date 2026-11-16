@@ -1025,6 +1025,7 @@ export const zhCN: Messages = {
   "transfer.importProblemsTitle": "没有照原样导入的条目",
   "transfer.importProblem.renamed": "{path} 导入为 {to}：指向原名的链接到不了它。",
   "transfer.importProblem.other": "{path} 没有照原样导入。",
+  "transfer.reportRetryOf": "重试：{name} 的报告",
   "role.admin": "管理员",
   "role.member": "成员",
   "role.guest": "访客",

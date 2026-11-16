@@ -271,6 +271,7 @@ export const AttachmentsSection = observer(function AttachmentsSection({
                 act={act}
                 menuClosed={menuClosed}
                 linkRef={asset.id === more.focusing ? focused : undefined}
+                left={() => heading.current?.focus()}
               />
             ))}
           </ul>
