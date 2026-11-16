@@ -84,9 +84,10 @@ const (
 	internalDeadlineSaving = "the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
 	internalFailed         = "the server failed"
 	// internalFailedSaving: a fault, the call's deadline not passed, whose
-	// transaction's COMMIT failed: past database.commit_timeout, shorter
-	// than server.request_timeout, its outcome is unknown, its changes saved
-	// or not (M12/P3/S1 review B-M1).
+	// read-write transaction's COMMIT failed, which TxManager marks: its
+	// outcome may be unknown, its changes saved or not, e.g. a COMMIT past
+	// database.commit_timeout, 2 s to the request's 15 s by default
+	// (M12/P3/S1 review B-M1).
 	internalFailedSaving = "the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it"
 )
 
