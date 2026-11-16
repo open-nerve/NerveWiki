@@ -76,6 +76,13 @@ export type ReadingContext = {
    * is not there; or the view goes to the page the link leads to by now.
    */
   unresolved: (link: UnresolvedLink) => void;
+  /**
+   * leads tells whether acting on a link to the page target, not there,
+   * goes to a page of the notebook (an LLM Wiki's directory or history,
+   * M10 design 4.9) rather than opening a dialog: such a link is a link,
+   * not a button that opens a dialog (M12/P2/S1). Without it, none does.
+   */
+  leads?: (target: string) => boolean;
 };
 
 /**

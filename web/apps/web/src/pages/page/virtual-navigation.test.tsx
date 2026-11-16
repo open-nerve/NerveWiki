@@ -95,8 +95,9 @@ test.each([
       server.views.set(guide.id, { html, revision: 1, assets_expire_at: null });
     }
     const { router } = renderApp(path, server.app, { enhancements });
-    const button = await screen.findByRole("button", { name: "open target" });
-    expect(button.tagName).toBe("A");
+    // A link that goes to a page, no dialog popping up from it (M12/P2/S1, 35.2).
+    const button = await screen.findByRole("link", { name: "open target" });
+    expect([button.tagName, button.hasAttribute("aria-haspopup")]).toEqual(["A", false]);
     await userEvent.click(button);
     await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/${route}`));
     const heading = await screen.findByRole("heading", { level: 1, name: title });
@@ -115,7 +116,7 @@ test("P4/W02 reader_virtual: a relative target that reaches the root navigates f
   await within(await screen.findByRole("navigation", { name: "Pages of Plans" })).findByRole("link", {
     name: "Install",
   });
-  await userEvent.click(await screen.findByRole("button", { name: "open target" }));
+  await userEvent.click(await screen.findByRole("link", { name: "open target" }));
   await screen.findByRole("link", { name: "Alpha" });
   expect(router.state.location.pathname).toBe(`${home}/index`);
   expect(server.sent.filter((each) => each.startsWith("GET landing"))).toEqual([]);
