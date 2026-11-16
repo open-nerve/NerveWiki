@@ -386,6 +386,9 @@ const edges = [
   // "<?" and an e-mail autolink.
   ["a <?b@c.d>", "x <?a@b.c> y", "a <!b@c.d>", "x <?a@b.c y>", "a <?b@c.d", "a <?x?>", "a <?>", "x <?@a>"],
   ["x <?@<?@b.c>", "x <?a.b@c.d>", "x <?a.b+c@d.e>", "x <?a@b-.c>", "x <?a@-b.c>", "x <?a@b.c.>", "x <?a@b.c d>"],
+  // Capitals, and a label of 63, the longest, first and after a dot: the copied pattern without its "i", or a
+  // label's length one shorter, takes these as text (review B's M1).
+  ["x <?A@b.c>", "x <?a@B.c>", `x <?a@${"b".repeat(63)}.c>`, `x <?a@b.${"c".repeat(63)}>`],
   // CDATA, left to HTMLTag.
   ["a <![CDATA[x]]>", "a <![CDATA[x>"],
   // A URL's end, trimmed.
