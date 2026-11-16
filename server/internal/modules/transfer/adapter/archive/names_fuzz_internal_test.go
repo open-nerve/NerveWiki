@@ -46,16 +46,24 @@ func firstPathField(extra []byte) ([]byte, bool) {
 func FuzzUnicodePathReadsOnlyAValidField(f *testing.F) {
 	name := "\xb2\xe2\xca\xd4.md" // 测试.md in GBK
 	timestamp := []byte{0x55, 0x54, 5, 0, 1, 0, 0, 0, 0}
+	full := unicodePathField(1, name, "测试.md")
 	for _, extra := range [][]byte{
-		unicodePathField(1, name, "测试.md"),
+		full,
 		unicodePathField(1, name+"x", "测试.md"),
 		unicodePathField(2, name, "测试.md"),
-		unicodePathField(1, name, "测试.md")[:8],
-		append(unicodePathField(1, name+"x", "其他.md"), unicodePathField(1, name, "测试.md")...),
-		append(timestamp, unicodePathField(1, name, "测试.md")...),
+		full[:8],
+		append(unicodePathField(1, name+"x", "其他.md"), full...),
+		append(timestamp, full...),
 		unicodePathField(1, name, ""),
 		unicodePathField(1, name, "\xff.md"),
 		nil,
+		// The bounds (review B's M1): a whole field of one byte, shorter
+		// than its version and CRC; fields whose size is one byte past what
+		// is left, and past it by the name's last bytes, cut after its CRC
+		// within 测.
+		{0x75, 0x70, 1, 0, 1},
+		full[:len(full)-1],
+		full[:12],
 	} {
 		f.Add(extra, name)
 	}
