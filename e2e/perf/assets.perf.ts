@@ -24,6 +24,12 @@ import { pngsOf } from "./shapes";
 // a 429 with no save that succeeded within 10 s after it, the typed text missing from the page once done, or the
 // editor showing a failure once its last save answered. Five that count a round; two rounds.
 //
+// B's last rest falls in the upload window ("20 秒的上传窗口里约 6–7 次保存", design 4.7): B stops typing with the
+// window, its last save sent about 20.5 s in, as the window's last reads are answered. Typing 3 s past the window,
+// as the first rounds did, gave B one more save once the credential's bucket had filled again, which made good a
+// save refused at the window's end: the conclusion turned on it (M12/P4/S2's code review C, I1). Each repetition
+// records its last save, its status and when, besides.
+//
 // Two ways A holds the root's attachments, each a test of its own (run one with -g): the first page only, as design
 // 4.7 reads the hand-off's "根下 3,000 行" (the tree's rows); and every page, as the hand-off's tab had them (its ~650
 // reads in 20 s): 3,000 attachments uploaded to the root before A opens, A's section loaded to its end with "More
@@ -91,6 +97,7 @@ async function rereads(browser: Browser, name: string, held: number): Promise<vo
     aRefused: reps.map((one) => one.aRefused),
     aBusy: reps.map((one) => one.aBusy),
     heldPages: reps.map((one) => one.heldPages),
+    lastSaves: reps.map((one) => one.lastSave),
   });
 }
 
@@ -109,6 +116,8 @@ interface Repetition {
   saves: { sent: number; answered?: number; status?: number; inWindow: boolean }[];
   savesInWindow: number;
   refusedSaves: number;
+  /** B's last save: when it was sent and answered, from the window's start, and its status. */
+  lastSave: { sent: number; answered?: number; status?: number } | null;
   typed: string;
   failures: string[];
   failed: boolean;
@@ -194,12 +203,12 @@ async function repetition(
     const content = await startEditing(b);
     await content.press("ControlOrMeta+End");
 
-    // B types from a rest before the uploads to one after them; the uploads run 20 s.
+    // B types from a rest before the uploads until the window ends (the uploads run 20 s), its last rest in it.
     const from = Date.now() + restMs;
     const typed: string[] = [];
     const typing = (async () => {
       const letters = "abcdefghijklmnopqrstuvwxyz";
-      for (let i = 0; Date.now() < from + uploadMs + restMs; i++) {
+      for (let i = 0; Date.now() < from + uploadMs; i++) {
         const letter = letters[i % letters.length] ?? "a";
         // oxlint-disable-next-line no-await-in-loop -- a character, then a rest
         await b.keyboard.press(letter);
@@ -240,6 +249,7 @@ async function repetition(
     if (!page.content.includes(typed.join(""))) failures.push("the page lacks the typed text");
     if (failing > 0) failures.push("the editor shows a failure after its last save");
     const inWindow = (save: { sent: number }) => save.sent >= from && save.sent <= to;
+    const last = saves.at(-1);
     return {
       notebook: notebook.id,
       heldPages,
@@ -258,6 +268,14 @@ async function repetition(
       })),
       savesInWindow: saves.filter(inWindow).length,
       refusedSaves: saves.filter((save) => save.status === 429).length,
+      lastSave:
+        last === undefined
+          ? null
+          : {
+              sent: last.sent - from,
+              answered: last.answered === undefined ? undefined : last.answered - from,
+              status: last.status,
+            },
       typed: typed.join(""),
       failures,
       failed: failures.length > 0,
