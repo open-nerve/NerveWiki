@@ -21,7 +21,7 @@ import { perfEnv } from "./setup";
 // change of one character, the paragraph inlineLimit - 1 long before it and inlineLimit after, in its middle and at
 // its end (where one types most). Each measure asserts it parsed within the limit: the paragraph's length, and the
 // link, emphasis and code span of its head (inline() of markdown.test.ts), which a paragraph past the limit, plain
-// text, does not have. Two warm-ups and five measures a shape and a cell; the median of five, the larger of two
+// text, does not have. Two warm-ups and twenty measures a shape and a cell; the median of twenty, the larger of two
 // rounds, against 80 ms. Besides, only recorded: the editor's parser alone on the whole document, a check on the
 // first cell; and a key pressed in the real editor on the three costliest shapes, from its keydown to the frame after
 // next, and where the key went.
@@ -32,10 +32,15 @@ import { perfEnv } from "./setup";
 // spaces is split in two, half the cost); the line with a pipe has the head too (N3). Each cell of each shape is
 // parsed in a page of its own, its heap collected first: in one page for all, a definition's cells read up to twice
 // what they read alone, after the shapes before it had filled the heap (each of its lines builds the paragraph's text
-// anew; the check of the fixes, B's C1-M1).
+// anew; the check of the fixes, B's C1-M1). Twenty measures, not five: in a page of their own the definitions'
+// first parses are their cheapest, their heap still small, and five took the median from those; parsed on, as one
+// types, two of them cost more, and so does a key in the editor (the second check, B's C2-I1).
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 const warmUps = 2;
+/** The parse page's measures a cell, in a page of its own after its warm-ups (the host's decision on M12/P4/S2). */
+const measures = 20;
+/** The keys pressed in the real editor a shape. */
 const times = 5;
 
 /** markdown.test.ts's inline() begins its paragraph with this: a link, emphasis and a code span. */
@@ -279,7 +284,7 @@ async function measureShapes(context: BrowserContext, script: string, limit: num
         at,
         where: cell === "end" ? end : middle,
         cell,
-        count: warmUps + times,
+        count: warmUps + measures,
       });
       const measured = parses.slice(warmUps);
       const values = measured.map((parsed) => parsed.ms);
