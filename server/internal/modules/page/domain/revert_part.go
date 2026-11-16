@@ -23,7 +23,7 @@ import (
 // and no steps: the job's plan has the steps, and each step's premise,
 // checked in its order (CheckRevertSteps), stands for S* at its moment.
 func CheckRevertPart(s RevertState) RevertPlan {
-	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
+	p := planner{s: s, c: readReverted(s.Items, s.Versions, s.Nodes), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups), maxDepth: MaxDepth}
 	p.left()
 	return p.plan()
@@ -48,7 +48,7 @@ func CheckRevertPart(s RevertState) RevertPlan {
 // it was. A write back's page is alive, else changed, and written on its
 // revision then: L's, or the trash's for a page the batch restores.
 func CheckRevertSteps(s RevertState, steps []RevertOp) ([]RevertOp, []RevertConflict) {
-	p := &planner{s: s, c: readReverted(s.Items, s.Versions), members: membersOf(s.Groups), maxDepth: MaxDepth}
+	p := &planner{s: s, c: readReverted(s.Items, s.Versions, s.Nodes), members: membersOf(s.Groups), maxDepth: MaxDepth}
 	sim := p.treeSim()
 	out := make([]RevertOp, len(steps))
 	for i, op := range steps {

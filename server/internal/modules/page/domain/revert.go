@@ -187,14 +187,15 @@ type RevertOp struct {
 
 // RevertGroups are the trash items whose groups a revert reads, by root,
 // at their time (M8/P3 design 3.6): each top of the changeset's deletions,
-// a deleted node whose parent before it the changeset did not delete,
+// a deleted node whose parent before it the changeset did not delete, or
+// that is a trash item's root itself (M12 design 4.6.1, decision 304),
 // that is still a trash item's root holding as many pages and
 // attachments as the changeset deleted under it, itself included. Any
 // other top is changed, its group not read: one wrapped in a larger
 // deletion since, or restored, filled and deleted again, is never read
 // whole only to be refused.
 func RevertGroups(items []ChangesetItem, nodes map[uuid.UUID]NodeNow) map[uuid.UUID]time.Time {
-	c := readReverted(items, nil)
+	c := readReverted(items, nil, nodes)
 	out := map[uuid.UUID]time.Time{}
 	for _, top := range c.tops {
 		if c.rootHolds(top, nodes) {
@@ -208,9 +209,10 @@ func RevertGroups(items []ChangesetItem, nodes map[uuid.UUID]NodeNow) map[uuid.U
 // design 4.12): every version of the changeset on a base. A page the
 // changeset created has none, its version a first one; a page it deleted
 // after writing it is restored, then written back; a page it restored
-// and wrote, a revert's, is written back, then deleted.
+// and wrote, a revert's, is written back, then deleted. It reads the
+// writes alone, no node now: its deletions' tops are not its.
 func RevertWrites(items []ChangesetItem, versions []ChangesetVersion) []ChangesetVersion {
-	return readReverted(items, versions).writes
+	return readReverted(items, versions, nil).writes
 }
 
 // RevertRefs are the versions whose hashes a revert compares (M8/P3
@@ -260,8 +262,9 @@ func membersOf(groups map[uuid.UUID][]TrashMember) map[uuid.UUID]TrashMember {
 
 // reverted is a changeset as a revert reads it: its items and versions by
 // node; every node it changed, by id; its deletions' tops, by id, the top
-// of each node it deleted and each top's deleted nodes, by id; and the
-// versions whose bases a revert writes back, by page.
+// of each node it deleted and each top's deleted nodes, by id; the
+// versions whose bases a revert writes back, by page; and its nodes now,
+// which tell a deleted node that is a trash item's root itself.
 type reverted struct {
 	items    map[uuid.UUID]ChangesetItem
 	versions map[uuid.UUID]ChangesetVersion
@@ -270,11 +273,14 @@ type reverted struct {
 	top      map[uuid.UUID]uuid.UUID
 	members  map[uuid.UUID][]uuid.UUID
 	writes   []ChangesetVersion
+	now      map[uuid.UUID]NodeNow
 }
 
-func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
+// readReverted reads the changeset's items and versions against its nodes
+// now, nil where only the writes are read (RevertWrites).
+func readReverted(items []ChangesetItem, versions []ChangesetVersion, now map[uuid.UUID]NodeNow) reverted {
 	c := reverted{items: make(map[uuid.UUID]ChangesetItem, len(items)), versions: make(map[uuid.UUID]ChangesetVersion, len(versions)),
-		top: map[uuid.UUID]uuid.UUID{}, members: map[uuid.UUID][]uuid.UUID{}}
+		top: map[uuid.UUID]uuid.UUID{}, members: map[uuid.UUID][]uuid.UUID{}, now: now}
 	for _, it := range items {
 		c.items[it.NodeID] = it
 		c.ids = append(c.ids, it.NodeID)
@@ -304,10 +310,18 @@ func readReverted(items []ChangesetItem, versions []ChangesetVersion) reverted {
 }
 
 // topOf is the top of the deletion of the node id the changeset deleted:
-// up its parents before the changeset while the changeset deleted them.
+// up its parents before the changeset while the changeset deleted them,
+// to the first, from the node itself, that is a trash item's root now
+// (M12 design 4.6.1, decision 304). A rollback deletes, in a pass of its
+// own, a new subtree under a new folder it deletes a pass later; a subtree
+// restored and deleted again in two is the same: each is a trash item of
+// its own, which a revert restores alone, the outer first (canRestore).
 // A tree has no cycle; a defect's would end where it closes.
 func (c reverted) topOf(id uuid.UUID) uuid.UUID {
 	for range len(c.items) {
+		if n, ok := c.now[id]; ok && n.TrashRoot && n.DeletedAt != nil {
+			break
+		}
 		parent := c.items[id].Before.ParentID
 		if parent == nil {
 			break
@@ -386,7 +400,7 @@ func planRevert(s RevertState, maxDepth int) (RevertPlan, error) {
 // of the schedule's bound reads the rounds and the steps pending there
 // (ScheduleRounds), the plan made as PlanRevert makes it.
 func scheduled(s RevertState, maxDepth int) (RevertPlan, *revertSim, error) {
-	p := planner{s: s, c: readReverted(s.Items, s.Versions), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
+	p := planner{s: s, c: readReverted(s.Items, s.Versions, s.Nodes), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups), maxDepth: maxDepth}
 	p.left()
 	if len(s.Items) > 0 {

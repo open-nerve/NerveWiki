@@ -22,7 +22,7 @@ func RevertFacts(state RevertState, plan RevertPlan, sourceRootID uuid.UUID) ite
 // across the iterator's batch boundaries and reads no database state.
 func RevertActionFacts(state RevertState, actions iter.Seq[RevertOp], sourceRootID uuid.UUID) iter.Seq[StepFacts] {
 	return func(yield func(StepFacts) bool) {
-		p := planner{s: state, c: readReverted(state.Items, state.Versions)}
+		p := planner{s: state, c: readReverted(state.Items, state.Versions, state.Nodes)}
 		sim := p.treeSim()
 		contents := make(map[uuid.UUID]ContentNow, len(state.Contents))
 		maps.Copy(contents, state.Contents)

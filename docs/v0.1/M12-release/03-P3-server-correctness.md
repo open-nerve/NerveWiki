@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P3 服务端的正确性与历史（三个 Step：S1 小的正确性；S2 第 302 条（先写 spec）；S3 导入导出的任务） |
-| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订） |
-| 状态 | 设计已审查，未开工（三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P3-design-review.md)） |
+| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订；同日照 S2 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S2 已合并 `（待填：S2 的合并号）`，S1 实施中，S3 未开工；设计的[审查记录](reviews/P3-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S2 的[审查记录](reviews/P3-S2-nested-trash-roots-review.md)；实施与审查之后与代码不同之处照实改在各节（3.22 列出），结果在 10.2） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.5（H1、24.1 写成已知限制）、4.6、第 3 节第 4、5 条、5.1、第 7 节 P3 一行与"次序与并行""分份""移交的落实""总体设计的修订"第 8、10 条、9.2、9.6、第 10 节、第 11 节决定 304、313–316、328、335、336、357、359、附录 A 的 P3/S1 一行；[M12 设计审查](reviews/M12-design-review.md)的 A-M1–M3、A-M8、A-N1–N5、A-I1–I3、A-M4、C-I2；[移交](handoffs/)：M8-history 第 5、6 条，M7-transfer 第 5 条的三项，M5-polish 第 10、25、30 条，M5-performance 第 6 条，M4-performance 第 22 条之后的补记 `:490`；[v0.1 总体设计](../v0.1-design.md) 5.8 第 6 步、13.1 第 2、28、30 条、13.4 第 1、4、8、11 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md)第 3 节（服务端的写法）、[M12/P1](01-P1-foundation.md)（骨架） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/revert.go:309`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移的测试写作 `server/migrations/schema_test.go`；前端写作 `W/pages/notebook/transfer-report.tsx:100`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/transfer/tr4-malicious.spec.ts:105`；契约写作 `api/modules/transfer.yaml:1079`；其余写仓库根起的路径。基点是 `main` 的 `86565dd6`（P1 完成），它与 `194ca350` 只差文档（00 号文档、P1 设计与一份审查记录），代码相同：代码的行号都在 `194ca350` 上读过，在 `86565dd6` 上不变；00 号文档与总体设计的行号是 `86565dd6` 的 |
 | 工作笔记 | 本文引的行号都在 `194ca350` 上读过（附录 A）。第一次修订照三份审查改，审查者的原型与探针在 `m12/p3-review-{a,b,c}/`，修订时另跑的在 `m12/p3-rev1/`；第二次修订照修订核对改，另跑的（3.14.3 的四个测试的用时、00 号文档脚本的试跑）在 `m12/p3-rev2/`；第三次修订照修订核对第 2 轮改 3.7 的理由与 (b) 格，依据是审查 B 的探针 `m12/p3-check2-b/`。设计不跑重的东西；在 scratchpad 的临时 worktree（`194ca350`，不带竞态）里跑了几组小实验，另在一个用完即删的 `postgres:18.7-trixie` 容器里核对了快照冻结的时刻，原样留在 `m12/p3-design/`：第 302 条的四种形状与两个反例在 domain 上的结果（改前、审查 A 的原型 `split-tops.diff`、"`topOf` 只看起点"的变异）；后台撤销的 `needed` 在嵌套的回收站根下真的出错（模型与核对的替身都红，3.10.6）；GBK 解码器对 0x5C 尾字节、Shift-JIS、GB18030 四字节、0x80 与 0xFF 的行为，GBK 名字恰好是合法 UTF-8 的比例（3.12）；REPEATABLE READ 的快照在第一条读等锁之前冻结（3.8.2）。没有跑整个程序的测试，没有量时间 |
@@ -141,7 +141,7 @@
 - **361（P3-1）`readReverted` 只有一个签名，收 `Nodes`**：`readReverted(items, versions, nodes)`，五处构造计划都传 `s.Nodes`，`RevertWrites` 传 `nil`（只取 `writes`）。不像审查 A 的原型那样另加 `readRevertedNow`：两个入口时，以后新加的一处容易用错那一个。`CheckRevertSteps` 与 `RevertActionFacts` 不读顶，传不传结果一样，照传是为了一致；它们的"不传"变异是等价的，证据是调用链上的代码事实与一个会被抓到的对照（7.3 的 S2-7、S2-8；审查 A 的 M3）。
 - **362（P3-2）`needed` 也看段内后面的放回**：放回的 `To.ParentID` 是这一组的成员时，至少放回到它；另加一格确定的 app 测试（3.10.6 的形状）。不改 `CheckRevertSteps` 的模拟：00 号文档定了"调度不改"，而批的核对整组放回是为了后面的成员的前提（`revert_part.go:42-47` 的注释）；挡这一种的是 `needed` 与测试。
 - **363（P3-3）domain 的 `world` 按时刻读组**：`world.state()` 读组时只收与根同一时刻删下的，同 `TrashChildrenOfAll`（替身在真东西会失败处失败，05-lessons 第 2 节）。
-- **364（P3-4）回滚的性质测试撤销回滚的变更集，请求与后台两条路轮流，只数 `nested`**：种子是偶数走请求的撤销（`f.revert`），奇数走后台（`PlanRevert` 与随机切的批）；对照 agent 留下的状态（树与正文）。挂在中间节点下的与两个成员以上的嵌套组在这里太少（审查 A 量过每 400 次 0–3 次），交给后台撤销的性质测试数（审查 A 的 M2 的甲）。
+- **364（P3-4）回滚的性质测试撤销回滚的变更集，请求与后台两条路轮流，只数 `nested`**：种子是偶数走请求的撤销（`f.revert`），奇数走后台（`PlanRevert` 与随机切的批）；对照 agent 留下的状态（树与正文）。挂在中间节点下的与两个成员以上的嵌套组在这里太少（审查 A 量过每 400 次 0–3 次），交给后台撤销的性质测试数（审查 A 的 M2 的甲）。S2 实施另数请求与后台两条路，各有下限（3.22 第 8 条）。
 - **365（P3-5）标题键的切罗基文一步用标准库**：折叠之后以 `strings.Map` 把小写换成大写，三处共用 `shared` 里的一个函数；不用 `x/text/runes`（纯的层不许，`archtest`）。`searchFold` 整个删掉，三处调用改调 `shared.TitleKey`；不升分词与 `Extractor` 的版本（00 号文档 4.6.3）。
 - **366（P3-6）标题 id 带上自动链接的标签与原始 HTML 的源文本**：`PlainText` 对 `*ast.AutoLink` 写它的 `Label`，对 `*ast.RawHTML` 写它的每一段源文本。这样标题的 id 与 `AnchorID` 对同一段写法的结果相同（两边都用 `slug`）。不升提取规则的版本（13.3 第 6 条；00 号文档 4.6.3）。
 - **367（P3-7）名字为空的判断放在 `CheckName` 与 `CleanClientName` 里**：
@@ -532,12 +532,13 @@ S2 先写 spec（00 号文档第 7 节）。本节就是它：撤销计划是所
 | 文件 | 改动 |
 |---|---|
 | `page/domain/revert.go`、`revert_part.go`、`revert_facts.go` | 规则与五处传 `Nodes`（3.10.3） |
-| `page/domain/revert_schedule_internal_test.go` | 五处 `readReverted(…, nil)`（`:89`、`:110-111`、`:128`、`:144-145`、`:179`）照新签名补第三个参数，否则编不过 |
+| `page/domain/revert_schedule_internal_test.go` | 五处 `readReverted(…, nil)`（`:89`、`:110-111`、`:128`、`:144-145`、`:179`）照新签名补第三个参数，否则编不过；S2 实施：四处补 `nil`，`TestARestoreWaitsForTheGroupItGoesUnder` 传 `s.Nodes`、去掉手工的顶（3.22 第 2 条） |
 | `page/domain/revert_test.go` | `world.state()` 按时刻读组；`TestPlanRevertOfNestedTrashRoots`；`TestRevertGroupsAndRefs` 的一格（3.10.5） |
 | `page/app/jobs.go`；`page/app/revert_job_test.go` | `needed` 与它的确定的一格（3.10.6） |
 | `page/app/revert_job_property_test.go`、`rollback_test.go` | 两个性质测试（3.10.7） |
 | `bootstrap/upgrade_rollback_revert_test.go`；`Makefile` | nested 一格翻过来、改名（3.10.8） |
-| `docs/v0.1/v0.1-design.md` | 5.8 第 6 步、13.1 第 2 条（第 8 节） |
+| `bootstrap/revert_batch_test.go`、`interleavings_background_stops_test.go` | S2 实施：两格照决定 304 由 409 翻过来（3.22 第 1 条） |
+| `docs/v0.1/v0.1-design.md` | 5.8 第 6 步、13.1 第 2 条（第 8 节）；S2 的文档提交另给 00-M11 第 302 条加括注、给 M8/P4 与 M9/P3 被决定 304 改了的三句加后注（3.22 第 1 条，决定 481） |
 
 #### 3.10.1 规则
 
@@ -575,7 +576,7 @@ S2 的 domain 表另加三个反例与"太深"一格（照规则推出；审查 
 | 8 | 同 3，但之后有人只恢复了 Made 那一项（Inner 仍在回收站） | `changed Made`（活着），Inner 本身不冲突 |
 | 9a | 同 2，但 F 那一项恢复之后，在 G 下新建一页，再删 F（G 是 F 那一项的中间成员，不是回收站根，单独恢复不了；审查 A 的 N1） | `changed F`（F 那一项多了一页） |
 | 9b | 同 2，但 F 那一项恢复之后原样再删 | `restore F`、`restore H1`、`restore H2` |
-| 10 | 同 4，嵌套的根 H 下最深的页使外层的放回太深 | 两条 `too_deep`（F 与 H）；最深的页不在 H 下时只有 F 一条（审查 A 的 N2） |
+| 10 | 同 4，嵌套的根 H 下最深的页使外层的放回太深 | 两条 `too_deep`（F 与 H）；最深的页不在 H 下时只有 F 一条（审查 A 的 N2；S2 的表另作一格 10b，3.22 第 3 条） |
 
 "改之后"的冲突比"改之前"少了里层那一条（5、6），是因为里层不再被并进外层：每个节点按它自己的一项判。反例的整体结论（不撤销）不变。
 
@@ -636,9 +637,9 @@ func (c reverted) topOf(id uuid.UUID) uuid.UUID
 #### 3.10.5 domain 的测试
 
 - **替身**（P3-3）：`world.state()`（`revert_test.go:104-142`）读组时只收与根同一时刻删下的成员，同 `TrashChildrenOfAll` 与 app 的 `fakeStore.group`。改法：`world.subtree` 加一个只给读组用的变体，或在 `state()` 里照根的 `DeletedAt` 过滤（实验里用的后一种）。先在没改的树上跑 `go test ./internal/modules/page/domain/`，现有的格照过（它们没有不同时刻的嵌套）。
-- **新的表** `TestPlanRevertOfNestedTrashRoots`（`revert_test.go`）：3.10.2 的十一格（1–8、9a、9b、10）。撤销得了的格写死 `w.ops(plan)` 的期望（实验的结果）；冲突的格写死 `w.conflicts(plan)`。每一格另断言 `RevertGroups` 交回的根与时刻（嵌套的根在它自己的时刻）。
+- **新的表** `TestPlanRevertOfNestedTrashRoots`（`revert_test.go`）：3.10.2 的十一格（1–8、9a、9b、10）；S2 另加 10b，共十二格（3.22 第 3 条）。撤销得了的格写死 `w.ops(plan)` 的期望（实验的结果）；冲突的格写死 `w.conflicts(plan)`。每一格另断言 `RevertGroups` 交回的根与时刻（嵌套的根在它自己的时刻）。
 - `TestRevertGroupsAndRefs`（`:955`）加一格：一个嵌套的根，`RevertGroups` 名下两个根、各在自己的时刻；`RevertRefs` 对两组里的页各读它们在回收站里的版本。
-- 现有的 `TestPlanRevertConflicts`（`:454-695`）的各格照过：它们的"恢复之后再删"都是整个再删（实验时 page 模块的短测试与 `Revert|Rollback|Schedule|Trash|Restore` 的非短测试在原型上全过，审查 A）。S2 照实跑一遍，有翻过来的格照实列出。
+- 现有的 `TestPlanRevertConflicts`（`:454-695`）的各格照过：它们的"恢复之后再删"都是整个再删（实验时 page 模块的短测试与 `Revert|Rollback|Schedule|Trash|Restore` 的非短测试在原型上全过，审查 A）。S2 照实跑一遍，有翻过来的格照实列出。S2：page 模块里没有一格翻过来；组合根里翻过来两格（3.22 第 1 条）。
 
 #### 3.10.6 后台撤销的 `needed`
 
@@ -671,7 +672,7 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 
 循环的条件 `op.Kind != domain.RevertPlace` 改为 `op.Kind != domain.RevertPlace && op.Kind != domain.RevertRestore`。改了之后实验的步是 `[…, restore G g0.0, restore K g0.1, restore P1 g0.2, restore z g1.0, place x, place y, restore zz g1.1]`，模型、批与替身的结局都对。
 
-**确定的一格**（新，`page/app/revert_job_test.go`，`TestARestoreUnderAMemberCutShortInASegmentBringsItBack`）：照实验的形状与装载（每一项在它自己的时刻：3.10.7 的分时刻的装载与 `delApart` 在这一格的提交里加，6.2 第 3 个提交；审查 A 的 N3）；断言计划里 P1 的放回在 z 的放回之前、都在段里；批切在段尾跑完，核对的替身没有记下任何违例，笔记本等于 S*。段尾按计划的 `Joined` 找，不写死下标：改了 `needed` 之后计划多一步，原来的 `[0,7)`、`[7,9)` 会切在段中间，第二批答人为的冲突（审查 A 量过；按改过的计划是 `[0,8)`、`[8,9)`）。
+**确定的一格**（新，`page/app/revert_job_test.go`，`TestARestoreUnderAMemberCutShortInASegmentBringsItBack`）：照实验的形状与装载（每一项在它自己的时刻：3.10.7 的分时刻的装载与 `delApart` 在这一格的提交里加，6.2 第 3 个提交；审查 A 的 N3）；断言计划里 P1 的放回在 z 的放回之前、都在段里；批切在段尾跑完，核对的替身没有记下任何违例，笔记本等于 S*。段尾按计划的 `Joined` 找，不写死下标：改了 `needed` 之后计划多一步，原来的 `[0,7)`、`[7,9)` 会切在段中间，第二批答人为的冲突（审查 A 量过；按改过的计划是 `[0,8)`、`[8,9)`）。S2 另在 G 的 P1 之后加成员 Q，钉住"只放回到那个成员"：期望的步末尾是 `place y, restore Q, restore zz`，批是 `[0,8)`、`[8,10)`（3.22 第 11 条；S2 审查 A 的 M1）。
 
 #### 3.10.7 两个性质测试怎样扩开
 
@@ -682,12 +683,13 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 - **分时刻的装载**：`jobModel` 加 `at map[uuid.UUID]time.Time`（回收站项的根到它的时刻，没有的是 `p.at`）。`load`（`:699-740`）照每个节点所在那一项的时刻写 `DeletedAt`，每一项照它的时刻读组、记计数；`modelOf`（`:757-787`）照每个根的 `DeletedAt` 读回，填上 `at`。不改的话，同一时刻的嵌套的根会被读进外层的组（替身照时刻与父节点读组），这是真库里不会有的状态。
 - **单独删**（来源 1、2）：`jobEdit` 加 `apart map[uuid.UUID]bool` 与 `delApart(x)`：同 `del`（`:426-458`），但这一项记为单独的；之后的 `del` 不吞并单独的项（`absorbed` 跳过它们）。这模拟一个变更集由几个单元在不同的时刻写下（回滚的几遍）。`done`（`:461-474`）按删除的次序给单独的项各一个更早的时刻（第 i 个是 `p.at` 减 n−i 秒），别的项在 `p.at`。`random`（`:476-586`）的第 5 种操作以三分之一的概率改为 `delApart`。
 - 来源 3（恢复之后分两次再删）不另造：对计划与各批读到的东西，它与 `delApart` 造出的状态相同（里层一项先于外层一项、条目不变），只有时刻相对变更集的先后不同，`leftDeleted`、`RevertGroups` 与调度都不看这个先后；domain 表的第 3、5、6、8 格钉住它（审查 A 的过度设计；初稿的 `redeleted` 删掉）。
-- **`needed` 的形状**：`folder`（`:601-644`）以二分之一的概率在 T0 里给 G 的某个在 K 之后（按前序）的页加一个子页 z（有时 z 下再加一页），在删 G 之前 `delApart(z)`。3.10.6 的形状由此出现。
+- **`needed` 的形状**：`folder`（`:601-644`）以二分之一的概率在 T0 里给 G 的某个在 K 之后（按前序）的页加一个子页 z（有时 z 下再加一页），在删 G 之前 `delApart(z)`。3.10.6 的形状由此出现。S2 另：造 z 时以二分之一的概率在 z 下另加一页 w，先单独删 w、再单独删 z（三层，z{zz} 不拆；决定 480，3.22 第 12 条）。
 - **数的几种**（`jobCounts` 加四个，`t.Logf` 与下限表各加四行）：
   - `nested`：计划放回的某一组，它的根在 S* 里的父节点是另一组的成员；
   - `nestedMid`：同上，且那个成员不是另一组的根（来源 2 的"挂在中间节点下"）；
   - `nestedGroup`：同 `nested`，且这一组有两个以上的成员（"`topOf` 只看起点"只在这里看得见，3.10.2 第 4 格）；
   - `nestedCut`：嵌套的根的放回与它父节点那一组的根在同一段"让开"里，父节点在它那一组前序里的位置不在"段内的放置单独要的成员"之内（`needed` 的形状）。这样定义与改法无关：读成"被截到段后的成员"，改了 `needed` 之后永不成立；读成"被截短的那一组里的任一成员"，又把 S2-3 显不出来的也算进去（审查 A 的 N5）。
+  - `nestedDeep`（S2 加，决定 480）：一组放回到另一组的成员下，而那一组本身也放回到第三组的成员下（多层的嵌套）。
 - **下限**（审查 A 在原型上量过；实施时照约定再量，写进第 10 节）：
 
   | 计数 | 40 个基 × 400 次的最少 | 20 个基 × 2,000 次的最少 |
@@ -697,16 +699,16 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
   | `nestedGroup` | 11 | 73 |
   | `nestedCut` | 9 | 87 |
 
-  照三分之二取整，`-short` 下都在 3 以上。原有的 15 个下限在 60 组里都没报 idle（`m12/p3-review-a/short40.txt`、`full20.txt`）。
+  照三分之二取整，`-short` 下都在 3 以上。原有的 15 个下限在 60 组里都没报 idle（`m12/p3-review-a/short40.txt`、`full20.txt`）。S2 照约定量出，20 个下限全部重算（决定 479，3.22 第 10 条）；加 w 之后 `nestedCut` 的最少次数是 11、88，`nestedDeep` 是 9、72（10.2 的表）。
 - 原有的 `movegone` 与注入照旧在 `post` 上做，它们与新形状叠加的组合不另数。
 
 **`TestTheRollbacksStepsReplayToTheBaseline`**（`page/app/rollback_test.go:560-621`）：
 
 - `p.agent(…)` 之后记下 agent 留下的状态 `tidied`：每个活着的节点的位置、名称、次序与页的正文的哈希。
-- 回滚 `Done` 之后撤销回滚的变更集：以 `f.store.recorded` 里这个变更集的条目与版本建它（`f.recorded`（`revert_job_property_test.go:903-929`）加一个变更集种类的参数，回滚的是 `domain.ChangesetRollback`、没有 `RevertsID`）。种子是偶数走请求的撤销（`f.revert(id, nil, 0)`，`revert_test.go:20-28`），奇数走后台（`w.PlanRevert` 与 `f.runPass`，批照 `cutsBy` 随机切）；trial 另授 `domain.ActionRevert`（P3-4）。
+- 回滚 `Done` 之后撤销回滚的变更集：以 `f.store.recorded` 里这个变更集的条目与版本建它（`f.recorded`（`revert_job_property_test.go:903-929`）加一个变更集种类的参数，回滚的是 `domain.ChangesetRollback`、没有 `RevertsID`；S2 另加 `recordedAs(kind, id, reverted)`、`recorded` 调它，3.22 第 4 条）。种子是偶数走请求的撤销（`f.revert(id, nil, 0)`，`revert_test.go:20-28`；S2 经核对的替身 `checkedWriter` 建 `RevertChangeset`，3.22 第 5 条），奇数走后台（`w.PlanRevert` 与 `f.runPass`，批照 `cutsBy` 随机切）；trial 另授 `domain.ActionRevert`（P3-4）。S2 另：撤销之前笔记本设成没有进行中的升级，同回滚结束之后的生产；agent 删子树时先读整棵再删（3.22 第 6、7 条）。
 - 撤销成功，之后活着的节点恰是 `tidied` 的那些，各在它的位置、名称与次序，页的正文的哈希相同；核对的替身没有记下违例。
 - 时刻：替身的时钟每读一次进一微秒（`tickingClock`），每一遍、每个单元的删除各在自己的时刻，同真库；不用另改。
-- 只数 `nested`（回滚的变更集在撤销时有一个嵌套的根），下限照上面的约定（审查 A 的 8 个基每 400 次 14–30 次；实施时量 40 个基再定）。挂在中间节点下的与两个成员以上的嵌套组在这里每 400 次只有 0–3 次，调 `parentFor`（`:415`）的深度也不多，不数：它们交给 `TestTheJobsStepsReplayToStar` 与 domain 表的第 2、4 格（审查 A 的 M2 的甲）。
+- 只数 `nested`（回滚的变更集在撤销时有一个嵌套的根；S2 另数请求与后台两条路，各有下限，3.22 第 8 条），下限照上面的约定（审查 A 的 8 个基每 400 次 14–30 次；实施时量 40 个基再定）。挂在中间节点下的与两个成员以上的嵌套组在这里每 400 次只有 0–3 次，调 `parentFor`（`:415`）的深度也不多，不数：它们交给 `TestTheJobsStepsReplayToStar` 与 domain 表的第 2、4 格（审查 A 的 M2 的甲）。
 
 **变异能不能显出来**：
 
@@ -723,6 +725,7 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 - `flat` 一格不变。
 - `nested` 拆成两格，各一本笔记本（同审查 A 的 `bootstrap_zz_m12review_test.go`，`m12/review-a/prototype/`）：`nested, request`：请求的撤销答 200、`changed`，笔记本等于 agent 留下的样子，撤销的变更集一个；`nested, background`：后台的撤销 `succeeded`、`restored` 4、`put_back` 1（审查 A 的原型的数），笔记本等于 agent 留下的样子，撤销的变更集一个。两格在同一个提交里与 domain 的改动一起翻过来（6.2）。
 - 末尾的 `checkPages`、`checkLinks`、`checkBackground` 照旧。
+- S2 另：两格 nested 在撤销之前核对回收站里 Inner 与 Made 各是一项、Inner 在 Made 下、删得早于 Made（3.22 第 13 条）。
 - `Makefile`：`BOOTSTRAP_SEVENTH`（`:321`）与 `BOOTSTRAP_EIGHTH`（`:365`）里的旧名字都换成新名字；`:349` 一带的注释与第八份的说明（`:402`）随之。漏了的话新名字以 `TestR` 开头，落进补集的第四份（00 号文档 4.6.1）；3.19 的脚本核对。
 
 #### 3.10.9 代价
@@ -730,6 +733,7 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int
 - 撤销计划多读几组（每个嵌套的根一组），只在有嵌套的根时。`MaxRevertSteps` 照旧数放回的步。
 - `race` 一份：两个性质测试在组合根之外、不带 `-short`（`Makefile:367-368`）。审查 A 经 `heavy.sh` 量了两轮：`TestTheJobsStepsReplayToStar` 改前 13.79、13.86 秒，原型 14.03、14.09 秒（多约 0.2 秒）；`TestTheRollbacksStepsReplayToTheBaseline` 1.83、1.85 秒，回滚加撤销的探针 2,000 次 3.16 秒，推断扩开之后多约 1.3 秒。S2 照 7.5 再量。
 - 组合根：第八份的那个测试多一次回滚与撤销，推断多 2–4 秒。
+- S2 实测（10.2）：竞态下后台撤销的性质测试多 0.34–0.40 秒（w 与 `nestedDeep` 在内），回滚的多约 1.5 秒；整个程序的那一格竞态多 0.1 秒。
 
 ### 3.11 S3 的文件
 
@@ -1131,7 +1135,7 @@ S3：
 |---|---|---|---|---|---|
 | `TestTheLogReadsOneMomentAcrossARevert` | `bootstrap/history_snapshot_test.go` | S1 | `BOOTSTRAP_THIRD`（`The[F-Z]`），不在第二、第五份的模式里 | 加进 `SEVENTH`：第七份 | 1–2 秒 |
 | `TestASignInsFifthStreamSupersedesItsOldest` | `bootstrap/events_streams_test.go` | S1 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 约 1 秒 |
-| `TestRevertingARollbackPutsBackWhatTheAgentLeft`（改名） | `bootstrap/upgrade_rollback_revert_test.go` | S2 | 补集（`TestR…`） | `SEVENTH` 与 `EIGHTH` 都换名字：第八份 | 比今天多 2–4 秒 |
+| `TestRevertingARollbackPutsBackWhatTheAgentLeft`（改名） | `bootstrap/upgrade_rollback_revert_test.go` | S2 | 补集（`TestR…`） | `SEVENTH` 与 `EIGHTH` 都换名字：第八份 | 比今天多 2–4 秒（S2 实测竞态多 0.1 秒，10.2） |
 | `TestAnImportReadsNamesNotInUTF8` | `bootstrap/transfer_names_test.go` | S3 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 1–2 秒 |
 | `TestAPersonsSixthJobIsRefusedAndAnothersStarts` | `bootstrap/transfer_person_test.go` | S3 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 约 1 秒 |
 | `TestServeFailsTheJobsLeftRunning`（已有，种子多两行） | `bootstrap/transfer_jobs_test.go` | S3 | 补集 | 照旧第四份 | 不变（同一次起应用） |
@@ -1165,7 +1169,31 @@ S3：
 
 ### 3.22 S2 的实施对设计的修正
 
-（实施之后补。）
+S2 的审查与修复见 [S2 的审查记录](reviews/P3-S2-nested-trash-roots-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里（头的状态，2.3 的 364，3.10 的文件表、3.10.2、3.10.5–3.10.9，3.19，6.2，7.1，7.3 的 S2，7.5，第 8 节"S2 另"与第 3、4 条，第 9 节 v0.2 的 `M12-history.md` 一行）；00 号文档第 7 节"总体设计的修订"第 8、15 条落了，第 11 节加决定 479–482。写了行号的，代码是 S2 的头 `63cfcd9b` 的，文档是 `48bbfc99` 的（S2 不改 `docs/`）；提交见 10.2。
+
+1. **两格组合根的测试钉着旧的拒绝，3.10 没有列出，随第 2 个提交翻过来**（偏离）：3.10 的文件表只列 `upgrade_rollback_revert_test.go`，3.10.5 只在原型上跑过 page 模块的测试。`make test` 在第一次的头 `737b15e7` 上红了两格，旧期望正是决定 304 去掉的读法，新结果与 3.10.2 的第 1–4 格同形：
+   - `revert_batch_test.go` 的 `TestTheRevertOfEachBatchShape/two trash items one under the other, seeded`（M9/P3 3.14.5"恢复到另一组之下"，M9/P3/S2 的偏离 1）：旧 409、A 与 B `changed`；新 200，A 先放回、B 放回到 X 下，笔记本等于两次删除之前（`undoneFrom`）。
+   - `interleavings_background_stops_test.go` 的 `TestABackgroundRevertStoppedInAGroup/going back`（M8/P4 3.10 交错 20 第三条）：撤销任务停在一组中间、撤销 R 之后再撤销 C，旧 409 `changed`；新 200，Box 那一项与 c3–c5 各自放回，笔记本等于删除之前。
+
+   两格的测试头的说明随之改写。第 2 个提交单独为绿，所以翻转放进它（推送之前重做第 2–5 个提交，非测试代码不变）。审查 C 以 `topOf` 的新一步恒不成立（同 S2-1）跑这两格与改名的那一个：四格红（`seeded`、`going back`、`nested, request`、`nested, background`），`flat` 照过。
+   - 交错 20 的"往回"是 3.10.2 **来源 3 的一例**：C 是一次 REST 的删除，停在组中间的后台撤销（c3–c5 各成一项）与 R 的撤销（Box、c1、c2 以新的时刻删成一项）把 C 删下的一组分成几项。它不是 [M12 的历史移交](handoffs/M8-history.md)第 6 条问的"任务自己的变更集分批删出嵌套"，那个照 00 号文档 4.6.1"不去造的"与第 9 节仍没有造过（审查 C 的 M1）。
+   - 来源 3 的另一例（审查 A 的 N2；核对第 1 轮 A 的 C1-N1）：后台的回收站恢复停在一组中间，没恢复的部分各成一项、时刻仍是原来那一项的（`MarkTrashRoots`），之后恢复了的部分又被删掉，再撤销原来那次删除，就是 3.10.2 第 3 格的形状；旧规则答 `changed`，S2 依次放回。与交错 20 是同一种分法，差别只在部分恢复的是后台的回收站恢复还是后台撤销。**只在 domain 的 `world` 上核实过**（审查 A 的探针），没有造整个程序的测试。
+   - 历史文档加后注、不改写原文（决定 481）：M8/P4 `04-P4-background.md:530`、`:735`，M9/P3 `03-P3-batch-revert.md:1899`；M9/P3 另有 6 处写着同一个 409（`:98`、`:156`、`:1869`、`:2120`、`:2720`、`:2770`），是当时的落实与结果，不动；M11 已是 `done` 的移交 `M8-P4-background.md:15` 不动；M12 的历史移交的"处理进展"加 S2 一行；00-M11 第 302 条加 00 号文档第 7 节第 15 条的括注。
+   - 网页的 `transfer.revertLeftGroup`（"……逐项恢复就完成这一组；不要先撤销这次撤销"）由 **P3/S3** 改，S2 不碰网页（决定 482）。后半句"不要先撤销这次撤销"不再必要：撤销 R 之后，整组撤销 C（"going back"），或先恢复 R 的撤销删成的那一项再逐项恢复（"R reverted first"），都回到之前；只有先逐项恢复剩下的、后恢复那一项时，它们才因 `parent_in_trash` 落到根下。前半句仍对：任务停下之后直接再撤销 C，Box 已由 R 恢复、活着，答 `changed`（`page/domain/revert.go:512-514`），逐项恢复才完成这一组（"going on"）。（审查 A 的 N1；核对第 1 轮 A 的 C1-N2；初稿"仍对"的理由写错了。）
+
+   实施中定，主持者可以改判。
+2. **`TestARestoreWaitsForTheGroupItGoesUnder` 照新规则读**（3.10 的文件表只写"补第三个参数"）：它的说明写"No batch nor revert makes such a changeset, and PlanRevert reads the deletion of a node under another it deleted as one group"，决定 304 之后两句都不对了。这一处传 `s.Nodes`，去掉手工改 `tops`、`top`、`members` 的那一行（传了之后 `readReverted` 交回的正是它们），说明照新规则改写；其余四处传 `nil`（它们的条目没有删除）。S2-1 因此也让它红（7.3 的表多一格）。实施中定。
+3. **domain 的表十二格**：3.10.2 的十一格之外另加 10b（"最深的页在 G 的另一个子页 K 下、不在 H 下"，只有 F 一条 `too_deep`）。3.10.3 的 `movesBack` 一条说"多不多那一条，看最深的页在不在嵌套的根下"，第 10 格只钉住了一半。第 2 格的 H1、H2 各在自己的时刻（t1 与 t1 之后一分钟），`RevertGroups` 的时刻断言分得开两项。实施中定。
+4. **`f.recorded` 不改签名**（3.10.7 写"加一个变更集种类的参数"）：它在 `rewrite_test.go`、`source_job_batches_test.go`、`revert_job_test.go` 里还有四处调用，都是撤销的。另加 `recordedAs(kind, id, reverted)`，`recorded` 调它，不碰 S2 文件表之外的文件。实施中定。
+5. **回滚的性质测试的请求一条也经核对的替身**：设计写"核对的替身没有记下违例"，而 `f.revert` 走不核对的 `f.writer()`。`checkedWrites` 里建 `Writer` 的部分拆成 `checkedWriter`，请求的撤销经它建 `RevertChangeset`（与后台的一条同一组依赖）。实施中定。
+6. **回滚结束之后笔记本没有进行中的升级**：替身的 `rollingBack` 把升级记在笔记本上，`Done` 之后替身不清；撤销之前设成 `NotebookState{Mode: ModeStandard}`，同回滚结束之后的生产（审查 A 的探针默认也这样）。设计没写。实施中定。
+7. **回滚的性质测试的 agent 删子树时先读整棵**（设计没有）：M11 的 agent 边走边删，一个节点往上的路经过已删的节点时读不到，被留成"活着、父节点不在"。照约定量下限时，在别的种子基上 56,000 次里 15 次因此失败：7 次在回滚的第一遍被核对的替身抓到（`48bbfc99` 上原样复现，这个测试从来只跑 0–1,999；6 次是 "after a deletion of …, not alive"，10334 是 "after a place of …, not alive"），8 次撤销答 `page.revert_conflict`（实施者诊断过 34196，是 `parent_gone`；审查 B 在头上以旧的 agent 跑这 8 个，都是 `parent_gone`）。测试自己的 2,000 个种子没有一个留下孤儿（`48bbfc99` 上核对），改后它们的计数逐字不变。实施中定。
+8. **回滚的性质测试另数两条路**：请求与后台的撤销各数一次，与 `nested` 一样有下限（665/132），去掉任一条路的变异（X6、X7）红；设计只数 `nested`（364）。测试头的 "Not idle" 一句写上这两个（修复第 1 轮，审查 B 的 N1）。实施中定。
+9. **`modelOf` 填的 `at` 没有人读**：照 3.10.7 填上，但 `load` 只装生成器的 `post`、从不装 `modelOf` 的结果，所以没有变异钉得住它；留着是为了模型与替身一致。
+10. **后台撤销的性质测试的下限全部照约定重算**（修复第 1 轮；决定 479，审查 B 的 Q1）：`random` 的 `delApart` 与 `folder` 的 z 改了随机数的消耗，原有的 15 个下限已不全是"最少次数的三分之二"（审查 B 照 `a714787f` 的生成器数出 11 个会更低）。修复第 1 轮又加了 `folder` 的 w（第 12 条），随机数再变一次，所以在加了 w 之后的生成器上把 20 个下限（原有 15 个、嵌套 4 个、新的 1 个）都照约定重算：比原来低的 9 个（`-short` 的 `aside`、`restoreWrite`、`across`、`goneLater`、`goneSame`、`key`、`deepPlace`、`trashRestore`，全量的 `goneLater`），比原来高的 18 个，其余不变（10.2 的表）。测试头的说明写明出处。**偏离**：主持者的决定原写"降那 11 个"，那是加 w 之前的生成器上的 11 个；加 w 之后照同一约定，有的要降、有的要升，只降不升注释就仍不成立。主持者接受：它是同一约定在新生成器上的结果，不算改判。
+11. **确定的一格加成员 Q**（修复第 1 轮；审查 A 的 M1，主持者的决定）：P1 原是 G 的最后一个成员，"放回到 P1 为止"等于"整组放回"，`needed` 的"只放回到那个成员"没有测试钉住。G 在 P1 之后加 Q，期望的步末尾是 `place y, restore Q, restore zz`，批照 `Joined` 切成 `[0,8)`、`[8,10)`。7.3 的表加两行：S2-3b"段内后面只要有一个放回就整组放回"、S2-3c"后面的放回挂在本组的某个成员下就整组放回"，都由这一格抓到；性质测试只核对结果、不核对段有多小，两条在它上面活下来（S2-3b 在 `-short` 上照实跑过）。
+12. **后台撤销的性质测试造三层的单独删的项，另数一种**（修复第 1 轮；决定 480，审查 B 的 M1）：嵌套原来几乎都来自 `folder` 的 z（两层），"单独删的项套在另一个单独删的项下"每 2,000 次 0–6 次、没有计数，分时刻的装载（P3-3）只有全量偶尔钉住、`-short` 钉不住。`folder` 造 z 时另一半在 z 下加一页 w，先单独删 w、再单独删 z：w 的项在 z 的项下、z 的项在 G 的项下，z{zz} 不拆。第五个嵌套的计数 `nestedDeep`："一组放回到另一组的成员下，而那一组本身也放回到第三组的成员下"，下限照约定量（`-short` 6、全量 48）。所有单独的项同一时刻的变异（审查 B 的 B1）在 `-short` 上也红了；只让 w 随 z 一起删的变异（核对第 1 轮 B 的 B3）只让 `nestedDeep` 报 idle，说明它数的是"单独删的项套在单独删的项下"，不是"z 下有 w"。
+13. **改名的那一个的两格 nested 先核对回收站里的两项**（修复第 1 轮；审查 C 的 N6）：撤销之前核对 Inner 与 Made 各是一项、Inner 在 Made 下、删得早于 Made，同另两格翻过来的测试。生产代码里造不出"回滚同一时刻删掉 Inner 与 Made、仍成功"的变异：让回滚不先删自由的子树（X9 的两种写法），回滚本身就以失败告终（任务答 `failed`、`failure: internal`、冲突数 0；原因没有查），第一种写法三格、第二种两格 nested 都红在回滚上，`flat` 在第二种下照过（核对第 1 轮 C 的 C1-N1）。所以只以测试里的对照核对这一行确实被判：X12（把"早于"反过来），审查 C 另以"各是一项"反过来（c1-notroot）核对。
 
 ### 3.23 S3 的实施对设计的修正
 
@@ -1251,6 +1279,8 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
 5. `TestTheRollbacksStepsReplayToTheBaseline` 扩开：撤销回滚的变更集，请求与后台轮流，`nested` 一个计数与下限。
 6. 文档：总体设计 5.8 第 6 步、13.1 第 2 条（第 8 节）；本文 3.22 与第 10 节。
 
+S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22 第 8 条）；审查之后修复第 1 轮另加四个只改测试的提交，文档是第 10 个（10.2 的表）。
+
 下限的数（第 4、5 个提交）照 3.10.7 的约定在实施时量出：先以 20 个种子基跑 2,000 次、40 个基跑 400 次，记下每种的最少次数，写进测试的注释与第 10 节。
 
 ### 6.3 S3
@@ -1284,10 +1314,11 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
 | S1 | events/app | 五个 hub 测试 | 按凭证顶掉、按账户拒绝、互顶会停下、关掉之后两张表空 |
 | S1 | events/http | `TestAStreamThatCannotOpenIsAProblem` 的一格 | 429、`Retry-After: 30` |
 | S1 | bootstrap | `TestASignInsFifthStreamSupersedesItsOldest` | 真的流上第 5 条顶掉第 1 条 |
-| S2 | page/domain | `TestPlanRevertOfNestedTrashRoots`（十一格）、`TestRevertGroupsAndRefs` 的一格；`revert_schedule_internal_test.go` 的五处照新签名 | 第 302 条的规则与反例 |
-| S2 | page/app | `TestARestoreUnderAMemberCutShortInASegmentBringsItBack` | `needed` 的修正 |
-| S2 | page/app | `TestTheJobsStepsReplayToStar`、`TestTheRollbacksStepsReplayToTheBaseline` 扩开 | 随机的嵌套形状重放到期望；回滚的变更集撤销得了 |
-| S2 | bootstrap | `TestRevertingARollbackPutsBackWhatTheAgentLeft` | 真库上请求与后台的撤销都成功 |
+| S2 | page/domain | `TestPlanRevertOfNestedTrashRoots`（十二格，3.22 第 3 条）、`TestRevertGroupsAndRefs` 的一格；`revert_schedule_internal_test.go` 的四处照新签名，`TestARestoreWaitsForTheGroupItGoesUnder` 照新规则读（3.22 第 2 条） | 第 302 条的规则与反例 |
+| S2 | page/app | `TestARestoreUnderAMemberCutShortInASegmentBringsItBack` | `needed` 的修正，只放回到要用的成员（成员 Q，3.22 第 11 条） |
+| S2 | page/app | `TestTheJobsStepsReplayToStar`、`TestTheRollbacksStepsReplayToTheBaseline` 扩开 | 随机的嵌套形状重放到期望，五种嵌套各有下限（`nestedDeep` 是 S2 加的，3.22 第 12 条）；回滚的变更集撤销得了，请求与后台两条路各有下限 |
+| S2 | bootstrap | `TestRevertingARollbackPutsBackWhatTheAgentLeft` | 真库上请求与后台的撤销都成功；撤销之前回收站里是两项（3.22 第 13 条） |
+| S2 | bootstrap | `TestTheRevertOfEachBatchShape` 的 seeded、`TestABackgroundRevertStoppedInAGroup` 的 going back（翻过来） | 上下相套的两项、停在组中间之后撤销 R 再撤销 C，都撤销得了，笔记本等于之前（3.22 第 1 条） |
 | S3 | transfer/archive | `TestTheImportReadsNamesNotInUTF8`（十三格）、`TestReadNamesReadsAsGBKOnlyAZipOfGBKNames`（差分）、`FuzzUnicodePathReadsOnlyAValidField` | 3.12.1 的规则 |
 | S3 | transfer/domain、app | `TestClassify` 的格；报告的次序 | 记录与次序 |
 | S3 | bootstrap | `TestAnImportReadsNamesNotInUTF8` | 真的导入 |
@@ -1349,15 +1380,28 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
 
 | # | 变异 | 应红的测试 |
 |---|---|---|
-| S2-1 | 去掉新规则（`topOf` 照旧） | domain 的表、两个性质测试（`page.revert_conflict`）、整个程序的 nested 两格 |
+| S2-1 | 去掉新规则（`topOf` 照旧） | domain 的表、两个性质测试（`page.revert_conflict`）、整个程序的 nested 两格；S2 实施另有 `TestARestoreWaitsForTheGroupItGoesUnder`、`TestRevertGroupsAndRefs` 与翻过来的两格组合根的测试（3.22 第 1、2 条） |
 | S2-2 | `topOf` 只看起点 | domain 表的第 4 格；`TestTheJobsStepsReplayToStar` 的 `nestedGroup` 试验 |
 | S2-3 | `needed` 不看段内的放回 | `TestARestoreUnderAMemberCut…`；`TestTheJobsStepsReplayToStar` 的 `nestedCut` 试验 |
+| S2-3b | `needed` 遇到段内后面的任何放回就整组放回（S2 审查 A 的 N5） | `TestARestoreUnderAMemberCut…`（成员 Q，3.22 第 11 条）；性质测试只核对结果，活下来 |
+| S2-3c | 后面的放回挂在本组的成员下就整组放回（S2 审查 A 的 N6） | 同上 |
 | S2-4 | `RevertGroups` 不传 `Nodes` | domain 表的 `RevertGroups` 断言；`TestRevertGroupsAndRefs` |
 | S2-5 | `scheduled` 不传 `Nodes` | domain 表的放回的步；两个性质测试 |
 | S2-6 | `CheckRevertPart` 不传 `Nodes` | `TestTheJobsStepsReplayToStar`（嵌套的根与外层同一批）；整个程序的 `nested, background` |
 | S2-7 | `CheckRevertSteps` 不传 `Nodes` | 等价（审查 A 跑过，活下来）。证据：调用链 `treeSim`、`canPlace`、`canRestore`、`restore`、`added`、`canWrite` 不读 `c.top`、`c.tops`、`c.members`；对照：这一处改成 `readReverted(nil, …)`，任何一组的放回都让它 panic（没扩开的 `TestTheJobsStepsReplayToStar` 也崩），只证明这一处被调到；它在嵌套的形状上跑过，由扩开的测试的 `nested`、`nestedCut` 计数大于 0 证明，每一批都经 `CheckRevertSteps`（3.10.3；审查 A 的 M3，修订核对 A 的 N7） |
 | S2-8 | `RevertActionFacts` 不传 `Nodes` | 等价（活下来）。证据：只在 `treeSim` 里读 `c.ids`；对照：去掉版本，`TestAContentOnlyRevertsFactsNeedNoTree` 红，证明这一处被调用；去掉条目的对照活下来（`c.ids` 也由版本组成），所以等价的依据是代码上的事实 |
 | S2-9 | 性质测试的 `load` 不分时刻（测试自己的变异） | 冲突（`rootHolds`：外层那一项的计数把嵌套的根算了进去），各计数为 0（审查 A 的原型：`-short` 400 次里 33 次失败，在 `movegone` 与 `PlanRevert` 的 `page.revert_conflict`；审查 A 的 N4） |
+| X1 | `world.state()` 照旧读所有时刻（S2 实施加的，下同） | domain 的表第 1、2 格起 |
+| X2 | `del` 也吞并单独的项 | `TestTheJobsStepsReplayToStar`：嵌套的计数都是 0，idle |
+| X3 | `folder` 不造 z | 同上：idle（嵌套几乎都来自 `folder`） |
+| X4 | `done` 给单独的项 `p.at` | 同上：`PlanRevert` 冲突（同 S2-9） |
+| X5 | 回滚的 `nested` 恒假 | `TestTheRollbacksStepsReplayToTheBaseline`：idle |
+| X6、X7 | 回滚的撤销恒走请求、恒走后台 | 同上：另一条路的计数 idle |
+| X8 | agent 的删除回到边走边删 | 测试自己的种子活下来，别的种子基上抓到（3.22 第 7 条） |
+| B1 | 所有单独删的项同一个更早的时刻（S2 审查 B 的 B1） | `TestTheJobsStepsReplayToStar` 的 `-short`（加 w 之前活下来，3.22 第 12 条） |
+| X10、X11 | `folder` 不造 w；`nestedDeep` 恒假 | 同上：`nestedDeep` idle |
+| X12 | 改名的那一个核对两项的"早于"反过来 | 整个程序的两格 nested 停在核对上（3.22 第 13 条；X9 见那里） |
+| 分份 | `Makefile` 只在一份换名字，或都不换 | 3.19 的脚本报 FAIL |
 
 **S3**
 
@@ -1408,8 +1452,8 @@ CI 绿之后才合并（02-workflow 第 4 节）；合并之后 `main` 上两次
 | 份 | 今天（两次 `main` 的平均） | P3 加 | 之后 | 450 秒的余量 |
 |---|---|---|---|---|
 | 第七份 | 279.5 秒；落在 EPYC 7763 上约 315 秒 | 约 4–6 秒（四个新测试，3.19） | 7763 上约 321 秒 | 约 129 秒（按 7763 那一档，审查 C 的 N3） |
-| 第八份 | 307 秒 | 约 2–4 秒（302 一格多一次回滚与撤销） | 约 311 秒 | 约 139 秒 |
-| 竞态 | 见 06-environment 第 4 节 | 后台撤销的性质测试多约 0.2 秒、回滚的多约 1.3 秒（审查 A 实测与推算，3.10.9）；S3 的差分（几组种子，每组 1,000 个 zip）与模糊的种子也在这一份（审查 C 的 N9），S3 量 | S2、S3 各量一次 | S2、S3 量 |
+| 第八份 | 307 秒 | 约 2–4 秒（302 一格多一次回滚与撤销）；S2 实测竞态多 0.1 秒（10.2） | 约 311 秒 | 约 139 秒 |
+| 竞态 | 见 06-environment 第 4 节 | 后台撤销的性质测试多约 0.2 秒、回滚的多约 1.3 秒（审查 A 实测与推算，3.10.9；S2 实测多 0.34–0.40 秒与约 1.5 秒，10.2）；S3 的差分（几组种子，每组 1,000 个 zip）与模糊的种子也在这一份（审查 C 的 N9），S3 量 | S2、S3 各量一次 | S2、S3 量 |
 
 数是推断。每个新测试在实施时以 `go test -run '^Name$' -count=1 -v ./internal/bootstrap` 量一次（经 `heavy.sh`），写进第 10 节；竞态下的两个性质测试在 S2、S3 的差分与模糊在 S3 以 `make test-go-race` 的命令量（审查 A 的 13.79–14.09 秒与 1.83–1.85 秒是对照）。合并之后哪一份过了 400 秒，先挪给邻份：第七份的点名去掉之后 `TestA…` 回第一份、`TestTheL…` 回第三份，不提高 `-timeout`。
 
@@ -1422,7 +1466,7 @@ CI 绿之后才合并（02-workflow 第 4 节）；合并之后 `main` 上两次
 3. 设计审查与修复核对（02-workflow 第 2、3 节）；对设计的修正写进 3.21–3.23。
 4. 文档的改动随 Step 的最后一个提交（下面）；第 10 节写结果。
 
-S2 另：3.10.7 的每个计数的下限在测试里、实测的最少次数在第 10 节；整个程序的 nested 两格在 `main` 上绿。
+S2 另：3.10.7 的每个计数的下限在测试里、实测的最少次数在第 10 节；整个程序的 nested 两格在 `main` 上绿。S2：23 个下限在测试里，最少次数在 10.2 的表；两格在分支的 CI 上绿，`main` 上合并之后看（00 号文档第 13 节）。
 
 S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 条的不确定，照实记跑了几次、红了几次）；3.14.3 点名的四个测试的 `-count=20` 写进第 10 节。
 
@@ -1430,8 +1474,8 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 
 1. **总体设计 13.1 第 28 条**（S1）：`NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC。` → `NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC → 切罗基文的小写换成大写（\`cases.Fold\` 把切罗基文的大小写对调，这一步让键幂等；链接索引的 \`IndexKeyer\` 与搜索的分词同一步，M12/P3/S1）。`
 2. **总体设计 13.1 第 30 条**（S1）：在 `   - **连接的建立**` 那一项之后加一项：`   - **流数**（M12/P3/S1）：每个凭证（登录会话、PAT、任务）至多 4 条，第 5 条顶掉它最老的一条（\`reset\`，原因 \`superseded\`），从不被拒；每个账户至多 64 条，净增的第 65 条答 429 \`rate_limited\`，\`Retry-After: 30\`。两个上限是常量；条数在打开、顶掉与关闭时维护，顶掉的那一条立刻不算。`
-3. **总体设计 5.8 第 6 步**（S2）：照 00 号文档"总体设计的修订"第 8 条的第一项。
-4. **总体设计 13.1 第 2 条**（S2）：从 `回滚的变更集由几遍、几个单元在不同时刻写下` 起、到 `没有造过。` 为止（`v0.1-design.md:1062`）换成：`回滚的变更集由几遍、几个单元在不同时刻写下：先删的子树在自己的单元里删成回收站根，收着基线节点的新建节点在后面一遍才删。撤销计划里，被这个变更集删了、现在本身是回收站根的节点是它自己的顶，几项依次放回（外层先）；后台撤销在一段"让开"里放回外层一组时，至少放回到段内后面的放回要用的成员（M11 第 302 条，M12/P3/S2 修，[M12 总设计](M12-release/00-M12-design.md) 4.6.1）。`
+3. **总体设计 5.8 第 6 步**（S2）：照 00 号文档"总体设计的修订"第 8 条的第一项。S2 的文档提交照它落了。
+4. **总体设计 13.1 第 2 条**（S2）：从 `回滚的变更集由几遍、几个单元在不同时刻写下` 起、到 `没有造过。` 为止（`v0.1-design.md:1062`）换成：`回滚的变更集由几遍、几个单元在不同时刻写下：先删的子树在自己的单元里删成回收站根，收着基线节点的新建节点在后面一遍才删。撤销计划里，被这个变更集删了、现在本身是回收站根的节点是它自己的顶，几项依次放回（外层先）；后台撤销在一段"让开"里放回外层一组时，至少放回到段内后面的放回要用的成员（M11 第 302 条，M12/P3/S2 修，[M12 总设计](M12-release/00-M12-design.md) 4.6.1）。`S2 的文档提交照它落了。
 5. **`README.md:192`**（S3）：`不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。` → `不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、过深、过大等）跳过，报告逐条列出。没有 UTF-8 标志的名称先读 Info-ZIP 的 Unicode 路径；包里不是 UTF-8 的名称都能按 GBK（中文 Windows 打包的写法）读出时，按 GBK 读，报告列出每个这样读的名称；这样的包里，没有标志、恰好也是合法 UTF-8 的非 ASCII 名称一并按 GBK 读（GBK 的\`目录\`、\`图片\`就是合法的 UTF-8）。有一个读不出时，这个包不按 GBK 读，不是 UTF-8 的条目跳过。已知限制：日文、韩文、繁体中文的旧编码会被读成乱码的中文；同一个包里既有 GBK 名称、又有没有标志的 UTF-8 名称时，后者也会被读成 GBK。`（审查 C 的 N7）
 6. **`README.md:193`**（S3），两处：
    - `全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；` → `一个人排队与运行中的任务（各笔记本合计，含正在上传的导入）至多 5 个，超出答 409 \`transfer.too_many_jobs\`（升级的回滚算进去，但从不因此被拒）；全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；`
@@ -1453,13 +1497,91 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 | P4/S3（性能实测） | 日志与变更集的详情改在只读的 REPEATABLE READ 快照里读（3.8），每次多一个事务的开销与一条连接的占用；日志的实测照新的读法量。事件流的 hub 多两张表，打开与关闭多一次常数时间的维护 |
 | P5/S3（发布说明的已知限制，4.13） | **切罗基文的标题键**（审查 B 的 M2，照代码）：(1) 升级之后不跑 `reindex` 时，已有的切罗基文标题留着旧键，按路径找（`RootByKey`、`ChildByKey`）与链接解析都找不到它（MCP 读 `Ꭰ.md` 答 `page.not_found`），同一父页下还能再建一个只差切罗基文大小写的兄弟页；(2) `nervewiki reindex` 重算标题键，把它们改对；(3) 一本笔记本里已有只差切罗基文大小写的兄弟页（旧键下合法）时，`reindex` 报撞键、这本整个跳过（链接也不重建），要先给其中一页改名。发布说明写：有切罗基文标题的实例升级之后跑一次 `nervewiki reindex`，报撞键的照提示改名再跑。<br>**标题 id**：标题里有自动链接或原始 HTML 的，id 变了，旧的指向它的锚点链接要重写。<br>**导入名称**：Shift-JIS、Big5、EUC-KR 的名字读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好合法 UTF-8 的 GBK 名字的包认不出；**相对今天的回归**：GBK 的包里没有标志的真 UTF-8 名字会被读成 GBK（P3-16），报告里逐个列出。<br>**其余**：U+2800 单独作名字仍然通过；一个凭证至多 4 条事件流 |
 | v0.2 的 `M12-transfer.md`（收尾时写） | 导入时选编码的选项；CP437；Shift-JIS 等的识别；按人的上限做成配置项（若有人要） |
-| v0.2 的 `M12-history.md`（收尾时写） | "同一形状在后台恢复、后台撤销里"仍没有造过（00 号文档 4.6.1"不去造的"） |
+| v0.2 的 `M12-history.md`（收尾时写） | "同一形状在后台恢复、后台撤销里"仍没有造过（00 号文档 4.6.1"不去造的"）：任务自己的变更集分批删出的那一种；交错 20 的"往回"与后台恢复停在组中间的那一例是来源 3，S2 照常撤销（3.22 第 1 条） |
 
 切罗基文的那一条是审查 B 照代码核对过的（`linking/app/reindex.go:106-109`、`page/link_targets.go:252-274`、`page/domain/rekey.go:24`），不再留给 S1 核对；不加迁移（00 号文档 4.6.3）。
 
 ## 10. 结果
 
-（实施之后补：每个 Step 的提交、闸门、变异的命令与结果、下限的实测、各份的用时、审查与修复核对的记录。）
+每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
+
+### 10.1 S1：小的正确性
+
+（实施之后补。）
+
+### 10.2 S2：第 302 条（2026-11-16，合并见 00 号文档第 12 节）
+
+**提交**（分支 `m12-p3-s2`，从 `48bbfc99`；6.2 的第 1–5 个，修复第 1 轮四个，文档是第 10 个，即这一个）：
+
+| # | sha | 说明 |
+|---|---|---|
+| 1 | `de2de0ae` | domain 测试的 `world` 照根的时刻读组（P3-3） |
+| 2 | `ba65144f` | 规则：`topOf` 停在现在本身是回收站根的节点，五处构造计划传 `Nodes`；domain 的表（十二格）、`TestRevertGroupsAndRefs` 的一段；整个程序的 nested 拆成请求与后台两格翻过来、改名 `TestRevertingARollbackPutsBackWhatTheAgentLeft`；`Makefile` 两个模式换名字；两格组合根的测试照决定 304 翻过来（3.22 第 1 条） |
+| 3 | `e3725b07` | `needed` 也看段内后面的放回；分时刻的装载与 `delApart`；`TestARestoreUnderAMemberCutShortInASegmentBringsItBack` |
+| 4 | `f6e54ead` | `TestTheJobsStepsReplayToStar` 扩开：`delApart`、`folder` 的 z、四个计数与下限 |
+| 5 | `a714787f` | `TestTheRollbacksStepsReplayToTheBaseline` 扩开：撤销回滚的变更集，请求与后台轮流；agent 的删除先读整棵；三个计数与下限 |
+| 6 | `9991aee1` | 修复第 1 轮：确定的一格加成员 Q（3.22 第 11 条） |
+| 7 | `99abd703` | 修复第 1 轮：改名的那一个的两格 nested 先核对回收站里的两项（3.22 第 13 条） |
+| 8 | `46de0b3e` | 修复第 1 轮：`folder` 的 w、`nestedDeep` 与下限；全部下限照约定重算（3.22 第 10、12 条） |
+| 9 | `63cfcd9b` | 修复第 1 轮：回滚的性质测试的说明写上两条路的下限（3.22 第 8 条） |
+
+第 2–5 个推送之前重做过一次：第一次的头 `737b15e7` 的 `make test` 红在 3.22 第 1 条的两格，翻转放进第 2 个提交，再 `cherry-pick` 第 3–5 个（与旧头只差这两个文件）；旧头留在本地分支 `m12-p3-s2-before-flip`，没有推。
+
+**每个提交单独为绿**：在一个临时 worktree 里逐个 `git checkout --detach`，build、vet、`make lint`、`make test-go-short` 都是 0；第 1、2 个另跑 page 的 domain 全量与整个程序的那一个（第 1 个是旧名字、答 409，第 2 个是新名字、200 与后台成功），第 2 个另跑 3.19 的分份脚本，并在第 2 个提交的树上另跑翻过来的两格连同改名的那一个（三个测试、十八个子测试都过；实施者非竞态，审查 C 竞态，审查 C 的 N4）。审查 C 另在第 2–4 个上跑 page 的非短测试，都过。修复的第 6–9 个同样逐个跑：build、vet、`make lint`、`make test-go-short` 都是 0，另在每一个上跑改名的那一个（竞态，三格都过）与后台撤销、回滚的两个性质测试和确定的一格的全量（都过）。
+
+**`needed` 先红后绿**（6.2 第 3 条）：第 4 个提交的生成器放在 `needed` 改之前，`-short` 400 次里 17 次失败，都是模型的 "a restore under a parent gone"，第一个是种子 34（审查 A 的原型也是 17 次）；改后 0 次。确定的一格在改之前三处都红：整串步里 P1 在段后、模型第 4 步失败、批切在段尾时核对的替身记下 "z under P1, not alive"。加成员 Q 之前，S2-3b、S2-3c 在这一格上活下来（审查 A），加了之后红。
+
+**下限**（3.10.7；本机，经 `heavy.sh`；后台撤销的那个是修复第 1 轮加了 w 之后的生成器，`46de0b3e`）：
+
+| 计数 | 40 个基 × 400 次的最少 | 20 个基 × 2,000 次的最少 | `-short` 下限（之前） | 全量下限（之前） |
+|---|---|---|---|---|
+| `aside` | 206 | 1,141 | 137（138） | 760（741） |
+| `restoreWrite` | 217 | 1,257 | 144（157） | 838（836） |
+| `writeDelete` | 129 | 774 | 86 | 516（512） |
+| `cut` | 39 | 270 | 26 | 180（176） |
+| `across` | 149 | 825 | 99（100） | 550（548） |
+| `goneLater` | 14 | 106 | 9（11） | 70（73） |
+| `goneSame` | 30 | 189 | 20（22） | 126 |
+| 注入的改名 | 120 | 651 | 80（78） | 434（427） |
+| 注入的占名 | 86 | 580 | 57（66） | 386（364） |
+| 注入的子节点 | 63 | 355 | 42（40） | 236（235） |
+| 注入的放置的父节点删除 | 14 | 93 | 9（8） | 62（58） |
+| 注入的环 | 6 | 46 | 4（3） | 30（28） |
+| 注入的放置太深 | 15 | 125 | 10（11） | 83（78） |
+| 注入的恢复太深 | 9 | 67 | 6（5） | 44（41） |
+| 注入的恢复的父节点删除 | 13 | 100 | 8（9） | 66 |
+| `nested` | 25 | 172 | 16 | 114 |
+| `nestedMid` | 22 | 162 | 14 | 108 |
+| `nestedGroup` | 11 | 73 | 7 | 48 |
+| `nestedCut` | 11 | 88 | 7（6） | 58 |
+| `nestedDeep`（修复第 1 轮新加） | 9 | 72 | 6 | 48 |
+| 回滚：`nested` | 13 | 92 | 8 | 61 |
+| 回滚：请求的撤销 | 198 | 998 | 132 | 665 |
+| 回滚：后台的撤销 | 199 | 998 | 132 | 665 |
+
+60 组都没有失败（回滚的那个在 agent 改了之后）。嵌套的前三个的最少次数与加 w 之前相同：它们在 w 那一次抽签与 w 的 id 之前就定了（有没有 z、z 在哪、有没有 zz）；`nestedCut` 由 9、87 变为 11、88。审查 B 在 `a714787f` 上把加 w 之前的数逐字重量过，核对第 1 轮又从两份日志逐个重算了 40 个下限，0 处不符。下限都是最少次数的三分之二、向下取整（决定 479）；`-short` 的最小是 4（`cycle`）。测试自己的基 0：`-short` 下五个嵌套的计数 33/31/18/21/15，全量 194/176/92/105/83。
+
+**量下限时找到的**：回滚的性质测试的 agent 删新子树时边走边删，往上的路经过已删的节点就读不到，留下"活着、父节点不在"的节点（56,000 次里 15 次）。在 `48bbfc99` 上原样复现（种子 10334、37050、37135、201121、600695、801293、1601237 在回滚的第一遍失败；另 8 个回滚照过，撤销答 `page.revert_conflict`，诊断过的 34196 是 `parent_gone`，审查 B 核对 8 个都是）。测试自己的 2,000 个种子没有一个留下孤儿。改为先读整棵再删（3.22 第 7 条）。
+
+**变异**（7.3；`mut.py`，每条先在没改的树上跑同一命令为绿）：S2-1 到 S2-9、X1–X8 与分份的对照，第一次在没推的头 `737b15e7` 上做（与 `a714787f` 的非测试代码与这些命令用到的测试逐字相同，只差两个组合根的测试文件；审查 C 的 N3）；那时的命令里没有翻过来的两格，审查 C 补跑了 S2-1 对它们（四格红）。修复第 1 轮在 `63cfcd9b` 上整个重跑，结果与第一次逐条相同（S2-3 在回滚的测试与整个程序上照旧活下来，S2-7、S2-8 等价，X8 只在别的种子基上抓到）；另加的：S2-3b、S2-3c 由确定的一格抓到，S2-3b 在后台撤销的性质测试上活下来（它只核对结果）；B1（单独的项同一时刻）在 `-short` 上红；X10（`folder` 不造 w）、X11（`nestedDeep` 恒假）以 `nestedDeep` 的 idle 红（X10 照样抽签，但少了 w 的 id 的几次随机数，别的计数小有变动，只有 `nestedDeep` 报 idle；核对第 1 轮 B 的 C1-N1）；X12（改名的那一个核对两项的先后反过来）红在两格 nested；X9 见 3.22 第 13 条。逐条的表在 [S2 的审查记录](reviews/P3-S2-nested-trash-roots-review.md)"反向对照"。
+
+**门禁**（7.4，经 `heavy.sh`）：头 `a714787f`：`make lint gen-check knip build`、`make test`（含八份与竞态一份）、`make test-go-short`、`make e2e`（576 个通过、1 个跳过）都是 0；第一次的头 `737b15e7` 的 `make test` 红在 3.22 第 1 条的两格，翻过来之后重做第 2–5 个提交、整个重跑。修复第 1 轮的头 `63cfcd9b`：同样四步都是 0（`make test` 185 个包 ok、没有 `FAIL`；e2e 576 个通过、1 个跳过）。
+
+**分份**（3.19）：第 2 个提交与头上都是 554 个顶层，145/50/119/120/60/15/30/15，每个恰在一份；改名的只在第八份，旧名字不在列表里；`TestTheRevertOfEachBatchShape` 在第三份，`TestABackgroundRevertStoppedInAGroup` 在第七份。审查 C 以自己读 `Makefile` 配方的脚本另核，结果相同；两个模式都留旧名字时新名字落到第四份，只有第七份留旧名字时它在第四、第八两份，脚本都报错。
+
+**实测**（7.5；本机，经 `heavy.sh`，同一台机器上与 `48bbfc99` 交替；负载在括号里）：整个程序的那一格竞态 2.90 → 3.00 秒（非竞态 1.79 → 2.16；负载 7–8）。两个性质测试照 `make test-go-race` 的跑法，在修复第 1 轮的头 `63cfcd9b` 上与 `48bbfc99` 交替三轮（负载 1.5–3.9）：`TestTheJobsStepsReplayToStar` 13.56–13.60 → 13.94–13.98 秒，多 0.34–0.40 秒（w 与 `nestedDeep` 在内；审查 A 的原型多约 0.2 秒）；`TestTheRollbacksStepsReplayToTheBaseline` 1.80–1.82 → 3.27–3.31 秒，多约 1.5 秒（审查 A 推约 1.3 秒）。（初稿的"S2 的生成器扩开了、多 1.0–2.0 秒"不对：审查 A 的原型已有扩开的生成器；那两轮在负载 3.3–6.5 时量的，偏大。审查 B 在负载低的三轮量的是 13.61–14.39 → 13.95–14.70 秒，多 0.27–0.36 秒，回滚的多约 1.5 秒；审查 B 的 M2。核对第 1 轮 B 在负载 1.1–1.5 时另量两轮，整台机器偏慢、基线 15.4 秒，多 0.20 与 0.42 秒、回滚多 1.65 与 1.67 秒，量级相符。）
+
+**分支的 CI**：`a714787f` 的 run 43772091351，第 1 次 attempt 全绿，没有重跑。Test 一步：第八份（改名的那一格）4:03（EPYC 9V45），第七份（交错 20）5:07（EPYC 7763），第三份（种下的嵌套一格）4:31（Xeon 6975P-C），竞态一份 13:47（Xeon 8370C）；E2E 一步 7:31（审查 C 的 N2：照 Test 一步写，06-environment 第 4 节按它判份的余量）。修复第 1 轮的头 `63cfcd9b`：run 43800625515，第 1 次 attempt 全绿，没有重跑；Test 一步第八份 3:59（EPYC 9V45），第七份 5:07（EPYC 7763），第三份 6:05（EPYC 7763），竞态一份 8:59（EPYC 9V45）；E2E 一步 5:52。各份都远在 450 秒之内；包的用时随 runner 的 CPU 差得多，不拿来与 `main` 比，合并之后两次 `main` 照 06-environment 第 4 节记进 00 号文档第 13 节。本提交的分支 CI：（待填：本提交的分支 CI 的 run 与 attempt、第三、七、八份与竞态一份的 Test 一步）。
+
+**3.10.5 的现有格**：`TestPlanRevertConflicts` 与 page 模块的全部测试在规则之后照过，没有一格翻过来；`bootstrap` 里翻过来两格（3.22 第 1 条）：种下的上下相套的两项与交错 20 的"往回"，都由 409 变成撤销得了、笔记本等于之前。
+
+**审查**：三份（A 规则 0I 1M 2N，B 性质测试 0I 2M 2N 1Q，C 组合根、提交与文档 0I 2M 6N），修复第 1 轮四个只改测试的提交与草稿的改动；核对第 1 轮三位的旧发现都解决，新的只有 4 条 Nit（只在文档），在本提交改了文字。主持者的决定 479–482。见 [S2 的审查记录](reviews/P3-S2-nested-trash-roots-review.md)。
+
+**第 8 节"S2 另"**：3.10.7 的每个计数的下限在测试里（上表的 23 个），实测的最少次数在上表；整个程序的 nested 两格在分支的 CI 上绿，`main` 上合并之后看。
+
+### 10.3 S3：导入导出的任务
+
+（实施之后补。）
 
 ---
 
