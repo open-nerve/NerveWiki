@@ -251,11 +251,13 @@ test("signing out while the save is not answered ends the session after 1.5 seco
 });
 
 // M12/P2/S1, item 7: what was typed not saved, the sign-out asks first.
-test("signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout", async () => {
+test("signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout, Signing out… meanwhile", async () => {
+  let loggedOut: (() => void) | undefined;
   const server = pageServer({
     answers: {
-      "POST /api/v0/auth/logout": () => {
+      "POST /api/v0/auth/logout": async () => {
         server.sent.push("LOGOUT");
+        await new Promise<void>((resolve) => (loggedOut = resolve));
         return new Response(null, { status: 204 });
       },
     },
@@ -280,11 +282,13 @@ test("signing out with what was typed not saved asks first, saying it is in this
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
   // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
-  await user.click(
-    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
-      name: "Sign out",
-    })
-  );
+  const asked = await screen.findByRole("alertdialog", { name: "Sign out anyway?" });
+  await user.click(within(asked).getByRole("button", { name: "Sign out" }));
+  // While it signs out, its button says so, busy (review C's M2: signOut.signingOut).
+  await waitFor(() => expect(loggedOut).toBeDefined());
+  const signingOut = within(asked).getByRole("button", { name: "Signing out…" });
+  expect([signingOut.getAttribute("aria-busy"), signingOut.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+  loggedOut?.();
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(server.sent.filter((line) => /^(PUT|END|LOGOUT)/.test(line))).toEqual([
@@ -292,6 +296,34 @@ test("signing out with what was typed not saved asks first, saying it is in this
     "END session-1",
     "LOGOUT",
   ]);
+});
+
+test("signing out with what was typed not saved asks first in Chinese too, saying it is in this tab, and says it signs out", async () => {
+  let loggedOut: (() => void) | undefined;
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/auth/logout": async () => {
+        await new Promise<void>((resolve) => (loggedOut = resolve));
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { type } = await pageEditor();
+  type(" more");
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "退出登录" }));
+  const asked = await screen.findByRole("alertdialog", {
+    name: "仍要退出登录吗？",
+    description: "这个标签页里正在编辑的页面有还没有保存的修改。退出登录会先尽量保存，保存不了的会丢失。",
+  });
+  await user.click(within(asked).getByRole("button", { name: "退出登录" }));
+  await waitFor(() => expect(loggedOut).toBeDefined());
+  expect(within(asked).getByRole("button", { name: "正在退出登录…" }).getAttribute("aria-busy")).toBe("true");
+  loggedOut?.();
+  expect(await screen.findByRole("heading", { name: "登录" })).toBeTruthy();
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {

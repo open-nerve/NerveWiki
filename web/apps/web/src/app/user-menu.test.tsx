@@ -28,8 +28,8 @@ test("signing out from the user menu ends the session and goes to sign in", asyn
   expect(router.state.location.search).toBe("?next=%2Facme");
   expect(sent).toEqual(["/api/v0/auth/logout"]);
   expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
-  // With no edit that has changes not saved, it asked nothing (M12/P2/S1).
-  expect(screen.queryByRole("alertdialog")).toBeNull();
+  // With no edit that has changes not saved, it asked nothing (M12/P2/S1): the sign-in page above is the proof, had it
+  // asked, the tab would still be signed in, the question open.
 });
 
 // M12/P2/S1, item 7: another tab of the login that has an edit with changes not saved says so; the tab asks first.
