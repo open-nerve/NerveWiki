@@ -20,3 +20,13 @@ export function record(what: string, data: Record<string, unknown>): void {
   mkdirSync(roundDir(), { recursive: true });
   appendFileSync(resultsFile(), `${JSON.stringify({ what, at: new Date().toISOString(), ...data })}\n`);
 }
+
+/** The median of values by nearest rank: the middle one of an odd count, the lower middle of an even one. */
+export function median(values: readonly number[]): number {
+  const sorted = values.toSorted((a, b) => a - b);
+  const value = sorted[Math.ceil(sorted.length / 2) - 1];
+  if (value === undefined) {
+    throw new Error("the median of no values");
+  }
+  return value;
+}
