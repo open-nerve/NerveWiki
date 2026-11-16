@@ -63,7 +63,9 @@ func NewStartTrashRestore(d StartDeps, b BackgroundDeps) *StartTrashRestore {
 // forbidden, page.not_found, page.not_in_trash, page.not_trash_root,
 // page.restore_expired); then the notebook claimed before source checks,
 // transfer.busy when an import's upload or another start holds it, or a
-// job that writes its tree is queued or running; 503 server_busy when MaxQueued jobs wait or
+// job that writes its tree is queued or running; transfer.too_many_jobs
+// when the caller has domain.MaxPersonJobs jobs waiting, running or being
+// uploaded (M12 design 4.6.6, T2); 503 server_busy when MaxQueued jobs wait or
 // run; then the row, decided again. The job is named as the item.
 func (s *StartTrashRestore) Execute(ctx context.Context, req RestoreRequest) (JobView, error) {
 	release := func() {}
@@ -102,9 +104,9 @@ func NewStartRevert(d StartDeps, b BackgroundDeps) *StartRevert {
 // StartTrashRestore) right after the changeset's items are counted, past
 // MaxJobItems page.revert_too_large, before it reads anything else; its
 // conflicts, the versions the purge took, and page.locked for a page it
-// deletes or writes back that an edit session holds; then 503
-// server_busy; then the row, decided again. The job is named as the
-// changeset's kind.
+// deletes or writes back that an edit session holds; then
+// transfer.too_many_jobs, as StartTrashRestore; then 503 server_busy; then
+// the row, decided again. The job is named as the changeset's kind.
 func (s *StartRevert) Execute(ctx context.Context, req RevertRequest) (JobView, error) {
 	release := func() {}
 	defer func() { release() }()
@@ -128,14 +130,14 @@ func (s *StartRevert) Execute(ctx context.Context, req RevertRequest) (JobView, 
 }
 
 // claim claims the notebook for a start in this process, as an import's
-// Check does for its upload, but with no bytes and not admitted: it
-// counts in no queue. transfer.busy when an upload or another start holds
-// it, or the notebook has a job that writes its tree queued or running.
-// It answers the claim's release.
+// Check does for its upload, but with no bytes, no person and not
+// admitted: it counts in no queue nor any person's jobs. transfer.busy
+// when an upload or another start holds it, or the notebook has a job
+// that writes its tree queued or running. It answers the claim's release.
 func (d StartDeps) claim(ctx context.Context, notebookID uuid.UUID) (func(), error) {
 	d.Uploads.checking.Lock()
 	defer d.Uploads.checking.Unlock()
-	if !d.Uploads.claim(notebookID, 0) {
+	if !d.Uploads.claim(notebookID, uuid.UUID{}, 0) {
 		return nil, domain.ErrWriting
 	}
 	if err := d.writing(ctx, notebookID); err != nil {
@@ -164,7 +166,11 @@ func (d StartDeps) startBackground(ctx context.Context, action shared.Action, jo
 }
 
 // queueBackground writes job's row, queued, and enqueues it, as its
-// creator from its client asks, and answers it: 503 server_busy when
+// creator from its client asks, and answers it: transfer.too_many_jobs
+// when the creator has domain.MaxPersonJobs jobs waiting, running or being
+// uploaded, but for a rollback, which counts as theirs and is never
+// refused for it (M12 design 4.6.6, T2: an abandonment or a rejection is
+// made at any time); 503 server_busy when
 // MaxQueued jobs wait or run; then, under the workspace's row and the
 // notebook's, FOR SHARE, action decided again, notebook.upgrading for a
 // notebook being upgraded (M11 design 4.5) but to the upgrade's own
@@ -179,7 +185,11 @@ func (d StartDeps) queueBackground(ctx context.Context, action shared.Action, jo
 	if err != nil {
 		return domain.Job{}, err
 	}
-	if err := d.room(ctx, job.NotebookID, false); err != nil {
+	person := actor.UserID
+	if job.Kind == domain.KindRollback {
+		person = uuid.UUID{}
+	}
+	if err := d.room(ctx, job.NotebookID, person, false); err != nil {
 		return domain.Job{}, err
 	}
 	workspaceID, err := d.workspaceOf(ctx, job.NotebookID)
@@ -197,7 +207,7 @@ func (d StartDeps) queueBackground(ctx context.Context, action shared.Action, jo
 		if err := d.Rows.LockQueue(ctx); err != nil {
 			return err
 		}
-		if err := d.room(ctx, job.NotebookID, true); err != nil {
+		if err := d.room(ctx, job.NotebookID, person, true); err != nil {
 			return err
 		}
 		if err := d.writing(ctx, job.NotebookID); err != nil {

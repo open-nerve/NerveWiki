@@ -31,6 +31,18 @@ var ErrBusy = shared.NewError(shared.KindConflict, "transfer.busy",
 var ErrWriting = shared.NewError(shared.KindConflict, "transfer.busy",
 	"A write into this notebook (an import, a restore or a revert) is under way: wait for it to end.")
 
+// MaxPersonJobs is how many jobs one person has queued or running, with
+// the imports they are uploading, over every notebook (M12 design 4.6.6,
+// T2): a start past it is refused, ErrTooManyJobs; a rollback's never is,
+// though it counts.
+const MaxPersonJobs = 5
+
+// ErrTooManyJobs is a start refused because its person has MaxPersonJobs
+// jobs queued or running: 409 transfer.too_many_jobs. Their own jobs'
+// ends, or a cancel, lift it, not a wait: no Retry-After.
+var ErrTooManyJobs = shared.NewError(shared.KindConflict, "transfer.too_many_jobs",
+	"You have 5 jobs queued or running: wait for one to end, or cancel one.")
+
 // ErrUpgrading is a job that writes the notebook's tree asked of a notebook
 // being upgraded to an LLM Wiki (M11 design 4.5): the notebook module's
 // notebook.upgrading, as ErrNotebookNotFound is its notebook.not_found, of

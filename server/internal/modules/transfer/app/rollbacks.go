@@ -27,7 +27,8 @@ func NewRollbacks(d StartDeps, action shared.Action) Rollbacks {
 // transaction, which holds the notebook's row FOR NO KEY UPDATE and has
 // set the upgrade rolling back; it answers the job's id: 503 server_busy
 // when MaxQueued jobs wait or run, transfer.busy when a job writes the
-// notebook's tree. The job is named "upgrade".
+// notebook's tree; never transfer.too_many_jobs, though the job counts
+// among the caller's (M12 design 4.6.6, T2). The job is named "upgrade".
 func (r Rollbacks) Start(ctx context.Context, notebookID, upgradeID uuid.UUID, client domain.Client) (uuid.UUID, error) {
 	job, err := r.d.queueBackground(ctx, r.action, domain.Job{NotebookID: notebookID, Kind: domain.KindRollback, Name: "upgrade",
 		Client: client, UpgradeID: &upgradeID}, r.d.Queue.Rollback)

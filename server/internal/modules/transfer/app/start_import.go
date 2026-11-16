@@ -58,8 +58,10 @@ func (e *ReadError) Unwrap() error { return e.Err }
 // a reader is forbidden; a parent that is no page of the notebook not
 // deleted is page.not_found; an import of the notebook being uploaded, or
 // a restore or a revert being started (M8/P4 design 3.6), or a job that
-// writes its tree queued or running, anyone's, is transfer.busy; MaxQueued jobs waiting,
-// running or being uploaded are 503 server_busy; a store that would keep
+// writes its tree queued or running, anyone's, is transfer.busy; the
+// caller's domain.MaxPersonJobs jobs waiting, running or being uploaded
+// into other notebooks are transfer.too_many_jobs (M12 design 4.6.6, T2);
+// MaxQueued jobs waiting, running or being uploaded are 503 server_busy; a store that would keep
 // less than MinFree once the body, and what the other uploads have still
 // to store, are written is 507 storage_full. A notebook being upgraded is
 // notebook.upgrading, right after the decision (M11 design 4.5). Once it
@@ -85,7 +87,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 	}
 	s.d.Uploads.checking.Lock()
 	defer s.d.Uploads.checking.Unlock()
-	if !s.d.Uploads.claim(req.NotebookID, max(req.Size, 0)) {
+	if !s.d.Uploads.claim(req.NotebookID, actor.UserID, max(req.Size, 0)) {
 		return domain.ErrWriting
 	}
 	admitted := false
@@ -94,7 +96,7 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 			s.d.Uploads.release(req.NotebookID)
 		}
 	}()
-	if err := s.admit(ctx, req); err != nil {
+	if err := s.admit(ctx, req, actor.UserID); err != nil {
 		return err
 	}
 	s.d.Uploads.admit(req.NotebookID)
@@ -103,12 +105,12 @@ func (s *StartImport) Check(ctx context.Context, req ImportRequest) error {
 }
 
 // admit is Check's last: no job that writes the notebook's tree, room in
-// the queue and in the store for the body.
-func (s *StartImport) admit(ctx context.Context, req ImportRequest) error {
+// person's jobs, in the queue and in the store for the body.
+func (s *StartImport) admit(ctx context.Context, req ImportRequest, person uuid.UUID) error {
 	if err := s.d.writing(ctx, req.NotebookID); err != nil {
 		return err
 	}
-	if err := s.d.room(ctx, req.NotebookID, false); err != nil {
+	if err := s.d.room(ctx, req.NotebookID, person, false); err != nil {
 		return err
 	}
 	return s.d.free(ctx, max(req.Size, 0), req.NotebookID, false)
@@ -216,8 +218,8 @@ func (s *StartImport) Discard(ctx context.Context, stored Stored) {
 // Create starts the import of stored as req asks, and answers its job:
 // under the workspace's row and the notebook's, FOR SHARE, it decides
 // transfer.import and checks the parent again; then, the jobs' creations
-// one at a time, there is room in the queue and no job that writes the
-// notebook's tree. The job, named as the file, goes under the parent, the
+// one at a time, there is room in the caller's jobs and in the queue and
+// no job that writes the notebook's tree. The job, named as the file, goes under the parent, the
 // changeset it will write decided (M8/P4 design 3.2). The
 // archive is deleted on any failure before the commit; one whose commit
 // failed is left to the sweep.
@@ -266,7 +268,7 @@ func (s *StartImport) write(ctx context.Context, req ImportRequest, stored Store
 		if err := s.d.Rows.LockQueue(ctx); err != nil {
 			return err
 		}
-		if err := s.d.room(ctx, req.NotebookID, true); err != nil {
+		if err := s.d.room(ctx, req.NotebookID, actor.UserID, true); err != nil {
 			return err
 		}
 		if err := s.d.writing(ctx, req.NotebookID); err != nil {

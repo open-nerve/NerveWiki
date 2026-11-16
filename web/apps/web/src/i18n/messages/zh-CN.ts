@@ -935,6 +935,8 @@ export const zhCN: Messages = {
   "transfer.problem.unsupported_method": "{path} 没有导入：服务器读不了它的压缩方式。",
   "transfer.problem.too_compressed": "{path} 没有导入：解压后比它在 zip 里大得太多。",
   "transfer.problem.name_not_utf8": "{path} 没有导入：名称不是 UTF-8。",
+  "transfer.problem.name_unicode_path": "{path}：名称不是 UTF-8，取了压缩工具另存的 Unicode 名称。",
+  "transfer.problem.name_gbk": "{path}：名称不是 UTF-8，按 GBK（中文 Windows 的写法）读出；读错了的话，给它改个名。",
   "transfer.problem.invalid_content": "{path} 没有导入：它不是 UTF-8 文本，或含有 NUL 字符。",
   "transfer.problem.too_large": "{path} 没有导入：超过了服务器的上限。",
   "transfer.problem.too_deep": "{path} 没有导入：它在笔记本中会超过 10 层深。",
@@ -955,8 +957,7 @@ export const zhCN: Messages = {
   "transfer.revertLeft":
     "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销，之后再整组撤销这次改动。",
   "transfer.revertLeftTrimmed": "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销。",
-  "transfer.revertLeftGroup":
-    "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组；不要先撤销这次撤销。",
+  "transfer.revertLeftGroup": "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组。",
   "transfer.conflictsTitle": "挡住撤销的节点：{count}",
   "transfer.conflictsAgain": "在「被撤销的改动」里重新撤销时，会列出它们的链接。",
   "transfer.openPage": "打开「{page}」",
@@ -1007,7 +1008,7 @@ export const zhCN: Messages = {
   "transfer.importBusy": "这本笔记本有进行中的导入、恢复或撤销，可能是别人的：等它结束再试。",
   "transfer.importPlaceGone": "导入的位置已不存在。",
   "transfer.importCut":
-    "上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本有进行中的导入、恢复或撤销、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。",
+    "上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本有进行中的导入、恢复或撤销、你已有 5 个排队或进行中的任务、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。",
   "transfer.exportBusy": "你对这个笔记本的导出还在进行中，请等它结束或者取消它。",
   "transfer.importFailure.forbidden": "发起人已不能编辑这本笔记本。",
   "transfer.importFailure.root_not_found": "导入的位置已不存在。",
@@ -1191,6 +1192,7 @@ export const zhCN: Messages = {
   "problem.transfer.not_found": "这个任务不存在，或者你无权访问它。",
   "problem.transfer.busy": "这本笔记本有进行中的导入、恢复或撤销，或你对它的导出还在进行：等它结束再试。",
   "problem.transfer.not_cancellable": "这个任务已经结束了。",
+  "problem.transfer.too_many_jobs": "你已有 5 个排队或进行中的任务（各笔记本合计）：等一个结束，或取消一个。",
   "problem.page.cycle": "页面不能移到它自己或它的子页面下。",
   "problem.page.title_taken": "同一父页面下已有同名的页面（只差大小写也算同名）。",
   "problem.page.too_deep": "页面最多嵌套 10 层。",

@@ -64,6 +64,22 @@ test("a page gone meanwhile says so in the dialog, which stays", async () => {
   expect(router.state.location.pathname).toBe(pagePath(guide.id));
 });
 
+test("five jobs of the reader's queued or running say so in the dialog, which stays", async () => {
+  const server = jobsServer({
+    role: "reader",
+    answers: { [`POST /api/v0/notebooks/${notebookJSON.id}/exports`]: () => problem(409, "transfer.too_many_jobs") },
+  });
+  const { user, dialog, router } = await exporting(server);
+
+  await user.click(within(dialog).getByRole("button", { name: "Export" }));
+
+  expect((await within(dialog).findByRole("alert")).textContent).toBe(
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one."
+  );
+  expect(screen.getByRole("alertdialog")).toBe(dialog);
+  expect(router.state.location.pathname).toBe(pagePath(guide.id));
+});
+
 test("the jobs that cannot be read on arrival say why, the job started not shown alone; Try again lists them", async () => {
   const server = jobsServer({ jobs: [jobJSON(1)] });
   const { user, dialog } = await exporting(server);

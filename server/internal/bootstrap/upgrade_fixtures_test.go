@@ -73,9 +73,11 @@ func upgradeIn(ctx context.Context, pool *pgxpool.Pool, nb, byID, state string) 
 }
 
 // rollingBackIn sets the notebook nb rolling back as upgradeIn does,
-// by the account byID, its rollback's job job written as River never
-// enqueued it, by the same account, in state, queued or ended, and the
-// wiki row's (M11/P1 design 3.22). A deleted notebook is left as it is.
+// by the account byID, its rollback's job job, by the same account, in
+// state, queued or ended, a queued one's River job holding it an hour on
+// (it never runs in a test, and the start's lost leaves it queued, M12/P3
+// design 3.14.3), and the wiki row's (M11/P1 design 3.22). A deleted
+// notebook is left as it is.
 func rollingBackIn(ctx context.Context, pool *pgxpool.Pool, nb, byID, job, state string) error {
 	var alive bool
 	if err := pool.QueryRow(ctx, "SELECT deleted_at IS NULL FROM notebooks WHERE id = $1", nb).Scan(&alive); err != nil || !alive {
@@ -93,6 +95,12 @@ func rollingBackIn(ctx context.Context, pool *pgxpool.Pool, nb, byID, job, state
 				CASE WHEN $3 NOT IN ('queued', 'running') THEN '{"failure": "interrupted"}'::jsonb END, now(), gen_random_uuid(), $5`,
 			job, nb, state, byID, up); err != nil {
 			return err
+		}
+		if state == "queued" {
+			kind, queue := riverJobOf("rollback")
+			if _, err := tx.Exec(ctx, riverHoldsSQL, kind, job, queue); err != nil {
+				return err
+			}
 		}
 		_, err := tx.Exec(ctx, "UPDATE notebook_upgrades SET rollback_job_id = $2 WHERE id = $1", up, job)
 		return err

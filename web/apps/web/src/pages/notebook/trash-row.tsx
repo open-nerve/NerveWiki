@@ -166,13 +166,16 @@ export function refusedText({ error, item, start }: Refusal, t: Translate): stri
 /**
  * offeredOf is the item a restore in the background is offered for after
  * refusal (M8/P4 design 4.2): one too large to restore here, or whose start
- * in the background found the notebook or the server busy, to try again;
- * none after any other refusal.
+ * in the background found the notebook or the server busy, or the caller
+ * with as many jobs as one may have (M12/P3 design 4.2), to try again once
+ * one ends; none after any other refusal.
  */
 export function offeredOf(refusal: Refusal | undefined): TrashItem | undefined {
   const code = refusal?.error instanceof ApiError ? refusal.error.code : undefined;
   const offered =
-    refusal?.start === true ? code === "transfer.busy" || code === "server_busy" : code === "page.restore_too_large";
+    refusal?.start === true
+      ? code === "transfer.busy" || code === "server_busy" || code === "transfer.too_many_jobs"
+      : code === "page.restore_too_large";
   return offered ? refusal?.item : undefined;
 }
 

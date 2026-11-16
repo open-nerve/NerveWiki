@@ -365,7 +365,7 @@ test.each<[string, TransferJob, string, string[]]>([
     "Failed · The job was interrupted: the server stopped or restarted, or the job stopped responding.",
     [
       "What it undid stays. Nodes not undone: 1,401. To go back to before, undo this undo in the history; then the change can be undone whole again.",
-      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
+      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
     ],
   ],
   [
@@ -394,7 +394,7 @@ test.each<[string, TransferJob, string, string[]]>([
     "Failed · Part of the undo had to be done at once and is more than one batch can write: the pages, attachments, history or links it brings back. What was undone before it stays.",
     [
       "What it undid stays. Nodes not undone: 104. To go back to before, undo this undo in the history.",
-      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
+      "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
     ],
   ],
 ])("%s says why, and what became of what it did, what is left and what to do", async (_, job, state, says) => {

@@ -64,8 +64,9 @@ func (e *Expire) Run(ctx context.Context) (int, error) {
 
 // Rescue fails the jobs that no longer run, or will not, though their rows
 // say so: the server's own running ones, as it starts, which the last
-// process left; then those whose heartbeat is older than the timeout, and
-// the queued jobs River no longer holds, of every kind. A job does not run
+// process left, and the queued ones River no longer holds; then those
+// whose heartbeat is older than the timeout, and the queued jobs River no
+// longer holds, of every kind. A job does not run
 // again. Its report tells the failure: an export's alone, a writing job's
 // with the counts its heartbeat last wrote; its progress, how far it went.
 type Rescue struct {
@@ -83,21 +84,31 @@ func NewRescue(rows MaintainedRows, held Held, clock Clock, logger *slog.Logger,
 
 // AtStart fails every running job: as the server starts, before it runs
 // any, they were all interrupted (one server). One a request holds is
-// left to Run, its heartbeat old by then.
+// left to Run, its heartbeat old by then. Then, as Run does, the queued
+// jobs River no longer holds, of every kind: the runner discarded, before
+// this, each kind's jobs River held running, which the last process took
+// and stopped before they started, so that their rows wait no more for
+// River's rescue (M12 design 4.6.6, T4). That order is the module's jobs':
+// the five kinds' before the rescue's.
 func (r *Rescue) AtStart(ctx context.Context) error {
 	jobs, err := r.rows.InterruptJobs(ctx, nil, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
 	if err != nil {
 		return fmt.Errorf("rescue the interrupted jobs: %w", err)
 	}
 	r.log(ctx, "job interrupted", jobs)
+	for _, kind := range domain.Kinds() {
+		if err := r.lost(ctx, kind, "queued job left by a stopped server"); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 // Run fails the running jobs whose heartbeat is older than the timeout,
 // then the queued jobs River no longer holds: it dropped them, its one
-// attempt spent before they started, as their start's write failed. One
-// whose process stopped as River took it River holds, running, until its
-// rescue: the job timeout and an hour (M7/P5 design 3.12).
+// attempt spent before they started, as their start's write failed (M7/P5
+// design 3.12). One whose process stopped as River took it fails at the
+// next start (AtStart).
 func (r *Rescue) Run(ctx context.Context) error {
 	before := r.clock.Now().Add(-r.timeout)
 	jobs, err := r.rows.InterruptJobs(ctx, &before, r.clock.Now(), domain.Report{Failure: domain.FailureInterrupted})
@@ -106,17 +117,18 @@ func (r *Rescue) Run(ctx context.Context) error {
 	}
 	r.log(ctx, "job interrupted", jobs)
 	for _, kind := range domain.Kinds() {
-		if err := r.lost(ctx, kind); err != nil {
+		if err := r.lost(ctx, kind, "queued job dropped by River"); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// lost fails the queued jobs of kind River no longer holds. It reads the
-// rows before River: a job queued then was enqueued with its row, so River
-// holds it still, or started it, the row no longer queued, or dropped it.
-func (r *Rescue) lost(ctx context.Context, kind domain.Kind) error {
+// lost fails the queued jobs of kind River no longer holds, logging each
+// as msg. It reads the rows before River: a job queued then was enqueued
+// with its row, so River holds it still, or started it, the row no longer
+// queued, or dropped it.
+func (r *Rescue) lost(ctx context.Context, kind domain.Kind, msg string) error {
 	queued, err := r.rows.QueuedJobs(ctx, kind)
 	if err != nil || len(queued) == 0 {
 		return err
@@ -142,7 +154,7 @@ func (r *Rescue) lost(ctx context.Context, kind domain.Kind) error {
 	if err != nil {
 		return fmt.Errorf("rescue the jobs River dropped: %w", err)
 	}
-	r.log(ctx, "queued job dropped by River", jobs)
+	r.log(ctx, msg, jobs)
 	return nil
 }
 

@@ -187,6 +187,59 @@ func TestABackgroundStartIsRefused(t *testing.T) {
 	}
 }
 
+// A background restore's and revert's starts count the caller's jobs as
+// an import's do (M12 design 4.6.6, T2): at domain.MaxPersonJobs, theirs
+// is transfer.too_many_jobs, after transfer.busy and a revert's
+// page.locked, before the queue's room (P3 design 3.16); another's goes.
+func TestAPersonsSixthBackgroundStartIsRefused(t *testing.T) {
+	locked := &shared.Error{Kind: shared.KindConflict, Code: "page.locked"}
+	both := []domain.Kind{domain.KindTrashRestore, domain.KindRevert}
+	for _, tt := range []struct {
+		name      string
+		setUp     func(t *testing.T, w *world, tree *jobTree)
+		maxQueued int
+		want      error
+		kinds     []domain.Kind
+	}{
+		{"five of his", func(_ *testing.T, w *world, _ *jobTree) { w.jobsOf(w.bob, 5) }, 20, domain.ErrTooManyJobs, both},
+		{"four of his, the queue full", func(_ *testing.T, w *world, _ *jobTree) { w.jobsOf(w.bob, 4); w.jobsOf(w.alice, 1) }, 5,
+			domain.ErrQueueFull, both},
+		{"five of his, the queue full", func(_ *testing.T, w *world, _ *jobTree) { w.jobsOf(w.bob, 5) }, 5, domain.ErrTooManyJobs, both},
+		{"four of his and an import he uploads", func(t *testing.T, w *world, _ *jobTree) { w.uploading(t, w.bob); w.jobsOf(w.bob, 4) }, 20,
+			domain.ErrTooManyJobs, both},
+		// His fifth comes between the count outside the queue's lock and
+		// the one under it: that one refuses his sixth (P3 design 3.13.1;
+		// review C's M1).
+		{"four of his, his fifth after the first count", func(_ *testing.T, w *world, _ *jobTree) {
+			w.jobsOf(w.bob, 4)
+			w.rows.onCount = func() { w.jobsOf(w.bob, 1) }
+		}, 20, domain.ErrTooManyJobs, both},
+		{"five of his and a write into the notebook", func(_ *testing.T, w *world, _ *jobTree) {
+			w.jobsOf(w.bob, 5)
+			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: w.alice})
+		}, 20, domain.ErrWriting, both},
+		{"five of his and a page locked", func(_ *testing.T, w *world, tree *jobTree) { w.jobsOf(w.bob, 5); tree.late = locked }, 20, locked,
+			[]domain.Kind{domain.KindRevert}},
+		{"four of his, five of alice's", func(t *testing.T, w *world, _ *jobTree) {
+			w.jobsOf(w.bob, 4)
+			w.uploading(t, w.alice)
+			w.jobsOf(w.alice, 4)
+		}, 20, nil, both},
+	} {
+		for _, kind := range tt.kinds {
+			t.Run(tt.name+", "+string(kind), func(t *testing.T) {
+				w := newWorld()
+				q, tree := &queue{}, newJobTree(w.rec)
+				tt.setUp(t, w, tree)
+				_, err := start(w, w.starts(q, tree, tt.maxQueued), kind)
+				if tt.want == nil && (err != nil || len(q.enqueued) != 1) || tt.want != nil && (!errors.Is(err, tt.want) || len(q.enqueued) != 0) {
+					t.Errorf("Execute() = %v, enqueued %v; want %v", err, q.enqueued, tt.want)
+				}
+			})
+		}
+	}
+}
+
 // start starts a background job of kind in eng, as bob.
 func start(w *world, s starts, kind domain.Kind) (app.JobView, error) {
 	if kind == domain.KindRevert {

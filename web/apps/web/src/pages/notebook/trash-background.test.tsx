@@ -187,6 +187,14 @@ test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string,
     true,
   ],
   [
+    "five jobs of the caller's, transfer.too_many_jobs",
+    (server) => {
+      server.tooManyJobs = true;
+    },
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
+    true,
+  ],
+  [
     "restored elsewhere meanwhile, page.not_in_trash",
     (server) => void server.restoreElsewhere(linux.id),
     "“Linux” changed meanwhile: the trash shows it as it is now.",
@@ -231,7 +239,7 @@ test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string,
     }
     expect(document.activeElement).toBe(start);
     await waitFor(() => expect(start.getAttribute("aria-busy")).toBeNull());
-    Object.assign(server, { busy: false, queueFull: false });
+    Object.assign(server, { busy: false, queueFull: false, tooManyJobs: false });
     await user.click(start);
     await waitFor(() => expect(screen.getByRole("status").textContent).toBe(started));
   }

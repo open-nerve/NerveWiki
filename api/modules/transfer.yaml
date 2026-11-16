@@ -23,14 +23,17 @@ paths:
         is queued, and runs in the background: read it with getTransferJob
         until it ends. A notebook that does not exist, is deleted, or that
         the caller has no role in is notebook.not_found; a root_id that is
-        no page of the notebook, or a deleted one, is page.not_found; an
-        export of the caller's queued or running in the notebook is
-        transfer.busy; as many jobs queued or running, with the imports
-        uploading, as the instance takes is server_busy; a server whose
-        storage keeps no more room, the imports' uploads counted, is
-        storage_full.
+        no page of the notebook, or a deleted one, is page.not_found; one
+        whose caller has 5 jobs queued or running, with the imports they are
+        uploading, over every notebook, is transfer.too_many_jobs: wait for
+        one to end, or cancel one; as many jobs queued or running, with the
+        imports uploading, as the instance takes is server_busy; an export
+        of the caller's queued or running in the notebook is transfer.busy;
+        a server whose storage keeps no more room, the imports' uploads
+        counted, is storage_full.
       security: [{ bearer: [] }]
-      x-problem-codes: [notebook.not_found, page.not_found, transfer.busy, server_busy, storage_full]
+      x-problem-codes:
+        [notebook.not_found, page.not_found, transfer.busy, transfer.too_many_jobs, server_busy, storage_full]
       requestBody:
         required: true
         content:
@@ -85,9 +88,11 @@ paths:
         page.not_found; a job that writes the notebook's tree (an import,
         a restore or a revert) queued or running, or an import uploading or
         a restore's or a revert's start under way into it, anyone's, is
-        transfer.busy; as many jobs queued or
-        running, with the imports uploading, as the instance takes is
-        server_busy; a server whose storage would keep too little room once
+        transfer.busy; one whose caller has 5 jobs queued or running, with
+        the other imports they are uploading, over every notebook, is
+        transfer.too_many_jobs: wait for one to end, or cancel one; as many
+        jobs queued or running, with the imports uploading, as the instance
+        takes is server_busy; a server whose storage would keep too little room once
         the body's declared length, and what the other uploads have yet to
         store, is stored is storage_full; a body whose
         declared length is past the limit is payload_too_large: a client
@@ -103,7 +108,16 @@ paths:
       security: [{ bearer: [] }]
       x-raw: true
       x-problem-codes:
-        [notebook.not_found, forbidden, notebook.upgrading, page.not_found, transfer.busy, server_busy, storage_full]
+        [
+          notebook.not_found,
+          forbidden,
+          notebook.upgrading,
+          page.not_found,
+          transfer.busy,
+          transfer.too_many_jobs,
+          server_busy,
+          storage_full,
+        ]
       requestBody:
         required: true
         content:
@@ -163,9 +177,12 @@ paths:
         page.restore_expired; a job that writes the notebook's tree
         (an import, a restore or a revert) queued or running, or an import
         uploading or another start under way into it, anyone's,
-        transfer.busy; as many jobs queued or running, with the imports
-        uploading, as the instance takes server_busy. The checks but the
-        item's are made again as the job is created. The job is named after
+        transfer.busy; one whose caller has 5 jobs queued or running, with
+        the imports they are uploading, over every notebook,
+        transfer.too_many_jobs: wait for one to end, or cancel one; as many
+        jobs queued or running, with the imports uploading, as the instance
+        takes server_busy. The checks but the item's are made again as the
+        job is created. The job is named after
         the item, its root_id is the item's root; it runs in the background:
         read it with getTransferJob until it ends.
         After admission, an LLM Wiki checks the nominal restoration for
@@ -184,6 +201,7 @@ paths:
           page.not_trash_root,
           page.restore_expired,
           transfer.busy,
+          transfer.too_many_jobs,
           server_busy,
         ]
       requestBody:
@@ -253,8 +271,11 @@ paths:
         the purge took (page.changeset_trimmed); a page the revert deletes
         another account's edit session holds, or a page it writes back any
         session holds, the first in the round's order (page.locked with
-        lock); as many jobs queued or running, with the imports uploading,
-        as the instance takes server_busy. The checks but the changeset's
+        lock); one whose caller has 5 jobs queued or running, with the
+        imports they are uploading, over every notebook,
+        transfer.too_many_jobs: wait for one to end, or cancel one; as many
+        jobs queued or running, with the imports uploading, as the instance
+        takes server_busy. The checks but the changeset's
         are made again as the job is created. The job is named after the
         changeset's kind, its target_changeset_id is the changeset; it runs
         in the background: read it with getTransferJob until it ends.
@@ -298,6 +319,7 @@ paths:
           page.source_admin_only,
           page.source_too_large,
           page.locked,
+          transfer.too_many_jobs,
           server_busy,
         ]
       requestBody:
@@ -1068,6 +1090,10 @@ components:
         end of to, its path from where the import goes), duplicate_source
         (identical bytes already exist as a source of the same kind; path
         is the archive item and to is the matching notebook path).
+        name_unicode_path and name_gbk are no skip: the entry's name, not
+        UTF-8, was read from its Info-ZIP Unicode Path field, or as GBK (as
+        a Chinese Windows writes names), path being the name so read; they
+        come after every other problem.
       type: object
       additionalProperties: false
       required: [path, code, to]
@@ -1086,6 +1112,8 @@ components:
               unsupported_method,
               too_compressed,
               name_not_utf8,
+              name_unicode_path,
+              name_gbk,
               invalid_content,
               too_large,
               too_deep,

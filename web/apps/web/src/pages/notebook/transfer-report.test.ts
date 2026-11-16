@@ -107,6 +107,37 @@ test.each([
   expect(problemText(kind, problem, t)).toBe(says);
 });
 
+// What an undo stopped in the middle of a group says to do, in both languages: restore its items one by
+// one; not, since decision 482, "do not undo this undo first" (P3/S3 review A's N2).
+test.each([
+  [
+    "en",
+    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
+  ],
+  ["zh-CN", "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组。"],
+] as const)("an undo stopped in a group says how to complete it in %s", (language, says) => {
+  expect(translator(language)("transfer.revertLeftGroup")).toBe(says);
+});
+
+// An import's names read from elsewhere than their headers' bytes (M12/P3 design 4.2): no skip.
+test.each([
+  [
+    "en",
+    "name_unicode_path",
+    "测试.md: its name was not UTF-8 and was read from the Unicode name the zip tool stored with it.",
+  ],
+  [
+    "en",
+    "name_gbk",
+    "图片/截图.png: its name was not UTF-8 and was read as GBK, as Chinese Windows writes names. If it reads wrong, rename it.",
+  ],
+  ["zh-CN", "name_unicode_path", "测试.md：名称不是 UTF-8，取了压缩工具另存的 Unicode 名称。"],
+  ["zh-CN", "name_gbk", "图片/截图.png：名称不是 UTF-8，按 GBK（中文 Windows 的写法）读出；读错了的话，给它改个名。"],
+] as const)("an import's name read otherwise says how, in %s: %s", (language, code, says) => {
+  const path = code === "name_gbk" ? "图片/截图.png" : "测试.md";
+  expect(problemText("import", { path, code, to: null }, translator(language))).toBe(says);
+});
+
 test.each([
   ["en", "incoming.md was skipped: identical source content already exists at raw/existing.md."],
   ["zh-CN", "已跳过 incoming.md：raw/existing.md 已有字节相同的来源。"],
