@@ -957,8 +957,7 @@ export const zhCN: Messages = {
   "transfer.revertLeft":
     "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销，之后再整组撤销这次改动。",
   "transfer.revertLeftTrimmed": "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销。",
-  "transfer.revertLeftGroup":
-    "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组；不要先撤销这次撤销。",
+  "transfer.revertLeftGroup": "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组。",
   "transfer.conflictsTitle": "挡住撤销的节点：{count}",
   "transfer.conflictsAgain": "在「被撤销的改动」里重新撤销时，会列出它们的链接。",
   "transfer.openPage": "打开「{page}」",

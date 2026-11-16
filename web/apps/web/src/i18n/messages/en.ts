@@ -1003,7 +1003,7 @@ export const en = {
   "transfer.revertLeftTrimmed":
     "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history.",
   "transfer.revertLeftGroup":
-    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group: do not undo this undo first.",
+    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
   "transfer.conflictsTitle": "Nodes that stopped the undo: {count}",
   "transfer.conflictsAgain": "Undoing the change again from “The change undone” lists them with their links.",
   "transfer.openPage": "Open “{page}”",
