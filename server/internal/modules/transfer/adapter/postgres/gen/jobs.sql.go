@@ -68,15 +68,24 @@ func (q *Queries) CancelQueued(ctx context.Context, arg CancelQueuedParams) (int
 }
 
 const countActive = `-- name: CountActive :one
-SELECT count(*) FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL
+SELECT count(*)::integer AS active,
+    (count(*) FILTER (WHERE created_by_id = $1))::integer AS mine
+FROM transfer_jobs WHERE state IN ('queued', 'running') AND deleted_at IS NULL
 `
 
-// The jobs queued or running, of every notebook.
-func (q *Queries) CountActive(ctx context.Context) (int64, error) {
-	row := q.db.QueryRow(ctx, countActive)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountActiveRow struct {
+	Active int32
+	Mine   int32
+}
+
+// The jobs queued or running, of every notebook, and of them those person started (M12 design 4.6.6, T2), both
+// in one statement: the rows through transfer_jobs_state_idx, at most transfer.max_queued and the few more a start
+// outside the queue's lock lets by.
+func (q *Queries) CountActive(ctx context.Context, person uuid.UUID) (CountActiveRow, error) {
+	row := q.db.QueryRow(ctx, countActive, person)
+	var i CountActiveRow
+	err := row.Scan(&i.Active, &i.Mine)
+	return i, err
 }
 
 const createJob = `-- name: CreateJob :exec

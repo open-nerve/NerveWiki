@@ -79,6 +79,7 @@ export const problemMessages = {
   "transfer.not_found": "problem.transfer.not_found",
   "transfer.busy": "problem.transfer.busy",
   "transfer.not_cancellable": "problem.transfer.not_cancellable",
+  "transfer.too_many_jobs": "problem.transfer.too_many_jobs",
 } as const satisfies Record<string, MessageKey>;
 
 /** The message of each field code; `field.<field>.<code>` says it better for one field. */

@@ -108,6 +108,73 @@ func TestAnExportIsRefused(t *testing.T) {
 	}
 }
 
+// jobsOf adds n of by's jobs, queued and running in turn, each an export
+// of a notebook of its own: by's jobs over every notebook.
+func (w *world) jobsOf(by uuid.UUID, n int) {
+	for i := range n {
+		state := domain.StateQueued
+		if i%2 == 1 {
+			state = domain.StateRunning
+		}
+		w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: uuid.NewV7(), Kind: domain.KindExport, State: state, CreatedBy: by})
+	}
+}
+
+// uploading has by's import into a notebook of its own, by an editor of
+// it, checked and uploading: one of by's jobs until its row is written.
+func (w *world) uploading(t *testing.T, by uuid.UUID) {
+	t.Helper()
+	nb := uuid.NewV7()
+	w.auth.roles[nb] = map[uuid.UUID]shared.NotebookRole{by: shared.NotebookEditor}
+	w.notebooks.names[nb] = "Ops"
+	if err := w.startImport(&queue{}, 20).Check(as(by), app.ImportRequest{NotebookID: nb, FileName: "v.zip", Size: -1}); err != nil {
+		t.Fatalf("an upload's Check = %v", err)
+	}
+}
+
+// A person's jobs queued or running, with the imports they upload, over
+// every notebook, are at most domain.MaxPersonJobs: their next export is
+// transfer.too_many_jobs, judged before the queue's room, and before
+// their export of the notebook (M12 design 4.6.6, T2; P3 design 3.16);
+// another's starts.
+func TestAPersonsSixthExportIsRefused(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		setUp     func(t *testing.T, w *world)
+		maxQueued int
+		want      error
+	}{
+		{"five of hers", func(_ *testing.T, w *world) { w.jobsOf(w.alice, 5) }, 20, domain.ErrTooManyJobs},
+		{"four of hers, the queue full", func(_ *testing.T, w *world) { w.jobsOf(w.alice, 4); w.jobsOf(w.bob, 1) }, 5, domain.ErrQueueFull},
+		{"five of hers, the queue full", func(_ *testing.T, w *world) { w.jobsOf(w.alice, 5) }, 5, domain.ErrTooManyJobs},
+		{"five of hers, one an export of the notebook", func(_ *testing.T, w *world) { w.jobsOf(w.alice, 4); w.queued(nil) }, 20,
+			domain.ErrTooManyJobs},
+		{"four of hers and an import she uploads", func(t *testing.T, w *world) { w.jobsOf(w.alice, 4); w.uploading(t, w.alice) }, 20,
+			domain.ErrTooManyJobs},
+		{"four of hers and bob's", func(t *testing.T, w *world) { w.jobsOf(w.alice, 4); w.uploading(t, w.bob); w.jobsOf(w.bob, 5) }, 20, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld()
+			tt.setUp(t, w)
+			q := &queue{}
+			if _, err := w.start(q, tt.maxQueued).Run(as(w.alice), w.eng, nil, domain.ClientWeb); tt.want == nil && err != nil ||
+				tt.want != nil && (!errors.Is(err, tt.want) || len(q.enqueued) != 0) {
+				t.Errorf("Run() = %v, enqueued %v; want %v", err, q.enqueued, tt.want)
+			}
+		})
+	}
+	w := newWorld()
+	w.jobsOf(w.alice, 5)
+	if _, err := w.start(&queue{}, 20).Run(as(w.bob), w.eng, nil, domain.ClientWeb); err != nil {
+		t.Errorf("bob's export beside alice's five = %v", err)
+	}
+	var problem *shared.Error
+	if !errors.As(domain.ErrTooManyJobs, &problem) || problem.ProblemStatus() != 409 || problem.RetryAfter() != 0 ||
+		problem.Code != "transfer.too_many_jobs" || problem.Detail != "You have 5 jobs queued or running: wait for one to end, or cancel one." {
+		t.Errorf("ErrTooManyJobs = %+v, want 409 transfer.too_many_jobs, its words, no Retry-After", domain.ErrTooManyJobs)
+	}
+}
+
 // ttl is the exports' transfer.export_ttl in the tests.
 const ttl = 24 * time.Hour
 

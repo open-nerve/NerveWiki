@@ -312,16 +312,18 @@ func (r *rows) CreateJob(_ context.Context, j domain.Job) error {
 
 func (r *rows) LockQueue(context.Context) error { return nil }
 
-func (r *rows) CountActive(context.Context) (int, error) {
+func (r *rows) CountActive(_ context.Context, person uuid.UUID) (active, mine int, err error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	n := 0
 	for _, j := range r.jobs {
 		if !j.State.Ended() {
-			n++
+			active++
+			if j.CreatedBy == person {
+				mine++
+			}
 		}
 	}
-	return n, nil
+	return active, mine, nil
 }
 
 func (r *rows) Writing(_ context.Context, notebook uuid.UUID) (bool, error) {

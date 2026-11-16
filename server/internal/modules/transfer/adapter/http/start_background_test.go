@@ -59,7 +59,8 @@ func TestTheBackgroundStartsQueueTheJob(t *testing.T) {
 
 // Each refusal of a background start answers its code: the page module's
 // checks', then a notebook being upgraded, a write into the notebook under
-// way, then the queue full.
+// way, then five jobs of the caller's (no Retry-After: M12 design 4.6.6,
+// T2), then the queue full.
 func TestTheBackgroundStartsRefusals(t *testing.T) {
 	other := "/api/v0/notebooks/" + pageID().String()
 	restore := func(id string) string { return `{"node_id": "` + id + `"}` }
@@ -73,6 +74,11 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 	full := func(h *harness) {
 		for range maxQueued {
 			h.job(alice(), domain.StateQueued, now(), "")
+		}
+	}
+	his := func(h *harness) {
+		for range domain.MaxPersonJobs {
+			h.job(bob(), domain.StateQueued, now(), "")
 		}
 	}
 	for _, tt := range []struct {
@@ -94,6 +100,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		{"duplicate revert", nil, revertsPath(), "bob", revert(refusing("page.source_duplicate")), http.StatusConflict, "page.source_duplicate"},
 		{"a restore of a notebook being upgraded", upgrading, restoresPath(), "bob", restore(free), http.StatusConflict, "notebook.upgrading"},
 		{"a restore beside a write", writing, restoresPath(), "bob", restore(free), http.StatusConflict, "transfer.busy"},
+		{"a restore beside five jobs of his", his, restoresPath(), "bob", restore(free), http.StatusConflict, "transfer.too_many_jobs"},
 		{"a restore with the queue full", full, restoresPath(), "bob", restore(free), http.StatusServiceUnavailable, "server_busy"},
 		{"an empty message", nil, revertsPath(), "bob", `{"changeset_id": "` + free + `", "message": ""}`, http.StatusUnprocessableEntity,
 			"validation_failed"},
@@ -114,6 +121,7 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 		{"a source root", nil, revertsPath(), "bob", revert(refusing("page.source_admin_only")), http.StatusForbidden, "page.source_admin_only"},
 		{"a source entry too large", nil, revertsPath(), "bob", revert(refusing("page.source_too_large")), http.StatusUnprocessableEntity, "page.source_too_large"},
 		{"a page locked", nil, revertsPath(), "bob", revert(locking().String()), http.StatusConflict, "page.locked"},
+		{"a revert beside five jobs of his", his, revertsPath(), "bob", revert(free), http.StatusConflict, "transfer.too_many_jobs"},
 		{"a revert with the queue full", full, revertsPath(), "bob", revert(free), http.StatusServiceUnavailable, "server_busy"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -130,6 +138,9 @@ func TestTheBackgroundStartsRefusals(t *testing.T) {
 			}
 			if tt.code == "server_busy" && res.Header.Get("Retry-After") != strconv.Itoa(int(domain.QueueRetry/time.Second)) {
 				t.Errorf("Retry-After = %q, want %v", res.Header.Get("Retry-After"), domain.QueueRetry)
+			}
+			if tt.code == "transfer.too_many_jobs" && res.Header.Get("Retry-After") != "" {
+				t.Errorf("Retry-After = %q, want none", res.Header.Get("Retry-After"))
 			}
 			if ids := h.queue.enqueued(); len(ids) != 0 {
 				t.Errorf("enqueued %v, want none", ids)

@@ -721,6 +721,11 @@ test.each([
     "You already have an export of this notebook under way. Wait for it to end, or cancel it.",
   ],
   [
+    "five jobs of hers queued or running",
+    () => problem(409, "transfer.too_many_jobs"),
+    "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
+  ],
+  [
     "the queue full",
     () => problem(503, "server_busy"),
     "Too many jobs are waiting on the server. Try again in a few minutes.",

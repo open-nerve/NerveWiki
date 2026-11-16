@@ -726,13 +726,15 @@ func (r *rows) LockQueue(context.Context) error {
 	return nil
 }
 
-func (r *rows) CountActive(context.Context) (int, error) {
+func (r *rows) CountActive(_ context.Context, person uuid.UUID) (active, mine int, err error) {
 	r.rec.add("CountActive")
 	r.mu.Lock()
-	n := 0
 	for _, x := range r.jobs {
 		if !x.deleted && !x.job.State.Ended() {
-			n++
+			active++
+			if x.job.CreatedBy == person {
+				mine++
+			}
 		}
 	}
 	counted := r.onCount
@@ -741,7 +743,7 @@ func (r *rows) CountActive(context.Context) (int, error) {
 	if counted != nil {
 		counted()
 	}
-	return n, nil
+	return active, mine, nil
 }
 
 func (r *rows) Writing(_ context.Context, notebookID uuid.UUID) (bool, error) {

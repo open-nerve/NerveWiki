@@ -78,12 +78,12 @@ func (s *Store) LockQueue(ctx context.Context) error {
 }
 
 // CountActive implements app.Rows.
-func (s *Store) CountActive(ctx context.Context) (int, error) {
-	n, err := s.queries(ctx).CountActive(ctx)
+func (s *Store) CountActive(ctx context.Context, person uuid.UUID) (active, mine int, err error) {
+	n, err := s.queries(ctx).CountActive(ctx, person)
 	if err != nil {
-		return 0, fmt.Errorf("count the active jobs: %w", err)
+		return 0, 0, fmt.Errorf("count the active jobs: %w", err)
 	}
-	return int(n), nil
+	return int(n.Active), int(n.Mine), nil
 }
 
 // Exporting implements app.Rows.

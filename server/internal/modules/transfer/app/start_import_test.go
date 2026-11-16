@@ -126,6 +126,69 @@ func TestAnImportIsRefused(t *testing.T) {
 	}
 }
 
+// An import's Check, and its Create again, count the caller's jobs queued
+// or running over every notebook, with the imports they upload into the
+// others (M12 design 4.6.6, T2): at domain.MaxPersonJobs, theirs is
+// transfer.too_many_jobs, after transfer.busy and before the queue's room
+// (P3 design 3.16); another's goes.
+func TestAPersonsSixthImportIsRefused(t *testing.T) {
+	const create, check = 1, 2
+	none := func(*testing.T, *world) {}
+	for _, tt := range []struct {
+		name          string
+		before, after func(t *testing.T, w *world) // the Check's, the Create's
+		maxQueued     int
+		want          error
+		by            int
+	}{
+		{"five of his", func(_ *testing.T, w *world) { w.jobsOf(w.bob, 5) }, none, 20, domain.ErrTooManyJobs, check},
+		{"four of his, the queue full", func(_ *testing.T, w *world) { w.jobsOf(w.bob, 4); w.jobsOf(w.alice, 1) }, none, 5,
+			domain.ErrQueueFull, check},
+		{"five of his, the queue full", func(_ *testing.T, w *world) { w.jobsOf(w.bob, 5) }, none, 5, domain.ErrTooManyJobs, check},
+		{"five of his and a write into the notebook", func(_ *testing.T, w *world) {
+			w.jobsOf(w.bob, 5)
+			w.rows.add(domain.Job{ID: uuid.NewV7(), NotebookID: w.eng, Kind: domain.KindImport, State: domain.StateRunning, CreatedBy: w.alice})
+		}, none, 20, domain.ErrWriting, check},
+		{"four of his and an import he uploads", func(t *testing.T, w *world) { w.uploading(t, w.bob); w.jobsOf(w.bob, 4) }, none, 20,
+			domain.ErrTooManyJobs, check},
+		{"his fifth after the Check", func(_ *testing.T, w *world) { w.jobsOf(w.bob, 4) }, func(_ *testing.T, w *world) { w.jobsOf(w.bob, 1) },
+			20, domain.ErrTooManyJobs, create},
+		{"three of his and an import he uploads, his fourth after the Check", func(t *testing.T, w *world) {
+			w.uploading(t, w.bob)
+			w.jobsOf(w.bob, 3)
+		}, func(_ *testing.T, w *world) { w.jobsOf(w.bob, 1) }, 20, domain.ErrTooManyJobs, create},
+		{"four of his, five of alice's", func(t *testing.T, w *world) { w.jobsOf(w.bob, 4); w.uploading(t, w.alice); w.jobsOf(w.alice, 4) },
+			func(_ *testing.T, w *world) { w.jobsOf(w.alice, 1) }, 20, nil, create},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			w := newWorld()
+			q := &queue{}
+			req := app.ImportRequest{NotebookID: w.eng, FileName: "v.zip", Client: domain.ClientWeb, Size: -1}
+			tt.before(t, w)
+			s := w.startImport(q, tt.maxQueued)
+			err := s.Check(as(w.bob), req)
+			if tt.by == check {
+				if !errors.Is(err, tt.want) {
+					t.Errorf("Check() = %v, want %v", err, tt.want)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Check() = %v", err)
+			}
+			stored, err := s.Store(as(w.bob), req, strings.NewReader("zip"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			tt.after(t, w)
+			if _, err := s.Create(as(w.bob), req, stored); tt.want == nil && (err != nil || len(q.enqueued) != 1) ||
+				tt.want != nil && (!errors.Is(err, tt.want) || len(q.enqueued) != 0) {
+				t.Errorf("Create() = %v, enqueued %v; want %v", err, q.enqueued, tt.want)
+			}
+		})
+	}
+}
+
 // An import being uploaded holds its notebook from Check until Release:
 // another is transfer.busy until then, and a refused Check holds nothing;
 // each counts toward MaxQueued; the bytes its body declares must leave

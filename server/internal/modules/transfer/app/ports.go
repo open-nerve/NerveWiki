@@ -276,8 +276,9 @@ type Rows interface {
 	CreateJob(ctx context.Context, j domain.Job) error
 	// LockQueue serializes the jobs' creations until the transaction ends.
 	LockQueue(ctx context.Context) error
-	// CountActive is how many jobs are queued or running.
-	CountActive(ctx context.Context) (int, error)
+	// CountActive counts the jobs queued or running, of every notebook, and
+	// of them person's.
+	CountActive(ctx context.Context, person uuid.UUID) (active, mine int, err error)
 	// Exporting reports whether userID has an export queued or running in
 	// notebookID.
 	Exporting(ctx context.Context, notebookID, userID uuid.UUID) (bool, error)
