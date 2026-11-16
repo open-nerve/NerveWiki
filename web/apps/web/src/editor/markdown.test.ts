@@ -224,14 +224,18 @@ test.each(linear)(
  * Each costs the square of its length in lezer itself, the scans or not (M12/P4/S5 design 4.1 item 2, the second):
  * the scans must not add to it. Each long enough that lezer takes some 20-65 ms, so that a share the scans add shows
  * above the 2 ms; with the most its parse with the scans may take, times its parse without, the two having come
- * alike to 0.87-1.18 times, and a fix of review A's M2 undone taking them 1.7-2.4 times:
- * - URLs in a link not closed: half over. In about one run of the whole file in ten, its parse with the scans is
- *   some 15% slower all through the run (1.12-1.18 times; why, not looked into; check C's C3-M1). Counting the
- *   parentheses of each URL at once, not at its first ")" trimmed, takes it 2.1-2.4 times;
- * - URLs refused before a path: a quarter over. A refused URL handed back to Autolink, which matches it again, takes
- *   it 1.7-1.75 times, this its only catch;
+ * alike to 0.87-1.18 times idle, and a fix of review A's M2 undone taking them 1.7-2.4 times:
+ * - URLs in a link not closed: half over. Its parse with the scans has been seen slower all through a run, 1.12-1.18
+ *   times in about one idle run of the whole file in ten (check C's C3-M1) and up to 1.35 times under load (review B
+ *   on M12/P4/S5's implementation); why, not looked into. Counting the parentheses of each URL at once, not at its
+ *   first ")" trimmed, takes it 2.1-2.4 times;
+ * - URLs refused before a path: a quarter over, seen up to 1.15 times under load. A refused URL handed back to
+ *   Autolink, which matches it again, takes it 1.7-1.9 times, this its only catch;
  * - URLs then a semicolon: a quarter over. An entity's "&" looked for back to the text's start takes it 2-2.1 times;
  * - the HTML autolinks: a quarter over. The scans hand them back: only a check that lezer's own shapes are no slower.
+ * Under load, a burst of contention that begins with the first parse with the scans and lasts the cell takes any of
+ * them to about twice (review B's M2): over its bound, a cell is measured once more, and fails only when both
+ * measures are over, the bounds as they are. Each fix undone is over both times.
  */
 const lezerOwn: [string, (length: number) => string, number, number][] = [
   ["URLs in a link not closed", (length) => "[www.a.b/".repeat(length / 9), 20_000, 1.5],
@@ -263,9 +267,17 @@ test.each(lezerOwn)(
   "a paragraph of %s is parsed no slower with the scans than without",
   (_, paragraph, length, most) => {
     const text = paragraph(length);
-    const [without, withScans] = fastestOfEach(bare, scansOnly, text);
-    expect(withScans).toBeLessThan(most * without + 2);
-  }
+    const within = ([without, withScans]: [number, number]) => withScans < most * without + 2;
+    const first = fastestOfEach(bare, scansOnly, text);
+    const measures = within(first) ? [first] : [first, fastestOfEach(bare, scansOnly, text)];
+    const told = measures.map(
+      ([without, withScans]) =>
+        `without ${without.toFixed(1)} ms, with ${withScans.toFixed(1)} ms, at most ${(most * without + 2).toFixed(1)}`
+    );
+    expect(measures.some(within), told.join("; again, ")).toBe(true);
+  },
+  // Measured twice under load, a cell may take some seconds.
+  20_000
 );
 
 test("the editor's parser takes a run of spaces at once", () => {
