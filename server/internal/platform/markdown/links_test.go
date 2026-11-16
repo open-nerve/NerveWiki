@@ -167,7 +167,7 @@ func TestHeadingIDIsAHeadingsID(t *testing.T) {
 		"Hello World", "a_b--c  d", "中文 标题", "Ünïcode ŝtring", "!!!", strings.Repeat("abcdefghij ", 10), "İstanbul",
 		// An autolink and raw HTML, whose text the heading's id holds as
 		// the anchor does (M12 design 4.6.3, 10.2).
-		"See https://a.example now", "A <span>b</span> c",
+		"See https://a.example now", "A <span>b</span> c", "Go www.example.com now",
 	}
 	m := newMarkdown(t)
 	for _, text := range texts {
@@ -179,7 +179,12 @@ func TestHeadingIDIsAHeadingsID(t *testing.T) {
 	if got := HeadingID("A b"); got != "nw-a-b" {
 		t.Errorf("HeadingID(%q) = %q", "A b", got)
 	}
-	for text, want := range map[string]string{"See https://a.example now": "nw-see-httpsaexample-now", "A <span>b</span> c": "nw-a-spanbspan-c"} {
+	// A www. autolink's label, not its URL, which has an http:// before it
+	// (P3/S1 code review A-M1).
+	for text, want := range map[string]string{
+		"See https://a.example now": "nw-see-httpsaexample-now", "A <span>b</span> c": "nw-a-spanbspan-c",
+		"Go www.example.com now": "nw-go-wwwexamplecom-now",
+	} {
 		got := renderString(t, m, "# "+text+"\n")
 		if id, ok := AnchorID(text); !ok || id != want || !strings.HasPrefix(got, `<h1 id="`+want+`">`) {
 			t.Errorf("# %s: %q, its anchor's id %q; want both %q", text, got, id, want)

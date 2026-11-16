@@ -95,7 +95,7 @@ func TestHeadingsGetPrefixedUniqueIDs(t *testing.T) {
 	m := newMarkdown(t)
 	src := "# Hello *World*\n# hello world\n# Hello World-1\n# 中文 标题！\n# ***\n# \n" +
 		"# a_b--c  d\n# [link](http://x.y) `code`\n# " + strings.Repeat("abcdefghij ", 10) + "\n" +
-		"# See https://a.example now\n# A <span>b</span> c\n" +
+		"# See https://a.example now\n# A <span>b</span> c\n# Go www.example.com now\n" +
 		"Setext\n===\n> # Quoted\n- # Listed\n\nx[^1]\n\n[^1]: # Noted\n"
 	var ids []string
 	_ = ast.Walk(m.Parse([]byte(src)).root, func(n ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -111,6 +111,9 @@ func TestHeadingsGetPrefixedUniqueIDs(t *testing.T) {
 		// An autolink's text and raw HTML's are the heading's (M12 design
 		// 4.6.3, 10.2).
 		"nw-see-httpsaexample-now", "nw-a-spanbspan-c",
+		// A www. autolink's label, not its URL, which has an http:// before
+		// it (P3/S1 code review A-M1).
+		"nw-go-wwwexamplecom-now",
 		"nw-setext", "nw-quoted", "nw-listed", "nw-noted",
 	}
 	if strings.Join(ids, " ") != strings.Join(want, " ") {

@@ -66,6 +66,14 @@ func TestLinksLeadWhereTheyResolve(t *testing.T) {
 			`<p><a class="nw-wikilink" href="#nw-see-httpsaexample-now">See https://a.example now</a></p>` + "\n",
 		},
 		{
+			// A www. autolink's label, not its URL, which has an http://
+			// before it: the heading and the anchor meet (P3/S1 code review
+			// A-M1).
+			"an anchor alone to a heading with a www. autolink", "# Go www.example.com now\n\n[[#Go www.example.com now]]\n",
+			`<h1 id="nw-go-wwwexamplecom-now">Go <a href="http://www.example.com">www.example.com</a> now</h1>` + "\n" +
+				`<p><a class="nw-wikilink" href="#nw-go-wwwexamplecom-now">Go www.example.com now</a></p>` + "\n",
+		},
+		{
 			"an anchor alone; a block's alone, a span", "[[#Part Two]] [[#^b]] ![[#c]]\n",
 			`<p><a class="nw-wikilink" href="#nw-part-two">Part Two</a> <span class="nw-wikilink">^b</span> ` +
 				`<a class="nw-wikilink nw-embed" href="#nw-c">c</a></p>` + "\n",
