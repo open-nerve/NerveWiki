@@ -86,7 +86,7 @@ func TestTheThirdFallbackMovesAPlaceOffTheRoot(t *testing.T) {
 			After: new(s.nodes[id].state())})
 		s.places[id] = true
 	}
-	p.c = readReverted(items, nil)
+	p.c = readReverted(items, nil, nil)
 	s.movedAside[movedAside] = true
 	op, ok := p.fallback(s)
 	want := AsideName("L", least, false, func(string) bool { return false })
@@ -108,7 +108,7 @@ func TestTheSecondFallbackMovesOnlyANodeToPlace(t *testing.T) {
 	top, x, y := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	p, s := simWith(nil, simAlive{top, nil, "T"}, simAlive{x, &top, "X"}, simAlive{y, &top, "Y"})
 	p.c = readReverted([]ChangesetItem{{NodeID: top, After: &TreeState{Name: "T"}},
-		{NodeID: y, Before: &TreeState{Name: "Y", SortOrder: 1}, After: &TreeState{ParentID: &top, Name: "Y"}}}, nil)
+		{NodeID: y, Before: &TreeState{Name: "Y", SortOrder: 1}, After: &TreeState{ParentID: &top, Name: "Y"}}}, nil, nil)
 	p.star = map[uuid.UUID]starNode{x: {name: "X", key: "x", kind: KindPage}, y: {name: "Y", key: "y", kind: KindPage}}
 	s.places[y] = true
 	op, ok := p.fallback(s)
@@ -125,7 +125,7 @@ func TestTheSecondFallbackMovesOnlyANodeToPlace(t *testing.T) {
 func TestScheduleAnswersUnorderedForADefect(t *testing.T) {
 	kept, placed := uuid.NewV7(), uuid.NewV7()
 	p, s := simWith([]string{"X"}, simAlive{kept, nil, "X"}, simAlive{placed, nil, "Y"})
-	p.c = readReverted([]ChangesetItem{{NodeID: placed, Before: &TreeState{Name: "X"}, After: &TreeState{Name: "Y"}}}, nil)
+	p.c = readReverted([]ChangesetItem{{NodeID: placed, Before: &TreeState{Name: "X"}, After: &TreeState{Name: "Y"}}}, nil, nil)
 	p.star = map[uuid.UUID]starNode{kept: {name: "X", key: "x", kind: KindPage}, placed: {name: "X", key: "x", kind: KindPage}}
 	s.places[placed] = true
 	if ops, err := p.schedule(s); !errors.Is(err, ErrRevertUnordered) || ops != nil {
@@ -142,7 +142,7 @@ func TestAFallbackRenamesANodeAsideOnce(t *testing.T) {
 	aside := "A ~" + hex.EncodeToString(h[12:])
 	p, s := simWith(nil, simAlive{h, nil, aside}, simAlive{z, nil, "Z"})
 	p.c = readReverted([]ChangesetItem{{NodeID: h, Before: &TreeState{ParentID: &gone, Name: "A"}, After: &TreeState{Name: "A"}},
-		{NodeID: z, Before: &TreeState{Name: aside}, After: &TreeState{Name: "Z"}}}, nil)
+		{NodeID: z, Before: &TreeState{Name: aside}, After: &TreeState{Name: "Z"}}}, nil, nil)
 	s.places[h], s.places[z], s.renamed[h] = true, true, true
 	if op, ok := p.fallback(s); ok {
 		t.Errorf("fallback() = %+v, want none: H renamed aside already", op)
@@ -150,10 +150,11 @@ func TestAFallbackRenamesANodeAsideOnce(t *testing.T) {
 }
 
 // A trash item restored under a node another trash item restores waits
-// for it, a round later (M9/P3 design 3.16.2, 3.21.1). No batch nor
-// revert makes such a changeset (3.21.2), and PlanRevert reads the
-// deletion of a node under another it deleted as one group: the planner
-// is built as two such groups would read, B, the lesser id, tried first.
+// for it, a round later (M9/P3 design 3.16.2, 3.21.1). The changeset
+// deleted B, under X, apart, before it deleted A and X: a rollback's
+// passes, or a subtree restored and deleted again in two, make one. B,
+// a trash item's root itself, is its own top, its group apart from A's
+// (M12 design 4.6.1, decision 304); B, the lesser id, is tried first.
 func TestARestoreWaitsForTheGroupItGoesUnder(t *testing.T) {
 	b, a, x := uuid.NewV7(), uuid.NewV7(), uuid.NewV7()
 	early, late := time.Date(2026, 10, 14, 10, 0, 0, 0, time.UTC), time.Date(2026, 10, 14, 11, 0, 0, 0, time.UTC)
@@ -176,9 +177,8 @@ func TestARestoreWaitsForTheGroupItGoesUnder(t *testing.T) {
 	s.Items = items
 	s.Groups[a] = []TrashMember{{Node: s.Nodes[a].Node, Level: 1, Revision: 1}, {Node: s.Nodes[x].Node, Level: 2, Revision: 1}}
 	s.Groups[b] = []TrashMember{{Node: s.Nodes[b].Node, Level: 1, Revision: 1}}
-	p := planner{s: s, c: readReverted(items, nil), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
+	p := planner{s: s, c: readReverted(items, nil, s.Nodes), reasons: map[uuid.UUID]revertReason{}, missing: map[uuid.UUID]bool{},
 		members: membersOf(s.Groups), maxDepth: MaxDepth}
-	p.c.tops, p.c.top[b], p.c.members[a], p.c.members[b] = []uuid.UUID{b, a}, b, []uuid.UUID{a, x}, []uuid.UUID{b}
 	p.before()
 	if len(p.reasons) != 0 {
 		t.Fatalf("S* = %v", p.reasons)
