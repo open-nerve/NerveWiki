@@ -34,8 +34,9 @@ test("the jobs' polling", async ({ browser }) => {
   const pat = (await createToken(api, admin.access_token, { name: `jobs ${round}` })).token;
   const [archive] = shapes.folder50k.archives();
   if (archive === undefined) throw new Error("no archive");
-  // Its bytes and sha256, as setup.ts records each shape's (review A's N2 on M12/P4/S2): each N imports it anew.
-  record("import", { shape: "folder50k", archive: 0, bytes: archive.length, sha256: sha256(archive) });
+  // Its bytes and sha256, as setup.ts records each shape's (review A's N2 on M12/P4/S2), as "archive": no import has
+  // run yet, each N imports it anew, and an "import" line has the time and state of one (its check C1-N1).
+  record("archive", { shape: "folder50k", archive: 0, bytes: archive.length, sha256: sha256(archive) });
   for (const tabs of [1, 3]) {
     // oxlint-disable-next-line no-await-in-loop -- one N at a time, each with its own notebook and import
     record("jobs-poll", { round, tabs, ...(await polling(browser, env, api, pat, archive, tabs)) });
