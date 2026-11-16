@@ -23,6 +23,12 @@ import { pngsOf } from "./shapes";
 // both tabs, one credential's. A repetition counts when at least 5 of B's saves fall in the window; a failed save is
 // a 429 with no save that succeeded within 10 s after it, the typed text missing from the page once done, or the
 // editor showing a failure once its last save answered. Five that count a round; two rounds.
+//
+// Two ways A holds the root's attachments, each a test of its own (run one with -g): the first page only, as design
+// 4.7 reads the hand-off's "根下 3,000 行" (the tree's rows); and every page, as the hand-off's tab had them (its ~650
+// reads in 20 s): 3,000 attachments uploaded to the root before A opens, A's section loaded to its end with "More
+// attachments", so that each reread reads its 30 pages again (W/stores/asset.store.ts, load). The second is the one
+// the judgement takes (the host's decision on M12/P4/S2's measures).
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 const counted = 5;
@@ -31,8 +37,22 @@ const uploaders = 3;
 const uploads = 1_200;
 const uploadMs = 20_000;
 const restMs = 3_000;
+/** How long the attachments A holds every page of take to upload before it opens: 3 tokens, 2,400 a minute. */
+const heldMs = 75_000;
 
-test("the attachment list's rereads, 3,000 pages", async ({ browser }) => {
+const variants = [
+  { name: "the first page held", held: 0 },
+  { name: "every page held", held: 3_000 },
+] as const;
+
+for (const variant of variants) {
+  test(`the attachment list's rereads, 3,000 pages, ${variant.name}`, async ({ browser }) => {
+    await rereads(browser, variant.name, variant.held);
+  });
+}
+
+/** One variant's round: its repetitions until five count, each recorded, then their summary. */
+async function rereads(browser: Browser, name: string, held: number): Promise<void> {
   const env = perfEnv();
   const api = createClient({ baseUrl: env.baseURL });
   const admin = await login(api, env.admin);
@@ -44,12 +64,13 @@ test("the attachment list's rereads, 3,000 pages", async ({ browser }) => {
     tokens.push((await createToken(api, other.access_token, { name: `uploader ${round}-${i}` })).token);
   }
   const files = pngsOf(`uploads ${round}`, uploads);
+  const before = held === 0 ? [] : pngsOf(`held ${round}`, held);
   const reps: Repetition[] = [];
   let voided = 0;
   for (let attempt = 1; reps.length < counted && attempt <= attempts; attempt++) {
     // oxlint-disable-next-line no-await-in-loop -- one repetition at a time, each on a notebook of its own
-    const one = await repetition(browser, env, api, pat, tokens, files, `${round}-${attempt}`);
-    record("attachments-rep", { round, attempt, ...one });
+    const one = await repetition(browser, env, api, pat, tokens, files, before, `${round}-${held}-${attempt}`);
+    record("attachments-rep", { round, variant: name, attempt, ...one });
     if (one.savesInWindow >= 5) {
       reps.push(one);
     } else {
@@ -59,6 +80,7 @@ test("the attachment list's rereads, 3,000 pages", async ({ browser }) => {
   const failed = reps.filter((one) => one.failed).length;
   record("attachments", {
     round,
+    variant: name,
     counted: reps.length,
     voided,
     failed,
@@ -68,11 +90,15 @@ test("the attachment list's rereads, 3,000 pages", async ({ browser }) => {
     aReads: reps.map((one) => one.aReads),
     aRefused: reps.map((one) => one.aRefused),
     aBusy: reps.map((one) => one.aBusy),
+    heldPages: reps.map((one) => one.heldPages),
   });
-});
+}
 
 interface Repetition {
   notebook: string;
+  /** The pages of the root's attachments A held through the window, and how the uploads before it answered. */
+  heldPages: number;
+  heldStatuses: Record<string, number>;
   window: { from: number; to: number };
   uploads: Record<string, number>;
   aReads: number;
@@ -95,9 +121,12 @@ async function repetition(
   pat: string,
   tokens: string[],
   files: Buffer[],
+  before: Buffer[],
   label: string
 ): Promise<Repetition> {
   const notebook = await importNotebook(api, pat, env.workspace, "flat3k", `Uploads ${label}`);
+  const heldStatuses =
+    before.length === 0 ? {} : await upload(api, tokens, notebook.id, before, Date.now(), heldMs, "held");
   const tree = await api.GET("/api/v0/notebooks/{notebook_id}/nodes", {
     params: { path: { notebook_id: notebook.id } },
     headers: bearer(pat),
@@ -122,6 +151,24 @@ async function repetition(
     });
     await goto(a, `/${env.workspace}/notebooks/${notebook.id}`);
     await painted(a, "t1", 60_000);
+    let heldPages = 1;
+    const more = a.getByRole("button", { name: "More attachments", exact: true });
+    // oxlint-disable-next-line no-await-in-loop -- whether a page is left, after the one before
+    while (before.length > 0 && (await more.count()) > 0) {
+      const answered = a.waitForResponse(
+        (response) =>
+          response.request().method() === "GET" &&
+          new URL(response.url()).pathname === `/api/v0/notebooks/${notebook.id}/assets`
+      );
+      // oxlint-disable-next-line no-await-in-loop -- a page after the one before
+      await more.click();
+      // oxlint-disable-next-line no-await-in-loop -- the same
+      await answered;
+      heldPages += 1;
+      if (heldPages > before.length / 100 + 1) throw new Error(`more pages of attachments than ${before.length}`);
+      // oxlint-disable-next-line no-await-in-loop -- its rows drawn before the next click
+      await sleep(300);
+    }
 
     const b = await context.newPage();
     await watchPage(b);
@@ -162,7 +209,7 @@ async function repetition(
       }
     })();
     await sleep(from - Date.now());
-    const statuses = await upload(api, tokens, notebook.id, files, from);
+    const statuses = await upload(api, tokens, notebook.id, files, from, uploadMs, "upload");
     const to = Math.max(Date.now(), from + uploadMs);
     await typing;
     // The last rest's save, answered; then 10 s more, past a 429's retry window.
@@ -195,6 +242,8 @@ async function repetition(
     const inWindow = (save: { sent: number }) => save.sent >= from && save.sent <= to;
     return {
       notebook: notebook.id,
+      heldPages,
+      heldStatuses,
       window: { from: 0, to: to - from },
       uploads: statuses,
       aReads: aReads.filter((at) => at >= from && at <= to).length,
@@ -219,18 +268,20 @@ async function repetition(
 }
 
 /**
- * The uploads: files.length of them, the tokens taking turns, sent evenly from from over uploadMs, none waiting for
- * another; their statuses counted once all answered.
+ * The uploads: files.length of them, named prefix-i, the tokens taking turns, sent evenly from from over overMs, none
+ * waiting for another; their statuses counted once all answered.
  */
 async function upload(
   api: ApiClient,
   tokens: string[],
   notebookId: string,
   files: Buffer[],
-  from: number
+  from: number,
+  overMs: number,
+  prefix: string
 ): Promise<Record<string, number>> {
   const sent: Promise<number>[] = [];
-  const every = uploadMs / files.length;
+  const every = overMs / files.length;
   for (const [i, bytes] of files.entries()) {
     const wait = from + i * every - Date.now();
     // oxlint-disable-next-line no-await-in-loop -- paced, not waited for
@@ -238,7 +289,7 @@ async function upload(
     const token = tokens[i % tokens.length] ?? "";
     sent.push(
       postAsset(api, token, notebookId, {
-        name: `upload-${i}.png`,
+        name: `${prefix}-${i}.png`,
         bytes: new Uint8Array(bytes),
         type: "image/png",
       }).then(
