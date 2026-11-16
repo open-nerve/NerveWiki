@@ -97,7 +97,10 @@ export interface ColdOpen {
   mainJs?: number;
   /** The longest long task that started before the paint. */
   longest: number;
-  /** The items of the home's list of pages, and of the whole document, as T1 painted: since M12/P4/S4 the first chunk. */
+  /**
+   * The items of the home's list of pages, and of the whole document, read just after T1, a round trip later: since
+   * M12/P4/S4 a chunk or two past the first by then (the first chunk is rows, as T1 painted).
+   */
   homeItems: number;
   items: number;
   /**
@@ -188,10 +191,10 @@ export async function coldOpen(context: BrowserContext, home: string, options: C
 }
 
 /**
- * allRows waits, a frame at a time, until the root list of the tree nav and, on a notebook's home, its list of pages
- * each have count rows (M12/P4/S4 design 3.6: the first chunk at once, the rest after each paint), and answers the
- * moment of that frame, from the document's start: every row is in the document, not yet drawn. Elsewhere than on
- * a home only the tree is counted.
+ * allRows waits, a frame at a time, until the root list of the tree nav and the home's list of pages each have count
+ * rows (M12/P4/S4 design 3.6: the first chunk at once, the rest after each paint), and answers the moment of that
+ * frame, from the document's start: every row is in the document, not yet drawn. A list not there has none: a page
+ * without the home's list, or with it named otherwise, fails at the timeout, not counted full.
  */
 export async function allRows(page: Page, nav: string, count: number, timeout: number): Promise<number> {
   return page.evaluate(
@@ -202,8 +205,7 @@ export async function allRows(page: Page, nav: string, count: number, timeout: n
           const now = performance.now();
           const tree = [...document.querySelectorAll("nav")].find((each) => each.getAttribute("aria-label") === label);
           const left = tree?.querySelectorAll(":scope > ul > li").length ?? 0;
-          const home = document.querySelector('ul[aria-label="Pages"]');
-          const main = home === null ? rows : home.querySelectorAll(":scope > li").length;
+          const main = document.querySelectorAll('ul[aria-label="Pages"] > li').length;
           if (left >= rows && main >= rows) {
             resolve(now);
           } else if (now > until) {

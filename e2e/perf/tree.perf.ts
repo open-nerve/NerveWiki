@@ -21,8 +21,9 @@ import type { ShapeName } from "./shapes";
 //
 // Since M12/P4/S4 the lists draw their first rows at once and the rest a chunk after each paint (its design 3.6, 6.3):
 // each T1 then waits for every row in the document, recorded only (the bound of its own, 4 s, and its longest long
-// task, 200 ms, are judged by hand); the heap and the items are read then, the items as T1 painted recorded besides;
-// T2 starts with every row there, the state P4/S2 measured. In the flat shape, after T2, a row's menu opened and
+// task, 200 ms, are judged by hand), the home's rows then asserted to be the roots; the heap and the items are read
+// then, the items read just after T1 recorded besides (a chunk or two past the first by then: the first chunk is the
+// rows as T1 painted); T2 starts with every row there, the state P4/S2 measured. In the flat shape, after T2, a row's menu opened and
 // closed and a dialog closed, recorded only (P4/S4 design 3.4).
 //
 // T3 comes before T2, in the tab as it opened: "000 big" the first root, its children laid out from it down, some in
@@ -61,6 +62,8 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
         expect(open.mainJs, "the main script's bytes over the network").toBeGreaterThan(0);
         // The end painted every root, or rows past the viewport's bottom edge: the first chunk is a commit of its own.
         expect(open.rows, "rows at the end").toBeGreaterThanOrEqual(Math.min(notebook.roots, open.inView + 1));
+        // Every row in: the home's list counted, not taken for full.
+        expect(open.allHomeItems, "the home's rows once every row is in").toBe(notebook.roots);
         record("t1", { shape, round, i, ...open });
         t1.push(open);
       }
@@ -243,6 +246,7 @@ async function openTab(
   await goto(page, home);
   await painted(page, "t1", paintMs);
   await allRows(page, nav, count, paintMs);
+  await expect(page.locator('ul[aria-label="Pages"] > li'), "the home's rows once every row is in").toHaveCount(count);
   return { page, out };
 }
 
@@ -380,7 +384,8 @@ async function moveDialog(tab: { page: Page; out: Set<Request> }, nav: string, b
 
 /**
  * A cold open of home profiled (Profiler, sampled every 100 µs), not one of the five: the self time of subtreeOf,
- * which each row's menu calls (page-tree-item.tsx), found in the built script by its body, its name being minified.
+ * found in the built script by its body, its name being minified. Until M12/P4/S4 each row's menu called it; since,
+ * the tree's one menu and a row's dialogs do (page-tree-item.tsx), and a T1 calls it not at all.
  * The tab first loads /healthz, of the same origin, so that the profiler started there keeps running in the same
  * renderer as the home loads.
  */
