@@ -37,9 +37,9 @@ const markdownHighlight = HighlightStyle.define([
  * 5.6 s to enter the edit, in one task a writer's content alone decides
  * (M6 closeout B-I1, FB-I2, FB2-I1); a run of spaces, a "<?" and a URL's
  * end cost only their length since (linearScans). At the limit the
- * costliest, "*_" over and over, takes about 60 ms a parse in Chromium
- * (M12/P4/S5 design 1.5). A table keeps its rows and cells, each cell
- * bounded alone: link completion needs them.
+ * costliest, "*_" over and over, takes about 62-67 ms a parse in Chromium
+ * (M12/P4/S5: its implementation's measure and review C's). A table keeps
+ * its rows and cells, each cell bounded alone: link completion needs them.
  */
 export const inlineLimit = 10_000;
 
@@ -53,12 +53,16 @@ export const inlineLimit = 10_000;
  * start (LinkReferenceParser.nextLine), so that one of many lines costs the
  * square of its length: a JSON array pasted as text, 20,000 lines, took
  * 0.74 s a keystroke (FB3-I1). Bounded by inlineLimit, a definition whose
- * title never closes took 85-90 ms a character typed in Chromium, and a key
- * in the editor 75-110 ms; at 2,000, some 5 ms and 18-32 ms. The repo's
+ * title never closes took 85-90 ms a character typed in Chromium and about
+ * 110 ms a key in the editor; at 2,000, some 5 ms and about 18 ms. Of
+ * the three measured, a bracket or a title never closed and a title closed
+ * on the last line, a key took 75-110 ms, 18-32 ms at 2,000. The repo's
  * definitions are of one line, 24 code units at most (M12/P4/S5 design
  * 1.1, 1.5, 2.4). A writer sees it in the editor only, and only in a
- * definition over lines, closed or not, that long: it shows as a paragraph,
- * a "[[" in its URL completes (design 3.3).
+ * definition over lines, closed or not, that long: it shows as a
+ * paragraph, its inline parsed as a paragraph's, so that a "[[" in its URL
+ * completes unless the URL is an autolink (www., or http(s):// and a
+ * domain with a dot; design 3.3, review A's M1).
  */
 export const referenceLimit = 2_000;
 

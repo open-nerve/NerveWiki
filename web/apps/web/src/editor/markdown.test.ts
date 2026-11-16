@@ -164,7 +164,7 @@ function parsed(doc: string): number {
 
 // Each took seconds to enter the edit in a paragraph of a few hundred KB: 50,000 links 9.5 s, 96 KB of spaces
 // 5.6 s (M6 closeout B-I1, FB-I2, FB2-I1). Past inlineLimit a paragraph is plain text; up to it, the costliest,
-// emphasis marks of both kinds, takes about 60 ms a parse in Chromium (M12/P4/S5 design 1.5).
+// emphasis marks of both kinds, takes about 62-67 ms a parse in Chromium (M12/P4/S5).
 test.each(costly)("a paragraph of 200,000 characters, %s, is parsed in a time as long as it", (_, paragraph) => {
   expect(parsed(paragraph(200_000))).toBeLessThan(1_000);
 });
