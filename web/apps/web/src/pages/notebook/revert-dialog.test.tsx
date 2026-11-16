@@ -58,11 +58,15 @@ test("Undo change asks first: what the undo does, with its counts, that links wr
 
   const dialog = await opened(user);
 
-  expect(dialog.getAttribute("aria-describedby")).not.toBeNull();
-  expect(document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
-    "Nodes: 1, contents: 1. They go back to how they were before this change, as a new change of its own, an undo. Whatever changed since, or cannot go back, is listed instead, and nothing changes."
-  );
-  expect(within(dialog).getByText("Links written since to the new names or places are not changed back.")).toBeTruthy();
+  // Both sentences describe the dialog, read with its name (M12/P2/S1, 49).
+  expect(
+    screen.getByRole("alertdialog", {
+      name: "Undo this change?",
+      description:
+        "Nodes: 1, contents: 1. They go back to how they were before this change, as a new change of its own, an undo. Whatever changed since, or cannot go back, is listed instead, and nothing changes. " +
+        "Links written since to the new names or places are not changed back.",
+    })
+  ).toBe(dialog);
   await user.type(within(dialog).getByRole("textbox", { name: "Message (optional)" }), "  Back to <old>  ");
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 

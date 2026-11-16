@@ -75,13 +75,24 @@ test("an undo too large here asks whether to undo it in the background: that it 
     name: "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+.",
   });
   expect(document.activeElement).toBe(heading);
-  expect(dialog.getAttribute("aria-describedby")).toBe(heading.id);
+  // All it says describes the dialog: that it is too large, the question and the links (M12/P2/S1, 24.3); the title,
+  // which takes the focus in the open dialog, is described by the question.
   expect(
-    within(dialog).getByText(
-      "Undo it in the background? An undo in the background goes in batches: stopped on the way, what it undid stays."
-    )
-  ).toBeTruthy();
-  expect(within(dialog).getByText("Links written since to the new names or places are not changed back.")).toBeTruthy();
+    screen.getByRole("alertdialog", {
+      name: "Undo this change?",
+      description:
+        "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+. " +
+        "Undo it in the background? An undo in the background goes in batches: stopped on the way, what it undid stays. " +
+        "Links written since to the new names or places are not changed back.",
+    })
+  ).toBe(dialog);
+  expect(
+    within(dialog).getByRole("heading", {
+      level: 3,
+      description:
+        "Undo it in the background? An undo in the background goes in batches: stopped on the way, what it undid stays.",
+    })
+  ).toBe(heading);
   expect((within(dialog).getByRole("textbox", { name: "Message (optional)" }) as HTMLInputElement).value).toBe("Back");
   expect(
     within(dialog)
