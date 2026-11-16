@@ -351,6 +351,15 @@ func TestAnEmptyBlockIsText(t *testing.T) {
 	}
 }
 
+// failedCommit is the error of a read-write transaction's COMMIT that
+// failed, as the platform's TxManager marks it (postgres.commitError),
+// known by its method alone.
+type failedCommit struct{ err error }
+
+func (e failedCommit) Error() string      { return "commit transaction: " + e.err.Error() }
+func (e failedCommit) Unwrap() error      { return e.err }
+func (failedCommit) TxCommitFailed() bool { return true }
+
 // lockProblem is a problem that names a lock, as page.locked will.
 type lockProblem struct{ problem }
 
@@ -410,9 +419,24 @@ func TestTheToolErrorsAreTheTables(t *testing.T) {
 					map[string]any{"page_id": lockedPage, "user_id": alice.String(), "display_name": "Alice"}}, "locks_count": float64(2)}, ""},
 		{"the client gone", cancelled, fmt.Errorf("read: %w", context.Canceled), "internal_error: the client went away",
 			map[string]any{"code": "internal_error", "message": "internal_error: the client went away", "request_id": ""}, "MCP client went away:DEBUG"},
-		{"the deadline", expired, fmt.Errorf("read: %w", context.DeadlineExceeded), "internal_error: the call ran out of time; request id ",
-			map[string]any{"code": "internal_error", "message": "internal_error: the call ran out of time; request id ", "request_id": ""},
+		// A call past its deadline changed nothing; one whose COMMIT failed,
+		// which TxManager marks, may have saved its changes (M12/P3 design
+		// 3.7): each sentence written out, not the constant's.
+		{"the deadline", expired, fmt.Errorf("read: %w", context.DeadlineExceeded),
+			"internal_error: the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones; request id ",
+			map[string]any{"code": "internal_error", "message": "internal_error: the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones; request id ", "request_id": ""},
 			"MCP call deadline exceeded:WARN"},
+		{"the deadline at a commit", expired, fmt.Errorf("write: %w", failedCommit{context.DeadlineExceeded}),
+			"internal_error: the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ",
+			map[string]any{"code": "internal_error", "message": "internal_error: the call passed the server's time limit as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ", "request_id": ""},
+			"MCP call deadline exceeded:WARN"},
+		// A COMMIT that failed before the call's deadline, past
+		// database.commit_timeout, may have saved its changes too (M12/P3/S1
+		// review B-M1); a fault with no mark is the server's failure.
+		{"a fault at a commit", context.Background(), fmt.Errorf("write: %w", failedCommit{context.DeadlineExceeded}),
+			"internal_error: the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ",
+			map[string]any{"code": "internal_error", "message": "internal_error: the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it; request id ", "request_id": ""},
+			"MCP tool failed:ERROR"},
 		{"another fault", context.Background(), errors.New("database is down"), "internal_error: the server failed; request id ",
 			map[string]any{"code": "internal_error", "message": "internal_error: the server failed; request id ", "request_id": ""},
 			"MCP tool failed:ERROR"},

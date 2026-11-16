@@ -236,7 +236,8 @@ type Deps struct {
 	// only a measurement raises (M9/P3 design 3.8.2; review B1-M3; fix
 	// round 5, B2-M1); production leaves them 0.
 	MaxBatchRewrites, MaxBatchRewriteLinks, MaxBatchRewriteBytes int
-	// Snapshots runs a search's reads in one read-only transaction:
+	// Snapshots runs a search's reads in one read-only transaction, and a
+	// log's page's and a changeset's detail's (M12 design 4.6.2):
 	// bootstrap hands it the Tx's manager. VisibleNotebooks are the
 	// notebooks a search searches. Both must be there.
 	Snapshots        shared.Snapshots
@@ -315,7 +316,7 @@ func New(d Deps) *Module {
 		Paths: store, States: store}
 	trash := app.TrashReads{Notebooks: d.Notebooks, Nodes: store, RevertTrees: store, Trash: store, Names: d.Names, Attachments: d.Attachments,
 		Auth: d.Authorizer, Clock: d.Clock, Retention: d.Retention}
-	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer, Paths: store}
+	history := app.HistoryReads{Notebooks: d.Notebooks, History: store, Names: d.Names, Auth: d.Authorizer, Paths: store, Snapshots: d.Snapshots}
 	locks := app.NewLockHolders(store, d.Names) // edit's precheck (M9/P2 design 3.8.2)
 	// The history's reads, REST's and MCP's the same use cases (M9/P2
 	// design 3.15).

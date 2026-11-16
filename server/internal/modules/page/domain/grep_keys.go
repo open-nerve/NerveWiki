@@ -10,6 +10,8 @@ import (
 	"unicode/utf8"
 
 	"golang.org/x/text/unicode/norm"
+
+	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
 //go:generate env NERVE_WRITE_GREP_TABLES=1 go test -run ^TestGrepTablesAreTheirDefinition$ .
@@ -392,11 +394,11 @@ func (k *keyReader) foldAtoms(atoms []rune) string {
 	return norm.NFC.String(folded.String())
 }
 
-// fold is searchFold of the code point r, taken once.
+// fold is the title key (shared.TitleKey) of the code point r, taken once.
 func (k *keyReader) fold(r rune) string {
 	f, ok := k.folds[r]
 	if !ok {
-		f = searchFold(string(r))
+		f = shared.TitleKey(string(r))
 		k.folds[r] = f
 	}
 	return f

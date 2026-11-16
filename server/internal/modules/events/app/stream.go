@@ -11,10 +11,11 @@ import (
 // Stream is one open event stream of an account: the events it may see,
 // in order, until it is reset. The handler writes them out and closes it.
 type Stream struct {
-	hub    *Hub
-	userID uuid.UUID
-	events chan domain.Event
-	done   chan struct{}
+	hub        *Hub
+	userID     uuid.UUID
+	credential credential // what the hub counts it by
+	events     chan domain.Event
+	done       chan struct{}
 
 	mu sync.Mutex
 	// seen is what the stream sees, nil until the opening settles it; the
@@ -37,7 +38,8 @@ func (s *Stream) Reason() domain.ResetReason {
 	return s.reason
 }
 
-// Close takes the stream off the hub.
+// Close takes the stream off the hub, and its count; closing it again
+// does nothing.
 func (s *Stream) Close() { s.hub.close(s) }
 
 // offer gives the stream an event, which waits while the stream does not

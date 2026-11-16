@@ -55,10 +55,12 @@ paths:
         all it shows. reason is access (the caller may see other notebooks
         now), notebooks_deleted, expired (the credential, at its expiry),
         unauthenticated (it failed at a heartbeat: revoked, signed out, the
-        account deactivated), reconnected (the server missed events), or
-        overflow (the client fell behind). A reset for access,
-        notebooks_deleted, reconnected or overflow comes after the events
-        the stream held.
+        account deactivated), reconnected (the server missed events),
+        overflow (the client fell behind), or superseded: the same
+        credential (a sign-in's session or a token) opened a fifth stream,
+        and this, its oldest, ends; connect again, as after any reset. A
+        reset for access, notebooks_deleted, reconnected, overflow or
+        superseded comes after the events the stream held.
 
 
         The stream may also end without a reset: when the server stops,
@@ -70,6 +72,12 @@ paths:
         Other event types may come; a client ignores those it does not know.
         While the server cannot listen for events yet, starting or
         reconnecting, it answers not_ready with Retry-After.
+
+
+        A credential holds at most 4 streams, an account at most 64 over
+        its credentials: a credential's fifth resets its oldest
+        (superseded), and is never refused; an opening that would make the
+        account's 65th is rate_limited, with Retry-After.
       security: [{ bearer: [] }]
       x-long-lived: true
       x-problem-codes: [not_ready]
@@ -240,4 +248,4 @@ components:
       properties:
         reason:
           type: string
-          enum: [access, notebooks_deleted, expired, unauthenticated, reconnected, overflow]
+          enum: [access, notebooks_deleted, expired, unauthenticated, reconnected, overflow, superseded]

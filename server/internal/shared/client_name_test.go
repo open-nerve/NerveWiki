@@ -32,6 +32,17 @@ func TestCleanClientName(t *testing.T) {
 		{"bytes that are no UTF-8", "a\xffb\xc3", "ab"},
 		{"white space alone", " \t\n\u3000", ""},
 		{"unshowable alone", "\u202e\x00", ""},
+		// What shows nothing is no name (M12 design 4.6.4, 30.2); what shows
+		// stays as it is.
+		{"invisible alone", "\U0000200B\U00002060\U00003164", ""},
+		{"invisible with white space around and between", " \U0000200B \U00003164\t", ""},
+		{"tag characters alone", "\U000E0041\U000E0042", ""},
+		{"invisible, cut at 128", strings.Repeat("\U0000200B", 128) + "x", ""},
+		{"an emoji's variation selector", "I \U00002764\U0000FE0F Go", "I \U00002764\U0000FE0F Go"},
+		{"a subdivision's flag", "\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F",
+			"\U0001F3F4\U000E0067\U000E0062\U000E0073\U000E0063\U000E0074\U000E007F"},
+		{"the braille blank, a symbol", "\U00002800", "\U00002800"},
+		{"a format character that shows", "\U000006DD", "\U000006DD"},
 		{"exactly 128", x128, x128},
 		{"129 ASCII keep 128", x128 + "y", x128},
 		{"128 x and a Han character keep 128", x128 + "中", x128},

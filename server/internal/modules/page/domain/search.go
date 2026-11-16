@@ -235,25 +235,6 @@ func classOf(r rune) searchClass {
 	return classOther
 }
 
-// searchFold is how lexemes and keys compare: shared.TitleKey, Cherokee's
-// small letters then its capitals. x/text's full folding toggles Cherokee's
-// case, capitals to small letters and small letters to capitals, where
-// Unicode's folds both to the capitals: a query in one case would key the
-// other's lexemes, found while its page waits in the queue and lost once
-// the job built its row (M8/P5A review A-M1). The pattern's orbit class
-// matches either case; the key is now one.
-func searchFold(s string) string {
-	return strings.Map(func(r rune) rune {
-		switch {
-		case 0xAB70 <= r && r <= 0xABBF: // ꭰ–ꮿ: Ꭰ–Ꮿ
-			return r - 0xAB70 + 0x13A0
-		case 0x13F8 <= r && r <= 0x13FD: // ᏸ–ᏽ: Ᏸ–Ᏽ
-			return r - 0x13F8 + 0x13F0
-		}
-		return r
-	}, shared.TitleKey(s))
-}
-
 // SearchTokens are a node's lexemes (M8/P5 design 3.3), in the order they
 // first occur: its name's, the title's, each CJK character and bigram; and
 // a page's name and content's, the body's, nil for an attachment (content
@@ -267,19 +248,22 @@ func searchFold(s string) string {
 // the content so, a name's run left out apart: grep searches contents
 // alone (M9/P4 design 3.3). A partial body ends with SearchCutKey, which
 // counts toward no bound: the tsvector's own, 1,048,575 bytes, holds it
-// above MaxSearchLexemeBytes.
+// above MaxSearchLexemeBytes. Lexemes and a query's keys are folded by
+// shared.TitleKey, which takes Cherokee to its capitals: a query in one
+// case finds the other's lexemes (M8/P5A review A-M1; the step was
+// searchFold's, M12 design 4.6.3).
 func SearchTokens(name string, content *string) (title, body []string, partial bool) {
-	foldedName := searchFold(name)
+	foldedName := shared.TitleKey(name)
 	t := lexemes{out: []string{}}
 	t.scan(foldedName, true)
 	if content == nil {
 		return t.out, nil, false
 	}
-	// The body's text is searchFold(name) + "\n" + searchFold(content):
+	// The body's text is TitleKey(name) + "\n" + TitleKey(content):
 	// "\n" is a boundary of NFC, which nothing composes across, and the
 	// fold keeps it. Its content starts at from.
 	b := lexemes{out: []string{}, from: len(foldedName) + 1}
-	b.scan(searchFold(name+"\n"+*content), false)
+	b.scan(shared.TitleKey(name+"\n"+*content), false)
 	if b.left {
 		b.out = append(b.out, SearchCutKey)
 	}
@@ -490,7 +474,7 @@ func ParseSearchQuery(q *string) (SearchQuery, error) {
 	keyed := false
 	for _, f := range strings.FieldsFunc(s, unicode.IsSpace) {
 		text := norm.NFC.String(f)
-		folded := searchFold(text)
+		folded := shared.TitleKey(text)
 		// A term Go's NFC changes is one of its own, as written: matched in
 		// contents by PostgreSQL's NFC of it, which another term of the same
 		// folded NFC, written otherwise, need not share.

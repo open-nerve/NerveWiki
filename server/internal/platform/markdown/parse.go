@@ -79,7 +79,9 @@ func (headingIDs) Transform(doc *ast.Document, reader text.Reader, _ parser.Cont
 }
 
 // PlainText is the text of n's descendants, from source, as written, but
-// for what a Hider hides: a heading's, for its id.
+// for what a Hider hides: a heading's, for its id. An autolink is its
+// label and raw HTML its source, as an anchor written to the heading has
+// them (AnchorID), so that the two meet (M12 design 4.6.3, 10.2).
 func PlainText(n ast.Node, source []byte) string {
 	var b strings.Builder
 	_ = ast.Walk(n, func(c ast.Node, entering bool) (ast.WalkStatus, error) {
@@ -96,6 +98,13 @@ func PlainText(n ast.Node, source []byte) string {
 			}
 		case *ast.String:
 			b.Write(c.Value)
+		case *ast.AutoLink:
+			b.Write(c.Label(source))
+		case *ast.RawHTML:
+			for i := range c.Segments.Len() {
+				seg := c.Segments.At(i)
+				b.Write(seg.Value(source))
+			}
 		}
 		return ast.WalkContinue, nil
 	})

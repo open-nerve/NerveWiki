@@ -89,7 +89,9 @@ var ErrTxInSnapshot = errors.New("postgres: a transaction within a snapshot")
 // have all finished therefore commits even if the request is cancelled
 // meanwhile, and a failed one is rolled back and its connection returned to
 // the pool in a known state. A COMMIT that gets no answer within
-// commitTimeout has an unknown outcome and returns an error.
+// commitTimeout has an unknown outcome and returns an error. A read-write
+// transaction's COMMIT that fails is marked TxCommitFailed (commitError):
+// its outcome may be unknown.
 //
 // A ROLLBACK that fails is an infrastructure fault: WithinTx returns an error
 // that wraps the failure and keeps only the text of fn's error, so a domain
@@ -174,10 +176,31 @@ func (m *TxManager) run(ctx context.Context, opts pgx.TxOptions, fn func(ctx con
 		return err
 	}
 	if err := m.end(ctx, tx.Commit); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
+		if opts.AccessMode == pgx.ReadOnly {
+			return fmt.Errorf("commit transaction: %w", err) // a snapshot wrote nothing
+		}
+		return &commitError{err}
 	}
 	return nil
 }
+
+// commitError is run's error when a read-write transaction's COMMIT
+// fails: its outcome may be unknown (a COMMIT with no answer), its writes
+// saved or not; one whose connection ended before it was sent rolled
+// back. Its text and its cause are those of any other COMMIT's
+// failure; TxCommitFailed marks it so, for MCP's answer, which tells it
+// from a deadline or a fault that changed nothing (M12/P3 design 3.7;
+// M12/P3/S1 review B-M1). A snapshot's COMMIT, which wrote nothing, is not
+// marked.
+type commitError struct{ err error }
+
+func (e *commitError) Error() string { return "commit transaction: " + e.err.Error() }
+
+func (e *commitError) Unwrap() error { return e.err }
+
+// TxCommitFailed marks the error as a read-write transaction's COMMIT's
+// that failed.
+func (*commitError) TxCommitFailed() bool { return true }
 
 // beginError is run's error when its transaction cannot begin, before fn
 // runs: the connection it was to run on is broken, or the pool closed, or

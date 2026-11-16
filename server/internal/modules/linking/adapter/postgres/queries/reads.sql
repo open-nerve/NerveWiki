@@ -86,10 +86,10 @@ WHERE ip.node_id = sqlc.arg(node_id);
 
 -- name: Tags :many
 -- A notebook's tags by key (M6/P5 design 5): each as most of its pages write it, the first by bytes of those as
--- many, and how many pages have it.
+-- many, and how many pages have it. The tag "/" (#//) is left out: getTag cannot name it (M12 design 4.6.4, 10.1).
 SELECT mode() WITHIN GROUP (ORDER BY t.tag COLLATE "C")::text AS tag, count(*) AS pages
 FROM page_tags t
-WHERE t.notebook_id = sqlc.arg(notebook_id)
+WHERE t.notebook_id = sqlc.arg(notebook_id) AND t.tag_key <> '/'
 GROUP BY t.tag_key
 ORDER BY t.tag_key;
 
