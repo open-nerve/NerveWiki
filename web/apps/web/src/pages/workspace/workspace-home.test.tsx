@@ -51,6 +51,19 @@ test("the home shows each group's notebooks as cards leading to them", async () 
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${atlas.id}`);
 });
 
+// M12/P2/S1: the card leaves with the home; the notebook's home is arrived at (M5-polish 12.3).
+test("a notebook's card leads to its home arrived at: its title takes the focus", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", labApp([atlas, notebookJSON]));
+  const home = await main();
+
+  const mine = await within(home).findByRole("list", { name: "My notebooks" });
+  await user.click(within(mine).getByRole("link"));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Plans" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
 test.each([
   ["admin", ["New notebook"]],
   ["member", ["New notebook"]],

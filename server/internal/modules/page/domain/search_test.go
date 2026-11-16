@@ -269,7 +269,7 @@ func foldsToASCII() []rune {
 
 // The independent judge of what a body leaves out of a content below
 // MaxSearchLexemeBytes (M9/P4 design 6.1), on the content folded
-// (shared.TitleKey: searchFold's Cherokee case changes no ASCII): a whole
+// (shared.TitleKey: its Cherokee step changes no ASCII): a whole
 // run of word characters, letters, digits and marks but CJK, of more than
 // 64, each an ASCII letter or digit; or "data:" where no word run goes on
 // (at the start, after a character of no run or a CJK one) and then 60

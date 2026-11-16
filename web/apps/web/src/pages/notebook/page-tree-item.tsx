@@ -10,6 +10,7 @@ import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { NavLink, useParams } from "react-router";
 
+import { opened } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
@@ -119,6 +120,8 @@ const PageItem = observer(function PageItem({ context, node, depth }: ItemProps)
         )}
         <NavLink
           to={`/${slug}/notebooks/${notebook.id}/pages/${node.id}`}
+          // The focus stays on the tree; Back and Forward to the page give its title the focus from no one (M12/P2/S1).
+          state={opened}
           // A link drags itself: a drag from the title would not be the row's.
           draggable={writer ? false : undefined}
           className={({ isActive }) =>

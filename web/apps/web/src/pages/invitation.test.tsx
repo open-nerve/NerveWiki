@@ -1,9 +1,13 @@
-import { act, screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { FakeChannels } from "../events/testing/fake-channels";
+import { FakePage } from "../events/testing/fake-page";
 import type { User } from "../services/account.service";
 import type { Workspace } from "../services/workspace.service";
+import { answerClosings } from "../stores/edit-closing";
+import { withEvents } from "../test/event-server";
 import {
   byRoute,
   instanceJSON,
@@ -332,4 +336,62 @@ test.each([
   await user.click(screen.getByRole("button", { name: "Try again" }));
 
   expect(await screen.findByRole("button", { name: "Accept invitation" })).toBeTruthy();
+});
+
+// M12/P2/S1, item 7 (decision 383; reviews A's M2, C's M1): the invitation's Sign out is useSignOut's, as the user
+// menu's: it asks first while another tab of the login has changes not saved, and it asks once however often it is
+// pressed meanwhile.
+
+test("the invitation's Sign out asks first while another tab of the login has an edit not saved; Stay keeps the session and gives the focus back to Sign out", async () => {
+  const user = userEvent.setup();
+  const channels = new FakeChannels();
+  const { app: plain, sent } = invitationServer();
+  const app = withEvents(plain, new FakePage(), channels);
+  const other = answerClosings(
+    channels.port("nwiki.edits"),
+    { loginId: "login-0", tabId: "tab-1" },
+    () => true,
+    () => Promise.resolve(),
+    () => true
+  );
+  renderApp(page, app);
+
+  await user.click(await screen.findByRole("button", { name: "Sign out" }));
+  const dialog = await screen.findByRole("alertdialog", {
+    name: "Sign out anyway?",
+    description:
+      "A page you are editing in another tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost.",
+  });
+  await user.click(within(dialog).getByRole("button", { name: "Stay" }));
+
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Sign out" })));
+  expect(sent.filter((request) => request.includes("/auth/logout"))).toEqual([]);
+  expect(app.session.tokens.state.status).toBe("signed-in");
+  other();
+});
+
+test("the invitation's Sign out pressed again while the other tabs are asked asks once and signs out once", async () => {
+  const user = userEvent.setup();
+  const channels = new FakeChannels();
+  const { app: plain, sent } = invitationServer();
+  const app = withEvents(plain, new FakePage(), channels);
+  // Another tab of the login that answers nothing: the ask waits out its 100 milliseconds.
+  const listening = channels.port("nwiki.edits");
+  const asks: unknown[] = [];
+  listening.addEventListener("message", (event) => {
+    if ((event.data as { kind?: string }).kind === "ask") {
+      asks.push(event.data);
+    }
+  });
+  renderApp(page, app);
+
+  const leave = await screen.findByRole("button", { name: "Sign out" });
+  await user.click(leave);
+  await user.click(leave);
+
+  expect(await screen.findByRole("button", { name: "Sign in" })).toBeTruthy();
+  expect(asks).toHaveLength(1);
+  expect(sent.filter((request) => request.includes("/auth/logout"))).toHaveLength(1);
+  listening.close();
 });

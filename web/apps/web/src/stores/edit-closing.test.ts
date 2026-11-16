@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { FakeChannels } from "../events/testing/fake-channels";
-import { answerClosings, closeOtherTabs, closingAnswerWait } from "./edit-closing";
+import { answerClosings, askOtherTabs, closeOtherTabs, closingAnswerWait } from "./edit-closing";
 
 // A sign-out's closing of the other tabs' edits (M4–M5 Codex review R2),
 // over the channels of one browser.
@@ -19,8 +19,11 @@ async function settled(promise: Promise<unknown>): Promise<boolean> {
   return done;
 }
 
-/** A tab of login-0, tabId, whose edits close as close resolves; its unsubscribe closes its port, as a RootStore's does. */
-function tab(channels: FakeChannels, tabId: string, hasEdits = true) {
+/**
+ * A tab of login-0, tabId, whose edits close as close resolves, one with changes not saved when unsaved; its
+ * unsubscribe closes its port, as a RootStore's does.
+ */
+function tab(channels: FakeChannels, tabId: string, hasEdits = true, unsaved = false) {
   let closed: (() => void) | undefined;
   const closes: string[] = [];
   const port = channels.port("nwiki.edits");
@@ -31,7 +34,8 @@ function tab(channels: FakeChannels, tabId: string, hasEdits = true) {
     () => {
       closes.push(tabId);
       return new Promise<void>((resolve) => (closed = resolve));
-    }
+    },
+    () => unsaved
   );
   return {
     closes,
@@ -103,7 +107,8 @@ test("a tab answers its own login's other tabs only: not itself, nor another log
     () => {
       otherLogin.push("tab-e");
       return new Promise<void>(() => undefined);
-    }
+    },
+    () => true
   );
   const closing = closeOtherTabs(channels.port("nwiki.edits"), login, "c1", 2_000);
 
@@ -138,4 +143,58 @@ test("a tab unsubscribed while it closes its edits, its port closed, says nothin
   expect(await settled(closing)).toBe(false);
   await vi.advanceTimersByTimeAsync(2_000);
   expect(await settled(closing)).toBe(true);
+});
+
+// M12/P2/S1, item 7: before a sign-out, the tab asks whether another of the login has an edit with changes not saved.
+
+test("asked whether one has an edit not saved, a tab that has one says so, and the asking tab hears it before the answers' wait is out", async () => {
+  const channels = new FakeChannels();
+  tab(channels, "tab-b", true, false);
+  tab(channels, "tab-c", true, true);
+  const asking = askOtherTabs(channels.port("nwiki.edits"), login, "q1");
+
+  expect(await settled(asking)).toBe(true);
+  expect(await asking).toBe(true);
+});
+
+test("a tab without changes not saved says nothing to an ask: it resolves false once closingAnswerWait is out", async () => {
+  const channels = new FakeChannels();
+  const b = tab(channels, "tab-b", true, false);
+  const asking = askOtherTabs(channels.port("nwiki.edits"), login, "q1");
+
+  await vi.advanceTimersByTimeAsync(closingAnswerWait - 1);
+  expect(await settled(asking)).toBe(false);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(await settled(asking)).toBe(true);
+  expect(await asking).toBe(false);
+  // Asked, it closes nothing.
+  expect(b.closes).toEqual([]);
+});
+
+test("a tab answers its own login's other tabs' asks only: not itself, nor another login's", async () => {
+  const channels = new FakeChannels();
+  // tab-a is the asking tab's own id: its answer would be its own.
+  tab(channels, "tab-a", true, true);
+  const unsubscribe = answerClosings(
+    channels.port("nwiki.edits"),
+    { loginId: "login-1", tabId: "tab-e" },
+    () => true,
+    () => Promise.resolve(),
+    () => true
+  );
+  const asking = askOtherTabs(channels.port("nwiki.edits"), login, "q1");
+
+  await vi.advanceTimersByTimeAsync(closingAnswerWait);
+  expect(await asking).toBe(false);
+  unsubscribe();
+});
+
+test("a tab unsubscribed answers no ask", async () => {
+  const channels = new FakeChannels();
+  const b = tab(channels, "tab-b", true, true);
+  b.unsubscribe();
+  const asking = askOtherTabs(channels.port("nwiki.edits"), login, "q1");
+
+  await vi.advanceTimersByTimeAsync(closingAnswerWait);
+  expect(await asking).toBe(false);
 });

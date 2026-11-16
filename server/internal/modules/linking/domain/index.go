@@ -81,9 +81,9 @@ func NewIndexKeyer() *IndexKeyer {
 }
 
 // Key is typ's key: the title key (shared.TitleKey: NFC, the full case
-// fold, NFC again) of its first IndexTypeChars characters, cut to
-// MaxIndexKey bytes at a character's boundary, so that a cursor is bounded
-// (M9 design 4.9).
+// fold, NFC again, Cherokee's small letters as its capitals) of its first
+// IndexTypeChars characters, cut to MaxIndexKey bytes at a character's
+// boundary, so that a cursor is bounded (M9 design 4.9).
 func (k *IndexKeyer) Key(typ string) string {
 	n := 0
 	for i := range typ {
@@ -101,6 +101,15 @@ func (k *IndexKeyer) Key(typ string) string {
 		return key
 	}
 	k.key = norm.NFC.Append(k.key[:0], k.folded...)
+	// Cherokee's step, in place: a small letter and its capital are three
+	// bytes each (M12 design 4.6.3, 25.1).
+	for i := 0; i < len(k.key); {
+		r, n := utf8.DecodeRune(k.key[i:])
+		if c := shared.CherokeeCapital(r); c != r {
+			utf8.EncodeRune(k.key[i:], c)
+		}
+		i += n
+	}
 	end := min(len(k.key), MaxIndexKey)
 	for end < len(k.key) && end > 0 && !utf8.RuneStart(k.key[end]) {
 		end--

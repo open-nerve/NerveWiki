@@ -4,7 +4,7 @@ package domain
 
 // riskyTail reports whether r is one of the risky tails (M9/P4 design
 // 3.5.3): with some code point m without an NFC boundary before it, NFC
-// keeps r m apart, and joins searchFold(r) to searchFold(m).
+// keeps r m apart, and joins the title keys (shared.TitleKey) of r and m.
 func riskyTail(r rune) bool {
 	switch r {
 	case 0x0048, 0x004A, 0x0054, 0x0057, 0x0059, 0x00DF, 0x0124, 0x0130,

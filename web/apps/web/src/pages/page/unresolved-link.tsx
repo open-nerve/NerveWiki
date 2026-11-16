@@ -42,9 +42,13 @@ type Why =
 
 /**
  * What the dialog asks or says, of the link it opened for, which was at of
- * the view's links to the same target; each opening has its own n.
+ * the view's links to the same target, and textAt of its links of the same
+ * text; each opening has its own n.
  */
-type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landing } | { why: Why });
+type Asked = { n: number; link: UnresolvedLink; at: number; text: string; textAt: number } & (
+  | { landing: Landing }
+  | { why: Why }
+);
 
 /**
  * useUnresolvedLinks is how the reading view of the page id answers a
@@ -70,7 +74,12 @@ type Asked = { n: number; link: UnresolvedLink; at: number } & ({ landing: Landi
  *
  * Closed without going, the dialog gives the focus back to its link, or,
  * read again since, to the link at the same place among those to its
- * target, or to the article.
+ * target, or among the links of its text (resolved meanwhile, a page
+ * made for it elsewhere), or to the article. Read again while the server
+ * is asked, the link at the same place is busy too (M12/P2/S1, 11.7).
+ *
+ * In an LLM Wiki, a link to its directory or history goes there (leads),
+ * as a link: no dialog opens from it (M12/P2/S1, 35.2).
  */
 export function useUnresolvedLinks({
   notebook,
@@ -89,7 +98,11 @@ export function useUnresolvedLinks({
   report: (error: unknown) => void;
   /** Whether the view is read only, a version's or a page's in the trash, whose links create no page. */
   readOnly?: boolean;
-}): { unresolved: (link: UnresolvedLink) => Promise<void>; dialog: ReactNode } {
+}): {
+  unresolved: (link: UnresolvedLink) => Promise<void>;
+  leads: (target: string) => boolean;
+  dialog: ReactNode;
+} {
   const t = useT();
   const { slug } = useWorkspace();
   const navigate = useNavigate();
@@ -98,6 +111,9 @@ export function useUnresolvedLinks({
   const [open, setOpen] = useState(false);
   const asking = useRef(false);
   const openings = useRef(0);
+  // Whether acting on a link to target goes to a page of the notebook: an LLM Wiki's directory or history.
+  const leads = (target: string) =>
+    notebook.mode === "llm_wiki" && virtualTarget(target, pages.nodeAncestors(page)?.length) !== undefined;
 
   // The page id, created by now, goes to it; a page another tab made that this tab's tree does not have yet is read
   // first, or the page would not be found.
@@ -114,21 +130,21 @@ export function useUnresolvedLinks({
       return;
     }
     const at = sameTarget(article.current, link.target).indexOf(link.element);
+    const text = link.element.textContent ?? "";
+    const textAt = linksOfText(article.current, text).indexOf(link.element);
     const show = (answer: { landing: Landing } | { why: Why }) => {
-      setAsked({ n: ++openings.current, link, at, ...answer });
+      setAsked({ n: ++openings.current, link, at, text, textAt, ...answer });
       setOpen(true);
     };
     if (link.kind !== "link") {
       show({ why: link.kind });
       return;
     }
-    if (notebook.mode === "llm_wiki") {
+    if (leads(link.target)) {
       const virtual = virtualTarget(link.target, pages.nodeAncestors(page)?.length);
-      if (virtual !== undefined) {
-        const route = virtual === "index" ? "index" : "history";
-        void navigate(`/${slug}/notebooks/${notebook.id}/${route}`, { state: arrived });
-        return;
-      }
+      const route = virtual === "index" ? "index" : "history";
+      void navigate(`/${slug}/notebooks/${notebook.id}/${route}`, { state: arrived });
+      return;
     }
     if (readOnly || !writesNotebook(notebook)) {
       // A reader asks for no landing, and in an LLM Wiki it decides whether a writer could create the page; a writer
@@ -146,6 +162,12 @@ export function useUnresolvedLinks({
     }
     asking.current = true;
     link.element.setAttribute("aria-busy", "true");
+    // The view read again meanwhile puts new links in: the one at the same place is busy too.
+    const busyAgain = () => sameTarget(article.current, link.target)[at];
+    const watching = new MutationObserver(() => busyAgain()?.setAttribute("aria-busy", "true"));
+    if (article.current !== null) {
+      watching.observe(article.current, { childList: true, subtree: true });
+    }
     // A refusal said before is the last one's no longer, as Edit's and a tick's are not.
     report(undefined);
     try {
@@ -174,7 +196,9 @@ export function useUnresolvedLinks({
       }
     } finally {
       asking.current = false;
+      watching.disconnect();
       link.element.removeAttribute("aria-busy");
+      busyAgain()?.removeAttribute("aria-busy");
     }
   }
 
@@ -201,8 +225,12 @@ export function useUnresolvedLinks({
     if (done || asked === undefined || container === null) {
       return;
     }
-    const { link, at } = asked;
-    focusOn(link.element.isConnected ? link.element : (sameTarget(container, link.target)[at] ?? container));
+    const { link, at, text, textAt } = asked;
+    focusOn(
+      link.element.isConnected
+        ? link.element
+        : (sameTarget(container, link.target)[at] ?? linksOfText(container, text)[textAt] ?? container)
+    );
   };
   const held: HeldDialog = { open, onOpenChange: setOpen, onClosed: giveBack };
 
@@ -233,7 +261,7 @@ export function useUnresolvedLinks({
       />
     );
   }
-  return { unresolved, dialog };
+  return { unresolved, leads, dialog };
 }
 
 /** NoticeDialog says what it says, with one button that closes it; its caller moves the focus then. */
@@ -264,6 +292,11 @@ function sameTarget(container: HTMLElement | null, target: string): HTMLElement[
   return [...(container?.querySelectorAll<HTMLElement>("a.nw-unresolved[data-nw-target]") ?? [])].filter(
     (link) => link.dataset.nwTarget === target
   );
+}
+
+/** linksOfText are the links of container whose text is text, in their order: a link resolved since among them. */
+function linksOfText(container: HTMLElement | null, text: string): HTMLElement[] {
+  return [...(container?.querySelectorAll<HTMLElement>("a") ?? [])].filter((link) => link.textContent === text);
 }
 
 /** focusOn gives element the focus, focusable as an anchor's target is when it is not already. */

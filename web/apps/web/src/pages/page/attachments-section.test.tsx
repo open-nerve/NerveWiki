@@ -705,3 +705,48 @@ test("an attachment gone to that the list read since lacks is said gone, the foc
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(document.activeElement).toBe(at);
 });
+
+// M12/P2/S1, 16.1: a row the list read again takes away, the focus in it or in its menu (a portal), leaves it to the
+// section's title, not to the body.
+test.each(["its menu open", "on its Actions"] as const)(
+  "a row taken away by the list read again %s gives the focus to the section's title",
+  async (where) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = pageServer({ nodes });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    const actions = await actionsOf(section, "photo.png");
+    if (where === "its menu open") {
+      await user.click(actions);
+      const menu = await screen.findByRole("menu");
+      await waitFor(() => expect(menu.contains(document.activeElement)).toBe(true));
+    } else {
+      act(() => actions.focus());
+    }
+
+    server.nodes = server.nodes.filter((node) => node.id !== photo.id);
+    await readAgain();
+
+    await waitFor(() => expect(rows(section)).not.toContain("photo.png (opens in a new tab)"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }))
+    );
+  }
+);
+
+test("a row taken away by the list read again, the focus elsewhere, leaves the focus there", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  await actionsOf(section, "photo.png");
+  const box = screen.getByRole("searchbox", { name: "Search terms" });
+  act(() => box.focus());
+
+  server.nodes = server.nodes.filter((node) => node.id !== photo.id);
+  await readAgain();
+
+  await waitFor(() => expect(rows(section)).not.toContain("photo.png (opens in a new tab)"));
+  expect(document.activeElement).toBe(box);
+});

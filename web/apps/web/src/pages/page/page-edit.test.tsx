@@ -1,9 +1,14 @@
 import { EditorView } from "@codemirror/view";
 import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useEffect } from "react";
+import { Outlet } from "react-router";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
-import { json, problem } from "../../test/fakes";
+import { routes } from "../../app/routes";
+import { useStore } from "../../stores/context";
+import type { RootStore } from "../../stores/root.store";
+import { json, problem, workspaceJSON } from "../../test/fakes";
 import { guide, pagePath, pageServer } from "../../test/page-server";
 import { pageEditor } from "../../test/page-editor";
 import { renderApp } from "../../test/render";
@@ -456,4 +461,45 @@ test("a page left while its edit is being left is not read again for it", async 
   write.answer?.(savedGuide());
   await new Promise((resolve) => setTimeout(resolve, 50));
   expect(server.sent.filter((line) => line === "GET view Guide")).toHaveLength(viewsRead);
+});
+
+/** Guide's page shown with the app's routes, the notebooks read again, as another tab's change of the role is read. */
+function renderReread(server: ReturnType<typeof pageServer>) {
+  let store: RootStore | undefined;
+  function CaptureStore() {
+    const current = useStore();
+    useEffect(() => {
+      store = current;
+    }, [current]);
+    return <Outlet />;
+  }
+  renderApp(pagePath(guide.id), server.app, { routes: [{ Component: CaptureStore, children: routes }] });
+  return () =>
+    act(async () => {
+      await store?.notebooksOf(workspaceJSON)?.load();
+    });
+}
+
+// M12/P2/S1, 18.6: back from the edit, the focus goes to Edit, or, with no Edit, to the page's title; handled as the
+// reading view shows, so that an Edit shown later does not take it from the reader.
+test("Done, the account made a reader meanwhile, gives the focus to the page's title; made a writer again, Edit does not take it", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ role: "editor" });
+  const reread = renderReread(server);
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await pageEditor();
+
+  server.notebook = { ...server.notebook, role: "reader" };
+  await reread();
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  const title = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await screen.findByRole("article");
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
+
+  server.notebook = { ...server.notebook, role: "editor" };
+  await reread();
+  await screen.findByRole("button", { name: "Edit" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(title);
 });

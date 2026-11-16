@@ -273,6 +273,8 @@ func TestTheMCPHistoryIsRESTs(t *testing.T) {
 			query string
 		}{
 			{"whole", map[string]any{}, ""},
+			// "/" is the whole notebook, as no path (M12 design 4.6.4, 30.4).
+			{"whole, by its root", map[string]any{"path": "/"}, ""},
 			{"of a page", map[string]any{"path": "Guide/Roadmap.md"}, "page_id=" + roadmap},
 			{"of an attachment", map[string]any{"path": "guide/FLOW-1.png"}, "page_id=" + flow},
 			{"of me", map[string]any{"actor": "me"}, "actor=" + me},

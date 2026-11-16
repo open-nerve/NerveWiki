@@ -73,8 +73,10 @@ export const VersionView = observer(function VersionView({
     readOnly: true,
   });
   const latestUnresolved = useRef(links.unresolved);
+  const latestLeads = useRef(links.leads);
   useEffect(() => {
     latestUnresolved.current = links.unresolved;
+    latestLeads.current = links.leads;
   });
   const at = view?.revision;
   const assetsExpire = view?.assets_expire_at ?? null;
@@ -99,6 +101,7 @@ export const VersionView = observer(function VersionView({
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
       report: setFailure,
       unresolved: (link) => void latestUnresolved.current(link),
+      leads: (target) => latestLeads.current(target),
       assetsExpire,
       assetAddress: (id) => assets.address(id),
     });

@@ -13,6 +13,7 @@ import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { useNotebooks, useOwnerless } from "../../stores/context";
+import { watchReader } from "../page/readers-input";
 import { AuditSection } from "./audit-section";
 import { OwnerlessRow, twinKey } from "./ownerless-row";
 import { useWorkspace } from "./workspace-layout";
@@ -42,7 +43,10 @@ const texts = { "notebook.not_found": "ownerless.gone" } as const;
 /**
  * OwnerlessSection lists the ownerless notebooks, the longest ownerless
  * first. Taking one over puts it among the account's notebooks, and says
- * so with a way to it; a row that leaves gives the focus to the heading.
+ * so with a way to it; a row that leaves gives the focus to the heading,
+ * from where the reader pressed Take over, from nothing or from itself,
+ * the reader having done nothing meanwhile (v0.1 design 13.2, item 26;
+ * M12/P2/S1, 22.17).
  * A refusal says why above the list, which is read again. The server
  * answers not found both for a notebook ownerless no more, which has left
  * the list, and to an account no longer the workspace's admin: the audit,
@@ -68,6 +72,14 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
     if (refusal instanceof ApiError && refusal.code === "notebook.not_found") {
       void reload(["notebook-audit", workspace.id]);
       void reload("workspaces");
+    }
+  }
+
+  // The heading takes the focus from where the reader pressed, from nothing, or from itself, the reader having done
+  // nothing meanwhile: one typing in the search box as the answer comes keeps the focus and the keys there.
+  function toHeading(from: Element | null, reader: ReturnType<typeof watchReader>): void {
+    const at = document.activeElement;
+    if (!reader.acted() && (at === from || at === null || at === document.body || at === heading.current)) {
       heading.current?.focus();
     }
   }
@@ -75,14 +87,21 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
   async function takeOver(id: string) {
     setFailure(undefined);
     setTaken(undefined);
+    const from = document.activeElement;
+    const reader = watchReader({ on: from === document.body ? null : from });
     try {
       const notebook = await ownerless.takeOver(id);
       notebooks.receive(notebook);
       setTaken(notebook);
-      heading.current?.focus();
+      toHeading(from, reader);
       void reload(["notebook-audit", workspace.id]);
     } catch (refusal) {
       refused(refusal);
+      if (refusal instanceof ApiError && refusal.code === "notebook.not_found") {
+        toHeading(from, reader);
+      }
+    } finally {
+      reader.end();
     }
   }
 

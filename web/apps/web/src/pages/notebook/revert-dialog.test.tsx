@@ -58,11 +58,15 @@ test("Undo change asks first: what the undo does, with its counts, that links wr
 
   const dialog = await opened(user);
 
-  expect(dialog.getAttribute("aria-describedby")).not.toBeNull();
-  expect(document.getElementById(dialog.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
-    "Nodes: 1, contents: 1. They go back to how they were before this change, as a new change of its own, an undo. Whatever changed since, or cannot go back, is listed instead, and nothing changes."
-  );
-  expect(within(dialog).getByText("Links written since to the new names or places are not changed back.")).toBeTruthy();
+  // Both sentences describe the dialog, read with its name (M12/P2/S1, 49).
+  expect(
+    screen.getByRole("alertdialog", {
+      name: "Undo this change?",
+      description:
+        "Nodes: 1, contents: 1. They go back to how they were before this change, as a new change of its own, an undo. Whatever changed since, or cannot go back, is listed instead, and nothing changes. " +
+        "Links written since to the new names or places are not changed back.",
+    })
+  ).toBe(dialog);
   await user.type(within(dialog).getByRole("textbox", { name: "Message (optional)" }), "  Back to <old>  ");
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
@@ -605,8 +609,32 @@ test("an undo refused as not found closes the dialog, and reads the changeset an
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
+  // In place of the page, which took the focus with it: its title takes it (M12/P2/S1, 23.14).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Page not found" })));
   expect(reads).toEqual(["GET notebooks"]);
   expect(server.sent.filter((each) => each === `GET changeset ${rework.id}`)).toHaveLength(1);
+});
+
+test("an undo refused as not found, the reader in the search box once the dialog closed, keeps the focus there as the changeset read again is gone", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id), server.app);
+  const dialog = await opened(user);
+  server.changesets = server.changesets.filter((each) => each !== rework);
+  // The changeset read again once the undo is refused waits.
+  let release!: () => void;
+  server.historyWaits.changeset = new Promise<void>((resolve) => (release = resolve));
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(title()));
+  const box = screen.getByRole("searchbox", { name: "Search terms" });
+  await user.click(box);
+
+  await act(async () => release());
+  await screen.findByRole("heading", { name: "Page not found" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(document.activeElement).toBe(box);
 });
 
 /** Ada's undo before this one: the newest known as the undo is sent. */

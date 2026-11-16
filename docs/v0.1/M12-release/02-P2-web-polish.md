@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后） |
-| 状态 | 设计已审查，未开工（三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `（待填：S1 的合并号）`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)，实施与审查之后与代码不同之处照实改在各节，结果在 10.1；S2–S6 未开工） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -303,19 +303,19 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 
 | 编号 | 分类（I3） | 组件文件 | 测试的种类 | 测试文件 | 大小 |
 |---|---|---|---|---|---|
-| 23.16 | B（中） | `W/app/confirm-dialog.tsx`、`W/lib/focus-leaving.ts`（新的 `focusLost`） | vitest + e2e | `W/app/confirm-dialog.test.tsx`；`e2e/stories/identity/a10-api-tokens.spec.ts`（三种） | 中 |
+| 23.16 | B（中） | `W/app/confirm-dialog.tsx`、`W/lib/focus-leaving.ts`（新的 `focusLost`） | vitest + e2e | `W/app/confirm-dialog.test.tsx`、`W/pages/page/source-attachments.test.tsx`、`W/pages/settings/security-page.test.tsx`（实际多改的一格，10.1）；`e2e/stories/identity/a10-api-tokens.spec.ts`（三种） | 中 |
 | 23.17、28.2 | C（随 23.16） | `W/components/ui/button.tsx:7` | e2e | `e2e/stories/history/hi3-log-revert.spec.ts`（Chromium） | 小 |
-| 9.1、38.3 | B（小、小到中） | `W/app/form.ts`、`W/components/form-field.tsx:83-97` | vitest + e2e | 新 `W/app/form.test.tsx`；`W/pages/notebook/page-tree-writes.test.tsx`；`W/pages/notebook/source-add-dialog.test.tsx`；`e2e/stories/wiki/lw3-source-duplicates.spec.ts`（三种） | 小 |
+| 9.1、38.3 | B（小、小到中） | `W/app/form.ts`、`W/components/form-field.tsx:83-97`、`W/pages/page/upload-rows.tsx`（修复第 1 轮，决定 506） | vitest + e2e | 新 `W/app/form.test.tsx`；`W/pages/notebook/source-uploads.test.tsx`（决定 506）；`W/pages/notebook/page-tree-writes.test.tsx`；`W/pages/notebook/source-add-dialog.test.tsx`；`e2e/stories/wiki/lw3-source-duplicates.spec.ts`（三种） | 小 |
 | 12.3 | B（小） | `W/pages/page/subpage-list.tsx:27`、`W/pages/page/breadcrumbs.tsx:54`、`W/pages/workspace/workspace-home.tsx:41` | vitest | `W/pages/page/page-layout.test.tsx`、`W/pages/workspace/workspace-home.test.tsx` | 小 |
 | 26.4 | B（小） | `W/pages/search/search-page.tsx:80,172-180` | vitest | `W/app/arrival.test.tsx` | 小 |
 | 28.4 | B（中） | `W/app/arrival.ts`、`W/app/layout.tsx` | vitest | `W/app/arrival.test.tsx` | 中 |
 | 28.5 | B（小） | `W/app/arrival.ts`、`W/pages/notebook/page-tree-item.tsx:120`、`W/pages/notebook/page-tree.tsx:150,154`、`index-page.tsx:56`、`history-page.tsx:134` | vitest | `W/app/arrival.test.tsx` | 小 |
 | 23.14 | B（小） | `W/app/arrival.ts`、`W/pages/not-found.tsx:17-20`、`W/pages/notebook/changeset-page.tsx:110-111` | vitest | `W/pages/notebook/revert-dialog.test.tsx` | 小 |
 | 18.6 | B（小） | `W/pages/page/page-layout.tsx:64,226-243`、`PageGone` | vitest | `W/pages/page/page-lock.test.tsx`、`W/pages/page/page-edit.test.tsx` | 小 |
-| 7 | A（中） | `W/stores/edit-closing.ts`、`W/stores/root.store.ts`、新 `W/app/sign-out.tsx`、`W/app/user-menu.tsx:49`、`W/pages/invitation.tsx:167`、`W/app/session-unavailable.tsx:25` | vitest + e2e | `W/stores/edit-closing.test.ts`、`W/stores/root.store.test.ts`、`W/app/user-menu.test.tsx`、`W/pages/page/page-lock.test.tsx`；`e2e/stories/collab/c6-expired.spec.ts`（Chromium） | 中 |
+| 7 | A（中） | `W/stores/edit-closing.ts`、`W/stores/root.store.ts`、新 `W/app/sign-out.tsx`、`W/app/user-menu.tsx:49`、`W/pages/invitation.tsx:167`、`W/app/session-unavailable.tsx:25` | vitest + e2e | `W/stores/edit-closing.test.ts`、`W/stores/root.store.test.ts`、`W/app/user-menu.test.tsx`、`W/pages/page/page-lock.test.tsx`、`W/pages/invitation.test.tsx`、`W/app/guards.test.tsx`（修复第 1 轮）；`e2e/stories/collab/c6-expired.spec.ts`（Chromium） | 中 |
 | 6.3 | B（小） | `W/reading/task-toggle.ts:14-46` | vitest | `W/reading/task-toggle.test.ts` | 小 |
 | 11.7 | B（小） | `W/pages/page/unresolved-link.tsx:147-148,176-178,199-206`、`W/reading/unresolved-links.ts:46` | vitest | `W/pages/page/unresolved-link.test.tsx`、`W/reading/unresolved-links.test.ts` | 小 |
-| 35.2 | B（小） | `W/reading/enhancement.ts`、`W/reading/unresolved-links.ts:21-25`、`W/pages/page/unresolved-link.tsx`、`reading-view.tsx`、`version-view.tsx` | vitest | `W/reading/unresolved-links.test.ts`、`W/pages/page/unresolved-link.test.tsx` | 小 |
+| 35.2 | B（小） | `W/reading/enhancement.ts`、`W/reading/unresolved-links.ts:21-25`、`W/pages/page/unresolved-link.tsx`、`reading-view.tsx`、`version-view.tsx` | vitest + e2e | `W/reading/unresolved-links.test.ts`、`W/pages/page/unresolved-link.test.tsx`、`W/pages/page/virtual-navigation.test.tsx`；`e2e/stories/wiki/lw10-virtual.spec.ts`（三种；实际多改的，10.1） | 小 |
 | 16.1 | B（小） | `W/pages/page/attachment-row.tsx:84-150`、`attachments-section.tsx:263-276` | vitest | `W/pages/page/attachments-section.test.tsx` | 小 |
 | 19.3 | B（小） | `W/app/not-loaded.tsx:12-25`、`W/pages/notebook/transfer-report.tsx:203,245-246`、`transfer-job-row.tsx:203` | vitest | `W/pages/notebook/transfer-page.test.tsx` | 小 |
 | 21.14 | B（小） | `W/pages/page/conflict-panel.tsx:29-67`、`W/pages/page/comparison.tsx:84-117` | vitest | `W/pages/page/conflict.test.tsx` | 小 |
@@ -324,7 +324,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 | 38.1 | B（小） | `W/pages/page/page-layout.tsx:312` | vitest | `W/pages/page/source-actions.test.tsx` | 小 |
 | 13.2 第 12、26、1 条 | — | `docs/v0.1/v0.1-design.md` | — | — | — |
 
-数目：vitest 推断新加约 48 格、改约 10 格；e2e 改 5 个故事文件（A10、LW3 在 `threeBrowsers` 里，HI3、C6、可选的 PG11 只跑 Chromium），不加故事、不加 `threeBrowsers` 的条目。
+数目：vitest 推断新加约 48 格、改约 10 格；e2e 改 5 个故事文件（A10、LW3 在 `threeBrowsers` 里，HI3、C6、可选的 PG11 只跑 Chromium），不加故事、不加 `threeBrowsers` 的条目。实际（10.1）：vitest 4,537 → 4,602 格（实施 54 格，修复第 1 轮 11 格）；e2e 改 6 个故事文件（多 LW10），不加故事、不加 `threeBrowsers` 的条目。
 
 ##### 4.1.0.2 本 Step 新加或改的 i18n 键
 
@@ -361,11 +361,11 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 
 已定在 2.3 的：P2-2（23.16 被拒之后的焦点）、P2-3（9.1 的横幅只在焦点已丢时取，与它的找法）、P2-4（到达的三个新规则）、P2-5（12.3 的范围）、P2-6（第 7 条的范围）、P2-7（11.7 留在 S1）。`app/arrival.ts` 第一次静态导入 `pages/`，oxlint 没有拦它的规则（审查 A 核对过）。实施者先核对的：
 
-1. 16.1：行的 layout 清理先于 `<li>` 与菜单的 portal 被移除（推断，照 React 19 的删除次序，没有跑过）；先用 16.1 的测试证实。
-2. 28.4：路由的懒加载块在提交之前读，其间的按键不算（推断，只在第一次进一种页时有）；全量 vitest 里有没有格依赖"标题挂上之前有点击，标题照样抢"（推断没有）。
-3. 28.5：树里"Directory""History"两行与页行同类（推断）。
-4. 11.7：`aria-busy` 照代码读成"问落点的期间"，不含新建页的确认框开着时。
-5. 23.16：WebKit 用鼠标点时焦点在对话框的内容上，被拒之后也在那里（推断）；A10 的三种引擎回答。
+1. 16.1：行的 layout 清理先于 `<li>` 与菜单的 portal 被移除（推断，照 React 19 的删除次序，没有跑过）；先用 16.1 的测试证实。实际：次序成立；但菜单开着时在 layout 清理里给的焦点被菜单的 `FocusScope` 拉回，改成 layout 清理记、passive 清理给（10.1）。
+2. 28.4：路由的懒加载块在提交之前读，其间的按键不算（推断，只在第一次进一种页时有）；全量 vitest 里有没有格依赖"标题挂上之前有点击，标题照样抢"（推断没有）。实际：全量 vitest 在看守之下全绿，没有格依赖它；懒加载块读的期间按的键没量（vitest 里路由的懒加载在同一次 `act` 里读完，造不出这个窗口；e2e 要扣住块的请求，S1 没做）。
+3. 28.5：树里"Directory""History"两行与页行同类（推断）。实际：成立，两行带 `opened`。
+4. 11.7：`aria-busy` 照代码读成"问落点的期间"，不含新建页的确认框开着时。实际：照代码就是这样，`finally` 里去掉；`unresolved-link.test.tsx` 两格在"不存在"的对话框开着时断言没有 `aria-busy`。
+5. 23.16：WebKit 用鼠标点时焦点在对话框的内容上，被拒之后也在那里（推断）；A10 的三种引擎回答。实际：不成立：A10 用键盘按；修复第 1 轮的鼠标探针里，Playwright 的三种引擎都给点过的"确认"焦点，发送中与被拒之后仍在它上面。Safari 不给点过的按钮焦点，那里焦点留在原处（照代码推），交 P5/S3 的人工清单（决定 509）。
 
 #### 4.1.1 共用的三处
 
@@ -394,7 +394,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
     - 边缘：发送中确认词被重读改掉（另一处改了名）时按钮在发送中禁用。罕见，不处理。
   - `focusAfter`、`held.onClosed(confirmed)`、`onOpenAutoFocus`、`onCloseAutoFocus` 都不动（`:129-144`）：成功之后的去处照旧。
   - 文件头的注释（`:56-64`）补一句：按钮发送中 `aria-disabled` 而不禁用，禁用会丢焦点；被拒之后焦点在"确认"上，由 alert 说出（13.2 第 12 条；M12/P2/S1）。
-  - 新帮手 `W/lib/focus-leaving.ts` 的 `export function focusLost(): boolean`：`document.activeElement` 为空、为 `body`，或 `matches(":disabled")` 时为真。最后一种是发送中禁用的按钮：Chromium 下一次渲染才把它的焦点交给 `body`，jsdom 从不。
+  - 新帮手 `W/lib/focus-leaving.ts` 的 `export function focusLost(): boolean`：`document.activeElement` 为空、为 `body`，或 `matches(":disabled")` 时为真。最后一种是发送中禁用的按钮：Chromium 下一次渲染才把它的焦点交给 `body`，Firefox 与 WebKit 让焦点在禁用的按钮上留一阵（S1 审查 C 的 M3），jsdom 从不。
   - 文字不变。
 - **被拒之后焦点留在"确认"上**（已定：2.3 的 P2-2）：焦点根本不走，"再按一次"是最常见的下一步；同 M8 的三个确认框（`revert-background.test.tsx:168`，HI3 的 `:419-447`）。拒绝由 `role=alert` 播报：每次发送先去掉旧的 Alert（`:94`），同一个拒绝第二次也播报；念不念到进发布之后的读屏验收。`focusLost()` 一支是保险（按理没有元素被禁用）。
 - **调用处**：17 个文件、25 处 `<ConfirmDialog`，调用处都不用改；38.3 点名的八个在其中。
@@ -407,7 +407,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   2. `"a refusal stays in the dialog, the focus on confirm, which sends again"`：以 `new Error("refused")` 拒绝；alert 的 `textContent` 整句比对 `errorText` 的通用文字；焦点在"Delete"、不再 `aria-disabled`；再点一次，`confirm` 第二次被调用。**没修的代码上**：照过（jsdom 不做焦点修正）。它钉的是"被拒之后仍可再按、焦点不被挪走"；分新旧的是第 1、3 格。
   3. `"a refusal that finds the focus lost gives it back to confirm"`：扣住期间 `act(() => (document.activeElement as HTMLElement).blur())`，模拟 Chromium 的焦点修正；拒绝之后焦点在"Delete"。**没修的代码上**：在 `body`。
   4. `"Enter in the typed word sends once, however often it is pressed; refused, the focus stays in the field"`：`typedConfirmation`，输入确认词，连按两次 `{Enter}`，扣住，`confirm` 一次；拒绝之后焦点在输入框。**没修的代码上**：两次 Enter 之间没渲染时发两次（推断，`sending` 是状态）；焦点那条不分新旧。
-  - e2e：A10（三种），见 4.1.0.3。用键盘按（`focus()` 再 `Enter`）：WebKit 鼠标点按钮不给焦点，键盘在三种引擎里一样。**没修的代码上**：Chromium 里发送中 `toBeFocused()` 失败（`body`），也没有 `aria-disabled`；Firefox、WebKit 由这次跑回答。
+  - e2e：A10（三种），见 4.1.0.3。用键盘按（`focus()` 再 `Enter`）：Safari 不给点过的按钮焦点，键盘在各种浏览器里一样（Playwright 的三种引擎用鼠标点也给焦点，S1 的鼠标探针，10.1）。**没修的代码上**：三种都红在发送中的 `aria-disabled` 断言（旧的按钮是 `disabled`），没有走到焦点的断言（实际见 10.1）。
 - **已有测试要随之改的**：
   - `W/pages/page/source-attachments.test.tsx:396`（`:341` 那一格的 `entry === "Delete"` 一支，`submit` 是 `ConfirmDialog` 的"Delete"）：发送中 `hasAttribute("disabled") === true` 改成 `getAttribute("aria-disabled") === "true"` 且 `hasAttribute("disabled") === false`。"Rename""Move to…"（`useForm`，仍 `disabled`）与 `:408` 照旧。
   - 核对过照旧的：`app/confirm-dialog.test.tsx:47`（重开之后不禁用）；e2e `fixtures/workspace-pages.ts:93`（输入确认词之前 `toBeDisabled`）、`a11-deactivate.spec.ts:144`（被拒之后 `toBeEnabled`）。
@@ -416,7 +416,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   - 去掉忙守卫（`run` 不看 `busy`）→ 第 1 格"再点一次"之后 `confirm` 两次，红；第 4 格同。
   - `onOpenChange` 不看 `busy` → 第 1 格按 Esc 之后对话框没了，红。
   - 去掉被拒之后的还焦点（`focusLost` 那一支）→ 第 3 格红。
-  - 被拒之后焦点给 Alert（不取的做法）→ 第 2 格与 A10 被拒之后的 `toBeFocused` 红。
+  - 被拒之后焦点给 Alert（不取的做法）→ 第 2 格与 A10 被拒之后的 `toBeFocused` 红。实际：Alert 挂上时就取的，vitest 第 2、3、4 格与 A10 三种都红；在 `setTimeout` 里取的，A10 照过（`toBeFocused` 判过一次就不再看），vitest 第 3 格抓（10.1）。
 - **牵连**：23.17、28.2 同一提交；第 7 条的对话框也是 `ConfirmDialog`。
 
 ##### 23.17、28.2 `aria-disabled` 的按钮看着可按
@@ -437,7 +437,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   - 9.1 点名的：改名 `W/app/rename-form.tsx:104`（I3 写 `:96`）、移动 `W/pages/notebook/move-page-dialog.tsx:194`（"取消"）、`:197`（"移动"），都 `disabled={sending}`。改名被链接锁拒（`linking.pages_locked`，`rename-page-dialog.tsx:68` 的 `pagesLocked`）、移动被拒（409 `page.cycle`、`page.too_deep`）都只在横幅里说。
   - 38.3 点名的粘贴来源：`W/pages/notebook/source-add-dialog.tsx:212` `disabled={sending || !canAddSource(...)}`；重复的拒绝（`duplicate`，带链到那份来源的链接）只在横幅里说。38.3 另点名的降级与升级的八个对话框是 `ConfirmDialog`，归 23.16。
   - 例：在树的菜单里把一页移到它自己的子页下，答 409 `page.cycle`；对话框上方出现原因，焦点在 `body`。
-- **经 `useForm` 的表单**：20 次调用、19 个文件（`grep -rn "useForm(\|useForm<" W`，去掉测试与定义）。字面的 `useForm(` 18 处，另两处是 `useForm<never>`（`notebook/general-page.tsx:96`、`onboarding/notebook-step.tsx:95`）。每一处的横幅都是 `{banner !== undefined && <Alert>{banner}</Alert>}`，在表单里（`upload-rows.tsx:240` 是 `note`，含 `banner`），所以只改 `form.ts` 与 `form-field.tsx` 就全改到。工作区搜索框（`search-box.tsx:91`）直接用 `useFocusOnInvalid`，它的失败总有 `aria-invalid` 的输入框，不受影响。
+- **经 `useForm` 的表单**：20 次调用、19 个文件（`grep -rn "useForm(\|useForm<" W`，去掉测试与定义）。字面的 `useForm(` 18 处，另两处是 `useForm<never>`（`notebook/general-page.tsx:96`、`onboarding/notebook-step.tsx:95`）。每一处的横幅都是 `{banner !== undefined && <Alert>{banner}</Alert>}`，在表单里（`upload-rows.tsx:240` 是 `note`，含 `banner`），所以只改 `form.ts` 与 `form-field.tsx` 就全改到（实际不成立：上传对话框里来源的重试，`upload-rows.tsx` 的 `SourceTitleForm` 的提示先取上传的失败、不带 `data-form-banner`，"Add source"发送中卸下、焦点被 Radix 交给对话框本身；修复第 1 轮改成横幅在前、按钮发送中禁用而不卸下，决定 506，10.1）。工作区搜索框（`search-box.tsx:91`）直接用 `useFocusOnInvalid`，它的失败总有 `aria-invalid` 的输入框，不受影响。
 - **改法**（已定：2.3 的 P2-3）：
   - 规则：失败之后焦点给第一个 `aria-invalid` 的字段；没有时（只有横幅说），**拒绝到达时焦点已丢**（在 `body`，或在发送中禁用的元素上）就给横幅；焦点在别处的不动。加"已丢"是为了不推翻 M8：撤销的确认框用 `useForm`、按钮 `aria-disabled`，被拒之后焦点留在"撤销"（HI3、`revert-background.test.tsx:183`）。
   - "已丢"在**拒绝到达的那一刻**判：`submit` 的 `catch` 里，`finally` 的 `setSending(false)` 渲染之前。那时 Chromium 已把焦点交给 `body`（或答得太快，焦点仍在禁用的按钮上），jsdom 焦点在禁用的按钮上，两种都算"已丢"。到 effect 里再判，jsdom 里按钮已经回来，判不出。
@@ -503,7 +503,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 ###### 26.4 "在哪里找"替换历史条目，丢掉它的 `arrived`
 
 - **现状**：`W/pages/search/search-page.tsx:172-180` 的 `choose` 以 `setParams(next, { replace: true })` 换地址，没带状态，这一条历史的 `arrived` 没了；之后从别处后退回到它，结果页的标题不取焦点，焦点在 `body`。`:80` 只取了 `key`。
-- **改法**：`:80` 改成 `const location = useLocation(); const entry = location.key;`；`:179` 改成 `setParams(next, { replace: true, state: location.state })`。在结果页换范围时焦点照旧留在选择上：`useArrivalFocus` 的 effect 只看 `arrival` 变没变（`true → true` 不重跑），标题也不重挂（`entry` 只进 SWR 的键）。这次 `replace` 换了查询，不是 28.4 说的"只换 state"，照新的导航算。文字不变。
+- **改法**：`:80` 改成 `const location = useLocation(); const entry = location.key;`；`:179` 改成 `setParams(next, { replace: true, state: location.state })`。在结果页换范围时焦点照旧留在选择上：`useArrivalFocus` 的 effect 只看 `arrival` 变没变（`true → true` 不重跑），标题也不重挂（`entry` 只进 SWR 的键）。这次 `replace` 换了查询，不是 28.4 说的"只换 state"，照新的导航算：看守重新起算；页没换、标题不重挂，已挂过标题的记录（`offered`）照样接续，不然之后挂上的"页面不存在"被当作第一次、从读者手里拿走焦点（S1 审查 B 的 M1，决定 507，10.1）。文字不变。
 - **测试**：vitest，`W/app/arrival.test.tsx` 新加 `"Where to look keeps the arrival of its entry: Back to the results from a page gone to from them gives their title the focus"`：`home()`，搜索框里 `Install{Enter}`，结果页的标题取得焦点；`user.selectOptions` 选 Plans，焦点仍在选择上、`router.state.location.state` 等于 `arrived`；`router.navigate(pagePath(install.id))`；`router.navigate(-1)`；结果页的标题取得焦点。**没修的代码上**：`location.state` 是 `null`，后退之后焦点在 `body`。
 - **变异**：去掉 `state: location.state` → 新格红。
 
@@ -531,7 +531,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 - **变异**：
   - `first` 不看 `watching` → 第 1 格红；
   - `useArrivalWatch` 不在 `Layout` 里调用 → 第 1 格红；
-  - 看守改用 `useEffect` → 第 1 格红（推断：子先于父，标题的 effect 先跑，看守还没开）；
+  - 看守改用 `useEffect` → 第 1 格红（推断：子先于父，标题的 effect 先跑，看守还没开）。实际：第 1 至 4 格照过（一次提交的 layout effect 全都先于 passive effect）；抓它的是 S1 审查 B 加的一格：只换 state、把树打开的页变成到达的 `replace`，焦点留在框里（10.1）；
   - 同一地址只换 state 的 `replace` 也重新起算看守 → 第 3 格红；
   - 不接续 `offered` → 第 4 格红。
 
@@ -544,8 +544,8 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   2. `"Back to a page the tree opened, the focus on the tree's link, leaves it there"`：点树的"Notes"、再点"Guide"（焦点在 Guide 的链接上），`router.navigate(-1)`，焦点仍在 Guide 的链接上。钉住"只从无人处"。
   3. `"the directory the tree opened keeps its mark through a filter: Back to it gives its title the focus"`：不用 `home()`：树里的"Directory""History"两行只在 `llm_wiki` 时才有（`page-tree.tsx:148`），`home()` 的 `pageServer` 缺省 `standard`（`W/test/page-server.ts:166`）；目录读的 `GET …/index` 也不在 `pageServer` 里（修订核对 A 的 N14）。这一格用 `pageServer({ mode: "llm_wiki", answers })`，`answers` 照 `W/test/index-server.ts` 的 `indexServer`（`:72` 起）给目录的路由（或让 `indexServer` 收 `mode`）；历史的路由 `pageServer` 已有。点树的"Directory"，换"类型"筛选（`user.selectOptions`），`router.state.location.state` 仍是 `opened`；`router.navigate(pagePath(linux.id), { state: arrived })`；`router.navigate(-1)`；目录的标题取得焦点。历史页的筛选同一格的 `test.each` 第二行。**没修的代码上**：换筛选之后 `state` 是 `null`，后退之后焦点在 `body`。
 - **变异**：
-  - 去掉 `isOpened` 的判断（任何 POP 都取）→ 两格照过；`renderApp` 的初始地址也是无状态的 POP，已有的"打开的页不抢"格（如 `trash-preview.test.tsx:209`）抓得到（推断）；
-  - 去掉 `type === "POP"`（点开也取）→ `arrival.test.tsx:127` 的"焦点留在树的链接上"红；
+  - 去掉 `isOpened` 的判断（任何 POP 都取）→ 两格照过；`renderApp` 的初始地址也是无状态的 POP，已有的"打开的页不抢"格（如 `trash-preview.test.tsx:209`）抓得到（推断）。实际：照过（那一页没有到达的标题）；抓它的是 S1 加的"先载入的页不取焦点"一格；
+  - 去掉 `type === "POP"`（点开也取）→ `arrival.test.tsx:127` 的"焦点留在树的链接上"红。实际：照过（jsdom 里点过的链接拿着焦点）；抓它的是 S1 加的"点击把焦点留在 `body`（Safari 的样子）"一格；
   - 去掉 `page-tree-item.tsx` 的 `state` → 第 1 格红；
   - 筛选的 `setParams` 不带 `state` → 第 3 格红。
 
@@ -609,8 +609,9 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
     5. `"signing out while another tab of the login has an edit not saved asks first, saying it is in another tab; Stay keeps the session and gives the focus back to the menu's button"`：`withEvents(signedInApp(...), page, channels)`，另开一个端口以 `answerClosings(..., () => true)` 作"别的标签页"；点"Ada"、点"Sign out"；`findByRole("alertdialog", { name: "Sign out anyway?", description: <signOut.unsavedElsewhere 的整句> })`；点"Stay"；焦点在"Ada"按钮，`sent` 里没有 logout，会话仍是 `signed-in`。**没修的代码上**：没有对话框，`sent` 有 logout，`findByRole` 超时红。
     6. 同上，确认"Sign out"：去登录页，`sent` 只有一次 logout。
     7. zh-CN 一格：`app.preferences.setLocale("zh-CN")`，对话框名"仍要退出登录吗？"、描述整句（`signOut.unsavedElsewhere` 的中文）。
-    8. 已有 `"signing out from the user menu ends the session and goes to sign in"`（`:8`）加 `expect(screen.queryByRole("alertdialog")).toBeNull()`：没有未保存的编辑时不问。
-  - `W/pages/page/page-lock.test.tsx` 新加 `"signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout"`：`type(" more")`，点"Ada"、"Sign out"；描述是 `signOut.unsavedHere` 的整句；"Stay"之后编辑器仍可写、`server.sent` 没有 `PUT`；再走一遍点"Sign out"：`PUT`、`END`、登录页。**没修的代码上**：没有对话框。
+    8. 已有 `"signing out from the user menu ends the session and goes to sign in"`（`:8`）：没有未保存的编辑时不问。实际：退出之后整代卸下，`queryByRole("alertdialog")` 恒为空，是空断言，修复第 1 轮去掉；守它的是走到了登录页（S1 审查 A 的 N1）。
+  - `W/pages/page/page-lock.test.tsx` 新加 `"signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout"`：`type(" more")`，点"Ada"、"Sign out"；描述是 `signOut.unsavedHere` 的整句；"Stay"之后编辑器仍可写、`server.sent` 没有 `PUT`；再走一遍点"Sign out"：`PUT`、`END`、登录页。**没修的代码上**：没有对话框。修复第 1 轮（S1 审查 C 的 M2，7.3）：这一格扣住 logout 的答复，断言确认键是"Signing out…"、`aria-busy` 与 `aria-disabled`；另加中文一格：本标签页的描述整句与"正在退出登录…"。
+  - 邀请页与会话不可用页（修复第 1 轮，S1 审查 A 的 M2、C 的 M1；原表漏了）：`W/pages/invitation.test.tsx` 两格（另一个标签页有未保存的编辑时先问，"Stay"之后焦点回到"Sign out"；问的期间连按两下只问一次、只退出一次），`W/app/guards.test.tsx` 一格（会话不可用时同样先问）。
   - e2e：C6（Chromium），见 4.1.0.3。
 - **已有测试要随之改的**：
   - `W/pages/page/page-lock.test.tsx:127`、`:141`、`:199`：三格都先 `type(" more")` 再退出，现在会先问；点菜单项之后加 `await user.click(within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", { name: "Sign out" }))`。`:199` 用假定时器（`shouldAdvanceTime: true`），本标签页有未保存的编辑，不问别的标签页，照旧推进即可（推断）。
@@ -622,6 +623,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   - `useSignOut` 不问直接退出 → 第 5 格与 `page-lock` 新格红。
   - `unsavedEdits` 改看 `this.edits.size > 0`（开着就算）→ `page-lock.test.tsx:170` 红（它不点确认）。
   - `onClosed` 不还焦点 → 第 5 格的焦点断言红。
+  - 修复第 1 轮加：邀请页、会话不可用页去掉 `{dialog}` 或改回立即退出 → 各自的新格红；去掉 `useSignOut` 的 `asking` 守卫 → 邀请页"连按两下"一格红；`signOut.signingOut`、中文 `signOut.unsavedHere` 改字 → `page-lock` 的格红。
 - **假服务端**：`W/test/event-server.ts:59` 的 `withEvents(app, page = new FakePage())` 加第三个可选参数 `channels = new FakeChannels()`，测试拿同一个 `FakeChannels` 开"别的标签页"的端口。
 - **牵连**：13.2 第 1、21 条的改写（8.2）；用 `ConfirmDialog`（23.16 之后发送中是 `aria-disabled`）。
 
@@ -658,13 +660,14 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 - **现状**：`W/reading/unresolved-links.ts:21-25` 给每个未建链接 `role="button"`、`aria-haspopup="dialog"`；而 `W/pages/page/unresolved-link.tsx:125-131` 在 LLM Wiki 里对 `index`、`log`（`virtualTarget`，`virtual-target.ts:8-39`）是导航，不开对话框。增强不知道模式。
 - **改法**：
   - `W/reading/enhancement.ts` 的 `ReadingContext` 加可选字段 `leads?: (target: string) => boolean`：对这个目标的未建链接动作是去笔记本的一页（LLM Wiki 的目录或历史，M10 设计 4.9），而不是开对话框；这样的链接是链接，不是开对话框的按钮。
-  - `unresolved-links.ts:21-25`：`leads?.(target) === true` 的 `role="link"`、不设 `aria-haspopup`，空格对它不起作用（用一个 `Set` 记哪些是按钮）；其余照旧。清理照旧去掉三个属性。
+  - `unresolved-links.ts:21-25`：普通链接（`kindOf(link) === "link"`）且 `leads?.(target) === true` 的 `role="link"`、不设 `aria-haspopup`，空格对它不起作用（用一个 `Set` 记哪些是按钮）；嵌入与图片照旧是按钮（M10 的 `virtual-navigation` 守格要求，实际见 10.1）；其余照旧。清理照旧去掉三个属性。
   - `unresolved-link.tsx`：`useUnresolvedLinks` 多返回 `leads: (target) => notebook.mode === "llm_wiki" && virtualTarget(target, pages.nodeAncestors(page)?.length) !== undefined`，`unresolved()` 的 `:125-131` 也用它（一处判断）。
   - `reading-view.tsx:173` 与 `version-view.tsx:101` 的上下文加 `leads: (target) => latestLeads.current(target)`（照 `latestUnresolved` 用 ref，不进 effect 的依赖）。
   - 文字不变。
 - **测试**：vitest：
   - `W/reading/unresolved-links.test.ts` 新加 `"a link the view goes to a page by, an LLM Wiki's directory, is a link: no dialog pops up from it, and Space is the page's"`：上下文 `leads: (target) => target === "index"`；`index` 的链接 `role="link"`、没有 `aria-haspopup`；`x` 的照旧。**没修的代码上**：`index` 也是 `button` + `dialog`。
   - `W/pages/page/unresolved-link.test.tsx` 新加 `"in an LLM Wiki, a link to its directory is a link that goes there"`：`pageServer({ mode: "llm_wiki", … })`，`[[index]]`：`getByRole("link", { name: "index" })`，没有 `aria-haspopup`，点了去目录。**没修的代码上**：`getByRole("link")` 找不到。
+  - 实际多改的（10.1）：`unresolved-links.test.ts` 加"嵌入与图片照旧是按钮"一格；`W/pages/page/virtual-navigation.test.tsx` 四格与 e2e LW10 (page)（三种）原先按按钮找这些链接，改按链接找，LW10 另断言没有 `aria-haspopup`。
 - **变异**：`leads` 恒 `false` → 两格红；`role` 仍写 `button` → 第一格红。
 - **牵连**：S4 改写同一个上下文所在的 effect。模式在显示中改变（升级批准）时：S4 会订阅模式，模式变了就撤掉增强再重跑、不动 HTML（4.4.2 的"笔记本的模式变了"一条）。
 
@@ -674,14 +677,14 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
 - **改法**：
   - `AttachmentRow` 加 prop `left: () => void`：行离开文档、焦点在它或它的菜单里时，焦点去的地方。`attachments-section.tsx:265` 传 `left={() => heading.current?.focus()}`（13.2 第 17 条"交给行或这一节的标题"；与 `held` 的 `onClosed` 的回退一致）。
   - 行里：`row = useRef<HTMLLIElement>`；`menu` 由 `DropdownMenuContent` 的回调 ref 记下（只记非空，已关的内容 `isConnected` 为假）；`left` 经 ref 取最新的。
-  - 一个依赖为空的 `useLayoutEffect`，清理时：`row` 含 `document.activeElement`，或 `menu` 仍在文档里且含它，就调 `left()`。
+  - 一个依赖为空的 `useLayoutEffect` 的清理记下焦点在不在行或菜单里（`row` 含 `document.activeElement`，或 `menu` 仍在文档里且含它）；一个依赖为空的 `useEffect` 的清理（节点已离开文档，菜单的 `FocusScope` 已拆）在记下为真、焦点已丢（`focusLost()`）时调 `left()`。只在 layout 清理里给，菜单开着时焦点被 `FocusScope` 拉回将卸下的菜单项、随后落到 `body`（实际见 10.1）。
   - 不用 `useFocusLeaving`：它在挂上时取 `ref.current`，那时菜单没开（`lib/focus-leaving.ts:15-22`）。
-  - **推断**（审查 A 的未核实的怀疑第 2 条）：照 React 19 的删除次序，删除一个函数组件时先跑它的 layout effect 的清理，再往下移除宿主节点；portal 在它的子树里，也在之后移除。所以清理时 `<li>` 与菜单都还在文档里，焦点也还在里面。没有跑过；实施时先用下面的测试证实（在没改的树上先看它红在 `body`，加清理之后看它绿）。不成立就改由这一节记下最后取得焦点的行（`focusin`），列表重读之后焦点在 `body`、那一行已不在时给标题。
+  - **推断**（审查 A 的未核实的怀疑第 2 条）：照 React 19 的删除次序，删除一个函数组件时先跑它的 layout effect 的清理，再往下移除宿主节点；portal 在它的子树里，也在之后移除。所以清理时 `<li>` 与菜单都还在文档里，焦点也还在里面。没有跑过；实施时先用下面的测试证实（在没改的树上先看它红在 `body`，加清理之后看它绿）。不成立就改由这一节记下最后取得焦点的行（`focusin`），列表重读之后焦点在 `body`、那一行已不在时给标题。实际：清理次序成立；在 layout 清理里给不成立，见上一条。
   - 文字不变。
 - **测试**：vitest，`W/pages/page/attachments-section.test.tsx` 新加：
   - `test.each` `"a row taken away by the list read again %s gives the focus to the section's title"`，`["its menu open", "on its Actions"]`：打开菜单（焦点在菜单项上）或只聚焦"Actions for photo.png"；`server.nodes` 去掉它；`readAgain()`（`W/test/page-panel.ts:34`）；`waitFor(() => expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" })))`。**没修的代码上**：`body`。
   - `"… the focus elsewhere stays there"`：焦点在搜索框，行被拿走，焦点仍在框里。
-- **变异**：只看行、不看菜单 → "menu open"格红；去掉整段 → 两格红；不看 `contains`（总是给标题）→ 第三格红。
+- **变异**：只看行、不看菜单 → "menu open"格红；去掉整段 → 两格红；不看 `contains`（总是给标题）→ 第三格红。实施另加：在 layout 清理里就给 → "menu open"格红。
 
 ##### 18.6 没有"编辑"可接焦点时焦点落在 `body`；`back` 留着
 
@@ -740,7 +743,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   - "接管"仍 `disabled={sending}`（`ownerless-row.tsx:87`）：Chromium 里焦点在 `body`，jsdom 里在 `from`，两种都合条件。
   - 文字不变。
 - **测试**：vitest，`W/pages/workspace/ownerless-page.test.tsx` 新加 `"a take-over answered as the reader types in the search box leaves the focus and the keys there"`：扣住接管的答复（`ownerlessServer` 的 `answers` 覆盖）；点"Take over…"；`user.click(searchBox)`（工作区设置页左栏的搜索框，`workspace-layout.tsx:115`）、`user.keyboard("ab")`；放开；`user.keyboard("c")`；焦点在框里、值 `"abc"`；状态行仍说接管了。**没修的代码上**：焦点在标题，值 `"ab"`。已有 `:204`（不动时标题取焦点）是对照，与 `:314` 照旧过。
-- **变异**：去掉 `watchReader` → 新格红；`toHeading` 不看焦点在哪 → 新格红（推断：读者点框时焦点已在框里）。
+- **变异**：去掉 `watchReader` → 新格红；`toHeading` 不看焦点在哪 → 新格红（推断：读者点框时焦点已在框里）。实际：去掉 `watchReader` 时新格照过（读者在框里时，焦点的判断本身就够）；抓它的是 S1 加的"读者滚动过、焦点仍在 Take over"一格（10.1）。
 - **牵连**：13.2 第 26 条的改写（8.2）。
 
 ##### 24.3、49 撤销对话框里两句说明不在可访问描述里
@@ -778,7 +781,7 @@ S1 改三处共用的东西：`ConfirmDialog`、`useForm` 的横幅、到达的�
   - 阅读视图为锚点的重读（`reading-view.tsx:267` 的 `watchReader`）：到达的标题先取焦点是程序的移动，不是读者的动作，锚点的元素回来时照旧取；读者动了，两者都不移。
   - 附件一节的 `useLocated`（`attachments-section.tsx:420-431`）、任务列表的 `useArriving`（`transfer-page.tsx:275-280`）各有自己的看守，`Located` 不进 `useArrivalWatch`，不变。
   - 23.14、18.6 的 `replacing`：只在这次导航已显示过的页被"页面不存在"代替时，从无人处取；初次打开一个不存在的地址（不是到达）照旧不取。不是到达的导航（树打开的页）在别处被删、焦点在页里时，焦点从 `body` 改到"页面不存在"的标题（推断是改进）。
-  - 只换 state 的 `replace`（28.4 的规则）：看守与 `offered` 接续；26.4 的 `replace` 换了查询，照新的导航算，标题不重挂，不受影响。
+  - 只换 state 的 `replace`（28.4 的规则）：看守与 `offered` 接续；26.4 与 28.5 的筛选的 `replace` 换了查询：看守重新起算，`offered` 照样接续（原写"不受影响"不成立，决定 507）。
 - **portal 里的对话框**：
   - `ConfirmDialog`（`AlertDialog`，portal）改 `aria-disabled` 之后焦点一直在对话框里，Radix 的 `FocusScope` 不用拉回；被拒之后焦点丢了才交还给"确认"（同一个 portal 里）。
   - `useForm` 的横幅在对话框（portal）里时，取焦点仍在 `FocusScope` 之内；横幅在页面上的表单（设置页）同样。
@@ -3237,6 +3240,7 @@ const threeBrowsers =
 | S1 | HI3（`history/hi3-log-revert.spec.ts:419-447`） | 加两条断言 | 23.17、28.2：发送中的按钮半透明 | Chromium | < 0.2 s |
 | S1 | C6 (page, signed out elsewhere)（`collab/c6-expired.spec.ts:83`） | 先过"仍要退出登录吗" | 第 7 条：别的标签页报告有未保存的修改 | Chromium | < 0.5 s |
 | S1 | PG11（`page/pg11-navigation.spec.ts:144`） | 加一行 | 12.3：点面包屑之后，笔记本首页的 `h1` 取得焦点 | Chromium | < 0.1 s |
+| S1 | LW10 (page)（`wiki/lw10-virtual.spec.ts:293`；实际多改的，10.1） | 目录、历史的未建链接改按链接找，断言没有 `aria-haspopup` | 35.2 | 三种（已在） | 约 0.4 s（实测） |
 | S2 | C4（`collab/c4-guard.spec.ts:236`、`:273`） | 改断言的文字 | 22.16 | Chromium | 0 |
 | S2 | TB1（`trash/tb1-trash.spec.ts:316`、`:369-376`） | 改断言的文字，观察者加新句 | 22.11、22.13 | Chromium | 0 |
 | S2 | LW6（`wiki/lw6-source-history.spec.ts:439`） | 否定断言换成不变的半句 | 38.8 | Chromium | 0 |
@@ -3302,17 +3306,19 @@ const threeBrowsers =
 
 每个提交单独为绿（tsc、knip、vitest、oxlint；改了故事就跑那几个故事）。knip：新的导出都有人用（`focusLost`、`opened`、`useArrivalWatch`、`askOtherTabs`、`useSignOut`、导出的 `ChunkNotLoaded`）。
 
-1. **`web, e2e: ConfirmDialog keeps the focus on confirm while it is out and after a refusal, and aria-disabled buttons look disabled (M12/P2/S1)`**：23.16 + 23.17 + 28.2（**必须同一个提交**：00 号文档 4.5，不然发送中的按钮看着能按）；`lib/focus-leaving.ts` 的 `focusLost`；`confirm-dialog.test.tsx`；`source-attachments.test.tsx:396` 的改动；A10、HI3。
+1. **`web, e2e: ConfirmDialog keeps the focus on confirm while it is out and after a refusal, and aria-disabled buttons look disabled (M12/P2/S1)`**：23.16 + 23.17 + 28.2（**必须同一个提交**：00 号文档 4.5，不然发送中的按钮看着能按）；`lib/focus-leaving.ts` 的 `focusLost`；`confirm-dialog.test.tsx`；`source-attachments.test.tsx:396` 的改动（实际另有 `security-page.test.tsx:185`，发送中的"撤销"原断言 `disabled`）；A10、HI3。
 2. **`web, e2e: a refusal only the banner says takes the focus the form lost (M12/P2/S1)`**：9.1 + 38.3；用第 1 个提交的 `focusLost`（第 2 个先合时把 `focusLost` 放进它）；新 `form.test.tsx`；`page-tree-writes.test.tsx`、`source-add-dialog.test.tsx`；LW3。
 3. **`web: arrival focus: a late title yields to the reader, Back and Forward to a page the tree opened, Not found in place of a page (M12/P2/S1)`**：28.4（连同同一地址只换 state 的 `replace`）、28.5、23.14（`arrival.ts`、`layout.tsx`、`page-tree-item.tsx`、`page-tree.tsx`、`not-found.tsx`、`changeset-page.tsx`）；`arrival.test.tsx`、`revert-dialog.test.tsx`。
-4. **`web: links that leave with their page arrive, and Where to look keeps the arrival (M12/P2/S1)`**：12.3（连同工作区首页的笔记本卡片）、26.4。可与 3 合并。
+4. **`web, e2e: links that leave with their page arrive, and Where to look keeps the arrival (M12/P2/S1)`**：12.3（连同工作区首页的笔记本卡片）、26.4；PG11 的一行。可与 3 合并。
 5. **`web: an edit left with no Edit gives the focus to the title, or to Page not found (M12/P2/S1)`**：18.6；**在 3 之后**（"页面不存在"一半要 3 的 `replacing`）。
 6. **`web, e2e: ask before signing out with changes not saved, this tab's or another's (M12/P2/S1)`**：7；新的 i18n 键；`page-lock.test.tsx` 的三格改动与 C6 **必须在这个提交里**（不然它们红）。
 7. **`web: the undo dialog's description says all it asks (M12/P2/S1)`**：24.3 + 49（同一个改法，**同一个提交**）。
-8. **`web: the reading view's task boxes are named for readers, and links to pages not there keep their state (M12/P2/S1)`**：6.3、11.7、35.2（可拆成三个）。
+8. **`web, e2e: the reading view's task boxes are named for readers, and links to pages not there keep their state (M12/P2/S1)`**：6.3、11.7、35.2（可拆成三个）；实际另改 `virtual-navigation.test.tsx` 四格与 LW10 (page)（35.2 的嵌入与图片，10.1）。
 9. **`web: a row gone with its menu, the conflict's Try again and a take-over leave the focus somewhere; a report's Try again names its job (M12/P2/S1)`**：16.1、21.14、22.17、19.3（可拆）。
 10. **`web: a source's read-only note is no alert (M12/P2/S1)`**：38.1。
 11. **`docs: … (M12/P2/S1)`**：总体设计 13.2 的改写（8.2）、Step 的记录。
+
+实际（10.1）：第 1–10 个照上面的次序；之后修复第 1 轮四个（`52295438`、`1ebe1b16`、`793c062c`、`137356d6`）、第 2 轮一个（`2d707feb`）与一次合并 `main`（`01283f3f`），文档提交在最后。
 
 `en.ts`、`zh-CN.ts` 只有第 6、9 个提交改。
 
@@ -3603,6 +3609,8 @@ P2 完成，当且仅当下面七条都成立。
    - README 不改：38.6 是让界面与 README 的 MiB 一致。
    - 审查发现的新问题，照 02-workflow 加进 05-lessons。
 
+**S1 之后**（2026-11-16）：第 1 条，S1 已合并（`（待填：S1 的合并号）`），合并之前 7.3 的门禁全绿、审查与修复核对结束。第 2 条，S1 的测试在没修的代码上红过，变异都抓到或写明（10.1 与 [S1 的记录](reviews/P2-S1-focus-and-shared-review.md)），三引擎的探查与鼠标的探针记下。第 3 条，附录 A 里 S1 的 22 项修好，第 7 条里来不及答的标签页推后进 v0.2。第 4–7 条，S1 的文档提交照写的改了（00 号文档第 12、13 节，总体设计 13.2 第 1、12、17、21、26 条与第 15 节，`M5-polish.md` 的一行，05-lessons）。
+
 ### 8.2 总体设计的新文字
 
 改的是 `docs/v0.1/v0.1-design.md`。
@@ -3616,7 +3624,7 @@ P2 完成，当且仅当下面七条都成立。
    > `` `ConfirmDialog` 发送中仍用 `disabled`，留到 v0.1 之后的打磨（[M12 的打磨移交](M12-release/handoffs/M5-polish.md)第 23 条）。 ``
 
    新文字（取代 00 号文档写的"…被拒之后焦点还给确认按钮或说明；只有横幅的拒绝时焦点给横幅…"，理由见 2.3 的 P2-2、P2-3）：
-   > `ConfirmDialog` 在 M12 照此（M12/P2/S1）：发送中"确认"与"取消"用 `aria-disabled`（"确认"另带 `aria-busy`），忙的守卫让一次按下至多一个请求，Esc 与"取消"在发送中不关闭对话框；焦点留在按下的地方，被拒之后仍在"确认"上（丢了就还给它），拒绝由对话框里的 `role=alert` 说出。`useForm` 的表单发送中仍禁用按钮：失败而没有 `aria-invalid` 的字段（只有横幅说的拒绝），且拒绝到达时焦点已丢（在 `body`，或在发送中禁用的元素上）时，焦点给横幅；焦点没丢的（撤销的确认框）、读者放到别处的不动（第 26 条）。`aria-disabled` 的按钮与禁用的一样变暗（`components/ui/button.tsx`）。
+   > `ConfirmDialog` 在 M12 照此（M12/P2/S1）：发送中"确认"与"取消"用 `aria-disabled`（"确认"另带 `aria-busy`），忙的守卫让一次按下至多一个请求，Esc 与"取消"在发送中不关闭对话框；焦点不动：按下"确认"时它拿着焦点的（键盘，Playwright 的三种引擎用鼠标也是），发送中与被拒之后仍在它上面（丢了就还给它）；浏览器不给点过的按钮焦点的（Safari），焦点留在原处；拒绝由对话框里的 `role=alert` 说出。`useForm` 的表单发送中仍禁用按钮：失败而没有 `aria-invalid` 的字段（只有横幅说的拒绝），且拒绝到达时焦点已丢（在 `body`，或在发送中禁用的元素上）时，焦点给横幅；焦点没丢的（撤销的确认框）、读者放到别处的不动（第 26 条）。`aria-disabled` 的按钮与禁用的一样变暗（`components/ui/button.tsx`）。
 
 2. **第 26 条**（第 17 条的前一半）。旧文字恰好一句：
    > `无主笔记本接管之后的焦点（M3）还没有照此，留到 v0.1 之后的打磨（[M12 的打磨移交](M12-release/handoffs/M5-polish.md)第 22 条）。`
@@ -3633,10 +3641,10 @@ P2 完成，当且仅当下面七条都成立。
    > 退出登录先问（M12/P2/S1，`app/sign-out.tsx` 的 `useSignOut`；用户菜单、邀请页与会话不可用时的"退出登录"）：这个标签页的编辑，或同一登录的别的标签页经频道 `nwiki.edits` 在 100 毫秒内说有的，有未保存的修改时，先问"仍要退出登录吗"（留下，或退出）；退出之后照旧先经编辑器悄悄保存，再结束编辑（第 1 条），保存不了的随退出丢失。
 
 5. **第 17 条**。旧文字恰好一句的末尾：`打开、切换进入的页面不抢焦点。` 新文字：
-   > 打开、切换进入的页面不抢焦点；链接随它所在的页一起离开的（子页列表、面包屑、工作区首页的笔记本卡片、右栏与阅读视图里的链接）带 `arrived`，否则焦点落到 `body`（M12/P2/S1）。左栏的树打开的页带 `opened`：点开时焦点留在树上，后退、前进回到它时标题只从无人处取（M12/P2/S1）。
+   > 打开、切换进入的页面不抢焦点；链接随它所在的页一起离开的（子页列表、面包屑、工作区首页的笔记本卡片、右栏与阅读视图里的链接）带 `arrived`，否则焦点落到 `body`（M12/P2/S1）。左栏的树打开的页带 `opened`（连同"目录""历史"两行）：点开时焦点留在树上，后退、前进回到它时标题只从无人处取（M12/P2/S1）。
 
 6. **第 26 条到达的那一句**。旧文字恰好一句：`标题在一次导航的第一次挂上时取到达的焦点（`arrived` 或 `Located`）；同一次导航之后再挂上时，只在焦点空着（`document.activeElement` 为空或 `body`）时取。` 新文字：
-   > 标题在一次导航的第一次挂上时取到达的焦点（`arrived` 或 `Located`）。`arrived` 的导航，读者自提交起有过动作时（`Layout` 的 `useArrivalWatch`，从提交起的 `watchReader`）只从无人处取：迟挂上的标题（笔记本的树还在读）不抢读者正在打字的框；`Located` 不进这个看守，附件的行自己看读者（`useLocated`）。同一路径与查询、只换 state 的 `replace` 不算新的导航：看守不重新起算，已挂过标题的记录接续（M12/P2/S1）。同一次导航之后再挂上时，只在焦点空着（`document.activeElement` 为空或 `body`）时取；代替这次导航已显示的页的"页面不存在"（`NotFoundPage` 的 `replacing`：撤销答 404、编辑中被删的页）同样只从无人处取（M12/P2/S1）。
+   > 标题在一次导航的第一次挂上时取到达的焦点（`arrived` 或 `Located`）。`arrived` 的导航，读者自提交起有过动作时（`Layout` 的 `useArrivalWatch`，从提交起的 `watchReader`）只从无人处取：迟挂上的标题（笔记本的树还在读）不抢读者正在打字的框；`Located` 不进这个看守，附件的行自己看读者（`useLocated`）。同一路径、查询与片段、只换 state 的 `replace` 不算新的导航：看守不重新起算，已挂过标题的记录接续；同一路径、换了查询或片段的 `replace`（目录、历史的筛选，"在哪里找"）是新的导航，看守重新起算，但页没换、标题不重挂，已挂过标题的记录照样接续（M12/P2/S1）。同一次导航之后再挂上时，只在焦点空着（`document.activeElement` 为空或 `body`）时取；代替这次导航已显示的页的"页面不存在"（`NotFoundPage` 的 `replacing`：撤销答 404、编辑中被删的页）同样只从无人处取（M12/P2/S1）。
 
 另外，第 12 条里的 `失败之后焦点移到第一个 `aria-invalid` 的字段；`（恰好一处）可以不动：横幅的规则写进了第 1 条的新文字。第 26 条"现有的几处"可以不加 22.17：第 2 条的新文字已在同一条里。
 
@@ -3747,6 +3755,36 @@ P2 完成，当且仅当下面七条都成立。
 ## 10. 结果
 
 （实施后补。每个 Step 一节：合并号、与设计不同之处、变异的结果、门禁与 CI、e2e 的用时。）
+
+### 10.1 S1：焦点与共用组件（2026-11-16，合并见 00 号文档第 12 节）
+
+- **提交**：十五个代码提交与一次合并 `main`，加本文档提交；[审查记录](reviews/P2-S1-focus-and-shared-review.md)。
+  - 第 1–10 个照 6.1，头 `14cc9769`；
+  - 修复第 1 轮四个（`52295438`、`1ebe1b16`、`793c062c`、`137356d6`），第 2 轮一个（`2d707feb`，只改注释）；
+  - 合并 `main` 的 `01283f3f`（P3/S1、S2 与 P4/S4 的设计），没有冲突；
+  - 三份审查 A 0I2M2N、B 0I1M1N、C 0I3M8N1Q；核对第 1 轮只有 C 的一条 Nit，修复第 2 轮由主持者核对。
+- **做完**：A：7；B：6.3、9.1、11.7、12.3、16.1、18.6、19.3、21.14、22.17、23.14、23.16、24.3、26.4、28.4、28.5、35.2、38.1、38.3、49；C：23.17、28.2。推后进 v0.2：第 7 条里来不及答的标签页（主线程被占住超过 100 毫秒；要事先登记，Web Locks）。
+- **与设计不同之处**（正文照实改了，各处注"实际见 10.1"）：
+  - **16.1** 改成两段清理：layout 清理记下焦点在不在行或菜单里，passive 清理在焦点已丢时给标题。只在 layout 清理里给，菜单开着时被菜单的 `FocusScope` 拉回将卸下的菜单项、随后落到 `body`。
+  - **35.2**：只有普通链接看 `leads`，嵌入与图片照旧是按钮（M10 的 `virtual-navigation` 守格）；`virtual-navigation.test.tsx` 四格与 LW10 (page)（三种）改按链接找。
+  - **`security-page.test.tsx:185`** 随 1 号改成 `aria-disabled`。
+  - **9.1**："只改 `form.ts` 就全改到"对上传对话框里来源的重试不成立：提示先取上传的失败、不带 `data-form-banner`，"Add source"发送中卸下、焦点被交给对话框本身。改成横幅在前、按钮发送中禁用而不卸下（决定 506）。
+  - **26.4 与 4.1.4**：筛选与"在哪里找"的 `replace`"不受影响"不成立：新地址不在 `offered` 里，之后挂上的"页面不存在"当作第一次。同一路径的 `replace` 也接续 `offered`（决定 507）。
+  - **4.1.2 的测试表**漏了邀请页与会话不可用页的"退出登录"，7.3 要的新键两种语言也没列全，设计与实现同漏，修复第 1 轮补上；表里第 8 格加的"没问"是空断言，去掉。
+  - **13.2 第 12 条的新文字**：探针之后改成"焦点不动"的写法，Safari 用鼠标的情形写明（决定 509）。
+  - **23.16 的 e2e 说明**"WebKit 鼠标点按钮不给焦点"在 Playwright 里不成立（三种引擎都给）；A10、LW3 的注释改成 Safari。
+  - **推断错了的变异**：28.4 的 `useEffect` 起初照过，补审查 B 的一格之后红；28.5 的两条与 22.17 的一条各补一格。
+- **4.1.0.5 先核对的五条**：
+  1. 16.1：清理次序成立；在 layout 清理里给不成立，见上。
+  2. 28.4：全量 vitest 在看守之下全绿（4,602 格），没有格依赖"标题挂上之前有点击，标题照样抢"。懒加载块读的期间按的键没量：vitest 里路由的懒加载在同一次 `act` 里读完，造不出这个窗口；e2e 要扣住块的请求，S1 没做。
+  3. 28.5：树里"目录""历史"两行与页行同类，带 `opened`。
+  4. 11.7：照代码读，`aria-busy` 从问落点起，到落点的答复处理完（去那一页、读父页或开对话框）为止，在 `finally` 里去掉，对话框开着时不忙；`unresolved-link.test.tsx` 两格在"不存在"的对话框开着时断言没有 `aria-busy`，新建页的确认框走同一个 `show()`，没有另一格。
+  5. 23.16：推断不成立。Playwright 的三种引擎用鼠标点"确认"，焦点都在它上面（打开时在"取消"），发送中（"Revoking…"）与被拒之后仍在"确认"上（各两次）。Safari 不给点过的按钮焦点，那里焦点会留在"取消"上（照代码推，没核实），交 P5/S3 的人工清单。
+- **变异**：vitest 57 条，加修复第 1 轮 12 条，都抓到（28.4 的 `useEffect` 在补格之后）。e2e 的 X1、X3、X4、横幅不取、第 7 条、12.3、焦点给 Alert（挂上时取）都抓到；在 `setTimeout` 里给 Alert 的 A10 照过（`toBeFocused` 判过一次就不再看），vitest 抓。"去掉 `:disabled`"vitest 抓，LW3 在 WebKit 上也抓（审查 C 两次共 5/5 红，实施者一次过：拒绝到达时 WebKit 的焦点多半仍在禁用的按钮上）；审查 C 的 X1b 三种都红。表在 S1 的记录。
+- **门禁与 CI**：实施时 `make gen-check`、`make check`（`5de7f0d0`）与 `make e2e`（`14cc9769`）全绿；修复第 1 轮、合并 `main` 之后 `make gen-check`、`make lint-web`、`make knip`、`make test-web`、`make e2e` 全绿（Go 不改）。分支 CI 每次 19 项全绿：`14cc9769` 的 run 43848588621，`137356d6` 的 43869362051，`2d707feb` 的 43877723619，合并 `main` 的 43881669843；`793c062c` 的 run 由 `concurrency` 取消。本提交自己的分支 CI：`（待填：本提交的分支 CI）`。
+- **e2e 的用时**：S1 改到的十二格（设计列的九格加 LW10 (page) ×3）33.0 → 38.3 秒，多 5.3 test-seconds；九格多 4.9（推断 6–7）。`14cc9769` 的 e2e 作业 7:29（E2E 6:04），web 3:49（Test 3:07），vitest 4,591 格；修复之后 4,602 格。
+- **三引擎探查**：12.3 与 28.5 在三种引擎里都是标题取得焦点；树打开的页之间后退，焦点留在树上；鼠标按"确认"，三种引擎都给它焦点。
+- **照实改的各节**（02-workflow 3.5）：4.1.0.1 的表与数目、4.1.0.5、23.16（`focusLost` 一句、e2e 一句、给 Alert 的变异）、26.4、28.4 与 28.5 的变异、4.1.2 的测试与变异、9.1（"经 `useForm` 的表单"）、35.2、16.1、22.17、4.1.4、5.2 的 S1 一行、6.1、8.1、8.2 第 1、5、6 条。
 
 ## 附录：核对过的代码
 

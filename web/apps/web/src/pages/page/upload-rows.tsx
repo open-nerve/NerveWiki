@@ -220,7 +220,9 @@ const SourceTitleForm = observer(function SourceTitleForm({
   const server = formErrors(titleRefusal === undefined ? upload.failure : undefined, t, ["title"], sourceFormTexts);
   const problem =
     problemOf("title") ?? (titleRefusal === undefined ? server.fields.title : t(titleMessages[titleRefusal.issue]));
-  const note = explain(upload.failure) ?? banner ?? server.banner;
+  // A retry's refusal is the form's: its banner, which takes the focus the form lost (M12/P2/S1, 9.1, 38.3); the first
+  // upload's, not sent by the form, is said as before.
+  const note = banner ?? explain(upload.failure) ?? server.banner;
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -246,7 +248,9 @@ const SourceTitleForm = observer(function SourceTitleForm({
         error={problem}
         onChange={(event) => runInAction(() => (upload.name = event.target.value))}
       />
-      {failed && (
+      {/* Kept while the retry is out, disabled: gone, it would leave the focus to the dialog itself, which a refusal
+          then finds not lost. */}
+      {(failed || sending) && (
         <Button type="submit" disabled={sending || !canRetry()}>
           {t("source.uploadRetry")}
         </Button>

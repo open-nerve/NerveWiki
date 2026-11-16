@@ -12,12 +12,14 @@ import { locatedOf } from "./page/attachment-row";
  * hit say, leaves the focus nowhere else (M8 closeout B-M1). Shown later
  * for the same navigation, the page deleted under a reader working
  * elsewhere, it takes the focus only from no one (useArrivalFocus; K1-1,
- * K2-1).
+ * K2-1). In place of what this navigation showed (replacing: a changeset
+ * an undo found gone), it takes the focus only from no one, whatever the
+ * navigation was (M12/P2/S1).
  */
-export function NotFoundPage() {
+export function NotFoundPage({ replacing = false }: { replacing?: boolean }) {
   const t = useT();
   useDocumentTitle(t("notFound.title"));
-  const heading = useArrivalFocus<HTMLHeadingElement>(locatedOf(useLocation().state) !== undefined);
+  const heading = useArrivalFocus<HTMLHeadingElement>(locatedOf(useLocation().state) !== undefined, replacing);
   return (
     <section className="space-y-2">
       <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">

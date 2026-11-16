@@ -292,6 +292,71 @@ test("one link at a time: busy while the server answers, a second activation ask
   expect(x.hasAttribute("aria-busy")).toBe(false);
 });
 
+// M12/P2/S1, 11.7: read again while the server is asked, the new link at the same place is busy as well.
+test("the link read again while the server answers is busy too, and neither is once it answers", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  let answer!: () => void;
+  const { server } = await open(linkTo("x"));
+  server.landings.set(
+    "x",
+    () =>
+      new Promise<Response>((resolve) => {
+        answer = () => resolve(new Response(JSON.stringify({ node_id: null, landing: null, reason: "too_deep" })));
+      })
+  );
+  const x = await button("x");
+  await userEvent.click(x);
+  await waitFor(() => expect(x.getAttribute("aria-busy")).toBe("true"));
+
+  server.views.set(guide.id, { html: `<p>${linkTo("x")} again</p>`, revision: 2, assets_expire_at: null });
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(screen.getByRole("article", { name: "Guide" }).textContent).toBe("x again"));
+  const again = screen.getByRole("button", { name: "x" });
+  expect(again).not.toBe(x);
+  expect(again.getAttribute("aria-busy")).toBe("true");
+
+  act(() => answer());
+  expect(await screen.findByRole("alertdialog", { name: "“x” does not exist" })).toBeTruthy();
+  expect([x.hasAttribute("aria-busy"), again.hasAttribute("aria-busy")]).toEqual([false, false]);
+});
+
+// M12/P2/S1, 11.7: a link resolved while its dialog was open, a page made for it elsewhere, is a link to the page.
+test("with the view read again meanwhile, the link resolved since, the focus goes back to the link of its text", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const { server } = await open(`${linkTo("T", "one")} ${linkTo("T", "two")}`);
+
+  (await button("two")).focus();
+  await userEvent.keyboard("{Enter}");
+  const dialog = await screen.findByRole("alertdialog", { name: "Create page “T”?" });
+  server.views.set(guide.id, {
+    html: `<p><a class="nw-wikilink" data-nw-node="${notes.id}">two</a></p>`,
+    revision: 2,
+    assets_expire_at: null,
+  });
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+  await waitFor(() => expect(screen.getByRole("article", { name: "Guide", hidden: true }).textContent).toBe("two"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("link", { name: "two" })));
+});
+
+// M12/P2/S1, 35.2: in an LLM Wiki a link to its directory goes there; it opens no dialog, so it is a link.
+test("in an LLM Wiki, a link to its directory is a link that goes there", async () => {
+  const server = pageServer({ role: "editor", mode: "llm_wiki" });
+  server.views.set(guide.id, { html: `<p>${linkTo("index")}</p>`, revision: 1, assets_expire_at: null });
+  const { router } = renderApp(pagePath(guide.id), server.app, { enhancements });
+  await screen.findByRole("article", { name: "Guide" });
+
+  const link = await screen.findByRole("link", { name: "index" });
+  expect(link.hasAttribute("aria-haspopup")).toBe(false);
+  await userEvent.click(link);
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}/index`));
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
 test("Enter opens the dialog; with the view read again meanwhile, the focus goes back to the link at the same place among those to its target, else to the article", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { server } = await open(`${linkTo("T", "first")} ${linkTo("T", "second")}`);

@@ -1,5 +1,7 @@
-import { useEffect, useRef, type RefObject } from "react";
-import { useLocation } from "react-router";
+import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import { useLocation, useNavigationType, type Location } from "react-router";
+
+import { watchReader } from "../pages/page/readers-input";
 
 /**
  * arrived is the route state of a page reached because the one before went
@@ -13,6 +15,25 @@ export const arrived = { arrived: true } as const;
 function isArrival(state: unknown): boolean {
   return typeof state === "object" && state !== null && "arrived" in state && state.arrived === true;
 }
+
+/**
+ * opened is the route state of a page the notebook's tree opened (M12/P2/S1): no arrival, the focus staying on the
+ * tree's link, but an entry Back and Forward come to after the page left took the focus with it, its title taking
+ * it then from no one (useArrivalFocus).
+ */
+export const opened = { opened: true } as const;
+
+function isOpened(state: unknown): boolean {
+  return typeof state === "object" && state !== null && "opened" in state && state.opened === true;
+}
+
+type Reader = ReturnType<typeof watchReader>;
+
+/**
+ * What the reader did since each arrival's navigation committed, by its location (useArrivalWatch), until the next
+ * navigation.
+ */
+const watching = new WeakMap<object, Reader>();
 
 /**
  * The navigations whose heading has been offered the arrival focus, or has
@@ -34,10 +55,14 @@ const offered = new WeakSet<object>();
  * elsewhere, its shell gives way to "Page not found"; restored elsewhere,
  * its shell comes back. A reader working elsewhere meanwhile, in the
  * search box say, keeps the focus and the keys they type (v0.1 design
- * 13.2, item 26; M8 closeout K1-1, K2-1, K2-2).
+ * 13.2, item 26; M8 closeout K1-1, K2-1, K2-2). The first heading of an
+ * arrival that mounts once the reader did something since its navigation
+ * committed (useArrivalWatch) counts as a later one: a title that shows
+ * late, the notebook's tree still read, does not take the box the reader
+ * types in (M12/P2/S1, 28.4).
  */
 function takeArrivalFocus(navigation: object, heading: HTMLElement | null): void {
-  const first = !offered.has(navigation);
+  const first = !offered.has(navigation) && watching.get(navigation)?.acted() !== true;
   offered.add(navigation);
   const at = document.activeElement;
   if (first || at === null || at === document.body) {
@@ -50,6 +75,72 @@ function takeArrivalFocus(navigation: object, heading: HTMLElement | null): void
 }
 
 /**
+ * useArrivalWatch watches what the reader does from each arrival's
+ * navigation as it commits (watchReader) until the next one: Layout, the
+ * root route's component, calls it once, its layout effect running
+ * before the headings' effects of the same commit. A Located navigation
+ * is not watched: an attachment's row watches the reader itself
+ * (useLocated). A replace of the entry's state alone, its path, search
+ * and hash the same, is the same navigation: the watch goes on, not
+ * started again, and a heading already offered the focus stays offered
+ * (M12/P2/S1, 28.4): a route's notice cleared by such a replace leaves a
+ * later "Page not found" a later mount. A replace of the same path that
+ * changes its query or hash, a filter's, is a new navigation, watched
+ * anew; the page stays, its heading not mounting again, and it stays
+ * offered too: a later "Page not found" takes the focus from no one only
+ * (M12/P2/S1, review B's M1).
+ */
+export function useArrivalWatch(): void {
+  const location = useLocation();
+  const type = useNavigationType();
+  const last = useRef<{ location: Location; reader: Reader | undefined }>(undefined);
+  useLayoutEffect(() => {
+    const before = last.current;
+    if (before?.location === location) {
+      return;
+    }
+    const same =
+      before !== undefined &&
+      type === "REPLACE" &&
+      before.location.pathname === location.pathname &&
+      before.location.search === location.search &&
+      before.location.hash === location.hash;
+    if (same) {
+      if (before.reader !== undefined) {
+        watching.set(location, before.reader);
+      }
+      if (offered.has(before.location)) {
+        offered.add(location);
+      }
+      last.current = { location, reader: before.reader };
+      return;
+    }
+    if (
+      before !== undefined &&
+      type === "REPLACE" &&
+      before.location.pathname === location.pathname &&
+      offered.has(before.location)
+    ) {
+      offered.add(location);
+    }
+    before?.reader?.end();
+    const reader = isArrival(location.state) ? watchReader() : undefined;
+    if (reader !== undefined) {
+      watching.set(location, reader);
+    }
+    last.current = { location, reader };
+  }, [location, type]);
+  // Unmounted (StrictMode's too, which mounts it again with the same location), the watch ends and starts anew.
+  useLayoutEffect(
+    () => () => {
+      last.current?.reader?.end();
+      last.current = undefined;
+    },
+    []
+  );
+}
+
+/**
  * useArrivalFocus is the ref of a page's main heading (tabIndex -1), which
  * takes the focus as the page shows when the page was arrived at, or when
  * also says the page's own state is an arrival too, and does not take it
@@ -57,12 +148,18 @@ function takeArrivalFocus(navigation: object, heading: HTMLElement | null): void
  * that is no arrival still counts as its first: a page opened for an
  * attachment (Located), the attachment's row taking the focus, then
  * deleted elsewhere, gives way to "Page not found" as a later mount, which
- * takes the focus only from no one (M8 closeout K2-1).
+ * takes the focus only from no one (M8 closeout K2-1). Of no arrival, it
+ * takes the focus from no one when Back or Forward come to a page the
+ * tree opened (opened), or when replacing says it stands for the page
+ * this navigation showed, "Page not found" in place of a changeset an
+ * undo found gone or of a page deleted under its editor (M12/P2/S1).
  */
-export function useArrivalFocus<T extends HTMLElement>(also = false): RefObject<T | null> {
+export function useArrivalFocus<T extends HTMLElement>(also = false, replacing = false): RefObject<T | null> {
   const ref = useRef<T>(null);
   const location = useLocation();
+  const type = useNavigationType();
   const arrival = also || isArrival(location.state);
+  const fromNoOne = !arrival && (replacing || (type === "POP" && isOpened(location.state)));
   const entry = useRef<object>(location);
   useEffect(() => {
     entry.current = location;
@@ -72,7 +169,11 @@ export function useArrivalFocus<T extends HTMLElement>(also = false): RefObject<
       takeArrivalFocus(entry.current, ref.current);
     } else {
       offered.add(entry.current);
+      if (fromNoOne) {
+        // No longer its first: from no one only.
+        takeArrivalFocus(entry.current, ref.current);
+      }
     }
-  }, [arrival]);
+  }, [arrival, fromNoOne]);
   return ref;
 }

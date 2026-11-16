@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { useLocation, useSearchParams } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
@@ -75,6 +75,7 @@ export const HistoryPage = observer(function HistoryPage() {
   const title = t("history.title");
   useDocumentTitle(title, notebook.name);
   const [params, setParams] = useSearchParams();
+  const location = useLocation();
   const filter = filterOf(params);
   // An account or a page in the address that is no id names none: not read, as the server would refuse it.
   const readable = [filter.actor, filter.page].every((id) => id === "" || idPattern.test(id));
@@ -131,7 +132,8 @@ export const HistoryPage = observer(function HistoryPage() {
   function choose(next: LogFilter): void {
     const nextKey = ["changesets", notebook.id, next.actor, next.client, next.page, next.ingest === true];
     setAsked(unstable_serialize(nextKey));
-    setParams(paramsOf(next), { replace: true });
+    // The entry's state stays: a history the tree opened keeps its mark (M12/P2/S1, 28.5).
+    setParams(paramsOf(next), { replace: true, state: location.state });
   }
 
   const home = `/${workspace.slug}/notebooks/${notebook.id}`;

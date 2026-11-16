@@ -31,7 +31,7 @@ func TestTheThresholdIsUnderTheBound(t *testing.T) {
 		}
 		s := string(r)
 		var bytes, runes, marks int
-		for _, x := range searchFold(s) {
+		for _, x := range shared.TitleKey(s) {
 			if classOf(x) != classOther {
 				bytes += utf8.RuneLen(x)
 				runes++

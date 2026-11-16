@@ -181,6 +181,28 @@ test("pasted Markdown keeps a taken title and the body until the user explicitly
   expect(creates(server)).toEqual(["POST Evidence under Guide", "POST Chosen by me under Guide"]);
 });
 
+test("pasted Markdown refused as a duplicate says which, the focus on what it says", async () => {
+  const user = userEvent.setup();
+  const server = sourceServer();
+  const earlier = pageNode(70, "Earlier", guide);
+  server.nodes.push(earlier);
+  server.contents.set(earlier.id, { content: "same bytes\n", revision: 1 });
+  sourcePage(server);
+  const dialog = await pasteDialog(user);
+  draft(dialog, "Again", "same bytes\n");
+
+  await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  await waitFor(() => expect(within(alert).getByRole("link", { name: "Guide/Earlier.md" })).toBeTruthy());
+  expect(alert.textContent).toBe(
+    "Identical source content already exists: Guide/Earlier.mdThis operation was not written."
+  );
+  // Only the banner says it, Add source disabled while it was out: the banner takes the focus (M12/P2/S1, 38.3).
+  await waitFor(() => expect(document.activeElement).toBe(alert));
+  expect(creates(server)).toEqual(["POST Again under Guide"]);
+});
+
 test("pasted Markdown shows a server title refusal without clearing the draft", async () => {
   const user = userEvent.setup();
   const server = sourceServer({

@@ -1,5 +1,6 @@
 import { Link } from "react-router";
 
+import { arrived } from "../../app/arrival";
 import type { TreeNode } from "../../services/page.service";
 
 /**
@@ -7,7 +8,9 @@ import type { TreeNode } from "../../services/page.service";
  * children below its reading view, a notebook's root pages on its home
  * (M4/P5 design 3.5), a tag's pages (M6/P6 design 8), each by its title or
  * the name nameOf gives. It is the app's, not Markdown's: the tree read
- * again refreshes it.
+ * again refreshes it. A link leaves with the page it is on: the page it
+ * leads to is arrived at, its title taking the focus (v0.1 design 13.2,
+ * item 17; M5-polish 12.3).
  */
 export function SubpageList({
   label,
@@ -24,7 +27,7 @@ export function SubpageList({
     <ul aria-label={label} className="divide-y rounded-md border">
       {pages.map((page) => (
         <li key={page.id}>
-          <Link to={href(page.id)} className="block truncate px-4 py-2 hover:bg-accent">
+          <Link to={href(page.id)} state={arrived} className="block truncate px-4 py-2 hover:bg-accent">
             {nameOf(page)}
           </Link>
         </li>

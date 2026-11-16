@@ -254,6 +254,13 @@ func TestCreatePageAnswersItsCodesInOrder(t *testing.T) {
 			f.page("Notes", nil, 0)
 			return app.PageDraft{Title: "NOTES", Content: "# Notes"}
 		}, "page.title_taken"},
+		// Cherokee's capital and small letter are one key (M12 design 4.6.3,
+		// 25.1): x/text's fold alone keyed them apart.
+		{"a title taken in Cherokee's other case", func(f *fixture) app.PageDraft {
+			f.grant(domain.ActionCreate)
+			f.page("\U000013A0\U000013A1", nil, 0)
+			return app.PageDraft{Title: "\U0000AB70\U0000AB71"}
+		}, "page.title_taken"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newFixture()

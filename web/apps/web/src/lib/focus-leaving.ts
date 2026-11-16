@@ -21,3 +21,13 @@ export function useFocusLeaving(ref: RefObject<HTMLElement | null>, left: () => 
     };
   }, [ref]);
 }
+
+/**
+ * focusLost tells whether no one has the focus: no element, the body, or a
+ * disabled one, which Chromium gives to the body at its next rendering and
+ * jsdom never does (M12/P2/S1).
+ */
+export function focusLost(): boolean {
+  const at = document.activeElement;
+  return at === null || at === document.body || at.matches(":disabled");
+}

@@ -577,12 +577,13 @@ func asideSpans(ops []domain.RevertOp) [][2]int {
 
 // needed is how many of a group's members, in its pre-order, its restore
 // within a segment of steps aside brings back there (M9/P3 design
-// 3.22.2): up to the last one a later place of the segment puts a node
-// under; the group's root at least. No other step needs one there: a
-// member's write back follows its own restore, and only a deletion waits
-// for a write back (review A-I1); a step aside's parent is alive, and a
-// restore under a member of another group is a nested trash item, which
-// L refuses (review A-N5, C-N1).
+// 3.22.2): up to the last one a later place or restore of the segment
+// puts a node under; the group's root at least. A restore under a member
+// of another group is of a trash item's root the changeset deleted, its
+// own top (M12 design 4.6.1, decision 304), whose parent must be back
+// first, as a place's. No other step needs one there: a member's write
+// back follows its own restore, and only a deletion waits for a write back
+// (review A-I1); a step aside's parent is alive (review A-N5, C-N1).
 func needed(later []domain.RevertOp, nodes []domain.GroupNode) int {
 	at := make(map[uuid.UUID]int, len(nodes))
 	for i, n := range nodes {
@@ -590,7 +591,7 @@ func needed(later []domain.RevertOp, nodes []domain.GroupNode) int {
 	}
 	n := 1
 	for _, op := range later {
-		if op.Kind != domain.RevertPlace || op.To.ParentID == nil {
+		if op.Kind != domain.RevertPlace && op.Kind != domain.RevertRestore || op.To.ParentID == nil {
 			continue
 		}
 		if i, ok := at[*op.To.ParentID]; ok {

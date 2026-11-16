@@ -14,13 +14,17 @@ import (
 
 // HistoryReads are what the log's reads need; by path and in a notebook,
 // MCP's log and changeset (M9/P2 design 3.16), Paths finding a node by its
-// path and writing the paths of a page of changes' nodes.
+// path and writing the paths of a page of changes' nodes. A log's page
+// and a changeset's detail are read in one snapshot (Snapshots), as of
+// their answer's first read: a revert committed meanwhile is in all of
+// them or none (M12 design 4.6.2, H5).
 type HistoryReads struct {
 	Notebooks Notebooks
 	History   History
 	Names     Names
 	Auth      shared.Authorizer
 	Paths     PathStore
+	Snapshots shared.Snapshots
 }
 
 // LoggedChangeset is a changeset as the log lists it: with its counts and

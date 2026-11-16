@@ -25,14 +25,15 @@ func NewOpenStream(hub *Hub, visibility Visibility) *OpenStream {
 // access or notebooks_deleted event that came in between and concerns the
 // caller resets it, the others it sees wait for it. Reading first would
 // leave a window in which what the caller sees could change unnoticed.
-// While the hub does not listen it is not_ready's 503; a read that
-// fails closes the stream. The caller closes the stream it gets.
+// While the hub does not listen it is not_ready's 503; past the account's
+// bound, rate_limited's 429 (Hub.open); a read that fails closes the
+// stream. The caller closes the stream it gets.
 func (o *OpenStream) Execute(ctx context.Context) (*Stream, error) {
 	actor, err := shared.RequireActor(ctx)
 	if err != nil {
 		return nil, err
 	}
-	s, err := o.hub.open(actor.UserID)
+	s, err := o.hub.open(actor)
 	if err != nil {
 		return nil, err
 	}

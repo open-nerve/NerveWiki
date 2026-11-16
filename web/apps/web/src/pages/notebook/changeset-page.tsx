@@ -106,9 +106,12 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const note = useId();
   const history = t("history.title");
   useDocumentTitle(data === undefined ? undefined : byText(data, t), history, notebook.name);
-  // A changeset of another notebook is no page of this one's, nor is one not found.
-  if ((data !== undefined && data.notebook_id !== notebook.id) || (error instanceof ApiError && error.status === 404)) {
-    return <NotFoundPage />;
+  // A changeset of another notebook is no page of this one's, nor is one not found. Found gone once shown (an undo
+  // refused as not found reads it again; SWR keeps the data read before), "Page not found" stands for it, its title
+  // taking the focus the page took with it, from no one (M12/P2/S1, 23.14).
+  const gone = error instanceof ApiError && error.status === 404;
+  if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
+    return <NotFoundPage replacing={gone && data !== undefined} />;
   }
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;

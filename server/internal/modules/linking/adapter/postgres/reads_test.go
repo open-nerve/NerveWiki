@@ -413,15 +413,17 @@ func tagged(names ...string) domain.Facts {
 
 // A notebook's tags are its tags' keys, by key: each as most of its pages
 // write it, the first by bytes of those as many; and how many pages have
-// it. Another notebook's are its own (M6/P5 design 5).
+// it. Another notebook's are its own (M6/P5 design 5). The tag "/" (#//)
+// is left out, which getTag cannot name: the page that has it is read, X
+// counting it (M12 design 4.6.4, 10.1).
 func TestTheTagsOfANotebook(t *testing.T) {
 	f := newFixture(t)
-	for _, names := range [][]string{{"Project", "a/b", "X"}, {"project"}, {"PROJECT", "x"}, {"Project"}} {
+	for _, names := range [][]string{{"Project", "a/b", "X"}, {"project"}, {"PROJECT", "x"}, {"Project"}, {"/", "X"}} {
 		f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.eng, Revision: 1}, tagged(names...))
 	}
 	f.replace(t, app.Page{ID: uuid.NewV7(), NotebookID: f.ops, Revision: 1}, tagged("project", "project2"))
 	got, err := f.s.Tags(context.Background(), f.eng)
-	want := []app.Tag{{Tag: "a/b", Pages: 1}, {Tag: "Project", Pages: 4}, {Tag: "X", Pages: 2}}
+	want := []app.Tag{{Tag: "a/b", Pages: 1}, {Tag: "Project", Pages: 4}, {Tag: "X", Pages: 3}}
 	if err != nil || !reflect.DeepEqual(got, want) {
 		t.Errorf("Tags = %+v, %v\nwant %+v", got, err, want)
 	}

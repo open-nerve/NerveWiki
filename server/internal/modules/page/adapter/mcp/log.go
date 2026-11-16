@@ -10,7 +10,7 @@ import (
 // logIn is log's arguments (M9/P2 design 3.16.2).
 type logIn struct {
 	Ingest *bool   `json:"ingest,omitempty" jsonschema:"Only changesets with ingest sources when true; false or omitted keeps all changesets."`
-	Path   *string `json:"path,omitempty" jsonschema:"Only the changesets that changed the page or attachment at this path, from the notebook's root."`
+	Path   *string `json:"path,omitempty" jsonschema:"Only the changesets that changed the page or attachment at this path, from the notebook's root; \"/\" or omitted for the whole notebook. \"\" is refused."`
 	Actor  *string `json:"actor,omitempty" jsonschema:"Only the changesets by this account: its id, or \"me\" for yours."`
 	Client *string `json:"client,omitempty" jsonschema:"Only the changesets of this client: \"web\", \"api\", \"cli\", \"mcp:<name>\" for an agent, or \"mcp\" for every agent."`
 	Limit  *int    `json:"limit,omitempty" jsonschema:"At most this many changesets, 1 to 100. Default 50."`

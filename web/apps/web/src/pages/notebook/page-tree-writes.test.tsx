@@ -239,6 +239,26 @@ test("a rename whose links' pages are being edited names them, as the tree does,
   expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes", "Notes"]);
 });
 
+test("a rename refused for the pages its links lock says why above the field, which takes the focus", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ answers: { "PATCH /api/v0/nodes/*": pagesLocked } });
+  renderApp(home, server.app);
+  await choose(user, "Guide", "Rename");
+  const dialog = await screen.findByRole("dialog", { name: "Rename Guide" });
+  await user.clear(within(dialog).getByLabelText("Title"));
+  await user.type(within(dialog).getByLabelText("Title"), "Handbook");
+  await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+  const alert = await within(dialog).findByRole("alert");
+  expect(alert.textContent).toBe(
+    "This change would write the links on these pages again, and they are being edited. Try again once their editors are done; a notebook admin can also release a lock." +
+      "Bob is editing “Linux”.You are editing “Notes”."
+  );
+  // No field says it: the banner takes the focus the disabled Save dropped (M12/P2/S1, 9.1).
+  await waitFor(() => expect(document.activeElement).toBe(alert));
+  expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes"]);
+});
+
 test("a move whose links' pages are being edited names them, as the tree does, and their editors in its dialog; a busy server says so", async () => {
   const user = userEvent.setup();
   let answer = pagesLocked;
@@ -574,7 +594,10 @@ test("a move refused stays in its dialog", async () => {
   await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Guide / Install / Linux");
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
 
-  expect(await within(dialog).findByRole("alert")).toBeTruthy();
+  const alert = await within(dialog).findByRole("alert");
+  expect(alert.textContent).toBe("Pages nest at most 10 levels deep.");
+  // Only the banner says it, the button disabled while it was out: the banner takes the focus (M12/P2/S1, 9.1).
+  await waitFor(() => expect(document.activeElement).toBe(alert));
 });
 
 test.each([

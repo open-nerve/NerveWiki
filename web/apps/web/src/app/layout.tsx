@@ -1,6 +1,7 @@
 import { createContext, useContext, useState } from "react";
 import { Link, Outlet } from "react-router";
 
+import { useArrivalWatch } from "./arrival";
 import { FileDropGuard } from "./file-drop";
 import { LanguageMenu } from "./language-menu";
 import { ThemeMenu } from "./theme-menu";
@@ -25,9 +26,11 @@ export function useShellColumn(): HTMLElement | null {
  * routes render: a page, its error, its 404. A shell of a page's own (a
  * workspace's) puts its left column beside the main, by useShellColumn;
  * the column's place renders no box of its own. A file dropped where no
- * part of the page takes it stays out of the tab (FileDropGuard).
+ * part of the page takes it stays out of the tab (FileDropGuard). It
+ * watches the reader from each arrival on (useArrivalWatch).
  */
 export function Layout() {
+  useArrivalWatch();
   const [column, setColumn] = useState<HTMLElement | null>(null);
   return (
     <div className="flex min-h-svh flex-col">

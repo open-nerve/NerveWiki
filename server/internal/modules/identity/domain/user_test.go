@@ -80,7 +80,9 @@ func TestCheckUserPatch(t *testing.T) {
 	if got, err := CheckUserPatch(UserPatch{}); err != nil || got.DisplayName != nil {
 		t.Errorf("CheckUserPatch(empty) = %+v, %v; want nothing to change", got, err)
 	}
-	for in, code := range map[string]string{" ": "required", strings.Repeat("a", 101): "too_long", "a\u2028b\x07": "invalid_format"} {
+	// A display name of a zero width space alone shows nothing: required
+	// (M12 design section 3, item 5; 4.6.4, 30.2).
+	for in, code := range map[string]string{" ": "required", "\U0000200B": "required", strings.Repeat("a", 101): "too_long", "a\u2028b\x07": "invalid_format"} {
 		_, err := CheckUserPatch(UserPatch{DisplayName: &in})
 		var se *shared.Error
 		if !errors.As(err, &se) || se.Code != shared.CodeValidationFailed || len(se.Fields) != 1 ||

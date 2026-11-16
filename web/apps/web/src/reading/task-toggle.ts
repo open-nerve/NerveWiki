@@ -9,16 +9,28 @@ import type { Enhancement } from "./enhancement";
  * them) asks the server: the checkbox shows the server's state alone,
  * which the view read again brings. The context lets one toggle of the
  * page out at a time: a click meanwhile does nothing. A toggle refused is
- * reported. A reader's checkboxes stay disabled.
+ * reported. A reader's checkboxes stay disabled, named all the same
+ * (M12/P2/S1).
  */
 export const taskToggle: Enhancement = (container, context) => {
   const { toggleTask, report } = context;
-  if (toggleTask === undefined) {
-    return undefined;
-  }
   const boxes = [...container.querySelectorAll<HTMLInputElement>("input[data-task]")];
   if (boxes.length === 0) {
     return undefined;
+  }
+  for (const box of boxes) {
+    const text = taskText(box);
+    if (text !== "") {
+      box.setAttribute("aria-label", text);
+    }
+  }
+  const unname = () => {
+    for (const box of boxes) {
+      box.removeAttribute("aria-label");
+    }
+  };
+  if (toggleTask === undefined) {
+    return unname;
   }
   const onClick = (event: MouseEvent) => {
     const box = event.target;
@@ -31,18 +43,14 @@ export const taskToggle: Enhancement = (container, context) => {
   };
   for (const box of boxes) {
     box.disabled = false;
-    const text = taskText(box);
-    if (text !== "") {
-      box.setAttribute("aria-label", text);
-    }
   }
   container.addEventListener("click", onClick);
   return () => {
     container.removeEventListener("click", onClick);
     for (const box of boxes) {
       box.disabled = true;
-      box.removeAttribute("aria-label");
     }
+    unname();
   };
 };
 

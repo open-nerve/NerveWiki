@@ -242,7 +242,7 @@ func (q *Queries) TagPages(ctx context.Context, arg TagPagesParams) ([]uuid.UUID
 const Tags = `-- name: Tags :many
 SELECT mode() WITHIN GROUP (ORDER BY t.tag COLLATE "C")::text AS tag, count(*) AS pages
 FROM page_tags t
-WHERE t.notebook_id = $1
+WHERE t.notebook_id = $1 AND t.tag_key <> '/'
 GROUP BY t.tag_key
 ORDER BY t.tag_key
 `
@@ -253,7 +253,7 @@ type TagsRow struct {
 }
 
 // A notebook's tags by key (M6/P5 design 5): each as most of its pages write it, the first by bytes of those as
-// many, and how many pages have it.
+// many, and how many pages have it. The tag "/" (#//) is left out: getTag cannot name it (M12 design 4.6.4, 10.1).
 func (q *Queries) Tags(ctx context.Context, notebookID uuid.UUID) ([]TagsRow, error) {
 	rows, err := q.db.Query(ctx, Tags, notebookID)
 	if err != nil {

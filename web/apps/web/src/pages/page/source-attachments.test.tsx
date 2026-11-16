@@ -393,7 +393,12 @@ test.each(["Rename", "Delete", "Move to…"] as const)(
       await user.click(within(confirmation).getByRole("button", { name: "Move" }));
       await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     }
-    expect(submit.hasAttribute("disabled")).toBe(true);
+    // The forms disable their button while they are out; ConfirmDialog's is aria-disabled, keeping the focus (M12/P2/S1).
+    const out = () =>
+      entry === "Delete"
+        ? submit.getAttribute("aria-disabled") === "true" && !submit.hasAttribute("disabled")
+        : submit.hasAttribute("disabled");
+    expect(out()).toBe(true);
     expect(managementWrites(server)).toEqual(["PATCH Notes to Notes"]);
     server.notebook =
       entry === "Move to…"
@@ -405,7 +410,7 @@ test.each(["Rename", "Delete", "Move to…"] as const)(
       release();
       await blocker;
     });
-    await waitFor(() => expect(document.contains(dialog) && submit.hasAttribute("disabled")).toBe(false));
+    await waitFor(() => expect(document.contains(dialog) && out()).toBe(false));
 
     expect(managementWrites(server)).toEqual(["PATCH Notes to Notes"]);
     expect(document.contains(dialog)).toBe(true);
