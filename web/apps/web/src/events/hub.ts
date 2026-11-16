@@ -154,11 +154,12 @@ export class EventHub {
 
   /**
    * lead holds the stream until lost aborts: it connects again at once after
-   * the server's reset, after Retry-After when the server is not ready, and
-   * after a backoff otherwise, a connection silent for SILENT_BEATS
-   * heartbeats (a link the network dropped without a word) included;
-   * meanwhile it tells the others it is reconnecting, so that they do not
-   * take over. Once the login has changed, the hub stops.
+   * the server's reset, after Retry-After when the server is not ready or
+   * the account holds its streams' bound, and after a backoff otherwise, a
+   * connection silent for SILENT_BEATS heartbeats (a link the network
+   * dropped without a word) included; meanwhile it tells the others it is
+   * reconnecting, so that they do not take over. Once the login has
+   * changed, the hub stops.
    */
   async #lead(lost: AbortSignal, leadership: Leadership, channel: TabChannel): Promise<void> {
     this.#leading = true;
@@ -266,7 +267,11 @@ export class EventHub {
   }
 }
 
-/** The seconds an error's Retry-After asked to wait, if any: the ApiError of a 503 not_ready. */
+/**
+ * The seconds an error's Retry-After asked to wait, if any: the ApiError of
+ * a 503 not_ready, or of a 429 rate_limited (an account at its streams'
+ * bound).
+ */
 function retryAfterOf(error: unknown): number | undefined {
   const retryAfter = (error as { retryAfter?: unknown } | null)?.retryAfter;
   return typeof retryAfter === "number" ? retryAfter : undefined;
