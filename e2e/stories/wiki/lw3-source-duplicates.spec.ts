@@ -326,8 +326,9 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   await dialog.getByLabel("Title", { exact: true }).fill("Again");
   await dialog.getByLabel("Markdown", { exact: true }).fill("same bytes\n");
   // By the keyboard, the same in every browser (Safari gives a clicked button no focus, Playwright's engines do): Add
-  // source, disabled while it is out, drops the focus; the refusal only its banner says takes it (M12/P2/S1, 9.1
-  // and 38.3).
+  // source, disabled while it is out, keeps no focus of use (Chromium hands it to the body; Firefox and WebKit leave
+  // it on the disabled button, which focusLost counts as lost); the refusal only its banner says takes it (M12/P2/S1,
+  // 9.1 and 38.3).
   await dialog.getByRole("button", { name: "Add source", exact: true }).focus();
   await page.keyboard.press("Enter");
   await expect(dialog.getByRole("link", { name: `raw/${unbroken}.md`, exact: true })).toBeVisible();
