@@ -235,6 +235,11 @@ const PageRow = memo(function PageRow({
   const instruction = useDrag(context.pages, id, row, open, canDrag, writer);
   const [expanded, setExpanded] = useState(false);
   const [dialog, setDialog] = useState<Chosen>();
+  if (!writer && dialog !== undefined) {
+    // Made a reader: the dialog goes with the menu that opened it, as it did before the dialogs were the row's, and
+    // its state with it: one gone unclosed (a source's) would come back as the row's writer does.
+    setDialog(undefined);
+  }
   // An effect of its own, not the drag's, which runs again as the row shows or hides its children: the menu open at
   // its button stays open as another's change collapses the row, and closes only as the row leaves the tree.
   useEffect(() => {

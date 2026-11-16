@@ -387,6 +387,47 @@ test("an editor made a reader while the tree is shown loses each row's Actions; 
   expect(within(nav).getByRole("button", { name: "Actions for Guide" })).toBeTruthy();
 });
 
+for (const [kind, server, page, item, title] of [
+  ["a page's", () => pageServer(), "Notes", "Rename", "Rename Notes"],
+  [
+    "a source's",
+    () => pageServer({ mode: "llm_wiki", sourceRootId: guide.id }),
+    "Guide",
+    "Paste Markdown",
+    "Paste Markdown under Guide",
+  ],
+] as const) {
+  test(`an editor made a reader with ${kind} dialog open loses it, the focus going as the menu's would; made an editor again, it stays closed`, async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const at = server();
+    renderApp(home, at.app);
+    const nav = await tree();
+    await user.click(await within(nav).findByRole("button", { name: `Actions for ${page}` }));
+    await user.click(await screen.findByRole("menuitem", { name: item }));
+    const dialog = await screen.findByRole("dialog", { name: title });
+    await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
+
+    at.notebook = { ...at.notebook, role: "reader" };
+    await readAgain();
+
+    await waitFor(() => expect(within(nav).queryByRole("button", { name: "New page" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    // As before S4: a page's dialog gives the focus to its button, gone with the reader's tree, so to the heading.
+    if (item === "Rename") {
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByRole("heading", { level: 2, name: "Plans" }))
+      );
+    }
+
+    at.notebook = { ...at.notebook, role: "editor" };
+    await readAgain();
+    expect(await within(nav).findByRole("button", { name: `Actions for ${page}` })).toBeTruthy();
+    await act(() => vi.advanceTimersByTimeAsync(500));
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+}
+
 test("the notebook's home lists its root pages", async () => {
   renderApp(home, pageServer({ nodes: [guide, install, notes] }).app);
 
