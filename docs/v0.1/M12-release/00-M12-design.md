@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1 完成；P2–P5 的设计都已审查；P3/S1、P3/S2 实施中，P2/S1、P4/S1、P4/S2、P5/S1 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1 完成；P2–P5 的设计都已审查；P3/S2 已合并，P3/S1 待合并；P2/S1、P4/S2 实施中；P4/S2 量得页面树平的形状超，修复 P4/S4 在写设计（P2/S6 排在它之后）；P4/S1、P5/S1 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -1548,7 +1548,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 |---|---|---|---|---|
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 设计已审查（2026-11-16） | [设计](reviews/P2-design-review.md) | — |
-| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 进行中（S2 已合并） | [设计](reviews/P3-design-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md) | S2 `（待填：S2 的合并号）` |
+| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 进行中（S2 已合并） | [设计](reviews/P3-design-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md) | S2 `46b6940f` |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md) | 设计已审查（2026-11-16） | [设计](reviews/P4-design-review.md) | — |
 | P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查） | [设计](reviews/P5-design-review.md) | — |
 | 收尾与发布 | — | 未开始 | — | — |
