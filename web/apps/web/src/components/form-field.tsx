@@ -83,15 +83,29 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
 /**
  * useFocusOnInvalid moves the focus to the first invalid field of the form
  * after each failed submit (failures counts them): a screen reader then
- * reads the field with its problem, which appeared silently under it. The
- * form gets the ref returned.
+ * reads the field with its problem, which appeared silently under it.
+ * Without one, only the banner above the form saying the problem, the
+ * banner's alert takes the focus when it was lost as the failure came
+ * (useForm's lost, its data-form-banner): it would stay in the body
+ * otherwise (M12/P2/S1). The form gets the ref returned.
  */
-export function useFocusOnInvalid(failures: number): RefObject<HTMLFormElement | null> {
+export function useFocusOnInvalid(failures: number, lost = false): RefObject<HTMLFormElement | null> {
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
-    if (failures > 0) {
-      form.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus();
+    if (failures === 0) {
+      return;
     }
-  }, [failures]);
+    const invalid = form.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+    if (invalid) {
+      invalid.focus();
+    } else if (lost) {
+      const alert = form.current?.querySelector("[data-form-banner]")?.closest<HTMLElement>('[role="alert"]');
+      if (alert) {
+        // React renders no tabIndex on the Alert: each failure's is a new element, set again.
+        alert.tabIndex = -1;
+        alert.focus();
+      }
+    }
+  }, [failures, lost]);
   return form;
 }

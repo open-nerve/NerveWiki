@@ -325,8 +325,12 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   const dialog = page.getByRole("dialog", { name: "Paste Markdown under raw", exact: true });
   await dialog.getByLabel("Title", { exact: true }).fill("Again");
   await dialog.getByLabel("Markdown", { exact: true }).fill("same bytes\n");
-  await dialog.getByRole("button", { name: "Add source", exact: true }).click();
+  // By the keyboard, as WebKit gives a clicked button no focus: Add source, disabled while it is out, drops the
+  // focus; the refusal only its banner says takes it (M12/P2/S1, 9.1 and 38.3).
+  await dialog.getByRole("button", { name: "Add source", exact: true }).focus();
+  await page.keyboard.press("Enter");
   await expect(dialog.getByRole("link", { name: `raw/${unbroken}.md`, exact: true })).toBeVisible();
+  await expect(dialog.getByRole("alert")).toBeFocused();
   const edge = await dialog.boundingBox();
   const add = await dialog.getByRole("button", { name: "Add source", exact: true }).boundingBox();
   if (edge === null || add === null) throw new Error("the dialog has no box");
