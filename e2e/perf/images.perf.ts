@@ -80,7 +80,7 @@ test("large images in the reading view", async ({ browser }) => {
     await goto(tab, `/${env.workspace}/notebooks/${notebook.id}/pages/${page.id}`);
     await tab.getByRole("main").getByRole("article").locator("img").first().waitFor();
     for (;;) {
-      // oxlint-disable-next-line no-await-in-loop -- 200 px at a time, each loaded and decoded first
+      // oxlint-disable-next-line no-await-in-loop -- 200 px at a time, a pause for what came into view to load
       const end = await tab.evaluate(() => {
         scrollBy(0, 200);
         return scrollY + innerHeight >= document.documentElement.scrollHeight - 1;
@@ -90,8 +90,13 @@ test("large images in the reading view", async ({ browser }) => {
       if (end) break;
     }
     await sleep(2_000);
-    const decoded = await tab.evaluate(
-      () => [...document.querySelectorAll("article img")].filter((img) => (img as HTMLImageElement).complete).length
+    // Those loaded: an image that failed is complete too, but has no width (review C's M5 on M12/P4/S2). Loaded is not
+    // decoded: Chromium decodes as it paints.
+    const loaded = await tab.evaluate(
+      () =>
+        [...document.querySelectorAll("article img")].filter(
+          (img) => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0
+        ).length
     );
     const pageCdp = await context.newCDPSession(tab);
     await pageCdp.send("Performance.enable");
@@ -102,7 +107,7 @@ test("large images in the reading view", async ({ browser }) => {
       round,
       images,
       bytes,
-      decoded,
+      loaded,
       heap: metrics.find((metric) => metric.name === "JSHeapUsedSize")?.value,
       processes: [...peaks].map(([pid, seen]) => ({ pid, type: seen.type, start: seen.start, peak: seen.peak })),
     });

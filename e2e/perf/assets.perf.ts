@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from "node:timers/promises";
 
 import { createClient, type ApiClient, type AuthTokens } from "@nervewiki/api-client";
-import { test, type Browser, type Page } from "@playwright/test";
+import { test, type Browser } from "@playwright/test";
 
 import { bearer, createToken, login } from "../fixtures/auth";
 import { postAsset } from "../fixtures/assets";
@@ -222,7 +222,7 @@ async function repetition(
     const to = Math.max(Date.now(), from + uploadMs);
     await typing;
     // The last rest's save, answered; then 10 s more, past a 429's retry window.
-    await waitForSaves(b, saves);
+    await waitForSaves(saves);
     await sleep(10_000);
     const failing = await b.getByRole("main").locator("output.text-destructive").count();
     const page = await readContent(api, pat, first.id);
@@ -322,12 +322,11 @@ async function upload(
 }
 
 /** Waits until B has no save out and has rested past its autosave: every save sent has its answer. */
-async function waitForSaves(page: Page, saves: { answered?: number }[]): Promise<void> {
+async function waitForSaves(saves: { answered?: number }[]): Promise<void> {
   await sleep(2_500);
   const deadline = Date.now() + 30_000;
   while (saves.some((save) => save.answered === undefined) && Date.now() < deadline) {
     // oxlint-disable-next-line no-await-in-loop -- polled
     await sleep(100);
   }
-  await page.waitForTimeout(0);
 }

@@ -2,8 +2,9 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
 // Where a round of perf writes (M12/P4 design 4.1): one JSON object a line, appended, so that two rounds, a check run
-// again or a control land beside each other when NW_PERF_OUT names one file for them. Playwright empties its
-// outputDir as a run starts, before the setup: the default file holds this run's lines only.
+// again or a control land beside each other when NW_PERF_OUT names one file for them; the serve's log, in the same
+// directory, then holds the last run's only (e2e/fixtures/server.ts opens it anew). Playwright empties its outputDir
+// as a run starts, before the setup: the default file holds this run's lines only.
 
 /** The file the lines go to: NW_PERF_OUT, or results.jsonl in perf's outputDir. */
 function resultsFile(): string {
