@@ -21,9 +21,10 @@ import (
 // the request, the notebook is as the agent left it.
 //
 // nested: Made holds Guide, moved under it, and Inner, new, which the
-// first pass deletes, Made a later one. Reverted in the request, and in
-// the background in a notebook of its own, the notebook is as the agent
-// left it, one revert changeset each.
+// first pass deletes, Made a later one: before the revert, Inner and Made
+// are each a trash item, Inner's the earlier (review P3S2C-N6). Reverted
+// in the request, and in the background in a notebook of its own, the
+// notebook is as the agent left it, one revert changeset each.
 func TestRevertingARollbackPutsBackWhatTheAgentLeft(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	// rolledBack is the notebook name, upgraded by alice, its agent's writes
@@ -59,6 +60,17 @@ func TestRevertingARollbackPutsBackWhatTheAgentLeft(t *testing.T) {
 		t.Helper()
 		return count(t, tm.pool, "SELECT count(*) FROM changesets WHERE notebook_id = $1 AND kind = 'revert'", nb)
 	}
+	// twoItems checks the shape of decision 302 the rollback left in the
+	// notebook nb: Inner a trash item of its own under Made's, deleted
+	// before it.
+	twoItems := func(t *testing.T, nb string) {
+		t.Helper()
+		if n := count(t, tm.pool, `SELECT count(*) FROM nodes i JOIN nodes m ON m.notebook_id = i.notebook_id AND m.id = i.parent_id
+			WHERE i.notebook_id = $1 AND i.name = 'Inner' AND m.name = 'Made' AND i.trash_root AND m.trash_root
+			AND i.deleted_at < m.deleted_at`, nb); n != 1 {
+			t.Fatalf("Inner and Made, rolled back, are not each a trash item, Inner under Made and deleted before it")
+		}
+	}
 
 	t.Run("flat", func(t *testing.T) {
 		nb, _, tidied, changeset := rolledBack(t, "Flat",
@@ -87,6 +99,7 @@ func TestRevertingARollbackPutsBackWhatTheAgentLeft(t *testing.T) {
 	}
 	t.Run("nested, request", func(t *testing.T) {
 		nb, _, tidied, changeset := rolledBack(t, "Nested", nested...)
+		twoItems(t, nb)
 		c := changesetRevert("alice", changeset)
 		status, body := ask(t, tm.contract, c.method, tm.base+c.path, tm.tokens["alice"], "")
 		var r revertAnswer
@@ -104,6 +117,7 @@ func TestRevertingARollbackPutsBackWhatTheAgentLeft(t *testing.T) {
 
 	t.Run("nested, background", func(t *testing.T) {
 		nb, _, tidied, changeset := rolledBack(t, "Nested Background", nested...)
+		twoItems(t, nb)
 		j := tm.endedBackground(t, "alice", tm.startedJob(t, revertStart("alice", nb, changeset, "")).ID)
 		if j.State != "succeeded" || j.Kind != "revert" || j.counts()["restored"] != 4 || j.counts()["put_back"] != 1 {
 			t.Fatalf("the background revert of the rollback's changeset = %s, want it succeeded, 4 nodes restored, Guide put back", j)
