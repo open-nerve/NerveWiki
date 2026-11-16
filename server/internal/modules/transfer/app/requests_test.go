@@ -472,6 +472,13 @@ func TestTheRescue(t *testing.T) {
 	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).Run(context.Background()); err == nil {
 		t.Error("Run() with River's read failing = nil error")
 	}
+	// At the start, a lost that fails fails the start (jobs.Job.Start), as
+	// InterruptJobs does (review A's N4).
+	m = &maintained{rec: &recorder{}, queued: map[domain.Kind][]uuid.UUID{domain.KindRevert: {uuid.NewV7()}}}
+	if err := app.NewRescue(m, held{err: errors.New("River is gone")}, fixedClock{now()}, quiet(), time.Minute).AtStart(context.Background()); err == nil ||
+		len(m.failed) != 0 {
+		t.Errorf("AtStart() with River's read failing = %v, failed %v; want an error, the start failed, none failed", err, m.failed)
+	}
 }
 
 // The sweep deletes the old archives no job keeps, the exports' then the
