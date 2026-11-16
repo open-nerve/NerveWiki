@@ -30,7 +30,7 @@ import { ApiTokenStore } from "./api-token.store";
 import { AssetStore } from "./asset.store";
 import { AuditStore } from "./audit.store";
 import { AuthStore } from "./auth.store";
-import { answerClosings, closeOtherTabs } from "./edit-closing";
+import { answerClosings, askOtherTabs, closeOtherTabs } from "./edit-closing";
 import { EditSession } from "./edit-session";
 import { InstanceStore } from "./instance.store";
 import { InvitationPreviewStore, InvitationStore } from "./invitation.store";
@@ -216,9 +216,34 @@ export class RootStore {
   }
 
   /**
+   * unsavedEdits tells where an edit of this login has changes not saved,
+   * as the tab is about to sign out (M12/P2/S1): in this tab first, else
+   * in another tab of the login that says so over the channel within
+   * closingAnswerWait (askOtherTabs), else none. Where the page has no
+   * EventDeps it asks no other tab.
+   */
+  async unsavedEdits(): Promise<"here" | "elsewhere" | undefined> {
+    if (this.unsavedEdit({})) {
+      return "here";
+    }
+    const tabs = this.closing;
+    if (tabs === undefined) {
+      return undefined;
+    }
+    const port = tabs.port();
+    this.closings += 1;
+    try {
+      return (await askOtherTabs(port, tabs, `${tabs.tabId}-${this.closings}`)) ? "elsewhere" : undefined;
+    } finally {
+      port.close();
+    }
+  }
+
+  /**
    * answerSignOuts closes this tab's edits as another tab of the login
-   * signs out, while it has some; it returns the unsubscribe. Where the
-   * page has no EventDeps it does nothing.
+   * signs out, while it has some, and says it has changes not saved when
+   * another asks before it signs out; it returns the unsubscribe. Where
+   * the page has no EventDeps it does nothing.
    */
   answerSignOuts(): () => void {
     const tabs = this.closing;
@@ -230,7 +255,8 @@ export class RootStore {
       port,
       tabs,
       () => this.edits.size > 0,
-      () => atMost(signOutWait, this.closeEdits())
+      () => atMost(signOutWait, this.closeEdits()),
+      () => this.unsavedEdit({})
     );
     return () => {
       unsubscribe();

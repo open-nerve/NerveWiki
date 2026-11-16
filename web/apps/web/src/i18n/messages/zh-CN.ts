@@ -1136,6 +1136,12 @@ export const zhCN: Messages = {
   "tokens.copyFailed": "无法复制。请选中令牌自己复制。",
   "tokens.done": "完成",
   "userMenu.signOut": "退出登录",
+  "signOut.unsavedTitle": "仍要退出登录吗？",
+  "signOut.unsavedHere": "这个标签页里正在编辑的页面有还没有保存的修改。退出登录会先尽量保存，保存不了的会丢失。",
+  "signOut.unsavedElsewhere":
+    "另一个标签页里正在编辑的页面有还没有保存的修改。退出登录会先尽量保存，保存不了的会丢失。",
+  "signOut.confirm": "退出登录",
+  "signOut.signingOut": "正在退出登录…",
   "problem.bad_request": "请求无法理解。",
   "problem.payload_too_large": "请求过大。",
   "problem.rate_limited": "尝试太频繁，请稍后再试。",

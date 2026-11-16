@@ -130,6 +130,12 @@ test("signing out saves what was typed since the last save, then ends the sessio
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(server.sent.filter((line) => line.startsWith("PUT") || line.startsWith("END"))).toEqual([
@@ -163,6 +169,12 @@ test("while the sign-out saves, the content is held as it is: what it saves is a
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
   await waitFor(() => expect(writes).toEqual(["Guide\n more"]));
   expect(view.state.readOnly).toBe(true);
   release?.();
@@ -221,6 +233,12 @@ test("signing out while the save is not answered ends the session after 1.5 seco
 
   await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
   await waitFor(() => expect(sent).toEqual(["PUT"]));
   // The save has a second at least; by 1.5 seconds the end is out, the logout after it.
   await act(() => vi.advanceTimersByTimeAsync(1_000));
@@ -230,6 +248,50 @@ test("signing out while the save is not answered ends the session after 1.5 seco
 
   expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   expect(sent).toEqual(["PUT", "END", "LOGOUT"]);
+});
+
+// M12/P2/S1, item 7: what was typed not saved, the sign-out asks first.
+test("signing out with what was typed not saved asks first, saying it is in this tab: Stay keeps the editor and the session; Sign out then saves it and ends the session before the logout", async () => {
+  const server = pageServer({
+    answers: {
+      "POST /api/v0/auth/logout": () => {
+        server.sent.push("LOGOUT");
+        return new Response(null, { status: 204 });
+      },
+    },
+  });
+  const { user } = await pressEdit(server);
+  const { type, view } = await pageEditor();
+  type(" more");
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  const dialog = await screen.findByRole("alertdialog", {
+    name: "Sign out anyway?",
+    description:
+      "A page you are editing in this tab has changes that are not saved. Signing out saves what it can first; what it cannot save is lost.",
+  });
+  await user.click(within(dialog).getByRole("button", { name: "Stay" }));
+  await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  expect(view.state.readOnly).toBe(false);
+  expect(view.state.doc.toString()).toBe("Guide\n more");
+  expect(server.sent.filter((line) => /^(PUT|END|LOGOUT)/.test(line))).toEqual([]);
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+  // What was typed is not saved: the sign-out asks first (M12/P2/S1, item 7).
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Sign out anyway?" })).getByRole("button", {
+      name: "Sign out",
+    })
+  );
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(server.sent.filter((line) => /^(PUT|END|LOGOUT)/.test(line))).toEqual([
+    'PUT Guide "Guide\\n more" on 1 in session-1',
+    "END session-1",
+    "LOGOUT",
+  ]);
 });
 
 test("Done goes back to reading once the session's end is answered: the lock read next is not the edit's own", async () => {
