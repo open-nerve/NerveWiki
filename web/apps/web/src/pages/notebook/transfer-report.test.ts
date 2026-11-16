@@ -107,6 +107,18 @@ test.each([
   expect(problemText(kind, problem, t)).toBe(says);
 });
 
+// What an undo stopped in the middle of a group says to do, in both languages: restore its items one by
+// one; not, since decision 482, "do not undo this undo first" (P3/S3 review A's N2).
+test.each([
+  [
+    "en",
+    "If it stopped in the middle of restoring a group, restoring the items it left in the trash one by one completes that group.",
+  ],
+  ["zh-CN", "停在恢复一组的中间时：回收站里由这次撤销留下的几项，逐项恢复就完成这一组。"],
+] as const)("an undo stopped in a group says how to complete it in %s", (language, says) => {
+  expect(translator(language)("transfer.revertLeftGroup")).toBe(says);
+});
+
 // An import's names read from elsewhere than their headers' bytes (M12/P3 design 4.2): no skip.
 test.each([
   [
