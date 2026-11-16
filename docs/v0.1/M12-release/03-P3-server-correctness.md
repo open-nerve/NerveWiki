@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P3 服务端的正确性与历史（三个 Step：S1 小的正确性；S2 第 302 条（先写 spec）；S3 导入导出的任务） |
-| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订；同日照 S2 的实施与审查修订） |
-| 状态 | 进行中（设计已审查，S2 已合并 `46b6940f`，S1 在审查之后、待合并，S3 未开工；设计的[审查记录](reviews/P3-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S2 的[审查记录](reviews/P3-S2-nested-trash-roots-review.md)；实施与审查之后与代码不同之处照实改在各节（3.22 列出），结果在 10.2） |
+| 日期 | 2026-11-16（初稿；同日第一次、第二次、第三次修订；同日照 S2、S1 的实施与审查修订） |
+| 状态 | 进行中（设计已审查，S1 已合并 `（待填：S1 的合并号）`、S2 已合并 `46b6940f`，S3 未开工；设计的[审查记录](reviews/P3-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S1 的[审查记录](reviews/P3-S1-small-correctness-review.md)、S2 的[审查记录](reviews/P3-S2-nested-trash-roots-review.md)；实施与审查之后与代码不同之处照实改在各节（3.21、3.22 列出），结果在 10.1、10.2） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.5（H1、24.1 写成已知限制）、4.6、第 3 节第 4、5 条、5.1、第 7 节 P3 一行与"次序与并行""分份""移交的落实""总体设计的修订"第 8、10 条、9.2、9.6、第 10 节、第 11 节决定 304、313–316、328、335、336、357、359、附录 A 的 P3/S1 一行；[M12 设计审查](reviews/M12-design-review.md)的 A-M1–M3、A-M8、A-N1–N5、A-I1–I3、A-M4、C-I2；[移交](handoffs/)：M8-history 第 5、6 条，M7-transfer 第 5 条的三项，M5-polish 第 10、25、30 条，M5-performance 第 6 条，M4-performance 第 22 条之后的补记 `:490`；[v0.1 总体设计](../v0.1-design.md) 5.8 第 6 步、13.1 第 2、28、30 条、13.4 第 1、4、8、11 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md)第 3 节（服务端的写法）、[M12/P1](01-P1-foundation.md)（骨架） |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/revert.go:309`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…`、`archtest/…` 在 `server/internal/` 之下；迁移的测试写作 `server/migrations/schema_test.go`；前端写作 `W/pages/notebook/transfer-report.tsx:100`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/stories/transfer/tr4-malicious.spec.ts:105`；契约写作 `api/modules/transfer.yaml:1079`；其余写仓库根起的路径。基点是 `main` 的 `86565dd6`（P1 完成），它与 `194ca350` 只差文档（00 号文档、P1 设计与一份审查记录），代码相同：代码的行号都在 `194ca350` 上读过，在 `86565dd6` 上不变；00 号文档与总体设计的行号是 `86565dd6` 的 |
 | 工作笔记 | 本文引的行号都在 `194ca350` 上读过（附录 A）。第一次修订照三份审查改，审查者的原型与探针在 `m12/p3-review-{a,b,c}/`，修订时另跑的在 `m12/p3-rev1/`；第二次修订照修订核对改，另跑的（3.14.3 的四个测试的用时、00 号文档脚本的试跑）在 `m12/p3-rev2/`；第三次修订照修订核对第 2 轮改 3.7 的理由与 (b) 格，依据是审查 B 的探针 `m12/p3-check2-b/`。设计不跑重的东西；在 scratchpad 的临时 worktree（`194ca350`，不带竞态）里跑了几组小实验，另在一个用完即删的 `postgres:18.7-trixie` 容器里核对了快照冻结的时刻，原样留在 `m12/p3-design/`：第 302 条的四种形状与两个反例在 domain 上的结果（改前、审查 A 的原型 `split-tops.diff`、"`topOf` 只看起点"的变异）；后台撤销的 `needed` 在嵌套的回收站根下真的出错（模型与核对的替身都红，3.10.6）；GBK 解码器对 0x5C 尾字节、Shift-JIS、GB18030 四字节、0x80 与 0xFF 的行为，GBK 名字恰好是合法 UTF-8 的比例（3.12）；REPEATABLE READ 的快照在第一条读等锁之前冻结（3.8.2）。没有跑整个程序的测试，没有量时间 |
@@ -142,7 +142,7 @@
 - **362（P3-2）`needed` 也看段内后面的放回**：放回的 `To.ParentID` 是这一组的成员时，至少放回到它；另加一格确定的 app 测试（3.10.6 的形状）。不改 `CheckRevertSteps` 的模拟：00 号文档定了"调度不改"，而批的核对整组放回是为了后面的成员的前提（`revert_part.go:42-47` 的注释）；挡这一种的是 `needed` 与测试。
 - **363（P3-3）domain 的 `world` 按时刻读组**：`world.state()` 读组时只收与根同一时刻删下的，同 `TrashChildrenOfAll`（替身在真东西会失败处失败，05-lessons 第 2 节）。
 - **364（P3-4）回滚的性质测试撤销回滚的变更集，请求与后台两条路轮流，只数 `nested`**：种子是偶数走请求的撤销（`f.revert`），奇数走后台（`PlanRevert` 与随机切的批）；对照 agent 留下的状态（树与正文）。挂在中间节点下的与两个成员以上的嵌套组在这里太少（审查 A 量过每 400 次 0–3 次），交给后台撤销的性质测试数（审查 A 的 M2 的甲）。S2 实施另数请求与后台两条路，各有下限（3.22 第 8 条）。
-- **365（P3-5）标题键的切罗基文一步用标准库**：折叠之后以 `strings.Map` 把小写换成大写，三处共用 `shared` 里的一个函数；不用 `x/text/runes`（纯的层不许，`archtest`）。`searchFold` 整个删掉，三处调用改调 `shared.TitleKey`；不升分词与 `Extractor` 的版本（00 号文档 4.6.3）。
+- **365（P3-5）标题键的切罗基文一步用标准库**：折叠之后以 `strings.Map` 把小写换成大写，三处共用 `shared` 里的一个函数；不用 `x/text/runes`（纯的层不许，`archtest`）。`searchFold` 整个删掉，三处调用改调 `shared.TitleKey`；不升分词与 `Extractor` 的版本（00 号文档 4.6.3）。S1 实施不用 `strings.Map`（它把不是 UTF-8 的字节写成 U+FFFD），`TitleKey` 与 `TitleKeyContext` 末尾经不导出的 `cherokeeCapitals` 逐 rune 原地换；`searchFold` 的调用另有 `grep_keys.go` 的一处（3.21 第 1、2 条）。
 - **366（P3-6）标题 id 带上自动链接的标签与原始 HTML 的源文本**：`PlainText` 对 `*ast.AutoLink` 写它的 `Label`，对 `*ast.RawHTML` 写它的每一段源文本。这样标题的 id 与 `AnchorID` 对同一段写法的结果相同（两边都用 `slug`）。不升提取规则的版本（13.3 第 6 条；00 号文档 4.6.3）。
 - **367（P3-7）名字为空的判断放在 `CheckName` 与 `CleanClientName` 里**：
   - `CheckName` 管显示名、工作区名与 PAT 的名字。一个名字看不见，在哪一处都同样冒充空白，移交的原意是"两处一条规则"；三处都只管新的输入，库里已有的不动。
@@ -151,12 +151,12 @@
   - U+2800（盲文空白）是图形符号（So），不算看不见。移交把它列在"留下的"里；照"没有图形字符的名称算空"，它是图形字符。
   - 标签块 U+E0000–U+E007F 不从客户端名里去掉：它们是苏格兰、威尔士这类旗帜的 emoji 序列的一部分，去掉会把旗帜变成黑旗；只由它们组成的名字照上一条算空。00 号文档把这一条留给 S1 的实施，本文先定，实施时可以照实改。
 - **368（P3-8）`log` 的 `path`**：`"/"` 当作省略（整本）；`""` 答 `validation_failed`，字段 `path`、码 `too_short`、文字 `must not be empty: omit it, or give "/", for the whole notebook`（同 `index` 的 `""` 用 `too_short`）。
-- **369（P3-9）MCP 超时的文字**：`the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones`。码照旧 `internal_error`：改码会改 MCP 的码表与每个工具的码的列表（`TestTheMCPToolsErrorsCarryTheirCodes` 等），agent 已有的处理随之失效；文字已经说清该怎么做。写的事务在提交时跨过期限的，结局未知：`TxManager` 给读写事务的提交错误加标记，MCP 认出它时另用一句，请 agent 先读笔记本（3.7；修订核对 B 的 N14）。
+- **369（P3-9）MCP 超时的文字**：`the call passed the server's time limit and changed nothing; retry it, splitting a large batch into smaller ones`。码照旧 `internal_error`：改码会改 MCP 的码表与每个工具的码的列表（`TestTheMCPToolsErrorsCarryTheirCodes` 等），agent 已有的处理随之失效；文字已经说清该怎么做。写的事务在提交时跨过期限的，结局未知：`TxManager` 给读写事务的提交错误加标记，MCP 认出它时另用一句，请 agent 先读笔记本（3.7；修订核对 B 的 N14）。S1 第一次修复：提交在调用的期限之前失败的（默认更常见），`FaultUnknown` 一支也认标记、答另一句（决定 483，3.21 第 11 条）。
 - **370（P3-10）快照放在四个用例里，从各自第一条属于答复的读起**（2.1 第 4 条；审查 B 的 N3）：`Execute` 从 `ListChangesets`，`AtPath` 从 `Find` 的 `StateOf`，`GetChangeset.Execute` 与 `InNotebook` 从 `FindChangeset`，都到 `alivePaths` 为止。日志的 `Execute` 的授权（`WorkspaceOf`、`authorize`）与带 `page_id` 时的 `NodesNow`（`list_changesets.go:76`）照旧在快照之外：它们不进答复。详情的 `Execute` 要先找到变更集才知道它的笔记本，所以授权跟着进快照（先例 `read_path.go:153-167`）。
 - **371（P3-11）事件流**：
   - 凭证是 `Actor` 的 `SessionID`、`APITokenID` 或 `JobID` 之一，连同它的种类；
   - 条数在打开、顶掉与关闭时维护：顶掉的那一条立刻不算（它正在结束）；别的原因重置的流算到它的处理器结束为止：客户端在读时立刻结束，不读时（`overflow` 正是这种）至多一个心跳（`events.heartbeat_interval`，默认 20 秒，至多 50 秒；处理器在写超时之下写出已送到的事件与 `reset` 帧，审查 B 的 M5）。只在账户正好 64 条、这个凭证不到 4 条、它的客户端放弃之后重连时，才会多得到一次 429；不为它改成在重置时减数；
-  - 关掉的流从 `held` 里去掉；凭证的切片空了就删掉这一项，账户的数到 0 就删掉这一项，两张表不随进程的寿命涨（审查 B 的 N10）；
+  - 关掉的流从 `held` 里去掉；凭证的切片空了就删掉这一项，账户的数到 0 就删掉这一项，两张表不随进程的寿命涨（审查 B 的 N10）；S1 修复：顶掉时减被顶掉那一条自己的账户，与关闭共用 `uncount`，减到 0 也删（决定 484，3.21 第 12 条）；
   - 账户满了答 429 `rate_limited`，`Retry-After` 30 秒（网页最长的退避），文字 `This account has 64 event streams open: close one, or retry later.`；不加新码：`rate_limited` 是顶层的码，网页照 `Retry-After` 等，不显示文字；
   - 顶掉记一行 `debug`，不做限频的 `info`：限频的日志在服务端没有先例，限流本身也只记 `debug`（`limit.go:38-47`）。
 - **372（P3-12）条目名的解读在 archive 适配器里，报告在任务结束时加**：
@@ -194,18 +194,20 @@
 | 文件 | 改动 |
 |---|---|
 | `shared/title_key.go`、`shared/title_key_context.go`；`shared/title_key_test.go`、`title_key_context_test.go` | 切罗基文一步（3.2） |
-| `linking/domain/index.go`；`index_test.go` | `IndexKeyer.Key` 同一步，随机差分的字母表加切罗基文（3.2） |
-| `page/domain/search.go`；新的 `page/domain/search_fold_internal_test.go` | 删掉 `searchFold`；新旧比对（3.2） |
+| `linking/domain/index.go`；`index_test.go` | `IndexKeyer.Key` 同一步，随机差分的字母表加切罗基文（3.2）；新测试 `TestAnIndexKeyIsCherokeesCapitals`（3.21 第 4 条） |
+| `page/domain/search.go`；新的 `page/domain/search_fold_internal_test.go` | 删掉 `searchFold`；新旧比对（3.2）；S1 实施另改 `grep_keys.go` 的 `keyReader.fold`、几个测试与生成 `grep_tables.go` 的模板（3.21 第 1 条） |
 | `page/app/` 的建页测试 | 只差切罗基文大小写的两页被拒（3.2） |
-| `platform/markdown/parse.go`；`parse_test.go`、`links_test.go`、`render_test.go` | `PlainText` 带上自动链接与原始 HTML（3.3） |
+| `platform/markdown/parse.go`；`parse_test.go`、`links_test.go`、`render_test.go`、`obsidian/view_test.go` | `PlainText` 带上自动链接与原始 HTML（3.3）；维基链接的一格在 `obsidian/view_test.go`（3.21 第 3 条） |
 | `linking/adapter/postgres/queries/reads.sql`、生成的 `gen/reads.sql.go`；`reads_test.go`；`api/modules/linking.yaml` | 标签列表不列 `/`（3.4） |
 | `shared/name.go`、`shared/client_name.go`；`name_test.go`、`client_name_test.go`；`identity/domain/user_test.go` | `Blank` 与两处的判断（3.5） |
 | `page/app/list_changesets.go`；`page/adapter/mcp/log.go`、`tools.go`；`api/mcp/tools.json`；`page/app/path_history_test.go`；`bootstrap/mcp_reads_test.go`、`mcp_history_test.go` | `log` 的 `path`（3.6） |
-| `platform/postgres/tx.go`、`tx_test.go`；`platform/httpserver/mcpserver/errors.go`；`answer_test.go`、`prompt_bounds_test.go`；`bootstrap/mcp_test.go` | 超时的文字；提交错误的标记与它的文字（3.7） |
-| `page/app/history.go`、`list_changesets.go`、`get_changeset.go`；`page/module.go`；`page/app/history_test.go`、`path_history_test.go` 与它们的替身；新的 `bootstrap/history_snapshot_test.go` | 快照（3.8） |
-| `events/app/hub.go`、`stream.go`、`open_stream.go`；`events/domain/frame.go`、`errors.go`；`events/app/hub_test.go`、`events/adapter/http/handler_test.go`；新的 `bootstrap/events_streams_test.go`；`api/modules/events.yaml` | 流数（3.9） |
+| `linking/app/backlinks_test.go` | S1 修复：替身的 `paths.Check` 照真的拒尾随的 `/`，`"/"` 答 `required`（3.6、3.21 第 13 条） |
+| `platform/postgres/tx.go`、`tx_test.go`；`platform/httpserver/mcpserver/errors.go`；`answer_test.go`、`prompt_bounds_test.go`；`bootstrap/mcp_test.go` | 超时的文字；提交错误的标记与它的文字（3.7）；S1 修复：`FaultUnknown` 一支也认标记（决定 483，3.21 第 11 条） |
+| `page/app/history.go`、`list_changesets.go`、`get_changeset.go`；`page/module.go`；`page/app/history_test.go`、`path_history_test.go` 与它们的替身；新的 `bootstrap/history_snapshot_test.go` | 快照（3.8）；S1 实施另改 `history_fakes_test.go`、`ingest_history_test.go` 的调用表与 `bootstrap/interleavings_virtual_test.go` 的计数（3.21 第 5、6 条） |
+| `events/app/hub.go`、`stream.go`、`open_stream.go`；`events/domain/frame.go`、`errors.go`；`events/app/hub_test.go`、`events/adapter/http/handler_test.go`；新的 `bootstrap/events_streams_test.go`；`api/modules/events.yaml` | 流数（3.9）；S1 实施：hub 的测试在新的 `hub_bounds_test.go`（`hub_test.go` 不动），两张表的长度经 `export_test.go`（3.21 第 8 条） |
 | `web/packages/api-client/src/schema.gen.ts`、`api/dist/openapi.yaml`（`make gen`） | 生成物（第 4 节） |
-| `Makefile` | 第七份点名两个新测试（3.19） |
+| `W/events/hub.ts`、`W/services/event.service.ts` | S1 修复：只改注释，503 与 429 都带 `Retry-After`（决定 485，3.21 第 14 条） |
+| `Makefile` | 第七份点名两个新测试，计数的注释与 `make help` 的第七份随之（3.19） |
 | `README.md` 事件流一节（`:198`、`:207`、`:210`）与 MCP 一节（`:223`） | 第 8 节第 7–10 条 |
 
 ### 3.2 S1：标题键（25.1）
@@ -240,14 +242,14 @@ func TitleKey(s string) string // 非 ASCII 的一支：strings.Map(CherokeeCapi
 
 - `TitleKeyContext`（`title_key_context.go:15-38`）：短的一支调 `TitleKey`；长的一支读完之后对结果 `strings.Map(CherokeeCapital, …)`（逐 rune，不在 4096 字节的块上做，免得切开一个字母）。
 - `IndexKeyer.Key`（`linking/domain/index.go:87-109`）：`norm.NFC.Append` 之后、截到 `MaxIndexKey` 之前，逐 rune 以 `shared.CherokeeCapital` 在 `k.key` 上原地换（两段的字母在 UTF-8 里都是 3 字节）。不经字符串：`TestAnIndexKeyerTakesEachKeyWithItsBuffers` 要 `AllocsPerRun ≤ 4`（审查 B 的 N12）。
-- 标准库的 `strings.Map`，不用 `x/text/runes`：纯的层只许 `norm`、`transform`、`cases`（`archtest/rules_test.go:127-133`；P3-5）。
-- `page/domain/search.go`：`searchFold`（`:238-255`）删掉，`:272`、`:282`、`:493` 改调 `shared.TitleKey`，注释照实改。不升分词与 `Extractor` 的版本：改了之后键与原来 `searchFold` 的结果逐字节相同，分出的词不变（00 号文档 4.6.3）。
+- 标准库的 `strings.Map`，不用 `x/text/runes`：纯的层只许 `norm`、`transform`、`cases`（`archtest/rules_test.go:127-133`；P3-5）。S1 实施不用 `strings.Map`：它把不是 UTF-8 的字节写成 U+FFFD，`TestTitleKeysKeepASCIIAndUnicodeBoundaries` 要它们原样留着；`TitleKey` 的非 ASCII 一支与 `TitleKeyContext` 的长的一支末尾经不导出的 `cherokeeCapitals`，逐 rune 解码、遇到小写时在一份拷贝里原地换 3 个字节，没有小写时不分配（3.21 第 2 条）。上面代码块与 `TitleKeyContext` 一条里的 `strings.Map(CherokeeCapital, …)` 读作这一步。
+- `page/domain/search.go`：`searchFold`（`:238-255`）删掉，`:272`、`:282`、`:493` 改调 `shared.TitleKey`，注释照实改（S1 实施：`grep_keys.go:399` 的 `keyReader.fold` 也调它，一并改，3.21 第 1 条）。不升分词与 `Extractor` 的版本：改了之后键与原来 `searchFold` 的结果逐字节相同，分出的词不变（00 号文档 4.6.3）。
 
 **测试**：
 
 - `TestTitleKeyIsStable`（`title_key_test.go:43`）的样本加 `"Ꭰ"`、`"ꭰ"`、`"Ᏸ"`、`"ᏸ"`、`"Ꭰꭱᏸx"`（大小写混着、带 ASCII）；`TestTitleKeysMatchAcrossCaseAndNormalization`（`:9`）加一对 `"ᏣᎳᎩ"`/`"ꮳꮃꭹ"`。
 - `title_key_context_test.go`：一个超过 4096 字节、全是切罗基文小写的标题，`TitleKeyContext` 等于 `TitleKey`，也等于它的大写写法的键。
-- linking：`IndexKeyer.Key("ꭰ") == Key("Ꭰ")`，且 `Key(Key(x)) == Key(x)`；随机差分的字母表（`linking/domain/index_test.go:75`）加两段切罗基文的大小写，让原地换的那一段也在差分里。
+- linking：`IndexKeyer.Key("ꭰ") == Key("Ꭰ")`，且 `Key(Key(x)) == Key(x)`；随机差分的字母表（`linking/domain/index_test.go:75`）加两段切罗基文的大小写，让原地换的那一段也在差分里（S1 实施：前两条写成新测试 `TestAnIndexKeyIsCherokeesCapitals`，3.21 第 4 条）。
 - page/app：同一父页下先建 `Ꭰ`，再建 `ꭰ`，第二个答 `page.title_taken`（建页的现有测试，替身照 `NameKey` 判重）。
 - **新旧比对**（新的 `page/domain/search_fold_internal_test.go`，`TestSearchFoldIsTheTitleKeyNow`）：测试里留一份改之前的 `searchFold`（改之前的 `TitleKey` 的式子加那段映射，原样抄进测试，注释写明出处 `194ca350`），在一组语料上比它与 `shared.TitleKey`：两段切罗基文的每个码位单独一次、成对一次；三个混写的词；`search_test.go` 里已有的查询与页名（希腊文的 Σ、土耳其文的 İ、德文的 ß、NFD 的组合字符）。逐个相等。这就是 00 号文档"删掉前后同一组查询的搜索结果相同"：搜索只经这个函数比较键与词。
 - 不加迁移。`nervewiki reindex` 先以 `Rekey` 重算每个节点的标题键（`linking/app/reindex.go:106`、`page/link_targets.go:252-274`、`page/domain/rekey.go:24` 用 `shared.TitleKey`），升级之后跑一次就改对旧键；同一父页下已有只差切罗基文大小写的兄弟页时它报撞键、整本不重建（`reindex.go:106-109`）。发布说明照第 9 节写（审查 B 的 M2）。`checkPages` 只数同一父节点下重复的 `name_key`，不与 `TitleKey(name)` 比。
@@ -266,7 +268,7 @@ func PlainText(n ast.Node, source []byte) string
 
 `ast.Walk` 里加两支：`*ast.AutoLink` 写 `c.Label(source)`；`*ast.RawHTML` 写 `c.Segments` 的每一段的 `Value(source)`。`Hider` 一支照旧在前。
 
-**测试**：`TestHeadingsGetPrefixedUniqueIDs`（`parse_test.go:94`）加两格：`# See https://a.example now` 的 id 是 `nw-see-httpsaexample-now`，`# A <span>b</span> c` 的是 `nw-a-spanbspan-c`；`TestHeadingIDIsAHeadingsID`（`links_test.go:165`）对这两段写法断言 `AnchorID(text)` 等于标题的 id；`TestALinkToAnAnchorAloneLeadsToItsHeading`（`render_test.go:127`）加一格 `[[#See https://a.example now]]` 渲染出的 `href` 指到那个标题的 id。期望的 id 写死，不由被测的 `slug` 算（05-lessons 第 1 节）。
+**测试**：`TestHeadingsGetPrefixedUniqueIDs`（`parse_test.go:94`）加两格：`# See https://a.example now` 的 id 是 `nw-see-httpsaexample-now`，`# A <span>b</span> c` 的是 `nw-a-spanbspan-c`；`TestHeadingIDIsAHeadingsID`（`links_test.go:165`）对这两段写法断言 `AnchorID(text)` 等于标题的 id；`TestALinkToAnAnchorAloneLeadsToItsHeading`（`render_test.go:127`）加一格 `[[#See https://a.example now]]` 渲染出的 `href` 指到那个标题的 id。S1 实施：`platform/markdown` 没有维基链接，`render_test.go` 那一格用 Markdown 链接 `[a](<#See https://a.example now>)`，维基链接的一格在 `obsidian/view_test.go`；这两格守锚点一侧，没改时也绿（3.21 第 3 条）。审查之后四个测试另加 `# Go www.example.com now` → `nw-go-wwwexamplecom-now`：linkify 的 `www.` 链接的 `URL` 带 `http://`，分得出写的是 `Label`（S1 审查 A 的 M1）。期望的 id 写死，不由被测的 `slug` 算（05-lessons 第 1 节）。
 
 ### 3.4 S1：标签列表不列 `/`（10.1）
 
@@ -336,7 +338,7 @@ func CheckName(field, s string, maxLen int) (string, *FieldError) // TrimSpace �
 
 - 说明：`log.go:13` 的 `path` 参数改为 `Only the changesets that changed the page or attachment at this path, from the notebook's root; "/" or omitted for the whole notebook. "" is refused.`；`logDescription`（`tools.go:245-247`）的 `path keeps …` 一句加 `"/" or no path keeps them all`。`api/mcp/tools.json` 两处 `log` 的 `description`（`:306`、`:940`）与 `path`（`:316`、`:954`）手改成同样的字（`TestTheToolListsAreTheContract` 逐成员比对，审查 B 的 N8）。
 - `index` 不动（00 号文档 4.6.4）。
-- **测试**：`TestListChangesetsAtPathAnswersItsCodesInOrder`（`page/app/path_history_test.go:405`）加 `""` 答 `validation_failed path too_short`；`TestListChangesetsAtPathListsAsExecute`（`:333`）加 `"/"` 与省略的答复逐字相同；`bootstrap/mcp_reads_test.go` 的 `historyCodeCalls`（`:557`）加 `{nb, "log", {"path": ""}, "validation_failed"}`；`TestTheMCPHistoryIsRESTs` 的 `log` 子测试（`bootstrap/mcp_history_test.go:269`）加 `path: "/"` 与 REST 的整本日志相同。`index` 的 `parent:"/"` 已有测试（`linking/app/list_index_test.go:325` 的 "the root" 一格），照过；它抓 00 号文档 9.6 的"`index` 的 `parent:\"/\"` 被拒"（7.3 的 S1-27）。
+- **测试**：`TestListChangesetsAtPathAnswersItsCodesInOrder`（`page/app/path_history_test.go:405`）加 `""` 答 `validation_failed path too_short`；`TestListChangesetsAtPathListsAsExecute`（`:333`）加 `"/"` 与省略的答复逐字相同；`bootstrap/mcp_reads_test.go` 的 `historyCodeCalls`（`:557`）加 `{nb, "log", {"path": ""}, "validation_failed"}`；`TestTheMCPHistoryIsRESTs` 的 `log` 子测试（`bootstrap/mcp_history_test.go:269`）加 `path: "/"` 与 REST 的整本日志相同。`index` 的 `parent:"/"` 已有测试（`linking/app/list_index_test.go:325` 的 "the root" 一格），照过；它抓 00 号文档 9.6 的"`index` 的 `parent:\"/\"` 被拒"（7.3 的 S1-27）。S1 实施时 linking 的替身 `paths.Check` 收 `"/"`，那一格抓不到 S1-27；修复让替身照真的拒尾随的 `/`（`"/"` 答 `required`），之后 "the root" 等三格抓到（3.21 第 13 条）。
 
 ### 3.7 S1：MCP 调用超时的文字
 
@@ -353,9 +355,9 @@ func CheckName(field, s string, maxLen int) (string, *FieldError) // TrimSpace �
 - `methodError`（`:358-360`）与 `toolError` 一样经下面的 `deadlineText` 选文字：那里是 prompt 与方法级的错误，"changed nothing"同样成立（它们不写，走不到带标记的一支）。
 - **测试**：三处写着原文的测试（`answer_test.go:413-415`、`prompt_bounds_test.go:498`、`bootstrap/mcp_test.go:232-237`）改成整句比对新文字，不比片段（9.1 的约定）；它们抓"超时的文字照旧"（7.3 的 S1-28）。
 - **提交时跨过期限**（审查 B 的"未核实的怀疑"；修订核对 B 的 N14 照 pgx 的代码判它走得到，现在定）：
-  - **路径**：写的事务的 `COMMIT` 在 `TxManager.end` 里以 `WithoutCancel` 跑，限 `database.commit_timeout`（`platform/postgres/tx.go:197-203`）。`COMMIT` 拿不到回答、跨过这个时限时，连接默认的 `DeadlineContextWatcherHandler`（pgx v5.11.0 `pgconn/config.go:472-474`）让网络读超时，错误包成 `errTimeout{ctx.Err()}`，即 `DeadlineExceeded`（`pgconn/errors.go:154-168`）；`TxManager` 再包成 `commit transaction: %w`（`tx.go:176-177`）。这时请求的期限也已过，`ProblemOf` 归为 `FaultDeadline`（`platform/httpserver/apierrors.go:278`），今天答"ran out of time"，改了文字之后会答"changed nothing"。可 `TxManager` 的注释写明这时结局未知（`tx.go:91-92`）。理由（修订核对第 2 轮 B 的 M6 改正了第二次修订的说法）：这个 handler 自己只设读写的期限，但读超时之后 `MultiResultReader.receiveMessage` 调 `asyncClose`（pgx v5.11.0 `pgconn/pgconn.go:1613-1620`），`asyncClose` 向服务端发 `CancelRequest`、再发 `Terminate`（`pgconn.go:770-790`）。提交前段的停顿（延迟触发器、等锁）会被取消，事务回滚，什么也没写；过了提交点的停顿（例如等同步复制：本地已经提交，取消只得一个 WARNING），或者取消送不到服务端（网络断了）时，提交会落下。调用方分不出是哪一种，所以结局未知。审查 B 复现了前一半（`m12/p3-check2-b/commit-probe.log`、`commit-probe2.log`，两次相同）：照下面 (b) 的造法，`WithinTx` 在 101–107 ms 交回 `commit transaction: timeout: context deadline exceeded`，包着 `DeadlineExceeded`；等满 5 秒，`notes` 里仍是 0 行。后一半（提交落下）没有造过。
+  - **路径**：写的事务的 `COMMIT` 在 `TxManager.end` 里以 `WithoutCancel` 跑，限 `database.commit_timeout`（`platform/postgres/tx.go:197-203`）。`COMMIT` 拿不到回答、跨过这个时限时，连接默认的 `DeadlineContextWatcherHandler`（pgx v5.11.0 `pgconn/config.go:472-474`）让网络读超时，错误包成 `errTimeout{ctx.Err()}`，即 `DeadlineExceeded`（`pgconn/errors.go:154-168`）；`TxManager` 再包成 `commit transaction: %w`（`tx.go:176-177`）。提交开始得晚、请求的期限也已过时，`ProblemOf` 归为 `FaultDeadline`（`platform/httpserver/apierrors.go:278`），今天答"ran out of time"，改了文字之后会答"changed nothing"；提交的时限从提交开始算，默认 2 秒短于请求的 15 秒，更常见的是提交先超时、调用的期限还没到，`ProblemOf` 归为 `FaultUnknown`，答 "the server failed"（S1 审查 B 的 M1 以 overlay 探针核实了两种；下面"文字"一条，3.21 第 11 条）。可 `TxManager` 的注释写明这时结局未知（`tx.go:91-92`）。理由（修订核对第 2 轮 B 的 M6 改正了第二次修订的说法）：这个 handler 自己只设读写的期限，但读超时之后 `MultiResultReader.receiveMessage` 调 `asyncClose`（pgx v5.11.0 `pgconn/pgconn.go:1613-1620`），`asyncClose` 向服务端发 `CancelRequest`、再发 `Terminate`（`pgconn.go:770-790`）。提交前段的停顿（延迟触发器、等锁）会被取消，事务回滚，什么也没写；过了提交点的停顿（例如等同步复制：本地已经提交，取消只得一个 WARNING），或者取消送不到服务端（网络断了）时，提交会落下。调用方分不出是哪一种，所以结局未知。审查 B 复现了前一半（`m12/p3-check2-b/commit-probe.log`、`commit-probe2.log`，两次相同）：照下面 (b) 的造法，`WithinTx` 在 101–107 ms 交回 `commit transaction: timeout: context deadline exceeded`，包着 `DeadlineExceeded`；等满 5 秒，`notes` 里仍是 0 行。后一半（提交落下）没有造过。
   - **标记**（`platform/postgres/tx.go`）：读写事务的 `COMMIT` 失败时，`run` 交回 `*commitError`，同 `beginError` 的写法（`tx.go:181-195`）：`Error()` 照旧是 `commit transaction: <原因>`（日志的字不变），`Unwrap` 交出原因，方法 `TxCommitFailed() bool` 标记它。只读的快照（`WithinSnapshot`，`opts.AccessMode == pgx.ReadOnly`）的提交失败不标记、照旧 `fmt.Errorf`：它什么也没写。`shared` 不加对应的函数：模块里没有人要认它，只有 MCP 的文字用（平台不导入 `shared`，按结构认，同 `apierrors.go:20` 的写法）。
-  - **文字**（`mcpserver/errors.go`）：`toolError` 与 `methodError` 的 `FaultDeadline` 一支经同一个函数选文字；码、`; request id <id>`、`warn` 一行都照旧。REST 的 500 不带文字，不变。
+  - **文字**（`mcpserver/errors.go`）：`toolError` 与 `methodError` 的 `FaultDeadline` 一支经同一个函数选文字；码、`; request id <id>`、`warn` 一行都照旧。REST 的 500 不带文字，不变。S1 第一次修复：`FaultUnknown` 一支也认标记（`committing`、`failedText`），带标记的答 `the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it`，码照旧、日志照旧 error（决定 483，3.21 第 11 条）。
 
 ```go
 	// internalDeadlineSaving: a call past server.request_timeout whose
@@ -376,7 +378,7 @@ func deadlineText(err error) string {
 
   - **测试**：
     - `platform/postgres/tx_test.go` 新的 `TestACommitThatFailsIsMarked`（真库，每格一个 `newNotes`：各是一个新的库）三格。(a) 读写事务的 `fn` 里由池的另一条连接结束本事务的后端（同 `TestWithinTxReportsAFailedRollback` 的 `pg_terminate_backend`），`COMMIT` 失败：带标记、以 `commit transaction: ` 开头、`Unwrap` 交出原因。(b) 读写事务的 `COMMIT` 跨过 `commitTimeout`：`notes` 上一个 `DEFERRABLE INITIALLY DEFERRED` 的约束触发器在提交时 `pg_sleep(2)`，这一格的 `TxManager` 的 `commitTimeout` 是 100 ms。只断言两件事：错误带标记，`errors.Is(err, context.DeadlineExceeded)`。这一造法下取消让它回滚，测试不断言结局。用时约 0.1 秒，加收尾。审查 B 在没改的代码上跑过 (a)、(b)、(c) 的造法（修订核对第 2 轮，`m12/p3-check2-b/`）：(a) 没有标记而红，(b) 同；(c) 照绿，只守 S1-33。实施时照旧先在没改的代码上看 (a)、(b) 红。(c) `WithinSnapshot` 里同 (a) 结束后端：`COMMIT` 失败、不带标记。
-    - `mcpserver` 的 `answer_test.go` 加一格（同 `:413-415` 的超时一格）：工具交回一个带 `TxCommitFailed` 的、包着 `context.DeadlineExceeded` 的错误，ctx 已过期：整句比对 `internalDeadlineSaving` 加 `; request id`；不带标记的照旧是 `internalDeadline` 那一格。`methodError` 不另加格：prompt 与方法不写，走不到这一支，它与 `toolError` 共用 `deadlineText`。
+    - `mcpserver` 的 `answer_test.go` 加一格（同 `:413-415` 的超时一格）：工具交回一个带 `TxCommitFailed` 的、包着 `context.DeadlineExceeded` 的错误，ctx 已过期：整句比对 `internalDeadlineSaving` 加 `; request id`；不带标记的照旧是 `internalDeadline` 那一格。`methodError` 不另加格：prompt 与方法不写，走不到这一支，它与 `toolError` 共用 `deadlineText`。S1 第一次修复另加两格整句比对：`answer_test.go` 的 "a fault at a commit"（活着的 ctx、带标记），`prompt_bounds_test.go` 的 `unknown_commit`（3.21 第 11 条）。
     - 7.3 的 S1-32–S1-34 是它们的变异。
 
 ### 3.8 S1：日志与变更集的详情各在一个快照里（H5）
@@ -423,7 +425,7 @@ REPEATABLE READ 的快照冻结在事务的第一条查询开始时（PostgreSQL
 
 #### 3.8.3 测试
 
-- **单元**（`page/app`）：`HistoryReads` 的替身多一个 `Snapshots`（`fakeSnapshots`，`search_test.go:119-125` 已有，同在 `app_test` 包）。新的 `TestTheLogAndAChangesetReadInOneSnapshot`：替身的 `WithinSnapshot` 在 ctx 里放一个标记；替身的每个端口，`History`、`Names`、`Paths`（`RootByKey`、`ChildByKey`、`PathsOf`）、`Notebooks`（`StateOf`、`WorkspaceOf`）与 `Auth`，每次调用都记下方法名与 ctx 里的标记。`Execute`（带与不带 `page_id`）、`AtPath`（带与不带路径）、`GetChangeset.Execute`、`InNotebook` 各一格，断言：从这个用例的第一条读（P3-10 写的那一条）起，每一次端口调用都带同一个标记；在它之前的都不带；`WithinSnapshot` 恰好一次。漏记一个端口、或快照晚开始、早结束，都有一格红（S1-20–S1-24、S1-29、S1-30；审查 B 的 M4）。
+- **单元**（`page/app`）：`HistoryReads` 的替身多一个 `Snapshots`（`fakeSnapshots`，`search_test.go:119-125` 已有，同在 `app_test` 包）。新的 `TestTheLogAndAChangesetReadInOneSnapshot`：替身的 `WithinSnapshot` 在 ctx 里放一个标记；替身的每个端口，`History`、`Names`、`Paths`（`RootByKey`、`ChildByKey`、`PathsOf`）、`Notebooks`（`StateOf`、`WorkspaceOf`）与 `Auth`，每次调用都记下方法名与 ctx 里的标记。`Execute`（带与不带 `page_id`）、`AtPath`（带与不带路径）、`GetChangeset.Execute`、`InNotebook` 各一格，断言：从这个用例的第一条读（P3-10 写的那一条）起，每一次端口调用都带同一个标记；在它之前的都不带；`WithinSnapshot` 恰好一次。漏记一个端口、或快照晚开始、早结束，都有一格红（S1-20–S1-24、S1-29、S1-30；审查 B 的 M4）。S1 实施：替身的 `historyReads()` 带 `Snapshots`，已有的写死的调用表加 `WithinSnapshot` 与 ` in tx`，否定断言改用 `calledAtAll`，替身的快照 `oneSnapshot` 拒绝嵌套（3.21 第 5 条）；`TestVirtualRead/no_nested` 改数这次读多出的快照（第 6 条）。
 - **整个程序的交错**（新的 `bootstrap/history_snapshot_test.go`，`TestTheLogReadsOneMomentAcrossARevert`，13.4 第 4 条），照 `TestVirtualRead` 的 `rename_snapshot`（`bootstrap/interleavings_virtual_test.go:128-164`）：
   1. 每一格各种一本笔记本：建页 `P`，改名为 `Q`（变更集 C）。各用自己的 C 与 R：共用一个 C 时，前一格的 R 让后一格的"`reverted_by` 为空"不成立（审查 B 的 N1）。
   2. holder 事务 `LOCK TABLE page_revisions IN ACCESS EXCLUSIVE MODE`。
@@ -436,7 +438,7 @@ REPEATABLE READ 的快照冻结在事务的第一条查询开始时（PostgreSQL
     - 三个列日志的格（REST 的 `listChangesets`、MCP 的 `log` 两种）：`ChangesetFacts`（或带路径时的 `ListChangesetsOfPage`）在锁放开之后另取时刻，答复里 C 被 R 撤销；整本的日志里却没有 R（`ListChangesets` 在 R 之前读的）。这正是 H5 说的不一致。
     - 两个详情的格（REST 的 `getChangeset`、`changeset` 工具）：改之前的答复等于 R 之后一次一致的读（R 只改它自己那一行）。它们红，是因为测试钉住了快照的时刻：从 `FindChangeset` 起，早于 R。这是本文定的语义（答复是它第一条读那一刻的），不是 H5 的不一致。
   - 去掉四个用例中任一处的快照，对应的格红（S1-20–S1-23）。
-  - 用时：五次读各等一次锁，约 1–2 秒（推断）。
+  - 用时：五次读各等一次锁，约 1–2 秒（推断）。S1 实测 1.46 秒，竞态 2.39 秒（10.1）。
 
 ### 3.9 S1：每个凭证与每个账户的事件流数
 
@@ -490,7 +492,7 @@ func (h *Hub) open(a shared.Actor) (*Stream, error)
 ```
 
 - `Stream`（`stream.go:13-25`）加 `credential credential`；`close`（`hub.go:111-116`）从 `held` 里去掉它（按指针，还在时）并把账户的数减一；凭证的切片空了就 `delete` 这一项，账户的数到 0 也 `delete`，两张表不随进程的寿命涨（审查 B 的 N10）。
-- 顶掉的那一条：`held` 里先去掉、账户减一，再 `resetFor(domain.ResetSuperseded)`；它的处理器照常先写出已送到的事件、再写 `reset` 帧（同 `access`，`handler.go:96-100`），关掉时 `close` 发现它已不在 `held` 里，不再减。别的原因重置的流照旧算到它的处理器结束为止：客户端在读时立刻结束，不读时至多一个心跳（P3-11；审查 B 的 M5）。
+- 顶掉的那一条：`held` 里先去掉、账户减一，再 `resetFor(domain.ResetSuperseded)`；它的处理器照常先写出已送到的事件、再写 `reset` 帧（同 `access`，`handler.go:96-100`），关掉时 `close` 发现它已不在 `held` 里，不再减。S1 修复：减的是被顶掉那一条自己的账户（`oldest.userID`，同 `close`），两处共用 `uncount`（减一、到 0 就删）：凭证跨了账户时数仍对、表不留 0 项（决定 484，3.21 第 12 条）。别的原因重置的流照旧算到它的处理器结束为止：客户端在读时立刻结束，不读时至多一个心跳（P3-11；审查 B 的 M5）。
 - 锁的次序照旧：先 `h.mu`，再 `s.mu`（`ResetAll` 已是这样，`hub.go:89-95`）。
 - `OpenStream.Execute`（`open_stream.go:30-46`）调 `o.hub.open(actor)`。
 - `events/domain/frame.go`：`ResetSuperseded ResetReason = "superseded" // the same credential opened its fifth stream: this, its oldest, ends`。
@@ -509,19 +511,20 @@ var ErrTooManyStreams = &shared.Error{Kind: shared.KindRateLimited, Code: shared
 
   `Detail` 里的 64 由一个测试与 `MaxAccountStreams` 对证（常量在 app、文字在 domain）。
 - **日志**：顶掉时 `debug` 一行 `event stream superseded`，带 `user_id`、`credential`（种类，不带 id 与令牌，13.1 第 10 条）与 `streams`（4）；拒绝时 `debug` 一行 `event streams of the account at their bound`，带 `user_id` 与 `streams`（64）。访问日志另有 429 的 `info`（同限流，`limit.go:38-41`）。
-- 网页不改代码、不加测试：`reset` 的任何原因都立刻重连（`hub.ts:198-226`）；打开失败时照 `Retry-After` 等，`ApiError` 对任何状态码都取它（`W/services/api.ts:61`、`:70`；`hub.ts:220-224`、`:269-273`）。
+- 网页不改代码、不加测试：`reset` 的任何原因都立刻重连（`hub.ts:198-226`）；打开失败时照 `Retry-After` 等，`ApiError` 对任何状态码都取它（`W/services/api.ts:61`、`:70`；`hub.ts:220-224`、`:269-273`）。S1 修复只改了 `hub.ts`、`event.service.ts` 的注释（决定 485，3.21 第 14 条）。
 
 #### 3.9.3 测试
 
-- **hub 的单元**（`events/app/hub_test.go`，`openAs`（`:61`）改为可指定凭证）：
+- **hub 的单元**（`events/app/hub_test.go`，`openAs`（`:61`）改为可指定凭证；S1 实施在新文件 `hub_bounds_test.go`，`openAs` 不改，两张表的长度经 `export_test.go` 导出，3.21 第 8 条）：
   - `TestACredentialsFifthStreamSupersedesItsOldest`：同一会话开 5 条，第 1 条以 `superseded` 结束，第 2–5 条照常收事件；另一会话、另一账户的流不受影响。
   - `TestAnAccountsSixtyFifthStreamIsRefused`：一个账户 16 个凭证各 4 条，第 17 个凭证开第一条答 `ErrTooManyStreams`；关掉任一条之后能开；全部关掉之后 `held` 与 `accounts` 两张表都是空的（同包的测试读它们的长度）。
   - `TestAFullAccountsCredentialSupersedesItsOwn`：同上，账户已有 64 条时，一个已有 4 条的凭证开第 5 条，顶掉它自己最老的一条、不被拒，账户仍是 64。
   - `TestClientsThatReconnectAtOnceComeToRest`：一个账户 17 个凭证，每个客户端被 `reset` 就立刻重开；模拟按步走，至多 1,000 步。期望 17 次打开之后没有任何重置，模拟停下。按账户而不按凭证计（初稿的规则）时永远互顶，过 1,000 步就失败。另一格：同一凭证 5 个这样的客户端每一步恰好顶掉一个，账户的数一直是 4（写明它们会一直轮转，00 号文档 4.6.5）。
   - `TestASupersededStreamLeavesTheCountsAtOnce`：账户放在 63 条（15 个凭证各 4 条、一个 3 条），其中一个 4 条的凭证 A 开第 5 条、顶掉它最老的一条；被顶掉的那一条的处理器还没关（测试不调 `close`）时，一个新的凭证开第一条照常打开（账户 64）。变异"顶掉的仍算到它关掉"（S1-13）下账户已是 64，新的那条被拒。账户放在 64 时两种数法都拒，看不出区别（审查 B 的 N11）。
   - 文字里的 64 等于 `MaxAccountStreams`。
-- **处理器**（`events/adapter/http/handler_test.go`）：`TestAStreamThatCannotOpenIsAProblem`（`:505`）加一格：`Execute` 答 `ErrTooManyStreams` 时是 429、`rate_limited`、`Retry-After: 30`、200 之前，没有 `hello`。
-- **整个程序**（新的 `bootstrap/events_streams_test.go`，`TestASignInsFifthStreamSupersedesItsOldest`）：alice 以同一个访问令牌开 5 条（`openStream`，`events_stream_test.go:44`），第 1 条收到 `reset`、原因 `superseded`；之后写一页，第 2–5 条都收到 `pages`；alice 的一个 PAT 开的流照旧收到。用时约 1 秒（推断）。名字以 `TestAS` 开头，不在第二份的模式里（第二份收 `TestE…`，现有的 `TestEvery…` 在那里，00 号文档第 7 节"分份"）。
+  - S1 另加：`TestTheHubForgetsWhatClosed`（关两次不多减，全关之后两张表空）、`TestTheRefusalSaysItsBound`（上一条写成一个测试）；第一次修复加 `TestEachTokenIsACredentialOfItsOwn`（每个 PAT 各是一个凭证，S1 审查 C 的 M1）与 `TestASupersededStreamLeavesItsOwnAccount`（顶掉时减被顶掉那一条的账户，被顶到 0 也删项，决定 484）。
+- **处理器**（`events/adapter/http/handler_test.go`）：`TestAStreamThatCannotOpenIsAProblem`（`:505`）加一格：`Execute` 答 `ErrTooManyStreams` 时是 429、`rate_limited`、`Retry-After: 30`、200 之前，没有 `hello`。S1 实施：先看状态，答 200 时读第一帧就失败，不读到流的末尾（3.21 第 10 条）。
+- **整个程序**（新的 `bootstrap/events_streams_test.go`，`TestASignInsFifthStreamSupersedesItsOldest`）：alice 以同一个访问令牌开 5 条（`openStream`，`events_stream_test.go:44`），第 1 条收到 `reset`、原因 `superseded`；之后写一页，第 2–5 条都收到 `pages`；alice 的一个 PAT 开的流照旧收到。用时约 1 秒（推断；S1 实测 1.53 秒，竞态 2.19 秒）。S1 实施用一次新的登录开这 5 条，PAT 的流开在它们之前（隔离；照上面用团队的令牌也确定地绿，3.21 第 7 条）。名字以 `TestAS` 开头，不在第二份的模式里（第二份收 `TestE…`，现有的 `TestEvery…` 在那里，00 号文档第 7 节"分份"）。
 
 ### 3.10 S2：第 302 条的 spec
 
@@ -1133,15 +1136,15 @@ S3：
 
 | 测试 | 文件 | Step | 名字的模式 | 进哪一份 | 推断的用时 |
 |---|---|---|---|---|---|
-| `TestTheLogReadsOneMomentAcrossARevert` | `bootstrap/history_snapshot_test.go` | S1 | `BOOTSTRAP_THIRD`（`The[F-Z]`），不在第二、第五份的模式里 | 加进 `SEVENTH`：第七份 | 1–2 秒 |
-| `TestASignInsFifthStreamSupersedesItsOldest` | `bootstrap/events_streams_test.go` | S1 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 约 1 秒 |
+| `TestTheLogReadsOneMomentAcrossARevert` | `bootstrap/history_snapshot_test.go` | S1 | `BOOTSTRAP_THIRD`（`The[F-Z]`），不在第二、第五份的模式里 | 加进 `SEVENTH`：第七份 | 1–2 秒（S1 实测竞态 2.39 秒） |
+| `TestASignInsFifthStreamSupersedesItsOldest` | `bootstrap/events_streams_test.go` | S1 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 约 1 秒（S1 实测竞态 2.19 秒） |
 | `TestRevertingARollbackPutsBackWhatTheAgentLeft`（改名） | `bootstrap/upgrade_rollback_revert_test.go` | S2 | 补集（`TestR…`） | `SEVENTH` 与 `EIGHTH` 都换名字：第八份 | 比今天多 2–4 秒（S2 实测竞态多 0.1 秒，10.2） |
 | `TestAnImportReadsNamesNotInUTF8` | `bootstrap/transfer_names_test.go` | S3 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 1–2 秒 |
 | `TestAPersonsSixthJobIsRefusedAndAnothersStarts` | `bootstrap/transfer_person_test.go` | S3 | `BOOTSTRAP_FIRST` | 加进 `SEVENTH`：第七份 | 约 1 秒 |
 | `TestServeFailsTheJobsLeftRunning`（已有，种子多两行） | `bootstrap/transfer_jobs_test.go` | S3 | 补集 | 照旧第四份 | 不变（同一次起应用） |
 
 - 加进 `SEVENTH` 的都写成 `Name$$`（同已有的点名）。第一、三份跳过 `SEVENTH`，所以它们离开原来的份。没有一个以 `E`、`Source`、`TheMCP[C-Z]`、`TheContents` 开头，不会在第二份再跑一遍（第二份只跳过 `FIFTH`，`Makefile:379`）。
-- **核对**：每个 Step 在加测试的提交里跑一个脚本：`cd server && go test -race -list . ./internal/bootstrap`（只编译；要带 `-race`：组合根有 28 个文件是 `//go:build !race`，八份与 `Makefile:364` 的计数是竞态构建的列表，审查 C 的 N2），对每个顶层测试以 Python 的 `re` 照八份的 `-run`/`-skip` 判它落在哪几份（这几个模式在 RE2 与 Python 里意思相同），断言每个顶层测试恰在一份、新的在上表那一份；输出贴进 Step 的记录。`Makefile:364` 的计数注释（"554 个顶层 145/50/119/120/60/15/30/15"，竞态构建的列表；以 `grep` 数源文件是 607 个，不是这个数）照实改。审查 C 照初稿的名字跑过这个判法（`m12/p3-review-c/shards.py`）；修订时照新的名字（四个新的、一个改名）在 `86565dd6` 的 `Makefile` 上再跑：新的四个都只在第七份，改名的只在第八份，全部顶层每个恰在一份（`m12/p3-rev1/shards.py`）。
+- **核对**：每个 Step 在加测试的提交里跑一个脚本：`cd server && go test -race -list . ./internal/bootstrap`（只编译；要带 `-race`：组合根有 28 个文件是 `//go:build !race`，八份与 `Makefile:364` 的计数是竞态构建的列表，审查 C 的 N2），对每个顶层测试以 Python 的 `re` 照八份的 `-run`/`-skip` 判它落在哪几份（这几个模式在 RE2 与 Python 里意思相同），断言每个顶层测试恰在一份、新的在上表那一份；输出贴进 Step 的记录。`Makefile:364` 的计数注释（"554 个顶层 145/50/119/120/60/15/30/15"，竞态构建的列表；以 `grep` 数源文件是 607 个，不是这个数）照实改（S1 之后 556 个，145/50/119/120/60/15/32/15，10.1）。审查 C 照初稿的名字跑过这个判法（`m12/p3-review-c/shards.py`）；修订时照新的名字（四个新的、一个改名）在 `86565dd6` 的 `Makefile` 上再跑：新的四个都只在第七份，改名的只在第八份，全部顶层每个恰在一份（`m12/p3-rev1/shards.py`）。
 - **第七份**：S2 合并之后两次 `main` 的平均 279.5 秒，落在 7763 上的一档约 315 秒；P3 加约 4–6 秒（推断：四个新测试），7763 上约 321 秒，余量约 129 秒。**第八份**：307 秒，加 2–4 秒。都在 450 秒之下，不挪份。每个 Step 合并之后两次 `main` 照 06-environment 第 4 节重看，过线先挪给邻份：从 `SEVENTH` 去掉名字之后，`TestA…` 回第一份、`TestTheL…` 回第三份（审查 C 的 N3），不提高 `-timeout`。
 
 ### 3.20 每个新检查的反向对照
@@ -1161,11 +1164,26 @@ S3：
 | 名字的解读 | 7.3 的 S3-1–S3-10；差分测试先在一个"所有没有标志的名字都按 GBK 读"的变异上红 |
 | 按人的上限 | 7.3 的 S3-11–S3-15 |
 | 启动时的收拾 | 7.3 的 S3-16–S3-18；改过的种子各有一个对照（3.14.3 的表的最后一列；第 4 条的不确定） |
-| 分份的脚本 | 把一个新测试的 `$$` 去掉、或只加进 `EIGHTH`：脚本报"不在一份"或"在两份" |
+| 分份的脚本 | 把一个新测试的 `$$` 去掉、或只加进 `EIGHTH`：脚本报"不在一份"或"在两份"；S1：去掉 `$$` 不会失败（没有别的顶层测试以新名字开头），会失败的是只加进 `EIGHTH` 与从 `SEVENTH` 去掉（3.21 第 9 条） |
 
 ### 3.21 S1 的实施对设计的修正
 
-（实施之后补。）
+S1 的审查与修复见 [S1 的审查记录](reviews/P3-S1-small-correctness-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里（头的状态，2.3 的 365、369、371，3.1 的文件表，3.2、3.3、3.6、3.7、3.8.3、3.9.2、3.9.3，3.19，3.20，4.1，6.1，7.1，7.3 的 S1，7.5，第 8 节第 1、2、7–10 条，第 9 节 P5/S3 一行与表后一句）；00 号文档第 7 节"总体设计的修订"第 10 条落了，4.6.4 与决定 365、369 加了括注，第 11 节加主持者的决定 483–486。
+
+1. **`searchFold` 的调用不止三处**（3.2）：`page/domain/grep_keys.go` 的 `keyReader.fold` 也调它，几个测试（`grep_keys_property_test.go`、`search_bound_test.go`）与生成 `grep_tables.go` 的模板（`grep_tables_test.go`）也是；一并改调 `shared.TitleKey`，`grep_tables.go` 重新生成（只改了注释）。审查 A 核对过：`48bbfc99` 的非测试代码里是 `search.go:272`、`:282`、`:493` 与 `grep_keys.go:399` 四处，头上只剩注释与测试里原样抄写的 `searchFoldBefore`。
+2. **切罗基文的一步不用 `strings.Map`**（3.2、决定 365）：`strings.Map` 把不是 UTF-8 的字节写成 U+FFFD，`TestTitleKeysKeepASCIIAndUnicodeBoundaries` 要求它们原样留着（审查 A 的变异 M-a：换成 `strings.Map`，它红）。不导出的 `cherokeeCapitals` 逐 rune 解码，遇到切罗基文小写时在一份拷贝里原地换 3 个字节，别的字节不动，没有小写时不分配；`TitleKey` 的非 ASCII 一支与 `TitleKeyContext` 的长的一支末尾经它，`IndexKeyer.Key` 照设计以 `shared.CherokeeCapital` 原地换。与旧的 `searchFold` 逐字节相同只对合法的 UTF-8 成立，搜索折叠的正文、查询与标题都先验过是 UTF-8（`page/domain/content.go:24`、`search.go:462`、`shared/title.go:24`），从库里读的名字与正文也是（PostgreSQL 的 `text` 存不下不合法的 UTF-8，审查 A）；比对的测试逐码位跑全部合法的码位。决定 365 随之加括注。
+3. **`render_test.go` 那一格用 Markdown 链接**（3.3）：`platform/markdown` 没有维基链接的扩展，`[[#…]]` 在那里是纯文字。那一格改用 `[a](<#See https://a.example now>)`（同一个 `AnchorID`）；维基链接的一格在 `platform/markdown/obsidian/view_test.go`。这两格只守锚点一侧（锚点经 `AnchorID`，本来就带自动链接的文字），在没改的 `PlainText` 上也绿；在它上红的是 `parse_test`、`links_test` 的新格（审查 A 的 N2）。审查之后另加 `# Go www.example.com now` → `nw-go-wwwexamplecom-now`，四个测试各一格、写死：linkify 的 `www.` 链接的 `URL` 前面加了 `http://`，只用 `https://a.example` 时 `Label` 与 `URL` 相同，写 `URL` 的变异照绿（审查 A 的 M1）；render 与 view 的两格同一文档里有标题也有链接，自己就判得出相遇。
+4. **`IndexKeyer.Key` 的两格是一个新测试** `TestAnIndexKeyIsCherokeesCapitals`（`linking/domain/index_test.go`），不加进逐个键写字面值的 `TestIndexKey`；两段大小写的端点另进随机差分的字母表。
+5. **快照碰到已有的单元测试**（3.8.3 只写新测试）：`page.New` 与用例要 `Snapshots`，替身的 `historyReads()`（`history_fakes_test.go`）带上 `fakeSnapshots`；`history_test.go`、`path_history_test.go`、`ingest_history_test.go` 里写死的调用表加 `WithinSnapshot` 与 ` in tx`，仍是全表比对；"没有读某样"的否定断言原来按全名比，加了后缀之后恒真，改用新的 `calledAtAll`（按前缀，快照里外都算）。审查 B 逐个找过剩下的用法，没有一处变得恒真。`fakeNames` 不记调用，新测试另包一层 `recordedNames`；替身的快照 `oneSnapshot` 拒绝嵌套（同 `TxManager`），审查 B 的 overlay 变异（`page` 自己再开一个快照）让四格红。
+6. **`TestVirtualRead/no_nested` 数这次读多出的快照**（`bootstrap/interleavings_virtual_test.go`）：它数页模块的 `TxManager` 自应用起开的快照，断言是 1；`llmWiki` 建笔记本时经 REST 读日志，现在多一个，变成 2。改为读之前取数、断言多 1，同一文件 `normal_unlocked` 的写法；守的仍是"虚拟文件的读恰好开一个快照、不嵌套"（审查 B）。设计没有提到这处，7 号提交之前它红。
+7. **流数的整个程序测试用一次新的登录**（3.9.3 写"alice 以同一个访问令牌开 5 条"）：测试经 `/api/v0/auth/login` 再登录一次，让 5 条流的凭证只属于这个测试，是隔离。照设计用团队的令牌也确定地绿：`settle` 留下、还算着的旧流（至多 4 条）先被顶掉，第 5 次打开仍顶掉 5 条里的第 1 条（审查 C 的探针，`-race` 下 9 次绿）。实施报告原来写的"同一会话里还没关掉的一条会先被顶掉，第 1 条就不是最老的"不成立（审查 C 的 M2），照此改写，测试不动（主持者定）。
+8. **hub 的测试在新文件 `events/app/hub_bounds_test.go`**（3.9.3 写在 `hub_test.go`、`openAs` 改为可指定凭证）：自己的几个帮手，`openAs` 与已有的测试不动；`hub_test.go` 是外部测试包，"同包的测试读两张表的长度"做不到，由新的 `export_test.go`（`package app`）导出 `HubCounts`、`AccountStreams`。
+9. **分份脚本"去掉 `$$`"的反向对照不会失败**（3.20）：没有别的顶层测试以两个新名字开头，去掉之后每个测试仍恰在一份、新的仍在第七份；`$$` 防的是以后以同名开头的测试。会失败的对照是只加进 `EIGHTH`（报在第一、第八两份）与从 `SEVENTH` 去掉（报在第一份），都 rc=1。
+10. **处理器的 429 一格先看状态**（3.9.3 只写断言）：答 200 时读第一帧就失败，不 `io.ReadAll` 一条开着的流。原来的写法在变异 S1-12 与 x7 下把 `events/adapter/http` 挂到 10 分钟的超时，第一次跑变异时发现，提交之前改了。
+11. **提交在调用的期限之前失败的，也答"可能已保存"**（决定 483；第一次修复，代码审查 B 的 M1，主持者取甲）：3.7"路径"一段原来说提交跨过 `database.commit_timeout` 时"请求的期限也已过，`ProblemOf` 归为 `FaultDeadline`"，只在提交开始得晚时成立。提交的时限从提交开始算（`WithTimeout(WithoutCancel(ctx), commitTimeout)`），默认 2 秒短于 `server.request_timeout` 的 15 秒，所以更常见的是提交先超时、调用的期限未到，`ProblemOf` 归为 `FaultUnknown`，原来答 "the server failed"，agent 照它重试，不带 `base_version` 的 `edit` 可能重复追加。审查 B 以 overlay 探针核实了两种情形。`toolError` 与 `methodError` 的 `FaultUnknown` 一支也认 `TxCommitFailed`（`committing`、`failedText`）：带标记的答 `the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it`，日志照旧 error；码照旧 `internal_error`，REST 不变。`answer_test.go`（"a fault at a commit"）与 `prompt_bounds_test.go`（`unknown_commit`）各一格整句比对，修之前都红。这一支认的是调用的期限还没过时任何带标记的提交失败，不只是超时；"`commit_timeout` 短于 `request_timeout`"只是默认值，配置的校验不要求它，所以注释不把它写成不变式（修复第 2 轮，核对 B 的 C1-N1）。`tx.go` 的注释照代码写：读写事务的提交失败都带标记，结局可能未知，连接在送出 `COMMIT` 之前就断了的是回滚（审查 B 的 N1）。3.7 那一句照此改了。
+12. **每个 PAT 各是一个凭证，有测试守；顶掉时减被顶掉那一条自己的账户**（决定 484；第一次修复，审查 C 的 M1）：7.3 的 S1-12 只钉住"按凭证而不是按账户"，去掉 `credentialOf` 的 PAT 一支（全实例的 PAT 共用一个凭证）在单元与整个程序的测试下都活下来。`TestEachTokenIsACredentialOfItsOwn` 守它；顶掉时减被顶掉那一条自己的账户（`oldest.userID`，同 `close`），`TestASupersededStreamLeavesItsOwnAccount` 守它；顶掉与 `close` 共用 `uncount`（减一、到 0 就删），被顶到 0 的账户也不留项，同一个测试把 bob 顶到 0、再全关，断言两张表空（修复第 2 轮，核对 C 的 C1-N2）。去掉 `job` 一支是等价的：HTTP 的认证只造会话与 PAT 的 actor，任务经不到事件流。顶掉的 `debug` 一行仍记开者的 `user_id`（今天两者是同一个账户）。
+13. **linking 的替身 `paths.Check` 照真的拒尾随的 `/`**（第一次修复，审查 A 的 M2）：原来收 `"/"`，7.3 点名的 "the root" 一格抓不到 S1-27，只有 `TestListIndexJudgesInTurn` 的调用次序抓到；改了之后 "the root"、"type and parent"、"a notebook hidden" 三格都抓到。`"/"` 单独一个照真的答 `required`（去掉开头的 `/` 剩空串），别的以 `/` 结尾的答 `invalid_format`（修复第 2 轮，核对 A 的 C1-N1）。只改测试。
+14. **网页的三处注释写成 503 与 429 都带 `Retry-After`**（决定 485；第一次修复，审查 C 的 N3）：4.1 的"网页的代码与测试都不改"指行为；`W/events/hub.ts` 的 `#lead` 与 `retryAfterOf`、`W/services/event.service.ts` 的 `open` 只改了注释。注释写 429 的两种起因：请求的限流（打开流在限流中算一次请求）与账户到了流数的上限（修复第 2 轮，核对 C 的 C1-N1）。
 
 ### 3.22 S2 的实施对设计的修正
 
@@ -1205,7 +1223,7 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
 
 ### 4.1 S1
 
-- 网页的代码与测试都不改（审查 B 的过度设计：初稿的 429 一格走的是 `hub.test.ts:194` 已经走过的路）。对 429 有效的依据是 `ApiError` 对任何状态码都取 `Retry-After`（`W/services/api.ts:61`、`:70`），`hub.ts` 的 `retryAfterOf` 不看状态码（`:269-273`）。一个浏览器只有持有领导权的标签页开一条流，其余经 `BroadcastChannel` 收（`W/events/hub.ts:6-10`、`W/events/leadership.ts`），所以 4 条只在半开的连接、几个配置文件时碰到；`reset` 的任何原因都立刻重连（`hub.ts:198-226`），`superseded` 不另处理。
+- 网页的代码与测试都不改（审查 B 的过度设计：初稿的 429 一格走的是 `hub.test.ts:194` 已经走过的路）。对 429 有效的依据是 `ApiError` 对任何状态码都取 `Retry-After`（`W/services/api.ts:61`、`:70`），`hub.ts` 的 `retryAfterOf` 不看状态码（`:269-273`）。一个浏览器只有持有领导权的标签页开一条流，其余经 `BroadcastChannel` 收（`W/events/hub.ts:6-10`、`W/events/leadership.ts`），所以 4 条只在半开的连接、几个配置文件时碰到；`reset` 的任何原因都立刻重连（`hub.ts:198-226`），`superseded` 不另处理。S1 修复只改了 `hub.ts` 的 `#lead`、`retryAfterOf` 与 `W/services/event.service.ts` 的 `open` 的注释，写 503 `not_ready` 与 429 `rate_limited`（请求的限流，或账户到了流数的上限）都带 `Retry-After`；"不改"指行为（决定 485，3.21 第 14 条）。
 - 生成的类型（`schema.gen.ts`）随 `make gen` 多出 `superseded`；没有以这个枚举为键的 `Record`，tsc 照过（实施时 `rg "notebooks_deleted" W/` 核对）。
 - 标签列表少了 `/`：网页的标签页与补全照列表显示，不改；`#//` 一直不能点进去（`getTag` 叫不出它）。
 - 名字为空、标题 id、标题键、MCP 的改动网页都不经手：表单把 `required` 照 `field.required` 显示（`problem-messages.ts` 的 `fieldMessages`），与今天的空名字相同。
@@ -1270,6 +1288,8 @@ P3 不改网页的行为，只让新码、新原因有文字。S3 的网页部�
 
 1–6 互不依赖，可以换次序；7 与 8 各自独立。
 
+S1 照第 1–8 个的次序做；审查之后修复第 1 轮加 6 个提交、修复第 2 轮加 4 个，两次合并 `main`（`d1e90929`、`892dd827`），文档在它们之后（10.1）。
+
 ### 6.2 S2
 
 1. domain 测试的 `world.state()` 照根的时刻读组（P3-3）；现有的格照过（只动测试）。
@@ -1299,19 +1319,20 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | Step | 层 | 测试 | 证明什么 |
 |---|---|---|---|
 | S1 | shared | `TestTitleKeyIsStable`、`TestTitleKeysMatchAcrossCaseAndNormalization` 的新样本；`title_key_context_test.go` 的长标题 | 切罗基文的键幂等、大小写相同 |
-| S1 | linking/domain | `IndexKeyer.Key` 的两格 | 索引的键同一步 |
+| S1 | linking/domain | `TestAnIndexKeyIsCherokeesCapitals`（`IndexKeyer.Key` 的两格，3.21 第 4 条） | 索引的键同一步 |
 | S1 | page/domain | `TestSearchFoldIsTheTitleKeyNow` | 删掉 `searchFold` 之后搜索的键逐字节不变 |
 | S1 | page/app | 建页的一格（`Ꭰ` 与 `ꭰ`） | 只差切罗基文大小写的兄弟页被拒 |
-| S1 | platform/markdown | `TestHeadingsGetPrefixedUniqueIDs`、`TestHeadingIDIsAHeadingsID`、`TestALinkToAnAnchorAloneLeadsToItsHeading` 的新格 | 标题 id 与锚点对自动链接与原始 HTML 相遇 |
+| S1 | platform/markdown | `TestHeadingsGetPrefixedUniqueIDs`、`TestHeadingIDIsAHeadingsID`、`TestALinkToAnAnchorAloneLeadsToItsHeading` 的新格；`obsidian/view_test.go` 的维基链接一格（3.21 第 3 条）；四个测试的 `www.` 一格（S1 审查 A 的 M1） | 标题 id 与锚点对自动链接与原始 HTML 相遇；写的是自动链接的 `Label`、不是 `URL` |
 | S1 | linking/postgres | `TestTheTagsOfANotebook` | 不列 `/` |
 | S1 | shared、identity | `TestCheckName`、`TestCleanClientName`、显示名的一格；`Blank` 逐码位的比对 | 看不见的名字算空；emoji 序列、ZWNJ、U+2800、`۝` 照旧；与 Unicode 的推导一致 |
 | S1 | page/app、bootstrap | `AtPath` 的两格、`historyCodeCalls`、`TestTheMCPHistoryIsRESTs` 的 `log` | `"/"` 是整本，`""` 答 `too_short` |
+| S1 | linking/app | `backlinks_test.go` 的替身（第一次修复） | 替身照真的 `Check` 拒尾随的 `/`，S1-27 由 "the root" 等三格抓到（3.21 第 13 条） |
 | S1 | mcpserver、bootstrap | 三处整句比对 | 超时的新文字 |
 | S1 | platform/postgres | `TestACommitThatFailsIsMarked`（三格） | 读写事务的提交错误带标记、只读的不带；提交跨过时限时错误包着 `DeadlineExceeded`、带标记 |
-| S1 | mcpserver | `answer_test.go` 的提交一格 | 带标记的超时答另一句 |
-| S1 | page/app | `TestTheLogAndAChangesetReadInOneSnapshot` | 四个用例从各自第一条属于答复的读起在一个快照里 |
-| S1 | bootstrap | `TestTheLogReadsOneMomentAcrossARevert`（交错，13.4 第 4 条） | 真库上五种读看到同一时刻 |
-| S1 | events/app | 五个 hub 测试 | 按凭证顶掉、按账户拒绝、互顶会停下、关掉之后两张表空 |
+| S1 | mcpserver | `answer_test.go` 的提交一格；第一次修复加 "a fault at a commit" 与 `prompt_bounds_test.go` 的 `unknown_commit`（决定 483） | 带标记的超时答另一句；调用的期限没过、带标记的故障也答"可能已保存" |
+| S1 | page/app | `TestTheLogAndAChangesetReadInOneSnapshot`；替身的快照拒绝嵌套，已有的调用表照改（3.21 第 5 条） | 四个用例从各自第一条属于答复的读起在一个快照里 |
+| S1 | bootstrap | `TestTheLogReadsOneMomentAcrossARevert`（交错，13.4 第 4 条）；`TestVirtualRead/no_nested` 改数这次读多出的快照（3.21 第 6 条） | 真库上五种读看到同一时刻 |
+| S1 | events/app | 五个 hub 测试（`hub_bounds_test.go`，3.21 第 8 条）；另 `TestTheHubForgetsWhatClosed`、`TestTheRefusalSaysItsBound`，第一次修复的 `TestEachTokenIsACredentialOfItsOwn`、`TestASupersededStreamLeavesItsOwnAccount` | 按凭证顶掉、按账户拒绝、互顶会停下、关掉之后两张表空；每个 PAT 各是一个凭证；顶掉时减被顶掉那一条的账户，到 0 也删（决定 484） |
 | S1 | events/http | `TestAStreamThatCannotOpenIsAProblem` 的一格 | 429、`Retry-After: 30` |
 | S1 | bootstrap | `TestASignInsFifthStreamSupersedesItsOldest` | 真的流上第 5 条顶掉第 1 条 |
 | S2 | page/domain | `TestPlanRevertOfNestedTrashRoots`（十二格，3.22 第 3 条）、`TestRevertGroupsAndRefs` 的一格；`revert_schedule_internal_test.go` 的四处照新签名，`TestARestoreWaitsForTheGroupItGoesUnder` 照新规则读（3.22 第 2 条） | 第 302 条的规则与反例 |
@@ -1359,7 +1380,7 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | S1-13 | 顶掉的流算到它关掉为止 | `TestASupersededStreamLeavesTheCountsAtOnce` |
 | S1-14 | 凭证满时先看账户 | `TestAFullAccountsCredentialSupersedesItsOwn` |
 | S1-15 | 顶掉最新的一条 | `TestACredentialsFifthStreamSupersedesItsOldest`、整个程序的那一个 |
-| S1-16 | `close` 不从 `held` 去掉 | `TestAnAccountsSixtyFifthStreamIsRefused` 的"关掉之后能开" |
+| S1-16 | `close` 不从 `held` 去掉 | `TestAnAccountsSixtyFifthStreamIsRefused` 的"关掉之后能开"；S1 实施：这个写法账户照减、仍能开，红在"全关之后两张表空"（另 `TestTheHubForgetsWhatClosed`） |
 | S1-17 | `ErrTooManyStreams` 不带 `RetryDelay` | 处理器的一格 |
 | S1-18 | `"/"` 照旧经 `ParsePath` | `TestListChangesetsAtPathListsAsExecute` 的新格、`TestTheMCPHistoryIsRESTs` |
 | S1-19 | `""` 当作整本 | `TestListChangesetsAtPathAnswersItsCodesInOrder`、`historyCodeCalls` |
@@ -1367,7 +1388,7 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | S1-24 | `GetChangeset.Execute` 的快照只包 `detail`（`FindChangeset` 在快照之外） | 单元的那一格（`FindChangeset` 不带标记）；整个程序的那一格照绿，写明原因（3.8.2） |
 | S1-25 | `CleanClientName` 不判 `Blank` | `TestCleanClientName` 的新格 |
 | S1-26 | 账户的硬上限不拒（或上限交成很大，00 号文档 9.2） | `TestAnAccountsSixtyFifthStreamIsRefused`（审查 B 的 M3） |
-| S1-27 | `index` 的 `parent:"/"` 被拒 | `linking/app/list_index_test.go:325` 的 "the root" 一格（已有） |
+| S1-27 | `index` 的 `parent:"/"` 被拒 | `linking/app/list_index_test.go:325` 的 "the root" 一格（已有）；S1 实施时替身收 `"/"`，只由 `TestListIndexJudgesInTurn` 的调用次序抓到；第一次修复让替身照真的拒尾随的 `/` 之后，"the root"、"type and parent"、"a notebook hidden" 三格都抓到（3.21 第 13 条） |
 | S1-28 | 超时的文字照旧 | 3.7 的三处整句比对 |
 | S1-29 | `AtPath` 的快照从 `page` 才开始（`Find` 在外） | 单元的那一格（`StateOf`、`RootByKey` 不带标记）；整个程序的照绿（3.8.2） |
 | S1-30 | `alivePaths` 在快照之后 | 单元的那一格（`PathsOf` 不带标记）；整个程序的照绿：SQL 写的 R 不碰 `nodes` |
@@ -1375,6 +1396,13 @@ S2 照第 1–5 个的次序做，第 5 个另数请求与后台两条路（3.22
 | S1-32 | `run` 的提交错误不带标记（照旧 `fmt.Errorf`） | `TestACommitThatFailsIsMarked` 的 (a)、(b)（修订核对 B 的 N14） |
 | S1-33 | 只读的快照的提交错误也带标记 | `TestACommitThatFailsIsMarked` 的 (c) |
 | S1-34 | `deadlineText` 不看标记（恒为 `internalDeadline`） | `answer_test.go` 的提交一格 |
+| x1–x11 | S1 实施者加的（下同）：`Blank` 不减 U+FFF9–FFFB、U+13430–13440；不算空白；先判控制字符；`close` 不删空项（两种）；原因写成 `overflow`（单元、整个程序）；`MaxAccountStreams = 65`；新的一条加在切片头上；`cherokeeCapitals` 只换第一个；`commitError` 没有 `Unwrap` | 都抓到；x1 只有逐码位的比对抓到 |
+| b-m1-text、b-m1-tool、b-m1-method | `failedText` 不看标记；`toolError`、`methodError` 的 `FaultUnknown` 一支照旧（S1 第一次修复加的，下同） | `answer_test.go` 的 "a fault at a commit"、`prompt_bounds_test.go` 的 `unknown_commit` |
+| b-m1-mark | `committing` 只看类型、不看 `TxCommitFailed()` 的值 | 等价：实现这个方法的只有 `commitError` 与测试的替身，都答 `true`（S1 的审查记录） |
+| c-m1-pat、c-m1-opener | 去掉 `credentialOf` 的 PAT 一支；顶掉时减开者的账户 | `TestEachTokenIsACredentialOfItsOwn`；`TestASupersededStreamLeavesItsOwnAccount` |
+| c-m1-job | 去掉 `credentialOf` 的 `job` 一支 | 等价：HTTP 的认证只造会话与 PAT 的 actor，任务经不到事件流 |
+| a-m1-url | `PlainText` 写自动链接的 `URL` | 四个测试的 `www.` 一格 |
+| c-c1-n2 | 顶掉时不经 `uncount`，不删 0 项（S1 修复第 2 轮） | `TestASupersededStreamLeavesItsOwnAccount` |
 
 **S2**
 
@@ -1451,7 +1479,7 @@ CI 绿之后才合并（02-workflow 第 4 节）；合并之后 `main` 上两次
 
 | 份 | 今天（两次 `main` 的平均） | P3 加 | 之后 | 450 秒的余量 |
 |---|---|---|---|---|
-| 第七份 | 279.5 秒；落在 EPYC 7763 上约 315 秒 | 约 4–6 秒（四个新测试，3.19） | 7763 上约 321 秒 | 约 129 秒（按 7763 那一档，审查 C 的 N3） |
+| 第七份 | 279.5 秒；落在 EPYC 7763 上约 315 秒 | 约 4–6 秒（四个新测试，3.19）；S1 的两个实测竞态共约 4.6 秒（10.1） | 7763 上约 321 秒 | 约 129 秒（按 7763 那一档，审查 C 的 N3） |
 | 第八份 | 307 秒 | 约 2–4 秒（302 一格多一次回滚与撤销）；S2 实测竞态多 0.1 秒（10.2） | 约 311 秒 | 约 139 秒 |
 | 竞态 | 见 06-environment 第 4 节 | 后台撤销的性质测试多约 0.2 秒、回滚的多约 1.3 秒（审查 A 实测与推算，3.10.9；S2 实测多 0.34–0.40 秒与约 1.5 秒，10.2）；S3 的差分（几组种子，每组 1,000 个 zip）与模糊的种子也在这一份（审查 C 的 N9），S3 量 | S2、S3 各量一次 | S2、S3 量 |
 
@@ -1472,18 +1500,18 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 
 **文档的新文字**（各 Step 的文档提交用脚本逐条替换，断言旧文字恰好出现一次，02-workflow 第 1 节第 8 步；总体设计每改一次，第 15 节加一行，日期、变更、依据、`M12/P3/S<m>`）：
 
-1. **总体设计 13.1 第 28 条**（S1）：`NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC。` → `NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC → 切罗基文的小写换成大写（\`cases.Fold\` 把切罗基文的大小写对调，这一步让键幂等；链接索引的 \`IndexKeyer\` 与搜索的分词同一步，M12/P3/S1）。`
-2. **总体设计 13.1 第 30 条**（S1）：在 `   - **连接的建立**` 那一项之后加一项：`   - **流数**（M12/P3/S1）：每个凭证（登录会话、PAT、任务）至多 4 条，第 5 条顶掉它最老的一条（\`reset\`，原因 \`superseded\`），从不被拒；每个账户至多 64 条，净增的第 65 条答 429 \`rate_limited\`，\`Retry-After: 30\`。两个上限是常量；条数在打开、顶掉与关闭时维护，顶掉的那一条立刻不算。`
+1. **总体设计 13.1 第 28 条**（S1）：`NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC。` → `NFC → 完整的大小写折叠（\`cases.Fold\`，与语言无关）→ NFC → 切罗基文的小写换成大写（\`cases.Fold\` 把切罗基文的大小写对调，这一步让键幂等；链接索引的 \`IndexKeyer\` 与搜索的分词同一步，M12/P3/S1）。`S1 的文档提交照它落了。
+2. **总体设计 13.1 第 30 条**（S1）：在 `   - **连接的建立**` 那一项之后加一项：`   - **流数**（M12/P3/S1）：每个凭证（登录会话、PAT、任务）至多 4 条，第 5 条顶掉它最老的一条（\`reset\`，原因 \`superseded\`），从不被拒；每个账户至多 64 条，净增的第 65 条答 429 \`rate_limited\`，\`Retry-After: 30\`。两个上限是常量；条数在打开、顶掉与关闭时维护，顶掉的那一条立刻不算。`S1 的文档提交照它落了。
 3. **总体设计 5.8 第 6 步**（S2）：照 00 号文档"总体设计的修订"第 8 条的第一项。S2 的文档提交照它落了。
 4. **总体设计 13.1 第 2 条**（S2）：从 `回滚的变更集由几遍、几个单元在不同时刻写下` 起、到 `没有造过。` 为止（`v0.1-design.md:1062`）换成：`回滚的变更集由几遍、几个单元在不同时刻写下：先删的子树在自己的单元里删成回收站根，收着基线节点的新建节点在后面一遍才删。撤销计划里，被这个变更集删了、现在本身是回收站根的节点是它自己的顶，几项依次放回（外层先）；后台撤销在一段"让开"里放回外层一组时，至少放回到段内后面的放回要用的成员（M11 第 302 条，M12/P3/S2 修，[M12 总设计](M12-release/00-M12-design.md) 4.6.1）。`S2 的文档提交照它落了。
 5. **`README.md:192`**（S3）：`不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、名称不是 UTF-8、过深、过大等）跳过，报告逐条列出。` → `不能安全导入的条目（越出目录、符号链接、加密、压缩比过大、过深、过大等）跳过，报告逐条列出。没有 UTF-8 标志的名称先读 Info-ZIP 的 Unicode 路径；包里不是 UTF-8 的名称都能按 GBK（中文 Windows 打包的写法）读出时，按 GBK 读，报告列出每个这样读的名称；这样的包里，没有标志、恰好也是合法 UTF-8 的非 ASCII 名称一并按 GBK 读（GBK 的\`目录\`、\`图片\`就是合法的 UTF-8）。有一个读不出时，这个包不按 GBK 读，不是 UTF-8 的条目跳过。已知限制：日文、韩文、繁体中文的旧编码会被读成乱码的中文；同一个包里既有 GBK 名称、又有没有标志的 UTF-8 名称时，后者也会被读成 GBK。`（审查 C 的 N7）
 6. **`README.md:193`**（S3），两处：
    - `全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；` → `一个人排队与运行中的任务（各笔记本合计，含正在上传的导入）至多 5 个，超出答 409 \`transfer.too_many_jobs\`（升级的回滚算进去，但从不因此被拒）；全部排队与运行中的任务至多 \`transfer.max_queued\`（默认 20），超出答 503 \`server_busy\`；`
    - 从 `进程恰在 River 取到任务、任务开始之前停掉时，任务一直排队，` 到 `开始它的人与笔记本的管理员可以取消它；`（各恰好出现一次）换成 `进程恰在 River 取到任务、任务开始之前停掉时，任务在服务下次启动时记成失败 \`interrupted\`（M12）。开始它的人与笔记本的管理员可以取消排队的任务；`（其后的"升级的回滚只有…"一句不动）。
-7. **`README.md:198`**（S1）：`一个账户一条：` → `一个浏览器一条（每个凭证至多 4 条、每个账户至多 64 条，见下面"流数"）：`
-8. **`README.md:207`**（S1），两处：`、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）。` → `、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）、\`superseded\`（同一个凭证开了第 5 条，这是它最老的一条）。`；`因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\` 而 \`reset\` 时，之前已经送到这条流的事件先写出` → `因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\`、\`superseded\` 而 \`reset\` 时，之前已经送到这条流的事件先写出`（审查 B 的 N9）。
-9. **`README.md:210`** 之后（S1）加一条：`- **流数**：每个凭证（登录会话、PAT）至多 4 条，第 5 条让它最老的一条以 \`reset\`（\`superseded\`）结束；每个账户至多 64 条，再开答 429 \`rate_limited\`（\`Retry-After: 30\`）。网页一个浏览器只开一条（持有它的标签页转给其余的）。`
-10. **`README.md:223`**（S1）：`可按 \`path\`、` → `可按 \`path\`（\`"/"\` 与不给相同，是整本；\`""\` 答字段错误）、`
+7. **`README.md:198`**（S1）：`一个账户一条：` → `一个浏览器一条（每个凭证至多 4 条、每个账户至多 64 条，见下面"流数"）：`S1 的文档提交照它落了。
+8. **`README.md:207`**（S1），两处：`、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）。` → `、\`overflow\`（客户端读得太慢，缓冲的 64 个事件满了）、\`superseded\`（同一个凭证开了第 5 条，这是它最老的一条）。`；`因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\` 而 \`reset\` 时，之前已经送到这条流的事件先写出` → `因 \`access\`、\`notebooks_deleted\`、\`reconnected\`、\`overflow\`、\`superseded\` 而 \`reset\` 时，之前已经送到这条流的事件先写出`（审查 B 的 N9）。S1 的文档提交照它落了。
+9. **`README.md:210`** 之后（S1）加一条：`- **流数**：每个凭证（登录会话、PAT）至多 4 条，第 5 条让它最老的一条以 \`reset\`（\`superseded\`）结束；每个账户至多 64 条，再开答 429 \`rate_limited\`（\`Retry-After: 30\`）。网页一个浏览器只开一条（持有它的标签页转给其余的）。`S1 的文档提交照它落了。
+10. **`README.md:223`**（S1）：`可按 \`path\`、` → `可按 \`path\`（\`"/"\` 与不给相同，是整本；\`""\` 答字段错误）、`S1 的文档提交照它落了。
 11. **00 号文档**：Phase 设计合并时照 2.1 改（脚本 `apply_p3_design.py`，02-workflow 第 2 节第 3 步）；第 12 节的进度随每个 Step。
 12. **总体设计 13.1 第 4 条**（S3；审查 C 的 M3、I2）：`409 \`transfer.busy\` → 503 → 事务里再判定、写行，没有 422；` → `409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\`（M12）→ 503 → 事务里再判定、写行，没有 422；`；`409 \`page.locked\`（计划要删或写回的页）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。` → `409 \`page.locked\`（计划要删或写回的页）→ 409 \`transfer.too_many_jobs\`（M12）→ 503，与 \`revertChangeset\` 共用这一遍核对（[M8 总设计](M8-history-search/00-M8-design.md) 4.14）。M12/P3/S3 的按人的上限在导出与导入里：\`startExport\` 是 409 \`transfer.too_many_jobs\` → 503 \`server_busy\` → 409 \`transfer.busy\`，\`startImport\` 在读文件之前是 409 \`transfer.busy\` → 409 \`transfer.too_many_jobs\` → 503。`
 13. **总体设计 13.1 第 23 条**（S3；审查 C 的 M3）：`模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。` → `模块在 River 取任务之前的恢复经 \`jobs.Job.Start\`（导出、导入与 M8/P4 的恢复、撤销的收拾：上次进程留下的"运行中"一律记成中断）。M12/P3/S3 起 transfer 的五种任务也设 \`jobs.Job.DiscardRunning\`，平台在收拾的 \`Start\` 之前丢掉上一个进程留下的 \`running\` 的 River 行，收拾随即把 River 不再持有的排队行记成中断：上一个进程取到而没开始的任务不再等 River 的救援；以 SQL 种排队行的测试要同时种它的 River 行。`
@@ -1495,19 +1523,48 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 | 给谁 | 什么 |
 |---|---|
 | P4/S3（性能实测） | 日志与变更集的详情改在只读的 REPEATABLE READ 快照里读（3.8），每次多一个事务的开销与一条连接的占用；日志的实测照新的读法量。事件流的 hub 多两张表，打开与关闭多一次常数时间的维护 |
-| P5/S3（发布说明的已知限制，4.13） | **切罗基文的标题键**（审查 B 的 M2，照代码）：(1) 升级之后不跑 `reindex` 时，已有的切罗基文标题留着旧键，按路径找（`RootByKey`、`ChildByKey`）与链接解析都找不到它（MCP 读 `Ꭰ.md` 答 `page.not_found`），同一父页下还能再建一个只差切罗基文大小写的兄弟页；(2) `nervewiki reindex` 重算标题键，把它们改对；(3) 一本笔记本里已有只差切罗基文大小写的兄弟页（旧键下合法）时，`reindex` 报撞键、这本整个跳过（链接也不重建），要先给其中一页改名。发布说明写：有切罗基文标题的实例升级之后跑一次 `nervewiki reindex`，报撞键的照提示改名再跑。<br>**标题 id**：标题里有自动链接或原始 HTML 的，id 变了，旧的指向它的锚点链接要重写。<br>**导入名称**：Shift-JIS、Big5、EUC-KR 的名字读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好合法 UTF-8 的 GBK 名字的包认不出；**相对今天的回归**：GBK 的包里没有标志的真 UTF-8 名字会被读成 GBK（P3-16），报告里逐个列出。<br>**其余**：U+2800 单独作名字仍然通过；一个凭证至多 4 条事件流 |
+| P5/S3（发布说明的已知限制，4.13） | **切罗基文的标题键**（审查 B 的 M2，照代码）：(1) 升级之后不跑 `reindex` 时，已有的切罗基文标题留着旧键，按路径找（`RootByKey`、`ChildByKey`）与链接解析都找不到它（MCP 读 `Ꭰ.md` 答 `page.not_found`），同一父页下还能再建一个同名或只差切罗基文大小写的兄弟页（S1 的探针：旧键是对调的大小写，新键不撞它）；(2) `nervewiki reindex` 重算标题键，把它们改对；(3) 一本笔记本里已有只差切罗基文大小写的兄弟页（旧键下合法），或升级之后、`reindex` 之前建成的同名兄弟页时，`reindex` 报撞键、这本整个跳过（链接也不重建），要先给其中一页改名。发布说明写：有切罗基文标题的实例升级之后跑一次 `nervewiki reindex`，报撞键的照提示改名再跑。<br>**标题 id**：标题里有自动链接或原始 HTML 的，id 变了，旧的指向它的锚点链接要重写。<br>**导入名称**：Shift-JIS、Big5、EUC-KR 的名字读成乱码的中文；GB18030 的四字节字符让整包不按 GBK 读；只有恰好合法 UTF-8 的 GBK 名字的包认不出；**相对今天的回归**：GBK 的包里没有标志的真 UTF-8 名字会被读成 GBK（P3-16），报告里逐个列出。<br>**其余**：U+2800 单独作名字仍然通过；一个凭证至多 4 条事件流，一个账户至多 64 条、再开答 429（脚本或很多个配置文件才会碰到） |
 | v0.2 的 `M12-transfer.md`（收尾时写） | 导入时选编码的选项；CP437；Shift-JIS 等的识别；按人的上限做成配置项（若有人要） |
 | v0.2 的 `M12-history.md`（收尾时写） | "同一形状在后台恢复、后台撤销里"仍没有造过（00 号文档 4.6.1"不去造的"）：任务自己的变更集分批删出的那一种；交错 20 的"往回"与后台恢复停在组中间的那一例是来源 3，S2 照常撤销（3.22 第 1 条） |
 
-切罗基文的那一条是审查 B 照代码核对过的（`linking/app/reindex.go:106-109`、`page/link_targets.go:252-274`、`page/domain/rekey.go:24`），不再留给 S1 核对；不加迁移（00 号文档 4.6.3）。
+切罗基文的那一条是审查 B 照代码核对过的（`linking/app/reindex.go:106-109`、`page/link_targets.go:252-274`、`page/domain/rekey.go:24`），不再留给 S1 核对；不加迁移（00 号文档 4.6.3）。S1 实施另以 go1.27.4、x/text v0.42.0 的探针核对旧键（U+13A0 的旧键是 U+AB70，反之亦然）：只含小写的标题旧键已是大写、照旧找得到，所以 (1)、(3) 加了"同名"的一种（审查 A 核实）。
 
 ## 10. 结果
 
 每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
 
-### 10.1 S1：小的正确性
+### 10.1 S1：小的正确性（2026-11-16，合并见 00 号文档第 12 节）
 
-（实施之后补。）
+- **提交**（从 `main` 的 `48bbfc99` 开始，实施 8 个，照 6.1 的次序；文档是本提交）：
+  - 标题键：切罗基文的小写换成大写（`shared.CherokeeCapital`；`TitleKey`、`TitleKeyContext` 末尾一步，不合法的字节原样留着；`IndexKeyer.Key` 原地换）；`searchFold` 删掉，搜索与 grep 的键改调 `shared.TitleKey`，与 `194ca350` 的 `searchFold` 逐码位相同，分词的版本不升（`c3eade4e`）。
+  - 标题 id 带上自动链接的标签与原始 HTML 的源文本，与锚点相遇（`76a159bc`）。
+  - 标签列表不列 `/`（`4e813da1`）。
+  - 名字：`shared.Blank` 照 Unicode 的推导；`CheckName` 先判空；`CleanClientName` 什么也不显示时是 `""`（`0f0d7ea5`）。
+  - MCP 的 `log`：`"/"` 是整本，`""` 答 `too_short`（`3b7e7db9`）。
+  - MCP 调用超时的两句文字；读写事务的提交错误带 `TxCommitFailed` 标记（`a89ee212`）。
+  - 日志与变更集的详情各在一个只读的 REPEATABLE READ 快照里，从答复的第一条读到 `alivePaths`；交错 `TestTheLogReadsOneMomentAcrossARevert`（`81b38143`）。
+  - 事件流：每个凭证 4 条、第 5 条顶掉最老的一条（`superseded`），每个账户 64 条、再开答 429；`TestASignInsFifthStreamSupersedesItsOldest`（`2200b5d6`）。
+  - 每个提交在干净的 worktree 里 build、vet、lint、`test-go-short`、`gen-check`、knip 都绿，改了网页生成物的两个另 `test-web` 绿；审查 C 在自己的工作树里逐个再跑，7、8 号另跑分份（555、556 个）。
+- **与设计不同之处**（3.21 列出）：`searchFold` 的调用多一处；切罗基文的一步不用 `strings.Map`；`render_test.go` 那一格用 Markdown 链接；`IndexKeyer` 的两格是一个新测试；快照碰到已有的单元测试与 `TestVirtualRead/no_nested`；流数的整个程序测试用新的登录；hub 的测试在新文件；分份脚本"去掉 `$$`"的对照不会失败；处理器的 429 一格先看状态；修复带来的 3.21 第 11–14 条。
+- **先红后绿**：交错的五格在没有快照时都红（C 被 R 撤销、R 没列出；审查 B 另把快照降成 READ COMMITTED，五格也都红）；`TestACommitThatFailsIsMarked` 的 (a)、(b) 在没有标记时红，(c) 绿；标签的新格、`parse_test` 与 `links_test` 里标题 id 的新格在没改的代码上红，`render_test`、`view_test` 两格守锚点一侧，没改时也绿。
+- **反向对照**（7.3）：S1-1 到 S1-34 的 45 条（其中 11 个编号另有整个程序的一格）与实施者加的 x1–x11，共 56 条（轻的 40、重的 16），在头 `2200b5d6` 的干净临时 worktree 上、每张表先在没改的树上把每个命令跑一遍。轻的全抓到；重的 13 条抓到，S1-24、S1-29、S1-30 的整个程序那一格照绿，同 3.8.2 的预期，单元的那一格抓到。S1-16 红在"全关之后两张表空"（这个写法账户照减）；S1-27 原来只由 `TestListIndexJudgesInTurn` 的调用次序抓到（替身的 `Check` 收 `"/"`），第一次修复让替身照真的拒尾随的 `/` 之后，"the root"、"type and parent"、"a notebook hidden" 三格都红。x1–x11 全抓到；x1（`Blank` 不减 U+FFF9–FFFB、U+13430–13440）只有逐码位的比对抓得到。写代码时的一条发现：处理器的 429 一格答 200 时读到流的末尾，S1-12、x7 下挂到超时，提交之前改了（3.21 第 10 条）。
+- **实测**（本机 8 核 arm64，经 `heavy.sh`，头 `2200b5d6`）：`TestTheLogReadsOneMomentAcrossARevert` 1.46 秒（`-race` 2.39 秒；设计推 1–2 秒），`TestASignInsFifthStreamSupersedesItsOldest` 1.53 秒（`-race` 2.19 秒；设计推约 1 秒）。第七份竞态下约多 4.6 秒，在 7.5 的"约 4–6 秒"之内。合并 `main` 之后（`d1e90929`）竞态下各一次：2.51、1.23 秒。
+- **门禁**（本机）：头 `2200b5d6` 与修复第 1 轮的头 `1f1d3d11` 各一轮：`make lint gen-check knip build` 绿；`make test` 绿（组合根八份、竞态、成本、守卫，web 4537 个；3538、3536 秒，含等锁）；`make test-go-short` 绿；`make e2e` 577 个（576 个通过、1 个跳过：WebKit 的 A15 第 3 格）；分份脚本 556 个，145/50/119/120/60/15/32/15，两个新测试在第七份。修复第 2 轮的头 `a7723228`：`make lint gen-check knip build`、`make test-go-short` 绿，本地不跑 `make test` 与 `make e2e`（决定 486）。合并 `main` 之后的 `d1e90929`：`make lint gen-check knip build`、`make test-go-short` 绿，分份 556 个不变。
+- **分支的 CI**（`ci.yml` 每次 19 项第一次 attempt 全绿，没有重跑，没有碰到已知的偶发；Test 与 E2E 是那一步的用时）：
+
+  | 头 | run | 第七份 | 竞态一份 | E2E 一步 |
+  |---|---|---|---|---|
+  | `2200b5d6`（实施） | 43778049280 | 4:03（EPYC 9V45） | 8:50 | 8:52（Playwright 8.6 分钟） |
+  | `1f1d3d11`（修复第 1 轮） | 43793058599 | 4:29（EPYC 9V74） | 10:57 | 6:50 |
+  | `a7723228`（修复第 2 轮） | 43801996056 | 4:00（Xeon 6975P-C） | 8:23 | 7:34 |
+  | `d1e90929`（合并 `main`） | 43814516991 | 3:54（Xeon 6975P-C） | 12:33 | 6:17 |
+
+  八份都在 450 秒之下。第一次的 e2e 比 `main`（`99def961` 的 6.1 分钟）整体慢，最慢的故事都慢 1.4–2 倍，作业没有 CPU 一步；之后三次 6.1–7.4 分钟，没有再现。第七份这几次都没落在 EPYC 7763 上；合并之后两次 `main` 照 06-environment 第 4 节记进 00 号文档第 13 节。本提交的分支 CI：（待填：本提交的分支 CI 的 run 与 attempt、第七份与竞态一份的 Test 一步、E2E 一步）。
+- **审查**：三份（A 标题键、标题 id、标签、名字、`log` 的 `path` 0I 2M 2N；B MCP 超时的文字、提交错误的标记与快照 0I 1M 1N；C 事件流、契约与网页、分份、提交与文档 0I 2M 3N）。见 [S1 的审查记录](reviews/P3-S1-small-correctness-review.md)。
+- **修复第 1 轮** 6 个提交（`ac30ec3d`–`1f1d3d11`）：MCP 的 `FaultUnknown` 一支也认提交的标记，带标记的答 `the server failed as its changes were being saved, so they may or may not have been; read the notebook to see whether they were before retrying it`（B-M1，决定 483），`tx.go` 的注释（B-N1）；`TestEachTokenIsACredentialOfItsOwn` 与 `TestASupersededStreamLeavesItsOwnAccount`，顶掉时减被顶掉那一条自己的账户（C-M1，决定 484）；标题 id 的 `www.` 自动链接四格（A-M1）；linking 的替身照真的拒尾随的 `/`（A-M2）；`make help` 的第七份（C-N1）；网页三处注释（C-N3，决定 485）。修复的变异 23 条：审查要的 8 条里 6 条抓到，`committing` 不看方法的值（b-m1-mark）与去掉 `job` 一支（c-m1-job）两条等价（证据在记录的"反向对照"）；重跑的 S1 原有的 15 条全抓到，S1-27 现在由 "the root" 等三格抓到。逐个提交单独绿；门禁全绿。
+- **核对第 1 轮**：三位的旧发现都解决，新的 0 Important、0 Minor、4 条 Nit。
+- **修复第 2 轮** 4 个提交（`1812134f`–`a7723228`），只补那 4 条 Nit：linking 的替身对 `"/"` 答 `required`（A-C1-N1）；`internalFailedSaving` 的注释（B-C1-N1）；hub 的 `uncount`，被顶到 0 的账户也删项，新断言先红后绿（C-C1-N2）；网页注释写 429 的两种起因（C-C1-N1）。跑了事件流三个包竞态 `-count=3`、`linking/app` 与 `mcpserver`，变异 16 条（hub 的、S1-27 与新的 c-c1-n2）全抓到，逐个提交单独绿。由主持者自己核对（决定 486）：读了 diff，与说明的处置一致；新断言在没改的代码上红；变异全红；分支 CI 跑全套、全绿。
+- **合并 `main`**：`d1e90929` 合进 P2、P4、P5 的设计与 P3/S2，冲突只在 `Makefile`（`SEVENTH` 留 S1 的两个名字、取 S2 的改名；计数取 `main` 的说明、接 S1 的括注），之后分份 556 个、145/50/119/120/60/15/32/15，S1 的两个在第七份、S2 改名的只在第八份；`892dd827` 合进 `41c5ac25`（S2 的合并号），没有冲突。
 
 ### 10.2 S2：第 302 条（2026-11-16，合并见 00 号文档第 12 节）
 
@@ -1571,7 +1628,7 @@ S3 另：3.14.3 的六处种子都改了，每处的反向对照跑过（第 4 �
 
 **实测**（7.5；本机，经 `heavy.sh`，同一台机器上与 `48bbfc99` 交替；负载在括号里）：整个程序的那一格竞态 2.90 → 3.00 秒（非竞态 1.79 → 2.16；负载 7–8）。两个性质测试照 `make test-go-race` 的跑法，在修复第 1 轮的头 `63cfcd9b` 上与 `48bbfc99` 交替三轮（负载 1.5–3.9）：`TestTheJobsStepsReplayToStar` 13.56–13.60 → 13.94–13.98 秒，多 0.34–0.40 秒（w 与 `nestedDeep` 在内；审查 A 的原型多约 0.2 秒）；`TestTheRollbacksStepsReplayToTheBaseline` 1.80–1.82 → 3.27–3.31 秒，多约 1.5 秒（审查 A 推约 1.3 秒）。（初稿的"S2 的生成器扩开了、多 1.0–2.0 秒"不对：审查 A 的原型已有扩开的生成器；那两轮在负载 3.3–6.5 时量的，偏大。审查 B 在负载低的三轮量的是 13.61–14.39 → 13.95–14.70 秒，多 0.27–0.36 秒，回滚的多约 1.5 秒；审查 B 的 M2。核对第 1 轮 B 在负载 1.1–1.5 时另量两轮，整台机器偏慢、基线 15.4 秒，多 0.20 与 0.42 秒、回滚多 1.65 与 1.67 秒，量级相符。）
 
-**分支的 CI**：`a714787f` 的 run 43772091351，第 1 次 attempt 全绿，没有重跑。Test 一步：第八份（改名的那一格）4:03（EPYC 9V45），第七份（交错 20）5:07（EPYC 7763），第三份（种下的嵌套一格）4:31（Xeon 6975P-C），竞态一份 13:47（Xeon 8370C）；E2E 一步 7:31（审查 C 的 N2：照 Test 一步写，06-environment 第 4 节按它判份的余量）。修复第 1 轮的头 `63cfcd9b`：run 43800625515，第 1 次 attempt 全绿，没有重跑；Test 一步第八份 3:59（EPYC 9V45），第七份 5:07（EPYC 7763），第三份 6:05（EPYC 7763），竞态一份 8:59（EPYC 9V45）；E2E 一步 5:52。各份都远在 450 秒之内；包的用时随 runner 的 CPU 差得多，不拿来与 `main` 比，合并之后两次 `main` 照 06-environment 第 4 节记进 00 号文档第 13 节。文档提交 `97693f6f` 的分支 CI：run 43805853985，第 1 次 attempt 全绿；Test 一步第三份 5:34、第七份 3:48、第八份 5:31、竞态一份 9:04，E2E 一步 7:14。合并 `main` 之后的 `d2c86359`：run 43808862555，第 1 次 attempt 全绿；第三份 4:36、第七份 4:00、第八份 5:29、竞态一份 10:56。合并之后第一次 `main`（`46b6940f`）：run 43812781960，第 1 次 attempt 全绿；第三份 4:29、第七份 3:57、第八份 5:08、竞态一份 8:52，E2E 一步 6:18；整个程序的 nested 两格在 `main` 上绿。
+**分支的 CI**：`a714787f` 的 run 43772091351，第 1 次 attempt 全绿，没有重跑。Test 一步：第八份（改名的那一格）4:03（EPYC 9V45），第七份（交错 20）5:07（EPYC 7763），第三份（种下的嵌套一格）4:31（Xeon 6975P-C），竞态一份 13:47（Xeon 8370C）；E2E 一步 7:31（审查 C 的 N2：照 Test 一步写，06-environment 第 4 节按它判份的余量）。修复第 1 轮的头 `63cfcd9b`：run 43800625515，第 1 次 attempt 全绿，没有重跑；Test 一步第八份 3:59（EPYC 9V45），第七份 5:07（EPYC 7763），第三份 6:05（EPYC 7763），竞态一份 8:59（EPYC 9V45）；E2E 一步 5:52。各份都远在 450 秒之内；包的用时随 runner 的 CPU 差得多，不拿来与 `main` 比，合并之后两次 `main` 照 06-environment 第 4 节记进 00 号文档第 13 节。文档提交 `97693f6f` 的分支 CI：run 43805853985，第 1 次 attempt 全绿；Test 一步第三份 5:34、第七份 3:48、第八份 5:31、竞态一份 9:04，E2E 一步 7:14。合并 `main` 之后的 `d2c86359`：run 43808862555，第 1 次 attempt 全绿；第三份 4:36、第七份 4:00、第八份 5:29、竞态一份 10:56。合并之后第一次 `main`（`46b6940f`）：run 43812781960，第 1 次 attempt 全绿；第三份 4:29、第七份 3:57、第八份 5:08、竞态一份 8:52，E2E 一步 6:18；整个程序的 nested 两格在 `main` 上绿。记合并号的 `41c5ac25`：run 43816198500，第 1 次 attempt 全绿；第三份 4:09、第七份 3:53、第八份 4:09、竞态一份 9:04，E2E 一步 6:06；两次的平均记在 00 号文档第 13 节（S1 的那一行）。
 
 **3.10.5 的现有格**：`TestPlanRevertConflicts` 与 page 模块的全部测试在规则之后照过，没有一格翻过来；`bootstrap` 里翻过来两格（3.22 第 1 条）：种下的上下相套的两项与交错 20 的"往回"，都由 409 变成撤销得了、笔记本等于之前。
 
