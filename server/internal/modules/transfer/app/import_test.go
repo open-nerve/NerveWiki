@@ -179,7 +179,8 @@ func TestAnImportSkipsTheEntriesItCannotRead(t *testing.T) {
 // The names read from elsewhere than their headers' bytes are listed
 // after every other problem, each a problem of its source, in the
 // archive's order, and no skip: a large zip's do not crowd out of the
-// report what it skipped (M12/P3 design 3.12.2, decision 372).
+// report what it skipped (M12/P3 design 3.12.2, decision 372); a failed
+// import's too.
 func TestAnImportListsTheNamesReadOtherwiseLast(t *testing.T) {
 	w := newImportWorld()
 	w.max.MaxEntries = 2000
@@ -199,6 +200,17 @@ func TestAnImportListsTheNamesReadOtherwiseLast(t *testing.T) {
 		t.Errorf("job %s, counts %+v, truncated %v, %d problems from %q to %q; want succeeded, one skipped, 1,101 pages (图片 too), truncated, "+
 			"%d from %q to name_gbk: 图片/0997.md", got.State, got.Report.Counts, got.Report.Truncated, len(listed), listed[:min(3, len(listed))],
 			listed[len(listed)-1], domain.MaxProblems, want)
+	}
+
+	// An import that fails lists them all the same: they are added
+	// whatever its end (review B's N2).
+	w = newImportWorld()
+	w.max.MaxNodes = 2
+	w.archives.from = map[string]domain.NameSource{"图片/截图.md": domain.NameFromGBK, "说明.md": domain.NameFromUnicodePath}
+	got = w.run(t, w.queuedImport(nil, zipOf(t, files("图片/截图.md", "a", "说明.md", "b", "c.md", "c")...)))
+	if want := []string{"name_gbk: 图片/截图.md", "name_unicode_path: 说明.md"}; got.State != domain.StateFailed || got.Report == nil ||
+		got.Report.Failure != domain.FailureTooManyNodes || !slices.Equal(problems(got.Report), want) {
+		t.Errorf("job %s, report %+v; want failed, too_many_nodes, its problems %q", got.State, got.Report, want)
 	}
 }
 
