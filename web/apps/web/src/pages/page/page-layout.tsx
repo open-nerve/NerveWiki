@@ -325,7 +325,11 @@ const PageShell = observer(function PageShell({
                   released={() => (edit.current ?? heading.current)?.focus()}
                 />
               </div>
-              {source && <Alert>{t("page.sourceReadonly")}</Alert>}
+              {/* How a source is changed is a note, not an error: it is not announced each time the page opens (M12/P2/S1,
+                  38.1). */}
+              {source && (
+                <p className="rounded-md border px-4 py-3 text-sm text-muted-foreground">{t("page.sourceReadonly")}</p>
+              )}
               <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
                 <ReadingView
                   notebook={notebook}
