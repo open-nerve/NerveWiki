@@ -1557,7 +1557,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 |---|---|---|---|---|
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 设计已审查（2026-11-16） | [设计](reviews/P2-design-review.md) | — |
-| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 进行中（S1、S2 已合并） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md) | S1 `（待填：S1 的合并号）`、S2 `46b6940f` |
+| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 进行中（S1、S2 已合并） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md) | S1 `f3e5a6de`、S2 `46b6940f` |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md) | 设计已审查（2026-11-16） | [设计](reviews/P4-design-review.md) | — |
 | P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查） | [设计](reviews/P5-design-review.md) | — |
 | 收尾与发布 | — | 未开始 | — | — |
