@@ -183,7 +183,7 @@ test("A10 (page): a token asks for the password, is shown once, shows when it wa
 
   // The revocation refused once: Revoke, pressed by the keyboard, keeps the focus while it is out, aria-disabled,
   // not disabled, and after the refusal, which the alert says (v0.1 design 13.2, item 12; M12/P2/S1, 23.16). The
-  // keyboard, as WebKit gives a clicked button no focus.
+  // keyboard, the same in every browser: Safari gives a clicked button no focus, Playwright's three engines do.
   const revokePath = `/api/v0/api-tokens/${created.id}`;
   let releaseRefusal: (() => void) | undefined;
   const refusalHeld = new Promise<void>((resolve) => {
