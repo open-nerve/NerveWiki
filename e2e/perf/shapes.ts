@@ -34,6 +34,7 @@ export const shapes = {
   flat3k: flat("Flat 3k", 3_000, 5, [1]),
   flat50k: flat("Flat 50k", 50_000, 6, [1]),
   flat100k: flat("Flat 100k", 100_000, 6, [1, 50_001]),
+  folder50k: oneFolder("Folder 50k", 50_000),
 } satisfies Record<string, Shape>;
 
 export type ShapeName = keyof typeof shapes;
@@ -41,6 +42,12 @@ export type ShapeName = keyof typeof shapes;
 /** Whether name is a shape's. */
 export function isShapeName(name: string): name is ShapeName {
   return Object.hasOwn(shapes, name);
+}
+
+/** count PNGs of exactly 1,024 bytes, each its own, from a generator seeded with label: uploads (design 4.7). */
+export function pngsOf(label: string, count: number): Buffer[] {
+  const random = generator(label);
+  return Array.from({ length: count }, () => png(random));
 }
 
 /** The sha256 of an archive, in hexadecimal. */
@@ -68,6 +75,27 @@ function flat(notebook: string, count: number, digits: number, starts: number[])
         }
         return zipOf(files);
       }),
+  };
+}
+
+/**
+ * oneFolder is one folder page at the root, "Folder", holding count pages: an import that runs minutes and leaves the
+ * tree's root one row (the jobs' polling, design 4.8).
+ */
+function oneFolder(notebook: string, count: number): Shape {
+  return {
+    notebook,
+    roots: 1,
+    pages: count + 1,
+    attachments: 0,
+    archives: () => {
+      const random = generator(notebook);
+      const files: ZipFile[] = [];
+      for (let n = 1; n <= count; n++) {
+        files.push(page(`Folder/p${pad(n, 6)}`, random));
+      }
+      return [zipOf(files)];
+    },
   };
 }
 
@@ -131,26 +159,41 @@ function page(path: string, random: () => number): ZipFile {
  * IEND take 45 bytes, the IDAT chunk 12 and its zlib stream 11 besides the 956 bytes of rows).
  */
 function png(random: () => number): Buffer {
-  const width = 238;
-  const height = 4;
+  const image = pngOf(
+    238,
+    4,
+    () => Math.floor(random() * 256),
+    (rows) => deflateSync(rows, { level: 0 })
+  );
+  if (image.length !== 1_024) {
+    throw new Error(`a PNG of ${image.length} bytes, not 1,024`);
+  }
+  return image;
+}
+
+/** A PNG of width × height grey pixels, each grey(x, y), its rows compressed by deflate (a zlib stream). */
+export function pngOf(
+  width: number,
+  height: number,
+  grey: (x: number, y: number) => number,
+  deflate: (rows: Buffer) => Buffer
+): Buffer {
   const rows = Buffer.alloc(height * (width + 1));
-  for (let i = 0; i < rows.length; i++) {
-    rows[i] = i % (width + 1) === 0 ? 0 : Math.floor(random() * 256);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      rows[y * (width + 1) + 1 + x] = grey(x, y);
+    }
   }
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header.set([8, 0, 0, 0, 0], 8); // 8 bits of grey; compression, filter and interlace methods 0
-  const image = Buffer.concat([
+  return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk("IHDR", header),
-    chunk("IDAT", deflateSync(rows, { level: 0 })),
+    chunk("IDAT", deflate(rows)),
     chunk("IEND", Buffer.alloc(0)),
   ]);
-  if (image.length !== 1_024) {
-    throw new Error(`a PNG of ${image.length} bytes, not 1,024`);
-  }
-  return image;
 }
 
 function chunk(type: string, data: Buffer): Buffer {

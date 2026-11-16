@@ -9,7 +9,8 @@ import { record } from "./record";
 import { perfEnv } from "./setup";
 
 // The page tree at 50,000 and 100,000 pages, flat, only recorded (M12/P4 design 4.9): the tree's bytes, plain and
-// compressed; the heap once the home is open; and T1 once, waited for 120 s at most. One round.
+// compressed; the heap once the home is open; and T1 once, waited for 120 s at most. One round. A tab whose renderer
+// crashes on the way is recorded so, with the bytes and how long after the address was asked for.
 
 const round = process.env.NW_PERF_ROUND ?? "1";
 /** How long the cold open is waited for: past it, "not painted within 120 s". */
@@ -30,25 +31,39 @@ for (const shape of ["flat50k", "flat100k"] as const) {
       const tab = await context.newPage();
       await watchPage(tab);
       const cdp = await context.newCDPSession(tab);
+      let crashed: number | undefined;
+      const asked = Date.now();
+      tab.on("crash", () => {
+        crashed = Date.now() - asked;
+      });
       await cdp.send("Network.clearBrowserCache");
       await goto(tab, `/${env.workspace}/notebooks/${notebook.id}`);
       const seen = await painted(tab, "t1", paintMs).catch((error: unknown) => {
-        if (String(error).includes("Timeout")) return undefined;
+        if (String(error).includes("Timeout") || crashed !== undefined) return undefined;
         throw error;
       });
-      // The heap as it is then, painted or not.
-      await cdp.send("HeapProfiler.collectGarbage");
-      await cdp.send("Performance.enable");
-      const { metrics } = await cdp.send("Performance.getMetrics");
+      let heap: number | undefined;
+      if (crashed === undefined) {
+        // The heap as it is then, painted or not.
+        await cdp.send("HeapProfiler.collectGarbage");
+        await cdp.send("Performance.enable");
+        const { metrics } = await cdp.send("Performance.getMetrics");
+        heap = metrics.find((metric) => metric.name === "JSHeapUsedSize")?.value;
+      }
       record("tree-size", {
         shape,
         round,
         browser: browser.version(),
         ...bytes,
         t1: seen?.painted ?? null,
-        paintedWithin: seen === undefined ? `not painted within ${paintMs / 1_000} s` : "painted",
+        paintedWithin:
+          crashed === undefined
+            ? seen === undefined
+              ? `not painted within ${paintMs / 1_000} s`
+              : "painted"
+            : `the renderer crashed ${crashed} ms after the address was asked for`,
         rows: seen?.rows ?? null,
-        heap: metrics.find((metric) => metric.name === "JSHeapUsedSize")?.value,
+        heap: heap ?? null,
       });
       if (seen !== undefined) {
         await goto(tab, "about:blank");

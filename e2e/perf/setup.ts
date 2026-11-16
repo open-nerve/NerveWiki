@@ -157,9 +157,9 @@ async function onboarded(api: ApiClient, email: string) {
 }
 
 /** Creates the notebook of the shape name, open to the workspace's members as editors, and imports its archives. */
-async function importShape(api: ApiClient, pat: string, slug: string, name: ShapeName) {
+async function importShape(api: ApiClient, pat: string, slug: string, name: ShapeName, title = shapes[name].notebook) {
   const shape = shapes[name];
-  const notebook = await createNotebook(api, pat, slug, shape.notebook, "editor");
+  const notebook = await createNotebook(api, pat, slug, title, "editor");
   const archives = shape.archives();
   for (const [i, archive] of archives.entries()) {
     const started = Date.now();
@@ -169,6 +169,7 @@ async function importShape(api: ApiClient, pat: string, slug: string, name: Shap
     const state = await jobEnded(api, pat, job.id);
     record("import", {
       shape: name,
+      notebook: title,
       archive: i,
       bytes: archive.length,
       sha256: sha256(archive),
@@ -179,7 +180,29 @@ async function importShape(api: ApiClient, pat: string, slug: string, name: Shap
       throw new Error(`the import ${i} of ${name} ended ${state}`);
     }
   }
-  return { id: notebook.id, notebook: shape.notebook, roots: shape.roots, big: shape.big };
+  return { id: notebook.id, notebook: title, roots: shape.roots, big: shape.big };
+}
+
+/**
+ * A notebook of the shape name, titled title, imported with credential (a token of the first account's) during a
+ * test, and the background quiet again after it, as the setup leaves it: for a measure that wants one of its own
+ * each time (the attachment list's rereads, design 4.7).
+ */
+export async function importNotebook(
+  api: ApiClient,
+  credential: string,
+  slug: string,
+  name: ShapeName,
+  title: string
+): Promise<{ id: string } & ShapeFacts> {
+  const notebook = await importShape(api, credential, slug, name, title);
+  const db = openDatabase("perf");
+  try {
+    await quiet((sql) => db.query<Left>(sql));
+  } finally {
+    await db.close();
+  }
+  return notebook;
 }
 
 /** The state the job id ends in, polled every importPollMs, within importMs. */
