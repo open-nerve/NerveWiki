@@ -59,8 +59,11 @@ func (p *paths) gone(id uuid.UUID) {
 
 func (p *paths) Check(field, path string) error {
 	p.call("Check " + field)
-	if path == "" || strings.Contains(path, "//") || strings.ContainsRune(path, 0) {
+	switch {
+	case path == "" || strings.Contains(path, "//") || strings.ContainsRune(path, 0):
 		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "is no path"})
+	case strings.HasSuffix(path, "/"): // "/" too, as the real Check (ParsePath) refuses it (P3/S1 code review A-M2)
+		return shared.Invalid(shared.FieldError{Field: field, Code: shared.FieldInvalidFormat, Message: "must not end with /"})
 	}
 	return nil
 }
