@@ -12,19 +12,17 @@ import (
 // notebook of no job of hers, is 409 transfer.too_many_jobs, with its
 // words and no Retry-After, while bob's starts there; once she cancels
 // one of hers, hers starts. Her five are seeded through SQL, each in a
-// notebook of its own, with the River job that holds it an hour on, so
-// that the start's lost leaves it queued (P3 design 3.14.3).
+// notebook of its own, with the River job that holds it an hour on,
+// written with it, so that the start's lost leaves it queued (P3 design
+// 3.14.3).
 func TestAPersonsSixthJobIsRefusedAndAnothersStarts(t *testing.T) {
 	tm := newAcmeTeam(t, "member", "")
 	kind, queue := riverJobOf("export")
 	var hers []string
 	for i := range 5 {
 		nb, job := tm.openNotebook(t, "alice", fmt.Sprintf("Queued %d", i)), uuid.NewV7()
-		if _, err := tm.pool.Exec(t.Context(), `INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
-			SELECT $2, $1, 'export', 'queued', 'Queued', id, 'web', now() FROM users WHERE email = 'alice@example.com'`, nb, job); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := tm.pool.Exec(t.Context(), riverHoldsSQL, kind, job.String(), queue); err != nil {
+		if _, err := tm.pool.Exec(t.Context(), riverHeldJobSQL(`INSERT INTO transfer_jobs (id, notebook_id, kind, state, name, created_by_id, client, created_at)
+			SELECT $2, $1, 'export', 'queued', 'Queued', id, 'web', now() FROM users WHERE email = 'alice@example.com'`), nb, job, kind, queue); err != nil {
 			t.Fatal(err)
 		}
 		hers = append(hers, job.String())

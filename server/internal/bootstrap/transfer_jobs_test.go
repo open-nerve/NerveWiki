@@ -43,6 +43,17 @@ const (
 		VALUES ($1, jsonb_build_object('job_id', $2::text), $3, 1, 'running', 1, now())`
 )
 
+// riverHeldJobSQL is insert, a statement writing one queued transfer job
+// of the parameters $1 and $2, and the River row riverHoldsSQL writes of
+// it, of River's kind $3 and queue $4, in one statement: the start's lost,
+// which reads the rows and then River, never sees the row without its
+// River row (P3/S3 review A's N3).
+func riverHeldJobSQL(insert string) string {
+	return `WITH j AS (` + insert + ` RETURNING id)
+		INSERT INTO river_job (kind, args, queue, max_attempts, scheduled_at, state)
+		SELECT $3, jsonb_build_object('job_id', j.id::text), $4, 1, now() + interval '1 hour', 'scheduled' FROM j`
+}
+
 // riverJobOf is River's kind and queue of the transfer jobs of kind: the
 // exports' queue of their own, the imports' for every other.
 func riverJobOf(kind domain.Kind) (string, string) {
