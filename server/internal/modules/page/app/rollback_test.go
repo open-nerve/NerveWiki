@@ -565,9 +565,10 @@ func (p *rbTrial) agent(ops int) {
 // cut at random; every write as a store checks it; the notebook is then
 // as the agent left it, each node alive there where and as it was, each
 // page of its content, nothing else alive. Not idle: half the trials or
-// more have passes that delete first, and planned passes; and a trash
-// item's root under another, which a pass before deleted, comes up at
-// least as often as its floor counts it.
+// more have passes that delete first, and planned passes; and the
+// reverts by request and in the background, and a trash item's root
+// under another, which a pass before deleted, each come up at least as
+// often as its floor counts it.
 func TestTheRollbacksStepsReplayToTheBaseline(t *testing.T) {
 	trials, short := 2_000, testing.Short()
 	if short {
