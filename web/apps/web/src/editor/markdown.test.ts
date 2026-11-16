@@ -1,5 +1,5 @@
 import { markdownLanguage } from "@codemirror/lang-markdown";
-import { ensureSyntaxTree } from "@codemirror/language";
+import { ensureSyntaxTree, language } from "@codemirror/language";
 import { EditorSelection, EditorState } from "@codemirror/state";
 import { EditorView, runScopeHandlers } from "@codemirror/view";
 import { InlineContext, type InlineParser, type MarkdownConfig, type MarkdownParser } from "@lezer/markdown";
@@ -301,6 +301,21 @@ test("the editor's parser takes a run of spaces at once", () => {
     inlineLimit
   );
   expect(reads).toBeLessThanOrEqual(4 * inlineLimit);
+});
+
+// The test above takes a run of spaces for all three: an editor with SpacesAsText alone passed it (review B's N1).
+test("the editor's parser has each of the three linear scans", () => {
+  const names = (linearScans.parseInline ?? []).map(({ name }) => name);
+  expect(names).toEqual(["SpacesAsText", "UnclosedHTMLAsText", "URLAutolink"]);
+  const parser = EditorState.create({ extensions: markdownEditing() }).facet(language)?.parser as MarkdownParser;
+  expect(parser).toBeDefined();
+  // lezer places a parser before another by its name, and throws when it has none of that name.
+  for (const name of names) {
+    expect(
+      () => parser.configure({ parseInline: [{ name: "Probe", before: name, parse: () => -1 }] }),
+      name
+    ).not.toThrow();
+  }
 });
 
 /** Every node of doc's tree by parser, its name, from and to. */
