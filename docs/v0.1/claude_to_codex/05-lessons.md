@@ -69,12 +69,14 @@
 ## 6. 前端
 
 - **焦点**：
-  - Chromium 在下一次渲染时才做 HTML 的焦点修正，jsdom 从来不做；
-  - Safari 不让点过的链接获得焦点，`focus()` 的滚动也在下一次渲染；
+  - Chromium 在下一次渲染时才做 HTML 的焦点修正，把禁用的焦点元素交给 `body`；Firefox 与 WebKit 让焦点在禁用的元素上留一阵（M12/P2/S1：至少到扣住的答复放开）；jsdom 从来不做。判"焦点丢了"要连 `:disabled` 一起认（`lib/focus-leaving.ts` 的 `focusLost`），按钮还禁用时 `focus()` 它不起作用；
+  - Safari 不让点过的链接与按钮获得焦点，`focus()` 的滚动也在下一次渲染；Playwright 的三种引擎（WebKit 在内）都给点过的链接与按钮焦点（M12/P2/S1 的探针），Safari 的样子只有 jsdom 的格与人工核对守得到；
   - WebKit 不滚到靠近文档顶部的标题，裸页面上也这样（M10/P4/S3）：`takeArrivalFocus` 补了一次滚动；
   - 焦点与滚动的修复要在三种 Playwright 引擎里探查，全部故事只跑 Chromium，三种引擎的只有配置里 `threeBrowsers` 列的几条；
   - jsdom 没有布局，`window.scrollY` 恒为 0，比较它的断言不可能失败。滚动放进 e2e；
   - 一处改了焦点的规则会波及别处：对照空闲退出、未读的内容、portal 里的对话框逐一核对。
+  - Radix 的 `FocusScope` 的监听随它的 passive effect 才拆：卸下的那次提交里，layout 清理给出去的焦点会被拉回将卸下的菜单项，要在 passive 清理里给（M12/P2/S1 的 16.1）；
+  - Playwright 的 `toBeFocused` 判过一次就不再看，之后才被抢走的焦点它看不见；延后的抢夺要靠 vitest 的格（M12/P2/S1 的 23.16：在 `setTimeout` 里把焦点给 Alert 的变异，A10 照过）。
 - **SWR**：默认的比较对相等的数据保留旧对象，按答复挂的计时器因此不动了，用 `compare: Object.is`；挂上之后约 5 秒内焦点触发的重读被节流。
 - **SWR 2.5.1**：带 `provider` 的 `SWRConfig` 卸下会删掉这份缓存的全局状态（在飞的请求与订阅），要让它随这一次进入一直挂着；React 18 起卸下的 hook 的回调照样调（只比键），不能靠"卸下就不调"（M11/P2/S3，推翻了设计审查时的一个前提）。
 - **MobX**：每个 action 一个 reaction，加上 React 的合批，只有最后一条通知会渲染出来。把一轮的通知经 `setTimeout(0)` 合起来。
