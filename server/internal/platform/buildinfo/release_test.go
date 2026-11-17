@@ -281,8 +281,34 @@ func TestTheReleaseGate(t *testing.T) {
 				return answer(gateRun(43745381111, releasePath, sha, "completed", "success", 1, "2026-11-20T01:00:05Z"))
 			},
 			wantCode: 1, wantStderr: []string{"单独推上 main"}},
+		// the gate's own words: without its check the notes would refuse too, later and in theirs
 		{name: "no IMAGE", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green, image: "-",
-			wantCode: 1, wantStderr: []string{"要 IMAGE"}, wantNoGH: true},
+			wantCode: 1, wantStderr: []string{"release-gate: 要 IMAGE"}, wantNoGH: true},
+		{name: "a heading without its closing parenthesis", tag: "v0.1.0-rc.1",
+			changelog: "# 变更记录\n\n## 0.1.0（未发布\n\n- 第一个版本。\n", ci: green, wantCode: 1,
+			wantStderr: []string{"的标题有 0 个"}, wantNoGH: true},
+		// the endpoint answers ci.yml's push runs on main of the commit; the gate checks each of the three again,
+		// so that a newer green run of another branch, event or commit does not pass for ours, which failed
+		{name: "a newer green run of another branch", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				other := gateRun(43745380999, ciPath, sha, "completed", "success", 1, "2026-11-20T02:00:00Z")
+				other.HeadBranch = "m12-release"
+				return answer(other, gateRun(43745380462, ciPath, sha, "completed", "failure", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"completed failure", "43745380462"}},
+		{name: "a newer green run of a pull request", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				other := gateRun(43745380999, ciPath, sha, "completed", "success", 1, "2026-11-20T02:00:00Z")
+				other.Event = "pull_request"
+				return answer(other, gateRun(43745380462, ciPath, sha, "completed", "failure", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"completed failure", "43745380462"}},
+		{name: "a newer green run of another commit", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				other := gateRun(43745380999, ciPath, strings.Repeat("e", 40), "completed", "success", 1, "2026-11-20T02:00:00Z")
+				return answer(other, gateRun(43745380462, ciPath, sha, "completed", "failure", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"completed failure", "43745380462"}},
 	}
 	for _, bad := range []string{"v0.1", "v0.1.0-beta.1", "v01.0.0", "v0.1.0-rc.0", "0.1.0"} {
 		cases = append(cases, gateCase{name: "the tag " + bad, tag: bad, changelog: unreleased, ci: green, wantCode: 1,
@@ -368,8 +394,12 @@ func TestTheReleaseGate(t *testing.T) {
 	}
 }
 
-// notesChangelog has 0.1.0's section between blank lines, with a heading of the third level, and 0.0.9's after it.
+// notesChangelog has 0.1.0's section between blank lines and a line of spaces, with a heading of the third level,
+// and 0.0.9's after it; a line before the section names its heading, not at the line's start.
 const notesChangelog = `# 变更记录
+
+旧的 ### 0.1.0（草稿）一节并进了下面。
+每个版本一节。
 
 ## 0.1.0（未发布）
 
@@ -380,7 +410,7 @@ const notesChangelog = `# 变更记录
 
 - 一条。
 
-
+` + "  \n" + `
 ## 0.0.9（2026-01-01）
 
 - 不该出现。
