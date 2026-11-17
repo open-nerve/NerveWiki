@@ -1,6 +1,6 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectChangesetOf } from "../../fixtures/assert/page";
-import { countAnswers, expectQuietPage, watchPage } from "../../fixtures/browser";
+import { countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { goto, reload } from "../../fixtures/navigation";
@@ -136,6 +136,7 @@ test("L1 (MCP): an agent writes a page whose wikilink, anchor link and Markdown 
 });
 
 test("L1 (page): a link to a page opens it in the app, or in a new tab with a modifier, and goes to its anchor's heading, a Markdown link and the page's full address too; one to a page not there is no link", async ({
+  anotherTab,
   api,
   baseURL,
   signedInPage,
@@ -175,20 +176,26 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   const notReloaded = () => page.evaluate(() => "notReloaded" in window);
 
   // With a modifier the click is the browser's, which opens the link's address in a new tab: the app leaves it be,
-  // not cancelled, the link having the page's address as it is clicked. The window has the click last, after the
-  // app's listeners, and cancels it there, so that no tab opens: Chromium does not always tell Playwright of the tab
-  // (it sends no Page.frameNavigated for the tab's document, and the context never reports the page, about 1 run
-  // in 25), and a tab closed as its app starts may lose its refresh (navigation.ts). The address opens in a tab of
-  // the story's own instead.
+  // not cancelled, the link having the page's address, and nothing that makes it a download, as it is clicked. The
+  // window has the click last, in the bubble phase after the app's listeners (in the capture phase it would have it
+  // first, and its cancelling would turn the app's handler away), and cancels it there, so that no tab opens.
+  // Playwright does not always report the tab Chromium opens: now and then (about 1 run in 25 here) the tab's
+  // document comes with no Page.frameNavigated while Page.getFrameTree answered the empty first document, and
+  // Playwright waits for that navigation before it reports the page. A tab closed as its app starts may lose its
+  // refresh, too (navigation.ts). The address opens in a tab of the story's own instead.
   const clicked = await page.evaluateHandle(() => {
-    const seen: { click?: { cancelled: boolean; modified: boolean; address: string | undefined } } = {};
+    const seen: {
+      click?: { cancelled: boolean; modified: boolean; address: string | undefined; download: boolean };
+    } = {};
     window.addEventListener(
       "click",
       (event) => {
+        const link = event.target instanceof Element ? event.target.closest("a") : null;
         seen.click = {
           cancelled: event.defaultPrevented,
           modified: event.ctrlKey || event.metaKey,
-          address: event.target instanceof Element ? event.target.closest("a")?.href : undefined,
+          address: link?.href,
+          download: link?.hasAttribute("download") ?? false,
         };
         event.preventDefault();
       },
@@ -197,21 +204,23 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     return seen;
   });
   await toTarget.click({ modifiers: ["ControlOrMeta"] });
-  expect(await clicked.evaluate((seen) => seen.click)).toEqual({
+  expect(
+    await clicked.evaluate((seen) => seen.click),
+    "the modified click as the window has it last, after the app's listeners (undefined: it never got there)"
+  ).toEqual({
     cancelled: false,
     modified: true,
     address: `${baseURL}${targetPath}`,
+    download: false,
   });
   await clicked.dispose();
-  // Watched from its start, as the stories' own tabs are: the address shows the page, and loaded again, it is quiet.
-  const opened = await page.context().newPage();
-  const openedWatch = await watchPage(opened);
+  // Watched from its start, as the stories' own tabs are, and quiet at the end (anotherTab): the address shows the
+  // page, loaded again too.
+  const opened = await anotherTab(page);
   await goto(opened, targetPath);
   await expect(pageHeading(opened, "Target")).toBeVisible();
   await reload(opened);
   await expect(pageHeading(opened, "Target")).toBeVisible();
-  await expectQuietPage(opened, openedWatch);
-  await opened.close();
   await expect(pageHeading(page, "Source")).toBeVisible();
 
   // A plain click goes through the app's router: the page's heading takes the focus.
