@@ -132,8 +132,8 @@ func TestWaitForTableLockWaitsCountsItsTablesLock(t *testing.T) {
 // statement only, as sqlc names it: not another statement's wait for the
 // table, one sqlc did not name, one whose name only begins with its
 // statement's, nor its statement's wait for another table. Those waits are
-// there: WaitForTableLockWaits counts them. No statement's name fails at
-// once, though five statements wait for the table.
+// there: WaitForTableLockWaits counts them. An empty statement's name
+// fails at once, though five statements wait for the table.
 func TestWaitForTableLockWaitsByCountsItsStatement(t *testing.T) {
 	t.Parallel()
 	url := pgtest.NewDatabase(t)

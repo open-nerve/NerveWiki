@@ -115,10 +115,10 @@ func WaitForTableLockWaits(t testing.TB, pool *pgxpool.Pool, table string, n int
 // table does not, such as a running server's job's: a test that holds the
 // table and waits for its read's own statement knows the read has come
 // that far, and not that something else came first. Not so for a
-// statement sent in a pgx batch: pgx parses the batch's statements before
-// the first runs, and on the simple protocol the batch shows as its first
-// statement. A statement named "" fails the test at once: it would count
-// any statement's wait.
+// statement sent in a pgx batch: pgx may parse a batch's statements before
+// the first runs (those not yet prepared on its connection), and on the
+// simple protocol the batch shows as its first statement. A statement
+// named "" fails the test at once: it would count any statement's wait.
 func WaitForTableLockWaitsBy(t testing.TB, pool *pgxpool.Pool, table, statement string, n int, limit time.Duration) {
 	t.Helper()
 	if statement == "" {
