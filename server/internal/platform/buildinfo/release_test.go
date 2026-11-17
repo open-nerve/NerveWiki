@@ -636,6 +636,27 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 	if push := field(ci["on"], "push"); !reflect.DeepEqual(push, map[string]any{"branches": yamlStrings("**")}) {
 		t.Errorf("ci.yml: on.push is %v, want branches [\"**\"] alone: a tag runs release.yml, not ci.yml again", push)
 	}
+	// actionlint runs nowhere else (decision 435): one step of the server job runs it, on the costs-1 leg, which is
+	// one of the job's legs, with nothing to let it fail quietly
+	server := jobsOf(t, "ci.yml", ci)["server"]
+	var legs []any
+	if include, ok := field(field(server, "strategy"), "matrix").(map[string]any)["include"].([]any); ok {
+		for _, leg := range include {
+			legs = append(legs, field(leg, "leg"))
+		}
+	}
+	var lintActions []map[string]any
+	for _, step := range stepsOf(server) {
+		if run, _ := step["run"].(string); strings.Contains(run, "lint-actions") {
+			lintActions = append(lintActions, step)
+		}
+	}
+	if len(lintActions) != 1 || lintActions[0]["run"] != "make lint-actions" ||
+		lintActions[0]["if"] != "matrix.leg == 'costs-1'" || lintActions[0]["continue-on-error"] != nil ||
+		!slices.Contains(legs, any("costs-1")) {
+		t.Errorf("ci.yml: the server job's steps that run lint-actions are %v and its legs %v, want one step "+
+			"\"make lint-actions\" if matrix.leg == 'costs-1', a leg of the job: actionlint runs nowhere else", lintActions, legs)
+	}
 	vuln := readWorkflow(t, "vuln.yml")
 	if push, _ := field(vuln["on"], "push").(map[string]any); push["branches"] == nil || push["tags"] != nil {
 		t.Errorf("vuln.yml: on.push is %v, want branches and no tags", push)
