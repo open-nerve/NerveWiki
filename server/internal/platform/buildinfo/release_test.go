@@ -565,6 +565,27 @@ func needsOf(job any) []string {
 	return nil
 }
 
+// stringsIn is every string in v, a decoded YAML value: its maps' keys and values and its lists' items, deep.
+func stringsIn(v any) []string {
+	switch v := v.(type) {
+	case string:
+		return []string{v}
+	case map[string]any:
+		var all []string
+		for k, item := range v {
+			all = append(append(all, k), stringsIn(item)...)
+		}
+		return all
+	case []any:
+		var all []string
+		for _, item := range v {
+			all = append(all, stringsIn(item)...)
+		}
+		return all
+	}
+	return nil
+}
+
 // yamlStrings is a YAML list of strings, as the decoder gives one.
 func yamlStrings(v ...string) []any {
 	list := make([]any, 0, len(v))
@@ -731,6 +752,29 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 			if id == "gate" && step["if"] != nil {
 				t.Errorf("release.yml: the gate's step %d runs if %v: each of its steps always runs", i+1, step["if"])
 			}
+		}
+	}
+	// a step that smokes an image always runs where it is (rehearse, build, S2's verify): one that could be skipped
+	// lets an image through unsmoked, its job green
+	for id, job := range jobs {
+		for i, step := range stepsOf(job) {
+			if run, _ := step["run"].(string); strings.Contains(run, "deploy/image-smoke.sh") && step["if"] != nil {
+				t.Errorf("release.yml: job %s, step %d smokes the image only if %v: it always runs", id, i+1, step["if"])
+			}
+		}
+	}
+	// the rehearsal reads only: its token's contents: read is all it has, with no secret (a token of someone's
+	// would write past the job's permissions) and no login
+	for _, s := range stringsIn(jobs["rehearse"]) {
+		if strings.Contains(s, "secrets.") {
+			t.Errorf("release.yml: the rehearsal names a secret: %q", s)
+		}
+	}
+	for i, step := range stepsOf(jobs["rehearse"]) {
+		uses, _ := step["uses"].(string)
+		run, _ := step["run"].(string)
+		if strings.HasPrefix(uses, "docker/login-action@") || regexp.MustCompile(`docker\s+login`).MatchString(run) {
+			t.Errorf("release.yml: the rehearsal's step %d logs in (%s%s): the rehearsal pushes nothing", i+1, uses, run)
 		}
 	}
 	// the gate runs the script, then make vuln at high, one step each
