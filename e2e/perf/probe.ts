@@ -97,10 +97,22 @@ export interface ColdOpen {
   mainJs?: number;
   /** The longest long task that started before the paint. */
   longest: number;
-  /** The items of the home's list of pages, and of the whole document. */
+  /**
+   * The items of the home's list of pages, and of the whole document, read just after T1, a round trip later: since
+   * M12/P4/S4 a chunk or two past the first by then (the first chunk is rows, as T1 painted).
+   */
   homeItems: number;
   items: number;
-  /** JSHeapUsedSize after a garbage collection, when asked for. */
+  /**
+   * When every row was asked for (ColdOptions.all): the frame the tree's root list and the home's list both had them
+   * all in, from the document's start, not yet drawn; the longest long task that started from T1 to it; and the items
+   * of the home's list and of the document then (M12/P4/S4 design 6.3).
+   */
+  all?: number;
+  allLongest?: number;
+  allHomeItems?: number;
+  allItems?: number;
+  /** JSHeapUsedSize after a garbage collection, when asked for: once every row is in, when they were asked for. */
   heap?: number;
 }
 
@@ -108,6 +120,8 @@ export interface ColdOpen {
 export interface ColdOptions {
   clear?: boolean;
   heap?: boolean;
+  /** Waits after T1 for every row: count of them in the root list of the tree nav and in the home's list. */
+  all?: { nav: string; count: number };
   timeout?: number;
   before?: (tab: Page, cdp: CDPSession) => Promise<void>;
   after?: (tab: Page, cdp: CDPSession) => Promise<void>;
@@ -115,8 +129,9 @@ export interface ColdOptions {
 
 /**
  * One cold open of home, the context's (M12/P4 design 4.3, T1): a new tab, a renderer of its own, watched for the
- * helper's goto, its HTTP cache cleared; T1 is the moment the probe's "t1" painted, from the document's start. The
- * tab then leaves for about:blank by the helper, which waits for its refresh, and closes.
+ * helper's goto, its HTTP cache cleared; T1 is the moment the probe's "t1" painted, from the document's start. Asked
+ * to, it then waits for every row (allRows), and reads the heap after. The tab then leaves for about:blank by the
+ * helper, which waits for its refresh, and closes.
  */
 export async function coldOpen(context: BrowserContext, home: string, options: ColdOptions = {}): Promise<ColdOpen> {
   const tab = await context.newPage();
@@ -143,6 +158,25 @@ export async function coldOpen(context: BrowserContext, home: string, options: C
       items: document.querySelectorAll("li").length,
     };
   }, seen.painted);
+  let every: Pick<ColdOpen, "all" | "allLongest" | "allHomeItems" | "allItems"> = {};
+  if (options.all !== undefined) {
+    const at = await allRows(tab, options.all.nav, options.all.count, options.timeout ?? 120_000);
+    every = await tab.evaluate(
+      ([from, to]) => ({
+        all: to,
+        allLongest: Math.max(
+          0,
+          ...window.nwPerf
+            .longTasks()
+            .filter((task) => task.start >= from && task.start <= to)
+            .map((task) => task.duration)
+        ),
+        allHomeItems: document.querySelectorAll('ul[aria-label="Pages"] > li').length,
+        allItems: document.querySelectorAll("li").length,
+      }),
+      [seen.painted, at] as const
+    );
+  }
   let heap: number | undefined;
   if (options.heap === true) {
     await cdp.send("HeapProfiler.collectGarbage");
@@ -153,7 +187,37 @@ export async function coldOpen(context: BrowserContext, home: string, options: C
   await options.after?.(tab, cdp);
   await goto(tab, "about:blank");
   await tab.close();
-  return { t1: seen.painted, met: seen.met, rows: seen.rows, inView: seen.inView, ...timing, heap };
+  return { t1: seen.painted, met: seen.met, rows: seen.rows, inView: seen.inView, ...timing, ...every, heap };
+}
+
+/**
+ * allRows waits, a frame at a time, until the root list of the tree nav and the home's list of pages each have count
+ * rows (M12/P4/S4 design 3.6: the first chunk at once, the rest after each paint), and answers the moment of that
+ * frame, from the document's start: every row is in the document, not yet drawn. A list not there has none: a page
+ * without the home's list, or with it named otherwise, fails at the timeout, not counted full.
+ */
+export async function allRows(page: Page, nav: string, count: number, timeout: number): Promise<number> {
+  return page.evaluate(
+    ([label, rows, ms]) =>
+      new Promise<number>((resolve, reject) => {
+        const until = performance.now() + ms;
+        const look = () => {
+          const now = performance.now();
+          const tree = [...document.querySelectorAll("nav")].find((each) => each.getAttribute("aria-label") === label);
+          const left = tree?.querySelectorAll(":scope > ul > li").length ?? 0;
+          const main = document.querySelectorAll('ul[aria-label="Pages"] > li').length;
+          if (left >= rows && main >= rows) {
+            resolve(now);
+          } else if (now > until) {
+            reject(new Error(`every row: ${left} in the tree and ${main} on the home of ${rows} after ${ms} ms`));
+          } else {
+            requestAnimationFrame(look);
+          }
+        };
+        requestAnimationFrame(look);
+      }),
+    [nav, count, timeout] as const
+  );
 }
 
 /**

@@ -52,6 +52,8 @@ export const TagPage = observer(function TagPage() {
         <p className="text-muted-foreground">{t("tag.empty")}</p>
       ) : (
         <SubpageList
+          // Another tag's list starts again from its first rows, though as many as this one's (M12/P4/S4 design 3.7).
+          key={tag}
           label={t("tag.pages", { tag })}
           pages={listed}
           href={(id) => `${home}/pages/${id}`}
