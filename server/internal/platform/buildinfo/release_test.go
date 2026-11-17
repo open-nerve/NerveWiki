@@ -704,6 +704,13 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 	release := readWorkflow(t, "release.yml")
 	for name, w := range map[string]workflow{"ci.yml": ci, "vuln.yml": vuln, "release.yml": release} {
 		for id, job := range jobsOf(t, name, w) {
+			// the matrix is what a run may hold, so its values are written out: an expression there (a commit's
+			// message as a value of the matrix) would reach the script as ${{ matrix.… }}
+			for _, s := range stringsIn(field(job, "strategy")) {
+				if strings.Contains(s, "${{") {
+					t.Errorf("%s: job %s's strategy holds %q: the matrix's values are written out", name, id, s)
+				}
+			}
 			for i, step := range stepsOf(job) {
 				if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/checkout@") &&
 					field(step["with"], "persist-credentials") != false {
