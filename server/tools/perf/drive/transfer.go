@@ -23,7 +23,8 @@ import (
 // asked for every Poll until it succeeds, then the background awaited
 // quiet; or the page Root exported, likewise, and its zip downloaded to
 // Download. Around each, psql's WAL position and database size and the
-// storage directory's sizes.
+// storage directory's sizes; the job's time as the client saw it, to a
+// poll, and as the server kept it (review B's N3).
 type Transfer struct {
 	Client   *client.Client
 	PSQL     client.PSQL
@@ -176,7 +177,7 @@ func (t Transfer) Import(ctx context.Context, zip string) error {
 		return fmt.Errorf("the import answered %d %.300s", rec.Status, answer)
 	}
 	accepted := time.Unix(0, rec.Header)
-	if _, err := awaitJob(ctx, t.Client, "import-job", j.ID, t.Poll); err != nil {
+	if j, err = awaitJob(ctx, t.Client, "import-job", j.ID, t.Poll); err != nil {
 		return err
 	}
 	done := time.Now()
@@ -192,8 +193,9 @@ func (t Transfer) Import(ctx context.Context, zip string) error {
 			return err
 		}
 	}
-	return t.report(ctx, "import", before, map[string]time.Duration{"upload": rec.ToHeader(), "job": done.Sub(accepted),
-		"quiet": time.Since(done)})
+	times := j.serverTimes()
+	times["upload"], times["job"], times["quiet"] = rec.ToHeader(), done.Sub(accepted), time.Since(done)
+	return t.report(ctx, "import", before, times)
 }
 
 // Export exports the root page's subtree, waits for the job and downloads
@@ -242,5 +244,7 @@ func (t Transfer) Export(ctx context.Context, download string) error {
 	if _, err := fmt.Fprintf(t.Out, "download bytes=%d\n", got.Bytes); err != nil {
 		return err
 	}
-	return t.report(ctx, "export", before, map[string]time.Duration{"job": done.Sub(accepted), "download": got.Took()})
+	times := j.serverTimes()
+	times["job"], times["download"] = done.Sub(accepted), got.Took()
+	return t.report(ctx, "export", before, times)
 }

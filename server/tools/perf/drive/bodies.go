@@ -26,8 +26,9 @@ func EarlyBusy(r client.Record) bool {
 
 // Bodies is B2's run (design 3.6): K credentials, ceil(K/2) reading a
 // page's reading view each, floor(K/2) writing a page's content each in an
-// edit session, each in a loop, over Warmup and then For; a page of Size
-// bytes of Kind (normal, pathological). Readers' pages are in the
+// edit session, each in a loop, over Warmup and then For, the requests in
+// flight then waited for, Drain at most (DefaultDrain when 0); a page of
+// Size bytes of Kind (normal, pathological). Readers' pages are in the
 // notebook Read; writer w's in Writers[w], or all in Writers[0] when
 // there is one.
 type Bodies struct {
@@ -39,6 +40,7 @@ type Bodies struct {
 	Writers   []string
 	Warmup    time.Duration
 	For       time.Duration
+	Drain     time.Duration
 	Heartbeat time.Duration // the edit session's, 20 s as the web's
 }
 
@@ -93,13 +95,13 @@ func (b Bodies) Run(ctx context.Context) (time.Time, error) {
 	}
 	start := time.Now()
 	from, end := start.Add(b.Warmup), start.Add(b.Warmup+b.For)
-	ctx, cancel := context.WithDeadline(ctx, end)
+	stop, send, cancel := ending(ctx, end, b.Drain)
 	defer cancel()
 	var wg sync.WaitGroup
 	for i, id := range pages {
 		wg.Go(func() {
-			for ctx.Err() == nil {
-				_, _, _ = b.Clients[i].Send(ctx, client.Request{Op: "view", Method: http.MethodGet,
+			for stop.Err() == nil {
+				_, _, _ = b.Clients[i].Send(send, client.Request{Op: "view", Method: http.MethodGet,
 					Path: "/api/v0/pages/" + url.PathEscape(id) + "/view"}, io.Discard)
 			}
 		})
@@ -108,13 +110,13 @@ func (b Bodies) Run(ctx context.Context) (time.Time, error) {
 		c := b.Clients[readers+w]
 		wg.Go(func() {
 			base, beat := wr.page.Revision, time.Now()
-			for k := 0; ctx.Err() == nil; k++ {
+			for k := 0; stop.Err() == nil; k++ {
 				if time.Since(beat) >= b.Heartbeat {
-					_, _ = c.JSON(ctx, "heartbeat", http.MethodPost, "/api/v0/edit-sessions/"+url.PathEscape(wr.session)+"/heartbeat",
+					_, _ = c.JSON(send, "heartbeat", http.MethodPost, "/api/v0/edit-sessions/"+url.PathEscape(wr.session)+"/heartbeat",
 						nil, nil, http.StatusOK)
 					beat = time.Now()
 				}
-				if p, err := putContent(ctx, c, "write", wr.page.ID, changed(content, k), base, wr.session); err == nil {
+				if p, err := putContent(send, c, "write", wr.page.ID, changed(content, k), base, wr.session); err == nil {
 					base = p.Revision
 				}
 			}

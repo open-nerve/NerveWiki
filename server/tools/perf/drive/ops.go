@@ -14,8 +14,9 @@ import (
 // Ops is B4's (design 3.6, 3.4.5): on the imported vault, the page Root
 // at the notebook's root, Reps each of its deletion, restored by a
 // background restore that must succeed, its move under another page of
-// the root, its rename, and the rename of the page most linked to; then
-// the deletion of its first folder of the first level, recorded alone.
+// the root than the one it is under, its rename to a new name, and the
+// rename of the page most linked to; then the deletion of its first folder
+// of the first level, recorded alone.
 // Before each, the background quiet (psql: the search queue empty, River
 // without a job running or available, review B's M8), then Idle.
 type Ops struct {
@@ -117,14 +118,13 @@ func (o Ops) Run(ctx context.Context) error {
 			return err
 		}
 	}
-	// The moves: under one home, the other, then back at the root, and
-	// so on; the renames, the last back to the name, so that the vault is
-	// as it was for the export after it.
+	// Each rep a move and renames that change something (review B's M4: a
+	// move to where the vault is and a rename to its name write nothing):
+	// under one home, then the other, a new name each time. Then back at
+	// the root and to the names, not timed, so that the vault is as it was
+	// for the export after it.
 	for rep := range o.Reps {
-		var parent any
-		if rep < o.Reps-1 {
-			parent = homes[rep%2].ID
-		}
+		parent := homes[rep%2].ID
 		if err := o.timed(ctx, "move-vault", func() (client.Record, error) {
 			return o.Client.JSON(ctx, "move-vault", http.MethodPost, "/api/v0/nodes/"+url.PathEscape(root)+"/move",
 				map[string]any{"parent_id": parent}, nil, http.StatusOK)
@@ -132,18 +132,23 @@ func (o Ops) Run(ctx context.Context) error {
 			return err
 		}
 	}
+	if _, err := o.Client.JSON(ctx, "move-vault-back", http.MethodPost, "/api/v0/nodes/"+url.PathEscape(root)+"/move",
+		map[string]any{"parent_id": nil}, nil, http.StatusOK); err != nil {
+		return err
+	}
 	for _, r := range []struct{ op, id, name string }{{"rename-vault", root, o.Root}, {"rename-most-linked", linked[0][0], linked[0][1]}} {
 		for rep := range o.Reps {
-			name := r.name
-			if rep < o.Reps-1 {
-				name = fmt.Sprintf("%s r%d", r.name, rep+1)
-			}
+			name := fmt.Sprintf("%s r%d", r.name, rep+1)
 			if err := o.timed(ctx, r.op, func() (client.Record, error) {
 				return o.Client.JSON(ctx, r.op, http.MethodPatch, "/api/v0/nodes/"+url.PathEscape(r.id), map[string]string{"name": name}, nil,
 					http.StatusOK)
 			}); err != nil {
 				return err
 			}
+		}
+		if _, err := o.Client.JSON(ctx, r.op+"-back", http.MethodPatch, "/api/v0/nodes/"+url.PathEscape(r.id),
+			map[string]string{"name": r.name}, nil, http.StatusOK); err != nil {
+			return err
 		}
 	}
 	for range o.Reps {

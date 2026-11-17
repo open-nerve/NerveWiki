@@ -101,11 +101,17 @@ func LinkedBody(seed uint64, size, links int) string {
 }
 
 // changed is content with one byte changed, the k-th change: the byte in
-// its middle, a letter that is not the one before.
+// its middle, p or q in turn, starting with the one content does not have
+// there, so that each write differs from the one before it and the first
+// from content (a write of the same content writes no version).
 func changed(content string, k int) string {
 	b := []byte(content)
 	mid := len(b) / 2
-	b[mid] = byte('p' + k%2)
+	off := 0
+	if b[mid] == 'p' {
+		off = 1
+	}
+	b[mid] = byte('p' + (k+off)%2)
 	return string(b)
 }
 
@@ -154,14 +160,31 @@ func openSession(ctx context.Context, c *client.Client, op, id string) (string, 
 	return s.ID, err
 }
 
-// job is a background job's answer: its id and state, and an export's
-// signed address once it succeeded.
+// job is a background job's answer: its id and state, its times on the
+// server, and an export's signed address once it succeeded.
 type job struct {
-	ID       string `json:"id"`
-	State    string `json:"state"`
-	Download *struct {
+	ID         string     `json:"id"`
+	State      string     `json:"state"`
+	CreatedAt  *time.Time `json:"created_at"`
+	StartedAt  *time.Time `json:"started_at"`
+	FinishedAt *time.Time `json:"finished_at"`
+	Download   *struct {
 		URL string `json:"url"`
 	} `json:"download"`
+}
+
+// serverTimes are the job's times on the server, from its creation to its
+// end and from its start to its end, when it has them: the client asks
+// every poll, so that its own time is the poll's to a step.
+func (j job) serverTimes() map[string]time.Duration {
+	out := map[string]time.Duration{}
+	if j.CreatedAt != nil && j.FinishedAt != nil {
+		out["job_server"] = j.FinishedAt.Sub(*j.CreatedAt)
+	}
+	if j.StartedAt != nil && j.FinishedAt != nil {
+		out["job_running"] = j.FinishedAt.Sub(*j.StartedAt)
+	}
+	return out
 }
 
 // awaitJob asks for a job every poll until it succeeds, and answers it:
@@ -185,6 +208,25 @@ func awaitJob(ctx context.Context, c *client.Client, op, id string, poll time.Du
 	}
 }
 
+// DefaultDrain is how long a run waits past its end for the requests in
+// flight, unless it says otherwise (review B's M2): a run stops sending at
+// its end and lets what it sent finish, so that its times are not those of
+// requests cut short, the longer ones the likelier; one still going then
+// is cut, and counted apart. The serve's own request deadline is 15 s.
+const DefaultDrain = 60 * time.Second
+
+// ending is a run's two contexts from ctx: stop, done at end, which its
+// loops watch and stop sending at, and send, done drain later (DefaultDrain
+// when it is 0), which its requests carry.
+func ending(ctx context.Context, end time.Time, drain time.Duration) (stop, send context.Context, cancel func()) {
+	if drain <= 0 {
+		drain = DefaultDrain
+	}
+	stop, cancelStop := context.WithDeadline(ctx, end)
+	send, cancelSend := context.WithDeadline(ctx, end.Add(drain))
+	return stop, send, func() { cancelStop(); cancelSend() }
+}
+
 // sleep waits d, or until ctx ends.
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)
@@ -198,13 +240,17 @@ func sleep(ctx context.Context, d time.Duration) error {
 }
 
 // Summarize writes, for each operation of records sent at or after from,
-// how many, their statuses and their times to the answer's end; a request
-// without an answer (the run's end cut it, or the transport failed) is
-// counted apart, as cut, not timed.
+// how many, their statuses and their times to the answer's end. A request
+// without its whole answer is not timed: cut when its context ended (the
+// run's drain ran out), with the longest time one of them had run, which
+// it took at least; failed when the transport did (the serve closed the
+// connection, a read timed out). It answers an error after the summary
+// when any failed (review C's note on the cut requests).
 func Summarize(w io.Writer, records []client.Record, from time.Time) error {
 	byOp := map[string][]time.Duration{}
 	statuses := map[string]map[int]int{}
-	cut := map[string]int{}
+	cut, failed := map[string]int{}, map[string]int{}
+	cutLongest := map[string]time.Duration{}
 	for _, r := range records {
 		if r.Sent < from.UnixNano() {
 			continue
@@ -212,26 +258,39 @@ func Summarize(w io.Writer, records []client.Record, from time.Time) error {
 		if statuses[r.Op] == nil {
 			statuses[r.Op] = map[int]int{}
 		}
-		if r.Status == 0 {
+		switch {
+		case r.Error != "" && r.Cut:
 			cut[r.Op]++
-			continue
+			cutLongest[r.Op] = max(cutLongest[r.Op], r.Took())
+		case r.Error != "":
+			failed[r.Op]++
+		default:
+			byOp[r.Op] = append(byOp[r.Op], r.Took())
+			statuses[r.Op][r.Status]++
 		}
-		byOp[r.Op] = append(byOp[r.Op], r.Took())
-		statuses[r.Op][r.Status]++
 	}
 	ops := make([]string, 0, len(statuses))
 	for op := range statuses {
 		ops = append(ops, op)
 	}
 	sort.Strings(ops)
+	failures := 0
 	for _, op := range ops {
 		st, err := json.Marshal(statuses[op])
 		if err != nil {
 			return err
 		}
-		if _, err := fmt.Fprintf(w, "%s %s statuses=%s cut=%d\n", op, stats.Of(byOp[op]), st, cut[op]); err != nil {
+		line := fmt.Sprintf("%s %s statuses=%s cut=%d errors=%d", op, stats.Of(byOp[op]), st, cut[op], failed[op])
+		if cut[op] > 0 {
+			line += fmt.Sprintf(" cut_longest=%.1fms", float64(cutLongest[op])/float64(time.Millisecond))
+		}
+		if _, err := fmt.Fprintln(w, line); err != nil {
 			return err
 		}
+		failures += failed[op]
+	}
+	if failures > 0 {
+		return fmt.Errorf("%d requests failed in the transport, not timed: their errors are in the records", failures)
 	}
 	return nil
 }

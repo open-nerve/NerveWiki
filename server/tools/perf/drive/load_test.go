@@ -105,6 +105,9 @@ func TestEditorsSaveRenewAndWriteTheTree(t *testing.T) {
 	if f.count("session-close session-") < 4 || f.count("heartbeat session-") == 0 {
 		t.Errorf("%d closed, %d beats", f.count("session-close session-"), f.count("heartbeat session-"))
 	}
+	if f.count("put-same ") != 0 {
+		t.Errorf("a save of the content the page had: %v", events)
+	}
 	if f.count("create page-") < 5 || f.count("rename page-") == 0 || f.count("move page-") == 0 || f.count("move page-4") != 0 {
 		t.Errorf("the tree writes: %v", events)
 	}
@@ -160,8 +163,9 @@ func TestATabsReadsAreThrottledAsTheRefreshers(t *testing.T) {
 }
 
 // The tabs' run: a stream each, the tree read on its notebook's pages
-// events whose tree changed, merged within the interval; the agent's
-// pages.
+// events whose tree changed, merged within the interval, and not on
+// another notebook's or on one without its tree, past the interval too;
+// the agent's pages.
 func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 	api := &pageAPI{}
 	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
@@ -182,6 +186,21 @@ func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 				_, _ = io.WriteString(w, "event: pages\ndata: "+e+"\n\n")
 			}
 			w.(http.Flusher).Flush()
+			// Past the interval, each alone: another notebook's tree, then
+			// this one's pages without its tree; neither is read (review B's
+			// M6).
+			for _, e := range []string{
+				`{"workspace_id":"w","notebook_id":"nb-other","tree":true,"pages":[]}`,
+				`{"workspace_id":"w","notebook_id":"nb-tree","tree":false,"pages":[]}`,
+			} {
+				select {
+				case <-time.After(350 * time.Millisecond):
+				case <-r.Context().Done():
+					return
+				}
+				_, _ = io.WriteString(w, "event: pages\ndata: "+e+"\n\n")
+				w.(http.Flusher).Flush()
+			}
 			<-r.Context().Done()
 		case "/api/v0/notebooks/nb-tree/nodes":
 			f.note("tree read by %s", r.Header.Get("Authorization"))
@@ -193,7 +212,7 @@ func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 		}
 	})
 	log := client.NewLog(nil)
-	tb := Tabs{Clients: f.clients(3, log), Notebook: "nb-tree", For: 400 * time.Millisecond, Every: 60 * time.Millisecond,
+	tb := Tabs{Clients: f.clients(3, log), Notebook: "nb-tree", For: 1000 * time.Millisecond, Every: 60 * time.Millisecond,
 		Interval: 150 * time.Millisecond}
 	if err := tb.Run(context.Background()); err != nil {
 		t.Fatal(err)
@@ -279,8 +298,10 @@ func TestOpsWaitForTheRestoreAndTheQuiet(t *testing.T) {
 		t.Fatal(err)
 	}
 	events := f.all()
-	// Before each operation: the background restore's job succeeded, then
-	// the queue read empty.
+	// Before each timed operation: the background restore's job succeeded,
+	// then the queue read empty. The vault moved back to the root and the
+	// names given back after them are not timed.
+	untimed := []string{"move id-vault under <nil>", "rename id-vault vault", "rename id-hub p7 hub page"}
 	succeededAt, quietAt := -1, -1
 	operations := 0
 	for i, ev := range events {
@@ -289,6 +310,7 @@ func TestOpsWaitForTheRestoreAndTheQuiet(t *testing.T) {
 			succeededAt = i
 		case strings.HasPrefix(ev, "psql SELECT (SELECT => 0"):
 			quietAt = i
+		case slices.Contains(untimed, ev):
 		case strings.HasPrefix(ev, "delete "), strings.HasPrefix(ev, "move id-vault"), strings.HasPrefix(ev, "rename id-"):
 			operations++
 			if quietAt < 0 || quietAt < succeededAt {
@@ -300,14 +322,38 @@ func TestOpsWaitForTheRestoreAndTheQuiet(t *testing.T) {
 	if operations != 15 || f.count("delete id-vault") != 3 || f.count("delete id-f1") != 3 || f.count("job job-") != 18 {
 		t.Errorf("%d operations: %v", operations, events)
 	}
-	// Moves under one home, the other, then the root; renames back to the
-	// names.
-	for _, want := range []string{"move id-vault under page-1", "move id-vault under page-2", "move id-vault under <nil>",
-		"rename id-vault vault r1", "rename id-vault vault r2", "rename id-vault vault", "rename id-hub p7 hub page r1",
-		"rename id-hub p7 hub page"} {
-		if !slices.Contains(events, want) {
-			t.Errorf("no %q: %v", want, events)
+	// Each timed move goes under another page than the one before, the
+	// first away from the root; each timed rename to a new name; then the
+	// vault back at the root, and the names back, once each.
+	var moves, renames []string
+	for _, ev := range events {
+		switch {
+		case strings.HasPrefix(ev, "move id-vault under "):
+			moves = append(moves, strings.TrimPrefix(ev, "move id-vault under "))
+		case strings.HasPrefix(ev, "rename id-vault "):
+			renames = append(renames, strings.TrimPrefix(ev, "rename id-vault "))
 		}
+	}
+	if !slices.Equal(moves, []string{"page-1", "page-2", "page-1", "<nil>"}) || !slices.Equal(renames, []string{"vault r1", "vault r2",
+		"vault r3", "vault"}) || f.count("rename id-hub p7 hub page r") != 3 || f.count("rename id-hub p7 hub page") != 4 {
+		t.Errorf("moves %v, renames %v: %v", moves, renames, events)
+	}
+	// One rep moves and renames too.
+	one := o
+	one.Reps, one.Out = 1, io.Discard
+	before := len(f.all())
+	if err := one.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var once []string
+	for _, ev := range f.all()[before:] {
+		if strings.HasPrefix(ev, "move id-vault") || strings.HasPrefix(ev, "rename id-vault") {
+			once = append(once, ev)
+		}
+	}
+	if !slices.Equal(once, []string{"move id-vault under page-3", "move id-vault under <nil>", "rename id-vault vault r1",
+		"rename id-vault vault"}) {
+		t.Errorf("one rep: %v", once)
 	}
 	if !strings.Contains(out.String(), `most-linked id=id-hub name="p7 hub page" linking_pages=31`) ||
 		strings.Count(out.String(), "delete-vault status=204") != 3 {
@@ -370,11 +416,15 @@ func TestTransferImportsAndExports(t *testing.T) {
 			}
 			mu.Unlock()
 			f.note("job %s", state)
-			var download any
+			var download, finished any
+			if state == "succeeded" {
+				finished = "2026-11-17T10:00:03.25Z"
+			}
 			if state == "succeeded" && strings.HasSuffix(r.URL.Path, "/job-e") {
 				download = map[string]any{"url": "/api/v0/transfer-jobs/job-e/download?e=1795000000&s=c2ln", "expires_at": "x"}
 			}
-			answer(w, http.StatusOK, map[string]any{"state": state, "download": download})
+			answer(w, http.StatusOK, map[string]any{"state": state, "download": download, "created_at": "2026-11-17T10:00:00Z",
+				"started_at": "2026-11-17T10:00:01Z", "finished_at": finished})
 		case r.URL.Path == "/api/v0/transfer-jobs/job-e/download":
 			if r.URL.RawQuery != "e=1795000000&s=c2ln" || r.Header.Get("Authorization") != "" {
 				t.Errorf("download %q with %q", r.URL.RawQuery, r.Header.Get("Authorization"))
@@ -423,7 +473,8 @@ func TestTransferImportsAndExports(t *testing.T) {
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 3 || !strings.Contains(lines[0], `"transfer":"import"`) || !strings.Contains(lines[0], `"wal_bytes":40960`) ||
 		!strings.Contains(lines[0], `"Imports":100`) || !strings.Contains(lines[0], `"quiet_ms":`) || lines[1] != "download bytes=4096" ||
-		!strings.Contains(lines[2], `"transfer":"export"`) {
+		!strings.Contains(lines[2], `"transfer":"export"`) || !strings.Contains(lines[0], `"job_server_ms":3250`) ||
+		!strings.Contains(lines[2], `"job_running_ms":2250`) {
 		t.Errorf("out:\n%s", out.String())
 	}
 }

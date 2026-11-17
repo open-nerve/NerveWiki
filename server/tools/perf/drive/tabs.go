@@ -23,11 +23,13 @@ const TreeInterval = 500 * time.Millisecond
 // refresher.ts): a request reads at once when the interval since the last
 // read has passed, else once at its end, the requests before it merged
 // into that one; a read is not waited for, so that one may start while the
-// last goes on, as the refresher's does.
+// last goes on, as the refresher's does. Track, when given, counts each
+// read from its request to its end, so that a run waits for them.
 type Throttle struct {
 	Interval time.Duration
 	Now      func() time.Time
 	After    func(d time.Duration, f func()) // time.AfterFunc's
+	Track    *sync.WaitGroup
 	mu       sync.Mutex
 	last     time.Time
 	read     bool // whether there was a read
@@ -52,12 +54,22 @@ func (t *Throttle) Request(read func()) {
 	if !t.read || wait <= 0 {
 		t.last, t.read = now, true
 		t.mu.Unlock()
-		go read()
+		if t.Track != nil {
+			t.Track.Go(read)
+		} else {
+			go read()
+		}
 		return
 	}
 	t.pending = true
 	t.mu.Unlock()
+	if t.Track != nil {
+		t.Track.Add(1)
+	}
 	t.After(wait, func() {
+		if t.Track != nil {
+			defer t.Track.Done()
+		}
 		t.mu.Lock()
 		t.pending, t.last = false, t.Now()
 		t.mu.Unlock()
@@ -98,11 +110,14 @@ func ReadEvents(r io.Reader, on func(Event)) error {
 // Tabs is the tree's reread (design 3.4.5, 3.7's last row): K tabs, an
 // event stream each, each reading the notebook's whole tree, as the
 // refresher does, on a pages event of the notebook whose tree changed;
-// an agent creating a page every Every; for For.
+// an agent creating a page every Every; for For, the reads in flight then
+// waited for, Drain at most (DefaultDrain when 0), and a read due after
+// For not sent.
 type Tabs struct {
 	Clients  []*client.Client // the tabs', and last the agent's
 	Notebook string
 	For      time.Duration
+	Drain    time.Duration
 	Every    time.Duration
 	Interval time.Duration
 }
@@ -113,19 +128,23 @@ func (tb Tabs) Run(ctx context.Context) error {
 	if k < 1 {
 		return fmt.Errorf("%d clients: a tab and the agent at least", len(tb.Clients))
 	}
-	ctx, cancel := context.WithTimeout(ctx, tb.For)
+	stop, send, cancel := ending(ctx, time.Now().Add(tb.For), tb.Drain)
 	defer cancel()
-	var wg sync.WaitGroup
+	var wg, reads sync.WaitGroup
 	streams := make(chan error, k)
 	for i := range k {
 		c := tb.Clients[i]
 		throttle := NewThrottle(tb.Interval)
+		throttle.Track = &reads
 		wg.Go(func() {
-			err := tb.stream(ctx, c, func() {
-				_, _, _ = c.Send(ctx, client.Request{Op: "tree", Method: http.MethodGet,
+			err := tb.stream(stop, c, func() {
+				if stop.Err() != nil {
+					return
+				}
+				_, _, _ = c.Send(send, client.Request{Op: "tree", Method: http.MethodGet,
 					Path: "/api/v0/notebooks/" + url.PathEscape(tb.Notebook) + "/nodes"}, io.Discard)
 			}, throttle)
-			if ctx.Err() == nil {
+			if stop.Err() == nil {
 				streams <- err
 			}
 		})
@@ -137,14 +156,15 @@ func (tb Tabs) Run(ctx context.Context) error {
 		run := time.Now().UnixMilli()
 		for n := 0; ; n++ {
 			select {
-			case <-ctx.Done():
+			case <-stop.Done():
 				return
 			case <-tick.C:
 			}
-			_, _ = createPage(ctx, agent, "agent-create", tb.Notebook, "", fmt.Sprintf("tab agent %d %d", run, n), "")
+			_, _ = createPage(send, agent, "agent-create", tb.Notebook, "", fmt.Sprintf("tab agent %d %d", run, n), "")
 		}
 	})
 	wg.Wait()
+	reads.Wait()
 	close(streams)
 	if err, ended := <-streams; ended {
 		return fmt.Errorf("an event stream ended before the run: %w", err)

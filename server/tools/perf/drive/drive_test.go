@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -89,6 +90,7 @@ type pageAPI struct {
 	mu        sync.Mutex
 	pages     int
 	revisions map[string]int64
+	contents  map[string]string // each page's last content written
 	sessions  int
 }
 
@@ -96,7 +98,7 @@ func (p *pageAPI) handle(f *fake, w http.ResponseWriter, r *http.Request, body [
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.revisions == nil {
-		p.revisions = map[string]int64{}
+		p.revisions, p.contents = map[string]int64{}, map[string]string{}
 	}
 	var in map[string]any
 	_ = json.Unmarshal(body, &in)
@@ -118,6 +120,12 @@ func (p *pageAPI) handle(f *fake, w http.ResponseWriter, r *http.Request, body [
 			answer(w, http.StatusConflict, map[string]any{"status": 409, "code": "conflict", "detail": "x"})
 			return true
 		}
+		// A write of the content the page has writes no version on a serve
+		// (page/app/unit_content.go): the drivers' writes each change it.
+		if last, ok := p.contents[id]; ok && last == content {
+			f.note("put-same %s base %d", id, int64(base))
+		}
+		p.contents[id] = content
 		p.revisions[id]++
 		answer(w, http.StatusOK, map[string]any{"id": id, "revision": p.revisions[id]})
 	case r.Method == http.MethodPost && len(parts) == 5 && parts[2] == "pages" && parts[4] == "edit-sessions":
@@ -205,6 +213,21 @@ func TestBodiesReadAndWrite(t *testing.T) {
 	}
 	if f.count("heartbeat session-") == 0 || f.count("put page-4 base 1 session <nil> bytes 3000") != 1 {
 		t.Errorf("no heartbeat, or the first content not written: %v", f.all())
+	}
+	if f.count("put-same ") != 0 {
+		t.Errorf("a write of the content the page had: %v", f.all())
+	}
+	// changed changes the middle byte each time, the first time away from
+	// what the content has there, p or not.
+	for _, c := range []string{"aaaaa", "aapaa", "aaqaa"} {
+		last := c
+		for k := range 4 {
+			got := changed(c, k)
+			if got == last || len(got) != len(c) || got[:2] != c[:2] || got[3:] != c[3:] {
+				t.Errorf("changed(%q, %d) = %q after %q", c, k, got, last)
+			}
+			last = got
+		}
 	}
 	if c, _ := (Bodies{Kind: "pathological", Size: 3 << 20}).Content(); c != strings.Repeat("a*_", 1<<20) {
 		t.Error("the pathological body is not a*_ repeated")
@@ -310,8 +333,10 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 	}
 }
 
-// The summary times each operation's answers from its start, a request
-// the run's end cut counted apart.
+// The summary times each operation's answers from its start; a request
+// without its whole answer is not timed, cut when its context ended, with
+// the longest of them, failed when the transport did, and a failure is an
+// error after the summary (review B's M2, review C's note).
 func TestTheSummaryCountsCutRequestsApart(t *testing.T) {
 	at := time.Unix(100, 0)
 	ns := func(d time.Duration) int64 { return at.Add(d).UnixNano() }
@@ -319,16 +344,76 @@ func TestTheSummaryCountsCutRequestsApart(t *testing.T) {
 		{Op: "view", Sent: ns(-time.Second), Done: ns(0), Status: 200},
 		{Op: "view", Sent: ns(0), Done: ns(30 * time.Millisecond), Status: 200},
 		{Op: "view", Sent: ns(time.Second), Done: ns(time.Second + 10*time.Millisecond), Status: 503},
-		{Op: "view", Sent: ns(2 * time.Second), Done: ns(3 * time.Second), Status: 0, Error: "context deadline exceeded"},
-		{Op: "write", Sent: ns(time.Second), Done: ns(2 * time.Second), Status: 0, Error: "context deadline exceeded"},
+		{Op: "view", Sent: ns(2 * time.Second), Done: ns(3 * time.Second), Error: "context deadline exceeded", Cut: true},
+		{Op: "view", Sent: ns(2 * time.Second), Header: ns(2 * time.Second), Done: ns(4500 * time.Millisecond), Status: 200,
+			Error: "context deadline exceeded", Cut: true},
+		{Op: "write", Sent: ns(time.Second), Done: ns(2 * time.Second), Error: "context deadline exceeded", Cut: true},
 	}
 	var out bytes.Buffer
 	if err := Summarize(&out, records, at); err != nil {
 		t.Fatal(err)
 	}
-	want := "view n=2 p50=10.0ms p99=30.0ms max=30.0ms statuses={\"200\":1,\"503\":1} cut=1\n" +
-		"write n=0 p50=0.0ms p99=0.0ms max=0.0ms statuses={} cut=1\n"
+	want := "view n=2 p50=10.0ms p99=30.0ms max=30.0ms statuses={\"200\":1,\"503\":1} cut=2 errors=0 cut_longest=2500.0ms\n" +
+		"write n=0 p50=0.0ms p99=0.0ms max=0.0ms statuses={} cut=1 errors=0 cut_longest=1000.0ms\n"
 	if out.String() != want {
 		t.Errorf("summary\n%s\nwant\n%s", out.String(), want)
+	}
+	out.Reset()
+	records = append(records, client.Record{Op: "write", Sent: ns(time.Second), Done: ns(time.Second), Error: "read: connection reset by peer"})
+	err := Summarize(&out, records, at)
+	if err == nil || !strings.Contains(out.String(), "write n=0 p50=0.0ms p99=0.0ms max=0.0ms statuses={} cut=1 errors=1 ") {
+		t.Errorf("a failed request: %v\n%s", err, out.String())
+	}
+}
+
+// A run stops sending at its end and waits for what is in flight: a
+// request longer than the run's rest is answered and timed, not cut; one
+// longer than the drain is cut, and recorded as cut (review B's M2).
+func TestARunWaitsForItsRequestsInFlight(t *testing.T) {
+	api := &pageAPI{}
+	var slow atomic.Int64
+	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
+		if strings.HasSuffix(r.URL.Path, "/view") {
+			select {
+			case <-time.After(time.Duration(slow.Load())):
+			case <-r.Context().Done():
+				return
+			}
+		}
+		if !api.handle(f, w, r, body) {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	slow.Store(int64(150 * time.Millisecond))
+	log := client.NewLog(nil)
+	b := Bodies{Clients: f.clients(1, log), Kind: "normal", Size: 1000, Read: "nb-read", Writers: []string{"nb-w"},
+		For: 50 * time.Millisecond, Heartbeat: time.Minute}
+	started := time.Now()
+	if _, err := b.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var views, cut int
+	for _, r := range log.Records() {
+		switch {
+		case r.Op == "view" && r.Cut:
+			cut++
+		case r.Op == "view" && r.Status == http.StatusOK && r.Took() >= 150*time.Millisecond:
+			views++
+		}
+	}
+	if views != 1 || cut != 0 || time.Since(started) < 150*time.Millisecond {
+		t.Errorf("a view of 150 ms in a run of 50 ms: %d answered, %d cut, the run %v", views, cut, time.Since(started))
+	}
+	slow.Store(int64(10 * time.Second))
+	log = client.NewLog(nil)
+	b.Clients, b.Drain = f.clients(1, log), 100*time.Millisecond
+	from, err := b.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var summary bytes.Buffer
+	if err := Summarize(&summary, log.Records(), from); err != nil || !strings.Contains(summary.String(), "view n=0 ") ||
+		!strings.Contains(summary.String(), " cut=1 errors=0 cut_longest=") {
+		t.Errorf("a view past the drain: %v\n%s", err, summary.String())
 	}
 }

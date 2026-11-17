@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,12 @@ func TestPSQLGoesThroughDockerExec(t *testing.T) {
 		args = append(args, append([]string{name}, a...))
 		switch sql := a[len(a)-1]; {
 		case strings.HasPrefix(sql, "SELECT (SELECT count(*) FROM page_search_queue)"):
+			// The quiet is the search queue's rows and River's jobs running
+			// or available, both (design 3.4.5's ops, review B's M6).
+			if sql != "SELECT (SELECT count(*) FROM page_search_queue) + "+
+				"(SELECT count(*) FROM river_job WHERE state IN ('running', 'available'))" {
+				return nil, fmt.Errorf("the quiet read as %q", sql)
+			}
 			return []byte("0\n"), nil
 		default:
 			return []byte("a|1\nb|2\n"), nil

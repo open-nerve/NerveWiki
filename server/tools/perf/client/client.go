@@ -21,7 +21,8 @@ import (
 // Record is a request's line (design 3.4.4): its operation, the
 // credential's number, when it was sent, when the answer's head came and
 // when its body was read (Unix nanoseconds), the status, a problem's code,
-// the answer's bytes, and an error of the transport.
+// the answer's bytes, an error of the transport, and whether that error
+// was the request's context ending (the run cut it) rather than a failure.
 type Record struct {
 	Op         string `json:"op"`
 	Credential int    `json:"credential"`
@@ -32,6 +33,7 @@ type Record struct {
 	Code       string `json:"code,omitempty"`
 	Bytes      int64  `json:"bytes"`
 	Error      string `json:"error,omitempty"`
+	Cut        bool   `json:"cut,omitempty"`
 }
 
 // ToHeader is the time from the request's sending to its answer's head.
@@ -138,7 +140,7 @@ func (c *Client) Send(ctx context.Context, r Request, into io.Writer) (Record, [
 	rec := Record{Op: r.Op, Credential: c.Credential, Sent: c.Now().UnixNano()}
 	res, err := c.HTTP.Do(req)
 	if err != nil {
-		rec.Header, rec.Done, rec.Error = c.Now().UnixNano(), c.Now().UnixNano(), err.Error()
+		rec.Header, rec.Done, rec.Error, rec.Cut = c.Now().UnixNano(), c.Now().UnixNano(), err.Error(), ctx.Err() != nil
 		c.add(rec)
 		return rec, nil, err
 	}
@@ -153,7 +155,7 @@ func (c *Client) Send(ctx context.Context, r Request, into io.Writer) (Record, [
 	_ = res.Body.Close()
 	rec.Done, rec.Bytes = c.Now().UnixNano(), n
 	if err != nil {
-		rec.Error = err.Error()
+		rec.Error, rec.Cut = err.Error(), ctx.Err() != nil
 	}
 	if problem {
 		var p struct {
