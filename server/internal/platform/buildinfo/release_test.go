@@ -323,6 +323,9 @@ func TestTheReleaseGate(t *testing.T) {
 				tagged = r.side
 			}
 			git(t, r.dir, r.env, "tag", "-a", c.tag, "-m", "Nerve Wiki "+c.tag, tagged)
+			// as the gate job's checkout leaves it: the tagged commit, detached, so that HEAD is the commit the gate
+			// asks about and a check against HEAD in place of origin/main passes nothing it should not
+			git(t, r.dir, r.env, "checkout", "-q", "--detach", tagged)
 			writeFile(t, filepath.Join(r.dir, "CHANGELOG.md"), c.changelog, 0o644)
 			work := filepath.Dir(r.dir)
 			log, routes, output := filepath.Join(work, "gh.log"), filepath.Join(work, "routes"), filepath.Join(work, "output")
