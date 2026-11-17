@@ -97,7 +97,7 @@
   | 修复第 1 轮（`078583ea`，决定 540） | `make build-web`；`make test-web` 已逐个提交跑过 | 0 |
   | 核对第 1 轮与合并 `main`（`fde95baa`） | `e4732087` 上 `make lint-web`、`make test-web`；合并之后 `make lint gen-check knip build`、`make test-go-short`、`make test-web` | 都是 0：2 秒、63 秒；14 秒；45 秒（94 个包）；62 秒（194 个文件、4,668 格） |
 
-- **分支的 CI**（`ci.yml` 每次 19 项，第一次 attempt 全绿，没有重跑）：`f3c2faea` 的 run 43943896177（web 4:14、Test 3:38，e2e 8:34），`078583ea` 的 43970842665（web 3:46、Test 3:13，e2e 8:37），合并 `main` 的 `fde95baa` 的 43979588901（web 3:47、Test 3:13，`markdown.test.ts` 105 格 7,519 ms；e2e 8:26；server 十六份 3:50–16:12）。`markdown.test.ts` 在 `web` 作业里：`main`（run 43919644472）53 格 2,482 ms，`f3c2faea` 104 格 7,883 ms，`078583ea` 105 格 7,254 ms；整个 vitest 的 Duration 219.2、217.8、192.3 s，Test 一步没有变长。`vuln.yml` 只在合并 `main` 的推送时触发（`main` 带来的 `Makefile` 改动），run 43979588993，success。文档提交（待填：本提交的分支 CI）。
+- **分支的 CI**（`ci.yml` 每次 19 项，第一次 attempt 全绿，没有重跑）：`f3c2faea` 的 run 43943896177（web 4:14、Test 3:38，e2e 8:34），`078583ea` 的 43970842665（web 3:46、Test 3:13，e2e 8:37），合并 `main` 的 `fde95baa` 的 43979588901（web 3:47、Test 3:13，`markdown.test.ts` 105 格 7,519 ms；e2e 8:26；server 十六份 3:50–16:12）。`markdown.test.ts` 在 `web` 作业里：`main`（run 43919644472）53 格 2,482 ms，`f3c2faea` 104 格 7,883 ms，`078583ea` 105 格 7,254 ms；整个 vitest 的 Duration 219.2、217.8、192.3 s，Test 一步没有变长。`vuln.yml` 只在合并 `main` 的推送时触发（`main` 带来的 `Makefile` 改动），run 43979588993，success。文档提交 `22b91d52` 的 run 44000433500，19 项第一次 attempt 全绿（web 3:34，e2e 9:43）；S5 合并为 `5e58e844`，之后第一次 `main` 的 run 44022740779：第一次 attempt 只有 `server (short)` 红，红在 M11 的 `TestTheSubmissionsDeadline/the_request_expired`（日志的 `timeout_ms` 53，界 50；S5 不改 Go），只重跑失败的作业，第二次 attempt 全绿（web 3:53，e2e 8:40）；这个测试的偶发由旁支 `m12-submit-deadline-log` 查与修（00 号文档第 13 节）。
 
 ## 持锁与负载
 
