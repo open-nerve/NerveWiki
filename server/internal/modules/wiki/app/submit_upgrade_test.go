@@ -565,7 +565,8 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 			// WithTimeout logged past 50 (main's run 44022740779 logged
 			// 53), and a pause of 50 ms before Execute ran out the
 			// COMMIT cells' 50 ms before their check had run.
-			f.checkFake.at = time.Now().UTC()
+			read := time.Now() // the clock's own reading, monotonic part and all
+			f.checkFake.at = read.UTC()
 			at := f.at() // the submission's moment, the test's own
 			_, err := submit.Execute(ctx, f.nb)
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
@@ -578,15 +579,17 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 			// timeout_ms is exactly the deadline less the submission's
 			// moment: SubmitTimeout, or, where the request has one, its
 			// deadline, the earlier in each cell. A bound alone let a line
-			// of 0 through. The request's is also at most its timeout, as
-			// in production, which a clock read before WithTimeout breaks
-			// at a pause in between; in whole milliseconds, as logged, the
-			// moment being up to a microsecond before the clock's read.
+			// of 0 through. The clock is read after the request's deadline
+			// is set, as in production: its own reading, before the
+			// microseconds are cut, is then no more than the request's
+			// timeout before that deadline, and a read before WithTimeout
+			// is more, with no pause in between. Both carry their
+			// monotonic part, so a step of the wall clock moves neither.
 			want := tc.timeout
 			if d, ok := ctx.Deadline(); ok {
 				want = d.Sub(at)
-				if want.Milliseconds() > tc.request.Milliseconds() {
-					t.Fatalf("timeout_ms %d past the request's %s: the clock was read before its deadline was set", want.Milliseconds(),
+				if d.Sub(read) > tc.request {
+					t.Fatalf("the clock read %s before the request's deadline, past its %s: read before WithTimeout", d.Sub(read),
 						tc.request)
 				}
 			}
