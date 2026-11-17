@@ -7,7 +7,7 @@ import { login } from "../fixtures/auth";
 import { watchPage } from "../fixtures/browser";
 import { goto } from "../fixtures/navigation";
 import { postPage } from "../fixtures/pages";
-import { coldOpen, painted, probedContext, treeBytes, watchFor, type ColdOpen, type LongTask } from "./probe";
+import { allRows, coldOpen, painted, probedContext, treeBytes, watchFor, type ColdOpen, type LongTask } from "./probe";
 import { median, record } from "./record";
 import { perfEnv, type PerfEnv } from "./setup";
 import type { ShapeName } from "./shapes";
@@ -18,6 +18,13 @@ import type { ShapeName } from "./shapes";
 // round; a round is one run, NW_PERF_ROUND naming it. Besides: the tree's bytes, the heap after the fifth T1, and in
 // the deep shape the "Move to…" dialog of the big folder. NW_PERF_CONTROLS=1 runs the controls of the measures
 // instead (design 4.3, the six of them).
+//
+// Since M12/P4/S4 the lists draw their first rows at once and the rest a chunk after each paint (its design 3.6, 6.3):
+// each T1 then waits for every row in the document, recorded only (the bound of its own, 4 s, and its longest long
+// task, 200 ms, are judged by hand), the home's rows then asserted to be the roots; the heap and the items are read
+// then, the items read just after T1 recorded besides (a chunk or two past the first by then: the first chunk is the
+// rows as T1 painted); T2 starts with every row there, the state P4/S2 measured. In the flat shape, after T2, a row's menu opened and
+// closed and a dialog closed, recorded only (P4/S4 design 3.4).
 //
 // T3 comes before T2, in the tab as it opened: "000 big" the first root, its children laid out from it down, some in
 // the viewport. After T2 it was the sixth, its children all below the viewport, and T3 measured a paint of none in it
@@ -50,18 +57,20 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
       const t1: ColdOpen[] = [];
       for (let i = 1; i <= times; i++) {
         // oxlint-disable-next-line no-await-in-loop -- one cold open at a time
-        const open = await coldOpen(context, home, { heap: i === times });
+        const open = await coldOpen(context, home, { heap: i === times, all: { nav, count: notebook.roots } });
         // The cache was cleared: the main script came over the network (control 5).
         expect(open.mainJs, "the main script's bytes over the network").toBeGreaterThan(0);
-        // The end painted every root, or rows past the viewport's bottom edge: one commit renders the whole list.
+        // The end painted every root, or rows past the viewport's bottom edge: the first chunk is a commit of its own.
         expect(open.rows, "rows at the end").toBeGreaterThanOrEqual(Math.min(notebook.roots, open.inView + 1));
+        // Every row in: the home's list counted, not taken for full.
+        expect(open.allHomeItems, "the home's rows once every row is in").toBe(notebook.roots);
         record("t1", { shape, round, i, ...open });
         t1.push(open);
       }
       if (shape === "deep") {
         record("t1-profile", { shape, round, ...(await profiledOpen(context, env, home)) });
       }
-      const tab = await openTab(context, home);
+      const tab = await openTab(context, home, nav, notebook.roots);
       const t3: number[] = [];
       const dialog: number[] = [];
       if (notebook.big !== undefined) {
@@ -93,6 +102,18 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
           dialog.push(ms);
         }
       }
+      const menu: Menu[] = [];
+      if (shape === "flat") {
+        // Warmed up once, then five: each a menu opened, closed by Escape, and a dialog closed.
+        for (let i = 0; i <= times; i++) {
+          // oxlint-disable-next-line no-await-in-loop -- one menu at a time
+          const one = await timeMenu(tab, nav);
+          if (i > 0) {
+            record("menu", { shape, round, i, ...one });
+            menu.push(one);
+          }
+        }
+      }
       const valid = t2.filter((one) => one.intersects);
       record("tree", {
         shape,
@@ -102,11 +123,25 @@ for (const shape of ["flat", "deep", "attachments"] as const) {
         heap: t1.at(-1)?.heap,
         homeItems: t1.at(-1)?.homeItems,
         items: t1.at(-1)?.items,
+        all: summary(t1.map((open) => open.all ?? Number.NaN)),
+        allLongest: summary(t1.map((open) => open.allLongest ?? Number.NaN)),
+        allHomeItems: t1.at(-1)?.allHomeItems,
+        allItems: t1.at(-1)?.allItems,
         t2: summary(valid.map((one) => one.t2)),
         t2Longest: summary(valid.map((one) => one.longest)),
         t2Voided: voided,
         ...(t3.length > 0 ? { t3: summary(t3) } : {}),
         ...(dialog.length > 0 ? { moveDialog: summary(dialog) } : {}),
+        ...(menu.length > 0
+          ? {
+              menuOpen: summary(menu.map((one) => one.open)),
+              menuOpenLongest: summary(menu.map((one) => one.openLongest)),
+              menuEscape: summary(menu.map((one) => one.escape)),
+              menuEscapeLongest: summary(menu.map((one) => one.escapeLongest)),
+              dialogEscape: summary(menu.map((one) => one.dialog)),
+              dialogEscapeLongest: summary(menu.map((one) => one.dialogLongest)),
+            }
+          : {}),
       });
     } finally {
       await context.close();
@@ -141,7 +176,7 @@ test("the page tree's measures see what they measure", async ({ browser }) => {
     expect.soft(tree.t1 - base).toBeLessThanOrEqual(1_150);
     expect.soft(cached.mainJs, "the main script's bytes over the network, from the cache").toBe(0);
 
-    const tab = await openTab(context, home);
+    const tab = await openTab(context, home, nav, notebook.roots);
     await firstRowInView(tab.page, nav);
     const t2: number[] = [];
     for (let i = 1; i <= times; i++) {
@@ -189,8 +224,16 @@ async function holdBack(page: Page, what: string, ms: number): Promise<void> {
   });
 }
 
-/** A tab of the context at home, painted, with its API requests out followed (the event stream's aside). */
-async function openTab(context: BrowserContext, home: string): Promise<{ page: Page; out: Set<Request> }> {
+/**
+ * A tab of the context at home, painted, every one of the count rows of the tree nav and of the home's list in it
+ * (allRows), with its API requests out followed (the event stream's aside).
+ */
+async function openTab(
+  context: BrowserContext,
+  home: string,
+  nav: string,
+  count: number
+): Promise<{ page: Page; out: Set<Request> }> {
   const page = await context.newPage();
   await watchPage(page);
   const out = new Set<Request>();
@@ -202,6 +245,8 @@ async function openTab(context: BrowserContext, home: string): Promise<{ page: P
   page.on("requestfailed", (request) => out.delete(request));
   await goto(page, home);
   await painted(page, "t1", paintMs);
+  await allRows(page, nav, count, paintMs);
+  await expect(page.locator('ul[aria-label="Pages"] > li'), "the home's rows once every row is in").toHaveCount(count);
   return { page, out };
 }
 
@@ -339,7 +384,8 @@ async function moveDialog(tab: { page: Page; out: Set<Request> }, nav: string, b
 
 /**
  * A cold open of home profiled (Profiler, sampled every 100 µs), not one of the five: the self time of subtreeOf,
- * which each row's menu calls (page-tree-item.tsx), found in the built script by its body, its name being minified.
+ * found in the built script by its body, its name being minified. Until M12/P4/S4 each row's menu called it; since,
+ * the tree's one menu and a row's dialogs do (page-tree-item.tsx), and a T1 calls it not at all.
  * The tab first loads /healthz, of the same origin, so that the profiler started there keeps running in the same
  * renderer as the home loads.
  */
@@ -413,6 +459,100 @@ function selfTime(
     }
   }
   return { selfMs: us / 1_000, samples };
+}
+
+/** A row's menu opened and closed, and a dialog of it closed: each from the event to two frames after, ms. */
+interface Menu {
+  open: number;
+  openLongest: number;
+  escape: number;
+  escapeLongest: number;
+  dialog: number;
+  dialogLongest: number;
+}
+
+/**
+ * One of the flat shape's menu measures (M12/P4/S4 design 3.4, 6.3), with every row in the document, once the tab
+ * is quiet for 1 s; the events are dispatched in the page, as the design's probe did. open: a press of the main
+ * button on the third root row's Actions, to the menu open, then two frames. escape: Escape where the focus is, to
+ * the focus back on that button, then two frames. dialog: the menu opened again, Rename chosen, the dialog let be
+ * 0.8 s; Escape, to the focus back on the button (the dialog's close giving it back), then two frames. Each with the
+ * longest long task that overlaps it.
+ */
+async function timeMenu(tab: { page: Page; out: Set<Request> }, nav: string): Promise<Menu> {
+  await quietFor(tab, 1_000);
+  return tab.page.evaluate(async (label) => {
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialised whole: it stays in the evaluated body
+    const frame = () => new Promise<number>((resolve) => requestAnimationFrame(resolve));
+    const until = async (holds: () => boolean) => {
+      const deadline = performance.now() + 30_000;
+      while (!holds()) {
+        if (performance.now() > deadline) throw new Error("the menu's measure waited 30 s");
+        // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+        await frame();
+      }
+    };
+    const tree = [...document.querySelectorAll("nav")].find((each) => each.getAttribute("aria-label") === label);
+    const id = tree?.querySelector(":scope > ul > li:nth-child(3) [data-actions-of]")?.getAttribute("data-actions-of");
+    if (id === undefined || id === null) throw new Error(`no third row's Actions in ${label}`);
+    const button = () => tree?.querySelector<HTMLElement>(`[data-actions-of="${id}"]`);
+    const press = () =>
+      button()?.dispatchEvent(
+        new PointerEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true,
+          button: 0,
+          pointerType: "mouse",
+          isPrimary: true,
+        })
+      );
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialised whole: it stays in the evaluated body
+    const escape = () =>
+      (document.activeElement ?? document.body).dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true })
+      );
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialised whole: it stays in the evaluated body
+    const menuOpen = () => document.querySelector('[role="menu"][data-state="open"]') !== null;
+    const timed = async (act: () => void, done: () => boolean) => {
+      const from = performance.now();
+      act();
+      await until(done);
+      await frame();
+      await frame();
+      const to = performance.now();
+      const longest = Math.max(
+        0,
+        ...window.nwPerf
+          .longTasks()
+          .filter((task) => task.start < to && task.start + task.duration > from)
+          .map((task) => task.duration)
+      );
+      return { ms: to - from, longest };
+    };
+    const open = await timed(press, menuOpen);
+    const closed = await timed(escape, () => document.activeElement === button() && !menuOpen());
+    press();
+    await until(menuOpen);
+    const rename = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (item) => item.textContent === "Rename"
+    );
+    if (rename === undefined) throw new Error("no Rename in the menu");
+    rename.click();
+    await until(() => document.querySelector('[role="dialog"]') !== null);
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    const dialog = await timed(
+      escape,
+      () => document.activeElement === button() && document.querySelector('[role="dialog"]') === null
+    );
+    return {
+      open: open.ms,
+      openLongest: open.longest,
+      escape: closed.ms,
+      escapeLongest: closed.longest,
+      dialog: dialog.ms,
+      dialogLongest: dialog.longest,
+    };
+  }, nav);
 }
 
 function summary(values: number[]) {
