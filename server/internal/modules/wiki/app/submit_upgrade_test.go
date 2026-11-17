@@ -568,11 +568,20 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
 				t.Fatalf("answered %v, want server_busy, Retry-After %s", err, tc.retry)
 			}
-			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil {
+			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil ||
+				f.row.SubmittedAt == nil {
 				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report", w, f.row)
 			}
+			// timeout_ms is exactly the deadline less the submission's
+			// moment as the row keeps it: SubmitTimeout, or, where the
+			// request has one, its deadline, the earlier in each cell. A
+			// bound alone let a line of 0 through.
+			want := tc.timeout
+			if d, ok := ctx.Deadline(); ok {
+				want = d.Sub(*f.row.SubmittedAt)
+			}
 			warn := submitLines(t, log, "upgrade submission timed out")
-			if len(warn) != 1 || warn[0]["level"] != "WARN" || warn[0]["timeout_ms"].(float64) > 50 ||
+			if len(warn) != 1 || warn[0]["level"] != "WARN" || warn[0]["timeout_ms"] != float64(want.Milliseconds()) ||
 				warn[0]["submission_id"] != f.row.SubmissionID.String() || len(submitLines(t, log, "upgrade submitted")) != 0 {
 				t.Fatalf("logged %v", log.lines(t))
 			}
