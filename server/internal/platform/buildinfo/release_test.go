@@ -403,10 +403,10 @@ func TestTheReleaseGate(t *testing.T) {
 }
 
 // notesChangelog has 0.1.0's section between blank lines and a line of spaces, with a heading of the third level,
-// and 0.0.9's after it; a line before the section names its heading, not at the line's start.
+// and 0.0.9's after it; a line before the section ends with a heading of the version, not at the line's start.
 const notesChangelog = `# 变更记录
 
-旧的 ### 0.1.0（草稿）一节并进了下面。
+旧的一节并进了下面：### 0.1.0（草稿）
 每个版本一节。
 
 ## 0.1.0（未发布）
@@ -477,14 +477,20 @@ func TestTheReleaseNotes(t *testing.T) {
 		env := scriptEnv(t, t.TempDir(), append([]string{"IMAGE=registry.test/nw-notes", "GITHUB_REPOSITORY=o2/r2"}, extra...)...)
 		return runScript(t, dir, env, "release-notes.sh", args...)
 	}
-	// a second heading of the version, one the gate does not count (no closing parenthesis), ends the section as
-	// the next version's would: its lines do not join the release's notes
-	const secondHeading = "# 变更记录\n\n## 0.1.0（2026-11-20）\n\n- 新的。\n\n## 0.1.0（草稿\n\n- 草稿里的一条。\n"
+	// a heading of the version the gate does not count (no closing parenthesis) is not the section's start: after
+	// the release's heading it ends the section as the next version's would, before it the section starts later
+	const broken = "## 0.1.0（草稿\n\n- 草稿里的一条。\n"
+	const release = "## 0.1.0（2026-11-20）\n\n- 新的。\n"
 	for _, c := range []struct{ name, changelog, tag, want string }{
 		{"an rc", notesChangelog, "v0.1.0-rc.1",
 			"这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。\n\n" + section + tail("0.1.0-rc.1", "v0.1.0-rc.1")},
 		{"a release", notesChangelog, "v0.1.0", section + tail("0.1.0", "v0.1.0")},
-		{"a second heading of the version", secondHeading, "v0.1.0", "- 新的。\n\n" + tail("0.1.0", "v0.1.0")},
+		{"a second heading of the version", "# 变更记录\n\n" + release + "\n" + broken, "v0.1.0", "- 新的。\n\n" + tail("0.1.0", "v0.1.0")},
+		{"a broken heading of the version first", "# 变更记录\n\n" + broken + "\n" + release, "v0.1.0",
+			"- 新的。\n\n" + tail("0.1.0", "v0.1.0")},
+		// the gate refuses two whole headings of the version; the notes alone take the first section
+		{"two headings of the version", "# 变更记录\n\n" + release + "\n## 0.1.0（2026-11-21）\n\n- 又一节。\n", "v0.1.0",
+			"- 新的。\n\n" + tail("0.1.0", "v0.1.0")},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			got := notes(t, c.changelog, nil, c.tag, digest)
@@ -500,6 +506,7 @@ func TestTheReleaseNotes(t *testing.T) {
 		words           string
 	}{
 		{"no section", "# 变更记录\n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n", nil, []string{"v0.1.0-rc.1", digest}, "没有"},
+		{"a broken heading alone", "# 变更记录\n\n" + broken, nil, []string{"v0.1.0", digest}, "没有"},
 		{"a section of blank lines", "# 变更记录\n\n## 0.1.0（未发布）\n\n  \n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n", nil,
 			[]string{"v0.1.0", digest}, "是空的"},
 		{"a digest that is not one", notesChangelog, nil, []string{"v0.1.0", "sha256:abc"}, "摘要"},
