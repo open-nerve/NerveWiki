@@ -9,10 +9,13 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/open-nerve/NerveWiki/server/tools/perf/sample"
+	"github.com/open-nerve/NerveWiki/server/tools/perf/vault"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }
@@ -22,13 +25,21 @@ func commands() map[string]func(args []string, stdout io.Writer) error {
 	return map[string]func(args []string, stdout io.Writer) error{
 		"sample":  sampleCommand,
 		"gctrace": gctraceCommand,
+		"vault":   vaultCommand,
 	}
 }
 
 // run runs the subcommand args name: 0, 1 when it fails, 2 for a usage.
 func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || commands()[args[0]] == nil {
-		_, _ = fmt.Fprintln(stderr, "usage: perf <sample|gctrace> [flags]; perf <command> -h for its flags")
+		names := slices.Sorted(func(yield func(string) bool) {
+			for name := range commands() {
+				if !yield(name) {
+					return
+				}
+			}
+		})
+		_, _ = fmt.Fprintf(stderr, "usage: perf <%s> [flags]; perf <command> -h for its flags\n", strings.Join(names, "|"))
 		return 2
 	}
 	if err := commands()[args[0]](args[1:], stdout); err != nil {
@@ -132,4 +143,61 @@ func (t *timeFlag) Set(s string) error {
 	v, err := time.Parse(time.RFC3339Nano, s)
 	t.Time = v
 	return err
+}
+
+// vaultCommand writes an import's vault from a seed (design 3.4.3).
+func vaultCommand(args []string, stdout io.Writer) error {
+	fs := flag.NewFlagSet("vault", flag.ContinueOnError)
+	out := fs.String("out", "", "the zip to write")
+	var s vault.Spec
+	fs.IntVar(&s.Pages, "pages", 0, "the pages")
+	fs.IntVar(&s.Attachments, "attachments", 0, "the attachments")
+	fanout := fs.String("fanout", "", "the folders of each level, comma-separated: 10,10,98")
+	fs.IntVar(&s.Links, "links", 0, "a page's links")
+	body := fs.String("body", "2KiB", "a page's bytes")
+	attachment := fs.String("attachment-bytes", "800KiB", "an attachment's bytes")
+	fs.IntVar(&s.Random, "random", 12, "1/random of an attachment is random, the rest a block of 4 KiB repeated")
+	fs.Uint64Var(&s.Seed, "seed", 0, "the seed")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *out == "" {
+		return errors.New("-out is required")
+	}
+	var err error
+	if s.Body, err = bytesOf(*body); err != nil {
+		return err
+	}
+	if s.AttachmentBytes, err = bytesOf(*attachment); err != nil {
+		return err
+	}
+	if *fanout != "" {
+		for f := range strings.SplitSeq(*fanout, ",") {
+			n, err := strconv.Atoi(f)
+			if err != nil {
+				return fmt.Errorf("-fanout %q: %w", *fanout, err)
+			}
+			s.Fanout = append(s.Fanout, n)
+		}
+	}
+	r, err := vault.Write(*out, s, vault.ImportLimits())
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(stdout, r)
+	return err
+}
+
+// bytesOf reads a size: a count of bytes, or of KiB, MiB or GiB.
+func bytesOf(s string) (int, error) {
+	for _, unit := range []struct {
+		suffix string
+		shift  int
+	}{{"KiB", 10}, {"MiB", 20}, {"GiB", 30}} {
+		if n, ok := strings.CutSuffix(s, unit.suffix); ok {
+			v, err := strconv.Atoi(n)
+			return v << unit.shift, err
+		}
+	}
+	return strconv.Atoi(s)
 }
