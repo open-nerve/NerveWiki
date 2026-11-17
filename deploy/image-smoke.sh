@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 在镜像上跑 S1、S3（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）：在临时的 Docker 网络里启动
-# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息、管理员建的账户
+# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息与镜像的 label、管理员建的账户
 # 与进程的用户，上传一个附件、重启之后按签名的地址读回同样的字节（M7/P2 设计 3.13），最后停止服务并核对它
 # 正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
 # 无论成败都清理容器、卷与网络；失败时打印服务的日志。
@@ -76,6 +76,16 @@ get() {
 want="nervewiki $version commit=$commit commit_time=[^ ]+ modified=$modified"
 got=$(docker run --rm "$image" version)
 [[ $got =~ ^$want$ ]] || fail "version 输出 \"$got\"，应为 \"$want\""
+
+# label：版本号、提交与它的时间逐字相同，说明不空（M12/P5/S1）。make image 与 release.yml 传入提交与时间
+created=$(git -C "$repo" log -1 --format=%cI)
+labels=$(docker image inspect -f '{{json .Config.Labels}}' "$image")
+jq -e --arg version "$version" --arg commit "$commit" --arg created "$created" \
+  '."org.opencontainers.image.version" == $version and ."org.opencontainers.image.revision" == $commit
+   and ."org.opencontainers.image.created" == $created
+   and (."org.opencontainers.image.description" | length > 0)
+   and ."org.opencontainers.image.source" == "https://github.com/open-nerve/NerveWiki"' \
+  <<<"$labels" >/dev/null || fail "镜像的 label 与预期不符：$labels"
 
 # 与开发库、端到端测试相同的 PostgreSQL：builtin C.UTF-8。
 # 初始化期间 PostgreSQL 只听 Unix 套接字，所以按 TCP 判断就绪

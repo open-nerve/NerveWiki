@@ -82,13 +82,16 @@ e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 P
 	cd e2e && NWIKI_E2E_VERSION=$(VERSION) pnpm exec playwright test
 
 # 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore。
-# 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查
+# 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查；
+# 判断与构建写在同一个 shell 行里（make -i 绕不过）。label 的提交与它的时间同 release.yml（M12/P5/S1）
 IMAGE ?= nervewiki:$(VERSION)
 
 .PHONY: image
-image: ## 构建镜像 $(IMAGE)，版本号取 VERSION（只需要 Docker）
-	@test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }
-	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（只需要 Docker）
+	test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }; \
+	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) \
+		--build-arg REVISION="$$(git rev-parse HEAD)" --build-arg CREATED="$$(git log -1 --format=%cI)" \
+		-t $(IMAGE) .
 
 .PHONY: image-smoke
 image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、curl、jq、openssl）
