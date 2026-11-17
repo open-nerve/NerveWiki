@@ -13,7 +13,10 @@ import (
 // GC is a line of the Go runtime's gc trace (GODEBUG=gctrace=1): its
 // number, when it began on the wall clock, the heap at its start, at its
 // end and live after it, and its goal, in MiB (the runtime shifts them by
-// 20, runtime/mgc.go).
+// 20, runtime/mgc.go); and whether it was forced: by the runtime after two
+// minutes without a collection, which writes a line "GC forced" before it
+// (runtime/proc.go's forcegchelper), or by runtime.GC, which ends its line
+// with " (forced)".
 type GC struct {
 	N                      int
 	At                     time.Time
@@ -83,6 +86,10 @@ func objectEnd(b []byte, from int) int {
 	return -1
 }
 
+// forcedLine is the line the runtime writes before a collection it forces
+// after two minutes without one.
+const forcedLine = "GC forced"
+
 // ParseGC reads the trace lines of a serve's log, the process started at
 // started: each line's time is started and its @T. Its JSON lines go first
 // (StripJSON). It answers the lines in order and how many began "gc " but
@@ -90,10 +97,15 @@ func objectEnd(b []byte, from int) int {
 func ParseGC(log []byte, started time.Time) ([]GC, int, error) {
 	var gcs []GC
 	broken := 0
+	forced := false // the line before was "GC forced"
 	sc := bufio.NewScanner(bytes.NewReader(StripJSON(log)))
 	sc.Buffer(make([]byte, 0, 64<<10), 16<<20)
 	for sc.Scan() {
 		line := sc.Text()
+		if line == forcedLine {
+			forced = true
+			continue
+		}
 		if len(line) < 3 || line[:3] != "gc " {
 			continue
 		}
@@ -111,25 +123,30 @@ func ParseGC(log []byte, started time.Time) ([]GC, int, error) {
 			n[i] = v
 		}
 		at := started.Add(time.Duration(n[1]*1000+n[2]) * time.Millisecond)
-		gcs = append(gcs, GC{N: int(n[0]), At: at, Start: n[3], End: n[4], Live: n[5], Goal: n[6], Forced: m[8] != ""})
+		gcs = append(gcs, GC{N: int(n[0]), At: at, Start: n[3], End: n[4], Live: n[5], Goal: n[6], Forced: forced || m[8] != ""})
+		forced = false
 	}
 	return gcs, broken, sc.Err()
 }
 
 // Window is what a reading of the trace covers: the base, a time at or
-// just before the round's baseline line, the forced collection after its
-// idle 130 s (design 3.4.2), and a combination's from and to.
+// just before the round's baseline line, the collection the runtime forces
+// two minutes into the round's idle of 130 s (design 3.4.2), and a
+// combination's from and to. The base is not after from.
 type Window struct{ Base, From, To time.Time }
 
 // Report is a combination's heap, in MiB: the round's baseline, the live
-// heap of the first line at or after Base; the peak, the larger of each
-// window line's start and end; the upper bound of the window's end, the
-// larger of the peak and the goal of the first line after the window (the
-// heap grows to it at most before that collection); the largest goal in
-// the window; its lines; the numbers missing from the baseline's line to
-// the last line read (the line after the window, or the window's last).
+// heap of the first line at or after Base, and whether that line was a
+// forced collection; the peak, the larger of each window line's start and
+// end, none when the window has no line; the upper bound of the window's
+// end, the larger of the peak and the goal of the first line after the
+// window (the heap grows to it at most before that collection); the
+// largest goal in the window; its lines; the numbers missing from the
+// baseline's line to the last line read (the line after the window, or
+// the window's last).
 type Report struct {
 	BaseN, AfterN         int
+	BaseForced            bool
 	Baseline, Peak, Upper int64
 	Delta, UpperDelta     int64
 	MaxGoal               int64
@@ -137,8 +154,12 @@ type Report struct {
 	Missing               []int
 }
 
-// Read reads gcs, in order, over w.
+// Read reads gcs, in order, over w: an error when the base is after the
+// window's start, or there is no line at or after it.
 func Read(gcs []GC, w Window) (Report, error) {
+	if w.Base.After(w.From) {
+		return Report{}, fmt.Errorf("the base %v is after the window's start %v: the baseline is read before the window", w.Base, w.From)
+	}
 	var r Report
 	base := -1
 	for i, g := range gcs {
@@ -150,7 +171,7 @@ func Read(gcs []GC, w Window) (Report, error) {
 	if base < 0 {
 		return Report{}, errors.New("no trace line at or after the base")
 	}
-	r.BaseN, r.Baseline = gcs[base].N, gcs[base].Live
+	r.BaseN, r.Baseline, r.BaseForced = gcs[base].N, gcs[base].Live, gcs[base].Forced
 	last := gcs[base].N
 	for _, g := range gcs[base:] {
 		if g.At.After(w.To) {
@@ -178,12 +199,25 @@ func Read(gcs []GC, w Window) (Report, error) {
 	return r, nil
 }
 
-// String is the report as key=value, MiB.
+// String is the report as key=value, MiB. A window without a collection
+// says so: its peak and delta are none (no line saw the heap in it), and
+// its upper bound is the next collection's goal, none without one.
 func (r Report) String() string {
-	after := "none"
+	after, peak, delta, upper, upperDelta := "none", "none", "none", "none", "none"
 	if r.AfterN > 0 {
 		after = strconv.Itoa(r.AfterN)
 	}
-	return fmt.Sprintf("baseline_mib=%d base_gc=%d peak_mib=%d delta_mib=%d upper_mib=%d upper_delta_mib=%d after_gc=%s max_goal_mib=%d gcs=%d missing=%v",
-		r.Baseline, r.BaseN, r.Peak, r.Delta, r.Upper, r.UpperDelta, after, r.MaxGoal, r.GCs, r.Missing)
+	if r.GCs > 0 {
+		peak, delta = strconv.FormatInt(r.Peak, 10), strconv.FormatInt(r.Delta, 10)
+	}
+	if r.GCs > 0 || r.AfterN > 0 {
+		upper, upperDelta = strconv.FormatInt(r.Upper, 10), strconv.FormatInt(r.UpperDelta, 10)
+	}
+	s := fmt.Sprintf("baseline_mib=%d base_gc=%d base_forced=%t peak_mib=%s delta_mib=%s upper_mib=%s upper_delta_mib=%s after_gc=%s "+
+		"max_goal_mib=%d gcs=%d missing=%v", r.Baseline, r.BaseN, r.BaseForced, peak, delta, upper, upperDelta, after, r.MaxGoal, r.GCs,
+		r.Missing)
+	if r.GCs == 0 {
+		s += " no_gc_in_window"
+	}
+	return s
 }

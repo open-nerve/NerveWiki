@@ -30,19 +30,24 @@ type Sampler struct {
 
 // Row is one sample: its time, the process's VmRSS and VmHWM in bytes, its
 // user and system CPU in nanoseconds, the container's memory.current in
-// bytes and cpu.stat's usage_usec.
+// bytes and cpu.stat's usage_usec, and memory.stat's anon, shmem and file:
+// memory.current and memory.peak are mostly the page cache of a
+// PostgreSQL's, which the kernel takes back (review B's Q1).
 type Row struct {
 	At                time.Time
 	RSS, HWM          uint64
 	UserNS, SystemNS  int64
 	MemoryCurrent     uint64
 	ContainerCPUMicro uint64
+	Anon, Shmem, File uint64
 }
 
 // Final is what the container's cgroup keeps of the run, read once at its
-// end: memory.peak, and memory.stat's anon, file and shmem, in bytes.
+// end: memory.peak, and memory.stat's anon, file and shmem, in bytes; and,
+// by Run, the largest anon, shmem and file of its rows.
 type Final struct {
-	Peak, Anon, File, Shmem uint64
+	Peak, Anon, File, Shmem    uint64
+	MaxAnon, MaxShmem, MaxFile uint64
 }
 
 // CgroupOf is a docker container's cgroup directory under the systemd
@@ -218,6 +223,11 @@ func (s *Sampler) Sample(at time.Time) (Row, error) {
 		return Row{}, err
 	}
 	r.ContainerCPUMicro = cpu[0]
+	kinds, err := keyed(filepath.Join(s.cgroup, "memory.stat"), 1, "anon", "shmem", "file")
+	if err != nil {
+		return Row{}, err
+	}
+	r.Anon, r.Shmem, r.File = kinds[0], kinds[1], kinds[2]
 	return r, nil
 }
 
@@ -235,29 +245,33 @@ func (s *Sampler) Final() (Final, error) {
 }
 
 // Header is the CSV's columns, after a comment of the process's start.
-const Header = "unix_ns,vm_rss,vm_hwm,utime_ns,stime_ns,memory_current,cpu_usage_usec"
+const Header = "unix_ns,vm_rss,vm_hwm,utime_ns,stime_ns,memory_current,cpu_usage_usec,anon,shmem,file"
 
 // CSV is the row as a line of Header's columns.
 func (r Row) CSV() string {
-	return fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d", r.At.UnixNano(), r.RSS, r.HWM, r.UserNS, r.SystemNS, r.MemoryCurrent, r.ContainerCPUMicro)
+	return fmt.Sprintf("%d,%d,%d,%d,%d,%d,%d,%d,%d,%d", r.At.UnixNano(), r.RSS, r.HWM, r.UserNS, r.SystemNS, r.MemoryCurrent,
+		r.ContainerCPUMicro, r.Anon, r.Shmem, r.File)
 }
 
 // Run writes to w a comment of the process and its start, Header, then a
-// row every every until ctx ends, then a comment of the final values. A
-// read that fails ends it with its error, after the final values when
-// they can be read.
+// row every every until ctx ends, then a comment of the final values and
+// of the rows' largest anon, shmem and file. A read that fails ends it
+// with its error, after the final values when they can be read.
 func (s *Sampler) Run(ctx context.Context, w io.Writer, every time.Duration, now func() time.Time) error {
 	if _, err := fmt.Fprintf(w, "# pid=%d clk_tck=%d started_unix_ns=%d\n%s\n", s.pid, s.tick, s.started.UnixNano(), Header); err != nil {
 		return err
 	}
 	tick := time.NewTicker(every)
 	defer tick.Stop()
+	var most Final
 	final := func() error {
 		f, err := s.Final()
 		if err != nil {
 			return err
 		}
-		_, err = fmt.Fprintf(w, "# final memory_peak=%d anon=%d file=%d shmem=%d\n", f.Peak, f.Anon, f.File, f.Shmem)
+		f.MaxAnon, f.MaxShmem, f.MaxFile = most.MaxAnon, most.MaxShmem, most.MaxFile
+		_, err = fmt.Fprintf(w, "# final memory_peak=%d anon=%d file=%d shmem=%d max_anon=%d max_shmem=%d max_file=%d\n", f.Peak, f.Anon,
+			f.File, f.Shmem, f.MaxAnon, f.MaxShmem, f.MaxFile)
 		return err
 	}
 	for {
@@ -266,6 +280,7 @@ func (s *Sampler) Run(ctx context.Context, w io.Writer, every time.Duration, now
 			_ = final()
 			return err
 		}
+		most.MaxAnon, most.MaxShmem, most.MaxFile = max(most.MaxAnon, r.Anon), max(most.MaxShmem, r.Shmem), max(most.MaxFile, r.File)
 		if _, err := fmt.Fprintln(w, r.CSV()); err != nil {
 			return err
 		}

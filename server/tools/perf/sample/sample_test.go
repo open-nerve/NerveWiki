@@ -64,11 +64,11 @@ func TestTheSamplerReadsProcAndTheCgroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := Row{At: now, RSS: 102400 * 1024, HWM: 204800 * 1024, UserNS: 2_500_000_000, SystemNS: 750_000_000,
-		MemoryCurrent: 52428800, ContainerCPUMicro: 1234567}
+		MemoryCurrent: 52428800, ContainerCPUMicro: 1234567, Anon: 31457280, Shmem: 4194304, File: 20971520}
 	if r != want {
 		t.Errorf("sample %+v, want %+v", r, want)
 	}
-	if line := r.CSV(); line != "1794916800000000000,104857600,209715200,2500000000,750000000,52428800,1234567" {
+	if line := r.CSV(); line != "1794916800000000000,104857600,209715200,2500000000,750000000,52428800,1234567,31457280,4194304,20971520" {
 		t.Errorf("csv %q", line)
 	}
 	f, err := s.Final()
@@ -123,7 +123,13 @@ func TestTheSamplerRunsToItsFinalLine(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	rows := 0
+	// The second row's anon and shmem the largest, the third's file, which
+	// the final values read again.
+	stats := []string{"anon 1000\nfile 2000\nshmem 300\n", "anon 9000\nfile 2500\nshmem 700\n", "anon 4000\nfile 8000\nshmem 500\n"}
 	clock := func() time.Time {
+		if err := os.WriteFile(filepath.Join(cgroup, "memory.stat"), []byte(stats[rows]), 0o644); err != nil {
+			t.Fatal(err)
+		}
 		if rows++; rows == 3 {
 			cancel()
 		}
@@ -135,7 +141,9 @@ func TestTheSamplerRunsToItsFinalLine(t *testing.T) {
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
 	if len(lines) != 6 || lines[0] != "# pid=4242 clk_tck=100 started_unix_ns=1794913034310000000" || lines[1] != Header ||
-		!strings.HasPrefix(lines[2], "1794916800100000000,") || lines[5] != "# final memory_peak=73400320 anon=31457280 file=20971520 shmem=4194304" {
+		!strings.HasPrefix(lines[2], "1794916800100000000,") || !strings.HasSuffix(lines[2], ",1000,300,2000") ||
+		!strings.HasSuffix(lines[4], ",4000,500,8000") ||
+		lines[5] != "# final memory_peak=73400320 anon=4000 file=8000 shmem=500 max_anon=9000 max_shmem=700 max_file=8000" {
 		t.Errorf("run wrote:\n%s", out.String())
 	}
 }
