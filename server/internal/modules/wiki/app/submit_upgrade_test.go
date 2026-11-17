@@ -555,15 +555,17 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithTimeout(ctx, tc.request)
 				defer cancel()
-				// The clock read after the request's deadline is set, as the
-				// first transaction reads it after the API's or MCP's sets
-				// it: the warn line's timeout_ms, the deadline less the
-				// submission's moment, is then at most the request's 50 ms
-				// however long the test takes to get here. Read before it,
-				// in newSubmitFake, a pause of a millisecond in between
-				// logged 51 (main's run 44022740779 logged 53).
-				f.checkFake.at = time.Now().UTC()
 			}
+			// The clock read last, just before Execute, as a submission's
+			// first transaction reads it after the API's or MCP's
+			// middleware has set the request's deadline: the line logs
+			// what production would, at most the request's 50 ms, and
+			// SubmitTimeout's deadline, real too, runs from where the
+			// submission starts. Read in newSubmitFake, a pause before
+			// WithTimeout logged past 50 (main's run 44022740779 logged
+			// 53), and a pause of 50 ms before Execute ran out the
+			// COMMIT cells' 50 ms before their check had run.
+			f.checkFake.at = time.Now().UTC()
 			_, err := submit.Execute(ctx, f.nb)
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
 				t.Fatalf("answered %v, want server_busy, Retry-After %s", err, tc.retry)
@@ -604,6 +606,7 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				return nil
 			}
 			submit, ctx := newSubmit(f, 50*time.Millisecond, &startLog{})
+			f.checkFake.at = time.Now().UTC() // the clock read last, as above
 			_, err := submit.Execute(ctx, f.nb)
 			if got := map[bool]string{true: codeOf(err), false: ""}[err != nil]; got != tc.code {
 				t.Fatalf("answered %v, want %q", err, tc.code)
