@@ -180,9 +180,9 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   // window has the click last, in the bubble phase after the app's listeners (in the capture phase it would have it
   // first, and its cancelling would turn the app's handler away), and cancels it there, so that no tab opens.
   // Playwright does not always report the tab Chromium opens: now and then (about 1 run in 25 here) the tab's
-  // document comes with no Page.frameNavigated while Page.getFrameTree answered the empty first document, and
-  // Playwright waits for that navigation before it reports the page. A tab closed as its app starts may lose its
-  // refresh, too (navigation.ts). The address opens in a tab of the story's own instead.
+  // document comes with no Page.frameNavigated while Page.getFrameTree answered the first document with no address
+  // (url "", not about:blank), and Playwright waits for that navigation before it reports the page. A tab closed as
+  // its app starts may lose its refresh, too (navigation.ts). The address opens in a tab of the story's own instead.
   const clicked = await page.evaluateHandle(() => {
     const seen: {
       click?: { cancelled: boolean; modified: boolean; address: string | undefined; download: boolean };
