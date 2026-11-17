@@ -200,7 +200,8 @@ outdated: ## 只读地列出过时的 Go 模块、npm 包、actions、工具链�
 # 不进 server/tools/go.mod（同 govulncheck）。只在 GitHub 的 runner 上跑（ci.yml 的 costs-1 一份），本机拒绝：设计时在本机
 # 跑它被权限分类器拒过，照 make vuln 的先例（M12 决定 308）。判断与干活写在同一个 shell 行里（make -i 绕不过）。
 # -shellcheck=：runner 装了版本不由我们定的 shellcheck，actionlint 看到它才查 run:。不给文件：actionlint 在仓库根找
-# .github/workflows 下的 .yml 与 .yaml。出错写成 GitHub 的注解：作业日志要认证，注解是公开的
+# .github/workflows 下的 .yml 与 .yaml。出错写成 GitHub 的注解：作业日志要认证，注解是公开的。-format 里的 \n 由 actionlint
+# 自己换成换行（它的 unescapeBackslash）：写进模板的 {{"\n"}} 因此成了没结束的字符串，模板解析不了
 ACTIONLINT_VERSION := v1.7.12
 runner-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：结论看 ci.yml 的 costs-1 一份（M12/P5/S1）"; exit 1; }
 
@@ -208,7 +209,7 @@ runner-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub �
 lint-actions: ## actionlint 核对 .github/workflows；只在 CI 上跑
 	@$(runner-only); \
 	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) -shellcheck= -verbose \
-		-format '{{range $$e := .}}::error file={{$$e.Filepath}},line={{$$e.Line}},col={{$$e.Column}}::{{$$e.Message}}{{"\n"}}{{end}}'
+		-format '{{range $$e := .}}::error file={{$$e.Filepath}},line={{$$e.Line}},col={{$$e.Column}}::{{$$e.Message}}\n{{end}}'
 
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
 # 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
