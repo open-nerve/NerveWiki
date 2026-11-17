@@ -1168,6 +1168,23 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 照此：T2、T4 在 v0.1 修，放进 P3/S3（4.6.6，决定 336）；H1、24.1 写成已知限制，进 v0.2（4.5）。第 6 问的九项里，49 与留在 v0.1 的 24.3 是同一种"不念"的问题（审查 C 的 M1），移回 P2/S1；其余八项并进发布之后的读屏验收（4.5、4.12）。49 留在 v0.1 比第 6 问所选多做了一项，在 M12 的汇报里列出。
 
+### 2026-11-17：L1 的改测法与 P4/S3、P5 之前的四问
+
+主持者在 L1 的旁支审查之后问了一问（审查 A 的 L1A-Q1、C 的 L1C-Q1：M11 第 277 条把改测法留给负责人），又把"需要负责人确认"里 P4/S3、P5 开工之前要的几项一起问了。原问与所选，逐字：
+
+7. 问："e2e 的 L1（Ctrl 点链接开新标签页）约 4% 偶发超时：标签页其实开了，是 Chromium 偶尔漏发一个事件，Playwright 因此等不到。M11 第 277 条把"改测法、削弱测试"留给你定。旁支已备好一个改法：不再等浏览器开出的标签页，改为在点击那一刻核对"应用没拦下这次点击、地址是真的"，再由测试自己开标签页打开这个地址。改后 200 次 0 红；代价是 e2e 不再证"浏览器真的开了标签页"。怎么处理？"
+   选："采用改法 (Recommended)"，即"合并旁支 m12-e2e-l1-new-tab，记录里写明取代 M11 第 277 条。发布前 main 的 CI 不再被它偶发挡住。"
+8. 问："有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的 Nerve Wiki 实例（你自己的开发库之外）？没有的话，P4/S3 不量批次 H、部署文档不写开发版升级的附录，根 README 的六节开发版升级说明删掉（留在 git 历史里）。"
+   选："没有 (Recommended)"，即"只有我自己的开发库，不写开发版附录、不量批次 H。"
+9. 问："输入法清单（M4–M8 的 21 步）是否也在发布之后验收，和读屏、清单 A–K 一样？"
+   选："发布后验收 (Recommended)"，即"同 2026-10-13 的原话：发布说明写明未验收，发现的问题出 v0.1.1。"
+10. 问："SECURITY.md 要指向 GitHub 的私密漏洞报告。你会在仓库设置里开启它吗？顺带 Dependabot alerts（只管 Go 与 actions）要不要开？（这是你在 GitHub 上的操作，我的令牌读不到这些设置。）"
+    选："两个都开 (Recommended)"，即"私密漏洞报告在 P5/S3 写 SECURITY.md 之前开；Dependabot alerts 随时开。"
+11. 问："发布流水线从 P5/S1 起每次推送都会用 docker/* 这些第三方 action 做只读演练，P5/S2 起还用 anchore/sbom-action；推 tag 时还要 sigstore/cosign-installer 与 packages/id-token/attestations/artifact-metadata 的写权限。组织或仓库的"允许的 actions"有没有限制？"
+    选："先跑分支 CI 看 (Recommended)"，即"不确定就先做 P5/S1，分支 CI 红在权限上时我再告诉你去设。"
+
+照此：L1 的旁支照常审查、合并，它的决定与记录写明取代第 277 条（第 7 问）；P4/S3 不量批次 H，P5/S3 不写开发版的附录，根 README 的六节开发版升级说明照 4.8 那一条删掉、删之前把对新装也成立的数挪走（第 8 问）；输入法清单并进发布之后的验收（第 9 问）；`SECURITY.md` 照 P5 设计指向私密的漏洞报告（第 10 问）；P5/S1 的实施者在分支 CI 红在 actions 的权限上时停下，主持者转告负责人（第 11 问）。主持者的令牌读不到仓库的 Actions 设置（`gh api …/actions/permissions` 答 403），所以第 11 问问的是先怎样做，不是设置本身；"需要负责人确认"第 2 项仍要在推 rc 之前照实核对。
+
 ### 2026-11-14：开始 M12 之前的主持者的决定 304–313、315–322、325（负责人可以改判）
 
 主持者在说明里写明的几条，加上三份调查里每个决定的推荐选项（主持者暂取）。编号从 304 起；初稿的临时号与它的对照在[审查记录](reviews/M12-design-review.md)。设计审查改过的标出。
@@ -1630,13 +1647,13 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | # | 事项 | 推荐 | 什么时候要 |
 |---|---|---|---|
 | 1 | 推 `v0.1.0-rc.1` 与 `v0.1.0` 两个 tag（4.11 第 2 步） | 照 4.11 | 收尾合并、`main` 的 CI 绿之后，推 rc 之前 |
-| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write`（I1-D19；审查 B 指出这几项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以）；演练在每次推送上用 `docker/*`（P5/S1 起）与 `anchore/sbom-action`（P5/S2 起），"允许的 actions"受限时那个 Step 的分支 CI 就红（P5 设计 2.2） |
+| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write`（I1-D19；审查 B 指出这几项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以）；演练在每次推送上用 `docker/*`（P5/S1 起）与 `anchore/sbom-action`（P5/S2 起），"允许的 actions"受限时那个 Step 的分支 CI 就红（P5 设计 2.2）。**2026-11-17 第 11 问**：先跑 P5/S1 的分支 CI 看，红在权限上再请负责人设；推 rc 之前仍照实核对 |
 | 3 | 给 `v*` 的 tag 加规则集，只有负责人与主持者能推（I1-D19） | 照做 | 推 rc 之前 |
-| 4 | 开私密的漏洞报告（`SECURITY.md` 指向它）；Dependabot alerts 可以开，只管 Go 与 actions：GitHub 的依赖图读不出 pnpm 12 的锁文件，npm 一侧靠 `make vuln` 里的 `pnpm audit --prod`（I1-D19；设计审查 B 改） | 照做 | 私密的漏洞报告在 P5/S3 写 `SECURITY.md` 之前；alerts 随时 |
+| 4 | 开私密的漏洞报告（`SECURITY.md` 指向它）；Dependabot alerts 可以开，只管 Go 与 actions：GitHub 的依赖图读不出 pnpm 12 的锁文件，npm 一侧靠 `make vuln` 里的 `pnpm audit --prod`（I1-D19；设计审查 B 改） | 照做 | 私密的漏洞报告在 P5/S3 写 `SECURITY.md` 之前；alerts 随时。**2026-11-17 第 10 问**：两个都开，负责人做 |
 | 5 | 把 GHCR 的包设为公开，**不能撤回**（I1-D19） | rc 核对之后 | 4.11 第 5 步：rc 核对之后、推 `v0.1.0` 之前 |
 | 6 | Dependabot 的版本更新 PR 要不要开（移交 M0-P6 第 4 条写明由负责人定） | 不开；发布之前在 runner 上跑 `make outdated`（4.3） | M12 收尾之前（写 v0.2 的移交时） |
-| 7 | 有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的实例（I1-D13） | — | P4/S3 开始之前：没有就不写开发版的附录、不量批次 H |
-| 8 | 输入法清单（M4–M8 的 21 步）是否同样在发布之后验收（4.12） | 是：同 2026-10-13 的原话 | 写发布说明之前（P5/S3） |
+| 7 | 有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的实例（I1-D13） | — | **已确认（2026-11-17）**：没有（第 8 问）；不写开发版的附录、不量批次 H |
+| 8 | 输入法清单（M4–M8 的 21 步）是否同样在发布之后验收（4.12） | 是：同 2026-10-13 的原话 | **已确认（2026-11-17）**：发布之后验收（第 9 问） |
 | 9 | 罕见的 A 类（H1、24.1、T4、T2）怎样处理 | **已确认（2026-11-14）**：T2、T4 在 v0.1 修，H1、24.1 进 v0.2（第 5 问） | — |
 | 10 | 只从 ARIA 推断的九项怎样处理 | **已确认（2026-11-14）**：并进发布之后的读屏验收（第 6 问）；其中 49 与 24.3 同一种问题，留在 v0.1 | — |
 | 11 | 打开仓库的 immutable releases（P5 设计 2.1 第 14 条） | 打开：公开之后 tag 与附件都不能改，与"不重推同一个 tag"一致；流水线先草稿后公开，打开不打开都能用 | 推 rc 之前 |
@@ -1651,7 +1668,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 进行中（S1 已合并） | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-focus-and-shared-review.md) | S1 `d1ade2ed` |
 | P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df` |
-| P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md) | S2 `54a89127`、S4 `35501dec`、S5 `（待填：S5 的合并号）` |
+| P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md) | S2 `54a89127`、S4 `35501dec`、S5 `5e58e844` |
 | P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查） | [设计](reviews/P5-design-review.md) | — |
 | 收尾与发布 | — | 未开始 | — | — |
 
@@ -1692,6 +1709,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | 2026-11-17 | P3 完成：三个 Step 都已合并（S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`），决定 361–377、479–482、530–532。P3 设计第 8 节的完成标准逐条：第 1 条，每个 Step 的提交都在、各自单独为绿，7.4 的闸门与分支的 CI 都绿（各 Step 的记录）；第 2 条，7.3 各 Step 的变异先绿后红、等价的写明（10.1–10.3 与三份记录）；第 3 条，三个 Step 都经三份代码审查与修复核对，对设计的修正在 3.21–3.23；第 4 条，第 8 节的新文字随各 Step 的文档提交落了（第 1–10、12、13 条各标已落，第 11 条是本文第 12 节的进度）。S2 另：23 个下限在测试里，整个程序的 nested 两格在 S2 合并之后的 `main` 上一直绿（此后各次 `main` 的 CI 第一次 attempt 都绿）。S3 另：3.14.3 的六处种子都改了，第 4 条的反向对照 5 次 4 红，点名的四个测试 `-count=20` 80 次全过（10.3）。S3 合并之后两次 `main`（run 43978501165、43982677358）组合根八份 Test 一步的平均：第一份 282.5 秒、第二份 254.5、第三份 326、第四份 341、第五份 290、第六份 275.5、第七份 238、第八份 292.5，都在 450 秒之下；竞态一份 9:18、9:13；e2e 的 E2E 一步 5:58、6:13。S3 文档提交的分支 CI 里竞态一份 Test 14:38，比此前约 9 分慢，原因没有查，合并之后的两次回到约 9 分。 |
 | 2026-11-17 | P4 的 S4（页面树的渲染）实施、审查与修复（实施 4 个提交，修复第 1 轮 3 个，一共 7 个，另两次合并 `main`；合并见第 12 节）：三份审查 A 0I2M2N、B 0I1M3N、C 0I2M5N1Q；核对一轮（A 1N、B 1N、C 3N，都只关文档的说法与一行注释）。行便宜（`memo` 与原始值的属性、普通链接、一棵树一个菜单、对话框选了才挂），每个页的列表先画 100 行、其余每帧画完再加 400 行；平的形状（1 万页）T1 3,015 → 178 ms、T2 1,609 → 191 ms、T2 的最长长任务 1,429 → 94 ms，约 2.4 秒全部行进 DOM（其间最长的长任务 80 ms），堆 604 → 80 MB；深与带附件不慢，T3 212 → 30 ms。再量发现"移到……"慢了一倍，加提交修了（决定 533）；画全之后改一次树 `PageList` 渲染两遍，不改（534）；与锁外的负载重叠的补量作废重量（535）；13.2 的新条取第 30 条（536）。变异 55 条抓 53（没抓的是设计写明不守的两条），6.2 的六条反向对照照期望 | [P4/S4 设计](04-P4-S4-page-tree.md)第 10 节、[P4 设计](04-P4-performance.md) 10.2、[S4 的审查记录](reviews/P4-S4-page-tree-review.md)；决定 533–537 |
 | 2026-11-17 | P4 的 S5（编辑器的解析，B9）实施、审查与修复（实施 3 个提交，修复第 1 轮 4 个，核对第 1 轮 1 个，一共 8 个，另一次合并 `main`；合并见第 12 节）：编辑器自己的 Markdown 配置加三个行内解析器（`linearScans`：一串空格；没收尾的 `<?` 与后面没有 `>` 的 `<`；`www.`、`http(s)://` 自动链接的括号只数一遍、被拒的记下），语法树逐节点不变；跨行的引用式定义另设上限 `referenceLimit = 2_000`。守卫：关掉上限的十七种（实施时加"一串空格直到正文末尾"）、lezer 自己的平方不加重的四格（过界时再量一次，决定 538）、读码元的次数、编辑器带着三个扫描、2 万篇随机文档加 61 篇手写的差分。在原规模上再量（今天与 S5 轮流各两轮）：每一格都不比今天慢、都 ≤ 80 ms，今天超的都下来了（一串空格类 85.6–87.2 → 0.1–0.3 ms，两种标题的定义插一个字 90.3–93.2 → 3.0–4.6，`)` 网址一次解析 199–212 → 1.3）；上限处最贵的是 `*_` 约 62–67 ms（决定 539）；B9 过了。三份审查 A 0I1M1N、B 0I2M1N、C 0I2M5N；核对第 1 轮 A 1N，B、C 没有新的。分支 CI 每次第一次全绿；`markdown.test.ts` 在 CI 上 2.5 → 7.3–7.9 s，Test 一步没有变长。第 7 节"总体设计的修订"第 27 条落了，第 8 节加网页一项，第 11 节加决定 538–540；总体设计 13.2 第 25 条、13.5 第 5 条与第 15 节；移交 M4-performance 一行；05-lessons 两条 | [P4/S5 设计](04-P4-S5-editor-parse.md)第 10 节、[P4 设计](04-P4-performance.md) 10.2 与 [S5 的审查记录](reviews/P4-S5-editor-parse-review.md)（A 1M 1N、B 2M 1N、C 2M 5N；核对第 1 轮 A 1N）；决定 538–540 |
+| 2026-11-17 | 负责人答了五问（第 11 节"2026-11-17：L1 的改测法与 P4/S3、P5 之前的四问"，第 7–11 问，都选推荐）：L1 采用改测法、取代 M11 第 277 条；没有 v0.1.0 之前的实例，P4/S3 不量批次 H、不写开发版的附录；输入法清单发布之后验收；私密漏洞报告与 Dependabot alerts 由负责人开；"允许的 actions"先看 P5/S1 的分支 CI。"需要负责人确认"第 2、4、7、8 项随之改，[P4 设计](04-P4-performance.md) 2.2 第 1 条标已确认。同一提交给 P4/S5 的合并号 `5e58e844` 与它的记录的 CI | 第 11 节 |
 
 ---
 
