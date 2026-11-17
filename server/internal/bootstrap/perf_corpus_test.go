@@ -618,10 +618,7 @@ func (c *perfCorpus) run(r *rand.Rand, zh bool, count int) (string, error) {
 		b.WriteString(w)
 		tail = perfTail(tail, w, zh)
 	}
-	if out := b.String(); perfClean(c.forbidden, out) {
-		return out, nil
-	}
-	return "", errors.New("a run spells a planted word")
+	return b.String(), nil
 }
 
 // word draws a word of words that spells no planted word with tail, the
@@ -693,26 +690,20 @@ func (c *perfCorpus) content(i int) (string, error) {
 }
 
 // paragraph is a paragraph of room bytes at most, a heading's of two to
-// five words; drawn again, as a whole, when it spells a planted word.
+// five words. It spells no planted word: no word does (the vocabularies
+// leave them out), a word that would with the text before it is drawn
+// again (word), and punctuation, spaces and the start of a run part the
+// text; write counts each word again and writes nothing past its count.
 func (c *perfCorpus) paragraph(r *rand.Rand, room int) (string, error) {
 	zh, heading := r.IntN(10) < 6, r.IntN(6) == 0
-	for range 16 {
-		if heading {
-			words, err := c.run(r, zh, 2+r.IntN(4))
-			if err != nil {
-				return "", err
-			}
-			return "## " + words, nil
-		}
-		p, err := c.sentences(r, zh, min(room, 200+r.IntN(1001)))
+	if heading {
+		words, err := c.run(r, zh, 2+r.IntN(4))
 		if err != nil {
 			return "", err
 		}
-		if perfClean(c.forbidden, p) {
-			return p, nil
-		}
+		return "## " + words, nil
 	}
-	return "", errors.New("every paragraph drawn spells a planted word")
+	return c.sentences(r, zh, min(room, 200+r.IntN(1001)))
 }
 
 // sentences are a paragraph's words to size bytes, punctuated: in Chinese
