@@ -5,7 +5,7 @@
 # 正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
 # 无论成败都清理容器、卷与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
-# 需要 Docker、curl、jq、openssl。
+# 需要 Docker、git、curl、jq、openssl。
 set -euo pipefail
 
 usage="用法：deploy/image-smoke.sh <镜像> <期望的版本号>"
