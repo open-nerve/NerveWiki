@@ -566,24 +566,35 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 			// 53), and a pause of 50 ms before Execute ran out the
 			// COMMIT cells' 50 ms before their check had run.
 			f.checkFake.at = time.Now().UTC()
+			at := f.at() // the submission's moment, the test's own
 			_, err := submit.Execute(ctx, f.nb)
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
 				t.Fatalf("answered %v, want server_busy, Retry-After %s", err, tc.retry)
 			}
 			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil ||
-				f.row.SubmittedAt == nil {
-				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report", w, f.row)
+				f.row.SubmittedAt == nil || !f.row.SubmittedAt.Equal(at) {
+				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report, submitted at %s", w, f.row, at)
 			}
 			// timeout_ms is exactly the deadline less the submission's
-			// moment as the row keeps it: SubmitTimeout, or, where the
-			// request has one, its deadline, the earlier in each cell. A
-			// bound alone let a line of 0 through.
+			// moment: SubmitTimeout, or, where the request has one, its
+			// deadline, the earlier in each cell. A bound alone let a line
+			// of 0 through. The request's is also at most its timeout, as
+			// in production, which a clock read before WithTimeout breaks
+			// at a pause in between; in whole milliseconds, as logged, the
+			// moment being up to a microsecond before the clock's read.
 			want := tc.timeout
 			if d, ok := ctx.Deadline(); ok {
-				want = d.Sub(*f.row.SubmittedAt)
+				want = d.Sub(at)
+				if want.Milliseconds() > tc.request.Milliseconds() {
+					t.Fatalf("timeout_ms %d past the request's %s: the clock was read before its deadline was set", want.Milliseconds(),
+						tc.request)
+				}
 			}
+			// elapsed_ms is exactly the time the clock moved on as the
+			// check ran.
 			warn := submitLines(t, log, "upgrade submission timed out")
 			if len(warn) != 1 || warn[0]["level"] != "WARN" || warn[0]["timeout_ms"] != float64(want.Milliseconds()) ||
+				warn[0]["elapsed_ms"] != float64(tc.elapsed.Milliseconds()) ||
 				warn[0]["submission_id"] != f.row.SubmissionID.String() || len(submitLines(t, log, "upgrade submitted")) != 0 {
 				t.Fatalf("logged %v", log.lines(t))
 			}
