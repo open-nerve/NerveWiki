@@ -9,7 +9,8 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 DEV_COMPOSE := docker compose -f deploy/compose.dev.yaml
-# 写进 bin/nervewiki 的版本号。默认值与 server/internal/platform/buildinfo 中的相同；发布时指定，例如 make build VERSION=0.1.0
+# 写进 bin/nervewiki 的版本号，例如 make build VERSION=0.1.0。默认值与 buildinfo、deploy/Dockerfile 的两个 ARG、README 写的相同，
+# 由 server/internal/platform/buildinfo/version_test.go 核对；发布时由 tag 经 ldflags 注入（release.yml）
 VERSION ?= 0.1.0-dev
 GO_LDFLAGS := -X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=$(VERSION)
 GOLANGCI_LINT_VERSION := 2.14.0
