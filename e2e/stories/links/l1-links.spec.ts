@@ -174,14 +174,40 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   await page.evaluate(() => Object.assign(window, { notReloaded: true }));
   const notReloaded = () => page.evaluate(() => "notReloaded" in window);
 
-  // With a modifier the browser opens the link's address: in a new tab.
-  const [opened] = await Promise.all([
-    page.context().waitForEvent("page"),
-    toTarget.click({ modifiers: ["ControlOrMeta"] }),
-  ]);
-  await expect.poll(() => pageHeading(opened, "Target").isVisible()).toBe(true);
-  // Watched from its start, as the stories' own tabs are: loaded again, it is quiet.
+  // With a modifier the click is the browser's, which opens the link's address in a new tab: the app leaves it be,
+  // not cancelled, the link having the page's address as it is clicked. The window has the click last, after the
+  // app's listeners, and cancels it there, so that no tab opens: Chromium does not always tell Playwright of the tab
+  // (it sends no Page.frameNavigated for the tab's document, and the context never reports the page, about 1 run
+  // in 25), and a tab closed as its app starts may lose its refresh (navigation.ts). The address opens in a tab of
+  // the story's own instead.
+  const clicked = await page.evaluateHandle(() => {
+    const seen: { click?: { cancelled: boolean; modified: boolean; address: string | undefined } } = {};
+    window.addEventListener(
+      "click",
+      (event) => {
+        seen.click = {
+          cancelled: event.defaultPrevented,
+          modified: event.ctrlKey || event.metaKey,
+          address: event.target instanceof Element ? event.target.closest("a")?.href : undefined,
+        };
+        event.preventDefault();
+      },
+      { once: true }
+    );
+    return seen;
+  });
+  await toTarget.click({ modifiers: ["ControlOrMeta"] });
+  expect(await clicked.evaluate((seen) => seen.click)).toEqual({
+    cancelled: false,
+    modified: true,
+    address: `${baseURL}${targetPath}`,
+  });
+  await clicked.dispose();
+  // Watched from its start, as the stories' own tabs are: the address shows the page, and loaded again, it is quiet.
+  const opened = await page.context().newPage();
   const openedWatch = await watchPage(opened);
+  await goto(opened, targetPath);
+  await expect(pageHeading(opened, "Target")).toBeVisible();
   await reload(opened);
   await expect(pageHeading(opened, "Target")).toBeVisible();
   await expectQuietPage(opened, openedWatch);
