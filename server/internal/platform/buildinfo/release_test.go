@@ -772,16 +772,20 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 		}
 	}
 	// the rehearsal reads only: its token's contents: read is all it has, with no secret (a token of someone's
-	// would write past the job's permissions) and no login
-	for _, s := range stringsIn(jobs["rehearse"]) {
-		if strings.Contains(s, "secrets.") {
-			t.Errorf("release.yml: the rehearsal names a secret: %q", s)
+	// would write past the job's permissions) and no login. The secrets context in any spelling (secrets.X,
+	// secrets['X'], toJSON(secrets), SECRETS.X: contexts are not case-sensitive), in the rehearse job or in what
+	// every job inherits, the workflow's env and defaults; a login by any action or command whose name holds it
+	secretsContext := regexp.MustCompile(`(?i)\bsecrets\b`)
+	for _, s := range stringsIn([]any{jobs["rehearse"], release["env"], release["defaults"]}) {
+		if secretsContext.MatchString(s) {
+			t.Errorf("release.yml: the rehearsal, or the env or defaults it inherits, names the secrets: %q", s)
 		}
 	}
+	login := regexp.MustCompile(`(?i)login`)
 	for i, step := range stepsOf(jobs["rehearse"]) {
 		uses, _ := step["uses"].(string)
 		run, _ := step["run"].(string)
-		if strings.HasPrefix(uses, "docker/login-action@") || regexp.MustCompile(`docker\s+login`).MatchString(run) {
+		if login.MatchString(uses + "\n" + run) {
 			t.Errorf("release.yml: the rehearsal's step %d logs in (%s%s): the rehearsal pushes nothing", i+1, uses, run)
 		}
 	}
