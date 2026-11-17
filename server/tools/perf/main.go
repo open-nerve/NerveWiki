@@ -1,4 +1,3 @@
-// Command perf is M12/P4's measuring tools (M12/P4 design 3.4).
 package main
 
 import (
