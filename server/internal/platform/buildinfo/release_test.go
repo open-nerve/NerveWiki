@@ -472,12 +472,17 @@ func TestTheReleaseNotes(t *testing.T) {
 		env := scriptEnv(t, t.TempDir(), append([]string{"IMAGE=registry.test/nw-notes", "GITHUB_REPOSITORY=o2/r2"}, extra...)...)
 		return runScript(t, dir, env, "release-notes.sh", args...)
 	}
-	for _, c := range []struct{ name, tag, want string }{
-		{"an rc", "v0.1.0-rc.1", "这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。\n\n" + section + tail("0.1.0-rc.1", "v0.1.0-rc.1")},
-		{"a release", "v0.1.0", section + tail("0.1.0", "v0.1.0")},
+	// a second heading of the version, one the gate does not count (no closing parenthesis), ends the section as
+	// the next version's would: its lines do not join the release's notes
+	const secondHeading = "# 变更记录\n\n## 0.1.0（2026-11-20）\n\n- 新的。\n\n## 0.1.0（草稿\n\n- 草稿里的一条。\n"
+	for _, c := range []struct{ name, changelog, tag, want string }{
+		{"an rc", notesChangelog, "v0.1.0-rc.1",
+			"这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。\n\n" + section + tail("0.1.0-rc.1", "v0.1.0-rc.1")},
+		{"a release", notesChangelog, "v0.1.0", section + tail("0.1.0", "v0.1.0")},
+		{"a second heading of the version", secondHeading, "v0.1.0", "- 新的。\n\n" + tail("0.1.0", "v0.1.0")},
 	} {
 		t.Run(c.name, func(t *testing.T) {
-			got := notes(t, notesChangelog, nil, c.tag, digest)
+			got := notes(t, c.changelog, nil, c.tag, digest)
 			if got.code != 0 || got.stdout != c.want {
 				t.Errorf("exit %d, stderr %q, notes:\n%s\nwant:\n%s", got.code, got.stderr, got.stdout, c.want)
 			}

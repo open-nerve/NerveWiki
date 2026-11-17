@@ -25,13 +25,14 @@ version=${tag#v}
 base=${version%%-rc.*}
 
 # 这一节：以"## <base>（"起头的那一行之后，到下一个"## "之前，去掉开头与结尾的空行。index 按字面比字节：版本号里的 .
-# 不当通配，"## 0.1.0（" 不匹配 "## 0.1.00（"；"### " 不是 "## "。exit 之后照样走 END
+# 不当通配，"## 0.1.0（" 不匹配 "## 0.1.00（"；"### " 不是 "## "。exit 之后照样走 END。"下一个"先判：同一个版本的
+# 第二个标题（例如写坏了的"## 0.1.0（草稿"）也结束这一节，不另起一节接着读，与闸门的"恰好一个标题"一致
 [ -f CHANGELOG.md ] || fail "没有 CHANGELOG.md"
 awk -v h="## $base（" 'index($0, h) == 1 { found = 1 } END { exit !found }' CHANGELOG.md ||
   fail "CHANGELOG.md 里没有\"## $base（…）\"的一节"
 section=$(awk -v h="## $base（" '
-  index($0, h) == 1 { on = 1; next }
   on && /^## / { exit }
+  index($0, h) == 1 { on = 1; next }
   on { lines[++n] = $0 }
   END {
     first = 1
