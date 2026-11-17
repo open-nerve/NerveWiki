@@ -24,44 +24,36 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/modules/wiki"
 )
 
-// The real ports under a wider deadline than the runtime tests' 4 s request,
-// in the production ratio of worker to request: the slowest CI runners take
-// 1.7-2.0 s over this notebook (M10 decision 160). Production's lint timeout
-// is min(10 s, server.request_timeout/2). An upgrade's check and start
-// take them.
-const (
-	wikiCostRequest = 6 * time.Second
-	wikiCostWorker  = 3 * time.Second
-)
-
-// The guard below has a request and a worker of its own: the worker above
-// its bounds, the summary's wall of 5.2 s the highest, so that a bound
-// judges rather than the worker's deadline, and the request twice it, in
-// production's ratio. M10 decision 160 left the summary's bound above a
-// 3 s worker, which ended the run before the bound was reached (M12
-// decision 475, as decision 359 has it).
-const (
-	wikiLintRequest = 12 * time.Second
-	wikiLintWorker  = 6 * time.Second
-)
-
 // This is the actual bootstrap Module.Execute, with the installed authority,
 // snapshot, source-area, metadata, linking, asset and final Paths ports. Seed
 // and validation are outside the measured calls. CPU/heap are the Go process,
 // including the server and observation overhead; neither is PostgreSQL RSS.
-// Each wall bound is under the worker's deadline, which is under the
-// request's, before anything is timed.
+// The real ports under a wider deadline than the runtime tests' 4 s
+// request, lintCostScale's, in production's ratio of worker to request:
+// the worker above the bounds, the summary's wall of 5.2 s the highest, so
+// that a bound judges rather than the worker's deadline (M12 decision 475,
+// as decision 359 has it; M10 decision 160 left that bound above a 3 s
+// worker, which ended the run first). The slowest CI runners take 1.7-2.0
+// s over this notebook. Production's lint timeout is min(10 s,
+// server.request_timeout/2). Each wall bound is under the worker's
+// deadline, which is under the request's, before anything is timed.
+// NW_SCALE_PAGES gives another size by hand (M12/P4 design 3.3): then
+// production's deadlines, the bounds only logged.
 func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("100k true wiki runtime cost runs alone without race")
 	}
+	scale := scaleOf(t, "NW_SCALE_PAGES", lintCostScale())
 	for operation, limit := range wikiCostLimits() {
-		if wall := time.Duration(limit.WallNS); wall >= wikiLintWorker || wikiLintWorker >= wikiLintRequest {
+		if wall := time.Duration(limit.WallNS); wall >= scale.Own || scale.Own >= scale.Request {
 			t.Fatalf("%s's wall bound %v, worker %v, request %v: want the bound under the worker under the request", operation, wall,
-				wikiLintWorker, wikiLintRequest)
+				scale.Own, scale.Request)
 		}
 	}
-	f := newWikiCostFixture(t)
+	f := newWikiCostFixtureOf(t, "Hundred thousand pages", scale.Size, scale.Own)
+	if f.worker != scale.Own {
+		t.Fatalf("the fixture's lint runs are bounded by %v, want %v", f.worker, scale.Own)
+	}
 	actor := f.actor(t, "alice")
 	stopped := false
 	for _, operation := range []string{"summary", "wanted"} {
@@ -74,7 +66,7 @@ func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 				finished := false
 				t.Run(fmt.Sprintf("sample-%d", sample), func(t *testing.T) {
 					f.sampleCleanup(t, operation, sample, &finished, f.event)
-					samples[sample-1] = f.measure(t, actor, operation, sample)
+					samples[sample-1] = f.measure(t, actor, operation, sample, scale)
 				})
 				if !finished {
 					stopped = true
@@ -82,7 +74,7 @@ func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 				}
 			}
 			if !t.Failed() {
-				checkWikiCost(t, operation, samples)
+				checkWikiCost(t, operation, samples, scale)
 			}
 		})
 	}
@@ -143,7 +135,7 @@ func wikiCostLimits() map[string]wikiCostSample {
 	}
 }
 
-func checkWikiCost(t *testing.T, operation string, samples [3]wikiCostSample) {
+func checkWikiCost(t *testing.T, operation string, samples [3]wikiCostSample, scale guardScale) {
 	t.Helper()
 	limit, ok := wikiCostLimits()[operation]
 	if !ok {
@@ -161,14 +153,16 @@ func checkWikiCost(t *testing.T, operation string, samples [3]wikiCostSample) {
 	} {
 		slices.Sort(metric.values[:])
 		median := metric.values[1]
-		t.Logf("wiki cost %s median %s=%d bound=%d", operation, metric.name, median, metric.limit)
-		if median > metric.limit {
-			t.Errorf("wiki cost %s median %s=%d exceeds calibrated bound %d", operation, metric.name, median, metric.limit)
+		if scale.ByHand {
+			t.Logf("wiki cost %s median %s=%d bound=%d scale=%d", operation, metric.name, median, metric.limit, scale.Size)
+		} else {
+			t.Logf("wiki cost %s median %s=%d bound=%d", operation, metric.name, median, metric.limit)
 		}
+		scale.judge(t.Errorf, fmt.Sprintf("wiki cost %s median %s", operation, metric.name), median, metric.limit)
 	}
 }
 
-func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation string, sample int) wikiCostSample {
+func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation string, sample int, scale guardScale) wikiCostSample {
 	t.Helper()
 	query := wiki.LintQuery{}
 	if operation == "wanted" {
@@ -203,7 +197,7 @@ func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation
 			}
 		}
 	}()
-	ctx, cancel := context.WithTimeout(actor, wikiLintRequest)
+	ctx, cancel := context.WithTimeout(actor, scale.Request)
 	defer cancel()
 	cpu, start := originCPU(t), time.Now()
 	result, err := f.module.Execute(ctx, wiki.LintScope{NotebookID: uuid.MustParse(f.book.id)}, query)
@@ -367,10 +361,10 @@ func (f *wikiCostFixture) checkTrace(t *testing.T, queries []wikiCostSQL, timing
 	if operation == "wanted" && calls["LintHasSourceProperties"] != 0 {
 		t.Errorf("wanted performed an unrelated source presence query: calls=%d", calls["LintHasSourceProperties"])
 	}
-	if calls["LintNodeMetadata"] != 1 || counts["LintNodeMetadata"] != int64(100000+f.bulkAssets+2) {
-		t.Fatalf("metadata must be read once: calls=%d rows=%d; want 1/%d", calls["LintNodeMetadata"], counts["LintNodeMetadata"], 100000+f.bulkAssets+2)
+	if calls["LintNodeMetadata"] != 1 || counts["LintNodeMetadata"] != int64(f.pages+f.bulkAssets+2) {
+		t.Fatalf("metadata must be read once: calls=%d rows=%d; want 1/%d", calls["LintNodeMetadata"], counts["LintNodeMetadata"], f.pages+f.bulkAssets+2)
 	}
-	if first != "FindNotebook" || counts["LintHeads"] != 100000 || counts["LintWantedEdgeHeadsFirst"] != 3 || counts["LintEdgesByPositions"] != 3 {
+	if first != "FindNotebook" || counts["LintHeads"] != int64(f.pages) || counts["LintWantedEdgeHeadsFirst"] != 3 || counts["LintEdgesByPositions"] != 3 {
 		t.Fatalf("real nonempty compact/wanted trace=%v first=%s", counts, first)
 	}
 	var wantedIDs []uuid.UUID
@@ -524,7 +518,7 @@ func TestWikiCostSamplesWaitForFinished(t *testing.T) {
 	completed := false
 	t.Run("sample-failure", func(t *testing.T) {
 		f.sampleCleanup(t, "summary", 1, &completed, wait)
-		f.measure(t, actor, "summary", 1)
+		f.measure(t, actor, "summary", 1, lintCostScale())
 		t.Fatal("the real canceled measure unexpectedly returned")
 	})
 	if !<-cancelDone {

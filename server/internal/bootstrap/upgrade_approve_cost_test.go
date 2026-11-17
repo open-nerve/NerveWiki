@@ -29,21 +29,22 @@ import (
 )
 
 // The approval guard's notebook (M11/P3 design 7.1, decision 280): in raw
-// approveCostFolders folders with a body, each holding approveCostPages
-// pages with a body, approveCostEmpty empty pages and approveCostFiles
-// attachments; at the root AGENTS, which the start writes, and Notes,
-// holding approveCostNotes notes with clean frontmatter.
+// 500 folders with a body (approveCostFoldersOf), each holding
+// approveCostPages pages with a body, approveCostEmpty empty pages and
+// approveCostFiles attachments; at the root AGENTS, which the start writes,
+// and Notes, holding approveCostNotes notes with clean frontmatter.
 const (
-	approveCostFolders = 500
-	approveCostPages   = 90
-	approveCostEmpty   = 5
-	approveCostFiles   = 4
-	approveCostNotes   = 10000
+	approveCostPages = 90
+	approveCostEmpty = 5
+	approveCostFiles = 4
+	approveCostNotes = 10000
 )
 
-// approveCostSources are the hashes the approval writes: the folders',
-// their pages' and their attachments', 47,500.
-const approveCostSources = approveCostFolders * (1 + approveCostPages + approveCostFiles)
+// approveCostPerFolder are the hashes the approval writes of a folder:
+// its own, its pages' and its attachments'. Of approveCostScale's 47,500
+// sources, 500 folders; NW_SCALE_PAGES gives the sources by hand (M12/P4
+// design 3.3), round(n/95) folders.
+const approveCostPerFolder = 1 + approveCostPages + approveCostFiles
 
 // The other notebooks beside it: LLM Wikis of approveCostOtherPages pages,
 // approveCostOtherSources of them sources with their hashes, and
@@ -60,16 +61,11 @@ const (
 	approveCostOtherFiles   = 2000
 )
 
-// approveCostRequest is production's request, approveCostDeadline the
-// approval's three quarters of it (decision 279).
-const (
-	approveCostRequest  = 15 * time.Second
-	approveCostDeadline = approveCostRequest * 3 / 4
-)
-
 // approveCostBound is the median of three approvals the guard allows in
 // each state and plan: three times the largest of the medians of two local
-// rounds, rounded up to 100 ms, well within approveCostDeadline. The
+// rounds, rounded up to 100 ms, well within the approval's deadline,
+// approveCostScale's three quarters of production's 15 s request (decision
+// 279). The
 // rounds' medians, custom then generic, each never analyzed, as the start
 // left them, and written after them, were 1.15, 1.17, 1.24, 1.29, 1.11
 // and 1.11 s, and 1.14, 1.15, 1.24, 1.14, 1.12 and 1.12 s; three times
@@ -86,8 +82,10 @@ const approveCostBound = 3900 * time.Millisecond
 // The approval's cost guard (M11/P3 design 7.1, decisions 280, 292): the
 // notebook above, its upgrade started and submitted through the API, its
 // report kept, beside approveCostOthers notebooks, its approval under
-// production's 15 s request. Three states of the statistics: never
-// analyzed (cleared on the copy), as the start left them (the seed
+// production's 15 s request, sent by a client of 30 s that outwaits its
+// deadline, as are its start and its submission (approveCostScale; the
+// sources NW_SCALE_PAGES's by hand, M12/P4 design 3.3). Three states of the
+// statistics: never analyzed (cleared on the copy), as the start left them (the seed
 // analyzed, then the start analyzed upgrade_nodes), and this notebook's
 // pages written after them, as a large notebook just imported; each in
 // custom and in generic plans, set for the copy's database, which the
@@ -101,7 +99,7 @@ const approveCostBound = 3900 * time.Millisecond
 // keys, never a Seq Scan, a scan repeated on a Nested Loop's inner side by
 // the outer row's key, SetSourceHashes the notebook's nodes once at most,
 // SourceRebuildHeads its nodes and contents only by their keys. Time
-// second: each approval answers 200, its 47,500 hashes set, the median of
+// second: each approval answers 200, its hashes set, the median of
 // three of the server's elapsed_ms within approveCostBound. Then the
 // same, the plans of the rebuild's statements alone, beside
 // approveCostPlanOthers notebooks, untimed. -v prints each approval's
@@ -110,12 +108,14 @@ func TestUpgradeApprovalTakesItsTimeAtAnyStatistics(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the approval's cost guard runs alone, without race")
 	}
+	scale := scaleOf(t, "NW_SCALE_PAGES", approveCostScale())
+	folders := approveCostFoldersOf(scale, approveCostPerFolder)
 	contract, keyFile := apitest.Load(t), signingKeyFile(t)
 	type template struct{ analyzed, late approveCostTemplate }
-	timed := template{approveCostSeed(t, contract, keyFile, approveCostOthers, false),
-		approveCostSeed(t, contract, keyFile, approveCostOthers, true)}
-	planned := template{approveCostSeed(t, contract, keyFile, approveCostPlanOthers, false),
-		approveCostSeed(t, contract, keyFile, approveCostPlanOthers, true)}
+	timed := template{approveCostSeed(t, contract, keyFile, scale, folders, approveCostOthers, false),
+		approveCostSeed(t, contract, keyFile, scale, folders, approveCostOthers, true)}
+	planned := template{approveCostSeed(t, contract, keyFile, scale, folders, approveCostPlanOthers, false),
+		approveCostSeed(t, contract, keyFile, scale, folders, approveCostPlanOthers, true)}
 	of := func(tm template, statistics string) approveCostTemplate {
 		if statistics == "written after them" {
 			return tm.late
@@ -128,18 +128,21 @@ func TestUpgradeApprovalTakesItsTimeAtAnyStatistics(t *testing.T) {
 			t.Run(mode+"/"+statistics, func(t *testing.T) {
 				var took []float64
 				for sample := range 3 {
-					a := approveCostApprove(t, contract, keyFile, of(timed, statistics), mode, statistics, approveCostPlanned(),
+					a := approveCostApprove(t, contract, keyFile, scale, of(timed, statistics), mode, statistics, approveCostPlanned(),
 						sample == 0)
 					took = append(took, a.elapsed)
-					approveCostLog(t, "sample", map[string]any{"mode": mode, "statistics": statistics, "sample": sample,
+					line := map[string]any{"mode": mode, "statistics": statistics, "sample": sample,
 						"elapsed_ms": a.elapsed, "explain_ms": ms(a.parts.Explain), "statements_ms": a.parts.Took,
-						"plans": a.parts.Plans})
+						"plans": a.parts.Plans, "request_ms": ms(a.request)}
+					if scale.ByHand {
+						line["scale"] = scale.Size
+					}
+					approveCostLog(t, "sample", line)
 				}
 				slices.Sort(took)
 				medians = append(medians, took[1])
-				if bound := float64(approveCostBound.Milliseconds()); took[1] > bound {
-					t.Errorf("the median of three approvals took %.1f ms, past %.0f ms: %v", took[1], bound, took)
-				}
+				scale.judge(t.Errorf, fmt.Sprintf("the median of three approvals %v ms, µs", took), uint64(took[1]*1000),
+					uint64(approveCostBound.Microseconds()))
 			})
 		}
 	}
@@ -147,7 +150,7 @@ func TestUpgradeApprovalTakesItsTimeAtAnyStatistics(t *testing.T) {
 	for _, mode := range []string{"force_custom_plan", "force_generic_plan"} {
 		for _, statistics := range approveCostStates() {
 			t.Run("plans alone/"+mode+"/"+statistics, func(t *testing.T) {
-				a := approveCostApprove(t, contract, keyFile, of(planned, statistics), mode, statistics, approveCostRebuild(), true)
+				a := approveCostApprove(t, contract, keyFile, scale, of(planned, statistics), mode, statistics, approveCostRebuild(), true)
 				approveCostLog(t, "plans alone", map[string]any{"mode": mode, "statistics": statistics, "elapsed_ms": a.elapsed,
 					"statements_ms": a.parts.Took, "plans": a.parts.Plans})
 			})
@@ -192,17 +195,24 @@ func approveCostLog(t testing.TB, label string, v any) {
 }
 
 // approveCostTemplate is a database the guard copies for each approval:
-// alice's token and the notebook, its upgrade in review with its report.
-type approveCostTemplate struct{ url, token, nb string }
+// alice's token and the notebook, its upgrade in review with its report,
+// and the sources its approval hashes.
+type approveCostTemplate struct {
+	url, token, nb string
+	sources        int
+}
 
-// approveCostSeed makes a template beside others notebooks: the
-// notebook, raw and Notes through the API, the rest by SQL, analyzed
-// after all or, late, before this notebook's pages; then the upgrade
-// started and submitted through the API. Its app and pools are closed as
-// it returns, so that it can be copied.
-func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, others int, late bool) approveCostTemplate {
+// approveCostSeed makes a template of folders folders beside others
+// notebooks: the notebook, raw and Notes through the API, the rest by SQL,
+// analyzed after all or, late, before this notebook's pages; then the
+// upgrade started and submitted through the API, each by a client that
+// outwaits its deadline, as their work grows with the sources, timed and
+// logged. Its app and pools are closed as it returns, so that it can be
+// copied.
+func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, scale guardScale, folders, others int, late bool,
+) approveCostTemplate {
 	t.Helper()
-	tm := approveCostTemplate{url: pgtest.NewDatabase(t)}
+	tm := approveCostTemplate{url: pgtest.NewDatabase(t), sources: folders * approveCostPerFolder}
 	t.Run(fmt.Sprintf("seed beside %d, late %v", others, late), func(t *testing.T) {
 		started := time.Now()
 		pool := connect(t, tm.url)
@@ -210,7 +220,7 @@ func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, o
 		for _, table := range approveCostStatistics() {
 			exec("ALTER TABLE " + table + " SET (autovacuum_enabled = false)")
 		}
-		base := runApp(t, approveCostApp(t, tm.url, keyFile, nil, slog.New(slog.DiscardHandler)))
+		base := runApp(t, approveCostApp(t, tm.url, keyFile, scale, nil, slog.New(slog.DiscardHandler)))
 		tm.token = registerAccount(t, contract, base, "alice@example.com").AccessToken
 		post := func(path, body string) string {
 			t.Helper()
@@ -231,12 +241,13 @@ func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, o
 		if late {
 			exec("ANALYZE")
 		}
-		approveCostNotebookSeed(t, exec, tm.nb, raw, notes)
+		approveCostNotebookSeed(t, exec, tm.nb, raw, notes, folders)
 		if !late {
 			exec("ANALYZE")
 		}
 		seeded := time.Since(started)
-		status, answer := ask(t, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade", tm.token, `{}`)
+		scale.checkWaits(t)
+		status, answer, start := timedAsk(t, scale, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade", tm.token, `{}`)
 		var u upgradeAnswer
 		if status == http.StatusOK {
 			decodeAnswer(t, answer, &u)
@@ -244,7 +255,8 @@ func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, o
 		if status != http.StatusOK || u.SourceRootID != raw || len(u.SeededPageIDs) != 1 {
 			t.Fatalf("the start = %d %s, want raw its source root, AGENTS written", status, answer)
 		}
-		status, answer = ask(t, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade/submit", tm.token, "")
+		status, answer, submit := timedAsk(t, scale, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade/submit",
+			tm.token, "")
 		if status != http.StatusOK || !strings.Contains(answer, `"state":"reviewing"`) || !strings.Contains(answer, `"passed":true`) {
 			t.Fatalf("the submission = %d %.2000s, want it reviewing, passed", status, answer)
 		}
@@ -253,8 +265,12 @@ func approveCostSeed(t *testing.T, contract *apitest.Contract, keyFile string, o
 			tm.nb).Scan(&nodes, &ours); err != nil {
 			t.Fatal(err)
 		}
-		approveCostLog(t, "seed", map[string]any{"others": others, "late": late, "seed_ms": ms(seeded),
-			"elapsed_ms": ms(time.Since(started)), "nodes": nodes, "notebook_nodes": ours})
+		line := map[string]any{"others": others, "late": late, "seed_ms": ms(seeded), "start_ms": ms(start), "submit_ms": ms(submit),
+			"elapsed_ms": ms(time.Since(started)), "nodes": nodes, "notebook_nodes": ours}
+		if scale.ByHand {
+			line["scale"] = scale.Size
+		}
+		approveCostLog(t, "seed", line)
 	})
 	if t.Failed() {
 		t.FailNow()
@@ -306,16 +322,16 @@ func approveCostOthersSeed(t *testing.T, exec func(string, ...any), nb string, o
 		FROM nodes n LEFT JOIN page_contents c ON c.node_id = n.id WHERE n.` + ofOthers)
 }
 
-// approveCostNotebookSeed writes the notebook nb's nodes under raw and
-// notes by SQL as the API would leave them: each page with its content,
-// indexed by the current extractor, the notes with their frontmatter's
-// properties; each attachment with its file's row.
-func approveCostNotebookSeed(t *testing.T, exec func(string, ...any), nb, raw, notes string) {
+// approveCostNotebookSeed writes the notebook nb's nodes under raw, its
+// folders, and notes by SQL as the API would leave them: each page with its
+// content, indexed by the current extractor, the notes with their
+// frontmatter's properties; each attachment with its file's row.
+func approveCostNotebookSeed(t *testing.T, exec func(string, ...any), nb, raw, notes string, folders int) {
 	t.Helper()
 	exec(`INSERT INTO nodes (id, notebook_id, kind, parent_id, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
 			updated_at)
 		SELECT gen_random_uuid(), b.id, 'page', $2::uuid, 'f' || g, 'f' || g, g, b.created_by_id, b.created_by_id, now(), now()
-		FROM notebooks b, generate_series(1, $3::integer) g WHERE b.id = $1`, nb, raw, approveCostFolders)
+		FROM notebooks b, generate_series(1, $3::integer) g WHERE b.id = $1`, nb, raw, folders)
 	pages, empty := approveCostPages, approveCostPages+approveCostEmpty
 	exec(`INSERT INTO nodes (id, notebook_id, kind, parent_id, name, name_key, sort_order, created_by_id, updated_by_id, created_at,
 			updated_at)
@@ -347,17 +363,18 @@ func approveCostNotebookSeed(t *testing.T, exec func(string, ...any), nb, raw, n
 		WHERE n.notebook_id = $1 AND n.parent_id = $2`, nb, notes)
 }
 
-// approveCostApp is an app on url under production's request, its tokens
-// alive an hour; with trace, its statements traced, their plans judged as
-// trace says, and its baseline's deletion wrapped (approveCostRollback).
-func approveCostApp(t *testing.T, url, keyFile string, trace *approveCostTrace, logger *slog.Logger) *app {
+// approveCostApp is an app on url under scale's request, read and write
+// timeouts, production's unless by hand, its tokens alive an hour; with
+// trace, its statements traced, their plans judged as trace says, and its
+// baseline's deletion wrapped (approveCostRollback).
+func approveCostApp(t *testing.T, url, keyFile string, scale guardScale, trace *approveCostTrace, logger *slog.Logger) *app {
 	t.Helper()
 	cfg := testConfig(t, url, false)
 	cfg.Auth.JWT.PrivateKeyFile, cfg.Auth.AccessTokenTTL = keyFile, time.Hour
-	cfg.Server.RequestTimeout, cfg.Server.WriteTimeout = approveCostRequest, 45*time.Second
+	cfg.Server.RequestTimeout, cfg.Server.ReadTimeout, cfg.Server.WriteTimeout = scale.Request, scale.Read, scale.Write
 	w := wiring{wiki: func(d *wiki.Deps) {
-		if d.ApproveTimeout != approveCostDeadline {
-			t.Errorf("the approval's deadline is %v, want %v under a %v request", d.ApproveTimeout, approveCostDeadline, approveCostRequest)
+		if d.ApproveTimeout != scale.Own {
+			t.Errorf("the approval's deadline is %v, want %v under a %v request", d.ApproveTimeout, scale.Own, scale.Request)
 		}
 		if trace != nil {
 			d.RollbackPages = approveCostRollback{d.RollbackPages, trace}
@@ -375,17 +392,19 @@ func approveCostApp(t *testing.T, url, keyFile string, trace *approveCostTrace, 
 }
 
 // approveCostApproval is an approval as the guard read it: the server's
-// elapsed_ms less the plans' EXPLAINs, and its statements.
+// elapsed_ms less the plans' EXPLAINs, its statements, and the request's
+// time at the client.
 type approveCostApproval struct {
 	elapsed float64
 	parts   approveCostParts
+	request time.Duration
 }
 
 // approveCostApprove copies tm, in statistics and mode, starts an app on
 // the copy, waits for its jobs at start, and approves the upgrade: 200,
 // the hashes set, the plans of planned checked when plans says.
-func approveCostApprove(t *testing.T, contract *apitest.Contract, keyFile string, tm approveCostTemplate, mode, statistics string,
-	planned []string, plans bool,
+func approveCostApprove(t *testing.T, contract *apitest.Contract, keyFile string, scale guardScale, tm approveCostTemplate,
+	mode, statistics string, planned []string, plans bool,
 ) approveCostApproval {
 	t.Helper()
 	var out approveCostApproval
@@ -406,10 +425,13 @@ func approveCostApprove(t *testing.T, contract *apitest.Contract, keyFile string
 			}
 		}
 		trace, logs := &approveCostTrace{planned: planned}, &syncBuffer{}
-		base := runApp(t, approveCostApp(t, copied, keyFile, trace, slog.New(slog.NewJSONHandler(logs, nil))))
+		base := runApp(t, approveCostApp(t, copied, keyFile, scale, trace, slog.New(slog.NewJSONHandler(logs, nil))))
 		approveCostSettle(t, pool)
+		scale.checkWaits(t)
 		trace.begin(plans)
-		status, answer := ask(t, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade/approve", tm.token, "")
+		status, answer, request := timedAsk(t, scale, contract, http.MethodPost, base+"/api/v0/notebooks/"+tm.nb+"/upgrade/approve",
+			tm.token, "")
+		out.request = request
 		out.parts = trace.end()
 		// The plans' error first: an EXPLAIN that fails leaves the
 		// transaction failed, and the approval answers 500.
@@ -423,13 +445,13 @@ func approveCostApprove(t *testing.T, contract *apitest.Contract, keyFile string
 			t.Errorf("the approval's connection planned by %q, want %q", out.parts.Mode, mode)
 		}
 		lines := upgradeLines(t, logs, 0, "upgrade approved")
-		if len(lines) != 1 || lines[0]["sources_hashed"] != float64(approveCostSources) {
-			t.Fatalf("logged %v, want one line of %d sources hashed", lines, approveCostSources)
+		if len(lines) != 1 || lines[0]["sources_hashed"] != float64(tm.sources) {
+			t.Fatalf("logged %v, want one line of %d sources hashed", lines, tm.sources)
 		}
 		elapsed, _ := lines[0]["elapsed_ms"].(float64)
 		out.elapsed = elapsed - ms(out.parts.Explain)
-		if n := count(t, pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND source_hash IS NOT NULL", tm.nb); n != approveCostSources {
-			t.Errorf("%d sources hashed, want %d", n, approveCostSources)
+		if n := count(t, pool, "SELECT count(*) FROM nodes WHERE notebook_id = $1 AND source_hash IS NOT NULL", tm.nb); n != tm.sources {
+			t.Errorf("%d sources hashed, want %d", n, tm.sources)
 		}
 	})
 	if t.Failed() {
