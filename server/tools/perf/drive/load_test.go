@@ -236,6 +236,47 @@ func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 	}
 }
 
+// A tree read the throttle schedules inside the run but whose time comes
+// after For is not sent: the run waits for it and drops it (review B's M1).
+func TestATabsReadDueAfterTheRunIsNotSent(t *testing.T) {
+	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, _ []byte) {
+		switch r.URL.Path {
+		case "/api/v0/events":
+			w.Header().Set("Content-Type", "text/event-stream")
+			e := "event: pages\ndata: {\"workspace_id\":\"w\",\"notebook_id\":\"nb-tree\",\"tree\":true,\"pages\":[]}\n\n"
+			_, _ = io.WriteString(w, e)
+			w.(http.Flusher).Flush()
+			// Inside the run and inside the interval: the read it asks for
+			// is due at 600 ms, past For's 300.
+			select {
+			case <-time.After(100 * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+			_, _ = io.WriteString(w, e)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case "/api/v0/notebooks/nb-tree/nodes":
+			f.note("tree read")
+			answer(w, http.StatusOK, map[string]any{"data": []any{}})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	tb := Tabs{Clients: f.clients(2, client.NewLog(nil)), Notebook: "nb-tree", For: 300 * time.Millisecond,
+		Every: time.Hour, Interval: 600 * time.Millisecond}
+	start := time.Now()
+	if err := tb.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if n := f.count("tree read"); n != 1 {
+		t.Errorf("the tree read %d times, want once: the read due after the run is not sent", n)
+	}
+	if took := time.Since(start); took < 550*time.Millisecond {
+		t.Errorf("the run took %v: it did not wait for the read it had scheduled", took)
+	}
+}
+
 // B4's operations wait for the background restore to succeed and for the
 // background to be quiet before each (design 3.4.5, 7.2's 38).
 func TestOpsWaitForTheRestoreAndTheQuiet(t *testing.T) {
