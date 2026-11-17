@@ -27,19 +27,39 @@ import (
 // The real ports under a wider deadline than the runtime tests' 4 s request,
 // in the production ratio of worker to request: the slowest CI runners take
 // 1.7-2.0 s over this notebook (M10 decision 160). Production's lint timeout
-// is min(10 s, server.request_timeout/2).
+// is min(10 s, server.request_timeout/2). An upgrade's check and start
+// take them.
 const (
 	wikiCostRequest = 6 * time.Second
 	wikiCostWorker  = 3 * time.Second
+)
+
+// The guard below has a request and a worker of its own: the worker above
+// its bounds, the summary's wall of 5.2 s the highest, so that a bound
+// judges rather than the worker's deadline, and the request twice it, in
+// production's ratio. M10 decision 160 left the summary's bound above a
+// 3 s worker, which ended the run before the bound was reached (M12
+// decision 475, as decision 359 has it).
+const (
+	wikiLintRequest = 12 * time.Second
+	wikiLintWorker  = 6 * time.Second
 )
 
 // This is the actual bootstrap Module.Execute, with the installed authority,
 // snapshot, source-area, metadata, linking, asset and final Paths ports. Seed
 // and validation are outside the measured calls. CPU/heap are the Go process,
 // including the server and observation overhead; neither is PostgreSQL RSS.
+// Each wall bound is under the worker's deadline, which is under the
+// request's, before anything is timed.
 func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 	if testing.Short() {
 		t.Skip("100k true wiki runtime cost runs alone without race")
+	}
+	for operation, limit := range wikiCostLimits() {
+		if wall := time.Duration(limit.WallNS); wall >= wikiLintWorker || wikiLintWorker >= wikiLintRequest {
+			t.Fatalf("%s's wall bound %v, worker %v, request %v: want the bound under the worker under the request", operation, wall,
+				wikiLintWorker, wikiLintRequest)
+		}
 	}
 	f := newWikiCostFixture(t)
 	actor := f.actor(t, "alice")
@@ -112,17 +132,20 @@ type wikiCostSample struct {
 	WallNS, CPUNS, AllocatedBytes, PeakIncrementBytes uint64
 }
 
-// Three successful runs of the unchanged 3315-file input each supplied three
-// samples. For each metric: 3 * the largest round median, rounded up to 100ms
-// or 1MiB. These development-calibrated guards leave the real 2s worker and
-// 4s caller unchanged; the summary wall guard is therefore not extra runtime.
-func checkWikiCost(t *testing.T, operation string, samples [3]wikiCostSample) {
-	t.Helper()
-	limits := map[string]wikiCostSample{
+// wikiCostLimits are each operation's bounds. Three successful runs of the
+// unchanged 3315-file input each supplied three samples. For each metric:
+// 3 * the largest round median, rounded up to 100ms or 1MiB. The walls are
+// under the guard's worker, which the guard checks before it times.
+func wikiCostLimits() map[string]wikiCostSample {
+	return map[string]wikiCostSample{
 		"summary": {uint64(5200 * time.Millisecond), uint64(2100 * time.Millisecond), 1571 << 20, 404 << 20},
 		"wanted":  {uint64(1400 * time.Millisecond), uint64(1500 * time.Millisecond), 1104 << 20, 348 << 20},
 	}
-	limit, ok := limits[operation]
+}
+
+func checkWikiCost(t *testing.T, operation string, samples [3]wikiCostSample) {
+	t.Helper()
+	limit, ok := wikiCostLimits()[operation]
 	if !ok {
 		t.Fatalf("no calibrated cost limits for %s", operation)
 	}
@@ -180,7 +203,7 @@ func (f *wikiCostFixture) measure(t *testing.T, actor context.Context, operation
 			}
 		}
 	}()
-	ctx, cancel := context.WithTimeout(actor, wikiCostRequest)
+	ctx, cancel := context.WithTimeout(actor, wikiLintRequest)
 	defer cancel()
 	cpu, start := originCPU(t), time.Now()
 	result, err := f.module.Execute(ctx, wiki.LintScope{NotebookID: uuid.MustParse(f.book.id)}, query)

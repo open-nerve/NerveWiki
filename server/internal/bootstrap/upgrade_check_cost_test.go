@@ -41,7 +41,8 @@ const checkCostBound = 1500 * time.Millisecond
 // each node, 1,000 changesets of the upgrade and 100,000 of the notebook's
 // before it; beside it nine notebooks of 50,000 pages with their upgrades'
 // baselines and 1,000 changesets each; analyzed, as after a start. Under
-// lint's guard's configuration, a 6 s request and a 3 s worker, the whole
+// lint's cost configuration, a 6 s request and a 3 s worker (lint's own
+// guard has twice them since M12 decision 475), the whole
 // check (Module.CheckUpgrade, through lint's runs) on two seeds: every
 // baseline page as the ledger accepted it, and one page's ledger another
 // hash, gate 7 not passed. The median of three checks of each within
@@ -55,7 +56,7 @@ func TestUpgradeCheckTakesItsTimeAtAnyStatistics(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the check of 50,000 pages runs alone without race")
 	}
-	f := newWikiCostFixtureOf(t, "Fifty thousand pages", checkCostPages)
+	f := newWikiCostFixtureOf(t, "Fifty thousand pages", checkCostPages, wikiCostWorker)
 	ctx := context.Background()
 	started := time.Now()
 	f.tm.exec(t, "UPDATE notebooks SET mode = 'standard', source_root_id = NULL WHERE id = $1", f.book.id)

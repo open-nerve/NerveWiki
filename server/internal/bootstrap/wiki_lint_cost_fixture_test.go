@@ -40,17 +40,17 @@ func wikiCostID(kind, n int) uuid.UUID {
 // copied properties are actual prototype facts, never rule answers.
 func newWikiCostFixture(t *testing.T) *wikiCostFixture {
 	t.Helper()
-	return newWikiCostFixtureOf(t, "Hundred thousand pages", 100000)
+	return newWikiCostFixtureOf(t, "Hundred thousand pages", 100000, wikiLintWorker)
 }
 
 // newWikiCostFixtureOf is the fixture of an LLM Wiki named name of pages
-// pages: lint's guard's of 100,000, an upgrade's check's of 50,000 (M11/P2
-// design 7.1, decision 262).
-func newWikiCostFixtureOf(t *testing.T, name string, pages int) *wikiCostFixture {
+// pages, its lint runs bounded by worker: lint's guard's of 100,000, an
+// upgrade's check's of 50,000 (M11/P2 design 7.1, decision 262).
+func newWikiCostFixtureOf(t *testing.T, name string, pages int, worker time.Duration) *wikiCostFixture {
 	t.Helper()
 	trace := &wikiCostTrace{}
 	runtimeFixture := newLintRuntime(t, func(d *wiki.Deps) {
-		d.LintTimeout = wikiCostWorker
+		d.LintTimeout = worker
 		d.Sources = wikiCostSources{d.Sources, trace}
 		d.Nodes = wikiCostNodes{d.Nodes, trace}
 		d.Rules = wikiCostRules{d.Rules, trace}
