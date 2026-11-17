@@ -33,8 +33,11 @@ func TestMCPServerInfoIsTheBuild(t *testing.T) {
 	if len(found) != 1 {
 		t.Fatalf("buildinfo.go: %d defaults of version, want one", len(found))
 	}
-	if got := buildinfo.Get().Version; got != stamped || got == string(found[0][1]) {
-		t.Errorf("the test binary's version is %q, want the stamped %q, not buildinfo.go's default %q: the -ldflags of "+
-			"make test-go-short did not reach it", got, stamped, found[0][1])
+	if def := string(found[0][1]); stamped == def {
+		t.Errorf("the stamped version is %q, buildinfo.go's default: TEST_VERSION in the Makefile must differ from it, "+
+			"or a serverInfo written as the default passes", stamped)
+	} else if got := buildinfo.Get().Version; got != stamped {
+		t.Errorf("the test binary's version is %q, want the stamped %q: the -ldflags of make test-go-short did not "+
+			"reach it", got, stamped)
 	}
 }
