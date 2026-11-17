@@ -5,6 +5,8 @@
 # its container's id.
 #
 #   stack.sh up <dir> [--fsync-off] [--env KEY=VALUE ...]
+#       A round a directory: <dir> is new or empty, else up refuses it, so that a round's serve.log (its
+#       gc trace) and data/ are never another round's or overwritten (review B's M3).
 #       PostgreSQL 18.7 (builtin C.UTF-8, its port on 127.0.0.1 alone; fsync=off only with --fsync-off,
 #       B4's control), a JWT key, migrate up, the account perf@example.com (its password in
 #       <dir>/password), then serve: NWIKI_ENV=prod on 127.0.0.1:0, storage in <dir>/data,
@@ -18,7 +20,8 @@
 #       log kept as serve.log.<unix seconds>; the data stays (batch E's second round).
 #   stack.sh down <dir>
 #       serve stopped, the container stopped and removed with its volumes; <dir> stays, stack.env
-#       renamed stack.env.down.
+#       renamed stack.env.down: its serve.log and data/ are the round's record, and the next round
+#       takes another directory.
 #
 # The binary is $NERVEWIKI, by default bin/nervewiki of this script's worktree: make build on the
 # commit measured, in its worktree. Needs Docker, curl and openssl.
@@ -45,12 +48,17 @@ fail() {
   exit 1
 }
 
-# wait_for runs its command each second until it succeeds, timeout_s seconds at most.
+# wait_for runs its command each second until it succeeds, timeout_s seconds at most; with $watch set,
+# a PID, it gives up as soon as that process is gone (a serve that failed to start, review B's N1).
 wait_for() {
   local _
   for _ in $(seq "$timeout_s"); do
     if "$@" >/dev/null 2>&1; then
       return 0
+    fi
+    if [[ -n ${watch:-} ]] && ! kill -0 "$watch" 2>/dev/null; then
+      echo "stack.sh: serve $watch exited" >&2
+      return 1
     fi
     sleep 1
   done
@@ -105,6 +113,7 @@ start_serve() {
     NWIKI_RATELIMIT__LOGIN_IP_EMAIL__PER_MINUTE=600 "${extra[@]}" \
     nohup "$bin" serve >"$dir/serve.log" 2>&1 </dev/null &
   pid=$!
+  local watch=$pid
   wait_for test -s "$dir/addr" || return 1
   addr=$(cat "$dir/addr") || return 1
   wait_for curl -fsS --max-time 5 "http://$addr/readyz" || return 1
@@ -145,6 +154,9 @@ up)
   done
   [[ -x $bin ]] || fail "no binary $bin: make build in the measured commit's worktree, or set NERVEWIKI"
   [[ ! -e $dir/stack.env ]] || fail "$dir has a stack up: stack.sh down $dir first"
+  if [[ -e $dir ]]; then
+    [[ -d $dir && -z $(ls -A "$dir") ]] || fail "$dir is not an empty directory: a round a directory, its serve.log and data/ kept"
+  fi
   mkdir -p "$dir/data" || fail "mkdir $dir"
   dir=$(cd "$dir" && pwd) || exit 1
   : >"$dir/serve.env" || fail "writing serve.env"
