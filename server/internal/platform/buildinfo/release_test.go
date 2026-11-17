@@ -1,0 +1,468 @@
+package buildinfo
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+// The release's scripts and workflows (00-M12 4.10, M12/P5/S1): the gate and the notes run against a fake gh and
+// throwaway repositories, executed directly so that their executable bit and #! line count. They need bash, git, jq
+// and awk, which README's "需要安装" lists.
+
+// repoRoot is the repository's root, absolute.
+func repoRoot(t *testing.T) string {
+	t.Helper()
+	root, err := filepath.Abs("../../../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
+// needTools fails the test when one of the tools the release's scripts run is missing: they are on README's list.
+func needTools(t *testing.T) {
+	t.Helper()
+	for _, tool := range []string{"bash", "git", "jq", "awk"} {
+		if _, err := exec.LookPath(tool); err != nil {
+			t.Fatalf("the release scripts' tests need %s, on README's list of what to install (需要安装): %v", tool, err)
+		}
+	}
+}
+
+// scriptEnv is a script's whole environment: bin (a fake's directory) first in PATH, then the real PATH; a HOME of
+// its own; no git configuration of the user's (signing, say) but an author; C.UTF-8; and extra, "KEY=value" each.
+func scriptEnv(t *testing.T, bin string, extra ...string) []string {
+	t.Helper()
+	home := t.TempDir()
+	return append([]string{
+		"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+		"HOME=" + home, "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_AUTHOR_NAME=Release Test", "GIT_AUTHOR_EMAIL=release@example.test",
+		"GIT_COMMITTER_NAME=Release Test", "GIT_COMMITTER_EMAIL=release@example.test",
+		"LC_ALL=C.UTF-8",
+	}, extra...)
+}
+
+// ran is what a script run wrote and how it exited.
+type ran struct {
+	stdout, stderr string
+	code           int
+}
+
+// runScript executes the repository's deploy/<script> in dir with env, without bash in between.
+func runScript(t *testing.T, dir string, env []string, script string, args ...string) ran {
+	t.Helper()
+	cmd := exec.Command(filepath.Join(repoRoot(t), "deploy", script), args...)
+	cmd.Dir, cmd.Env = dir, env
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	err := cmd.Run()
+	r := ran{stdout: stdout.String(), stderr: stderr.String()}
+	var exit *exec.ExitError
+	switch {
+	case errors.As(err, &exit):
+		r.code = exit.ExitCode()
+	case err != nil:
+		t.Fatalf("deploy/%s did not run: %v", script, err)
+	}
+	return r
+}
+
+// git runs git in dir with env, failing the test when it fails, and returns its output trimmed.
+func git(t *testing.T, dir string, env []string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir, cmd.Env = dir, env
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, out)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// writeFile writes content to path, with mode.
+func writeFile(t *testing.T, path, content string, mode os.FileMode) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), mode); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// fakeGH is the gh the gate calls: it logs each call to FAKE_GH_LOG and answers only api, finding the path (with
+// its query) in FAKE_GH_ROUTES ("path<TAB>file") and printing the file; without a route it says 404 and exits 1,
+// as gh does.
+const fakeGH = `#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$FAKE_GH_LOG"
+[ "$1" = api ] || exit 2
+file=$(awk -F '\t' -v p="$2" '$1 == p { print $2 }' "$FAKE_GH_ROUTES")
+[ -n "$file" ] || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; }
+cat "$file"
+`
+
+// workflowRun is a run as GitHub's REST API answers it, with the fields the gate reads and a few besides
+// (m12/p5-design/ci-runs.json, the API's answer for 86565dd6).
+type workflowRun struct {
+	ID           int64   `json:"id"`
+	Name         string  `json:"name"`
+	Path         string  `json:"path"`
+	DisplayTitle string  `json:"display_title"`
+	HeadSHA      string  `json:"head_sha"`
+	HeadBranch   string  `json:"head_branch"`
+	Event        string  `json:"event"`
+	Status       string  `json:"status"`
+	Conclusion   *string `json:"conclusion"`
+	RunAttempt   int     `json:"run_attempt"`
+	RunNumber    int     `json:"run_number"`
+	WorkflowID   int64   `json:"workflow_id"`
+	CreatedAt    string  `json:"created_at"`
+}
+
+const (
+	ciPath      = ".github/workflows/ci.yml"
+	releasePath = ".github/workflows/release.yml"
+)
+
+// gateRun is a push run of workflow on main for sha: status, and conclusion ("" for null).
+func gateRun(id int64, path, sha, status, conclusion string, attempt int, created string) workflowRun {
+	r := workflowRun{ID: id, Path: path, DisplayTitle: "Merge branch 'm12-release'", HeadSHA: sha, HeadBranch: "main",
+		Event: "push", Status: status, RunAttempt: attempt, RunNumber: int(id % 1000), CreatedAt: created}
+	r.Name, r.WorkflowID = "CI", 370893547
+	if path == releasePath {
+		r.Name, r.WorkflowID = "Release", 370893999
+	}
+	if conclusion != "" {
+		r.Conclusion = &conclusion
+	}
+	return r
+}
+
+// answer is the API's answer of runs, in their order: the API answers newest first.
+func answer(runs ...workflowRun) string {
+	b, err := json.Marshal(map[string]any{"total_count": len(runs), "workflow_runs": append([]workflowRun{}, runs...)})
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// gateRepo is a throwaway clone with an origin: main's one commit pushed and fetched, and a commit on a side
+// branch only.
+type gateRepo struct {
+	dir, main, side string
+	env             []string
+	bin             string
+}
+
+func newGateRepo(t *testing.T) gateRepo {
+	t.Helper()
+	root := t.TempDir()
+	bin := filepath.Join(root, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, "gh"), fakeGH, 0o755)
+	env := scriptEnv(t, bin)
+	git(t, root, env, "init", "-q", "--bare", "-b", "main", "origin.git")
+	dir := filepath.Join(root, "clone")
+	git(t, root, env, "init", "-q", "-b", "main", dir)
+	git(t, dir, env, "remote", "add", "origin", filepath.Join(root, "origin.git"))
+	writeFile(t, filepath.Join(dir, "a"), "a\n", 0o644)
+	git(t, dir, env, "add", "a")
+	git(t, dir, env, "commit", "-q", "-m", "one")
+	git(t, dir, env, "push", "-q", "origin", "HEAD:main")
+	git(t, dir, env, "fetch", "-q", "origin")
+	main := git(t, dir, env, "rev-parse", "HEAD")
+	git(t, dir, env, "checkout", "-q", "-b", "side")
+	writeFile(t, filepath.Join(dir, "b"), "b\n", 0o644)
+	git(t, dir, env, "add", "b")
+	git(t, dir, env, "commit", "-q", "-m", "side")
+	side := git(t, dir, env, "rev-parse", "HEAD")
+	git(t, dir, env, "checkout", "-q", "main")
+	return gateRepo{dir: dir, main: main, side: side, env: env, bin: bin}
+}
+
+// The changelogs of the gate's cases.
+const (
+	unreleased = "# 变更记录\n\n## 0.1.0（未发布）\n\n- 第一个版本。\n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n"
+	dated      = "# 变更记录\n\n## 0.1.0（2026-11-20）\n\n- 第一个版本。\n"
+)
+
+// The release gate (00-M12 4.10, M12/P5/S1, P5 design 3.6 and 3.9's table): each refusing case fails one check
+// alone, the rest as in "an rc passes", and wants exit 1, nothing on stdout and the words of that check on stderr,
+// not exit 1 alone: an earlier check that exits first would hide a later one.
+func TestTheReleaseGate(t *testing.T) {
+	needTools(t)
+	type gateCase struct {
+		name, tag, changelog string
+		// ci is the answer of ci.yml's runs for the tagged commit; with noRoutes the fake gh answers nothing
+		// and fails
+		ci           func(sha string) string
+		noRoutes     bool
+		onSide       bool   // the tag names the side branch's commit
+		githubSHA    string // "main" (the default), "side" or "none"
+		image        string // "" is registry.test/nw-gate; "-" leaves IMAGE out
+		wantCode     int
+		wantStderr   []string
+		wantNoGH     bool // the fake gh is never called
+		wantVersion  string
+		wantPrerel   string
+		checkOutputs bool
+	}
+	green := func(sha string) string {
+		return answer(gateRun(43745380462, ciPath, sha, "completed", "success", 1, "2026-11-20T01:00:00Z"))
+	}
+	cases := []gateCase{
+		{name: "an rc passes", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green, wantVersion: "0.1.0-rc.1",
+			wantPrerel: "true", checkOutputs: true},
+		{name: "an rc passes without GITHUB_SHA, as run by hand", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green,
+			githubSHA: "none", wantVersion: "0.1.0-rc.1", wantPrerel: "true"},
+		{name: "a release passes with a dated heading", tag: "v0.1.0", changelog: dated, ci: green,
+			wantVersion: "0.1.0", wantPrerel: "false"},
+		{name: "a release whose heading has no date", tag: "v0.1.0", changelog: unreleased, ci: green, wantCode: 1,
+			wantStderr: []string{"要写发布的日期"}, wantNoGH: true},
+		{name: "no section of 0.1.0", tag: "v0.1.0-rc.1", changelog: "# 变更记录\n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n",
+			ci: green, wantCode: 1, wantStderr: []string{"的标题有 0 个"}, wantNoGH: true},
+		{name: "two sections of 0.1.0", tag: "v0.1.0-rc.1", changelog: unreleased + "\n## 0.1.0（2026-11-20）\n\n- 又一节。\n",
+			ci: green, wantCode: 1, wantStderr: []string{"的标题有 2 个"}, wantNoGH: true},
+		{name: "headings that only begin like it", tag: "v0.1.0-rc.1",
+			changelog: "# 变更记录\n\n## 0.1.00（2026-11-20）\n\n- 不是。\n\n## 0.1.0-rc.1（未发布）\n\n- 也不是。\n",
+			ci:        green, wantCode: 1, wantStderr: []string{"的标题有 0 个"}, wantNoGH: true},
+		{name: "a dot is not a wildcard", tag: "v0.1.0-rc.1", changelog: "# 变更记录\n\n## 0x1x0（未发布）\n\n- 不是。\n",
+			ci: green, wantCode: 1, wantStderr: []string{"的标题有 0 个"}, wantNoGH: true},
+		{name: "an empty section before the next", tag: "v0.1.0-rc.1",
+			changelog: "# 变更记录\n\n## 0.1.0（未发布）\n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n",
+			ci:        green, wantCode: 1, wantStderr: []string{"取不出或是空的", "是空的"}, wantNoGH: true},
+		{name: "a dated section of blank lines alone", tag: "v0.1.0", changelog: "# 变更记录\n\n## 0.1.0（2026-11-20）\n\n\n  \n",
+			ci: green, wantCode: 1, wantStderr: []string{"取不出或是空的", "是空的"}, wantNoGH: true},
+		{name: "the tag is on a side branch", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green, onSide: true,
+			githubSHA: "side", wantCode: 1, wantStderr: []string{"不在 origin/main 上"}, wantNoGH: true},
+		{name: "GITHUB_SHA is another commit", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green, githubSHA: "side",
+			wantCode: 1, wantStderr: []string{"触发这次运行的是"}, wantNoGH: true},
+		{name: "ci.yml failed while the rehearsal passed", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				return answer(gateRun(43745380462, ciPath, sha, "completed", "failure", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"completed failure", "43745380462"}},
+		{name: "ci.yml is still running", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				return answer(gateRun(43745380462, ciPath, sha, "in_progress", "", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"in_progress null"}},
+		{name: "ci.yml passed on its second attempt", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				return answer(gateRun(43745380462, ciPath, sha, "completed", "success", 2, "2026-11-20T01:00:00Z"))
+			},
+			wantVersion: "0.1.0-rc.1", wantPrerel: "true"},
+		{name: "two runs of ci.yml, the later failed", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				return answer(gateRun(43745380999, ciPath, sha, "completed", "failure", 1, "2026-11-20T02:00:00Z"),
+					gateRun(43745380462, ciPath, sha, "completed", "success", 1, "2026-11-20T01:00:00Z"))
+			},
+			wantCode: 1, wantStderr: []string{"completed failure", "43745380999"}},
+		{name: "no run of ci.yml", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci:       func(string) string { return answer() },
+			wantCode: 1, wantStderr: []string{"单独推上 main"}},
+		{name: "gh fails", tag: "v0.1.0-rc.1", changelog: unreleased, noRoutes: true,
+			wantCode: 1, wantStderr: []string{"读不到 ci.yml"}},
+		{name: "the endpoint answers another workflow's run", tag: "v0.1.0-rc.1", changelog: unreleased,
+			ci: func(sha string) string {
+				return answer(gateRun(43745381111, releasePath, sha, "completed", "success", 1, "2026-11-20T01:00:05Z"))
+			},
+			wantCode: 1, wantStderr: []string{"单独推上 main"}},
+		{name: "no IMAGE", tag: "v0.1.0-rc.1", changelog: unreleased, ci: green, image: "-",
+			wantCode: 1, wantStderr: []string{"要 IMAGE"}, wantNoGH: true},
+	}
+	for _, bad := range []string{"v0.1", "v0.1.0-beta.1", "v01.0.0", "v0.1.0-rc.0", "0.1.0"} {
+		cases = append(cases, gateCase{name: "the tag " + bad, tag: bad, changelog: unreleased, ci: green, wantCode: 1,
+			wantStderr: []string{"不是 vX.Y.Z"}, wantNoGH: true})
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			r := newGateRepo(t)
+			tagged := r.main
+			if c.onSide {
+				tagged = r.side
+			}
+			git(t, r.dir, r.env, "tag", "-a", c.tag, "-m", "Nerve Wiki "+c.tag, tagged)
+			writeFile(t, filepath.Join(r.dir, "CHANGELOG.md"), c.changelog, 0o644)
+			work := filepath.Dir(r.dir)
+			log, routes, output := filepath.Join(work, "gh.log"), filepath.Join(work, "routes"), filepath.Join(work, "output")
+			writeFile(t, log, "", 0o644)
+			writeFile(t, output, "", 0o644)
+			ciURL := "repos/o/r/actions/workflows/ci.yml/runs?head_sha=" + tagged + "&branch=main&event=push&per_page=100"
+			allURL := "repos/o/r/actions/runs?head_sha=" + tagged + "&per_page=100"
+			// every workflow's runs: the rehearsal of release.yml, later than ci.yml's run and green, before it
+			all := answer(gateRun(43745381111, releasePath, tagged, "completed", "success", 1, "2026-11-20T01:00:05Z"),
+				gateRun(43745380462, ciPath, tagged, "completed", "failure", 1, "2026-11-20T01:00:00Z"))
+			writeFile(t, filepath.Join(work, "all.json"), all, 0o644)
+			routeLines := ""
+			if !c.noRoutes {
+				writeFile(t, filepath.Join(work, "ci.json"), c.ci(tagged), 0o644)
+				routeLines = ciURL + "\t" + filepath.Join(work, "ci.json") + "\n" + allURL + "\t" + filepath.Join(work, "all.json") + "\n"
+			}
+			writeFile(t, routes, routeLines, 0o644)
+			env := append(append([]string{}, r.env...), "FAKE_GH_LOG="+log, "FAKE_GH_ROUTES="+routes,
+				"GITHUB_REPOSITORY=o/r", "GITHUB_OUTPUT="+output)
+			switch c.image {
+			case "":
+				env = append(env, "IMAGE=registry.test/nw-gate")
+			case "-":
+			default:
+				env = append(env, "IMAGE="+c.image)
+			}
+			switch c.githubSHA {
+			case "", "main":
+				env = append(env, "GITHUB_SHA="+tagged)
+			case "side":
+				env = append(env, "GITHUB_SHA="+r.side)
+			}
+			got := runScript(t, r.dir, env, "release-gate.sh", c.tag)
+			calls, err := os.ReadFile(log)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.code != c.wantCode {
+				t.Fatalf("exit %d, want %d; stdout %q, stderr %q", got.code, c.wantCode, got.stdout, got.stderr)
+			}
+			if c.wantCode != 0 {
+				if got.stdout != "" {
+					t.Errorf("a refusal wrote %q to stdout, want nothing", got.stdout)
+				}
+				for _, words := range c.wantStderr {
+					if !strings.Contains(got.stderr, words) {
+						t.Errorf("stderr %q, want it to say %q", got.stderr, words)
+					}
+				}
+				if c.wantNoGH && len(calls) != 0 {
+					t.Errorf("the fake gh was called before the gate refused: %q", calls)
+				}
+				return
+			}
+			want := fmt.Sprintf("version=%s\nprerelease=%s\nsha=%s\n", c.wantVersion, c.wantPrerel, tagged)
+			if got.stdout != want {
+				t.Errorf("stdout %q, want %q (stderr %q)", got.stdout, want, got.stderr)
+			}
+			if !c.checkOutputs {
+				return
+			}
+			if written, err := os.ReadFile(output); err != nil || string(written) != want {
+				t.Errorf("GITHUB_OUTPUT holds %q (%v), want %q", written, err, want)
+			}
+			if string(calls) != "api "+ciURL+"\n" {
+				t.Errorf("the fake gh was called as %q, want once, for ci.yml's runs: api %s", calls, ciURL)
+			}
+		})
+	}
+}
+
+// notesChangelog has 0.1.0's section between blank lines, with a heading of the third level, and 0.0.9's after it.
+const notesChangelog = `# 变更记录
+
+## 0.1.0（未发布）
+
+
+第一个版本。
+
+### 已知限制
+
+- 一条。
+
+
+## 0.0.9（2026-01-01）
+
+- 不该出现。
+`
+
+// notesTail is the notes' generated part for version and tag, of registry.test/nw-notes and o2/r2, with ' for
+// each backtick (a raw string holds none).
+const notesTail = `---
+
+## 镜像
+
+'linux/amd64' 与 'linux/arm64' 两种架构，只有确切的版本号，没有 'latest'：
+
+'''bash
+docker pull registry.test/nw-notes:{version}
+'''
+
+索引的摘要：'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'。部署、升级与备份照 [deploy/README.md](https://github.com/o2/r2/blob/{tag}/deploy/README.md)。
+
+## 校验
+
+来源证明（GitHub 的 artifact attestation，'gh' 要先 'gh auth login'）与签名（Sigstore，keyless，用 cosign v3；流水线用 v3.1.4）：
+
+'''bash
+gh attestation verify oci://registry.test/nw-notes:{version} -R o2/r2 \
+  --cert-identity https://github.com/o2/r2/.github/workflows/release.yml@refs/tags/{tag}
+cosign verify registry.test/nw-notes:{version} \
+  --certificate-identity=https://github.com/o2/r2/.github/workflows/release.yml@refs/tags/{tag} \
+  --certificate-oidc-issuer=https://token.actions.githubusercontent.com
+'''
+
+两份 SBOM 的证明：第一条加 '--predicate-type https://spdx.dev/Document/v2.3'。
+
+## 附件
+
+- 'nervewiki-{version}-image.spdx.json'：镜像的 SBOM（SPDX 2.3，syft 从 amd64 的镜像生成，含二进制里的 Go 模块）；
+- 'nervewiki-{version}-web.spdx.json'：内嵌的前端的生产依赖（SPDX 2.3）；
+- 'nervewiki-{version}-licenses.tar.gz'：第三方许可证，与镜像里的 '/licenses' 相同。
+`
+
+// The release notes (00-M12 4.10, M12/P5/S1, P5 design 3.7): the version's section of CHANGELOG.md, an rc's with a
+// sentence first, then the image, the index's digest, the two commands that verify it and the assets, compared
+// whole. IMAGE and GITHUB_REPOSITORY are fakes unlike production and each other, so a name written in the script
+// shows.
+func TestTheReleaseNotes(t *testing.T) {
+	needTools(t)
+	const digest = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+	section := "第一个版本。\n\n### 已知限制\n\n- 一条。\n\n"
+	tail := func(version, tag string) string {
+		return strings.NewReplacer("'", "`", "{version}", version, "{tag}", tag).Replace(notesTail)
+	}
+	notes := func(t *testing.T, changelog string, extra []string, args ...string) ran {
+		t.Helper()
+		dir := t.TempDir()
+		writeFile(t, filepath.Join(dir, "CHANGELOG.md"), changelog, 0o644)
+		env := scriptEnv(t, t.TempDir(), append([]string{"IMAGE=registry.test/nw-notes", "GITHUB_REPOSITORY=o2/r2"}, extra...)...)
+		return runScript(t, dir, env, "release-notes.sh", args...)
+	}
+	for _, c := range []struct{ name, tag, want string }{
+		{"an rc", "v0.1.0-rc.1", "这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。\n\n" + section + tail("0.1.0-rc.1", "v0.1.0-rc.1")},
+		{"a release", "v0.1.0", section + tail("0.1.0", "v0.1.0")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := notes(t, notesChangelog, nil, c.tag, digest)
+			if got.code != 0 || got.stdout != c.want {
+				t.Errorf("exit %d, stderr %q, notes:\n%s\nwant:\n%s", got.code, got.stderr, got.stdout, c.want)
+			}
+		})
+	}
+	for _, c := range []struct {
+		name, changelog string
+		extra           []string
+		args            []string
+		words           string
+	}{
+		{"no section", "# 变更记录\n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n", nil, []string{"v0.1.0-rc.1", digest}, "没有"},
+		{"a section of blank lines", "# 变更记录\n\n## 0.1.0（未发布）\n\n  \n\n## 0.0.9（2026-01-01）\n\n- 更早的。\n", nil,
+			[]string{"v0.1.0", digest}, "是空的"},
+		{"a digest that is not one", notesChangelog, nil, []string{"v0.1.0", "sha256:abc"}, "摘要"},
+		{"a tag of another form", notesChangelog, nil, []string{"v0.1.0-beta.1", digest}, "不是 vX.Y.Z"},
+		{"no IMAGE", notesChangelog, []string{"IMAGE="}, []string{"v0.1.0", digest}, "要 IMAGE"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := notes(t, c.changelog, c.extra, c.args...)
+			if got.code != 1 || got.stdout != "" || !strings.Contains(got.stderr, c.words) {
+				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing and %q", got.code, got.stdout, got.stderr, c.words)
+			}
+		})
+	}
+}
