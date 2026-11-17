@@ -22,9 +22,10 @@ func hundredth() (Spec, Limits) {
 
 // The import-limit shape at a hundredth: within the limits at a hundredth,
 // the entries, folders and bytes the design's table has at a hundredth
-// (3.90 GiB unpacked, a zip of about 433 MiB), each link a page of the
-// vault without a path, nine in ten in the page's folder of the second
-// level (design 3.4.3, 7.2's 35).
+// (3.90 GiB unpacked; a zip of 468,514,108 bytes, 446.8 MiB, as review B
+// wrote it at full size once, the design's estimate 433 MiB), each link a
+// page of the vault without a path and not the page itself, nine in ten
+// in the page's folder of the second level (design 3.4.3, 7.2's 35).
 func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 	s, lim := hundredth()
 	path := filepath.Join(t.TempDir(), "vault.zip")
@@ -36,7 +37,7 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 	if r.Entries != 500 || r.Folders != 100 || r.Entries+r.Folders > lim.Nodes || r.Unpacked > lim.Unpacked || r.Zip > lim.Zip {
 		t.Errorf("%s: past the hundredth's limits %+v", r, lim)
 	}
-	const unpacked, zipped = 3.90 * (1 << 30) / 100, 433.0 * (1 << 20) / 100
+	const unpacked, zipped = 3.90 * (1 << 30) / 100, 468_514_108.0 / 100
 	if u := float64(r.Unpacked); u < unpacked*0.97 || u > unpacked*1.03 {
 		t.Errorf("unpacked %d, want about %.0f", r.Unpacked, unpacked)
 	}
@@ -92,7 +93,7 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 		t.Fatalf("%d pages, %d attachments", len(pages), attachments)
 	}
 	link := regexp.MustCompile(`\[\[([^\]]*)\]\]`)
-	near, all := 0, 0
+	near, all, self := 0, 0, 0
 	for name, body := range bodies {
 		links := link.FindAllStringSubmatch(body, -1)
 		if len(links) != s.Links {
@@ -102,6 +103,9 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 			group, ok := pages[l[1]]
 			if !ok || strings.Contains(l[1], "/") {
 				t.Fatalf("page %q links %q: no page of the vault, or a path", name, l[1])
+			}
+			if l[1] == name {
+				self++
 			}
 			all++
 			if group == pages[name] {
@@ -113,6 +117,13 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 	// own of nine second-level folders: about 0.9 + 0.1/9.
 	if share := float64(near) / float64(all); share < 0.88 || share > 0.94 {
 		t.Errorf("%d of %d links in the page's second-level folder, %.3f; want about 0.91", near, all, share)
+	}
+	// A link of the page's folder is never the page itself; one of the
+	// whole vault is, one in its pages: about 30 × 450 / 10 / 450 = 3. Were
+	// the folder's links drawn at all, about 30 × 450 × 0.9 / 50 = 243.
+	t.Logf("%d links of a page to itself", self)
+	if self > 10 {
+		t.Errorf("%d links of a page to itself, want about 3: the folder's links are another page", self)
 	}
 }
 
@@ -138,6 +149,13 @@ func TestAVaultIsItsSeedAndItsLimits(t *testing.T) {
 	}
 	if a.Entries != 126 || a.Folders != 2+6+24 || a.Unpacked != 120*512+6*(16<<10) {
 		t.Errorf("small %s", a)
+	}
+	// Fewer pages than the deepest folders: some folders would be counted
+	// that the import does not make.
+	few := small
+	few.Pages = 23
+	if r, err := write("few.zip", few, ImportLimits()); err == nil {
+		t.Errorf("23 pages in 24 deepest folders: %s", r)
 	}
 	// Two writes within a second are alike whatever their entries' times
 	// (a zip keeps them to the second, its DOS fields to two): each entry

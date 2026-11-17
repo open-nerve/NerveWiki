@@ -208,10 +208,18 @@ func (s Spec) check() error {
 	case s.Attachments > 0 && s.AttachmentBytes < 1:
 		return errors.New("attachments want their bytes")
 	}
+	leaves := 1
 	for _, n := range s.Fanout {
 		if n < 1 {
 			return fmt.Errorf("a fanout of %v", s.Fanout)
 		}
+		leaves *= n
+	}
+	// A folder without an entry is no folder the import makes: each leaf a
+	// page at least, so that the folders counted are the nodes it makes
+	// (review B's N4).
+	if s.Pages < leaves {
+		return fmt.Errorf("%d pages for the %d deepest folders of %v: want a page each at least", s.Pages, leaves, s.Fanout)
 	}
 	return nil
 }
