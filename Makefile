@@ -83,14 +83,17 @@ e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 P
 
 # 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore。
 # 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查；
-# 判断与构建写在同一个 shell 行里（make -i 绕不过）。label 的提交与它的时间同 release.yml（M12/P5/S1）
+# 判断与构建写在同一个 shell 行里（make -i 绕不过）。label 的提交与它的时间同 release.yml（M12/P5/S1），先取出来再构建：
+# 命令替换失败不会让这一行失败，git 读不出时（例如 dubious ownership）镜像会带着空的 label 构建出来
 IMAGE ?= nervewiki:$(VERSION)
 
 .PHONY: image
-image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（只需要 Docker）
+image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（需要 Docker 与 git）
 	test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }; \
+	revision=$$(git rev-parse HEAD) && created=$$(git log -1 --format=%cI) || \
+		{ echo "make image：git 读不出提交与它的时间，镜像的 label 要它们"; exit 1; }; \
 	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) \
-		--build-arg REVISION="$$(git rev-parse HEAD)" --build-arg CREATED="$$(git log -1 --format=%cI)" \
+		--build-arg REVISION="$$revision" --build-arg CREATED="$$created" \
 		-t $(IMAGE) .
 
 .PHONY: image-smoke
