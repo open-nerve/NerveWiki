@@ -1,9 +1,10 @@
 import { monitorForElements } from "@atlaskit/pragmatic-drag-and-drop/element/adapter";
 import { extractInstruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/list-item";
 import { History, List, Plus } from "lucide-react";
+import { observable, runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { Link, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { opened } from "../../app/arrival";
@@ -16,14 +17,13 @@ import { useNodeNavigate } from "../node-target";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
-import { formatPeriod } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree, useStore } from "../../stores/context";
 import { useNewPage } from "./new-page";
 import { distinctName } from "./distinct-name";
-import { dropMove } from "./page-drag";
-import { isDragData, PageList, type TreeContext } from "./page-tree-item";
+import { dropMove, isDragData } from "./page-drag";
+import { boxOf, PageList, TreeMenu, type OpenMenu, type TreeContext } from "./page-tree-item";
 import { useSourceMove } from "./source-move-confirmation";
 
 /**
@@ -44,6 +44,14 @@ import { useSourceMove } from "./source-move-confirmation";
  * A deletion's confirmation says how long the trash keeps the page, as
  * the instance has it, read once here for every page's menu (M8/P2 design
  * 4.5).
+ *
+ * Ten thousand pages are cheap (M12/P4/S4 design 3.2–3.5): a row is a
+ * memo of plain values its list computes, which another's change to the
+ * tree renders again only where they changed; its link is a plain anchor
+ * its list follows; the tree has one menu, opened at a row's button, and
+ * a row mounts a dialog only once it is chosen. A list draws its first
+ * rows at once and the rest a chunk after each paint (useShownRows), and
+ * at once as far as the row the focus goes to.
  */
 export const PageTree = observer(function PageTree({ notebook }: { notebook: Notebook }) {
   const pages = usePageTree(notebook);
@@ -52,19 +60,31 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const navigateNode = useNodeNavigate(pages);
   const { pageId } = useParams();
   const t = useT();
-  const { account, instance, preferences } = useStore();
+  const { account, instance } = useStore();
   const me = account?.me?.id;
+  // Read once here for every page's deletion; each dialog reads it from the store as it renders.
   useSWR("instance", () => instance.load());
-  const retention = instance.info?.trash_retention_seconds;
   const nav = useRef<HTMLElement>(null);
   const heading = useRef<HTMLHeadingElement>(null);
   const newPage = useNewPage(notebook);
   const [failure, setFailure] = useState<unknown>();
-  const [focusing, setFocusing] = useState<string>();
+  // The page whose menu button is to have the focus once the tree has it: observable, so that a list not all drawn
+  // draws the way to it (M12/P4/S4 design 3.6).
+  const [focusingBox] = useState(() => observable.box<string | undefined>(undefined));
+  const focusing = focusingBox.get();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const read = pages.tree !== undefined;
   const writer = writesNotebook(notebook);
   const { move: sourceMove, confirmation } = useSourceMove(pages);
+  const navigate = useNavigate();
+  const [menu, setMenu] = useState<OpenMenu>();
+  const menuId = useId();
+  // The notebook as the tree was last given it: where the store no longer finds it, this tab editing one of its
+  // pages unsaved, the layout keeps it as it was last found (M5/P4 design 3.9).
+  const lastNotebook = useRef(notebook);
+  useEffect(() => {
+    lastNotebook.current = notebook;
+  });
   useEffect(() => {
     if (pageId !== undefined && read) {
       pages.openTo(pageId);
@@ -73,11 +93,11 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   // The page's item may be another by now: a move to another parent mounts it anew.
   useEffect(() => {
     if (focusing !== undefined) {
-      setFocusing(undefined);
+      runInAction(() => focusingBox.set(undefined));
       const actions = nav.current?.querySelector<HTMLElement>(`[data-actions-of="${focusing}"]`);
       (actions ?? heading.current)?.focus();
     }
-  }, [focusing]);
+  }, [focusingBox, focusing]);
   useEffect(() => {
     if (!writer) {
       return undefined;
@@ -114,15 +134,25 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
     setFailure(undefined);
     void newPage.create(parent).then(setFailure);
   };
-  const context: TreeContext = {
-    notebook,
-    pages,
-    heading,
-    newPage: { create, sending: newPage.sending },
-    fail: setFailure,
-    focusActions: setFocusing,
-    period: retention === undefined ? undefined : formatPeriod(retention, preferences.locale),
-  };
+  // The same for the tree's life, so that the rows' memo holds: what changes as the tree is shown, the lists and
+  // dialogs read from the store, or the menu takes as its own (M12/P4/S4 design 3.2).
+  const context = useMemo<TreeContext>(
+    () => ({
+      pages,
+      heading,
+      home,
+      lastNotebook,
+      menu: menuId,
+      fail: setFailure,
+      focusing: focusingBox,
+      focusActions: (id) => runInAction(() => focusingBox.set(id)),
+      openMenu: (id, button) => setMenu({ id, button: button.id, box: boxOf(button) }),
+      left: (id) => setMenu((open) => (open?.id === id ? undefined : open)),
+      go: navigate,
+      rows: new Map(),
+    }),
+    [pages, home, menuId, navigate, focusingBox]
+  );
   return (
     <nav ref={nav} aria-label={t("page.tree", { notebook: notebook.name })} className="space-y-1">
       <div className="flex items-center justify-between gap-1">
@@ -183,6 +213,16 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         <div className="px-3">
           <NotLoaded error={error} retry={() => void mutate()} />
         </div>
+      )}
+      {writer && read && (
+        <TreeMenu
+          context={context}
+          nav={nav}
+          menu={menu}
+          close={() => setMenu(undefined)}
+          create={create}
+          sending={newPage.sending}
+        />
       )}
       {confirmation}
     </nav>
