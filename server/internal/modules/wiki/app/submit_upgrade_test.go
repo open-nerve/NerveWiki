@@ -555,6 +555,14 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				var cancel context.CancelFunc
 				ctx, cancel = context.WithTimeout(ctx, tc.request)
 				defer cancel()
+				// The clock read after the request's deadline is set, as the
+				// first transaction reads it after the API's or MCP's sets
+				// it: the warn line's timeout_ms, the deadline less the
+				// submission's moment, is then at most the request's 50 ms
+				// however long the test takes to get here. Read before it,
+				// in newSubmitFake, a pause of a millisecond in between
+				// logged 51 (main's run 44022740779 logged 53).
+				f.checkFake.at = time.Now().UTC()
 			}
 			_, err := submit.Execute(ctx, f.nb)
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
