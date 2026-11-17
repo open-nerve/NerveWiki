@@ -762,13 +762,28 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 			}
 		}
 	}
-	// a step that smokes an image always runs where it is (rehearse, build, S2's verify): one that could be skipped
-	// lets an image through unsmoked, its job green
+	// the jobs that build an image smoke it in exactly one step (S2's verify joins them), and a step that smokes an
+	// image always runs and fails with it: no if, and the script's line ends the command, nothing after it to turn
+	// its failure into a success. One that could be skipped, or gone, lets an image through unsmoked, its job green
+	smokeLine := regexp.MustCompile(`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`)
 	for id, job := range jobs {
+		var smokes []int
 		for i, step := range stepsOf(job) {
-			if run, _ := step["run"].(string); strings.Contains(run, "deploy/image-smoke.sh") && step["if"] != nil {
+			run, _ := step["run"].(string)
+			if !strings.Contains(run, "image-smoke") {
+				continue
+			}
+			smokes = append(smokes, i+1)
+			if step["if"] != nil {
 				t.Errorf("release.yml: job %s, step %d smokes the image only if %v: it always runs", id, i+1, step["if"])
 			}
+			if !smokeLine.MatchString(run) {
+				t.Errorf("release.yml: job %s, step %d runs %q: want a line deploy/image-smoke.sh … \"$VERSION\" with "+
+					"nothing after it", id, i+1, run)
+			}
+		}
+		if (id == "rehearse" || id == "build") && len(smokes) != 1 {
+			t.Errorf("release.yml: job %s smokes the image in steps %v, want one", id, smokes)
 		}
 	}
 	// the rehearsal reads only: its token's contents: read is all it has, with no secret (a token of someone's
