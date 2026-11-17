@@ -20,10 +20,12 @@
 //	perf sample -pid $SERVE_PID -container $CONTAINER -out <csv>
 //	    3.4.2: a row every 100 ms of the serve's VmRSS, VmHWM and CPU and
 //	    the container's memory.current, CPU and memory.stat's anon, shmem
-//	    and file (memory.current is mostly a PostgreSQL's page cache,
-//	    which anon and shmem are not), the container's memory.peak and
-//	    memory.stat at SIGINT with the rows' largest anon, shmem and file;
-//	    the serve's start in the file's first line, for gctrace's -start.
+//	    and file (memory.current is mostly a PostgreSQL's page cache), the
+//	    container's memory.peak and memory.stat at SIGINT with the rows'
+//	    largest anon, shmem and file; the serve's start in the file's first
+//	    line, for gctrace's -start. file holds shmem: the page cache the
+//	    kernel can take back is about file - shmem, what it cannot is
+//	    anon + shmem; the three do not add up (review B's N7).
 //	perf gctrace -log <dir>/serve.log -start <ns> -base <t> -from <t> -to <t>
 //	    3.4.2: the round's baseline, a combination's peak, its delta, its
 //	    upper bound and the collections missing; times in Unix nanoseconds

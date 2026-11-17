@@ -32,7 +32,9 @@ type Sampler struct {
 // user and system CPU in nanoseconds, the container's memory.current in
 // bytes and cpu.stat's usage_usec, and memory.stat's anon, shmem and file:
 // memory.current and memory.peak are mostly the page cache of a
-// PostgreSQL's, which the kernel takes back (review B's Q1).
+// PostgreSQL's (review B's Q1). file holds shmem: the page cache the
+// kernel can take back is about file - shmem, what it cannot is anon +
+// shmem; the three do not add up (review B's N7).
 type Row struct {
 	At                time.Time
 	RSS, HWM          uint64
