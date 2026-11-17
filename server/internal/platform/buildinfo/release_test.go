@@ -592,8 +592,25 @@ func releaseJobs() map[string]releaseJob {
 	}
 }
 
-// expression is a ${{ … }} in a run's text, spaces or none around what it holds.
-var expression = regexp.MustCompile(`\$\{\{\s*([^}]*?)\s*\}\}`)
+// matrixOnly is the one expression a run's text may hold, at a ${{: the matrix's, spaces or none around it.
+var matrixOnly = regexp.MustCompile(`^\$\{\{\s*matrix\.[a-z_]+\s*\}\}`)
+
+// expressionsBesidesTheMatrix are the expressions in a run's text that are not the matrix's, each from its ${{
+// on (60 bytes at most). Each ${{ is checked where it starts, not by first cutting out a ${{ … }}: an expression
+// may hold a "}" itself, as format('{0}', …) does, and a pattern of what lies between the braces would pass it.
+func expressionsBesidesTheMatrix(run string) []string {
+	var found []string
+	for rest := run; ; rest = rest[3:] {
+		at := strings.Index(rest, "${{")
+		if at < 0 {
+			return found
+		}
+		rest = rest[at:]
+		if !matrixOnly.MatchString(rest) {
+			found = append(found, rest[:min(60, len(rest))])
+		}
+	}
+}
 
 // Only a tag's jobs may write (00-M12 4.10, the hand-off M0-P6 item 1, M12/P5/S1): the three workflows read as
 // data. ci.yml runs on branches alone, with a read-only token; vuln.yml reads only; release.yml's rehearsal reads
@@ -643,11 +660,9 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 					t.Errorf("%s: job %s, step %d checks out without persist-credentials: false", name, id, i+1)
 				}
 				run, _ := step["run"].(string)
-				for _, m := range expression.FindAllStringSubmatch(run, -1) {
-					if !regexp.MustCompile(`^matrix\.[a-z_]+$`).MatchString(m[1]) {
-						t.Errorf("%s: job %s, step %d runs %s: only the matrix may be written into a run, the rest "+
-							"goes through env", name, id, i+1, m[0])
-					}
+				for _, e := range expressionsBesidesTheMatrix(run) {
+					t.Errorf("%s: job %s, step %d runs %q: only the matrix may be written into a run, the rest "+
+						"goes through env", name, id, i+1, e)
 				}
 			}
 		}
