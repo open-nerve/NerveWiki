@@ -12,6 +12,8 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -304,9 +306,18 @@ func (b trashBench) vacuumed(tb testing.TB) {
 // iteration a restore, then the item's deletion, each after a vacuum,
 // untimed. It reports the request, the parse of the contents in it, the
 // unit, the rest, and the deletion, each a mean in milliseconds.
+// NERVE_BENCH_LOADS and NERVE_BENCH_ATTACHMENTS name other levels by hand
+// (trashRestoreLevels), and only those are made.
 func BenchmarkTrashRestore(b *testing.B) {
+	names, levels, err := trashRestoreLevels(os.Getenv)
+	if err != nil {
+		b.Fatal(err)
+	}
 	for _, l := range benchLoads() {
-		for _, attachments := range []int{0, 1000, 2000, 5000, 10000} {
+		if !slices.Contains(names, l.name) {
+			continue
+		}
+		for _, attachments := range levels {
 			bench := newTrashBench(b, 1<<20, 1<<30)
 			root, contents := bench.item(b, l, attachments)
 			deletion := bench.timed(b, http.MethodDelete, "/api/v0/nodes/"+root, http.StatusNoContent)
@@ -445,14 +456,22 @@ func (b trashBench) history(tb testing.TB, root string) int {
 // Each iteration a deletion, then a restore, each after a vacuum,
 // untimed; the history grows by the two's items. It reports the request,
 // the parse, the unit, the deletion, each a mean in milliseconds, and the
-// rows of the history a restore wrote, a mean.
+// rows of the history a restore wrote, a mean. NERVE_BENCH_VERSIONS names
+// other tiers by hand (trashHistoryLevels), each written on the one before,
+// one alone from the first version at once: the curve leaves each tier's
+// last version the pages' large content, one alone only its own, two rows
+// a page fewer at 1,000 (M12/P4 design 3.3).
 func BenchmarkTrashRestoreHistory(b *testing.B) {
+	tiers, err := trashHistoryLevels(os.Getenv)
+	if err != nil {
+		b.Fatal(err)
+	}
 	for _, stats := range []string{"without statistics", "analyzed"} {
 		bench := newTrashBench(b, 1<<20, 1<<30)
 		root, contents := bench.item(b, benchLoads()[1], domain.MaxUnitNodes-domain.MaxUnitPages)
 		parse := bench.parsed(contents)
 		after := 1
-		for _, upTo := range []int{250, 500, 1000, 1500, 2000} {
+		for _, upTo := range tiers {
 			bench.versions(b, after, upTo)
 			after = upTo
 			if stats == "analyzed" {

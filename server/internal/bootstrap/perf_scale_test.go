@@ -5,7 +5,9 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -177,6 +179,78 @@ func approveCostFoldersOf(s guardScale, perFolder int) int {
 	return int(math.Round(float64(s.Size) / float64(perFolder)))
 }
 
+// benchLevels are the levels name lists, comma-separated, as manyTops
+// reads NERVE_BENCH_TOPS (revert_cost_test.go), each parsed by parse and
+// each once; def unless it is set (M12/P4 design 3.3). A level parse does
+// not take, an empty one or one twice is an error.
+func benchLevels[T comparable](getenv func(string) string, name string, def []T, parse func(string) (T, error)) ([]T, error) {
+	s := getenv(name)
+	if s == "" {
+		return def, nil
+	}
+	var out []T
+	for f := range strings.SplitSeq(s, ",") {
+		v, err := parse(f)
+		if err != nil {
+			return nil, fmt.Errorf("%s=%q: %w", name, s, err)
+		}
+		if slices.Contains(out, v) {
+			return nil, fmt.Errorf("%s=%q names %q twice", name, s, f)
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// trashRestoreLevels are BenchmarkTrashRestore's loads, by name, and its
+// attachments: light and full, and 0, 1,000, 2,000, 5,000 and 10,000,
+// unless NERVE_BENCH_LOADS or NERVE_BENCH_ATTACHMENTS names others.
+func trashRestoreLevels(getenv func(string) string) (loads []string, attachments []int, err error) {
+	loads, err = benchLevels(getenv, "NERVE_BENCH_LOADS", []string{"light", "full"}, func(s string) (string, error) {
+		if s != "light" && s != "full" {
+			return "", fmt.Errorf("%q is no load, light or full", s)
+		}
+		return s, nil
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	attachments, err = benchLevels(getenv, "NERVE_BENCH_ATTACHMENTS", []int{0, 1000, 2000, 5000, 10000}, countOf(0))
+	if err != nil {
+		return nil, nil, err
+	}
+	return loads, attachments, nil
+}
+
+// trashHistoryLevels are BenchmarkTrashRestoreHistory's versions a page,
+// each tier written on the one before: 250, 500, 1,000, 1,500 and 2,000,
+// unless NERVE_BENCH_VERSIONS names others, rising from 2 (a page's first
+// version is its creation's). One alone writes its versions from 1 at once.
+func trashHistoryLevels(getenv func(string) string) ([]int, error) {
+	versions, err := benchLevels(getenv, "NERVE_BENCH_VERSIONS", []int{250, 500, 1000, 1500, 2000}, countOf(2))
+	if err != nil {
+		return nil, err
+	}
+	for i := 1; i < len(versions); i++ {
+		if versions[i] < versions[i-1] {
+			return nil, fmt.Errorf("NERVE_BENCH_VERSIONS: %d after %d, want them rising, each tier written on the one before", versions[i],
+				versions[i-1])
+		}
+	}
+	return versions, nil
+}
+
+// countOf parses a count of at least least.
+func countOf(least int) func(string) (int, error) {
+	return func(s string) (int, error) {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < least {
+			return 0, fmt.Errorf("%q is no count of %d at least", s, least)
+		}
+		return n, nil
+	}
+}
+
 // The guards' scales are their own unless a size is given (M12/P4 design
 // 3.3, 7.2's 9 to 18): unset, each guard's literal numbers, by no other
 // constant; NW_SCALE_PAGES set, production's request, the call's deadline
@@ -246,6 +320,46 @@ func TestGuardScaleKeepsEachGuardsOwnUnlessGiven(t *testing.T) {
 		guardScale{ByHand: c.by}.judge(func(string, ...any) { called = true }, "x", c.value, c.bound)
 		if called != c.called {
 			t.Errorf("judge by hand %v of %d against %d called errorf %v, want %v", c.by, c.value, c.bound, called, c.called)
+		}
+	}
+}
+
+// The trash benchmarks' levels are their own unless given (M12/P4 design
+// 3.3, 7.2's 19): unset, the loads, the attachments and the versions they
+// ran at; set, those named, in order; a bad, empty, repeated or, of the
+// versions, falling level an error.
+func TestLevelsOfTheTrashBenchmarksAreTheirOwnUnlessGiven(t *testing.T) {
+	env := func(vars map[string]string) func(string) string { return func(k string) string { return vars[k] } }
+	loads, attachments, err := trashRestoreLevels(env(nil))
+	versions, verr := trashHistoryLevels(env(nil))
+	if err != nil || verr != nil || !slices.Equal(loads, []string{"light", "full"}) ||
+		!slices.Equal(attachments, []int{0, 1000, 2000, 5000, 10000}) || !slices.Equal(versions, []int{250, 500, 1000, 1500, 2000}) {
+		t.Errorf("unset: %v %v %v, %v %v; want their own", loads, attachments, versions, err, verr)
+	}
+	given := env(map[string]string{"NERVE_BENCH_LOADS": "full", "NERVE_BENCH_ATTACHMENTS": "10000,3000",
+		"NERVE_BENCH_VERSIONS": "1000"})
+	loads, attachments, err = trashRestoreLevels(given)
+	versions, verr = trashHistoryLevels(given)
+	if err != nil || verr != nil || !slices.Equal(loads, []string{"full"}) || !slices.Equal(attachments, []int{10000, 3000}) ||
+		!slices.Equal(versions, []int{1000}) {
+		t.Errorf("given: %v %v %v, %v %v; want full, 10000 and 3000, 1000", loads, attachments, versions, err, verr)
+	}
+	if versions, err := trashHistoryLevels(env(map[string]string{"NERVE_BENCH_VERSIONS": "2,1200,1800"})); err != nil ||
+		!slices.Equal(versions, []int{2, 1200, 1800}) {
+		t.Errorf("rising versions: %v, %v", versions, err)
+	}
+	for _, vars := range []map[string]string{
+		{"NERVE_BENCH_LOADS": "heavy"}, {"NERVE_BENCH_LOADS": "light,"}, {"NERVE_BENCH_LOADS": "full,full"},
+		{"NERVE_BENCH_LOADS": "Full"}, {"NERVE_BENCH_ATTACHMENTS": "-1"}, {"NERVE_BENCH_ATTACHMENTS": "1e3"},
+		{"NERVE_BENCH_ATTACHMENTS": "1000,1000"}, {"NERVE_BENCH_ATTACHMENTS": " 1000"},
+	} {
+		if loads, attachments, err := trashRestoreLevels(env(vars)); err == nil {
+			t.Errorf("%v: %v %v, want an error", vars, loads, attachments)
+		}
+	}
+	for _, s := range []string{"1", "0", "1000,500", "500,500", "many", ",250"} {
+		if versions, err := trashHistoryLevels(env(map[string]string{"NERVE_BENCH_VERSIONS": s})); err == nil {
+			t.Errorf("NERVE_BENCH_VERSIONS=%q: %v, want an error", s, versions)
 		}
 	}
 }
