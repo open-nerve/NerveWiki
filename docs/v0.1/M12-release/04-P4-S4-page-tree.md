@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Step | M12/P4/S4 页面树的渲染（P4 的条件修复，P4 设计 3.9；一个 Step，分支 `m12-p4-s4`） |
-| 日期 | 2026-11-16（初稿；同日第一次、第二次修订） |
-| 状态 | 设计已审查（2026-11-16）：三份审查、两次修订、两轮修订核对，见 [审查记录](reviews/P4-S4-design-review.md)；决定 487–505 在 [00 号文档](00-M12-design.md) 第 11 节 |
+| 日期 | 2026-11-16（初稿；同日第一次、第二次修订）；2026-11-17（实施、审查与结果） |
+| 状态 | 已合并 `（待填：S4 的合并号）`（2026-11-17）。设计已审查（2026-11-16）：三份审查、两次修订、两轮修订核对，见 [设计的审查记录](reviews/P4-S4-design-review.md)；决定 487–505 在 [00 号文档](00-M12-design.md) 第 11 节。实施、三份代码审查、修复一轮与核对一轮见 [S4 的审查记录](reviews/P4-S4-page-tree-review.md)，决定 533–537；实施与审查之后与本文不同之处照实改在各节（3.10 列出），结果在第 10 节 |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.7.2、4.7.5、第 7 节"次序与并行"、第 8 节、决定 329、378；[P4 设计](04-P4-performance.md) 3.9、4.3、第 8 节第 5 条、第 9 节（两种候选）、10.2（P4/S2 的结论）；[P2 设计](02-P2-web-polish.md) 4.1 的 12.3、16.1、28.5（S1）、4.6.6、4.6.7 的 12.12；[v0.1 总体设计](../v0.1-design.md) 13.2 第 17、25 条、第 14 节"大笔记本（上万页）"一行 |
 | 代码位置的写法 | 同 P4 设计：前端写作 `W/pages/notebook/page-tree-item.tsx:120`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/perf/tree.perf.ts`。行号是 `main` 的 `99def961` 的（到 `46f9b05c`，本文引的网页文件都没变）。P2/S1 的分支 `m12-p2-s1`（未合并，审查时头是 `14cc9769`）改到的同一处按内容另写明，不钉提交 |
 | 工作笔记 | 设计做了四个探针（经 `heavy.sh`，临时 worktree 在 `~/.cache/m12-p4s4-design/`，用完删了；探针、读数与没进正文的考虑在 scratchpad 的 `m12/p4s4/draft-notes.md`）：(1) 原型：照第 3 节改左栏的行与首页的列表（没做 `through` 与菜单的 `aria-labelledby`），`tsc` 为零，`W/pages/notebook/`、`W/pages/page/`、`W/app/` 的 1,757 格 vitest 全过；(2) 用 P4/S2 的 `e2e/perf/tree.perf.ts`（`m12-p4-s2` 的 `1a612abd`）在同一台机器上量改前、只分批与原型的五种组合，平的形状各一轮，选定的组合三种形状两轮（1.3）；(3) 4.1 的三格守卫与 4.2 的一格写成 vitest，在原型与 `main` 的代码上各跑一次（6.2）；(4) 第一次修订：平的形状上开关一行的菜单、关一个对话框，比原型、初稿的写法与改后的写法（3.4）；(5) 第二次修订：在原型（套审查 A 核对时的变体）上核对菜单的触发怎样量、行在哪个 effect 里说自己离开，vitest，各有反向对照（3.4、4.2）。三位审查者另做的探针与复跑见审查记录 |
@@ -31,7 +31,8 @@
   - 第一次提交的行数、每一批的行数有上限；
   - 别人改一次树只渲染新的一行，MobX 的 reaction 只跑几个；
   - 行里没有自己的菜单与路由的链接；
-  - 画全之后一次多出一千行照样分批。
+  - 画全之后一次多出超过一批（守卫用 500 行）照样分批，画全之后空闲时不再渲染；
+  - 菜单里选了的对话框只渲染一次（实施时加，3.10 第 13 条）。
 - **在原规模上再量**：P4/S2 的 `tree.perf.ts`，同样的终点、方法、种子与两轮，三种形状（6.3）；另记全部行进 DOM 的时刻与平的形状里开关一行的菜单。
 
 **开工的时机**（2.3 的决定 497）：P2/S1 合并之后从 `main` 开。
@@ -57,7 +58,7 @@
 
 - 数据一侧（树的读、比较、索引）：分层加载是 v0.2 的事，P4 设计第 9 节。
 - 5 万、10 万页：P4/S2 的 4.9 量、由它的文档提交写进 P4 设计 10.2 与总体设计第 14 节那一行；若进已知限制的清单，那一条归 P4/S3。
-- "移到……"对话框：深的形状 1,258 ms，没有界线，P2/S6 的 12.12 与 4.6.6 的附带观察。打开它的路随 S4 改（树的菜单经行的句柄挂上对话框，3.5），对话框本身不改。
+- "移到……"对话框：深的形状 1,258 ms，没有界线，P2/S6 的 12.12 与 4.6.6 的附带观察。打开它的路随 S4 改（树的菜单经行的句柄挂上对话框，3.5），对话框本身不改。实施时的再量见它慢了一倍（对话框随菜单关上多渲染一遍），修了打开它的路，回到约 1.3 秒（3.5，决定 533）。
 - 树的 JSON 压缩：部署文档，P5/S3。
 
 ## 1. 基线
@@ -264,12 +265,13 @@
 |---|---|
 | `W/pages/notebook/page-tree.tsx` | 树的上下文只放随树的一生不变的东西（3.2）；一个菜单与它离开时的关闭（3.4）；跟随链接（3.3）；`focusing` 照旧，列表的 `through` 由各自的 computed 给（3.6） |
 | `W/pages/notebook/page-tree-item.tsx` | `PageList` 算每行的属性；`PageItem` 换成 `memo` 的 `PageRow`，登记打开对话框与"菜单开着"的句柄；`PageMenu` 拆成树的菜单与行的对话框（3.4、3.5） |
-| `W/pages/notebook/page-drag.ts` | `useDrag` 移进来并导出（4.1 第 2 格要包它计数） |
+| `W/pages/notebook/page-drag.ts` | `useDrag` 移进来并导出（4.1 第 2 格要包它计数），连同 `DragData`、`isDragData`（3.10 第 4 条） |
+| `W/lib/link-click.ts`（新，实施时加） | `linkFollowed`：左栏与 `SubpageList` 共用的"这一下点击是不是应用要跟的"判断（3.3、3.7；3.10 第 15 条） |
 | `W/pages/page/subpage-list.tsx` | 行是 `memo` 的普通链接，列表上一个点击处理，分批（3.7） |
 | `W/app/shown-rows.ts`（新） | `useShownRows`（3.6） |
 | `e2e/perf/probe.ts` | `coldOpen` 加只记的"全部行进 DOM"（6.3） |
 | `W/pages/notebook/tag-page.tsx` | `SubpageList` 加 `key={tag}`，换标签就重挂、从首批开始（3.7） |
-| `e2e/perf/tree.perf.ts` | T2 之前先等全部行进 DOM（6.3）；平的形状在 T2 之后加只记的菜单一项：开一行的菜单、`Escape`、关它的对话框（3.4 的量法，6.3） |
+| `e2e/perf/tree.perf.ts` | 每次 T1 与 T2 之前先等全部行进 DOM，并断言首页的行数等于根下的页数（6.3；3.10 第 11 条）；平的形状在 T2 之后加只记的菜单一项：开一行的菜单、`Escape`、关它的对话框（3.4 的量法，6.3） |
 | 测试 | 4.1、4.2 |
 
 ### 3.2 行与列表
@@ -283,9 +285,10 @@
 - `PageRow` 是 `memo`（浅比较）的普通组件，不是 `observer`，不读 store：别人改一次树，只有属性变了的行重渲染（新的一行；在它前后的行属性不变）。
 - **树的上下文**（`TreeContext`，`page-tree.tsx:116-124`）今天每次渲染新建一个对象，交给每一行，会让 `memo` 失效。改为只放随树的一生不变的东西，`useMemo` 只依 `pages` 与 `home`（换了笔记本才重建）：
   - `pages`、`heading`（ref）、`home`；
-  - `lastNotebook`（ref）：`PageTree` 的属性 `notebook`，`PageTree` 每次渲染时写；只作下表笔记本一行的后备（不叫 `held`：那是对话框的持有，3.5 的 `held.onClosed`）；
+  - `lastNotebook`（ref）：`PageTree` 的属性 `notebook`，`PageTree` 在 effect 里写（渲染时写 ref 是 React 不许的，3.10 第 1 条）；只作下表笔记本一行的后备（不叫 `held`：那是对话框的持有，3.5 的 `held.onClosed`）；
   - 几个 setter：`fail`、`focusActions`、`openMenu`、`go`（`useNavigate` 在数据路由里是稳定的）；
   - 句柄的登记表：`rows`（每行登记"打开哪个对话框""菜单开着"两个函数，3.4、3.5）。
+  - 实施另有三样，也随树的一生不变：`menu`（树的菜单的 id）、`focusing`（3.6 的盒子）、`left(id)`（3.4 的"离开"）（3.10 第 3 条）。
 - **渲染时要读、读了要跟着变的值，不放进上下文**，各走可观察的路或作属性（审查 A 的 M2）：
 
 | 值 | 谁读 | 怎样得来 |
@@ -321,13 +324,13 @@
 - **树的菜单**（`TreeMenu`，`PageTree` 里一个，只给编辑者与管理员）：
   - 一个受控的 Radix `DropdownMenu`，触发是一个看不见的、定位在那个按钮上的元素（`position: fixed`；左栏的祖先没有 `transform`、`filter`、`contain`，固定定位相对视口）。
   - **触发的位置**（审查 A 的 C1-M1，决定 503）：
-    - 打开的那一刻在事件处理里量：`openMenu(id, button, keyboard)` 取按钮的 `getBoundingClientRect()`，与 id 一起存进树的菜单状态。不在渲染时量：渲染时这次提交的 DOM 还没变，量到的是旧位置。
+    - 打开的那一刻在事件处理里量：`openMenu(id, button)`（实施去掉了没人读的 `keyboard`，3.10 第 2 条）取按钮的 `getBoundingClientRect()`，与 id 一起存进树的菜单状态。不在渲染时量：渲染时这次提交的 DOM 还没变，量到的是旧位置。
     - 菜单开着时树变了（别人在上面加了页、删了页，按钮上下移）：`TreeMenu` 每次提交之后（`useLayoutEffect`，不给依赖数组）从 `[data-actions-of=id]` 当前的那个按钮再量一次，位置变了就更新菜单状态里的位置（画之前同步再渲染一次）。`TreeMenu` 开着时读树（算 `subtreeOf`、`depthOf`，3.5），树一变它与列表在同一次提交里重渲染，这一步就在新行插进 DOM 之后。
     - 取重新定位，不取关上：别人的改动不该把用户正在用的菜单关掉（菜单是模态的，关上焦点要回按钮，用户要重来）；代价只是菜单开着时每次提交量一个按钮。那一行离开了树（删、挪到别处、所在的列表收起），照下面的"菜单开着时它那一行离开树"关上。
     - 菜单经 Radix 的 Popper 跟着触发：触发的 `style` 变了，floating-ui 的 `autoUpdate` 跟上（推断：它的 `layoutShift` 以 IntersectionObserver 看参照元素移动；jsdom 没有排版，量不到）。4.2 的那一格量的是触发的位置等于按钮的位置。
     - 原型核对（第二次修订，`rev2/`，vitest 探针，jsdom 补了 4.2 那一格的 `getBoundingClientRect`）：开 Notes 的菜单，按钮与触发都在 132 px；别处在根下最前加 Atlas、焦点重读之后，菜单仍开，按钮 164、触发 164 px。反向对照（在渲染时量，即第一次修订的写法与审查 A 的核对）：触发留在 132 px，那一格红。
     - 菜单是模态的，开着时页面不滚，不必随滚动重新定位。
-    - 跟不上的三种（推断，罕见，只记）：窗口大小变了、左栏变宽变窄；分批还在进行时，排在这一行之前的列表又画了一批，按钮下移；菜单开着时用浏览器的后退、前进（Alt+←、鼠标的侧键，不经菜单）到这本里的另一页，`PageTree` 的 `openTo` 打开新页的祖先（`page-tree.tsx:67-71`），排在这一行之前的文件夹展开、按钮下移（审查 A 的 C2-N2）。这三种 `TreeMenu` 都不重渲染（它不读 `isOpen`，属性也没变），触发留在原处，菜单在那一刻离按钮有偏差，关上再开就对。要碰到第二种，得在冷打开的约 3 秒之内开一行的菜单，而它排在一个还在画的、孩子过百的列表之后。
+    - 跟不上的三种（推断，罕见，只记）：窗口大小变了、左栏变宽变窄；分批还在进行时，排在这一行之前的列表又画了一批，按钮下移；菜单开着时用浏览器的后退、前进（Alt+←、鼠标的侧键，不经菜单）到这本里的另一页，`PageTree` 的 `openTo` 打开新页的祖先（`page-tree.tsx:67-71`），排在这一行之前的文件夹展开、按钮下移（审查 A 的 C2-N2）。这三种 `TreeMenu` 都不重渲染（它不读 `isOpen`，属性也没变），触发留在原处，菜单在那一刻离按钮有偏差，关上再开就对。第二种有两条路：冷打开的约 3 秒之内开一行的菜单，而它排在一个还在画的、孩子过百的列表之后；或者画全之后，别人一次在这一行之前的、开着的列表里加了超过四百页（多出超过一批，增长照 3.6 分批：树重读的那次提交只画旧的行，之后各批 `TreeMenu` 不渲染；S4 审查 B 的 N2 实测，加 300 跟上，加 1,000 触发留在原处）。菜单的项照样作用于打开它的那一页。
   - 内容 `align="end"` 照旧，`aria-labelledby` 给那一行的按钮（不给的话菜单的名字是看不见的触发的，空）。菜单项与今天相同（`page-tree-item.tsx:298-318`）。
   - "New subpage"的 `disabled` 读 `sending` 属性（3.2）。
 - **"菜单开着"告诉那一行**（决定 498）：
@@ -362,7 +365,7 @@
 
 - **键盘打开时第一项取得焦点**：Radix 靠菜单的根在 `document` 上的捕获 `keydown` 监听者判断是键盘（1.2 引的那一段），树的菜单的根一直挂着，行上的 `keydown` 先经过它。原型的守卫那一格核对过：在按钮上按 `Enter`，菜单开、第一项（New subpage）取得焦点、`aria-expanded` 为真，`Escape` 之后焦点回到按钮。同一格也看到原型漏了的一件：菜单的 `aria-labelledby` 指着看不见的触发（`radix-…`），行的按钮没有 id，菜单没有名字；所以上一条写明要给。
 - **关上**：`onCloseAutoFocus` 里 `preventDefault()`，选的不是开对话框的项时 `focusActions(id)`，焦点回到那一行的按钮（它可能已因移动换了地方，照今天的 `focusActions`）。
-  - 例外，同 Radix（`@radix-ui/react-dropdown-menu@2.1.24` 的 `dist/index.mjs:114-124`）：右键（或 Ctrl 加左键）点到菜单外面关上的，不还焦点，焦点留给用户点的地方。`onInteractOutside` 记下是不是这一种。
+  - 例外，同 Radix（`@radix-ui/react-dropdown-menu@2.1.24` 的 `dist/index.mjs:114-124`）：右键（或 Ctrl 加左键）点到菜单外面关上的，不还焦点，焦点留给用户点的地方。`onInteractOutside` 记下是不是这一种（`onCloseAutoFocus` 的 `preventDefault()` 挡掉了 Radix 自己的这一判，所以自己记；按下、键盘、点外面三处手写的条件各有一格，3.10 第 12 条）。
 - **菜单开着时它那一行离开树**（决定 499，审查 A 的 M3）：
   - 那一行卸下时（被删、被挪到别的父页下，或它所在的列表收起），行的登记 effect（上一条）的清理告诉树：菜单开在这一行就关上，清掉菜单的状态。这个清理只在卸下时跑（或 `writer` 变时，那时 `TreeMenu` 本来就随之没有）。
   - 用 `useEffect` 就够，不用 layout effect：菜单在 `TreeMenu` 里，不随行卸下，焦点由关上时的 `focusActions` 给，清理早一步晚一步，落点相同。P2/S1 的 16.1 要 layout 的清理，是因为附件的菜单 portal 随行卸下，这里不是（审查 A 的 C1-M4）。原型核对（`rev2/`，两种登记都一样）：开着 Notes 的菜单，别处删了 Notes，菜单关上，焦点到树的标题 `h2`"Plans"，`nav` 没有 `aria-hidden`。
@@ -384,6 +387,8 @@
   - 初稿改成"按确认时记"也错：确认之后答复之前读者去了别处（后退到不在被删子树里的页），按确认时的值仍为真，关上时什么也不做，外壳也不带读者去父页，焦点落在 `body`（审查 A 的 R5 在原型上实测；13.2 第 17 条要控件带着焦点离开时不让它落到页首）。今天的写法用最后一次渲染的值，为假，焦点到树的标题。
   - 审查 A 在原型上改回今天的写法：删除的各格（7 格，含 `:392` 起那一格）与 R5 都过，三个文件 75 格全过。
 - `subtreeOf`、`depthOf`（`page-tree-item.tsx:274-275`）不再每行每次渲染算：只在菜单开着（`TreeMenu`）、对话框挂着（`PageDialogs`）时为那一页算。
+- **行把对话框状态的 setter 给 `PageDialogs`**（实施时再量发现、修，`f2f7ace0`，决定 533）：`setOpen`、`closed` 由对话框用 setter 自己建，行每次渲染给的是同一个。选了"移到……"的那次提交里树的菜单关上，`TreeMenu` 的 layout effect 经句柄让行 `expanded(false)`，行在同一次提交里再渲染；行若每次渲染新建这两个函数，对话框跟着再渲染，移动的表单把整棵树的 `canHold` 与路径又算一遍。深的形状里这个对话框 2.3–2.5 秒（`2bc9f7da` 的再量），修后 1.25–1.36 秒（`f2f7ace0` 四轮）、1.28–1.29 秒（`6600a2df` 两轮），P4/S2 在 `main` 上各轮 1,188–1,339 ms。4.1 第 6 格钉住（渲染 1 次，修前 2 次）。
+- **编辑者变成读者，行清掉选了的对话框**（S4 审查 A 的 M1，`2a333e17`）：在渲染时，`writer` 为假而有选了的对话框就清掉状态（React 许的"随属性调整状态"，只改行自己的）。对话框随 Actions 一起没了，同 S4 之前（那时对话框挂在只给写者的菜单里）；页的对话框的焦点经 `onClosed` → `focusActions` 落到树的标题。状态也要清：来源的对话框卸下时不说关上（`mounted()` 为假，不调 `onClosed`），留着状态的话，变回编辑者时它会自己再出现。`page-tree.test.tsx` 两格（页的、来源的）钉住。
 
 ### 3.6 先画首屏，其余分批：`useShownRows`
 
@@ -399,9 +404,9 @@ export function useShownRows(total: number, through?: () => number): number
 - 一批画完（提交、绘制）之后再加下一批：`requestAnimationFrame` 里 `setTimeout(0)`，下一批在那一帧绘制之后的任务里；卸下时取消。标签页在后台时 `requestAnimationFrame` 停着，回到前台再接着画。
 - vitest 5.0.2 的 jsdom 环境缺省 `pretendToBeVisual = true`，`requestAnimationFrame` 在（`vitest/dist/chunks/index.hTNFpC24.js:1354`，项目用的缺省池走的 `setup`）。用假计时器的测试若也假了它（缺省连它一起假），推进时间才走下一批；今天的树的测试都在首批之内（4.3）。
 - **画全之后**：
-  - 多出的不超过一批（400）：照常一次画（T2 的新行）。
+  - 多出的不超过一批（400）：照常一次画（T2 的新行）。钩子在渲染时把新的行数记进状态，React 当场把列表的函数体再跑一遍（行是 `memo`，只协调一次）：别人改一次树 reaction 是 5 个（3.10 第 16 条，决定 534）。
   - 多出超过一批：从上次画到的行数接着分批（审查 C 的 M4）。会碰到的：导入一个平的 zip（导入导出页在笔记本的外壳里，左栏开着），任务结束、事件让树重读，根下多出一万行。
-  - 多出的排在已画的行之后时（导入排在已有的页之后：TB2 的 `importBig` 注释"at its root after its pages"），已画的行不动。排在前面时（例如一次 `batch` 在根下最前建四百页以上，`after_id: null`），钩子按 `slice(0, shown)` 取行，已画的行被挤出前 `shown` 行、暂时卸下，下一批再挂上；焦点在那里的会丢到 `body`（审查 C 的 C1-N1；推断，罕见，见 3.9）。
+  - 多出的排在已画的行之后时（导入排在已有的页之后：TB2 的 `importBig` 注释"at its root after its pages"），已画的行不动。排在已画的行之前时（不论最前或中间，例如一次 `batch` 在根下最前建超过四百页，`after_id: null`），钩子按 `slice(0, shown)` 取行，排在后面的那些已画的行被挤出前 `shown` 行、暂时卸下，下一批再挂上；焦点在链接上的丢到 `body`，开着的菜单或对话框随之关上，焦点经 `through` 回到那一行的按钮（审查 C 的 C1-N1；S4 审查 A 的 N1 与核对 A 实测；罕见，见 3.9）。
   - 列表重新挂上（收起再展开、换了页）时重新从首批开始。
 - **`through`**：树要把焦点放到这个列表里还没画的一行，或它的后代时，列表立刻画到路上的那个孩子（审查 C 的 M1）。
   - 每个列表一个 computed：`PageTree` 的 `focusing`（`page-tree.tsx:62`，改放进一个可观察的盒子）有值时，看它与它的祖先（`pages.ancestorsOf`）里有没有这个列表的孩子，有就答那个孩子的序号加一，否则答 0。
@@ -442,13 +447,16 @@ export function useShownRows(total: number, through?: () => number): number
 
 ### 3.9 代价
 
-- **页内查找（Ctrl+F）与读屏的链接列表**：分批画完之前，没画的行找不到。平的一万页在冷打开之后约 2.6–3.0 秒全部在 DOM 里（1.3；今天约 3.0–3.1 秒画出之前什么都看不到）；深的形状根下 11 行，没有差别；展开 1,000 个孩子，首批 100 行画出（T3；原型的约 30 ms 要随改后的脚本再量，1.1 的注），其余两三批，推断再一两百毫秒，没有量。之后与今天相同。
+- **页内查找（Ctrl+F）与读屏的链接列表**：分批画完之前，没画的行找不到。平的一万页在冷打开之后约 2.6–3.0 秒全部在 DOM 里（实施后约 2.4 秒，第 10 节；1.3；今天约 3.0–3.1 秒画出之前什么都看不到）；深的形状根下 11 行，没有差别；展开 1,000 个孩子，首批 100 行画出（T3；再量约 30 ms，第 10 节），其余两三批，推断再一两百毫秒，没有量。之后与今天相同。
 - **键盘**：同上，画完之前 Tab 走到已画的最后一行之后就出了列表。读屏用户的虚拟光标在列表增长时看到新行，读屏念到的项数是已画的行数（推断，没有用读屏核对）。
 - **拖放、展开**：不变；展开的列表首批 100 行，其余分批（T3 只会快）。
 - **滚到当前页**：今天没有；不加。回到首页时列表从 100 行起重挂，原生的同文档滚动恢复今天也未必恢复（应用没有 `ScrollRestoration`），没量。
 - **`aria-controls`**：指向的 `ul` 照旧在，分批只是它的 `li` 晚到。
-- **菜单**：开关一次只有那一行与 `TreeMenu` 重渲染。平的一万页里开一次菜单约 0.69 秒，其间长任务约 0.54 秒；`Escape` 关上约 0.53 秒，长任务约 0.44 秒；今天分别是 0.82、0.70 与 1.09、0.62 秒（3.4 的表）。大头在模态，不模态是 v0.2 的候选（第 9 节）。
-- **画全之后一次在列表最前多出超过一批**（3.6）：已画的行暂时卸下、下一批再挂上，焦点在那里的丢到 `body`。只有一次 API 的 `batch` 在根下最前建四百页以上会碰到（推断，罕见）；今天一次画全，没有这一件。
+- **菜单**：开关一次只有那一行与 `TreeMenu` 重渲染。平的一万页里开一次菜单约 0.69 秒，其间长任务约 0.54 秒；`Escape` 关上约 0.53 秒，长任务约 0.44 秒；今天分别是 0.82、0.70 与 1.09、0.62 秒（3.4 的表）。实施后在 `tree.perf.ts` 里量（第 10 节）：开约 0.63 秒、长任务约 0.53 秒，`Escape` 约 0.40 秒、长任务约 0.36 秒；场所与 3.4 的探针不同（T2 之后的标签页），不与今天的数作同一个量的改前改后。大头在模态，不模态是 v0.2 的候选（第 9 节）。
+- **画全之后，同一层一次多出超过一批，排在已画的行之前**（3.6；不论最前或中间）：被挤出 `slice(0, shown)` 的是排在后面的那些已画的行，暂时卸下，下一批再挂上。
+  - 那一行开着的对话框随它卸下，输入的字没存；焦点经对话框的 `onClosed` → `focusActions` → `through` 画到那一行，回到它的按钮（S4 审查 A 的 N1 在 jsdom 里实测：重命名开着、输入了一半，根下最前一次建 500 页）。
+  - 开在那一行按钮上的菜单经 `left` 关上，焦点同样回到按钮；焦点在链接上的丢到 `body`（核对 A 实测）。
+  - 只有一次写在同一层、排在已画的行之前、多出超过四百页（多出超过一批）才会碰到（例如一次 API 的 `batch`；推断，罕见）。`main` 上一次画全，对话框与字都留着。
 - **分批进行中有人改树**：头约 3 秒里重读，列表为已画的行重算属性，下一批又排着；这一段的长任务没有量（4.7.2 的 T2 在标签页静下来之后量，不在界线的范围里）。
 - **导入一个平的 zip 之后**：根下一次多出一万行，照 3.6 分批，不再是一次约 0.6 秒的长任务（推断：1.3 一次两份一万行 1.15–1.25 秒）。
 - **P2/S6 的各项**（照 [P2 设计](02-P2-web-polish.md) 4.6.6 的表，"改成只渲染看得见的行时"一列都是"不受影响"；S4 比那一列改得更少：不改 store、不改树的读）：
@@ -461,6 +469,31 @@ export function useShownRows(total: number, through?: () => number): number
 - **深的形状**：T1 的 11 行、T2、T3 走同样的代码，行更便宜，推断不会慢；判法与结果在 2.1、6.3。
 - **依赖**：不加。分批 40 行左右的钩子，菜单仍是 Radix 的 `DropdownMenu`。
 - **代码的代价**：树的菜单与行之间多了一张句柄的登记表（`rows`：打开对话框、菜单开着），列表与树之间多了一个 `focusing` 的盒子；3.4、3.6 写明为什么不用 context。
+
+### 3.10 实施与审查之后与本文不同之处
+
+S4 照实做的与上面写的不同之处。实施中定的经主持者接受（不编号，[S4 的审查记录](reviews/P4-S4-page-tree-review.md)"实施中定的"一节），审查改的写明出处与提交。上面各节在相应处注了"3.10 第 n 条"，数在第 10 节。
+
+1. **`lastNotebook` 在 effect 里写，不在渲染时写**（3.2）：渲染时写 ref 是 React 不许的。它只在 `pages.notebook` 没有时用，那时 `NotebookLayout` 递下来的是它最后找到的那一本，已由上一次的 effect 写进去。`W/pages/page/page-lock.test.tsx` 的两格钉住（没有后备的变异两格都红）。
+2. **`openMenu(id, button)`，不带 `keyboard`**（3.4）：是不是键盘打开由 Radix 菜单的根判（3.4 自己也这样写），这个参数没人读。
+3. **树的上下文多三样**（3.2）：`menu`（树的菜单的 id：行的按钮开着时 `aria-controls` 指向它，菜单内容的 `id` 用它覆盖 Radix 的）、`focusing`（3.6 的可观察的盒子，列表的 `through` 经上下文读它）、`left(id)`（3.4 的"离开"：行的登记 effect 的清理调它）。都随树的一生不变。
+4. **`DragData`、`isDragData` 随 `useDrag` 一起移进 `page-drag.ts`**（3.1）：`useDrag` 要 `isDragData`，留在 `page-tree-item.tsx` 就是两个文件互相导入。
+5. **4.1 第 3 格里正文列表那一段在第 2 个提交**（5.1）：第 1 个提交里首页的列表还是 `Link`（3.7 在第 2 个提交），那一段放在第 1 个会红；每个提交单独为绿。
+6. **修饰键那两格不 mock `console.error`**（4.2）：jsdom 的"Not implemented: navigation to another Document"走 vitest 建 jsdom 时接的那个 `console`（在 `setup.ts` 的 spy 之前），`setup.ts` 看不到，测试不红，mock 也挡不住。改在 `window` 上挂一个冒泡的 `click` 监听者：记下事件是否已被阻止（应用的处理在根容器上，先于 `window`），再 `preventDefault()`，jsdom 就不导航。另加了 Alt（`Link` 的判断里有它）。
+7. **"adds a page above it"那一格只让树重读**（4.2）：经 store 的 `load()`，不用假计时器与焦点刷新。照设计的焦点刷新另写的一格探针，在"在渲染时量"的变异下同样红（132 对 164 px），两种写法抓的是同一件事，留下少一些别的读的一种。
+8. **4.1 第 5 格先点 `p0100` 再点 `p0500`**：从首页点第一页时没有旧的当前行，第二次点击才是"新旧两个当前行"；另断言 ≥ 1。
+9. **4.1 第 1、2、4 格加阳性的对照**：计数真的在数（第 2 格清零之前行的计数 ≥ 1,000、reaction ≥ 1），分批真的发生（第 1、4 格两份列表各有过增量）（05-lessons 第 1 节）。
+10. **`SubpageList` 的点击不算 `replace`**（3.7）：三处列表里没有指向当前地址的链接（首页列根下的页，页列孩子，标签页列带标签的页），`Link` 缺省的 `replace` 在这里恒为假；不读 `useLocation()`，列表也就不随导航重渲染。
+11. **6.3 的只记的量**（`2bc9f7da`；修复第 1 轮的 `6600a2df`）：
+    - 每次 T1 都等全部行进 DOM；T3 与 T2 共用的那个标签页开时就等（T3 已挪到 T2 之前，P4 决定 515）。
+    - 菜单在第三个根行上量，关的对话框是 Rename，以 `Escape` 关。
+    - `homeItems`、`items` 是 T1 之后一次往返读的，那时两份列表已又画了一两批（平的 500 / 1,003 或 900 / 1,803），不是首批；首批是 T1 那一帧左栏的行数 `rows`（100）。`2bc9f7da` 的提交说明写成了首批，已推的不改；注释在 `6600a2df` 改正（审查 C 的 M1）。
+    - "全部行进 DOM"要首页的列表在：不在（或改了名字）就是 0 行，等到超时报错，不当作已满；每次 T1 之后断言首页的行数等于根下的页数，T3 与 T2 的标签页同样（审查 C 的 M2，`6600a2df`）。
+12. **手写的触发条件各有测试**（3.4；审查 A 的 M2，`e0a033b7`）：`Enter`、空格、↓ 逐个开关；右键或带 Ctrl 的按下不开、单独的主键开；Ctrl 加主键点在外面同右键。右键在 `onInteractOutside` 里自己判：Radix 在 `onCloseAutoFocus` 里做的这一判被我们的 `preventDefault()` 挡掉了。
+13. **对话框只渲染一次，编辑者变读者时清掉**（3.5）：行把状态的 setter 给对话框（`f2f7ace0`，决定 533）；`writer` 为假时在渲染里清掉选了的对话框（审查 A 的 M1，`2a333e17`）。4.1 第 6 格，4.2 读者的两格。
+14. **守卫加两样**（4.1；审查 B 的 M1、N1，`e0a033b7`）：画全之后空闲 500 ms 里没有 reaction（第 7 格）；第 4 格的增长改为 500 页，刚过一批。
+15. **`W/lib/link-click.ts` 的 `linkFollowed`**（3.1、3.3、3.7）：左栏与 `SubpageList` 共用的"这一下点击是不是应用要跟的"判断。其中"事件已被阻止"一条让嵌套的列表只跟一次：展开的文件夹的列表在父列表的 `ul` 里，点内层的链接，`click` 冒泡经过每一层的处理，内层跟了、阻止之后外层不再跟。4.2 replace 那一格末尾钉住（展开 Guide、点 Install，后退回到点之前的地址）。
+16. **别人改一次树，reaction 是 5 个，不是原型的 4 个**（4.1 第 2 格；审查 B 的 N3，不改，决定 534）：画全之后行数一变，钩子在渲染时把新的行数记进状态，React 当场把 `PageList` 的函数体再跑一遍（行是 `memo`，只协调一次）。钩子要拿上次画到的行数与这次比，才分得出超过一批的增长；在渲染时 `setState` 正是 React 给"记下前一次渲染的信息"的写法，放进 ref 则在渲染时读、写都不合 React 的规则（在渲染时写，丢弃的那次渲染会留下错的值）。代价是一万行多算一遍属性（约 40–80 ms，3.4），T2 191 ms、它的长任务 94 ms，都在界内。
 
 ## 4. e2e 与测试
 
@@ -478,39 +511,47 @@ export function useShownRows(total: number, through?: () => number): number
    - 数行的渲染：`vi.mock` 包住行用的拖放钩子（`useDrag` 移进 `page-drag.ts` 并导出，模拟时包一层计数），每次行渲染调它一次；编辑者与读者的每一行都调它。
    - 数 MobX 的 reaction（审查 C 的 M2）：`spy` 记重读期间 `type === "reaction"` 的次数（`observer` 每次渲染报一次；mobx 7.0.5 在 vitest 里是开发版，`spy` 报事件）。
    - 全部画出之后清零；`server` 在根下最前加一页，像 refresher 那样让树重读（`mutate(["pages", id])` 或发一个 `pages` 事件，照 `page-tree.test.tsx` 已有的写法）；等新行出现。
-   - 断言行的计数 ≤ 2（新的一行；留一行的余量，原型里是 1，34 ms）；reaction ≤ 10（原型是 4：`PageTree`、`PageList`、`TreeMenu`、`NotebookHomePage` 各一，审查 C 实测）。
+   - 断言行的计数 ≤ 2（新的一行；留一行的余量，原型里是 1，34 ms）；reaction ≤ 10（原型是 4：`PageTree`、`PageList`、`TreeMenu`、`NotebookHomePage` 各一，审查 C 实测；实施是 5，`PageList` 两次，3.10 第 16 条）。清零之前另断言行的计数已 ≥ 1,000、reaction ≥ 1（阳性的对照，3.10 第 9 条）。
    - **撤回修复**：
      - 行是读 `pages.tree` 的 `observer`，或行的属性里给 `node` 对象：行的计数 1,000 或 1,001，红。
-     - 对话框一直挂在行里（撤回 3.5）：行的计数 1，reaction 4,008，红（审查 C 的变体 dialogs）。
+     - 对话框一直挂在行里（撤回 3.5）：行的计数 1，reaction 4,008，红（审查 C 的变体 dialogs；实施的头上 1,006：一行只挂一个 `PageDialogs`）。
      - 行里另放一个读树的 `observer`（例如标题）：行的计数 1，reaction 1,005，红（审查 C 的变体 label）。
 3. `"a row of the tree holds no menu of its own and no router link, until one is opened and after"`：
    - 1,000 行全部画出之后，左栏的 `li` 里没有带 `data-state` 或 `id^="radix-"` 的元素（Radix 的触发都带这两样）；打开一行的菜单再关上，照样没有。
    - 左栏与正文列表的链接都没有 `data-discover`（react-router 的 `Link`、`NavLink` 带它，`react-router@8.4.0` 的 `lib/dom/lib.js`）；同一页里外壳的路由链接有它，作阳性的对照（版本升级后它不再带这个属性时，这一格先红在对照上，不会悄悄失效）。
    - **撤回修复**：每行一个 `DropdownMenu`：1,000 个 `data-state="closed"`，红；行的链接换回 `NavLink`：1,000 个 `data-discover`，红。
-4. `"a list of pages all shown, grown by 1,000 at once, shows them at most 400 a commit"`（审查 C 的 M4）：
-   - 根下 10 页的笔记本，全部画出之后，`server` 多出 1,000 页，让树重读；同第 1 格的 `MutationObserver`，每次回调两份列表各多的行 ≤ 400；最后都到 1,010。
-   - **撤回修复**（画全之后不再分批）：一次回调多 1,000，红（审查 C 的探针 growth：`main` 与原型都是一次加 1,000 行）。
-5. `"following a page of a tree of 1,000 renders the two rows whose mark changes"`：全部画出之后点 `p500` 的链接，行的计数 ≤ 2（新旧两个当前行）。**撤回修复**（每行给 `pageId`，让行自己比）：1,000，红。
+   - 正文列表那一段在第 2 个提交才加（3.10 第 5 条）。
+4. `"a list of pages all shown, grown by 500 at once, shows them at most 400 a commit"`（审查 C 的 M4；增长改为 500，S4 审查 B 的 N1）：
+   - 根下 10 页的笔记本，全部画出之后，`server` 多出 500 页（刚过一批），让树重读；同第 1 格的 `MutationObserver`，每次回调两份列表各多的行 ≤ 400；最后都到 510。
+   - **撤回修复**（画全之后不再分批）：一次回调多 500，红（审查 C 的探针 growth：`main` 与原型都是一次画出）。"多出超过一批"的界放宽一倍：同样红（多出 1,000 时这一种照过）。
+5. `"following a page of a tree of 1,000 renders the two rows whose mark changes"`：全部画出之后先点 `p0100`、再点 `p0500` 的链接（第二次才有新旧两个当前行，3.10 第 8 条），行的计数 ≤ 2、≥ 1。**撤回修复**（每行给 `pageId`，让行自己比）：1,000，红。
+6. `"a dialog chosen from a row's menu renders once as it opens, not again as the menu closes"`（实施时加，`f2f7ace0`；焦点的一条在修复第 1 轮加，S4 审查 A 的 N2）：
+   - `vi.mock("./move-page-dialog")` 数 `MovePageDialog` 的渲染；开 `p0500` 的菜单、选"移到……"，到菜单没了、焦点在对话框里：渲染 1 次。
+   - 同一段里记每个 `focusin` 的目标：焦点进对话框只一次（没有一个元素进两次），且至少一次。
+   - **撤回修复**：行每次渲染给对话框新建的函数（`2bc9f7da` 的写法），2 次，红；关菜单时照样 `focusActions`（不记 `chosen`），对话框的第一个控件进两次，红。
+7. `"a notebook of 1,000 pages, its lists all drawn, renders nothing more while idle"`（S4 审查 B 的 M1，`e0a033b7`）：画全之前 reaction > 0（阳性的对照），画全之后空闲 500 ms 里 reaction 为 0。**撤回修复**（钩子画全之后不置 `all`，每帧又排一批）：红。
 
 **用时与时限**：
 
 - 原型的三格（第 1–3 格的前身）本机约 2.5 秒（审查 C 复跑；初稿写的"测试本身约 5.9 秒"含红着的"moved to the end"一格的 3.3 秒等待，那一格按 4.2 放进 `page-tree-writes.test.tsx`）。第 4、5 格推断各不到 1 秒。
 - 每格的时限写进测试：`waitFor` 20 秒、每格 30 秒（原型给的）；缺省是 `asyncUtilTimeout` 3 秒（`W/test/setup.ts:9`）与 vitest 的 5 秒，一千行分三批在 CI 上可能不够。
-- CI 的 `web` 作业（`make test-web`）多多少：实施者从 `web` 作业日志里 vitest 的用时与本机的直接比（设计时没取：不往外取），推断多 5–10 秒。不计时，所以不分本机与 CI 的界。
+- CI 的 `web` 作业（`make test-web`）多多少：实施者从 `web` 作业日志里 vitest 的用时与本机的直接比（设计时没取：不往外取），推断多 5–10 秒。不计时，所以不分本机与 CI 的界。实测（第 10 节）：守卫文件在 CI 里 9.5–15.8 秒（五到七格，与别的文件并行），`web` 作业的用时在 `main` 的摆动之内。
 
 ### 4.2 行为的新格（照 3.8 的清单补没有测试的几条）
 
 - `page-tree.test.tsx`：
-  - `"a link of the tree opened with a modifier or the middle button is the browser's: the app does not follow it"`：Ctrl、⌘、Shift 加点击与中键各一次，事件没有被阻止，路由的地址不变。jsdom 里没被阻止的 `<a href>` 点击会走 jsdom 自己的导航（它没实现），可能经虚拟控制台进 `console.error`，被 `setup.ts` 的检查判失败：先跑一次看，有就在这一格 `mockImplementation` 声明（13.2 第 9 条）。
-  - `"the link of the page shown, followed again, replaces its entry; with a hash or a query it pushes one"`：在 `pages/Notes` 上点 Notes，`router.state.historyAction` 是 `REPLACE`；在 `pages/Notes#h`、`pages/Notes?x=1` 上点是 `PUSH`（审查 A 的 R6）。再一种（审查 A 的 C1-M3）：从首页起，经树点 Guide，再点两次 Notes，第一次 `PUSH`、第二次 `REPLACE`：这一种在树建上下文之后才走到当前地址，抓得住"用建上下文时的地址"。
+  - `"a link of the tree opened with a modifier or the middle button is the browser's: the app does not follow it"`：Ctrl、⌘、Shift 加点击与中键各一次，事件没有被阻止，路由的地址不变。jsdom 里没被阻止的 `<a href>` 点击会走 jsdom 自己的导航（它没实现），可能经虚拟控制台进 `console.error`，被 `setup.ts` 的检查判失败：先跑一次看，有就在这一格 `mockImplementation` 声明（13.2 第 9 条）。实施：走的是 vitest 建 jsdom 时接的那个 `console`，看不到也挡不住，改在 `window` 上挂监听者记下并阻止；另加 Alt（3.10 第 6 条）。
+  - `"the link of the page shown, followed again, replaces its entry; with a hash or a query it pushes one"`：在 `pages/Notes` 上点 Notes，`router.state.historyAction` 是 `REPLACE`；在 `pages/Notes#h`、`pages/Notes?x=1` 上点是 `PUSH`（审查 A 的 R6）。再一种（审查 A 的 C1-M3）：从首页起，经树点 Guide，再点两次 Notes，第一次 `PUSH`、第二次 `REPLACE`：这一种在树建上下文之后才走到当前地址，抓得住"用建上下文时的地址"。末尾另一段：展开 Guide、点 Install，后退回到点之前的地址（嵌套的列表只跟一次，3.10 第 15 条）。
   - `"on a version of a page, the tree marks that page's link as the page shown"`：在 `pages/Notes/versions/3` 上，树里 Notes 的链接 `aria-current="page"`。
   - `"an editor made a reader while the tree is shown loses each row's Actions; made an editor again, gets them back"`：改 `server.notebook.role`、焦点重读（审查 A 的 R2）。
+  - `"an editor made a reader with a page's dialog open loses it, the focus going as the menu's would; made an editor again, it stays closed"` 与来源的一格（S4 审查 A 的 M1，`2a333e17`）：开着 Notes 的重命名（或 Guide 的"粘贴 Markdown"）时变成读者，对话框关上，页的那一种焦点到树的标题；变回编辑者，对话框不再出现。
 - `page-tree-writes.test.tsx`：
-  - `"the tree's menu is named by its row's button, says it is open there, opened by the keyboard on its first item, and gives the focus back on Escape"`：按钮 `aria-haspopup="menu"`、`aria-expanded` 由假到真、`aria-controls` 等于菜单的 id；菜单的名字是"Actions for Notes"；`Enter` 打开时第一项取得焦点；`Escape` 之后焦点回到按钮，`aria-expanded` 回到假。
-  - `"the tree's menu closed by a right click outside it leaves the focus where the click was"`：`pointerdown`（`button: 2`）在页的正文上，菜单关，焦点不在按钮上。
+  - `"the tree's menu is named by its row's button, says it is open there, opened by Enter, Space or Down on its first item, and gives the focus back on Escape"`：按钮 `aria-haspopup="menu"`、`aria-expanded` 由假到真、`aria-controls` 等于菜单的 id；菜单的名字是"Actions for Notes"；`Enter`、空格、↓ 逐个打开，第一项取得焦点；`Escape` 之后焦点回到按钮，`aria-expanded` 回到假（三个键：S4 审查 A 的 M2）。
+  - `"the tree's menu opens at a row's button by a press of the main button alone: a right press or one with Ctrl opens none"`（S4 审查 A 的 M2）：右键按下、Ctrl 加主键按下都不开，之后单独的主键开（阳性的对照）。
+  - `"the tree's menu closed by a right click outside it, or Ctrl and the main button, leaves the focus where the click was"`：`pointerdown`（`button: 2`）在页的正文上，菜单关，焦点不在按钮上；Ctrl 加主键点在外面同样（macOS 的右键；S4 审查 A 的 M2）。
   - `"a row's menu open as another deletes its page closes, and does not open again as the page is restored"`：开着 Notes 的菜单，别处删了它，菜单关、焦点到树的标题；别处恢复它（同一个 id），菜单不开，`nav` 没有 `aria-hidden`（审查 A 的 R3）。
   - `"a row's menu open as another moves its page under another closes, and the focus goes to the page's button where it went"`：在 Install 的页上开始（`pagePath(install.id)`，Guide 随之开着），开 Notes 的菜单，别处把 Notes 挪到 Guide 下：菜单关，焦点到 Guide 下 Notes 的按钮（审查 A 的 R4；起点见审查 A 的 C1-N1：Guide 收着时焦点到树的标题）。
-  - `"a row's menu open as another adds a page above it stays at its row's button"`（审查 A 的 C1）：给 jsdom 补一个按文档次序算的 `getBoundingClientRect`（每个"Actions"按钮比前一个低 32 px）。开 Notes 的菜单，看不见的触发的 `top` 等于按钮的；别处在根下最前加 Atlas、焦点重读之后，菜单仍开，触发的 `top` 等于按钮新的 `top`（从 132 到 164 px）。
+  - `"a row's menu open as another adds a page above it stays at its row's button"`（审查 A 的 C1）：给 jsdom 补一个按文档次序算的 `getBoundingClientRect`（每个"Actions"按钮比前一个低 32 px）。开 Notes 的菜单，看不见的触发的 `top` 等于按钮的；别处在根下最前加 Atlas、焦点重读之后，菜单仍开，触发的 `top` 等于按钮新的 `top`（从 132 到 164 px）。实施只让树重读（经 store 的 `load()`），3.10 第 7 条。
   - `"a row's menu stays open as another's change collapses that row"`（审查 A 的 C1-M4）：展开 Guide、Install，开 Install 的菜单；别处删了 Linux（Install 唯一的孩子），焦点重读，Install 的展开按钮没了；菜单仍开，`Escape` 之后焦点回到 Install 的按钮。
   - `"the deletion's confirmation says the trash's period once the instance answers, open as it is"`：扣住 `GET /api/v0/instance`，开删除的确认框，放，框里是带期限的那句（审查 A 的 R1）。
   - `"a deletion of the page shown's ancestor, the reader gone back meanwhile to a page out of it, gives the focus to the tree's heading"`：在 Linux 上删 Install（Linux 在它下面），答复扣住时后退到 Notes，再放（审查 A 的 R5）。
@@ -533,6 +574,8 @@ export function useShownRows(total: number, through?: () => number): number
 2. `web: lists of pages render their first rows at once and the rest a chunk after each paint (M12/P4/S4)`：3.6、3.7（含 `tag-page.tsx` 的 `key`），4.1 的第 1、4 格，4.2 的 `tag-page` 一格。
 3. `e2e: the page tree's perf waits for every row in the document, records when, and times a row's menu (M12/P4/S4)`：`e2e/perf/probe.ts`、`tree.perf.ts` 的两个只记的量（6.3）；P4/S2 合并之后。
 4. `docs: the page tree's rendering, measured again on its three shapes (M12/P4/S4)`：6.3 的表写进本文第 10 节与 P4 设计 10.2，第 8 节的文字。
+
+实际（[S4 的审查记录](reviews/P4-S4-page-tree-review.md)）：第 1–3 个照上面（`a08e0f8a`、`bb105425`，合并 `main` 的 `6b5ffdd8` 之后 `2bc9f7da`）；再量之后加 `f2f7ace0`（对话框只渲染一次，决定 533）；修复第 1 轮加三个：`2a333e17`（编辑者变读者时清掉对话框）、`e0a033b7`（只改测试：手写的触发、画全之后空闲、刚过一批的增长、焦点只进一次）、`6600a2df`（只改 `e2e/perf/`：首页的列表要在、事后断言、注释）；之后合并 `main`（`37096b2a`，P3/S3）。文档的提交排在最后。
 
 每个提交单独为绿（`make lint-web`、`make test-web`、`make knip`；第 3 个另加 e2e 的 `check:types` 与 oxlint）；第 4 个提交之前在原规模上再量（6.3）。
 
@@ -589,10 +632,21 @@ export function useShownRows(total: number, through?: () => number): number
 | 标签页不给 `SubpageList` 加 `key` | 4.2 `tag-page` 那一格 |
 | 钩子在画全之后仍调 `through` | 不守：只多订阅，行为不变，代价是 3.4 那种重算（6–37 ms），3.4 的探针量得到 |
 | `period` 从上下文读 | 4.2 R1 那一格 |
-| 笔记本从上下文读（不经 `pages.notebook`） | 4.2 R2 那一格（推断：审查 A 指出它在原型上靠巧合过，实施时以这一格核对） |
+| 笔记本从上下文读（不经 `pages.notebook`） | 4.2 R2 那一格（审查 A 指出它在原型上靠巧合过；实施的变异红在这一格与读者的两格新格） |
 | 对话框放在树上（不随行卸下） | `source-uploads.test.tsx:633`（原型实测） |
 | `shown` 在关上时算（对话框在树上） | `page-tree-writes.test.tsx:396`（原型实测） |
 | `shown` 在按确认时记 | 4.2 R5 那一格（审查 A 在原型上实测） |
+| 行给对话框每次渲染新建的函数（实施时加，`f2f7ace0`） | 4.1 第 6 格（渲染 2 次） |
+| 关菜单时照样 `focusActions`（不记 `chosen`） | 4.1 第 6 格（焦点只进一次；修复第 1 轮加，S4 审查 A 的 N2）。加之前它活着：结束状态等价（对话框的 FocusScope 在失焦里把焦点拉回，焦点与选区相同），过程不等价：对话框的第一个控件多一次失焦再聚焦，`main` 上也有这一次 |
+| 编辑者变读者时不清对话框 | `page-tree.test.tsx` 读者的两格（S4 审查 A 的 M1） |
+| 只加 `writer &&` 守卫、不清状态 | 来源的那一格（变回编辑者时对话框又出现） |
+| 键盘只认 `Enter` | 菜单那一格（空格、↓；S4 审查 A 的 M2） |
+| 按下不看是哪个键；不看 Ctrl | "a press of the main button alone"（S4 审查 A 的 M2） |
+| 点外面只认右键，不认 Ctrl 加主键 | "right click outside, or Ctrl and the main button"（S4 审查 A 的 M2） |
+| 画全之后钩子仍排下一批（不置 `all`） | 4.1 第 7 格（S4 审查 B 的 M1） |
+| 画全之后"多出超过一批"的界放宽一倍 | 4.1 第 4 格（500 行；S4 审查 B 的 N1） |
+
+实施的变异：`f2f7ace0` 上 47 条抓 44，修复第 1 轮之后 55 条抓 53，没抓的只剩上表写明不守的两条（逐条在 [S4 的审查记录](reviews/P4-S4-page-tree-review.md)）。
 
 ### 6.2 守卫的反向对照
 
@@ -634,27 +688,29 @@ export function useShownRows(total: number, through?: () => number): number
 
 ## 8. 文档的新文字
 
-1. **v0.1 总体设计 13.2 新加第 31 条**（决定 501，不放进第 25 条）：
-   - **编号**（决定 505，审查 C 的 C1-I1）：P2/S3 也在 13.2 加一条（决定 396、00 号文档第 7 节"总体设计的修订"第 21 条，P2 设计 8.2 的 S3，都写作第 30 条）。13.2 的新条按合并的先后取号：P2/S3 与 S4 先合并的取第 30 条，后合并的取第 31 条；后合并的那一个在自己的文档提交里改自己的设计、决定与 00 号文档第 7 节里的号。照预期 P2/S3 先合并，S4 取第 31 条，插在第 30 条末句之后；若 S4 的文档提交先于 P2/S3，S4 取第 30 条（插在第 29 条末句之后），P2/S3 照改成第 31 条。文档提交的脚本断言前一条的末句恰好出现一次、新号还没有。
-   - 正文（照预期的号）：
+S4 的文档提交照下面各条落了：号照决定 536 取第 30 条，数照第 10 节（重量的 `6600a2df`），锚点在 `main` 的 `4136991c` 上逐处核对过（S4 审查 C 的 N4），合并 P3/S3 之后在 `7696d8df` 上再核对。
 
-   > 31. **页的列表列出全部，分批画**（M12/P4/S4；第 14 节）：左栏的树与首页、页、标签页的列表都列出全部，不设上限。页的数量由写者决定，这里是第 25 条的例外：读者要能走到每一页（页内查找、读屏的链接列表、Tab）。代价靠三样兜住：先画 100 行，之后每帧画完再加 400 行，画全之后一次多出超过一批的照样分批（`app/shown-rows.ts` 的 `useShownRows`），树要聚焦的行与它路上的列表立刻画到；行是 `memo` 的、属性是列表算好的原始值，链接是普通的 `<a>`；一棵树一个菜单，对话框选了才挂。行上要加东西时照此在列表里算成原始值，不在行里读树。守卫是结构的断言（第一次提交与每批的行数、别人改一次树只渲染新的一行与几个 reaction、行里没有自己的菜单与路由链接），见 `[P4/S4 设计](M12-release/04-P4-S4-page-tree.md)` 4.1。1 万页根下的一本，冷打开约 0.2 秒、别人改一次树约 0.2 秒（实施后照实测改）。
+1. **v0.1 总体设计 13.2 新加第 30 条**（决定 501，不放进第 25 条；P2/S3 未合并，S4 先合并，号照决定 505，决定 536）：
+   - **编号**（决定 505，审查 C 的 C1-I1）：P2/S3 也在 13.2 加一条（决定 396、00 号文档第 7 节"总体设计的修订"第 21 条，P2 设计 8.2 的 S3，都写作第 30 条）。13.2 的新条按合并的先后取号：P2/S3 与 S4 先合并的取第 30 条，后合并的取第 31 条；后合并的那一个在自己的文档提交里改自己的设计、决定与 00 号文档第 7 节里的号。照预期 P2/S3 先合并，S4 取第 31 条，插在第 30 条末句之后；若 S4 的文档提交先于 P2/S3，S4 取第 30 条（插在第 29 条末句之后），P2/S3 照改成第 31 条。文档提交的脚本断言前一条的末句恰好出现一次、新号还没有。
+   - 正文（落了的，号与数照实；插在 13.2 第 29 条末句之后，断言只在 13.2 的范围里查）：
+
+   > 30. **页的列表列出全部，分批画**（M12/P4/S4；第 14 节）：左栏的树与首页、页、标签页的列表都列出全部，不设上限。页的数量由写者决定，这里是第 25 条的例外：读者要能走到每一页（页内查找、读屏的链接列表、Tab）。代价靠三样兜住：先画 100 行，之后每帧画完再加 400 行，画全之后一次多出超过一批的照样分批（`app/shown-rows.ts` 的 `useShownRows`），树要聚焦的行与它路上的列表立刻画到；行是 `memo` 的、属性是列表算好的原始值，链接是普通的 `<a>`；一棵树一个菜单，对话框选了才挂。行上要加东西时照此在列表里算成原始值，不在行里读树。守卫是结构的断言（第一次提交与每批的行数、画全之后空闲时不再渲染、别人改一次树只渲染新的一行与几个 reaction、行里没有自己的菜单与路由链接、选了的对话框只渲染一次），见 `[P4/S4 设计](M12-release/04-P4-S4-page-tree.md)` 4.1。1 万页根下的一本，冷打开约 0.2 秒、别人改一次树约 0.2 秒，约 2.4 秒全部行进 DOM。
 
 2. **v0.1 总体设计第 14 节**"大笔记本（上万页）时前端一次加载整棵页面树的性能"一行（P4 设计第 8 节第 5 条，审查 C 的 I1）：
    - 这一行由 P4/S2 的文档提交改写（结论在 S2，行末是 `（M12/P4 实测，[P4 设计](M12-release/04-P4-performance.md) 10.2）`，5 万、10 万页的数也是它写的）。S4 不整列重写、不去后缀。
    - S4 的文档提交在 S2 写下的、说平的形状在渲染上没过的那一句之后，接着补一句（照实测改）：
-     > P4/S4 改为行便宜、先画首屏的分批渲染（`[P4/S4 设计](M12-release/04-P4-S4-page-tree.md)`），三种形状都过：1 万页根下的一本冷打开约 0.2 秒、别人改一次树约 0.2 秒，约 3 秒全部行进 DOM。
-   - 锚点是"S2 的文档提交之后的那一句"：实施者在那时的 `main` 上取 S2 写下的那句原文，提交的脚本断言它恰好出现一次，插在它之后、行末的后缀之前。
+     > P4/S4 改为行便宜、先画首屏的分批渲染（`[P4/S4 设计](M12-release/04-P4-S4-page-tree.md)`），三种形状都过：1 万页根下的一本冷打开约 0.2 秒、别人改一次树约 0.2 秒，约 2.4 秒全部行进 DOM。
+   - 锚点是"S2 的文档提交之后的那一句"：实施者在那时的 `main` 上取 S2 写下的那句原文，提交的脚本断言它恰好出现一次，插在它之后、行末的后缀之前。落了：那一句是"深的与带附件的形状都过（首屏约 0.2 秒）。"（"改法在 M12/P4/S4；"在文件里有两处，不用）。
    - S4 的文档提交在 S2 合并之后才做（6.3 的再量要 `e2e/perf/`），不会先于 S2 的文档提交。万一先了：S4 不碰这一行，把要补的那一句写进 P4 设计 10.2 的"S4 之后"，交 S2 的文档提交一起写。
 3. **P4 设计 10.2** 页面树一节之后加"S4 之后"的表（6.3），指向本文。
 4. **00 号文档**：
-   - **第 8 节**（M12 改到的前面 M 的代码）加一项：`网页（M4）：页面树的行、菜单与对话框的挂法，首页、页与标签页的列表的分批（P4/S4）`。
+   - **第 8 节**（M12 改到的前面 M 的代码）加一项：`网页（M4）：页面树的行、菜单与对话框的挂法，首页、页与标签页的列表的分批（P4/S4）`。落了：接在已有的"网页（M4–M11）"一项上，不另起一项。
    - **第 12 节**的 P4 一行写到 S4，"审查"一格加 S4 的记录（P4 设计第 8 节第 4 条"每个 Step 的文档提交"）。
    - **第 13 节**加一行：S4 的结论一句。
    - **第 7 节"总体设计的修订"**的第 26 条（审查 C 的 C1-M1）在设计提交时已加：13.2 的新条（号照决定 505）与第 14 节页面树一行补 S4 之后的一句，随 P4/S4 改。S4 的文档提交照它落进 `v0.1-design.md`；那时号若因别的 Step 先合并而变了，照决定 505 改。
-5. **v0.1 总体设计第 15 节**加一行：`2026-11-xx：M12/P4/S4：13.2 新加第 31 条（页的列表列出全部，分批画；号照第 1 条）；第 14 节"大笔记本（上万页）"一行补 S4 之后的结果。依据 [P4/S4 设计](M12-release/04-P4-S4-page-tree.md) 10 与 [S4 记录](M12-release/reviews/P4-S4-page-tree-review.md)。`
+5. **v0.1 总体设计第 15 节**加一行：`2026-11-17：M12/P4/S4：13.2 新加第 30 条（页的列表列出全部，分批画；号照第 1 条）；第 14 节"大笔记本（上万页）"一行补 S4 之后的结果。依据 [P4/S4 设计](M12-release/04-P4-S4-page-tree.md) 10 与 [S4 记录](M12-release/reviews/P4-S4-page-tree-review.md)。`
 6. **S4 的审查记录**：设计审查的是 `reviews/P4-S4-design-review.md`（主持者随设计提交）；实施的是 `reviews/P4-S4-page-tree-review.md`（P4 设计第 8 节第 4 条的写法）。
-7. `page-tree.tsx` 的文档注释（`:28-46`）加一句：行是 `memo` 的，一棵树一个菜单，列表分批画（照 3.2–3.6）。
+7. `page-tree.tsx` 的文档注释（`:28-46`）加一句：行是 `memo` 的，一棵树一个菜单，列表分批画（照 3.2–3.6）。已在第 1、2 个代码提交里写了。
 
 ## 9. 交给后面的
 
@@ -671,4 +727,67 @@ export function useShownRows(total: number, through?: () => number): number
 
 ## 10. 结果
 
-（实施后补。）
+2026-11-17。实施、三份代码审查、修复一轮与核对一轮的经过、变异表、门禁、持锁与负载在 [S4 的审查记录](reviews/P4-S4-page-tree-review.md)；主持者的决定 533–537 在 [00 号文档](00-M12-design.md) 第 11 节；与本文不同之处在 3.10。
+
+### 10.1 提交
+
+分支 `m12-p4-s4`，从 `main` 的 `2d32d346` 开，合并 `main` 两次（`6b5ffdd8`，带进 P4/S2 的 `e2e/perf/`；修复第 1 轮之后 `37096b2a`，带进 P3/S3 的合并 `7696d8df`；都没有冲突）。代码 7 个提交：
+
+1. `a08e0f8a` 行便宜：一棵树一个菜单，对话框选了才挂，普通链接（5.1 第 1 个）；
+2. `bb105425` 分批（5.1 第 2 个）；
+3. `2bc9f7da` 只记的量（5.1 第 3 个）；
+4. `f2f7ace0` 对话框只渲染一次（再量之后加，决定 533）；
+5. `2a333e17` 编辑者变读者时清掉对话框（修复第 1 轮，审查 A 的 M1）；
+6. `e0a033b7` 守卫与触发的测试（修复第 1 轮，只改测试）；
+7. `6600a2df` 量的终点与注释（修复第 1 轮，只改 `e2e/perf/`）。
+
+相对 `main`（`7696d8df`）13 个文件，加 1,819 行、减 289 行。文档的提交在最后。
+
+### 10.2 守卫与变异
+
+- 4.1 七格（第 6、7 格是实施与审查加的）与 4.2 的新格都在，3.8 的清单逐条有测试。
+- 6.2 的反向对照（`f2f7ace0` 与 `6600a2df` 上各做一遍，只撤回那一处，跑守卫的那一格）：
+  1. `useShownRows` 答 `total`：第 1 格红，第一次提交 1,000 行（> 100）。
+  2. 行是读树的 `observer`，或属性里给 `node`：第 2 格红，行的计数 1,001（> 2）。
+  3. 对话框一直挂在行里：第 2 格红，reaction 1,006（> 10；本文估约 4,000，那是一行四个对话框，实施一行只挂一个 `PageDialogs`）。
+  4. 每行一个 `DropdownMenu`：第 3 格红，行里 Radix 的元素 1,000（应为 0）。
+  5. 画全之后不再分批：第 4 格红，一次回调多 500（第 4 格改成 500 页之前多 1,000）。
+  6. 在 `main`（`2d32d346`）上跑第 1–5 格：五格全红（1,000 > 100、1,000 > 400、1,001 > 2、1,000 ≠ 0、1,001 > 2）。`main` 没有导出 `useDrag`，行数改数每个编辑者行的 `Ellipsis` 图标；审查 B 在 `4136991c` 上复跑一致。
+  - 第 6 格：行换回 `2bc9f7da` 的写法，`expected 2 to be 1`。
+- 变异：`f2f7ace0` 上 47 条抓 44：没抓的是 6.1 写明不守的两条（`SubpageList` 的行不 `memo`、钩子画全之后仍调 `through`），与关菜单时照样 `focusActions` 的一条（当时判为等价，审查 A 的 N2 指出过程不等价，修复第 1 轮加了断言）。修复第 1 轮之后 55 条抓 53，没抓的只剩不守的两条。
+
+### 10.3 在原规模上再量（6.3）
+
+- 被量的是 `6600a2df`（`make build` 在头上，`versions` 记 `modified=false`），两轮三种形状，2026-11-17 05:51–05:59 整段持 `heavy.sh` 的锁；每 5 秒记一次负载与前三名进程，1 分钟负载中位 1.19、最高 2.06，前三名只有这一次的服务、PostgreSQL、docker-proxy 与 Chromium。
+- T3 取 `f2f7ace0` 只导入深与带附件的两轮：P4/S2 重量 T3 的设定，第一行 top 484 px，每次视口里 6 个孩子（P4 设计 10.2）。`6600a2df` 的两轮里 T3 是三种形状的轮（视口里 5 个孩子），只记：深 29.9 / 31.5、带附件 28.4 / 30.6。`f2f7ace0` 与 `6600a2df` 之间页面树的渲染只改了读者时清掉对话框。
+- 每格两轮的中位数，较大加粗，括号里是五次；单位 ms。改前是 P4/S2 两轮的较大（P4 设计 10.2），界照 2.1。
+
+| 形状 | T1 | T2 | T2 的最长长任务 | T3（`f2f7ace0` 轮 3、4） |
+|---|---|---|---|---|
+| 平 | 172.4（169、172、176、170、177）；**177.6**（179、172、180、173、178）。改前 3,015，界 1,000，过 | **190.5**（183、184、204、191、193）；190.4（192、190、207、187、190）。改前 1,609，界 1,500，过 | **94**（93、94、89、95、97）；93（94、93、94、93、91）。改前 1,429，界 200，过 | — |
+| 深 | **179.8**（195、177、183、177、180）；178.5（178、180、176、182、173）。改前 198，界 217.8，过 | 58.2（58、68、56、59、55）；**58.7**（64、59、56、56、68）。改前 61，界 67.1，过 | 0；0。过 | **29.9**（30、32、32、27、26）；29.4（30、28、29、34、27）。改前 212.4，界 233.6，过 |
+| 带附件 | 174.3（181、172、170、176、174）；**182.8**（183、183、183、178、177）。改前 210，界 231.0，过 | 61.2（64、59、59、66、61）；**65.9**（59、53、66、67、74）。改前 66，界 72.6，过 | 0；0。过 | 28.9（28、29、34、27、31）；**30.3**（30、31、35、29、30）。改前 211.3，界 232.4，过 |
+
+- **平的形状全部行进 DOM**：2,370.3（2,335、2,377、2,359、2,370、2,385）；**2,396.8**（2,394、2,375、2,418、2,397、2,401），界 4,000，过。其间最长的长任务 **80**（86、78、64、80、81）；**80**（82、80、84、80、80），界 200，过。深与带附件约 230 ms 全部进 DOM，其间没有长任务。没有超的，不做 trace 的剖面。
+- **堆**（第五次 T1、全部行进 DOM 之后，GC 之后）：平 80.3 / 80.2 MB（P4/S2 是 604 MB，那时也是一万行都在）；深 16.7 MB（改前 17.4）；带附件 17.6 MB（改前 18.3；轮 1 一次 13.9 MB，推断是 GC 的时机）。
+- **`li`**：T1 画出那一帧左栏 100 行（首批，`rows`），视口里 6 行；T1 之后一次往返读到的首页 / 文档 900 / 1,803 或 500 / 1,003（已又画了一两批，不是首批，3.10 第 11 条）；全部行进 DOM 时平 10,000 / 20,003，深与带附件 11 / 25。
+- **T2**：30 次（两轮三种形状各五次）没有作废，新行都与视口相交（第一行 top 524 px）。
+- **"移到……"对话框**（深，只记）：1,282.3（1,379、1,313、1,282、1,253、1,266）；**1,290.5**（1,402、1,359、1,290、1,259、1,265）。改前 1,258（P4/S2 在 `main` 上各轮 1,188–1,339）。`2bc9f7da` 上是 2,331.9、2,506.7（五次都在 2.3–2.7 秒）：行每次渲染给对话框新建的函数，菜单关上时对话框多渲染一遍；`f2f7ace0` 修了（3.5，决定 533），它的四轮 1,250–1,362。
+- **一行的菜单**（平，T2 之后、一万行都在，只记；括号是其间最长的长任务）：打开 **629.4**（**526**）、625.8（521）；`Escape` 402.0（**362**）、**402.2**（358）；Rename 的对话框 `Escape` **442.0**（**371**）、438.5（367）。3.4 的表是设计的探针 `menu.perf.ts` 在冷打开的新标签页里量的（`main` 的代码 824、1,089、3,535 ms，改后的写法 688.6、530.3、530.7 ms）：量法相同、场所不同，不是同一个量的改前改后。
+- 一次 T1 的剖面里 `subtreeOf` 的自身时间 0（S4 起行不调它；P4/S2 是 0.52 / 0.21 ms）。
+- **作废与重量**（决定 535）：`6600a2df` 的第一次补量（04:47–04:55）与锁外一次约 45 秒、单核满载的 Node（P4/S5 的一位审查者，约 04:50–04:54）重叠，两轮作废，结果的目录留着、写明原因；上表是重量。两次的较大中位数相差在 ±5% 之内，只有带附件的 T2 +7%（61 → 66 ms）与"移到……" −6%（1,376 → 1,291 ms），往两边都有（平的 T1 +7、T2 −7、全部行进 DOM +20 ms）。
+- **修之前**：`2bc9f7da` 上完整量过一遍（02:12–02:27），`f2f7ace0` 上又一遍（02:54–03:08），各格都过；`f2f7ace0` 的两轮三种形状：平 T1 174、T2 191、其最长长任务 92、全部行进 DOM 2,320、其间 76；深 T1 176、T2 65；带附件 T1 172、T2 60。两段之间整机的摆动约 5–10%，跨段比时要记着它（审查 C）。
+
+### 10.4 CI 与用时
+
+- 分支 CI 四次，`ci.yml` 19 项每次第一次 attempt 全绿：`bb105425` run 43920513723、`2bc9f7da` 43926265390、`f2f7ace0` 43932472398、`6600a2df` 43953102661。`web` 作业 3:44、4:02、3:49、4:20，vitest 4,623、4,623、4,624、4,628 格，总用时 192.7、191.4、194.9、225.5 秒；`e2e` 作业 8:42、7:41、8:45、8:36。`main` 上（`2d32d346`、`54a89127`）`web` 3:53、3:59，4,602 格，vitest 184.3、190.0 秒。合并 P3/S3 之后（`37096b2a`）：run 43979118856，18 项绿（`web` 3:50）；`e2e` 一格红：L1 (page) 带修饰键点正文的链接，30 秒没等到新标签页的 `page` 事件。本机在 Chromium 里交替各跑 20 次，`main`（`7696d8df`）与本分支都这样超时 3 次；S4 没碰正文的链接，是 `main` 上已有的不稳（M10/P3/S1 在 `main` 上红过同一处）。
+- 守卫文件在 CI 里 10.1、9.5、12.4、15.8 秒（五、五、六、七格；它在一个 worker 里，与别的文件并行）；`tag-page.test.tsx` 约 2.0–2.1 秒，与 `main` 的 2.2 秒相当。`web` 作业的用时在 `main` 的摆动之内；`6600a2df` 那一次 vitest 多出约 30 秒，守卫只多 3.4 秒，推断是 runner 的摆动。
+
+### 10.5 完成标准（第 7 节）
+
+- 平的形状 T1 178、T2 191、T2 的最长长任务 94 ms（两轮的较大中位数），过。
+- 平的形状全部行进 DOM 2.4 秒，其间最长的长任务 80 ms，过。
+- 深与带附件逐格不慢于改前（2.1 的表）。
+- 4.1 七格与 4.2 的新格在；6.2 做过（10.2）；6.1 的变异逐条抓住，写明不守的两条除外。
+- 3.8 的清单逐条有测试；`make test-web`、`make e2e` 全绿，CI 绿。
+- 第 8 节的文字落了；本节写了结果。
