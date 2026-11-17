@@ -138,7 +138,7 @@ func (tb Tabs) Run(ctx context.Context) error {
 		throttle.Track = &reads
 		wg.Go(func() {
 			err := tb.stream(stop, c, func() {
-				if stop.Err() != nil {
+				if past(stop) {
 					return
 				}
 				_, _, _ = c.Send(send, client.Request{Op: "tree", Method: http.MethodGet,
@@ -159,6 +159,9 @@ func (tb Tabs) Run(ctx context.Context) error {
 			case <-stop.Done():
 				return
 			case <-tick.C:
+			}
+			if past(stop) {
+				return
 			}
 			_, _ = createPage(send, agent, "agent-create", tb.Notebook, "", fmt.Sprintf("tab agent %d %d", run, n), "")
 		}

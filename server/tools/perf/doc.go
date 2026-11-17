@@ -58,11 +58,13 @@
 //
 // Each driver writes a JSON line a request to -records (3.4.4) and a
 // summary to its standard output. A run of -for stops sending at its end
-// and waits for the requests in flight, 60 s at most (the serve's own
-// deadline is 15 s), so that its times are not those of requests cut
-// short; the summary times the requests answered whole, and counts apart
-// those cut (cut=, with cut_longest=, how long the longest had run) and
-// those the transport failed (errors=), which also make the command fail.
+// and waits for the requests in flight, 60 s at most (drive.DefaultDrain,
+// which no flag changes; the serve's own deadline is 15 s), so that its
+// times are not those of requests cut short; past its end a loop sends
+// nothing but an editor's session close. The summary times the requests
+// answered whole, and counts apart those cut (cut=, with cut_longest=,
+// how long the longest had run) and those the transport failed (errors=),
+// which also make the command fail.
 // The tests of each package run without a network or Docker, in
 // test-go-costs-3's go -C server/tools test.
 package main

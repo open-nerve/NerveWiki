@@ -47,7 +47,8 @@ func TestEditorsSaveRenewAndWriteTheTree(t *testing.T) {
 	})
 	var monitored bytes.Buffer
 	sizes := 0
-	e := Editors{Clients: f.clients(3, client.NewLog(nil)), Notebook: "nb-ed", Bytes: 10 << 10, Links: 20, HeavyLinks: 500, Seed: 1,
+	log := client.NewLog(nil)
+	e := Editors{Clients: f.clients(3, log), Notebook: "nb-ed", Bytes: 10 << 10, Links: 20, HeavyLinks: 500, Seed: 1,
 		For: 400 * time.Millisecond, Save: 10 * time.Millisecond, Heartbeat: 40 * time.Millisecond, Renew: 120 * time.Millisecond,
 		Tree: 15 * time.Millisecond, Monitor: 50 * time.Millisecond, Monitored: &monitored,
 		PSQL: fakePSQL(f, func(sql string) string {
@@ -65,9 +66,16 @@ func TestEditorsSaveRenewAndWriteTheTree(t *testing.T) {
 			t.Errorf("sql %q", sql)
 			return ""
 		})}
+	started := time.Now()
 	before, after, err := e.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	if took := time.Since(started); took > e.For+5*time.Second {
+		t.Errorf("the run took %v for %v", took, e.For)
+	}
+	if past := sentPast(log.Records(), firstSent(log.Records(), "session-open")+int64(e.For)); len(past) > 0 {
+		t.Errorf("sent past the end: %v", past)
 	}
 	if before != (Versions{8192, 10}) || after != (Versions{16384, 20}) {
 		t.Errorf("versions %+v then %+v", before, after)
@@ -168,9 +176,11 @@ func TestATabsReadsAreThrottledAsTheRefreshers(t *testing.T) {
 // the agent's pages.
 func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 	api := &pageAPI{}
+	var opened atomic.Int64 // the first event stream's, past the run's start
 	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
 		switch r.URL.Path {
 		case "/api/v0/events":
+			opened.CompareAndSwap(0, time.Now().UnixNano())
 			if r.Header.Get("Accept") != "text/event-stream" {
 				t.Errorf("events accept %q", r.Header.Get("Accept"))
 			}
@@ -214,8 +224,15 @@ func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 	log := client.NewLog(nil)
 	tb := Tabs{Clients: f.clients(3, log), Notebook: "nb-tree", For: 1000 * time.Millisecond, Every: 60 * time.Millisecond,
 		Interval: 150 * time.Millisecond}
+	started := time.Now()
 	if err := tb.Run(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+	if took := time.Since(started); took > tb.For+5*time.Second {
+		t.Errorf("the run took %v for %v", took, tb.For)
+	}
+	if past := sentPast(log.Records(), opened.Load()+int64(tb.For)); len(past) > 0 {
+		t.Errorf("sent past the end: %v", past)
 	}
 	for _, tab := range []string{"Bearer pat-0", "Bearer pat-1"} {
 		if n := f.count("tree read by " + tab); n != 2 {
@@ -237,7 +254,8 @@ func TestTabsReadTheTreeOnItsEvents(t *testing.T) {
 }
 
 // A tree read the throttle schedules inside the run but whose time comes
-// after For is not sent: the run waits for it and drops it (review B's M1).
+// after For is not sent: the run waits for it and drops it (review B's N4;
+// the round's x27).
 func TestATabsReadDueAfterTheRunIsNotSent(t *testing.T) {
 	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, _ []byte) {
 		switch r.URL.Path {
@@ -275,6 +293,181 @@ func TestATabsReadDueAfterTheRunIsNotSent(t *testing.T) {
 	if took := time.Since(start); took < 550*time.Millisecond {
 		t.Errorf("the run took %v: it did not wait for the read it had scheduled", took)
 	}
+}
+
+// A tree read sent at once and still in flight at the end is waited for:
+// the run returns with its record (review B's N8).
+func TestATabsReadInFlightAtTheEndIsWaitedFor(t *testing.T) {
+	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, _ []byte) {
+		switch r.URL.Path {
+		case "/api/v0/events":
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = io.WriteString(w, "event: pages\ndata: {\"workspace_id\":\"w\",\"notebook_id\":\"nb-tree\",\"tree\":true,\"pages\":[]}\n\n")
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+		case "/api/v0/notebooks/nb-tree/nodes":
+			select {
+			case <-time.After(300 * time.Millisecond):
+			case <-r.Context().Done():
+				return
+			}
+			answer(w, http.StatusOK, map[string]any{"data": []any{}})
+		default:
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	log := client.NewLog(nil)
+	tb := Tabs{Clients: f.clients(2, log), Notebook: "nb-tree", For: 100 * time.Millisecond, Every: time.Hour,
+		Interval: time.Second}
+	if err := tb.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(log.Records(), func(r client.Record) bool {
+		return r.Op == "tree" && r.Status == http.StatusOK && !r.Cut && r.Took() >= 300*time.Millisecond
+	}) {
+		t.Errorf("the read in flight at the end not waited for: %+v", log.Records())
+	}
+}
+
+// Requests slower than their loop's period, so that a tick is ready when
+// the end comes: past the end an editor sends its session's close and
+// nothing else, the tree writer, the monitor and the tabs' agent nothing,
+// and a run ends soon after it (review B's M7, M8). The end is at most the
+// first request the loops send plus For. An editor beats its session
+// before each save: the rounds take turns at a slow heartbeat, so that the
+// end comes in it and the save after it must not go, and at a slow save,
+// so that the end comes in it and the tick and the end are ready at once.
+// A select takes either at random, so eight short rounds.
+func TestTheLoopsSendNothingPastTheirEnd(t *testing.T) {
+	api := &pageAPI{}
+	var opened, beat, save atomic.Int64
+	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
+		slow := time.Duration(0)
+		switch {
+		case r.URL.Path == "/api/v0/events":
+			opened.CompareAndSwap(0, time.Now().UnixNano())
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			<-r.Context().Done()
+			return
+		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
+			slow = time.Duration(beat.Load())
+		case r.Method == http.MethodPut:
+			slow = time.Duration(save.Load())
+		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/pages"),
+			strings.HasPrefix(r.URL.Path, "/api/v0/nodes/"):
+			slow = 50 * time.Millisecond // the tree writer's and the agent's
+		}
+		select {
+		case <-time.After(slow):
+		case <-r.Context().Done():
+			return
+		}
+		if !api.handle(f, w, r, body) {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+		}
+	})
+	var mu sync.Mutex
+	var monitored []int64 // when the monitor's reads began
+	psql := fakePSQL(f, func(sql string) string {
+		switch {
+		case strings.HasPrefix(sql, "SELECT pg_total_relation_size"):
+			return "1|1\n"
+		case strings.Contains(sql, "pg_stat_slru"):
+			mu.Lock()
+			monitored = append(monitored, time.Now().UnixNano())
+			mu.Unlock()
+			time.Sleep(50 * time.Millisecond)
+		}
+		return ""
+	})
+	for round := range 8 {
+		beat.Store(int64(40 * time.Millisecond))
+		save.Store(int64(5 * time.Millisecond))
+		if round%2 == 1 {
+			beat.Store(int64(5 * time.Millisecond))
+			save.Store(int64(40 * time.Millisecond))
+		}
+		log := client.NewLog(nil)
+		mu.Lock()
+		monitored = nil
+		mu.Unlock()
+		e := Editors{Clients: f.clients(4, log), Notebook: "nb", Bytes: 1000, Links: 2, Seed: 1, For: 100 * time.Millisecond,
+			Save: 10 * time.Millisecond, Heartbeat: time.Nanosecond, Renew: time.Minute, Tree: 10 * time.Millisecond,
+			Monitor: 10 * time.Millisecond, Monitored: io.Discard, PSQL: psql}
+		started := time.Now()
+		if _, _, err := e.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(started); took > e.For+5*time.Second {
+			t.Errorf("round %d: the editors took %v for %v", round, took, e.For)
+		}
+		end := firstSent(log.Records(), "session-open") + int64(e.For)
+		if past := sentPast(log.Records(), end); len(past) > 0 {
+			t.Errorf("round %d: the editors sent past the end: %v", round, past)
+		}
+		mu.Lock()
+		if len(monitored) == 0 || slices.ContainsFunc(monitored, func(at int64) bool { return at > end+int64(stampSlack) }) {
+			t.Errorf("round %d: the monitor read past the end, or never: %v, the end at most %d", round, monitored, end)
+		}
+		mu.Unlock()
+		if closed := slices.IndexFunc(log.Records(), func(r client.Record) bool { return r.Op == "session-close" }); closed < 0 {
+			t.Errorf("round %d: no session closed", round)
+		}
+		opened.Store(0)
+		log = client.NewLog(nil)
+		tb := Tabs{Clients: f.clients(2, log), Notebook: "nb", For: 100 * time.Millisecond, Every: 10 * time.Millisecond,
+			Interval: time.Second}
+		started = time.Now()
+		if err := tb.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if took := time.Since(started); took > tb.For+5*time.Second {
+			t.Errorf("round %d: the tabs took %v for %v", round, took, tb.For)
+		}
+		if past := sentPast(log.Records(), opened.Load()+int64(tb.For)); len(past) > 0 || firstSent(log.Records(), "agent-create") == 0 {
+			t.Errorf("round %d: the agent sent past the end: %v, or nothing", round, past)
+		}
+	}
+}
+
+// stampSlack is how long past the end a request asked for before it may
+// be stamped sent: a loop asks for the end before it builds a request, the
+// client stamps the request as it sends it, and in between the goroutine
+// can be put off. Without it, 4 of 200 runs of the package had an editor's
+// save stamped past the bound these tests take for the end. The requests
+// past the end the tests are for come a whole request later: 40 or 50 ms
+// in TestTheLoopsSendNothingPastTheirEnd.
+const stampSlack = 5 * time.Millisecond
+
+// sentPast is how many requests of each op the records sent past at, by
+// more than stampSlack, and how far past the latest went; an editor's
+// session-close aside: the one request a loop sends past its end.
+func sentPast(records []client.Record, at int64) map[string]string {
+	past := map[string]string{}
+	n, latest := map[string]int{}, map[string]time.Duration{}
+	for _, r := range records {
+		if r.Sent > at+int64(stampSlack) && r.Op != "session-close" {
+			n[r.Op]++
+			latest[r.Op] = max(latest[r.Op], time.Duration(r.Sent-at))
+		}
+	}
+	for op, k := range n {
+		past[op] = fmt.Sprintf("%d, the latest %v past", k, latest[op])
+	}
+	return past
+}
+
+// firstSent is when the records first sent op, 0 when they never did.
+func firstSent(records []client.Record, op string) int64 {
+	first := int64(0)
+	for _, r := range records {
+		if r.Op == op && (first == 0 || r.Sent < first) {
+			first = r.Sent
+		}
+	}
+	return first
 }
 
 // B4's operations wait for the background restore to succeed and for the

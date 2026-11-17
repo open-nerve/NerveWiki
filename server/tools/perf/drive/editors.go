@@ -108,11 +108,20 @@ func (e Editors) Run(ctx context.Context) (before, after Versions, err error) {
 }
 
 // edit is an editor's loop until stop ends, its requests sent in send;
-// its session closed at its end.
+// its session closed at its end. Past stop it sends nothing but the
+// close: a tick that comes with the end, or an end while a renewal or a
+// heartbeat is answered, does not send the next request (review B's M7).
 func (e Editors) edit(stop, send context.Context, c *client.Client, p page, content string) {
 	session, err := openSession(send, c, "session-open", p.ID)
 	if err != nil {
 		return
+	}
+	ended := func() bool {
+		if !past(stop) {
+			return false
+		}
+		e.closeSession(c, session)
+		return true
 	}
 	base, beat, opened := p.Revision, time.Now(), time.Now()
 	tick := time.NewTicker(e.Save)
@@ -120,12 +129,16 @@ func (e Editors) edit(stop, send context.Context, c *client.Client, p page, cont
 	for k := 0; ; k++ {
 		select {
 		case <-stop.Done():
-			e.closeSession(c, session)
-			return
 		case <-tick.C:
+		}
+		if ended() {
+			return
 		}
 		if time.Since(opened) >= e.Renew {
 			e.closeSession(c, session)
+			if past(stop) {
+				return
+			}
 			if session, err = openSession(send, c, "session-open", p.ID); err != nil {
 				return
 			}
@@ -135,6 +148,9 @@ func (e Editors) edit(stop, send context.Context, c *client.Client, p page, cont
 			_, _ = c.JSON(send, "heartbeat", http.MethodPost, "/api/v0/edit-sessions/"+url.PathEscape(session)+"/heartbeat", nil, nil,
 				http.StatusOK)
 			beat = time.Now()
+		}
+		if ended() {
+			return
 		}
 		if w, err := putContent(send, c, "save", p.ID, changed(content, k), base, session); err == nil {
 			base = w.Revision
@@ -162,6 +178,9 @@ func (e Editors) treeWrites(stop, send context.Context, c *client.Client, homes 
 			return
 		case <-tick.C:
 		}
+		if past(stop) {
+			return
+		}
 		switch {
 		case k%3 == 0 || last == "":
 			if p, err := createPage(send, c, "tree-create", e.Notebook, homes[0].ID, fmt.Sprintf("t %d %d", run, k), ""); err == nil {
@@ -187,6 +206,9 @@ func (e Editors) monitor(stop, send context.Context) {
 		case <-stop.Done():
 			return
 		case <-tick.C:
+		}
+		if past(stop) {
+			return
 		}
 		slru, err1 := e.PSQL.Query(send, "SELECT name, blks_zeroed, blks_hit, blks_read, blks_written, blks_exists, flushes, truncates "+
 			"FROM pg_stat_slru WHERE lower(name) LIKE 'multixact%'")

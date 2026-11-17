@@ -100,7 +100,7 @@ func (b Bodies) Run(ctx context.Context) (time.Time, error) {
 	var wg sync.WaitGroup
 	for i, id := range pages {
 		wg.Go(func() {
-			for stop.Err() == nil {
+			for !past(stop) {
 				_, _, _ = b.Clients[i].Send(send, client.Request{Op: "view", Method: http.MethodGet,
 					Path: "/api/v0/pages/" + url.PathEscape(id) + "/view"}, io.Discard)
 			}
@@ -110,11 +110,14 @@ func (b Bodies) Run(ctx context.Context) (time.Time, error) {
 		c := b.Clients[readers+w]
 		wg.Go(func() {
 			base, beat := wr.page.Revision, time.Now()
-			for k := 0; stop.Err() == nil; k++ {
+			for k := 0; !past(stop); k++ {
 				if time.Since(beat) >= b.Heartbeat {
 					_, _ = c.JSON(send, "heartbeat", http.MethodPost, "/api/v0/edit-sessions/"+url.PathEscape(wr.session)+"/heartbeat",
 						nil, nil, http.StatusOK)
 					beat = time.Now()
+					if past(stop) {
+						return
+					}
 				}
 				if p, err := putContent(send, c, "write", wr.page.ID, changed(content, k), base, wr.session); err == nil {
 					base = p.Revision

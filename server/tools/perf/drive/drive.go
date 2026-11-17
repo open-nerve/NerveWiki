@@ -227,6 +227,19 @@ func ending(ctx context.Context, end time.Time, drain time.Duration) (stop, send
 	return stop, send, func() { cancelStop(); cancelSend() }
 }
 
+// past reports whether a run's stop has come: its context ended, or its
+// deadline gone by before the timer that ends the context has run. A loop
+// asks it before each request, so that a tick ready with the end, or an
+// end while an earlier request was answered, sends nothing more (review
+// B's M7).
+func past(stop context.Context) bool {
+	if stop.Err() != nil {
+		return true
+	}
+	d, ok := stop.Deadline()
+	return ok && !time.Now().Before(d)
+}
+
 // sleep waits d, or until ctx ends.
 func sleep(ctx context.Context, d time.Duration) error {
 	t := time.NewTimer(d)

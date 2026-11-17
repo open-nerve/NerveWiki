@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -335,8 +336,9 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 
 // The summary times each operation's answers from its start; a request
 // without its whole answer is not timed, cut when its context ended, with
-// the longest of them, failed when the transport did, and a failure is an
-// error after the summary (review B's M2, review C's note).
+// the longest of them (not the last: review B's N8), failed when the
+// transport did, and a failure is an error after the summary (review B's
+// M2, review C's note).
 func TestTheSummaryCountsCutRequestsApart(t *testing.T) {
 	at := time.Unix(100, 0)
 	ns := func(d time.Duration) int64 { return at.Add(d).UnixNano() }
@@ -344,9 +346,9 @@ func TestTheSummaryCountsCutRequestsApart(t *testing.T) {
 		{Op: "view", Sent: ns(-time.Second), Done: ns(0), Status: 200},
 		{Op: "view", Sent: ns(0), Done: ns(30 * time.Millisecond), Status: 200},
 		{Op: "view", Sent: ns(time.Second), Done: ns(time.Second + 10*time.Millisecond), Status: 503},
-		{Op: "view", Sent: ns(2 * time.Second), Done: ns(3 * time.Second), Error: "context deadline exceeded", Cut: true},
 		{Op: "view", Sent: ns(2 * time.Second), Header: ns(2 * time.Second), Done: ns(4500 * time.Millisecond), Status: 200,
 			Error: "context deadline exceeded", Cut: true},
+		{Op: "view", Sent: ns(2 * time.Second), Done: ns(3 * time.Second), Error: "context deadline exceeded", Cut: true},
 		{Op: "write", Sent: ns(time.Second), Done: ns(2 * time.Second), Error: "context deadline exceeded", Cut: true},
 	}
 	var out bytes.Buffer
@@ -366,54 +368,139 @@ func TestTheSummaryCountsCutRequestsApart(t *testing.T) {
 	}
 }
 
+// past is a run's stop come: its context ended, or its deadline gone by
+// while the timer that ends the context has not run yet (review B's M7).
+func TestPastIsTheStopsEndOrItsDeadline(t *testing.T) {
+	ended, cancel := context.WithCancel(context.Background())
+	cancel()
+	for _, c := range []struct {
+		name string
+		stop context.Context
+		want bool
+	}{
+		{"running", deadlineOnly{context.Background(), time.Now().Add(time.Hour)}, false},
+		{"its deadline gone by, its timer not run", deadlineOnly{context.Background(), time.Now().Add(-time.Millisecond)}, true},
+		{"ended", ended, true},
+		{"no deadline", context.Background(), false},
+	} {
+		if got := past(c.stop); got != c.want {
+			t.Errorf("%s: past %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// deadlineOnly has a deadline and never ends: a context whose timer has
+// not run.
+type deadlineOnly struct {
+	context.Context
+	at time.Time
+}
+
+func (d deadlineOnly) Deadline() (time.Time, bool) { return d.at, true }
+
 // A run stops sending at its end and waits for what is in flight: a
-// request longer than the run's rest is answered and timed, not cut; one
-// longer than the drain is cut, and recorded as cut (review B's M2).
+// reader's and a writer's request longer than the run's rest are answered
+// and timed, not cut, and nothing is sent past the end, nor after a
+// writer's heartbeat that the end came in; one longer than the drain is
+// cut, and recorded as cut, before its answer's head or in its body
+// (review B's M2, M8, N8).
 func TestARunWaitsForItsRequestsInFlight(t *testing.T) {
 	api := &pageAPI{}
-	var slow atomic.Int64
+	var view, write, beat atomic.Int64
+	var bodyLate atomic.Bool
+	wait := func(r *http.Request, d *atomic.Int64) bool {
+		select {
+		case <-time.After(time.Duration(d.Load())):
+			return true
+		case <-r.Context().Done():
+			return false
+		}
+	}
 	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
-		if strings.HasSuffix(r.URL.Path, "/view") {
-			select {
-			case <-time.After(time.Duration(slow.Load())):
-			case <-r.Context().Done():
-				return
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/view") && bodyLate.Load():
+			// The head at once, the body past the drain.
+			w.Header().Set("Content-Type", "text/html")
+			w.WriteHeader(http.StatusOK)
+			w.(http.Flusher).Flush()
+			if wait(r, &view) {
+				_, _ = io.WriteString(w, "<p>late</p>")
 			}
+			return
+		case strings.HasSuffix(r.URL.Path, "/view") && !wait(r, &view),
+			r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/content") && !wait(r, &write),
+			strings.HasSuffix(r.URL.Path, "/heartbeat") && !wait(r, &beat):
+			return
 		}
 		if !api.handle(f, w, r, body) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 	})
-	slow.Store(int64(150 * time.Millisecond))
+	// A reader and a writer, each request 150 ms in a run of 50.
+	view.Store(int64(150 * time.Millisecond))
+	write.Store(int64(150 * time.Millisecond))
 	log := client.NewLog(nil)
-	b := Bodies{Clients: f.clients(1, log), Kind: "normal", Size: 1000, Read: "nb-read", Writers: []string{"nb-w"},
+	b := Bodies{Clients: f.clients(2, log), Kind: "normal", Size: 1000, Read: "nb-read", Writers: []string{"nb-w"},
 		For: 50 * time.Millisecond, Heartbeat: time.Minute}
 	started := time.Now()
-	if _, err := b.Run(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var views, cut int
-	for _, r := range log.Records() {
-		switch {
-		case r.Op == "view" && r.Cut:
-			cut++
-		case r.Op == "view" && r.Status == http.StatusOK && r.Took() >= 150*time.Millisecond:
-			views++
-		}
-	}
-	if views != 1 || cut != 0 || time.Since(started) < 150*time.Millisecond {
-		t.Errorf("a view of 150 ms in a run of 50 ms: %d answered, %d cut, the run %v", views, cut, time.Since(started))
-	}
-	slow.Store(int64(10 * time.Second))
-	log = client.NewLog(nil)
-	b.Clients, b.Drain = f.clients(1, log), 100*time.Millisecond
 	from, err := b.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	var summary bytes.Buffer
-	if err := Summarize(&summary, log.Records(), from); err != nil || !strings.Contains(summary.String(), "view n=0 ") ||
-		!strings.Contains(summary.String(), " cut=1 errors=0 cut_longest=") {
-		t.Errorf("a view past the drain: %v\n%s", err, summary.String())
+	took := time.Since(started)
+	end := from.Add(b.For).UnixNano()
+	answered := map[string]int{}
+	for _, r := range log.Records() {
+		switch {
+		case r.Sent > end:
+			t.Errorf("%s sent %v past the end", r.Op, time.Duration(r.Sent-end))
+		case r.Cut:
+			t.Errorf("%s cut", r.Op)
+		case r.Status == http.StatusOK && r.Took() >= 150*time.Millisecond:
+			answered[r.Op]++
+		}
+	}
+	if answered["view"] != 1 || answered["write"] != 1 || took < 150*time.Millisecond || took > b.For+5*time.Second {
+		t.Errorf("a view and a write of 150 ms in a run of 50 ms: %v answered, the run %v", answered, took)
+	}
+	// A writer's heartbeat that the end comes in: no write after it.
+	write.Store(0)
+	beat.Store(int64(150 * time.Millisecond))
+	log = client.NewLog(nil)
+	b.Clients, b.Heartbeat = f.clients(2, log), time.Nanosecond
+	if from, err = b.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	end = from.Add(b.For).UnixNano()
+	beats := 0
+	for _, r := range log.Records() {
+		if r.Op == "write" && r.Sent > end {
+			t.Errorf("a write sent %v past the end, after the heartbeat", time.Duration(r.Sent-end))
+		}
+		if r.Op == "heartbeat" && r.Status == http.StatusOK {
+			beats++
+		}
+	}
+	if beats != 1 {
+		t.Errorf("%d heartbeats answered, want the one the end came in", beats)
+	}
+	// A reader alone, past the drain: cut before its answer's head, then
+	// in its body; neither is an error.
+	view.Store(int64(10 * time.Second))
+	for _, late := range []bool{false, true} {
+		bodyLate.Store(late)
+		log = client.NewLog(nil)
+		b.Clients, b.Drain = f.clients(1, log), 100*time.Millisecond
+		if from, err = b.Run(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		var summary bytes.Buffer
+		if err := Summarize(&summary, log.Records(), from); err != nil || !strings.Contains(summary.String(), "view n=0 ") ||
+			!strings.Contains(summary.String(), " cut=1 errors=0 cut_longest=") {
+			t.Errorf("a view past the drain, its body late %v: %v\n%s", late, err, summary.String())
+		}
+		if late && !slices.ContainsFunc(log.Records(), func(r client.Record) bool { return r.Op == "view" && r.Status == 200 && r.Cut }) {
+			t.Errorf("the view cut in its body: %+v", log.Records())
+		}
 	}
 }
