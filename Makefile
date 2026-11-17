@@ -94,7 +94,7 @@ image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它�
 		-t $(IMAGE) .
 
 .PHONY: image-smoke
-image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、curl、jq、openssl）
+image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、git、curl、jq、openssl）
 	deploy/image-smoke.sh $(IMAGE) $(VERSION)
 
 .PHONY: tools
@@ -619,7 +619,7 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 TEST_VERSION := 0.0.0-short
 
 .PHONY: test-go-short
-test-go-short: ##只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
+test-go-short: ## 只跑 server 的单元测试：go test -short，盖一个不是默认值的版本号，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
 	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
 	@# （S1 修复第二轮），它们由 test-go-costs、test-go-costs-lint 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
 	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），

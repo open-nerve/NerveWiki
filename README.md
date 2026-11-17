@@ -505,7 +505,7 @@ M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 curl、jq、openssl）
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 git、curl、jq、openssl）
 ```
 
 镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
