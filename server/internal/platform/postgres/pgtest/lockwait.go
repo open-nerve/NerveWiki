@@ -101,7 +101,8 @@ func WaitForAdvisoryLockWaits(t testing.TB, pool *pgxpool.Pool, space, key int32
 // does not count: a test that holds a table's lock stops whatever reads it,
 // such as a background job that holds no row, at its read. Any statement's
 // wait counts: where a running server's jobs may read the table too, such
-// as the purge, which it runs as it starts, use WaitForTableLockWaitsBy. A
+// as the purge, which it runs as it starts, use WaitForTableLockWaitsBy, or
+// await those jobs before taking the lock, as transferTeam does. A
 // database without the table fails the test at once.
 func WaitForTableLockWaits(t testing.TB, pool *pgxpool.Pool, table string, n int, limit time.Duration) {
 	t.Helper()
@@ -113,9 +114,16 @@ func WaitForTableLockWaits(t testing.TB, pool *pgxpool.Pool, table string, n int
 // names statement ("-- name: X") counts. Another statement's wait for the
 // table does not, such as a running server's job's: a test that holds the
 // table and waits for its read's own statement knows the read has come
-// that far, and not that something else came first.
+// that far, and not that something else came first. Not so for a
+// statement sent in a pgx batch: pgx parses the batch's statements before
+// the first runs, and on the simple protocol the batch shows as its first
+// statement. A statement named "" fails the test at once: it would count
+// any statement's wait.
 func WaitForTableLockWaitsBy(t testing.TB, pool *pgxpool.Pool, table, statement string, n int, limit time.Duration) {
 	t.Helper()
+	if statement == "" {
+		t.Fatal("pgtest: no statement")
+	}
 	waitForTableLock(t, pool, table, statement, n, limit)
 }
 

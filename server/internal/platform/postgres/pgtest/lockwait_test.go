@@ -132,7 +132,8 @@ func TestWaitForTableLockWaitsCountsItsTablesLock(t *testing.T) {
 // statement only, as sqlc names it: not another statement's wait for the
 // table, one sqlc did not name, one whose name only begins with its
 // statement's, nor its statement's wait for another table. Those waits are
-// there: WaitForTableLockWaits counts them.
+// there: WaitForTableLockWaits counts them. No statement's name fails at
+// once, though five statements wait for the table.
 func TestWaitForTableLockWaitsByCountsItsStatement(t *testing.T) {
 	t.Parallel()
 	url := pgtest.NewDatabase(t)
@@ -156,11 +157,14 @@ func TestWaitForTableLockWaitsByCountsItsStatement(t *testing.T) {
 		pgtest.WaitForTableLockWaitsBy(tb, pool, "auth_sessions", "Nobody", 1, 300*time.Millisecond)
 	})
 	missing := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaitsBy(tb, pool, "nope", "Mine", 1, 300*time.Millisecond) })
+	unnamed := fatalOf(func(tb testing.TB) {
+		pgtest.WaitForTableLockWaitsBy(tb, pool, "auth_sessions", "", 1, 300*time.Millisecond)
+	})
 	if three != "2 statement(s) waited for the lock of the table auth_sessions in Mine within 300ms, want at least 3" ||
 		none != "0 statement(s) waited for the lock of the table auth_sessions in Nobody within 300ms, want at least 1" ||
-		missing != `pgtest: no table "nope"` {
-		t.Errorf("3 waits in Mine failed with %q, a statement that does not wait with %q, no table with %q; want each to fail",
-			three, none, missing)
+		missing != `pgtest: no table "nope"` || unnamed != "pgtest: no statement" {
+		t.Errorf("3 waits in Mine failed with %q, a statement that does not wait with %q, no table with %q, no statement with %q; "+
+			"want each to fail", three, none, missing, unnamed)
 	}
 }
 

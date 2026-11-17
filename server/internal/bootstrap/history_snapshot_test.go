@@ -19,11 +19,12 @@ import (
 // changeset C. A holder locks page_revisions; the cell's read waits on it
 // at its second read or a later one, the first (ListChangesets,
 // FindChangeset, the path's StateOf) having begun, and the test waits for
-// that statement's wait; then a revert R of C is written through SQL and
-// committed, which touches no page_revisions, and the holder lets go. The
-// answer is of the moment of its first read: C is not reverted, and the
-// log does not list R. Read again, C is reverted by R, and the log lists
-// R: the row SQL wrote is read.
+// the read's wait at that later statement, by its name (waits); then a
+// revert R of C is written through SQL and committed, which touches no
+// page_revisions, and the holder lets go. The answer is of the moment of
+// its first read: C is not reverted, and the log does not list R. Read
+// again, C is reverted by R, and the log lists R: the row SQL wrote is
+// read.
 //
 // Before the snapshot, the three logs' cells were what H5 says: C
 // reverted by R in a log without R (ChangesetFacts, or the path's
@@ -97,7 +98,7 @@ func TestTheLogReadsOneMomentAcrossARevert(t *testing.T) {
 			go func() { done <- send() }()
 			// The read's own wait, by its statement: the purge, which the
 			// server runs as it starts, waits for page_revisions too, and
-			// counted, R would be written before the read's first read.
+			// counted, R could be written before the read's first read.
 			pgtest.WaitForTableLockWaitsBy(t, tm.pool, "page_revisions", tt.waits, 1, interleavingWait)
 			// R, as a background revert's changeset is written: every column
 			// with no default (background_cost_test.go's revertOfAttachments).
