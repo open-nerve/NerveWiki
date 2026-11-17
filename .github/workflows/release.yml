@@ -1,0 +1,206 @@
+name: Release
+
+# 发布（00-M12 4.10、M12/P5）。推 vX.Y.Z 或 vX.Y.Z-rc.N 的 tag：闸门 → 两种架构各自构建、按摘要推送、拉回来 smoke → …（S2）。
+# 分支与 main 的每次推送只走演练：两种原生 runner 各自构建（不推送）、smoke，只读。写权限只在 tag 的作业里（移交 M0-P6 第 1 条），
+# server/internal/platform/buildinfo/release_test.go 读这份文件核对每个作业的权限、if 与调的脚本。推 tag 之前问负责人（00-M12 4.11）。
+# 读 tag 的那次运行：gh run list --workflow release.yml --branch <tag>；ci-wait.sh <sha> release.yml 可能取到 main 上的演练
+on:
+  push:
+    # 两样都写：只写 tags 时分支的推送不触发，只写 branches 时 tag 的推送不触发；tag 的推送本来就不看 paths
+    branches: ["**"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
+
+permissions: {}
+
+# tag 的运行不取消：发布做到一半被取消，只留下一半。分支上新的推送取消较早的演练；main 的每次运行各占一组（同 ci.yml）
+concurrency:
+  group: ${{ github.ref_type == 'tag' && format('release-{0}', github.ref) || (github.ref == 'refs/heads/main' && format('rehearse-main-{0}', github.run_id) || format('rehearse-{0}', github.ref)) }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+env:
+  # 仓库名有大写，镜像名必须小写（00-M12 4.10）
+  IMAGE: ghcr.io/open-nerve/nervewiki
+  # build-push-action 默认把构建记录传成 artifact，这里不留
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
+
+jobs:
+  # 演练：两种原生 runner 各自构建（不推送）、smoke。Dockerfile 的 web 阶段在目标架构上 pnpm install 与构建，有按架构选的原生
+  # 可选依赖：只在 arm64 上坏的构建在合并时就看得到（00-M12 4.10）。不缓存，不传 artifact（P5 设计 P5-7）
+  rehearse:
+    name: rehearse (${{ matrix.arch }})
+    if: github.ref_type != 'tag'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      # 与默认值不同：image-smoke.sh 由此确认版本号是注入的
+      VERSION: 0.0.0-rehearsal.${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # .git 进入镜像的构建阶段（取提交信息），其中不能有令牌
+          persist-credentials: false
+      # image-smoke.sh 照工作区算期望的 modified：工作区要干净，二进制才一定是 modified=false（设计审查 B 的 N5）
+      - name: The tree is clean
+        run: test -z "$(git status --porcelain)" || { git status --short; exit 1; }
+      # image-smoke.sh 要的工具；arm 的 runner 的软件表没有列 openssl
+      - name: Tools
+        run: |
+          uname -m
+          for t in docker curl jq openssl git; do command -v "$t" >/dev/null || { echo "缺 $t"; exit 1; }; done
+          openssl version
+      # BuildKit 按摘要钉住，演练与 build 是同一个（M12/P5/S1；守卫核对两处相同）。v0.34.2 是 buildx-stable-1 那时指的
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+      # 提交与它的时间，同 make image（M12/P5/S1）
+      - name: Labels
+        id: labels
+        run: |
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+      # 路径上下文：build-push-action 默认的 Git 上下文不带 .git，二进制就没有提交信息（00-M12 4.10）
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          load: true
+          push: false
+          provenance: false
+          sbom: false
+          tags: nervewiki:rehearsal
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ steps.labels.outputs.revision }}
+            CREATED=${{ steps.labels.outputs.created }}
+      # 原生构建，不是仿真
+      - name: The image is the runner's architecture
+        run: test "$(docker image inspect -f '{{.Architecture}}' nervewiki:rehearsal)" = "${{ matrix.arch }}"
+      - name: Image smoke
+        run: deploy/image-smoke.sh nervewiki:rehearsal "$VERSION"
+
+  # 闸门（00-M12 4.10）：tag 的写法、提交在 main 上、它的 ci.yml 已绿、CHANGELOG.md 有这一节；再 make vuln，npm 一侧照 high
+  gate:
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      version: ${{ steps.gate.outputs.version }}
+      prerelease: ${{ steps.gate.outputs.prerelease }}
+      sha: ${{ steps.gate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # origin/main 与 tag 都要在
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Gate
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: deploy/release-gate.sh "$GITHUB_REF_NAME"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: server/go.mod
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        run: corepack enable
+      # 挡发布的是 high 及以上；vuln.yml 每天照 low 报给人看（00-M12 4.3）
+      - name: Vulnerabilities
+        run: make vuln VULN_AUDIT_LEVEL=high
+
+  # 每种架构在原生 runner 上构建、按摘要推送（不打 tag），再拉回刚推的摘要来 smoke：smoke 过的就是推上去的；
+  # 失败时 GHCR 里只留一个没有 tag 的摘要（00-M12 4.10）
+  build:
+    name: build (${{ matrix.arch }})
+    needs: gate
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # .git 进入镜像的构建阶段（取提交信息），其中不能有令牌
+          persist-credentials: false
+      - name: The tree is clean
+        run: test -z "$(git status --porcelain)" || { git status --short; exit 1; }
+      - name: Tools
+        run: |
+          uname -m
+          for t in docker curl jq openssl git; do command -v "$t" >/dev/null || { echo "缺 $t"; exit 1; }; done
+          openssl version
+      # 与演练逐字相同（守卫核对）
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Labels
+        id: labels
+        run: |
+          echo "revision=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "created=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+      # oci-mediatypes：索引的注解要 OCI 的媒体类型（S2 的 publish）
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          provenance: false
+          sbom: false
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true,oci-mediatypes=true
+          build-args: |
+            VERSION=${{ env.VERSION }}
+            REVISION=${{ steps.labels.outputs.revision }}
+            CREATED=${{ steps.labels.outputs.created }}
+      - name: Image smoke on the pushed digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          deploy/image-smoke.sh "$IMAGE@$DIGEST" "$VERSION"
+          test "$(docker image inspect -f '{{.Architecture}}' "$IMAGE@$DIGEST")" = "${{ matrix.arch }}"
+      # 摘要经 artifact 交给后面的作业（矩阵的作业输出会互相盖掉）；重跑时同名的 artifact 要能覆盖
+      - name: Digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: mkdir -p "$RUNNER_TEMP/digests" && printf '%s\n' "$DIGEST" > "$RUNNER_TEMP/digests/${{ matrix.arch }}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: digest-${{ matrix.arch }}
+          path: ${{ runner.temp }}/digests/${{ matrix.arch }}
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30

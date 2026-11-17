@@ -8,13 +8,18 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
+
+	"go.yaml.in/yaml/v3"
 )
 
-// The release's scripts and workflows (00-M12 4.10, M12/P5/S1): the gate and the notes run against a fake gh and
-// throwaway repositories, executed directly so that their executable bit and #! line count. They need bash, git, jq
-// and awk, which README's "需要安装" lists.
+// The release's scripts and workflows (00-M12 4.10, M12/P5/S1): the three workflows are read as data; the gate and the
+// notes run against a fake gh and throwaway repositories, executed directly so that their executable bit and #! line
+// count. They need bash, git, jq and awk, which README's "需要安装" lists.
 
 // repoRoot is the repository's root, absolute.
 func repoRoot(t *testing.T) string {
@@ -464,5 +469,231 @@ func TestTheReleaseNotes(t *testing.T) {
 				t.Errorf("exit %d, stdout %q, stderr %q; want 1, nothing and %q", got.code, got.stdout, got.stderr, c.words)
 			}
 		})
+	}
+}
+
+// workflow is a workflow file decoded as YAML: "on" stays a string key.
+type workflow = map[string]any
+
+// readWorkflow decodes .github/workflows/<name>.
+func readWorkflow(t *testing.T, name string) workflow {
+	t.Helper()
+	content, err := os.ReadFile(filepath.Join(repoRoot(t), ".github", "workflows", name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var w workflow
+	if err := yaml.Unmarshal(content, &w); err != nil {
+		t.Fatalf("%s: %v", name, err)
+	}
+	return w
+}
+
+// field is m[key] when m is a map, else nil.
+func field(m any, key string) any {
+	if mm, ok := m.(map[string]any); ok {
+		return mm[key]
+	}
+	return nil
+}
+
+// jobsOf is a workflow's jobs by id.
+func jobsOf(t *testing.T, name string, w workflow) map[string]any {
+	t.Helper()
+	jobs, ok := w["jobs"].(map[string]any)
+	if !ok || len(jobs) == 0 {
+		t.Fatalf("%s: no jobs", name)
+	}
+	return jobs
+}
+
+// stepsOf is a job's steps.
+func stepsOf(job any) []map[string]any {
+	var steps []map[string]any
+	list, _ := field(job, "steps").([]any)
+	for _, s := range list {
+		if m, ok := s.(map[string]any); ok {
+			steps = append(steps, m)
+		}
+	}
+	return steps
+}
+
+// needsOf is a job's needs, one or a list.
+func needsOf(job any) []string {
+	switch n := field(job, "needs").(type) {
+	case string:
+		return []string{n}
+	case []any:
+		var needs []string
+		for _, v := range n {
+			s, _ := v.(string)
+			needs = append(needs, s)
+		}
+		return needs
+	}
+	return nil
+}
+
+// yamlStrings is a YAML list of strings, as the decoder gives one.
+func yamlStrings(v ...string) []any {
+	list := make([]any, 0, len(v))
+	for _, s := range v {
+		list = append(list, s)
+	}
+	return list
+}
+
+// releaseJob is a row of the table of release.yml's jobs: when it runs, what its token may do, and the jobs it
+// needs at least.
+type releaseJob struct {
+	when        string
+	permissions map[string]any
+	needs       []string
+}
+
+// releaseJobs is the table of release.yml's jobs (P5 design 3.9). A job of S2 goes in here with its permissions
+// before the workflow takes it.
+func releaseJobs() map[string]releaseJob {
+	return map[string]releaseJob{
+		"rehearse": {"github.ref_type != 'tag'", map[string]any{"contents": "read"}, nil},
+		"gate":     {"github.ref_type == 'tag'", map[string]any{"contents": "read", "actions": "read"}, nil},
+		"build":    {"github.ref_type == 'tag'", map[string]any{"contents": "read", "packages": "write"}, []string{"gate"}},
+	}
+}
+
+// expression is a ${{ … }} in a run's text, spaces or none around what it holds.
+var expression = regexp.MustCompile(`\$\{\{\s*([^}]*?)\s*\}\}`)
+
+// Only a tag's jobs may write (00-M12 4.10, the hand-off M0-P6 item 1, M12/P5/S1): the three workflows read as
+// data. ci.yml runs on branches alone, with a read-only token; vuln.yml reads only; release.yml's rehearsal reads
+// only, and its tag's jobs have the permissions, the condition and the scripts of the table, with no way to go on
+// after a failure. In all three a checkout leaves no token in .git (it goes into the image's build context) and a
+// run's text takes no expression but the matrix's, so that a tag's name or a commit's message reaches a script
+// only through the environment.
+func TestOnlyATagsJobsMayWrite(t *testing.T) {
+	entries, err := os.ReadDir(filepath.Join(repoRoot(t), ".github", "workflows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if want := []string{"ci.yml", "release.yml", "vuln.yml"}; !slices.Equal(names, want) {
+		t.Fatalf(".github/workflows holds %q, want %q: a new workflow's permissions are written here first", names, want)
+	}
+	readOnly := map[string]any{"contents": "read"}
+
+	ci := readWorkflow(t, "ci.yml")
+	if push := field(ci["on"], "push"); !reflect.DeepEqual(push, map[string]any{"branches": yamlStrings("**")}) {
+		t.Errorf("ci.yml: on.push is %v, want branches [\"**\"] alone: a tag runs release.yml, not ci.yml again", push)
+	}
+	vuln := readWorkflow(t, "vuln.yml")
+	if push, _ := field(vuln["on"], "push").(map[string]any); push["branches"] == nil || push["tags"] != nil {
+		t.Errorf("vuln.yml: on.push is %v, want branches and no tags", push)
+	}
+	for name, w := range map[string]workflow{"ci.yml": ci, "vuln.yml": vuln} {
+		if !reflect.DeepEqual(w["permissions"], readOnly) {
+			t.Errorf("%s: permissions %v, want contents: read alone", name, w["permissions"])
+		}
+		for id, job := range jobsOf(t, name, w) {
+			if p := field(job, "permissions"); p != nil {
+				t.Errorf("%s: job %s has permissions %v of its own, want the workflow's", name, id, p)
+			}
+		}
+	}
+
+	release := readWorkflow(t, "release.yml")
+	for name, w := range map[string]workflow{"ci.yml": ci, "vuln.yml": vuln, "release.yml": release} {
+		for id, job := range jobsOf(t, name, w) {
+			for i, step := range stepsOf(job) {
+				if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/checkout@") &&
+					field(step["with"], "persist-credentials") != false {
+					t.Errorf("%s: job %s, step %d checks out without persist-credentials: false", name, id, i+1)
+				}
+				run, _ := step["run"].(string)
+				for _, m := range expression.FindAllStringSubmatch(run, -1) {
+					if !regexp.MustCompile(`^matrix\.[a-z_]+$`).MatchString(m[1]) {
+						t.Errorf("%s: job %s, step %d runs %s: only the matrix may be written into a run, the rest "+
+							"goes through env", name, id, i+1, m[0])
+					}
+				}
+			}
+		}
+	}
+
+	on, _ := release["on"].(map[string]any)
+	if want := map[string]any{"push": map[string]any{
+		"branches": yamlStrings("**"), "tags": yamlStrings("v[0-9]+.[0-9]+.[0-9]+*"),
+	}}; !reflect.DeepEqual(on, want) {
+		t.Errorf("release.yml: on is %v, want %v alone", on, want)
+	}
+	if p, ok := release["permissions"].(map[string]any); !ok || len(p) != 0 {
+		t.Errorf("release.yml: permissions %v, want {}", release["permissions"])
+	}
+	jobs, table := jobsOf(t, "release.yml", release), releaseJobs()
+	for id := range jobs {
+		if _, ok := table[id]; !ok {
+			t.Errorf("release.yml: job %s is not in the table of this test", id)
+		}
+	}
+	for id, want := range table {
+		job, ok := jobs[id]
+		if !ok {
+			t.Errorf("release.yml: no job %s", id)
+			continue
+		}
+		if when := field(job, "if"); when != want.when {
+			t.Errorf("release.yml: job %s runs if %v, want %q and nothing more", id, when, want.when)
+		}
+		if p, ok := field(job, "permissions").(map[string]any); !ok || !reflect.DeepEqual(p, want.permissions) {
+			t.Errorf("release.yml: job %s has permissions %v, want %v", id, field(job, "permissions"), want.permissions)
+		}
+		for _, need := range want.needs {
+			if !slices.Contains(needsOf(job), need) {
+				t.Errorf("release.yml: job %s needs %v, want %s among them", id, needsOf(job), need)
+			}
+		}
+		if field(job, "continue-on-error") != nil {
+			t.Errorf("release.yml: job %s has continue-on-error", id)
+		}
+		for i, step := range stepsOf(job) {
+			if step["continue-on-error"] != nil {
+				t.Errorf("release.yml: job %s, step %d has continue-on-error", id, i+1)
+			}
+			if id == "gate" && step["if"] != nil {
+				t.Errorf("release.yml: the gate's step %d runs if %v: each of its steps always runs", i+1, step["if"])
+			}
+		}
+	}
+	// the gate runs the script, then make vuln at high, one step each
+	var gate, vulnStep []int
+	for i, step := range stepsOf(jobs["gate"]) {
+		switch step["run"] {
+		case `deploy/release-gate.sh "$GITHUB_REF_NAME"`:
+			gate = append(gate, i)
+		case "make vuln VULN_AUDIT_LEVEL=high":
+			vulnStep = append(vulnStep, i)
+		}
+	}
+	if len(gate) != 1 || len(vulnStep) != 1 || gate[0] > vulnStep[0] {
+		t.Errorf("release.yml: the gate's steps %v run the gate script and %v make vuln VULN_AUDIT_LEVEL=high, "+
+			"want one each, the script first", gate, vulnStep)
+	}
+	// one BuildKit, by digest, for the rehearsal and the build
+	buildkit := map[string]any{}
+	for _, id := range []string{"rehearse", "build"} {
+		for _, step := range stepsOf(jobs[id]) {
+			if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "docker/setup-buildx-action@") {
+				buildkit[id] = field(step["with"], "driver-opts")
+			}
+		}
+	}
+	opts, _ := buildkit["rehearse"].(string)
+	if !regexp.MustCompile(`^image=moby/buildkit:v[0-9.]+@sha256:[0-9a-f]{64}$`).MatchString(opts) ||
+		buildkit["build"] != opts {
+		t.Errorf("release.yml: the rehearsal's BuildKit is %v and the build's %v, want one moby/buildkit:<version>@sha256:…",
+			buildkit["rehearse"], buildkit["build"])
 	}
 }
