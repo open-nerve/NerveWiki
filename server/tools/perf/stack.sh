@@ -69,7 +69,7 @@ wait_for() {
 # it started.
 ours() {
   local cmdline
-  cmdline=$(tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null) || return 1
+  cmdline=$({ tr '\0' ' ' <"/proc/$1/cmdline"; } 2>/dev/null) || return 1
   [[ $cmdline == *nervewiki*serve* ]]
 }
 
