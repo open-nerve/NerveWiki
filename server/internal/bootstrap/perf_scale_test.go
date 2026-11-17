@@ -43,8 +43,9 @@ func startCostScale() guardScale {
 		Write: 15 * time.Second, Client: 12 * time.Second}
 }
 
-// checkCostScale is the check's guard's: 50,000 pages, lint's cost
-// configuration of a 6 s request and a 3 s worker.
+// checkCostScale is the check's guard's: 50,000 pages, a 6 s request and
+// a 3 s worker, lint's cost configuration as it was before decision 475
+// (lint's own guard has twice them).
 func checkCostScale() guardScale {
 	return guardScale{Size: 50_000, Request: 6 * time.Second, Own: 3 * time.Second, Worker: true}
 }
@@ -138,15 +139,23 @@ func (s guardScale) judge(errorf func(string, ...any), name string, value, bound
 	}
 }
 
-// checkWaits fails t unless the timed request's client outwaits the
-// guarded call and the server's write timeout outlasts its read and its
-// request: else the client or the server ends the request before the
-// call's deadline does, and judges in its place (00-M12 decision 359).
+// waits is nil when the timed request's client outwaits the guarded call
+// and the server's write timeout outlasts its read and its request: else
+// the client or the server ends the request before the call's deadline
+// does, and judges in its place (00-M12 decision 359).
+func (s guardScale) waits() error {
+	if s.Client <= s.Own || s.Write <= s.Read+s.Request {
+		return fmt.Errorf("the client waits %v for a call of %v; the write timeout is %v for a read of %v and a request of %v: "+
+			"want the client past the call, the write past both", s.Client, s.Own, s.Write, s.Read, s.Request)
+	}
+	return nil
+}
+
+// checkWaits fails t unless s.waits.
 func (s guardScale) checkWaits(t testing.TB) {
 	t.Helper()
-	if s.Client <= s.Own || s.Write <= s.Read+s.Request {
-		t.Fatalf("the client waits %v for a call of %v; the write timeout is %v for a read of %v and a request of %v: "+
-			"want the client past the call, the write past both", s.Client, s.Own, s.Write, s.Read, s.Request)
+	if err := s.waits(); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -257,7 +266,8 @@ func countOf(least int) func(string) (int, error) {
 // by its formula, a client of twice the request and a write timeout past
 // the read and the request, the approval's folders round(n/95), and only
 // logged; NW_SCALE_REQUEST its request, lint's worker half of it past
-// 10 s; a bad value an error; judge errs past the bound unless by hand.
+// 10 s; a bad value an error; the timed requests' waits hold, and fail at
+// their edges; judge errs past the bound unless by hand.
 func TestGuardScaleKeepsEachGuardsOwnUnlessGiven(t *testing.T) {
 	const s = time.Second
 	env := func(vars map[string]string) func(string) string { return func(k string) string { return vars[k] } }
@@ -309,6 +319,29 @@ func TestGuardScaleKeepsEachGuardsOwnUnlessGiven(t *testing.T) {
 		got, err := guardScaleOf(env(c.vars), "NW_SCALE_PAGES", c.def)
 		if folders := approveCostFoldersOf(got, 95); err != nil || folders != c.want {
 			t.Errorf("%v: %d folders, %v; want %d", c.vars, folders, err, c.want)
+		}
+	}
+	// The waits the start's and the approval's guards check before they
+	// time a request, their own and by hand; one at each edge is an error.
+	for _, c := range []struct {
+		def  guardScale
+		vars map[string]string
+	}{
+		{startCostScale(), nil}, {approveCostScale(), nil},
+		{startCostScale(), map[string]string{"NW_SCALE_PAGES": "20000"}},
+		{approveCostScale(), map[string]string{"NW_SCALE_PAGES": "100000", "NW_SCALE_REQUEST": "2m"}},
+	} {
+		got, err := guardScaleOf(env(c.vars), "NW_SCALE_PAGES", c.def)
+		if err != nil || got.waits() != nil {
+			t.Errorf("%v: %+v, %v; its waits %v, want none", c.vars, got, err, got.waits())
+		}
+	}
+	for _, edge := range []guardScale{
+		{Request: 6 * s, Own: 4500 * time.Millisecond, Read: 5 * s, Write: 15 * s, Client: 4500 * time.Millisecond},
+		{Request: 6 * s, Own: 4500 * time.Millisecond, Read: 5 * s, Write: 11 * s, Client: 12 * s},
+	} {
+		if edge.waits() == nil {
+			t.Errorf("%+v: no error, want one: the client at the call, or the write at the read and the request", edge)
 		}
 	}
 	for _, c := range []struct {

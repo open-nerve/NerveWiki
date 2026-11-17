@@ -72,8 +72,9 @@ const startCostBound = 3600 * time.Millisecond
 // notebook of 50,000 pages, 15,000 of them in raw, the source
 // root the start proposes, each with ten wanted links, and one in ten of the
 // others with one, of 1,000 targets, beside startCostOthers notebooks of
-// 50,000 pages; the start under lint's cost configuration, a 6 s request,
-// with its own deadline of three quarters of it, sent by a client of 12 s
+// 50,000 pages; the start under a 6 s request, lint's cost configuration
+// before decision 475 (lint's own guard has twice it), with its own
+// deadline of three quarters of it, sent by a client of 12 s
 // that outwaits it (startCostScale). upgrade_nodes, nodes,
 // page_contents and edit_sessions never analyzed; then the three analyzed,
 // and upgrade_nodes by a start of this notebook; then upgrade_nodes with

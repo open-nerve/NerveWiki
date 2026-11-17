@@ -44,10 +44,17 @@ func TestLintOfAHundredThousandPagesKeepsItsTimeAndMemory(t *testing.T) {
 		t.Skip("100k true wiki runtime cost runs alone without race")
 	}
 	scale := scaleOf(t, "NW_SCALE_PAGES", lintCostScale())
+	// By hand the bounds are logged, not judged: a worker under a bound
+	// (NW_SCALE_REQUEST under 10.4 s) is logged, and a run past it ends at
+	// the worker.
 	for operation, limit := range wikiCostLimits() {
 		if wall := time.Duration(limit.WallNS); wall >= scale.Own || scale.Own >= scale.Request {
-			t.Fatalf("%s's wall bound %v, worker %v, request %v: want the bound under the worker under the request", operation, wall,
-				scale.Own, scale.Request)
+			if !scale.ByHand {
+				t.Fatalf("%s's wall bound %v, worker %v, request %v: want the bound under the worker under the request", operation,
+					wall, scale.Own, scale.Request)
+			}
+			t.Logf("%s's wall bound %v is not under the worker %v of the request %v by hand: a run past the worker ends at it",
+				operation, wall, scale.Own, scale.Request)
 		}
 	}
 	f := newWikiCostFixtureOf(t, "Hundred thousand pages", scale.Size, scale.Own)
