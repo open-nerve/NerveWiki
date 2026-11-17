@@ -68,6 +68,15 @@ func lintCostScale() guardScale {
 // given by hand runs under unless NW_SCALE_REQUEST says otherwise.
 const productionRequest = 15 * time.Second
 
+// minScaleSize is the least size by hand: 20,000, the size the design's
+// trial ran the four guards at and each passed. The switch is for sizes
+// past a guard's own, and below this the guards' checks of correctness do
+// not follow the size: lint's orphans reach their cap of 10,000 only past
+// 10,003 pages, and the start's seed reaches its 1,000 wanted pages only
+// in a larger notebook (69 of 1,000 pages; review C's M6, the same as the
+// long log's floor, review A's M1).
+const minScaleSize = 20_000
+
 // guardScaleOf is def, a guard's own, unless sizeVar (NW_SCALE_PAGES)
 // gives a size by hand: then production's request deadline, or
 // NW_SCALE_REQUEST's, the call's own deadline by production's formula
@@ -77,7 +86,8 @@ const productionRequest = 15 * time.Second
 // the test configuration's read timeout, a write timeout past the read and
 // the request (the configuration's check: read + request < write) and a
 // client that outwaits the request twice (00-M12 decision 359). A bad
-// value, or NW_SCALE_REQUEST without a size, is an error.
+// value, a size under minScaleSize, or NW_SCALE_REQUEST without a size, is
+// an error.
 func guardScaleOf(getenv func(string) string, sizeVar string, def guardScale) (guardScale, error) {
 	size, request := getenv(sizeVar), getenv("NW_SCALE_REQUEST")
 	if size == "" {
@@ -89,6 +99,10 @@ func guardScaleOf(getenv func(string) string, sizeVar string, def guardScale) (g
 	n, err := strconv.Atoi(size)
 	if err != nil || n < 1 {
 		return guardScale{}, fmt.Errorf("%s=%q is no positive size", sizeVar, size)
+	}
+	if n < minScaleSize {
+		return guardScale{}, fmt.Errorf("%s=%d is under %d, the size the guards were tried at: below it their checks of "+
+			"correctness do not follow the size (lint's capped orphans, the start's 1,000 wanted pages)", sizeVar, n, minScaleSize)
 	}
 	s := guardScale{Size: n, ByHand: true, Request: productionRequest, Worker: def.Worker, Read: 5 * time.Second}
 	if request != "" {
@@ -301,6 +315,7 @@ func TestGuardScaleKeepsEachGuardsOwnUnlessGiven(t *testing.T) {
 	}
 	for _, vars := range []map[string]string{
 		{"NW_SCALE_PAGES": "lots"}, {"NW_SCALE_PAGES": "0"}, {"NW_SCALE_PAGES": "-20000"}, {"NW_SCALE_PAGES": "2e4"},
+		{"NW_SCALE_PAGES": "1000"}, {"NW_SCALE_PAGES": "19999"},
 		{"NW_SCALE_PAGES": "20000", "NW_SCALE_REQUEST": "60"}, {"NW_SCALE_PAGES": "20000", "NW_SCALE_REQUEST": "0s"},
 		{"NW_SCALE_PAGES": "20000", "NW_SCALE_REQUEST": "-1m"}, {"NW_SCALE_REQUEST": "60s"},
 	} {
