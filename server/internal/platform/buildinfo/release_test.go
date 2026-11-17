@@ -666,10 +666,11 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 		t.Errorf("ci.yml: on.push is %v, want branches [\"**\"] alone: a tag runs release.yml, not ci.yml again", push)
 	}
 	// actionlint runs nowhere else (decision 435): one step of the server job runs it, on the costs-1 leg, which is
-	// one of the job's legs, with nothing to let it fail quietly
+	// one of the job's legs. The step is its name, its if and its run alone: a shell, an env (MAKEFLAGS=n), a
+	// continue-on-error or a working directory of its own could let it pass without linting
 	server := jobsOf(t, "ci.yml", ci)["server"]
 	var legs []any
-	if include, ok := field(field(server, "strategy"), "matrix").(map[string]any)["include"].([]any); ok {
+	if include, ok := field(field(field(server, "strategy"), "matrix"), "include").([]any); ok {
 		for _, leg := range include {
 			legs = append(legs, field(leg, "leg"))
 		}
@@ -680,11 +681,10 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 			lintActions = append(lintActions, step)
 		}
 	}
-	if len(lintActions) != 1 || lintActions[0]["run"] != "make lint-actions" ||
-		lintActions[0]["if"] != "matrix.leg == 'costs-1'" || lintActions[0]["continue-on-error"] != nil ||
-		!slices.Contains(legs, any("costs-1")) {
-		t.Errorf("ci.yml: the server job's steps that run lint-actions are %v and its legs %v, want one step "+
-			"\"make lint-actions\" if matrix.leg == 'costs-1', a leg of the job: actionlint runs nowhere else", lintActions, legs)
+	lintStep := map[string]any{"name": "Lint workflows", "if": "matrix.leg == 'costs-1'", "run": "make lint-actions"}
+	if len(lintActions) != 1 || !reflect.DeepEqual(lintActions[0], lintStep) || !slices.Contains(legs, any("costs-1")) {
+		t.Errorf("ci.yml: the server job's steps that run lint-actions are %v and its legs %v, want one step %v "+
+			"and nothing more, on a leg of the job: actionlint runs nowhere else", lintActions, legs, lintStep)
 	}
 	vuln := readWorkflow(t, "vuln.yml")
 	if push, _ := field(vuln["on"], "push").(map[string]any); push["branches"] == nil || push["tags"] != nil {
