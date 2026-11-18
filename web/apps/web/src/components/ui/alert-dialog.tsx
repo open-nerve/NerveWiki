@@ -26,7 +26,7 @@ export function AlertDialogContent({ className, ...props }: ComponentProps<typeo
 }
 
 export function AlertDialogTitle({ className, ...props }: ComponentProps<typeof Primitive.Title>) {
-  return <Primitive.Title className={cn("text-lg font-semibold", className)} {...props} />;
+  return <Primitive.Title className={cn("text-lg font-semibold [overflow-wrap:anywhere]", className)} {...props} />;
 }
 
 export function AlertDialogDescription({ className, ...props }: ComponentProps<typeof Primitive.Description>) {

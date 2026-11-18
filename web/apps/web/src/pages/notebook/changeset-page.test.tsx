@@ -448,3 +448,59 @@ test("a node read away as the focus is on its link gives the focus to the title"
   await waitFor(() => expect(nodes()).toHaveLength(7));
   expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Edit · Ada" }));
 });
+
+// A name of another direction does not turn the line around it (M12/P2/S3; M5-polish 32.4).
+
+/** bdis are the texts of the bdis in element, in order. */
+const bdis = (element: Element) => [...element.querySelectorAll("bdi")].map((bdi) => bdi.textContent);
+
+const manual = pageNode(21, "מדריך");
+const setup = pageNode(22, "התקנה");
+
+test("a changeset's page writes its MCP client's name, what it undid and its nodes' names where they were renamed each in a bdi", async () => {
+  const server = pageServer({ nodes: [guide, install, linux, notes, setup] });
+  const david = { user_id: "0199a2b4-0000-7000-8000-000000000003", display_name: "דוד" };
+  const rtl = server.log("rtl", {
+    at: "2026-10-05T08:02:00Z",
+    by: david,
+    client: "mcp:עוזר",
+    changes: [renamed({ ...setup, name: "מדריך" }, "התקנה")],
+  });
+  const undo = server.log("undo", {
+    at: "2026-10-05T08:04:00Z",
+    kind: "revert",
+    client: "mcp:עוזר",
+    reverts: rtl.id,
+    changes: [renamed(setup, "מדריך")],
+  });
+  rtl.revertedBy = [undo.id];
+  renderApp(changesetPath(undo.id), server.app);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Undo change · Ada" });
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  const client = (heading.nextElementSibling as HTMLElement).querySelector("p") as HTMLElement;
+  expect(bdis(client)).toEqual(["עוזר"]);
+  expect(client.textContent).toBe("Client: MCP (עוזר)");
+  const undid = screen.getByRole("link", { name: /^Undid/ });
+  expect(bdis(undid)).toEqual(["דוד"]);
+  expect(undid.textContent).toBe("Undid “Edit · דוד · Oct 5, 2026, 8:02 AM”");
+  const said = [...rowOf("התקנה").querySelectorAll("span")].find((span) =>
+    span.textContent?.startsWith("Renamed:")
+  ) as HTMLElement;
+  expect(bdis(said)).toEqual(["מדריך", "התקנה"]);
+  expect(said.textContent).toBe("Renamed: “מדריך” → “התקנה”");
+});
+
+test("a node moved between two pages of another direction names where it was and where it is in that order, each in a bdi", async () => {
+  const quota = pageNode(23, "Quota", setup);
+  const server = pageServer({ nodes: [guide, install, linux, notes, manual, setup, quota] });
+  const move = server.log("move", { changes: [moved(quota, manual.id)] });
+  renderApp(changesetPath(move.id), server.app);
+
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  const said = [...rowOf("Quota").querySelectorAll("span")].find((span) =>
+    span.textContent?.startsWith("Moved")
+  ) as HTMLElement;
+  expect([...said.querySelectorAll("bdi")].map((bdi) => bdi.textContent)).toEqual(["מדריך", "התקנה"]);
+  expect(said.textContent).toBe("Moved from “מדריך” to “התקנה”");
+});

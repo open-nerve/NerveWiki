@@ -1,10 +1,13 @@
 import { expectChangesetOf, expectNewPage, expectVersions } from "../../fixtures/assert/page";
+import { bearer } from "../../fixtures/auth";
+import { revertChangeset } from "../../fixtures/history";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { historyListed, historyPath, wikiPagePath } from "../../fixtures/wiki-pages";
+import { changesetPath, historyListed, historyPath, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam } from "../../fixtures/workspaces";
 
 // MC3, an agent writes and edits pages over MCP (M9 design 9; M9/P2 design
@@ -162,3 +165,71 @@ test("MC3 (MCP): an agent writes a page with its missing parents in one changese
     },
   ]);
 });
+
+// At a phone's width (M12/P2/S3; M5-polish 26.17, 32.1–32.3, 35.8, 38.12): an MCP client's name of 128 characters
+// and an author's of 100, neither with a space, widen no row, filter or line of the history and a changeset's page,
+// in Chromium and in WebKit (@narrow). Only the second write is undone: undoing a creation puts its page in the trash,
+// and the page filter would name "a deleted page" (M12/P2 design review B-M1).
+test(
+  "MC3 (page): at 375 wide, a client's name of 128 characters and an author's of 100, neither with a space, keep the history, its filters and a changeset's page to the screen",
+  { tag: "@narrow" },
+  async ({ api, nervewiki, signedInPage }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const author = `ada_${"a".repeat(96)}`;
+    const agentName = `agent.${"c".repeat(122)}`;
+    const title = `report_${"r".repeat(113)}`;
+    const other = `other_${"o".repeat(114)}`;
+    const renamed = `renamed_${"n".repeat(112)}`;
+    expect(
+      (await api.PATCH("/api/v0/me", { body: { display_name: author }, headers: bearer(pat) })).response.status
+    ).toBe(200);
+    const notebook = await createNotebook(api, pat, workspace.slug, "Handbook");
+    const agent = await mcpClient(nervewiki.baseURL, pat, { notebook: notebook.id, client: agentName });
+    const wrote = resultOf<Written>(await agent.call("write", { path: `${title}.md`, content: "Long.\n" }), "write");
+    const second = resultOf<Written>(await agent.call("write", { path: `${other}.md`, content: "Other.\n" }), "write");
+    expect((await revertChangeset(api, pat, String(second.changeset_id))).response.status).toBe(200);
+    const page = await signedInPage(tokens);
+    const main = page.getByRole("main");
+    await page.setViewportSize({ width: phoneWidth, height: 800 });
+    const breadcrumb = main.getByRole("navigation", { name: "Breadcrumb" });
+    const changed = main.getByRole("list", { name: "Nodes of this change" });
+
+    // The history: its filters (Who lists the author, Client the agent) and its rows.
+    await goto(page, historyPath(workspace.slug, notebook.id));
+    const listed = historyListed(page);
+    await expect(listed).toHaveCount(3);
+    const wrapper = (label: string) => main.getByLabel(label, { exact: true }).locator("xpath=..");
+    await expectFits(
+      page,
+      wrapper("Who"),
+      wrapper("Client"),
+      wrapper("Ingestion"),
+      ...[0, 1, 2].map((n) => listed.nth(n))
+    );
+
+    // Filtered by the long title's page.
+    await goto(page, historyPath(workspace.slug, notebook.id, { page: wrote.node_id }));
+    const filtered = main.getByText(`Page: ${title}`, { exact: true });
+    await expect(filtered).toBeVisible();
+    await expectFits(page, filtered.locator("xpath=.."));
+
+    // The write's page: its client, its breadcrumbs (who made it, when) and its node's link.
+    await goto(page, changesetPath(workspace.slug, notebook.id, String(wrote.changeset_id)));
+    const clientLine = main.getByText(`Client: MCP (${agentName})`, { exact: true });
+    await expect(clientLine).toBeVisible();
+    await expectFits(page, clientLine, breadcrumb, changed.getByRole("link", { name: title, exact: true }));
+
+    // The undone write's: its node, in the trash, by name.
+    await goto(page, changesetPath(workspace.slug, notebook.id, String(second.changeset_id)));
+    const gone = changed.getByText(other, { exact: true });
+    await expect(gone).toBeVisible();
+    await expectFits(page, gone, breadcrumb);
+
+    // A rename's: "Renamed: “…” → “…”".
+    const moved = resultOf<Written>(await agent.call("move", { from: `${title}.md`, to: `${renamed}.md` }), "rename");
+    await goto(page, changesetPath(workspace.slug, notebook.id, String(moved.changeset_id)));
+    const said = main.getByText(`Renamed: “${title}” → “${renamed}”`, { exact: true });
+    await expect(said).toBeVisible();
+    await expectFits(page, said);
+  }
+);

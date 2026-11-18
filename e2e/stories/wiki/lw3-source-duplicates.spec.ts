@@ -10,6 +10,7 @@ import { holdStream } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
 import { goto, reload } from "../../fixtures/navigation";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, moveNode, postPage, readContent } from "../../fixtures/pages";
 import { expect, test, watchOf } from "../../fixtures/test";
@@ -283,7 +284,7 @@ for (const change of ["created", "moved in"] as const) {
   });
 }
 
-test("LW3 (page): at 375 wide a long source keeps to the page and its refused dialog's buttons to the dialog", async ({
+test("LW3 (page): at 375 wide a long source keeps to the page and its refused dialog's buttons to the dialog, and a source's name without a space keeps its page and the dialogs that name it to the screen", async ({
   api,
   signedInPage,
   pageWatch,
@@ -317,7 +318,7 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   expect(width).toEqual({ viewport: 375, content: 375 });
 
   const unbroken = "attention_is_all_you_need_vaswani_2017_neurips";
-  await createPage(api, pat, notebook.id, unbroken, raw, "same bytes\n");
+  const long = await createPage(api, pat, notebook.id, unbroken, raw, "same bytes\n");
   await page.setViewportSize({ width: 1280, height: 800 });
   await goto(page, wikiPagePath(workspace.slug, notebook.id, raw));
   await choosePageAction(page, notebook.name, "raw", "Paste Markdown");
@@ -338,6 +339,31 @@ test("LW3 (page): at 375 wide a long source keeps to the page and its refused di
   if (edge === null || add === null) throw new Error("the dialog has no box");
   expect(add.x + add.width).toBeLessThanOrEqual(edge.x + edge.width);
   await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+
+  // A source's name without a space keeps its page to the screen (M12/P2/S3; M5-polish 38.10).
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, long.id));
+  await expect(pageHeading(page, unbroken)).toBeVisible();
+  await expectFits(page, pageHeading(page, unbroken));
+
+  // The paste's and the upload's dialogs name the page they put sources under: one's long name keeps to them (38.11).
+  const folder = `folder_${"f".repeat(40)}`;
+  const shelf = await createPage(api, pat, notebook.id, folder, raw);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, shelf.id));
+  await expect(pageHeading(page, folder)).toBeVisible();
+  await choosePageAction(page, notebook.name, folder, "Paste Markdown");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  const paste = page.getByRole("dialog", { name: `Paste Markdown under ${folder}`, exact: true });
+  await expectFits(page, paste, paste.getByRole("heading"));
+  await page.keyboard.press("Escape");
+  await expect(paste).toBeHidden();
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await choosePageAction(page, notebook.name, folder, "Upload files");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  const upload = page.getByRole("dialog", { name: `Upload sources under ${folder}`, exact: true });
+  await expectFits(page, upload, upload.getByRole("heading"));
+  await page.keyboard.press("Escape");
+  await expect(upload).toBeHidden();
 
   // A select takes the width of its longest option, a long source's path among them.
   await createPage(api, pat, notebook.id, "Plain");

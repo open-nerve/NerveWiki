@@ -18,7 +18,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof Primi
   return (
     <Primitive.Trigger
       className={cn(
-        "-mb-px rounded-t-md border-b-2 border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 data-[state=active]:border-primary data-[state=active]:text-foreground",
+        "-mb-px rounded-t-md border-b-2 border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring data-[state=active]:border-primary data-[state=active]:text-foreground",
         className
       )}
       {...props}
@@ -29,7 +29,7 @@ export function TabsTrigger({ className, ...props }: ComponentProps<typeof Primi
 export function TabsContent({ className, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Content
-      className={cn("rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50", className)}
+      className={cn("rounded-md outline-none focus-visible:ring-[3px] focus-visible:ring-ring", className)}
       {...props}
     />
   );

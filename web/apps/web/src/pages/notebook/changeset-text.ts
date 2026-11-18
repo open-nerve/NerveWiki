@@ -1,5 +1,6 @@
 import { formatDateTime } from "../../i18n/format";
 import type { Translate } from "../../i18n/i18n";
+import { same, type Namer } from "../../i18n/isolated";
 import type { Locale } from "../../i18n/locale";
 import { shortId, twinsOf } from "../../lib/twins";
 import type { Changeset, ChangesetBrief, ChangesetChange, RevertConflict } from "../../services/page.service";
@@ -31,9 +32,10 @@ export function kindText(kind: Changeset["kind"], t: Translate): string {
 /**
  * clientText is where a changeset's writes came from: the web, the API,
  * the CLI, an MCP client by its name (mcp:<name>), or, as a filter, every
- * MCP client (mcp); a client this does not know, as it is.
+ * MCP client (mcp); a client this does not know, as it is. An MCP client's name, and one not known, are names (name:
+ * isolated.tsx).
  */
-export function clientText(client: string, t: Translate): string {
+export function clientText(client: string, t: Translate, name: Namer = same): string {
   switch (client) {
     case "web":
       return t("history.client.web");
@@ -44,7 +46,9 @@ export function clientText(client: string, t: Translate): string {
     case "mcp":
       return t("history.client.mcpAll");
   }
-  return client.startsWith("mcp:") ? t("history.client.mcp", { name: client.slice("mcp:".length) }) : client;
+  return client.startsWith("mcp:")
+    ? t("history.client.mcp", { name: name(client.slice("mcp:".length)) })
+    : name(client);
 }
 
 /** byText is who made a changeset, and what it was: "Edit · Ada". */
@@ -56,11 +60,17 @@ export function byText(changeset: ChangesetBrief, t: Translate): string {
  * changesetName is how a changeset is named where it leads (v0.1 design
  * 13.2, item 17): by its kind, who made it and when, to the minute, as
  * locale writes it; a twin, another named the same, by the end of its id
- * too (twinsIn).
+ * too (twinsIn). Who made it is a name (by: isolated.tsx).
  */
-export function changesetName(changeset: ChangesetBrief, twin: boolean, t: Translate, locale: Locale): string {
+export function changesetName(
+  changeset: ChangesetBrief,
+  twin: boolean,
+  t: Translate,
+  locale: Locale,
+  by: Namer = same
+): string {
   const kind = kindText(changeset.kind, t);
-  const name = changeset.created_by.display_name;
+  const name = by(changeset.created_by.display_name);
   const time = formatDateTime(changeset.created_at, locale);
   return twin
     ? t("history.nameTwin", { kind, name, time, id: shortId(changeset.id) })
@@ -97,9 +107,9 @@ export function countsText(changeset: Changeset, t: Translate, locale: Locale): 
   });
 }
 
-/** changeText says what a change did to its node, as a log's row sums it up: "renamed “B” to “C”". */
-function changeText(change: ChangesetChange, t: Translate): string {
-  const name = change.after?.name ?? change.before?.name ?? change.node.name;
+/** changeText says what a change did to its node, as a log's row sums it up: "renamed “B” to “C”", each name by named. */
+function changeText(change: ChangesetChange, t: Translate, named: Namer): string {
+  const name = named(change.after?.name ?? change.before?.name ?? change.node.name);
   switch (change.kind) {
     case "created":
       return t("history.change.created", { name });
@@ -110,11 +120,11 @@ function changeText(change: ChangesetChange, t: Translate): string {
     case "moved":
       return t("history.change.moved", { name });
     case "renamed":
-      return t("history.change.renamed", { from: change.before?.name ?? "", to: name });
+      return t("history.change.renamed", { from: named(change.before?.name ?? ""), to: name });
     case "reordered":
       return t("history.change.reordered", { name });
     case "content":
-      return t("history.change.content", { name: change.node.name });
+      return t("history.change.content", { name: named(change.node.name) });
   }
 }
 
@@ -123,10 +133,10 @@ function changeText(change: ChangesetChange, t: Translate): string {
  * three by node id: what each did, one after the other, as a sentence of
  * locale, and an ellipsis when it changed more: a node has one item and
  * one version at most in a changeset, so the items and versions not
- * listed are of nodes not listed (M8/P3B review B-1).
+ * listed are of nodes not listed (M8/P3B review B-1). Each name is a name (name: isolated.tsx).
  */
-export function changesText(changeset: Changeset, t: Translate, locale: Locale): string {
-  const said = changeset.changes.map((change) => changeText(change, t)).join(t("history.separator"));
+export function changesText(changeset: Changeset, t: Translate, locale: Locale, name: Namer = same): string {
+  const said = changeset.changes.map((change) => changeText(change, t, name)).join(t("history.separator"));
   const items = changeset.changes.filter((change) => change.kind !== "content").length;
   const versions = changeset.changes.filter((change) => change.content !== null).length;
   const more = changeset.node_count > items || changeset.content_count > versions ? "…" : "";

@@ -1034,3 +1034,48 @@ test.each([
   expect(screen.getByText(said)).toBeTruthy();
   expect(screen.getByRole("button", { name: remove })).toBeTruthy();
 });
+
+// A name of another direction does not turn the line around it (M12/P2/S3; M5-polish 26.12, 32.4).
+
+/** bdis are the texts of the bdis in element, in order. */
+const bdis = (element: Element) => [...element.querySelectorAll("bdi")].map((bdi) => bdi.textContent);
+
+test("a name of another direction does not turn a row around it: an MCP client's, the names of its changes and of the author of what it undid, each in a bdi", async () => {
+  const server = pageServer();
+  const david = { user_id: "0199a2b4-0000-7000-8000-000000000003", display_name: "דוד" };
+  const rtl = server.log("rtl", {
+    at: "2026-10-05T08:02:00Z",
+    by: david,
+    client: "mcp:עוזר",
+    changes: [renamed(notes, "מדריך")],
+  });
+  const undo = server.log("undo", {
+    at: "2026-10-05T08:04:00Z",
+    kind: "revert",
+    reverts: rtl.id,
+    changes: [renamed({ ...notes, name: "מדריך" }, "Notes")],
+  });
+  rtl.revertedBy = [undo.id];
+  renderApp(historyPath, server.app);
+
+  await screen.findByRole("list", { name: "Changes" });
+  const [reverting, renaming] = rows() as HTMLElement[];
+  const client = (renaming as HTMLElement).querySelector("time")?.parentElement as HTMLElement;
+  expect(bdis(client)).toEqual(["עוזר"]);
+  expect(client.textContent).toMatch(/^MCP \(עוזר\) · /);
+  const summary = [...(renaming as HTMLElement).querySelectorAll("p")].find((p) =>
+    p.textContent?.startsWith("Renamed")
+  ) as HTMLElement;
+  expect(bdis(summary)).toEqual(["מדריך", "Notes"]);
+  expect(summary.textContent).toBe("Renamed “מדריך” to “Notes”");
+  const undid = within(reverting as HTMLElement).getByRole("link", { name: /^Undid/ });
+  expect(bdis(undid)).toEqual(["דוד"]);
+  expect(undid.textContent).toBe("Undid “Edit · דוד · Oct 5, 2026, 8:02 AM”");
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(screen.getByRole("list", { name: "改动" })).toBeTruthy());
+  const [, zh] = within(screen.getByRole("list", { name: "改动" })).getAllByRole("listitem");
+  const zhClient = (zh as HTMLElement).querySelector("time")?.parentElement as HTMLElement;
+  expect(zhClient.textContent).toMatch(/^MCP（עוזר） · /);
+  expect(bdis(zhClient)).toEqual(["עוזר"]);
+});

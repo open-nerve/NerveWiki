@@ -1043,3 +1043,28 @@ test("a page deleted in the tree and restored from the trash in the same tab is 
   expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBe(document.activeElement);
   expect(within(tree).getByRole("link", { name: "Install" }).getAttribute("aria-current")).toBe("page");
 });
+
+// A name of another direction does not turn the line around it (M12/P2/S3; M5-polish 26.12).
+test("an item's facts write where it was, who deleted it and where a restore puts it, each name in a bdi", async () => {
+  const manual = pageNode(21, "מדריך");
+  const setup = pageNode(22, "התקנה", manual);
+  const quota = pageNode(23, "Quota", setup);
+  const server = pageServer({ nodes: [guide, install, linux, notes, manual, setup, quota] });
+  server.trashNode(quota.id).deletedBy = { user_id: "0199a2b4-0000-7000-8000-000000000003", display_name: "דוד" };
+  renderApp(trashPath, server.app);
+
+  await screen.findByRole("list", { name: "Trash" });
+  const [row] = rows() as HTMLElement[];
+  const bdis = () => [...(row as HTMLElement).querySelectorAll("bdi")].map((bdi) => bdi.textContent);
+  expect(bdis()).toEqual(["מדריך", "התקנה", "דוד", "התקנה"]);
+  expect(row?.textContent).toContain("From: מדריך / התקנה");
+  expect(row?.textContent).toContain("Deleted by דוד · ");
+  expect(row?.textContent).toContain("Restores under “התקנה”");
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+  await waitFor(() => expect(screen.getByRole("list", { name: "回收站" })).toBeTruthy());
+  const [zh] = within(screen.getByRole("list", { name: "回收站" })).getAllByRole("listitem");
+  const by = [...(zh as HTMLElement).querySelectorAll("p")].find((p) => p.textContent?.includes("删除"));
+  expect(by?.textContent).toMatch(/^דוד 删除 · /);
+  expect(by?.querySelector("bdi")?.textContent).toBe("דוד");
+});

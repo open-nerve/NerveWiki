@@ -857,3 +857,18 @@ test("going from one workspace's results to another's reads the search in the ot
   expect(asked).toEqual(["数据库"]);
   expect(reads(server)).toEqual(["GET search 数据库"]);
 });
+
+// A name of another direction does not turn the path around it (M12/P2/S3; M5-polish 26.12).
+test("a hit's path writes its notebook and each page above it in a bdi of its own, the separators between them outside", async () => {
+  const manual = pageNode(21, "מדריך");
+  const setup = pageNode(22, "התקנה", manual);
+  const quota = pageNode(23, "Quota", setup);
+  const server = pageServer({ nodes: [guide, install, linux, notes, manual, setup, quota] });
+  renderApp(searchPath("Quota"), server.app);
+
+  await screen.findByRole("list", { name: "Search results" });
+  const [row] = hits() as HTMLElement[];
+  const path = (row as HTMLElement).querySelectorAll("p")[1] as HTMLElement;
+  expect([...path.querySelectorAll("bdi")].map((bdi) => bdi.textContent)).toEqual(["Plans", "מדריך", "התקנה"]);
+  expect(path.textContent).toBe("Plans / מדריך / התקנה");
+});

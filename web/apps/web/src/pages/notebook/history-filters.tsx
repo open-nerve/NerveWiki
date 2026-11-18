@@ -123,7 +123,7 @@ export const HistoryFilters = observer(function HistoryFilters({
         : t("history.nodeDeleted");
   return (
     <div className="flex flex-wrap items-end gap-4">
-      <div className="space-y-2">
+      <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={ids.actor}>{t("history.actor")}</Label>
         <NativeSelect
           ref={whoRef}
@@ -139,7 +139,7 @@ export const HistoryFilters = observer(function HistoryFilters({
           ))}
         </NativeSelect>
       </div>
-      <div className="space-y-2">
+      <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={ids.client}>{t("history.client")}</Label>
         <NativeSelect
           id={ids.client}
@@ -179,8 +179,8 @@ function PageFilter({ label, remove, left }: { label: string; remove: () => void
   const button = useRef<HTMLButtonElement>(null);
   useFocusLeaving(button, left);
   return (
-    <p className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
-      <span className="break-words">{label}</span>
+    <p className="flex min-h-9 max-w-full min-w-0 items-center gap-2 rounded-md border px-3 text-sm">
+      <span className="min-w-0 break-words">{label}</span>
       <Button
         ref={button}
         variant="ghost"

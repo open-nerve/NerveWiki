@@ -1,15 +1,21 @@
+import type { Locator, Page } from "@playwright/test";
+
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectChangesetOf, expectRenamed } from "../../fixtures/assert/page";
+import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, postPage, renameNode } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
 import {
   breadcrumbs,
+  choosePageAction,
+  moveDialog,
   pageHeading,
   pageTree,
   renameDialog,
@@ -17,7 +23,7 @@ import {
   treeTitles,
   wikiPagePath,
 } from "../../fixtures/wiki-pages";
-import { newTeam } from "../../fixtures/workspaces";
+import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // PG2, titles and renaming (M4 design 3): siblings' titles differ by their
 // keys, the title in NFC with Unicode case folding (M4/P5 design 3.7 for the
@@ -162,3 +168,72 @@ test("PG2 (page): an editor renames a page in its dialog; a title the rules refu
   expect(await breadcrumbs(page)).toEqual(["Plans", "Roadmap 2027"]);
   await expectRenamed(db, roadmap.id, "Roadmap", "Roadmap 2027", editorId);
 });
+
+/** The width of a laptop's screen, the dialogs opened at it, where a tree row's actions are at hand. */
+const laptopWidth = 1280;
+
+/**
+ * expectDialogFits opens dialog by open at laptopWidth, then checks it and its title keep to a phone's screen
+ * (expectFits; a dialog is fixed, so it is checked itself), and closes it.
+ */
+async function expectDialogFits(page: Page, open: () => Promise<void>, dialog: Locator): Promise<void> {
+  await page.setViewportSize({ width: laptopWidth, height: 800 });
+  await open();
+  await expect(dialog).toBeVisible();
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await expectFits(page, dialog, dialog.getByRole("heading"));
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+}
+
+// At a phone's width (M12/P2/S3; M5-polish 38.10, 38.11): a title of 120 characters without a space widens neither
+// its page nor its breadcrumbs, nor runs out of the dialogs that name it, in Chromium and in WebKit (@narrow); at a
+// laptop's width the page is no wider either.
+test(
+  "PG2 (page): at 375 wide, a title of 120 characters without a space keeps the page, its breadcrumbs and the dialogs that name it to the screen: rename, move, delete, and its attachment's rename and move",
+  { tag: "@narrow" },
+  async ({ api, signedInPage }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+    const title = `roadmap_${"x".repeat(112)}`;
+    const scan = `scan_${"s".repeat(110)}.txt`;
+    const plans = await createPage(api, pat, notebook.id, `plans_${"p".repeat(114)}`);
+    const roadmap = await createPage(api, pat, notebook.id, title, plans.id);
+    await uploadAsset(api, pat, notebook.id, { name: scan, bytes: utf8("scanned\n") }, roadmap.id);
+    const page = await signedInPage(tokens);
+    const heading = pageHeading(page, title);
+
+    await page.setViewportSize({ width: laptopWidth, height: 800 });
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, roadmap.id));
+    await expect(heading).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(laptopWidth);
+    await page.setViewportSize({ width: phoneWidth, height: 800 });
+    await expectFits(page, heading, page.getByRole("navigation", { name: "Breadcrumb", exact: true }));
+
+    const pageAction = (item: string) => () => choosePageAction(page, "Plans", title, item);
+    await expectDialogFits(page, pageAction("Rename"), renameDialog(page, title));
+    await expectDialogFits(page, pageAction("Move to…"), moveDialog(page, title));
+    await expectDialogFits(
+      page,
+      pageAction("Delete"),
+      page.getByRole("alertdialog", { name: `Delete ${title}?`, exact: true })
+    );
+    const assetAction = (item: string) => async () => {
+      await page
+        .getByRole("region", { name: "Attachments", exact: true })
+        .getByRole("button", { name: `Actions for ${scan}`, exact: true })
+        .click();
+      await page.getByRole("menuitem", { name: item, exact: true }).click();
+    };
+    await expectDialogFits(
+      page,
+      assetAction("Rename"),
+      page.getByRole("dialog", { name: `Rename ${scan}`, exact: true })
+    );
+    await expectDialogFits(
+      page,
+      assetAction("Move to…"),
+      page.getByRole("dialog", { name: `Move ${scan}`, exact: true })
+    );
+  }
+);

@@ -272,7 +272,7 @@ const PageShell = observer(function PageShell({
             ref={heading}
             tabIndex={-1}
             aria-describedby={restored === undefined ? undefined : restoredNote}
-            className="text-3xl font-semibold break-words outline-none"
+            className="min-w-0 text-3xl font-semibold break-words outline-none"
           >
             {page.name}
           </h1>

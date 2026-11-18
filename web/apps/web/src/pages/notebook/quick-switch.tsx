@@ -168,7 +168,10 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
               aria-selected={index === current}
               onMouseDown={(event) => event.preventDefault()}
               onClick={() => go(page.id)}
-              className={cn("cursor-pointer px-3 py-1.5 text-sm", index === current && "bg-accent")}
+              className={cn(
+                "cursor-pointer px-3 py-1.5 text-sm",
+                index === current && "bg-accent ring-2 ring-ring ring-inset"
+              )}
             >
               <span className="block truncate">{page.name}</span>{" "}
               <span className="block truncate text-xs text-muted-foreground">
