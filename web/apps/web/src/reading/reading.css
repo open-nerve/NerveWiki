@@ -383,10 +383,18 @@
   }
 
   /* An attachment's image or video, no wider than the view, its height
-     kept to its width. */
+     kept to its width: unless the page wrote its height (data-nw-sized,
+     the server's mark of a size written, not the image's own), which it
+     keeps (the base layer's rule at the end of this file), the image
+     scaled within its box, not stretched (M12/P2/S5, 15.1). */
   .nw-reading :is(img, video).nw-asset {
     max-width: 100%;
+  }
+  .nw-reading :is(img, video).nw-asset:not([data-nw-sized][height]) {
     height: auto;
+  }
+  .nw-reading :is(img, video).nw-asset[data-nw-sized][height] {
+    object-fit: contain;
   }
 
   /* An attachment's size, after its link (reading/assets.ts): on the
@@ -481,5 +489,16 @@
   .nw-reading .hljs-deletion {
     color: var(--nw-hl-deletion);
     background: var(--nw-hl-deletion-background);
+  }
+}
+
+/* The height the page wrote of an attachment's image or video: the
+   preflight's img, video { height: auto } (this layer) is stronger than
+   the height attribute, which is a presentational hint; reverting this
+   layer leaves the attribute's (M12/P2/S5, 15.1, its record: the
+   components' rules alone kept no height in the three engines). */
+@layer base {
+  .nw-reading :is(img, video).nw-asset[data-nw-sized][height] {
+    height: revert-layer;
   }
 }
