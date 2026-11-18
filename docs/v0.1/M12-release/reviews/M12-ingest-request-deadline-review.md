@@ -236,7 +236,7 @@
   | 1 | `8fd158fd` | 44242224718 | 19 项第一次 attempt 全绿：guards-sources 在 Xeon 6975P-C 上（作业 11:50，Test 11:29），改名 1.570–1.624 秒，期限 15 秒；`race` 14:15，八份组合根的 Test 4:14–5:57，`e2e` 8:03（E2E 一步 6:43），`image` 1:15。另两份工作流（Release、Vulnerabilities）也绿 |
   | 2 | `a1b7b7e5` | 44254273872 | 第一次 attempt 18 项绿：guards-sources 在 Xeon 6975P-C 上（Test 11:09），改名 1.529–1.555 秒，删除组 0.305–0.318 秒；`race` 15:11，八份组合根的 Test 4:28–6:29。`e2e`（job 134639978308）卡在"Install the Playwright browsers"（07:10:17 起），到 20 分钟的作业时限被取消，E2E 一步跳过；本支只改组合根的测试，`8fd158fd` 上 e2e 是绿的。主持者只重跑 e2e：第二次 attempt 为绿（e2e 6:59：装浏览器 0:38，E2E 5:54） |
 
-- **本提交自己的分支 CI**：（待填：本提交的分支 CI）
+- **本提交自己的分支 CI**：`9683a24f` 的 run 44262546903，19 项第一次 attempt 全绿：guards-sources 11:01（Test），`short` 4:17，`race` 9:07，e2e 9:12（E2E 一步 8:02）。旁支合并为 `e635b957`，之后第一次 `main` 的 run 44267189291：18 项第一次 attempt 绿（guards-sources Test 12:14）；e2e 第一、二次 attempt 卡在"Install the Playwright browsers"，到 20 分钟的作业时限被取消，只重跑 e2e，第三次 attempt 绿（装浏览器 0:55，E2E 7:21）。装浏览器的慢另由旁支 `m12-e2e-browsers-install` 查与修。
 
 ## 环境
 
