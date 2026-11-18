@@ -128,6 +128,46 @@ func TestWaitForTableLockWaitsCountsItsTablesLock(t *testing.T) {
 	}
 }
 
+// WaitForTableLockWaitsBy counts the waits for its table's lock by its
+// statement only, as sqlc names it: not another statement's wait for the
+// table, one sqlc did not name, one whose name only begins with its
+// statement's, nor its statement's wait for another table. Those waits are
+// there: WaitForTableLockWaits counts them. An empty statement's name
+// fails at once, though five statements wait for the table.
+func TestWaitForTableLockWaitsByCountsItsStatement(t *testing.T) {
+	t.Parallel()
+	url := pgtest.NewDatabase(t)
+	pool := newPool(t, url)
+	holdTableAndWait(t, url, "auth_sessions",
+		"-- name: Mine :one\nSELECT count(*) FROM auth_sessions",
+		"-- name: Mine :one\nSELECT count(*) FROM auth_sessions",
+		"-- name: Other :one\nSELECT count(*) FROM auth_sessions",
+		"-- name: MineToo :one\nSELECT count(*) FROM auth_sessions",
+		"SELECT count(*) FROM auth_sessions")
+	holdTableAndWait(t, url, "users", "-- name: Mine :one\nSELECT count(*) FROM users")
+
+	pgtest.WaitForTableLockWaits(t, pool, "auth_sessions", 5, 10*time.Second)
+	pgtest.WaitForTableLockWaits(t, pool, "users", 1, 10*time.Second)
+	pgtest.WaitForTableLockWaitsBy(t, pool, "auth_sessions", "Mine", 2, 10*time.Second)
+	pgtest.WaitForTableLockWaitsBy(t, pool, "users", "Mine", 1, 10*time.Second)
+	three := fatalOf(func(tb testing.TB) {
+		pgtest.WaitForTableLockWaitsBy(tb, pool, "auth_sessions", "Mine", 3, 300*time.Millisecond)
+	})
+	none := fatalOf(func(tb testing.TB) {
+		pgtest.WaitForTableLockWaitsBy(tb, pool, "auth_sessions", "Nobody", 1, 300*time.Millisecond)
+	})
+	missing := fatalOf(func(tb testing.TB) { pgtest.WaitForTableLockWaitsBy(tb, pool, "nope", "Mine", 1, 300*time.Millisecond) })
+	unnamed := fatalOf(func(tb testing.TB) {
+		pgtest.WaitForTableLockWaitsBy(tb, pool, "auth_sessions", "", 1, 300*time.Millisecond)
+	})
+	if three != "2 statement(s) waited for the lock of the table auth_sessions in Mine within 300ms, want at least 3" ||
+		none != "0 statement(s) waited for the lock of the table auth_sessions in Nobody within 300ms, want at least 1" ||
+		missing != `pgtest: no table "nope"` || unnamed != "pgtest: no statement" {
+		t.Errorf("3 waits in Mine failed with %q, a statement that does not wait with %q, no table with %q, no statement with %q; "+
+			"want each to fail", three, none, missing, unnamed)
+	}
+}
+
 // WaitForAdvisoryLockWaits counts the waits for its key pair only, a
 // negative key too: not those for another pair, nor for a row.
 func TestWaitForAdvisoryLockWaitsCountsItsKeys(t *testing.T) {
@@ -233,6 +273,41 @@ func holdAndWaitIn(t *testing.T, url, held, waits string, n int) {
 			t.Error(err)
 		}
 		for range n {
+			if err := <-done; err != nil {
+				t.Errorf("a waiting connection: %v", err)
+			}
+		}
+	})
+}
+
+// holdTableAndWait makes a connection to url hold the lock of table, and a
+// connection of its own run each of waits after it, until the test ends.
+func holdTableAndWait(t *testing.T, url, table string, waits ...string) {
+	t.Helper()
+	tx, err := connect(t, url).Begin(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(context.Background(), "LOCK TABLE "+table+" IN ACCESS EXCLUSIVE MODE"); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	done := make(chan error, len(waits))
+	for _, wait := range waits {
+		waiter := connect(t, url)
+		go func() {
+			_, err := waiter.Exec(ctx, wait)
+			done <- err
+		}()
+	}
+	// Runs before the connections close: the holder rolls back, and the
+	// waiters go on.
+	t.Cleanup(func() {
+		defer cancel()
+		if err := tx.Rollback(context.Background()); err != nil {
+			t.Error(err)
+		}
+		for range waits {
 			if err := <-done; err != nil {
 				t.Errorf("a waiting connection: %v", err)
 			}
