@@ -208,3 +208,22 @@ test("an unchanged block already coloured is not written again", () => {
   document.body.removeChild(container);
   undo?.();
 });
+
+// Review B's M4 (M12/P2/S4): a view undone before its worker answered (another's write read again at once, the
+// language changed while highlight.js loads) leaves its blocks plain; run again, they are sent again and coloured.
+test("a block sent and undone before it was answered is sent again and coloured the next run", () => {
+  const container = view('<pre><code class="language-go">func later() {}</code></pre>');
+  const silent = new FakeWorker("silent");
+  const answering = new FakeWorker();
+  const workers = [silent, answering];
+  const highlight = codeHighlight(() => workers.shift() ?? new FakeWorker());
+
+  highlight(container, context)?.();
+  expect(silent.sent.map((request) => request.text)).toEqual(["func later() {}"]);
+  expect(container.querySelector("span.hljs-keyword")).toBeNull();
+  const undo = highlight(container, context);
+
+  expect(answering.sent.map((request) => request.text)).toEqual(["func later() {}"]);
+  expect(container.querySelector("span.hljs-keyword")?.textContent).toBe("func");
+  undo?.();
+});

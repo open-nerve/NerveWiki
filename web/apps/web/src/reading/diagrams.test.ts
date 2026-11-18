@@ -452,3 +452,70 @@ test("two drawings whose elements' ids are not the drawing's own have no id in c
     expect(svg.querySelector("title")?.textContent).toMatch(/^sequenceDiagram; A->>B: (one|two)$/);
   }
 });
+
+/** sankey is a drawing of a sankey's shape, of links links: each a gradient and a path that fills from it, no id the drawing's. */
+function sankey(id: string, links: number): string {
+  const each = Array.from(
+    { length: links },
+    (_, k) =>
+      `<g class="link"><linearGradient id="linearGradient-${k}"><stop offset="0%"></stop></linearGradient>` +
+      `<path d="M${k},0" stroke="url(#linearGradient-${k})"></path></g>`
+  );
+  return `<svg id="${id}"><style>#${id} .link{stroke-opacity:0.5}</style><g class="links">${each.join("")}</g></svg>`;
+}
+
+// Review B's I1 (M12/P2/S4): a drawing is put again each time the view is written. Renamed an id at a time, a sankey of
+// a thousand links took a second, read through again for each id; its ids are read once, the renamed looked up.
+test("a drawing of thousands of ids not its own is read through a few times, not once for each id", async () => {
+  const links = 2000;
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "sankey",
+    render: async (id) => ({ svg: sankey(id, links) }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("sankey-beta\na,b,1");
+  diagrams(async () => draw, watch)(article, context());
+  const length = sankey("nw_mermaid_0", links).length;
+  const replace = vi.spyOn(String.prototype, "replace");
+  try {
+    show(blocks[0] as Element);
+    await settled();
+    // A scan is a replace of the drawing whole: once for its own id, then once for each kind of name.
+    const scans = replace.mock.contexts.filter((text) => String(text).length > length / 2).length;
+    expect(scans).toBeLessThanOrEqual(10);
+  } finally {
+    replace.mockRestore();
+  }
+  const svg = article.querySelector<SVGSVGElement>(".nw-diagram svg");
+  const path = svg?.querySelector(`path[stroke="url(#${svg.id}-linearGradient-${(links - 1).toString()})"]`);
+  expect(path).not.toBeNull();
+  expect(svg?.querySelectorAll("linearGradient")).toHaveLength(links);
+});
+
+// Review B's unverified suspicion (M12/P2/S4): a gantt's task has the writer's id, unprefixed; mermaid's styles have
+// colours, #fff5ad among them. A style's selectors name elements; its declarations do not.
+test("a style's declarations name no element: a task whose id is a colour's leaves the colour, its selector renamed", async () => {
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "gantt",
+    render: async (id) => ({
+      svg:
+        `<svg id="${id}"><style>#${id} .task{fill:#fff5ad;stroke:#fff5ad}#fff5ad{stroke-width:2px}` +
+        `@media (prefers-contrast:more){#fff5ad{fill:#fff5ad}}</style><rect id="fff5ad" class="task"></rect></svg>`,
+    }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("gantt\ntask :fff5ad, 2026-01-01, 1d");
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  await settled();
+
+  const svg = article.querySelector<SVGSVGElement>(".nw-diagram svg");
+  const rect = svg?.querySelector("rect");
+  expect(rect?.id).toBe(`${svg?.id ?? ""}-fff5ad`);
+  expect(svg?.querySelector("style")?.textContent).toBe(
+    `#${svg?.id ?? ""} .task{fill:#fff5ad;stroke:#fff5ad}#${rect?.id ?? ""}{stroke-width:2px}` +
+      `@media (prefers-contrast:more){#${rect?.id ?? ""}{fill:#fff5ad}}`
+  );
+});

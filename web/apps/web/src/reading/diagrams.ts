@@ -284,41 +284,45 @@ function nextId(): string {
  * markers') have it replaced, and what names them with it. Those it does
  * not (a sequence diagram's actor0, a sankey's linearGradient-1: M12/P2/S4,
  * 11.1) take its new id before them, and so does what names them: an
- * address (url(#…), href, xlink:href), its styles' selectors, and the
+ * address (url(#…), href, xlink:href), its styles' selectors (not their
+ * declarations: a gantt task's id may be a colour's, #fff5ad), and the
  * IDREFs that name an element (aria-labelledby, aria-describedby). Only
  * mermaid's markup: the writer's text has no id (its dompurifyConfig).
+ * Each kind of name is read once through the SVG, the renamed looked up:
+ * a sankey has an id of each link and each node, and a drawing is put
+ * again each time the view is written (review B's I1).
  */
 function withOwnIds({ id, svg }: Drawing): string {
   const own = nextId();
-  let out = svg.replace(new RegExp(`${id}(?![0-9])`, "g"), own);
-  const others = new Set(
-    [...out.matchAll(/\sid="([^"]+)"/g)].map(([, other]) => other ?? "").filter((other) => !other.includes(own))
-  );
-  for (const other of others) {
-    const name = escaped(other);
-    const renamed = `${own}-${other}`;
-    out = out
-      .replace(new RegExp(`(\\sid=")${name}(")`, "g"), `$1${renamed}$2`)
-      .replace(new RegExp(`url\\(#${name}\\)`, "g"), `url(#${renamed})`)
-      .replace(new RegExp(`(\\s(?:xlink:)?href="#)${name}(")`, "g"), `$1${renamed}$2`)
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/g, (style) =>
-        style.replace(new RegExp(`#${name}(?![\\w-])`, "g"), `#${renamed}`)
-      )
-      .replace(
-        /(\s(?:aria-labelledby|aria-describedby)=")([^"]*)(")/g,
-        (_, before: string, names: string, after: string) =>
-          `${before}${names
-            .split(/(\s+)/)
-            .map((each) => (each === other ? renamed : each))
-            .join("")}${after}`
-      );
+  const out = svg.replace(new RegExp(`${id}(?![0-9])`, "g"), own);
+  const renamed = new Map<string, string>();
+  for (const [, other = ""] of out.matchAll(/\sid="([^"]+)"/g)) {
+    if (!other.includes(own)) {
+      renamed.set(other, `${own}-${other}`);
+    }
   }
-  return out;
-}
-
-/** escaped is text, each character a pattern gives a meaning taken as itself. */
-function escaped(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (renamed.size === 0) {
+    return out;
+  }
+  const to = (name: string) => renamed.get(name) ?? name;
+  return out
+    .replace(
+      /(\sid="|\s(?:xlink:)?href="#)([^"]+)(")/g,
+      (_, before: string, name: string, after: string) => `${before}${to(name)}${after}`
+    )
+    .replace(/url\(#([^)]+)\)/g, (_, name: string) => `url(#${to(name)})`)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/g, (style) =>
+      // A selector is what comes before a block, after the style's start or another block's end.
+      style.replace(
+        /(^|[{}])([^{}]*)(?=\{)/g,
+        (_, end: string, selector: string) =>
+          `${end}${selector.replace(/#([\w-]+)/g, (whole, name: string) => (renamed.has(name) ? `#${to(name)}` : whole))}`
+      )
+    )
+    .replace(
+      /(\s(?:aria-labelledby|aria-describedby)=")([^"]*)(")/g,
+      (_, before: string, names: string, after: string) => `${before}${names.split(/(\s+)/).map(to).join("")}${after}`
+    );
 }
 
 /** keep keeps the drawing of key as the one used last, the oldest dropped past keptDrawings. */
