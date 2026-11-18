@@ -68,7 +68,9 @@ export const IndexPage = observer(function IndexPage() {
       )}
       {current !== undefined && current.unfilterable_type_pages > 0 && (
         <p className="text-muted-foreground">
-          {t("index.longTypes", { count: current.unfilterable_type_pages.toLocaleString(store.preferences.locale) })}
+          {current.unfilterable_type_pages === 1
+            ? t("index.longTypesOne")
+            : t("index.longTypes", { count: current.unfilterable_type_pages.toLocaleString(store.preferences.locale) })}
         </p>
       )}
       {tree.error !== undefined && <NotLoaded error={tree.error} retry={() => void tree.mutate()} />}
@@ -254,7 +256,9 @@ const IndexResults = observer(function IndexResults({
           ? t("index.loading")
           : first === undefined
             ? ""
-            : t("index.loaded", { count: items.length.toLocaleString(store.preferences.locale) })}
+            : items.length === 1
+              ? t("index.loadedOne")
+              : t("index.loaded", { count: items.length.toLocaleString(store.preferences.locale) })}
       </output>
       {mismatch && (
         <Alert>
@@ -268,10 +272,12 @@ const IndexResults = observer(function IndexResults({
       {area != null && (
         <p>
           <Link to={`${home}/health#undigested_sources`} className="underline underline-offset-4">
-            {t("index.sources", {
-              path: root?.path ?? t("index.sourceArea"),
-              count: area.sources.toLocaleString(store.preferences.locale),
-            })}
+            {area.sources === 1
+              ? t("index.sourcesOne", { path: root?.path ?? t("index.sourceArea") })
+              : t("index.sources", {
+                  path: root?.path ?? t("index.sourceArea"),
+                  count: area.sources.toLocaleString(store.preferences.locale),
+                })}
           </Link>
         </p>
       )}

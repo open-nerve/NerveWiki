@@ -242,7 +242,9 @@ test("an undo in the background of a changeset the purge trimmed meanwhile says 
   await user.click(within(dialog).getByRole("button", { name: "Undo in the background" }));
 
   const alert = await screen.findByRole("alert");
-  expect(alert.textContent).toBe("Part of this change has been purged from the trash: it can no longer be reverted.");
+  expect(alert.textContent).toBe(
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
+  );
   await waitFor(() => expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull());
   expect(document.activeElement).toBe(title());
   expect(title().getAttribute("aria-describedby")).toBe(alert.id);

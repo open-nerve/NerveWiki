@@ -30,7 +30,7 @@ At the root, `index.md` and `log.md` are not pages anyone writes: the server wri
 
 ## Working with an agent
 
-Connect an agent to this notebook at `/mcp?notebook=<id>`. Three prompts are served there:
+Connect an agent to this notebook at `/mcp?notebook=<id>`. While the notebook is being upgraded to an LLM Wiki, the prompt `upgrade` guides the agent there; once it is one, three prompts serve it:
 
 - `ingest` reads a source, then writes or updates the pages it touches, in one change.
 - `query` answers a question from the wiki's pages, citing them and their sources.

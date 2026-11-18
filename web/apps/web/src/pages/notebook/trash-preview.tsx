@@ -212,7 +212,15 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       }
       case "page.restore_expired": {
         const told = saidGone(error.code);
-        return shell(told, <Gone text={t("trash.expiredItem")} describedBy={describing(told)} focus={handed} />);
+        // Refused here as past its time, the alert above says it: the item's own sentence would say it again.
+        return shell(
+          told,
+          <Gone
+            text={told === undefined ? t("trash.expiredItem") : undefined}
+            describedBy={describing(told)}
+            focus={handed}
+          />
+        );
       }
     }
   }
@@ -419,8 +427,14 @@ const NotInTrash = observer(function NotInTrash({
   }
   const home = `/${slug}/notebooks/${notebook.id}`;
   const open = node === undefined ? undefined : openOf({ id, kind: node.kind, parent: node.parent_id }, home);
+  // Before the tree is read, or where it could not be, the node may be this notebook's, restored, or another's: it
+  // is not in the trash, without saying it no longer is (M12/P2/S2, 22.13).
   return (
-    <Gone text={t("trash.notInTrash")} describedBy={describedBy} focus={focus}>
+    <Gone
+      text={t(node === undefined ? "trash.notInTrashUnknown" : "trash.notInTrash")}
+      describedBy={describedBy}
+      focus={focus}
+    >
       {open !== undefined && (
         <Link to={open.to} state={open.state} className="underline underline-offset-4">
           {t("trash.openIt")}
@@ -431,11 +445,11 @@ const NotInTrash = observer(function NotInTrash({
 });
 
 /**
- * Gone says what became of the item, and leads back to the trash, or where
- * children lead; what a restore from the preview was refused for, above it
- * (PreviewShell), describes its title (describedBy). Shown in place of the
- * item, which left with the focus (focus), its title takes it, the focus
- * on nothing.
+ * Gone says what became of the item (text, unless the refusal above says
+ * it), and leads back to the trash, or where children lead; what a restore
+ * from the preview was refused for, above it (PreviewShell), describes its
+ * title (describedBy). Shown in place of the item, which left with the
+ * focus (focus), its title takes it, the focus on nothing.
  */
 function Gone({
   text,
@@ -443,7 +457,7 @@ function Gone({
   focus,
   children,
 }: {
-  text: string;
+  text: string | undefined;
   describedBy: string | undefined;
   focus: boolean;
   children?: ReactNode;
@@ -464,7 +478,7 @@ function Gone({
       <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className="text-2xl font-semibold outline-none">
         {t("trash.title")}
       </h1>
-      <p>{text}</p>
+      {text !== undefined && <p>{text}</p>}
       <p className="flex flex-wrap gap-4">
         {children}
         <Link to={`/${slug}/notebooks/${notebook.id}/trash`} className="underline underline-offset-4">

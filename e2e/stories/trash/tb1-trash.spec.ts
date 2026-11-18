@@ -313,7 +313,7 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await toTrash.click();
   await expect(listed).toHaveCount(3);
   await expect(listed.filter({ hasText: "Older" })).toContainText(
-    "Restores at the top level: the page it was under is in the trash"
+    "Restores at the notebook's top level: the page it was under is in the trash"
   );
   await expect(listed.filter({ hasText: "Notes" })).toContainText("Restores under “Guide”");
 
@@ -366,14 +366,18 @@ test("TB1 (preview): a page restored from its preview, its own event reading it 
   expect((await reread).status()).toBe(200);
   // The item read again after the restore's answer, and by its event, answers it is no longer in the trash.
   const rereads = countAnswers(page, "GET", itemPath);
-  // The item shown stays while the restore is out: nothing says it is gone (M8/P2B review A-I1).
-  await page.evaluate((text) => {
-    const said = { gone: false };
-    Object.assign(window, { nervewikiE2eGone: said });
-    new MutationObserver(() => {
-      said.gone ||= document.body.textContent.includes(text);
-    }).observe(document.body, { childList: true, subtree: true, characterData: true });
-  }, "This is no longer in the trash.");
+  // The item shown stays while the restore is out: nothing says it is gone (M8/P2B review A-I1), nor, the tree not
+  // read yet, that it is not in the trash (M12/P2/S2, 22.13).
+  await page.evaluate(
+    (texts) => {
+      const said = { gone: false };
+      Object.assign(window, { nervewikiE2eGone: said });
+      new MutationObserver(() => {
+        said.gone ||= texts.some((text) => document.body.textContent.includes(text));
+      }).observe(document.body, { childList: true, subtree: true, characterData: true });
+    },
+    ["This is no longer in the trash.", "This is not in the trash."]
+  );
 
   const answer = await restoreWith(page, handbook.id, "Handbook", "From: Guide");
   expect(answer.status()).toBe(200);

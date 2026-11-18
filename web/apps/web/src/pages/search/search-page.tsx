@@ -200,7 +200,10 @@ export const SearchPage = observer(function SearchPage() {
     error instanceof ApiError && error.code === "validation_failed"
       ? (fieldErrors(error, t).q ?? errorText(error, t))
       : undefined;
-  const lastEmpty = data?.at(-1)?.data.length === 0;
+  // The last page added no hit, as More said: none, or only hits listed before (renamed between the reads).
+  const earlier = new Set((data ?? []).slice(0, -1).flatMap((read) => read.data.map((hit) => hit.node.id)));
+  const lastEmpty =
+    data !== undefined && data.length > 0 && (data.at(-1)?.data ?? []).every((hit) => earlier.has(hit.node.id));
   const now = Date.now();
   return (
     <section className="space-y-4">

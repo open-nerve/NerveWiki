@@ -536,7 +536,8 @@ test.each([
       (server.trash.get(linux.id) as FakeTrashItem).expired = true;
     },
     refusal: "“Linux” can no longer be restored: its time in the trash is over.",
-    text: "This can no longer be restored: its time in the trash is over.",
+    // The refusal above says it: the item's own sentence would say it again (M12/P2/S2, 22.12).
+    text: undefined,
   },
 ])(
   "a restore in the background from the preview of an item $meanwhile says why, and what became of it, the trash's title taking the focus, described by the refusal",
@@ -550,10 +551,14 @@ test.each([
 
     await user.click(start);
 
-    expect(await screen.findByText(text)).toBeTruthy();
+    const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+    if (text !== undefined) {
+      expect(await screen.findByText(text)).toBeTruthy();
+    } else {
+      expect(screen.queryByText("This can no longer be restored: its time in the trash is over.")).toBeNull();
+    }
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toBe(refusal);
-    const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
     expect(screen.queryByRole("button", { name: /^Restore/u })).toBeNull();

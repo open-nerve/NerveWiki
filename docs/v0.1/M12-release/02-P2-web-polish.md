@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订） |
-| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)，实施与审查之后与代码不同之处照实改在各节，结果在 10.1；S2–S6 未开工） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `（待填：合并号）`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.3；S4–S6 未开工） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -104,7 +104,7 @@
 | [M5-polish](handoffs/M5-polish.md) 附录 A 分给 P2/S1–S6 的 A、B 与几项 C、D | 4.1–4.6 逐项 |
 | 同上第 48 条 | S4（4.4，U7） |
 | 同上第 49 条 | S1，与 24.3 同一个改法（4.1） |
-| 同上 33.1 | S3 先排查：复现了在 S3 修，没复现留在发布之后的人工清单（4.3） |
+| 同上 33.1 | S3 先排查：复现了在 S3 修，没复现留在发布之后的人工清单（4.3）；实际复现了，在 S3 修（10.3） |
 | [M8-history](handoffs/M8-history.md) 第 4 条（永久删除）的界面一句 | S2（4.2）；部署文档与发布说明写明与变通在 P5/S3 |
 | [M4-performance](handoffs/M4-performance.md) 第 13 条（每小时整篇替换） | S4 的 U3（4.4）；带宽照旧并入第 11 条只量（P4/S2） |
 
@@ -125,7 +125,7 @@
 3. **"总体设计的修订"加六条**（第 7 节"总体设计的修订"，接在第 18 条之后；P3 的设计不加新条，审查 C 核对过）：
    - **第 19 条，随 P2/S1 改**：13.2 第 21 条"退出登录不问"、第 17 条"打开、切换进入的页面不抢焦点"、第 26 条到达的那一句。S1 之后旧文字不实，新文字在 8.2。
    - **第 20 条，随 P2/S2 改**：13.2 第 17 条 `page.nameIn` 那一句，加根下的页的写法（9.5）。
-   - **第 21 条，随 P2/S3 改**：13.2 加第 30 条（名字、窄屏与对比度，P2-19，8.2）；13.4 第 3 条加 `webkit-narrow`。
+   - **第 21 条，随 P2/S3 改**：13.2 加第 30 条（名字、窄屏与对比度，P2-19，8.2）；13.4 第 3 条加 `webkit-narrow`。实际是第 31 条：P4/S4 先合并、取了第 30 条（决定 505、536、593，10.3）。
    - **第 22 条，随 P2/S4 改**：13.2 第 23 条"HTML 换掉时倒序清理、再重跑"与上下文的字段（4.4）；13.4 第 3 条加 PG15。
    - **第 23 条，随 P2/S5 改**：
      - 13.2 第 27 条加上传的超时，与下载链接在点击时比到期（P2-26、P2-29）；
@@ -147,7 +147,7 @@
    - **P2/S3 一行**（`:1452`）的"另外"一格加"菜单与选项的高亮（P2 设计审查 B 的 M4，主持者的决定）"：它不在 I3 的列表里，审查时新发现，在 S3 修（P2-43）。
 8. **附录 A 的 8.1、33.1 是有条件的**（附录 A 的 P2/S4 一行 `:1453`、P2/S3 一行 `:1452` 与 M 类 `:1460`）：
    - 8.1 在 S4 先探查，33.1 在 S3 先排查；没复现的，移到"发布之后的人工验收"一节。
-   - 这一条在 S3、S4 的文档提交里照结果改（33.1 的条件 00 号文档 4.5 已写），本文只预告，脚本不改。
+   - 这一条在 S3、S4 的文档提交里照结果改（33.1 的条件 00 号文档 4.5 已写），本文只预告，脚本不改。实际：33.1 在 S3 复现、修好，附录 A 的 P2/S3 一行与 M 类照此改（决定 589，10.3）。
 9. **第 7 节 P2/S4 一行的"e2e 加阅读视图的焦点与滚动检查，三种引擎"**（`:742`）：后加"（新故事 PG15，UP1 (page) 加第 48 条的一段）"。
 
 初稿的 2.1 第 1 条（"S6 可以在结论之前做"）撤回：主持者定了 S6 在结论之后才开（C 的 Q2），00 号文档 `:744`、`:796` 原样成立。
@@ -173,7 +173,7 @@
 - **385（P2-8）单复数**：`en.ts` 里带计数、会显示 1 的十个键各加一个 `*One`，其余写明不改的理由（4.2.2）。
 - **386（P2-9）根下统一叫"笔记本的顶层"/"the notebook's top level"**，`index.root` 一并；LLM Wiki 与升级里说库根位置的"根下"不改（4.2 的 22.11）。
 - **387（P2-10）撤销的用词**：网页的英文一律 undo；服务端 `page/domain/errors.go` 的文字是 API 的词，网页不显示它，不改（4.2 的 23.1）。
-- **388（P2-11）38.6 的单位改成 KiB、MiB**（`W/i18n/format.ts:50`）：与 README、粘贴那一句一致，名副其实；改 10 个测试文件、19 行（4.2 的 38.6）。
+- **388（P2-11）38.6 的单位改成 KiB、MiB**（`W/i18n/format.ts:50`）：与 README、粘贴那一句一致，名副其实；改 10 个测试文件、19 行（4.2 的 38.6）。实际 11 个文件、23 行（10.2）。
 - **389（P2-12）15.3 用中性的说法**"没有这个名称的页面或附件"，不按扩展名猜附件：服务端只在有同名附件时才把 `x.png` 读成附件（`linking/domain/target.go:109-126`），按写法猜会与服务端不一致（4.2 的 15.3；移交原话是"按写法一开始就说没有这个附件"）。
 - **390（P2-13）22.16 只改说法，23.4 只改英文**：重开失锁的会话、冲突链到上级那一项（要服务端点名上级）进 v0.2（4.2）。
 - **391（P2-14）H4 的两句**：回收站"过了可以恢复的期限之后由系统永久删除"，不写天数、不写"立即"；版本列表"版本不能单独删除，系统也不会"，不提时间与清理（4.2 的 H4）。
@@ -181,7 +181,7 @@
 - **393（P2-16）焦点环与次要文字的颜色**：全应用的 `:focus-visible` 是 2 px 实色外框；亮色 `--ring` 改为 `oklch(0.556 0 0)`，八处 `ring-ring/50` 去掉 `/50`，destructive 的环改实色；亮色 `--muted-foreground` 从 0.556 调到 0.53；顺带找到的暗色 destructive 按钮的白字 2.89:1，加 `dark:bg-destructive/60`（4.3 的 12.4）。
 - **394（P2-17）26.9 只把命中加粗到 700**，颜色不动：命中的文字对高亮已达标，不达标的是颜色之外的提示；把高亮的底色调到对页 3:1 要改阅读视图的样子（4.3 的 26.9）。
 - **395（P2-18）`bdi` 用一个共用件 `W/i18n/isolated.tsx`**，范围是点名的几处加"名字后面紧跟数字、日期、另一个名字或箭头"的高风险几处（含变更集页"Renamed: “A” → “B”"）；其余约二十处进 v0.2（4.3 的 26.12、附录 A）。
-- **396（P2-19）13.2 加第 30 条**：名字与别的文字在同一行时进 `bdi`；flex 项里的长文字要 `min-w-0` 或 `[overflow-wrap:anywhere]`；焦点指示对相邻颜色 ≥ 3:1（8.2）。
+- **396（P2-19）13.2 加第 30 条**：名字与别的文字在同一行时进 `bdi`；flex 项里的长文字要 `min-w-0` 或 `[overflow-wrap:anywhere]`；焦点指示对相邻颜色 ≥ 3:1（8.2）。实际取第 31 条（P4/S4 先合并，决定 505、536、593，10.3）。
 - **397（P2-20）S4 的 spec 写在本文 4.4**，不另写 `specs/P2-S4-…`：spec 与它的测试、变异同在一处，审查一次。
 - **398（P2-21）S4 按文章的顶层块就地更新：尾先比、再头比，中间再按键贪心配一次，不做 LCS**：线性；留着的节点不移动；同名标题插在前面时留住原来那一节；链接的落点变了、本页相隔很远的几处同时变时，其间没变的块也留着（审查 A 的 M4；4.4.2）。
 - **399（P2-22）`ReadingContext` 删掉 `role`，加 `writes()` 与 `onWritesChange`，`revision`、`assetsExpire` 读最新的**（4.4.2）。
@@ -198,7 +198,7 @@
 - **410（P2-33）21.10 只改"说的话"，不改标签页**：换版本时留着的标签页对新版本仍对，`version-page.test.tsx:227` 有意钉着它（4.6 的 21.10）。
 - **411（P2-34）26.5 连同历史的三个筛选与目录的"类型"**：同一个写法（4.6 的 26.5）。
 - **412（P2-35）23.19 连同回收站的预览**：预览同样不转小写，大写地址下恢复过的节点会被说成"页面不存在"（推断，4.6 的 23.19）。
-- **413（P2-36）33.1 没复现时套件不变**（照 00 号文档 4.5"排查不进套件"），复现了才把 SE1 (page) 的 375 一段拆成 `@narrow` 的一格（4.3 的 33.1）。
+- **413（P2-36）33.1 没复现时套件不变**（照 00 号文档 4.5"排查不进套件"），复现了才把 SE1 (page) 的 375 一段拆成 `@narrow` 的一格（4.3 的 33.1）。实际复现了，拆了（10.3）。
 - **414（P2-37）S3 不并进移交没点名的两处同类**：变更集页面包屑的 `current`（显示名加日期，要让 `BreadcrumbTrail` 收 `ReactNode`）、回收站预览 `h1` 的长名（没有现成的 375 检查）；记进 v0.2（4.3 的 32.4、38.10）。
 - **415（P2-38）"仍要退出登录吗"不算在途的上传**：S1 只看未保存的文字（P2-6）；上传在途时退出登录，行随会话失效照常说失败，记进 v0.2（4.5 的 18.1）。
 - **416（P2-39）26.18a 命中的两端都对齐到字素簇**：开头也往前移到簇的起点（移交只说末尾），命中盖住整个簇（4.6 的 26.18a）。
@@ -213,7 +213,7 @@
 - **425（P2-48）23.1 连同 `upgrade.approveBody` 的中文**：同一个用词，中文也改"改动"（4.2 的 23.1）。
 - **426（P2-49）22.13 用中性的一句，不先显示加载中**：树还没读到或读失败时说"它不在回收站里"，读到之后再照树分；改动最小（4.2 的 22.13）。
 - **427（P2-50）23.12 的中文用 `{count}+`**：与 `search.capped` 一致，不改模板的空格（4.2 的 23.12）。
-- **428（P2-51）9.5 的英文写"(at the top level of Plans)"**，不用所有格：以 s 结尾的笔记本名的所有格不好看（4.2 的 9.5）。
+- **428（P2-51）9.5 的英文写"(at the top level of Plans)"**，不用所有格：以 s 结尾的笔记本名的所有格不好看（4.2 的 9.5）。前一半（名字里带笔记本名）由 S2 修复第 1 轮的决定 584 取代："(at the notebook's top level)"，不带笔记本名；后一半随之没有对象（实际见 10.2）。
 - **429（P2-52）20.2 留被拒的那一句**（`importBusy`，回答这次按下），压下常驻的 `importUnderWay`（4.5 的 20.2）。
 
 ## 3. 服务端
@@ -226,12 +226,12 @@ P2 碰服务端的有三处：S2 的两份 `AGENTS` 模板（第 40 条）、S4 
 |---|---|
 | `wiki/domain/template-en-agents.md:33` | "Connect an agent to this notebook at `` `/mcp?notebook=<id>` ``. Three prompts are served there:" 改为 "Connect an agent to this notebook at `` `/mcp?notebook=<id>` ``. While the notebook is being upgraded to an LLM Wiki, the prompt `` `upgrade` `` guides the agent there; once it is one, three prompts serve it:"（冒号之后照旧接 `ingest`、`query`、`lint` 三项的列表） |
 | `wiki/domain/template-zh-CN-agents.md:33` | "在 `` `/mcp?notebook=<id>` `` 把 agent 连到这本笔记本。那里有三个 prompt：" 改为 "在 `` `/mcp?notebook=<id>` `` 把 agent 连到这本笔记本。笔记本升级为 LLM Wiki 期间，那里的 prompt `` `upgrade` `` 指引 agent；成为 LLM Wiki 之后，有三个 prompt 为它服务：" |
-| `wiki/domain/template_test.go` | 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（下） |
+| `wiki/domain/template_test.go` | 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（下；修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`，实际见 10.2） |
 
 - **为什么这样写**：发起升级时补写的 `AGENTS` 取同一份模板（`wiki/app/template.go:104-128` 的 `SeedUpgrade`），握手的说明含 `AGENTS` 的正文，升级中的 agent 读到"有三个 prompt"，这时它们都答 `notebook.not_llm_wiki`，`upgrade` 没提（移交第 40 条）。新句先说升级期间的 `upgrade`，再说建成之后的三个；一本一开始就是 LLM Wiki 的笔记本读到前半句无害。MCP 的笔记本入口静态列出四个 prompt（`wiki/adapter/mcp/prompts.go:31-49`：`upgrade` 与那三个），新句与它一致。两份都改，照 00 号文档 4.5（决定 299 原来只说中文那句；移交与 00 号文档说两份）。
 - **已有笔记本里的 `AGENTS` 不随之改**：模板只在新建 LLM Wiki（`SeedNotebook`）与发起升级（`SeedUpgrade`）时写，不加迁移。
 - **模板的三个守卫照过**：两种语言的块对应、行内代码相同（`TestTheTemplatesCorrespond`，`wiki/domain/template_test.go:111-153`：两句的行内代码都是 `/mcp?notebook=<id>` 与 `upgrade`）；代码之外没有 `[[`、`![`、`](`、`#`（`TestTheTemplatesLinkNothingOutsideCode`）；模板 2,209 与 2,107 字节，加约 120 字节，在 8 KiB 之下（`TestTheTemplatesAreSmall`）。
-- **新测试**：`TestTheAGENTSTemplatesNameThePromptsAsServed` 对 `template(LocaleEn)[1].Content` 与 `template(LocaleZhCN)[1].Content`（`AGENTS` 是第二页，同 `:127`）各断言含上表的那一整行（`strings.Contains(content, line+"\n")`），且不含旧句。没修的代码上两种语言都失败。今天没有测试钉着这一句：`wiki/app/template_test.go`、`bootstrap/mcp_instructions_test.go`、`bootstrap/wiki_template_test.go`、`bootstrap/upgrade_start_test.go`、`bootstrap/mcp_wiki_guard_test.go` 与 e2e 的 LW1 都从模板或 REST 动态取正文（S2 的助手逐个读过），不改。
+- **新测试**：`TestTheAGENTSTemplatesNameThePromptsAsServed`（修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`：它只查模板里写的那一行，不读 MCP 实际登记的 prompt，对照进 v0.2；实际见 10.2）对 `template(LocaleEn)[1].Content` 与 `template(LocaleZhCN)[1].Content`（`AGENTS` 是第二页，同 `:127`）各断言含上表的那一整行（`strings.Contains(content, line+"\n")`），且不含旧句。没修的代码上两种语言都失败。今天没有测试钉着这一句：`wiki/app/template_test.go`、`bootstrap/mcp_instructions_test.go`、`bootstrap/wiki_template_test.go`、`bootstrap/upgrade_start_test.go`、`bootstrap/mcp_wiki_guard_test.go` 与 e2e 的 LW1 都从模板或 REST 动态取正文（S2 的助手逐个读过），不改。
 - **变异**：任一语言改回旧句（新测试失败）；中文少了 `upgrade` 的反引号（`TestTheTemplatesCorrespond` 失败）。
 - **CI**：只多 wiki 模块的一个短测试，组合根不变，`short` 与 `race` 两份各多不到 1 秒。
 
@@ -275,7 +275,7 @@ P2 碰服务端的有三处：S2 的两份 `AGENTS` 模板（第 40 条）、S4 
 |---|---|---|---|---|---|
 | S1 焦点与共用组件 | 7 | 6.3、9.1、11.7、12.3、16.1、18.6、19.3、21.14、22.17、23.14、23.16、24.3、26.4、28.4、28.5、35.2、38.1、38.3、49（19 项） | C：23.17、28.2 | 22 | 4.1 |
 | S2 文字 | — | 6.1、9.5、15.3、16.6、19.1、21.8、21.11、22.11、22.12、22.13、22.16、23.1、23.3、23.4、23.11、23.12、23.13、24.7、26.11、26.13、26.14、35.1、38.6、38.8、40、41.1、41.2、41.3（28 项） | H4 的界面一句 | 29 | 4.2 |
-| S3 375 px、`bdi` 与对比度 | — | 12.4、26.9、26.12、26.17、32.1、32.2、32.4、35.8、38.10、38.11、38.12（11 项） | D：32.3；M：33.1 的排查 | 13 | 4.3 |
+| S3 375 px、`bdi` 与对比度 | — | 12.4、26.9、26.12、26.17、32.1、32.2、32.4、35.8、38.10、38.11、38.12（11 项） | D：32.3；M：33.1 的排查（实际复现，按 B 修，10.3） | 13 | 4.3 |
 | S4 阅读视图 | 6.2、11.1、17.1、17.8；48（C 改判为 A） | 3、8.1、8.2、12.2、29 | C：11.6 的失焦部分；D：14d | 12 | 4.4 |
 | S5 编辑器、附件、上传、粘贴与导入导出 | 12.8、15.1、15.2、16.3、16.4b、16.11、17.2b、17.4、17.6、17.7、18.1、18.2、19.4、20.3、38.7（15 项） | 16.4c、16.10、20.1、20.2、28.1、38.9 | — | 21 | 4.5 |
 | S6 版本、回收站、历史、目录、后台任务与搜索 | 2、12.12、21.7、22.14、23.10、23.19、24.2、35.3 | 21.2、21.3、21.10、22.2、22.19、24.9、26.2 的前一半、26.5、26.18a、27.2 | D：24.8、24.10、26.15 | 21 | 4.6 |
@@ -845,7 +845,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | 26.13 | B；B | `W/pages/search/search-page.tsx` | `search-page.test.tsx` |
 | 26.14 | B（可降 C）；B | `W/pages/search/search-status.ts` | `W/pages/search/search-status.test.ts` |
 | 35.1 | B；B | `index-page.tsx`、`index-rows.tsx`、`health-rule.tsx`、`health-item.tsx`、`health-page.tsx`、`upgrade-check.tsx` | `index-page`、`health-rule`、`health-page`、`upgrade-check` 的测试 |
-| 38.6 | B；B | `W/i18n/format.ts` | `W/i18n/format.test.ts` 与另 9 个文件（共 10 个文件 19 行） |
+| 38.6 | B；B | `W/i18n/format.ts` | `W/i18n/format.test.ts` 与另 9 个文件（共 10 个文件 19 行；实际 11 个文件 23 行，见 10.2） |
 | 38.8 | B；B | 文字 | `W/pages/notebook/duplicate-text.test.tsx`；e2e `lw6-source-history.spec.ts:439` |
 | 40 | B；B | `wiki/domain/template-en-agents.md:33`、`template-zh-CN-agents.md:33` | go test：`wiki/domain/template_test.go` |
 | 41.1 | B；B | `health-page.tsx:306`、`upgrade-check.tsx:252,383` | `upgrade-page`、`health-page`、`upgrade-check` 的测试 |
@@ -873,12 +873,12 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | `health.staleOne` | `1 page has an outdated index. Ask the server administrator to run nervewiki reindex.` | `1 篇页面的索引已过时，请服务器管理员运行 nervewiki reindex。` | 35.1 |
 | `upgrade.startRawOne` | `The page raw at the root becomes the source area (1 node under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.` | `根下的 raw 将成为来源区（现有 1 个节点），批准之后它下面的都是只读的来源；不是来源的可以由 agent 移出。` | 41.3 |
 | `upgrade.gateLinksWorseOne` | `1 page leads to more pages that do not exist than when the upgrade started.` | `1 页指向的待建页面比升级开始时多。` | 41.2 |
-| `page.nameAtTop` | `{name} (at the top level of {notebook})` | `{name}（{notebook} 的顶层）` | 9.5 |
+| `page.nameAtTop` | `{name} (at the top level of {notebook})`；实际 `{name} (at the notebook's top level)`（决定 584，10.2） | `{name}（{notebook} 的顶层）`；实际 `{name}（笔记本的顶层）` | 9.5 |
 | `page.taskWouldGo` | `This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it.` | `这一项不能在这里勾选或取消勾选：改了之后它那一行就不再是任务项。请编辑页面来修改。` | 6.1 |
 | `field.asset_name.too_long` | `At most 255 bytes, the extension included: 255 Latin letters, or about 85 Chinese characters.` | `连同扩展名最多 255 字节：255 个拉丁字母，或约 85 个汉字。` | 16.6 |
 | `transfer.exportPageAloneTitle` | `Export the page {name}?` | `导出页面「{name}」？` | 19.1 |
-| `diff.lastBreakAdded` | `The only change is a line break added at the end.` | `唯一的改动是在末尾加了一个换行。` | 21.8 |
-| `diff.lastBreakRemoved` | `The only change is the line break at the end, removed.` | `唯一的改动是去掉了末尾的换行。` | 21.8 |
+| `diff.lastBreakAdded` | `The only change is a line break added at the end.`；实际 `The only change is that a line break was added at the end.`（审查 A 的 N1，10.2） | `唯一的改动是在末尾加了一个换行。` | 21.8 |
+| `diff.lastBreakRemoved` | `The only change is the line break at the end, removed.`；实际 `The only change is that the line break at the end was removed.`（10.2） | `唯一的改动是去掉了末尾的换行。` | 21.8 |
 | `diff.tooLargeBlock` | `Lines: +{added} −{removed}, but the changes join into a block too large to show line by line.` | `+{added} −{removed} 行，但改动连成的一块太大，不能逐行显示。` | 21.11 |
 | `trash.notInTrashUnknown` | `This is not in the trash.` | `它不在回收站里。` | 22.13 |
 | `history.attachment` | `Attachment: {name}` | `附件：{name}` | 23.13 |
@@ -921,9 +921,11 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | `history.conflict.parent_gone` | en | `The page that “{name}” was under is gone: it is in the trash, or purged.` | 不变 | 23.4 |
 | `history.conflictTrashLabel` | en | `Trash: the page that “{name}” was under may be there` | 不变 | 23.4 |
 | `history.atLeast` | zh | 不变（`{count}+`） | `{count}+` | 23.12 |
-| `transfer.restoreLeftUndone` | 两种 | `What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.` | `已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。` | 24.7 |
+| `transfer.restoreLeftUndone` | 两种 | `What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.` | `已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。`；实际 `已恢复的部分被一次撤销删除，又回到了回收站；没处理到的节点也在回收站里，分成几项。`，英文实际 `An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.`（审查 A 的 N2，10.2） | 24.7 |
 | `search.howTo` | 两种 | `Type what to find in the search box at the top, and press Enter.` | `在顶部的搜索框里输入要找的文字，按回车。` | 26.11 |
 | `source.historyRestore` | 两种（只换第一句） | `A restore or an undo follows the source rules at every step, not only in what it leaves. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.` | `还原与撤销的每一步都要遵守来源规则，不只是最后的结果。需要还原正文时，先将页面移到来源区外，还原后再移回。恢复或移回前先处理冲突来源；移回时仍会检查重复。管理员也不能修改来源正文。` | 38.8 |
+
+修复第 1 轮另改了 `problem.page.virtual_file` 的中文：把"日志就是变更集"改成"日志就是这本笔记本的改动"，与决定 425 同一个用词（审查 A 的 N3）。改文字的键实际 en 22 个、zh-CN 27 个（10.2）。
 
 38.6（已定：2.3 的 P2-11）不改 i18n 文件：`W/i18n/format.ts:50` 的单位改成 `B`、`KiB`、`MiB`、`GiB`、`TiB`，两种语言同。
 
@@ -999,13 +1001,13 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 取舍已定在 2.3 的 P2-8 至 P2-14。下面是读代码的推断，实施者先核对：
 
-1. 6.1：替身 `tasksOf` 的正则改了之后，先跑 `page-tasks.test.tsx` 与用 `withTasks` 的测试（推断不受影响：它们都写成 `- [ ] x`）。
-2. 22.11：`transfer-background.test.tsx:176-200` 的表有没有 locale 的口子；没有就加一格 `setLocale`。
-3. 22.13：`trash-preview.test.tsx` 的 `:203`、`:361`、`:427`、`:534`、`:572` 推断不变（节点都在树里）。
-4. 23.1：`revert_too_large`、`revert_conflict` 的英文今天推断没有测试断言；23.4：`transfer-report.tsx` 的冲突列表推断也用 `reasonText`。实施者 grep 核对。
-5. 35.1：`indexFacts` 夹具在哪；`health-page.test.tsx` 的中文格里有没有被 2 页引用的项。
+1. 6.1：替身 `tasksOf` 的正则改了之后，先跑 `page-tasks.test.tsx` 与用 `withTasks` 的测试（推断不受影响：它们都写成 `- [ ] x`）。实际：成立，全量照过；替身的正则后来照服务端的解析改（10.2）。
+2. 22.11：`transfer-background.test.tsx:176-200` 的表有没有 locale 的口子；没有就加一格 `setLocale`。实际：没有，另写一张 zh 的 `test.each`。
+3. 22.13：`trash-preview.test.tsx` 的 `:203`、`:361`、`:427`、`:534`、`:572` 推断不变（节点都在树里）。实际：不变；`:303` 加一条否定断言（22.13）。
+4. 23.1：`revert_too_large`、`revert_conflict` 的英文今天推断没有测试断言；23.4：`transfer-report.tsx` 的冲突列表推断也用 `reasonText`。实施者 grep 核对。实际：两条推断都成立；英文两行加在 `problem-messages.test.ts`。
+5. 35.1：`indexFacts` 夹具在哪；`health-page.test.tsx` 的中文格里有没有被 2 页引用的项。实际：`indexFacts` 在 `W/test/index-server.ts`；`health-page` 的夹具里待建页的引用数都不是 1，新格改一项。
 
-另有四处小的取舍不在 2.3，各项里写了推荐的做法，已定在 2.3要不要记成主持者的决定：23.1 的 `upgrade.approveBody` 中文同改"改动"；22.13 用中性的一句、不先显示加载中；23.12 用 `{count}+`；9.5 写"(at the top level of Plans)"、不用所有格。
+另有四处小的取舍不在 2.3，各项里写了推荐的做法，已定在 2.3要不要记成主持者的决定：23.1 的 `upgrade.approveBody` 中文同改"改动"；22.13 用中性的一句、不先显示加载中；23.12 用 `{count}+`；9.5 写"(at the top level of Plans)"、不用所有格（前一半由决定 584 取代，实际见 10.2）。
 
 #### 4.2.6 逐项
 
@@ -1021,7 +1023,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - 新键 `page.taskWouldGo`（4.2.1.1）。
   - 不取 `field.offset.not_allowed` 加 `fieldErrors`：`out_of_range` 会显示更差的"Out of range."，13.2 第 11 条的字段文案又是全局的。
 - 假服务端：
-  - `W/test/page-server.ts:1110-1121` 的 `tasksOf` 认出 `]` 之后紧跟 `:` 的项（goldmark 认它是任务项）：正则改为 `/^- \[([ xX])\]( |(?=:))(.*)$/` 或等价，每项另记 `goes`。
+  - `W/test/page-server.ts:1110-1121` 的 `tasksOf` 认出 `]` 之后紧跟 `:` 的项（goldmark 认它是任务项）：正则改为 `/^- \[([ xX])\]( |(?=:))(.*)$/` 或等价，每项另记 `goes`。实际不成立：只有冒号之后是单个目的地、其后只有空白的行，勾上之后才成链接引用定义；勾着的 `- [x]: /u` 本来就是定义、不是任务项，`- [ ]: a b c`、`- [ ]:` 等照普通任务项（审查 B 的 M1，决定 585；`W/test/page-server-tasks.test.ts` 十五行对照，实际见 10.2）。
   - `toggle-task`（`:1135-1172`）在 `out_of_range` 之后、"同一状态什么也不写"之前：`task.goes && task.checked !== toggle.checked` 时答 422 `validation_failed`、`errors: [{ field: "offset", code: "not_allowed" }]`（次序照 `page.yaml:519-523`）。替身的说明（`:108-112`）加一句。
   - 可选：在 `W/test/page-server-source.test.ts` 旁的替身自测里加一格（05-lessons 第 2 节，推断有用）。
 - 测试（`W/pages/page/page-tasks.test.tsx`，`test.each(["en", "zh-CN"])`）：
@@ -1037,17 +1039,17 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 现状：`W/pages/notebook/distinct-name.ts:22`：`place === undefined ? node.name : t("page.nameIn", { name, place: place || notebook.name })`。`placeOfTitle`（`W/stores/page-tree.ts:86-95`）对根下的页答 `""`，于是根下的 Notes 写作"Notes (in Plans)"，Plans 根下页的子页 Notes 也是"Notes (in Plans)"。
   - 用它的 13 处：`tag-page.tsx:58`、`general-page.tsx:245`、`revert-dialog.tsx:200`、`page-tree-item.tsx:84,180,371`、`rename-page-dialog.tsx:68`、`page-tree.tsx:169`、`asset-dialogs.tsx:74,173`、`upgrade-page.tsx:496,604`、`move-page-dialog.tsx:111`、`transfer-report.tsx:326`、`version-restore.tsx:175`、`page-backlinks.tsx:60`。
 - 改法：
-  - `:22` 改为：`place === undefined` 答 `node.name`；`place === ""` 答 `t("page.nameAtTop", { name: node.name, notebook: notebook.name })`；否则 `t("page.nameIn", { name: node.name, place })`。
+  - `:22` 改为：`place === undefined` 答 `node.name`；`place === ""` 答 `t("page.nameAtTop", { name: node.name, notebook: notebook.name })`；否则 `t("page.nameIn", { name: node.name, place })`。实际：`page.nameAtTop` 不带笔记本名，`distinctName` 去掉 `notebook` 参数，十六处调用随之改（决定 584，10.2）。
   - 文档注释（`:5-9`）的"or the notebook at the root"改成"or, at the root, that it is at the notebook's top level"。
   - 新键 `page.nameAtTop`（4.2.1.1），用词随 22.11。
   - 总体设计 13.2 第 17 条随之改写（8.2）。
 - 测试：
-  - `W/pages/notebook/tag-page.test.tsx:33`：`"Install (in Plans)"` 改成 `"Install (at the top level of Plans)"`（这一格本来就有根下与页下各一项）。
-  - 加一格（同文件或 `page-tree.test.tsx`）`a page at the root and a page under a root page titled as the notebook are told apart`：`plans = pageNode(5, "Plans")`、`under = pageNode(6, "Notes", plans)` 与根下的 `notes`；断言树的按钮名分别是 `Actions for Notes (in Plans)` 与 `Actions for Notes (at the top level of Plans)`。没修的代码上两个都是"(in Plans)"，`getByRole` 找到两个而抛出。
-  - zh 一格：同上，`Notes（Plans 下）` 与 `Notes（Plans 的顶层）`。
-- 随之改（都是笔记本 Plans 根下的页）：`page-backlinks.test.tsx:71`；`page-tree.test.tsx:104`、`:181`；`page-tree-drop.test.tsx:72`；`page-tree-writes.test.tsx:237`、`:250`、`:251`、`:260`；`upgrade-page.test.tsx:1464`、`:1467`、`:1472`（`raw（Plans 下）` → `raw（Plans 的顶层）`）。页下的 `page-tree.test.tsx:107,117,180-185`、`page-tree-writes.test.tsx:369` 不变。
-- 变异：删掉 `place === ""` 的分支（新格与改过的断言失败）；`nameAtTop` 的 name、notebook 对调（tag-page 的断言失败）。
-- 取舍：英文比原来长；"(at Plans's top level)"对以 s 结尾的笔记本名不好看，不取（2.3 的 P2-51）。
+  - `W/pages/notebook/tag-page.test.tsx:33`：`"Install (in Plans)"` 改成 `"Install (at the top level of Plans)"`（这一格本来就有根下与页下各一项）。实际是 `"Install (at the notebook's top level)"`（10.2）。
+  - 加一格（同文件或 `page-tree.test.tsx`）`a page at the root and a page under a root page titled as the notebook are told apart`：`plans = pageNode(5, "Plans")`、`under = pageNode(6, "Notes", plans)` 与根下的 `notes`；断言树的按钮名分别是 `Actions for Notes (in Plans)` 与 `Actions for Notes (at the top level of Plans)`（实际后者是 `Actions for Notes (at the notebook's top level)`，10.2）。没修的代码上两个都是"(in Plans)"，`getByRole` 找到两个而抛出。
+  - zh 一格：同上，`Notes（Plans 下）` 与 `Notes（Plans 的顶层）`（实际后者是 `Notes（笔记本的顶层）`）。
+- 随之改（都是笔记本 Plans 根下的页）：`page-backlinks.test.tsx:71`；`page-tree.test.tsx:104`、`:181`；`page-tree-drop.test.tsx:72`；`page-tree-writes.test.tsx:237`、`:250`、`:251`、`:260`；`upgrade-page.test.tsx:1464`、`:1467`、`:1472`（`raw（Plans 下）` → `raw（Plans 的顶层）`；实际 `raw（笔记本的顶层）`，10.2）。页下的 `page-tree.test.tsx:107,117,180-185`、`page-tree-writes.test.tsx:369` 不变。
+- 变异：删掉 `place === ""` 的分支（新格与改过的断言失败）；`nameAtTop` 的 name、notebook 对调（tag-page 的断言失败）。实际：修复第 1 轮之后键里没有 `{notebook}`，对调一条不再有；换成键的两种语言各改回带名字的写法（`f5-nameAtTop-en`、`-zh`，S2 的记录）。
+- 取舍：英文比原来长；"(at Plans's top level)"对以 s 结尾的笔记本名不好看，不取（2.3 的 P2-51）。实际：修复第 1 轮改成不带笔记本名的 "(at the notebook's top level)"（审查 A 的 Q1，决定 584）：与回收站、转移、索引、历史、移动对话框同一个说法；同一本笔记本里笔记本名不区分什么（10.2）。
 - 牵连：S3 的 `bdi`（26.12、32.4）推断不受影响：这些是 `t()` 拼出的字符串，用在 `aria-label` 与纯文字里。
 
 ##### 15.3 附件写法的未建链接说成"页"
@@ -1059,7 +1061,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `W/pages/page/unresolved-link.test.tsx:140-163` 那一格的 `texts` 改成新文字，并加一条读者的、带扩展名的普通链接（`linkTo("q.png")`）：也说 `unresolved.reader` 的新句。没修的代码上旧文字不等于新文字，`getByText` 抛出。
   - 加 zh 一格 `to a reader in Chinese, a link to a name with an extension says neither a page nor an attachment has it`：读者点 `q.png`，对话框描述整句等于 zh 的 `unresolved.reader`；嵌入一条同。
 - 随之改：`unresolved-link.test.tsx:143-145`；`W/pages/notebook/trash-preview.test.tsx:85`、`W/pages/page/version-page.test.tsx:103`（`readOnly`）；`W/pages/notebook/upgrade-read-only.test.tsx:384`（正则 `/^No page has this name\./u` 改成 `/^No page or attachment has this name\./u`）、`:386-387`。
-- 变异：任一键改回旧文字，对应一格失败。
+- 变异：任一键改回旧文字，对应一格失败。实际：中文的 `readOnly`、`upgrading`、`readerWiki`、`image` 改回照过（没有格读那句中文），第 10 个提交各补一格之后抓到（10.2）。
 - 牵连：移交 M7-transfer T8（从解析不到的附件链接直接上传）是 C、进 v0.2。
 
 ##### 16.6 改名的 `too_long` 没说扩展名也算
@@ -1088,7 +1090,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `test.each([["en", "Export the page Notes?"], ["zh-CN", "导出页面「Notes」？"]])("a page without subpages is exported without saying its subpages, in %s")`：`renderApp(pagePath(notes.id), server.app)`（`notes` 在根下、没有子页），点菜单的"Export this page"，`findByRole("alertdialog", { name })`。没修的代码上名字带"and its subpages"，超时失败。
   - 已有的 `exporting()`（`:18-27`，Guide 有子页 Install）照旧断言"…and its subpages?"，是对照。
   - 替身不改：`W/test/jobs-server.ts:123,432` 建在 `pageServer` 上，默认的 `notes` 在根下、没有子页。
-- 变异：恒用 `exportPageTitle`（新格失败）；条件取反（Guide 那一格失败）。
+- 变异：恒用 `exportPageTitle`（新格失败）；条件取反（Guide 那一格失败）。实际另有一条"树没读到当作没有子页"，起初活下来（审查 B 的 N1、C 的 M1）：页的菜单要等树读到才出现，修复第 1 轮的一格经探针路由打开对话框，`nodesDown` 时标题仍是"…and its subpages?"（10.2）。
 - 牵连：e2e `tr1-export.spec.ts:261`（Café 下有 One）不变。P3/S3 引同一个文件的 `:76-80`（`texts` 不覆盖 `transfer.too_many_jobs`）并在 `page-menu.test.tsx` 加一格；本项在 `:54-58` 加几行，P3 引的行号随之后移。文本冲突、语义不冲突，后合并的先 `git merge main`。
 
 ##### 21.8 只差末尾换行显示 −x/+x
@@ -1113,7 +1115,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 改法：`:178-182` 三选一：`result.kind === "tooLarge"` 照旧（`added`、`removed` 为 `null` 时 `diff.tooLarge`，否则 `diff.tooLargeLines`）；`result.kind === "changes"` 时 `t("diff.tooLargeBlock", { added: result.added, removed: result.removed })`（4.2.1.1）。
 - 测试（`text-diff.test.tsx`）：`:352-358` 那一格的期望改成 `"+0 −2501 行，但改动连成的一块太大，不能逐行显示。"`，加 en 一格 `"Lines: +0 −2501, but the changes join into a block too large to show line by line."`。没修的代码上是"+0 −2501 行，太大，不能逐行比较。"，失败。`:126`（`tooLarge` 带计数）不变，是对照。
 - 随之改：`text-diff.test.tsx:357`。
-- 变异：恒用 `tooLargeLines`（改过的格失败）；恒用 `tooLargeBlock`（`:126` 失败）。
+- 变异：恒用 `tooLargeLines`（改过的格失败）；恒用 `tooLargeBlock`（`:126` 失败）。实际后一条红两格：`:126` 所在的一格与 "keeps texts too far apart…"（10.2）。
 
 ##### 22.11 根下的说法不统一（与 23.3 同改）
 
@@ -1189,7 +1191,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `transfer.failure.changeset_reverted`：`W/pages/notebook/transfer-report.test.ts:25` 改成新句。
   - 没修的代码上各处整句比对失败。
 - 随之改：`revert-dialog.test.tsx:377`、`:381`、`:400`；`W/pages/notebook/revert-background.test.tsx:227`；`changeset-page.test.tsx:280`；`transfer-report.test.ts:25`、`:43`；`W/pages/notebook/transfer-import.test.tsx:450`；`transfer-background.test.tsx:374`、`:384`；`W/pages/notebook/upgrade-page.test.tsx:1357`（`approveBody` 帮手；zh 若改，`:1472` 的 `toContain` 只取前半句，不受影响）。
-- 变异：任一键改回"revert"或"Part of"，对应格失败。
+- 变异：任一键改回"revert"或"Part of"，对应格失败。实际：中文的 `transfer.failure.changeset_trimmed` 改回照过，第 10 个提交补格（10.2）。
 - 牵连：
   - 23.4、24.7、23.11 同一组文件。
   - 与 P3/S3：本项改 `transfer.failure.*` 的文字；P3/S3 给 `W/pages/notebook/transfer-report.tsx:92-108` 的 `problems` 加键（两种语言的 `transfer.problem.*`），并在 `transfer-report.test.ts`、`revert-background.test.tsx`、`transfer-import.test.tsx`、`problem-messages.test.ts` 各加一格。文本冲突、语义不冲突，后合并的先 `git merge main`。
@@ -1211,14 +1213,14 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 - 现状：`revert-dialog.tsx:279-285`：撤销答 `page.revert_conflict` 时只 `transfers.load()` 后 `setConflict(refusal)`，不重读这次改动；`Conflicts`（`:396-513`）在 `changeset.renames` 时显示 `history.conflictRenameBack`（`:509`），不看 `reverted_by`。别的标签页已把这次改名撤销，这里再按"撤销"：冲突说"“Beta” changed since."，又建议"rename it back"，而它已经回去了。
 - 改法：
-  - `refused`（`:279-285`）在 `setConflict(refusal)` 之前加 `reread(true)`：重读这次改动（`["changeset", notebook.id, id]`）、它的节点与历史的列表。页上的 `ChangesetPage`（`changeset-page.tsx:94`）拿到新的 `reverted_by`，经 `RevertDialog`、`RevertForm` 传给 `Conflicts`。审查 B 实跑证实这条数据的路（加 `reread(true)` 与条件之后新格过，文件 44 格全过；去掉 `reread(true)` 新格失败）。
+  - `refused`（`:279-285`）在 `setConflict(refusal)` 之前加 `reread(true)`：重读这次改动（`["changeset", notebook.id, id]`）、它的节点与历史的列表。页上的 `ChangesetPage`（`changeset-page.tsx:94`）拿到新的 `reverted_by`，经 `RevertDialog`、`RevertForm` 传给 `Conflicts`。审查 B 实跑证实这条数据的路（加 `reread(true)` 与条件之后新格过，文件 44 格全过；去掉 `reread(true)` 新格失败）。实际：重读不等就 `setConflict`，重读回来之前（失败时一直）仍说 "rename it back"（审查 A 的 N4）；修复第 1 轮先 `await` 这次改动的重读，再 `reread(false)` 重读两份列表、不等，然后才显示冲突（10.2）。
   - `:509`：`changeset.reverted_by.length > 0` 时显示 `history.revertAgain`（已在 `changeset-page.tsx:235` 用，不加新键），否则照旧在 `renames` 时显示 `history.conflictRenameBack`。
   - 焦点不变（冲突的标题照旧取得，`:410-412`；13.2 第 26 条：重读不移焦点）。
 - 测试（`revert-dialog.test.tsx`）：
   - `test.each(["en", "zh-CN"])("a rename undone elsewhere meanwhile, undone again, says it was undone before, not to rename it back, in %s")`：`server.log("rename", { changes: [renamed(...)] })`（`renames` 为真，`W/test/history-server.ts:403`），`conflicts = [conflict(id, "Beta", "changed")]`；页面读完之后 `changeset.revertedBy.push(otherId)`（`:317`，模拟别的标签页）；打开对话框按"Undo"。断言有 `history.revertAgain` 的整句，`queryByText(/rename it back/)`（zh：`/改回原名/`）为空。
   - 没修的代码上对话框里是"rename it back"，没有 `revertAgain`，失败。
   - 对照：`:187-245` 那一格（`reverted_by` 空）照旧有"rename it back"；`:233`、`:269`、`:289` 照旧。
-- 变异：去掉 `reread(true)`（新格失败）；条件恒假（新格失败）；条件恒真（`:233` 失败）。
+- 变异：去掉 `reread(true)`（新格失败）；条件恒假（新格失败）；条件恒真（`:233` 失败）。实际：条件恒真红的是 `:187-245` 那一格（含 `:233`）；修复第 1 轮另加"不等重读"一条（10.2）。
 - 牵连：S1 改这个文件的说明（24.3、49）与 `ConfirmDialog`；本项只碰 `:279-285` 与 `:509`。
 
 ##### 23.12 "1,000 多 个节点"多一个空格
@@ -1286,7 +1288,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 - 现状：`W/pages/search/search-status.ts:30`：`pages.some((page) => page.building)`，读过的任何一页说索引在建，状态行就一直加"The index is being built; …"，索引追上之后也不变。
 - 改法：`:30` 改成 `pages.at(-1)?.building === true`（最新读到的一页定）；`statusText` 的注释（`:9-18`）随之改。文字不变。
-- 测试（`W/pages/search/search-status.test.ts:65-75`）：加两格：`statusText([page(20, true, { value: 30, kind: "about" }, true), page(10, false, null, false)], 30, en, "en")` 等于"Results: 30."（没修的代码上带"The index is being built…"，失败）；zh 同一组等于"约 30 条。"。`:71-73`（最后一页在建）照旧，是对照。
+- 测试（`W/pages/search/search-status.test.ts:65-75`）：加两格：`statusText([page(20, true, { value: 30, kind: "about" }, true), page(10, false, null, false)], 30, en, "en")` 等于"Results: 30."（没修的代码上带"The index is being built…"，失败）；zh 同一组等于"约 30 条。"（实际是"30 条。"：最后一页读到底，计数是找到的 30；设计的预期错，审查 B 的 N2，10.2）。`:71-73`（最后一页在建）照旧，是对照。
 - 变异：改回 `some`（新格失败）；改成 `pages[0]`（新格与 `:71` 失败）。
 
 ##### 35.1 英文单复数（"1 sources" 等）
@@ -1320,8 +1322,8 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 已定：2.3 的 P2-11（甲）。不取乙（只把 `field.content.too_long` 改成"5 MB"）：仍是按 1024 算却标 MB，且与 README 不一致。
 - 改法：`format.ts:50` 的单位改成 `["B", "KiB", "MiB", "GiB", "TiB"]`，`:54` 与 `formatBytes` 的注释改成"such as 1.5 MiB"。两种语言同。附件、导出包、导入的上限、无主笔记本、搜索与回收站里的大小都随之写 KiB、MiB。
 - 测试：`W/i18n/format.test.ts:20-27` 的表改成 `1 KiB`、`1.5 KiB`、`5 GiB`、`2,048 TiB`、zh `1.5 KiB`（没修的代码上失败）；加 `5 * 1024 ** 2` 为 `5 MiB` 一格。`source-uploads.test.tsx:142` 断言"…: 5 MiB at most."，与 `W/pages/page/page-edit.test.tsx:374` 的"over 5 MiB"一致。
-- 随之改（10 个测试文件 19 行，都是 `KB`、`MB` 换成 `KiB`、`MiB`）：`format.test.ts:22-26`；`trash-preview.test.tsx:101`；`transfer-import.test.tsx:57`；`ownerless-page.test.tsx:135`；`attachment-uploads.test.tsx:296`、`:312`、`:412`；`search-page.test.tsx:116`、`:140`；`reading/assets.test.ts:161`；`transfer-page.test.tsx:92`、`:96`、`:189`；`attachments-section.test.tsx:49`；`source-uploads.test.tsx:142`。e2e 只断言了 `B`，不改。
-- 变异：单位改回 `MB`（`format.test.ts` 失败）；进位改成 1000（`1 KiB` 那格失败）。
+- 随之改（10 个测试文件 19 行，都是 `KB`、`MB` 换成 `KiB`、`MiB`；实际 11 个文件 23 行，另有 `upgrade-page.test.tsx:1138-1142`，10.2）：`format.test.ts:22-26`；`trash-preview.test.tsx:101`；`transfer-import.test.tsx:57`；`ownerless-page.test.tsx:135`；`attachment-uploads.test.tsx:296`、`:312`、`:412`；`search-page.test.tsx:116`、`:140`；`reading/assets.test.ts:161`；`transfer-page.test.tsx:92`、`:96`、`:189`；`attachments-section.test.tsx:49`；`source-uploads.test.tsx:142`。e2e 只断言了 `B`，不改。
+- 变异：单位改回 `MB`（`format.test.ts` 失败）；进位改成 1000（`1 KiB` 那格失败）。实际 `1 KiB`、`1.5 KiB` 照过，红的是 `1,023 B`、`5 MiB`、`5 GiB`、`2,048 TiB`（10.2）。
 
 ##### 38.8 `source.historyRestore` 的行话"临时步骤"
 
@@ -1334,7 +1336,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 ##### 40 升级中的 `AGENTS` 写"三个 prompt"
 
 - 组件：`wiki/domain/template-en-agents.md:33`、`wiki/domain/template-zh-CN-agents.md:33`，各改一行。新句、为什么这样写、三个守卫与不改的测试，全文见 3.1。
-- 测试：`wiki/domain/template_test.go` 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`，两种语言各断言含新的整行、不含旧句。没修的代码上两种语言都失败。
+- 测试：`wiki/domain/template_test.go` 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`，10.2），两种语言各断言含新的整行、不含旧句。没修的代码上两种语言都失败。
 - 变异：任一语言改回旧句（新测试失败）；中文少写 `upgrade` 的反引号（`TestTheTemplatesCorrespond` 失败）。
 
 ##### 41.1 "No issues (1 checks)"
@@ -1387,7 +1389,7 @@ S3 改三样：
 
 - **本节的取舍**：P2-15 至 P2-19、P2-36、P2-37、P2-43（2.3）。P2-43 是审查之后加的：菜单与选项的高亮也在 S3 修。
 - **e2e 的新东西**：一个只跑 `@narrow` 的 Playwright 项目 `webkit-narrow`（4.3.1.2），钉住它的检查 `tools/e2e-projects/check.mjs`（P2-44，5.1），与两个夹具：`E/fixtures/narrow.ts`、`E/fixtures/contrast.ts`（4.3.1.3）。
-- **13.2 的新条**：第 30 条，写在 8.2。
+- **13.2 的新条**：第 30 条，写在 8.2；实际第 31 条（决定 593，10.3）。
 
 #### 4.3.0 总表、键、e2e 与提交
 
@@ -1401,7 +1403,7 @@ S3 改三样：
 | 26.17、32.1、32.2、35.8、38.12 | B（26.17 部分）→ B | e2e：MC3 新的一格（Chromium、WebKit） |
 | 32.3 | D → D（随 32.1–32.2） | 就是 MC3 那一格 |
 | 32.4 | B（I3 说可降 C，不降）→ B | vitest：`history-page.test.tsx`、`changeset-page.test.tsx` |
-| 33.1 | M → S3 里排查 | 排查不进套件；复现了才把 SE1 的 375 一段拆成 `@narrow` 的一格 |
+| 33.1 | M → S3 里排查；实际复现，改按 B（决定 589） | 排查不进套件；复现了才把 SE1 的 375 一段拆成 `@narrow` 的一格；实际拆了，`NativeSelect` 加 `contain-paint`（10.3） |
 | 38.10、38.11 | B → B | e2e：PG2 新的一格（Chromium、WebKit）；LW3 (page) 加一段（三种） |
 
 ##### 4.3.0.2 i18n 键
@@ -1429,7 +1431,7 @@ S3 改三样：
 | `webkit-narrow` 的 worker 启动 | 建库、起 nervewiki（`E/fixtures/test.ts:112-135` 是 worker 级的）、起 WebKit | WebKit | 推断 2–4 s × 1–2 个 worker |
 | 只在 33.1 复现时：SE1 拆出的 `SE1 (page): at 375 wide …`（`@narrow`） | 种数据、搜一次、375 下的检查 | Chromium、WebKit | 推断约 +6 s |
 
-- 全量多跑 test-seconds 约 32–38（33.1 复现时再加约 6）；测试数加 4 个（MC3、PG2 各两种引擎），复现时再加 2 个。墙钟多约 15–20 s，区间 10–40 s（算法与偏差见 4.3.5）。实现之后照实量（`--reporter=list` 的每格用时），写进记录。
+- 全量多跑 test-seconds 约 32–38（33.1 复现时再加约 6）；测试数加 4 个（MC3、PG2 各两种引擎），复现时再加 2 个。墙钟多约 15–20 s，区间 10–40 s（算法与偏差见 4.3.5）。实现之后照实量（`--reporter=list` 的每格用时），写进记录。实际：CI 上新加的六格 15.9 秒（`webkit-narrow` 三格 10.9 秒），改的三个故事多 5.7 秒，合计多约 21.6，是推断的一半上下（10.3）。
 
 ##### 4.3.0.4 提交分组（每个提交单独为绿：tsc、knip、vitest、oxlint；e2e 由合并前的全量盖住）
 
@@ -1443,6 +1445,8 @@ S3 改三样：
 4. 38.11 剩下的两个对话框是哪两个、为什么，移交没写，读代码也定不了；`AlertDialogContent` 要不要加 `grid-cols-[minmax(0,1fr)]`，量完再定（38.11）。
 5. LW3 能不能经 API 在 `raw` 下建一个无内容的父页、在它下面粘贴（38.11）。
 6. MC3 最后的改名一步审查 B 没有跑：推断它是 `renamed` 一类的变更，那一行是 "Renamed: “A” → “B”"（32.3）。
+
+实际（实施报告第 5.2 节）：第 1 条不被裁；第 2 条是，`inset` 在末尾；第 3 条照推断；第 4 条加了标题的 `anywhere` 之后七个对话框都不超出，`AlertDialogContent` 不改；第 5 条能；第 6 条是（10.3）。
 
 #### 4.3.1 共同的做法
 
@@ -1478,9 +1482,9 @@ S3 改三样：
 
 **`E/fixtures/contrast.ts`**（12.4、26.9 用）：
 
-- 导出 `textContrast`、`focusContrast`、`indicatorContrast`，都是 `(locator) => Promise<Contrast>`，`Contrast` 是 `{ ratio, front, back, indicator? }`：两个颜色是 8 位的 `#rrggbb`，`indicator` 如 `"outline solid 2px"`、`"ring 3px"`。故事写 `expect(c.ratio, JSON.stringify(c)).toBeGreaterThanOrEqual(3)`，失败时报出两个颜色。
+- 导出 `textContrast`、`focusContrast`、`indicatorContrast`（实际另有 `setColorScheme(page, scheme)`：切主题并等 `html` 的 class，10.3），都是 `(locator) => Promise<Contrast>`，`Contrast` 是 `{ ratio, front, back, indicator? }`：两个颜色是 8 位的 `#rrggbb`，`indicator` 如 `"outline solid 2px"`、`"ring 3px"`。故事写 `expect(c.ratio, JSON.stringify(c)).toBeGreaterThanOrEqual(3)`，失败时报出两个颜色。
 - 三个都调一个经 `locator.evaluate` 序列化进页面的 `measure(element, what)`，它不能引用外面的东西。实参写 `"text" as const`（或参数收 `string` 再收窄），否则 e2e 的 tsc 报 TS2345，只有 `make lint-web` 的门禁看得到（审查 B 的 N2）。
-- **先结束元素自己的过渡**：`element.getAnimations().forEach((a) => a.finish())`，再读计算样式。
+- **先结束元素自己的过渡**：`element.getAnimations().forEach((a) => a.finish())`，再读计算样式。实际结束的是元素与它祖先的 `CSSTransition`：背后的底色也可能在过渡里；无限的动画不碰，`finish()` 对它抛错（10.3）。
   - `input.tsx:9`、`native-select.tsx:10` 带 `transition-[color,box-shadow]`：刚取得焦点时读到过渡的起点 `oklab(0 0 0 / 0) 0px 0px 0px 0px`，晚一点读到中间值，时红时绿。
   - 证据（审查 B 的 M2）：不结束时夹具在搜索框上抛 "no focus indicator"（`m12/p2-review-b/e2e-run1.txt`）；结束之后，没修的代码亮 1.54、暗 1.88（run3），修了之后 4.74、4.18（run4）。
 - **合成**：在 1×1 的 canvas 上从下往上画背后的颜色，再画前景，读回 8 位 sRGB，算 WCAG 2 的比值（4.3.1.4）。
@@ -1579,7 +1583,7 @@ export function Isolated({ text, names }: Isolating): ReactNode {
   5. `button.tsx:14`：`focus-visible:ring-destructive/40` 改为 `focus-visible:ring-destructive`（对页亮 4.77、暗 6.85）；加 `dark:bg-destructive/60`：暗色 destructive 按钮的白字今天是 #ffffff 对 #ff6467 2.89:1，叠成 #9d4042 之后 6.47，按钮对页 3.06。
   6. `input.tsx:11`：`aria-invalid:ring-destructive/20` 改为 `aria-invalid:ring-destructive`（亮 4.77、暗 6.85）。它只设颜色，环仍只在 `:focus-visible` 时有；规则的次序不变，照旧盖过 `ring-ring`。不取 `aria-invalid:focus-visible:ring-destructive`：效果相同，多一层变体。边框 `aria-invalid:border-destructive` 不变。
   7. 菜单与选项的当前项：见下面的子项。
-- **S3 之后的焦点指示**（13.2 第 30 条照此写，8.2）：
+- **S3 之后的焦点指示**（13.2 第 31 条照此写，8.2）：
   - 链接与其余没写 `outline-none` 的元素：2 px 实色的 `:focus-visible` 外框，`--ring`，外移 2 px；
   - 控件（按钮、输入框、下拉、标签页）：3 px 的 `ring-ring` 环；destructive 按钮是 `ring-destructive`；
   - 无效字段：3 px 的实色 `ring-destructive` 环；
@@ -1785,7 +1789,7 @@ export function Isolated({ text, names }: Isolating): ReactNode {
   7. 跑完删掉临时配置与探针，`git status` 干净。
   8. SE1 (page) 若在 375 之前就在 WebKit 上失败（多半是手法，05-lessons 第 6 节）：记下是哪一条断言，在临时文件里只留"种数据、搜一次、375"几步（`written()`、`searchFor()`），重跑 4–6 步。
 - **复现了**（三遍里任意一遍 `width.page > 375`）：
-  - 按 B 处理（WCAG 1.4.10），在 S3 里修：照探针指出的元素用 4.3.1.1 的办法。
+  - 按 B 处理（WCAG 1.4.10），在 S3 里修：照探针指出的元素用 4.3.1.1 的办法。实际：复现了（Playwright 1.63 的 WebKit 26.6，页宽 704，三遍都是）；探针指出的是"在哪里找"的 `select`，4.3.1.1 的办法都不管用，改为 `NativeSelect` 的基类加 `contain-paint`（决定 589，10.3）。
   - 回归测试：把 `:316-327` 拆成一格 `SE1 (page): at 375 wide the results keep to the screen, Where to look too, which lists the notebook's long name`（`@narrow`），在 `webkit-narrow` 里跑；长的那格的标题去掉 "; on a phone's width the page fits"。这一格在没修的代码上、在 WebKit 里失败（第 4 步已证）。
   - 记录写下 WebKit 的版本与量到的数；主持者把 00 号文档附录 A 的 33.1 从"发布之后的人工"移到 S3，记成主持者的决定。
 - **没复现**（三遍都是 375）：33.1 留在发布之后的人工清单（真的 Safari，iPhone 或 macOS 的窄窗口，00 号文档 4.12）；记录写下 WebKit 的版本、三遍的数与对照，说明 Playwright 的 WebKit 不是 Safari。套件不变（2.3 的 P2-36）。
@@ -1917,6 +1921,8 @@ export function Isolated({ text, names }: Isolating): ReactNode {
 | 暗 | 命中的文字在高亮上 | #fafafa | #655406 | 7.12 | 不变 | ≥ 4.5 |
 | 暗 | 高亮对页面（参考） | #655406 | #0a0a0a | 2.66 | 不变 | （2.3 的 P2-17） |
 | 暗 | destructive 按钮的白字 | #ffffff | #ff6467 | 2.89 | 加 `dark:bg-destructive/60`，叠成 #9d4042：6.47；按钮对页 3.06 | ≥ 4.5 |
+| 亮 | destructive 按钮的白字，悬停（`hover:bg-destructive/90`；S3 的审查加，10.3） | #ffffff | #e91923 | 4.54 | 不变 | ≥ 4.5 |
+| 暗 | 同上，悬停：原来回到 `/90`，改 `dark:hover:bg-destructive/50`（决定 591） | #ffffff | #e85b5e → #853738 | 3.45 | 8.07 | ≥ 4.5 |
 
 - 取值来源：`W/styles.css:30-57`（background 1 / 0.145，foreground 0.145 / 0.985，accent 0.97 / 0.269，popover 1 / 0.205，primary 0.205 / 0.922，muted 0.556 / 0.708，ring 0.708 / 0.556，destructive `oklch(0.577 0.245 27.325)` / `oklch(0.704 0.191 22.216)`）；`W/reading/reading.css:13,17`；`W/editor/loaded/link-completion.ts:128-132`。
 - 有彩色的照 OKLab 的完整矩阵换算到线性 sRGB 再编码；灰色的 Y = L³（4.3.1.4）。审查 B 的 `m12/p2-review-b/contrast.py` 另算一遍，全部一致；暗色 destructive 对页按浮点是 6.855，记 6.85。
@@ -3222,11 +3228,11 @@ const threeBrowsers =
   ],
 ```
 
-- **`webkit-narrow` 跑哪几格**：带 `@narrow` 标签、又不在 `threeBrowsers` 里的格，即 MC3、PG2 各一格；33.1 复现时 SE1 再加一格。LW3 (page) 已在三种浏览器里跑，它加的 375 一段不打标签。审查 B 在 Playwright 1.63 上核对过：`--list --project webkit-narrow` 只列带标签的格，`chromium` 照跑全部，`make e2e` 与 CI 不带 `--project`，新项目会跑。
+- **`webkit-narrow` 跑哪几格**：带 `@narrow` 标签、又不在 `threeBrowsers` 里的格，即 MC3、PG2 各一格；33.1 复现时 SE1 再加一格（实际加了，三格，10.3）。LW3 (page) 已在三种浏览器里跑，它加的 375 一段不打标签。审查 B 在 Playwright 1.63 上核对过：`--list --project webkit-narrow` 只列带标签的格，`chromium` 照跑全部，`make e2e` 与 CI 不带 `--project`，新项目会跑。
 - **钉住配置的检查**（P2-44，审查 C 的 M7）：配置写错时没有一格会红，所以 S3 加 `tools/e2e-projects/check.mjs`，由 `make lint-web` 跑。它进 S3 的第 3 个提交（PG2 的 `@narrow` 格在那里才有），同一个提交给 `knip.jsonc` 的 `entry` 加它、给 `Makefile` 的 `lint-web` 加一行（6.3；修订核对 B 的 M6）；S4 的第 6 个提交加 PG15 那一条。`web` 作业装着 e2e 包的依赖（`pnpm -r run check:types` 已在用），`--list` 不要浏览器。
-  - 它以 `pnpm --dir e2e exec playwright test --list --reporter=json` 列出 `firefox`、`webkit-narrow` 两个项目的格，断言：
+  - 它以 `pnpm --dir e2e exec playwright test --list --reporter=json` 列出 `firefox`、`webkit-narrow` 两个项目的格，断言（实际经 `pnpm --filter @nervewiki/e2e exec`、一次列四个项目，knip 不必忽略命令，决定 592，10.3）：
     - `firefox` 列出的文件含 `page/pg15-`（S4 起；S3 时这一条先不加）；
-    - `webkit-narrow` 列出的每一格都带 `@narrow`、都不在 `threeBrowsers` 里，并且至少有 MC3、PG2 那两格。
+    - `webkit-narrow` 列出的每一格都带 `@narrow`、都不在 `threeBrowsers` 里，并且至少有 MC3、PG2 那两格。实际另断言带 `@narrow`、不在 `threeBrowsers` 里的每一格都列出，`REQUIRED` 另有 SE1 那一格（丢了标签的格只有它看得见，审查 C 的 M1），先在样例上自检；检查看的是项目、文件与格，不看引擎（10.3）。
   - 反向对照写进 Step 的记录：S3 把 `grep` 改坏、S4 从正则里删掉 `page\/pg15-`，各看它失败一次。
 
 ### 5.2 逐个故事
@@ -3333,7 +3339,7 @@ const threeBrowsers =
 5. **页面、附件、导出与编辑器**（6.1、15.3、16.6、19.1、22.16）：含 `W/test/page-server.ts` 的替身；e2e `c4-guard.spec.ts:236,273` 与 22.16 同一个提交。
 6. **比较**（21.8、21.11）。
 7. **搜索**（26.11、26.13、26.14）。
-8. **大小的单位与来源的说明**（38.6、38.8）：e2e `lw6-source-history.spec.ts:439` 与 38.8 同一个提交；38.6 改 10 个测试文件，可以单独一个提交。
+8. **大小的单位与来源的说明**（38.6、38.8）：e2e `lw6-source-history.spec.ts:439` 与 38.8 同一个提交；38.6 改 10 个测试文件，可以单独一个提交（实际 11 个，与 38.8 同在第 8 个提交，10.2）。
 9. **服务端**：两份 `AGENTS` 模板（40）与 `wiki/domain/template_test.go` 的新测试。组合根不变。
 
 与别的 Step、Phase 的冲突（`en.ts`、`zh-CN.ts` 每个 Step 都改，后合并的先 `git merge main`）：
@@ -3357,7 +3363,7 @@ const threeBrowsers =
    夹具要与第一个使用者同进，否则 knip 报。
 3. **`web, e2e: a long title keeps to a phone's width, on its page and in the dialogs that name it (38.10, 38.11)`**：`page-layout.tsx:259`、`dialog.tsx`、`alert-dialog.tsx`，PG2 的新格，LW3 (page) 加的一段。依赖 2 的夹具与项目，排在 2 之后。
 
-   同一个提交加钉住项目配置的检查（P2-44，5.1；修订核对 B 的 M6）：`tools/e2e-projects/check.mjs`；`knip.jsonc` 的 `entry` 加它（照 `tools/e2e-navigation/check.mjs` 的先例，`knip.jsonc:9`；它只由 `Makefile` 调用，不加就报 "Unused files (1) tools/e2e-projects/check.mjs"，`m12/p2-check1-b/knip-new-tool.txt`）；`Makefile` 的 `lint-web`（`:158-161`）在 `tools/e2e-navigation/check.mjs` 之后加一行 `node tools/e2e-projects/check.mjs`。两处逐项列出 `lint-web` 跑什么的注释各补半句"Playwright 项目配置的检查"：`knip.jsonc:6` 的注释与 `Makefile:159` 的 `##` 帮助（修订核对 B 的 N8）。它断言 `webkit-narrow` 至少有 MC3、PG2 那两格，PG2 的格在这个提交才有，所以不能更早。
+   同一个提交加钉住项目配置的检查（P2-44，5.1；修订核对 B 的 M6）：`tools/e2e-projects/check.mjs`；`knip.jsonc` 的 `entry` 加它（照 `tools/e2e-navigation/check.mjs` 的先例，`knip.jsonc:9`；它只由 `Makefile` 调用，不加就报 "Unused files (1) tools/e2e-projects/check.mjs"，`m12/p2-check1-b/knip-new-tool.txt`）；`Makefile` 的 `lint-web`（`:158-161`）在 `tools/e2e-navigation/check.mjs` 之后加一行 `node tools/e2e-projects/check.mjs`。两处逐项列出 `lint-web` 跑什么的注释各补半句"Playwright 项目配置的检查"：`knip.jsonc:6` 的注释与 `Makefile:159` 的 `##` 帮助（修订核对 B 的 N8）。它断言 `webkit-narrow` 至少有 MC3、PG2 那两格，PG2 的格在这个提交才有，所以不能更早。实际：`entry` 之外 knip 还报 `Unlisted binaries`，实施时加了 `ignoreBinaries`，修复第 1 轮改用 `pnpm --filter` 之后去掉（决定 592，10.3）。
 4. **`web, e2e: focus rings, the current item of a menu or a list, and muted text read against the page, light and dark (12.4)`**：
    - `styles.css`；8 处 `ring-ring/50`；`button.tsx:14`；`input.tsx:11`；
    - `dropdown-menu.tsx:30,42`、`quick-switch.tsx:171`、`link-completion.ts:128-131`（P2-43）；
@@ -3365,7 +3371,7 @@ const threeBrowsers =
 
    夹具的三个导出在这个提交里都要有使用者（L5 用了三个），否则 knip 报（`m12/p2-review-b/knip-with-draft-fixtures.txt`）。
 5. **`web, e2e: a hit's terms are bold, not by their colour alone (26.9)`**：`search-hit.tsx:35`；SE1 的 `:275` 改与 mark 的对比度。用 4 的夹具，排在 4 之后，或与 4 并成一个提交。
-6. （只在 33.1 复现时）**`web, e2e: the search results keep to a phone's width on WebKit (33.1)`**：修排查找到的那一处，SE1 拆出 `@narrow` 的一格。
+6. （只在 33.1 复现时）**`web, e2e: the search results keep to a phone's width on WebKit (33.1)`**：修排查找到的那一处，SE1 拆出 `@narrow` 的一格。实际：复现了，`72b1e679`（10.3）。
 7. S3 的文档提交（记录）里，05-lessons 第 6 节加一句：量计算之后的样式之前，先结束元素自己的过渡（`element.getAnimations().forEach((a) => a.finish())`）；带 `transition-[color,box-shadow]` 的控件刚取得焦点时，读到的是过渡的起点（M12/P2 设计审查 B 的 M2）。
 
 1 与 2–5 互不依赖。顺序建议 1 → 2 → 3 → 4 → 5（→ 6）。
@@ -3553,7 +3559,7 @@ S4 在 S1 合并之后开（P2-1）。
 |---|---|---|
 | S1 | 6–7 | 约 4 秒 |
 | S2 | 0 | 0 |
-| S3 | 42–50（33.1 复现时再加约 6） | 22–30 秒，区间 15–45 |
+| S3 | 42–50（33.1 复现时再加约 6）；实测约 21.6（10.3） | 22–30 秒，区间 15–45；实测约 11–14 秒（10.3） |
 | S4 | 57–93 | 35–45 秒 |
 | S5 | 16–26 | 8–15 秒 |
 | S6 | 3–4 | 约 2 秒 |
@@ -3611,6 +3617,10 @@ P2 完成，当且仅当下面七条都成立。
 
 **S1 之后**（2026-11-16）：第 1 条，S1 已合并（`d1ade2ed`），合并之前 7.3 的门禁全绿、审查与修复核对结束。第 2 条，S1 的测试在没修的代码上红过，变异都抓到或写明（10.1 与 [S1 的记录](reviews/P2-S1-focus-and-shared-review.md)），三引擎的探查与鼠标的探针记下。第 3 条，附录 A 里 S1 的 22 项修好，第 7 条里来不及答的标签页推后进 v0.2。第 4–7 条，S1 的文档提交照写的改了（00 号文档第 12、13 节，总体设计 13.2 第 1、12、17、21、26 条与第 15 节，`M5-polish.md` 的一行，05-lessons）。
 
+**S2 之后**（2026-11-18）：第 1 条，S2 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与主持者的说明跑过、全绿（实施时 `make check` 的各项、`make e2e` 与 `make test`；修复第 1 轮与合并 `main` 之后 Go 只跑 `wiki` 模块），审查与修复核对结束（核对第 1 轮之后不开第二轮，决定 588）。第 2 条，S2 的测试在没修的代码上红过（35.1 的 `index-page` 一组以四条"恒假"变异为证），变异都抓到，活下来的五句中文补格之后抓到（10.2 与 [S2 的记录](reviews/P2-S2-text-review.md)）。第 3 条，附录 A 里 S2 的 28 项与 H4 的界面一句修好，推后进 v0.2 的照 2.3 与决定 587。第 4–7 条，S2 的文档提交照写的改了（00 号文档第 11、12、13 节与第 7 节第 20 条，总体设计 13.2 第 17 条、3.6 与第 15 节，`M5-polish.md`、`M8-history.md` 各一行，05-lessons 两条）；README 不改。
+
+**S3 之后**（2026-11-18）：第 1 条，S3 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与主持者的说明跑过、全绿（实施与修复第 1 轮的头上 `make check` 与 `make e2e`；合并 `main` 之后 `make lint-web`、`make knip`、`make test-web`、两种都改过的故事与 `make e2e`），审查与修复核对结束（核对第 1 轮之后不开第二轮，决定 594）。第 2 条，S3 的测试在没修的代码上红过，33.1 的排查有记录，变异除一条等价、一条设计预先写明走不到的之外都抓到（10.3 与 [S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)）。第 3 条，附录 A 里 S3 的 11 项 B、D 的 32.3 修好，M 的 33.1 复现、按 B 修好（决定 589），推后进 v0.2 的照 2.3 与决定 590。第 4–7 条，S3 的文档提交照写的改了（00 号文档 4.5、第 7 节 S3 一行与第 21 条、状态表、9.1、第 11、12、13 节与附录 A，总体设计 13.2 第 31 条、13.4 第 3 条与第 15 节，`M5-polish.md` 一行，05-lessons 两条，P5 设计 3.19 的人工入口）；README 不改。
+
 ### 8.2 总体设计的新文字
 
 改的是 `docs/v0.1/v0.1-design.md`。
@@ -3656,15 +3666,17 @@ P2 完成，当且仅当下面七条都成立。
 
 新文字：
 
-> 根下的页面写作笔记本的顶层（"Install（Plans 的顶层）"，文案 `page.nameAtTop`，M12/P2/S2），别的写上级的位置（"Install（Guide / Setup 下）"；
+> 根下的页面写作笔记本的顶层（"Install（笔记本的顶层）"，文案 `page.nameAtTop`，M12/P2/S2），别的写上级的位置（"Install（Guide / Setup 下）"；
+
+落进总体设计的是这一句：修复第 1 轮之后照决定 584 不带笔记本名，原来的示例是"Install（Plans 的顶层）"（实际见 10.2）。
 
 后面的 `` `stores/page-tree.ts` 的 `placeOfTitle`…文案 `page.nameIn`；M4 收尾审查 B-M4） `` 不动。
 
-#### S3：13.2 加第 30 条（第 21 条修订，P2-19）
+#### S3：13.2 加第 31 条（第 21 条修订，P2-19）
 
-插在第 29 条末句 `读者动过就不动（第 26 条）。` 之后（恰好一处），另起一行：
+设计时写的是插在第 29 条末句 `读者动过就不动（第 26 条）。` 之后、号 30；P4/S4 先合并、取了第 30 条，实际插在第 30 条末句 `4.1。1 万页根下的一本，冷打开约 0.2 秒、别人改一次树约 0.2 秒，约 2.4 秒全部行进 DOM。` 之后（恰好一处），另起一行，号 31（决定 505、536、593）。下面是落进总体设计的文字（与草稿相比：选择的 `contain-paint`、WebKit 的下拉、destructive 按钮、700、祖先的过渡，实际见 10.3）：
 
-> 30. **名字、窄屏与对比度**（M12/P2/S3）：名字（页面、笔记本、附件、人、客户端）与别的文字在同一行时进 `bdi`（`i18n/isolated.tsx` 的 `isolate`、`Isolated`：名字照译文的语序落位；一句由几段拼成时，各段经同一个收集器取名字的位置；只要字符串的地方，拼句的函数不传收集器，照旧出字符串）。flex 项与 grid 的 `auto` 轨以最小内容为下限：里面放长文字的项加 `min-w-0`，或让文字 `[overflow-wrap:anywhere]`；原生的选择放在 `max-w-full min-w-0` 的外层里（`pages/notebook/index-filters.tsx` 的写法）。375 px 的检查用 `e2e/fixtures/narrow.ts` 的 `expectFits`，在 Chromium 与 WebKit 上跑（标签 `@narrow`）。焦点指示对相邻的颜色至少 3:1：链接与别的元素是 `:focus-visible` 的 2 px 实色外框，控件（按钮、输入框、下拉、标签页）是 3 px 的 `ring-ring` 环，无效的字段是实色的 `ring-destructive`，菜单项、快速切换的选项与补全的选中项另有看得见的指示（内嵌的 2 px `ring-ring` 环），不只靠底色。次要文字（`--muted-foreground`）对它的底色至少 4.5:1；靠颜色区分的另有颜色之外的提示（搜索命中加粗）。对比度在 e2e 里从计算之后的颜色算，先结束元素的过渡（`e2e/fixtures/contrast.ts`）。
+> 31. **名字、窄屏与对比度**（M12/P2/S3）：名字（页面、笔记本、附件、人、客户端）与别的文字在同一行时进 `bdi`（`i18n/isolated.tsx` 的 `isolate`、`Isolated`：名字照译文的语序落位；一句由几段拼成时，各段经同一个收集器取名字的位置；只要字符串的地方，拼句的函数不传收集器，照旧出字符串）。flex 项与 grid 的 `auto` 轨以最小内容为下限：里面放长文字的项加 `min-w-0`，或让文字 `[overflow-wrap:anywhere]`；原生的选择放在 `max-w-full min-w-0` 的外层里（`pages/notebook/index-filters.tsx` 的写法），它自己带 `contain-paint`：WebKit 把选择显示的那一项的文字整个算进页面的宽度，选择自己裁掉了也一样（`components/ui/native-select.tsx`，M5-polish 33.1）。375 px 的检查用 `e2e/fixtures/narrow.ts` 的 `expectFits`，在 Chromium 与 WebKit 上跑（标签 `@narrow`）。焦点指示对相邻的颜色至少 3:1：链接与别的元素是 `:focus-visible` 的 2 px 实色外框，控件（按钮、输入框、下拉、标签页）是 3 px 的 `ring-ring` 环（Playwright 的 WebKit 不画原生下拉的 `box-shadow`，它那里只有聚焦时变成 `ring` 色的 1 px 边框），无效的字段是实色的 `ring-destructive`，菜单项、快速切换的选项与补全的选中项另有看得见的指示（内嵌的 2 px `ring-ring` 环），不只靠底色。次要文字（`--muted-foreground`）对它的底色至少 4.5:1；destructive 按钮的白字对它的底也至少 4.5:1，静止与悬停都是（暗色悬停 `dark:hover:bg-destructive/50`）。靠颜色区分的另有颜色之外的提示（搜索命中加粗到 700）。对比度在 e2e 里从计算之后的颜色算，先结束元素与它祖先的过渡（`e2e/fixtures/contrast.ts`）。
 
 #### S4：13.2 第 23 条（第 22 条修订）
 
@@ -3722,7 +3734,7 @@ P2 完成，当且仅当下面七条都成立。
 
 末句 `（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。` 恰好一处。两个 Step 各在它之后加自己的一句，按合并的次序：
 
-- S3：" M12/P2/S3：375 px 的检查带标签 `@narrow`：不在 `threeBrowsers` 里的故事，由 Playwright 项目 `webkit-narrow` 在 WebKit 上再跑一遍，夹具 `e2e/fixtures/narrow.ts`；项目的配置由 `tools/e2e-projects/check.mjs`（`make lint-web`）核对；对比度由 `e2e/fixtures/contrast.ts` 从计算之后的颜色算，量之前先结束元素的过渡（M12/P2）。"
+- S3：" M12/P2/S3：375 px 的检查带标签 `@narrow`：不在 `threeBrowsers` 里的故事（MC3、PG2、SE1 各一格），由 Playwright 项目 `webkit-narrow` 在 WebKit 上再跑一遍，夹具 `e2e/fixtures/narrow.ts`；项目的配置由 `tools/e2e-projects/check.mjs`（`make lint-web`）核对，它看的是各项目列出的格，不看引擎；对比度由 `e2e/fixtures/contrast.ts` 从计算之后的颜色算，量之前先结束元素与它祖先的过渡（M12/P2）。"（实际见 10.3：MC3、PG2、SE1 三格，检查不看引擎，祖先的过渡）
 - S4：" M12/P2/S4：PG15 在三种浏览器里核对阅读视图的就地更新：别人写了别处之后，焦点、展开的 callout、选区与播放都还在；在拿着焦点的标题之前插进同名的一节，焦点留在原来那一节；全屏照 S4 的探查，在给全屏的引擎里核对（M12/P2）。"
 
 ## 9. 交给后面的 Phase
@@ -3749,7 +3761,7 @@ P2 完成，当且仅当下面七条都成立。
 
     P2 的各 Step 记录列出它们，P5/S3 照抄。
   - **真浏览器的下载许可**：17.4 在程序里再点下载，真的 Chrome 的"自动下载多个文件"、Safari 的"允许这个网站下载吗"会不会拦，进人工清单（审查 C 的未核实第 2 条）。
-  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。
+  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。33.1 在 Playwright 的 WebKit 上复现、修了；真的 Safari 上窄屏的搜索页与原生下拉的焦点进这里（决定 590，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）。
 - **收尾**：v0.2 的 `M12-polish.md` 收 C 类 87 项、D 类其余、4.4.8 的限制、各 Step 记录里"推后的"，与 2.1 第 7 条列的几处。
 
 ## 10. 结果
@@ -3785,6 +3797,77 @@ P2 完成，当且仅当下面七条都成立。
 - **e2e 的用时**：S1 改到的十二格（设计列的九格加 LW10 (page) ×3）33.0 → 38.3 秒，多 5.3 test-seconds；九格多 4.9（推断 6–7）。`14cc9769` 的 e2e 作业 7:29（E2E 6:04），web 3:49（Test 3:07），vitest 4,591 格；修复之后 4,602 格。
 - **三引擎探查**：12.3 与 28.5 在三种引擎里都是标题取得焦点；树打开的页之间后退，焦点留在树上；鼠标按"确认"，三种引擎都给它焦点。
 - **照实改的各节**（02-workflow 3.5）：4.1.0.1 的表与数目、4.1.0.5、23.16（`focusLost` 一句、e2e 一句、给 Alert 的变异）、26.4、28.4 与 28.5 的变异、4.1.2 的测试与变异、9.1（"经 `useForm` 的表单"）、35.2、16.1、22.17、4.1.4、5.2 的 S1 一行、6.1、8.1、8.2 第 1、5、6 条。
+
+### 10.2 S2：文字（2026-11-18，合并见 00 号文档第 12 节）
+
+- **提交**：十六个代码提交与一次合并 `main`，加本文档提交；[审查记录](reviews/P2-S2-text-review.md)。
+  - 第 1–9 个照 6.2 的九组；第 10 个（`4c9f1212`）只加测试，是变异里活下来的五句中文补的格；
+  - 推送之前 4 号 `--amend` 两次（`780d3f46 → db764166`：`tb1-trash.spec.ts` 的格式，提交时没判 lint 的 rc；`db764166 → 7e90e1b2`：22.12 在后台恢复的那一格），8 号一次（`bf95bd2a → ebc1512e`：38.6 漏列的 `upgrade-page.test.tsx:1138-1142`）；
+  - 修复第 1 轮六个（头 `62e40b25`）：替身的任务项照服务端（`a1138dd7`）、树没读到时导出仍说子页的一格（`e3671b19`）、23.11 先等这次改动的重读（`6b58eea4`）、三句改得直白（`b6215ab4`）、`page.nameAtTop` 不带笔记本名（`1580e7ca`）、Go 测试改名（`62e40b25`）；
+  - 合并 `main` 的 `260d299d`（P4/S1 与提交期限的旁支的记录、导入守卫的旁支），没有冲突；
+  - 三份审查 A 0I0M5N2Q、B 0I1M2N、C 0I1M6N1Q；核对第 1 轮 A、B 各一条 Nit，C 两条，都在本提交写对，不开第二轮（决定 588）。
+- **做完**：B：6.1、9.5、15.3、16.6、19.1、21.8、21.11、22.11、22.12、22.13、22.16、23.1、23.3、23.4、23.11、23.12、23.13、24.7、26.11、26.13、26.14、35.1、38.6、38.8、40、41.1、41.2、41.3（28 项）；H4 的界面一句（移交 M8-history 第 4 条）。i18n 新加 23 个键、删 2 个，改文字的 en 22 个、zh-CN 27 个（修复第 1 轮多改了 `problem.page.virtual_file` 的中文；它改的另几个键是 S2 新加的，或已算过）。推后进 v0.2 的（决定 587）：设计已定的（15.3 的直接上传，M7-transfer T8；22.16 的重开会话与 23.4 的链到上级，390；23.1 的服务端英文，387，"…reverted whole"在全部被清理时同样不准，P3 或 v0.2；H4 的永久删除），与审查提出的两条：撤销被拒为 trimmed 时两句近乎重复（审查 A 的 Q2）；`AGENTS` 写的 prompt 与 MCP 实际登记的对照（审查 A 的 N5）。
+- **主持者的决定**（584–588，00 号文档第 11 节）：9.5 的名字不带笔记本名，取代决定 428 的前一半；替身的任务项照服务端的解析，`- [ ]: a)b` 的不同接受；`TestLintBusyReturnsBeforeCleanup` 那一次红是 M10 测试的先后假设，另开旁支修；推后进 v0.2 的；文档的去处与收口（含总体设计 3.6 的 5 MiB）。
+- **与设计不同之处**（正文照实改了，各处注"实际见 10.2"）：
+  - **9.5**：`page.nameAtTop` 是 "{name} (at the notebook's top level)"、"{name}（笔记本的顶层）"，不带笔记本名（修复第 1 轮，决定 584）；`distinctName` 去掉 `notebook` 参数，十六处调用随之改。9.5 那一格照旧分开 "Notes (in Plans)" 与 "Notes (at the notebook's top level)"：根下的两页不会同名，这个名字仍然唯一。8.2 的示例随之是"Install（笔记本的顶层）"；决定 428 的前一半由它取代。
+  - **40**：测试改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`（审查 A 的 N5）：它只查模板里写的那一行，不读 MCP 实际登记的 prompt。
+  - **6.1 的替身**：设计的正则把任何 `- [ ]:` 当作勾上会消失的，实施时又把任何 `- [x]:` 当作不是任务项，两样都只在"冒号之后只有一个目的地"时成立。审查 B 在服务端的解析上逐个探过（`- [ ]: a b c`、`- [ ]:`、`- [x]: /u x` 等照普通任务项，勾选照写），修复第 1 轮照它改（`a1138dd7`，决定 585），`W/test/page-server-tasks.test.ts` 十五行对照；带标题的定义与 `- [ ]x` 不模拟，说明里写明。
+  - **19.1 的"树没读到时照旧说及其子页面"**：起初没有格守（审查 B 的 N1、C 的 M1）。页的菜单只在树读到之后才出现（`PageLayout` 在那之前答"未加载"），从菜单造不出这一支；修复第 1 轮的一格从探针路由打开对话框，`nodesDown` 时标题仍是"…and its subpages?"。
+  - **23.11**：冲突说明原来不等这次改动的重读，重读回来之前（失败时一直）仍说 "rename it back"（审查 A 的 N4）；修复第 1 轮先等它的重读再显示冲突，另两份列表照旧不等，重读失败时照旧给旧的建议。
+  - **修复第 1 轮改的文字**（审查 A 的 N1–N3）：`diff.lastBreakAdded`、`lastBreakRemoved` 的英文改成 "The only change is that …"；`transfer.restoreLeftUndone` 两种语言改得不重复（中文"分成几项"同它的两个邻居）；`problem.page.virtual_file` 的中文"变更集"改成"这本笔记本的改动"（决定 425 的同一个用词，网页的中文里不再有"变更集"），加两种语言各一格。
+  - **38.6**：随之改的是 11 个测试文件 23 行，设计（与决定 388）写 10 个文件 19 行，漏了 `upgrade-page.test.tsx:1138-1142`（升级报告"未消化的来源"的大小，`2 KBCreated` 连着写，按词边界的 grep 找不到）。
+  - **26.14 的 zh 一格**是"30 条。"，设计写"约 30 条。"：最后一页 `next_cursor` 为空，已读到底，计数是找到的 30，不是 about（en 同是 "Results: 30."）；测试对，设计的预期错（审查 B 的 N2）。
+  - **推断错了的变异**：38.6 的"进位改成 1000，`1 KiB` 那格失败"不成立：1,024 与 1,536 按 1,000 进位，一位小数写出来仍是 `1 KiB`、`1.5 KiB`；红的是 `1,023 B`、`5 MiB`、`5 GiB`、`2,048 TiB`。15.3、23.1 的"任一键改回旧文字，对应一格失败"对中文不全成立：`unresolved.readOnly`、`upgrading`、`readerWiki`、`image` 与 `transfer.failure.changeset_trimmed` 的 zh 没有格读它，改回旧文字照过；第 10 个提交各补一格。23.11 的"条件恒真（`:233` 失败）"红在 `:187-245` 那一格，`:233` 在其中；21.11 的"恒用 `tooLargeBlock`（`:126` 失败）"红两格（`:126` 所在的一格与 "keeps texts too far apart…"）。
+  - **4.2.5 第 2 条**：`transfer-background.test.tsx:176-200` 的表没有 locale 的口子，另写 zh 的一张表。
+  - **38.8 的测试**：`probe` 加 `text` 参数（默认 `duplicateText`）调 `sourceHistoryText`；整句比对的是 `span.block` 里有那一句（`source_immutable` 的拒绝另有两个 `span.block`）。
+  - **随之改的 vitest 多于各项列的**：9.5 的 `page-tree.test.tsx` 另两处；22.12 的 `trash-background.test.tsx` 一格；22.13 的 `trash-preview.test.tsx:303` 加一条否定断言；23.1 的 `revert-dialog.test.tsx:315`、`:320`；22.16 的 `page-lock.test.tsx` 另三处前缀。
+- **4.2.5 先核对的五条**：
+  1. 6.1：用 `withTasks` 的测试都写成 `- [ ] x`，替身改了之后全量照过；替身与服务端的对照见上。
+  2. 22.11：没有 locale 的口子，见上。
+  3. 22.13：`:203`、`:361`、`:427`、`:534`、`:572` 不变；`:303` 加否定断言。
+  4. 23.1：`revert_too_large`、`revert_conflict` 的英文没有格，加在 `problem-messages.test.ts`；23.4：`transfer-report.tsx` 的冲突列表也经 `reasonText`。
+  5. 35.1：`indexFacts` 在 `W/test/index-server.ts`；`health-page` 的夹具里待建页的引用数都不是 1，新格改一项。
+- **先红**：各项的新测试在没修的代码上红过，`index-page` 一组（35.1）除外：它的先红没有单独一次运行的记录，证据是四条"恒假"变异（`c1-longTypes-gone`、`loaded-gone`、`inbound-gone` 红在 P4/one en，`sources-gone` 红在 P4/details），每条都等于没修的那一支（审查 C 的 N4）。审查 C 把六组的代码文件换回 `f08dca69` 的版本另跑，红的格与实施者的相同。
+- **变异**：实施 114 条：vitest 111 条（代码 59、键的文字 52），106 条第一次抓到，活下来的 5 条（上面）补格之后抓到；Go 3 条都抓到；38.8 的 e2e 一半（`content` 恒真）红在 LW6 (page) `:439` 的否定断言。4.2 各项写的都在其中；另加键逐个改回 `main` 的文字（en 22、zh 26）、新键的 zh 四条、帮手各处各自不用。审查 C 加的两条（19.1 的树没读到、替身的 `- [x]:` 那一支）活下来，修复第 1 轮补格；修复第 1 轮的 15 条都抓到。表在 S2 的记录。
+- **门禁与 CI**：
+  - 实施时在头 `4c9f1212` 上 `make lint knip test-go-short build-web gen-check`、`make e2e`（576 过、1 跳过）与 `make test` 全绿；`make test` 第一次红在 M10 的 `TestLintBusyReturnsBeforeCleanup`（决定 586），单跑十次与整份重跑都过。
+  - 修复第 1 轮：六个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,788 → 4,792 格），`62e40b25` 另 `wiki` 模块的 go test；头上 `make lint knip test-go-short build-web gen-check` 与 `make e2e`（576、1）绿，`make test` 照主持者的说明不全跑（Go 只改了一个测试名）。
+  - 合并 `main` 之后：`make lint-web`、`make knip`、`make test-web`（196 个文件、4,792 格）、`wiki` 模块的 go test 与 `make lint-go` 绿。
+  - 分支 CI：`4c9f1212` 的 run 44242250765 第一次 attempt 18 项绿，e2e 四次卡在装 Playwright 的浏览器（apt 的镜像慢，到 20 分钟时限被取消），只重跑 e2e，第五次绿；`62e40b25` 的 44266671504 与合并 `main` 的 44279300477 第一次 attempt 19 项全绿。本提交的分支 CI：`ebb94daf` 的 run 44284479965，19 项第一次 attempt 全绿；S2 合并为 `6505c3bf`，之后第一次 `main` 的 run 44289945428 同样第一次 attempt 19 项全绿（`web` 3:58，Test 3:16；e2e 9:37，E2E 一步 8:09）。
+- **e2e 的用时**：改到的五格（C4 (page)、C4 (page, notebook)、TB1 (page)、TB1 (preview)、LW6 (page)，都只在 Chromium）19.30 → 19.27 秒，差 −0.03 test-seconds（推断 0）；`4c9f1212` 的 e2e 作业 10:15（E2E 8:04），基准 10:02（8:15）；web 3:49（Test 3:11），vitest 4,694 → 4,773 格，修复之后 4,792 格。
+- **读屏清单**：第 9 节的八项没有 S2 的；S2 改了念出来的两处（22.12、23.13）写在 [S2 的记录](reviews/P2-S2-text-review.md)"读屏与人工清单"，交 P5/S3。
+- **照实改的各节**（02-workflow 3.5）：头；2.3 的 388 与 428（只加注）；3.1 的测试名两处；4.2.0 的 38.6 一行；4.2.1.1 的 `page.nameAtTop`、`diff.lastBreakAdded`、`lastBreakRemoved`；4.2.1.2 的 `transfer.restoreLeftUndone` 与表后一段（`problem.page.virtual_file`）；4.2.5 的五条与末段；6.1 的替身；9.5 的改法、测试、随之改、变异与取舍；15.3、19.1、21.11、23.1、23.11 的变异与 23.11 的改法；26.14 的测试；38.6 的随之改与变异；40 的测试；6.2 第 8 条；8.1 的"S2 之后"；8.2 的 S2。
+
+### 10.3 S3：375 px、`bdi` 与对比度（2026-11-18，合并见 00 号文档第 12 节）
+
+- **提交**：十个代码提交与一次合并 `main`，加本文档提交；[审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)。
+  - 第 1–5 个照 6.3（`9ca1c6a1`、`76be71df`、`ceb0482b`、`468635fe`、`f5131dd3`）；33.1 复现了，第 6 个照 6.3 第 6 条（`72b1e679`）。标题把括号里的条目号挪进正文（S1 的写法）。
+  - 修复第 1 轮四个（头 `f5d1220a`）：`check.mjs` 的 `REQUIRED` 加 SE1（`1d8a2fd9`）；`check.mjs` 经 `pnpm --filter` 跑 Playwright、头注释改准，去掉 knip 的 `ignoreBinaries`（`63004369`）；暗色 destructive 按钮悬停的底（`3c4d5710`）；`Isolated` 的 `key` 按位置（`f5d1220a`）。
+  - 合并 `main` 的 `e19172e3`（P2/S2 的合并 `6505c3bf`）：`history-filters.tsx` 一处冲突，S2 的 `label` 与 S3 的四处类都留（合并检查单，审查 A 的 Q1）；S3 的整句断言一格也不用改。
+  - 三份审查 A 0I0M2N1Q、B 0I1M1N1Q、C 0I2M3N；核对第 1 轮 A 0/0/0、B 0/0/0、C 0/0/1，那一条在本提交写对，不开第二轮（决定 594）。
+- **做完**：B：12.4（连同菜单与选项的当前项，决定 420；另修了暗色 destructive 按钮的悬停，决定 591）、26.9、26.12、26.17、32.1、32.2、32.4、35.8、38.10、38.11、38.12；D：32.3；M：33.1 排查复现，按 B 在 S3 修（决定 589）。推后进 v0.2 的：26.12、32.4 的同类约二十处（决定 395）；变更集页面包屑的 `current` 与回收站预览 `h1` 的长名（决定 414）；WebKit 原生下拉的焦点指示（决定 590）。
+- **主持者的决定**（589–594，00 号文档第 11 节）：33.1 的改法是 `NativeSelect` 的 `contain-paint`；WebKit 的下拉没有 3 px 的环，进 v0.2，真的 Safari 上的两项进 P5/S3 的人工清单；暗色 destructive 悬停在 S3 修；项目的检查列 SE1、经 `--filter`、不看引擎；13.2 的新条是第 31 条；文档的去处与收口。
+- **33.1**：在没改的 `f08dca69` 上，Playwright 1.63 的 WebKit 26.6 里 SE1 (page) 的 375 一段页宽 704，三遍都是（只种数据、搜一次的短格也是）；Chromium 153 同一构建 375。没有一个元素的盒子超出屏幕；逐个隐藏元素，只有"在哪里找"的 `select` 与它的祖先能让页宽回到 375：WebKit 把选择显示的那一项的文字（这本笔记本 98 个字的名字，约 680 px）整个算进页面的宽度，选择裁掉了也一样。对选择写 `overflow` 在 WebKit 里不生效（计算值仍是 `visible`；Chromium 的 UA 给选择 `overflow: clip`），外层的 `min-w-0` 从头布局也不管用，`contain: paint` 管用。改法：`NativeSelect` 的基类加 `contain-paint`；SE1 拆出 `@narrow` 的一格，去掉 `contain-paint` 只在 `webkit-narrow` 红。审查 B 在同一构建上核过：WebKit 704 → 375，Chromium、Firefox 本来就是 375；`contain-paint` 不裁选择自己的环与边框；外层 `overflow: hidden` 会裁掉焦点环。Playwright 的 WebKit 不是 Safari，真的 Safari 进人工清单。
+- **`bdi` 修了什么**（审查 A 的探针，Chromium、Firefox、WebKit 三种）：确实乱序、`bdi` 修好的是删除者一行（"Deleted by דוד · 2 hours ago"）、搜索的路径、改名（"Renamed: “מדריך” → “התקנה”"）与 zh 的撤销链接。32.4 举的两处，en 的 "Moved from “A” to “B”"（两个名字之间有强 L 的 "to"）与 en 的 "MCP (עוזר) · 5 minutes ago"（UBA 的 N0 把成对的括号定为 L），没有 `bdi` 也不乱；仍加 `bdi`，与同类一致，名字以数字结尾时也更稳。整句的文字、复制的文字与 Chromium 可访问性树的名称都与改前相同。
+- **与设计不同之处**（正文照实改了，各处注"实际…（10.3）"）：
+  - **33.1 的改法**是 `NativeSelect` 的 `contain-paint`，不是 4.3.1.1 的办法（决定 589）。
+  - **13.2 的新条是第 31 条**，插在 P4/S4 的第 30 条之后（决定 505、536、593）；2.1 第 3 条里的第 21 条、决定 396、4.3.0、12.4 的"S3 之后的焦点指示"与 8.2 的号随之改。
+  - **`tools/e2e-projects/check.mjs`**：一次列四个项目，经 `pnpm --filter @nervewiki/e2e exec playwright test --list --reporter=json`；"在 `threeBrowsers` 里"按 `webkit` 列出的文件判；另断言带 `@narrow`、不在 `threeBrowsers` 里的每一格都在 `webkit-narrow` 里；`REQUIRED` 列 MC3、PG2 与 SE1；先在样例上自检。它看的是项目、文件与格，看不见引擎（审查 C 的 M1、N1、N2，决定 592）。`knip.jsonc` 只加 `entry`：实施时 knip 另报 `Unlisted binaries`，加过 `ignoreBinaries`，修复第 1 轮改用 `--filter` 之后去掉。
+  - **`E/fixtures/contrast.ts`** 多一个导出 `setColorScheme(page, scheme)`；结束的是元素与它祖先的 `CSSTransition`，无限的动画不碰。
+  - **暗色 destructive 按钮悬停**（4.3.4 没有这一行）：悬停的底回到 destructive 的 90%，白字 3.45；`dark:hover:bg-destructive/50` 之后 8.07（决定 591）。PG4 (page) 在删除之前量确认框的 "Delete"，两种主题、静止与悬停都 ≥ 4.5。
+  - **WebKit 的下拉**：Playwright 的 WebKit 不画原生下拉的 `box-shadow`，聚焦时只有 1 px 的边框变成 `#737373`（对页 4.74）；改前就是，进 v0.2（决定 590）。
+  - **4.3.0.5 的六条**：页面树的外框不被裁（1280 与 375，两种引擎）；内嵌的环 `inset` 写在末尾；SE1 的 Tab 次序照推断；38.11 加了标题的 `anywhere` 之后七个对话框都不超出，`AlertDialogContent` 不改；LW3 能经 API 在 `raw` 下建没有内容的父页；MC3 的改名是 "Renamed: “A” → “B”"。
+  - **随之改的测试多于各项列的**：`isolated.test.tsx` 另有"没有名字的一句照原样"与"一句写两次同一个名字"两格；SE1 拆出的那一格用 `expectFits`，先断言选着那本笔记本。
+- **先红**：各项的新测试在没修的代码上红过（实施报告第 2 节、修复报告第 1 节）：`bdi` 五格；MC3 页宽 966、1010；PG2 在 1280 就 2469，LW3 三种浏览器 796；对比度照 4.3.4 的"没修"一列；字重 600；33.1 WebKit 704；暗色悬停 3.45；重复的 key。
+- **变异**：实施 52 条（vitest 15、e2e 37），在头上逐条改、跑、复原，50 条红在预期的那一步；抓不到的两条：去掉 `webkit-narrow` 的 `testIgnore` 等价（今天 `threeBrowsers` 的故事里没有一格带 `@narrow`；以后有了，检查会红），12.4 与决定 420 预先写明"没有 e2e 走到"的七处合成一条、全量照过。审查 C 加的两条（去掉 SE1 的标签、`webkit-narrow` 换成 Chromium）活下来，修复第 1 轮补上与写明；修复第 1 轮的反向对照都红。表在 S3 的记录。
+- **门禁与 CI**：
+  - 实施、修复第 1 轮的头上各 `make check`、`make e2e`（582 过、1 跳过）、两个 e2e 的检查全绿；十个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,702 → 4,703 格），改了故事的另跑那几个。
+  - 合并 `main` 之后：`make lint-web`、`make knip`、`make test-web`（197 个文件、4,801 格）、TB1、MC3（含 `webkit-narrow`）、SE1、两个检查与 `make e2e`（582、1）绿。
+  - 分支 CI：`72b1e679` 的 run 44252268978、`f5d1220a` 的 44277971443 第一次 attempt 都是 18 项绿、e2e 卡在装 Playwright 的浏览器被 20 分钟的时限取消，只重跑 e2e，第二次绿；合并 `main` 的 44291042215：第一次 attempt 18 项绿；e2e 整 20 分钟都在装 Playwright 的浏览器（apt 的镜像慢），被时限取消，E2E 一步没有开始；只重跑 e2e，第 2 次绿，19 项全绿。本提交的分支 CI：`（待填：本提交的分支 CI）`。
+- **e2e 的用时**（7.4）：CI 的 `list` 报告里，S3 新加的六格 15.9 秒，其中新的窄屏项目 `webkit-narrow` 三格 10.9 秒；改的三个故事比 `main` 多 5.7 秒；合计多约 21.6 test-seconds，是 4.3.0.3 推断（32–38，33.1 复现再加约 6）的一半上下，PG2 的对话框比估的快得多。修复第 1 轮的 PG4 (page) 多约 0.4 秒。e2e 作业 9:40、9:47（E2E 8:02、8:30），`main` 的 `f08dca69` 是 10:02（8:15）；web 3:58、3:56（Test 3:13、3:18）。`webkit-narrow` 的 worker 启动没有单独量到。
+- **对比度**：没修与修了的数与 4.3.4 的表一致（亮色环 1.54 → 4.74，暗色 1.88 → 4.18；无效的环亮 1.44 → 4.77、暗 1.29 → 6.85；补全说明 4.35 → 4.82；编辑器外框与链接亮 2.58 → 4.74；菜单与补全的当前项由没有指示到 4.35、3.19）；暗色 destructive 静止 Chromium 读回 6.43（`#9e4042`，表上 6.47 是 8 位取整差一位），悬停 3.45 → 8.07。
+- **读屏与人工清单**：S3 没有要读屏清单新收的；真的 Safari 上窄屏的搜索页与原生下拉的焦点两项写在 [S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"，交 P5/S3（决定 590）。
+- **照实改的各节**（02-workflow 3.5）：头；第 2 节"移交的落实"的 33.1；2.1 第 3 条里的第 21 条与第 8 条；2.3 的 396、413（只加注）；4.0 总表的 S3 一行；4.3.0 的"13.2 的新条"；4.3.0.1 的 33.1 一行；4.3.0.3 的末段；4.3.0.5；4.3.1.3 的导出与过渡；12.4 的"S3 之后的焦点指示"；33.1 的"复现了"；4.3.4 加 destructive 悬停两行；5.1 的 `webkit-narrow` 与检查；6.3 第 3、6 条；7.4 的 S3 一行；8.1 的"S3 之后"；8.2 的 S3 与 13.4；第 9 节的人工入口。
 
 ## 附录：核对过的代码
 

@@ -10,6 +10,7 @@ import { errorText } from "../../app/problem-messages";
 import { Button } from "../../components/ui/button";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
+import { isolate, Isolated, same, type Namer } from "../../i18n/isolated";
 import type { Locale } from "../../i18n/locale";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId, twinsOf } from "../../lib/twins";
@@ -79,24 +80,27 @@ export function startedOf(state: unknown): Started | undefined {
     : undefined;
 }
 
-/** fromText says where item was: the pages it was under, from the root down, or the notebook's top level. */
-function fromText(item: TrashItem, t: Translate): string {
+/**
+ * fromText says where item was: the pages it was under, from the root down, each a name (name: isolated.tsx), or the
+ * notebook's top level.
+ */
+function fromText(item: TrashItem, t: Translate, name: Namer = same): string {
   return item.ancestors.length === 0
     ? t("trash.fromTop")
-    : t("trash.from", { path: item.ancestors.map((ancestor) => ancestor.name).join(" / ") });
+    : t("trash.from", { path: item.ancestors.map((ancestor) => name(ancestor.name)).join(" / ") });
 }
 
 /**
  * restoreToText says where a restore puts item: under its parent where it
  * was, or at the notebook's top level, where it was or, its parent in the
- * trash or its pages too deep under it, instead.
+ * trash or its pages too deep under it, instead. Its parent is a name (named: isolated.tsx).
  */
-function restoreToText(item: TrashItem, t: Translate): string {
+function restoreToText(item: TrashItem, t: Translate, named: Namer = same): string {
   const { parent_id: parent, reason } = item.restore_to;
   switch (reason) {
     case "original": {
       const name = item.ancestors.find((ancestor) => ancestor.id === parent)?.name;
-      return name === undefined ? t("trash.toTop") : t("trash.toParent", { parent: name });
+      return name === undefined ? t("trash.toTop") : t("trash.toParent", { parent: named(name) });
     }
     case "parent_in_trash":
       return t("trash.toTopParentInTrash");
@@ -260,9 +264,11 @@ export function TrashFacts({ item, now, id }: { item: TrashItem; now: number; id
   const { locale } = useStore().preferences;
   return (
     <>
-      <p className="text-sm break-words text-muted-foreground">{fromText(item, t)}</p>
       <p className="text-sm break-words text-muted-foreground">
-        {t("trash.deletedBy", { name: item.deleted_by.display_name })}
+        <Isolated {...isolate((name) => fromText(item, t, name))} />
+      </p>
+      <p className="text-sm break-words text-muted-foreground">
+        <Isolated {...isolate((name) => t("trash.deletedBy", { name: name(item.deleted_by.display_name) }))} />
         {" · "}
         <time dateTime={item.deleted_at} title={formatDateTime(item.deleted_at, locale)}>
           {formatRelative(item.deleted_at, now, locale)}
@@ -279,7 +285,9 @@ export function TrashFacts({ item, now, id }: { item: TrashItem; now: number; id
         {" · "}
         {t("trash.counts", { pages: item.pages, assets: item.assets })}
       </p>
-      <p className="text-sm break-words text-muted-foreground">{restoreToText(item, t)}</p>
+      <p className="text-sm break-words text-muted-foreground">
+        <Isolated {...isolate((name) => restoreToText(item, t, name))} />
+      </p>
     </>
   );
 }

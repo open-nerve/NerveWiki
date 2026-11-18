@@ -51,6 +51,12 @@ test("the versions are the page's, newer first: as long ago as each was written,
 
   const list = await within(await shownPanel()).findByRole("list", { name: "Versions" });
   expect(within(section("Versions")).getByText("One version per edit.")).toBeTruthy();
+  // Nothing deletes a version on its own (M12/P2/S2, H4).
+  expect(
+    within(section("Versions")).getByText(
+      "No version can be deleted on its own, by hand or by the system: the page keeps every one."
+    )
+  ).toBeTruthy();
   expect(listed()).toEqual([
     ["2 minutes ago", "Oct 3, 2026, 9:58 AM", "Current", "Editing", "Bob · Edit"],
     ["1 hour ago", "Oct 3, 2026, 9:00 AM", "Ada · Undo change"],
@@ -88,6 +94,11 @@ test("in Chinese, the versions say the same", async () => {
 
   await within(await screen.findByRole("complementary", { name: "页面信息" })).findByRole("list", { name: "版本" });
   expect(within(screen.getByRole("complementary", { name: "页面信息" })).getByText("一次编辑一个版本。")).toBeTruthy();
+  expect(
+    within(screen.getByRole("complementary", { name: "页面信息" })).getByText(
+      "版本不能单独删除，手动不能，系统也不会：这一页的每个版本都留着。"
+    )
+  ).toBeTruthy();
   const items = within(screen.getByRole("list", { name: "版本" })).getAllByRole("listitem");
   expect(items.map((item) => item.textContent)).toEqual(["5分钟前当前编辑中Ada · 撤销", "昨天Bob · 导入"]);
 });

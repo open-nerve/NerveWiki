@@ -17,7 +17,7 @@ import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthNodeId } from "./health-item";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { HealthRule, healthRuleOrder, type HealthCard, type HealthRuleItem } from "./health-rule";
+import { clearText, HealthRule, healthRuleOrder, staleText, type HealthCard, type HealthRuleItem } from "./health-rule";
 import { useNotebook } from "./notebook-layout";
 
 type HealthView = {
@@ -290,11 +290,7 @@ const HealthResults = observer(function HealthResults({
           {view.checking && <p className="text-sm">{t("health.checking")}</p>}
           {view.error !== undefined && <NotLoaded error={view.error} retry={recheck} />}
           {mismatch && <p className="text-sm">{t("health.modeChanged")}</p>}
-          {data.stale_pages > 0 && (
-            <p className="text-sm">
-              {t("health.stale", { count: new Intl.NumberFormat(locale).format(data.stale_pages) })}
-            </p>
-          )}
+          {data.stale_pages > 0 && <p className="text-sm">{staleText(t, locale, data.stale_pages)}</p>}
           {tree.error !== undefined && (
             <fieldset aria-label={t("health.paths")}>
               <NotLoaded error={tree.error} retry={() => void tree.retry().catch(() => undefined)} />
@@ -303,7 +299,7 @@ const HealthResults = observer(function HealthResults({
           {found.map(card)}
           {clear.length > 0 && (
             <details ref={details} className="space-y-3">
-              <summary className="cursor-pointer font-medium">{t("health.clear", { count: clear.length })}</summary>
+              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}

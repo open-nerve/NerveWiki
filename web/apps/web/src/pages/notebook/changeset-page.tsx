@@ -12,6 +12,7 @@ import { useNodeNavigate } from "../node-target";
 import { Alert } from "../../components/ui/alert";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { isolate, Isolated } from "../../i18n/isolated";
 import { idPattern } from "../../lib/ids";
 import { readPages } from "../../lib/read-pages";
 import { shortId, twinsOf } from "../../lib/twins";
@@ -331,7 +332,9 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
   const { reverts } = changeset;
   return (
     <div className="space-y-1 text-sm">
-      <p className="text-muted-foreground">{t("history.clientOf", { client: clientText(changeset.client, t) })}</p>
+      <p className="break-words text-muted-foreground">
+        <Isolated {...isolate((name) => t("history.clientOf", { client: clientText(changeset.client, t, name) }))} />
+      </p>
       <p className="text-muted-foreground">
         {t("history.made", { time: formatDateTime(changeset.created_at, locale) })}
         {changeset.updated_at !== changeset.created_at && (
@@ -352,7 +355,9 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
         ) : (
           <p>
             <Link to={href(reverts.id)} className="break-words underline underline-offset-4">
-              {t("history.reverts", { name: changesetName(reverts, false, t, locale) })}
+              <Isolated
+                {...isolate((name) => t("history.reverts", { name: changesetName(reverts, false, t, locale, name) }))}
+              />
             </Link>
           </p>
         ))}

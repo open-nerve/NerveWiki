@@ -436,7 +436,7 @@ test("LW6 (page): a writer undoes an admin's deletion of a source; an admin's re
   const refusal = page.getByRole("alertdialog");
   await expect(refusal).toContainText(/only the notebook's admins/i);
   // Moving a page out and back restores content; it does nothing for a rename a writer may not touch.
-  await expect(refusal).not.toContainText("Temporary steps");
+  await expect(refusal).not.toContainText("outside the source area");
   expect((await listNodes(api, pat, notebook.id)).map((node) => node.name)).toContain("Renamed source");
 
   expect((await revertChangeset(api, pat, rename)).response.status).toBe(200);

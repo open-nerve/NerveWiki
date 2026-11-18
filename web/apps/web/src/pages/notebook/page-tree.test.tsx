@@ -129,7 +129,7 @@ test("only the root AGENTS is protected, by its normalized title", async () => {
   const nested = await within(nav).findByRole("link", { name: "AGENTS (source)" });
 
   expect(top.parentElement?.hasAttribute("draggable")).toBe(false);
-  expect(await actionsFor(user, nav, "aGeNtS (in Plans)")).toEqual(["New subpage"]);
+  expect(await actionsFor(user, nav, "aGeNtS (at the notebook's top level)")).toEqual(["New subpage"]);
   await user.keyboard("{Escape}");
   expect(nested.parentElement?.hasAttribute("draggable")).toBe(false);
   expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["Paste Markdown", "Upload files"]);
@@ -199,6 +199,24 @@ test("the notebook's pages are in the left column, beside the main, their roots 
   expect(within(nav).queryByRole("button", { name: "Subpages of Notes" })).toBeNull();
 });
 
+test.each([
+  ["en", "Pages of Plans", "Actions for Notes (in Plans)", "Actions for Notes (at the notebook's top level)"],
+  ["zh-CN", "Plans的页面", "Notes（Plans 下）的操作", "Notes（笔记本的顶层）的操作"],
+] as const)(
+  "a page at the root and a page under a root page titled as the notebook are told apart, in %s",
+  async (locale, pages, under, top) => {
+    const plans = pageNode(5, "Plans");
+    const again = pageNode(6, "Notes", plans);
+    const server = pageServer({ nodes: [guide, install, linux, notes, plans, again] });
+    server.app.preferences.setLocale(locale);
+    renderApp(pagePath(again.id), server.app);
+
+    const nav = await screen.findByRole("navigation", { name: pages });
+    await within(nav).findByRole("button", { name: under });
+    expect(within(nav).getByRole("button", { name: top })).toBeTruthy();
+  }
+);
+
 test("pages of the same title are told apart in their controls and dialogs by where they are", async () => {
   const user = userEvent.setup();
   const again = pageNode(5, "Notes", guide);
@@ -206,7 +224,7 @@ test("pages of the same title are told apart in their controls and dialogs by wh
 
   const nav = await tree();
   await within(nav).findByRole("button", { name: "Actions for Notes (in Guide)" });
-  expect(within(nav).getByRole("button", { name: "Actions for Notes (in Plans)" })).toBeTruthy();
+  expect(within(nav).getByRole("button", { name: "Actions for Notes (at the notebook's top level)" })).toBeTruthy();
   expect(within(nav).getByRole("button", { name: "Actions for Install" })).toBeTruthy();
   await user.click(within(nav).getByRole("button", { name: "Actions for Notes (in Guide)" }));
   await user.click(await screen.findByRole("menuitem", { name: "Rename" }));

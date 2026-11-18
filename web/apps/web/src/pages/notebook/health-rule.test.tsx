@@ -159,6 +159,21 @@ test("a card network failure retains results while its existing finite retry pol
   expect(fixture.summaries).toHaveLength(1);
 });
 
+test.each([
+  ["en", "Wanted pages", "More", "1 more issue shown."],
+  ["zh-CN", "待建页面", "更多", "新增显示 1 项问题。"],
+] as const)("a More that adds one issue says one, singular, in %s", async (locale, heading, more, said) => {
+  const user = userEvent.setup();
+  const fixture = healthServer();
+  fixture.server.app.preferences.setLocale(locale);
+  fixture.responses.page = () => fixture.pageOf(wantedFacts(6).slice(5), wantedFacts(6)[5]!.cursor);
+  renderApp(healthPath, fixture.server.app);
+  const card = within((await screen.findByRole("heading", { name: heading })).closest("section") as HTMLElement);
+  await user.click(card.getByRole("button", { name: more }));
+  await screen.findByText("Missing 006");
+  await waitFor(() => expect(card.getByRole("status").textContent?.trim()).toBe(said));
+});
+
 test("a failed operation's timer cannot retry a newer operation after manual success and another page", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
@@ -553,7 +568,7 @@ test("a card whose cursor is undefined offers More, which reads from the first p
     wanted()
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual([1, 2, 3, 4, 5].map((n) => `Missing 00${n}Referenced by 1 pages`));
+  ).toEqual([1, 2, 3, 4, 5].map((n) => `Missing 00${n}Referenced by 1 page`));
 
   await user.click(wanted().getByRole("button", { name: "More" }));
 
@@ -562,7 +577,7 @@ test("a card whose cursor is undefined offers More, which reads from the first p
     wanted()
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual([1, 2, 3, 4, 5, 6, 7].map((n) => `Missing 00${n}Referenced by 1 pages`));
+  ).toEqual([1, 2, 3, 4, 5, 6, 7].map((n) => `Missing 00${n}Referenced by 1 page`));
   expect(document.activeElement).toBe(wanted().getAllByRole("listitem")[5]);
   expect(asked).toEqual([["wanted", undefined]]);
 

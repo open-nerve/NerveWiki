@@ -65,7 +65,7 @@ export function RenamePageDialog({
               onSend();
               return pages.rename(page.id, title, beforeSave);
             }}
-            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
+            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
             onSaved={() => {

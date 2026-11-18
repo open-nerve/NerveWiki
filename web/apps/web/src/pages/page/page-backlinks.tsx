@@ -57,7 +57,7 @@ export const PageBacklinks = observer(function PageBacklinks({
   const { cache } = useSWRConfig();
   // A read reads as many pages as the list has, by the cache as it reads: what More added, the page come back to.
   const cached = () => cache.get(unstable_serialize(key));
-  const nameOf = (id: string) => distinctName(pages.tree, notebook, id, t);
+  const nameOf = (id: string) => distinctName(pages.tree, id, t);
   const { data, error, mutate } = useSWR(key, () =>
     readPages(pages, page, (cached()?.data as BacklinkPage[] | undefined)?.length ?? 1)
   );

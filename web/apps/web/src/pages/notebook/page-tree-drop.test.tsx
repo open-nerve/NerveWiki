@@ -69,7 +69,7 @@ test("a drop whose links' pages are being edited names them and their editors be
     within(alert)
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual(["Bob is editing “Notes (in Plans)”.", "You are editing “Notes (in Guide)”."]);
+  ).toEqual(["Bob is editing “Notes (at the notebook's top level)”.", "You are editing “Notes (in Guide)”."]);
 
   await user.click(within(nav).getByRole("button", { name: "Actions for Guide" }));
   await user.click(await screen.findByRole("menuitem", { name: "Rename" }));
