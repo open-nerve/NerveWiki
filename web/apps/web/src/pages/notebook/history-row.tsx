@@ -65,7 +65,7 @@ export const HistoryRow = observer(function HistoryRow({
           ref={linkRef}
           to={href(changeset.id)}
           aria-label={name}
-          className="font-medium break-words underline underline-offset-4"
+          className="min-w-0 font-medium break-words underline underline-offset-4"
         >
           {byText(changeset, t)}
         </Link>
@@ -117,7 +117,7 @@ export const HistoryRow = observer(function HistoryRow({
             (reverts === null ? (
               <span className="text-muted-foreground">{t("history.revertsPurged")}</span>
             ) : (
-              <Link to={href(reverts.id)} className="break-words underline underline-offset-4">
+              <Link to={href(reverts.id)} className="min-w-0 break-words underline underline-offset-4">
                 <Isolated
                   {...isolate((named) =>
                     t("history.reverts", { name: changesetName(reverts, revertsTwin, t, locale, named) })

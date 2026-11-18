@@ -110,13 +110,13 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
             to={open.to}
             state={open.state}
             aria-label={twin ? name : undefined}
-            className="font-medium break-words underline underline-offset-4"
+            className="min-w-0 font-medium break-words underline underline-offset-4"
           >
             {node.name}
           </Link>
         ) : (
           <>
-            <span className="font-medium break-words">{node.name}</span>
+            <span className="min-w-0 font-medium break-words">{node.name}</span>
             <Link
               ref={linkRef}
               to={`${home}/trash/${node.id}`}
@@ -139,7 +139,7 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
       {(texts.length > 0 || content !== null) && (
         <p className="flex flex-wrap gap-x-3 text-sm break-words text-muted-foreground">
           {texts.map((text) => (
-            <span key={text.text}>
+            <span key={text.text} className="min-w-0">
               <Isolated {...text} />
             </span>
           ))}

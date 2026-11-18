@@ -332,7 +332,7 @@ function ChangesetFacts({ changeset, href }: { changeset: ChangesetDetail; href:
   const { reverts } = changeset;
   return (
     <div className="space-y-1 text-sm">
-      <p className="text-muted-foreground">
+      <p className="break-words text-muted-foreground">
         <Isolated {...isolate((name) => t("history.clientOf", { client: clientText(changeset.client, t, name) }))} />
       </p>
       <p className="text-muted-foreground">

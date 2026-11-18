@@ -25,5 +25,8 @@ export default defineConfig({
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
     { name: "firefox", testMatch: threeBrowsers, use: { ...devices["Desktop Firefox"] } },
     { name: "webkit", testMatch: threeBrowsers, use: { ...devices["Desktop Safari"] } },
+    // The checks at a phone's width (WCAG 1.4.10) run on Safari's engine too, whose widths differ from Chromium's
+    // (M12/P2/S3): those tagged @narrow, of the stories the three browsers do not run already.
+    { name: "webkit-narrow", grep: /@narrow/, testIgnore: threeBrowsers, use: { ...devices["Desktop Safari"] } },
   ],
 });
