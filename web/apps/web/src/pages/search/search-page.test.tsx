@@ -113,7 +113,7 @@ test("the results list the names' hits, then the contents', each with its kind's
   expect(attachment?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   expect(attachmentLink.getAttribute("href")).toBe(pagePath(install.id));
   expect(attachment?.textContent).toContain("Plans / Guide / Install");
-  expect(attachment?.textContent).toContain("PDF · 1 KB");
+  expect(attachment?.textContent).toContain("PDF · 1 KiB");
 
   expect(
     within(body as HTMLElement)
@@ -137,7 +137,7 @@ test("the results speak Chinese too", async () => {
   await waitFor(() => expect(document.title).toBe("搜索：数据库 · Lab · Nerve Wiki"));
   const list = await screen.findByRole("list", { name: "搜索结果" });
   expect(statusLine().textContent).toBe("3 条。");
-  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("PDF · 1 KB");
+  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("PDF · 1 KiB");
   expect(screen.getByRole("combobox", { name: "在哪里找" })).toBeTruthy();
 });
 
@@ -361,6 +361,29 @@ test("a hit a later page lists again, a rename between them, is listed once, and
   await waitFor(() => expect(asked).toEqual(["n", "n more", "m", "n"]));
   await waitFor(() => expect(hits()).toHaveLength(2));
   expect(told().textContent).toBe("");
+});
+
+test("after a stretch that listed only hits listed before, More is Keep looking, as what it said", async () => {
+  const user = userEvent.setup();
+  const pages: Record<string, SearchPage> = {
+    first: { data: [hitOf(guide), hitOf(notes)], next_cursor: "second", count: null, building: false },
+    // Notes renamed between the reads: listed again, it adds nothing.
+    second: { data: [hitOf(notes)], next_cursor: "third", count: null, building: false },
+    third: { data: [hitOf(linux)], next_cursor: null, count: null, building: false },
+  };
+  const server = searched({
+    "GET /api/v0/workspaces/lab/search": (request) =>
+      json(pages[new URL(request.url).searchParams.get("cursor") ?? "first"]),
+  });
+  renderApp(searchPath("n"), server.app);
+  await screen.findByRole("list", { name: "Search results" });
+
+  await user.click(screen.getByRole("button", { name: "More results" }));
+
+  await waitFor(() => expect(told().textContent).toBe("Nothing found in this stretch; you can keep looking."));
+  expect(hits()).toHaveLength(2);
+  const keepLooking = screen.getByRole("button", { name: "Keep looking" });
+  expect(document.activeElement).toBe(keepLooking);
 });
 
 test("More reads the next page and says what it added; after a stretch that found none it is Keep looking, saying so, the next time with a space that does not break, the next without; the focus stays on it until the last page, then goes to the first hit added", async () => {
@@ -626,11 +649,18 @@ test("an address without q says how to search, and reads nothing", async () => {
 
   expect(await heading("Search")).toBeTruthy();
   await waitFor(() => expect(document.title).toBe("Search · Lab · Nerve Wiki"));
-  expect(
-    screen.getByText("Type what to find in the search box at the top of the left column, and press Enter.")
-  ).toBeTruthy();
+  // At the top: of the left column on a wide screen, of the page on a narrow one, where the column is above it.
+  expect(screen.getByText("Type what to find in the search box at the top, and press Enter.")).toBeTruthy();
   expect(screen.queryByRole("combobox", { name: "Where to look" })).toBeNull();
   expect(reads(server)).toEqual([]);
+});
+
+test("in Chinese, an address without q says how to search, wherever the search box is", async () => {
+  const server = searched();
+  server.app.preferences.setLocale("zh-CN");
+  renderApp("/lab/search", server.app);
+
+  expect(await screen.findByText("在顶部的搜索框里输入要找的文字，按回车。")).toBeTruthy();
 });
 
 test("a search the server fails says why, with Try again, which reads it again", async () => {

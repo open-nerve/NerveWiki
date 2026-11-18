@@ -414,6 +414,7 @@ test.each([
 
 test.each([
   ["a page raw at the root with nodes under it, at any depth", [raw, rawPage, rawDeep, rawFile], 3],
+  ["a page raw at the root with one node under it", [raw, rawPage], 1],
   ["a page raw at the root with none under it", [raw], 0],
   // The server finds raw by its title's key (start_upgrade.go), as the root's titles are told apart.
   ["a page Raw at the root with nodes under it", [{ ...raw, name: "Raw" }, rawPage, rawDeep], 2],
@@ -443,10 +444,24 @@ test.each([
   expect(said?.textContent ?? null).toBe(
     count === 0
       ? null
-      : `The page raw at the root becomes the source area (${count} nodes under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.`
+      : `The page raw at the root becomes the source area (${count === 1 ? "1 node" : `${count} nodes`} under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.`
   );
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
   expect(server.asked).toEqual([]);
+});
+
+test("in Chinese, the start's dialog says what becomes of a page raw at the root with one node under it", async () => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ nodes: [guide, install, raw, rawPage] });
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(general, server.app);
+
+  await user.click(await (await modeOf("模式")).findByRole("button", { name: "升级为 LLM Wiki…" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "把「Plans」升级为 LLM Wiki？" });
+
+  expect(within(dialog).queryByText(/^根下的 raw 将成为来源区/u)?.textContent).toBe(
+    "根下的 raw 将成为来源区（现有 1 个节点），批准之后它下面的都是只读的来源；不是来源的可以由 agent 移出。"
+  );
 });
 
 test("an admin starts the upgrade, in the page's language, and lands on its page, its title focused", async () => {

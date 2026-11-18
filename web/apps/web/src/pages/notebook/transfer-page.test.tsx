@@ -89,11 +89,11 @@ test("each job says what it does, its state and progress, who started it, when, 
   expect(await rows()).toEqual([
     ["Export of the whole notebook", "Queued", started],
     ["Export of the page Guide", "Running · Cancelling…", `Started by Bob · ${started}`],
-    ["Export of the whole notebook", "Done", `${started} · ${ended} · 1.5 KB · Kept until Oct 6, 2026, 10:20 AM`],
+    ["Export of the whole notebook", "Done", `${started} · ${ended} · 1.5 KiB · Kept until Oct 6, 2026, 10:20 AM`],
     ["Export of the whole notebook", "Failed · The server's storage is full.", `${started} · ${ended}`],
     ["Export of the whole notebook", "Failed · The job failed.", `${started} · ${ended}`],
     ["Export of the whole notebook", "Cancelled", `${started} · ${ended}`],
-    ["Export of the whole notebook", "Expired", `${started} · ${ended} · 2 KB`],
+    ["Export of the whole notebook", "Expired", `${started} · ${ended} · 2 KiB`],
     ["Import of Vault", "Done", `${started} · ${ended}`],
   ]);
   const [queued, running, done, expired, imported] = (await rowsAt(0, 1, 2, 6, 7)) as [
@@ -186,7 +186,7 @@ test("each row, and each of its controls, is named by what the job does, who sta
   const described = (mine.getAttribute("aria-describedby") ?? "")
     .split(" ")
     .map((id) => document.getElementById(id)?.textContent);
-  expect(described).toEqual(["Done", `${started} · ${ended} · 2 KB · Kept until Oct 6, 2026, 10:20 AM`]);
+  expect(described).toEqual(["Done", `${started} · ${ended} · 2 KiB · Kept until Oct 6, 2026, 10:20 AM`]);
 });
 
 test.each([

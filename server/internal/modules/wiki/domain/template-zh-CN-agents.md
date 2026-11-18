@@ -30,7 +30,7 @@ sources: ["[[raw/Some article]]"]
 
 ## 与 agent 一起工作
 
-在 `/mcp?notebook=<id>` 把 agent 连到这本笔记本。那里有三个 prompt：
+在 `/mcp?notebook=<id>` 把 agent 连到这本笔记本。笔记本升级为 LLM Wiki 期间，那里的 prompt `upgrade` 指引 agent；成为 LLM Wiki 之后，有三个 prompt 为它服务：
 
 - `ingest` 读一个来源，再写出或更新它涉及的页，一次改完。
 - `query` 用 wiki 的页回答一个问题，引用这些页与它们的来源。

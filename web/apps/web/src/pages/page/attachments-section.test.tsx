@@ -46,7 +46,7 @@ test("a page's attachments are listed by name, each opening as it is served, wit
     downloaded.getAttribute("target"),
     downloaded.getAttribute("download"),
   ]).toEqual([`/api/v0/assets/${archive.id}/content?sig=1&download=1`, null, "data.zip"]);
-  expect(section.textContent).toContain("1 KB");
+  expect(section.textContent).toContain("1 KiB");
   expect(server.sent).toContain(`GET assets Guide`);
 });
 
@@ -329,6 +329,60 @@ test("a rename refused stays in the dialog: an empty stem unsent, its extension 
   expect(patches).toBe(2);
   expect(screen.getByRole("dialog", { name: "Rename photo.png" })).toBe(dialog);
 });
+
+test.each([
+  [
+    "en",
+    {
+      region: "Attachments",
+      actions: "Actions for photo.png",
+      rename: "Rename",
+      dialog: "Rename photo.png",
+      name: "Name",
+    },
+    "At most 255 bytes, the extension included: 255 Latin letters, or about 85 Chinese characters.",
+  ],
+  [
+    "zh-CN",
+    { region: "附件", actions: "photo.png的操作", rename: "改名", dialog: "给 photo.png 改名", name: "名称" },
+    "连同扩展名最多 255 字节：255 个拉丁字母，或约 85 个汉字。",
+  ],
+] as const)(
+  "a stem too long with its extension says the extension counts, in %s, and sends nothing; the server's too_long says the same",
+  async (locale, names, said) => {
+    const user = userEvent.setup();
+    let patches = 0;
+    const server = pageServer({
+      nodes,
+      answers: {
+        "PATCH /api/v0/nodes/*": () => {
+          patches += 1;
+          return problem(422, "validation_failed", { errors: [{ field: "name", code: "too_long", message: "" }] });
+        },
+      },
+    });
+    server.app.preferences.setLocale(locale);
+    renderApp(pagePath(guide.id), server.app);
+    const section = await screen.findByRole("region", { name: names.region });
+    await user.click(await within(section).findByRole("button", { name: names.actions }));
+    await user.click(screen.getByRole("menuitem", { name: names.rename }));
+    const dialog = await screen.findByRole("dialog", { name: names.dialog });
+    const field = within(dialog).getByRole("textbox", { name: names.name });
+
+    // 252 bytes of stem and .png: 256 bytes, though the field holds fewer than 255.
+    await user.clear(field);
+    await user.click(field);
+    await user.paste("a".repeat(252));
+    await user.keyboard("{Enter}");
+    expect(await within(dialog).findByText(said)).toBeTruthy();
+    expect(patches).toBe(0);
+
+    await user.clear(field);
+    await user.type(field, "cover{Enter}");
+    await waitFor(() => expect(patches).toBe(1));
+    expect(await within(dialog).findByText(said)).toBeTruthy();
+  }
+);
 
 test("an attachment without an extension renamed to a page's file's name says why, and sends nothing", async () => {
   const user = userEvent.setup();

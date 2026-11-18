@@ -84,6 +84,12 @@ test("the trash lists its items newer first, each by its name, leading to its pr
   expect((deep as HTMLElement).textContent).toContain("Can be restored until Dec 3, 2026, 7:01 AM");
   expect((deep as HTMLElement).textContent).toContain("Pages: 1, attachments: 0");
   expect((deep as HTMLElement).textContent).toContain("Restores under “Install”");
+  // Nothing in the trash is deleted for good by hand: the system does it past an item's time (M12/P2/S2, H4).
+  expect(
+    screen.getByText(
+      "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good."
+    )
+  ).toBeTruthy();
   // When it was deleted, in full as its title.
   expect(
     within(deep as HTMLElement)
@@ -112,10 +118,40 @@ test("an item whose parent is in the trash restores at the top level, and says s
 
   await screen.findByRole("list", { name: "Trash" });
   expect(rows().map((row) => row.querySelector("p:last-child")?.textContent)).toEqual([
-    "Restores at the top level: where it was, it would nest more than 10 levels deep",
+    "Restores at the notebook's top level: where it was, it would nest more than 10 levels deep",
     "Restores under “Guide”",
-    "Restores at the top level: the page it was under is in the trash",
+    "Restores at the notebook's top level: the page it was under is in the trash",
   ]);
+});
+
+test("in Chinese, the trash says the notebook's top level for where an item was and where it goes back", async () => {
+  const chain = [pageNode(30, "L1")];
+  for (let level = 2; level <= 10; level++) {
+    chain.push(pageNode(29 + level, `L${level.toString()}`, chain.at(-1)));
+  }
+  const server = pageServer({ nodes: [guide, install, linux, notes, ...chain] });
+  server.trashNode(linux.id);
+  server.trashNode(install.id);
+  server.trashNode(notes.id);
+  server.trashNode(chain[9]?.id ?? "");
+  const above = pageNode(29, "L0");
+  server.nodes = [
+    above,
+    ...server.nodes.map((node) => (node.id === chain[0]?.id ? { ...node, parent_id: above.id } : node)),
+  ];
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(trashPath, server.app);
+
+  const list = await screen.findByRole("list", { name: "回收站" });
+  const listed = within(list).getAllByRole("listitem");
+  expect(listed.map((row) => row.querySelector("p:last-child")?.textContent)).toEqual([
+    "恢复到笔记本的顶层：放回原处会超过 10 层",
+    "恢复到笔记本的顶层",
+    "恢复到「Guide」下",
+    "恢复到笔记本的顶层：原上级页面在回收站里",
+  ]);
+  expect(listed[1]?.textContent).toContain("原位置：笔记本的顶层");
+  expect(screen.getByText("这里的项不能手动永久删除：一项过了可以恢复的期限之后，由系统永久删除。")).toBeTruthy();
 });
 
 test("an empty trash says so", async () => {
@@ -123,6 +159,11 @@ test("an empty trash says so", async () => {
 
   expect(await screen.findByText("The trash is empty.")).toBeTruthy();
   expect(screen.queryByRole("list", { name: "Trash" })).toBeNull();
+  expect(
+    screen.getByText(
+      "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good."
+    )
+  ).toBeTruthy();
 });
 
 test("a writer's Restore names the item by where it was; items of one name and place each by when it was deleted too, their links as well; one of the name elsewhere not", async () => {
@@ -504,6 +545,25 @@ test("an item restored by another name says so: a sibling where it went has its 
     )
   );
 });
+
+test.each([
+  ["by its name", [], "已恢复「Notes」到笔记本的顶层。 打开"],
+  ["by another", [pageNode(50, "Notes")], "已恢复为「Notes 2」，在笔记本的顶层：那里已有同名的页面或附件。 打开"],
+] as const)(
+  "in Chinese, an item restored at the top level says the notebook's top level, %s",
+  async (_, beside, said) => {
+    const user = userEvent.setup();
+    const { server } = trashed();
+    server.app.preferences.setLocale("zh-CN");
+    renderApp(trashPath, server.app);
+    await screen.findByRole("list", { name: "回收站" });
+    server.nodes = [...server.nodes, ...beside];
+
+    await user.click(screen.getAllByRole("button", { name: /^恢复「Notes」/u })[0] as HTMLElement);
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe(said));
+  }
+);
 
 test("a restore names the page the item went under as the tree has it now: renamed since the list was read", async () => {
   const user = userEvent.setup();

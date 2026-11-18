@@ -1110,7 +1110,7 @@ test("in review, the page shows the report kept: each gate, each count, each rul
     ["Wanted pages now", "37+"],
   ]);
   const clear = report.querySelector("details") as HTMLElement;
-  expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 checks)");
+  expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 check)");
   expect(cardsIn(clear)).toEqual([["H3", "Invalid frontmatter", "0 issues", [], false]]);
   expect(cardsIn(report)).toEqual([
     [
@@ -1135,11 +1135,11 @@ test("in review, the page shows the report kept: each gate, each count, each rul
       "Undigested sources",
       "6 issues",
       [
-        "Guide/Install.mdPage2 KBCreated Oct 3, 2026, 8:00 AM",
-        "Notes.mdAttachment10 KBCreated Oct 4, 2026, 9:00 AM",
+        "Guide/Install.mdPage2 KiBCreated Oct 3, 2026, 8:00 AM",
+        "Notes.mdAttachment10 KiBCreated Oct 4, 2026, 9:00 AM",
         "Guide.mdPage512 BCreated Oct 5, 2026, 10:00 AM",
-        "raw.mdPage3 KBCreated Oct 5, 2026, 11:00 AM",
-        "AGENTS.mdAttachment20 KBCreated Oct 5, 2026, 12:00 PM",
+        "raw.mdPage3 KiBCreated Oct 5, 2026, 11:00 AM",
+        "AGENTS.mdAttachment20 KiBCreated Oct 5, 2026, 12:00 PM",
       ],
       true,
     ],
@@ -1354,7 +1354,7 @@ const approveTitle = "Approve the upgrade of “Plans”?";
 const sendBackTitle = "Send back the upgrade of “Plans”?";
 const rejectTitle = "Reject the upgrade of “Plans”?";
 const approveBody = (root: string) =>
-  `The notebook becomes an LLM Wiki: the pages and attachments under its source area (${root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changesets can still be reverted one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.`;
+  `The notebook becomes an LLM Wiki: the pages and attachments under its source area (${root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changes can still be undone one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.`;
 const stillChecked = "The previous submission is still being checked: try again in a moment.";
 
 /** jobRowOf is what a job's row says (M11/P3 design 4.3): its name, its texts in order, its progress, its controls. */
@@ -1461,15 +1461,17 @@ test("the approval's dialog names the source area as the state section does, whe
   renderApp(upgradePath, server.app);
   const state = await section("Where it is");
   // The source root and, the upgrade having written it, among the pages it wrote.
-  expect(await within(state).findAllByRole("link", { name: "raw (in Plans)" })).toHaveLength(2);
+  expect(await within(state).findAllByRole("link", { name: "raw (at the notebook's top level)" })).toHaveLength(2);
 
   const dialog = await opened(user, approves, approveTitle);
-  expect(within(dialog).getByText(approveBody("raw (in Plans)"))).toBeTruthy();
+  expect(within(dialog).getByText(approveBody("raw (at the notebook's top level)"))).toBeTruthy();
   await dismissed(user, dialog);
   act(() => server.app.preferences.setLocale("zh-CN"));
   const zh = await opened(user, "批准…", "批准「Plans」的升级？");
 
-  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（Plans 下））下的页与附件只读");
+  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（笔记本的顶层））下的页与附件只读");
+  // An undo in the history undoes changes, not changesets, in either language (M12/P2/S2, 23.1).
+  expect(zh.textContent).toContain("升级的改动仍可在历史里照 LLM Wiki 的规则逐个撤销");
 });
 
 test("approved, the page goes to the notebook's home, its title focused, Plans an LLM Wiki without its banner; the upgrade, no longer under way, is not read again, by the approval's mode event nor by a connection after it", async () => {

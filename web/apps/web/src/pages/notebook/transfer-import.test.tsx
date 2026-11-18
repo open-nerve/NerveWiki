@@ -54,7 +54,7 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
 
   const shown = await open(user);
   expect(document.activeElement).toBe(within(shown).getByLabelText("Zip archive"));
-  expect(within(shown).getByText("The zip may be at most 512 MB.")).toBeTruthy();
+  expect(within(shown).getByText("The zip may be at most 512 MiB.")).toBeTruthy();
   expect(within(shown).getByText(/^Keep this dialog open while the zip uploads;/u)).toBeTruthy();
   expect(within(shown).getByLabelText("Zip archive").getAttribute("accept")).toBe(".zip,application/zip");
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());
@@ -451,7 +451,7 @@ test("an import's failures say what befell the import", async () => {
     "Failed · The page imported under no longer exists.",
     "Failed · The file is not a zip archive, or the archive is damaged.",
     "Failed · A page the import had written was deleted while it ran.",
-    "Failed · What the import had written was reverted while it ran.",
+    "Failed · What the import had written was undone while it ran.",
   ]);
 });
 

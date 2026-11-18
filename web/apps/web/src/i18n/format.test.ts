@@ -19,11 +19,12 @@ test("dates are written in the time zone asked for", () => {
 test.each([
   [0, "en", "0 B"],
   [1023, "en", "1,023 B"],
-  [1024, "en", "1 KB"],
-  [1536, "en", "1.5 KB"],
-  [5 * 1024 ** 3, "en", "5 GB"],
-  [2 * 1024 ** 5, "en", "2,048 TB"],
-  [1536, "zh-CN", "1.5 KB"],
+  [1024, "en", "1 KiB"],
+  [1536, "en", "1.5 KiB"],
+  [5 * 1024 ** 2, "en", "5 MiB"],
+  [5 * 1024 ** 3, "en", "5 GiB"],
+  [2 * 1024 ** 5, "en", "2,048 TiB"],
+  [1536, "zh-CN", "1.5 KiB"],
 ] as const)("%d bytes in %s: %s", (bytes, locale, want) => {
   expect(formatBytes(bytes, locale)).toBe(want);
 });

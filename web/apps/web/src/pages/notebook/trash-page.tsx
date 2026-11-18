@@ -189,6 +189,7 @@ export const TrashPage = observer(function TrashPage() {
           {title}
         </h1>
         <p className="text-sm text-muted-foreground">{t("trash.hint")}</p>
+        <p className="text-sm text-muted-foreground">{t("trash.purge")}</p>
       </div>
       {/* There before it says anything: a status that comes with its region is not always read. */}
       <output id={status} className="block text-sm empty:sr-only">

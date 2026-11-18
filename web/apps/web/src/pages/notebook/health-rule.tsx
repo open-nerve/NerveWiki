@@ -61,6 +61,16 @@ function issueCount(
     : t("health.count", { count: new Intl.NumberFormat(locale).format(count) + (capped ? "+" : "") });
 }
 
+/** clearText heads the disclosure of the count checks that found no issues: one check, or how many. */
+export function clearText(t: Translate, count: number): string {
+  return count === 1 ? t("health.clearOne") : t("health.clear", { count });
+}
+
+/** staleText says how many pages' link index is outdated: one page, or how many. */
+export function staleText(t: Translate, locale: Locale, count: number): string {
+  return count === 1 ? t("health.staleOne") : t("health.stale", { count: new Intl.NumberFormat(locale).format(count) });
+}
+
 /**
  * One applicable check, including the checks with no findings in the shared
  * disclosure: the health page's, an upgrade's check's (M11/P2 design 4.3),
@@ -167,7 +177,10 @@ export const HealthRule = observer(function HealthRule({
             seen.add(item.item_key);
             return true;
           });
-          const told = t("health.added", { count: new Intl.NumberFormat(locale).format(added.length) });
+          const told =
+            added.length === 1
+              ? t("health.addedOne")
+              : t("health.added", { count: new Intl.NumberFormat(locale).format(added.length) });
           return {
             items: [...was.items, ...added],
             cursor: page.next_cursor,

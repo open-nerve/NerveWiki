@@ -13,7 +13,7 @@ import { errorText } from "../../app/problem-messages";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
-import { useT } from "../../i18n/i18n";
+import { useT, type Translate } from "../../i18n/i18n";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
@@ -311,7 +311,7 @@ const PageShell = observer(function PageShell({
         <div className="min-w-0 space-y-6">
           {editing === undefined ? (
             <>
-              {refusal !== undefined && <Alert>{errorText(refusal, t)}</Alert>}
+              {refusal !== undefined && <Alert>{refusalText(refusal, t)}</Alert>}
               {(idleLeft || toldLeft !== "") && (
                 <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
                   {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
@@ -368,3 +368,19 @@ const PageShell = observer(function PageShell({
     </div>
   );
 });
+
+/**
+ * refusalText says a refusal shown above the view: a task item's toggle that would leave no task item there
+ * (ticking "- [ ]: /u" makes a link reference definition, not_allowed on offset) says so (M12/P2/S2, 6.1); any
+ * other refusal as the app says it.
+ */
+function refusalText(error: unknown, t: Translate): string | undefined {
+  if (
+    error instanceof ApiError &&
+    error.code === "validation_failed" &&
+    (error.problem?.errors ?? []).some((each) => each.field === "offset" && each.code === "not_allowed")
+  ) {
+    return t("page.taskWouldGo");
+  }
+  return errorText(error, t);
+}

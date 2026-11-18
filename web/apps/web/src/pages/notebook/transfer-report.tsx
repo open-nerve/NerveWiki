@@ -336,7 +336,7 @@ const Locked = observer(function Locked({ notebook, lock }: { notebook: Notebook
   const pages = usePageTree(notebook);
   const { me } = useAccount();
   const { slug } = useWorkspace();
-  const page = distinctName(pages.tree, notebook, lock.page_id, t);
+  const page = distinctName(pages.tree, lock.page_id, t);
   if (page === undefined) {
     return (
       <p>

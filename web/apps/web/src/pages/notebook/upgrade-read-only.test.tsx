@@ -381,11 +381,30 @@ test.each([
     return;
   }
   const dialog = await screen.findByRole("alertdialog", { name: "“Fresh” does not exist" });
-  expect(within(dialog).getByText(/^No page has this name\./u).textContent).toBe(
+  expect(within(dialog).getByText(/^No page or attachment has this name\./u).textContent).toBe(
     says === "upgrading"
-      ? "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends."
-      : "No page has this name. The notebook's editors can create it from this link."
+      ? "No page or attachment has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends."
+      : "No page or attachment has this name. The notebook's editors can create it from this link."
   );
+  expect(server.sent.filter((line) => line.startsWith("GET landing"))).toEqual([]);
+});
+
+test("in Chinese, an editor's link to no page while the notebook is being upgraded says no page is created until the upgrade ends", async () => {
+  const server = upgraded(pageServer({ role: "editor" }), upgrading, "editor");
+  server.app.preferences.setLocale("zh-CN");
+  server.views.set(guide.id, {
+    html: `<p><a class="nw-wikilink nw-unresolved" data-nw-target="Fresh">Fresh</a></p>`,
+    revision: 1,
+    assets_expire_at: null,
+  });
+  renderApp(pagePath(guide.id), server.app, { enhancements: [unresolvedLinks] });
+
+  await userEvent.click(await screen.findByRole("button", { name: "Fresh" }));
+
+  const dialog = await screen.findByRole("alertdialog", { name: "「Fresh」不存在" });
+  expect(
+    within(dialog).getByText("没有这个名称的页面或附件。这本笔记本正在升级为 LLM Wiki，升级结束之前不新建页面。")
+  ).toBeTruthy();
   expect(server.sent.filter((line) => line.startsWith("GET landing"))).toEqual([]);
 });
 
