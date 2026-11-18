@@ -14,8 +14,8 @@ func TestTheE2EStepHasALimitOfItsOwn(t *testing.T) {
 	// item 11's limit: the job's former 20 minutes less the steps before E2E as they usually go (31 s and 54 s, the
 	// medians of 2026-11-07 to 18), about twice the slowest green E2E step of 2026-11-06 to 18 (8:52)
 	const e2eLimit = 18
-	// the other steps at most: checkout to pnpm install took 50 s at most on 2026-11-07 to 18; the upload of the
-	// report besides
+	// the other steps at most: checkout to pnpm install took 50 s at most on 2026-11-07 to 18; the cache of the
+	// browsers' system packages and the upload of the report besides
 	const others = 5
 	job := jobsOf(t, "ci.yml", readWorkflow(t, "ci.yml"))["e2e"]
 	if job == nil {

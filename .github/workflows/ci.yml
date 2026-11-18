@@ -277,7 +277,7 @@ jobs:
     # 时限分开（旁支 m12-e2e-browsers-install）：E2E 一步自己 18 分钟，是 00-M12 第 3 节第 11 条的那一个；装浏览器一步自己 25 分钟。
     # apt 的镜像慢的时候，装浏览器一步要将近 15 分钟到 20 分钟以上：2026-11-07 至 18 日 254 次里 15 次，五次装完时已 14:58–18:52，
     # 十次到作业原来的 20 分钟还没装完，连同 E2E 一起被取消（其余 239 次 35 秒到 4:14）。作业的时限要在两步各自的时限之后才到：
-    # 前几步（中位 31 秒，至多 50 秒）、装浏览器 25 分钟、E2E 18 分钟、上传报告，取 50 分钟
+    # 前几步（中位 31 秒，至多 50 秒）、系统包的缓存、装浏览器 25 分钟、E2E 18 分钟、上传报告，取 50 分钟
     timeout-minutes: 50
     env:
       # 写进 bin/nervewiki 的版本号，与默认值不同，S3 由此确认 make build 的注入生效
@@ -307,11 +307,48 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
       # 全部故事跑 Chromium，部分也跑 Firefox、WebKit（e2e/playwright.config.ts）。浏览器从 Playwright 的 CDN 下载，慢的 runner 上
-      # 也只要几秒，不缓存；--with-deps 用 apt 装的约 125 MB 系统包慢的时候要将近 15 分钟以上
+      # 也只要几秒，不缓存。--with-deps 用 apt 装约 125 MB 的系统包，镜像慢的时候要将近 15 分钟以上：这些 .deb 存进缓存，下次先放回 apt
+      # 的目录，版本与索引相同的就不再下载（apt 说 "Need to get 0 B"）。键随 runner 的系统、Playwright 的版本（它定要装哪些包）与
+      # ISO 的周走：Ubuntu 的更新让存下的 .deb 渐渐过时，每周一个新键，先取回最近存的一份（restore-keys），只下载变了的，再存成
+      # 新键；apt-get autoclean 去掉索引里已没有的旧版本，缓存不越存越大
+      - name: Locate the Playwright system packages
+        id: playwright-debs
+        working-directory: e2e
+        run: |
+          version=$(pnpm exec playwright --version)
+          prefix="playwright-debs-$ImageOS-${version#Version }-"
+          {
+            echo "prefix=$prefix"
+            echo "key=$prefix$(date -u +%G-W%V)"
+            echo "path=$HOME/.cache/playwright-debs"
+          } >> "$GITHUB_OUTPUT"
+      - name: Restore the Playwright system packages
+        id: playwright-debs-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.playwright-debs.outputs.path }}
+          key: ${{ steps.playwright-debs.outputs.key }}
+          restore-keys: ${{ steps.playwright-debs.outputs.prefix }}
       - name: Install the Playwright browsers
         working-directory: e2e
         timeout-minutes: 25
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
+        env:
+          DEBS: ${{ steps.playwright-debs.outputs.path }}
+        run: |
+          if compgen -G "$DEBS/*.deb" > /dev/null; then sudo cp "$DEBS"/*.deb /var/cache/apt/archives/; fi
+          pnpm exec playwright install --with-deps chromium firefox webkit
+          sudo apt-get autoclean -q
+          rm -rf "$DEBS"
+          mkdir -p "$DEBS"
+          if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then cp /var/cache/apt/archives/*.deb "$DEBS"/; fi
+          echo "存下的系统包：$(find "$DEBS" -name '*.deb' | wc -l) 个 .deb，$(du -sh "$DEBS" | cut -f1)"
+      # 只在没有恰好命中时存；装浏览器一步失败时不存。存在 E2E 之前：E2E 红了，重跑也取得到
+      - name: Save the Playwright system packages
+        if: steps.playwright-debs-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.playwright-debs.outputs.path }}
+          key: ${{ steps.playwright-debs.outputs.key }}
       # make e2e 先完整执行 make build（Go 与 Node 都要）：持续集成中只有这里构建内嵌前端的二进制。
       # 时限是 00-M12 第 3 节第 11 条的那一个，E2E 本身变慢时在这里红：作业原来的 20 分钟减去平常的前几步与装浏览器（中位 31 + 54 秒）。
       # 2026-11-06 至 18 日绿的 235 次 3:30–8:52，中位 6:27
