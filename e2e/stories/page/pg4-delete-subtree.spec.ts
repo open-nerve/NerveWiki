@@ -8,6 +8,7 @@ import {
 } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { answerTo } from "../../fixtures/browser";
+import { type Contrast, setColorScheme, textContrast } from "../../fixtures/contrast";
 import type { Database } from "../../fixtures/db";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, resultOf } from "../../fixtures/mcp";
@@ -187,8 +188,23 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   await choosePageAction(page, "Plans", "Install", "Delete");
   const dialog = page.getByRole("alertdialog", { name: "Delete Install?", exact: true });
   await expect(dialog).toContainText("Its subpages go with it: 2.");
+  // Its Delete reads against its fill at rest and under the pointer, light and dark: dark, the pointer took the fill
+  // back to destructive at 90%, 3.45:1 under white (M12/P2/S3; M5-polish 12.4).
+  const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
+  const read = async (scheme: "light" | "dark"): Promise<Record<string, Contrast>> => {
+    await setColorScheme(page, scheme);
+    await page.mouse.move(0, 0);
+    const still = await textContrast(confirm);
+    await confirm.hover();
+    return { [`${scheme} at rest`]: still, [`${scheme} under the pointer`]: await textContrast(confirm) };
+  };
+  const readings = { ...(await read("light")), ...(await read("dark")) };
+  for (const [state, reading] of Object.entries(readings)) {
+    expect(reading.ratio, `${state}: ${JSON.stringify(readings)}`).toBeGreaterThanOrEqual(4.5);
+  }
+  await setColorScheme(page, "light");
   const answer = answerTo(page, "DELETE", `/api/v0/nodes/${install.id}`);
-  await dialog.getByRole("button", { name: "Delete", exact: true }).click();
+  await confirm.click();
   expect((await answer).status()).toBe(204);
 
   await expect(pageHeading(page, "Guide")).toBeFocused();
