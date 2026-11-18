@@ -421,6 +421,10 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		if f.pool.Stat().AcquiredConns() != 1 {
 			t.Fatalf("busy was delivered after actual cleanup/release: acquired=%d", f.pool.Stat().AcquiredConns())
 		}
+		// Expiry forgets the flight in its own AfterFunc goroutine, which the
+		// driver's cancellation of pg_sleep does not order. RunExpired is sent
+		// after the flight is forgotten: a caller after it cannot join it.
+		f.event(t, wiki.RunExpired, created.FlightID)
 		next := f.start(f.actor(t, "bob"), scope, wiki.LintQuery{})
 		nextEvent := f.nextScopeEvent(t)
 		if nextEvent.Kind != wiki.RunCreated || nextEvent.FlightID == created.FlightID {
