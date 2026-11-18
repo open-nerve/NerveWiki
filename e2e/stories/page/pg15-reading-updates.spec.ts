@@ -1,6 +1,6 @@
 import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
 import type { Page, TestInfo } from "@playwright/test";
-import { recordWebm, uploadAsset, wav, webmHead } from "../../fixtures/assets";
+import { uploadAsset, vp8Webm, wav } from "../../fixtures/assets";
 import { answerTo, countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
 import { goto } from "../../fixtures/navigation";
@@ -13,7 +13,7 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // PG15, the reading view updated in place (M12/P2/S4, design 4.4.6): a
 // view read again, another's write in it, is written where it changed, the
 // rest as the reader has it, in each of the three engines: the focus, a
-// callout opened, the selection, an audio playing, a video in fullscreen;
+// callout opened, the selection, an audio playing, a video playing in fullscreen;
 // a heading of the same name put before the focused one leaves the focus on
 // it. The write comes through the API, with the account's own token: to the
 // view it is a write elsewhere, which the pages event reads again. Back at
@@ -26,7 +26,8 @@ const filler = "filler\n\n".repeat(40);
 /**
  * opened is Plans' page Read of content, attachments uploaded first, open in a page signed in as the team's admin, its
  * stream connected and its refresh in: from then on, a write comes as an event. write writes the page anew through
- * the API and waits for the view's read it brings, and for its text.
+ * the API and waits for the next answer of the view and for the write's text (review B's N1: the answer may be of
+ * a read already under way; the text is the write's).
  */
 async function opened(
   { api, signedInPage }: { api: ApiClient; signedInPage: (tokens: AuthTokens) => Promise<Page> },
@@ -132,36 +133,37 @@ test("PG15 (page): a heading of the same name put before the focused one leaves 
   await expect(focused).toBeInViewport();
 });
 
-test("PG15 (page): a video in fullscreen stays in it as another's write elsewhere is read", async ({
+test("PG15 (page): a video playing in fullscreen goes on in it as another's write elsewhere is read", async ({
   api,
-  browserName,
   signedInPage,
 }, testInfo) => {
-  // A video Chromium and Firefox record, which plays; WebKit records none, and its video does not start: the node
-  // kept is what keeps the fullscreen, started or not.
+  // A VP8 WebM recorded once, which each engine plays (review B's M2): the video begun is what the enhancement
+  // would put anew (adopt), the node kept what keeps the fullscreen.
   const content = `${head}![[clip.webm]]\n\n${filler}The end.\n`;
-  const { article, write } = await opened({ api, signedInPage }, testInfo, content, async (tab, pat, id) => {
-    const bytes = browserName === "webkit" ? webmHead : await recordWebm(tab);
-    await uploadAsset(api, pat, id, { name: "clip.webm", bytes });
+  const { article, write } = await opened({ api, signedInPage }, testInfo, content, async (_page, pat, id) => {
+    await uploadAsset(api, pat, id, { name: "clip.webm", bytes: vp8Webm });
   });
   const video = article.locator("video.nw-asset");
-  await video.evaluate(async (element, plays) => {
+  await video.evaluate(async (element) => {
     const media = element as HTMLVideoElement;
-    if (plays) {
-      media.muted = true;
-      media.loop = true;
-      await media.play();
-    }
+    media.muted = true;
+    media.loop = true;
+    await media.play();
     await media.requestFullscreen();
-  }, browserName !== "webkit");
+    Object.assign(window, { playing: media });
+  });
   await expect.poll(() => video.evaluate((element) => document.fullscreenElement === element)).toBe(true);
+  await expect.poll(() => video.evaluate((element) => (element as HTMLVideoElement).currentTime > 0)).toBe(true);
 
   await write(content.replace("The end.", "The end, written again."), "The end, written again.");
 
-  expect(await video.evaluate((element) => document.fullscreenElement === element)).toBe(true);
-  if (browserName !== "webkit") {
-    expect(await video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
-  }
+  expect(
+    await video.evaluate((element) => ({
+      same: element === Reflect.get(window, "playing"),
+      fullscreen: document.fullscreenElement === element,
+      paused: (element as HTMLVideoElement).paused,
+    }))
+  ).toEqual({ same: true, fullscreen: true, paused: false });
 });
 
 // M12/P2/S4, 8.1 (step 0's probe, its far shape): back at an address with an anchor, the browser puts back the scroll

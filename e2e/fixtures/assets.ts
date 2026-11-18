@@ -161,6 +161,33 @@ export async function recordWebm(page: Page): Promise<Uint8Array<ArrayBuffer>> {
 export const webmHead = Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
 
 /**
+ * The bytes of a WebM of 16 × 8 pixels, VP8, about a second, which the three engines play, Playwright's WebKit too,
+ * which records none (M12/P2/S4, review B's M2): recorded once in Playwright's Chromium 153 as recordWebm records,
+ * ten frames a tenth of a second apart. A recording, it says no duration: a video of it that is to go on loops.
+ */
+export const vp8Webm = Uint8Array.from(
+  Buffer.from(
+    "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAQ6EU2bdLlNu4tTq4QVSalmU6yBbk27i1OrhBZU" +
+      "rmtTrIGTTbuLU6uEH0O2dVOsgdRNu4xTq4QcU7trU6yCBCjsrgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+      "AAAAAAAAAAAVSalmoCrXsYMPQkBEiYREY+9MTYCGQ2hyb21lV0GGQ2hyb21lFlSua7yuuteBAXPFh18Hd9aL4J+DgQFV7oEBhoVW" +
+      "X1ZQOOCdsIEQuoEIU8CBAVWwkFWxgQFVuYECVbqBDVW7gQEfQ7Z1AQAAAAAAA0jngQCg6aG+gQAAAPACAJ0BKhAACAAABwiFhYiZ" +
+      "hIgBJBATrVAfwB/QEGpvcP7+67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oaampO6BAaWfEAIAnQEqEAAIAAAHCIWFiJmEiAEkEABg" +
+      "awD+/7qDAKDPoa6BAGUAsQEAABAJIADAAYH/oGAHeP7/p3k//8nuzxpTRL/8nu//Ovmuo4upvUQAdaGZppfugQGlktEBAAAQCSAA" +
+      "wADCwX+gAEAAAPuBAKDOoa2BAMkAsQEAABAJIADAAYH/oGAHeP7+67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oZmml+6BAaWS0QEA" +
+      "ABAJIADAAMLBf6AAQAAA+4FloM+hroEBLgCxAQAAEAkgAMABgf+gYAd4/v+neT//ye7PGlNEv/ye7/86+a6ji6m9RAB1oZmml+6B" +
+      "AaWS0QEAABAJIADAAMLBf6AAQAAA+4HJoM+hrYEBlwCxAQAAEAkgAMABgf+gYAd4/v7rvL/5T2OK+j/yn7//k92eNKaJf/k4AHWh" +
+      "maaX7oEBpZLRAQAAEAkgAMAAwsF/oABAAAD7ggEuoNChroEB/ACxAQAAEAkgAMABgf+gYAd4/v+neT//ye7PGlNEv/ye7/86+a6j" +
+      "i6m9RAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4IBl6DPoa2BAmEAsQEAABAJIADAAYH/oGAHeP7+67y/+U9jivo/8p+/" +
+      "/5PdnjSmiX/5OAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4IB/KDPoa6BAsYAsQEAABAJIKMABgf+gYAd4P7/p3k//8nu" +
+      "zxpTRL/8nu//Ovmuo4upvUQAdaGYppbugQGlkbEBAAAQCSCjAAMLBf6AAQAA+4ICYaDPoa2BAyoAsQEAABAJIADAAYH/oGAHeP7+" +
+      "67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4ICxqDQoa6BA48AsQEAABAJIADAAYH/" +
+      "oGAHeP7/p3k//8nuzxpTRL/8nu//Ovmuo4upvUQAdaGZppfugQGlktEBAAAQCSAAwADCwX+gAEAAAPuCAyocU7trjbuLs4EAt4b3" +
+      "gQHxgdQ=",
+    "base64"
+  )
+);
+
+/**
  * The bytes of an Ogg Opus file of seconds (whole) of silence, mono (RFC 7845):
  * its two header pages, then its frames of 20 ms, each the silent CELT
  * frame, 250 to a page. Playwright's Chromium plays Opus, not AAC.
