@@ -108,8 +108,10 @@ type PageServerOptions = {
  * withTasks gives a page a content of task items and its view (tasksView);
  * a toggle of one (M5/P6 design 3.3) answers as the server does: 409
  * page.revision_mismatch on another revision, 422 at an offset of no item,
- * the page as it is for an item in that state, 409 page.locked while a
- * session holds the page; otherwise it writes the content and its view.
+ * 422 too for a tick that would leave none there ("- [ ]: /u" ticked is a
+ * link reference definition: not_allowed on offset, M12/P2/S2), the page
+ * as it is for an item in that state, 409 page.locked while a session
+ * holds the page; otherwise it writes the content and its view.
  *
  * A page's versions (M8/P1) are what versions has for it, oldest first,
  * by default one of its content as it is; withVersions gives it some and
@@ -1106,14 +1108,18 @@ function versionView(content: string, revision: number): PageView {
   };
 }
 
-/** The tasks of a content of task item lines, "- [ ] text" or "- [x] text", by their characters' offsets. */
-function tasksOf(content: string): { offset: number; checked: boolean; text: string }[] {
+/**
+ * The tasks of a content of task item lines, "- [ ] text" or "- [x] text", by their characters' offsets; a
+ * line "- [ ]: text" is one too, as goldmark reads it, which a tick would make a link reference definition (goes),
+ * as "- [x]: text" is, no task.
+ */
+function tasksOf(content: string): { offset: number; checked: boolean; text: string; goes: boolean }[] {
   const tasks = [];
   let at = 0;
   for (const line of content.split(/(?<=\n)/)) {
-    const match = /^- \[([ xX])\] (.*)$/.exec(line.replace(/\r?\n$/, ""));
-    if (match !== null) {
-      tasks.push({ offset: at + 3, checked: match[1] !== " ", text: match[2] ?? "" });
+    const match = /^- \[([ xX])\]( |(?=:))(.*)$/.exec(line.replace(/\r?\n$/, ""));
+    if (match !== null && !(match[2] === "" && match[1] !== " ")) {
+      tasks.push({ offset: at + 3, checked: match[1] !== " ", text: match[3] ?? "", goes: match[2] === "" });
     }
     at += new TextEncoder().encode(line).length;
   }
@@ -1149,6 +1155,11 @@ function taskRoutes(server: ContentState & { views: Map<string, PageView> }): Re
       if (task === undefined) {
         return problem(422, "validation_failed", {
           errors: [{ field: "offset", code: "out_of_range", message: "no task" }],
+        });
+      }
+      if (task.goes && task.checked !== toggle.checked) {
+        return problem(422, "validation_failed", {
+          errors: [{ field: "offset", code: "not_allowed", message: "no task item would be left" }],
         });
       }
       let revision = current.revision;

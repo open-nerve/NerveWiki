@@ -96,15 +96,18 @@ export const en = {
   "unresolved.creating": "Creating…",
   "unresolved.parentGone": "The page it would go under no longer exists.",
   "unresolved.missingTitle": "“{target}” does not exist",
-  "unresolved.reader": "No page has this name. The notebook's editors can create it from this link.",
-  "unresolved.readOnly": "No page has this name. This view is read only: no page is created from its links.",
+  "unresolved.reader": "No page or attachment has this name. The notebook's editors can create it from this link.",
+  "unresolved.readOnly":
+    "No page or attachment has this name. This view is read only: no page is created from its links.",
   "unresolved.upgrading":
-    "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
-  "unresolved.readerWiki": "No page has this name. The notebook's editors may be able to create it from this link.",
+    "No page or attachment has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
+  "unresolved.readerWiki":
+    "No page or attachment has this name. The notebook's editors may be able to create it from this link.",
   "unresolved.sourceArea":
     "No page has this name. Sources are added with Paste Markdown or Upload files, not from a link.",
-  "unresolved.embed": "No page has this name. An embed shows a page; it does not create one.",
-  "unresolved.image": "No page has this name. An image shows what is there; it does not create a page.",
+  "unresolved.embed":
+    "No page or attachment has this name. An embed shows a page or an attachment that is there; it does not create one.",
+  "unresolved.image": "No page or attachment has this name. An image shows what is there; it does not create anything.",
   "unresolved.targetInvalid": "This link's target cannot name a page.",
   "unresolved.titleInvalid": "Its name cannot be a page's title.",
   "unresolved.parentMissing": "A page on its path does not exist.",
@@ -231,6 +234,8 @@ export const en = {
   "page.noProperties": "No properties.",
   "page.propertiesInvalid": "The page's frontmatter is not valid: it has no properties.",
   "page.nameAtTop": "{name} (at the top level of {notebook})",
+  "page.taskWouldGo":
+    "This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it.",
   "version.list": "Versions",
   "version.listHint": "One version per edit.",
   "version.more": "More versions",
@@ -611,7 +616,7 @@ export const en = {
   "editor.lostAccess": "You can no longer edit this page.",
   "editor.lostTakenOver": "You went on editing this page elsewhere: this editor saves no more.",
   "editor.lostUnlocked": "{name} released your edit of this page: this editor saves no more.",
-  "editor.lostGone": "This page no longer exists: this editor saves no more.",
+  "editor.lostGone": "This page was deleted, or you lost access to it, while you edited it: this editor saves no more.",
   "editor.lostSource": "This page is now a source. Its original content is read-only.",
   "editor.lostUpgrading":
     "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more.",
@@ -1097,6 +1102,7 @@ export const en = {
   "transfer.importProblem.renamed": "{path} was imported as {to}: links to its old name do not reach it.",
   "transfer.importProblem.other": "{path} was not imported as it was.",
   "transfer.reportRetryOf": "Try again (report on {name})",
+  "transfer.exportPageAloneTitle": "Export the page {name}?",
   "role.admin": "Admin",
   "role.member": "Member",
   "role.guest": "Guest",
@@ -1359,6 +1365,8 @@ export const en = {
   "field.parent_id.not_allowed": "No longer a page of this notebook. Choose another.",
   "field.after_id.not_allowed": "No longer under this parent. Choose another.",
   "field.slug.duplicate": "Another workspace already has this address.",
+  "field.asset_name.too_long":
+    "At most 255 bytes, the extension included: 255 Latin letters, or about 85 Chinese characters.",
 } as const;
 
 export type MessageKey = keyof typeof en;

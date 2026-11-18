@@ -433,7 +433,11 @@ test("a reader of an LLM Wiki is not promised a page that a link may not create"
   const article = await screen.findByRole("article", { name: "Install" });
   await user.click(within(article).getByRole("button", { name: "Other page" }));
   const dialog = await screen.findByRole("alertdialog", { name: "“Other page” does not exist" });
-  expect(within(dialog).getByText(/may be able to create it/)).toBeTruthy();
+  expect(
+    within(dialog).getByText(
+      "No page or attachment has this name. The notebook's editors may be able to create it from this link."
+    )
+  ).toBeTruthy();
 });
 
 test.each([notes])("a source's unresolved link may create another page under $name", async (parent) => {

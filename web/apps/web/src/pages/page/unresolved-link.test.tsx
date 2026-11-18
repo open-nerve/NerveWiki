@@ -138,17 +138,19 @@ test("a link to an attachment's name says so, and its view is read again: it was
 });
 
 test("to a reader, a link says its page is not there; to anyone, an embed and an image do: no question goes out", async () => {
-  const html = `${linkTo("x")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")} <span class="nw-image">pic ${linkTo("p.png", "p.png", "nw-unresolved")}</span>`;
+  const html = `${linkTo("x")} ${linkTo("q.png")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")} <span class="nw-image">pic ${linkTo("p.png", "p.png", "nw-unresolved")}</span>`;
+  // Neither a page nor an attachment: what a name with an extension is the server says once it has one (P2-12).
   const texts = {
-    x: "No page has this name. The notebook's editors can create it from this link.",
-    E: "No page has this name. An embed shows a page; it does not create one.",
-    "p.png": "No page has this name. An image shows what is there; it does not create a page.",
+    x: "No page or attachment has this name. The notebook's editors can create it from this link.",
+    "q.png": "No page or attachment has this name. The notebook's editors can create it from this link.",
+    E: "No page or attachment has this name. An embed shows a page or an attachment that is there; it does not create one.",
+    "p.png": "No page or attachment has this name. An image shows what is there; it does not create anything.",
   };
   for (const role of ["reader", "admin"] as const) {
     // oxlint-disable-next-line no-await-in-loop -- one role after another
     const { server, unmount } = await open(html, role);
     for (const [target, text] of Object.entries(texts)) {
-      if (role === "admin" && target === "x") {
+      if (role === "admin" && (target === "x" || target === "q.png")) {
         continue;
       }
       // oxlint-disable-next-line no-await-in-loop -- one dialog after another
@@ -162,6 +164,31 @@ test("to a reader, a link says its page is not there; to anyone, an embed and an
     expect(server.sent.filter((each) => each.startsWith("GET landing"))).toEqual([]);
     unmount();
   }
+});
+
+test("to a reader in Chinese, a link to a name with an extension says neither a page nor an attachment has it; so does an embed", async () => {
+  const server = pageServer({ role: "reader" });
+  server.app.preferences.setLocale("zh-CN");
+  server.views.set(guide.id, {
+    html: `<p>${linkTo("q.png")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")}</p>`,
+    revision: 1,
+    assets_expire_at: null,
+  });
+  renderApp(pagePath(guide.id), server.app, { enhancements });
+  const texts = {
+    "q.png": "没有这个名称的页面或附件。笔记本的编辑者可以从这条链接新建它。",
+    E: "没有这个名称的页面或附件。嵌入只显示已有的页面或附件，不新建。",
+  };
+  for (const [target, text] of Object.entries(texts)) {
+    // oxlint-disable-next-line no-await-in-loop -- one dialog after another
+    await userEvent.click(await button(target));
+    // oxlint-disable-next-line no-await-in-loop -- one dialog after another
+    const dialog = await screen.findByRole("alertdialog", { name: `「${target}」不存在` });
+    expect(within(dialog).getByText(text), target).toBeTruthy();
+    // oxlint-disable-next-line no-await-in-loop -- one dialog after another
+    await userEvent.click(within(dialog).getByRole("button", { name: "好" }));
+  }
+  expect(server.sent.filter((each) => each.startsWith("GET landing"))).toEqual([]);
 });
 
 test("a title taken since goes to the page the link leads to by then; else the dialog says why", async () => {

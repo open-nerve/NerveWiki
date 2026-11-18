@@ -82,7 +82,9 @@ test("a page's preview shows where it was and what the trash says of it, and its
   await user.click(within(article).getByRole("button", { name: "Nowhere" }));
   const dialog = await screen.findByRole("alertdialog", { name: "“Nowhere” does not exist" });
   expect(
-    within(dialog).getByText("No page has this name. This view is read only: no page is created from its links.")
+    within(dialog).getByText(
+      "No page or attachment has this name. This view is read only: no page is created from its links."
+    )
   ).toBeTruthy();
   expect(server.sent.filter((each) => each.startsWith("GET landing"))).toEqual([]);
   await user.click(within(dialog).getByRole("button", { name: "OK" }));

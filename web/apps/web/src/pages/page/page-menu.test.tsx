@@ -41,6 +41,24 @@ test("a reader exports a page with its subtree; the notebook's imports and expor
   expect(server.asked.filter((ask) => ask.startsWith("POST"))).toEqual(["POST export Guide"]);
 });
 
+test.each([
+  ["en", "Page actions", "Export this page", "Export the page Notes?"],
+  ["zh-CN", "页面操作", "导出此页", "导出页面「Notes」？"],
+] as const)(
+  "a page without subpages is exported without saying its subpages, in %s",
+  async (locale, actions, item, name) => {
+    const user = userEvent.setup();
+    const server = jobsServer();
+    server.app.preferences.setLocale(locale);
+    renderApp(pagePath(notes.id), server.app);
+
+    await user.click(await screen.findByRole("button", { name: actions }));
+    await user.click(await screen.findByRole("menuitem", { name: item }));
+
+    expect(await screen.findByRole("alertdialog", { name })).toBeTruthy();
+  }
+);
+
 test("the export cancelled, the focus goes back to the menu, the page still shown", async () => {
   const server = jobsServer();
   const { user, router } = await exporting(server);

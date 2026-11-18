@@ -381,10 +381,10 @@ test.each([
     return;
   }
   const dialog = await screen.findByRole("alertdialog", { name: "“Fresh” does not exist" });
-  expect(within(dialog).getByText(/^No page has this name\./u).textContent).toBe(
+  expect(within(dialog).getByText(/^No page or attachment has this name\./u).textContent).toBe(
     says === "upgrading"
-      ? "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends."
-      : "No page has this name. The notebook's editors can create it from this link."
+      ? "No page or attachment has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends."
+      : "No page or attachment has this name. The notebook's editors can create it from this link."
   );
   expect(server.sent.filter((line) => line.startsWith("GET landing"))).toEqual([]);
 });
