@@ -31,23 +31,55 @@ func TestIngestOfUnreferencedSourcesTakesItsTime(t *testing.T) {
 	}
 	ingestAdditionalRewriteCost(t, "unreferenced_old_f", sizes, 300, false, false, ingestCostBatchBudget, 11*time.Second)
 }
+
+// The single REST rename runs under production's 15s request deadline, so
+// that its own 11s bound judges it. Under the test's 4s the deadline judged
+// it, and on main at 5154e0de it answered 500 at 4.0s (00-M12, the side
+// branch m12-ingest-request-deadline, as decision 359).
 func TestIngestOfMoreThanBatchSourcesTakesItsTime(t *testing.T) {
 	sizes := make([]int, 401)
 	for i := range sizes {
 		sizes[i] = 5 + 8*300
 	}
-	ingestAdditionalRewriteCost(t, "single_rename_401_sources", sizes, 300, true, true, ingestCostOrdinaryBudget, 11*time.Second)
+	ingestAdditionalRewriteCost(t, "single_rename_401_sources", sizes, 300, true, true, ingestCostBatchBudget, 11*time.Second)
 }
 
-func ingestAdditionalTeam(t *testing.T, trace *ingestCostTrace, logs *syncBuffer, request time.Duration) acmeTeam {
-	return newAcmeTeamOn(t, "", "", func(c *config.Config) {
+// ingestAdditionalTeam starts the app under request, and answers the
+// request deadline it started under.
+func ingestAdditionalTeam(t *testing.T, trace *ingestCostTrace, logs *syncBuffer, request time.Duration) (acmeTeam, time.Duration) {
+	var started time.Duration
+	tm := newAcmeTeamOn(t, "", "", func(c *config.Config) {
 		if c.Server.RequestTimeout != 4*time.Second || c.Database.CommitTimeout != 2*time.Second {
 			t.Fatal("original budgets changed")
 		}
 		if request != ingestCostOrdinaryBudget {
 			ingestCostServerBudget(c, request)
 		}
+		started = c.Server.RequestTimeout
 	}, &wiring{queryTracer: trace}, slog.New(slog.NewJSONHandler(logs, nil)))
+	return tm, started
+}
+
+// ingestAdditionalDeadline is the request deadline a shape's app must run
+// under, worked out from its bound alone: the smallest of the test's 4s,
+// production's 15s and the dense shapes' 30s (00-M10 decision 150) above
+// the bound, so that the bound, not the deadline, judges the shape (00-M12
+// decision 359). It fails unless the shape's request, which starts the
+// app, is the same: either alone could give a shape a deadline its bound
+// does not ask for.
+func ingestAdditionalDeadline(t *testing.T, name string, request, bound time.Duration) time.Duration {
+	t.Helper()
+	want := ingestCostDenseRequestBudget
+	for _, d := range []time.Duration{ingestCostOrdinaryBudget, ingestCostBatchBudget} {
+		if bound < d {
+			want = d
+			break
+		}
+	}
+	if bound >= want || request != want {
+		t.Fatalf("%s: bound %s; request deadline %s, want %s, the smallest above the bound", name, bound, request, want)
+	}
+	return want
 }
 func ingestAdditionalAssets(t *testing.T, tm acmeTeam, nb, root string, n int) []string {
 	names := ingestCostAssetNames(n)
@@ -61,7 +93,10 @@ func ingestAdditionalAssets(t *testing.T, tm acmeTeam, nb, root string, n int) [
 }
 func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets int, referenced, single bool, requestBudget, unitBudget time.Duration) {
 	trace, logs := &ingestCostTrace{}, &syncBuffer{}
-	tm := ingestAdditionalTeam(t, trace, logs, requestBudget)
+	tm, started := ingestAdditionalTeam(t, trace, logs, requestBudget)
+	if deadline := ingestAdditionalDeadline(t, name, requestBudget, unitBudget); started != deadline {
+		t.Fatalf("%s: the app started under a %s request deadline, want %s", name, started, deadline)
+	}
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Additional ingestion shape","mode":"llm_wiki"}`)
 	names := ingestAdditionalAssets(t, tm, nb.ID, *nb.SourceRootID, assets)
 	var pages []sqlPage
@@ -136,10 +171,16 @@ func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets 
 		if single {
 			request = nodeRename("alice", asset, next)
 		}
+		// client() gives up after 5s; under the 15s deadline it would judge
+		// the rename in place of its bound. Contract checked as ask does.
+		patient := &http.Client{Timeout: 2 * budget}
 		trace.start()
 		metric, err := virtualCostMeasure(t, func() error {
 			if single {
-				status, body = ask(t, tm.contract, request.method, tm.base+request.path, tm.tokens[request.by], request.body)
+				req := newRequest(t, request.method, tm.base+request.path, tm.tokens[request.by], []byte(request.body))
+				res, raw := sendRequestBy(t, patient, req)
+				tm.contract.CheckResponse(t, req, res)
+				status, body = res.StatusCode, string(raw)
 			} else {
 				answer = m.batch(t, opMove("raw/"+beforeName, "raw/"+next), opWriteOn(fmt.Sprintf("P%d.md", sample), text, versionOf(ps[sample], 1)))
 				status, body = answer.status, string(answer.body)
@@ -152,14 +193,20 @@ func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets 
 		queries, statements, indexNS := trace.stop()
 		ingestCostEvent(t, fmt.Sprintf("%s/%d", name, sample), metric, queries, indexNS, map[string]any{"source_pages": len(sizes), "source_bytes": totalBytes, "old_f_pairs": pairs, "request_budget_ns": int64(budget), "single_rest_rename": single})
 		t.Logf("INGESTRESPONSE case=%s/%d status=%d body=%s", name, sample, status, body)
-		if err != nil || time.Duration(metric.WallNS) >= budget || !single && answer.result(t)["isError"] == true {
+		took := time.Duration(metric.WallNS)
+		if err != nil || took >= budget || single && took >= unitBudget || !single && answer.result(t)["isError"] == true {
 			ingestCostPlans(t, tm, statements, true)
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		if time.Duration(metric.WallNS) >= budget {
+		if took >= budget {
 			t.Fatalf("additional source shape exceeded its %s request budget", budget)
+		}
+		// A REST rename logs no write unit, so its bound judges the whole
+		// measured request, which holds the unit.
+		if single && took >= unitBudget {
+			t.Fatalf("single REST rename took %s, at or above its %s bound (request deadline %s)", took, unitBudget, budget)
 		}
 		if queries["InspectPageLinksForPreparation"].Calls != int64(len(sizes)) || queries["InspectPageLinksForPreparation"].Rows != int64(pairs) || queries["IngestOldBodyReferencesFirst"].Calls != 0 || queries["IngestOldBodyReferencesAfter"].Calls != 0 {
 			t.Fatal("additional source preparation did not completely read old sources")
@@ -221,7 +268,7 @@ func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets 
 // folding; each sample has its own groups and a fresh nonempty T.
 func TestIngestOfDeletedSourceGroupsTakesItsTime(t *testing.T) {
 	trace, logs := &ingestCostTrace{}, &syncBuffer{}
-	tm := ingestAdditionalTeam(t, trace, logs, ingestCostBatchBudget)
+	tm, _ := ingestAdditionalTeam(t, trace, logs, ingestCostBatchBudget)
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Ingest deleted groups","mode":"llm_wiki"}`)
 	names := ingestAdditionalAssets(t, tm, nb.ID, *nb.SourceRootID, 300)
 	for sample := range 3 {

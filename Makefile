@@ -614,6 +614,8 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork$$' ./internal/bootstrap
 	cd server && go test -p 1 -count=1 -timeout 10m -v -run '^TestSourceForgetHundredThousandTakesItsTime$$' ./internal/bootstrap
 	@# P4/S2：五个额外合法来源形状分别独立进程，保各自三样本与原请求/单元预算、Go默认10m。
+	@# 单个改名（401 个来源）原在请求4s下，11s的界轮不到它判；M12 起用生产的15s，由11s的界判
+	@# （M12 旁支 m12-ingest-request-deadline，照 00-M12 决定 359）。
 	cd server && go test -count=1 -v -run '^TestIngestOfAMaximumSourcePageTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfMixedSourcePagesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfUnreferencedSourcesTakesItsTime$$' ./internal/bootstrap
