@@ -263,6 +263,8 @@ test("a toggle refused as forbidden reads the notebooks again, and with the role
   const [aNow, bNow] = boxes();
   expect(aNow).toBe(a);
   expect(bNow).toBe(b);
+  // The checkbox the reader was at is disabled: the page's title has the focus (review B's M1).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" })));
 });
 
 // M12/P2/S4, 6.2 (P2-23): Edit's refusal is the same root, the same remedy.
@@ -277,6 +279,8 @@ test("Edit refused as forbidden reads the notebooks again: with the role gone, E
   await waitFor(() => expect(screen.queryByRole("button", { name: "Edit" })).toBeNull());
   expect(notebookReads()).toBeGreaterThan(reads);
   expect(boxes().map((box) => box.disabled)).toEqual([true, true]);
+  // Edit, which had the focus, is gone: the page's title has it (review B's M1).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" })));
 });
 
 test("a reader's checkboxes stay disabled", async () => {
