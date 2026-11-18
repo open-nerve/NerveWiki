@@ -13,10 +13,15 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const NARROW = "narrow";
 
-/** The cells each project is to list at least: [project, file under e2e/stories/, the start of its title]. */
+/**
+ * The cells each project is to list at least: [project, file under e2e/stories/, the start of its title]. A cell whose
+ * tag is lost leaves both lists of the tagged, which the rules below compare, so only this names it. SE1's is the only
+ * cell that fails without NativeSelect's contain-paint, and only on WebKit (M5-polish 33.1).
+ */
 const REQUIRED = [
   ["webkit-narrow", "mcp/mc3-write-edit.spec.ts", "MC3 (page): at 375 wide"],
   ["webkit-narrow", "page/pg2-rename-page.spec.ts", "PG2 (page): at 375 wide"],
+  ["webkit-narrow", "search/se1-search.spec.ts", "SE1 (page): at 375 wide"],
 ];
 
 /** The cells of a listing (Playwright's JSON report), as { project, file, title, tags }. */
@@ -90,6 +95,15 @@ const SAMPLES = [
       "webkit-narrow mcp/mc3-write-edit.spec.ts › MC3 (page): at 375 wide, x: is tagged @narrow but not run on WebKit",
       'webkit-narrow mcp/mc3-write-edit.spec.ts: lists no cell "MC3 (page): at 375 wide…"',
     ],
+  },
+  {
+    name: "the required cell's tag lost",
+    cells: [
+      { project: "chromium", ...mc3, tags: [] },
+      { project: "chromium", ...lw3 },
+      { project: "webkit", ...lw3 },
+    ],
+    want: ['webkit-narrow mcp/mc3-write-edit.spec.ts: lists no cell "MC3 (page): at 375 wide…"'],
   },
 ];
 
