@@ -1449,3 +1449,16 @@ test.each([
     expect(since).toEqual([]);
   }
 );
+
+// M12/P2/S4, 4.4.3's step 3 (review A's C1-M1): one save puts a paragraph before the reader's and changes the
+// reader's, its link kept. The reader's block is placed at the paragraph put in first; the link is in the other put
+// in where it was, next to it.
+test("a link whose paragraph changed, a paragraph put before it in the same save, has the focus back in its paragraph", async () => {
+  const { article, readAgain } = await readable('<p>start</p>\n<p>see <a href="/x">x</a> here</p>\n<p>end</p>\n');
+  within(article).getByRole("link", { name: "x" }).focus();
+
+  await readAgain('<p>start</p>\n<p>a new paragraph</p>\n<p>see <a href="/x">x</a> here, edited</p>\n<p>end</p>\n');
+
+  expect(document.activeElement).toBe(within(article).getByRole("link", { name: "x" }));
+  expect(document.activeElement?.parentElement?.textContent).toBe("see x here, edited");
+});

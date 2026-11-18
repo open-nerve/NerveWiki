@@ -243,6 +243,23 @@ test("patchBlocks places a block taken out at the next kept when none is put in 
   expect([placed?.(2), placed?.(6)]).toEqual([2, 2]);
 });
 
+// M12/P2/S4, 4.4.3's step 3 (review A's C1-M1): where a block was taken out, the others put in, nearest first.
+test("patchBlocks tells of a block taken out the others put in where it was, nearest first, the later of two as near", () => {
+  const old = "<p>a</p><p>b</p><p>c</p><p>d</p><p>z</p>";
+  const after = "<p>a</p><p>B</p><p>C</p><p>D</p><p>z</p>";
+  const { article } = written(old);
+
+  const placed = patchBlocks(article, template(old), template(after));
+
+  expect([1, 2, 3].map((at) => placed?.(at))).toEqual([1, 2, 3]);
+  expect([1, 2, 3].map((at) => placed?.near?.(at))).toEqual([
+    [2, 3],
+    [3, 1],
+    [2, 1],
+  ]);
+  expect([0, 4].map((at) => placed?.near?.(at))).toEqual([[], []]);
+});
+
 // M12/P2/S4, 4.4.2 step 4: from the HTML before to the HTML after, not from what the reader has.
 test("patchBlocks gives a block kept the new ids and addresses, and leaves what the reader changed: a callout opened, a media begun", () => {
   const block = (id: string, e: string, s: string) =>

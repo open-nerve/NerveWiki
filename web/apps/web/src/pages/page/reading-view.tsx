@@ -61,9 +61,10 @@ import { useViewAnchors } from "./view-anchors";
  * was; a read after that one moves nothing. A link of the page to no
  * element leaves the focus where it is, and the page. What had the focus
  * as the HTML changed, the anchor's element among them, has it back: the
- * same element, or one of its key in the block it was in, placed anew (a
- * heading of its text, not its id: one of its name put before it takes the
- * id; not a link of the same address elsewhere), shown again if
+ * same element, or one of its key in the block it was in, placed anew, or
+ * in another put in where it was (a heading of its text, not its id: one of
+ * its name put before it takes the id; not a link of the same address
+ * farther), shown again if
  * it showed and no longer does; else the block where it was, neither
  * shown nor opened (server-html.ts; M12/P2/S4, 4.4.3): a view read again
  * stays where it is.

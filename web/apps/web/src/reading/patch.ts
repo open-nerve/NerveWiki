@@ -99,8 +99,12 @@ export function resign(article: Element, before: HTMLTemplateElement, after: HTM
   return true;
 }
 
-/** Placed maps the place of an article's top-level node before a patch to its place after, or none. */
-export type Placed = (at: number) => number | undefined;
+/**
+ * Placed maps the place of an article's top-level node before a patch to its place after, or none. A patch's tells
+ * too, of one taken out, the places of the other nodes put in where it was (its gap: between the kept nodes on each
+ * side), nearest first, the later of two as near first (near).
+ */
+export type Placed = ((at: number) => number | undefined) & { near?: (at: number) => number[] };
 
 /**
  * patchBlocks has article, which has before's HTML with its enhancements undone, after's (U4; M12/P2/S4, 4.4.2):
@@ -164,7 +168,9 @@ export function patchBlocks(
     }
     following = node;
   }
-  return (place) => placed(place, kept, old, next);
+  return Object.assign((place: number) => placed(place, kept, old, next), {
+    near: (place: number) => near(place, kept, old, next),
+  });
 }
 
 /**
@@ -215,6 +221,33 @@ function placed(place: number, kept: Map<number, number>, old: Node[], next: Nod
   if (now !== undefined) {
     return now;
   }
+  const { removed, inserted, following } = gap(place, kept, old, next);
+  if (inserted.length > 0) {
+    return inserted[Math.min(Math.max(removed.indexOf(place), 0), inserted.length - 1)];
+  }
+  return following.find(([, j]) => !blank(next[j]))?.[1] ?? range(0, next.length).findLast((j) => !blank(next[j]));
+}
+
+/**
+ * near are the places of the nodes put in where the node at place was taken out, but the one it is placed at, nearest
+ * to that one first, the later of two as near first: a section put before the reader's, which another changed in the
+ * same save, has the reader's after it (review A's C1-M1). None for a node kept, or a gap nothing was put in.
+ */
+function near(place: number, kept: Map<number, number>, old: Node[], next: Node[]): number[] {
+  const to = placed(place, kept, old, next);
+  if (kept.has(place) || to === undefined) {
+    return [];
+  }
+  return gap(place, kept, old, next)
+    .inserted.filter((j) => j !== to)
+    .toSorted((a, b) => Math.abs(a - to) - Math.abs(b - to) || b - a);
+}
+
+/**
+ * gap is where the node at place, taken out, was: between the kept nodes on each side, the nodes taken out (old's
+ * places) and put in (next's), blank text left out, and the kept nodes that follow.
+ */
+function gap(place: number, kept: Map<number, number>, old: Node[], next: Node[]) {
   // The pairs go up in both: kept has them in order.
   const sorted = [...kept];
   const previous = sorted.findLast(([i]) => i < place);
@@ -226,10 +259,7 @@ function placed(place: number, kept: Map<number, number>, old: Node[], next: Nod
   const inserted = range(previous === undefined ? 0 : previous[1] + 1, end?.[1] ?? next.length).filter(
     (j) => !blank(next[j])
   );
-  if (inserted.length > 0) {
-    return inserted[Math.min(Math.max(removed.indexOf(place), 0), inserted.length - 1)];
-  }
-  return following.find(([, j]) => !blank(next[j]))?.[1] ?? range(0, next.length).findLast((j) => !blank(next[j]));
+  return { removed, inserted, following };
 }
 
 /** range is from up to to, not with it. */

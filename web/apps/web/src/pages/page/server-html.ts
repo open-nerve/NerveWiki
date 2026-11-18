@@ -65,9 +65,10 @@ type Shown = {
  * The focus stays (M12/P2/S4, 4.4.3): what had it as the view changed has it back, if it is there still; else, a
  * task item's checkbox at its position while it is the same item's (its text, and its state, or the state the view's
  * own toggle asked for), none if not: a tick does not move it, a write that moved the items does; else the element
- * of its key in the block it was in, as the patch placed it (focusKeyOf: a heading of its text, a link of its
- * address and text, a callout's summary, a media, an element of its id; a scroll region, a diagram's drawn anew,
- * which of its block's), not one of its key elsewhere, which the view would scroll to; else the block where it was,
+ * of its key in the block it was in, as the patch placed it, or in the others put in where it was, nearest first
+ * (focusKeyOf: a heading of its text, a link of its address and text, a callout's summary, a media, an element of its
+ * id; a scroll region, a diagram's drawn anew, which of its block's), not one of its key farther, which the view
+ * would scroll to; else the block where it was,
  * without a scroll or a callout opened. Shown as it is given the
  * focus, a folded callout opens; one that showed and shows no more is scrolled to: a view read again stays where it
  * is.
@@ -240,7 +241,8 @@ function noted(container: HTMLElement): Noted | undefined {
 /**
  * giveBack gives the focus back in container, the view changed, its blocks placed so (M12/P2/S4, 4.4.3): to what
  * had it, if it is there still; to a task item's checkbox at its position, the same item's (or none); to the element
- * of its key in the block it maps to; else to that block, or the article.
+ * of its key in the block it maps to, or in the others put in where its block was, nearest first; else to the block it
+ * maps to, or the article.
  */
 function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: Toggled | undefined) {
   const { element, task } = focus;
@@ -264,10 +266,13 @@ function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: T
   }
   const at = focus.block === undefined ? undefined : placed(focus.block);
   const block = at === undefined ? undefined : container.childNodes[at];
-  // In the block it maps to (or the article, for the article's own): one of its key elsewhere is not it.
-  const within = focus.block === undefined ? container : block;
+  // In the block it maps to (or the article, for the article's own), then in the others put in where its block was,
+  // nearest first: one of its key farther is not it.
+  const near = focus.block === undefined ? [] : (placed.near?.(focus.block) ?? []);
+  const within = focus.block === undefined ? [container] : [block, ...near.map((j) => container.childNodes[j])];
+  const { key } = focus;
   const again =
-    (focus.key && within instanceof Element && findByKey(within, focus.key)) ||
+    (key && within.reduce<HTMLElement | undefined>((found, each) => found ?? findIn(each, key), undefined)) ||
     (focus.region !== undefined && focus.region >= 0 ? regions(block)[focus.region] : undefined);
   if (again) {
     give(again, focus.shown);
@@ -279,6 +284,11 @@ function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: T
     place.setAttribute("tabindex", "-1");
   }
   place.focus({ preventScroll: true });
+}
+
+/** findIn is the element of key in node, if node is an element that has one. */
+function findIn(node: Node | undefined, key: FocusKey): HTMLElement | undefined {
+  return node instanceof Element ? findByKey(node, key) : undefined;
 }
 
 /** regions are the scroll regions of a top-level node, it among them (scroll-regions.ts), in order. */
