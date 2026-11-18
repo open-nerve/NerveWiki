@@ -153,11 +153,13 @@ func TestTheTemplatesCorrespond(t *testing.T) {
 }
 
 // The AGENTS a new LLM Wiki and an upgrade's start write names the
-// prompts its notebook's MCP entry serves (M12/P2/S2, the handoff
-// M5-polish item 40): during an upgrade, upgrade; once an LLM Wiki, the
-// three. The line that named the three alone, which answer
+// prompt upgrade, which the notebook's MCP entry serves during an
+// upgrade, and the three once it is an LLM Wiki (M12/P2/S2, the handoff
+// M5-polish item 40). The line that named the three alone, which answer
 // notebook.not_llm_wiki during an upgrade, is gone in both languages.
-func TestTheAGENTSTemplatesNameThePromptsAsServed(t *testing.T) {
+// It checks the template's line as written, not against the prompts the
+// MCP entry registers: that is for v0.2 (review A's N5).
+func TestTheAGENTSTemplatesNameTheUpgradePrompt(t *testing.T) {
 	for _, tt := range []struct {
 		locale    Locale
 		line, old string
