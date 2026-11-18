@@ -263,21 +263,22 @@ const stamps = ["id", ...addressed] as const;
 /**
  * restamp gives live, a kept node that is old with its enhancements undone, the ids and addresses next has in place of
  * old's: from old to next, not from live to next, so what the reader changed stays, and a media begun keeps its
- * address. It tells whether live is kept: not when they changed and its nodes are not old's.
+ * address. It tells whether live is kept: not when they changed and its nodes are not old's. A code block's code is
+ * left out on each side: coloured, it has nodes of its own, and none has an id or an address (review A's M2).
  */
 function restamp(live: Node | undefined, old: Node | undefined, next: Node | undefined): boolean {
   if (!(live instanceof Element && old instanceof Element && next instanceof Element)) {
     return true;
   }
-  const olds = [old, ...old.querySelectorAll("*")];
-  const nexts = [next, ...next.querySelectorAll("*")];
+  const olds = stamped(old);
+  const nexts = stamped(next);
   const changed = olds.flatMap((element, k) =>
     stamps.filter((name) => element.getAttribute(name) !== nexts[k]?.getAttribute(name)).map((name) => ({ k, name }))
   );
   if (changed.length === 0) {
     return true;
   }
-  const lives = [live, ...live.querySelectorAll("*")];
+  const lives = stamped(live);
   if (lives.length !== olds.length || lives.some((element, k) => element.nodeName !== olds[k]?.nodeName)) {
     return false;
   }
@@ -294,6 +295,13 @@ function restamp(live: Node | undefined, old: Node | undefined, next: Node | und
     }
   }
   return true;
+}
+
+/** stamped are root and the elements in it, in order, but those in a code block's code (pre > code). */
+function stamped(root: Element): Element[] {
+  return [root, ...root.querySelectorAll("*")].filter(
+    (element) => element === root || element.parentElement?.closest("pre > code") === null
+  );
 }
 
 /** FocusKey is how an element that had the focus is found in the view written anew: what it is, and which of them. */

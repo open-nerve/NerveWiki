@@ -165,6 +165,7 @@ test("resign has the sample's first view the second, every node kept", () => {
 test.each([
   ["one more address", (html: string) => `${html}<p><img class="nw-asset" src="${address(chart)}"></p>`],
   ["another attachment", (html: string) => html.replace(`/assets/${talk}/`, `/assets/${clip}/`)],
+  ["one fewer address, the last", (html: string) => html.replace(/<p>The figures are in [^\n]*<\/p>\n/, "")],
 ])("resign changes nothing when the article's addresses are not the view's: %s", (_, live) => {
   const first = signed("1795003200", "A".repeat(22));
   const { article } = written(live(first));
@@ -265,18 +266,41 @@ test("patchBlocks gives a block kept the new ids and addresses, and leaves what 
   );
 });
 
-test("patchBlocks puts a block in anew whose ids changed and whose nodes are not the HTML's: code coloured", () => {
-  const old = '<p>a</p>\n<pre id="nw-c"><code>x = 1</code></pre>\n';
-  const after = '<p>b</p>\n<pre id="nw-c-1"><code>x = 1</code></pre>\n';
+test("patchBlocks puts a block in anew whose ids changed and whose nodes are not the HTML's: one left in it", () => {
+  const old = '<p>a</p>\n<div id="nw-c"><p>x = 1</p></div>\n';
+  const after = '<p>b</p>\n<div id="nw-c-1"><p>x = 1</p></div>\n';
   const { article } = written(old);
-  const code = article.querySelector("code") as HTMLElement;
-  code.innerHTML = '<span class="hl">x</span> = 1';
-  const pre = article.querySelector("pre");
+  article.querySelector("div p")?.append(Object.assign(document.createElement("span"), { textContent: "left" }));
+  const div = article.querySelector("div");
 
   patchBlocks(article, template(old), template(after));
 
   expect(article.innerHTML).toBe(after);
-  expect(article.querySelector("pre")).not.toBe(pre);
+  expect(article.querySelector("div")).not.toBe(div);
+});
+
+// M12/P2/S4 (review A's M2): a callout of a screenshot and a code block, the code coloured, its addresses changed as
+// another wrote after the hour: the code's nodes are the highlighting's, and none has an id or an address.
+test("patchBlocks keeps a block whose code is coloured, giving it the new ids and addresses: a callout opened stays", () => {
+  const block = (id: string, e: string, s: string) =>
+    `<details id="${id}"><summary>Steps</summary><p><img class="nw-asset" src="${address(chart, { e, s })}"></p>` +
+    `<pre><code class="language-go">x := 1</code></pre></details>\n`;
+  const old = `<p>a</p>\n${block("nw-x", "1795003200", "A".repeat(22))}`;
+  const after = `<p>b</p>\n${block("nw-x-1", "1795006800", "B".repeat(22))}`;
+  const { article } = written(old);
+  const details = article.querySelector("details") as HTMLDetailsElement;
+  details.open = true;
+  const code = article.querySelector("code") as HTMLElement;
+  code.innerHTML = '<span class="hljs-attr">x</span> := <span class="hljs-number">1</span>';
+
+  patchBlocks(article, template(old), template(after));
+
+  expect(article.querySelector("details")).toBe(details);
+  expect([details.id, details.open]).toEqual(["nw-x-1", true]);
+  expect(article.querySelector("img")?.getAttribute("src")).toBe(
+    plain(address(chart, { e: "1795006800", s: "B".repeat(22) }))
+  );
+  expect(code.querySelectorAll("span")).toHaveLength(2);
 });
 
 // M12/P2/S4, 4.4.2 step 1: the article's blocks not the view's, the HTML is written whole.
