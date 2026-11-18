@@ -33,12 +33,12 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     const wide = scroller.scrollWidth > scroller.clientWidth;
     if (scroller === container) {
       if (wide) {
-        container.setAttribute("tabindex", "0");
+        tab(container);
       } else {
         untab(container);
       }
     } else if (wide) {
-      scroller.setAttribute("tabindex", "0");
+      tab(scroller);
       scroller.setAttribute("role", "region");
       scroller.setAttribute("aria-label", nameOf(scroller, t));
     } else {
@@ -126,14 +126,33 @@ function release(scroller: HTMLElement) {
   scroller.removeAttribute("aria-label");
 }
 
+/** The tabindex another gave an element the regions gave theirs (0): an anchor's target's, step 4's (-1). */
+const others = new WeakMap<HTMLElement, string>();
+
+/** tab has element take the focus as a region does (tabindex 0), the tabindex another gave it kept to give back. */
+function tab(element: HTMLElement) {
+  const was = element.getAttribute("tabindex");
+  if (was !== null && was !== "0") {
+    others.set(element, was);
+  }
+  element.setAttribute("tabindex", "0");
+}
+
 /**
  * untab takes away the tabindex the regions gave element (0), not another's: an anchor's target, or the block where
- * the focus was given back to as the view changed (-1, M12/P2/S4, 4.4.3's step 4), keeps it, or the focus would go
- * to the body as the region is followed next (review A's M3).
+ * the focus was given back to as the view changed (-1, M12/P2/S4, 4.4.3's step 4), keeps it, or has it back if the
+ * regions' was put over it, or the focus would go to the body as the region is followed next (review A's M3, C1-N1).
  */
 function untab(element: HTMLElement) {
-  if (element.getAttribute("tabindex") === "0") {
+  if (element.getAttribute("tabindex") !== "0") {
+    return;
+  }
+  const was = others.get(element);
+  others.delete(element);
+  if (was === undefined) {
     element.removeAttribute("tabindex");
+  } else {
+    element.setAttribute("tabindex", was);
   }
 }
 
