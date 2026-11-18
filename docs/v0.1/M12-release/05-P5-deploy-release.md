@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P5 部署文档与发布流水线（三个 Step：S1 版本号与流水线的构建；S2 推送、签名、证明、SBOM、许可证与 Release；S3 部署文档与发布说明） |
-| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对） |
-| 状态 | 设计已审查；[审查记录](reviews/P5-design-review.md) |
+| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订 |
+| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S1 的实施与审查之后与本文不同之处照实改在各节，3.24 列出） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 第 2 节，第 3 节第 1、7–11 条，4.3，4.8–4.13，5.1 末行，5.3，5.4，第 7 节 P5 一行与"收尾与发布""次序与并行""移交的落实""总体设计的修订"第 6、7、9 条，9.5–9.7，第 10 节，第 11 节决定 306、308、320–324、332、347 与"需要负责人确认"；[M12 设计审查](reviews/M12-design-review.md) B 的 I3、M4–M11、N1–N7、Q1 与"未核实的怀疑"；[移交](handoffs/) M0-P6-image-release 与其余移交里标给 P5 的部署项；[P1 设计](01-P1-foundation.md) 第 9 节；[v0.1 总体设计](../v0.1-design.md) 第 11 节、13.5、第 14 节 |
 | 代码位置的写法 | 同 00 号文档与 P1：模块写作 `page/…`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…` 在 `server/internal/` 之下；其余写仓库根起的路径。行号都是 `main` 的 `86565dd6` 的。00 号文档的行号以它头上的 `5e8af5b5` 为准，本文引它时只写节号；2.1 写出的旧文字与行号是 `86565dd6` 上的 00 号文档 |
 | 工作笔记 | 本文引的每个行号都在 `86565dd6` 上读过（附录）。公开的东西只读：十二个 action 与工具的 tag 与它指的提交（设计者起草时以 `git ls-remote` 读过一次，审查没能复核，见 3.21）；`actions/attest` v4.2.2 的 README 与 `src/sbom.ts`；`anchore/sbom-action` v0.24.3 的 `action.yml` 与 `src/SyftVersion.ts`；`sigstore/cosign-installer` v4.1.3 的 `action.yml`；`docker/build-push-action` v7.4.0 的 `action.yml`；actionlint 的 CHANGELOG；GitHub 文档（Container registry、immutable releases）；Docker 文档（`imagetools create`）；arm 的 runner 的软件表；本机 gh 2.103.2 的帮助；公开接口上 `ci.yml` 的运行。小实验在临时的 worktree 里（用完已删），输出在 `m12/p5-design/`。三位审查者的探针在 `m12/p5-review-{a,b,c}/`，两轮修订核对的在 `m12/p5-check{1,2}-{a,b,c}/`。actionlint 不在本机跑（设计时被权限分类器拒过，3.5） |
@@ -245,7 +245,7 @@
 
 | # | 事项 | 推荐 | 什么时候要 | 00 号文档 |
 |---|---|---|---|---|
-| 1 | 组织允许公开的容器包；"允许的 actions"包括 `docker/login-action`、`docker/setup-buildx-action`、`docker/build-push-action`、`sigstore/cosign-installer`、`anchore/sbom-action`；组织的 Actions 设置不限制工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write` | 照做 | 推 rc 之前。演练在每次推送上用 `docker/*`（S1 起）与 `anchore/sbom-action`（S2 起）："允许的 actions"受限时，那个 Step 的分支 CI 就红，到时看得出，不必先问 | 第 2 项 |
+| 1 | 组织允许公开的容器包；"允许的 actions"包括 `docker/login-action`、`docker/setup-buildx-action`、`docker/build-push-action`、`sigstore/cosign-installer`、`anchore/sbom-action`；组织的 Actions 设置不限制工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write` | 照做 | 推 rc 之前。演练在每次推送上用 `docker/*`（S1 起）与 `anchore/sbom-action`（S2 起）："允许的 actions"受限时，那个 Step 的分支 CI 就红，到时看得出，不必先问。**S1**：分支 CI 上 `docker/setup-buildx-action`、`docker/build-push-action` 没被挡住（`release.yml` 的 run 44073973297 起，10.1）；`docker/login-action` 只在 tag 的 `build` 里，还没跑过，它与 S2 的几个和写权限仍在推 rc 之前核对 | 第 2 项 |
 | 2 | 打开仓库的 immutable releases | 打开：公开之后 tag 与附件都不能改，与"不重推同一个 tag"一致；流水线先草稿后公开，打开不打开都能用 | 推 rc 之前 | 新（2.1 第 14 条） |
 | 3 | GHCR 的 `open-nerve` 下没有、也不要有手动推的 `nervewiki` 包 | 照做：第一次由 `release.yml` 用 `GITHUB_TOKEN` 推，包自动关联仓库 | 推 rc 之前 | 新 |
 | 4 | `v*` 的 tag 加规则集，只有负责人与主持者能推 | 照做；删 `v0.1.0` 的 git tag 只在 3.23 的那一种失败里由负责人决定 | 推 rc 之前 | 第 3 项 |
@@ -296,17 +296,17 @@
 | 文件 | 改动 |
 |---|---|
 | `server/internal/platform/buildinfo/version_test.go` | 新：`TestTheDefaultVersionIsOneEverywhere`（3.2） |
-| `Makefile` | `:12` 的注释；`image` 的配方合成一行并传 `REVISION`、`CREATED`（3.4）；`test-go-short` 盖版本号（3.3）；新目标 `lint-actions`（3.5） |
+| `Makefile` | `:12` 的注释；`image` 的配方合成一行，先取提交与它的时间、git 读不出就停，再传 `REVISION`、`CREATED`（3.4）；`test-go-short` 盖版本号（3.3）；新目标 `lint-actions`（3.5）；`image`、`image-smoke`、`test-go-short` 的说明（"需要 Docker 与 git"；label 与 git；`## ` 后的空格与"盖一个不是默认值的版本号"） |
 | `server/internal/bootstrap/mcp.go` | `mcpServer`（`:86-93`）的 `Options` 拆成 `mcpOptions`（3.3） |
 | `server/internal/bootstrap/mcp_version_test.go` | 新：`TestMCPServerInfoIsTheBuild`（3.3） |
 | `server/internal/platform/httpserver/mcpserver/handshake_test.go` | 加 `TestTheHandshakeNamesTheServerAndItsVersion`（3.3） |
 | `deploy/Dockerfile` | `:1-3` 的用法注释；runtime 阶段加 `ARG REVISION`、`ARG CREATED` 与三个 label（3.4） |
-| `deploy/image-smoke.sh` | 核对 label（3.4） |
+| `deploy/image-smoke.sh` | 核对 label（3.4）；头注释的"需要"加 git |
 | `.github/workflows/ci.yml` | `:3-5` 的 `on.push` 加 `branches: ["**"]`；`costs-1` 一份加 Lint workflows 一步（3.5） |
 | `deploy/release-gate.sh`、`deploy/release-notes.sh` | 新，可执行（3.6、3.7） |
 | `.github/workflows/release.yml` | 新：`rehearse`、`gate`、`build`（3.8） |
 | `server/internal/platform/buildinfo/release_test.go` | 新：工作流的守卫、闸门与说明的测试（3.9） |
-| `README.md` | `:15-17` 的"需要安装"加 jq（`make test-go-short` 也要它与 bash、git）；`:29` 的 `make lint` 一句之后加"`make lint-actions`（actionlint 核对 `.github/workflows`）只在 CI 上跑"；`:31` 的 `make test-go-short` 一句写它盖版本号 |
+| `README.md` | `:15-17` 的"需要安装"加"bash、git、jq 与 awk"（`make test-go-short` 里发布脚本的测试要这四样，决定 559）；`:29` 的 `make lint` 一句之后加"`make lint-actions`（actionlint 核对 `.github/workflows`）只在 CI 上跑"；`:31` 的 `make test-go-short` 一句写它盖版本号；`:508` 的 image-smoke 一行：清单加"镜像的 label"，"另需"加 git（S1 审查 A 的 N2） |
 
 ### 3.2 S1：版本号的默认值与它的守卫
 
@@ -423,12 +423,16 @@ LABEL org.opencontainers.image.title="Nerve Wiki" \
 **`make image`**（`Makefile:87-90`），判断与构建写在同一个 shell 行（第 1 节）：
 
 ```make
-image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（只需要 Docker）
+image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（需要 Docker 与 git）
 	test -d .git || { echo "make image 要在普通的克隆中运行：…"; exit 1; }; \
+	revision=$$(git rev-parse HEAD) && created=$$(git log -1 --format=%cI) || \
+		{ echo "make image：git 读不出提交与它的时间，镜像的 label 要它们"; exit 1; }; \
 	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) \
-		--build-arg REVISION="$$(git rev-parse HEAD)" --build-arg CREATED="$$(git log -1 --format=%cI)" \
+		--build-arg REVISION="$$revision" --build-arg CREATED="$$created" \
 		-t $(IMAGE) .
 ```
+
+先取提交与它的时间，git 读不出（例如 dubious ownership）就停下（S1 审查 A 的 N1，`bc71d5fe`）：命令替换失败不会让一行失败，原来的写法以 0 退出、镜像带着空的 label 构建出来。`make -i` 也绕不过：`exit 1` 在同一个 shell 行里。`image-smoke.sh` 的头注释"需要"加 git（S1 核对第 1 轮 A 的 N4）。
 
 **`image-smoke.sh`**：`:78` 的版本核对之后（那时镜像已拉取）加：
 
@@ -467,7 +471,8 @@ on:
 # 不进 server/tools/go.mod（同 govulncheck）。只在 GitHub 的 runner 上跑（ci.yml 的 costs-1 一份），本机拒绝：设计时在本机
 # 跑它被权限分类器拒过，照 make vuln 的先例（M12 决定 308）。判断与干活写在同一个 shell 行里（make -i 绕不过）。
 # -shellcheck=：runner 装了版本不由我们定的 shellcheck，actionlint 看到它才查 run:。不给文件：actionlint 在仓库根找
-# .github/workflows 下的 .yml 与 .yaml。出错写成 GitHub 的注解：作业日志要认证，注解是公开的
+# .github/workflows 下的 .yml 与 .yaml。出错写成 GitHub 的注解：作业日志要认证，注解是公开的。-format 里的 \n 由 actionlint
+# 自己换成换行（它的 unescapeBackslash）：写进模板的 {{"\n"}} 因此成了没结束的字符串，模板解析不了
 ACTIONLINT_VERSION := v1.7.12
 runner-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：结论看 ci.yml 的 costs-1 一份（M12/P5/S1）"; exit 1; }
 
@@ -475,7 +480,7 @@ runner-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub �
 lint-actions: ## actionlint 核对 .github/workflows；只在 CI 上跑
 	@$(runner-only); \
 	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) -shellcheck= -verbose \
-		-format '{{range $$e := .}}::error file={{$$e.Filepath}},line={{$$e.Line}},col={{$$e.Column}}::{{$$e.Message}}{{"\n"}}{{end}}'
+		-format '{{range $$e := .}}::error file={{$$e.Filepath}},line={{$$e.Line}},col={{$$e.Column}}::{{$$e.Message}}\n{{end}}'
 ```
 
 - 不另用 `$(ci-only)`：它的提示说"把依赖的清单发给外部的服务、结论看 `vuln.yml`"，对 actionlint 不对。
@@ -489,9 +494,9 @@ lint-actions: ## actionlint 核对 .github/workflows；只在 CI 上跑
         run: make lint-actions
   ```
 
-  那一份不取 Go 的缓存（决定 355），每次下载并编译 actionlint，推断多 15–40 秒，Lint 一步今天 92–143 秒、作业时限 45 分钟。
+  那一份不取 Go 的缓存（决定 355），每次下载并编译 actionlint，推断多 15–40 秒，Lint 一步今天 92–143 秒、作业时限 45 分钟。S1 实测这一步 2–3 秒：`go run` 的下载加编译在 Lint 一步之后，构建缓存已热（S1 审查 C；10.1）。
 - **本机的 `make lint`、`make check`、逐个提交的门禁都不含它**；实施者与审查者都不在本机跑 actionlint。
-- **现有两份工作流过不过 actionlint，设计时不知道**：S1 的第 5 个提交加这个目标与这一步，推上分支之后读 `costs-1` 的 Lint workflows 一步的注解；报出的在下一个提交里改（范围写 `build`），写进 S1 的偏离。第 5 个提交本身在 CI 的这一步上可能是红的：这一步只在 runner 上，本机的逐个提交的门禁不含它，记录写明。
+- **现有两份工作流过不过 actionlint，设计时不知道**：S1 的第 5 个提交加这个目标与这一步，推上分支之后读 `costs-1` 的 Lint workflows 一步的注解；报出的在下一个提交里改（范围写 `build`），写进 S1 的偏离。第 5 个提交本身在 CI 的这一步上可能是红的：这一步只在 runner 上，本机的逐个提交的门禁不含它，记录写明。S1 实际：报出的是 `make lint-actions` 自己的 `-format`（run 44068674790，"unterminated quoted string"），不是现有的工作流；下一个提交 `2db96b0a` 改成上面裸的 `\n`，之后三份 0 错，没有"the workflows pass actionlint"那个提交（决定 557）。
 
 ### 3.6 S1：闸门 `deploy/release-gate.sh`
 
@@ -576,6 +581,7 @@ fi
 
 - **字段是公开接口的真样子**：`/actions/workflows/ci.yml/runs?head_sha=86565dd6…&branch=main&event=push` 答 `total_count` 与 `workflow_runs`，每项有 `path`、`head_sha`、`head_branch`、`event`、`status`、`conclusion`、`run_attempt`、`created_at`（`m12/p5-design/ci-runs.json`）。重跑过的 43745380462 的运行对象是 `run_attempt: 2`、`conclusion: success`，它的 `/attempts/1` 是 `failure`：运行对象的结论就是最后一次尝试的。接口按建的时间从新到旧给；脚本自己排序，不依赖次序。`select` 再核一遍 `path` 与分支：假的 `gh` 答错端点时（7.2 的 g4）照样拒绝。
 - **第 4 条按字面比**（审查 A 的 M2）：`awk` 的 `index` 与说明脚本取一节的写法相同，`0.1.0` 里的 `.` 不是通配，也不必在 bash 里转义（原稿 `${base//./\\.}` 在 bash 3.2 下的结果没人核对过）。日期的正则只用在取出的那一行上，`（`、`）` 是字面的多字节字符，C 与 C.UTF-8 下一样（审查 A 核对过两个 `grep -E` 与 `awk` 在 C、POSIX、C.UTF-8 与 mawk、gawk 下数得一样）。
+- **日期只核对 `YYYY-MM-DD` 的形状**（`2026-99-99` 放行；S1 审查 B 的 N2，决定 563）：它挡的是忘了写日期；日期由主持者在 3.23 第 7 步照当天写。
 - **第 4 条取一次这一节**（审查 A 的 M4）：原稿只数标题，标题下面是空的也放行，之后构建、推送、签名、复制出版本号的 tag 都做完，`draft` 作业的说明脚本才拒；`v0.1.0` 那时包已公开，说明取自 tag 指的提交，重跑改不了。闸门用一个全零的假摘要跑一次说明脚本，与真的那一次走同一段代码。
 - **第 5 条的报错写明 tag 要打在哪里**（审查 A 的 N9）：合并提交若与"记合并号"的文档提交一起推上 `main`，它就没有自己的运行。
 - `GITHUB_SHA` 经 `^{commit}` 解析：tag 的推送里它是提交（推断），万一是 tag 对象也解得到同一个提交；比较的是 tag 指的提交，不是 tag 对象（7.2 的 g11）。
@@ -596,7 +602,7 @@ set -uo pipefail
 做的事：
 
 1. 参数恰两个；tag 照 3.6 第 1 条的正则；摘要 `^sha256:[0-9a-f]{64}$`；`IMAGE`、`GITHUB_REPOSITORY` 不空。
-2. 一节：`awk -v h="## $base（" 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on { print }' CHANGELOG.md`，去掉开头与结尾的空行；去掉空白之后什么也没有就拒绝。`index` 比字节，`## 0.1.0（` 不会匹配 `## 0.1.00（`，也不在 `### ` 处停（审查 A 核对过 mawk、gawk 与两种 locale）。
+2. 一节：先判有没有以 `## $base（` 起头、以 `）` 结尾的一行（`awk -v h="## $base（" 'index($0, h) == 1 && /）$/ { found = 1 } END { exit !found }' CHANGELOG.md`），没有就拒绝；再取 `awk -v h="## $base（" 'on && /^## / { exit } index($0, h) == 1 && /）$/ { on = 1; next } on { print }' CHANGELOG.md`，去掉开头与结尾的空行（脚本在 awk 的 `END` 里去）；去掉空白之后什么也没有就拒绝。说明认的标题与闸门数的是同一种（以"）"结尾）：同一个版本写坏了的标题在前不是起点，在后结束这一节（"下一个 `## `"先判；S1 审查 B 的 N1、核对第 1 轮 B 的 N5，决定 558）。`index` 比字节，`## 0.1.0（` 不会匹配 `## 0.1.00（`，也不在 `### ` 处停（审查 A 核对过 mawk、gawk 与两种 locale）。
 3. rc 时先写一句：`这是预发布版本 v0.1.0-rc.1，供核对与试用；正式版本是 v0.1.0。`，空一行。
 4. 一节的正文。
 5. 生成的部分（heredoc，`<版本>` 是 tag 去掉 `v`，`<tag>` 原样，镜像名与仓库取自 `IMAGE`、`GITHUB_REPOSITORY`）：
@@ -705,7 +711,7 @@ jobs:
       # BuildKit 按摘要钉住，演练与 build 是同一个（M12/P5/S1；守卫核对两处相同）
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          driver-opts: image=moby/buildkit:<版本>@sha256:<摘要>
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe
       # 提交与它的时间，同 make image（M12/P5/S1）
       - name: Labels
         id: labels
@@ -798,7 +804,7 @@ jobs:
         run: （同演练）
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          driver-opts: image=moby/buildkit:<版本>@sha256:<摘要>   # 与演练逐字相同
+          driver-opts: image=moby/buildkit:v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe   # 与演练逐字相同
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:
           registry: ghcr.io
@@ -841,7 +847,7 @@ jobs:
           retention-days: 30
 ```
 
-（"同上""同演练"在文件里照抄完整的步骤；这里省掉重复。不抽成 composite action：那要再开一个文件，守卫也要跟着读它。BuildKit 的版本与摘要在 S1 实施时取当时的稳定版，3.21。）
+（"同上""同演练"在文件里照抄完整的步骤；这里省掉重复。不抽成 composite action：那要再开一个文件，守卫也要跟着读它。BuildKit 的版本与摘要在 S1 实施时取当时的稳定版：v0.34.2，3.21、决定 555。）
 
 要点：
 
@@ -866,16 +872,18 @@ jobs:
 **`TestOnlyATagsJobsMayWrite`**：`os.ReadDir(".github/workflows")` 列出整个目录（审查 A 的 N5），用 `go.yaml.in/yaml/v3` 解码进 `map[string]any`，核对：
 
 1. 目录里恰是 `ci.yml`、`release.yml`、`vuln.yml` 三个文件：新加的工作流（`.yml` 或 `.yaml`）先让这个测试失败，写它的人在这里写下它的权限。
-2. `ci.yml`：`on.push` 恰是 `{branches: ["**"]}`（不在 tag 上跑，3.5）；顶层 `permissions` 恰是 `{contents: read}`；没有作业另写 `permissions`。
+2. `ci.yml`：`on.push` 恰是 `{branches: ["**"]}`（不在 tag 上跑，3.5）；顶层 `permissions` 恰是 `{contents: read}`；没有作业另写 `permissions`。`server` 作业里 `run` 含 `lint-actions` 的步骤恰有一步，恰是 `{name: Lint workflows, if: matrix.leg == 'costs-1', run: make lint-actions}`，没有别的键（`shell`、`env`、`working-directory` 会让它不跑而照绿，`continue-on-error` 让它失败了照绿），`costs-1` 是这个作业的一份：actionlint 没有别处跑（S1 审查 C 的 M3、核对第 1 轮 C 的 N6）。
 3. `vuln.yml`：顶层 `permissions` 恰是 `{contents: read}`；没有作业另写 `permissions`；`on.push` 有 `branches`、没有 `tags`。
 4. 三份里每个 `uses: actions/checkout@…` 的步骤都有 `with.persist-credentials: false`（审查 B 的 N12：`.git` 进镜像的构建上下文；今天六处都写了）。
-5. 三份里每个 `run:` 的文本，其中的 `${{ … }}` 只许 `matrix.` 起头的（正则 `\$\{\{\s*([^}]*?)\s*\}\}`，捕获的表达式要匹配 `^matrix\.[a-z_]+$`）：tag 名、提交说明这类外来的文字只经环境变量进脚本，空格写不写都抓得到（审查 A 的 M6）。今天 `ci.yml`、`vuln.yml` 的 `run:` 里只有 `matrix.leg`，本文的 `release.yml` 只有 `matrix.arch`（修订核对 A 读过），守卫在今天的文件上就过。
+5. 三份里每个 `run:` 的文本，其中的 `${{ … }}` 只许 `matrix.` 起头的：从每一处 `${{` 起头的文字要匹配 `^\$\{\{\s*matrix\.[a-z_]+\s*\}\}`。tag 名、提交说明这类外来的文字只经环境变量进脚本，空格写不写都抓得到（审查 A 的 M6）；表达式里可以有 `}`（`format('{0}', …)`），先截出 `${{ … }}` 再看的写法会漏掉它（S1 审查 B 的 M1）。三份里每个作业的 `strategy` 的字符串都不含 `${{`：矩阵的值写死，否则外来的文字经 `${{ matrix.… }}` 进脚本（S1 核对第 1 轮 B 的 N8）。今天 `ci.yml`、`vuln.yml` 的 `run:` 里只有 `matrix.leg`，本文的 `release.yml` 只有 `matrix.arch`（修订核对 A 读过），守卫在今天的文件上就过。
 6. `release.yml`：
    - `on` 只有 `push`，恰是 `{branches: ["**"], tags: ["v[0-9]+.[0-9]+.[0-9]+*"]}`（没有 `workflow_dispatch`、`pull_request`、`workflow_run`、`paths`）；
    - 顶层 `permissions` 是空的映射；
    - 作业恰是这张表里的（S1 三个，S2 八个），每个都写了 `permissions` 映射（不是 `read-all` 这样的字符串），与表恰好相等；`needs` 含表里的；
    - `if` 是整个字符串相等：不许 `||`、`always()`、`!cancelled()` 之类让它在别的事件或前面失败时也跑；
    - 没有作业、没有步骤写 `continue-on-error`（审查 A 的 M7）；`gate` 作业的步骤都不写 `if`；
+   - `rehearse` 与 `build`（S2 加 `verify`）各恰有一步跑 image-smoke；`release.yml` 里每个这样的步骤都不写 `if`，`run` 里有一行 `deploy/image-smoke.sh … "$VERSION"`（`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`），这一行后面没有别的（`|| true` 之类）（S1 审查 B 的 N3、核对第 1 轮 B 的 N6；决定 560）。它按行核对：前面一行 `set +e`、这一步或作业写不带 `-e` 的 `shell` 时，smoke 失败了照绿，交 S2（第 9 节，决定 562）；
+   - `rehearse` 作业与工作流顶层的 `env`、`defaults` 里，没有字符串匹配 `(?i)\bsecrets\b`（各种写法、大小写，与每个作业都继承的）；演练的步骤 `uses` 与 `run` 合起来不匹配 `(?i)login`（S1 审查 B 的 N3、核对第 1 轮 B 的 M3；决定 560）；
    - `gate` 的步骤里恰有一步 `run` 是 `deploy/release-gate.sh "$GITHUB_REF_NAME"`，恰有一步是 `make vuln VULN_AUDIT_LEVEL=high`，前者在前；
    - `rehearse` 与 `build` 的 `docker/setup-buildx-action` 的 `with.driver-opts` 逐字相同，匹配 `^image=moby/buildkit:v[0-9.]+@sha256:[0-9a-f]{64}$`（P5-18）；
    - S2 加：`publish` 恰有一步 `run` 是 `deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"`，且没有 `uses: docker/login-action`；`draft` 恰有一步是 `deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"`；`release` 恰有一步是 `deploy/github-release.sh publish "$GITHUB_REF_NAME"`；`verify` 的校验一步含 `--cert-identity "$identity"`、`--predicate-type https://spdx.dev/Document/v2.3`。
@@ -891,7 +899,7 @@ jobs:
    | `verify`（S2） | 同上 | `contents: read`、`packages: read`、`attestations: read` | `gate`、`publish`、`draft` |
    | `release`（S2） | 同上 | `contents: write` | `gate`、`verify`、`draft` |
 
-**`TestTheReleaseGate`**，表驱动。每个用例在临时目录里建 `origin.git`（`git init --bare`）与它的克隆（`git init -b main`、提交、`git push origin HEAD:main`、`git fetch`）；另有一个只在旁支上的提交；打带注释的 tag；写用例的 `CHANGELOG.md`。执行的是仓库里的 `deploy/release-gate.sh`（绝对路径），工作目录设为临时的克隆：闸门按 `$(dirname "$0")` 找仓库里的说明脚本，`CHANGELOG.md` 与 git 从工作目录读。脚本不复制，可执行位才是仓库里的那一个（g14 成立的前提；修订核对 A 的 M5，A 的驱动就这样跑通了每一格）。`IMAGE`、`GITHUB_REPOSITORY` 取与生产不同、彼此不同的假值（`registry.test/nw-gate`、`o/r`）。假的 `gh`（测试写进临时目录，可执行）：
+**`TestTheReleaseGate`**，表驱动。每个用例在临时目录里建 `origin.git`（`git init --bare`）与它的克隆（`git init -b main`、提交、`git push origin HEAD:main`、`git fetch`）；另有一个只在旁支上的提交；打带注释的 tag；检出 `GITHUB_SHA` 指的提交（没设时是 tag 指的），detached，同 `gate` 作业的 `actions/checkout`（S1 审查 B 的 M2、C 的 M2，核对第 1 轮 B 的 N7）；写用例的 `CHANGELOG.md`。执行的是仓库里的 `deploy/release-gate.sh`（绝对路径），工作目录设为临时的克隆：闸门按 `$(dirname "$0")` 找仓库里的说明脚本，`CHANGELOG.md` 与 git 从工作目录读。脚本不复制，可执行位才是仓库里的那一个（g14 成立的前提；修订核对 A 的 M5，A 的驱动就这样跑通了每一格）。`IMAGE`、`GITHUB_REPOSITORY` 取与生产不同、彼此不同的假值（`registry.test/nw-gate`、`o/r`）。假的 `gh`（测试写进临时目录，可执行）：
 
 ```bash
 #!/usr/bin/env bash
@@ -929,15 +937,21 @@ cat "$file"
 | `workflow_runs` 是空的 | 1 | `单独推上 main` |
 | 假 `gh` 以 1 退出 | 1 | `读不到 ci.yml` |
 | 答复里的运行 `path` 是 `release.yml`（端点答错） | 1 | `单独推上 main` |
-| 没有 `IMAGE` | 1 | `要 IMAGE` |
+| 没有 `IMAGE` | 1 | `release-gate: 要 IMAGE`（闸门自己的字样：没有它的判断时说明也拒绝，晚一步、用说明的字样；S1 改） |
+| 只有缺右括号的 `## 0.1.0（未发布`（S1 加） | 1 | `的标题有 0 个` |
+| `ci.yml` 在 `main` 上的运行红，同一提交另一个分支（`m12-release`）上更新的一次绿（S1 加；`select` 核对 `head_branch`） | 1 | `completed failure` 与 `main` 上那次的运行号 |
+| 同上，更新的那次是 `pull_request` 的（S1 加；核对 `event`） | 1 | 同上 |
+| 同上，更新的那次是另一个提交的（S1 加；核对 `head_sha`） | 1 | 同上 |
 
-审查 A 把原稿的闸门原样取出、对着一个照这张表的驱动跑过每一格（`m12/p5-review-a/gate/`）；本稿新加的几格（不设 `GITHUB_SHA`、`0x1x0`、空的一节、从新到旧）照 S1 实施时先在没改过的脚本上跑一遍。
+审查 A 把原稿的闸门原样取出、对着一个照这张表的驱动跑过每一格（`m12/p5-review-a/gate/`）；本稿新加的几格（不设 `GITHUB_SHA`、`0x1x0`、空的一节、从新到旧）照 S1 实施时先在没改过的脚本上跑一遍。S1 跑了：原稿五格失败（两个"这一节是空的"放行，"没有 IMAGE"放行，"没有运行"与"端点答错"两格的消息里没有"单独推上 main"），新加的几格在原稿上照过；标"S1 加"的四格与"没有 IMAGE"的字样是 `38916978` 补的，没有它们 g15–g18、g20 照过（决定 558）。
 
 **`TestTheReleaseNotes`**：执行仓库里的 `deploy/release-notes.sh`（绝对路径），工作目录是只有 `CHANGELOG.md` 的临时目录。`CHANGELOG.md` 有 `## 0.1.0（未发布）` 与 `## 0.0.9（2026-01-01）` 两节，0.1.0 的一节前后有空行、里面有 `### 已知限制` 这样的三级标题。`IMAGE`、`GITHUB_REPOSITORY` 取与生产不同、彼此不同的假值（`registry.test/nw-notes`、`o2/r2`；审查 A 的 N6），期望里写的是这些假值：脚本里写死 `ghcr.io/open-nerve/nervewiki` 的变异抓得到（7.2 的 n5）。
 
 - rc：整份输出与写死的期望**整个比**（05-lessons 第 1 节"整个答复与写死的期望比"）：第一句预发布、0.1.0 的正文（含三级标题，不含 0.0.9 的）、生成的部分里 `0.1.0-rc.1` 与两处 `refs/tags/v0.1.0-rc.1`。
 - 正式：同样整个比，没有预发布那一句。
-- 拒绝：没有这一节；这一节只有空行；摘要是 `sha256:abc`；tag 不合写法；没有 `IMAGE`。
+- 拒绝：没有这一节；这一节只有空行；摘要是 `sha256:abc`；tag 不合写法；没有 `IMAGE`；只有写坏了的 `## 0.1.0（草稿`（"没有"）。
+- `CHANGELOG.md` 另有一行空格与一行前文，前文里出现 `### 0.1.0（草稿）`：结尾的空格行要去掉，只认行首的标题（S1 加，n8、n12；决定 558）。
+- 同一个版本：正式的一节之后紧接写坏了的 `## 0.1.0（草稿`、写坏的在前、两个完整的标题（取第一节），都整个比（S1 审查 B 的 N1、核对第 1 轮 B 的 N5）。
 
 ### 3.10 S2 的文件
 
@@ -950,8 +964,8 @@ cat "$file"
 | `knip.jsonc` | 根的 `entry`（`:7-15`）加 `tools/licenses/npm.mjs` |
 | `deploy/image-smoke.sh` | 核对 `/licenses`（3.11） |
 | `deploy/release-version-tag.sh`、`deploy/github-release.sh` | 新，可执行（3.13） |
-| `.github/workflows/release.yml` | `sbom`、`publish`、`draft`、`verify`、`release` 五个作业；演练加三步（3.14、3.15） |
-| `server/internal/platform/buildinfo/release_test.go` | 加 `TestTheReleaseScripts`；守卫的表加五个作业（3.9、3.13） |
+| `.github/workflows/release.yml` | `sbom`、`publish`、`draft`、`verify`、`release` 五个作业；演练加三步（3.14、3.15）；`build` 的 Labels 之前加 `test "$(git rev-parse HEAD)" = "$SHA"`（第 9 节"P5/S2"，决定 561） |
+| `server/internal/platform/buildinfo/release_test.go` | 加 `TestTheReleaseScripts`；守卫的表加五个作业（3.9、3.13）；跑 image-smoke 的步骤与它们的作业不许写 `shell`、`defaults.run.shell`、`set +e`（第 9 节"P5/S2"，决定 562） |
 
 ### 3.11 S2：第三方许可证 `/licenses`
 
@@ -1593,7 +1607,7 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 
 ### 3.21 用到的 action 与工具的版本
 
-按提交引用、注释写 tag（13.5 第 2 条）。设计者起草时（2026-11-16）以 `git ls-remote` 读过一次 tag 与它指的提交；审查 B 在沙箱里连不上 GitHub，没能复核，只对照了 `m12/survey-i1/actions-new-shas.txt` 与今天 `ci.yml`、`vuln.yml` 钉的 SHA，都相同。**这些 SHA 不当作已核对：P5/S1 实施时以公开仓库核对**，那时也再核一次最新版（主持者）。
+按提交引用、注释写 tag（13.5 第 2 条）。设计者起草时（2026-11-16）以 `git ls-remote` 读过一次 tag 与它指的提交；审查 B 在沙箱里连不上 GitHub，没能复核，只对照了 `m12/survey-i1/actions-new-shas.txt` 与今天 `ci.yml`、`vuln.yml` 钉的 SHA，都相同。**这些 SHA 不当作已核对：P5/S1 实施时以公开仓库核对**，那时也再核一次最新版（主持者）。S1 实施时（2026-11-17）以 `git ls-remote` 从公开仓库读过十一个 action 的 tag，每个 SHA 都是表里写的（`anchore/sbom-action` v0.24.3 的 tag 对象 `fffec3d8…` 解开是 `66cbf4bc…`）；S1 的审查 B 以 `gh api` 另核了 `release.yml` 用的七个。最新版：只有 `actions/setup-go` 出了 v7.1.0，三份工作流照旧 v7.0.0，一起升走 4.3 的路（决定 556）；其余十个与 actionlint v1.7.12 都是最新。
 
 | action 或工具 | 版本 | 钉到 | 用在 | 第三方 |
 |---|---|---|---|---|
@@ -1608,12 +1622,12 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 | `docker/login-action` | v4.8.0 | `8aa5831fb8d48d8f76594c7ddde61ae58019f550` | `build`、`sbom`、`verify`（`publish` 用 shell） | 是 |
 | `sigstore/cosign-installer` | v4.1.3（cosign v3.1.4） | `756fe2d284c7292c4e9b62c8a28f1e5629c59532` | `publish`、`verify` | 是 |
 | `anchore/sbom-action` | v0.24.3（syft v1.54.0） | `66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c`：tag 是带注释的，它的对象是 `fffec3d8…`，钉解出来的提交 | `sbom`、演练 | 是 |
-| BuildKit（`moby/buildkit`） | S1 实施时的稳定版 | `<版本>@sha256:<摘要>`（S1 实施时读） | 演练、`build`（`driver-opts`） | 是 |
+| BuildKit（`moby/buildkit`） | v0.34.2（S1 实施时 `buildx-stable-1` 指它；v0.35.0 才发 6 天，决定 555） | `v0.34.2@sha256:c5f8862f52499773af85bc07695b2379ef08e8002352b0df2c4864c91d78dabe`（index，含 linux/amd64 与 linux/arm64） | 演练、`build`（`driver-opts`） | 是 |
 | actionlint | v1.7.12 | `go run …@v1.7.12`（`Makefile`） | `make lint-actions` | — |
 | `gh` | runner 自带 | — | `gate`、`draft`、`verify`、`release` | — |
 | `docker buildx imagetools` | runner 自带的 buildx | — | `publish`、`verify` | — |
 
-- `build-push-action` v7.4.0 的输入有 `context`、`file`、`build-args`、`load`、`push`、`outputs`、`provenance`、`sbom`、`tags`，输出有 `digest`（`action.yml`）。`DOCKER_BUILD_RECORD_UPLOAD` 这个名字没有复核（审查 B 未核实的第 5 条），错了只是多传一个 artifact。
+- `build-push-action` v7.4.0 的输入有 `context`、`file`、`build-args`、`load`、`push`、`outputs`、`provenance`、`sbom`、`tags`，输出有 `digest`（`action.yml`）。`DOCKER_BUILD_RECORD_UPLOAD` 这个名字没有复核（审查 B 未核实的第 5 条），错了只是多传一个 artifact。S1 的演练核实了：构建记录只写在本地，运行的 artifact 是 0 个。
 - `actions/attest` v4.2.2 的输入有 `subject-name`、`subject-digest`、`sbom-path`、`push-to-registry`（要恰好一个带摘要的 OCI 主体）、`create-storage-record`（默认开，要 `artifact-metadata: write`）；只给主体时是 SLSA 的来源证明（README）。
 - `docker/metadata-action` 不用（决定 322）。
 
@@ -1674,6 +1688,24 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 
 GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删（删包的版本要负责人的管理员权限），收尾记录列出，v0.2 的 `M12-release.md` 写清不清（审查 C 的 N10）。
 
+### 3.24 S1 的实施对设计的修正
+
+S1 的审查与修复见 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1。与上文最初的设计不同之处已改在各节里（头的状态与日期，2.2 第 1 项，3.1 的文件表，3.4，3.5，3.6，3.7 第 2 条，3.8 的 `driver-opts` 与代码块后一句，3.9 第 2、5、6 条、`TestTheReleaseGate` 的建法与表、`TestTheReleaseNotes`，3.10 的两行，3.21，6.1 第 5、6 项与其后一段，7.2，7.4，第 8 节第 5–7 条，第 9 节"P5/S2"）；00 号文档第 7 节"总体设计的修订"第 6 条落了前一半，第 11 节加主持者的决定 555–563。写了行号的，代码是 S1 的头 `ce8aaf64`。
+
+1. **第 5 个之后的条件提交**（3.5、6.1）：报出的是 `make lint-actions` 自己的 `-format`，不是现有的工作流；下一个提交是 `2db96b0a`，改成裸的 `\n`，没有"the workflows pass actionlint"（决定 557）。
+2. **BuildKit**（3.8、3.21）：`v0.34.2` 与它的 index 摘要（决定 555）。
+3. **3.21 的核对**：十一个 SHA 都与表相同；`actions/setup-go` 有 v7.1.0，三份工作流照旧 v7.0.0（决定 556）。
+4. **作业的表写成函数 `releaseJobs()`**（3.9）：gochecknoglobals 不许全局的 map；设计没有写形式。
+5. **README 的"需要安装"**（3.1、6.1）：写"bash、git、jq 与 awk"（决定 559）。
+6. **第 1 个提交的标题带 `docs`**（6.1）：照 6.1 写的；它不改文档文件，它的守卫读 README。
+7. **闸门与说明的测试**（3.9）：`38916978` 加的格子与"没有 IMAGE"的字样；每格照 `actions/checkout` 检出 `GITHUB_SHA` 的提交，没设时检出 tag 的（审查 B 的 M2、N7，C 的 M2；决定 558）。
+8. **说明的一节**（3.7 第 2 条）：只从以"）"结尾的标题起，"下一个 `## `"先判（审查 B 的 N1、N5；决定 558）。
+9. **闸门的日期只核对形状**（3.6）：不改脚本（审查 B 的 N2，决定 563）。
+10. **守卫**（3.9 第 2、5、6 条）：`run:` 里在每一处 `${{` 上核对（审查 B 的 M1）；`strategy` 的字符串不含 `${{`（B 的 N8）；`ci.yml` 的 actionlint 一步恰是三个键（C 的 M3、N6）；跑 smoke 的步骤与演练（B 的 N3、M3、N6，决定 560）。关掉 `bash -e` 的写法交 S2（决定 562）。
+11. **`make image` 先取提交与时间，git 读不出就停**（3.4，审查 A 的 N1，`bc71d5fe`）：命令替换失败不会让一行失败，原来的写法会带着空的 label 构建出来；说明改成"需要 Docker 与 git"。`make help` 与 README `:508` 的 image-smoke 一行写上 label 与 git（A 的 N2，`e08b98b0`），`image-smoke.sh` 的头注释也是（核对 A 的 N4，`ce8aaf64`）；`test-go-short` 那一行的 `## ` 改回（A 的 M1，C 的 M1）。
+12. **MCP 版本的测试分开报两种失败**（3.3，审查 A 的 N3，`719c59de`）：盖的就是 `buildinfo.go` 的默认值时报 `TEST_VERSION` 要与它不同，二进制的版本号不是盖的那个时报 `-ldflags` 没有到。
+13. **用时**（3.5、7.4）：Lint workflows 一步 2–3 秒，不是推断的 15–40 秒；演练 amd64 1:18–2:21、arm64 1:21–1:26（10.1）。
+
 ## 4. 网页
 
 不改网页的代码与测试。
@@ -1692,10 +1724,12 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 2. `server, build: the MCP server tells the build's version, which the short run stamps (M12/P5/S1)`：`mcpOptions`、两个测试、`test-go-short` 与 README `:31`（3.3）。三样同一个提交：测试要盖了版本号才有意义。
 3. `deploy, build: the image's revision, creation and description labels (M12/P5/S1)`：Dockerfile（含 `:1-3` 的注释）、`make image`（合成一行）、`image-smoke.sh`（3.4）。同一个提交：`image-smoke` 核对 `make image` 传的。
 4. `build: ci.yml runs on branches, not on tags (M12/P5/S1)`（3.5）。
-5. `build: actionlint lints the workflows on the runner, make lint-actions (M12/P5/S1)`：`Makefile` 的目标、`ci.yml` 的一步、README `:29`（3.5）。之后推送分支，读 `costs-1` 的 Lint workflows 一步的注解与 `-verbose` 列的文件。报出的在下一个提交 `build: the workflows pass actionlint (M12/P5/S1)` 里改；没有报出就没有这个提交。
-6. `deploy, server: the release gate and the release notes, run against a fake gh and throwaway repositories (M12/P5/S1)`：两个脚本（可执行）、`release_test.go` 的 `TestTheReleaseGate`、`TestTheReleaseNotes`；README 的"需要安装"加 jq（3.6、3.7、3.9）。表里新加的几格先在原稿的脚本上跑，记下它们怎样失败。
+5. `build: actionlint lints the workflows on the runner, make lint-actions (M12/P5/S1)`：`Makefile` 的目标、`ci.yml` 的一步、README `:29`（3.5）。之后推送分支，读 `costs-1` 的 Lint workflows 一步的注解与 `-verbose` 列的文件。报出的在下一个提交 `build: the workflows pass actionlint (M12/P5/S1)` 里改；没有报出就没有这个提交。S1 报出的是 `make lint-actions` 自己的 `-format`，下一个提交是 `build: make lint-actions writes its newline bare, which actionlint unescapes itself (M12/P5/S1)`（`2db96b0a`），三份工作流 0 错，没有"pass actionlint"那个提交（决定 557）。
+6. `deploy, server: the release gate and the release notes, run against a fake gh and throwaway repositories (M12/P5/S1)`：两个脚本（可执行）、`release_test.go` 的 `TestTheReleaseGate`、`TestTheReleaseNotes`；README 的"需要安装"加 jq（3.6、3.7、3.9；S1 写成"bash、git、jq 与 awk"，决定 559）。表里新加的几格先在原稿的脚本上跑，记下它们怎样失败。
 7. `build, server: release.yml rehearses both architectures on every push, and gates and builds them on a tag (M12/P5/S1)`：`release.yml`（BuildKit 照 3.21 取版本与摘要）、`TestOnlyATagsJobsMayWrite`（3.8、3.9）。守卫的第 4、5 条先在没改过的 `ci.yml`、`vuln.yml` 上跑（修订核对 A 读过，应当照过），报出的同一个提交改。之后推送分支，读 `ci.yml` 与 `release.yml` 的两次运行，Lint workflows 一步也读了 `release.yml`。
 8. `docs: … (M12/P5/S1)`：审查记录、10.1、照实改的各节、00 号文档与总体设计的 S1 部分、06-environment、移交（第 8 节）。
+
+S1 实际另有第 7 个之后的 `server: the gate's and the notes' tests hold the checks the design's cases left free (M12/P5/S1)`（`38916978`，决定 558）与修复两轮的 15 个提交（[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)）。
 
 ### 6.2 S2（`m12-p5-s2`）
 
@@ -1755,7 +1789,7 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 | v4 | `buildinfo.go:9` 改 | 同上（`make test-go-short` 盖了版本号，读源码的写法照样抓到） | S1 |
 | v5 | `README.md:43` 改 | 同上 | S1 |
 | v6 | Dockerfile 多一行 `ARG VERSION=0.1.0-dev` | 同上："3 matches, want 2" | S1 |
-| m1 | `mcp.go` 的 `Version: buildinfo.Get().Version` 写成 `"0.1.0-dev"` | `make test-go-short` 里的 `TestMCPServerInfoIsTheBuild`；直接 `go test -short` 照过（写明：这就是要盖版本号的理由） | S1 |
+| m1 | `mcp.go` 的 `Version: buildinfo.Get().Version` 写成 `"0.1.0-dev"`（S1 写成 `buildinfo.Get().Version[:0] + "0.1.0-dev"`：直接写字面值时 `buildinfo` 没人用，编译不过） | `make test-go-short` 里的 `TestMCPServerInfoIsTheBuild`；直接 `go test -short` 照过（写明：这就是要盖版本号的理由） | S1 |
 | m2 | `Name: "nervewiki"` 写成别的 | 同上，直接 `go test` 也抓到 | S1 |
 | m3 | `mcpserver/server.go:153` 的 `Version: o.Version` 写成 `o.Name` | `TestTheHandshakeNamesTheServerAndItsVersion` | S1 |
 | m4 | `test-go-short` 去掉 `-ldflags`、留着 `NWIKI_TEST_VERSION` | `TestMCPServerInfoIsTheBuild` 的盖版本号一条 | S1 |
@@ -1770,7 +1804,7 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 | w5 | `ci.yml` 的 `on.push` 去掉 `branches`（又在 tag 上跑） | 同上 | S1 |
 | w6 | `vuln.yml` 的作业加 `permissions: {contents: write}` | 同上 | S1 |
 | w7 | `gate` 的 `make vuln` 去掉 `VULN_AUDIT_LEVEL=high` | 同上 | S1 |
-| w8 | 一个 `run:` 写 `${{ github.ref_name }}`；另一次写 `${{github.ref_name}}`；另一次写 `${{ github.ref }}`（审查 A 的 M6） | 同上，三次都抓 | S1 |
+| w8 | 一个 `run:` 写 `${{ github.ref_name }}`；另一次写 `${{github.ref_name}}`；另一次写 `${{ github.ref }}`（审查 A 的 M6）；另一次写 `${{ format('{0}', github.ref_name) }}`（表达式里有 `}`，S1 审查 B 的 M1） | 同上，四次都抓 | S1 |
 | w9 | `publish` 的 `needs` 去掉 `sbom` | 同上 | S2 |
 | w10 | `gate` 的漏洞一步加 `continue-on-error: true`；另一次加 `if: always()`（审查 A 的 M7） | 同上 | S1 |
 | w11 | 一处 `actions/checkout` 去掉 `persist-credentials: false`（审查 B 的 N12） | 同上 | S1 |
@@ -1800,6 +1834,13 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 | n3 | 身份写 `refs/tags/v<base>`（rc 时写成 `v0.1.0`），两条命令一起 | 同上 | S1 |
 | n4 | 空的一节不拒绝 | 只有空行的一格 | S1 |
 | n5 | 镜像名写死成 `ghcr.io/open-nerve/nervewiki`（审查 A 的 N6） | rc 与正式两格（期望里是假的 `IMAGE`） | S1 |
+| gc | 第 3 条与 `HEAD` 比（`--is-ancestor "$sha" HEAD`） | 旁支一格：测试照 `actions/checkout` 检出之后才抓得到（S1 审查 B 的 M2、C 的 M2） | S1 |
+| gc2 | 闸门的提交取 `HEAD`，tag 只核对存在 | "`GITHUB_SHA` 是另一个提交"一格：测试检出 `GITHUB_SHA` 的提交之后才抓得到（S1 核对第 1 轮 B 的 N7） | S1 |
+| cw5、cw6 | 删掉 `ci.yml` 的 Lint workflows 一步；它的 `if` 写成 `'cost-1'`；另两次给这一步加 `shell: bash -c 'exit 0' {0}`、`env: {MAKEFLAGS: n}`（cx1、cx2） | `TestOnlyATagsJobsMayWrite`（S1 审查 C 的 M3、核对第 1 轮 C 的 N6） | S1 |
+| k1–k3 | 删掉 `build` 或演练的 smoke 一步；`build` 的 smoke 那一行后加 `\|\| true`；另一次 `build` 的 smoke 一步加 `if: false`（b9） | 同上（S1 审查 B 的 N3、核对第 1 轮 B 的 N6） | S1 |
+| s1–s5 | 演练的 `env` 写 `${{ secrets['GHCR_PAT'] }}`、`${{ toJSON(secrets) }}`、`${{ SECRETS.GHCR_PAT }}`；顶层的 `env` 写 secret，再加 `docker --config … login`；另几次在演练里以 `docker/login-action`、`Docker/login-action` 登录（b10、l2） | 同上（S1 审查 B 的 N3、核对第 1 轮 B 的 M3 与 C 的 N7） | S1 |
+| e4 | 演练的 `include` 加 `note: ${{ github.event.head_commit.message }}`，smoke 一步 `echo "${{ matrix.note }}"` | 同上（S1 核对第 1 轮 B 的 N8） | S1 |
+| fn5、fn6 | 说明的"下一个 `## `"挪回起点之后；起点去掉 `&& /）$/` | `TestTheReleaseNotes` 的"同一个版本两个完整的标题""写坏的标题在前"（S1 审查 B 的 N1、核对第 1 轮 B 的 N5） | S1 |
 | r1 | 版本号的 tag 已在时不比摘要 | `TestTheReleaseScripts` 的"已在、别的摘要" | S2 |
 | r2 | `inspect` 的任何错误都当作不在 | `unauthorized` 一格 | S2 |
 | r3 | `create` 之后不再读一次 | "`create` 之后是别的"一格 | S2 |
@@ -1818,6 +1859,8 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 
 等价的、不列的：原稿的 g6"只看 `conclusion`、不看 `status`"：运行没完成时 `conclusion` 是 `null`，`[ "$conclusion" = success ]` 照样不成立，与原样等价（审查 A 的 M1；`mut-g6-no-status.sh`）。
 
+S1 的实施者另加的（v7、w17–w27、g3b、g15–g20、n6–n12）与三位审查者、两轮核对的全部变异，在 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)"变异与反向对照"。
+
 ### 7.3 门禁
 
 6.4。另：
@@ -1829,10 +1872,10 @@ GHCR 里留下的 rc 的镜像、没有 tag 的摘要与 `sha-` 的 tag 不删�
 ### 7.4 CI 的余量
 
 - **组合根**：只多 `TestMCPServerInfoIsTheBuild`，在第四份，不到 1 毫秒，不要数据库。各份照 00 号文档第 7 节"分份"，每个 Step 合并之后两次 `main` 看平均。
-- **`costs-1`**：多 Lint workflows 一步，actionlint 的下载与编译推断 15–40 秒（Lint 一步今天 92–143 秒，作业时限 45 分钟）。
-- **`short`、`race`**：多四个文件的短测试，闸门、说明与发布脚本每格建一个临时仓库或假的状态（十几条 git 命令），推断合计 3–8 秒。
+- **`costs-1`**：多 Lint workflows 一步，actionlint 的下载与编译推断 15–40 秒（Lint 一步今天 92–143 秒，作业时限 45 分钟）。S1 实测 2–3 秒（10.1）。
+- **`short`、`race`**：多四个文件的短测试，闸门、说明与发布脚本每格建一个临时仓库或假的状态（十几条 git 命令），推断合计 3–8 秒。S1 的 `platform/buildinfo` 一个包 CI 上 short 1.1–2.5 秒、race 2.7 秒（10.1）。
 - **`image`**：S2 的两层许可证，推断多 5–15 秒；S3 的 `deploy-check` 几秒（今天 Image smoke 一步 68–80 秒，时限 20 分钟）。
-- **`release.yml`**：演练两个作业与 `ci.yml` 并行，不进组合根，不算进各份。推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟；S2 在 amd64 上加 1–2 分钟（`pnpm install` 与两份 SBOM，不缓存）。S1、S2 的记录写出分支 CI 与合并之后两次 `main` 的实数。
+- **`release.yml`**：演练两个作业与 `ci.yml` 并行，不进组合根，不算进各份。推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟（S1 实测 1:18–2:21、1:21–1:26，10.1）；S2 在 amd64 上加 1–2 分钟（`pnpm install` 与两份 SBOM，不缓存）。S1、S2 的记录写出分支 CI 与合并之后两次 `main` 的实数。
 - **tag 的运行**：推断 `gate` 3–5 分钟（`make vuln` 0:39，`vuln.yml` 的数）、`build` 3–6 分钟、`sbom` 2–4 分钟、`publish` 1–3 分钟、`draft` 1 分钟、`verify` 3–5 分钟、`release` 1 分钟，合计约 15–25 分钟。
 
 ### 7.5 P5 怎样量
@@ -1857,19 +1900,19 @@ P5 完成，当且仅当：
    - **每个 Step 的文档提交**：第 12 节的 P5 一行写到这个 Step，"审查"一格加 `reviews/P5-S<m>-<slug>-review.md`，"合并"一格写占位，合并之后在 `main` 的小文档提交里填入；第 13 节加一行。
    - **`docs: M12/P5 done (M12/P5)`**：第 12 节"完成"；头的"状态"；第 13 节。
 5. **v0.1 总体设计**（`docs/v0.1/v0.1-design.md`；00 号文档"总体设计的修订"第 6、7、9 条，用脚本断言锚点恰好出现一次）：
-   - **S1，13.5 加第 6 条**（`:1289` 第 5 条的末行之后，`:1291` 是 `---`；审查 C 的 N1）："6. **版本号与发布**（M12）：版本号只由 ldflags 注入，`Makefile`、`buildinfo`、Dockerfile 的两个 `ARG` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 `-dev`。发布由推 `vX.Y.Z` 或 `vX.Y.Z-rc.N` 的 tag 触发 `release.yml`，闸门只放过 `main` 上 `ci.yml` 已绿、`make vuln` 为绿、`CHANGELOG.md` 有这一节的提交；依赖的漏洞扫描另在每天的 `vuln.yml` 里跑，actionlint 在 `ci.yml` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 `m12-release` 这样的分支上，合并之后才推 tag。"
+   - **S1，13.5 加第 6 条**（`:1289` 第 5 条的末行之后，`:1291` 是 `---`；审查 C 的 N1）："6. **版本号与发布**（M12）：版本号只由 ldflags 注入，`Makefile`、`buildinfo`、Dockerfile 的两个 `ARG` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 `-dev`。发布由推 `vX.Y.Z` 或 `vX.Y.Z-rc.N` 的 tag 触发 `release.yml`，闸门只放过 `main` 上 `ci.yml` 已绿、`make vuln` 为绿、`CHANGELOG.md` 有这一节的提交；依赖的漏洞扫描另在每天的 `vuln.yml` 里跑，actionlint 在 `ci.yml` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 `m12-release` 这样的分支上，合并之后才推 tag。"S1 的文档提交照它落了（锚点在 `b34e7ac3` 上是第 5 条的 `:1291` 之后、`:1293` 的 `---` 之前）。
    - **S2，同一条末尾加**："镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 `latest` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。"
    - **S3，第 11 节**：照 00 号文档"总体设计的修订"第 7 条的五处（锚点在 `86565dd6` 的 `:919`、`:931`（最后一段；`:933` 是 `---`，审查 C 的 N1）、`:925`、`:926`、`:927`，S3 时重核恰好出现一次）；"恢复之后先 `ANALYZE`"一处的"见 deploy/README"写成链接；第 11 节另三处 `README 的部署一节`（`:923` 两处、`:929`）改为 deploy/README，写成链接 `[deploy/README.md](../../deploy/README.md)`（2.1 第 19 条）；第 14 节 `:1311` 的那一处不单独改，由下面 SSE 一行的整句替换完成（同 `19a`；修订核对 C 的 N16）。
    - **S3，13.5 第 1 条**：`` `make e2e`、`make image-smoke` 对应 e2e、image 任务。`` → `` `make e2e`、`make image-smoke` 与 `make deploy-check` 对应 e2e、image 任务；`make lint-actions` 只在持续集成里（M12）。``（审查 C 的 N9）。
    - **S3，第 14 节的 SSE 一行**（2.1 第 20 条，P5/S3 改，P4 不改；修订核对 C 的 N14）：`两份配置写在 README 的部署一节，M12 的部署文档沿用。` → `两份配置写在 [deploy/README.md](../../deploy/README.md) 的"反向代理与 HTTPS"（M12/P5/S3）。`（`48bbfc99` 上恰好出现一次；第 19 条四处里第 14 节的那一处由它完成）。
    - **S3，第 14 节的 `NOTIFY` 一行**（2.1 第 20 条，P5/S3 改，P4 不改）：`升级 PostgreSQL 大版本时复核（论证见 [M5 总设计](M5-collab-editing/00-M5-design.md) 4.10；[M12 的移交](M12-release/handoffs/M5-performance.md)第 5 项） |` → `升级 PostgreSQL 大版本时复核：步骤在 [deploy/README.md](../../deploy/README.md) 的"升级与回退"（M12/P5/S3；论证见 [M5 总设计](M5-collab-editing/00-M5-design.md) 4.10；[M12 的移交](M12-release/handoffs/M5-performance.md)第 5 项） |`。
-   - **第 15 节**：每个 Step 的文档提交加一行。
+   - **第 15 节**：每个 Step 的文档提交加一行。S1 的文档提交加了（"五处默认值"，S1 核对第 1 轮 C 的 N8）。
 6. **其余的文档**：
-   - **S1，`06-environment.md`**：第 1 节"`make image-smoke` 另要 curl、jq、openssl"之前加"`make test-go-short` 要 bash、git、jq（发布脚本的测试）"；第 4 节 `:49` 的"工作流是 `.github/workflows/ci.yml`。"改为"工作流有三份：`ci.yml`（每次推送与 PR）、`release.yml`（每次推送的只读演练，tag 上的发布）、`vuln.yml`（每天、手动与改了依赖清单的推送）。`ci.yml` 里同一分支的新推送会取消正在跑的那次，等它跑完再推。"；第 4 节加两条："- **发布的工作流**：`release.yml` 在每次推送上跑两个只读的演练作业（两种架构的构建与 smoke），读法 `tools/ci-wait.sh <sha> release.yml`；tag 的那次运行用 `gh run list -R open-nerve/NerveWiki --workflow release.yml --branch <tag>`（同一个提交在 `main` 上还有一次演练）。"与"- **actionlint**：`make lint-actions` 只在 runner 上跑（本机拒绝，`make -i` 也一样），结论看 `costs-1` 一份的 Lint workflows 一步的注解。"（审查 C 的 N9）。
-   - **S1，README**：`:15-17`、`:29`、`:31`（3.1）。
+   - **S1，`06-environment.md`**：第 1 节"`make image-smoke` 另要 curl、jq、openssl"之前加"`make test-go-short` 要 bash、git、jq（发布脚本的测试）"；第 4 节 `:49` 的"工作流是 `.github/workflows/ci.yml`。"改为"工作流有三份：`ci.yml`（每次推送与 PR）、`release.yml`（每次推送的只读演练，tag 上的发布）、`vuln.yml`（每天、手动与改了依赖清单的推送）。`ci.yml` 里同一分支的新推送会取消正在跑的那次，等它跑完再推。"；第 4 节加两条："- **发布的工作流**：`release.yml` 在每次推送上跑两个只读的演练作业（两种架构的构建与 smoke），读法 `tools/ci-wait.sh <sha> release.yml`；tag 的那次运行用 `gh run list -R open-nerve/NerveWiki --workflow release.yml --branch <tag>`（同一个提交在 `main` 上还有一次演练）。"与"- **actionlint**：`make lint-actions` 只在 runner 上跑（本机拒绝，`make -i` 也一样），结论看 `costs-1` 一份的 Lint workflows 一步的注解。"（审查 C 的 N9）。S1 的文档提交照它落了：`make test-go-short` 要的写成"bash、git、jq 与 awk"（决定 559）；actionlint 一条另加两句（`-verbose` 列出读了哪几份；actionlint 自己出错时注解只有 exit code 2，S1 审查 C 的 N3）；第 5 节 `mut.py` 一条加一句（`.mutbak` 不放在 `.github/workflows/` 里）。
+   - **S1，README**：`:15-17`、`:29`、`:31`（3.1）。S1 的提交改了，另改了 `:508`（S1 审查 A 的 N2）。
    - **S3，README**、三处注释与两份 ignore 文件（3.16、3.19）。
 7. **移交的"处理进展"**各加一行（状态仍是 `open`；引号里的链接写进移交时去掉反引号）：
-   - **S1**，`handoffs/M0-P6-image-release.md`："- M12/P5/S1（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 1、2 条的构建一半：`release.yml` 在每次推送上以两种原生 runner 只读地演练构建与 image-smoke，tag 上闸门之后按摘要推送、拉回来 smoke；写权限只在 tag 的作业里，由守卫读工作流核对；版本号的默认值与 MCP 的版本有守卫（`[P5 设计](../05-P5-deploy-release.md)` 10.1）。"
+   - **S1**，`handoffs/M0-P6-image-release.md`："- M12/P5/S1（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 1、2 条的构建一半：`release.yml` 在每次推送上以两种原生 runner 只读地演练构建与 image-smoke，tag 上闸门之后按摘要推送、拉回来 smoke；写权限只在 tag 的作业里，由守卫读工作流核对；版本号的默认值与 MCP 的版本有守卫（`[P5 设计](../05-P5-deploy-release.md)` 10.1）。"S1 的文档提交照它落了。
    - **S2**，同一份："第 1–3 条的推送与签名一半：索引、来源证明、两份 SBOM 的证明、cosign keyless、`/licenses`、Release 先草稿、两种架构上核对过才公开；版本号的 tag 不改指；只有推 tag 才走得到，rc 在收尾之后（10.2）。"
    - **S3**，`M0-P6-image-release.md`（第 3 条的校验说明）、`M4-performance.md`（第 2、3、10 条、第 14 条（若经负责人定为部署要求）、第 17、18 条与补记 `:490`、`:492` 的部署部分；审查 C 的 M9）、`M5-performance.md`（第 1、2、5 条）、`M7-transfer.md`（第 1、3、4 条与第 5、6 条的部署项）、`M8-history.md`（第 2、4 条的部署部分）：各一行，写进了 `deploy/README.md` 的哪一节（10.3）。
 
@@ -1880,10 +1923,55 @@ P5 完成，当且仅当：
 - **收尾写的移交**，v0.2 的 `M12-release.md`（2.1 第 23 条）：actionlint 查 `run:` 的脚本（P5-6）；`outdated.sh` 不列 actionlint、syft、cosign、BuildKit；独立的二进制；构建的缓存（P5-7）；第三方许可证里没有文本的三个包（fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1；审查 C 的 M10）；rc 与 `v0.1.0` 留在 GHCR 里的 `sha-` 与没有 tag 的摘要清不清（负责人定；审查 C 的 N10，原稿放在 v0.1.1 的移交）。P5 不往 v0.1.1 的 `M12-after-release.md` 加东西。
 - **P4/S3**：`deploy/README.md` 要的数在 3.18 的表里（P4 设计里引的"P5 设计 3.17"现在是 3.18，主持者已告诉 P4 的设计者），与 P4 设计第 9 节"给部署文档"对过；P4 的记录照那张表各给一个数或写"推算"。小机器一档是批次 E 另量的一组（P4-27，`GOMEMLIMIT=1536MiB`）；`reindex` 不要 P4 量（2.1 第 21 条）。
 - **P4 的设计**：第 8 节不再改总体设计第 14 节的 `NOTIFY` 与 SSE 两行（P4-26；2.1 第 20 条）。
+- **P5/S2**（S1 的审查交来的）：
+  - `build` 用 `HEAD` 构建，不看闸门的 `sha`。推断 `actions/checkout` 在 tag 的事件上检出 `GITHUB_SHA`，两个作业是同一个提交，但没在 tag 的运行上证明过。S2 在 `build` 的 Labels 之前加一步 `test "$(git rev-parse HEAD)" = "$SHA"`（`SHA` 经 `env` 取 `needs.gate.outputs.sha`），就不用靠这个推断；`publish` 不用 `HEAD` 构建（3.14 的检出只为取脚本），它的 Index 一步可以另加 `[ "$(label revision)" = "$SHA" ]`，直接核对推上去的镜像来自哪个提交（S1 审查 B 未核实的第 1 条、核对第 2 轮 B 的 N11；决定 561）。
+  - 跑 image-smoke 的步骤与它们的作业，守卫一并不许写 `shell`、`defaults.run.shell` 与 `set +e`（S1 核对第 2 轮 A 的 N6、B 的 N10、C 的 N9；决定 562）：S1 的守卫按行核对 smoke 那一行，前面一行 `set +e`、这一步或作业另写不带 `-e` 的 `shell` 时，smoke 失败了这一步照绿（`build` 那一步在 smoke 之后还有一行架构的核对）。S2 加 `publish`、`verify` 与它们的 `shell` 时一起写，写法可照 S1 对 actionlint 那一步的整个比；`verify` 加进来就受"恰有一步、那一行以 `"$VERSION"` 结尾、不写 `if`"管。
+  - 另三条，出自 S1 的实施报告 9.4：
+    - 跳过的矩阵作业不展开名字：分支的运行里是 `build (${{ matrix.arch }})`，tag 的运行里应是 `rehearse (${{ matrix.arch }})`（推断），只是外观；
+    - `build-push-action` 在本地写构建记录（约 70–74 KB），`DOCKER_BUILD_RECORD_UPLOAD: "false"` 之后不传，artifact 0 个；
+    - S1 实施期间根分区从 24G 降到 13G，主要是共用的 Docker 构建缓存与 Go 的构建缓存；S2 的演练与 `make image` 更多，跑之前先看 `df`。
 
 ## 10. 结果
 
 每个 Step 合并之前在这里写它的实施、审查与验证的结果；合并的提交见 00 号文档第 12 节。
+
+### 10.1 S1：版本号与流水线的构建（2026-11-17–18，合并见 00 号文档第 12 节）
+
+- **提交**（分支 `m12-p5-s1`，从 `main` 的 `5e58e844`；实施 9 个，修复第 1 轮 8 个、第 2 轮 7 个，一共 24 个；合并 `main` 一次，`b34e7ac3`；文档是本提交）：相对 `5e58e844` 13 个文件，加 1,424 行、减 24 行，不加依赖。
+  - 6.1 的第 1–7 个照次序：`68777b97`、`41df19a2`、`53332084`、`6504c341`、`b937d820`、`ff453005`、`96bf93e1`。
+  - 第 5 个之后的 `2db96b0a`：actionlint 先把 `-format` 里的 `\n` 换成换行再解析模板，`{{"\n"}}` 成了没结束的字符串；改成裸的 `\n`（决定 557）。actionlint 对三份工作流 0 错，所以没有"the workflows pass actionlint"那个提交。
+  - 最后的 `38916978`：闸门与说明的测试加了几格，让设计的表没盖住的检查各自变红（决定 558）：闸门 +4 格（另一个分支、事件、提交的更新的绿运行，缺右括号的标题），"没有 IMAGE"要闸门自己的字样；说明加了结尾的空格行与行中出现的标题。
+  - 修复第 1 轮（`e08b98b0`…`a14d9ee5`）：`make help` 又列出 `test-go-short`；`make image` 在 git 读不出时停下；守卫在每一处 `${{` 上核对、守着 actionlint 那一步，跑 smoke 的步骤不写 `if`、演练不引用 secret 不登录（决定 560）；闸门的测试检出 tag 的提交；MCP 版本的测试分开报两种失败；说明在同一个版本的第二个标题处结束。
+  - 修复第 2 轮（`ee8f2ab4`…`ce8aaf64`）：演练的 secret 查 `(?i)\bsecrets\b`、范围加顶层的 `env` 与 `defaults`，登录查 `(?i)login`；跑 smoke 的步骤各恰一步、那一行后面没有别的；actionlint 那一步恰是三个键；矩阵的值写死；闸门的测试检出 `GITHUB_SHA` 的提交；说明认的标题与闸门数的同一种；`image-smoke.sh` 的"需要"加 git。
+  - BuildKit 钉 `v0.34.2@sha256:c5f8862f…`：`buildx-stable-1` 那时指它，v0.35.0 才发 6 天（决定 555）。3.21 的十一个 SHA 都以公开仓库核对过，相同；只有 setup-go 有更新的 v7.1.0，三份工作流照旧用 v7.0.0（决定 556）。
+- **与设计不同之处**（3.24 列出）：条件提交是 `2db96b0a`；BuildKit 的版本；作业的表写成函数；README 列四样工具；`make image` 先取提交与时间；闸门与说明的测试的格子与检出；说明的一节的起止；守卫的几条；闸门的日期只核对形状。
+- **门禁**：
+  - 逐个提交在干净的 worktree 里，build、vet、`make lint`、`make test-go-short`、gen-check、knip 全绿：实施的 9 个 `test-go-short` 46–47 秒，修复的 15 个 40–42 秒。
+  - 头 `38916978`：`make lint gen-check knip build` 绿；`make test-go-short` 52 秒，改前（`main` 的 `cfa31e00`）45 秒；`make image-smoke`（普通的克隆）绿，label 逐字相同；`make test-go` 185 个包、`make test-web` 4,694 个、`make e2e` 576 个都绿。
+  - 修复两轮的头 `a14d9ee5`、`ce8aaf64`：`make lint`、`make test-go-short`（94 个包）、`make image-smoke`（18 秒）绿。
+- **变异**：7.2 里 S1 的都抓到。
+  - m1 只由盖了版本号的运行抓到，直接 `go test -short` 照过；等价的 g6x 照过。
+  - v-gate、a1、a2 是手做的，PATH 里放假的 `go`、`pnpm`，没有跑 actionlint。
+  - l1–l4 都抓到；l1 在清了构建缓存之后从头构建，171 秒。
+  - 自加的 v7、w17–w27、g3b、g15–g20、n6–n12 都抓到；其中 g15–g18、g20、n8、n12 是 `38916978` 补了格子之后才抓到的。
+  - `mut.py` 的备份在 `.github/workflows/` 里会被守卫当作第四份工作流，w 组改用把备份放在别处的脚本重跑。
+  - 审查与两轮核对的变异照过的，各成一条发现（7.2 加的 gc、gc2 等几行），修复之后都抓到；核对第 2 轮照过的、关掉 `bash -e` 的写法交 S2（第 9 节，决定 562）。
+- **分支 CI**（每次第一次 attempt，没有重跑）：
+  - `b937d820` 的 `ci.yml`（run 44068674790）红在 costs-1 的 Lint workflows：`-format` 解析不了，注解只有 "Process completed with exit code 2"；`2db96b0a` 改了。
+  - `96bf93e1`：`ci.yml` run 44073973273，19 项全绿；`release.yml` run 44073973297，两个演练作业绿，最后一行都是"image-smoke: nervewiki:rehearsal 通过（版本 0.0.0-rehearsal.1，提交 96bf93e19b9b3975cc631b9438ed8b0ef9e0c4a2，modified=false）"。
+  - 实施的头 `38916978`：`ci.yml` run 44077699226、`release.yml` run 44077699224；修复第 1 轮的头 `a14d9ee5`：44164542578、44164542691；修复第 2 轮的头 `ce8aaf64`：44177949348、44177952360。都是 19 项全绿、两个演练绿。
+  - costs-1 的 Lint workflows：`-verbose` 列的是 `vuln.yml`、`release.yml`、`ci.yml` 三份，0 错。
+  - `a14d9ee5` 的推送改了 `Makefile`，`vuln.yml` 跑了一次：run 44164542725，push，success；`ce8aaf64` 没改 `Makefile` 与依赖清单，没有 `vuln.yml` 的运行。
+  - 演练两种架构（`uname -m` 是 `x86_64`、`aarch64`），令牌只有 `Contents: read`，没有登录的一步，artifact 0 个；`gate`、`build` 在分支上跳过。没有推任何 tag、镜像，没有建 Release。
+- **用时**（7.5）：
+  - 演练：amd64 1:18–2:21（`96bf93e1` 1:18；`38916978` 2:21，其中 setup-buildx 一步 36 秒；`a14d9ee5` 1:29；`ce8aaf64` 1:40），推断 2–3 分钟；arm64 1:21–1:26，推断 2–5 分钟。演练的 runner 两种都是 4 个 CPU、约 15.6 GiB（审查 C 读 `docker info`；CPU 型号读不到）。
+  - costs-1 的 Lint workflows 一步 2–3 秒（推断多 15–40 秒；`go run` 的下载加编译在 Lint 一步之后，构建缓存已热，审查 C）；Lint 一步 93–112 秒，同 `main` 的 93–111 秒。
+  - short 一份的 Test 一步：`38916978` 197 秒（runner 的 CPU 是 AMD EPYC 9V74），`a14d9ee5` 249 秒（AMD EPYC 7763），`ce8aaf64` 163 秒（Intel Xeon 6975P-C）；`main` 两次 178、196 秒。`internal/bootstrap` 一个包 101、129、78 秒，`platform/buildinfo` 1.8、2.5、1.1 秒：差在 runner，不在这个 Step 的测试。
+  - `platform/buildinfo` 一个包（闸门、说明与守卫三个测试在里面）：CI 上 short 1.1–2.5 秒、race 2.7 秒（run 44077699226），本机 1.3–2.2 秒；推断三个合计 3–8 秒。
+  - 组合根八份的 Test 一步：三个头的运行 231–388 秒，都在 450 秒之下；S1 只在第四份加一个不到 1 毫秒的测试。
+  - 本机 `make test-go-short`（经 `heavy.sh`）：改前 45 秒，头 52 秒，逐个提交 40–47 秒；盖版本号只多一次编译，这点差别在噪声之内（推断）。
+  - 合并之后两次 `main` 的组合根与这几步，主持者在记合并号的文档提交里补。
+- **审查**：三份（A 版本号、MCP、镜像 0I 1M 3N；B `release.yml`、闸门与说明 0I 2M 4N；C `ci.yml`、actionlint、变异、提交与文档 0I 4M 5N；Minor 去重 5 条）；核对两轮（第 1 轮 A 2N、B 1M 5N、C 3N；第 2 轮 A 1N、B 2N、C 1N，其中三位的各一条是同一条）。主持者的决定 555–563。见 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)。
 
 ## 附录：核对过的代码与公开的东西
 

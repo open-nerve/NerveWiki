@@ -556,15 +556,48 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				ctx, cancel = context.WithTimeout(ctx, tc.request)
 				defer cancel()
 			}
+			// The clock read last, just before Execute, as a submission's
+			// first transaction reads it after the API's or MCP's
+			// middleware has set the request's deadline: the line logs
+			// what production would, at most the request's 50 ms, and
+			// SubmitTimeout's deadline, real too, runs from where the
+			// submission starts. Read in newSubmitFake, a pause before
+			// WithTimeout logged past 50 (main's run 44022740779 logged
+			// 53), and a pause of 50 ms before Execute ran out the
+			// COMMIT cells' 50 ms before their check had run.
+			read := time.Now() // the clock's own reading, monotonic part and all
+			f.checkFake.at = read.UTC()
+			at := f.at() // the submission's moment, the test's own
 			_, err := submit.Execute(ctx, f.nb)
 			if e := (*shared.Error)(nil); codeOf(err) != "server_busy" || !errors.As(err, &e) || e.RetryAfter() != tc.retry {
 				t.Fatalf("answered %v, want server_busy, Retry-After %s", err, tc.retry)
 			}
-			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil {
-				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report", w, f.row)
+			if w := f.written(); !slices.Equal(w, firstWrites()) || f.row.State != domain.UpgradeReviewing || f.row.Report != nil ||
+				f.row.SubmittedAt == nil || !f.row.SubmittedAt.Equal(at) {
+				t.Fatalf("wrote %v, the row %+v; want it reviewing without a report, submitted at %s", w, f.row, at)
 			}
+			// timeout_ms is exactly the deadline less the submission's
+			// moment: SubmitTimeout, or, where the request has one, its
+			// deadline, the earlier in each cell. A bound alone let a line
+			// of 0 through. The clock is read after the request's deadline
+			// is set, as in production: its own reading, before the
+			// microseconds are cut, is then no more than the request's
+			// timeout before that deadline, and a read before WithTimeout
+			// is more, with no pause in between. Both carry their
+			// monotonic part, so a step of the wall clock moves neither.
+			want := tc.timeout
+			if d, ok := ctx.Deadline(); ok {
+				want = d.Sub(at)
+				if d.Sub(read) > tc.request {
+					t.Fatalf("the clock read %s before the request's deadline, past its %s: read before WithTimeout", d.Sub(read),
+						tc.request)
+				}
+			}
+			// elapsed_ms is exactly the time the clock moved on as the
+			// check ran.
 			warn := submitLines(t, log, "upgrade submission timed out")
-			if len(warn) != 1 || warn[0]["level"] != "WARN" || warn[0]["timeout_ms"].(float64) > 50 ||
+			if len(warn) != 1 || warn[0]["level"] != "WARN" || warn[0]["timeout_ms"] != float64(want.Milliseconds()) ||
+				warn[0]["elapsed_ms"] != float64(tc.elapsed.Milliseconds()) ||
 				warn[0]["submission_id"] != f.row.SubmissionID.String() || len(submitLines(t, log, "upgrade submitted")) != 0 {
 				t.Fatalf("logged %v", log.lines(t))
 			}
@@ -587,6 +620,7 @@ func TestTheSubmissionsDeadline(t *testing.T) {
 				return nil
 			}
 			submit, ctx := newSubmit(f, 50*time.Millisecond, &startLog{})
+			f.checkFake.at = time.Now().UTC() // the clock read last, as above
 			_, err := submit.Execute(ctx, f.nb)
 			if got := map[bool]string{true: codeOf(err), false: ""}[err != nil]; got != tc.code {
 				t.Fatalf("answered %v, want %q", err, tc.code)

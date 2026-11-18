@@ -160,3 +160,20 @@ func TestTheInstructionsAreReadWithinTheCallsDeadline(t *testing.T) {
 		t.Errorf("the log line = %v, want the initialize's deadline at warn", line)
 	}
 }
+
+// A handshake's serverInfo is the Name and Version the server was given, on either entry and through the Go
+// client (M12/P5/S1): bootstrap gives it buildinfo's version.
+func TestTheHandshakeNamesTheServerAndItsVersion(t *testing.T) {
+	const name, version = "nervewiki-handshake", "9.8.7-handshake"
+	s := serveMCP(t, setup{options: func(o *Options) { o.Name, o.Version = name, version }})
+	nb := Pattern + "?notebook=" + visible.String()
+	for _, path := range []string{nb, Pattern} {
+		info, _ := result(t, s.post(t, context.Background(), path, patToken, initialize, nil))["serverInfo"].(map[string]any)
+		if info["name"] != name || info["version"] != version {
+			t.Errorf("%s: serverInfo %v, want name %q and version %q", path, info, name, version)
+		}
+	}
+	if got := s.connect(t, nb, nil).InitializeResult().ServerInfo; got == nil || got.Name != name || got.Version != version {
+		t.Errorf("the Go client's serverInfo = %+v, want name %q and version %q", got, name, version)
+	}
+}

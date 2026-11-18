@@ -127,7 +127,13 @@ test("a link to an attachment keeps the server's address, or has none, untouched
 test("a click with a modifier, of another button, or that another handled, and one on another link, is the browser's", () => {
   const { container, context, went, link } = setUp();
   appLinks(container, context);
-  document.addEventListener("click", browser);
+  // Whether each click came to the browser cancelled, recorded before the browser handles it.
+  const cancelled: boolean[] = [];
+  const handled = (event: Event) => {
+    cancelled.push(event.defaultPrevented);
+    browser(event);
+  };
+  document.addEventListener("click", handled);
   const clicks: [HTMLElement, MouseEventInit][] = [
     [link("A"), { ctrlKey: true }],
     [link("A"), { metaKey: true }],
@@ -148,9 +154,11 @@ test("a click with a modifier, of another button, or that another handled, and o
   }
   link("A").addEventListener("click", (event) => event.preventDefault(), { once: true });
   link("A").dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
-  document.removeEventListener("click", browser);
+  document.removeEventListener("click", handled);
 
   expect(went).toEqual([]);
+  // The app cancels none: the browser has each as it came; the last another cancelled first.
+  expect(cancelled).toEqual([...clicks.map(() => false), true]);
 });
 
 test("a diagram's marks are mermaid's, not the server's: its tag and page marks get no address", () => {

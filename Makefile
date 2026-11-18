@@ -9,7 +9,8 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 DEV_COMPOSE := docker compose -f deploy/compose.dev.yaml
-# 写进 bin/nervewiki 的版本号。默认值与 server/internal/platform/buildinfo 中的相同；发布时指定，例如 make build VERSION=0.1.0
+# 写进 bin/nervewiki 的版本号，例如 make build VERSION=0.1.0。默认值与 buildinfo、deploy/Dockerfile 的两个 ARG、README 写的相同，
+# 由 server/internal/platform/buildinfo/version_test.go 核对；发布时由 tag 经 ldflags 注入（release.yml）
 VERSION ?= 0.1.0-dev
 GO_LDFLAGS := -X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=$(VERSION)
 GOLANGCI_LINT_VERSION := 2.14.0
@@ -81,16 +82,22 @@ e2e: build ## 构建 bin/nervewiki，运行端到端故事（需要 Docker 与 P
 	cd e2e && NWIKI_E2E_VERSION=$(VERSION) pnpm exec playwright test
 
 # 镜像的标签跟着 VERSION；构建上下文是仓库根目录，见 deploy/Dockerfile 与 .dockerignore。
-# 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查
+# 提交信息取自带进构建上下文的 .git：git worktree 的 .git 是指向别处的文件，在那里构建会失败，所以先检查；
+# 判断与构建写在同一个 shell 行里（make -i 绕不过）。label 的提交与它的时间同 release.yml（M12/P5/S1），先取出来再构建：
+# 命令替换失败不会让这一行失败，git 读不出时（例如 dubious ownership）镜像会带着空的 label 构建出来
 IMAGE ?= nervewiki:$(VERSION)
 
 .PHONY: image
-image: ## 构建镜像 $(IMAGE)，版本号取 VERSION（只需要 Docker）
-	@test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }
-	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) -t $(IMAGE) .
+image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它的时间（需要 Docker 与 git）
+	test -d .git || { echo "make image 要在普通的克隆中运行：这里的 .git 不是目录（git worktree），镜像构建取不到提交信息"; exit 1; }; \
+	revision=$$(git rev-parse HEAD) && created=$$(git log -1 --format=%cI) || \
+		{ echo "make image：git 读不出提交与它的时间，镜像的 label 要它们"; exit 1; }; \
+	docker build -f deploy/Dockerfile --build-arg VERSION=$(VERSION) \
+		--build-arg REVISION="$$revision" --build-arg CREATED="$$created" \
+		-t $(IMAGE) .
 
 .PHONY: image-smoke
-image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、curl、jq、openssl）
+image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、git、curl、jq、openssl）
 	deploy/image-smoke.sh $(IMAGE) $(VERSION)
 
 .PHONY: tools
@@ -192,9 +199,24 @@ vuln: ## 依赖的已知漏洞：Go（govulncheck，server/）与 npm（pnpm aud
 outdated: ## 只读地列出过时的 Go 模块、npm 包、actions、工具链与 PostgreSQL 的版本、基础镜像的摘要；不挡；只在 CI 上跑
 	@$(ci-only); tools/outdated.sh
 
+# 三份工作流的写法（00-M12 4.10、M12/P5/S1）：actionlint 至少 1.7.10（artifact-metadata 的权限），go run 钉版本，
+# 不进 server/tools/go.mod（同 govulncheck）。只在 GitHub 的 runner 上跑（ci.yml 的 costs-1 一份），本机拒绝：设计时在本机
+# 跑它被权限分类器拒过，照 make vuln 的先例（M12 决定 308）。判断与干活写在同一个 shell 行里（make -i 绕不过）。
+# -shellcheck=：runner 装了版本不由我们定的 shellcheck，actionlint 看到它才查 run:。不给文件：actionlint 在仓库根找
+# .github/workflows 下的 .yml 与 .yaml。出错写成 GitHub 的注解：作业日志要认证，注解是公开的。-format 里的 \n 由 actionlint
+# 自己换成换行（它的 unescapeBackslash）：写进模板的 {{"\n"}} 因此成了没结束的字符串，模板解析不了
+ACTIONLINT_VERSION := v1.7.12
+runner-only = test "$$GITHUB_ACTIONS" = true || { echo "make $@ 只在 GitHub 的 runner 上跑：结论看 ci.yml 的 costs-1 一份（M12/P5/S1）"; exit 1; }
+
+.PHONY: lint-actions
+lint-actions: ## actionlint 核对 .github/workflows；只在 CI 上跑
+	@$(runner-only); \
+	go run github.com/rhysd/actionlint/cmd/actionlint@$(ACTIONLINT_VERSION) -shellcheck= -verbose \
+		-format '{{range $$e := .}}::error file={{$$e.Filepath}},line={{$$e.Line}},col={{$$e.Column}}::{{$$e.Message}}\n{{end}}'
+
 # -race 需要 cgo：macOS 需要 Xcode 命令行工具，Linux 需要 gcc。
 # 集成测试用 testcontainers 启动 PostgreSQL，需要 Docker；只跑单元测试用 make test-go-short（cd server && go test -short ./...，
-# README 的写法；make check 与 CI 的 short 一份都跑它）
+# 另盖一个不是默认值的版本号；README 的写法；make check 与 CI 的 short 一份都跑它）
 # 不用测试缓存：它不跟踪 server/ 之外的文件，契约测试读取的 api/dist/openapi.yaml 改了也会重放旧结果。
 # server/tools 是嵌套的独立模块，另跑一次
 .PHONY: test
@@ -598,15 +620,20 @@ test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一�
 	cd server && go test -count=1 -v -run '^TestIngestOfMoreThanBatchSourcesTakesItsTime$$' ./internal/bootstrap
 	cd server && go test -count=1 -v -run '^TestIngestOfDeletedSourceGroupsTakesItsTime$$' ./internal/bootstrap
 
+# 测试的二进制盖一个不是默认值的版本号：MCP 的 serverInfo 若写死成默认值，TestMCPServerInfoIsTheBuild 就失败（M12/P5/S1）。
+# -X 只在链接时起作用；没有链接 buildinfo 的测试二进制照旧
+TEST_VERSION := 0.0.0-short
+
 .PHONY: test-go-short
-test-go-short: ## 只跑 server 的单元测试：go test -short，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
+test-go-short: ## 只跑 server 的单元测试：go test -short，盖一个不是默认值的版本号，不带竞态检测，不起数据库（README 的写法；make check 与 CI 的一份跑它，不在 make test-go 里）
 	@# pgtest 在 -short 下跳过要数据库的测试；按耗时判定的守卫也跳过：-short 的各包同时跑、抢 CPU，CI 上一个 2 秒的界线到过 2.6 秒
 	@# （S1 修复第二轮），它们由 test-go-costs、test-go-costs-lint 与 test-go-guards 各自单独一行跑。别的照常跑。README 与上面的注释答应过贡献者这样跑得通，
 	@# 以前没有哪个门禁跑它：M9/P2 S1 的一个测试在 -short 下失败，到 S1 的修复第一轮才被看见（修复第二轮，审查 C 的 C2-M1），
 	@# 所以 CI 单独一份跑它。最慢的包本机约 28 秒（组合根与 httpserver），乘 2.4 约 70 秒，远在 Go 默认的每个测试二进制 10 分钟的一半之下，
 	@# 不加 -timeout（M9/P2 设计 6.5）。本机整个 53 与 38 秒。make check 也跑它：check 与 gen-check 合起来是 CI 的 server、web 任务的门禁
 	@# （文件头与 README），少了这一份就不是（修复第三轮，审查 C 的 C3-M1）
-	cd server && go test -short -count=1 ./...
+	cd server && NWIKI_TEST_VERSION=$(TEST_VERSION) go test -short -count=1 \
+		-ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=$(TEST_VERSION)" ./...
 
 .PHONY: test-web
 test-web: ## 运行前端各包的测试（vitest；需要 Node）
