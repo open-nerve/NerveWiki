@@ -80,7 +80,7 @@ export const VersionView = observer(function VersionView({
   });
   const at = view?.revision;
   const assetsExpire = view?.assets_expire_at ?? null;
-  const { id: notebookId, role } = notebook;
+  const notebookId = notebook.id;
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined || at === undefined) {
@@ -92,7 +92,6 @@ export const VersionView = observer(function VersionView({
       notebook: notebookId,
       page,
       revision: at,
-      role,
       t,
       locale: preferences.locale,
       theme: () => preferences.resolvedTheme,
@@ -105,7 +104,7 @@ export const VersionView = observer(function VersionView({
       assetsExpire,
       assetAddress: (id) => assets.address(id),
     });
-  }, [html, at, assetsExpire, enhancements, slug, notebookId, role, t, preferences, page, mutate, navigate, assets]);
+  }, [html, at, assetsExpire, enhancements, slug, notebookId, t, preferences, page, mutate, navigate, assets]);
   if (view === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }

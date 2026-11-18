@@ -43,7 +43,6 @@ const context: ReadingContext = {
   notebook: "n",
   page: "p",
   revision: 1,
-  role: "reader",
   t: translator("en"),
   locale: "en",
   theme: () => "light",

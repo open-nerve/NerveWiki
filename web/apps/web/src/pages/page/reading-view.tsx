@@ -33,7 +33,9 @@ import { useViewAnchors } from "./view-anchors";
  * reads: those that draw in it follow it (onThemeChange). A writer's
  * tick task items through it, one of the page's at a time (the page tree store's
  * oneToggle), and refused tells the page what was refused, undefined as a
- * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
+ * toggle starts (M5/P6 design 3.5). Whether the page can be written (the
+ * account's role, an upgrade under way, a source) changes the checkboxes
+ * alone, not the HTML, whose place the reader keeps (M12/P2/S4, 48). A task item's checkbox that had the
  * focus as the HTML is replaced has it back in the new HTML, without a
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
@@ -123,7 +125,6 @@ export const ReadingView = observer(function ReadingView({
     latestLeads.current = links.leads;
   });
   const revision = data?.revision;
-  const editable = canEditPageBody(pages, page.id);
   useServerHTML(
     article,
     data && { html: data.html, revision: data.revision, assetsExpire: data.assets_expire_at ?? null },
@@ -133,7 +134,6 @@ export const ReadingView = observer(function ReadingView({
       workspace: slug,
       notebook: notebook.id,
       page: page.id,
-      role: notebook.role,
       t,
       locale: preferences.locale,
       theme: () => preferences.resolvedTheme,
@@ -141,26 +141,27 @@ export const ReadingView = observer(function ReadingView({
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
-      toggleTask: editable
-        ? async (offset, checked) => {
-            if (!canEditPageBody(pages, page.id)) return;
-            await pages.oneToggle(page.id, async () => {
-              if (!canEditPageBody(pages, page.id) || revision === undefined) return;
-              latestRefused.current(undefined);
-              toggled.current = { task: offset.toString(), checked };
-              try {
-                await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
-              } catch (failure) {
-                toggled.current = undefined;
-                if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
-                  await mutate();
-                }
-                throw failure;
-              }
+      // Whether the page can be written is asked as an item is clicked, and as the toggle's turn comes.
+      toggleTask: async (offset, checked) => {
+        if (!canEditPageBody(pages, page.id)) return;
+        await pages.oneToggle(page.id, async () => {
+          if (!canEditPageBody(pages, page.id) || revision === undefined) return;
+          latestRefused.current(undefined);
+          toggled.current = { task: offset.toString(), checked };
+          try {
+            await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
+          } catch (failure) {
+            toggled.current = undefined;
+            if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
               await mutate();
-            });
+            }
+            throw failure;
           }
-        : undefined,
+          await mutate();
+        });
+      },
+      writes: () => canEditPageBody(pages, page.id),
+      onWritesChange: (listener) => reaction(() => canEditPageBody(pages, page.id), listener),
       report: (failure) => latestRefused.current(failure),
       unresolved: (link) => void latestUnresolved.current(link),
       leads: (target) => latestLeads.current(target),

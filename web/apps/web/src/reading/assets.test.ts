@@ -44,7 +44,6 @@ function setUp(html: string, { page = "p", expires = expired as string | null } 
     notebook: "n",
     page: at,
     revision: 1,
-    role: "reader",
     t: translator("en"),
     locale: "en",
     theme: () => "light",

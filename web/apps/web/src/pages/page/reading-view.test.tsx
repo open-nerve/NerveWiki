@@ -2,8 +2,11 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { eventHandlers } from "../../events/handlers";
 import { readingEnhancements, type Enhancement, type ReadingContext } from "../../reading/enhancement";
-import { json, notebookJSON } from "../../test/fakes";
+import { taskToggle } from "../../reading/task-toggle";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, upgradeOf, workspaceJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { assetNode, guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -20,9 +23,9 @@ afterEach(() => {
 /** recording is an enhancement that logs, as name, the HTML it runs on and what it knows, and the HTML it is undone on. */
 function recording(log: string[], name: string): Enhancement {
   return (container, context) => {
-    const { workspace, notebook, page, revision, role } = context;
+    const { workspace, notebook, page, revision } = context;
     const known = notebook === notebookJSON.id && page === install.id ? "Install" : "?";
-    log.push(`${name} on ${container.innerHTML}: ${workspace} ${known} ${revision} ${role}`);
+    log.push(`${name} on ${container.innerHTML}: ${workspace} ${known} ${revision}`);
     return () => log.push(`undo ${name} on ${container.innerHTML}`);
   };
 }
@@ -36,7 +39,7 @@ test("the enhancements run on the HTML in their order, undone in the reverse bef
   });
 
   await waitFor(() => expect(log).toHaveLength(2));
-  expect(log).toEqual(["a on <p>Install</p>: lab Install 1 editor", "b on <p>Install</p>: lab Install 1 editor"]);
+  expect(log).toEqual(["a on <p>Install</p>: lab Install 1", "b on <p>Install</p>: lab Install 1"]);
 
   server.views.set(install.id, { html: "<p>Install, changed</p>", revision: 2, assets_expire_at: null });
   await act(() => vi.advanceTimersByTimeAsync(6_000));
@@ -45,8 +48,8 @@ test("the enhancements run on the HTML in their order, undone in the reverse bef
   expect(log.slice(2)).toEqual([
     "undo b on <p>Install</p>",
     "undo a on <p>Install</p>",
-    "a on <p>Install, changed</p>: lab Install 2 editor",
-    "b on <p>Install, changed</p>: lab Install 2 editor",
+    "a on <p>Install, changed</p>: lab Install 2",
+    "b on <p>Install, changed</p>: lab Install 2",
   ]);
 
   await act(() => router.navigate(`/lab/notebooks/${notebookJSON.id}`));
@@ -63,7 +66,7 @@ test("an enhancement that throws leaves the page and the others be", async () =>
   renderApp(pagePath(install.id), pageServer().app, { enhancements: [throws, recording(log, "b")] });
 
   expect((await screen.findByRole("article")).innerHTML).toBe("<p>Install</p>");
-  await waitFor(() => expect(log).toEqual(["b on <p>Install</p>: lab Install 1 admin"]));
+  await waitFor(() => expect(log).toEqual(["b on <p>Install</p>: lab Install 1"]));
   expect(error).toHaveBeenCalledTimes(1);
 });
 
@@ -869,4 +872,94 @@ test("with the app's enhancements, a link to an attachment the browser shows ope
   // In the reader's language, as it changes.
   act(() => server.app.preferences.setLocale("zh-CN"));
   await waitFor(() => expect(article.textContent).toBe("x.pdf （在新标签页打开）（3 B） y.zip（3 B）"));
+});
+
+/** childChanges watches element's subtree for nodes put in or taken out: it answers how many such changes came. */
+function childChanges(element: Element): () => number {
+  let changes = 0;
+  const watching = new MutationObserver((records) => (changes += records.length));
+  watching.observe(element, { childList: true, subtree: true });
+  onTestFinished(() => watching.disconnect());
+  return () => (changes += watching.takeRecords().length);
+}
+
+/**
+ * writerWithEvents opens Install for an editor of Plans, a task item a and a link x in its view, through taskToggle
+ * and recording(log): its stream connected, the view read again for it, the checkbox enabled. It answers the stream
+ * and how the notebook changes, as the mode event has the list read again.
+ */
+async function writerWithEvents(log: string[]) {
+  const events = eventServer();
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/events": events.answer } });
+  server.withTasks(install.id, "- [ ] a\n");
+  server.views.set(install.id, {
+    html: `${server.views.get(install.id)?.html ?? ""}<p><a href="/x">x</a></p>`,
+    revision: 1,
+    assets_expire_at: null,
+  });
+  const contexts: ReadingContext[] = [];
+  const capture: Enhancement = (_container, context) => void contexts.push(context);
+  renderApp(pagePath(install.id), withEvents(server.app), {
+    enhancements: [taskToggle, recording(log, "a"), capture],
+    eventHandlers,
+  });
+  const article = await screen.findByRole("article", { name: "Install" });
+  const box = await within(article).findByRole<HTMLInputElement>("checkbox", { name: "a" });
+  await waitFor(() => expect(box.disabled).toBe(false));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const stream = events.last();
+  act(() => stream.hello());
+  // The connection reads the view again: the same HTML, which runs nothing again.
+  await waitFor(() => expect(viewReads(server)).toBeGreaterThanOrEqual(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  const change = (notebook: Partial<typeof server.notebook>) => {
+    server.notebook = { ...server.notebook, ...notebook };
+    act(() => stream.send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id }));
+  };
+  return { server, article, box, change, contexts };
+}
+
+// M12/P2/S4, 48 (U7): whether the page can be written changes its checkboxes alone; the HTML stays, so do the
+// reader's place and focus. The toggle asks again as it is clicked: the context's toggleTask is always there.
+test("the notebook's upgrade starting writes no HTML: the checkboxes become disabled, a link keeps the focus", async () => {
+  const log: string[] = [];
+  const { server, article, box, change, contexts } = await writerWithEvents(log);
+  const link = within(article).getByRole("link", { name: "x" });
+  link.focus();
+  const changes = childChanges(article);
+  const runs = log.length;
+
+  change({ upgrade: upgradeOf() });
+  await waitFor(() => expect(box.disabled).toBe(true));
+  expect(within(article).getByRole("checkbox", { name: "a" })).toBe(box);
+  expect([changes(), log.length]).toEqual([0, runs]);
+  expect(document.activeElement).toBe(link);
+  // A tick asked for now writes nothing: whether the page can be written is read as it is clicked.
+  await act(async () => {
+    await contexts.at(-1)?.toggleTask?.(Number(box.dataset.task), true);
+  });
+  expect(server.sent.filter((line) => line.startsWith("TOGGLE"))).toEqual([]);
+
+  change({ upgrade: null });
+  await waitFor(() => expect(box.disabled).toBe(false));
+  expect(box.getAttribute("aria-label")).toBe("a");
+  expect([changes(), log.length]).toEqual([0, runs]);
+  expect(document.activeElement).toBe(link);
+});
+
+// M12/P2/S4, 48 (U7): a page under the source root is a source, whose body no one writes (M10).
+test("a page that becomes a source by the mode event, and a page again, has its checkboxes follow, the view's nodes kept", async () => {
+  const log: string[] = [];
+  const { article, box, change } = await writerWithEvents(log);
+  const changes = childChanges(article);
+
+  change({ mode: "llm_wiki", source_root_id: guide.id });
+  await waitFor(() => expect(box.disabled).toBe(true));
+  expect(within(article).getByRole("checkbox", { name: "a" })).toBe(box);
+  expect(changes()).toBe(0);
+
+  change({ mode: "standard", source_root_id: null });
+  await waitFor(() => expect(box.disabled).toBe(false));
+  expect(within(article).getByRole("checkbox", { name: "a" })).toBe(box);
+  expect(changes()).toBe(0);
 });

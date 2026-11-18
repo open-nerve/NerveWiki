@@ -19,7 +19,6 @@ function themed(initial: "light" | "dark" = "light") {
     notebook: "n",
     page: "p",
     revision: 1,
-    role: "reader",
     t: translator("en"),
     locale: "en",
     theme: () => theme,

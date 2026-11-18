@@ -23,7 +23,9 @@ export type ServerHTMLContext = Omit<ReadingContext, "revision" | "assetsExpire"
 /**
  * useServerHTML writes view, the server's HTML of a page, into article, and runs the enhancements on it (M4/P5
  * design 3.8): as the view changes, the enhancements are undone in the reverse order, the HTML written again, and
- * they run again; as it goes, they are undone. The context's callbacks are its latest's.
+ * they run again; as it goes, they are undone. The context's callbacks are its latest's, and so are the view's
+ * revision and its addresses' expiry. Whether the page can be written changes no HTML: the enhancements hear it
+ * (writes, onWritesChange; M12/P2/S4, 48).
  *
  * A task item's checkbox that had the focus as the HTML is replaced has it back in the new HTML, without a scroll,
  * while the box at its position is the same item's (its text, and its state, or the state the view's own toggle
@@ -36,9 +38,9 @@ export function useServerHTML(
   view: ServerView | undefined,
   context: ServerHTMLContext
 ): void {
-  const latest = useRef(context);
+  const latest = useRef({ context, view });
   useLayoutEffect(() => {
-    latest.current = context;
+    latest.current = { context, view };
   });
   // The task item focused as the HTML was replaced: its position, its text and its state.
   const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
@@ -46,38 +48,48 @@ export function useServerHTML(
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
   const html = view?.html;
   const revision = view?.revision;
-  const assetsExpire = view?.assetsExpire ?? null;
-  const { enhancements, workspace, notebook, page, role, t, locale } = context;
-  const toggles = context.toggleTask !== undefined;
+  const { enhancements, workspace, notebook, page, t, locale } = context;
   useLayoutEffect(() => {
     const container = article.current;
     if (container === null || html === undefined || revision === undefined) {
       return undefined;
     }
     write(container, html);
+    // The view as the HTML was written: the context reads the latest view's, while there is one.
+    const written = latest.current.view ?? { revision, assetsExpire: null };
+    const now = () => latest.current.context;
+    const { toggleTask, writes, onWritesChange } = now();
     const undo = enhance(enhancements, container, {
       workspace,
       notebook,
       page,
-      revision,
-      role,
+      // The view's as it is: the same HTML read again may come at another revision, its addresses signed anew.
+      get revision() {
+        return (latest.current.view ?? written).revision;
+      },
+      get assetsExpire() {
+        return (latest.current.view ?? written).assetsExpire;
+      },
       t,
       locale,
-      theme: () => latest.current.theme(),
-      onThemeChange: (listener) => latest.current.onThemeChange(listener),
-      reload: () => latest.current.reload(),
-      navigate: (to) => latest.current.navigate(to),
-      toggleTask: toggles
-        ? (offset, checked) => latest.current.toggleTask?.(offset, checked) ?? Promise.resolve()
-        : undefined,
-      report: (error) => latest.current.report(error),
-      unresolved: (link) => latest.current.unresolved(link),
-      leads: (target) => latest.current.leads?.(target) ?? false,
-      assetsExpire,
-      assetAddress: (id) => latest.current.assetAddress(id),
+      theme: () => now().theme(),
+      onThemeChange: (listener) => now().onThemeChange(listener),
+      reload: () => now().reload(),
+      navigate: (to) => now().navigate(to),
+      toggleTask:
+        toggleTask === undefined
+          ? undefined
+          : (offset, checked) => now().toggleTask?.(offset, checked) ?? Promise.resolve(),
+      writes: writes === undefined ? undefined : () => now().writes?.() ?? true,
+      onWritesChange:
+        onWritesChange === undefined ? undefined : (listener) => now().onWritesChange?.(listener) ?? (() => undefined),
+      report: (error) => now().report(error),
+      unresolved: (link) => now().unresolved(link),
+      leads: (target) => now().leads?.(target) ?? false,
+      assetAddress: (id) => now().assetAddress(id),
     });
     const focused = focusedTask.current;
-    const toggled = latest.current.toggled;
+    const toggled = now().toggled;
     const asked = toggled?.current;
     focusedTask.current = undefined;
     const at = (task: string) => container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task)}"]`);
@@ -116,7 +128,7 @@ export function useServerHTML(
           : undefined;
       undo();
     };
-  }, [article, html, revision, assetsExpire, enhancements, workspace, notebook, page, role, toggles, t, locale]);
+  }, [article, html, revision, enhancements, workspace, notebook, page, t, locale]);
 }
 
 /** write puts html in container, in place of all it had. */
