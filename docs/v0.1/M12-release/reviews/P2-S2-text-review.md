@@ -54,7 +54,7 @@
   - M10 的交错测试（`bootstrap/interleavings_lint_test.go:416-427`）等到 alice 的 `server_busy` 与 `pg_sleep` 被取消，就断言 bob 新建一次运行；这一次运行的过期由 `context.AfterFunc` 在另一个 goroutine 里做（`wiki/app/lint_runs.go:98`、`:186-190`），两件事之间没有先后。
   - 审查 C 的探针在 `expire` 开头睡 300 ms，确定地红（"new same-key caller joined an expired worker: {Kind:2 FlightID:1 …}"，与实施时那一次一字不差）；测试里再等 `RunExpired` 就过。
   - S2 在服务端只改两份模板与一个测试，不碰 lint；同一个头上单跑十次与整份重跑都过。
-  - 对产品是窗口在亚毫秒级的一次多余的 503，与 `Runs` 的注释"A flight's expiry removes only its permission to be joined"相符，是测试断言得比代码保证的严，不是竞态。
+  - 对产品是窗口在亚毫秒级的一次多余的 503，与 `Runs` 的注释"A flight's expiry removes only its permission to be joined"相符，是测试断言得比代码保证的严，不是竞态。（后注：亚毫秒是平常的情形，`expire` 平常在 0.1 ms 之内；测试从取消到新的调用者被收下要 1.3–5 ms，照推断，那一次在负载下到了毫秒级。见[旁支的审查记录](M12-lintbusy-await-expiry-review.md)"更正"与 00 号文档决定 595。）
 - **587 推后进 v0.2 的**（审查 A 的 Q2、N5；P2 设计 4.2）：
   - 撤销被拒为 trimmed 时 alert 与页上的说明两句近乎重复（S2 之前也近似）；
   - `AGENTS` 模板写的 prompt 与 MCP 实际登记的对照：测试改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`，只查模板里写的那一行（`62e40b25`）；
