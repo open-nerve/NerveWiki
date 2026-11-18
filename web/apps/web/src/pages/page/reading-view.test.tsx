@@ -649,6 +649,38 @@ test("a view is read again a minute before its attachments' addresses expire, on
   expect(reads()).toBe(2);
 });
 
+// M12/P2/S5, 17.6: a timer that falls behind the clock, the machine asleep, is caught up with.
+test("a view whose timer falls behind, the machine asleep, is read again within a minute of waking", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: inMinutes(10) });
+  renderApp(pagePath(install.id), server.app);
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  expect(await screen.findByRole("link", { name: "A" })).toBeTruthy();
+  expect(reads()).toBe(1);
+
+  // Asleep three hours: the clock goes on, the timers do not.
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+  expect(reads()).toBe(2);
+});
+
+test("a view whose timer falls behind is read again at once as the page is shown again from the back-forward cache", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: inMinutes(10) });
+  renderApp(pagePath(install.id), server.app);
+  const reads = () => server.sent.filter((line) => line === "GET view Install").length;
+  expect(await screen.findByRole("link", { name: "A" })).toBeTruthy();
+  expect(reads()).toBe(1);
+
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  act(() => void window.dispatchEvent(new Event("pageshow")));
+
+  await waitFor(() => expect(reads()).toBe(2));
+});
+
 test("a view from the cache whose attachments' addresses had expired is not shown: it is read again", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const server = pageServer();

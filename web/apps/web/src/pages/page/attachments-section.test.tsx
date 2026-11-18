@@ -750,6 +750,38 @@ test("a hidden tab's list is not read again as it is due, but as the tab is show
   await waitFor(() => expect(reads()).toBe(2));
 });
 
+// M12/P2/S5, 17.6: a timer that falls behind the clock, the machine asleep, is caught up with.
+test("a list whose timer falls behind, the machine asleep, is read again within a minute of waking", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  server.assetsExpireAt = "2026-10-09T09:00:00Z";
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  const reads = () => server.sent.filter((line) => line === "GET assets Guide").length;
+  await waitFor(() => expect(reads()).toBe(1));
+
+  // Asleep three hours: the clock goes on, the timers do not.
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+  expect(reads()).toBe(2);
+});
+
+test("a list whose timer falls behind is read again at once as the page is shown again from the back-forward cache", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  server.assetsExpireAt = "2026-10-09T09:00:00Z";
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  const reads = () => server.sent.filter((line) => line === "GET assets Guide").length;
+  await waitFor(() => expect(reads()).toBe(1));
+
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  act(() => void window.dispatchEvent(new Event("pageshow")));
+
+  await waitFor(() => expect(reads()).toBe(2));
+});
+
 test("a page's deletion counts the attachments of its subtree, which go with it", async () => {
   const user = userEvent.setup();
   const others = [assetNode(75, "x.png", linux), assetNode(78, "y.png", notes), assetNode(79, "z.png")];

@@ -27,7 +27,7 @@ import type { AssetList, AssetStore, Upload } from "../../stores/asset.store";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
-import { rereadIn } from "./assets-expiry";
+import { dueWatch, rereadIn } from "./assets-expiry";
 import { AttachmentRow, locatedOf, type AssetAction } from "./attachment-row";
 import { watchReader } from "./readers-input";
 import { UploadRows } from "./upload-rows";
@@ -552,14 +552,11 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     if (!Number.isFinite(earliest)) {
       return undefined;
     }
-    const timer = setTimeout(
-      () => {
-        if (!document.hidden) {
-          latest.current();
-        }
-      },
-      rereadIn(earliest, Date.now())
-    );
-    return () => clearTimeout(timer);
+    // Watched, not timed alone: a machine that slept past it reads it again within a minute of waking (17.6).
+    return dueWatch(Date.now() + rereadIn(earliest, Date.now()), () => {
+      if (!document.hidden) {
+        latest.current();
+      }
+    });
   }, [list]);
 }
