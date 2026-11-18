@@ -464,8 +464,18 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		if cleanup.early.Load() || !cleanup.firstDone.Load() {
 			t.Fatal("a new snapshot entered before the old worker's real transaction cleanup and connection Release")
 		}
-		if n := count(t, f.pool, "SELECT 1"); n != 1 || f.pool.Stat().AcquiredConns() != 0 {
-			t.Fatal("real pool was unusable or retained a connection after cleanup")
+		if n := count(t, f.pool, "SELECT 1"); n != 1 {
+			t.Fatal("real pool was unusable after cleanup")
+		}
+		// The cancelled pg_sleep closed the old connection, so its Release
+		// destroys it in the pool's own goroutine, which nothing here orders:
+		// wait until that goroutine has taken it out of the pool.
+		acquired := f.pool.Stat().AcquiredConns()
+		for deadline := time.Now().Add(interleavingWait); acquired != 0; acquired = f.pool.Stat().AcquiredConns() {
+			if time.Now().After(deadline) {
+				t.Fatalf("real pool retained a connection after cleanup: acquired=%d", acquired)
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
 	})
 }
