@@ -435,6 +435,27 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await waitFor(() => expect([asksBeforeLeaving(), screen.queryByRole("dialog")]).toEqual([false, null]));
 });
 
+test("a double click on Stop the upload stops it, and the dialog stays with the file chosen", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+
+  // The double click's first click stops the upload; its second falls on Cancel, which takes Stop's place.
+  fireEvent.click(within(shown).getByRole("button", { name: "Stop the upload" }), { detail: 1 });
+  const cancel = await within(shown).findByRole("button", { name: "Cancel" });
+  fireEvent.click(cancel, { detail: 2 });
+
+  expect(screen.queryByRole("dialog")).toBe(shown);
+  expect((within(shown).getByLabelText("Zip archive") as HTMLInputElement).files?.[0]?.name).toBe("Vault.zip");
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  fireEvent.click(cancel, { detail: 1 });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
   const user = userEvent.setup();
   const counts = { pages: 5, attachments: 3, renamed: 1, missing: 0, skipped: 2 };

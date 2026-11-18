@@ -395,7 +395,19 @@ const ImportForm = observer(function ImportForm({
             {t("transfer.importStop")}
           </Button>
         ) : (
-          <Button key="cancel" type="button" variant="outline" onClick={cancel}>
+          <Button
+            key="cancel"
+            type="button"
+            variant="outline"
+            onClick={(event) => {
+              // The second click of a double one on Stop the upload, which this takes the place of, closes nothing
+              // (P6B review; M12/P2/S5, 20.3). A key's click has no count (0).
+              if (event.detail > 1) {
+                return;
+              }
+              cancel();
+            }}
+          >
             {t("transfer.dialogCancel")}
           </Button>
         )}
