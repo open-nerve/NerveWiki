@@ -7,7 +7,7 @@ import type { Enhancement } from "./enhancement";
  * formula (.nw-scroll), a diagram's that an enhancement adds (.nw-diagram); a code
  * block; and a formula displayed in a paragraph, which has no wrapper.
  */
-const scrolling = ".nw-scroll, pre, span.nw-math-block";
+export const scrolling = ".nw-scroll, pre, span.nw-math-block";
 
 /**
  * scrollRegions lets the keyboard scroll what scrolls sideways in the

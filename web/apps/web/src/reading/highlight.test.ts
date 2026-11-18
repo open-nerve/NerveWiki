@@ -173,3 +173,38 @@ test("undoing the highlighting ends its worker and its timer", () => {
   expect(worker.terminated).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
 });
+
+// M12/P2/S4, 3 (review A's M2): a block the view kept as it changed (U4, U5) is coloured already; written again, the
+// reader's selection in it would go, and it would show plain a moment.
+test("an unchanged block already coloured is not written again", () => {
+  const container = view(
+    '<pre><code class="language-go">func kept() {}</code></pre><pre><code class="language-go">func edited() {}</code></pre>'
+  );
+  document.body.append(container);
+  const highlight = codeHighlight(() => new FakeWorker());
+  let undo = highlight(container, context);
+  const [kept, edited] = [...container.querySelectorAll("pre > code")];
+  const coloured = kept?.innerHTML;
+  expect(coloured).toContain("hljs-keyword");
+  const name = kept?.querySelector("span.hljs-title")?.firstChild as Text;
+  document.getSelection()?.setBaseAndExtent(name, 0, name, 4);
+  undo?.();
+  // Another's write changed the second block's text, in place of its nodes.
+  if (edited !== undefined) {
+    edited.textContent = "func edited(a int) {}";
+  }
+  const written: MutationRecord[] = [];
+  const watching = new MutationObserver((records) => written.push(...records));
+  watching.observe(kept as Element, { childList: true, subtree: true });
+
+  undo = highlight(container, context);
+  written.push(...watching.takeRecords());
+  watching.disconnect();
+
+  expect(written).toEqual([]);
+  expect(kept?.innerHTML).toBe(coloured);
+  expect(document.getSelection()?.toString()).toBe("kept");
+  expect(edited?.querySelector("span.hljs-keyword")?.textContent).toBe("func");
+  document.body.removeChild(container);
+  undo?.();
+});

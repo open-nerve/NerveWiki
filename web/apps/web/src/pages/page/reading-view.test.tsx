@@ -3,8 +3,11 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
+import { diagrams, type Drawer } from "../../reading/diagrams";
 import { readingEnhancements, type Enhancement, type ReadingContext } from "../../reading/enhancement";
+import { scrollRegions } from "../../reading/scroll-regions";
 import { taskToggle } from "../../reading/task-toggle";
+import { unresolvedLinks } from "../../reading/unresolved-links";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, upgradeOf, workspaceJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
@@ -92,6 +95,7 @@ test("an enhancement reads the view again through its context", async () => {
 
 test("a change of the theme runs no enhancement again, those that follow it hearing it; one of the language runs them again", async () => {
   const server = pageServer();
+  server.views.set(install.id, { html: '<p>Install <a href="/x">x</a></p>', revision: 1, assets_expire_at: null });
   const log: string[] = [];
   const heard: string[] = [];
   renderApp(pagePath(install.id), server.app, {
@@ -101,6 +105,10 @@ test("a change of the theme runs no enhancement again, those that follow it hear
     ],
   });
   await waitFor(() => expect(log).toHaveLength(1));
+  const article = screen.getByRole("article", { name: "Install" });
+  const first = article.firstChild;
+  const link = within(article).getByRole("link", { name: "x" });
+  link.focus();
 
   act(() => server.app.preferences.setTheme("dark"));
   expect(heard).toEqual(["dark"]);
@@ -108,7 +116,10 @@ test("a change of the theme runs no enhancement again, those that follow it hear
 
   act(() => server.app.preferences.setLocale("zh-CN"));
   await waitFor(() => expect(log).toHaveLength(3));
-  expect(log[1]).toBe("undo a on <p>Install</p>");
+  expect(log[1]).toBe('undo a on <p>Install <a href="/x">x</a></p>');
+  // Its HTML as it was: the same nodes, the focus where it was (M12/P2/S4, 11.6: U5).
+  expect(article.firstChild).toBe(first);
+  expect(document.activeElement).toBe(link);
   // The listener undone hears no more: one for each change.
   act(() => server.app.preferences.setTheme("light"));
   expect(heard).toEqual(["dark", "light"]);
@@ -1080,7 +1091,7 @@ async function readable(html: string, enhancements: Enhancement[] = []) {
     act(() => reloads.at(-1)?.());
     await waitFor(() => expect(article.textContent).toBe(next.replace(/<[^>]*>/g, "")));
   };
-  return { article, readAgain };
+  return { server, article, readAgain };
 }
 
 // M12/P2/S4, 3 (U4): another's write is written where it changed the view, the rest kept as the reader has it.
@@ -1165,4 +1176,108 @@ test("a callout's summary that had the focus has it back, its callout written ag
   expect(summary).not.toBe(before);
   expect(document.activeElement).toBe(summary);
   expect(article.querySelector("details")?.open).toBe(false);
+});
+
+// M12/P2/S4, 48 (S1's 35.2): an LLM Wiki's index and log are pages a link to them goes to, by the notebook's mode.
+// The mode changing, the enhancements run again on the HTML as it is (U5), as the language's does.
+test("the notebook's mode changing runs the enhancements again without writing HTML", async () => {
+  const events = eventServer();
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/events": events.answer } });
+  server.notebook = { ...server.notebook, upgrade: upgradeOf() };
+  server.views.set(install.id, {
+    html: '<p>See <a class="nw-wikilink nw-unresolved" data-nw-target="index">index</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  const log: string[] = [];
+  renderApp(pagePath(install.id), withEvents(server.app), {
+    enhancements: [unresolvedLinks, recording(log, "a")],
+    eventHandlers,
+  });
+  const article = await screen.findByRole("article", { name: "Install" });
+  const index = await within(article).findByText("index");
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  act(() => events.last().hello());
+  await waitFor(() => expect(viewReads(server)).toBeGreaterThanOrEqual(2));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(index.getAttribute("role")).toBe("button");
+  const changes = childChanges(article);
+  const runs = log.length;
+
+  // The upgrade approved: an LLM Wiki now.
+  server.notebook = { ...server.notebook, mode: "llm_wiki", upgrade: null };
+  act(() => events.last().send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id }));
+
+  await waitFor(() => expect(index.getAttribute("role")).toBe("link"));
+  expect(log.slice(runs).map((line) => line.split(" on ")[0])).toEqual(["undo a", "a"]);
+  expect(within(article).getByText("index")).toBe(index);
+  expect(changes()).toBe(0);
+});
+
+/** drawing is a view of before, a diagram's source in an opened callout, and a paragraph after it. */
+const drawing = (before: string) =>
+  `${before}<details open=""><summary>S</summary><pre><code class="language-mermaid">graph TD; s4-->drawn</code></pre></details>\n<p>after</p>\n`;
+
+/** seen shows each diagram at once. */
+const seen = (_element: Element, see: () => void) => {
+  see();
+  return () => undefined;
+};
+
+/** drawn opens html with a mermaid that draws at once, its drawings wider than they show, and the scroll regions'. */
+async function drawn(html: string) {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      disconnect() {}
+    }
+  );
+  // Wide by its class, on the prototype: a wrapper drawn anew is wide as the scroll regions see it (review A's N13).
+  const width = vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockImplementation(function (this: HTMLElement) {
+    return this.classList.contains("nw-diagram") ? 1000 : 0;
+  });
+  onTestFinished(() => width.mockRestore());
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "flowchart",
+    render: async (id, text) => ({ svg: `<svg id="${id}"><text>${text}</text></svg>` }),
+  };
+  const opened = await readable(html, [diagrams(async () => draw, seen), scrollRegions]);
+  const wrapper = () => opened.article.querySelector<HTMLElement>(".nw-diagram");
+  await waitFor(() => expect(wrapper()?.getAttribute("tabindex")).toBe("0"));
+  return { ...opened, wrapper };
+}
+
+// M12/P2/S4, 11.6 (review A's M2, revision check A's M12): a drawing's wrapper is drawn anew as the enhancements run
+// again; the scroll region of the block it is in, the same callout, has the focus back. In a callout, not at the
+// top: there the block where it was would be the new wrapper itself.
+test("a drawing in a callout that had the focus has it back after the language changes", async () => {
+  const { server, article, wrapper } = await drawn(drawing(""));
+  const callout = article.querySelector("details");
+  const before = wrapper();
+  before?.focus();
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await waitFor(() => expect(wrapper()).not.toBe(before));
+  expect(article.querySelector("details")).toBe(callout);
+  expect(document.activeElement).toBe(wrapper());
+  expect(callout?.contains(document.activeElement)).toBe(true);
+});
+
+// M12/P2/S4, 4.4.3 (revision check A's M11): the block it was in, found through the patch's places; by its place
+// before, the paragraph now there.
+test("a drawing that had the focus has it back as a paragraph is put before its block", async () => {
+  const { article, wrapper, readAgain } = await drawn(drawing("<p>zero</p>\n"));
+  const callout = article.querySelector("details");
+  const before = wrapper();
+  before?.focus();
+
+  await readAgain(drawing("<p>new</p>\n<p>zero</p>\n"));
+
+  await waitFor(() => expect(wrapper()?.getAttribute("tabindex")).toBe("0"));
+  expect(article.querySelector("details")).toBe(callout);
+  expect(document.activeElement).toBe(wrapper());
+  expect(callout?.contains(document.activeElement)).toBe(true);
 });

@@ -1,6 +1,6 @@
 import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useRef, type RefObject } from "react";
+import { useContext, useLayoutEffect, useRef, type RefObject } from "react";
 import { useNavigate } from "react-router";
 
 import { arrived } from "../../app/arrival";
@@ -123,7 +123,8 @@ export const ReadingView = observer(function ReadingView({
   });
   const latestUnresolved = useRef(links.unresolved);
   const latestLeads = useRef(links.leads);
-  useEffect(() => {
+  // Before the view's HTML: the notebook's mode changing runs the enhancements again, which read the leads it makes.
+  useLayoutEffect(() => {
     latestRefused.current = refused;
     latestUnanchored.current = unanchored;
     latestUnresolved.current = links.unresolved;
@@ -141,6 +142,7 @@ export const ReadingView = observer(function ReadingView({
       page: page.id,
       t,
       locale: preferences.locale,
+      mode: notebook.mode,
       theme: () => preferences.resolvedTheme,
       onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),

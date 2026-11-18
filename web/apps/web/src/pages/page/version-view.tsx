@@ -1,6 +1,6 @@
 import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -75,7 +75,8 @@ export const VersionView = observer(function VersionView({
   });
   const latestUnresolved = useRef(links.unresolved);
   const latestLeads = useRef(links.leads);
-  useEffect(() => {
+  // Before the view's HTML: the notebook's mode changing runs the enhancements again, which read the leads it makes.
+  useLayoutEffect(() => {
     latestUnresolved.current = links.unresolved;
     latestLeads.current = links.leads;
   });
@@ -90,6 +91,7 @@ export const VersionView = observer(function VersionView({
       page,
       t,
       locale: preferences.locale,
+      mode: notebook.mode,
       theme: () => preferences.resolvedTheme,
       onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),

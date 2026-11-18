@@ -11,6 +11,7 @@ import {
   type FocusKey,
   type Placed,
 } from "../../reading/patch";
+import { scrolling } from "../../reading/scroll-regions";
 import { taskText } from "../../reading/task-toggle";
 import { unfold } from "../../reading/unfold";
 import { shows } from "./view-anchors";
@@ -23,16 +24,19 @@ export type Toggled = { task: string; checked: boolean };
 
 /**
  * ServerHTMLContext is what the enhancements run with, but for what the view brings (its revision, its addresses'
- * expiry): the enhancements, in their order; and the view's own toggle, which a view showing it ends.
+ * expiry): the enhancements, in their order; the view's own toggle, which a view showing it ends; and the notebook's
+ * mode, by which a link to an LLM Wiki's index or log leads (the context's leads), which the enhancements read as they
+ * run.
  */
 export type ServerHTMLContext = Omit<ReadingContext, "revision" | "assetsExpire"> & {
   enhancements: readonly Enhancement[];
   toggled?: RefObject<Toggled | undefined>;
+  mode?: string;
 };
 
 /**
  * Shown is the server's HTML in the article (M12/P2/S4, 4.4.2): the article, the HTML and the template it parses
- * to, how its enhancements are undone, and what they ran with.
+ * to, how its enhancements are undone, and what they ran with: the same, or in another language or mode (spoken).
  */
 type Shown = {
   container: HTMLElement;
@@ -40,6 +44,7 @@ type Shown = {
   template: HTMLTemplateElement;
   undo: () => void;
   ran: readonly unknown[];
+  spoken: readonly unknown[];
 };
 
 /**
@@ -53,13 +58,15 @@ type Shown = {
  * attachments' addresses alone differ, signed anew for the next hour, has them given to its elements in place (U3,
  * resign): no node taken out or put in, no enhancement run again (M12/P2/S4, 17.1). Another is written where it
  * changed the view, block by block (U4, patchBlocks): the blocks it left are the same nodes, the selection in them,
- * the callouts opened, a video in fullscreen (M12/P2/S4, 3, 8.2, 17.8).
+ * the callouts opened, a video in fullscreen (M12/P2/S4, 3, 8.2, 17.8). The language or the notebook's mode
+ * changing leaves the HTML as it is: the enhancements run again on it (U5; M12/P2/S4, 11.6, 48).
  *
  * The focus stays (M12/P2/S4, 4.4.3): what had it as the view changed has it back, if it is there still; else, a
  * task item's checkbox at its position while it is the same item's (its text, and its state, or the state the view's
  * own toggle asked for), none if not: a tick does not move it, a write that moved the items does; else the element
  * of its key (focusKeyOf: a heading of its text, a link of its address and text, a callout's summary, a media, an
- * element of its id); else the block where it was, without a scroll or a callout opened. Shown as it is given the
+ * element of its id; a scroll region, a diagram's drawn anew, which of its block's); else the block where it was,
+ * without a scroll or a callout opened. Shown as it is given the
  * focus, a folded callout opens; one that showed and shows no more is scrolled to: a view read again stays where it
  * is.
  */
@@ -74,21 +81,24 @@ export function useServerHTML(
   });
   const shown = useRef<Shown | undefined>(undefined);
   const html = view?.html;
-  const { enhancements, workspace, notebook, page, t, locale } = context;
+  const { enhancements, workspace, notebook, page, t, locale, mode } = context;
   useLayoutEffect(() => {
     const container = article.current;
     const was = shown.current;
-    const ran = [enhancements, workspace, notebook, page, t, locale];
+    const ran = [enhancements, workspace, notebook, page];
+    const spoken = [t, locale, mode];
+    // The view shown still, its enhancements running as they ran but maybe in another language or mode.
+    const showing = was !== undefined && container === was.container && html !== undefined && sameRun(was.ran, ran);
+    const same = showing && sameRun(was.spoken, spoken);
     let read: HTMLTemplateElement | undefined;
-    if (was !== undefined && container === was.container && html !== undefined && sameRun(was.ran, ran)) {
-      if (html === was.html) {
-        return;
-      }
+    if (showing && html !== was.html) {
       read = template(html);
-      if (addressesOnly(was.template, read) && resign(container, was.template, read)) {
+      if (same && addressesOnly(was.template, read) && resign(container, was.template, read)) {
         shown.current = { ...was, html, template: read };
         return;
       }
+    } else if (same) {
+      return;
     }
     const focus = was === undefined ? undefined : noted(was.container);
     if (was !== undefined) {
@@ -98,14 +108,20 @@ export function useServerHTML(
     if (container === null || html === undefined) {
       return;
     }
-    // A change of the view is written where it changed it (U4): read is the view read again. Else, or its blocks not
-    // the view's, it is written whole.
-    let placed = was !== undefined && read !== undefined ? patchBlocks(container, was.template, read) : undefined;
+    // A change of the view is written where it changed it (U4): read is the view read again. The same HTML in
+    // another language or mode is left as it is (U5): the enhancements run again on it. Else, or its blocks not the
+    // view's, it is written whole.
+    let placed: Placed | undefined;
+    if (showing && read === undefined) {
+      placed = (at) => at;
+    } else if (showing && read !== undefined) {
+      placed = patchBlocks(container, was.template, read);
+    }
     if (placed === undefined) {
       write(container, html);
       placed = (at) => clamped(at, container);
     }
-    read ??= template(html);
+    read ??= was !== undefined && html === was.html ? was.template : template(html);
     // The view as the HTML was written: the context reads the latest view's, while there is one.
     const written = latest.current.view ?? { revision: 0, assetsExpire: null };
     const now = () => latest.current.context;
@@ -139,7 +155,7 @@ export function useServerHTML(
       leads: (target) => now().leads?.(target) ?? false,
       assetAddress: (id) => now().assetAddress(id),
     });
-    shown.current = { container, html, template: read, undo, ran };
+    shown.current = { container, html, template: read, undo, ran, spoken };
     const toggled = now().toggled;
     const asked = toggled?.current;
     const box = (task: string) => container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task)}"]`);
@@ -149,7 +165,7 @@ export function useServerHTML(
     if (focus !== undefined) {
       giveBack(container, focus, placed, asked);
     }
-  }, [article, html, enhancements, workspace, notebook, page, t, locale]);
+  }, [article, html, enhancements, workspace, notebook, page, t, locale, mode]);
   // Gone, the view's enhancements are undone (U8).
   useLayoutEffect(
     () => () => {
@@ -187,6 +203,7 @@ type Noted = {
   shown: boolean;
   key: FocusKey | undefined;
   block: number | undefined;
+  region: number | undefined;
   task: { task: string; text: string; checked: boolean } | undefined;
 };
 
@@ -201,11 +218,14 @@ function noted(container: HTMLElement): Noted | undefined {
     return undefined;
   }
   const block = [...container.childNodes].findIndex((node) => node.contains(active));
+  const key = focusKeyOf(container, active);
   return {
     element: active,
     shown: shows(active),
-    key: focusKeyOf(container, active),
+    key,
     block: block < 0 ? undefined : block,
+    // A scroll region of no other key is which of its block's: a diagram's wrapper is drawn anew.
+    region: key === undefined && block >= 0 ? regions(container.childNodes[block]).indexOf(active) : undefined,
     task:
       active instanceof HTMLInputElement && active.dataset.task !== undefined
         ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
@@ -238,19 +258,29 @@ function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: T
     }
     return;
   }
-  const again = focus.key && findByKey(container, focus.key);
+  const at = focus.block === undefined ? undefined : placed(focus.block);
+  const block = at === undefined ? undefined : container.childNodes[at];
+  const again =
+    (focus.key && findByKey(container, focus.key)) ||
+    (focus.region !== undefined && focus.region >= 0 ? regions(block)[focus.region] : undefined);
   if (again) {
     give(again, focus.shown);
     return;
   }
-  const at = focus.block === undefined ? undefined : placed(focus.block);
-  const block = at === undefined ? undefined : container.childNodes[at];
   const place = block instanceof HTMLElement ? block : container;
   // Not opened nor scrolled to: the focus is where it was, the reader's view as it is.
   if (!focusable(place)) {
     place.setAttribute("tabindex", "-1");
   }
   place.focus({ preventScroll: true });
+}
+
+/** regions are the scroll regions of a top-level node, it among them (scroll-regions.ts), in order. */
+function regions(block: Node | undefined): HTMLElement[] {
+  if (!(block instanceof HTMLElement)) {
+    return [];
+  }
+  return [block, ...block.querySelectorAll<HTMLElement>(scrolling)].filter((element) => element.matches(scrolling));
 }
 
 /** What takes the focus of itself. */
@@ -275,8 +305,5 @@ function give(element: HTMLElement, showed: boolean) {
   if (showed && !shows(element)) {
     element.scrollIntoView({ block: "nearest" });
   }
-  // One that has it still is left as it is: an engine may move the selection to what is focused anew (jsdom does).
-  if (document.activeElement !== element) {
-    element.focus({ preventScroll: true });
-  }
+  element.focus({ preventScroll: true });
 }
