@@ -272,8 +272,9 @@ export class AssetStore {
    * file, or larger than terms.maxBytes, is not sent: it shows why.
    */
   upload(parent: string | null, files: readonly File[], untitled: string, terms: UploadTerms): Upload[] {
-    // The names taken, once for the files: each sent takes its own as well.
+    // The names taken, once for the files: each sent takes its own as well. The siblings there as they go, once too.
     const used = this.usedUnder(parent);
+    const before = this.idsUnder(parent);
     return files.map((file) => {
       const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file, terms.fromEditor);
       this.uploads.push(upload);
@@ -282,7 +283,7 @@ export class AssetStore {
         if (this.generation.aborted) {
           upload.cancel();
         }
-        void this.send(upload, used, []);
+        void this.send(upload, used, before, []);
       }
       return upload;
     });
@@ -391,6 +392,11 @@ export class AssetStore {
     );
   }
 
+  /** idsUnder are the ids of the siblings under parent, as the tree has them now. */
+  private idsUnder(parent: string | null): Set<string> {
+    return new Set(this.pages.siblingsOf(parent).map((node) => node.id));
+  }
+
   /** Read a source once, then create it through the tree's shared write/re-read queue. */
   private async createSource(upload: Upload, beforeSend?: () => void): Promise<void> {
     this.sourceSending.add(upload);
@@ -454,8 +460,15 @@ export class AssetStore {
   /**
    * send sends upload by the first name free beside used (usedUnder its
    * parent), which it takes; and taken, the names the server refused it.
+   * before are the siblings' ids as it goes (idsUnder its parent, read
+   * with used): a cancel tells the server's keeping it by them.
    */
-  private async send(upload: Upload, used: Set<string>, taken: readonly string[]): Promise<void> {
+  private async send(
+    upload: Upload,
+    used: Set<string>,
+    before: ReadonlySet<string>,
+    taken: readonly string[]
+  ): Promise<void> {
     const name = freeName(upload.fixed, used);
     used.add(titleKey(name));
     runInAction(() => {
@@ -485,10 +498,12 @@ export class AssetStore {
       if (upload.signal.aborted) {
         this.dismiss(upload);
         // The tree read again lists it: the server had it whole, and kept it. Its row comes back to say so; a tree
-        // that could not be read tells nothing, and nothing is said. The name was free among the siblings as it went
-        // (used): one by it now is made since. Not noted as each goes, which would cost as many as the siblings for
-        // each file (the store's test of many files beside many siblings).
-        const made = this.pages.siblingsOf(upload.parent).find((node) => titleKey(node.name) === titleKey(name));
+        // that could not be read tells nothing, and nothing is said. A sibling by its name that was there as it went
+        // (before), renamed to it since, is not its: the name alone would take one renamed elsewhere for it. The ids
+        // are read once for the files, not as each goes, which would cost as many as the siblings for each file.
+        const made = this.pages
+          .siblingsOf(upload.parent)
+          .find((node) => !before.has(node.id) && titleKey(node.name) === titleKey(name));
         if (made !== undefined) {
           runInAction(() => {
             upload.failure = new CancelledLate(made.name);
@@ -503,7 +518,7 @@ export class AssetStore {
         for (const refused of again) {
           free.add(titleKey(refused));
         }
-        return this.send(upload, free, again);
+        return this.send(upload, free, this.idsUnder(upload.parent), again);
       }
       runInAction(() => {
         upload.failure = error;

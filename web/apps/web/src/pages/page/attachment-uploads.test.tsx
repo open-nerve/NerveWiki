@@ -2,7 +2,7 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
-import { attachments, dropped, nodes, picker, rows, transfers } from "../../test/attachments";
+import { archive, attachments, dropped, nodes, picker, rows, transfers } from "../../test/attachments";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { assetJSON, assetNode, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -225,6 +225,55 @@ test.each<[string, "en" | "zh-CN", string, string, string]>([
     expect(document.activeElement).toBe(within(section).getByRole("button", { name: uploadName }));
   }
 );
+
+test("a cancel in time says nothing late of an attachment there as the upload went, renamed elsewhere meanwhile to its name", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["abcd"], "a.png")]);
+  const cancel = await within(section).findByRole("button", { name: "Cancel the upload of a.png" });
+  await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+  // Someone else renames data.zip, a sibling as the upload went, to a.png.
+  server.nodes = server.nodes.map((node) => (node.id === archive.id ? { ...node, name: "a.png" } : node));
+  await user.click(cancel);
+
+  expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([true]);
+  // The tree and the list read again list the renamed one by its new name; the server kept nothing of the upload.
+  await waitFor(() => expect(rows(section).some((name) => name.startsWith("a.png"))).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(section).queryByRole("alert")).toBeNull();
+  expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull();
+  act(() => server.release());
+});
+
+test("a retry by the next name, cancelled in time, says nothing late of the attachment that took the first, renamed elsewhere to the next", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  choose(section, [new File(["abcd"], "a.png")]);
+  await waitFor(() => expect(uploaded(server.sent)).toEqual(["UPLOAD a.png under Guide"]));
+  // Another tab takes a.png as it goes: refused, the upload tries a 2.png, of the tree read again.
+  const taker = assetNode(81, "a.png", guide);
+  server.nodes = [...server.nodes, taker];
+  act(() => server.release());
+  await waitFor(() =>
+    expect(uploaded(server.sent)).toEqual(["UPLOAD a.png under Guide", "UPLOAD a 2.png under Guide"])
+  );
+  const cancel = await within(section).findByRole("button", { name: "Cancel the upload of a 2.png" });
+  // The other tab renames its a.png to a 2.png.
+  server.nodes = server.nodes.map((node) => (node.id === taker.id ? { ...node, name: "a 2.png" } : node));
+  await user.click(cancel);
+
+  await waitFor(() => expect(rows(section).some((name) => name.startsWith("a 2.png"))).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(section).queryByRole("alert")).toBeNull();
+  act(() => server.release());
+});
 
 test("an upload answered is finishing as its list is read again: it can no longer be cancelled", async () => {
   const user = userEvent.setup();
