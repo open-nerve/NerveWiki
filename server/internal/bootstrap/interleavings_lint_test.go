@@ -421,6 +421,10 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		if f.pool.Stat().AcquiredConns() != 1 {
 			t.Fatalf("busy was delivered after actual cleanup/release: acquired=%d", f.pool.Stat().AcquiredConns())
 		}
+		// Expiry forgets the flight in its own AfterFunc goroutine, which the
+		// driver's cancellation of pg_sleep does not order. RunExpired is sent
+		// after the flight is forgotten: a caller after it cannot join it.
+		f.event(t, wiki.RunExpired, created.FlightID)
 		next := f.start(f.actor(t, "bob"), scope, wiki.LintQuery{})
 		nextEvent := f.nextScopeEvent(t)
 		if nextEvent.Kind != wiki.RunCreated || nextEvent.FlightID == created.FlightID {
@@ -440,6 +444,9 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		case <-time.After(interleavingWait):
 			t.Fatal("new same-key flight did not execute its actual Rules.Prepare")
 		}
+		// The old worker's finish forgets its key only after it gives the new
+		// flight the slot; RunFinished is sent after that forget.
+		f.event(t, wiki.RunFinished, created.FlightID)
 		last := f.start(f.actor(t, "carol"), scope, wiki.LintQuery{})
 		lastEvent := f.nextScopeEvent(t)
 		releaseNextOnce.Do(func() { close(releaseNext) })
@@ -457,8 +464,18 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		if cleanup.early.Load() || !cleanup.firstDone.Load() {
 			t.Fatal("a new snapshot entered before the old worker's real transaction cleanup and connection Release")
 		}
-		if n := count(t, f.pool, "SELECT 1"); n != 1 || f.pool.Stat().AcquiredConns() != 0 {
-			t.Fatal("real pool was unusable or retained a connection after cleanup")
+		if n := count(t, f.pool, "SELECT 1"); n != 1 {
+			t.Fatal("real pool was unusable after cleanup")
+		}
+		// The cancelled pg_sleep closed the old connection, so its Release
+		// destroys it in the pool's own goroutine, which nothing here orders:
+		// wait until that goroutine has taken it out of the pool.
+		acquired := f.pool.Stat().AcquiredConns()
+		for deadline := time.Now().Add(interleavingWait); acquired != 0; acquired = f.pool.Stat().AcquiredConns() {
+			if time.Now().After(deadline) {
+				t.Fatalf("real pool retained a connection after cleanup: acquired=%d", acquired)
+			}
+			time.Sleep(5 * time.Millisecond)
 		}
 	})
 }

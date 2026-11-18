@@ -51,6 +51,9 @@
 - **交错用确定的办法逼出来**：持住双方都要的行，等对方在等锁（`pgtest.WaitForLockWaits`），再放开。不用 sleep。
   - 两个请求之间的先后，要在一个共用的日志里断言，否则交换它们的变异能活下来。
   - "等到 N 次读"不是"流已连上"的信号：用一个直通的路由先挂住流，等放过的读都答完。
+  - **等到一件事，推不出另一件已做完：等被认定的那件事自己的事件，而且那个事件要在副作用之后才发。** worker 的 ctx 结束会触发 `AfterFunc` 注册的过期与驱动对查询的取消，各在自己的 goroutine 里，彼此没有先后；调用者自己的等待是另一个同长的计时，与它们也没有先后。M10 的 `TestLintBusyReturnsBeforeCleanup` 等到 `pg_sleep` 被取消，就让新的同键调用者发起，竞态检测、六份同时跑时红过一次；`RunExpired` 在过期忘掉 flight 之后才发，等它就对了，单元一层的同一格从一开始就这样等。同一个测试还有一处：新 flight 到了 Prepare，推不出旧 worker 已忘掉它的键（`finish` 先放槽、后忘掉），要等旧 worker 的 `RunFinished`。transfer 心跳写下读到取消的那一行，也推不出作业已停（心跳先写行、后 `stop`），那里还没有可等的事件（M12 旁支 `m12-lintbusy-await-expiry`，P2/S2 审查 C 的 P2S2C-Q1，旁支审查 A 的 LBA-M1、B 的 LBB-M1，决定 586、595、596）。
+  - **拖慢被认定已做完的那一方，就能确定地造出这种红。** `expire` 开头睡 300 ms，改前每次都红、信息与那一次一字不差，改后照过；`finish` 慢 300 ms，原来抓得到的变异活下来；心跳之后 `stop` 慢 300 ms，三个取消的测试全红。平常这一方只快几毫秒（`expire` 0.1 ms 之内，测试那一段 1.3–5 ms），单跑十次都过，说明不了它不偶发。要拖慢依赖里的代码，用 `go.mod` 里临时的 `replace` 指向一份改过的拷贝：`go test -overlay` 不能替换 GOMODCACHE 下的文件（同上）。
+  - **池的连接数也是另一个 goroutine 的。** 被取消的查询让 pgconn 关掉连接，`Release` 走 puddle 的 `Destroy`，在另一个 goroutine 里等异步关闭做完（`CleanupDone`）再移出池；`AcquiredConns()` 回到 0，不随 `Release` 返回。断言它时限时轮询到 0。连接完好时 `Release` 同步回池，不用等（同上，审查 B 的 LBB-M2、N1）。
 - **等锁的帮手要认出等的是谁。** `pgtest.WaitForTableLockWaits` 数这个库里任何在等这张表的后端；在跑着的服务里，服务起来之后几秒之内（本机量到 0.4–3.4 秒）River 跑 `RunOnStart` 的清理，它的五条语句也等 `page_revisions`。测试数到它，就在读走到快照之前写下 R：P3/S1 的 `TestTheLogReadsOneMomentAcrossARevert` 在 CI 上红过一次，本机没有负载时约 250 次一次（M12 的旁支 `m12-lockwait-by-statement`）。两种做法：按 sqlc 的语句名认出读停下的那一条（`WaitForTableLockWaitsBy`；名字写成它之前或之后的一条，都在时限上红）；或者持锁之前先 `awaitJob` 等完启动的任务（`transferTeam`，M7/P5A 起，P3/S1 的测试没照它做）。用一个先等上锁的普通 `SELECT` 作外来者，可以确定地造出这个红：改前 100 格红 98–100 格。去掉过滤还照绿的格，要问它的先后靠什么：M10 的 `rename_snapshot` 靠的是改名（一次 MCP 调用）比读慢，不是靠等待。审查里"只会假红"的怀疑，也要先逼出来再接受：P3/S1 的审查 B 当时就疑到这一点，没有复现、记成接受，之后在 CI 上红了。
 - **持有者在提交时才放的行锁不排队**：一个新请求可以在等着的工作之前拿到它。
 - **唯一的持有者从不排在等待者之后。** 同一事务里重入一行的锁不会等。所以 M10/P1/S1 的那个子测试钉住的是 PostgreSQL 的行为，不是我们的锁序。
