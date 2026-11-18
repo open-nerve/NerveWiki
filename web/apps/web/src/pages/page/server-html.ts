@@ -54,7 +54,8 @@ type Shown = {
  * its addresses' expiry. Whether the page can be written changes no HTML: the enhancements hear it (writes,
  * onWritesChange; M12/P2/S4, 48).
  *
- * The same HTML read again, at another revision maybe (a save of blank lines), is left as it is (U2). One whose
+ * The same HTML read again, at another revision maybe (a save of blank lines), is left as it is (U2): what the effect
+ * runs on is the same, so it does not run. One whose
  * attachments' addresses alone differ, signed anew for the next hour, has them given to its elements in place (U3,
  * resign): no node taken out or put in, no enhancement run again (M12/P2/S4, 17.1). Another is written where it
  * changed the view, block by block (U4, patchBlocks): the blocks it left are the same nodes, the selection in them,
@@ -98,8 +99,6 @@ export function useServerHTML(
         shown.current = { ...was, html, template: read };
         return;
       }
-    } else if (same) {
-      return;
     }
     const focus = was === undefined ? undefined : noted(was.container);
     if (was !== undefined) {
@@ -166,6 +165,8 @@ export function useServerHTML(
     if (focus !== undefined) {
       giveBack(container, focus, placed, asked);
     }
+    // The same HTML read again, none of these changed: the effect does not run (U2). StrictMode's second mount comes
+    // after the cleanup below cleared what was shown: it writes the HTML anew (U1).
   }, [article, html, enhancements, workspace, notebook, page, t, locale, mode]);
   // Gone, the view's enhancements are undone (U8).
   useLayoutEffect(
