@@ -99,16 +99,50 @@ func WaitForAdvisoryLockWaits(t testing.TB, pool *pgxpool.Pool, space, key int32
 // of table itself, as LOCK TABLE takes one, and fails the test when fewer
 // have within limit. A wait for a row of the table, or for another table,
 // does not count: a test that holds a table's lock stops whatever reads it,
-// such as a background job that holds no row, at its read. A database
-// without the table fails the test at once.
+// such as a background job that holds no row, at its read. Any statement's
+// wait counts: where a running server's jobs may read the table too, such
+// as the purge, which it runs as it starts, use WaitForTableLockWaitsBy, or
+// await those jobs before taking the lock, as transferTeam does. A
+// database without the table fails the test at once.
 func WaitForTableLockWaits(t testing.TB, pool *pgxpool.Pool, table string, n int, limit time.Duration) {
+	t.Helper()
+	waitForTableLock(t, pool, table, "", n, limit)
+}
+
+// WaitForTableLockWaitsBy is WaitForTableLockWaits for one statement: only
+// a backend that waits for the lock of table as it runs the statement sqlc
+// names statement ("-- name: X") counts. Another statement's wait for the
+// table does not, such as a running server's job's: a test that holds the
+// table and waits for its read's own statement knows the read has come
+// that far, and not that something else came first. Not so for a
+// statement sent in a pgx batch: pgx may parse a batch's statements before
+// the first runs (those not yet prepared on its connection), and on the
+// simple protocol the batch shows as its first statement. A statement
+// named "" fails the test at once: it would count any statement's wait.
+func WaitForTableLockWaitsBy(t testing.TB, pool *pgxpool.Pool, table, statement string, n int, limit time.Duration) {
+	t.Helper()
+	if statement == "" {
+		t.Fatal("pgtest: no statement")
+	}
+	waitForTableLock(t, pool, table, statement, n, limit)
+}
+
+// waitForTableLock is WaitForTableLockWaits, and, when statement is not
+// "", WaitForTableLockWaitsBy.
+func waitForTableLock(t testing.TB, pool *pgxpool.Pool, table, statement string, n int, limit time.Duration) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), limit)
 	defer cancel()
-	waitForCount(ctx, t, pool, n, limit, "the lock of the table "+table, `
+	what := "the lock of the table " + table
+	if statement != "" {
+		what += " in " + statement
+	}
+	waitForCount(ctx, t, pool, n, limit, what, `
 		SELECT count(DISTINCT l.pid) FROM pg_locks l JOIN pg_database d ON d.oid = l.database
-		WHERE d.datname = current_database() AND l.locktype = 'relation' AND NOT l.granted AND l.relation = $1`,
-		relation(ctx, t, pool, table))
+			JOIN pg_stat_activity a ON a.pid = l.pid
+		WHERE d.datname = current_database() AND l.locktype = 'relation' AND NOT l.granted AND l.relation = $1
+			AND ($2::text = '' OR substring(a.query FROM '^-- name: (\w+)') = $2::text)`,
+		relation(ctx, t, pool, table), statement)
 }
 
 // relation is the OID of table in pool's database. A database without the

@@ -144,9 +144,14 @@ func TestVirtualRead(t *testing.T) {
 		}
 		done := make(chan mcpAnswer, 1)
 		go func() { done <- sourceMCPCall(t, m, "notebook", "read", map[string]any{"path": "log.md"}) }()
-		pgtest.WaitForTableLockWaits(t, tm.pool, "page_revisions", 1, interleavingWait)
+		// The read's own wait, by its statement. The purge, which the server
+		// runs as it starts, waits for page_revisions too; counted, the test
+		// could go on before the read reached its wait, and the rename would
+		// come after the read's snapshot only by being the slower of the two.
+		pgtest.WaitForTableLockWaitsBy(t, tm.pool, "page_revisions", "ChangesetFacts", 1, interleavingWait)
 		// The observed blocked backend is a real late query, not a timing
-		// sleep. Rename commits before that query and its later PathsOf run.
+		// sleep. Rename commits before that query and its later
+		// LinkTargetsByIDs run.
 		structured(t, sourceMCPCall(t, m, "account", "move", map[string]any{"from": "BeforeAlpha.md", "to": "AfterAlpha.md", "update_links": false}))
 		if err := holder.Rollback(ctx); err != nil {
 			t.Fatal(err)

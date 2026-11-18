@@ -429,7 +429,7 @@ REPEATABLE READ 的快照冻结在事务的第一条查询开始时（PostgreSQL
 - **整个程序的交错**（新的 `bootstrap/history_snapshot_test.go`，`TestTheLogReadsOneMomentAcrossARevert`，13.4 第 4 条），照 `TestVirtualRead` 的 `rename_snapshot`（`bootstrap/interleavings_virtual_test.go:128-164`）：
   1. 每一格各种一本笔记本：建页 `P`，改名为 `Q`（变更集 C）。各用自己的 C 与 R：共用一个 C 时，前一格的 R 让后一格的"`reverted_by` 为空"不成立（审查 B 的 N1）。
   2. holder 事务 `LOCK TABLE page_revisions IN ACCESS EXCLUSIVE MODE`。
-  3. 在 goroutine 里发读；`pgtest.WaitForTableLockWaits(t, tm.pool, "page_revisions", 1, interleavingWait)` 等到它停在第二条读上。
+  3. 在 goroutine 里发读；`pgtest.WaitForTableLockWaits(t, tm.pool, "page_revisions", 1, interleavingWait)` 等到它停在第二条读上。（M12 的旁支 `m12-lockwait-by-statement` 起改为 `pgtest.WaitForTableLockWaitsBy(t, tm.pool, "page_revisions", tt.waits, 1, interleavingWait)`，按 sqlc 的语句名只等读停下的那一条：四格等 `ChangesetFacts`，`log {path: "Q.md"}` 一格等 `ListChangesetsOfPage`。按表数会数到服务启动时 River 跑的清理，它也等 `page_revisions`，测试就可能在读的快照开始之前写 R，CI 上红过一次。[00 号文档](00-M12-design.md)决定 548，[旁支的审查记录](reviews/P3-lockwait-by-statement-review.md)。）
   4. 以 SQL 写一条撤销 C 的变更集 R，提交，照 `bootstrap/background_cost_test.go:203-205` 的 `revertOfAttachments`：列是 `id, notebook_id, kind='revert', reverts_id, client, created_by_id, created_at, updated_at`，恰好是全部没有默认值的必填列；`changesets` 上没有触发器，`reverts_id` 没有外键（审查 B 的 N2 核对过）。它不碰 `page_revisions`。
   5. holder 回滚，等读答复。
   6. 断言：答复里 C 没有被撤销（`reverted_by` 为空），整本的日志里也没有 R。之后再读一次：C 被 R 撤销，整本的日志里 R 在（对照：SQL 写的那一行读得到）。
