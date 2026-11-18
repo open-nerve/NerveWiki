@@ -287,6 +287,42 @@ test("an embed shown to copy by hand goes as its attachment goes elsewhere, the 
   expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
 });
 
+test.each([
+  ["deleted, then restored", (node: typeof archive) => (node.id === archive.id ? [] : [node])],
+  [
+    "renamed without its extension, then back",
+    (node: typeof archive) => [node.id === archive.id ? { ...node, name: "data" } : node],
+  ],
+] as const)(
+  "an embed shown to copy by hand, gone as its attachment was %s elsewhere, does not come back with it to take the focus",
+  async (_, away) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = pageServer({ nodes });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    noClipboard();
+    await user.click(await actionsOf(section, "data.zip"));
+    await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+    await within(section).findByRole("textbox", { name: "Embed of data.zip" });
+    server.nodes = server.nodes.flatMap(away);
+    await readAgain();
+    await waitFor(() => expect(within(section).queryByRole("textbox")).toBeNull());
+    // The reader goes on elsewhere.
+    const upload = within(section).getByRole("button", { name: "Upload" });
+    act(() => upload.focus());
+
+    // Back, in another tab.
+    server.nodes = [...server.nodes.filter((node) => node.id !== archive.id), archive];
+    await readAgain();
+    await within(section).findByRole("link", { name: "data.zip" });
+    await act(() => vi.advanceTimersByTimeAsync(50));
+
+    expect(within(section).queryByRole("textbox")).toBeNull();
+    expect(document.activeElement).toBe(upload);
+  }
+);
+
 test("an embed copied again is said again", async () => {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer({ nodes }).app);

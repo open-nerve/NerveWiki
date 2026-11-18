@@ -452,6 +452,38 @@ test("an upload that fails leaves nothing said of uploads going: the region says
   expect(notice(section)).toBe("");
 });
 
+test.each(["fails", "is cancelled"] as const)(
+  "an embed copied as an upload goes, which then %s, is still said: only the uploads' words are emptied",
+  async (how) => {
+    const user = userEvent.setup();
+    let refuse: (() => void) | undefined;
+    const server = pageServer({
+      nodes,
+      answers: {
+        [uploadsPath]: () => new Promise<Response>((resolve) => (refuse = () => resolve(problem(507, "storage_full")))),
+      },
+    });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    choose(section, [new File(["a"], "a.png")]);
+    await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
+    await user.click(await within(section).findByRole("button", { name: "Actions for photo.png" }));
+    await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+    await waitFor(() => expect(notice(section)).toBe("Embed copied: paste it into a page."));
+
+    if (how === "fails") {
+      act(() => refuse?.());
+      await within(section).findByRole("alert");
+    } else {
+      await user.click(within(section).getByRole("button", { name: "Cancel the upload of a.png" }));
+      await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
+    }
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(notice(section)).toBe("Embed copied: paste it into a page.");
+  }
+);
+
 test("an upload cancelled in the turn it began is not said to go", async () => {
   const server = pageServer({ nodes });
   server.uploadsHeld = true;

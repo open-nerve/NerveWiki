@@ -133,6 +133,14 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const copiedAsset =
     copied !== undefined && !copied.done ? list?.assets.find((asset) => asset.id === copied.id) : undefined;
   const copiedLink = copiedAsset?.link ?? null;
+  // Gone, it is done with: the attachment back (restored, renamed back, read by More) does not bring the field back
+  // to take the focus from where the reader is by then.
+  const copiedGone = copied !== undefined && !copied.done && list !== undefined && copiedLink === null;
+  useEffect(() => {
+    if (copiedGone) {
+      setCopied(undefined);
+    }
+  }, [copiedGone]);
 
   if (
     !writer &&
@@ -370,14 +378,17 @@ function CopyField({
  * failed, in its turn is not (M12/P2/S5, 16.10). The same text said again
  * changes the region all the same, a space after it, or it would not be
  * read again. Once none goes any more and the turn has nothing to say, a
- * sentence of uploads going no longer holds, and the region is emptied:
- * an upload failed or cancelled leaves no "Uploading" behind it; one
- * uploaded is said all the same (M12/P2/S5, 16.4c, 38.9).
+ * sentence of uploads going no longer holds, and the region is emptied of
+ * it: an upload failed or cancelled leaves no "Uploading" behind it; one
+ * uploaded is said all the same (M12/P2/S5, 16.4c, 38.9). What say had it
+ * say since, an embed copied, holds still, and stays (P2-40).
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
   const { preferences } = useStore();
   const [said, setSaid] = useState({ text: "", again: false });
+  // Whether the region says the uploads' words, not say's: only those are emptied.
+  const uploadsSaid = useRef(false);
   useEffect(() => {
     const sentence = turnSentence(t, preferences.locale);
     // What the turn says, as it is so far: those left uploaded, those that began, and whether none goes any more.
@@ -392,8 +403,10 @@ function useNotice(assets: AssetStore, parent: string | null) {
       ).length;
       const text = sentence(left, going);
       if (text !== undefined) {
+        uploadsSaid.current = true;
         setSaid(saying(text));
-      } else if (ended) {
+      } else if (ended && uploadsSaid.current) {
+        uploadsSaid.current = false;
         setSaid({ text: "", again: false });
       }
       left = [];
@@ -433,7 +446,13 @@ function useNotice(assets: AssetStore, parent: string | null) {
       clearTimeout(turn);
     };
   }, [assets, parent, t, preferences.locale]);
-  return { text: said.text + (said.again ? "\u00A0" : ""), say: (text: string) => setSaid(saying(text)) };
+  return {
+    text: said.text + (said.again ? "\u00A0" : ""),
+    say: (text: string) => {
+      uploadsSaid.current = false;
+      setSaid(saying(text));
+    },
+  };
 }
 
 /**
