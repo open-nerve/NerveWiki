@@ -1,10 +1,11 @@
 // The e2e's projects, checked (M12/P2/S3; M12/P2 design 5.1, decision 421). A project's testMatch, testIgnore or
 // grep written wrong makes no cell red: the cells it should run are just not run. Playwright lists what each project
 // runs (--list, which starts no browser and no server), and this check holds the listing to what the configuration
-// means: webkit-narrow runs on WebKit the cells tagged @narrow of the stories the three browsers do not run already
-// (those webkit runs), every one of them and nothing else, among them the cells REQUIRED names. The check first runs
-// on samples of each breach and fails unless it sees them, and fails unless the listing holds the cells REQUIRED
-// names, so it cannot pass by listing nothing.
+// means: webkit-narrow lists the cells tagged @narrow of the stories the three browsers do not run already (those
+// webkit lists), every one of them and nothing else, among them the cells REQUIRED names. The listing names projects,
+// files and cells, not browsers: that webkit-narrow runs on WebKit is its line in e2e/playwright.config.ts, which the
+// check does not see. The check first runs on samples of each breach and fails unless it sees them, and fails unless
+// the listing holds the cells REQUIRED names, so it cannot pass by listing nothing.
 // Usage: node tools/e2e-projects/check.mjs
 import { execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -55,7 +56,7 @@ function check(cells, required) {
   const listed = new Set(narrow.map(key));
   for (const cell of of("chromium")) {
     if (cell.tags.includes(NARROW) && !threeBrowsers.has(cell.file) && !listed.has(key(cell))) {
-      problems.push(`webkit-narrow ${key(cell)}: is tagged @${NARROW} but not run on WebKit`);
+      problems.push(`webkit-narrow ${key(cell)}: is tagged @${NARROW} but not listed`);
     }
   }
   for (const [project, file, start] of required) {
@@ -92,7 +93,7 @@ const SAMPLES = [
     name: "a tagged cell not run on WebKit, the required one (a grep too narrow)",
     cells: fine.filter((cell) => cell.project !== "webkit-narrow"),
     want: [
-      "webkit-narrow mcp/mc3-write-edit.spec.ts › MC3 (page): at 375 wide, x: is tagged @narrow but not run on WebKit",
+      "webkit-narrow mcp/mc3-write-edit.spec.ts › MC3 (page): at 375 wide, x: is tagged @narrow but not listed",
       'webkit-narrow mcp/mc3-write-edit.spec.ts: lists no cell "MC3 (page): at 375 wide…"',
     ],
   },
@@ -116,7 +117,7 @@ for (const { name, cells, want } of SAMPLES) {
 }
 
 const report = JSON.parse(
-  execFileSync("pnpm", ["--dir", "e2e", "exec", "playwright", "test", "--list", "--reporter=json"], {
+  execFileSync("pnpm", ["--filter", "@nervewiki/e2e", "exec", "playwright", "test", "--list", "--reporter=json"], {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 64 << 20,

@@ -15,8 +15,6 @@
         "tools/md-fixtures/obsidian/verify-export.mjs",
         "tools/password-blocklist/build.mjs",
       ],
-      // Playwright 项目配置的检查经 pnpm --dir e2e exec 运行 e2e 包的 playwright，根目录不依赖它
-      "ignoreBinaries": ["playwright"],
     },
     "e2e": {
       // perf/parse/build.ts 按路径载入 web 自己的 Vite 打解析页（M12/P4 设计 4.4）：e2e 不依赖它
