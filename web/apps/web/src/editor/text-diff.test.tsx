@@ -75,8 +75,8 @@ describe("TextDiff", () => {
     ["zh-CN", "唯一的改动是在末尾加了一个换行。", "唯一的改动是去掉了末尾的换行。"],
     [
       "en",
-      "The only change is a line break added at the end.",
-      "The only change is the line break at the end, removed.",
+      "The only change is that a line break was added at the end.",
+      "The only change is that the line break at the end was removed.",
     ],
   ] as const)("says when the only change is the line break at the end, either way, in %s", (locale, added, removed) => {
     const { rerender } = render(diff("a\nb", "a\nb\n", undefined, locale));

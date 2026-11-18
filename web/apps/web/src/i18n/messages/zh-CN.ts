@@ -972,8 +972,7 @@ export const zhCN: Messages = {
   "transfer.restoreLeft": "已恢复的留在笔记本里。剩下的 {left} 个节点在回收站里，分成几项，每项可以单独恢复。",
   "transfer.restoreLeftOnly": "没处理到的 {left} 个节点在回收站里，分成几项，每项可以单独恢复。",
   "transfer.restoreLeftExpired": "已恢复的留在笔记本里。剩下的 {left} 个节点在回收站里的期限已过，不能再恢复。",
-  "transfer.restoreLeftUndone":
-    "已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。",
+  "transfer.restoreLeftUndone": "已恢复的部分被一次撤销删除，又回到了回收站；没处理到的节点也在回收站里，分成几项。",
   "transfer.revertNothing": "没有要撤销的：它碰过的都已回到之前。",
   "transfer.revertLeft":
     "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销，之后再整组撤销这次改动。",
@@ -1235,7 +1234,7 @@ export const zhCN: Messages = {
   "problem.page.revert_conflict": "这次改动涉及的内容之后又有变化，无法直接撤销。",
   "problem.page.protected": "LLM Wiki 保留它的 AGENTS 页与来源根：两者都不能删除，AGENTS 也不能改名或移动。",
   "problem.page.virtual_file":
-    "这个文件由系统生成，修改页面后目录会自动更新；日志就是变更集，也会自动更新。根下的页与附件不能叫 index 或 log。",
+    "这个文件由系统生成，修改页面后目录会自动更新；日志就是这本笔记本的改动，也会自动更新。根下的页与附件不能叫 index 或 log。",
   "problem.page.source_duplicate": "笔记本中已存在字节相同的来源。",
   "problem.page.source_immutable": "来源正文不能修改。请添加新来源。",
   "problem.page.source_too_large":

@@ -344,7 +344,7 @@ test.each<[string, TransferJob, string, string[]]>([
     }),
     "Failed · What the restore had restored was undone while it ran.",
     [
-      "What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.",
+      "An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.",
     ],
   ],
   [
@@ -456,7 +456,7 @@ test("in Chinese, a restore whose restored nodes were undone says where they are
 
   await waitFor(() =>
     expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual([
-      "已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。",
+      "已恢复的部分被一次撤销删除，又回到了回收站；没处理到的节点也在回收站里，分成几项。",
     ])
   );
 });

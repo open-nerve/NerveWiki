@@ -649,8 +649,8 @@ export const en = {
   "diff.tooLargeLines": "Too large to compare line by line (lines: +{added} −{removed}).",
   "diff.failed": "The comparison failed.",
   "diff.failedAgain": "The comparison failed again. Reloading the page usually fixes this.",
-  "diff.lastBreakAdded": "The only change is a line break added at the end.",
-  "diff.lastBreakRemoved": "The only change is the line break at the end, removed.",
+  "diff.lastBreakAdded": "The only change is that a line break was added at the end.",
+  "diff.lastBreakRemoved": "The only change is that the line break at the end was removed.",
   "diff.tooLargeBlock": "Lines: +{added} −{removed}, but the changes join into a block too large to show line by line.",
   "editor.tabHint": "Tab indents. To move out of the editor, press Esc, then Tab.",
   "editor.keepMine": "Keep mine",
@@ -1022,7 +1022,7 @@ export const en = {
   "transfer.restoreLeftExpired":
     "What it restored stays in the notebook. Nodes left: {left}. Their time in the trash is over: they can no longer be restored.",
   "transfer.restoreLeftUndone":
-    "What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.",
+    "An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.",
   "transfer.revertNothing": "Nothing to undo: whatever the change touched is as it was before it.",
   "transfer.revertLeft":
     "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history; then the change can be undone whole again.",
