@@ -1,5 +1,6 @@
 # Nerve Wiki 的镜像（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）。构建上下文是仓库根目录：
-#   docker build -f deploy/Dockerfile --build-arg VERSION=0.1.0 .   （make image）
+#   docker build -f deploy/Dockerfile --build-arg VERSION=0.1.0 \
+#     --build-arg REVISION="$(git rev-parse HEAD)" --build-arg CREATED="$(git log -1 --format=%cI)" .   （make image）
 # 基础镜像按摘要固定，注释中是对应的标签；升级时同时改两者。
 
 # 前端。先只复制包清单与锁文件安装依赖，源码变了这一层照样复用。
@@ -43,8 +44,15 @@ RUN mkdir /out/data
 # 不写 HEALTHCHECK：镜像里没有能发请求的程序，编排系统用 /healthz、/readyz 做探针
 FROM gcr.io/distroless/static-debian13:latest@sha256:1a64f46364620465ef9e9a8f5413757dfdf22695e050bbfd7303eeaf17a59383 AS runtime
 ARG VERSION=0.1.0-dev
+# 提交与它的时间（git log -1 --format=%cI），不是构建的时间：同一个提交重建得到同样的 label。
+# make image 与 release.yml 传它们；直接 docker build 不传时是空的，image-smoke.sh 会失败
+ARG REVISION
+ARG CREATED
 LABEL org.opencontainers.image.title="Nerve Wiki" \
+      org.opencontainers.image.description="自托管的团队在线笔记：工作区、笔记本与层级的 Markdown 页面，内置 MCP" \
       org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${REVISION}" \
+      org.opencontainers.image.created="${CREATED}" \
       org.opencontainers.image.source="https://github.com/open-nerve/NerveWiki" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=server /out/nervewiki /nervewiki

@@ -15,6 +15,7 @@
 - Docker（含 Compose v2）
 - Go 1.26 或更高。第一次在 `server/` 下执行 Go 命令时，会自动下载 `server/go.mod` 指定的 Go 1.27.4。前提是 `GOTOOLCHAIN=auto`，这是 Go 官方安装包的默认值；部分 Linux 发行版自带的 Go 默认是 `local`，需要先执行 `go env -w GOTOOLCHAIN=auto`
 - Node.js 24，并执行一次 `corepack enable`（pnpm 的版本由 `package.json` 锁定）
+- bash、git、jq 与 awk：`make test-go-short` 里发布脚本的测试直接执行 `deploy/` 下的脚本，要它们
 
 第一次启动：
 
@@ -26,9 +27,9 @@ make          # 查看所有命令
 ```
 
 - 命令按工具链分区：`*-go` 只需要 Go，`*-web` 需要 Node。
-  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。
+  - `make lint` 依次执行 `make lint-go` 和 `make lint-web`。前者校验 golangci-lint 的配置并运行它（含格式检查），并检查 `server/` 与 `server/tools/` 的 `go.mod` 是否整洁；后者做 Markdown 样例集自检、`tools/`、`web/` 与 `e2e/` 的 oxlint（零警告）、格式检查和各 Node 包的类型检查。`make lint-actions`（actionlint 核对 `.github/workflows`）只在 CI 上跑，本机拒绝。
   - `make knip` 检查未使用的文件、导出与依赖；配置里过时的条目也算失败。
-  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j6` 同时跑 `test-go-race` 与六个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。最后一个入口依次跑 `test-go-guards-core` 与 `test-go-guards-sources`；CI 分别运行这两份，保留全部原测试与预算。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（即 `cd server && go test -short ./...`，`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
+  - `make test` 依次执行 `make test-go` 和 `make test-web`。前者运行 Go 测试：先以 `-j6` 同时跑 `test-go-race` 与六个 `test-go-bootstrap-*` 竞态入口（需要 cgo：macOS 装有 Xcode 命令行工具即可），再串行跑 `test-go-costs` → `test-go-costs-lint` → `test-go-guards`。最后一个入口依次跑 `test-go-guards-core` 与 `test-go-guards-sources`；CI 分别运行这两份，保留全部原测试与预算。lint 的迁移、计划、规则与编排成本在中间入口，`server/tools` 保留在 costs 并按原命令开启竞态；`test-go-short` 是另一个独立入口。集成测试用 testcontainers 启动与开发库相同的 PostgreSQL 镜像，需要 Docker；只跑单元测试用 `make test-go-short`（它以 `0.0.0-short` 盖测试的版本号；直接 `cd server && go test -short ./...` 也能跑，只是看不出 MCP 写死了版本号；`make check` 与持续集成的 `short` 一份跑它）。后者运行前端各包的 vitest。
   - 端到端测试另跑 `make e2e`，见下文"端到端测试"。
 - 格式有问题时执行 `make fmt`，它修正 Go 与其余文件的格式。`docs/` 不参与格式化。
 - 开发数据库以 builtin provider 的 `C.UTF-8` 初始化（`LC_CTYPE` 同为 `C.UTF-8`），与生产环境的要求相同，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。
@@ -504,7 +505,7 @@ M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实�
 
 ```bash
 make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例与提交信息、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 curl、jq、openssl）
+make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 git、curl、jq、openssl）
 ```
 
 镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。

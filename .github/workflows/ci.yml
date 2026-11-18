@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # 只在分支上：推 tag 时发布的闸门只认 tag 指的提交在 main 上已有的那次运行（release.yml），不再跑一遍十九项（M12/P5/S1）
   push:
+    branches: ["**"]
   pull_request:
 
 # 其他分支上的新推送取消同一分支较早的运行。main 的每次运行各占一个组：同一组里只保留一个排队的运行，
@@ -169,6 +171,10 @@ jobs:
       - name: Lint
         if: matrix.leg == 'costs-1'
         run: make lint-go
+      # 三份工作流的写法：只在 runner 上跑，本机的 make lint 不含它（M12/P5/S1）
+      - name: Lint workflows
+        if: matrix.leg == 'costs-1'
+        run: make lint-actions
       # 由 api/ 重新生成 Go 接口层，生成物必须已提交且没有差异
       - name: Generated code
         if: matrix.leg == 'costs-1'
