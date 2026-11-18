@@ -470,7 +470,9 @@ function saying(text: string) {
  * since the section showed, or the focus is somewhere already (v0.1
  * design 13.2, item 26, as transfer-page.tsx's useArriving): it gives up
  * then, the attachment gone said all the same. The section shown again,
- * by Back say, does it again: the state is the entry's.
+ * by Back say, does it again: the state is the entry's. It answers true
+ * only while the list read has it not: restored elsewhere, its row shows
+ * and gone is said no more (M12/P2/S5, 28.1).
  */
 function useLocated(
   list: AssetList | undefined,
@@ -521,7 +523,9 @@ function useLocated(
       heading.current?.focus();
     }
   }, [gone, heading]);
-  return gone !== undefined;
+  // Only the focus is given once: gone is said as the list read now has it not, and no more once it has it again,
+  // restored elsewhere (M12/P2/S5, 28.1).
+  return gone !== undefined && !(list?.assets.some((asset) => asset.id === located) ?? false);
 }
 
 /**

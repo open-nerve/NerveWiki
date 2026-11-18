@@ -815,6 +815,27 @@ test("an attachment gone to that the list read since lacks is said gone, the foc
   expect(document.activeElement).toBe(at);
 });
 
+test("an attachment said gone that comes back, restored elsewhere, is said gone no more: its row shows, the title described by nothing", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const gone = assetNode(31, "gone.png", linux);
+  const server = pageServer({ nodes: [guide, install, linux, notes] });
+  renderApp([{ pathname: pagePath(linux.id), state: { attachment: gone.id } }], server.app);
+  const said =
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it.";
+  const section = await attachments();
+  expect(await within(section).findByText(said)).toBeTruthy();
+  const title = within(section).getByRole("heading", { name: "Attachments" });
+  expect(title.getAttribute("aria-describedby")).not.toBeNull();
+
+  // Restored in another tab.
+  server.nodes = [...server.nodes, gone];
+  await readAgain();
+
+  expect(await within(section).findByRole("link", { name: "gone.png (opens in a new tab)" })).toBeTruthy();
+  expect(within(section).queryByText(said)).toBeNull();
+  expect(title.getAttribute("aria-describedby")).toBeNull();
+});
+
 // M12/P2/S1, 16.1: a row the list read again takes away, the focus in it or in its menu (a portal), leaves it to the
 // section's title, not to the body.
 test.each(["its menu open", "on its Actions"] as const)(
