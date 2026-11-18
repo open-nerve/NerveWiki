@@ -539,7 +539,7 @@ export const en = {
   "search.title": "Search",
   "search.titleOf": "Search: {q}",
   "search.heading": "Search “{q}”",
-  "search.howTo": "Type what to find in the search box at the top of the left column, and press Enter.",
+  "search.howTo": "Type what to find in the search box at the top, and press Enter.",
   "search.scope": "Where to look",
   "search.everyNotebook": "All notebooks",
   "search.notebookTwin": "{name} (ID {id})",

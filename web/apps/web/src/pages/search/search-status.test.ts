@@ -74,6 +74,12 @@ test("while the index is being built, it says that the hits may be missing some,
   );
 });
 
+test("of the pages read, the newest says whether the index is being built: built since, nothing is said of it", () => {
+  const pages = [page(20, true, { value: 30, kind: "about" }, true), page(10, false, null, false)];
+  expect(statusText(pages, 30, en, "en")).toBe("Results: 30.");
+  expect(statusText(pages, 30, zh, "zh-CN")).toBe("30 条。");
+});
+
 test("More says how many it added, or that it found none, a number as the language writes it", () => {
   expect(moreText(3, en, "en")).toBe("3 more found.");
   expect(moreText(3, zh, "zh-CN")).toBe("又找到 3 条。");

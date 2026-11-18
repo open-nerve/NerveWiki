@@ -515,7 +515,7 @@ export const zhCN: Messages = {
   "search.title": "搜索",
   "search.titleOf": "搜索：{q}",
   "search.heading": "搜索「{q}」",
-  "search.howTo": "在左栏顶部的搜索框里输入要找的文字，按回车。",
+  "search.howTo": "在顶部的搜索框里输入要找的文字，按回车。",
   "search.scope": "在哪里找",
   "search.everyNotebook": "全部笔记本",
   "search.notebookTwin": "{name}（编号 {id}）",
