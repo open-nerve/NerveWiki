@@ -6,6 +6,7 @@ import { attachments, dropped, nodes, picker, rows, transfers } from "../../test
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { assetJSON, assetNode, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { TokenManager } from "../../session/token-manager";
 import { AssetStore } from "../../stores/asset.store";
 import { formOf } from "../../test/transfer";
 
@@ -424,6 +425,43 @@ test("an upload cancelled in the turn it began is not said to go", async () => {
 
   expect(notice(section)).toBe("");
   act(() => server.release());
+});
+
+test("an upload cancelled in the turn it began, before it is sent as its token is renewed, is not said to go", async () => {
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  // The access token is renewed as the upload begins: its request waits, and the cancel cannot remove it yet.
+  const accessToken = TokenManager.prototype.accessToken;
+  const renewing = vi.spyOn(TokenManager.prototype, "accessToken").mockImplementation(async function (
+    this: TokenManager
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return accessToken.call(this);
+  });
+  onTestFinished(() => renewing.mockRestore());
+  const upload = AssetStore.prototype.upload;
+  const cancelling = vi.spyOn(AssetStore.prototype, "upload").mockImplementation(function (
+    this: AssetStore,
+    ...args: Parameters<AssetStore["upload"]>
+  ) {
+    const begun = upload.apply(this, args);
+    for (const each of begun) {
+      each.cancel();
+    }
+    return begun;
+  });
+  onTestFinished(() => cancelling.mockRestore());
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(cancelling).toHaveBeenCalled());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  // Still in the list of uploads, cancelled: it does not go.
+  expect(notice(section)).toBe("");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  expect(notice(section)).toBe("");
+  expect(transfers(server.app)).toEqual([]);
 });
 
 test("the focus on a row's button as its upload goes through goes back to Upload", async () => {
