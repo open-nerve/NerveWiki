@@ -906,6 +906,32 @@ test("an attachment said gone that comes back, restored elsewhere, is said gone 
   expect(title.getAttribute("aria-describedby")).toBeNull();
 });
 
+test("an attachment said gone that comes back past the list's first hundred is said gone no more: the list read is not whole", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const gone = assetNode(31, "zz.png", linux);
+  const hundred = Array.from({ length: 100 }, (_, i) =>
+    assetNode(400 + i, `f${String(i).padStart(3, "0")}.bin`, linux)
+  );
+  const server = pageServer({ nodes: [guide, install, linux, notes, ...hundred] });
+  renderApp([{ pathname: pagePath(linux.id), state: { attachment: gone.id } }], server.app);
+  const said =
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it.";
+  const section = await attachments();
+  expect(await within(section).findByText(said)).toBeTruthy();
+  const title = within(section).getByRole("heading", { name: "Attachments" });
+
+  // Restored in another tab, after the first hundred by its name.
+  server.nodes = [...server.nodes, gone];
+  await readAgain();
+  const more = await within(section).findByRole("button", { name: "More attachments" });
+
+  expect(within(section).queryByText(said)).toBeNull();
+  expect(title.getAttribute("aria-describedby")).toBeNull();
+  await user.click(more);
+  expect(await within(section).findByRole("link", { name: "zz.png (opens in a new tab)" })).toBeTruthy();
+});
+
 // M12/P2/S1, 16.1: a row the list read again takes away, the focus in it or in its menu (a portal), leaves it to the
 // section's title, not to the body.
 test.each(["its menu open", "on its Actions"] as const)(
