@@ -353,7 +353,7 @@ jobs:
       # 时限是 00-M12 第 3 节第 11 条的那一个，E2E 本身变慢时在这里红：作业原来的 20 分钟减去平常的前几步与装浏览器（中位 31 + 54 秒）。
       # 2026-11-06 至 18 日绿的 235 次 3:30–8:52，中位 6:27
       - name: E2E
-        timeout-minutes: 1
+        timeout-minutes: 18
         run: make e2e
       # 报告中带着失败用例的 trace 与截图；test-results/ 中另有每个 worker 的服务日志与失败时导出的数据库
       - name: Upload the Playwright report
