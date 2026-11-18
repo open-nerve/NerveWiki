@@ -135,6 +135,31 @@ export function oggOpus(seconds: number): Uint8Array<ArrayBuffer> {
   return Uint8Array.from(Buffer.concat(pages));
 }
 
+/**
+ * The bytes of a WAV file of seconds (whole) of silence: PCM, mono, 16 bits
+ * at 8 kHz, its RIFF header and its samples. The server takes it as
+ * audio/wave; the three engines play it, which Playwright's WebKit does not
+ * an Ogg Opus (M12/P2/S5, 15.2).
+ */
+export function wav(seconds: number): Uint8Array<ArrayBuffer> {
+  const rate = 8000;
+  const samples = rate * seconds;
+  const bytes = Buffer.alloc(44 + samples * 2);
+  bytes.write("RIFF", 0, "latin1");
+  bytes.writeUInt32LE(36 + samples * 2, 4);
+  bytes.write("WAVEfmt ", 8, "latin1");
+  bytes.writeUInt32LE(16, 16);
+  bytes.writeUInt16LE(1, 20);
+  bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(rate, 24);
+  bytes.writeUInt32LE(rate * 2, 28);
+  bytes.writeUInt16LE(2, 32);
+  bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36, "latin1");
+  bytes.writeUInt32LE(samples * 2, 40);
+  return Uint8Array.from(bytes);
+}
+
 /** oggPage is an Ogg page of the stream's packets, each shorter than 255 bytes: its flags, granule and sequence. */
 function oggPage(flags: number, granule: number, sequence: number, packets: Buffer[]): Buffer {
   const header = Buffer.alloc(27 + packets.length);
