@@ -223,6 +223,83 @@ test("pasted Markdown shows a server title refusal without clearing the draft", 
   );
 });
 
+// M12/P2/S5, 38.7: a draft is not lost to Escape or a click outside.
+/** overlayOf is the overlay behind dialog, which a click outside it lands on. */
+function overlayOf(dialog: HTMLElement): HTMLElement {
+  const overlay = dialog.parentElement?.querySelector<HTMLElement>(":scope > [data-state='open']:not([role])");
+  if (overlay === null || overlay === undefined) throw new Error("the dialog has no overlay");
+  return overlay;
+}
+
+test.each<[string, "en" | "zh-CN", { ask: string; keep: string; discard: string }]>([
+  [
+    "English",
+    "en",
+    { ask: "Close, and lose the title and Markdown entered here?", keep: "Keep editing", discard: "Discard and close" },
+  ],
+  ["Chinese", "zh-CN", { ask: "关闭并丢掉这里填写的标题与 Markdown？", keep: "继续编辑", discard: "丢掉并关闭" }],
+])(
+  "a draft is not lost to Escape or a click outside: the dialog asks, Keep editing keeps it and the focus where it was, Discard and close closes (%s)",
+  async (_, locale, said) => {
+    const user = userEvent.setup();
+    const server = sourceServer();
+    sourcePage(server);
+    const dialog = await pasteDialog(user);
+    draft(dialog);
+    act(() => server.app.preferences.setLocale(locale));
+    const markdown = dialog.querySelector("textarea") as HTMLTextAreaElement;
+    const title = dialog.querySelector<HTMLInputElement>("input[name=title]");
+    act(() => markdown.focus());
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("dialog")).toBe(dialog);
+    const ask = within(dialog).getByRole("alert");
+    expect(within(ask).getByText(said.ask)).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: said.keep })));
+    await user.click(within(ask).getByRole("button", { name: said.keep }));
+    expect(within(dialog).queryByRole("alert")).toBeNull();
+    expect([title?.value, markdown.value]).toEqual(["Evidence", "# Evidence\n\n  original text\n"]);
+    expect(document.activeElement).toBe(markdown);
+
+    // A press on the overlay, outside the dialog.
+    await user.click(overlayOf(dialog));
+    const again = await within(dialog).findByRole("alert");
+    await user.click(within(again).getByRole("button", { name: said.discard }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(creates(server)).toEqual([]);
+  }
+);
+
+test("an empty dialog closes at once on Escape", async () => {
+  const user = userEvent.setup();
+  sourcePage(sourceServer());
+  await pasteDialog(user);
+
+  await user.keyboard("{Escape}");
+
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+});
+
+test("a paste being sent stays on Escape, asking nothing", async () => {
+  const user = userEvent.setup();
+  const answer = deferred<Response>();
+  const server = sourceServer({ [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () => answer.promise });
+  sourcePage(server);
+  const dialog = await pasteDialog(user);
+  draft(dialog);
+  await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+  await within(dialog).findByRole("button", { name: "Adding…" });
+
+  await user.keyboard("{Escape}");
+  await user.click(overlayOf(dialog));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(screen.queryByRole("dialog")).toBe(dialog);
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  answer.resolve(problem(500, "internal"));
+});
+
 test.each(["closed", "role changed"] as const)(
   "a queued paste sends nothing after its dialog is %s",
   async (change) => {
