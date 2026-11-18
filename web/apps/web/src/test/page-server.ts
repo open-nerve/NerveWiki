@@ -109,9 +109,10 @@ type PageServerOptions = {
  * a toggle of one (M5/P6 design 3.3) answers as the server does: 409
  * page.revision_mismatch on another revision, 422 at an offset of no item,
  * 422 too for a tick that would leave none there ("- [ ]: /u" ticked is a
- * link reference definition: not_allowed on offset, M12/P2/S2), the page
- * as it is for an item in that state, 409 page.locked while a session
- * holds the page; otherwise it writes the content and its view.
+ * link reference definition: not_allowed on offset, M12/P2/S2; see
+ * tasksOf), the page as it is for an item in that state, 409 page.locked
+ * while a session holds the page; otherwise it writes the content and its
+ * view.
  *
  * A page's versions (M8/P1) are what versions has for it, oldest first,
  * by default one of its content as it is; withVersions gives it some and
@@ -1109,17 +1110,32 @@ function versionView(content: string, revision: number): PageView {
 }
 
 /**
- * The tasks of a content of task item lines, "- [ ] text" or "- [x] text", by their characters' offsets; a
- * line "- [ ]: text" is one too, as goldmark reads it, which a tick would make a link reference definition (goes),
- * as "- [x]: text" is, no task.
+ * definitionShape is a task line whose "]" a colon and a link destination alone follow ("- [x]: /u", "- [ ]: <>"):
+ * ticked, "[x]: /u" is a link reference definition, no task item (M12/P2/S2, as the server's parse reads it,
+ * checked in the step's review B). A definition with a title is not modelled ("- [x]: /u \"t\"" is no task to the
+ * server, a task here).
+ */
+const definitionShape = /^- \[([ xX])\]:[ \t]*(?:<[^<>\n]*>|[^\s<]\S*)[ \t]*$/;
+
+/**
+ * The tasks of a content of task item lines, "- [ ] text" or "- [x] text", by their characters' offsets. A line of
+ * the definition's shape is a task unticked, one a tick would make a definition (goes), and no task ticked; a line
+ * with a colon after "]" otherwise ("- [ ]: a b c", "- [x]:") is a task as any other. "- [ ]x", a task to the
+ * server, is none here.
  */
 function tasksOf(content: string): { offset: number; checked: boolean; text: string; goes: boolean }[] {
   const tasks = [];
   let at = 0;
   for (const line of content.split(/(?<=\n)/)) {
-    const match = /^- \[([ xX])\]( |(?=:))(.*)$/.exec(line.replace(/\r?\n$/, ""));
-    if (match !== null && !(match[2] === "" && match[1] !== " ")) {
-      tasks.push({ offset: at + 3, checked: match[1] !== " ", text: match[3] ?? "", goes: match[2] === "" });
+    const text = line.replace(/\r?\n$/, "");
+    const definition = definitionShape.exec(text);
+    const match = /^- \[([ xX])\](?: |(?=:))(.*)$/.exec(text);
+    if (definition !== null) {
+      if (definition[1] === " ") {
+        tasks.push({ offset: at + 3, checked: false, text: text.slice(5), goes: true });
+      }
+    } else if (match !== null) {
+      tasks.push({ offset: at + 3, checked: match[1] !== " ", text: match[2] ?? "", goes: false });
     }
     at += new TextEncoder().encode(line).length;
   }
