@@ -32,10 +32,13 @@ func TestIngestOfUnreferencedSourcesTakesItsTime(t *testing.T) {
 	ingestAdditionalRewriteCost(t, "unreferenced_old_f", sizes, 300, false, false, ingestCostBatchBudget, 11*time.Second)
 }
 
-// The single REST rename runs under production's 15s request deadline, so
-// that its own 11s bound judges it. Under the test's 4s the deadline judged
-// it, and on main at 5154e0de it answered 500 at 4.0s (00-M12, the side
-// branch m12-ingest-request-deadline, as decision 359).
+// The single REST rename was judged by the test's 4s request deadline, as
+// M10/P4 designed it ("verified with the existing request and parser
+// bounds, raising no limit", 04-P4-virtual-ingest.md:215); the 11s passed
+// below went unasserted for it from 6d1549fc, as a REST rename logs no
+// unit. On main at 5154e0de it answered 500 at 4.0s. From M12 it runs under
+// production's 15s and 11s judges it (00-M12, the side branch
+// m12-ingest-request-deadline, as decision 359).
 func TestIngestOfMoreThanBatchSourcesTakesItsTime(t *testing.T) {
 	sizes := make([]int, 401)
 	for i := range sizes {
@@ -93,8 +96,9 @@ func ingestAdditionalAssets(t *testing.T, tm acmeTeam, nb, root string, n int) [
 }
 func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets int, referenced, single bool, requestBudget, unitBudget time.Duration) {
 	trace, logs := &ingestCostTrace{}, &syncBuffer{}
+	deadline := ingestAdditionalDeadline(t, name, requestBudget, unitBudget)
 	tm, started := ingestAdditionalTeam(t, trace, logs, requestBudget)
-	if deadline := ingestAdditionalDeadline(t, name, requestBudget, unitBudget); started != deadline {
+	if started != deadline {
 		t.Fatalf("%s: the app started under a %s request deadline, want %s", name, started, deadline)
 	}
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Additional ingestion shape","mode":"llm_wiki"}`)
@@ -268,7 +272,12 @@ func ingestAdditionalRewriteCost(t *testing.T, name string, sizes []int, assets 
 // folding; each sample has its own groups and a fresh nonempty T.
 func TestIngestOfDeletedSourceGroupsTakesItsTime(t *testing.T) {
 	trace, logs := &ingestCostTrace{}, &syncBuffer{}
-	tm, _ := ingestAdditionalTeam(t, trace, logs, ingestCostBatchBudget)
+	request, bound := ingestCostBatchBudget, 11*time.Second
+	deadline := ingestAdditionalDeadline(t, "delete_q_s", request, bound)
+	tm, started := ingestAdditionalTeam(t, trace, logs, request)
+	if started != deadline {
+		t.Fatalf("delete_q_s: the app started under a %s request deadline, want %s", started, deadline)
+	}
 	nb := tm.createWith(t, tm.tokens["alice"], `{"name":"Ingest deleted groups","mode":"llm_wiki"}`)
 	names := ingestAdditionalAssets(t, tm, nb.ID, *nb.SourceRootID, 300)
 	for sample := range 3 {
@@ -303,22 +312,22 @@ func TestIngestOfDeletedSourceGroupsTakesItsTime(t *testing.T) {
 		queries, statements, indexNS := trace.stop()
 		ingestCostEvent(t, fmt.Sprintf("delete_q_s/%d", sample), metric, queries, indexNS, map[string]any{"old_f_pairs": 120000, "old_direct_sources": 400, "ops": 3})
 		t.Logf("INGESTRESPONSE case=delete_q_s/%d status=%d body=%s", sample, answer.status, answer.body)
-		if err != nil || time.Duration(metric.WallNS) >= ingestCostBatchBudget || answer.result(t)["isError"] == true {
+		if err != nil || time.Duration(metric.WallNS) >= request || answer.result(t)["isError"] == true {
 			ingestCostPlans(t, tm, statements, true)
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		if time.Duration(metric.WallNS) >= ingestCostBatchBudget {
-			t.Fatal("deleted-group batch exceeded original15s")
+		if time.Duration(metric.WallNS) >= request {
+			t.Fatalf("deleted-group batch exceeded its %s request deadline", request)
 		}
 		result := answerOf[mcpBatched](t, answer)
 		if result.ChangesetID == nil || !result.Changed || result.ResultsCount != 3 {
 			t.Fatalf("real delete result=%+v", result)
 		}
 		line := (&mcpApp{logs: logs}).loggedLast(t, "batch applied")
-		if ms, ok := line["unit_ms"].(float64); !ok || ms >= 11000 {
-			t.Fatalf("deleted group original unit budget: %v", line)
+		if ms, ok := line["unit_ms"].(float64); !ok || ms >= float64(bound.Milliseconds()) {
+			t.Fatalf("deleted group exceeded its %s unit bound: %v", bound, line)
 		}
 		ingestCostMark(t, tm, *result.ChangesetID, target)
 		if count(t, tm.pool, "SELECT count(*) FROM nodes WHERE parent_id IN($1,$2) AND deleted_at IS NOT NULL", sourceGroup, qGroup) != 800 {
