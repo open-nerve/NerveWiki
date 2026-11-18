@@ -633,6 +633,9 @@ export const en = {
   "editor.leaveDescription": "Your changes to this page are not saved.",
   "editor.stay": "Stay",
   "editor.leave": "Leave",
+  "editor.leaveUploadsTitle": "Leave before the files are inserted?",
+  "editor.leaveUploadsDescription":
+    "Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it.",
   "editor.conflicted": "This page changed while you edited it: see below.",
   "editor.conflictTitle": "This page changed while you edited it",
   "editor.conflictDescription":

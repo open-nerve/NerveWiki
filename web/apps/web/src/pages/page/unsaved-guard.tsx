@@ -12,8 +12,10 @@ import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 
 type UnsavedGuardProps = {
-  /** Whether the edit is unsaved: leaving asks only then. */
+  /** Whether the edit is unsaved: leaving asks then. */
   unsaved: boolean;
+  /** Whether files pasted or dropped into the edit are still uploading: leaving the page in the app asks then too. */
+  uploading?: boolean;
   /** stay is called as the user stays: the focus goes back to the edit. */
   stay(): void;
 };
@@ -23,19 +25,23 @@ type UnsavedGuardProps = {
  * a move to another page of the app waits on a confirmation, Stay or
  * Leave; closing or reloading the tab has the browser ask. A change of
  * the query or the hash alone is no leaving. A save that goes through
- * while it asks lets the move go on: nothing is left unsaved.
+ * while it asks lets the move go on: nothing is left unsaved. While files
+ * pasted or dropped still upload, a move to another page asks as well,
+ * saying they will not be inserted (M12/P2/S5, 18.1); closing the tab is
+ * the AssetStore's to ask about, and signing out asks about neither.
  */
-export function UnsavedGuard({ unsaved, stay }: UnsavedGuardProps) {
+export function UnsavedGuard({ unsaved, uploading = false, stay }: UnsavedGuardProps) {
   const t = useT();
   const stayed = useRef(false);
+  const asking = unsaved || uploading;
   const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) => unsaved && currentLocation.pathname !== nextLocation.pathname
+    ({ currentLocation, nextLocation }) => asking && currentLocation.pathname !== nextLocation.pathname
   );
   useEffect(() => {
-    if (blocker.state === "blocked" && !unsaved) {
+    if (blocker.state === "blocked" && !asking) {
       blocker.proceed();
     }
-  }, [blocker, unsaved]);
+  }, [blocker, asking]);
   useEffect(() => {
     if (!unsaved) {
       return undefined;
@@ -63,8 +69,15 @@ export function UnsavedGuard({ unsaved, stay }: UnsavedGuardProps) {
           }
         }}
       >
-        <AlertDialogTitle>{t("editor.leaveTitle")}</AlertDialogTitle>
-        <AlertDialogDescription>{t("editor.leaveDescription")}</AlertDialogDescription>
+        <AlertDialogTitle>{t(unsaved ? "editor.leaveTitle" : "editor.leaveUploadsTitle")}</AlertDialogTitle>
+        <AlertDialogDescription>
+          {unsaved && uploading
+            ? t("page.sentences", {
+                first: t("editor.leaveDescription"),
+                second: t("editor.leaveUploadsDescription"),
+              })
+            : t(unsaved ? "editor.leaveDescription" : "editor.leaveUploadsDescription")}
+        </AlertDialogDescription>
         <div className="flex justify-end gap-2">
           <AlertDialogCancel asChild>
             <Button variant="outline">{t("editor.stay")}</Button>

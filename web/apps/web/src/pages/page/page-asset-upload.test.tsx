@@ -6,9 +6,9 @@ import { expect, onTestFinished, test, vi } from "vitest";
 import { idleLimit } from "../../editor/idle-exit";
 import { editorExtensions } from "../../editor/registry";
 import { attachments, dropped, nodes, picker, transfers } from "../../test/attachments";
-import { instanceJSON, json } from "../../test/fakes";
+import { instanceJSON, json, notebookJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
-import { guide, pagePath, pageServer } from "../../test/page-server";
+import { assetJSON, guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // Files pasted into the page's editor upload as its attachments, their embeds inserted, through the composition
@@ -75,6 +75,132 @@ test("a Markdown file pasted over a selection keeps it: its row by the editor sa
   );
   expect(view.state.doc.toString()).toBe(before);
   expect(server.sent.filter((line) => line.startsWith("UPLOAD"))).toEqual([]);
+});
+
+/** tree is the left column's tree of the notebook's pages, named in English or in Chinese. */
+const tree = () => screen.getByRole("navigation", { name: /^(Pages of Plans|Plans的页面)$/u });
+
+test.each<[string, "en" | "zh-CN", { title: string; description: string; stay: string; leave: string }]>([
+  [
+    "English",
+    "en",
+    {
+      title: "Leave before the files are inserted?",
+      description:
+        "Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it.",
+      stay: "Stay",
+      leave: "Leave",
+    },
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    {
+      title: "在文件插入之前离开？",
+      description: "粘贴或拖入的文件还在上传。它们会照样加进这一页的附件，但不会插入页面。",
+      stay: "留下",
+      leave: "离开",
+    },
+  ],
+])(
+  "a file pasted uploading, going to another page asks first: Stay keeps the edit; Leave goes, the upload goes on, its embed not inserted (%s)",
+  async (_, locale, said) => {
+    const server = pageServer({ nodes });
+    server.uploadsHeld = true;
+    const { user, view, content } = await editing(server);
+    act(() => server.app.preferences.setLocale(locale));
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+    await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+    await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+    const ask = await screen.findByRole("alertdialog", { name: said.title });
+    expect(ask.getAttribute("aria-describedby")).not.toBeNull();
+    expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(said.description);
+    await user.click(within(ask).getByRole("button", { name: said.stay }));
+    expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(content));
+
+    await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+    await user.click(
+      within(await screen.findByRole("alertdialog", { name: said.title })).getByRole("button", { name: said.leave })
+    );
+    await screen.findByRole("heading", { level: 1, name: "Notes" });
+    act(() => server.release());
+    await waitFor(() => expect(server.nodes.some((node) => node.name === "chart.png")).toBe(true));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(puts(server)).toEqual([]);
+  }
+);
+
+test("unsaved and uploading, leaving says both", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ changes: { from: view.state.doc.length, insert: "draft" }, selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+    "Your changes to this page are not saved. Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it."
+  );
+  act(() => server.release());
+});
+
+test("an upload answered, its embed in, asks nothing for itself as its list is read again: leaving says only what is unsaved", async () => {
+  let holding = false;
+  let release: (() => void) | undefined;
+  const server = pageServer({
+    nodes,
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/assets`]: async (request) => {
+        if (holding) {
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        const parent = new URL(request.url).searchParams.get("parent_id");
+        return json({
+          data: server.nodes
+            .filter((node) => node.kind === "asset" && node.parent_id === parent)
+            .map((node) => assetJSON(node)),
+          next_cursor: null,
+        });
+      },
+    },
+  });
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  holding = true;
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  // Answered: its embed goes in as its list is read again, held.
+  await waitFor(() => expect(view.state.doc.toString()).toContain("![[chart.png]]"));
+  expect(release).toBeDefined();
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+    "Your changes to this page are not saved."
+  );
+  holding = false;
+  act(() => release?.());
+});
+
+test("signing out as a pasted file uploads asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
 });
 
 test("a file without an extension uploads, and is not inserted: the editor says so, shown and unseen", async () => {

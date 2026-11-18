@@ -605,6 +605,8 @@ export const zhCN: Messages = {
   "editor.leaveDescription": "这一页的修改还没有保存。",
   "editor.stay": "留下",
   "editor.leave": "离开",
+  "editor.leaveUploadsTitle": "在文件插入之前离开？",
+  "editor.leaveUploadsDescription": "粘贴或拖入的文件还在上传。它们会照样加进这一页的附件，但不会插入页面。",
   "editor.conflicted": "这一页在你编辑时被改过：见下方。",
   "editor.conflictTitle": "这一页在你编辑时被改过",
   "editor.conflictDescription":

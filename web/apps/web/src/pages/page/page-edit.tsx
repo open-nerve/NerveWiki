@@ -120,6 +120,11 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const { conflict } = editing;
   const { lost } = editing.session;
   const shown = editing.content !== undefined;
+  // Files pasted or dropped into the edit still going: leaving would not insert them (M12/P2/S5, 18.1).
+  const uploading = assets.uploads.some(
+    (upload) =>
+      upload.parent === page.id && upload.fromEditor && upload.failure === undefined && upload.result === undefined
+  );
 
   useEffect(() => {
     editing.keep();
@@ -484,7 +489,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           onChange={editing.changed}
         />
       </Suspense>
-      <UnsavedGuard unsaved={editing.unsaved} stay={back} />
+      <UnsavedGuard unsaved={editing.unsaved} uploading={uploading} stay={back} />
     </div>
   );
 });
