@@ -33,7 +33,7 @@ function Marked({ text, ranges }: { text: string; ranges: readonly TextRange[] }
     const key = at;
     at += part.length;
     return hit ? (
-      <mark key={key} className="nw-hit rounded-xs bg-(--nw-mark-background) font-semibold text-inherit">
+      <mark key={key} className="nw-hit rounded-xs bg-(--nw-mark-background) font-bold text-inherit">
         {part}
       </mark>
     ) : (

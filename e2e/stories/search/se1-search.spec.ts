@@ -2,7 +2,7 @@ import type { ApiClient, SearchHit, SearchPage } from "@nervewiki/api-client";
 import type { Page } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
-import { focusContrast, setColorScheme } from "../../fixtures/contrast";
+import { focusContrast, setColorScheme, textContrast } from "../../fixtures/contrast";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -270,10 +270,10 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await expect(page).toHaveTitle("Search: 检索 · Acme · Nerve Wiki");
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expectFound("检索", await shownOf(page));
-  // Marked by more than its colour, which is the page's outside a reading view too.
+  // Marked by more than its colour, which is the page's outside a reading view too: bold (M12/P2/S3; M5-polish 26.9).
   const mark = searchResults(page).first().locator("mark").first();
   expect(await mark.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
-  expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("600");
+  expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("700");
 
   // What takes the focus shows it, 3:1 at least against the page in either theme (M12/P2/S3; M5-polish 12.4): the
   // box, its Search, Where to look, and a hit's link, whose outline is the page's own.
@@ -281,6 +281,9 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   const where = main.getByRole("combobox", { name: "Where to look", exact: true });
   const focusShown = async (scheme: "light" | "dark") => {
     await setColorScheme(page, scheme);
+    // A term marked reads against its highlight.
+    const marked = await textContrast(mark);
+    expect(marked.ratio, `${scheme} ${JSON.stringify(marked)}`).toBeGreaterThanOrEqual(4.5);
     await searchBox(page).focus();
     const box = await focusContrast(searchBox(page));
     expect(box.ratio, `${scheme} ${JSON.stringify(box)}`).toBeGreaterThanOrEqual(3);
@@ -314,6 +317,19 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
     // oxlint-disable-next-line no-await-in-loop -- what it shows
     expectFound(q, await shownOf(page));
   }
+
+  // In a hit's name, its terms are bolder than the name around them, not marked by their colour alone (26.9).
+  const named = searchResults(page).first().getByRole("link").locator("mark").first();
+  expect(await named.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("700");
+  expect(await named.evaluate((element) => getComputedStyle(element.closest("p") as Element).fontWeight)).toBe("500");
+  const nameShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    const marked = await textContrast(named);
+    expect(marked.ratio, `${scheme} ${JSON.stringify(marked)}`).toBeGreaterThanOrEqual(4.5);
+  };
+  await nameShown("light");
+  await nameShown("dark");
+  await setColorScheme(page, "light");
 
   // Back at once, its read within SWR's deduping of it: the search before, read again, shown; Forward, the last.
   await page.goBack();
