@@ -172,7 +172,7 @@ function RestoreForm({ notebook, page, version, sending, setSending, close, rest
   const failed =
     failure === undefined
       ? undefined
-      : (lockedText(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ?? errorText(failure, t));
+      : (lockedText(failure, t, me, (id) => distinctName(pages.tree, id, t)) ?? errorText(failure, t));
   return (
     <>
       <AlertDialogTitle>{t("version.restoreTitle", { revision: version.revision })}</AlertDialogTitle>

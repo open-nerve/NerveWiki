@@ -1461,15 +1461,15 @@ test("the approval's dialog names the source area as the state section does, whe
   renderApp(upgradePath, server.app);
   const state = await section("Where it is");
   // The source root and, the upgrade having written it, among the pages it wrote.
-  expect(await within(state).findAllByRole("link", { name: "raw (at the top level of Plans)" })).toHaveLength(2);
+  expect(await within(state).findAllByRole("link", { name: "raw (at the notebook's top level)" })).toHaveLength(2);
 
   const dialog = await opened(user, approves, approveTitle);
-  expect(within(dialog).getByText(approveBody("raw (at the top level of Plans)"))).toBeTruthy();
+  expect(within(dialog).getByText(approveBody("raw (at the notebook's top level)"))).toBeTruthy();
   await dismissed(user, dialog);
   act(() => server.app.preferences.setLocale("zh-CN"));
   const zh = await opened(user, "批准…", "批准「Plans」的升级？");
 
-  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（Plans 的顶层））下的页与附件只读");
+  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（笔记本的顶层））下的页与附件只读");
   // An undo in the history undoes changes, not changesets, in either language (M12/P2/S2, 23.1).
   expect(zh.textContent).toContain("升级的改动仍可在历史里照 LLM Wiki 的规则逐个撤销");
 });

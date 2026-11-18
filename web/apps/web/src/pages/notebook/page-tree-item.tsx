@@ -163,7 +163,7 @@ export const PageList = observer(function PageList({ context, parent, depth, id 
             context={context}
             id={node.id}
             name={node.name}
-            label={distinctName(tree, notebook, node.id, t) ?? node.name}
+            label={distinctName(tree, node.id, t) ?? node.name}
             href={`${home}/pages/${node.id}`}
             depth={depth}
             hasChildren={hasChildren}
@@ -519,7 +519,7 @@ const PageDialogs = observer(function PageDialogs({
   const retention = instance.info?.trash_retention_seconds;
   const period = retention === undefined ? undefined : formatPeriod(retention, preferences.locale);
   const node = pages.byId(id);
-  const name = distinctName(pages.tree, notebook, id, t) ?? node?.name ?? "";
+  const name = distinctName(pages.tree, id, t) ?? node?.name ?? "";
   const held = (kind: Dialogs) => ({
     open: open && which === kind,
     onOpenChange: setOpen,
@@ -613,7 +613,7 @@ const PageDialogs = observer(function PageDialogs({
             await pages.remove(id, beforeDelete);
           }}
           // Someone editing the page or one under it refuses the deletion: the dialog names them, and the page.
-          explain={(error) => lockedText(error, t, me, (each) => distinctName(pages.tree, notebook, each, t))}
+          explain={(error) => lockedText(error, t, me, (each) => distinctName(pages.tree, each, t))}
         />
       );
   }

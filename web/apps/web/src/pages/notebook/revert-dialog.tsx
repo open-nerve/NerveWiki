@@ -197,7 +197,7 @@ function RevertForm({
             return background ? t("transfer.queueFull") : undefined;
         }
       }
-      return lockedText(error, t, me, (id) => distinctName(pages.tree, notebook, id, t));
+      return lockedText(error, t, me, (id) => distinctName(pages.tree, id, t));
     },
   });
   if (conflict !== undefined) {

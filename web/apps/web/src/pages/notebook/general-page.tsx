@@ -246,7 +246,7 @@ const ModeSection = observer(function ModeSection({ workspace, notebook }: Noteb
             void navigate(`${home}/upgrade`, { state: arrived });
           }
         }}
-        explain={(error) => pagesLocked(error, t, me.id, (id) => distinctName(pages.tree, notebook, id, t))}
+        explain={(error) => pagesLocked(error, t, me.id, (id) => distinctName(pages.tree, id, t))}
         texts={{ "transfer.busy": "transfer.writingBusy" }}
         tone="default"
       />

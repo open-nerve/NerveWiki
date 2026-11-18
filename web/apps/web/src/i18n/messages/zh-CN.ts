@@ -220,7 +220,7 @@ export const zhCN: Messages = {
   "page.properties": "属性",
   "page.noProperties": "没有属性。",
   "page.propertiesInvalid": "这一页的 frontmatter 不合法，没有属性。",
-  "page.nameAtTop": "{name}（{notebook} 的顶层）",
+  "page.nameAtTop": "{name}（笔记本的顶层）",
   "page.taskWouldGo": "这一项不能在这里勾选或取消勾选：改了之后它那一行就不再是任务项。请编辑页面来修改。",
   "version.list": "版本",
   "version.listHint": "一次编辑一个版本。",

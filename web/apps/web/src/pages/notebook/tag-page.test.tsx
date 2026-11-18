@@ -38,7 +38,7 @@ test("a tag of a reading view leads to its pages, in the tree's order, each name
     "Install (in Guide)",
     "Linux",
     "Notes",
-    "Install (at the top level of Plans)",
+    "Install (at the notebook's top level)",
   ]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual(
     [install, linux, notes, other].map((page) => pagePath(page.id))

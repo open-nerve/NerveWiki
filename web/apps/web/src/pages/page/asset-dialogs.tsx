@@ -71,7 +71,7 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             fieldTexts={assetNameTexts}
             beforeSave={requireManage}
             rename={(name) => assets.rename(asset.id, asset.parent_id, name + extension, requireManage)}
-            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
+            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
             onSaved={() => {
@@ -184,8 +184,7 @@ const MoveAssetForm = observer(function MoveAssetForm({
   const me = useStore().account?.me?.id;
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id"], {
     explain: (error) =>
-      duplicateText(error, pages, openNode) ??
-      pagesLocked(error, t, me, (each) => distinctName(pages.tree, notebook, each, t)),
+      duplicateText(error, pages, openNode) ?? pagesLocked(error, t, me, (each) => distinctName(pages.tree, each, t)),
   });
   const problem = problemOf("parent_id");
   const tree = pages.tree;

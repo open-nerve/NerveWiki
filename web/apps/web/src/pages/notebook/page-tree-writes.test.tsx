@@ -239,7 +239,7 @@ test("a rename whose links' pages are being edited names them, as the tree does,
     within(alert)
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (at the top level of Plans)”."]);
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (at the notebook's top level)”."]);
   expect(alert.textContent).toContain("This change would write the links on these pages again");
   expect(server.nodes.map((node) => node.name)).toEqual(["Guide", "Install", "Linux", "Notes", "Notes"]);
 });
@@ -272,8 +272,8 @@ test("a move whose links' pages are being edited names them, as the tree does, a
     answers: { "POST /api/v0/nodes/*/move": () => answer() },
   });
   renderApp(home, server.app);
-  await choose(user, "Notes (at the top level of Plans)", "Move to…");
-  const dialog = await screen.findByRole("dialog", { name: "Move Notes (at the top level of Plans)" });
+  await choose(user, "Notes (at the notebook's top level)", "Move to…");
+  const dialog = await screen.findByRole("dialog", { name: "Move Notes (at the notebook's top level)" });
   await user.selectOptions(within(dialog).getByLabelText("Parent page"), "Guide");
   await user.click(within(dialog).getByRole("button", { name: "Move" }));
 
@@ -282,7 +282,7 @@ test("a move whose links' pages are being edited names them, as the tree does, a
     within(alert)
       .getAllByRole("listitem")
       .map((item) => item.textContent)
-  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (at the top level of Plans)”."]);
+  ).toEqual(["Bob is editing “Linux”.", "You are editing “Notes (at the notebook's top level)”."]);
 
   answer = () => problem(503, "server_busy", {}, { "Retry-After": "1" });
   await user.click(within(dialog).getByRole("button", { name: "Move" }));

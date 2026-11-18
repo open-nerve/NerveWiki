@@ -107,8 +107,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
   const sourceMove = useSourceMove(pages);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "after_id"], {
     explain: (error) =>
-      duplicateText(error, pages, openNode) ??
-      pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t)),
+      duplicateText(error, pages, openNode) ?? pagesLocked(error, t, me, (id) => distinctName(pages.tree, id, t)),
   });
   const problems = { parent: problemOf("parent_id"), position: problemOf("after_id") };
   const tree = pages.tree;

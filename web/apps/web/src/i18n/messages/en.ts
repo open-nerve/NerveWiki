@@ -233,7 +233,7 @@ export const en = {
   "page.properties": "Properties",
   "page.noProperties": "No properties.",
   "page.propertiesInvalid": "The page's frontmatter is not valid: it has no properties.",
-  "page.nameAtTop": "{name} (at the top level of {notebook})",
+  "page.nameAtTop": "{name} (at the notebook's top level)",
   "page.taskWouldGo":
     "This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it.",
   "version.list": "Versions",

@@ -129,7 +129,7 @@ test("only the root AGENTS is protected, by its normalized title", async () => {
   const nested = await within(nav).findByRole("link", { name: "AGENTS (source)" });
 
   expect(top.parentElement?.hasAttribute("draggable")).toBe(false);
-  expect(await actionsFor(user, nav, "aGeNtS (at the top level of Plans)")).toEqual(["New subpage"]);
+  expect(await actionsFor(user, nav, "aGeNtS (at the notebook's top level)")).toEqual(["New subpage"]);
   await user.keyboard("{Escape}");
   expect(nested.parentElement?.hasAttribute("draggable")).toBe(false);
   expect(await actionsFor(user, nav, "AGENTS (in raw)")).toEqual(["Paste Markdown", "Upload files"]);
@@ -200,8 +200,8 @@ test("the notebook's pages are in the left column, beside the main, their roots 
 });
 
 test.each([
-  ["en", "Pages of Plans", "Actions for Notes (in Plans)", "Actions for Notes (at the top level of Plans)"],
-  ["zh-CN", "Plans的页面", "Notes（Plans 下）的操作", "Notes（Plans 的顶层）的操作"],
+  ["en", "Pages of Plans", "Actions for Notes (in Plans)", "Actions for Notes (at the notebook's top level)"],
+  ["zh-CN", "Plans的页面", "Notes（Plans 下）的操作", "Notes（笔记本的顶层）的操作"],
 ] as const)(
   "a page at the root and a page under a root page titled as the notebook are told apart, in %s",
   async (locale, pages, under, top) => {
@@ -224,7 +224,7 @@ test("pages of the same title are told apart in their controls and dialogs by wh
 
   const nav = await tree();
   await within(nav).findByRole("button", { name: "Actions for Notes (in Guide)" });
-  expect(within(nav).getByRole("button", { name: "Actions for Notes (at the top level of Plans)" })).toBeTruthy();
+  expect(within(nav).getByRole("button", { name: "Actions for Notes (at the notebook's top level)" })).toBeTruthy();
   expect(within(nav).getByRole("button", { name: "Actions for Install" })).toBeTruthy();
   await user.click(within(nav).getByRole("button", { name: "Actions for Notes (in Guide)" }));
   await user.click(await screen.findByRole("menuitem", { name: "Rename" }));

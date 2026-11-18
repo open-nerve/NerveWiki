@@ -57,7 +57,7 @@ export const TagPage = observer(function TagPage() {
           label={t("tag.pages", { tag })}
           pages={listed}
           href={(id) => `${home}/pages/${id}`}
-          nameOf={(page) => distinctName(index, notebook, page.id, t) ?? page.name}
+          nameOf={(page) => distinctName(index, page.id, t) ?? page.name}
         />
       )}
     </section>
