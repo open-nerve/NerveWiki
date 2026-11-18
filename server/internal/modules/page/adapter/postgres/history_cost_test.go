@@ -5,6 +5,7 @@ package postgresadapter_test
 import (
 	"context"
 	"fmt"
+	"os"
 	"slices"
 	"testing"
 	"time"
@@ -20,14 +21,16 @@ import (
 )
 
 // longLog is a notebook of a long history, without statistics (M8/P3
-// design 3.11): 100,000 changesets a second apart, of three actors, from
-// the web, the API and two MCP clients, one in a thousand from the CLI; a
-// page of 20,000 versions and 20,000 items, each in a changeset of its
-// own; a changeset of 50,000 items, one of the newest 100; 50,000 pages,
-// an item of each in three of five changesets, and a version of 10,000 of
-// them. Its store is on one connection, which caches the statements as a
-// server's do.
+// design 3.11): n changesets a second apart, 100,000 unless
+// NW_SCALE_CHANGESETS gives another number by hand (changesetsOf), of
+// three actors, from the web, the API and two MCP clients, one in a
+// thousand from the CLI; a page of n/5 versions and n/5 items, each in a
+// changeset of its own; a changeset of 50,000 items, one of the newest 100
+// (the n-50th); 50,000 pages, an item of each in three of five changesets
+// but that one, and a version of 10,000 of them. Its store is on one
+// connection, which caches the statements as a server's do.
 type longLog struct {
+	n        int
 	s        *postgresadapter.Store
 	pool     *pgxpool.Pool
 	notebook uuid.UUID
@@ -39,7 +42,21 @@ type longLog struct {
 	analyze  func()
 }
 
-func newLongLog(t *testing.T) longLog {
+// longLogSize is the long log's changesets for t, and whether by hand:
+// then its tests log their times and judge none.
+func longLogSize(t *testing.T) (int, bool) {
+	t.Helper()
+	n, byHand, err := changesetsOf(os.Getenv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if byHand {
+		t.Logf("scale=%d changesets by hand: the times logged, not judged", n)
+	}
+	return n, byHand
+}
+
+func newLongLog(t *testing.T, n int) longLog {
 	t.Helper()
 	ctx := context.Background()
 	f := newFixture(t)
@@ -54,24 +71,24 @@ func newLongLog(t *testing.T) longLog {
 	f.exec(t, `INSERT INTO changesets (id, notebook_id, kind, client, created_by_id, created_at, updated_at)
 		SELECT uuidv7(), $1, 'edit', CASE WHEN k % 1000 = 0 THEN 'cli' ELSE (ARRAY['web', 'api', 'mcp:a', 'mcp:b'])[1 + k % 4] END,
 			($2::uuid[])[1 + k % 3], $3::timestamptz + k * interval '1 second', $3::timestamptz + k * interval '1 second'
-		FROM generate_series(1, 100000) k`, f.eng, []uuid.UUID{f.alice, bob, carol}, now())
+		FROM generate_series(1, $4::integer) k`, f.eng, []uuid.UUID{f.alice, bob, carol}, now(), n)
 	const numbered = `(SELECT id, row_number() OVER (ORDER BY created_at) AS k FROM changesets WHERE notebook_id = $1) c`
 	f.exec(t, `INSERT INTO page_revisions (id, changeset_id, node_id, base_revision, revision, content, content_hash, byte_size,
 			created_at, updated_at)
 		SELECT uuidv7(), c.id, $2, NULLIF(c.k / 5, 0), c.k / 5 + 1, '', sha256(''), 0, $3, $3 FROM `+numbered+` WHERE c.k % 5 = 1`,
 		f.eng, page.ID, now())
-	f.exec(t, `UPDATE page_contents SET revision = 20000 WHERE node_id = $1`, page.ID)
+	f.exec(t, `UPDATE page_contents SET revision = $2 WHERE node_id = $1`, page.ID, n/5)
 	f.exec(t, `INSERT INTO changeset_items (id, changeset_id, node_id, before_name, before_sort_order, after_name, after_sort_order,
 			created_at, updated_at)
 		SELECT uuidv7(), c.id, $2, 'Long', c.k - 1, 'Long', c.k, $3, $3 FROM `+numbered+` WHERE c.k % 5 = 2`, f.eng, page.ID, now())
 	f.exec(t, `INSERT INTO changeset_items (id, changeset_id, node_id, after_name, after_sort_order, created_at, updated_at)
 		SELECT uuidv7(), c.id, ($2::uuid[])[1 + c.k % 50000], 'N', 0, $3, $3 FROM `+numbered+`
-		WHERE c.k % 5 IN (0, 3, 4) AND c.k <> 99950`, f.eng, pages, now())
+		WHERE c.k % 5 IN (0, 3, 4) AND c.k <> $4`, f.eng, pages, now(), n-50)
 	f.exec(t, `INSERT INTO page_revisions (id, changeset_id, node_id, revision, content, content_hash, byte_size, created_at, updated_at)
 		SELECT uuidv7(), c.id, ($2::uuid[])[c.k / 5 + 1], 1, '', sha256(''), 0, $3, $3 FROM `+numbered+`
 		WHERE c.k % 5 = 3 AND c.k < 50000`, f.eng, pages, now())
 	var large uuid.UUID
-	if err := f.pool.QueryRow(ctx, `SELECT c.id FROM `+numbered+` WHERE c.k = 99950`, f.eng).Scan(&large); err != nil {
+	if err := f.pool.QueryRow(ctx, `SELECT c.id FROM `+numbered+` WHERE c.k = $2`, f.eng, n-50).Scan(&large); err != nil {
 		t.Fatal(err)
 	}
 	f.exec(t, `INSERT INTO changeset_items (id, changeset_id, node_id, after_name, after_sort_order, created_at, updated_at)
@@ -81,7 +98,7 @@ func newLongLog(t *testing.T) longLog {
 		stats != 0 {
 		t.Fatalf("the log has statistics of %d columns, %v", stats, err)
 	}
-	if items = f.count(t, `SELECT count(*) FROM changeset_items`); items != 50_000+20_000+59_999 {
+	if items = f.count(t, `SELECT count(*) FROM changeset_items`); items != 50_000+n/5+3*n/5-1 {
 		t.Fatalf("the log holds %d items", items)
 	}
 	rows, err := f.pool.Query(ctx, `SELECT id FROM changesets WHERE notebook_id = $1 ORDER BY created_at DESC, id DESC LIMIT 100`, f.eng)
@@ -97,7 +114,7 @@ func newLongLog(t *testing.T) longLog {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
-	return longLog{s: postgresadapter.New(pool), pool: pool, notebook: f.eng, bob: bob, page: page.ID, large: large, newest: newest,
+	return longLog{n: n, s: postgresadapter.New(pool), pool: pool, notebook: f.eng, bob: bob, page: page.ID, large: large, newest: newest,
 		pages: pages, analyze: func() { f.exec(t, "ANALYZE") }}
 }
 
@@ -157,10 +174,12 @@ func expect(err error, ok bool, got any) error {
 // notebook's whole index, the worst of its filters: 5 to 8 ms here; the
 // long page's sorts its 40,000 changesets, 31 to 43 ms; the rest took
 // under 27 ms, most under 1. The long page's, joined as the planner
-// pleased, took 7 s a page without statistics.
+// pleased, took 7 s a page without statistics. The middle is the log's,
+// the n/2-th changeset's time; by hand the times are logged alone.
 func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 	ctx := context.Background()
-	l := newLongLog(t)
+	n, byHand := longLogSize(t)
+	l := newLongLog(t, n)
 	// Preserve the original 100k history and all its old reads. Mark one in
 	// eleven plus the newest hundred; only that page holds 25 sources each.
 	if _, err := l.pool.Exec(ctx, "ALTER TABLE changeset_sources SET (autovacuum_enabled=false)"); err != nil {
@@ -184,7 +203,7 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 	expected := map[string][]uuid.UUID{}
 	for _, name := range []string{"notebook", "actor", "page"} {
 		var timestamps []time.Time
-		for k := 50000; k > 0 && len(timestamps) < 101; k-- {
+		for k := l.n / 2; k > 0 && len(timestamps) < 101; k-- {
 			if k%11 != 0 || name == "actor" && k%3 != 1 || name == "page" && k%5 != 1 && k%5 != 2 {
 				continue
 			}
@@ -202,7 +221,7 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 	}
 	ingestPage := func(name string, filter domain.LogFilter) func() error {
 		return func() error {
-			got, err := l.s.ListChangesets(ctx, l.notebook, filter, domain.ChangesetCursor{At: now().Add(50000 * time.Second), ID: uuid.Max()}, 101)
+			got, err := l.s.ListChangesets(ctx, l.notebook, filter, domain.ChangesetCursor{At: now().Add(time.Duration(l.n/2) * time.Second), ID: uuid.Max()}, 101)
 			if err != nil {
 				return err
 			}
@@ -223,7 +242,7 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 			return expect(err, len(got) == 101 || f.Client == domain.ClientCLI && len(got) == 100, len(got))
 		}
 	}
-	middle := domain.ChangesetCursor{At: now().Add(50_000 * time.Second), ID: uuid.Max()}
+	middle := domain.ChangesetCursor{At: now().Add(time.Duration(l.n/2) * time.Second), ID: uuid.Max()}
 	reads := []logRead{
 		{"the first page", page(domain.LogFilter{}, domain.ChangesetFrom())},
 		{"a page from the middle", page(domain.LogFilter{}, middle)},
@@ -278,7 +297,7 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 		}})
 	}
 	for key, took := range l.at(t, reads) {
-		if took > 200*time.Millisecond {
+		if !byHand && took > 200*time.Millisecond {
 			t.Errorf("%s %s took %s", key[0], key[1], took)
 		}
 	}
@@ -292,10 +311,12 @@ func TestTheLogReadsInTimeAsLongAsAPage(t *testing.T) {
 // many trash items' roots, each deleted by the revert of the restore of
 // the item a deletion D made, whose deletions it reads with the changesets
 // they revert, their restores and the roots' deletions between (M8/P3A
-// review A-1, fix checks 1 and 2): 69 to 85 ms.
+// review A-1, fix checks 1 and 2): 69 to 85 ms. By hand the times are
+// logged alone.
 func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 	ctx := context.Background()
-	l := newLongLog(t)
+	n, byHand := longLogSize(t)
+	l := newLongLog(t, n)
 	ids, refs := l.pages[:domain.MaxUnitNodes], make([]domain.VersionRef, domain.MaxUnitNodes)
 	for i, id := range ids {
 		refs[i] = domain.VersionRef{NodeID: id, Revision: 1}
@@ -362,7 +383,7 @@ func TestTheRevertsArrayReadsInTimeAtTheUnitsBound(t *testing.T) {
 		}},
 	}
 	for key, took := range l.at(t, reads) {
-		if took > time.Second {
+		if !byHand && took > time.Second {
 			t.Errorf("%s %s took %s", key[0], key[1], took)
 		}
 	}

@@ -523,6 +523,9 @@ test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升
 	@# （决定 153），整遍与分配在本机两轮的三倍之内，本机一遍约 110 秒、界 330 秒。统计没见过已删的行时单元一个比一个慢，本机一遍 645 秒，
 	@# 所以这一行仍 -timeout 20m：红在界上，不在 Go 默认的 10 分钟超时
 	cd server && go test -count=1 -timeout 20m -v -run '^TestARollbackDeletesAHundredThousandScatteredPagesFirst$$' ./internal/modules/page
+	@# M12/P4/S1：B1 的合成搜索语料，同一个种子写出同样的三个 TSV（含 308eafc6 的笔记本列）、查询的词确切地植入、1,000 页经 loadCorpus 载入、
+	@# buildSearch 建完、中国 有结果、键与删除的不变式；三个都在 !race 的文件里，不进竞态的八份；带 -v 打出各自的用时（P4 设计 3.2、2.1 第 8 条）
+	cd server && go test -count=1 -v -run '^TestPerfCorpus(IsItsSeed|PlantsTheQueries|LoadsIntoTheBenchmark)$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint

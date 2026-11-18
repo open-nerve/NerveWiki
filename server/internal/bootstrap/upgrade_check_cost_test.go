@@ -15,13 +15,15 @@ import (
 // The check's guard's rows beside its notebook's (decision 240, the P2
 // design review B's seed): checkCostChangesets changesets its upgrade
 // wrote and checkCostPlain of the notebook's before it; checkCostOthers
-// notebooks of checkCostPages pages each, with another upgrade's baseline
-// of them and checkCostChangesets changesets of it.
+// notebooks of checkCostOtherPages pages each, with another upgrade's
+// baseline of them and checkCostChangesets changesets of it. The notebook
+// is checkCostScale's 50,000 pages, unless NW_SCALE_PAGES gives another
+// size by hand (M12/P4 design 3.3); the rest stays.
 const (
-	checkCostPages      = 50000
 	checkCostChangesets = 1000
 	checkCostPlain      = 100000
 	checkCostOthers     = 9
+	checkCostOtherPages = 50000
 )
 
 // checkCostBound is the median of three checks the test below allows on
@@ -41,7 +43,8 @@ const checkCostBound = 1500 * time.Millisecond
 // each node, 1,000 changesets of the upgrade and 100,000 of the notebook's
 // before it; beside it nine notebooks of 50,000 pages with their upgrades'
 // baselines and 1,000 changesets each; analyzed, as after a start. Under
-// lint's guard's configuration, a 6 s request and a 3 s worker, the whole
+// lint's cost configuration, a 6 s request and a 3 s worker (lint's own
+// guard has twice them since M12 decision 475), the whole
 // check (Module.CheckUpgrade, through lint's runs) on two seeds: every
 // baseline page as the ledger accepted it, and one page's ledger another
 // hash, gate 7 not passed. The median of three checks of each within
@@ -55,7 +58,11 @@ func TestUpgradeCheckTakesItsTimeAtAnyStatistics(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the check of 50,000 pages runs alone without race")
 	}
-	f := newWikiCostFixtureOf(t, "Fifty thousand pages", checkCostPages)
+	scale := scaleOf(t, "NW_SCALE_PAGES", checkCostScale())
+	f := newWikiCostFixtureOf(t, "Fifty thousand pages", scale.Size, scale.Own)
+	if f.worker != scale.Own {
+		t.Fatalf("the fixture's lint runs are bounded by %v, want %v", f.worker, scale.Own)
+	}
 	ctx := context.Background()
 	started := time.Now()
 	f.tm.exec(t, "UPDATE notebooks SET mode = 'standard', source_root_id = NULL WHERE id = $1", f.book.id)
@@ -73,7 +80,7 @@ func TestUpgradeCheckTakesItsTimeAtAnyStatistics(t *testing.T) {
 	f.tm.exec(t, `INSERT INTO nodes (id, notebook_id, kind, parent_id, name, name_key, sort_order, created_by_id, updated_by_id,
 			created_at, updated_at)
 		SELECT gen_random_uuid(), o.id, 'page', NULL, 'o' || k, 'o' || k, k, o.created_by_id, o.created_by_id, now(), now()
-		FROM notebooks o, generate_series(1, $1::integer) k WHERE o.name LIKE 'Other %'`, checkCostPages)
+		FROM notebooks o, generate_series(1, $1::integer) k WHERE o.name LIKE 'Other %'`, checkCostOtherPages)
 	f.tm.exec(t, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT id, 'x', 1, sha256('x'), 1, created_by_id, now() FROM nodes
 		WHERE notebook_id IN (SELECT id FROM notebooks WHERE name LIKE 'Other %')`)
@@ -104,7 +111,7 @@ func TestUpgradeCheckTakesItsTimeAtAnyStatistics(t *testing.T) {
 		}
 		var took []time.Duration
 		for sample := 1; sample <= 3; sample++ {
-			checked, elapsed := f.checkSample(t, actor, id, seed, sample)
+			checked, elapsed := f.checkSample(t, actor, id, seed, sample, scale)
 			took = append(took, elapsed)
 			check := checked.Check
 			p := check.Gates.Preserved
@@ -123,23 +130,22 @@ func TestUpgradeCheckTakesItsTimeAtAnyStatistics(t *testing.T) {
 	}
 	lintCostLog(t, "upgrade-check-medians", struct {
 		KeptNS, NotKeptNS, BoundNS int64
-	}{int64(medians["kept"]), int64(medians["a page not kept"]), int64(checkCostBound)})
+		Scale                      int `json:",omitempty"`
+	}{int64(medians["kept"]), int64(medians["a page not kept"]), int64(checkCostBound), scaleLogged(scale)})
 	for seed, median := range medians {
-		if median > checkCostBound {
-			t.Errorf("%s: the median of three checks took %s, past %s", seed, median, checkCostBound)
-		}
+		scale.judge(t.Errorf, seed+": the median of three checks, ns", uint64(median), uint64(checkCostBound))
 	}
 }
 
 // checkSample is one check of the notebook id by actor under the guard's
-// request, which must answer its check, and its wall time; -v prints its
-// parts. It waits for the run to finish, so that the next one is a run of
-// its own.
-func (f *wikiCostFixture) checkSample(t *testing.T, actor context.Context, id uuid.UUID, seed string, sample int,
+// request, scale's, which must answer its check, and its wall time; -v
+// prints its parts. It waits for the run to finish, so that the next one
+// is a run of its own.
+func (f *wikiCostFixture) checkSample(t *testing.T, actor context.Context, id uuid.UUID, seed string, sample int, scale guardScale,
 ) (wiki.UpgradeChecked, time.Duration) {
 	t.Helper()
 	f.trace.reset()
-	ctx, cancel := context.WithTimeout(actor, wikiCostRequest)
+	ctx, cancel := context.WithTimeout(actor, scale.Request)
 	defer cancel()
 	start := time.Now()
 	checked, err := f.module.CheckUpgrade(ctx, id, wiki.LintQuery{})

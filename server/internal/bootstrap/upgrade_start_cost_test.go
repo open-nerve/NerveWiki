@@ -28,30 +28,31 @@ import (
 	"github.com/open-nerve/NerveWiki/server/migrations"
 )
 
-// The guard's notebook: startCostPages pages, raw and startCostArea pages
-// in it among them. The design's was of 100,000 pages, 30,000 in raw (M11/P1
-// design 7.1); at that scale the start took 2.16-2.41 s here, the medians of
-// two rounds, of its 3 s deadline then, lint's, and CI's runners take 1.16
-// to 2.33 times as long as this machine over lint's 100,000 pages (its
-// guard's summary, 12 runs of main): 2.5-5.6 s. So the start has three
-// quarters of the request's (decision 232), 4.5 s here, and the guard half
-// the notebook, which the slowest of them start in 2.7 s; the 100,000 pages
-// that 4.5 s does not hold on them go to M12's handoff, as 232 says, and
-// production's 11.25 s holds them (the S2 record).
+// The guard's notebook: startCostScale's pages, 50,000, raw and three in
+// ten of them in it among them (startCostAreaOf). The design's was of
+// 100,000 pages, 30,000 in raw (M11/P1 design 7.1); at that scale the start
+// took 2.16-2.41 s here, the medians of two rounds, of its 3 s deadline
+// then, lint's, and CI's runners take 1.16 to 2.33 times as long as this
+// machine over lint's 100,000 pages (its guard's summary, 12 runs of main):
+// 2.5-5.6 s. So the start has three quarters of the request's (decision
+// 232), 4.5 s here, and the guard half the notebook, which the slowest of
+// them start in 2.7 s; the 100,000 pages that 4.5 s does not hold on them
+// go to M12's handoff, as 232 says, and production's 11.25 s holds them
+// (the S2 record). NW_SCALE_PAGES gives another size by hand (M12/P4
+// design 3.3): the request then production's, the bound only logged.
+
+// startCostAreaOf is raw's pages of a notebook of pages: 15,000 of 50,000.
+func startCostAreaOf(pages int) int { return pages * 3 / 10 }
+
+// startCostOthers are the other notebooks beside it, of
+// startCostOtherPages pages each with their contents, and an edit session
+// on one page in ten, half of them expired: the start's notebook a tenth of
+// nodes and page_contents, none of edit_sessions, and its reads of them by
+// its key (decision 240). They stay so whatever its size.
 const (
-	startCostPages = 50000
-	startCostArea  = 15000
+	startCostOthers     = 9
+	startCostOtherPages = 50000
 )
-
-// startCostOthers are the other notebooks beside it, of startCostPages
-// pages each with their contents, and an edit session on one page in ten,
-// half of them expired: the start's notebook a tenth of nodes and
-// page_contents, none of edit_sessions, and its reads of them by its key
-// (decision 240).
-const startCostOthers = 9
-
-// startCostDeadline is the start's under the guard's 6 s request.
-const startCostDeadline = wikiCostRequest * 3 / 4
 
 // startCostBound is the median of three starts the test below allows in
 // each state and plan: three times the larger of the medians of two local
@@ -68,11 +69,13 @@ const startCostDeadline = wikiCostRequest * 3 / 4
 const startCostBound = 3600 * time.Millisecond
 
 // The start's cost guard (M11/P1 design 7.1, decisions 232, 240): a
-// notebook of startCostPages pages, startCostArea of them in raw, the source
+// notebook of 50,000 pages, 15,000 of them in raw, the source
 // root the start proposes, each with ten wanted links, and one in ten of the
 // others with one, of 1,000 targets, beside startCostOthers notebooks of
-// the same size; the start under lint's cost configuration, a 6 s request,
-// with its own deadline of three quarters of it. upgrade_nodes, nodes,
+// 50,000 pages; the start under a 6 s request, lint's cost configuration
+// before decision 475 (lint's own guard has twice it), with its own
+// deadline of three quarters of it, sent by a client of 12 s
+// that outwaits it (startCostScale). upgrade_nodes, nodes,
 // page_contents and edit_sessions never analyzed; then the three analyzed,
 // and upgrade_nodes by a start of this notebook; then upgrade_nodes with
 // another upgrade's rows alone; each in custom and in generic plans, set for
@@ -90,6 +93,7 @@ func TestUpgradeStartTakesItsTimeAtAnyStatistics(t *testing.T) {
 	if testing.Short() {
 		t.Skip("the start's cost guard runs alone, without race")
 	}
+	scale := scaleOf(t, "NW_SCALE_PAGES", startCostScale())
 	contract := apitest.Load(t)
 	url, keyFile := pgtest.NewDatabase(t), signingKeyFile(t)
 	pool := connect(t, url)
@@ -108,12 +112,13 @@ func TestUpgradeStartTakesItsTimeAtAnyStatistics(t *testing.T) {
 			lintCostExec(t, pool, "ALTER DATABASE "+pgx.Identifier{database}.Sanitize()+" SET plan_cache_mode = "+mode)
 			trace := &startCostTrace{}
 			cfg := testConfig(t, url, false)
-			cfg.Auth.JWT.PrivateKeyFile, cfg.Server.RequestTimeout, cfg.Server.WriteTimeout = keyFile, wikiCostRequest, 15*time.Second
+			cfg.Auth.JWT.PrivateKeyFile = keyFile
+			cfg.Server.RequestTimeout, cfg.Server.ReadTimeout, cfg.Server.WriteTimeout = scale.Request, scale.Read, scale.Write
 			a, err := wireApp(context.Background(), cfg, slog.New(slog.DiscardHandler), migrations.FS(), testWebUI(), wiring{
 				queryTracer: trace,
 				wiki: func(d *wiki.Deps) {
-					if d.StartTimeout != startCostDeadline {
-						t.Errorf("the start's deadline is %v, want %v under a %v request", d.StartTimeout, startCostDeadline, wikiCostRequest)
+					if d.StartTimeout != scale.Own {
+						t.Errorf("the start's deadline is %v, want %v under a %v request", d.StartTimeout, scale.Own, scale.Request)
 					}
 					d.Rules = startCostRules{d.Rules, trace}
 					d.Upgrades = startCostUpgrades{d.Upgrades, trace}
@@ -124,8 +129,9 @@ func TestUpgradeStartTakesItsTimeAtAnyStatistics(t *testing.T) {
 			t.Cleanup(a.close)
 			base := runApp(t, a)
 			if token == "" {
-				token, nb, raw = startCostSeed(t, contract, base, pool)
+				token, nb, raw = startCostSeed(t, contract, base, pool, scale.Size)
 			}
+			scale.checkWaits(t)
 			for _, statistics := range []string{"never analyzed", "analyzed by a start of this notebook", "another upgrade's alone"} {
 				t.Run(statistics, func(t *testing.T) {
 					var took []time.Duration
@@ -151,24 +157,27 @@ func TestUpgradeStartTakesItsTimeAtAnyStatistics(t *testing.T) {
 							lintCostExec(t, pool, "ANALYZE upgrade_nodes")
 						}
 						trace.begin(sample == 0)
-						started := time.Now()
-						status, answer := ask(t, contract, http.MethodPost, base+"/api/v0/notebooks/"+nb+"/upgrade", token, `{}`)
-						elapsed := time.Since(started)
+						status, answer, elapsed := timedAsk(t, scale, contract, http.MethodPost, base+"/api/v0/notebooks/"+nb+"/upgrade",
+							token, `{}`)
 						s := trace.end()
 						if status != http.StatusOK || s.PlanErr != nil {
 							t.Fatalf("the start = %d %s after %v; its plans: %v", status, answer, elapsed, s.PlanErr)
 						}
 						var u upgradeAnswer
 						decodeAnswer(t, answer, &u)
-						startCostCheck(t, pool, u, raw, s, sample == 0)
+						startCostCheck(t, pool, u, raw, s, sample == 0, scale.Size)
 						// The plans' EXPLAINs ran inside the first start: not its time.
 						elapsed -= s.Explain
 						took = append(took, elapsed)
-						startCostLog(t, "sample", map[string]any{"mode": mode, "statistics": statistics, "sample": sample,
+						line := map[string]any{"mode": mode, "statistics": statistics, "sample": sample,
 							"elapsed_ms": ms(elapsed), "explain_ms": ms(s.Explain), "capture_ms": ms(s.Capture), "seed_ms": ms(s.Seed),
 							"prepare_ms": ms(s.Prepare), "wanted_rule_ms": ms(s.WantedRule), "area_pass_ms": ms(s.AreaPass),
 							"area_reads": s.AreaReads, "set_wanted_ms": ms(s.SetWanted), "analyze_ms": ms(s.Analyze),
-							"nodes": u.Baseline.Nodes, "wanted": u.Baseline.Wanted, "plans": s.Plans})
+							"nodes": u.Baseline.Nodes, "wanted": u.Baseline.Wanted, "plans": s.Plans}
+						if scale.ByHand {
+							line["scale"] = scale.Size
+						}
+						startCostLog(t, "sample", line)
 						// The upgrade ends as its rollback's ending would leave it;
 						// AGENTS goes, so that the next start writes it again.
 						lintCostExec(t, pool, "DELETE FROM upgrade_nodes WHERE upgrade_id = $1 OR upgrade_id = $2", u.ID, other)
@@ -182,9 +191,7 @@ func TestUpgradeStartTakesItsTimeAtAnyStatistics(t *testing.T) {
 					}
 					slices.Sort(took)
 					medians = append(medians, took[1])
-					if took[1] > startCostBound {
-						t.Errorf("the median of three starts took %v, past %v: %v", took[1], startCostBound, took)
-					}
+					scale.judge(t.Errorf, fmt.Sprintf("the median of three starts %v, ns", took), uint64(took[1]), uint64(startCostBound))
 				})
 			}
 		})
@@ -209,11 +216,12 @@ func startCostLog(t testing.TB, label string, v any) {
 	t.Logf("upgrade start cost %s %s", label, b)
 }
 
-// startCostSeed makes alice's notebook through the API and SQL: raw at its
-// root, startCostArea pages in raw with ten wanted links each, the others at
-// the root, one in ten of them with one, of 1,000 targets; then by SQL the
-// startCostOthers notebooks, their pages, contents and edit sessions.
-func startCostSeed(t *testing.T, contract *apitest.Contract, base string, pool *pgxpool.Pool) (token, nb, raw string) {
+// startCostSeed makes alice's notebook of pages through the API and SQL:
+// raw at its root, startCostAreaOf(pages) pages in raw with ten wanted links
+// each, the others at the root, one in ten of them with one, of 1,000
+// targets; then by SQL the startCostOthers notebooks, their pages, contents
+// and edit sessions.
+func startCostSeed(t *testing.T, contract *apitest.Contract, base string, pool *pgxpool.Pool, pages int) (token, nb, raw string) {
 	t.Helper()
 	started := time.Now()
 	token = registerAccount(t, contract, base, "alice@example.com").AccessToken
@@ -239,7 +247,7 @@ func startCostSeed(t *testing.T, contract *apitest.Contract, base string, pool *
 			b.created_by_id, now(), now()
 		FROM notebooks b, generate_series(1, $3::integer - 1) k,
 			LATERAL (SELECT CASE WHEN k <= $4 THEN 's' ELSE 'p' END || k AS name) s
-		WHERE b.id = $1`, nb, raw, startCostPages, startCostArea)
+		WHERE b.id = $1`, nb, raw, pages, startCostAreaOf(pages))
 	lintCostExec(t, pool, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT id, 'x', 1, sha256('x'), 1, created_by_id, now() FROM nodes WHERE notebook_id = $1 AND id <> $2`, nb, raw)
 	lintCostExec(t, pool, `INSERT INTO indexed_pages (node_id, notebook_id, revision, extractor, frontmatter_valid)
@@ -260,7 +268,7 @@ func startCostSeed(t *testing.T, contract *apitest.Contract, base string, pool *
 			created_at, updated_at)
 		SELECT gen_random_uuid(), o.id, 'page', NULL, 'o' || k, 'o' || k, k, o.created_by_id, o.created_by_id, now(), now()
 		FROM notebooks o, generate_series(1, $2::integer) k
-		WHERE o.workspace_id = (SELECT workspace_id FROM notebooks WHERE id = $1) AND o.id <> $1`, nb, startCostPages)
+		WHERE o.workspace_id = (SELECT workspace_id FROM notebooks WHERE id = $1) AND o.id <> $1`, nb, startCostOtherPages)
 	lintCostExec(t, pool, `INSERT INTO page_contents (node_id, content, revision, content_hash, byte_size, updated_by_id, updated_at)
 		SELECT id, 'x', 1, sha256('x'), 1, created_by_id, now() FROM nodes WHERE notebook_id <> $1`, nb)
 	lintCostExec(t, pool, `INSERT INTO edit_sessions (id, node_id, notebook_id, user_id, client, created_at, expires_at)
@@ -278,25 +286,26 @@ func startCostSeed(t *testing.T, contract *apitest.Contract, base string, pool *
 }
 
 // startCostCheck fails t unless u is the start of the seeded notebook:
-// its baseline of startCostPages pages, AGENTS written, raw the source
+// its baseline of its pages, AGENTS written, raw the source
 // root, 1,000 wanted, each of raw's pages with its ten wanted targets, each
 // of the others with a link with its one; and the start read the area, checked its plans
 // when asked, and ran its ANALYZE, which the next state takes.
-func startCostCheck(t *testing.T, pool *pgxpool.Pool, u upgradeAnswer, raw string, s startCostParts, plans bool) {
+func startCostCheck(t *testing.T, pool *pgxpool.Pool, u upgradeAnswer, raw string, s startCostParts, plans bool, pages int) {
 	t.Helper()
-	if u.Baseline.Nodes != startCostPages || u.Baseline.Pages != startCostPages || u.Baseline.Wanted != 1000 ||
+	area := startCostAreaOf(pages)
+	if u.Baseline.Nodes != pages || u.Baseline.Pages != pages || u.Baseline.Wanted != 1000 ||
 		u.SourceRootID != raw || len(u.SeededPageIDs) != 1 {
-		t.Errorf("the start %+v, want %d pages, raw its source root, AGENTS written, 1,000 wanted", u, startCostPages)
+		t.Errorf("the start %+v, want %d pages, raw its source root, AGENTS written, 1,000 wanted", u, pages)
 	}
-	var area, outside int
+	var inArea, outside int
 	if err := pool.QueryRow(t.Context(), `SELECT count(*) FILTER (WHERE n.parent_id = $2 AND u.wanted = 10),
 			count(*) FILTER (WHERE n.parent_id IS NULL AND u.wanted = 1)
-		FROM upgrade_nodes u JOIN nodes n ON n.id = u.node_id WHERE u.upgrade_id = $1`, u.ID, raw).Scan(&area, &outside); err != nil {
+		FROM upgrade_nodes u JOIN nodes n ON n.id = u.node_id WHERE u.upgrade_id = $1`, u.ID, raw).Scan(&inArea, &outside); err != nil {
 		t.Fatal(err)
 	}
-	if outside != (startCostPages-1)/10-startCostArea/10 || area != startCostArea {
-		t.Errorf("wanted by page: %d of raw's pages with 10, %d outside with 1; want %d and %d", area, outside, startCostArea,
-			(startCostPages-1)/10-startCostArea/10)
+	if outside != (pages-1)/10-area/10 || inArea != area {
+		t.Errorf("wanted by page: %d of raw's pages with 10, %d outside with 1; want %d and %d", inArea, outside, area,
+			(pages-1)/10-area/10)
 	}
 	if s.Analyzed != 1 || s.AreaReads == 0 || s.Planned != plans {
 		t.Errorf("the start analyzed %d times, read the area %d times, checked its plans %v, want once, some, %v", s.Analyzed,

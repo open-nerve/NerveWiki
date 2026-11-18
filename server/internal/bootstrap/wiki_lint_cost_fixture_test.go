@@ -23,6 +23,10 @@ const wikiCostBody = "---\ntype: note\nsummary: cost\n---\nbody\n"
 
 type wikiCostFixture struct {
 	*lintRuntimeFixture
+	// pages are the notebook's; worker the deadline the lint runs got,
+	// read back after the fixture set it.
+	pages                       int
+	worker                      time.Duration
 	book                        guardedNotebook
 	prototype, emitter          string
 	source, pending             string
@@ -35,30 +39,27 @@ func wikiCostID(kind, n int) uuid.UUID {
 	return uuid.MustParse(fmt.Sprintf("00000000-0000-700%d-8000-%012x", kind, n+1))
 }
 
-// The prototype is written through HTTP/parser/indexing. Bulk rows use the
+// newWikiCostFixtureOf is the fixture of an LLM Wiki named name of pages
+// pages, its lint runs bounded by worker: lint's guard's of 100,000, an
+// upgrade's check's of 50,000 (M11/P2 design 7.1, decision 262). The
+// prototype is written through HTTP/parser/indexing. Bulk rows use the
 // same complete creation shape as seedPagesSQL, including current history;
 // copied properties are actual prototype facts, never rule answers.
-func newWikiCostFixture(t *testing.T) *wikiCostFixture {
-	t.Helper()
-	return newWikiCostFixtureOf(t, "Hundred thousand pages", 100000)
-}
-
-// newWikiCostFixtureOf is the fixture of an LLM Wiki named name of pages
-// pages: lint's guard's of 100,000, an upgrade's check's of 50,000 (M11/P2
-// design 7.1, decision 262).
-func newWikiCostFixtureOf(t *testing.T, name string, pages int) *wikiCostFixture {
+func newWikiCostFixtureOf(t *testing.T, name string, pages int, worker time.Duration) *wikiCostFixture {
 	t.Helper()
 	trace := &wikiCostTrace{}
+	var set time.Duration
 	runtimeFixture := newLintRuntime(t, func(d *wiki.Deps) {
-		d.LintTimeout = wikiCostWorker
+		d.LintTimeout = worker
 		d.Sources = wikiCostSources{d.Sources, trace}
 		d.Nodes = wikiCostNodes{d.Nodes, trace}
 		d.Rules = wikiCostRules{d.Rules, trace}
 		d.Paths = wikiCostPaths{d.Paths, trace}
+		set = d.LintTimeout
 	})
 	trace.previous = runtimeFixture.trace.previous
 	runtimeFixture.trace.previous = trace
-	f := &wikiCostFixture{lintRuntimeFixture: runtimeFixture, trace: trace}
+	f := &wikiCostFixture{lintRuntimeFixture: runtimeFixture, trace: trace, pages: pages, worker: set}
 	started := time.Now()
 	f.book = f.tm.llmWiki(t, name)
 	f.prototype = f.tm.createPageWith(t, "alice", f.book.id, "", "Prototype", wikiCostBody)
