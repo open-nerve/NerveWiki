@@ -41,6 +41,8 @@ test.each<[string, string]>([
 test.each<[string, string]>([
   ["a header of more cells than its delimiter row", "| a | b | c |\n| - | - |\n| ‸"],
   ["the line before the header", "‸\n| a |\n| - |"],
+  ["the line before a header lezer does not take, the table's paragraph", "‸\n| a |\n| - | - |"],
+  ["two lines before such a header", "‸\nx\n| a |\n| - | - |\n| y |"],
   ["after a blank line", "| a |\n| - | - |\n\n‸"],
   ["a setext heading's underline", "| a |\n---\n‸"],
   ["a delimiter row of ':' alone", "| a |\n| : |\n| ‸"],
