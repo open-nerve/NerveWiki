@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useNavigationType } from "react-router";
 
 import { unfold } from "../../reading/unfold";
 import { watchReader } from "./readers-input";
@@ -21,6 +21,11 @@ import { watchReader } from "./readers-input";
  * it was; a read after that one moves nothing. A link of the page to no
  * element leaves the focus where it is, and the page. html is the view's
  * HTML: the view read again for the anchor has it anew (M12/P2/S4, 14d).
+ * Back or forward to an address with an anchor, the browser puts back the
+ * scroll its history entry had after the view went to the element: at
+ * the next frame, the window scrolled since, the element having the focus
+ * still, the reader having done nothing, and out of view, it is shown
+ * again (M12/P2/S4, 8.1).
  */
 export function useViewAnchors({
   article,
@@ -43,6 +48,7 @@ export function useViewAnchors({
   reload: () => Promise<unknown>;
 }): void {
   const location = useLocation();
+  const popped = useNavigationType() === "POP";
   // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
   // what had the focus then, and how the wait ends.
   const awaited = useRef<{ focus: Element | null; end: () => void } | undefined>(undefined);
@@ -68,6 +74,9 @@ export function useViewAnchors({
     awaited.current?.end();
     if (target !== undefined) {
       focusOn(target, {});
+      if (popped) {
+        showAgain(target);
+      }
       return;
     }
     if (anchor === "" || !opened) {
@@ -89,7 +98,24 @@ export function useViewAnchors({
       awaited.current = { focus: document.activeElement, end };
       void reload().finally(end);
     }
-  }, [anchored, article, cached, html, location.hash, location.key, reload, unanchored]);
+  }, [anchored, article, cached, html, location.hash, location.key, popped, reload, unanchored]);
+}
+
+/**
+ * showAgain shows target at the next frame if the window was scrolled since the view went there, it has the focus
+ * still, the reader having done nothing, and it is out of view: the browser put back the scroll of the history entry
+ * gone back or forward to (M12/P2/S4, 8.1; in the three engines, after the view's scroll and before the next frame).
+ */
+function showAgain(target: HTMLElement) {
+  const reader = watchReader();
+  const at = [window.scrollX, window.scrollY];
+  requestAnimationFrame(() => {
+    reader.end();
+    const scrolled = window.scrollX !== at[0] || window.scrollY !== at[1];
+    if (scrolled && !reader.acted() && document.activeElement === target && !shows(target)) {
+      target.scrollIntoView({});
+    }
+  });
 }
 
 /** takeIn has the page's view take navigation in, and tells whether it is the page's first: it opened. */

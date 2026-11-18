@@ -7,7 +7,7 @@ import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { wikiPagePath } from "../../fixtures/wiki-pages";
+import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam } from "../../fixtures/workspaces";
 
 // PG15, the reading view updated in place (M12/P2/S4, design 4.4.6): a
@@ -16,7 +16,8 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // callout opened, the selection, an audio playing, a video in fullscreen;
 // a heading of the same name put before the focused one leaves the focus on
 // it. The write comes through the API, with the account's own token: to the
-// view it is a write elsewhere, which the pages event reads again.
+// view it is a write elsewhere, which the pages event reads again. Back at
+// an address with an anchor, its heading shows, the focus in view (8.1).
 
 /** The page's head, to which each cell adds what it looks at; filler makes it long. */
 const head = "[[Other|to other]]\n\n> [!note]- Folded\n> inside\n\nWords to select in this paragraph.\n\n";
@@ -161,4 +162,31 @@ test("PG15 (page): a video in fullscreen stays in it as another's write elsewher
   if (browserName !== "webkit") {
     expect(await video.evaluate((element) => (element as HTMLVideoElement).paused)).toBe(false);
   }
+});
+
+// M12/P2/S4, 8.1 (step 0's probe, its far shape): back at an address with an anchor, the browser puts back the scroll
+// the page had as it was left, after the view went to the anchor's heading: a reader who scrolled away before leaving
+// came back to a heading with the focus out of view.
+test("PG15 (page): back to an address with an anchor, its heading has the focus in view, though the reader scrolled away before leaving", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  const content = `[[Other|to other]] [[#Part A|to part a]]\n\n${"filler\n\n".repeat(80)}# Part A\n\n${"after\n\n".repeat(40)}`;
+  const { page, article } = await opened({ api, signedInPage }, testInfo, content);
+  await article.getByRole("link", { name: "to part a" }).click();
+  const partA = article.getByRole("heading", { name: "Part A", exact: true });
+  await expect(partA).toBeFocused();
+  await expect(partA).toBeInViewport();
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect(article.getByRole("link", { name: "to other" })).toBeInViewport();
+  await article.getByRole("link", { name: "to other" }).click();
+  await expect(pageHeading(page, "Other")).toBeFocused();
+
+  await page.goBack();
+
+  await expect(partA).toBeFocused();
+  await expect(partA).toBeInViewport();
+  // And stays: the browser's own scroll came before the frame the view looked again at.
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(partA).toBeInViewport();
 });
