@@ -2,7 +2,9 @@ import type { ApiClient, SearchHit, SearchPage } from "@nervewiki/api-client";
 import type { Page } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
+import { focusContrast, setColorScheme, textContrast } from "../../fixtures/contrast";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
@@ -10,7 +12,7 @@ import { search } from "../../fixtures/search";
 import { expect, test } from "../../fixtures/test";
 import { restoreNode } from "../../fixtures/trash";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
-import { resultNames, searchFor, searchResults, searchStatus } from "../../fixtures/wiki-search";
+import { resultNames, searchBox, searchFor, searchResults, searchStatus } from "../../fixtures/wiki-search";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // SE1, full-text search (M8 design 4.12, 4.13, section 9; M8/P5 design
@@ -247,7 +249,7 @@ test("SE1 (MCP): an agent finds a notebook's pages by their titles and contents 
   expectFound("检索", mcpFoundOf(await searchOf("检索")), { marked: false });
 });
 
-test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored; on a phone's width the page fits", async ({
+test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -269,10 +271,42 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await expect(page).toHaveTitle("Search: 检索 · Acme · Nerve Wiki");
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expectFound("检索", await shownOf(page));
-  // Marked by more than its colour, which is the page's outside a reading view too.
+  // Marked by more than its colour, which is the page's outside a reading view too: bold (M12/P2/S3; M5-polish 26.9).
   const mark = searchResults(page).first().locator("mark").first();
   expect(await mark.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
-  expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("600");
+  expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("700");
+
+  // What takes the focus shows it, 3:1 at least against the page in either theme (M12/P2/S3; M5-polish 12.4): the
+  // box, its Search, Where to look, and a hit's link, whose outline is the page's own.
+  const submit = page.getByRole("search").getByRole("button", { name: "Search", exact: true });
+  const where = main.getByRole("combobox", { name: "Where to look", exact: true });
+  const focusShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    // A term marked reads against its highlight.
+    const marked = await textContrast(mark);
+    expect(marked.ratio, `${scheme} ${JSON.stringify(marked)}`).toBeGreaterThanOrEqual(4.5);
+    await searchBox(page).focus();
+    const box = await focusContrast(searchBox(page));
+    expect(box.ratio, `${scheme} ${JSON.stringify(box)}`).toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Tab");
+    await expect(submit).toBeFocused();
+    const button = await focusContrast(submit);
+    expect(button.ratio, `${scheme} ${JSON.stringify(button)}`).toBeGreaterThanOrEqual(3);
+    await title.focus();
+    await page.keyboard.press("Tab");
+    await expect(where).toBeFocused();
+    const select = await focusContrast(where);
+    expect(select.ratio, `${scheme} ${JSON.stringify(select)}`).toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Tab");
+    const hit = searchResults(page).first().getByRole("link");
+    await expect(hit).toBeFocused();
+    const link = await focusContrast(hit);
+    expect(link.ratio, `${scheme} ${JSON.stringify(link)}`).toBeGreaterThanOrEqual(3);
+    expect(link.indicator, scheme).toMatch(/^outline solid /);
+  };
+  await focusShown("light");
+  await focusShown("dark");
+  await setColorScheme(page, "light");
 
   for (const { q } of finds.slice(1)) {
     // oxlint-disable-next-line no-await-in-loop -- a query at a time, each in the box
@@ -284,6 +318,19 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
     // oxlint-disable-next-line no-await-in-loop -- what it shows
     expectFound(q, await shownOf(page));
   }
+
+  // In a hit's name, its terms are bolder than the name around them, not marked by their colour alone (26.9).
+  const named = searchResults(page).first().getByRole("link").locator("mark").first();
+  expect(await named.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("700");
+  expect(await named.evaluate((element) => getComputedStyle(element.closest("p") as Element).fontWeight)).toBe("500");
+  const nameShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    const marked = await textContrast(named);
+    expect(marked.ratio, `${scheme} ${JSON.stringify(marked)}`).toBeGreaterThanOrEqual(4.5);
+  };
+  await nameShown("light");
+  await nameShown("dark");
+  await setColorScheme(page, "light");
 
   // Back at once, its read within SWR's deduping of it: the search before, read again, shown; Forward, the last.
   await page.goBack();
@@ -313,16 +360,42 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   expectFound("检索", await shownOf(page));
   expect(await page.evaluate(() => (window as unknown as { se1?: boolean }).se1)).toBe(true);
 
-  // On a phone's width the page fits it: Where to look too, which lists the notebook's long name.
-  await page.setViewportSize({ width: 375, height: 800 });
-  const scope = main.getByRole("combobox", { name: "Where to look", exact: true });
-  await expect(scope.getByRole("option", { name: notebookName, exact: true })).toHaveCount(1);
-  const width = await page.evaluate(() => ({
-    window: document.documentElement.clientWidth,
-    page: document.documentElement.scrollWidth,
-  }));
-  const placed = await scope.boundingBox();
-  expect(width.window).toBe(375);
-  expect(width.page).toBeLessThanOrEqual(width.window);
-  expect((placed?.x ?? 0) + (placed?.width ?? width.window + 1)).toBeLessThanOrEqual(width.window);
+  // Refused, the box has the focus, its ring in the colour of what is wrong, as clear in either theme (12.4).
+  await searchBox(page).fill("x".repeat(300));
+  await searchBox(page).press("Enter");
+  await expect(searchBox(page)).toHaveAttribute("aria-invalid", "true");
+  await expect(searchBox(page)).toBeFocused();
+  const invalidShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    const box = await focusContrast(searchBox(page));
+    expect(box.ratio, `${scheme} ${JSON.stringify(box)}`).toBeGreaterThanOrEqual(3);
+  };
+  await invalidShown("light");
+  await invalidShown("dark");
+  await setColorScheme(page, "light");
 });
+
+// On a phone's width the results keep to the screen, in Chromium and in WebKit (@narrow): Where to look shows the
+// notebook searched, whose name is as long as the select is wide. WebKit counted the text of the option a select
+// shows, as long as it is, in the page's width: 704 at 375 (M12/P2/S3; M5-polish 33.1).
+test(
+  "SE1 (page): at 375 wide the results keep to the screen, Where to look too, which lists the notebook's long name",
+  { tag: "@narrow" },
+  async ({ api, signedInPage }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const { notebook, storage } = await written(api, pat, workspace.slug);
+    const page = await signedInPage(tokens);
+    const main = page.getByRole("main");
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, storage.id));
+    await expect(pageHeading(page, "Storage")).toBeVisible();
+    expect((await searchFor(page, "检索")).status()).toBe(200);
+    await expect(main.getByRole("heading", { level: 1, name: "Search “检索”", exact: true })).toBeVisible();
+    await expect(searchStatus(page)).toHaveText("Results: 1.");
+
+    await page.setViewportSize({ width: phoneWidth, height: 800 });
+    const scope = main.getByRole("combobox", { name: "Where to look", exact: true });
+    await expect(scope.getByRole("option", { name: notebookName, exact: true })).toHaveCount(1);
+    await expect(scope).toHaveValue(notebook.id);
+    await expectFits(page, scope.locator("xpath=.."), searchResults(page).first());
+  }
+);

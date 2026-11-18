@@ -205,6 +205,26 @@ test("one toggle of the page is out at a time, though the page is left and opene
   });
 });
 
+test.each([
+  ["en", "This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it."],
+  ["zh-CN", "这一项不能在这里勾选或取消勾选：改了之后它那一行就不再是任务项。请编辑页面来修改。"],
+] as const)(
+  "a tick that would leave no task item says so above the view, in %s; the checkbox as it was, nothing written",
+  async (locale, said) => {
+    const server = pageServer({ role: "editor" });
+    server.app.preferences.setLocale(locale);
+    await opened("editor", "- [ ]: /u\n- [ ] b\n", server);
+    const user = userEvent.setup();
+
+    await user.click(boxes()[0] as HTMLInputElement);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(said);
+    expect(boxes()[0]?.checked).toBe(false);
+    expect(server.contents.get(install.id)).toEqual({ content: "- [ ]: /u\n- [ ] b\n", revision: 1 });
+    expect(server.sent.filter((line) => line.startsWith("TOGGLE"))).toEqual(["TOGGLE Install 3 true on 1"]);
+  }
+);
+
 test("a reader's checkboxes stay disabled", async () => {
   const { server } = await opened("reader");
 

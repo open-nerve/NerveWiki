@@ -96,9 +96,11 @@ export const IndexRows = observer(function IndexRows({
                   <p className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted-foreground">
                     <time dateTime={item.updated_at}>{formatDateTime(item.updated_at, locale)}</time>
                     <span>
-                      {t(item.inbound_capped ? "index.inboundCapped" : "index.inbound", {
-                        count: item.inbound.toLocaleString(locale),
-                      })}
+                      {item.inbound_capped
+                        ? t("index.inboundCapped", { count: item.inbound.toLocaleString(locale) })
+                        : item.inbound === 1
+                          ? t("index.inboundOne")
+                          : t("index.inbound", { count: item.inbound.toLocaleString(locale) })}
                     </span>
                   </p>
                 </li>

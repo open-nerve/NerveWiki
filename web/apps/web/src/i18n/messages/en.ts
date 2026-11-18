@@ -96,15 +96,18 @@ export const en = {
   "unresolved.creating": "Creating…",
   "unresolved.parentGone": "The page it would go under no longer exists.",
   "unresolved.missingTitle": "“{target}” does not exist",
-  "unresolved.reader": "No page has this name. The notebook's editors can create it from this link.",
-  "unresolved.readOnly": "No page has this name. This view is read only: no page is created from its links.",
+  "unresolved.reader": "No page or attachment has this name. The notebook's editors can create it from this link.",
+  "unresolved.readOnly":
+    "No page or attachment has this name. This view is read only: no page is created from its links.",
   "unresolved.upgrading":
-    "No page has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
-  "unresolved.readerWiki": "No page has this name. The notebook's editors may be able to create it from this link.",
+    "No page or attachment has this name. The notebook is being upgraded to an LLM Wiki: no page is created until the upgrade ends.",
+  "unresolved.readerWiki":
+    "No page or attachment has this name. The notebook's editors may be able to create it from this link.",
   "unresolved.sourceArea":
     "No page has this name. Sources are added with Paste Markdown or Upload files, not from a link.",
-  "unresolved.embed": "No page has this name. An embed shows a page; it does not create one.",
-  "unresolved.image": "No page has this name. An image shows what is there; it does not create a page.",
+  "unresolved.embed":
+    "No page or attachment has this name. An embed shows a page or an attachment that is there; it does not create one.",
+  "unresolved.image": "No page or attachment has this name. An image shows what is there; it does not create anything.",
   "unresolved.targetInvalid": "This link's target cannot name a page.",
   "unresolved.titleInvalid": "Its name cannot be a page's title.",
   "unresolved.parentMissing": "A page on its path does not exist.",
@@ -163,7 +166,7 @@ export const en = {
   "source.duplicateBatchNotWritten": "This batch was not written; earlier completed batches are kept.",
   "source.duplicateImportSkipped": "{path} was skipped because identical source content already exists.",
   "source.historyRestore":
-    "Temporary steps must also follow the source rules. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
+    "A restore or an undo follows the source rules at every step, not only in what it leaves. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
   "source.historyBackground":
     "Background undo processes steps in an order that may differ from one undo. Resolve conflicts under the source rules before trying again.",
   "page.untitled": "Untitled",
@@ -230,6 +233,9 @@ export const en = {
   "page.properties": "Properties",
   "page.noProperties": "No properties.",
   "page.propertiesInvalid": "The page's frontmatter is not valid: it has no properties.",
+  "page.nameAtTop": "{name} (at the notebook's top level)",
+  "page.taskWouldGo":
+    "This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it.",
   "version.list": "Versions",
   "version.listHint": "One version per edit.",
   "version.more": "More versions",
@@ -255,6 +261,7 @@ export const en = {
   "version.unchanged": "The page is the same as this version: nothing changed.",
   "version.gone": "The page is no longer there: deleted, or out of your reach. Nothing was restored.",
   "version.restored": "Restored version {revision}.",
+  "version.kept": "No version can be deleted on its own, by hand or by the system: the page keeps every one.",
   "trash.title": "Trash",
   "trash.hint":
     "Deleted pages and attachments, each with what was deleted with it, until they can no longer be restored.",
@@ -267,8 +274,8 @@ export const en = {
   "trash.counts": "Pages: {pages}, attachments: {assets}",
   "trash.toParent": "Restores under “{parent}”",
   "trash.toTop": "Restores at the notebook's top level",
-  "trash.toTopParentInTrash": "Restores at the top level: the page it was under is in the trash",
-  "trash.toTopTooDeep": "Restores at the top level: where it was, it would nest more than 10 levels deep",
+  "trash.toTopParentInTrash": "Restores at the notebook's top level: the page it was under is in the trash",
+  "trash.toTopTooDeep": "Restores at the notebook's top level: where it was, it would nest more than 10 levels deep",
   "trash.linkName": "{name} ({from})",
   "trash.linkNameTwin": "{name} ({from}, deleted {time})",
   "trash.linkNameTwinId": "{name} ({from}, deleted {time}, ID {id})",
@@ -305,6 +312,9 @@ export const en = {
   "trash.backgroundNotStarted": "Restoring “{name}” in the background did not start: you can try again.",
   "trash.backgroundUnknown":
     "Whether restoring “{name}” in the background started is not known: the jobs could not be read.",
+  "trash.notInTrashUnknown": "This is not in the trash.",
+  "trash.purge":
+    "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good.",
   "index.title": "Directory",
   "index.type": "Type",
   "index.tag": "Tag",
@@ -325,13 +335,17 @@ export const en = {
   "index.none": "This notebook has no pages yet.",
   "index.more": "More",
   "index.pages": "Directory pages",
-  "index.root": "Notebook root",
+  "index.root": "The notebook's top level",
   "index.parentUnavailable": "Parent unavailable",
   "index.untyped": "Without a type · {parent}",
   "index.typed": "Typed pages",
   "index.summaryCut": "Summary shortened",
   "index.inbound": "{count} incoming links",
   "index.inboundCapped": "At least {count} incoming links",
+  "index.sourcesOne": "{path} · 1 source",
+  "index.longTypesOne": "1 page has a type name too long to filter by.",
+  "index.loadedOne": "1 page shown.",
+  "index.inboundOne": "1 incoming link",
 
   "health.title": "Health",
   "health.recheck": "Recheck",
@@ -372,6 +386,10 @@ export const en = {
   "health.undigestedSourcesDescription": "Sources that have not been incorporated into wiki pages.",
   "health.invalidSources": "Invalid sources",
   "health.invalidSourcesDescription": "Source references that do not identify a source in this notebook.",
+  "health.addedOne": "1 more issue shown.",
+  "health.clearOne": "No issues (1 check)",
+  "health.referringPagesOne": "Referenced by 1 page",
+  "health.staleOne": "1 page has an outdated index. Ask the server administrator to run nervewiki reindex.",
 
   "history.title": "History",
   "history.list": "Changes",
@@ -425,9 +443,7 @@ export const en = {
   "history.client": "Client",
   "history.everyClient": "Every client",
   "history.page": "Page: {name}",
-  "history.pageDeleted": "a deleted page",
   "history.removePage": "Remove",
-  "history.removePageLabel": "Remove the filter “Page: {name}”",
   "history.listed": "Listed: {count}.",
   "history.listedMore": "Listed: {count}, and more.",
   "history.badFilters": "These filters cannot be read: the address has one this history does not take.",
@@ -440,7 +456,7 @@ export const en = {
   "history.revertedBy": "Undone by:",
   "history.revertLink": "Undo change, ID {id}",
   "history.trimmedNote":
-    "Some of the pages this change touched have been purged from the trash: it can no longer be undone as a whole.",
+    "Some or all of what this change touched has been purged from the trash: it can no longer be undone.",
   "history.revertAgain": "Undone before: undoing it again succeeds only once that undo is undone.",
   "history.readersNote": "Editors and admins can undo this change.",
   "history.changes": "Nodes of this change",
@@ -478,13 +494,13 @@ export const en = {
     "An import, a restore or an undo is under way in this notebook: wait for it to end, or cancel it, then undo again. The conflicts below may come from it.",
   "history.conflict.changed": "“{name}” changed since.",
   "history.conflict.expired": "“{name}” is past its time in the trash.",
-  "history.conflict.parent_gone": "The page “{name}” was under is gone: in the trash, or purged.",
+  "history.conflict.parent_gone": "The page that “{name}” was under is gone: it is in the trash, or purged.",
   "history.conflict.children_added": "“{name}” was put there since, and would go with the undo: move it away first.",
   "history.conflict.title_taken": "Where “{name}” goes back, a page or attachment has its name: rename that one first.",
   "history.conflict.cycle": "“{name}” would go back under itself: the page it was under is below it now.",
   "history.conflict.too_deep": "“{name}” would nest more than 10 levels deep where it goes back.",
   "history.conflictTrash": "Trash",
-  "history.conflictTrashLabel": "Trash: the page “{name}” was under may be there",
+  "history.conflictTrashLabel": "Trash: the page that “{name}” was under may be there",
   "history.conflictOpen": "Open it",
   "history.conflictOpenLabel": "Open it: “{name}”",
   "history.conflictHolder": "Open the one with this name",
@@ -512,6 +528,9 @@ export const en = {
   "history.backgroundFinding": "Whether undoing it in the background started is not known: reading the jobs again…",
   "history.backgroundNotStarted": "Undoing it in the background did not start: you can try again.",
   "history.backgroundUnknown": "Whether undoing it in the background started is not known: the jobs could not be read.",
+  "history.attachment": "Attachment: {name}",
+  "history.nodeDeleted": "A deleted page or attachment",
+  "history.removeFilterLabel": "Remove the filter “{filter}”",
   "search.form": "Search “{workspace}”",
   "search.field": "Search terms",
   "search.submit": "Search",
@@ -520,7 +539,7 @@ export const en = {
   "search.title": "Search",
   "search.titleOf": "Search: {q}",
   "search.heading": "Search “{q}”",
-  "search.howTo": "Type what to find in the search box at the top of the left column, and press Enter.",
+  "search.howTo": "Type what to find in the search box at the top, and press Enter.",
   "search.scope": "Where to look",
   "search.everyNotebook": "All notebooks",
   "search.notebookTwin": "{name} (ID {id})",
@@ -597,7 +616,7 @@ export const en = {
   "editor.lostAccess": "You can no longer edit this page.",
   "editor.lostTakenOver": "You went on editing this page elsewhere: this editor saves no more.",
   "editor.lostUnlocked": "{name} released your edit of this page: this editor saves no more.",
-  "editor.lostGone": "This page no longer exists: this editor saves no more.",
+  "editor.lostGone": "This page was deleted, or you lost access to it, while you edited it: this editor saves no more.",
   "editor.lostSource": "This page is now a source. Its original content is read-only.",
   "editor.lostUpgrading":
     "This notebook is being upgraded to an LLM Wiki: it is read-only until the upgrade ends. Your edit saves no more.",
@@ -630,6 +649,9 @@ export const en = {
   "diff.tooLargeLines": "Too large to compare line by line (lines: +{added} −{removed}).",
   "diff.failed": "The comparison failed.",
   "diff.failedAgain": "The comparison failed again. Reloading the page usually fixes this.",
+  "diff.lastBreakAdded": "The only change is that a line break was added at the end.",
+  "diff.lastBreakRemoved": "The only change is that the line break at the end was removed.",
+  "diff.tooLargeBlock": "Lines: +{added} −{removed}, but the changes join into a block too large to show line by line.",
   "editor.tabHint": "Tab indents. To move out of the editor, press Esc, then Tab.",
   "editor.keepMine": "Keep mine",
   "editor.discardMine": "Discard mine",
@@ -797,7 +819,7 @@ export const en = {
   "upgrade.approve": "Approve…",
   "upgrade.approveTitle": "Approve the upgrade of “{name}”?",
   "upgrade.approveBody":
-    "The notebook becomes an LLM Wiki: the pages and attachments under its source area ({root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changesets can still be reverted one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.",
+    "The notebook becomes an LLM Wiki: the pages and attachments under its source area ({root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changes can still be undone one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.",
   "upgrade.approveRootUnread": "the proposed source root",
   "upgrade.approveConfirm": "Approve the upgrade",
   "upgrade.approving": "Approving…",
@@ -816,6 +838,9 @@ export const en = {
     "A background job puts the notebook back as it was when the upgrade started: its pages and attachments go back to their places, names and content, and those created since go to the trash. The notebook stays read-only until the rollback ends. A rollback that stops can be continued, or ended, keeping the notebook as it is then.",
   "upgrade.rejectConfirm": "Reject the upgrade",
   "upgrade.rejecting": "Rejecting…",
+  "upgrade.startRawOne":
+    "The page raw at the root becomes the source area (1 node under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.",
+  "upgrade.gateLinksWorseOne": "1 page leads to more pages that do not exist than when the upgrade started.",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",
@@ -954,12 +979,12 @@ export const en = {
   "transfer.failure.too_many_nodes":
     "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
   "transfer.failure.tree_changed": "A page the import had written was deleted while it ran.",
-  "transfer.failure.changeset_reverted": "What the import had written was reverted while it ran.",
+  "transfer.failure.changeset_reverted": "What the import had written was undone while it ran.",
   "transfer.failure.trash_changed":
     "The item in the trash changed before the restore came to it: someone restored it, the purge took it, or it was deleted again.",
   "transfer.failure.restore_expired": "The item went past the time it could be restored in.",
   "transfer.failure.revert_conflict": "What the change touched changed since, or could not go back.",
-  "transfer.failure.changeset_trimmed": "The purge took part of the change: it can no longer be undone.",
+  "transfer.failure.changeset_trimmed": "The purge took some or all of the change: it can no longer be undone.",
   "transfer.failure.refused": "The notebook's rules as an LLM Wiki refused one of its writes.",
   "transfer.failure.page_locked": "Someone is editing a page the undo was about to change.",
   "transfer.failure.revert_too_large":
@@ -996,7 +1021,8 @@ export const en = {
     "Nodes it had not come to: {left}. They are in the trash, in items of their own: each can be restored alone.",
   "transfer.restoreLeftExpired":
     "What it restored stays in the notebook. Nodes left: {left}. Their time in the trash is over: they can no longer be restored.",
-  "transfer.restoreLeftUndone": "What it restored is in the trash again, with the nodes it had not come to.",
+  "transfer.restoreLeftUndone":
+    "An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.",
   "transfer.revertNothing": "Nothing to undo: whatever the change touched is as it was before it.",
   "transfer.revertLeft":
     "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history; then the change can be undone whole again.",
@@ -1079,6 +1105,7 @@ export const en = {
   "transfer.importProblem.renamed": "{path} was imported as {to}: links to its old name do not reach it.",
   "transfer.importProblem.other": "{path} was not imported as it was.",
   "transfer.reportRetryOf": "Try again (report on {name})",
+  "transfer.exportPageAloneTitle": "Export the page {name}?",
   "role.admin": "Admin",
   "role.member": "Member",
   "role.guest": "Guest",
@@ -1278,9 +1305,10 @@ export const en = {
   "problem.page.restore_too_large": "This is too large to restore at once.",
   "problem.page.trash_changed": "The trash changed since you opened it. Look again.",
   "problem.page.changeset_not_found": "This change does not exist, or you cannot see it.",
-  "problem.page.changeset_trimmed": "Part of this change has been purged from the trash: it can no longer be reverted.",
-  "problem.page.revert_too_large": "This change is too large to revert at once.",
-  "problem.page.revert_conflict": "What this change touched has changed since: it cannot be reverted as it is.",
+  "problem.page.changeset_trimmed":
+    "Some or all of this change has been purged from the trash: it can no longer be undone.",
+  "problem.page.revert_too_large": "This change is too large to undo at once.",
+  "problem.page.revert_conflict": "What this change touched has changed since: it cannot be undone as it is.",
   "problem.page.protected":
     "An LLM Wiki keeps its AGENTS page and its source root: neither can be deleted, and AGENTS cannot be renamed or moved.",
   "problem.page.virtual_file":
@@ -1340,6 +1368,8 @@ export const en = {
   "field.parent_id.not_allowed": "No longer a page of this notebook. Choose another.",
   "field.after_id.not_allowed": "No longer under this parent. Choose another.",
   "field.slug.duplicate": "Another workspace already has this address.",
+  "field.asset_name.too_long":
+    "At most 255 bytes, the extension included: 255 Latin letters, or about 85 Chinese characters.",
 } as const;
 
 export type MessageKey = keyof typeof en;

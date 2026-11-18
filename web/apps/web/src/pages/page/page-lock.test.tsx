@@ -431,7 +431,7 @@ test.each<[string, (server: ReturnType<typeof pageServer>) => void, string]>([
       server.sessions.clear();
       server.nodes = [notes];
     },
-    "This page no longer exists: this editor saves no more.",
+    "This page was deleted, or you lost access to it, while you edited it: this editor saves no more.",
   ],
 ])(
   "an edit %s says why above the editor, the focus there; the editor is read-only, its text kept",
@@ -452,6 +452,20 @@ test.each<[string, (server: ReturnType<typeof pageServer>) => void, string]>([
     expect(screen.queryByRole("button", { name: "Done" })).toBeNull();
   }
 );
+
+test("in Chinese, an edit lapsed, the page gone, says it was deleted or the access to it lost while it was edited", async () => {
+  const { server } = await pressEdit();
+  const { type } = await pageEditor();
+  type(" more");
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  server.sessions.clear();
+  server.nodes = [notes];
+  shown();
+
+  const banner = await screen.findByRole("alert");
+  expect(banner.textContent).toContain("编辑期间这一页被删除了，或你已无权访问它：这里不再保存。");
+});
 
 test("with the app's editor extensions, an edit lost is read-only: the registry's last hop", async () => {
   const { server } = await pressEdit(pageServer(), editorExtensions);
@@ -596,7 +610,9 @@ test("a page deleted while this tab edits it unsaved stays, saying so, until the
   server.sessions.clear();
   deleted(events);
 
-  expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
+  expect((await screen.findByRole("alert")).textContent).toContain(
+    "This page was deleted, or you lost access to it, while you edited it"
+  );
   expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
   // Gone, it has no attachments to list or take (M7/P4 design 3.5).
   expect(screen.queryByRole("region", { name: "Attachments" })).toBeNull();
@@ -644,7 +660,9 @@ test.each<[string, (typeof workspaceJSON)[]]>([
     await waitFor(() => expect(events.streams).toHaveLength(2));
     act(() => events.last().hello());
 
-    expect((await screen.findByRole("alert")).textContent).toContain("This page no longer exists");
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "This page was deleted, or you lost access to it, while you edited it"
+    );
     expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
     expect(view.state.doc.toString()).toBe("Guide\n more");
     await user.click(screen.getByRole("button", { name: "Back to reading" }));
@@ -658,7 +676,7 @@ test.each<[string, (typeof workspaceJSON)[]]>([
 );
 
 test.each<[string, string, Record<string, Answer>]>([
-  ["deleted", "This page no longer exists", {}],
+  ["deleted", "This page was deleted, or you lost access to it, while you edited it", {}],
   [
     "out of the account's reach",
     "You can no longer edit this page.",

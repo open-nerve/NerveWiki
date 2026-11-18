@@ -273,6 +273,38 @@ test.each(rows)(
   }
 );
 
+test.each([
+  [
+    "en",
+    "Check",
+    "1 page leads to more pages that do not exist than when the upgrade started.",
+    "1 page has an outdated index. Ask the server administrator to run nervewiki reindex.",
+  ],
+  [
+    "zh-CN",
+    "检查",
+    "1 页指向的待建页面比升级开始时多。",
+    "1 篇页面的索引已过时，请服务器管理员运行 nervewiki reindex。",
+  ],
+] as const)(
+  "a gate failed by one page says page, singular; so does an index stale on one page, in %s",
+  async (locale, check, worse, stale) => {
+    const user = userEvent.setup();
+    const server = serverOf(checkOf(first, { worse: 1, stale: 1 }));
+    server.app.preferences.setLocale(locale);
+    renderApp(upgradePath, server.app);
+    const section = (await screen.findByRole("heading", { level: 2, name: check })).closest("section") as HTMLElement;
+    await waitFor(() => expect(server.sent).toContain("GET nodes"));
+
+    await user.click(within(section).getByRole("button", { name: check }));
+
+    const list = await within(section).findByRole("list", { name: locale === "en" ? "The checks" : "各道检查" });
+    const lines = [...list.children].map((gate) => [...gate.children].map((part) => part.textContent));
+    expect(lines[gateKeys.indexOf("links")]?.[1]).toBe(worse);
+    expect(lines[gateKeys.indexOf("index")]?.[1]).toBe(stale);
+  }
+);
+
 test("a gate's node leads to it: to its page, by its path", async () => {
   const user = userEvent.setup();
   const { section } = await opened(serverOf(checkOf(first)));
@@ -386,6 +418,29 @@ test("a check's rules with issues are cards headed under the check, the others i
     ["H3", "Missing type", "7 issues"],
     ["H3", "Missing summary", "1 issue"],
   ]);
+});
+
+test("a check with one rule that found no issues says so of one check, singular", async () => {
+  const user = userEvent.setup();
+  const rules = [
+    "wanted",
+    "orphans",
+    "ambiguous",
+    "invalid_frontmatter",
+    "missing_type",
+    "missing_summary",
+    "undigested_sources",
+    "invalid_sources",
+  ] as const;
+  const { section } = await opened(
+    serverOf(checkJSON({ rules: rules.map((rule) => ruleOf(rule, rule === "orphans" ? 0 : 1)) }))
+  );
+
+  await checked(user, section, passedAt);
+
+  const details = section.querySelector("details") as HTMLElement;
+  expect(details.querySelector("summary")?.textContent).toBe("No issues (1 check)");
+  expect(cardsOf(details)).toEqual([["H3", "Orphan pages", "0 issues"]]);
 });
 
 /** The card of the check headed name. */

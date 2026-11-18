@@ -9,7 +9,8 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
 import type { TransferJob } from "../../services/transfer.service";
-import { useStore, useTransfers } from "../../stores/context";
+import { usePageTree, useStore, useTransfers } from "../../stores/context";
+import { childrenOf } from "../../stores/page-tree";
 
 /**
  * How the dialog opens: by its trigger, the focus going to focusAfter once
@@ -49,13 +50,18 @@ export const ExportDialog = observer(function ExportDialog({
   const { mutate } = useSWRConfig();
   useSWR("instance", () => instance.load());
   const ttl = instance.info?.export_ttl_seconds;
+  // A page with no subpages, as the tree read says, is not said with them; the tree not read, it is (19.1).
+  const pages = usePageTree(notebook);
+  const alone = page !== undefined && pages.tree !== undefined && childrenOf(pages.tree, page.id).length === 0;
   return (
     <ConfirmDialog
       {...opening}
       title={
         page === undefined
           ? t("transfer.exportNotebookTitle", { name: notebook.name })
-          : t("transfer.exportPageTitle", { name: page.name })
+          : alone
+            ? t("transfer.exportPageAloneTitle", { name: page.name })
+            : t("transfer.exportPageTitle", { name: page.name })
       }
       description={
         ttl === undefined

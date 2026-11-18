@@ -10,9 +10,9 @@ import { TextDiff } from "./text-diff";
 
 type Compare = (a: string, b: string, signal: AbortSignal) => Promise<LineDiffResult>;
 
-/** The diff of before and after, in Chinese, the large comparisons run by compareLarge. */
-const diff = (before: string, after: string, compareLarge?: Compare) => (
-  <I18nProvider locale="zh-CN">
+/** The diff of before and after, in Chinese unless said, the large comparisons run by compareLarge. */
+const diff = (before: string, after: string, compareLarge?: Compare, locale: "en" | "zh-CN" = "zh-CN") => (
+  <I18nProvider locale={locale}>
     <TextDiff
       before={before}
       after={after}
@@ -69,6 +69,30 @@ describe("TextDiff", () => {
     expect(screen.getByText("没有改动。")).toBeDefined();
     rerender(diff("a\r\nb\r\n", `${String.fromCodePoint(0xfeff)}a\nb\n`));
     expect(screen.getByText("只差换行或 BOM。")).toBeDefined();
+  });
+
+  test.each([
+    ["zh-CN", "唯一的改动是在末尾加了一个换行。", "唯一的改动是去掉了末尾的换行。"],
+    [
+      "en",
+      "The only change is that a line break was added at the end.",
+      "The only change is that the line break at the end was removed.",
+    ],
+  ] as const)("says when the only change is the line break at the end, either way, in %s", (locale, added, removed) => {
+    const { rerender } = render(diff("a\nb", "a\nb\n", undefined, locale));
+    expect(screen.getByText(added)).toBeDefined();
+    // The comparison still shows, its lines as they are.
+    expect(document.querySelectorAll(".cm-editor")).toHaveLength(1);
+    rerender(diff("a\nb\n", "a\nb", undefined, locale));
+    expect(screen.getByText(removed)).toBeDefined();
+    expect(screen.queryByText(added)).toBeNull();
+    expect(document.querySelectorAll(".cm-editor")).toHaveLength(1);
+  });
+
+  test("says nothing of the line break at the end where more changed", () => {
+    render(diff("a\nb\n", "a\nc\n"));
+    expect(document.querySelectorAll(".cm-editor")).toHaveLength(1);
+    expect(screen.queryByText(/末尾/)).toBeNull();
   });
 
   test("marks the lines added and removed, counts the changes and the lines, and gives the legend", () => {
@@ -348,15 +372,36 @@ describe("TextDiff", () => {
     expect(container.querySelector("[aria-busy]")).toBeNull();
   });
 
-  // M8/P1 review A, M5: the view joins the changes that only an empty line parts, and shows a change's lines removed at once.
-  test("shows side by side changes the view would show as more than 5,000 lines removed in one block", async () => {
-    // 2,501 paragraphs removed, the empty lines between them kept: one block of 5,001 lines.
-    const before = Array.from({ length: 2501 }, (_, i) => `paragraph ${i.toString()}\n`).join("\n");
-    const after = "\n".repeat(2500);
-    render(diff(before, after, inline));
-    expect(await screen.findByText("+0 −2501 行，太大，不能逐行比较。")).toBeDefined();
-    expect(document.querySelectorAll(".cm-editor")).toHaveLength(2);
+  test("says the line break at the end only of the comparison it shows, while that of newer texts runs", async () => {
+    const { compare, asked } = controlled();
+    const big = "x\n".repeat(20_000);
+    const { rerender } = render(diff(`${big}y`, `${big}y\nz\n`, compare));
+    await answered(asked, 0, lineDiff(`${big}y`, `${big}y\nz\n`));
+    expect(screen.getByText("+2 −1 行")).toBeDefined();
+    expect(screen.queryByText(/末尾/)).toBeNull();
+    rerender(diff(`${big}y`, `${big}y\n`, compare));
+    // The comparison shown is the one before, of more than a line break: nothing is said of one yet.
+    expect(screen.getByText("正在比较…")).toBeDefined();
+    expect(screen.queryByText(/末尾/)).toBeNull();
+    await answered(asked, 1, lineDiff(`${big}y`, `${big}y\n`));
+    expect(screen.getByText("唯一的改动是在末尾加了一个换行。")).toBeDefined();
   });
+
+  // M8/P1 review A, M5: the view joins the changes that only an empty line parts, and shows a change's lines removed at once.
+  test.each([
+    ["zh-CN", "+0 −2501 行，但改动连成的一块太大，不能逐行显示。"],
+    ["en", "Lines: +0 −2501, but the changes join into a block too large to show line by line."],
+  ] as const)(
+    "shows side by side changes the view would show as more than 5,000 lines removed in one block, in %s",
+    async (locale, sentence) => {
+      // 2,501 paragraphs removed, the empty lines between them kept: one block of 5,001 lines.
+      const before = Array.from({ length: 2501 }, (_, i) => `paragraph ${i.toString()}\n`).join("\n");
+      const after = "\n".repeat(2500);
+      render(diff(before, after, inline, locale));
+      expect(await screen.findByText(sentence)).toBeDefined();
+      expect(document.querySelectorAll(".cm-editor")).toHaveLength(2);
+    }
+  );
 
   test("shows a block of 5,000 lines removed in the unified view", async () => {
     const before = Array.from({ length: 5000 }, (_, i) => `line ${i.toString()}\n`).join("");

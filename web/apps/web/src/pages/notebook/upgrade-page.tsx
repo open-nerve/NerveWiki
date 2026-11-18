@@ -493,7 +493,7 @@ const UpgradeRead = observer(function UpgradeRead({
   const texts = { "transfer.busy": "upgrade.rollbackUnderWay" } as const;
   // The source area the approval makes read only, once the tree has it (design review P3C-N13), named as the state
   // section names it, not by its MCP path (M11 closeout, review B-N3).
-  const sourceRoot = data === undefined ? undefined : distinctName(pages.tree, notebook, data.source_root_id, t);
+  const sourceRoot = data === undefined ? undefined : distinctName(pages.tree, data.source_root_id, t);
   return (
     <>
       {shown}
@@ -601,7 +601,7 @@ const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { not
   const pages = usePageTree(notebook);
   useSWR(["pages", notebook.id], () => pages.load());
   const pageLink = (id: string) => {
-    const name = distinctName(pages.tree, notebook, id, t);
+    const name = distinctName(pages.tree, id, t);
     return name === undefined ? undefined : (
       <Link key={id} to={`/${slug}/notebooks/${notebook.id}/pages/${id}`} className="underline underline-offset-4">
         {name}

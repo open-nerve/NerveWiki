@@ -152,6 +152,42 @@ func TestTheTemplatesCorrespond(t *testing.T) {
 	}
 }
 
+// The AGENTS a new LLM Wiki and an upgrade's start write names the
+// prompt upgrade, which the notebook's MCP entry serves during an
+// upgrade, and the three once it is an LLM Wiki (M12/P2/S2, the handoff
+// M5-polish item 40). The line that named the three alone, which answer
+// notebook.not_llm_wiki during an upgrade, is gone in both languages.
+// It checks the template's line as written, not against the prompts the
+// MCP entry registers: that is for v0.2 (review A's N5).
+func TestTheAGENTSTemplatesNameTheUpgradePrompt(t *testing.T) {
+	for _, tt := range []struct {
+		locale    Locale
+		line, old string
+	}{
+		{
+			LocaleEn,
+			"Connect an agent to this notebook at `/mcp?notebook=<id>`. While the notebook is being upgraded to an LLM Wiki, the prompt `upgrade` guides the agent there; once it is one, three prompts serve it:",
+			"Three prompts are served there:",
+		},
+		{
+			LocaleZhCN,
+			"在 `/mcp?notebook=<id>` 把 agent 连到这本笔记本。笔记本升级为 LLM Wiki 期间，那里的 prompt `upgrade` 指引 agent；成为 LLM Wiki 之后，有三个 prompt 为它服务：",
+			"那里有三个 prompt：",
+		},
+	} {
+		agents := template(tt.locale)[1]
+		if agents.Title != "AGENTS" {
+			t.Fatalf("%s: the template's second page is %q, want AGENTS", tt.locale, agents.Title)
+		}
+		if !strings.Contains(agents.Content, tt.line+"\n") {
+			t.Errorf("%s: AGENTS lacks the line %q", tt.locale, tt.line)
+		}
+		if strings.Contains(agents.Content, tt.old) {
+			t.Errorf("%s: AGENTS still says %q", tt.locale, tt.old)
+		}
+	}
+}
+
 // links is what text holds of a link or a tag outside code: [[, ![, ](,
 // or # before a letter or a digit, a tag's start.
 func links(text string) []string {

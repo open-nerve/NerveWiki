@@ -3,6 +3,7 @@ import { useRef, type Ref } from "react";
 import { Link } from "react-router";
 
 import { useT, type Translate } from "../../i18n/i18n";
+import { isolate, Isolated, type Isolating, type Namer } from "../../i18n/isolated";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId } from "../../lib/twins";
 import type { Notebook } from "../../services/notebook.service";
@@ -11,43 +12,52 @@ import { usePageTree } from "../../stores/context";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 
-/** placeText says where a node was: under a page, by its name now, at the notebook's top level, or under one purged. */
-function placeText(state: NonNullable<ChangesetChange["before"]>, t: Translate): string {
+/**
+ * placeText says where a node was: under a page, by its name now (a name: name), at the notebook's top level, or
+ * under one purged.
+ */
+function placeText(state: NonNullable<ChangesetChange["before"]>, t: Translate, name: Namer): string {
   if (state.parent_id === null) {
     return t("history.detail.top");
   }
   return state.parent_name === null
     ? t("history.detail.purged")
-    : t("history.detail.under", { name: state.parent_name });
+    : t("history.detail.under", { name: name(state.parent_name) });
 }
 
 /**
  * treeTexts say what a change did to its node in the tree: created it,
  * restored it from the trash, deleted it, moved it from one page to
  * another (renamed it too, where its names differ), renamed it, or put it
- * elsewhere among its siblings; nothing for a content's write alone.
+ * elsewhere among its siblings; nothing for a content's write alone. Each sentence is one Isolating, its names in
+ * slots of their own: where from and where to, the names before and after, in that order.
  */
-function treeTexts(change: ChangesetChange, t: Translate): string[] {
+function treeTexts(change: ChangesetChange, t: Translate): Isolating[] {
   const { before, after } = change;
   const renamed =
     before !== null && after !== null && before.name !== after.name
-      ? [t("history.detail.renamed", { from: before.name, to: after.name })]
+      ? [isolate((name) => t("history.detail.renamed", { from: name(before.name), to: name(after.name) }))]
       : [];
   switch (change.kind) {
     case "created":
-      return [t("history.detail.created")];
+      return [isolate(() => t("history.detail.created"))];
     case "restored":
-      return [t("history.detail.restored")];
+      return [isolate(() => t("history.detail.restored"))];
     case "deleted":
-      return [t("history.detail.deleted")];
+      return [isolate(() => t("history.detail.deleted"))];
     case "moved":
       return before === null || after === null
         ? []
-        : [t("history.detail.moved", { from: placeText(before, t), to: placeText(after, t) }), ...renamed];
+        : [
+            isolate((name) =>
+              t("history.detail.moved", { from: placeText(before, t, name), to: placeText(after, t, name) })
+            ),
+            ...renamed,
+          ];
     case "renamed":
       return renamed;
     case "reordered":
-      return [t("history.detail.reordered")];
+      return [isolate(() => t("history.detail.reordered"))];
     case "content":
       return [];
   }
@@ -100,13 +110,13 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
             to={open.to}
             state={open.state}
             aria-label={twin ? name : undefined}
-            className="font-medium break-words underline underline-offset-4"
+            className="min-w-0 font-medium break-words underline underline-offset-4"
           >
             {node.name}
           </Link>
         ) : (
           <>
-            <span className="font-medium break-words">{node.name}</span>
+            <span className="min-w-0 font-medium break-words">{node.name}</span>
             <Link
               ref={linkRef}
               to={`${home}/trash/${node.id}`}
@@ -129,7 +139,9 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
       {(texts.length > 0 || content !== null) && (
         <p className="flex flex-wrap gap-x-3 text-sm break-words text-muted-foreground">
           {texts.map((text) => (
-            <span key={text}>{text}</span>
+            <span key={text.text} className="min-w-0">
+              <Isolated {...text} />
+            </span>
           ))}
           {content !== null &&
             (node.alive && node.kind === "page" ? (

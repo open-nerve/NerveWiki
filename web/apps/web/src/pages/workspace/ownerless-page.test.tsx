@@ -132,7 +132,7 @@ test("an admin reads the ownerless notebooks, the longest ownerless first, each 
     [
       "Atlas",
       "Former owner: Bob (bob@example.com)",
-      "Workspace can read · Members left: 3 · Ownerless since Oct 2, 2026 · Last activity Oct 2, 2026 · Size 1.5 KB",
+      "Workspace can read · Members left: 3 · Ownerless since Oct 2, 2026 · Last activity Oct 2, 2026 · Size 1.5 KiB",
     ],
   ]);
   const nav = screen.getByRole("navigation", { name: "Workspace settings" });

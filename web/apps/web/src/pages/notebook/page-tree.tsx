@@ -203,7 +203,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
             setFailure(undefined);
             navigateNode(id);
           }) ??
-            pagesLocked(failure, t, me, (id) => distinctName(pages.tree, notebook, id, t)) ??
+            pagesLocked(failure, t, me, (id) => distinctName(pages.tree, id, t)) ??
             errorText(failure, t)}
         </Alert>
       )}

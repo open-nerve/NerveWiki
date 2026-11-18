@@ -50,7 +50,7 @@ export function BreadcrumbTrail({
   const t = useT();
   return (
     <nav aria-label={t("page.breadcrumb")}>
-      <ol className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground">
+      <ol className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
         {steps.map((step, i) => (
           <li key={step.key}>
             {i > 0 && <Separator />}

@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expectIndexedAliases, expectIndexedLinks, expectIndexedTags } from "../../fixtures/assert/links";
 import { countAnswers } from "../../fixtures/browser";
+import { focusContrast, indicatorContrast, setColorScheme, textContrast } from "../../fixtures/contrast";
 import type { Database } from "../../fixtures/db";
 import { getPageProperties, listLinkTargets, listTags } from "../../fixtures/links";
 import { goto } from "../../fixtures/navigation";
@@ -123,6 +124,21 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 page"]]);
   // A screen reader hears the option's text and its detail apart.
   await expect(completion(page).getByRole("option", { name: "project/alpha, 1 page", exact: true })).toBeVisible();
+  // The selected option's detail reads against it, and the editor's frame and the option selected show where the
+  // focus is, against what is around them, in either theme (M12/P2/S3; M5-polish 12.4).
+  const completionShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    await expect(completion(page)).toBeVisible();
+    const detail = await textContrast(completion(page).locator("[aria-selected] .cm-completionDetail"));
+    expect(detail.ratio, `${scheme} ${JSON.stringify(detail)}`).toBeGreaterThanOrEqual(4.5);
+    const frame = await indicatorContrast(page.locator(".cm-editor.cm-focused"));
+    expect(frame.ratio, `${scheme} ${JSON.stringify(frame)}`).toBeGreaterThanOrEqual(3);
+    const selected = await indicatorContrast(completion(page).locator("li[aria-selected]"));
+    expect(selected.ratio, `${scheme} ${JSON.stringify(selected)}`).toBeGreaterThanOrEqual(3);
+  };
+  await completionShown("light");
+  await completionShown("dark");
+  await setColorScheme(page, "light");
   await pick(page);
 
   // In inline code, between its backticks, nothing completes.
@@ -145,6 +161,27 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     `/${workspace.slug}/notebooks/${notebook.id}/tags/${encodeURIComponent("project/alpha")}`
   );
   await expect(article.locator("code")).toHaveText("[[Tar");
+
+  // A link of the reading view shows the focus the keyboard gives it, and a menu its current item, in either theme.
+  const link = article.getByRole("link", { name: "Target", exact: true });
+  const menu = page.getByRole("button", { name: "Page actions", exact: true });
+  const readingShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    await link.focus();
+    const ring = await focusContrast(link);
+    expect(ring.ratio, `${scheme} ${JSON.stringify(ring)}`).toBeGreaterThanOrEqual(3);
+    await menu.focus();
+    await page.keyboard.press("Enter");
+    const item = page.getByRole("menuitem").first();
+    await expect(item).toBeFocused();
+    const current = await indicatorContrast(item);
+    expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Escape");
+    await expect(item).toBeHidden();
+  };
+  await readingShown("light");
+  await readingShown("dark");
+  await setColorScheme(page, "light");
 });
 
 test("L5 (page, input method): a composition closes the completion, none opens while it composes, and once it ends the page of its text is listed and picked; one read for the [[", async ({

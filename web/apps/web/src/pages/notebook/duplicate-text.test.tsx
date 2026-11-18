@@ -14,7 +14,7 @@ import type { RootStore } from "../../stores/root.store";
 import { json, notebookJSON, workspaceJSON, type Answer } from "../../test/fakes";
 import { assetNode, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
-import { duplicateText, sourceAtPath, type DuplicateContext } from "./duplicate-text";
+import { duplicateText, sourceAtPath, sourceHistoryText, type DuplicateContext } from "./duplicate-text";
 import { nodeTarget, useNodeNavigate } from "../node-target";
 import { useNotebook } from "./notebook-layout";
 
@@ -40,7 +40,18 @@ function sourceServer(answers: Record<string, Answer> = {}) {
 function probe(
   server: ReturnType<typeof pageServer>,
   problem: unknown,
-  { copies = 1, context, additional = [] }: { copies?: number; context?: DuplicateContext; additional?: unknown[] } = {}
+  {
+    copies = 1,
+    context,
+    additional = [],
+    text = duplicateText,
+  }: {
+    copies?: number;
+    context?: DuplicateContext;
+    additional?: unknown[];
+    /** What says the problem: duplicateText, or a history write's sourceHistoryText. */
+    text?: typeof duplicateText;
+  } = {}
 ) {
   let pages: PageTreeStore | undefined;
   let root: RootStore | undefined;
@@ -59,10 +70,10 @@ function probe(
           Render again
         </button>
         {Array.from({ length: copies }, (_, index) => (
-          <div key={index}>{duplicateText(problem, tree, navigate, context)}</div>
+          <div key={index}>{text(problem, tree, navigate, context)}</div>
         ))}
         {additional.map((entry, index) => (
-          <div key={`extra-${index.toString()}`}>{duplicateText(entry, tree, navigate, context)}</div>
+          <div key={`extra-${index.toString()}`}>{text(entry, tree, navigate, context)}</div>
         ))}
       </section>
     );
@@ -382,3 +393,36 @@ test.each([known, asset])(
     expect(server.sent.filter((line) => line === "GET nodes")).toHaveLength(before + 1);
   }
 );
+
+test.each([
+  [
+    "en",
+    "A restore or an undo follows the source rules at every step, not only in what it leaves. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
+  ],
+  [
+    "zh-CN",
+    "还原与撤销的每一步都要遵守来源规则，不只是最后的结果。需要还原正文时，先将页面移到来源区外，还原后再移回。恢复或移回前先处理冲突来源；移回时仍会检查重复。管理员也不能修改来源正文。",
+  ],
+] as const)(
+  "a history write the source rules refused says each step follows them, in plain words, in %s",
+  async (locale, said) => {
+    const server = sourceServer();
+    const view = probe(server, new ApiError(409, { code: "page.source_immutable" }), { text: sourceHistoryText });
+    const section = await view.open();
+
+    act(() => server.app.preferences.setLocale(locale));
+
+    await waitFor(() =>
+      expect([...section.querySelectorAll("span.block")].map((span) => span.textContent)).toContain(said)
+    );
+  }
+);
+
+test("a history write refused as an admin's alone says nothing of restoring content", async () => {
+  const server = sourceServer();
+  const view = probe(server, new ApiError(403, { code: "page.source_admin_only" }), { text: sourceHistoryText });
+  const section = await view.open();
+
+  await waitFor(() => expect(section.querySelectorAll("span.block").length).toBeGreaterThan(0));
+  expect(section.textContent).not.toContain("outside the source area");
+});

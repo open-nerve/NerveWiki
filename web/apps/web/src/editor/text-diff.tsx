@@ -176,9 +176,12 @@ export function TextDiff({
         <div className="space-y-2" aria-busy={busy || undefined}>
           {busy && <p className="text-sm text-muted-foreground">{t("diff.comparing")}</p>}
           <p className="text-sm text-muted-foreground">
-            {result.added === null || result.removed === null
-              ? t("diff.tooLarge")
-              : t("diff.tooLargeLines", { added: result.added, removed: result.removed })}
+            {result.kind === "changes"
+              ? // Within the comparison's bounds, but the view would show one block too large (21.11).
+                t("diff.tooLargeBlock", { added: result.added, removed: result.removed })
+              : result.added === null || result.removed === null
+                ? t("diff.tooLarge")
+                : t("diff.tooLargeLines", { added: result.added, removed: result.removed })}
           </p>
           <div className="grid gap-2 md:grid-cols-2">
             <ReadOnlyText text={compared.a} name={beforeName} />
@@ -187,12 +190,20 @@ export function TextDiff({
         </div>
       );
     }
+    // Said of the comparison shown, which may be the one before while newer texts compare (21.8).
+    const lastBreak =
+      compared.a + "\n" === compared.b
+        ? t("diff.lastBreakAdded")
+        : compared.b + "\n" === compared.a
+          ? t("diff.lastBreakRemoved")
+          : undefined;
     return (
       <UnifiedDiff
         state={state}
         legend={t("diff.legend", { before: beforeName, after: afterName })}
         lines={{ added: result.added, removed: result.removed }}
         busy={busy}
+        note={lastBreak}
       />
     );
   }
@@ -289,6 +300,8 @@ type UnifiedDiffProps = {
   lines: { added: number; removed: number };
   /** Whether a newer comparison runs: the view says so, dimmed. */
   busy: boolean;
+  /** What the counts do not say of the change, below them: the only change a line break at the end. */
+  note?: string;
 };
 
 /**
@@ -296,7 +309,7 @@ type UnifiedDiffProps = {
  * text before: @codemirror/merge's unified view, given the changes the
  * comparison found (diffConfig.override) rather than computing its own.
  */
-function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
+function UnifiedDiff({ state, legend, lines, busy, note }: UnifiedDiffProps) {
   const t = useT();
   const element = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView>(undefined);
@@ -334,6 +347,7 @@ function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
           </button>
         </span>
       </div>
+      {note !== undefined && <p className="text-sm text-muted-foreground">{note}</p>}
       <div ref={element} className={busy ? "opacity-60" : undefined} />
     </div>
   );
@@ -344,7 +358,7 @@ function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
  * import (v0.1 design 13.2, item 6).
  */
 const buttonClass =
-  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50";
+  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50";
 
 /** ReadOnlyText is a text in a read-only editor of its own, under its name. */
 function ReadOnlyText({ text, name }: { text: string; name: string }) {

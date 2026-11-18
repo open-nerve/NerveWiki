@@ -22,7 +22,7 @@ test.each([
     "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
   ],
   ["import", "tree_changed", "A page the import had written was deleted while it ran."],
-  ["import", "changeset_reverted", "What the import had written was reverted while it ran."],
+  ["import", "changeset_reverted", "What the import had written was undone while it ran."],
   ["import", "storage_full", "The server's storage is full."],
   ["import", "gremlins", "The job failed."],
   [
@@ -40,7 +40,7 @@ test.each([
     "The job was interrupted: the server stopped or restarted, or the job stopped responding.",
   ],
   ["revert", "revert_conflict", "What the change touched changed since, or could not go back."],
-  ["revert", "changeset_trimmed", "The purge took part of the change: it can no longer be undone."],
+  ["revert", "changeset_trimmed", "The purge took some or all of the change: it can no longer be undone."],
   ["revert", "page_locked", "Someone is editing a page the undo was about to change."],
   ["revert", "refused", "The notebook's rules as an LLM Wiki refused one of its writes."],
   [
@@ -78,6 +78,12 @@ test.each([
   ["timeout", "回滚超过了服务器的时限：可以继续回滚。"],
 ] as const)("a rollback that stopped, %s, says what to do next in Chinese too", (failure, says) => {
   expect(failureText("rollback", failure, translator("zh-CN"))).toBe(says);
+});
+
+test("a revert the purge took some or all of says so in Chinese too", () => {
+  expect(failureText("revert", "changeset_trimmed", translator("zh-CN"))).toBe(
+    "这次改动已有部分或全部被清理，不能再撤销。"
+  );
 });
 
 test("a revert one of whose parts done at once is past a batch says so in Chinese too", () => {
