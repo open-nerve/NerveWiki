@@ -14,26 +14,39 @@ type Node = ReturnType<typeof syntaxTree>["topNode"];
  * header of more cells than that delimiter row makes no table, nor does
  * the paragraph look further. A paragraph's lines are read as goldmark has
  * them: past the marks of the quotes (a callout's too) and the indent of
- * the list items it is in (M6/P7 fix check fc3-c1-2; M12/P2/S5, 12.8).
+ * the list items it is in, to the column its first line starts at, a lazy
+ * line's as written (M6/P7 fix check fc3-c1-2; M12/P2/S5, 12.8). A setext
+ * heading lezer makes of a paragraph and the underline after it, goldmark
+ * makes a table of first, if the paragraph has one, each of its lines
+ * trimmed: the underline is not the table's. Spaces are ASCII's.
  */
 export function inTable(state: EditorState, pos: number): boolean {
   for (let node: Node | null = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
     if (node.name === "Table") {
       return true;
     }
-    if (node.name === "Paragraph") {
-      return inParagraphTable(state, node, state.doc.lineAt(pos).number);
+    if (node.name === "Paragraph" || node.name === "SetextHeading1" || node.name === "SetextHeading2") {
+      return inParagraphTable(state, node, state.doc.lineAt(pos).number, node.name !== "Paragraph");
     }
   }
   return false;
 }
 
-/** inParagraphTable tells whether the line numbered at of paragraph is in a table goldmark finds in it. */
-function inParagraphTable(state: EditorState, paragraph: Node, at: number): boolean {
-  const first = state.doc.lineAt(paragraph.from).number;
-  const last = state.doc.lineAt(paragraph.to).number;
+/**
+ * inParagraphTable tells whether the line numbered at of paragraph is in a
+ * table goldmark finds in it; of a setext heading's, the lines before its
+ * underline, trimmed.
+ */
+function inParagraphTable(state: EditorState, paragraph: Node, at: number, setext: boolean): boolean {
+  const head = state.doc.lineAt(paragraph.from);
+  const first = head.number;
+  const last = state.doc.lineAt(paragraph.to).number - (setext ? 1 : 0);
   const quoted = within(paragraph, "Blockquote");
   const listed = within(paragraph, "ListItem");
+  // A list item's column, past the marks of the quotes it is in: the first line's, past the last of them.
+  const before = state.doc.sliceString(head.from, paragraph.from);
+  const mark = before.lastIndexOf(">");
+  const column = mark < 0 ? widthOf(before) : widthOf(before.slice(mark + 1).replace(/^[ \t]/, ""));
   const lineOf = (n: number): string => {
     const line = state.doc.line(n);
     if (n === first) {
@@ -44,14 +57,17 @@ function inParagraphTable(state: EditorState, paragraph: Node, at: number): bool
     if (quoted) {
       text = text.replace(/^(?:[ \t]*>[ \t]?)*/, "");
     }
-    return listed ? text.replace(/^[ \t]+/, "") : text;
+    if (setext) {
+      return text.replace(/^[ \t]+/, "");
+    }
+    return listed ? text.slice(indentWithin(text, column)) : text;
   };
   for (let n = first + 1; n <= last; n++) {
     const delimiter = delimiterCells(lineOf(n));
     if (delimiter === undefined) {
       continue;
     }
-    return rowCells(lineOf(n - 1)) <= delimiter && at >= n - 1;
+    return rowCells(lineOf(n - 1)) <= delimiter && at >= n - 1 && at <= last;
   }
   return false;
 }
@@ -66,8 +82,8 @@ function within(node: Node, name: string): boolean {
   return false;
 }
 
-/** A delimiter row's cell, by goldmark's four expressions (tableDelimLeft and the others). */
-const delimiterCell = /^\s*:?-+:?\s*$/;
+/** A delimiter row's cell, by goldmark's four expressions (tableDelimLeft and the others): its spaces ASCII's. */
+const delimiterCell = /^[ \t]*:?-+:?[ \t]*$/;
 
 /**
  * delimiterCells is how many cells line has as goldmark's delimiter row
@@ -77,26 +93,31 @@ const delimiterCell = /^\s*:?-+:?\s*$/;
  * a line that is none.
  */
 function delimiterCells(line: string): number | undefined {
-  if (indentWidth(line) > 3 || !/^[\s\-|:]*$/.test(line) || /^-*$/.test(line)) {
+  if (indentWidth(line) > 3 || !/^[ \t\-|:]*$/.test(line) || /^-*$/.test(line)) {
     return undefined;
   }
   const cells = line.split("|");
-  if (cells[0]?.trim() === "") {
+  if (blank(cells[0])) {
     cells.shift();
   }
-  if (cells.at(-1)?.trim() === "") {
+  if (blank(cells.at(-1))) {
     cells.pop();
   }
   return cells.every((cell) => delimiterCell.test(cell)) ? cells.length : undefined;
 }
 
+/** blank tells whether a delimiter row's part, before its first '|' or after its last, is of spaces alone. */
+function blank(part: string | undefined): boolean {
+  return part !== undefined && /^[ \t]*$/.test(part);
+}
+
 /**
  * rowCells is how many cells line has as goldmark's header row
- * (parseRow): trimmed of spaces, a '|' at each end dropped, split at each
- * '|' no backslash is just before.
+ * (parseRow): trimmed of ASCII's spaces, a '|' at each end dropped, split
+ * at each '|' no backslash is just before.
  */
 function rowCells(line: string): number {
-  let row = line.trim();
+  let row = line.replace(/^[ \t]+|[ \t]+$/g, "");
   if (row.startsWith("|")) {
     row = row.slice(1);
   }
@@ -127,4 +148,23 @@ function indentWidth(line: string): number {
     }
   }
   return width;
+}
+
+/** widthOf is the width of text, a tab to the next multiple of 4. */
+function widthOf(text: string): number {
+  let width = 0;
+  for (const c of text) {
+    width += c === "\t" ? 4 - (width % 4) : 1;
+  }
+  return width;
+}
+
+/** indentWithin is how many of line's leading spaces and tabs are within its first columns. */
+function indentWithin(line: string, columns: number): number {
+  let width = 0;
+  let at = 0;
+  for (; at < line.length && (line[at] === " " || line[at] === "\t") && width < columns; at++) {
+    width += line[at] === "\t" ? 4 - (width % 4) : 1;
+  }
+  return at;
 }

@@ -34,6 +34,28 @@ test.each<[string, string]>([
   ["in a list's item", "- | a |\n  | - | - |\n  | ‸"],
   ["in an item of a list in an item", "- a\n    - | a |\n      | - | - |\n      | ‸"],
   ["in a list in a quote", "> - | a |\n>   | - | - |\n>   | ‸"],
+  // A setext underline right after: lezer makes a heading of it all, goldmark a table first.
+  ["a setext underline after, ---", "| a |\n| - | - |\n| ‸\n---"],
+  ["a setext underline after, ===", "| a |\n| - | - |\n| ‸\n==="],
+  ["a setext underline after a table of as many cells", "| a | b |\n| - | - |\n| ‸ |\n---"],
+  ["a setext underline after, -", "| a |\n| - | - |\n| ‸\n-"],
+  ["a setext underline after, the link in the header", "| a ‸ | b |\n| - | - |\n| c | d |\n---"],
+  ["a setext underline after, a delimiter row indented 4: goldmark trims the lines", "| a |\n    | - | - |\n| ‸\n---"],
+  // goldmark's spaces are ASCII's: a row with another space is no delimiter row, and the paragraph looks further.
+  ["a no-break space in a row before the delimiter row", "| a | b | c |\n| -\u00a0| - |\n| x |\n| - | - |\n| ‸"],
+  [
+    "ideographic spaces in a row before the delimiter row",
+    "| a | b | c |\n|\u3000-\u3000|\u3000-\u3000|\n| x |\n| - | - |\n| ‸",
+  ],
+  // An item's lines are indented to its column: one indented 4 past it is no delimiter row.
+  [
+    "in a list's item, a row indented 4 past its column before the delimiter row",
+    "- | a | b | c |\n      | - |\n  | d |\n  | - | - |\n  | ‸",
+  ],
+  [
+    "in a quote in a list's item, a row indented 4 past the mark before the delimiter row",
+    "- > | a | b | c |\n  >     | - |\n  > | d |\n  > | - | - |\n  > | ‸",
+  ],
 ])("in a table: %s", (_, doc) => {
   expect(at(doc)).toBe(true);
 });
@@ -51,6 +73,9 @@ test.each<[string, string]>([
   ["a header of more cells, though a delimiter row matches a later one", "| a | b |\n| - |\n| c |\n| - |\n| ‸"],
   ["in a quote, a header of more cells", "> | a | b | c |\n> | - | - |\n> | ‸"],
   ["in a list's item, a header of more cells", "- | a | b | c |\n  | - | - |\n  | ‸"],
+  ["a setext heading of a header of more cells", "| a | b | c |\n| - | - |\n| ‸\n---"],
+  ["a header ending in a no-break space, a cell more", "| a |\u00a0\n| - |\n| ‸"],
+  ["in a list's item, a delimiter row indented 4 past its column", "- | a |\n      | - | - |\n  | ‸"],
 ])("no table: %s", (_, doc) => {
   expect(at(doc)).toBe(false);
 });
