@@ -160,7 +160,7 @@
   - 组合根八份的 Test 一步：`38916978` 231–384 秒，`a14d9ee5` 238–345 秒，`ce8aaf64` 245–388 秒，都在 450 秒之下。各份与用时在 [P5 设计](../05-P5-deploy-release.md) 10.1。
   - `vuln.yml` 另在 `b937d820`、`2db96b0a`（改了 `Makefile`）上各跑一次，success；`main` 上最近一次（`cfa31e00`，schedule）success（审查 C）。
 - **合并 `main`**（`b34e7ac3`）：`0918ad73` 带来的只有 `docs/`、L1 的故事与它的单元测试，没有冲突；它与本提交一起推送，分支 CI 是本提交的。
-- **本提交的分支 CI**：（待填：本提交的分支 CI）。
+- **本提交的分支 CI**：`7e9e4e88`（合并 `main` 的 `c77aca61` 带来等锁帮手的旁支，一起推送）的 ci.yml run 44205477151，19 项第一次 attempt 全绿（short 3:16，costs-1 13:53，e2e 8:41）；release.yml run 44205477269，两个演练都绿（amd64、arm64 各 1:40）。S1 合并为 `3ef1501f`，之后第一次 `main` 的 ci.yml run 44209783209 同样全绿（race 15:06，costs-1 13:22，e2e 9:52），release.yml run 44209783317 两个演练绿（amd64 1:19，arm64 1:46），gate 与 build 跳过。
 - **没有推任何 tag、镜像，也没有建 Release**（负责人 2026-11-17 第 11 问：先跑 S1 的分支 CI 看）：tag 上的作业在分支上都跳过；仓库的 tag 与 Release 都是 0 个（三位审查者各核过）。`docker/login-action` 只在 tag 的 `build` 里，还没跑过；它与 S2 要的 `sigstore/cosign-installer`、`anchore/sbom-action` 和写权限，推 rc 之前照 00 号文档"需要负责人确认"第 2 项核对。
 
 ## 环境
