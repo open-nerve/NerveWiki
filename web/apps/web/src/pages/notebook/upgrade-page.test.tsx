@@ -1110,7 +1110,7 @@ test("in review, the page shows the report kept: each gate, each count, each rul
     ["Wanted pages now", "37+"],
   ]);
   const clear = report.querySelector("details") as HTMLElement;
-  expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 checks)");
+  expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 check)");
   expect(cardsIn(clear)).toEqual([["H3", "Invalid frontmatter", "0 issues", [], false]]);
   expect(cardsIn(report)).toEqual([
     [

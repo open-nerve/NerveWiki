@@ -81,7 +81,9 @@ export const HealthItem = observer(function HealthItem({
       )}
       {item.rule === "wanted" && (
         <p className="text-muted-foreground">
-          {t("health.referringPages", { count: new Intl.NumberFormat(locale).format(item.pages) })}
+          {item.pages === 1
+            ? t("health.referringPagesOne")
+            : t("health.referringPages", { count: new Intl.NumberFormat(locale).format(item.pages) })}
         </p>
       )}
       {item.rule === "invalid_sources" && item.not_link && (

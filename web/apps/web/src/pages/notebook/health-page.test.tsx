@@ -373,6 +373,48 @@ test("the health snapshot and its explanations are available in Chinese, includi
   expect(screen.getByRole("list", { name: "未消化的来源" })).toBeTruthy();
 });
 
+test.each([
+  [
+    "en",
+    "Wanted pages",
+    {
+      one: "Referenced by 1 page",
+      three: "Referenced by 3 pages",
+      clear: "No issues (1 check)",
+      stale: "1 page has an outdated index. Ask the server administrator to run nervewiki reindex.",
+    },
+  ],
+  [
+    "zh-CN",
+    "待建页面",
+    {
+      one: "被 1 篇页面引用",
+      three: "被 3 篇页面引用",
+      clear: "没有问题（1 项检查）",
+      stale: "1 篇页面的索引已过时，请服务器管理员运行 nervewiki reindex。",
+    },
+  ],
+] as const)(
+  "one of each is said singular: a page referring to a wanted one, a check with no issues, a page's outdated index, in %s",
+  async (locale, heading, said) => {
+    const fixture = healthServer("standard");
+    fixture.server.app.preferences.setLocale(locale);
+    const [three, other] = fixture.value.rules.wanted ?? [];
+    fixture.value.rules = {
+      wanted: [three!, { ...other!, pages: 1 }],
+      orphans: fixture.value.rules.orphans,
+      ambiguous: fixture.value.rules.ambiguous,
+    };
+    fixture.value.stale_pages = 1;
+    renderApp(healthPath, fixture.server.app);
+    await screen.findByRole("heading", { name: heading });
+    expect(screen.getByText(said.one)).toBeTruthy();
+    expect(screen.getByText(said.three)).toBeTruthy();
+    expect(screen.getByText(said.clear)).toBeTruthy();
+    expect(screen.getByText(said.stale)).toBeTruthy();
+  }
+);
+
 test("a pending tree does not hide the summary: target and counts are visible while node paths load", async () => {
   let release!: (response: Response) => void;
   const held = new Promise<Response>((resolve) => (release = resolve));

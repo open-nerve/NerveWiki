@@ -332,6 +332,10 @@ export const en = {
   "index.summaryCut": "Summary shortened",
   "index.inbound": "{count} incoming links",
   "index.inboundCapped": "At least {count} incoming links",
+  "index.sourcesOne": "{path} · 1 source",
+  "index.longTypesOne": "1 page has a type name too long to filter by.",
+  "index.loadedOne": "1 page shown.",
+  "index.inboundOne": "1 incoming link",
 
   "health.title": "Health",
   "health.recheck": "Recheck",
@@ -372,6 +376,10 @@ export const en = {
   "health.undigestedSourcesDescription": "Sources that have not been incorporated into wiki pages.",
   "health.invalidSources": "Invalid sources",
   "health.invalidSourcesDescription": "Source references that do not identify a source in this notebook.",
+  "health.addedOne": "1 more issue shown.",
+  "health.clearOne": "No issues (1 check)",
+  "health.referringPagesOne": "Referenced by 1 page",
+  "health.staleOne": "1 page has an outdated index. Ask the server administrator to run nervewiki reindex.",
 
   "history.title": "History",
   "history.list": "Changes",
@@ -816,6 +824,9 @@ export const en = {
     "A background job puts the notebook back as it was when the upgrade started: its pages and attachments go back to their places, names and content, and those created since go to the trash. The notebook stays read-only until the rollback ends. A rollback that stops can be continued, or ended, keeping the notebook as it is then.",
   "upgrade.rejectConfirm": "Reject the upgrade",
   "upgrade.rejecting": "Rejecting…",
+  "upgrade.startRawOne":
+    "The page raw at the root becomes the source area (1 node under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.",
+  "upgrade.gateLinksWorseOne": "1 page leads to more pages that do not exist than when the upgrade started.",
   "notebookRole.admin": "Admin",
   "notebookRole.editor": "Editor",
   "notebookRole.reader": "Reader",

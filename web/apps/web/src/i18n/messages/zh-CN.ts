@@ -318,6 +318,10 @@ export const zhCN: Messages = {
   "index.summaryCut": "摘要已截短",
   "index.inbound": "{count}个入链",
   "index.inboundCapped": "至少{count}个入链",
+  "index.sourcesOne": "{path} · 1个来源",
+  "index.longTypesOne": "有1页的类型名称过长，无法按该类型筛选。",
+  "index.loadedOne": "已显示1页。",
+  "index.inboundOne": "1个入链",
 
   "health.title": "健康",
   "health.recheck": "重新检查",
@@ -358,6 +362,10 @@ export const zhCN: Messages = {
   "health.undigestedSourcesDescription": "尚未融入 Wiki 页面的来源。",
   "health.invalidSources": "无效 sources",
   "health.invalidSourcesDescription": "未能指向本笔记本来源的引用。",
+  "health.addedOne": "新增显示 1 项问题。",
+  "health.clearOne": "没有问题（1 项检查）",
+  "health.referringPagesOne": "被 1 篇页面引用",
+  "health.staleOne": "1 篇页面的索引已过时，请服务器管理员运行 nervewiki reindex。",
 
   "history.title": "历史",
   "history.list": "改动",
@@ -783,6 +791,9 @@ export const zhCN: Messages = {
     "一个后台任务把笔记本复原到升级开始时的样子：原有的页与附件回到原处，名称与正文复原，之后新建的进回收站。回滚结束之前，笔记本照旧只读。回滚停下时可以继续，或者结束回滚、保留当时的样子。",
   "upgrade.rejectConfirm": "驳回升级",
   "upgrade.rejecting": "正在驳回…",
+  "upgrade.startRawOne":
+    "根下的 raw 将成为来源区（现有 1 个节点），批准之后它下面的都是只读的来源；不是来源的可以由 agent 移出。",
+  "upgrade.gateLinksWorseOne": "1 页指向的待建页面比升级开始时多。",
   "notebookRole.admin": "管理员",
   "notebookRole.editor": "编辑者",
   "notebookRole.reader": "读者",
