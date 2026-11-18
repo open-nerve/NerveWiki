@@ -1367,3 +1367,85 @@ test("the article the focus is given back to, the page emptied, keeps it as the 
   expect(document.activeElement).toBe(article);
   expect(article.getAttribute("tabindex")).toBe("-1");
 });
+
+/**
+ * wentBack opens Install at its anchor's heading A, goes to the page without one and back, the next frame held:
+ * then meanwhile does what it is given (the browser's scroll put back, the reader's key, the focus moved), with A
+ * laid out at top, and lets the frame come. It answers the elements scrolled into view as it opened and came back,
+ * and since.
+ */
+async function wentBack(top: number, meanwhile: (heading: HTMLElement) => void) {
+  const scrolled = scrolls();
+  const frames: FrameRequestCallback[] = [];
+  const frame = vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
+  onTestFinished(() => frame.mockRestore());
+  const server = pageServer();
+  server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
+  const { router } = renderApp(`${pagePath(install.id)}#nw-a`, server.app);
+  const a = await screen.findByRole("heading", { level: 2, name: "A" });
+  await act(() => router.navigate(pagePath(install.id)));
+  frames.length = 0;
+  await act(() => router.navigate(-1));
+  expect(document.activeElement).toBe(a);
+  const back = scrolled.length;
+
+  const laidOut = vi.spyOn(a, "getBoundingClientRect").mockReturnValue({ top, bottom: top + 20 } as DOMRect);
+  onTestFinished(() => laidOut.mockRestore());
+  meanwhile(a);
+  act(() => {
+    for (const callback of frames.splice(0)) {
+      callback(0);
+    }
+  });
+  return { a, back: scrolled.slice(0, back), since: scrolled.slice(back) };
+}
+
+/** scrolledBy has the window scrolled down by y, as the browser puts back a history entry's scroll. */
+function scrolledBy(y: number) {
+  const original = Object.getOwnPropertyDescriptor(window, "scrollY");
+  Object.defineProperty(window, "scrollY", { configurable: true, get: () => y });
+  onTestFinished(() => {
+    if (original) {
+      Object.defineProperty(window, "scrollY", original);
+    }
+  });
+}
+
+// M12/P2/S4, 8.1 (review C's M2): back at an address with an anchor, the browser puts back the scroll the page had,
+// after the view went to it. At the next frame, the window scrolled since, the heading with the focus still, the
+// reader having done nothing, and it out of view, the view shows it again; not one of these, it does not.
+test("back at an address with an anchor, its heading out of view as the window was scrolled since, is shown again at the next frame", async () => {
+  const { a, back, since } = await wentBack(2000, () => scrolledBy(1500));
+
+  expect(back).toEqual([a, a]);
+  expect(since).toEqual([a]);
+});
+
+test.each([
+  ["the window not scrolled since", 2000, () => undefined],
+  [
+    "the reader pressed a key meanwhile",
+    2000,
+    () => {
+      scrolledBy(1500);
+      fireEvent.keyDown(window, { key: "ArrowDown" });
+    },
+  ],
+  [
+    "the focus moved elsewhere meanwhile",
+    2000,
+    (heading: HTMLElement) => {
+      scrolledBy(1500);
+      heading.blur();
+    },
+  ],
+  ["its heading in view", 100, () => scrolledBy(1500)],
+] as const)(
+  "back at an address with an anchor, the view does not show it again at the next frame: %s",
+  async (_, top, meanwhile) => {
+    const { a, back, since } = await wentBack(top, meanwhile);
+
+    expect(back).toEqual([a, a]);
+    expect(since).toEqual([]);
+  }
+);
