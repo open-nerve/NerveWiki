@@ -335,12 +335,14 @@ func TestATabsReadInFlightAtTheEndIsWaitedFor(t *testing.T) {
 // and a run ends soon after it (review B's M7, M8). The end is at most the
 // first request the loops send plus For. An editor beats its session
 // before each save: the rounds take turns at a slow heartbeat, so that the
-// end comes in it and the save after it must not go, and at a slow save,
-// so that the end comes in it and the tick and the end are ready at once.
-// A select takes either at random, so eight short rounds.
+// end comes in it and the save after it must not go; at a slow save, so
+// that the end comes in it and the tick and the end are ready at once; and
+// at a renewal every save with a slow close, so that the end comes in the
+// close and no session is opened after it (review B's N10, review C's
+// N10). A select takes either at random, so nine short rounds.
 func TestTheLoopsSendNothingPastTheirEnd(t *testing.T) {
 	api := &pageAPI{}
-	var opened, beat, save atomic.Int64
+	var opened, beat, save, closing atomic.Int64
 	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
 		slow := time.Duration(0)
 		switch {
@@ -353,6 +355,8 @@ func TestTheLoopsSendNothingPastTheirEnd(t *testing.T) {
 			return
 		case strings.HasSuffix(r.URL.Path, "/heartbeat"):
 			slow = time.Duration(beat.Load())
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/v0/edit-sessions/"):
+			slow = time.Duration(closing.Load())
 		case r.Method == http.MethodPut:
 			slow = time.Duration(save.Load())
 		case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/pages"),
@@ -382,19 +386,29 @@ func TestTheLoopsSendNothingPastTheirEnd(t *testing.T) {
 		}
 		return ""
 	})
-	for round := range 8 {
-		beat.Store(int64(40 * time.Millisecond))
-		save.Store(int64(5 * time.Millisecond))
-		if round%2 == 1 {
+	for round := range 9 {
+		renew := time.Minute
+		switch round % 3 {
+		case 0:
+			beat.Store(int64(40 * time.Millisecond))
+			save.Store(int64(5 * time.Millisecond))
+			closing.Store(0)
+		case 1:
 			beat.Store(int64(5 * time.Millisecond))
 			save.Store(int64(40 * time.Millisecond))
+			closing.Store(0)
+		case 2:
+			beat.Store(0)
+			save.Store(int64(5 * time.Millisecond))
+			closing.Store(int64(40 * time.Millisecond))
+			renew = time.Nanosecond
 		}
 		log := client.NewLog(nil)
 		mu.Lock()
 		monitored = nil
 		mu.Unlock()
 		e := Editors{Clients: f.clients(4, log), Notebook: "nb", Bytes: 1000, Links: 2, Seed: 1, For: 100 * time.Millisecond,
-			Save: 10 * time.Millisecond, Heartbeat: time.Nanosecond, Renew: time.Minute, Tree: 10 * time.Millisecond,
+			Save: 10 * time.Millisecond, Heartbeat: time.Nanosecond, Renew: renew, Tree: 10 * time.Millisecond,
 			Monitor: 10 * time.Millisecond, Monitored: io.Discard, PSQL: psql}
 		started := time.Now()
 		if _, _, err := e.Run(context.Background()); err != nil {
