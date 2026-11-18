@@ -444,6 +444,9 @@ func TestLintBusyReturnsBeforeCleanup(t *testing.T) {
 		case <-time.After(interleavingWait):
 			t.Fatal("new same-key flight did not execute its actual Rules.Prepare")
 		}
+		// The old worker's finish forgets its key only after it gives the new
+		// flight the slot; RunFinished is sent after that forget.
+		f.event(t, wiki.RunFinished, created.FlightID)
 		last := f.start(f.actor(t, "carol"), scope, wiki.LintQuery{})
 		lastEvent := f.nextScopeEvent(t)
 		releaseNextOnce.Do(func() { close(releaseNext) })
