@@ -24,7 +24,11 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
-// These are the original real request budgets, not a new empirical guard.
+// These are the original real request budgets, not a new empirical guard:
+// the test configuration's 4s, and production's server.request_timeout,
+// 15s, under which the batches other than the two dense shapes (30s, below)
+// and, from M12, the single REST rename of more than a batch's sources run
+// (ingest_extra_cost_test.go).
 // Three samples per shape retain allocation/heap/SQL data for two-run calibration.
 // Fixture preparation, response oracles and later EXPLAINs are outside timing.
 const ingestCostOrdinaryBudget = 4 * time.Second
