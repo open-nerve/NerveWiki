@@ -33,6 +33,19 @@ test("the parts a text is composed of give their names slots of their own", () =
   expect(container.textContent).toBe("א / ב");
 });
 
+test("a name a translation writes twice is in a bdi each time", () => {
+  const { container } = render(
+    <Isolated
+      {...isolate((name) => {
+        const named = name("מדריך");
+        return `${named} / ${named}`;
+      })}
+    />
+  );
+  expect(bdis(container)).toEqual(["מדריך", "מדריך"]);
+  expect(container.textContent).toBe("מדריך / מדריך");
+});
+
 test("a text of no names is written as it is", () => {
   const { container } = render(<Isolated {...isolate(() => "Client: CLI")} />);
   expect(bdis(container)).toEqual([]);

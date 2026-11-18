@@ -29,5 +29,8 @@ export function isolate(compose: (name: Namer) => string): Isolating {
 
 /** Isolated writes text with each slot's name in a bdi, where the translation puts it (UAX #9's isolates). */
 export function Isolated({ text, names }: Isolating): ReactNode {
-  return text.split(slotted).map((part, i) => (i % 2 === 0 ? part : <bdi key={part}>{names[Number(part)]}</bdi>));
+  return text.split(slotted).map((part, i) =>
+    // oxlint-disable-next-line react/no-array-index-key -- a translation may write one name twice: by where it is
+    i % 2 === 0 ? part : <bdi key={i}>{names[Number(part)]}</bdi>
+  );
 }
