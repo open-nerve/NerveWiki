@@ -230,6 +230,61 @@ test.each(["mouse", "keyboard"])(
   }
 );
 
+/** noClipboard takes the page's clipboard away until the test ends: a page served without HTTPS. */
+function noClipboard() {
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  onTestFinished(() => {
+    if (clipboard === undefined) {
+      Reflect.deleteProperty(navigator, "clipboard");
+    } else {
+      Object.defineProperty(navigator, "clipboard", clipboard);
+    }
+  });
+}
+
+test("an embed shown to copy by hand follows its attachment renamed elsewhere: the field holds its new embed and name, the focus where it was", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  noClipboard();
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  const field = (await within(section).findByRole("textbox", { name: "Embed of data.zip" })) as HTMLInputElement;
+  expect(field.value).toBe("![[data.zip]]");
+  act(() => within(section).getByRole("button", { name: "Upload" }).focus());
+
+  // Renamed in another tab.
+  server.nodes = [...server.nodes.filter((node) => node.id !== archive.id), { ...archive, name: "archive.zip" }];
+  await readAgain();
+
+  await waitFor(() => expect(within(section).getByRole("textbox", { name: "Embed of archive.zip" })).toBe(field));
+  expect(field.value).toBe("![[archive.zip]]");
+  expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Upload" }));
+});
+
+test("an embed shown to copy by hand goes as its attachment goes elsewhere, the focus in it going to the section's title", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  noClipboard();
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  const field = await within(section).findByRole("textbox", { name: "Embed of data.zip" });
+  act(() => field.focus());
+
+  // Deleted in another tab.
+  server.nodes = server.nodes.filter((node) => node.id !== archive.id);
+  await readAgain();
+
+  await waitFor(() => expect(within(section).queryByRole("textbox")).toBeNull());
+  expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
+});
+
 test("an embed copied again is said again", async () => {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer({ nodes }).app);

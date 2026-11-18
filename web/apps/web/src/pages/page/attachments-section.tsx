@@ -19,6 +19,7 @@ import { useT, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { embedOf } from "../../lib/asset-kind";
 import { cn } from "../../lib/cn";
+import { useFocusLeaving } from "../../lib/focus-leaving";
 import { ApiError } from "../../services/api";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
@@ -89,7 +90,8 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const uploadButton = useRef<HTMLButtonElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [folders, setFolders] = useState(false);
-  const [copied, setCopied] = useState<{ embed: string; name: string; done: boolean } | undefined>(undefined);
+  // The attachment whose embed was copied, or shown to copy by hand: by its id, its embed and name as listed now.
+  const [copied, setCopied] = useState<{ id: string; done: boolean } | undefined>(undefined);
   const copyField = useRef<HTMLInputElement>(null);
   // Whether the menu closing chose Copy embed: the field of an embed not copied takes the focus then.
   const copying = useRef(false);
@@ -126,6 +128,12 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     heading
   );
 
+  // The embed shown to copy by hand follows its attachment renamed elsewhere, and goes as it goes, or loses its
+  // extension (M12/P2/S5, 16.4b).
+  const copiedAsset =
+    copied !== undefined && !copied.done ? list?.assets.find((asset) => asset.id === copied.id) : undefined;
+  const copiedLink = copiedAsset?.link ?? null;
+
   if (
     !writer &&
     uploads.length === 0 &&
@@ -147,10 +155,10 @@ export const AttachmentsSection = observer(function AttachmentsSection({
             await navigator.clipboard.writeText(embed);
           } catch {
             // Without a secure context the page has no clipboard: the copy fails.
-            setCopied({ embed, name: asset.name, done: false });
+            setCopied({ id: asset.id, done: false });
             return;
           }
-          setCopied({ embed, name: asset.name, done: true });
+          setCopied({ id: asset.id, done: true });
           notice.say(t("asset.copied"));
         };
         void copy();
@@ -243,12 +251,16 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         <p className="text-sm text-muted-foreground">{t("asset.dropHint")}</p>
       )}
       {folders && <Alert>{t("asset.folders")}</Alert>}
-      {copied !== undefined &&
-        (copied.done ? (
-          <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>
-        ) : (
-          <CopyField key={copied.embed} embed={copied.embed} name={copied.name} field={copyField} />
-        ))}
+      {copied?.done === true && <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>}
+      {copied !== undefined && copiedAsset !== undefined && copiedLink !== null && (
+        <CopyField
+          key={copied.id}
+          embed={embedOf(copiedLink)}
+          name={copiedAsset.name}
+          field={copyField}
+          left={() => heading.current?.focus()}
+        />
+      )}
       {uploads.length > 0 && (
         <UploadRows
           notebook={notebook}
@@ -315,10 +327,23 @@ export const AttachmentsSection = observer(function AttachmentsSection({
 /**
  * CopyField is an embed the page could not copy, the clipboard out of its
  * reach (a page served without HTTPS): in a field, selected as it is
- * focused, which it is as it shows, to copy by hand.
+ * focused, which it is as it shows, to copy by hand. Its embed and name
+ * change as its attachment is renamed, the field kept; as it goes holding
+ * the focus, the focus goes to left (v0.1 design 13.2, item 17).
  */
-function CopyField({ embed, name, field }: { embed: string; name: string; field: RefObject<HTMLInputElement | null> }) {
+function CopyField({
+  embed,
+  name,
+  field,
+  left,
+}: {
+  embed: string;
+  name: string;
+  field: RefObject<HTMLInputElement | null>;
+  left: () => void;
+}) {
   const t = useT();
+  useFocusLeaving(field, left);
   // A copy that failed once its menu closed; one that failed at once, the menu takes it back from, and gives it.
   useEffect(() => {
     field.current?.focus();
