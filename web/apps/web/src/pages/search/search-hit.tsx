@@ -4,6 +4,7 @@ import { Link } from "react-router";
 
 import { formatBytes, formatDateTime, formatRelative } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { isolate, Isolated, same, type Namer } from "../../i18n/isolated";
 import { assetKind } from "../../lib/asset-kind";
 import { partsOf } from "../../lib/text-ranges";
 import { shortId } from "../../lib/twins";
@@ -105,7 +106,7 @@ export function SearchHitRow({
         </Link>
       </p>
       <p className="text-sm break-words text-muted-foreground">
-        {path}
+        <Isolated {...isolate((name) => pathOf(hit, notebook ?? t("search.notebook"), name))} />
         {twin === "id" && (
           <>
             {" · "}
@@ -137,7 +138,10 @@ export function SearchHitRow({
   );
 }
 
-/** pathOf is where hit is: its notebook, named notebook, and the pages above it, from the root down. */
-export function pathOf(hit: SearchHit, notebook: string): string {
-  return [notebook, ...hit.ancestors.map((ancestor) => ancestor.name)].join(" / ");
+/**
+ * pathOf is where hit is: its notebook, named notebook, and the pages above it, from the root down, each a name of
+ * its own (name: isolated.tsx), the separators between them.
+ */
+export function pathOf(hit: SearchHit, notebook: string, name: Namer = same): string {
+  return [notebook, ...hit.ancestors.map((ancestor) => ancestor.name)].map((each) => name(each)).join(" / ");
 }

@@ -5,6 +5,7 @@ import { Link } from "react-router";
 import { Button } from "../../components/ui/button";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { isolate, Isolated } from "../../i18n/isolated";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId } from "../../lib/twins";
 import type { Changeset } from "../../services/page.service";
@@ -56,7 +57,7 @@ export const HistoryRow = observer(function HistoryRow({
   const name = changesetName(changeset, twin, t, locale);
   const newest = changeset.reverted_by[0];
   const reverts = changeset.reverts;
-  const summary = changesText(changeset, t, locale);
+  const summary = isolate((named) => changesText(changeset, t, locale, named));
   return (
     <li ref={row} className="space-y-1 p-4">
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -76,7 +77,7 @@ export const HistoryRow = observer(function HistoryRow({
         )}
       </p>
       <p className="text-sm break-words text-muted-foreground">
-        {clientText(changeset.client, t)}
+        <Isolated {...isolate((named) => clientText(changeset.client, t, named))} />
         {" · "}
         <time dateTime={changeset.created_at} title={formatDateTime(changeset.created_at, locale)}>
           {formatRelative(changeset.created_at, now, locale)}
@@ -93,7 +94,11 @@ export const HistoryRow = observer(function HistoryRow({
           <bdi>{changeset.message}</bdi>
         </p>
       )}
-      {summary !== "" && <p className="text-sm break-words">{summary}</p>}
+      {summary.text !== "" && (
+        <p className="text-sm break-words">
+          <Isolated {...summary} />
+        </p>
+      )}
       <p className="text-sm text-muted-foreground">{countsText(changeset, t, locale)}</p>
       <IngestSources changeset={changeset} limit={3} />
       {(newest !== undefined || changeset.trimmed || changeset.kind === "revert") && (
@@ -113,7 +118,11 @@ export const HistoryRow = observer(function HistoryRow({
               <span className="text-muted-foreground">{t("history.revertsPurged")}</span>
             ) : (
               <Link to={href(reverts.id)} className="break-words underline underline-offset-4">
-                {t("history.reverts", { name: changesetName(reverts, revertsTwin, t, locale) })}
+                <Isolated
+                  {...isolate((named) =>
+                    t("history.reverts", { name: changesetName(reverts, revertsTwin, t, locale, named) })
+                  )}
+                />
               </Link>
             ))}
         </p>
