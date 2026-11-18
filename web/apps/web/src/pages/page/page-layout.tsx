@@ -217,12 +217,33 @@ const PageShell = observer(function PageShell({
 
   // A refusal as forbidden says the account's role was taken away meanwhile: the notebooks are read again, and the
   // page follows its role (no Edit, the checkboxes disabled, the view not written again; M12/P2/S4, 6.2). Another
-  // outcome, or a toggle starting, ends the wait for it.
+  // outcome, or a toggle starting, ends the wait for it; so does the read's answer (review B's C1-M1): the page
+  // writable still, the role kept or the read failed, the focus is left; writable no more before it was refused (an
+  // event took the role first: no render is to come), the focus, if lost, goes to the title at once; else the effect
+  // below gives it, after the render the read brings. Writable or not is the store's as the answer comes, not a
+  // render's.
   function roleTaken(why: unknown) {
     roleRead.current = why instanceof ApiError && why.code === "forbidden";
-    if (roleRead.current) {
-      void mutate(["notebooks", workspace.id]).catch(() => undefined);
+    if (!roleRead.current) {
+      return;
     }
+    const id = page.id;
+    const writable = canEditPageBody(pages, id);
+    void mutate(["notebooks", workspace.id])
+      .catch(() => undefined)
+      .finally(() => {
+        if (!mounted() || !roleRead.current) {
+          return;
+        }
+        if (canEditPageBody(pages, id)) {
+          roleRead.current = false;
+        } else if (!writable) {
+          roleRead.current = false;
+          if (focusLost()) {
+            heading.current?.focus();
+          }
+        }
+      });
   }
 
   // A task item's toggle refused (M5/P6 design 3.5): page.locked as Edit's refusal is, the note reading who holds
