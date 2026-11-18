@@ -117,6 +117,8 @@ test("a property link to an attachment the browser shows opens it in a tab of it
   ]);
   expect(within(section("Properties")).getByRole("link", { name: "the cover (opens in a new tab)" })).toBe(links[0]);
   expect(links[0]?.querySelector(".sr-only")?.textContent).toBe("(opens in a new tab)");
+  // Not copied with the value (M12/P2/S5, 17.2b).
+  expect(links[0]?.querySelector(".sr-only")?.classList.contains("select-none")).toBe(true);
   expect(links[0]?.getAttribute("target")).toBe("_blank");
   expect(links[0]?.getAttribute("rel")).toBe("noopener noreferrer");
   expect(links[0]?.hasAttribute("download")).toBe(false);

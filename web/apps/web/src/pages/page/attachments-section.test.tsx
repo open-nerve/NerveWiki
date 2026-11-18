@@ -35,6 +35,8 @@ test("a page's attachments are listed by name, each opening as it is served, wit
     ])
   );
   const opened = within(section).getByRole("link", { name: "photo.png (opens in a new tab)" });
+  // The hint is not copied with the row's text (M12/P2/S5, 17.2b).
+  expect(opened.querySelector(".sr-only")?.classList.contains("select-none")).toBe(true);
   expect([opened.getAttribute("href"), opened.getAttribute("target"), opened.getAttribute("rel")]).toEqual([
     `/api/v0/assets/${photo.id}/content?sig=1`,
     "_blank",

@@ -141,6 +141,8 @@ test("a link to an attachment the browser shows opens in a tab of its own, as it
   expect(pdf?.getAttribute("target")).toBe("_blank");
   expect(pdf?.getAttribute("rel")).toBe("noopener noreferrer");
   expect(pdf?.querySelector("span.sr-only")?.textContent).toBe("(opens in a new tab)");
+  // Not copied with the text, its space outside (M12/P2/S5, 17.2b).
+  expect(pdf?.querySelector("span.sr-only")?.classList.contains("select-none")).toBe(true);
   expect(pdf?.textContent).toBe("doc.pdf (opens in a new tab)");
   for (const link of [zip, gone, other]) {
     expect(link?.hasAttribute("target")).toBe(false);

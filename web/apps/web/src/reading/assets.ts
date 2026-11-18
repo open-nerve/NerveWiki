@@ -115,7 +115,8 @@ type Failing = { place: Place; reloaded: boolean };
 
 /**
  * newTab has the links of container to attachments the browser shows open in a tab of their own, saying so unseen:
- * each link, and its hint, the space before it outside, which a name joins the words by.
+ * each link, and its hint, the space before it outside, which a name joins the words by. The hint is not copied with
+ * the text (select-none; M12/P2/S5, 17.2b).
  */
 function newTab(container: HTMLElement, text: string): { link: HTMLAnchorElement; hint: ChildNode[] }[] {
   const added: { link: HTMLAnchorElement; hint: ChildNode[] }[] = [];
@@ -123,7 +124,7 @@ function newTab(container: HTMLElement, text: string): { link: HTMLAnchorElement
     link.target = "_blank";
     link.rel = "noopener noreferrer";
     const hint = document.createElement("span");
-    hint.className = "sr-only";
+    hint.className = "sr-only select-none";
     hint.textContent = text;
     const space = document.createTextNode(" ");
     link.append(space, hint);
