@@ -113,11 +113,11 @@ func (v view) embed(w markdown.Writer, id uuid.UUID, class []string, text string
 		escaped(w, []byte(text))
 		_, _ = w.WriteString("</span>")
 	case kind == "image":
-		v.element(w, "img", a, []markdown.Attr{{Name: "alt", Value: text}}, imageSize(sz, a), "")
+		v.element(w, "img", a, []markdown.Attr{{Name: "alt", Value: text}}, sz.marked(imageSize(sz, a)), "")
 	case (kind == "audio" || kind == "video") && v.play():
 		var dims []markdown.Attr
 		if kind == "video" {
-			dims = sz.attrs()
+			dims = sz.marked(sz.attrs())
 		}
 		v.element(w, kind, a, []markdown.Attr{{Name: "controls", Value: ""}, {Name: "preload", Value: "none"},
 			{Name: "aria-label", Value: text}}, dims, "</"+kind+">")
@@ -162,6 +162,17 @@ func imageSize(sz size, a Asset) []markdown.Attr {
 		sz = size{width: a.Width, height: a.Height}
 	}
 	return sz.attrs()
+}
+
+// marked is dims, a size written, after the empty data-nw-sized that marks
+// it so (M12/P2/S5, 15.1): the reading view keeps the height written, and
+// lets an image's own size, given against layout shifts, scale with its
+// width. It is dims as they are when the page wrote no size.
+func (sz size) marked(dims []markdown.Attr) []markdown.Attr {
+	if sz == (size{}) {
+		return dims
+	}
+	return slices.Concat([]markdown.Attr{{Name: "data-nw-sized", Value: ""}}, dims)
 }
 
 // attrs is a size's width and height, those it gives.
