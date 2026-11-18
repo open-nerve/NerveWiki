@@ -87,7 +87,12 @@ func (a at) Now() time.Time { return time.Time(a) }
 // sampleView is the sample page's reading view as of now, as the server
 // writes it: the composition root's extensions (tasks and obsidian, as
 // bootstrap's markdownExtensions builds them), its links resolving to the
-// attachments, which the module's Embeds shows, signed with sampleKey.
+// attachments, which the module's Embeds shows, converted as bootstrap's
+// assetEmbeds.assets does, signed with sampleKey. Those two are written
+// out again here: the root's Embeds has no exported fields and is made
+// from a pool alone, so the composition root would need a database, or
+// the part of Embeds.Of that calls ContentURL, the spelling the sample
+// holds; each says to change this test with it.
 func sampleView(t *testing.T, now time.Time) markdown.View {
 	t.Helper()
 	embeds := Embeds{embeds: app.NewEmbeds(sampleRows{}, macadapter.New([]byte(sampleKey)), at(now))}
