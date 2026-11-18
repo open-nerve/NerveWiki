@@ -278,10 +278,12 @@ function RevertForm({
   // changeset trimmed, or out of reach, which close it as the page reads it again.
   async function refused(refusal: unknown, reader: ReturnType<typeof watchReader>): Promise<boolean> {
     if (refusal instanceof ApiError && refusal.code === "page.revert_conflict") {
-      // Not read, the jobs held say what they can. The changeset is read again too: undone elsewhere meanwhile, what
-      // the conflicts advise follows its reverted_by (M12/P2/S2, 23.11).
+      // Not read, the jobs held say what they can. The changeset is read again first: undone elsewhere meanwhile,
+      // what the conflicts advise follows its reverted_by, not the one before (M12/P2/S2, 23.11; review A's N4); the
+      // lists after it, not waited for. Its read failing, they advise as before.
       await transfers.load().catch(() => undefined);
-      reread(true);
+      await mutate(["changeset", notebook.id, changeset.id]).catch(() => undefined);
+      reread(false);
       setConflict(refusal);
       return true;
     }

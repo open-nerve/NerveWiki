@@ -444,6 +444,32 @@ test.each([
   }
 );
 
+test("a rename undone elsewhere, undone again while the change's read is held, says nothing of renaming it back first", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  rework.conflicts = [conflict(notes.id, "Notes", "changed")];
+  renderApp(changesetPath(rework.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Undo change" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Undo this change?" });
+  rework.revertedBy.push(changesetId(9001));
+  let release!: () => void;
+  server.historyWaits.changeset = new Promise<void>((resolve) => (release = resolve));
+  const reads = () => server.sent.filter((line) => line.startsWith("GET changeset ")).length;
+  const before = reads();
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reads()).toBe(before + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 300)));
+
+  // The conflicts wait for the change read again: what they advise follows it (review A's N4).
+  expect(within(dialog).queryByText(/rename it back/u)).toBeNull();
+  act(() => release());
+  expect(
+    await within(dialog).findByText("Undone before: undoing it again succeeds only once that undo is undone.")
+  ).toBeTruthy();
+  expect(within(dialog).queryByText(/rename it back/u)).toBeNull();
+});
+
 test("in Chinese, the undo of a change of a thousand nodes or more says 1,000+ of them, as the history does", async () => {
   const user = userEvent.setup();
   const { server } = reworked();
