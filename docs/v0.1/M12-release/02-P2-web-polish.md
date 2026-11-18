@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订） |
-| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)，实施与审查之后与代码不同之处照实改在各节，结果在 10.1；S2–S6 未开工） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `（待填：合并号）`，[S2 的审查记录](reviews/P2-S2-text-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1、10.2；S3 实施中，S4–S6 未开工） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -173,7 +173,7 @@
 - **385（P2-8）单复数**：`en.ts` 里带计数、会显示 1 的十个键各加一个 `*One`，其余写明不改的理由（4.2.2）。
 - **386（P2-9）根下统一叫"笔记本的顶层"/"the notebook's top level"**，`index.root` 一并；LLM Wiki 与升级里说库根位置的"根下"不改（4.2 的 22.11）。
 - **387（P2-10）撤销的用词**：网页的英文一律 undo；服务端 `page/domain/errors.go` 的文字是 API 的词，网页不显示它，不改（4.2 的 23.1）。
-- **388（P2-11）38.6 的单位改成 KiB、MiB**（`W/i18n/format.ts:50`）：与 README、粘贴那一句一致，名副其实；改 10 个测试文件、19 行（4.2 的 38.6）。
+- **388（P2-11）38.6 的单位改成 KiB、MiB**（`W/i18n/format.ts:50`）：与 README、粘贴那一句一致，名副其实；改 10 个测试文件、19 行（4.2 的 38.6）。实际 11 个文件、23 行（10.2）。
 - **389（P2-12）15.3 用中性的说法**"没有这个名称的页面或附件"，不按扩展名猜附件：服务端只在有同名附件时才把 `x.png` 读成附件（`linking/domain/target.go:109-126`），按写法猜会与服务端不一致（4.2 的 15.3；移交原话是"按写法一开始就说没有这个附件"）。
 - **390（P2-13）22.16 只改说法，23.4 只改英文**：重开失锁的会话、冲突链到上级那一项（要服务端点名上级）进 v0.2（4.2）。
 - **391（P2-14）H4 的两句**：回收站"过了可以恢复的期限之后由系统永久删除"，不写天数、不写"立即"；版本列表"版本不能单独删除，系统也不会"，不提时间与清理（4.2 的 H4）。
@@ -213,7 +213,7 @@
 - **425（P2-48）23.1 连同 `upgrade.approveBody` 的中文**：同一个用词，中文也改"改动"（4.2 的 23.1）。
 - **426（P2-49）22.13 用中性的一句，不先显示加载中**：树还没读到或读失败时说"它不在回收站里"，读到之后再照树分；改动最小（4.2 的 22.13）。
 - **427（P2-50）23.12 的中文用 `{count}+`**：与 `search.capped` 一致，不改模板的空格（4.2 的 23.12）。
-- **428（P2-51）9.5 的英文写"(at the top level of Plans)"**，不用所有格：以 s 结尾的笔记本名的所有格不好看（4.2 的 9.5）。
+- **428（P2-51）9.5 的英文写"(at the top level of Plans)"**，不用所有格：以 s 结尾的笔记本名的所有格不好看（4.2 的 9.5）。前一半（名字里带笔记本名）由 S2 修复第 1 轮的决定 584 取代："(at the notebook's top level)"，不带笔记本名；后一半随之没有对象（实际见 10.2）。
 - **429（P2-52）20.2 留被拒的那一句**（`importBusy`，回答这次按下），压下常驻的 `importUnderWay`（4.5 的 20.2）。
 
 ## 3. 服务端
@@ -226,12 +226,12 @@ P2 碰服务端的有三处：S2 的两份 `AGENTS` 模板（第 40 条）、S4 
 |---|---|
 | `wiki/domain/template-en-agents.md:33` | "Connect an agent to this notebook at `` `/mcp?notebook=<id>` ``. Three prompts are served there:" 改为 "Connect an agent to this notebook at `` `/mcp?notebook=<id>` ``. While the notebook is being upgraded to an LLM Wiki, the prompt `` `upgrade` `` guides the agent there; once it is one, three prompts serve it:"（冒号之后照旧接 `ingest`、`query`、`lint` 三项的列表） |
 | `wiki/domain/template-zh-CN-agents.md:33` | "在 `` `/mcp?notebook=<id>` `` 把 agent 连到这本笔记本。那里有三个 prompt：" 改为 "在 `` `/mcp?notebook=<id>` `` 把 agent 连到这本笔记本。笔记本升级为 LLM Wiki 期间，那里的 prompt `` `upgrade` `` 指引 agent；成为 LLM Wiki 之后，有三个 prompt 为它服务：" |
-| `wiki/domain/template_test.go` | 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（下） |
+| `wiki/domain/template_test.go` | 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（下；修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`，实际见 10.2） |
 
 - **为什么这样写**：发起升级时补写的 `AGENTS` 取同一份模板（`wiki/app/template.go:104-128` 的 `SeedUpgrade`），握手的说明含 `AGENTS` 的正文，升级中的 agent 读到"有三个 prompt"，这时它们都答 `notebook.not_llm_wiki`，`upgrade` 没提（移交第 40 条）。新句先说升级期间的 `upgrade`，再说建成之后的三个；一本一开始就是 LLM Wiki 的笔记本读到前半句无害。MCP 的笔记本入口静态列出四个 prompt（`wiki/adapter/mcp/prompts.go:31-49`：`upgrade` 与那三个），新句与它一致。两份都改，照 00 号文档 4.5（决定 299 原来只说中文那句；移交与 00 号文档说两份）。
 - **已有笔记本里的 `AGENTS` 不随之改**：模板只在新建 LLM Wiki（`SeedNotebook`）与发起升级（`SeedUpgrade`）时写，不加迁移。
 - **模板的三个守卫照过**：两种语言的块对应、行内代码相同（`TestTheTemplatesCorrespond`，`wiki/domain/template_test.go:111-153`：两句的行内代码都是 `/mcp?notebook=<id>` 与 `upgrade`）；代码之外没有 `[[`、`![`、`](`、`#`（`TestTheTemplatesLinkNothingOutsideCode`）；模板 2,209 与 2,107 字节，加约 120 字节，在 8 KiB 之下（`TestTheTemplatesAreSmall`）。
-- **新测试**：`TestTheAGENTSTemplatesNameThePromptsAsServed` 对 `template(LocaleEn)[1].Content` 与 `template(LocaleZhCN)[1].Content`（`AGENTS` 是第二页，同 `:127`）各断言含上表的那一整行（`strings.Contains(content, line+"\n")`），且不含旧句。没修的代码上两种语言都失败。今天没有测试钉着这一句：`wiki/app/template_test.go`、`bootstrap/mcp_instructions_test.go`、`bootstrap/wiki_template_test.go`、`bootstrap/upgrade_start_test.go`、`bootstrap/mcp_wiki_guard_test.go` 与 e2e 的 LW1 都从模板或 REST 动态取正文（S2 的助手逐个读过），不改。
+- **新测试**：`TestTheAGENTSTemplatesNameThePromptsAsServed`（修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`：它只查模板里写的那一行，不读 MCP 实际登记的 prompt，对照进 v0.2；实际见 10.2）对 `template(LocaleEn)[1].Content` 与 `template(LocaleZhCN)[1].Content`（`AGENTS` 是第二页，同 `:127`）各断言含上表的那一整行（`strings.Contains(content, line+"\n")`），且不含旧句。没修的代码上两种语言都失败。今天没有测试钉着这一句：`wiki/app/template_test.go`、`bootstrap/mcp_instructions_test.go`、`bootstrap/wiki_template_test.go`、`bootstrap/upgrade_start_test.go`、`bootstrap/mcp_wiki_guard_test.go` 与 e2e 的 LW1 都从模板或 REST 动态取正文（S2 的助手逐个读过），不改。
 - **变异**：任一语言改回旧句（新测试失败）；中文少了 `upgrade` 的反引号（`TestTheTemplatesCorrespond` 失败）。
 - **CI**：只多 wiki 模块的一个短测试，组合根不变，`short` 与 `race` 两份各多不到 1 秒。
 
@@ -845,7 +845,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | 26.13 | B；B | `W/pages/search/search-page.tsx` | `search-page.test.tsx` |
 | 26.14 | B（可降 C）；B | `W/pages/search/search-status.ts` | `W/pages/search/search-status.test.ts` |
 | 35.1 | B；B | `index-page.tsx`、`index-rows.tsx`、`health-rule.tsx`、`health-item.tsx`、`health-page.tsx`、`upgrade-check.tsx` | `index-page`、`health-rule`、`health-page`、`upgrade-check` 的测试 |
-| 38.6 | B；B | `W/i18n/format.ts` | `W/i18n/format.test.ts` 与另 9 个文件（共 10 个文件 19 行） |
+| 38.6 | B；B | `W/i18n/format.ts` | `W/i18n/format.test.ts` 与另 9 个文件（共 10 个文件 19 行；实际 11 个文件 23 行，见 10.2） |
 | 38.8 | B；B | 文字 | `W/pages/notebook/duplicate-text.test.tsx`；e2e `lw6-source-history.spec.ts:439` |
 | 40 | B；B | `wiki/domain/template-en-agents.md:33`、`template-zh-CN-agents.md:33` | go test：`wiki/domain/template_test.go` |
 | 41.1 | B；B | `health-page.tsx:306`、`upgrade-check.tsx:252,383` | `upgrade-page`、`health-page`、`upgrade-check` 的测试 |
@@ -873,12 +873,12 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | `health.staleOne` | `1 page has an outdated index. Ask the server administrator to run nervewiki reindex.` | `1 篇页面的索引已过时，请服务器管理员运行 nervewiki reindex。` | 35.1 |
 | `upgrade.startRawOne` | `The page raw at the root becomes the source area (1 node under it now): once approved, everything under it is a read-only source. Your agent can move out what is not a source.` | `根下的 raw 将成为来源区（现有 1 个节点），批准之后它下面的都是只读的来源；不是来源的可以由 agent 移出。` | 41.3 |
 | `upgrade.gateLinksWorseOne` | `1 page leads to more pages that do not exist than when the upgrade started.` | `1 页指向的待建页面比升级开始时多。` | 41.2 |
-| `page.nameAtTop` | `{name} (at the top level of {notebook})` | `{name}（{notebook} 的顶层）` | 9.5 |
+| `page.nameAtTop` | `{name} (at the top level of {notebook})`；实际 `{name} (at the notebook's top level)`（决定 584，10.2） | `{name}（{notebook} 的顶层）`；实际 `{name}（笔记本的顶层）` | 9.5 |
 | `page.taskWouldGo` | `This task cannot be ticked or cleared here: its line would no longer be a task. Edit the page to change it.` | `这一项不能在这里勾选或取消勾选：改了之后它那一行就不再是任务项。请编辑页面来修改。` | 6.1 |
 | `field.asset_name.too_long` | `At most 255 bytes, the extension included: 255 Latin letters, or about 85 Chinese characters.` | `连同扩展名最多 255 字节：255 个拉丁字母，或约 85 个汉字。` | 16.6 |
 | `transfer.exportPageAloneTitle` | `Export the page {name}?` | `导出页面「{name}」？` | 19.1 |
-| `diff.lastBreakAdded` | `The only change is a line break added at the end.` | `唯一的改动是在末尾加了一个换行。` | 21.8 |
-| `diff.lastBreakRemoved` | `The only change is the line break at the end, removed.` | `唯一的改动是去掉了末尾的换行。` | 21.8 |
+| `diff.lastBreakAdded` | `The only change is a line break added at the end.`；实际 `The only change is that a line break was added at the end.`（审查 A 的 N1，10.2） | `唯一的改动是在末尾加了一个换行。` | 21.8 |
+| `diff.lastBreakRemoved` | `The only change is the line break at the end, removed.`；实际 `The only change is that the line break at the end was removed.`（10.2） | `唯一的改动是去掉了末尾的换行。` | 21.8 |
 | `diff.tooLargeBlock` | `Lines: +{added} −{removed}, but the changes join into a block too large to show line by line.` | `+{added} −{removed} 行，但改动连成的一块太大，不能逐行显示。` | 21.11 |
 | `trash.notInTrashUnknown` | `This is not in the trash.` | `它不在回收站里。` | 22.13 |
 | `history.attachment` | `Attachment: {name}` | `附件：{name}` | 23.13 |
@@ -921,9 +921,11 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 | `history.conflict.parent_gone` | en | `The page that “{name}” was under is gone: it is in the trash, or purged.` | 不变 | 23.4 |
 | `history.conflictTrashLabel` | en | `Trash: the page that “{name}” was under may be there` | 不变 | 23.4 |
 | `history.atLeast` | zh | 不变（`{count}+`） | `{count}+` | 23.12 |
-| `transfer.restoreLeftUndone` | 两种 | `What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.` | `已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。` | 24.7 |
+| `transfer.restoreLeftUndone` | 两种 | `What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.` | `已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。`；实际 `已恢复的部分被一次撤销删除，又回到了回收站；没处理到的节点也在回收站里，分成几项。`，英文实际 `An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.`（审查 A 的 N2，10.2） | 24.7 |
 | `search.howTo` | 两种 | `Type what to find in the search box at the top, and press Enter.` | `在顶部的搜索框里输入要找的文字，按回车。` | 26.11 |
 | `source.historyRestore` | 两种（只换第一句） | `A restore or an undo follows the source rules at every step, not only in what it leaves. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.` | `还原与撤销的每一步都要遵守来源规则，不只是最后的结果。需要还原正文时，先将页面移到来源区外，还原后再移回。恢复或移回前先处理冲突来源；移回时仍会检查重复。管理员也不能修改来源正文。` | 38.8 |
+
+修复第 1 轮另改了 `problem.page.virtual_file` 的中文：把"日志就是变更集"改成"日志就是这本笔记本的改动"，与决定 425 同一个用词（审查 A 的 N3）。改文字的键实际 en 22 个、zh-CN 27 个（10.2）。
 
 38.6（已定：2.3 的 P2-11）不改 i18n 文件：`W/i18n/format.ts:50` 的单位改成 `B`、`KiB`、`MiB`、`GiB`、`TiB`，两种语言同。
 
@@ -999,13 +1001,13 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 取舍已定在 2.3 的 P2-8 至 P2-14。下面是读代码的推断，实施者先核对：
 
-1. 6.1：替身 `tasksOf` 的正则改了之后，先跑 `page-tasks.test.tsx` 与用 `withTasks` 的测试（推断不受影响：它们都写成 `- [ ] x`）。
-2. 22.11：`transfer-background.test.tsx:176-200` 的表有没有 locale 的口子；没有就加一格 `setLocale`。
-3. 22.13：`trash-preview.test.tsx` 的 `:203`、`:361`、`:427`、`:534`、`:572` 推断不变（节点都在树里）。
-4. 23.1：`revert_too_large`、`revert_conflict` 的英文今天推断没有测试断言；23.4：`transfer-report.tsx` 的冲突列表推断也用 `reasonText`。实施者 grep 核对。
-5. 35.1：`indexFacts` 夹具在哪；`health-page.test.tsx` 的中文格里有没有被 2 页引用的项。
+1. 6.1：替身 `tasksOf` 的正则改了之后，先跑 `page-tasks.test.tsx` 与用 `withTasks` 的测试（推断不受影响：它们都写成 `- [ ] x`）。实际：成立，全量照过；替身的正则后来照服务端的解析改（10.2）。
+2. 22.11：`transfer-background.test.tsx:176-200` 的表有没有 locale 的口子；没有就加一格 `setLocale`。实际：没有，另写一张 zh 的 `test.each`。
+3. 22.13：`trash-preview.test.tsx` 的 `:203`、`:361`、`:427`、`:534`、`:572` 推断不变（节点都在树里）。实际：不变；`:303` 加一条否定断言（22.13）。
+4. 23.1：`revert_too_large`、`revert_conflict` 的英文今天推断没有测试断言；23.4：`transfer-report.tsx` 的冲突列表推断也用 `reasonText`。实施者 grep 核对。实际：两条推断都成立；英文两行加在 `problem-messages.test.ts`。
+5. 35.1：`indexFacts` 夹具在哪；`health-page.test.tsx` 的中文格里有没有被 2 页引用的项。实际：`indexFacts` 在 `W/test/index-server.ts`；`health-page` 的夹具里待建页的引用数都不是 1，新格改一项。
 
-另有四处小的取舍不在 2.3，各项里写了推荐的做法，已定在 2.3要不要记成主持者的决定：23.1 的 `upgrade.approveBody` 中文同改"改动"；22.13 用中性的一句、不先显示加载中；23.12 用 `{count}+`；9.5 写"(at the top level of Plans)"、不用所有格。
+另有四处小的取舍不在 2.3，各项里写了推荐的做法，已定在 2.3要不要记成主持者的决定：23.1 的 `upgrade.approveBody` 中文同改"改动"；22.13 用中性的一句、不先显示加载中；23.12 用 `{count}+`；9.5 写"(at the top level of Plans)"、不用所有格（前一半由决定 584 取代，实际见 10.2）。
 
 #### 4.2.6 逐项
 
@@ -1021,7 +1023,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - 新键 `page.taskWouldGo`（4.2.1.1）。
   - 不取 `field.offset.not_allowed` 加 `fieldErrors`：`out_of_range` 会显示更差的"Out of range."，13.2 第 11 条的字段文案又是全局的。
 - 假服务端：
-  - `W/test/page-server.ts:1110-1121` 的 `tasksOf` 认出 `]` 之后紧跟 `:` 的项（goldmark 认它是任务项）：正则改为 `/^- \[([ xX])\]( |(?=:))(.*)$/` 或等价，每项另记 `goes`。
+  - `W/test/page-server.ts:1110-1121` 的 `tasksOf` 认出 `]` 之后紧跟 `:` 的项（goldmark 认它是任务项）：正则改为 `/^- \[([ xX])\]( |(?=:))(.*)$/` 或等价，每项另记 `goes`。实际不成立：只有冒号之后是单个目的地、其后只有空白的行，勾上之后才成链接引用定义；勾着的 `- [x]: /u` 本来就是定义、不是任务项，`- [ ]: a b c`、`- [ ]:` 等照普通任务项（审查 B 的 M1，决定 585；`W/test/page-server-tasks.test.ts` 十五行对照，实际见 10.2）。
   - `toggle-task`（`:1135-1172`）在 `out_of_range` 之后、"同一状态什么也不写"之前：`task.goes && task.checked !== toggle.checked` 时答 422 `validation_failed`、`errors: [{ field: "offset", code: "not_allowed" }]`（次序照 `page.yaml:519-523`）。替身的说明（`:108-112`）加一句。
   - 可选：在 `W/test/page-server-source.test.ts` 旁的替身自测里加一格（05-lessons 第 2 节，推断有用）。
 - 测试（`W/pages/page/page-tasks.test.tsx`，`test.each(["en", "zh-CN"])`）：
@@ -1037,17 +1039,17 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 现状：`W/pages/notebook/distinct-name.ts:22`：`place === undefined ? node.name : t("page.nameIn", { name, place: place || notebook.name })`。`placeOfTitle`（`W/stores/page-tree.ts:86-95`）对根下的页答 `""`，于是根下的 Notes 写作"Notes (in Plans)"，Plans 根下页的子页 Notes 也是"Notes (in Plans)"。
   - 用它的 13 处：`tag-page.tsx:58`、`general-page.tsx:245`、`revert-dialog.tsx:200`、`page-tree-item.tsx:84,180,371`、`rename-page-dialog.tsx:68`、`page-tree.tsx:169`、`asset-dialogs.tsx:74,173`、`upgrade-page.tsx:496,604`、`move-page-dialog.tsx:111`、`transfer-report.tsx:326`、`version-restore.tsx:175`、`page-backlinks.tsx:60`。
 - 改法：
-  - `:22` 改为：`place === undefined` 答 `node.name`；`place === ""` 答 `t("page.nameAtTop", { name: node.name, notebook: notebook.name })`；否则 `t("page.nameIn", { name: node.name, place })`。
+  - `:22` 改为：`place === undefined` 答 `node.name`；`place === ""` 答 `t("page.nameAtTop", { name: node.name, notebook: notebook.name })`；否则 `t("page.nameIn", { name: node.name, place })`。实际：`page.nameAtTop` 不带笔记本名，`distinctName` 去掉 `notebook` 参数，十六处调用随之改（决定 584，10.2）。
   - 文档注释（`:5-9`）的"or the notebook at the root"改成"or, at the root, that it is at the notebook's top level"。
   - 新键 `page.nameAtTop`（4.2.1.1），用词随 22.11。
   - 总体设计 13.2 第 17 条随之改写（8.2）。
 - 测试：
-  - `W/pages/notebook/tag-page.test.tsx:33`：`"Install (in Plans)"` 改成 `"Install (at the top level of Plans)"`（这一格本来就有根下与页下各一项）。
-  - 加一格（同文件或 `page-tree.test.tsx`）`a page at the root and a page under a root page titled as the notebook are told apart`：`plans = pageNode(5, "Plans")`、`under = pageNode(6, "Notes", plans)` 与根下的 `notes`；断言树的按钮名分别是 `Actions for Notes (in Plans)` 与 `Actions for Notes (at the top level of Plans)`。没修的代码上两个都是"(in Plans)"，`getByRole` 找到两个而抛出。
-  - zh 一格：同上，`Notes（Plans 下）` 与 `Notes（Plans 的顶层）`。
-- 随之改（都是笔记本 Plans 根下的页）：`page-backlinks.test.tsx:71`；`page-tree.test.tsx:104`、`:181`；`page-tree-drop.test.tsx:72`；`page-tree-writes.test.tsx:237`、`:250`、`:251`、`:260`；`upgrade-page.test.tsx:1464`、`:1467`、`:1472`（`raw（Plans 下）` → `raw（Plans 的顶层）`）。页下的 `page-tree.test.tsx:107,117,180-185`、`page-tree-writes.test.tsx:369` 不变。
-- 变异：删掉 `place === ""` 的分支（新格与改过的断言失败）；`nameAtTop` 的 name、notebook 对调（tag-page 的断言失败）。
-- 取舍：英文比原来长；"(at Plans's top level)"对以 s 结尾的笔记本名不好看，不取（2.3 的 P2-51）。
+  - `W/pages/notebook/tag-page.test.tsx:33`：`"Install (in Plans)"` 改成 `"Install (at the top level of Plans)"`（这一格本来就有根下与页下各一项）。实际是 `"Install (at the notebook's top level)"`（10.2）。
+  - 加一格（同文件或 `page-tree.test.tsx`）`a page at the root and a page under a root page titled as the notebook are told apart`：`plans = pageNode(5, "Plans")`、`under = pageNode(6, "Notes", plans)` 与根下的 `notes`；断言树的按钮名分别是 `Actions for Notes (in Plans)` 与 `Actions for Notes (at the top level of Plans)`（实际后者是 `Actions for Notes (at the notebook's top level)`，10.2）。没修的代码上两个都是"(in Plans)"，`getByRole` 找到两个而抛出。
+  - zh 一格：同上，`Notes（Plans 下）` 与 `Notes（Plans 的顶层）`（实际后者是 `Notes（笔记本的顶层）`）。
+- 随之改（都是笔记本 Plans 根下的页）：`page-backlinks.test.tsx:71`；`page-tree.test.tsx:104`、`:181`；`page-tree-drop.test.tsx:72`；`page-tree-writes.test.tsx:237`、`:250`、`:251`、`:260`；`upgrade-page.test.tsx:1464`、`:1467`、`:1472`（`raw（Plans 下）` → `raw（Plans 的顶层）`；实际 `raw（笔记本的顶层）`，10.2）。页下的 `page-tree.test.tsx:107,117,180-185`、`page-tree-writes.test.tsx:369` 不变。
+- 变异：删掉 `place === ""` 的分支（新格与改过的断言失败）；`nameAtTop` 的 name、notebook 对调（tag-page 的断言失败）。实际：修复第 1 轮之后键里没有 `{notebook}`，对调一条不再有；换成键的两种语言各改回带名字的写法（`f5-nameAtTop-en`、`-zh`，S2 的记录）。
+- 取舍：英文比原来长；"(at Plans's top level)"对以 s 结尾的笔记本名不好看，不取（2.3 的 P2-51）。实际：修复第 1 轮改成不带笔记本名的 "(at the notebook's top level)"（审查 A 的 Q1，决定 584）：与回收站、转移、索引、历史、移动对话框同一个说法；同一本笔记本里笔记本名不区分什么（10.2）。
 - 牵连：S3 的 `bdi`（26.12、32.4）推断不受影响：这些是 `t()` 拼出的字符串，用在 `aria-label` 与纯文字里。
 
 ##### 15.3 附件写法的未建链接说成"页"
@@ -1059,7 +1061,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `W/pages/page/unresolved-link.test.tsx:140-163` 那一格的 `texts` 改成新文字，并加一条读者的、带扩展名的普通链接（`linkTo("q.png")`）：也说 `unresolved.reader` 的新句。没修的代码上旧文字不等于新文字，`getByText` 抛出。
   - 加 zh 一格 `to a reader in Chinese, a link to a name with an extension says neither a page nor an attachment has it`：读者点 `q.png`，对话框描述整句等于 zh 的 `unresolved.reader`；嵌入一条同。
 - 随之改：`unresolved-link.test.tsx:143-145`；`W/pages/notebook/trash-preview.test.tsx:85`、`W/pages/page/version-page.test.tsx:103`（`readOnly`）；`W/pages/notebook/upgrade-read-only.test.tsx:384`（正则 `/^No page has this name\./u` 改成 `/^No page or attachment has this name\./u`）、`:386-387`。
-- 变异：任一键改回旧文字，对应一格失败。
+- 变异：任一键改回旧文字，对应一格失败。实际：中文的 `readOnly`、`upgrading`、`readerWiki`、`image` 改回照过（没有格读那句中文），第 10 个提交各补一格之后抓到（10.2）。
 - 牵连：移交 M7-transfer T8（从解析不到的附件链接直接上传）是 C、进 v0.2。
 
 ##### 16.6 改名的 `too_long` 没说扩展名也算
@@ -1088,7 +1090,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `test.each([["en", "Export the page Notes?"], ["zh-CN", "导出页面「Notes」？"]])("a page without subpages is exported without saying its subpages, in %s")`：`renderApp(pagePath(notes.id), server.app)`（`notes` 在根下、没有子页），点菜单的"Export this page"，`findByRole("alertdialog", { name })`。没修的代码上名字带"and its subpages"，超时失败。
   - 已有的 `exporting()`（`:18-27`，Guide 有子页 Install）照旧断言"…and its subpages?"，是对照。
   - 替身不改：`W/test/jobs-server.ts:123,432` 建在 `pageServer` 上，默认的 `notes` 在根下、没有子页。
-- 变异：恒用 `exportPageTitle`（新格失败）；条件取反（Guide 那一格失败）。
+- 变异：恒用 `exportPageTitle`（新格失败）；条件取反（Guide 那一格失败）。实际另有一条"树没读到当作没有子页"，起初活下来（审查 B 的 N1、C 的 M1）：页的菜单要等树读到才出现，修复第 1 轮的一格经探针路由打开对话框，`nodesDown` 时标题仍是"…and its subpages?"（10.2）。
 - 牵连：e2e `tr1-export.spec.ts:261`（Café 下有 One）不变。P3/S3 引同一个文件的 `:76-80`（`texts` 不覆盖 `transfer.too_many_jobs`）并在 `page-menu.test.tsx` 加一格；本项在 `:54-58` 加几行，P3 引的行号随之后移。文本冲突、语义不冲突，后合并的先 `git merge main`。
 
 ##### 21.8 只差末尾换行显示 −x/+x
@@ -1113,7 +1115,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 改法：`:178-182` 三选一：`result.kind === "tooLarge"` 照旧（`added`、`removed` 为 `null` 时 `diff.tooLarge`，否则 `diff.tooLargeLines`）；`result.kind === "changes"` 时 `t("diff.tooLargeBlock", { added: result.added, removed: result.removed })`（4.2.1.1）。
 - 测试（`text-diff.test.tsx`）：`:352-358` 那一格的期望改成 `"+0 −2501 行，但改动连成的一块太大，不能逐行显示。"`，加 en 一格 `"Lines: +0 −2501, but the changes join into a block too large to show line by line."`。没修的代码上是"+0 −2501 行，太大，不能逐行比较。"，失败。`:126`（`tooLarge` 带计数）不变，是对照。
 - 随之改：`text-diff.test.tsx:357`。
-- 变异：恒用 `tooLargeLines`（改过的格失败）；恒用 `tooLargeBlock`（`:126` 失败）。
+- 变异：恒用 `tooLargeLines`（改过的格失败）；恒用 `tooLargeBlock`（`:126` 失败）。实际后一条红两格：`:126` 所在的一格与 "keeps texts too far apart…"（10.2）。
 
 ##### 22.11 根下的说法不统一（与 23.3 同改）
 
@@ -1189,7 +1191,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
   - `transfer.failure.changeset_reverted`：`W/pages/notebook/transfer-report.test.ts:25` 改成新句。
   - 没修的代码上各处整句比对失败。
 - 随之改：`revert-dialog.test.tsx:377`、`:381`、`:400`；`W/pages/notebook/revert-background.test.tsx:227`；`changeset-page.test.tsx:280`；`transfer-report.test.ts:25`、`:43`；`W/pages/notebook/transfer-import.test.tsx:450`；`transfer-background.test.tsx:374`、`:384`；`W/pages/notebook/upgrade-page.test.tsx:1357`（`approveBody` 帮手；zh 若改，`:1472` 的 `toContain` 只取前半句，不受影响）。
-- 变异：任一键改回"revert"或"Part of"，对应格失败。
+- 变异：任一键改回"revert"或"Part of"，对应格失败。实际：中文的 `transfer.failure.changeset_trimmed` 改回照过，第 10 个提交补格（10.2）。
 - 牵连：
   - 23.4、24.7、23.11 同一组文件。
   - 与 P3/S3：本项改 `transfer.failure.*` 的文字；P3/S3 给 `W/pages/notebook/transfer-report.tsx:92-108` 的 `problems` 加键（两种语言的 `transfer.problem.*`），并在 `transfer-report.test.ts`、`revert-background.test.tsx`、`transfer-import.test.tsx`、`problem-messages.test.ts` 各加一格。文本冲突、语义不冲突，后合并的先 `git merge main`。
@@ -1211,14 +1213,14 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 - 现状：`revert-dialog.tsx:279-285`：撤销答 `page.revert_conflict` 时只 `transfers.load()` 后 `setConflict(refusal)`，不重读这次改动；`Conflicts`（`:396-513`）在 `changeset.renames` 时显示 `history.conflictRenameBack`（`:509`），不看 `reverted_by`。别的标签页已把这次改名撤销，这里再按"撤销"：冲突说"“Beta” changed since."，又建议"rename it back"，而它已经回去了。
 - 改法：
-  - `refused`（`:279-285`）在 `setConflict(refusal)` 之前加 `reread(true)`：重读这次改动（`["changeset", notebook.id, id]`）、它的节点与历史的列表。页上的 `ChangesetPage`（`changeset-page.tsx:94`）拿到新的 `reverted_by`，经 `RevertDialog`、`RevertForm` 传给 `Conflicts`。审查 B 实跑证实这条数据的路（加 `reread(true)` 与条件之后新格过，文件 44 格全过；去掉 `reread(true)` 新格失败）。
+  - `refused`（`:279-285`）在 `setConflict(refusal)` 之前加 `reread(true)`：重读这次改动（`["changeset", notebook.id, id]`）、它的节点与历史的列表。页上的 `ChangesetPage`（`changeset-page.tsx:94`）拿到新的 `reverted_by`，经 `RevertDialog`、`RevertForm` 传给 `Conflicts`。审查 B 实跑证实这条数据的路（加 `reread(true)` 与条件之后新格过，文件 44 格全过；去掉 `reread(true)` 新格失败）。实际：重读不等就 `setConflict`，重读回来之前（失败时一直）仍说 "rename it back"（审查 A 的 N4）；修复第 1 轮先 `await` 这次改动的重读，再 `reread(false)` 重读两份列表、不等，然后才显示冲突（10.2）。
   - `:509`：`changeset.reverted_by.length > 0` 时显示 `history.revertAgain`（已在 `changeset-page.tsx:235` 用，不加新键），否则照旧在 `renames` 时显示 `history.conflictRenameBack`。
   - 焦点不变（冲突的标题照旧取得，`:410-412`；13.2 第 26 条：重读不移焦点）。
 - 测试（`revert-dialog.test.tsx`）：
   - `test.each(["en", "zh-CN"])("a rename undone elsewhere meanwhile, undone again, says it was undone before, not to rename it back, in %s")`：`server.log("rename", { changes: [renamed(...)] })`（`renames` 为真，`W/test/history-server.ts:403`），`conflicts = [conflict(id, "Beta", "changed")]`；页面读完之后 `changeset.revertedBy.push(otherId)`（`:317`，模拟别的标签页）；打开对话框按"Undo"。断言有 `history.revertAgain` 的整句，`queryByText(/rename it back/)`（zh：`/改回原名/`）为空。
   - 没修的代码上对话框里是"rename it back"，没有 `revertAgain`，失败。
   - 对照：`:187-245` 那一格（`reverted_by` 空）照旧有"rename it back"；`:233`、`:269`、`:289` 照旧。
-- 变异：去掉 `reread(true)`（新格失败）；条件恒假（新格失败）；条件恒真（`:233` 失败）。
+- 变异：去掉 `reread(true)`（新格失败）；条件恒假（新格失败）；条件恒真（`:233` 失败）。实际：条件恒真红的是 `:187-245` 那一格（含 `:233`）；修复第 1 轮另加"不等重读"一条（10.2）。
 - 牵连：S1 改这个文件的说明（24.3、49）与 `ConfirmDialog`；本项只碰 `:279-285` 与 `:509`。
 
 ##### 23.12 "1,000 多 个节点"多一个空格
@@ -1286,7 +1288,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 
 - 现状：`W/pages/search/search-status.ts:30`：`pages.some((page) => page.building)`，读过的任何一页说索引在建，状态行就一直加"The index is being built; …"，索引追上之后也不变。
 - 改法：`:30` 改成 `pages.at(-1)?.building === true`（最新读到的一页定）；`statusText` 的注释（`:9-18`）随之改。文字不变。
-- 测试（`W/pages/search/search-status.test.ts:65-75`）：加两格：`statusText([page(20, true, { value: 30, kind: "about" }, true), page(10, false, null, false)], 30, en, "en")` 等于"Results: 30."（没修的代码上带"The index is being built…"，失败）；zh 同一组等于"约 30 条。"。`:71-73`（最后一页在建）照旧，是对照。
+- 测试（`W/pages/search/search-status.test.ts:65-75`）：加两格：`statusText([page(20, true, { value: 30, kind: "about" }, true), page(10, false, null, false)], 30, en, "en")` 等于"Results: 30."（没修的代码上带"The index is being built…"，失败）；zh 同一组等于"约 30 条。"（实际是"30 条。"：最后一页读到底，计数是找到的 30；设计的预期错，审查 B 的 N2，10.2）。`:71-73`（最后一页在建）照旧，是对照。
 - 变异：改回 `some`（新格失败）；改成 `pages[0]`（新格与 `:71` 失败）。
 
 ##### 35.1 英文单复数（"1 sources" 等）
@@ -1320,8 +1322,8 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 - 已定：2.3 的 P2-11（甲）。不取乙（只把 `field.content.too_long` 改成"5 MB"）：仍是按 1024 算却标 MB，且与 README 不一致。
 - 改法：`format.ts:50` 的单位改成 `["B", "KiB", "MiB", "GiB", "TiB"]`，`:54` 与 `formatBytes` 的注释改成"such as 1.5 MiB"。两种语言同。附件、导出包、导入的上限、无主笔记本、搜索与回收站里的大小都随之写 KiB、MiB。
 - 测试：`W/i18n/format.test.ts:20-27` 的表改成 `1 KiB`、`1.5 KiB`、`5 GiB`、`2,048 TiB`、zh `1.5 KiB`（没修的代码上失败）；加 `5 * 1024 ** 2` 为 `5 MiB` 一格。`source-uploads.test.tsx:142` 断言"…: 5 MiB at most."，与 `W/pages/page/page-edit.test.tsx:374` 的"over 5 MiB"一致。
-- 随之改（10 个测试文件 19 行，都是 `KB`、`MB` 换成 `KiB`、`MiB`）：`format.test.ts:22-26`；`trash-preview.test.tsx:101`；`transfer-import.test.tsx:57`；`ownerless-page.test.tsx:135`；`attachment-uploads.test.tsx:296`、`:312`、`:412`；`search-page.test.tsx:116`、`:140`；`reading/assets.test.ts:161`；`transfer-page.test.tsx:92`、`:96`、`:189`；`attachments-section.test.tsx:49`；`source-uploads.test.tsx:142`。e2e 只断言了 `B`，不改。
-- 变异：单位改回 `MB`（`format.test.ts` 失败）；进位改成 1000（`1 KiB` 那格失败）。
+- 随之改（10 个测试文件 19 行，都是 `KB`、`MB` 换成 `KiB`、`MiB`；实际 11 个文件 23 行，另有 `upgrade-page.test.tsx:1138-1142`，10.2）：`format.test.ts:22-26`；`trash-preview.test.tsx:101`；`transfer-import.test.tsx:57`；`ownerless-page.test.tsx:135`；`attachment-uploads.test.tsx:296`、`:312`、`:412`；`search-page.test.tsx:116`、`:140`；`reading/assets.test.ts:161`；`transfer-page.test.tsx:92`、`:96`、`:189`；`attachments-section.test.tsx:49`；`source-uploads.test.tsx:142`。e2e 只断言了 `B`，不改。
+- 变异：单位改回 `MB`（`format.test.ts` 失败）；进位改成 1000（`1 KiB` 那格失败）。实际 `1 KiB`、`1.5 KiB` 照过，红的是 `1,023 B`、`5 MiB`、`5 GiB`、`2,048 TiB`（10.2）。
 
 ##### 38.8 `source.historyRestore` 的行话"临时步骤"
 
@@ -1334,7 +1336,7 @@ S2 只改文字与少量行为（23.11 冲突时重读，6.1、22.12、22.13 选
 ##### 40 升级中的 `AGENTS` 写"三个 prompt"
 
 - 组件：`wiki/domain/template-en-agents.md:33`、`wiki/domain/template-zh-CN-agents.md:33`，各改一行。新句、为什么这样写、三个守卫与不改的测试，全文见 3.1。
-- 测试：`wiki/domain/template_test.go` 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`，两种语言各断言含新的整行、不含旧句。没修的代码上两种语言都失败。
+- 测试：`wiki/domain/template_test.go` 加 `TestTheAGENTSTemplatesNameThePromptsAsServed`（修复第 1 轮改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`，10.2），两种语言各断言含新的整行、不含旧句。没修的代码上两种语言都失败。
 - 变异：任一语言改回旧句（新测试失败）；中文少写 `upgrade` 的反引号（`TestTheTemplatesCorrespond` 失败）。
 
 ##### 41.1 "No issues (1 checks)"
@@ -3333,7 +3335,7 @@ const threeBrowsers =
 5. **页面、附件、导出与编辑器**（6.1、15.3、16.6、19.1、22.16）：含 `W/test/page-server.ts` 的替身；e2e `c4-guard.spec.ts:236,273` 与 22.16 同一个提交。
 6. **比较**（21.8、21.11）。
 7. **搜索**（26.11、26.13、26.14）。
-8. **大小的单位与来源的说明**（38.6、38.8）：e2e `lw6-source-history.spec.ts:439` 与 38.8 同一个提交；38.6 改 10 个测试文件，可以单独一个提交。
+8. **大小的单位与来源的说明**（38.6、38.8）：e2e `lw6-source-history.spec.ts:439` 与 38.8 同一个提交；38.6 改 10 个测试文件，可以单独一个提交（实际 11 个，与 38.8 同在第 8 个提交，10.2）。
 9. **服务端**：两份 `AGENTS` 模板（40）与 `wiki/domain/template_test.go` 的新测试。组合根不变。
 
 与别的 Step、Phase 的冲突（`en.ts`、`zh-CN.ts` 每个 Step 都改，后合并的先 `git merge main`）：
@@ -3611,6 +3613,8 @@ P2 完成，当且仅当下面七条都成立。
 
 **S1 之后**（2026-11-16）：第 1 条，S1 已合并（`d1ade2ed`），合并之前 7.3 的门禁全绿、审查与修复核对结束。第 2 条，S1 的测试在没修的代码上红过，变异都抓到或写明（10.1 与 [S1 的记录](reviews/P2-S1-focus-and-shared-review.md)），三引擎的探查与鼠标的探针记下。第 3 条，附录 A 里 S1 的 22 项修好，第 7 条里来不及答的标签页推后进 v0.2。第 4–7 条，S1 的文档提交照写的改了（00 号文档第 12、13 节，总体设计 13.2 第 1、12、17、21、26 条与第 15 节，`M5-polish.md` 的一行，05-lessons）。
 
+**S2 之后**（2026-11-18）：第 1 条，S2 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与主持者的说明跑过、全绿（实施时 `make check` 的各项、`make e2e` 与 `make test`；修复第 1 轮与合并 `main` 之后 Go 只跑 `wiki` 模块），审查与修复核对结束（核对第 1 轮之后不开第二轮，决定 588）。第 2 条，S2 的测试在没修的代码上红过（35.1 的 `index-page` 一组以四条"恒假"变异为证），变异都抓到，活下来的五句中文补格之后抓到（10.2 与 [S2 的记录](reviews/P2-S2-text-review.md)）。第 3 条，附录 A 里 S2 的 28 项与 H4 的界面一句修好，推后进 v0.2 的照 2.3 与决定 587。第 4–7 条，S2 的文档提交照写的改了（00 号文档第 11、12、13 节与第 7 节第 20 条，总体设计 13.2 第 17 条、3.6 与第 15 节，`M5-polish.md`、`M8-history.md` 各一行，05-lessons 两条）；README 不改。
+
 ### 8.2 总体设计的新文字
 
 改的是 `docs/v0.1/v0.1-design.md`。
@@ -3656,7 +3660,9 @@ P2 完成，当且仅当下面七条都成立。
 
 新文字：
 
-> 根下的页面写作笔记本的顶层（"Install（Plans 的顶层）"，文案 `page.nameAtTop`，M12/P2/S2），别的写上级的位置（"Install（Guide / Setup 下）"；
+> 根下的页面写作笔记本的顶层（"Install（笔记本的顶层）"，文案 `page.nameAtTop`，M12/P2/S2），别的写上级的位置（"Install（Guide / Setup 下）"；
+
+落进总体设计的是这一句：修复第 1 轮之后照决定 584 不带笔记本名，原来的示例是"Install（Plans 的顶层）"（实际见 10.2）。
 
 后面的 `` `stores/page-tree.ts` 的 `placeOfTitle`…文案 `page.nameIn`；M4 收尾审查 B-M4） `` 不动。
 
@@ -3785,6 +3791,46 @@ P2 完成，当且仅当下面七条都成立。
 - **e2e 的用时**：S1 改到的十二格（设计列的九格加 LW10 (page) ×3）33.0 → 38.3 秒，多 5.3 test-seconds；九格多 4.9（推断 6–7）。`14cc9769` 的 e2e 作业 7:29（E2E 6:04），web 3:49（Test 3:07），vitest 4,591 格；修复之后 4,602 格。
 - **三引擎探查**：12.3 与 28.5 在三种引擎里都是标题取得焦点；树打开的页之间后退，焦点留在树上；鼠标按"确认"，三种引擎都给它焦点。
 - **照实改的各节**（02-workflow 3.5）：4.1.0.1 的表与数目、4.1.0.5、23.16（`focusLost` 一句、e2e 一句、给 Alert 的变异）、26.4、28.4 与 28.5 的变异、4.1.2 的测试与变异、9.1（"经 `useForm` 的表单"）、35.2、16.1、22.17、4.1.4、5.2 的 S1 一行、6.1、8.1、8.2 第 1、5、6 条。
+
+### 10.2 S2：文字（2026-11-18，合并见 00 号文档第 12 节）
+
+- **提交**：十六个代码提交与一次合并 `main`，加本文档提交；[审查记录](reviews/P2-S2-text-review.md)。
+  - 第 1–9 个照 6.2 的九组；第 10 个（`4c9f1212`）只加测试，是变异里活下来的五句中文补的格；
+  - 推送之前 4 号 `--amend` 两次（`780d3f46 → db764166`：`tb1-trash.spec.ts` 的格式，提交时没判 lint 的 rc；`db764166 → 7e90e1b2`：22.12 在后台恢复的那一格），8 号一次（`bf95bd2a → ebc1512e`：38.6 漏列的 `upgrade-page.test.tsx:1138-1142`）；
+  - 修复第 1 轮六个（头 `62e40b25`）：替身的任务项照服务端（`a1138dd7`）、树没读到时导出仍说子页的一格（`e3671b19`）、23.11 先等这次改动的重读（`6b58eea4`）、三句改得直白（`b6215ab4`）、`page.nameAtTop` 不带笔记本名（`1580e7ca`）、Go 测试改名（`62e40b25`）；
+  - 合并 `main` 的 `260d299d`（P4/S1 与提交期限的旁支的记录、导入守卫的旁支），没有冲突；
+  - 三份审查 A 0I0M5N2Q、B 0I1M2N、C 0I1M6N1Q；核对第 1 轮 A、B 各一条 Nit，C 两条，都在本提交写对，不开第二轮（决定 588）。
+- **做完**：B：6.1、9.5、15.3、16.6、19.1、21.8、21.11、22.11、22.12、22.13、22.16、23.1、23.3、23.4、23.11、23.12、23.13、24.7、26.11、26.13、26.14、35.1、38.6、38.8、40、41.1、41.2、41.3（28 项）；H4 的界面一句（移交 M8-history 第 4 条）。i18n 新加 23 个键、删 2 个，改文字的 en 22 个、zh-CN 27 个（修复第 1 轮多改了 `problem.page.virtual_file` 的中文；它改的另几个键是 S2 新加的，或已算过）。推后进 v0.2 的（决定 587）：设计已定的（15.3 的直接上传，M7-transfer T8；22.16 的重开会话与 23.4 的链到上级，390；23.1 的服务端英文，387，"…reverted whole"在全部被清理时同样不准，P3 或 v0.2；H4 的永久删除），与审查提出的两条：撤销被拒为 trimmed 时两句近乎重复（审查 A 的 Q2）；`AGENTS` 写的 prompt 与 MCP 实际登记的对照（审查 A 的 N5）。
+- **主持者的决定**（584–588，00 号文档第 11 节）：9.5 的名字不带笔记本名，取代决定 428 的前一半；替身的任务项照服务端的解析，`- [ ]: a)b` 的不同接受；`TestLintBusyReturnsBeforeCleanup` 那一次红是 M10 测试的先后假设，另开旁支修；推后进 v0.2 的；文档的去处与收口（含总体设计 3.6 的 5 MiB）。
+- **与设计不同之处**（正文照实改了，各处注"实际见 10.2"）：
+  - **9.5**：`page.nameAtTop` 是 "{name} (at the notebook's top level)"、"{name}（笔记本的顶层）"，不带笔记本名（修复第 1 轮，决定 584）；`distinctName` 去掉 `notebook` 参数，十六处调用随之改。9.5 那一格照旧分开 "Notes (in Plans)" 与 "Notes (at the notebook's top level)"：根下的两页不会同名，这个名字仍然唯一。8.2 的示例随之是"Install（笔记本的顶层）"；决定 428 的前一半由它取代。
+  - **40**：测试改名为 `TestTheAGENTSTemplatesNameTheUpgradePrompt`（审查 A 的 N5）：它只查模板里写的那一行，不读 MCP 实际登记的 prompt。
+  - **6.1 的替身**：设计的正则把任何 `- [ ]:` 当作勾上会消失的，实施时又把任何 `- [x]:` 当作不是任务项，两样都只在"冒号之后只有一个目的地"时成立。审查 B 在服务端的解析上逐个探过（`- [ ]: a b c`、`- [ ]:`、`- [x]: /u x` 等照普通任务项，勾选照写），修复第 1 轮照它改（`a1138dd7`，决定 585），`W/test/page-server-tasks.test.ts` 十五行对照；带标题的定义与 `- [ ]x` 不模拟，说明里写明。
+  - **19.1 的"树没读到时照旧说及其子页面"**：起初没有格守（审查 B 的 N1、C 的 M1）。页的菜单只在树读到之后才出现（`PageLayout` 在那之前答"未加载"），从菜单造不出这一支；修复第 1 轮的一格从探针路由打开对话框，`nodesDown` 时标题仍是"…and its subpages?"。
+  - **23.11**：冲突说明原来不等这次改动的重读，重读回来之前（失败时一直）仍说 "rename it back"（审查 A 的 N4）；修复第 1 轮先等它的重读再显示冲突，另两份列表照旧不等，重读失败时照旧给旧的建议。
+  - **修复第 1 轮改的文字**（审查 A 的 N1–N3）：`diff.lastBreakAdded`、`lastBreakRemoved` 的英文改成 "The only change is that …"；`transfer.restoreLeftUndone` 两种语言改得不重复（中文"分成几项"同它的两个邻居）；`problem.page.virtual_file` 的中文"变更集"改成"这本笔记本的改动"（决定 425 的同一个用词，网页的中文里不再有"变更集"），加两种语言各一格。
+  - **38.6**：随之改的是 11 个测试文件 23 行，设计（与决定 388）写 10 个文件 19 行，漏了 `upgrade-page.test.tsx:1138-1142`（升级报告"未消化的来源"的大小，`2 KBCreated` 连着写，按词边界的 grep 找不到）。
+  - **26.14 的 zh 一格**是"30 条。"，设计写"约 30 条。"：最后一页 `next_cursor` 为空，已读到底，计数是找到的 30，不是 about（en 同是 "Results: 30."）；测试对，设计的预期错（审查 B 的 N2）。
+  - **推断错了的变异**：38.6 的"进位改成 1000，`1 KiB` 那格失败"不成立：1,024 与 1,536 按 1,000 进位，一位小数写出来仍是 `1 KiB`、`1.5 KiB`；红的是 `1,023 B`、`5 MiB`、`5 GiB`、`2,048 TiB`。15.3、23.1 的"任一键改回旧文字，对应一格失败"对中文不全成立：`unresolved.readOnly`、`upgrading`、`readerWiki`、`image` 与 `transfer.failure.changeset_trimmed` 的 zh 没有格读它，改回旧文字照过；第 10 个提交各补一格。23.11 的"条件恒真（`:233` 失败）"红在 `:187-245` 那一格，`:233` 在其中；21.11 的"恒用 `tooLargeBlock`（`:126` 失败）"红两格（`:126` 所在的一格与 "keeps texts too far apart…"）。
+  - **4.2.5 第 2 条**：`transfer-background.test.tsx:176-200` 的表没有 locale 的口子，另写 zh 的一张表。
+  - **38.8 的测试**：`probe` 加 `text` 参数（默认 `duplicateText`）调 `sourceHistoryText`；整句比对的是 `span.block` 里有那一句（`source_immutable` 的拒绝另有两个 `span.block`）。
+  - **随之改的 vitest 多于各项列的**：9.5 的 `page-tree.test.tsx` 另两处；22.12 的 `trash-background.test.tsx` 一格；22.13 的 `trash-preview.test.tsx:303` 加一条否定断言；23.1 的 `revert-dialog.test.tsx:315`、`:320`；22.16 的 `page-lock.test.tsx` 另三处前缀。
+- **4.2.5 先核对的五条**：
+  1. 6.1：用 `withTasks` 的测试都写成 `- [ ] x`，替身改了之后全量照过；替身与服务端的对照见上。
+  2. 22.11：没有 locale 的口子，见上。
+  3. 22.13：`:203`、`:361`、`:427`、`:534`、`:572` 不变；`:303` 加否定断言。
+  4. 23.1：`revert_too_large`、`revert_conflict` 的英文没有格，加在 `problem-messages.test.ts`；23.4：`transfer-report.tsx` 的冲突列表也经 `reasonText`。
+  5. 35.1：`indexFacts` 在 `W/test/index-server.ts`；`health-page` 的夹具里待建页的引用数都不是 1，新格改一项。
+- **先红**：各项的新测试在没修的代码上红过，`index-page` 一组（35.1）除外：它的先红没有单独一次运行的记录，证据是四条"恒假"变异（`c1-longTypes-gone`、`loaded-gone`、`inbound-gone` 红在 P4/one en，`sources-gone` 红在 P4/details），每条都等于没修的那一支（审查 C 的 N4）。审查 C 把六组的代码文件换回 `f08dca69` 的版本另跑，红的格与实施者的相同。
+- **变异**：实施 114 条：vitest 111 条（代码 59、键的文字 52），106 条第一次抓到，活下来的 5 条（上面）补格之后抓到；Go 3 条都抓到；38.8 的 e2e 一半（`content` 恒真）红在 LW6 (page) `:439` 的否定断言。4.2 各项写的都在其中；另加键逐个改回 `main` 的文字（en 22、zh 26）、新键的 zh 四条、帮手各处各自不用。审查 C 加的两条（19.1 的树没读到、替身的 `- [x]:` 那一支）活下来，修复第 1 轮补格；修复第 1 轮的 15 条都抓到。表在 S2 的记录。
+- **门禁与 CI**：
+  - 实施时在头 `4c9f1212` 上 `make lint knip test-go-short build-web gen-check`、`make e2e`（576 过、1 跳过）与 `make test` 全绿；`make test` 第一次红在 M10 的 `TestLintBusyReturnsBeforeCleanup`（决定 586），单跑十次与整份重跑都过。
+  - 修复第 1 轮：六个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,788 → 4,792 格），`62e40b25` 另 `wiki` 模块的 go test；头上 `make lint knip test-go-short build-web gen-check` 与 `make e2e`（576、1）绿，`make test` 照主持者的说明不全跑（Go 只改了一个测试名）。
+  - 合并 `main` 之后：`make lint-web`、`make knip`、`make test-web`（196 个文件、4,792 格）、`wiki` 模块的 go test 与 `make lint-go` 绿。
+  - 分支 CI：`4c9f1212` 的 run 44242250765 第一次 attempt 18 项绿，e2e 四次卡在装 Playwright 的浏览器（apt 的镜像慢，到 20 分钟时限被取消），只重跑 e2e，第五次绿；`62e40b25` 的 44266671504 与合并 `main` 的 44279300477 第一次 attempt 19 项全绿。本提交的分支 CI：`（待填：本提交的分支 CI）`。
+- **e2e 的用时**：改到的五格（C4 (page)、C4 (page, notebook)、TB1 (page)、TB1 (preview)、LW6 (page)，都只在 Chromium）19.30 → 19.27 秒，差 −0.03 test-seconds（推断 0）；`4c9f1212` 的 e2e 作业 10:15（E2E 8:04），基准 10:02（8:15）；web 3:49（Test 3:11），vitest 4,694 → 4,773 格，修复之后 4,792 格。
+- **读屏清单**：第 9 节的八项没有 S2 的；S2 改了念出来的两处（22.12、23.13）写在 [S2 的记录](reviews/P2-S2-text-review.md)"读屏与人工清单"，交 P5/S3。
+- **照实改的各节**（02-workflow 3.5）：头；2.3 的 388 与 428（只加注）；3.1 的测试名两处；4.2.0 的 38.6 一行；4.2.1.1 的 `page.nameAtTop`、`diff.lastBreakAdded`、`lastBreakRemoved`；4.2.1.2 的 `transfer.restoreLeftUndone` 与表后一段（`problem.page.virtual_file`）；4.2.5 的五条与末段；6.1 的替身；9.5 的改法、测试、随之改、变异与取舍；15.3、19.1、21.11、23.1、23.11 的变异与 23.11 的改法；26.14 的测试；38.6 的随之改与变异；40 的测试；6.2 第 8 条；8.1 的"S2 之后"；8.2 的 S2。
 
 ## 附录：核对过的代码
 

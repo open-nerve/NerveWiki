@@ -6,7 +6,7 @@ import { duplicateText } from "../notebook/duplicate-text";
 import { useNodeNavigate } from "../node-target";
 import type { HeldDialog } from "../../app/held-dialog";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
-import type { FieldMessage } from "../../app/problem-messages";
+import type { FieldMessage, FieldTexts } from "../../app/problem-messages";
 import { pagesLocked } from "../../app/pages-locked";
 import { RenameForm } from "../../app/rename-form";
 import { canManageNode } from "../../app/source-permissions";
@@ -68,10 +68,10 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
             suffix={extension === "" ? undefined : extension}
             autoComplete="off"
             check={(name) => assetNameProblem(name, extension)}
-            fieldTexts={notebookNameTexts}
+            fieldTexts={assetNameTexts}
             beforeSave={requireManage}
             rename={(name) => assets.rename(asset.id, asset.parent_id, name + extension, requireManage)}
-            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, notebook, id, t))}
+            explain={(error) => pagesLocked(error, t, me, (id) => distinctName(pages.tree, id, t))}
             saveLabel={t("page.save")}
             savedLabel={t("page.saved")}
             onSaved={() => {
@@ -86,17 +86,32 @@ export function RenameAssetDialog({ notebook, asset, held }: AssetDialogProps) {
 }
 
 /**
+ * assetNameTexts say the server's problems with an attachment's name as a
+ * notebook's name's are said, but that its length counts its extension,
+ * which shows after the field (M12/P2/S2, 16.6).
+ */
+const assetNameTexts = {
+  ...notebookNameTexts,
+  "name.too_long": "field.asset_name.too_long",
+} as const satisfies FieldTexts;
+
+/**
  * assetNameProblem is why the attachment's new name, stem with extension
  * after it, cannot be sent: an empty stem; a name ending with ".md", which
  * names a page's file (M7/P2 design 3.3), as one without an extension may
- * be renamed; or a notebook's name's problem.
+ * be renamed; or a notebook's name's problem, its length said with the
+ * extension counted.
  */
 function assetNameProblem(stem: string, extension: string): FieldMessage | undefined {
   const name = stem.trim() + extension;
   if (stem.trim() === "") {
     return "field.required";
   }
-  return isPageName(name) ? "field.asset_name.page" : notebookNameProblem(name);
+  if (isPageName(name)) {
+    return "field.asset_name.page";
+  }
+  const problem = notebookNameProblem(name);
+  return problem === "field.notebook_name.too_long" ? "field.asset_name.too_long" : problem;
 }
 
 /**
@@ -169,8 +184,7 @@ const MoveAssetForm = observer(function MoveAssetForm({
   const me = useStore().account?.me?.id;
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id"], {
     explain: (error) =>
-      duplicateText(error, pages, openNode) ??
-      pagesLocked(error, t, me, (each) => distinctName(pages.tree, notebook, each, t)),
+      duplicateText(error, pages, openNode) ?? pagesLocked(error, t, me, (each) => distinctName(pages.tree, each, t)),
   });
   const problem = problemOf("parent_id");
   const tree = pages.tree;

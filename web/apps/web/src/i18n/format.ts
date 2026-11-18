@@ -47,12 +47,13 @@ export function formatRelative(iso: string, now: number, locale: Locale): string
   return format.format(0, "second");
 }
 
-const byteUnits = ["B", "KB", "MB", "GB", "TB"] as const;
+// Binary units, as the sizes are counted by 1024 and the README writes the limits (M12/P2/S2, 38.6).
+const byteUnits = ["B", "KiB", "MiB", "GiB", "TiB"] as const;
 
 /** byteFormats are the numbers' formats of formatBytes by language and digits: a view writes a size for each link. */
 const byteFormats = new Map<string, Intl.NumberFormat>();
 
-/** formatBytes writes a size in bytes in the largest unit it fills, by 1024, such as "1.5 MB". */
+/** formatBytes writes a size in bytes in the largest unit it fills, by 1024, such as "1.5 MiB". */
 export function formatBytes(bytes: number, locale: Locale): string {
   let value = bytes;
   let unit = 0;

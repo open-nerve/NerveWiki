@@ -161,7 +161,7 @@ test("a changeset's page speaks Chinese too", async () => {
   await screen.findByRole("list", { name: "这次改动的节点" });
   const list = "这次改动的节点";
   expect(rowOf("Linux", list).textContent).toContain("从「Notes」移到「Install」");
-  expect(rowOf("Ideas", list).textContent).toContain("从（已清理）移到笔记本首页");
+  expect(rowOf("Ideas", list).textContent).toContain("从（已清理）移到笔记本的顶层");
   expect(rowOf("Notes", list).textContent).toContain("改名：「Old notes」→「Notes」");
   expect(within(rowOf("Old", list)).getByRole("link", { name: "在回收站里：「Old」" }).textContent).toBe("在回收站里");
 });
@@ -277,7 +277,7 @@ test("a changeset the purge trimmed says it can no longer be undone, and has no 
   await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
   expect(
     screen.getByText(
-      "Some of the pages this change touched have been purged from the trash: it can no longer be undone as a whole."
+      "Some or all of what this change touched has been purged from the trash: it can no longer be undone."
     )
   ).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull();

@@ -114,6 +114,7 @@ test("P4/group_key: casefold groups, later display changes, untyped parents and 
 
 test.each([
   { sources: 0, label: "Guide/raw.md · 0 sources" },
+  { sources: 1, label: "Guide/raw.md · 1 source" },
   { sources: 2, label: "Guide/raw.md · 2 sources" },
 ])(
   "P4/details: summaries, tags, dates, caps and one current source-area link ($sources)",
@@ -142,6 +143,60 @@ test.each([
     expect(directory().getByText("At least 1,000 incoming links")).toBeTruthy();
     expect(directory().getAllByText(/Oct [345], 2026/)).toHaveLength(3);
     expect(lintReads).toBe(0);
+  }
+);
+
+test.each([
+  [
+    "en",
+    {
+      results: "Directory results",
+      shown: "1 page shown.",
+      longTypes: "1 page has a type name too long to filter by.",
+      inbound: "1 incoming link",
+      source: "Guide/raw.md · 1 source",
+    },
+  ],
+  [
+    "zh-CN",
+    {
+      results: "目录结果",
+      shown: "已显示1页。",
+      longTypes: "有1页的类型名称过长，无法按该类型筛选。",
+      inbound: "1个入链",
+      source: "Guide/raw.md · 1个来源",
+    },
+  ],
+] as const)(
+  "P4/one: a directory of one page, its one incoming link, one page's long type and one source says each singular, in %s",
+  async (locale, said) => {
+    const fixture = indexServer();
+    fixture.server.notebook.mode = "llm_wiki";
+    fixture.server.notebook.source_root_id = indexRaw.id;
+    fixture.server.app.preferences.setLocale(locale);
+    fixture.value.mode = "llm_wiki";
+    fixture.value.source_area = { root_id: indexRaw.id, sources: 1 };
+    fixture.value.unfilterable_type_pages = 1;
+    fixture.value.data = [{ ...indexFacts().data[0]!, inbound: 1 }];
+    renderApp(indexPath, fixture.server.app);
+    await screen.findByRole("link", { name: said.source });
+    await waitFor(() => expect(screen.getByRole("status", { name: said.results }).textContent).toBe(said.shown));
+    expect(screen.getByText(said.longTypes)).toBeTruthy();
+    expect(screen.getByText(said.inbound)).toBeTruthy();
+  }
+);
+
+test.each([
+  ["en", "Without a type · The notebook's top level"],
+  ["zh-CN", "无类型 · 笔记本的顶层"],
+] as const)(
+  "P4/root: untyped pages at the root are headed by the notebook's top level, in %s",
+  async (locale, heading) => {
+    const fixture = indexServer();
+    fixture.server.app.preferences.setLocale(locale);
+    fixture.value.data = [{ ...indexFacts().data[0]!, type: null, type_key: null, parent_id: null }];
+    renderApp(indexPath, fixture.server.app);
+    expect(await screen.findByRole("heading", { level: 2, name: heading })).toBeTruthy();
   }
 );
 

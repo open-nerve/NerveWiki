@@ -218,7 +218,7 @@ test("counts are counted up to 1,000, which says as many or more; the first thre
 
   act(() => server.app.preferences.setLocale("zh-CN"));
   const list = await screen.findByRole("list", { name: "改动" });
-  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("共 1,000 多 个节点、999 篇正文");
+  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("共 1,000+ 个节点、999 篇正文");
 });
 
 test("a history that could not be read says why, and is read again on Try again; an empty one says so", async () => {
@@ -612,15 +612,24 @@ test("a page's history, from the address, is said by its name, with a way to tak
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Listed: 4."));
 });
 
-test("a page's history whose page the tree has not, in the trash, says it is deleted", async () => {
-  const { server } = logged();
-  server.trashNode(linux.id);
-  server.log("deletion", { changes: [deleted(linux)] });
-  renderApp(`${historyPath}?page=${linux.id}`, server.app);
+test.each([
+  ["en", "A deleted page or attachment", "Remove the filter “A deleted page or attachment”"],
+  ["zh-CN", "已删除的页面或附件", "去掉筛选「已删除的页面或附件」"],
+] as const)(
+  "a node's history whose node the tree has not, in the trash, says a page or an attachment is deleted, in %s",
+  async (locale, said, remove) => {
+    const { server } = logged();
+    server.trashNode(linux.id);
+    server.log("deletion", { changes: [deleted(linux)] });
+    server.app.preferences.setLocale(locale);
+    renderApp(`${historyPath}?page=${linux.id}`, server.app);
 
-  await waitFor(() => expect(rows()).toHaveLength(1));
-  expect(screen.getByText("Page: a deleted page")).toBeTruthy();
-});
+    const list = await screen.findByRole("list", { name: locale === "en" ? "Changes" : "改动" });
+    await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+    expect(await screen.findByText(said)).toBeTruthy();
+    expect(screen.getByRole("button", { name: remove })).toBeTruthy();
+  }
+);
 
 test.each([
   { filter: "a client the server does not take", query: "client=nothing", sent: true },
@@ -770,7 +779,9 @@ test("a page's history whose tree is not read yet says its page by an ellipsis",
   renderApp(`${historyPath}?page=${guide.id}`, server.app);
 
   await waitFor(() => expect(rows()).toHaveLength(2));
-  expect(screen.getByText("Page: …")).toBeTruthy();
+  // Not a page yet: the node may be an attachment.
+  expect(screen.getByRole("button", { name: "Remove the filter “…”" }).closest("p")?.textContent).toBe("…Remove");
+  expect(screen.queryByText("Page: …")).toBeNull();
 });
 
 test("Undone leads to the newest revert of a changeset undone more than once", async () => {
@@ -1008,12 +1019,18 @@ test("a More read whose list is no longer shown as it ends leaves the focus wher
 });
 
 // M8/P3B review B-7.
-test("an attachment's history is said by its name", async () => {
+test.each([
+  ["en", "Attachment: a.png", "Remove the filter “Attachment: a.png”"],
+  ["zh-CN", "附件：a.png", "去掉筛选「附件：a.png」"],
+] as const)("an attachment's history is said by its name, as an attachment's, in %s", async (locale, said, remove) => {
   const picture = assetNode(9, "a.png", guide);
   const server = pageServer({ nodes: [guide, install, linux, notes, picture] });
   server.log("upload", { changes: [created(picture)] });
+  server.app.preferences.setLocale(locale);
   renderApp(`${historyPath}?page=${picture.id}`, server.app);
 
-  await waitFor(() => expect(rows()).toHaveLength(1));
-  expect(screen.getByText("Page: a.png")).toBeTruthy();
+  const list = await screen.findByRole("list", { name: locale === "en" ? "Changes" : "改动" });
+  await waitFor(() => expect(within(list).getAllByRole("listitem")).toHaveLength(1));
+  expect(screen.getByText(said)).toBeTruthy();
+  expect(screen.getByRole("button", { name: remove })).toBeTruthy();
 });

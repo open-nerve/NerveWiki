@@ -233,7 +233,9 @@ test("C4 (page): while A edits Linux, B's deletion of its parent is refused, the
     .click();
   await expect(notebookHeading(tab, "Plans")).toBeVisible();
 
-  await expect(lostBanner(page)).toContainText("This page no longer exists: this editor saves no more.");
+  await expect(lostBanner(page)).toContainText(
+    "This page was deleted, or you lost access to it, while you edited it: this editor saves no more."
+  );
   await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
   await expect(pageHeading(page, "Kernel")).toBeVisible();
   await expect(editorContent(page)).toContainText("Drafted.Unsaved");
@@ -270,7 +272,9 @@ test("C4 (page, notebook): while A edits Notes, unsaved, the notebook's deletion
 
   expect((await deleteNotebook(api, a, notebook.id)).response.status).toBe(204);
 
-  await expect(lostBanner(page)).toContainText("This page no longer exists: this editor saves no more.");
+  await expect(lostBanner(page)).toContainText(
+    "This page was deleted, or you lost access to it, while you edited it: this editor saves no more."
+  );
   await expect(lostBanner(page)).toContainText("Your changes here are not saved: copy them before you leave.");
   await expect(pageHeading(page, "Notes")).toBeVisible();
   await expect(editorContent(page)).toContainText("Drafted.Unsaved");

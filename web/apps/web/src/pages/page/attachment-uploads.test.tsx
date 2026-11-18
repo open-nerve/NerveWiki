@@ -293,7 +293,7 @@ test("a page's file, or a file larger than the server takes, is not sent: it say
   // Nothing goes: nothing is said to.
   expect(notice(section)).toBe("");
   await within(uploads).findByText("A Markdown file is a page: zip it and import it from the notebook's settings.");
-  await within(uploads).findByText("The file is larger than this server takes: 50 MB at most.");
+  await within(uploads).findByText("The file is larger than this server takes: 50 MiB at most.");
   expect(uploaded(server.sent)).toEqual([]);
   await user.click(within(uploads).getByRole("button", { name: "Dismiss the upload of notes.md" }));
   await user.click(within(uploads).getByRole("button", { name: "Dismiss the upload of huge.mov" }));
@@ -309,7 +309,7 @@ test("a file the server finds too large says how large a file it takes", async (
 
   choose(section, [new File(["a"], "a.png")]);
 
-  await within(section).findByText("The file is larger than this server takes: 50 MB at most.");
+  await within(section).findByText("The file is larger than this server takes: 50 MiB at most.");
 });
 
 test("a name taken meanwhile tries the next free one, of the tree read again; refused three times, it says so", async () => {
@@ -409,7 +409,7 @@ test("a file dropped on the reading view larger than the server takes is not sen
 
   fireEvent.drop(await screen.findByRole("article", { name: "Guide" }), { dataTransfer: dropped([big]) });
 
-  await within(section).findByText("The file is larger than this server takes: 50 MB at most.");
+  await within(section).findByText("The file is larger than this server takes: 50 MiB at most.");
   expect(uploaded(server.sent)).toEqual([]);
 });
 

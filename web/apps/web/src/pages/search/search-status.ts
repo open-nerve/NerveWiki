@@ -12,8 +12,8 @@ const countCap = 1000;
  * (1,000 as "1,000+"), or none found yet while there is more to look
  * through. Of more pages, by what was read: read to the end, how many were
  * found; a count that says none or fewer than were found, how many so far;
- * else the first page's count. While the index is being built, it says
- * that the hits may be missing some.
+ * else the first page's count. While the index is being built, as the
+ * newest page read says, it says that the hits may be missing some.
  */
 export function statusText(pages: readonly SearchPage[], found: number, t: Translate, locale: Locale): string {
   const number = (n: number) => new Intl.NumberFormat(locale).format(n);
@@ -27,7 +27,7 @@ export function statusText(pages: readonly SearchPage[], found: number, t: Trans
   } else {
     text = countText(count, t, number);
   }
-  return pages.some((page) => page.building) ? t("search.building", { status: text }) : text;
+  return pages.at(-1)?.building === true ? t("search.building", { status: text }) : text;
 }
 
 /** countText says a first page's count, its numbers written by number. */

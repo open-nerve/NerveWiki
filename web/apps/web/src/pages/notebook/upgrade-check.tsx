@@ -22,7 +22,7 @@ import { nodeTarget } from "../node-target";
 import { openOf } from "../open-node";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { HealthRule, healthRuleOrder, type HealthCard } from "./health-rule";
+import { clearText, HealthRule, healthRuleOrder, staleText, type HealthCard } from "./health-rule";
 
 /**
  * CheckControl is what one entry to the upgrade's page holds of its checks
@@ -249,7 +249,7 @@ export const UpgradeCheckSection = observer(function UpgradeCheckSection({
           {found.map(card)}
           {clear.length > 0 && (
             <details className="space-y-3">
-              <summary className="cursor-pointer font-medium">{t("health.clear", { count: clear.length })}</summary>
+              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}
@@ -380,7 +380,7 @@ export const UpgradeReportSection = observer(function UpgradeReportSection({
           {found.map(card)}
           {clear.length > 0 && (
             <details className="space-y-3">
-              <summary className="cursor-pointer font-medium">{t("health.clear", { count: clear.length })}</summary>
+              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}
@@ -432,7 +432,8 @@ const UpgradeGates = observer(function UpgradeGates({
   tree: TreeRead;
 }) {
   const t = useT();
-  const number = new Intl.NumberFormat(useStore().preferences.locale);
+  const { locale } = useStore().preferences;
+  const number = new Intl.NumberFormat(locale);
   return (
     <ul aria-label={t("upgrade.gates")} className="space-y-2 text-sm">
       {gateKeys.map((key) => {
@@ -443,7 +444,11 @@ const UpgradeGates = observer(function UpgradeGates({
               {t(gate.passed ? "upgrade.gatePassed" : "upgrade.gateFailed", { gate: t(gateText[key]) })}
             </p>
             {key === "links" && gates.links.pages_worse > 0 && (
-              <p>{t("upgrade.gateLinksWorse", { count: number.format(gates.links.pages_worse) })}</p>
+              <p>
+                {gates.links.pages_worse === 1
+                  ? t("upgrade.gateLinksWorseOne")
+                  : t("upgrade.gateLinksWorse", { count: number.format(gates.links.pages_worse) })}
+              </p>
             )}
             {key === "preserved" && (
               <p>
@@ -455,7 +460,7 @@ const UpgradeGates = observer(function UpgradeGates({
                 })}
               </p>
             )}
-            {key === "index" && !gate.passed && <p>{t("health.stale", { count: number.format(stalePages) })}</p>}
+            {key === "index" && !gate.passed && <p>{staleText(t, locale, stalePages)}</p>}
             {"node_ids" in gate && gate.node_ids.length > 0 && (
               <ul className="space-y-1 ps-4">
                 {gate.node_ids.map((id) => (

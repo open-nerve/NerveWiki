@@ -219,6 +219,30 @@ test.each<[string, NonNullable<NonNullable<TransferJob["report"]>["placed"]>, st
   }
 );
 
+test.each<[string, NonNullable<NonNullable<TransferJob["report"]>["placed"]>, string]>([
+  ["at the top level, where it was", { parent_id: null, reason: "original" }, "放回了原处：笔记本的顶层。"],
+  [
+    "at the top level, the page it was under in the trash",
+    { parent_id: null, reason: "parent_in_trash" },
+    "放在了笔记本的顶层：原上级页面在回收站里。",
+  ],
+  [
+    "at the top level, too deep where it was",
+    { parent_id: null, reason: "too_deep" },
+    "放在了笔记本的顶层：放回原处会超过 10 层。",
+  ],
+])("in Chinese, a restore's report says it put the item at the notebook's top level: %s", async (_, placed, says) => {
+  const user = userEvent.setup();
+  const report = { ...reportOf(null, { pages: 102, attachments: 1, renamed: 2, skipped: 3 }), placed };
+  const server = jobsServer({ jobs: [restoreOf(1, { report, progress: { done: 103, total: 103 } })] });
+  renderApp(transfer, server.app);
+  const shown = await reportOpened(user, "Restore of Linux");
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await waitFor(() => expect(within(shown).getByText(says)).toBeTruthy());
+});
+
 // M11/P1 design 4.3: an upgrade's rollback counts what it deleted, put back and wrote back (not an import's
 // counts, which a kind not in shownCounts falls to), and says what to do after each failure.
 test("an upgrade's rollback's report counts what it deleted, put back and wrote back, and says what to do once it stopped", async () => {
@@ -319,7 +343,9 @@ test.each<[string, TransferJob, string, string[]]>([
       progress: { done: 100, total: 103 },
     }),
     "Failed · What the restore had restored was undone while it ran.",
-    ["What it restored is in the trash again, with the nodes it had not come to."],
+    [
+      "An undo deleted what it restored, which is in the trash again; the nodes it had not come to are there too, in items of their own.",
+    ],
   ],
   [
     "a restore failed as its item went past its time before its first batch",
@@ -371,7 +397,7 @@ test.each<[string, TransferJob, string, string[]]>([
   [
     "a revert failed as the purge took part of its change at its start",
     revertOf(1, { state: "failed", report: reportOf("changeset_trimmed"), progress: { done: 0, total: 0 } }),
-    "Failed · The purge took part of the change: it can no longer be undone.",
+    "Failed · The purge took some or all of the change: it can no longer be undone.",
     [],
   ],
   [
@@ -381,7 +407,7 @@ test.each<[string, TransferJob, string, string[]]>([
       report: reportOf("changeset_trimmed", { deleted: 300 }),
       progress: { done: 300, total: 1501 },
     }),
-    "Failed · The purge took part of the change: it can no longer be undone.",
+    "Failed · The purge took some or all of the change: it can no longer be undone.",
     ["What it undid stays. Nodes not undone: 1,201. To go back to before, undo this undo in the history."],
   ],
   [
@@ -409,6 +435,30 @@ test.each<[string, TransferJob, string, string[]]>([
 
   await waitFor(() => expect(server.asked).toContain(`GET job ${job.name}`));
   expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual(says);
+});
+
+test("in Chinese, a restore whose restored nodes were undone says where they are, and where the ones it had not come to are", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({
+    jobs: [
+      restoreOf(1, {
+        state: "failed",
+        report: reportOf("changeset_reverted", { pages: 99 }),
+        progress: { done: 100, total: 103 },
+      }),
+    ],
+  });
+  renderApp(transfer, server.app);
+  const shown = await reportOpened(user, "Restore of Linux");
+  await waitFor(() => expect(server.asked).toContain("GET job Linux"));
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await waitFor(() =>
+    expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual([
+      "已恢复的部分被一次撤销删除，又回到了回收站；没处理到的节点也在回收站里，分成几项。",
+    ])
+  );
 });
 
 test.each([
