@@ -98,3 +98,253 @@ export function resign(article: Element, before: HTMLTemplateElement, after: HTM
   });
   return true;
 }
+
+/** Placed maps the place of an article's top-level node before a patch to its place after, or none. */
+export type Placed = (at: number) => number | undefined;
+
+/**
+ * patchBlocks has article, which has before's HTML with its enhancements undone, after's (U4; M12/P2/S4, 4.4.2):
+ * top-level node by node, keeping those that did not change. Each is known by its HTML, its addresses' expiry and
+ * signature and its ids left out (a heading renumbered is no change). The ends alike are kept, the end's first:
+ * a section of the same name put before one keeps the one on its nodes, renumbered. Between them, each of after's
+ * takes the first of before's of its HTML past the last taken (P2-21): a link's target made changes links far apart,
+ * the blocks between kept; a blank text is no block. A kept node gets the ids and addresses after has, as before
+ * had them: what the reader changed (a callout opened, an anchor's tabindex) stays, and so does a media begun. The
+ * others are taken out, and after's put in their places; no node kept is moved, which would take it out a moment
+ * (the focus lost, a video out of fullscreen).
+ *
+ * It answers where each of before's nodes is now: a node taken out is where it was, at the one put in its place
+ * (the k-th taken out between two kept at the k-th put in, the last of them if fewer), else at the next kept, else
+ * at the last block. Article's top-level nodes not before's (an enhancement not undone), nothing is changed and it
+ * answers undefined: the HTML is written whole.
+ */
+export function patchBlocks(
+  article: Element,
+  before: HTMLTemplateElement,
+  after: HTMLTemplateElement
+): Placed | undefined {
+  const live = [...article.childNodes];
+  const old = [...before.content.childNodes];
+  const next = [...after.content.childNodes];
+  if (live.length !== old.length || live.some((node, i) => node.nodeName !== old[i]?.nodeName)) {
+    return undefined;
+  }
+  const oldKeys = old.map(blockKey);
+  const nextKeys = next.map(blockKey);
+  let tail = 0;
+  while (tail < old.length && tail < next.length && oldKeys.at(-1 - tail) === nextKeys.at(-1 - tail)) {
+    tail += 1;
+  }
+  let head = 0;
+  while (head < old.length - tail && head < next.length - tail && oldKeys[head] === nextKeys[head]) {
+    head += 1;
+  }
+  const pairs: [number, number][] = [];
+  for (let i = 0; i < head; i++) {
+    pairs.push([i, i]);
+  }
+  pairs.push(...between(old, oldKeys, next, nextKeys, head, tail));
+  for (let k = tail; k > 0; k--) {
+    pairs.push([old.length - k, next.length - k]);
+  }
+  // A kept node whose ids or addresses changed, and whose nodes are not before's (code coloured), is put in anew.
+  const kept = new Map(pairs.filter(([i, j]) => restamp(live[i], old[i], next[j])));
+  const at = new Map([...kept].map(([i, j]) => [j, i]));
+  for (const [i, node] of live.entries()) {
+    if (!kept.has(i)) {
+      node.remove();
+    }
+  }
+  let following: Node | null = null;
+  for (let j = next.length - 1; j >= 0; j--) {
+    const i = at.get(j);
+    const node = i === undefined ? article.ownerDocument.importNode(next[j] as Node, true) : (live[i] as Node);
+    if (i === undefined) {
+      article.insertBefore(node, following);
+    }
+    following = node;
+  }
+  return (place) => placed(place, kept, old, next);
+}
+
+/**
+ * between pairs the nodes of old and next between their ends alike (head and tail of them): each of next's takes the
+ * first of old's of its key past the last taken. The pairs go up in both.
+ */
+function between(
+  old: Node[],
+  oldKeys: string[],
+  next: Node[],
+  nextKeys: string[],
+  head: number,
+  tail: number
+): [number, number][] {
+  // Old's places of each key, going up, and how many of them are taken or passed: each goes in and out once.
+  const waiting = new Map<string, { places: number[]; from: number }>();
+  for (let i = head; i < old.length - tail; i++) {
+    if (!blank(old[i])) {
+      const key = oldKeys[i] ?? "";
+      const queue = waiting.get(key) ?? { places: [], from: 0 };
+      queue.places.push(i);
+      waiting.set(key, queue);
+    }
+  }
+  const pairs: [number, number][] = [];
+  let last = head - 1;
+  for (let j = head; j < next.length - tail; j++) {
+    const queue = blank(next[j]) ? undefined : waiting.get(nextKeys[j] ?? "");
+    if (queue === undefined) {
+      continue;
+    }
+    while (queue.from < queue.places.length && (queue.places[queue.from] ?? 0) <= last) {
+      queue.from += 1;
+    }
+    const i = queue.places[queue.from];
+    if (i !== undefined) {
+      queue.from += 1;
+      pairs.push([i, j]);
+      last = i;
+    }
+  }
+  return pairs;
+}
+
+/** placed is where old's node at place is in next, kept being where the kept are. */
+function placed(place: number, kept: Map<number, number>, old: Node[], next: Node[]): number | undefined {
+  const now = kept.get(place);
+  if (now !== undefined) {
+    return now;
+  }
+  // The pairs go up in both: kept has them in order.
+  const sorted = [...kept];
+  const previous = sorted.findLast(([i]) => i < place);
+  const following = sorted.filter(([i]) => i > place);
+  const end = following[0];
+  const removed = range(previous === undefined ? 0 : previous[0] + 1, end?.[0] ?? old.length).filter(
+    (i) => !blank(old[i])
+  );
+  const inserted = range(previous === undefined ? 0 : previous[1] + 1, end?.[1] ?? next.length).filter(
+    (j) => !blank(next[j])
+  );
+  if (inserted.length > 0) {
+    return inserted[Math.min(Math.max(removed.indexOf(place), 0), inserted.length - 1)];
+  }
+  return following.find(([, j]) => !blank(next[j]))?.[1] ?? range(0, next.length).findLast((j) => !blank(next[j]));
+}
+
+/** range is from up to to, not with it. */
+function range(from: number, to: number): number[] {
+  return Array.from({ length: Math.max(to - from, 0) }, (_, k) => from + k);
+}
+
+/** blank tells whether node is a text of white space, which matches nothing: it goes with the blocks around it. */
+function blank(node: Node | undefined): boolean {
+  return node?.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() === "";
+}
+
+/** blockKey is what a top-level node is: an element's HTML, its addresses masked and its ids blank; a text's text. */
+function blockKey(node: Node): string {
+  if (!(node instanceof Element)) {
+    return `${node.nodeName} ${node.nodeValue ?? ""}`;
+  }
+  const copy = node.cloneNode(true) as Element;
+  maskAddresses(copy);
+  for (const element of [copy, ...copy.querySelectorAll("[id]")]) {
+    if (element.hasAttribute("id")) {
+      element.setAttribute("id", "");
+    }
+  }
+  return copy.outerHTML;
+}
+
+/** The attributes a kept node takes from the HTML read again: those its key leaves out. */
+const stamps = ["id", ...addressed] as const;
+
+/**
+ * restamp gives live, a kept node that is old with its enhancements undone, the ids and addresses next has in place of
+ * old's: from old to next, not from live to next, so what the reader changed stays, and a media begun keeps its
+ * address. It tells whether live is kept: not when they changed and its nodes are not old's.
+ */
+function restamp(live: Node | undefined, old: Node | undefined, next: Node | undefined): boolean {
+  if (!(live instanceof Element && old instanceof Element && next instanceof Element)) {
+    return true;
+  }
+  const olds = [old, ...old.querySelectorAll("*")];
+  const nexts = [next, ...next.querySelectorAll("*")];
+  const changed = olds.flatMap((element, k) =>
+    stamps.filter((name) => element.getAttribute(name) !== nexts[k]?.getAttribute(name)).map((name) => ({ k, name }))
+  );
+  if (changed.length === 0) {
+    return true;
+  }
+  const lives = [live, ...live.querySelectorAll("*")];
+  if (lives.length !== olds.length || lives.some((element, k) => element.nodeName !== olds[k]?.nodeName)) {
+    return false;
+  }
+  for (const { k, name } of changed) {
+    const element = lives[k];
+    const value = nexts[k]?.getAttribute(name) ?? null;
+    if (element === undefined || (name === "src" && element instanceof HTMLMediaElement && begun(element))) {
+      continue;
+    }
+    if (value === null) {
+      element.removeAttribute(name);
+    } else {
+      element.setAttribute(name, value);
+    }
+  }
+  return true;
+}
+
+/** FocusKey is how an element that had the focus is found in the view written anew: what it is, and which of them. */
+export type FocusKey = { key: string; nth: number };
+
+/** The elements a focus key may be of. */
+const keyed = "h1, h2, h3, h4, h5, h6, a, summary, audio, video, [id]";
+
+/** text is element's text, its white space collapsed. */
+function text(element: Element): string {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * keyOf is what element is, to find it again (M12/P2/S4, 4.4.3's step 3): a heading its level and text, not its id,
+ * which a heading of the same name put before changes; a link its address (an attachment's masked) and its text, one
+ * to no page its target; a callout's summary its text; an audio or a video its attachment; another element its id.
+ * None, it has no key.
+ */
+function keyOf(element: Element): string | undefined {
+  const name = element.localName;
+  if (/^h[1-6]$/.test(name)) {
+    return `${name} ${text(element)}`;
+  }
+  if (name === "a") {
+    const href = element.getAttribute("href");
+    return href === null
+      ? `a to ${element.getAttribute("data-nw-target") ?? ""} ${text(element)}`
+      : `a ${href.replace(address, "$1$2$3")} ${text(element)}`;
+  }
+  if (name === "summary") {
+    return `summary ${text(element)}`;
+  }
+  if (name === "audio" || name === "video") {
+    const asset = assetOf(element);
+    return asset === undefined ? undefined : `media ${asset}`;
+  }
+  return element.id === "" ? undefined : `#${element.id}`;
+}
+
+/** focusKeyOf is element's key in article, and which of article's of that key it is; none for one without a key. */
+export function focusKeyOf(article: Element, element: Element): FocusKey | undefined {
+  const key = keyOf(element);
+  if (key === undefined) {
+    return undefined;
+  }
+  return { key, nth: [...article.querySelectorAll(keyed)].filter((each) => keyOf(each) === key).indexOf(element) };
+}
+
+/** findByKey is article's element of key, the nth of them; none if there is not one. */
+export function findByKey(article: Element, { key, nth }: FocusKey): HTMLElement | undefined {
+  const found = [...article.querySelectorAll(keyed)].filter((each) => keyOf(each) === key)[nth];
+  return found instanceof HTMLElement ? found : undefined;
+}

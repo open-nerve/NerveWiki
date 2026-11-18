@@ -1,10 +1,19 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
 import { enhance, type Enhancement, type ReadingContext } from "../../reading/enhancement";
-import { addressesOnly, resign, template } from "../../reading/patch";
+import {
+  addressesOnly,
+  findByKey,
+  focusKeyOf,
+  patchBlocks,
+  resign,
+  template,
+  type FocusKey,
+  type Placed,
+} from "../../reading/patch";
 import { taskText } from "../../reading/task-toggle";
 import { unfold } from "../../reading/unfold";
-import { byId, focusOn, shows } from "./view-anchors";
+import { shows } from "./view-anchors";
 
 /** ServerView is the server's view of a page that a reading view writes: its HTML, its revision, when its addresses expire. */
 export type ServerView = { html: string; revision: number; assetsExpire: string | null };
@@ -35,20 +44,24 @@ type Shown = {
 
 /**
  * useServerHTML writes view, the server's HTML of a page, into article, and runs the enhancements on it (M4/P5
- * design 3.8): as the view changes, the enhancements are undone in the reverse order, the HTML written again, and
- * they run again; as it goes, they are undone. The context's callbacks are its latest's, and so are the view's
- * revision and its addresses' expiry. Whether the page can be written changes no HTML: the enhancements hear it
- * (writes, onWritesChange; M12/P2/S4, 48).
+ * design 3.8): as the view changes, the enhancements are undone in the reverse order, the HTML changed, and they run
+ * again; as it goes, they are undone. The context's callbacks are its latest's, and so are the view's revision and
+ * its addresses' expiry. Whether the page can be written changes no HTML: the enhancements hear it (writes,
+ * onWritesChange; M12/P2/S4, 48).
  *
  * The same HTML read again, at another revision maybe (a save of blank lines), is left as it is (U2). One whose
  * attachments' addresses alone differ, signed anew for the next hour, has them given to its elements in place (U3,
- * resign): no node taken out or put in, no enhancement run again (M12/P2/S4, 17.1).
+ * resign): no node taken out or put in, no enhancement run again (M12/P2/S4, 17.1). Another is written where it
+ * changed the view, block by block (U4, patchBlocks): the blocks it left are the same nodes, the selection in them,
+ * the callouts opened, a video in fullscreen (M12/P2/S4, 3, 8.2, 17.8).
  *
- * A task item's checkbox that had the focus as the HTML is replaced has it back in the new HTML, without a scroll,
- * while the box at its position is the same item's (its text, and its state, or the state the view's own toggle
- * asked for): a tick does not move it, a write that moved the items does. A folded callout it is in opens again, as
- * the reader had it. An element with an id that had the focus, the anchor's among them, has it back in the new
- * HTML, shown again if it showed and no longer does: a view read again stays where it is (M12/P2/S4, 14d).
+ * The focus stays (M12/P2/S4, 4.4.3): what had it as the view changed has it back, if it is there still; else, a
+ * task item's checkbox at its position while it is the same item's (its text, and its state, or the state the view's
+ * own toggle asked for), none if not: a tick does not move it, a write that moved the items does; else the element
+ * of its key (focusKeyOf: a heading of its text, a link of its address and text, a callout's summary, a media, an
+ * element of its id); else the block where it was, without a scroll or a callout opened. Shown as it is given the
+ * focus, a folded callout opens; one that showed and shows no more is scrolled to: a view read again stays where it
+ * is.
  */
 export function useServerHTML(
   article: RefObject<HTMLElement | null>,
@@ -59,10 +72,6 @@ export function useServerHTML(
   useLayoutEffect(() => {
     latest.current = { context, view };
   });
-  // The task item focused as the HTML was replaced: its position, its text and its state.
-  const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
-  // The element with an id focused as the HTML was replaced, and whether it showed.
-  const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
   const shown = useRef<Shown | undefined>(undefined);
   const html = view?.html;
   const { enhancements, workspace, notebook, page, t, locale } = context;
@@ -70,39 +79,33 @@ export function useServerHTML(
     const container = article.current;
     const was = shown.current;
     const ran = [enhancements, workspace, notebook, page, t, locale];
-    // remember notes what had the focus in from, before its enhancements are undone. Undone, a checkbox is disabled
-    // again, which HTML's focus fixup takes the focus from: Chromium at the next rendering, an engine that applies
-    // the rule at once before the new HTML is in.
-    function remember(from: HTMLElement) {
-      const active = document.activeElement;
-      focusedTask.current =
-        active instanceof HTMLInputElement && active.dataset.task !== undefined && from.contains(active)
-          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
-          : undefined;
-      focusedTarget.current =
-        active instanceof HTMLElement && active.id !== "" && from.contains(active)
-          ? { id: active.id, shown: shows(active) }
-          : undefined;
-    }
+    let read: HTMLTemplateElement | undefined;
     if (was !== undefined && container === was.container && html !== undefined && sameRun(was.ran, ran)) {
       if (html === was.html) {
         return;
       }
-      const signed = template(html);
-      if (addressesOnly(was.template, signed) && resign(container, was.template, signed)) {
-        shown.current = { ...was, html, template: signed };
+      read = template(html);
+      if (addressesOnly(was.template, read) && resign(container, was.template, read)) {
+        shown.current = { ...was, html, template: read };
         return;
       }
     }
+    const focus = was === undefined ? undefined : noted(was.container);
     if (was !== undefined) {
-      remember(was.container);
       shown.current = undefined;
       was.undo();
     }
     if (container === null || html === undefined) {
       return;
     }
-    write(container, html);
+    // A change of the view is written where it changed it (U4): read is the view read again. Else, or its blocks not
+    // the view's, it is written whole.
+    let placed = was !== undefined && read !== undefined ? patchBlocks(container, was.template, read) : undefined;
+    if (placed === undefined) {
+      write(container, html);
+      placed = (at) => clamped(at, container);
+    }
+    read ??= template(html);
     // The view as the HTML was written: the context reads the latest view's, while there is one.
     const written = latest.current.view ?? { revision: 0, assetsExpire: null };
     const now = () => latest.current.context;
@@ -136,32 +139,15 @@ export function useServerHTML(
       leads: (target) => now().leads?.(target) ?? false,
       assetAddress: (id) => now().assetAddress(id),
     });
-    shown.current = { container, html, template: template(html), undo, ran };
-    const focused = focusedTask.current;
+    shown.current = { container, html, template: read, undo, ran };
     const toggled = now().toggled;
     const asked = toggled?.current;
-    focusedTask.current = undefined;
-    const at = (task: string) => container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task)}"]`);
-    if (toggled !== undefined && asked !== undefined && at(asked.task)?.hasAttribute("checked") === asked.checked) {
+    const box = (task: string) => container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task)}"]`);
+    if (toggled !== undefined && asked !== undefined && box(asked.task)?.hasAttribute("checked") === asked.checked) {
       toggled.current = undefined;
     }
-    const box = focused && at(focused.task);
-    // The same item: its text, and its state, or the one the view's own toggle asked for.
-    const state = box?.hasAttribute("checked");
-    if (
-      box &&
-      taskText(box) === focused.text &&
-      (state === focused.checked || (asked?.task === focused.task && state === asked.checked))
-    ) {
-      unfold(box);
-      box.focus({ preventScroll: true });
-    }
-    const target = focusedTarget.current;
-    focusedTarget.current = undefined;
-    const again = target && byId(container, target.id);
-    if (again) {
-      // Scrolled only when it no longer shows: a scroll would reset a wide content's too.
-      focusOn(again, target.shown && !shows(again) ? { block: "nearest" } : undefined);
+    if (focus !== undefined) {
+      giveBack(container, focus, placed, asked);
     }
   }, [article, html, enhancements, workspace, notebook, page, t, locale]);
   // Gone, the view's enhancements are undone (U8).
@@ -183,4 +169,114 @@ function sameRun(ran: readonly unknown[], now: readonly unknown[]): boolean {
 /** write puts html in container, in place of all it had. */
 function write(container: HTMLElement, html: string) {
   container.innerHTML = html;
+}
+
+/** clamped is the place at in container written whole: the same, within it. */
+function clamped(at: number, container: HTMLElement): number | undefined {
+  const count = container.childNodes.length;
+  return count === 0 ? undefined : Math.min(Math.max(at, 0), count - 1);
+}
+
+/**
+ * Noted is what had the focus as the view changed (M12/P2/S4, 4.4.3): the element, whether it showed, its key, the
+ * place of the top-level node it is in (none for the article itself); a task item's checkbox its position, text and
+ * state.
+ */
+type Noted = {
+  element: HTMLElement;
+  shown: boolean;
+  key: FocusKey | undefined;
+  block: number | undefined;
+  task: { task: string; text: string; checked: boolean } | undefined;
+};
+
+/**
+ * noted is what has the focus in container, before its enhancements are undone. Undone, a checkbox is disabled
+ * again, which HTML's focus fixup takes the focus from: Chromium at the next rendering, an engine that applies the
+ * rule at once before the new HTML is in. The top-level node is the same once they are: they change one for one.
+ */
+function noted(container: HTMLElement): Noted | undefined {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement) || !container.contains(active)) {
+    return undefined;
+  }
+  const block = [...container.childNodes].findIndex((node) => node.contains(active));
+  return {
+    element: active,
+    shown: shows(active),
+    key: focusKeyOf(container, active),
+    block: block < 0 ? undefined : block,
+    task:
+      active instanceof HTMLInputElement && active.dataset.task !== undefined
+        ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
+        : undefined,
+  };
+}
+
+/**
+ * giveBack gives the focus back in container, the view changed, its blocks placed so (M12/P2/S4, 4.4.3): to what
+ * had it, if it is there still; to a task item's checkbox at its position, the same item's (or none); to the element
+ * of its key; else to its block where it was, or the article.
+ */
+function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: Toggled | undefined) {
+  const { element, task } = focus;
+  if (container.contains(element)) {
+    give(element, focus.shown);
+    return;
+  }
+  if (task !== undefined) {
+    const box = container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task.task)}"]`);
+    // The same item: its text, and its state, or the one the view's own toggle asked for.
+    const state = box?.hasAttribute("checked");
+    if (
+      box &&
+      taskText(box) === task.text &&
+      (state === task.checked || (asked?.task === task.task && state === asked.checked))
+    ) {
+      unfold(box);
+      box.focus({ preventScroll: true });
+    }
+    return;
+  }
+  const again = focus.key && findByKey(container, focus.key);
+  if (again) {
+    give(again, focus.shown);
+    return;
+  }
+  const at = focus.block === undefined ? undefined : placed(focus.block);
+  const block = at === undefined ? undefined : container.childNodes[at];
+  const place = block instanceof HTMLElement ? block : container;
+  // Not opened nor scrolled to: the focus is where it was, the reader's view as it is.
+  if (!focusable(place)) {
+    place.setAttribute("tabindex", "-1");
+  }
+  place.focus({ preventScroll: true });
+}
+
+/** What takes the focus of itself. */
+const natively =
+  "a[href], summary, button, input, select, textarea, audio[controls], video[controls], iframe, [tabindex]";
+
+/** focusable tells whether element takes the focus of itself. */
+function focusable(element: HTMLElement): boolean {
+  return element.matches(natively) || element.isContentEditable;
+}
+
+/**
+ * give gives element the focus, without a scroll but for one that showed and shows no more: scrolled into view, a
+ * scroll of a wide content's would be reset too. A folded callout it is in opens, not one whose summary it is.
+ * Focusable as an anchor's target is.
+ */
+function give(element: HTMLElement, showed: boolean) {
+  unfold(element.localName === "summary" ? (element.parentElement ?? element) : element);
+  if (!focusable(element)) {
+    element.setAttribute("tabindex", "-1");
+  }
+  if (showed && !shows(element)) {
+    element.scrollIntoView({ block: "nearest" });
+  }
+  // One that has it still is left as it is: an engine may move the selection to what is focused anew (jsdom does).
+  if (document.activeElement !== element) {
+    element.focus({ preventScroll: true });
+  }
 }

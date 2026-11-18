@@ -1,6 +1,6 @@
 import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -9,11 +9,12 @@ import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
-import { enhance, Enhancements } from "../../reading/enhancement";
+import { Enhancements } from "../../reading/enhancement";
 import type { Notebook } from "../../services/notebook.service";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { eachRead, stamped, useAssetsExpiry } from "./assets-expiry";
+import { useServerHTML } from "./server-html";
 import { useUnresolvedLinks } from "./unresolved-link";
 
 /**
@@ -78,20 +79,15 @@ export const VersionView = observer(function VersionView({
     latestUnresolved.current = links.unresolved;
     latestLeads.current = links.leads;
   });
-  const at = view?.revision;
-  const assetsExpire = view?.assets_expire_at ?? null;
-  const notebookId = notebook.id;
-  useLayoutEffect(() => {
-    const container = article.current;
-    if (container === null || html === undefined || at === undefined) {
-      return undefined;
-    }
-    container.innerHTML = html;
-    return enhance(enhancements, container, {
+  // Written as the page's view is, its HTML changed where it changed and the focus kept (M12/P2/S4, 29).
+  useServerHTML(
+    article,
+    view && { html: view.html, revision: view.revision, assetsExpire: view.assets_expire_at ?? null },
+    {
+      enhancements,
       workspace: slug,
-      notebook: notebookId,
+      notebook: notebook.id,
       page,
-      revision: at,
       t,
       locale: preferences.locale,
       theme: () => preferences.resolvedTheme,
@@ -101,10 +97,9 @@ export const VersionView = observer(function VersionView({
       report: setFailure,
       unresolved: (link) => void latestUnresolved.current(link),
       leads: (target) => latestLeads.current(target),
-      assetsExpire,
       assetAddress: (id) => assets.address(id),
-    });
-  }, [html, at, assetsExpire, enhancements, slug, notebookId, t, preferences, page, mutate, navigate, assets]);
+    }
+  );
   if (view === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }

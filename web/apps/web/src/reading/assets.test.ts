@@ -639,3 +639,59 @@ test("one that failed, its new one's position refused before the metadata, has i
   expect(fresh?.currentTime).toBe(20);
   undo?.();
 });
+
+/** removals watches element's subtree: it answers the nodes taken out of it since, each time one was. */
+function removals(element: Element): () => Node[] {
+  const out: Node[] = [];
+  const note = (records: MutationRecord[]) => {
+    for (const record of records) {
+      out.push(...record.removedNodes);
+    }
+  };
+  const watching = new MutationObserver(note);
+  watching.observe(element, { childList: true, subtree: true });
+  onTestFinished(() => watching.disconnect());
+  return () => {
+    note(watching.takeRecords());
+    return out;
+  };
+}
+
+// M12/P2/S4, 17.8: a block left as it was keeps its media where they are. Moved, even to their place, they would
+// leave the document a moment: a video in fullscreen would leave it.
+test("a started video still in its place as the enhancement runs again is not moved", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const clip = play(container.querySelector("video"), 5);
+  undo?.();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect(container.querySelector("video")).toBe(clip);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+// M12/P2/S4, 17.8 (review A's M6): one still in the page is not another's to take, though it is first of its
+// attachment no more.
+test("a started clip whose block stays is not moved when the same clip is embedded before it", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const block = container.querySelector("p") as HTMLElement;
+  const clip = play(container.querySelector("video"), 5);
+  undo?.();
+  const before = document.createElement("p");
+  before.innerHTML = video("c1");
+  container.prepend(before);
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  const [embedded, playing] = container.querySelectorAll("video");
+  expect(playing).toBe(clip);
+  expect(clip.parentElement).toBe(block);
+  expect(embedded).not.toBe(clip);
+  expect(taken()).toEqual([]);
+  undo?.();
+});

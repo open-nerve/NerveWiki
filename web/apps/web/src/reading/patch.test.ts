@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { URL as FileURL } from "node:url";
 import { expect, onTestFinished, test } from "vitest";
 
-import { addressesOnly, resign, template } from "./patch";
+import { addressesOnly, findByKey, focusKeyOf, patchBlocks, resign, template } from "./patch";
 
 // The reading view's HTML changed in place (M12/P2/S4, P2 design 4.4.2).
 
@@ -173,4 +173,137 @@ test.each([
   expect(resign(article, template(first), template(signed("1795006800", "B".repeat(22))))).toBe(false);
 
   expect(article.innerHTML).toBe(html);
+});
+
+/** blocks are article's top-level nodes. */
+const blocks = (article: Element) => [...article.childNodes];
+
+/** taken watches article's subtree: it answers the nodes taken out of it since. */
+function taken(article: Element): () => Node[] {
+  const watching = new MutationObserver(() => undefined);
+  watching.observe(article, { childList: true, subtree: true });
+  onTestFinished(() => watching.disconnect());
+  return () => {
+    const out: Node[] = [];
+    for (const record of watching.takeRecords()) {
+      out.push(...record.removedNodes);
+    }
+    return out;
+  };
+}
+
+// M12/P2/S4, 8.2: the ends alike are taken from the end first.
+test("patchBlocks keeps the heading the reader was at as a section of its name is put before it: its id is the new one's", () => {
+  const old = '<h2 id="nw-notes">Notes</h2>\n<p>one</p>\n';
+  const after = '<h2 id="nw-notes">Notes</h2>\n<p>zero</p>\n<h2 id="nw-notes-1">Notes</h2>\n<p>one</p>\n';
+  const { article } = written(old);
+  const [heading, , one] = blocks(article);
+  const out = taken(article);
+
+  const placed = patchBlocks(article, template(old), template(after));
+
+  expect(article.innerHTML).toBe(after);
+  expect(blocks(article)[4]).toBe(heading);
+  expect(blocks(article)[6]).toBe(one);
+  expect((heading as Element).id).toBe("nw-notes-1");
+  expect(out()).toEqual([]);
+  expect([0, 2].map((at) => placed?.(at))).toEqual([4, 6]);
+});
+
+// M12/P2/S4, P2-21: between the ends, each block takes the first of its kind past the last taken.
+test("patchBlocks keeps the blocks alike between ends that changed, takes out the others, puts in the new, and moves none", () => {
+  const old = "<p>a 1</p>\n<p>same</p>\n<p>gone</p>\n<ul><li>list</li></ul>\n<p>b 1</p>\n";
+  const after = "<p>a 2</p>\n<p>same</p>\n<p>new</p>\n<ul><li>list</li></ul>\n<p>b 2</p>\n";
+  const { article } = written(old);
+  const [first, , same, , gone, , list, , last] = blocks(article);
+  const out = taken(article);
+
+  const placed = patchBlocks(article, template(old), template(after));
+
+  expect(article.innerHTML).toBe(after);
+  expect([blocks(article)[2], blocks(article)[6]]).toEqual(
+    [same, list].map((node) => expect.toSatisfy((x) => x === node))
+  );
+  expect(out().filter((node) => node.nodeType === Node.ELEMENT_NODE)).toEqual(
+    [first, gone, last].map((node) => expect.toSatisfy((x) => x === node))
+  );
+  // Each taken out is where the one put in its place is.
+  expect([0, 2, 4, 6, 8].map((at) => placed?.(at))).toEqual([0, 2, 4, 6, 8]);
+});
+
+test("patchBlocks places a block taken out at the next kept when none is put in its place, at the last block when none follows", () => {
+  const old = "<p>keep</p>\n<p>gone</p>\n<p>tail</p>\n<p>end</p>\n";
+  const after = "<p>keep</p>\n<p>tail</p>\n";
+  const { article } = written(old);
+
+  const placed = patchBlocks(article, template(old), template(after));
+
+  expect(article.innerHTML).toBe(after);
+  expect([placed?.(2), placed?.(6)]).toEqual([2, 2]);
+});
+
+// M12/P2/S4, 4.4.2 step 4: from the HTML before to the HTML after, not from what the reader has.
+test("patchBlocks gives a block kept the new ids and addresses, and leaves what the reader changed: a callout opened, a media begun", () => {
+  const block = (id: string, e: string, s: string) =>
+    `<details id="${id}"><summary>Clip</summary><video class="nw-asset" src="${address(clip, { e, s })}"></video>` +
+    `<img class="nw-asset" src="${address(chart, { e, s })}"></details>\n`;
+  const old = `<p>a</p>\n${block("nw-x", "1795003200", "A".repeat(22))}`;
+  const after = `<p>b</p>\n${block("nw-x-1", "1795006800", "B".repeat(22))}`;
+  const { article } = written(old);
+  const details = article.querySelector("details") as HTMLDetailsElement;
+  details.open = true;
+  const video = article.querySelector("video") as HTMLVideoElement;
+  Object.defineProperty(video, "paused", { configurable: true, value: false });
+
+  patchBlocks(article, template(old), template(after));
+
+  expect(article.querySelector("details")).toBe(details);
+  expect([details.id, details.open]).toEqual(["nw-x-1", true]);
+  expect(video.getAttribute("src")).toBe(plain(address(clip)));
+  expect(article.querySelector("img")?.getAttribute("src")).toBe(
+    plain(address(chart, { e: "1795006800", s: "B".repeat(22) }))
+  );
+});
+
+test("patchBlocks puts a block in anew whose ids changed and whose nodes are not the HTML's: code coloured", () => {
+  const old = '<p>a</p>\n<pre id="nw-c"><code>x = 1</code></pre>\n';
+  const after = '<p>b</p>\n<pre id="nw-c-1"><code>x = 1</code></pre>\n';
+  const { article } = written(old);
+  const code = article.querySelector("code") as HTMLElement;
+  code.innerHTML = '<span class="hl">x</span> = 1';
+  const pre = article.querySelector("pre");
+
+  patchBlocks(article, template(old), template(after));
+
+  expect(article.innerHTML).toBe(after);
+  expect(article.querySelector("pre")).not.toBe(pre);
+});
+
+// M12/P2/S4, 4.4.2 step 1: the article's blocks not the view's, the HTML is written whole.
+test("patchBlocks changes nothing and answers none when the article's top-level nodes are not the HTML's", () => {
+  const old = "<p>a</p>\n<p>b</p>\n";
+  const { article } = written(`${old}<div>left by an enhancement</div>`);
+  const html = article.innerHTML;
+
+  expect(patchBlocks(article, template(old), template("<p>a</p>\n<p>b</p>\n<p>c</p>\n"))).toBeUndefined();
+  expect(article.innerHTML).toBe(html);
+});
+
+/** keyedView is a view of elements of each key, its ids ending with n, its address signed anew for any n. */
+const keyedView = (n: string) =>
+  `<h2 id="nw-a${n}">A</h2><p><a href="${address(chart, { e: n === "" ? "1795003200" : "1795006800" })}">c</a>` +
+  `<a class="nw-unresolved" data-nw-target="T">t</a></p><details><summary>S</summary></details>` +
+  `<audio class="nw-asset" src="${address(talk)}"></audio><h2 id="nw-a-1${n}">A</h2><sup id="fn"></sup>`;
+
+// M12/P2/S4, 4.4.3 step 3.
+test("an element is found again by its key: a heading by its text, not its id, a link by its address and text, a callout's summary, a media, an id", () => {
+  const { article: one } = written(keyedView(""));
+  const { article: two } = written(keyedView("x"));
+  const pairs = [...one.querySelectorAll("h2, a, summary, audio, sup")].map((element) => {
+    const key = focusKeyOf(one, element);
+    return key && findByKey(two, key)?.outerHTML;
+  });
+
+  expect(pairs).toEqual([...two.querySelectorAll("h2, a, summary, audio, sup")].map((element) => element.outerHTML));
+  expect(focusKeyOf(one, one.querySelector("p") as Element)).toBeUndefined();
 });

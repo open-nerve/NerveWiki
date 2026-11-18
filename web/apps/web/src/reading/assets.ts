@@ -154,7 +154,10 @@ function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLEleme
  * its attributes but its address taken, the focus given back if it had
  * it. One that failed is not put: the new one is put where it was, the
  * focus given it if it had it, playing if the one was as it was being
- * signed anew.
+ * signed anew. One still in container is where it was, its block kept
+ * as the HTML changed (M12/P2/S4, 17.8): it is not moved, which would
+ * take it out of the document a moment (and a video out of fullscreen),
+ * nor taken by another of its attachment's put before it.
  */
 function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing) {
   if (kept === undefined) {
@@ -162,7 +165,7 @@ function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing)
   }
   for (const [key, element] of keyed(container)) {
     const old = kept.media.get(key);
-    if (old === undefined) {
+    if (old === undefined || container.contains(old)) {
       continue;
     }
     if (old.error !== null) {

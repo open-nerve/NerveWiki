@@ -26,8 +26,10 @@ import { useViewAnchors } from "./view-anchors";
  * Retry-After.
  *
  * Once the HTML is in, the app's enhancements run on it in their order;
- * before the HTML is replaced, and when the view goes, they are undone in
- * the reverse order (reading/enhancement.ts). They run again as the
+ * before the HTML is changed, and when the view goes, they are undone in
+ * the reverse order (reading/enhancement.ts). A view read again changes
+ * the HTML where it differs, block by block: what the reader selected,
+ * opened or plays in the rest stays (M12/P2/S4, 3, 17.1). They run again as the
  * language changes, their names in it: the reader changes it in a menu,
  * which has the focus. Not as the theme does, the system's maybe as one
  * reads: those that draw in it follow it (onThemeChange). A writer's
@@ -36,7 +38,7 @@ import { useViewAnchors } from "./view-anchors";
  * toggle starts (M5/P6 design 3.5). Whether the page can be written (the
  * account's role, an upgrade under way, a source) changes the checkboxes
  * alone, not the HTML, whose place the reader keeps (M12/P2/S4, 48). A task item's checkbox that had the
- * focus as the HTML is replaced has it back in the new HTML, without a
+ * focus as the HTML changed has it back in the new HTML, without a
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
  * not move it, a write that moved the items does. A folded callout it is
@@ -57,10 +59,13 @@ import { useViewAnchors } from "./view-anchors";
  * clicked, touched, pressed a key: the browser's own scrolling is none of
  * these, nor are an assistive technology's moves) and the focus is where it
  * was; a read after that one moves nothing. A link of the page to no
- * element leaves the focus where it is, and the page. An element with an
- * id that had the focus as the HTML is replaced, the anchor's among them,
- * has it back in the new HTML, shown again if it showed and no longer
- * does: a view read again stays where it is.
+ * element leaves the focus where it is, and the page. What had the focus
+ * as the HTML changed, the anchor's element among them, has it back: the
+ * same element, or one of its key in the new HTML (a heading of its text,
+ * not its id: one of its name put before it takes the id), shown again if
+ * it showed and no longer does; else the block where it was, neither
+ * shown nor opened (server-html.ts; M12/P2/S4, 4.4.3): a view read again
+ * stays where it is.
  *
  * A link to a page that is not there, acted on, opens the view's dialog
  * (unresolved-link.tsx): a writer may create the page, where the server

@@ -491,19 +491,22 @@ test("an element with an id that had the focus has it back in the view read agai
   expect(section("A, still").getAttribute("tabindex")).toBe("-1");
   expect(scroll).not.toHaveBeenCalled();
 
-  // It showed and no longer does: the focus, and shown again.
+  // It showed and no longer does, its text another: no heading of its text, the focus is where it was, the block
+  // in its place, not scrolled (M12/P2/S4, 4.4.3's step 4).
   await readAgain('<h2 id="nw-a" data-at="2000">A, moved</h2>', 3);
   expect(document.activeElement).toBe(section("A, moved"));
-  expect([scroll.mock.contexts, scroll.mock.calls]).toEqual([[section("A, moved")], [[{ block: "nearest" }]]]);
+  expect(scroll).not.toHaveBeenCalled();
 
   // It did not show: the focus, no scroll.
   await readAgain('<h2 id="nw-a" data-at="3000">A, out of view</h2>', 4);
   expect(document.activeElement).toBe(section("A, out of view"));
   expect(scroll).not.toHaveBeenCalled();
 
-  // Not in the new HTML: no focus.
+  // Not in the new HTML: the focus is where it was, on the block in its place, not scrolled (M12/P2/S4, 4.4.3's step
+  // 4).
   await readAgain('<p id="nw-p">gone</p>', 5);
-  expect(document.activeElement).toBe(document.body);
+  expect(document.activeElement).toBe(screen.getByText("gone"));
+  expect(screen.getByText("gone").getAttribute("tabindex")).toBe("-1");
   expect(scroll).not.toHaveBeenCalled();
 });
 
@@ -1056,4 +1059,110 @@ test("a page that becomes a source by the mode event, and a page again, has its 
   await waitFor(() => expect(box.disabled).toBe(false));
   expect(within(article).getByRole("checkbox", { name: "a" })).toBe(box);
   expect(changes()).toBe(0);
+});
+
+/**
+ * readable opens Install, its view html, through enhancements and one that reads the view again: readAgain has it read
+ * html at the next revision, and waits for its text.
+ */
+async function readable(html: string, enhancements: Enhancement[] = []) {
+  const server = pageServer();
+  server.views.set(install.id, { html, revision: 1, assets_expire_at: null });
+  const reloads: (() => void)[] = [];
+  const reading: Enhancement = (_container, context) => void reloads.push(context.reload);
+  renderApp(pagePath(install.id), server.app, { enhancements: [...enhancements, reading] });
+  const article = await screen.findByRole("article", { name: "Install" });
+  await waitFor(() => expect(reloads).toHaveLength(1));
+  let revision = 1;
+  const readAgain = async (next: string) => {
+    revision += 1;
+    server.views.set(install.id, { html: next, revision, assets_expire_at: null });
+    act(() => reloads.at(-1)?.());
+    await waitFor(() => expect(article.textContent).toBe(next.replace(/<[^>]*>/g, "")));
+  };
+  return { article, readAgain };
+}
+
+// M12/P2/S4, 3 (U4): another's write is written where it changed the view, the rest kept as the reader has it.
+/** written is a view of a link, a callout, a paragraph to select in, and last at the page's end. */
+const written = (last: string) =>
+  '<p><a href="/x">x</a></p>\n<details><summary>S</summary><p>in</p></details>\n<p>words to select</p>\n' +
+  `<p id="last">${last}</p>\n`;
+
+test("another's write elsewhere in the page keeps the focus on a link without an id, the selection in a paragraph and a callout opened", async () => {
+  const { article, readAgain } = await readable(written("tail"));
+  const link = within(article).getByRole("link", { name: "x" });
+  const details = article.querySelector("details") as HTMLDetailsElement;
+  details.open = true;
+  // The focus first: jsdom moves the selection to what takes the focus.
+  link.focus();
+  const words = screen.getByText("words to select").firstChild as Text;
+  document.getSelection()?.setBaseAndExtent(words, 0, words, 5);
+
+  await readAgain(written("tail, edited"));
+
+  expect(document.activeElement).toBe(link);
+  expect(article.querySelector("details")).toBe(details);
+  expect([details.open, details.isConnected]).toEqual([true, true]);
+  expect(document.getSelection()?.anchorNode).toBe(words);
+  expect(document.getSelection()?.toString()).toBe("words");
+});
+
+// M12/P2/S4, P2-21: a link's target made, its links far apart change at once; the blocks between are matched by
+// what they are.
+/** toX is a link to X, a page made or not. */
+const toX = (made: boolean) =>
+  made
+    ? `<a class="nw-wikilink" href="${pagePath(guide.id)}" data-nw-node="${guide.id}">X</a>`
+    : '<a class="nw-wikilink nw-unresolved" data-nw-target="X">X</a>';
+
+/** farApart is a view with links to X at its ends, a callout and a paragraph between. */
+const farApart = (made: boolean) =>
+  `<p>a ${toX(made)}</p>\n<details><summary>Tip</summary><p>in</p></details>\n<p>mid</p>\n<p>b ${toX(made)}</p>\n`;
+
+test("a write that changes two links far apart keeps the blocks between, a callout opened and the focus in them", async () => {
+  const { article, readAgain } = await readable(farApart(false));
+  const details = article.querySelector("details") as HTMLDetailsElement;
+  const summary = details.querySelector("summary") as HTMLElement;
+  details.open = true;
+  summary.focus();
+
+  await readAgain(farApart(true));
+
+  expect(article.querySelectorAll("a[href]")).toHaveLength(2);
+  expect(article.querySelector("details")).toBe(details);
+  expect(details.querySelector("summary")).toBe(summary);
+  expect(details.open).toBe(true);
+  expect(document.activeElement).toBe(summary);
+});
+
+// M12/P2/S4, 8.2: the section the reader was in keeps its heading, renumbered; it is not the heading that now has
+// its id.
+test("a heading of the same name put before the focused one leaves the focus on the one the reader had", async () => {
+  const { article, readAgain } = await readable('<h2 id="nw-notes">Notes</h2>\n<p>one</p>\n');
+  const heading = section("Notes");
+  heading.setAttribute("tabindex", "-1");
+  heading.focus();
+
+  await readAgain('<h2 id="nw-notes">Notes</h2>\n<p>zero</p>\n<h2 id="nw-notes-1">Notes</h2>\n<p>one</p>\n');
+
+  expect(article.querySelectorAll("h2")).toHaveLength(2);
+  expect(document.activeElement).toBe(heading);
+  expect(heading.id).toBe("nw-notes-1");
+  expect(heading.nextElementSibling?.textContent).toBe("one");
+});
+
+// M12/P2/S4, 12.2: a callout's summary has no id; written again, the callout's summary of the same text takes the
+// focus, the callout as the view writes it.
+test("a callout's summary that had the focus has it back, its callout written again by another", async () => {
+  const { article, readAgain } = await readable("<details><summary>Tip</summary><p>a</p></details>\n");
+  const before = article.querySelector("summary") as HTMLElement;
+  before.focus();
+
+  await readAgain("<details><summary>Tip</summary><p>b</p></details>\n");
+
+  const summary = article.querySelector("summary");
+  expect(summary).not.toBe(before);
+  expect(document.activeElement).toBe(summary);
+  expect(article.querySelector("details")?.open).toBe(false);
 });

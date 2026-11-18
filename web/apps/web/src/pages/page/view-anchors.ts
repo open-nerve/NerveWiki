@@ -111,7 +111,7 @@ function named(container: HTMLElement, fragment: string): HTMLElement | undefine
 }
 
 /** byId is the element of container whose id is id, if there is one. */
-export function byId(container: HTMLElement, id: string): HTMLElement | undefined {
+function byId(container: HTMLElement, id: string): HTMLElement | undefined {
   return container.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) ?? undefined;
 }
 
@@ -125,7 +125,7 @@ export function shows(element: HTMLElement): boolean {
  * focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does;
  * a folded callout it is in opens first.
  */
-export function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
+function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
   unfold(element);
   if (!element.hasAttribute("tabindex")) {
     element.setAttribute("tabindex", "-1");
