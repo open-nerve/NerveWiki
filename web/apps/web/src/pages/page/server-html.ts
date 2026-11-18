@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, type RefObject } from "react";
 
 import { enhance, type Enhancement, type ReadingContext } from "../../reading/enhancement";
+import { addressesOnly, resign, template } from "../../reading/patch";
 import { taskText } from "../../reading/task-toggle";
 import { unfold } from "../../reading/unfold";
 import { byId, focusOn, shows } from "./view-anchors";
@@ -21,11 +22,27 @@ export type ServerHTMLContext = Omit<ReadingContext, "revision" | "assetsExpire"
 };
 
 /**
+ * Shown is the server's HTML in the article (M12/P2/S4, 4.4.2): the article, the HTML and the template it parses
+ * to, how its enhancements are undone, and what they ran with.
+ */
+type Shown = {
+  container: HTMLElement;
+  html: string;
+  template: HTMLTemplateElement;
+  undo: () => void;
+  ran: readonly unknown[];
+};
+
+/**
  * useServerHTML writes view, the server's HTML of a page, into article, and runs the enhancements on it (M4/P5
  * design 3.8): as the view changes, the enhancements are undone in the reverse order, the HTML written again, and
  * they run again; as it goes, they are undone. The context's callbacks are its latest's, and so are the view's
  * revision and its addresses' expiry. Whether the page can be written changes no HTML: the enhancements hear it
  * (writes, onWritesChange; M12/P2/S4, 48).
+ *
+ * The same HTML read again, at another revision maybe (a save of blank lines), is left as it is (U2). One whose
+ * attachments' addresses alone differ, signed anew for the next hour, has them given to its elements in place (U3,
+ * resign): no node taken out or put in, no enhancement run again (M12/P2/S4, 17.1).
  *
  * A task item's checkbox that had the focus as the HTML is replaced has it back in the new HTML, without a scroll,
  * while the box at its position is the same item's (its text, and its state, or the state the view's own toggle
@@ -46,17 +63,48 @@ export function useServerHTML(
   const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
   // The element with an id focused as the HTML was replaced, and whether it showed.
   const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
+  const shown = useRef<Shown | undefined>(undefined);
   const html = view?.html;
-  const revision = view?.revision;
   const { enhancements, workspace, notebook, page, t, locale } = context;
   useLayoutEffect(() => {
     const container = article.current;
-    if (container === null || html === undefined || revision === undefined) {
-      return undefined;
+    const was = shown.current;
+    const ran = [enhancements, workspace, notebook, page, t, locale];
+    // remember notes what had the focus in from, before its enhancements are undone. Undone, a checkbox is disabled
+    // again, which HTML's focus fixup takes the focus from: Chromium at the next rendering, an engine that applies
+    // the rule at once before the new HTML is in.
+    function remember(from: HTMLElement) {
+      const active = document.activeElement;
+      focusedTask.current =
+        active instanceof HTMLInputElement && active.dataset.task !== undefined && from.contains(active)
+          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
+          : undefined;
+      focusedTarget.current =
+        active instanceof HTMLElement && active.id !== "" && from.contains(active)
+          ? { id: active.id, shown: shows(active) }
+          : undefined;
+    }
+    if (was !== undefined && container === was.container && html !== undefined && sameRun(was.ran, ran)) {
+      if (html === was.html) {
+        return;
+      }
+      const signed = template(html);
+      if (addressesOnly(was.template, signed) && resign(container, was.template, signed)) {
+        shown.current = { ...was, html, template: signed };
+        return;
+      }
+    }
+    if (was !== undefined) {
+      remember(was.container);
+      shown.current = undefined;
+      was.undo();
+    }
+    if (container === null || html === undefined) {
+      return;
     }
     write(container, html);
     // The view as the HTML was written: the context reads the latest view's, while there is one.
-    const written = latest.current.view ?? { revision, assetsExpire: null };
+    const written = latest.current.view ?? { revision: 0, assetsExpire: null };
     const now = () => latest.current.context;
     const { toggleTask, writes, onWritesChange } = now();
     const undo = enhance(enhancements, container, {
@@ -88,6 +136,7 @@ export function useServerHTML(
       leads: (target) => now().leads?.(target) ?? false,
       assetAddress: (id) => now().assetAddress(id),
     });
+    shown.current = { container, html, template: template(html), undo, ran };
     const focused = focusedTask.current;
     const toggled = now().toggled;
     const asked = toggled?.current;
@@ -114,21 +163,21 @@ export function useServerHTML(
       // Scrolled only when it no longer shows: a scroll would reset a wide content's too.
       focusOn(again, target.shown && !shows(again) ? { block: "nearest" } : undefined);
     }
-    return () => {
-      // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
-      // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
-      const active = document.activeElement;
-      focusedTask.current =
-        active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
-          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
-          : undefined;
-      focusedTarget.current =
-        active instanceof HTMLElement && active.id !== "" && container.contains(active)
-          ? { id: active.id, shown: shows(active) }
-          : undefined;
-      undo();
-    };
-  }, [article, html, revision, enhancements, workspace, notebook, page, t, locale]);
+  }, [article, html, enhancements, workspace, notebook, page, t, locale]);
+  // Gone, the view's enhancements are undone (U8).
+  useLayoutEffect(
+    () => () => {
+      const was = shown.current;
+      shown.current = undefined;
+      was?.undo();
+    },
+    []
+  );
+}
+
+/** sameRun tells whether the enhancements ran with what they would run with now: each the same. */
+function sameRun(ran: readonly unknown[], now: readonly unknown[]): boolean {
+  return ran.length === now.length && ran.every((value, i) => Object.is(value, now[i]));
 }
 
 /** write puts html in container, in place of all it had. */

@@ -1,3 +1,5 @@
+import { begun } from "./assets";
+
 /**
  * The reading view's HTML changed in place (M12/P2/S4; M12/P2 design
  * 4.4.2): what the server's HTML read again changes of the view's, the
@@ -17,6 +19,15 @@ const address =
 
 /** The attributes an address is in. */
 const addressed = ["src", "href"] as const;
+
+/** The elements whose src or href may be an address: an attachment's content's, or another of the asset routes. */
+const addressing = '[src^="/api/v0/assets/"], [href^="/api/v0/assets/"]';
+
+/** assetOf is the attachment's id an element's address names, by its src or its href. */
+function assetOf(element: Element): string | undefined {
+  const value = element.getAttribute("src") ?? element.getAttribute("href") ?? "";
+  return /^\/api\/v0\/assets\/([^/?#]+)\//.exec(value)?.[1];
+}
 
 /** template is html parsed, as the view writes it: its content is the view's nodes. */
 export function template(html: string): HTMLTemplateElement {
@@ -51,4 +62,39 @@ function masked(parsed: HTMLTemplateElement): string {
  */
 export function addressesOnly(before: HTMLTemplateElement, after: HTMLTemplateElement): boolean {
   return masked(before) === masked(after);
+}
+
+/**
+ * resign gives the elements of article, which has before's HTML, enhanced, the addresses of after's, whose
+ * addresses alone differ (addressesOnly): a link its href, an image its src (the old one shown until the new one
+ * loads, the node the same), an audio or a video not begun its src. One begun keeps its own: it goes on, signed anew
+ * as it fails (assets.ts). No node is taken out or put in: the selection, the callouts opened, the focus and the
+ * fullscreen stay (M12/P2/S4, 17.1, 17.8).
+ *
+ * The enhancements put in or take out no element with an address: article's are before's, the same many, each of
+ * the same attachment in order. Not so, nothing is changed, and it answers false: the HTML is written as for a
+ * change (U4).
+ */
+export function resign(article: Element, before: HTMLTemplateElement, after: HTMLTemplateElement): boolean {
+  const old = [...before.content.querySelectorAll(addressing)];
+  const next = [...after.content.querySelectorAll(addressing)];
+  const live = [...article.querySelectorAll(addressing)];
+  const alike = (element: Element, i: number) =>
+    element.nodeName === next[i]?.nodeName && assetOf(element) === assetOf(next[i]);
+  if (old.length !== next.length || !live.every(alike) || live.length !== next.length) {
+    return false;
+  }
+  live.forEach((element, i) => {
+    const signed = next[i];
+    if (signed === undefined || (element instanceof HTMLMediaElement && begun(element))) {
+      return;
+    }
+    for (const name of addressed) {
+      const value = signed.getAttribute(name);
+      if (value !== null && element.getAttribute(name) !== value) {
+        element.setAttribute(name, value);
+      }
+    }
+  });
+  return true;
 }

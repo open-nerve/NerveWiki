@@ -211,7 +211,7 @@ function started(container: HTMLElement): Map<string, HTMLMediaElement> {
 }
 
 /** begun tells whether element was started, playing or paused partway, and has not ended. */
-function begun(element: HTMLMediaElement): boolean {
+export function begun(element: HTMLMediaElement): boolean {
   return (!element.paused || element.currentTime > 0) && !element.ended;
 }
 

@@ -624,6 +624,81 @@ test("a link to a page goes there through the router, with the app's enhancement
   expect([router.state.location.pathname, router.state.location.state]).toEqual([pagePath(guide.id), null]);
 });
 
+/**
+ * signedAt is the address of node's content as the server writes it in HTML, of one blob, expiring at the hour e
+ * after 2026-11-18 10:00, signed s (22 of it).
+ */
+function signedAt(node: string, e: number, s: string): string {
+  const expiry = (1_795_003_200 + (e - 1) * 3_600).toString();
+  return `/api/v0/assets/${node}/content?b=0199a2b4-0000-7000-8000-0000000b0001&amp;e=${expiry}&amp;s=${s.repeat(22)}`;
+}
+
+/** plain is an address as an attribute reads, its &amp; a &. */
+const plain = (html: string) => html.replaceAll("&amp;", "&");
+
+const chart = "0199a2b4-0000-7000-8000-0000000a0001";
+
+/** signedView is a view of an image, a link to it, a callout and a paragraph, its addresses signed by s, expiring at e. */
+const signedView = (e: number, s: string) =>
+  `<p><img class="nw-asset" src="${signedAt(chart, e, s)}" alt="c.png"></p>` +
+  `<p><a class="nw-wikilink nw-asset" href="${signedAt(chart, e, s)}" download="">c.png</a></p>` +
+  "<details><summary>Tip</summary><p>in</p></details><p>tail</p>";
+
+// M12/P2/S4, 17.1 (U3): each hour, the view read again differs in its addresses' expiry and signature alone. Their
+// elements take the new ones, no node taken out or put in: what the reader has selected and opened stays.
+test("a view read again whose attachments' addresses alone changed keeps every node, the selection and the callouts, runs no enhancement again, and the links and images have the new addresses", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const server = pageServer();
+  server.views.set(install.id, { html: signedView(1, "A"), revision: 1, assets_expire_at: inMinutes(10) });
+  const log: string[] = [];
+  renderApp(pagePath(install.id), server.app, { enhancements: [recording(log, "a")] });
+  const article = await screen.findByRole("article", { name: "Install" });
+  await waitFor(() => expect(log).toHaveLength(1));
+  const details = article.querySelector("details") as HTMLDetailsElement;
+  details.open = true;
+  const tail = screen.getByText("tail").firstChild as Text;
+  document.getSelection()?.setBaseAndExtent(tail, 1, tail, 3);
+  const changes = childChanges(article);
+
+  server.views.set(install.id, { html: signedView(2, "B"), revision: 1, assets_expire_at: inMinutes(70) });
+  await act(() => vi.advanceTimersByTimeAsync(9.1 * 60_000));
+  await waitFor(() => expect(article.querySelector("img")?.getAttribute("src")).toBe(plain(signedAt(chart, 2, "B"))));
+
+  expect(article.querySelector("a")?.getAttribute("href")).toBe(plain(signedAt(chart, 2, "B")));
+  expect([changes(), log.length, details.open, details.isConnected]).toEqual([0, 1, true, true]);
+  expect(document.getSelection()?.anchorNode).toBe(tail);
+  expect(document.getSelection()?.toString()).toBe("ai");
+});
+
+// M12/P2/S4, U2: a save that changed the content's blank lines alone is read again as the same HTML at another
+// revision: nothing is written, and the next tick is sent on the revision read.
+test("the same HTML read again at another revision writes nothing and runs no enhancement again; a tick is sent on the new revision", async () => {
+  const server = pageServer({ role: "editor" });
+  server.withTasks(install.id, "- [ ] a\n");
+  const log: string[] = [];
+  const contexts: ReadingContext[] = [];
+  const capture: Enhancement = (_container, context) => void contexts.push(context);
+  renderApp(pagePath(install.id), server.app, { enhancements: [taskToggle, recording(log, "a"), capture] });
+  const article = await screen.findByRole("article", { name: "Install" });
+  const box = await within(article).findByRole<HTMLInputElement>("checkbox", { name: "a" });
+  await waitFor(() => expect(box.disabled).toBe(false));
+  const html = article.innerHTML;
+  const changes = childChanges(article);
+  const runs = log.length;
+
+  server.withTasks(install.id, "- [ ] a\n", 2);
+  act(() => contexts.at(-1)?.reload());
+  await waitFor(() => expect(contexts.at(-1)?.revision).toBe(2));
+  expect([changes(), log.length, article.innerHTML]).toEqual([0, runs, html]);
+
+  await userEvent.click(box);
+  await waitFor(() =>
+    expect(server.sent.filter((line) => line.startsWith("TOGGLE"))).toEqual([
+      `TOGGLE Install ${box.dataset.task ?? ""} true on 2`,
+    ])
+  );
+});
+
 /** inMinutes is the time minutes from now, as the server writes it. */
 const inMinutes = (minutes: number) => new Date(Date.now() + minutes * 60_000).toISOString();
 
@@ -824,7 +899,11 @@ test("an enhancement has the view's expiry, and an attachment's address signed a
   const server = pageServer();
   const sound = { ...assetNode(90, "a.mp3"), parent_id: install.id };
   server.nodes = [...server.nodes, sound];
-  server.views.set(install.id, { html: "<p>Install</p>", revision: 1, assets_expire_at: "2100-01-01T00:00:00Z" });
+  server.views.set(install.id, {
+    html: `<p><audio class="nw-asset" src="${signedAt(sound.id, 1, "A")}"></audio></p>`,
+    revision: 1,
+    assets_expire_at: "2100-01-01T00:00:00Z",
+  });
   const contexts: ReadingContext[] = [];
   renderApp(pagePath(install.id), server.app, {
     enhancements: [
@@ -843,6 +922,21 @@ test("an enhancement has the view's expiry, and an attachment's address signed a
     "GET asset a.mp3",
     `GET asset ${guide.id}`,
   ]);
+
+  // Its addresses alone signed anew (U3): the enhancements are not run again, and have the new expiry (M12/P2/S4).
+  server.views.set(install.id, {
+    html: `<p><audio class="nw-asset" src="${signedAt(sound.id, 2, "B")}"></audio></p>`,
+    revision: 1,
+    assets_expire_at: "2100-01-01T01:00:00Z",
+  });
+  act(() => contexts[0]?.reload());
+  await waitFor(() =>
+    expect(screen.getByRole("article").querySelector("audio")?.getAttribute("src")).toBe(
+      plain(signedAt(sound.id, 2, "B"))
+    )
+  );
+  expect(contexts).toHaveLength(1);
+  expect(contexts[0]?.assetsExpire).toBe("2100-01-01T01:00:00Z");
 });
 
 test("with the app's enhancements, a link to an attachment the browser shows opens in a tab of its own; a download does not", async () => {
