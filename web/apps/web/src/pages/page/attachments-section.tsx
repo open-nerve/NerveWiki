@@ -15,13 +15,14 @@ import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { formatPeriod } from "../../i18n/format";
-import { useT } from "../../i18n/i18n";
+import { useT, type Translate } from "../../i18n/i18n";
+import type { Locale } from "../../i18n/locale";
 import { embedOf } from "../../lib/asset-kind";
 import { cn } from "../../lib/cn";
 import { ApiError } from "../../services/api";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
-import type { AssetList, AssetStore } from "../../stores/asset.store";
+import type { AssetList, AssetStore, Upload } from "../../stores/asset.store";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
@@ -340,21 +341,42 @@ function CopyField({ embed, name, field }: { embed: string; name: string; field:
  * and those that leave uploaded. What leaves and begins in one turn is
  * said once the turn is over, together: each upload leaves by an action
  * of its own, and React would show only the last of several said in a
- * turn. The same text said again changes the region all the same, a space
- * after it, or it would not be read again.
+ * turn. Those begun are counted then, as still going: one cancelled, or
+ * failed, in its turn is not (M12/P2/S5, 16.10). The same text said again
+ * changes the region all the same, a space after it, or it would not be
+ * read again. Once none goes any more and the turn has nothing to say, a
+ * sentence of uploads going no longer holds, and the region is emptied:
+ * an upload failed or cancelled leaves no "Uploading" behind it; one
+ * uploaded is said all the same (M12/P2/S5, 16.4c, 38.9).
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
   const { preferences } = useStore();
   const [said, setSaid] = useState({ text: "", again: false });
   useEffect(() => {
-    const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
-    // What the turn says, as it is so far: those left uploaded, and how many began.
+    const sentence = turnSentence(t, preferences.locale);
+    // What the turn says, as it is so far: those left uploaded, those that began, and whether none goes any more.
     let left: string[] = [];
-    let begun = 0;
-    let text: string | undefined;
+    const begun = new Set<Upload>();
+    let ended = false;
     let turn: ReturnType<typeof setTimeout> | undefined;
-    const stop = reaction(
+    const flush = () => {
+      // Read as the turn ends: an upload's signal is not observed.
+      const going = [...begun].filter(
+        (upload) => assets.uploads.includes(upload) && upload.failure === undefined && !upload.signal.aborted
+      ).length;
+      const text = sentence(left, going);
+      if (text !== undefined) {
+        setSaid(saying(text));
+      } else if (ended) {
+        setSaid({ text: "", again: false });
+      }
+      left = [];
+      begun.clear();
+      ended = false;
+      turn = undefined;
+    };
+    const stopUploads = reaction(
       () => assets.uploads.filter((upload) => upload.parent === parent),
       (now, before) => {
         for (const upload of before) {
@@ -362,30 +384,46 @@ function useNotice(assets: AssetStore, parent: string | null) {
             left.push(upload.name);
           }
         }
-        begun += now.filter((upload) => !before.includes(upload) && upload.failure === undefined).length;
-        const uploaded = left.length > 0 ? t("asset.uploaded", { names: names.format(left) }) : undefined;
-        const uploading = begun > 0 ? t("asset.uploading", { count: begun }) : undefined;
-        text =
-          uploaded !== undefined && uploading !== undefined
-            ? t("page.sentences", { first: uploaded, second: uploading })
-            : (uploaded ?? uploading);
-        turn ??= setTimeout(() => {
-          if (text !== undefined) {
-            setSaid(saying(text));
+        for (const upload of now) {
+          if (!before.includes(upload) && upload.failure === undefined) {
+            begun.add(upload);
           }
-          left = [];
-          begun = 0;
-          text = undefined;
-          turn = undefined;
-        }, 0);
+        }
+        turn ??= setTimeout(flush, 0);
+      }
+    );
+    // A failure leaves the uploads as they are: whether any goes tells it.
+    const stopGoing = reaction(
+      () => assets.going.some((upload) => upload.parent === parent),
+      (going) => {
+        if (!going) {
+          ended = true;
+          turn ??= setTimeout(flush, 0);
+        }
       }
     );
     return () => {
-      stop();
+      stopUploads();
+      stopGoing();
       clearTimeout(turn);
     };
   }, [assets, parent, t, preferences.locale]);
   return { text: said.text + (said.again ? "\u00A0" : ""), say: (text: string) => setSaid(saying(text)) };
+}
+
+/**
+ * turnSentence says what a turn of uploads says, in locale: those left uploaded, by name, and how many still go; or
+ * nothing.
+ */
+function turnSentence(t: Translate, locale: Locale): (left: readonly string[], going: number) => string | undefined {
+  const names = new Intl.ListFormat(locale, { type: "conjunction" });
+  return (left, going) => {
+    const uploaded = left.length > 0 ? t("asset.uploaded", { names: names.format(left) }) : undefined;
+    const uploading = going > 0 ? t("asset.uploading", { count: going }) : undefined;
+    return uploaded !== undefined && uploading !== undefined
+      ? t("page.sentences", { first: uploaded, second: uploading })
+      : (uploaded ?? uploading);
+  };
 }
 
 /** saying is the notice that says text, after the one before: the same text is said again. */

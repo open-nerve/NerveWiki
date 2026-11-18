@@ -100,6 +100,25 @@ test("a writer can copy, drag the embed and upload beside a source attachment", 
   expect(managementWrites(server)).toEqual([]);
 });
 
+test("a source refused as it is uploaded leaves nothing said of uploads going", async () => {
+  const server = pageServer({
+    role: "editor",
+    mode: "llm_wiki",
+    sourceRootId: guide.id,
+    nodes: [...base],
+    answers: { [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () => problem(409, "page.title_taken") },
+  });
+  renderAttachments(server, linux.id);
+  const section = await attachments();
+  const region = () => section.querySelector("[aria-live=polite]")?.textContent;
+
+  fireEvent.change(picker(section), { target: { files: [new File(["# Notes"], "notes.md")] } });
+  await within(section).findByText("Another page or attachment here has this title. Choose another title.");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(region()).toBe("");
+});
+
 test.each(
   (
     [

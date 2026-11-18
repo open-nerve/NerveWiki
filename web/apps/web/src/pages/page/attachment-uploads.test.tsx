@@ -177,7 +177,8 @@ test("Cancel stops the upload: its request is aborted, nothing is made, nothing 
   act(() => server.release());
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   expect(server.nodes.map((node) => node.name)).not.toContain("big.png");
-  expect(notice(section)).toBe("Uploading files: 1.");
+  // Nothing goes any more: nothing is said to (M12/P2/S5, 16.4c).
+  expect(notice(section)).toBe("");
 });
 
 test.each<[string, "en" | "zh-CN", string, string, string]>([
@@ -375,6 +376,53 @@ test("an upload that makes no progress for a minute fails, saying it stopped", a
     "The upload stopped: nothing went out for a minute. Upload the file again."
   );
   expect(transfers(server.app)[0]?.aborted).toBe(true);
+  act(() => server.release());
+});
+
+test("an upload that fails leaves nothing said of uploads going: the region says nothing", async () => {
+  let refuse: (() => void) | undefined;
+  const server = pageServer({
+    nodes,
+    answers: {
+      [uploadsPath]: () => new Promise<Response>((resolve) => (refuse = () => resolve(problem(507, "storage_full")))),
+    },
+  });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
+  act(() => refuse?.());
+  await within(section).findByRole("alert");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(notice(section)).toBe("");
+});
+
+test("an upload cancelled in the turn it began is not said to go", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  // Each upload is cancelled as it begins: in its turn.
+  const upload = AssetStore.prototype.upload;
+  const cancelling = vi.spyOn(AssetStore.prototype, "upload").mockImplementation(function (
+    this: AssetStore,
+    ...args: Parameters<AssetStore["upload"]>
+  ) {
+    const begun = upload.apply(this, args);
+    for (const each of begun) {
+      each.cancel();
+    }
+    return begun;
+  });
+  onTestFinished(() => cancelling.mockRestore());
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(cancelling).toHaveBeenCalled());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(notice(section)).toBe("");
   act(() => server.release());
 });
 
