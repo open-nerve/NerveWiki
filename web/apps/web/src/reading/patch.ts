@@ -342,17 +342,26 @@ function keyOf(element: Element): string | undefined {
   return element.id === "" ? undefined : `#${element.id}`;
 }
 
-/** focusKeyOf is element's key in article, and which of article's of that key it is; none for one without a key. */
-export function focusKeyOf(article: Element, element: Element): FocusKey | undefined {
+/**
+ * focusKeyOf is element's key in within, and which of within's of that key it is, within among them; none for one
+ * without a key. Within is the top-level node it is in (M12/P2/S4, 4.4.3's step 3, review A's M4): found again in
+ * the block it maps to, not a link of the same address far off, which the view would scroll to.
+ */
+export function focusKeyOf(within: Element, element: Element): FocusKey | undefined {
   const key = keyOf(element);
   if (key === undefined) {
     return undefined;
   }
-  return { key, nth: [...article.querySelectorAll(keyed)].filter((each) => keyOf(each) === key).indexOf(element) };
+  return { key, nth: ofKey(within, key).indexOf(element) };
 }
 
-/** findByKey is article's element of key, the nth of them; none if there is not one. */
-export function findByKey(article: Element, { key, nth }: FocusKey): HTMLElement | undefined {
-  const found = [...article.querySelectorAll(keyed)].filter((each) => keyOf(each) === key)[nth];
+/** findByKey is within's element of key, the nth of them, within among them; none if there is not one. */
+export function findByKey(within: Element, { key, nth }: FocusKey): HTMLElement | undefined {
+  const found = ofKey(within, key)[nth];
   return found instanceof HTMLElement ? found : undefined;
+}
+
+/** ofKey are within and the elements in it of key, in order. */
+function ofKey(within: Element, key: string): Element[] {
+  return [within, ...within.querySelectorAll(keyed)].filter((each) => each.matches(keyed) && keyOf(each) === key);
 }

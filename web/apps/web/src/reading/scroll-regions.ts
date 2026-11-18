@@ -35,7 +35,7 @@ export const scrollRegions: Enhancement = (container, { t }) => {
       if (wide) {
         container.setAttribute("tabindex", "0");
       } else {
-        container.removeAttribute("tabindex");
+        untab(container);
       }
     } else if (wide) {
       scroller.setAttribute("tabindex", "0");
@@ -105,7 +105,7 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     container.removeEventListener("scroll", level, { capture: true });
     changed.disconnect();
     resized.disconnect();
-    container.removeAttribute("tabindex");
+    untab(container);
     for (const scroller of followed) {
       if (scroller !== container) {
         release(scroller);
@@ -121,9 +121,20 @@ function ours(scroller: HTMLElement): boolean {
 
 /** release has scroller no longer take the focus, nor be a region. */
 function release(scroller: HTMLElement) {
-  scroller.removeAttribute("tabindex");
+  untab(scroller);
   scroller.removeAttribute("role");
   scroller.removeAttribute("aria-label");
+}
+
+/**
+ * untab takes away the tabindex the regions gave element (0), not another's: an anchor's target, or the block where
+ * the focus was given back to as the view changed (-1, M12/P2/S4, 4.4.3's step 4), keeps it, or the focus would go
+ * to the body as the region is followed next (review A's M3).
+ */
+function untab(element: HTMLElement) {
+  if (element.getAttribute("tabindex") === "0") {
+    element.removeAttribute("tabindex");
+  }
 }
 
 /** nameOf is the region's name: what it holds. */

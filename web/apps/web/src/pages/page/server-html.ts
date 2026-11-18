@@ -64,8 +64,9 @@ type Shown = {
  * The focus stays (M12/P2/S4, 4.4.3): what had it as the view changed has it back, if it is there still; else, a
  * task item's checkbox at its position while it is the same item's (its text, and its state, or the state the view's
  * own toggle asked for), none if not: a tick does not move it, a write that moved the items does; else the element
- * of its key (focusKeyOf: a heading of its text, a link of its address and text, a callout's summary, a media, an
- * element of its id; a scroll region, a diagram's drawn anew, which of its block's); else the block where it was,
+ * of its key in the block it was in, as the patch placed it (focusKeyOf: a heading of its text, a link of its
+ * address and text, a callout's summary, a media, an element of its id; a scroll region, a diagram's drawn anew,
+ * which of its block's), not one of its key elsewhere, which the view would scroll to; else the block where it was,
  * without a scroll or a callout opened. Shown as it is given the
  * focus, a folded callout opens; one that showed and shows no more is scrolled to: a view read again stays where it
  * is.
@@ -218,7 +219,9 @@ function noted(container: HTMLElement): Noted | undefined {
     return undefined;
   }
   const block = [...container.childNodes].findIndex((node) => node.contains(active));
-  const key = focusKeyOf(container, active);
+  const top = container.childNodes[block];
+  // Its key's place is counted in the block it is in, the article itself's in the article.
+  const key = focusKeyOf(top instanceof Element ? top : container, active);
   return {
     element: active,
     shown: shows(active),
@@ -236,7 +239,7 @@ function noted(container: HTMLElement): Noted | undefined {
 /**
  * giveBack gives the focus back in container, the view changed, its blocks placed so (M12/P2/S4, 4.4.3): to what
  * had it, if it is there still; to a task item's checkbox at its position, the same item's (or none); to the element
- * of its key; else to its block where it was, or the article.
+ * of its key in the block it maps to; else to that block, or the article.
  */
 function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: Toggled | undefined) {
   const { element, task } = focus;
@@ -260,8 +263,10 @@ function giveBack(container: HTMLElement, focus: Noted, placed: Placed, asked: T
   }
   const at = focus.block === undefined ? undefined : placed(focus.block);
   const block = at === undefined ? undefined : container.childNodes[at];
+  // In the block it maps to (or the article, for the article's own): one of its key elsewhere is not it.
+  const within = focus.block === undefined ? container : block;
   const again =
-    (focus.key && findByKey(container, focus.key)) ||
+    (focus.key && within instanceof Element && findByKey(within, focus.key)) ||
     (focus.region !== undefined && focus.region >= 0 ? regions(block)[focus.region] : undefined);
   if (again) {
     give(again, focus.shown);

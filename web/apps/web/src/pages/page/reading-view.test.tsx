@@ -1281,3 +1281,89 @@ test("a drawing that had the focus has it back as a paragraph is put before its 
   expect(document.activeElement).toBe(wrapper());
   expect(callout?.contains(document.activeElement)).toBe(true);
 });
+
+/** twice is a view of first, a paragraph, and a link to x far below, each laid out at its data-at. */
+const twice = (first: string) =>
+  `<p data-at="100">${first}</p>\n<p data-at="200">middle</p>\n<p data-at="3000">far, see <a href="/x">x</a></p>\n`;
+
+// M12/P2/S4, 4.4.3's step 3 (review A's M4): a link a page has twice, far apart; the reader at the first. Another
+// rewrites its paragraph without it: the focus is the paragraph's, where it was, not the far link's, and the view
+// stays where it is.
+test("a link whose paragraph is written without it gives the focus to the paragraph, not to a link of its key far off", async () => {
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const laidOut = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const top = Number(this.closest("[data-at]")?.getAttribute("data-at") ?? 0);
+    return { top, bottom: top + 20, left: 0, right: 100 } as DOMRect;
+  });
+  onTestFinished(() => laidOut.mockRestore());
+  const { article, readAgain } = await readable(twice('see <a href="/x">x</a> here'));
+  const [near, far] = article.querySelectorAll("a");
+  near?.focus();
+  scroll.mockClear();
+
+  await readAgain(twice("rewritten, no link"));
+
+  expect(document.activeElement).not.toBe(far);
+  expect(document.activeElement).toBe(article.querySelector("p"));
+  expect(scroll).not.toHaveBeenCalled();
+});
+
+/** sized has the ResizeObserver tell each element it observes its size as it starts, as a browser does at the next rendering. */
+function sized() {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      private readonly told: ResizeObserverCallback;
+      private observing = true;
+      constructor(told: ResizeObserverCallback) {
+        this.told = told;
+      }
+      observe(element: Element) {
+        setTimeout(() => {
+          if (this.observing) {
+            this.told([{ target: element } as ResizeObserverEntry], this as unknown as ResizeObserver);
+          }
+        }, 10);
+      }
+      disconnect() {
+        this.observing = false;
+      }
+    }
+  );
+}
+
+/** beforeCode is a view of first, then a code block and a paragraph. */
+const beforeCode = (first: string) => `${first}<pre><code>make build</code></pre>\n<p>end</p>\n`;
+
+/** told lets the resize observers tell what they observe. */
+const told = () => act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+// M12/P2/S4, 4.4.3's step 4 (review A's M3): the block the focus is given back to may be a code block that scrolls no
+// more than it shows; the scroll regions, told its size, take away only the tabindex they gave, not the -1 it was given.
+test("the code block the focus is given back to keeps it as the scroll regions are told it is not wide", async () => {
+  sized();
+  const { article, readAgain } = await readable(beforeCode('<p>see <a href="/x">x</a></p>\n'), [scrollRegions]);
+  await told();
+  within(article).getByRole("link", { name: "x" }).focus();
+
+  await readAgain(beforeCode(""));
+  const pre = article.querySelector("pre") as HTMLElement;
+  await told();
+
+  expect(document.activeElement).toBe(pre);
+  expect(pre.getAttribute("tabindex")).toBe("-1");
+});
+
+test("the article the focus is given back to, the page emptied, keeps it as the scroll regions are told it is not wide", async () => {
+  sized();
+  const { article, readAgain } = await readable('<p>see <a href="/x">x</a></p>\n', [scrollRegions]);
+  await told();
+  within(article).getByRole("link", { name: "x" }).focus();
+
+  await readAgain("");
+  await told();
+
+  expect(document.activeElement).toBe(article);
+  expect(article.getAttribute("tabindex")).toBe("-1");
+});
