@@ -55,6 +55,11 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **分份**：组合根现在分八份（`Makefile` 的 `BOOTSTRAP_FIRST` 到 `BOOTSTRAP_EIGHTH`），CI 共 19 项：16 个 server 的 leg（race、bootstrap-1 到 bootstrap-8、costs-1 到 costs-3、costs-lint、guards-core、guards-sources、short），加 web、e2e、image。每一份两次 `main` 运行的 Test 一步的平均要在 450 秒之下，过线时先挪给邻份，挪不下就再分一份，不提高 `-timeout`。本机量时在同一把 heavy 锁下分别运行 `make -j1 test-go-bootstrap-1` 到 `test-go-bootstrap-8`，每份两轮；不要拿 `make test-go` 内部的 `-j6` 当这些串行的样本。更早的三份、四份与十项、十一项的记录保留当时的口径。组合根的 Test 一步含编译：Test 一步减 bootstrap 包的 `ok` 行的时间，取回的缓存与代码是同一棵树时只有 1–3 秒，缓存之后改过的包越多越长（S2 之前的 `main` 上，一个月前存下的键，7763 上约 33 秒，别的 CPU 约 21–26 秒）。多出几十秒时，看这一份取回的 Go 缓存是哪一份存的（存的那一次 post 一步的 "Cache saved with the key"）：不带竞态的份存的键对竞态的构建没有用，大小不说明什么（M12/P1/S2）。
 - 失败的原因：作业日志要认证（`gh run view <id> --log-failed`）。不认证时，失败的作业的 annotations（`/repos/<repo>/check-runs/<作业 id>/annotations`）是公开的，Go 的失败与 Playwright 的 `github` 报告器都写在那里。
 - 只在 Linux 上失败的，在与 `go.mod` 的 `toolchain` 同版本的 golang 镜像（`deploy/Dockerfile` 的 server 阶段那个）里复现（`--cpus=2`、`-race`），见 [05](05-lessons.md) 第 7 节。
+- **e2e 的时限与系统包的缓存**（00-M12 决定 599–601，旁支 `m12-e2e-browsers-cache`）：
+  - E2E 一步自己 18 分钟，是 00-M12 第 3 节第 11 条的界。注解是 "The action 'E2E' has timed out after 18 minutes"、作业 failure 时，是 E2E 本身变慢：不重跑，停下查。
+  - 装浏览器一步 30 分钟、作业 55 分钟，盖住 apt 的镜像慢的时候：2026-11-18 AWS 上的 runner 走 `us-east-2.ec2.archive.ubuntu.com`，不命中缓存时这一步 25:06；2026-11-11 Azure 上解析不了 `azure.archive.ubuntu.com`。这一步超时是外部故障：只重跑 e2e，记下 run、attempt 与作业日志开头的 `Cloud:`、`Region:`。
+  - `--with-deps` 用 apt 取的 `.deb` 存在缓存里，键 `playwright-debs-<ImageOS>-<Playwright 的版本>-<ISO 周>`。一个分支取得到自己存的与 `main` 存的；`main` 还没存过时（合并之后的第一次）与升 Playwright 之后的第一次取不到，新的一周取回上一周的一份、只补取变了的。看命中："Restore the Playwright system packages" 一步的 `Cache restored from key`，装浏览器一步里 apt 的 `Need to get 0 B`。
+  - 放回的 `.deb` 不核哈希（00-M12 决定 601）。怀疑缓存坏了时，删掉键以 `playwright-debs-` 开头的条目；那是写操作，先问负责人。
 
 ## 5. tools/ 里的四个小工具
 

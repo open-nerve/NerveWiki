@@ -130,7 +130,7 @@ M12 把 v0.1 发布出去。总体设计 12.2 的一行是："部署与备份文
     - `v0.1-design.md` 照第 7 节"总体设计的修订"改过，12.6 的 M12 是"实现完成，待人工验收"。
     - README、`CHANGELOG.md`、`SECURITY.md`、`manual/` 的清单都在。
     - `CHANGELOG.md` 的已知限制一节逐条对照 4.13 列的来源（H1、24.1、Shift-JIS 等的误读与 CP437、`batch` 的期限、P4 只量的、运维相关的、续期途中刷新被登出），对照表在 P5/S3 的记录里；表的最后一列写每一项进了哪一份移交，没有去处的不许有。
-11. **CI**：每个 Step 合并之后，两次 `main` 的组合根每一份的 Test 一步平均在 450 秒之下（06-environment 第 4 节）；e2e 在它 20 分钟的时限之内（`.github/workflows/ci.yml:263`）。`release.yml` 的演练与 `vuln.yml` 不在组合根里，不算进各份。
+11. **CI**：每个 Step 合并之后，两次 `main` 的组合根每一份的 Test 一步平均在 450 秒之下（06-environment 第 4 节）；e2e 的 E2E 一步在它自己 18 分钟的时限之内（`.github/workflows/ci.yml:361`），超过时这一步失败、作业红，不是被取消。原来这一条的界是作业的 20 分钟，含前几步与装浏览器；装浏览器一步的 30 分钟与作业的 55 分钟不是这一条的界（旁支 `m12-e2e-browsers-cache`，决定 599；`TestTheE2EStepHasALimitOfItsOwn` 守着）。`release.yml` 的演练与 `vuln.yml` 不在组合根里，不算进各份。
 
 ## 4. 关键决定
 
@@ -1122,7 +1122,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | **发布前的升级**：PostgreSQL 18.7 换了某条语句的计划；Go 1.27.4 的运行时改了竞态下的时间；新的 Debian 摘要带来别的变化 | P1 最先做，之后的每个 Step、计划测试与实测都在新的版本上跑；计划测试（13.4 第 9 条）在 18.7 上跑一遍，换了的在 P1/S2 里查清，不放宽；同一个 trixie，glibc 的大版本不变；`jsonv2` 的实验开关由 `mcpserver` 的测试核对（4.3） |
 | **`vuln.yml` 在 M12 期间变红**：Go 的小版本约每月一个，多数带安全修复；npm 一侧 `low` 也报、不看可达性；定时运行的通知不发给主持者 | 不在每次推送的 CI 里，Step 照常合并；每个 Step 合并之前看一眼它最近一次的结论；旁支 `m12-toolchain-<版本>` 升，npm 一侧修不了的写进 `audit.ignore`，闸门只挡 `high`（4.3）；发布的闸门硬挡；收尾之后才发现的再问负责人 |
 | **第五份与第四份的余量**：收尾之后两次（`05dac827`、`a057b6ad`）第五份都在 EPYC 7763 上，平均 425 秒，余量 25 秒；第四份这两次不在 7763 上，平均 312 秒，再前两次在 7763 上平均 413.5 秒 | 新的整个程序的测试点名进第七、第八份（收尾之后两次 257、267 秒，在 7763 上 315、318 秒），名字避开第二、第五份的模式；第四、第五份不加；P1/S2 合并之后两次 `main` 重看；过线先挪份，不提高 `-timeout` |
-| **e2e 的偶发挡发布**：Playwright 不重试，`main` 的 CI 红了就不能打 tag | P1/S1 最先做；门禁数逃生口；`ERR_NETWORK_CHANGED` 加一行日志看它在 CI 上触发了没有；其余的偶发照 M11 第 277 条的做法只重跑 e2e，并在记录里写明；L1 已改测法（决定 541） |
+| **e2e 的偶发挡发布**：Playwright 不重试，`main` 的 CI 红了就不能打 tag | P1/S1 最先做；门禁数逃生口；`ERR_NETWORK_CHANGED` 加一行日志看它在 CI 上触发了没有；其余的偶发照 M11 第 277 条的做法只重跑 e2e，并在记录里写明；L1 已改测法（决定 541）；装浏览器卡在 apt 的镜像不再取消 E2E：这一步自己 30 分钟，系统包有缓存（决定 599、600） |
 | **演练作业的 CI 用时**：每次推送（分支与 `main`）多两个作业，推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟（P5 设计 2.1 第 1 条；原来推断各 10–15 分钟） | 与 `ci.yml` 并行，不进组合根；`ci-wait.sh` 按工作流取，不被它挡住也不被它冒充 |
 | **推 tag 之后才走得到的路径**：keyless 签名、`actions/attest`、GHCR 的推送与权限、Release、复制版本号的 tag；`build-push-action` 的上下文 | 9.5 的三层；rc 先走一遍；一时的失败在同一次运行上重跑，不重推 tag（4.10）；允许的第三方 action 与组织的 Actions 设置由负责人在推 rc 之前核对（第 11 节） |
 | **GHCR 设为公开不能撤回** | 只在 rc 核对之后做；之前核对镜像里没有机密：最后一层只有二进制与 `/licenses`（`deploy/Dockerfile:41-47`），构建参数只有版本与 label，`.git` 只在构建的阶段；Release 的说明与附件在 rc 上先看一遍；版本号的 tag 在签名与证明之后才打 |
@@ -1791,6 +1791,54 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
   - 修复核对第 1 轮三位都没有 Important、Minor（A 1 条、C 5 条 Nit，去重 5 条，在记录里写对），不开第二轮。
   - 已推的提交说明不改写：`7abfd6ef` 的推断与"well under a millisecond"、`d8e664b3` 的两句写在记录的"更正"；P2/S2 记录决定 586 的"亚毫秒"加后注（同决定 481、547、554、571、579、583、588）。
 
+### 2026-11-18：e2e 装浏览器的旁支的决定 598–603（主持者的决定，负责人可以改判）
+
+598–603 在旁支 `m12-e2e-browsers-install` 与 `m12-e2e-browsers-cache`（M0 的故事，在 M12 里发现）的查因、实施、审查与修复里定。理由与审查里的出处在[旁支的审查记录](reviews/M12-e2e-browsers-cache-review.md)"主持者的决定"一节；实施中定的不编号，在记录里。
+
+- **598 e2e 装浏览器撞上作业的 20 分钟：开旁支修，时限分开，并缓存 apt 的系统包**（主持者的查因与实施说明；实施报告；旁支审查 B 核实查因的数）。
+  - 提交 `aca36959`、`7c7865d5`，修复第 1 轮 `8641a14e`、`c926e8be`；合并见第 12 节。
+  - **起因**：e2e 在"Install the Playwright browsers"一步撞上作业的 20 分钟被取消，E2E 没开始或跑到一半：2026-11-18 到约 12:30 UTC 至少 20 个 attempt，11-11 `main` 的 4 个，10-07 的 1 个。都只重跑 e2e。
+  - **原因**（核实）：
+    - 11-18 是 GitHub 放在 AWS 上的 runner（11-14 起才出现）的 apt 镜像 `us-east-2.ec2.archive.ubuntu.com` 取包慢，87–147 kB/s；那天 AWS 上要从镜像取包的都慢，Azure 上都快。
+    - 11-11 是 Azure 上解析不了 `azure.archive.ubuntu.com`；10-07 卡在 `apt-get update`。
+    - 约 125 MB 的系统包自 M10/P4/S3 的 `ec6569cb`（11-07）起才有。
+    - 镜像为什么慢是推断。
+  - **不采用的**：
+    - 换镜像：哪个镜像从 AWS 上快核实不了；apt 的 mirror 方法只在失败时换下一个。
+    - apt 的 `Acquire` 超时：管不了慢而不断。
+    - Playwright 的官方容器：`make e2e` 要 Docker 起 PostgreSQL，容器里要另装 Go 与 Node，每次还要拉约 2 GB。
+- **599 E2E 一步自己 18 分钟，是第 3 节第 11 条的界；装浏览器一步 30 分钟；作业 55 分钟；守卫 `TestTheE2EStepHasALimitOfItsOwn`**（实施报告；旁支审查 A 的 EIA-M2 = B 的 EIB-M2，B 的 EIB-Q1，C 的 EIC-M3；核对第 1 轮 A 的 EIA-C1-N5、B 的 EIB-N3）。
+  - **18**：原来作业 20 分钟里 E2E 实际能用的时间，绿的 235 次中位 18:32（B）；约是最长的绿 E2E（8:52）的两倍。超过时这一步失败、作业红，不是被取消：探针 run 44283057396 的 E2E 一步 "timed out after 1 minutes"，作业 failure，报告照传。
+  - **30**：11-18 截在半途的最慢一次推算约 24.7–24.9 分钟（B）；新分支的 run 44298257881 不命中缓存，实测 25:06（86.5 kB/s）。不命中时取包平均低于约 72 kB/s 就会超过，是推断；那时红在这一步，不是被取消。实施时的 25 由修复第 1 轮改。
+  - **55**：两步各自的时限先于作业的到；守卫要求不少于 30 + 18 + 5。
+  - **守卫**：E2E 一步的时限恰是 18；两步都有自己的时限、都不带 `if`；作业的 `if` 是 server 作业的；不许 `continue-on-error`。在 `main` 的 `ci.yml` 上红；变异见记录。
+- **600 装浏览器的系统包按周进缓存**（实施报告；旁支审查 A 核过键、restore 与 save、`autoclean`）。
+  - 键 `playwright-debs-<ImageOS>-<Playwright 的版本>-<ISO 周>`，restore-keys 是去掉周的前缀。
+  - 放回 `/var/cache/apt/archives`，装完 `apt-get autoclean` 再存。
+  - restore 与 save 分开，装完就存：合在一起的 `actions/cache` 只在作业成功时存，E2E 红了，重跑就取不到。两个子 action 钉同一个提交，不是新的第三方 action。
+  - 命中时 apt 说 "Need to get 0 B"（run 44283057396、44286707271，后者在 AWS 上）。
+- **601 放回的 `.deb` 不核哈希，信任写进 `ci.yml` 的注释与记录**（旁支审查 A 的 EIA-M1；核对第 1 轮 A 的 EIA-C1-N3）。
+  - apt 只比文件名（含版本）与大小（A 在 apt 3.2.1 上实测：同大小改一个字节照用），之后以 root 装上。
+  - 不加核对的理由：
+    - 大家共用的那一份只有 `main` 上的运行写得进；能推 `main` 的人本来就能改 `ci.yml`。
+    - 在 `main` 上跑的代码也写得进：钉住的依赖、`go run` 的工具、action，以及合并进 `main` 的分支代码。但它们本来就能经 setup-go 与 pnpm 的缓存或 `pnpm install` 影响这个作业。推断：缓存的写入凭作业的运行时令牌，不归 `permissions` 管。
+    - 别的分支与 fork 的 PR 存下的只有它自己读得到。
+    - 这个作业的令牌只有 `contents: read`，工作流不用任何 secret：实施者在 `7c7865d5` 上核过，A 在 `c926e8be` 上再核。
+  - 怀疑缓存坏了时，删掉键以 `playwright-debs-` 开头的条目；那是写操作，先问负责人。
+- **602 反向对照的探针与它的撤销不进 `main`**：故意红的 `cd306960` 违反"每个提交单独为绿"。
+  - 修复与文档在从 `7c7865d5` 开出的 `m12-e2e-browsers-cache` 上做，合并的是它。
+  - `m12-e2e-browsers-install`（头 `44ae77c7`）留在远端作证据，不删、不强推。
+  - 探针的 run 44283057396 照样记进记录。
+- **603 后缀、文档的去处与收口**（旁支审查 C 的 EIC-Q1、Q2；核对第 1 轮 C 的 EIC-C1-Q1；主持者）。
+  - **后缀**：写 `(M0 story, found in M12)`，因为作业的 20 分钟与 `--with-deps` 出自 M0/P6/S1 的 `211d2a9a`；约 125 MB 来自 M10 的 `ec6569cb`，写在记录的"起因"。范围写 `build`、`server`。
+  - **修复核对之后不开第二轮**（同决定 547、554、583）：核对第 1 轮三位都没有 Important；新的 Minor 只有 B 的 EIB-M4，说的是已推的 `c926e8be` 的说明，写进记录；新的 Nit 都在本提交写对或记成接受。
+  - **已推的说明不改写**（同决定 547、554、571）：`aca36959`、`7c7865d5` 的不准处在 `c926e8be` 的说明；`c926e8be` 自己的两处（EIB-M4、EIC-C1-N1）在记录的"更正"。
+  - **记录与第 12 节**：记录用合并的分支名 `reviews/M12-e2e-browsers-cache-review.md`，标题写两个分支。第 12 节放 P5 一行：11-18 最早出事的 run 44213948330 是 P5/S1 记号的 `main`，`ci.yml` 也属 P5 的工作流（决定 546、569 的规则）。
+  - **随本提交改的**：第 3 节第 11 条改说 E2E 一步的 18 分钟；第 10 节"e2e 的偶发挡发布"一行；06-environment 第 4 节加一条；05-lessons 第 7 节加一条。
+  - **接受、不改代码**：
+    - 缓存的善后命令失败也让作业红、E2E 不跑（EIA-N2）；
+    - `ci.yml` 注释里"至 18 日"的计数截在 07:34 UTC（EIA-C1-N4），记录写明口径。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1836,7 +1884,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 进行中（S1–S3 已合并） | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-focus-and-shared-review.md)、[S2](reviews/P2-S2-text-review.md)、[S3](reviews/P2-S3-narrow-bdi-contrast-review.md)、[lint 忙的旁支](reviews/M12-lintbusy-await-expiry-review.md) | S1 `d1ade2ed`、S2 `6505c3bf`、S3 `e639b9f7`、lint 忙的旁支 `（待填：合并号）` |
 | P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md)、[等锁帮手的旁支](reviews/P3-lockwait-by-statement-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`、等锁帮手的旁支 `5d782ff8` |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S1 已合并，2026-11-18；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S1](reviews/P4-S1-perf-tools-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md)、[L1 的旁支](reviews/M12-e2e-l1-new-tab-review.md)、[提交期限的旁支](reviews/M12-submit-deadline-log-review.md)、[导入守卫的旁支](reviews/M12-ingest-request-deadline-review.md) | S1 `f08dca69`、S2 `54a89127`、S4 `35501dec`、S5 `5e58e844`、L1 的旁支 `7ce00077`、提交期限的旁支 `4e309997`、导入守卫的旁支 `e635b957` |
-| P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查；S1 已合并，2026-11-18） | [设计](reviews/P5-design-review.md)、[S1](reviews/P5-S1-version-pipeline-review.md) | S1 `3ef1501f` |
+| P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查；S1 已合并，2026-11-18） | [设计](reviews/P5-design-review.md)、[S1](reviews/P5-S1-version-pipeline-review.md)、[装浏览器的旁支](reviews/M12-e2e-browsers-cache-review.md) | S1 `3ef1501f`、装浏览器的旁支 `（待填：合并号）` |
 | 收尾与发布 | — | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -1886,6 +1934,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | 2026-11-18 | P2 的 S2 实施、审查与修复（实施 10 个提交，修复第 1 轮 6 个，一共 16 个，另一次合并 `main`；合并见第 12 节）：英文的单复数（10 个 `*One` 键）；根下一律"笔记本的顶层"，根下的同名页写作"Notes（笔记本的顶层）"（决定 584）；英文的撤销一律 undo，被清理说"部分或全部"，别处已撤销之后再撤销的冲突先等这次改动的重读再说；回收站、预览与历史一件事只说一遍、照实说，H4 的两句；勾了会让任务项消失、附件写法的未建链接、附件的长名、单页的导出、失锁的编辑器各自说清；比较只差末尾换行时说出来；搜索的提示、"继续查找"与索引在建照最新一页；大小写 KiB、MiB；来源规则的说明不用行话；两份 `AGENTS` 模板说出升级期间的 `upgrade`。i18n 新加 23 个键、删 2 个，改文字的 en 22 个、zh-CN 27 个。审查没有 Important：替身的任务项与服务端在一半写法上不同（决定 585）；树没读到时导出仍说子页，没有一格守。三份审查 A 0I0M5N2Q、B 0I1M2N、C 0I1M6N1Q，修复第 1 轮 6 个提交（头 `62e40b25`）；核对第 1 轮 A 0/0/1、B 0/0/1、C 0/0/2，不开第二轮（决定 588）。变异：实施 114 条，活下来的五句中文补格之后都抓到；修复第 1 轮 15 条都抓到。实施门禁里 M10 的 `TestLintBusyReturnsBeforeCleanup` 红过一次，是那个测试的先后假设，另开旁支修（决定 586）。分支 CI：run 44242250765 的 e2e 四次卡在装浏览器、第五次绿；修复的 44266671504、合并 `main` 的 44279300477 第一次全绿。e2e 改到的五格 19.30 → 19.27 秒。第 7 节"总体设计的修订"第 20 条落了；总体设计 13.2 第 17 条、3.6 的 5 MiB 与第 15 节；移交 M5-polish、M8-history 各一行；05-lessons 两条；第 11 节加决定 584–588 | [P2 设计](02-P2-web-polish.md) 10.2、[S2 记录](reviews/P2-S2-text-review.md)；决定 584–588 |
 | 2026-11-18 | P2 的 S3 实施、审查与修复（实施 6 个提交，修复第 1 轮 4 个，一共 10 个，另一次合并 `main`；合并见第 12 节）：名字进 `bdi`（共用件 `isolate`、`Isolated`，五处拼句）；历史与变更集页、长标题与它的对话框在 375 px 不超宽，新 Playwright 项目 `webkit-narrow` 只在 WebKit 上再跑 `@narrow` 的格（MC3、PG2、SE1），`tools/e2e-projects/check.mjs` 由 `make lint-web` 核对（决定 592）；焦点环、菜单与选项的当前项、次要文字与暗色 destructive 按钮悬停的对比度（决定 591）；搜索命中加粗到 700；33.1 在 Playwright 的 WebKit 26.6 上复现（页宽 704），`NativeSelect` 带 `contain-paint`（决定 589），WebKit 的下拉没有 3 px 的环进 v0.2、真的 Safari 上的两项交 P5/S3（决定 590）。审查没有 Important：三份审查 A 0I0M2N1Q、B 0I1M1N1Q、C 0I2M3N，修复第 1 轮 4 个提交（头 `f5d1220a`）；核对第 1 轮 A 0/0/0、B 0/0/0、C 0/0/1，不开第二轮（决定 594）。变异：实施 52 条（vitest 15、e2e 37），50 条抓到，一条等价、一条设计预先写明走不到；修复第 1 轮的反向对照都红。分支 CI：run 44252268978、44277971443 的 e2e 都卡在装浏览器一次、只重跑 e2e 绿；合并 `main` 的 44291042215 第一次 attempt 18 项绿；e2e 整 20 分钟都在装 Playwright 的浏览器（apt 的镜像慢），被时限取消，E2E 一步没有开始；只重跑 e2e，第 2 次绿，19 项全绿。e2e 多约 21.6 test-seconds（新的 `webkit-narrow` 三格 10.9 秒）。第 7 节"总体设计的修订"第 21 条落了（第 31 条，决定 593）；4.5、9.1 与附录 A 的 33.1；总体设计 13.2 第 31 条、13.4 第 3 条与第 15 节；移交 M5-polish 一行；05-lessons 两条；P5 设计 3.19 的人工入口；第 11 节加决定 589–594 | [P2 设计](02-P2-web-polish.md) 10.3、[S3 记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；决定 589–594 |
 | 2026-11-18 | lint 忙的测试的旁支 `m12-lintbusy-await-expiry`（M10 的故事，在 M12 里发现；`7abfd6ef`，修复第 1 轮 `d8e664b3`、`9079f9af`；合并见第 12 节）：P2/S2 推送之前本机 `make test`（头 `4c9f1212`，竞态检测，组合根 `-j6`），第 4 份红在 M10 的 `TestLintBusyReturnsBeforeCleanup` `:427`，新的同键调用者加入了已过期的 flight 1；单跑十次与整个 `make test` 重跑都过（决定 586）。核实的（P2/S2 审查 C 的 P2S2C-Q1，实施者与审查 B 复做）：过期由 `context.AfterFunc` 在另一个 goroutine 里忘掉 flight，测试等到 `pg_sleep` 被取消就让 bob 发起，两者没有先后；`expire` 开头睡 300 ms，改前确定地红、信息一字不差。`expire` 平常在 0.1 ms 之内，测试那一段 1.3–5 ms（审查 A、C 量的）。推断的：那一次是 `expire` 在负载下排晚，窗口到了毫秒级。产品与 `Runs` 的注释相符（窗口里来的调用者多一次 503），不改。改法只改测试，不加长等待：bob 发起之前等 `RunExpired`；carol 的跟随者发起之前等旧 worker 的 `RunFinished`（S61 第三种变异原来在 `finish` 慢时活下来，审查 A）；末尾的连接数限时轮询（被取消的连接由 puddle 在另一个 goroutine 里销毁，审查 B 在运行时看到）。同类：26 份交错测试（lint 一份整份读，其余按 grep 逐处读）与用同一个 `Runs` 的组合根测试；transfer 心跳的取消（`cancelSeen` 7 处调用与取消运行中的导入）是同一类，审查 B 拖慢 `stop` 三个测试全红，只改测试修不了，查明、不改，M12 收尾之前红一次就开旁支加观察点（决定 596）。审查 A 0I 2M、B 0I 2M 2N、C 0I 2M 4N 2Q，修复第 1 轮两个提交；核对第 1 轮 A 0/0/1、B 0/0/0、C 0/0/5，不开第二轮（决定 597）。门禁：本测试 `-race -count=20` 每个头 20/20，组合根第 4 份 `7abfd6ef`、`9079f9af` 各一次过。分支 CI：44279808743 第一次 attempt `e2e` 卡在装浏览器（apt 108 kB/s），只重跑 `e2e` 为绿；44292935807（`9079f9af`）19 项第一次 attempt 全绿。第 11 节加决定 595–597；第 12 节 P2 一行、05-lessons 第 3 节三个子条、P2/S2 记录一处后注随之改 | 决定 586、595–597；[旁支的审查记录](reviews/M12-lintbusy-await-expiry-review.md) |
+| 2026-11-18 | e2e 装浏览器的旁支 `m12-e2e-browsers-install` → `m12-e2e-browsers-cache`（M0 的故事，在 M12 里发现；`aca36959`、`7c7865d5`，修复第 1 轮 `8641a14e`、`c926e8be`；反向对照的探针 `cd306960` 与撤销 `44ae77c7` 只在旧分支上，不进 `main`；合并见第 12 节）：e2e 在"Install the Playwright browsers"一步撞上作业的 20 分钟被取消：11-18 到约 12:30 UTC 至少 20 次，都在 AWS 的 runner 上，镜像 `us-east-2.ec2.archive.ubuntu.com` 取包 87–147 kB/s；另有 11-11 的 4 次（Azure 上解析不了 `azure.archive.ubuntu.com`）与 10-07 的 1 次。都只重跑 e2e。改法：E2E 一步自己 18 分钟（第 3 节第 11 条的界），装浏览器一步 30、作业 55；apt 的系统包按 Playwright 的版本与 ISO 周缓存，restore 与 save 分开；守卫 `TestTheE2EStepHasALimitOfItsOwn`。审查 A 0I 2M 2N、B 0I 3M 2N 1Q、C 0I 4M 3N 2Q，修复一轮两个提交；核对一轮 A 0I 0M 3N、B 0I 1M 1N、C 0I 0M 1N 1Q，新的 Minor 只涉及已推的说明，在记录的"更正"，不开第二轮。分支 CI：44278466271 全绿；探针 44283057396 只有 e2e 红，红在 E2E 一步自己的时限上，作业 failure；44286707271 全绿（AWS 上命中缓存）；44298257881 全绿（新分支没命中，装浏览器 25:06）。第 3 节第 11 条改；第 10 节一行；第 11 节加决定 598–603；第 12 节 P5 一行；06-environment 第 4 节、05-lessons 第 7 节各一条 | 决定 598–603；[旁支的审查记录](reviews/M12-e2e-browsers-cache-review.md) |
 
 ---
 

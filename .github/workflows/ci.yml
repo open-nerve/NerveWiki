@@ -274,7 +274,13 @@ jobs:
     needs: [server, web]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # 时限分开（旁支 m12-e2e-browsers-cache）：E2E 一步自己 18 分钟，是 00-M12 第 3 节第 11 条的那一个；装浏览器一步自己 30 分钟。
+    # apt 的镜像慢的时候，装浏览器一步要将近 15 分钟到 20 分钟以上：2026-11-07 至 18 日 254 个作业（attempt）里 15 个，五个装完时已
+    # 14:58–18:52，十个到作业原来的 20 分钟还没装完，连同 E2E 一起被取消（其余 239 个 35 秒到 4:14）。30 分钟的依据（推断）：11-18
+    # 被截在半途的几次按已取到的量推算，最慢的一次（平均 87 kB/s）约 24.7–24.9 分钟装完，30 分钟留出余量；镜像比那天更慢时仍会不够。
+    # 作业的时限要在两步各自的时限之后才到：前几步（中位 31 秒，至多 50 秒）、系统包的缓存、装浏览器 30 分钟、E2E 18 分钟、上传报告，
+    # 取 55 分钟
+    timeout-minutes: 55
     env:
       # 写进 bin/nervewiki 的版本号，与默认值不同，S3 由此确认 make build 的注入生效
       VERSION: 0.0.0-ci.${{ github.run_number }}
@@ -302,12 +308,57 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install
         run: pnpm install --frozen-lockfile
-      # 全部故事跑 Chromium，部分也跑 Firefox、WebKit（e2e/playwright.config.ts）；不缓存浏览器：系统库缓存不了
+      # 全部故事跑 Chromium，部分也跑 Firefox、WebKit（e2e/playwright.config.ts）。浏览器从 Playwright 的 CDN 下载，慢的 runner 上
+      # 也只要几秒，不缓存。--with-deps 用 apt 装约 125 MB 的系统包，镜像慢的时候要将近 15 分钟以上：这些 .deb 存进缓存，下次先放回 apt
+      # 的目录，文件名（含版本）与大小同索引的就不再下载（apt 说 "Need to get 0 B"）。键随 runner 的系统、Playwright 的版本（它定要
+      # 装哪些包）与 ISO 的周走：Ubuntu 的更新让存下的 .deb 渐渐过时，每周一个新键，先取回最近存的一份（restore-keys），只下载变了的，
+      # 再存成新键；apt-get autoclean 去掉索引里已没有的旧版本，缓存不越存越大。
+      # 信任：apt 对放回的 .deb 只比文件名与大小、不核哈希，之后以 root 装上。大家共用的那一份只有 main 上的运行写得进，能推 main 的人
+      # 本来就能改这份工作流；别的分支与 fork 的 PR 存下的只有它自己读得到。这个作业的令牌只有 contents: read，不用任何 secret。
+      # 怀疑缓存坏了时，删掉键以 playwright-debs- 开头的缓存（写操作，先问负责人）
+      - name: Locate the Playwright system packages
+        id: playwright-debs
+        working-directory: e2e
+        run: |
+          version=$(pnpm exec playwright --version)
+          prefix="playwright-debs-$ImageOS-${version#Version }-"
+          {
+            echo "prefix=$prefix"
+            echo "key=$prefix$(date -u +%G-W%V)"
+            echo "path=$HOME/.cache/playwright-debs"
+          } >> "$GITHUB_OUTPUT"
+      - name: Restore the Playwright system packages
+        id: playwright-debs-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.playwright-debs.outputs.path }}
+          key: ${{ steps.playwright-debs.outputs.key }}
+          restore-keys: ${{ steps.playwright-debs.outputs.prefix }}
       - name: Install the Playwright browsers
         working-directory: e2e
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
-      # make e2e 先完整执行 make build（Go 与 Node 都要）：持续集成中只有这里构建内嵌前端的二进制
+        timeout-minutes: 30
+        env:
+          DEBS: ${{ steps.playwright-debs.outputs.path }}
+        run: |
+          if compgen -G "$DEBS/*.deb" > /dev/null; then sudo cp "$DEBS"/*.deb /var/cache/apt/archives/; fi
+          pnpm exec playwright install --with-deps chromium firefox webkit
+          sudo apt-get autoclean -q
+          rm -rf "$DEBS"
+          mkdir -p "$DEBS"
+          if compgen -G "/var/cache/apt/archives/*.deb" > /dev/null; then cp /var/cache/apt/archives/*.deb "$DEBS"/; fi
+          echo "缓存目录里的系统包：$(find "$DEBS" -name '*.deb' | wc -l) 个 .deb，$(du -sh "$DEBS" | cut -f1)"
+      # 只在没有恰好命中时存；装浏览器一步失败时不存。存在 E2E 之前：E2E 红了，重跑也取得到
+      - name: Save the Playwright system packages
+        if: steps.playwright-debs-restore.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.playwright-debs.outputs.path }}
+          key: ${{ steps.playwright-debs.outputs.key }}
+      # make e2e 先完整执行 make build（Go 与 Node 都要）：持续集成中只有这里构建内嵌前端的二进制。
+      # 时限是 00-M12 第 3 节第 11 条的那一个，E2E 本身变慢时在这里红：作业原来的 20 分钟减去平常的前几步与装浏览器（中位 31 + 54 秒）。
+      # 2026-11-06 至 18 日绿的 235 次 3:30–8:52，中位 6:27
       - name: E2E
+        timeout-minutes: 18
         run: make e2e
       # 报告中带着失败用例的 trace 与截图；test-results/ 中另有每个 worker 的服务日志与失败时导出的数据库
       - name: Upload the Playwright report
