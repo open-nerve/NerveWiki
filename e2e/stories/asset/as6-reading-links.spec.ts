@@ -89,8 +89,12 @@ test("AS6 (page): a control of an audio in a folded callout's title leaves the c
   expect(await callout.evaluate((details) => (details as HTMLDetailsElement).open)).toBe(true);
 });
 
-/** copied is the text of element as the reader copies it: selected whole, then ControlOrMeta+C. */
+/**
+ * copied is the text of element as the reader copies it: selected whole, then ControlOrMeta+C. The clipboard holds
+ * something else first: a copy that copied nothing does not read as the copy before it.
+ */
 async function copied(page: Page, element: Locator): Promise<string> {
+  await page.evaluate(() => navigator.clipboard.writeText("nothing copied"));
   await element.evaluate((node) => {
     const range = document.createRange();
     range.selectNodeContents(node);
@@ -101,7 +105,7 @@ async function copied(page: Page, element: Locator): Promise<string> {
   return readClipboardText(page, "chromium");
 }
 
-test("AS6 (page): copying a page's text leaves out the hints of links that open in a tab of their own, which their names keep: in the reading view, the properties and the attachments' rows", async ({
+test("AS6 (page): copying a page's text leaves out the hints of links that open in a tab of their own, which their names keep: in the reading view and the properties", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -126,7 +130,8 @@ test("AS6 (page): copying a page's text leaves out the hints of links that open 
   const section = page.getByRole("region", { name: "Attachments" });
 
   // Each link's name says it opens in a tab of its own: the paragraph's (the view's table of properties has one too),
-  // the properties' and the row's.
+  // the properties' and the row's. A row is not copied: Chromium selects nothing in it, a draggable element
+  // (user-select: none), the hint or not (M12/P2/S5, its record).
   const paragraph = view.locator("p").filter({ hasText: "end" });
   const named = { name: "doc.pdf (opens in a new tab)", exact: true };
   await Promise.all(
@@ -138,10 +143,5 @@ test("AS6 (page): copying a page's text leaves out the hints of links that open 
   expect(await copied(page, paragraph)).toBe(
     `doc.pdf (${pdfBytes.length.toString()} B) the data (${zipBytes.length.toString()} B) end`
   );
-  const value = await copied(page, properties.getByRole("link", named).locator(".."));
-  expect(value).toContain("doc.pdf");
-  expect(value).not.toContain("(opens in a new tab)");
-  const rows = await copied(page, section.getByRole("list"));
-  expect(rows).toContain("doc.pdf");
-  expect(rows).not.toContain("(opens in a new tab)");
+  expect(await copied(page, properties.getByRole("link", named).locator(".."))).toBe("doc.pdf");
 });
