@@ -22,7 +22,7 @@ export function DialogContent({ className, ...props }: ComponentProps<typeof Pri
 }
 
 export function DialogTitle({ className, ...props }: ComponentProps<typeof Primitive.Title>) {
-  return <Primitive.Title className={cn("text-lg font-semibold", className)} {...props} />;
+  return <Primitive.Title className={cn("text-lg font-semibold [overflow-wrap:anywhere]", className)} {...props} />;
 }
 
 export function DialogDescription({ className, ...props }: ComponentProps<typeof Primitive.Description>) {

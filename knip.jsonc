@@ -3,10 +3,11 @@
   "$schema": "https://unpkg.com/knip@6/schema-jsonc.json",
   "workspaces": {
     ".": {
-      // 样例集自检与 e2e 换文档的门禁由 make lint-web 调用；与 Obsidian 的核对、常见密码名单的生成由人手动运行。package.json 的脚本中都看不到
+      // 样例集自检、e2e 换文档的门禁与 Playwright 项目配置的检查由 make lint-web 调用；与 Obsidian 的核对、常见密码名单的生成由人手动运行。package.json 的脚本中都看不到
       "entry": [
         "tools/md-fixtures/check.mjs",
         "tools/e2e-navigation/check.mjs",
+        "tools/e2e-projects/check.mjs",
         "tools/md-fixtures/obsidian/verify.mjs",
         "tools/md-fixtures/obsidian/verify-resolve.mjs",
         "tools/md-fixtures/obsidian/verify-rename.mjs",
@@ -14,6 +15,8 @@
         "tools/md-fixtures/obsidian/verify-export.mjs",
         "tools/password-blocklist/build.mjs",
       ],
+      // Playwright 项目配置的检查经 pnpm --dir e2e exec 运行 e2e 包的 playwright，根目录不依赖它
+      "ignoreBinaries": ["playwright"],
     },
     "e2e": {
       // perf/parse/build.ts 按路径载入 web 自己的 Vite 打解析页（M12/P4 设计 4.4）：e2e 不依赖它
