@@ -178,6 +178,28 @@ test("a paste of files all refused before they go keeps the selection: nothing w
   expect(going.map(({ file }) => file.name)).toEqual(["notes.md"]);
 });
 
+test.each([
+  ["a file without an extension", [new File(["l"], "LICENSE")]],
+  ["a page's file and a file without an extension", [new File(["# n"], "notes.md"), new File(["l"], "LICENSE")]],
+])(
+  "a paste of %s keeps the selection: it goes, but has no link, so no embed would take its place",
+  async (_, files) => {
+    const { view, going, controls, text } = editing("See it here.", { anchor: 7, head: 11 });
+
+    paste(view, clipboard(files));
+    expect(text()).toBe("See it here.");
+    // As the store refuses a page's file; the other is answered.
+    going.find(({ file }) => file.name === "notes.md")?.fail({ refused: "page-file" });
+    going.find(({ file }) => file.name === "LICENSE")?.answer(attachment("LICENSE"));
+    await settle();
+
+    expect(text()).toBe("See it here.");
+    expect(told(controls).at(-1)).toBe(
+      "LICENSE uploaded, not inserted: a name without an extension cannot be embedded."
+    );
+  }
+);
+
 test("a quoted value selected in a frontmatter, whose quotes would go with it, is kept: the file goes, and is said not inserted (Codex M7 review fix check A2-Q1)", async () => {
   const doc = "---\nimage: 'old.png'\n---\nBody";
   const { view, going, controls, text } = editing(doc, {

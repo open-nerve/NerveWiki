@@ -3,7 +3,7 @@ import { EditorView } from "@codemirror/view";
 
 import { embedOf } from "../../lib/asset-kind";
 import { carriesFiles, filesDropped } from "../../lib/file-transfer";
-import { isPageName } from "../../lib/upload-name";
+import { extensionOf, fixedName, isPageName } from "../../lib/upload-name";
 import type { Asset } from "../../services/asset.service";
 import type { Build, EditorContext, EditorControls } from "../registry";
 import { fenceAt, frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
@@ -95,7 +95,8 @@ export function pastedName(file: File, now: Date): string {
  * - A paste of files only, no text (cells copied from a spreadsheet hold
  *   both: their text is pasted), goes where the selection is, which it
  *   replaces when one of them is sent (not a page's file, nor one too
- *   large: context.refuses) and an embed can go where the selection was,
+ *   large: context.refuses) with an extension, a link to embed, and an
+ *   embed can go where the selection was,
  *   as the content is once it has gone; otherwise the selection stays
  *   (M12/P2/S5, 18.2). An image without a name of its own is named as
  *   Obsidian names it (pastedName).
@@ -149,9 +150,10 @@ export const assetUpload: Build = (context, controls) => {
           const now = new Date();
           const named = files.map((file) => new File([file], pastedName(file, now), { type: file.type }));
           const { from, to } = view.state.selection.main;
-          // The selection goes only for what takes its place: a file that goes, its embed where it can go once the
-          // selection is gone (M12/P2/S5, 18.2). Kept, the files go all the same, their rows and the editor saying why.
-          if (from !== to && named.some((file) => !context.refuses(file)) && takesEmbed(view.state, from, to)) {
+          // The selection goes only for what takes its place: a file that goes, with a link (an extension), its embed
+          // where it can go once the selection is gone (M12/P2/S5, 18.2). Kept, the files go all the same, their rows
+          // and the editor saying why.
+          if (from !== to && named.some((file) => embeds(file, context)) && takesEmbed(view.state, from, to)) {
             view.dispatch({ changes: { from, to }, selection: { anchor: from }, userEvent: "delete.cut" });
           }
           take(view, from, named, folders);
@@ -237,6 +239,14 @@ function embedAt(state: EditorState, place: number, link: string, before: string
   }
   const after = before !== undefined && state.sliceDoc(place - before.length, place) === before;
   return { insert: (after ? "\n" : "") + embedOf(link) };
+}
+
+/**
+ * embeds tells whether file, uploaded, has an embed: it is sent, and its
+ * name, fixed as the store fixes it, has an extension, which a link needs.
+ */
+function embeds(file: File, context: EditorContext): boolean {
+  return !context.refuses(file) && extensionOf(fixedName(file.name, "")) !== "";
 }
 
 /** takesEmbed tells whether an embed can go at from once the content from from to to is gone. */
