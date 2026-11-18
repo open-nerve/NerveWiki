@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P4 性能与内存实测（三个 Step：S1 设施（Go）；S2 浏览器侧的设施与实测，页面树先，不等 S1；S3 服务端实测；另有 S4 起的条件修复） |
-| 日期 | 2026-11-16（初稿；第一至第三次修订；S2 的实施、审查与结果）；2026-11-17（S4 的结果；S5 之后 B9 的再量） |
-| 状态 | 进行中（设计已审查；S2 已合并 `54a89127`，条件的 S4（页面树的渲染）已合并 `35501dec`，S1、S3 未开工；[S4 设计](04-P4-S4-page-tree.md)、[S4 的审查记录](reviews/P4-S4-page-tree-review.md)，S4 之后的数在 10.2；条件的 S5（编辑器的解析）已合并 `5e58e844`，[S5 设计](04-P4-S5-editor-parse.md)，B9 再量过了（10.2）；设计的[审查记录](reviews/P4-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S2 的[审查记录](reviews/P4-S2-browser-measures-review.md)；S5 的[审查记录](reviews/P4-S5-editor-parse-review.md)；S2 实施与审查之后与本文不同之处照实改在各节（4.11 列出），结果在 10.2） |
+| 日期 | 2026-11-16（初稿；第一至第三次修订；S2 的实施、审查与结果）；2026-11-17（S4 的结果；S5 之后 B9 的再量；S1 的实施、审查与修复第 1 轮）；2026-11-18（S1 的修复第 2 轮、核对与结果） |
+| 状态 | 进行中（设计已审查；S2 已合并 `54a89127`，条件的 S4（页面树的渲染）已合并 `35501dec`，S1 已合并 `（待填：S1 的合并号）`（[S1 的审查记录](reviews/P4-S1-perf-tools-review.md)；S1 实施与审查之后与本文不同之处照实改在各节，3.10 列出，结果在 10.1），S3 未开工；[S4 设计](04-P4-S4-page-tree.md)、[S4 的审查记录](reviews/P4-S4-page-tree-review.md)，S4 之后的数在 10.2；条件的 S5（编辑器的解析）已合并 `5e58e844`，[S5 设计](04-P4-S5-editor-parse.md)，B9 再量过了（10.2）；设计的[审查记录](reviews/P4-design-review.md)（三份设计审查、三次修订与三轮修订核对）；S2 的[审查记录](reviews/P4-S2-browser-measures-review.md)；S5 的[审查记录](reviews/P4-S5-editor-parse-review.md)；S2 实施与审查之后与本文不同之处照实改在各节（4.11 列出），结果在 10.2） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.7 全节、第 3 节第 6、11 条、第 7 节 P4 一行与"次序与并行""移交的落实""总体设计的修订"第 9 条、9.4、9.6、第 10 节、第 11 节决定 305、317、318、319、329、330、352、357、359、378、424、452、需要负责人确认第 7 项；[M12 设计审查](reviews/M12-design-review.md)的 A-M5、A-M6、A-M7、A-I4、A-N6、A-N11、A-N13、A-N15、A-Q1、C-I2、C 的 U4 与过度设计 3、4；[P1 设计](01-P1-foundation.md)第 9 节写给 P4/S2 的三条；[P2 设计](02-P2-web-polish.md)第 9 节写给 P4/S2 的四条；[P3 设计](03-P3-server-correctness.md) 3.10（第 302 条改撤销的规划，B5 硬期限的窗口）；[P5 设计](05-P5-deploy-release.md) 3.18（部署文档要的数）与 2.1 第 20、21 条；[移交](handoffs/)：M4-performance 全部、M5-performance 第 3 条、M7-transfer 第 2、4、5、6 条、M8-history 第 2 条；[v0.1 总体设计](../v0.1-design.md) 13.4 第 8、9 条、第 14 节；M8 的预算与定界线的写法（[M8/P5](../M8-history-search/05-P5-search.md) 3.9、[M8/P2](../M8-history-search/02-P2-trash.md) 3.11）；M10 决定 150、153、160 |
 | 代码位置的写法 | 同 00 号文档：模块写作 `page/domain/trash.go:57`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…`、`shared/…` 在 `server/internal/` 之下；前端写作 `W/stores/page-tree.store.ts:276`（`W/` 是 `web/apps/web/src/`）；e2e 写作 `e2e/fixtures/navigation.ts:97`；其余写仓库根起的路径。行号都是 `main` 的 `86565dd6` 的（P1 完成的提交；之后到 `1ba6c7f6`，`main` 上只有 P3、P2、P5 设计的文档提交，代码与总体设计的行号不变）。00 号文档引总体设计的行号照它的头是 `5e8af5b5` 的，本文引 `86565dd6` 的，相差一行的几处不是错 |
 | 工作笔记 | 设计不做整批的实测。经 `heavy.sh` 做了三个小探针（临时 worktree 在 `86565dd6`，用完删了；`TMPDIR`、`GOTMPDIR` 在 `~/.cache/m12-p4-design`）：(1) 一个 PostgreSQL 18.7 的容器，本机用户读得到它 cgroup v2 的 `memory.current`、`memory.peak`、`memory.stat`，写不了（清零 `memory.peak` 要 root）；(2) 生产配置的 `serve`（`NWIKI_ENV=prod`、JWT 的私钥、先 `migrate up`、`users create`）在一个这样的容器上起来，`GODEBUG=gctrace=1` 的行与 JSON 日志都在 stderr，空闲约 120 秒时运行时自己的强制 GC 打出一行（存活堆 3 MB），`/proc/<pid>/status` 的 `VmRSS`、`VmHWM` 读得到；(3) 本机单跑 B5 的三个守卫各一次：界线处的恢复 5.46 秒、撤销一次删除 5.50 秒、撤销 1,500 个最上层 1.54 秒（请求的用时，含解析）。另经 `gh api` 只读地取了 P1 期间 11 次 `main` 的 `guards-core` 作业日志，读出各自的 CPU 与这三个守卫的数（3.5.4）。探针的输出在 scratchpad 的 `m12/p4-work/probes/`。第二次修订另做一个探针（临时 worktree 在 `1ba6c7f6`，经 `heavy.sh`，用完删了）：照 4.4 的写法（两个 devDependencies、增量解析经 `state.update`、`knip.jsonc` 忽略 `vite`）搭 `e2e/perf/` 的解析页，`tsc`、knip、oxlint 都是 0，构建与 Chromium 里的解析通过（`m12/p4-rev2/b9/`）。第三次修订没有另做探针，B9 在上限处与上限减一的数取自修订核对 C 的 `m12/p4-check2-c/b9/`。三份设计审查另做了探针（审查记录"审查方式"一行）：审查 C 在 test 配置下量过一次 1 万页平的形状的 T1，作预告（第 9 节） |
@@ -20,7 +20,7 @@
   - 现有守卫的规模开关：升级的发起、检查、批准与 lint 摘要四个守卫读 `NW_SCALE_PAGES`，按页的日志的成本读 `NW_SCALE_CHANGESETS`；规模、期限、客户端与判不判界由一个纯函数给，开关没设时它给的就是守卫今天的常量；开关打开时只记、不判界，客户端与写超时等得比期限久（3.3）；
   - lint 守卫的 worker 期限提到界之上（worker 6 秒、请求 12 秒，照决定 359 的做法；M10 决定 160 留下的，取舍 P4-23）；总体设计 13.4 第 8 条写着的旧期限随之改（第 8 节第 5 条）；
   - 回收站两个基准的档位开关，只在手跑时读（3.3 末）；
-  - `server/tools/perf/`：起一个生产配置的 `serve` 的脚本、内存与 CPU 的采样、gctrace 的解读、导入用的 vault 的生成器、五个驱动（3.4）；
+  - `server/tools/perf/`：起一个生产配置的 `serve` 的脚本、内存与 CPU 的采样、gctrace 的解读、导入用的 vault 的生成器、六个驱动与 `perf prepare`（3.4、3.10 第 7 条）；
   - **单独为绿**：组合根的新测试没有环境变量就跳过，只有两个不连库的测试与一个 1,000 页的载入测试真的跑；它们在 `!race` 的文件里，不进竞态的八份，Makefile 给 `test-go-costs-3` 加一行带 `-v` 的（2.1 第 8 条）；`server/tools` 模块已在 `make lint-go` 与 `test-go-costs-3` 里（`Makefile:151-156`、`:498`），新包随之被 lint 与测试；CI 的工作流不改。
 - **S2 浏览器侧的设施与实测**（`m12-p4-s2`）：
   - `e2e/perf/`：自己的 Playwright 配置与一次生产配置的 `serve`、三种形状的笔记本经导入建起、页内的计时脚本；`e2e/package.json` 加一个 `perf` 脚本与解析页要的两个 devDependencies，`knip.jsonc` 给 `e2e` 忽略解析页构建用的 web 的 `vite`，`e2e/fixtures/auth.ts` 导出引导的步骤表（4.1、4.2、4.4、第 5 节）；
@@ -144,7 +144,7 @@
   - 理由：同一组守卫两边的数今天就有；照旧乘 4.6 会把本机 4 秒的操作推成 18 秒、判"超"，而推断 7763 上约 8–9 秒（审查 B 的 Q1：旧倍数对 7763 高估约 2.3 倍）。
   - **P4-2 多半决定 B4 删除的结论**（12–15 秒对 28–35 秒，2.2），写进第 9 节与 M12 的汇报，负责人可以改判。
 - **455（P4-3）B1 照原预算判吞吐、1 小时与保存；尾巴与体积先比 M8 记的最大，超了才在同机同语料上对照，对照也慢了才叫回归**（主持者定；2.1 第 2 条，3.6 的 B1）。对照取 M8 的 Codex 评审合并 `308eafc6`（按笔记本分键之后，今天的设计）：同样两轮、整轮地跑（`BenchmarkSearch` 没有按格过滤的开关），两边都取两轮里较大的 p99；生成器另写出那时的笔记本列，S1 的试跑真的把 1,000 页喂给 `308eafc6` 一次。积压只记一轮，不对照。理由：本机、合成语料都与 M8 的不同，比 M8 的数大可能是机器与语料，不一定是代码；吞吐与 1 小时是写下的预算，从没被接受为超出，照它判（审查 B 的 I1）。
-- **456（P4-4）搜索语料的词表进 `testdata`；查询的词确切地植入**（3.2；审查 A 的 M1、M2）。词表取仓库自己的文字，生成一次进仓库，之后同一个种子出同一份语料；词表里去掉含任一非重类查询词（折叠之后）的词，段落拼出了它们就重抽；非重类的词按目标的页数确切地植入，测试断言确切的数。不改成种子生成的合成词表（审查 A 的过度设计第 2 条，未采纳）：00 号文档 4.7.4 写了取仓库的 Markdown，中文二元组的分布决定每页的键数与倒排的长短，进的是体积与 p99。
+- **456（P4-4）搜索语料的词表进 `testdata`；查询的词确切地植入**（3.2；审查 A 的 M1、M2）。词表取仓库自己的文字，生成一次进仓库，之后同一个种子出同一份语料；词表里去掉含任一非重类查询词（折叠之后）的词，一个词与前文拼出了它们就换一个词（3.10 第 1 条）；非重类的词按目标的页数确切地植入，测试断言确切的数。不改成种子生成的合成词表（审查 A 的过度设计第 2 条，未采纳）：00 号文档 4.7.4 写了取仓库的 Markdown，中文二元组的分布决定每页的键数与倒排的长短，进的是体积与 p99。
 - **457（P4-5）对外量的大笔记本经导入建起**（2.1 第 5 条）。理由：导入是生产的路，什么都一致；SQL 的播种要逐张表抄应用的不变式，审查要核对它。代价是一次 6 万个节点，10 万页导两次。
 - **458（P4-6）驱动、采样与 vault 的生成器放在 `server/tools/perf/`；Go 只用标准库，读库经 `os/exec` 调 `docker exec <容器> psql`；MCP 手写 JSON-RPC；起服务的是一个 shell 脚本**（3.4；审查 A 的 M6）。理由：`server/.golangci.yml:36-45` 不许组合根与 mcpserver 之外导入 MCP 的 Go SDK；`server/tools/go.mod` 没有 PostgreSQL 的客户端，经容器里的 `psql` 读几个系统视图就够，`go mod tidy -diff` 不变；起容器与进程照 `deploy/image-smoke.sh` 的先例写 shell，逐步判返回码。
 - **459（P4-7）内存的读数**（2.1 第 9 条，3.4.2；审查 A 的 M4、M5）：服务进程的 Go 堆取 gctrace，峰值是每行 GC 开始、结束两个堆的最大；每轮一个基线，取服务起来空闲 130 秒之后运行时强制 GC 那一行的存活堆，各组合都对它算增量（偏保守）；窗口里最后一次 GC 之后的那一段取上界 `max(峰值, 窗口之后第一行的目标)`，上界跨过界线时那一组合之后空闲 130 秒重量；被访问日志插断的 gctrace 行拼回，`gc N` 缺号就报出、重量；进程的开始时刻用 `/proc/uptime` 换算；另记 `VmHWM`、`VmRSS`；PostgreSQL 每轮一个新容器，读 `memory.peak`，每 100 ms 读 `memory.current`，轮末读 `memory.stat` 的 `anon`、`file`、`shmem`。理由：不改产品就能读到；gctrace 的每行正是那一个周期里 `HeapAlloc` 的最大处，与 M4 的采样口径最近。
@@ -200,7 +200,7 @@
   - 名字带大写的拉丁字母与一个折叠不同于小写的字母（例如 `Σς`），`name_key` 由 `shared.TitleKey` 算（生成器直接调它），所以每页的 `name` 与 `name_key` 都不同；同级的 `name_key` 以序号保证唯一（两个唯一索引，`migrations/sql/00042_page_nodes_path_keys.sql:14-16`）；`sort_order` 在同级里递增；
   - 删除只删整个第二层的文件夹连同它的页、同一个时刻，或删叶子页（"A subtree's deletion sets one time on all of it"，`00012_page_nodes.sql` 的注释）；
   - id 由种子与序号导出（版本位照 v7 的写法），时间戳由一个固定的起点加序号导出，不调 `uuid.NewV7` 与 `time.Now`。
-- **`contents.tsv`**：每页一行，`revision` 1，`content_hash` 与 `byte_size` 由应用自己的函数算（生成器调它），删了的页 `deleted_at` 同它的节点。正文的长度按对数正态抽，中位约 6 KiB、平均约 8 KiB（M8 的真语料平均 8.1 KB），千分之一是 200 KiB 的长页；六成的段落是中文、四成是英文。合计约 2.4 GB。
+- **`contents.tsv`**：每页一行，`revision` 1，`content_hash` 与 `byte_size` 与应用（`page/domain/batch_contents.go:212`）同一个算法：内容的 sha256 与字节数，生成器自己算（3.10 第 2 条），删了的页 `deleted_at` 同它的节点。正文的长度按对数正态抽，中位约 6 KiB、平均约 8 KiB（M8 的真语料平均 8.1 KB），千分之一是 200 KiB 的长页；六成的段落是中文、四成是英文。合计约 2.4 GB。
 - **两种分布**：`NW_PERF_CORPUS_NOTEBOOKS=200` 与 `=5000`，页在笔记本之间照 Zipf（s = 1）分：Go 的 `NewZipf` 要 s > 1，生成器自己建累积表、二分查（审查 A 的 N1）；最大的一本占 `1/H_N`，5,000 本约 11%，200 本约 17%。同一个种子、只差笔记本数。
 
 **词从哪来**（取舍 P4-4）：
@@ -212,7 +212,7 @@
 **查询的词按 M8 的频率类确切地植入**（审查 A 的 M1）：`searchBenchQueries`（`:271-278`）的 45 个查询是对着维基的语料挑的：最常见的键（`的`、`the`、`of`、`a`、`ing`、`中国`）、走查用完的罕见词（`veress`、`ranters`、`latere`）、名称多而通过率低的（`A股`）、正文层没有键的（`锅 #`）。仓库的文字正好记着这些查询（M8 的设计、审查与注释），照词表随机抽，罕见类的 `veress` 在 30 万页里会落进约 1,540 页（审查 A 的探针）；搜索又按子串匹配（汉字的二元、词的三元加复核，`migrations/sql/00040_page_search.sql:18-21`），两个词相接也会拼出查询的词。所以：
 
 - 生成器在源码里有一张表，每个查询的词一行：它的类、在 30 万页里的目标文档数、出现在标题里的比例。能对上 M8 记下的真实数的，照它：`A股` 406 页、`latency` 225、`Windows系统` 201、`Go语言` 12（[M8/P5](../M8-history-search/05-P5-search.md) 3.9"计数"一行）。其余分四类：重（至少 1.5 万页，即 5%：上面六个最常见的键，加 `数据库`、`索引`、`history`、`api`、`go`、`c`、`ai`、`linux`、`kernel`）；中（300–3,000 页）；轻（50–300 页）；罕见（1–20 页：`veress`、`ranters`、`latere`、`geass`、`犇`、`囧`）。每个词归哪一类写在表里，审查者对着 M8 的查询说明（同节"查询"一段）核对。
-- **非重类的词不让它自然出现**：词表去掉折叠之后含任一非重类查询词为子串的词；每生成一段（与一个名字），折叠之后查它含不含非重类的词，含就以同一个随机源重抽这一段。
+- **非重类的词不让它自然出现**：词表去掉折叠之后含任一非重类查询词为子串的词；每抽一个词，折叠之后查它与前文的末尾拼起来含不含非重类的词，含就以同一个随机源换一个词；段与名字都由词拼成，拼完不必再查（3.10 第 1 条）。
 - **非重类的词确切地植入**：每个词以种子选定恰好目标数的活着的页，各放一次（中文的词两边是全角逗号，英文的两边是空格，不与邻字拼出新的键）；表里标题的比例那一份放进名字。生成完逐页再数一遍，与表不符就失败、什么也不写。
 - **重类的词自然出现**，不够目标的页再补放，至少到目标。
 - 多个词的查询（`中国 历史`、八个词的那一个）靠随机的共现，不另植入。
@@ -267,19 +267,19 @@ func (s guardScale) judge(errorf func(string, ...any), name string, value, bound
   - **守卫一侧接对了没有，由守卫自己在计时之前断言**（开关设不设都断言；修订核对 A 的 M11）：实际的依赖等于 `guardScale` 的值：发起的 `d.StartTimeout`（今天 `upgrade_start_cost_test.go:115` 对 `startCostDeadline` 断言）、批准的 `d.ApproveTimeout`（`upgrade_approve_cost_test.go:359`）、lint 与检查的夹具设下的 `d.LintTimeout`（`wiki_lint_cost_fixture_test.go:53`；夹具设了之后读回来断言）、进程内调用的 `context.WithTimeout` 用的请求期限（`upgrade_check_cost_test.go:142`、`wiki_lint_cost_test.go:183`），与 `timedAsk` 的客户端的 `Timeout`。这样守卫一侧接错时守卫自己红（例如 lint 的守卫不用表里的 worker 而用 `min(10 秒, …)`：短测试照绿，"界低于期限"5.2 < 7.5 < 15 也照过，只有这条断言抓得到）；
   - **客户端一格是新的**：计时的请求不再经 `client()`（5 秒），改经帮手 `timedAsk(t, s, contract, method, url, token, body)`（在 `perf_scale_test.go`，不带标签）：以 `&http.Client{Timeout: s.Client}` 经 `sendRequestBy`（`contract_test.go:385`）发、照契约核对答复；发之前断言客户端的 `Timeout` 等于 `s.Client`、大于 `s.Own`；返回状态、答复与用时。同 `source_cost_test.go:87` 的 `2 * 请求`。开关没设时界在期限之下、先判，不改通过与否；批准今天以 5 秒的客户端等 11.25 秒的期限，界 3.9 秒在 5 秒之下所以没事（审查 A 的 I2）；
   - **随规模变大的请求也经 `timedAsk`**（修订核对 A 的 M12）：批准的守卫播种时经 `ask` 发起升级、再提交（`upgrade_approve_cost_test.go:239`、`:247`），两者都随来源数变大（本机 5 万页时发起 1.11–1.17 秒，`upgrade_start_cost_test.go:56-67` 的注释），B7 的 30 万推断会过 5 秒，守卫会在量之前以 `Client.Timeout exceeded` 失败。它们改经 `timedAsk`，用时记进日志、不判。工作量不随 n 变的请求（建工作区、建笔记本、建 `raw` 页，`upgrade_start_cost_test.go:220-230`、`upgrade_approve_cost_test.go:217-223`）照旧经 `ask`。
-- **lint 这一个用例的期限**（取舍 P4-23）：检查照旧是请求 6 秒、worker 3 秒，发起照旧是请求 6 秒、期限 4.5 秒（`checkCostScale()`、`startCostScale()`）；lint 的守卫的 12 秒与 6 秒只写在 `lintCostScale()` 里，夹具 `newWikiCostFixtureOf` 多一个 worker 的参数（`wiki_lint_cost_fixture_test.go:49-53`），量的那一处的 `context.WithTimeout` 用 `s.Request`（`wiki_lint_cost_test.go:183`）。守卫在量之前断言摘要与 `wanted` 的墙钟界（5.2、1.4 秒，`:122-123`）都低于 worker、worker 低于请求。总体设计 13.4 第 8 条写着这个用例"请求 6 s、worker 3 s（决定 160）"，S1 的文档提交照改、第 15 节加一行（第 8 节第 5 条；修订核对 B 的 M11）。
-- **设了 `NW_SCALE_PAGES` 时**：
+- **lint 这一个用例的期限**（取舍 P4-23）：检查照旧是请求 6 秒、worker 3 秒，发起照旧是请求 6 秒、期限 4.5 秒（`checkCostScale()`、`startCostScale()`）；lint 的守卫的 12 秒与 6 秒只写在 `lintCostScale()` 里，夹具 `newWikiCostFixtureOf` 多一个 worker 的参数（`wiki_lint_cost_fixture_test.go:49-53`），量的那一处的 `context.WithTimeout` 用 `s.Request`（`wiki_lint_cost_test.go:183`）。守卫在量之前断言摘要与 `wanted` 的墙钟界（5.2、1.4 秒，`:122-123`）都低于 worker、worker 低于请求；手跑时（设了 `NW_SCALE_PAGES`）界低于 worker 只记、不断言（3.10 第 3 条）。总体设计 13.4 第 8 条写着这个用例"请求 6 s、worker 3 s（决定 160）"，S1 的文档提交照改、第 15 节加一行（第 8 节第 5 条；修订核对 B 的 M11）。
+- **设了 `NW_SCALE_PAGES` 时**（至少 20,000，更小就报错，3.10 第 3 条）：
   - 规模是它；请求是 `NW_SCALE_REQUEST`（Go 的时长）或生产的 15 秒；被守的调用的期限照生产的公式：发起与批准 `请求*3/4`（`bootstrap/wire.go:281`、`:297`），lint 与检查的 worker `min(10 秒, 请求/2)`（`:253`），给了 `NW_SCALE_REQUEST` 时取 `请求/2`、不截 10 秒（这不是生产的公式，只为看到 10 秒之外真的用时，记录写明）；读超时照测试的配置（5 秒），写超时取读加请求再加 15 秒（生产的校验要 `read + request < write`，`platform/config/validate.go:50-58`）；客户端等请求的两倍；
   - 每次计时之前断言"客户端 > 被守的调用的期限"与"写超时 > 读 + 请求"（开关没设时也断言）；
-  - `judge` 只记、不判时间与内存的界；正确性的断言照旧，由规模推出（发起的 `:285-300` 照 n 与来源区的比例推）；
+  - `judge` 只记、不判时间与内存的界；正确性的断言照旧，发起的 `:285-300` 照 n 与来源区的比例推；lint 的孤页（过 10,003 页才封顶在 10,000）与发起的 1,000 个 wanted 不随规模，2 万页上都成立，所以开关至少 2 万页（S1 的审查之后，3.10 第 3 条）；
   - 日志的行照旧，另加 `scale=<n>`。
 - **四个守卫怎样按规模缩放**：
   - 发起：被量的笔记本 `startCostPages`（`:42`）换成 n，来源区照原比例（`startCostArea`/`startCostPages` = 0.3，`:43`）；另九本仍各 50,000 页：今天它们用同一个常量（`:262`），另起一个常量 `startCostOtherPages`（审查 A 的 N4）；
   - 检查：被量的那一本 `checkCostPages`（`upgrade_check_cost_test.go:21`）换成 n，另几本同样另起常量（`:76`）；
   - 批准：来源数 `approveCostSources = approveCostFolders * (1 + approveCostPages + approveCostFiles)`（`:46`），文件夹数换成 `round(n/95)`，每个文件夹的页与文件不变；
   - lint：`newWikiCostFixtureOf(t, …, n, worker)`。
-- **按页的日志**：`page/adapter/postgres/history_cost_test.go:42` 的 `newLongLog(t, n)`：n 由 `changesetsOf`（`page/adapter/postgres/perf_scale_test.go`，同样的写法十几行，不跨包导入测试代码）读 `NW_SCALE_CHANGESETS`，默认 100,000，要是 5 的倍数、至少 1,000。随 n 推的（审查 A 的 N3）：`generate_series(1, n)`、长历史那一页的 `revision = n/5`、大变更集是第 `n − 50` 个（今天的 99,950）、条目数 `50_000 + n/5 + (3n/5 − 1)`；用它的两个测试（`TestTheLogReadsInTimeAsLongAsAPage` `:161`、`TestTheRevertsArrayReadsInTimeAtTheUnitsBound` `:296`）在设了时只记。帮手的文件不带标签，`history_cost_test.go` 仍是 `!race`；帮手的测试在 `test-go-race` 一份与 `test-go-short` 里跑。
-- **回收站两个基准的档位开关**（审查 B 的 M4 第 3 点、M5；取舍 P4-17）：`benchLevels(getenv, name, def)` 读逗号分开的列表，同 `manyTops`（`revert_cost_test.go:483-485`）的写法，坏值返回错误。`BenchmarkTrashRestore` 读 `NERVE_BENCH_LOADS`（`light`、`full`）与 `NERVE_BENCH_ATTACHMENTS`，`BenchmarkTrashRestoreHistory` 读 `NERVE_BENCH_VERSIONS`（递增；版本照旧一路累加）。只设一档时版本一次写到那一档：例如只设 `1000`，版本从 1 一次写到 1,000；整条曲线是 250、500、1,000 累加着写，`versions`（`trash_cost_test.go:383`）的最后一步把页当时约 82 KiB 的正文写进每一档的最新版本，所以第 250、500 两个版本留着大的正文，两种写法差每页两行、共约 200 行，量级多半小；记录写明用的是哪一种（修订核对 B 的 N12）。设了时每一档之前的建库与建单元只做选中的那几档：今天只选 `b.Run` 的子项，`b.Run` 之外的准备十档都做（`trash_cost_test.go:308-316`），省不掉。
+- **按页的日志**：`page/adapter/postgres/history_cost_test.go:42` 的 `newLongLog(t, n)`：n 由 `changesetsOf`（`page/adapter/postgres/perf_scale_test.go`，同样的写法十几行，不跨包导入测试代码）读 `NW_SCALE_CHANGESETS`，默认 100,000，要是 5 的倍数、至少 100,000（3.10 第 3 条）。随 n 推的（审查 A 的 N3）：`generate_series(1, n)`、长历史那一页的 `revision = n/5`、大变更集是第 `n − 50` 个（今天的 99,950）、条目数 `50_000 + n/5 + (3n/5 − 1)`；用它的两个测试（`TestTheLogReadsInTimeAsLongAsAPage` `:161`、`TestTheRevertsArrayReadsInTimeAtTheUnitsBound` `:296`）在设了时只记。帮手的文件不带标签，`history_cost_test.go` 仍是 `!race`；帮手的测试在 `test-go-race` 一份与 `test-go-short` 里跑。
+- **回收站两个基准的档位开关**（审查 B 的 M4 第 3 点、M5；取舍 P4-17）：`benchLevels(getenv, name, def, parse)` 读逗号分开的列表（泛型：负载是名字，附件与版本是数；重复的档位报错，3.10 第 5 条），同 `manyTops`（`revert_cost_test.go:483-485`）的写法，坏值返回错误。`BenchmarkTrashRestore` 读 `NERVE_BENCH_LOADS`（`light`、`full`）与 `NERVE_BENCH_ATTACHMENTS`，`BenchmarkTrashRestoreHistory` 读 `NERVE_BENCH_VERSIONS`（递增；版本照旧一路累加）。只设一档时版本一次写到那一档：例如只设 `1000`，版本从 1 一次写到 1,000；整条曲线是 250、500、1,000 累加着写，`versions`（`trash_cost_test.go:383`）的最后一步把页当时约 82 KiB 的正文写进每一档的最新版本，所以第 250、500 两个版本留着大的正文，两种写法差每页两行、共约 200 行，量级多半小；记录写明用的是哪一种（修订核对 B 的 N12）。设了时每一档之前的建库与建单元只做选中的那几档：今天只选 `b.Run` 的子项，`b.Run` 之外的准备十档都做（`trash_cost_test.go:308-316`），省不掉。
 - **测试**：`TestGuardScaleKeepsEachGuardsOwnUnlessGiven`（没设时是上表；设了是推出的值、`ByHand` 为真；坏值报错；`judge` 没设时对过界的值调 `errorf`、设了不调）、`TestLevelsOfTheTrashBenchmarksAreTheirOwnUnlessGiven`，在组合根的第四份与 `test-go-short`（G、L 起头，第一、二、三、五至八份的模式都不收；初稿的 `TestBenchLevels…` 以 B 起头，落在第一份的 `^Test[A-D]`，修订核对 A 的 N7）；`changesetsOf` 的一个在 page 的适配器。都不连库，毫秒级。
 - **手工的反向对照**（S1 的记录，审查 A 的 I3）：开关没设时把发起的守卫的界临时压到 1 ms，守卫红；设了 `NW_SCALE_PAGES=20000` 时同样的改动守卫绿；改动复原。
 
@@ -291,19 +291,19 @@ Go 只用标准库（取舍 P4-6）；`server/.golangci.yml` 的规则照常（`
 server/tools/perf/
   doc.go          包的说明：各子命令、跑法、与本文的对应
   stack.sh        起与停一个生产配置的 serve 与它的 PostgreSQL 容器
-  main.go         子命令：sample、gctrace、vault、bodies、mcp、editors、tabs、ops、transfer
+  main.go         子命令：sample、gctrace、vault、prepare、bodies、mcp、editors、tabs、ops、transfer
   sample/         /proc 与 cgroup 的采样；gctrace 的解读
   stats/          最近秩的分位、中位、两轮的合并
   vault/          导入用的 vault 的生成器
   client/         最小的 REST 客户端、MCP 的 JSON-RPC、经 docker exec 的 psql
-  drive/          五个驱动
+  drive/          六个驱动
 ```
 
 #### 3.4.1 `stack.sh`：一个生产配置的 serve
 
 照 `deploy/image-smoke.sh` 的写法，`set -u`，每一步判返回码（"有副作用的命令链要看返回码"）；只停、只删自己起的进程与容器（按 PID 与容器 id）。
 
-- `stack.sh up <目录> [--fsync-off] [--env KEY=VALUE …]`：
+- `stack.sh up <目录> [--fsync-off] [--env KEY=VALUE …]`：目录要不存在或是空的，非空就拒绝：一轮一个目录，上一轮的 `serve.log` 与 `data/` 留着；等地址、就绪与日志的行时 serve 退出了就不等；`--env` 写进 `<目录>/serve.env`（3.10 第 8 条）。
   1. `docker run -d` 一个 `postgres:18.7-trixie`，`POSTGRES_INITDB_ARGS='--locale-provider=builtin --locale=C.UTF-8'`，端口只绑 `127.0.0.1`；默认**不加** `fsync=off`（取舍 P4-19），`--fsync-off` 时加 `-c fsync=off`（只给 B4 的对照，3.6）；等 `pg_isready`。
   2. `openssl genpkey -algorithm ed25519` 生成 JWT 的私钥（生产必需，`platform/config/validate.go:178-181`）。
   3. `NWIKI_ENV=prod nervewiki migrate up`（生产不自动迁移，`server/configs/config.prod.yaml:1-4`）。
@@ -317,10 +317,10 @@ server/tools/perf/
 
 #### 3.4.2 `sample` 与 `gctrace`：内存与 CPU
 
-- `perf sample -pid <serve> -container <id> -every 100ms -out <文件>`：每 100 ms 写一行 CSV：时刻（Unix 纳秒）、`VmRSS`、`VmHWM`（`/proc/<pid>/status`，kB 乘 1024）、`utime`、`stime`（`/proc/<pid>/stat` 第 14、15 个字段，除以起来时经 `getconf CLK_TCK` 读一次的值，读不到就失败）、容器的 `memory.current` 与 `cpu.stat` 的 `usage_usec`（`/sys/fs/cgroup/system.slice/docker-<id>.scope/`：systemd 的 cgroup 驱动下的路径，探针 (1) 核过本机用户读得到；找不到就失败，不读成零，审查 A 的 N5）。起来时记下进程开始的墙上时刻：当下的墙钟减去（`/proc/uptime` 减 `/proc/<pid>/stat` 第 22 个字段除以 `CLK_TCK`），精到 0.01 秒（`/proc/stat` 的 `btime` 只到整秒，审查 A 的 M5）。收到 SIGINT 时另写一行终值：`memory.peak`、`memory.stat` 的 `anon`、`file`、`shmem`。
+- `perf sample -pid <serve> -container <id> -every 100ms -out <文件>`：每 100 ms 写一行 CSV：时刻（Unix 纳秒）、`VmRSS`、`VmHWM`（`/proc/<pid>/status`，kB 乘 1024）、`utime`、`stime`（`/proc/<pid>/stat` 第 14、15 个字段，除以起来时经 `getconf CLK_TCK` 读一次的值，读不到就失败）、容器的 `memory.current`、`cpu.stat` 的 `usage_usec` 与 `memory.stat` 的 `anon`、`shmem`、`file`（三样见 3.10 第 9 条；`/sys/fs/cgroup/system.slice/docker-<id>.scope/`：systemd 的 cgroup 驱动下的路径，探针 (1) 核过本机用户读得到；找不到就失败，不读成零，审查 A 的 N5）。起来时记下进程开始的墙上时刻：当下的墙钟减去（`/proc/uptime` 减 `/proc/<pid>/stat` 第 22 个字段除以 `CLK_TCK`），精到 0.01 秒（`/proc/stat` 的 `btime` 只到整秒，审查 A 的 M5）。收到 SIGINT 时另写一行终值：`memory.peak`、`memory.stat` 的 `anon`、`file`、`shmem`，与三样逐行的最大。
 - `perf gctrace -log <serve.log> -start <进程开始的时刻> -base <时刻> -from <时刻> -to <时刻>`：读 `gc N @Ts …, A->B->C MB, D MB goal, …` 的行（探针 (2) 的格式；单位是 MiB，运行时按 `1<<20` 除；`@Ts` 是这次 GC 开始距进程开始的秒数），换成墙上的时刻。
   - **被插断的行**（审查 A 的 M4）：运行时把一行 gctrace 分三十来次 `write(2)` 写出（`runtime/mgc.go:1592-1631`、`runtime/print.go:89-107`），serve 每个请求的 JSON 访问日志会插进行中间（审查 A 的探针：每秒 200 行日志时 0.5% 的行、2,000 行时 4.9%）。解读把一行里嵌着的整个 `{…}`（以 `{"time":` 起、到配对的 `}` 与换行）去掉，再把断开的两半拼回；从基线到窗口末尾，`gc N` 的序号连续，缺号就报出（这一组合重量），不悄悄跳过。
-  - **基线**：每轮一个，取 `-base` 那一行的 `C`（存活堆）：服务起来之后空闲至少 130 秒，运行时两分钟没有 GC 就强制一次，打出的那一行（探针 (2)：约 120 秒时存活堆 3 MB）。各组合都对它算增量：组合之间的那次 GC 含着在途的请求，拿它作基线会偏高、增量偏低，最坏是负数（审查 A 的 M5）；用一轮开头的这一个偏保守，记录写明。
+  - **基线**：每轮一个，取 `-base` 那一行的 `C`（存活堆）：服务起来之后空闲至少 130 秒，运行时两分钟没有 GC 就强制一次，打出的那一行（探针 (2)：约 120 秒时存活堆 3 MB）。各组合都对它算增量：组合之间的那次 GC 含着在途的请求，拿它作基线会偏高、增量偏低，最坏是负数（审查 A 的 M5）；用一轮开头的这一个偏保守，记录写明。`-base` 取在空闲的开头，基线是它当时或之后的第一次 GC；运行时的 `forcegc` 先写一行 `GC forced`、再写那一次的 gctrace 行（行尾不带 `(forced)`），解读认它之后的那一行，输出 `base_forced`；窗口里没有 GC 时峰值与增量记 `none`、报 `no_gc_in_window`；`-base` 晚于 `-from` 报错（3.10 第 9 条）。
   - **峰值**：`[from, to]` 里每行 `max(A, B)` 的最大。
   - **末尾的上界**：窗口里最后一次 GC 之后，堆至多涨到下一次的目标就会触发 GC；上界取 `max(峰值, 窗口之后第一行的 D)`。上界跨过界线时，这一组合单独重量一次，之后空闲 130 秒，让强制 GC 那一行的 `A` 记下末尾（审查 A 的 M5）。
   - **输出**：基线、峰值、增量 = 峰值 − 基线、上界与它的增量、窗口里 `D` 的最大与 GC 的次数、缺号。
@@ -331,29 +331,30 @@ server/tools/perf/
 - `perf vault -out <zip> -pages P -attachments A -fanout 10,10,98 -links L -body 2KiB -attachment-bytes B -random R -seed S`：写一个 zip（`archive/zip`，deflate 的默认级别），每页一个 `.md`，每个附件一个文件，文件夹是路径里的目录（导入把它们建成有孩子的页，`config.yaml:153` 的注释"条目加路径隐含的文件夹"）。页名唯一（`p<编号> <两个词>`），链接写不带路径的 `[[页名]]`：九成指向同一个第二层文件夹之下的页，一成在整本里均匀抽；每页 L 条。附件的内容 1/R 是随机的、其余是同一块 4 KiB 的重复。
 - **上限**（`config.yaml:151-157`；`bootstrap/deps.go:253`）：写之前核对条目 ≤ 5 万、条目加文件夹 ≤ 6 万、解压 ≤ 4 GiB，超了就拒绝、什么也不写；zip 的大小写完才知道，所以先写进同目录的临时文件，写完核对 ≤ 512 MiB，超了删掉、失败（审查 A 的 M3）。写完打出条目数、文件夹数、解压与压缩后的字节、sha256。
 - **三种 vault**：
-  - **导入上限**（批次 F 与 B4）：45,000 页、5,000 个附件（十分之一），`fanout 10,10,98`（10 + 100 + 9,800 = 9,910 个文件夹，节点 59,910），每页 30 条链接、2 KiB 正文，附件平均约 800 KiB、`-random 12`。推算：解压约 3.90 GiB（附件约 3.81 GiB、页约 88 MiB，修订核对 A 的 N8）；deflate 对重复的部分也要约 1.3%（匹配至多 258 字节），附件压到约 9.5%、约 371 MiB，页压到约 61%、约 54 MiB，加头约 8 MiB，zip 约 433 MiB（照初稿的 `compressible 8` 与 820 KiB 是约 607 MiB，过了上限，审查 A 的 M3 算过）。真的图片不可压缩：同样 512 MiB 的包解压之后只有约 512 MiB；这一形状为了让条目、节点与解压三个上限同时接近。
+  - **导入上限**（批次 F 与 B4）：45,000 页、5,000 个附件（十分之一），`fanout 10,10,98`（10 + 100 + 9,800 = 9,910 个文件夹，节点 59,910），每页 30 条链接、2 KiB 正文，附件都是 800 KiB（`-attachment-bytes` 定长，3.10 第 4 条）、`-random 12`。推算：解压约 3.90 GiB（附件约 3.81 GiB、页约 88 MiB，修订核对 A 的 N8）；deflate 对重复的部分也要约 1.3%（匹配至多 258 字节），附件压到约 9.5%、约 371 MiB，页压到约 61%、约 54 MiB，加头约 8 MiB，zip 约 433 MiB（推算；照参数实写是 468,514,108 字节，约 446.8 MiB，S1 审查 B 量的；照初稿的 `compressible 8` 与 820 KiB 是约 607 MiB，过了上限，审查 A 的 M3 算过）。真的图片不可压缩：同样 512 MiB 的包解压之后只有约 512 MiB；这一形状为了让条目、节点与解压三个上限同时接近。
   - **5 万页**（批次 E 的 10 万页树，导两次）：50,000 页、没有附件、`fanout 10,50`（10 + 500 = 510 个文件夹，节点 50,510），每页 10 条链接、1 KiB 正文。
   - S2 的三种形状不用它（4.2：TypeScript 的 `zipOf` 够用）。
 - **测试**：同一个种子同样的参数 sha256 相同；缩小一百倍的导入上限形状核对条目、文件夹、解压与 zip 的字节都在缩小一百倍的上限之内、与表里的数相符；超了上限时拒绝（条目的写之前，zip 的写之后删掉临时文件）；每条链接的目标都是 vault 里的页，链接里没有 `/`，九成在同一个第二层文件夹之下（审查 A 的 N6）。
 
 #### 3.4.4 驱动的公共部分：账户、凭证与记录
 
-- **准备**（每轮、`stack.sh up` 之后）：`perf` 以 `users create` 的账户登录，建工作区 `perf`（`POST /api/v0/workspaces`，`openapi.yaml:348`）与要的笔记本，建要的 PAT（`POST /api/v0/me/api-tokens`，`:261`，要当前密码）。每个读者、写者、编辑者、标签页、agent 一个 PAT（取舍 P4-8）。PAT 写进 `<目录>/pats.json`，下一轮重建。
-- **一次请求的记录**：一行 JSON，`op`、凭证的序号、发出与答复头、答复读完的时刻（Unix 纳秒）、状态、`code`（problem+json 的）、答复的字节数。
+- **准备**（每轮、`stack.sh up` 之后）：`perf` 以 `users create` 的账户登录，建工作区 `perf`（`POST /api/v0/workspaces`，`openapi.yaml:348`）与要的笔记本，建要的 PAT（`POST /api/v0/me/api-tokens`，`:261`，要当前密码）。每个读者、写者、编辑者、标签页、agent 一个 PAT（取舍 P4-8）。PAT 写进 `<目录>/pats.json`，下一轮重建。准备是 `perf prepare` 子命令；PAT 遇 429 每秒重试、至多 60 次；驱动在笔记本不在时建它（3.10 第 7 条）。
+- **一次请求的记录**：一行 JSON，`op`、凭证的序号、发出与答复头、答复读完的时刻（Unix 纳秒）、状态、`code`（problem+json 的）、答复的字节数、传输的错误与它是不是到期截断的（`cut`，3.10 第 6 条）。
 - **分位**：`stats` 的最近秩，与 `nearestRank`（`bootstrap/search_bench_test.go:469`）同一种定义，测试对一张写死的表核对 p50、p99 与只有一个、两个样本时的取值。
 
-#### 3.4.5 五个驱动
+#### 3.4.5 六个驱动
 
 | 子命令 | 量的行 | 做什么 |
 |---|---|---|
 | `bodies` | B2 | k 个凭证各一页 5 MiB（普通或病态）的正文，一半读阅读视图（`GET /api/v0/pages/{id}/view`，`openapi.yaml:1237`）、一半写（开编辑会话 `:1167`，`PUT …/content` 带 `base_revision` 与 `edit_session_id`，`:1128`），各自循环 |
 | `mcp` | B3 | 3.6 的 B3 的各种形状，三个凭证同时发、两个名额加一个等着的；JSON-RPC 的 `tools/call` 手写（`/mcp?notebook=<id>`），请求头照 `bootstrap/mcp_bodies_test.go:122-125`：`Content-Type: application/json`、`Accept: application/json, text/event-stream`、`Authorization`、`Mcp-Protocol-Version` |
-| `editors` | M4-performance 第 1、6 条，部署文档的内存，批次 G | N 个编辑者各一页 10 KiB、20 条链接，开编辑会话、每 2 秒改一个字写一次（同网页的自动保存，`W/editor/autosave.ts:4`）、每 20 秒续一次（`W/stores/edit-session.ts:18`）；每个编辑者每 60 秒关掉会话、再开一个（一个版本是一次编辑会话，`page/adapter/postgres/queries/changesets.sql:53-66` 以 `(changeset_id, node_id)` 就地更新）；一个树写者每秒新建、改名、移动轮着做一次；监视经 `psql` 每秒读 `pg_stat_slru`、`pg_stat_activity` 的等待；开始之前与结束之后各 `VACUUM FULL page_revisions` 一次，读 `pg_total_relation_size('page_revisions')`（表、TOAST 与索引）与行数（修订核对 B 的 M12） |
-| `tabs` | 4.7.3 的 10 万页的树重读 | k 个标签页各开一条事件流（`GET /api/v0/events`，`:2340`），收到这本笔记本 `tree: true` 的 `pages` 事件就照 refresher 读整棵树：第一次立即读，500 ms 之内再来的合成末尾的一次（`W/events/handlers.ts:36`、`W/events/refresher.ts:59-77`），读完整个答复、记字节；一个 agent 每秒新建一页，60 秒。refresher 在读开始时记时刻（`W/events/refresher.ts:79-88`），上一次读还没完、节流已到期时照样发下一次，驱动同样不等上一次读完；网页的 SWR 是否真的并发发出，S2 在浏览器里核对一次（审查 A 的 U1） |
-| `ops` | B4 | 在导入的 vault 上删、移、改名；删之后经后台的恢复（`POST …/trash-restores`，`:2670`）等它成功，再经 `psql` 等 `page_search_queue` 为空、River 没有 `running` 与 `available` 的任务，再空闲 30 秒，才下一次（审查 B 的 M8） |
-| `transfer` | B8 | 上传 vault 开始导入（`POST …/imports`，`:2623`，multipart），每 2 秒问任务（`:2778`）到成功；导出（`:2591`）同样，再下载（`:2824`）；前后经 `psql` 读 WAL 的位置（`pg_current_wal_lsn()`）、`pg_database_size`，读存储目录与它的 `imports/`、`exports/` 的大小 |
+| `editors` | M4-performance 第 1、6 条，部署文档的内存，批次 G | N 个编辑者各一页 10 KiB、20 条链接，开编辑会话、每 2 秒改一个字写一次（同网页的自动保存，`W/editor/autosave.ts:4`）、每 20 秒续一次（`W/stores/edit-session.ts:18`）；每个编辑者每 60 秒关掉会话、再开一个（一个版本是一次编辑会话，`page/adapter/postgres/queries/changesets.sql:53-66` 以 `(changeset_id, node_id)` 就地更新）；一个树写者每秒新建、改名、移动轮着做一次；监视经 `psql` 每秒读 `pg_stat_slru`（PostgreSQL 18 的名字是小写，`lower(name) LIKE 'multixact%'`，3.10 第 11 条）、`pg_stat_activity` 的等待；开始之前与结束之后各 `VACUUM FULL page_revisions` 一次，读 `pg_total_relation_size('page_revisions')`（表、TOAST 与索引）与行数（修订核对 B 的 M12） |
+| `tabs` | 4.7.3 的 10 万页的树重读 | k 个标签页各开一条事件流（`GET /api/v0/events`，`:2340`），收到这本笔记本 `tree: true` 的 `pages` 事件就照 refresher 读整棵树：第一次立即读，500 ms 之内再来的合成末尾的一次（`W/events/handlers.ts:36`、`W/events/refresher.ts:59-77`），读完整个答复、记字节；一个 agent 每秒新建一页，60 秒；到期之后才到时间的读不发（3.10 第 6 条）。refresher 在读开始时记时刻（`W/events/refresher.ts:79-88`），上一次读还没完、节流已到期时照样发下一次，驱动同样不等上一次读完；网页的 SWR 是否真的并发发出，S2 在浏览器里核对一次（审查 A 的 U1） |
+| `ops` | B4 | 在导入的 vault 上删、移、改名（每次真的移到另一页之下、改成新名，复原不计时，3.10 第 6 条）；删之后经后台的恢复（`POST …/trash-restores`，`:2670`）等它成功，再经 `psql` 等 `page_search_queue` 为空、River 没有 `running` 与 `available` 的任务，再空闲 30 秒，才下一次（审查 B 的 M8） |
+| `transfer` | B8 | 上传 vault 开始导入（`POST …/imports`，`:2623`，multipart），每 2 秒问任务（`:2778`）到成功；导出（`:2591`）同样，再经任务的 `download.url` 下载（`:2824` 的签名地址，不带令牌）；另记服务端的 `created_at`、`started_at`、`finished_at`（3.10 第 10 条）；前后经 `psql` 读 WAL 的位置（`pg_current_wal_lsn()`）、`pg_database_size`，读存储目录与它的 `imports/`、`exports/` 的大小 |
 
 - **病态的正文**：`platform/markdown/markdowntest` 的 `Pathological()` 的写法放大到 5 MiB（M4/P4 审查 P1 的 `a*_`），驱动照抄这个写法（不跨模块导入），S3 的记录用一次单独的阅读核对它是病态的：堆的增量应在 1.2 GiB 以上（M4 量过 +1,464 MiB）。
+- **到期**：`-for` 到期只停发：每个循环发每个请求之前看期限，过了就不发，编辑者只关会话；在途的等它们答完，至多 60 秒（`drive.DefaultDrain`，命令行不可改；serve 自己的请求期限 15 秒）；超了才截断，截断的记 `cut`；汇总分开数 `cut` 与 `errors`，有 `errors` 时命令失败（3.10 第 6 条）。
 - **测试**：每个驱动对一个 `httptest` 的假服务端：发的路径、头与体对；`mcp` 的每种形状按 bodyshape 的数法（请求体本身、每个对象、数组、字符串、数字、字面量各算一个值）数出的值的个数等于设计的数（审查 A 的 M7）；`tabs` 的节流用一个假的时钟核对"第一次立即、500 ms 之内合成一次"；`bodies` 的"早答的 503"按客户端的用时 < 2.0 秒判，假服务端立刻答 503 时数到、2.1 秒答时不数；`ops` 在假的 `psql` 答队列不空时不发下一次删除；`psql` 的执行器对一个假的命令核对参数与解析。
 
 #### 3.4.6 为什么驱动不进 e2e 或组合根
@@ -440,6 +441,7 @@ server/tools/perf/
     2. **对照**：有候选的那一种分布，在同一台机器、同一份语料上跑 `308eafc6`（M8 的 Codex 评审合并，按笔记本分键之后）的 `BenchmarkSearch` 两轮，整轮地跑（它没有按格过滤的开关，也没有 `NERVE_SEARCH_BACKLOG`，审查 B 的 I2）；`NERVE_SEARCH_REPS` 与今天的那一种相同。候选的格，今天两轮里较大的 p99 比 `308eafc6` 两轮里较大的慢 20% 以上，而且仍超第 1 步的界，才算回归；体积同样比。
        - 语料用 `NW_PERF_CORPUS_SCHEMA=308eafc6` 写的那一份（只有 `notebooks.tsv` 不同）；开跑之前在两个提交的库上各读一次 `notebooks`、`nodes`、`page_contents` 的列（`information_schema.columns`），记录写出差别（审查 A 的 M10）。
        - 记录写明混进对照的变量：`308eafc6` 的 `pgtest` 用 PostgreSQL 18.6；它的 `page_contents.content` 是默认的 pglz，今天是 LZ4（00054）。
+  - **重类的四个词偏轻**（决定 572；S1 审查 A 的 Q1、核对第 1 轮 A 的 N3）：合成语料里 `中国`、`ai`、`kernel`、`linux` 各在约 5% 的页，不是真语料里"最常见"的键：前三个自然只在约 0.5%、1.9%、1.3% 的页，补放到 5% 的下限；`linux` 自然约 5.3%，一页也没补放（份数在 10.1）。S3 的记录列出它们的份数与 M8 记下的最大（719、827.2 ms），判第 1 步时考虑这几格偏轻；第 2 步对照 `308eafc6` 用同一份语料，不受影响。
   - **只记**：积压 1,600 的格（第一轮）：1,191 ms 是 M8 第 1 步的工具在"准确的积压 1,000 页、1 万个附件、负载到 26"时量的，与它不同口径，`308eafc6` 上也没有对照（审查 B 的 I2 与过度设计）。
 - **不重量的**："建索引时"（30 万个节点以批量排队、任务在跑时的读，M8 记过至多 908 ms）与"导入 5 万页的清空期间"（1,149 ms）是 M8 第 1 步的工具量的，`BenchmarkSearch` 没有这两个阶段。B1 的尾巴只看回归，为它们另写驱动不值（00 号文档 4.7.1 的"量的范围缩小"）；记录写明沿用 M8 的数、没有重量（2.1 第 2 条，审查 C 的 M5）。
 - **超出时**：照原预算判的三项超了，在 v0.1 修（S4 起，带缩小规模的守卫）；尾巴与体积回归了同样修，没回归维持已知限制（00 号文档 4.7.1；I2-D3）。
@@ -659,6 +661,25 @@ server/tools/perf/
 - **在原规模上再量**：同样的方法、种子与两轮，写出改前改后。
 - **变异表**：每条写出抓住它的测试。
 - **页面树**的改法照 00 号文档 4.7.2 的"结论"：数据一侧多半是分层加载，只有平的形状在渲染上没过多半是只渲染看得见的行；改完照同样的终点再量；P2/S6 排在它之后。两种候选的范围见第 9 节，改法的设计在结论之后另起（00 号文档 4.7.5），不在本文。
+
+### 3.10 S1 实施与审查之后与本文不同之处
+
+S1 照实做的与上面写的不同之处（实施中定的经主持者接受，决定 578；审查改的各有决定号）。上面各节在相应处注了"3.10 第 n 条"，数在 10.1，理由与出处在 [S1 的审查记录](reviews/P4-S1-perf-tools-review.md)。
+
+1. **非重类的词在词一层重抽**（3.2、决定 456 的复述、7.2 第 5 行；审查 C 的 M4、Q1，决定 574）：一个词与前文的末尾拼出查询词就换一个。段与名字都由词拼成，段一层与一串词末尾的核对到不了，修复第 1 轮删了，删了之后同一个种子出同一份语料。抓 7.2 第 5 行本意的是 `共和`、`国度` 的小词表那一格。
+2. **`content_hash`、`byte_size` 由生成器自己算**（3.2；审查 C 的 N3）：与应用同一个算法（内容的 sha256 与字节数），结果相同，没有调应用的函数。
+3. **规模开关的下限**（3.3；决定 576）：
+   - `NW_SCALE_CHANGESETS` 至少 100,000、5 的倍数（审查 A 的 M1）：撤销数组的测试要 n/5 ≥ 1 万个没有条目的变更集；日志测试"rare client"一格：CLI 的变更集 ⌊n/1000⌋ 个，读一页要 101 个、CLI 一格允许 100，100,000–100,995 是 100，101,000 起满 101。
+   - `NW_SCALE_PAGES` 至少 20,000（核对第 1 轮 C 的 M6）：设计的试跑量过、四个守卫都过的规模；更小时两个守卫的正确性断言不随规模（lint 的孤页过 10,003 页才封顶在 10,000，发起的播种在 1,000 页的笔记本里只到 69 个 wanted），先红在正确性上。小于就报错，信息写明下限。
+   - 手跑时 lint 的守卫"界低于 worker"只记、不 `Fatal`（审查 C 的 N2，核对第 1 轮 C 的 N8 第 3 点）：请求不到 10.4 秒的手跑，worker 低于摘要 5.2 秒的界，量照常进行。
+4. **vault 的附件定长**（3.4.3）：条目与解压的推算、核对都是确切的数；全尺寸的 zip 468,514,108 字节。vault 要最深一层的每个文件夹至少一页（审查 B 的 N4）。
+5. **`benchLevels` 泛型、带解析函数，拒绝重复的档位**（3.3 末）。
+6. **驱动的到期**（3.4.4、3.4.5；审查 B 的 M1、M2、M4，核对第 1 轮 B 的 M7、N4；决定 575）：只停发，每个循环发每个请求之前看期限，过了就不发（编辑者只关会话）；排空至多 60 秒（`drive.DefaultDrain`，命令行不可改），`cut` 与 `errors` 分开；`ops` 真移、真改名；`tabs` 到期之后才到时间的读不发。
+7. **六个驱动，另有 `perf prepare` 子命令**（第 0 节、3.4、3.4.4）：建工作区、笔记本与 PAT，PAT 遇 429 每秒重试、至多 60 次；驱动在笔记本不在时建它。
+8. **`stack.sh`**（3.4.1；审查 B 的 M3、N1）：`--env` 写进 `serve.env`；`up` 拒绝非空的目录；serve 退出了就不等。
+9. **采样与 gctrace**（3.4.2；决定 573，审查 B 的 Q1、M5，核对第 1 轮 B 的 N7）：采样逐行记 `anon`、`shmem`、`file`。`file` 含 `shmem`；收得回的页缓存约是 `file − shmem`，收不回的是 `anon + shmem`，三样不能相加。gctrace 认 `GC forced` 那一行，`base_forced` 与 `no_gc_in_window`。
+10. **`transfer`**（3.4.5；审查 B 的 N2、N3）：导出经任务的 `download.url` 下载（`:2824` 本身就是签名地址的接口，不是偏离，写明不带令牌）；另记服务端的时刻。
+11. **SLRU 的名字小写**（3.4.5 的 `editors`，PostgreSQL 18）。
 
 ## 4. 浏览器一侧：`e2e/perf/`（S2）
 
@@ -925,7 +946,7 @@ S2 照实做的与上面写的不同之处（实施中定的经主持者接受�
 | 2 | `308eafc6` 的笔记本列多写一列 | 同上（逐列核对） |
 | 3 | 一个非重类的词少植入一页 | `TestPerfCorpusPlantsTheQueries`（确切的数） |
 | 4 | 词表不去掉含查询词的词 | 同上（核对两份词表） |
-| 5 | 段落拼出了非重类的词也不重抽 | 同上（另以一张相接就拼出查询词的两个词的小词表生成 100 页，数仍等于目标） |
+| 5 | 一个词与前文拼出非重类的词也不换 | 同上（另以一张相接就拼出查询词的两个词的小词表生成 100 页，数仍等于目标） |
 | 6 | `nodes.tsv` 的 `name` 与 `name_key` 两列对调 | `TestPerfCorpusLoadsIntoTheBenchmark`（名字带大写与 `ς`，两列处处不同） |
 | 7 | `name_key` 用小写代替 `shared.TitleKey` | 同上（`ς` 折叠成 `σ`，小写不变） |
 | 8 | 删一个文件夹时不删它下面的页 | 同上（删除的不变式的 SQL） |
@@ -986,7 +1007,7 @@ S2 照实做的与上面写的不同之处（实施中定的经主持者接受�
 
 ### 7.5 CI 的余量
 
-- **S1**：竞态的八份只多编译两个不带标签的小文件与两个毫秒级的测试（第四份）；`test-go-costs-3` 多一行：编译不带竞态的组合根已在这一份里（`Makefile:465` 等），多的是一个新的 testcontainers 库、1,000 页的生成、载入与建索引，本机推断 5–10 秒，7763 上约 15 秒（推断，S1 量）；`server/tools/perf` 的单元测试几秒。`costs-1` 的 `lint-go` 多几个包，十几秒以内（推断）。改到的守卫在默认的规模上用时不变（只改期限与客户端）。S1 的记录写出分支 CI 与合并之后两次 `main` 的 `costs-3` 作业的用时与新那一行的秒数。
+- **S1**：竞态的八份只多编译两个不带标签的小文件与两个毫秒级的测试（第四份）；`test-go-costs-3` 多一行：编译不带竞态的组合根已在这一份里（`Makefile:465` 等），多的是一个新的 testcontainers 库、1,000 页的生成、载入与建索引，本机推断 5–10 秒，7763 上约 15 秒（推断，S1 量）；`server/tools/perf` 的单元测试几秒。`costs-1` 的 `lint-go` 多几个包，十几秒以内（推断）。改到的守卫在默认的规模上用时不变（只改期限与客户端）。S1 的记录写出分支 CI 与合并之后两次 `main` 的 `costs-3` 作业的用时与新那一行的秒数（实际见 10.1"用时"：分支 CI 三次落在三种机型上，都不是 7763）。
 - **S2**：`web` 一项多 `tsc`、oxlint、oxfmt、knip 读的十来个文件，几秒；`e2e` 不变（`auth.ts` 只多一个导出）。
 - **S3**：只改文档，不变。
 - 每个 Step 合并之后两次 `main` 的组合根每份平均在 450 秒之下（00 号文档第 3 节第 11 条），否则照 06-environment 第 4 节挪份。
@@ -1160,13 +1181,13 @@ P4 完成，当且仅当：
      - **`NOTIFY` 一行由 P5/S3 改**（决定 452，即取舍 P4-26）：它不是实测的事（升级 PostgreSQL 大版本时复核），P5/S3 把"M12"的指向改为部署文档；SSE 一行（`v0.1-design.md:1311`，"M12 的部署文档沿用"）同样归 P5/S3（审查 B 的 N3）。
      - **页面树一行在 S2 的文档提交里改**（它的结论在 S2；S2 的文档提交落了），锚点 `M12 实测；不达标时改为分层加载` 在 S2 的提交里断言；S3 的提交断言 00 号文档点名的其余四个锚点（`M12 压测`、`v0.1 全部保留；M12 实测后在 v0.2 设计保留策略`、`配额与负载留给 M12（M7 写的移交）`、`10 万页与 30 万页由 M12 实测`）各恰好出现一次，另五行在 S3 的提交里先找出锚点、同样断言（审查 C 的 N2）。
    - **13.4 第 8 条**的 `进 M12 的性能移交（00-M11 第 232 条）`、`检查的十万页在 M12`，**第 9 条**的 `旧generic返回2000却扫52000的失败和未成功实验仍移交M12`：改成量得的数或已知限制（3.6 的 B7、3.7 第一行），在 S3 的提交里。
-   - **13.4 第 8 条的 lint 那一句在 S1 的文档提交里改**（00 号文档"总体设计的修订"第 25 条；取舍 P4-23；修订核对 B 的 M11）：
+   - **13.4 第 8 条的 lint 那一句在 S1 的文档提交里改**（00 号文档"总体设计的修订"第 25 条；取舍 P4-23；修订核对 B 的 M11；S1 的文档提交落了）：
      - 旧：`例外是十万页摘要的成本用例，请求 6 s、worker 3 s（决定 160）`（`v0.1-design.md:1276`，在 `1ba6c7f6` 上恰好出现一次，S1 的提交断言它）
      - 新：`例外是十万页摘要的成本用例，请求 12 s、worker 6 s（决定 160；M12/P4/S1 起，期限由界推出、断言界低于期限，M12 决定 475）`
      - 第 15 节加一行，同决定 359 那一行的写法：`- <日期>：M12/P4/S1：13.4 第 8 条十万页摘要的成本用例的期限改为请求 12 s、worker 6 s（摘要的墙钟界 5.2 秒原在 3 秒的 worker 之上，轮不到它判；期限由界推出、断言界低于期限）。依据 [00-M12](M12-release/00-M12-design.md) 决定 475 与 [P4/S1 的审查记录](M12-release/reviews/P4-S1-<slug>-review.md)。`
-   - **第 15 节**：S1、S2、S3 的文档提交各加一行（S1 的是上一条）。
+   - **第 15 节**：S1、S2、S3 的文档提交各加一行（S1 的是上一条；S1、S2 的文档提交落了）。
 6. **移交的"处理进展"**各加一行（状态仍是 `open`，收尾时改 `done`）：
-   - S1：`M4-performance.md`："M12/P4/S1（日期，合并见 00-M12 第 12 节）：量的设施进仓库：搜索语料的生成器、四个守卫与按页的日志的规模开关、lint 守卫的 worker 提到界之上、回收站基准的档位开关、`server/tools/perf/` 的驱动、采样与 vault（P4 设计 3.2–3.4）。"
+   - S1：`M4-performance.md`："M12/P4/S1（日期，合并见 00-M12 第 12 节）：量的设施进仓库：搜索语料的生成器、四个守卫与按页的日志的规模开关、lint 守卫的 worker 提到界之上、回收站基准的档位开关、`server/tools/perf/` 的驱动、采样与 vault（P4 设计 3.2–3.4）。"S1 的文档提交落了。
    - S2：`M4-performance.md` 第 7、9、11–13 条，`M7-transfer.md` 第 4、6 条：各自的数与结论（10.2）。第 11、13 条随 4.6 挪到 S3 时，写在 S3 的那一行（10.3；修订核对 C 的 N12）。S2 的文档提交落了（第 11、13 条挪到了 S3）。
    - S3：`M4-performance.md` 其余各条与补记、`M5-performance.md` 第 3 条、`M7-transfer.md` 第 2、5 条、`M8-history.md` 第 2 条：各自的数、结论、已知限制或 v0.2 的去处（10.3）。
 7. **其余的文档**：S3 照实测的经验在 `05-lessons.md` 加条目（例如本机对 7763 之比的读法、gctrace 被访问日志插断）；`06-environment.md` 第 3 节加一句"P4 的实测怎样跑：`server/tools/perf/stack.sh` 与 `cd e2e && pnpm perf`，经 `heavy.sh`，独占机器"。
@@ -1200,13 +1221,50 @@ P4 完成，当且仅当：
 
   `README.md:500`、`:533`、`:540`（写的是"M12真实环境复核""交M12复核"这样的话；00 号文档转述为"M12 实机复核"，原文里没有这几个字）由 P5/S3 照这一节改（00 号文档"文档与代码不符之处"末条；审查 C 的 N3）。总体设计第 14 节的 `NOTIFY` 与 SSE 两行也归 P5/S3（决定 452；第 8 节第 5 条）。
 - **收尾**：v0.2 的移交写 P4 的已知限制（5 万、10 万页的树与分层加载、按页的日志的迁移、搜索的尾巴、病态的删除、改名与 `move` 换算到 7763 的规模、B5 若写进部署要求的那一条等）；M12 的汇报列出上面那几条负责人可能想改判的。
-- **`server/tools/perf/` 与 `e2e/perf/` 留在仓库里**：v0.2 的实测照用；它们不进 CI 的跑，只进编译与 lint（语料的三个测试在 `test-go-costs-3` 里跑）。
+- **`server/tools/perf/` 与 `e2e/perf/` 留在仓库里**：v0.2 的实测照用；驱动与 `e2e/perf/` 不进 CI 的跑；`server/tools/perf` 的单元测试与语料的三个测试在 `test-go-costs-3` 里跑（语料的两个不连库的也在 `short`），别的只进编译与 lint（S1 审查 C 的 M3、N3）。
 
 ## 10. 结果
 
 （实施后补。）
 
 ### 10.1 S1：设施
+
+分支 `m12-p4-s1` 的 20 个提交，从 `5e58e844` 起：实施 8 个（`f092bcd0`…`95f170f7`），6.1 的第 1–8 项；修复第 1 轮 8 个（`18255151`…`e9c9ef15`）；修复第 2 轮 3 个（`9ef5fa2b`…`d12623bb`）；核对第 2 轮之后只加测试的 1 个（`2153782c`）。本机 aarch64、8 vCPU、30 GiB；Go 1.27.4，PostgreSQL 18.7。试跑都经 `heavy.sh`。各项的数与日志在 [S1 的审查记录](reviews/P4-S1-perf-tools-review.md)，与本文不同之处在 3.10。
+
+- **建了的**：
+  - B1 的合成语料：`perf_corpus_test.go`（`!race`）；词表由父提交的仓库文字数出；三个测试在 `test-go-costs-3` 一行，两个不连库的也在 `short`。
+  - 四个守卫与按页的日志的规模开关：组合根与 page 各一个 `perf_scale_test.go`（`guardScaleOf`、`changesetsOf`），三个毫秒级的短测试；手跑的下限是 2 万页与 10 万个变更集（3.10 第 3 条）。
+  - lint 守卫的请求 12 秒、worker 6 秒（决定 475）。
+  - 回收站两个基准的档位开关。
+  - `server/tools/perf/`：`stats`、`sample`、`gctrace`、`vault`、`perf prepare` 与 `client`、六个驱动、`stack.sh`、`doc.go`。
+- **重类的词**（决定 572，照设计不改目标；交给 S3 的那一条在 3.6 的 B1）：`中国`、`ai`、`kernel`、`linux` 四个词在 1,000 页（种子 20261116）上各 50 页、都在正文，3,000 页上 150、150、150、152 页，目标 150（5%）。补放之前自然出现的（审查 A 的探针，种子 20261116、200 本）：3,000 页上 15、58、37、152 页，3 万页上 155、540、381、1,580 页；即 `中国`、`ai`、`kernel` 自然只在约 0.5%、1.9%、1.3% 的页，补放到 5% 的下限（3,000 页上补 135、92、113 页，`中国` 九成是补放的）；`linux` 自然约 5.2–5.4%，一页也没补放。四个都只在约 5% 的页，不是真语料里"最常见"的键。
+- **试跑（6.1 第 9 项）**：`stack.sh up` 之后，每个驱动以最小的参数各跑一次，全部 rc=0。
+  - `bodies`：普通 5 MiB 的读写 p99 约 240 ms；病态读的 503 在客户端 2,006.7 ms，不是早答。
+  - `mcp`：2a–2c 在值的上限处都 200，3 都 400。
+  - `editors`：两人 70 秒保存 68 次，p99 25.2 ms，各换一次会话；每个版本 2,123 字节。
+  - `tabs`：节流之后树读 9 次。
+  - 缩小一百倍的 vault：500 个条目，zip 4,653,718 字节；导入、`ops`、导出，经签名地址下载。
+  - gctrace 读整次的日志：峰值 2,111 MiB，336 次 GC，没有缺号。
+  - `--fsync-off` 起停一次。
+  - 试跑找到四处，改在驱动里：PAT 碰到 `password_user` 的突发（429，重试）；导出的下载是任务给的签名地址（`:2824`，不带令牌）；PostgreSQL 18 的 SLRU 名字是小写；末尾截断的请求另数（之后改成到期只停发，3.10 第 6 条）。
+  - 修复第 1 轮重做了受影响的几项：驱动到期只停发、在途的答完（排空至多 60 秒），截断与失败分开数，审查 B 的病态一轮 k = 4、20 秒 `cut=0 errors=0`；`ops` 真移（56.4 ms）、真改名（vault 69.2 ms，被 35 页链着的页 124.0 ms）；`editors` 保存 70 次 p99 49.2 ms，每个版本 1,820 字节；`stack.sh up` 拒绝用过的目录；serve 起不来时 3 秒放弃。
+  - 修复第 2 轮：每个循环发每个请求之前看期限。真服务端上 `editors -n 2 -for 20s` 树写 19 次、保存 18 次、监视 19 行，`tabs -for 10s` agent 建 9 页、树读 9 次；期限之后除了关会话没有请求（修复之前审查 B 量到期限之后 1.5 ms 发出的一个 `tree-rename`，agent 建 10 页）。
+  - 语料 1,000 页喂给今天的 `BenchmarkSearch` 与 `308eafc6` 的，各一次，不判预算：三份 TSV 的 sha256，两种 schema 只有 `notebooks.tsv` 不同；建索引 391.1 与 383.0 行/秒；最慢的 p99 81.7 与 85.6 ms。
+  - 四个守卫以 `NW_SCALE_PAGES=20000` 各一次：日志带 `scale=`，不判界，都过；批准的播种的发起 344–403 ms、提交 309–388 ms。19,999 页在开头报错。
+  - 3.3 末的反向对照：发起的界压到 1 ms，没设开关时红、设了绿。
+  - `NERVE_BENCH_LOADS=full NERVE_BENCH_ATTACHMENTS=1000` 只建一档。
+- **用时**（7.5；审查 C 的 M1，核对第 2 轮 C 的 N9）：
+  - 新的三个测试本机 2.5、3.6、4.5 秒，那一行包 10.5 秒，略过推断的 5–10 秒。
+  - 分支 CI 的 `costs-3` 三次落在三种机型上，都不是 7763：EPYC 9V45 上新的一行 12.2 秒、`server/tools` 一行 31.3 秒；Xeon Platinum 8370C 上 16.4 与 41.7 秒；8573C 上 16.0 与 47.5 秒（修复第 2 轮加的测试让 drive 包到 15.25 秒）。
+  - 推到 7763（推断，两边都有的行之比 1.52–1.58）：新一行约 19 秒，整个 `costs-3` 多约 30 秒，离作业的 40 分钟时限远。合并之后两次 `main` 的数在 S1 的审查记录。
+  - `short` 多两个语料测试（Xeon 6975P 上多 1.5–4.4 秒）；竞态的第四份多两个毫秒级的测试（560 个顶层测试）；组合根八份的 Test 一步三次都在 450 秒之下（最大 393 秒）。
+- **变异**：
+  - 实施：7.2 的 S1 各行与实施者自己的共 58 条，56 条抓到。两条等价：段落一层的重抽与一串词末尾的核对（own-j、own-k），在词一层重抽之后到不了，修复第 1 轮删了（决定 574）。vault 条目时刻的变异起初活着，补了读回。
+  - 审查 C：从 7.2 抽 20 条都抓到；自加 7 条，`checkWaits` 恒过的那条活下来，修复第 1 轮补了测试。
+  - 审查 B：第一轮自己的变异活下来三处（Quiet 不看 River、`changed()` 不改正文、tabs 不看笔记本与 `tree`），修复第 1 轮补了测试（假 `psql` 要整句 SQL；假服务端记写了同样的正文；间隔之后单独推该滤掉的事件），都红（x13–x18）。核对第 1 轮又写 12 条，活下来 6 条：写者、编辑者、agent 的循环等发请求的 context（y03、y04、y06），`cut_longest` 取最后一个（y07），立即发的读不进 `Track`（y10），读答复体时截断的不记 `cut`（y11）；修复第 2 轮补了测试，六条的对应变异都红（z01–z03、z10–z12）。核对第 2 轮：换会话处的期限检查没有测试（B 的 n1 = C 的 p3），`2153782c` 补。
+  - 修复第 1 轮：27 条，一条起初活着（tabs 到期之后才到时间的读），补了测试之后全抓到。
+  - 修复第 2 轮：15 条（到期之后的请求、守卫的下限与上面的六条）。13 条第一次就抓到；编辑者"tick 与期限同时到"的那一条起初活着，测试改成慢心跳与慢保存轮流之后抓到；`past` 只看 context 的那一条，补了对 `past` 本身的测试之后抓到。
+- **与本文不同之处**：见 3.10。
 
 ### 10.2 S2：浏览器一侧
 
