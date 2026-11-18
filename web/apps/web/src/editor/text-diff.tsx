@@ -344,7 +344,7 @@ function UnifiedDiff({ state, legend, lines, busy }: UnifiedDiffProps) {
  * import (v0.1 design 13.2, item 6).
  */
 const buttonClass =
-  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50";
+  "inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-md border bg-background px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors outline-none hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 aria-disabled:opacity-50";
 
 /** ReadOnlyText is a text in a read-only editor of its own, under its name. */
 function ReadOnlyText({ text, name }: { text: string; name: string }) {

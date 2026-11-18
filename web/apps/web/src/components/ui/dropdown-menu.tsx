@@ -27,7 +27,7 @@ export function DropdownMenuItem({ className, ...props }: ComponentProps<typeof 
   return (
     <Primitive.Item
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground [&_svg]:size-4",
+        "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-inset [&_svg]:size-4",
         className
       )}
       {...props}
@@ -39,7 +39,7 @@ export function DropdownMenuRadioItem({ className, children, ...props }: Compone
   return (
     <Primitive.RadioItem
       className={cn(
-        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground [&_svg]:size-4",
+        "relative flex cursor-default items-center gap-2 rounded-sm py-1.5 pr-2 pl-8 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground focus:ring-2 focus:ring-ring focus:ring-inset [&_svg]:size-4",
         className
       )}
       {...props}

@@ -2,6 +2,7 @@ import type { ApiClient, SearchHit, SearchPage } from "@nervewiki/api-client";
 import type { Page } from "@playwright/test";
 
 import { uploadAsset, utf8 } from "../../fixtures/assets";
+import { focusContrast, setColorScheme } from "../../fixtures/contrast";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -10,7 +11,7 @@ import { search } from "../../fixtures/search";
 import { expect, test } from "../../fixtures/test";
 import { restoreNode } from "../../fixtures/trash";
 import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
-import { resultNames, searchFor, searchResults, searchStatus } from "../../fixtures/wiki-search";
+import { resultNames, searchBox, searchFor, searchResults, searchStatus } from "../../fixtures/wiki-search";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // SE1, full-text search (M8 design 4.12, 4.13, section 9; M8/P5 design
@@ -274,6 +275,35 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   expect(await mark.evaluate((element) => getComputedStyle(element).backgroundColor)).not.toBe("rgba(0, 0, 0, 0)");
   expect(await mark.evaluate((element) => getComputedStyle(element).fontWeight)).toBe("600");
 
+  // What takes the focus shows it, 3:1 at least against the page in either theme (M12/P2/S3; M5-polish 12.4): the
+  // box, its Search, Where to look, and a hit's link, whose outline is the page's own.
+  const submit = page.getByRole("search").getByRole("button", { name: "Search", exact: true });
+  const where = main.getByRole("combobox", { name: "Where to look", exact: true });
+  const focusShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    await searchBox(page).focus();
+    const box = await focusContrast(searchBox(page));
+    expect(box.ratio, `${scheme} ${JSON.stringify(box)}`).toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Tab");
+    await expect(submit).toBeFocused();
+    const button = await focusContrast(submit);
+    expect(button.ratio, `${scheme} ${JSON.stringify(button)}`).toBeGreaterThanOrEqual(3);
+    await title.focus();
+    await page.keyboard.press("Tab");
+    await expect(where).toBeFocused();
+    const select = await focusContrast(where);
+    expect(select.ratio, `${scheme} ${JSON.stringify(select)}`).toBeGreaterThanOrEqual(3);
+    await page.keyboard.press("Tab");
+    const hit = searchResults(page).first().getByRole("link");
+    await expect(hit).toBeFocused();
+    const link = await focusContrast(hit);
+    expect(link.ratio, `${scheme} ${JSON.stringify(link)}`).toBeGreaterThanOrEqual(3);
+    expect(link.indicator, scheme).toMatch(/^outline solid /);
+  };
+  await focusShown("light");
+  await focusShown("dark");
+  await setColorScheme(page, "light");
+
   for (const { q } of finds.slice(1)) {
     // oxlint-disable-next-line no-await-in-loop -- a query at a time, each in the box
     expect((await searchFor(page, q)).status(), q).toBe(200);
@@ -312,6 +342,20 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expectFound("检索", await shownOf(page));
   expect(await page.evaluate(() => (window as unknown as { se1?: boolean }).se1)).toBe(true);
+
+  // Refused, the box has the focus, its ring in the colour of what is wrong, as clear in either theme (12.4).
+  await searchBox(page).fill("x".repeat(300));
+  await searchBox(page).press("Enter");
+  await expect(searchBox(page)).toHaveAttribute("aria-invalid", "true");
+  await expect(searchBox(page)).toBeFocused();
+  const invalidShown = async (scheme: "light" | "dark") => {
+    await setColorScheme(page, scheme);
+    const box = await focusContrast(searchBox(page));
+    expect(box.ratio, `${scheme} ${JSON.stringify(box)}`).toBeGreaterThanOrEqual(3);
+  };
+  await invalidShown("light");
+  await invalidShown("dark");
+  await setColorScheme(page, "light");
 
   // On a phone's width the page fits it: Where to look too, which lists the notebook's long name.
   await page.setViewportSize({ width: 375, height: 800 });
