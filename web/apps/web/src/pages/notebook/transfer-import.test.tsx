@@ -54,7 +54,7 @@ test("an editor imports a zip under a page: the job goes first, the jobs read ag
 
   const shown = await open(user);
   expect(document.activeElement).toBe(within(shown).getByLabelText("Zip archive"));
-  expect(within(shown).getByText("The zip may be at most 512 MB.")).toBeTruthy();
+  expect(within(shown).getByText("The zip may be at most 512 MiB.")).toBeTruthy();
   expect(within(shown).getByText(/^Keep this dialog open while the zip uploads;/u)).toBeTruthy();
   expect(within(shown).getByLabelText("Zip archive").getAttribute("accept")).toBe(".zip,application/zip");
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());

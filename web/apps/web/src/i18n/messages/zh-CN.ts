@@ -156,7 +156,7 @@ export const zhCN: Messages = {
   "source.duplicateBatchNotWritten": "本批操作未写入，前面已经完成的批仍然保留。",
   "source.duplicateImportSkipped": "{path} 已跳过，因为已存在内容相同的来源。",
   "source.historyRestore":
-    "临时步骤也必须遵守来源规则。需要还原正文时，先将页面移到来源区外，还原后再移回。恢复或移回前先处理冲突来源；移回时仍会检查重复。管理员也不能修改来源正文。",
+    "还原与撤销的每一步都要遵守来源规则，不只是最后的结果。需要还原正文时，先将页面移到来源区外，还原后再移回。恢复或移回前先处理冲突来源；移回时仍会检查重复。管理员也不能修改来源正文。",
   "source.historyBackground": "后台撤销分步处理，处理顺序可能与一次撤销不同。请按来源规则手动处理冲突后重试。",
   "page.untitled": "未命名",
   "page.untitledN": "未命名 {n}",

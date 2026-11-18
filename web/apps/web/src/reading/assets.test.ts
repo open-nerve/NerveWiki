@@ -158,7 +158,7 @@ test("the hint and the size are in the reader's language", () => {
     `<a class="nw-asset" href="${address("a1")}" data-nw-size="1536">x.png</a>`
   );
   enhancement(container, { ...context(), t: translator("zh-CN"), locale: "zh-CN" });
-  expect(container.textContent).toBe("x.png （在新标签页打开）（1.5 KB）");
+  expect(container.textContent).toBe("x.png （在新标签页打开）（1.5 KiB）");
 });
 
 test("an attachment that fails to load once the addresses expired reads the view again, once for the page's expiry", () => {

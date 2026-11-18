@@ -166,7 +166,7 @@ export const en = {
   "source.duplicateBatchNotWritten": "This batch was not written; earlier completed batches are kept.",
   "source.duplicateImportSkipped": "{path} was skipped because identical source content already exists.",
   "source.historyRestore":
-    "Temporary steps must also follow the source rules. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
+    "A restore or an undo follows the source rules at every step, not only in what it leaves. To restore content, first move the page outside the source area, restore it, then move it back. Resolve any conflicting source before restoring or moving back; moving back checks for duplicates again. Administrators cannot edit source content either.",
   "source.historyBackground":
     "Background undo processes steps in an order that may differ from one undo. Resolve conflicts under the source rules before trying again.",
   "page.untitled": "Untitled",

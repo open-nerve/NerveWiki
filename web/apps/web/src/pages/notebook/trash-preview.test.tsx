@@ -100,7 +100,7 @@ test("an attachment's preview shows its type and size, to download once restored
 
   expect(await screen.findByRole("heading", { level: 1, name: "a.png" })).toBeTruthy();
   const main = screen.getByRole("main");
-  expect(main.textContent).toContain("Image · 1 KB");
+  expect(main.textContent).toContain("Image · 1 KiB");
   expect(main.textContent).toContain("It can be downloaded once restored.");
   expect(main.querySelector("a[href*='/content']")).toBeNull();
   expect(server.sent.filter((each) => each.startsWith("GET asset"))).toEqual([]);

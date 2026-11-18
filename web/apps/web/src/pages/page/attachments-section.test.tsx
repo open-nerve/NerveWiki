@@ -46,7 +46,7 @@ test("a page's attachments are listed by name, each opening as it is served, wit
     downloaded.getAttribute("target"),
     downloaded.getAttribute("download"),
   ]).toEqual([`/api/v0/assets/${archive.id}/content?sig=1&download=1`, null, "data.zip"]);
-  expect(section.textContent).toContain("1 KB");
+  expect(section.textContent).toContain("1 KiB");
   expect(server.sent).toContain(`GET assets Guide`);
 });
 

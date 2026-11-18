@@ -113,7 +113,7 @@ test("the results list the names' hits, then the contents', each with its kind's
   expect(attachment?.querySelector("svg")?.getAttribute("aria-hidden")).toBe("true");
   expect(attachmentLink.getAttribute("href")).toBe(pagePath(install.id));
   expect(attachment?.textContent).toContain("Plans / Guide / Install");
-  expect(attachment?.textContent).toContain("PDF · 1 KB");
+  expect(attachment?.textContent).toContain("PDF · 1 KiB");
 
   expect(
     within(body as HTMLElement)
@@ -137,7 +137,7 @@ test("the results speak Chinese too", async () => {
   await waitFor(() => expect(document.title).toBe("搜索：数据库 · Lab · Nerve Wiki"));
   const list = await screen.findByRole("list", { name: "搜索结果" });
   expect(statusLine().textContent).toBe("3 条。");
-  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("PDF · 1 KB");
+  expect(within(list).getAllByRole("listitem")[1]?.textContent).toContain("PDF · 1 KiB");
   expect(screen.getByRole("combobox", { name: "在哪里找" })).toBeTruthy();
 });
 

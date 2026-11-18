@@ -139,7 +139,7 @@ test("Markdown uploads preserve the exact UTF-8 bytes at 5 MiB and reject a mult
 
   choose(section, [atLimit, over]);
 
-  await within(section).findByText("The file is larger than this server takes: 5 MB at most.");
+  await within(section).findByText("The file is larger than this server takes: 5 MiB at most.");
   await waitFor(() => expect(server.nodes.some((node) => node.name === "limit")).toBe(true));
   const bytes = new TextEncoder().encode(contentOf(server, "limit"));
   expect(bytes.length).toBe(5_242_880);
