@@ -134,7 +134,8 @@ const PageShell = observer(function PageShell({
   /** Whether the page has gone from the tree, shown still while its edit is unsaved: it has no attachments then. */
   gone: boolean;
 }) {
-  const { slug } = useWorkspace();
+  const workspace = useWorkspace();
+  const { slug } = workspace;
   const pages = usePageTree(notebook);
   const store = useStore();
   const t = useT();
@@ -200,6 +201,7 @@ const PageShell = observer(function PageShell({
       // An edit ended as it opens, the tab signing out, is no failure.
       if (mounted() && !(error instanceof EditEnded)) {
         setRefusal(error);
+        roleTaken(error);
       }
     } finally {
       opening.current = undefined;
@@ -209,12 +211,21 @@ const PageShell = observer(function PageShell({
     }
   }
 
+  // A refusal as forbidden says the account's role was taken away meanwhile: the notebooks are read again, and the
+  // page follows its role (no Edit, the checkboxes disabled, the view not written again; M12/P2/S4, 6.2).
+  function roleTaken(why: unknown) {
+    if (why instanceof ApiError && why.code === "forbidden") {
+      void mutate(["notebooks", workspace.id]).catch(() => undefined);
+    }
+  }
+
   // A task item's toggle refused (M5/P6 design 3.5): page.locked as Edit's refusal is, the note reading who holds
   // the lock and taking the focus from the checkbox, unless the focus has gone elsewhere meanwhile; another refusal
   // above the view. undefined, as a toggle starts, clears it.
   async function toggleRefused(error: unknown): Promise<void> {
     if (!(error instanceof ApiError && error.code === "page.locked")) {
       setRefusal(error);
+      roleTaken(error);
       return;
     }
     const lock = await mutate<EditLock>(["edit-lock", page.id]);

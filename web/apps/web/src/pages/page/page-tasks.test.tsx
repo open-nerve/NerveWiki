@@ -225,6 +225,60 @@ test.each([
   }
 );
 
+/** demoted is Install's server for an editor whose role the notebook's admin took away: its write answers 403. */
+function demoted(write: string) {
+  let notebookReads = 0;
+  const server: ReturnType<typeof pageServer> = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        notebookReads += 1;
+        return json({ data: [server.notebook] });
+      },
+      [write]: () => {
+        server.notebook = { ...server.notebook, role: "reader" };
+        return problem(403, "forbidden");
+      },
+    },
+  });
+  return { server, notebookReads: () => notebookReads };
+}
+
+// M12/P2/S4, 6.2: a role taken away elsewhere shows as a toggle is refused: the notebooks are read again, and the
+// checkboxes follow the role, the view not written again (U7).
+test("a toggle refused as forbidden reads the notebooks again, and with the role gone the checkboxes are disabled, the view not written again", async () => {
+  const { server, notebookReads } = demoted("POST /api/v0/pages/*/toggle-task");
+  await opened("editor", tasks, server);
+  const article = screen.getByRole("article", { name: "Install" });
+  const first = article.firstChild;
+  const [a, b] = boxes();
+  const reads = notebookReads();
+
+  await userEvent.click(a as HTMLElement);
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(boxes().map((box) => box.disabled)).toEqual([true, true]));
+  expect(notebookReads()).toBeGreaterThan(reads);
+  expect(article.firstChild).toBe(first);
+  const [aNow, bNow] = boxes();
+  expect(aNow).toBe(a);
+  expect(bNow).toBe(b);
+});
+
+// M12/P2/S4, 6.2 (P2-23): Edit's refusal is the same root, the same remedy.
+test("Edit refused as forbidden reads the notebooks again: with the role gone, Edit goes", async () => {
+  const { server, notebookReads } = demoted("POST /api/v0/pages/*/edit-sessions");
+  await opened("editor", tasks, server);
+  const reads = notebookReads();
+
+  await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Edit" })).toBeNull());
+  expect(notebookReads()).toBeGreaterThan(reads);
+  expect(boxes().map((box) => box.disabled)).toEqual([true, true]);
+});
+
 test("a reader's checkboxes stay disabled", async () => {
   const { server } = await opened("reader");
 
