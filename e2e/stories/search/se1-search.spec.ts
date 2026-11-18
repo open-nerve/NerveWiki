@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { uploadAsset, utf8 } from "../../fixtures/assets";
 import { focusContrast, setColorScheme, textContrast } from "../../fixtures/contrast";
 import { mcpClient, resultOf } from "../../fixtures/mcp";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
@@ -248,7 +249,7 @@ test("SE1 (MCP): an agent finds a notebook's pages by their titles and contents 
   expectFound("检索", mcpFoundOf(await searchOf("检索")), { marked: false });
 });
 
-test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored; on a phone's width the page fits", async ({
+test("SE1 (page): searched from the left column's box, each find is listed, its terms marked and its count said, the title taking the focus; gone back to at once, the search before is shown; an attachment found opens on its page, its row taking the focus; a page deleted is listed no more as the same tab searches again, and again once restored", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -372,17 +373,29 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   await invalidShown("light");
   await invalidShown("dark");
   await setColorScheme(page, "light");
-
-  // On a phone's width the page fits it: Where to look too, which lists the notebook's long name.
-  await page.setViewportSize({ width: 375, height: 800 });
-  const scope = main.getByRole("combobox", { name: "Where to look", exact: true });
-  await expect(scope.getByRole("option", { name: notebookName, exact: true })).toHaveCount(1);
-  const width = await page.evaluate(() => ({
-    window: document.documentElement.clientWidth,
-    page: document.documentElement.scrollWidth,
-  }));
-  const placed = await scope.boundingBox();
-  expect(width.window).toBe(375);
-  expect(width.page).toBeLessThanOrEqual(width.window);
-  expect((placed?.x ?? 0) + (placed?.width ?? width.window + 1)).toBeLessThanOrEqual(width.window);
 });
+
+// On a phone's width the results keep to the screen, in Chromium and in WebKit (@narrow): Where to look shows the
+// notebook searched, whose name is as long as the select is wide. WebKit counted the text of the option a select
+// shows, as long as it is, in the page's width: 704 at 375 (M12/P2/S3; M5-polish 33.1).
+test(
+  "SE1 (page): at 375 wide the results keep to the screen, Where to look too, which lists the notebook's long name",
+  { tag: "@narrow" },
+  async ({ api, signedInPage }, testInfo) => {
+    const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+    const { notebook, storage } = await written(api, pat, workspace.slug);
+    const page = await signedInPage(tokens);
+    const main = page.getByRole("main");
+    await goto(page, wikiPagePath(workspace.slug, notebook.id, storage.id));
+    await expect(pageHeading(page, "Storage")).toBeVisible();
+    expect((await searchFor(page, "检索")).status()).toBe(200);
+    await expect(main.getByRole("heading", { level: 1, name: "Search “检索”", exact: true })).toBeVisible();
+    await expect(searchStatus(page)).toHaveText("Results: 1.");
+
+    await page.setViewportSize({ width: phoneWidth, height: 800 });
+    const scope = main.getByRole("combobox", { name: "Where to look", exact: true });
+    await expect(scope.getByRole("option", { name: notebookName, exact: true })).toHaveCount(1);
+    await expect(scope).toHaveValue(notebook.id);
+    await expectFits(page, scope.locator("xpath=.."), searchResults(page).first());
+  }
+);
