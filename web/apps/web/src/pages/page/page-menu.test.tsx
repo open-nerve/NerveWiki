@@ -1,5 +1,6 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { RouteObject } from "react-router";
 import { expect, test } from "vitest";
 
 import { notebookJSON, problem } from "../../test/fakes";
@@ -8,6 +9,9 @@ import { wrote } from "../../test/history-server";
 import { guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { pageEditor } from "../../test/page-editor";
 import { renderApp } from "../../test/render";
+import { routes } from "../../app/routes";
+import { ExportDialog } from "../notebook/export-dialog";
+import { useNotebook } from "../notebook/notebook-layout";
 
 // A page's menu beside its title: Export this page (M7/P5 design 4.5), This page's history (M8/P3 design 4.5).
 
@@ -58,6 +62,44 @@ test.each([
     expect(await screen.findByRole("alertdialog", { name })).toBeTruthy();
   }
 );
+
+/** ExportProbe holds the export's dialog of Guide open in its notebook, as the page's menu does. */
+function ExportProbe() {
+  return (
+    <ExportDialog
+      notebook={useNotebook()}
+      page={guide}
+      held={{ open: true, onOpenChange: () => {}, onClosed: () => {} }}
+      onStarted={() => {}}
+    />
+  );
+}
+
+/** withProbe is the app's routes with the probe at a notebook's export-probe. */
+function withProbe(entries: RouteObject[]): RouteObject[] {
+  return entries.map((entry) =>
+    entry.index === true
+      ? entry
+      : entry.path === "notebooks/:id"
+        ? { ...entry, children: [...(entry.children ?? []), { path: "export-probe", Component: ExportProbe }] }
+        : entry.children === undefined
+          ? entry
+          : { ...entry, children: withProbe(entry.children) }
+  );
+}
+
+// The page's menu shows once the tree is read (PageLayout), so a probe opens the dialog for Guide, which has
+// Install under it, with the tree not read: the dialog says its subpages, as the page may have some (19.1).
+test("the tree not read, the export of a page says its subpages, as it may have some", async () => {
+  const server = jobsServer();
+  server.nodesDown = true;
+  renderApp(`/lab/notebooks/${notebookJSON.id}/export-probe`, server.app, { routes: withProbe(routes) });
+
+  expect(await screen.findByRole("alertdialog", { name: "Export the page Guide and its subpages?" })).toBeTruthy();
+  // The tree's read failed meanwhile: still so.
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  expect(screen.getByRole("alertdialog", { name: "Export the page Guide and its subpages?" })).toBeTruthy();
+});
 
 test("the export cancelled, the focus goes back to the menu, the page still shown", async () => {
   const server = jobsServer();
