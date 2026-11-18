@@ -203,6 +203,61 @@ test("signing out as a pasted file uploads asks nothing", async () => {
   expect(screen.queryByRole("alertdialog")).toBeNull();
 });
 
+// What leaving asks for is the editor's own uploads to this page still going (18.1): not the section's, which are not
+// inserted anyway; not one refused at once; not another page's.
+test("leaving as the section's upload goes, which is not inserted anyway, asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user } = await editing(server);
+  const section = await attachments();
+  fireEvent.change(picker(section), { target: { files: [new File(["pdf"], "spec.pdf")] } });
+  await waitFor(() => expect(server.sent).toContain("UPLOAD spec.pdf under Guide"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  act(() => server.release());
+});
+
+test("leaving once a file pasted was refused at once asks nothing: it does not go", async () => {
+  const server = pageServer({ nodes });
+  const { user, view, content } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["# n"], "notes.md")]);
+  await waitFor(() => expect(uploadsBy(content)?.textContent).toContain("notes.md"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+test("leaving another page's edit as a file pasted into this one, left, still uploads asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave before the files are inserted?" })).getByRole(
+      "button",
+      { name: "Leave" }
+    )
+  );
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await pageEditor();
+
+  await user.click(within(tree()).getByRole("link", { name: "Guide" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  act(() => server.release());
+});
+
 test("a file without an extension uploads, and is not inserted: the editor says so, shown and unseen", async () => {
   const server = pageServer({ nodes });
   const { view, content } = await editing(server);
