@@ -67,6 +67,7 @@ function editing(
       return Promise.resolve(counted);
     },
     uploadAsset: () => Promise.reject(new Error("no uploads")),
+    refuses: () => false,
   };
   const view = new EditorView({
     state: EditorState.create({

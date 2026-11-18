@@ -60,6 +60,23 @@ test("a file pasted uploads as the page's attachment, its row by the editor, and
   await waitFor(() => expect(uploadsBy(content)).toBeUndefined());
 });
 
+test("a Markdown file pasted over a selection keeps it: its row by the editor says why", async () => {
+  const server = pageServer({ nodes });
+  const { view, content } = await editing(server);
+  const before = view.state.doc.toString();
+  view.dispatch({ selection: { anchor: 0, head: before.length } });
+
+  paste(view, [new File(["# n"], "notes.md")]);
+
+  await waitFor(() =>
+    expect(uploadsBy(content)?.textContent).toContain(
+      "A Markdown file is a page: zip it and import it from the notebook's settings."
+    )
+  );
+  expect(view.state.doc.toString()).toBe(before);
+  expect(server.sent.filter((line) => line.startsWith("UPLOAD"))).toEqual([]);
+});
+
 test("a file without an extension uploads, and is not inserted: the editor says so, shown and unseen", async () => {
   const server = pageServer({ nodes });
   const { view, content } = await editing(server);

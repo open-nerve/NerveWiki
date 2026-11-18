@@ -32,6 +32,21 @@ export type UploadRefusal =
 export type UploadResult = { kind: "asset"; asset: Asset } | { kind: "page"; page: Page };
 
 /**
+ * refusalOf is why file is not sent as an attachment by the name fixed from it (untitled for one of nothing): a
+ * page's file, or one larger than maxBytes; undefined for one that goes. The editor asks it before a paste replaces
+ * its selection (M12/P2/S5, 18.2).
+ */
+export function refusalOf(file: File, untitled: string, maxBytes: number | undefined): UploadRefusal | undefined {
+  if (isPageName(fixedName(file.name, untitled))) {
+    return { refused: "page-file" };
+  }
+  if (maxBytes !== undefined && file.size > maxBytes) {
+    return { refused: "too-large", max: maxBytes };
+  }
+  return undefined;
+}
+
+/**
  * CancelledLate is why an upload cancelled shows again: the server had the
  * whole file by then, and made the attachment file, which the tree read
  * again lists (M12/P2/S5, 16.11).
@@ -262,11 +277,8 @@ export class AssetStore {
     return files.map((file) => {
       const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file, terms.fromEditor);
       this.uploads.push(upload);
-      if (isPageName(upload.name)) {
-        upload.failure = { refused: "page-file" } satisfies UploadRefusal;
-      } else if (terms.maxBytes !== undefined && file.size > terms.maxBytes) {
-        upload.failure = { refused: "too-large", max: terms.maxBytes } satisfies UploadRefusal;
-      } else {
+      upload.failure = refusalOf(file, untitled, terms.maxBytes);
+      if (upload.failure === undefined) {
         if (this.generation.aborted) {
           upload.cancel();
         }

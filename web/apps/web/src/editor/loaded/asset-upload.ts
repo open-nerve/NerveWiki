@@ -94,8 +94,11 @@ export function pastedName(file: File, now: Date): string {
  *
  * - A paste of files only, no text (cells copied from a spreadsheet hold
  *   both: their text is pasted), goes where the selection is, which it
- *   replaces; an image without a name of its own is named as Obsidian
- *   names it (pastedName).
+ *   replaces when one of them is sent (not a page's file, nor one too
+ *   large: context.refuses) and an embed can go where the selection was,
+ *   as the content is once it has gone; otherwise the selection stays
+ *   (M12/P2/S5, 18.2). An image without a name of its own is named as
+ *   Obsidian names it (pastedName).
  * - A drop of files from outside the page goes where it is dropped (the
  *   editor shows where as they are dragged); a drag started in the page (an image dragged carries a file in Chromium), and one of
  *   pages' files (.md) only, are CodeMirror's, as is one that holds no
@@ -146,7 +149,9 @@ export const assetUpload: Build = (context, controls) => {
           const now = new Date();
           const named = files.map((file) => new File([file], pastedName(file, now), { type: file.type }));
           const { from, to } = view.state.selection.main;
-          if (from !== to && named.length > 0) {
+          // The selection goes only for what takes its place: a file that goes, its embed where it can go once the
+          // selection is gone (M12/P2/S5, 18.2). Kept, the files go all the same, their rows and the editor saying why.
+          if (from !== to && named.some((file) => !context.refuses(file)) && takesEmbed(view.state, from, to)) {
             view.dispatch({ changes: { from, to }, selection: { anchor: from }, userEvent: "delete.cut" });
           }
           take(view, from, named, folders);
@@ -232,6 +237,11 @@ function embedAt(state: EditorState, place: number, link: string, before: string
   }
   const after = before !== undefined && state.sliceDoc(place - before.length, place) === before;
   return { insert: (after ? "\n" : "") + embedOf(link) };
+}
+
+/** takesEmbed tells whether an embed can go at from once the content from from to to is gone. */
+function takesEmbed(state: EditorState, from: number, to: number): boolean {
+  return "insert" in embedAt(state.update({ changes: { from, to } }).state, from, "x.png", undefined);
 }
 
 /** How many places have been opened: each its number. */

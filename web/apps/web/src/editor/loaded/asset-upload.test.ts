@@ -55,6 +55,8 @@ function editing(
       new Promise((answer, fail) => {
         going.push({ file, answer, fail });
       }),
+    // As the store refuses before sending: a page's file.
+    refuses: (file) => file.name.endsWith(".md"),
   };
   const { controls, close } = fakeControls();
   const parent = document.createElement("div");
@@ -164,6 +166,59 @@ test("files pasted upload, and their embeds go where the selection was, in their
   going[0]?.answer(attachment("Pasted image 1.png"));
   await settle();
   expect(text()).toBe("> See it ![[Pasted image 1.png]]\n![[data.csv]]that .");
+});
+
+// M12/P2/S5, 18.2: a selection is replaced only by what will take its place.
+test("a paste of files all refused before they go keeps the selection: nothing would take its place", () => {
+  const { view, going, text } = editing("See it here.", { anchor: 7, head: 11 });
+
+  expect(paste(view, clipboard([new File(["# n"], "notes.md")]))).toBe(true);
+
+  expect(text()).toBe("See it here.");
+  expect(going.map(({ file }) => file.name)).toEqual(["notes.md"]);
+});
+
+test("a quoted value selected in a frontmatter, whose quotes would go with it, is kept: the file goes, and is said not inserted (Codex M7 review fix check A2-Q1)", async () => {
+  const doc = "---\nimage: 'old.png'\n---\nBody";
+  const { view, going, controls, text } = editing(doc, {
+    anchor: doc.indexOf("'old"),
+    head: doc.indexOf(".png'") + ".png'".length,
+  });
+
+  paste(view, clipboard([new File(["b"], "b.png")]));
+  expect(text()).toBe(doc);
+  going[0]?.answer(attachment("b.png"));
+  await settle();
+
+  expect(text()).toBe(doc);
+  expect(told(controls).at(-1)).toBe(
+    "b.png uploaded, not inserted: in the frontmatter an embed goes just after a property value's opening quote."
+  );
+});
+
+test("a value selected inside its quotes is replaced by the embed", async () => {
+  const doc = "---\nimage: 'old.png'\n---\nBody";
+  const { view, going, text } = editing(doc, {
+    anchor: doc.indexOf("old"),
+    head: doc.indexOf(".png'") + ".png".length,
+  });
+
+  paste(view, clipboard([new File(["b"], "b.png")]));
+  going[0]?.answer(attachment("b.png"));
+  await settle();
+
+  expect(text()).toBe("---\nimage: '![[b.png]]'\n---\nBody");
+});
+
+test("a whole content selected, its frontmatter's lines with it, is replaced by the embed: where it goes is judged once the selection is gone", async () => {
+  const doc = "---\nimage: 'old.png'\n---\nBody";
+  const { view, going, text } = editing(doc, { anchor: 0, head: doc.length });
+
+  paste(view, clipboard([new File(["b"], "b.png")]));
+  going[0]?.answer(attachment("b.png"));
+  await settle();
+
+  expect(text()).toBe("![[b.png]]");
 });
 
 test("a paste with text, or without files, is CodeMirror's; so is one into a read-only editor", () => {
