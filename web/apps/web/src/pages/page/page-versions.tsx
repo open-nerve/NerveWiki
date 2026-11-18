@@ -93,6 +93,7 @@ export const PageVersions = observer(function PageVersions({
   return (
     <PanelSection title={t("version.list")} summaryRef={summary}>
       <p className="text-xs text-muted-foreground">{t("version.listHint")}</p>
+      <p className="text-xs text-muted-foreground">{t("version.kept")}</p>
       {versions.length > 0 && (
         <ul aria-label={t("version.list")} className="space-y-2 text-sm">
           {versions.map((version) => {

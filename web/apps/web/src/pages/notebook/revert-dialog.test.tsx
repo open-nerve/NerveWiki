@@ -444,6 +444,23 @@ test.each([
   }
 );
 
+test("in Chinese, the undo of a change of a thousand nodes or more says 1,000+ of them, as the history does", async () => {
+  const user = userEvent.setup();
+  const { server } = reworked();
+  const big = server.log("big", { changes: [wrote(guide, 1, 2)], counts: { nodes: 1000, contents: 999 } });
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(changesetPath(big.id), server.app);
+
+  await user.click(await screen.findByRole("button", { name: "撤销这次改动" }));
+
+  expect(
+    await screen.findByRole("alertdialog", {
+      name: "撤销这次改动？",
+      description: /^1,000\+ 个节点与 999 篇正文回到这次改动之前，/u,
+    })
+  ).toBeTruthy();
+});
+
 // M8/P3B fix check 1, N1: the server finds a version the purge took before it finds nothing to undo.
 test("a changeset a version of which the purge took is refused as trimmed, though its undo would change nothing", async () => {
   const user = userEvent.setup();

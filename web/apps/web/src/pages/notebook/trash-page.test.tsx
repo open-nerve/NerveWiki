@@ -84,6 +84,12 @@ test("the trash lists its items newer first, each by its name, leading to its pr
   expect((deep as HTMLElement).textContent).toContain("Can be restored until Dec 3, 2026, 7:01 AM");
   expect((deep as HTMLElement).textContent).toContain("Pages: 1, attachments: 0");
   expect((deep as HTMLElement).textContent).toContain("Restores under “Install”");
+  // Nothing in the trash is deleted for good by hand: the system does it past an item's time (M12/P2/S2, H4).
+  expect(
+    screen.getByText(
+      "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good."
+    )
+  ).toBeTruthy();
   // When it was deleted, in full as its title.
   expect(
     within(deep as HTMLElement)
@@ -145,6 +151,7 @@ test("in Chinese, the trash says the notebook's top level for where an item was 
     "恢复到笔记本的顶层：原上级页面在回收站里",
   ]);
   expect(listed[1]?.textContent).toContain("原位置：笔记本的顶层");
+  expect(screen.getByText("这里的项不能手动永久删除：一项过了可以恢复的期限之后，由系统永久删除。")).toBeTruthy();
 });
 
 test("an empty trash says so", async () => {
@@ -152,6 +159,11 @@ test("an empty trash says so", async () => {
 
   expect(await screen.findByText("The trash is empty.")).toBeTruthy();
   expect(screen.queryByRole("list", { name: "Trash" })).toBeNull();
+  expect(
+    screen.getByText(
+      "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good."
+    )
+  ).toBeTruthy();
 });
 
 test("a writer's Restore names the item by where it was; items of one name and place each by when it was deleted too, their links as well; one of the name elsewhere not", async () => {

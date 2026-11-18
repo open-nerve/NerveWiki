@@ -113,8 +113,14 @@ export const HistoryFilters = observer(function HistoryFilters({
   const ids = { actor: useId(), client: useId(), ingest: useId() };
   const mcps = read.map((changeset) => changeset.client).filter((client) => client.startsWith("mcp:"));
   const shown = [...new Set([...clients, ...mcps, ...(filter.client === "" ? [] : [filter.client])])];
+  // The node is a page or an attachment (the contract's page_id is either): said as what it is, once the tree is read.
   const node = filter.page === "" ? undefined : pages.nodes?.find((each) => each.id === filter.page);
-  const page = node?.name ?? (pages.nodes === undefined ? "…" : t("history.pageDeleted"));
+  const label =
+    node !== undefined
+      ? t(node.kind === "asset" ? "history.attachment" : "history.page", { name: node.name })
+      : pages.nodes === undefined
+        ? "…"
+        : t("history.nodeDeleted");
   return (
     <div className="flex flex-wrap items-end gap-4">
       <div className="space-y-2">
@@ -159,27 +165,27 @@ export const HistoryFilters = observer(function HistoryFilters({
           <option value="1">{t("history.onlyIngest")}</option>
         </NativeSelect>
       </div>
-      {filter.page !== "" && <PageFilter name={page} remove={() => choose({ ...filter, page: "" })} left={left} />}
+      {filter.page !== "" && <PageFilter label={label} remove={() => choose({ ...filter, page: "" })} left={left} />}
     </div>
   );
 });
 
 /**
- * PageFilter is the page the history is filtered by, by name, with Remove
- * (remove), which, gone with the focus, gives it away (left).
+ * PageFilter is the node the history is filtered by, as label says it, with
+ * Remove (remove), which, gone with the focus, gives it away (left).
  */
-function PageFilter({ name, remove, left }: { name: string; remove: () => void; left: () => void }) {
+function PageFilter({ label, remove, left }: { label: string; remove: () => void; left: () => void }) {
   const t = useT();
   const button = useRef<HTMLButtonElement>(null);
   useFocusLeaving(button, left);
   return (
     <p className="flex h-9 items-center gap-2 rounded-md border px-3 text-sm">
-      <span className="break-words">{t("history.page", { name })}</span>
+      <span className="break-words">{label}</span>
       <Button
         ref={button}
         variant="ghost"
         className="h-7 px-2 text-xs"
-        aria-label={t("history.removePageLabel", { name })}
+        aria-label={t("history.removeFilterLabel", { filter: label })}
         onClick={remove}
       >
         {t("history.removePage")}

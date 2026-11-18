@@ -256,6 +256,7 @@ export const en = {
   "version.unchanged": "The page is the same as this version: nothing changed.",
   "version.gone": "The page is no longer there: deleted, or out of your reach. Nothing was restored.",
   "version.restored": "Restored version {revision}.",
+  "version.kept": "No version can be deleted on its own, by hand or by the system: the page keeps every one.",
   "trash.title": "Trash",
   "trash.hint":
     "Deleted pages and attachments, each with what was deleted with it, until they can no longer be restored.",
@@ -306,6 +307,9 @@ export const en = {
   "trash.backgroundNotStarted": "Restoring “{name}” in the background did not start: you can try again.",
   "trash.backgroundUnknown":
     "Whether restoring “{name}” in the background started is not known: the jobs could not be read.",
+  "trash.notInTrashUnknown": "This is not in the trash.",
+  "trash.purge":
+    "Nothing here can be deleted for good by hand: after an item can no longer be restored, the system deletes it for good.",
   "index.title": "Directory",
   "index.type": "Type",
   "index.tag": "Tag",
@@ -434,9 +438,7 @@ export const en = {
   "history.client": "Client",
   "history.everyClient": "Every client",
   "history.page": "Page: {name}",
-  "history.pageDeleted": "a deleted page",
   "history.removePage": "Remove",
-  "history.removePageLabel": "Remove the filter “Page: {name}”",
   "history.listed": "Listed: {count}.",
   "history.listedMore": "Listed: {count}, and more.",
   "history.badFilters": "These filters cannot be read: the address has one this history does not take.",
@@ -521,6 +523,9 @@ export const en = {
   "history.backgroundFinding": "Whether undoing it in the background started is not known: reading the jobs again…",
   "history.backgroundNotStarted": "Undoing it in the background did not start: you can try again.",
   "history.backgroundUnknown": "Whether undoing it in the background started is not known: the jobs could not be read.",
+  "history.attachment": "Attachment: {name}",
+  "history.nodeDeleted": "A deleted page or attachment",
+  "history.removeFilterLabel": "Remove the filter “{filter}”",
   "search.form": "Search “{workspace}”",
   "search.field": "Search terms",
   "search.submit": "Search",

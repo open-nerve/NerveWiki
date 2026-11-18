@@ -186,10 +186,25 @@ test("an address of no node's id is no page, and reads nothing", async () => {
 
 test("a node of another notebook no longer in the trash is no page of this one's, once the tree read has it not", async () => {
   const other = "0199a2b4-0000-7000-8000-000000000777";
+  let open!: () => void;
+  const tree = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const holder: { server?: ReturnType<typeof pageServer> } = {};
   const { server } = trashed("admin", {
     [`GET /api/v0/nodes/${other}/trash-item`]: () => problem(409, "page.not_in_trash"),
+    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
+      await tree;
+      return json({ data: holder.server?.nodes ?? [] });
+    },
   });
+  holder.server = server;
   renderApp(previewPath(other), server.app);
+
+  // The tree not read yet, it may be this notebook's node, restored, or another's: it says neither.
+  expect(await screen.findByText("This is not in the trash.")).toBeTruthy();
+  expect(screen.queryByText("This is no longer in the trash.")).toBeNull();
+  act(() => open());
 
   expect(await screen.findByRole("heading", { name: "Page not found" })).toBeTruthy();
 });
@@ -301,6 +316,7 @@ test("a restore from the preview whose own event reads the item again, no longer
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(screen.getByRole("article", { name: "Install" })).toBeTruthy();
   expect(screen.queryByText("This is no longer in the trash.")).toBeNull();
+  expect(screen.queryByText("This is not in the trash.")).toBeNull();
   tree.waits = undefined;
   act(() => open());
 
@@ -366,7 +382,8 @@ test.each([
       server.item.expired = true;
     },
     refusal: "“Install” can no longer be restored: its time in the trash is over.",
-    text: "This can no longer be restored: its time in the trash is over.",
+    // The refusal above says it: the item's own sentence would say it again (M12/P2/S2, 22.12).
+    text: undefined,
   },
 ])(
   "a restore from the preview of an item $meanwhile says why, and what became of it, the trash's title taking the focus, described by the refusal",
@@ -379,10 +396,14 @@ test.each([
 
     await user.click(restore);
 
-    expect(await screen.findByText(text)).toBeTruthy();
+    const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+    if (text !== undefined) {
+      expect(await screen.findByText(text)).toBeTruthy();
+    } else {
+      expect(screen.queryByText("This can no longer be restored: its time in the trash is over.")).toBeNull();
+    }
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toBe(refusal);
-    const heading = screen.getByRole("heading", { level: 1, name: "Trash" });
     await waitFor(() => expect(document.activeElement).toBe(heading));
     expect(heading.getAttribute("aria-describedby")).toBe(alert.id);
     await waitFor(() => expect(document.title).toBe("Trash · Plans · Nerve Wiki"));
@@ -428,17 +449,25 @@ test("a refusal from the preview is not said once the item is gone for another r
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("a node no longer in the trash, the tree not read, says so, without a way to it", async () => {
-  const { server } = trashed();
-  server.restoreElsewhere(install.id);
-  server.nodesDown = true;
-  renderApp(previewPath(install.id), server.app);
+test.each([
+  ["en", "This is not in the trash.", "This is no longer in the trash.", "Open it", "Page not found"],
+  ["zh-CN", "它不在回收站里。", "它已不在回收站里。", "打开它", "页面不存在"],
+] as const)(
+  "a node not in the trash, the tree not read, says it is not there, neither that it no longer is nor a way to it, in %s",
+  async (locale, says, longer, openIt, notFound) => {
+    const { server } = trashed();
+    server.restoreElsewhere(install.id);
+    server.nodesDown = true;
+    server.app.preferences.setLocale(locale);
+    renderApp(previewPath(install.id), server.app);
 
-  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
-  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
-  expect(screen.queryByRole("heading", { name: "Page not found" })).toBeNull();
-  expect(screen.queryByRole("link", { name: "Open it" })).toBeNull();
-});
+    expect(await screen.findByText(says)).toBeTruthy();
+    expect(screen.queryByText(longer)).toBeNull();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    expect(screen.queryByRole("heading", { name: notFound })).toBeNull();
+    expect(screen.queryByRole("link", { name: openIt })).toBeNull();
+  }
+);
 
 // M8/P2B fix check 1, N1 (K1): made a member by others, the redirect leaves the focus where the reader has it.
 test("a node made a member of another item by others while its preview shows goes to that item's preview, which says why, the focus left where the reader has it", async () => {
