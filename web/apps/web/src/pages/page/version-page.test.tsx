@@ -87,6 +87,22 @@ test("a version shows where its page is, its revision, when it was written, by w
   expect(server.sent).toContain("GET version view Install 4");
 });
 
+test("in Chinese, a link of a version's view to a page that is not there says the view is read only", async () => {
+  const user = userEvent.setup();
+  const server = installed();
+  server.app.preferences.setLocale("zh-CN");
+  server.versionViews.set(`${install.id} 4`, {
+    html: '<p><a class="nw-unresolved" data-nw-target="Nowhere">Nowhere</a></p>',
+    revision: 4,
+    assets_expire_at: null,
+  });
+  renderApp(versionPath(install.id, 4), server.app, { enhancements });
+
+  await user.click(await screen.findByRole("button", { name: "Nowhere" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "「Nowhere」不存在" });
+  expect(within(dialog).getByText("没有这个名称的页面或附件。这是只读的视图，不从它的链接新建页面。")).toBeTruthy();
+});
+
 test("a link of a version's view to a page that is not there says so, offering no page to create, and asks the server nothing", async () => {
   const user = userEvent.setup();
   const server = installed();

@@ -80,6 +80,12 @@ test.each([
   expect(failureText("rollback", failure, translator("zh-CN"))).toBe(says);
 });
 
+test("a revert the purge took some or all of says so in Chinese too", () => {
+  expect(failureText("revert", "changeset_trimmed", translator("zh-CN"))).toBe(
+    "这次改动已有部分或全部被清理，不能再撤销。"
+  );
+});
+
 test("a revert one of whose parts done at once is past a batch says so in Chinese too", () => {
   expect(failureText("revert", "revert_too_large", translator("zh-CN"))).toBe(
     "撤销中必须一次做完的一段太大，一批写不下（它带回的页、附件、历史或链接）。在它之前撤销的部分留着。"

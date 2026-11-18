@@ -166,11 +166,11 @@ test("to a reader, a link says its page is not there; to anyone, an embed and an
   }
 });
 
-test("to a reader in Chinese, a link to a name with an extension says neither a page nor an attachment has it; so does an embed", async () => {
+test("to a reader in Chinese, a link to a name with an extension says neither a page nor an attachment has it; so do an embed and an image", async () => {
   const server = pageServer({ role: "reader" });
   server.app.preferences.setLocale("zh-CN");
   server.views.set(guide.id, {
-    html: `<p>${linkTo("q.png")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")}</p>`,
+    html: `<p>${linkTo("q.png")} ${linkTo("E", "E", "nw-wikilink nw-embed nw-unresolved")} <span class="nw-image">pic ${linkTo("p.png", "p.png", "nw-unresolved")}</span></p>`,
     revision: 1,
     assets_expire_at: null,
   });
@@ -178,6 +178,7 @@ test("to a reader in Chinese, a link to a name with an extension says neither a 
   const texts = {
     "q.png": "没有这个名称的页面或附件。笔记本的编辑者可以从这条链接新建它。",
     E: "没有这个名称的页面或附件。嵌入只显示已有的页面或附件，不新建。",
+    "p.png": "没有这个名称的页面或附件。图片只显示已有的内容，不新建任何东西。",
   };
   for (const [target, text] of Object.entries(texts)) {
     // oxlint-disable-next-line no-await-in-loop -- one dialog after another

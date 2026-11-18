@@ -440,6 +440,22 @@ test("a reader of an LLM Wiki is not promised a page that a link may not create"
   ).toBeTruthy();
 });
 
+test("in Chinese, a reader of an LLM Wiki is not promised a page that a link may not create", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ role: "reader", mode: "llm_wiki", sourceRootId: guide.id });
+  server.app.preferences.setLocale("zh-CN");
+  server.contents.set(install.id, { content: "[[Other page]]\n", revision: 1 });
+  server.views.set(install.id, {
+    html: '<p><a class="nw-wikilink nw-unresolved" data-nw-target="Other page">Other page</a></p>',
+    revision: 1,
+    assets_expire_at: null,
+  });
+  renderApp(pagePath(install.id), server.app, { enhancements: [unresolvedLinks] });
+  await user.click(await screen.findByRole("button", { name: "Other page" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "「Other page」不存在" });
+  expect(within(dialog).getByText("没有这个名称的页面或附件。笔记本的编辑者也许可以从这条链接新建它。")).toBeTruthy();
+});
+
 test.each([notes])("a source's unresolved link may create another page under $name", async (parent) => {
   const user = userEvent.setup();
   const server = pageServer({ role: "editor", mode: "llm_wiki", sourceRootId: guide.id });
