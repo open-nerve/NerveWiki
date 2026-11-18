@@ -682,6 +682,87 @@ test("refused, as the jobs read again show an import under way, the focus stays 
   expect(document.activeElement).toBe(confirm);
   await user.tab();
   expect(shown.contains(document.activeElement)).toBe(true);
+  // The refusal answers the press; the import under way it is about is not said again beside it (M12/P2/S5, 20.2).
+  expect(
+    within(shown)
+      .getAllByRole("alert")
+      .map((alert) => alert.textContent)
+  ).toEqual([
+    "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
+  ]);
+});
+
+test("refused for another's import, then pressed again, says the standing one once the answer is not a refusal", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  const server = jobsServer({
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  expect(await screen.findByText("No jobs yet.")).toBeTruthy();
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+  const other = underWay(jobJSON(9, { kind: "import", name: "Other.zip" }), 0, 0);
+  server.jobs = [other];
+  answers[0]?.(problem(409, "transfer.busy"));
+  const confirm = await within(shown).findByRole("button", { name: "Import" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBe("true"));
+
+  // The other import ends; pressed again, this one fails otherwise, as yet another write has begun.
+  server.jobs = [{ ...other, state: "succeeded", finished_at: "2026-10-05T10:20:00Z" }];
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull(), { timeout: 3000 });
+  await user.click(confirm);
+  await waitFor(() => expect(answers.length).toBe(2));
+  server.jobs = [underWay(jobJSON(10, { kind: "trash_restore" }), 0, 0), ...server.jobs];
+  answers[1]?.(problem(500, "internal"));
+
+  await waitFor(() =>
+    expect(
+      within(shown)
+        .getAllByRole("alert")
+        .map((alert) => alert.textContent)
+    ).toContain(
+      "An import, a restore or an undo is under way in this notebook. Wait for it to end before starting an import."
+    )
+  );
+});
+
+test("an import uploading that the jobs read again already show does not say an import is under way", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  // An export runs: the jobs are read again each second.
+  const server = jobsServer({
+    jobs: [underWay(jobJSON(1), 1, 4)],
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+
+  // The server made this import before its answer reached the page: the jobs read again show it.
+  server.jobs = [underWay(jobJSON(2, { kind: "import", name: "Vault.zip" }), 0, 0), ...server.jobs];
+  const reads = server.asked.filter((ask) => ask.startsWith("GET jobs")).length;
+  await waitFor(() => expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(reads), {
+    timeout: 3000,
+  });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(within(shown).queryByRole("alert")).toBeNull();
+  answers[0]?.(json(underWay(jobJSON(2, { kind: "import", name: "Vault.zip" }), 0, 0), 202));
 });
 
 test("a focus the user put in the form as the upload went is kept as it ends", async () => {

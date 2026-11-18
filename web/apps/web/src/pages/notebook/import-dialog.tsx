@@ -14,6 +14,7 @@ import { NativeSelect } from "../../components/ui/native-select";
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { filesDropped } from "../../lib/file-transfer";
+import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { UploadTimeout } from "../../services/upload-fetch";
@@ -214,6 +215,9 @@ const ImportForm = observer(function ImportForm({
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
   const importButton = useRef<HTMLButtonElement>(null);
   const wasSending = useRef(false);
+  // Whether the last press was refused for a write under way (transfer.busy): its banner says what the standing
+  // alert would, and answers the press; the standing one waits for the next press (M12/P2/S5, 20.2).
+  const [refusedBusy, setRefusedBusy] = useState(false);
   const { ref, sending, banner, problemOf, submit } = useForm(["parent_id", "file"], {
     texts: {
       "transfer.busy": "transfer.importBusy",
@@ -259,6 +263,7 @@ const ImportForm = observer(function ImportForm({
     if (transfers.writing) {
       return;
     }
+    setRefusedBusy(false);
     const found: LocalProblems<"file" | "parent_id"> = {
       ...(file === undefined
         ? { file: "field.required" }
@@ -282,6 +287,9 @@ const ImportForm = observer(function ImportForm({
         imported(job);
       } catch (error) {
         if (!stop.signal.aborted) {
+          if (error instanceof ApiError && error.code === "transfer.busy") {
+            setRefusedBusy(true);
+          }
           throw error;
         }
       } finally {
@@ -304,7 +312,8 @@ const ImportForm = observer(function ImportForm({
       {most !== undefined && (
         <p className="text-sm text-muted-foreground">{t("transfer.importMost", { size: formatBytes(most, locale) })}</p>
       )}
-      {transfers.writing && <Alert>{t("transfer.importUnderWay")}</Alert>}
+      {/* Not while this upload goes, which the jobs read again may show already, nor beside the refusal it says. */}
+      {transfers.writing && !sending && !refusedBusy && <Alert>{t("transfer.importUnderWay")}</Alert>}
       {banner !== undefined && <Alert>{banner}</Alert>}
       <div className="space-y-2">
         <Label htmlFor={ids.file}>{t("transfer.importFile")}</Label>
