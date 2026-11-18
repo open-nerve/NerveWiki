@@ -208,7 +208,7 @@ test("conflicts stay in the dialog: how many, their title taking the focus; each
   expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
     "“Notes” changed since.",
     "“Gone” is past its time in the trash.",
-    "The page “Linux” was under is gone: in the trash, or purged.",
+    "The page that “Linux” was under is gone: it is in the trash, or purged.",
     "“Guide” was put there since, and would go with the undo: move it away first.",
     "Where “Install” goes back, a page or attachment has its name: rename that one first.",
     "Where “Old” goes back, a page or attachment has its name: rename that one first.",
@@ -218,7 +218,7 @@ test("conflicts stay in the dialog: how many, their title taking the focus; each
   expect(items.map(links)).toEqual([
     [["History of this node", "History of this node: “Notes”", `${home}/history?page=${notes.id}`]],
     [],
-    [["Trash", "Trash: the page “Linux” was under may be there", `${home}/trash`]],
+    [["Trash", "Trash: the page that “Linux” was under may be there", `${home}/trash`]],
     [["Open it", "Open it: “Guide”", pagePath(guide.id)]],
     [["Open the one with this name", "Open the one with this name: “Install”", pagePath(guide.id)]],
     [
@@ -312,12 +312,12 @@ test("conflicting nodes of one name are told apart by the end of their ids, whic
   expect(items.map((item) => item.querySelector("p")?.textContent)).toEqual([
     "“Notes” changed since. ID 000101",
     "“Notes” changed since. ID 000103",
-    "The page “Install” was under is gone: in the trash, or purged.",
+    "The page that “Install” was under is gone: it is in the trash, or purged.",
   ]);
   expect(items.map(links)).toEqual([
     [["History of this node", "History of this node: “Notes (ID 000101)”", `${home}/history?page=${guide.id}`]],
     [["History of this node", "History of this node: “Notes (ID 000103)”", `${home}/history?page=${linux.id}`]],
-    [["Trash", "Trash: the page “Install” was under may be there", `${home}/trash`]],
+    [["Trash", "Trash: the page that “Install” was under may be there", `${home}/trash`]],
   ]);
 });
 
@@ -378,16 +378,71 @@ test("a changeset the purge trimmed meanwhile says so as the dialog closes, the 
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
   const alert = await screen.findByRole("alert");
-  expect(alert.textContent).toBe("Part of this change has been purged from the trash: it can no longer be reverted.");
+  expect(alert.textContent).toBe(
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
+  );
   await waitFor(() => expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull());
   expect(
     screen.getByText(
-      "Some of the pages this change touched have been purged from the trash: it can no longer be undone as a whole."
+      "Some or all of what this change touched has been purged from the trash: it can no longer be undone."
     )
   ).toBeTruthy();
   expect(document.activeElement).toBe(title());
   expect(title().getAttribute("aria-describedby")).toBe(alert.id);
 });
+
+test("in Chinese, a changeset the purge trimmed meanwhile says some or all of it was purged, and that it can no longer be undone", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.app.preferences.setLocale("zh-CN");
+  renderApp(changesetPath(rework.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "撤销这次改动" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "撤销这次改动？" });
+  rework.trimmed = true;
+
+  await user.click(within(dialog).getByRole("button", { name: "撤销" }));
+
+  expect((await screen.findByRole("alert")).textContent).toBe("这次改动已有部分或全部从回收站清理，无法再撤销。");
+  expect(await screen.findByText("这次改动碰过的内容已有部分或全部被清理，不能再撤销。")).toBeTruthy();
+});
+
+test.each([
+  [
+    "en",
+    "Undo change",
+    "Undo this change?",
+    "Undo",
+    "Undone before: undoing it again succeeds only once that undo is undone.",
+    /rename it back/u,
+  ],
+  [
+    "zh-CN",
+    "撤销这次改动",
+    "撤销这次改动？",
+    "撤销",
+    "已被撤销过：再撤销只在那次撤销被撤销之后才会成功。",
+    /改回原名/u,
+  ],
+] as const)(
+  "a rename undone elsewhere meanwhile, undone again, says it was undone before, not to rename it back, in %s",
+  async (locale, undoChange, asks, undo, before, renameBack) => {
+    const user = userEvent.setup();
+    const { server, rework } = reworked();
+    rework.conflicts = [conflict(notes.id, "Notes", "changed")];
+    server.app.preferences.setLocale(locale);
+    renderApp(changesetPath(rework.id), server.app);
+    await user.click(await screen.findByRole("button", { name: undoChange }));
+    const dialog = await screen.findByRole("alertdialog", { name: asks });
+    // Another tab undid it meanwhile.
+    rework.revertedBy.push(changesetId(9001));
+
+    await user.click(within(dialog).getByRole("button", { name: undo }));
+
+    await within(dialog).findByRole("list");
+    expect(await within(dialog).findByText(before)).toBeTruthy();
+    expect(within(dialog).queryByText(renameBack)).toBeNull();
+  }
+);
 
 // M8/P3B fix check 1, N1: the server finds a version the purge took before it finds nothing to undo.
 test("a changeset a version of which the purge took is refused as trimmed, though its undo would change nothing", async () => {
@@ -401,7 +456,7 @@ test("a changeset a version of which the purge took is refused as trimmed, thoug
   await user.click(within(dialog).getByRole("button", { name: "Undo" }));
 
   expect((await screen.findByRole("alert")).textContent).toBe(
-    "Part of this change has been purged from the trash: it can no longer be reverted."
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
   );
   expect(screen.getByRole("status").textContent).toBe("");
   expect(reverts(server.sent)).toEqual(["REVERT rework"]);

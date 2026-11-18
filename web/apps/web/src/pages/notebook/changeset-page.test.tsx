@@ -277,7 +277,7 @@ test("a changeset the purge trimmed says it can no longer be undone, and has no 
   await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
   expect(
     screen.getByText(
-      "Some of the pages this change touched have been purged from the trash: it can no longer be undone as a whole."
+      "Some or all of what this change touched has been purged from the trash: it can no longer be undone."
     )
   ).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Undo change" })).toBeNull();

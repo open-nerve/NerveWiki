@@ -449,7 +449,7 @@ export const en = {
   "history.revertedBy": "Undone by:",
   "history.revertLink": "Undo change, ID {id}",
   "history.trimmedNote":
-    "Some of the pages this change touched have been purged from the trash: it can no longer be undone as a whole.",
+    "Some or all of what this change touched has been purged from the trash: it can no longer be undone.",
   "history.revertAgain": "Undone before: undoing it again succeeds only once that undo is undone.",
   "history.readersNote": "Editors and admins can undo this change.",
   "history.changes": "Nodes of this change",
@@ -487,13 +487,13 @@ export const en = {
     "An import, a restore or an undo is under way in this notebook: wait for it to end, or cancel it, then undo again. The conflicts below may come from it.",
   "history.conflict.changed": "“{name}” changed since.",
   "history.conflict.expired": "“{name}” is past its time in the trash.",
-  "history.conflict.parent_gone": "The page “{name}” was under is gone: in the trash, or purged.",
+  "history.conflict.parent_gone": "The page that “{name}” was under is gone: it is in the trash, or purged.",
   "history.conflict.children_added": "“{name}” was put there since, and would go with the undo: move it away first.",
   "history.conflict.title_taken": "Where “{name}” goes back, a page or attachment has its name: rename that one first.",
   "history.conflict.cycle": "“{name}” would go back under itself: the page it was under is below it now.",
   "history.conflict.too_deep": "“{name}” would nest more than 10 levels deep where it goes back.",
   "history.conflictTrash": "Trash",
-  "history.conflictTrashLabel": "Trash: the page “{name}” was under may be there",
+  "history.conflictTrashLabel": "Trash: the page that “{name}” was under may be there",
   "history.conflictOpen": "Open it",
   "history.conflictOpenLabel": "Open it: “{name}”",
   "history.conflictHolder": "Open the one with this name",
@@ -806,7 +806,7 @@ export const en = {
   "upgrade.approve": "Approve…",
   "upgrade.approveTitle": "Approve the upgrade of “{name}”?",
   "upgrade.approveBody":
-    "The notebook becomes an LLM Wiki: the pages and attachments under its source area ({root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changesets can still be reverted one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.",
+    "The notebook becomes an LLM Wiki: the pages and attachments under its source area ({root}) are read-only, AGENTS and the source root are protected, and the generated index and log appear in the page tree. There is no undoing the approval as a whole: the upgrade's changes can still be undone one by one in the history, as an LLM Wiki's rules allow; to make it a standard notebook again, downgrade it.",
   "upgrade.approveRootUnread": "the proposed source root",
   "upgrade.approveConfirm": "Approve the upgrade",
   "upgrade.approving": "Approving…",
@@ -966,12 +966,12 @@ export const en = {
   "transfer.failure.too_many_nodes":
     "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
   "transfer.failure.tree_changed": "A page the import had written was deleted while it ran.",
-  "transfer.failure.changeset_reverted": "What the import had written was reverted while it ran.",
+  "transfer.failure.changeset_reverted": "What the import had written was undone while it ran.",
   "transfer.failure.trash_changed":
     "The item in the trash changed before the restore came to it: someone restored it, the purge took it, or it was deleted again.",
   "transfer.failure.restore_expired": "The item went past the time it could be restored in.",
   "transfer.failure.revert_conflict": "What the change touched changed since, or could not go back.",
-  "transfer.failure.changeset_trimmed": "The purge took part of the change: it can no longer be undone.",
+  "transfer.failure.changeset_trimmed": "The purge took some or all of the change: it can no longer be undone.",
   "transfer.failure.refused": "The notebook's rules as an LLM Wiki refused one of its writes.",
   "transfer.failure.page_locked": "Someone is editing a page the undo was about to change.",
   "transfer.failure.revert_too_large":
@@ -1008,7 +1008,8 @@ export const en = {
     "Nodes it had not come to: {left}. They are in the trash, in items of their own: each can be restored alone.",
   "transfer.restoreLeftExpired":
     "What it restored stays in the notebook. Nodes left: {left}. Their time in the trash is over: they can no longer be restored.",
-  "transfer.restoreLeftUndone": "What it restored is in the trash again, with the nodes it had not come to.",
+  "transfer.restoreLeftUndone":
+    "What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.",
   "transfer.revertNothing": "Nothing to undo: whatever the change touched is as it was before it.",
   "transfer.revertLeft":
     "What it undid stays. Nodes not undone: {left}. To go back to before, undo this undo in the history; then the change can be undone whole again.",
@@ -1290,9 +1291,10 @@ export const en = {
   "problem.page.restore_too_large": "This is too large to restore at once.",
   "problem.page.trash_changed": "The trash changed since you opened it. Look again.",
   "problem.page.changeset_not_found": "This change does not exist, or you cannot see it.",
-  "problem.page.changeset_trimmed": "Part of this change has been purged from the trash: it can no longer be reverted.",
-  "problem.page.revert_too_large": "This change is too large to revert at once.",
-  "problem.page.revert_conflict": "What this change touched has changed since: it cannot be reverted as it is.",
+  "problem.page.changeset_trimmed":
+    "Some or all of this change has been purged from the trash: it can no longer be undone.",
+  "problem.page.revert_too_large": "This change is too large to undo at once.",
+  "problem.page.revert_conflict": "What this change touched has changed since: it cannot be undone as it is.",
   "problem.page.protected":
     "An LLM Wiki keeps its AGENTS page and its source root: neither can be deleted, and AGENTS cannot be renamed or moved.",
   "problem.page.virtual_file":

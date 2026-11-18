@@ -22,7 +22,7 @@ test.each([
     "The zip would make more pages and attachments than one import can, counting the folders in its paths: an import past it could not be undone.",
   ],
   ["import", "tree_changed", "A page the import had written was deleted while it ran."],
-  ["import", "changeset_reverted", "What the import had written was reverted while it ran."],
+  ["import", "changeset_reverted", "What the import had written was undone while it ran."],
   ["import", "storage_full", "The server's storage is full."],
   ["import", "gremlins", "The job failed."],
   [
@@ -40,7 +40,7 @@ test.each([
     "The job was interrupted: the server stopped or restarted, or the job stopped responding.",
   ],
   ["revert", "revert_conflict", "What the change touched changed since, or could not go back."],
-  ["revert", "changeset_trimmed", "The purge took part of the change: it can no longer be undone."],
+  ["revert", "changeset_trimmed", "The purge took some or all of the change: it can no longer be undone."],
   ["revert", "page_locked", "Someone is editing a page the undo was about to change."],
   ["revert", "refused", "The notebook's rules as an LLM Wiki refused one of its writes."],
   [

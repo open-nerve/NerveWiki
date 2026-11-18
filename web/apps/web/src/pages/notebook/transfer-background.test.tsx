@@ -343,7 +343,9 @@ test.each<[string, TransferJob, string, string[]]>([
       progress: { done: 100, total: 103 },
     }),
     "Failed · What the restore had restored was undone while it ran.",
-    ["What it restored is in the trash again, with the nodes it had not come to."],
+    [
+      "What it restored was undone and is in the trash again, deleted by that undo; the nodes it had not come to are there too, in items of their own.",
+    ],
   ],
   [
     "a restore failed as its item went past its time before its first batch",
@@ -395,7 +397,7 @@ test.each<[string, TransferJob, string, string[]]>([
   [
     "a revert failed as the purge took part of its change at its start",
     revertOf(1, { state: "failed", report: reportOf("changeset_trimmed"), progress: { done: 0, total: 0 } }),
-    "Failed · The purge took part of the change: it can no longer be undone.",
+    "Failed · The purge took some or all of the change: it can no longer be undone.",
     [],
   ],
   [
@@ -405,7 +407,7 @@ test.each<[string, TransferJob, string, string[]]>([
       report: reportOf("changeset_trimmed", { deleted: 300 }),
       progress: { done: 300, total: 1501 },
     }),
-    "Failed · The purge took part of the change: it can no longer be undone.",
+    "Failed · The purge took some or all of the change: it can no longer be undone.",
     ["What it undid stays. Nodes not undone: 1,201. To go back to before, undo this undo in the history."],
   ],
   [
@@ -433,6 +435,30 @@ test.each<[string, TransferJob, string, string[]]>([
 
   await waitFor(() => expect(server.asked).toContain(`GET job ${job.name}`));
   expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual(says);
+});
+
+test("in Chinese, a restore whose restored nodes were undone says where they are, and where the ones it had not come to are", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({
+    jobs: [
+      restoreOf(1, {
+        state: "failed",
+        report: reportOf("changeset_reverted", { pages: 99 }),
+        progress: { done: 100, total: 103 },
+      }),
+    ],
+  });
+  renderApp(transfer, server.app);
+  const shown = await reportOpened(user, "Restore of Linux");
+  await waitFor(() => expect(server.asked).toContain("GET job Linux"));
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await waitFor(() =>
+    expect([...shown.querySelectorAll(":scope > p")].map((line) => line.textContent)).toEqual([
+      "已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。",
+    ])
+  );
 });
 
 test.each([

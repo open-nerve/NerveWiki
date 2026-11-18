@@ -451,7 +451,7 @@ test("an import's failures say what befell the import", async () => {
     "Failed · The page imported under no longer exists.",
     "Failed · The file is not a zip archive, or the archive is damaged.",
     "Failed · A page the import had written was deleted while it ran.",
-    "Failed · What the import had written was reverted while it ran.",
+    "Failed · What the import had written was undone while it ran.",
   ]);
 });
 

@@ -224,6 +224,16 @@ test("a page's own text of a code takes the place of the usual one, under a fiel
   });
 });
 
+// The web says undo, as its buttons do, in English too (M12/P2/S2, 23.1); the API's words stay revert.
+test.each([
+  ["en", "page.revert_too_large", 422, "This change is too large to undo at once."],
+  ["en", "page.revert_conflict", 409, "What this change touched has changed since: it cannot be undone as it is."],
+  ["zh-CN", "page.revert_too_large", 422, "这次改动太大，无法一次撤销。"],
+  ["zh-CN", "page.revert_conflict", 409, "这次改动涉及的内容之后又有变化，无法直接撤销。"],
+] as const)("in %s, %s says the change cannot be undone", (language, code, status, message) => {
+  expect(errorText(new ApiError(status, problem(status, code)), translator(language))).toBe(message);
+});
+
 // Removing either language's mapping must expose the code instead of this actionable explanation.
 test.each([
   ["en", "Source content cannot be edited. Add a new source instead."],

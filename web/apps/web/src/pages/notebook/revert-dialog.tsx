@@ -278,8 +278,10 @@ function RevertForm({
   // changeset trimmed, or out of reach, which close it as the page reads it again.
   async function refused(refusal: unknown, reader: ReturnType<typeof watchReader>): Promise<boolean> {
     if (refusal instanceof ApiError && refusal.code === "page.revert_conflict") {
-      // Not read, the jobs held say what they can.
+      // Not read, the jobs held say what they can. The changeset is read again too: undone elsewhere meanwhile, what
+      // the conflicts advise follows its reverted_by (M12/P2/S2, 23.11).
       await transfers.load().catch(() => undefined);
+      reread(true);
       setConflict(refusal);
       return true;
     }
@@ -513,7 +515,12 @@ const Conflicts = observer(function Conflicts({
           );
         })}
       </ul>
-      {changeset.renames && <p className="text-sm">{t("history.conflictRenameBack")}</p>}
+      {/* Undone elsewhere meanwhile, its page read again: renaming it back is no advice; undoing it again is not yet. */}
+      {changeset.reverted_by.length > 0 ? (
+        <p className="text-sm">{t("history.revertAgain")}</p>
+      ) : (
+        changeset.renames && <p className="text-sm">{t("history.conflictRenameBack")}</p>
+      )}
       <div className="flex justify-end">
         <AlertDialogCancel asChild>
           <Button variant="outline">{t("history.close")}</Button>

@@ -434,7 +434,7 @@ export const zhCN: Messages = {
   "history.messageOf": "说明：",
   "history.revertedBy": "被撤销：",
   "history.revertLink": "撤销，编号 {id}",
-  "history.trimmedNote": "这次改动碰过的一些页已被清理，不能整组撤销。",
+  "history.trimmedNote": "这次改动碰过的内容已有部分或全部被清理，不能再撤销。",
   "history.revertAgain": "已被撤销过：再撤销只在那次撤销被撤销之后才会成功。",
   "history.readersNote": "编辑者与管理员可以撤销这次改动。",
   "history.changes": "这次改动的节点",
@@ -775,7 +775,7 @@ export const zhCN: Messages = {
   "upgrade.approve": "批准…",
   "upgrade.approveTitle": "批准「{name}」的升级？",
   "upgrade.approveBody":
-    "笔记本将成为 LLM Wiki：来源区（{root}）下的页与附件只读，AGENTS 与来源根受保护，生成的目录与日志出现在页面树里。批准之后没有整体的撤销：升级的变更集仍可在历史里照 LLM Wiki 的规则逐个撤销；要回到普通笔记本用降级。",
+    "笔记本将成为 LLM Wiki：来源区（{root}）下的页与附件只读，AGENTS 与来源根受保护，生成的目录与日志出现在页面树里。批准之后没有整体的撤销：升级的改动仍可在历史里照 LLM Wiki 的规则逐个撤销；要回到普通笔记本用降级。",
   "upgrade.approveRootUnread": "提议的来源根",
   "upgrade.approveConfirm": "批准升级",
   "upgrade.approving": "正在批准…",
@@ -932,7 +932,7 @@ export const zhCN: Messages = {
   "transfer.failure.trash_changed": "恢复到它之前，回收站里的这一项变了：有人恢复了它、它被清理了，或它被重新删除了。",
   "transfer.failure.restore_expired": "这一项已过了可以恢复的期限。",
   "transfer.failure.revert_conflict": "这次改动碰过的节点之后又变了，或回不到原处。",
-  "transfer.failure.changeset_trimmed": "这次改动的一部分已被清理，不能再撤销。",
+  "transfer.failure.changeset_trimmed": "这次改动已有部分或全部被清理，不能再撤销。",
   "transfer.failure.refused": "LLM Wiki 的规则拒绝了它的一步写入。",
   "transfer.failure.page_locked": "撤销要改的一页正在被人编辑。",
   "transfer.failure.revert_too_large":
@@ -964,7 +964,8 @@ export const zhCN: Messages = {
   "transfer.restoreLeft": "已恢复的留在笔记本里。剩下的 {left} 个节点在回收站里，分成几项，每项可以单独恢复。",
   "transfer.restoreLeftOnly": "没处理到的 {left} 个节点在回收站里，分成几项，每项可以单独恢复。",
   "transfer.restoreLeftExpired": "已恢复的留在笔记本里。剩下的 {left} 个节点在回收站里的期限已过，不能再恢复。",
-  "transfer.restoreLeftUndone": "已恢复的又回到了回收站，和没处理到的节点一起。",
+  "transfer.restoreLeftUndone":
+    "已恢复的部分被撤销，由那次撤销删除，又回到了回收站；没处理到的节点也在回收站里，各自成项。",
   "transfer.revertNothing": "没有要撤销的：它碰过的都已回到之前。",
   "transfer.revertLeft":
     "已撤销的部分留着，剩下 {left} 个节点没有处理。要回到之前，可以在历史里撤销这次撤销，之后再整组撤销这次改动。",
@@ -1220,7 +1221,7 @@ export const zhCN: Messages = {
   "problem.page.restore_too_large": "它太大了，无法一次恢复。",
   "problem.page.trash_changed": "回收站在你打开之后有了变化，请重新查看。",
   "problem.page.changeset_not_found": "这次改动不存在，或者你没有权限查看。",
-  "problem.page.changeset_trimmed": "这次改动的一部分已从回收站清理，无法再撤销。",
+  "problem.page.changeset_trimmed": "这次改动已有部分或全部从回收站清理，无法再撤销。",
   "problem.page.revert_too_large": "这次改动太大，无法一次撤销。",
   "problem.page.revert_conflict": "这次改动涉及的内容之后又有变化，无法直接撤销。",
   "problem.page.protected": "LLM Wiki 保留它的 AGENTS 页与来源根：两者都不能删除，AGENTS 也不能改名或移动。",
