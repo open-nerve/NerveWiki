@@ -579,6 +579,8 @@ export const en = {
   "asset.stalled": "The upload stopped: nothing went out for a minute. Upload the file again.",
   "asset.unanswered":
     "The server did not answer within three minutes of getting the file, so the upload was stopped. If it is not in the list, upload it again.",
+  "asset.cancelledLate":
+    "Cancelled too late: the server already had all of {name}, and kept it. Delete it from the attachments if you do not want it.",
   "asset.nameTaken": "Another page or attachment here has this name, and the names tried after it too.",
   "asset.actions": "Actions for {name}",
   "asset.newTab": "(opens in a new tab)",

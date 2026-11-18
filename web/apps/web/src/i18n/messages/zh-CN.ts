@@ -554,6 +554,7 @@ export const zhCN: Messages = {
   "asset.failed": "上传失败。",
   "asset.stalled": "上传停住了：一分钟没有传出任何数据。请再上传一次。",
   "asset.unanswered": "服务器收到文件之后三分钟没有答复，上传已停止。列表里没有它的话，再上传一次。",
+  "asset.cancelledLate": "取消晚了：服务器已经收到了整个「{name}」并留下了它。不要的话，在附件里删除它。",
   "asset.nameTaken": "这里已有同名的页面或附件，之后试过的名称也都有了。",
   "asset.actions": "{name}的操作",
   "asset.newTab": "（在新标签页打开）",

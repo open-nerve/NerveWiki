@@ -32,6 +32,18 @@ export type UploadRefusal =
 export type UploadResult = { kind: "asset"; asset: Asset } | { kind: "page"; page: Page };
 
 /**
+ * CancelledLate is why an upload cancelled shows again: the server had the
+ * whole file by then, and made the attachment file, which the tree read
+ * again lists (M12/P2/S5, 16.11).
+ */
+export class CancelledLate extends Error {
+  constructor(readonly file: string) {
+    super("the upload was cancelled once the server had it");
+    this.name = "CancelledLate";
+  }
+}
+
+/**
  * UploadTerms are what an upload begins under: what the page knows of what the server takes, the instance's largest
  * attachment in bytes; and whether the editor began it, its embed to be inserted (M7/P4 design 5.3).
  */
@@ -460,6 +472,17 @@ export class AssetStore {
       await this.read([upload.parent]);
       if (upload.signal.aborted) {
         this.dismiss(upload);
+        // The tree read again lists it: the server had it whole, and kept it. Its row comes back to say so; a tree
+        // that could not be read tells nothing, and nothing is said. The name was free among the siblings as it went
+        // (used): one by it now is made since. Not noted as each goes, which would cost as many as the siblings for
+        // each file (the store's test of many files beside many siblings).
+        const made = this.pages.siblingsOf(upload.parent).find((node) => titleKey(node.name) === titleKey(name));
+        if (made !== undefined) {
+          runInAction(() => {
+            upload.failure = new CancelledLate(made.name);
+            this.uploads.push(upload);
+          });
+        }
         return;
       }
       if (error instanceof ApiError && error.code === "page.title_taken" && taken.length + 1 < attempts) {

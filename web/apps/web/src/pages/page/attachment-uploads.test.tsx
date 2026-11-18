@@ -180,6 +180,50 @@ test("Cancel stops the upload: its request is aborted, nothing is made, nothing 
   expect(notice(section)).toBe("Uploading files: 1.");
 });
 
+test.each<[string, "en" | "zh-CN", string, string, string]>([
+  [
+    "English",
+    "en",
+    "Cancel the upload of a.png",
+    "Upload",
+    "Cancelled too late: the server already had all of a.png, and kept it. Delete it from the attachments if you do not want it.",
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    "取消a.png的上传",
+    "上传",
+    "取消晚了：服务器已经收到了整个「a.png」并留下了它。不要的话，在附件里删除它。",
+  ],
+])(
+  "a cancel that comes once the server has the whole file says so: the attachment is listed, its row says the cancel was late (%s)",
+  async (_, locale, cancelName, uploadName, said) => {
+    const user = userEvent.setup();
+    // The server made the attachment; its answer is lost.
+    const server = pageServer({
+      nodes,
+      answers: {
+        [uploadsPath]: (request) => {
+          server.nodes = [...server.nodes, assetNode(90, String(formOf(request)?.get("name")), guide)];
+          return new Promise<Response>(() => undefined);
+        },
+      },
+    });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    act(() => server.app.preferences.setLocale(locale));
+
+    choose(section, [new File(["abcd"], "a.png")]);
+    await waitFor(() => expect(server.nodes.some((node) => node.name === "a.png")).toBe(true));
+    await user.click(await within(section).findByRole("button", { name: cancelName }));
+
+    expect((await within(section).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([true]);
+    expect(rows(section).filter((name) => name.startsWith("a.png"))).toHaveLength(1);
+    expect(document.activeElement).toBe(within(section).getByRole("button", { name: uploadName }));
+  }
+);
+
 test("an upload answered is finishing as its list is read again: it can no longer be cancelled", async () => {
   const user = userEvent.setup();
   let holding = false;
