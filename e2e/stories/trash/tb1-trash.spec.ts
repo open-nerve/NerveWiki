@@ -313,7 +313,7 @@ test("TB1 (page): a page deleted from the tree, its confirmation saying the tras
   await toTrash.click();
   await expect(listed).toHaveCount(3);
   await expect(listed.filter({ hasText: "Older" })).toContainText(
-    "Restores at the top level: the page it was under is in the trash"
+    "Restores at the notebook's top level: the page it was under is in the trash"
   );
   await expect(listed.filter({ hasText: "Notes" })).toContainText("Restores under “Guide”");
 

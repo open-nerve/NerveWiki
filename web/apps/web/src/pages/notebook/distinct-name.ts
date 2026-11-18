@@ -5,8 +5,8 @@ import { placeOfTitle, type TreeIndex } from "../../stores/page-tree";
 /**
  * distinctName is how the tree names the page id (v0.1 design 13.2, item
  * 17): its title, and where another page of the notebook has the same,
- * also the pages it is under, or the notebook at the root; undefined for a
- * page the tree does not have.
+ * also the pages it is under, or, at the root, that it is at the notebook's
+ * top level; undefined for a page the tree does not have.
  */
 export function distinctName(
   tree: TreeIndex | undefined,
@@ -19,5 +19,10 @@ export function distinctName(
     return undefined;
   }
   const place = placeOfTitle(tree, id);
-  return place === undefined ? node.name : t("page.nameIn", { name: node.name, place: place || notebook.name });
+  if (place === undefined) {
+    return node.name;
+  }
+  return place === ""
+    ? t("page.nameAtTop", { name: node.name, notebook: notebook.name })
+    : t("page.nameIn", { name: node.name, place });
 }

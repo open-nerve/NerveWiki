@@ -1461,15 +1461,15 @@ test("the approval's dialog names the source area as the state section does, whe
   renderApp(upgradePath, server.app);
   const state = await section("Where it is");
   // The source root and, the upgrade having written it, among the pages it wrote.
-  expect(await within(state).findAllByRole("link", { name: "raw (in Plans)" })).toHaveLength(2);
+  expect(await within(state).findAllByRole("link", { name: "raw (at the top level of Plans)" })).toHaveLength(2);
 
   const dialog = await opened(user, approves, approveTitle);
-  expect(within(dialog).getByText(approveBody("raw (in Plans)"))).toBeTruthy();
+  expect(within(dialog).getByText(approveBody("raw (at the top level of Plans)"))).toBeTruthy();
   await dismissed(user, dialog);
   act(() => server.app.preferences.setLocale("zh-CN"));
   const zh = await opened(user, "批准…", "批准「Plans」的升级？");
 
-  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（Plans 下））下的页与附件只读");
+  expect(zh.textContent).toContain("笔记本将成为 LLM Wiki：来源区（raw（Plans 的顶层））下的页与附件只读");
 });
 
 test("approved, the page goes to the notebook's home, its title focused, Plans an LLM Wiki without its banner; the upgrade, no longer under way, is not read again, by the approval's mode event nor by a connection after it", async () => {

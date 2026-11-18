@@ -34,7 +34,12 @@ test("a tag of a reading view leads to its pages, in the tree's order, each name
   await waitFor(() => expect(document.activeElement).toBe(heading));
   const list = await screen.findByRole("list", { name: "Pages tagged #Proj/a" });
   const links = within(list).getAllByRole("link");
-  expect(links.map((link) => link.textContent)).toEqual(["Install (in Guide)", "Linux", "Notes", "Install (in Plans)"]);
+  expect(links.map((link) => link.textContent)).toEqual([
+    "Install (in Guide)",
+    "Linux",
+    "Notes",
+    "Install (at the top level of Plans)",
+  ]);
   expect(links.map((link) => link.getAttribute("href"))).toEqual(
     [install, linux, notes, other].map((page) => pagePath(page.id))
   );

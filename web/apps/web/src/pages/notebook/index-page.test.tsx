@@ -186,6 +186,20 @@ test.each([
   }
 );
 
+test.each([
+  ["en", "Without a type · The notebook's top level"],
+  ["zh-CN", "无类型 · 笔记本的顶层"],
+] as const)(
+  "P4/root: untyped pages at the root are headed by the notebook's top level, in %s",
+  async (locale, heading) => {
+    const fixture = indexServer();
+    fixture.server.app.preferences.setLocale(locale);
+    fixture.value.data = [{ ...indexFacts().data[0]!, type: null, type_key: null, parent_id: null }];
+    renderApp(indexPath, fixture.server.app);
+    expect(await screen.findByRole("heading", { level: 2, name: heading })).toBeTruthy();
+  }
+);
+
 test.each(["type", "tag"] as const)(
   "P4/filter_key/%s: exact URL/query and visible result change without moving focus",
   async (field) => {

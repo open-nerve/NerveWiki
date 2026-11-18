@@ -219,6 +219,30 @@ test.each<[string, NonNullable<NonNullable<TransferJob["report"]>["placed"]>, st
   }
 );
 
+test.each<[string, NonNullable<NonNullable<TransferJob["report"]>["placed"]>, string]>([
+  ["at the top level, where it was", { parent_id: null, reason: "original" }, "放回了原处：笔记本的顶层。"],
+  [
+    "at the top level, the page it was under in the trash",
+    { parent_id: null, reason: "parent_in_trash" },
+    "放在了笔记本的顶层：原上级页面在回收站里。",
+  ],
+  [
+    "at the top level, too deep where it was",
+    { parent_id: null, reason: "too_deep" },
+    "放在了笔记本的顶层：放回原处会超过 10 层。",
+  ],
+])("in Chinese, a restore's report says it put the item at the notebook's top level: %s", async (_, placed, says) => {
+  const user = userEvent.setup();
+  const report = { ...reportOf(null, { pages: 102, attachments: 1, renamed: 2, skipped: 3 }), placed };
+  const server = jobsServer({ jobs: [restoreOf(1, { report, progress: { done: 103, total: 103 } })] });
+  renderApp(transfer, server.app);
+  const shown = await reportOpened(user, "Restore of Linux");
+
+  act(() => server.app.preferences.setLocale("zh-CN"));
+
+  await waitFor(() => expect(within(shown).getByText(says)).toBeTruthy());
+});
+
 // M11/P1 design 4.3: an upgrade's rollback counts what it deleted, put back and wrote back (not an import's
 // counts, which a kind not in shownCounts falls to), and says what to do after each failure.
 test("an upgrade's rollback's report counts what it deleted, put back and wrote back, and says what to do once it stopped", async () => {

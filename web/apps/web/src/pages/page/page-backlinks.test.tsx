@@ -68,7 +68,7 @@ test("pages of one title that link here are named as the tree names them, by whe
   const links = within(list).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
     ["Install (in Guide)", pagePath(install.id)],
-    ["Install (in Plans)", pagePath(other.id)],
+    ["Install (at the top level of Plans)", pagePath(other.id)],
   ]);
 });
 
