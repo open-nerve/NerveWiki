@@ -278,12 +278,47 @@ function nextId(): string {
 }
 
 /**
- * withOwnIds is drawing's SVG, the ids its elements' begin with, and what
- * names them (its styles, its markers' addresses), another's: a drawing
- * put twice, two diagrams of a source, or one kept, has no id of another.
+ * withOwnIds is drawing's SVG, its ids its own: a drawing put twice, two
+ * diagrams of a source, or one kept, has no id of another. Those mermaid
+ * makes of the drawing's id (its own, its title's and description's, its
+ * markers') have it replaced, and what names them with it. Those it does
+ * not (a sequence diagram's actor0, a sankey's linearGradient-1: M12/P2/S4,
+ * 11.1) take its new id before them, and so does what names them: an
+ * address (url(#…), href, xlink:href), its styles' selectors, and the
+ * IDREFs that name an element (aria-labelledby, aria-describedby). Only
+ * mermaid's markup: the writer's text has no id (its dompurifyConfig).
  */
 function withOwnIds({ id, svg }: Drawing): string {
-  return svg.replace(new RegExp(`${id}(?![0-9])`, "g"), nextId());
+  const own = nextId();
+  let out = svg.replace(new RegExp(`${id}(?![0-9])`, "g"), own);
+  const others = new Set(
+    [...out.matchAll(/\sid="([^"]+)"/g)].map(([, other]) => other ?? "").filter((other) => !other.includes(own))
+  );
+  for (const other of others) {
+    const name = escaped(other);
+    const renamed = `${own}-${other}`;
+    out = out
+      .replace(new RegExp(`(\\sid=")${name}(")`, "g"), `$1${renamed}$2`)
+      .replace(new RegExp(`url\\(#${name}\\)`, "g"), `url(#${renamed})`)
+      .replace(new RegExp(`(\\s(?:xlink:)?href="#)${name}(")`, "g"), `$1${renamed}$2`)
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/g, (style) =>
+        style.replace(new RegExp(`#${name}(?![\\w-])`, "g"), `#${renamed}`)
+      )
+      .replace(
+        /(\s(?:aria-labelledby|aria-describedby)=")([^"]*)(")/g,
+        (_, before: string, names: string, after: string) =>
+          `${before}${names
+            .split(/(\s+)/)
+            .map((each) => (each === other ? renamed : each))
+            .join("")}${after}`
+      );
+  }
+  return out;
+}
+
+/** escaped is text, each character a pattern gives a meaning taken as itself. */
+function escaped(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** keep keeps the drawing of key as the one used last, the oldest dropped past keptDrawings. */

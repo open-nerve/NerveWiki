@@ -401,3 +401,54 @@ test("a view without diagrams loads nothing", () => {
   expect(diagrams(load, watcher().watch)(article, context())).toBeUndefined();
   expect(load).not.toHaveBeenCalled();
 });
+
+// M12/P2/S4, 11.1: a sequence diagram's or a sankey's ids are not its drawing's (actor0, linearGradient-1); two of them
+// on a page would have them in common, a gradient filled from the other's. Its accessible name, which mermaid names by
+// its id, stays its own (review A's M9); an IDREF to one renamed follows it (revision check A's M13).
+test("two drawings whose elements' ids are not the drawing's own have no id in common, and each names its own", async () => {
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "sequence",
+    render: async (id, text) => ({
+      svg:
+        `<svg id="${id}" aria-labelledby="chart-title-${id}"><title id="chart-title-${id}">${text}</title>` +
+        `<style>#actor0{fill:red}#actor0-label{fill:blue}</style><defs><linearGradient id="linearGradient-1"/></defs>` +
+        `<rect id="actor0" fill="url(#linearGradient-1)"/><use href="#actor0"/><use xlink:href="#actor0"/>` +
+        `<text id="actor0-label">${text}</text><g aria-labelledby="actor0-label" aria-describedby="actor0 none"/></svg>`,
+    }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("sequenceDiagram; A->>B: one", "sequenceDiagram; A->>B: two");
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  show(blocks[1] as Element);
+  await settled();
+
+  const svgs = [...article.querySelectorAll<SVGSVGElement>(".nw-diagram svg")];
+  expect(svgs).toHaveLength(2);
+  const ids = [...article.querySelectorAll("[id]")].map((element) => element.id);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const svg of svgs) {
+    const own = (reference: string | null | undefined) => {
+      const target = reference?.replace(/^url\(#(.*)\)$/, "$1").replace(/^#/, "") ?? "";
+      return target !== "" && svg.querySelector(`[id="${CSS.escape(target)}"]`) !== null;
+    };
+    const rect = svg.querySelector("rect");
+    const [use, xlinked] = [...svg.querySelectorAll("use")];
+    const group = svg.querySelector("g");
+    expect([
+      own(rect?.getAttribute("fill")),
+      own(use?.getAttribute("href")),
+      own(xlinked?.getAttribute("xlink:href")),
+      own(group?.getAttribute("aria-labelledby")),
+      own(group?.getAttribute("aria-describedby")?.split(" ")[0]),
+      own(svg.getAttribute("aria-labelledby")),
+    ]).toEqual([true, true, true, true, true, true]);
+    expect(group?.getAttribute("aria-describedby")?.split(" ")[1]).toBe("none");
+    // The styles name its own: the rule of the label, not taken for the actor's.
+    expect(svg.querySelector("style")?.textContent).toBe(
+      `#${rect?.id ?? ""}{fill:red}#${svg.querySelector("text")?.id ?? ""}{fill:blue}`
+    );
+    expect(svg.querySelector("title")?.textContent).toMatch(/^sequenceDiagram; A->>B: (one|two)$/);
+  }
+});
