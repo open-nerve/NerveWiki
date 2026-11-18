@@ -274,7 +274,11 @@ jobs:
     needs: [server, web]
     if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # 时限分开（旁支 m12-e2e-browsers-install）：E2E 一步自己 18 分钟，是 00-M12 第 3 节第 11 条的那一个；装浏览器一步自己 25 分钟。
+    # apt 的镜像慢的时候，装浏览器一步要将近 15 分钟到 20 分钟以上：2026-11-07 至 18 日 254 次里 15 次，五次装完时已 14:58–18:52，
+    # 十次到作业原来的 20 分钟还没装完，连同 E2E 一起被取消（其余 239 次 35 秒到 4:14）。作业的时限要在两步各自的时限之后才到：
+    # 前几步（中位 31 秒，至多 50 秒）、装浏览器 25 分钟、E2E 18 分钟、上传报告，取 50 分钟
+    timeout-minutes: 50
     env:
       # 写进 bin/nervewiki 的版本号，与默认值不同，S3 由此确认 make build 的注入生效
       VERSION: 0.0.0-ci.${{ github.run_number }}
@@ -302,12 +306,17 @@ jobs:
           key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
       - name: Install
         run: pnpm install --frozen-lockfile
-      # 全部故事跑 Chromium，部分也跑 Firefox、WebKit（e2e/playwright.config.ts）；不缓存浏览器：系统库缓存不了
+      # 全部故事跑 Chromium，部分也跑 Firefox、WebKit（e2e/playwright.config.ts）。浏览器从 Playwright 的 CDN 下载，慢的 runner 上
+      # 也只要几秒，不缓存；--with-deps 用 apt 装的约 125 MB 系统包慢的时候要将近 15 分钟以上
       - name: Install the Playwright browsers
         working-directory: e2e
+        timeout-minutes: 25
         run: pnpm exec playwright install --with-deps chromium firefox webkit
-      # make e2e 先完整执行 make build（Go 与 Node 都要）：持续集成中只有这里构建内嵌前端的二进制
+      # make e2e 先完整执行 make build（Go 与 Node 都要）：持续集成中只有这里构建内嵌前端的二进制。
+      # 时限是 00-M12 第 3 节第 11 条的那一个，E2E 本身变慢时在这里红：作业原来的 20 分钟减去平常的前几步与装浏览器（中位 31 + 54 秒）。
+      # 2026-11-06 至 18 日绿的 235 次 3:30–8:52，中位 6:27
       - name: E2E
+        timeout-minutes: 18
         run: make e2e
       # 报告中带着失败用例的 trace 与截图；test-results/ 中另有每个 worker 的服务日志与失败时导出的数据库
       - name: Upload the Playwright report
