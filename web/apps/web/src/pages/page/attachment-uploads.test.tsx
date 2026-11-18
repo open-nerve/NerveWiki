@@ -361,21 +361,24 @@ test.each<[string, "en" | "zh-CN", string, string, string]>([
   }
 );
 
-test("an upload that makes no progress for a minute fails, saying it stopped", async () => {
+test.each<[string, "en" | "zh-CN", string]>([
+  ["English", "en", "The upload stopped: nothing went out for a minute. Upload the file again."],
+  ["Chinese", "zh-CN", "上传停住了：一分钟没有传出任何数据。请再上传一次。"],
+])("an upload that, begun, makes no progress for a minute fails, saying it stopped (%s)", async (_, locale, said) => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   onTestFinished(() => void vi.useRealTimers());
   const server = pageServer({ nodes });
   server.uploadsHeld = true;
   renderApp(pagePath(guide.id), server.app);
   const section = await attachments();
+  act(() => server.app.preferences.setLocale(locale));
 
   choose(section, [new File(["abcd"], "a.png")]);
   await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+  act(() => transfers(server.app)[0]?.progress(1, 4));
   await act(() => vi.advanceTimersByTimeAsync(60_000));
 
-  expect((await within(section).findByRole("alert")).textContent).toBe(
-    "The upload stopped: nothing went out for a minute. Upload the file again."
-  );
+  expect((await within(section).findByRole("alert")).textContent).toBe(said);
   expect(transfers(server.app)[0]?.aborted).toBe(true);
   act(() => server.release());
 });

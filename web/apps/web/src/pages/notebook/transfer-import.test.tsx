@@ -364,6 +364,34 @@ test.each<[string, "en" | "zh-CN", string]>([
   }
 );
 
+test.each<[string, "en" | "zh-CN", string]>([
+  ["English", "en", "The upload stopped: nothing went out for a minute. Try again, on a faster connection if you can."],
+  ["Chinese", "zh-CN", "上传停住了：一分钟没有传出任何数据。请重试，最好换一个更快的网络。"],
+])(
+  "an import's upload that, begun, makes no progress for a minute says it stopped, the file kept to try again (%s)",
+  async (_, locale, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+    renderApp(transfer, server.app);
+    const shown = await open(user);
+    await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+    await user.click(within(shown).getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(transfers(server.app).length).toBe(1));
+    act(() => server.app.preferences.setLocale(locale));
+    act(() => transfers(server.app)[0]?.progress(1, 4));
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+    expect((await within(shown).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    expect(
+      (within(shown).getByLabelText(locale === "en" ? "Zip archive" : "zip 文件") as HTMLInputElement).files?.[0]?.name
+    ).toBe("Vault.zip");
+  }
+);
+
 test("the upload tells its progress; the browser asks before the page is left; closed, the dialog asks before it stops it", async () => {
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });

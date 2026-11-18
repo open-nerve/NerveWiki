@@ -153,6 +153,23 @@ describe("uploadFetch", () => {
     test("a body that goes nowhere for a minute is given up: the transfer is aborted, and it rejects with an UploadTimeout, stalled", async () => {
       const { sent, settled } = settling();
 
+      sent().progress(10, 100);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(sent().aborted).toBe(true);
+      expect(settled()).toMatchObject({ name: "UploadTimeout", stage: "stalled" });
+    });
+
+    test("a body not yet going, its request queued for a connection, is not given up: the minute counts from its first progress", async () => {
+      const { sent, settled } = settling();
+
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      sent().progress(10, 100);
       await vi.advanceTimersByTimeAsync(59_999);
       expect([sent().aborted, settled()]).toEqual([false, undefined]);
       await vi.advanceTimersByTimeAsync(1);

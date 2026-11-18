@@ -30,7 +30,12 @@ const bodiless = new Set([204, 205, 304]);
  * stallLimit is how long a body going out may make no progress before the
  * upload is given up: bytes that flow tell their progress every few
  * seconds, at the server's least rate too; a connection cut without a word
- * or a server stuck tell nothing (M12/P2/S5, 16.3).
+ * or a server stuck tell nothing (M12/P2/S5, 16.3). It counts from the
+ * body's first progress, not from the send: a request the browser queues
+ * for a connection, six to a host over HTTP/1.1, the event stream holding
+ * one, sends nothing until one is free, however long the uploads before it
+ * take; a connection that takes the first bytes and goes silent still tells
+ * that first progress, the send buffer taking them.
  */
 const stallLimit = 60_000;
 
@@ -70,8 +75,10 @@ export class UploadTimeout extends Error {
  * the whole, which would cut a slow upload of a large file, but two of its
  * own: a body going nowhere for stallLimit, and one all sent unanswered for
  * answerLimit, is given up, rejecting with an UploadTimeout (M12/P2/S5,
- * 16.3). The body is all sent as the upload's load comes, or its progress
- * reaches its total: Firefox holds the load back until the answer comes.
+ * 16.3). No timer runs before the body's first progress: a request queued
+ * for a connection is not given up. The body is all sent as the upload's
+ * load comes, or its progress reaches its total: Firefox holds the load back
+ * until the answer comes.
  */
 export function uploadFetch(
   form: FormData,
@@ -89,7 +96,8 @@ export function uploadFetch(
       let timer: ReturnType<typeof setTimeout> | undefined;
       let timedOut: UploadTimeout | undefined;
       let settled = false;
-      // One timer: each progress sets it again, and a body all sent waits for its answer instead; none once settled.
+      // One timer, from the body's first progress: each progress sets it again, and a body all sent waits for its
+      // answer instead; none once settled.
       const wait = (stage: UploadTimeout["stage"]) => {
         clearTimeout(timer);
         if (settled) {
@@ -140,7 +148,6 @@ export function uploadFetch(
       });
       signal?.addEventListener("abort", stop, { once: true });
       xhr.send(form);
-      wait("stalled");
     });
 }
 
