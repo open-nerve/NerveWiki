@@ -51,6 +51,11 @@ export class FakeTransfer extends EventTarget implements Transfer {
     this.upload.dispatchEvent(new ProgressEvent("progress", { loaded, total, lengthComputable: true }));
   }
 
+  /** sentAll tells that the whole body has gone, as the upload's load does: no progress told with it. */
+  sentAll(): void {
+    this.upload.dispatchEvent(new ProgressEvent("load"));
+  }
+
   /** answer answers with response, as the browser has it: its status, its text, its headers' lines. */
   async answer(response: Response): Promise<void> {
     this.responseText = await response.text();

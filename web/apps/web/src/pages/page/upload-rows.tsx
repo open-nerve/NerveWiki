@@ -15,6 +15,7 @@ import { useT, type Translate } from "../../i18n/i18n";
 import type { Locale } from "../../i18n/locale";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
+import { UploadTimeout } from "../../services/upload-fetch";
 import { isRefusal, sourceMaxBytes, type AssetStore, type Upload } from "../../stores/asset.store";
 import { usePageTree, useStore } from "../../stores/context";
 import { duplicateText } from "../notebook/duplicate-text";
@@ -260,8 +261,8 @@ const SourceTitleForm = observer(function SourceTitleForm({
 });
 
 /**
- * failureText says why an upload failed: not sent, as the page knew; too large, by the instance's largest; its
- * names taken, the last it tried as well; or the error's text.
+ * failureText says why an upload failed: not sent, as the page knew; given up, stalled or unanswered (M12/P2/S5,
+ * 16.3); too large, by the instance's largest; its names taken, the last it tried as well; or the error's text.
  */
 function failureText(failure: unknown, t: Translate, locale: Locale, max: number | undefined): string {
   if (isRefusal(failure)) {
@@ -275,6 +276,9 @@ function failureText(failure: unknown, t: Translate, locale: Locale, max: number
       case "source-title":
         return t(titleMessages[failure.issue]);
     }
+  }
+  if (failure instanceof UploadTimeout) {
+    return t(failure.stage === "stalled" ? "asset.stalled" : "asset.unanswered");
   }
   if (failure instanceof ApiError && failure.code === "payload_too_large" && max !== undefined) {
     return t("asset.tooLarge", { max: formatBytes(max, locale) });

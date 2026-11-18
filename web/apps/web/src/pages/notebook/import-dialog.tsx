@@ -16,6 +16,7 @@ import { useT } from "../../i18n/i18n";
 import { filesDropped } from "../../lib/file-transfer";
 import type { Notebook } from "../../services/notebook.service";
 import type { TransferJob } from "../../services/transfer.service";
+import { UploadTimeout } from "../../services/upload-fetch";
 import { usePageTree, useStore, useTransfers } from "../../stores/context";
 import { depthOf, maxDepth } from "../../stores/page-tree";
 import { ParentOptions, Problem, rootOption as root } from "./parent-options";
@@ -221,7 +222,12 @@ const ImportForm = observer(function ImportForm({
       payload_too_large: "transfer.importTooLarge",
       bad_request: "transfer.importBadRequest",
     },
-    explain: (error) => (error instanceof TypeError ? t("transfer.importCut") : undefined),
+    explain: (error) =>
+      error instanceof TypeError
+        ? t("transfer.importCut")
+        : error instanceof UploadTimeout
+          ? t(error.stage === "stalled" ? "transfer.importStalled" : "transfer.importUnanswered")
+          : undefined,
   });
   // The upload stops as the dialog goes.
   useEffect(() => () => upload.current?.abort(), [upload]);

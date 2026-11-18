@@ -5,7 +5,7 @@ import { expect, onTestFinished, test, vi } from "vitest";
 
 import { idleLimit } from "../../editor/idle-exit";
 import { editorExtensions } from "../../editor/registry";
-import { attachments, dropped, nodes, picker } from "../../test/attachments";
+import { attachments, dropped, nodes, picker, transfers } from "../../test/attachments";
 import { instanceJSON, json } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { guide, pagePath, pageServer } from "../../test/page-server";
@@ -278,7 +278,13 @@ test("an edit whose upload goes is not idle: the idle exit leaves it once the em
   paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
   await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
 
-  await rest(idleLimit + 60_000);
+  // The body goes on slowly all the while: an upload that makes progress is not given up (M12/P2/S5, 16.3).
+  for (let step = 1; step * 30_000 <= idleLimit + 60_000; step++) {
+    act(() => transfers(server.app)[0]?.progress(step, 1_000));
+    // oxlint-disable-next-line no-await-in-loop -- the time goes by step by step
+    await rest(30_000);
+  }
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
   expect(screen.queryByText("Leaving once the uploads finish…")).toBeNull();
   act(() => server.release());
@@ -286,6 +292,27 @@ test("an edit whose upload goes is not idle: the idle exit leaves it once the em
   await rest(idleLimit);
   expect(await screen.findByText("Editing ended after 30 minutes without input.")).toBeTruthy();
   expect(puts(server).at(-1)).toMatch(/!\[\[chart\.png\]\]/);
+});
+
+test("a file pasted whose upload has no answer within three minutes inserts nothing; Done waiting for it leaves", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server, userEvent.setup({ advanceTimers: vi.advanceTimersByTime }));
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  act(() => transfers(server.app)[0]?.progress(3, 3));
+  await rest(180_000);
+
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  expect(puts(server).filter((line) => line.includes("chart.png"))).toEqual([]);
+  act(() => server.release());
 });
 
 test("as the page is edited, the section's uploads show in it, the editor's by the editor; once it is read, one of the editor's that failed shows in the section", async () => {

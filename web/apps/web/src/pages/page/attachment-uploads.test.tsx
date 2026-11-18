@@ -264,6 +264,76 @@ test("the focus on a row's button stays as its upload fails: Cancel becomes Dism
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Upload" }));
 });
 
+/** Whether the browser asks before the page is left, as a beforeunload's default prevented tells. */
+function asksBeforeLeaving(): boolean {
+  const leaving = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(leaving);
+  return leaving.defaultPrevented;
+}
+
+test.each<[string, "en" | "zh-CN", string, string, string]>([
+  [
+    "English",
+    "en",
+    "Finishing the upload of a.png",
+    "Dismiss the upload of a.png",
+    "The server did not answer within three minutes of getting the file, so the upload was stopped. If it is not in the list, upload it again.",
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    "正在完成a.png的上传",
+    "移除a.png的上传",
+    "服务器收到文件之后三分钟没有答复，上传已停止。列表里没有它的话，再上传一次。",
+  ],
+])(
+  "an upload the server does not answer within three minutes of its last byte fails, saying the upload was stopped; the button that had the focus dismisses it, and the page no longer asks before it is left (%s)",
+  async (_, locale, finishingName, dismissName, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const server = pageServer({ nodes });
+    server.uploadsHeld = true;
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    act(() => server.app.preferences.setLocale(locale));
+
+    choose(section, [new File(["abcd"], "a.png")]);
+    await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+    act(() => transfers(server.app)[0]?.progress(4, 4));
+    const finishing = await within(section).findByRole("button", { name: finishingName });
+    finishing.focus();
+    expect(asksBeforeLeaving()).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(180_000));
+
+    expect((await within(section).findByRole("alert")).textContent).toBe(said);
+    const dismiss = within(section).getByRole("button", { name: dismissName });
+    expect(dismiss).toBe(finishing);
+    expect(document.activeElement).toBe(dismiss);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    expect(asksBeforeLeaving()).toBe(false);
+    act(() => server.release());
+  }
+);
+
+test("an upload that makes no progress for a minute fails, saying it stopped", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["abcd"], "a.png")]);
+  await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+  expect((await within(section).findByRole("alert")).textContent).toBe(
+    "The upload stopped: nothing went out for a minute. Upload the file again."
+  );
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  act(() => server.release());
+});
+
 test("the focus on a row's button as its upload goes through goes back to Upload", async () => {
   const server = pageServer({ nodes });
   server.uploadsHeld = true;

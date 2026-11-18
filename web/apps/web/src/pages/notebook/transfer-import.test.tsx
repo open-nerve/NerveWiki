@@ -1,6 +1,6 @@
 import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
@@ -325,6 +325,44 @@ test("a connection cut, as a refusal before the file is read may reach the brows
   expect(within(shown).getByRole("button", { name: "Import" }).hasAttribute("disabled")).toBe(false);
   expect(asksBeforeLeaving()).toBe(false);
 });
+
+test.each<[string, "en" | "zh-CN", string]>([
+  [
+    "English",
+    "en",
+    "The server did not answer within three minutes of getting the zip, so the upload was stopped. If the import is not among the recent jobs, import again.",
+  ],
+  ["Chinese", "zh-CN", "服务器收到 zip 之后三分钟没有答复，上传已停止。最近的任务里没有这次导入的话，再导入一次。"],
+])(
+  "an import's upload the server does not answer within three minutes of the zip says the upload was stopped, the file kept to try again (%s)",
+  async (_, locale, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+    renderApp(transfer, server.app);
+    const shown = await open(user);
+    await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+    await user.click(within(shown).getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(transfers(server.app).length).toBe(1));
+    act(() => server.app.preferences.setLocale(locale));
+    act(() => transfers(server.app)[0]?.progress(4, 4));
+    expect(asksBeforeLeaving()).toBe(true);
+    const reads = server.asked.filter((ask) => ask.startsWith("GET jobs")).length;
+
+    await act(() => vi.advanceTimersByTimeAsync(180_000));
+
+    expect((await within(shown).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    const confirm = shown.querySelector<HTMLButtonElement>("button[type=submit]");
+    expect(confirm?.disabled).toBe(false);
+    expect(
+      (within(shown).getByLabelText(locale === "en" ? "Zip archive" : "zip 文件") as HTMLInputElement).files?.[0]?.name
+    ).toBe("Vault.zip");
+    expect(asksBeforeLeaving()).toBe(false);
+    await waitFor(() => expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(reads));
+  }
+);
 
 test("the upload tells its progress; the browser asks before the page is left; closed, the dialog asks before it stops it", async () => {
   const user = userEvent.setup();

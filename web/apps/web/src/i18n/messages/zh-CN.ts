@@ -552,6 +552,8 @@ export const zhCN: Messages = {
   "asset.pageFile": "Markdown 文件是页面：请打成 zip，在笔记本设置里导入。",
   "asset.tooLarge": "文件超过了这台服务器接受的大小：至多 {max}。",
   "asset.failed": "上传失败。",
+  "asset.stalled": "上传停住了：一分钟没有传出任何数据。请再上传一次。",
+  "asset.unanswered": "服务器收到文件之后三分钟没有答复，上传已停止。列表里没有它的话，再上传一次。",
   "asset.nameTaken": "这里已有同名的页面或附件，之后试过的名称也都有了。",
   "asset.actions": "{name}的操作",
   "asset.newTab": "（在新标签页打开）",
@@ -1029,6 +1031,9 @@ export const zhCN: Messages = {
   "transfer.importPlaceGone": "导入的位置已不存在。",
   "transfer.importCut":
     "上传没有完成：连接中断了。服务器可能在接收之前就拒绝了它（这本笔记本有进行中的导入、恢复或撤销、你已有 5 个排队或进行中的任务、排队的任务已满、存储空间不足或 zip 太大），也可能是上传太慢。请稍后再试。",
+  "transfer.importStalled": "上传停住了：一分钟没有传出任何数据。请重试，最好换一个更快的网络。",
+  "transfer.importUnanswered":
+    "服务器收到 zip 之后三分钟没有答复，上传已停止。最近的任务里没有这次导入的话，再导入一次。",
   "transfer.exportBusy": "你对这个笔记本的导出还在进行中，请等它结束或者取消它。",
   "transfer.importFailure.forbidden": "发起人已不能编辑这本笔记本。",
   "transfer.importFailure.root_not_found": "导入的位置已不存在。",
