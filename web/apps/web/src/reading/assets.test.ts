@@ -695,3 +695,98 @@ test("a started clip whose block stays is not moved when the same clip is embedd
   expect(taken()).toEqual([]);
   undo?.();
 });
+
+// M12/P2/S4, 17.8 (review A's M1, C's M1): one the view had, still in its block, is left there, whichever other of
+// its attachment's its key now names: neither put in place of nor taken out.
+test("a started clip whose block stays is not put in place of by one of its attachment's whose block was taken out", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  play(first, 3);
+  const clip = play(second, 5);
+  const block = clip.parentElement;
+  undo?.();
+  // Another's write took out the first block (patchBlocks leaves the second).
+  container.firstElementChild?.remove();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([clip]);
+  expect(clip.parentElement).toBe(block);
+  expect(container.contains(first ?? null)).toBe(false);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+test("a started clip whose block stays is left there as one is put before it and another started one's block changes; that one is not put back", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(first, 3);
+  play(second, 5);
+  const block = clip.parentElement;
+  undo?.();
+  const put = document.createElement("p");
+  put.innerHTML = video("c1");
+  container.prepend(put);
+  const changed = document.createElement("div");
+  changed.innerHTML = `${video("c1")} edited`;
+  container.lastElementChild?.replaceWith(changed);
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  const [embedded, kept, last] = container.querySelectorAll("video");
+  expect(kept).toBe(clip);
+  expect(clip.parentElement).toBe(block);
+  // The keys count every one of the attachment's: the third is the second's no more, which stops (4.4.8).
+  expect([embedded === second, last === second]).toEqual([false, false]);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+test("a started clip whose block stays is left there, and another started whose block changed is put back in the new block", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(first, 3);
+  const other = play(second, 5);
+  undo?.();
+  const changed = document.createElement("div");
+  changed.innerHTML = `${video("c1")} edited`;
+  container.lastElementChild?.replaceWith(changed);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([clip, other]);
+  expect(other.parentElement).toBe(changed);
+  expect([other.paused, other.currentTime]).toEqual([false, 5]);
+  undo?.();
+});
+
+test("of two of an attachment, the first not started, both blocks changed, the started one is put back in its new place", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(second, 5);
+  undo?.();
+  const [one, two] = [document.createElement("p"), document.createElement("div")];
+  one.innerHTML = `${video("c1")} edited`;
+  two.innerHTML = `${video("c1")} edited`;
+  container.replaceChildren(one, two);
+
+  undo = enhancement(container, context());
+
+  const [put, kept] = container.querySelectorAll("video");
+  expect(put).not.toBe(first);
+  expect(kept).toBe(clip);
+  expect(clip.parentElement).toBe(two);
+  undo?.();
+});

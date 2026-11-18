@@ -99,13 +99,22 @@ export function assets(): Enhancement {
         page: context.page,
         media: playing,
         focused: [...playing.values()].find((element) => element === active),
+        had: new WeakSet(container.querySelectorAll<HTMLMediaElement>(media)),
       };
     };
   };
 }
 
-/** Kept is what a view had started as its HTML was replaced: its page, its audios and videos by key, the focused one. */
-type Kept = { page: string; media: Map<string, HTMLMediaElement>; focused: HTMLMediaElement | undefined };
+/**
+ * Kept is what a view had started as its HTML was replaced: its page, its audios and videos by key, the focused one;
+ * and every audio and video it had, started or not, which the next run leaves where it is if still there.
+ */
+type Kept = {
+  page: string;
+  media: Map<string, HTMLMediaElement>;
+  focused: HTMLMediaElement | undefined;
+  had: WeakSet<HTMLMediaElement>;
+};
 
 /** Signing is the audios and videos signed anew: those under way, as each failed, and when each was last. */
 type Signing = { pending: WeakMap<HTMLMediaElement, Failing>; at: WeakMap<HTMLMediaElement, number> };
@@ -154,10 +163,14 @@ function sizes(container: HTMLElement, { t, locale }: ReadingContext): HTMLEleme
  * its attributes but its address taken, the focus given back if it had
  * it. One that failed is not put: the new one is put where it was, the
  * focus given it if it had it, playing if the one was as it was being
- * signed anew. One still in container is where it was, its block kept
- * as the HTML changed (M12/P2/S4, 17.8): it is not moved, which would
- * take it out of the document a moment (and a video out of fullscreen),
- * nor taken by another of its attachment's put before it.
+ * signed anew. One the view had that is still in container is where it
+ * was, its block kept as the HTML changed (M12/P2/S4, 17.8): it is not
+ * moved, which would take it out of the document a moment (and a video
+ * out of fullscreen), nor taken by another of its attachment's put before
+ * it, nor put in place of by another started whose block changed (review
+ * A's M1, C's M1). The keys count every audio and video of the attachment,
+ * so one put before a kept one, in a block changed, is not taken back:
+ * it stops (the limit 4.4.8 writes).
  */
 function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing) {
   if (kept === undefined) {
@@ -165,7 +178,7 @@ function adopt(container: HTMLElement, kept: Kept | undefined, signing: Signing)
   }
   for (const [key, element] of keyed(container)) {
     const old = kept.media.get(key);
-    if (old === undefined || container.contains(old)) {
+    if (old === undefined || container.contains(old) || kept.had.has(element)) {
       continue;
     }
     if (old.error !== null) {
