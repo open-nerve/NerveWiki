@@ -790,3 +790,22 @@ test("of two of an attachment, the first not started, both blocks changed, the s
   expect(clip.parentElement).toBe(two);
   undo?.();
 });
+
+// M12/P2/S4 (〔P2S4D-1〕): left where it is, started or not: one not started is the view's as well.
+test("a clip not started whose block stays is not put in place of by a started one of its attachment's whose block was taken out", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  play(first, 3);
+  const block = second?.parentElement;
+  undo?.();
+  container.firstElementChild?.remove();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([second]);
+  expect(second?.parentElement).toBe(block);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
