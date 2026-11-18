@@ -271,6 +271,28 @@ test.each<[string, "en" | "zh-CN", { ask: string; keep: string; discard: string 
   }
 );
 
+test("Escape again as the dialog asks is Keep editing: the draft kept, the focus where it was", async () => {
+  const user = userEvent.setup();
+  const server = sourceServer();
+  sourcePage(server);
+  const dialog = await pasteDialog(user);
+  draft(dialog);
+  const markdown = dialog.querySelector("textarea") as HTMLTextAreaElement;
+  act(() => markdown.focus());
+  await user.keyboard("{Escape}");
+  const ask = within(dialog).getByRole("alert");
+  await waitFor(() => expect(document.activeElement).toBe(within(ask).getByRole("button", { name: "Keep editing" })));
+
+  await user.keyboard("{Escape}");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(screen.queryByRole("dialog")).toBe(dialog);
+  expect(within(dialog).queryByRole("alert")).toBeNull();
+  expect(markdown.value).toBe("# Evidence\n\n  original text\n");
+  expect(document.activeElement).toBe(markdown);
+  expect(creates(server)).toEqual([]);
+});
+
 test("an empty dialog closes at once on Escape", async () => {
   const user = userEvent.setup();
   sourcePage(sourceServer());
