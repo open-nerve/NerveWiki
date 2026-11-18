@@ -79,18 +79,25 @@ func pageAttachmentErr(err error) error {
 	return err
 }
 
-// mcpServer is the MCP server of both entries: tools and prompts, the
-// personal access tokens of the per-route middlewares' authentication,
-// page's notebook entry and the account entry's instructions, the client
-// names on the tokens, and each call's work within server.request_timeout.
+// mcpOptions are the MCP server's options: tools and prompts, the personal access tokens of the per-route
+// middlewares' authentication, the notebook entry and the account entry's instructions, the client names on
+// the tokens, each call's work within server.request_timeout, and a serverInfo that names nervewiki and the
+// build's version, the one /api/v0/instance and `nervewiki version` tell (00-M12 4.9, M12/P5/S1).
+func mcpOptions(cfg config.Config, logger *slog.Logger, errs httpserver.APIErrors, notebooks mcpserver.Notebooks,
+	names mcpserver.ClientNames, tools []mcpserver.Tool, prompts []mcpserver.Prompt,
+) mcpserver.Options {
+	return mcpserver.Options{
+		Name: "nervewiki", Version: buildinfo.Get().Version, Tools: tools, Prompts: prompts,
+		Credentials: mcpCredentials, Notebooks: notebooks, Account: page.AccountInstructions(), Names: names, Errors: errs,
+		RequestTimeout: cfg.Server.RequestTimeout, MaxBodyBytes: mcpBodyLimit, Logger: logger,
+	}
+}
+
+// mcpServer is the MCP server of both entries, page's notebook entry among its options.
 func mcpServer(cfg config.Config, logger *slog.Logger, api *httpserver.API, pg *page.Module, names mcpserver.ClientNames,
 	tools []mcpserver.Tool, prompts []mcpserver.Prompt,
 ) *mcpserver.Server {
-	return mcpserver.New(mcpserver.Options{
-		Name: "nervewiki", Version: buildinfo.Get().Version, Tools: tools, Prompts: prompts,
-		Credentials: mcpCredentials, Notebooks: pg.MCPEntry(), Account: page.AccountInstructions(), Names: names, Errors: api.Errors,
-		RequestTimeout: cfg.Server.RequestTimeout, MaxBodyBytes: mcpBodyLimit, Logger: logger,
-	})
+	return mcpserver.New(mcpOptions(cfg, logger, api.Errors, pg.MCPEntry(), names, tools, prompts))
 }
 
 // mcpCredentials is the request's actor as mcpserver reads it, which does

@@ -18,11 +18,13 @@ import (
 // 13.4 item 4). Each cell's notebook has a page P renamed to Q, the
 // changeset C. A holder locks page_revisions; the cell's read waits on it
 // at its second read or a later one, the first (ListChangesets,
-// FindChangeset, the path's StateOf) having begun; then a revert R of C
-// is written through SQL and committed, which touches no page_revisions,
-// and the holder lets go. The answer is of the moment of its first read:
-// C is not reverted, and the log does not list R. Read again, C is
-// reverted by R, and the log lists R: the row SQL wrote is read.
+// FindChangeset, the path's StateOf) having begun, and the test waits for
+// the read's wait at that later statement, by its name (waits); then a
+// revert R of C is written through SQL and committed, which touches no
+// page_revisions, and the holder lets go. The answer is of the moment of
+// its first read: C is not reverted, and the log does not list R. Read
+// again, C is reverted by R, and the log lists R: the row SQL wrote is
+// read.
 //
 // Before the snapshot, the three logs' cells were what H5 says: C
 // reverted by R in a log without R (ChangesetFacts, or the path's
@@ -37,12 +39,15 @@ func TestTheLogReadsOneMomentAcrossARevert(t *testing.T) {
 		tool string
 		args func(c string) map[string]any
 		logs bool // the answer is the whole log, which lists R or not
+		// waits is the statement, sqlc's name, at which the read waits for
+		// the holder: its second read or a later one, the snapshot begun.
+		waits string
 	}{
-		{"REST's listChangesets", func(nb, _ string) string { return "/api/v0/notebooks/" + nb + "/changesets" }, "", nil, true},
-		{"REST's getChangeset", func(_, c string) string { return "/api/v0/changesets/" + c }, "", nil, false},
-		{"MCP's log", nil, "log", func(string) map[string]any { return map[string]any{} }, true},
-		{"MCP's log of a path", nil, "log", func(string) map[string]any { return map[string]any{"path": "Q.md"} }, false},
-		{"MCP's changeset", nil, "changeset", func(c string) map[string]any { return map[string]any{"id": c} }, false},
+		{"REST's listChangesets", func(nb, _ string) string { return "/api/v0/notebooks/" + nb + "/changesets" }, "", nil, true, "ChangesetFacts"},
+		{"REST's getChangeset", func(_, c string) string { return "/api/v0/changesets/" + c }, "", nil, false, "ChangesetFacts"},
+		{"MCP's log", nil, "log", func(string) map[string]any { return map[string]any{} }, true, "ChangesetFacts"},
+		{"MCP's log of a path", nil, "log", func(string) map[string]any { return map[string]any{"path": "Q.md"} }, false, "ListChangesetsOfPage"},
+		{"MCP's changeset", nil, "changeset", func(c string) map[string]any { return map[string]any{"id": c} }, false, "ChangesetFacts"},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			// A notebook of each cell's own: an earlier cell's R would have
@@ -91,7 +96,10 @@ func TestTheLogReadsOneMomentAcrossARevert(t *testing.T) {
 			send, decode := read()
 			done := make(chan any, 1)
 			go func() { done <- send() }()
-			pgtest.WaitForTableLockWaits(t, tm.pool, "page_revisions", 1, interleavingWait)
+			// The read's own wait, by its statement: the purge, which the
+			// server runs as it starts, waits for page_revisions too, and
+			// counted, R could be written before the read's first read.
+			pgtest.WaitForTableLockWaitsBy(t, tm.pool, "page_revisions", tt.waits, 1, interleavingWait)
 			// R, as a background revert's changeset is written: every column
 			// with no default (background_cost_test.go's revertOfAttachments).
 			r := uuid.NewV7().String()

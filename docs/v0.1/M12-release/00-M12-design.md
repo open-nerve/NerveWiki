@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1、P3 完成；P2–P5 的设计都已审查；P2/S1、P4/S2、P4/S4、P4/S5 已合并；P4/S2 量得页面树平的形状与编辑器的解析（B9）超，页面树由 P4/S4 修好（三种形状都过；P2/S6 排在它之后），P4/S5 修好了 B9（在原规模上再量过了）；P4/S1、P5/S1 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1、P3 完成；P2–P5 的设计都已审查；P2/S1、P4/S2、P4/S4、P4/S5、P5/S1 已合并；P4/S2 量得页面树平的形状与编辑器的解析（B9）超，页面树由 P4/S4 修好（三种形状都过；P2/S6 排在它之后），P4/S5 修好了 B9（在原规模上再量过了）；P4/S1、P5/S2 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -938,7 +938,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 3. **12.6**：设计定稿时 `| M12 | 发布 | 未开始 | — |` → `| M12 | 发布 | 进行中 | [00-M12-design.md](M12-release/00-M12-design.md) |`；收尾之后照 4.12 是"实现完成，待人工验收"。
 4. **7.1**，随 P1/S2 改：`例如 \`postgres:18.6-trixie\`` → `例如 \`postgres:18.7-trixie\``。
 5. **13.5 第 2 条**，随 P1/S2 改：`Node 本身按大版本（\`.node-version\`）。` → `Node 本身按大版本（\`.node-version\`）。Dockerfile 的 golang 镜像的版本（tag 与 server 阶段构建时断言的 \`go env GOVERSION\`）与 README 写给贡献者的版本等于两份 \`go.mod\` 的 \`toolchain\`（golang 镜像设了 \`GOTOOLCHAIN=local\`，\`FROM\` 里生效的是摘要）；测试、开发、部署样例与 smoke 的 PostgreSQL 镜像相同，\`pgtest/image_test.go\` 列出要核对的各处；都由测试核对（M12）。`
-6. **13.5** 加第 6 条，随 P5/S1、S2 改（S1 写到"合并之后才推 tag。"为止，S2 在末尾加后一句；P5 设计 2.1 第 18 条改，比定稿时多了 README、`CHANGELOG.md`、actionlint、写权限只在 tag 的作业里、版本号的 tag 不改指与 Release 先草稿）：`6. **版本号与发布**（M12）：版本号只由 ldflags 注入，\`Makefile\`、\`buildinfo\`、Dockerfile 的两个 \`ARG\` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 \`-dev\`。发布由推 \`vX.Y.Z\` 或 \`vX.Y.Z-rc.N\` 的 tag 触发 \`release.yml\`，闸门只放过 \`main\` 上 \`ci.yml\` 已绿、\`make vuln\` 为绿、\`CHANGELOG.md\` 有这一节的提交；依赖的漏洞扫描另在每天的 \`vuln.yml\` 里跑，actionlint 在 \`ci.yml\` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 \`m12-release\` 这样的分支上，合并之后才推 tag。 镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 \`latest\` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。`
+6. **13.5** 加第 6 条，随 P5/S1、S2 改（S1 写到"合并之后才推 tag。"为止，S2 在末尾加后一句；P5 设计 2.1 第 18 条改，比定稿时多了 README、`CHANGELOG.md`、actionlint、写权限只在 tag 的作业里、版本号的 tag 不改指与 Release 先草稿）：`6. **版本号与发布**（M12）：版本号只由 ldflags 注入，\`Makefile\`、\`buildinfo\`、Dockerfile 的两个 \`ARG\` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 \`-dev\`。发布由推 \`vX.Y.Z\` 或 \`vX.Y.Z-rc.N\` 的 tag 触发 \`release.yml\`，闸门只放过 \`main\` 上 \`ci.yml\` 已绿、\`make vuln\` 为绿、\`CHANGELOG.md\` 有这一节的提交；依赖的漏洞扫描另在每天的 \`vuln.yml\` 里跑，actionlint 在 \`ci.yml\` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 \`m12-release\` 这样的分支上，合并之后才推 tag。 镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 \`latest\` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。`P5/S1 的文档提交落了前一半（到"合并之后才推 tag。"，新文字照 P5 设计第 8 节第 5 条）；后一句随 P5/S2。
 7. **第 11 节**，随 P5/S3 改：
    - 第一段，从 `**M10/P3/S1升级补充**` 到 `不以暖样本承诺生产停机。`（各恰好出现一次）整段换成 `部署、备份、升级与回退的步骤在 [deploy/README.md](../../deploy/README.md)（M12）；这里只列要点。`
    - 最后一段，从 `- **M10/P3来源表示升级（决定62）**` 到 `§3.0、§8.1a）。`（各恰好出现一次）整段删掉；开发版的升级若要写，在 `deploy/README.md` 的附录。
@@ -980,7 +980,7 @@ P5/S1 在 P1 之后就能开，与 P2–P4 并行。S3 等 P4/S3 的数。
 - 移交 M8-history 第 5 条写"两条语句"，现在是五条读（I3 第 5 节第 4 条）。
 - 移交 M5-polish 第 25 条写"分词的版本随之提升"：不需要（4.6.3）。
 - 移交 M5-polish 已修或部分修了的：12.7 的一半、24.10 的注释、22.18 的大半、21.12 的一半、第 3 条的公式与图、`NativeSelect` 的宽度（I3 第 5 节第 5 条）。附录 A 只列剩下的。
-- `Makefile:12` 的注释"默认值与 buildinfo 中的相同"：Dockerfile 另有两份，P5/S1 的守卫之后注释照实改。
+- `Makefile:12` 的注释"默认值与 buildinfo 中的相同"：Dockerfile 另有两份，P5/S1 的守卫之后注释照实改。P5/S1 改了（`68777b97`，P5 设计 3.2）。
 - `README.md:629` 写 `postgres:18.6-trixie`，不在守卫里：P1/S2；P5/S3 换成 `deploy/README.md` 与 `deploy/compose.yaml`。
 - `README.md:499`、`:532`、`:539` 与总体设计第 11 节的首尾两段写着"M12 实机复核"：照 P4 的结论改成已知限制（第 7 条）。
 
@@ -1122,7 +1122,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 | **发布前的升级**：PostgreSQL 18.7 换了某条语句的计划；Go 1.27.4 的运行时改了竞态下的时间；新的 Debian 摘要带来别的变化 | P1 最先做，之后的每个 Step、计划测试与实测都在新的版本上跑；计划测试（13.4 第 9 条）在 18.7 上跑一遍，换了的在 P1/S2 里查清，不放宽；同一个 trixie，glibc 的大版本不变；`jsonv2` 的实验开关由 `mcpserver` 的测试核对（4.3） |
 | **`vuln.yml` 在 M12 期间变红**：Go 的小版本约每月一个，多数带安全修复；npm 一侧 `low` 也报、不看可达性；定时运行的通知不发给主持者 | 不在每次推送的 CI 里，Step 照常合并；每个 Step 合并之前看一眼它最近一次的结论；旁支 `m12-toolchain-<版本>` 升，npm 一侧修不了的写进 `audit.ignore`，闸门只挡 `high`（4.3）；发布的闸门硬挡；收尾之后才发现的再问负责人 |
 | **第五份与第四份的余量**：收尾之后两次（`05dac827`、`a057b6ad`）第五份都在 EPYC 7763 上，平均 425 秒，余量 25 秒；第四份这两次不在 7763 上，平均 312 秒，再前两次在 7763 上平均 413.5 秒 | 新的整个程序的测试点名进第七、第八份（收尾之后两次 257、267 秒，在 7763 上 315、318 秒），名字避开第二、第五份的模式；第四、第五份不加；P1/S2 合并之后两次 `main` 重看；过线先挪份，不提高 `-timeout` |
-| **e2e 的偶发挡发布**：Playwright 不重试，`main` 的 CI 红了就不能打 tag | P1/S1 最先做；门禁数逃生口；`ERR_NETWORK_CHANGED` 加一行日志看它在 CI 上触发了没有；其余的偶发照 M11 第 277 条的做法只重跑 e2e，并在记录里写明 |
+| **e2e 的偶发挡发布**：Playwright 不重试，`main` 的 CI 红了就不能打 tag | P1/S1 最先做；门禁数逃生口；`ERR_NETWORK_CHANGED` 加一行日志看它在 CI 上触发了没有；其余的偶发照 M11 第 277 条的做法只重跑 e2e，并在记录里写明；L1 已改测法（决定 541） |
 | **演练作业的 CI 用时**：每次推送（分支与 `main`）多两个作业，推断 amd64 约 2–3 分钟、arm64 约 2–5 分钟（P5 设计 2.1 第 1 条；原来推断各 10–15 分钟） | 与 `ci.yml` 并行，不进组合根；`ci-wait.sh` 按工作流取，不被它挡住也不被它冒充 |
 | **推 tag 之后才走得到的路径**：keyless 签名、`actions/attest`、GHCR 的推送与权限、Release、复制版本号的 tag；`build-push-action` 的上下文 | 9.5 的三层；rc 先走一遍；一时的失败在同一次运行上重跑，不重推 tag（4.10）；允许的第三方 action 与组织的 Actions 设置由负责人在推 rc 之前核对（第 11 节） |
 | **GHCR 设为公开不能撤回** | 只在 rc 核对之后做；之前核对镜像里没有机密：最后一层只有二进制与 `/licenses`（`deploy/Dockerfile:41-47`），构建参数只有版本与 label，`.git` 只在构建的阶段；Release 的说明与附件在 rc 上先看一遍；版本号的 tag 在签名与证明之后才打 |
@@ -1167,6 +1167,23 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
    选："发布后随读屏验收 (Recommended)"，即"并进发布之后的读屏验收清单，确认有问题的在 v0.1.1 修。其余确定的无障碍问题（焦点丢到 body、缺名称、对比度、超宽）照样在 v0.1 修。"
 
 照此：T2、T4 在 v0.1 修，放进 P3/S3（4.6.6，决定 336）；H1、24.1 写成已知限制，进 v0.2（4.5）。第 6 问的九项里，49 与留在 v0.1 的 24.3 是同一种"不念"的问题（审查 C 的 M1），移回 P2/S1；其余八项并进发布之后的读屏验收（4.5、4.12）。49 留在 v0.1 比第 6 问所选多做了一项，在 M12 的汇报里列出。
+
+### 2026-11-17：L1 的改测法与 P4/S3、P5 之前的四问
+
+主持者在 L1 的旁支审查之后问了一问（审查 A 的 L1A-Q1、C 的 L1C-Q1：M11 第 277 条把改测法留给负责人），又把"需要负责人确认"里 P4/S3、P5 开工之前要的几项一起问了。原问与所选，逐字：
+
+7. 问："e2e 的 L1（Ctrl 点链接开新标签页）约 4% 偶发超时：标签页其实开了，是 Chromium 偶尔漏发一个事件，Playwright 因此等不到。M11 第 277 条把"改测法、削弱测试"留给你定。旁支已备好一个改法：不再等浏览器开出的标签页，改为在点击那一刻核对"应用没拦下这次点击、地址是真的"，再由测试自己开标签页打开这个地址。改后 200 次 0 红；代价是 e2e 不再证"浏览器真的开了标签页"。怎么处理？"
+   选："采用改法 (Recommended)"，即"合并旁支 m12-e2e-l1-new-tab，记录里写明取代 M11 第 277 条。发布前 main 的 CI 不再被它偶发挡住。"
+8. 问："有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的 Nerve Wiki 实例（你自己的开发库之外）？没有的话，P4/S3 不量批次 H、部署文档不写开发版升级的附录，根 README 的六节开发版升级说明删掉（留在 git 历史里）。"
+   选："没有 (Recommended)"，即"只有我自己的开发库，不写开发版附录、不量批次 H。"
+9. 问："输入法清单（M4–M8 的 21 步）是否也在发布之后验收，和读屏、清单 A–K 一样？"
+   选："发布后验收 (Recommended)"，即"同 2026-10-13 的原话：发布说明写明未验收，发现的问题出 v0.1.1。"
+10. 问："SECURITY.md 要指向 GitHub 的私密漏洞报告。你会在仓库设置里开启它吗？顺带 Dependabot alerts（只管 Go 与 actions）要不要开？（这是你在 GitHub 上的操作，我的令牌读不到这些设置。）"
+    选："两个都开 (Recommended)"，即"私密漏洞报告在 P5/S3 写 SECURITY.md 之前开；Dependabot alerts 随时开。"
+11. 问："发布流水线从 P5/S1 起每次推送都会用 docker/* 这些第三方 action 做只读演练，P5/S2 起还用 anchore/sbom-action；推 tag 时还要 sigstore/cosign-installer 与 packages/id-token/attestations/artifact-metadata 的写权限。组织或仓库的"允许的 actions"有没有限制？"
+    选："先跑分支 CI 看 (Recommended)"，即"不确定就先做 P5/S1，分支 CI 红在权限上时我再告诉你去设。"
+
+照此：L1 的旁支照常审查、合并，它的决定与记录写明取代第 277 条（第 7 问）；P4/S3 不量批次 H，P5/S3 不写开发版的附录，根 README 的六节开发版升级说明照 4.8 那一条删掉、删之前把对新装也成立的数挪走（第 8 问）；输入法清单并进发布之后的验收（第 9 问）；`SECURITY.md` 照 P5 设计指向私密的漏洞报告（第 10 问）；P5/S1 的实施者在分支 CI 红在 actions 的权限上时停下，主持者转告负责人（第 11 问）。主持者的令牌读不到仓库的 Actions 设置（`gh api …/actions/permissions` 答 403），所以第 11 问问的是先怎样做，不是设置本身；"需要负责人确认"第 2 项仍要在推 rc 之前照实核对。
 
 ### 2026-11-14：开始 M12 之前的主持者的决定 304–313、315–322、325（负责人可以改判）
 
@@ -1607,6 +1624,61 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 - **539 注释与文档里 `*_` 写实测的范围，约 62–67 ms**（S5 审查 C 的重量）：实施者的再量两轮的较大中位数 62.4–63.6 ms，审查 C 的另一段 66.5–66.8 ms。`markdown.ts` 的 `inlineLimit` 注释、`markdown.test.ts`、总体设计 13.2 第 25 条与移交都这样写。
 - **540 只改 `W/editor/` 的代码与测试的修复，推送之前免 `make e2e`**（修复第 1 轮）：`make build-web` 与 `make test-web` 照跑，逐个提交照跑 `make lint-web`、`make knip`、`make test-web`；分支 CI 跑全套。
 
+### 2026-11-17：L1 的旁支的决定 541–547（主持者的决定，负责人可以改判）
+
+541–547 在旁支 `m12-e2e-l1-new-tab`（M6 的故事，在 M12 里发现）的调查、实施、审查与修复里定。理由与审查里的出处在[旁支的审查记录](reviews/M12-e2e-l1-new-tab-review.md)"主持者的决定"一节；实施中定的不编号，在记录里。
+
+- **541 e2e 的 L1 改测法、不改产品，取代 M11 第 277 条里 L1 的"照现状、CI 再红只重跑 e2e"：带修饰键的点击由 window 上最后的监听器核对，地址在故事自己开的标签页里打开；旁支照常审查、合并**（负责人 2026-11-17 第 7 问；旁支审查 A 的 L1A-Q1、C 的 L1C-Q1）。
+  - 提交 `12e868bf`、`1b01b1d9`、`d716d9a9`、`5ea4ade0`，合进 `main` 一个 `56537688`，合并见第 12 节；审查与修复见[旁支的审查记录](reviews/M12-e2e-l1-new-tab-review.md)。开旁支、照常审查与合并，同 P1 的旁支（决定 356、359）。
+  - **起因**：P4/S4 合并 `main` 的分支 CI（run 43979118856）第一次 attempt，e2e 只红在 L1 (page)：Ctrl 点链接之后 `context.waitForEvent("page")` 等满 30 秒。`ci.yml` 自 2026-10-18 起 400 次运行，L1 在第一次 attempt 红过 3 次（41188823890 在 `main` 上，42913206700，43979118856），重跑都绿；本机约 25 次一次（`89e2389a` 8/200，P2/S1 之前的 `7fdb9f58` 7/200，`41d0cfda` 9/200）。
+  - **原因**（核实）：浏览器开了标签页、载入了页面；Chromium 没为它的文档发 `Page.frameNavigated`，且 `Page.getFrameTree` 答 url 为 `""` 的初始文档时，Playwright 1.63 等一个没有时限的承诺，不报这个页（旁支审查 B 的协议日志 200 次：红 13/13 合这两条，绿 0/187；M11/P2/S3 已查到同样的，见 277）。本机能读到的 Playwright 1.62.1 与 1.65 alpha 同样地等。同一修订的完整版 Chromium 200 次 0 红（决定 545）。"headless shell 里标签页的导航与 DevTools 自动接上之间的竞态"是推断。
+  - **做法**：L1 在 window 上挂一个只用一次的冒泡监听器，排在应用的监听器（都在文章的容器上）之后，记下点击有没有被取消、带没带修饰键、链接的地址与有没有 `download`，然后取消它，浏览器不开标签页；断言没被取消、带着修饰键、地址是 `baseURL + targetPath`、不是下载；地址在 `anotherTab` 开的标签页里打开，看到标题、重新载入，到测试结束都安静。挂在捕获阶段就分不出取消了点击的应用（旁支审查 C 的对照）。
+  - **丢掉的**：e2e 不再看浏览器为这次点击真的开了标签页，算作浏览器的事；对页面的链接，别处没有人守这一步（AS3 守的是 `target="_blank"` 的附件链接）。
+  - **不采用的**：用 CDP（`newBrowserCDPSession` 加 `Target.setDiscoverTargets`）找浏览器开的那个标签页。它的应用正在启动、续期，这时关掉它可能丢掉续期（`e2e/fixtures/navigation.ts` 的文件头）；不关，它就在故事旁边一直跑着。
+  - 277 里"向 Playwright 上游报问题（对外）"的一半仍是负责人的，不做。第 10 节"e2e 的偶发挡发布"一行的"其余的偶发"从此不含 L1。
+- **542 L1 的测试名不改**（主持者的实施说明；旁支审查 C 核过）：名字说的是产品的行为，带修饰键时浏览器在新标签页打开，这没有变；测试证的是"应用把这次点击留给浏览器、地址是真的"，注释写明。
+- **543 阅读视图的链接的单元测试在修饰键那一格记下每次点击的 `defaultPrevented`，随旁支改，不交给 P2 的打磨**（旁支审查 A 的 L1A-M1；`1b01b1d9`）：那一格原来把每次点击都取消、只看没有走路由，应用取消了带修饰键的点击也照过；L1 不再等浏览器开的标签页之后，"不取消"在 e2e 里只有 L1 的 Ctrl 一处守，Shift、Alt 哪里都没人守。改后前 13 次是 `false`、别处先取消的那一次是 `true`；A 的 mA、mB 与 C 的 c1 在 vitest 上由活变红。
+- **544 05-lessons 第 6 节加一条，随旁支的文档提交**（主持者的实施说明）：Chromium 不总是把浏览器开出的标签页报给 Playwright，不等它，在点击那一刻核对。漏报的条件写成两条合起来，不提 lifecycle 的 `init`（旁支审查 B 的 L1B-M1：13 次红里 3 次有）；写明不能挂在捕获阶段（审查 C）；比例写成本机的（L1C-N3）。
+- **545 完整版 Chromium 的对照写进记录，套件与 CI 不改用完整版**（旁支审查 B 的 L1B-Q1）：同一修订（`chromium-1243`）的完整版、new headless，在 `41d0cfda` 上跑原测试 200 次 0 红，同机同时段的 headless shell 9/200；它把"只在 headless shell 里"变成观察到的事实，竞态仍是推断。不改用：整个套件、CI 的安装与用时都要跟着变，改后的 L1 已不靠浏览器报告标签页。
+- **546 第 12 节的审查链接与合并号放在 P4 一行**（旁支审查 C 的 L1C-Q2）：旁支不属哪个 Phase，是在 P4/S4 的分支 CI 上见到的；P1 的三条旁支同样放在 P1 一行。
+- **547 修复核对之后不开第二轮；已推的提交说明不改写，不准处写在记录的"更正"**（同 `642f9196` 的先例）：第 1 轮三位都没有 Important、Minor；新的两条 Nit，注释的 L1B-N2 由只改注释的 `5ea4ade0` 改，`d716d9a9` 说明的"as theirs do"（L1C-K1-N1）与第一轮指出的 `12e868bf` 说明的不准（L1B-M1、N1，L1C-M1、N4）在"更正"。
+
+### 2026-11-18：等锁帮手的旁支的决定 548–554（主持者的决定，负责人可以改判）
+
+548–554 在旁支 `m12-lockwait-by-statement`（P3/S1 的测试，另有 M10 的一格）的查因、实施、审查与修复里定。理由与审查里的出处在[旁支的审查记录](reviews/P3-lockwait-by-statement-review.md)"主持者的决定"一节；实施中定的不编号，在记录里。
+
+- **548 P3/S1 的 `TestTheLogReadsOneMomentAcrossARevert` 的偶发是测试的问题：开旁支修，照常审查与合并；测试按 sqlc 的语句名认出读停下的那一条（`pgtest.WaitForTableLockWaitsBy`），不加长等待**（主持者的查因说明与实施说明；旁支审查 A、B、C）。
+  - 提交 `7b3ac149`、`3d61fc8e`，修复一轮 `aee229af`、`974c7fa2`，只改注释的 `5fb535a8`、`9f322c1d`，合并见第 12 节；审查与修复见[旁支的审查记录](reviews/P3-lockwait-by-statement-review.md)。开旁支、照常审查与合并，同 P1 与 L1 的旁支（决定 356、359、541）。
+  - **起因**：旁支 `m12-submit-deadline-log` 的 `ad68ca6a` 的分支 CI（run 44078438315）第一次 attempt，bootstrap-7 红在 `MCP's_log` 一格：`R listed true; want the moment of its first read: neither`。那个提交只改 `wiki/app` 的测试，编译不到它；只重跑失败的作业，为绿。P3/S1 的审查 B 当时已疑到这里，没有复现，记为接受（[S1 的审查记录](reviews/P3-S1-small-correctness-review.md) `:60`）。
+  - **原因**（核实）：原帮手 `pgtest.WaitForTableLockWaits` 数这个库里任何在等 `page_revisions` 的后端。服务起来之后几秒之内，River 跑 `RunOnStart` 的清理（`platform.purge_soft_deleted`，拿到 leader 之后 `StaggerStart` 先睡 0–1 秒），它 18 条语句里有 5 条也等这张表；测试数到它，就在读走到快照之前写下 R。本机改前没有负载 750 次红 3 次（`main` 450 次红 2 次，带探针的 300 次红 1 次），带负载 300 次 0 次；唯一带诊断的那一次，写 R 时等着的只有清理的 `PurgeTrimmedChangesets`，读还在快照之前的 `FindNotebook`。一个先等上锁的普通 `SELECT` 作外来者，改前查因者 100 格红 100 格、审查 B 红 98 格。CI 那一次与本机另两次也是清理，是推断。
+  - **产品没有问题**：答复在一个快照里；把快照的隔离级别改成 READ COMMITTED，两个测试都红（审查 C）。
+  - **做法**：`WaitForTableLockWaitsBy(t, pool, table, statement, n, limit)` 只数 `pg_stat_activity.query` 以 `-- name: <statement>` 开头、在等这张表的关系锁的后端，与原帮手共用一条查询；空的语句名立即失败。五格各写读停下的那一条：四格 `ChangesetFacts`，`log {path}` 一格 `ListChangesetsOfPage`；名字写成它之前或之后的一条，都在 10 秒的时限上红，信息带语句名。改后本机 450 次 0 红，外来者在场 100/100 格绿。
+  - **不采用的**：加长等待。05-lessons 第 1 节：偶发的测试，等得更久治不好；这里要等的是对的那一个后端。
+- **549 M10 的 `TestVirtualRead/rename_snapshot` 随同一条旁支改，等 `ChangesetFacts`；同类的别处不改**（主持者的实施说明"查同类"；旁支审查 B）：它的 team 也没等完清理，原帮手同样会数到外来者。它没红过：去掉过滤、外来者在场也 20/20 绿，靠的是改名（一次 MCP 调用）比读慢，不是靠等待。`asset_blobs` 的十处都经 `transferTeam`，持锁之前已等完启动的任务；`ingest_virtual_error_test.go` 已等完清理；迁移代价的测试与 linking 适配器的两处没有 River。别的等锁帮手也没有同样的问题（审查 B 核实）。这一个提交写 `(M10 story, found in M12)`。
+- **550 另一种做法也写下：持锁之前先 `awaitJob` 等完服务启动时的任务**（旁支审查 B 的 LWB-Q1，采纳）：`transferTeam` 自 M7/P5A（`55ba1074`）起就这样做，P3/S1 的测试没照它做。`WaitForTableLockWaits` 的注释点名它（`aee229af`），05-lessons 那一条也写，免得读的人以为 `asset_blobs` 的十处也该改。
+- **551 后缀：实施的第一个提交、改 pgtest 与日志的测试的修复与注释提交、文档的提交与合并都写 `(M12/P3/S1)`；改 virtual 那一格的写 `(M10 story, found in M12)`**（旁支审查 C 的 LWC-Q1）：照第 7 节"旁支"一条"写它所属的 Step 或 Phase"，被修的测试是 P3/S1 的，与已推的提交一致，不重写分支。C 倾向 `(M12/P3)`（帮手的旁支修已合并的 P1/S1 的帮手，写 Phase，`4fe6e523`），也合第 7 节。主持者的实施说明里建议的 `(M12/P3/S1 story, found in M12)` 不在规则里："story, found in" 只用于更早的 M。
+- **552 第 12 节的审查链接与合并号放在 P3 一行**（旁支审查 C"文档的去处"）：被修的是 P3/S1 的测试；P1 的三条旁支在 P1 一行，L1 的旁支不属哪个 Phase、放在 P4 一行（决定 546）。
+- **553 文档随旁支的文档提交改**（旁支审查 C"文档的去处"）：05-lessons 第 3 节"交错与锁"加一条"等锁的帮手要认出等的是谁"，放在"交错用确定的办法逼出来"之后（不放第 1 节：这不是测试能不能失败，是测试在好代码上会红）；总体设计 13.4 第 4 条加一句、第 15 节一行（先例 `8635667a`）；P3 设计 3.8.3 第 3 步与 P3/S1 的记录 `:60` 照决定 481 的做法加后注，不改写原文。M10 的文档、移交与 `06-environment.md` 不改。
+- **554 修复核对之后不开第二轮；新的 Nit 由只改注释的两个提交改，与文档提交一起推送；已推的提交说明不改写，不准处写在记录的"更正"**（同决定 547 与 `642f9196` 的先例）：第 1 轮三位都没有 Important、Minor；新的 Nit 四条（去重三条），LWA-N3 与 LWC-N6 的测试注释由 `5fb535a8` 改，LWB-N2 = LWC-N5 由 `9f322c1d` 改。`7b3ac149` 说明的"most of its statements"（LWB-N1）与次数（LWC-N4）、`3d61fc8e` 与 `974c7fa2` 说明里"读还没开始"的一句（LWC-N5）、`aee229af` 的标题（LWC-N6）在"更正"。
+
+### 2026-11-18：P5/S1 的决定 555–563（主持者的决定，负责人可以改判）
+
+555–563 在 P5/S1 的实施、代码审查与修复里定。数在 [P5 设计](05-P5-deploy-release.md) 10.1，与设计不同之处在 P5 设计 3.24，理由与审查里的出处在 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)"主持者的决定"一节。实施中定的各条不编号，在审查记录里；修复两轮里守卫与闸门测试的扩开并进 558、560。
+
+- **555 BuildKit 钉 `moby/buildkit:v0.34.2@sha256:c5f8862f…`，不取那时才发 6 天的 v0.35.0**（S1 实施报告 7.2；审查 B、C 同意）：`buildx-stable-1` 那时仍指 v0.34.2，钉的就是 setup-buildx-action 不钉时会拉的那一个，不改变行为（决定 447 说取"S1 实施时的稳定版"）。摘要是 index 的，两种架构都有；两种 runner 都按它拉成功，审查 B 以 `docker buildx imagetools inspect` 核过。v0.35.0 以后照 4.3 的路升。
+- **556 `actions/setup-go` 三份工作流照旧 v7.0.0，v7.1.0 一起升、走 4.3 的路**（S1 实施报告 7.3；审查 C 同意）：只升 `release.yml` 的 `gate` 会让闸门的 Go 环境与 `ci.yml` 的不同；`make outdated` 会一直列出它。
+- **557 `make lint-actions` 的 `-format` 末尾写裸的 `\n`**（S1 实施报告 7.1；审查 C 对 actionlint v1.7.12 的源码核实）：actionlint 在解析模板之前先把 `\n` 等反斜杠转义换成字符，P5 设计 3.5 写的 `{{"\n"}}` 成了没结束的字符串。第 5 个提交因此在 CI 的 Lint workflows 一步上红在我们自己的 `make lint-actions`，不是设计预料的"现有的工作流过不了 actionlint"（审查 C 的 N5）；照设计的办法另起一个提交 `2db96b0a`，之后三份工作流 0 错，没有"the workflows pass actionlint"那个提交。
+- **558 闸门与说明的测试补设计的表没盖住的格子，每格照 runner 检出；说明认的标题与闸门数的同一种**（S1 实施报告第 8 节与修复两轮；审查 B、C 同意）：闸门加四格（同一提交另一个分支、事件、提交的更新的绿运行，缺右括号的标题），"没有 IMAGE"要闸门自己的字样，说明加结尾的空格行与行中的标题（`38916978`；没有一格能让一条检查单独变红就等于没测，05-lessons 第 1 节）；每格照 `actions/checkout` 检出 `GITHUB_SHA` 的提交，没设时检出 tag 的（审查 B 的 M2、N7，C 的 M2）；说明的一节只从以"）"结尾的标题起，"下一个 `## `"先判，同一个版本写坏了的标题在前不是起点、在后结束这一节（审查 B 的 N1、N5）。
+- **559 README 的"需要安装"写"bash、git、jq 与 awk"**（S1 实施报告 7.5；审查 C 建议给号）：P5 设计写"加 jq"；发布脚本的测试同样要 bash、git 与 awk，四样都列出来，06-environment 同此。
+- **560 守卫加两条、不加一条，加的两条照核对第 1 轮扩开**（S1 审查 B 的 N3；核对第 1 轮 B 的 M3、N6，C 的 N7）：
+  - 加：`release.yml` 里跑 image-smoke 的步骤不写 `if`；`rehearse` 与 `build`（S2 加 `verify`）各恰有一步跑它，`run` 里有一行 `deploy/image-smoke.sh … "$VERSION"`、后面没有别的。
+  - 加：演练不引用 secret、不登录：`rehearse` 作业与工作流顶层的 `env`、`defaults` 里没有字符串匹配 `(?i)\bsecrets\b`，演练每一步的 `uses` 与 `run` 合起来不匹配 `(?i)login`。演练推不出东西靠令牌只有 `contents: read`，一个别人的令牌加一次登录就越过它。
+  - 不加："tag 的运行不取消"。取消在 `build` 之前时什么也没推；在它之后，GHCR 里留下没有 tag 的摘要，同失败时（决定 444）；版本号的 tag 在证明与签名之后才打、Release 核对过才公开（P5/S2），被取消的运行留不下按版本号拉得到的东西。
+  - 同一守卫照审查的 Minor、Nit 改的几处（`run:` 里在每一处 `${{` 上核对，矩阵的值写死，`ci.yml` 的 actionlint 一步恰是三个键、`costs-1` 是作业的一份）是发现的处置，不另编号。
+- **561 `build` 断言它检出的就是闸门放过的提交，交 P5/S2**（S1 审查 B 未核实的第 1 条；措辞照核对第 2 轮 B 的 N11）：`build` 用 `HEAD` 构建、不看闸门的 `sha`，两个作业是同一个提交是推断，只有推 tag 才证明得了。S2 在 `build` 的 Labels 之前加 `test "$(git rev-parse HEAD)" = "$SHA"`；`publish` 不用 `HEAD` 构建，它的 Index 一步可以另核对推上去的镜像的 `revision`。S1 不改：要改 `release.yml`，与 S2 的 `publish`、`verify` 一起写，tag 的作业在 S2 合并之前走不到（P5 设计第 9 节"P5/S2"）。
+- **562 smoke 一步关掉 `bash -e` 的写法交 P5/S2**（核对第 2 轮 A 的 N6、B 的 N10、C 的 N9，三位都提）：S1 的守卫按行核对 smoke 那一行，前面一行 `set +e`、这一步或作业写不带 `-e` 的 `shell` 时，smoke 失败了这一步照绿。S2 写 `publish`、`verify` 与它们的 `shell` 时，守卫一并不许跑 smoke 的步骤与作业写 `shell`、`defaults.run.shell`、`set +e`。理由：S1 的守卫防的是无心的改名与挪动（同审查 C 的 N6 的定级）；有意的写法列不尽，要与 S2 加的 `shell` 一起看。主持者先定"不改、只记"，看了 A 的 N6（`build` 那一步自带第二行）改判为交 S2（P5 设计第 9 节"P5/S2"、3.10）。
+- **563 S1 审查 B 的 N2、C 的 N1 不改代码**（S1 实施报告"修复第 1 轮"；核对第 1 轮判理由站得住）：闸门的日期只核对 `YYYY-MM-DD` 的形状（`2026-99-99` 放行）：它挡的是忘了写日期（决定 434），日期由主持者在 P5 设计 3.23 第 7 步照当天写，P5 设计 3.6 写明；MCP 的版本只测到 `mcpOptions`，`mcpServer` 只剩一行 `mcpserver.New(mcpOptions(...))`，这一跳由代码的形状守着、不由测试守着（决定 431），写进审查记录。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1630,13 +1702,13 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | # | 事项 | 推荐 | 什么时候要 |
 |---|---|---|---|
 | 1 | 推 `v0.1.0-rc.1` 与 `v0.1.0` 两个 tag（4.11 第 2 步） | 照 4.11 | 收尾合并、`main` 的 CI 绿之后，推 rc 之前 |
-| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write`（I1-D19；审查 B 指出这几项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以）；演练在每次推送上用 `docker/*`（P5/S1 起）与 `anchore/sbom-action`（P5/S2 起），"允许的 actions"受限时那个 Step 的分支 CI 就红（P5 设计 2.2） |
+| 2 | 组织允许公开的容器包；"允许的 actions"包括 `docker/*`、`sigstore/cosign-installer`、`anchore/sbom-action` 这几个第三方的（`ci.yml` 今天只用 GitHub 自己的）；组织的 Actions 设置允许工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write`（I1-D19；审查 B 指出这几项可能本来不限，照实核对） | 照做 | 推 rc 之前（P5/S2 合并之后就可以）；演练在每次推送上用 `docker/*`（P5/S1 起）与 `anchore/sbom-action`（P5/S2 起），"允许的 actions"受限时那个 Step 的分支 CI 就红（P5 设计 2.2）。**2026-11-17 第 11 问**：先跑 P5/S1 的分支 CI 看，红在权限上再请负责人设；推 rc 之前仍照实核对。**P5/S1**：分支 CI 没有被"允许的 actions"挡住：`release.yml` 的演练用的 `docker/setup-buildx-action`、`docker/build-push-action` 每次都跑了（run 44073973297 起，[P5 设计](05-P5-deploy-release.md) 10.1）；`docker/login-action` 只在 tag 的 `build` 里、还没跑过，S2 的 `sigstore/cosign-installer`、`anchore/sbom-action` 与写权限也还没有，推 rc 之前仍要照实核对 |
 | 3 | 给 `v*` 的 tag 加规则集，只有负责人与主持者能推（I1-D19） | 照做 | 推 rc 之前 |
-| 4 | 开私密的漏洞报告（`SECURITY.md` 指向它）；Dependabot alerts 可以开，只管 Go 与 actions：GitHub 的依赖图读不出 pnpm 12 的锁文件，npm 一侧靠 `make vuln` 里的 `pnpm audit --prod`（I1-D19；设计审查 B 改） | 照做 | 私密的漏洞报告在 P5/S3 写 `SECURITY.md` 之前；alerts 随时 |
+| 4 | 开私密的漏洞报告（`SECURITY.md` 指向它）；Dependabot alerts 可以开，只管 Go 与 actions：GitHub 的依赖图读不出 pnpm 12 的锁文件，npm 一侧靠 `make vuln` 里的 `pnpm audit --prod`（I1-D19；设计审查 B 改） | 照做 | 私密的漏洞报告在 P5/S3 写 `SECURITY.md` 之前；alerts 随时。**2026-11-17 第 10 问**：两个都开，负责人做 |
 | 5 | 把 GHCR 的包设为公开，**不能撤回**（I1-D19） | rc 核对之后 | 4.11 第 5 步：rc 核对之后、推 `v0.1.0` 之前 |
 | 6 | Dependabot 的版本更新 PR 要不要开（移交 M0-P6 第 4 条写明由负责人定） | 不开；发布之前在 runner 上跑 `make outdated`（4.3） | M12 收尾之前（写 v0.2 的移交时） |
-| 7 | 有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的实例（I1-D13） | — | P4/S3 开始之前：没有就不写开发版的附录、不量批次 H |
-| 8 | 输入法清单（M4–M8 的 21 步）是否同样在发布之后验收（4.12） | 是：同 2026-10-13 的原话 | 写发布说明之前（P5/S3） |
+| 7 | 有没有 v0.1.0 之前就在跑、要升级到 v0.1.0 的实例（I1-D13） | — | **已确认（2026-11-17）**：没有（第 8 问）；不写开发版的附录、不量批次 H |
+| 8 | 输入法清单（M4–M8 的 21 步）是否同样在发布之后验收（4.12） | 是：同 2026-10-13 的原话 | **已确认（2026-11-17）**：发布之后验收（第 9 问） |
 | 9 | 罕见的 A 类（H1、24.1、T4、T2）怎样处理 | **已确认（2026-11-14）**：T2、T4 在 v0.1 修，H1、24.1 进 v0.2（第 5 问） | — |
 | 10 | 只从 ARIA 推断的九项怎样处理 | **已确认（2026-11-14）**：并进发布之后的读屏验收（第 6 问）；其中 49 与 24.3 同一种问题，留在 v0.1 | — |
 | 11 | 打开仓库的 immutable releases（P5 设计 2.1 第 14 条） | 打开：公开之后 tag 与附件都不能改，与"不重推同一个 tag"一致；流水线先草稿后公开，打开不打开都能用 | 推 rc 之前 |
@@ -1650,9 +1722,9 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 |---|---|---|---|---|
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
 | P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 进行中（S1 已合并） | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-focus-and-shared-review.md) | S1 `d1ade2ed` |
-| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df` |
-| P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md) | S2 `54a89127`、S4 `35501dec`、S5 `（待填：S5 的合并号）` |
-| P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查） | [设计](reviews/P5-design-review.md) | — |
+| P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md)、[等锁帮手的旁支](reviews/P3-lockwait-by-statement-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`、等锁帮手的旁支 `5d782ff8` |
+| P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md)、[L1 的旁支](reviews/M12-e2e-l1-new-tab-review.md) | S2 `54a89127`、S4 `35501dec`、S5 `5e58e844`、L1 的旁支 `7ce00077` |
+| P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查；S1 已合并，2026-11-18） | [设计](reviews/P5-design-review.md)、[S1](reviews/P5-S1-version-pipeline-review.md) | S1 `（待填：S1 的合并号）` |
 | 收尾与发布 | — | 未开始 | — | — |
 
 ## 13. 变更记录
@@ -1692,6 +1764,10 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | 2026-11-17 | P3 完成：三个 Step 都已合并（S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`），决定 361–377、479–482、530–532。P3 设计第 8 节的完成标准逐条：第 1 条，每个 Step 的提交都在、各自单独为绿，7.4 的闸门与分支的 CI 都绿（各 Step 的记录）；第 2 条，7.3 各 Step 的变异先绿后红、等价的写明（10.1–10.3 与三份记录）；第 3 条，三个 Step 都经三份代码审查与修复核对，对设计的修正在 3.21–3.23；第 4 条，第 8 节的新文字随各 Step 的文档提交落了（第 1–10、12、13 条各标已落，第 11 条是本文第 12 节的进度）。S2 另：23 个下限在测试里，整个程序的 nested 两格在 S2 合并之后的 `main` 上一直绿（此后各次 `main` 的 CI 第一次 attempt 都绿）。S3 另：3.14.3 的六处种子都改了，第 4 条的反向对照 5 次 4 红，点名的四个测试 `-count=20` 80 次全过（10.3）。S3 合并之后两次 `main`（run 43978501165、43982677358）组合根八份 Test 一步的平均：第一份 282.5 秒、第二份 254.5、第三份 326、第四份 341、第五份 290、第六份 275.5、第七份 238、第八份 292.5，都在 450 秒之下；竞态一份 9:18、9:13；e2e 的 E2E 一步 5:58、6:13。S3 文档提交的分支 CI 里竞态一份 Test 14:38，比此前约 9 分慢，原因没有查，合并之后的两次回到约 9 分。 |
 | 2026-11-17 | P4 的 S4（页面树的渲染）实施、审查与修复（实施 4 个提交，修复第 1 轮 3 个，一共 7 个，另两次合并 `main`；合并见第 12 节）：三份审查 A 0I2M2N、B 0I1M3N、C 0I2M5N1Q；核对一轮（A 1N、B 1N、C 3N，都只关文档的说法与一行注释）。行便宜（`memo` 与原始值的属性、普通链接、一棵树一个菜单、对话框选了才挂），每个页的列表先画 100 行、其余每帧画完再加 400 行；平的形状（1 万页）T1 3,015 → 178 ms、T2 1,609 → 191 ms、T2 的最长长任务 1,429 → 94 ms，约 2.4 秒全部行进 DOM（其间最长的长任务 80 ms），堆 604 → 80 MB；深与带附件不慢，T3 212 → 30 ms。再量发现"移到……"慢了一倍，加提交修了（决定 533）；画全之后改一次树 `PageList` 渲染两遍，不改（534）；与锁外的负载重叠的补量作废重量（535）；13.2 的新条取第 30 条（536）。变异 55 条抓 53（没抓的是设计写明不守的两条），6.2 的六条反向对照照期望 | [P4/S4 设计](04-P4-S4-page-tree.md)第 10 节、[P4 设计](04-P4-performance.md) 10.2、[S4 的审查记录](reviews/P4-S4-page-tree-review.md)；决定 533–537 |
 | 2026-11-17 | P4 的 S5（编辑器的解析，B9）实施、审查与修复（实施 3 个提交，修复第 1 轮 4 个，核对第 1 轮 1 个，一共 8 个，另一次合并 `main`；合并见第 12 节）：编辑器自己的 Markdown 配置加三个行内解析器（`linearScans`：一串空格；没收尾的 `<?` 与后面没有 `>` 的 `<`；`www.`、`http(s)://` 自动链接的括号只数一遍、被拒的记下），语法树逐节点不变；跨行的引用式定义另设上限 `referenceLimit = 2_000`。守卫：关掉上限的十七种（实施时加"一串空格直到正文末尾"）、lezer 自己的平方不加重的四格（过界时再量一次，决定 538）、读码元的次数、编辑器带着三个扫描、2 万篇随机文档加 61 篇手写的差分。在原规模上再量（今天与 S5 轮流各两轮）：每一格都不比今天慢、都 ≤ 80 ms，今天超的都下来了（一串空格类 85.6–87.2 → 0.1–0.3 ms，两种标题的定义插一个字 90.3–93.2 → 3.0–4.6，`)` 网址一次解析 199–212 → 1.3）；上限处最贵的是 `*_` 约 62–67 ms（决定 539）；B9 过了。三份审查 A 0I1M1N、B 0I2M1N、C 0I2M5N；核对第 1 轮 A 1N，B、C 没有新的。分支 CI 每次第一次全绿；`markdown.test.ts` 在 CI 上 2.5 → 7.3–7.9 s，Test 一步没有变长。第 7 节"总体设计的修订"第 27 条落了，第 8 节加网页一项，第 11 节加决定 538–540；总体设计 13.2 第 25 条、13.5 第 5 条与第 15 节；移交 M4-performance 一行；05-lessons 两条 | [P4/S5 设计](04-P4-S5-editor-parse.md)第 10 节、[P4 设计](04-P4-performance.md) 10.2 与 [S5 的审查记录](reviews/P4-S5-editor-parse-review.md)（A 1M 1N、B 2M 1N、C 2M 5N；核对第 1 轮 A 1N）；决定 538–540 |
+| 2026-11-17 | 负责人答了五问（第 11 节"2026-11-17：L1 的改测法与 P4/S3、P5 之前的四问"，第 7–11 问，都选推荐）：L1 采用改测法、取代 M11 第 277 条；没有 v0.1.0 之前的实例，P4/S3 不量批次 H、不写开发版的附录；输入法清单发布之后验收；私密漏洞报告与 Dependabot alerts 由负责人开；"允许的 actions"先看 P5/S1 的分支 CI。"需要负责人确认"第 2、4、7、8 项随之改，[P4 设计](04-P4-performance.md) 2.2 第 1 条标已确认。同一提交给 P4/S5 的合并号 `5e58e844` 与它的记录的 CI | 第 11 节 |
+| 2026-11-17 | L1 的旁支 `m12-e2e-l1-new-tab`（M6 的故事，在 M12 里发现；`12e868bf`、`1b01b1d9`、`d716d9a9`，只改注释的 `5ea4ade0`，合进 `main` 一个 `56537688`；合并见第 12 节）：P4/S4 合并 `main` 之后的分支 CI（run 43979118856）第一次 attempt，e2e 只红在 L1 (page)：Ctrl 点链接之后 `waitForEvent("page")` 等满 30 秒；`ci.yml` 自 2026-10-18 起 400 次里第一次 attempt 红过 3 次（一次在 `main` 上），重跑都绿；本机约 25 次一次，P2/S1 前后一样。核实的：标签页开了、载入了页面，Chromium 没为它的文档发 `Page.frameNavigated` 且 `Page.getFrameTree` 答 url 为 `""` 的初始文档时，Playwright 1.63 不带时限地等、不报这个页（审查 B 的协议日志 200 次：红 13/13，绿 0/187；M11/P2/S3 已查到，M11 决定 277），1.62.1 与 1.65 alpha 同样；同一修订的完整版 Chromium 200 次 0 红。推断的：headless shell 里标签页的导航与 DevTools 自动接上之间的竞态。改法只改测试：L1 在 window 上冒泡阶段最后拿到点击，核对没被取消、带修饰键、地址是真的、不是下载，再取消，地址在 `anotherTab` 开的标签页里打开；阅读视图的链接的单元测试记下每次点击的 `defaultPrevented`；e2e 不再看浏览器真的开了标签页。审查 A 0I 1M 2N 1Q、B 0I 1M 1N 1Q、C 0I 2M 4N 2Q，修复一轮两个提交；修复核对一轮三位都没有 Important、Minor，新 Nit 两条，一条由注释提交改，一条在记录的"更正"。门禁：改后 L1 (page) Chromium 200/200（实施与修复一轮各一次，审查 C 另一次），`make e2e` 576 过、1 跳过；分支 CI 43989817910、44001727074 都一次全绿。负责人 2026-11-17 第 7 问取代 M11 第 277 条；第 11 节加决定 541–547；第 10 节"e2e 的偶发挡发布"一行、05-lessons 第 6 节一条、P1 设计第 1 节"页面的监视"与决定 339 的后注随之改 | 决定 541–547；[旁支的审查记录](reviews/M12-e2e-l1-new-tab-review.md) |
+| 2026-11-18 | 等锁帮手的旁支 `m12-lockwait-by-statement`（P3/S1 的测试，另改 M10 的一格；`7b3ac149`、`3d61fc8e`，修复一轮 `aee229af`、`974c7fa2`，只改注释的 `5fb535a8`、`9f322c1d`；合并见第 12 节）：旁支 `m12-submit-deadline-log` 的 `ad68ca6a` 的分支 CI（run 44078438315）第一次 attempt，bootstrap-7 红在 P3/S1 的 `TestTheLogReadsOneMomentAcrossARevert/MCP's_log`（读看到了 R），那个提交编译不到这个测试；只重跑失败的作业，为绿。核实的：`pgtest.WaitForTableLockWaits` 数任何在等 `page_revisions` 的后端，服务起来之后几秒之内 River 跑 `RunOnStart` 的清理，它 18 条语句里有 5 条也等这张表；本机改前没有负载 750 次红 3 次（`main` 450 次红 2 次，带探针的 300 次红 1 次），带负载 300 次 0 次，唯一带诊断的那一次写 R 时等着的只有清理的 `PurgeTrimmedChangesets`、读还在快照之前；一个先等上锁的普通 `SELECT` 作外来者，改前 100 格红 100 格（审查 B 98 格），改后 100 格全绿。推断的：CI 那一次与本机另两次也是清理。答复在一个快照里，不是产品的问题（READ COMMITTED 的产品变异两个测试都红）。改法只改测试：`pgtest.WaitForTableLockWaitsBy` 只数在跑 sqlc 的某条语句的后端，五格各等读停下的那一条（四格 `ChangesetFacts`，带路径的日志 `ListChangesetsOfPage`），不加长等待；M10 的 `TestVirtualRead/rename_snapshot` 同样等 `ChangesetFacts`（去掉过滤时它照绿，靠的是改名比读慢）；`asset_blobs` 的十处已由 `transferTeam` 先等完启动的任务，不改。改后本机 450 次 0 红。审查 A 0I 0M 2N、B 0I 1M 1N 1Q、C 0I 0M 4N 1Q，修复一轮两个提交；修复核对一轮三位都没有 Important、Minor，新 Nit 四条（去重三条），由两个只改注释的提交改，已推的说明的不准在记录的"更正"。门禁：两个组合根测试 `-race` 实施 100/100、修复一轮 60/60，`make test-go` 185 个包；分支 CI 44163333532、44176852719 都一次全绿。第 11 节加决定 548–554；05-lessons 第 3 节一条；总体设计 13.4 第 4 条与第 15 节；P3 设计 3.8.3 第 3 步与 P3/S1 的记录的后注 | 决定 548–554；[旁支的审查记录](reviews/P3-lockwait-by-statement-review.md) |
+| 2026-11-18 | P5 的 S1（版本号与流水线的构建）实施、审查与修复（实施 9 个提交，修复第 1 轮 8 个、第 2 轮 7 个，一共 24 个，另一次合并 `main`；合并见第 12 节）：版本号的默认值五处（`buildinfo.go`、`Makefile`、Dockerfile 的两个 `ARG`、README）由 `TestTheDefaultVersionIsOneEverywhere` 核对；MCP 的 `serverInfo` 取 `buildinfo` 的版本，`make test-go-short` 以 `0.0.0-short` 盖测试的版本号；镜像加 `revision`、`created`、`description` 三个 label，`make image` 传它们、git 读不出时停下，`image-smoke.sh` 逐字核对；`ci.yml` 只在分支上跑，actionlint 由 `make lint-actions` 只在 `costs-1` 一份里跑；闸门 `deploy/release-gate.sh` 与说明 `deploy/release-notes.sh`；`release.yml` 在每次推送上以两种原生 runner 只读地演练构建与 image-smoke，tag 上闸门之后按摘要推送、拉回来 smoke；守卫读三份工作流（写权限只在 tag 的作业里，`run:` 里只许 `${{ matrix.* }}`、矩阵写死，actionlint 那一步在，跑 smoke 的步骤不跳过，演练不引用 secret、不登录）。三份审查 A 0I1M3N、B 0I2M4N、C 0I4M5N（Minor 去重 5 条）；核对两轮（第 1 轮 A 2N、B 1M5N、C 3N，第 2 轮 A 1N、B 2N、C 1N）。分支 CI 每次推送第一次 attempt：`ci.yml` 19 项与 `release.yml` 两个演练全绿（第 5 个提交红在 `make lint-actions` 自己的 `-format`，下一个提交改了）；演练 amd64 1:18–2:21、arm64 1:21–1:26，Lint workflows 2–3 秒；`docker/*` 没被"允许的 actions"挡住；没有推任何 tag、镜像，没有建 Release。第 7 节"总体设计的修订"第 6 条落了前一半，第 11 节加决定 555–563，"需要负责人确认"第 2 项记下 S1 的分支 CI；总体设计 13.5 第 6 条与第 15 节；06-environment；移交 M0-P6-image-release 一行 | [P5 设计](05-P5-deploy-release.md) 3.24、10.1 与 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)（A 1M 3N、B 2M 4N、C 4M 5N；核对第 1 轮 A 2N、B 1M 5N、C 3N，第 2 轮 A 1N、B 2N、C 1N）；决定 555–563 |
 
 ---
 
