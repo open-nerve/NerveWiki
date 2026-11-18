@@ -200,6 +200,9 @@ describe("uploadFetch", () => {
       sent().progress(100, 100);
       await vi.advanceTimersByTimeAsync(179_000);
       await sent().answer(new Response("{}", { status: 201 }));
+      // The timer the answer came before is gone with it.
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(sent().aborted).toBe(false);
       // An upload's load later than the answer (Firefox holds it back until the answer) sets no timer again.
       sent().sentAll();
       await vi.advanceTimersByTimeAsync(180_000);
