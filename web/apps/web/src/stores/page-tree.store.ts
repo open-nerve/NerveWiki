@@ -39,6 +39,9 @@ import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from ".
 /** How long a toggle of a task item holds its page's others back: more than the server takes to answer. */
 export const toggleLimit = 60_000;
 
+/** A revert out: its answer, and the newest revert of its changeset its sender knew (before). */
+export type RevertOut = { answer: Promise<ChangesetReverted>; before: string | undefined };
+
 /**
  * PageTreeStore holds one notebook's page tree for one generation (M4/P5
  * design 3.4): the left column shows it, and a page's shell finds its page,
@@ -73,9 +76,6 @@ export const toggleLimit = 60_000;
  * out one at a time too, each in turn with the tree's writes, which it is
  * one of; the pages it deletes are this generation's deleted as well.
  */
-/** A revert out: its answer, and the newest revert of its changeset its sender knew (before). */
-export type RevertOut = { answer: Promise<ChangesetReverted>; before: string | undefined };
-
 export class PageTreeStore {
   /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
   nodes: TreeNode[] | undefined = undefined;

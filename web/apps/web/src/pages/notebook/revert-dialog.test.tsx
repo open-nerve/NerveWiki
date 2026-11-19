@@ -1216,6 +1216,28 @@ test("an undo refused as the reader went back and forward says why on the change
   expect(title().getAttribute("aria-describedby")).toBe(alert.id);
 });
 
+test("an undo out as the reader goes back and forward that had nothing to undo is said on the changeset's page shown again, the focus left where it is (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  rework.unchanged = true;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+
+  await goneBackAndForth(router);
+  await screen.findByRole("button", { name: "Undoing…" });
+  expect(document.activeElement).toBe(document.body);
+  act(() => server.release());
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.")
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(document.body);
+});
+
 test("an undo whose answer was lost as the reader went back and forward finds out by the newest undo known as it was sent (M5-polish 23.10)", async () => {
   const user = userEvent.setup();
   const events = eventServer();

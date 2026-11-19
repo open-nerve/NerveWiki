@@ -576,5 +576,9 @@ test.each([
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: names.cancel }));
     expect(server.jobs).toEqual([]);
+    // Enter in the message, the form's one field, submits it: it sends nothing again.
+    await user.type(within(dialog).getByRole("textbox"), "why{Enter}");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(server.asked.filter((each) => each.startsWith("POST revert"))).toEqual(["POST revert rework"]);
   }
 );

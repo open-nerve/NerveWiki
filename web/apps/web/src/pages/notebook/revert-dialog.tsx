@@ -366,7 +366,8 @@ function RevertForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current) {
+    // Only Cancel offered, Enter in the message still submits the form: it sends nothing (M5-polish 24.2).
+    if (busy.current || hopeless) {
       return;
     }
     const text = message.trim();
