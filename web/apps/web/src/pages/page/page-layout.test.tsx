@@ -2,7 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
-import { json, notebookJSON, problem } from "../../test/fakes";
+import { arrived } from "../../app/arrival";
+import { eventHandlers } from "../../events/handlers";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -148,4 +151,113 @@ test("the tree read again shows another tab's changes in the page's title, bread
       .getAllByRole("link")
       .map((link) => link.textContent)
   ).toEqual(["Linux", "macOS"]);
+});
+
+/** left goes from the page shown to the workspace's home: the notebook's shell, and its tree's watch, are gone. */
+async function left(router: ReturnType<typeof renderApp>["router"]) {
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(screen.queryByRole("navigation", { name: "Pages of Plans" })).toBeNull());
+}
+
+/** alertsInserted records the text of each alert inserted from now on, until stopped. */
+function alertsInserted() {
+  const texts: string[] = [];
+  const watching = new MutationObserver((records) => {
+    for (const node of records.flatMap((record) => [...record.addedNodes])) {
+      if (node instanceof HTMLElement) {
+        const alerts = node.matches("[role=alert]") ? [node] : [...node.querySelectorAll("[role=alert]")];
+        texts.push(...alerts.map((alert) => alert.textContent ?? ""));
+      }
+    }
+  });
+  watching.observe(document.body, { childList: true, subtree: true });
+  return { texts, stop: () => watching.disconnect() };
+}
+
+/** pageReads are the reads of a page's own parts among sent. */
+const pageReads = (sent: readonly string[]) =>
+  sent.filter((each) => /^GET (view|properties|backlinks|assets)/.test(each));
+
+test("a page deleted elsewhere while its notebook was left shows none of itself when gone back to: the tree is read first, and the page is not found (M5-polish 27.2)", async () => {
+  const server = pageServer();
+  const { router } = renderApp(pagePath(notes.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await left(router);
+  // Deleted elsewhere: no event reads the tree, no shell of the notebook showing.
+  server.trashNode(install.id);
+  const before = server.sent.length;
+  const inserted = alertsInserted();
+
+  await act(() => router.navigate(pagePath(install.id), { state: arrived }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  inserted.stop();
+  expect(pageReads(server.sent.slice(before))).toEqual([]);
+  expect(inserted.texts).toEqual([]);
+  expect(server.sent.slice(before).filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
+test("a page gone to within its notebook shows at once: its tree is not read again for it (M5-polish 27.2)", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  renderApp(pagePath(notes.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  const reads = () => server.sent.filter((each) => each === "GET nodes").length;
+  const before = reads();
+
+  await user.click(
+    within(screen.getByRole("navigation", { name: "Pages of Plans" })).getByRole("link", { name: "Guide" })
+  );
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(reads()).toBe(before);
+});
+
+test("a page gone back to after its notebook was left shows once its tree is read: a read that fails says why, with Try again (M5-polish 27.2)", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const { router } = renderApp(pagePath(notes.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await left(router);
+  server.nodesDown = true;
+
+  await act(() => router.navigate(pagePath(install.id)));
+
+  const retry = await within(main()).findByRole("button", { name: "Try again" });
+  expect(within(main()).getByRole("alert").textContent).not.toBe("");
+  expect(screen.queryByRole("heading", { level: 1, name: "Install" })).toBeNull();
+  server.nodesDown = false;
+  await user.click(retry);
+  expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+});
+
+test("a tree read sent before the notebook was left and answered after it was gone back to confirms nothing: the page waits for a read of its own (M5-polish 27.2)", async () => {
+  const events = eventServer();
+  const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
+  const { router } = renderApp(pagePath(install.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // An event has the tree read again: held, it answers the tree as it is now, Install in it.
+  server.nodesHeld = true;
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await left(router);
+  server.trashNode(install.id);
+  const before = server.sent.length;
+
+  await act(() => router.navigate(pagePath(install.id)));
+  await waitFor(() => expect(server.held).toHaveLength(2));
+  // The read sent before the notebook was left answers: it confirms nothing.
+  act(() => server.held.shift()?.());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(pageReads(server.sent.slice(before))).toEqual([]);
+  expect(screen.queryByRole("heading", { level: 1, name: "Install" })).toBeNull();
+  act(() => server.release());
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
 });

@@ -351,6 +351,12 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   expect((await searchFor(page, "检索")).status()).toBe(200);
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expect((await deleteNode(api, pat, storage.id)).response.status).toBe(204);
+  // Its hit, still listed, opened: the notebook's tree, read before it was left, is read again first; the page is not
+  // found, none of its own reads made (M5-polish 27.2).
+  await searchResults(page).getByRole("link", { name: "Storage", exact: true }).click();
+  await expect(main.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeFocused();
+  await page.goBack();
+  await expect(main.getByRole("heading", { level: 1, name: "Search “检索”", exact: true })).toBeVisible();
   expect((await searchFor(page, "检索")).status()).toBe(200);
   await expect(searchStatus(page)).toHaveText("Nothing found.");
   await expect(searchResults(page)).toHaveCount(0);

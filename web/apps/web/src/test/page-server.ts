@@ -146,7 +146,8 @@ type PageServerOptions = {
  * name), a file over the instance's asset_max_bytes refused (413
  * payload_too_large), a name a sibling has 409 page.title_taken. While
  * uploadsHeld is set, an upload is answered once released; while
- * viewsHeld is, a reading view.
+ * viewsHeld is, a reading view; while nodesHeld is, the tree, as it was
+ * when asked for.
  *
  * A deletion puts the node and the nodes under it in the trash (M8/P2),
  * which trash-server.ts answers. A trashed page's versions and their
@@ -180,6 +181,8 @@ export function pageServer({
     sourceAssetBytes: new Map<string, string>(),
     sessions: new Map<string, FakeSession>(),
     nodesDown: false,
+    /** Whether the tree's reads wait to be released, each answering the tree as it was when asked for. */
+    nodesHeld: false,
     viewsDown: false,
     notebookGone: false,
     writesDown: false,
@@ -319,12 +322,16 @@ export function pageServer({
   };
   const app = signedInApp({
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [server.notebook, ...server.others] }),
-    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
+    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
       server.sent.push("GET nodes");
       if (server.notebookGone) {
         return problem(404, "notebook.not_found");
       }
-      return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: server.nodes });
+      const asked = server.nodes;
+      if (server.nodesHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
+      return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: asked });
     },
     "GET /api/v0/pages/*/view": async (request) => {
       const id = new URL(request.url).pathname.split("/")[4] ?? "";

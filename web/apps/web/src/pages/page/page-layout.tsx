@@ -54,11 +54,17 @@ export const PageLayout = observer(function PageLayout() {
   const { pageId = "" } = useParams();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const [last, setLast] = useState<TreeNode | undefined>(undefined);
-  const found = pages.tree === undefined ? undefined : pages.byId(pageId);
+  // A tree read before the notebook was left is read again before the page shows (M5-polish 27.2).
+  useEffect(() => {
+    if (!pages.confirmed && !pages.confirming()) {
+      void mutate();
+    }
+  }, [pages, mutate]);
+  const found = pages.tree === undefined || !pages.confirmed ? undefined : pages.byId(pageId);
   if (found !== undefined && found !== last) {
     setLast(found);
   }
-  if (pages.tree === undefined) {
+  if (pages.tree === undefined || !pages.confirmed) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);

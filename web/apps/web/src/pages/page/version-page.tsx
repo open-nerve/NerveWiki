@@ -65,7 +65,13 @@ export const VersionPage = observer(function VersionPage() {
   const pages = usePageTree(notebook);
   const { pageId = "", revision = "" } = useParams();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
-  if (pages.tree === undefined) {
+  // A tree read before the notebook was left is read again before the version shows (M5-polish 27.2).
+  useEffect(() => {
+    if (!pages.confirmed && !pages.confirming()) {
+      void mutate();
+    }
+  }, [pages, mutate]);
+  if (pages.tree === undefined || !pages.confirmed) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
   const page = pages.byId(pageId);

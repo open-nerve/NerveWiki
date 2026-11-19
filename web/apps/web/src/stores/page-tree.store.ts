@@ -115,6 +115,14 @@ export class PageTreeStore {
    */
   private readonly restoring = new Map<string, Promise<NodeRestored>>();
   private readonly reverting = new Map<string, RevertOut>();
+  /** How many of the notebook's shells show this tree (watch): none, no event reads it. */
+  private watching = 0;
+  /**
+   * Whether the tree is known to be the server's as a shell shows it again (M5-polish 27.2): 0 once it is;
+   * Infinity while no shell watches it, the events read it no more; the first read that counts, by when it
+   * started, as a shell watches it again.
+   */
+  confirmFrom = 0;
 
   constructor(
     private readonly service: Pick<
@@ -165,6 +173,7 @@ export class PageTreeStore {
       | "restores"
       | "restoring"
       | "reverting"
+      | "watching"
     >(this, {
       service: false,
       currentNotebook: false,
@@ -182,7 +191,43 @@ export class PageTreeStore {
       restores: false,
       restoring: observableShallow,
       reverting: observableShallow,
+      watching: false,
     });
+  }
+
+  /**
+   * confirmed tells whether the tree read is the server's as a shell shows it: not once no shell watched it, the
+   * events reading it no more, until a read begun since a shell watches it again answers (M5-polish 27.2).
+   */
+  get confirmed(): boolean {
+    return this.confirmFrom === 0;
+  }
+
+  /** confirming tells whether a read that would confirm the tree has started. */
+  confirming(): boolean {
+    return this.confirmFrom !== 0 && this.readsStarted >= this.confirmFrom;
+  }
+
+  /**
+   * watch has a notebook's shell watch the tree as it shows: once none did, the tree read since a shell watches it
+   * again confirms it. The function returned stops it; the last stopped, the tree is no longer confirmed.
+   */
+  watch(): () => void {
+    this.watching += 1;
+    if (this.watching === 1 && this.confirmFrom === Infinity) {
+      this.confirmFrom = this.readsStarted + 1;
+    }
+    let watched = true;
+    return () => {
+      if (!watched) return;
+      watched = false;
+      runInAction(() => {
+        this.watching -= 1;
+        if (this.watching === 0 && this.nodes !== undefined) {
+          this.confirmFrom = Infinity;
+        }
+      });
+    };
   }
 
   /** pageNodes are the pages of the nodes read: the same while a read changes attachments alone. */
@@ -309,8 +354,13 @@ export class PageTreeStore {
     this.readKept = read;
     const back = [...this.removed].filter(([id, { after }]) => read > after && nodes.some((node) => node.id === id));
     const same = sameNodes(this.nodes, nodes);
-    if (!same || back.length > 0) {
+    // A read begun once a shell watches the tree again confirms it; one begun before does not (M5-polish 27.2).
+    const confirms = this.confirmFrom !== 0 && read >= this.confirmFrom;
+    if (!same || back.length > 0 || confirms) {
       runInAction(() => {
+        if (confirms) {
+          this.confirmFrom = 0;
+        }
         if (!same) {
           this.nodes = nodes;
         }
