@@ -248,7 +248,7 @@ function keyed(container: HTMLElement): Map<string, HTMLMediaElement> {
 }
 
 /** assetOf is the id of the attachment an address of its content names (/api/v0/assets/{id}/content), if it does. */
-function assetOf(address: string | null): string | undefined {
+export function assetOf(address: string | null): string | undefined {
   return address === null ? undefined : /^\/api\/v0\/assets\/([^/?#]+)\/content(?:[?#]|$)/.exec(address)?.[1];
 }
 
