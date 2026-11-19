@@ -188,7 +188,7 @@
   `main` 的 `22e9f2bd`（run 44515487511）：web 3:44（3:15），e2e 9:01（6:19）。
 - `47e8871d` 第一次 attempt 的红（run 44555911871，attempt 1）：三格都在 15:57:20–15:57:40（UTC）之间、都是身份的写答 500。Playwright 报告里服务端的日志：worker 1 的 `POST /api/v0/auth/register` 2.0 秒答 500（`commit transaction: timeout: context deadline exceeded`，W3 (API) 的注册），worker 2 的 `POST /api/v0/auth/logout` 4.0 秒答 500（`end session: timeout: context deadline exceeded`，W6 (page) 的退出，之后安静页的检查多一条 500）；W11 (page) 的刷新答 500 之后被送回登录页，那个 worker 的日志随重启的服务换掉了。提交的期限是 2 秒（`database.commit_timeout`），退出那一条在 4.0 秒时到了它的期限；这一刻 runner 上的 PostgreSQL 停住了几秒（推断，同一刻别的 worker 没有慢的写）；本提交只改测试，服务端与网页的代码同 `07ca08bc`（那一次与重跑里这三格都过）。照 S5 的先例只重跑 e2e。时限：web 15 分钟；e2e 作业 55 分钟、E2E 一步 18 分钟（P2 设计 7.4）。
 - 合并 `main`（`ffa02d6d`，`c752af4b`：S5 的记号，只改文档，没有冲突）：照第 12 问只跑 `make lint-web`、`make knip` 与 `check_links.py`。
-- **本提交的分支 CI**：`41c94771` 的 run 44570368391 第一次 attempt 19 项全绿（`web` 4:12，Test 3:27；e2e 8:13，E2E 一步 6:24）。S6 合并为 `e4d16a0a`，之后第一次 `main` 的 run 44575718826 第一次 attempt 19 项全绿（`web` 4:05，Test 3:29；e2e 9:50，E2E 一步 8:32，597、1）。
+- **本提交的分支 CI**：`41c94771` 的 run 44570368391 第一次 attempt 19 项全绿（`web` 4:12，Test 3:27；e2e 8:13，E2E 一步 6:24）。S6 合并为 `e4d16a0a`，之后第一次 `main` 的 run 44575718826 第一次 attempt 19 项全绿（`web` 4:05，Test 3:29；e2e 9:50，E2E 一步 8:32，597、1）。记号 `4bb2e627` 之后的 `main`：run 44581341835 第一次 attempt 19 项全绿（`web` 3:44，Test 3:04；e2e 8:28，E2E 一步 6:47）。算作合并之后的第二次。
 
 ## e2e 的用时
 
