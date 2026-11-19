@@ -568,3 +568,16 @@ test.each([
     expect(screen.queryByRole("alert")).toBeNull();
   }
 );
+
+test("a first page refused otherwise, as filtered, says why with Try again: not that the filters cannot be read (M5-polish 35.3)", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.answer = () => problem(500, "internal");
+  renderApp(`${indexPath}?type=Note`, fixture.server.app);
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).not.toContain("These filters cannot be read");
+  fixture.answer = undefined;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("list", { name: /./ })).toBeTruthy();
+});
