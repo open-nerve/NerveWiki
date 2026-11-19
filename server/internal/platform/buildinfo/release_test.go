@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -522,6 +523,395 @@ func TestTheReleaseNotes(t *testing.T) {
 	}
 }
 
+// fakeDocker is the docker deploy/release-version-tag.sh calls. It logs each call to FAKE_DOCKER_LOG (logCall) and
+// answers only buildx imagetools inspect <ref> --format '{{json .Manifest}}' and buildx imagetools create -t <ref>
+// <image>@<digest>. FAKE_DOCKER_STATE holds what the tag is: "absent" (inspect says not found, as docker does),
+// "unknown" (it says manifest unknown, as a registry may), "error:<words>" (it fails with them) or a digest, which
+// inspect answers as buildx does, the index's descriptor with its manifests. create writes its source's digest there,
+// or FAKE_DOCKER_AFTER when that is set (a copy that came out as another index); it fails with FAKE_DOCKER_CREATE_FAILS
+// set. It also fails where the tag is there already, which docker does not: imagetools would move the tag. That
+// failure is a tripwire, so that the script never asks for it, not what the real one does.
+const fakeDocker = `#!/usr/bin/env bash
+` + logCall + `"$FAKE_DOCKER_LOG"
+[ "$1 $2" = "buildx imagetools" ] || exit 2
+state=$(cat "$FAKE_DOCKER_STATE")
+case $3 in
+inspect)
+  [ $# -eq 6 ] && [ "$5" = --format ] && [ "$6" = '{{json .Manifest}}' ] || exit 2
+  case $state in
+  absent) echo "ERROR: $4: not found" >&2; exit 1 ;;
+  unknown) echo "ERROR: $4: manifest unknown: manifest unknown" >&2; exit 1 ;;
+  error:*) echo "ERROR: ${state#error:}" >&2; exit 1 ;;
+  esac
+  printf '{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","digest":"%s","size":743,"manifests":[]}\n' "$state"
+  ;;
+create)
+  [ $# -eq 6 ] && [ "$4" = -t ] || exit 2
+  [ -z "${FAKE_DOCKER_CREATE_FAILS:-}" ] || { echo "ERROR: failed to push $5" >&2; exit 1; }
+  case $state in sha256:*) echo "ERROR: $5 is there already" >&2; exit 1 ;; esac
+  printf '%s\n' "${FAKE_DOCKER_AFTER:-${6#*@}}" >"$FAKE_DOCKER_STATE"
+  ;;
+*) exit 2 ;;
+esac
+`
+
+// logCall is a fake's first line, followed by its log's name: it appends the call, the number of its arguments and
+// each, ended by NUL, so that where one argument ends shows ("$*" would make --title "Nerve Wiki v0.1.0" and
+// --title Nerve Wiki v0.1.0 one line). readCalls reads it back.
+const logCall = `printf '%s\0' "$#" "$@" >>`
+
+// readCalls reads a fake's log back, a call a line: its arguments joined by spaces, each holding a space, a quote, a
+// backslash or nothing written as Go quotes it.
+func readCalls(t *testing.T, log string) []string {
+	t.Helper()
+	content, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	fields := strings.Split(string(content), "\x00")
+	for len(fields) > 1 {
+		n, err := strconv.Atoi(fields[0])
+		if err != nil || n+1 > len(fields)-1 {
+			t.Fatalf("the fake's log %q does not read as calls", content)
+		}
+		args := make([]string, n)
+		for i, arg := range fields[1 : n+1] {
+			args[i] = arg
+			if arg == "" || strings.ContainsAny(arg, " \t\n\"'\\") {
+				args[i] = strconv.Quote(arg)
+			}
+		}
+		calls = append(calls, strings.Join(args, " "))
+		fields = fields[n+1:]
+	}
+	if len(fields) != 1 || fields[0] != "" {
+		t.Fatalf("the fake's log %q ends in the middle of a call", content)
+	}
+	return calls
+}
+
+// fakeGHRelease is the gh deploy/github-release.sh calls. It logs each call to FAKE_GH_LOG (logCall) and answers only
+// api --paginate repos/$GH_REPO/releases?per_page=100 --jq <query>, release view <tag> --json assets --jq
+// .assets[].name, create, edit and upload. FAKE_GH_STATE holds what the Release of FAKE_GH_TAG is: "absent",
+// "draft", "published", "two" (two drafts of the tag) or "error:<words>" (every call fails with them); FAKE_GH_ASSETS
+// its assets' names, a line each. api answers the list as GitHub does to a token that may write contents, drafts
+// among them, in three pages, the tag's Release on the second among others, the query run on each page as gh runs
+// --jq; view says release not found where there is none, as gh does. create makes a draft. It fails where there is a
+// Release of the tag already: a tripwire, so that the script never asks for it, not what gh does. gh release create
+// --draft does not look for a draft of the tag (its source, v2.103.2); that GitHub then makes a second draft is P5
+// design 3.13's premise, which only a tag's run would prove. edit --draft=false publishes, unless FAKE_GH_EDIT_KEEPS is set;
+// upload adds files that are there and fails on a published Release, as the repository's immutable releases would
+// have it; edit and upload fail where there is no Release, and with FAKE_GH_EDIT_FAILS or FAKE_GH_UPLOAD_FAILS set.
+const fakeGHRelease = `#!/usr/bin/env bash
+` + logCall + `"$FAKE_GH_LOG"
+state=$(cat "$FAKE_GH_STATE")
+case $state in error:*) echo "${state#error:}" >&2; exit 1 ;; esac
+if [ "$1" = api ]; then
+  [ $# -eq 5 ] && [ "$2" = --paginate ] && [ "$3" = "repos/$GH_REPO/releases?per_page=100" ] && [ "$4" = --jq ] || exit 2
+  case $state in
+  absent) ours='' ;;
+  draft) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},' ;;
+  published) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":false},' ;;
+  two) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},' ;;
+  esac
+  for page in '[{"tag_name":"v0.0.1","draft":false}]' "[$ours"'{"tag_name":"v0.0.2","draft":true}]' \
+    '[{"tag_name":"'"$FAKE_GH_TAG"'.9","draft":true},{"tag_name":"x'"$FAKE_GH_TAG"'","draft":false}]'; do
+    jq -r "$5" <<<"$page" || exit 1
+  done
+  exit 0
+fi
+[ "$1" = release ] || exit 2
+case $state in absent) [ "$2" = create ] || { echo "release not found" >&2; exit 1; } ;; esac
+case $2 in
+view)
+  [ "${*:3}" = "$FAKE_GH_TAG --json assets --jq .assets[].name" ] || exit 2
+  cat "$FAKE_GH_ASSETS"
+  ;;
+create)
+  [ "$state" = absent ] || { echo "a release with the same tag name already exists: $3" >&2; exit 1; }
+  echo draft >"$FAKE_GH_STATE"
+  ;;
+edit)
+  [ -z "${FAKE_GH_EDIT_FAILS:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+  case " $* " in
+  *" --draft=false "*) [ -n "${FAKE_GH_EDIT_KEEPS:-}" ] || echo published >"$FAKE_GH_STATE" ;;
+  esac
+  ;;
+upload)
+  [ -z "${FAKE_GH_UPLOAD_FAILS:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
+  [ "$state" = draft ] || { echo "HTTP 422: Cannot upload assets to an immutable release." >&2; exit 1; }
+  for f in "${@:4}"; do
+    [ "$f" = --clobber ] && continue
+    [ -s "$f" ] || { echo "$f: no such file" >&2; exit 1; }
+    grep -qxF "${f##*/}" "$FAKE_GH_ASSETS" || printf '%s\n' "${f##*/}" >>"$FAKE_GH_ASSETS"
+  done
+  ;;
+*) exit 2 ;;
+esac
+`
+
+// fakeRun is a run of a release script against a fake: the script's exit and what it wrote, the fake's calls, the
+// state the fake was left in and the directory the run had.
+type fakeRun struct {
+	ran
+	calls      []string
+	state, dir string
+}
+
+// runAgainstFake runs deploy/<script> with args in a directory of its own, the fake (its name and content) first in
+// PATH, its log and its state file (holding state) in prefix_LOG and prefix_STATE, and the variables extra. files are
+// written into the directory first, a path relative to it each. In args and extra, {dir} is the directory.
+func runAgainstFake(t *testing.T, fake [2]string, prefix, state string, files map[string]string, extra []string,
+	script string, args ...string) fakeRun {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(bin, fake[0]), fake[1], 0o755)
+	log, stateFile := filepath.Join(dir, "calls.log"), filepath.Join(dir, "state")
+	writeFile(t, log, "", 0o644)
+	writeFile(t, stateFile, state+"\n", 0o644)
+	for path, content := range files {
+		path = filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		writeFile(t, path, content, 0o644)
+	}
+	inDir := strings.NewReplacer("{dir}", dir)
+	env := []string{prefix + "_LOG=" + log, prefix + "_STATE=" + stateFile}
+	for _, e := range extra {
+		env = append(env, inDir.Replace(e))
+	}
+	args = slices.Clone(args)
+	for i := range args {
+		args[i] = inDir.Replace(args[i])
+	}
+	got := runScript(t, dir, scriptEnv(t, bin, env...), script, args...)
+	left, err := os.ReadFile(stateFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return fakeRun{ran: got, calls: readCalls(t, log), state: strings.TrimSpace(string(left)), dir: dir}
+}
+
+// The version tag and the Release (00-M12 4.10, M12/P5/S2, P5 design 3.13): the two steps of a tag's run that a
+// normal rc never takes but on an error or a rerun, run against a fake docker or gh. A case wants the exit, the
+// words of its outcome (stderr on a refusal, stdout otherwise), the fake's calls whole and in order, each argument
+// where it ends, and the state it leaves, so that a check gone, or a call made where none should be, shows: each check
+// that no other one stands in for has a case that fails without it (M12/P5/S2 fix round 1).
+func TestTheReleaseScripts(t *testing.T) {
+	needTools(t)
+	t.Run("the version tag", func(t *testing.T) {
+		const image = "registry.test/nw-tag"
+		digest, other := "sha256:"+strings.Repeat("1a", 32), "sha256:"+strings.Repeat("2b", 32)
+		inspect := "buildx imagetools inspect " + image + `:0.1.0 --format "{{json .Manifest}}"`
+		create := "buildx imagetools create -t " + image + ":0.1.0 " + image + "@" + digest
+		for _, c := range []struct {
+			name, state string
+			extra, args []string // args nil: the image, 0.1.0 and digest
+			code        int
+			words       string
+			calls       []string
+			left        string
+		}{
+			{name: "absent: copied from the index", state: "absent", words: image + ":0.1.0 → " + digest,
+				calls: []string{inspect, create, inspect}, left: digest},
+			{name: "manifest unknown: absent too", state: "unknown", words: image + ":0.1.0 → " + digest,
+				calls: []string{inspect, create, inspect}, left: digest},
+			{name: "there, the same digest: left as it is", state: digest, words: "已指向 " + digest + "，不动",
+				calls: []string{inspect, inspect}, left: digest},
+			{name: "there, another digest: not moved", state: other, code: 1, words: "已指向 " + other + "，不改指",
+				calls: []string{inspect}, left: other},
+			{name: "unauthorized: not taken for absent", state: "error:unauthorized: authentication required", code: 1,
+				words: "读不到 " + image + ":0.1.0", calls: []string{inspect}, left: "error:unauthorized: authentication required"},
+			{name: "the copy fails", state: "absent", extra: []string{"FAKE_DOCKER_CREATE_FAILS=1"}, code: 1,
+				words: "复制不出", calls: []string{inspect, create}, left: "absent"},
+			{name: "the copy is another index", state: "absent", extra: []string{"FAKE_DOCKER_AFTER=" + other}, code: 1,
+				words: "是 " + other + "，要 " + digest, calls: []string{inspect, create, inspect}, left: other},
+			{name: "a digest of another form", state: "absent", args: []string{image, "0.1.0", "sha256:abc"}, code: 1,
+				words: "摘要 \"sha256:abc\" 不对", left: "absent"},
+			{name: "a version of another form", state: "absent", args: []string{image, "v0.1.0", digest}, code: 1,
+				words: "版本号 \"v0.1.0\" 不对", left: "absent"},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				args := c.args
+				if args == nil {
+					args = []string{image, "0.1.0", digest}
+				}
+				r := runAgainstFake(t, [2]string{"docker", fakeDocker}, "FAKE_DOCKER", c.state, nil, c.extra,
+					"release-version-tag.sh", args...)
+				checkFakeRun(t, r, c.code, c.words, c.calls, c.left)
+			})
+		}
+	})
+	t.Run("the Release", func(t *testing.T) {
+		three := func(version string) map[string]string {
+			return map[string]string{
+				"out/nervewiki-" + version + "-image.spdx.json": "{}\n",
+				"out/nervewiki-" + version + "-web.spdx.json":   "{}\n",
+				"out/nervewiki-" + version + "-licenses.tar.gz": "tar\n",
+				"notes.md": "说明\n",
+				"assets":   "",
+			}
+		}
+		names := func(version string) string {
+			return "nervewiki-" + version + "-image.spdx.json\nnervewiki-" + version + "-web.spdx.json\nnervewiki-" +
+				version + "-licenses.tar.gz\n"
+		}
+		// with returns files with the assets the Release has, and without paths
+		with := func(files map[string]string, assets string, without ...string) map[string]string {
+			files["assets"] = assets
+			for _, path := range without {
+				delete(files, path)
+			}
+			return files
+		}
+		// plus returns files with one more under path
+		plus := func(files map[string]string, path string) map[string]string {
+			files[path] = "{}\n"
+			return files
+		}
+		const rc, final = "v0.1.0-rc.1", "v0.1.0"
+		list := func(tag string) string {
+			return "api --paginate repos/o3/r3/releases?per_page=100 --jq " +
+				strconv.Quote(`.[] | select(.tag_name == "`+tag+`") | .draft`)
+		}
+		viewAssets := func(tag string) string { return "release view " + tag + " --json assets --jq .assets[].name" }
+		upload := func(tag, version string) string {
+			return "release upload " + tag + " {dir}/out/nervewiki-" + version + "-image.spdx.json {dir}/out/nervewiki-" +
+				version + "-web.spdx.json {dir}/out/nervewiki-" + version + "-licenses.tar.gz --clobber"
+		}
+		draft := func(tag string) []string { return []string{"draft", tag, "{dir}/notes.md", "{dir}/out"} }
+		for _, c := range []struct {
+			name, state string
+			files       map[string]string
+			extra, args []string
+			code        int
+			words       string
+			calls       []string
+			left        string
+			assets      string // the Release's assets after, unless unchanged
+		}{
+			{name: "draft, none yet, an rc", state: "absent", files: three("0.1.0-rc.1"), args: draft(rc),
+				words: "草稿与三个附件就绪", calls: []string{list(rc),
+					"release create " + rc + ` --draft --verify-tag --title "Nerve Wiki ` + rc + `" --notes-file {dir}/notes.md --prerelease`,
+					upload(rc, "0.1.0-rc.1"), viewAssets(rc)}, left: "draft", assets: names("0.1.0-rc.1")},
+			{name: "draft, none yet, a release", state: "absent", files: three("0.1.0"), args: draft(final),
+				words: "草稿与三个附件就绪", calls: []string{list(final),
+					"release create " + final + ` --draft --verify-tag --title "Nerve Wiki ` + final + `" --notes-file {dir}/notes.md`,
+					upload(final, "0.1.0"), viewAssets(final)}, left: "draft", assets: names("0.1.0")},
+			{name: "draft, a draft already", state: "draft", files: with(three("0.1.0-rc.1"), "nervewiki-0.1.0-rc.1-web.spdx.json\n"),
+				args: draft(rc), words: "草稿与三个附件就绪", calls: []string{list(rc),
+					"release edit " + rc + " --notes-file {dir}/notes.md --prerelease", upload(rc, "0.1.0-rc.1"), viewAssets(rc)},
+				left: "draft", assets: "nervewiki-0.1.0-rc.1-web.spdx.json\nnervewiki-0.1.0-rc.1-image.spdx.json\nnervewiki-0.1.0-rc.1-licenses.tar.gz\n"},
+			{name: "draft, a draft with an asset of another name", state: "draft",
+				files: with(three("0.1.0-rc.1"), "nervewiki-0.1.0-rc.1-old.txt\n"), args: draft(rc), code: 1,
+				words: "传过之后 " + rc + " 的附件不对", calls: []string{list(rc),
+					"release edit " + rc + " --notes-file {dir}/notes.md --prerelease", upload(rc, "0.1.0-rc.1"), viewAssets(rc)},
+				left: "draft", assets: "nervewiki-0.1.0-rc.1-old.txt\n" + names("0.1.0-rc.1")},
+			{name: "draft, published already with its assets", state: "published", files: with(three("0.1.0"), names("0.1.0")),
+				args: draft(final), words: final + " 已公开，附件齐，不动", calls: []string{list(final), viewAssets(final)},
+				left: "published"},
+			{name: "draft, published already short of an asset", state: "published",
+				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\nnervewiki-0.1.0-web.spdx.json\n"), args: draft(final),
+				code: 1, words: final + " 已公开，附件不对", calls: []string{list(final), viewAssets(final)}, left: "published"},
+			{name: "draft, the list answers HTTP 502",
+				state: "error:gh: HTTP 502: Bad Gateway (https://api.github.com/repos/o3/r3/releases?per_page=100)",
+				files: three("0.1.0"), args: draft(final), code: 1, words: "读不到 o3/r3 的 Release 列表", calls: []string{list(final)},
+				left: "error:gh: HTTP 502: Bad Gateway (https://api.github.com/repos/o3/r3/releases?per_page=100)"},
+			{name: "draft, two Releases of the tag", state: "two", files: three("0.1.0"), args: draft(final), code: 1,
+				words: final + " 的 Release 不止一个", calls: []string{list(final)}, left: "two"},
+			{name: "draft, the draft's edit fails", state: "draft", files: three("0.1.0-rc.1"), args: draft(rc),
+				extra: []string{"FAKE_GH_EDIT_FAILS=1"}, code: 1, words: "改不了 " + rc + " 的草稿",
+				calls: []string{list(rc), "release edit " + rc + " --notes-file {dir}/notes.md --prerelease"}, left: "draft"},
+			{name: "draft, the upload fails over the three a run before put there", state: "draft",
+				files: with(three("0.1.0"), names("0.1.0")), args: draft(final), extra: []string{"FAKE_GH_UPLOAD_FAILS=1"},
+				code: 1, words: "传不上 " + final + " 的附件", calls: []string{list(final),
+					"release edit " + final + " --notes-file {dir}/notes.md", upload(final, "0.1.0")}, left: "draft"},
+			{name: "an action of another name", state: "absent", files: three("0.1.0"), args: []string{"publsh", final},
+				code: 1, words: "用法", left: "absent"},
+			{name: "draft, an asset short", state: "absent", files: with(three("0.1.0"), "", "out/nervewiki-0.1.0-web.spdx.json"),
+				args: draft(final), code: 1, words: "附件目录", left: "absent"},
+			{name: "draft, an asset over", state: "absent",
+				files: plus(three("0.1.0"), "out/nervewiki-0.1.0-web.spdx.json.bak"), args: draft(final), code: 1,
+				words: "附件目录", left: "absent"},
+			{name: "draft, no notes", state: "absent", files: with(three("0.1.0"), "", "notes.md"), args: draft(final), code: 1,
+				words: "说明", left: "absent"},
+			{name: "draft, a tag of another form", state: "absent", files: three("0.1.0"),
+				args: []string{"draft", "v0.1", "{dir}/notes.md", "{dir}/out"}, code: 1, words: "不是 vX.Y.Z", left: "absent"},
+			{name: "draft, no GH_REPO", state: "absent", files: three("0.1.0"), extra: []string{"GH_REPO="}, args: draft(final),
+				code: 1, words: "要 GH_REPO", left: "absent"},
+			{name: "publish, a draft with its assets", state: "draft", files: with(three("0.1.0"), names("0.1.0")),
+				args: []string{"publish", final}, words: final + " 已公开", calls: []string{list(final), viewAssets(final),
+					"release edit " + final + " --draft=false", list(final)}, left: "published"},
+			{name: "publish, a draft short of an asset", state: "draft",
+				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\nnervewiki-0.1.0-licenses.tar.gz\n"),
+				args:  []string{"publish", final}, code: 1, words: "草稿附件不齐，不公开", calls: []string{list(final), viewAssets(final)},
+				left: "draft"},
+			{name: "publish, a draft that stays one", state: "draft", files: with(three("0.1.0"), names("0.1.0")),
+				extra: []string{"FAKE_GH_EDIT_KEEPS=1"}, args: []string{"publish", final}, code: 1, words: "公开之后 " + final + " 是 draft",
+				calls: []string{list(final), viewAssets(final), "release edit " + final + " --draft=false", list(final)}, left: "draft"},
+			{name: "publish, published already", state: "published", files: with(three("0.1.0"), names("0.1.0")),
+				args: []string{"publish", final}, words: final + " 已公开，附件齐，不动", calls: []string{list(final), viewAssets(final)},
+				left: "published"},
+			{name: "publish, published short of an asset", state: "published",
+				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\n"), args: []string{"publish", final}, code: 1,
+				words: final + " 已公开，附件不对", calls: []string{list(final), viewAssets(final)}, left: "published"},
+			{name: "publish, none", state: "absent", files: three("0.1.0"), args: []string{"publish", final}, code: 1,
+				words: "没有 " + final + " 的 Release", calls: []string{list(final)}, left: "absent"},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				t.Parallel()
+				extra := append([]string{"FAKE_GH_ASSETS={dir}/assets", "GH_REPO=o3/r3", "FAKE_GH_TAG=" + c.args[1]}, c.extra...)
+				r := runAgainstFake(t, [2]string{"gh", fakeGHRelease}, "FAKE_GH", c.state, c.files, extra,
+					"github-release.sh", c.args...)
+				calls := make([]string, len(c.calls))
+				for i, call := range c.calls {
+					calls[i] = strings.ReplaceAll(call, "{dir}", r.dir)
+				}
+				checkFakeRun(t, r, c.code, c.words, calls, c.left)
+				before := c.files["assets"]
+				if c.assets != "" {
+					before = c.assets
+				}
+				if after, err := os.ReadFile(filepath.Join(r.dir, "assets")); err != nil || string(after) != before {
+					t.Errorf("the Release's assets are %q (%v), want %q", after, err, before)
+				}
+			})
+		}
+	})
+}
+
+// checkFakeRun wants a run of a release script to exit with code, to say words (on stderr when it refuses, on stdout
+// otherwise, nothing on stdout then), to have called the fake exactly as calls says and to leave it in state left.
+func checkFakeRun(t *testing.T, r fakeRun, code int, words string, calls []string, left string) {
+	t.Helper()
+	if r.code != code {
+		t.Errorf("exit %d, want %d; stdout %q, stderr %q", r.code, code, r.stdout, r.stderr)
+	}
+	said := r.stdout
+	if code != 0 {
+		said = r.stderr
+		if r.stdout != "" {
+			t.Errorf("a refusal wrote %q to stdout, want nothing", r.stdout)
+		}
+	}
+	if !strings.Contains(said, words) {
+		t.Errorf("it said %q (stderr %q), want %q in it", said, r.stderr, words)
+	}
+	if !slices.Equal(r.calls, calls) {
+		t.Errorf("the fake was called as\n\t%s\nwant\n\t%s", strings.Join(r.calls, "\n\t"), strings.Join(calls, "\n\t"))
+	}
+	if r.state != left {
+		t.Errorf("the fake is left %q, want %q", r.state, left)
+	}
+}
+
 // workflow is a workflow file decoded as YAML: "on" stays a string key.
 type workflow = map[string]any
 
@@ -623,14 +1013,33 @@ type releaseJob struct {
 	needs       []string
 }
 
-// releaseJobs is the table of release.yml's jobs (P5 design 3.9). A job of S2 goes in here with its permissions
-// before the workflow takes it.
+// releaseJobs is the table of release.yml's jobs (P5 design 3.9): a new job goes in here with its permissions before
+// the workflow takes it. Only publish signs and writes GHCR's index and tags; draft and release write the Release.
 func releaseJobs() map[string]releaseJob {
+	const tag = "github.ref_type == 'tag'"
 	return map[string]releaseJob{
 		"rehearse": {"github.ref_type != 'tag'", map[string]any{"contents": "read"}, nil},
-		"gate":     {"github.ref_type == 'tag'", map[string]any{"contents": "read", "actions": "read"}, nil},
-		"build":    {"github.ref_type == 'tag'", map[string]any{"contents": "read", "packages": "write"}, []string{"gate"}},
+		"gate":     {tag, map[string]any{"contents": "read", "actions": "read"}, nil},
+		"build":    {tag, map[string]any{"contents": "read", "packages": "write"}, []string{"gate"}},
+		"sbom":     {tag, map[string]any{"contents": "read", "packages": "read"}, []string{"gate", "build"}},
+		"publish": {tag, map[string]any{"contents": "read", "packages": "write", "id-token": "write",
+			"attestations": "write", "artifact-metadata": "write"}, []string{"gate", "build", "sbom"}},
+		"draft": {tag, map[string]any{"contents": "write"}, []string{"gate", "publish", "sbom"}},
+		"verify": {tag, map[string]any{"contents": "read", "packages": "read", "attestations": "read"},
+			[]string{"gate", "publish", "draft"}},
+		"release": {tag, map[string]any{"contents": "write"}, []string{"gate", "verify", "draft"}},
 	}
+}
+
+// stepsRunning are the 1-based numbers of a job's steps whose run is exactly run.
+func stepsRunning(job any, run string) []int {
+	var found []int
+	for i, step := range stepsOf(job) {
+		if step["run"] == run {
+			found = append(found, i+1)
+		}
+	}
+	return found
 }
 
 // matrixOnly is the one expression a run's text may hold, at a ${{: the matrix's, spaces or none around it.
@@ -656,9 +1065,9 @@ func expressionsBesidesTheMatrix(run string) []string {
 // Only a tag's jobs may write (00-M12 4.10, the hand-off M0-P6 item 1, M12/P5/S1): the three workflows read as
 // data. ci.yml runs on branches alone, with a read-only token; vuln.yml reads only; release.yml's rehearsal reads
 // only, and its tag's jobs have the permissions, the condition and the scripts of the table, with no way to go on
-// after a failure. In all three a checkout leaves no token in .git (it goes into the image's build context) and a
+// after a failure. In all three a checkout leaves no token in .git (it goes into the image's build context), a
 // run's text takes no expression but the matrix's, so that a tag's name or a commit's message reaches a script
-// only through the environment.
+// only through the environment, and an action is pinned by its commit.
 func TestOnlyATagsJobsMayWrite(t *testing.T) {
 	entries, err := os.ReadDir(filepath.Join(repoRoot(t), ".github", "workflows"))
 	if err != nil {
@@ -714,8 +1123,14 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 	}
 
 	release := readWorkflow(t, "release.yml")
+	// an action or a reusable workflow by its commit's SHA, whose tag the comment beside it gives (13.5 item 2): a tag
+	// or a branch moves under the workflow, with the token the job has (M12/P5/S2 fix round 1)
+	pinned := regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+(/[^@\s]+)?@[0-9a-f]{40}$`)
 	for name, w := range map[string]workflow{"ci.yml": ci, "vuln.yml": vuln, "release.yml": release} {
 		for id, job := range jobsOf(t, name, w) {
+			if uses, ok := field(job, "uses").(string); ok && !pinned.MatchString(uses) {
+				t.Errorf("%s: job %s uses %q: by its commit's SHA, 40 hex digits", name, id, uses)
+			}
 			// the matrix is what a run may hold, so its values are written out: an expression there (a commit's
 			// message as a value of the matrix) would reach the script as ${{ matrix.… }}
 			for _, s := range stringsIn(field(job, "strategy")) {
@@ -724,6 +1139,9 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 				}
 			}
 			for i, step := range stepsOf(job) {
+				if uses, ok := step["uses"].(string); ok && !pinned.MatchString(uses) {
+					t.Errorf("%s: job %s, step %d uses %q: by its commit's SHA, 40 hex digits", name, id, i+1, uses)
+				}
 				if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/checkout@") &&
 					field(step["with"], "persist-credentials") != false {
 					t.Errorf("%s: job %s, step %d checks out without persist-credentials: false", name, id, i+1)
@@ -776,33 +1194,60 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 			if step["continue-on-error"] != nil {
 				t.Errorf("release.yml: job %s, step %d has continue-on-error", id, i+1)
 			}
-			if id == "gate" && step["if"] != nil {
-				t.Errorf("release.yml: the gate's step %d runs if %v: each of its steps always runs", i+1, step["if"])
+			if (id == "gate" || id == "publish") && step["if"] != nil {
+				t.Errorf("release.yml: %s's step %d runs if %v: each of its steps always runs", id, i+1, step["if"])
 			}
 		}
 	}
-	// the jobs that build an image smoke it in exactly one step (S2's verify joins them), and a step that smokes an
-	// image always runs and fails with it: no if, and the script's line ends the command, nothing after it to turn
-	// its failure into a success. One that could be skipped, or gone, lets an image through unsmoked, its job green
+	// the jobs that build or check an image smoke it in exactly one step. A step that smokes an image, and every step
+	// of verify that runs commands (the checks before the Release is published), always runs and fails with them, in
+	// Actions' bash -e: its keys are its name, env and run alone (no if to skip it, no shell without -e, no
+	// continue-on-error), its run turns no option off with set +… (at a line's start, or after ;, &, |, { or ( ) or
+	// shopt -o, and the job and the workflow give run no shell of their own; a smoke's line ends the command, nothing
+	// after it to turn its failure into a success. One that could be skipped, or gone, lets an image or a Release
+	// through unchecked, its job green (decisions 560, 562; M12/P5/S2 fix round 1). The ways on past a failure that
+	// are written on purpose are not chased (decision 562): { …; } || true, BASH_ENV, a trap
 	smokeLine := regexp.MustCompile(`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`)
+	optionOff := regexp.MustCompile(`(?m)(^|[;&|{(])\s*set\b[^\n]*\s\+[a-z]|\bshopt\b[^\n]*\s-[a-z]*o`)
+	if shell := field(field(release["defaults"], "run"), "shell"); shell != nil {
+		t.Errorf("release.yml: the workflow's defaults give run the shell %v: a smoke step runs in Actions' bash -e", shell)
+	}
 	for id, job := range jobs {
-		var smokes []int
+		var smokeSteps, failing []int
 		for i, step := range stepsOf(job) {
 			run, _ := step["run"].(string)
-			if !strings.Contains(run, "image-smoke") {
+			smoke := strings.Contains(run, "image-smoke")
+			if !smoke && (id != "verify" || run == "") {
 				continue
 			}
-			smokes = append(smokes, i+1)
-			if step["if"] != nil {
-				t.Errorf("release.yml: job %s, step %d smokes the image only if %v: it always runs", id, i+1, step["if"])
+			failing = append(failing, i+1)
+			for key, value := range step {
+				if key != "name" && key != "env" && key != "run" {
+					t.Errorf("release.yml: job %s, step %d (%v) has %s: %v besides its name, env and run: it always "+
+						"runs and fails with its commands", id, i+1, step["name"], key, value)
+				}
 			}
+			if off := optionOff.FindString(run); off != "" {
+				t.Errorf("release.yml: job %s, step %d (%v) runs %q: a failure must fail the step", id, i+1, step["name"],
+					strings.TrimSpace(off))
+			}
+			if !smoke {
+				continue
+			}
+			smokeSteps = append(smokeSteps, i+1)
 			if !smokeLine.MatchString(run) {
 				t.Errorf("release.yml: job %s, step %d runs %q: want a line deploy/image-smoke.sh … \"$VERSION\" with "+
 					"nothing after it", id, i+1, run)
 			}
 		}
-		if (id == "rehearse" || id == "build") && len(smokes) != 1 {
-			t.Errorf("release.yml: job %s smokes the image in steps %v, want one", id, smokes)
+		if len(failing) > 0 {
+			if shell := field(field(field(job, "defaults"), "run"), "shell"); shell != nil {
+				t.Errorf("release.yml: job %s smokes or checks in steps %v, and its defaults give run the shell %v", id,
+					failing, shell)
+			}
+		}
+		if (id == "rehearse" || id == "build" || id == "verify") && len(smokeSteps) != 1 {
+			t.Errorf("release.yml: job %s smokes the image in steps %v, want one", id, smokeSteps)
 		}
 	}
 	// the rehearsal reads only: its token's contents: read is all it has, with no secret (a token of someone's
@@ -851,5 +1296,185 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 		buildkit["build"] != opts {
 		t.Errorf("release.yml: the rehearsal's BuildKit is %v and the build's %v, want one moby/buildkit:<version>@sha256:…",
 			buildkit["rehearse"], buildkit["build"])
+	}
+	// the steps of a tag's last jobs (P5 design 3.9 item 6, 3.13, 3.14): the version tag is publish's last step, after
+	// the attestations and the signature, so that 0.1.0 is never there unsigned; the Release is drafted and published
+	// by the script, which knows a draft from a published one; a third-party action in publish, which signs and writes
+	// GHCR, is cosign-installer alone (decision 437), its login a shell's
+	scripts := []struct{ job, run string }{
+		{"publish", `deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"`},
+		{"draft", `deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"`},
+		{"release", `deploy/github-release.sh publish "$GITHUB_REF_NAME"`},
+	}
+	for _, want := range scripts {
+		if got := stepsRunning(jobs[want.job], want.run); len(got) != 1 {
+			t.Errorf("release.yml: job %s's steps %v run %s, want one", want.job, got, want.run)
+		}
+	}
+	if steps := stepsOf(jobs["publish"]); len(steps) == 0 || steps[len(steps)-1]["run"] != scripts[0].run {
+		t.Errorf("release.yml: publish's last step is not the version tag (%s): it comes after the signature", scripts[0].run)
+	}
+	for i, step := range stepsOf(jobs["publish"]) {
+		if uses, _ := step["uses"].(string); uses != "" && !strings.HasPrefix(uses, "actions/") &&
+			!strings.HasPrefix(uses, "sigstore/cosign-installer@") {
+			t.Errorf("release.yml: publish's step %d uses %s: its third-party action is cosign-installer alone", i+1, uses)
+		}
+	}
+	// before the version tag, publish signs the index in one step and attests it in three, the provenance and each
+	// SBOM, pushed beside it; none of its steps has an if (above), so that none of them is skipped while the version
+	// tag still comes (M12/P5/S2 fix round 1)
+	index := "${{ steps.index.outputs.digest }}"
+	sbomPaths := map[any]bool{}
+	var signs, attests int
+	for i, step := range stepsOf(jobs["publish"]) {
+		if run, _ := step["run"].(string); strings.Contains(run, "cosign sign") {
+			signs++
+			if run != `cosign sign --yes "$IMAGE@$DIGEST"` || field(step["env"], "DIGEST") != index {
+				t.Errorf("release.yml: publish's step %d runs %q with DIGEST %v, want cosign sign --yes \"$IMAGE@$DIGEST\" "+
+					"of %s", i+1, run, field(step["env"], "DIGEST"), index)
+			}
+		}
+		if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "actions/attest@") {
+			attests++
+			with := step["with"]
+			if field(with, "subject-digest") != index || field(with, "push-to-registry") != true {
+				t.Errorf("release.yml: publish's step %d attests %v (push-to-registry %v), want %s pushed beside it", i+1,
+					field(with, "subject-digest"), field(with, "push-to-registry"), index)
+			}
+			sbomPaths[field(with, "sbom-path")] = true
+		}
+	}
+	wantPaths := map[any]bool{nil: true, "${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-image.spdx.json": true,
+		"${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-web.spdx.json": true}
+	if signs != 1 || attests != 3 || !reflect.DeepEqual(sbomPaths, wantPaths) {
+		t.Errorf("release.yml: publish signs in %d steps and attests in %d, the SBOMs %v; want one and three, the "+
+			"provenance, the image's SBOM and the web app's", signs, attests, sbomPaths)
+	}
+	// build builds the commit the gate let through, checked before the build, and publish's index is of images whose
+	// revision is that commit: that the checkout of a tag's job is GITHUB_SHA's commit is an inference only a tag's run
+	// proves (decision 561). The two steps are their keys alone, no env of their own to give SHA another value and no
+	// if to skip them (M12/P5/S2 fix round 1)
+	gateSHA := "${{ needs.gate.outputs.sha }}"
+	keysOf := func(step map[string]any) []string {
+		keys := make([]string, 0, len(step))
+		for key := range step {
+			keys = append(keys, key)
+		}
+		slices.Sort(keys)
+		return keys
+	}
+	headIsSHA, built := -1, -1
+	for i, step := range stepsOf(jobs["build"]) {
+		run, _ := step["run"].(string)
+		if strings.HasPrefix(run, `test "$(git rev-parse HEAD)" = "$SHA" ||`) {
+			headIsSHA = i
+			if keys := keysOf(step); !slices.Equal(keys, []string{"name", "run"}) {
+				t.Errorf("release.yml: build's step %d checks HEAD with the keys %v, want name and run alone", i+1, keys)
+			}
+		}
+		if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "docker/build-push-action@") {
+			built = i
+		}
+	}
+	if field(field(jobs["build"], "env"), "SHA") != gateSHA || headIsSHA < 0 || headIsSHA > built {
+		t.Errorf("release.yml: build checks HEAD against SHA (%s) in step %d and builds in step %d, want the check "+
+			"first, SHA %s", field(field(jobs["build"], "env"), "SHA"), headIsSHA+1, built+1, gateSHA)
+	}
+	var revision int
+	for i, step := range stepsOf(jobs["publish"]) {
+		if run, _ := step["run"].(string); strings.Contains(run, `[ "$(label revision)" = "$SHA" ] ||`) {
+			revision++
+			if keys := keysOf(step); !slices.Equal(keys, []string{"id", "name", "run"}) {
+				t.Errorf("release.yml: publish's step %d checks the revision with the keys %v, want name, id and run "+
+					"alone", i+1, keys)
+			}
+		}
+	}
+	if field(field(jobs["publish"], "env"), "SHA") != gateSHA || revision != 1 {
+		t.Errorf("release.yml: publish checks the image's revision against SHA (%s) in %d steps, want one, SHA %s",
+			field(field(jobs["publish"], "env"), "SHA"), revision, gateSHA)
+	}
+	// verify checks the attestations with the identity of the tag's release.yml, the provenance's and the SBOMs':
+	// with -R alone, any workflow of the repository on any ref would do (P5 design 2.1 item 5)
+	var verifies []string
+	for _, step := range stepsOf(jobs["verify"]) {
+		run, _ := step["run"].(string)
+		for _, command := range strings.Split(strings.ReplaceAll(run, "\\\n", " "), "\n") {
+			if strings.Contains(command, "gh attestation verify") {
+				verifies = append(verifies, command)
+			}
+		}
+	}
+	var sboms int
+	for _, command := range verifies {
+		if !strings.Contains(command, `--cert-identity "$identity"`) {
+			t.Errorf("release.yml: verify runs %q, without --cert-identity \"$identity\"", strings.TrimSpace(command))
+		}
+		if strings.Contains(command, "--predicate-type https://spdx.dev/Document/v2.3") {
+			sboms++
+		}
+	}
+	if len(verifies) < 2 || sboms == 0 || sboms == len(verifies) {
+		t.Errorf("release.yml: verify checks the attestations with %q, want the provenance and the SBOMs "+
+			"(--predicate-type https://spdx.dev/Document/v2.3)", verifies)
+	}
+	// the identity is the tag's release.yml word for word, in $identity and in the one cosign verify, with Actions'
+	// issuer, nowhere a pattern; and verify runs on both architectures, as build (M12/P5/S2 fix round 1)
+	const identity = "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF"
+	identityLine := regexp.MustCompile(`(?m)^\s*identity="` + regexp.QuoteMeta(identity) + `"$`)
+	var identities, cosigns int
+	for i, step := range stepsOf(jobs["verify"]) {
+		run, _ := step["run"].(string)
+		if identityLine.MatchString(run) {
+			identities++
+		}
+		if !strings.Contains(run, "cosign verify") {
+			continue
+		}
+		cosigns++
+		joined := strings.ReplaceAll(run, "\\\n", " ")
+		for _, want := range []string{`--certificate-identity "` + identity + `"`,
+			"--certificate-oidc-issuer https://token.actions.githubusercontent.com"} {
+			if !strings.Contains(joined, want) {
+				t.Errorf("release.yml: verify's step %d runs cosign verify without %s", i+1, want)
+			}
+		}
+	}
+	if identities != 1 || cosigns != 1 {
+		t.Errorf("release.yml: verify sets identity=\"%s\" in %d steps and runs cosign verify in %d, want one each",
+			identity, identities, cosigns)
+	}
+	for _, s := range stringsIn(jobs["verify"]) {
+		if strings.Contains(s, "-regex") {
+			t.Errorf("release.yml: verify holds %q: the identity is matched word for word", s)
+		}
+	}
+	archs := func(job any) []any {
+		var list []any
+		include, _ := field(field(field(job, "strategy"), "matrix"), "include").([]any)
+		for _, leg := range include {
+			list = append(list, field(leg, "arch"))
+		}
+		return list
+	}
+	if got, want := archs(jobs["verify"]), yamlStrings("amd64", "arm64"); !reflect.DeepEqual(got, want) {
+		t.Errorf("release.yml: verify runs on %v, want %v", got, want)
+	}
+	if v, b := field(jobs["verify"], "strategy"), field(jobs["build"], "strategy"); !reflect.DeepEqual(v, b) {
+		t.Errorf("release.yml: verify's strategy is %v, build's %v: want build's", v, b)
+	}
+	// the Release is published by release alone, after verify: no other job's step publishes it or calls gh release
+	for id, job := range jobs {
+		if id == "release" {
+			continue
+		}
+		for i, step := range stepsOf(job) {
+			run, _ := step["run"].(string)
+			for _, word := range []string{"github-release.sh publish", "--draft=false", "gh release"} {
+				if strings.Contains(run, word) {
+					t.Errorf("release.yml: job %s, step %d runs %q: only release publishes the Release", id, i+1, word)
+				}
+			}
+		}
 	}
 }

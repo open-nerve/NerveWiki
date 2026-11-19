@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P5 部署文档与发布流水线（三个 Step：S1 版本号与流水线的构建；S2 推送、签名、证明、SBOM、许可证与 Release；S3 部署文档与发布说明） |
-| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订 |
-| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S1 的实施与审查之后与本文不同之处照实改在各节，3.24 列出） |
+| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订；2026-11-19 照 S2 的实施与审查修订 |
+| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S2 已合并 `（待填：合并号）`，[S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2；S1、S2 的实施与审查之后与本文不同之处照实改在各节，3.24、3.25 列出） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 第 2 节，第 3 节第 1、7–11 条，4.3，4.8–4.13，5.1 末行，5.3，5.4，第 7 节 P5 一行与"收尾与发布""次序与并行""移交的落实""总体设计的修订"第 6、7、9 条，9.5–9.7，第 10 节，第 11 节决定 306、308、320–324、332、347 与"需要负责人确认"；[M12 设计审查](reviews/M12-design-review.md) B 的 I3、M4–M11、N1–N7、Q1 与"未核实的怀疑"；[移交](handoffs/) M0-P6-image-release 与其余移交里标给 P5 的部署项；[P1 设计](01-P1-foundation.md) 第 9 节；[v0.1 总体设计](../v0.1-design.md) 第 11 节、13.5、第 14 节 |
 | 代码位置的写法 | 同 00 号文档与 P1：模块写作 `page/…`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…` 在 `server/internal/` 之下；其余写仓库根起的路径。行号都是 `main` 的 `86565dd6` 的。00 号文档的行号以它头上的 `5e8af5b5` 为准，本文引它时只写节号；2.1 写出的旧文字与行号是 `86565dd6` 上的 00 号文档 |
 | 工作笔记 | 本文引的每个行号都在 `86565dd6` 上读过（附录）。公开的东西只读：十二个 action 与工具的 tag 与它指的提交（设计者起草时以 `git ls-remote` 读过一次，审查没能复核，见 3.21）；`actions/attest` v4.2.2 的 README 与 `src/sbom.ts`；`anchore/sbom-action` v0.24.3 的 `action.yml` 与 `src/SyftVersion.ts`；`sigstore/cosign-installer` v4.1.3 的 `action.yml`；`docker/build-push-action` v7.4.0 的 `action.yml`；actionlint 的 CHANGELOG；GitHub 文档（Container registry、immutable releases）；Docker 文档（`imagetools create`）；arm 的 runner 的软件表；本机 gh 2.103.2 的帮助；公开接口上 `ci.yml` 的运行。小实验在临时的 worktree 里（用完已删），输出在 `m12/p5-design/`。三位审查者的探针在 `m12/p5-review-{a,b,c}/`，两轮修订核对的在 `m12/p5-check{1,2}-{a,b,c}/`。actionlint 不在本机跑（设计时被权限分类器拒过，3.5） |
@@ -245,7 +245,7 @@
 
 | # | 事项 | 推荐 | 什么时候要 | 00 号文档 |
 |---|---|---|---|---|
-| 1 | 组织允许公开的容器包；"允许的 actions"包括 `docker/login-action`、`docker/setup-buildx-action`、`docker/build-push-action`、`sigstore/cosign-installer`、`anchore/sbom-action`；组织的 Actions 设置不限制工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write` | 照做 | 推 rc 之前。演练在每次推送上用 `docker/*`（S1 起）与 `anchore/sbom-action`（S2 起）："允许的 actions"受限时，那个 Step 的分支 CI 就红，到时看得出，不必先问。**S1**：分支 CI 上 `docker/setup-buildx-action`、`docker/build-push-action` 没被挡住（`release.yml` 的 run 44073973297 起，10.1）；`docker/login-action` 只在 tag 的 `build` 里，还没跑过，它与 S2 的几个和写权限仍在推 rc 之前核对 | 第 2 项 |
+| 1 | 组织允许公开的容器包；"允许的 actions"包括 `docker/login-action`、`docker/setup-buildx-action`、`docker/build-push-action`、`sigstore/cosign-installer`、`anchore/sbom-action`；组织的 Actions 设置不限制工作流申请 `packages: write`、`id-token: write`、`attestations: write`、`artifact-metadata: write` | 照做 | 推 rc 之前。演练在每次推送上用 `docker/*`（S1 起）与 `anchore/sbom-action`（S2 起）："允许的 actions"受限时，那个 Step 的分支 CI 就红，到时看得出，不必先问。**S1**：分支 CI 上 `docker/setup-buildx-action`、`docker/build-push-action` 没被挡住（`release.yml` 的 run 44073973297 起，10.1）；`docker/login-action` 只在 tag 的 `build` 里，还没跑过，它与 S2 的几个和写权限仍在推 rc 之前核对。**S2**：分支 CI 上 `anchore/sbom-action` 没被挡住（`release.yml` 的 run 44451246873 起，10.2）；`docker/login-action`、`sigstore/cosign-installer` 与写权限只在 tag 的作业里，推 rc 之前核对 | 第 2 项 |
 | 2 | 打开仓库的 immutable releases | 打开：公开之后 tag 与附件都不能改，与"不重推同一个 tag"一致；流水线先草稿后公开，打开不打开都能用 | 推 rc 之前 | 新（2.1 第 14 条） |
 | 3 | GHCR 的 `open-nerve` 下没有、也不要有手动推的 `nervewiki` 包 | 照做：第一次由 `release.yml` 用 `GITHUB_TOKEN` 推，包自动关联仓库 | 推 rc 之前 | 新 |
 | 4 | `v*` 的 tag 加规则集，只有负责人与主持者能推 | 照做；删 `v0.1.0` 的 git tag 只在 3.23 的那一种失败里由负责人决定 | 推 rc 之前 | 第 3 项 |
@@ -270,9 +270,9 @@
 - **436（P5-7）演练与发布都不用构建的缓存与 pnpm 的 store 缓存**：`ci.yml` 的 `image` 一项从头构建 68–80 秒，缓存省不了多少；发布的构建不读别的运行留下的缓存，少一处要信任的东西。演练只装 `@nervewiki/web` 的依赖，与 `ci.yml` 共用 store 的键会让 web、e2e 两项取回半个 store（审查 B 的 M3）。演练另断言镜像的架构是 runner 的架构（原生构建，不是仿真）。
 - **437（P5-8）一个只读的 `sbom` 作业**（2.1 第 2 条）：`pnpm install`、syft 与取 `/licenses` 在 `contents: read`、`packages: read` 下跑。`publish` 里第三方的 action 只有 cosign-installer（装 cosign、核对它的校验和），登录用 shell 的 `docker login`（审查 B 的 M6）。
 - **438（P5-9）SBOM 的内容**：镜像的一份由 syft 从 amd64 的那一份镜像生成（SPDX 2.3），证明挂在索引的摘要上。两种架构的二进制由同一份 `go.sum`、`CGO_ENABLED=0` 构建，Go 模块相同（审查 B 核对过两种架构的 `go list -deps` 都是同样的 47 个）；distroless 的几个包只差架构字段。前端的一份由 `pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod` 生成：pnpm 12.8.1 自带，不加依赖，本机实验 235 个包，许可证从 store 读（`--lockfile-only` 时 233 个都是 NOASSERTION）。它列的是 `@nervewiki/web` 的生产依赖图，多于 vite 实际打包的，宁多不少。
-- **439（P5-10）`/licenses` 在 Dockerfile 里收集**：Go 一侧在 server 阶段从模块缓存复制每个链接进二进制的模块的许可证文件，加 Go 自己的 `LICENSE`、`PATENTS`；没有许可证文件的模块让构建失败（今天 47 个都有）。npm 一侧在 web 阶段照 `pnpm licenses list --prod --json` 复制；包里没有许可证文本的照实记成"没有文本"、不失败（今天 3 个：fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1，`package.json` 都写 MIT），进已知限制与 v0.2 的 `M12-release.md`（审查 C 的 M10）。Nerve Wiki 自己的 `LICENSE` 也放进去。`make image` 与发布同一条路；Release 的附件从推上去的镜像里取。
+- **439（P5-10）`/licenses` 在 Dockerfile 里收集**：Go 一侧在 server 阶段从模块缓存复制每个链接进二进制的模块的许可证文件，加 Go 自己的 `LICENSE`、`PATENTS`；没有许可证文件的模块让构建失败（今天 47 个都有）。npm 一侧在 web 阶段照 `pnpm licenses list --prod --json` 复制（S2 实际：`--filter "@nervewiki/web..."`，带上工作区包的依赖，另收代码随产物发出的 tailwindcss，决定 612；两侧的清单对着二进制与前端的 SBOM 核对，614）；包里没有许可证文本的照实记成"没有文本"、不失败（今天 3 个：fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1，`package.json` 都写 MIT），进已知限制与 v0.2 的 `M12-release.md`（审查 C 的 M10）。Nerve Wiki 自己的 `LICENSE` 也放进去。`make image` 与发布同一条路；Release 的附件从推上去的镜像里取。
 - **440（P5-11）Release 先草稿、传附件，两种架构上核对过才公开；推荐打开 immutable releases**（2.1 第 3 条；核对在公开之前是主持者定的）。
-- **441（P5-12）版本号的 tag 已在、指着别的摘要时失败，不改指**（2.1 第 4 条）。判"不在"只认 registry 答的 not found，别的错误让这一步失败（以免一时读不到就当作不在、改指）。`gh release view` 同样只认"release not found"（审查 B 的 M1）。
+- **441（P5-12）版本号的 tag 已在、指着别的摘要时失败，不改指**（2.1 第 4 条）。判"不在"只认 registry 答的 not found，别的错误让这一步失败（以免一时读不到就当作不在、改指）。`gh release view` 同样只认"release not found"（审查 B 的 M1）；S2 改为读 REST 的列表，任何失败都失败、多于一个也失败：gh 会把一次查找的临时错误也说成 release not found（S2 审查 C 的 M4，决定 615）。
 - **442（P5-13）只签索引的摘要**，不 `--recursive` 签每个架构的那一份：`cosign verify <镜像>:<tag>` 解析到的是索引；用户按架构拉的那一份由索引的摘要盖住。
 - **443（P5-14）索引带三个注解**：`description`、`source`、`licenses`，值从 amd64 那一份镜像的 label 读，不在工作流里再写一遍。构建时 `oci-mediatypes=true`（注解要 OCI 的索引）。
 - **444（P5-15）rc 失败时**：核对之前失败的，留下的草稿（从没公开过）删掉；公开之后才发现问题的 rc，Release 不删，标题与说明标"作废"；GHCR 里留下的没有 tag 的摘要与 `sha-<提交>` 不删，收尾记录列出、v0.2 的移交写清不清（3.23）。
@@ -796,10 +796,14 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION: ${{ needs.gate.outputs.version }}
+      SHA: ${{ needs.gate.outputs.sha }}   # S2，决定 561
     steps:
       - uses: actions/checkout@… # v7.0.1（同上，persist-credentials: false）
       - name: The tree is clean
         run: （同演练）
+      # 构建的就是闸门放过的提交：检出取 GITHUB_SHA 是推断（S2，决定 561；3.25 第 7 条）
+      - name: The commit is the gate's
+        run: test "$(git rev-parse HEAD)" = "$SHA" || { echo "检出的是 $(git rev-parse HEAD)，闸门放过的是 $SHA"; exit 1; }
       - name: Tools
         run: （同演练）
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
@@ -882,11 +886,11 @@ jobs:
    - 作业恰是这张表里的（S1 三个，S2 八个），每个都写了 `permissions` 映射（不是 `read-all` 这样的字符串），与表恰好相等；`needs` 含表里的；
    - `if` 是整个字符串相等：不许 `||`、`always()`、`!cancelled()` 之类让它在别的事件或前面失败时也跑；
    - 没有作业、没有步骤写 `continue-on-error`（审查 A 的 M7）；`gate` 作业的步骤都不写 `if`；
-   - `rehearse` 与 `build`（S2 加 `verify`）各恰有一步跑 image-smoke；`release.yml` 里每个这样的步骤都不写 `if`，`run` 里有一行 `deploy/image-smoke.sh … "$VERSION"`（`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`），这一行后面没有别的（`|| true` 之类）（S1 审查 B 的 N3、核对第 1 轮 B 的 N6；决定 560）。它按行核对：前面一行 `set +e`、这一步或作业写不带 `-e` 的 `shell` 时，smoke 失败了照绿，交 S2（第 9 节，决定 562）；
+   - `rehearse` 与 `build`（S2 加 `verify`）各恰有一步跑 image-smoke；`release.yml` 里每个这样的步骤都不写 `if`，`run` 里有一行 `deploy/image-smoke.sh … "$VERSION"`（`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`），这一行后面没有别的（`|| true` 之类）（S1 审查 B 的 N3、核对第 1 轮 B 的 N6；决定 560）。它按行核对：前面一行 `set +e`、这一步或作业写不带 `-e` 的 `shell` 时，smoke 失败了照绿，交 S2（第 9 节，决定 562）。S2 改成：跑 smoke 的步骤与 `verify` 的每个跑命令的步骤只有 `name`、`env`、`run` 三个键，`run` 里没有关掉选项的 `set … +x` 与 `shopt -o`，这些作业与工作流不写 `defaults.run.shell`（3.25 第 3 条）；
    - `rehearse` 作业与工作流顶层的 `env`、`defaults` 里，没有字符串匹配 `(?i)\bsecrets\b`（各种写法、大小写，与每个作业都继承的）；演练的步骤 `uses` 与 `run` 合起来不匹配 `(?i)login`（S1 审查 B 的 N3、核对第 1 轮 B 的 M3；决定 560）；
    - `gate` 的步骤里恰有一步 `run` 是 `deploy/release-gate.sh "$GITHUB_REF_NAME"`，恰有一步是 `make vuln VULN_AUDIT_LEVEL=high`，前者在前；
    - `rehearse` 与 `build` 的 `docker/setup-buildx-action` 的 `with.driver-opts` 逐字相同，匹配 `^image=moby/buildkit:v[0-9.]+@sha256:[0-9a-f]{64}$`（P5-18）；
-   - S2 加：`publish` 恰有一步 `run` 是 `deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"`，且没有 `uses: docker/login-action`；`draft` 恰有一步是 `deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"`；`release` 恰有一步是 `deploy/github-release.sh publish "$GITHUB_REF_NAME"`；`verify` 的校验一步含 `--cert-identity "$identity"`、`--predicate-type https://spdx.dev/Document/v2.3`。
+   - S2 加（S2 实际另核对的见 3.25 第 4 条，决定 616）：`publish` 恰有一步 `run` 是 `deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"`，且没有 `uses: docker/login-action`；`draft` 恰有一步是 `deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"`；`release` 恰有一步是 `deploy/github-release.sh publish "$GITHUB_REF_NAME"`；`verify` 的校验一步含 `--cert-identity "$identity"`、`--predicate-type https://spdx.dev/Document/v2.3`。
 
    | 作业 | `if` | `permissions` | `needs` 含 |
    |---|---|---|---|
@@ -960,12 +964,14 @@ cat "$file"
 | `tools/licenses/go.sh` | 新：Go 一侧的许可证（3.11） |
 | `tools/licenses/npm.mjs` | 新：npm 一侧的许可证（3.11） |
 | `tools/licenses/README.txt` | 新：镜像里 `/licenses/README.txt` 的说明 |
+| `tools/licenses/check.mjs` | 新（S2 修复第 1 轮）：两个收集的脚本对着桩跑，10 格（3.25 第 14 条） |
+| `Makefile` | `lint-web` 加 `node tools/licenses/check.mjs`（S2 修复第 1 轮） |
 | `deploy/Dockerfile` | web 阶段、server 阶段各收集一侧，runtime 阶段放进 `/licenses`（3.11） |
-| `knip.jsonc` | 根的 `entry`（`:7-15`）加 `tools/licenses/npm.mjs` |
+| `knip.jsonc` | 根的 `entry`（`:7-15`）加 `tools/licenses/npm.mjs`（S2 修复第 1 轮另加 `tools/licenses/check.mjs`） |
 | `deploy/image-smoke.sh` | 核对 `/licenses`（3.11） |
 | `deploy/release-version-tag.sh`、`deploy/github-release.sh` | 新，可执行（3.13） |
-| `.github/workflows/release.yml` | `sbom`、`publish`、`draft`、`verify`、`release` 五个作业；演练加三步（3.14、3.15）；`build` 的 Labels 之前加 `test "$(git rev-parse HEAD)" = "$SHA"`（第 9 节"P5/S2"，决定 561） |
-| `server/internal/platform/buildinfo/release_test.go` | 加 `TestTheReleaseScripts`；守卫的表加五个作业（3.9、3.13）；跑 image-smoke 的步骤与它们的作业不许写 `shell`、`defaults.run.shell`、`set +e`（第 9 节"P5/S2"，决定 562） |
+| `.github/workflows/release.yml` | `sbom`、`publish`、`draft`、`verify`、`release` 五个作业；演练加三步（3.14、3.15）；`build` 加 `test "$(git rev-parse HEAD)" = "$SHA"`（第 9 节"P5/S2"，决定 561；S2 实际是"The tree is clean"之后、Tools 之前单独一步，3.25 第 7 条） |
+| `server/internal/platform/buildinfo/release_test.go` | 加 `TestTheReleaseScripts`；守卫的表加五个作业（3.9、3.13）；跑 image-smoke 的步骤与它们的作业不许写 `shell`、`defaults.run.shell`、`set +e`（第 9 节"P5/S2"，决定 562；S2 实际写成只有 name、env、run 三个键，另核对的见 3.25 第 3、4 条） |
 
 ### 3.11 S2：第三方许可证 `/licenses`
 
@@ -978,22 +984,23 @@ cat "$file"
 /licenses/go/go@go1.27.4/LICENSE、PATENTS    Go 本身（标准库与运行时随二进制发出）
 /licenses/go/<模块路径>@<版本>/LICENSE…       每个链接进二进制的模块
 /licenses/npm/INDEX.tsv                      每行：<包>@<版本> TAB <package.json 写的许可证> TAB <文件名，或"-"：包里没有许可证的文本>
-/licenses/npm/<包名>@<版本>/LICENSE…          @nervewiki/web 的每个生产依赖
+/licenses/npm/<包名>@<版本>/LICENSE…          @nervewiki/web 与它用的工作区包的每个生产依赖，加上代码随产物发出的 tailwindcss（S2）
 ```
 
-**`tools/licenses/go.sh <输出目录>`**（server 阶段，`/src/server` 下执行；`set -euo pipefail`）：
+**`tools/licenses/go.sh <构建出的程序> <输出目录>`**（server 阶段，`/src/server` 下执行；`set -euo pipefail`；程序一个参数是 S2 修复第 1 轮加的）：
 
 - `CGO_ENABLED=0 go list -deps -f '{{with .Module}}{{if not .Main}}{{.Path}}@{{.Version}}{{"\t"}}{{.Dir}}{{end}}{{end}}' ./cmd/nervewiki | sort -u`：与构建同一个 `GOOS`/`GOARCH`、同一个模块缓存（`go mod download` 之后），`CGO_ENABLED=0` 同 `go build` 那一行（`deploy/Dockerfile:34`；审查 B 的 N6：golang 镜像有 gcc，那一层的 `RUN` 默认是 1，今天两种取值的模块集合相同）。
-- 每个模块：目录里名字匹配 `^(licen[cs]e|copying|notice|patents)([.-].*)?$`（不分大小写）的文件复制过去；一个也没有就失败，写明模块（P5-10）。
+- 每个模块：根目录里名字匹配 `^((un)?licen[cs]e|copying|notice|patents)([.-].*)?$`（不分大小写）、又不以 js、cjs、mjs、jsx、ts、cts、mts、tsx、go、json、map、sh、py 结尾的文件复制过去（S2 修复第 1 轮，决定 613：原稿的正则收代码，cytoscape 的 `license-update.mjs` 进了镜像，只有 `license.go` 的模块骗过了下一句）；一个也没有就失败，写明模块（P5-10）。
+- 收完之后，`go list` 的模块要恰是 `go version -m <程序>` 的 `dep` 行，程序的 Go 版本要是收的那个 Go 的；不等就失败、构建失败（S2 修复第 1 轮，决定 614）。
 - `$(go env GOROOT)/LICENSE`、`PATENTS` 进 `go@$(go env GOVERSION)/`。
 - 本机实验（`86565dd6`）：47 个模块，都有许可证文件：44 个 `LICENSE`、3 个 `LICENSE.txt`，另有 1 个 `NOTICE`、7 个 `PATENTS`（`m12/p5-design/gomods.txt`；审查 B 复核相同，两种架构的模块逐行相同）。`uuid` 是 Go 1.27 的标准库，算在 Go 本身里。
 
 **`tools/licenses/npm.mjs <输出目录>`**（web 阶段，`/src` 下执行，`pnpm install` 之后）：
 
-- `execFileSync("pnpm", ["--filter", "@nervewiki/web", "licenses", "list", "--prod", "--json"])`，按许可证分组的 JSON，每项有 `name`、`versions`、`paths`、`license`。
+- `execFileSync("pnpm", ["--filter", "@nervewiki/web...", "licenses", "list", "--prod", "--json"])`（S2 修复第 1 轮，决定 612：原稿的 `--filter @nervewiki/web` 不往工作区包 `@nervewiki/api-client` 里走，漏了打包进前端的 `openapi-fetch`），按许可证分组的 JSON，每项有 `name`、`versions`、`paths`、`license`；名字与版本读每个包自己的 `package.json`（S2）。另固定收 tailwindcss（`SHIPPED`，从 `web/apps/web/node_modules` 读，没装就失败）：它是 devDependency，preflight 与默认主题编进 CSS。
 - 每个包的每个路径：同样的文件名规则复制；没有就在 INDEX 里写 `-`，不失败（P5-10）。`license` 是 `Unknown` 的照写（今天 khroma 2.1.0：`package.json` 没有 `license` 字段，包里有 `license` 文件）。
 - 输出排序，同一份锁文件得到同样的目录。
-- 本机实验：226 个包；没有许可证文本的 3 个（fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1，`package.json` 都写 MIT）（`m12/p5-design/web-licenses.json.gz`）。锁文件里带 `cpu:` 的 159 个包没有一个在 `@nervewiki/web` 的生产依赖里（审查 B），两种架构的 `/licenses/npm` 应当相同。
+- 本机实验：226 个包（S2 实施时 230 个：pnpm 列 226 项，其中 4 项各有两个版本；修复第 1 轮之后 233 个，232 个加 tailwindcss）；没有许可证文本的 3 个（fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1，`package.json` 都写 MIT）（`m12/p5-design/web-licenses.json.gz`）。锁文件里带 `cpu:` 的 159 个包没有一个在 `@nervewiki/web` 的生产依赖里（审查 B），两种架构的 `/licenses/npm` 应当相同。
 
 **Dockerfile**：
 
@@ -1004,7 +1011,7 @@ RUN node tools/licenses/npm.mjs /out/licenses/npm
 COPY web/ web/
 
 # server 阶段，go build 之后
-RUN /src/tools/licenses/go.sh /out/licenses/go
+RUN /src/tools/licenses/go.sh /out/nervewiki /out/licenses/go   # S2：程序与输出目录
 
 # runtime 阶段
 COPY LICENSE /licenses/LICENSE
@@ -1023,10 +1030,15 @@ docker cp "$licenses:/licenses" "$files/licenses"
 grep -q '^go@go[0-9.]*	LICENSE' "$files/licenses/go/INDEX.tsv" || fail "…"
 grep -q '^github.com/jackc/pgx/v5@' "$files/licenses/go/INDEX.tsv" || fail "…"
 grep -q '^react@' "$files/licenses/npm/INDEX.tsv" || fail "…"
+# S2 修复第 1 轮：经工作区包打包进前端的那一个；两份清单至少 40、200 行（今天 48、233）
+grep -q '^openapi-fetch@' "$files/licenses/npm/INDEX.tsv" || fail "…"
+[ "$(wc -l <"$files/licenses/go/INDEX.tsv")" -ge 40 ] && [ "$(wc -l <"$files/licenses/npm/INDEX.tsv")" -ge 200 ] || fail "…"
 # 清单上写的每个文件都在
 ```
 
-**大小**：两侧约 280 份文本，推断 1–2 MB。
+**大小**：两侧约 280 份文本，推断 1–2 MB。S2：293 个文件、532,441 字节（10.2）。
+
+**`tools/licenses/check.mjs`**（S2 修复第 1 轮）：`make lint-web` 调用，对着假的 `go`、`pnpm` 跑两个脚本，10 格（3.25 第 14 条）。
 
 ### 3.12 S2：两份 SBOM
 
@@ -1037,14 +1049,14 @@ grep -q '^react@' "$files/licenses/npm/INDEX.tsv" || fail "…"
 
 - **实验**（P5-9）：本机 `pnpm sbom` 在 store 模式下 235 个包，许可证：MIT 184、ISC 34、BSD-3-Clause 7、Apache-2.0 4、AGPL-3.0-only 2（我们自己的两个包）、Unlicense 1、0BSD 1、`(MPL-2.0 OR Apache-2.0)` 1（dompurify）、NOASSERTION 1（khroma）。`--lockfile-only` 时 233 个依赖都是 NOASSERTION，所以要先装（`m12/p5-design/web.spdx.json.gz`、`web-lockonly.spdx.json.gz`）。文档的 `name` 是 `@nervewiki/web`。
 - 根包的版本写 `0.0.0`（`web/apps/web/package.json` 没有版本）；文件名带版本号，不改 SBOM 的内容。
-- 两份都过 `jq` 的核对：`spdxVersion == "SPDX-2.3"`；镜像的那份有 `github.com/jackc/pgx/v5`（证明 syft 读到了二进制里的模块，不只是 distroless 的几个包），前端的有 `react`。
+- 两份都过 `jq` 的核对：`spdxVersion == "SPDX-2.3"`；镜像的那份有 `github.com/jackc/pgx/v5`（证明 syft 读到了二进制里的模块，不只是 distroless 的几个包），前端的有 `react`。S2 起另核对两份的文档 `name`（决定 617），并核对前端 SBOM 里 `@nervewiki/*` 之外的每个包都在 `/licenses/npm/INDEX.tsv`（3.25 第 13 条，决定 614）。
 - `actions/attest` 收 SPDX 时以 `https://spdx.dev/Document/v` 加 `spdxVersion` 的后半作证明的类型（`src/sbom.ts` 的 `generateSPDXPredicate`），两份都是 `https://spdx.dev/Document/v2.3`；大小上限 16 MB，两份都在 1 MB 以下（推断）。
-- syft 给镜像的 SBOM 的文档 `name` 是镜像的引用（推断）：`verify` 作业靠两份的 `name` 分出镜像的与前端的（3.14），S2 的演练先记下本地镜像那一份的 `name`，与推断不同就照实改 `verify` 的那一行，写进偏离。
+- syft 给镜像的 SBOM 的文档 `name` 是镜像的引用（推断）：`verify` 作业靠两份的 `name` 分出镜像的与前端的（3.14），S2 的演练先记下本地镜像那一份的 `name`，与推断不同就照实改 `verify` 的那一行，写进偏离。S2：演练读出 `nervewiki`，是引用的仓库名，不带 tag 与摘要（syft v1.54.0 的源码同此），tag 上推断是 `ghcr.io/open-nerve/nervewiki`；`verify` 认 `$IMAGE`（3.25 第 1 条）。
 - `sbom-action` 的 `upload-artifact`、`upload-release-assets` 都关掉：它默认在 release 事件上往 Release 传附件、并另存 artifact；附件由我们的 `draft` 作业传。
 
 ### 3.13 S2：版本号的 tag 与 Release 的两个脚本
 
-正常的 rc 只走"不在 → 新建"与"没有 Release → 建草稿"，P5-12 要防的"已在、别的摘要"、读不到时不当作不在、已公开的不再上传，都只在出错或重跑时才走（审查 B 的 M2）。所以这两步与闸门一样写成脚本，对着假的 `docker`、`gh` 每一支各跑一格（P5-20）。两个都可执行，`set -uo pipefail`，`fail` 同闸门。
+正常的 rc 只走"不在 → 新建"与"没有 Release → 建草稿"，P5-12 要防的"已在、别的摘要"、读不到时不当作不在、已公开的不再上传，都只在出错或重跑时才走（审查 B 的 M2）。所以这两步与闸门一样写成脚本，对着假的 `docker`、`gh` 跑，不与别处等价的每一处检查各有一格让它单独变红（P5-20；S2 审查 C 的 M1，原稿写"每一支各跑一格"）。两个都可执行，`set -uo pipefail`，`fail` 同闸门。
 
 **`deploy/release-version-tag.sh <镜像> <版本> <索引的摘要>`**（`publish` 作业的最后一步）：
 
@@ -1068,11 +1080,11 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
 [ "$got" = "$digest" ] || fail "$image:$version 是 $got，要 $digest"
 ```
 
-`imagetools inspect` 对不存在的 tag 的错误信息含 `not found`（containerd 的解析器；推断），假 `docker` 的答复照此写，rc 时若看到别的写法照实改正则。
+`imagetools inspect` 对不存在的 tag 的错误信息含 `not found`（containerd 的解析器；推断），假 `docker` 的答复照此写，rc 时若看到别的写法照实改正则。S2 审查 C 以 buildx v0.38.1 匿名读公开的包核过：答 `ERROR: <引用>: not found`；读不到的包答 `failed to authorize: … 403 Forbidden`，不会被当作不在；登录之后读自己的私有包，rc 才证明得了。
 
 **`deploy/github-release.sh draft <tag> <说明文件> <附件目录>`**（`draft` 作业）与 **`deploy/github-release.sh publish <tag>`**（`release` 作业）。附件恰是三个：`nervewiki-<版本>-image.spdx.json`、`nervewiki-<版本>-web.spdx.json`、`nervewiki-<版本>-licenses.tar.gz`，名字由 tag 算出；rc（tag 带 `-rc.`）加 `--prerelease`。仓库取 `GH_REPO`。
 
-- `state`：`gh release view "$tag" --json isDraft --jq .isDraft 2>"$err"`。失败时只有标准错误含 `release not found` 才算"没有"，别的让脚本失败（审查 B 的 M1：gh 的任何失败都以 1 退出，分不开；一时读不到就再建一个草稿，草稿不占 tag，会有两个）。
+- `state`（S2 修复第 1 轮改，决定 615）：`gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.tag_name == "<tag>") | .draft'`：空是没有，`true` 是草稿，`false` 是已公开；任何失败都失败，同一个 tag 多于一个、或读不懂，也失败。原稿读 `gh release view "$tag" --json isDraft`，只有标准错误含 `release not found` 才算没有（审查 B 的 M1：gh 的任何失败都以 1 退出，分不开；一时读不到就再建一个草稿，草稿不占 tag，会有两个）；可 gh v2.103.2 的 `view` 并行查 REST 与 GraphQL，两次都失败、其中一次是 not found 时也报 `release not found`，一次临时的错就被当作没有（S2 审查 C 的 M4）。
 - **draft**：附件目录恰有那三个文件，否则失败。
   - 没有：`gh release create "$tag" --draft --verify-tag --title "Nerve Wiki $tag" --notes-file <说明> [--prerelease]`；
   - 是草稿：`gh release edit "$tag" --notes-file <说明> [--prerelease]`；
@@ -1083,7 +1095,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
   - 是草稿：附件恰是那三个，否则失败、不公开；然后 `gh release edit "$tag" --draft=false`，再读一次要是已公开；
   - 已公开：附件恰是那三个就以 0 退出。
 
-本机 gh 2.103.2 的帮助与二进制核对过：`create --draft --verify-tag --prerelease --notes-file --title`、`edit --draft=false`、`upload --clobber` 都在；`gh release view <tag>` 按 tag 找得到草稿（二进制里有 `release(tagName:)` 的 GraphQL 查询，审查 B）；immutable releases 的保护在公开时才生效，草稿的附件可以改（`gh release create --help`）。
+本机 gh 2.103.2 的帮助与二进制核对过：`create --draft --verify-tag --prerelease --notes-file --title`、`edit --draft=false`、`upload --clobber` 都在；`gh release view <tag>` 按 tag 找得到草稿（二进制里有 `release(tagName:)` 的 GraphQL 查询，审查 B；`view`、`edit`、`upload` 都经 `FetchRelease`，S2 审查 C 读源码核过；S2 起附件仍由 `view --json assets` 读）；`gh api` 的 `--paginate` 与 `--jq` 合用时每一页各算一次查询（`pkg/cmd/api/api.go`，S2）；`gh release create --draft` 不查已有的草稿（`create.go`，S2 审查 C）；immutable releases 的保护在公开时才生效，草稿的附件可以改（`gh release create --help`）。
 
 **`TestTheReleaseScripts`**（`release_test.go`，S2），表驱动，执行仓库里的两个脚本（绝对路径，不复制），PATH 照 3.9。
 
@@ -1099,7 +1111,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
 | `create` 之后 `inspect` 是别的 | 1，`要 sha256:` |
 | 摘要或版本号写法不对 | 1；日志是空的 |
 
-假的 `gh` 只答 `release view/create/edit/upload`：状态（`absent`、`draft`、`published`，或 `error:<信息>`）与附件名在两个文件里，`create` 把状态改成 `draft`，`upload` 加附件，`edit --draft=false` 改成 `published`；每次调用记进日志。
+假的 `gh`（S2 修复第 1 轮起）只答 `api --paginate …/releases?per_page=100 --jq …`（三页，这个 tag 的在第二页、混在别的 tag 之间，每页各跑一次 `jq`）与 `release view --json assets`、`create`、`edit`、`upload`：状态（`absent`、`draft`、`published`、`two`，或 `error:<信息>`）与附件名在两个文件里，`create` 把状态改成 `draft`，`upload` 加附件，`edit --draft=false` 改成 `published`；`FAKE_GH_EDIT_FAILS`、`FAKE_GH_UPLOAD_FAILS` 让那两样失败。两个假命令都以 NUL 分隔记下每次调用的每个参数（S2 审查 C 的 N6）。失败的地方分两种：照真的（对没有的 Release `view`、`edit`、`upload`；对已公开的 Release `upload`，打开 immutable releases 时）；绊线，不许脚本去要（已在的 tag 再 `imagetools create`，真的会改指；有 Release 的 tag 再 `gh release create --draft`，gh 不查已有的草稿，接口再建一个是本节的前提）（S2 审查 C 的 M3、核对第 1 轮 C 的 N1）。
 
 | Release | 期望 |
 |---|---|
@@ -1108,12 +1120,18 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
 | draft，已是草稿 | 0；`edit --notes-file`、`upload` |
 | draft，已公开、附件齐 | 0；没有 `upload`、没有 `edit` |
 | draft，已公开、缺一个附件 | 1；没有 `upload` |
-| draft，`view` 答 `HTTP 502` | 1；没有 `create` |
-| draft，附件目录少一个或多一个文件 | 1；日志是空的 |
+| draft，列表答 `HTTP 502`（S2 改） | 1；没有 `create` |
+| draft，同一个 tag 两个 Release（S2 加） | 1，`不止一个`；没有 `create` |
+| draft，草稿的 `edit` 失败（S2 加） | 1；没有 `upload` |
+| draft，前一次已传三个附件、`upload` 失败（S2 加） | 1，`传不上` |
+| draft，附件目录少一个或多一个文件（S2 拆成两格） | 1；日志是空的 |
 | publish，草稿、附件齐 | 0；`edit --draft=false`，之后是已公开 |
 | publish，草稿、缺附件 | 1；没有 `edit --draft=false` |
 | publish，已公开 | 0；没有 `edit` |
 | publish，没有 | 1 |
+| 别的动作名（S2 加） | 1，用法；日志是空的 |
+
+S2 另加的格（共 31 格）见 3.25 第 5 条。
 
 ### 3.14 S2：`release.yml` 的发布部分
 
@@ -1177,11 +1195,23 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
         run: pnpm install --frozen-lockfile --filter @nervewiki/web...
       - name: Web SBOM
         run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
+      # 文档的 name 是 verify 分两份证明用的：镜像的是 $IMAGE（推断，这一步先核对，rc 上证明），前端的是包名（M12/P5/S2，
+      # 3.25 第 1 条）；前端 SBOM 里的包都在 /licenses（3.25 第 13 条）
       - name: Check the SBOMs
         run: |
           out=$RUNNER_TEMP/out
-          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
-          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          for f in "$out/nervewiki-$VERSION-image.spdx.json" "$out/nervewiki-$VERSION-web.spdx.json"; do
+            jq -r --arg f "${f##*/}" '"\($f)：name=\(.name)，\(.packages | length) 个包"' "$f"
+          done
+          jq -e --arg image "$IMAGE" '.spdxVersion == "SPDX-2.3" and .name == $image and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
+          jq -e '.spdxVersion == "SPDX-2.3" and .name == "@nervewiki/web" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          export LC_ALL=C
+          sbom=$(jq -r '.packages[] | select(.name | startswith("@nervewiki/") | not) | "\(.name)@\(.versionInfo)"' "$out/nervewiki-$VERSION-web.spdx.json" | sort -u)
+          index=$(cut -f1 "$RUNNER_TEMP/amd64/npm/INDEX.tsv" | sort -u)
+          absent=$(comm -23 <(echo "$sbom") <(echo "$index"))
+          missing=$(grep -v '^@types/' <<<"$absent" || true)
+          [ -n "$sbom" ] && [ -z "$missing" ] || { echo "前端 SBOM 里这些包不在 /licenses/npm/INDEX.tsv："; echo "$missing"; exit 1; }
+          echo "前端 SBOM 里 @nervewiki/* 之外的 $(wc -l <<<"$sbom") 个包，不在 /licenses/npm/INDEX.tsv（$(wc -l <<<"$index") 行）的只有 @types/：$(paste -sd' ' - <<<"$absent")"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files
@@ -1215,7 +1245,8 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
         env:
           GH_TOKEN: ${{ github.token }}
         run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-      # 先打一个不是版本号的 tag；注解从 amd64 那一份的 label 读，不另写一遍（runner 自带的 buildx）
+      # 先打一个不是版本号的 tag；注解从 amd64 那一份的 label 读，不另写一遍（runner 自带的 buildx）。推上去的镜像来自
+      # 闸门放过的提交：label() 之后先 [ "$(label revision)" = "$SHA" ]，不等就失败（S2，决定 561）
       - name: Index
         id: index
         run: |
@@ -1298,7 +1329,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
       DIGEST: ${{ needs.publish.outputs.digest }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - 检出（tag 的提交，image-smoke 照它核对提交与时间）；Tools；docker/login-action（ghcr.io）
+      - 检出（tag 的提交，image-smoke 照它核对提交与时间）；Tools（另查 `gh`，S2）；docker/login-action（ghcr.io）
       - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3（cosign-release: v3.1.4）
       - name: The version tag is the index
         run: test "$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
@@ -1311,7 +1342,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
             --predicate-type https://spdx.dev/Document/v2.3 --format json \
             --jq '[.[].verificationResult.statement.predicate.name] | unique | join(" ")')
           case " $names " in *" @nervewiki/web "*) ;; *) echo "没有前端的 SBOM 证明：$names"; exit 1 ;; esac
-          case " $names " in *" $IMAGE@sha256:"*) ;; *) echo "没有镜像的 SBOM 证明：$names"; exit 1 ;; esac
+          case " $names " in *" $IMAGE "*) ;; *) echo "没有镜像的 SBOM 证明：$names"; exit 1 ;; esac   # S2：$IMAGE，3.25 第 1 条
       # 验过的载荷记进日志，打出每份的类型：rc 上看验过的是 cosign sign 的签名，不只是 actions/attest 的证明（3.23 第 5 步）
       - name: Signature
         run: |
@@ -1349,7 +1380,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
 
 - **次序**：每个架构构建、smoke、按摘要推送（`build`）→ 取许可证、两份 SBOM（`sbom`，只读）→ 合成索引、打 `sha-<提交>`、来源证明、两份 SBOM 的证明、签名、复制出版本号（`publish`）→ Release 的草稿与附件（`draft`）→ 两种架构上按 tag 校验（`verify`）→ 公开 Release（`release`）。版本号的 tag 在 `verify` 之前就出现：包已公开时（`v0.1.0`），`verify` 失败的那段时间里 `0.1.0` 已能拉到，只是没有公开的 Release（3.23）。
 - **签名的载荷**（修订核对 B 的 M7）：`cosign verify` 默认把验过的载荷以 JSON 打到标准输出（推断，实施时核对），`--output json` 写明；`jq` 打出每份的 `critical.type`，`cosign sign` 的签名应是 `cosign container image signature`。只打出、不断言：cosign v3 怎样列 `actions/attest` 的 bundle 没有核实，rc 上读了再定要不要断言（3.23 第 5 步）；`jq` 读不懂（元素不是对象、输出不是 JSON）时打出原文，不让 `verify` 红（修订核对 B 的 N16）。
-- **校验的身份**：`gh attestation verify` 带 `--cert-identity`，与 cosign 的身份逐字相同，也与说明里给用户的命令相同（审查 B 的 M4）。SBOM 的证明按两份的文档 `name` 分：一份 `@nervewiki/web`，一份以 `$IMAGE@sha256:` 起头（3.12 的推断），重跑多出的几份去重之后不影响（审查 B 的 N5）。
+- **校验的身份**：`gh attestation verify` 带 `--cert-identity`，与 cosign 的身份逐字相同，也与说明里给用户的命令相同（审查 B 的 M4）。SBOM 的证明按两份的文档 `name` 分：一份 `@nervewiki/web`，一份是 `$IMAGE`（S2：3.12 推断的是以 `$IMAGE@sha256:` 起头，演练读出的是仓库名，3.25 第 1 条），重跑多出的几份去重之后不影响（审查 B 的 N5）。
 - **重跑**：一时的失败在同一次运行上 Re-run failed jobs。`imagetools create` 对同样的两个来源得到同一个索引（推断；不同时 `sha-` 改指、版本号的 tag 照 P5-12 不动）；证明与签名多一份无害；`github-release.sh` 认得草稿与已公开；`overwrite: true` 让重跑的 `build`、`sbom` 能再传同名的 artifact。重跑的作业能不能下载前一次尝试传的 artifact，rc 之前看不到（审查 B 未核实的第 2 条），两种结果的收拾都写在 3.23 的表里。
 - **整次运行重跑**：`build` 得到新的摘要，`publish` 在新的索引上证明、签名，最后一步因为版本号的 tag 已指着旧的而失败，不改指；`draft` 不跑。这时用 rc.N+1。
 - **版本号以外的 tag**：只有 `sha-<提交>` 与确切的版本号；没有 `latest`、`0.1`（决定 322）。
@@ -1363,7 +1394,7 @@ got=$(docker buildx imagetools inspect "$image:$version" --format '{{json .Manif
 2. **镜像的 SBOM**：`anchore/sbom-action`，`image: nervewiki:rehearsal`（syft 先找本机的 Docker），同 3.14 的参数；打出文档的 `name`（3.12）。
 3. **前端的 SBOM**：同 3.14 的安装与 `pnpm sbom`，不缓存 store。
 
-之后同 3.14 的"Check the SBOMs"。不传 artifact（审查 B 的过度设计）：要看的在作业日志里。演练的权限照旧只有 `contents: read`。
+之后同 3.14 的"Check the SBOMs"（S2：演练要镜像的那份 `name` 是 `nervewiki`，决定 617）。不传 artifact（审查 B 的过度设计）：要看的在作业日志里。演练的权限照旧只有 `contents: read`。
 
 这样 rc 之前只剩推送、GHCR 上的 `imagetools`、证明与签名、Release 与按 tag 的校验没有在分支上走过（3.23）。`sbom` 作业的跨架构 `docker create --platform` 与 `docker cp`、`diff -r`，审查 B 在本机对称地核对过（本机 arm64 上建、拷一个 amd64 的镜像，不要仿真）。
 
@@ -1638,12 +1669,12 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 | 版本号的默认值 | 7.2 的 v1–v6 | 3.2 |
 | MCP 的版本 | m1–m4：写死默认值由盖了版本号的 `make test-go-short` 抓，直接 `go test` 照过（写明）；去掉盖版本号由测试的第二条抓 | 3.3 |
 | label | l1–l4 | 3.4 |
-| 三份工作流的守卫 | w1–w14 | 3.9 |
+| 三份工作流的守卫 | w1–w16（S2 的 w15、w16 在 7.2）；S2 修复第 1 轮的 33 个（b5–b24 等，7.2 与 S2 的审查记录） | 3.9 |
 | 闸门 | g1–g14；3.9 的表的每一格先在没改过的脚本上跑 | 3.6、3.9 |
 | 说明 | n1–n5 | 3.7、3.9 |
 | 闸门作业的 `make vuln` 照 `high` | v-gate：PATH 里 `go`、`pnpm` 两个桩加 `GITHUB_ACTIONS=true` 跑 `make vuln VULN_AUDIT_LEVEL=high`，`pnpm` 的桩记下 `audit --prod --audit-level=high`（同 P1/S2 的变异 15）；`go` 也要桩，否则会在本机真跑 `govulncheck`。实施时手做一次，CI 不常驻 | 7.2 |
-| 版本号的 tag、Release 的草稿与公开 | r1–r7（假的 `docker`、`gh`） | 3.13 |
-| `/licenses` | x1–x3 | 3.11 |
+| 版本号的 tag、Release 的草稿与公开 | r1–r7 与 S2 修复第 1 轮的 c1–c3、c15、s1–s6（假的 `docker`、`gh`） | 3.13 |
+| `/licenses` | x1–x3；S2 修复第 1 轮的 l1–l13（`tools/licenses/check.mjs` 的 10 格）与 f1–f5（`make image`、`make image-smoke`）；前端 SBOM 对清单的核对由 f1 的 INDEX 在本机照工作流的原文反向对照；收口的 n1–n1c | 3.11 |
 | actionlint | 它的规则不是我们的，不做反向对照；"本机拒绝"是我们的代码：7.2 的 a1、a2，PATH 里只放一个记参数的假 `go`，不跑 actionlint（修订核对 A 的 N11） | 3.5 |
 | `deploy-check` | d1、d2 | 3.17 |
 | 守卫加 `compose.yaml` 与 `deploy/README.md` | p1、p2 | 3.17 |
@@ -1651,7 +1682,7 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 
 ### 3.23 只有推 tag 才证明得了的：rc 的步骤与失败时的收拾
 
-**分支上证明不了的**（9.5 第 3 层）：GHCR 的登录与按摘要推送（包第一次建出、关联仓库）；`imagetools create` 在 GHCR 上合成索引与注解；`actions/attest` 推进 GHCR 与存储记录；cosign keyless 与 GHCR 怎样存 cosign v3 的签名；Release 的草稿、附件与公开；按 tag 的 `gh attestation verify`、`cosign verify`；重跑时能不能下载前一次尝试的 artifact；闸门对真接口的读（字段照真样子写了，3.6）；tag 的运行的 `head_branch` 是不是 tag 名。
+**分支上证明不了的**（9.5 第 3 层；S2 另加 REST 的 Release 列表对 `contents: write` 的令牌含草稿、tag 上镜像的 SBOM 的 `name`，第 9 节"发布"）：GHCR 的登录与按摘要推送（包第一次建出、关联仓库）；`imagetools create` 在 GHCR 上合成索引与注解；`actions/attest` 推进 GHCR 与存储记录；cosign keyless 与 GHCR 怎样存 cosign v3 的签名；Release 的草稿、附件与公开；按 tag 的 `gh attestation verify`、`cosign verify`；重跑时能不能下载前一次尝试的 artifact；闸门对真接口的读（字段照真样子写了，3.6）；tag 的运行的 `head_branch` 是不是 tag 名。
 
 **4.11 的步骤，写成命令**（收尾合并、`main` 的 CI 绿之后；主持者做，第 6 步负责人做）：
 
@@ -1676,9 +1707,9 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 |---|---|---|
 | `gate` | 只有 git 的 tag | CI 还在跑或一时的错：CI 绿之后 Re-run failed jobs。`CHANGELOG.md` 或脚本的问题：`m12-release` 上改、合并，推 rc.N+1。`make vuln` 红：照 4.3，要升依赖或加 `audit.ignore` 的再问负责人 |
 | `build`（某个架构） | GHCR 里可能有没有 tag 的摘要（私有） | 一时的错（runner、GHCR）：Re-run failed jobs。只在 arm64 上坏的构建：改了产品代码，再问负责人，rc.N+1 |
-| `sbom` | 同上 | Re-run failed jobs；syft 或 pnpm 的问题改流水线，rc.N+1 |
+| `sbom` | 同上 | Re-run failed jobs；syft 或 pnpm 的问题改流水线，rc.N+1。Check the SBOMs 报文档的 `name` 不对，或前端 SBOM 里有不在 `/licenses` 的包：改 `verify` 的那一行或 `npm.mjs`，rc.N+1（S2） |
 | `publish` | 加上 `sha-<提交>` 的索引，可能已有证明与签名（透明日志里有记录）；没有版本号的 tag | Sigstore 或 GHCR 一时的错：Re-run failed jobs；重跑的作业下载不到前一次尝试的 artifact 时，版本号的 tag 还没出现，可以 Re-run all jobs（新的摘要、`sha-` 改指）。流水线的问题：rc.N+1；留下的 `sha-` 与签名不删 |
-| `draft` | 版本号的 tag（rc 是私有的包）；可能有一个草稿 | Re-run failed jobs；下载不到前一次的 artifact 时，Re-run all jobs 会在版本号的 tag 一步失败（P5-12），只能删掉草稿、rc.N+1 |
+| `draft` | 版本号的 tag（rc 是私有的包）；可能有一个草稿 | Re-run failed jobs；下载不到前一次的 artifact 时，Re-run all jobs 会在版本号的 tag 一步失败（P5-12），只能删掉草稿、rc.N+1。S2：Release 的列表读不到（一时的错）：Re-run failed jobs；报"不止一个"：在 GitHub 上删掉多出来的草稿（只留一个），再 Re-run failed jobs |
 | `verify` | 版本号的 tag；Release 是没公开过的草稿 | 校验的命令或流水线写错：改流水线与说明，删掉草稿，rc.N+1。镜像真有问题：同上，且是产品的问题时再问负责人 |
 | `release`（公开） | 草稿 | Re-run failed jobs |
 | rc 公开之后才发现（例如第 6 步的安装） | 公开的预发布 Release | rc.N 的 Release 不删，`gh release edit` 把标题改为"Nerve Wiki v0.1.0-rc.N（作废，见 rc.N+1）"、说明前面加一句（immutable 的 Release 也能改标题与说明）；修了推 rc.N+1 |
@@ -1705,6 +1736,35 @@ S1 的审查与修复见 [S1 的审查记录](reviews/P5-S1-version-pipeline-rev
 11. **`make image` 先取提交与时间，git 读不出就停**（3.4，审查 A 的 N1，`bc71d5fe`）：命令替换失败不会让一行失败，原来的写法会带着空的 label 构建出来；说明改成"需要 Docker 与 git"。`make help` 与 README `:508` 的 image-smoke 一行写上 label 与 git（A 的 N2，`e08b98b0`），`image-smoke.sh` 的头注释也是（核对 A 的 N4，`ce8aaf64`）；`test-go-short` 那一行的 `## ` 改回（A 的 M1，C 的 M1）。
 12. **MCP 版本的测试分开报两种失败**（3.3，审查 A 的 N3，`719c59de`）：盖的就是 `buildinfo.go` 的默认值时报 `TEST_VERSION` 要与它不同，二进制的版本号不是盖的那个时报 `-ldflags` 没有到。
 13. **用时**（3.5、7.4）：Lint workflows 一步 2–3 秒，不是推断的 15–40 秒；演练 amd64 1:18–2:21、arm64 1:21–1:26（10.1）。
+
+### 3.25 S2 的实施对设计的修正
+
+S2 的审查与修复见 [S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2。与上文最初的设计不同之处已改在各节里，各处标"S2"（头的日期与状态，2.2 第 1 项，2.3 的决定 439、441，3.8 的 `build`，3.9 第 6 条，3.10 的文件表，3.11，3.12，3.13，3.14 的 `sbom`、`publish` 的 Index、`verify` 的 Tools 与 SBOM 那一行，3.15，3.22，3.23，7.2，第 8 节第 3、5–7 条，第 9 节）。写了行号的，代码是 S2 的头 `9a6b20ae`。
+
+1. **镜像的 SBOM 的文档 `name` 是镜像引用的仓库名，不带 tag 与摘要**（3.12、3.14）：演练（run 44451246873）是 `nervewiki`；syft v1.54.0 的 `stereoscopesource/image_source.go` 的 `Describe()` 取 `reference.Parse(UserInput).Name()`，`spdxutil/helpers/document_name.go` 先取它，所以 tag 上是 `ghcr.io/open-nerve/nervewiki`（由源码推出，rc 上证明；审查 A 另读了 sbom-action v0.24.3 把 `image` 原样交给 syft）。`verify` 认 `$IMAGE`；`sbom` 作业要它等于 `$IMAGE`、演练要 `nervewiki`，前端的都要 `@nervewiki/web`：命名变了，tag 的运行停在只读的 `sbom`，不到 `verify`（决定 617）。`release.yml` 的三处注释写明这是推断。
+2. **`verify` 的 Tools 多查 `gh`**（3.14）。
+3. **决定 562**（3.9 第 6 条）：跑 smoke 的步骤，与 `verify` 的每个跑命令的步骤（修复第 1 轮，审查 B 的 M2），只有 `name`、`env`、`run` 三个键（`shell`、`if`、`working-directory`、`continue-on-error` 都不许）；`run` 里没有关掉选项的 `set … +x`（行首，或 `;`、`&`、`|`、`{`、`(` 之后；`set +e`、`set -u +e`、`set +o errexit` 都算）与 `shopt -o`（审查 B 的 N3）；跑它们的作业与工作流不写 `defaults.run.shell`；`rehearse`、`build`、`verify` 各恰一步 smoke。有意绕开的写法（`{ …; } || true`、`BASH_ENV`、`trap`）照 562 不追。原来"不写 `if`"一条并进了三个键。
+4. **守卫另核对**（3.9 第 6 条；决定 616）：
+   - `publish`：最后一步是版本号的 tag；第三方的 action 只有 cosign-installer（按前缀判）；步骤一个也不写 `if`（同 `gate`）；恰有一步 `cosign sign --yes "$IMAGE@$DIGEST"`，`DIGEST` 是 `steps.index.outputs.digest`；恰有三步 `actions/attest`，`subject-digest` 都是索引的摘要、`push-to-registry: true`，来源证明一步、两份 SBOM 各一步（审查 B 的 M1）。
+   - `verify`：每一条 `gh attestation verify` 都带 `--cert-identity "$identity"`，来源证明与 SBOM 各至少一条；`identity=` 一行与唯一的一步 `cosign verify` 的 `--certificate-identity` 逐字是 tag 上的 `release.yml`，`cosign verify` 带 Actions 的签发者，整个作业里没有 `-regex`、`-regexp`（审查 B 的 N1）；矩阵恰是 amd64、arm64，`strategy` 与 `build` 的相同（审查 B 的 M2；不同时消息打出两边的 `strategy`，核对第 1 轮 B 的 N1）。
+   - 只有 `release` 公开 Release：别的作业的 `run` 不含 `github-release.sh publish`、`--draft=false`、`gh release`（审查 B 的 M2）。
+   - 决定 561：`build` 在构建之前核对 `HEAD` 是 `needs.gate.outputs.sha`，`publish` 核对镜像的 `revision`；这两步只有 `name`、`run`（Index 加 `id`），不写自己的 `env`、`if`（审查 B 的 N2）。
+   - 三份工作流的每个 `uses:`（步骤的与作业的）都是 `<owner>/<repo>[/path]@<40 位十六进制>`（总体设计 13.5 第 2 条；审查 B 的 Q1）。
+5. **`TestTheReleaseScripts`**（3.13）：版本号的 tag 9 格（多 `manifest unknown` 一格），Release 22 格（附件目录少一个与多一个分开；多：已是草稿却有别名的附件、没有说明、tag 的写法、没有 `GH_REPO`、公开之后仍是草稿、已公开却缺附件；修复第 1 轮：列表答 502、同一个 tag 两个 Release、草稿的 `edit` 失败、前一次已传三个附件时 `upload` 失败、别的动作名）。不与别处等价的每一处检查，都有一格让它单独变红（审查 C 的 M1）；等价的几处（`create` 失败不管、参数个数、rc.0、空的说明等）列在 S2 的审查记录。调用整个、按次序比，每个参数的边界也比（假命令以 NUL 分隔记参数，审查 C 的 N6）。假的 `docker`、`gh` 失败的地方分两种：照真的（对没有的 Release `view`、`edit`、`upload`；对已公开的 Release 上传，打开 immutable releases 时）；绊线，不许脚本去要（已在的 tag 再 `imagetools create`：真的并不失败，会改指；有 Release 的 tag 再 `gh release create --draft`：gh 不拦，不查已有的草稿（gh v2.103.2 的源码），接口会再建一个是 3.13 的前提，没有核过，只有 tag 的运行证明得了）。审查 C 的 M3、核对第 1 轮 C 的 N1。
+6. **两个脚本比代码块多的**（3.13）：
+   - `github-release.sh`：要 `GH_REPO`、核对 tag 的写法与说明不空、传过之后与公开之后各再读一次；有没有、是不是草稿读 REST 的列表（第 12 条）；可能为空的数组写成 `${a[@]+"${a[@]}"}`，bash 3.2 也能跑（审查 C 的 M2）；`paste` 写 `-`。
+   - `release-version-tag.sh`：复制之后再读一次，读不到另写一句"复制之后读不到"；最后一行打出 tag 与摘要；`mktemp` 与 `trap` 分成两行。`manifest unknown` 一支是代码块里本来就有的（审查 C 的 N2）。
+7. **`build` 的 HEAD 核对**（第 9 节"P5/S2"）是单独一步"The commit is the gate's"，在"The tree is clean"之后、Tools 之前（设计写"Labels 之前"）。
+8. **`image-smoke.sh`**（3.11）：另核对 `README.txt` 在、`LICENSE` 与仓库的逐字节相同、npm 一侧每行三列都在；pgx 与 react 那两行带着文件名；修复第 1 轮加 `openapi-fetch` 一行与两份清单行数的下限（40、200；今天 48、233），本机一侧的底线（审查 A 的 M2）。
+9. **`npm.mjs`**（3.11）：名字与版本读每个包自己的 `package.json`，不按位置配 pnpm 的 `versions` 与 `paths`。修复第 1 轮（决定 612，审查 A 的 I1、Q1）：列 `--filter "@nervewiki/web..."`，带上工作区包 `@nervewiki/api-client` 的依赖（`openapi-fetch`、`openapi-typescript-helpers`：只写 `@nervewiki/web` 时 pnpm 不往工作区包里走，`openapi-fetch` 打包进了前端，却没有它的许可证）；另固定收 tailwindcss（devDependency，preflight 与默认主题编进 CSS，从 `web/apps/web/node_modules` 读）。vite 的 modulepreload polyfill 不算（S2 的审查记录"接受与推后的"）。
+10. **l1–l4**（7.2）：照 S1 修复之后的 `make image`（先取 `revision`、`created`）改写了变异的锚点。
+11. **许可证文件的名字**（3.11；决定 613，审查 A 的 M1）：`^((un)?licen[cs]e|copying|notice|patents)([.-].*)?$`，不分大小写，另排除以 js、cjs、mjs、jsx、ts、cts、mts、tsx、go、json、map、sh、py 结尾的名字；`go.sh` 与 `npm.mjs` 同一条。cytoscape 的 `license-update.mjs` 不再收；只有 `license.go` 的模块让构建失败。
+12. **Release 的状态读 REST 的列表**（3.13；决定 615，审查 C 的 M4）：`gh api --paginate "repos/$GH_REPO/releases?per_page=100" --jq '.[] | select(.tag_name == "<tag>") | .draft'`：任何失败都失败，同一个 tag 多于一个也失败。gh v2.103.2 的 `release view` 经 `FetchRelease` 并行查 REST（只找已公开的）与 GraphQL（找草稿），两次都失败、其中一次是 not found 时报 `release not found`：第 1 次尝试建了草稿之后重跑 `draft`、GraphQL 一时答 502，旧的写法会当作没有、再建一个草稿。列表含草稿：GitHub 文档"Only users with push access will receive listings for draft releases"，`draft`、`release` 两个作业的令牌有 `contents: write`（推断它算 push access，rc 上证明）；`--jq` 对每一页各算一次（gh v2.103.2 `pkg/cmd/api/api.go` 的分页循环每页调一次 `processResponse`，`--slurp` 不能与 `--jq` 同用）。附件仍由 `gh release view --json assets` 读（它找得到草稿，审查 C 的 N5）。
+13. **清单完整的核对**（3.11、3.14、3.15；决定 614，审查 A 的 M2）：
+    - `go.sh <程序> <输出目录>`：收完之后，`go list` 的模块要恰是 `go version -m <程序>` 的 `dep` 行，程序的 Go 版本要是收的那个 Go 的，不等就失败、构建失败；
+    - 演练与 `sbom` 作业的 Check the SBOMs：前端 SBOM 里除 `@nervewiki/*` 之外的每个包都在 `/licenses/npm/INDEX.tsv`；不在的 `@types/` 包打出名字、不算缺（只有类型声明，构建丢掉；今天是 `@types/trusted-types`，dompurify 的可选依赖，pnpm 的 `licenses list --prod` 不走各包的可选依赖，`npm.mjs` 收不到它）。`LC_ALL=C` 之下 `sort` 与 `comm`。
+14. **`tools/licenses/check.mjs`**（3.11、7.2；修复第 1 轮，实施中定）：`make lint-web` 跑它，对着假的 `go` 与假的 `pnpm`、各自一个目录的桩跑 `go.sh` 与 `npm.mjs`，10 格（每个模块的文件与 Go 本身；只有 `license.go` 的模块；不在模块缓存里；程序多一个、`go list` 多一个；程序的 Go 版本不同；Go 本身没有 PATENTS；npm 的生产依赖与 tailwindcss；tailwindcss 没装；pnpm 什么也没列）。x2 由它的一格常驻。收口（核对第 1 轮 A 的 N1）：假的 `go` 照真的每个包一行，每个模块三行、按依赖的次序，`go.sh` 的 `sort -u` 由第 1 格管着。
+15. **`go.sh` 的注释**（审查 A 的 N1）：子目录一句改写为事实："只看模块的根目录：今天链接进来的包所在的子目录里没有另外的许可证（M12/P5/S2 审查 A 核过）"。
 
 ## 4. 网页
 
@@ -1850,8 +1910,13 @@ S1 实际另有第 7 个之后的 `server: the gate's and the notes' tests hold 
 | r7 | rc 不加 `--prerelease` | rc 的 draft 一格 | S2 |
 | v-gate | `make vuln` 的 `--audit-level=$(VULN_AUDIT_LEVEL)` 写死成 `low` | PATH 里 `go`、`pnpm` 两个桩加 `GITHUB_ACTIONS=true` 跑 `make vuln VULN_AUDIT_LEVEL=high`，`pnpm` 的桩记下的参数不是 `--audit-level=high`（手做一次，审查 A 的 N3） | S1 |
 | x1 | `npm.mjs` 什么也不写 | `make image-smoke`：`npm/INDEX.tsv` 是空的 | S2 |
-| x2 | `go.sh` 遇到没有许可证的模块不失败 | 今天的 47 个都有，真树上抓不到；在临时目录里以 PATH 的桩 `go` 列一个空目录的模块，原样以 1 退出、变异以 0（记录写明） | S2 |
+| x2 | `go.sh` 遇到没有许可证的模块不失败 | 今天的 47 个都有，真树上抓不到；在临时目录里以 PATH 的桩 `go` 列一个空目录的模块，原样以 1 退出、变异以 0（记录写明）；S2 修复第 1 轮起由 `tools/licenses/check.mjs` 的一格常驻 | S2 |
 | x3 | runtime 阶段不放 Go 的 `LICENSE` | `make image-smoke` | S2 |
+| l1–l13 | `go.sh`、`npm.mjs` 收代码、不收 `unlicense`、不比模块与 Go 的版本、少收一个模块、不要 `PATENTS`；`npm.mjs` 退回 `--filter @nervewiki/web`、不收或跳过 tailwindcss、不按 `名@版本` 去重 | `tools/licenses/check.mjs` 的 10 格（S2 审查 A 的 I1、M1、M2、Q1） | S2 |
+| f1–f5 | 镜像里 npm 一侧退回旧的 filter、只收 react、只收 react 与 `openapi-fetch`；Go 一侧少收一个模块、只收 pgx | `make image-smoke` 的 `openapi-fetch` 一行与行数的下限；f3、f4 让 `make image` 在 `go.sh` 一步失败（同上） | S2 |
+| n1–n1c | `go.sh` 的 `go list` 之后去掉 `sort -u`、只 `sort`、只 `uniq` | `tools/licenses/check.mjs` 的第 1 格（S2 核对第 1 轮 A 的 N1） | S2 |
+| b5–b24 等 | `publish` 的签名与证明删掉或写 `if`；`verify` 的校验写 `if`、`shell`，矩阵只剩 amd64；`draft` 公开 Release；身份写 `-regexp`；决定 561 的两步另写 `env`、`if`；`set +e` 在 `;` 之后、`shopt -o`；`uses:` 写 tag 或短 SHA（33 个，S2 的审查记录） | `TestOnlyATagsJobsMayWrite`（S2 审查 B 的 M1、M2、N1–N3、Q1） | S2 |
+| c1–c3、c15、s1–s6 | 未知的动作、草稿的 `edit` 失败、`upload` 失败都不管；`--title` 的参数拆开；Release 的列表读不到当作没有、多于一个当作草稿、查询不按 tag 选或按前缀选、不分页、仓库取 `$GITHUB_REPOSITORY` | `TestTheReleaseScripts`（S2 审查 C 的 M1、M4、N6） | S2 |
 | d1 | `compose.yaml` 的 `${NERVEWIKI_VERSION:?…}` 写成 `${NERVEWIKI_VERSIO:?…}` | `make deploy-check` | S3 |
 | d2 | `migrate` 的 `secrets` 写成 `[jwtx]`（审查 C 的 M1） | `make deploy-check`（有 `--profile migrate` 时失败；去掉它时照过，记录写明） | S3 |
 | p1 | `compose.yaml` 的镜像改回 18.6 | `TestContainerMatchesTheOtherDatabases` | S3 |
@@ -1892,7 +1957,7 @@ P5 完成，当且仅当：
 2. 第 3 节的每个测试与检查在，7.2 的每个变异被它旁边的测试抓到（m1 写明只由盖了版本号的运行抓到，x2 写明在桩上，v-gate 是手做的一次），3.22 的每个反向对照在；第 10 节记下结果。
 3. **00 号文档第 3 节的证据**：
    - 第 8 条：版本号的守卫与它的反向对照（v1–v6）；MCP 的短测试与 m1–m4；`0.1.0` 的镜像里 `nervewiki version` 与 `/api/v0/instance` 是 `0.1.0` 由 `verify` 作业在 rc 与 `v0.1.0` 上核对（收尾记录）；
-   - 第 9 条：演练在 S1 的分支与 `main` 上两种架构都绿的 run 号（S1 的记录）；`TestOnlyATagsJobsMayWrite` 与 w1–w14；闸门的"`ci.yml` 红、`release.yml` 绿"一格与 g3；rc 与 `v0.1.0` 的证据在收尾记录（3.23）；
+   - 第 9 条：演练在 S1 的分支与 `main` 上两种架构都绿的 run 号（S1 的记录）；`TestOnlyATagsJobsMayWrite` 与 w1–w16（S2 的 w15、w16）；闸门的"`ci.yml` 红、`release.yml` 绿"一格与 g3；rc 与 `v0.1.0` 的证据在收尾记录（3.23）；
    - 第 7 条：两张对照表、三遍演练的命令与结果在 S3 的记录；`make deploy-check` 在 CI 的 `image` 一项；
    - 第 10 条里 P5 的部分：`CHANGELOG.md`、`SECURITY.md`、`manual/` 的两份在；已知限制的对照表在 S3 的记录。
 4. **00 号文档**（`docs/v0.1/M12-release/00-M12-design.md`）：
@@ -1901,7 +1966,7 @@ P5 完成，当且仅当：
    - **`docs: M12/P5 done (M12/P5)`**：第 12 节"完成"；头的"状态"；第 13 节。
 5. **v0.1 总体设计**（`docs/v0.1/v0.1-design.md`；00 号文档"总体设计的修订"第 6、7、9 条，用脚本断言锚点恰好出现一次）：
    - **S1，13.5 加第 6 条**（`:1289` 第 5 条的末行之后，`:1291` 是 `---`；审查 C 的 N1）："6. **版本号与发布**（M12）：版本号只由 ldflags 注入，`Makefile`、`buildinfo`、Dockerfile 的两个 `ARG` 与 README 写的默认值相同，由测试核对；发布之后改为下一个补丁版本加 `-dev`。发布由推 `vX.Y.Z` 或 `vX.Y.Z-rc.N` 的 tag 触发 `release.yml`，闸门只放过 `main` 上 `ci.yml` 已绿、`make vuln` 为绿、`CHANGELOG.md` 有这一节的提交；依赖的漏洞扫描另在每天的 `vuln.yml` 里跑，actionlint 在 `ci.yml` 里，都只在 runner 上。写权限只在 tag 触发的作业里，演练只读，由测试读工作流核对。推 tag 之前问负责人；收尾之后为发布做的改动在 `m12-release` 这样的分支上，合并之后才推 tag。"S1 的文档提交照它落了（锚点在 `b34e7ac3` 上是第 5 条的 `:1291` 之后、`:1293` 的 `---` 之前）。
-   - **S2，同一条末尾加**："镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 `latest` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。"
+   - **S2，同一条末尾加**："镜像两种架构，带来源证明、两份 SBOM 的证明与签名，镜像里有第三方许可证；只打确切的版本号，不打 `latest` 与浮动的"大版本.小版本"，版本号的 tag 在证明与签名之后才打、已有的不改指；Release 先草稿，两种架构上核对过才公开。"S2 的文档提交照它落了（00 号文档第 7 节第 6 条的原文里这句前面多一个空格，落的时候不带）。
    - **S3，第 11 节**：照 00 号文档"总体设计的修订"第 7 条的五处（锚点在 `86565dd6` 的 `:919`、`:931`（最后一段；`:933` 是 `---`，审查 C 的 N1）、`:925`、`:926`、`:927`，S3 时重核恰好出现一次）；"恢复之后先 `ANALYZE`"一处的"见 deploy/README"写成链接；第 11 节另三处 `README 的部署一节`（`:923` 两处、`:929`）改为 deploy/README，写成链接 `[deploy/README.md](../../deploy/README.md)`（2.1 第 19 条）；第 14 节 `:1311` 的那一处不单独改，由下面 SSE 一行的整句替换完成（同 `19a`；修订核对 C 的 N16）。
    - **S3，13.5 第 1 条**：`` `make e2e`、`make image-smoke` 对应 e2e、image 任务。`` → `` `make e2e`、`make image-smoke` 与 `make deploy-check` 对应 e2e、image 任务；`make lint-actions` 只在持续集成里（M12）。``（审查 C 的 N9）。
    - **S3，第 14 节的 SSE 一行**（2.1 第 20 条，P5/S3 改，P4 不改；修订核对 C 的 N14）：`两份配置写在 README 的部署一节，M12 的部署文档沿用。` → `两份配置写在 [deploy/README.md](../../deploy/README.md) 的"反向代理与 HTTPS"（M12/P5/S3）。`（`48bbfc99` 上恰好出现一次；第 19 条四处里第 14 节的那一处由它完成）。
@@ -1910,26 +1975,34 @@ P5 完成，当且仅当：
 6. **其余的文档**：
    - **S1，`06-environment.md`**：第 1 节"`make image-smoke` 另要 curl、jq、openssl"之前加"`make test-go-short` 要 bash、git、jq（发布脚本的测试）"；第 4 节 `:49` 的"工作流是 `.github/workflows/ci.yml`。"改为"工作流有三份：`ci.yml`（每次推送与 PR）、`release.yml`（每次推送的只读演练，tag 上的发布）、`vuln.yml`（每天、手动与改了依赖清单的推送）。`ci.yml` 里同一分支的新推送会取消正在跑的那次，等它跑完再推。"；第 4 节加两条："- **发布的工作流**：`release.yml` 在每次推送上跑两个只读的演练作业（两种架构的构建与 smoke），读法 `tools/ci-wait.sh <sha> release.yml`；tag 的那次运行用 `gh run list -R open-nerve/NerveWiki --workflow release.yml --branch <tag>`（同一个提交在 `main` 上还有一次演练）。"与"- **actionlint**：`make lint-actions` 只在 runner 上跑（本机拒绝，`make -i` 也一样），结论看 `costs-1` 一份的 Lint workflows 一步的注解。"（审查 C 的 N9）。S1 的文档提交照它落了：`make test-go-short` 要的写成"bash、git、jq 与 awk"（决定 559）；actionlint 一条另加两句（`-verbose` 列出读了哪几份；actionlint 自己出错时注解只有 exit code 2，S1 审查 C 的 N3）；第 5 节 `mut.py` 一条加一句（`.mutbak` 不放在 `.github/workflows/` 里）。
    - **S1，README**：`:15-17`、`:29`、`:31`（3.1）。S1 的提交改了，另改了 `:508`（S1 审查 A 的 N2）。
+   - **S2，`06-environment.md`**（S2 的文档提交）：第 1 节加 `make lint` 的网页一半要 bash（`tools/licenses/check.mjs`）；第 3 节"跑重的之前看一眼 `df`"加镜像的构建缓存一句；第 4 节"发布的工作流"加演练的 Check the SBOMs 打出什么；第 5 节 `mut.py` 一条加 `file` 可以写 `../deploy/…`。
    - **S3，README**、三处注释与两份 ignore 文件（3.16、3.19）。
 7. **移交的"处理进展"**各加一行（状态仍是 `open`；引号里的链接写进移交时去掉反引号）：
    - **S1**，`handoffs/M0-P6-image-release.md`："- M12/P5/S1（<日期>，合并见 `[00-M12](../00-M12-design.md)` 第 12 节）：第 1、2 条的构建一半：`release.yml` 在每次推送上以两种原生 runner 只读地演练构建与 image-smoke，tag 上闸门之后按摘要推送、拉回来 smoke；写权限只在 tag 的作业里，由守卫读工作流核对；版本号的默认值与 MCP 的版本有守卫（`[P5 设计](../05-P5-deploy-release.md)` 10.1）。"S1 的文档提交照它落了。
-   - **S2**，同一份："第 1–3 条的推送与签名一半：索引、来源证明、两份 SBOM 的证明、cosign keyless、`/licenses`、Release 先草稿、两种架构上核对过才公开；版本号的 tag 不改指；只有推 tag 才走得到，rc 在收尾之后（10.2）。"
+   - **S2**，同一份："第 1–3 条的推送与签名一半：索引、来源证明、两份 SBOM 的证明、cosign keyless、`/licenses`、Release 先草稿、两种架构上核对过才公开；版本号的 tag 不改指；只有推 tag 才走得到，rc 在收尾之后（10.2）。"S2 的文档提交照它落了。
    - **S3**，`M0-P6-image-release.md`（第 3 条的校验说明）、`M4-performance.md`（第 2、3、10 条、第 14 条（若经负责人定为部署要求）、第 17、18 条与补记 `:490`、`:492` 的部署部分；审查 C 的 M9）、`M5-performance.md`（第 1、2、5 条）、`M7-transfer.md`（第 1、3、4 条与第 5、6 条的部署项）、`M8-history.md`（第 2、4 条的部署部分）：各一行，写进了 `deploy/README.md` 的哪一节（10.3）。
 
 ## 9. 交给后面的 Phase
 
 - **收尾**：审查 C 管"发布流水线"（00 号文档第 7 节"收尾与发布"第 1 条）时，读本文 3.14 与 3.23；P5/S3 合并之后才合并的 P2 的已知限制补进 `CHANGELOG.md`，已知限制的对照表随之补（2.1 第 9 条）。
 - **发布**：照 3.23 的九步与失败的表；`README.md:9`、`CHANGELOG.md` 的日期在第 7 步；`0.1.1-dev` 照 2.1 第 11 条。
+  S2 留给 rc 核对的（3.23 第 5 步一起看；S2 审查 C 的 N5 在分支上能核的先核了）：
+  - 镜像的 SBOM 的文档 `name` 在 tag 上是 `ghcr.io/open-nerve/nervewiki`（由 syft v1.54.0 的源码推出，sbom-action 原样交 `image`），`sbom` 作业先核对（决定 617）；
+  - REST 的 Release 列表对 `contents: write` 的令牌含草稿（文档："Only users with push access will receive listings for draft releases"）（决定 615）；记下 runner 的 `gh --version`；
+  - GHCR 对不存在的 tag：匿名读公开的包，buildx v0.38.1 答 `ERROR: …: not found`（S2 审查 C 读 `ghcr.io/actions/actions-runner:no-such-tag-p5s2c`），与假的 `docker` 同一种写法；读不到的包答 `failed to authorize: … 403 Forbidden`，不会被当作不在。登录之后读自己的私有包，rc 才证明得了；
+  - `{{json .Manifest}}` 的 `.digest` 是索引的摘要：已核（S2 审查 C 读 `moby/buildkit:v0.34.2`，是 3.21 钉的那一个）；
+  - `gh release view <不存在的 tag>` 答 `release not found`、以 1 退出（S2 审查 C 以真的 gh 读过）；`view`、`edit`、`upload` 都经 `FetchRelease`，它找得到草稿（gh v2.103.2 的源码，不只由二进制推出）；附件由它读；
+  - `sbom` 作业在 amd64 上 `docker create --platform linux/arm64` 一个只有 arm64 清单的摘要（设计审查 B 在本机对称地核过），两种架构的 `/licenses` 逐字节相同（`diff -r`）；
+  - 重跑的作业能不能下载前一次尝试的 artifact（3.23 的表）；
+  - `cosign verify`（v3.1.4）对着索引的 referrers 里也有 `actions/attest` 的 bundle 时怎样（Signature 一步打出每份的类型）；
+  - `publish` 的 shell `docker login` 写进 `~/.docker/config.json`，`actions/attest` 与 cosign 由此读凭证（推断 runner 没有设 `credsStore`）；arm 的 runner 自带的 gh 的版本与 `attestation verify` 的参数（S2 审查 B 未核实的第 3、4 条）。
 - **收尾写的移交**，v0.2 的 `M12-release.md`（2.1 第 23 条）：actionlint 查 `run:` 的脚本（P5-6）；`outdated.sh` 不列 actionlint、syft、cosign、BuildKit；独立的二进制；构建的缓存（P5-7）；第三方许可证里没有文本的三个包（fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1；审查 C 的 M10）；rc 与 `v0.1.0` 留在 GHCR 里的 `sha-` 与没有 tag 的摘要清不清（负责人定；审查 C 的 N10，原稿放在 v0.1.1 的移交）。P5 不往 v0.1.1 的 `M12-after-release.md` 加东西。
 - **P4/S3**：`deploy/README.md` 要的数在 3.18 的表里（P4 设计里引的"P5 设计 3.17"现在是 3.18，主持者已告诉 P4 的设计者），与 P4 设计第 9 节"给部署文档"对过；P4 的记录照那张表各给一个数或写"推算"。小机器一档是批次 E 另量的一组（P4-27，`GOMEMLIMIT=1536MiB`）；`reindex` 不要 P4 量（2.1 第 21 条）。
 - **P4 的设计**：第 8 节不再改总体设计第 14 节的 `NOTIFY` 与 SSE 两行（P4-26；2.1 第 20 条）。
-- **P5/S2**（S1 的审查交来的）：
-  - `build` 用 `HEAD` 构建，不看闸门的 `sha`。推断 `actions/checkout` 在 tag 的事件上检出 `GITHUB_SHA`，两个作业是同一个提交，但没在 tag 的运行上证明过。S2 在 `build` 的 Labels 之前加一步 `test "$(git rev-parse HEAD)" = "$SHA"`（`SHA` 经 `env` 取 `needs.gate.outputs.sha`），就不用靠这个推断；`publish` 不用 `HEAD` 构建（3.14 的检出只为取脚本），它的 Index 一步可以另加 `[ "$(label revision)" = "$SHA" ]`，直接核对推上去的镜像来自哪个提交（S1 审查 B 未核实的第 1 条、核对第 2 轮 B 的 N11；决定 561）。
-  - 跑 image-smoke 的步骤与它们的作业，守卫一并不许写 `shell`、`defaults.run.shell` 与 `set +e`（S1 核对第 2 轮 A 的 N6、B 的 N10、C 的 N9；决定 562）：S1 的守卫按行核对 smoke 那一行，前面一行 `set +e`、这一步或作业另写不带 `-e` 的 `shell` 时，smoke 失败了这一步照绿（`build` 那一步在 smoke 之后还有一行架构的核对）。S2 加 `publish`、`verify` 与它们的 `shell` 时一起写，写法可照 S1 对 actionlint 那一步的整个比；`verify` 加进来就受"恰有一步、那一行以 `"$VERSION"` 结尾、不写 `if`"管。
-  - 另三条，出自 S1 的实施报告 9.4：
-    - 跳过的矩阵作业不展开名字：分支的运行里是 `build (${{ matrix.arch }})`，tag 的运行里应是 `rehearse (${{ matrix.arch }})`（推断），只是外观；
-    - `build-push-action` 在本地写构建记录（约 70–74 KB），`DOCKER_BUILD_RECORD_UPLOAD: "false"` 之后不传，artifact 0 个；
-    - S1 实施期间根分区从 24G 降到 13G，主要是共用的 Docker 构建缓存与 Go 的构建缓存；S2 的演练与 `make image` 更多，跑之前先看 `df`。
+- **P5/S2**（S1 的审查交来的；S2 做了，10.2）：
+  - 决定 561：`build` 在 Tools 之前单独一步核对 `HEAD` 是 `needs.gate.outputs.sha`，`publish` 的 Index 一步核对 amd64 镜像的 `revision`；守卫也核对，两步只有 `name`、`run`（Index 加 `id`），不写自己的 `env`、`if`（S2 审查 B 的 N2）。
+  - 决定 562：跑 smoke 的步骤与 `verify` 的每个跑命令的步骤只有 `name`、`env`、`run`，`run` 里没有关掉选项的 `set … +x` 与 `shopt -o`，这些作业与工作流不写 `defaults.run.shell`（3.9 第 6 条、3.25 第 3 条）。
+  - S1 的实施报告 9.4 的三条：跳过的矩阵作业仍不展开名字（分支的运行里是 `build (${{ matrix.arch }})` 与 `verify (${{ matrix.arch }})`），只是外观；`DOCKER_BUILD_RECORD_UPLOAD: "false"` 之后演练的 artifact 仍是 0 个（sbom-action 的 `upload-artifact: false`）；根分区与构建缓存见 10.2 与 06-environment 第 3 节。
 
 ## 10. 结果
 
@@ -1972,6 +2045,40 @@ P5 完成，当且仅当：
   - 本机 `make test-go-short`（经 `heavy.sh`）：改前 45 秒，头 52 秒，逐个提交 40–47 秒；盖版本号只多一次编译，这点差别在噪声之内（推断）。
   - 合并之后两次 `main` 的组合根与这几步，主持者在记合并号的文档提交里补。
 - **审查**：三份（A 版本号、MCP、镜像 0I 1M 3N；B `release.yml`、闸门与说明 0I 2M 4N；C `ci.yml`、actionlint、变异、提交与文档 0I 4M 5N；Minor 去重 5 条）；核对两轮（第 1 轮 A 2N、B 1M 5N、C 3N；第 2 轮 A 1N、B 2N、C 1N，其中三位的各一条是同一条）。主持者的决定 555–563。见 [S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)。
+
+### 10.2 S2：推送、签名、证明、SBOM、许可证与 Release（2026-11-19，合并见 00 号文档第 12 节）
+
+- **提交**（分支 `m12-p5-s2`，从 `main` 的 `ab766f02`；实施 4 个，修复第 1 轮 3 个，收口 1 个，一共 8 个；合并 `main` 一次，`2ea85cd5`；文档是本提交）：相对 `ab766f02` 12 个文件，加 1,716 行、减 26 行，不加依赖。
+  - 6.2 的第 1–4 个照次序：`d0876318`、`785d48be`、`54099f3e`、`e5ecae06`。第 4 个在推送之前改过一次：第 2 个的演练读出了镜像的 SBOM 的文档 `name`（3.25 第 1 条）。
+  - 修复第 1 轮：`dcaa7fe3`（`/licenses` 收齐、不收代码、对着二进制与前端的 SBOM 核对）、`e6f535aa`（守卫）、`0fe3d663`（Release 的状态读 REST 的列表、bash 3.2、假命令记下每个参数的边界）。
+  - 收口 `9a6b20ae`：核对第 1 轮的三条 Nit（假的 `go` 每个包一行；守卫的消息写出 `strategy` 的差别；"gh 会再建一个草稿"写成设计 3.13 的前提）。
+  - `/licenses`：Go 一侧 47 个模块加 Go 本身，与二进制的 `go version -m` 逐个相同；npm 一侧 233 个包（`pnpm --filter "@nervewiki/web..." licenses list --prod` 232 个，加 tailwindcss），没有许可证文本的 3 个（fastdom 1.0.12、react-remove-scroll-bar 2.3.8、strictdom 1.0.1）；293 个文件、532,441 字节（本机 arm64 的镜像，与本机直接跑两个脚本的输出 `diff -r` 相同；实施时 291 个、530,297 字节：多了三个包的 `LICENSE`，少了 cytoscape 的 `license-update.mjs`），演练打的包 74,693 字节（实施时 79,261）。
+  - 两份 SBOM（演练）：镜像的 56 个包、785,752 字节，文档 `name` 是 `nervewiki`；前端的 235 个包、约 378 KB，`name` 是 `@nervewiki/web`。都在 1 MB 以下（3.12 的推断成立）。前端 SBOM 里 `@nervewiki/*` 之外的 233 个包，不在 `/licenses/npm/INDEX.tsv` 的只有 `@types/trusted-types@2.0.7`（run 44484245064 的 Check the SBOMs 一步）。
+  - 3.21 的三个新 action 以 `git ls-remote` 从公开仓库再核：`actions/attest` v4.2.2 `1e69f48a…`、`anchore/sbom-action` v0.24.3（tag 对象 `fffec3d8…` 解开是 `66cbf4bc…`）、`sigstore/cosign-installer` v4.1.3 `756fe2d2…`，与表相同，都是最新版；`actions/download-artifact` v8.0.2 `9000827c…` 也相同。sbom-action v0.24.3 的 `src/SyftVersion.ts` 是 `v1.54.0`，cosign-installer v4.1.3 的 `cosign-release` 默认 `v3.1.4`（`gh api` 读的；审查 B 另核）。
+- **与设计不同之处**（3.25）：镜像的 SBOM 的 `name` 是 `$IMAGE`，演练与 `sbom` 作业先核对；`verify` 的 Tools 查 `gh`；决定 562 写成"只有 name、env、run"，并扩到 `verify` 的每个跑命令的步骤；守卫另核对决定 561 的两步、`publish` 的签名与三份证明、`verify` 的身份与两种架构、只有 `release` 公开、`uses:` 钉 SHA；`TestTheReleaseScripts` 31 格；`github-release.sh` 读 REST 的列表；`/licenses` 的 npm 一侧取工作区包的依赖与 tailwindcss，文件名不收代码，两侧对着二进制与前端的 SBOM 核对，`tools/licenses/check.mjs` 对着桩跑；`build` 的 HEAD 核对在 Tools 之前；`image-smoke.sh` 多核对几样。主持者的决定 612–617。
+- **门禁**：
+  - 逐个提交（实施 4 个、修复 3 个）在干净的 worktree 里，build、vet、`make lint`、`make test-go-short`、gen-check、knip 全绿：实施的 48–49 秒，修复的各 50 秒。
+  - 修复第 1 轮的头 `0fe3d663`：`make lint gen-check knip build` 绿；`make test-go-short` 49 秒；`make test-go` 191 个 `ok`、没有 `FAIL`（3,680 秒）；`make test-web` 197 个文件、4,801 个测试；`make e2e` 582 个通过、1 个跳过。实施的头 `e5ecae06`：`make test-go-short` 53 秒，改前（`main` 的 `ab766f02`）47 秒；`make test-go` 191 个 `ok`（3,673 秒），`make test-web`、`make e2e` 同上。
+  - `make image-smoke`（普通的克隆）在两个头上都绿，`0fe3d663` 的最后一行"image-smoke: nervewiki-p5s2:head 通过（版本 0.0.0-p5s2，提交 0fe3d66397dc7e5dc5e9ce3a7faaa3f99e5975b2，modified=false）"。`make image` 15 秒（构建缓存是热的）；镜像 71,499,968 字节（arm64）。
+  - `bash:3.2`（3.2.57）的容器里 `TestTheReleaseScripts` 31 格全过；`github-release.sh` 退回 `"${prerelease[@]}"` 时在那里红（只手做，不进 CI）。`tools/licenses/go.sh` 在同一个容器里对着假的 `go` 跑过三种情形。
+  - 收口 `9a6b20ae` 照负责人 2026-11-19 的规矩只跑相关的：`make lint`、`make knip`、`make test-go-short`（48 秒）、`platform/buildinfo`、`tools/licenses/check.mjs` 的 10 格都绿；没改 Dockerfile，不跑 `make image`。合并 `main`（`2ea85cd5`）之后 `make lint`、`make test-go-short`（49 秒）绿。
+- **变异**：7.2 里 S2 的（w9、w13–w16、r1–r7、x1–x3）都抓到；x2 在桩上（`tools/licenses/check.mjs` 的一格；真的 47 个模块都有许可证）。
+  - 守卫：实施时加的 44 个与修复第 1 轮的 33 个（审查 B 的 b5–b24、q1，另加的 p1–p5、v1、v2、b15d–b15f、q1b–q1d、n1、n1b），每个都由该红的那一条抓到；修复之前的守卫上那 33 个都照过。S1 改工作流的 71 个对着新的守卫再跑，都抓到。
+  - `TestTheReleaseScripts`：实施时的 30 个再跑，28 个抓到，r5 的代码已删（由 s1 代替）、r15 的锚点随写法改了（r15b 抓到）；修复第 1 轮的 c1–c3、c15、s1–s6 都抓到。b32（`"${prerelease[@]}"`）在 bash 5 上照过，在 bash 3.2 上红。
+  - `/licenses`：`tools/licenses/check.mjs` 的 10 格，l1–l13 各让该红的格红；修复之前的两个脚本上 10 格全红。镜像的 f1（`npm.mjs` 退回 `--filter @nervewiki/web`）、f2（npm 一侧只剩 react）由 `make image-smoke` 的 `openapi-fetch` 一行抓到，f5（npm 一侧只剩 react 与 openapi-fetch）由行数的下限抓到；f3（Go 一侧少一个模块）、f4（Go 一侧只剩 pgx）让 `make image` 在 `go.sh` 一步失败；f1 另由 Check the SBOMs（本机照工作流的原文、`bash -e` 跑）报出 `openapi-fetch@0.17.0`、`openapi-typescript-helpers@0.1.0`。实施时的镜像变异 13 个（l1–l4、x1、x1b、x3、x3b–x3d、x4）没有重跑。
+  - 收口：`go.sh` 去掉 `sort -u`、只 `sort`、只 `uniq`（n1–n1c）在新的桩上让第 1 格红；`verify` 只改 `fail-fast`（n7）红在打出两边 `strategy` 的消息上。
+- **分支 CI**（每次第一次 attempt）：
+  - `785d48be`（6.2 第 2 个之后）的 `ci.yml` run 44451246879 十九项全绿、`release.yml` run 44451246873 两个演练绿（amd64 2:14、arm64 1:19）；`e5ecae06` 的 `ci.yml` run 44461178186 十九项全绿、`release.yml` run 44461178210 两个演练绿（amd64 1:57、arm64 1:19）。
+  - 修复第 1 轮的头 `0fe3d663`：`ci.yml` run 44484245001 十九项全绿（web 的 Lint 一步里 `tools/licenses/check.mjs` 10 格过）；`release.yml` run 44484245064 两个演练绿（amd64 1:40、arm64 1:24），最后一行都是"image-smoke: nervewiki:rehearsal 通过（版本 0.0.0-rehearsal.56，提交 0fe3d66397dc7e5dc5e9ce3a7faaa3f99e5975b2，modified=false）"；amd64 的 Check the SBOMs 打出"前端 SBOM 里 @nervewiki/* 之外的 233 个包，不在 /licenses/npm/INDEX.tsv（233 行）的只有 @types/：@types/trusted-types@2.0.7"；`/licenses` 293 个文件、532,441 字节，与本机 arm64 的镜像相同。
+  - 收口 `9a6b20ae`：`ci.yml` run 44490478831 十九项全绿；`release.yml` run 44490478847 两个演练绿（amd64 1:59、arm64 1:29）。
+  - 本提交（与合并 `main` 一起推送）：`（待填：本提交的分支 CI）`。
+  - costs-1 的 Lint workflows 读了三份、0 错；`release.yml` 的运行 artifact 都是 0 个。
+  - 演练加的三步（与修复第 1 轮加的核对）在 amd64 上 15–22 秒（`785d48be` 22 秒，`e5ecae06` 15 秒，`0fe3d663` 15 秒；推断 1–2 分钟）。
+  - `ci.yml` 的 `image` 一项的 Image smoke 一步（7.5）：`785d48be` 82 秒、`e5ecae06` 81 秒、`0fe3d663` 86 秒；`main` 上 `ab766f02`（还没有许可证的两层）81 秒、`105ff7c8` 59 秒。推断的"多 5–15 秒"与 runner 之间的差别分不开。
+  - short 一份的 Test 一步 2:52–2:54（`main` 的 `ab766f02` 3:16、`105ff7c8` 2:53）；组合根八份的 Test 一步都在 450 秒之下（最长 `e5ecae06` 的 bootstrap-1，378 秒），S2 不改组合根。合并之后两次 `main` 的组合根与这几步，主持者在记合并号的文档提交里补。
+- **第 9 节"P5/S2"的五条**：决定 561、562 做了（守卫也核对）；跳过的矩阵作业仍不展开名字：分支的运行里是 `build (${{ matrix.arch }})` 与 `verify (${{ matrix.arch }})`；`DOCKER_BUILD_RECORD_UPLOAD: "false"` 之后演练的 artifact 仍是 0 个（sbom-action 的 `upload-artifact: false`）；磁盘：根分区开工 24G，实施的 15 次构建（两次 `make image`、13 个镜像的变异）之后 17G，Docker 的构建缓存从约 10G 到 17.6G（共用的，没动），平均每次构建多留约 0.5 GB；修复第 1 轮开始与结束都是 18–19G（一次 `make image` 与 5 个镜像的变异）。
+- **没有推任何 tag、镜像，没有建 Release，没有写 GHCR**：tag 的七个作业在分支上都跳过；分支 CI 与演练没有红在权限或"action 不被允许"上，`anchore/sbom-action` 在演练里跑过（`docker/login-action`、`actions/attest`、`sigstore/cosign-installer`、`actions/download-artifact` 只在 tag 的作业里，还没跑过）。
+- **审查**：三份（A `/licenses` 与演练 1I 2M 1N 1Q；B 五个作业与守卫 0I 2M 4N 1Q；C 脚本、提交、变异与文档 0I 4M 6N 1Q）；核对第 1 轮 A、B、C 各 1N，照负责人 2026-11-19 的规矩不再开核对，收口一个提交、主持者核对。主持者的决定 612–617。见 [S2 的审查记录](reviews/P5-S2-publish-release-review.md)。
 
 ## 附录：核对过的代码与公开的东西
 
