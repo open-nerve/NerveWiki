@@ -64,7 +64,9 @@ export const TrashPreview = observer(function TrashPreview() {
   if (!idPattern.test(nodeId)) {
     return <NotFoundPage />;
   }
-  return <PreviewShell key={nodeId} notebook={notebook} id={nodeId} />;
+  // As the server writes it, which the tree and the store key by: a node restored is found (M5-polish 23.19).
+  const id = nodeId.toLowerCase();
+  return <PreviewShell key={id} notebook={notebook} id={id} />;
 });
 
 /**

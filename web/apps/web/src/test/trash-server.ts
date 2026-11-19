@@ -26,7 +26,8 @@ import { sourceDuplicate, type Person, type SourceData, type SourceRefusal } fro
 
 /** idOf is the node's id in a request's path, /api/v0/nodes/{id}… */
 function idOf(request: Request): string {
-  return new URL(request.url).pathname.split("/")[4] ?? "";
+  // In either case, as the server parses an id (a UUID): the one it answers, and keys by, is in lower case.
+  return (new URL(request.url).pathname.split("/")[4] ?? "").toLowerCase();
 }
 
 /** compare orders two strings as the server's keys are: by their code units. */

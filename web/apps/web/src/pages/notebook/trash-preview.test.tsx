@@ -677,3 +677,16 @@ test("the item and its view are read again as the tree changes, and on each conn
 
   await waitFor(() => expect(reads()).toHaveLength(6));
 });
+
+test("a node's preview whose address has its id in capitals, restored elsewhere, leads to it", async () => {
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  renderApp(previewPath(install.id.toUpperCase()), server.app);
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  // Once the tree is read: the node is found by the server's id (M5-polish 23.19).
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("link", { name: "Open it" }).getAttribute("href")).toBe(pagePath(install.id));
+  expect(screen.queryByRole("heading", { level: 1, name: "Page not found" })).toBeNull();
+});

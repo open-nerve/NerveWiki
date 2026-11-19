@@ -1124,3 +1124,21 @@ test("an undo whose answer was lost, its changeset read again as the tab signed 
   });
   expect(rejections).toEqual([]);
 });
+
+test("an undo on a changeset's page whose address has its id in capitals reads the changeset and its nodes again as the dialog closes", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id.toUpperCase()), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  const dialog = await opened(user);
+  const before = server.sent.length;
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  // No event stream reads them: the dialog's reads are the page's own, by the server's id (M5-polish 23.19).
+  await waitFor(() =>
+    expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET changeset rework", "GET changes rework"]))
+  );
+  expect(await screen.findByText("Undone by:")).toBeTruthy();
+});
