@@ -23,8 +23,9 @@ type TreeRead = { started: boolean; done: Promise<void>; settle: () => void };
 /**
  * EventContext is what a handler has besides the event: SWR's cache and
  * mutate, the refresher that merges the reading views' re-reads, stopped,
- * aborted once the stream's generation is over, and the tree reads asked
- * for and not yet started, by notebook, each generation its own.
+ * aborted once the stream's generation is over, and the last tree read a
+ * pages event asked for, by notebook, until it is read and shown (TreeRead),
+ * each generation its own.
  */
 type EventContext = {
   cache: Cache;
@@ -198,15 +199,21 @@ function readLinked({ notebook_id: notebook, pages, targets, aliases }: EventLin
  * it (M5-polish 24.8), as a connection reads a level once the one before
  * it is shown (event-stream.tsx). The read asked for always comes: the
  * refresher reads each key it is asked for, once visible again for a
- * hidden tab; a stream stopped drops it, its generation over.
+ * hidden tab. A stream stopped as the read waits drops it, its generation
+ * over: the refresher stopped would still read a key not read lately.
  */
-function afterTree(notebook: string, { trees }: EventContext, read: () => void): void {
+function afterTree(notebook: string, { trees, stopped }: EventContext, read: () => void): void {
   const due = trees.get(notebook);
   if (due === undefined) {
     read();
     return;
   }
-  void due.done.then(read);
+  void (async () => {
+    await due.done;
+    if (!stopped.aborted) {
+      read();
+    }
+  })();
 }
 
 /**

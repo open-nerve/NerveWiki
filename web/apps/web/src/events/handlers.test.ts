@@ -6,6 +6,46 @@ import type { Refresher } from "./refresher";
 
 // The handlers' reads through the refresher (M5 design 4.11, M6/P7 design 11).
 
+test("a links event waiting for a tree read asks for nothing once the stream's generation is over, as the read answers (M5-polish 24.8)", async () => {
+  const requested: string[] = [];
+  let answer!: () => void;
+  const mutate = vi.fn(async (key: unknown): Promise<unknown[]> => {
+    if (JSON.stringify(key) === JSON.stringify(["pages", "n1"])) {
+      await new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+    }
+    return [];
+  });
+  const stop = new AbortController();
+  const handled = {
+    ...context([["backlinks", "n1", "a"]]).context,
+    mutate,
+    // The refresher reads at once a key not read lately: stopped too.
+    refresher: {
+      request: (key: string, read: () => void) => {
+        requested.push(key);
+        read();
+      },
+    } as unknown as Refresher,
+    stopped: stop.signal,
+  };
+  const backlinks = unstable_serialize(["backlinks", "n1", "a"]);
+
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  eventHandlers.get("links")?.(
+    { workspace_id: "w1", notebook_id: "n1", pages: [], targets: ["a"], aliases: false },
+    handled
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  stop.abort();
+  answer();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).not.toContain(backlinks);
+});
+
 /**
  * context is a handler's, the keys of read cached (their first read out: no data yet), and what it asks the refresher
  * for, with the intervals it names.
