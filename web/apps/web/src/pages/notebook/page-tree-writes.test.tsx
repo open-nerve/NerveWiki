@@ -1110,3 +1110,56 @@ test("a page moved under the 150th child of a folder of 150 closed keeps the foc
       ?.contains(within(nav).getByRole("link", { name: "c150" }))
   ).toBe(true);
 }, 15_000);
+
+/** A route a navigation to which loads until open is called: the reader going elsewhere, its chunk not yet loaded. */
+function elsewhere() {
+  let open!: () => void;
+  const loaded = new Promise<null>((resolve) => {
+    open = () => resolve(null);
+  });
+  return { open, route: { path: "/elsewhere", loader: () => loaded, Component: () => <p>Elsewhere</p> } };
+}
+
+test("a page deleted while the reader goes elsewhere leaves them going there: its shell does not send them to its parent (M5-polish 2)", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const way = elsewhere();
+  const { router } = renderApp(pagePath(linux.id), server.app, { routes: [...routes, way.route] });
+  await screen.findByRole("heading", { level: 1, name: "Linux" });
+  server.deletesHeld = true;
+  await choose(user, "Install", "Delete");
+  const dialog = await screen.findByRole("alertdialog", { name: "Delete Install?" });
+  await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(server.sent).toContain("DELETE Install"));
+
+  act(() => void router.navigate("/elsewhere"));
+  await waitFor(() => expect(router.state.navigation.state).toBe("loading"));
+  const reads = server.sent.filter((each) => each === "GET nodes").length;
+  act(() => server.release());
+  await waitFor(() => expect(server.sent.filter((each) => each === "GET nodes").length).toBeGreaterThan(reads));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  act(() => way.open());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe("/elsewhere"));
+  expect(await screen.findByText("Elsewhere")).toBeTruthy();
+});
+
+test("a page created while the reader goes elsewhere leaves them going there (M5-polish 2)", async () => {
+  const user = userEvent.setup();
+  const server = pageServer();
+  const way = elsewhere();
+  const { router } = renderApp(home, server.app, { routes: [...routes, way.route] });
+  server.createsHeld = true;
+  await user.click(await within(await tree()).findByRole("button", { name: "New page" }));
+  await waitFor(() => expect(server.sent).toContain("POST Untitled under root"));
+
+  act(() => void router.navigate("/elsewhere"));
+  await waitFor(() => expect(router.state.navigation.state).toBe("loading"));
+  act(() => server.release());
+  await waitFor(() => expect(server.nodes.some((node) => node.name === "Untitled")).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  act(() => way.open());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe("/elsewhere"));
+  expect(await screen.findByText("Elsewhere")).toBeTruthy();
+});

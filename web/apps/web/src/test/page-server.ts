@@ -214,6 +214,8 @@ export function pageServer({
     restoresBusy: false,
     /** Whether restores wait to be released. */
     restoresHeld: false,
+    /** Whether deletions wait to be released, once logged. */
+    deletesHeld: false,
     /** Whether the trash's list and its items cannot be read. */
     trashDown: false,
     /** What the trash's list reads wait for while a test holds them: a first page's, a next page's. */
@@ -248,7 +250,7 @@ export function pageServer({
       server.changesets = [...server.changesets, changeset];
       return changeset;
     },
-    /** release answers the uploads, creations, views, restores and reverts held. */
+    /** release answers the uploads, creations, deletions, views, restores and reverts held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -499,6 +501,7 @@ function writeRoutes(
     sent: string[];
     createRequests: Request[];
     createsHeld: boolean;
+    deletesHeld: boolean;
     held: (() => void)[];
     sessions: Map<string, FakeSession>;
     trashNode: (id: string) => FakeTrashItem;
@@ -648,9 +651,12 @@ function writeRoutes(
       place(moved, move.after_id);
       return json(moved);
     },
-    "DELETE /api/v0/nodes/*": (request) => {
+    "DELETE /api/v0/nodes/*": async (request) => {
       const node = server.nodes.find((each) => each.id === idOf(request));
       server.sent.push(`DELETE ${node?.name}`);
+      if (server.deletesHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
       if (node === undefined) {
         return problem(404, "page.not_found");
       }

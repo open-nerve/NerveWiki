@@ -1,6 +1,6 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Navigate, useParams } from "react-router";
+import { Navigate, useNavigation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
@@ -11,6 +11,7 @@ import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
+import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -72,9 +73,11 @@ export const PageLayout = observer(function PageLayout() {
  * PageGone answers the page id the notebook's tree does not have, a page's
  * shell or a part of it: no page of the app's, unless this tab deleted it;
  * it then goes to the deleted subtree's parent, or the notebook's home
- * when that is gone too, arrived at. In place of the page this navigation
- * showed (replacing), "Page not found" takes the focus from no one
- * (M12/P2/S1, 18.6).
+ * when that is gone too, arrived at; unless the reader is going elsewhere
+ * meanwhile, which a replace would cancel (M5-polish 2): it then waits for
+ * that navigation, which takes the page away whether it ends or not. In
+ * place of the page this navigation showed (replacing), "Page not found"
+ * takes the focus from no one (M12/P2/S1, 18.6).
  */
 export const PageGone = observer(function PageGone({
   notebook,
@@ -87,9 +90,13 @@ export const PageGone = observer(function PageGone({
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
+  const navigation = useNavigation();
   const to = pages.removedTo(page);
   if (to === undefined) {
     return <NotFoundPage replacing={replacing} />;
+  }
+  if (navigation.state !== "idle") {
+    return <Loading />;
   }
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
