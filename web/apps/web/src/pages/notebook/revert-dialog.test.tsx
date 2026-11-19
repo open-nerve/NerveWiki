@@ -1328,3 +1328,55 @@ test("an undo out as the reader goes back and forward, answered after they scrol
   await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Undo change" }));
 });
+
+test("a refusal of an undo clears what was found out of the one before it (M5-polish 24.9)", async () => {
+  const user = userEvent.setup();
+  let undos = 0;
+  let answer!: () => void;
+  const second = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const { server, rework } = reworked("admin", {
+    // The first undo's answer lost; the second refused, once the test says.
+    "POST /api/v0/changesets/*/revert": async () => {
+      undos += 1;
+      if (undos === 1) {
+        return problem(500, "internal");
+      }
+      await second;
+      return problem(409, "page.changeset_trimmed");
+    },
+  });
+  renderApp(changesetPath(rework.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  let read!: () => void;
+  server.historyWaits.changeset = new Promise<void>((resolve) => {
+    read = resolve;
+  });
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(
+      "Whether it was undone is not known: reading this change again…"
+    )
+  );
+
+  const again = await opened(user);
+  await user.click(within(again).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(undos).toBe(2));
+  server.historyWaits.changeset = undefined;
+  act(() => read());
+  // The dialog open as the second is out, the page's line is hidden from the reader's tree meanwhile.
+  await waitFor(() =>
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("It was not undone: you can try again.")
+  );
+  act(() => answer());
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toBe(
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
+  );
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe(""));
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(title().getAttribute("aria-describedby")).toBe(alert.id);
+});

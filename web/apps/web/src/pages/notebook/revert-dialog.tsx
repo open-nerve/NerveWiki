@@ -234,9 +234,12 @@ function RevertForm({
   const [conflict, setConflict] = useState<ApiError>();
   // Whether the undo was refused as too large to undo here: the dialog asks to undo it in the background.
   const [background, setBackground] = useState(false);
+  // Whether the undo in the background was refused as too large for it too: no undo is offered (M5-polish 24.2).
+  const [hopeless, setHopeless] = useState(false);
   // One undo a press: Undo stays where the focus is while it is out (aria-disabled), so it can be pressed again.
   const busy = useRef(false);
   const confirm = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   const { ref, banner, problemOf, submit } = useForm(["message"], {
     explain: (error) => {
       const source = sourceHistoryText(error, pages, openNode);
@@ -318,6 +321,10 @@ function RevertForm({
     } catch (error) {
       if (!(await refused(error, reader))) {
         if (!lost(error)) {
+          // Too large for the background too, it never will start: only Cancel is left; the banner says why.
+          if (error instanceof ApiError && error.code === "page.revert_too_large") {
+            setHopeless(true);
+          }
           throw error;
         }
         close({ kind: "startLost", press }, !reader.acted());
@@ -405,17 +412,44 @@ function RevertForm({
         {/* Not disabled while it is out: a disabled button drops the focus (v0.1 design 13.2, item 12). The dialog
             does not close while it is out. */}
         <AlertDialogCancel asChild>
-          <Button variant="outline" aria-disabled={sending || undefined}>
+          <Button ref={cancel} variant="outline" aria-disabled={sending || undefined}>
             {t("page.cancel")}
           </Button>
         </AlertDialogCancel>
-        <Button ref={confirm} type="submit" aria-busy={sending || undefined} aria-disabled={sending || undefined}>
-          {background
-            ? t(sending ? "history.backgroundStarting" : "history.backgroundConfirm")
-            : t(sending ? "history.reverting" : "history.revertConfirm")}
-        </Button>
+        {!hopeless && (
+          <Confirm button={confirm} sending={sending} left={() => cancel.current?.focus()}>
+            {background
+              ? t(sending ? "history.backgroundStarting" : "history.backgroundConfirm")
+              : t(sending ? "history.reverting" : "history.revertConfirm")}
+          </Confirm>
+        )}
       </div>
     </form>
+  );
+}
+
+/**
+ * Confirm is the dialog's Undo, or Undo in the background, busy while it
+ * is out (sending). Gone with the focus, the undo too large for the
+ * background too, it calls left before it leaves the document (M5-polish
+ * 24.2): in a component of its own, so that it leaves with it.
+ */
+function Confirm({
+  button,
+  sending,
+  left,
+  children,
+}: {
+  button: RefObject<HTMLButtonElement | null>;
+  sending: boolean;
+  left: () => void;
+  children: string;
+}) {
+  useFocusLeaving(button, left);
+  return (
+    <Button ref={button} type="submit" aria-busy={sending || undefined} aria-disabled={sending || undefined}>
+      {children}
+    </Button>
   );
 }
 

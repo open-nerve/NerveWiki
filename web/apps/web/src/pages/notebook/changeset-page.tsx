@@ -187,6 +187,8 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         setSaid({ kind: "unchanged" });
         return;
       case "refused":
+        // What was found out of an undo before it goes: the refusal is what is said now (M5-polish 24.9).
+        setSaid(undefined);
         setRefused(reverted.error);
         return;
       case "unknown":
