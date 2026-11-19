@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订） |
-| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.3；S4–S6 未开工） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订；2026-11-19 照 S4 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；S4 已合并 `（待填：合并号）`，[S4 的审查记录](reviews/P2-S4-reading-view-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.4；S5 实施中，S6 未开工） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -126,7 +126,7 @@
    - **第 19 条，随 P2/S1 改**：13.2 第 21 条"退出登录不问"、第 17 条"打开、切换进入的页面不抢焦点"、第 26 条到达的那一句。S1 之后旧文字不实，新文字在 8.2。
    - **第 20 条，随 P2/S2 改**：13.2 第 17 条 `page.nameIn` 那一句，加根下的页的写法（9.5）。
    - **第 21 条，随 P2/S3 改**：13.2 加第 30 条（名字、窄屏与对比度，P2-19，8.2）；13.4 第 3 条加 `webkit-narrow`。实际是第 31 条：P4/S4 先合并、取了第 30 条（决定 505、536、593，10.3）。
-   - **第 22 条，随 P2/S4 改**：13.2 第 23 条"HTML 换掉时倒序清理、再重跑"与上下文的字段（4.4）；13.4 第 3 条加 PG15。
+   - **第 22 条，随 P2/S4 改**：13.2 第 23 条"HTML 换掉时倒序清理、再重跑"与上下文的字段（4.4）；13.4 第 3 条加 PG15。实际另改第 26 条：锚点的再看（8.1）与拆出的 `view-anchors.ts`（主持者定，10.4）。
    - **第 23 条，随 P2/S5 改**：
      - 13.2 第 27 条加上传的超时，与下载链接在点击时比到期（P2-26、P2-29）；
      - 第 7 条加睡醒之后的重读（17.6）；
@@ -147,7 +147,7 @@
    - **P2/S3 一行**（`:1452`）的"另外"一格加"菜单与选项的高亮（P2 设计审查 B 的 M4，主持者的决定）"：它不在 I3 的列表里，审查时新发现，在 S3 修（P2-43）。
 8. **附录 A 的 8.1、33.1 是有条件的**（附录 A 的 P2/S4 一行 `:1453`、P2/S3 一行 `:1452` 与 M 类 `:1460`）：
    - 8.1 在 S4 先探查，33.1 在 S3 先排查；没复现的，移到"发布之后的人工验收"一节。
-   - 这一条在 S3、S4 的文档提交里照结果改（33.1 的条件 00 号文档 4.5 已写），本文只预告，脚本不改。实际：33.1 在 S3 复现、修好，附录 A 的 P2/S3 一行与 M 类照此改（决定 589，10.3）。
+   - 这一条在 S3、S4 的文档提交里照结果改（33.1 的条件 00 号文档 4.5 已写），本文只预告，脚本不改。实际：33.1 在 S3 复现、修好，附录 A 的 P2/S3 一行与 M 类照此改（决定 589，10.3）。8.1 在 S4 复现（far 的形状三种 30/30）、修好（第 9 个提交，PG15 加一格），附录 A 的 P2/S4 一行照此加括注（决定 610，10.4）。
 9. **第 7 节 P2/S4 一行的"e2e 加阅读视图的焦点与滚动检查，三种引擎"**（`:742`）：后加"（新故事 PG15，UP1 (page) 加第 48 条的一段）"。
 
 初稿的 2.1 第 1 条（"S6 可以在结论之前做"）撤回：主持者定了 S6 在结论之后才开（C 的 Q2），00 号文档 `:744`、`:796` 原样成立。
@@ -186,8 +186,8 @@
 - **398（P2-21）S4 按文章的顶层块就地更新：尾先比、再头比，中间再按键贪心配一次，不做 LCS**：线性；留着的节点不移动；同名标题插在前面时留住原来那一节；链接的落点变了、本页相隔很远的几处同时变时，其间没变的块也留着（审查 A 的 M4；4.4.2）。
 - **399（P2-22）`ReadingContext` 删掉 `role`，加 `writes()` 与 `onWritesChange`，`revision`、`assetsExpire` 读最新的**（4.4.2）。
 - **400（P2-23）6.2 的重读也给"编辑"的 `forbidden`**：同一个根因，同一行（4.4.2 末条）。
-- **401（P2-24）焦点找不到同一个节点与同键的元素时，给它原来所在的那一块**（经配对映射到的顶层块，`tabindex=-1`，不展开 callout、不滚动），不再落到 `body`；任务勾选框照 M5/P6 的规则，找不回就不给（`page-tasks.test.tsx:103`、`:146`、`:217` 照过）（审查 A 的 I1、M3，修订核对 A 的 M11；4.4.3）。
-- **402（P2-25）8.1 先探查、复现了才改**；没复现就移到发布之后的人工清单（4.4.4）。
+- **401（P2-24）焦点找不到同一个节点与同键的元素时，给它原来所在的那一块**（经配对映射到的顶层块，`tabindex=-1`，不展开 callout、不滚动），不再落到 `body`；任务勾选框照 M5/P6 的规则，找不回就不给（`page-tasks.test.tsx:103`、`:146`、`:217` 照过）（审查 A 的 I1、M3，修订核对 A 的 M11；4.4.3）。实际第 4 步给的 `tabindex` 不被滚动区拿走（决定 605），第 3 步只在映射到的块与同一处插进的近旁几块里找（决定 606，10.4）。
+- **402（P2-25）8.1 先探查、复现了才改**；没复现就移到发布之后的人工清单（4.4.4）。实际复现了，在 S4 修（决定 610，10.4）。
 - **403（P2-26）上传的超时**：请求体在发时 60 秒没有进度、发完之后 180 秒没有答复就放弃，两种说明，离开页面的提醒随之关掉；不设整体的超时。M 比 N 长：中止会让服务端的事务回滚，误判一次就毁掉一个健康的上传，而发完之后发送缓冲还要排空（审查 C 的 M2；4.5.1）。
 - **404（P2-27）15.1 在 S5 里给服务端加一个属性**（写下的尺寸 `data-nw-sized`），CSS 照它；只改 CSS 分不开写下的与图片自己的宽高（4.5 的 15.1）。
 - **405（P2-28）17.2b 只给提示的 `span` 加 `select-none`，空格留在外面**：空格放进去（移交的写法）在 jsdom 里少一个空格，约 30 处可读名字的断言要改成与真浏览器不符的样子（05-lessons 第 6 节）。三种引擎里复制都不带提示，审查 C 的探针（`m12/p2-review-c/probe1.txt`）证实（4.5 的 17.2b）。
@@ -207,7 +207,7 @@
 - **419（P2-42）15.2 在媒体的 `DOMActivate` 之后的下一个任务里把 `open` 设回去**（主持者定"先探、再定"；修订核对 C 的 M9 改成不留状态）：`DOMActivate` 的目标是 `<summary>` 里的音视频时，取下这个 `<details>` 当时的 `open`，`setTimeout(0)` 里变了就设回；不听 `toggle`、`keydown`、`pointerdown`，不跨事件记东西。三种引擎里探过：Chromium 点控件的空白与时间处会开合（没修时复现），改了之后不开合，只派发一次 `toggle`；读者点 summary 的文字、键盘的 Enter 与 Space、点过控件之后程序里的打开（锚点导航、焦点还原），都照常；Firefox、WebKit 本来就不开合，改与不改相同（`m12/p2-check1-c/probe.log`，`fix=timeout`）。上一版留着记录、等下一次 `toggle` 复原，在 Firefox 与 WebKit 上会撤回点过控件之后程序里的打开；初稿听 `click` 的改法在 Chromium 里从不运行（审查 C 的 I1；4.5 的 15.2）。
 - **420（P2-43）菜单与选项的高亮在 S3 修**（审查之后主持者定，B 的 Q1 取甲）：菜单项、快速切换的选项与链接补全的选中项加 2 px、`--ring` 的内嵌环（底色照旧），对相邻的颜色至少 3:1；附录 A 的去处随之记（4.3 的 12.4）。
 - **421（P2-44）Playwright 的项目由一个检查钉住**：`make lint-web` 加 `tools/e2e-projects/check.mjs`，以 `playwright test --list` 断言 `firefox` 项目列出 PG15、`webkit-narrow` 只列出带 `@narrow` 的那几格（审查 C 的 M7；5.1）。
-- **422（P2-45）附件地址的拼法由 Go 与网页共用的样例钉住**：`testdata/m12/signed-view.json`，Go 一侧断言真的渲染与签名写出的就是它，网页一侧 `patch.test.ts` 读它核对 `addressesOnly` 与 `resign`（审查 A 的 I2；4.4.2）。
+- **422（P2-45）附件地址的拼法由 Go 与网页共用的样例钉住**：`testdata/m12/signed-view.json`，Go 一侧断言真的渲染与签名写出的就是它，网页一侧 `patch.test.ts` 读它核对 `addressesOnly` 与 `resign`（审查 A 的 I2；4.4.2）。实际 Go 一侧的测试在 asset 模块的根包（决定 609，10.4）。
 - **423（P2-46）S4 开工时对着 S1 合并之后的代码重做 4.4.9 的核对**，记进 S4 的记录（审查之后主持者定，A 的 Q1；6.4 第 0 步）。
 - **424（P2-47）`resign` 不跳过已加载的图**（审查之后主持者定，A 的 Q2）：之后"在新标签页打开图片"拿到的仍是新的地址；每小时重下的带宽由 P4/S2 量（4.4.2）。
 - **425（P2-48）23.1 连同 `upgrade.approveBody` 的中文**：同一个用词，中文也改"改动"（4.2 的 23.1）。
@@ -240,7 +240,7 @@ P2 碰服务端的有三处：S2 的两份 `AGENTS` 模板（第 40 条）、S4 
 | 文件 | 改动 |
 |---|---|
 | `testdata/m12/signed-view.json`（新） | 同一页在相隔一小时的两个时刻的两份视图 HTML，带图、音频与下载链接 |
-| Go 的样例测试（新，放在同时拿得到渲染器与 `asset/adapter/http` 的 `ContentURL` 的地方；推断是组合根的 Markdown 测试旁，`bootstrap/markdown_app_test.go` 一带） | 用真的渲染器、`ContentURL` 与固定密钥、固定时刻的签名器写出两份 HTML，断言与样例逐字相同 |
+| Go 的样例测试（新，放在同时拿得到渲染器与 `asset/adapter/http` 的 `ContentURL` 的地方；推断是组合根的 Markdown 测试旁，`bootstrap/markdown_app_test.go` 一带） | 用真的渲染器、`ContentURL` 与固定密钥、固定时刻的签名器写出两份 HTML，断言与样例逐字相同。实际在 asset 模块的根包 `modules/asset/signed_view_test.go`，用模块自己的 `Embeds.Of`；照抄的组合根两段各有注释"改了要同步"（决定 609，10.4） |
 
 - **为什么**：网页的 `maskAddresses` 照服务端的拼法认地址（`asset/adapter/http/content.go:76-86`、`upload.go:175-180`、`asset/adapter/mac/sign.go:31-37`）。今天 Go 里钉着的只有假地址（`platform/markdown/obsidian/asset_test.go:51` 的 `?b=1&e=2&s=3`）。两边任一边改了拼法，`addressesOnly` 永远为假，17.1、17.8 悄悄没修好，vitest 照样绿。共用一份样例，两边各有一个测试红（审查 A 的 I2；网页一侧在 4.4.2）。
 - **先例**：`testdata/m10/virtual-targets.json`，由 `W/pages/page/virtual-target.test.ts:17` 读。
@@ -1969,22 +1969,22 @@ export function Isolated({ text, names }: Isolating): ReactNode {
 - **U2、U3 不重跑增强**：`ReadingContext` 的 `revision` 与 `assetsExpire` 改成读最新值的 getter（`get revision() { return latest.current.revision }`），类型不变（仍是 `number`、`string | null`），增强照旧读字段。`toggleTask` 发的 `base_revision` 同样读 ref。版本号变而 HTML 不变时文章里的东西正是新版本的（服务端照字节渲染），所以用新的版本号是对的。
 - **U3 `resign` 的做法**：在 `shown` 的模板与新的模板里各按文档次序取出所有"属性值是附件内容地址"的元素（`[src^="/api/v0/assets/"], [href^="/api/v0/assets/"]`），两边一一对应（`addressesOnly` 为真保证个数、标签、附件 id、`b`、`d` 都相同）；在文章里用同一个选择器取出活的元素，个数与每个的附件 id 对不上就退回 U4（增强不增删这样的元素：附件的提示与大小没有地址，`adopt` 按附件 id 与次序原位换；对不上说明有意外，宁可走 U4）。对得上就把新的值写到活的元素上：链接改 `href`；图片改 `src`（旧图显示到新图加载完，HTML 规范的 "update the image data"：节点不换，没写尺寸的也不跳）；还没开始的音视频改 `src`；**开始了的音视频不改**，照旧在失败时就地重签（`assets.ts` 的 `signAnew`，移交第 17 条的改法）。什么节点也不移除，所以选区、展开的 callout、焦点、全屏都还在（17.1、17.8）。 已加载的图也换 `src`，每张图每小时照今天重下一次；带宽由 P4/S2 量（M4-performance 第 11 条；主持者的决定 P2-47）。
 - **地址的形状**：服务端写 `/api/v0/assets/<节点 id>/content?b=<blob id>&e=<十进制>&s=<22 个 base64url>`，下载的另有 `&d=1`（`asset/adapter/http/content.go:76-86` 的 `addressOf`、`upload.go:175-180` 的 `ContentURL`）；HTML 的属性里 `&` 写成 `&amp;`。`maskAddresses` 只作用于元素的 `src`、`href` 的值，不作用于整串 HTML（正文或代码块里照抄的一条地址仍是正文），只把 `e=` 之后的数字与 `s=` 之后的 22 个字符换成占位；`b`、`d` 与路径不动：换了文件（`b` 变）、换了显示与下载（`d`）都是内容变了（U4）。
-- **Go 与网页共用的样例**（P2-45，照 `testdata/m10/virtual-targets.json` 与 `W/pages/page/virtual-target.test.ts:17` 的先例）：同一个小时里的两次重读地址逐字相同，PG15 这类 e2e 走不到正则对真地址的匹配，正则与服务端的拼法对不上时 `addressesOnly` 永远为假、17.1 与 17.8 悄悄没修好，而 vitest 用的是设计者理解的拼法。所以加一份 `testdata/m12/signed-view.json`：同一页在相隔一小时的两个时刻，由真的渲染器、`ContentURL` 与固定密钥的签名器写出的两份视图 HTML，带图、音频与下载链接。Go 一侧的测试（放在同时拿得到渲染器与 `ContentURL` 的组合根的 Markdown 测试旁，推断是 `bootstrap/markdown_app_test.go` 一带）断言渲染结果与样例逐字相同；网页一侧 `patch.test.ts` 读同一份样例，断言两份之间 `addressesOnly` 为真、`resign` 之后与第二份相同，把其中一个 `b` 或 `d` 改掉时为假。服务端的拼法或网页的正则任一边变了，都有一边红。S4 因此多一个只加测试与样例的服务端提交（第 3 节）。
+- **Go 与网页共用的样例**（P2-45，照 `testdata/m10/virtual-targets.json` 与 `W/pages/page/virtual-target.test.ts:17` 的先例）：同一个小时里的两次重读地址逐字相同，PG15 这类 e2e 走不到正则对真地址的匹配，正则与服务端的拼法对不上时 `addressesOnly` 永远为假、17.1 与 17.8 悄悄没修好，而 vitest 用的是设计者理解的拼法。所以加一份 `testdata/m12/signed-view.json`：同一页在相隔一小时的两个时刻，由真的渲染器、`ContentURL` 与固定密钥的签名器写出的两份视图 HTML，带图、音频与下载链接。Go 一侧的测试（放在同时拿得到渲染器与 `ContentURL` 的组合根的 Markdown 测试旁，推断是 `bootstrap/markdown_app_test.go` 一带；实际在 asset 模块的根包，决定 609，10.4）断言渲染结果与样例逐字相同；网页一侧 `patch.test.ts` 读同一份样例，断言两份之间 `addressesOnly` 为真、`resign` 之后与第二份相同，把其中一个 `b` 或 `d` 改掉时为假。服务端的拼法或网页的正则任一边变了，都有一边红。S4 因此多一个只加测试与样例的服务端提交（第 3 节）。
 - **U4 `patchBlocks` 的做法**（只看文章的顶层节点，不递归，P2-21）：
   1. 撤掉增强之后，文章的顶层节点应当与 `shown` 的模板的顶层节点一一对应（同个数、同 `nodeName`）。增强只在块里改（13.2 第 23 条"不改 HTML 的结构"；图把 `pre` 换成包装、撤掉时放回）。对不上就整篇 `innerHTML` 写新的，焦点照 4.4.3 的键去找（安全的退路，有一格测试）。
   2. 每个顶层节点的比较键：元素是 `outerHTML`，文字是 `data`；先 `maskAddresses`，再把 `id` 属性的值换成占位（同名标题的重新编号不算内容变了，8.2）。
-  3. **先从后往前、再从前往后**比出相同的尾与头（尾先比：头与尾重叠时归给尾）。尾先比，是为了"在一个标题之前插进一节同名的"时，原来那一节留在原来的节点上：旧 `[A, H(#notes), p1]`、新 `[A, H'(#notes), p0, H(#notes-1), p1]`，尾比出 `p1`、`H`，头比出 `A`，中间新插 `H'`、`p0`；拿着焦点的旧 `H` 还是那个节点，只是 `id` 改成 `notes-1`。这只在原来那一节没被同一次保存改动时成立：`p1` 也变了时尾为空，头比把旧 `H` 配给新插入的 `H'`，焦点留在新插入的那个上（写进 4.4.8）。只在末尾追加时尾为空，头比出全部旧的，同样对。
+  3. **先从后往前、再从前往后**比出相同的尾与头（尾先比：头与尾重叠时归给尾）。尾先比，是为了"在一个标题之前插进一节同名的"时，原来那一节留在原来的节点上：旧 `[A, H(#notes), p1]`、新 `[A, H'(#notes), p0, H(#notes-1), p1]`，尾比出 `p1`、`H`，头比出 `A`，中间新插 `H'`、`p0`；拿着焦点的旧 `H` 还是那个节点，只是 `id` 改成 `notes-1`。这只在同一次保存没有又改了原来那一节或它之后的任何一块时成立：尾从页尾往前比，遇到第一个不同的块就停，到不了旧 `H`；头比与中间的贪心先遇到新插进来的 `H'`，焦点留在新插入的那个上（写进 4.4.8；审查 A 的 M5，10.4）。只在末尾追加时尾为空，头比出全部旧的，同样对。
   3a. **中间再按键贪心配一次**（P2-21）：链接的落点变了（别处新建、改名、删除一页）时，本页相隔很远的几处链接同时变，头尾之间的块很多。所以在旧的中间与新的中间之间再配一次：一张从键到旧序号队列（递增）的表，沿新的中间往后走，每个新块取大于上一个配上的旧序号的、最小的同键旧序号（队列里不大于它的弹掉）。配上的序号递增，留着的节点之间的次序不变，不必移动任何节点；仍是线性的（每个旧序号进出队列一次），不保证留下最多的块。空白的文字节点不作锚：不参与配对，随它两边的块删插。
-  4. 相同的头与尾里的节点留着（同一个 DOM 节点），只把旧模板到新模板之间的属性差别（`id`、附件地址）照 U3 的办法写到活的节点上；**用户改的属性不碰**：`details` 的 `open`、锚点给的 `tabindex=-1`、活的媒体的 `src`（只按"旧模板 → 新模板"的差别改，不按"活的 → 新"）。块里活的结构与旧模板对不上（着色的代码块）而这一块又有属性差别时，这一块整个换新的（退路；代码块里没有附件地址与 id，实际碰不到）。
+  4. 相同的头与尾里的节点留着（同一个 DOM 节点），只把旧模板到新模板之间的属性差别（`id`、附件地址）照 U3 的办法写到活的节点上；**用户改的属性不碰**：`details` 的 `open`、锚点给的 `tabindex=-1`、活的媒体的 `src`（只按"旧模板 → 新模板"的差别改，不按"活的 → 新"）。活的、旧的、新的三份都跳过代码块里的代码（`pre > code` 的后代：着色只改它们，它们没有附件地址与 id）再一一对应；这样之后结构仍对不上而这一块又有属性差别时，整块换新的（退路）。开始了的音视频的 `src` 也不改（同 U3，实施中定，10.4）。实际：改前一个 callout 或列表里同时有截图与着色的代码时，别人在整点之后的任何一次写都让它整块换新（地址每小时一变），callout 合上（审查 A 的 M2，10.4）。
   5. 中间：没配上的活节点移除；没配上的新块（`document.importNode` 的副本）按新的次序插在它之后第一个留着的节点之前，没有就插在末尾。**留着的节点从不移动**：移动一个节点会先把它移出文档，正在全屏的视频随之退出、拿着焦点的元素失焦（HTML 的 focus fixup），所以只删、只插。
   6. 代价：一次比较要把两份模板的顶层节点各序列化一次，线性于 HTML 的大小；旧模板记在 `shown` 里，不再解析。不做 LCS：同一键在中间重复出现、又被挪了位置时，贪心可能少留几块，其中的选区与 callout 的开合丢失，焦点经 4.4.3 的键找回（写进 4.4.8；今天整篇都丢）。
-- **`adopt` 不搬留着的媒体**（17.8）：U4 之后再跑 `assets` 时，`adopt`（`assets.ts:159-194`，`:189` 的 `replaceWith`）先把仍在文档里的 `kept` 元素从配对里去掉：它们就在原处，不占"附件 id + 第几个"的键（`keyed`，`:218-231`）。所以所在的块留着的媒体不被 `replaceWith`（它会先把元素移出文档，全屏就退出）；别人在它前面插入同一附件的嵌入时，新元素拿到"第 0 个"，也不会把留着的、在播的旧元素搬过去。块换了新的，照旧接回：这时它已离开过文档，全屏照旧退出，只在那一块被别人改了时。
+- **`adopt` 不搬留着的媒体**（17.8）：U4 之后再跑 `assets` 时，`adopt`（`assets.ts:159-194`，`:189` 的 `replaceWith`）先把仍在文档里的 `kept` 元素从配对里去掉：它们就在原处，不占"附件 id + 第几个"的键（`keyed`，`:218-231`）。所以所在的块留着的媒体不被 `replaceWith`（它会先把元素移出文档，全屏就退出）；别人在它前面插入同一附件的嵌入时，新元素拿到"第 0 个"，也不会把留着的、在播的旧元素搬过去。块换了新的，照旧接回：这时它已离开过文档，全屏照旧退出，只在那一块被别人改了时。实际（决定 604，10.4）：写入之前就在文档里、写入之后仍在的音视频（开始了与否都算），`adopt` 一律不换它：撤掉时记下当时文章里全部的音视频（`WeakSet`），重跑时 `adopt` 遇到其中仍在文档里的就跳过；键的编号照旧按全部音视频（同一附件里的第几个）。所以别人的写删掉它前面同一附件的块、或在它前面插进同一附件又改了后面的块，它都留在原处、照样播放、全屏不退；它前面的留着、它自己的块换新、它之前同一附件的嵌入数不变时，它照样接回到新块里。它之前同一附件的嵌入多了或少了、它的块又换新时，可能接不回或接错位置（写进 4.4.8）。
 - **U5 语言**：不动 HTML，只撤掉、重跑增强。文章的顶层节点与块里的节点都还在，焦点、选区、展开的 callout、宽内容的横向滚动都还在（11.6 的失焦与滚动归零；I3 把 11.6 的其余列为 C，滚动是顺带好的）。例外是增强自己重写的节点：公式（撤掉时写回 TeX）与图的包装（撤掉时放回 `pre`，重跑时新建，`diagrams.ts:157-163`、`:212`）里的选区与焦点不保留；图的包装是滚动区，拿着焦点时按 4.4.3 的键找回。代码块由下面的规则留住。
 - **U7 可写与否**（第 48 条的改法）：`ReadingContext` 加两个可选字段，同 `theme()`、`onThemeChange` 的写法：`writes?: () => boolean`（现在能不能勾）与 `onWritesChange?: (listener: () => void) => () => void`（可写与否变了时调 `listener`，返回的函数停止）。移交第 48 条审查 C 给的是"由另一个 effect 改勾选框"，这里用上下文里的订阅，是等价的变体。阅读视图给 `writes: () => canEditPageBody(pages, page.id)`、`onWritesChange: (l) => reaction(() => canEditPageBody(pages, page.id), l)`，**`toggleTask` 总是给**（它在点下之后与发出之前已两次查 `canEditPageBody`，`reading-view.tsx:154`、`:156`，照旧）。`taskToggle`：没有 `toggleTask` 时同今天（版本页与回收站的预览）；有 `toggleTask` 而没有 `writes` 时当作可写（同今天，测试里的上下文多是这样）；两者都有时，按 `writes()` 设每个勾选框的 `disabled`，`onWritesChange` 时再设一次，清理时停止监听、全部 `disabled`。`aria-label` 的名称照 S1 的 6.3（读者的勾选框也按文字命名），不随可写与否变。`editable` 与 `role` 都不再进任何 effect 的依赖；`ReadingContext.role` 删掉（没有增强读它，P2-22）。
-- **笔记本的模式变了**（`NotebookMode` 只有 `standard` 与 `llm_wiki`，`api/modules/notebook.yaml:454-459`：升级被批准时由 `standard` 变 `llm_wiki`、`upgrade` 随之清空，降级变回；升级的开始与驳回不改模式。S1 的 35.2 让未建链接按模式写 `leads`，`W/reading/unresolved-links.ts`）：`useServerHTML` 同样订阅 `notebook.mode`，变了就走 U5 的路：撤掉、重跑增强，不动 HTML。不换节点，不引起第 48 条的跳动；可写与否变了仍只改勾选框（U7）。
+- **笔记本的模式变了**（`NotebookMode` 只有 `standard` 与 `llm_wiki`，`api/modules/notebook.yaml:454-459`：升级被批准时由 `standard` 变 `llm_wiki`、`upgrade` 随之清空，降级变回；升级的开始与驳回不改模式。S1 的 35.2 让未建链接按模式写 `leads`，`W/reading/unresolved-links.ts`）：`useServerHTML` 同样订阅 `notebook.mode`，变了就走 U5 的路：撤掉、重跑增强，不动 HTML。不换节点，不引起第 48 条的跳动；可写与否变了仍只改勾选框（U7）。实际（S4 第 0 步，实施中定，10.4）：`useServerHTML` 收 `mode`，在 layout effect 里与写进去时的比；阅读视图与版本页的最新回调在它之前的 `useLayoutEffect` 里更新：笔记本对象每次读都换新，mobx 的 `reaction` 在重渲之前跑，读到的是上一次渲染的 `leads`。
 - **焦点与选区之外，增强自己的状态**：U2、U3、U7 不重跑增强，`math` 的 `kept`、`diagrams` 的 `drawings`、`assets` 的 `kept`、`reloadedFor`、`signing` 都不受影响；U4、U5 照今天撤掉再重跑，公式与图照今天"放回留着的排版、立即放回同主题同源码的图"（不闪）。代码高亮的撤掉不还原着色（`highlight.ts:59-62`），重跑时 Worker 答复就 `code.replaceChildren(markup)`（`:69-71`），留着的块里的代码选区会丢。所以 `codeHighlight` 记下每个代码块写进去时的语言与文字（`WeakMap<HTMLElement, string>`），重跑时跳过语言与文字都没变、已经着色的块：留着的块里的代码不闪、选区不丢（第 3 条的 C 部分，顺带）。
 - **锚点**：第二个 effect 不变，搬进 `W/pages/page/view-anchors.ts` 的 `useViewAnchors`（14d）；它依赖 `html` 判断"为锚点再读的那一次到了"，U3 也让它跑一次，`anchored.current === navigation` 时只看 `awaited`，与今天相同。
-- **第 6.2 条**（失去角色后勾选框仍可点）：`page-layout.tsx:198-215` 的 `toggleRefused` 与 `enter` 的拒绝（`:186-190`）遇到 `forbidden` 时重读这个工作区的笔记本列表（`void mutate(["notebooks", workspace.id]).catch(() => undefined)`，同 `revert-dialog.tsx:286-294`、`trash-row.tsx:321-323` 的先例）：角色变了，`canEditPageBody` 随之变，U7 把勾选框设为 `disabled`，"编辑"按钮随 `editable` 消失。文字照旧是拒绝的那一句（`setRefusal`）。改"编辑"的拒绝是 P2-23。
+- **第 6.2 条**（失去角色后勾选框仍可点）：`page-layout.tsx:198-215` 的 `toggleRefused` 与 `enter` 的拒绝（`:186-190`）遇到 `forbidden` 时重读这个工作区的笔记本列表（`void mutate(["notebooks", workspace.id]).catch(() => undefined)`，同 `revert-dialog.tsx:286-294`、`trash-row.tsx:321-323` 的先例）：角色变了，`canEditPageBody` 随之变，U7 把勾选框设为 `disabled`，"编辑"按钮随 `editable` 消失。文字照旧是拒绝的那一句（`setRefusal`）。改"编辑"的拒绝是 P2-23。实际（决定 607，10.4）：重读之后页不再可写，而焦点没有着落（`lib/focus-leaving.ts` 的 `focusLost()`：没有、`body`、或在禁用的元素上）时，焦点给页的标题，同 S1 的 18.6；读者其间把焦点放到别处的不动。只在 `forbidden` 的拒绝之后等这一次：别的结果、开始勾选或开始编辑都结束等待；重读答复之后等待就结束：页仍可写（角色没被拿走，或重读失败）不动焦点；被拒之前就已不可写的（角色变化的事件先到）当场给；这次重读才变成不可写的，在随之而来的那次渲染之后给。可写与否读答复那一刻 store 里的（`canEditPageBody`），不读闭包里那次渲染的 `editable`（今天两者等价，读 store 是防御）。
 
 #### 4.4.3 焦点：记下与还回
 
@@ -2001,14 +2001,15 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 
 1. **同一个节点**还在文档里：它（U5 与 U4 里留着的块多是这种；增强自己重写的节点，如图的包装，不是：它们走第 3 步）。
 2. **任务勾选框**：今天的规则照旧（`:177-194`）：同一位置的勾选框，文字相同、状态相同或是自己的勾选要的状态。不是就不给焦点：不找别的，也不走第 4 步。`page-tasks.test.tsx:103`、`:146`、`:217` 三格钉着"别人的写挪来的项不给焦点，callout 照视图的样子"（M5/P6），照过（P2-24）。
-3. **同键的元素**（在新的 DOM 里，按文档次序数第几个）：
+3. **同键的元素**（在新的 DOM 里，按文档次序数第几个；实际只在映射到的块与同一处插进的近旁几块里找，见本条末，决定 606）：
    - 标题（`h1`–`h6`）：标签与可见文字（空白折叠）、同键里的第几个。不按 id：同名标题会重新编号（8.2）。
    - 链接（`a`）：`href`（附件地址先 `maskAddresses`）、可见文字、同键里的第几个。未建的链接（没有 `href`）按 `data-nw-target` 与文字。
    - `summary`（callout 的标题，12.2）：可见文字、同键里的第几个。
    - 音视频：附件 id 与同一附件里的第几个（同 `assets.ts` 的 `keyed`；`adopt` 已经给回焦点的，不再动）。
    - 别的带 id 的元素（脚注等）：id。
-   - 滚动区（`.nw-scroll`：图的包装、宽的表格与代码块，`scroll-regions.ts:10`、`:40-43`）：所在顶层块（经上面的映射）与块里的第几个滚动区。图的包装在 U4、U5 之后是新节点，靠这个键找回。
-4. **它原来所在的位置**（只用于不是任务勾选框的元素）：取上面映射到的那个顶层块；没有块就是文章本身。给它焦点用 `tabindex=-1` 与 `preventScroll`，**不展开 callout、不滚动**（不用 `focusOn`）：今天焦点落 `body`、视口不动，这一步只补焦点，不把读者看的地方拉走（`reading-view.tsx` 的文件头："a view read again stays where it is"）。
+   - 滚动区（`.nw-scroll`：图的包装、宽的表格与代码块，`scroll-regions.ts:10`、`:40-43`）：所在顶层块（经上面的映射）与块里的第几个滚动区。图的包装在 U4、U5 之后是新节点，靠这个键找回。实际用 `scroll-regions.ts` 的 `scrolling`（`.nw-scroll, pre, span.nw-math-block`：宽的代码块是 `pre`），只在元素没有别的键（如 id）时用（实施中定，10.4）。
+   - **实际在哪里找**（决定 606，10.4）：先在它原来所在的那一块映射到的新块里找，第几个在块里数（块本身算在内：标题自己就是顶层块）；焦点在文章本身上的，在文章里找。那一块里没有，再在同一处插进的别的块里找：它原来那一块被移除时，两个留着的块之间新的那一侧插进的块（`patchBlocks` 的 `Placed` 另给 `near`），按离映射到的那一块的远近，同远时先后面的（同一次保存在读者那一段之前插进一段、又改了读者那一段时，读者那一段在后面），只看离它不超过 max(1, \|插进 − 删掉\|) 块的（块数，空白文字不算，按整段算；按"第几个对第几个"映射，读者那一块的新版本偏开的是它之前插进与删掉的块数之差，上限按整段的差算：它前后的删插方向相反时（之前插进、之后删掉，或反过来），新版本比上限远，找不到，走第 4 步，焦点给映射到的那一块，在附近、视口不动（核对 A 的 C3-N1））；它原来那一块留着，或那一处没有插进别的块，就只有映射到的那一块。都没有，走第 4 步。不在全篇找：维基页里同一个链接出现几次很常见，读者在第一处、那一段被改写得不再有它时，全篇的第 0 个是远处那一个，焦点与视口会被拉过去（审查 A 的 M4）；同一处整段改写时空隙也会伸到远处，所以有上限（核对 A 的 C2-M1）。
+4. **它原来所在的位置**（只用于不是任务勾选框的元素）：取上面映射到的那个顶层块；没有块就是文章本身。给它焦点用 `tabindex=-1` 与 `preventScroll`，**不展开 callout、不滚动**（不用 `focusOn`）：今天焦点落 `body`、视口不动，这一步只补焦点，不把读者看的地方拉走（`reading-view.tsx` 的文件头："a view read again stays where it is"）。实际（决定 605，10.4）：滚动区（`scroll-regions.ts`）只去掉自己给的 `tabindex`（值为 `0`）：不宽的滚动区、不宽的文章本身，`release` 与 `follow` 都不碰别人给的 `-1`（锚点、第 4 步）；变宽时盖掉了别人给的，记下（`WeakMap`），变窄时还回。浏览器在开始观察一个元素时给一次尺寸的通知，增强重跑之后每个滚动区都会收到；改前它把第 4 步刚给的 `-1` 一并去掉，焦点一帧之后落到 `body`（审查 A 的 M3）。
 
 给焦点一律 `preventScroll`；第 1–3 步里原来在视口里、现在不在的，`scrollIntoView({ block: "nearest" })`（今天对带 id 的元素的规则，推广到这三步；第 4 步不滚动）。读者其间动过（`watchReader`）不在这里考虑：这一切在同一个同步的 layout effect 里，读者没有机会动（13.2 第 26 条说的是"等异步的答复之后"）。
 
@@ -2021,13 +2022,14 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 **3 阅读视图更新时闪动、失焦**（B 的失焦部分；高亮闪是 C）
 - 现状：`W/pages/page/reading-view.tsx:138` 每次整篇写 `innerHTML`；焦点只回到勾选框与带 id 的元素（`:177-201`），链接、`summary`、滚动区落到 `body`；代码高亮重新着色前闪一下（`W/reading/highlight.ts:41-78` 没有缓存）。公式与图已不闪（I3：部分修了）。
 - 改法：U4（4.4.2）与 4.4.3。
-- 测试：vitest `reading-view.test.tsx` 新格 "another's write elsewhere in the page keeps the focus on a link without an id, the selection in a paragraph and a callout opened": 视图 `<p><a href="/x">x</a></p><details><summary>S</summary><p>in</p></details><p id="last">tail</p>`，焦点给链接，读者打开 callout，选中 `tail` 的一段；假服务端改第三块（`<p id="last">tail, edited</p>`）、版本号加一，`reload`。断言：`document.activeElement` 是同一个链接节点（`toBe` 之前取的引用）、`details.open` 为真、`document.getSelection().anchorNode` 仍在文档里且是原来那个文本节点。没修时：链接是新的节点，焦点在 `body`；`details` 是新的、合着。e2e PG15 第 1 格（4.4.6）在三种浏览器里核对同样的三样。
+- 测试：vitest `reading-view.test.tsx` 新格 "another's write elsewhere in the page keeps the focus on a link without an id, the selection in a paragraph and a callout opened": 视图 `<p><a href="/x">x</a></p><details><summary>S</summary><p>in</p></details><p id="last">tail</p>`，焦点给链接，读者打开 callout，选中 `tail` 的一段（实际选区放在另加的一段 `words to select` 里：选区在被改的那一块里，块换新选区必丢；10.4）；假服务端改第三块（`<p id="last">tail, edited</p>`）、版本号加一，`reload`。断言：`document.activeElement` 是同一个链接节点（`toBe` 之前取的引用）、`details.open` 为真、`document.getSelection().anchorNode` 仍在文档里且是原来那个文本节点。没修时：链接是新的节点，焦点在 `body`；`details` 是新的、合着。e2e PG15 第 1 格（4.4.6）在三种浏览器里核对同样的三样。
 - 测试（P2-21 的中间贪心配对）：`reading-view.test.tsx` 新格 "a write that changes two links far apart keeps the blocks between, a callout opened and the focus in them"：视图 `<p>a [[X]]</p><details><summary>Tip</summary><p>in</p></details><p>mid</p><p>b [[X]]</p>`，读者打开 callout、焦点给 `summary`；新 HTML 只把首尾两段里的链接从未建换成已建。断言 `details` 与 `summary` 是原来的节点、`open` 仍为真、焦点在原来的 `summary` 上。只有头尾比较时中间整段换新，`open` 为假。
 
 **8.1 后退、前进到带锚点的地址时浏览器恢复的滚动盖过视图的滚动**（B，中，推断）
 - 现状：锚点的 effect 在 `reading-view.tsx:233-277`，去锚点时 `focusOn(target, {})` 滚过去（`:255`）。应用没有设 `history.scrollRestoration`，也没有 React Router 的 `<ScrollRestoration>`（`W/main.tsx:38` 只是 `createBrowserRouter(routes)`，全库 `grep` 不到这两个名字）。同一个文档里的历史条目，浏览器在 `popstate` 时恢复滚动，应用之后才渲染、滚到锚点，按理视图的滚动在后；移交与 I3 都是读代码推出的，没有在浏览器里复现过。
 - 改法：**先探查、复现了才改**（P2-25）。S4 的第一个提交之前，用 L1 的形状（长页、远处的标题、`[[#Part A]]`）在三种浏览器里各跑：去锚点 → 去别的页 → `page.goBack()`，断言标题拿着焦点并在视口里，各 10 次。没有一次复现：8.1 移进发布之后的人工清单（与第 13.3 条同列，写探查的记录），本 Step 不改代码。复现了：锚点的 effect 在 POP 导航（`useNavigationType() === "POP"`）去锚点之后，下一帧（`requestAnimationFrame`）再看一次：焦点仍在目标上、读者没动过（`watchReader`）、目标不在视口里，就再 `scrollIntoView`；测试是探查用的那一格，进 PG15，三种浏览器。
 - 拿不准：浏览器的恢复可能晚于一帧（Chromium 对跨文档的恢复会等内容长高）；探查时记下恢复发生在 `popstate` 之后多久。
+- 实际（S4 第 0 步，决定 610，10.4）：**复现了**。在锚点处离开三种 0/30；去过锚点之后滚回顶上、从顶上的链接离开（far 的形状）三种 30/30：标题拿着焦点、在视口之外。三种引擎里浏览器的恢复都在视图滚过去之后、下一帧之前（`popstate` 之后 7–25 ms），没有晚于一帧。改法照上面，下一帧再看时另要"窗口在视图滚过去之后又滚过"：没有它，jsdom（没有布局）与起始的导航（也是 POP）都会多滚一次。PG15 那一格用 far 的形状；四个条件各有一格正反例（审查 C 的 M2）。
 
 **8.2 重读之后没有 id 的元素失焦；同名标题换了 id 时落到拿到原来 id 的那个**（B）
 - 现状：`reading-view.tsx:195-215` 只按 id 还焦点。
@@ -2051,7 +2053,7 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 
 **11.1 mermaid 的几个 id 不以图的 id 开头**（A，小）
 - 现状：`W/reading/diagrams.ts:285-287` 的 `withOwnIds` 只把以这张图的 id（`nw_mermaid_N`）开头的换掉；时序图、桑基图的 `actor0`、`root-0`、`linearGradient-N` 不换，同一页两张这样的图 id 重复，渐变可能指到另一张。
-- 改法：`withOwnIds` 先收集 SVG 里所有的 `id="…"`，**不包含**图的 id 的每个改成 `<新 id>-<原 id>`。包含图的 id 的不再改名：mermaid 11.17.2 为 `accTitle`、`accDescr` 写的 `chart-title-<图的 id>`、`chart-desc-<图的 id>`（`mermaid.core.mjs:891-905`）今天的替换已让它们各不相同。再把对改了名的 id 的引用一起改：`url(#原 id)`、`href="#原 id"`、`xlink:href="#原 id"`、`<style>` 里的 `#原 id`（后面不是标识符的字符），以及 IDREF 属性 `aria-labelledby`、`aria-describedby` 里的那一项。原 id 先按正则转义。只改 mermaid 写的标记（13.2 第 23 条的例外），写者的文字经 mermaid 的 `dompurifyConfig` 已去掉 `id`。
+- 改法：`withOwnIds` 先收集 SVG 里所有的 `id="…"`，**不包含**图的 id 的每个改成 `<新 id>-<原 id>`。包含图的 id 的不再改名：mermaid 11.17.2 为 `accTitle`、`accDescr` 写的 `chart-title-<图的 id>`、`chart-desc-<图的 id>`（`mermaid.core.mjs:891-905`）今天的替换已让它们各不相同。再把对改了名的 id 的引用一起改：`url(#原 id)`、`href="#原 id"`、`xlink:href="#原 id"`、`<style>` 里**选择器**中的 `#原 id`（实际按整个名字查表；声明里的不改：没带图的 id 的 id 可以恰好写成颜色的样子，如 `#fff5ad`，10.4），以及 IDREF 属性 `aria-labelledby`、`aria-describedby` 里的那一项。原 id 先按正则转义。只改 mermaid 写的标记（13.2 第 23 条的例外），写者的文字经 mermaid 的 `dompurifyConfig` 已去掉 `id`。实际一遍扫完（审查 B 的 I1，10.4）：先收集要改名的 id 放进一张表，每种引用各扫一遍、在回调里查表。逐个 id 各扫一遍时代价是 id 数乘 SVG 的长度，一张 1,000 条连线的 sankey 每次写（U4、U5、换主题都会再放一次图）卡住主线程一秒多。真的甘特图（mermaid 11.17.2，默认主题）核过：任务的 `rect` 的 id 本来带图的 id，不在"另改名"之列，改前改后颜色都没坏；"只改选择器"留作防御，合成的一格钉着。
 - 测试：vitest `W/reading/diagrams.test.ts` 新格 "two drawings whose elements' ids are not the drawing's own have no id in common, and each names its own"：假的 `Drawer` 交回带 `id="actor0"`、`<use href="#actor0"/>`、`fill="url(#linearGradient-1)"`、`<style>#actor0{…}</style>` 的 SVG，同一页两张。断言文章里没有重复的 id，每张的引用都指向自己里面的元素。没修时两张都有 `actor0`。 假的 SVG 另带 `<title id="chart-title-ID">` 与 `aria-labelledby="chart-title-ID"`：断言图仍有这个可读的名字（审查 A 的 M9）；再带 `<text id="actor0-label">` 与另一个元素的 `aria-labelledby="actor0-label"`：断言改名之后这个 `aria-labelledby` 指向同一张图里改了名的那个元素（修订核对 A 的 M13）。
 - 等价的一处：包含图的 id 的 id 也改名时，IDREF 的改写把引用跟上，结果相同；不当变异（证据：上面两种 IDREF 都由同一个改写处理，第一种在两种写法下都照过）。
 
@@ -2073,7 +2075,7 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 **17.8 替换时原生全屏退出**（A，中，随 17.1）
 - 现状：`innerHTML` 把正在全屏的视频移出文档，全屏随之退出；`assets.ts:189` 的 `adopt` 之后把它接回，那时已退出。
 - 改法：U3 不移除任何节点；U4 不移动留着的节点，`adopt` 不让仍在文档里的媒体占配对的键（4.4.2）。剩下的：视频所在的那一块被别人改了，块换新、视频被接回，全屏照旧退出（写进 4.4.8 的限制）。
-- 测试：vitest `W/reading/assets.test.ts` 新格 "a started video still in its place as the enhancement runs again is not moved"：在 `container` 里放一个开始了的视频，撤掉、再跑（不动 HTML），`MutationObserver` 没有记到它被移除。没修时 `replaceWith` 记到一次移除与一次加入。e2e：PG15 第 3 格（Chromium；Firefox 与 WebKit 的无头模式给不给全屏，S4 先试：给就三种都断言 `document.fullscreenElement` 仍是那个视频，不给就只断言它没有离开过文档，`MutationObserver`）。视频的字节：AS3 的 `recordWebm` 只在 Chromium（WebKit 没有 `MediaRecorder`，05-lessons 第 2 节之外的已知），WebKit 一格用 WAV 音频只核对"没有离开过文档"。
+- 测试：vitest `W/reading/assets.test.ts` 新格 "a started video still in its place as the enhancement runs again is not moved"：在 `container` 里放一个开始了的视频，撤掉、再跑（不动 HTML），`MutationObserver` 没有记到它被移除。没修时 `replaceWith` 记到一次移除与一次加入。e2e：PG15 第 3 格（Chromium；Firefox 与 WebKit 的无头模式给不给全屏，S4 先试：给就三种都断言 `document.fullscreenElement` 仍是那个视频，不给就只断言它没有离开过文档，`MutationObserver`）。视频的字节：AS3 的 `recordWebm` 只在 Chromium（WebKit 没有 `MediaRecorder`，05-lessons 第 2 节之外的已知），WebKit 一格用 WAV 音频只核对"没有离开过文档"。实际：三种引擎的无头模式都给全屏，PG15 第 3 格三种都断言 `document.fullscreenElement`；视频是 `e2e/fixtures/assets.ts` 的 `vp8Webm`（在 Playwright 的 Chromium 里录一次的 VP8），WebKit 也放得出，三种都播放、断言同一个节点、仍全屏、`paused` 为假（决定 608，10.4）。留在原处的媒体见 4.4.2 的 `adopt`（决定 604）：`assets.test.ts` 另有 A1、A2 的形状与"没开始的也算"各一格。
 - 测试（审查 A 的 M6）：`assets.test.ts` 新格 "a started clip whose block stays is not moved when the same clip is embedded before it"：在播的 `clip.mp4` 所在的块留着，前面插入同一附件的嵌入，再跑 `assets`：在播的元素仍在原来的块里、没有离开过文档，新的嵌入是新元素。只跳过 `old === element` 时它被搬到新的位置。在播的元素照这个文件的 `play()`（`assets.test.ts:73-95`）造，`error` 是 `null`：jsdom 的 `HTMLMediaElement.error` 是 `undefined`，`adopt` 会走"失败"一支、不搬，没修的代码上也绿（修订核对 A 的 N10，探针证实）。
 
 **48 横幅出现时正文跳动**（C 改判为 A，中）
@@ -2083,7 +2085,7 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
   - `reading-view.test.tsx` 新格 "the notebook's mode changing runs the enhancements again without writing HTML"：LLM Wiki 的升级被批准（`mode` 由 `standard` 变 `llm_wiki`，`upgrade` 清空），`log` 多一次撤掉与运行，`MutationObserver` 在文章的顶层记不到变化，未建的 `index` 链接的 `leads` 随之更新（S1 的 35.2）。没订阅模式时 `log` 不变，`leads` 停在旧的。
   - vitest `reading-view.test.tsx` 新格 "the notebook's upgrade starting writes no HTML: the checkboxes become disabled, a link keeps the focus"：写者打开页，焦点在一个链接上；笔记本的 `upgrade` 变成非空（`NotebookStore` 的 `put`，或 `mode` 事件重读的列表）。断言：`MutationObserver` 没有 `childList` 的变化；`log` 没有新的撤掉与运行；勾选框都 `disabled`；焦点在原来的链接。再结束升级：勾选框又可勾、有名称。没修时 `log` 多一次撤掉与运行、节点全换。
   - `W/reading/task-toggle.test.ts` 新格 "the checkboxes follow whether the context writes, without running again"：`writes` 先真后假再真，`onWritesChange` 调监听，断言 `disabled` 跟着变、监听在清理之后停止。
-  - e2e：UP1 (page)（`e2e/stories/upgrade/up1-start-freeze.spec.ts:171`，已在 `threeBrowsers`）的 `tab` 先打开 Plan：Plan 的正文加长到要滚动，`tab` 滚到一段在视口中部，记下它的 `getBoundingClientRect().top` 与文章第一个子节点的身份（`window` 上的一个引用）；横幅出现之后，断言那个子节点还是同一个（三种浏览器），那一段的 `top` 差不过 1 px（Chromium 与 Firefox：它们有 CSS 的滚动锚定）。WebKit 有没有滚动锚定，S4 先探查：有就三种都断言 `top`；没有就 WebKit 只断言节点没换，写进 4.4.8（横幅本身推下正文，不是阅读视图的事）。
+  - e2e：UP1 (page)（`e2e/stories/upgrade/up1-start-freeze.spec.ts:171`，已在 `threeBrowsers`）的 `tab` 先打开 Plan：Plan 的正文加长到要滚动，`tab` 滚到一段在视口中部，记下它的 `getBoundingClientRect().top` 与文章第一个子节点的身份（`window` 上的一个引用）；横幅出现之后，断言那个子节点还是同一个（三种浏览器），那一段的 `top` 差不过 1 px（Chromium 与 Firefox：它们有 CSS 的滚动锚定）。WebKit 有没有滚动锚定，S4 先探查：有就三种都断言 `top`；没有就 WebKit 只断言节点没换，写进 4.4.8（横幅本身推下正文，不是阅读视图的事）。实际有（S4 第 0 步：裸页补 110 px；应用里改前三种都跳 94 px），UP1 (page) 三种都断言 `top`（10.4）。
 
 **14d `reading-view.tsx` 按职责拆开**（D，随 S4）
 - 现状：325 行，`:133-277` 管四件事：HTML 与增强、任务勾选的焦点与状态、锚点、未建链接的对话框（后者已在 `unresolved-link.tsx`）。
@@ -2099,16 +2101,17 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 - `reading-view.test.tsx:20-25` 的 `recording` 解构并记下 `context.role`，`:39`、`:46-47` 的期望串带 "editor"：删掉 `role` 之后改成不记它，期望串随之（tsc 报出）。
 - `W/pages/page/source-actions.test.tsx:249-271`（"retained task callback follows source/role"，M10 的来源只读守卫）：`:265` 的 `expect(latest?.toggleTask).toBeUndefined()` 在 S4 之后必红（U7 不重跑增强，`toggleTask` 总是给）。删掉这一行，改为断言文章的节点没换、勾选框 `disabled`、点了不发正文的写。守卫换成了 `writes()`（来源页为假）与 `reading-view.tsx:154`、`:156` 的两次 `canEditPageBody`；后半段的"没有正文的写"照旧有效。
 - `page-tasks.test.tsx` 的 11 格照过：勾选让任务所在的列表块变了，块整个换新，焦点经 4.4.3 第 2 步（今天的规则）找回；找不回的照旧不给焦点（`:103`、`:146`、`:217`）。
+- 实际另改了 AS3 (page)（`e2e/stories/asset/as3-render.spec.ts`，本节没列）：它以"图换了新元素"知道改名之后的重读到了，U4 之后图那一块不换、等不到；改为等视图属性表里的链接，并断言图仍是同一个元素（10.4）。
 
 #### 4.4.6 e2e
 
 - **新故事 PG15**（`e2e/stories/page/pg15-reading-updates.spec.ts`，三种浏览器，进 `threeBrowsers`）："PG15 (page): the reading view updated in place: another's write elsewhere in the page keeps the focus on a link, a callout opened, the selection and an audio playing; a heading of the same name put before the focused one leaves the focus on it"。理由：L1 第 4 格（`l1-links.spec.ts:219`）已核对"重读之后带 id 的标题拿着焦点、视口不动"，但 L1 整个文件进 `threeBrowsers` 要多跑它的 API 与 MCP 格；阅读视图的焦点与滚动要三种引擎（05-lessons 第 6 节），单独一个故事最省。接口版本与 MCP 版本豁免：只是网页的行为。
   - 第 1 格：Ada 打开页（长页：一个链接、一个折叠的 callout、一段文字、一个 WAV 音频，远处一个 `## Notes`），焦点给链接、打开 callout、选中一段、播放音频；Bob 经接口改页尾的一段。等那一次重读答了（`waitForResponse` 那一次 `GET …/view`，05-lessons 第 6 节：在同一个文档里等那次本会触发它的事答了），断言：链接拿着焦点（`toBeFocused`）、callout 开着、`getSelection().toString()` 是原来的文字、音频没停（`paused` 为假）且它与文章的第一个子节点都是同一个节点（`window` 上的引用）。 音频用 WAV（`e2e/fixtures/assets.ts` 的 `wav`，S4 与 S5 先合并的那个加，6.4 第 6 个提交、6.5 第 15 个提交都写了）：本机 Playwright 的 WebKit 放不出 `oggOpus`，`readyState` 10 秒内一直是 0（修订核对 C 的 N8）；修订核对 C 的探针在三种引擎里放 WAV 都不停（`currentTime > 0.3`、`paused` 为假，审查记录修订核对第 3 轮的 N19）。
   - 第 2 格：焦点给 `## Notes`；Bob 在它前面插一节同名的 `## Notes`。断言拿着焦点的标题之后是原来的那段文字，它在视口里。
-  - 第 3 格（17.8，Chromium；另两种看 4.4.4 的探查）：视频全屏，Bob 改别处，断言 `document.fullscreenElement` 仍是它。
-  - 8.1 复现了才加的一格（4.4.4）。
+  - 第 3 格（17.8，Chromium；另两种看 4.4.4 的探查）：视频全屏，Bob 改别处，断言 `document.fullscreenElement` 仍是它。实际三种浏览器都断言，视频三种都播放，另断言同一个节点、`paused` 为假（决定 608）；Bob 的写用同一账号的 PAT 经接口写（10.4）。
+  - 8.1 复现了才加的一格（4.4.4）。实际复现了，加了（第 9 个提交，far 的形状，决定 610）。
 - **UP1 (page)** 加 48 的断言（4.4.4），已在 `threeBrowsers`。
-- 推断用时：PG15 三格 × 三种浏览器约 9 个测试，每个 6–10 秒，两个 worker 摊开约 +35–45 秒；UP1 每种浏览器多约 1 秒的滚动与断言。
+- 推断用时：PG15 三格 × 三种浏览器约 9 个测试，每个 6–10 秒，两个 worker 摊开约 +35–45 秒；UP1 每种浏览器多约 1 秒的滚动与断言。实测四格 × 三种约 15–27 test-seconds（随 runner 的快慢），UP1 加的一段看不出来（10.4）。
 
 #### 4.4.7 变异
 
@@ -2121,11 +2124,13 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 | M4-5 | `VersionView` 仍写 `innerHTML` | `version-page.test.tsx` 的 "a version's view read again keeps the focus on its link" |
 | M4-6 | `toggleRefused` 不重读笔记本 | `page-tasks.test.tsx` 的 "a toggle refused as forbidden…" |
 | M4-7 | `withOwnIds` 只换图的 id 开头的 | `diagrams.test.ts` 的 "two drawings whose elements' ids…" |
+| M4-7b | 一遍扫完换回逐个 id 循环（审查 B 的 I1，实际加的） | `diagrams.test.ts` 代价那一格（扫描的遍数） |
 | M4-8 | U5 也写 `innerHTML` | `reading-view.test.tsx:90` 那一格的"同一个节点" |
 | M4-9 | `addressesOnly` 恒为假 | "a view read again whose attachments' addresses alone changed…"；`patch.test.ts` 的正例 |
 | M4-10 | `resign` 也改开始了的音视频的 `src` | `patch.test.ts` 的 "…a begun one keeps its own" |
 | M4-11 | 上下文的 `assetsExpire` 是写进去那一刻的值 | `reading-view.test.tsx:820` 那一格加的一步 |
-| M4-12 | `adopt` 让仍在文档里的媒体照样占配对的键（只跳过 `old === element`） | `assets.test.ts` 的 "a started clip whose block stays is not moved when the same clip is embedded before it"；"a started video still in its place…"；PG15 第 3 格 |
+| M4-12 | `adopt` 让仍在文档里的媒体照样占配对的键（只跳过 `old === element`） | `assets.test.ts` 的 "a started clip whose block stays is not moved when the same clip is embedded before it"；实际另有修复第 1 轮 A1、A2 形状的两格；"a started video still in its place…"与 PG15 第 3 格照过：块留着时视频是同一个节点，两种写法相同（10.4） |
+| M4-12b | `adopt` 一个也不跳过（改前的；实际加的） | `assets.test.ts` 两格；PG15 第 3 格三种（修复第 1 轮之后，视频三种都播） |
 | M4-13 | `editable` 回到依赖里 | "the notebook's upgrade starting writes no HTML…"；UP1 (page) 的节点身份 |
 | M4-14 | `taskToggle` 不听 `onWritesChange` | `task-toggle.test.ts` 的 "the checkboxes follow…"；"the notebook's upgrade starting…" 的 `disabled` |
 | M4-15 | `maskAddresses` 也把 `b` 换成占位 | `patch.test.ts` 的"another blob"反例 |
@@ -2144,16 +2149,19 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 #### 4.4.8 S4 之后仍在的限制（写进 v0.2 的 `M12-polish.md` 或人工清单）
 
 - 同一键在中间重复出现、又被挪了位置时，贪心的配对可能少留几块：其中的选区丢失、callout 的开合不还原（C）。
-- 同一次保存既在一个标题之前插进同名的一节、又改了原来那一节：头比把旧标题配给新插入的那个，焦点留在新插入的标题上（8.2 的剩余）。
+- 同一次保存在一个标题之前插进同名的一节，又改了原来那一节或它之后的任何一块：头比把旧标题配给新插入的那个，焦点留在新插入的标题上（8.2 的剩余）。LLM Wiki 里 agent 整页改写、一次保存改好几处是常态（审查 A 的 M5，10.4）。
 - 公式与图的包装由增强重写：U4、U5 之后其中的选区不保留；图的包装拿着的焦点按键找回到新的包装。
 - 带 id 的标题改了文字时，焦点落在映射到的那一块，原来看得见、现在看不见时不再滚出来（4.4.3 的"丢掉的一条"）。
 - 视频所在的那一块被别人改了：视频被接回，全屏退出（17.8 的剩余，同移交原来记的"已知的限制"）。
-- WebKit 没有 CSS 滚动锚定时，横幅本身仍把正文推下 94 px（看 4.4.4 的探查，没有就写进人工清单与已知限制）。
-- 8.1 没复现：进人工清单。
+- 开始了的媒体所在的块换了新的，而它之前同一附件的嵌入多了或少了（别人插进或删掉）时，按"同一附件里的第几个"对不上：它可能接不回（停下），可能被接到别的位置（插进的那一处），它之前被删掉的那一个也可能被接回到它的位置；改前整篇写时同样（S4 之前就这样）。更好的配对（按块的映射）进 v0.2（决定 604；三种形状只在 jsdom 里造过，"停下"照 HTML 规范推，没有在浏览器里核过）。
+- 第 3 步在同一处插进的块里按远近取：那里有多个同键的元素时，焦点可能给了离映射到的那一块更近的、别人新写的那一个，不是读者原来那一个；仍在附近，视口不动（核对 A 的 C2-N1）。
+- 第 3 步在同一处插进的块里只看离映射到的那一块不超过 max(1, \|插进 − 删掉\|) 块的，上限按整段的差算，而读者那一块的新版本偏开的是它之前插进与删掉的块数之差：它前后的删插方向相反时（之前插进、之后删掉，或反过来；整段改写、块数相同时上限只有 1），新版本比上限远，找不到，走第 4 步，焦点给映射到的那一块，在附近、视口不动（决定 606 的上限，核对 A 的 C2-M1、C3-N1：不设上限时空隙伸到远处，焦点与视口会跳到远处同键的元素）。
+- 读者离开之前滚到看不见那个标题的地方，后退回来时视图仍回到标题：8.1 的改法让焦点与视口一致，不照浏览器恢复的位置（决定 610，审查 C 的 N5）。
+- 可写与否因事件变了（升级开始、角色经重读变了），不经拒绝时，拿着焦点的勾选框被禁用或"编辑"消失，焦点落 `body`；S4 之前就这样，6.2 只管被拒为 `forbidden` 之后的那一种（决定 607，核对 B 的 C2-N2）。
 
 #### 4.4.9 M6 以来依赖 `editable` 的增强，逐一核对（移交第 48 条）
 
-在 `194ca350` 上 `grep` 了 `W/reading/*.ts` 与 `reading-view.tsx`、`version-view.tsx` 的每一处 `editable`、`toggleTask`、`role`： S1 合并之后，35.2 的 `leads`、6.3 的命名与 11.7 的观察者都改了增强与上下文：S4 开工时，实施者对着 S1 合并之后的代码重做一遍这张表的核对，记进 S4 的记录（主持者的决定 P2-46；6.4 第 0 步）。
+在 `194ca350` 上 `grep` 了 `W/reading/*.ts` 与 `reading-view.tsx`、`version-view.tsx` 的每一处 `editable`、`toggleTask`、`role`： S1 合并之后，35.2 的 `leads`、6.3 的命名与 11.7 的观察者都改了增强与上下文：S4 开工时，实施者对着 S1 合并之后的代码重做一遍这张表的核对，记进 S4 的记录（主持者的决定 P2-46；6.4 第 0 步）。实际（S4 第 0 步，对着 `ab766f02`）：各行只有行号的漂移（见 S4 的记录"第 0 步"），表末另加三行；两处时机见 4.4.2 的模式（10.4）。
 
 | 增强或代码 | 读的 | S4 之后 | 核对的测试 |
 |---|---|---|---|
@@ -2168,6 +2176,9 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 | `assets`（M7） | 不读 `editable`；读 `assetsExpire`（`assets.ts:58`） | `assetsExpire` 读最新的（getter） | `reading-view.test.tsx:820` 加的一步 |
 | `ReadingContext.role`（M4 起） | 没有增强读 | 删掉 | tsc |
 | 来源页（M10，`canEditPageBody` 含 `!pages.isSource(id)`） | 来源页的勾选框不可勾 | 同上：`writes()` 对来源页为假；页变成来源、或来源恢复成普通页（`mode` 事件）时跟着变，不重写 | 新格：来源与否经 `mode` 事件变了，勾选框跟着变、节点不换 |
+| 读者的勾选框的名称（S1 的 6.3，`task-toggle.ts:21-26`） | 没有 `toggleTask` 时也按文字命名 | 不随可写与否变；U7 只改 `disabled` | 照过（S4 第 0 步补记） |
+| 问落点期间的观察者（S1 的 11.7，`unresolved-link.tsx:165-170`、`:223-234`） | 文章里的链接 | 块留着时链接是同一个节点，仍 `aria-busy`；块换了由观察者标上；U5 只再标一次 | `unresolved-link.test.tsx:323-350`、`:388` 起两格照过（S4 第 0 步补记） |
+| `VersionView`（`version-view.tsx:83-107`） | 给 `role`、`leads` | 随 `ReadingContext` 一起改；没有 `toggleTask`，没有 U7 | `version-page.test.tsx` 照过（S4 第 0 步补记） |
 
 ### 4.5 S5 编辑器、附件、上传、粘贴与导入导出
 
@@ -3257,7 +3268,7 @@ const threeBrowsers =
 | S3 | L5 (page)（`links/l5-completion.spec.ts`） | 加一段 | 12.4、P2-43：补全的说明与选中项的指示、编辑器与阅读视图的外框、一个菜单项的焦点指示 | Chromium | 约 2 s |
 | S3 | `webkit-narrow` 的 worker | — | 建库、起服务与浏览器 | WebKit | 2–8 s |
 | S3 | SE1 (page) 的 375 一段 | 只在 33.1 复现时拆出（`@narrow`） | 33.1 | Chromium、WebKit | 约 6 s |
-| S4 | **PG15**（新，`page/pg15-reading-updates.spec.ts`） | 三格（8.1 复现时四格） | 4.4.6：就地更新留住焦点、callout、选区、播放；同名标题；全屏 | 三种（新加） | 54–90 s |
+| S4 | **PG15**（新，`page/pg15-reading-updates.spec.ts`） | 三格（8.1 复现时四格；实际四格，10.4） | 4.4.6：就地更新留住焦点、callout、选区、播放；同名标题；全屏 | 三种（新加） | 54–90 s（实测约 15–27 test-seconds，10.4） |
 | S4 | UP1 (page)（`upgrade/up1-start-freeze.spec.ts:171`） | 加一段 | 48：横幅出现时文章的节点不换、段落不跳 | 三种（已在） | 约 3 s |
 | S5 | **AS6**（新，`asset/as6-reading-links.spec.ts`） | 三格 | 17.2b 复制、17.4 过期的下载、15.2 callout 标题里的音频 | Chromium | 15–24 s |
 | S5 | AS3 (page)（`asset/as3-render.spec.ts:297`） | 加一页、量盒子 | 15.1 | Chromium | 1–2 s |
@@ -3419,14 +3430,14 @@ S4 在 S1 合并之后开（P2-1）。
      - `adopt` 不让仍在文档里的媒体占键；
      - `VersionView` 改用 `useServerHTML`。
    - 已有测试：`reading-view.test.tsx:500-503` 与 `:492-494` 随之改（4.4.5）：两处都是这个提交的焦点规则改的（第 4 步、标题按文字），放在更早的提交里会红。
-   - e2e：新故事 PG15，与 `threeBrowsers` 加的 `page\/pg15-`、`tools/e2e-projects/check.mjs` 加的 PG15 一条，在同一个提交里：不然这个提交的 PG15 不在三种浏览器里跑。`e2e/fixtures/assets.ts` 加 `wav(seconds)`（4.4.6）；S5 已先合并、加了它的，用 S5 的（修订核对 C 的 N17）。
+   - e2e：新故事 PG15，与 `threeBrowsers` 加的 `page\/pg15-`、`tools/e2e-projects/check.mjs` 加的 PG15 一条，在同一个提交里：不然这个提交的 PG15 不在三种浏览器里跑。`e2e/fixtures/assets.ts` 加 `wav(seconds)`（4.4.6）；S5 已先合并、加了它的，用 S5 的（修订核对 C 的 N17）。实际 S4 先合并、加了它；S5 合并 `main` 时删掉它自己那一份（决定 611，10.4）。
 7. **`web: the language and the notebook's mode changing leave the HTML, and code already coloured is not coloured again (M12/P2/S4)`**（U5、11.6、48）：
    - U5；
    - 订阅笔记本的模式，走 U5 的路，与它的那一格 "the notebook's mode changing runs the enhancements again without writing HTML"：这一格断言顶层没有变化，要 U5 在才绿，所以不放在第 2 个提交（修订核对 A 的 M10）；
    - `codeHighlight` 跳过没变、已着色的块；
    - 滚动区的键，与两格图的焦点（4.4.4 的 11.6）。
 8. **`web: every id in a drawing is its own, its accessible name kept (M12/P2/S4)`**（11.1）：独立，可以排在最前。
-9. （只在 8.1 复现时）**`web, e2e: Back to an anchor keeps the view's scroll over the browser's own (M12/P2/S4)`**：PG15 加那一格。
+9. （只在 8.1 复现时；实际复现了，`37386f54`）**`web, e2e: Back to an anchor keeps the view's scroll over the browser's own (M12/P2/S4)`**：PG15 加那一格。
 10. **`docs: … (M12/P2/S4)`**：
     - 13.2 第 23 条与 13.4 第 3 条（8.2）；
     - Step 的记录；
@@ -3560,7 +3571,7 @@ S4 在 S1 合并之后开（P2-1）。
 | S1 | 6–7 | 约 4 秒 |
 | S2 | 0 | 0 |
 | S3 | 42–50（33.1 复现时再加约 6）；实测约 21.6（10.3） | 22–30 秒，区间 15–45；实测约 11–14 秒（10.3） |
-| S4 | 57–93 | 35–45 秒 |
+| S4 | 57–93；实测约 15–27（10.4） | 35–45 秒；按上面的折法推断约 8–18 秒（10.4） |
 | S5 | 16–26 | 8–15 秒 |
 | S6 | 3–4 | 约 2 秒 |
 | 合计 | 约 125–180 | 约 70–95 秒 |
@@ -3621,6 +3632,8 @@ P2 完成，当且仅当下面七条都成立。
 
 **S3 之后**（2026-11-18）：第 1 条，S3 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与主持者的说明跑过、全绿（实施与修复第 1 轮的头上 `make check` 与 `make e2e`；合并 `main` 之后 `make lint-web`、`make knip`、`make test-web`、两种都改过的故事与 `make e2e`），审查与修复核对结束（核对第 1 轮之后不开第二轮，决定 594）。第 2 条，S3 的测试在没修的代码上红过，33.1 的排查有记录，变异除一条等价、一条设计预先写明走不到的之外都抓到（10.3 与 [S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)）。第 3 条，附录 A 里 S3 的 11 项 B、D 的 32.3 修好，M 的 33.1 复现、按 B 修好（决定 589），推后进 v0.2 的照 2.3 与决定 590。第 4–7 条，S3 的文档提交照写的改了（00 号文档 4.5、第 7 节 S3 一行与第 21 条、状态表、9.1、第 11、12、13 节与附录 A，总体设计 13.2 第 31 条、13.4 第 3 条与第 15 节，`M5-polish.md` 一行，05-lessons 两条，P5 设计 3.19 的人工入口）；README 不改。
 
+**S4 之后**（2026-11-19）：第 1 条，S4 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 跑过、全绿（实施与修复第 1–3 轮的头上 `make check`、`make e2e` 与两个检查，每个提交 `make lint-web`、`make knip`、`make test-web`），审查与三轮修复核对结束，核对第 2 轮的一条 Minor 由修复第 3 轮改，核对第 3 轮只有 Nit（10.4）。第 2 条，S4 的测试在没修的代码上红过，第 0 步的核对与三项探查有记录，变异除写明等价的之外都抓到（10.4 与 [S4 的记录](reviews/P2-S4-reading-view-review.md)）。第 3 条，附录 A 里 S4 的 A 5 项、B 5 项、C 的 11.6 失焦部分与 D 的 14d 修好，8.1 复现、修好（决定 610），推后进 v0.2 的照 4.4.8。第 4–7 条，S4 的文档提交照写的改了（00 号文档第 7 节第 22 条、第 11、12、13 节与附录 A 的 8.1，总体设计 13.2 第 23、26 条、13.4 第 3 条与第 15 节，`M5-polish.md`、`M4-performance.md` 各一行，P5 设计 3.19 的读屏清单）；README 不改。
+
 ### 8.2 总体设计的新文字
 
 改的是 `docs/v0.1/v0.1-design.md`。
@@ -3680,13 +3693,15 @@ P2 完成，当且仅当下面七条都成立。
 
 #### S4：13.2 第 23 条（第 22 条修订）
 
+下面是落进总体设计的文字（与草稿相比：焦点在映射到的块与同一处插进的近旁几块里找、滚动区不拿走给它的 `tabindex`、写入之前就在的音视频留在原处与接不回的那一种，实际见 10.4）。
+
 第一处，旧文字恰好一处：
 
 > `HTML 换掉时倒序清理、再重跑；`
 
 新文字：
 
-> HTML 的内容变了时倒序清理，只把变了的顶层块换新（头尾与中间按键配上的块留着，留着的节点不移动），再重跑；同一份 HTML 再读到、只差附件地址（每小时的重签，地址就地换）、可写与否变了（`ReadingContext` 的 `writes` 与 `onWritesChange` 告诉增强）时，不清理也不重跑；语言或笔记本的模式变了时清理、再重跑，不动 HTML；上下文的 `revision` 与 `assetsExpire` 读最新的；代码高亮跳过没变、已着色的块。留着的块里的节点都还在，焦点、选区与展开的 callout 随之还在（公式与图由增强重写，其中的选区除外）；焦点所在的块换了新的，按键找回同样的元素，找不到就给它原来所在的那一块（块经头尾与中间的配对映射到新的位置），不展开、不滚动；任务勾选框照第 17 条的规则，找不回不给（`pages/page/server-html.ts`、`reading/patch.ts`，M12/P2/S4）；
+> HTML 的内容变了时倒序清理，只把变了的顶层块换新（头尾与中间按键配上的块留着，留着的节点不移动），再重跑；同一份 HTML 再读到、只差附件地址（每小时的重签，地址就地换）、可写与否变了（`ReadingContext` 的 `writes` 与 `onWritesChange` 告诉增强）时，不清理也不重跑；语言或笔记本的模式变了时清理、再重跑，不动 HTML；上下文的 `revision` 与 `assetsExpire` 读最新的；代码高亮跳过没变、已着色的块。留着的块里的节点都还在，焦点、选区与展开的 callout 随之还在（公式与图由增强重写，其中的选区除外）；焦点所在的块换了新的，先在它映射到的新块里、再在同一处插进的近旁几块里（不超过那一处插进与删掉的块数之差，至少一块）按键找回同样的元素（标题按文字，链接按地址与文字，callout 的 `summary`，音视频按附件，别的按 id；滚动区按它所在的块里的第几个），找不到就给那一块（块经头尾与中间的配对映射到新的位置），不展开、不滚动，滚动区不拿走给它的 `tabindex`；任务勾选框照第 17 条的规则，找不回不给（`pages/page/server-html.ts`、`reading/patch.ts`，M12/P2/S4）；
 
 第二处，旧文字恰好一处：
 
@@ -3694,7 +3709,17 @@ P2 完成，当且仅当下面七条都成立。
 
 新文字：
 
-> 开始了的音视频在它所在的块换新时接回到新块里同一附件的位置；块留着时它就在原处，不占配对的键、不搬动（M12/P2/S4），清理不还原
+> 开始了的音视频在它所在的块换新时接回到新块里同一附件的位置；写入之前就在、之后仍在的音视频留在原处，不被换、不搬动；块换新、它之前同一附件的嵌入数又变了时，可能接不回或接错位置（见 [P2 设计](02-P2-web-polish.md) 4.4.8）（M12/P2/S4），清理不还原
+
+#### S4：13.2 第 26 条（锚点的再看与拆分）
+
+设计时 8.2 没有这一条；拆分（14d）之后它引的文件不对了，8.1 的改法也在它说的那件事上，放进 S4 的文档提交（主持者定）。旧文字恰好一处：
+
+> `` 重读回来再定位到锚点（`reading-view.tsx`） ``
+
+新文字：
+
+> 重读回来再定位到锚点（`pages/page/view-anchors.ts`，M12/P2/S4 从 `reading-view.tsx` 拆出）；后退、前进到带锚点的地址时，浏览器在视图滚过去之后、下一帧之前恢复历史条目的滚动（S4 第 0 步在 Playwright 的三种引擎里探到）：下一帧窗口又滚过、焦点仍在锚点的元素上、读者其间没有动作、元素不在视口里时，视图再滚一次（M12/P2/S4）
 
 #### S5：13.2 第 27 条（第 23 条修订）
 
@@ -3735,7 +3760,7 @@ P2 完成，当且仅当下面七条都成立。
 末句 `（WebKit 在请求下一个文档之后旧文档发不出请求）（M12/P1）。` 恰好一处。两个 Step 各在它之后加自己的一句，按合并的次序：
 
 - S3：" M12/P2/S3：375 px 的检查带标签 `@narrow`：不在 `threeBrowsers` 里的故事（MC3、PG2、SE1 各一格），由 Playwright 项目 `webkit-narrow` 在 WebKit 上再跑一遍，夹具 `e2e/fixtures/narrow.ts`；项目的配置由 `tools/e2e-projects/check.mjs`（`make lint-web`）核对，它看的是各项目列出的格，不看引擎；对比度由 `e2e/fixtures/contrast.ts` 从计算之后的颜色算，量之前先结束元素与它祖先的过渡（M12/P2）。"（实际见 10.3：MC3、PG2、SE1 三格，检查不看引擎，祖先的过渡）
-- S4：" M12/P2/S4：PG15 在三种浏览器里核对阅读视图的就地更新：别人写了别处之后，焦点、展开的 callout、选区与播放都还在；在拿着焦点的标题之前插进同名的一节，焦点留在原来那一节；全屏照 S4 的探查，在给全屏的引擎里核对（M12/P2）。"
+- S4：" M12/P2/S4：PG15 在三种浏览器里核对阅读视图的就地更新：别人写了别处之后，焦点、展开的 callout、选区与播放都还在；在拿着焦点的标题之前插进同名的一节，焦点留在原来那一节；全屏播放的视频在别人写了别处之后仍是同一个节点、仍全屏、仍在播（视频是 `e2e/fixtures/assets.ts` 里录好的 VP8 WebM，三种引擎都放得出；三种引擎的无头模式都给全屏）；后退到带锚点的地址，标题拿着焦点、在视口里（8.1）（M12/P2）。"（实际见 10.4：视频三种都播、三种都给全屏，8.1）
 
 ## 9. 交给后面的 Phase
 
@@ -3757,11 +3782,11 @@ P2 完成，当且仅当下面七条都成立。
   - **读屏清单**（`manual/screen-reader-checklist.md`）收：
     - 只从 ARIA 推断的八项；
     - S1 改的焦点去处在真实读屏上念什么：`ConfirmDialog` 被拒之后、横幅的拒绝之后、"仍要退出吗"；
-    - S4 的第 4 步（4.4.3：给它原来所在的那一块）念出的是哪一块。
+    - S4 的第 4 步（4.4.3：给它原来所在的那一块）念出的是哪一块；实际另有两项：语言换了之后图的包装（新节点）拿回焦点时念什么，后退到带锚点的地址时是否先念页顶再念标题（[S4 的记录](reviews/P2-S4-reading-view-review.md)"读屏与人工清单"）。
 
     P2 的各 Step 记录列出它们，P5/S3 照抄。
   - **真浏览器的下载许可**：17.4 在程序里再点下载，真的 Chrome 的"自动下载多个文件"、Safari 的"允许这个网站下载吗"会不会拦，进人工清单（审查 C 的未核实第 2 条）。
-  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。33.1 在 Playwright 的 WebKit 上复现、修了；真的 Safari 上窄屏的搜索页与原生下拉的焦点进这里（决定 590，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）。
+  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。8.1 在 S4 复现、修了，不进（决定 610）。33.1 在 Playwright 的 WebKit 上复现、修了；真的 Safari 上窄屏的搜索页与原生下拉的焦点进这里（决定 590，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）。
 - **收尾**：v0.2 的 `M12-polish.md` 收 C 类 87 项、D 类其余、4.4.8 的限制、各 Step 记录里"推后的"，与 2.1 第 7 条列的几处。
 
 ## 10. 结果
@@ -3868,6 +3893,43 @@ P2 完成，当且仅当下面七条都成立。
 - **对比度**：没修与修了的数与 4.3.4 的表一致（亮色环 1.54 → 4.74，暗色 1.88 → 4.18；无效的环亮 1.44 → 4.77、暗 1.29 → 6.85；补全说明 4.35 → 4.82；编辑器外框与链接亮 2.58 → 4.74；菜单与补全的当前项由没有指示到 4.35、3.19）；暗色 destructive 静止 Chromium 读回 6.43（`#9e4042`，表上 6.47 是 8 位取整差一位），悬停 3.45 → 8.07。
 - **读屏与人工清单**：S3 没有要读屏清单新收的；真的 Safari 上窄屏的搜索页与原生下拉的焦点两项写在 [S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"，交 P5/S3（决定 590）。
 - **照实改的各节**（02-workflow 3.5）：头；第 2 节"移交的落实"的 33.1；2.1 第 3 条里的第 21 条与第 8 条；2.3 的 396、413（只加注）；4.0 总表的 S3 一行；4.3.0 的"13.2 的新条"；4.3.0.1 的 33.1 一行；4.3.0.3 的末段；4.3.0.5；4.3.1.3 的导出与过渡；12.4 的"S3 之后的焦点指示"；33.1 的"复现了"；4.3.4 加 destructive 悬停两行；5.1 的 `webkit-narrow` 与检查；6.3 第 3、6 条；7.4 的 S3 一行；8.1 的"S3 之后"；8.2 的 S3 与 13.4；第 9 节的人工入口。
+
+### 10.4 S4：阅读视图（2026-11-19，合并见 00 号文档第 12 节）
+
+- **提交**：九个代码提交，修复第 1 轮十个、第 2 轮三个、第 3 轮两个，加本文档提交；[审查记录](reviews/P2-S4-reading-view-review.md)。分支开在 `main` 的 `ab766f02` 上，其间 `main` 没有动，不合并 `main`。
+  - 第 1–8 个照 6.4（`e0034a01`、`b89df406`、`18b5f6cc`、`5b3a6669`、`7d4415de`、`5b0f9856`、`5be4d07f`、`bb03daff`）；8.1 复现了，第 9 个照 6.4 第 9 条（`37386f54`）。
+  - 修复第 1 轮（头 `09c7518d`）：`withOwnIds` 一遍扫完、样式只改选择器、高亮的一格（`51638b45`）；`adopt` 不换留在原处的媒体（`9892df53`）；`restamp` 跳过着色的代码、`resign` 少一个地址的一格（`51a24439`）；第 3 步在映射到的块里找、滚动区只去掉自己给的 `tabindex`（`59a5012d`）；6.2 之后焦点给标题（`296b0a71`）；PG15 的视频三种都播（`b8edc731`）；8.1 再看的四个条件各有格（`34bb6315`）；组合根两段胶水的注释（`131f7d27`）；U2 走不到的那一支删掉（`3e0e028e`）；没开始的媒体留在原处的一格（`09c7518d`，自己加的：变异"只记开始了的"活下来）。
+  - 修复第 2 轮（头 `c9bdfdb7`）：第 3 步再在同一处插进的别的块里找（`680c5ef5`）；6.2 的等待在重读答复之后结束（`6b5afe82`）；滚动区还回别人给的 `tabindex`（`c9bdfdb7`）。
+  - 修复第 3 轮：第 3 步在同一处插进的块里只看离映射到的那一块不超过 max(1, \|插进 − 删掉\|) 块的（`1294383e`）；`near` 的注释照实写：偏开的是读者那一块之前的差，上限按整段的差算（`1e43b3cc`，只改注释，核对 A 第 3 轮的 C3-N1）。
+  - 三份审查 A 0I5M2N2Q、B 1I4M1N1Q、C 0I3M5N0Q（A-M1 与 C-M1 是同一件）；修复第 1 轮 13 项改代码，其余进本文与记录。核对第 1 轮：第一轮各条都关上，新的 Minor 三条（A 的 C1-M1、B 的 C1-M1 改代码，C 的 C1-M1 改文字）、Nit 三条（A 的 C1-N1 改代码，A 的 C1-N2、C 的 C1-N1 改文字）。核对第 2 轮：第 1 轮各条都关上，新的 Minor 一条（A 的 C2-M1，修复第 3 轮改代码）、Nit 三条（A 的 C2-N1、B 的 C2-N2 写进 4.4.8，B 的 C2-N1 写出等价的依据），C 没有新问题。核对第 3 轮：A 的 C2-M1 关上，新的 Nit 一条（C3-N1：读者那一块前后的删插方向相反时上限太紧，改注释与本文）；C 对文档草稿的 Nit 三条在本提交写对。
+- **做完**：A：6.2、11.1、17.1、17.8、48；B：3、8.1、8.2、12.2、29；C：11.6 的失焦部分；D：14d；M4-performance 第 13 条（每小时的重读只就地换地址）。
+- **第 0 步**（4.4.9 与三项探查，Playwright 1.63，三种引擎无头；记录"第 0 步"）：
+  - 4.4.9 的核对只有行号的漂移与三行补记（S1 的 6.3、11.7，`VersionView` 也给 `leads`），另定了两处时机：模式经 `useServerHTML` 的 `mode` 比，最新的回调在 `useLayoutEffect` 里更新（S4 的记录"实施中定的"）。
+  - **8.1 复现了**：读者去过锚点、滚回顶上、从顶上的链接离开，再后退：三种 30/30，标题拿着焦点、却在视口之外（浏览器在视图滚过去之后、下一帧之前恢复历史条目的滚动）；在锚点处离开 0/30。照 6.4 第 9 条修，PG15 加一格（决定 610）。
+  - **WebKit 有 CSS 的滚动锚定**（裸页补 110 px）；应用里改前三种都把那一段推下 94 px（第 48 条三种都复现）：UP1 (page) 三种都断言 `top`。4.4.8 那一条不成立。
+  - **三种引擎的无头模式都给全屏**：PG15 第 3 格三种都断言 `document.fullscreenElement`。
+- **与设计不同之处**（正文照实改了，各处注"实际…（10.4）"或它的决定）：
+  - **Go 的样例测试**在 asset 模块的根包（`internal/modules/asset/signed_view_test.go`），不在组合根：根上的 `Embeds` 的字段不导出、`NewEmbeds` 只收连接池，组合根里要么起库，要么照抄 `Embeds.Of` 里调 `ContentURL` 的那一段，而那一段正是要钉的拼法（archtest 不读测试文件，不是它不让；审查 C 的 M3）。照抄了组合根的两段（`registrants.go` 的 `markdownExtensions`、`assets.go` 的 `assetEmbeds.assets`），两处各有注释"改了要同步测试与样例"（决定 609）。
+  - **8.1 的再看多一个条件**：下一帧窗口在视图滚过去之后又滚过。没有它，jsdom（没有布局，元素永远"不在视口里"）与起始的导航（也是 POP）都会多滚一次。四个条件各有一格正反例（决定 610，审查 C 的 M2）。
+  - **滚动区的键**用 `scroll-regions.ts` 的 `scrolling`（含 `pre` 与块级公式），比 `.nw-scroll` 宽；只在元素没有别的键时用（实施中定）。滚动区只去掉自己给的 `tabindex`，变宽时盖掉的别人给的（锚点、第 4 步的 `-1`），变窄时还回（决定 605；后者 S4 之前就会丢）。
+  - **第 3 步的范围**：先在映射到的块里找，再在同一处（两个留着的块之间）插进的别的块里按远近找，同远时先后面的，只看离映射到的那一块不超过 max(1, \|插进 − 删掉\|) 块的（决定 606，修复第 1–3 轮）。
+  - **`adopt`** 不换写入之前就在、之后仍在的媒体（决定 604）；**`restamp`** 不改开始了的媒体的 `src`（同 U3，实施中定），跳过代码块里的代码（审查 A 的 M2）。
+  - **6.2 之后焦点给标题**，重读答复之后等待就结束（决定 607）。
+  - **测试的写法**（实施中定）：4.4.4 第 3 条那一格的选区放在另加的一段里（设计的选区在被改的那一块里，块换新选区必丢）；AS3 (page)（4.4.5 没列）改名之后的重读改为等视图属性表里的链接，并断言图仍是同一个元素；PG15 别人的写用同一账号的 PAT 经接口写；第 3 格的视频是 `e2e/fixtures/assets.ts` 的 `vp8Webm`，三种都播放（决定 608；实施时 WebKit 用的是 `webmHead`，九个字节哪种都放不出，不是 WebKit 放不了，审查 B 的 M2）；`recordWebm` 从 AS3 挪进 `e2e/fixtures/assets.ts`；`wav(seconds)` 由 S4 加（S5 合并 `main` 时删掉它自己那一份，决定 611）。
+  - **`withOwnIds`**：一遍扫完，按表查（审查 B 的 I1）；样式只改选择器，不改声明（防御：没带图的 id 的 id 可以恰好是样式里的颜色；真的甘特图核过，任务的 id 本来带图的 id，改前也没坏）。"包含图的 id 的也改名"：连图自己的 id 一起改时 diagrams 全部照过（审查 B 的 M3），等价，照设计不当变异；只放过图自己的 id 时 `diagrams.test.ts` 那一格因钉着命名的样子（`${svg.id}-a`）而红，不是行为不同。4.4.4 第 11.1 条"等价的一处"不改。
+  - **U2 那一支删掉**：effect 的依赖都没变时 React 不跑它；StrictMode 的第二次挂载之前，卸下的清理已清空 `shown`，走 U1（审查 A、C 的 N1）。依赖处写明了。
+- **先红**：每个提交的新格在上一个提交的代码上红过；PG15 的九格在第 5 个提交的构建上全红，8.1 那一格三种在第 8 个的构建上红；UP1 (page) 三种在第 1 个的构建上红。修复第 1–3 轮的新格在没修的代码上红（只守现状的格由变异核对；第 3 轮上限那一格守的是"该找到的仍找到"，在没设上限的代码上也绿），见 S4 的记录。
+- **变异**：4.4.7 的 26 条（含 M4-6、M4-12、M4-16 的另一种）、M4-12b 与 X6、X7 都红；e2e 的七条在头上逐条构建、跑：M4-1、M4-2 红在 PG15 第 1–3 格，M4-3 第 2 格，M4-12b 第 3 格（实施时 Chromium、Firefox；修复第 1 轮之后三种都红），M4-13 UP1 (page)，8.1 的那一格三种。M4-12（只跳过 `old === element`）只红在 `assets.test.ts`：实施时 "…embedded before it" 一格，修复第 1 轮之后另有 A1、A2 形状的两格；PG15 第 3 格活下来：块留着时视频是同一个节点，两种写法只在它之前插进同一附件或别的同附件的块变了时不同（4.4.7 照实改）。自己加的 13 条里四条等价：U2 的早返回与 `give()` 对已聚焦的元素再 `focus()`（都走不到或是空操作，那两处已删）、样式里 `#原 id` 不看后一个字符（改名是前缀式）、`withOwnIds` 把包含图的 id 的也改名（见上）。修复第 1–3 轮的变异与反向对照（22、9、5 条）除两条等价之外都红：`stamped` 连 `code` 元素也去掉（三份对称地少一个元素）；6.2 的 `finally` 改读那次渲染的 `editable`（store 由 `runInAction` 写，`useSyncExternalStore` 的 SyncLane 在微任务里渲染并当场冲掉被动 effect，先于 `mutate` 的解决；三种浏览器实测相同，核对 B 第 2 轮；读 store 是防御）。修复第 1 轮"`had` 只记开始了的"活下来，加格之后红。
+- **门禁与 CI**：
+  - 实施的头上 `make check`（3,879 秒，含 `make test`）、`make e2e`（594 过、1 跳过）、两个 e2e 的检查全绿；九个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,801 → 4,840 格，197 → 198 个文件）。分支 CI：`37386f54` 的 run 44370887722 第一次 attempt 19 项全绿（`web` 4:22，Test 3:47；e2e 9:35，装浏览器 2:26，E2E 一步 6:11）。
+  - 修复第 1 轮：十个提交各自绿（4,840 → 4,858 格），改了服务端的那一个另跑 `make lint-go`、asset 模块与组合根（`-short`）、archtest 的 `go test`；PG15 三种各三遍 36 过，AS3、UP1 (page) 4 过；头 `09c7518d` 上 `make check`（3,628 秒）、`make e2e`（594 过、1 跳过）、两个检查全绿；分支 CI：run 44406706476 第一次 attempt 19 项全绿（`web` 3:27，Test 2:59；e2e 8:24，装浏览器 1:22，E2E 一步 6:11）。
+  - 修复第 2 轮：三个提交各自绿（4,858 → 4,863 格）；头 `c9bdfdb7` 上 `make check`（3,586 秒）、`make e2e`（594 过、1 跳过）、两个检查全绿；分支 CI：run 44434194881 第一次 attempt 19 项全绿（`web` 5:42，Test 5:02；e2e 10:00，装浏览器 0:38，E2E 一步 8:40）。
+  - 修复第 3 轮：两个提交各自 `make lint-web`、`make knip`、`make test-web` 绿（4,865 格；`1e43b3cc` 只改注释，只跑这三项）；`1294383e` 上 `make check` 0（3,756 秒；4,865 格）；`make e2e` 0（594、1，165 秒）；两个检查全绿；分支 CI：run 44452711808，第一次 attempt 19 项全绿（`web` 3:39，Test 3:08；e2e 10:19，装浏览器 0:42，E2E 一步 8:55）。
+  - 本提交的分支 CI：`（待填：本提交的分支 CI）`。
+- **e2e 的用时**（7.4）：PG15 十二格，CI 上实施 16.6、修复第 1 轮 15.3、第 2 轮 25.0、第 3 轮 26.9 test-seconds（后两轮 runner 慢：都没改 e2e，E2E 一步整个也从 6:11 到 8:40、8:55）；本机 13.7–15.0。UP1 (page) 加的一段看不出来（CI 上比 `main` 还快）。合计约 15–27 test-seconds，是 7.4 推断（57–93）的两到四成；按 7.4 的折法推断墙钟约 8–11 秒，慢的 runner 上约 13–18 秒（没有量：E2E 一步的长短由 runner 定）。修复第 1 轮之后 PG15 第 3 格三种都播，每种 1.0–1.8 秒。逐格的数在 S4 的记录。
+- **读屏与人工清单**：交 P5/S3 的读屏清单三项（S4 的记录"读屏与人工清单"）：第 4 步给"原来所在的那一块"时念出的是哪一块；图的包装（新节点）拿回焦点时念什么；后退到锚点时是否先念页顶再念标题。8.1 复现、修好，不进人工入口。
+- **4.4.8 的限制**（交收尾，进 v0.2）：第一、三、四、五条照旧；第二条照审查 A 的 M5 改写；"WebKit 没有 CSS 滚动锚定时……"与"8.1 没复现……"两条删；另加五条：读者离开之前滚到看不见那个标题的地方，后退回来时视图仍回到标题；决定 604 的接不回（三种后果，只在 jsdom 里造过）；第 3 步按远近取，同一处插进的块里有多个同键的元素时可能不是读者原来那一个（核对 A 的 C2-N1）；第 3 步的上限按整段的差算，读者那一块前后的删插方向相反时找不到它的新版本、走第 4 步（决定 606 的上限，核对 A 的 C2-M1、C3-N1）；可写与否因事件变了、不经拒绝时，拿着焦点的勾选框被禁用或"编辑"消失，焦点落 `body`（核对 B 的 C2-N2）。
+- **照实改的各节**（02-workflow 3.5）：头；2.1 第 3 条的第 22 条与第 8 条；2.3 的 401、402、422（只加注）；3.2 的 Go 样例；4.4.2 的 Go 样例、U4 第 3 步（审查 A 的 M5）与第 4 步（代码块，审查 A 的 M2）、`adopt`（决定 604）、模式与 6.2（决定 607）；4.4.3 第 3 步（决定 606）、滚动区的键与第 4 步（决定 605）；4.4.4 第 3 条那一格、8.1（决定 610）、11.1（一遍扫完、样式只改选择器）、17.8（决定 608）、48；4.4.5 加 AS3；4.4.6 第 3 格、8.1 那一格与推断用时；4.4.7 加 M4-7b、M4-12b，M4-12 一行；4.4.8；4.4.9 的核对与三行；5.2 的 PG15 一行；6.4 第 6、9 条；7.4 的 S4 一行；8.1 的"S4 之后"；8.2 的 S4（13.2 第 23 条、加第 26 条与 13.4）；第 9 节的读屏清单与人工入口。
 
 ## 附录：核对过的代码
 
