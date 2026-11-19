@@ -163,10 +163,11 @@ lint-go: tools ## 校验 golangci-lint 配置并运行（含格式检查，serve
 	cd server/tools && go mod tidy -diff
 
 .PHONY: lint-web
-lint-web: ## Markdown 样例集自检；e2e 换文档只经帮手的门禁；Playwright 项目配置的检查；oxlint（零警告）；格式检查；各包的类型检查（需要 Node）
+lint-web: ## Markdown 样例集自检；e2e 换文档只经帮手的门禁；Playwright 项目配置的检查；收集第三方许可证的两个脚本对着桩跑；oxlint（零警告）；格式检查；各包的类型检查（需要 Node）
 	node tools/md-fixtures/check.mjs
 	node tools/e2e-navigation/check.mjs
 	node tools/e2e-projects/check.mjs
+	node tools/licenses/check.mjs
 	pnpm run check:lint
 	pnpm run check:format
 	pnpm -r run check:types
