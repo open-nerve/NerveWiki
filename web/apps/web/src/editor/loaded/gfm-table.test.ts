@@ -61,6 +61,23 @@ test.each<[string, string]>([
     "in a list's item, a row indented a tab and 3 past its column before the delimiter row",
     "- | a | b | c |\n\t   | - |\n  | d |\n  | - | - |\n  | ‸",
   ],
+  // A quote's mark takes one column of a tab after it, which leaves the columns past that.
+  [
+    "in a quote, a tab after the mark and 2 spaces before the delimiter row",
+    ">\t| a | b | c |\n>\t  | - |\n>\t| d |\n>\t| - | - |\n>\t| ‸",
+  ],
+  [
+    "in a list in a quote, a tab after the mark and 4 past the column before the delimiter row",
+    "> - | a | b | c |\n>\t    | - |\n>   | d |\n>   | - | - |\n>   | ‸",
+  ],
+  [
+    "in a quote in a quote, a tab after each mark and 2 spaces before the delimiter row",
+    "> > | a | b | c |\n>\t>\t  | - |\n> > | d |\n> > | - | - |\n> > | ‸",
+  ],
+  [
+    "in a quote, the mark at column 1, its tab 2 wide and 3 spaces before the delimiter row",
+    " > | a | b | c |\n >\t   | - |\n > | d |\n > | - | - |\n > | ‸",
+  ],
 ])("in a table: %s", (_, doc) => {
   expect(at(doc)).toBe(true);
 });
@@ -81,6 +98,19 @@ test.each<[string, string]>([
   ["a setext heading of a header of more cells", "| a | b | c |\n| - | - |\n| ‸\n---"],
   ["a header ending in a no-break space, a cell more", "| a |\u00a0\n| - |\n| ‸"],
   ["in a list's item, a delimiter row indented 4 past its column", "- | a |\n      | - | - |\n  | ‸"],
+  // A tab after a quote's mark is as wide as its column has it.
+  [
+    "in a quote, the mark at column 2, its tab 1 wide and 2 spaces: a delimiter row",
+    "  > | a | b | c |\n  >\t  | - |\n  > | d |\n  > | - | - |\n  > | ‸",
+  ],
+  [
+    "in a quote in a quote, a tab after each mark and 1 space: a delimiter row",
+    "> > | a | b | c |\n>\t>\t | - |\n> > | d |\n> > | - | - |\n> > | ‸",
+  ],
+  [
+    "in a list in a quote, a tab after its first line's mark (column 4), a row 2 past it: a delimiter row",
+    ">\t- | a | b | c |\n>       | - |\n>     | d |\n>     | - | - |\n>     | ‸",
+  ],
 ])("no table: %s", (_, doc) => {
   expect(at(doc)).toBe(false);
 });

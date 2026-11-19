@@ -13,10 +13,11 @@ type Node = ReturnType<typeof syntaxTree>["topNode"];
  * its first delimiter row, the table going on to the paragraph's end. A
  * header of more cells than that delimiter row makes no table, nor does
  * the paragraph look further. A paragraph's lines are read as goldmark has
- * them: past the marks of the quotes (a callout's too) and the indent of
- * the list items it is in, to the column its first line starts at (a tab
- * across it leaving the columns past it), a lazy line's as written (M6/P7
- * fix check fc3-c1-2; M12/P2/S5, 12.8). A setext heading lezer makes of a
+ * them: past the marks of the quotes (a callout's too), a tab after one
+ * leaving the columns past the one it takes, and the indent of the list
+ * items it is in, to the column its first line starts at (a tab across it
+ * leaving the columns past it), a lazy line's as written (M6/P7 fix check
+ * fc3-c1-2; M12/P2/S5, 12.8). A setext heading lezer makes of a
  * paragraph and the underline after it, goldmark makes a table of first,
  * if the paragraph has one, each of its lines trimmed: the underline is not
  * the table's. Spaces are ASCII's.
@@ -47,7 +48,8 @@ function inParagraphTable(state: EditorState, paragraph: Node, at: number, setex
   // A list item's column, past the marks of the quotes it is in: the first line's, past the last of them.
   const before = state.doc.sliceString(head.from, paragraph.from);
   const mark = before.lastIndexOf(">");
-  const column = mark < 0 ? widthOf(before) : widthOf(before.slice(mark + 1).replace(/^[ \t]/, ""));
+  const column =
+    mark < 0 ? widthOf(before) : widthOf(pastMark(before.slice(mark + 1), widthOf(before.slice(0, mark + 1))));
   const lineOf = (n: number): string => {
     const line = state.doc.line(n);
     if (n === first) {
@@ -56,7 +58,7 @@ function inParagraphTable(state: EditorState, paragraph: Node, at: number, setex
     // At the top level a line is as written: a delimiter row indented more than 3 is none.
     let text = line.text;
     if (quoted) {
-      text = text.replace(/^(?:[ \t]*>[ \t]?)*/, "");
+      text = pastQuotes(text);
     }
     if (setext) {
       return text.replace(/^[ \t]+/, "");
@@ -151,13 +153,36 @@ function indentWidth(line: string): number {
   return width;
 }
 
-/** widthOf is the width of text, a tab to the next multiple of 4. */
-function widthOf(text: string): number {
-  let width = 0;
+/** widthOf is the width of text that starts at column from, a tab to the next multiple of 4. */
+function widthOf(text: string, from = 0): number {
+  let width = from;
   for (const c of text) {
     width += c === "\t" ? 4 - (width % 4) : 1;
   }
-  return width;
+  return width - from;
+}
+
+/** pastQuotes is line past the marks of the quotes it starts with, each past the space or the tab after it (pastMark). */
+function pastQuotes(line: string): string {
+  let text = line;
+  let column = 0;
+  for (let mark = /^[ \t]*>/.exec(text); mark !== null; mark = /^[ \t]*>/.exec(text)) {
+    column += widthOf(mark[0], column);
+    const after = text.slice(mark[0].length);
+    text = pastMark(after, column);
+    column += /^[ \t]/.test(after) ? 1 : 0;
+  }
+  return text;
+}
+
+/**
+ * pastMark is text after a quote's mark, which ends at column, past the
+ * space or the tab after it: the mark takes one column of a tab, which
+ * leaves the columns past that as spaces (goldmark's padding, as
+ * pastColumn's; review B's check 2, N1).
+ */
+function pastMark(text: string, column: number): string {
+  return text.startsWith("\t") ? " ".repeat(3 - (column % 4)) + text.slice(1) : text.replace(/^ /, "");
 }
 
 /**
