@@ -29,7 +29,15 @@ function cancelPending(pending: RefObject<PendingPaste | undefined>): void {
   if (pending.current !== undefined && !pending.current.sent) pending.current.controller.abort();
 }
 
-/** A source is created with its chosen title and body; file operations belong to the notebook's lasting queue. */
+/** What the paste's form tells the dialog: whether something is entered, and whether it is being sent. */
+type PasteState = { draft: boolean; sending: boolean };
+
+/**
+ * A source is created with its chosen title and body; file operations belong to the notebook's lasting queue. A paste
+ * with a title or Markdown entered is not lost to Escape or a click outside: the dialog asks first, Keep editing
+ * giving the focus back where it was; being sent, it stays, as closing would not stop what was sent; Cancel closes
+ * as before (M12/P2/S5, 38.7).
+ */
 export function SourceAddDialog({
   notebook,
   parent,
@@ -53,12 +61,41 @@ export function SourceAddDialog({
   const opening = useRef<string | undefined>(undefined);
   const done = useRef(false);
   const pending = useRef<PendingPaste | undefined>(undefined);
+  const paste = useRef<PasteState>({ draft: false, sending: false });
+  const [asking, setAsking] = useState(false);
+  // The element the focus was on as the dialog asked: Keep editing gives it back.
+  const askedFrom = useRef<Element | null>(null);
+  const keepButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
     if (held.open && opening.current === undefined) opening.current = location.key;
   }, [held.open, location.key]);
+  // Asked, the focus goes to the answer that loses nothing.
+  useEffect(() => {
+    if (asking) keepButton.current?.focus();
+  }, [asking]);
   const changeOpen = (open: boolean) => {
-    if (!open) cancelPending(pending);
+    if (!open) {
+      cancelPending(pending);
+      setAsking(false);
+    }
     held.onOpenChange(open);
+  };
+  // Escape or a click outside would close: a paste being sent stays, one with a draft asks first.
+  const holding = (event: Event) => {
+    if (mode !== "paste") return;
+    if (paste.current.sending) {
+      event.preventDefault();
+    } else if (paste.current.draft) {
+      event.preventDefault();
+      askedFrom.current = document.activeElement;
+      setAsking(true);
+    }
+  };
+  const keepEditing = () => {
+    setAsking(false);
+    const from = askedFrom.current;
+    askedFrom.current = null;
+    if (from instanceof HTMLElement && from.isConnected) from.focus();
   };
   const openNode = (id: string) => {
     done.current = true;
@@ -70,6 +107,21 @@ export function SourceAddDialog({
       {held.open && (
         <DialogContent
           className="sm:max-w-xl"
+          onEscapeKeyDown={(event) => {
+            if (asking) {
+              event.preventDefault();
+              keepEditing();
+            } else {
+              holding(event);
+            }
+          }}
+          onInteractOutside={(event) => {
+            if (asking) {
+              event.preventDefault();
+            } else {
+              holding(event);
+            }
+          }}
           onCloseAutoFocus={(event) => {
             event.preventDefault();
             if (mounted() && opening.current === location.key) held.onClosed(done.current);
@@ -79,11 +131,25 @@ export function SourceAddDialog({
         >
           <DialogTitle>{t(mode === "paste" ? "source.pasteTitle" : "source.filesTitle", { name })}</DialogTitle>
           <DialogDescription>{t(mode === "paste" ? "source.pasteBody" : "source.filesBody")}</DialogDescription>
+          {asking && (
+            <div role="alert" className="space-y-3 rounded-md border px-4 py-3 text-sm">
+              <p>{t("source.discardAsk")}</p>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" ref={keepButton} onClick={keepEditing}>
+                  {t("source.keepEditing")}
+                </Button>
+                <Button type="button" variant="destructive" onClick={() => changeOpen(false)}>
+                  {t("source.discardClose")}
+                </Button>
+              </div>
+            </div>
+          )}
           {mode === "paste" ? (
             <PasteSource
               notebook={notebook}
               parent={parent}
               pending={pending}
+              report={(state) => (paste.current = state)}
               openNode={openNode}
               cancel={() => changeOpen(false)}
               created={(id) => {
@@ -112,6 +178,7 @@ const PasteSource = observer(function PasteSource({
   notebook,
   parent,
   pending,
+  report,
   openNode,
   cancel,
   created,
@@ -119,6 +186,8 @@ const PasteSource = observer(function PasteSource({
   notebook: Notebook;
   parent: string;
   pending: RefObject<PendingPaste | undefined>;
+  /** Told whether a title or Markdown is entered, and whether it is being sent, as either changes. */
+  report: (state: PasteState) => void;
   openNode: (id: string) => void;
   cancel: () => void;
   created: (id: string) => void;
@@ -145,6 +214,9 @@ const PasteSource = observer(function PasteSource({
     at.current = key;
   }, [key]);
   useEffect(() => () => cancelPending(pending), [pending]);
+  useEffect(() => {
+    report({ draft: title !== "" || content !== "", sending });
+  }, [report, title, content, sending]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

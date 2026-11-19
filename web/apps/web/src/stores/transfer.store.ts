@@ -175,13 +175,16 @@ export class TransferStore {
   }
 
   /**
-   * addPage adds the jobs of the page cursor names, unless the jobs held no
-   * longer end where it begins: a read again replaced them meanwhile.
+   * addPage adds the jobs of the page cursor names. The jobs held no longer
+   * ending where it begins, a read again replaced them meanwhile: the page
+   * after them now is the one asked for, read as more reads it, nothing
+   * once they are read to their end (M12/P2/S5, 19.4).
    */
   private async addPage(cursor: string): Promise<TransferJob[]> {
     const page = await this.service.list(this.notebookId, cursor);
     if (cursor !== this.nextCursor) {
-      return [];
+      // A read again moved where the jobs held end: the page after them now is the one asked for.
+      return this.nextCursor === null ? [] : this.more();
     }
     return runInAction(() => {
       const held = this.jobs ?? [];

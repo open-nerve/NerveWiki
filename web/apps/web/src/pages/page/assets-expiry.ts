@@ -18,6 +18,46 @@ export function rereadIn(expires: number, read: number): number {
   return Math.min(Math.max(expires - read - expiryMargin, expiryFloor), signedFor - expiryMargin);
 }
 
+/**
+ * lookAgainIn is how often at the most a watch looks at the clock: a
+ * timer does not run while the machine sleeps, and wakes as late as it
+ * slept, the addresses expired meanwhile (M12/P2/S5, 17.6).
+ */
+const lookAgainIn = 60_000;
+
+/**
+ * dueWatch calls due once the clock reaches at: it looks at the clock
+ * lookAgainIn apart at the most, and as the page is shown again from the
+ * back-forward cache (pageshow), which SWR does not read again for. The
+ * stop it answers ends the watch: its timer and its listener go, and a
+ * look already due does nothing (M12/P2/S5, 17.6).
+ */
+export function dueWatch(at: number, due: () => void): () => void {
+  let over = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const stop = () => {
+    over = true;
+    clearTimeout(timer);
+    window.removeEventListener("pageshow", look);
+  };
+  function look() {
+    if (over) {
+      return;
+    }
+    clearTimeout(timer);
+    const now = Date.now();
+    if (now >= at) {
+      stop();
+      due();
+      return;
+    }
+    timer = setTimeout(look, Math.min(at - now, lookAgainIn));
+  }
+  window.addEventListener("pageshow", look);
+  look();
+  return stop;
+}
+
 /** An answer that holds attachments' addresses: when the first of them expires, null for none. */
 type Expiring = { assets_expire_at: string | null };
 
@@ -66,7 +106,10 @@ function dueOf(answer: Expiring): number | undefined {
  * or online again, and its images that fail to load meanwhile read it
  * again (reading/assets.ts). A hidden tab's is not read as it is due, but
  * as the tab is shown (SWR). A clock far ahead of the server's has it
- * read again each expiryFloor, as the attachments' lists are.
+ * read again each expiryFloor, as the attachments' lists are. Its timer
+ * looks at the clock each minute at the most, and as the page is shown
+ * from the back-forward cache: a machine that slept past it reads it
+ * again within a minute of waking (dueWatch).
  */
 export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread: () => void): T | undefined {
   const latest = useRef(reread);
@@ -83,16 +126,12 @@ export function useAssetsExpiry<T extends Expiring>(data: T | undefined, reread:
     if (data === undefined || due === undefined || expired) {
       return undefined;
     }
-    const timer = setTimeout(
-      () => {
-        if (!document.hidden && !readAgain.has(data)) {
-          readAgain.add(data);
-          latest.current();
-        }
-      },
-      Math.max(due - Date.now(), 0)
-    );
-    return () => clearTimeout(timer);
+    return dueWatch(due, () => {
+      if (!document.hidden && !readAgain.has(data)) {
+        readAgain.add(data);
+        latest.current();
+      }
+    });
   }, [data, expired]);
   return expired ? undefined : data;
 }

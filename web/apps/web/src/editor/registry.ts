@@ -26,6 +26,13 @@ export type EditorContext = {
    * rejects as the upload fails or is cancelled, its row saying why.
    */
   uploadAsset(file: File): Promise<Asset>;
+  /**
+   * refuses tells whether uploadAsset refuses file before it is sent (a
+   * page's file, or one too large): a paste of such files only, or of
+   * files without an extension, which have no link, keeps the selection it
+   * would replace, nothing taking its place (M12/P2/S5, 18.2).
+   */
+  refuses(file: File): boolean;
 };
 
 /**

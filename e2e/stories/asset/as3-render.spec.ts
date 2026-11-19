@@ -370,4 +370,22 @@ test("AS3 (page): the image, the audio and the video load from their addresses; 
     { kind: "wikilink", property: null, target: "data.zip", resolved: data.id },
     { kind: "embed", property: null, target: "missing.png", resolved: null },
   ]);
+
+  // A size written keeps its height, the image scaled in its box, not stretched (M12/P2/S5, 15.1): the image is 2 by
+  // 3; a height alone gives the width by the image's shape; a width and a height give the box, the image contained.
+  const sizes = await createPage(api, pat, notebook.id, "Sizes", null, "![[front.png|0x200]] ![[front.png|300x200]]\n");
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, sizes.id));
+  const shown = page.getByRole("article", { name: "Sizes" }).locator("img.nw-asset");
+  await expect(shown).toHaveCount(2);
+  await expect.poll(() => shown.nth(1).evaluate((img) => (img as HTMLImageElement).naturalWidth)).toBe(2);
+  const tall = await shown.nth(0).boundingBox();
+  const boxed = await shown.nth(1).boundingBox();
+  expect([tall?.height, Math.round(tall?.width ?? 0), boxed?.width, boxed?.height]).toEqual([200, 133, 300, 200]);
+  expect(await shown.nth(1).evaluate((img) => getComputedStyle(img).objectFit)).toBe("contain");
+  // At a phone's width, the box is no wider than the article, its height kept.
+  await page.setViewportSize({ width: 375, height: 800 });
+  const article = await page.getByRole("article", { name: "Sizes" }).boundingBox();
+  const narrow = await shown.nth(1).boundingBox();
+  expect(narrow?.height).toBe(200);
+  expect((narrow?.x ?? 0) + (narrow?.width ?? 0)).toBeLessThanOrEqual((article?.x ?? 0) + (article?.width ?? 0) + 0.5);
 });

@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订；2026-11-19 照 S4 的实施与审查修订） |
-| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；S4 已合并 `ad5d78b5`，[S4 的审查记录](reviews/P2-S4-reading-view-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.4；S5 实施中，S6 未开工） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订；2026-11-19 照 S4、S5 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；S4 已合并 `ad5d78b5`，[S4 的审查记录](reviews/P2-S4-reading-view-review.md)；S5 已合并 `（待填：合并号）`，[S5 的审查记录](reviews/P2-S5-editor-assets-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.5；S6 未开工） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -134,7 +134,7 @@
      - 第 21 条加上传在途时离开先问（18.1）。
    - **第 24 条，随 P2/S6 改**：13.2 第 12 条加"关着的原生选择等读者停下再用"（26.5，P2-34）。
 4. **部件**（第 7 节 P2/S4 一行 `:742`、P2/S5 一行 `:743` 的"web、e2e"）：
-   - **S5 加 server**："web、e2e、server（`platform/markdown/obsidian` 的一个属性）"。15.1 只改 CSS，只修得了"只写高度"；"宽高都写"要服务端给写下的尺寸一个标记属性（P2-27）。
+   - **S5 加 server**："web、e2e、server（`platform/markdown/obsidian` 的一个属性）"。15.1 只改 CSS 连"只写高度"也修不了（Tailwind 的 preflight，决定 621，10.5）；"宽高都写"要服务端给写下的尺寸一个标记属性（P2-27）。
    - **S4 加 server 的测试**："web、e2e、server（只加 Go 测试与 `testdata/m12` 的样例）"（P2-45）。
    - 两处都不改服务端的接口、契约与组合根。
    - S5 的"可按三组提交"改为"四组"（4.5）。
@@ -188,11 +188,11 @@
 - **400（P2-23）6.2 的重读也给"编辑"的 `forbidden`**：同一个根因，同一行（4.4.2 末条）。
 - **401（P2-24）焦点找不到同一个节点与同键的元素时，给它原来所在的那一块**（经配对映射到的顶层块，`tabindex=-1`，不展开 callout、不滚动），不再落到 `body`；任务勾选框照 M5/P6 的规则，找不回就不给（`page-tasks.test.tsx:103`、`:146`、`:217` 照过）（审查 A 的 I1、M3，修订核对 A 的 M11；4.4.3）。实际第 4 步给的 `tabindex` 不被滚动区拿走（决定 605），第 3 步只在映射到的块与同一处插进的近旁几块里找（决定 606，10.4）。
 - **402（P2-25）8.1 先探查、复现了才改**；没复现就移到发布之后的人工清单（4.4.4）。实际复现了，在 S4 修（决定 610，10.4）。
-- **403（P2-26）上传的超时**：请求体在发时 60 秒没有进度、发完之后 180 秒没有答复就放弃，两种说明，离开页面的提醒随之关掉；不设整体的超时。M 比 N 长：中止会让服务端的事务回滚，误判一次就毁掉一个健康的上传，而发完之后发送缓冲还要排空（审查 C 的 M2；4.5.1）。
+- **403（P2-26）上传的超时**：请求体开始发出之后 60 秒没有进度、发完之后 180 秒没有答复就放弃，两种说明，离开页面的提醒随之关掉；不设整体的超时。M 比 N 长：中止会让服务端的事务回滚，误判一次就毁掉一个健康的上传，而发完之后发送缓冲还要排空（审查 C 的 M2；4.5.1）。起点是第一次上传进度：浏览器里排队等连接的请求不计（决定 620，S5 审查 A 的 I1，10.5）。
 - **404（P2-27）15.1 在 S5 里给服务端加一个属性**（写下的尺寸 `data-nw-sized`），CSS 照它；只改 CSS 分不开写下的与图片自己的宽高（4.5 的 15.1）。
 - **405（P2-28）17.2b 只给提示的 `span` 加 `select-none`，空格留在外面**：空格放进去（移交的写法）在 jsdom 里少一个空格，约 30 处可读名字的断言要改成与真浏览器不符的样子（05-lessons 第 6 节）。三种引擎里复制都不带提示，审查 C 的探针（`m12/p2-review-c/probe1.txt`）证实（4.5 的 17.2b）。
 - **406（P2-29）17.4 下载的链接在点击时比到期，过期就再签再下**：只对下载的链接，新标签页的照旧靠到期之前的重读（13.2 第 27 条随之改）；放行的标记在这次派发之后立即清掉，S4 的就地换地址之后第二次过期也能重签（审查 C 的 M1；4.5 的 17.4）。
-- **407（P2-30）只有 PG15 进三种浏览器**：PG15 查阅读视图的就地更新（4.4.6）。AS6 只在 Chromium：17.2b、17.4 的三引擎行为审查 C 已探过，相同；15.2 只在 Chromium 复现（4.5、P2-42）。
+- **407（P2-30）只有 PG15 进三种浏览器**：PG15 查阅读视图的就地更新（4.4.6）。AS6 只在 Chromium：17.2b、17.4 的三引擎行为审查 C 已探过，相同（实际：附件行在 Chromium 里是可拖的 `li`，选不中、复制不出，Firefox、WebKit 能复制行，不带提示，Firefox 复制右栏的值多一个尾随空格；AS6 只复制段落与右栏，行的 `select-none` 由 vitest 的结构断言守，AS6 不在 Firefox、WebKit 另跑，决定 623，10.5）；15.2 只在 Chromium 复现（4.5、P2-42）。
 - **408（P2-31）27.2 在笔记本的外壳卸下时把树标为未确认**（照 P4/S2 的结论写：保留整棵树时照此，改成分层加载时照 4.6.6），重新挂上时页的外壳先读一次树再显示：比移交写的"点搜索结果时标记"宽（后退、前进、任何从笔记本外进来的路都算），不改搜索结果与根 store 的查找（4.6 的 27.2）。
 - **409（P2-32）24.8 的 `links` 事件的读排在同一个单元的 `pages` 事件要的那次树的读之后**：移交写的"跳过树里没有的页"不够（事件先于删除的答复到时树里还有那一页，4.6 的 24.8）。
 - **410（P2-33）21.10 只改"说的话"，不改标签页**：换版本时留着的标签页对新版本仍对，`version-page.test.tsx:227` 有意钉着它（4.6 的 21.10）。
@@ -204,7 +204,7 @@
 - **416（P2-39）26.18a 命中的两端都对齐到字素簇**：开头也往前移到簇的起点（移交只说末尾），命中盖住整个簇（4.6 的 26.18a）。
 - **417（P2-40）16.4c 读作"清掉已不成立的那一句"**：没有在途的上传、这一轮也没话说时清空播报区域；仍成立的（"已复制嵌入"）不清，不做定时清空（4.5 的 16.4c）。
 - **418（P2-41）S6 不做的两处**：回收站预览"在后台恢复"的开始也有在途的窗口（`trash-preview.tsx:124`），移交没写，进 v0.2；21.3、22.2 的"刷新之后不再说"只用 vitest 断言历史条目的 state，不在 HI2 加一次真的刷新（4.6 的 21.3、22.14）。
-- **419（P2-42）15.2 在媒体的 `DOMActivate` 之后的下一个任务里把 `open` 设回去**（主持者定"先探、再定"；修订核对 C 的 M9 改成不留状态）：`DOMActivate` 的目标是 `<summary>` 里的音视频时，取下这个 `<details>` 当时的 `open`，`setTimeout(0)` 里变了就设回；不听 `toggle`、`keydown`、`pointerdown`，不跨事件记东西。三种引擎里探过：Chromium 点控件的空白与时间处会开合（没修时复现），改了之后不开合，只派发一次 `toggle`；读者点 summary 的文字、键盘的 Enter 与 Space、点过控件之后程序里的打开（锚点导航、焦点还原），都照常；Firefox、WebKit 本来就不开合，改与不改相同（`m12/p2-check1-c/probe.log`，`fix=timeout`）。上一版留着记录、等下一次 `toggle` 复原，在 Firefox 与 WebKit 上会撤回点过控件之后程序里的打开；初稿听 `click` 的改法在 Chromium 里从不运行（审查 C 的 I1；4.5 的 15.2）。
+- **419（P2-42）15.2 在媒体的 `DOMActivate` 之后的下一次渲染更新里、绘制之前把 `open` 设回去**（主持者定"先探、再定"；修订核对 C 的 M9 改成不留状态）：`DOMActivate` 的目标是 `<summary>` 里的音视频时，取下这个 `<details>` 当时的 `open`，`requestAnimationFrame` 的回调里变了就设回；不听 `toggle`、`keydown`、`pointerdown`，不跨事件记东西。三种引擎里探过：Chromium 点控件的空白与时间处会开合（没修时复现），改了之后不开合，只派发一次 `toggle`；读者点 summary 的文字、键盘的 Enter 与 Space、点过控件之后程序里的打开（锚点导航、焦点还原），都照常；Firefox、WebKit 本来就不开合，改与不改相同（`m12/p2-check1-c/probe.log`，`fix=timeout`）。上一版留着记录、等下一次 `toggle` 复原，在 Firefox 与 WebKit 上会撤回点过控件之后程序里的打开；初稿听 `click` 的改法在 Chromium 里从不运行（审查 C 的 I1；4.5 的 15.2）。实际：S5 的探针量到 `setTimeout(0)` 每次点击画出一帧展开的 callout（Chromium，20/20），rAF 0 帧，三种引擎其余各格相同；主持者改用 rAF（决定 618，改了本条的写法，10.5）。
 - **420（P2-43）菜单与选项的高亮在 S3 修**（审查之后主持者定，B 的 Q1 取甲）：菜单项、快速切换的选项与链接补全的选中项加 2 px、`--ring` 的内嵌环（底色照旧），对相邻的颜色至少 3:1；附录 A 的去处随之记（4.3 的 12.4）。
 - **421（P2-44）Playwright 的项目由一个检查钉住**：`make lint-web` 加 `tools/e2e-projects/check.mjs`，以 `playwright test --list` 断言 `firefox` 项目列出 PG15、`webkit-narrow` 只列出带 `@narrow` 的那几格（审查 C 的 M7；5.1）。
 - **422（P2-45）附件地址的拼法由 Go 与网页共用的样例钉住**：`testdata/m12/signed-view.json`，Go 一侧断言真的渲染与签名写出的就是它，网页一侧 `patch.test.ts` 读它核对 `addressesOnly` 与 `resign`（审查 A 的 I2；4.4.2）。实际 Go 一侧的测试在 asset 模块的根包（决定 609，10.4）。
@@ -2184,7 +2184,7 @@ U4 与 U5 之前，`useServerHTML` 记下 `document.activeElement`（在文章�
 
 S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出与来源。另加"阅读视图里的附件"一组：与 S4 有交叉，4.5.2 是交叉的核对。
 
-- **本节的取舍**：P2-26 至 P2-30、P2-38、P2-40、P2-42（2.3）。AS6 只在 Chromium（P2-30）；15.2 在媒体的 `DOMActivate` 之后的下一个任务里设回 `open`、不留状态（P2-42），是在三种引擎里探过的（修订核对 C 的探针）。
+- **本节的取舍**：P2-26 至 P2-30、P2-38、P2-40、P2-42（2.3）。AS6 只在 Chromium（P2-30）；15.2 在媒体的 `DOMActivate` 之后的下一次渲染更新里（rAF，决定 618）设回 `open`、不留状态（P2-42），是在三种引擎里探过的（修订核对 C 的探针）。
 - **16.3 的超时**：在 4.5.1 定下：60 秒没有进度、发完之后 180 秒没有答复。
 - **部件**：S5 多了 server，是 15.1 的一个属性（P2-27、2.1 第 4 条）。
 - **13.2 第 27 条的新文字**：写在 8.2。
@@ -2217,7 +2217,7 @@ S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出�
 | 38.7 | A | `W/pages/notebook/source-add-dialog.tsx` | vitest：`source-add-dialog.test.tsx` | 小 |
 | 38.9 | B | `attachments-section.tsx`（`useNotice`） | vitest：`source-attachments.test.tsx` | 小（同 16.4c） |
 
-- 17.2b、17.4 的 e2e 只在 Chromium（P2-30 改）：审查 C 的探针在三种引擎（无头）里核对过，两样的行为相同（`m12/p2-review-c/probe1.txt`）；结果记进 S5 的记录。
+- 17.2b、17.4 的 e2e 只在 Chromium（P2-30 改）：审查 C 的探针在三种引擎（无头）里核对过，两样的行为相同（`m12/p2-review-c/probe1.txt`）；结果记进 S5 的记录。实际见 10.5（附件行，决定 623）。
 - 只能人工核对的只有一样：17.4 在真浏览器里会不会弹下载许可，进 P5/S3 的人工清单（见 17.4）。
 - 16.3 不加 e2e：三种引擎"请求体发完"的信号派发的先后，探针已量过（`probe2.txt`，见 4.5.1.3）；两种信号 vitest 都钉住。
 
@@ -2249,7 +2249,7 @@ S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出�
   - jsdom 做不到的：复制的序列化与 `user-select`，程序里 `click()` 一个 `download` 链接、真的下载。
   - 自成一个故事：两格各要自己的页与附件，不动 AS3 由 API、MCP 两格共用的 `content`（`as3-render.spec.ts:37-39`）。
 - **AS3 (page)**（`as3-render.spec.ts:297`，只 Chromium，照现在）：15.1 另建一页 `Sizes`，量盒子，再在 375 宽量一次。jsdom 没有布局。
-- 推断的用时：AS6 每格建团队、上传两三个附件、建页、打开、做一件事，约 5–8 秒，三格约 15–24 秒的 worker 时间；AS3 多约 1–2 秒。CI 推断 2 个 worker（审查 C 的"核对过"第 11 条），E2E 一步的墙钟多约 5–10 秒。
+- 推断的用时：AS6 每格建团队、上传两三个附件、建页、打开、做一件事，约 5–8 秒，三格约 15–24 秒的 worker 时间；AS3 多约 1–2 秒。实际（S5 的 CI）：AS6 三格各 0.5–1.0 秒，AS3 (page) 多 0.3–1.0 秒，合计约 2–3 test-seconds（10.5）。CI 推断 2 个 worker（审查 C 的"核对过"第 11 条），E2E 一步的墙钟多约 5–10 秒。
 
 ##### 4.5.0.4 提交的分组（每个提交单独为绿：tsc、knip、vitest、oxlint）
 
@@ -2258,9 +2258,9 @@ S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出�
 ##### 4.5.0.5 拿不准的、要实施者先核对与审查重点看的
 
 1. **15.1**：Obsidian 对 `|300x200` 是拉伸还是保持比例，没有核实；推荐的 `object-fit: contain` 不变形（15.1）。
-2. **15.2**：设回在 `setTimeout(0)` 里，Chromium 只派发一次 `toggle`；中间会不会画出一帧展开的样子没有量（15.2）。
+2. **15.2**：已核（S5）：`setTimeout(0)` 画出一帧展开，改用 rAF（决定 618，10.5）。
 3. **18.1**：退出登录时 `UnsavedGuard` 不问，靠旧一代整个卸下、blocker 随之注销（推断），第三格核对（18.1）。
-4. **12.8**：lezer 的 `Paragraph` 与 goldmark 的段落行一致是推断；实施时对着 goldmark 做一次差分探针，同一组样例比服务端渲染出 `<table>` 与编辑器判为表格（12.8）。
+4. **12.8**：已核（S5）：差分探针找到容器里的漏判，照 goldmark 去掉容器的记号（决定 619，10.5）；审查 B 与核对的探针又找到 setext 的下划线、Unicode 空白、列表项的列与两种制表符（修复第 1–3 轮，10.5）。
 5. **20.2**：留被拒的那句（`importBusy`），压下常驻的 `importUnderWay`，已定：2.3 的 P2-52（20.2）。
 
 #### 4.5.1 16.3 上传的超时取多长（本 Phase 要定的）
@@ -2291,7 +2291,10 @@ S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出�
 
 已定：2.3 的 P2-26，M 由 60 秒改为 180 秒（主持者与设计者的决定，照审查 C 的 M2）。
 
-- **N = 60 秒**：请求体在发时，最后一次上传进度之后 60 秒没有新的进度就放弃。
+- **N = 60 秒**：请求体开始发出之后（第一次上传进度起），最后一次上传进度之后 60 秒没有新的进度就放弃。`send` 之后、第一次进度之前不计时（决定 620）。
+  - 起点不能是 `send`：HTTP/1.1 下浏览器对同一主机至多开 6 条连接，网页的事件流一直占一条（同一浏览器里每多一个这个 wiki 的标签页再少一条，推断），一次传 6 个以上文件时第 6 个起在浏览器里排队，没有连接就没有进度；前面的要传一分钟以上（慢的上行、大文件）时，从 `send` 起算会把一个字节也没发的判成"停住了"。S5 审查 A 的探针（Node 的 HTTP/1.1 服务每条连接每秒读 64 KiB，一条一直开着的事件流，同时 8 个 5 MiB 的上传；分支自己的 `upload-fetch.ts`）：Chromium、Firefox、WebKit 都是前 5 个照常、约 80 秒答 201，后 3 个没有一次进度、服务端没收到一个字节，60.3 秒时 `UploadTimeout stalled`；同样的 5 个不排队则全部答 201。改后（`4390039f`）同样的 8 个，三种引擎都答 201：排着的 3 个的第一次进度在前面的答复之后（约 80 秒），约 160 秒答 201（审查 A 核对第 1 轮）。走 HTTP/1.1 的部署：不经 TLS 直接访问；README 的 nginx 样例（`listen 443 ssl;`，没有 `http2`）。Caddy 默认 HTTP/2，推断不排队（没有量）。
+  - 从第一次进度起算不放过连上之后无声断了的：发送缓冲先收下一些字节，照样有第一次进度，之后照样一分钟判停住。小文件可能没有一次进度就发完：`xhr.upload` 的 `load` 直接起 M 的计时。实际三种引擎里 1 KiB 也报一次 100% 的进度；Firefox 的 `load` 推到答复，起 M 的计时靠的是那次进度（审查 A 核对第 1 轮：2 个 1 KiB 的上传、服务端不答，三种引擎都在约 0.3–0.4 秒报 100%，180.3–180.4 秒以 `unanswered` 中止）。一个字节也没发出、连接一直排着或连不上的，照 16.3 之前那样等（连不上的由浏览器以网络错误结束）。
+  - 不取：在 `AssetStore` 里限并发（同时至多 k 个，其余在 store 里等、行显示"等待"）：要改界面、加键，不在 S5 做。
   - 字节在流动时进度不会停一分钟：探针里两次进度之间最长约 6 秒（256 KiB/s，见 4.5.1.1）；按最低速率 64 KiB/s 推断约四倍，仍在 60 秒之内。
   - 取舍：服务端的读截止是累计的（`stream.go:245`），直接暴露或经 Caddy 时前面传得快的上传可以停很久，服务端照收（例如 50 MiB 以 10 MiB/s 传了一半，余量约 6 分钟）。N = 60 会中止这类服务端本来收得下的上传（漫游、VPN 重连），今天它们会接着传完。换来的是连接无声断了、服务端挂住时一分钟之内告诉用户；经 README 的 nginx 时，停过 60 秒本来就被代理切断。
 - **M = 180 秒**：请求体发完之后 180 秒没有答复就放弃。
@@ -2313,7 +2316,7 @@ S5 照 00 号文档第 7 节分组：附件与上传、编辑器、导入导出�
 
 ##### 4.5.1.5 13.2 要随之写进的一句
 
-13.2 第 27 条末尾加："附件与导入的上传不设整体的超时：请求体在发时 60 秒没有进度、发完之后 180 秒没有答复就放弃，行上（或导入的对话框里）分两种说明，离开页面的提醒随之关掉（M12/P2/S5，移交第 16 条）。"
+13.2 第 27 条末尾加："附件与导入的上传不设整体的超时：请求体开始发出之后 60 秒没有进度、发完之后 180 秒没有答复就放弃（浏览器里排队等连接、一个字节也没发出的不算；中止会让服务端的事务回滚，所以发完之后等得更久；答复到了就不再计时），行上（或导入的对话框里）分两种说明，离开页面的提醒随之关掉（`services/upload-fetch.ts` 的 `UploadTimeout`，M12/P2/S5，移交第 16 条）。"（句子照 8.2，决定 620 改了起点）
 
 #### 4.5.2 与 S4 的重叠
 
@@ -2341,7 +2344,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
     - 常量 `stallLimit = 60_000`、`answerLimit = 180_000`，文档注释各写一句理由（N：停住一分钟就放弃；M：发送缓冲的排空、服务端的 15 秒与 fsync，中止会让服务端回滚）。
     - `export class UploadTimeout extends Error { constructor(readonly stage: "stalled" | "unanswered") }`，`name` 是 `"UploadTimeout"`。
     - 一个计时 `wait(stage)`：清掉旧的，按 `stage` 取 N 或 M 重设；到点时记下 `timedOut = new UploadTimeout(stage)`，再 `xhr.abort()`。
-    - 谁重设：`xhr.send(form)`（`:84`）之后 `wait("stalled")`；上传进度的监听**总是**挂上（今天只在 `progress !== undefined` 时，`:60-62`），每次 `wait(event.lengthComputable && event.loaded >= event.total ? "unanswered" : "stalled")`；`xhr.upload` 的 `load` 时 `wait("unanswered")`。两个监听在 `send` 之前挂上。
+    - 谁重设：`xhr.send(form)` 之后不设（决定 620：排队等连接的不算），第一次进度（或 `upload` 的 `load`）设第一个计时；上传进度的监听**总是**挂上（今天只在 `progress !== undefined` 时，`:60-62`），每次 `wait(event.lengthComputable && event.loaded >= event.total ? "unanswered" : "stalled")`；`xhr.upload` 的 `load` 时 `wait("unanswered")`。两个监听在 `send` 之前挂上。
     - `settle`（`:53`）先 `clearTimeout`；`abort` 的监听（`:79-82`）改成 `reject(timedOut ?? aborted())`。
     - 删掉 `:78` 的 `timeout` 监听，不设 `xhr.timeout`。文档注释（`:29-39`）补两个计时。
   - `W/pages/page/upload-rows.tsx:262-282` 的 `failureText`：`isRefusal` 之后，`UploadTimeout` 按 `stage` 给 `asset.stalled` 或 `asset.unanswered`。
@@ -2349,21 +2352,22 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - 四个键见 4.5.0.2。
 - 测试（vitest）：
   - `W/services/upload-fetch.test.ts` 新加（`vi.useFakeTimers()`，`afterEach` 还原；结果接到 `let settled: unknown`，不直接 `await`，免得没修的代码挂住）：
-    - `"a body that goes nowhere for a minute is given up: the transfer is aborted, and it rejects with an UploadTimeout, stalled"`：`sending(form)`；走 59,999 毫秒，`sent().aborted === false`、`settled === undefined`；再走 1 毫秒，`aborted === true`，`settled` 是 `stage === "stalled"` 的 `UploadTimeout`。没修的代码上：`aborted` 是 `false`，`settled` 是 `undefined`。
+    - `"a body that goes nowhere for a minute is given up: the transfer is aborted, and it rejects with an UploadTimeout, stalled"`：`sending(form)`；`progress(10, 100)`（实际，决定 620）；走 59,999 毫秒，`sent().aborted === false`、`settled === undefined`；再走 1 毫秒，`aborted === true`，`settled` 是 `stage === "stalled"` 的 `UploadTimeout`。没修的代码上：`aborted` 是 `false`，`settled` 是 `undefined`。
     - `"progress puts the minute off: a body that goes on slowly is not given up"`：第 50 秒 `progress(10, 100)`，再走 50 秒没有中止，再走 10 秒才中止、`stalled`。
     - `"a body all sent waits three minutes for its answer: none comes, it is given up, unanswered"`：`progress(100, 100)` 之后走 60 秒没有中止，走到 180 秒中止、`stage === "unanswered"`；另一份只派发 `upload` 的 `load`（不报进度），同样。
     - `"an answer in time is the answer: nothing is aborted after"`：`progress(100, 100)`，第 179 秒 `answer(201)`，解析为 201；再走两分钟，`aborted === false`。
     - `"the signal stops it as a cancel still: an AbortError, not an UploadTimeout"`：计时进行中 `stop.abort()`，拒绝的 `name === "AbortError"`。
+    - 实际另加 `"a body not yet going, its request queued for a connection, is not given up: the minute counts from its first progress"`：走 61 秒、再走 10 分钟都没有中止；`progress(10, 100)` 之后走 59,999 毫秒没有中止，再走 1 毫秒中止、`stalled`。决定 620 之前的代码上：61 秒时已中止。
   - `W/pages/page/attachment-uploads.test.tsx` 新加：
     - `test.each` 两种语言 `"an upload the server does not answer within three minutes of its last byte fails, saying the upload was stopped; the button that had the focus dismisses it, and the page no longer asks before it is left (%s)"`：`vi.useFakeTimers({ shouldAdvanceTime: true })`；`server.uploadsHeld = true`；选 `a.png`；`progress(4, 4)`；"Finishing the upload of a.png"按钮 `focus()`；走 180 秒；`role="alert"` 的整句（en / zh）；"Dismiss the upload of a.png"（zh：`移除a.png的上传`）是同一个元素且有焦点（同 `:240` 那一格的"取消→移除"）；`transfers(server.app)[0]?.aborted === true`；`beforeunload` 的 `defaultPrevented === false`（照 `transfer-import.test.tsx:30-34`）。没修的代码上：仍是"Finishing…"，`findByRole("alert")` 超时。
-    - `"an upload that makes no progress for a minute fails, saying it stopped"`：不报进度，走 60 秒，`asset.stalled` 整句（en）。
-  - `W/pages/notebook/transfer-import.test.tsx` 新加 `test.each` 两种语言 `"an import's upload the server does not answer within three minutes of the zip says the upload was stopped, the file kept to try again (%s)"`：导入的答复挂住（`imports: () => new Promise(() => undefined)`），`progress(n, n)`，走 180 秒；横幅整句；"导入"不再 `disabled`；`asksBeforeLeaving() === false`；任务列表多读了一次。
+    - `"an upload that makes no progress for a minute fails, saying it stopped"`：不报进度，走 60 秒，`asset.stalled` 整句（en）。实际是 `test.each` 两种语言 `"an upload that, begun, makes no progress for a minute fails, saying it stopped (%s)"`：`progress(1, 4)` 之后走 60 秒，`asset.stalled` 整句（en / zh）（审查 C 的 M2）。
+  - `W/pages/notebook/transfer-import.test.tsx` 新加 `test.each` 两种语言 `"an import's upload the server does not answer within three minutes of the zip says the upload was stopped, the file kept to try again (%s)"`：导入的答复挂住（`imports: () => new Promise(() => undefined)`），`progress(n, n)`，走 180 秒；横幅整句；"导入"不再 `disabled`；`asksBeforeLeaving() === false`；任务列表多读了一次。实际另加 `test.each` 两种语言 `"an import's upload that, begun, makes no progress for a minute says it stopped, the file kept to try again (%s)"`：`progress(1, 4)` 之后走 60 秒，横幅是 `transfer.importStalled` 整句，文件还在（审查 C 的 M2）。
   - `W/pages/page/page-asset-upload.test.tsx` 新加 `"a file pasted whose upload has no answer within three minutes inserts nothing; Done waiting for it leaves"`：粘贴、按"完成"、进度报满、走 180 秒，编辑结束（"Edit"出现），`PUT` 里没有嵌入。
 - 已有测试要随之改的：
   - `page-asset-upload.test.tsx:272-289`（"an edit whose upload goes is not idle…"）扣住上传走 31 分钟，新代码 60 秒就判停住：`rest` 拆成每 30 秒一步，每步 `progress(k, total)`（k 递增、小于 total）。
   - `upload-fetch.test.ts:98-106`（"a network failure, or a timeout, rejects with a TypeError"）：删掉 `late` 那一半，名字改成 `"a network failure rejects with a TypeError, as fetch's"`。
   - 别的扣住上传的格用真的计时、几秒之内结束；e2e 里扣住上传的（`tr2-import.spec.ts:243`、`as1-upload.spec.ts:241`）都在 60 秒之内。
-- 变异：不起停住的计时（第一格）；进度不重新计时（第二格）；发完不换成 `unanswered`（第三格：60 秒时以 `stalled` 中止）；只认 `load`、不认 100% 的进度（第三格的 `progress(100, 100)` 那一份，Firefox 靠它，4.5.1.3）；只认 100% 的进度、不认 `load`（第三格只派发 `load` 的那一份）；以 `AbortError` 拒绝（附件那格的 `alert` 找不到：store 当作取消、移走行）；答复之后不清计时（第四格，`aborted` 变 `true`）；`failureText` 不认 `UploadTimeout`（整句落到 `problem.other`）。
+- 变异：第一次进度之后不起停住的计时（第一格）；`send` 之后就起计时（排队那一格，决定 620）；进度不重新计时（第二格）；发完不换成 `unanswered`（第三格：60 秒时以 `stalled` 中止）；只认 `load`、不认 100% 的进度（第三格的 `progress(100, 100)` 那一份，Firefox 靠它，4.5.1.3）；只认 100% 的进度、不认 `load`（第三格只派发 `load` 的那一份）；以 `AbortError` 拒绝（附件那格的 `alert` 找不到：store 当作取消、移走行）；答复之后不清计时（第四格，`aborted` 变 `true`）；`failureText` 不认 `UploadTimeout`（整句落到 `problem.other`）。实际另加：zh 的 `asset.stalled`、`transfer.importStalled` 改坏，`import-dialog` 不按 `stage` 分（两种语言的停住各格，审查 C 的 M2）；`wait` 不看 `settled`（答复之后迟到的 `upload` 的 `load`，答复及时那格，10.5）。
 - 假服务端：`W/test/transfer.ts` 的 `FakeTransfer` 已有 `progress()`，`upload` 是 `EventTarget`；可加 `sentAll()`（派发 `upload` 的 `load`）给"只派发 `load`"的那一份。`transferTo` 不改：它在答复之前报满进度，正好让计时换成 M，再答复清掉。
 - 牵连：S2 的 38.6 也改 `upload-rows.tsx` 的 `failureText` 附近；P3/S3 在 `transfer-import.test.tsx` 加一格（导入答 `transfer.too_many_jobs`），并改 `transfer.importCut` 的文字（P3 设计 4.2），两个新键接在它之后，冲突是一定的。文本冲突，后合并的先 `git merge main`。
 
@@ -2373,12 +2377,13 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 改法（`attachments-section.tsx`）：
   - `copied` 改存 `{ id: string; done: boolean } | undefined`（`:91`）；`:149`、`:152` 各存 `{ id: asset.id, done }`。
   - 由当前列表推出：`copiedAsset = copied !== undefined && !copied.done ? list?.assets.find((asset) => asset.id === copied.id) : undefined`，`copiedLink = copiedAsset?.link ?? null`。
-  - `:245-250`：`copied.done` 时照旧那句；否则只在 `copiedAsset !== undefined && copiedLink !== null` 时渲染 `<CopyField key={copied.id} embed={embedOf(copiedLink)} name={copiedAsset.name} field={copyField} left={() => heading.current?.focus()} />`（附件离开了列表或改成没有扩展名，字段随之消失）。
+  - `:245-250`：`copied.done` 时照旧那句；否则只在 `copiedAsset !== undefined && copiedLink !== null` 时渲染 `<CopyField key={copied.id} embed={embedOf(copiedLink)} name={copiedAsset.name} field={copyField} left={() => heading.current?.focus()} />`（附件离开了列表或改成没有扩展名，字段随之消失）。实际另有：附件离开列表或没有地址时，`copied`（未完成的）随之清掉：之后附件回来（别处恢复、改回带扩展名的名字、按"更多"读到），字段不再回来抢焦点（审查 A 的 M2，10.5）。
   - `CopyField`（`:318-334`）加 `left` 参数与 `useFocusLeaving(field, left)`（`W/lib/focus-leaving.ts:10`）：字段带着焦点离开时焦点交给这一节的标题（13.2 第 17 条）。`key` 用 id，嵌入换了不重挂，挂载时的取焦点（`:321-323`）不再来一次。
 - 测试（vitest，`W/pages/page/attachments-section.test.tsx`）：
   - `"an embed shown to copy by hand follows its attachment renamed elsewhere: the field holds its new embed and name, the focus where it was"`：照 `:193-232` 那格去掉剪贴板；复制 `data.zip`，字段 `Embed of data.zip` 值 `![[data.zip]]`；焦点放到 `Upload` 按钮；`server.nodes` 里改名为 `archive.zip`，`readAgain()`（`W/test/page-panel.ts:34-37`）；字段（同一个元素）的名字是 `Embed of archive.zip`、值 `![[archive.zip]]`，焦点仍在 `Upload`。没修的代码上：值仍是 `![[data.zip]]`。
   - `"an embed shown to copy by hand goes as its attachment goes elsewhere, the focus in it going to the section's title"`：字段有焦点时别处删掉它、`readAgain()`；字段不在了，`document.activeElement` 是 `Attachments` 标题。没修的代码上：字段还在。
-- 变异：`key` 改回 `embed`（重挂、取走焦点：第一格的焦点断言）；嵌入仍取点击时的（值断言）；去掉 `useFocusLeaving`（第二格焦点在 `body`）。
+  - 实际另加 `test.each` `"an embed shown to copy by hand, gone as its attachment was %s elsewhere, does not come back with it to take the focus"`（删掉再恢复；改成没有扩展名再改回）：字段消失之后焦点放到"上传"，附件回来、重读，没有字段，焦点仍在"上传"（审查 A 的 M2）。
+- 变异：`key` 改回 `embed`（重挂、取走焦点：第一格的焦点断言）；嵌入仍取点击时的（值断言）；去掉 `useFocusLeaving`（第二格焦点在 `body`）；实际另加：不清 `copied`（上一格）。
 - 牵连：S1 的 16.1 也改 `attachments-section.tsx`、`attachment-row.tsx`，文本冲突，后合并的先 `git merge main`。16.4a（关闭字段）是 C，不做。
 
 ##### 16.4c 播报区域里留着已不成立的上一句
@@ -2391,13 +2396,14 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - `flush`：
     - `going` 数 `begun` 里仍在 `assets.uploads`、没有 `failure`、`!upload.signal.aborted` 的（`signal` 不可观察，合成时读当时的值）；
     - 有"已上传"或"正在上传"的话（两句都有时用 `page.sentences` 连起来）就 `setSaid(saying(text))`；
-    - 没话说而 `ended` 时 `setSaid({ text: "", again: false })`；
+    - 没话说而 `ended`、且区里现在说的是上传的话（`flush` 说了上传的话时记下，`say` 说别的时清掉）时 `setSaid({ text: "", again: false })`；仍成立的"已复制嵌入"不清（P2-40；实际，审查 A 的 M3）；
     - 然后清空 `left`、`begun`、`ended`、`turn`。
   - 不变量：最后一个上传成功离开的那一轮照说"已上传"，不清；清空用 `{ text: "", again: false }`，下一次同一句从空变过来，读屏照读（`saying`，`:391-393`）；清理停掉两个 reaction、`clearTimeout(turn)`。文件头的注释（`:336-344`）补一句。
 - 测试（vitest，`W/pages/page/attachment-uploads.test.tsx`）：
   - `:181` 的 `toBe("Uploading files: 1.")` 改成 `toBe("")`，即是本项的回归格。`:44-74`、`:106-160` 的播报断言不变（上传都以成功离开）。
   - 新加 `"an upload that fails leaves nothing said of uploads going: the region says nothing"`：照 `:240-265` 扣住、答 507，等 `alert` 出现，再等一轮（20 毫秒），`notice(section) === ""`。没修的代码上：`"Uploading files: 1."`。
-- 变异：去掉第二个 reaction（失败那格仍是旧句）；`ended` 时不清（同上）；成功离开的那一轮也清（`:44-74` 那格的"Uploaded: …"断言抓）。
+  - 实际另加 `test.each` `"an embed copied as an upload goes, which then %s, is still said: only the uploads' words are emptied"`（失败、取消）（审查 A 的 M3）。
+- 变异：去掉第二个 reaction（失败那格仍是旧句）；`ended` 时不清（同上）；成功离开的那一轮也清（`:44-74` 那格的"Uploaded: …"断言抓）。实际另加：`ended` 时不看区里是谁的话、`say` 时不清标记、`flush` 不设标记（上一格与"Cancel stops the upload"）。
 - 不取：说过的一律几秒后清空（"已复制嵌入"也清）：多一个计时，与 P2-40 的读法不合。
 
 ##### 16.10 一轮里开始又离开的上传仍被数进"正在上传"
@@ -2405,7 +2411,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 现状：`attachments-section.tsx:364` 在 reaction 里就把这一轮新出现、没有失败的上传数进 `begun`；同一轮里它又被取消或失败（例如换代时 `generation` 中止，`asset.store.ts:179-183`），合成时（`:371-379`）仍数着它，读屏听到"正在上传 1 个文件"而什么也没在传。
 - 改法：见 16.4c：`begun` 改成 `Set<Upload>`，合成时只数仍在 `assets.uploads` 里、没有失败、没有被中止（`upload.signal.aborted`，`asset.store.ts:91-93`）的。
 - 测试（vitest，`attachment-uploads.test.tsx`）新加 `"an upload cancelled in the turn it began is not said to go"`：照 `:122-144` 在 `renderApp` 之前 `vi.spyOn(AssetStore.prototype, "upload")`（MobX 在构造时把原型的方法包成实例上的 action），包装里调原来的 `upload` 之后对每个返回的 `Upload` 调 `cancel()`；选 `a.png`；等一轮；`notice(section) === ""`。没修的代码上：`"Uploading files: 1."`。
-- 变异：合成时不看 `signal.aborted`（这一格）；不看 `assets.uploads.includes`（取消之后已移走的那种：同一格在 dismiss 先于合成时抓，推断）。
+- 变异：合成时不看 `signal.aborted`（这一格）；不看 `assets.uploads.includes`（取消之后已移走的那种：同一格在 dismiss 先于合成时抓，推断）。实际：那一格的取消在同一轮里就把行移走了，`includes` 已足够，补了"令牌续期时取消"一格（请求还没发，取消移不走它）抓 `aborted`；`includes` 在走得到的状态里等价（离开列表而既没失败、也没取消的只有成功的上传，要等三个网络的任务，晚于这一轮的计时，10.5）。
 
 ##### 38.9 上传到 `raw` 被拒之后，附件下留着 "Uploading files: 1."
 
@@ -2419,21 +2425,23 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 现状：`W/stores/asset.store.ts:455-464`：取消之后先移走行（`:456-458`），重读树与列表（`:460`），再移走一次、返回。服务端其实已收完时，附件照样建成、列表里多了它，行却随取消消失了，什么也不说。字节发完的按钮已不可按（P4A B7），窗口只剩"浏览器的进度还没到 100%、服务端已收完"那一段。
 - 改法：
   - `asset.store.ts` 导出 `class CancelledLate extends Error { constructor(readonly file: string) }`，`name` 是 `"CancelledLate"`（字段不叫 `name`：那是 `Error.name`）。
-  - `send`（`:434-485`）开头记 `before`：`upload.parent` 下现有兄弟节点的 id 集合（`this.pages.siblingsOf`）。
+  - `upload` 里与 `used`（`usedUnder`）同一时刻记一次 `before`：`upload.parent` 下现有兄弟节点的 id 集合（`this.pages.siblingsOf`），传给 `send`；被拒重试时与 `free` 同一时刻再记（实际，决定 622）。设计原来让 `send` 开头记：每个文件记一次是兄弟数乘文件数，2,000 × 2,000 的性能守卫贴着限、在干净 worktree 里红过；按批记，每批与兄弟数成正比一次。
   - `catch` 里重读之后（`:461-464`），`upload.signal.aborted` 时：先 `dismiss(upload)`；在兄弟节点里找不在 `before`、`titleKey(node.name) === titleKey(name)` 的；找到就 `runInAction` 设 `upload.failure = new CancelledLate(made.name)` 并放回 `this.uploads`；然后返回。树的重读失败时 `siblingsOf` 是旧的，找不到，照今天移走（不知道就不说）。
   - `upload-rows.tsx` 的 `failureText`：`CancelledLate` 给 `asset.cancelledLate`（`name` 是 `failure.file`）。行带着"移除"，不移焦点（焦点已随第一次移走交给"上传"按钮，13.2 第 26 条）。
   - 编辑器的上传：`uploaded()` 已在第一次移走时以 `AbortError` 拒绝，不插入嵌入；重新出现的行说明它已在附件里。
 - 测试（vitest，`attachment-uploads.test.tsx`）：
   - `test.each` 两种语言 `"a cancel that comes once the server has the whole file says so: the attachment is listed, its row says the cancel was late (%s)"`：`answers` 让上传的路由把 `a.png` 加进 `server.nodes`、答复永远不来（服务端已建、答复丢了）；选 `a.png`；按"Cancel the upload of a.png"；`aborted` 为真；`alert` 整句（en / zh）；`rows(section)` 含 `a.png (opens in a new tab)`；`document.activeElement` 是"Upload"。没修的代码上：行消失、找不到 `alert`。
   - 控制：已有的 `:164-182`（服务端 `abortedFor` 时什么也不建）。
-- 变异：`push` 漏掉（行不出现）；`failureText` 不认它（整句）；不记 `before`、只比名字：在 vitest 造得出的情形里等价，不进 vitest。名字由 `freeName` 避开发送前已有的（`asset.store.ts:435`），只有上传途中别人在同一处建了同名的附件才不同；实施时用探针核对，在 Step 的记录里写明等价及其证据。
+  - 实际另加两格（决定 622）：`data.zip` 在上传途中被别处原地改名为 `a.png`，取消，什么也不说；被拒重试（`a.png` 被别处占了，重试 `a 2.png`），占的那个随后被改名为 `a 2.png`，取消，什么也不说。
+- 变异：`push` 漏掉（行不出现）；`failureText` 不认它（整句）；不记 `before`、只比名字：不等价（实际，审查 A、C 的探针）。`before` 记的是 id：发出时已在、名字不同的兄弟，上传途中被别人原地改成同一个名字，只比名字把它当作服务端留下的，叫读者删掉别人的附件；改名那一格抓它。被拒重试时仍用这一批的 `before`：重试那一格抓它。新建、移来、从回收站恢复的同名节点 id 不在 `before` 里，两种写法一样都把它当作服务端留下的（推后，10.5）。
 
 ##### 28.1 "要打开的附件已不在这里"不随它在别处恢复而撤下
 
 - 现状：`W/pages/page/attachments-section.tsx:426-460` 的 `useLocated` 一旦判定"不在"（`setGone`，`:448`）就一直为真（`:439-442`），说明（`:232-236`）与标题的 `aria-describedby`（`:205`）一直留着；它在别处恢复、行回来了，说明还在。
-- 改法：`useLocated` 的返回改成 `gone !== undefined && !(list?.assets.some((asset) => asset.id === located) ?? false)`（`:460`）：一次性的只是"焦点给谁"，说明随当前列表显示与撤下；列表又没有它时（又被删），说明再出现。
+- 改法：`useLocated` 的返回改成 `gone !== undefined && !(list?.assets.some((asset) => asset.id === located) ?? false)`（`:460`；实际是 `gone !== undefined && list?.next === null && !list.assets.some((asset) => asset.id === located)`：判"不在"要列表读全，撤下说明也一样，恢复之后排在已读的页之后的，列表不再读全，不再说"已不在"，审查 B 的 N2）：一次性的只是"焦点给谁"，说明随当前列表显示与撤下；列表又没有它时（又被删），说明再出现。
 - 测试（vitest，`attachments-section.test.tsx`）新加 `"an attachment said gone that comes back, restored elsewhere, is said gone no more: its row shows, the title described by nothing"`：照 `:666-707` 造出"不在"的说明；`server.nodes.push(gone)`，`readAgain()`；`gone.png (opens in a new tab)` 的链接出现，说明不在，标题没有 `aria-describedby`。没修的代码上：说明还在。
-- 变异：返回值不看列表（这一格）；看列表但不看 `gone`（`:666` 那格之前列表还没读完时说明就出现：推断会抓）。
+- 实际另加 `"an attachment said gone that comes back past the list's first hundred is said gone no more: the list read is not whole"`（审查 B 的 N2）。
+- 变异：返回值不看列表（这一格）；不看列表读全（第 101 个那格，实际）；看列表但不看 `gone`（`:666` 那格之前列表还没读完时说明就出现：推断会抓）。
 - 牵连：28.3（这条说明是 `<output>` 又描述标题，读屏可能念两次）只从 ARIA 推断，移到发布后的读屏验收（00 号 4.5），不在本 Step。
 
 ##### 阅读视图里的附件
@@ -2443,7 +2451,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 现状：`W/reading/reading.css:385-391` 是 `.nw-reading :is(img, video).nw-asset { max-width: 100%; height: auto; }`。服务端写 `width`、`height`（`server/internal/platform/markdown/obsidian/asset.go:157-178`）：作者写了尺寸只写写下的（`|0x200` 只写高，`size.go:32-55`）；没写时写图片自己的宽高（防排版跳动）。`height: auto` 盖掉了属性：`![[chart.png|0x200]]` 显示成原图的高，`|300x200` 显示成 300 宽、按比例的高。只改 CSS 分不开"宽高都写"是作者写的还是图片自己的。
 - 改法（已定：2.3 的 P2-27，服务端 ＋ CSS）：
   - 服务端，三个文件：
-    - `server/internal/platform/markdown/obsidian/asset.go`：作者写了尺寸（`sz != size{}`，在 `imageSize`（`:160-165`）补图片自己的宽高之前判）时，`element`（`:137-145`）在 `src` 之后多写一个空值的 `data-nw-sized=""`。图片的调用在 `:116`，视频在 `:122-127`（视频只写写下的尺寸，同样带）。
+    - `server/internal/platform/markdown/obsidian/asset.go`：作者写了尺寸（`sz != size{}`，在 `imageSize`（`:160-165`）补图片自己的宽高之前判）时，`element`（`:137-145`）在 `src` 之后多写一个空值的 `data-nw-sized=""`（实际在宽高之前，10.5）。图片的调用在 `:116`，视频在 `:122-127`（视频只写写下的尺寸，同样带）。
     - `obsidian.go` 的允许名单 `Markup.Elements`：`img`（`:105`）与 `video`（`:107`）加 `data-nw-sized`。
     - `asset_test.go` 的期望（见测试）。
   - 与 P3/S1 不冲突：P3/S1 的 10.2 改 `platform/markdown/parse.go`（包 `markdown`）；`asset.go` 在子包 `platform/markdown/obsidian`，不是同一个包。
@@ -2454,12 +2462,19 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
     .nw-reading :is(img, video).nw-asset[data-nw-sized][height] { object-fit: contain; }
     ```
     `|0x200` 高 200、宽由比例；窄屏被 `max-width` 截时盒子 100% × 200，图片在里面保持比例。`|300x200` 盒子 300 × 200，图片保持比例、不拉伸。`|300` 与没写尺寸的照旧。
+  - 实际另加一条（决定 621）：
+    ```css
+    @layer base {
+      .nw-reading :is(img, video).nw-asset[data-nw-sized][height] { height: revert-layer; }
+    }
+    ```
+    Tailwind 的 preflight 在 `base` 层给 `img, video` 写 `height: auto`，比 `height` 属性（presentational hint）强，上面三条（`components` 层）留不住写下的高度：照字面的三条上 AS3 (page) 与没修的一样（`[3, 2, 300, 450]`）。`base` 层里对标了的 `revert-layer`，退回到属性的高度（S5 的探针，三种引擎相同；审查 B 在三种引擎、两种配色、宽与 375 里又量过；10.5）。
   - 不取（只改网页）：`:not([height]:not([width]))` 才 `height: auto`；修不了宽高都写的。
 - 测试：
   - Go 单元（`server/internal/platform/markdown/obsidian/asset_test.go:130-162`）：`"a width and a height"`（`:132`）、`"captions of '|' and a size"`（`:146`）、`"sizes out of range"`（`:149-151` 的 `|0x200`）、`"the largest and the least size"`（`:153`）、`"its caption and size"`（`:157`）、`"video"`（`:162`）的期望加 `data-nw-sized=""`；`"of an image of known size"`（`:130`，图片自己的宽高）**不加**。没修：属性不在，期望不符。
-  - e2e（Chromium，`e2e/stories/asset/as3-render.spec.ts` 的 AS3 (page)，`:297` 那一格末尾）：建页 `Sizes`，内容 `![[cover.png|0x200]] ![[cover.png|300x200]]`，`goto` 它；两张图 `boundingBox()`：第一张高 200、宽约 133（`pngBytes` 是 2 × 3，`e2e/fixtures/assets.ts:88-94`），第二张 300 × 200，`objectFit === "contain"`；视口改成 375 宽之后第二张宽不超过文章、高仍 200。没修的代码上：第一张 2 × 3、第二张 300 × 450。
+  - e2e（Chromium，`e2e/stories/asset/as3-render.spec.ts` 的 AS3 (page)，`:297` 那一格末尾）：建页 `Sizes`，内容 `![[cover.png|0x200]] ![[cover.png|300x200]]`（实际嵌 `front.png`：那一格在这之前已把 `cover.png` 改名），`goto` 它；两张图 `boundingBox()`：第一张高 200、宽约 133（`pngBytes` 是 2 × 3，`e2e/fixtures/assets.ts:88-94`），第二张 300 × 200，`objectFit === "contain"`；视口改成 375 宽之后第二张宽不超过文章、高仍 200。没修的代码上：第一张 2 × 3、第二张 300 × 450。
 - 已有测试要随之改的：上面的 Go 期望。别的不碍（审查 C 的"核对过"第 10 条）：服务端每次读都渲染、不缓存 HTML（`page/app/get_page_view.go:39`）；整个程序的测试只以 `<img class="nw-asset" src=` 为前缀比对（`bootstrap/markdown_app_test.go:58-62`）；AS3 (API)、(MCP) 只取 `alt`、`width`、`src`。
-- 变异：CSS 的 `:not(...)` 写反（尺寸断言）；服务端对图片自己的宽高也写 `data-nw-sized`（Go 的 `:130` 那格）；去掉 `object-fit`（计算样式断言）。
+- 变异：CSS 的 `:not(...)` 写反（尺寸断言）；服务端对图片自己的宽高也写 `data-nw-sized`（Go 的 `:130` 那格）；去掉 `object-fit`（计算样式断言）；实际另加：去掉 `base` 层的 `revert-layer`（尺寸断言，决定 621）。
 - 牵连：`version-view.tsx`、回收站的预览用同一份 CSS，一并生效。
 
 ##### 15.2 折叠的 callout 标题里的音视频控件，点了也开合 callout
@@ -2473,12 +2488,12 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - 用户碰到的样子：`> [!note]- ![[talk.mp3]] 讲座` 折叠着，在播放键旁边点了一下，callout 跟着展开。
 - **文档上看得到的事件**：Chromium 的媒体控件在 UA 的 shadow DOM 里截下了 `pointerdown`、`mousedown`、`mouseup`、`click`（初稿听 `click` 的改法因此从不运行，审查 C 的 I1，`probe7.txt`）。点空白与时间处时，文档上只到 `DOMActivate`（目标是媒体）与随后的 `toggle`；点播放键没有媒体的 `DOMActivate`。Firefox 点时间处、WebKit 点控件的哪里，都派发媒体的 `DOMActivate`，却不开合。
 - **改法**（P2-42，修订核对 C 的 M9）：新的增强 `W/reading/title-media.ts`，在 `W/reading/enhancement.ts:98-107` 的 `readingEnhancements` 末尾登记。只听一种事件，不留状态：
-  - 容器上以捕获阶段听 `DOMActivate`：目标是某个 `<details>` 自己的 `<summary>` 里的 `audio`、`video` 时，取下这个 `<details>` 当时的 `open`，`setTimeout(0)` 里它还在文档里、`open` 变了，就设回去。
+  - 容器上以捕获阶段听 `DOMActivate`：目标是某个 `<details>` 自己的 `<summary>` 里的 `audio`、`video` 时，取下这个 `<details>` 当时的 `open`，在 `requestAnimationFrame` 的回调里（同一次渲染更新的绘制之前）它还在文档里、`open` 变了，就设回去（实际，决定 618）。
   - 不听 `toggle`、`keydown`、`pointerdown`：没有跨事件记下的东西，之后程序里的打开（锚点导航的 `unfold`，`reading-view.tsx:317`；焦点还原，`assets.ts:198`）不会被当作控件引起的而撤回。上一版留着记录、等下一次 `toggle` 复原，在 Firefox 与 WebKit 上会撤回点过控件之后的这种打开（修订核对 C 的 M9，`probe.log` 的 I 格）。
   - 不能只把"忘掉"挪进 `setTimeout(0)` 而仍在 `toggle` 里复原：Chromium 里计时先于 `toggle` 的任务，那样就不复原了（同一份日志）。
-  - Chromium 里设回在 `toggle` 的任务之前，只派发一次 `toggle`，报的是复原之后的状态（日志 `"put back","toggle d open=false"`）。中间会不会画出一帧展开的样子，没有量（推断：计时与 `toggle` 都在下一次渲染之前）。
+  - 实际（S5 的探针，4.5.0.5 第 2 条）：开合发生在点击的任务里，下一次渲染更新先于 0 毫秒的计时，`setTimeout(0)` 画出一帧展开（约 16 ms 的一闪，20 次点击每次一帧）；rAF 在同一次渲染更新的绘制之前设回，0 帧，`toggle` 只派发一次、报设回之后的状态。三种引擎里 rAF 与 `setTimeout(0)` 的其余各格（A、G、C、D、E、K、I、J）相同（决定 618）。
   - 读者点标题的文字、键盘的 Enter 与 Space，`DOMActivate` 的目标是 `<summary>`，不处理。
-  - 不 `preventDefault`：控件自己的处理照常。清理时移除监听；已排上的计时照跑，它只看 `isConnected` 与 `open`，无害。
+  - 不 `preventDefault`：控件自己的处理照常。清理时移除监听；已排上的回调照跑，它只看 `isConnected` 与 `open`，无害。
 - **探针**（修订核对 C 的 `m12/p2-check1-c/probe.spec.ts`，`fix=timeout`，与改法同一套监听；三种引擎）：
 
   | 情形 | 没修 | 改了之后 |
@@ -2494,7 +2509,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 
   Firefox、WebKit 的结果改与不改相同。
 - **测试**：
-  - **vitest**（新 `W/reading/title-media.test.ts`，假计时）：jsdom 不画控件，所以直接派发事件、设 `open`，造出"引擎开合了"的次序。五格：
+  - **vitest**（新 `W/reading/title-media.test.ts`，假计时）：jsdom 不画控件，所以直接派发事件、设 `open`，造出"引擎开合了"的次序。五格（实际推过的是一帧，`vi.advanceTimersToNextFrame()`，vitest 5 的假计时默认也假 rAF；另有第六格：清理之后不再设回，10.5）：
     1. "a toggle that a control of a medium in the title caused is undone"：媒体上派发 `DOMActivate`，再把 `open` 设为真；推过计时，断言 `open` 复原为假。没修时留在真。
     2. "the reader's toggle stays: the title's text"：`DOMActivate` 的目标是 `<summary>`，`open` 设为真，推过计时，断言留在真。
     3. "a medium out of a callout's title is not the callout's"：callout 合着，正文里的媒体派发 `DOMActivate`，再把 `open` 设为真，推过计时，断言留在真。要这样造：展开着、什么也不变时，"正文里的媒体也算"那个变异只在 `open` 变了时才设回，照过（修订核对 C 的 N15，`m12/p2-check2-c/vitest-matrix.txt` 的 `3` 与 `3'` 行）。
@@ -2505,6 +2520,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
     - `goto` 之后，等音频可见、它的 `src` 带签名的查询串（肯定的东西）。不等 `readyState >= 1`：服务端写 `preload="none"`（`asset.go:122`），增强只在重签之后改成 `metadata`（`assets.ts:275`），第一次打开页时三种引擎的 `readyState` 10 秒内都是 0，这一步永远等不到（修订核对 C 的 M10，`m12/p2-check2-c/wav-probe.log` 的 `load preload=none`）。也不为了凑这个等待调 `load()` 或改成 `metadata`：那样测的不是读者看到的样子。
     - 在控件的 `x: 6` 与 `x: 60` 各点一次，每次之后等两帧，断言 `details.open === false`、正文不可见。
     - 再点标题的文字，断言展开（对照）。
+    - 实际另断言没有一帧画成展开：点之前每帧起一个新的 `ResizeObserver` 记 `open`（它的第一次回调在 rAF 与布局之后、绘制之前），两次点击之后断言没有一帧画成展开（决定 618）。
     - 没修的代码上，第一次点之后 `open` 是真，这一格红在第一步的断言：Chromium 在 `readyState` 为 0 时点 `x: 6` 也展开；改了之后是假，点文字展开（`wav-probe.log` 的 `AS6 preload=none` 两行）。
     - Firefox、WebKit 不复现，这一格不进三种浏览器（P2-30）；S5 实施时在两者上各跑一次，记进记录。
 - **变异**：
@@ -2513,6 +2529,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - 正文里的媒体也算：vitest 第 3 格红。
   - 记下 `details`、留到下一次 `toggle` 才复原（上一版）：vitest 第 4 格红。
   - 不比较、一律设回：vitest 第 5 格红。
+  - 改回 `setTimeout(0)`（实际，决定 618）：AS6 的帧断言红（两次点击各一帧），vitest 抓不到（推一帧也推过了 0 毫秒的计时）。
 - **牵连**：版本页、回收站的预览也跑这些增强（`W/pages/page/version-view.tsx:88`），一并生效。增强不留状态，S4 的 U4、U5 撤掉再重跑与它不交叉。
 
 ##### 17.2b 复制正文带上"在新标签页打开"的提示
@@ -2528,17 +2545,17 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - e2e（新 AS6，Chromium）`"AS6 (page): copying a page's text leaves out the hints of links that open in a tab of their own, which their names keep: in the reading view, the properties and the attachments' rows"`：
     - 准备：上传 `doc.pdf` 与 `data.zip`（`e2e/fixtures/assets.ts`），页 `Guide` 的内容 `---\ncover: "[[doc.pdf]]"\n---\n[[doc.pdf]] [[data.zip|the data]] end\n`，附件放在 `Guide` 下；`goto`；`grantClipboardPermissions`（`e2e/fixtures/clipboard.ts:6-14`）。
     - 名字：文章、右栏、附件一节里 `getByRole("link", { name: "doc.pdf (opens in a new tab)", exact: true })` 都可见。
-    - 复制：选中文章里那一段（`selectNodeContents`），`ControlOrMeta+c`（照 `e2e/stories/wiki/lw4-source-readonly.spec.ts:484-487`），`readClipboardText`；整句等于 `doc.pdf (N B) the data (M B) end`（N、M 是字节数）。右栏的值、附件一节的列表各复制一次，`not.toContain("(opens in a new tab)")`。
+    - 复制：选中文章里那一段（`selectNodeContents`），`ControlOrMeta+c`（照 `e2e/stories/wiki/lw4-source-readonly.spec.ts:484-487`），`readClipboardText`；整句等于 `doc.pdf (N B) the data (M B) end`（N、M 是字节数）。右栏的值、附件一节的列表各复制一次，`not.toContain("(opens in a new tab)")`。实际（决定 623）：右栏的值复制一次，整句是 `doc.pdf`（Firefox 多一个尾随空格）；附件一节的行在 Chromium 里复制不出（可拖的 `li`），不复制，行的提示由 vitest 的结构断言守；每次复制之前先往剪贴板写别的东西（读不到上一次的）；名字的断言限在段落里（文章里的属性表也有一个 `doc.pdf` 链接）。
     - 没修的代码上：复制的文字含"(opens in a new tab)"。
   - vitest（结构）：`W/reading/assets.test.ts:132` 那格加"`.sr-only` 带 `select-none`"的断言；`attachments-section.test.tsx` 与 `page-properties.test.tsx` 各加一句。
-- 变异：去掉任一处的 `select-none`（AS6 对应的复制断言与 vitest 的结构断言抓）；把空格放进 span（vitest 的名字断言全红）。
+- 变异：去掉任一处的 `select-none`（实际：文章与右栏由 AS6 的复制断言抓，附件行由 vitest 的结构断言抓，决定 623）；把空格放进 span（vitest 的名字断言全红）。
 - 牵连：S4 的 17.1 就地换 `href` 不换链接节点，提示留着；17.2a（空格带下划线）是 C，不做。
 
 ##### 17.4 地址过期之后点下载链接静默失败
 
 - 现状：`W/reading/assets.ts:86` 只在容器上听 `error`，链接的点击没有处理；地址由 `useAssetsExpiry` 在到期前一分钟重读（`W/pages/page/assets-expiry.ts:81-96`），睡眠、断网、重读失败时页面上留着过期的地址。点过期的下载链接（`a.nw-asset[download]`，`obsidian/asset.go:53-61`），浏览器下载到一个 403，只在下载栏里显示失败。新标签页的链接打开一个显示错误的标签页，不算静默；13.2 第 27 条为它定了"不在点击时再签"。
-- 改法（已定：2.3 的 P2-29，只管下载链接）：新增强 `export const expiredDownloads: Enhancement = (container, context) => …`（`W/reading/expired-downloads.ts`），在 `readingEnhancements` 里登记在 `assets()` 之后；`W/reading/assets.ts:233-236` 的 `assetOf` 改成导出。容器上听冒泡的 `click`：
-  1. 只管 `a.nw-asset[download][href]`；跳过 `event.defaultPrevented`、非左键、带修饰键的点击，与正是自己发出的那一下（`passing === link`）。
+- 改法（已定：2.3 的 P2-29，只管下载链接）：新增强 `export const expiredDownloads: Enhancement = (container, context) => …`（`W/reading/expired-downloads.ts`），在 `readingEnhancements` 里登记在 `assets()` 之后（实际在 `titleMedia` 之前：15.2 要它在末尾）；`W/reading/assets.ts:233-236` 的 `assetOf` 改成导出。容器上听冒泡的 `click`：
+  1. 只管 `a.nw-asset[download][href]`；跳过 `event.defaultPrevented`、非左键、带修饰键（Ctrl、Meta、Shift、Alt）的点击，与正是自己发出的那一下（`passing === link`）。
   2. `context.assetsExpire` 为 `null`、`assetOf(href)` 认不出、或还没到期：照常走。
   3. 过期：`preventDefault()`；异步 `context.assetAddress(id)` 拿新地址写回 `href`（签不到就留着旧的，浏览器说下载失败）；链接已不在文档里就停；然后 `passing = link; try { link.click(); } finally { passing = undefined; }`；每个到期至多 `context.reload()` 一次（`reloaded !== expires`）。
   - `passing` 只在这一次派发期间为真（`click()` 同步派发）。S4 之后（P2-22）就地换地址不重跑增强，闭包与链接都留着；记下不清的话，链接再次过期时直接走过期的地址，又静默失败（审查 C 的 M1）。文档注释照此写：程序里的那一下放行一次，之后的点击重新比到期。
@@ -2548,13 +2565,13 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - vitest（新 `W/reading/expired-downloads.test.ts`，照 `W/reading/assets.test.ts:31-64` 的 `setUp` 造容器与 `context`）：
     - `"a download clicked once the addresses expired is signed anew, goes from the new address, and the view is read again"`：容器里 `<a class="nw-asset" href="/api/v0/assets/f1/content?…" download>f.zip</a>`，`expires` 已过；文档上一个冒泡的监听记下每次点击的 `{ href, prevented }` 再 `preventDefault()`（挡住 jsdom 的导航）；`link.click()`；`await` 一轮；第一次 `prevented: true`，`signed` 是 `["f1"]`，第二次 `href` 是新地址、`prevented: false`，`reloads` 是 `["p"]`。没修的代码上：第一次 `prevented: false`，`signed` 空。
     - `"a download signed anew, its address changed in place since, is signed anew again as it expires again"`（审查 C 的 M1）：`assetsExpire` 是读一个变量的 getter（照 S4，P2-22）；过期时点一次，`signed` 是 `["f1"]`；不重跑增强，换 `href`、到期改到一小时之后，点一次照常走；`vi.setSystemTime` 过了新的到期，再点：`prevented: true`，`signed` 是 `["f1", "f1"]`。在 `passing` 只加不删的写法上：`signed` 仍是 `["f1"]`。
-    - `"one clicked before they expire, or one that opens in a tab of its own, goes as it is"`（控制）。
+    - `"one clicked before they expire, or one that opens in a tab of its own, goes as it is"`（控制）。实际是 `test.each` `"%s goes as it is"`：到期之前点的下载；新标签页的链接（过期也不管）。两种各自一个容器：同一格里两个文档级的监听会互相 `preventDefault`。假的 `assetAddress` 在一个任务里答复（`setTimeout(0)` 之后），像网络那样（核对 C 第 2 轮的 C2-M1）。
     - `"one whose address cannot be signed goes as it is: the browser says it failed"`：`id` 为 `gone`，第二次点击的 `href` 是旧的。
     - `"a click with a key held goes as the browser has it"`（`ctrlKey`）。
   - e2e（AS6，Chromium）`"AS6 (page): a download whose address expired is signed anew as it is clicked, and downloads"`：`page.route` 改写本页阅读视图的答复，把 `assets_expire_at` 改成一分钟前（`route.fetch()` 再 `route.fulfill`，路由一直留着，05-lessons 第 6 节）；`goto`；同时等 `page.waitForRequest`（路径 `/api/v0/assets/${data.id}`）与 `page.waitForEvent("download")`，点"the data"；断言再签的请求来了、下载的字节等于 `zipBytes`；再等视图的重读请求。新地址多半与旧的相同（服务端按小时签），所以断言再签的请求。没修的代码上：`waitForRequest` 超时。
   - 只在 Chromium 的证据：审查 C 的探针（`m12/p2-review-c/probe1.txt`）拦下真实的点击，延后 0、300、1500、6000 毫秒再程序里 `click()` 一个 `<a download>`，三种引擎（无头）都下载了改过的地址。
   - 人工：真的 Chrome 的"自动下载多个文件"与 Safari 的"允许这个网站下载吗"会不会在程序里再点时弹出，无头的探针看不到；进 P5/S3 的人工清单（审查 C 未核实的第 2 条）。
-- 变异：不比到期（控制格）；不记 `passing`（程序里的 `click()` 又被拦：`signed` 两次、循环）；`passing` 只加不清（第二格）；不 `reload`（第一格的 `reloads`）；签不到时不放行（签不到的那格）。
+- 变异：不比到期（控制格）；不记 `passing`（程序里的 `click()` 又被拦：`signed` 两次、循环；实际红 3 格。假的签名在微任务里答复时，整个循环在微任务里转，这一格挂住而不失败，核对 C 第 2 轮的 C2-M1）；`passing` 只加不清（第二格）；不 `reload`（第一格的 `reloads`）；签不到时不放行（签不到的那格）；实际另加：不看修饰键（Ctrl 那格）。
 - 牵连：**S4**（硬依赖，P2-22）。右栏的属性链接与附件一节的下载链接有同样的窗口，由各自的到期重读（与 17.6）兜住，不在本项。
 
 ##### 17.6 系统休眠之后定时器晚到
@@ -2580,18 +2597,20 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 现状：`W/reading/assets.ts:244-281` 的 `signAnew`：`assetAddress` 被拒时（`:257-263`）只在视图已过期时重读一次视图（`readAgain`，`:57-63`）；视图没过期（只是开始了的媒体还拿着旧地址，`adopt` 留下的，`:179-189`）就什么也不做。Firefox、Safari 的原生控件出错之后多半不重新加载（移交，推断），元素坏到下一次整篇替换（至多一小时）；Chromium 的控件重试会重新加载，回到 0 秒，`begun()`（`:214-216`）成了假，下一次 `error` 走 `readAgain`（`:83`），什么也不做。用户：听 40 分钟的录音，第 35 分钟断网十秒，网回来之后它一直坏着。
 - 改法（`assets.ts`）：
   - `Signing`（`:111`）加 `refused: Map<HTMLMediaElement, { place: Place; retry: ReturnType<typeof setTimeout> | undefined; after: number }>`：重签被拒时失败的位置与下一次再签。
-  - `signAnew` 加参数 `from?: Place`：`failing.place` 取 `from ?? placeOf(element)`。`catch`（`:259-263`）里，元素仍在文档中时：在 `signing.refused` 记下失败那一刻的位置（速率、音量、是否在播；已有记录的保留旧的位置），安排再签（`after` 从 30 秒起每次翻倍、至多 10 分钟），再照旧 `refused()`；成功（`:267` 之后）时删掉这一项并清计时。
+  - `signAnew` 自己看 `signing.refused`：记过的就从记下的位置签（`failing.place` 取记下的，`reloaded` 记为真，`goingOn` 一律用它的位置与速率），没记过的照旧 `placeOf(element)`。三个时机都由此从记下的位置签，不另传参数（实际，决定 624）。`catch`（`:259-263`）里，元素仍在文档中时：在 `signing.refused` 记下失败那一刻的位置（速率、音量、是否在播；已有记录的保留旧的位置），安排再签（`after` 从 30 秒起每次翻倍、至多 10 分钟），再照旧 `refused()`；成功（`:267` 之后）时删掉这一项并清计时。
   - 再签的三个时机，都从记下的位置签：`window` 的 `online`（对 `refused` 里仍在这个容器里的各签一次）；计时到点（只那一个）；`onError`（`:64-84`）时元素在 `refused` 里（不看 `begun` 与 `signedAgainAfter`，Chromium 的控件重试之后再出错走这里）。
+  - 计时与 `online` 到点时先看元素（实际，决定 624；审查 A 核对第 2 轮的 C2-M1）：没有错、位置在失败处或之后的，或读者拖过的（媒体的 `seeking`，只算错已清的：错还在的也拖得动，Firefox 留着网络错之前缓冲的数据，审查 A 核对第 3 轮的 C3-M1），丢掉记录、不签；仍有错、或在失败处之前（控件把它重新加载到开头的那种）才签。否则网络回来、旧地址照常播、读者往后听了的，下一次计时会把它拉回失败处。
   - `adopt`（`:168-178`）：旧元素出过错时，`putAt(element, signing.refused.get(old)?.place ?? goingOn(old, failing))`，新元素放到失败的位置。
-  - 增强的撤销（`:87-103`）移除 `online` 的监听、清掉各计时；`refused` 按元素记，元素随 `adopt` 留到下一次运行的，表也留着（在 `assets()` 的闭包里，与 `signing` 同）。
+  - 增强的撤销（`:87-103`）移除 `online` 的监听、清掉各计时；`refused` 按元素记，元素随 `adopt` 留到下一次运行的，表也留着（在 `assets()` 的闭包里，与 `signing` 同）。实际（决定 624）：只清这个容器里的元素的计时（同一个 `assets()` 给所有阅读视图用，`signing` 是共用的）；下一次运行开头，`adopt` 之后，丢掉不在文档里的记录与它的计时，再给本容器里留着的记录以这次运行的 `context` 重起计时，间隔照记下的 `after`、不翻倍（审查 A 核对第 2 轮的 C2-M3）；撤销时有记录的媒体也收进 `kept.media`（`begun(element) || signing.refused.has(element)`），块换新时 `adopt` 把新元素放到记下的位置，停在开头、`begun` 为假的也一样（C2-M2）。留在原处的不换（决定 604）。
   - 文档注释（`:17-45`）补一条。
 - 测试（vitest，`W/reading/assets.test.ts`，`setUp` 的 `assetAddress` 加一个开关：`offline` 时拒绝）：
-  - `"one whose signing anew is refused, the view not expired, is signed again as the browser is online again, from where it failed"`：`expires = later`；`play(audio, 42)`；`offline = true`；派发 `error`；`signed` 是 `["a1"]`，`reloads` 空；`loadAgain(audio)`（Chromium 的控件重新加载）；`offline = false`；派发 `online`；`signed` 是 `["a1", "a1"]`，`src` 是新地址，`currentTime` 是 42。没修的代码上：第二次签不会发生。
-  - `"one refused is signed again half a minute later, then a minute, while refused"`：`vi.useFakeTimers({ now, toFake: ["Date", "setTimeout", "clearTimeout"] })`；一直 `offline`；走 30 秒签第二次，再走 60 秒签第三次。
-  - `"one refused that fails again, its controls having loaded it anew, is signed anew from where it first failed"`：被拒之后 `loadAgain`（`begun` 为假）、再派发 `error`，签了并放到 42。没修：`begun` 为假走 `readAgain`，不签。
-  - `"the HTML replaced after a refusal puts the new one where the old one failed"`：被拒、`loadAgain` 之后，撤销增强、换一份同一附件的 HTML、再运行；新元素的 `currentTime` 是 42。
-- 已有测试要随之改的：`assets.test.ts:482-525` 两格（"one whose address is not given…"）要核对：被拒之后现在会安排再签，那两格只假了 `Date`（推断不受影响）。
-- 变异：不听 `online`（第一格）；不记位置、用 `placeOf`（第一、三格的 42）；不安排计时（第二格）；`adopt` 不用记下的位置（第四格）；成功之后不清这一项（第一格末尾再派发 `online`，断言 `signed` 不再增加）。
+  - `"one whose signing anew is refused, the view not expired, is signed again as the browser is online again, from where it failed"`：`expires = later`；`play(audio, 42)`；`offline = true`；派发 `error`；`signed` 是 `["a1"]`，`reloads` 空；`loadAgain(audio)`（Chromium 的控件重新加载）；`offline = false`；派发 `online`；`signed` 是 `["a1", "a1"]`，`src` 是新地址，`currentTime` 是 42。没修的代码上：第二次签不会发生。实际末尾另有：签了之后马上再出错不再签（它是别的原因），再派发 `online` 不再签。
+  - `"one refused is signed again half a minute later, then a minute, while refused"`：`vi.useFakeTimers({ now, toFake: ["Date", "setTimeout", "clearTimeout"] })`；一直 `offline`；走 30 秒签第二次，再走 60 秒签第三次；撤销之后再走十分钟，不再签。
+  - `"one refused that fails again, its controls having loaded it anew, is signed anew from where it first failed"`：被拒之后控件把它重新加载到开头、停着（实际：`error` 清掉、`currentTime` 0、`paused`，`begun` 为假；`loadAgain` 是播放着的，`begun` 为真，旧代码也会签），再派发 `error`，签了并放到 42。没修：`begun` 为假走 `readAgain`，不签。
+  - `"the HTML replaced after a refusal puts the new one where the old one failed"`：被拒、`loadAgain` 之后（实际又 `broken`：控件的重新加载也失败了，`adopt` 只对出过错的旧元素放新元素），撤销增强、换一份同一附件的 HTML、再运行；新元素的 `currentTime` 是 42。
+  - 实际另加（决定 624，审查 A 核对第 2 轮）：`test.each` 四格 `"one refused whose old address plays again, %s, is signed no more: %s"`（往后播到 300 秒、读者拖到失败处之前；`online`、计时）；`"the HTML replaced after a refusal puts the new one where the old one failed, though its controls left it at the start"`；`"one refused still in its place as the enhancement runs again is signed again on a timer of the new run, as long after"`（被拒之后 10 秒重跑，再 30 秒签第二次）；`test.each` 两格 `"one refused that the reader moves, its error still there, is signed again: %s"`（错还在，读者拖到 30 秒；`online`、计时；审查 A 核对第 3 轮）。
+- 已有测试要随之改的：`assets.test.ts:482-525` 两格（"one whose address is not given…"）要核对：被拒之后现在会安排再签，那两格只假了 `Date`（推断不受影响；实际照过：计时是真的，元素在测试之后离开文档，计时到了什么也不做）。
+- 变异：不听 `online`（第一格）；不记位置、用 `placeOf`（第一、三格的 42）；不安排计时（第二格）；`adopt` 不用记下的位置（第四格）；成功之后不清这一项（第一格末尾再派发 `online`，断言 `signed` 不再增加；实际红在末尾的"马上再出错"：恢复了的不签之后，`online` 那一步被它挡住）。实际另加：`onError` 的那一支也要 `begun`（第三格）；撤销不清计时（第二格末尾）；不翻倍（第二格）；计时、`online` 不看恢复了没有（往后播的两格）；不听 `seeking`（拖过的两格）；`seeking` 不看错（错还在、读者拖过的两格）；恢复的判断不看位置（第一格）；`kept` 不收有记录的（停在开头那格）；重跑不重起计时、重起时翻倍（重跑那格）。
 - 假服务端：`setUp` 的 `context.assetAddress` 加 `offline` 开关。
 - 牵连：**S4**（硬依赖，17.1 改 `kept`、`adopt`）。
 
@@ -2613,10 +2632,12 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - `test.each` 两种语言 `"a file pasted uploading, going to another page asks first: Stay keeps the edit; Leave goes, the upload goes on, its embed not inserted (%s)"`：`server.uploadsHeld = true`；粘贴一张图，等 `UPLOAD`；点树上的"Notes"（照 `W/pages/page/page-edit.test.tsx:152-176` 的 `tree()`）；`alertdialog` 的名字是 `Leave before the files are inserted?`（zh：`在文件插入之前离开？`），描述整句；点"Stay"，仍在编辑，焦点回到编辑器；再点"Notes"、"Leave"，到 Notes；`server.release()`；`server.nodes` 里有那张图，`PUT` 一次也没有。没修的代码上：没有对话框，直接到 Notes。
   - `"unsaved and uploading, leaving says both"`：先打字再粘贴，标题是"Leave without saving?"，描述是两句。
   - `"signing out as a pasted file uploads asks nothing"`：照 `page-edit.test.tsx` 里退出登录的格，粘贴后退出，没有对话框（4.5.0.5 第 3 条）。
+  - 实际另加三格（审查 A 的 M4）：`"leaving as the section's upload goes, which is not inserted anyway, asks nothing"`、`"leaving once a file pasted was refused at once asks nothing: it does not go"`、`"leaving another page's edit as a file pasted into this one, left, still uploads asks nothing"`；另有"答复了的上传、嵌入已插入，不为它问"一格（`result !== undefined` 的变异要的）。
 - 变异：
   - `uploading` 不进 `useBlocker`：第一格。
   - `result !== undefined` 不排除：在第一格里先 `release`、等嵌入插入，再导航，断言不问；抓不到就在 Step 的记录里写明等价及其证据。
   - `beforeunload` 也看 `uploading`：等价，不抓。`AssetStore` 在有在途的上传时本来就挂着 `beforeunload`（`asset.store.ts:178`），多挂一个，行为相同。
+  - 实际另加：`uploading` 去掉"这一页"、去掉"编辑器的"、去掉"没失败"（各红上面一格）。
 - 牵连：S1 的 18.6（离开之后焦点）；S1 也可能加 `editor.*` 的键，文本冲突，后合并的先 `git merge main`。答复之后、组合中等插入的那一瞬（`result` 已有、嵌入未插入）不问（推断：对话框开着时编辑器失焦、组合已结束）。
 
 ##### 18.2 同步被拒（`.md`、超过上限）时选区已删；frontmatter 里选中带引号的整个值再粘贴，值成了空的
@@ -2626,7 +2647,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - `W/stores/asset.store.ts`：把 `:253-257` 的两个同步判断提成导出的 `refusalOf(file: File, untitled: string, maxBytes: number | undefined): UploadRefusal | undefined`（`isPageName(fixedName(file.name, untitled))` 给 `{ refused: "page-file" }`；`maxBytes !== undefined && file.size > maxBytes` 给 `{ refused: "too-large", max: maxBytes }`）。`upload` 用它（`upload.failure = refusalOf(…)`，有值就不发）。
   - `W/editor/registry.ts:12-29` 的 `EditorContext` 加必填的 `refuses(file: File): boolean`（文档注释：uploadAsset 发送之前就会拒绝它时为真；粘贴留着没有东西替代的选区，M12 polish 18.2）。
   - `page-edit.tsx` 的 `context` 加 `refuses: (file) => refusalOf(file, t("asset.untitled"), instance.info?.asset_max_bytes) !== undefined`。
-  - `asset-upload.ts` 的 `paste`（`:148-152`）：只在 `from !== to && named.some((file) => !context.refuses(file)) && takesEmbed(view.state, from, to)` 时删选区（`userEvent: "delete.cut"`），然后照旧 `take(view, from, named, folders)`。
+  - `asset-upload.ts` 的 `paste`（`:148-152`）：只在 `from !== to && named.some((file) => embeds(file, context)) && takesEmbed(view.state, from, to)` 时删选区（实际：`embeds` 是 `!context.refuses(file)` 且名字照 store 的 `fixedName` 修过之后有扩展名：没有扩展名的附件没有链接，嵌入永远插不进去，审查 B 的 M2；`registry.ts` 的 `refuses` 文档注释随之补"或没有扩展名的文件"）（`userEvent: "delete.cut"`），然后照旧 `take(view, from, named, folders)`。
   - `takesEmbed(state, from, to)` = `"insert" in embedAt(state.update({ changes: { from, to } }).state, from, "x.png", undefined)`：在删掉之后的状态上判。
   - 选区留着时文件照样上传：被拒的行说为什么；落点不收的，结束时编辑器说"未插入"，与今天"空选区落在不收的位置"一致。文档注释（`:95-98`）的"which it replaces"补条件。
 - 测试：
@@ -2635,9 +2656,10 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
     - `"a quoted value selected in a frontmatter, whose quotes would go with it, is kept: the file goes, and is said not inserted (Codex M7 review fix check A2-Q1)"`：`doc = "---\nimage: 'old.png'\n---\nBody"`，选区是 `'old.png'`（含引号）；粘贴 `b.png`；`text() === doc`；答复之后 `told` 末句是 `notInFrontmatter` 的英文。没修的代码上：`"---\nimage: \n---\nBody"`。
     - 控制 `"a value selected inside its quotes is replaced by the embed"`：选区是 `old.png`（不含引号），结果 `image: '![[b.png]]'`。
   - `W/pages/page/page-asset-upload.test.tsx`：`"a Markdown file pasted over a selection keeps it: its row by the editor says why"`（整个程序：`page-edit` 真的把 `refuses` 接到 store）。没修：选区没了。
+  - 实际另加 `test.each` `"a paste of %s keeps the selection: it goes, but has no link, so no embed would take its place"`（`LICENSE`；`notes.md` 与 `LICENSE`）（审查 B 的 M2）；"a whole content selected, its frontmatter's lines with it, is replaced by the embed"一格（`takesEmbed` 在删之前的状态上判的变异要的）。
 - 已有测试要随之改的（`refuses` 必填，tsc 要求每个字面量都有）：`W/editor/idle-exit.test.ts:20`、`W/editor/extensions.test.ts:20`、`W/editor/autosave.test.ts:21`、`W/editor/loaded/link-completion.test.ts:69`、`W/editor/source-editor.test.tsx:27`，各加 `refuses: () => false`；`W/editor/loaded/asset-upload.test.ts:54` 用上面的规则。`asset-upload.test.ts:146-167`、`:211-221`、`:288-314` 的期望不变。
-- 变异：不看 `refuses`（第一格）；不看 `takesEmbed`（第二格）；`page-edit` 的 `refuses` 恒为 `false`（整个程序那格）；`takesEmbed` 改在删之前的状态上判：现有三格抓不住（删前删后结论相同），要另造一格，例如选区是 `'old.png`（含开引号、不含闭引号），形状照 `embedAt` 对未闭合引号的判断定，实施时核对。
-- 牵连：18.3（撤销的粒度）是 C，不做。`refusalOf` 由 `upload` 与编辑器共用，knip 不报。
+- 变异：不看 `refuses`（第一格）；不看扩展名（没有扩展名那格，实际，审查 B 的 M2）；不看 `takesEmbed`（第二格）；`page-edit` 的 `refuses` 恒为 `false`（整个程序那格）；`takesEmbed` 改在删之前的状态上判：现有三格抓不住（删前删后结论相同），要另造一格，例如选区是 `'old.png`（含开引号、不含闭引号），形状照 `embedAt` 对未闭合引号的判断定，实施时核对。
+- 牵连：18.3（撤销的粒度）是 C，不做。`refusalOf` 由 `upload` 与编辑器共用，knip 不报。审查 B 说的更窄的一处（名字含 U+FFFE、U+FFFF 时 `takesEmbed` 拿 `x.png` 判、frontmatter 里不收）没有改，进 v0.2 的候选（10.5）。
 
 ##### 12.8 补全的"表格"与服务端不对齐：表格里选别名写出不转义的 `|`
 
@@ -2647,17 +2669,21 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
   - 段落里第一条分隔行之前的那一行是表头，表格从那一行起到段落末尾（`:162-187`）；表头多于分隔行就不是表格，也不再往下找（`:168-170`）。
   - 这时 lezer 看到的是段落，补全写出 `[[Plans|Roadmap]]`，服务端把它切成两格。与 I3 的不同：还有表头里的 `\\|`（M6/P7 第 15 节）。
 - 改法：新文件 `W/editor/loaded/gfm-table.ts`，`export function inTable(state: EditorState, pos: number): boolean`（文档注释注明 M6/P7 fix check fc3-c1-2）：
-  - 从 `syntaxTree(state).resolveInner(pos, -1)` 往上找；有 `Table` 即真。
-  - 找到 `Paragraph` 时取它的首行到末行，从第二行起找第一条分隔行（照 `isTableDelim` 与四个正则，`table.go:124-143`：行首缩进至多 3、只含空白 `-` `|` `:`、不全是 `-`；按 `|` 切、去掉首尾的空白格，每格匹配 `^\s*:?-+:?\s*$`）。
-  - 找到第 n 行：表头（第 n−1 行）的格数（照 `parseRow`：去首尾空白、去首尾的 `|`，按前一个字符不是 `\` 的 `|` 切）大于分隔行的格数就返回假，否则返回"光标所在行 ≥ n−1"；没有分隔行返回假。
+  - 从 `syntaxTree(state).resolveInner(pos, -1)` 往上找；有 `Table` 即真。实际另认 `SetextHeading1`、`SetextHeading2`（审查 B 的 M1）：与 `Paragraph` 同读，只是去掉最后一行（下划线），每行（去掉容器的记号之后）去掉全部行首空白：lezer 遇到下划线把整个叶块收成 setext 标题，goldmark 的 setext 解析器带 `RequireParagraph`，先 `Close` 段落（去掉每行的行首空白，`parser/paragraph.go:45-54`）再变换（`parser/parser.go:999-1025`），表格先成立，下划线随后成了分隔线、段落或列表。
+  - 找到 `Paragraph` 时取它的首行到末行，从第二行起找第一条分隔行（照 `isTableDelim` 与四个正则，`table.go:124-143`：行首缩进至多 3、只含空格、制表符、`-` `|` `:`、不全是 `-`；按 `|` 切、去掉首尾只含空格与制表符的格，每格匹配 `^[ \t]*:?-+:?[ \t]*$`（实际：goldmark 的 `util.IsSpace` 与 Go 正则的 `\s` 只认 ASCII，JS 的 `\s` 与 `trim()` 还收 NBSP、U+3000；行一级的判断与每格的正则互为冗余，单改一处等价；审查 B 的 N1））。
+  - 找到第 n 行：表头（第 n−1 行）的格数（照 `parseRow`：去首尾的空格与制表符、去首尾的 `|`，按前一个字符不是 `\` 的 `|` 切）大于分隔行的格数就返回假，否则返回"光标所在行 ≥ n−1"；没有分隔行返回假。
+  - 实际（决定 619）：取段落的每一行时照 goldmark 去掉容器：首行从 `Paragraph` 的起点取；之后的行，段落在 `Blockquote` 里时去掉行首的引用记号（callout 也是），在 `ListItem` 里时去掉行首的空白，至多到段落首行起点的那一列（首行在引用记号之后的那一段的宽度：列表项的内容列），懒续行照原样；顶层的行照原样（分隔行的"缩进至多 3"只对它有意义）。S5 的差分探针：照字面 5/44 坏在 callout、引用与深的列表里，去掉之后 0/52；修复第 1 轮把列表的"去掉全部行首空白"改成"到那一列"（审查 B 的 N1：列表项里缩进 4 的一行被当成分隔行）。
+  - 制表符照 goldmark 的 padding（实际，核对 B 第 1 轮的 CHK1-B-N1、第 2 轮的 C2-N1）：一个制表符越过列表项的那一列时，越过的列补成空格留在行首（量缩进时算在内）；引用记号之后的制表符，记号按它的绝对列只吃一列，余下的补成空格，多层引用逐层照此，首行的列同样量。改前整个制表符去掉：列为 2 的项里"一个制表符加 3 个空格"的一行量成缩进 3、当成分隔行（goldmark 量成 5）；`>` 在第 0 列、之后一个制表符加 2 个空格的一行量成缩进 2（goldmark 量成 4）。
   - `link-completion.ts:151` 改成 `table: frontmatter === undefined && inTable(state, pos)`。`inLinkWritten` 的 `cellStart`（`:180-188`）已与 goldmark 同样只看前一个字符，不改。
 - 测试（vitest，`W/editor/loaded/link-completion.test.ts`，照 `:307-333` 的写法）：
   - `"in a table the server finds and lezer does not, a header of fewer cells than its delimiter row, an alias is written with \\| (M6/P7 fix check fc3-c1-2)"`：`head = "| a |\n| - | - |\n| x | "`；`type(view, "[[Road")`、选 Roadmap；`${head}[[Plans\\|Roadmap]]`。没修的代码上：`[[Plans|Roadmap]]`。
   - `"… a header whose \\\\| the server does not split at"`：`head = "| a \\\\| b |\n| - |\n| "`（TS 字符串里写出 `a \\| b`），同样 `\\|`。没修：`|`。
   - 控制 `"a header of more cells than its delimiter row is no table, nor the paragraph's lines before its header: an alias is written with |"`：`"| a | b | c |\n| - | - |\n| "` 与 `"[[‸\n| a |\n| - |"`（`editingAt`）都写 `|`。
-  - 可选新文件 `W/editor/loaded/gfm-table.test.ts` 对 `inTable` 逐形状列表（分隔行全是 `-`、缩进 4、冒号两端、没有前后 `|` 的行）。
+  - 可选新文件 `W/editor/loaded/gfm-table.test.ts` 对 `inTable` 逐形状列表（分隔行全是 `-`、缩进 4、冒号两端、没有前后 `|` 的行）。实际收了 49 个形状：是表格 31（含 setext 的六种、Unicode 空白两种、列表项与引用里缩进的、越过列的制表符、引用记号之后的制表符四种），不是 18（含 setext 的表头多一格、表头末尾一个 NBSP、列表项里缩进 4 的分隔行、引用记号之后的制表符三种）；每一个都在探针里对着 goldmark v1.8.6 核过，链接两种写法各渲染一次（S5 的记录）。
+  - 实际另加（`link-completion.test.ts`，决定 619）`"in a callout, a table the server finds and lezer does not, an alias is written with \\|"`：`"> [!note]\n> | a |\n> | - | - |\n> | x | "`，写 `[[Plans\\|Roadmap]]`；照设计字面的代码上只有它红。
   - 已有的 `:307-333`、`:347-380`、`:738-748` 的表格都是格数相等，不受影响。
-- 变异：只认 lezer 的 `Table`（第一、二格）；表头按 lezer 的规则切（第二格）；表头多于分隔行也算（控制格）；从段落首行起算表格（控制格的第二种）。
+- 变异：只认 lezer 的 `Table`（第一、二格）；表头按 lezer 的规则切（第二格）；表头多于分隔行也算（控制格）；从段落首行起算表格（控制格的第二种）。实际：从首行起算要 lezer 不认的形状才抓得到（`gfm-table.test.ts` 两个表头少于分隔行、光标在表头之前的形状）；另加：不去掉引用的记号（callout 那格与容器各格）；不认 `SetextHeading`（六格）；setext 的行不去行首空白（缩进 4 那格）；列表项去掉全部行首空白（三格）；列不扣引用记号（列表里引用那格）；表头按 `trim()` 去空白（NBSP 那格）；整个去掉越过列的制表符；整个去掉引用记号之后的制表符、按相对的列量它、多层引用不记吃掉的那一列、首行的列照旧（引用记号之后的制表符各格）（10.5）。
+- 限制（实际，进 v0.2）：`$$` 公式块（服务端的 `mathBlockParser` 能打断段落，lezer 不认）里有一行像分隔行、其后才是表格时，`inTable` 在同一个 lezer 段落里先看到公式里的那行，答假；段落首行比列表项的内容列多缩进时，续行多去掉至多三列。都罕见。
 - 牵连：0.5 第 4 条的差分探针。
 
 ##### 导入导出与来源
@@ -2676,7 +2702,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 测试（vitest，`W/stores/transfer.store.test.ts`）：
   - 把 `:133-143` 改成 `"a page answered once a read again moved the cursor is read again from where the jobs held end now, and added"`：`load` 得 `[4, 3]` 游标 `c2`；`more()`（请求 1 问 `c2`，扣住）；`load()` 答 `[5, 4]`、`c4`；答请求 1 `[3]`；跟进的请求 2 问 `c4`，答 `[3]`；`more` 解析为 `[job(3)]`；`ids(store)` 是 `[5, 4, 3]`，`nextCursor` 是 `null`；`lists.map((l) => l.ask)` 是 `[undefined, "c2", undefined, "c4"]`。没修的代码上：`more` 解析为 `[]`，没有问 `c4`。
   - 另加 `"a read again that reads the jobs to their end leaves More nothing to read"`：重读答 `next_cursor: null` 时 `more` 解析为 `[]`、不再请求。
-- 变异：返回 `[]`（第一格）；跟进时不判 `null`（第二格多一次请求、或请求 `null`）。
+- 变异：返回 `[]`（第一格）；跟进时不判 `null`（第二格多一次请求、或请求 `null`）。实际：不判 `null` 等价（`more()` 自己在游标为 `null` 时答 `[]`、不发请求，10.5）。
 
 ##### 20.1 自己的导入成功、对话框关闭之前，"已有进行中的导入"闪一下
 
@@ -2716,9 +2742,10 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 - 测试（vitest，`W/pages/notebook/source-add-dialog.test.tsx`）：
   - `test.each` 两种语言 `"a draft is not lost to Escape or a click outside: the dialog asks, Keep editing keeps it and the focus where it was, Discard and close closes (%s)"`：`pasteDialog(user)`；`draft(dialog)`；焦点放到 Markdown 文本框；按 Esc；对话框仍在，`alert` 整句（en / zh），焦点在"Keep editing"（zh：继续编辑）；点它，问的一块消失，两个字段的值不变，焦点回到 Markdown 文本框；`user.click(document.body)`（推断由此触发 Radix 的 `onInteractOutside`；不行就 `fireEvent.pointerDown(document.body)`），又问；点"Discard and close"，对话框关闭，`creates(server)` 为空。没修的代码上：Esc 直接关，找不到 `alert`。
   - 控制 `"an empty dialog closes at once on Escape"`。
+  - 实际另加 `"Escape again as the dialog asks is Keep editing: the draft kept, the focus where it was"`（审查 B 的 M3）；点外面那一步点对话框的遮罩（jsdom 里 `pointerDown(document.body)` 不让它问）。
   - `"a paste being sent stays on Escape, asking nothing"`：照 `:250-` 那组扣住 `POST`，Esc 之后对话框仍在、没有 `alert`。
   - 已有的 `:204-249`、`:250-` 都用"Cancel"关，不受影响。
-- 变异：不挡 `onInteractOutside`（第一格的后半）；空的也问（控制格）；问的时候焦点不给"继续编辑"（焦点断言）；发送中照样关（第三格）。
+- 变异：不挡 `onInteractOutside`（第一格的后半）；问的时候 Esc 不取消（对话框关掉、丢掉草稿：再按 Esc 那格，实际，审查 B 的 M3）；"继续编辑"不把焦点还回原处（焦点断言，实际）；空的也问（控制格）；问的时候焦点不给"继续编辑"（焦点断言）；发送中照样关（第三格）。
 - 假服务端：`sourceServer` 的 `answers`。
 - 牵连：S1 的 38.3（粘贴对话框走 `useForm`，改在共用的 `form-field.tsx`）与 S3 的 38.11（对话框标题行超宽，`dialog.tsx`）都碰这个对话框的周边，文本冲突，后合并的先 `git merge main`。38.2（降级后"添加来源"悄悄禁用）是 C，不做。
 
@@ -3270,8 +3297,8 @@ const threeBrowsers =
 | S3 | SE1 (page) 的 375 一段 | 只在 33.1 复现时拆出（`@narrow`） | 33.1 | Chromium、WebKit | 约 6 s |
 | S4 | **PG15**（新，`page/pg15-reading-updates.spec.ts`） | 三格（8.1 复现时四格；实际四格，10.4） | 4.4.6：就地更新留住焦点、callout、选区、播放；同名标题；全屏 | 三种（新加） | 54–90 s（实测约 15–27 test-seconds，10.4） |
 | S4 | UP1 (page)（`upgrade/up1-start-freeze.spec.ts:171`） | 加一段 | 48：横幅出现时文章的节点不换、段落不跳 | 三种（已在） | 约 3 s |
-| S5 | **AS6**（新，`asset/as6-reading-links.spec.ts`） | 三格 | 17.2b 复制、17.4 过期的下载、15.2 callout 标题里的音频 | Chromium | 15–24 s |
-| S5 | AS3 (page)（`asset/as3-render.spec.ts:297`） | 加一页、量盒子 | 15.1 | Chromium | 1–2 s |
+| S5 | **AS6**（新，`asset/as6-reading-links.spec.ts`） | 三格 | 17.2b 复制、17.4 过期的下载、15.2 callout 标题里的音频 | Chromium | 15–24 s（实测三格约 2 test-seconds，10.5） |
+| S5 | AS3 (page)（`asset/as3-render.spec.ts:297`） | 加一页、量盒子 | 15.1 | Chromium | 1–2 s（实测多 0.3–1.0 s，10.5） |
 | S6 | TB2 (page)（`trash/tb2-background-restore.spec.ts`） | 改回"在 Big 自己的页上删"，扣住删除的答复 | 24.8、24.10 | Chromium | 约 0.5 s |
 | S6 | SE1 (page) | 加一段 | 27.2：过时的结果打开已删的页 | Chromium | 1–2 s |
 | S6 | SE2 (page)（`search/se2-search-visibility.spec.ts`） | 加一段 | 26.5：方向键不搜，Tab 离开时搜 | Chromium | 约 1 s |
@@ -3506,7 +3533,7 @@ S4 在 S1 合并之后开（P2-1）。
 
 - **vitest**：盖住逻辑、名称、描述、角色、焦点的去处（元素移除之后）与路由状态。
 - **e2e**：只放 jsdom 做不到的：布局与宽度、计算之后的颜色、浏览器自己的焦点修正与滚动、复制与下载、跨标签页的频道、真的事件次序。
-- **三种浏览器**：只给各引擎不同、又常驻套件的焦点与滚动：新的 PG15，已在的 A10、LW3、UP1。复制、下载与 15.2 在三引擎里各探过（审查 C、设计者与修订核对 C），行为相同或只在 Chromium 复现，所以 AS6 只在 Chromium（P2-30）。15.2 的改法在 Firefox、WebKit 上与不改相同，点过控件之后程序里的打开照常（修订核对 C 的探针）。
+- **三种浏览器**：只给各引擎不同、又常驻套件的焦点与滚动：新的 PG15，已在的 A10、LW3、UP1。复制、下载与 15.2 在三引擎里各探过（审查 C、设计者与修订核对 C），行为相同或只在 Chromium 复现，所以 AS6 只在 Chromium（P2-30；实际见 10.5：附件行，决定 623）。15.2 的改法在 Firefox、WebKit 上与不改相同，点过控件之后程序里的打开照常（修订核对 C 的探针）。
 - **375 px**：Chromium 与 WebKit（`@narrow`）。
 
 几种难造的情形，各节都照下面的办法确定地造出，不靠重复跑：
@@ -3572,7 +3599,7 @@ S4 在 S1 合并之后开（P2-1）。
 | S2 | 0 | 0 |
 | S3 | 42–50（33.1 复现时再加约 6）；实测约 21.6（10.3） | 22–30 秒，区间 15–45；实测约 11–14 秒（10.3） |
 | S4 | 57–93；实测约 15–27（10.4） | 35–45 秒；按上面的折法推断约 8–18 秒（10.4） |
-| S5 | 16–26 | 8–15 秒 |
+| S5 | 16–26；实测约 2–3（10.5） | 8–15 秒；按上面的折法推断约 1–2 秒（10.5） |
 | S6 | 3–4 | 约 2 秒 |
 | 合计 | 约 125–180 | 约 70–95 秒 |
 
@@ -3633,6 +3660,8 @@ P2 完成，当且仅当下面七条都成立。
 **S3 之后**（2026-11-18）：第 1 条，S3 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与主持者的说明跑过、全绿（实施与修复第 1 轮的头上 `make check` 与 `make e2e`；合并 `main` 之后 `make lint-web`、`make knip`、`make test-web`、两种都改过的故事与 `make e2e`），审查与修复核对结束（核对第 1 轮之后不开第二轮，决定 594）。第 2 条，S3 的测试在没修的代码上红过，33.1 的排查有记录，变异除一条等价、一条设计预先写明走不到的之外都抓到（10.3 与 [S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)）。第 3 条，附录 A 里 S3 的 11 项 B、D 的 32.3 修好，M 的 33.1 复现、按 B 修好（决定 589），推后进 v0.2 的照 2.3 与决定 590。第 4–7 条，S3 的文档提交照写的改了（00 号文档 4.5、第 7 节 S3 一行与第 21 条、状态表、9.1、第 11、12、13 节与附录 A，总体设计 13.2 第 31 条、13.4 第 3 条与第 15 节，`M5-polish.md` 一行，05-lessons 两条，P5 设计 3.19 的人工入口）；README 不改。
 
 **S4 之后**（2026-11-19）：第 1 条，S4 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 跑过、全绿（实施与修复第 1–3 轮的头上 `make check`、`make e2e` 与两个检查，每个提交 `make lint-web`、`make knip`、`make test-web`），审查与三轮修复核对结束，核对第 2 轮的一条 Minor 由修复第 3 轮改，核对第 3 轮只有 Nit（10.4）。第 2 条，S4 的测试在没修的代码上红过，第 0 步的核对与三项探查有记录，变异除写明等价的之外都抓到（10.4 与 [S4 的记录](reviews/P2-S4-reading-view-review.md)）。第 3 条，附录 A 里 S4 的 A 5 项、B 5 项、C 的 11.6 失焦部分与 D 的 14d 修好，8.1 复现、修好（决定 610），推后进 v0.2 的照 4.4.8。第 4–7 条，S4 的文档提交照写的改了（00 号文档第 7 节第 22 条、第 11、12、13 节与附录 A 的 8.1，总体设计 13.2 第 23、26 条、13.4 第 3 条与第 15 节，`M5-polish.md`、`M4-performance.md` 各一行，P5 设计 3.19 的读屏清单）；README 不改。
+
+**S5 之后**（2026-11-19）：第 1 条，S5 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与负责人 2026-11-19 第 12 问跑过、全绿（实施、修复第 1 轮与合并之后的头上 `make check`、`make e2e` 与两个检查，修复第 2 轮 `make check`；修复第 3、4 轮照负责人第 12 问只跑 `make lint-web`、`make knip`、`make test-web`，全量交分支 CI；每个提交 `make lint-web`、`make knip`、`make test-web`），审查、三轮核对与四轮修复结束，核对第 2 轮的四条 Minor 由修复第 3 轮改，核对第 3 轮 A 的一条 Minor 由修复第 4 轮改、C 的在本提交（10.5）。第 2 条，S5 的测试在没修的代码上红过，开工的核对与 AS6 在 Firefox、WebKit 上的一次有记录，变异除写明等价的之外都抓到（10.5 与 [S5 的记录](reviews/P2-S5-editor-assets-review.md)）。第 3 条，附录 A 里 S5 的 A 15 项、B 6 项修好，推后进 v0.2 的照 10.5。第 4–7 条，S5 的文档提交照写的改了（00 号文档第 11、12、13 节，总体设计 13.2 第 7、12、21、27 条与第 15 节，`M5-polish.md` 一行，05-lessons 两条，P5 设计 3.19 的读屏清单；另照负责人第 12 问改 02-workflow 3.1 与 00 号文档 9.7）；README 不改。
 
 ### 8.2 总体设计的新文字
 
@@ -3733,21 +3762,27 @@ P2 完成，当且仅当下面七条都成立。
 
 第二处，在第 27 条末句 `` （`attachments-section.tsx` 的 `useNotice`）。 `` 之后（恰好一处）加一句：
 
-> 附件与导入的上传不设整体的超时：请求体在发时 60 秒没有进度、发完之后 180 秒没有答复就放弃（中止会让服务端的事务回滚，所以发完之后等得更久），行上（或导入的对话框里）分两种说明，离开页面的提醒随之关掉（`services/upload-fetch.ts` 的 `UploadTimeout`，M12/P2/S5，移交第 16 条）。
+> 附件与导入的上传不设整体的超时：请求体开始发出之后 60 秒没有进度、发完之后 180 秒没有答复就放弃（浏览器里排队等连接、一个字节也没发出的不算；中止会让服务端的事务回滚，所以发完之后等得更久；答复到了就不再计时），行上（或导入的对话框里）分两种说明，离开页面的提醒随之关掉（`services/upload-fetch.ts` 的 `UploadTimeout`，M12/P2/S5，移交第 16 条）。
+
+（实际，决定 620：起点是请求体开始发出，答复到了不再计时。）
 
 #### S5：13.2 第 7、12、21 条（第 23 条修订）
 
 第 7 条（17.6），在 `至迟在读之后的一小时之内）` 之后（恰好一处）加：
 
-> ；计时每次至多隔一分钟看一次时钟：机器睡醒之后至迟一分钟重读，从往返缓存回到页面时立即比较（M12/P2/S5，移交第 17 条）
+> ；计时每次至多隔一分钟看一次时钟：机器睡醒之后至迟一分钟重读，从往返缓存回到页面时立即比较（`pages/page/assets-expiry.ts` 的 `dueWatch`，M12/P2/S5，移交第 17 条）
 
 第 12 条（38.7），在末句 `它们是读取控制，不增加自动提交表单。` 之后（恰好一处）加：
 
-> 粘贴 Markdown 的对话框（来源区）有填写的内容时，Esc 与点外面先问；发送中不关；"取消"照旧直接关（M12/P2/S5，移交第 38 条）。
+> 粘贴 Markdown 的对话框（来源区）有填写的内容时，Esc 与点外面先问；问的时候焦点在"继续编辑"上，它（或再按 Esc）把焦点还给原处；发送中不关；"取消"照旧直接关（M12/P2/S5，移交第 38 条）。
 
 第 21 条（18.1），在 `它的"回到阅读"在有未保存的修改时先问。` 之后（恰好一处）加：
 
-> 编辑器里粘贴、拖入的文件还在上传时，应用内离开同样先问，说它们不会插入页面；离开之后上传照样完成，附件照样加进来（M12/P2/S5，移交第 18 条）。退出登录不为在途的上传问。
+> 编辑器里粘贴、拖入的文件还在上传时，应用内离开同样先问，说它们不会插入页面；离开之后上传照样完成，附件照样加进来（M12/P2/S5，移交第 18 条）。
+
+第 21 条另一处（实际，S5 审查 C 的建议：免得否定的一句后面紧跟着"导入的上传……期间同样"），`保存不了的随退出丢失。` 换成：
+
+> 保存不了的随退出丢失；在途的上传（附件与导入）不让它先问（M12/P2/S5）。
 
 #### S6：13.2 第 12 条（第 24 条修订）
 
@@ -3930,6 +3965,46 @@ P2 完成，当且仅当下面七条都成立。
 - **读屏与人工清单**：交 P5/S3 的读屏清单三项（S4 的记录"读屏与人工清单"）：第 4 步给"原来所在的那一块"时念出的是哪一块；图的包装（新节点）拿回焦点时念什么；后退到锚点时是否先念页顶再念标题。8.1 复现、修好，不进人工入口。
 - **4.4.8 的限制**（交收尾，进 v0.2）：第一、三、四、五条照旧；第二条照审查 A 的 M5 改写；"WebKit 没有 CSS 滚动锚定时……"与"8.1 没复现……"两条删；另加五条：读者离开之前滚到看不见那个标题的地方，后退回来时视图仍回到标题；决定 604 的接不回（三种后果，只在 jsdom 里造过）；第 3 步按远近取，同一处插进的块里有多个同键的元素时可能不是读者原来那一个（核对 A 的 C2-N1）；第 3 步的上限按整段的差算，读者那一块前后的删插方向相反时找不到它的新版本、走第 4 步（决定 606 的上限，核对 A 的 C2-M1、C3-N1）；可写与否因事件变了、不经拒绝时，拿着焦点的勾选框被禁用或"编辑"消失，焦点落 `body`（核对 B 的 C2-N2）。
 - **照实改的各节**（02-workflow 3.5）：头；2.1 第 3 条的第 22 条与第 8 条；2.3 的 401、402、422（只加注）；3.2 的 Go 样例；4.4.2 的 Go 样例、U4 第 3 步（审查 A 的 M5）与第 4 步（代码块，审查 A 的 M2）、`adopt`（决定 604）、模式与 6.2（决定 607）；4.4.3 第 3 步（决定 606）、滚动区的键与第 4 步（决定 605）；4.4.4 第 3 条那一格、8.1（决定 610）、11.1（一遍扫完、样式只改选择器）、17.8（决定 608）、48；4.4.5 加 AS3；4.4.6 第 3 格、8.1 那一格与推断用时；4.4.7 加 M4-7b、M4-12b，M4-12 一行；4.4.8；4.4.9 的核对与三行；5.2 的 PG15 一行；6.4 第 6、9 条；7.4 的 S4 一行；8.1 的"S4 之后"；8.2 的 S4（13.2 第 23 条、加第 26 条与 13.4）；第 9 节的读屏清单与人工入口。
+
+### 10.5 S5：编辑器、附件、上传、粘贴与导入导出（2026-11-19，合并见 00 号文档第 12 节）
+
+- **提交**：二十一个代码提交，修复第 1 轮八个、第 2 轮一个，合并 `main` 四次，17.4、17.7 两个，修复第 3 轮三个、第 4 轮一个，加本文档提交；[审查记录](reviews/P2-S5-editor-assets-review.md)。
+  - 第 1–17 个照 6.5 第 1–16 项（15.1 分服务端 `5ed97ec9` 与网页 `8637c655`）：`901ecc86`、`179d9d2b`、`72e29558`、`9bc5aede`、`45bacd0b`、`6563eafc`、`2ba2ae5c`、`2eeedea6`、`d1efa6e3`、`0308595e`、`783ae77e`、`33cb0073`、`444433df`、`5ed97ec9`、`8637c655`、`8d2b04de`、`f961ccf5`。推送之前改写过一次：16.11 的 `before` 每个文件记一次，让 2,000 × 2,000 的性能守卫贴着限、在干净 worktree 里红过，去掉；第 2 个提交 `--amend`、其余重放，没有推过旧的。去掉 `before` 不等价，修复第 1 轮改成按批记（见下）。
+  - 变异之后补的四个测试提交：`dc92431b`（16.3）、`809d9dfd`（16.10）、`c9e50e86`（12.8）、`5dea6e7a`（AS6 的复制）。
+  - 修复第 1 轮（三位审查，A 1/4/1/2、B 0/3/3/0、C 0/2/4/1）八个，推送之前 amend 过第 1 个（只改说明）与第 2 个（补重试一格），其后六个重放，旧的没有推过（审查 C 用 `gh` 核过）：`4390039f`（16.3 的"停住"从第一次进度起算，决定 620；两种语言的"停住"各格）、`87771394`（16.11 按批记 `before`，决定 622）、`0114ce89`（16.4b 清 `copied`；16.4c 只清上传的话）、`c95fd167`（18.1 三格）、`e1e95d61`（12.8 的 setext、ASCII 空白与列表项的列）、`6b48aa60`（18.2 没有扩展名的不删选区）、`b82f9ad8`（38.7 问时再按 Esc 一格）、`a0b108d9`（28.1 列表读全才说"不在"）。
+  - 修复第 2 轮（核对第 1 轮，0 I / 0 M，Nit 4）一个：`fa849645`（12.8 越过列的制表符留下余下的列，核对 B 的 CHK1-B-N1）；其余三条 Nit 是文档。
+  - S4 合并之后：`60ab921d`（`Merge main into m12-p2-s5`，没有冲突；删掉 S5 的 `wav`、去掉 `title-media.test.ts` 的 `role`）、`f310c5d9`（17.4 ＋ AS6 的第三格）、`c5820210`（17.7）。
+  - 修复第 3 轮（核对第 2 轮，0 I / 4 M / 1 N）三个：`d593c67d`（17.7 恢复了的不再签、停在开头的随块接回、重跑之后重起计时，决定 624）、`c64afa6f`（17.4 测试的假签名在一个任务里答复，核对 C 的 C2-M1）、`d6594761`（12.8 引用记号之后的制表符，核对 B 的 C2-N1）。照负责人 2026-11-19 第 12 问，推送之前只跑相关的门禁。
+  - 修复第 4 轮（核对第 3 轮：A 核代码 0 I / 1 M / 0 N，C 核文档草稿 0 I / 1 M / 4 N / 1 Q）一个：`d8027fb4`（17.7 错还在、读者拖过的照旧再签，核对 A 的 C3-M1，决定 624）；C 的五条与 Q1 在本提交。之后再合并 `main`（`305eec44`，只改文档）`20376fe6`；P5/S2 合并之后又合并 `main` 两次（`24e7b316`、`14eb2095`）：`e26dfd32`、`27d56eac`。A 复核：（对象 `d8027fb4`；`20376fe6` 只多了合进来的文档）C3-M1 关上，没有新问题：新的两格与 A 的 P4 同形；P1–P6 探针 8 格全过（含"错清了又出"：读者挪到 10 秒之后再出错，从 10 秒记下、签成也在 10 秒，不被拉回失败处；"签的时候 `seeking`"：在签的照旧跳过，记录留着）；去掉 `element.error === null` 与不听 `seeking` 两条变异都红。错还在、被读者挪了的，签成之后放在失败处，与设计 17.7 的"从失败处"一致（A 第 3 轮的可选一项没有采用）。
+- **做完**：A：12.8、15.1、15.2、16.3（超时取 60 秒停住、180 秒没答复，4.5.1；停住从第一次进度起算，决定 620）、16.4b、16.11、17.2b、17.4、17.6、17.7、18.1、18.2、19.4、20.3、38.7。B：16.4c、16.10、20.1、20.2、28.1、38.9。推后进 v0.2 的：16.11 的两种竞态（上传途中别人在同一处新建、移来或恢复了同名的附件；取消之后、树重读完之前用户再传同一个文件，新的先建成）都会被说成"取消晚了"；12.8 的 `$$` 公式块与"首行比内容列多缩进"；18.2 名字含 U+FFFE、U+FFFF 的那一处；Firefox 复制右栏值的尾随空格；附件行在 Chromium 里复制不出。
+- **主持者的决定**（618–624，00 号文档第 11 节）：15.2 用 rAF；12.8 去掉容器的记号；16.3 的"停住"从第一次上传进度起算（不在 store 里限并发）；15.1 的 `base` 层 `revert-layer`；16.11 按批记 `before`；AS6 不复制附件行、不在 Firefox、WebKit 另跑；17.7 被拒的记录（自己看记录、恢复了的不签、读者拖过的只在错已清时算恢复、撤销只清本容器的计时而下一次运行重起、有记录的随块接回）。**负责人 2026-11-19 第 12 问**（00 号文档第 11 节，不占决定号）：推送之前只跑相关的门禁，只剩 Nit 不再开核对，收官时整体跑一次全量。实施中定的不编号，在 S5 的记录。
+- **与设计不同之处**（正文照实改了，各处注"实际…（10.5）"或它的决定）：
+  - **15.2** 在 rAF 里设回（决定 618）：`setTimeout(0)` 每次点击画出一帧展开，rAF 0 帧；AS6 加"没有一帧画成展开"。
+  - **12.8** 照 goldmark 去掉引用记号与列表的缩进（决定 619）：照字面 5/44 坏，去掉之后 0/52。审查 B 的 40 个形状又找到 15 个坏（setext 的下划线 10、Unicode 空白 2、列表项的列 2、`$$` 1），修复第 1 轮修了前三类；`$$` 记成限制。核对第 1 轮又找到越过列的制表符，修复第 2 轮修了；核对第 2 轮找到引用记号之后的制表符，修复第 3 轮修了；"首行比内容列多缩进"记成限制。
+  - **15.1** 的 CSS 多一条 `@layer base` 的 `height: revert-layer`（决定 621）：Tailwind 的 preflight 比 `height` 属性强，设计的三条在三种引擎里都留不住高度。
+  - **16.3** 的"停住"从第一次上传进度起算（决定 620）：从 `send` 起算会把浏览器里排队等连接的上传判成停住（HTTP/1.1，每主机 6 条连接，审查 A 的三引擎探针）。
+  - **16.11** 按批记 `before`（决定 622）：设计让 `send` 开头记，每个文件一次与兄弟数成正比，守卫贴着限；实施先去掉了它，以为与只比名字等价，审查 A、C 的探针证伪（原地改名）。
+  - **17.2b**：Chromium 里附件行是可拖的元素，选不中、复制不出；AS6 只复制段落与右栏，行的 `select-none` 由 vitest 守（决定 623）。Firefox、WebKit 能复制行，不带提示；Firefox 复制右栏的值多一个尾随空格。
+  - **17.7**：`signAnew` 自己看记录、撤销只清这个容器的计时、每次运行丢掉不在文档里的记录（实施）；恢复了的不签、重跑之后重起计时、停在开头的随块接回（核对 A 第 2 轮，修复第 3 轮）；读者拖过的只在错已清时算恢复（核对 A 第 3 轮，修复第 4 轮）（决定 624）。
+  - **审查补的**：16.4b 附件离开列表时清掉手动复制的字段（之后附件回来不抢焦点）；16.4c 清空只清上传的话（P2-40 原文）；18.2 没有扩展名的文件不删选区；28.1 撤下"不在"也要列表读全；17.4 测试的假签名在一个任务里答复（一条变异原来挂住而不失败）。
+  - **变异的推断**：16.10 的两项（`aborted`、`includes`）设计以为同一格都抓，实际各自都够那一格，补了"令牌续期时取消"一格抓 `aborted`，`includes` 在走得到的状态里等价；19.4 的"不判 `null`"等价（`more()` 自己判）；12.8 的"从首行起算"要 lezer 不认的形状才抓得到；16.11 的"只比名字"不等价（见上）；17.4 的"不记 `passing`"设计预期一格红，测试的假签名在微任务里答复时是挂住。
+- **先红**：各项的新测试在没修的代码上红过（实施报告第 2 节、各轮修复报告）；15.1 在照设计字面的 CSS 上也红（`[3, 2, 300, 450]`）；15.2 的 AS6 去掉登记红在点 6 的那一步；17.4 在什么也不做的增强上六格红 3、AS6 第三格到 30 秒的测试时限；17.7 在 `f310c5d9` 的 `assets.ts` 上四格全红；修复第 3 轮 17.7 的六格、12.8 的五格在 `c5820210` 上红；修复第 4 轮 17.7 的两格在 `d6594761` 上红。只加测试的（18.1 三格、38.7、两种语言的"停住"）在没修的树上本来就过，各由它要守的变异红。
+- **变异**：第 1–16 项 74 条（vitest 65、Go 1、e2e 8），抓到 68；活下来的四条等价（16.10 的 `includes`、18.1 的 `beforeunload`、19.4 的 `null`、17.6 的 `stop`），15.2 的 `setTimeout(0)` 照预期只由 AS6 抓，附件行的 `select-none` 只由 vitest 抓。修复第 1 轮 24 条，抓到 22；活下来的是 12.8 的 ASCII 空白两处各自单改（行一级的判断与每格的正则互为冗余，单改一处等价；两处都改回即旧代码，M、AD 两格红）。16.11 的"重试仍用这一批的 `before`"第一次活下来，补了重试那一格。修复第 2 轮 1 条，红。17.4 六条（设计的五条加"不看修饰键"）、17.7 八条（设计的五条加 `onError` 那一支也要 `begun`、撤销不清计时、不翻倍），都红；17.4 的"不记 `passing`"当时挂住（60 秒超时杀掉），修复第 3 轮改了测试之后红 3 格。修复第 3 轮新的 13 条（17.7 八条、12.8 五条）都红，17.4、17.7 的 14 条重跑都红（17.7 的"成功之后不清这一项"补了"签了之后马上再出错不再签"一步之后红）。修复第 4 轮 1 条（`seeking` 不看错）红，"不听 `seeking`"重跑红。审查 C 重跑了实施的 17 条（含四条等价与两条"由别的测试守"），其余对照日志。表在 S5 的记录。
+- **门禁与 CI**：
+  - `f961ccf5` 上 `make check`（含 `make test`；Go 285 个包，vitest 199 个文件 4,889 格）、`make e2e`（584 过、1 跳过）、两个 e2e 的检查全绿；二十一个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,817 → 4,892 格），改了故事的另跑那几个；15.1 服务端的提交另跑 `make lint-go` 与 markdown 模块的 `go test`。
+  - 修复第 1 轮：`a0b108d9` 上 `make check`（Go 285 个包，vitest 199 个文件 4,922 格）、`make e2e`（584 过、1 跳过）、两个 e2e 的检查全绿；八个修复提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,892 → 4,922 格）。
+  - 修复第 2 轮：`fa849645` 上 `make check`（含 `lint-web`、`knip`、`test-web`；4,923 格）绿；只改了 `gfm-table` 与它的测试，`make e2e` 没有跑。
+  - 合并与 17.4、17.7：`c5820210` 上 `make check`（Go 285 个包，vitest 201 个文件 4,997 格）、`make e2e`（597 过、1 跳过）、两个 e2e 的检查（193 个文件；chromium 417、firefox 89、webkit 89、webkit-narrow 3）全绿；三个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（4,987、4,993、4,997 格）。
+  - 修复第 3 轮（照负责人第 12 问，不跑完整的 `make check`；没有改故事与夹具，`make e2e` 不跑）：三个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（5,003、5,003、5,010 格），头上的那一次即推送之前的门禁。
+  - 修复第 4 轮同样：`d8027fb4` 在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（5,012 格）；再合并 `main`（只带进文档）没有另跑；P5/S2 合并之后的合并 `e26dfd32` 跑 `make lint-web`、`make knip` 绿，再合并 `27d56eac` 只带进文档。
+  - 分支 CI：`f961ccf5` 的 run 44354440004 第一次 attempt 19 项全绿（web 5:46，Test 5:06；e2e 9:57，E2E 一步 8:33，584、1）；`5dea6e7a` 的 run 44385655444 第一次 attempt 19 项全绿（web 4:23，Test 3:48；e2e 9:25，E2E 一步 7:28，584、1）；修复第 1 轮的头 `a0b108d9` 的 run 44423276368 第一次 attempt 19 项全绿（web 5:47，Test 5:07，4,922 格；e2e 8:12，E2E 一步 6:16，584、1）；修复第 2 轮的头 `fa849645` 的 run 44443687371 第一次 attempt 19 项全绿（web 3:50，Test 3:17，4,923 格；e2e 9:02，E2E 一步 6:21，584、1）；合并与 17.4、17.7 的头 `c5820210` 的 run 44475220489 第一次 attempt 19 项全绿（web 3:53，Test 3:20，4,997 格；e2e 9:10，E2E 一步 7:51，597、1）；修复第 3 轮的头 `d6594761` 的 run 44487380423，第一次 attempt 红在 `server (race)`：runner 的 Docker 起 PostgreSQL 的容器超时（`cmd/nervewiki` 一个包，`container start: context deadline exceeded`，120 秒，与本分支的改动无关），e2e、image 随之跳过；只重跑失败的作业，第二次 attempt 19 项全绿（web 5:46，Test 5:06；e2e 8:42，E2E 一步 6:20，597、1）；修复第 4 轮与合并的头 `20376fe6` 的 run 44495490042，第一次 attempt 19 项全绿（web 4:06，Test 3:26，5,012 格；e2e 9:09，E2E 一步 7:32，597、1）；再合并两次之后的头 `27d56eac` 的 run 44505730967，第一次 attempt 19 项全绿（web 3:56，Test 3:24，5,012 格；e2e 8:38，E2E 一步 7:17，597、1）。
+  - 本提交的分支 CI：`（待填：本提交的分支 CI）`。
+- **性能守卫**（2,000 个文件、2,000 个兄弟，限 500 ms）：同一种量法（干净 worktree，`asset.store.test.ts` 的副本整份单独跑，锁里）：按批记 `before` 的 `a0b108d9` 45.0、44.1、44.4 ms；只比名字的 `5dea6e7a` 42.2、41.3、43.4 ms。
+- **e2e 的用时**（7.4）：CI 的 `list` 报告里，AS6 三格各 0.5–1.0 秒，AS3 (page) 多 0.3–1.0 秒，合计约 2–3 test-seconds，设计推断 16–26（审查 C 从日志核过）；按 7.4 的折法推断墙钟约 1–2 秒（没有量）。e2e 作业 8:12–9:57（E2E 一步 6:16–8:33），`main` 的 `ab766f02` 是 8:52（7:31），差在抖动之内。逐格的数在 S5 的记录。
+- **AS6 在 Firefox 与 WebKit 上的一次**：15.2 那格两者都过（本来就不开合）；复制那格两者段落相同，附件行能复制、不带提示，Firefox 右栏的值多一个尾随空格。审查 B 又在 `chromium-dark`、Firefox、WebKit 里各跑两遍 AS6 的 15.2 一格，核对第 2 轮在三种浏览器里各跑一遍 AS3、AS6，都过或红在这些格本来就只在 Chromium 跑的原因（`MediaRecorder`、剪贴板的权限）。
+- **与 S4 的合并**（`60ab921d`，`main` 的 `ad5d78b5`）：审查 C 的预演照实：没有文本冲突（两边都改的六个文件自动合并）；合并提交里删掉 S5 自己的 `wav`（用 S4 的，决定 611）、去掉 `title-media.test.ts` 的 `role`。核对 B 第 2 轮用 `git show --remerge-diff` 核过只有这两处。合并之后 web 与 e2e 的 `tsc`、oxlint、oxfmt 绿；`make test-web` 200 个文件 4,987 格过，AS3 三格与 AS6 两格（Chromium）过。
+- **读屏与人工清单**：S5 的记录"读屏与人工清单"列的六项交 P5/S3 的读屏清单；人工清单三项：15.1 的 Obsidian 对照、17.4 在程序里再点下载会不会被浏览器拦、38.7 与输入法的 Esc。
+- **照实改的各节**（02-workflow 3.5）：头；2.1 第 4 条的 15.1（决定 621）；2.3 的 403（决定 620）、407（决定 623）、419（决定 618）；4.5 的"本节的取舍"、4.5.0.1 表下第一条、4.5.0.3 末条、4.5.0.5 第 2、4 条、4.5.1.3 的 N、4.5.1.5；4.5.3 的 12.8、15.1、15.2、16.3、16.4b、16.4c、16.10、16.11、17.2b、17.4、17.7、18.1、18.2、19.4、28.1、38.7；5.2 的 S5 两行；7.1 的三种浏览器；7.4 的 S5 一行；8.1 的"S5 之后"；8.2 的 S5（13.2 第 7、12、21、27 条）。
 
 ## 附录：核对过的代码
 

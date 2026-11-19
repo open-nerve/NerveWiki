@@ -32,6 +32,33 @@ export type UploadRefusal =
 export type UploadResult = { kind: "asset"; asset: Asset } | { kind: "page"; page: Page };
 
 /**
+ * refusalOf is why file is not sent as an attachment by the name fixed from it (untitled for one of nothing): a
+ * page's file, or one larger than maxBytes; undefined for one that goes. The editor asks it before a paste replaces
+ * its selection (M12/P2/S5, 18.2).
+ */
+export function refusalOf(file: File, untitled: string, maxBytes: number | undefined): UploadRefusal | undefined {
+  if (isPageName(fixedName(file.name, untitled))) {
+    return { refused: "page-file" };
+  }
+  if (maxBytes !== undefined && file.size > maxBytes) {
+    return { refused: "too-large", max: maxBytes };
+  }
+  return undefined;
+}
+
+/**
+ * CancelledLate is why an upload cancelled shows again: the server had the
+ * whole file by then, and made the attachment file, which the tree read
+ * again lists (M12/P2/S5, 16.11).
+ */
+export class CancelledLate extends Error {
+  constructor(readonly file: string) {
+    super("the upload was cancelled once the server had it");
+    this.name = "CancelledLate";
+  }
+}
+
+/**
  * UploadTerms are what an upload begins under: what the page knows of what the server takes, the instance's largest
  * attachment in bytes; and whether the editor began it, its embed to be inserted (M7/P4 design 5.3).
  */
@@ -245,20 +272,18 @@ export class AssetStore {
    * file, or larger than terms.maxBytes, is not sent: it shows why.
    */
   upload(parent: string | null, files: readonly File[], untitled: string, terms: UploadTerms): Upload[] {
-    // The names taken, once for the files: each sent takes its own as well.
+    // The names taken, once for the files: each sent takes its own as well. The siblings there as they go, once too.
     const used = this.usedUnder(parent);
+    const before = this.idsUnder(parent);
     return files.map((file) => {
       const upload = new Upload(++this.uploadsStarted, parent, fixedName(file.name, untitled), file, terms.fromEditor);
       this.uploads.push(upload);
-      if (isPageName(upload.name)) {
-        upload.failure = { refused: "page-file" } satisfies UploadRefusal;
-      } else if (terms.maxBytes !== undefined && file.size > terms.maxBytes) {
-        upload.failure = { refused: "too-large", max: terms.maxBytes } satisfies UploadRefusal;
-      } else {
+      upload.failure = refusalOf(file, untitled, terms.maxBytes);
+      if (upload.failure === undefined) {
         if (this.generation.aborted) {
           upload.cancel();
         }
-        void this.send(upload, used, []);
+        void this.send(upload, used, before, []);
       }
       return upload;
     });
@@ -367,6 +392,11 @@ export class AssetStore {
     );
   }
 
+  /** idsUnder are the ids of the siblings under parent, as the tree has them now. */
+  private idsUnder(parent: string | null): Set<string> {
+    return new Set(this.pages.siblingsOf(parent).map((node) => node.id));
+  }
+
   /** Read a source once, then create it through the tree's shared write/re-read queue. */
   private async createSource(upload: Upload, beforeSend?: () => void): Promise<void> {
     this.sourceSending.add(upload);
@@ -430,8 +460,15 @@ export class AssetStore {
   /**
    * send sends upload by the first name free beside used (usedUnder its
    * parent), which it takes; and taken, the names the server refused it.
+   * before are the siblings' ids as it goes (idsUnder its parent, read
+   * with used): a cancel tells the server's keeping it by them.
    */
-  private async send(upload: Upload, used: Set<string>, taken: readonly string[]): Promise<void> {
+  private async send(
+    upload: Upload,
+    used: Set<string>,
+    before: ReadonlySet<string>,
+    taken: readonly string[]
+  ): Promise<void> {
     const name = freeName(upload.fixed, used);
     used.add(titleKey(name));
     runInAction(() => {
@@ -460,6 +497,19 @@ export class AssetStore {
       await this.read([upload.parent]);
       if (upload.signal.aborted) {
         this.dismiss(upload);
+        // The tree read again lists it: the server had it whole, and kept it. Its row comes back to say so; a tree
+        // that could not be read tells nothing, and nothing is said. A sibling by its name that was there as it went
+        // (before), renamed to it since, is not its: the name alone would take one renamed elsewhere for it. The ids
+        // are read once for the files, not as each goes, which would cost as many as the siblings for each file.
+        const made = this.pages
+          .siblingsOf(upload.parent)
+          .find((node) => !before.has(node.id) && titleKey(node.name) === titleKey(name));
+        if (made !== undefined) {
+          runInAction(() => {
+            upload.failure = new CancelledLate(made.name);
+            this.uploads.push(upload);
+          });
+        }
         return;
       }
       if (error instanceof ApiError && error.code === "page.title_taken" && taken.length + 1 < attempts) {
@@ -468,7 +518,7 @@ export class AssetStore {
         for (const refused of again) {
           free.add(titleKey(refused));
         }
-        return this.send(upload, free, again);
+        return this.send(upload, free, this.idsUnder(upload.parent), again);
       }
       runInAction(() => {
         upload.failure = error;

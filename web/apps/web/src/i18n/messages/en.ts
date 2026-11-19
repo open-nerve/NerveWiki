@@ -150,6 +150,9 @@ export const en = {
     "Pasting into a text area normalizes line endings. Upload a .md file to preserve its original bytes.",
   "source.create": "Add source",
   "source.creating": "Adding…",
+  "source.discardAsk": "Close, and lose the title and Markdown entered here?",
+  "source.keepEditing": "Keep editing",
+  "source.discardClose": "Discard and close",
   "source.files": "Files",
   "source.chooseFiles": "Choose files",
   "source.close": "Close",
@@ -576,6 +579,11 @@ export const en = {
   "asset.pageFile": "A Markdown file is a page: zip it and import it from the notebook's settings.",
   "asset.tooLarge": "The file is larger than this server takes: {max} at most.",
   "asset.failed": "The upload failed.",
+  "asset.stalled": "The upload stopped: nothing went out for a minute. Upload the file again.",
+  "asset.unanswered":
+    "The server did not answer within three minutes of getting the file, so the upload was stopped. If it is not in the list, upload it again.",
+  "asset.cancelledLate":
+    "Cancelled too late: the server already had all of {name}, and kept it. Delete it from the attachments if you do not want it.",
   "asset.nameTaken": "Another page or attachment here has this name, and the names tried after it too.",
   "asset.actions": "Actions for {name}",
   "asset.newTab": "(opens in a new tab)",
@@ -628,6 +636,9 @@ export const en = {
   "editor.leaveDescription": "Your changes to this page are not saved.",
   "editor.stay": "Stay",
   "editor.leave": "Leave",
+  "editor.leaveUploadsTitle": "Leave before the files are inserted?",
+  "editor.leaveUploadsDescription":
+    "Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it.",
   "editor.conflicted": "This page changed while you edited it: see below.",
   "editor.conflictTitle": "This page changed while you edited it",
   "editor.conflictDescription":
@@ -1085,6 +1096,10 @@ export const en = {
   "transfer.importPlaceGone": "The page to import under no longer exists.",
   "transfer.importCut":
     "The upload did not finish: the connection was cut. The server may have refused the zip before taking it (an import, a restore or an undo under way in this notebook, 5 jobs of yours queued or running, a full queue, too little room, or a zip too large), or the upload was too slow. Try again later.",
+  "transfer.importStalled":
+    "The upload stopped: nothing went out for a minute. Try again, on a faster connection if you can.",
+  "transfer.importUnanswered":
+    "The server did not answer within three minutes of getting the zip, so the upload was stopped. If the import is not among the recent jobs, import again.",
   "transfer.exportBusy": "You already have an export of this notebook under way. Wait for it to end, or cancel it.",
   "transfer.importFailure.forbidden": "The person who started it could no longer edit the notebook.",
   "transfer.importFailure.root_not_found": "The page imported under no longer exists.",

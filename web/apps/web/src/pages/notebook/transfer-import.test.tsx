@@ -1,6 +1,6 @@
 import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterAll, beforeAll, expect, test } from "vitest";
+import { afterAll, beforeAll, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
@@ -326,6 +326,72 @@ test("a connection cut, as a refusal before the file is read may reach the brows
   expect(asksBeforeLeaving()).toBe(false);
 });
 
+test.each<[string, "en" | "zh-CN", string]>([
+  [
+    "English",
+    "en",
+    "The server did not answer within three minutes of getting the zip, so the upload was stopped. If the import is not among the recent jobs, import again.",
+  ],
+  ["Chinese", "zh-CN", "服务器收到 zip 之后三分钟没有答复，上传已停止。最近的任务里没有这次导入的话，再导入一次。"],
+])(
+  "an import's upload the server does not answer within three minutes of the zip says the upload was stopped, the file kept to try again (%s)",
+  async (_, locale, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+    renderApp(transfer, server.app);
+    const shown = await open(user);
+    await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+    await user.click(within(shown).getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(transfers(server.app).length).toBe(1));
+    act(() => server.app.preferences.setLocale(locale));
+    act(() => transfers(server.app)[0]?.progress(4, 4));
+    expect(asksBeforeLeaving()).toBe(true);
+    const reads = server.asked.filter((ask) => ask.startsWith("GET jobs")).length;
+
+    await act(() => vi.advanceTimersByTimeAsync(180_000));
+
+    expect((await within(shown).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    const confirm = shown.querySelector<HTMLButtonElement>("button[type=submit]");
+    expect(confirm?.disabled).toBe(false);
+    expect(
+      (within(shown).getByLabelText(locale === "en" ? "Zip archive" : "zip 文件") as HTMLInputElement).files?.[0]?.name
+    ).toBe("Vault.zip");
+    expect(asksBeforeLeaving()).toBe(false);
+    await waitFor(() => expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(reads));
+  }
+);
+
+test.each<[string, "en" | "zh-CN", string]>([
+  ["English", "en", "The upload stopped: nothing went out for a minute. Try again, on a faster connection if you can."],
+  ["Chinese", "zh-CN", "上传停住了：一分钟没有传出任何数据。请重试，最好换一个更快的网络。"],
+])(
+  "an import's upload that, begun, makes no progress for a minute says it stopped, the file kept to try again (%s)",
+  async (_, locale, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+    renderApp(transfer, server.app);
+    const shown = await open(user);
+    await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+    await user.click(within(shown).getByRole("button", { name: "Import" }));
+    await waitFor(() => expect(transfers(server.app).length).toBe(1));
+    act(() => server.app.preferences.setLocale(locale));
+    act(() => transfers(server.app)[0]?.progress(1, 4));
+
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+    expect((await within(shown).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    expect(
+      (within(shown).getByLabelText(locale === "en" ? "Zip archive" : "zip 文件") as HTMLInputElement).files?.[0]?.name
+    ).toBe("Vault.zip");
+  }
+);
+
 test("the upload tells its progress; the browser asks before the page is left; closed, the dialog asks before it stops it", async () => {
   const user = userEvent.setup();
   const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
@@ -395,6 +461,27 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await waitFor(() => expect(router.state.location.pathname).toBe(general));
   expect(transfers(server.app)[1]?.aborted).toBe(true);
   await waitFor(() => expect([asksBeforeLeaving(), screen.queryByRole("dialog")]).toEqual([false, null]));
+});
+
+test("a double click on Stop the upload stops it, and the dialog stays with the file chosen", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({ answers: { [imports]: () => new Promise<Response>(() => undefined) } });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(transfers(server.app).length).toBe(1));
+
+  // The double click's first click stops the upload; its second falls on Cancel, which takes Stop's place.
+  fireEvent.click(within(shown).getByRole("button", { name: "Stop the upload" }), { detail: 1 });
+  const cancel = await within(shown).findByRole("button", { name: "Cancel" });
+  fireEvent.click(cancel, { detail: 2 });
+
+  expect(screen.queryByRole("dialog")).toBe(shown);
+  expect((within(shown).getByLabelText("Zip archive") as HTMLInputElement).files?.[0]?.name).toBe("Vault.zip");
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  fireEvent.click(cancel, { detail: 1 });
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
 test("an import's report counts what it skipped, not missing files, and says what was not imported as it was", async () => {
@@ -644,6 +731,87 @@ test("refused, as the jobs read again show an import under way, the focus stays 
   expect(document.activeElement).toBe(confirm);
   await user.tab();
   expect(shown.contains(document.activeElement)).toBe(true);
+  // The refusal answers the press; the import under way it is about is not said again beside it (M12/P2/S5, 20.2).
+  expect(
+    within(shown)
+      .getAllByRole("alert")
+      .map((alert) => alert.textContent)
+  ).toEqual([
+    "An import, a restore or an undo is under way in this notebook, perhaps someone else's. Wait for it to end, then try again.",
+  ]);
+});
+
+test("refused for another's import, then pressed again, says the standing one once the answer is not a refusal", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  const server = jobsServer({
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  expect(await screen.findByText("No jobs yet.")).toBeTruthy();
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+  const other = underWay(jobJSON(9, { kind: "import", name: "Other.zip" }), 0, 0);
+  server.jobs = [other];
+  answers[0]?.(problem(409, "transfer.busy"));
+  const confirm = await within(shown).findByRole("button", { name: "Import" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBe("true"));
+
+  // The other import ends; pressed again, this one fails otherwise, as yet another write has begun.
+  server.jobs = [{ ...other, state: "succeeded", finished_at: "2026-10-05T10:20:00Z" }];
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull(), { timeout: 3000 });
+  await user.click(confirm);
+  await waitFor(() => expect(answers.length).toBe(2));
+  server.jobs = [underWay(jobJSON(10, { kind: "trash_restore" }), 0, 0), ...server.jobs];
+  answers[1]?.(problem(500, "internal"));
+
+  await waitFor(() =>
+    expect(
+      within(shown)
+        .getAllByRole("alert")
+        .map((alert) => alert.textContent)
+    ).toContain(
+      "An import, a restore or an undo is under way in this notebook. Wait for it to end before starting an import."
+    )
+  );
+});
+
+test("an import uploading that the jobs read again already show does not say an import is under way", async () => {
+  const user = userEvent.setup();
+  const answers: ((response: Response) => void)[] = [];
+  // An export runs: the jobs are read again each second.
+  const server = jobsServer({
+    jobs: [underWay(jobJSON(1), 1, 4)],
+    answers: {
+      [imports]: () =>
+        new Promise<Response>((resolve) => {
+          answers.push(resolve);
+        }),
+    },
+  });
+  renderApp(transfer, server.app);
+  const shown = await open(user);
+  await user.upload(within(shown).getByLabelText("Zip archive"), vault());
+  await user.click(within(shown).getByRole("button", { name: "Import" }));
+  await waitFor(() => expect(answers.length).toBe(1));
+
+  // The server made this import before its answer reached the page: the jobs read again show it.
+  server.jobs = [underWay(jobJSON(2, { kind: "import", name: "Vault.zip" }), 0, 0), ...server.jobs];
+  const reads = server.asked.filter((ask) => ask.startsWith("GET jobs")).length;
+  await waitFor(() => expect(server.asked.filter((ask) => ask.startsWith("GET jobs")).length).toBeGreaterThan(reads), {
+    timeout: 3000,
+  });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(within(shown).queryByRole("alert")).toBeNull();
+  answers[0]?.(json(underWay(jobJSON(2, { kind: "import", name: "Vault.zip" }), 0, 0), 202));
 });
 
 test("a focus the user put in the form as the upload went is kept as it ends", async () => {

@@ -130,16 +130,33 @@ test("a page that more adds while a read again is out is read on to", async () =
   expect([ids(store), store.nextCursor]).toEqual([[4, 3, 2], null]);
 });
 
-test("a page answered once a read again moved the cursor is not added", async () => {
+test("a page answered once a read again moved the cursor is read again from where the jobs held end now, and added", async () => {
   const { store, lists } = storeOf();
   await answer(lists, 0, page([job(4), job(3)], "c2"), store.load());
   const more = store.more();
   await answer(lists, 2, page([job(5), job(4)], "c4"), store.load());
 
+  await answer(lists, 1, page([job(3)]));
+  await settled();
+  await answer(lists, 3, page([job(3)]), more);
+
+  await expect(more).resolves.toEqual([job(3)]);
+  expect([ids(store), store.nextCursor]).toEqual([[5, 4, 3], null]);
+  expect(lists.map((list) => list.ask)).toEqual([undefined, "c2", undefined, "c4"]);
+});
+
+test("a read again that reads the jobs to their end leaves More nothing to read", async () => {
+  const { store, lists } = storeOf();
+  await answer(lists, 0, page([job(4), job(3)], "c2"), store.load());
+  const more = store.more();
+  await answer(lists, 2, page([job(5), job(4), job(3)]), store.load());
+
   await answer(lists, 1, page([job(3)]), more);
 
   await expect(more).resolves.toEqual([]);
-  expect([ids(store), store.nextCursor]).toEqual([[5, 4], "c4"]);
+  await settled();
+  expect(lists).toHaveLength(3);
+  expect([ids(store), store.nextCursor]).toEqual([[5, 4, 3], null]);
 });
 
 test.each([

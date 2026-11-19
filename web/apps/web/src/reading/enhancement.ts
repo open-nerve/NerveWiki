@@ -5,10 +5,12 @@ import type { Locale } from "../i18n/locale";
 import { appLinks } from "./app-links";
 import { assets } from "./assets";
 import { diagrams, loadMermaid } from "./diagrams";
+import { expiredDownloads } from "./expired-downloads";
 import { codeHighlight, highlightWorker } from "./highlight";
 import { loadKatex, math } from "./math";
 import { scrollRegions } from "./scroll-regions";
 import { taskToggle } from "./task-toggle";
+import { titleMedia } from "./title-media";
 import { unresolvedLinks } from "./unresolved-links";
 
 /**
@@ -118,8 +120,11 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
  * (M4 design 8): M4 has code highlighting, and the keyboard's way to what
  * scrolls sideways (scrollRegions since M6); M5 the task items' ticks; M6 the links into the app,
  * and those to pages not there, the formulas and the diagrams; M7 the
- * attachments. The app's composition root (main.tsx) gives them to
- * the reading views through Enhancements; without it they have none.
+ * attachments; M12 a download of an attachment clicked as its address has
+ * expired signed anew (expiredDownloads), and a folded callout kept as it
+ * was by a control of a medium in its title (titleMedia). The app's composition root (main.tsx)
+ * gives them to the reading views through Enhancements; without it they
+ * have none.
  */
 export const readingEnhancements: readonly Enhancement[] = [
   codeHighlight(highlightWorker),
@@ -130,6 +135,8 @@ export const readingEnhancements: readonly Enhancement[] = [
   appLinks,
   unresolvedLinks,
   assets(),
+  expiredDownloads,
+  titleMedia,
 ];
 
 export const Enhancements = createContext<readonly Enhancement[]>([]);

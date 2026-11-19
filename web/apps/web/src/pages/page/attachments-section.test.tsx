@@ -35,6 +35,8 @@ test("a page's attachments are listed by name, each opening as it is served, wit
     ])
   );
   const opened = within(section).getByRole("link", { name: "photo.png (opens in a new tab)" });
+  // The hint is not copied with the row's text (M12/P2/S5, 17.2b).
+  expect(opened.querySelector(".sr-only")?.classList.contains("select-none")).toBe(true);
   expect([opened.getAttribute("href"), opened.getAttribute("target"), opened.getAttribute("rel")]).toEqual([
     `/api/v0/assets/${photo.id}/content?sig=1`,
     "_blank",
@@ -227,6 +229,97 @@ test.each(["mouse", "keyboard"])(
     await user.keyboard("{Escape}");
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     expect(document.activeElement).toBe(another);
+  }
+);
+
+/** noClipboard takes the page's clipboard away until the test ends: a page served without HTTPS. */
+function noClipboard() {
+  const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+  Object.defineProperty(navigator, "clipboard", { value: undefined, configurable: true });
+  onTestFinished(() => {
+    if (clipboard === undefined) {
+      Reflect.deleteProperty(navigator, "clipboard");
+    } else {
+      Object.defineProperty(navigator, "clipboard", clipboard);
+    }
+  });
+}
+
+test("an embed shown to copy by hand follows its attachment renamed elsewhere: the field holds its new embed and name, the focus where it was", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  noClipboard();
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  const field = (await within(section).findByRole("textbox", { name: "Embed of data.zip" })) as HTMLInputElement;
+  expect(field.value).toBe("![[data.zip]]");
+  act(() => within(section).getByRole("button", { name: "Upload" }).focus());
+
+  // Renamed in another tab.
+  server.nodes = [...server.nodes.filter((node) => node.id !== archive.id), { ...archive, name: "archive.zip" }];
+  await readAgain();
+
+  await waitFor(() => expect(within(section).getByRole("textbox", { name: "Embed of archive.zip" })).toBe(field));
+  expect(field.value).toBe("![[archive.zip]]");
+  expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Upload" }));
+});
+
+test("an embed shown to copy by hand goes as its attachment goes elsewhere, the focus in it going to the section's title", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  noClipboard();
+  await user.click(await actionsOf(section, "data.zip"));
+  await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+  const field = await within(section).findByRole("textbox", { name: "Embed of data.zip" });
+  act(() => field.focus());
+
+  // Deleted in another tab.
+  server.nodes = server.nodes.filter((node) => node.id !== archive.id);
+  await readAgain();
+
+  await waitFor(() => expect(within(section).queryByRole("textbox")).toBeNull());
+  expect(document.activeElement).toBe(within(section).getByRole("heading", { name: "Attachments" }));
+});
+
+test.each([
+  ["deleted, then restored", (node: typeof archive) => (node.id === archive.id ? [] : [node])],
+  [
+    "renamed without its extension, then back",
+    (node: typeof archive) => [node.id === archive.id ? { ...node, name: "data" } : node],
+  ],
+] as const)(
+  "an embed shown to copy by hand, gone as its attachment was %s elsewhere, does not come back with it to take the focus",
+  async (_, away) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+    const server = pageServer({ nodes });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    noClipboard();
+    await user.click(await actionsOf(section, "data.zip"));
+    await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+    await within(section).findByRole("textbox", { name: "Embed of data.zip" });
+    server.nodes = server.nodes.flatMap(away);
+    await readAgain();
+    await waitFor(() => expect(within(section).queryByRole("textbox")).toBeNull());
+    // The reader goes on elsewhere.
+    const upload = within(section).getByRole("button", { name: "Upload" });
+    act(() => upload.focus());
+
+    // Back, in another tab.
+    server.nodes = [...server.nodes.filter((node) => node.id !== archive.id), archive];
+    await readAgain();
+    await within(section).findByRole("link", { name: "data.zip" });
+    await act(() => vi.advanceTimersByTimeAsync(50));
+
+    expect(within(section).queryByRole("textbox")).toBeNull();
+    expect(document.activeElement).toBe(upload);
   }
 );
 
@@ -695,6 +788,38 @@ test("a hidden tab's list is not read again as it is due, but as the tab is show
   await waitFor(() => expect(reads()).toBe(2));
 });
 
+// M12/P2/S5, 17.6: a timer that falls behind the clock, the machine asleep, is caught up with.
+test("a list whose timer falls behind, the machine asleep, is read again within a minute of waking", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  server.assetsExpireAt = "2026-10-09T09:00:00Z";
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  const reads = () => server.sent.filter((line) => line === "GET assets Guide").length;
+  await waitFor(() => expect(reads()).toBe(1));
+
+  // Asleep three hours: the clock goes on, the timers do not.
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+  expect(reads()).toBe(2);
+});
+
+test("a list whose timer falls behind is read again at once as the page is shown again from the back-forward cache", async () => {
+  vi.useFakeTimers({ now: Date.parse("2026-10-09T08:00:00Z"), shouldAdvanceTime: true });
+  const server = pageServer({ nodes });
+  server.assetsExpireAt = "2026-10-09T09:00:00Z";
+  renderApp(pagePath(guide.id), server.app);
+  await attachments();
+  const reads = () => server.sent.filter((line) => line === "GET assets Guide").length;
+  await waitFor(() => expect(reads()).toBe(1));
+
+  vi.setSystemTime(Date.now() + 3 * 60 * 60_000);
+  act(() => void window.dispatchEvent(new Event("pageshow")));
+
+  await waitFor(() => expect(reads()).toBe(2));
+});
+
 test("a page's deletion counts the attachments of its subtree, which go with it", async () => {
   const user = userEvent.setup();
   const others = [assetNode(75, "x.png", linux), assetNode(78, "y.png", notes), assetNode(79, "z.png")];
@@ -758,6 +883,53 @@ test("an attachment gone to that the list read since lacks is said gone, the foc
   ).toBeTruthy();
   await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
   expect(document.activeElement).toBe(at);
+});
+
+test("an attachment said gone that comes back, restored elsewhere, is said gone no more: its row shows, the title described by nothing", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const gone = assetNode(31, "gone.png", linux);
+  const server = pageServer({ nodes: [guide, install, linux, notes] });
+  renderApp([{ pathname: pagePath(linux.id), state: { attachment: gone.id } }], server.app);
+  const said =
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it.";
+  const section = await attachments();
+  expect(await within(section).findByText(said)).toBeTruthy();
+  const title = within(section).getByRole("heading", { name: "Attachments" });
+  expect(title.getAttribute("aria-describedby")).not.toBeNull();
+
+  // Restored in another tab.
+  server.nodes = [...server.nodes, gone];
+  await readAgain();
+
+  expect(await within(section).findByRole("link", { name: "gone.png (opens in a new tab)" })).toBeTruthy();
+  expect(within(section).queryByText(said)).toBeNull();
+  expect(title.getAttribute("aria-describedby")).toBeNull();
+});
+
+test("an attachment said gone that comes back past the list's first hundred is said gone no more: the list read is not whole", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+  const gone = assetNode(31, "zz.png", linux);
+  const hundred = Array.from({ length: 100 }, (_, i) =>
+    assetNode(400 + i, `f${String(i).padStart(3, "0")}.bin`, linux)
+  );
+  const server = pageServer({ nodes: [guide, install, linux, notes, ...hundred] });
+  renderApp([{ pathname: pagePath(linux.id), state: { attachment: gone.id } }], server.app);
+  const said =
+    "The attachment you opened is no longer here: it was deleted or moved, or you no longer have access to it.";
+  const section = await attachments();
+  expect(await within(section).findByText(said)).toBeTruthy();
+  const title = within(section).getByRole("heading", { name: "Attachments" });
+
+  // Restored in another tab, after the first hundred by its name.
+  server.nodes = [...server.nodes, gone];
+  await readAgain();
+  const more = await within(section).findByRole("button", { name: "More attachments" });
+
+  expect(within(section).queryByText(said)).toBeNull();
+  expect(title.getAttribute("aria-describedby")).toBeNull();
+  await user.click(more);
+  expect(await within(section).findByRole("link", { name: "zz.png (opens in a new tab)" })).toBeTruthy();
 });
 
 // M12/P2/S1, 16.1: a row the list read again takes away, the focus in it or in its menu (a portal), leaves it to the

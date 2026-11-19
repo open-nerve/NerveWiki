@@ -141,7 +141,7 @@ export function AttachmentRow({
         {source && (
           <>
             {" "}
-            <span className="sr-only">{t("page.sourceKind")}</span>
+            <span className="sr-only select-none">{t("page.sourceKind")}</span>
           </>
         )}
         {inline && <NewTab />}
@@ -196,13 +196,16 @@ export function AttachmentRow({
   );
 }
 
-/** NewTab says, unseen, that a link opens in a tab of its own: its space outside, which a name joins the words by. */
+/**
+ * NewTab says, unseen, that a link opens in a tab of its own: its space outside, which a name joins the words by; not
+ * copied with the text (M12/P2/S5, 17.2b).
+ */
 function NewTab() {
   const t = useT();
   return (
     <>
       {" "}
-      <span className="sr-only">{t("asset.newTab")}</span>
+      <span className="sr-only select-none">{t("asset.newTab")}</span>
     </>
   );
 }

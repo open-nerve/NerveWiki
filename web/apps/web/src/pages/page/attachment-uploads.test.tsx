@@ -2,10 +2,11 @@ import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-libra
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
-import { attachments, dropped, nodes, picker, rows, transfers } from "../../test/attachments";
+import { archive, attachments, dropped, nodes, picker, rows, transfers } from "../../test/attachments";
 import { json, notebookJSON, problem } from "../../test/fakes";
 import { assetJSON, assetNode, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { TokenManager } from "../../session/token-manager";
 import { AssetStore } from "../../stores/asset.store";
 import { formOf } from "../../test/transfer";
 
@@ -177,7 +178,101 @@ test("Cancel stops the upload: its request is aborted, nothing is made, nothing 
   act(() => server.release());
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
   expect(server.nodes.map((node) => node.name)).not.toContain("big.png");
-  expect(notice(section)).toBe("Uploading files: 1.");
+  // Nothing goes any more: nothing is said to (M12/P2/S5, 16.4c).
+  expect(notice(section)).toBe("");
+});
+
+test.each<[string, "en" | "zh-CN", string, string, string]>([
+  [
+    "English",
+    "en",
+    "Cancel the upload of a.png",
+    "Upload",
+    "Cancelled too late: the server already had all of a.png, and kept it. Delete it from the attachments if you do not want it.",
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    "取消a.png的上传",
+    "上传",
+    "取消晚了：服务器已经收到了整个「a.png」并留下了它。不要的话，在附件里删除它。",
+  ],
+])(
+  "a cancel that comes once the server has the whole file says so: the attachment is listed, its row says the cancel was late (%s)",
+  async (_, locale, cancelName, uploadName, said) => {
+    const user = userEvent.setup();
+    // The server made the attachment; its answer is lost.
+    const server = pageServer({
+      nodes,
+      answers: {
+        [uploadsPath]: (request) => {
+          server.nodes = [...server.nodes, assetNode(90, String(formOf(request)?.get("name")), guide)];
+          return new Promise<Response>(() => undefined);
+        },
+      },
+    });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    act(() => server.app.preferences.setLocale(locale));
+
+    choose(section, [new File(["abcd"], "a.png")]);
+    await waitFor(() => expect(server.nodes.some((node) => node.name === "a.png")).toBe(true));
+    await user.click(await within(section).findByRole("button", { name: cancelName }));
+
+    expect((await within(section).findByRole("alert")).textContent).toBe(said);
+    expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([true]);
+    expect(rows(section).filter((name) => name.startsWith("a.png"))).toHaveLength(1);
+    expect(document.activeElement).toBe(within(section).getByRole("button", { name: uploadName }));
+  }
+);
+
+test("a cancel in time says nothing late of an attachment there as the upload went, renamed elsewhere meanwhile to its name", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["abcd"], "a.png")]);
+  const cancel = await within(section).findByRole("button", { name: "Cancel the upload of a.png" });
+  await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+  // Someone else renames data.zip, a sibling as the upload went, to a.png.
+  server.nodes = server.nodes.map((node) => (node.id === archive.id ? { ...node, name: "a.png" } : node));
+  await user.click(cancel);
+
+  expect(transfers(server.app).map((transfer) => transfer.aborted)).toEqual([true]);
+  // The tree and the list read again list the renamed one by its new name; the server kept nothing of the upload.
+  await waitFor(() => expect(rows(section).some((name) => name.startsWith("a.png"))).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(section).queryByRole("alert")).toBeNull();
+  expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull();
+  act(() => server.release());
+});
+
+test("a retry by the next name, cancelled in time, says nothing late of the attachment that took the first, renamed elsewhere to the next", async () => {
+  const user = userEvent.setup();
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  choose(section, [new File(["abcd"], "a.png")]);
+  await waitFor(() => expect(uploaded(server.sent)).toEqual(["UPLOAD a.png under Guide"]));
+  // Another tab takes a.png as it goes: refused, the upload tries a 2.png, of the tree read again.
+  const taker = assetNode(81, "a.png", guide);
+  server.nodes = [...server.nodes, taker];
+  act(() => server.release());
+  await waitFor(() =>
+    expect(uploaded(server.sent)).toEqual(["UPLOAD a.png under Guide", "UPLOAD a 2.png under Guide"])
+  );
+  const cancel = await within(section).findByRole("button", { name: "Cancel the upload of a 2.png" });
+  // The other tab renames its a.png to a 2.png.
+  server.nodes = server.nodes.map((node) => (node.id === taker.id ? { ...node, name: "a 2.png" } : node));
+  await user.click(cancel);
+
+  await waitFor(() => expect(rows(section).some((name) => name.startsWith("a 2.png"))).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(section).queryByRole("alert")).toBeNull();
+  act(() => server.release());
 });
 
 test("an upload answered is finishing as its list is read again: it can no longer be cancelled", async () => {
@@ -262,6 +357,195 @@ test("the focus on a row's button stays as its upload fails: Cancel becomes Dism
   );
   await user.click(dismiss);
   expect(document.activeElement).toBe(within(section).getByRole("button", { name: "Upload" }));
+});
+
+/** Whether the browser asks before the page is left, as a beforeunload's default prevented tells. */
+function asksBeforeLeaving(): boolean {
+  const leaving = new Event("beforeunload", { cancelable: true });
+  window.dispatchEvent(leaving);
+  return leaving.defaultPrevented;
+}
+
+test.each<[string, "en" | "zh-CN", string, string, string]>([
+  [
+    "English",
+    "en",
+    "Finishing the upload of a.png",
+    "Dismiss the upload of a.png",
+    "The server did not answer within three minutes of getting the file, so the upload was stopped. If it is not in the list, upload it again.",
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    "正在完成a.png的上传",
+    "移除a.png的上传",
+    "服务器收到文件之后三分钟没有答复，上传已停止。列表里没有它的话，再上传一次。",
+  ],
+])(
+  "an upload the server does not answer within three minutes of its last byte fails, saying the upload was stopped; the button that had the focus dismisses it, and the page no longer asks before it is left (%s)",
+  async (_, locale, finishingName, dismissName, said) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    onTestFinished(() => void vi.useRealTimers());
+    const server = pageServer({ nodes });
+    server.uploadsHeld = true;
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    act(() => server.app.preferences.setLocale(locale));
+
+    choose(section, [new File(["abcd"], "a.png")]);
+    await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+    act(() => transfers(server.app)[0]?.progress(4, 4));
+    const finishing = await within(section).findByRole("button", { name: finishingName });
+    finishing.focus();
+    expect(asksBeforeLeaving()).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(180_000));
+
+    expect((await within(section).findByRole("alert")).textContent).toBe(said);
+    const dismiss = within(section).getByRole("button", { name: dismissName });
+    expect(dismiss).toBe(finishing);
+    expect(document.activeElement).toBe(dismiss);
+    expect(transfers(server.app)[0]?.aborted).toBe(true);
+    expect(asksBeforeLeaving()).toBe(false);
+    act(() => server.release());
+  }
+);
+
+test.each<[string, "en" | "zh-CN", string]>([
+  ["English", "en", "The upload stopped: nothing went out for a minute. Upload the file again."],
+  ["Chinese", "zh-CN", "上传停住了：一分钟没有传出任何数据。请再上传一次。"],
+])("an upload that, begun, makes no progress for a minute fails, saying it stopped (%s)", async (_, locale, said) => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  act(() => server.app.preferences.setLocale(locale));
+
+  choose(section, [new File(["abcd"], "a.png")]);
+  await waitFor(() => expect(transfers(server.app)).toHaveLength(1));
+  act(() => transfers(server.app)[0]?.progress(1, 4));
+  await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+  expect((await within(section).findByRole("alert")).textContent).toBe(said);
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  act(() => server.release());
+});
+
+test("an upload that fails leaves nothing said of uploads going: the region says nothing", async () => {
+  let refuse: (() => void) | undefined;
+  const server = pageServer({
+    nodes,
+    answers: {
+      [uploadsPath]: () => new Promise<Response>((resolve) => (refuse = () => resolve(problem(507, "storage_full")))),
+    },
+  });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
+  act(() => refuse?.());
+  await within(section).findByRole("alert");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(notice(section)).toBe("");
+});
+
+test.each(["fails", "is cancelled"] as const)(
+  "an embed copied as an upload goes, which then %s, is still said: only the uploads' words are emptied",
+  async (how) => {
+    const user = userEvent.setup();
+    let refuse: (() => void) | undefined;
+    const server = pageServer({
+      nodes,
+      answers: {
+        [uploadsPath]: () => new Promise<Response>((resolve) => (refuse = () => resolve(problem(507, "storage_full")))),
+      },
+    });
+    renderApp(pagePath(guide.id), server.app);
+    const section = await attachments();
+    choose(section, [new File(["a"], "a.png")]);
+    await waitFor(() => expect(notice(section)).toBe("Uploading files: 1."));
+    await user.click(await within(section).findByRole("button", { name: "Actions for photo.png" }));
+    await user.click(screen.getByRole("menuitem", { name: "Copy embed" }));
+    await waitFor(() => expect(notice(section)).toBe("Embed copied: paste it into a page."));
+
+    if (how === "fails") {
+      act(() => refuse?.());
+      await within(section).findByRole("alert");
+    } else {
+      await user.click(within(section).getByRole("button", { name: "Cancel the upload of a.png" }));
+      await waitFor(() => expect(within(section).queryByRole("list", { name: "Uploads" })).toBeNull());
+    }
+    await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+    expect(notice(section)).toBe("Embed copied: paste it into a page.");
+  }
+);
+
+test("an upload cancelled in the turn it began is not said to go", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  // Each upload is cancelled as it begins: in its turn.
+  const upload = AssetStore.prototype.upload;
+  const cancelling = vi.spyOn(AssetStore.prototype, "upload").mockImplementation(function (
+    this: AssetStore,
+    ...args: Parameters<AssetStore["upload"]>
+  ) {
+    const begun = upload.apply(this, args);
+    for (const each of begun) {
+      each.cancel();
+    }
+    return begun;
+  });
+  onTestFinished(() => cancelling.mockRestore());
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(cancelling).toHaveBeenCalled());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(notice(section)).toBe("");
+  act(() => server.release());
+});
+
+test("an upload cancelled in the turn it began, before it is sent as its token is renewed, is not said to go", async () => {
+  const server = pageServer({ nodes });
+  renderApp(pagePath(guide.id), server.app);
+  const section = await attachments();
+  // The access token is renewed as the upload begins: its request waits, and the cancel cannot remove it yet.
+  const accessToken = TokenManager.prototype.accessToken;
+  const renewing = vi.spyOn(TokenManager.prototype, "accessToken").mockImplementation(async function (
+    this: TokenManager
+  ) {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return accessToken.call(this);
+  });
+  onTestFinished(() => renewing.mockRestore());
+  const upload = AssetStore.prototype.upload;
+  const cancelling = vi.spyOn(AssetStore.prototype, "upload").mockImplementation(function (
+    this: AssetStore,
+    ...args: Parameters<AssetStore["upload"]>
+  ) {
+    const begun = upload.apply(this, args);
+    for (const each of begun) {
+      each.cancel();
+    }
+    return begun;
+  });
+  onTestFinished(() => cancelling.mockRestore());
+
+  choose(section, [new File(["a"], "a.png")]);
+  await waitFor(() => expect(cancelling).toHaveBeenCalled());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  // Still in the list of uploads, cancelled: it does not go.
+  expect(notice(section)).toBe("");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 150)));
+  expect(notice(section)).toBe("");
+  expect(transfers(server.app)).toEqual([]);
 });
 
 test("the focus on a row's button as its upload goes through goes back to Upload", async () => {

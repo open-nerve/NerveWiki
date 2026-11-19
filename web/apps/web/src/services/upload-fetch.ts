@@ -27,6 +27,42 @@ export type UploadOptions = {
 const bodiless = new Set([204, 205, 304]);
 
 /**
+ * stallLimit is how long a body going out may make no progress before the
+ * upload is given up: bytes that flow tell their progress every few
+ * seconds, at the server's least rate too; a connection cut without a word
+ * or a server stuck tell nothing (M12/P2/S5, 16.3). It counts from the
+ * body's first progress, not from the send: a request the browser queues
+ * for a connection, six to a host over HTTP/1.1, the event stream holding
+ * one, sends nothing until one is free, however long the uploads before it
+ * take; a connection that takes the first bytes and goes silent still tells
+ * that first progress, the send buffer taking them.
+ */
+const stallLimit = 60_000;
+
+/**
+ * answerLimit is how long a body all sent waits for its answer before the
+ * upload is given up: the bytes still in the send buffer drain first, then
+ * the server writes the file down and answers within its 15 seconds. It is
+ * longer than stallLimit, for to give up aborts the request, which rolls
+ * the server's transaction back: a wrong guess loses a sound upload
+ * (M12/P2/S5, 16.3).
+ */
+const answerLimit = 180_000;
+
+/**
+ * UploadTimeout is why an upload was given up (M12/P2/S5, 16.3): its body
+ * stalled, going nowhere for stallLimit; or the server, having it all,
+ * left it unanswered for answerLimit. It is not an AbortError: the upload
+ * was not cancelled.
+ */
+export class UploadTimeout extends Error {
+  constructor(readonly stage: "stalled" | "unanswered") {
+    super(stage === "stalled" ? "the upload stalled" : "the upload was not answered");
+    this.name = "UploadTimeout";
+  }
+}
+
+/**
  * uploadFetch is a fetch, as openapi-fetch calls it, that sends form on a
  * Transfer, which tells the upload's progress, as fetch does not (M7/P4
  * design 3.2). It takes the request's method, address and headers, the
@@ -35,7 +71,14 @@ const bodiless = new Set([204, 205, 304]);
  * Content-Type, its boundary in it. The middleware's copy of the request,
  * sent again after a renewed token, sends form again, whole. It answers
  * as fetch does: the answer's status, headers and text; a TypeError for a
- * network failure; an AbortError once signal aborts.
+ * network failure; an AbortError once signal aborts. It has no timeout of
+ * the whole, which would cut a slow upload of a large file, but two of its
+ * own: a body going nowhere for stallLimit, and one all sent unanswered for
+ * answerLimit, is given up, rejecting with an UploadTimeout (M12/P2/S5,
+ * 16.3). No timer runs before the body's first progress: a request queued
+ * for a connection is not given up. The body is all sent as the upload's
+ * load comes, or its progress reaches its total: Firefox holds the load back
+ * until the answer comes.
  */
 export function uploadFetch(
   form: FormData,
@@ -50,16 +93,40 @@ export function uploadFetch(
       }
       const xhr = transfer();
       const stop = () => xhr.abort();
-      const settle = () => signal?.removeEventListener("abort", stop);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let timedOut: UploadTimeout | undefined;
+      let settled = false;
+      // One timer, from the body's first progress: each progress sets it again, and a body all sent waits for its
+      // answer instead; none once settled.
+      const wait = (stage: UploadTimeout["stage"]) => {
+        clearTimeout(timer);
+        if (settled) {
+          return;
+        }
+        timer = setTimeout(
+          () => {
+            timedOut = new UploadTimeout(stage);
+            xhr.abort();
+          },
+          stage === "stalled" ? stallLimit : answerLimit
+        );
+      };
+      const settle = () => {
+        settled = true;
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", stop);
+      };
       xhr.open(request.method, request.url);
       request.headers.forEach((value, name) => {
         if (name.toLowerCase() !== "content-type") {
           xhr.setRequestHeader(name, value);
         }
       });
-      if (progress !== undefined) {
-        xhr.upload.addEventListener("progress", (event) => progress(event.loaded, event.total));
-      }
+      xhr.upload.addEventListener("progress", (event) => {
+        wait(event.lengthComputable && event.loaded >= event.total ? "unanswered" : "stalled");
+        progress?.(event.loaded, event.total);
+      });
+      xhr.upload.addEventListener("load", () => wait("unanswered"));
       xhr.addEventListener("load", () => {
         settle();
         const body = bodiless.has(xhr.status) ? null : xhr.responseText;
@@ -75,10 +142,9 @@ export function uploadFetch(
         reject(new TypeError("the upload failed: network error"));
       };
       xhr.addEventListener("error", failed);
-      xhr.addEventListener("timeout", failed);
       xhr.addEventListener("abort", () => {
         settle();
-        reject(aborted());
+        reject(timedOut ?? aborted());
       });
       signal?.addEventListener("abort", stop, { once: true });
       xhr.send(form);

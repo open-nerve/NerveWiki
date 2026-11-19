@@ -15,17 +15,19 @@ import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { formatPeriod } from "../../i18n/format";
-import { useT } from "../../i18n/i18n";
+import { useT, type Translate } from "../../i18n/i18n";
+import type { Locale } from "../../i18n/locale";
 import { embedOf } from "../../lib/asset-kind";
 import { cn } from "../../lib/cn";
+import { useFocusLeaving } from "../../lib/focus-leaving";
 import { ApiError } from "../../services/api";
 import type { Asset } from "../../services/asset.service";
 import type { Notebook } from "../../services/notebook.service";
-import type { AssetList, AssetStore } from "../../stores/asset.store";
+import type { AssetList, AssetStore, Upload } from "../../stores/asset.store";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { LoadMoreButton, useLoadMore } from "../load-more";
 import { MoveAssetDialog, RenameAssetDialog } from "./asset-dialogs";
-import { rereadIn } from "./assets-expiry";
+import { dueWatch, rereadIn } from "./assets-expiry";
 import { AttachmentRow, locatedOf, type AssetAction } from "./attachment-row";
 import { watchReader } from "./readers-input";
 import { UploadRows } from "./upload-rows";
@@ -88,7 +90,8 @@ export const AttachmentsSection = observer(function AttachmentsSection({
   const uploadButton = useRef<HTMLButtonElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const [folders, setFolders] = useState(false);
-  const [copied, setCopied] = useState<{ embed: string; name: string; done: boolean } | undefined>(undefined);
+  // The attachment whose embed was copied, or shown to copy by hand: by its id, its embed and name as listed now.
+  const [copied, setCopied] = useState<{ id: string; done: boolean } | undefined>(undefined);
   const copyField = useRef<HTMLInputElement>(null);
   // Whether the menu closing chose Copy embed: the field of an embed not copied takes the focus then.
   const copying = useRef(false);
@@ -125,6 +128,20 @@ export const AttachmentsSection = observer(function AttachmentsSection({
     heading
   );
 
+  // The embed shown to copy by hand follows its attachment renamed elsewhere, and goes as it goes, or loses its
+  // extension (M12/P2/S5, 16.4b).
+  const copiedAsset =
+    copied !== undefined && !copied.done ? list?.assets.find((asset) => asset.id === copied.id) : undefined;
+  const copiedLink = copiedAsset?.link ?? null;
+  // Gone, it is done with: the attachment back (restored, renamed back, read by More) does not bring the field back
+  // to take the focus from where the reader is by then.
+  const copiedGone = copied !== undefined && !copied.done && list !== undefined && copiedLink === null;
+  useEffect(() => {
+    if (copiedGone) {
+      setCopied(undefined);
+    }
+  }, [copiedGone]);
+
   if (
     !writer &&
     uploads.length === 0 &&
@@ -146,10 +163,10 @@ export const AttachmentsSection = observer(function AttachmentsSection({
             await navigator.clipboard.writeText(embed);
           } catch {
             // Without a secure context the page has no clipboard: the copy fails.
-            setCopied({ embed, name: asset.name, done: false });
+            setCopied({ id: asset.id, done: false });
             return;
           }
-          setCopied({ embed, name: asset.name, done: true });
+          setCopied({ id: asset.id, done: true });
           notice.say(t("asset.copied"));
         };
         void copy();
@@ -242,12 +259,16 @@ export const AttachmentsSection = observer(function AttachmentsSection({
         <p className="text-sm text-muted-foreground">{t("asset.dropHint")}</p>
       )}
       {folders && <Alert>{t("asset.folders")}</Alert>}
-      {copied !== undefined &&
-        (copied.done ? (
-          <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>
-        ) : (
-          <CopyField key={copied.embed} embed={copied.embed} name={copied.name} field={copyField} />
-        ))}
+      {copied?.done === true && <p className="text-sm text-muted-foreground">{t("asset.copied")}</p>}
+      {copied !== undefined && copiedAsset !== undefined && copiedLink !== null && (
+        <CopyField
+          key={copied.id}
+          embed={embedOf(copiedLink)}
+          name={copiedAsset.name}
+          field={copyField}
+          left={() => heading.current?.focus()}
+        />
+      )}
       {uploads.length > 0 && (
         <UploadRows
           notebook={notebook}
@@ -314,10 +335,23 @@ export const AttachmentsSection = observer(function AttachmentsSection({
 /**
  * CopyField is an embed the page could not copy, the clipboard out of its
  * reach (a page served without HTTPS): in a field, selected as it is
- * focused, which it is as it shows, to copy by hand.
+ * focused, which it is as it shows, to copy by hand. Its embed and name
+ * change as its attachment is renamed, the field kept; as it goes holding
+ * the focus, the focus goes to left (v0.1 design 13.2, item 17).
  */
-function CopyField({ embed, name, field }: { embed: string; name: string; field: RefObject<HTMLInputElement | null> }) {
+function CopyField({
+  embed,
+  name,
+  field,
+  left,
+}: {
+  embed: string;
+  name: string;
+  field: RefObject<HTMLInputElement | null>;
+  left: () => void;
+}) {
   const t = useT();
+  useFocusLeaving(field, left);
   // A copy that failed once its menu closed; one that failed at once, the menu takes it back from, and gives it.
   useEffect(() => {
     field.current?.focus();
@@ -340,21 +374,47 @@ function CopyField({ embed, name, field }: { embed: string; name: string; field:
  * and those that leave uploaded. What leaves and begins in one turn is
  * said once the turn is over, together: each upload leaves by an action
  * of its own, and React would show only the last of several said in a
- * turn. The same text said again changes the region all the same, a space
- * after it, or it would not be read again.
+ * turn. Those begun are counted then, as still going: one cancelled, or
+ * failed, in its turn is not (M12/P2/S5, 16.10). The same text said again
+ * changes the region all the same, a space after it, or it would not be
+ * read again. Once none goes any more and the turn has nothing to say, a
+ * sentence of uploads going no longer holds, and the region is emptied of
+ * it: an upload failed or cancelled leaves no "Uploading" behind it; one
+ * uploaded is said all the same (M12/P2/S5, 16.4c, 38.9). What say had it
+ * say since, an embed copied, holds still, and stays (P2-40).
  */
 function useNotice(assets: AssetStore, parent: string | null) {
   const t = useT();
   const { preferences } = useStore();
   const [said, setSaid] = useState({ text: "", again: false });
+  // Whether the region says the uploads' words, not say's: only those are emptied.
+  const uploadsSaid = useRef(false);
   useEffect(() => {
-    const names = new Intl.ListFormat(preferences.locale, { type: "conjunction" });
-    // What the turn says, as it is so far: those left uploaded, and how many began.
+    const sentence = turnSentence(t, preferences.locale);
+    // What the turn says, as it is so far: those left uploaded, those that began, and whether none goes any more.
     let left: string[] = [];
-    let begun = 0;
-    let text: string | undefined;
+    const begun = new Set<Upload>();
+    let ended = false;
     let turn: ReturnType<typeof setTimeout> | undefined;
-    const stop = reaction(
+    const flush = () => {
+      // Read as the turn ends: an upload's signal is not observed.
+      const going = [...begun].filter(
+        (upload) => assets.uploads.includes(upload) && upload.failure === undefined && !upload.signal.aborted
+      ).length;
+      const text = sentence(left, going);
+      if (text !== undefined) {
+        uploadsSaid.current = true;
+        setSaid(saying(text));
+      } else if (ended && uploadsSaid.current) {
+        uploadsSaid.current = false;
+        setSaid({ text: "", again: false });
+      }
+      left = [];
+      begun.clear();
+      ended = false;
+      turn = undefined;
+    };
+    const stopUploads = reaction(
       () => assets.uploads.filter((upload) => upload.parent === parent),
       (now, before) => {
         for (const upload of before) {
@@ -362,30 +422,52 @@ function useNotice(assets: AssetStore, parent: string | null) {
             left.push(upload.name);
           }
         }
-        begun += now.filter((upload) => !before.includes(upload) && upload.failure === undefined).length;
-        const uploaded = left.length > 0 ? t("asset.uploaded", { names: names.format(left) }) : undefined;
-        const uploading = begun > 0 ? t("asset.uploading", { count: begun }) : undefined;
-        text =
-          uploaded !== undefined && uploading !== undefined
-            ? t("page.sentences", { first: uploaded, second: uploading })
-            : (uploaded ?? uploading);
-        turn ??= setTimeout(() => {
-          if (text !== undefined) {
-            setSaid(saying(text));
+        for (const upload of now) {
+          if (!before.includes(upload) && upload.failure === undefined) {
+            begun.add(upload);
           }
-          left = [];
-          begun = 0;
-          text = undefined;
-          turn = undefined;
-        }, 0);
+        }
+        turn ??= setTimeout(flush, 0);
+      }
+    );
+    // A failure leaves the uploads as they are: whether any goes tells it.
+    const stopGoing = reaction(
+      () => assets.going.some((upload) => upload.parent === parent),
+      (going) => {
+        if (!going) {
+          ended = true;
+          turn ??= setTimeout(flush, 0);
+        }
       }
     );
     return () => {
-      stop();
+      stopUploads();
+      stopGoing();
       clearTimeout(turn);
     };
   }, [assets, parent, t, preferences.locale]);
-  return { text: said.text + (said.again ? "\u00A0" : ""), say: (text: string) => setSaid(saying(text)) };
+  return {
+    text: said.text + (said.again ? "\u00A0" : ""),
+    say: (text: string) => {
+      uploadsSaid.current = false;
+      setSaid(saying(text));
+    },
+  };
+}
+
+/**
+ * turnSentence says what a turn of uploads says, in locale: those left uploaded, by name, and how many still go; or
+ * nothing.
+ */
+function turnSentence(t: Translate, locale: Locale): (left: readonly string[], going: number) => string | undefined {
+  const names = new Intl.ListFormat(locale, { type: "conjunction" });
+  return (left, going) => {
+    const uploaded = left.length > 0 ? t("asset.uploaded", { names: names.format(left) }) : undefined;
+    const uploading = going > 0 ? t("asset.uploading", { count: going }) : undefined;
+    return uploaded !== undefined && uploading !== undefined
+      ? t("page.sentences", { first: uploaded, second: uploading })
+      : (uploaded ?? uploading);
+  };
 }
 
 /** saying is the notice that says text, after the one before: the same text is said again. */
@@ -407,7 +489,10 @@ function saying(text: string) {
  * since the section showed, or the focus is somewhere already (v0.1
  * design 13.2, item 26, as transfer-page.tsx's useArriving): it gives up
  * then, the attachment gone said all the same. The section shown again,
- * by Back say, does it again: the state is the entry's.
+ * by Back say, does it again: the state is the entry's. It answers true
+ * only while the list read, whole, has it not: restored elsewhere, its
+ * row shows, or More may read it, and gone is said no more (M12/P2/S5,
+ * 28.1).
  */
 function useLocated(
   list: AssetList | undefined,
@@ -458,7 +543,9 @@ function useLocated(
       heading.current?.focus();
     }
   }, [gone, heading]);
-  return gone !== undefined;
+  // Only the focus is given once: gone is said as the list read now, whole, has it not, and no more once it has it
+  // again, restored elsewhere, or is no longer whole, which a later page may hold it on (M12/P2/S5, 28.1).
+  return gone !== undefined && list?.next === null && !list.assets.some((asset) => asset.id === located);
 }
 
 /**
@@ -485,14 +572,11 @@ function useExpiry(list: AssetList | undefined, reread: () => void): void {
     if (!Number.isFinite(earliest)) {
       return undefined;
     }
-    const timer = setTimeout(
-      () => {
-        if (!document.hidden) {
-          latest.current();
-        }
-      },
-      rereadIn(earliest, Date.now())
-    );
-    return () => clearTimeout(timer);
+    // Watched, not timed alone: a machine that slept past it reads it again within a minute of waking (17.6).
+    return dueWatch(Date.now() + rereadIn(earliest, Date.now()), () => {
+      if (!document.hidden) {
+        latest.current();
+      }
+    });
   }, [list]);
 }

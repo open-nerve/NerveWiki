@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { FakeTransfer } from "../test/transfer";
 import { uploadFetch } from "./upload-fetch";
@@ -28,7 +28,23 @@ function sending(form: FormData, options: Parameters<typeof uploadFetch>[1] = {}
   return { answer, sent, made: () => transfer !== undefined };
 }
 
+/** settling sends a form with options under fake timers; settled() is what its answer settled to, if it has. */
+function settling(options: Parameters<typeof uploadFetch>[1] = {}) {
+  vi.useFakeTimers();
+  const sent = sending(new FormData(), options);
+  let settled: unknown = undefined;
+  sent.answer.then(
+    (response) => (settled = response),
+    (error: unknown) => (settled = error)
+  );
+  return { ...sent, settled: () => settled };
+}
+
 describe("uploadFetch", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   test("sends the form, with the request's method, address and headers but its Content-Type, which the form's is", () => {
     const form = new FormData();
     form.append("name", "a.png");
@@ -95,14 +111,10 @@ describe("uploadFetch", () => {
     await expect(odd.answer).rejects.toBeInstanceOf(TypeError);
   });
 
-  test("a network failure, or a timeout, rejects with a TypeError, as fetch's", async () => {
+  test("a network failure rejects with a TypeError, as fetch's", async () => {
     const failed = sending(new FormData());
     failed.sent().fail();
     await expect(failed.answer).rejects.toBeInstanceOf(TypeError);
-
-    const late = sending(new FormData());
-    late.sent().dispatchEvent(new Event("timeout"));
-    await expect(late.answer).rejects.toBeInstanceOf(TypeError);
   });
 
   test("the signal aborting stops the transfer, which rejects with an AbortError", async () => {
@@ -133,5 +145,99 @@ describe("uploadFetch", () => {
 
     expect((await answer).status).toBe(200);
     expect(sent().aborted).toBe(false);
+  });
+
+  // A body that goes nowhere, or a server that does not answer it, is given up (M12/P2/S5, 16.3): its result is held,
+  // not awaited, so that code that never gives up does not hang the test.
+  describe("given up", () => {
+    test("a body that goes nowhere for a minute is given up: the transfer is aborted, and it rejects with an UploadTimeout, stalled", async () => {
+      const { sent, settled } = settling();
+
+      sent().progress(10, 100);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(sent().aborted).toBe(true);
+      expect(settled()).toMatchObject({ name: "UploadTimeout", stage: "stalled" });
+    });
+
+    test("a body not yet going, its request queued for a connection, is not given up: the minute counts from its first progress", async () => {
+      const { sent, settled } = settling();
+
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      sent().progress(10, 100);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(1);
+
+      expect(sent().aborted).toBe(true);
+      expect(settled()).toMatchObject({ name: "UploadTimeout", stage: "stalled" });
+    });
+
+    test("progress puts the minute off: a body that goes on slowly is not given up", async () => {
+      const { sent, settled } = settling();
+
+      await vi.advanceTimersByTimeAsync(50_000);
+      sent().progress(10, 100);
+      await vi.advanceTimersByTimeAsync(50_000);
+      expect([sent().aborted, settled()]).toEqual([false, undefined]);
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(sent().aborted).toBe(true);
+      expect(settled()).toMatchObject({ name: "UploadTimeout", stage: "stalled" });
+    });
+
+    test.each<[string, (transfer: FakeTransfer) => void]>([
+      ["its progress all told", (transfer) => transfer.progress(100, 100)],
+      ["the upload's load, no progress told", (transfer) => transfer.sentAll()],
+    ])(
+      "a body all sent waits three minutes for its answer: none comes, it is given up, unanswered (%s)",
+      async (_, all) => {
+        const { sent, settled } = settling();
+
+        all(sent());
+        await vi.advanceTimersByTimeAsync(60_000);
+        expect([sent().aborted, settled()]).toEqual([false, undefined]);
+        await vi.advanceTimersByTimeAsync(119_999);
+        expect([sent().aborted, settled()]).toEqual([false, undefined]);
+        await vi.advanceTimersByTimeAsync(1);
+
+        expect(sent().aborted).toBe(true);
+        expect(settled()).toMatchObject({ name: "UploadTimeout", stage: "unanswered" });
+      }
+    );
+
+    test("an answer in time is the answer: nothing is aborted after", async () => {
+      const { sent, settled } = settling();
+
+      sent().progress(100, 100);
+      await vi.advanceTimersByTimeAsync(179_000);
+      await sent().answer(new Response("{}", { status: 201 }));
+      // The timer the answer came before is gone with it.
+      await vi.advanceTimersByTimeAsync(180_000);
+      expect(sent().aborted).toBe(false);
+      // An upload's load later than the answer (Firefox holds it back until the answer) sets no timer again.
+      sent().sentAll();
+      await vi.advanceTimersByTimeAsync(180_000);
+
+      expect(settled()).toMatchObject({ status: 201 });
+      expect(sent().aborted).toBe(false);
+    });
+
+    test("the signal stops it as a cancel still: an AbortError, not an UploadTimeout", async () => {
+      const stop = new AbortController();
+      const { sent, settled } = settling({ signal: stop.signal });
+
+      await vi.advanceTimersByTimeAsync(30_000);
+      stop.abort();
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(sent().aborted).toBe(true);
+      expect(settled()).toMatchObject({ name: "AbortError" });
+    });
   });
 });

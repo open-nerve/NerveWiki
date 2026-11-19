@@ -30,10 +30,12 @@ const now = new Date("2026-10-09T12:00:00Z");
  * setUp is a view of html, an enhancement's own (each keeps what it kept),
  * and a context of page whose addresses expire at expires, that records
  * its reloads and signs an attachment's address anew (signed) unless it
- * is gone.
+ * is gone, or the browser is offline (net); the timers fake too when
+ * asked.
  */
-function setUp(html: string, { page = "p", expires = expired as string | null } = {}) {
-  vi.useFakeTimers({ now, toFake: ["Date"] });
+function setUp(html: string, { page = "p", expires = expired as string | null, timers = false } = {}) {
+  vi.useFakeTimers({ now, toFake: timers ? ["Date", "setTimeout", "clearTimeout"] : ["Date"] });
+  const net = { offline: false };
   const container = document.createElement("article");
   container.innerHTML = html;
   document.body.append(container);
@@ -58,10 +60,13 @@ function setUp(html: string, { page = "p", expires = expired as string | null } 
       if (id === "gone") {
         throw new Error("404");
       }
+      if (net.offline) {
+        throw new TypeError("offline");
+      }
       return `/api/v0/assets/${id}/content?anew=1`;
     },
   });
-  return { container, context, reloads, signed, enhancement: assets() };
+  return { container, context, reloads, signed, net, enhancement: assets() };
 }
 
 /**
@@ -140,6 +145,8 @@ test("a link to an attachment the browser shows opens in a tab of its own, as it
   expect(pdf?.getAttribute("target")).toBe("_blank");
   expect(pdf?.getAttribute("rel")).toBe("noopener noreferrer");
   expect(pdf?.querySelector("span.sr-only")?.textContent).toBe("(opens in a new tab)");
+  // Not copied with the text, its space outside (M12/P2/S5, 17.2b).
+  expect(pdf?.querySelector("span.sr-only")?.classList.contains("select-none")).toBe(true);
   expect(pdf?.textContent).toBe("doc.pdf (opens in a new tab)");
   for (const link of [zip, gone, other]) {
     expect(link?.hasAttribute("target")).toBe(false);
@@ -520,6 +527,221 @@ test("one whose address is not given reads the view again, once its addresses ex
   await settle();
   expect(asked).toEqual(["a2", "a1", "a1", "a1"]);
   expect(sound?.getAttribute("src")).toBe("/api/v0/assets/a1/content?anew=1");
+  undo?.();
+});
+
+// M12/P2/S5, 17.7: one whose signing anew is refused, the view not expired, is signed again from where it failed.
+test("one whose signing anew is refused, the view not expired, is signed again as the browser is online again, from where it failed", async () => {
+  const { container, context, signed, reloads, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, { expires: later });
+  const undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  expect([signed, reloads]).toEqual([["a1"], []]);
+  // Chromium's controls load it again, at the start, playing.
+  loadAgain(sound);
+  net.offline = false;
+  window.dispatchEvent(new Event("online"));
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
+  expect([sound.getAttribute("src"), sound.currentTime, sound.paused]).toEqual([
+    "/api/v0/assets/a1/content?anew=1",
+    42,
+    false,
+  ]);
+  // Signed, it is refused no more: failing again at once, it fails for another reason; online again signs nothing.
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
+  window.dispatchEvent(new Event("online"));
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
+  expect(reloads).toEqual([]);
+  undo?.();
+});
+
+test("one refused is signed again half a minute later, then a minute, while refused", async () => {
+  const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+    expires: later,
+    timers: true,
+  });
+  const undo = enhancement(container, context());
+  net.offline = true;
+  fail(play(container.querySelector("audio"), 42));
+  await settle();
+  expect(signed).toEqual(["a1"]);
+
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(signed).toEqual(["a1"]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(signed).toEqual(["a1", "a1"]);
+  await vi.advanceTimersByTimeAsync(59_999);
+  expect(signed).toEqual(["a1", "a1"]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(signed).toEqual(["a1", "a1", "a1"]);
+  // Undone, the view's timers go with it.
+  undo?.();
+  await vi.advanceTimersByTimeAsync(10 * 60_000);
+  expect(signed).toEqual(["a1", "a1", "a1"]);
+});
+
+test("one refused that fails again, its controls having loaded it anew, is signed anew from where it first failed", async () => {
+  const { container, context, signed, reloads, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, { expires: later });
+  const undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  net.offline = false;
+  // Its controls loaded it again: at the start, paused, not started; then it fails.
+  Object.assign(sound, { error: null, currentTime: 0, paused: true });
+  fail(sound);
+  await settle();
+
+  expect(signed).toEqual(["a1", "a1"]);
+  expect([sound.getAttribute("src"), sound.currentTime]).toEqual(["/api/v0/assets/a1/content?anew=1", 42]);
+  expect(reloads).toEqual([]);
+  undo?.();
+});
+
+test("the HTML replaced after a refusal puts the new one where the old one failed", async () => {
+  const html = `<p>${audio("a1")}</p>`;
+  const { container, context, net, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  // Its controls loaded it again, which failed: at the start, its error set.
+  loadAgain(sound);
+  broken(sound);
+
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+
+  const fresh = container.querySelector("audio");
+  expect(fresh).not.toBe(sound);
+  expect(fresh?.currentTime).toBe(42);
+  undo?.();
+});
+
+// Review A's check 2, M1: one that came back is not pulled back to where it failed, as the browser is online again or
+// on its timer.
+const cameBack: Record<string, (sound: HTMLMediaElement) => void> = {
+  "played on past where it failed": (sound) => {
+    Object.assign(sound, { error: null, currentTime: 300, paused: false });
+  },
+  "moved by the reader to before where it failed": (sound) => {
+    Object.assign(sound, { error: null, currentTime: 10, paused: true });
+    sound.dispatchEvent(new Event("seeking"));
+  },
+};
+test.each(
+  Object.keys(cameBack).flatMap((way) => [
+    [way, "online again"],
+    [way, "its timer"],
+  ])
+)("one refused whose old address plays again, %s, is signed no more: %s", async (way, when) => {
+  const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+    expires: later,
+    timers: true,
+  });
+  const undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  net.offline = false;
+  // The network back, its controls loaded the old address again, which plays; the reader goes on with it.
+  cameBack[way]?.(sound);
+  const was = [sound.getAttribute("src"), sound.currentTime];
+  if (when === "online again") {
+    window.dispatchEvent(new Event("online"));
+    await settle();
+  } else {
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+  }
+  expect([signed, sound.getAttribute("src"), sound.currentTime]).toEqual([["a1"], ...was]);
+  undo?.();
+});
+
+// Review A's check 3, M1: Firefox keeps the data of one that failed on the network as it played, so the reader can
+// still move it, which fires seeking; its error stays, its old address does not play again.
+test.each(["online again", "its timer"])(
+  "one refused that the reader moves, its error still there, is signed again: %s",
+  async (when) => {
+    const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+      expires: later,
+      timers: true,
+    });
+    const undo = enhancement(container, context());
+    const sound = play(container.querySelector("audio"), 42);
+    net.offline = true;
+    fail(sound);
+    await settle();
+    sound.currentTime = 30;
+    sound.dispatchEvent(new Event("seeking"));
+    await settle();
+    net.offline = false;
+    if (when === "online again") {
+      window.dispatchEvent(new Event("online"));
+      await settle();
+    } else {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    }
+    expect([signed, sound.getAttribute("src")]).toEqual([["a1", "a1"], "/api/v0/assets/a1/content?anew=1"]);
+    undo?.();
+  }
+);
+
+// Review A's check 2, M2.
+test("the HTML replaced after a refusal puts the new one where the old one failed, though its controls left it at the start", async () => {
+  const html = `<p>${audio("a1")}</p>`;
+  const { container, context, net, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  // Its controls loaded it again, which failed: at the start, paused, not started.
+  Object.assign(sound, { error: null, currentTime: 0, paused: true });
+  fail(sound);
+  await settle();
+
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+
+  const fresh = container.querySelector("audio");
+  expect(fresh).not.toBe(sound);
+  expect(fresh?.currentTime).toBe(42);
+  undo?.();
+});
+
+// Review A's check 2, M3.
+test("one refused still in its place as the enhancement runs again is signed again on a timer of the new run, as long after", async () => {
+  const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+    expires: later,
+    timers: true,
+  });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  net.offline = false;
+  await vi.advanceTimersByTimeAsync(10_000);
+  // Another block changed, or the language: the view runs again, this one left where it is.
+  undo?.();
+  undo = enhancement(container, context());
+
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(signed).toEqual(["a1"]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(signed).toEqual(["a1", "a1"]);
+  expect([sound.getAttribute("src"), sound.currentTime]).toEqual(["/api/v0/assets/a1/content?anew=1", 42]);
   undo?.();
 });
 

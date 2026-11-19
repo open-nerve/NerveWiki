@@ -14,6 +14,7 @@ import type { SourceEditorHandle } from "../../editor/source-editor";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
+import { refusalOf } from "../../stores/asset.store";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -119,6 +120,11 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
   const { conflict } = editing;
   const { lost } = editing.session;
   const shown = editing.content !== undefined;
+  // Files pasted or dropped into the edit still going: leaving would not insert them (M12/P2/S5, 18.1).
+  const uploading = assets.uploads.some(
+    (upload) =>
+      upload.parent === page.id && upload.fromEditor && upload.failure === undefined && upload.result === undefined
+  );
 
   useEffect(() => {
     editing.keep();
@@ -460,6 +466,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
               });
               return upload === undefined ? Promise.reject(new Error("no upload")) : assets.uploaded(upload);
             },
+            refuses: (file) => refusalOf(file, t("asset.untitled"), instance.info?.asset_max_bytes) !== undefined,
           }}
           controls={{
             // Autosave's: quiet, a conflict open is its panel's, one run into moves no focus.
@@ -482,7 +489,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
           onChange={editing.changed}
         />
       </Suspense>
-      <UnsavedGuard unsaved={editing.unsaved} stay={back} />
+      <UnsavedGuard unsaved={editing.unsaved} uploading={uploading} stay={back} />
     </div>
   );
 });

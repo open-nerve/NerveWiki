@@ -12,6 +12,7 @@ import type { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
 import type { Build, EditorContext } from "../registry";
+import { inTable } from "./gfm-table";
 import { frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
 
 /**
@@ -150,7 +151,7 @@ function placeOf({ state, pos, view }: CompletionContext): Place | undefined {
   if (frontmatter !== "closed" && at.some((name) => raw.has(name))) {
     return undefined;
   }
-  return { table: frontmatter === undefined && at.includes("Table"), frontmatter: frontmatter !== undefined };
+  return { table: frontmatter === undefined && inTable(state, pos), frontmatter: frontmatter !== undefined };
 }
 
 /** nodesAt is the names of the syntax nodes pos is in, from the innermost out. */

@@ -114,6 +114,10 @@ func video(name, label, dims string) string {
 	return `<video class="nw-asset" ` + src(name) + ` controls="" preload="none" aria-label="` + label + `"` + dims + `></video>`
 }
 
+// sized marks a size the page wrote, which the reading view's CSS keeps
+// (M12/P2/S5, 15.1); an image's own size has none.
+const sized = ` data-nw-sized=""`
+
 // An embed and a Markdown image of an attachment are its image, audio or
 // video, any other type a link to it; a wikilink, a Markdown link and a
 // property link to one are a link to it, which downloads one the browser
@@ -128,38 +132,38 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 	checkRendersWith(t, withAttachments(t), []renderCase{
 		{"an embed of an image", "![[x.png]]", p(img("x.png", "x.png", ""))},
 		{"of an image of known size", "![[dims.png]]", p(img("dims.png", "dims.png", ` width="7" height="5"`))},
-		{"a width", "![[dims.png|300]]", p(img("dims.png", "dims.png", ` width="300"`))},
-		{"a width and a height", "![[x.png|300x200]]", p(img("x.png", "x.png", ` width="300" height="200"`))},
+		{"a width", "![[dims.png|300]]", p(img("dims.png", "dims.png", sized+` width="300"`))},
+		{"a width and a height", "![[x.png|300x200]]", p(img("x.png", "x.png", sized+` width="300" height="200"`))},
 		{"a caption", "![[x.png|说明]]", p(img("x.png", "说明", ""))},
-		{"a caption and a width", "![[x.png|说明|300]]", p(img("x.png", "说明", ` width="300"`))},
+		{"a caption and a width", "![[x.png|说明|300]]", p(img("x.png", "说明", sized+` width="300"`))},
 		{
 			"captions without the spaces around them", "![[x.png| 说明 | 300]] ![[x.png|\t说明 ]] ![ 说明 ](x.png) ![ 说明 |300](x.png)",
-			p(img("x.png", "说明", ` width="300"`) + " " + img("x.png", "说明", "") + " " + img("x.png", "说明", "") + " " +
-				img("x.png", "说明", ` width="300"`)),
+			p(img("x.png", "说明", sized+` width="300"`) + " " + img("x.png", "说明", "") + " " + img("x.png", "说明", "") + " " +
+				img("x.png", "说明", sized+` width="300"`)),
 		},
 		{
 			"a blank caption, the target", "![[x.png| ]] ![ ](a.mp3) ![ |300](x.png) ![&#10;](a.mp3) ![&nbsp;](a.mp3) ![[x.png|\u3000|300]]",
-			p(img("x.png", "x.png", "") + " " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`) + " " + audio("a.mp3", "a.mp3") +
-				" " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", ` width="300"`)),
+			p(img("x.png", "x.png", "") + " " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", sized+` width="300"`) + " " + audio("a.mp3", "a.mp3") +
+				" " + audio("a.mp3", "a.mp3") + " " + img("x.png", "x.png", sized+` width="300"`)),
 		},
 		{"in a folder", "![[A/x.png]] ![](A/x.png)", p(img("x.png", "A/x.png", "") + " " + img("x.png", "A/x.png", ""))},
-		{"captions of '|' and a size", "![[x.png|a|b | 300x200 ]]", p(img("x.png", "a|b", ` width="300" height="200"`))},
+		{"captions of '|' and a size", "![[x.png|a|b | 300x200 ]]", p(img("x.png", "a|b", sized+` width="300" height="200"`))},
 		{"half a size, a caption", "![[x.png|300x]] ![[x.png|x200]]", p(img("x.png", "300x", "") + " " + img("x.png", "x200", ""))},
 		{
 			"sizes out of range, not given", "![[dims.png|0]] ![[x.png|20000]] ![[x.png|0x200]] ![[x.png|99999999999999999999]]",
 			p(img("dims.png", "dims.png", ` width="7" height="5"`) + " " + img("x.png", "x.png", "") + " " +
-				img("x.png", "x.png", ` height="200"`) + " " + img("x.png", "x.png", "")),
+				img("x.png", "x.png", sized+` height="200"`) + " " + img("x.png", "x.png", "")),
 		},
-		{"the largest and the least size", "![[x.png|10000x1]]", p(img("x.png", "x.png", ` width="10000" height="1"`))},
+		{"the largest and the least size", "![[x.png|10000x1]]", p(img("x.png", "x.png", sized+` width="10000" height="1"`))},
 		{"an anchor", "![[x.png#a]]", p(img("x.png", "x.png &gt; a", ""))},
 		{"escaped", `![[x.png|<b>&"]]`, p(img("x.png", "&lt;b&gt;&amp;&quot;", ""))},
 		{"a Markdown image", "![](x.png)", p(img("x.png", "x.png", ""))},
-		{"its caption and size", "![说明|300x200](x.png) ![300](x.png)", p(img("x.png", "说明", ` width="300" height="200"`) + " " + img("x.png", "x.png", ` width="300"`))},
+		{"its caption and size", "![说明|300x200](x.png) ![300](x.png)", p(img("x.png", "说明", sized+` width="300" height="200"`) + " " + img("x.png", "x.png", sized+` width="300"`))},
 		{"its caption's emphasis", "![*说明*](x.png)", p(img("x.png", "说明", ""))},
 		{"a reference's", "![说明][r]\n\n[r]: x.png", p(img("x.png", "说明", ""))},
 		{"inline", "a ![[x.png]] b", p("a " + img("x.png", "x.png", "") + " b")},
 		{"audio", "![[a.mp3]] ![说明](a.mp3)", p(audio("a.mp3", "a.mp3") + " " + audio("a.mp3", "说明"))},
-		{"video", "![[v.webm|说明|300x200]] ![](v.webm)", p(video("v.webm", "说明", ` width="300" height="200"`) + " " + video("v.webm", "v.webm", ""))},
+		{"video", "![[v.webm|说明|300x200]] ![](v.webm)", p(video("v.webm", "说明", sized+` width="300" height="200"`) + " " + video("v.webm", "v.webm", ""))},
 		{
 			"another type, a link", "![[doc.pdf]] ![[doc.pdf|说明|300]] ![](doc.pdf)",
 			p(`<a class="nw-wikilink nw-embed nw-asset" ` + assetLink("doc.pdf") + `>doc.pdf</a> ` +
@@ -180,7 +184,7 @@ func TestAnAttachmentIsItsImageAudioVideoOrALink(t *testing.T) {
 		},
 		{
 			"in a link, an image alone", "[![](x.png) ![[dims.png|9]]](https://x.example)",
-			p(`<a href="https://x.example">` + img("x.png", "x.png", "") + " " + img("dims.png", "dims.png", ` width="9"`) + `</a>`),
+			p(`<a href="https://x.example">` + img("x.png", "x.png", "") + " " + img("dims.png", "dims.png", sized+` width="9"`) + `</a>`),
 		},
 		{
 			"in a link, the rest text", "[![](a.mp3) ![[v.webm]] ![[doc.pdf|d]] [[x.png]] ![[a.zip]]](https://x.example)",

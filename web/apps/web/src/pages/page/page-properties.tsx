@@ -254,7 +254,7 @@ function show(shown: Shown, href: (id: string) => string, newTab: string): React
     const { asset, inline } = shown.lead;
     return inline ? (
       <a href={asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
-        {shown.text} <span className="sr-only">{newTab}</span>
+        {shown.text} <span className="sr-only select-none">{newTab}</span>
       </a>
     ) : (
       <a href={asset} download className="underline underline-offset-4">

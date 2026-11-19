@@ -67,6 +67,7 @@ function editing(
       return Promise.resolve(counted);
     },
     uploadAsset: () => Promise.reject(new Error("no uploads")),
+    refuses: () => false,
   };
   const view = new EditorView({
     state: EditorState.create({
@@ -331,6 +332,37 @@ test("in a table an alias is written with \\|, which the table does not split at
   await opened(header);
   await pick(header, "Roadmap");
   expect(header.state.doc.toString()).toBe("| [[Plans\\|Roadmap]] | b |\n| - | - |\n| x | y |");
+});
+
+// M12/P2/S5, 12.8: a table as the server (goldmark) finds one, which lezer's GFM tables do not always.
+/** aliasWritten is what picking Roadmap after typing [[Road at ‸ in doc writes there. */
+async function aliasWritten(doc: string): Promise<string> {
+  const { view } = editingAt(doc);
+  type(view, "[[Road");
+  await opened(view);
+  await pick(view, "Roadmap");
+  return view.state.doc.toString();
+}
+
+test("in a table the server finds and lezer does not, a header of fewer cells than its delimiter row, an alias is written with \\| (M6/P7 fix check fc3-c1-2)", async () => {
+  const head = "| a |\n| - | - |\n| x | ";
+  expect(await aliasWritten(`${head}‸`)).toBe(`${head}[[Plans\\|Roadmap]]`);
+});
+
+test("in a table the server finds and lezer does not, a header whose \\\\| the server does not split at, an alias is written with \\|", async () => {
+  const head = "| a \\\\| b |\n| - |\n| ";
+  expect(await aliasWritten(`${head}‸`)).toBe(`${head}[[Plans\\|Roadmap]]`);
+});
+
+test("in a callout, a table the server finds and lezer does not, an alias is written with \\|", async () => {
+  const head = "> [!note]\n> | a |\n> | - | - |\n> | x | ";
+  expect(await aliasWritten(`${head}‸`)).toBe(`${head}[[Plans\\|Roadmap]]`);
+});
+
+test("a header of more cells than its delimiter row is no table, nor the paragraph's lines before its header: an alias is written with |", async () => {
+  const head = "| a | b | c |\n| - | - |\n| ";
+  expect(await aliasWritten(`${head}‸`)).toBe(`${head}[[Plans|Roadmap]]`);
+  expect(await aliasWritten("‸\n| a |\n| - |")).toBe("[[Plans|Roadmap]]\n| a |\n| - |");
 });
 
 test("an embed's [[ lists the pages, not the aliases: an embed's display text is its size", async () => {

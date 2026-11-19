@@ -25,6 +25,7 @@ const context: EditorContext = {
   linkTargets: () => Promise.resolve([]),
   tags: () => Promise.resolve([]),
   uploadAsset: () => Promise.reject(new Error("no uploads")),
+  refuses: () => false,
 };
 
 /** The edit's session as the controls tell it, which the test loses; following counts its listeners. */

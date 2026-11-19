@@ -54,6 +54,11 @@ test.each(["editor", "admin"] as const)("a source attachment's menu follows the 
   renderAttachments(server, linux.id);
   const section = await attachments();
   const link = await within(section).findByRole("link", { name: "photo.png (source) (opens in a new tab)" });
+  // Neither hint is copied with the row's text (M12/P2/S5, 17.2b).
+  expect([...link.querySelectorAll(".sr-only")].map((hint) => hint.classList.contains("select-none"))).toEqual([
+    true,
+    true,
+  ]);
   expect(link.getAttribute("href")).toBe(`/api/v0/assets/${sourcePhoto.id}/content?sig=1`);
   await user.click(await within(section).findByRole("button", { name: "Actions for photo.png" }));
 
@@ -98,6 +103,25 @@ test("a writer can copy, drag the embed and upload beside a source attachment", 
     expect(server.nodes.some((node) => node.name === "new.png" && node.parent_id === linux.id)).toBe(true)
   );
   expect(managementWrites(server)).toEqual([]);
+});
+
+test("a source refused as it is uploaded leaves nothing said of uploads going", async () => {
+  const server = pageServer({
+    role: "editor",
+    mode: "llm_wiki",
+    sourceRootId: guide.id,
+    nodes: [...base],
+    answers: { [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () => problem(409, "page.title_taken") },
+  });
+  renderAttachments(server, linux.id);
+  const section = await attachments();
+  const region = () => section.querySelector("[aria-live=polite]")?.textContent;
+
+  fireEvent.change(picker(section), { target: { files: [new File(["# Notes"], "notes.md")] } });
+  await within(section).findByText("Another page or attachment here has this title. Choose another title.");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+
+  expect(region()).toBe("");
 });
 
 test.each(

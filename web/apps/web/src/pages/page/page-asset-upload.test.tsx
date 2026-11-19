@@ -5,10 +5,10 @@ import { expect, onTestFinished, test, vi } from "vitest";
 
 import { idleLimit } from "../../editor/idle-exit";
 import { editorExtensions } from "../../editor/registry";
-import { attachments, dropped, nodes, picker } from "../../test/attachments";
-import { instanceJSON, json } from "../../test/fakes";
+import { attachments, dropped, nodes, picker, transfers } from "../../test/attachments";
+import { instanceJSON, json, notebookJSON } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
-import { guide, pagePath, pageServer } from "../../test/page-server";
+import { assetJSON, guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // Files pasted into the page's editor upload as its attachments, their embeds inserted, through the composition
@@ -58,6 +58,204 @@ test("a file pasted uploads as the page's attachment, its row by the editor, and
   act(() => server.release());
   await waitFor(() => expect(view.state.doc.toString()).toMatch(/^!\[\[Pasted image \d{14}\.png\]\]Guide/));
   await waitFor(() => expect(uploadsBy(content)).toBeUndefined());
+});
+
+test("a Markdown file pasted over a selection keeps it: its row by the editor says why", async () => {
+  const server = pageServer({ nodes });
+  const { view, content } = await editing(server);
+  const before = view.state.doc.toString();
+  view.dispatch({ selection: { anchor: 0, head: before.length } });
+
+  paste(view, [new File(["# n"], "notes.md")]);
+
+  await waitFor(() =>
+    expect(uploadsBy(content)?.textContent).toContain(
+      "A Markdown file is a page: zip it and import it from the notebook's settings."
+    )
+  );
+  expect(view.state.doc.toString()).toBe(before);
+  expect(server.sent.filter((line) => line.startsWith("UPLOAD"))).toEqual([]);
+});
+
+/** tree is the left column's tree of the notebook's pages, named in English or in Chinese. */
+const tree = () => screen.getByRole("navigation", { name: /^(Pages of Plans|Plans的页面)$/u });
+
+test.each<[string, "en" | "zh-CN", { title: string; description: string; stay: string; leave: string }]>([
+  [
+    "English",
+    "en",
+    {
+      title: "Leave before the files are inserted?",
+      description:
+        "Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it.",
+      stay: "Stay",
+      leave: "Leave",
+    },
+  ],
+  [
+    "Chinese",
+    "zh-CN",
+    {
+      title: "在文件插入之前离开？",
+      description: "粘贴或拖入的文件还在上传。它们会照样加进这一页的附件，但不会插入页面。",
+      stay: "留下",
+      leave: "离开",
+    },
+  ],
+])(
+  "a file pasted uploading, going to another page asks first: Stay keeps the edit; Leave goes, the upload goes on, its embed not inserted (%s)",
+  async (_, locale, said) => {
+    const server = pageServer({ nodes });
+    server.uploadsHeld = true;
+    const { user, view, content } = await editing(server);
+    act(() => server.app.preferences.setLocale(locale));
+    view.dispatch({ selection: { anchor: view.state.doc.length } });
+    paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+    await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+    await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+    const ask = await screen.findByRole("alertdialog", { name: said.title });
+    expect(ask.getAttribute("aria-describedby")).not.toBeNull();
+    expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(said.description);
+    await user.click(within(ask).getByRole("button", { name: said.stay }));
+    expect(screen.getByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+    await waitFor(() => expect(document.activeElement).toBe(content));
+
+    await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+    await user.click(
+      within(await screen.findByRole("alertdialog", { name: said.title })).getByRole("button", { name: said.leave })
+    );
+    await screen.findByRole("heading", { level: 1, name: "Notes" });
+    act(() => server.release());
+    await waitFor(() => expect(server.nodes.some((node) => node.name === "chart.png")).toBe(true));
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(puts(server)).toEqual([]);
+  }
+);
+
+test("unsaved and uploading, leaving says both", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ changes: { from: view.state.doc.length, insert: "draft" }, selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+    "Your changes to this page are not saved. Files you pasted or dropped are still uploading. They will be added to this page's attachments, but not inserted into it."
+  );
+  act(() => server.release());
+});
+
+test("an upload answered, its embed in, asks nothing for itself as its list is read again: leaving says only what is unsaved", async () => {
+  let holding = false;
+  let release: (() => void) | undefined;
+  const server = pageServer({
+    nodes,
+    answers: {
+      [`GET /api/v0/notebooks/${notebookJSON.id}/assets`]: async (request) => {
+        if (holding) {
+          await new Promise<void>((resolve) => (release = resolve));
+        }
+        const parent = new URL(request.url).searchParams.get("parent_id");
+        return json({
+          data: server.nodes
+            .filter((node) => node.kind === "asset" && node.parent_id === parent)
+            .map((node) => assetJSON(node)),
+          next_cursor: null,
+        });
+      },
+    },
+  });
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  holding = true;
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  // Answered: its embed goes in as its list is read again, held.
+  await waitFor(() => expect(view.state.doc.toString()).toContain("![[chart.png]]"));
+  expect(release).toBeDefined();
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  const ask = await screen.findByRole("alertdialog", { name: "Leave without saving?" });
+  expect(document.getElementById(ask.getAttribute("aria-describedby") ?? "")?.textContent).toBe(
+    "Your changes to this page are not saved."
+  );
+  holding = false;
+  act(() => release?.());
+});
+
+test("signing out as a pasted file uploads asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Sign out" }));
+
+  expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+// What leaving asks for is the editor's own uploads to this page still going (18.1): not the section's, which are not
+// inserted anyway; not one refused at once; not another page's.
+test("leaving as the section's upload goes, which is not inserted anyway, asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user } = await editing(server);
+  const section = await attachments();
+  fireEvent.change(picker(section), { target: { files: [new File(["pdf"], "spec.pdf")] } });
+  await waitFor(() => expect(server.sent).toContain("UPLOAD spec.pdf under Guide"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  act(() => server.release());
+});
+
+test("leaving once a file pasted was refused at once asks nothing: it does not go", async () => {
+  const server = pageServer({ nodes });
+  const { user, view, content } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["# n"], "notes.md")]);
+  await waitFor(() => expect(uploadsBy(content)?.textContent).toContain("notes.md"));
+
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+});
+
+test("leaving another page's edit as a file pasted into this one, left, still uploads asks nothing", async () => {
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server);
+  view.dispatch({ selection: { anchor: 0 } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+  await user.click(within(tree()).getByRole("link", { name: "Notes" }));
+  await user.click(
+    within(await screen.findByRole("alertdialog", { name: "Leave before the files are inserted?" })).getByRole(
+      "button",
+      { name: "Leave" }
+    )
+  );
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await pageEditor();
+
+  await user.click(within(tree()).getByRole("link", { name: "Guide" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  expect(screen.queryByRole("alertdialog")).toBeNull();
+  act(() => server.release());
 });
 
 test("a file without an extension uploads, and is not inserted: the editor says so, shown and unseen", async () => {
@@ -278,7 +476,13 @@ test("an edit whose upload goes is not idle: the idle exit leaves it once the em
   paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
   await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
 
-  await rest(idleLimit + 60_000);
+  // The body goes on slowly all the while: an upload that makes progress is not given up (M12/P2/S5, 16.3).
+  for (let step = 1; step * 30_000 <= idleLimit + 60_000; step++) {
+    act(() => transfers(server.app)[0]?.progress(step, 1_000));
+    // oxlint-disable-next-line no-await-in-loop -- the time goes by step by step
+    await rest(30_000);
+  }
+  expect(transfers(server.app)[0]?.aborted).toBe(false);
   expect(screen.getByRole("textbox", { name: "Page content" })).toBeTruthy();
   expect(screen.queryByText("Leaving once the uploads finish…")).toBeNull();
   act(() => server.release());
@@ -286,6 +490,27 @@ test("an edit whose upload goes is not idle: the idle exit leaves it once the em
   await rest(idleLimit);
   expect(await screen.findByText("Editing ended after 30 minutes without input.")).toBeTruthy();
   expect(puts(server).at(-1)).toMatch(/!\[\[chart\.png\]\]/);
+});
+
+test("a file pasted whose upload has no answer within three minutes inserts nothing; Done waiting for it leaves", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = pageServer({ nodes });
+  server.uploadsHeld = true;
+  const { user, view } = await editing(server, userEvent.setup({ advanceTimers: vi.advanceTimersByTime }));
+  view.dispatch({ selection: { anchor: view.state.doc.length } });
+  paste(view, [new File(["png"], "chart.png", { type: "image/png" })]);
+  await waitFor(() => expect(server.sent).toContain("UPLOAD chart.png under Guide"));
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByText("Leaving once the uploads finish…");
+
+  act(() => transfers(server.app)[0]?.progress(3, 3));
+  await rest(180_000);
+
+  expect(await screen.findByRole("button", { name: "Edit" })).toBeTruthy();
+  expect(transfers(server.app)[0]?.aborted).toBe(true);
+  expect(puts(server).filter((line) => line.includes("chart.png"))).toEqual([]);
+  act(() => server.release());
 });
 
 test("as the page is edited, the section's uploads show in it, the editor's by the editor; once it is read, one of the editor's that failed shows in the section", async () => {
