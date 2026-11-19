@@ -60,7 +60,7 @@ export function EventStream() {
       return undefined;
     }
     const stop = new AbortController();
-    const context = { cache, mutate, refresher, stopped: stop.signal };
+    const context = { cache, mutate, refresher, stopped: stop.signal, trees: new Map() };
     const unsubscribe = hub.subscribe((event) => {
       if (event.type === "connected") {
         void refreshAll(mutate, stop.signal);

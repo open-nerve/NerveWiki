@@ -14,11 +14,25 @@ import type { Refresher } from "./refresher";
 // a page's versions again through the types there are.
 
 /**
- * EventContext is what a handler has besides the event: SWR's cache and
- * mutate, the refresher that merges the reading views' re-reads, and
- * stopped, aborted once the stream's generation is over.
+ * TreeRead is the last tree read a pages event asked for, by notebook,
+ * until it is done: whether it has started, and done once it is read and
+ * shown, either way (settle).
  */
-type EventContext = { cache: Cache; mutate: ScopedMutator; refresher: Refresher; stopped: AbortSignal };
+type TreeRead = { started: boolean; done: Promise<void>; settle: () => void };
+
+/**
+ * EventContext is what a handler has besides the event: SWR's cache and
+ * mutate, the refresher that merges the reading views' re-reads, stopped,
+ * aborted once the stream's generation is over, and the tree reads asked
+ * for and not yet started, by notebook, each generation its own.
+ */
+type EventContext = {
+  cache: Cache;
+  mutate: ScopedMutator;
+  refresher: Refresher;
+  stopped: AbortSignal;
+  trees: Map<string, TreeRead>;
+};
 
 /** An EventHandler handles an event of its type: data is the event's, as the server sent it. */
 export type EventHandler = (data: unknown, context: EventContext) => void;
@@ -60,15 +74,35 @@ const historyKeys = new Set(["changesets", "changeset", "changeset-changes"]);
  * one (M8 design 4.13; M8/P3 design 4.6).
  */
 const pagesChanged: EventHandler = (data, context) => {
-  const { cache, mutate, refresher, stopped } = context;
+  const { cache, mutate, refresher, stopped, trees } = context;
   const { notebook_id: notebook, tree, pages } = data as EventPages;
   if (tree) {
+    // What the links events after it wait for (afterTree): the read it asks for, which one asked for and not started
+    // yet is; one started read the tree before this event's write, perhaps.
+    if (trees.get(notebook)?.started !== false) {
+      let settle!: () => void;
+      const done = new Promise<void>((resolve) => {
+        settle = resolve;
+      });
+      trees.set(notebook, { started: false, done, settle });
+    }
     refresher.request(
       unstable_serialize(["pages", notebook]),
       () =>
         void (async () => {
-          await mutate(["pages", notebook]);
-          await shown();
+          const read = trees.get(notebook);
+          if (read !== undefined) {
+            read.started = true;
+          }
+          try {
+            await mutate(["pages", notebook]);
+            await shown();
+          } finally {
+            read?.settle();
+            if (read !== undefined && trees.get(notebook) === read) {
+              trees.delete(notebook);
+            }
+          }
           if (!stopped.aborted) {
             await mutate((key) => Array.isArray(key) && key[0] === "assets" && key[1] === notebook);
           }
@@ -116,7 +150,8 @@ const pagesChanged: EventHandler = (data, context) => {
 
 /**
  * linksChanged reads again the reading views of the pages whose links lead
- * elsewhere (M6 design 4.8, M6/P3 design 6.7): at the revision shown, so
+ * elsewhere (M6 design 4.8, M6/P3 design 6.7), once the tree a pages event
+ * of the same unit asked for is read and shown (afterTree): at the revision shown, so
  * whatever that is, through the refresher; every view of the notebook for
  * too many pages to name, and its tags' pages, as after a reindex. Their
  * properties too, whose links lead elsewhere as well, and their versions'
@@ -128,8 +163,13 @@ const pagesChanged: EventHandler = (data, context) => {
  * review R3).
  */
 const linksChanged: EventHandler = (data, context) => {
+  const { notebook_id: notebook } = data as EventLinks;
+  afterTree(notebook, context, () => readLinked(data as EventLinks, context));
+};
+
+/** readLinked is what a links event reads again: linksChanged's. */
+function readLinked({ notebook_id: notebook, pages, targets, aliases }: EventLinks, context: EventContext) {
   const { cache, mutate, refresher } = context;
-  const { notebook_id: notebook, pages, targets, aliases } = data as EventLinks;
   readEach("backlinks", notebook, targets, context);
   readEach("page-properties", notebook, pages, context);
   readVersions("views", notebook, aliases ? null : pages, (key) => key[0] === "page-version-view", context);
@@ -145,7 +185,29 @@ const linksChanged: EventHandler = (data, context) => {
       refresher.request(unstable_serialize(key), () => void mutate(key));
     }
   }
-};
+}
+
+/**
+ * afterTree reads, once the tree of notebook the last pages event asked
+ * for is read and shown (pagesChanged), whether that read started already
+ * (the refresher reads at once a key not read lately) or not, or at once
+ * when none is out: a deletion's unit sends its pages event, then its links
+ * event, which names the pages whose backlinks it changed; read before the
+ * tree, the deleted page's panels, still shown, would be read and not
+ * found. Read after it, the page has left with the tree, its panels with
+ * it (M5-polish 24.8), as a connection reads a level once the one before
+ * it is shown (event-stream.tsx). The read asked for always comes: the
+ * refresher reads each key it is asked for, once visible again for a
+ * hidden tab; a stream stopped drops it, its generation over.
+ */
+function afterTree(notebook: string, { trees }: EventContext, read: () => void): void {
+  const due = trees.get(notebook);
+  if (due === undefined) {
+    read();
+    return;
+  }
+  void due.done.then(read);
+}
 
 /**
  * readEach reads again what of kind, a page's backlinks, properties or
