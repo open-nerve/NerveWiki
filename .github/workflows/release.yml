@@ -1,6 +1,8 @@
 name: Release
 
-# 发布（00-M12 4.10、M12/P5）。推 vX.Y.Z 或 vX.Y.Z-rc.N 的 tag：闸门 → 两种架构各自构建、按摘要推送、拉回来 smoke → …（S2）。
+# 发布（00-M12 4.10、M12/P5）。推 vX.Y.Z 或 vX.Y.Z-rc.N 的 tag：闸门 → 两种架构各自构建、按摘要推送、拉回来 smoke → 取许可证、
+# 两份 SBOM（只读）→ 合成索引、来源证明、两份 SBOM 的证明、签名，最后复制出版本号的 tag → Release 的草稿与附件 → 两种架构上
+# 按版本号的 tag 校验 → 公开 Release（S2）。
 # 分支与 main 的每次推送只走演练：两种原生 runner 各自构建（不推送）、smoke，只读。写权限只在 tag 的作业里（移交 M0-P6 第 1 条），
 # server/internal/platform/buildinfo/release_test.go 读这份文件核对每个作业的权限、if 与调的脚本。推 tag 之前问负责人（00-M12 4.11）。
 # 读 tag 的那次运行：gh run list --workflow release.yml --branch <tag>；ci-wait.sh <sha> release.yml 可能取到 main 上的演练
@@ -127,7 +129,8 @@ jobs:
       - name: Web SBOM
         if: matrix.arch == 'amd64'
         run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
-      # 同 sbom 作业的核对；另打出两份的文档 name 与包数：verify 作业按 name 分出两份 SBOM 的证明（P5 设计 3.12）
+      # 同 sbom 作业的核对；另打出两份的文档 name 与包数。verify 作业按 name 分出两份 SBOM 的证明：syft 取镜像引用的
+      # 仓库名，不带 tag 与摘要（这里是 nervewiki，tag 上是 $IMAGE），pnpm 取包名（P5 设计 3.12）
       - name: Check the SBOMs
         if: matrix.arch == 'amd64'
         run: |
@@ -135,8 +138,8 @@ jobs:
           for f in "$out/nervewiki-$VERSION-image.spdx.json" "$out/nervewiki-$VERSION-web.spdx.json"; do
             jq -r --arg f "${f##*/}" '"\($f)：name=\(.name)，\(.packages | length) 个包"' "$f"
           done
-          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
-          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          jq -e '.spdxVersion == "SPDX-2.3" and .name == "nervewiki" and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
+          jq -e '.spdxVersion == "SPDX-2.3" and .name == "@nervewiki/web" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
           ls -l "$out"
 
   # 闸门（00-M12 4.10）：tag 的写法、提交在 main 上、它的 ci.yml 已绿、CHANGELOG.md 有这一节；再 make vuln，npm 一侧照 high
@@ -196,6 +199,7 @@ jobs:
     timeout-minutes: 30
     env:
       VERSION: ${{ needs.gate.outputs.version }}
+      SHA: ${{ needs.gate.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -203,6 +207,9 @@ jobs:
           persist-credentials: false
       - name: The tree is clean
         run: test -z "$(git status --porcelain)" || { git status --short; exit 1; }
+      # 构建的就是闸门放过的提交：检出取 GITHUB_SHA 是推断，tag 的运行之前证明不了（决定 561）
+      - name: The commit is the gate's
+        run: test "$(git rev-parse HEAD)" = "$SHA" || { echo "检出的是 $(git rev-parse HEAD)，闸门放过的是 $SHA"; exit 1; }
       - name: Tools
         run: |
           uname -m
@@ -254,3 +261,294 @@ jobs:
           if-no-files-found: error
           overwrite: true
           retention-days: 30
+
+  # 读的作业（M12/P5/S2）：取许可证、生成两份 SBOM。pnpm install 的安装脚本与 syft 只在这里跑，不在能签名、能写 GHCR 的
+  # publish 里（P5 设计 P5-8）。附件与镜像里的逐字节相同
+  sbom:
+    needs: [gate, build]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: read
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Digests
+        id: digests
+        run: |
+          for arch in amd64 arm64; do
+            d=$(cat "$RUNNER_TEMP/digests/$arch")
+            [[ $d =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "$arch 的摘要不对：$d"; exit 1; }
+            echo "$arch=$d" >> "$GITHUB_OUTPUT"
+          done
+      # 两种架构的 /licenses 要一样，否则一份附件说不清。跨架构只建不跑（docker create）
+      - name: Licenses
+        env:
+          AMD64: ${{ steps.digests.outputs.amd64 }}
+          ARM64: ${{ steps.digests.outputs.arm64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          for arch in amd64 arm64; do
+            if [ "$arch" = amd64 ]; then ref="$IMAGE@$AMD64"; else ref="$IMAGE@$ARM64"; fi
+            cid=$(docker create --platform "linux/$arch" "$ref")
+            docker cp "$cid:/licenses" "$RUNNER_TEMP/$arch"
+            docker rm "$cid" >/dev/null
+          done
+          diff -r "$RUNNER_TEMP/amd64" "$RUNNER_TEMP/arm64"
+          tar -czf "$RUNNER_TEMP/out/nervewiki-$VERSION-licenses.tar.gz" -C "$RUNNER_TEMP" --transform 's,^amd64,licenses,' amd64
+      - name: Image SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.digests.outputs.amd64 }}
+          format: spdx-json
+          output-file: ${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-image.spdx.json
+          syft-version: v1.54.0
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        run: corepack enable
+      # 不缓存 pnpm 的 store（P5 设计 P5-7）
+      - name: Install the web app's dependencies
+        run: pnpm install --frozen-lockfile --filter @nervewiki/web...
+      - name: Web SBOM
+        run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
+      # 文档的 name 是 verify 分两份证明用的：镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要），前端的是包名
+      - name: Check the SBOMs
+        run: |
+          out=$RUNNER_TEMP/out
+          for f in "$out/nervewiki-$VERSION-image.spdx.json" "$out/nervewiki-$VERSION-web.spdx.json"; do
+            jq -r --arg f "${f##*/}" '"\($f)：name=\(.name)，\(.packages | length) 个包"' "$f"
+          done
+          jq -e --arg image "$IMAGE" '.spdxVersion == "SPDX-2.3" and .name == $image and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
+          jq -e '.spdxVersion == "SPDX-2.3" and .name == "@nervewiki/web" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 30
+
+  # 合成索引、来源证明、两份 SBOM 的证明、签名，最后复制出版本号的 tag（00-M12 4.10"次序与重跑"）：0.1.0 出现时已经
+  # 签好、证明好，包已公开时不会有一段公开却没签名的 0.1.0。第三方的 action 只有 cosign-installer（P5 设计 P5-8）
+  publish:
+    needs: [gate, build, sbom]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      SHA: ${{ needs.gate.outputs.sha }}
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
+    steps:
+      # 只为取 deploy/release-version-tag.sh：这个作业不构建
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: digest-*
+          path: ${{ runner.temp }}/digests
+          merge-multiple: true
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/out
+      # 登录用 shell，不多一个第三方的 action；actions/attest 与 cosign 读同一份 docker 的凭证
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+      # 先打一个不是版本号的 tag；注解从 amd64 那一份的 label 读，不另写一遍（runner 自带的 buildx）。推上去的镜像来自
+      # 闸门放过的提交（决定 561）
+      - name: Index
+        id: index
+        run: |
+          amd64=$(cat "$RUNNER_TEMP/digests/amd64")
+          arm64=$(cat "$RUNNER_TEMP/digests/arm64")
+          docker pull -q "$IMAGE@$amd64" >/dev/null
+          label() { docker image inspect -f "{{index .Config.Labels \"org.opencontainers.image.$1\"}}" "$IMAGE@$amd64"; }
+          [ "$(label revision)" = "$SHA" ] || { echo "amd64 的镜像来自 $(label revision)，闸门放过的是 $SHA"; exit 1; }
+          docker buildx imagetools create -t "$IMAGE:sha-$SHA" \
+            --annotation "index:org.opencontainers.image.description=$(label description)" \
+            --annotation "index:org.opencontainers.image.source=$(label source)" \
+            --annotation "index:org.opencontainers.image.licenses=$(label licenses)" \
+            "$IMAGE@$amd64" "$IMAGE@$arm64"
+          digest=$(docker buildx imagetools inspect "$IMAGE:sha-$SHA" --format '{{json .Manifest}}' | jq -r .digest)
+          platforms=$(docker buildx imagetools inspect "$IMAGE@$digest" --format '{{json .Manifest}}' |
+            jq -r '[.manifests[].platform | "\(.os)/\(.architecture)"] | sort | join(" ")')
+          [ "$platforms" = "linux/amd64 linux/arm64" ] || { echo "索引的平台是 $platforms"; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+      - name: Provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          push-to-registry: true
+      - name: Image SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-image.spdx.json
+          push-to-registry: true
+      - name: Web SBOM attestation
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.index.outputs.digest }}
+          sbom-path: ${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-web.spdx.json
+          push-to-registry: true
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+      # keyless：Sigstore 的证书来自这次运行的 OIDC 令牌，身份是这个 tag 上的 release.yml
+      - name: Sign
+        env:
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      # 最后才打给人用的版本号；已有的不改指（P5 设计 3.13）
+      - name: Version tag
+        env:
+          DIGEST: ${{ steps.index.outputs.digest }}
+        run: deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"
+
+  # Release 的草稿与附件（M12/P5/S2）：公开在 verify 之后（release 作业）
+  draft:
+    needs: [gate, publish, sbom]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      DIGEST: ${{ needs.publish.outputs.digest }}
+      GH_TOKEN: ${{ github.token }}
+      # gh 的仓库不靠检出的 remote 去猜
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/out
+      - name: Notes
+        run: deploy/release-notes.sh "$GITHUB_REF_NAME" "$DIGEST" > "$RUNNER_TEMP/notes.md"
+      - name: Draft
+        run: deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"
+
+  # 公开 Release 之前在两种架构上按版本号的 tag 拉回来校验（00-M12 4.10；核对在公开之前是主持者定的）。
+  # rc 还是私有的包，本机拉要负责人的令牌
+  verify:
+    name: verify (${{ matrix.arch }})
+    needs: [gate, publish, draft]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: read
+      packages: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    env:
+      VERSION: ${{ needs.gate.outputs.version }}
+      DIGEST: ${{ needs.publish.outputs.digest }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      # tag 的提交：image-smoke.sh 照它核对提交与时间
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Tools
+        run: |
+          uname -m
+          for t in docker curl jq openssl git gh; do command -v "$t" >/dev/null || { echo "缺 $t"; exit 1; }; done
+          openssl version
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: v3.1.4
+      - name: The version tag is the index
+        run: test "$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
+      # 与 Release 说明里给用户的两条命令同一个身份（deploy/release-notes.sh）；两份 SBOM 的证明按文档的 name 分：
+      # 前端的是 @nervewiki/web，镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要；sbom 作业已核对，P5 设计 3.12）
+      - name: Provenance and SBOMs
+        run: |
+          identity="https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF"
+          gh attestation verify "oci://$IMAGE:$VERSION" -R "$GITHUB_REPOSITORY" --cert-identity "$identity"
+          names=$(gh attestation verify "oci://$IMAGE:$VERSION" -R "$GITHUB_REPOSITORY" --cert-identity "$identity" \
+            --predicate-type https://spdx.dev/Document/v2.3 --format json \
+            --jq '[.[].verificationResult.statement.predicate.name] | unique | join(" ")')
+          echo "SBOM 的证明：$names"
+          case " $names " in *" @nervewiki/web "*) ;; *) echo "没有前端的 SBOM 证明：$names"; exit 1 ;; esac
+          case " $names " in *" $IMAGE "*) ;; *) echo "没有镜像的 SBOM 证明：$names"; exit 1 ;; esac
+      # 验过的载荷记进日志，打出每份的类型：rc 上看验过的是 cosign sign 的签名，不只是 actions/attest 的证明（P5 设计 3.23
+      # 第 5 步）。只打出、不断言：校验由 cosign verify 的退出码断言，输出的形状不是预期的也不让这一步红
+      - name: Signature
+        run: |
+          cosign verify "$IMAGE:$VERSION" --output json \
+            --certificate-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com > "$RUNNER_TEMP/cosign.json"
+          jq -r '.[] | .critical.type // "（没有 critical.type）"' "$RUNNER_TEMP/cosign.json" ||
+            { echo "cosign 的输出不是预期的形状："; cat "$RUNNER_TEMP/cosign.json"; }
+      - name: Image smoke
+        run: |
+          deploy/image-smoke.sh "$IMAGE:$VERSION" "$VERSION"
+          test "$(docker image inspect -f '{{.Architecture}}' "$IMAGE:$VERSION")" = "${{ matrix.arch }}"
+
+  # 两种架构上都核对过，才公开 Release（M12/P5/S2）
+  release:
+    needs: [gate, verify, draft]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # 只为取 deploy/github-release.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Publish the Release
+        run: deploy/github-release.sh publish "$GITHUB_REF_NAME"

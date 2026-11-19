@@ -951,14 +951,33 @@ type releaseJob struct {
 	needs       []string
 }
 
-// releaseJobs is the table of release.yml's jobs (P5 design 3.9). A job of S2 goes in here with its permissions
-// before the workflow takes it.
+// releaseJobs is the table of release.yml's jobs (P5 design 3.9): a new job goes in here with its permissions before
+// the workflow takes it. Only publish signs and writes GHCR's index and tags; draft and release write the Release.
 func releaseJobs() map[string]releaseJob {
+	const tag = "github.ref_type == 'tag'"
 	return map[string]releaseJob{
 		"rehearse": {"github.ref_type != 'tag'", map[string]any{"contents": "read"}, nil},
-		"gate":     {"github.ref_type == 'tag'", map[string]any{"contents": "read", "actions": "read"}, nil},
-		"build":    {"github.ref_type == 'tag'", map[string]any{"contents": "read", "packages": "write"}, []string{"gate"}},
+		"gate":     {tag, map[string]any{"contents": "read", "actions": "read"}, nil},
+		"build":    {tag, map[string]any{"contents": "read", "packages": "write"}, []string{"gate"}},
+		"sbom":     {tag, map[string]any{"contents": "read", "packages": "read"}, []string{"gate", "build"}},
+		"publish": {tag, map[string]any{"contents": "read", "packages": "write", "id-token": "write",
+			"attestations": "write", "artifact-metadata": "write"}, []string{"gate", "build", "sbom"}},
+		"draft": {tag, map[string]any{"contents": "write"}, []string{"gate", "publish", "sbom"}},
+		"verify": {tag, map[string]any{"contents": "read", "packages": "read", "attestations": "read"},
+			[]string{"gate", "publish", "draft"}},
+		"release": {tag, map[string]any{"contents": "write"}, []string{"gate", "verify", "draft"}},
 	}
+}
+
+// stepsRunning are the 1-based numbers of a job's steps whose run is exactly run.
+func stepsRunning(job any, run string) []int {
+	var found []int
+	for i, step := range stepsOf(job) {
+		if step["run"] == run {
+			found = append(found, i+1)
+		}
+	}
+	return found
 }
 
 // matrixOnly is the one expression a run's text may hold, at a ${{: the matrix's, spaces or none around it.
@@ -1109,10 +1128,16 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 			}
 		}
 	}
-	// the jobs that build an image smoke it in exactly one step (S2's verify joins them), and a step that smokes an
-	// image always runs and fails with it: no if, and the script's line ends the command, nothing after it to turn
-	// its failure into a success. One that could be skipped, or gone, lets an image through unsmoked, its job green
+	// the jobs that build or check an image smoke it in exactly one step, and a step that smokes an image always runs
+	// and fails with it, in Actions' bash -e: its keys are its name, env and run alone (no if to skip it, no shell
+	// without -e, no continue-on-error), its run turns no option off with set +…, the job and the workflow give run
+	// no shell of their own, and the script's line ends the command, nothing after it to turn its failure into a
+	// success. One that could be skipped, or gone, lets an image through unsmoked, its job green (decisions 560, 562)
 	smokeLine := regexp.MustCompile(`(?m)^deploy/image-smoke\.sh [^|;&]*"\$VERSION"$`)
+	optionOff := regexp.MustCompile(`(?m)^\s*set\b[^\n]*\s\+[a-z]`)
+	if shell := field(field(release["defaults"], "run"), "shell"); shell != nil {
+		t.Errorf("release.yml: the workflow's defaults give run the shell %v: a smoke step runs in Actions' bash -e", shell)
+	}
 	for id, job := range jobs {
 		var smokes []int
 		for i, step := range stepsOf(job) {
@@ -1121,15 +1146,27 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 				continue
 			}
 			smokes = append(smokes, i+1)
-			if step["if"] != nil {
-				t.Errorf("release.yml: job %s, step %d smokes the image only if %v: it always runs", id, i+1, step["if"])
+			for key, value := range step {
+				if key != "name" && key != "env" && key != "run" {
+					t.Errorf("release.yml: job %s, step %d smokes the image with %s: %v besides its name, env and run: "+
+						"it always runs and fails with the script", id, i+1, key, value)
+				}
+			}
+			if off := optionOff.FindString(run); off != "" {
+				t.Errorf("release.yml: job %s, step %d smokes the image after %q: a failure must fail the step", id, i+1,
+					strings.TrimSpace(off))
 			}
 			if !smokeLine.MatchString(run) {
 				t.Errorf("release.yml: job %s, step %d runs %q: want a line deploy/image-smoke.sh … \"$VERSION\" with "+
 					"nothing after it", id, i+1, run)
 			}
 		}
-		if (id == "rehearse" || id == "build") && len(smokes) != 1 {
+		if len(smokes) > 0 {
+			if shell := field(field(field(job, "defaults"), "run"), "shell"); shell != nil {
+				t.Errorf("release.yml: job %s smokes the image, and its defaults give run the shell %v", id, shell)
+			}
+		}
+		if (id == "rehearse" || id == "build" || id == "verify") && len(smokes) != 1 {
 			t.Errorf("release.yml: job %s smokes the image in steps %v, want one", id, smokes)
 		}
 	}
@@ -1179,5 +1216,80 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 		buildkit["build"] != opts {
 		t.Errorf("release.yml: the rehearsal's BuildKit is %v and the build's %v, want one moby/buildkit:<version>@sha256:…",
 			buildkit["rehearse"], buildkit["build"])
+	}
+	// the steps of a tag's last jobs (P5 design 3.9 item 6, 3.13, 3.14): the version tag is publish's last step, after
+	// the attestations and the signature, so that 0.1.0 is never there unsigned; the Release is drafted and published
+	// by the script, which knows a draft from a published one; a third-party action in publish, which signs and writes
+	// GHCR, is cosign-installer alone (decision 437), its login a shell's
+	scripts := []struct{ job, run string }{
+		{"publish", `deploy/release-version-tag.sh "$IMAGE" "$VERSION" "$DIGEST"`},
+		{"draft", `deploy/github-release.sh draft "$GITHUB_REF_NAME" "$RUNNER_TEMP/notes.md" "$RUNNER_TEMP/out"`},
+		{"release", `deploy/github-release.sh publish "$GITHUB_REF_NAME"`},
+	}
+	for _, want := range scripts {
+		if got := stepsRunning(jobs[want.job], want.run); len(got) != 1 {
+			t.Errorf("release.yml: job %s's steps %v run %s, want one", want.job, got, want.run)
+		}
+	}
+	if steps := stepsOf(jobs["publish"]); len(steps) == 0 || steps[len(steps)-1]["run"] != scripts[0].run {
+		t.Errorf("release.yml: publish's last step is not the version tag (%s): it comes after the signature", scripts[0].run)
+	}
+	for i, step := range stepsOf(jobs["publish"]) {
+		if uses, _ := step["uses"].(string); uses != "" && !strings.HasPrefix(uses, "actions/") &&
+			!strings.HasPrefix(uses, "sigstore/cosign-installer@") {
+			t.Errorf("release.yml: publish's step %d uses %s: its third-party action is cosign-installer alone", i+1, uses)
+		}
+	}
+	// build builds the commit the gate let through, checked before the build, and publish's index is of images whose
+	// revision is that commit: that the checkout of a tag's job is GITHUB_SHA's commit is an inference only a tag's run
+	// proves (decision 561)
+	gateSHA := "${{ needs.gate.outputs.sha }}"
+	headIsSHA, built := -1, -1
+	for i, step := range stepsOf(jobs["build"]) {
+		run, _ := step["run"].(string)
+		if strings.HasPrefix(run, `test "$(git rev-parse HEAD)" = "$SHA" ||`) {
+			headIsSHA = i
+		}
+		if uses, _ := step["uses"].(string); strings.HasPrefix(uses, "docker/build-push-action@") {
+			built = i
+		}
+	}
+	if field(field(jobs["build"], "env"), "SHA") != gateSHA || headIsSHA < 0 || headIsSHA > built {
+		t.Errorf("release.yml: build checks HEAD against SHA (%s) in step %d and builds in step %d, want the check "+
+			"first, SHA %s", field(field(jobs["build"], "env"), "SHA"), headIsSHA+1, built+1, gateSHA)
+	}
+	var revision int
+	for _, step := range stepsOf(jobs["publish"]) {
+		if run, _ := step["run"].(string); strings.Contains(run, `[ "$(label revision)" = "$SHA" ] ||`) {
+			revision++
+		}
+	}
+	if field(field(jobs["publish"], "env"), "SHA") != gateSHA || revision != 1 {
+		t.Errorf("release.yml: publish checks the image's revision against SHA (%s) in %d steps, want one, SHA %s",
+			field(field(jobs["publish"], "env"), "SHA"), revision, gateSHA)
+	}
+	// verify checks the attestations with the identity of the tag's release.yml, the provenance's and the SBOMs':
+	// with -R alone, any workflow of the repository on any ref would do (P5 design 2.1 item 5)
+	var verifies []string
+	for _, step := range stepsOf(jobs["verify"]) {
+		run, _ := step["run"].(string)
+		for _, command := range strings.Split(strings.ReplaceAll(run, "\\\n", " "), "\n") {
+			if strings.Contains(command, "gh attestation verify") {
+				verifies = append(verifies, command)
+			}
+		}
+	}
+	var sboms int
+	for _, command := range verifies {
+		if !strings.Contains(command, `--cert-identity "$identity"`) {
+			t.Errorf("release.yml: verify runs %q, without --cert-identity \"$identity\"", strings.TrimSpace(command))
+		}
+		if strings.Contains(command, "--predicate-type https://spdx.dev/Document/v2.3") {
+			sboms++
+		}
+	}
+	if len(verifies) < 2 || sboms == 0 || sboms == len(verifies) {
+		t.Errorf("release.yml: verify checks the attestations with %q, want the provenance and the SBOMs "+
+			"(--predicate-type https://spdx.dev/Document/v2.3)", verifies)
 	}
 }
