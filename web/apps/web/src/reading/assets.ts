@@ -108,10 +108,11 @@ export function assets(): Enhancement {
     };
     // An element's error goes no further than it: the container hears it on its way down.
     container.addEventListener("error", onError, true);
-    // One refused the reader moves has its old address playing again: it is refused no more.
+    // One refused the reader moves, its error gone, has its old address playing again: it is refused no more. One
+    // still broken can be moved too, in what it had (Firefox keeps that on a network error): it is still refused.
     const onSeeking = (event: Event) => {
       const element = event.target;
-      if (element instanceof HTMLMediaElement && !signing.pending.has(element)) {
+      if (element instanceof HTMLMediaElement && element.error === null && !signing.pending.has(element)) {
         forget(element, signing);
       }
     };

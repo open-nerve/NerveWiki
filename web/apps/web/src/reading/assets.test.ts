@@ -667,6 +667,35 @@ test.each(
   undo?.();
 });
 
+// Review A's check 3, M1: Firefox keeps the data of one that failed on the network as it played, so the reader can
+// still move it, which fires seeking; its error stays, its old address does not play again.
+test.each(["online again", "its timer"])(
+  "one refused that the reader moves, its error still there, is signed again: %s",
+  async (when) => {
+    const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+      expires: later,
+      timers: true,
+    });
+    const undo = enhancement(container, context());
+    const sound = play(container.querySelector("audio"), 42);
+    net.offline = true;
+    fail(sound);
+    await settle();
+    sound.currentTime = 30;
+    sound.dispatchEvent(new Event("seeking"));
+    await settle();
+    net.offline = false;
+    if (when === "online again") {
+      window.dispatchEvent(new Event("online"));
+      await settle();
+    } else {
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
+    }
+    expect([signed, sound.getAttribute("src")]).toEqual([["a1", "a1"], "/api/v0/assets/a1/content?anew=1"]);
+    undo?.();
+  }
+);
+
 // Review A's check 2, M2.
 test("the HTML replaced after a refusal puts the new one where the old one failed, though its controls left it at the start", async () => {
   const html = `<p>${audio("a1")}</p>`;
