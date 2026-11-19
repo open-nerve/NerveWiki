@@ -16,7 +16,7 @@ import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { NodeMove, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
-import { canHold, childrenOf } from "../../stores/page-tree";
+import { childrenOf, holdersOf } from "../../stores/page-tree";
 import { distinctName } from "./distinct-name";
 import { ParentOptions, Problem, rootOption as root } from "./parent-options";
 import { useSourceMove } from "./source-move-confirmation";
@@ -115,9 +115,8 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
     return null;
   }
   const includeRoot = canMoveNode(pages, page.id, null);
-  const parents = [...tree.byId.values()].filter(
-    (each) => canHold(tree, each.id, page.id) && canMoveNode(pages, page.id, each.id)
-  );
+  const holds = holdersOf(tree, page.id);
+  const parents = [...tree.byId.values()].filter((each) => holds(each.id) && canMoveNode(pages, page.id, each.id));
   // A choice that the tree, read again, no longer offers is the default again: what the selects show goes out.
   const offered = (id: string) => (id === root ? includeRoot : parents.some((each) => each.id === id));
   const chosen = offered(parent) ? parent : offered(page.parent_id ?? root) ? (page.parent_id ?? root) : root;

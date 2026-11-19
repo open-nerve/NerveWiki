@@ -141,6 +141,18 @@ export function canHold(tree: TreeIndex, parent: string | null, id: string): boo
 }
 
 /**
+ * holdersOf tells of each parent (null: the root) whether it can take the
+ * page id with its subtree, as canHold does, the subtree and its height
+ * worked out once: for a list of every page to choose from (the Move to…
+ * dialog's), which would otherwise work them out again for each.
+ */
+export function holdersOf(tree: TreeIndex, id: string): (parent: string | null) => boolean {
+  const under = new Set(subtreeOf(tree, id).map((page) => page.id));
+  const height = heightOf(tree, id);
+  return (parent) => (parent === null || !under.has(parent)) && depthOf(tree, parent) + height <= maxDepth;
+}
+
+/**
  * freeTitle is the first of titles (Untitled, Untitled 2, …), counting from
  * 1, that no sibling, a page or an attachment (M7/P2 design 3.10), and
  * none of taken has (M4 design 4).
