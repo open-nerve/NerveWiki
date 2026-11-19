@@ -1618,8 +1618,8 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 
 **`manual/`**（4.12）：
 
-- `screen-reader-checklist.md`：附录 A 的八项（16.8、18.4a、21.15、21.16、22.10、26.1、26.2 的后一半、28.3）、M 类里与读屏有关的各项与第 39 条，每项写在哪一页、怎样操作、期望读出什么；用哪种读屏软件与浏览器；结果怎样记（日期、软件与版本、过或不过、不过时的现象）。P2 各 Step 记录的"读屏与人工清单"一节照抄进来（S1：[记录](reviews/P2-S1-focus-and-shared-review.md)；S2：[记录](reviews/P2-S2-text-review.md)；S4：[记录](reviews/P2-S4-reading-view-review.md)；S5：[记录](reviews/P2-S5-editor-assets-review.md)）。
-- `README.md`：汇总的入口，链到输入法清单（`docs/v0.1/M4-pages/manual/P6-ime-checklist.md`）、MCP 的清单 A–K（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`）、读屏清单与 M 类的其余各项、P2/S3 交的两项（真的 Safari 上窄屏的搜索页与原生下拉的焦点，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）；写明都在发布之后做，发现的问题出 v0.1.1。
+- `screen-reader-checklist.md`：附录 A 的八项（16.8、18.4a、21.15、21.16、22.10、26.1、26.2 的后一半、28.3）、M 类里与读屏有关的各项与第 39 条，每项写在哪一页、怎样操作、期望读出什么；用哪种读屏软件与浏览器；结果怎样记（日期、软件与版本、过或不过、不过时的现象）。P2 各 Step 记录的"读屏与人工清单"一节照抄进来（S1：[记录](reviews/P2-S1-focus-and-shared-review.md)；S2：[记录](reviews/P2-S2-text-review.md)；S4：[记录](reviews/P2-S4-reading-view-review.md)；S5：[记录](reviews/P2-S5-editor-assets-review.md)；S6：[记录](reviews/P2-S6-versions-trash-history-search-review.md)，十一项）。
+- `README.md`：汇总的入口，链到输入法清单（`docs/v0.1/M4-pages/manual/P6-ime-checklist.md`）、MCP 的清单 A–K（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`）、读屏清单与 M 类的其余各项、P2/S3 交的两项（真的 Safari 上窄屏的搜索页与原生下拉的焦点，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）、P2/S6 交的两项（26.18a 在真的浏览器里看一次印地文、泰文的搜索命中；26.5 在 macOS 的 Safari 与 Chrome 上，关着的选择按方向键是否打开列表、列表里选的是否立即用，[S6 的记录](reviews/P2-S6-versions-trash-history-search-review.md)"读屏与人工清单"）；写明都在发布之后做，发现的问题出 v0.1.1。
 
 ### 3.20 S3：三遍演练
 
