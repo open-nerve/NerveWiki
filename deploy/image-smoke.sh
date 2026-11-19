@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # 在镜像上跑 S1、S3（docs/v0.1/M0-foundation/06-P6-e2e-delivery.md 3.5）：在临时的 Docker 网络里启动
-# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息与镜像的 label、管理员建的账户
-# 与进程的用户，上传一个附件、重启之后按签名的地址读回同样的字节（M7/P2 设计 3.13），最后停止服务并核对它
-# 正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
+# PostgreSQL，用镜像执行 migrate up、启动 serve，核对探针、内嵌的前端、实例信息、提交信息与镜像的 label、第三方许可证
+# （/licenses）、管理员建的账户与进程的用户，上传一个附件、重启之后按签名的地址读回同样的字节（M7/P2 设计 3.13），
+# 最后停止服务并核对它正常退出；另核对附件目录不可写时 serve 拒绝启动（M7/P1 设计 3.5）。
 # 无论成败都清理容器、卷与网络；失败时打印服务的日志。
 # 镜像要由当前工作区构建：提交信息与本地的 git 核对（make image-smoke 先执行 make image）。
 # 需要 Docker、git、curl、jq、openssl。
@@ -24,6 +24,8 @@ db=$name-db
 migrate=$name-migrate
 app=$name-app
 refused=$name-refused
+# 只建不跑，取出 /licenses
+licenses=$name-licenses
 # 服务的附件目录：具名卷，结束时删掉（不挂载时 Docker 会留下匿名卷）
 volume=$name-data
 # 本机临时的账号密码，不是机密
@@ -47,7 +49,7 @@ cleanup() {
     docker logs "$app" >&2 || true
   fi
   # -v：PostgreSQL 镜像声明了数据卷，不带 -v 每次都会留下一个匿名卷
-  docker rm -fv "$app" "$migrate" "$db" "$refused" >/dev/null 2>&1 || true
+  docker rm -fv "$app" "$migrate" "$db" "$refused" "$licenses" >/dev/null 2>&1 || true
   docker volume rm "$volume" >/dev/null 2>&1 || true
   docker network rm "$name" >/dev/null 2>&1 || true
   rm -rf "$keydir" "$files"
@@ -86,6 +88,37 @@ jq -e --arg version "$version" --arg commit "$commit" --arg created "$created" \
    and (."org.opencontainers.image.description" | length > 0)
    and ."org.opencontainers.image.source" == "https://github.com/open-nerve/NerveWiki"' \
   <<<"$labels" >/dev/null || fail "镜像的 label 与预期不符：$labels"
+
+# 第三方许可证（M12/P5/S2，P5 设计 3.11）：Nerve Wiki 自己的、说明、两份清单都在，Go 本身与两个常见的依赖在清单上，
+# 清单上写的每个文件都在、不是空的。docker create 不运行镜像
+docker create --name "$licenses" "$image" >/dev/null
+docker cp "$licenses:/licenses" "$files/licenses"
+lic=$files/licenses
+for f in LICENSE README.txt go/INDEX.tsv npm/INDEX.tsv; do
+  [[ -s $lic/$f ]] || fail "镜像里没有 /licenses/$f，或它是空的"
+done
+cmp -s "$repo/LICENSE" "$lic/LICENSE" || fail "/licenses/LICENSE 与仓库的 LICENSE 不同"
+grep -qE $'^go@go[0-9.]+\tLICENSE,PATENTS$' "$lic/go/INDEX.tsv" || fail "/licenses/go/INDEX.tsv 没有 Go 本身的 LICENSE 与 PATENTS"
+grep -q $'^github.com/jackc/pgx/v5@[^\t]*\tLICENSE' "$lic/go/INDEX.tsv" || fail "/licenses/go/INDEX.tsv 没有 pgx"
+grep -q $'^react@[^\t]*\tMIT\tLICENSE' "$lic/npm/INDEX.tsv" || fail "/licenses/npm/INDEX.tsv 没有 react"
+# 清单上写的每个文件；npm 一侧写 - 的包里没有许可证的文本（P5 设计 P5-10）
+while IFS=$'\t' read -r id names; do
+  IFS=, read -ra list <<<"$names"
+  [[ ${#list[@]} -gt 0 ]] || fail "/licenses/go/INDEX.tsv 的 $id 没有文件"
+  for n in "${list[@]}"; do
+    [[ -s $lic/go/$id/$n ]] || fail "/licenses/go/INDEX.tsv 写了 $id/$n，镜像里没有或是空的"
+  done
+done <"$lic/go/INDEX.tsv"
+while IFS=$'\t' read -r id license names; do
+  [[ -n $license && -n $names ]] || fail "/licenses/npm/INDEX.tsv 的 $id 一行不全"
+  if [[ $names == - ]]; then
+    continue
+  fi
+  IFS=, read -ra list <<<"$names"
+  for n in "${list[@]}"; do
+    [[ -s $lic/npm/$id/$n ]] || fail "/licenses/npm/INDEX.tsv 写了 $id/$n，镜像里没有或是空的"
+  done
+done <"$lic/npm/INDEX.tsv"
 
 # 与开发库、端到端测试相同的 PostgreSQL：builtin C.UTF-8。
 # 初始化期间 PostgreSQL 只听 Unix 套接字，所以按 TCP 判断就绪

@@ -15,6 +15,10 @@ COPY web/apps/web/package.json web/apps/web/
 COPY web/packages/api-client/package.json web/packages/api-client/
 COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --filter @nervewiki/web...
+# 第三方许可证的 npm 一侧（M12/P5/S2，P5 设计 3.11）：@nervewiki/web 的每个生产依赖的许可证文件。在复制源码之前：
+# 只随锁文件与脚本变，源码变了这一层照样复用
+COPY tools/licenses/npm.mjs tools/licenses/
+RUN node tools/licenses/npm.mjs /out/licenses/npm
 COPY web/ web/
 RUN pnpm --filter @nervewiki/web build
 
@@ -35,10 +39,12 @@ ARG VERSION=0.1.0-dev
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=${VERSION}" \
     -o /out/nervewiki ./cmd/nervewiki
+# 第三方许可证的 Go 一侧（M12/P5/S2，P5 设计 3.11）：链接进二进制的每个模块与 Go 本身；没有许可证文件的模块让构建失败
+RUN /src/tools/licenses/go.sh /out/licenses/go
 # 附件与导入导出的目录（M7/P1 设计 3.5）：distroless 没有 mkdir 与 chown，在这里建好，复制时改属主
 RUN mkdir /out/data
 
-# 运行时：只有二进制（配置、迁移、前端都内嵌在其中）与 CA 证书，没有 shell。
+# 运行时：只有二进制（配置、迁移、前端都内嵌在其中）、CA 证书与第三方许可证，没有 shell。
 # 用不带 nonroot 的变体，由这里的 USER 声明非 root 用户：去掉它，image-smoke.sh 就会失败。
 # 写成数字（distroless 的 nonroot，uid 65532）：Kubernetes 的 runAsNonRoot 无法核对用户名。
 # 不写 HEALTHCHECK：镜像里没有能发请求的程序，编排系统用 /healthz、/readyz 做探针
@@ -56,6 +62,12 @@ LABEL org.opencontainers.image.title="Nerve Wiki" \
       org.opencontainers.image.source="https://github.com/open-nerve/NerveWiki" \
       org.opencontainers.image.licenses="AGPL-3.0-only"
 COPY --from=server /out/nervewiki /nervewiki
+# 第三方许可证（M12/P5/S2，P5 设计 3.11）：Nerve Wiki 自己的、说明、Go 一侧与 npm 一侧。Release 的附件从推上去的
+# 镜像里取同一份；image-smoke.sh 核对
+COPY LICENSE /licenses/LICENSE
+COPY tools/licenses/README.txt /licenses/README.txt
+COPY --from=server /out/licenses/go /licenses/go
+COPY --from=web /out/licenses/npm /licenses/npm
 # 进程要能写的目录，属主是下面的用户。部署时挂载卷或宿主机目录（属主 65532），否则 Docker 建匿名卷，删容器就丢
 COPY --from=server --chown=65532:65532 /out/data /data
 ENV NWIKI_STORAGE__DIR=/data
