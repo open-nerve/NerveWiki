@@ -598,8 +598,9 @@ func readCalls(t *testing.T, log string) []string {
 // its assets' names, a line each. api answers the list as GitHub does to a token that may write contents, drafts
 // among them, in three pages, the tag's Release on the second among others, the query run on each page as gh runs
 // --jq; view says release not found where there is none, as gh does. create makes a draft. It fails where there is a
-// Release of the tag already, which gh does not (gh release create --draft makes a second draft of it): that failure
-// is a tripwire, so that the script never asks for it. edit --draft=false publishes, unless FAKE_GH_EDIT_KEEPS is set;
+// Release of the tag already: a tripwire, so that the script never asks for it, not what gh does. gh release create
+// --draft does not look for a draft of the tag (its source, v2.103.2); that GitHub then makes a second draft is P5
+// design 3.13's premise, which only a tag's run would prove. edit --draft=false publishes, unless FAKE_GH_EDIT_KEEPS is set;
 // upload adds files that are there and fails on a published Release, as the repository's immutable releases would
 // have it; edit and upload fail where there is no Release, and with FAKE_GH_EDIT_FAILS or FAKE_GH_UPLOAD_FAILS set.
 const fakeGHRelease = `#!/usr/bin/env bash
@@ -1456,9 +1457,11 @@ func TestOnlyATagsJobsMayWrite(t *testing.T) {
 		}
 		return list
 	}
-	if got, want := archs(jobs["verify"]), yamlStrings("amd64", "arm64"); !reflect.DeepEqual(got, want) ||
-		!reflect.DeepEqual(field(jobs["verify"], "strategy"), field(jobs["build"], "strategy")) {
-		t.Errorf("release.yml: verify runs on %v, want %v, its strategy build's", got, want)
+	if got, want := archs(jobs["verify"]), yamlStrings("amd64", "arm64"); !reflect.DeepEqual(got, want) {
+		t.Errorf("release.yml: verify runs on %v, want %v", got, want)
+	}
+	if v, b := field(jobs["verify"], "strategy"), field(jobs["build"], "strategy"); !reflect.DeepEqual(v, b) {
+		t.Errorf("release.yml: verify's strategy is %v, build's %v: want build's", v, b)
 	}
 	// the Release is published by release alone, after verify: no other job's step publishes it or calls gh release
 	for id, job := range jobs {

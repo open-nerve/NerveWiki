@@ -57,6 +57,8 @@ function run(dir, cwd, command, args, env) {
 /**
  * The fake go: go list -deps (with CGO_ENABLED=0, as the build) prints the stub's list, go env its GOROOT and version,
  * and go version -m the program's first line, with the version or FAKE_GO_BUILT_WITH, and the stub's lines after it.
+ * The list is go's shape: a line a package, so a module comes several times, in the order of the dependencies, not
+ * sorted (M12/P5/S2, check round 1 A's N1).
  */
 const fakeGo = `#!/bin/sh
 case "$*" in
@@ -98,7 +100,9 @@ function goCell({ name, list, held, outOfCache = [], env = {}, goroot = { LICENS
     for (const [path, text] of Object.entries(content)) files[`mod/${id}/${path}`] = text;
   }
   for (const [path, text] of Object.entries(goroot)) files[`goroot/${path}`] = text;
-  files.list = list.map((id) => `${id}\t${outOfCache.includes(id) ? "" : join(dir, "mod", id)}\n`).join("");
+  // three packages of each module, the modules taken last to first each time
+  const listed = (id) => `${id}\t${outOfCache.includes(id) ? "" : join(dir, "mod", id)}\n`;
+  files.list = [0, 1, 2].flatMap(() => list.toReversed().map(listed)).join("");
   files.info = [
     "\tpath\texample.com/nervewiki/cmd/nervewiki",
     "\tmod\texample.com/nervewiki\t(devel)\t",
