@@ -56,6 +56,11 @@ test.each<[string, string]>([
     "in a quote in a list's item, a row indented 4 past the mark before the delimiter row",
     "- > | a | b | c |\n  >     | - |\n  > | d |\n  > | - | - |\n  > | ‸",
   ],
+  // A tab that crosses the column leaves the columns past it, as goldmark's padding.
+  [
+    "in a list's item, a row indented a tab and 3 past its column before the delimiter row",
+    "- | a | b | c |\n\t   | - |\n  | d |\n  | - | - |\n  | ‸",
+  ],
 ])("in a table: %s", (_, doc) => {
   expect(at(doc)).toBe(true);
 });

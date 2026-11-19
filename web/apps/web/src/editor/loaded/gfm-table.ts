@@ -14,11 +14,12 @@ type Node = ReturnType<typeof syntaxTree>["topNode"];
  * header of more cells than that delimiter row makes no table, nor does
  * the paragraph look further. A paragraph's lines are read as goldmark has
  * them: past the marks of the quotes (a callout's too) and the indent of
- * the list items it is in, to the column its first line starts at, a lazy
- * line's as written (M6/P7 fix check fc3-c1-2; M12/P2/S5, 12.8). A setext
- * heading lezer makes of a paragraph and the underline after it, goldmark
- * makes a table of first, if the paragraph has one, each of its lines
- * trimmed: the underline is not the table's. Spaces are ASCII's.
+ * the list items it is in, to the column its first line starts at (a tab
+ * across it leaving the columns past it), a lazy line's as written (M6/P7
+ * fix check fc3-c1-2; M12/P2/S5, 12.8). A setext heading lezer makes of a
+ * paragraph and the underline after it, goldmark makes a table of first,
+ * if the paragraph has one, each of its lines trimmed: the underline is not
+ * the table's. Spaces are ASCII's.
  */
 export function inTable(state: EditorState, pos: number): boolean {
   for (let node: Node | null = syntaxTree(state).resolveInner(pos, -1); node; node = node.parent) {
@@ -60,7 +61,7 @@ function inParagraphTable(state: EditorState, paragraph: Node, at: number, setex
     if (setext) {
       return text.replace(/^[ \t]+/, "");
     }
-    return listed ? text.slice(indentWithin(text, column)) : text;
+    return listed ? pastColumn(text, column) : text;
   };
   for (let n = first + 1; n <= last; n++) {
     const delimiter = delimiterCells(lineOf(n));
@@ -159,12 +160,16 @@ function widthOf(text: string): number {
   return width;
 }
 
-/** indentWithin is how many of line's leading spaces and tabs are within its first columns. */
-function indentWithin(line: string, columns: number): number {
+/**
+ * pastColumn is line past the leading spaces and tabs within its first
+ * columns; a tab that crosses the last of them leaves the columns past it,
+ * as spaces: goldmark's padding, which a row's indent counts.
+ */
+function pastColumn(line: string, columns: number): string {
   let width = 0;
   let at = 0;
   for (; at < line.length && (line[at] === " " || line[at] === "\t") && width < columns; at++) {
     width += line[at] === "\t" ? 4 - (width % 4) : 1;
   }
-  return at;
+  return " ".repeat(Math.max(width - columns, 0)) + line.slice(at);
 }
