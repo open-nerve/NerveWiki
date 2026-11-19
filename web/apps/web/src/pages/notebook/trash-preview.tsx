@@ -72,15 +72,30 @@ export const TrashPreview = observer(function TrashPreview() {
 
 /**
  * What came of a restore from the preview: out, the item restored, or
- * refused; of its restore in the background: started, refused (start), or,
- * its answer lost, not started or not known to have (lost).
+ * refused, or refused as deleted again with a page above it, whose item's
+ * preview, root, says why (merged); of its restore in the background:
+ * started, refused (start), or, its answer lost, not started or not known
+ * to have (lost).
  */
 type Restoring =
   | { out: true }
   | { restored: TrashRestored }
   | { refused: unknown; item: TrashItem; start?: boolean }
+  | { merged: string }
   | { started: Started }
   | { lost: "none" | "unread"; item: TrashItem };
+
+/**
+ * refusedOf is what a restore of item refused came to: deleted again with a
+ * page above it, its item's preview, which says so, and says it once
+ * (M5-polish 22.19): the refusal's own alert, then the preview's, then the
+ * title described by it, said it three times.
+ */
+function refusedOf(refusal: unknown, item: TrashItem): Restoring {
+  const root =
+    refusal instanceof ApiError && refusal.code === "page.not_trash_root" ? refusal.problem?.root_id : undefined;
+  return typeof root === "string" ? { merged: root } : { refused: refusal, item };
+}
 
 /**
  * MergedState is the route state of an item's preview gone to from a node
@@ -152,7 +167,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       } catch (refusal) {
         const item = latest.current;
         if (showing) {
-          setRestoring(item === undefined ? undefined : { refused: refusal, item });
+          setRestoring(item === undefined ? undefined : refusedOf(refusal, item));
         }
       }
     })();
@@ -166,9 +181,11 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const [handed, setHanded] = useState(false);
   const note = useId();
   const home = `/${slug}/notebooks/${notebook.id}`;
-  // What shows, below what a refusal says: the same alert above each, so that a view replacing another keeps it.
-  const shell = (told: ReactNode, view: ReactNode) => (
+  // What shows, below what a refusal says, below the item's breadcrumb (M5-polish 22.19): each in a slot of its own,
+  // so that a view replacing another keeps the same alert.
+  const shell = (told: ReactNode, view: ReactNode, trail?: ReactNode) => (
     <div className="space-y-4">
+      {trail}
       {told !== undefined && <Alert id={note}>{told}</Alert>}
       {view}
     </div>
@@ -184,7 +201,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       }
     } catch (refusal) {
       if (mounted()) {
-        setRestoring({ refused: refusal, item });
+        setRestoring(refusedOf(refusal, item));
       }
     }
   }
@@ -211,6 +228,9 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
     return (
       <Navigate to={`${home}/trash`} state={{ ...arrived, restored: restoring.restored } satisfies RestoredState} />
     );
+  }
+  if (restoring !== undefined && "merged" in restoring) {
+    return <Navigate replace to={`${home}/trash/${restoring.merged}`} state={{ merged: true } satisfies MergedState} />;
   }
   if (restoring !== undefined && "started" in restoring) {
     return <Navigate to={`${home}/trash`} state={{ ...arrived, started: restoring.started } satisfies StartedState} />;
@@ -248,7 +268,16 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       }
       case "page.not_in_trash": {
         const told = saidGone(error.code);
-        return shell(told, <NotInTrash notebook={notebook} id={id} describedBy={describing(told)} focus={handed} />);
+        return shell(
+          told,
+          <NotInTrash
+            notebook={notebook}
+            id={id}
+            describedBy={describing(told)}
+            focus={handed}
+            left={() => setHanded(true)}
+          />
+        );
       }
       case "page.restore_expired": {
         const told = saidGone(error.code);
@@ -259,6 +288,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
             text={told === undefined ? t("trash.expiredItem") : undefined}
             describedBy={describing(told)}
             focus={handed}
+            left={() => setHanded(true)}
           />
         );
       }
@@ -276,7 +306,15 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       busy={restoring !== undefined && "out" in restoring}
       start={offered?.id === data.id ? () => startItem(data) : undefined}
       describedBy={describing(said)}
+      focus={handed}
       left={() => setHanded(true)}
+    />,
+    <BreadcrumbTrail
+      steps={[
+        { key: "notebook", to: home, name: notebook.name },
+        { key: "trash", to: `${home}/trash`, name: t("trash.title") },
+      ]}
+      current={data.name}
     />
   );
 });
@@ -303,15 +341,16 @@ function LostStart({ lost, item }: { lost: "none" | "unread"; item: TrashItem })
 }
 
 /**
- * Preview is the item found: where it is, under the trash, its title, what
- * the trash says of it, its root's view or its attachment, and a writer's
- * Restore (restore; what a refusal says, above, describes its title:
- * describedBy), and its Restore in the background where it is offered
- * (start). Gone to from a node deleted with it since, it says so, its
- * title taking the focus if the reader has it nowhere (v0.1 design 13.2,
- * item 26): their own restore refused, what held it gone, or the address
- * opened. Gone from the document with the focus, read away, it hands the
- * focus on (left).
+ * Preview is the item found: its title, what the trash says of it, its
+ * root's view or its attachment, and a writer's Restore (restore; what a
+ * refusal says, above, describes its title: describedBy), and its Restore
+ * in the background where it is offered (start); where it is, under the
+ * trash, is its shell's (PreviewShell). Gone to from a node deleted with it
+ * since, it says so, its title taking the focus if the reader has it
+ * nowhere (v0.1 design 13.2, item 26): their own restore refused, what held
+ * it gone, or the address opened; so does it shown in place of what held
+ * the focus as it left (focus). Gone from the document with the focus,
+ * read away, it hands the focus on (left).
  */
 const Preview = observer(function Preview({
   notebook,
@@ -320,6 +359,7 @@ const Preview = observer(function Preview({
   busy,
   start,
   describedBy,
+  focus,
   left,
 }: {
   notebook: Notebook;
@@ -329,10 +369,11 @@ const Preview = observer(function Preview({
   busy: boolean;
   start: (() => Promise<void>) | undefined;
   describedBy: string | undefined;
+  /** Whether what it replaces left with the focus. */
+  focus: boolean;
   left: () => void;
 }) {
   const t = useT();
-  const { slug } = useWorkspace();
   const { preferences } = useStore();
   const heading = useRef<HTMLHeadingElement>(null);
   const merged = mergedOf(useLocation().state);
@@ -341,23 +382,14 @@ const Preview = observer(function Preview({
   useFocusLeaving(shown, left);
   useEffect(() => {
     const at = document.activeElement;
-    if (merged && (at === null || at === document.body)) {
+    if ((merged || focus) && (at === null || at === document.body)) {
       heading.current?.focus();
     }
-  }, [merged]);
-  const trashTitle = t("trash.title");
-  useDocumentTitle(item.name, trashTitle, notebook.name);
-  const home = `/${slug}/notebooks/${notebook.id}`;
+  }, [merged, focus]);
+  useDocumentTitle(item.name, t("trash.title"), notebook.name);
   return (
     <div ref={shown} className="space-y-6">
       <div className="space-y-2">
-        <BreadcrumbTrail
-          steps={[
-            { key: "notebook", to: home, name: notebook.name },
-            { key: "trash", to: `${home}/trash`, name: trashTitle },
-          ]}
-          current={item.name}
-        />
         <div className="flex items-start justify-between gap-3">
           <h1
             ref={heading}
@@ -439,11 +471,13 @@ const NotInTrash = observer(function NotInTrash({
   id,
   describedBy,
   focus,
+  left,
 }: {
   notebook: Notebook;
   id: string;
   describedBy: string | undefined;
   focus: boolean;
+  left: () => void;
 }) {
   const t = useT();
   const { slug } = useWorkspace();
@@ -479,6 +513,7 @@ const NotInTrash = observer(function NotInTrash({
       text={t(node === undefined ? "trash.notInTrashUnknown" : "trash.notInTrash")}
       describedBy={describedBy}
       focus={focus}
+      left={left}
     >
       {open !== undefined && (
         <Link to={open.to} state={open.state} className="underline underline-offset-4">
@@ -494,23 +529,29 @@ const NotInTrash = observer(function NotInTrash({
  * it), and leads back to the trash, or where children lead; what a restore
  * from the preview was refused for, above it (PreviewShell), describes its
  * title (describedBy). Shown in place of the item, which left with the
- * focus (focus), its title takes it, the focus on nothing.
+ * focus (focus), its title takes it, the focus on nothing. Gone from the
+ * document with the focus, the item back in the trash, it hands the focus
+ * on (left), which the item's title takes (M5-polish 22.19).
  */
 function Gone({
   text,
   describedBy,
   focus,
+  left,
   children,
 }: {
   text: string | undefined;
   describedBy: string | undefined;
   focus: boolean;
+  left: () => void;
   children?: ReactNode;
 }) {
   const t = useT();
   const notebook = useNotebook();
   const { slug } = useWorkspace();
   const heading = useRef<HTMLHeadingElement>(null);
+  const section = useRef<HTMLElement>(null);
+  useFocusLeaving(section, left);
   useDocumentTitle(t("trash.title"), notebook.name);
   useEffect(() => {
     const at = document.activeElement;
@@ -519,7 +560,7 @@ function Gone({
     }
   }, [focus]);
   return (
-    <section className="space-y-2">
+    <section ref={section} className="space-y-2">
       <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className="text-2xl font-semibold outline-none">
         {t("trash.title")}
       </h1>
