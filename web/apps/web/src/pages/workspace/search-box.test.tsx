@@ -4,7 +4,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
-import { notebookJSON } from "../../test/fakes";
+import { json, notebookJSON, signedInApp, workspaceJSON } from "../../test/fakes";
 import { guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -248,4 +248,40 @@ test("on the results page the box holds the address's q as it changes, unless it
   await act(() => router.navigate(home));
   await screen.findByRole("heading", { level: 1, name: "Plans" });
   expect(box().value).toBe("Notes");
+});
+
+test("a problem under the box goes as the box is edited: the field no longer invalid, nor described by it (M5-polish 26.2)", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", pageServer().app);
+  const field = await screen.findByRole("searchbox", { name: "Search terms" });
+  fireEvent.change(field, { target: { value: "数".repeat(86) } });
+  await user.click(within(form()).getByRole("button", { name: "Search" }));
+  expect(field.getAttribute("aria-invalid")).toBe("true");
+
+  fireEvent.change(field, { target: { value: "数" } });
+
+  expect(field.getAttribute("aria-invalid")).toBeNull();
+  expect(hintOf(field)).toBe("Searches the whole workspace.");
+  expect(within(form()).queryByRole("alert")).toBeNull();
+});
+
+test("another workspace's box is its own: what was typed in the last, and its problem, are not there (M5-polish 26.15)", async () => {
+  const user = userEvent.setup();
+  const acme = { ...workspaceJSON, id: "0199a2b4-0000-7000-8000-0000000000a1", slug: "acme", name: "Acme" };
+  const { router } = renderApp(
+    "/lab",
+    signedInApp({ "GET /api/v0/workspaces": () => json({ data: [acme, workspaceJSON] }) })
+  );
+  const field = await screen.findByRole("searchbox", { name: "Search terms" });
+  fireEvent.change(field, { target: { value: "数".repeat(86) } });
+  await user.click(within(form()).getByRole("button", { name: "Search" }));
+  expect(field.getAttribute("aria-invalid")).toBe("true");
+
+  await act(() => router.navigate("/acme"));
+
+  const other = await screen.findByRole("search", { name: "Search “Acme”" });
+  const otherField = within(other).getByRole("searchbox", { name: "Search terms" }) as HTMLInputElement;
+  expect(otherField.value).toBe("");
+  expect(otherField.getAttribute("aria-invalid")).toBeNull();
+  expect(within(other).queryByRole("alert")).toBeNull();
 });
