@@ -10,7 +10,7 @@ import { NotLoaded } from "../../app/not-loaded";
 import { errorText, fieldErrors } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { Label } from "../../components/ui/label";
-import { NativeSelect } from "../../components/ui/native-select";
+import { NativeSelect, useChoice } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { idPattern } from "../../lib/ids";
@@ -180,6 +180,8 @@ export const SearchPage = observer(function SearchPage() {
     // The entry's state stays: Back to the results from a page gone to from them is still an arrival (M12/P2/S1).
     setParams(next, { replace: true, state: location.state });
   }
+  // Stepped through with the keys, a choice searches once the reader leaves it or presses Enter (M5-polish 26.5).
+  const scope = useChoice(notebook ?? "", choose);
 
   const listed = notebooks.list;
   const nameOf = (id: string) => listed?.find((each) => each.id === id)?.name;
@@ -218,12 +220,7 @@ export const SearchPage = observer(function SearchPage() {
       {asked && (
         <div className="space-y-2">
           <Label htmlFor={ids.scope}>{t("search.scope")}</Label>
-          <NativeSelect
-            id={ids.scope}
-            value={notebook ?? ""}
-            onChange={(event) => choose(event.target.value)}
-            className="block max-w-full"
-          >
+          <NativeSelect id={ids.scope} {...scope} className="block max-w-full">
             <option value="">{t("search.everyNotebook")}</option>
             {listed?.map((each) => (
               <option key={each.id} value={each.id}>

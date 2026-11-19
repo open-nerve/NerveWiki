@@ -1,7 +1,7 @@
 import type { ApiClient } from "@nervewiki/api-client";
 
 import { bearer, emailFor } from "../../fixtures/auth";
-import { failedToLoad } from "../../fixtures/browser";
+import { answerTo, failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { errorOf, mcpClient, postMcp, resultOf, type McpClient } from "../../fixtures/mcp";
 import { goto } from "../../fixtures/navigation";
@@ -194,7 +194,7 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   const { pat, workspace } = await newTeam(api, testInfo);
   const tokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "member"), "member");
   const guestTokens = await joinOnboarded(api, pat, workspace.slug, emailFor(testInfo, "guest"), "guest");
-  const { open, closed, guests, guestPage } = await notebooksOf(
+  const { open, shared, closed, guests, guestPage } = await notebooksOf(
     api,
     pat,
     workspace.slug,
@@ -223,6 +223,19 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   expect(await resultNames(page)).toEqual(["Shared plan", "Open plan"]);
   await expect(scope).toBeFocused();
   await expect(searchBox(page)).toHaveAccessibleDescription("Searches the whole workspace.");
+
+  // Stepped through with the keys on the closed select, as Chromium does off macOS: nothing is searched until the
+  // reader leaves it (M5-polish 26.5).
+  await scope.press("ArrowDown");
+  await scope.press("ArrowDown");
+  await expect(scope).toHaveValue(shared.id);
+  await expect(page).toHaveURL(`/${workspace.slug}/search?q=${word}`);
+  const searched = answerTo(page, "GET", `/api/v0/workspaces/${workspace.slug}/search`);
+  await page.keyboard.press("Tab");
+  expect((await searched).status()).toBe(200);
+  await expect(page).toHaveURL(`/${workspace.slug}/search?q=${word}&notebook_id=${shared.id}`);
+  await expect(searchStatus(page)).toHaveText("Results: 1.");
+  expect(await resultNames(page)).toEqual(["Shared plan"]);
 
   // The private notebook, by its id in the address.
   pageWatch.expectConsole({ errors: [failedToLoad(404)] });

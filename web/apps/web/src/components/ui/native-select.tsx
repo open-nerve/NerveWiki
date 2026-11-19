@@ -1,4 +1,4 @@
-import type { ComponentProps } from "react";
+import { useRef, useState, type ChangeEvent, type ComponentProps, type KeyboardEvent } from "react";
 
 import { cn } from "../../lib/cn";
 
@@ -19,4 +19,74 @@ export function NativeSelect({ className, ...props }: ComponentProps<"select">) 
       {...props}
     />
   );
+}
+
+/** The keys that step a closed select from one option to another, without Alt (Alt+Up or Down opens its list). */
+const steps = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
+
+/** stepping tells whether a key pressed on a closed select steps it: a step's key, or a character typed to find one. */
+function stepping(event: KeyboardEvent<HTMLSelectElement>): boolean {
+  if (event.altKey || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+  return steps.has(event.key) || (event.key !== " " && [...event.key].length === 1);
+}
+
+/**
+ * useChoice is a select's value and handlers for a choice whose use reads
+ * something (a search, a list): applied is the choice in use, apply uses
+ * another (M5-polish 26.5). Off macOS, the keys on a closed select step
+ * from option to option, each step a change: each would read. A change the
+ * keys stepped to waits, shown, until the reader leaves the select or
+ * presses Enter; one from the pointer, the open list or a script is used
+ * at once. Alt and an arrow, F4 and Space open the list: no step. What is
+ * applied changing elsewhere (the address) drops what waits. Used, the
+ * choice already in use reads nothing again.
+ */
+export function useChoice(applied: string, apply: (value: string) => void) {
+  // The option the keys stepped to, shown until it is used: a controlled select would otherwise show applied again.
+  const [pending, setPending] = useState<string>();
+  // Whether the change to come is the keys' step.
+  const stepped = useRef(false);
+  const [was, setWas] = useState(applied);
+  if (was !== applied) {
+    setWas(applied);
+    setPending(undefined);
+  }
+  const use = (value: string) => {
+    setPending(undefined);
+    if (value !== applied) {
+      apply(value);
+    }
+  };
+  return {
+    value: pending ?? applied,
+    onKeyDown: (event: KeyboardEvent<HTMLSelectElement>) => {
+      if (event.key === "Enter") {
+        stepped.current = false;
+        if (pending !== undefined) {
+          use(pending);
+        }
+        return;
+      }
+      stepped.current = stepping(event);
+    },
+    onPointerDown: () => {
+      stepped.current = false;
+    },
+    onChange: (event: ChangeEvent<HTMLSelectElement>) => {
+      const value = event.target.value;
+      if (stepped.current) {
+        setPending(value);
+      } else {
+        use(value);
+      }
+      stepped.current = false;
+    },
+    onBlur: () => {
+      if (pending !== undefined) {
+        use(pending);
+      }
+    },
+  };
 }

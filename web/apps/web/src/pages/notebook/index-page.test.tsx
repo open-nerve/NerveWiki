@@ -519,3 +519,22 @@ test("P4/tree_failure: a tree that cannot be read says so above the rows, which 
   await waitFor(() => expect(main.getByRole("button", { name: "Try again" })).toBeTruthy());
   expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
 });
+
+test("the type stepped through with the keys on its closed select reads the index once the reader presses Enter; nothing meanwhile (M5-polish 26.5)", async () => {
+  const fixture = indexServer();
+  const { router } = renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("option", { name: "Topic (1)" });
+  const type = screen.getByRole("combobox", { name: "Type" }) as HTMLSelectElement;
+  const reads = fixture.requests.length;
+
+  fireEvent.keyDown(type, { key: "ArrowDown" });
+  fireEvent.change(type, { target: { value: "Note" } });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(fixture.requests).toHaveLength(reads);
+  expect(router.state.location.search).toBe("");
+  expect(type.value).toBe("Note");
+
+  fireEvent.keyDown(type, { key: "Enter" });
+  await waitFor(() => expect(fixture.requests).toHaveLength(reads + 1));
+  expect(router.state.location.search).toBe("?type=Note");
+});

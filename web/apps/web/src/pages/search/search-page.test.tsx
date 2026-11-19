@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
@@ -871,4 +871,39 @@ test("a hit's path writes its notebook and each page above it in a bdi of its ow
   const path = (row as HTMLElement).querySelectorAll("p")[1] as HTMLElement;
   expect([...path.querySelectorAll("bdi")].map((bdi) => bdi.textContent)).toEqual(["Plans", "מדריך", "התקנה"]);
   expect(path.textContent).toBe("Plans / מדריך / התקנה");
+});
+
+test("Where to look stepped through with the keys on the closed select searches once the reader leaves it, or presses Enter; nothing meanwhile (M5-polish 26.5)", async () => {
+  const user = userEvent.setup();
+  const idea = { ...pageNode(41, "全文检索"), notebook_id: ideas.id };
+  const server = pageServer({ nodes: [guide, changed(pageNode(42, "检索方法"), 30)] });
+  server.others = [ideas];
+  server.otherNodes = [idea];
+  const { router } = renderApp(searchPath("检索"), server.app);
+  await screen.findByRole("list", { name: "Search results" });
+  const scope = screen.getByRole("combobox", { name: "Where to look" }) as HTMLSelectElement;
+  act(() => scope.focus());
+  const before = reads(server).length;
+  // As the browsers send them: the key, then the change.
+  fireEvent.keyDown(scope, { key: "ArrowDown" });
+  fireEvent.change(scope, { target: { value: ideas.id } });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}`);
+  expect(reads(server)).toHaveLength(before);
+  expect(scope.value).toBe(ideas.id);
+
+  fireEvent.keyDown(scope, { key: "Enter" });
+  await waitFor(() => expect(hits()).toHaveLength(1));
+  expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}&notebook_id=${ideas.id}`);
+  expect(reads(server)).toHaveLength(before + 1);
+
+  // Stepped back, then left: searched as the reader leaves it.
+  fireEvent.keyDown(scope, { key: "ArrowUp" });
+  fireEvent.change(scope, { target: { value: "" } });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}&notebook_id=${ideas.id}`);
+  await user.tab();
+  await waitFor(() => expect(hits()).toHaveLength(2));
+  expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}`);
+  expect(reads(server)).toHaveLength(before + 2);
 });
