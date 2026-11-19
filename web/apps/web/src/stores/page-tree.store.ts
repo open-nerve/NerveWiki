@@ -1,4 +1,4 @@
-import { computed, makeAutoObservable, observableRef, runInAction } from "mobx";
+import { computed, makeAutoObservable, observableRef, observableShallow, runInAction } from "mobx";
 
 import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
@@ -73,6 +73,9 @@ export const toggleLimit = 60_000;
  * out one at a time too, each in turn with the tree's writes, which it is
  * one of; the pages it deletes are this generation's deleted as well.
  */
+/** A revert out: its answer, and the newest revert of its changeset its sender knew (before). */
+export type RevertOut = { answer: Promise<ChangesetReverted>; before: string | undefined };
+
 export class PageTreeStore {
   /** The nodes as read, pages and attachments, replaced whole by each read: they are not observed one by one. */
   nodes: TreeNode[] | undefined = undefined;
@@ -104,6 +107,14 @@ export class PageTreeStore {
   /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
   private readonly togglesOut = new Map<string, number>();
   private readonly restores = oneAtATimeById();
+  /**
+   * The restores and reverts out, each by its node or changeset, the last
+   * made: their answers, observed, which a page shown again follows (M5-polish
+   * 22.14, 23.10); a revert with the newest revert of its changeset its sender
+   * knew. Each leaves once it settles, unless a later one took its place.
+   */
+  private readonly restoring = new Map<string, Promise<NodeRestored>>();
+  private readonly reverting = new Map<string, RevertOut>();
 
   constructor(
     private readonly service: Pick<
@@ -152,6 +163,8 @@ export class PageTreeStore {
       | "inTurn"
       | "togglesOut"
       | "restores"
+      | "restoring"
+      | "reverting"
     >(this, {
       service: false,
       currentNotebook: false,
@@ -167,6 +180,8 @@ export class PageTreeStore {
       inTurn: false,
       togglesOut: false,
       restores: false,
+      restoring: observableShallow,
+      reverting: observableShallow,
     });
   }
 
@@ -550,7 +565,25 @@ export class PageTreeStore {
    * the tree is read once more (M8/P2B review C, nit 1). A refusal records
    * nothing. It answers where the item went, and under which name.
    */
-  async restore(id: string): Promise<NodeRestored> {
+  restore(id: string): Promise<NodeRestored> {
+    const answer = this.restoreNow(id);
+    this.restoring.set(id, answer);
+    const settled = () =>
+      runInAction(() => {
+        if (this.restoring.get(id) === answer) {
+          this.restoring.delete(id);
+        }
+      });
+    answer.then(settled, settled);
+    return answer;
+  }
+
+  /** restoreOut is the answer of the restore of the node id out, the last made; none once it settled. */
+  restoreOut(id: string): Promise<NodeRestored> | undefined {
+    return this.restoring.get(id);
+  }
+
+  private async restoreNow(id: string): Promise<NodeRestored> {
     const restored = await this.restores(id, () => this.write(() => this.service.restoreNode(id)));
     if (this.removed.has(id)) {
       await this.load().catch(() => undefined);
@@ -587,9 +620,29 @@ export class PageTreeStore {
    * brings pages back too, which that read lists: that read failed, a page
    * this generation deleted would stay deleted here, so the tree is read
    * once more (as restore does). A refusal records nothing. It answers what
-   * the revert did.
+   * the revert did. Out, it is the changeset's (revertOut), with before, the
+   * newest revert of the changeset its sender knew.
    */
-  async revert(id: string, message?: string): Promise<ChangesetReverted> {
+  revert(id: string, message?: string, before?: string): Promise<ChangesetReverted> {
+    const answer = this.revertNow(id, message);
+    const out = { answer, before };
+    this.reverting.set(id, out);
+    const settled = () =>
+      runInAction(() => {
+        if (this.reverting.get(id) === out) {
+          this.reverting.delete(id);
+        }
+      });
+    answer.then(settled, settled);
+    return answer;
+  }
+
+  /** revertOut is the revert of the changeset id out, the last made, and what its sender knew; none once it settled. */
+  revertOut(id: string): RevertOut | undefined {
+    return this.reverting.get(id);
+  }
+
+  private async revertNow(id: string, message: string | undefined): Promise<ChangesetReverted> {
     let before: TreeIndex | undefined;
     let after = Infinity;
     const reverted = await this.restores(id, () =>
