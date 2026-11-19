@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 进行中（P1、P3 完成；P2–P5 的设计都已审查；P2/S1、P2/S2、P2/S3、P2/S4、P4/S1、P4/S2、P4/S4、P4/S5、P5/S1、P5/S2 已合并；P4/S2 量得页面树平的形状与编辑器的解析（B9）超，页面树由 P4/S4 修好（三种形状都过；P2/S6 排在它之后），P4/S5 修好了 B9（在原规模上再量过了）；P4/S3、P5/S3 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
+| 状态 | 进行中（P1、P3 完成；P2–P5 的设计都已审查；P2/S1、P2/S2、P2/S3、P2/S4、P2/S5、P4/S1、P4/S2、P4/S4、P4/S5、P5/S1、P5/S2 已合并；P4/S2 量得页面树平的形状与编辑器的解析（B9）超，页面树由 P4/S4 修好（三种形状都过；P2/S6 排在它之后），P4/S5 修好了 B9（在原规模上再量过了）；P4/S3、P5/S3 可以开工；[审查记录](reviews/M12-design-review.md)；总体设计照第 7 节"总体设计的修订"中标"设计定稿时"的几条改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -1109,7 +1109,7 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
 
 ### 9.7 门禁与 CI
 
-- 每个 Step 照 02-workflow 第 3.1 节：`make lint gen-check knip build`、`make test`、`make test-go-short`、`make e2e`，都经 `heavy.sh`；每个提交单独为绿。
+- 每个 Step 照 02-workflow 第 3.1 节：`make lint gen-check knip build`、`make test`、`make test-go-short`、`make e2e`，都经 `heavy.sh`；每个提交单独为绿。2026-11-19 起照负责人第 12 问（第 11 节）：推送之前与每个提交只跑与改动相关的，全量交给分支 CI；M12 收官时在 `main` 上整体跑一次全量。
 - `make image`、`make image-smoke` 不能在 worktree 里跑（06-environment 第 2 节）：P1/S2、P5 要它们时在一个普通的克隆里跑。
 - 每个 Step 合并之后两次 `main` 的分份照第 7 节"分份"。
 - 读 CI 用 `ci-wait.sh`，它按工作流取，默认等 `ci.yml`（`b54cd679`）；读 `vuln.yml` 或演练时，第二个参数写那个工作流。
@@ -1184,6 +1184,21 @@ M12 不建立新的扩展点，也不注册（12.4 里没有 M12）。
     选："先跑分支 CI 看 (Recommended)"，即"不确定就先做 P5/S1，分支 CI 红在权限上时我再告诉你去设。"
 
 照此：L1 的旁支照常审查、合并，它的决定与记录写明取代第 277 条（第 7 问）；P4/S3 不量批次 H，P5/S3 不写开发版的附录，根 README 的六节开发版升级说明照 4.8 那一条删掉、删之前把对新装也成立的数挪走（第 8 问）；输入法清单并进发布之后的验收（第 9 问）；`SECURITY.md` 照 P5 设计指向私密的漏洞报告（第 10 问）；P5/S1 的实施者在分支 CI 红在 actions 的权限上时停下，主持者转告负责人（第 11 问）。主持者的令牌读不到仓库的 Actions 设置（`gh api …/actions/permissions` 答 403），所以第 11 问问的是先怎样做，不是设置本身；"需要负责人确认"第 2 项仍要在推 rc 之前照实核对。
+
+### 2026-11-19：门禁与核对的两条提速
+
+主持者为缩短验证的排队提了两条提速。所问与负责人的原话：
+
+12. 问（主持者的两条提速）：推送之前只跑与改动相关的门禁，全量交给分支 CI；修复之后只剩 Nit 的，不再开一轮核对。
+    答，原话："两条都采用，从下一轮起照此执行，全部收官之后再整体跑全量 Gate"。
+
+照此（负责人 2026-11-19 第 12 问）：
+
+1. **推送之前不跑完整的 `make check`、`make test`**：本机只跑与改动相关的，经 `heavy.sh`：改了网页的 `make lint-web`、`make knip`、`make test-web`，改了行为、故事或夹具的加 `make e2e`（或只跑受影响的故事，三种浏览器照 `threeBrowsers`）与两个 `check.mjs`；改了 Go 的 `make lint-go`、改动的包与依赖它们的包的 `go test`、`make test-go-short`；改了工作流、部署脚本或 Dockerfile 的 `make lint`、`make test-go-short`，改了 Dockerfile 或 `image-smoke.sh` 的加普通克隆里的 `make image-smoke`；只改文档的 `check_links.py`、`git diff --check`。全量交给分支 CI（19 项并行）。每个提交单独为绿照旧，用同样的相关子集。
+2. **只剩 Nit 不再开一轮核对**：修复之后只剩 Nit 的，Nit 并进文档提交，由主持者核对（02-workflow 3.4）。
+3. **M12 全部收官时**，主持者在 `main` 上经 `heavy.sh` 整体跑一次全量门禁（`make check`、`make e2e`、两个 `check.mjs`、`make image-smoke`），写进收尾记录。
+
+从那以后派的修复与核对照此写，正在跑的不打断：第一轮照它执行的是 P2/S5 的核对第 2 轮（只跑与对象相关的），推送之前的门禁第一次照它跑的是 P2/S5 的修复第 3 轮。第 1 点取代 9.7 第一条与各 Phase 设计门禁一节里"推送之前 `make check`"的写法。三点的同一段文字写进 [02-workflow](../claude_to_codex/02-workflow.md) 3.1 的 M12 注。
 
 ### 2026-11-14：开始 M12 之前的主持者的决定 304–313、315–322、325（负责人可以改判）
 
@@ -1863,6 +1878,18 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 - **616 守卫另核对的几条**（S2 实施报告第 8 节；审查 B 的 M1、M2、N1–N3、Q1）：`publish` 的最后一步是版本号的 tag、它的步骤都不写 `if`、第三方的 action 只有 cosign-installer、恰有一步逐字的 `cosign sign --yes "$IMAGE@$DIGEST"` 与三步 `actions/attest`（摘要都是索引的、`push-to-registry: true`、来源证明与两份 SBOM 各一）；`verify` 的每个跑命令的步骤同跑 smoke 的只有 name、env、run，矩阵恰是两种架构、`strategy` 与 `build` 的相同，`gh attestation verify` 与 `cosign verify` 的身份与签发者逐字、没有 `-regex`；只有 `release` 公开 Release；决定 561 的两步只有 name、run（Index 加 id）；三份工作流的每个 `uses:` 都钉 40 位的 SHA（`e5ecae06`、`e6f535aa`）。别的 Step 改 `release.yml`、`ci.yml`、`vuln.yml` 时照它们写，新的 action 也钉 SHA。
 - **617 SBOM 的文档 `name` 在不推送的地方先核对**（S2 实施报告第 8 节第 6 条；审查 C 的 Q1）：演练要镜像的那份是 `nervewiki`、`sbom` 作业要 `$IMAGE`，前端的都要 `@nervewiki/web`。syft 换了命名时，tag 的运行停在只读的 `sbom`，不到 `verify` 才红（那时版本号的 tag 已经出现，只能删草稿、出 rc.N+1）。镜像的那份是 `$IMAGE`、不是设计推断的 `$IMAGE@sha256:…`，是 P5 设计 3.12 预先准许的偏离：`785d48be` 的演练读出 `nervewiki`，tag 上是 `ghcr.io/open-nerve/nervewiki` 由 syft v1.54.0 的源码推出，rc 上证明（`e5ecae06`）。
 
+### 2026-11-19：P2/S5 的决定 618–624（主持者的决定，负责人可以改判）
+
+618–624 在 S5 的实施、审查与四轮修复里定（618、619 在开工的核对之后，620、622、623 在修复第 1 轮，621 照实施的结果，624 在 17.7 的实施与修复第 3、4 轮）。每条在 [P2 设计](02-P2-web-polish.md) 4.5 与 10.5，理由与审查里的出处在 [S5 的审查记录](reviews/P2-S5-editor-assets-review.md)"主持者的决定"一节；实施中定的不编号，在记录里。
+
+- **618 15.2 在 `requestAnimationFrame` 里设回 `open`**（S5 开工核对 4.5.0.5 第 2 条；改了决定 419 的写法）：`setTimeout(0)` 每次点击画出一帧展开的 callout（Chromium，20/20），rAF 在同一次渲染更新的绘制之前设回，0 帧；三种引擎里其余各格相同。AS6 加"没有一帧画成展开"，"改回 `setTimeout(0)`"只由它抓（`8d2b04de`）。
+- **619 12.8 照 goldmark 去掉容器的记号**（S5 开工核对 4.5.0.5 第 4 条；审查 B 的 M1、N1，核对 B 的 CHK1-B-N1、C2-N1）：段落之后的行在引用里去掉引用记号（callout 也是），在列表项里去掉至多到首行那一列的行首空白，顶层照原样；照字面 5/44 坏，去掉之后 0/52。审查与核对又补了 setext 的下划线、ASCII 空白、列表项的列、越过列的制表符与引用记号之后的制表符，都先对着 goldmark v1.8.6 核过（`2eeedea6`、`e1e95d61`、`fa849645`、`d6594761`）。`$$` 公式块与"首行比内容列多缩进"记成限制，进 v0.2。
+- **620 16.3 的"停住"从第一次上传进度起算**（S5 审查 A 的 I1、Q2）：`send` 之后不起计时，第一次 `upload` 的 `progress`（或 `upload.load`）才起；HTTP/1.1 下浏览器里排队等连接的上传不再被判停住（三种引擎的探针：8 个 5 MiB 改前后 3 个 60 秒中止，改后都答 201）。不在 store 里限并发（`4390039f`）。
+- **621 15.1 的 CSS 另加 `@layer base` 的 `height: revert-layer`**（S5 实施）：Tailwind 的 preflight 在 `base` 层写 `img, video { height: auto }`，比 `height` 属性强，设计的三条在三种引擎里都留不住写下的高度；标了的元素在 `base` 层退回到属性的高度（`8637c655`）。P2 设计 2.1 第 4 条随之改。
+- **622 16.11 按批记 `before`**（S5 审查 A 的 M1、C 的 M1）：在 `upload` 里与 `used` 同一时刻按批记兄弟的 id 集合，被拒重试时与 `free` 同一时刻再记；设计的"`send` 开头记"每个文件一次，2,000 × 2,000 的守卫贴着限；只比名字不等价（别人原地改名时叫读者删掉别人的附件）（`87771394`）。新建、移来、恢复的同名附件仍分不开，进 v0.2。
+- **623 AS6 不复制附件行，也不在 Firefox、WebKit 另跑**（S5 审查 C 的 Q1 取 (a)、N2）：Chromium 里附件行是可拖的 `li`，复制不出；行的 `select-none` 由 vitest 的结构断言守。决定 407（P2-30）的依据照此加注（`5dea6e7a`）。
+- **624 17.7 被拒的记录**（S5 的 17.7；核对 A 第 2 轮的 C2-M1–M3、C 的 C2-Q1，第 3 轮的 C3-M1）：`signAnew` 自己看记录；计时与 `online` 到点时，没有错、在失败处或之后的或错已清、读者拖过的（`seeking`）丢掉记录、不签（错还在的也拖得动：Firefox 留着网络错之前缓冲的数据）；撤销只清这个容器的计时，下一次运行给留着的重起计时（间隔照记下的、不翻倍）；有记录的媒体也收进 `kept`，块换新时新元素放到记下的位置（`c5820210`、`d593c67d`、`d8027fb4`）。与决定 604 不冲突：留在原处的不换。
+
 ### 对主持者说明的核实
 
 - **第 302 条的修法**：读 `page/domain/revert.go` 与 `page/app/rollback.go:70-125`，形状与 I3、移交的描述一致。初稿没有造过、没有跑。设计审查 A 在 domain 与整个程序上复现了形状，指出先失败的是 `rootHolds`、一次恢复只放回一个回收站项，并在原型上跑通了更小的改法；修订照它改（4.6.1）。
@@ -1905,7 +1932,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 地基（S1、S2） | [01-P1](01-P1-foundation.md) | 完成（2026-11-16） | [设计](reviews/P1-design-review.md)、[S1](reviews/P1-S1-e2e-navigation-review.md)、[S2](reviews/P1-S2-toolchain-review.md)、[分配守卫的旁支](reviews/P1-prepared-alloc-review.md)、[帮手的旁支](reviews/P1-navigation-settle-review.md)、[来源守卫的旁支](reviews/P1-source-revert-deadline-review.md) | S1 `bbf3eb26`、S2 `4190bac0`、分配守卫的旁支 `ad0bf40c`、帮手的旁支 `4fe6e523`、来源守卫的旁支 `194ca350` |
-| P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 进行中（S1–S4 已合并） | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-focus-and-shared-review.md)、[S2](reviews/P2-S2-text-review.md)、[S3](reviews/P2-S3-narrow-bdi-contrast-review.md)、[lint 忙的旁支](reviews/M12-lintbusy-await-expiry-review.md)、[S4](reviews/P2-S4-reading-view-review.md) | S1 `d1ade2ed`、S2 `6505c3bf`、S3 `e639b9f7`、lint 忙的旁支 `32431f25`、S4 `ad5d78b5` |
+| P2 网页的打磨（S1–S6） | [02-P2](02-P2-web-polish.md) | 进行中（S1–S5 已合并） | [设计](reviews/P2-design-review.md)、[S1](reviews/P2-S1-focus-and-shared-review.md)、[S2](reviews/P2-S2-text-review.md)、[S3](reviews/P2-S3-narrow-bdi-contrast-review.md)、[lint 忙的旁支](reviews/M12-lintbusy-await-expiry-review.md)、[S4](reviews/P2-S4-reading-view-review.md)、[S5](reviews/P2-S5-editor-assets-review.md) | S1 `d1ade2ed`、S2 `6505c3bf`、S3 `e639b9f7`、lint 忙的旁支 `32431f25`、S4 `ad5d78b5`、S5 `（待填：合并号）` |
 | P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md)、[等锁帮手的旁支](reviews/P3-lockwait-by-statement-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`、等锁帮手的旁支 `5d782ff8` |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md) | 进行中（设计已审查；S1 已合并，2026-11-18；S2 已合并；条件的 S4 已合并，2026-11-17；条件的 S5 已合并，2026-11-17） | [设计](reviews/P4-design-review.md)、[S1](reviews/P4-S1-perf-tools-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md)、[L1 的旁支](reviews/M12-e2e-l1-new-tab-review.md)、[提交期限的旁支](reviews/M12-submit-deadline-log-review.md)、[导入守卫的旁支](reviews/M12-ingest-request-deadline-review.md) | S1 `f08dca69`、S2 `54a89127`、S4 `35501dec`、S5 `5e58e844`、L1 的旁支 `7ce00077`、提交期限的旁支 `4e309997`、导入守卫的旁支 `e635b957` |
 | P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 进行中（设计已审查；S1 已合并，2026-11-18；S2 已合并） | [设计](reviews/P5-design-review.md)、[S1](reviews/P5-S1-version-pipeline-review.md)、[S2](reviews/P5-S2-publish-release-review.md)、[装浏览器的旁支](reviews/M12-e2e-browsers-cache-review.md) | S1 `3ef1501f`、S2 `24e7b316`、装浏览器的旁支 `105ff7c8` |
@@ -1961,6 +1988,7 @@ P4 设计的 P4-1 到 P4-27，设计审查之后照审查与修订核对改写�
 | 2026-11-18 | e2e 装浏览器的旁支 `m12-e2e-browsers-install` → `m12-e2e-browsers-cache`（M0 的故事，在 M12 里发现；`aca36959`、`7c7865d5`，修复第 1 轮 `8641a14e`、`c926e8be`；反向对照的探针 `cd306960` 与撤销 `44ae77c7` 只在旧分支上，不进 `main`；合并见第 12 节）：e2e 在"Install the Playwright browsers"一步撞上作业的 20 分钟被取消：11-18 到约 12:30 UTC 至少 20 次，都在 AWS 的 runner 上，镜像 `us-east-2.ec2.archive.ubuntu.com` 取包 87–147 kB/s；另有 11-11 的 4 次（Azure 上解析不了 `azure.archive.ubuntu.com`）与 10-07 的 1 次。都只重跑 e2e。改法：E2E 一步自己 18 分钟（第 3 节第 11 条的界），装浏览器一步 30、作业 55；apt 的系统包按 Playwright 的版本与 ISO 周缓存，restore 与 save 分开；守卫 `TestTheE2EStepHasALimitOfItsOwn`。审查 A 0I 2M 2N、B 0I 3M 2N 1Q、C 0I 4M 3N 2Q，修复一轮两个提交；核对一轮 A 0I 0M 3N、B 0I 1M 1N、C 0I 0M 1N 1Q，新的 Minor 只涉及已推的说明，在记录的"更正"，不开第二轮。分支 CI：44278466271 全绿；探针 44283057396 只有 e2e 红，红在 E2E 一步自己的时限上，作业 failure；44286707271 全绿（AWS 上命中缓存）；44298257881 全绿（新分支没命中，装浏览器 25:06）。第 3 节第 11 条改；第 10 节一行；第 11 节加决定 598–603；第 12 节 P5 一行；06-environment 第 4 节、05-lessons 第 7 节各一条 | 决定 598–603；[旁支的审查记录](reviews/M12-e2e-browsers-cache-review.md) |
 | 2026-11-19 | P2 的 S4 实施、审查与修复（实施 9 个提交，修复第 1 轮 10 个、第 2 轮 3 个、第 3 轮 2 个，一共 24 个；不合并 `main`；合并见第 12 节）：阅读视图就地更新：同一份 HTML 不动，只差附件地址时就地重签（每小时的重读不再换节点，M4-performance 第 13 条），内容变了按顶层块换（尾先比、再头比，中间按键贪心配，留着的节点不移动），语言与笔记本的模式变了不动 HTML，可写与否变了只改勾选框（第 48 条的 94 px 不再跳）；焦点留在同一个节点，或按键在映射到的块与同一处插进的近旁几块里找回，找不到给那一块（决定 605、606）；写入之前就在的音视频留在原处、全屏不退（决定 604）；6.2 的 `forbidden` 重读笔记本，焦点没有着落时给标题（决定 607）；mermaid 的 id 各自独立、一遍扫完；8.1 在 Playwright 的三种引擎里复现、修好（决定 610）；`reading-view.tsx` 拆成三份；Go 与网页共用的签名视图样例（决定 609）。审查 Important 1（`withOwnIds` 的代价，修好）：三份审查 A 0I5M2N2Q、B 1I4M1N1Q、C 0I3M5N（A-M1 与 C-M1 同一件），修复第 1 轮 10 个提交（头 `09c7518d`）；核对第 1 轮新的 Minor 3、Nit 3，修复第 2 轮 3 个提交（头 `c9bdfdb7`）；核对第 2 轮 A 0/1/1、B 0/0/2、C 0/0/0，修复第 3 轮 2 个提交（`1294383e`、`1e43b3cc` 只改注释）；核对第 3 轮 A 0/0/1、C 0/0/3。变异：实施 4.4.7 的 26 条、M4-12b、X6、X7 都红，e2e 七条里六条红（M4-12 只由 vitest 抓到），自己加的 13 条里四条等价；修复三轮的 36 条除两条等价之外都红。分支 CI：run 44370887722、44406706476、44434194881、44452711808 第一次 attempt 都 19 项全绿。PG15 十二格约 15–17 test-seconds（第 2、3 轮 runner 慢时 25–27）。第 7 节"总体设计的修订"第 22 条落了（另改第 26 条）；附录 A 的 8.1；总体设计 13.2 第 23、26 条、13.4 第 3 条与第 15 节；移交 M5-polish、M4-performance 各一行；P5 设计 3.19 的读屏清单；第 11 节加决定 604–611 | [P2 设计](02-P2-web-polish.md) 10.4、[S4 记录](reviews/P2-S4-reading-view-review.md)；决定 604–611 |
 | 2026-11-19 | P5 的 S2（推送、签名、证明、SBOM、许可证与 Release）实施、审查与修复（实施 4 个提交，修复第 1 轮 3 个，收口 1 个，一共 8 个，另一次合并 `main`；合并见第 12 节）：镜像里有第三方许可证 `/licenses`（Go 47 个模块与 Go 本身，与二进制的 `go version -m` 逐个相同；npm 233 个包，带上工作区包 `@nervewiki/api-client` 的依赖与 tailwindcss，没有文本的 3 个；文件名不收代码；决定 612–614），由 `image-smoke.sh` 与 `tools/licenses/check.mjs` 核对；演练在 amd64 上只读地取出许可证、生成两份 SBOM，核对前端 SBOM 的包都在 `/licenses`；版本号的 tag 与 Release 写成 `deploy/release-version-tag.sh`、`deploy/github-release.sh`（Release 的状态读 REST 的列表，决定 615），`TestTheReleaseScripts` 对着假的 `docker`、`gh` 走 31 格；`release.yml` 加 `sbom`、`publish`、`draft`、`verify`、`release` 五个作业，`build` 先核对检出的是闸门的提交（决定 561）；守卫的表加五行，另核对 `publish` 的签名与三份证明、`verify` 的身份与两种架构、只有 `release` 公开、`uses:` 钉 SHA（决定 616），跑 smoke 的步骤与 `verify` 的步骤只有 name、env、run（决定 562）；镜像的 SBOM 的文档 `name` 是 `$IMAGE`，在 `sbom` 作业与演练里先核对（决定 617）。审查 Important 1（`openapi-fetch` 打包进前端却没有许可证，修好）：三份审查 A 1I2M1N1Q、B 0I2M4N1Q、C 0I4M6N1Q，修复第 1 轮 3 个提交（头 `0fe3d663`）；核对第 1 轮三位都只剩 Nit（各 1），照负责人 2026-11-19 的规矩不再开核对，`9a6b20ae` 改、主持者核对。变异：7.2 里 S2 的与实施者自加的都抓到，三位审查者照过的各成一条发现，修复之后都抓到。分支 CI 每次推送第一次 attempt：`ci.yml` 19 项与 `release.yml` 两个演练全绿（run 44451246879、44461178186、44484245001、44490478831）；演练加的几步 15–22 秒；`anchore/sbom-action` 没被"允许的 actions"挡住；没有推任何 tag、镜像，没有建 Release。第 7 节"总体设计的修订"第 6 条落了后一句；第 11 节加决定 612–617，决定 439、441 与"需要负责人确认"第 2 项加注；总体设计 13.5 第 6 条与第 15 节；06-environment；移交 M0-P6-image-release 一行 | [P5 设计](05-P5-deploy-release.md) 3.25、10.2 与 [S2 的审查记录](reviews/P5-S2-publish-release-review.md)（A 1I 2M 1N 1Q、B 2M 4N 1Q、C 4M 6N 1Q；核对第 1 轮 A、B、C 各 1N）；决定 612–617 |
+| 2026-11-19 | P2 的 S5 实施、审查与修复（实施 21 个提交，修复第 1 轮 8 个、第 2 轮 1 个，合并 `main` 一次，17.4、17.7 两个，修复第 3 轮 3 个、第 4 轮 1 个，再合并 `main` 三次，一共 40 个；合并见第 12 节）：编辑器、附件、上传、粘贴与导入导出：上传的两个计时（停住从第一次上传进度起算，决定 620），取消晚于服务端时告知（按批记 `before`，决定 622），附件一节的播报区与手动复制的字段，"已不在"随恢复撤下，粘贴留着没有东西替代的选区，上传在途时离开先问，补全照服务端的表格写别名（照 goldmark 去掉容器的记号，决定 619），导入对话框的提示与双击，粘贴对话框先问，睡醒之后的到期，写下的尺寸（`data-nw-sized` 与 `base` 层的 `revert-layer`，决定 621），callout 标题里的媒体（rAF，决定 618），提示不随正文复制（决定 623），过期的下载点击时再签，重签被拒之后从失败处再签（决定 624）；新故事 AS6。审查 Important 1（排队等连接的上传被判停住，修好）：三份审查 A 1I4M1N2Q、B 0I3M3N、C 0I2M4N1Q（A-M1 与 C-M1 同一件），修复第 1 轮 8 个提交（头 `a0b108d9`）；核对第 1 轮 Nit 4，修复第 2 轮 1 个提交（`fa849645`）；合并 `main` 与 17.4、17.7 之后核对第 2 轮 A 0/3/0、B 0/0/1、C 0/1/0，修复第 3 轮 3 个提交（头 `d6594761`）；核对第 3 轮 A 0/1/0（错还在的被拒媒体被拖一下记录就丢了）、C 0/1/4（文档稿）、Q 1，修复第 4 轮 1 个提交（`d8027fb4`），A 复核关上，再合并 `main` 三次（`20376fe6`、`e26dfd32`、`27d56eac`）。变异：实施 74 条抓 68（四条等价，两条由别的测试守），修复第 1 轮 24 条抓 22（两条等价），17.4、17.7 与修复第 2–4 轮的都红。分支 CI：run 44354440004、44385655444、44423276368、44443687371、44475220489 第一次 attempt 都 19 项全绿，44487380423 第一次 attempt 红在 runner 的 Docker（起容器超时，与改动无关），只重跑失败的作业，第二次 attempt 19 项全绿；修复第 4 轮与合并的头 `20376fe6` 的 run 44495490042 第一次 attempt 19 项全绿；再合并两次之后的头 `27d56eac` 的 run 44505730967 第一次 attempt 19 项全绿。AS6 三格与 AS3 (page) 多出的约 2–3 test-seconds。负责人 2026-11-19 第 12 问（推送之前只跑相关的门禁，只剩 Nit 不再开核对，收官时整体跑一次全量）写进第 11 节、9.7 与 02-workflow 3.1；总体设计 13.2 第 7、12、21、27 条与第 15 节；移交 M5-polish 一行；05-lessons 两条；P5 设计 3.19 的读屏清单；第 11 节加第 12 问与决定 618–624 | [P2 设计](02-P2-web-polish.md) 10.5、[S5 记录](reviews/P2-S5-editor-assets-review.md)；第 12 问，决定 618–624 |
 
 ---
 

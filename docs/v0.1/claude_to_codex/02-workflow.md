@@ -63,6 +63,10 @@ Claude 的做法是一个"主持者"加若干个子 agent：
   - `make test`；
   - `make test-go-short`；
   - `make e2e`。
+  - M12 起（负责人 2026-11-19 第 12 问，[00-M12](../M12-release/00-M12-design.md) 第 11 节"2026-11-19：门禁与核对的两条提速"），推送之前的门禁（上面四项）改照下面三点：
+    1. **推送之前不跑完整的 `make check`、`make test`**：本机只跑与改动相关的，经 `heavy.sh`：改了网页的 `make lint-web`、`make knip`、`make test-web`，改了行为、故事或夹具的加 `make e2e`（或只跑受影响的故事，三种浏览器照 `threeBrowsers`）与两个 `check.mjs`；改了 Go 的 `make lint-go`、改动的包与依赖它们的包的 `go test`、`make test-go-short`；改了工作流、部署脚本或 Dockerfile 的 `make lint`、`make test-go-short`，改了 Dockerfile 或 `image-smoke.sh` 的加普通克隆里的 `make image-smoke`；只改文档的 `check_links.py`、`git diff --check`。全量交给分支 CI（19 项并行）。每个提交单独为绿照旧，用同样的相关子集。
+    2. **只剩 Nit 不再开一轮核对**：修复之后只剩 Nit 的，Nit 并进文档提交，由主持者核对（02-workflow 3.4）。
+    3. **M12 全部收官时**，主持者在 `main` 上经 `heavy.sh` 整体跑一次全量门禁（`make check`、`make e2e`、两个 `check.mjs`、`make image-smoke`），写进收尾记录。
 - **变异（反向对照）**：设计第 7 节的变异表的每一条，都要在本机改坏代码、跑它旁边写的测试、看到测试失败，再改回；结果记成表。抓不到的变异是一条发现：补测试，或说明设计的说法错在哪里。
   - 先在没改过的树上跑一遍同样的命令。
   - 改回时从备份复原，**不用 `git checkout --`**，它会连没提交的改动一起丢掉。
