@@ -643,3 +643,53 @@ test("what a restore of a version said is not said while another version of the 
   await screen.findByRole("article", { name: "Version 6" });
   expect(screen.queryByText(said)).toBeNull();
 });
+
+test("a version of a page deleted elsewhere while its notebook was left shows none of itself when gone back to: the tree is read first, and the page is not found (M5-polish 27.2)", async () => {
+  const server = installed();
+  const { router } = renderApp(versionPath(install.id, 4), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(screen.queryByRole("navigation", { name: "Pages of Plans" })).toBeNull());
+  // Deleted elsewhere: no event reads the tree, no shell of the notebook showing.
+  server.trashNode(install.id);
+  const before = server.sent.length;
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const sent = server.sent.slice(before);
+  expect(sent.filter((each) => /^GET (version|versions|view|content|properties|backlinks|assets) /.test(each))).toEqual(
+    []
+  );
+  expect(sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
+test("a version gone back to after a tree read failed as its notebook was left says nothing of that failure while its tree is read again (M5-polish 27.2)", async () => {
+  const events = eventServer();
+  const server = installed("admin", { "GET /api/v0/events": events.answer });
+  const { router } = renderApp(versionPath(install.id, 4), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // A blip: the tree read an event has fails, SWR to try again in 5 seconds, which the notebook left stops.
+  server.nodesDown = true;
+  const reads = () => server.sent.filter((each) => each === "GET nodes").length;
+  const count = reads();
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+  await waitFor(() => expect(reads()).toBe(count + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(screen.queryByRole("navigation", { name: "Pages of Plans" })).toBeNull());
+  server.nodesDown = false;
+  server.nodesHeld = true;
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  act(() => server.release());
+  expect(await screen.findByRole("heading", { level: 1, name: "Version 4" })).toBeTruthy();
+});

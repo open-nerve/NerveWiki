@@ -54,7 +54,9 @@ export const PageLayout = observer(function PageLayout() {
   const { pageId = "" } = useParams();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const [last, setLast] = useState<TreeNode | undefined>(undefined);
-  // A tree read before the notebook was left is read again before the page shows (M5-polish 27.2).
+  // A tree read before the notebook was left is read again before the page shows (M5-polish 27.2), saying
+  // nothing of a read that failed then: SWR keeps its error, no longer trying again once nothing showed the tree.
+  const [stale] = useState(() => (pages.confirmed ? undefined : error));
   useEffect(() => {
     if (!pages.confirmed && !pages.confirming()) {
       void mutate();
@@ -65,7 +67,7 @@ export const PageLayout = observer(function PageLayout() {
     setLast(found);
   }
   if (pages.tree === undefined || !pages.confirmed) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
+    return <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />;
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {

@@ -84,6 +84,20 @@ test("until the tree is read, the page shows nothing of itself; Try again reads 
   expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
 });
 
+test("a page gone to within its notebook whose tree could not be read says why at once, with Try again (M5-polish 27.2)", async () => {
+  const server = pageServer();
+  server.nodesDown = true;
+  const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, server.app);
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  await act(() => router.navigate(pagePath(install.id)));
+
+  // The failure is the notebook's own, as it shows: not one from before it was left.
+  expect(await within(main()).findByRole("button", { name: "Try again" })).toBeTruthy();
+  expect(server.sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
 test("the reading view says so when it cannot be read; Try again reads it", async () => {
   const user = userEvent.setup();
   const server = pageServer();
@@ -260,4 +274,60 @@ test("a tree read sent before the notebook was left and answered after it was go
   expect(screen.queryByRole("heading", { level: 1, name: "Install" })).toBeNull();
   act(() => server.release());
   expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+});
+
+test("a page whose notebook was left before its first tree read answered, deleted elsewhere since, shows none of itself when gone back to: the tree is read again first (M5-polish 27.2)", async () => {
+  const server = pageServer();
+  server.nodesHeld = true;
+  const { router } = renderApp(pagePath(install.id), server.app);
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await act(() => router.navigate("/lab"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  server.nodesHeld = false;
+  // The read sent as the notebook showed answers once it is left: the tree as it was, Install in it.
+  act(() => server.release());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  server.trashNode(install.id);
+  const before = server.sent.length;
+  const inserted = alertsInserted();
+
+  await act(() => router.navigate(pagePath(install.id)));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  inserted.stop();
+  expect(pageReads(server.sent.slice(before))).toEqual([]);
+  expect(inserted.texts).toEqual([]);
+  expect(server.sent.slice(before).filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
+test("a page gone back to after a tree read failed as its notebook was left says nothing of that failure while its tree is read again (M5-polish 27.2)", async () => {
+  const events = eventServer();
+  const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
+  const { router } = renderApp(pagePath(notes.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // A blip: the tree read an event has fails, SWR to try again in 5 seconds, which the notebook left stops.
+  server.nodesDown = true;
+  const reads = () => server.sent.filter((each) => each === "GET nodes").length;
+  const count = reads();
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+  await waitFor(() => expect(reads()).toBe(count + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await left(router);
+  server.nodesDown = false;
+  server.nodesHeld = true;
+  const inserted = alertsInserted();
+
+  await act(() => router.navigate(pagePath(notes.id)));
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(inserted.texts).toEqual([]);
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  act(() => server.release());
+  expect(await screen.findByRole("heading", { level: 1, name: "Notes" })).toBeTruthy();
+  inserted.stop();
+  expect(inserted.texts).toEqual([]);
 });

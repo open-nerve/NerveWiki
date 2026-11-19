@@ -223,7 +223,8 @@ export class PageTreeStore {
       watched = false;
       runInAction(() => {
         this.watching -= 1;
-        if (this.watching === 0 && this.nodes !== undefined) {
+        // Not read yet too: the first read, out as the last shell goes, may answer a tree changed since (M5-polish 27.2).
+        if (this.watching === 0) {
           this.confirmFrom = Infinity;
         }
       });
