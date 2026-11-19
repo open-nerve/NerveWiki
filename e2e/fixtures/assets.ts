@@ -1,5 +1,5 @@
 import type { ApiClient, Asset } from "@nervewiki/api-client";
-import { expect } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
 import { bearer } from "./auth";
 
@@ -103,8 +103,89 @@ export function utf8(text: string): Uint8Array<ArrayBuffer> {
   return new TextEncoder().encode(text);
 }
 
+/**
+ * The bytes of a WAV file of seconds (whole) of silence: PCM, 16 bits, mono, at 8 kHz. Playwright's three engines
+ * play it, WebKit among them, which plays no Ogg Opus (M12/P2 design 4.4.6).
+ */
+export function wav(seconds: number): Uint8Array<ArrayBuffer> {
+  const rate = 8_000;
+  const data = seconds * rate * 2;
+  const bytes = Buffer.alloc(44 + data);
+  bytes.write("RIFF", 0, "latin1");
+  bytes.writeUInt32LE(36 + data, 4);
+  bytes.write("WAVEfmt ", 8, "latin1");
+  bytes.writeUInt32LE(16, 16);
+  // PCM, one channel, its rate, its bytes a second, of a frame, and its bits a sample.
+  bytes.writeUInt16LE(1, 20);
+  bytes.writeUInt16LE(1, 22);
+  bytes.writeUInt32LE(rate, 24);
+  bytes.writeUInt32LE(rate * 2, 28);
+  bytes.writeUInt16LE(2, 32);
+  bytes.writeUInt16LE(16, 34);
+  bytes.write("data", 36, "latin1");
+  bytes.writeUInt32LE(data, 40);
+  return Uint8Array.from(bytes);
+}
+
+/**
+ * recordWebm records, in page, a short video of a canvas as WebM: Playwright's Chromium and Firefox play VP8, not
+ * H.264. WebKit has no MediaRecorder.
+ */
+export async function recordWebm(page: Page): Promise<Uint8Array<ArrayBuffer>> {
+  const bytes = await page.evaluate(async () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 8;
+    const drawing = canvas.getContext("2d");
+    const recorder = new MediaRecorder(canvas.captureStream(10), { mimeType: "video/webm;codecs=vp8" });
+    const chunks: Blob[] = [];
+    recorder.addEventListener("dataavailable", (event) => chunks.push(event.data));
+    const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve));
+    recorder.start();
+    for (let frame = 0; frame < 6; frame++) {
+      if (drawing) {
+        drawing.fillStyle = frame % 2 === 0 ? "red" : "blue";
+        drawing.fillRect(0, 0, 16, 8);
+      }
+      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    recorder.stop();
+    await stopped;
+    return [...new Uint8Array(await new Blob(chunks).arrayBuffer())];
+  });
+  return Uint8Array.from(bytes);
+}
+
 /** WebM's first bytes, which the server sniffs as a video: no video a browser plays (AS3's page version records one). */
 export const webmHead = Uint8Array.from([0x1a, 0x45, 0xdf, 0xa3, 0x9f, 0x42, 0x86, 0x81, 0x01]);
+
+/**
+ * The bytes of a WebM of 16 × 8 pixels, VP8, about a second, which the three engines play, Playwright's WebKit too,
+ * which records none (M12/P2/S4, review B's M2): recorded once in Playwright's Chromium 153 as recordWebm records,
+ * ten frames a tenth of a second apart. A recording, it says no duration: a video of it that is to go on loops.
+ */
+export const vp8Webm = Uint8Array.from(
+  Buffer.from(
+    "GkXfo59ChoEBQveBAULygQRC84EIQoKEd2VibUKHgQRChYECGFOAZwEAAAAAAAQ6EU2bdLlNu4tTq4QVSalmU6yBbk27i1OrhBZU" +
+      "rmtTrIGTTbuLU6uEH0O2dVOsgdRNu4xTq4QcU7trU6yCBCjsrgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA" +
+      "AAAAAAAAAAAVSalmoCrXsYMPQkBEiYREY+9MTYCGQ2hyb21lV0GGQ2hyb21lFlSua7yuuteBAXPFh18Hd9aL4J+DgQFV7oEBhoVW" +
+      "X1ZQOOCdsIEQuoEIU8CBAVWwkFWxgQFVuYECVbqBDVW7gQEfQ7Z1AQAAAAAAA0jngQCg6aG+gQAAAPACAJ0BKhAACAAABwiFhYiZ" +
+      "hIgBJBATrVAfwB/QEGpvcP7+67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oaampO6BAaWfEAIAnQEqEAAIAAAHCIWFiJmEiAEkEABg" +
+      "awD+/7qDAKDPoa6BAGUAsQEAABAJIADAAYH/oGAHeP7/p3k//8nuzxpTRL/8nu//Ovmuo4upvUQAdaGZppfugQGlktEBAAAQCSAA" +
+      "wADCwX+gAEAAAPuBAKDOoa2BAMkAsQEAABAJIADAAYH/oGAHeP7+67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oZmml+6BAaWS0QEA" +
+      "ABAJIADAAMLBf6AAQAAA+4FloM+hroEBLgCxAQAAEAkgAMABgf+gYAd4/v+neT//ye7PGlNEv/ye7/86+a6ji6m9RAB1oZmml+6B" +
+      "AaWS0QEAABAJIADAAMLBf6AAQAAA+4HJoM+hrYEBlwCxAQAAEAkgAMABgf+gYAd4/v7rvL/5T2OK+j/yn7//k92eNKaJf/k4AHWh" +
+      "maaX7oEBpZLRAQAAEAkgAMAAwsF/oABAAAD7ggEuoNChroEB/ACxAQAAEAkgAMABgf+gYAd4/v+neT//ye7PGlNEv/ye7/86+a6j" +
+      "i6m9RAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4IBl6DPoa2BAmEAsQEAABAJIADAAYH/oGAHeP7+67y/+U9jivo/8p+/" +
+      "/5PdnjSmiX/5OAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4IB/KDPoa6BAsYAsQEAABAJIKMABgf+gYAd4P7/p3k//8nu" +
+      "zxpTRL/8nu//Ovmuo4upvUQAdaGYppbugQGlkbEBAAAQCSCjAAMLBf6AAQAA+4ICYaDPoa2BAyoAsQEAABAJIADAAYH/oGAHeP7+" +
+      "67y/+U9jivo/8p+//5PdnjSmiX/5OAB1oZmml+6BAaWS0QEAABAJIADAAMLBf6AAQAAA+4ICxqDQoa6BA48AsQEAABAJIADAAYH/" +
+      "oGAHeP7/p3k//8nuzxpTRL/8nu//Ovmuo4upvUQAdaGZppfugQGlktEBAAAQCSAAwADCwX+gAEAAAPuCAyocU7trjbuLs4EAt4b3" +
+      "gQHxgdQ=",
+    "base64"
+  )
+);
 
 /**
  * The bytes of an Ogg Opus file of seconds (whole) of silence, mono (RFC 7845):

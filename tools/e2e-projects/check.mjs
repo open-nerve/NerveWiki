@@ -20,6 +20,9 @@ const NARROW = "narrow";
  * cell that fails without NativeSelect's contain-paint, and only on WebKit (M5-polish 33.1).
  */
 const REQUIRED = [
+  // The reading view's focus and scroll are each engine's (M12/P2/S4, 4.4.6).
+  ["firefox", "page/pg15-reading-updates.spec.ts", "PG15 (page): the reading view updated in place"],
+  ["webkit", "page/pg15-reading-updates.spec.ts", "PG15 (page): the reading view updated in place"],
   ["webkit-narrow", "mcp/mc3-write-edit.spec.ts", "MC3 (page): at 375 wide"],
   ["webkit-narrow", "page/pg2-rename-page.spec.ts", "PG2 (page): at 375 wide"],
   ["webkit-narrow", "search/se1-search.spec.ts", "SE1 (page): at 375 wide"],

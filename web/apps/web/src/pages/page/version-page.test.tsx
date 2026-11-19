@@ -2,12 +2,14 @@ import { act, configure, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { eventHandlers } from "../../events/handlers";
 import { appLinks } from "../../reading/app-links";
 import type { Enhancement } from "../../reading/enhancement";
 import { taskToggle } from "../../reading/task-toggle";
 import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
-import { json, problem, type Answer } from "../../test/fakes";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -545,4 +547,41 @@ test("leaving a version's page takes what it read out of the cache: come back to
   await waitFor(() => expect(gate.held).toHaveLength(1));
   act(() => gate.held[0]?.());
   expect(await screen.findByRole("link", { name: "Ada · Edit" })).toBeTruthy();
+});
+
+/** linked is version 4's view: a link, then last. */
+const linked = (last: string) => ({
+  html: `<p><a href="/x">x</a></p>\n<p>${last}</p>\n`,
+  revision: 4,
+  assets_expire_at: null,
+});
+
+// M12/P2/S4, 29: a version's view read again (its links leading elsewhere: the notebook's aliases changed) is written
+// where it changed, as the page's is; the focus stays.
+test("a version's view read again keeps the focus on its link", async () => {
+  const events = eventServer();
+  const server = installed("admin", { "GET /api/v0/events": events.answer });
+  server.versionViews.set(`${install.id} 4`, linked("one"));
+  renderApp(versionPath(install.id, 4), withEvents(server.app), { eventHandlers });
+  const article = await screen.findByRole("article", { name: "Version 4" });
+  const link = await within(article).findByRole("link", { name: "x" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  act(() => events.last().hello());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  link.focus();
+
+  server.versionViews.set(`${install.id} 4`, linked("two"));
+  act(() =>
+    events.last().send("links", {
+      workspace_id: workspaceJSON.id,
+      notebook_id: notebookJSON.id,
+      pages: [install.id],
+      targets: [],
+      aliases: true,
+    })
+  );
+  await waitFor(() => expect(article.textContent).toBe("x\ntwo\n"));
+
+  expect(within(article).getByRole("link", { name: "x" })).toBe(link);
+  expect(document.activeElement).toBe(link);
 });
