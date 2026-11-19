@@ -237,6 +237,24 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   await expect(searchStatus(page)).toHaveText("Results: 1.");
   expect(await resultNames(page)).toEqual(["Shared plan"]);
 
+  // Stepped back and used with Enter, which then opens no list, as Chromium's Enter otherwise does: the next arrow
+  // steps the closed select again (M12/P2/S6 review B, M1). Stepped back to the choice in use, leaving it searches
+  // nothing.
+  await scope.focus();
+  await scope.press("ArrowUp");
+  await expect(scope).toHaveValue(open.id);
+  await expect(page).toHaveURL(`/${workspace.slug}/search?q=${word}&notebook_id=${shared.id}`);
+  const entered = answerTo(page, "GET", `/api/v0/workspaces/${workspace.slug}/search`);
+  await scope.press("Enter");
+  expect((await entered).status()).toBe(200);
+  await expect(page).toHaveURL(`/${workspace.slug}/search?q=${word}&notebook_id=${open.id}`);
+  await expect.poll(() => resultNames(page)).toEqual(["Open plan"]);
+  await scope.press("ArrowDown");
+  await expect(scope).toHaveValue(shared.id);
+  await scope.press("ArrowUp");
+  await expect(scope).toHaveValue(open.id);
+  await expect(page).toHaveURL(`/${workspace.slug}/search?q=${word}&notebook_id=${open.id}`);
+
   // The private notebook, by its id in the address.
   pageWatch.expectConsole({ errors: [failedToLoad(404)] });
   await goto(page, `/${workspace.slug}/search?q=${word}&notebook_id=${closed.id}`);
