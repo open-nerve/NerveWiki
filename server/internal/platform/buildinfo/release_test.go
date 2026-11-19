@@ -11,6 +11,7 @@ import (
 	"reflect"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -522,15 +523,16 @@ func TestTheReleaseNotes(t *testing.T) {
 	}
 }
 
-// fakeDocker is the docker deploy/release-version-tag.sh calls. It logs each call to FAKE_DOCKER_LOG and answers only
-// buildx imagetools inspect <ref> --format '{{json .Manifest}}' and buildx imagetools create -t <ref> <image>@<digest>.
-// FAKE_DOCKER_STATE holds what the tag is: "absent" (inspect says not found, as docker does), "unknown" (it says
-// manifest unknown, as a registry may), "error:<words>" (it fails with them) or a digest, which inspect answers as
-// buildx does, the index's descriptor with its manifests. create writes its source's digest there, or
-// FAKE_DOCKER_AFTER when that is set (a copy that came out as another index); it fails with FAKE_DOCKER_CREATE_FAILS
-// set, or when the tag is there already: imagetools would move it, which the script must not ask for.
+// fakeDocker is the docker deploy/release-version-tag.sh calls. It logs each call to FAKE_DOCKER_LOG (logCall) and
+// answers only buildx imagetools inspect <ref> --format '{{json .Manifest}}' and buildx imagetools create -t <ref>
+// <image>@<digest>. FAKE_DOCKER_STATE holds what the tag is: "absent" (inspect says not found, as docker does),
+// "unknown" (it says manifest unknown, as a registry may), "error:<words>" (it fails with them) or a digest, which
+// inspect answers as buildx does, the index's descriptor with its manifests. create writes its source's digest there,
+// or FAKE_DOCKER_AFTER when that is set (a copy that came out as another index); it fails with FAKE_DOCKER_CREATE_FAILS
+// set. It also fails where the tag is there already, which docker does not: imagetools would move the tag. That
+// failure is a tripwire, so that the script never asks for it, not what the real one does.
 const fakeDocker = `#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$FAKE_DOCKER_LOG"
+` + logCall + `"$FAKE_DOCKER_LOG"
 [ "$1 $2" = "buildx imagetools" ] || exit 2
 state=$(cat "$FAKE_DOCKER_STATE")
 case $3 in
@@ -553,39 +555,90 @@ create)
 esac
 `
 
-// fakeGHRelease is the gh deploy/github-release.sh calls. It logs each call to FAKE_GH_LOG and answers only release
-// view (--json isDraft --jq .isDraft, or --json assets --jq .assets[].name), create, edit and upload. FAKE_GH_STATE
-// holds what the Release is: "absent" (view says release not found, as gh does), "draft", "published" or
-// "error:<words>" (view fails with them); FAKE_GH_ASSETS its assets' names, a line each. create makes a draft and
-// fails where there is a Release already; edit --draft=false publishes, unless FAKE_GH_EDIT_KEEPS is set; upload adds
-// files that are there and fails on a published Release, as the repository's immutable releases would have it; edit
-// and upload fail where there is no Release.
+// logCall is a fake's first line, followed by its log's name: it appends the call, the number of its arguments and
+// each, ended by NUL, so that where one argument ends shows ("$*" would make --title "Nerve Wiki v0.1.0" and
+// --title Nerve Wiki v0.1.0 one line). readCalls reads it back.
+const logCall = `printf '%s\0' "$#" "$@" >>`
+
+// readCalls reads a fake's log back, a call a line: its arguments joined by spaces, each holding a space, a quote, a
+// backslash or nothing written as Go quotes it.
+func readCalls(t *testing.T, log string) []string {
+	t.Helper()
+	content, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var calls []string
+	fields := strings.Split(string(content), "\x00")
+	for len(fields) > 1 {
+		n, err := strconv.Atoi(fields[0])
+		if err != nil || n+1 > len(fields)-1 {
+			t.Fatalf("the fake's log %q does not read as calls", content)
+		}
+		args := make([]string, n)
+		for i, arg := range fields[1 : n+1] {
+			args[i] = arg
+			if arg == "" || strings.ContainsAny(arg, " \t\n\"'\\") {
+				args[i] = strconv.Quote(arg)
+			}
+		}
+		calls = append(calls, strings.Join(args, " "))
+		fields = fields[n+1:]
+	}
+	if len(fields) != 1 || fields[0] != "" {
+		t.Fatalf("the fake's log %q ends in the middle of a call", content)
+	}
+	return calls
+}
+
+// fakeGHRelease is the gh deploy/github-release.sh calls. It logs each call to FAKE_GH_LOG (logCall) and answers only
+// api --paginate repos/$GH_REPO/releases?per_page=100 --jq <query>, release view <tag> --json assets --jq
+// .assets[].name, create, edit and upload. FAKE_GH_STATE holds what the Release of FAKE_GH_TAG is: "absent",
+// "draft", "published", "two" (two drafts of the tag) or "error:<words>" (every call fails with them); FAKE_GH_ASSETS
+// its assets' names, a line each. api answers the list as GitHub does to a token that may write contents, drafts
+// among them, in three pages, the tag's Release on the second among others, the query run on each page as gh runs
+// --jq; view says release not found where there is none, as gh does. create makes a draft. It fails where there is a
+// Release of the tag already, which gh does not (gh release create --draft makes a second draft of it): that failure
+// is a tripwire, so that the script never asks for it. edit --draft=false publishes, unless FAKE_GH_EDIT_KEEPS is set;
+// upload adds files that are there and fails on a published Release, as the repository's immutable releases would
+// have it; edit and upload fail where there is no Release, and with FAKE_GH_EDIT_FAILS or FAKE_GH_UPLOAD_FAILS set.
 const fakeGHRelease = `#!/usr/bin/env bash
-printf '%s\n' "$*" >>"$FAKE_GH_LOG"
-[ "$1" = release ] || exit 2
+` + logCall + `"$FAKE_GH_LOG"
 state=$(cat "$FAKE_GH_STATE")
-case $state in
-error:*) echo "${state#error:}" >&2; exit 1 ;;
-absent) [ "$2" = create ] || { echo "release not found" >&2; exit 1; } ;;
-esac
+case $state in error:*) echo "${state#error:}" >&2; exit 1 ;; esac
+if [ "$1" = api ]; then
+  [ $# -eq 5 ] && [ "$2" = --paginate ] && [ "$3" = "repos/$GH_REPO/releases?per_page=100" ] && [ "$4" = --jq ] || exit 2
+  case $state in
+  absent) ours='' ;;
+  draft) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},' ;;
+  published) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":false},' ;;
+  two) ours='{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},{"tag_name":"'"$FAKE_GH_TAG"'","draft":true},' ;;
+  esac
+  for page in '[{"tag_name":"v0.0.1","draft":false}]' "[$ours"'{"tag_name":"v0.0.2","draft":true}]' \
+    '[{"tag_name":"'"$FAKE_GH_TAG"'.9","draft":true},{"tag_name":"x'"$FAKE_GH_TAG"'","draft":false}]'; do
+    jq -r "$5" <<<"$page" || exit 1
+  done
+  exit 0
+fi
+[ "$1" = release ] || exit 2
+case $state in absent) [ "$2" = create ] || { echo "release not found" >&2; exit 1; } ;; esac
 case $2 in
 view)
-  case "${*:4}" in
-  "--json isDraft --jq .isDraft") [ "$state" = draft ] && echo true || echo false ;;
-  "--json assets --jq .assets[].name") cat "$FAKE_GH_ASSETS" ;;
-  *) exit 2 ;;
-  esac
+  [ "${*:3}" = "$FAKE_GH_TAG --json assets --jq .assets[].name" ] || exit 2
+  cat "$FAKE_GH_ASSETS"
   ;;
 create)
   [ "$state" = absent ] || { echo "a release with the same tag name already exists: $3" >&2; exit 1; }
   echo draft >"$FAKE_GH_STATE"
   ;;
 edit)
+  [ -z "${FAKE_GH_EDIT_FAILS:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
   case " $* " in
   *" --draft=false "*) [ -n "${FAKE_GH_EDIT_KEEPS:-}" ] || echo published >"$FAKE_GH_STATE" ;;
   esac
   ;;
 upload)
+  [ -z "${FAKE_GH_UPLOAD_FAILS:-}" ] || { echo "HTTP 502: Bad Gateway" >&2; exit 1; }
   [ "$state" = draft ] || { echo "HTTP 422: Cannot upload assets to an immutable release." >&2; exit 1; }
   for f in "${@:4}"; do
     [ "$f" = --clobber ] && continue
@@ -637,31 +690,24 @@ func runAgainstFake(t *testing.T, fake [2]string, prefix, state string, files ma
 		args[i] = inDir.Replace(args[i])
 	}
 	got := runScript(t, dir, scriptEnv(t, bin, env...), script, args...)
-	calls, err := os.ReadFile(log)
-	if err != nil {
-		t.Fatal(err)
-	}
 	left, err := os.ReadFile(stateFile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := fakeRun{ran: got, state: strings.TrimSpace(string(left)), dir: dir}
-	if text := strings.TrimSpace(string(calls)); text != "" {
-		r.calls = strings.Split(text, "\n")
-	}
-	return r
+	return fakeRun{ran: got, calls: readCalls(t, log), state: strings.TrimSpace(string(left)), dir: dir}
 }
 
 // The version tag and the Release (00-M12 4.10, M12/P5/S2, P5 design 3.13): the two steps of a tag's run that a
-// normal rc never takes but on an error or a rerun, each branch run against a fake docker or gh. A case wants the
-// exit, the words of its outcome (stderr on a refusal, stdout otherwise), the fake's calls whole and in order, and
-// the state it leaves, so that a check gone, or a call made where none should be, shows.
+// normal rc never takes but on an error or a rerun, run against a fake docker or gh. A case wants the exit, the
+// words of its outcome (stderr on a refusal, stdout otherwise), the fake's calls whole and in order, each argument
+// where it ends, and the state it leaves, so that a check gone, or a call made where none should be, shows: each check
+// that no other one stands in for has a case that fails without it (M12/P5/S2 fix round 1).
 func TestTheReleaseScripts(t *testing.T) {
 	needTools(t)
 	t.Run("the version tag", func(t *testing.T) {
 		const image = "registry.test/nw-tag"
 		digest, other := "sha256:"+strings.Repeat("1a", 32), "sha256:"+strings.Repeat("2b", 32)
-		inspect := "buildx imagetools inspect " + image + ":0.1.0 --format {{json .Manifest}}"
+		inspect := "buildx imagetools inspect " + image + `:0.1.0 --format "{{json .Manifest}}"`
 		create := "buildx imagetools create -t " + image + ":0.1.0 " + image + "@" + digest
 		for _, c := range []struct {
 			name, state string
@@ -730,7 +776,10 @@ func TestTheReleaseScripts(t *testing.T) {
 			return files
 		}
 		const rc, final = "v0.1.0-rc.1", "v0.1.0"
-		view := func(tag string) string { return "release view " + tag + " --json isDraft --jq .isDraft" }
+		list := func(tag string) string {
+			return "api --paginate repos/o3/r3/releases?per_page=100 --jq " +
+				strconv.Quote(`.[] | select(.tag_name == "`+tag+`") | .draft`)
+		}
 		viewAssets := func(tag string) string { return "release view " + tag + " --json assets --jq .assets[].name" }
 		upload := func(tag, version string) string {
 			return "release upload " + tag + " {dir}/out/nervewiki-" + version + "-image.spdx.json {dir}/out/nervewiki-" +
@@ -748,31 +797,43 @@ func TestTheReleaseScripts(t *testing.T) {
 			assets      string // the Release's assets after, unless unchanged
 		}{
 			{name: "draft, none yet, an rc", state: "absent", files: three("0.1.0-rc.1"), args: draft(rc),
-				words: "草稿与三个附件就绪", calls: []string{view(rc),
-					"release create " + rc + " --draft --verify-tag --title Nerve Wiki " + rc + " --notes-file {dir}/notes.md --prerelease",
+				words: "草稿与三个附件就绪", calls: []string{list(rc),
+					"release create " + rc + ` --draft --verify-tag --title "Nerve Wiki ` + rc + `" --notes-file {dir}/notes.md --prerelease`,
 					upload(rc, "0.1.0-rc.1"), viewAssets(rc)}, left: "draft", assets: names("0.1.0-rc.1")},
 			{name: "draft, none yet, a release", state: "absent", files: three("0.1.0"), args: draft(final),
-				words: "草稿与三个附件就绪", calls: []string{view(final),
-					"release create " + final + " --draft --verify-tag --title Nerve Wiki " + final + " --notes-file {dir}/notes.md",
+				words: "草稿与三个附件就绪", calls: []string{list(final),
+					"release create " + final + ` --draft --verify-tag --title "Nerve Wiki ` + final + `" --notes-file {dir}/notes.md`,
 					upload(final, "0.1.0"), viewAssets(final)}, left: "draft", assets: names("0.1.0")},
 			{name: "draft, a draft already", state: "draft", files: with(three("0.1.0-rc.1"), "nervewiki-0.1.0-rc.1-web.spdx.json\n"),
-				args: draft(rc), words: "草稿与三个附件就绪", calls: []string{view(rc),
+				args: draft(rc), words: "草稿与三个附件就绪", calls: []string{list(rc),
 					"release edit " + rc + " --notes-file {dir}/notes.md --prerelease", upload(rc, "0.1.0-rc.1"), viewAssets(rc)},
 				left: "draft", assets: "nervewiki-0.1.0-rc.1-web.spdx.json\nnervewiki-0.1.0-rc.1-image.spdx.json\nnervewiki-0.1.0-rc.1-licenses.tar.gz\n"},
 			{name: "draft, a draft with an asset of another name", state: "draft",
 				files: with(three("0.1.0-rc.1"), "nervewiki-0.1.0-rc.1-old.txt\n"), args: draft(rc), code: 1,
-				words: "传过之后 " + rc + " 的附件不对", calls: []string{view(rc),
+				words: "传过之后 " + rc + " 的附件不对", calls: []string{list(rc),
 					"release edit " + rc + " --notes-file {dir}/notes.md --prerelease", upload(rc, "0.1.0-rc.1"), viewAssets(rc)},
 				left: "draft", assets: "nervewiki-0.1.0-rc.1-old.txt\n" + names("0.1.0-rc.1")},
 			{name: "draft, published already with its assets", state: "published", files: with(three("0.1.0"), names("0.1.0")),
-				args: draft(final), words: final + " 已公开，附件齐，不动", calls: []string{view(final), viewAssets(final)},
+				args: draft(final), words: final + " 已公开，附件齐，不动", calls: []string{list(final), viewAssets(final)},
 				left: "published"},
 			{name: "draft, published already short of an asset", state: "published",
 				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\nnervewiki-0.1.0-web.spdx.json\n"), args: draft(final),
-				code: 1, words: final + " 已公开，附件不对", calls: []string{view(final), viewAssets(final)}, left: "published"},
-			{name: "draft, view answers HTTP 502", state: "error:HTTP 502: Bad Gateway (https://api.github.com/graphql)",
-				files: three("0.1.0"), args: draft(final), code: 1, words: "读不到 Release " + final, calls: []string{view(final)},
-				left: "error:HTTP 502: Bad Gateway (https://api.github.com/graphql)"},
+				code: 1, words: final + " 已公开，附件不对", calls: []string{list(final), viewAssets(final)}, left: "published"},
+			{name: "draft, the list answers HTTP 502",
+				state: "error:gh: HTTP 502: Bad Gateway (https://api.github.com/repos/o3/r3/releases?per_page=100)",
+				files: three("0.1.0"), args: draft(final), code: 1, words: "读不到 o3/r3 的 Release 列表", calls: []string{list(final)},
+				left: "error:gh: HTTP 502: Bad Gateway (https://api.github.com/repos/o3/r3/releases?per_page=100)"},
+			{name: "draft, two Releases of the tag", state: "two", files: three("0.1.0"), args: draft(final), code: 1,
+				words: final + " 的 Release 不止一个", calls: []string{list(final)}, left: "two"},
+			{name: "draft, the draft's edit fails", state: "draft", files: three("0.1.0-rc.1"), args: draft(rc),
+				extra: []string{"FAKE_GH_EDIT_FAILS=1"}, code: 1, words: "改不了 " + rc + " 的草稿",
+				calls: []string{list(rc), "release edit " + rc + " --notes-file {dir}/notes.md --prerelease"}, left: "draft"},
+			{name: "draft, the upload fails over the three a run before put there", state: "draft",
+				files: with(three("0.1.0"), names("0.1.0")), args: draft(final), extra: []string{"FAKE_GH_UPLOAD_FAILS=1"},
+				code: 1, words: "传不上 " + final + " 的附件", calls: []string{list(final),
+					"release edit " + final + " --notes-file {dir}/notes.md", upload(final, "0.1.0")}, left: "draft"},
+			{name: "an action of another name", state: "absent", files: three("0.1.0"), args: []string{"publsh", final},
+				code: 1, words: "用法", left: "absent"},
 			{name: "draft, an asset short", state: "absent", files: with(three("0.1.0"), "", "out/nervewiki-0.1.0-web.spdx.json"),
 				args: draft(final), code: 1, words: "附件目录", left: "absent"},
 			{name: "draft, an asset over", state: "absent",
@@ -785,27 +846,27 @@ func TestTheReleaseScripts(t *testing.T) {
 			{name: "draft, no GH_REPO", state: "absent", files: three("0.1.0"), extra: []string{"GH_REPO="}, args: draft(final),
 				code: 1, words: "要 GH_REPO", left: "absent"},
 			{name: "publish, a draft with its assets", state: "draft", files: with(three("0.1.0"), names("0.1.0")),
-				args: []string{"publish", final}, words: final + " 已公开", calls: []string{view(final), viewAssets(final),
-					"release edit " + final + " --draft=false", view(final)}, left: "published"},
+				args: []string{"publish", final}, words: final + " 已公开", calls: []string{list(final), viewAssets(final),
+					"release edit " + final + " --draft=false", list(final)}, left: "published"},
 			{name: "publish, a draft short of an asset", state: "draft",
 				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\nnervewiki-0.1.0-licenses.tar.gz\n"),
-				args:  []string{"publish", final}, code: 1, words: "草稿附件不齐，不公开", calls: []string{view(final), viewAssets(final)},
+				args:  []string{"publish", final}, code: 1, words: "草稿附件不齐，不公开", calls: []string{list(final), viewAssets(final)},
 				left: "draft"},
 			{name: "publish, a draft that stays one", state: "draft", files: with(three("0.1.0"), names("0.1.0")),
 				extra: []string{"FAKE_GH_EDIT_KEEPS=1"}, args: []string{"publish", final}, code: 1, words: "公开之后 " + final + " 是 draft",
-				calls: []string{view(final), viewAssets(final), "release edit " + final + " --draft=false", view(final)}, left: "draft"},
+				calls: []string{list(final), viewAssets(final), "release edit " + final + " --draft=false", list(final)}, left: "draft"},
 			{name: "publish, published already", state: "published", files: with(three("0.1.0"), names("0.1.0")),
-				args: []string{"publish", final}, words: final + " 已公开，附件齐，不动", calls: []string{view(final), viewAssets(final)},
+				args: []string{"publish", final}, words: final + " 已公开，附件齐，不动", calls: []string{list(final), viewAssets(final)},
 				left: "published"},
 			{name: "publish, published short of an asset", state: "published",
 				files: with(three("0.1.0"), "nervewiki-0.1.0-image.spdx.json\n"), args: []string{"publish", final}, code: 1,
-				words: final + " 已公开，附件不对", calls: []string{view(final), viewAssets(final)}, left: "published"},
+				words: final + " 已公开，附件不对", calls: []string{list(final), viewAssets(final)}, left: "published"},
 			{name: "publish, none", state: "absent", files: three("0.1.0"), args: []string{"publish", final}, code: 1,
-				words: "没有 " + final + " 的 Release", calls: []string{view(final)}, left: "absent"},
+				words: "没有 " + final + " 的 Release", calls: []string{list(final)}, left: "absent"},
 		} {
 			t.Run(c.name, func(t *testing.T) {
 				t.Parallel()
-				extra := append([]string{"FAKE_GH_ASSETS={dir}/assets", "GH_REPO=o3/r3"}, c.extra...)
+				extra := append([]string{"FAKE_GH_ASSETS={dir}/assets", "GH_REPO=o3/r3", "FAKE_GH_TAG=" + c.args[1]}, c.extra...)
 				r := runAgainstFake(t, [2]string{"gh", fakeGHRelease}, "FAKE_GH", c.state, c.files, extra,
 					"github-release.sh", c.args...)
 				calls := make([]string, len(c.calls))
