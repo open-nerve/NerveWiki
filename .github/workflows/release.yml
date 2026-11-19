@@ -130,7 +130,7 @@ jobs:
         if: matrix.arch == 'amd64'
         run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
       # 同 sbom 作业的核对；另打出两份的文档 name 与包数。verify 作业按 name 分出两份 SBOM 的证明：syft 取镜像引用的
-      # 仓库名，不带 tag 与摘要（这里是 nervewiki，tag 上是 $IMAGE），pnpm 取包名（P5 设计 3.12）
+      # 仓库名，不带 tag 与摘要（这里是 nervewiki；tag 上是 $IMAGE，推断：sbom 作业先核对，rc 上证明），pnpm 取包名（P5 设计 3.12）
       - name: Check the SBOMs
         if: matrix.arch == 'amd64'
         run: |
@@ -340,7 +340,8 @@ jobs:
         run: pnpm install --frozen-lockfile --filter @nervewiki/web...
       - name: Web SBOM
         run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
-      # 文档的 name 是 verify 分两份证明用的：镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要），前端的是包名
+      # 文档的 name 是 verify 分两份证明用的：镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要。推断：这一步先核对，rc 上
+      # 证明），前端的是包名
       - name: Check the SBOMs
         run: |
           out=$RUNNER_TEMP/out
@@ -529,7 +530,8 @@ jobs:
       - name: The version tag is the index
         run: test "$(docker buildx imagetools inspect "$IMAGE:$VERSION" --format '{{json .Manifest}}' | jq -r .digest)" = "$DIGEST"
       # 与 Release 说明里给用户的两条命令同一个身份（deploy/release-notes.sh）；两份 SBOM 的证明按文档的 name 分：
-      # 前端的是 @nervewiki/web，镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要；sbom 作业已核对，P5 设计 3.12）
+      # 前端的是 @nervewiki/web，镜像的是 $IMAGE（syft 取引用的仓库名，不带摘要。推断：sbom 作业先核对，rc 上证明；
+      # P5 设计 3.12）
       - name: Provenance and SBOMs
         run: |
           identity="https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@$GITHUB_REF"
