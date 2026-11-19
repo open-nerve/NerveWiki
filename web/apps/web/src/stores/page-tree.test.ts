@@ -66,6 +66,37 @@ test("a page's depth, subtree and height", () => {
   expect([guide.id, install.id, linux.id, notes.id].map((id) => heightOf(tree, id))).toEqual([3, 2, 1, 1]);
 });
 
+/** spreadLimit is how many arguments a call here takes: the first count, doubling from 2^16, that a spread throws at. */
+function spreadLimit(): number {
+  for (let n = 1 << 16; ; n *= 2) {
+    try {
+      Math.max(...Array.from({ length: n }, () => 0));
+    } catch (error) {
+      if (error instanceof RangeError) {
+        return n;
+      }
+      throw error;
+    }
+  }
+}
+
+test("a page with more children than a call takes arguments has them all in its subtree, and its height: none is spread into a call", () => {
+  // Twice what throws: past the limit of this engine, whose stack is the test's (M5-polish 12.12).
+  const many = spreadLimit() * 2;
+  const children = Array.from({ length: many }, (_, i) => ({ ...linux, id: `c${String(i)}`, parent_id: guide.id }));
+  // Built by hand: indexTree normalizes each title, too slow for as many.
+  const wide = {
+    byId: new Map([guide, ...children].map((node) => [node.id, node])),
+    children: new Map([
+      [null, [guide]],
+      [guide.id, children],
+    ]),
+    titles: new Map<string, number>(),
+  };
+  expect(subtreeOf(wide, guide.id)).toHaveLength(many + 1);
+  expect(heightOf(wide, guide.id)).toBe(2);
+});
+
 test("a parent holds a page and its subtree unless it is in it or the subtree would go deeper than ten", () => {
   expect(maxDepth).toBe(10);
   expect(canHold(tree, null, linux.id)).toBe(true);

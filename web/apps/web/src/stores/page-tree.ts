@@ -113,7 +113,10 @@ export function subtreeOf(tree: TreeIndex, id: string): TreeNode[] {
   }
   const pages = [top];
   for (let i = 0; i < pages.length && pages.length <= tree.byId.size; i++) {
-    pages.push(...childrenOf(tree, pages[i]?.id ?? null));
+    // One at a time, not spread into push: a call takes so many arguments only (v0.1 design 13.2, item 25).
+    for (const child of childrenOf(tree, pages[i]?.id ?? null)) {
+      pages.push(child);
+    }
   }
   return pages;
 }
@@ -121,7 +124,8 @@ export function subtreeOf(tree: TreeIndex, id: string): TreeNode[] {
 /** heightOf is how many levels the subtree of the page id has: 1 for a page without children. */
 export function heightOf(tree: TreeIndex, id: string): number {
   const top = depthOf(tree, id);
-  return Math.max(0, ...subtreeOf(tree, id).map((page) => depthOf(tree, page.id) - top + 1));
+  // Not spread into Math.max: a page of many children would make each an argument (v0.1 design 13.2, item 25).
+  return subtreeOf(tree, id).reduce((height, page) => Math.max(height, depthOf(tree, page.id) - top + 1), 0);
 }
 
 /**
