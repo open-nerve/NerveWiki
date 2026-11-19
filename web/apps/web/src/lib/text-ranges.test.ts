@@ -38,3 +38,17 @@ test("ranges side by side are hits side by side; one past the text is cut at its
   ).toEqual(["abc"]);
   expect(hits("", [{ start: 0, end: 2 }])).toEqual([]);
 });
+
+test("a hit that ends inside a cluster of a letter and its marks takes the whole cluster; one that begins in one, from its start; side by side, they do not overlap (M5-polish 26.18a)", () => {
+  // Hindi किताब, written escaped: क ि त ा ब, each consonant and its vowel sign a cluster (a letter and a SpacingMark).
+  const kitab = "\u0915\u093F\u0924\u093E\u092C";
+  expect(hits(kitab, [{ start: 0, end: 3 }])).toEqual(["[\u0915\u093F\u0924\u093E]", "\u092C"]);
+  // e and a combining acute, then t and e: the hit from inside the first cluster starts at its start.
+  expect(hits("e\u0301te", [{ start: 1, end: 3 }])).toEqual(["[e\u0301t]", "e"]);
+  expect(
+    hits(kitab, [
+      { start: 0, end: 1 },
+      { start: 1, end: 3 },
+    ])
+  ).toEqual(["[\u0915\u093F]", "[\u0924\u093E]", "\u092C"]);
+});
