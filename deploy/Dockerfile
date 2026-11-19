@@ -15,8 +15,8 @@ COPY web/apps/web/package.json web/apps/web/
 COPY web/packages/api-client/package.json web/packages/api-client/
 COPY e2e/package.json e2e/
 RUN pnpm install --frozen-lockfile --filter @nervewiki/web...
-# 第三方许可证的 npm 一侧（M12/P5/S2，P5 设计 3.11）：@nervewiki/web 的每个生产依赖的许可证文件。在复制源码之前：
-# 只随锁文件与脚本变，源码变了这一层照样复用
+# 第三方许可证的 npm 一侧（M12/P5/S2，P5 设计 3.11）：@nervewiki/web 与它用的工作区包的每个生产依赖，加上代码随产物
+# 发出的开发依赖（tailwindcss）的许可证文件。在复制源码之前：只随锁文件与脚本变，源码变了这一层照样复用
 COPY tools/licenses/npm.mjs tools/licenses/
 RUN node tools/licenses/npm.mjs /out/licenses/npm
 COPY web/ web/
@@ -39,8 +39,9 @@ ARG VERSION=0.1.0-dev
 RUN CGO_ENABLED=0 go build -trimpath \
     -ldflags "-X github.com/open-nerve/NerveWiki/server/internal/platform/buildinfo.version=${VERSION}" \
     -o /out/nervewiki ./cmd/nervewiki
-# 第三方许可证的 Go 一侧（M12/P5/S2，P5 设计 3.11）：链接进二进制的每个模块与 Go 本身；没有许可证文件的模块让构建失败
-RUN /src/tools/licenses/go.sh /out/licenses/go
+# 第三方许可证的 Go 一侧（M12/P5/S2，P5 设计 3.11）：链接进二进制的每个模块与 Go 本身；没有许可证文件的模块、
+# 与二进制记的模块对不上的清单让构建失败
+RUN /src/tools/licenses/go.sh /out/nervewiki /out/licenses/go
 # 附件与导入导出的目录（M7/P1 设计 3.5）：distroless 没有 mkdir 与 chown，在这里建好，复制时改属主
 RUN mkdir /out/data
 

@@ -140,6 +140,16 @@ jobs:
           done
           jq -e '.spdxVersion == "SPDX-2.3" and .name == "nervewiki" and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
           jq -e '.spdxVersion == "SPDX-2.3" and .name == "@nervewiki/web" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          # 前端 SBOM 里除 @nervewiki/* 之外的每个包都在镜像的 /licenses/npm/INDEX.tsv 里（M12/P5/S2 修复第 1 轮）。不在的
+          # @types/ 不算缺：只有类型声明，构建丢掉、不进前端。今天是 @types/trusted-types，dompurify 的可选依赖：pnpm 的
+          # licenses list --prod 不走各包的可选依赖，npm.mjs 收不到它
+          export LC_ALL=C
+          sbom=$(jq -r '.packages[] | select(.name | startswith("@nervewiki/") | not) | "\(.name)@\(.versionInfo)"' "$out/nervewiki-$VERSION-web.spdx.json" | sort -u)
+          index=$(cut -f1 "$RUNNER_TEMP/amd64/npm/INDEX.tsv" | sort -u)
+          absent=$(comm -23 <(echo "$sbom") <(echo "$index"))
+          missing=$(grep -v '^@types/' <<<"$absent" || true)
+          [ -n "$sbom" ] && [ -z "$missing" ] || { echo "前端 SBOM 里这些包不在 /licenses/npm/INDEX.tsv："; echo "$missing"; exit 1; }
+          echo "前端 SBOM 里 @nervewiki/* 之外的 $(wc -l <<<"$sbom") 个包，不在 /licenses/npm/INDEX.tsv（$(wc -l <<<"$index") 行）的只有 @types/：$(paste -sd' ' - <<<"$absent")"
           ls -l "$out"
 
   # 闸门（00-M12 4.10）：tag 的写法、提交在 main 上、它的 ci.yml 已绿、CHANGELOG.md 有这一节；再 make vuln，npm 一侧照 high
@@ -339,6 +349,16 @@ jobs:
           done
           jq -e --arg image "$IMAGE" '.spdxVersion == "SPDX-2.3" and .name == $image and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
           jq -e '.spdxVersion == "SPDX-2.3" and .name == "@nervewiki/web" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          # 前端 SBOM 里除 @nervewiki/* 之外的每个包都在镜像的 /licenses/npm/INDEX.tsv 里（M12/P5/S2 修复第 1 轮）。不在的
+          # @types/ 不算缺：只有类型声明，构建丢掉、不进前端。今天是 @types/trusted-types，dompurify 的可选依赖：pnpm 的
+          # licenses list --prod 不走各包的可选依赖，npm.mjs 收不到它
+          export LC_ALL=C
+          sbom=$(jq -r '.packages[] | select(.name | startswith("@nervewiki/") | not) | "\(.name)@\(.versionInfo)"' "$out/nervewiki-$VERSION-web.spdx.json" | sort -u)
+          index=$(cut -f1 "$RUNNER_TEMP/amd64/npm/INDEX.tsv" | sort -u)
+          absent=$(comm -23 <(echo "$sbom") <(echo "$index"))
+          missing=$(grep -v '^@types/' <<<"$absent" || true)
+          [ -n "$sbom" ] && [ -z "$missing" ] || { echo "前端 SBOM 里这些包不在 /licenses/npm/INDEX.tsv："; echo "$missing"; exit 1; }
+          echo "前端 SBOM 里 @nervewiki/* 之外的 $(wc -l <<<"$sbom") 个包，不在 /licenses/npm/INDEX.tsv（$(wc -l <<<"$index") 行）的只有 @types/：$(paste -sd' ' - <<<"$absent")"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-files

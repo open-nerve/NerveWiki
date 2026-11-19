@@ -89,8 +89,9 @@ jq -e --arg version "$version" --arg commit "$commit" --arg created "$created" \
    and ."org.opencontainers.image.source" == "https://github.com/open-nerve/NerveWiki"' \
   <<<"$labels" >/dev/null || fail "镜像的 label 与预期不符：$labels"
 
-# 第三方许可证（M12/P5/S2，P5 设计 3.11）：Nerve Wiki 自己的、说明、两份清单都在，Go 本身与两个常见的依赖在清单上，
-# 清单上写的每个文件都在、不是空的。docker create 不运行镜像
+# 第三方许可证（M12/P5/S2，P5 设计 3.11）：Nerve Wiki 自己的、说明、两份清单都在，Go 本身与几个依赖在清单上，两份
+# 清单的行数不少于下限，清单上写的每个文件都在、不是空的。清单完整与否由构建时的 go.sh（对着二进制记的模块）与
+# release.yml（对着前端的 SBOM）核对，这里的抽查与下限是本机一侧的底线。docker create 不运行镜像
 docker create --name "$licenses" "$image" >/dev/null
 docker cp "$licenses:/licenses" "$files/licenses"
 lic=$files/licenses
@@ -101,6 +102,13 @@ cmp -s "$repo/LICENSE" "$lic/LICENSE" || fail "/licenses/LICENSE 与仓库的 LI
 grep -qE $'^go@go[0-9.]+\tLICENSE,PATENTS$' "$lic/go/INDEX.tsv" || fail "/licenses/go/INDEX.tsv 没有 Go 本身的 LICENSE 与 PATENTS"
 grep -q $'^github.com/jackc/pgx/v5@[^\t]*\tLICENSE' "$lic/go/INDEX.tsv" || fail "/licenses/go/INDEX.tsv 没有 pgx"
 grep -q $'^react@[^\t]*\tMIT\tLICENSE' "$lic/npm/INDEX.tsv" || fail "/licenses/npm/INDEX.tsv 没有 react"
+grep -q $'^openapi-fetch@[^\t]*\tMIT\tLICENSE' "$lic/npm/INDEX.tsv" ||
+  fail "/licenses/npm/INDEX.tsv 没有 openapi-fetch：它经工作区包 @nervewiki/api-client 打包进前端"
+# 两份清单行数的下限（今天 48 行、233 行）：清单只剩上面抽查的几项也过得了上面几条
+lines_go=$(wc -l <"$lic/go/INDEX.tsv")
+lines_npm=$(wc -l <"$lic/npm/INDEX.tsv")
+((lines_go >= 40 && lines_npm >= 200)) ||
+  fail "/licenses 的清单只有 $lines_go 行（go）、$lines_npm 行（npm），要至少 40 行、200 行"
 # 清单上写的每个文件；npm 一侧写 - 的包里没有许可证的文本（P5 设计 P5-10）
 while IFS=$'\t' read -r id names; do
   IFS=, read -ra list <<<"$names"
