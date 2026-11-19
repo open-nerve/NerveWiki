@@ -519,3 +519,65 @@ test("P4/tree_failure: a tree that cannot be read says so above the rows, which 
   await waitFor(() => expect(main.getByRole("button", { name: "Try again" })).toBeTruthy());
   expect(titles()).toEqual(["Alpha", "Bravo", "Charlie"]);
 });
+
+test("the type stepped through with the keys on its closed select reads the index once the reader presses Enter; nothing meanwhile (M5-polish 26.5)", async () => {
+  const fixture = indexServer();
+  const { router } = renderApp(indexPath, fixture.server.app);
+  await screen.findByRole("option", { name: "Topic (1)" });
+  const type = screen.getByRole("combobox", { name: "Type" }) as HTMLSelectElement;
+  const reads = fixture.requests.length;
+
+  fireEvent.keyDown(type, { key: "ArrowDown" });
+  fireEvent.change(type, { target: { value: "Note" } });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(fixture.requests).toHaveLength(reads);
+  expect(router.state.location.search).toBe("");
+  expect(type.value).toBe("Note");
+
+  fireEvent.keyDown(type, { key: "Enter" });
+  await waitFor(() => expect(fixture.requests).toHaveLength(reads + 1));
+  expect(router.state.location.search).toBe("?type=Note");
+});
+
+test.each([
+  [
+    "en",
+    "These filters cannot be read: the address has one this directory does not take. Clear the filters to see every page.",
+    "Try again",
+    "Clear filters",
+  ],
+  ["zh-CN", "读不出这些筛选：地址里有这个目录不认的筛选。清除筛选即可看到全部页面。", "重试", "清除筛选"],
+] as const)(
+  "%s: a type the server does not take says the filters cannot be read, without Try again; Clear filters lists every page (M5-polish 35.3)",
+  async (locale, said, retry, clear) => {
+    const user = userEvent.setup();
+    const fixture = indexServer();
+    fixture.server.app.preferences.setLocale(locale);
+    fixture.answer = (request) =>
+      new URL(request.url).searchParams.has("type")
+        ? problem(422, "validation_failed", { errors: [{ field: "type", code: "too_long", message: "" }] })
+        : json(fixture.value);
+    const { router } = renderApp(`${indexPath}?type=${"x".repeat(1025)}`, fixture.server.app);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(said);
+    expect(screen.queryByRole("button", { name: retry })).toBeNull();
+    await user.click(screen.getByRole("button", { name: clear }));
+
+    expect(await screen.findByRole("list", { name: /./ })).toBeTruthy();
+    expect(router.state.location.search).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+  }
+);
+
+test("a first page refused otherwise, as filtered, says why with Try again: not that the filters cannot be read (M5-polish 35.3)", async () => {
+  const user = userEvent.setup();
+  const fixture = indexServer();
+  fixture.answer = () => problem(500, "internal");
+  renderApp(`${indexPath}?type=Note`, fixture.server.app);
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).not.toContain("These filters cannot be read");
+  fixture.answer = undefined;
+  await user.click(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByRole("list", { name: /./ })).toBeTruthy();
+});

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useLocation, useNavigate, useNavigation } from "react-router";
 
 import { arrived } from "../../app/arrival";
 import { useMounted } from "../../app/mounted";
@@ -24,7 +24,8 @@ class SourceTitleNeeded extends Error {}
  * than the server) has it try the next, three titles at most. Once
  * created, the tab goes to the page, arrived at, unless the user left the
  * place it was asked from: the component that asked is gone, or the
- * address changed (v0.1 design 13.2, item 16). create answers why it
+ * address changed (v0.1 design 13.2, item 16), or is going elsewhere, the
+ * navigation not yet done (M5-polish 2). create answers why it
  * failed, for the caller to show, or undefined. A queued ordinary creation
  * whose parent has become a source is cancelled: sources use the explicit
  * title form and must not be automatically named Untitled.
@@ -42,6 +43,12 @@ export function useNewPage(notebook: Notebook) {
   useEffect(() => {
     at.current = key;
   }, [key]);
+  /** Whether a navigation is under way as of the last render: the reader is going elsewhere. */
+  const going = useNavigation().state !== "idle";
+  const navigating = useRef(going);
+  useEffect(() => {
+    navigating.current = going;
+  }, [going]);
 
   /** titled creates the page under parent by the first title free beside taken, and the next while each is taken. */
   async function titled(parent: string | null, taken: readonly string[]): Promise<string> {
@@ -72,7 +79,7 @@ export function useNewPage(notebook: Notebook) {
     setSending(true);
     try {
       const id = await titled(parent, []);
-      if (mounted() && at.current === from) {
+      if (mounted() && at.current === from && !navigating.current) {
         void navigate(`/${slug}/notebooks/${notebook.id}/pages/${id}`, { state: arrived });
       }
       return undefined;

@@ -6,6 +6,46 @@ import type { Refresher } from "./refresher";
 
 // The handlers' reads through the refresher (M5 design 4.11, M6/P7 design 11).
 
+test("a links event waiting for a tree read asks for nothing once the stream's generation is over, as the read answers (M5-polish 24.8)", async () => {
+  const requested: string[] = [];
+  let answer!: () => void;
+  const mutate = vi.fn(async (key: unknown): Promise<unknown[]> => {
+    if (JSON.stringify(key) === JSON.stringify(["pages", "n1"])) {
+      await new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+    }
+    return [];
+  });
+  const stop = new AbortController();
+  const handled = {
+    ...context([["backlinks", "n1", "a"]]).context,
+    mutate,
+    // The refresher reads at once a key not read lately: stopped too.
+    refresher: {
+      request: (key: string, read: () => void) => {
+        requested.push(key);
+        read();
+      },
+    } as unknown as Refresher,
+    stopped: stop.signal,
+  };
+  const backlinks = unstable_serialize(["backlinks", "n1", "a"]);
+
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  eventHandlers.get("links")?.(
+    { workspace_id: "w1", notebook_id: "n1", pages: [], targets: ["a"], aliases: false },
+    handled
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  stop.abort();
+  answer();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).not.toContain(backlinks);
+});
+
 /**
  * context is a handler's, the keys of read cached (their first read out: no data yet), and what it asks the refresher
  * for, with the intervals it names.
@@ -29,6 +69,7 @@ function context(read: unknown[][]) {
         },
       } as unknown as Refresher,
       stopped: new AbortController().signal,
+      trees: new Map(),
     },
   };
 }
@@ -267,4 +308,115 @@ test("a mode event reads again the workspace's notebooks, by the workspace, and 
 
   expect(handled.mutate.mock.calls).toEqual([[["notebooks", "w1"]], [["upgrade", "n1"]]]);
   expect(requested).toEqual([]);
+});
+
+test("a links event after a pages event that changed the tree asks for what it names only once that tree is read and shown: a page the unit deleted has left first (M5-polish 24.8)", async () => {
+  const reads = new Map<string, () => void>();
+  const requested: string[] = [];
+  const mutate = vi.fn(async (_key: unknown): Promise<unknown[]> => []);
+  const handled = {
+    ...context([["backlinks", "n1", "a"]]).context,
+    mutate,
+    refresher: {
+      request: (key: string, read: () => void) => {
+        requested.push(key);
+        reads.set(key, read);
+      },
+    } as unknown as Refresher,
+  };
+  const backlinks = unstable_serialize(["backlinks", "n1", "a"]);
+
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  eventHandlers.get("links")?.(
+    { workspace_id: "w1", notebook_id: "n1", pages: [], targets: ["a"], aliases: false },
+    handled
+  );
+  expect(requested).not.toContain(backlinks);
+  reads.get(unstable_serialize(["pages", "n1"]))?.();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(requested).not.toContain(backlinks);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).toContain(backlinks);
+});
+
+test("a pages event during the tree read has the links event after it wait for its own read", async () => {
+  const reads = new Map<string, () => void>();
+  const requested: string[] = [];
+  const mutate = vi.fn(async (_key: unknown): Promise<unknown[]> => []);
+  const handled = {
+    ...context([["backlinks", "n1", "a"]]).context,
+    mutate,
+    refresher: {
+      request: (key: string, read: () => void) => {
+        requested.push(key);
+        reads.set(key, read);
+      },
+    } as unknown as Refresher,
+  };
+  const backlinks = unstable_serialize(["backlinks", "n1", "a"]);
+  const tree = unstable_serialize(["pages", "n1"]);
+  const pages = { workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] };
+
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
+  eventHandlers.get("pages")?.(pages, handled);
+  const first = reads.get(tree);
+  first?.();
+  // Another unit changed the tree as the first read is out: its links event waits for the read its pages event asks.
+  eventHandlers.get("pages")?.(pages, handled);
+  const second = reads.get(tree);
+  expect(second).not.toBe(first);
+  eventHandlers.get("links")?.(
+    { workspace_id: "w1", notebook_id: "n1", pages: [], targets: ["a"], aliases: false },
+    handled
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(mutate.mock.calls.filter(([key]) => JSON.stringify(key) === JSON.stringify(["pages", "n1"]))).toHaveLength(1);
+  expect(requested).not.toContain(backlinks);
+  second?.();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).toContain(backlinks);
+});
+
+test("a links event after a pages event whose tree read the refresher started at once, the tree not read lately, waits for that read", async () => {
+  const requested: string[] = [];
+  let answer!: () => void;
+  const mutate = vi.fn(async (key: unknown): Promise<unknown[]> => {
+    if (JSON.stringify(key) === JSON.stringify(["pages", "n1"])) {
+      await new Promise<void>((resolve) => {
+        answer = resolve;
+      });
+    }
+    return [];
+  });
+  const handled = {
+    ...context([["backlinks", "n1", "a"]]).context,
+    mutate,
+    // As the refresher does for a key it read no sooner than its interval ago: at once.
+    refresher: {
+      request: (key: string, read: () => void) => {
+        requested.push(key);
+        read();
+      },
+    } as unknown as Refresher,
+  };
+  const backlinks = unstable_serialize(["backlinks", "n1", "a"]);
+
+  vi.useFakeTimers();
+  onTestFinished(() => void vi.useRealTimers());
+  eventHandlers.get("pages")?.({ workspace_id: "w1", notebook_id: "n1", tree: true, pages: [] }, handled);
+  expect(mutate.mock.calls[0]).toEqual([["pages", "n1"]]);
+  eventHandlers.get("links")?.(
+    { workspace_id: "w1", notebook_id: "n1", pages: [], targets: ["a"], aliases: false },
+    handled
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).not.toContain(backlinks);
+  answer();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(requested).toContain(backlinks);
 });

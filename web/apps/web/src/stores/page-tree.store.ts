@@ -1,4 +1,4 @@
-import { computed, makeAutoObservable, observableRef, runInAction } from "mobx";
+import { computed, makeAutoObservable, observableRef, observableShallow, runInAction } from "mobx";
 
 import { oneAtATime, oneAtATimeById } from "../lib/one-at-a-time";
 import { ApiError } from "../services/api";
@@ -38,6 +38,9 @@ import { ancestorsOf, childrenOf, indexTree, subtreeOf, type TreeIndex } from ".
 
 /** How long a toggle of a task item holds its page's others back: more than the server takes to answer. */
 export const toggleLimit = 60_000;
+
+/** A revert out: its answer, and the newest revert of its changeset its sender knew (before). */
+export type RevertOut = { answer: Promise<ChangesetReverted>; before: string | undefined };
 
 /**
  * PageTreeStore holds one notebook's page tree for one generation (M4/P5
@@ -104,6 +107,22 @@ export class PageTreeStore {
   /** The pages with a toggle of a task item out, the view read again included, each with when it started. */
   private readonly togglesOut = new Map<string, number>();
   private readonly restores = oneAtATimeById();
+  /**
+   * The restores and reverts out, each by its node or changeset, the last
+   * made: their answers, observed, which a page shown again follows (M5-polish
+   * 22.14, 23.10); a revert with the newest revert of its changeset its sender
+   * knew. Each leaves once it settles, unless a later one took its place.
+   */
+  private readonly restoring = new Map<string, Promise<NodeRestored>>();
+  private readonly reverting = new Map<string, RevertOut>();
+  /** How many of the notebook's shells show this tree (watch): none, no event reads it. */
+  private watching = 0;
+  /**
+   * Whether the tree is known to be the server's as a shell shows it again (M5-polish 27.2): 0 once it is;
+   * Infinity while no shell watches it, the events read it no more; the first read that counts, by when it
+   * started, as a shell watches it again.
+   */
+  confirmFrom = 0;
 
   constructor(
     private readonly service: Pick<
@@ -152,6 +171,9 @@ export class PageTreeStore {
       | "inTurn"
       | "togglesOut"
       | "restores"
+      | "restoring"
+      | "reverting"
+      | "watching"
     >(this, {
       service: false,
       currentNotebook: false,
@@ -167,7 +189,46 @@ export class PageTreeStore {
       inTurn: false,
       togglesOut: false,
       restores: false,
+      restoring: observableShallow,
+      reverting: observableShallow,
+      watching: false,
     });
+  }
+
+  /**
+   * confirmed tells whether the tree read is the server's as a shell shows it: not once no shell watched it, the
+   * events reading it no more, until a read begun since a shell watches it again answers (M5-polish 27.2).
+   */
+  get confirmed(): boolean {
+    return this.confirmFrom === 0;
+  }
+
+  /** confirming tells whether a read that would confirm the tree has started. */
+  confirming(): boolean {
+    return this.confirmFrom !== 0 && this.readsStarted >= this.confirmFrom;
+  }
+
+  /**
+   * watch has a notebook's shell watch the tree as it shows: once none did, the tree read since a shell watches it
+   * again confirms it. The function returned stops it; the last stopped, the tree is no longer confirmed.
+   */
+  watch(): () => void {
+    this.watching += 1;
+    if (this.watching === 1 && this.confirmFrom === Infinity) {
+      this.confirmFrom = this.readsStarted + 1;
+    }
+    let watched = true;
+    return () => {
+      if (!watched) return;
+      watched = false;
+      runInAction(() => {
+        this.watching -= 1;
+        // Not read yet too: the first read, out as the last shell goes, may answer a tree changed since (M5-polish 27.2).
+        if (this.watching === 0) {
+          this.confirmFrom = Infinity;
+        }
+      });
+    };
   }
 
   /** pageNodes are the pages of the nodes read: the same while a read changes attachments alone. */
@@ -294,8 +355,13 @@ export class PageTreeStore {
     this.readKept = read;
     const back = [...this.removed].filter(([id, { after }]) => read > after && nodes.some((node) => node.id === id));
     const same = sameNodes(this.nodes, nodes);
-    if (!same || back.length > 0) {
+    // A read begun once a shell watches the tree again confirms it; one begun before does not (M5-polish 27.2).
+    const confirms = this.confirmFrom !== 0 && read >= this.confirmFrom;
+    if (!same || back.length > 0 || confirms) {
       runInAction(() => {
+        if (confirms) {
+          this.confirmFrom = 0;
+        }
         if (!same) {
           this.nodes = nodes;
         }
@@ -550,7 +616,25 @@ export class PageTreeStore {
    * the tree is read once more (M8/P2B review C, nit 1). A refusal records
    * nothing. It answers where the item went, and under which name.
    */
-  async restore(id: string): Promise<NodeRestored> {
+  restore(id: string): Promise<NodeRestored> {
+    const answer = this.restoreNow(id);
+    this.restoring.set(id, answer);
+    const settled = () =>
+      runInAction(() => {
+        if (this.restoring.get(id) === answer) {
+          this.restoring.delete(id);
+        }
+      });
+    answer.then(settled, settled);
+    return answer;
+  }
+
+  /** restoreOut is the answer of the restore of the node id out, the last made; none once it settled. */
+  restoreOut(id: string): Promise<NodeRestored> | undefined {
+    return this.restoring.get(id);
+  }
+
+  private async restoreNow(id: string): Promise<NodeRestored> {
     const restored = await this.restores(id, () => this.write(() => this.service.restoreNode(id)));
     if (this.removed.has(id)) {
       await this.load().catch(() => undefined);
@@ -587,9 +671,29 @@ export class PageTreeStore {
    * brings pages back too, which that read lists: that read failed, a page
    * this generation deleted would stay deleted here, so the tree is read
    * once more (as restore does). A refusal records nothing. It answers what
-   * the revert did.
+   * the revert did. Out, it is the changeset's (revertOut), with before, the
+   * newest revert of the changeset its sender knew.
    */
-  async revert(id: string, message?: string): Promise<ChangesetReverted> {
+  revert(id: string, message?: string, before?: string): Promise<ChangesetReverted> {
+    const answer = this.revertNow(id, message);
+    const out = { answer, before };
+    this.reverting.set(id, out);
+    const settled = () =>
+      runInAction(() => {
+        if (this.reverting.get(id) === out) {
+          this.reverting.delete(id);
+        }
+      });
+    answer.then(settled, settled);
+    return answer;
+  }
+
+  /** revertOut is the revert of the changeset id out, the last made, and what its sender knew; none once it settled. */
+  revertOut(id: string): RevertOut | undefined {
+    return this.reverting.get(id);
+  }
+
+  private async revertNow(id: string, message: string | undefined): Promise<ChangesetReverted> {
     let before: TreeIndex | undefined;
     let after = Infinity;
     const reverted = await this.restores(id, () =>

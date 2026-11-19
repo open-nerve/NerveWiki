@@ -4,7 +4,7 @@ import useSWR from "swr";
 
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
-import { NativeSelect } from "../../components/ui/native-select";
+import { NativeSelect, useChoice } from "../../components/ui/native-select";
 import { useT, type Translate } from "../../i18n/i18n";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId, twinsOf } from "../../lib/twins";
@@ -111,6 +111,12 @@ export const HistoryFilters = observer(function HistoryFilters({
   const t = useT();
   const pages = usePageTree(notebook);
   const ids = { actor: useId(), client: useId(), ingest: useId() };
+  // Stepped through with the keys, a choice reads the list once the reader leaves it or presses Enter (M5-polish 26.5).
+  const who = useChoice(filter.actor, (value) => choose({ ...filter, actor: value }));
+  const from = useChoice(filter.client, (value) => choose({ ...filter, client: value }));
+  const ingested = useChoice(filter.ingest === true ? "1" : "", (value) =>
+    choose({ ...filter, ingest: value === "1" ? true : undefined })
+  );
   const mcps = read.map((changeset) => changeset.client).filter((client) => client.startsWith("mcp:"));
   const shown = [...new Set([...clients, ...mcps, ...(filter.client === "" ? [] : [filter.client])])];
   // The node is a page or an attachment (the contract's page_id is either): said as what it is, once the tree is read.
@@ -125,12 +131,7 @@ export const HistoryFilters = observer(function HistoryFilters({
     <div className="flex flex-wrap items-end gap-4">
       <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={ids.actor}>{t("history.actor")}</Label>
-        <NativeSelect
-          ref={whoRef}
-          id={ids.actor}
-          value={filter.actor}
-          onChange={(event) => choose({ ...filter, actor: event.target.value })}
-        >
+        <NativeSelect ref={whoRef} id={ids.actor} {...who}>
           <option value="">{t("history.everyone")}</option>
           {actors.map((actor) => (
             <option key={actor.id} value={actor.id}>
@@ -141,11 +142,7 @@ export const HistoryFilters = observer(function HistoryFilters({
       </div>
       <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={ids.client}>{t("history.client")}</Label>
-        <NativeSelect
-          id={ids.client}
-          value={filter.client}
-          onChange={(event) => choose({ ...filter, client: event.target.value })}
-        >
+        <NativeSelect id={ids.client} {...from}>
           <option value="">{t("history.everyClient")}</option>
           {shown.map((client) => (
             <option key={client} value={client}>
@@ -156,11 +153,7 @@ export const HistoryFilters = observer(function HistoryFilters({
       </div>
       <div className="space-y-2">
         <Label htmlFor={ids.ingest}>{t("history.ingestion")}</Label>
-        <NativeSelect
-          id={ids.ingest}
-          value={filter.ingest === true ? "1" : ""}
-          onChange={(event) => choose({ ...filter, ingest: event.target.value === "1" ? true : undefined })}
-        >
+        <NativeSelect id={ids.ingest} {...ingested}>
           <option value="">{t("history.allChanges")}</option>
           <option value="1">{t("history.onlyIngest")}</option>
         </NativeSelect>

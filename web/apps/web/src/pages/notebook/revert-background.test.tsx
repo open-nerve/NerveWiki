@@ -169,13 +169,6 @@ test.each<[string, (state: ReturnType<typeof large>) => void, string]>([
     "You have 5 jobs queued or running, in any notebook. Wait for one to end, or cancel one.",
   ],
   [
-    "a changeset too large for the background too",
-    ({ rework }) => {
-      rework.jobTooLarge = true;
-    },
-    "This change is too large to undo, even in the background.",
-  ],
-  [
     "a page someone edits",
     ({ rework }) => {
       rework.lockedBy = { page: guide.id, holder: bob };
@@ -532,5 +525,60 @@ test.each([
           Node.DOCUMENT_POSITION_FOLLOWING
       ).toBeTruthy();
     }
+  }
+);
+
+test.each([
+  [
+    "en",
+    {
+      undo: "Undo change",
+      dialog: "Undo this change?",
+      confirm: "Undo",
+      background: "Undo in the background",
+      cancel: "Cancel",
+      tooLarge: "This change is too large to undo, even in the background.",
+    },
+  ],
+  [
+    "zh-CN",
+    {
+      undo: "撤销这次改动",
+      dialog: "撤销这次改动？",
+      confirm: "撤销",
+      background: "在后台撤销",
+      cancel: "取消",
+      tooLarge: "这次改动太大，后台也撤销不了。",
+    },
+  ],
+] as const)(
+  "%s: an undo in the background refused as too large for the background too says so in the dialog, which offers only Cancel (M5-polish 24.2)",
+  async (locale, names) => {
+    const user = userEvent.setup();
+    const { server, rework } = large();
+    server.app.preferences.setLocale(locale);
+    renderApp(changesetPath(rework.id), server.app);
+    await user.click(await screen.findByRole("button", { name: names.undo }));
+    const dialog = await screen.findByRole("alertdialog", { name: names.dialog });
+    await user.click(within(dialog).getByRole("button", { name: names.confirm }));
+    const start = await within(dialog).findByRole("button", { name: names.background });
+    rework.jobTooLarge = true;
+
+    await user.click(start);
+
+    expect((await within(dialog).findByRole("alert")).textContent).toBe(names.tooLarge);
+    expect(within(dialog).queryByRole("button", { name: names.background })).toBeNull();
+    expect(
+      within(dialog)
+        .getAllByRole("button")
+        .map((button) => button.textContent)
+    ).toEqual([names.cancel]);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(document.activeElement).toBe(within(dialog).getByRole("button", { name: names.cancel }));
+    expect(server.jobs).toEqual([]);
+    // Enter in the message, the form's one field, submits it: it sends nothing again.
+    await user.type(within(dialog).getByRole("textbox"), "why{Enter}");
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(server.asked.filter((each) => each.startsWith("POST revert"))).toEqual(["POST revert rework"]);
   }
 );

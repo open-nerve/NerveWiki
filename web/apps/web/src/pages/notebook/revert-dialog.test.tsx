@@ -4,7 +4,9 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import type { NotebookRole } from "../../services/notebook.service";
 import type { RevertConflict } from "../../services/page.service";
-import { json, notebookJSON, problem, type Answer } from "../../test/fakes";
+import { eventHandlers } from "../../events/handlers";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import { changesetId, created, moved, renamed, wrote } from "../../test/history-server";
 import { ada, bob, guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
@@ -1123,4 +1125,280 @@ test("an undo whose answer was lost, its changeset read again as the tab signed 
     await new Promise((resolve) => setTimeout(resolve, 50));
   });
   expect(rejections).toEqual([]);
+});
+
+test("an undo on a changeset's page whose address has its id in capitals reads the changeset and its nodes again as the dialog closes", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  renderApp(changesetPath(rework.id.toUpperCase()), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  const dialog = await opened(user);
+  const before = server.sent.length;
+
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  // No event stream reads them: the dialog's reads are the page's own, by the server's id (M5-polish 23.19).
+  await waitFor(() =>
+    expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET changeset rework", "GET changes rework"]))
+  );
+  expect(await screen.findByText("Undone by:")).toBeTruthy();
+});
+
+const historyPath = `${home}/history`;
+
+/**
+ * goneBackAndForth goes back from the changeset's page to the history, and forward to the page again, once the
+ * history's list shows.
+ */
+async function goneBackAndForth(
+  router: ReturnType<typeof renderApp>["router"],
+  names = { history: "History", changeset: "Edit · Ada" }
+) {
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: names.history });
+  await act(() => router.navigate(1));
+  await screen.findByRole("heading", { level: 1, name: names.changeset });
+}
+
+test.each([
+  ["en", "Undo change", "Undoing…", "Undone. See the undo", { history: "History", changeset: "Edit · Ada" }],
+  ["zh-CN", "撤销这次改动", "正在撤销…", "已撤销。 查看这次撤销", { history: "历史", changeset: "编辑 · Ada" }],
+] as const)(
+  "%s: an undo out as the reader goes back and forward is followed by the changeset's page shown again: Undo change busy, opening nothing; answered, the line says it was undone, the title taking the focus (M5-polish 23.10)",
+  async (locale, undoChange, undoing, undone, names) => {
+    const user = userEvent.setup();
+    const { server, rework } = reworked();
+    server.app.preferences.setLocale(locale);
+    server.revertsHeld = true;
+    const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+    await user.click(await screen.findByRole("button", { name: undoChange }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getAllByRole("button").at(-1) as HTMLElement);
+    await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+
+    await goneBackAndForth(router, names);
+
+    const busy = await screen.findByRole("button", { name: undoing });
+    expect([busy.getAttribute("aria-busy"), busy.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+    await user.click(busy);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    act(() => server.release());
+
+    await waitFor(() => expect(screen.getByRole("status").textContent).toBe(undone));
+    const heading = screen.getByRole("heading", { level: 1 });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    expect(heading.getAttribute("aria-describedby")).toBe(screen.getByRole("status").id);
+    expect(reverts(server.sent)).toEqual(["REVERT rework"]);
+    expect(await screen.findByRole("button", { name: undoChange })).toBeTruthy();
+  }
+);
+
+test("an undo refused as the reader went back and forward says why on the changeset's page shown again (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+  rework.trimmed = true;
+
+  await goneBackAndForth(router);
+  await screen.findByRole("button", { name: "Undoing…" });
+  act(() => server.release());
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toBe(
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
+  );
+  await waitFor(() => expect(document.activeElement).toBe(title()));
+  expect(title().getAttribute("aria-describedby")).toBe(alert.id);
+});
+
+test("an undo out as the reader goes back and forward that had nothing to undo is said on the changeset's page shown again, the focus left where it is (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  rework.unchanged = true;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+
+  await goneBackAndForth(router);
+  await screen.findByRole("button", { name: "Undoing…" });
+  expect(document.activeElement).toBe(document.body);
+  act(() => server.release());
+
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe("Nothing to undo: this change left every node as it was.")
+  );
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("an undo whose answer was lost as the reader went back and forward finds out by the newest undo known as it was sent (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  let answer!: () => void;
+  const lostAnswer = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const state: { server?: ReturnType<typeof pageServer> } = {};
+  const { server, rework } = reworked("admin", {
+    "GET /api/v0/events": events.answer,
+    // The undo is written, its answer lost (a 500, the network).
+    "POST /api/v0/changesets/*/revert": async () => {
+      const at = state.server;
+      at?.sent.push("REVERT rework");
+      const undo = at?.log("undo", { kind: "revert", reverts: rework.id });
+      rework.revertedBy = [undo?.id ?? "", ...rework.revertedBy];
+      await lostAnswer;
+      return problem(500, "internal");
+    },
+  });
+  state.server = server;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], withEvents(server.app), { eventHandlers });
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+
+  // Shown again, its changeset read again as the undo's event comes: by now undone by it, which the page knows as it
+  // mounts once more. The undo was sent knowing none.
+  await goneBackAndForth(router);
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: false, pages: [] });
+  await screen.findByText("Undone by:");
+  await goneBackAndForth(router);
+  await screen.findByText("Undone by:");
+  act(() => answer());
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+});
+
+test("an undo whose answer was lost as the reader went back and forward, nothing undone, says so by the newest undo known as it was sent: one before it (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  let answer!: () => void;
+  const lostAnswer = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const state: { server?: ReturnType<typeof pageServer> } = {};
+  const { server, rework } = reworked("admin", {
+    // Nothing written, its answer lost (a 500, the network).
+    "POST /api/v0/changesets/*/revert": async () => {
+      state.server?.sent.push("REVERT rework");
+      await lostAnswer;
+      return problem(500, "internal");
+    },
+  });
+  state.server = server;
+  // Undone before: Undo change is offered still. That undo is the newest the sender knows.
+  const before = server.log("undo", { kind: "revert", reverts: rework.id });
+  rework.revertedBy = [before.id];
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+
+  await goneBackAndForth(router);
+  await screen.findByRole("button", { name: "Undoing…" });
+  act(() => answer());
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("It was not undone: you can try again."));
+});
+
+test("a changeset's page shown after its undo answered follows nothing: Undo change opens the dialog (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "History" });
+  act(() => server.release());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  await act(() => router.navigate(1));
+  await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("status").textContent).toBe("");
+  await user.click(screen.getByRole("button", { name: "Undo change" }));
+  expect(await screen.findByRole("alertdialog", { name: "Undo this change?" })).toBeTruthy();
+});
+
+test("an undo out as the reader goes back and forward, answered after they scrolled, leaves the focus where it is (M5-polish 23.10)", async () => {
+  const user = userEvent.setup();
+  const { server, rework } = reworked();
+  server.revertsHeld = true;
+  const { router } = renderApp([historyPath, changesetPath(rework.id)], server.app);
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(reverts(server.sent)).toEqual(["REVERT rework"]));
+  await goneBackAndForth(router);
+  const busy = await screen.findByRole("button", { name: "Undoing…" });
+  act(() => busy.focus());
+
+  act(() => void window.dispatchEvent(new WheelEvent("wheel")));
+  act(() => server.release());
+
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Undone. See the undo"));
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Undo change" }));
+});
+
+test("a refusal of an undo clears what was found out of the one before it (M5-polish 24.9)", async () => {
+  const user = userEvent.setup();
+  let undos = 0;
+  let answer!: () => void;
+  const second = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const { server, rework } = reworked("admin", {
+    // The first undo's answer lost; the second refused, once the test says.
+    "POST /api/v0/changesets/*/revert": async () => {
+      undos += 1;
+      if (undos === 1) {
+        return problem(500, "internal");
+      }
+      await second;
+      return problem(409, "page.changeset_trimmed");
+    },
+  });
+  renderApp(changesetPath(rework.id), server.app);
+  await screen.findByRole("list", { name: "Nodes of this change" });
+  let read!: () => void;
+  server.historyWaits.changeset = new Promise<void>((resolve) => {
+    read = resolve;
+  });
+  const dialog = await opened(user);
+  await user.click(within(dialog).getByRole("button", { name: "Undo" }));
+  await waitFor(() =>
+    expect(screen.getByRole("status").textContent).toBe(
+      "Whether it was undone is not known: reading this change again…"
+    )
+  );
+
+  const again = await opened(user);
+  await user.click(within(again).getByRole("button", { name: "Undo" }));
+  await waitFor(() => expect(undos).toBe(2));
+  server.historyWaits.changeset = undefined;
+  act(() => read());
+  // The dialog open as the second is out, the page's line is hidden from the reader's tree meanwhile.
+  await waitFor(() =>
+    expect(screen.getByRole("status", { hidden: true }).textContent).toBe("It was not undone: you can try again.")
+  );
+  act(() => answer());
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toBe(
+    "Some or all of this change has been purged from the trash: it can no longer be undone."
+  );
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe(""));
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
+  expect(title().getAttribute("aria-describedby")).toBe(alert.id);
 });

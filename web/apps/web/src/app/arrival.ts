@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { useLocation, useNavigationType, type Location } from "react-router";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLocation, useNavigate, useNavigationType, type Location } from "react-router";
 
 import { watchReader } from "../pages/page/readers-input";
 
@@ -138,6 +138,39 @@ export function useArrivalWatch(): void {
     },
     []
   );
+}
+
+/**
+ * useRouteNotice is what the route's state says as the page mounts, of
+ * (a page's notice: a version restored, an item restored or a job started
+ * in the trash, a node of an item gone to its preview), for this mount to
+ * say; once it says something, the entry's state is replaced without keys,
+ * so that a reload, or Back and Forward to the entry, says it no more
+ * (M5-polish 21.3, 22.2). The arrival stays in the state, and the replace
+ * of the state alone is the same navigation (useArrivalWatch): the
+ * heading's focus is not offered again, and a later "Page not found" takes
+ * it from no one.
+ */
+export function useRouteNotice<T>(of: (state: unknown) => T | undefined, keys: readonly string[]): T | undefined {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [notice] = useState(() => of(location.state));
+  const at = useRef({ location, keys });
+  // Once: StrictMode's second mount finds the entry replaced already.
+  const taken = useRef(false);
+  useEffect(() => {
+    if (notice === undefined || taken.current) {
+      return;
+    }
+    taken.current = true;
+    const { location: entry, keys: taking } = at.current;
+    const state = typeof entry.state === "object" && entry.state !== null ? entry.state : {};
+    void navigate(
+      { pathname: entry.pathname, search: entry.search, hash: entry.hash },
+      { replace: true, state: Object.fromEntries(Object.entries(state).filter(([key]) => !taking.includes(key))) }
+    );
+  }, [notice, navigate]);
+  return notice;
 }
 
 /**

@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Navigate, useLocation, useParams } from "react-router";
+import { Navigate, useNavigation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
-import { arrived, useArrivalFocus } from "../../app/arrival";
+import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { canEditPageBody } from "../../app/source-permissions";
@@ -11,6 +11,7 @@ import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
+import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -53,12 +54,20 @@ export const PageLayout = observer(function PageLayout() {
   const { pageId = "" } = useParams();
   const { error, mutate } = useSWR(["pages", notebook.id], () => pages.load());
   const [last, setLast] = useState<TreeNode | undefined>(undefined);
-  const found = pages.tree === undefined ? undefined : pages.byId(pageId);
+  // A tree read before the notebook was left is read again before the page shows (M5-polish 27.2), saying
+  // nothing of a read that failed then: SWR keeps its error, no longer trying again once nothing showed the tree.
+  const [stale] = useState(() => (pages.confirmed ? undefined : error));
+  useEffect(() => {
+    if (!pages.confirmed && !pages.confirming()) {
+      void mutate();
+    }
+  }, [pages, mutate]);
+  const found = pages.tree === undefined || !pages.confirmed ? undefined : pages.byId(pageId);
   if (found !== undefined && found !== last) {
     setLast(found);
   }
-  if (pages.tree === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
+  if (pages.tree === undefined || !pages.confirmed) {
+    return <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />;
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
@@ -72,9 +81,11 @@ export const PageLayout = observer(function PageLayout() {
  * PageGone answers the page id the notebook's tree does not have, a page's
  * shell or a part of it: no page of the app's, unless this tab deleted it;
  * it then goes to the deleted subtree's parent, or the notebook's home
- * when that is gone too, arrived at. In place of the page this navigation
- * showed (replacing), "Page not found" takes the focus from no one
- * (M12/P2/S1, 18.6).
+ * when that is gone too, arrived at; unless the reader is going elsewhere
+ * meanwhile, which a replace would cancel (M5-polish 2): it then waits for
+ * that navigation, which takes the page away whether it ends or not. In
+ * place of the page this navigation showed (replacing), "Page not found"
+ * takes the focus from no one (M12/P2/S1, 18.6).
  */
 export const PageGone = observer(function PageGone({
   notebook,
@@ -87,9 +98,13 @@ export const PageGone = observer(function PageGone({
 }) {
   const { slug } = useWorkspace();
   const pages = usePageTree(notebook);
+  const navigation = useNavigation();
   const to = pages.removedTo(page);
   if (to === undefined) {
     return <NotFoundPage replacing={replacing} />;
+  }
+  if (navigation.state !== "idle") {
+    return <Loading />;
   }
   const home = `/${slug}/notebooks/${notebook.id}`;
   return (
@@ -143,7 +158,9 @@ const PageShell = observer(function PageShell({
   const { mutate } = useSWRConfig();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(page.name, notebook.name);
-  const restored = restoredOf(useLocation().state);
+  // Said as the page shows, once: an edit entered takes it away (M5-polish 21.3).
+  const notice = useRouteNotice(restoredOf, ["restored"]);
+  const [restored, setRestored] = useState(notice);
   // The status of a version restored describes the title, where the focus lands: it is heard as it comes.
   const restoredNote = useId();
   const [editing, setEditing] = useState<PageEditing | undefined>(undefined);
@@ -186,6 +203,7 @@ const PageShell = observer(function PageShell({
     opening.current = next;
     setEntering(true);
     setRefusal(undefined);
+    setRestored(undefined);
     roleRead.current = false;
     setIdleLeft(false);
     setToldLeft("");

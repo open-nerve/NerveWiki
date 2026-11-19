@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { createContext, use, useState } from "react";
+import { createContext, use, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -7,7 +7,7 @@ import useSWR from "swr";
 import { arrived } from "../../app/arrival";
 import { NotLoaded } from "../../app/not-loaded";
 import type { Notebook } from "../../services/notebook.service";
-import { useNotebooks, useStore } from "../../stores/context";
+import { useNotebooks, usePageTree, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
 import { NotebookPlaces } from "./notebook-places";
@@ -66,6 +66,7 @@ export const NotebookLayout = observer(function NotebookLayout() {
   }
   return (
     <NotebookContext value={notebook}>
+      <TreeWatch notebook={notebook} />
       {column !== null &&
         createPortal(
           <div key={notebook.id} className="space-y-4">
@@ -81,3 +82,13 @@ export const NotebookLayout = observer(function NotebookLayout() {
     </NotebookContext>
   );
 });
+
+/**
+ * TreeWatch has the notebook's tree watched while its shell shows (M5-polish 27.2): left, the events read it no
+ * more, and a page shown again waits for a read since. Its layout effect runs before the pages' effects.
+ */
+function TreeWatch({ notebook }: { notebook: Notebook }) {
+  const pages = usePageTree(notebook);
+  useLayoutEffect(() => pages.watch(), [pages]);
+  return null;
+}

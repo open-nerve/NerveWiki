@@ -69,8 +69,13 @@ export type Reverted =
  * changeset too large to undo here asks instead whether to undo it in the
  * background (M8/P4 design 4.2), the message kept: its job started closes
  * the dialog as an undo done does; refused, it says why as an undo does.
+ * An undo of the changeset out as it shows, sent before it did (the reader
+ * went back and forward), it follows as its own (M5-polish 23.10): Undo
+ * change busy, opening nothing, then what came of it said by the page,
+ * any refusal there, the title taking the focus as it would; an answer
+ * lost is found out by the newest undo its sender knew.
  */
-export function RevertDialog({
+export const RevertDialog = observer(function RevertDialog({
   notebook,
   changeset,
   heading,
@@ -87,23 +92,73 @@ export function RevertDialog({
   const [open, setOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const leaving = useRef(false);
-  const navigateNode = useNodeNavigate(usePageTree(notebook));
+  const pages = usePageTree(notebook);
+  const navigateNode = useNodeNavigate(pages);
   const trigger = useRef<HTMLButtonElement>(null);
   useFocusLeaving(trigger, () => heading.current?.focus());
   // Whether the dialog closes for the title to take the focus.
   const toTitle = useRef(false);
+  const out = pages.revertOut(changeset.id) !== undefined;
+  // The page's latest: the effect below calls them once the undo it follows is answered.
+  const page = useRef({ sent, done });
+  useEffect(() => {
+    page.current = { sent, done };
+  });
+  // An undo out as the page mounts is another mount's: followed as this one's (M5-polish 23.10). This mount's own
+  // goes out later, through its dialog.
+  useEffect(() => {
+    const following = pages.revertOut(changeset.id);
+    if (following === undefined) {
+      return undefined;
+    }
+    let showing = true;
+    page.current.sent();
+    // Undo change pressed again, busy, is no act of the reader's.
+    const reader = watchReader({ on: trigger.current });
+    void (async () => {
+      let reverted: Reverted;
+      let focus = true;
+      try {
+        const answer = await following.answer;
+        reverted =
+          answer.changed && answer.changeset_id !== null
+            ? { kind: "reverted", revert: answer.changeset_id }
+            : { kind: "unchanged" };
+        focus = answer.changed;
+      } catch (error) {
+        // Whatever the dialog would have kept in it is said by the page; Undo change shows it again, in the dialog.
+        reverted = lost(error) ? { kind: "unknown", before: following.before } : { kind: "refused", error };
+      }
+      if (showing) {
+        page.current.done(reverted);
+        const at = document.activeElement;
+        if (
+          focus &&
+          !reader.acted() &&
+          (at === null || at === document.body || at === trigger.current || at === heading.current)
+        ) {
+          heading.current?.focus();
+        }
+      }
+      reader.end();
+    })();
+    return () => {
+      showing = false;
+      reader.end();
+    };
+  }, [pages, changeset.id, heading]);
   return (
     <AlertDialog
       open={open}
       onOpenChange={(next) => {
-        if (!sending) {
+        if (!sending && !(next && out)) {
           setOpen(next);
         }
       }}
     >
       <AlertDialogTrigger asChild>
-        <Button ref={trigger} variant="outline">
-          {t("history.undo")}
+        <Button ref={trigger} variant="outline" aria-busy={out || undefined} aria-disabled={out || undefined}>
+          {t(out ? "history.reverting" : "history.undo")}
         </Button>
       </AlertDialogTrigger>
       <AlertDialogContent
@@ -140,7 +195,7 @@ export function RevertDialog({
       </AlertDialogContent>
     </AlertDialog>
   );
-}
+});
 
 /**
  * RevertForm is the dialog's content, mounted as it opens: what the revert
@@ -179,9 +234,12 @@ function RevertForm({
   const [conflict, setConflict] = useState<ApiError>();
   // Whether the undo was refused as too large to undo here: the dialog asks to undo it in the background.
   const [background, setBackground] = useState(false);
+  // Whether the undo in the background was refused as too large for it too: no undo is offered (M5-polish 24.2).
+  const [hopeless, setHopeless] = useState(false);
   // One undo a press: Undo stays where the focus is while it is out (aria-disabled), so it can be pressed again.
   const busy = useRef(false);
   const confirm = useRef<HTMLButtonElement>(null);
+  const cancel = useRef<HTMLButtonElement>(null);
   const { ref, banner, problemOf, submit } = useForm(["message"], {
     explain: (error) => {
       const source = sourceHistoryText(error, pages, openNode);
@@ -223,7 +281,7 @@ function RevertForm({
     setSending(true);
     sent();
     try {
-      const answer = await pages.revert(changeset.id, text);
+      const answer = await pages.revert(changeset.id, text, before);
       reread(true);
       close(
         answer.changed && answer.changeset_id !== null
@@ -263,6 +321,10 @@ function RevertForm({
     } catch (error) {
       if (!(await refused(error, reader))) {
         if (!lost(error)) {
+          // Too large for the background too, it never will start: only Cancel is left; the banner says why.
+          if (error instanceof ApiError && error.code === "page.revert_too_large") {
+            setHopeless(true);
+          }
           throw error;
         }
         close({ kind: "startLost", press }, !reader.acted());
@@ -304,7 +366,8 @@ function RevertForm({
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy.current) {
+    // Only Cancel offered, Enter in the message still submits the form: it sends nothing (M5-polish 24.2).
+    if (busy.current || hopeless) {
       return;
     }
     const text = message.trim();
@@ -350,17 +413,44 @@ function RevertForm({
         {/* Not disabled while it is out: a disabled button drops the focus (v0.1 design 13.2, item 12). The dialog
             does not close while it is out. */}
         <AlertDialogCancel asChild>
-          <Button variant="outline" aria-disabled={sending || undefined}>
+          <Button ref={cancel} variant="outline" aria-disabled={sending || undefined}>
             {t("page.cancel")}
           </Button>
         </AlertDialogCancel>
-        <Button ref={confirm} type="submit" aria-busy={sending || undefined} aria-disabled={sending || undefined}>
-          {background
-            ? t(sending ? "history.backgroundStarting" : "history.backgroundConfirm")
-            : t(sending ? "history.reverting" : "history.revertConfirm")}
-        </Button>
+        {!hopeless && (
+          <Confirm button={confirm} sending={sending} left={() => cancel.current?.focus()}>
+            {background
+              ? t(sending ? "history.backgroundStarting" : "history.backgroundConfirm")
+              : t(sending ? "history.reverting" : "history.revertConfirm")}
+          </Confirm>
+        )}
       </div>
     </form>
+  );
+}
+
+/**
+ * Confirm is the dialog's Undo, or Undo in the background, busy while it
+ * is out (sending). Gone with the focus, the undo too large for the
+ * background too, it calls left before it leaves the document (M5-polish
+ * 24.2): in a component of its own, so that it leaves with it.
+ */
+function Confirm({
+  button,
+  sending,
+  left,
+  children,
+}: {
+  button: RefObject<HTMLButtonElement | null>;
+  sending: boolean;
+  left: () => void;
+  children: string;
+}) {
+  useFocusLeaving(button, left);
+  return (
+    <Button ref={button} type="submit" aria-busy={sending || undefined} aria-disabled={sending || undefined}>
+      {children}
+    </Button>
   );
 }
 

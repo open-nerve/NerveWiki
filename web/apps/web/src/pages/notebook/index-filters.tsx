@@ -3,7 +3,7 @@ import { useId, useState } from "react";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
-import { NativeSelect } from "../../components/ui/native-select";
+import { NativeSelect, useChoice } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
 import type { IndexFilter, NotebookIndex } from "../../services/linking.service";
 import { useStore } from "../../stores/context";
@@ -27,6 +27,8 @@ export function IndexFilters({
   const { locale } = useStore().preferences;
   const typeId = useId();
   const tagId = useId();
+  // Stepped through with the keys, a type reads the index once the reader leaves it or presses Enter (M5-polish 26.5).
+  const type = useChoice(filter.type, (value) => choose({ ...filter, type: value }));
   const [tag, setTag] = useState(filter.tag);
   const [shown, setShown] = useState(filter.tag);
   if (shown !== filter.tag) {
@@ -45,12 +47,7 @@ export function IndexFilters({
     >
       <div className="max-w-full min-w-0 space-y-2">
         <Label htmlFor={typeId}>{t("index.type")}</Label>
-        <NativeSelect
-          id={typeId}
-          value={filter.type}
-          className="max-w-full"
-          onChange={(event) => choose({ ...filter, type: event.target.value })}
-        >
+        <NativeSelect id={typeId} {...type} className="max-w-full">
           <option value="">{t("index.allTypes")}</option>
           {outside && <option value={filter.type}>{label(filter.type)}</option>}
           {catalogue.map((option) => (

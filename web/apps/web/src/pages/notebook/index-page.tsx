@@ -11,6 +11,7 @@ import { errorText } from "../../app/problem-messages";
 import { onErrorRetry } from "../../app/retry";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
+import { ApiError } from "../../services/api";
 import type { IndexFilter, NotebookIndex } from "../../services/linking.service";
 import type { Notebook } from "../../services/notebook.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -197,6 +198,8 @@ const IndexResults = observer(function IndexResults({
     };
   }, [control, mutate]);
   const first = data?.[0];
+  // A filter the server does not take is read no better again: it says so, the filters' Clear filters above (35.3).
+  const refused = first === undefined && error instanceof ApiError && error.code === "validation_failed";
   useEffect(() => {
     if (first !== undefined && control.current.alive && store.auth.state.loginId === store.loginId) report(first);
   }, [first, report, control, store]);
@@ -282,7 +285,11 @@ const IndexResults = observer(function IndexResults({
         </p>
       )}
       {first === undefined ? (
-        <NotLoaded error={error} retry={() => void mutate()} />
+        refused ? (
+          <Alert>{t("index.badFilters")}</Alert>
+        ) : (
+          <NotLoaded error={error} retry={() => void mutate()} />
+        )
       ) : items.length === 0 ? (
         <p className="text-muted-foreground">
           {t(filter.type === "" && filter.tag === "" ? "index.none" : "index.empty")}

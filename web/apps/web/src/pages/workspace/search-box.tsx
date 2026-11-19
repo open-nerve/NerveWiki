@@ -153,7 +153,11 @@ export const SearchBox = observer(function SearchBox({ workspace }: { workspace:
           aria-invalid={problem !== undefined || undefined}
           aria-describedby={described}
           aria-keyshortcuts={mac ? "Meta+Shift+F" : "Control+Shift+F"}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            // What was said of the query before goes as it is edited (M5-polish 26.2).
+            setProblem(undefined);
+          }}
           onKeyDown={keepComposing}
         />
         <Button type="submit" variant="outline" size="icon" aria-label={t("search.submit")}>

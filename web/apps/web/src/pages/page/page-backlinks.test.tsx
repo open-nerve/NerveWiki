@@ -2,7 +2,9 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
-import { json, problem } from "../../test/fakes";
+import { eventHandlers } from "../../events/handlers";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
 import { panel, readAgain, section, shownPanel } from "../../test/page-panel";
 import { guide, install, linux, notes, pageNode, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
@@ -531,3 +533,45 @@ test("a first page of pages the tree does not have yet, with more to read, does 
 function failing(): Promise<Response> {
   return Promise.resolve(problem(500, "internal"));
 }
+
+test("a page deleted elsewhere as it shows reads none of its panels again as the deletion's links event names them: the tree, read first, takes it away (M5-polish 24.8)", async () => {
+  const events = eventServer();
+  const tree: { waits?: Promise<void> } = {};
+  const holder: { server?: ReturnType<typeof pageServer> } = {};
+  const server = pageServer({
+    answers: {
+      "GET /api/v0/events": events.answer,
+      [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
+        holder.server?.sent.push("GET nodes");
+        await tree.waits;
+        return json({ data: holder.server?.nodes ?? [] });
+      },
+    },
+  });
+  holder.server = server;
+  renderApp(pagePath(install.id), withEvents(server.app), { eventHandlers });
+  await screen.findByText("No page links here.");
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  const before = server.sent.length;
+  const panels = () => server.sent.slice(before).filter((each) => /^GET (backlinks|properties|view)/.test(each));
+  server.trashNode(install.id);
+  let open!: () => void;
+  tree.waits = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+
+  // The deletion's unit: its pages event, the tree changed, then its links event, naming no page (past MaxEventPages).
+  const ids = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id };
+  events.last().send("pages", { ...ids, tree: true, pages: [] });
+  events.last().send("links", { ...ids, pages: null, targets: null, aliases: false });
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(panels()).toEqual([]);
+
+  open();
+  await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(panels()).toEqual([]);
+});

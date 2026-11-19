@@ -30,14 +30,16 @@ type ComparisonProps = {
  * again, it says so, Try again aria-disabled, and gone with the focus, the
  * chunk loaded, gives it to the comparison. Its unchanged stretches are
  * folded; Show unchanged lines, which the keyboard reaches as it does not
- * a fold, shows them all.
+ * a fold, shows them all, offered where the comparison folds (M5-polish
+ * 21.7): not for texts the same, nor side by side; gone with the focus,
+ * it gives it to the comparison.
  */
 export function Comparison({ before, after, label, beforeName, afterName, shown }: ComparisonProps) {
-  const t = useT();
   const [diff, setDiff] = useState<Diff>();
   // Whether the chunk failed to load, and whether Try again loads it.
   const [failed, setFailed] = useState<"failed" | "loading">();
   const [unfolded, setUnfolded] = useState(false);
+  const [foldable, setFoldable] = useState(false);
   // Where the focus in a failure that goes, the chunk loaded, comes (v0.1 design 13.2, item 17): a group named as the
   // comparison is, not by all its text (M8/P1 fix check 4, R4-2).
   const root = useRef<HTMLDivElement>(null);
@@ -55,10 +57,15 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
           afterName={afterName}
           unfolded={unfolded}
           shown={shown}
+          foldable={setFoldable}
         />
-        <Button variant="outline" aria-pressed={unfolded} onClick={() => setUnfolded(!unfolded)}>
-          {t("editor.showUnchanged")}
-        </Button>
+        {foldable && (
+          <ShowUnchanged
+            unfolded={unfolded}
+            toggle={() => setUnfolded(!unfolded)}
+            left={() => root.current?.focus({ preventScroll: true })}
+          />
+        )}
       </>
     );
   } else if (failed === undefined) {
@@ -80,6 +87,24 @@ export function Comparison({ before, after, label, beforeName, afterName, shown 
     <div ref={root} tabIndex={-1} role="group" aria-label={label} className="space-y-2 outline-none">
       {shows}
     </div>
+  );
+}
+
+/**
+ * ShowUnchanged is Show unchanged lines, pressed while the unchanged
+ * stretches show (unfolded). Gone with the focus, the comparison no longer
+ * folding, it calls left before it leaves the document (M5-polish 21.7):
+ * in a component of its own, so that it leaves with it. The conflict's
+ * panel has it too.
+ */
+export function ShowUnchanged({ unfolded, toggle, left }: { unfolded: boolean; toggle: () => void; left: () => void }) {
+  const t = useT();
+  const own = useRef<HTMLButtonElement>(null);
+  useFocusLeaving(own, left);
+  return (
+    <Button ref={own} variant="outline" aria-pressed={unfolded} onClick={toggle}>
+      {t("editor.showUnchanged")}
+    </Button>
   );
 }
 

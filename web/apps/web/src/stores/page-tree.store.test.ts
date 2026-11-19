@@ -805,6 +805,31 @@ test("a node's restores go out one at a time, the second once the first settled;
   expect(pages.removedTo(notes.id)).toBeNull();
 });
 
+test("a restore out is the node's until it settles either way: restoreOut answers its answer, then none; a second one out after it is the node's (M5-polish 22.14)", async () => {
+  const { pages, sent, state } = store();
+  await pages.load();
+  state.nodes = [guide, install, linux];
+  await pages.remove(notes.id);
+  const first = held<unknown>();
+  state.writes.set(`restore ${notes.id}`, () => first.promise);
+  const tooLarge = new ApiError(422, { status: 422, code: "page.restore_too_large", title: "large" });
+  expect(pages.restoreOut(notes.id)).toBeUndefined();
+
+  const one = pages.restore(notes.id);
+  expect(pages.restoreOut(notes.id)).toBe(one);
+  expect(pages.restoreOut(guide.id)).toBeUndefined();
+  const two = pages.restore(notes.id);
+  expect(pages.restoreOut(notes.id)).toBe(two);
+  await vi.waitFor(() => expect(sent.at(-1)).toBe(`restore ${notes.id}`));
+  state.writes.delete(`restore ${notes.id}`);
+  first.reject(tooLarge);
+  await expect(one).rejects.toBe(tooLarge);
+  // The first settled: the second, still out, stays the node's.
+  expect(pages.restoreOut(notes.id)).toBe(two);
+  await two;
+  expect(pages.restoreOut(notes.id)).toBeUndefined();
+});
+
 test("the trash and an item of it are read for the notebook", async () => {
   const { pages, sent } = store();
 
@@ -852,6 +877,26 @@ test("a changeset's reverts go out one at a time, the second once the first sett
   expect(await two).toEqual({ changeset_id: "revert of c1", changed: true });
   expect(sent.slice(-6)).toEqual(["revert c1 Why", "list plans", "revert c2", "list plans", "revert c1", "list plans"]);
   expect(pages.removedTo(guide.id)).toBeUndefined();
+});
+
+test("a revert out is the changeset's until it settles either way, with the newest revert its sender knew (M5-polish 23.10)", async () => {
+  const { pages, state } = store();
+  await pages.load();
+  const first = held<unknown>();
+  state.writes.set("revert c1", () => first.promise);
+  const conflict = new ApiError(409, { status: 409, code: "page.revert_conflict", title: "conflict" });
+  expect(pages.revertOut("c1")).toBeUndefined();
+
+  const one = pages.revert("c1", undefined, "r0");
+  expect(pages.revertOut("c1")).toEqual({ answer: one, before: "r0" });
+  expect(pages.revertOut("c2")).toBeUndefined();
+  const two = pages.revert("c1", "Why");
+  expect(pages.revertOut("c1")).toEqual({ answer: two, before: undefined });
+  first.reject(conflict);
+  await expect(one).rejects.toBe(conflict);
+  expect(pages.revertOut("c1")?.answer).toBe(two);
+  expect(await two).toEqual({ changeset_id: "revert of c1", changed: true });
+  expect(pages.revertOut("c1")).toBeUndefined();
 });
 
 test("the pages a revert deleted, those of the tree before it its read after it has not, leave the tree as deleted ones, their shells going to the nearest ancestor still there; a later read that lists one alive takes it out", async () => {

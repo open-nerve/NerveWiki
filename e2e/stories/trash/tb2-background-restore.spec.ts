@@ -64,11 +64,22 @@ interface Big {
   photo: Asset;
 }
 
-/** Imports the vault into the notebook notebookId with pat, at its root after its pages, and returns Big there. */
-async function importBig(api: ApiClient, db: Database, pat: string, notebookId: string): Promise<Big> {
+/**
+ * Imports the vault into the notebook notebookId with pat, at its root after its pages, others, and returns Big there.
+ */
+async function importBig(
+  api: ApiClient,
+  db: Database,
+  pat: string,
+  notebookId: string,
+  others: readonly string[]
+): Promise<Big> {
   const imported = await endedJob(api, pat, (await startImport(api, pat, notebookId, vault())).id, jobTime);
   expect(imported.state).toBe("succeeded");
-  const ids = new Map([...(await idsOf(db, notebookId))].filter(([path]) => path === "Big" || path.startsWith("Big/")));
+  const all = await idsOf(db, notebookId);
+  // The notebook is Big's nodes and others: an import of more than Big/ would add some (P4B fix check 2).
+  expect([...all.keys()].filter((path) => path !== "Big" && !path.startsWith("Big/"))).toEqual(others);
+  const ids = new Map([...all].filter(([path]) => path === "Big" || path.startsWith("Big/")));
   const id = ids.get("Big") ?? "";
   const [photo] = await listAssets(api, pat, notebookId, id);
   if (photo === undefined) {
@@ -127,7 +138,7 @@ test("TB2 (API): an item of more pages than a restore brings back is refused as 
 }, testInfo) => {
   const { adminId, pat, workspace } = await newTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const big = await importBig(api, db, pat, notebook.id);
+  const big = await importBig(api, db, pat, notebook.id, []);
   expect((await deleteNode(api, pat, big.id)).response.status).toBe(204);
   await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 }, { alone: true });
 
@@ -175,25 +186,40 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
   test.slow();
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const index = await createPage(api, pat, notebook.id, "Index");
-  const big = await importBig(api, db, pat, notebook.id);
+  await createPage(api, pat, notebook.id, "Index");
+  const big = await importBig(api, db, pat, notebook.id, ["Index"]);
   const page = await signedInPage(tokens);
   const main = page.getByRole("main");
-  // Big deleted from the tree as another page shows: shown, its own panels would be read again as the backlinks of
-  // its hundred notes change (a links event naming no page, past MaxEventPages), and answer 404 (P4B fix check F-1).
-  await goto(page, wikiPagePath(workspace.slug, notebook.id, index.id));
+  // Big deleted from the tree as its own page shows, its panels read: the deletion's links event names no page (past
+  // MaxEventPages). Its answer is held until the tree read its pages event asks for has answered, the events coming
+  // first as they may on a loaded runner: the panels of Big, gone with the tree, are not read again (M5-polish 24.8).
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, big.id));
+  await expect(pageHeading(page, "Big")).toBeVisible();
+  await expect(main.getByText("No page links here.", { exact: true })).toBeVisible();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index", "Big"]);
+  let treeRead: Promise<unknown> | undefined;
+  await page.route(`**/api/v0/nodes/${big.id}`, async (route) => {
+    if (route.request().method() !== "DELETE") {
+      await route.fallback();
+      return;
+    }
+    const response = await route.fetch();
+    await treeRead;
+    await route.fulfill({ response });
+  });
 
   await choosePageAction(page, "Plans", "Big", "Delete");
   const deletion = page.getByRole("alertdialog", { name: "Delete Big?", exact: true });
   await expect(deletion).toContainText(
     `Its subpages go with it: ${String(notes)}. The attachments under it go with it: 1.`
   );
+  // The deletion's answer held, the store reads no tree after it: the first read now is the one an event asks for.
+  treeRead = answerTo(page, "GET", `/api/v0/notebooks/${notebook.id}/nodes`);
   const deleted = answerTo(page, "DELETE", `/api/v0/nodes/${big.id}`);
   await deletion.getByRole("button", { name: "Delete", exact: true }).click();
   expect((await deleted).status()).toBe(204);
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index"]);
-  await expect(pageHeading(page, "Index")).toBeVisible();
+  await expect(pageHeading(page, "Plans")).toBeFocused();
   await expectTrashRoot(db, big.id, { pages: notes + 1, assets: 1, height: 2 }, { alone: true });
 
   // Too large to restore here: the trash says so, and offers to restore it in the background.

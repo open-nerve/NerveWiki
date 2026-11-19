@@ -180,6 +180,14 @@ test("the unchanged stretches are folded; Show unchanged lines, which the keyboa
   await waitFor(() => expect(region.querySelector(".cm-collapsedLines")).toBeNull());
 });
 
+test("Show unchanged lines is not offered for a conflict of line breaks alone, which folds nothing (M5-polish 21.7)", async () => {
+  const { region } = await inConflict(pageServer(), "Guide\r\nmine");
+
+  expect(await within(region).findByText("Only the line breaks or the byte order mark differ.")).toBeTruthy();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(within(region).queryByRole("button", { name: "Show unchanged lines" })).toBeNull();
+});
+
 test("Stay, while the conflict is shown, takes the focus back to the conflict", async () => {
   const { user, region } = await inConflict();
 

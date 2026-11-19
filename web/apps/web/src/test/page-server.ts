@@ -146,7 +146,8 @@ type PageServerOptions = {
  * name), a file over the instance's asset_max_bytes refused (413
  * payload_too_large), a name a sibling has 409 page.title_taken. While
  * uploadsHeld is set, an upload is answered once released; while
- * viewsHeld is, a reading view.
+ * viewsHeld is, a reading view; while nodesHeld is, the tree, as it was
+ * when asked for.
  *
  * A deletion puts the node and the nodes under it in the trash (M8/P2),
  * which trash-server.ts answers. A trashed page's versions and their
@@ -180,6 +181,8 @@ export function pageServer({
     sourceAssetBytes: new Map<string, string>(),
     sessions: new Map<string, FakeSession>(),
     nodesDown: false,
+    /** Whether the tree's reads wait to be released, each answering the tree as it was when asked for. */
+    nodesHeld: false,
     viewsDown: false,
     notebookGone: false,
     writesDown: false,
@@ -214,6 +217,8 @@ export function pageServer({
     restoresBusy: false,
     /** Whether restores wait to be released. */
     restoresHeld: false,
+    /** Whether deletions wait to be released, once logged. */
+    deletesHeld: false,
     /** Whether the trash's list and its items cannot be read. */
     trashDown: false,
     /** What the trash's list reads wait for while a test holds them: a first page's, a next page's. */
@@ -248,7 +253,7 @@ export function pageServer({
       server.changesets = [...server.changesets, changeset];
       return changeset;
     },
-    /** release answers the uploads, creations, views, restores and reverts held. */
+    /** release answers the uploads, creations, deletions, views, restores and reverts held. */
     release(): void {
       const held = server.held;
       server.held = [];
@@ -317,12 +322,16 @@ export function pageServer({
   };
   const app = signedInApp({
     "GET /api/v0/workspaces/lab/notebooks": () => json({ data: [server.notebook, ...server.others] }),
-    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: () => {
+    [`GET /api/v0/notebooks/${notebookJSON.id}/nodes`]: async () => {
       server.sent.push("GET nodes");
       if (server.notebookGone) {
         return problem(404, "notebook.not_found");
       }
-      return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: server.nodes });
+      const asked = server.nodes;
+      if (server.nodesHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
+      return server.nodesDown ? Promise.reject(new TypeError("offline")) : json({ data: asked });
     },
     "GET /api/v0/pages/*/view": async (request) => {
       const id = new URL(request.url).pathname.split("/")[4] ?? "";
@@ -499,6 +508,7 @@ function writeRoutes(
     sent: string[];
     createRequests: Request[];
     createsHeld: boolean;
+    deletesHeld: boolean;
     held: (() => void)[];
     sessions: Map<string, FakeSession>;
     trashNode: (id: string) => FakeTrashItem;
@@ -648,9 +658,12 @@ function writeRoutes(
       place(moved, move.after_id);
       return json(moved);
     },
-    "DELETE /api/v0/nodes/*": (request) => {
+    "DELETE /api/v0/nodes/*": async (request) => {
       const node = server.nodes.find((each) => each.id === idOf(request));
       server.sent.push(`DELETE ${node?.name}`);
+      if (server.deletesHeld) {
+        await new Promise<void>((resolve) => server.held.push(resolve));
+      }
       if (node === undefined) {
         return problem(404, "page.not_found");
       }

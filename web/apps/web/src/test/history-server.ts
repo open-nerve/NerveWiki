@@ -269,8 +269,9 @@ export function historyRoutes(server: HistoryState, role: NotebookRole): Record<
       ? undefined
       : (server.nodes.find((node) => sameId(node.id, id)) ??
         [...server.trash.values()].flatMap((item) => item.members).find((node) => sameId(node.id, id)));
+  // In either case, as the server parses an id (a UUID).
   const changesetOf = (id: string) =>
-    server.notebookGone ? undefined : server.changesets.find((changeset) => changeset.id === id);
+    server.notebookGone ? undefined : server.changesets.find((changeset) => sameId(changeset.id, id));
   const labelOf = (id: string) => changesetOf(id)?.label ?? id;
   // Its changes as the server answers them now, by node id: those of nodes the purge took left out.
   const changesOf = (changeset: FakeChangeset): ChangesetChange[] =>

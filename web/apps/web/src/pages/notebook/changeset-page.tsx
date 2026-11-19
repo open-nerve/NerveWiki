@@ -67,7 +67,10 @@ export const ChangesetPage = observer(function ChangesetPage() {
   if (!idPattern.test(changesetId)) {
     return <NotFoundPage />;
   }
-  return <ChangesetShell key={changesetId} notebook={notebook} id={changesetId} />;
+  // As the server writes it, which keys what is read of it: an undo's reads, by the id it answers, reach these
+  // (M5-polish 23.19).
+  const id = changesetId.toLowerCase();
+  return <ChangesetShell key={id} notebook={notebook} id={id} />;
 });
 
 /**
@@ -184,6 +187,8 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
         setSaid({ kind: "unchanged" });
         return;
       case "refused":
+        // What was found out of an undo before it goes: the refusal is what is said now (M5-polish 24.9).
+        setSaid(undefined);
         setRefused(reverted.error);
         return;
       case "unknown":

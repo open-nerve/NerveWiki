@@ -149,16 +149,20 @@ const trashItemJSON = {
 
 test("a node deleted with a page above it goes to its item's root's preview, the address replaced", async () => {
   const { server } = trashed();
-  const { router } = renderApp(previewPath(linux.id), server.app);
+  const { router } = renderApp([trashPath, previewPath(linux.id)], server.app);
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   expect(router.state.location.pathname).toBe(previewPath(install.id));
-  expect(router.state.historyAction).toBe("REPLACE");
   // It says why, its title taking the focus (M8/P2B review A-M1).
   expect(screen.getByRole("alert").textContent).toBe(
     "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
   );
   await waitFor(() => expect(document.activeElement).toBe(heading));
+  // Replaced: Back leads to where it came from. The route notice taken replaces the entry too (M5-polish 22.2), so
+  // that how the last navigation went says nothing of it.
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  expect(await screen.findByRole("list", { name: "Trash" })).toBeTruthy();
 });
 
 // M8/P2B review B-3 (v0.1 design 13.2, item 7).
@@ -676,4 +680,293 @@ test("the item and its view are read again as the tree changes, and on each conn
   events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
 
   await waitFor(() => expect(reads()).toHaveLength(6));
+});
+
+test("a node's preview whose address has its id in capitals, restored elsewhere, leads to it", async () => {
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  renderApp(previewPath(install.id.toUpperCase()), server.app);
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  // Once the tree is read: the node is found by the server's id (M5-polish 23.19).
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("link", { name: "Open it" }).getAttribute("href")).toBe(pagePath(install.id));
+  expect(screen.queryByRole("heading", { level: 1, name: "Page not found" })).toBeNull();
+});
+
+test("a restore from the preview out as the reader goes back and forward is followed by the preview shown again: its Restore busy, pressed it sends nothing; answered, the trash says where the item went, its title taking the focus (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(1));
+
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  expect([restore.getAttribute("aria-busy"), restore.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+  await user.click(restore);
+  act(() => server.release());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(screen.getByRole("status").textContent).toBe("Restored “Install” under “Guide”. Open");
+  expect(server.sent.filter((each) => each === "RESTORE Install")).toHaveLength(1);
+});
+
+test("a restore from the preview refused as the reader went back and forward is said on the preview shown again (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server, item } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  item.history = 400_001;
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(1));
+  await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  act(() => server.release());
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "“Install” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: 2, attachments: 0."
+  );
+  expect(await screen.findByRole("button", { name: "Restore “Install” in the background (From: Guide)" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(previewPath(install.id));
+});
+
+test("a preview shown after its restore answered follows nothing: it says the item is no longer in the trash (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  const before = server.sent.length;
+
+  act(() => server.release());
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET trash"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(() => router.navigate(1));
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  expect(router.state.location.pathname).toBe(previewPath(install.id));
+});
+
+test("a restore from the preview refused as deleted again with a page above it goes to that item's preview, which says why once (M5-polish 22.19)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  let open!: () => void;
+  server.trashWaits.item = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const inserted: string[] = [];
+  const watching = new MutationObserver((records) => {
+    for (const node of records.flatMap((record) => [...record.addedNodes])) {
+      if (node instanceof HTMLElement) {
+        const alerts = node.matches("[role=alert]") ? [node] : [...node.querySelectorAll("[role=alert]")];
+        inserted.push(...alerts.map((alert) => alert.textContent ?? ""));
+      }
+    }
+  });
+  watching.observe(document.body, { childList: true, subtree: true });
+
+  await user.click(restore);
+  // Refused, as the item's read again is held.
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  server.trashWaits.item = undefined;
+  act(() => open());
+  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  watching.disconnect();
+  expect(inserted).toEqual([
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.",
+  ]);
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  // In place of the item's own preview, which would only send it there again: Back leads to where it came from.
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  expect(await screen.findByRole("list", { name: "Trash" })).toBeTruthy();
+});
+
+test("an item back in the trash, its notice holding the focus, takes it to its title (M5-polish 22.19)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  const tree = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] };
+  act(() => (screen.getByRole("button", { name: "Restore “Install” (From: Guide)" }) as HTMLElement).focus());
+  server.restoreElsewhere(install.id);
+  events.last().send("pages", tree);
+  const gone = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  await waitFor(() => expect(document.activeElement).toBe(gone));
+
+  // Deleted again: the item comes back in place of the notice, which held the focus.
+  server.trashNode(install.id);
+  await act(() => vi.advanceTimersByTimeAsync(5_100));
+  events.last().send("pages", tree);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("a notice shown first, holding the focus, gives it to the item's title as the item comes back to the trash (M5-polish 22.19)", async () => {
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  server.restoreElsewhere(install.id);
+  renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // The notice's title, which the reader has: no item left with the focus before it.
+  act(() => screen.getByRole("heading", { level: 1 }).focus());
+
+  server.trashNode(install.id);
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("the reader on the preview's breadcrumb as the item is restored elsewhere: the notice's title takes the focus (M5-polish 22.19)", async () => {
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  const trash = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Trash" });
+  act(() => trash.focus());
+
+  server.restoreElsewhere(install.id);
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" })));
+});
+
+test("a restore from the trash's list refused as deleted again with a page above it, followed by the item's preview opened before the item is read, goes to that item's preview at once (M5-polish 22.19)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp(trashPath, server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  let open!: () => void;
+  server.trashWaits.item = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  await act(() => router.navigate(previewPath(install.id)));
+  await waitFor(() => expect(server.sent).toContain("GET trash item Install"));
+
+  // Refused before the item's read answers: the refusal needs no item to lead to its root's.
+  act(() => server.release());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(previewPath(guide.id)));
+  server.trashWaits.item = undefined;
+  act(() => open());
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
+});
+
+test("a refusal on the preview is said below its breadcrumb (M5-polish 22.19)", async () => {
+  const user = userEvent.setup();
+  const { server, item } = trashed();
+  renderApp(previewPath(install.id), server.app);
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  item.history = 400_001;
+
+  await user.click(restore);
+
+  const alert = await screen.findByRole("alert");
+  const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
+  expect(crumbs.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+});
+
+test("the trash arrived at from a restore in the preview says where it went once: forward to it again, it says nothing (M5-polish 22.2)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  const { router } = renderApp(previewPath(install.id), server.app);
+
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Trash" });
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Restored “Install” under “Guide”. Open"));
+  await waitFor(() => expect(router.state.location.state).toEqual({ arrived: true }));
+  await act(() => router.navigate(-1));
+  await screen.findByText("This is no longer in the trash.");
+  await act(() => router.navigate(1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
+test("an item's preview gone to from a node deleted with it since keeps saying so as the item leaves the trash and comes back (M5-polish 22.2)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  const { router } = renderApp(previewPath(linux.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  const merged =
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.";
+  expect(screen.getByRole("alert").textContent).toBe(merged);
+  await waitFor(() => expect(router.state.location.state).toEqual({}));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  const tree = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] };
+
+  // Restored elsewhere, then deleted again: the item's view mounts once more, the route notice taken long since.
+  server.restoreElsewhere(install.id);
+  await act(() => vi.advanceTimersByTimeAsync(5_100));
+  events.last().send("pages", tree);
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  server.trashNode(install.id);
+  await act(() => vi.advanceTimersByTimeAsync(5_100));
+  events.last().send("pages", tree);
+
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  expect(screen.queryByText(merged)).not.toBeNull();
+});
+
+test("an item's preview gone to from a node deleted with it since says so once: back to it, it says nothing (M5-polish 22.2)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  const { router } = renderApp(previewPath(install.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const merged =
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.";
+  expect(screen.getByRole("alert").textContent).toBe(merged);
+  await waitFor(() => expect(router.state.location.state).toEqual({}));
+
+  await user.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Trash" }));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByText(merged)).toBeNull();
 });

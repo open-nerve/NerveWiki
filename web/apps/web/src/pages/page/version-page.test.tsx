@@ -585,3 +585,125 @@ test("a version's view read again keeps the focus on its link", async () => {
   expect(within(article).getByRole("link", { name: "x" })).toBe(link);
   expect(document.activeElement).toBe(link);
 });
+
+test("back and forward between two versions of a page say nothing of what a restore of the other said (M5-polish 21.10)", async () => {
+  const user = userEvent.setup();
+  const server = installed();
+  server.contents.set(install.id, { content: "- [ ] one\n- [x] two\n- [ ] three\n", revision: 6 });
+  const { router } = renderApp([versionPath(install.id, 6), versionPath(install.id, 4)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  // Pressed once it may be: while the comparison loads, it is aria-disabled and does nothing.
+  const confirm = within(dialog).getByRole("button", { name: "Restore" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
+  await user.click(confirm);
+  const said = "The page is the same as this version: nothing changed.";
+  expect(await screen.findByText(said)).toBeTruthy();
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Version 6" });
+  expect(screen.queryByText(said)).toBeNull();
+  await act(() => router.navigate(1));
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  expect(screen.queryByText(said)).toBeNull();
+});
+
+test("what a restore of a version said is not said while another version of the page loads (M5-polish 21.10)", async () => {
+  const user = userEvent.setup();
+  let open!: () => void;
+  const loaded = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const server = installed("admin", {
+    // Version 6 answers once the test says.
+    "GET /api/v0/pages/*/versions/*": async (request) => {
+      const revision = Number(new URL(request.url).pathname.split("/").at(-1));
+      if (revision === 6) {
+        await loaded;
+      }
+      const found = server.versions.get(install.id)?.find((each) => each.revision === revision);
+      return found === undefined ? problem(404, "page.version_not_found") : json(found);
+    },
+  });
+  server.contents.set(install.id, { content: "- [ ] one\n- [x] two\n- [ ] three\n", revision: 6 });
+  const { router } = renderApp([versionPath(install.id, 6), versionPath(install.id, 4)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  const confirm = within(dialog).getByRole("button", { name: "Restore" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
+  await user.click(confirm);
+  const said = "The page is the same as this version: nothing changed.";
+  expect(await screen.findByText(said)).toBeTruthy();
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Version 6" });
+
+  expect(screen.queryByText(said)).toBeNull();
+  act(() => open());
+  await screen.findByRole("article", { name: "Version 6" });
+  expect(screen.queryByText(said)).toBeNull();
+});
+
+test("a version of a page deleted elsewhere while its notebook was left shows none of itself when gone back to: the tree is read first, and the page is not found (M5-polish 27.2)", async () => {
+  const server = installed();
+  const { router } = renderApp(versionPath(install.id, 4), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(screen.queryByRole("navigation", { name: "Pages of Plans" })).toBeNull());
+  // Deleted elsewhere: no event reads the tree, no shell of the notebook showing.
+  server.trashNode(install.id);
+  const before = server.sent.length;
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+
+  expect(await screen.findByRole("heading", { level: 1, name: "Page not found" })).toBeTruthy();
+  const sent = server.sent.slice(before);
+  expect(sent.filter((each) => /^GET (version|versions|view|content|properties|backlinks|assets) /.test(each))).toEqual(
+    []
+  );
+  expect(sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
+test("a version gone back to after a tree read failed as its notebook was left says nothing of that failure while its tree is read again (M5-polish 27.2)", async () => {
+  const events = eventServer();
+  const server = installed("admin", { "GET /api/v0/events": events.answer });
+  const { router } = renderApp(versionPath(install.id, 4), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  // A blip: the tree read an event has fails, SWR to try again in 5 seconds, which the notebook left stops.
+  server.nodesDown = true;
+  const reads = () => server.sent.filter((each) => each === "GET nodes").length;
+  const count = reads();
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+  await waitFor(() => expect(reads()).toBe(count + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(() => router.navigate("/lab"));
+  await waitFor(() => expect(screen.queryByRole("navigation", { name: "Pages of Plans" })).toBeNull());
+  server.nodesDown = false;
+  server.nodesHeld = true;
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+  await waitFor(() => expect(server.held).toHaveLength(1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Try again" })).toBeNull();
+  act(() => server.release());
+  expect(await screen.findByRole("heading", { level: 1, name: "Version 4" })).toBeTruthy();
+});
+
+test("a version gone to within its notebook whose tree could not be read says why at once, with Try again (M5-polish 27.2)", async () => {
+  const server = installed();
+  server.nodesDown = true;
+  const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, server.app);
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+
+  // The failure is the notebook's own, as it shows: not one from before it was left.
+  expect(await within(screen.getByRole("main")).findByRole("button", { name: "Try again" })).toBeTruthy();
+  expect(server.sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});

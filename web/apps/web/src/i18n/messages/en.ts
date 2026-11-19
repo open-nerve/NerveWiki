@@ -325,6 +325,8 @@ export const en = {
   "index.typeCount": "{type} ({count})",
   "index.applyTag": "Apply tag",
   "index.clearFilters": "Clear filters",
+  "index.badFilters":
+    "These filters cannot be read: the address has one this directory does not take. Clear the filters to see every page.",
   "index.partialTypes": "Only some filterable types are shown.",
   "index.longTypes": "{count} pages have type names too long to filter by.",
   "index.results": "Directory results",

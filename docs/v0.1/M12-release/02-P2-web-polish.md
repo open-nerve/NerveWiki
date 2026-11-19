@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P2 网页的打磨（六个 Step：S1 焦点与共用组件；S2 文字；S3 375 px、`bdi` 与对比度；S4 阅读视图；S5 编辑器、附件、上传、粘贴与导入导出；S6 版本、回收站、历史、目录、后台任务与搜索的网页） |
-| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订；2026-11-19 照 S4、S5 的实施与审查修订） |
-| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；S4 已合并 `ad5d78b5`，[S4 的审查记录](reviews/P2-S4-reading-view-review.md)；S5 已合并 `22e9f2bd`，[S5 的审查记录](reviews/P2-S5-editor-assets-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.5；S6 未开工） |
+| 日期 | 2026-11-16（初稿；同日第一次修订：三份审查之后，照主持者的修订说明改，并删短；同日第二次修订：修订核对第 1 轮之后；同日第三次修订：修订核对第 2 轮之后；同日照 S1 的实施与审查修订；2026-11-18 照 S2、S3 的实施与审查修订；2026-11-19 照 S4、S5 的实施与审查修订；2026-11-20 照 S6 的实施与审查修订） |
+| 状态 | 进行中（设计已审查：三份设计审查、三次修订与三轮修订核对之后，[审查记录](reviews/P2-design-review.md)；S1 已合并 `d1ade2ed`，[S1 的审查记录](reviews/P2-S1-focus-and-shared-review.md)；S2 已合并 `6505c3bf`，[S2 的审查记录](reviews/P2-S2-text-review.md)；S3 已合并 `e639b9f7`，[S3 的审查记录](reviews/P2-S3-narrow-bdi-contrast-review.md)；S4 已合并 `ad5d78b5`，[S4 的审查记录](reviews/P2-S4-reading-view-review.md)；S5 已合并 `22e9f2bd`，[S5 的审查记录](reviews/P2-S5-editor-assets-review.md)；S6 已合并 `（待填：合并号）`，[S6 的审查记录](reviews/P2-S6-versions-trash-history-search-review.md)；实施与审查之后与代码不同之处照实改在各节，结果在 10.1–10.6） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 4.1、4.5、第 3 节第 3、11 条、第 7 节 P2 一行与"次序与并行""移交的落实""总体设计的修订"第 11、17 条、9.1、9.3、9.6、9.7、第 10 节、第 11 节决定 312、331、附录 A；[M12 设计审查](reviews/M12-design-review.md)的 C-M1、C-M7、C-N5；[P1 设计](01-P1-foundation.md) 3.17（e2e 换文档的帮手）；[移交](handoffs/)：M5-polish 第 2–49 条里附录 A 分给 P2 的子项，M8-history 第 4 条（界面的一句），M4-performance 第 13 条（每小时整篇替换）；[v0.1 总体设计](../v0.1-design.md) 13.2 第 1、12、23、25、26 条，13.4 第 1、3 条；[M11/P1](../M11-upgrade/01-P1-freeze-start-rollback.md) 第 4 节（网页 Phase 的写法） |
 | 代码位置的写法 | 同 00 号文档：前端写作 `W/pages/page/reading-view.tsx:138`（`W/` 是 `web/apps/web/src/`）；模块写作 `wiki/domain/template-en-agents.md:33`（`server/internal/modules/` 之下）；e2e 写作 `e2e/stories/links/l1-links.spec.ts:219`；其余写仓库根起的路径。代码的行号在 `86565dd6` 上读过；`main` 的 `48bbfc99`（P3 的设计，决定 361–377）与 `86565dd6`、`194ca350` 之间只改了文档，代码相同，初稿照 `194ca350` 读的代码行号照旧。`web/` 与 `wiki/domain/` 从 I3 的基点 `5e8af5b5` 起没有改动（`git diff --stat` 为空），I3 引的网页行号照旧。00 号文档的行号是 `48bbfc99` 的（已含 P3 的修订） |
 | 工作笔记 | 设计只读，不改仓库；设计阶段只跑过一个探针（15.2，三种引擎，`m12/p2-probe-15.2/`）；15.2 的改法照修订核对 C 在三种引擎里跑过的探针定（`m12/p2-check1-c/`）。逐项的核对分 Step 做：S1、S2、S3、S5、S6 各由一位只读的助手对着 `194ca350` 逐项读代码、写现状、改法与测试，设计者抽查、统一取舍之后合进本文（底稿不进仓库）；S4 的 spec 由设计者自己写。凡是读代码推出、没有在浏览器里看过的，标"推断"；要在浏览器里先探查的（8.1、33.1、48 在 WebKit 上的滚动锚定、17.8 的无头全屏），写成 Step 的第一个动作 |
@@ -2772,7 +2772,7 @@ S4 重写 `W/pages/page/reading-view.tsx:133-232` 的 layout effect，做 17.1�
 | 12.12 | A | `W/stores/page-tree.ts` | vitest | `W/stores/page-tree.test.ts` | 小 |
 | 21.2 | B | `W/pages/page/version-page.tsx` | vitest | `W/pages/page/version-restore.test.tsx` | 小 |
 | 21.3 | B | `W/pages/page/page-layout.tsx`、`W/app/arrival.ts`（新帮手） | vitest | `W/pages/page/version-restore.test.tsx`、`W/app/arrival.test.tsx` | 小 |
-| 21.7 | A | `W/pages/page/comparison.tsx`、`W/editor/text-diff.tsx` | vitest | `W/pages/page/version-page.test.tsx` | 小 |
+| 21.7 | A | `W/pages/page/comparison.tsx`、`W/editor/text-diff.tsx` | vitest | `W/pages/page/version-restore.test.tsx`、`W/pages/page/conflict.test.tsx`（实际，10.6） | 小 |
 | 21.10 | B | `W/pages/page/version-page.tsx` | vitest | `W/pages/page/version-page.test.tsx` | 小 |
 | 22.2 | B | `W/pages/notebook/trash-page.tsx`、`trash-preview.tsx`（用 21.3 的帮手） | vitest | `W/pages/notebook/trash-preview.test.tsx` | 小 |
 | 22.14 | A | `W/stores/page-tree.store.ts`、`W/pages/notebook/trash-preview.tsx`、`trash-row.tsx` | vitest | `trash-preview.test.tsx`、`trash-page.test.tsx`、`W/stores/page-tree.store.test.ts` | 中 |
@@ -2836,7 +2836,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 
 其余各项不碰 `PageTreeStore`，与结论无关。
 
-**附带的观察，给 P4/S2**（推断，没有量）：`W/pages/notebook/move-page-dialog.tsx:120` 对树里每一页调 `canHold`，每次都重算被移的页的子树与高度（`page-tree.ts:132-137`），"深"的形状里移一个 1,000 页的文件夹约 10⁷ 量级的步数；`W/pages/notebook/page-tree-item.tsx:274` 每一行渲染都算一次 `subtreeOf`。不在三条界线里，量的时候可以顺手看"移到……"对话框打开的时间。
+**附带的观察，给 P4/S2**（推断，没有量）：`W/pages/notebook/move-page-dialog.tsx:120` 对树里每一页调 `canHold`，每次都重算被移的页的子树与高度（`page-tree.ts:132-137`），"深"的形状里移一个 1,000 页的文件夹约 10⁷ 量级的步数；`W/pages/notebook/page-tree-item.tsx:274` 每一行渲染都算一次 `subtreeOf`。不在三条界线里，量的时候可以顺手看"移到……"对话框打开的时间。M12/P2/S6 量了：深的形状里约 1.0 秒；修复第 1 轮改了"移到……"：`page-tree.ts` 的 `holdersOf` 在循环外算一次子树与高度，`canHold` 不改；中位数 1,008 → 190 ms（决定 625，10.6）。
 
 #### 4.6.7 逐项
 
@@ -2851,7 +2851,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   - `new-page.ts`：每次提交之后的 effect 把 `useNavigation().state !== "idle"` 记进 ref `navigating`；`create` 的条件（`:75`）加 `&& !navigating.current`。
 - **测试**（vitest，`W/pages/notebook/page-tree-writes.test.tsx`，两格）：
   - 准备：`renderApp(pagePath(linux.id), server.app, { routes: [...routes, { path: "/elsewhere", loader: () => gate.promise, Component: … }] })`：导航到它时一直是 `"loading"`，直到 `gate.open()`。
-  - `"a page deleted while the reader goes elsewhere leaves them going there: its shell does not send them to its parent"`：`server.deletesHeld = true`；树的菜单删除 Install 并确认；等 `"DELETE Install"`；`void act(() => router.navigate("/elsewhere"))`；`server.release()`；等删除之后的 `GET nodes`；`gate.open()`；地址是 `/elsewhere`。没修的代码上：`<Navigate replace>` 取消了挂起的导航，地址停在 `pagePath(guide.id)`，`waitFor` 超时。
+  - `"a page deleted while the reader goes elsewhere leaves them going there: its shell does not send them to its parent"`：`server.deletesHeld = true`；树的菜单删除 Install 并确认；等 `"DELETE Install"`；`act(() => void router.navigate("/elsewhere"))`（实际：不被等待的 `act` 在 vitest 里报 `console.error`，10.6）；`server.release()`；等删除之后的 `GET nodes`；`gate.open()`；地址是 `/elsewhere`。没修的代码上：`<Navigate replace>` 取消了挂起的导航，地址停在 `pagePath(guide.id)`，`waitFor` 超时。
   - `"a page created while the reader goes elsewhere leaves them going there"`：`server.createsHeld = true`；按树上的"New page"；导航到 `/elsewhere`；放开创建；`gate.open()`；地址是 `/elsewhere`。没修的代码上：挂起的导航还没提交，`at.current === from`，跳到新页，同一个断言失败。
   - 对照：`:269`、`:61` 两格照旧通过。
 - **变异**：
@@ -2902,7 +2902,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 - **测试**（vitest）：
   - `W/pages/page/version-restore.test.tsx` `"the status of a version restored is said as the page shows, once: back and forward say it no more, nor does the entry, which a reload reads; an edit entered takes it away"`：照 `:106` 还原到页；`"Restored version 4."` 在、`router.state.location.state` 等于 `{ arrived: true }`；后退、前进，先等 `h1` "Install"，再断言那一句不在。另一分支：按"Edit"进入编辑再离开，那一句不在。没修的代码上：state 是 `{ arrived: true, restored: 4 }`，先失败；后退再前进之后那一句又在。
   - `W/app/arrival.test.tsx` `"a page whose route notice was taken, deleted elsewhere later, gives way to Page not found, which takes the focus only from no one"`：到达带 `restored` 的页，焦点放到树的一个链接上，页被删（`server.trashNode` 加事件或重读），"Page not found"挂上，焦点仍在那个链接上。它钉住 28.4 的规则对这次 `replace` 成立。
-- **变异**：不换掉条目：state 的断言失败；`enter` 里不清：编辑那一分支失败；28.4 的同路径 `replace` 规则去掉（4.1 的变异）：arrival 那一格也失败。
+- **变异**：不换掉条目：state 的断言失败；`enter` 里不清：编辑那一分支失败；28.4 的同路径 `replace` 规则去掉（4.1 的变异）：arrival 那一格也失败（审查 C 跑了：红在 arrival 那一格，焦点被"Page not found"拿走，10.6）。
 - **牵连**：
   - 与 S1 同改 `W/app/arrival.ts`（S1 的第 3 个提交）。21.3、22.2 靠 28.4 的接续，因此在 S1 之后合并：这是 0.1 的硬依赖。
   - `replace` 换了 `location.key`：`useNewPage`（`new-page.ts:36-44`）在挂上那一刻恰有新建在途时不再跳（推断，几乎碰不到）；阅读视图的锚点 effect（`reading-view.tsx:233-276`）在没有锚点的地址上什么也不做。
@@ -2911,11 +2911,11 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 
 - **现状**：`Comparison` 在比较的分包载入之后就画出"Show unchanged lines"（`W/pages/page/comparison.tsx:59-61`），它只作用于统一视图的折叠（`W/editor/text-diff.tsx` 的 `collapseUnchanged`，`:137`）。四种情形按了不变：两边相同或只差换行（`:160-162`）、太大而并排（`:174-189`）、比较失败（`:170-172`）、还在比较（`:164-169`）。
 - **改法**：
-  - `text-diff.tsx`：`TextDiffProps` 加 `foldable?: (yes: boolean) => void`；在 `:151-153` 之后算 `unified = split.a !== split.b && compared?.result.kind === "changes" && state !== undefined && removedLines(state) <= lineDiffLimits.maxChangedLines`，`useEffect(() => foldable?.(unified), [foldable, unified])`；`shows()` 里 `:174` 的判断改用 `!unified`。
-  - `comparison.tsx`：`const [foldable, setFoldable] = useState(false)`，传给 `TextDiff`；按钮只在 `foldable` 时画，加 `useFocusLeaving(button, () => root.current?.focus({ preventScroll: true }))`：比较换成"没有改动"时按钮带着焦点离开，焦点给这一组。
+  - `text-diff.tsx`：`TextDiffProps` 加 `foldable?: (yes: boolean) => void`；在 `:151-153` 之后算 `unified = split.a !== split.b && compared?.result.kind === "changes" && state !== undefined && removedLines(state) <= lineDiffLimits.maxChangedLines`，`useLayoutEffect(() => foldable?.(unified), [foldable, unified])`（实际：冲突面板已有的一格在差异出现之后同步找按钮，被动 effect 晚一拍，10.6）；`shows()` 里 `:174` 的判断改用 `!unified`。
+  - `comparison.tsx`：`const [foldable, setFoldable] = useState(false)`，传给 `TextDiff`；按钮只在 `foldable` 时画，是小组件 `ShowUnchanged`（冲突面板共用，`left` 给面板的标题），里面 `useFocusLeaving(own, left)`，`left` 给这一组（`root.current?.focus({ preventScroll: true })`）：比较换成"没有改动"时按钮带着焦点离开，焦点给这一组（实际：放在不卸下的 `Comparison` 里，清理不跑，10.6）。
   - 冲突面板的同一个按钮（`W/pages/page/conflict-panel.tsx:45-47`）只差换行时同样没用：`ConflictDiff`（`W/editor/conflict-view.tsx`）透传 `foldable`。
   - 不做：统一视图里没有够长的未改动段（CodeMirror 只折叠至少 4 行的段，推断）时也不画。要读 `.cm-collapsedLines`（`conflict.test.tsx:150`），展开之后它就没了；记进 v0.2（C）。
-- **测试**（vitest，`W/pages/page/version-page.test.tsx`，`test.each` 三行）`"Show unchanged lines is offered where the comparison folds: not for texts the same, nor those of their line breaks alone, nor side by side"`：内容与版本 4 相同（"No changes."）；换成 CRLF（"Only the line breaks or the byte order mark differ."）；并排：照 `version-restore.test.tsx:12-19` mock `../../lib/line-diff-client`，`compareInWorker` 答 `{ kind: "tooLarge", added: null, removed: null }`，内容大到 `compareNow` 不在主线程比（"Too large to compare line by line."）。各自选"Compare with the page now"，等那一句话，没有"Show unchanged lines"按钮。
+- **测试**（vitest，`W/pages/page/version-restore.test.tsx`（实际：它已 mock 了 worker 的比较，并排一行要 `compareInWorker` 答 `tooLarge`；冲突面板一格在 `conflict.test.tsx`，10.6），`test.each` 三行）`"Show unchanged lines is offered where the comparison folds: not for texts the same, nor those of their line breaks alone, nor side by side"`：内容与版本 4 相同（"No changes."）；换成 CRLF（"Only the line breaks or the byte order mark differ."）；并排：照 `version-restore.test.tsx:12-19` mock `../../lib/line-diff-client`，`compareInWorker` 答 `{ kind: "tooLarge", added: null, removed: null }`，内容大到 `compareNow` 不在主线程比（"Too large to compare line by line."）。各自选"Compare with the current"，等那一句话，没有"Show unchanged lines"按钮。
   - 对照：`installed()` 的版本 4 与当前不同，按钮在，按下 `aria-pressed="true"`。
   - 没修的代码上：三种都找到按钮。
   - 冲突面板：`W/pages/page/conflict.test.tsx` 加只差换行的一格；`:144`（有折叠）照过。
@@ -2925,7 +2925,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 ##### 21.10 同一页的两个版本之间后退、前进留着说的话
 
 - **现状**：`VersionShell` 按页挂载（`W/pages/page/version-page.tsx:63` 的 `key={page.id}`），`tab` 与 `said`（`:101-103`）在两个版本之间留着。在版本 4 上还原得到"没有改动"，后退到版本 6，那一句仍在，读来像在说版本 6。I3 另说标签页留着、"与上一版"的基版本被 `useLeftRevision`（`:257-275`）去掉再读、闪一下"加载中"（闪的一半是 C）。
-- **改法**：21.2 的 `Said` 带 `of`，只在 `said.of === data?.id` 时显示。地址被换成版本自己的修订号（`:118-124`）或编辑会话的保存推进修订号时，版本 id 不变，照旧显示（推断：`newest.id !== data.id` 的用法如此）。标签页不改（2.3 的 P2-33，`version-page.test.tsx:227` 钉着它）。
+- **改法**：21.2 的 `Said` 带 `of`，另一版本显示时（`of` 已知且不同）在渲染里清掉 `said`；显示仍比 `of`，管另一版本还在读的那一段（实际：只比 `of` 时，前进回到 4 又说，本节自己的格红，决定 632，10.6）。地址被换成版本自己的修订号（`:118-124`）或编辑会话的保存推进修订号时，版本 id 不变，照旧显示（推断：`newest.id !== data.id` 的用法如此）。标签页不改（2.3 的 P2-33，`version-page.test.tsx:227` 钉着它）。
 - **测试**（vitest，`version-page.test.tsx`）`"back and forward between two versions of a page say nothing of what a restore of the other said"`：`renderApp([versionPath(install.id, 6), versionPath(install.id, 4)], server.app)`；内容设成与版本 4 相同；还原、等那一句；后退，先等 `h1` "Version 6"，再断言那一句不在；前进回到 4，同样不在。没修的代码上：后退到 6 之后那一句仍在。
 - **变异**：`said` 不比 `of`：本格失败。
 
@@ -2940,7 +2940,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   - `"the trash arrived at from a restore in the preview says where it went once: forward to it again, it says nothing"`：照 `:247` 恢复，到回收站，状态行在、`router.state.location.state` 等于 `{ arrived: true }`；后退、前进，先等 `h1` "Trash"，状态行为空。没修的代码上又说一遍。
   - `"an item's preview gone to from a node deleted with it since says so once: back to it, it says nothing"`：照 `:148`、`:392` 准备合并，落到 Guide 的预览、那一句在；点面包屑去回收站，后退，先等 `h1` "Guide"，没有"What you opened was deleted again…"。没修的代码上又出现。
   - `:471` 两个 alert 的次序不变。
-- **变异**：`useRouteNotice` 不换掉条目：两格都失败。`merged` 放回 `Preview` 里读：两格都照过，等价（推断：两者只在同一次访问里 `Preview` 重新挂上时不同，例如拒绝之后单项回来；没有格造这个情形）。
+- **变异**：`useRouteNotice` 不换掉条目：两格都失败。`merged` 放回 `Preview` 里读：两格都照过，但不等价：项离开回收站又回来、`Preview` 重新挂上时，外壳的写法仍说，放回的不说；由 `"an item's preview gone to from a node deleted with it since keeps saying so as the item leaves the trash and comes back"` 一格抓（M12/P2/S6 修复第 1 轮，审查 C 的 M2，决定 628，10.6）。回收站的键去掉 `"started"`：由 `"the trash arrived at from a restore started in the background in a preview says so once"` 一格抓（`trash-background.test.tsx`，审查 C 的 M1）。
 - **牵连**：22.19、22.14 也改 `PreviewShell`，次序见 6.6。
 
 ##### 22.14 与 23.10 的共同改法：在途的写与它的结果放进 store
@@ -2970,7 +2970,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   - `trash-row.tsx`：从 `useTrashRestore`（`:298-330`）抽出与预览共用的纯函数 `trashRestoredOf(restored: NodeRestored, pages: PageTreeStore, item: TrashItem | undefined): TrashRestored`；`RestoreButton`（`:386-434`）加 `busy?: boolean`，`aria-busy`、`aria-disabled` 取 `sending || busy`，`busy` 时不发；`TrashRow`（`:485`，observer）传 `busy={pages.restoreOut(item.id) !== undefined}`。
   - `PreviewShell`：
     - `useState<Restoring>(() => (pages.restoreOut(id) === undefined ? undefined : { out: true }))`：挂上时有在途的恢复，第一次渲染起就是"在途"（单项读成"已不在"也照旧显示它，`:196-198`）。
-    - 只依赖 `[pages, id]` 的 effect 跟随 `pages.restoreOut(id)`：成功 `setRestoring({ restored: trashRestoredOf(answer, pages, latest.current) })`，失败 `setRestoring({ refused, item: latest.current })`（`latest` 记最近一次 `data`）；cleanup 置 `showing = false`。原来那次挂载挂上时表里还没有这一项，不会处理两次。
+    - 只依赖 `[pages, id]` 的 effect 跟随 `pages.restoreOut(id)`：成功 `setRestoring({ restored: trashRestoredOf(answer, pages, latest.current) })`，失败 `setRestoring(refusedOf(refused, latest.current))`（`latest` 记最近一次 `data`）：带 `root_id` 的 `not_trash_root` 不要单项，直接去根的预览；别的拒绝在单项还没读到时不说（M12/P2/S6 修复第 1 轮，审查 A 的 N3，决定 631，10.6）；cleanup 置 `showing = false`。原来那次挂载挂上时表里还没有这一项，不会处理两次。
     - 预览的"恢复"传 `busy={restoring !== undefined && "out" in restoring}`。
   - 之后与没卸下时一样：成功 `<Navigate to=回收站 state={{ ...arrived, restored }}>`（`:170-174`）；被拒则警示在上（22.19 之后在面包屑之下）。
   - 不做：列表在答复到来时也说"已恢复……"（列表没发出它）；预览"在后台恢复"的开始有同样的窗口（`trash-preview.tsx:124`），进 v0.2（2.3 的 P2-41）。
@@ -2994,12 +2994,13 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 - **改法**：
   1. `PreviewShell.restoreItem` 的 `catch`（`:145-149`）：拒绝是 `page.not_trash_root` 且带 `root_id` 时，设 `{ merged: root }`（`Restoring` 加这一种）而不设 `{ refused }`，渲染 `<Navigate replace to={`${home}/trash/${root}`} state={{ merged: true }}>`（同 `:205`）。剩下"活的一次、取得焦点的标题经描述一次"（移交第 22 条要两者）。
   2. `Gone` 加 `left` prop 与 `useFocusLeaving(section, left)`；`PreviewShell` 给 `NotInTrash`、`Gone` 传 `left={() => setHanded(true)}`；`Preview` 加 `focus` prop，effect 改为 `(merged || focus) && (at === null || at === document.body)` 时 `h1` 取得焦点（同 `Gone`，`:456-461`）；`PreviewShell` 传 `focus={handed}`。`handed` 一直为真也无妨：只从无人处取（13.2 第 26 条）。
-  3. 面包屑提到外壳：`shell(told, view, trail?)` 依次渲染 `{trail}`、`{told !== undefined && <Alert id={note}>…}`、`{view}` 三个固定的槽；`Preview` 不再画 `BreadcrumbTrail`。`Alert` 一直在第二个槽里，`Preview` 与说明页互换时不重新挂上（`:129` 要的"同一个 alert"保住，N2 的修复不回退）。
+  3. 面包屑提到外壳：`shell(told, view, trail?)` 依次渲染 `{trail}`、`{told !== undefined && <Alert id={note}>…}`、`{view}` 三个固定的槽；`Preview` 不再画 `BreadcrumbTrail`。`Alert` 一直在第二个槽里，`Preview` 与说明页互换时不重新挂上（`:129` 要的"同一个 alert"保住，N2 的修复不回退）。面包屑包在小组件 `Trail` 里，`useFocusLeaving(own, () => setHanded(true))`：它出了 `Preview` 的范围，焦点在它上面时项被别处恢复，焦点会落到 `body`。间距：外壳不用 `space-y-4`，面包屑 `mb-2`、alert `mb-4`，面包屑到标题 0.5rem，同变更集页与页的外壳（M12/P2/S6 修复第 1 轮，审查 A 的 M3、N2，决定 631，10.6）。
 - **测试**（vitest，`trash-preview.test.tsx`）：
   - `"a restore from the preview refused as deleted again with a page above it goes to that item's preview, which says why once"`：照 `:392` 准备（`restoreElsewhere(install.id)`、`trashNode(guide.id)`），用 `:508` 的 `MutationObserver` 记下插入的 `role=alert`；`server.trashWaits.item` 扣住单项的重读；点"恢复"；等 `h1` "Guide"；放开；`inserted` 恰是 `["What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."]`。没修的代码上第一项是"“Install” was deleted again with a page above it: …"。
   - `"an item back in the trash, its notice holding the focus, takes it to its title"`：照 `:543`，别处恢复让说明页出现并取得焦点，再 `trashNode(install.id)` 让单项回来；焦点是 `h1` "Install"。没修的代码上是 `body`。
   - `"a refusal on the preview is said below its breadcrumb"`：照 `:313`（太大被拒），`crumbs.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING` 不为 0。没修的代码上为 0。
   - 已有的 `:392`、`:508` 照过；`:471` 两个 alert 的次序照旧。
+  - 实际另加三格（10.6）：`"a notice shown first, holding the focus, gives it to the item's title as the item comes back to the trash"`（实施：第二格里离开的项早把 `handed` 设成真，抓不到"`Gone` 不交还焦点"）；`"the reader on the preview's breadcrumb as the item is restored elsewhere: the notice's title takes the focus"`、`"a restore from the trash's list refused as deleted again with a page above it, followed by the item's preview opened before the item is read, goes to that item's preview at once"`（M12/P2/S6 修复第 1 轮，审查 A 的 M3、N3）。第一格实际从回收站进来，末尾后退回到回收站（守 `<Navigate replace>`，审查 A 的 M6）。
 - **变异**：拒绝 `not_trash_root` 照旧先显示：第一格失败；`Gone` 不加 `useFocusLeaving`：第二格失败；面包屑留在 `Preview` 里：第三格失败；`Alert` 不在固定的槽（例如在 `trail` 之前条件插入）：`:508` 失败（重新挂上、插入两次）。
 
 ##### 23.10 后退再前进的变更集页不知道在途的撤销
@@ -3023,8 +3024,9 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   5. `"… the reader scrolling meanwhile keeps the focus where it is"`：跟随期间滚动，答复之后焦点不动（照 `:551`）。
   - `page-tree.store.test.ts`：`"a revert out is the changeset's until it settles either way, with the newest revert its sender knew"`（照 `:837`）。
   - `:521`（"Undo pressed twice sends one undo"）只在框内找按钮，照过（推断）。
+  - 实际另加两格（10.6）：`"an undo whose answer was lost as the reader went back and forward, nothing undone, says so by the newest undo known as it was sent: one before it"`（实施：守 `before` 传给 `revert`）；`"an undo out as the reader goes back and forward that had nothing to undo is said on the changeset's page shown again, the focus left where it is"`（M12/P2/S6 修复第 1 轮，审查 A 的 M6）。
 - **变异**：不记表：第 1 格失败；不删表项：第 4 格失败；跟随不判 `lost`、`before` 用挂上时的缓存：第 3 格失败；焦点不看 `watchReader`：第 5 格失败。
-- **假服务端**：已有 `revertsHeld`（`W/test/history-server.ts:434-436`）；第 3 格要 `revertsHeldAfterWrite`：写下撤销之后再扣住答复。
+- **假服务端**：已有 `revertsHeld`（`W/test/history-server.ts:434-436`）；第 3 格不要新的假服务端：撤销路由的 `answers` 覆盖写下撤销（`server.log` 加 `revertedBy`）、等一个闸门、答 500（实际，10.6）。
 - **牵连**：23.19 先合并；24.9 改同一个 `done()`；后台的撤销（`transfers.startRevert`）有同样的窗口，同 22.14 不做的那一处。
 
 ##### 23.19 地址里大写的变更集 id
@@ -3036,18 +3038,18 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   - `revert-dialog.test.tsx`：`"an undo on a changeset's page whose address has its id in capitals reads the changeset and its nodes again as the dialog closes"`：`renderApp(changesetPath(rework.id.toUpperCase()), server.app)`（没有事件流）；撤销；等"Undone. See the undo"；`server.sent` 里有 `"GET changeset rework"` 与 `"GET changes rework"`，页上出现"Undone by"那一行。没修的代码上没有这两次读，那一行不出现。
   - `trash-preview.test.tsx`：`"a node's preview whose address has its id in capitals, restored elsewhere, leads to it"`：`server.restoreElsewhere(install.id)`；`renderApp(previewPath(install.id.toUpperCase()))`；"This is no longer in the trash."与"Open it"在，没有"Page not found"。没修的代码上读完树之后换成"Page not found"。
 - **变异**：去掉 `toLowerCase()`：两格各自失败。
-- **假服务端**：`W/test/history-server.ts:272-274` 的 `changesetOf`、`labelOf` 改用已有的 `sameId`（`:225-227`），像真的服务端一样不分大小写（推断：它按 UUID 解析）；`W/test/trash-server.ts` 的 `found`（`:206-214`）与 `nameOf` 同样。
+- **假服务端**：`W/test/history-server.ts:272-274` 的 `changesetOf`、`labelOf` 改用已有的 `sameId`（`:225-227`），像真的服务端一样不分大小写（推断：它按 UUID 解析）；`W/test/trash-server.ts` 的 `idOf` 一律小写，找与名字随之（实际：照服务端按 UUID 解析、答小写，10.6）。
 
 ##### 24.2 后台的 422 之后"在后台撤销"仍可按
 
 - **现状**：确认框转到后台之后，开始被拒为 422 `page.revert_too_large`（超过 `MaxJobItems`），横幅说"This change is too large to undo, even in the background."（`W/pages/notebook/revert-dialog.tsx:192-193`，经 `useForm` 的 `explain`），"在后台撤销"照旧可按（`:349-353`），再按得到同样的答复（M8/P4B 审查的偏离 5）。I3 说可算 C；不改判：永远不会成功的按钮是误导。
 - **改法**（`RevertForm`）：
   - `const [hopeless, setHopeless] = useState(false)`；`start()` 的 `catch`（`:263-269`）里，`refused` 之后、`throw error` 之前：`ApiError` 且 `code === "page.revert_too_large"` 时 `setHopeless(true)`（横幅照旧由 `useForm` 显示）。
-  - `hopeless` 时不画确认按钮，只留"取消"。确认按钮加 `useFocusLeaving(confirm, () => cancel.current?.focus())`（"取消"的 `Button` 加 `ref={cancel}`）。
+  - `hopeless` 时不画确认按钮，只留"取消"。确认按钮是小组件 `Confirm`，里面 `useFocusLeaving(button, left)`，`left` 把焦点给"取消"（`ref={cancel}`）（实际：放在不卸下的 `RevertForm` 里，清理不跑，10.6）。`onSubmit` 开头判 `hopeless`：表单只剩说明一个字段，回车隐式提交（M12/P2/S6 修复第 1 轮，审查 A 的 M4）。
 - **焦点的去处**（推断）：`setHopeless` 与 `useForm` 的 `setFailures` 落在同一次提交里；确认按钮卸下时，`useFocusLeaving` 在布局 effect 的清理里把焦点给"取消"（`W/lib/focus-leaving.ts:15-22`），早于 `useFocusOnInvalid` 的被动 effect（`W/components/form-field.tsx:89-97`）。S1 的规则是"拒绝到达时焦点已丢才给横幅"（4.1 的 9.1），那时焦点在"取消"上，没丢，不动。所以最终在"取消"。两者哪个先发生取决于 effect 的次序：实施时先在 S1 合并之后的树上探出，再写下面的焦点断言。
-- **测试**（vitest，`W/pages/notebook/revert-background.test.tsx`）`"an undo in the background refused as too large for the background too says so in the dialog, which offers only Cancel"`：照 `:138-196` 准备（`rework.jobTooLarge = true`）；按"Undo in the background"；alert 的整句、框里没有"Undo in the background"、焦点在"Cancel"（照上一段探出的去处）、`server.jobs` 为空。zh-CN 一格比"这次改动太大，后台也撤销不了。"。没修的代码上：按钮还在。
+- **测试**（vitest，`W/pages/notebook/revert-background.test.tsx`）`"an undo in the background refused as too large for the background too says so in the dialog, which offers only Cancel"`：照 `:138-196` 准备（`rework.jobTooLarge = true`）；按"Undo in the background"；alert 的整句、框里没有"Undo in the background"、焦点在"Cancel"（照上一段探出的去处）、`server.jobs` 为空；末尾在说明里输入、回车，仍只发过一次（M12/P2/S6 修复第 1 轮，审查 A 的 M4）。zh-CN 一格比"这次改动太大，后台也撤销不了。"。没修的代码上：按钮还在。
 - **已有测试要随之改的**：`test.each`（`:138-166`）删去"a changeset too large for the background too"一行（`:153-159`：它断言焦点留在按钮上、再按就开始，与新行为相反）。
-- **变异**：不设 `hopeless`：新格失败；不加 `useFocusLeaving`：焦点随按钮落到 `body`，S1 的规则把它给横幅，"取消"的断言失败（推断）。
+- **变异**：不设 `hopeless`：新格失败；不加 `useFocusLeaving`：焦点由 Radix 的 `FocusScope` 交给对话框的内容（`div`），"取消"的断言失败（实际，10.6）；`onSubmit` 不判 `hopeless`：回车那一步失败（修复第 1 轮）。
 - **牵连**：撤销的确认框不是 `ConfirmDialog`，S1 对它的改动不涉及这里。P3/S3 在同一张 `test.each` 里加"后台撤销答 `transfer.too_many_jobs`"一行：文本冲突，语义不冲突（那一行照旧留着按钮）；后合并的先 `git merge main`。
 
 ##### 24.8 `links` 事件重读已删页的反链
@@ -3060,10 +3062,10 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 - **改法**（2.3 的 P2-32）：
   - 不取移交的"跳过树里已没有的页的键"：处理函数手里只有 SWR 的缓存（`EventContext`，`:21`），store 自己的写之后的重读不经 SWR（`page-tree.store.ts:389`），缓存不反映 `removed`；事件先于答复时树里还有那一页（推断）。
   - links 事件的读排在同一个单元的 pages 事件要的那次树的读之后、React 显示之后：被删的页随树的读离开，面板卸下，之后的 `mutate` 碰不到它们。与 `refreshedOnConnect`（`W/app/event-stream.tsx:9-35`）、`pagesChanged` 读附件（`:69-75`）同一个原则。
-  - `handlers.ts`：`EventContext` 加 `trees: Map<string, TreeRead>`，`type TreeRead = { done: Promise<void>; settle: () => void }`（按笔记本）。
-    - `pagesChanged` 的 `tree` 分支：请求之前，这本笔记本没有项就建一个 deferred；refresher 的读函数**开始时**取出并删掉这一项（之后来的 pages 事件建新的一项、等新的读），读完 `await mutate(["pages", notebook]); await shown();` 之后在 `finally` 里 `settle()`，再照旧读附件。
+  - `handlers.ts`：`EventContext` 加 `trees: Map<string, TreeRead>`，`type TreeRead = { started: boolean; done: Promise<void>; settle: () => void }`（实际多 `started`，决定 629）（按笔记本）。
+    - `pagesChanged` 的 `tree` 分支：请求之前，这本笔记本没有项、或有的项已开始读，就建一个 deferred（`started: false`）；refresher 的读函数开始时把这一项标为 `started`，读完 `await mutate(["pages", notebook]); await shown();` 之后在 `finally` 里 `settle()`、是同一项才删，再照旧读附件。已开始的读可能读的是这次写之前的树，所以读的途中又来树变了的 pages 事件就放一个新的项（实际：刷新器在键最近没读过时当场开始读，照"开始时取出并删掉"写，紧接着的 links 事件就看不到它，决定 629，10.6）。
     - `linksChanged` 的方法体包进 `afterTree(notebook, context, read)`：有项就 `void due.done.then(read)`，没有就立即 `read()`。
-    - 这一项总会落定：`Refresher.request` 每次都把这个键的读换成最新的闭包，并且终会调一次（`W/events/refresher.ts:41-86`，审查 C 核对过），取出这一项的总是那一次真的读。两种例外都无害：藏起的标签页，树的读等可见时，links 的读随之等；流停了（`stop()` 丢掉待读的），这一代已结束。
+    - 这一项总会落定：`Refresher.request` 每次都把这个键的读换成最新的闭包，并且终会调一次（`W/events/refresher.ts:41-86`，审查 C 核对过），取出这一项的总是那一次真的读。两种例外都无害：藏起的标签页，树的读等可见时，links 的读随之等；流停了：`stop()` 之后刷新器对最近没读过的键照样当场读，`afterTree` 等过树的读之后先看 `stopped`（M12/P2/S6 修复第 1 轮，审查 B 的 N2，10.6）。
   - `W/app/event-stream.tsx:63`：`context` 加 `trees: new Map()`（每代一个）。
   - 代价：同一单元的 links 的读晚至多 500 ms 加一次树的读，只在树变了的单元。
 - **测试**：
@@ -3077,7 +3079,7 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
     2. TB2 (page) 把删除的答复扣到事件引起的树的读答了才放，没修的代码上每次都有 404。推断：links 帧与 pages 帧同一批刷出、同一个 JS 任务里依次处理，早于树的读的答复；没有核实服务端是否每帧单独 flush，即使分开也只隔微秒；
     3. 实施时在撤掉 24.8 修复的分支上经 `heavy.sh` 跑一次 TB2 (page)，看它红（这是变异，不是重复跑）。
 - **已有测试要随之改的**：`handlers.test.ts:13-34` 的 `context()` 加 `trees: new Map()`。
-- **变异**：去掉 `afterTree`：单元第 1 格与整合格失败；读开始前就 `settle`：整合格失败；读完才删表项：单元第 2 格失败。
+- **变异**：去掉 `afterTree`：单元第 1 格与整合格失败；读开始前就 `settle`：整合格失败；读开始时就取下表项（设计原来的写法）：单元"当场开始"一格与整合格失败；已开始的读不放新的项：单元"途中又来"一格失败；等过之后不看 `stopped`：单元"这一代停了"一格失败（实际，10.6）。
 - **牵连**：P4/S2 若改 `pagesChanged` 的树的读，同一处（4.6.6）。
 
 ##### 24.9 查到的一行与后一次的拒绝并存
@@ -3120,16 +3122,17 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 - **改法**：键盘在关着的选择上一项项换时，等读者离开它或按回车再用。
   - `W/components/ui/native-select.tsx` 加 `useChoice(applied: string, apply: (value: string) => void): { value, onKeyDown, onPointerDown, onChange, onBlur }`（M5-polish 26.5）：
     - 状态：`pending`（显示用，`value = pending ?? applied`：受控的选择不改状态的话 React 会把它改回去）与 `stepped`（ref）。
-    - `onKeyDown`：不带 Alt 的 ArrowUp、ArrowDown、ArrowLeft、ArrowRight、Home、End、PageUp、PageDown，或可打印的单个字符（类型搜索）：`stepped = true`；Enter 且有 `pending`：用它。Alt+方向键、F4、空格（打开列表）不算。
+    - `onKeyDown`：每次按键都重设 `stepped = stepping(event)`：不带 Alt、Ctrl、Meta 的可打印的单个字符（类型搜索，不是空格），或 macOS 以外不带它们的 ArrowUp、ArrowDown、ArrowLeft、ArrowRight、Home、End、PageUp、PageDown；Enter 且有 `pending`：`preventDefault`（Chromium 在关着的选择上按回车打开列表）并用它，没有时是浏览器的。Alt+方向键、F4、空格不算一步，多数引擎里它们打开列表；macOS 上方向键等打开列表（推断），不算（实际，决定 627、决定 630，审查 B 的 M1，10.6）。
     - `onPointerDown`：`stepped = false`。
     - `onChange`：`stepped` 时记进 `pending`，不用；否则（指针、打开的列表、脚本）清 `pending`、立即用。最后 `stepped = false`。
-    - `onBlur`：有 `pending` 就用。`applied` 变了（别处换了地址）时清 `pending`。
+    - `onBlur`：有 `pending` 就用；用的值已在用时不再读（实际，决定 630）。`applied` 变了（别处换了地址）时清 `pending`。
     - 初稿为"`change` 晚于 `blur` 的浏览器"另加的兜底（焦点已离开就立即用）删掉：三引擎的 `change` 都先于 `blur`（`probe8.txt`）。
   - `search-page.tsx:216-233`：`const scope = useChoice(notebook ?? "", choose)`，`<NativeSelect id=… {...scope} className=…>`；历史的三个与目录的"类型"同样。
   - 不取：去抖（慢慢按照样逐项搜，指针选择也要等）；显式的"搜索"按钮（要新文字、改 SE2 与 `search-page.test.tsx:530-556`，并推翻 M8/P5 设计的"选择即换地址"）。
 - **测试**：
   - vitest，`W/pages/search/search-page.test.tsx`：`"Where to look stepped through with the keys on the closed select searches once the reader leaves it, or presses Enter; nothing meanwhile"`：在 `:530` 的准备上，`fireEvent.keyDown(scope, { key: "ArrowDown" })`、`fireEvent.change(scope, { target: { value: ideas.id } })`（`probe8.txt` 的次序）；地址仍是 `?q=…`、没有新的搜索、`scope.value` 是 `ideas.id`；`fireEvent.keyDown(scope, { key: "Enter" })`（或 `fireEvent.blur(scope)`）；命中一条，地址带 `notebook_id`，搜索读了一次。没修的代码上：`change` 一到就换了地址。
-  - vitest，历史与目录各一格（`W/pages/notebook/history-page.test.tsx` 的一个筛选、`index-page.test.tsx` 的"类型"）：同样的次序，`change` 之后不重读，Enter 之后读一次。没修的代码上 `change` 一到就重读。
+  - vitest，历史与目录（`W/pages/notebook/history-page.test.tsx` 的三个筛选各一格（实际：哪一处没换成 `useChoice` 都有格抓，10.6）、`index-page.test.tsx` 的"类型"）：同样的次序，`change` 之后不重读，Enter 之后读一次。没修的代码上 `change` 一到就重读。
+  - 实际另加（M12/P2/S6 修复第 1 轮，审查 B 的 M1、M2，决定 627、决定 630）`W/components/ui/native-select.test.tsx`：回车用等着的选择并 `preventDefault`、没有时不；没换值的方向键之后的 Alt+方向键、空格、F4，之后的选择立即用；macOS 上方向键等立即用、打字等着；一步去了又回来、离开，什么也不用（收口，核对 B 的 C1-N1）。SE2 另加一段：退一步、回车搜，之后的 ArrowDown 一步就换值（不打开列表）。
   - e2e，`e2e/stories/search/se2-search-visibility.spec.ts` 在 `:217-224`（"Chosen as a reader of the page would"）之后（只 Chromium）：`scope.focus()`；`ArrowDown` 两次；`toHaveValue(shared.id)`；地址仍是 `/${workspace.slug}/search?q=${word}`；登记 `answerTo(page, "GET", 搜索的路径)`；`Tab`；搜索答 200；地址带 `notebook_id=${shared.id}`。注释："Stepped through with the keys on the closed select, as Chromium does off macOS: nothing is searched until the reader leaves it (M5-polish 26.5)."。变量名照该故事，搜索的路径照 `fixtures/wiki-search.ts`。没修的代码上：`toHaveValue` 过，只带 `q` 的地址那一步等到超时失败（`probe8.txt`）。
   - `user.selectOptions`（vitest）与 `selectOption`（Playwright，SE2 `:220`、`:252`）不发键盘事件，走"立即用"那一路（推断：user-event 14 的 `selectOptions` 不派发 keydown）。
 - **变异**：`stepped` 恒为 `false`：vitest 的各格与 e2e 都失败；`onBlur` 不用 `pending`：e2e 的 Tab 那一步失败；历史或目录的某一处没换成 `useChoice`：那一处的格失败。
@@ -3166,29 +3169,32 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
   - 不取甲（移交的主推，点搜索结果时标记）：要动搜索的结果与根 store 的查找，后退、前进进来没有点击可挂。不取乙（面板对 `page.not_found` 不警示）：要改四个面板，五个 404 照样发出，且与 S4、S5 冲突。
   - `PageTreeStore`（`W/stores/page-tree.store.ts`）：
     - `watching`（私有：显示这棵树的笔记本外壳有几个）；`confirmFrom`（可观察：没人看着时 `Infinity`，再挂上时是第一次算数的读的序号，已确认时 `0`）；`get confirmed()`（`confirmFrom === 0`）；`confirming()`（`confirmFrom !== 0 && readsStarted >= confirmFrom`）；`watch(): () => void`。
-    - `watch()`：`watching` 从 0 到 1 且 `confirmFrom === Infinity` 时 `confirmFrom = readsStarted + 1`。返回的函数：减到 0 且 `nodes !== undefined` 时 `confirmFrom = Infinity`。
+    - `watch()`：`watching` 从 0 到 1 且 `confirmFrom === Infinity` 时 `confirmFrom = readsStarted + 1`。返回的函数：减到 0 时 `confirmFrom = Infinity`，没读过也标：第一次读树在途时离开，那次读开始于再挂上的起点之前，不算数（M12/P2/S6 修复第 1 轮，审查 A 的 M1，决定 626，10.6）。
     - `read()`（`:283-308`）：`confirms = confirmFrom !== 0 && read >= confirmFrom`；`runInAction` 的条件加 `|| confirms`，里面置 `confirmFrom = 0`。
     - 私有名单加 `"watching"`；改动都在 action 里（`enforceActions: "observed"` 的警告在 vitest 里算失败，13.2 第 9 条）。
     - 卸下时标、挂上时定起点：其间也可能有读（上传的 `wrote()`，`:402-430`），那些读之后的事件仍没人看。`Infinity` 让 `PageLayout` 从第一次渲染起就挡住。
   - `W/pages/notebook/notebook-layout.tsx`：`<NotebookContext>` 里（`:68`）、`<Outlet>` 之前加 `<TreeWatch notebook={notebook} />`，以 `useLayoutEffect(() => pages.watch(), [pages])` 登记、渲染 `null`：layout effect 先于 `PageLayout` 的被动 effect，起点先定下。
   - `PageLayout`（`:48-67`）与 `VersionPage`（`version-page.tsx:51-64`）：
     - effect `[pages, mutate]`：`!pages.confirmed && !pages.confirming()` 时 `void mutate()`。绑定的 `mutate()` 越过 SWR 的去重强制一次读；SWR 以 `rAF` 推迟的挂上时的读随之被去重（推断，读 `swr` 的源码）。
-    - `pages.tree === undefined || !pages.confirmed` 时 `<NotLoaded error={error} retry={() => void mutate()} />`：读失败时说明并给"重试"，不停在加载中。放在 `found` 之前；钩子都在提前返回之前。
+    - `pages.tree === undefined || !pages.confirmed` 时 `<NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />`：读失败时说明并给"重试"，不停在加载中。挂上时未确认，就记下这时缓存里的错误（`const [stale] = useState(() => (pages.confirmed ? undefined : error))`）：离开笔记本前读树失败的错误（SWR 卸下后不再重试）不在强制的读答复之前先说；已确认时挂上不记，照旧当场说（M12/P2/S6 修复第 1 轮，审查 A 的 M2，决定 626，10.6）。放在 `found` 之前；钩子都在提前返回之前。
 - **测试**：
   - vitest，`W/pages/page/page-layout.test.tsx`：
     1. `"a page deleted elsewhere while its notebook was left shows none of itself when gone back to: the tree is read first, and the page is not found"`：`pageServer()`；`renderApp(pagePath(notes.id))`，等 `h1` "Notes"；`router.navigate("/lab")`，等工作区首页；`server.trashNode(install.id)`（没有事件）；`before = server.sent.length`；`MutationObserver` 记插入的 `role=alert`；`router.navigate(pagePath(install.id), { state: arrived })`；`h1` "Page not found" 出现并取得焦点；`server.sent.slice(before)` 里没有匹配 `/^GET (view|properties|backlinks|assets)/` 的、插入的 alert 为 `[]`、恰一次 `GET nodes`。没修的代码上：有 `GET view undefined`、`GET properties <id>`、`GET backlinks <id>`、`GET assets …`，第一个断言失败；视图的 404 插入一个 alert。
     2. `"a page gone to within its notebook shows at once: its tree is not read again for it"`：在笔记本里从 Notes 点到 Guide，没有新的 `GET nodes`。
     3. `"a page gone back to after its notebook was left shows once its tree is read: a read that fails says why, with Try again"`：离开、`server.nodesDown = true`、回到页，`NotLoaded` 的 alert 与"Try again"；`nodesDown = false`、按"Try again"，页出现。
     4. `"a tree read sent before the notebook was left and answered after it was gone back to confirms nothing: the page waits for a read of its own"`：在 Install 上设 `server.nodesHeld = true`，发 `pages` 事件让树重读（扣住，答的是这时的树）；离开；`server.trashNode(install.id)`；回到 Install（新的读也扣住）；`server.held.shift()!()` 只放开旧的读；没有 `GET view Install`，页仍在等；`server.release()`，`h1` "Page not found"。没修的代码上（`read()` 不比起点）：旧的读确认了树，发出 `GET view Install`。
+    5. 实际另加（M12/P2/S6 修复第 1 轮，审查 A 的 M1、M2）：`"a page whose notebook was left before its first tree read answered, deleted elsewhere since, shows none of itself when gone back to: the tree is read again first"`、`"a page gone back to after a tree read failed as its notebook was left says nothing of that failure while its tree is read again"`、`"a page gone to within its notebook whose tree could not be read says why at once, with Try again"`。
+  - vitest，`W/pages/page/version-page.test.tsx`（实际另加，审查 A 的 M5、核对 A 的 C1-N1）：`"a version of a page deleted elsewhere while its notebook was left shows none of itself when gone back to: the tree is read first, and the page is not found"`、`"a version gone back to after a tree read failed as its notebook was left says nothing of that failure while its tree is read again"`、`"a version gone to within its notebook whose tree could not be read says why at once, with Try again"`。
   - e2e，SE1 (page)（`e2e/stories/search/se1-search.spec.ts`），在 `:304-306`（再搜"检索"得 1 条、经接口删掉 Storage）之后、再搜之前：点还列着的"Storage"；`main` 里 `h1` "Page not found" 取得焦点；`page.goBack()`；`h1` "Search “检索”" 可见。注释："Its hit, still listed, opened: the notebook's tree, read before it was left, is read again first; the page is not found, none of its own reads made (M5-polish 27.2)."。没修的代码上：五条"Failed to load resource: 404"，故事末尾的安静页检查失败（故事没有 `pageWatch.expectConsole`）。
     - 要 e2e 的理由：jsdom 的假服务端对不存在的页的反链、属性、附件、锁仍答 200（`W/test/page-server.ts:338`、`:366-378`），"Failed to load resource"也只有真的浏览器记。
-- **已有测试要随之改的**（推断，以全量 vitest 找出）：2 秒之内回到笔记本的格，今天 SWR 去重、不读树，改后多一次 `GET nodes`；数 `GET nodes` 的断言随之改。
+- **已有测试要随之改的**（推断，以全量 vitest 找出）：2 秒之内回到笔记本的格，今天 SWR 去重、不读树，改后多一次 `GET nodes`；数 `GET nodes` 的断言随之改。实际没有要改的：整个 `make test-web` 照旧过（第 0 步的原型与实施之后，10.6）。
 - **变异**：
   - 卸下时不标、`PageLayout` 不挡：第 1 格失败；
   - 挂上时不定起点（`confirmFrom` 一直是 `Infinity`）：第 3 格按"Try again"之后页仍不出现；
   - 每次挂上都标未确认：第 2 格失败；
-  - 挡了但不强制读：第 1 格停在加载中（推断：vitest 里离开又回来在 2 秒之内，SWR 去重挂上时的读）；
-  - `read()` 让开始早于起点的读也确认：第 4 格失败。
+  - 挡了但不强制读：第 1、3、4 格失败：vitest 里离开又回来在 2 秒之内，SWR 去重了挂上时的读，旧的树一直不再读（实际，10.6）；
+  - `read()` 让开始早于起点的读也确认：第 4 格失败；
+  - 实际另加（M12/P2/S6 修复第 1 轮与收口）：卸下时只标读过的：页的"第一次读树还没答就离开"一格失败；照旧说缓存里的错误：页与版本页的"离开时读树失败"各一格失败；已确认时挂上也记：页与版本页的"笔记本之内树读不到"各一格失败；版本页不挡、不强制读：版本页的"离开笔记本时被删"一格失败。
 - **假服务端**：`W/test/page-server.ts` 的 `GET nodes`（`:320-323`）加 `nodesHeld`：收到时取下当时的 `server.nodes`，扣住（同 `viewsHeld`，`:327-329`），放开后答取下的那份。别的不改：让反链、属性、附件、锁对没有的页答 404 会影响别的测试（推断），不在 S6 做。
 - **牵连**：版本页同样挡；笔记本首页、目录、回收站、历史不挡（不读单页，过时的列表只一闪）；与 2 同改 `page-layout.tsx`；24.8 管"正看着时被删"，这里管"回来时"。
 
@@ -3197,7 +3203,8 @@ S6 在 P4/S2 的页面树结论出来之后才开；结论要改树时，在改�
 - **现状**：目录的第一页读不到时一律 `NotLoaded`（`W/pages/notebook/index-page.tsx:277-278`）：地址里的 `type` 长于 1024 字节或含 NUL 时服务端答 422 `validation_failed`（`server/internal/modules/linking/app/list_index.go:172-181`），`NotLoaded` 说"有些值无效"并给"重试"，重试永远同样地失败；只有筛选里的"清除筛选"有用。历史页对这种情形有专门的说明（`history-page.tsx:160-166`、`:225-237`）。手写或截断的地址会碰到。I3 说可算 C；不改判（误导的"重试"）。
 - **改法**（`IndexResults`）：`const refused = first === undefined && error instanceof ApiError && error.code === "validation_failed"`（注释"A filter the server does not take is read no better again: it says so, the filters' Clear filters above (35.3)."）；`:277` 改为 `first === undefined ? (refused ? <Alert>{t("index.badFilters")}</Alert> : <NotLoaded … />)`。不另放"清除筛选"：`IndexFilters` 已有。新键见 4.6.2。
 - **测试**（vitest，`W/pages/notebook/index-page.test.tsx`，en 与 zh-CN 各一）`"a type the server does not take says the filters cannot be read, without Try again; Clear filters lists every page"`：`fixture.answer` 对带 `type` 的请求答 `problem(422, "validation_failed", { errors: [{ field: "type", code: "too_long", message: "" }] })`，否则 `json(fixture.value)`；`renderApp(`${indexPath}?type=${"x".repeat(1025)}`, fixture.server.app)`；alert 的整句、没有"Try again"；按"Clear filters"，列表出现，地址没有 `type`。没修的代码上：alert 是"Some values are not valid."且有"Try again"。`:181`（1024 字节，答 200）照过。
-- **变异**：`refused` 恒为 `false`：本格失败。
+- 实际另加（M12/P2/S6 修复第 1 轮，审查 B 的 M3）：`"a first page refused otherwise, as filtered, says why with Try again: not that the filters cannot be read"`：第一页答 500，说的不是 `index.badFilters`，按"重试"列出；不写成 `test.each` 的一行（那张表的步骤是按"清除筛选"）。
+- **变异**：`refused` 恒为 `false`：本格失败；`refused` 不看码：上一格失败（修复第 1 轮）。
 - **牵连**：P3/S1 改 MCP 的 `index` 对空筛选的处理（30.4、30.5），网页从不发空的筛选，不受影响。
 
 #### 4.6.8 与别的 Step 的牵连（汇总）
@@ -3299,9 +3306,9 @@ const threeBrowsers =
 | S4 | UP1 (page)（`upgrade/up1-start-freeze.spec.ts:171`） | 加一段 | 48：横幅出现时文章的节点不换、段落不跳 | 三种（已在） | 约 3 s |
 | S5 | **AS6**（新，`asset/as6-reading-links.spec.ts`） | 三格 | 17.2b 复制、17.4 过期的下载、15.2 callout 标题里的音频 | Chromium | 15–24 s（实测三格约 2 test-seconds，10.5） |
 | S5 | AS3 (page)（`asset/as3-render.spec.ts:297`） | 加一页、量盒子 | 15.1 | Chromium | 1–2 s（实测多 0.3–1.0 s，10.5） |
-| S6 | TB2 (page)（`trash/tb2-background-restore.spec.ts`） | 改回"在 Big 自己的页上删"，扣住删除的答复 | 24.8、24.10 | Chromium | 约 0.5 s |
-| S6 | SE1 (page) | 加一段 | 27.2：过时的结果打开已删的页 | Chromium | 1–2 s |
-| S6 | SE2 (page)（`search/se2-search-visibility.spec.ts`） | 加一段 | 26.5：方向键不搜，Tab 离开时搜 | Chromium | 约 1 s |
+| S6 | TB2 (page)（`trash/tb2-background-restore.spec.ts`） | 改回"在 Big 自己的页上删"，扣住删除的答复 | 24.8、24.10 | Chromium | 约 0.5 s（实测多 0.3–0.4 s，TB2 (API) 多 0.5–0.6 s，10.6） |
+| S6 | SE1 (page) | 加一段 | 27.2：过时的结果打开已删的页 | Chromium | 1–2 s（实测多 0.8–1.2 s，10.6） |
+| S6 | SE2 (page)（`search/se2-search-visibility.spec.ts`） | 加一段 | 26.5：方向键不搜，Tab 离开时搜 | Chromium | 约 1 s（实测多 0.6–1.1 s，含修复第 1 轮的回车一段，10.6） |
 
 - **测试数**：577 个之后多 16 个。
   - MC3、PG2 各两个：Chromium 与 `webkit-narrow` 各一个。
@@ -3600,7 +3607,7 @@ S4 在 S1 合并之后开（P2-1）。
 | S3 | 42–50（33.1 复现时再加约 6）；实测约 21.6（10.3） | 22–30 秒，区间 15–45；实测约 11–14 秒（10.3） |
 | S4 | 57–93；实测约 15–27（10.4） | 35–45 秒；按上面的折法推断约 8–18 秒（10.4） |
 | S5 | 16–26；实测约 2–3（10.5） | 8–15 秒；按上面的折法推断约 1–2 秒（10.5） |
-| S6 | 3–4 | 约 2 秒 |
+| S6 | 3–4；实测照原样多 2.3–3.2，按整体的快慢折算约 1（10.6） | 约 2 秒；按上面的折法推断约 1–2 秒（10.6） |
 | 合计 | 约 125–180 | 约 70–95 秒 |
 
 **结论**：
@@ -3662,6 +3669,8 @@ P2 完成，当且仅当下面七条都成立。
 **S4 之后**（2026-11-19）：第 1 条，S4 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 跑过、全绿（实施与修复第 1–3 轮的头上 `make check`、`make e2e` 与两个检查，每个提交 `make lint-web`、`make knip`、`make test-web`），审查与三轮修复核对结束，核对第 2 轮的一条 Minor 由修复第 3 轮改，核对第 3 轮只有 Nit（10.4）。第 2 条，S4 的测试在没修的代码上红过，第 0 步的核对与三项探查有记录，变异除写明等价的之外都抓到（10.4 与 [S4 的记录](reviews/P2-S4-reading-view-review.md)）。第 3 条，附录 A 里 S4 的 A 5 项、B 5 项、C 的 11.6 失焦部分与 D 的 14d 修好，8.1 复现、修好（决定 610），推后进 v0.2 的照 4.4.8。第 4–7 条，S4 的文档提交照写的改了（00 号文档第 7 节第 22 条、第 11、12、13 节与附录 A 的 8.1，总体设计 13.2 第 23、26 条、13.4 第 3 条与第 15 节，`M5-polish.md`、`M4-performance.md` 各一行，P5 设计 3.19 的读屏清单）；README 不改。
 
 **S5 之后**（2026-11-19）：第 1 条，S5 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与负责人 2026-11-19 第 12 问跑过、全绿（实施、修复第 1 轮与合并之后的头上 `make check`、`make e2e` 与两个检查，修复第 2 轮 `make check`；修复第 3、4 轮照负责人第 12 问只跑 `make lint-web`、`make knip`、`make test-web`，全量交分支 CI；每个提交 `make lint-web`、`make knip`、`make test-web`），审查、三轮核对与四轮修复结束，核对第 2 轮的四条 Minor 由修复第 3 轮改，核对第 3 轮 A 的一条 Minor 由修复第 4 轮改、C 的在本提交（10.5）。第 2 条，S5 的测试在没修的代码上红过，开工的核对与 AS6 在 Firefox、WebKit 上的一次有记录，变异除写明等价的之外都抓到（10.5 与 [S5 的记录](reviews/P2-S5-editor-assets-review.md)）。第 3 条，附录 A 里 S5 的 A 15 项、B 6 项修好，推后进 v0.2 的照 10.5。第 4–7 条，S5 的文档提交照写的改了（00 号文档第 11、12、13 节，总体设计 13.2 第 7、12、21、27 条与第 15 节，`M5-polish.md` 一行，05-lessons 两条，P5 设计 3.19 的读屏清单；另照负责人第 12 问改 02-workflow 3.1 与 00 号文档 9.7）；README 不改。
+
+**S6 之后**（2026-11-20）：第 1 条，S6 合并见 00 号文档第 12 节；合并之前的门禁照 7.3 与负责人 2026-11-19 第 12 问跑过、全绿（每个提交在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web`，改了故事的提交另跑那几个故事；实施的头上 `make e2e` 与两个检查；修复第 1 轮的头上 TB2、SE1、SE2 与两个检查；收口的头上 SE2；合并 `main` 之后 `make lint-web`、`make knip` 与 `check_links.py`；全量交分支 CI），审查、修复第 1 轮与核对第 1 轮结束：核对只剩 Nit，照第 12 问不再开核对，代码的两条在收口的提交改、主持者核对（10.6）。第 2 条，S6 的测试在没修的代码上红过（只加测试的 26.15、22.2 的两格、35.3 的一格与收口的两格由它们要守的变异红），第 0 步的核对与 26.5 的三引擎探查有记录，变异除写明没跑的 24.10 一条之外都抓到（10.6 与 [S6 的记录](reviews/P2-S6-versions-trash-history-search-review.md)）。第 3 条，附录 A 里 S6 的 A 8 项、B 10 项、D 3 项修好，推后进 v0.2 的照 10.6。第 4–7 条，S6 的文档提交照写的改了（00 号文档第 7 节第 24 条、第 11、12、13 节，总体设计 13.2 第 12 条与第 15 节，`M5-polish.md` 一行，P5 设计 3.19 的读屏清单与人工入口）；README 不改。
 
 ### 8.2 总体设计的新文字
 
@@ -3788,7 +3797,9 @@ P2 完成，当且仅当下面七条都成立。
 
 在 `不在选中时发出（方向键移动就会选中）。` 之后（恰好一处）加：
 
-> 选了就换地址的原生选择（搜索的"在哪里找"、历史与目录的筛选）同理：在关着的选择上用键盘一项项换时，等读者离开它或按回车再用，指针与打开的列表里的选择立即用（`components/ui/native-select.tsx` 的 `useChoice`，M12/P2/S6）。
+> 选了就换地址的原生选择（搜索的"在哪里找"、历史与目录的筛选）同理：在关着的选择上用键盘一项项换时，等读者离开它或按回车再用，指针与打开的列表里的选择立即用（`components/ui/native-select.tsx` 的 `useChoice`，M12/P2/S6）。（一项项换的是不带 Alt、Ctrl、Meta 的方向键、Home、End、PageUp、PageDown 与打字找选项的字符；在 macOS 上只有打字找选项的字符算（那里方向键等打开列表，推断）。Alt+方向键、F4、空格不算一步：多数引擎里它们打开列表，WebKit 在 Linux 上 Alt+方向键照样逐项换、立即用。用等着的选择的回车不再打开列表。只在 Linux 上核实过，Windows 是推断，macOS 进发布之后的人工清单；见 P2 设计 10.6。）
+
+（实际：括号照 S6 审查 B 的 N3、C 的 N4 与决定 627 补键的范围与平台，10.6。）
 
 #### S3、S4：13.4 第 3 条
 
@@ -3810,7 +3821,7 @@ P2 完成，当且仅当下面七条都成立。
     - 改法的 Step 的设计照 4.6.6 写明会碰到的 S6 的项；
     - S6 开工之前照 4.6 开头的"开工之前补"补齐。
   - M4-performance 第 11 条（阅读视图里的大图与带宽）在 S4 之后量：U3 之后每小时的重读不再换节点，但图片仍改 `src`、重新下载（4.4.2，P2-47），量的是这一种。
-  - 移动对话框的 `canHold` 与树行的 `subtreeOf` 的开销，可以顺手量（4.6.6 末）。
+  - 移动对话框的 `canHold` 与树行的 `subtreeOf` 的开销，可以顺手量（4.6.6 末）。实际：S6 量了"移到……"对话框（深的形状中位数约 1.0 秒），修复第 1 轮把被移的页的子树与高度提到循环外（约 0.19 秒，决定 625）；树行已不调 `subtreeOf`，只在对话框挂着时为那一页调（S6 第 0 步，10.6）。
   - `e2e/perf/` 的脚本照 P1 的门禁经 `goto`。
 - **P5/S3（发布说明与人工清单）**：
   - **`CHANGELOG.md` 的已知限制从 P2 取**：附录 A 的 C 类（按主题）；4.4.8 的 S4 之后仍在的限制；8.1、33.1 若没复现，写"待人工确认"。
@@ -3818,11 +3829,12 @@ P2 完成，当且仅当下面七条都成立。
     - 只从 ARIA 推断的八项；
     - S1 改的焦点去处在真实读屏上念什么：`ConfirmDialog` 被拒之后、横幅的拒绝之后、"仍要退出吗"；
     - S4 的第 4 步（4.4.3：给它原来所在的那一块）念出的是哪一块；实际另有两项：语言换了之后图的包装（新节点）拿回焦点时念什么，后退到带锚点的地址时是否先念页顶再念标题（[S4 的记录](reviews/P2-S4-reading-view-review.md)"读屏与人工清单"）。
+    - S6 的十一项：变更集页、回收站预览与版本页的跟随、通知与焦点念出什么，"显示未改动的行"不再有时焦点给比较的组，关着的选择用键盘换时读者是否以为已经搜了，等（[S6 的记录](reviews/P2-S6-versions-trash-history-search-review.md)"读屏与人工清单"）。
 
     P2 的各 Step 记录列出它们，P5/S3 照抄。
   - **真浏览器的下载许可**：17.4 在程序里再点下载，真的 Chrome 的"自动下载多个文件"、Safari 的"允许这个网站下载吗"会不会拦，进人工清单（审查 C 的未核实第 2 条）。
-  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。8.1 在 S4 复现、修了，不进（决定 610）。33.1 在 Playwright 的 WebKit 上复现、修了；真的 Safari 上窄屏的搜索页与原生下拉的焦点进这里（决定 590，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）。
-- **收尾**：v0.2 的 `M12-polish.md` 收 C 类 87 项、D 类其余、4.4.8 的限制、各 Step 记录里"推后的"，与 2.1 第 7 条列的几处。
+  - **汇总的人工入口**（`manual/README.md`）：8.1、33.1 没复现时进这里。8.1 在 S4 复现、修了，不进（决定 610）。33.1 在 Playwright 的 WebKit 上复现、修了；真的 Safari 上窄屏的搜索页与原生下拉的焦点进这里（决定 590，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）。S6 的两项也进这里：26.18a 在真的浏览器里看一次印地文、泰文的命中；26.5 在 macOS 的 Safari 与 Chrome 上，关着的选择按方向键是否打开列表、列表里选的是否立即用（决定 627，[S6 的记录](reviews/P2-S6-versions-trash-history-search-review.md)"读屏与人工清单"）。
+- **收尾**：v0.2 的 `M12-polish.md` 收 C 类 87 项、D 类其余、4.4.8 的限制、各 Step 记录里"推后的"，与 2.1 第 7 条列的几处。S6 的"推后的"另有两样不是附录 A 的条目：页的地址 `pages/:pageId` 按原样找，大写的 id 落到"页面不存在"（S6 审查 A 的 Q2）；`onMac` 从 `app/shortcuts.ts` 挪进 `lib/`（S6 核对 B 的 C1-N2）（10.6）。
 
 ## 10. 结果
 
@@ -4005,6 +4017,38 @@ P2 完成，当且仅当下面七条都成立。
 - **与 S4 的合并**（`60ab921d`，`main` 的 `ad5d78b5`）：审查 C 的预演照实：没有文本冲突（两边都改的六个文件自动合并）；合并提交里删掉 S5 自己的 `wav`（用 S4 的，决定 611）、去掉 `title-media.test.ts` 的 `role`。核对 B 第 2 轮用 `git show --remerge-diff` 核过只有这两处。合并之后 web 与 e2e 的 `tsc`、oxlint、oxfmt 绿；`make test-web` 200 个文件 4,987 格过，AS3 三格与 AS6 两格（Chromium）过。
 - **读屏与人工清单**：S5 的记录"读屏与人工清单"列的六项交 P5/S3 的读屏清单；人工清单三项：15.1 的 Obsidian 对照、17.4 在程序里再点下载会不会被浏览器拦、38.7 与输入法的 Esc。
 - **照实改的各节**（02-workflow 3.5）：头；2.1 第 4 条的 15.1（决定 621）；2.3 的 403（决定 620）、407（决定 623）、419（决定 618）；4.5 的"本节的取舍"、4.5.0.1 表下第一条、4.5.0.3 末条、4.5.0.5 第 2、4 条、4.5.1.3 的 N、4.5.1.5；4.5.3 的 12.8、15.1、15.2、16.3、16.4b、16.4c、16.10、16.11、17.2b、17.4、17.7、18.1、18.2、19.4、28.1、38.7；5.2 的 S5 两行；7.1 的三种浏览器；7.4 的 S5 一行；8.1 的"S5 之后"；8.2 的 S5（13.2 第 7、12、21、27 条）。
+
+### 10.6 S6：版本、回收站、历史、目录、后台任务与搜索的网页（2026-11-19，合并见 00 号文档第 12 节）
+
+- **提交**：十七个代码提交，修复第 1 轮八个，收口一个，合并 `main` 一次，加本文档提交；[审查记录](reviews/P2-S6-versions-trash-history-search-review.md)。
+  - 第 1–17 个照 6.6 的 15 项（第 4 项拆成 store、22.14、23.10 三个，第 9 项 24.2 与 24.9 合一个）：`029167be`（12.12）、`6ba7f186`（24.8、24.10）、`e22b4481`（23.19）、`a89c99a2`（store）、`51d0cf7f`（22.14）、`bfe40f05`（23.10）、`e076a11f`（22.19）、`c36127e5`（21.3、22.2）、`d5ffb17f`（21.2、21.10）、`935d87a9`（21.7）、`9560f62d`（24.2、24.9）、`f960bdf8`（2）、`7cbbf485`（26.2 的前一半、26.15）、`8af5c970`（26.5）、`4c8b8b48`（26.18a）、`1bfce80c`（35.3）、`ea4528d0`（27.2）。推送之前改写过一次：变异之后补的三格并进 23.10、22.19、21.2/21.10 的提交，21.2、21.10 的格改成等"还原"可按再按，26.5 与 27.2 的范围改成 `web, e2e`；没有推过旧的（审查 C 用 `gh` 核过）。
+  - 修复第 1 轮（三位审查，A 0/6/3/2、B 0/3/4/1、C 0/2/6/1）八个：`75888280`（27.2，决定 626；版本页的挡与强制读一格）、`fd4eddeb`（22.19 的 `Trail`、间距与跟随的 `not_trash_root`，决定 631；`replace` 一格）、`97d2c57b`（24.2 只剩"取消"时回车不发；23.10 跟随时"没有可撤销的"一格）、`03ebf362`（22.2 的两格，只加测试，决定 628）、`c2aba4ae`（26.5 回车 `preventDefault` 与 macOS，决定 627、630；`native-select.test.tsx`）、`8b4828eb`（35.3 别的拒绝一格）、`4dd02868`（24.8 等过之后看这一代停了没有）、`07ca08bc`（"移到……"对话框，决定 625）。
+  - 收口（核对第 1 轮：三位都没有 Important、Minor，Nit A 1、B 2、C 2；照负责人第 12 问不再开核对）一个：`47e8871d`（版本页"笔记本之内树读不到当场说"一格、`native-select.test.tsx`"选回在用的那一项什么也不读"一格，A 与 B 的 C1-N1，主持者核对）；B 的 C1-N2 进 v0.2，C 的两条在本提交。之后合并 `main`（`c752af4b`，S5 的记号，只改文档，没有冲突）`ffa02d6d`。
+- **做完**：A：2、12.12、21.7、22.14、23.10、23.19、24.2、35.3。B：21.2、21.3、21.10、22.2、22.19、24.9、26.2 的前一半、26.5、26.18a、27.2（甲'：保留整棵树）。D：24.8、24.10、26.15。推后进 v0.2 的：21.7 统一视图里没有够长的未改动段时按钮照旧画出；26.5 Windows 上没有核实，WebKit（Linux）的 Alt+方向键逐项立即用，关着的选择上用键盘换了、还没离开就关了标签页或导航走，那一步不用；26.18a 的 GB9c（辅音 + virama + 辅音）没有测；27.2 假服务端对不存在的页的面板答 200（真的浏览器里由 SE1 守）。另有两样不是附录 A 的条目，同进 v0.2 的 `M12-polish.md`（第 9 节"收尾"）：页的地址 `pages/:pageId` 按原样找，大写的 id 落到"页面不存在"（审查 A 的 Q2；变更集页与回收站预览已在 23.19 小写）；`onMac` 从 `app/shortcuts.ts` 挪进 `lib/`（核对 B 的 C1-N2：`components/ui/` 现在依赖 `app/`）。
+- **主持者的决定**（625–632，00 号文档第 11 节）："移到……"对话框的子树与高度在循环外算一次；27.2 设计原文的两处在 S6 修；macOS 上方向键等不算一步；22.2 的 `merged` 留在外壳；24.8 的表项读完并显示才删；26.5 `useChoice` 的按键；22.19 的面包屑在 `Trail` 里、跟随的 `not_trash_root` 不等单项；21.10 另一版本显示时清掉说的话。实施中定的其余几条不编号，在 S6 的记录。
+- **与设计不同之处**（正文照实改了，各处注"实际…（10.6）""M12/P2/S6 修复第 1 轮"或它的决定）：
+  - **24.8** 的表项到读完并显示才删，带 `started`（决定 629）：刷新器在键最近没读过时当场开始读，照"读开始时取下"写，`links` 事件不等，整合一格红；修复第 1 轮另让 `afterTree` 等过之后先看这一代停了没有（审查 B 的 N2）。
+  - **24.2**、**21.7** 的按钮各成小组件（`Confirm`、`ShowUnchanged`），`useFocusLeaving` 在里面：放在不卸下的组件里，清理不跑；24.2 去掉它时焦点由 Radix 的 `FocusScope` 交给对话框的内容（设计推断 `body`）。21.7 的 `foldable` 用布局 effect（冲突面板已有的一格同步找按钮）；三行表与焦点一格在 `version-restore.test.tsx`（它 mock 了 worker 的比较）。24.2 只剩"取消"时 `onSubmit` 也判 `hopeless`：表单只剩说明一个字段，回车隐式提交（审查 A 的 M4）。
+  - **21.10** 另一版本显示时清掉说的话（决定 632）：只比 `of`，前进回到 4 又说，设计自己的格红。
+  - **27.2** 卸下时没读过的树也标，挂上时缓存里的旧错误不说，已确认时挂上照旧当场说（决定 626，设计原文的两处，审查 A 的 M1、M2）；版本页补了挡、强制读与两种错误的格（审查 A 的 M5、核对 A 的 C1-N1）。没修的代码上红的样子也不同：vitest 里离开又回来在 2 秒之内，SWR 去重了挂上时的读，旧的树不再读（设计推断红在单页的读）。
+  - **26.5** 每次按键都重设"是不是一步"，`stepping` 另排除 Ctrl、Meta，用等着的选择的回车 `preventDefault`，用的值已在用时不再读（决定 630，审查 B 的 M1）；macOS 上只有打字找选项的字符算一步（决定 627）；历史的三个筛选各一格。
+  - **22.19** 的面包屑包在 `Trail` 里交还焦点、间距照页的外壳，跟随的 `not_trash_root` 不等单项（决定 631，审查 A 的 M3、N2、N3）。
+  - **22.2** 的"`merged` 放回 `Preview`"不等价，留在外壳、补格（决定 628，审查 C 的 M2）；`started` 的一半也补一格（审查 C 的 M1）。
+  - **23.19** 的 `trash-server.ts` 让 `idOf` 小写（设计写 `found`、`nameOf` 用 `sameId`）；**23.10** 的"答复丢了"一格用撤销路由的 `answers` 覆盖与事件，不要新的假服务端；**2** 的测试写 `act(() => void router.navigate(...))`。
+  - **35.3** 别的拒绝单写一格（审查 B 的 M3）。
+  - **"移到……"对话框**（4.6.6 末、第 9 节）：`holdersOf` 在循环外算一次被移的页的子树与高度（决定 625）。
+- **先红**：各项的新格在没修的代码上红（实施报告第 2 节、修复报告第 3 节）；只加测试的 26.15、22.2 的两格、35.3 的别的拒绝一格与收口的两格在没修的树上本来就过，各由它要守的变异红；SE2 的一段由"`stepped` 恒假"、SE1 的一段由"卸下时不标"的变异红（都等于没修）；TB2 (page) 在没有 24.8 的代码上红在安静页的检查（第 0 步）。
+- **变异**：实施 56 条（vitest 52、e2e 4），第一轮抓到 54；没抓到的 `2310-before-not-sent`、`2219-gone-no-leaving` 各补一格之后红；21.2、21.10 的格改成等"还原"可按，另补"另一版本在读"一格让 `2110-shown-unchecked` 红。审查者各自的变异活下来的成了发现（A 的 M5、M6，B 的 M2、M3，C 的 M1、M2）。修复第 1 轮 29 条（审查者的 10 条重跑、实施者的 19 条）都抓到，第一次没抓到的两条（已确认时挂上也记旧错误、单项那一路的 `replace`）补格之后红。核对第 1 轮 A、B 各一条活（`c1-272-stale-always-version`、`265-apply-same`），收口的两格补上之后都红。设计点名而没跑的：24.10 的"`treeRead` 不等"一条（进 v0.2）。表在 S6 的记录。
+- **门禁与 CI**（照负责人 2026-11-19 第 12 问，不跑完整的 `make check`、`make test`）：
+  - 实施：十七个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（5,013 → 5,070 格，`main` 的 `22e9f2bd` 是 5,012），改了故事的三个另在 Chromium 上跑那几个故事（TB2、SE2、SE1）；头 `ea4528d0` 上 `make e2e`（597 过、1 跳过）与两个 e2e 的检查（193 个文件；chromium 417、firefox 89、webkit 89、webkit-narrow 3）绿。
+  - 修复第 1 轮：八个提交各自在干净的 worktree 里 `make lint-web`、`make knip`、`make test-web` 绿（5,075 → 5,086 格），`c2aba4ae` 另跑 SE2；头 `07ca08bc` 上 TB2、SE1、SE2 在 Chromium 上 9 格与两个检查绿，全量交分支 CI。
+  - 收口：`47e8871d` 上 `make lint-web`、`make knip`、`make test-web` 绿（5,088 格），SE2 在 Chromium 上 3 格绿。合并 `main` 的 `ffa02d6d` 上 `make lint-web`、`make knip` 与 `check_links.py` 绿。
+  - 分支 CI：`ea4528d0` 的 run 44529879716 第一次 attempt 19 项全绿（web 4:27，Test 3:34，5,070 格；e2e 8:35，E2E 一步 7:24，597、1）；修复第 1 轮的头 `07ca08bc` 的 run 44547267899 第一次 attempt 19 项全绿（web 4:40，Test 4:04，5,086 格；e2e 9:15，E2E 一步 8:05，597、1）；收口 `47e8871d` 的 run 44555911871 第一次 attempt 红在 e2e 的三格（W3 (API)、W6 (page)、W11 (page)：runner（Azure westus2）上 PostgreSQL 的提交一时停住，注册的提交到了 2 秒的期限、退出到了 4 秒，答 500，W11 的刷新答 500 之后被送回登录页；本提交只改测试，服务端与网页的代码同 `07ca08bc`），其余 18 项绿（web 4:08，Test 3:29，5,088 格）；只重跑 e2e，第二次 attempt 绿（Azure centralus；e2e 9:10，E2E 一步 7:49，597、1）；合并的头 `ffa02d6d` 的 run 44563702116 第一次 attempt 19 项全绿（web 4:49，Test 4:09，5,088 格；e2e 10:02，E2E 一步 8:43，597、1）。
+  - 本提交的分支 CI：`（待填：本提交的分支 CI）`。
+- **"移到……"对话框**（4.6.6 末、第 9 节）：`e2e/perf/tree.perf.ts` 只导入深的形状，一轮五次。实施的头 `ea4528d0` 上中位数 1,006 ms（P4/S2、S4 在 `main` 上 1,188–1,339 ms）；修复第 1 轮同一会话各量一轮：改前 1,148、1,204、1,008、990、988 ms（中位数 1,008），改后 192、190、187、192、176 ms（中位数 190）。改后的那一轮先跑、负载反而略高（审查 C 核过量法）。
+- **e2e 的用时**（7.4）：CI 的 `list` 报告里，S6 改的四格（TB2 两格、SE1 (page)、SE2 (page)）在 `main` 的 `22e9f2bd` 上合计 8.1 test-seconds，`ea4528d0` 10.4，`07ca08bc` 11.3（多的 0.5 秒是 SE2 的回车一段）；照原样相减多 2.3–3.2；`ea4528d0` 那一次整体慢约一成六，照"分支 − 1.16 × `main`"折算约多 1.0；设计推断 3–4（墙钟约 2 秒）。e2e 作业 8:35–10:02（E2E 一步 7:24–8:43），`main` 的 `22e9f2bd` 是 9:01（6:19），差在抖动之内。逐格的数在 S6 的记录。
+- **读屏与人工清单**：S6 的记录"读屏与人工清单"列的十一项交 P5/S3 的读屏清单；人工清单两项：26.18a 在真的浏览器里看一次印地文、泰文的命中；26.5 在 macOS 的 Safari 与 Chrome 上，关着的选择按方向键是否打开列表、列表里选的是否立即用（决定 627）。
+- **照实改的各节**（02-workflow 3.5）：头；4.6.1 总表 21.7 一行；4.6.6 末的附带观察；4.6.7 的 2、21.3、21.7、21.10、22.2、22.14、22.19、23.10、23.19、24.2、24.8、26.5、27.2、35.3；5.2 的 S6 三行；7.4 的 S6 一行；8.1 的"S6 之后"；8.2 的 S6（13.2 第 12 条）；第 9 节的 P4/S2、P5/S3 与收尾。
 
 ## 附录：核对过的代码
 

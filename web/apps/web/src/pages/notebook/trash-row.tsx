@@ -16,9 +16,10 @@ import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId, twinsOf } from "../../lib/twins";
 import { ApiError, lost } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
-import type { TrashItem, TreeNode } from "../../services/page.service";
+import type { NodeRestored, TrashItem, TreeNode } from "../../services/page.service";
 import type { TransferJob } from "../../services/transfer.service";
 import { useAccount, usePageTree, useStore, useTransfers } from "../../stores/context";
+import type { PageTreeStore } from "../../stores/page-tree.store";
 import { AssetIcon } from "../page/attachment-row";
 import { useWorkspace } from "../workspace/workspace-layout";
 
@@ -39,6 +40,32 @@ export type TrashRestored = {
   renamed: boolean;
   parent: { id: string; name: string } | null;
 };
+
+/**
+ * trashRestoredOf is what the trash says of item restored, as restored
+ * answered: the tree, read again after the restore, names the parent as it
+ * is now; the item's ancestors as it was read, where the tree has it not.
+ */
+export function trashRestoredOf(
+  restored: NodeRestored,
+  pages: PageTreeStore,
+  item: TrashItem | undefined
+): TrashRestored {
+  const parent = restored.placed.parent_id;
+  return {
+    id: restored.id,
+    kind: restored.kind,
+    name: restored.name,
+    renamed: restored.renamed,
+    parent:
+      parent === null
+        ? null
+        : {
+            id: parent,
+            name: pages.byId(parent)?.name ?? item?.ancestors.find((each) => each.id === parent)?.name ?? "",
+          },
+  };
+}
 
 /** RestoredState is the route state of the trash arrived at from an item restored in its preview. */
 export type RestoredState = { arrived: true; restored: TrashRestored };
@@ -312,22 +339,7 @@ export function useTrashRestore(notebook: Notebook): (item: TrashItem) => Promis
   const { mutate } = useSWRConfig();
   return async (item) => {
     try {
-      const restored = await pages.restore(item.id);
-      const parent = restored.placed.parent_id;
-      return {
-        id: restored.id,
-        kind: restored.kind,
-        name: restored.name,
-        renamed: restored.renamed,
-        // The tree, read again after the restore, names the parent as it is now.
-        parent:
-          parent === null
-            ? null
-            : {
-                id: parent,
-                name: pages.byId(parent)?.name ?? item.ancestors.find((each) => each.id === parent)?.name ?? "",
-              },
-      };
+      return trashRestoredOf(await pages.restore(item.id), pages, item);
     } catch (refusal) {
       if (refusal instanceof ApiError && (refusal.code === "forbidden" || refusal.status === 404)) {
         void mutate(["notebooks", workspace.id]).catch(() => undefined);
@@ -389,16 +401,18 @@ export function useBackgroundRestore(notebook: Notebook): (item: TrashItem) => P
 
 /**
  * RestoreButton is an item's Restore, named label, or its Restore in the
- * background, which says text: busy while its restore is out, pressed
- * again meanwhile it sends nothing (M8/P2 design review B-M3). Gone with
- * the focus, a reader by now, it gives the focus away (left) before it
- * leaves the document.
+ * background, which says text: busy while its restore is out, or while
+ * busy says one is that another mount sent, the item's list or preview
+ * left and come back to (M5-polish 22.14); pressed meanwhile it sends
+ * nothing (M8/P2 design review B-M3). Gone with the focus, a reader by
+ * now, it gives the focus away (left) before it leaves the document.
  */
 export function RestoreButton({
   label,
   text,
   restore,
   left,
+  busy: elsewhere = false,
 }: {
   label: string;
   /** What it says; Restore without it. */
@@ -406,6 +420,8 @@ export function RestoreButton({
   /** Restores the item, saying what came of it: it does not reject. */
   restore: () => Promise<void>;
   left: () => void;
+  /** Whether a restore of the item is out that this button did not send. */
+  busy?: boolean;
 }) {
   const t = useT();
   const mounted = useMounted();
@@ -415,7 +431,7 @@ export function RestoreButton({
   useFocusLeaving(button, left);
 
   async function send(): Promise<void> {
-    if (busy.current) {
+    if (busy.current || elsewhere) {
       return;
     }
     busy.current = true;
@@ -435,8 +451,8 @@ export function RestoreButton({
       ref={button}
       variant="outline"
       aria-label={label}
-      aria-busy={sending || undefined}
-      aria-disabled={sending || undefined}
+      aria-busy={sending || elsewhere || undefined}
+      aria-disabled={sending || elsewhere || undefined}
       onClick={() => void send()}
     >
       {text ?? t("trash.restore")}
@@ -474,6 +490,7 @@ export const TrashRow = observer(function TrashRow({
   const t = useT();
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
+  const pages = usePageTree(notebook);
   const row = useRef<HTMLLIElement>(null);
   useFocusLeaving(row, left);
   const names = namesOf(item, twin, t, locale);
@@ -493,7 +510,15 @@ export const TrashRow = observer(function TrashRow({
         </p>
         <TrashFacts item={item} now={now} id={twin === "id" ? shortId(item.id) : undefined} />
       </div>
-      {writesNotebook(notebook) && <RestoreButton label={names.restore} restore={restore} left={left} />}
+      {writesNotebook(notebook) && (
+        <RestoreButton
+          label={names.restore}
+          restore={restore}
+          left={left}
+          // Out from the item's preview, left for the list: pressed, it would queue a restore refused once it is back.
+          busy={pages.restoreOut(item.id) !== undefined}
+        />
+      )}
     </li>
   );
 });

@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -1079,3 +1079,30 @@ test("a name of another direction does not turn a row around it: an MCP client's
   expect(zhClient.textContent).toMatch(/^MCP（עוזר） · /);
   expect(bdis(zhClient)).toEqual(["עוזר"]);
 });
+
+test.each<[string, string, string]>([
+  ["Who", bob.user_id, `?actor=${bob.user_id}`],
+  ["Client", "api", "?client=api"],
+  ["Ingestion", "1", "?ingest=1"],
+])(
+  "the filter %s stepped through with the keys on its closed select reads the list once the reader presses Enter; nothing meanwhile (M5-polish 26.5)",
+  async (name, value, search) => {
+    const { server } = logged();
+    const { router } = renderApp(historyPath, server.app);
+    await screen.findByRole("list", { name: "Changes" });
+    const field = screen.getByRole("combobox", { name }) as HTMLSelectElement;
+    const reads = () => server.sent.filter((each) => each.startsWith("GET changesets"));
+    const before = reads().length;
+
+    fireEvent.keyDown(field, { key: "ArrowDown" });
+    fireEvent.change(field, { target: { value } });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(router.state.location.search).toBe("");
+    expect(reads()).toHaveLength(before);
+    expect(field.value).toBe(value);
+
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() => expect(router.state.location.search).toBe(search));
+    await waitFor(() => expect(reads()).toHaveLength(before + 1));
+  }
+);
