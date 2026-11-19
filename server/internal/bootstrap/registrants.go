@@ -299,7 +299,9 @@ func pageParticipants(pool *pgxpool.Pool, md *markdown.Markdown, budget *markdow
 // items, with their byte positions; M6's dialect, with its links and tags,
 // a reading view's links leading where resolve tells (M6/P3 design 6.6),
 // and from M7 the attachments they lead to shown as assets tells (M7/P3
-// design 5.10).
+// design 5.10). The signed view's sample is rendered with these, written
+// out again in modules/asset/signed_view_test.go (M12/P2/S4): changed, the
+// test and testdata/m12/signed-view.json are to be changed with them.
 func markdownExtensions(resolve obsidian.Resolve, assets obsidian.Assets) []markdown.Extension {
 	return []markdown.Extension{tasks.Extension(), obsidian.Extension(obsidian.Options{Resolve: resolve, Assets: assets})}
 }

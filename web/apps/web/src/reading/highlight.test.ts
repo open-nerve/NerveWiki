@@ -17,7 +17,6 @@ const context: ReadingContext = {
   notebook: "n",
   page: "p",
   revision: 1,
-  role: "reader",
   t: translator("en"),
   locale: "en",
   theme: () => "light",
@@ -173,4 +172,58 @@ test("undoing the highlighting ends its worker and its timer", () => {
 
   expect(worker.terminated).toBe(true);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+// M12/P2/S4, 3 (review A's M2): a block the view kept as it changed (U4, U5) is coloured already; written again, the
+// reader's selection in it would go, and it would show plain a moment.
+test("an unchanged block already coloured is not written again", () => {
+  const container = view(
+    '<pre><code class="language-go">func kept() {}</code></pre><pre><code class="language-go">func edited() {}</code></pre>'
+  );
+  document.body.append(container);
+  const highlight = codeHighlight(() => new FakeWorker());
+  let undo = highlight(container, context);
+  const [kept, edited] = [...container.querySelectorAll("pre > code")];
+  const coloured = kept?.innerHTML;
+  expect(coloured).toContain("hljs-keyword");
+  const name = kept?.querySelector("span.hljs-title")?.firstChild as Text;
+  document.getSelection()?.setBaseAndExtent(name, 0, name, 4);
+  undo?.();
+  // Another's write changed the second block's text, in place of its nodes.
+  if (edited !== undefined) {
+    edited.textContent = "func edited(a int) {}";
+  }
+  const written: MutationRecord[] = [];
+  const watching = new MutationObserver((records) => written.push(...records));
+  watching.observe(kept as Element, { childList: true, subtree: true });
+
+  undo = highlight(container, context);
+  written.push(...watching.takeRecords());
+  watching.disconnect();
+
+  expect(written).toEqual([]);
+  expect(kept?.innerHTML).toBe(coloured);
+  expect(document.getSelection()?.toString()).toBe("kept");
+  expect(edited?.querySelector("span.hljs-keyword")?.textContent).toBe("func");
+  document.body.removeChild(container);
+  undo?.();
+});
+
+// Review B's M4 (M12/P2/S4): a view undone before its worker answered (another's write read again at once, the
+// language changed while highlight.js loads) leaves its blocks plain; run again, they are sent again and coloured.
+test("a block sent and undone before it was answered is sent again and coloured the next run", () => {
+  const container = view('<pre><code class="language-go">func later() {}</code></pre>');
+  const silent = new FakeWorker("silent");
+  const answering = new FakeWorker();
+  const workers = [silent, answering];
+  const highlight = codeHighlight(() => workers.shift() ?? new FakeWorker());
+
+  highlight(container, context)?.();
+  expect(silent.sent.map((request) => request.text)).toEqual(["func later() {}"]);
+  expect(container.querySelector("span.hljs-keyword")).toBeNull();
+  const undo = highlight(container, context);
+
+  expect(answering.sent.map((request) => request.text)).toEqual(["func later() {}"]);
+  expect(container.querySelector("span.hljs-keyword")?.textContent).toBe("func");
+  undo?.();
 });

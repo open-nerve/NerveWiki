@@ -1,14 +1,12 @@
 import { reaction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useContext, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
-import { useLocation, useNavigate } from "react-router";
+import { useContext, useLayoutEffect, useRef, type RefObject } from "react";
+import { useNavigate } from "react-router";
 
 import { arrived } from "../../app/arrival";
 import { canEditPageBody } from "../../app/source-permissions";
 import { NotLoaded } from "../../app/not-loaded";
-import { enhance, Enhancements } from "../../reading/enhancement";
-import { taskText } from "../../reading/task-toggle";
-import { unfold } from "../../reading/unfold";
+import { Enhancements } from "../../reading/enhancement";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
@@ -16,8 +14,9 @@ import { useT } from "../../i18n/i18n";
 import { useAssets, usePageTree, useStore } from "../../stores/context";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { usePageView } from "./page-view";
-import { watchReader } from "./readers-input";
+import { useServerHTML, type Toggled } from "./server-html";
 import { useUnresolvedLinks } from "./unresolved-link";
+import { useViewAnchors } from "./view-anchors";
 
 /**
  * ReadingView is the page's content as the server renders it (M4/P5 design
@@ -27,15 +26,19 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * Retry-After.
  *
  * Once the HTML is in, the app's enhancements run on it in their order;
- * before the HTML is replaced, and when the view goes, they are undone in
- * the reverse order (reading/enhancement.ts). They run again as the
+ * before the HTML is changed, and when the view goes, they are undone in
+ * the reverse order (reading/enhancement.ts). A view read again changes
+ * the HTML where it differs, block by block: what the reader selected,
+ * opened or plays in the rest stays (M12/P2/S4, 3, 17.1). They run again as the
  * language changes, their names in it: the reader changes it in a menu,
  * which has the focus. Not as the theme does, the system's maybe as one
  * reads: those that draw in it follow it (onThemeChange). A writer's
  * tick task items through it, one of the page's at a time (the page tree store's
  * oneToggle), and refused tells the page what was refused, undefined as a
- * toggle starts (M5/P6 design 3.5). A task item's checkbox that had the
- * focus as the HTML is replaced has it back in the new HTML, without a
+ * toggle starts (M5/P6 design 3.5). Whether the page can be written (the
+ * account's role, an upgrade under way, a source) changes the checkboxes
+ * alone, not the HTML, whose place the reader keeps (M12/P2/S4, 48). A task item's checkbox that had the
+ * focus as the HTML changed has it back in the new HTML, without a
  * scroll, while the box at its position is the same item's (its text, and
  * its state, or the state the view's own toggle asked for): a tick does
  * not move it, a write that moved the items does. A folded callout it is
@@ -56,10 +59,15 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * clicked, touched, pressed a key: the browser's own scrolling is none of
  * these, nor are an assistive technology's moves) and the focus is where it
  * was; a read after that one moves nothing. A link of the page to no
- * element leaves the focus where it is, and the page. An element with an
- * id that had the focus as the HTML is replaced, the anchor's among them,
- * has it back in the new HTML, shown again if it showed and no longer
- * does: a view read again stays where it is.
+ * element leaves the focus where it is, and the page. What had the focus
+ * as the HTML changed, the anchor's element among them, has it back: the
+ * same element, or one of its key in the block it was in, placed anew, or
+ * in another put in where it was (a heading of its text, not its id: one of
+ * its name put before it takes the id; not a link of the same address
+ * farther), shown again if
+ * it showed and no longer does; else the block where it was, neither
+ * shown nor opened (server-html.ts; M12/P2/S4, 4.4.3): a view read again
+ * stays where it is.
  *
  * A link to a page that is not there, acted on, opens the view's dialog
  * (unresolved-link.tsx): a writer may create the page, where the server
@@ -70,6 +78,10 @@ import { useUnresolvedLinks } from "./unresolved-link";
  * playing as the HTML is replaced and signs a started one's address anew
  * as it fails, through the attachments' store (reading/assets.ts; M7/P4
  * design 4.5, 4.6).
+ *
+ * The HTML and its enhancements are useServerHTML's (server-html.ts), the
+ * anchors useViewAnchors's (view-anchors.ts); the view gives them their
+ * context and keeps its own toggle (M12/P2/S4, 14d).
  */
 export const ReadingView = observer(function ReadingView({
   notebook,
@@ -93,21 +105,13 @@ export const ReadingView = observer(function ReadingView({
   const t = useT();
   const { preferences } = useStore();
   const navigate = useNavigate();
-  const location = useLocation();
-  // The element with an id focused as the HTML was replaced, and whether it showed.
-  const focusedTarget = useRef<{ id: string; shown: boolean } | undefined>(undefined);
-  // While the view from the cache is read again for the anchor the page opened at, which named no element of it:
-  // what had the focus then, and how the wait ends.
-  const awaited = useRef<{ focus: Element | null; end: () => void } | undefined>(undefined);
   const { data, error, mutate } = usePageView(notebook, page.id);
   // Whether the view came from the cache: older, maybe, than the address.
   const cached = useRef(data !== undefined);
   const article = useRef<HTMLElement>(null);
-  // The task item focused as the HTML was replaced: its position, its text and its state.
-  const focusedTask = useRef<{ task: string; text: string; checked: boolean } | undefined>(undefined);
   // The view's own toggle, from its sending: the item's position and the state asked for, until a view shows it
   // or the toggle fails. Meanwhile the item may come in either state: another's write, read again, may come first.
-  const toggled = useRef<{ task: string; checked: boolean } | undefined>(undefined);
+  const toggled = useRef<Toggled | undefined>(undefined);
   // The page's latest refused: the HTML is not replaced for a new one.
   const latestRefused = useRef(refused);
   const latestUnanchored = useRef(unanchored);
@@ -121,163 +125,59 @@ export const ReadingView = observer(function ReadingView({
   });
   const latestUnresolved = useRef(links.unresolved);
   const latestLeads = useRef(links.leads);
-  useEffect(() => {
+  // Before the view's HTML: the notebook's mode changing runs the enhancements again, which read the leads it makes.
+  useLayoutEffect(() => {
     latestRefused.current = refused;
     latestUnanchored.current = unanchored;
     latestUnresolved.current = links.unresolved;
     latestLeads.current = links.leads;
   });
-  const html = data?.html;
   const revision = data?.revision;
-  const assetsExpire = data?.assets_expire_at ?? null;
-  const { id: notebookId, role } = notebook;
-  const editable = canEditPageBody(pages, page.id);
-  useLayoutEffect(() => {
-    const container = article.current;
-    if (container === null || html === undefined || revision === undefined) {
-      return undefined;
-    }
-    container.innerHTML = html;
-    const undo = enhance(enhancements, container, {
+  useServerHTML(
+    article,
+    data && { html: data.html, revision: data.revision, assetsExpire: data.assets_expire_at ?? null },
+    {
+      enhancements,
+      toggled,
       workspace: slug,
-      notebook: notebookId,
+      notebook: notebook.id,
       page: page.id,
-      revision,
-      role,
       t,
       locale: preferences.locale,
+      mode: notebook.mode,
       theme: () => preferences.resolvedTheme,
       onThemeChange: (listener) => reaction(() => preferences.resolvedTheme, listener),
       reload: () => void mutate(),
       // An address without an anchor arrives at the page, whose heading takes the focus: the link had it.
       navigate: (to) => void navigate(to, to.includes("#") ? undefined : { state: arrived }),
-      toggleTask: editable
-        ? async (offset, checked) => {
-            if (!canEditPageBody(pages, page.id)) return;
-            await pages.oneToggle(page.id, async () => {
-              if (!canEditPageBody(pages, page.id)) return;
-              latestRefused.current(undefined);
-              toggled.current = { task: offset.toString(), checked };
-              try {
-                await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
-              } catch (failure) {
-                toggled.current = undefined;
-                if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
-                  await mutate();
-                }
-                throw failure;
-              }
+      // Whether the page can be written is asked as an item is clicked, and as the toggle's turn comes.
+      toggleTask: async (offset, checked) => {
+        if (!canEditPageBody(pages, page.id)) return;
+        await pages.oneToggle(page.id, async () => {
+          if (!canEditPageBody(pages, page.id) || revision === undefined) return;
+          latestRefused.current(undefined);
+          toggled.current = { task: offset.toString(), checked };
+          try {
+            await pages.toggleTask(page.id, { base_revision: revision, offset, checked });
+          } catch (failure) {
+            toggled.current = undefined;
+            if (failure instanceof ApiError && failure.code === "page.revision_mismatch") {
               await mutate();
-            });
+            }
+            throw failure;
           }
-        : undefined,
+          await mutate();
+        });
+      },
+      writes: () => canEditPageBody(pages, page.id),
+      onWritesChange: (listener) => reaction(() => canEditPageBody(pages, page.id), listener),
       report: (failure) => latestRefused.current(failure),
       unresolved: (link) => void latestUnresolved.current(link),
       leads: (target) => latestLeads.current(target),
-      assetsExpire,
       assetAddress: (id) => assets.address(id),
-    });
-    const focused = focusedTask.current;
-    const asked = toggled.current;
-    focusedTask.current = undefined;
-    const at = (task: string) => container.querySelector<HTMLElement>(`input[data-task="${CSS.escape(task)}"]`);
-    if (asked !== undefined && at(asked.task)?.hasAttribute("checked") === asked.checked) {
-      toggled.current = undefined;
     }
-    const box = focused && at(focused.task);
-    // The same item: its text, and its state, or the one the view's own toggle asked for.
-    const state = box?.hasAttribute("checked");
-    if (
-      box &&
-      taskText(box) === focused.text &&
-      (state === focused.checked || (asked?.task === focused.task && state === asked.checked))
-    ) {
-      unfold(box);
-      box.focus({ preventScroll: true });
-    }
-    const target = focusedTarget.current;
-    focusedTarget.current = undefined;
-    const again = target && byId(container, target.id);
-    if (again) {
-      // Scrolled only when it no longer shows: a scroll would reset a wide content's too.
-      focusOn(again, target.shown && !shows(again) ? { block: "nearest" } : undefined);
-    }
-    return () => {
-      // Undone, a checkbox is disabled again, which HTML's focus fixup takes the focus from: Chromium at the next
-      // rendering, an engine that applies the rule at once before the new HTML is in. Which had it is read first.
-      const active = document.activeElement;
-      focusedTask.current =
-        active instanceof HTMLInputElement && active.dataset.task !== undefined && container.contains(active)
-          ? { task: active.dataset.task, text: taskText(active), checked: active.hasAttribute("checked") }
-          : undefined;
-      focusedTarget.current =
-        active instanceof HTMLElement && active.id !== "" && container.contains(active)
-          ? { id: active.id, shown: shows(active) }
-          : undefined;
-      undo();
-    };
-  }, [
-    html,
-    revision,
-    assetsExpire,
-    enhancements,
-    slug,
-    notebookId,
-    role,
-    editable,
-    t,
-    preferences,
-    page.id,
-    mutate,
-    pages,
-    assets,
-    navigate,
-  ]);
-  useLayoutEffect(() => {
-    const container = article.current;
-    if (container === null || html === undefined) {
-      return;
-    }
-    const navigation = location.key + location.hash;
-    const anchor = location.hash.slice(1);
-    const target = anchor === "" ? undefined : named(container, anchor);
-    if (anchored.current === navigation) {
-      // The view read again for it has the element, the reader having done nothing, the focus where it was.
-      const waiting = awaited.current;
-      if (waiting !== undefined && target !== undefined && document.activeElement === waiting.focus) {
-        waiting.end();
-        focusOn(target, {});
-      }
-      return;
-    }
-    // The page's first navigation: it opened, by a load or from another page.
-    const opened = anchored.current === undefined;
-    anchored.current = navigation;
-    awaited.current?.end();
-    if (target !== undefined) {
-      focusOn(target, {});
-      return;
-    }
-    if (anchor === "" || !opened) {
-      return;
-    }
-    if (document.activeElement === document.body) {
-      latestUnanchored.current();
-    }
-    if (cached.current) {
-      // Once per page: the wait ends with this read, at the next navigation, or as the reader does something. Not as
-      // the view goes: StrictMode's second mount would end it at once; the page left, its read settling ends it.
-      const reader = watchReader({ acts: () => end() });
-      const end = () => {
-        reader.end();
-        if (awaited.current?.end === end) {
-          awaited.current = undefined;
-        }
-      };
-      awaited.current = { focus: document.activeElement, end };
-      void mutate().finally(end);
-    }
-  }, [anchored, html, location.hash, location.key, mutate]);
+  );
+  useViewAnchors({ article, html: data?.html, anchored, unanchored: latestUnanchored, cached, reload: mutate });
   if (data === undefined) {
     return <NotLoaded error={error} retry={() => void mutate()} />;
   }
@@ -289,40 +189,3 @@ export const ReadingView = observer(function ReadingView({
     </>
   );
 });
-
-/** named is the element of container whose id the address's fragment is, decoded, if there is one. */
-function named(container: HTMLElement, fragment: string): HTMLElement | undefined {
-  let id = fragment;
-  try {
-    id = decodeURIComponent(fragment);
-  } catch {
-    // Not an escape: the fragment as it is.
-  }
-  return byId(container, id);
-}
-
-/** byId is the element of container whose id is id, if there is one. */
-function byId(container: HTMLElement, id: string): HTMLElement | undefined {
-  return container.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"]`) ?? undefined;
-}
-
-/** shows tells whether element is in the window's view. */
-function shows(element: HTMLElement): boolean {
-  const { top, bottom } = element.getBoundingClientRect();
-  return bottom > 0 && top < window.innerHeight;
-}
-
-/**
- * focusOn gives element the focus, focusable as an anchor's target is, scrolled into view as show says, if it does;
- * a folded callout it is in opens first.
- */
-function focusOn(element: HTMLElement, show: ScrollIntoViewOptions | undefined) {
-  unfold(element);
-  if (!element.hasAttribute("tabindex")) {
-    element.setAttribute("tabindex", "-1");
-  }
-  if (show !== undefined) {
-    element.scrollIntoView(show);
-  }
-  element.focus({ preventScroll: true });
-}

@@ -3,17 +3,18 @@ import type { Enhancement } from "./enhancement";
 /**
  * taskToggle lets the notebook's writers tick and clear the reading view's
  * task items (M5/P6 design 3.5). The server renders every checkbox
- * disabled, with its byte position in data-task; where the context can
- * toggle them, a writer's, they are enabled, each named by its item's
- * visible text (WCAG 2.5.3, 4.1.2), and a click (the space key's among
- * them) asks the server: the checkbox shows the server's state alone,
- * which the view read again brings. The context lets one toggle of the
- * page out at a time: a click meanwhile does nothing. A toggle refused is
- * reported. A reader's checkboxes stay disabled, named all the same
- * (M12/P2/S1).
+ * disabled, with its byte position in data-task, each named by its item's
+ * visible text (WCAG 2.5.3, 4.1.2). Where the context can toggle them,
+ * they are enabled while the page can be written (writes), a writer's,
+ * and follow it as it changes (onWritesChange: the account's role, an
+ * upgrade, a source; M12/P2/S4, 48); a click (the space key's among them)
+ * asks the server: the checkbox shows the server's state alone, which the
+ * view read again brings. The context lets one toggle of the page out at
+ * a time: a click meanwhile does nothing. A toggle refused is reported. A
+ * reader's checkboxes stay disabled, named all the same (M12/P2/S1).
  */
 export const taskToggle: Enhancement = (container, context) => {
-  const { toggleTask, report } = context;
+  const { toggleTask, report, writes, onWritesChange } = context;
   const boxes = [...container.querySelectorAll<HTMLInputElement>("input[data-task]")];
   if (boxes.length === 0) {
     return undefined;
@@ -41,11 +42,17 @@ export const taskToggle: Enhancement = (container, context) => {
     // The checked attribute is the server's state; the click asks for the other.
     toggleTask(Number(box.dataset.task), !box.hasAttribute("checked")).catch((error: unknown) => report(error));
   };
-  for (const box of boxes) {
-    box.disabled = false;
-  }
+  const follow = () => {
+    const can = writes?.() ?? true;
+    for (const box of boxes) {
+      box.disabled = !can;
+    }
+  };
+  follow();
+  const stop = onWritesChange?.(follow);
   container.addEventListener("click", onClick);
   return () => {
+    stop?.();
     container.removeEventListener("click", onClick);
     for (const box of boxes) {
       box.disabled = true;

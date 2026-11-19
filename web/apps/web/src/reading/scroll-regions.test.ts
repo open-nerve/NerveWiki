@@ -43,7 +43,6 @@ const context: ReadingContext = {
   notebook: "n",
   page: "p",
   revision: 1,
-  role: "reader",
   t: translator("en"),
   locale: "en",
   theme: () => "light",
@@ -255,4 +254,30 @@ test("undone, nothing takes the focus, and nothing is followed", async () => {
   article.append(late);
   await mutated();
   expect(state(late)).toBe("none");
+});
+
+// M12/P2/S4 (review A's C1-N1): a code block the view gave -1 and the focus (an anchor's target, 4.4.3's step 4) that
+// grows wider than it shows as the window narrows takes the region's 0; narrowing again, it has its -1 back, the
+// focus on it.
+test("one another gave its tabindex has it back as it is no wider than it shows again, the focus kept", () => {
+  const observers = observed();
+  const article = document.createElement("article");
+  article.innerHTML = "<pre><code>make build</code></pre>";
+  document.body.append(article);
+  const pre = article.querySelector("pre") as HTMLElement;
+  widths(pre, 50, 100);
+  const undo = scrollRegions(article, context);
+  pre.setAttribute("tabindex", "-1");
+  pre.focus();
+  const follow = () => observers.at(-1)?.follow([{ target: pre }]);
+
+  widths(pre, 500, 100);
+  follow();
+  const wide = state(pre);
+  widths(pre, 50, 100);
+  follow();
+
+  expect([wide, state(pre)]).toEqual(["0 region Code", "-1 null null"]);
+  expect(document.activeElement).toBe(pre);
+  undo?.();
 });

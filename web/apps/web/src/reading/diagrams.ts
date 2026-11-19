@@ -278,12 +278,51 @@ function nextId(): string {
 }
 
 /**
- * withOwnIds is drawing's SVG, the ids its elements' begin with, and what
- * names them (its styles, its markers' addresses), another's: a drawing
- * put twice, two diagrams of a source, or one kept, has no id of another.
+ * withOwnIds is drawing's SVG, its ids its own: a drawing put twice, two
+ * diagrams of a source, or one kept, has no id of another. Those mermaid
+ * makes of the drawing's id (its own, its title's and description's, its
+ * markers') have it replaced, and what names them with it. Those it does
+ * not (a sequence diagram's actor0, a sankey's linearGradient-1: M12/P2/S4,
+ * 11.1) take its new id before them, and so does what names them: an
+ * address (url(#…), href, xlink:href), its styles' selectors (not their
+ * declarations: a gantt task's id may be a colour's, #fff5ad), and the
+ * IDREFs that name an element (aria-labelledby, aria-describedby). Only
+ * mermaid's markup: the writer's text has no id (its dompurifyConfig).
+ * Each kind of name is read once through the SVG, the renamed looked up:
+ * a sankey has an id of each link and each node, and a drawing is put
+ * again each time the view is written (review B's I1).
  */
 function withOwnIds({ id, svg }: Drawing): string {
-  return svg.replace(new RegExp(`${id}(?![0-9])`, "g"), nextId());
+  const own = nextId();
+  const out = svg.replace(new RegExp(`${id}(?![0-9])`, "g"), own);
+  const renamed = new Map<string, string>();
+  for (const [, other = ""] of out.matchAll(/\sid="([^"]+)"/g)) {
+    if (!other.includes(own)) {
+      renamed.set(other, `${own}-${other}`);
+    }
+  }
+  if (renamed.size === 0) {
+    return out;
+  }
+  const to = (name: string) => renamed.get(name) ?? name;
+  return out
+    .replace(
+      /(\sid="|\s(?:xlink:)?href="#)([^"]+)(")/g,
+      (_, before: string, name: string, after: string) => `${before}${to(name)}${after}`
+    )
+    .replace(/url\(#([^)]+)\)/g, (_, name: string) => `url(#${to(name)})`)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/g, (style) =>
+      // A selector is what comes before a block, after the style's start or another block's end.
+      style.replace(
+        /(^|[{}])([^{}]*)(?=\{)/g,
+        (_, end: string, selector: string) =>
+          `${end}${selector.replace(/#([\w-]+)/g, (whole, name: string) => (renamed.has(name) ? `#${to(name)}` : whole))}`
+      )
+    )
+    .replace(
+      /(\s(?:aria-labelledby|aria-describedby)=")([^"]*)(")/g,
+      (_, before: string, names: string, after: string) => `${before}${names.split(/(\s+)/).map(to).join("")}${after}`
+    );
 }
 
 /** keep keeps the drawing of key as the one used last, the oldest dropped past keptDrawings. */

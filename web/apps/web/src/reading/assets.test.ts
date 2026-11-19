@@ -44,7 +44,6 @@ function setUp(html: string, { page = "p", expires = expired as string | null } 
     notebook: "n",
     page: at,
     revision: 1,
-    role: "reader",
     t: translator("en"),
     locale: "en",
     theme: () => "light",
@@ -638,5 +637,175 @@ test("one that failed, its new one's position refused before the metadata, has i
   const fresh = container.querySelector("audio");
   fresh?.dispatchEvent(new Event("loadedmetadata"));
   expect(fresh?.currentTime).toBe(20);
+  undo?.();
+});
+
+/** removals watches element's subtree: it answers the nodes taken out of it since, each time one was. */
+function removals(element: Element): () => Node[] {
+  const out: Node[] = [];
+  const note = (records: MutationRecord[]) => {
+    for (const record of records) {
+      out.push(...record.removedNodes);
+    }
+  };
+  const watching = new MutationObserver(note);
+  watching.observe(element, { childList: true, subtree: true });
+  onTestFinished(() => watching.disconnect());
+  return () => {
+    note(watching.takeRecords());
+    return out;
+  };
+}
+
+// M12/P2/S4, 17.8: a block left as it was keeps its media where they are. Moved, even to their place, they would
+// leave the document a moment: a video in fullscreen would leave it.
+test("a started video still in its place as the enhancement runs again is not moved", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const clip = play(container.querySelector("video"), 5);
+  undo?.();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect(container.querySelector("video")).toBe(clip);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+// M12/P2/S4, 17.8 (review A's M6): one still in the page is not another's to take, though it is first of its
+// attachment no more.
+test("a started clip whose block stays is not moved when the same clip is embedded before it", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const block = container.querySelector("p") as HTMLElement;
+  const clip = play(container.querySelector("video"), 5);
+  undo?.();
+  const before = document.createElement("p");
+  before.innerHTML = video("c1");
+  container.prepend(before);
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  const [embedded, playing] = container.querySelectorAll("video");
+  expect(playing).toBe(clip);
+  expect(clip.parentElement).toBe(block);
+  expect(embedded).not.toBe(clip);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+// M12/P2/S4, 17.8 (review A's M1, C's M1): one the view had, still in its block, is left there, whichever other of
+// its attachment's its key now names: neither put in place of nor taken out.
+test("a started clip whose block stays is not put in place of by one of its attachment's whose block was taken out", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  play(first, 3);
+  const clip = play(second, 5);
+  const block = clip.parentElement;
+  undo?.();
+  // Another's write took out the first block (patchBlocks leaves the second).
+  container.firstElementChild?.remove();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([clip]);
+  expect(clip.parentElement).toBe(block);
+  expect(container.contains(first ?? null)).toBe(false);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+test("a started clip whose block stays is left there as one is put before it and another started one's block changes; that one is not put back", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(first, 3);
+  play(second, 5);
+  const block = clip.parentElement;
+  undo?.();
+  const put = document.createElement("p");
+  put.innerHTML = video("c1");
+  container.prepend(put);
+  const changed = document.createElement("div");
+  changed.innerHTML = `${video("c1")} edited`;
+  container.lastElementChild?.replaceWith(changed);
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  const [embedded, kept, last] = container.querySelectorAll("video");
+  expect(kept).toBe(clip);
+  expect(clip.parentElement).toBe(block);
+  // The keys count every one of the attachment's: the third is the second's no more, which stops (4.4.8).
+  expect([embedded === second, last === second]).toEqual([false, false]);
+  expect(taken()).toEqual([]);
+  undo?.();
+});
+
+test("a started clip whose block stays is left there, and another started whose block changed is put back in the new block", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(first, 3);
+  const other = play(second, 5);
+  undo?.();
+  const changed = document.createElement("div");
+  changed.innerHTML = `${video("c1")} edited`;
+  container.lastElementChild?.replaceWith(changed);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([clip, other]);
+  expect(other.parentElement).toBe(changed);
+  expect([other.paused, other.currentTime]).toEqual([false, 5]);
+  undo?.();
+});
+
+test("of two of an attachment, the first not started, both blocks changed, the started one is put back in its new place", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><div>${video("c1")}</div>`, {
+    expires: later,
+  });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  const clip = play(second, 5);
+  undo?.();
+  const [one, two] = [document.createElement("p"), document.createElement("div")];
+  one.innerHTML = `${video("c1")} edited`;
+  two.innerHTML = `${video("c1")} edited`;
+  container.replaceChildren(one, two);
+
+  undo = enhancement(container, context());
+
+  const [put, kept] = container.querySelectorAll("video");
+  expect(put).not.toBe(first);
+  expect(kept).toBe(clip);
+  expect(clip.parentElement).toBe(two);
+  undo?.();
+});
+
+// M12/P2/S4 (〔P2S4D-1〕): left where it is, started or not: one not started is the view's as well.
+test("a clip not started whose block stays is not put in place of by a started one of its attachment's whose block was taken out", () => {
+  const { container, context, enhancement } = setUp(`<p>${video("c1")}</p><p>${video("c1")}</p>`, { expires: later });
+  let undo = enhancement(container, context());
+  const [first, second] = container.querySelectorAll("video");
+  play(first, 3);
+  const block = second?.parentElement;
+  undo?.();
+  container.firstElementChild?.remove();
+  const taken = removals(container);
+
+  undo = enhancement(container, context());
+
+  expect([...container.querySelectorAll("video")]).toEqual([second]);
+  expect(second?.parentElement).toBe(block);
+  expect(taken()).toEqual([]);
   undo?.();
 });

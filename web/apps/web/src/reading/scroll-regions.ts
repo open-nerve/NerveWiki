@@ -7,7 +7,7 @@ import type { Enhancement } from "./enhancement";
  * formula (.nw-scroll), a diagram's that an enhancement adds (.nw-diagram); a code
  * block; and a formula displayed in a paragraph, which has no wrapper.
  */
-const scrolling = ".nw-scroll, pre, span.nw-math-block";
+export const scrolling = ".nw-scroll, pre, span.nw-math-block";
 
 /**
  * scrollRegions lets the keyboard scroll what scrolls sideways in the
@@ -33,12 +33,12 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     const wide = scroller.scrollWidth > scroller.clientWidth;
     if (scroller === container) {
       if (wide) {
-        container.setAttribute("tabindex", "0");
+        tab(container);
       } else {
-        container.removeAttribute("tabindex");
+        untab(container);
       }
     } else if (wide) {
-      scroller.setAttribute("tabindex", "0");
+      tab(scroller);
       scroller.setAttribute("role", "region");
       scroller.setAttribute("aria-label", nameOf(scroller, t));
     } else {
@@ -105,7 +105,7 @@ export const scrollRegions: Enhancement = (container, { t }) => {
     container.removeEventListener("scroll", level, { capture: true });
     changed.disconnect();
     resized.disconnect();
-    container.removeAttribute("tabindex");
+    untab(container);
     for (const scroller of followed) {
       if (scroller !== container) {
         release(scroller);
@@ -121,9 +121,39 @@ function ours(scroller: HTMLElement): boolean {
 
 /** release has scroller no longer take the focus, nor be a region. */
 function release(scroller: HTMLElement) {
-  scroller.removeAttribute("tabindex");
+  untab(scroller);
   scroller.removeAttribute("role");
   scroller.removeAttribute("aria-label");
+}
+
+/** The tabindex another gave an element the regions gave theirs (0): an anchor's target's, step 4's (-1). */
+const others = new WeakMap<HTMLElement, string>();
+
+/** tab has element take the focus as a region does (tabindex 0), the tabindex another gave it kept to give back. */
+function tab(element: HTMLElement) {
+  const was = element.getAttribute("tabindex");
+  if (was !== null && was !== "0") {
+    others.set(element, was);
+  }
+  element.setAttribute("tabindex", "0");
+}
+
+/**
+ * untab takes away the tabindex the regions gave element (0), not another's: an anchor's target, or the block where
+ * the focus was given back to as the view changed (-1, M12/P2/S4, 4.4.3's step 4), keeps it, or has it back if the
+ * regions' was put over it, or the focus would go to the body as the region is followed next (review A's M3, C1-N1).
+ */
+function untab(element: HTMLElement) {
+  if (element.getAttribute("tabindex") !== "0") {
+    return;
+  }
+  const was = others.get(element);
+  others.delete(element);
+  if (was === undefined) {
+    element.removeAttribute("tabindex");
+  } else {
+    element.setAttribute("tabindex", was);
+  }
 }
 
 /** nameOf is the region's name: what it holds. */

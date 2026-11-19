@@ -19,7 +19,6 @@ function themed(initial: "light" | "dark" = "light") {
     notebook: "n",
     page: "p",
     revision: 1,
-    role: "reader",
     t: translator("en"),
     locale: "en",
     theme: () => theme,
@@ -401,4 +400,122 @@ test("a view without diagrams loads nothing", () => {
   const { article } = view();
   expect(diagrams(load, watcher().watch)(article, context())).toBeUndefined();
   expect(load).not.toHaveBeenCalled();
+});
+
+// M12/P2/S4, 11.1: a sequence diagram's or a sankey's ids are not its drawing's (actor0, linearGradient-1); two of them
+// on a page would have them in common, a gradient filled from the other's. Its accessible name, which mermaid names by
+// its id, stays its own (review A's M9); an IDREF to one renamed follows it (revision check A's M13).
+test("two drawings whose elements' ids are not the drawing's own have no id in common, and each names its own", async () => {
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "sequence",
+    render: async (id, text) => ({
+      svg:
+        `<svg id="${id}" aria-labelledby="chart-title-${id}"><title id="chart-title-${id}">${text}</title>` +
+        `<style>#actor0{fill:red}#actor0-label{fill:blue}</style><defs><linearGradient id="linearGradient-1"/></defs>` +
+        `<rect id="actor0" fill="url(#linearGradient-1)"/><use href="#actor0"/><use xlink:href="#actor0"/>` +
+        `<text id="actor0-label">${text}</text><g aria-labelledby="actor0-label" aria-describedby="actor0 none"/></svg>`,
+    }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("sequenceDiagram; A->>B: one", "sequenceDiagram; A->>B: two");
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  show(blocks[1] as Element);
+  await settled();
+
+  const svgs = [...article.querySelectorAll<SVGSVGElement>(".nw-diagram svg")];
+  expect(svgs).toHaveLength(2);
+  const ids = [...article.querySelectorAll("[id]")].map((element) => element.id);
+  expect(new Set(ids).size).toBe(ids.length);
+  for (const svg of svgs) {
+    const own = (reference: string | null | undefined) => {
+      const target = reference?.replace(/^url\(#(.*)\)$/, "$1").replace(/^#/, "") ?? "";
+      return target !== "" && svg.querySelector(`[id="${CSS.escape(target)}"]`) !== null;
+    };
+    const rect = svg.querySelector("rect");
+    const [use, xlinked] = [...svg.querySelectorAll("use")];
+    const group = svg.querySelector("g");
+    expect([
+      own(rect?.getAttribute("fill")),
+      own(use?.getAttribute("href")),
+      own(xlinked?.getAttribute("xlink:href")),
+      own(group?.getAttribute("aria-labelledby")),
+      own(group?.getAttribute("aria-describedby")?.split(" ")[0]),
+      own(svg.getAttribute("aria-labelledby")),
+    ]).toEqual([true, true, true, true, true, true]);
+    expect(group?.getAttribute("aria-describedby")?.split(" ")[1]).toBe("none");
+    // The styles name its own: the rule of the label, not taken for the actor's.
+    expect(svg.querySelector("style")?.textContent).toBe(
+      `#${rect?.id ?? ""}{fill:red}#${svg.querySelector("text")?.id ?? ""}{fill:blue}`
+    );
+    expect(svg.querySelector("title")?.textContent).toMatch(/^sequenceDiagram; A->>B: (one|two)$/);
+  }
+});
+
+/** sankey is a drawing of a sankey's shape, of links links: each a gradient and a path that fills from it, no id the drawing's. */
+function sankey(id: string, links: number): string {
+  const each = Array.from(
+    { length: links },
+    (_, k) =>
+      `<g class="link"><linearGradient id="linearGradient-${k}"><stop offset="0%"></stop></linearGradient>` +
+      `<path d="M${k},0" stroke="url(#linearGradient-${k})"></path></g>`
+  );
+  return `<svg id="${id}"><style>#${id} .link{stroke-opacity:0.5}</style><g class="links">${each.join("")}</g></svg>`;
+}
+
+// Review B's I1 (M12/P2/S4): a drawing is put again each time the view is written. Renamed an id at a time, a sankey of
+// a thousand links took a second, read through again for each id; its ids are read once, the renamed looked up.
+test("a drawing of thousands of ids not its own is read through a few times, not once for each id", async () => {
+  const links = 2000;
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "sankey",
+    render: async (id) => ({ svg: sankey(id, links) }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("sankey-beta\na,b,1");
+  diagrams(async () => draw, watch)(article, context());
+  const length = sankey("nw_mermaid_0", links).length;
+  const replace = vi.spyOn(String.prototype, "replace");
+  try {
+    show(blocks[0] as Element);
+    await settled();
+    // A scan is a replace of the drawing whole: once for its own id, then once for each kind of name.
+    const scans = replace.mock.contexts.filter((text) => String(text).length > length / 2).length;
+    expect(scans).toBeLessThanOrEqual(10);
+  } finally {
+    replace.mockRestore();
+  }
+  const svg = article.querySelector<SVGSVGElement>(".nw-diagram svg");
+  const path = svg?.querySelector(`path[stroke="url(#${svg.id}-linearGradient-${(links - 1).toString()})"]`);
+  expect(path).not.toBeNull();
+  expect(svg?.querySelectorAll("linearGradient")).toHaveLength(links);
+});
+
+// Review B's unverified suspicion (M12/P2/S4): a gantt's task has the writer's id, unprefixed; mermaid's styles have
+// colours, #fff5ad among them. A style's selectors name elements; its declarations do not.
+test("a style's declarations name no element: a task whose id is a colour's leaves the colour, its selector renamed", async () => {
+  const draw: Drawer = {
+    initialize: () => undefined,
+    detectType: () => "gantt",
+    render: async (id) => ({
+      svg:
+        `<svg id="${id}"><style>#${id} .task{fill:#fff5ad;stroke:#fff5ad}#fff5ad{stroke-width:2px}` +
+        `@media (prefers-contrast:more){#fff5ad{fill:#fff5ad}}</style><rect id="fff5ad" class="task"></rect></svg>`,
+    }),
+  };
+  const { watch, show } = watcher();
+  const { article, blocks } = view("gantt\ntask :fff5ad, 2026-01-01, 1d");
+  diagrams(async () => draw, watch)(article, context());
+  show(blocks[0] as Element);
+  await settled();
+
+  const svg = article.querySelector<SVGSVGElement>(".nw-diagram svg");
+  const rect = svg?.querySelector("rect");
+  expect(rect?.id).toBe(`${svg?.id ?? ""}-fff5ad`);
+  expect(svg?.querySelector("style")?.textContent).toBe(
+    `#${svg?.id ?? ""} .task{fill:#fff5ad;stroke:#fff5ad}#${rect?.id ?? ""}{stroke-width:2px}` +
+      `@media (prefers-contrast:more){#${rect?.id ?? ""}{fill:#fff5ad}}`
+  );
 });
