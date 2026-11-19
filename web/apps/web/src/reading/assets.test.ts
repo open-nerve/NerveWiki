@@ -550,7 +550,10 @@ test("one whose signing anew is refused, the view not expired, is signed again a
     42,
     false,
   ]);
-  // Signed, it is refused no more: online again signs nothing.
+  // Signed, it is refused no more: failing again at once, it fails for another reason; online again signs nothing.
+  fail(sound);
+  await settle();
+  expect(signed).toEqual(["a1", "a1"]);
   window.dispatchEvent(new Event("online"));
   await settle();
   expect(signed).toEqual(["a1", "a1"]);
@@ -621,6 +624,95 @@ test("the HTML replaced after a refusal puts the new one where the old one faile
   const fresh = container.querySelector("audio");
   expect(fresh).not.toBe(sound);
   expect(fresh?.currentTime).toBe(42);
+  undo?.();
+});
+
+// Review A's check 2, M1: one that came back is not pulled back to where it failed, as the browser is online again or
+// on its timer.
+const cameBack: Record<string, (sound: HTMLMediaElement) => void> = {
+  "played on past where it failed": (sound) => {
+    Object.assign(sound, { error: null, currentTime: 300, paused: false });
+  },
+  "moved by the reader to before where it failed": (sound) => {
+    Object.assign(sound, { error: null, currentTime: 10, paused: true });
+    sound.dispatchEvent(new Event("seeking"));
+  },
+};
+test.each(
+  Object.keys(cameBack).flatMap((way) => [
+    [way, "online again"],
+    [way, "its timer"],
+  ])
+)("one refused whose old address plays again, %s, is signed no more: %s", async (way, when) => {
+  const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+    expires: later,
+    timers: true,
+  });
+  const undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  net.offline = false;
+  // The network back, its controls loaded the old address again, which plays; the reader goes on with it.
+  cameBack[way]?.(sound);
+  const was = [sound.getAttribute("src"), sound.currentTime];
+  if (when === "online again") {
+    window.dispatchEvent(new Event("online"));
+    await settle();
+  } else {
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+  }
+  expect([signed, sound.getAttribute("src"), sound.currentTime]).toEqual([["a1"], ...was]);
+  undo?.();
+});
+
+// Review A's check 2, M2.
+test("the HTML replaced after a refusal puts the new one where the old one failed, though its controls left it at the start", async () => {
+  const html = `<p>${audio("a1")}</p>`;
+  const { container, context, net, enhancement } = setUp(html, { expires: later });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  // Its controls loaded it again, which failed: at the start, paused, not started.
+  Object.assign(sound, { error: null, currentTime: 0, paused: true });
+  fail(sound);
+  await settle();
+
+  undo?.();
+  container.innerHTML = html;
+  undo = enhancement(container, context());
+
+  const fresh = container.querySelector("audio");
+  expect(fresh).not.toBe(sound);
+  expect(fresh?.currentTime).toBe(42);
+  undo?.();
+});
+
+// Review A's check 2, M3.
+test("one refused still in its place as the enhancement runs again is signed again on a timer of the new run, as long after", async () => {
+  const { container, context, signed, net, enhancement } = setUp(`<p>${audio("a1")}</p>`, {
+    expires: later,
+    timers: true,
+  });
+  let undo = enhancement(container, context());
+  const sound = play(container.querySelector("audio"), 42);
+  net.offline = true;
+  fail(sound);
+  await settle();
+  net.offline = false;
+  await vi.advanceTimersByTimeAsync(10_000);
+  // Another block changed, or the language: the view runs again, this one left where it is.
+  undo?.();
+  undo = enhancement(container, context());
+
+  await vi.advanceTimersByTimeAsync(29_999);
+  expect(signed).toEqual(["a1"]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(signed).toEqual(["a1", "a1"]);
+  expect([sound.getAttribute("src"), sound.currentTime]).toEqual(["/api/v0/assets/a1/content?anew=1", 42]);
   undo?.();
 });
 

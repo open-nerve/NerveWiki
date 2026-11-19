@@ -49,10 +49,12 @@ const refusedRetryMax = 10 * 60_000;
  * - An audio or a video whose signing anew was refused (the network, as a
  *   rule), the view not expired, is signed anew again from where it
  *   failed (its position and rate): as the browser is online again; half
- *   a minute later, then twice as long each time up to ten minutes; and as
- *   it fails again, its controls having loaded it anew (Chromium's), started
- *   or not. The HTML replaced meanwhile puts its new one there (M12/P2/S5,
- *   17.7).
+ *   a minute later, then twice as long each time up to ten minutes, the
+ *   view run again starting its timer again; and as it fails again, its
+ *   controls having loaded it anew (Chromium's), started or not. Not one
+ *   whose old address plays again, past where it failed or moved there by
+ *   the reader: it is refused no more. The HTML replaced meanwhile puts its
+ *   new one there (M12/P2/S5, 17.7; review A's check 2).
  */
 export function assets(): Enhancement {
   // What the view had started as its HTML was replaced: its page, its audios and videos by key, and the focused one.
@@ -64,10 +66,9 @@ export function assets(): Enhancement {
     adopt(container, kept?.page === context.page ? kept : undefined, signing);
     kept = undefined;
     // Those refused that the HTML replaced, and adopt did not put back, are gone.
-    for (const [element, refused] of signing.refused) {
+    for (const element of signing.refused.keys()) {
       if (!element.isConnected) {
-        clearTimeout(refused.retry);
-        signing.refused.delete(element);
+        forget(element, signing);
       }
     }
     const links = newTab(container, context.t("asset.newTab"));
@@ -107,17 +108,32 @@ export function assets(): Enhancement {
     };
     // An element's error goes no further than it: the container hears it on its way down.
     container.addEventListener("error", onError, true);
+    // One refused the reader moves has its old address playing again: it is refused no more.
+    const onSeeking = (event: Event) => {
+      const element = event.target;
+      if (element instanceof HTMLMediaElement && !signing.pending.has(element)) {
+        forget(element, signing);
+      }
+    };
+    container.addEventListener("seeking", onSeeking, true);
     // Online again, those refused are signed anew.
     const online = () => {
       for (const element of signing.refused.keys()) {
-        if (container.contains(element) && !signing.pending.has(element)) {
-          void signAnew(element, context, signing, readAgain);
+        if (container.contains(element)) {
+          signAgain(element, context, signing, readAgain);
         }
       }
     };
     window.addEventListener("online", online);
+    // Those refused this view had, left where they were as it runs again, have their timers again: the undo cleared them.
+    for (const [element, refused] of signing.refused) {
+      if (container.contains(element)) {
+        retryLater(element, refused, () => signAgain(element, context, signing, readAgain));
+      }
+    }
     return () => {
       container.removeEventListener("error", onError, true);
+      container.removeEventListener("seeking", onSeeking, true);
       window.removeEventListener("online", online);
       // Their timers go with the view; what they failed at stays, for an element kept and for the HTML next.
       for (const [element, refused] of signing.refused) {
@@ -133,7 +149,7 @@ export function assets(): Enhancement {
       for (const node of added) {
         node.remove();
       }
-      const playing = started(container);
+      const playing = started(container, signing.refused);
       const active = document.activeElement;
       kept = {
         page: context.page,
@@ -268,11 +284,14 @@ function focus(element: HTMLMediaElement) {
   element.focus({ preventScroll: true });
 }
 
-/** started are the audios and videos of container started and not ended, by key: the first maxKept of them. */
-function started(container: HTMLElement): Map<string, HTMLMediaElement> {
+/**
+ * started are the audios and videos of container started and not ended, or refused (whose new ones are put where they
+ * failed: review A's check 2, M2), by key: the first maxKept of them.
+ */
+function started(container: HTMLElement, refused: Map<HTMLMediaElement, Refused>): Map<string, HTMLMediaElement> {
   const out = new Map<string, HTMLMediaElement>();
   for (const [key, element] of keyed(container)) {
-    if (out.size < maxKept && begun(element)) {
+    if (out.size < maxKept && (begun(element) || refused.has(element))) {
       out.set(key, element);
     }
   }
@@ -330,7 +349,7 @@ async function signAnew(
     address = await assetAddress(id);
   } catch {
     if (element.isConnected) {
-      noteRefused(element, failing.place, signing, () => void signAnew(element, context, signing, refused));
+      noteRefused(element, failing.place, signing, () => signAgain(element, context, signing, refused));
       refused();
     }
     return;
@@ -340,8 +359,7 @@ async function signAnew(
   if (!element.isConnected) {
     return;
   }
-  clearTimeout(signing.refused.get(element)?.retry);
-  signing.refused.delete(element);
+  forget(element, signing);
   signing.at.set(element, Date.now());
   // Before the new address's load has it paused, at the start, at the default rate.
   const place = goingOn(element, failing);
@@ -357,19 +375,52 @@ async function signAnew(
 
 /**
  * noteRefused notes element's signing anew refused, where it failed (the first place noted, while it is refused), and
- * has it signed again (again) refusedRetry later, then twice as long each time, up to refusedRetryMax: while it is in
- * the page, refused still, and not being signed.
+ * has it signed again (signAgain) refusedRetry later, then twice as long each time, up to refusedRetryMax.
  */
 function noteRefused(element: HTMLMediaElement, place: Place, signing: Signing, again: () => void) {
   const was = signing.refused.get(element);
   clearTimeout(was?.retry);
-  const after = was === undefined ? refusedRetry : Math.min(was.after * 2, refusedRetryMax);
-  const retry = setTimeout(() => {
-    if (element.isConnected && signing.refused.has(element) && !signing.pending.has(element)) {
+  const refused: Refused = {
+    place: was?.place ?? place,
+    retry: undefined,
+    after: was === undefined ? refusedRetry : Math.min(was.after * 2, refusedRetryMax),
+  };
+  signing.refused.set(element, refused);
+  retryLater(element, refused, again);
+}
+
+/** retryLater has element, refused, signed again (again) refused.after from now, while it is in the page. */
+function retryLater(element: HTMLMediaElement, refused: Refused, again: () => void) {
+  clearTimeout(refused.retry);
+  refused.retry = setTimeout(() => {
+    if (element.isConnected) {
       again();
     }
-  }, after);
-  signing.refused.set(element, { place: was?.place ?? place, retry, after });
+  }, refused.after);
+}
+
+/**
+ * signAgain signs element anew again (signAnew), while it is refused and not being signed; but not as its old address
+ * plays again, its error gone, at or past where it failed: the reader went on with it, whom it would pull back (review
+ * A's check 2, M1). It is refused no more then. One before where it failed, its controls having loaded it anew at the
+ * start, is signed.
+ */
+function signAgain(element: HTMLMediaElement, context: ReadingContext, signing: Signing, refused: () => void) {
+  const was = signing.refused.get(element);
+  if (was === undefined || signing.pending.has(element)) {
+    return;
+  }
+  if (element.error === null && element.currentTime >= was.place.at) {
+    forget(element, signing);
+    return;
+  }
+  void signAnew(element, context, signing, refused);
+}
+
+/** forget has element refused no more: its timer cleared, where it failed forgotten. */
+function forget(element: HTMLMediaElement, signing: Signing) {
+  clearTimeout(signing.refused.get(element)?.retry);
+  signing.refused.delete(element);
 }
 
 /** playOn plays element; refused, it stays where it is, which the reader plays again. */
