@@ -22,9 +22,10 @@ const now = new Date("2026-10-09T12:00:00Z");
 /**
  * setUp is a view of html enhanced, its addresses expiring at expires (as
  * it is now: expiry changes it), that records its reloads and signs an
- * attachment's address anew (signed) unless it is gone; and each click
- * that reached the document, its address and whether it was held, which
- * jsdom does not follow.
+ * attachment's address anew (signed) unless it is gone, answering in a
+ * task of its own as the network does; and each click that reached the
+ * document, its address and whether it was held, which jsdom does not
+ * follow.
  */
 function setUp(html: string, expires: string | null = expired) {
   vi.useFakeTimers({ now, toFake: ["Date"] });
@@ -54,6 +55,8 @@ function setUp(html: string, expires: string | null = expired) {
     },
     assetAddress: async (id) => {
       signed.push(id);
+      // A task, not a microtask: one that clicked it again and again would leave the test no turn (review C's check 2).
+      await new Promise((resolve) => void setTimeout(resolve, 0));
       if (id === "gone") {
         throw new Error("404");
       }
