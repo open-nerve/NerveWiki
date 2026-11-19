@@ -538,3 +538,33 @@ test("the type stepped through with the keys on its closed select reads the inde
   await waitFor(() => expect(fixture.requests).toHaveLength(reads + 1));
   expect(router.state.location.search).toBe("?type=Note");
 });
+
+test.each([
+  [
+    "en",
+    "These filters cannot be read: the address has one this directory does not take. Clear the filters to see every page.",
+    "Try again",
+    "Clear filters",
+  ],
+  ["zh-CN", "读不出这些筛选：地址里有这个目录不认的筛选。清除筛选即可看到全部页面。", "重试", "清除筛选"],
+] as const)(
+  "%s: a type the server does not take says the filters cannot be read, without Try again; Clear filters lists every page (M5-polish 35.3)",
+  async (locale, said, retry, clear) => {
+    const user = userEvent.setup();
+    const fixture = indexServer();
+    fixture.server.app.preferences.setLocale(locale);
+    fixture.answer = (request) =>
+      new URL(request.url).searchParams.has("type")
+        ? problem(422, "validation_failed", { errors: [{ field: "type", code: "too_long", message: "" }] })
+        : json(fixture.value);
+    const { router } = renderApp(`${indexPath}?type=${"x".repeat(1025)}`, fixture.server.app);
+
+    expect((await screen.findByRole("alert")).textContent).toBe(said);
+    expect(screen.queryByRole("button", { name: retry })).toBeNull();
+    await user.click(screen.getByRole("button", { name: clear }));
+
+    expect(await screen.findByRole("list", { name: /./ })).toBeTruthy();
+    expect(router.state.location.search).toBe("");
+    expect(screen.queryByRole("alert")).toBeNull();
+  }
+);

@@ -306,6 +306,7 @@ export const zhCN: Messages = {
   "index.typeCount": "{type}（{count}）",
   "index.applyTag": "应用标签",
   "index.clearFilters": "清除筛选",
+  "index.badFilters": "读不出这些筛选：地址里有这个目录不认的筛选。清除筛选即可看到全部页面。",
   "index.partialTypes": "仅显示部分可筛选类型。",
   "index.longTypes": "有{count}页的类型名称过长，无法按该类型筛选。",
   "index.results": "目录结果",
