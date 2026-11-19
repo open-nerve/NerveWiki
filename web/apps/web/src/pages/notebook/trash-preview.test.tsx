@@ -923,6 +923,34 @@ test("the trash arrived at from a restore in the preview says where it went once
   expect(screen.getByRole("status").textContent).toBe("");
 });
 
+test("an item's preview gone to from a node deleted with it since keeps saying so as the item leaves the trash and comes back (M5-polish 22.2)", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  const { router } = renderApp(previewPath(linux.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  const merged =
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.";
+  expect(screen.getByRole("alert").textContent).toBe(merged);
+  await waitFor(() => expect(router.state.location.state).toEqual({}));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  const tree = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] };
+
+  // Restored elsewhere, then deleted again: the item's view mounts once more, the route notice taken long since.
+  server.restoreElsewhere(install.id);
+  await act(() => vi.advanceTimersByTimeAsync(5_100));
+  events.last().send("pages", tree);
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  server.trashNode(install.id);
+  await act(() => vi.advanceTimersByTimeAsync(5_100));
+  events.last().send("pages", tree);
+
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => vi.advanceTimersByTimeAsync(50));
+  expect(screen.queryByText(merged)).not.toBeNull();
+});
+
 test("an item's preview gone to from a node deleted with it since says so once: back to it, it says nothing (M5-polish 22.2)", async () => {
   const user = userEvent.setup();
   const { server } = trashed();

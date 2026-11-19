@@ -562,6 +562,8 @@ test.each([
   }
 );
 
+// Show unchanged lines on a version's comparisons (M5-polish 21.7): no restore, but here for the worker's comparisons
+// mocked above, which answer that a page is too large to compare line by line.
 const longer = Array.from({ length: 1200 }, (_, i) => `line ${i.toString()}\n`).join("");
 
 test.each([

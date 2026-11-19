@@ -484,6 +484,28 @@ test("the trash arrived at from a restore started in the background in an item's
   expect(server.trash.get(linux.id)).toBe(item);
 });
 
+test("the trash arrived at from a restore started in the background in a preview says so once: Back and Forward to it, it says nothing (M5-polish 22.2)", async () => {
+  const user = userEvent.setup();
+  const { server } = large();
+  const { router } = renderApp(previewPath(linux.id), server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Linux” (From: Guide / Install)" }));
+  expect((await screen.findByRole("alert")).textContent).toBe(tooLarge);
+  await user.click(screen.getByRole("button", { name: "Restore “Linux” in the background (From: Guide / Install)" }));
+  await screen.findByRole("list", { name: "Trash" });
+  expect(screen.getByRole("status").textContent).toBe(started);
+  await waitFor(() => expect(router.state.location.state).toEqual({ arrived: true }));
+
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(router.state.location.pathname).toBe(previewPath(linux.id)));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(() => router.navigate(1));
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
 test.each<[string, (server: ReturnType<typeof large>["server"]) => void, string]>([
   [
     "a job that writes the tree under way",
