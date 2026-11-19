@@ -8,6 +8,8 @@ type ConflictDiffProps = {
   mine: string;
   /** Whether the unchanged stretches are shown: folded otherwise. */
   unfolded: boolean;
+  /** foldable is told whether the diff folds, as TextDiff's is. */
+  foldable?: (yes: boolean) => void;
 };
 
 /**
@@ -17,7 +19,7 @@ type ConflictDiffProps = {
  * item 25), which compares them as the editor holds them: a difference of
  * line breaks alone does not show.
  */
-export function ConflictDiff({ theirs, mine, unfolded }: ConflictDiffProps) {
+export function ConflictDiff({ theirs, mine, unfolded, foldable }: ConflictDiffProps) {
   const t = useT();
   return (
     <TextDiff
@@ -27,6 +29,7 @@ export function ConflictDiff({ theirs, mine, unfolded }: ConflictDiffProps) {
       beforeName={t("editor.conflictTheirs")}
       afterName={t("editor.conflictMine")}
       unfolded={unfolded}
+      foldable={foldable}
     />
   );
 }

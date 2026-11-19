@@ -36,6 +36,11 @@ type TextDiffProps = {
   compareLarge?: typeof compareInWorker;
   /** shown is told the text before whose comparison shows, as it changes: undefined while none of it does. */
   shown?: (before: string | undefined) => void;
+  /**
+   * foldable is told whether what shows is the unified view, whose unchanged stretches fold, as it changes: Show
+   * unchanged lines does nothing for anything else (M5-polish 21.7).
+   */
+  foldable?: (yes: boolean) => void;
 };
 
 /**
@@ -81,6 +86,7 @@ export function TextDiff({
   unfolded = false,
   compareLarge = compareInWorker,
   shown,
+  foldable,
 }: TextDiffProps) {
   const t = useT();
   const split = useMemo(() => {
@@ -151,6 +157,14 @@ export function TextDiff({
   const shownBefore =
     split.a === split.b || (compared !== undefined && compared.result.kind !== "failed" && !busy) ? before : undefined;
   useEffect(() => shown?.(shownBefore), [shown, shownBefore]);
+  // The unified view shows, which folds: texts that differ, compared, within the view's bound.
+  const unified =
+    split.a !== split.b &&
+    compared?.result.kind === "changes" &&
+    state !== undefined &&
+    removedLines(state) <= lineDiffLimits.maxChangedLines;
+  // Before the browser paints: Show unchanged lines comes with the diff, not after it.
+  useLayoutEffect(() => foldable?.(unified), [foldable, unified]);
   // Where the focus in a part that goes, a comparison showing, comes (v0.1 design 13.2, item 17): a group named as
   // the diff is, which a screen reader names so, not by all the diff's text (M8/P1 fix check 4, R4-2).
   const root = useRef<HTMLDivElement>(null);
@@ -171,7 +185,8 @@ export function TextDiff({
     if (result.kind === "failed") {
       return <Failed again={compared.failures > 1} busy={busy} retry={() => setAttempt(attempt + 1)} root={root} />;
     }
-    if (result.kind === "tooLarge" || state === undefined || removedLines(state) > lineDiffLimits.maxChangedLines) {
+    // Unified, the result is changes: said again for the types.
+    if (!unified || result.kind !== "changes") {
       return (
         <div className="space-y-2" aria-busy={busy || undefined}>
           {busy && <p className="text-sm text-muted-foreground">{t("diff.comparing")}</p>}

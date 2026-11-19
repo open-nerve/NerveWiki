@@ -2,8 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
+import { eventHandlers } from "../../events/handlers";
 import { lineDiff, type LineDiffResult } from "../../lib/line-diff";
-import { json, problem, type Answer } from "../../test/fakes";
+import { eventServer, withEvents } from "../../test/event-server";
+import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
 import { marked } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
@@ -12,17 +14,23 @@ import { renderApp } from "../../test/render";
 // A version restored (M8 design 4.4; P1 design 4.5): each answer.
 
 // The worker's comparisons, of a page too large for the page's thread, answer when a test says.
-const worker = vi.hoisted(() => ({ asked: [] as { answer: () => void; fail: () => void }[] }));
+const worker = vi.hoisted(() => ({
+  asked: [] as { answer: () => void; fail: () => void; tooLarge: () => void }[],
+}));
 vi.mock("../../lib/line-diff-client", async (original) => ({
   ...(await original<typeof import("../../lib/line-diff-client")>()),
   compareInWorker: (a: string, b: string) =>
     new Promise<LineDiffResult>((resolve, reject) =>
-      worker.asked.push({ answer: () => resolve(lineDiff(a, b)), fail: () => reject(new Error("failed")) })
+      worker.asked.push({
+        answer: () => resolve(lineDiff(a, b)),
+        fail: () => reject(new Error("failed")),
+        tooLarge: () => resolve({ kind: "tooLarge", added: null, removed: null }),
+      })
     ),
 }));
 
-/** answered answers the comparison asked nth, or fails it. */
-async function answered(nth: number, how: "answer" | "fail" = "answer"): Promise<void> {
+/** answered answers the comparison asked nth, or fails it, or answers it is too large. */
+async function answered(nth: number, how: "answer" | "fail" | "tooLarge" = "answer"): Promise<void> {
   await waitFor(() => expect(worker.asked.length).toBeGreaterThan(nth));
   await act(async () => {
     worker.asked[nth]?.[how]();
@@ -553,3 +561,82 @@ test.each([
     await waitFor(() => expect(line.textContent).toBe(unchanged));
   }
 );
+
+const longer = Array.from({ length: 1200 }, (_, i) => `line ${i.toString()}\n`).join("");
+
+test.each([
+  ["texts the same", "Install\nthree\n", "Install\nthree\n", "No changes.", undefined],
+  [
+    "those of their line breaks alone",
+    "Install\r\nthree\r\n",
+    "Install\nthree\n",
+    "Only the line breaks or the byte order mark differ.",
+    undefined,
+  ],
+  [
+    "side by side",
+    `${longer}Install now\n`,
+    `${longer}Install\nthree\n`,
+    "Too large to compare line by line.",
+    "tooLarge",
+  ],
+] as const)(
+  "Show unchanged lines is offered where the comparison folds: not for %s (M5-polish 21.7)",
+  async (_, now, version, says, answer) => {
+    worker.asked.length = 0;
+    const user = userEvent.setup();
+    const server = pageServer();
+    server.withVersions(install.id, [
+      versionJSON(1, null, "Install\n"),
+      versionJSON(4, 1, version),
+      versionJSON(6, 4, now),
+    ]);
+    renderApp(versionPath(install.id, 4), server.app);
+
+    await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
+    if (answer !== undefined) {
+      await answered(0, answer);
+    }
+
+    expect(await within(screen.getByRole("tabpanel")).findByText(says)).toBeTruthy();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(screen.queryByRole("button", { name: "Show unchanged lines" })).toBeNull();
+  }
+);
+
+test("Show unchanged lines is offered where the comparison folds: texts that differ, pressed as it shows them (M5-polish 21.7)", async () => {
+  const user = userEvent.setup();
+  renderApp(versionPath(install.id, 4), installed().app);
+
+  await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
+  const show = await screen.findByRole("button", { name: "Show unchanged lines" });
+  await user.click(show);
+
+  expect(show.getAttribute("aria-pressed")).toBe("true");
+});
+
+test("Show unchanged lines leaving with the focus hands it to its comparison (M5-polish 21.7)", async () => {
+  const user = userEvent.setup();
+  const events = eventServer();
+  const server = installed({ "GET /api/v0/events": events.answer });
+  renderApp(versionPath(install.id, 4), withEvents(server.app), { eventHandlers });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await user.click(await screen.findByRole("tab", { name: "Compare with the current" }));
+  const show = await screen.findByRole("button", { name: "Show unchanged lines" });
+  act(() => show.focus());
+
+  // The page is written as the version is: the comparison, read again, changes nothing.
+  server.contents.set(install.id, { content: "Install\nthree\n", revision: 7 });
+  events.last().send("pages", {
+    workspace_id: workspaceJSON.id,
+    notebook_id: notebookJSON.id,
+    tree: false,
+    pages: [{ id: install.id, revision: 7 }],
+  });
+
+  expect(await screen.findByText("No changes.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Show unchanged lines" })).toBeNull();
+  const [comparison] = screen.getAllByRole("group", { name: "Changes from the page now to version 4" });
+  expect(document.activeElement).toBe(comparison);
+});

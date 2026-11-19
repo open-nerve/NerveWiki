@@ -4,7 +4,7 @@ import { Loading } from "../../components/loading";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Conflict } from "../../stores/page-editing";
-import { ChunkNotLoaded } from "./comparison";
+import { ChunkNotLoaded, ShowUnchanged } from "./comparison";
 
 type Diff = typeof import("../../editor/conflict-view");
 
@@ -22,7 +22,8 @@ type ConflictPanelProps = {
  * now, then Keep mine, which saves it over the page, and Discard mine,
  * which edits the page as it is now. The diff's unchanged stretches are
  * folded; Show unchanged lines, which the keyboard reaches as it does not
- * a fold, shows them all. The diff comes in a chunk of its own; one that
+ * a fold, shows them all, offered where the diff folds (M5-polish 21.7):
+ * not for texts of their line breaks alone. The diff comes in a chunk of its own; one that
  * cannot load says so, with Try again, and the two buttons still work:
  * the user's text is in the editor whatever happens here. Try again, as
  * the comparison's, stays while the chunk loads, aria-disabled, the focus
@@ -36,6 +37,7 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
   // Whether the chunk failed to load, and whether Try again loads it.
   const [failed, setFailed] = useState<"failed" | "loading">();
   const [unfolded, setUnfolded] = useState(false);
+  const [foldable, setFoldable] = useState(false);
   const load = useCallback(() => import("../../editor/conflict-view").then(setDiff, () => setFailed("failed")), []);
   useEffect(() => void load(), [load]);
   return (
@@ -46,10 +48,14 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
       <p className="text-sm text-muted-foreground">{t("editor.conflictDescription")}</p>
       {diff !== undefined ? (
         <div className="space-y-2">
-          <diff.ConflictDiff theirs={conflict.theirs} mine={conflict.mine} unfolded={unfolded} />
-          <Button variant="outline" aria-pressed={unfolded} onClick={() => setUnfolded(!unfolded)}>
-            {t("editor.showUnchanged")}
-          </Button>
+          <diff.ConflictDiff theirs={conflict.theirs} mine={conflict.mine} unfolded={unfolded} foldable={setFoldable} />
+          {foldable && (
+            <ShowUnchanged
+              unfolded={unfolded}
+              toggle={() => setUnfolded(!unfolded)}
+              left={() => heading.current?.focus()}
+            />
+          )}
         </div>
       ) : failed !== undefined ? (
         <ChunkNotLoaded
