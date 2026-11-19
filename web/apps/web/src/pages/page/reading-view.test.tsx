@@ -1283,8 +1283,8 @@ test("a drawing that had the focus has it back as a paragraph is put before its 
 });
 
 /** twice is a view of first, a paragraph, and a link to x far below, each laid out at its data-at. */
-const twice = (first: string) =>
-  `<p data-at="100">${first}</p>\n<p data-at="200">middle</p>\n<p data-at="3000">far, see <a href="/x">x</a></p>\n`;
+const twice = (first: string, edit = "") =>
+  `<p data-at="100">${first}</p>\n<p data-at="200">middle${edit}</p>\n<p data-at="3000">far, see <a href="/x">x</a>${edit}</p>\n`;
 
 // M12/P2/S4, 4.4.3's step 3 (review A's M4): a link a page has twice, far apart; the reader at the first. Another
 // rewrites its paragraph without it: the focus is the paragraph's, where it was, not the far link's, and the view
@@ -1461,4 +1461,26 @@ test("a link whose paragraph changed, a paragraph put before it in the same save
 
   expect(document.activeElement).toBe(within(article).getByRole("link", { name: "x" }));
   expect(document.activeElement?.parentElement?.textContent).toBe("see x here, edited");
+});
+
+// M12/P2/S4, 4.4.3's step 3 (review A's C2-M1, its probe W1): one save rewrites every block from the reader's to the
+// far one, the reader's without its link, as many as there were. The gap reaches the far link; the reader's new
+// version is no farther than the next block, so the focus is the paragraph's and the view stays where it is.
+test("a link whose paragraph is written without it, the blocks to a far link of its key changed in the same save, gives the focus to the paragraph", async () => {
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  const laidOut = vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+    const top = Number(this.closest("[data-at]")?.getAttribute("data-at") ?? 0);
+    return { top, bottom: top + 20, left: 0, right: 100 } as DOMRect;
+  });
+  onTestFinished(() => laidOut.mockRestore());
+  const { article, readAgain } = await readable(twice('see <a href="/x">x</a> here'));
+  article.querySelector("a")?.focus();
+  scroll.mockClear();
+
+  await readAgain(twice("rewritten, no link", " (edited)"));
+
+  expect(document.activeElement).not.toBe(article.querySelector("a"));
+  expect(document.activeElement).toBe(article.querySelector("p"));
+  expect(scroll).not.toHaveBeenCalled();
 });

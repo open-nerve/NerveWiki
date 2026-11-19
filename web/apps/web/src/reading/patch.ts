@@ -102,7 +102,7 @@ export function resign(article: Element, before: HTMLTemplateElement, after: HTM
 /**
  * Placed maps the place of an article's top-level node before a patch to its place after, or none. A patch's tells
  * too, of one taken out, the places of the other nodes put in where it was (its gap: between the kept nodes on each
- * side), nearest first, the later of two as near first (near).
+ * side), as far as its new version may be, nearest first, the later of two as near first (near).
  */
 export type Placed = ((at: number) => number | undefined) & { near?: (at: number) => number[] };
 
@@ -231,16 +231,24 @@ function placed(place: number, kept: Map<number, number>, old: Node[], next: Nod
 /**
  * near are the places of the nodes put in where the node at place was taken out, but the one it is placed at, nearest
  * to that one first, the later of two as near first: a section put before the reader's, which another changed in the
- * same save, has the reader's after it (review A's C1-M1). None for a node kept, or a gap nothing was put in.
+ * same save, has the reader's after it (review A's C1-M1). Only as far as the node's new version may be: placed k-th
+ * for k-th, it is off by as many nodes as were put in or taken out there, one at least; a gap a save changed whole,
+ * as many put in as taken out, reaches far, where a node of the key would be another (review A's C2-M1). Counted in
+ * nodes, blank text left out. None for a node kept, or a gap nothing was put in.
  */
 function near(place: number, kept: Map<number, number>, old: Node[], next: Node[]): number[] {
   const to = placed(place, kept, old, next);
   if (kept.has(place) || to === undefined) {
     return [];
   }
-  return gap(place, kept, old, next)
-    .inserted.filter((j) => j !== to)
-    .toSorted((a, b) => Math.abs(a - to) - Math.abs(b - to) || b - a);
+  const { removed, inserted } = gap(place, kept, old, next);
+  const at = inserted.indexOf(to);
+  const reach = Math.max(1, Math.abs(inserted.length - removed.length));
+  return inserted
+    .map((j, k) => ({ j, k, far: Math.abs(k - at) }))
+    .filter(({ far }) => at >= 0 && far > 0 && far <= reach)
+    .toSorted((a, b) => a.far - b.far || b.k - a.k)
+    .map(({ j }) => j);
 }
 
 /**

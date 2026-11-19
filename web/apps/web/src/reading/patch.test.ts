@@ -252,12 +252,33 @@ test("patchBlocks tells of a block taken out the others put in where it was, nea
   const placed = patchBlocks(article, template(old), template(after));
 
   expect([1, 2, 3].map((at) => placed?.(at))).toEqual([1, 2, 3]);
-  expect([1, 2, 3].map((at) => placed?.near?.(at))).toEqual([
-    [2, 3],
-    [3, 1],
-    [2, 1],
-  ]);
+  // As many put in as taken out: a block's new version is the one next to where it is placed, at most.
+  expect([1, 2, 3].map((at) => placed?.near?.(at))).toEqual([[2], [3, 1], [2]]);
   expect([0, 4].map((at) => placed?.near?.(at))).toEqual([[], []]);
+});
+
+// M12/P2/S4, 4.4.3's step 3 (review A's C2-M1): as far as the new version may be, as many as were put in or taken out.
+test("patchBlocks tells of the others put in no farther than a block's new version may be: as many as more were put in", () => {
+  const old = "<p>a</p>\n<p>reader</p>\n<p>z</p>\n";
+  const twoMore = "<p>a</p>\n<p>one</p>\n<p>two</p>\n<p>reader, edited</p>\n<p>z</p>\n";
+  const placed = patchBlocks(written(old).article, template(old), template(twoMore));
+  // The reader's block placed at the first put in; its new version two blocks on, as far as two more put in reach.
+  expect([placed?.(2), placed?.near?.(2)]).toEqual([2, [4, 6]]);
+
+  const five = "<p>a</p>\n<p>one</p>\n<p>two</p>\n<p>reader</p>\n<p>four</p>\n<p>five</p>\n<p>z</p>\n";
+  const fewer = "<p>a</p>\n<p>reader, edited</p>\n<p>four, edited</p>\n<p>five, edited</p>\n<p>z</p>\n";
+  const back = patchBlocks(written(five).article, template(five), template(fewer));
+  // Two more taken out than put in: the reader's block placed at the third put in, its new version two blocks back.
+  expect([back?.(6), back?.near?.(6)]).toEqual([6, [4, 2]]);
+
+  // Only one put in where three were: none other.
+  const one = "<p>a</p>\n<p>reader, edited</p>\n<p>z</p>\n";
+  const single = patchBlocks(written(twoMore).article, template(twoMore), template(one));
+  expect([2, 4, 6].map((at) => [single?.(at), single?.near?.(at)])).toEqual([
+    [2, []],
+    [2, []],
+    [2, []],
+  ]);
 });
 
 // M12/P2/S4, 4.4.2 step 4: from the HTML before to the HTML after, not from what the reader has.
