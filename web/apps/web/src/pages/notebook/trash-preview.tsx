@@ -89,12 +89,16 @@ type Restoring =
  * refusedOf is what a restore of item refused came to: deleted again with a
  * page above it, its item's preview, which says so, and says it once
  * (M5-polish 22.19): the refusal's own alert, then the preview's, then the
- * title described by it, said it three times.
+ * title described by it, said it three times. That needs no item; another
+ * refusal is said of the item, nothing without one (not read yet).
  */
-function refusedOf(refusal: unknown, item: TrashItem): Restoring {
+function refusedOf(refusal: unknown, item: TrashItem | undefined): Restoring | undefined {
   const root =
     refusal instanceof ApiError && refusal.code === "page.not_trash_root" ? refusal.problem?.root_id : undefined;
-  return typeof root === "string" ? { merged: root } : { refused: refusal, item };
+  if (typeof root === "string") {
+    return { merged: root };
+  }
+  return item === undefined ? undefined : { refused: refusal, item };
 }
 
 /**
@@ -167,9 +171,8 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
           setRestoring({ restored: trashRestoredOf(restored, pages, latest.current) });
         }
       } catch (refusal) {
-        const item = latest.current;
         if (showing) {
-          setRestoring(item === undefined ? undefined : refusedOf(refusal, item));
+          setRestoring(refusedOf(refusal, latest.current));
         }
       }
     })();
@@ -184,11 +187,15 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const note = useId();
   const home = `/${slug}/notebooks/${notebook.id}`;
   // What shows, below what a refusal says, below the item's breadcrumb (M5-polish 22.19): each in a slot of its own,
-  // so that a view replacing another keeps the same alert.
+  // so that a view replacing another keeps the same alert. The breadcrumb is as close to the title as on a page.
   const shell = (told: ReactNode, view: ReactNode, trail?: ReactNode) => (
-    <div className="space-y-4">
-      {trail}
-      {told !== undefined && <Alert id={note}>{told}</Alert>}
+    <div>
+      {trail !== undefined && <Trail left={() => setHanded(true)}>{trail}</Trail>}
+      {told !== undefined && (
+        <Alert id={note} className="mb-4">
+          {told}
+        </Alert>
+      )}
       {view}
     </div>
   );
@@ -321,6 +328,21 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
     />
   );
 });
+
+/**
+ * Trail holds the item's breadcrumb, which leaves with the item: gone from
+ * the document with the focus, it hands the focus on (left), as the item
+ * does (M5-polish 22.19).
+ */
+function Trail({ left, children }: { left: () => void; children: ReactNode }) {
+  const own = useRef<HTMLDivElement>(null);
+  useFocusLeaving(own, left);
+  return (
+    <div ref={own} className="mb-2">
+      {children}
+    </div>
+  );
+}
 
 /**
  * LostStart says what came of the restore of item in the background whose

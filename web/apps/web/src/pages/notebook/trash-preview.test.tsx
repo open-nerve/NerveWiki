@@ -149,16 +149,20 @@ const trashItemJSON = {
 
 test("a node deleted with a page above it goes to its item's root's preview, the address replaced", async () => {
   const { server } = trashed();
-  const { router } = renderApp(previewPath(linux.id), server.app);
+  const { router } = renderApp([trashPath, previewPath(linux.id)], server.app);
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   expect(router.state.location.pathname).toBe(previewPath(install.id));
-  expect(router.state.historyAction).toBe("REPLACE");
   // It says why, its title taking the focus (M8/P2B review A-M1).
   expect(screen.getByRole("alert").textContent).toBe(
     "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
   );
   await waitFor(() => expect(document.activeElement).toBe(heading));
+  // Replaced: Back leads to where it came from. The route notice taken replaces the entry too (M5-polish 22.2), so
+  // that how the last navigation went says nothing of it.
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  expect(await screen.findByRole("list", { name: "Trash" })).toBeTruthy();
 });
 
 // M8/P2B review B-3 (v0.1 design 13.2, item 7).
@@ -760,7 +764,7 @@ test("a preview shown after its restore answered follows nothing: it says the it
 test("a restore from the preview refused as deleted again with a page above it goes to that item's preview, which says why once (M5-polish 22.19)", async () => {
   const user = userEvent.setup();
   const { server } = trashed();
-  renderApp(previewPath(install.id), server.app);
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
   const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
   server.restoreElsewhere(install.id);
   server.trashNode(guide.id);
@@ -793,6 +797,10 @@ test("a restore from the preview refused as deleted again with a page above it g
     "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.",
   ]);
   await waitFor(() => expect(document.activeElement).toBe(heading));
+  // In place of the item's own preview, which would only send it there again: Back leads to where it came from.
+  await act(() => router.navigate(-1));
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  expect(await screen.findByRole("list", { name: "Trash" })).toBeTruthy();
 });
 
 test("an item back in the trash, its notice holding the focus, takes it to its title (M5-polish 22.19)", async () => {
@@ -835,6 +843,52 @@ test("a notice shown first, holding the focus, gives it to the item's title as t
 
   const heading = await screen.findByRole("heading", { level: 1, name: "Install" });
   await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("the reader on the preview's breadcrumb as the item is restored elsewhere: the notice's title takes the focus (M5-polish 22.19)", async () => {
+  const events = eventServer();
+  const { server } = trashed("admin", { "GET /api/v0/events": events.answer });
+  renderApp(previewPath(install.id), withEvents(server.app), { eventHandlers });
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  events.last().hello();
+  await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
+  const trash = within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Trash" });
+  act(() => trash.focus());
+
+  server.restoreElsewhere(install.id);
+  events.last().send("pages", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] });
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" })));
+});
+
+test("a restore from the trash's list refused as deleted again with a page above it, followed by the item's preview opened before the item is read, goes to that item's preview at once (M5-polish 22.19)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp(trashPath, server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  let open!: () => void;
+  server.trashWaits.item = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  await act(() => router.navigate(previewPath(install.id)));
+  await waitFor(() => expect(server.sent).toContain("GET trash item Install"));
+
+  // Refused before the item's read answers: the refusal needs no item to lead to its root's.
+  act(() => server.release());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(previewPath(guide.id)));
+  server.trashWaits.item = undefined;
+  act(() => open());
+  expect(await screen.findByRole("heading", { level: 1, name: "Guide" })).toBeTruthy();
+  expect(screen.getByRole("alert").textContent).toBe(
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it."
+  );
 });
 
 test("a refusal on the preview is said below its breadcrumb (M5-polish 22.19)", async () => {
