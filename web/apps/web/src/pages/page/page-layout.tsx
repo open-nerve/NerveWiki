@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { Navigate, useLocation, useParams } from "react-router";
+import { Navigate, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
-import { arrived, useArrivalFocus } from "../../app/arrival";
+import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { canEditPageBody } from "../../app/source-permissions";
@@ -143,7 +143,9 @@ const PageShell = observer(function PageShell({
   const { mutate } = useSWRConfig();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(page.name, notebook.name);
-  const restored = restoredOf(useLocation().state);
+  // Said as the page shows, once: an edit entered takes it away (M5-polish 21.3).
+  const notice = useRouteNotice(restoredOf, ["restored"]);
+  const [restored, setRestored] = useState(notice);
   // The status of a version restored describes the title, where the focus lands: it is heard as it comes.
   const restoredNote = useId();
   const [editing, setEditing] = useState<PageEditing | undefined>(undefined);
@@ -186,6 +188,7 @@ const PageShell = observer(function PageShell({
     opening.current = next;
     setEntering(true);
     setRefusal(undefined);
+    setRestored(undefined);
     roleRead.current = false;
     setIdleLeft(false);
     setToldLeft("");

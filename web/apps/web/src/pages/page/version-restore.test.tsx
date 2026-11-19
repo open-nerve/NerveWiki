@@ -479,3 +479,33 @@ test("the restore goes out once, however often Restore is pressed, and nothing c
   expect(await within(dialog).findByRole("button", { name: "Restore" })).toBeTruthy();
   expect(restores(server.sent)).toEqual(["RESTORE held"]);
 });
+
+test("the status of a version restored is said as the page shows, once: back and forward say it no more, nor does the entry, which a reload reads (M5-polish 21.3)", async () => {
+  const { user, router, dialog } = await restoring();
+
+  await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  expect(await screen.findByText("Restored version 4.")).toBeTruthy();
+  // The entry no longer says it: a reload reads the entry's state.
+  await waitFor(() => expect(router.state.location.state).toEqual({ arrived: true }));
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  await act(() => router.navigate(1));
+  await screen.findByRole("heading", { level: 1, name: "Install" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByText("Restored version 4.")).toBeNull();
+});
+
+test("the status of a version restored goes as an edit is entered: back from it, it says it no more (M5-polish 21.3)", async () => {
+  const { user, dialog } = await restoring();
+  await user.click(within(dialog).getByRole("button", { name: "Restore" }));
+  await screen.findByText("Restored version 4.");
+
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  await screen.findByRole("textbox", { name: "Page content" });
+  expect(screen.queryByText("Restored version 4.")).toBeNull();
+  await user.click(screen.getByRole("button", { name: "Done" }));
+  await screen.findByRole("button", { name: "Edit" });
+  expect(screen.queryByText("Restored version 4.")).toBeNull();
+});

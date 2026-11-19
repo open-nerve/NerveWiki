@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState } from "react";
-import { Link, useLocation } from "react-router";
+import { Link } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
-import { useArrivalFocus } from "../../app/arrival";
+import { useArrivalFocus, useRouteNotice } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
@@ -90,8 +90,9 @@ export const TrashPage = observer(function TrashPage() {
   );
   const restore = useTrashRestore(notebook);
   const start = useBackgroundRestore(notebook);
-  const { state } = useLocation();
-  const [said, setSaid] = useState<Said | undefined>(() => saidOf(state));
+  // Said as the trash shows, once (M5-polish 22.2).
+  const notice = useRouteNotice(saidOf, ["restored", "started"]);
+  const [said, setSaid] = useState<Said | undefined>(notice);
   const [refused, setRefused] = useState<Refusal>();
   // The status line describes the title, where the focus lands: it is heard with it.
   const status = useId();

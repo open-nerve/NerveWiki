@@ -1,9 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
-import { Link, Navigate, useLocation, useParams } from "react-router";
+import { Link, Navigate, useParams } from "react-router";
 import useSWR from "swr";
 
-import { arrived } from "../../app/arrival";
+import { arrived, useRouteNotice } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
@@ -104,9 +104,9 @@ function refusedOf(refusal: unknown, item: TrashItem): Restoring {
  */
 type MergedState = { merged: true };
 
-/** mergedOf tells whether the route state says the preview was gone to from a node of its item. */
-function mergedOf(state: unknown): boolean {
-  return typeof state === "object" && state !== null && "merged" in state && state.merged === true;
+/** mergedOf is true when the route state says the preview was gone to from a node of its item. */
+function mergedOf(state: unknown): true | undefined {
+  return typeof state === "object" && state !== null && "merged" in state && state.merged === true ? true : undefined;
 }
 
 /**
@@ -139,6 +139,8 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const restore = useTrashRestore(notebook);
   const start = useBackgroundRestore(notebook);
   useLeftBehind(notebook.id, id);
+  // Said once, as the preview shows (M5-polish 22.2): kept here, the item's view remounting as it changes.
+  const merged = useRouteNotice(mergedOf, ["merged"]) ?? false;
   const { data, error, mutate } = useSWR(["trash-item", notebook.id, id], () => pages.trashItem(id));
   // A restore out as the preview shows, sent before it did: out from its first render.
   const [restoring, setRestoring] = useState<Restoring | undefined>(() =>
@@ -306,6 +308,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       busy={restoring !== undefined && "out" in restoring}
       start={offered?.id === data.id ? () => startItem(data) : undefined}
       describedBy={describing(said)}
+      merged={merged}
       focus={handed}
       left={() => setHanded(true)}
     />,
@@ -359,6 +362,7 @@ const Preview = observer(function Preview({
   busy,
   start,
   describedBy,
+  merged,
   focus,
   left,
 }: {
@@ -369,6 +373,8 @@ const Preview = observer(function Preview({
   busy: boolean;
   start: (() => Promise<void>) | undefined;
   describedBy: string | undefined;
+  /** Whether it was gone to from a node deleted with it since. */
+  merged: boolean;
   /** Whether what it replaces left with the focus. */
   focus: boolean;
   left: () => void;
@@ -376,7 +382,6 @@ const Preview = observer(function Preview({
   const t = useT();
   const { preferences } = useStore();
   const heading = useRef<HTMLHeadingElement>(null);
-  const merged = mergedOf(useLocation().state);
   const note = useId();
   const shown = useRef<HTMLDivElement>(null);
   useFocusLeaving(shown, left);

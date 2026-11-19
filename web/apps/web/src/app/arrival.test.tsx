@@ -430,3 +430,17 @@ test("a replace of the state alone that makes a page the tree opened an arrival,
   await settle();
   expect(document.activeElement).toBe(box);
 });
+
+// M12/P2/S6, 21.3: the notice taken from the entry by a replace of its state alone, a later heading is no first one.
+test("a page whose route notice was taken, deleted elsewhere later, gives way to Page not found, which takes the focus only from no one", async () => {
+  const page = await shown({ ...arrived, restored: 4 });
+  const { router, heading, box } = page;
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  act(() => box.focus());
+
+  deleted(page);
+  await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await settle();
+  expect(document.activeElement).toBe(box);
+});

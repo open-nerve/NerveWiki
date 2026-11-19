@@ -850,3 +850,41 @@ test("a refusal on the preview is said below its breadcrumb (M5-polish 22.19)", 
   const crumbs = screen.getByRole("navigation", { name: "Breadcrumb" });
   expect(crumbs.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
 });
+
+test("the trash arrived at from a restore in the preview says where it went once: forward to it again, it says nothing (M5-polish 22.2)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  const { router } = renderApp(previewPath(install.id), server.app);
+
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Trash" });
+  await waitFor(() => expect(screen.getByRole("status").textContent).toBe("Restored “Install” under “Guide”. Open"));
+  await waitFor(() => expect(router.state.location.state).toEqual({ arrived: true }));
+  await act(() => router.navigate(-1));
+  await screen.findByText("This is no longer in the trash.");
+  await act(() => router.navigate(1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.getByRole("status").textContent).toBe("");
+});
+
+test("an item's preview gone to from a node deleted with it since says so once: back to it, it says nothing (M5-polish 22.2)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  server.trashNode(guide.id);
+  const { router } = renderApp(previewPath(install.id), server.app);
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const merged =
+    "What you opened was deleted again with a page above it: it is part of this item now, and is restored with it.";
+  expect(screen.getByRole("alert").textContent).toBe(merged);
+  await waitFor(() => expect(router.state.location.state).toEqual({}));
+
+  await user.click(within(screen.getByRole("navigation", { name: "Breadcrumb" })).getByRole("link", { name: "Trash" }));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(screen.queryByText(merged)).toBeNull();
+});
