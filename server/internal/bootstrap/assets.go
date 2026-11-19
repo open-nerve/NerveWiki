@@ -172,7 +172,10 @@ type assetEmbeds struct {
 	embeds asset.Embeds
 }
 
-// assets is the obsidian extension's Assets.
+// assets is the obsidian extension's Assets. The signed view's sample
+// converts the module's embeds as this does, written out again in
+// modules/asset/signed_view_test.go (M12/P2/S4): changed, the test and
+// testdata/m12/signed-view.json are to be changed with it.
 func (a assetEmbeds) assets(ctx context.Context, notebookID uuid.UUID, ids []uuid.UUID) (map[uuid.UUID]obsidian.Asset, error) {
 	embeds, err := a.embeds.Of(ctx, notebookID, ids)
 	if err != nil {

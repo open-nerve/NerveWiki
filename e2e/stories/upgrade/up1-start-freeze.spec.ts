@@ -1,4 +1,5 @@
 import type { TreeNode } from "@nervewiki/api-client";
+import type { Locator, Page } from "@playwright/test";
 
 import { accountIdOf } from "../../fixtures/assert/identity";
 import { expectNotebook } from "../../fixtures/assert/notebook";
@@ -168,7 +169,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, without a reload; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, without a reload, its reading view not written again, the paragraph it reads not moved; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -177,7 +178,9 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
 }, testInfo) => {
   const { adminId, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Field notes");
-  const plan = await createPage(api, pat, notebook.id, "Plan", null, "# Plan\n");
+  // Long enough that the other tab reads it halfway down.
+  const body = Array.from({ length: 80 }, (_, n) => `Paragraph ${n.toString()} of the plan.\n`).join("\n");
+  const plan = await createPage(api, pat, notebook.id, "Plan", null, `# Plan\n\n${body}`);
   await createPage(api, pat, notebook.id, "Notes", plan.id, "# Notes\n");
   const page = await signedInPage(tokens);
   const tab = await anotherTab(page);
@@ -199,6 +202,16 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   }
   await tab.evaluate(() => Object.assign(window, { up1Document: true }));
   const opened = streams.opened();
+  // The other tab reads the plan halfway down: the banner coming above it does not move what it reads, which the
+  // browsers' scroll anchoring keeps in place while the view's HTML stays (M12/P2/S4, 48; the three engines have it,
+  // the S4 probe). The article's first node is kept in a reference of the window: the HTML is not written again.
+  const reading = tab.getByRole("article", { name: "Plan" }).getByText("Paragraph 40 of the plan.", { exact: true });
+  await reading.evaluate((paragraph) => {
+    paragraph.scrollIntoView({ block: "center" });
+    Object.assign(window, { up1First: paragraph.closest("article")?.firstChild });
+  });
+  await afterFrames(tab);
+  const readAt = await top(reading);
 
   await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
   const start = modeSection(page).getByRole("button", { name: "Upgrade to an LLM Wiki…", exact: true });
@@ -223,9 +236,25 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
 
   await expect(upgradeBanner(tab, bannerText.upgrading)).toBeVisible();
   await expect(edit).toHaveCount(0);
+  await afterFrames(tab);
+  expect(
+    await reading.evaluate((paragraph) => paragraph.closest("article")?.firstChild === Reflect.get(window, "up1First")),
+    "the article's first node, the one before the banner"
+  ).toBe(true);
+  expect(Math.abs((await top(reading)) - readAt), "how far the paragraph read moved").toBeLessThanOrEqual(1);
   await tab.keyboard.press("ControlOrMeta+e");
   await expect(editorContent(tab)).toHaveCount(0);
   expect(await tab.evaluate(() => "up1Document" in window)).toBe(true);
   expect(streams.opened()).toBe(opened);
   expect(pageWatch.apiFailures).toEqual([]);
 });
+
+/** afterFrames settles once page has drawn two frames: a layout's scroll anchoring is done by then. */
+function afterFrames(page: Page): Promise<unknown> {
+  return page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
+/** top is where element's top is in its window, in CSS pixels. */
+function top(element: Locator): Promise<number> {
+  return element.evaluate((each) => each.getBoundingClientRect().top);
+}

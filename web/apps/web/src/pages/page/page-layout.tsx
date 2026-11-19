@@ -14,6 +14,7 @@ import { dialogOpen, isMod, onMac } from "../../app/shortcuts";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
+import { focusLost } from "../../lib/focus-leaving";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
@@ -134,7 +135,8 @@ const PageShell = observer(function PageShell({
   /** Whether the page has gone from the tree, shown still while its edit is unsaved: it has no attachments then. */
   gone: boolean;
 }) {
-  const { slug } = useWorkspace();
+  const workspace = useWorkspace();
+  const { slug } = workspace;
   const pages = usePageTree(notebook);
   const store = useStore();
   const t = useT();
@@ -161,6 +163,8 @@ const PageShell = observer(function PageShell({
   const back = useRef<boolean | "fallen">(false);
   // The edit whose session is opening: one that opens once the shell is gone ends.
   const opening = useRef<PageEditing | undefined>(undefined);
+  // Whether the notebooks are read again after a refusal as forbidden (roleTaken).
+  const roleRead = useRef(false);
   const mounted = useMounted();
   const writer = writesNotebook(notebook);
   const editable = canEditPageBody(pages, page.id);
@@ -182,6 +186,7 @@ const PageShell = observer(function PageShell({
     opening.current = next;
     setEntering(true);
     setRefusal(undefined);
+    roleRead.current = false;
     setIdleLeft(false);
     setToldLeft("");
     try {
@@ -200,6 +205,7 @@ const PageShell = observer(function PageShell({
       // An edit ended as it opens, the tab signing out, is no failure.
       if (mounted() && !(error instanceof EditEnded)) {
         setRefusal(error);
+        roleTaken(error);
       }
     } finally {
       opening.current = undefined;
@@ -209,12 +215,44 @@ const PageShell = observer(function PageShell({
     }
   }
 
+  // A refusal as forbidden says the account's role was taken away meanwhile: the notebooks are read again, and the
+  // page follows its role (no Edit, the checkboxes disabled, the view not written again; M12/P2/S4, 6.2). Another
+  // outcome, or a toggle starting, ends the wait for it; so does the read's answer (review B's C1-M1): the page
+  // writable still, the role kept or the read failed, the focus is left; writable no more before it was refused (an
+  // event took the role first: no render is to come), the focus, if lost, goes to the title at once; else the effect
+  // below gives it, after the render the read brings. Writable or not is the store's as the answer comes, not a
+  // render's.
+  function roleTaken(why: unknown) {
+    roleRead.current = why instanceof ApiError && why.code === "forbidden";
+    if (!roleRead.current) {
+      return;
+    }
+    const id = page.id;
+    const writable = canEditPageBody(pages, id);
+    void mutate(["notebooks", workspace.id])
+      .catch(() => undefined)
+      .finally(() => {
+        if (!mounted() || !roleRead.current) {
+          return;
+        }
+        if (canEditPageBody(pages, id)) {
+          roleRead.current = false;
+        } else if (!writable) {
+          roleRead.current = false;
+          if (focusLost()) {
+            heading.current?.focus();
+          }
+        }
+      });
+  }
+
   // A task item's toggle refused (M5/P6 design 3.5): page.locked as Edit's refusal is, the note reading who holds
   // the lock and taking the focus from the checkbox, unless the focus has gone elsewhere meanwhile; another refusal
   // above the view. undefined, as a toggle starts, clears it.
   async function toggleRefused(error: unknown): Promise<void> {
     if (!(error instanceof ApiError && error.code === "page.locked")) {
       setRefusal(error);
+      roleTaken(error);
       return;
     }
     const lock = await mutate<EditLock>(["edit-lock", page.id]);
@@ -227,6 +265,19 @@ const PageShell = observer(function PageShell({
       lockNote.current?.focus();
     }
   }
+
+  // The role read again after a refusal as forbidden, the page writable no more: the focus Edit had, gone, or a
+  // checkbox had, disabled, goes to the page's title, as back from an edit without Edit (18.6; M12/P2/S4, 6.2, review
+  // B's M1). A focus the reader put elsewhere meanwhile stays.
+  useEffect(() => {
+    if (editable || !roleRead.current) {
+      return;
+    }
+    roleRead.current = false;
+    if (focusLost()) {
+      heading.current?.focus();
+    }
+  }, [editable, heading]);
 
   // The keys of the latest render: enter reads its page.
   const keys = useRef({ enter });

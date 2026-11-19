@@ -1,11 +1,11 @@
 import { readFileSync } from "node:fs";
 
 import type { ApiClient } from "@nervewiki/api-client";
-import type { Locator, Page } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 
 import { expectIndexedLinks } from "../../fixtures/assert/links";
 import { expectChangesetOf } from "../../fixtures/assert/page";
-import { download, oggOpus, pngBytes, uploadAsset, utf8, webmHead } from "../../fixtures/assets";
+import { download, oggOpus, pngBytes, recordWebm, uploadAsset, utf8, webmHead } from "../../fixtures/assets";
 import { getPageProperties } from "../../fixtures/links";
 import { mcpClient, readPage, resultOf } from "../../fixtures/mcp";
 import { goto } from "../../fixtures/navigation";
@@ -250,33 +250,6 @@ test("AS3 (MCP): an agent writes a page embedding attachments, in its properties
   });
 });
 
-/** recordWebm records, in page, a short video of a canvas as WebM: Playwright's Chromium plays VP8, not H.264. */
-async function recordWebm(page: Page): Promise<Uint8Array<ArrayBuffer>> {
-  const bytes = await page.evaluate(async () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 16;
-    canvas.height = 8;
-    const drawing = canvas.getContext("2d");
-    const recorder = new MediaRecorder(canvas.captureStream(10), { mimeType: "video/webm;codecs=vp8" });
-    const chunks: Blob[] = [];
-    recorder.addEventListener("dataavailable", (event) => chunks.push(event.data));
-    const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve));
-    recorder.start();
-    for (let frame = 0; frame < 6; frame++) {
-      if (drawing) {
-        drawing.fillStyle = frame % 2 === 0 ? "red" : "blue";
-        drawing.fillRect(0, 0, 16, 8);
-      }
-      // oxlint-disable-next-line no-await-in-loop -- a frame at a time
-      await new Promise((resolve) => setTimeout(resolve, 100));
-    }
-    recorder.stop();
-    await stopped;
-    return [...new Uint8Array(await new Blob(chunks).arrayBuffer())];
-  });
-  return Uint8Array.from(bytes);
-}
-
 /** loaded tells, once media is asked to load its metadata (the view writes preload="none"), whether it has. */
 function loaded(media: Locator): Promise<boolean> {
   return media.evaluate(
@@ -369,11 +342,12 @@ test("AS3 (page): the image, the audio and the video load from their addresses; 
     (element as HTMLImageElement & { old?: boolean }).old = true;
   });
   expect((await renameNode(api, pat, cover.id, "front.png")).response.status).toBe(200);
-  await expect
-    .poll(() =>
-      view.locator("img.nw-asset").evaluate((element) => (element as HTMLImageElement & { old?: boolean }).old)
-    )
-    .toBeUndefined();
+  // Read again, the view's properties name it anew; the image's block, the same HTML, is the same element, not loaded
+  // again (M12/P2/S4, U4).
+  await expect(view.getByRole("link", { name: "front.png (opens in a new tab)" })).toBeVisible();
+  expect(
+    await view.locator("img.nw-asset").evaluate((element) => (element as HTMLImageElement & { old?: boolean }).old)
+  ).toBe(true);
   const playing = await audio.evaluate((element) => {
     const media = element as HTMLMediaElement & { kept?: boolean };
     return { kept: media.kept, paused: media.paused, at: media.currentTime };

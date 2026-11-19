@@ -1,0 +1,15 @@
+{
+  "about": "A reading view of one page at two times an hour apart, as the server writes it (M12/P2/S4, P2-45): the same HTML but for its attachments' addresses' expiry (e) and signature (s). server/internal/modules/asset/signed_view_test.go renders the page and checks it against this byte for byte; web/apps/web/src/reading/patch.test.ts reads it.",
+  "views": [
+    {
+      "at": "2026-11-18T10:30:00Z",
+      "html": "<h1 id=\"nw-field-notes\">Field notes</h1>\n<p><img class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0001/content?b=0199a2b4-0000-7000-8000-0000000b0001&amp;e=1795003200&amp;s=WPRzGoVy93jNaDcKH_8Ynw\" alt=\"chart.png\" width=\"640\" height=\"480\" loading=\"lazy\"></p>\n<p><audio class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0002/content?b=0199a2b4-0000-7000-8000-0000000b0002&amp;e=1795003200&amp;s=fRoaDTBVhsMPbShYfpil6Q\" controls=\"\" preload=\"none\" aria-label=\"talk.mp3\"></audio></p>\n<p><video class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0003/content?b=0199a2b4-0000-7000-8000-0000000b0003&amp;e=1795003200&amp;s=GwJXIYdg9hvRKe9PvHGTGw\" controls=\"\" preload=\"none\" aria-label=\"clip.webm\"></video></p>\n<p>The figures are in <a class=\"nw-wikilink nw-asset\" href=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0004/content?b=0199a2b4-0000-7000-8000-0000000b0004&amp;e=1795003200&amp;s=Oy-39Nbn9_4mM_-l_xQVhQ\" data-nw-size=\"1024\" download=\"\">report.zip</a>.</p>\n",
+      "assets_expire_at": "2026-11-18T12:00:00Z"
+    },
+    {
+      "at": "2026-11-18T11:30:00Z",
+      "html": "<h1 id=\"nw-field-notes\">Field notes</h1>\n<p><img class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0001/content?b=0199a2b4-0000-7000-8000-0000000b0001&amp;e=1795006800&amp;s=deoFhTzjrMyET36tzEfKaA\" alt=\"chart.png\" width=\"640\" height=\"480\" loading=\"lazy\"></p>\n<p><audio class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0002/content?b=0199a2b4-0000-7000-8000-0000000b0002&amp;e=1795006800&amp;s=eEYmiuVcYmP4UAtXglC1Xw\" controls=\"\" preload=\"none\" aria-label=\"talk.mp3\"></audio></p>\n<p><video class=\"nw-asset\" src=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0003/content?b=0199a2b4-0000-7000-8000-0000000b0003&amp;e=1795006800&amp;s=P3LmfowOyZ_pGExswBanxA\" controls=\"\" preload=\"none\" aria-label=\"clip.webm\"></video></p>\n<p>The figures are in <a class=\"nw-wikilink nw-asset\" href=\"/api/v0/assets/0199a2b4-0000-7000-8000-0000000a0004/content?b=0199a2b4-0000-7000-8000-0000000b0004&amp;e=1795006800&amp;s=vqb4tHzQR7Wx8R9jOF2lBA\" data-nw-size=\"1024\" download=\"\">report.zip</a>.</p>\n",
+      "assets_expire_at": "2026-11-18T13:00:00Z"
+    }
+  ]
+}

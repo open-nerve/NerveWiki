@@ -2,7 +2,6 @@ import { createContext } from "react";
 
 import type { Translate } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
-import type { NotebookRole } from "../services/notebook.service";
 import { appLinks } from "./app-links";
 import { assets } from "./assets";
 import { diagrams, loadMermaid } from "./diagrams";
@@ -24,18 +23,22 @@ export type UnresolvedLink = { target: string; kind: "link" | "embed" | "image";
 /**
  * ReadingContext is what an enhancement knows of the reading view it runs
  * in (M4/P5 design 3.8): where the page is, the revision its HTML was
- * rendered from, the account's role in the notebook, the app's texts in
- * the reader's language, and a way to read the view again. An enhancement ticks a task item through it (M5/P6
+ * rendered from, the app's texts in the reader's language, and a way to
+ * read the view again. An enhancement ticks a task item through it (M5/P6
  * design 3.5), goes to another address of the app (M6/P3 design 6.7),
  * hands it a link to a page that is not there (M6/P6 design 7), and
- * reports to the page what it could not do.
+ * reports to the page what it could not do. What changes as the view
+ * stays, it reads as it is: the revision and the addresses' expiry, as
+ * the view is read again; whether the page can be written, which it is
+ * told as it changes (M12/P2/S4: the view is not run again, which would
+ * lose the reader's place and focus).
  */
 export type ReadingContext = {
   workspace: string;
   notebook: string;
   page: string;
+  /** revision is the revision of the view's HTML, as it is now: the same HTML read again may come at a later one. */
   revision: number;
-  role: NotebookRole;
   /** t is the app's text of a key in the reader's language: an enhancement's names and labels. */
   t: Translate;
   /** locale is the reader's language, which numbers are written in. */
@@ -55,14 +58,30 @@ export type ReadingContext = {
   /**
    * toggleTask ticks (checked) or clears the task item at offset in the
    * view's revision, then reads the view again, and settles once it is
-   * read; while a toggle of the page is out, it does nothing. It rejects
-   * with the refusal, a revision passed once the view is read again. Only
-   * a writer of the notebook's pages has it.
+   * read; while a toggle of the page is out, or as the page cannot be
+   * written, it does nothing. It rejects with the refusal, a revision
+   * passed once the view is read again. A page's reading view has it, a
+   * version's and a preview's in the trash do not.
    */
   toggleTask?: (offset: number, checked: boolean) => Promise<void>;
+  /**
+   * writes tells whether the page can be written now: whether its task
+   * items can be ticked (the account's role, an upgrade under way, a
+   * source). Without it, they can whenever toggleTask is there.
+   */
+  writes?: () => boolean;
+  /**
+   * onWritesChange calls listener as whether the page can be written
+   * changes, until what it answers is called: the checkboxes follow it,
+   * the view not run again (M12/P2/S4, 48).
+   */
+  onWritesChange?: (listener: () => void) => () => void;
   /** report hands error to the page, which says it as it says a refusal of Edit. */
   report: (error: unknown) => void;
-  /** assetsExpire is when the first of the view's attachments' addresses expires, null for none (M7/P4 design 4.5). */
+  /**
+   * assetsExpire is when the first of the view's attachments' addresses expires, null for none (M7/P4 design 4.5), as
+   * it is now: the view read again may have them signed anew.
+   */
   assetsExpire: string | null;
   /**
    * assetAddress is the address of the attachment id's content, signed

@@ -6,7 +6,7 @@ import { eventHandlers } from "../../events/handlers";
 import { FakePage } from "../../events/testing/fake-page";
 import { readingEnhancements, type Enhancement } from "../../reading/enhancement";
 import { eventServer, withEvents } from "../../test/event-server";
-import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
+import { json, notebookJSON, problem, upgradeOf, workspaceJSON } from "../../test/fakes";
 import { bob, install, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -224,6 +224,141 @@ test.each([
     expect(server.sent.filter((line) => line.startsWith("TOGGLE"))).toEqual(["TOGGLE Install 3 true on 1"]);
   }
 );
+
+/** demoted is Install's server for an editor whose role the notebook's admin took away: its write answers 403. */
+function demoted(write: string) {
+  let notebookReads = 0;
+  const server: ReturnType<typeof pageServer> = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        notebookReads += 1;
+        return json({ data: [server.notebook] });
+      },
+      [write]: () => {
+        server.notebook = { ...server.notebook, role: "reader" };
+        return problem(403, "forbidden");
+      },
+    },
+  });
+  return { server, notebookReads: () => notebookReads };
+}
+
+// M12/P2/S4, 6.2: a role taken away elsewhere shows as a toggle is refused: the notebooks are read again, and the
+// checkboxes follow the role, the view not written again (U7).
+test("a toggle refused as forbidden reads the notebooks again, and with the role gone the checkboxes are disabled, the view not written again", async () => {
+  const { server, notebookReads } = demoted("POST /api/v0/pages/*/toggle-task");
+  await opened("editor", tasks, server);
+  const article = screen.getByRole("article", { name: "Install" });
+  const first = article.firstChild;
+  const [a, b] = boxes();
+  const reads = notebookReads();
+
+  await userEvent.click(a as HTMLElement);
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(boxes().map((box) => box.disabled)).toEqual([true, true]));
+  expect(notebookReads()).toBeGreaterThan(reads);
+  expect(article.firstChild).toBe(first);
+  const [aNow, bNow] = boxes();
+  expect(aNow).toBe(a);
+  expect(bNow).toBe(b);
+  // The checkbox the reader was at is disabled: the page's title has the focus (review B's M1).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" })));
+});
+
+// M12/P2/S4, 6.2 (P2-23): Edit's refusal is the same root, the same remedy.
+test("Edit refused as forbidden reads the notebooks again: with the role gone, Edit goes", async () => {
+  const { server, notebookReads } = demoted("POST /api/v0/pages/*/edit-sessions");
+  await opened("editor", tasks, server);
+  const reads = notebookReads();
+
+  await userEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Edit" })).toBeNull());
+  expect(notebookReads()).toBeGreaterThan(reads);
+  expect(boxes().map((box) => box.disabled)).toEqual([true, true]);
+  // Edit, which had the focus, is gone: the page's title has it (review B's M1).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" })));
+});
+
+/** streamed is Install's task items open as an editor's, the stream connected; a toggle answers as toggled does. */
+async function streamed(toggled: () => Response | Promise<Response>) {
+  const events = eventServer();
+  let notebookReads = 0;
+  const server: ReturnType<typeof pageServer> = pageServer({
+    role: "editor",
+    answers: {
+      "GET /api/v0/events": events.answer,
+      "GET /api/v0/workspaces/lab/notebooks": () => {
+        notebookReads += 1;
+        return json({ data: [server.notebook] });
+      },
+      "POST /api/v0/pages/*/toggle-task": toggled,
+    },
+  });
+  server.withTasks(install.id, tasks);
+  renderApp(pagePath(install.id), withEvents(server.app), {
+    enhancements: [focusFixup, ...readingEnhancements],
+    eventHandlers,
+  });
+  await waitFor(() => expect(boxes()).toHaveLength(2));
+  await waitFor(() => expect(boxes()[0]?.disabled).toBe(false));
+  await waitFor(() => expect(events.streams).toHaveLength(1));
+  const stream = events.last();
+  act(() => stream.hello());
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  // A mode event reads the notebooks again, the role and the upgrade with them.
+  const modeChanged = () =>
+    act(() => stream.send("mode", { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id }));
+  return { server, modeChanged, notebookReads: () => notebookReads };
+}
+
+// M12/P2/S4, 6.2 (review B's C1-M1): the notebooks read again keep the role (or the read fails): the wait ends with
+// the answer, and a later change of whether the page can be written, an upgrade starting, moves no focus.
+test("a toggle refused as forbidden whose role the notebooks read again keep leaves the focus as an upgrade starts later", async () => {
+  const { server, modeChanged, notebookReads } = await streamed(() => problem(403, "forbidden"));
+  const reads = notebookReads();
+  await userEvent.click(boxes()[0] as HTMLElement);
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(notebookReads()).toBeGreaterThan(reads));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  expect(boxes()[0]?.disabled).toBe(false);
+  // The reader reads on: the focus is nowhere, as after a click on the text.
+  (document.activeElement as HTMLElement | null)?.blur();
+
+  server.notebook = { ...server.notebook, upgrade: upgradeOf() };
+  modeChanged();
+  await waitFor(() => expect(boxes()[0]?.disabled).toBe(true));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  expect(document.activeElement).toBe(document.body);
+});
+
+// M12/P2/S4, 6.2: the role taken by an event first, the checkbox disabled as its toggle was under way, no render is
+// to come of the read the refusal brings: the focus the disabled checkbox has goes to the page's title at its answer.
+test("a toggle refused as forbidden after an event took the role gives the page's title the focus the disabled checkbox had", async () => {
+  let answer: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  const { server, modeChanged } = await streamed(async () => {
+    await held;
+    return problem(403, "forbidden");
+  });
+  const box = boxes()[0] as HTMLElement;
+  await userEvent.click(box);
+  server.notebook = { ...server.notebook, role: "reader" };
+  modeChanged();
+  await waitFor(() => expect(boxes()[0]?.disabled).toBe(true));
+  expect(document.activeElement).toBe(box);
+
+  answer?.();
+
+  expect((await screen.findByRole("alert")).textContent).toBe("You do not have permission to do this.");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Install" })));
+});
 
 test("a reader's checkboxes stay disabled", async () => {
   const { server } = await opened("reader");

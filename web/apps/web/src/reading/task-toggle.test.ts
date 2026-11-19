@@ -14,7 +14,10 @@ afterEach(() => document.body.replaceChildren());
 /** A deferred toggle: the test settles it. */
 type Toggle = { offset: number; checked: boolean; settle: (error?: unknown) => void };
 
-/** setUp puts a view of two task items, b done, in the page, and a context that records the toggles (a writer's) and reports. */
+/**
+ * setUp puts a view of two task items, b done, in the page, and a context that records the toggles and reports: a
+ * writer's, whose toggles it records; a reader's has none.
+ */
 function setUp(role: NotebookRole = "editor") {
   const container = document.createElement("article");
   container.innerHTML =
@@ -28,7 +31,6 @@ function setUp(role: NotebookRole = "editor") {
     notebook: "n",
     page: "p",
     revision: 4,
-    role,
     t: translator("en"),
     locale: "en",
     theme: () => "light",
@@ -173,6 +175,40 @@ test("a click elsewhere in the view is the view's", async () => {
 
   expect(click.defaultPrevented).toBe(false);
   expect(toggles).toEqual([]);
+});
+
+// M12/P2/S4, 48: whether the page can be written changes the checkboxes, not the view's HTML (U7).
+test("the checkboxes follow whether the context writes, without running again", () => {
+  const { container, context, a, b } = setUp();
+  let writes = false;
+  const listeners = new Set<() => void>();
+  const change = (to: boolean) => {
+    writes = to;
+    for (const listener of listeners) listener();
+  };
+  const undo = taskToggle(container, {
+    ...context,
+    writes: () => writes,
+    onWritesChange: (listener) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+  });
+  const disabled = () => [a.disabled, b.disabled];
+  expect(disabled()).toEqual([true, true]);
+
+  change(true);
+  expect(disabled()).toEqual([false, false]);
+  change(false);
+  expect(disabled()).toEqual([true, true]);
+  // Named whether it writes or not (M12/P2/S1, 6.3).
+  expect([a.getAttribute("aria-label"), b.getAttribute("aria-label")]).toEqual(["a", "b"]);
+  change(true);
+  expect(disabled()).toEqual([false, false]);
+
+  undo?.();
+  expect(listeners.size).toBe(0);
+  expect(disabled()).toEqual([true, true]);
 });
 
 test("undone, the checkboxes are disabled again, without their names, and a click asks nothing", async () => {

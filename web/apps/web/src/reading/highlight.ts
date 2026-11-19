@@ -38,19 +38,27 @@ const encoder = new TextEncoder();
  * span.hljs-* that is the block's text (highlight-markup.ts); otherwise
  * the block stays as it was. Once every block is answered, after
  * highlightTimeout, or when the view is cleaned up, the worker is ended.
+ * Undone, the blocks stay coloured. A block coloured already, its language
+ * and text as they were, is not sent again: the view keeps the blocks a
+ * change of it did not change, and the language's (M12/P2/S4, 3), whose
+ * code neither shows plain a moment nor loses the reader's selection.
  */
 export function codeHighlight(worker: () => HighlightWorker): Enhancement {
+  // Each block's language and text as coloured.
+  const coloured = new WeakMap<Element, string>();
   return (container) => {
-    const blocks = new Map<number, { code: Element; text: string }>();
+    const blocks = new Map<number, { code: Element; text: string; as: string }>();
     const requests: HighlightRequest[] = [];
     // A diagram's source is drawn, not coloured (diagrams.ts).
     for (const [id, code] of container
       .querySelectorAll('pre > code[class^="language-"]:not(.language-mermaid)')
       .entries()) {
       const text = code.textContent;
-      if (encoder.encode(text).length <= blockLimit) {
-        blocks.set(id, { code, text });
-        requests.push({ id, language: code.className.slice("language-".length), text });
+      const language = code.className.slice("language-".length);
+      const as = `${language}\n${text}`;
+      if (coloured.get(code) !== as && encoder.encode(text).length <= blockLimit) {
+        blocks.set(id, { code, text, as });
+        requests.push({ id, language, text });
       }
     }
     if (requests.length === 0) {
@@ -68,6 +76,7 @@ export function codeHighlight(worker: () => HighlightWorker): Enhancement {
       const markup = block === undefined || data.html === null ? undefined : highlightMarkup(data.html, block.text);
       if (block !== undefined && markup !== undefined) {
         block.code.replaceChildren(markup);
+        coloured.set(block.code, block.as);
       }
       if (blocks.size === 0) {
         end();

@@ -259,11 +259,16 @@ test.each(["source", "role"] as const)(
     const article = await screen.findByRole("article", { name: "Install" });
     const toggle = latest?.toggleTask;
     if (toggle === undefined) throw new Error("the editable reading view supplied no task callback");
-    expect(within(article).getByRole("checkbox").hasAttribute("disabled")).toBe(false);
+    const box = within(article).getByRole("checkbox");
+    await waitFor(() => expect(box.hasAttribute("disabled")).toBe(false));
+    const first = article.firstChild;
 
+    // The view is not written again (M12/P2/S4, 48): the checkbox follows, its click asks again before it writes.
     act(() => blockBeforeRender(server, captured, change));
-    expect(latest?.toggleTask).toBeUndefined();
-    expect(within(article).getByRole("checkbox").hasAttribute("disabled")).toBe(true);
+    expect(article.firstChild).toBe(first);
+    expect(within(article).getByRole("checkbox")).toBe(box);
+    expect(box.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(box);
     await act(async () => {
       await toggle(3, true);
     });
