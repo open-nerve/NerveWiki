@@ -88,6 +88,56 @@ jobs:
         run: test "$(docker image inspect -f '{{.Architecture}}' nervewiki:rehearsal)" = "${{ matrix.arch }}"
       - name: Image smoke
         run: deploy/image-smoke.sh nervewiki:rehearsal "$VERSION"
+      # 发布的 sbom 作业做的三样，在 amd64 上对本地的镜像只读地走一遍（M12/P5/S2，P5 设计 3.15）：取出 /licenses 打成
+      # 附件的包，镜像的与前端的两份 SBOM，再同样核对。不传 artifact，要看的在作业日志里；权限照旧只有 contents: read
+      - name: Licenses
+        if: matrix.arch == 'amd64'
+        run: |
+          mkdir -p "$RUNNER_TEMP/out"
+          cid=$(docker create nervewiki:rehearsal)
+          docker cp "$cid:/licenses" "$RUNNER_TEMP/amd64"
+          docker rm "$cid" >/dev/null
+          tar -czf "$RUNNER_TEMP/out/nervewiki-$VERSION-licenses.tar.gz" -C "$RUNNER_TEMP" --transform 's,^amd64,licenses,' amd64
+          tar -tzf "$RUNNER_TEMP/out/nervewiki-$VERSION-licenses.tar.gz" | grep -c -v '/$'
+          tar -tzf "$RUNNER_TEMP/out/nervewiki-$VERSION-licenses.tar.gz" | grep -x 'licenses/go/INDEX.tsv'
+          grep -c $'\t-$' "$RUNNER_TEMP/amd64/npm/INDEX.tsv" || true
+          du -sb "$RUNNER_TEMP/amd64" "$RUNNER_TEMP/out/nervewiki-$VERSION-licenses.tar.gz"
+      # syft 先找本机的 Docker，读到的是刚构建的镜像
+      - name: Image SBOM
+        if: matrix.arch == 'amd64'
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: nervewiki:rehearsal
+          format: spdx-json
+          output-file: ${{ runner.temp }}/out/nervewiki-${{ env.VERSION }}-image.spdx.json
+          syft-version: v1.54.0
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: matrix.arch == 'amd64'
+        with:
+          node-version-file: .node-version
+      - name: Enable corepack
+        if: matrix.arch == 'amd64'
+        run: corepack enable
+      # 只装前端的依赖，不缓存 pnpm 的 store（P5 设计 P5-7）
+      - name: Install the web app's dependencies
+        if: matrix.arch == 'amd64'
+        run: pnpm install --frozen-lockfile --filter @nervewiki/web...
+      - name: Web SBOM
+        if: matrix.arch == 'amd64'
+        run: pnpm --filter @nervewiki/web sbom --sbom-format spdx --prod --out "$RUNNER_TEMP/out/nervewiki-$VERSION-web.spdx.json"
+      # 同 sbom 作业的核对；另打出两份的文档 name 与包数：verify 作业按 name 分出两份 SBOM 的证明（P5 设计 3.12）
+      - name: Check the SBOMs
+        if: matrix.arch == 'amd64'
+        run: |
+          out=$RUNNER_TEMP/out
+          for f in "$out/nervewiki-$VERSION-image.spdx.json" "$out/nervewiki-$VERSION-web.spdx.json"; do
+            jq -r --arg f "${f##*/}" '"\($f)：name=\(.name)，\(.packages | length) 个包"' "$f"
+          done
+          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "github.com/jackc/pgx/v5")' "$out/nervewiki-$VERSION-image.spdx.json" >/dev/null
+          jq -e '.spdxVersion == "SPDX-2.3" and any(.packages[]; .name == "react")' "$out/nervewiki-$VERSION-web.spdx.json" >/dev/null
+          ls -l "$out"
 
   # 闸门（00-M12 4.10）：tag 的写法、提交在 main 上、它的 ci.yml 已绿、CHANGELOG.md 有这一节；再 make vuln，npm 一侧照 high
   gate:
