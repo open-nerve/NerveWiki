@@ -693,3 +693,17 @@ test("a version gone back to after a tree read failed as its notebook was left s
   act(() => server.release());
   expect(await screen.findByRole("heading", { level: 1, name: "Version 4" })).toBeTruthy();
 });
+
+test("a version gone to within its notebook whose tree could not be read says why at once, with Try again (M5-polish 27.2)", async () => {
+  const server = installed();
+  server.nodesDown = true;
+  const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, server.app);
+  await waitFor(() => expect(server.sent).toContain("GET nodes"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+
+  await act(() => router.navigate(versionPath(install.id, 4)));
+
+  // The failure is the notebook's own, as it shows: not one from before it was left.
+  expect(await within(screen.getByRole("main")).findByRole("button", { name: "Try again" })).toBeTruthy();
+  expect(server.sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});

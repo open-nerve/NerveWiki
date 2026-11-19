@@ -238,8 +238,7 @@ test("SE2 (page): a member's search from a notebook looks in it, as the box's hi
   expect(await resultNames(page)).toEqual(["Shared plan"]);
 
   // Stepped back and used with Enter, which then opens no list, as Chromium's Enter otherwise does: the next arrow
-  // steps the closed select again (M12/P2/S6 review B, M1). Stepped back to the choice in use, leaving it searches
-  // nothing.
+  // steps the closed select again (M12/P2/S6 review B, M1), and back to the choice in use.
   await scope.focus();
   await scope.press("ArrowUp");
   await expect(scope).toHaveValue(open.id);

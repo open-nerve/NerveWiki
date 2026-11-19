@@ -64,6 +64,19 @@ test("the keys that open the list are no step, and each key says anew whether it
   expect(used).toEqual(["c", "b", "a"]);
 });
 
+test("stepped away from the choice in use and back to it, left, the select uses nothing: what is applied reads nothing again", () => {
+  const { select, used } = shown();
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "b" } });
+  fireEvent.keyDown(select, { key: "ArrowUp" });
+  fireEvent.change(select, { target: { value: "a" } });
+  fireEvent.blur(select);
+
+  expect(select.value).toBe("a");
+  expect(used).toEqual([]);
+});
+
 test("on macOS the arrows and the others that step elsewhere are no step, as they open the list, whose choice is used at once; a character typed to find an option still waits", () => {
   const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   onTestFinished(() => platform.mockRestore());
