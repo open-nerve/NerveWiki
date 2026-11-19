@@ -585,3 +585,61 @@ test("a version's view read again keeps the focus on its link", async () => {
   expect(within(article).getByRole("link", { name: "x" })).toBe(link);
   expect(document.activeElement).toBe(link);
 });
+
+test("back and forward between two versions of a page say nothing of what a restore of the other said (M5-polish 21.10)", async () => {
+  const user = userEvent.setup();
+  const server = installed();
+  server.contents.set(install.id, { content: "- [ ] one\n- [x] two\n- [ ] three\n", revision: 6 });
+  const { router } = renderApp([versionPath(install.id, 6), versionPath(install.id, 4)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  // Pressed once it may be: while the comparison loads, it is aria-disabled and does nothing.
+  const confirm = within(dialog).getByRole("button", { name: "Restore" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
+  await user.click(confirm);
+  const said = "The page is the same as this version: nothing changed.";
+  expect(await screen.findByText(said)).toBeTruthy();
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Version 6" });
+  expect(screen.queryByText(said)).toBeNull();
+  await act(() => router.navigate(1));
+  await screen.findByRole("heading", { level: 1, name: "Version 4" });
+  expect(screen.queryByText(said)).toBeNull();
+});
+
+test("what a restore of a version said is not said while another version of the page loads (M5-polish 21.10)", async () => {
+  const user = userEvent.setup();
+  let open!: () => void;
+  const loaded = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  const server = installed("admin", {
+    // Version 6 answers once the test says.
+    "GET /api/v0/pages/*/versions/*": async (request) => {
+      const revision = Number(new URL(request.url).pathname.split("/").at(-1));
+      if (revision === 6) {
+        await loaded;
+      }
+      const found = server.versions.get(install.id)?.find((each) => each.revision === revision);
+      return found === undefined ? problem(404, "page.version_not_found") : json(found);
+    },
+  });
+  server.contents.set(install.id, { content: "- [ ] one\n- [x] two\n- [ ] three\n", revision: 6 });
+  const { router } = renderApp([versionPath(install.id, 6), versionPath(install.id, 4)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore this version" }));
+  const dialog = await screen.findByRole("alertdialog", { name: "Restore version 4?" });
+  const confirm = within(dialog).getByRole("button", { name: "Restore" });
+  await waitFor(() => expect(confirm.getAttribute("aria-disabled")).toBeNull());
+  await user.click(confirm);
+  const said = "The page is the same as this version: nothing changed.";
+  expect(await screen.findByText(said)).toBeTruthy();
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Version 6" });
+
+  expect(screen.queryByText(said)).toBeNull();
+  act(() => open());
+  await screen.findByRole("article", { name: "Version 6" });
+  expect(screen.queryByText(said)).toBeNull();
+});

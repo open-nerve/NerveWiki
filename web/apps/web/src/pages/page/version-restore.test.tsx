@@ -509,3 +509,47 @@ test("the status of a version restored goes as an edit is entered: back from it,
   await screen.findByRole("button", { name: "Edit" });
   expect(screen.queryByText("Restored version 4.")).toBeNull();
 });
+
+test.each([
+  [
+    "en",
+    "Restore this version",
+    "Restore version 4?",
+    "Restore",
+    "The page is the same as this version: nothing changed.",
+  ],
+  ["zh-CN", "还原到这个版本", "还原到版本 4？", "还原", "与当前相同，没有改动。"],
+] as const)(
+  "%s: a version the page holds already, restored again, says so again: what the line shows changes, which a screen reader hears (M5-polish 21.2)",
+  async (locale, restoreButton, title, confirm, unchanged) => {
+    const user = userEvent.setup();
+    const server = installed();
+    server.app.preferences.setLocale(locale);
+    server.contents.set(install.id, { content: "Install\nthree\n", revision: 6 });
+    renderApp(versionPath(install.id, 4), server.app);
+    const output = () => screen.getByText(unchanged, { selector: "output" });
+    const restoreAgain = async () => {
+      await user.click(await screen.findByRole("button", { name: restoreButton }));
+      const dialog = await screen.findByRole("alertdialog", { name: title });
+      // Pressed once it may be: while the comparison loads, it is aria-disabled and does nothing.
+      const confirmButton = within(dialog).getByRole("button", { name: confirm });
+      await waitFor(() => expect(confirmButton.getAttribute("aria-disabled")).toBeNull());
+      await user.click(confirmButton);
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    };
+
+    await restoreAgain();
+    const line = output();
+    expect(line.textContent).toBe(unchanged);
+    const changes: MutationRecord[] = [];
+    const watching = new MutationObserver((records) => changes.push(...records));
+    watching.observe(line, { childList: true, characterData: true, subtree: true });
+    onTestFinished(() => watching.disconnect());
+
+    await restoreAgain();
+    await waitFor(() => expect(changes.length).toBeGreaterThan(0));
+    expect(line.textContent).toBe(unchanged + String.fromCharCode(0xa0));
+    await restoreAgain();
+    await waitFor(() => expect(line.textContent).toBe(unchanged));
+  }
+);

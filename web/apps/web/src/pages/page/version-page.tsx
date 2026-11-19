@@ -40,6 +40,18 @@ const unchanging = { revalidateIfStale: false, revalidateOnFocus: false };
 type Tab = "read" | "previous" | "current";
 
 /**
+ * Said is what a restore that left the dialog says, of the version shown
+ * as it said it (of): nothing changed, or the page is gone; again when it
+ * is the same as what was said last, of the same version, which the line
+ * then shows with a space that does not break, so that a screen reader
+ * hears it again (M5-polish 21.2).
+ */
+type Said = { text: string; of: string; again: boolean };
+
+/** A space that does not break: said after a line said again, so that a screen reader reads it again. */
+const again = String.fromCharCode(0xa0);
+
+/**
  * VersionPage is a version of a page (M8 design 4.3, 4.13), the version
  * that holds the address's revision. It finds the page in the notebook's
  * tree, as the page's shell does (page-layout.tsx): nothing until the tree
@@ -99,8 +111,9 @@ const VersionShell = observer(function VersionShell({
   useLeftBehind(notebook.id, page.id);
   useLeftRevision(notebook.id, page.id, revision);
   const [tab, setTab] = useState<Tab>("read");
-  // What a restore that left the dialog says: nothing changed, or the page is gone.
-  const [said, setSaid] = useState("");
+  // What a restore that left the dialog says: nothing changed, or the page is gone; shown with its version alone,
+  // Back and Forward to another version of the page keeping the shell (M5-polish 21.10).
+  const [said, setSaid] = useState<Said>();
   const home = `/${slug}/notebooks/${notebook.id}`;
   const href = (id?: string) => (id === undefined ? home : `${home}/pages/${id}`);
   const version = useSWR(
@@ -123,6 +136,17 @@ const VersionShell = observer(function VersionShell({
     }
   }, [data, at, revision, mutate, navigate, notebook.id, page.id, versionsOf]);
   const shown = tab === "previous" && data?.base_revision === null ? "read" : tab;
+  const of = data?.id;
+  // Another version shown, what was said of the one before goes: back to it, it is not said again.
+  if (said !== undefined && of !== undefined && said.of !== of) {
+    setSaid(undefined);
+  }
+  const say = (text: string) =>
+    setSaid((before) => ({
+      text,
+      of: of ?? "",
+      again: before !== undefined && before.of === of && before.text === text && !before.again,
+    }));
   return (
     <div className="space-y-6">
       <div className="space-y-2">
@@ -136,7 +160,7 @@ const VersionShell = observer(function VersionShell({
               notebook={notebook}
               page={page}
               version={data}
-              said={setSaid}
+              said={say}
               restored={() => {
                 // Gone to the page, arrived at, unless the user left meanwhile.
                 if (mounted()) {
@@ -159,7 +183,9 @@ const VersionShell = observer(function VersionShell({
             {data.editing && <Mark>{t("version.editing")}</Mark>}
           </p>
         )}
-        <output className="block text-sm text-muted-foreground empty:sr-only">{said}</output>
+        <output className="block text-sm text-muted-foreground empty:sr-only">
+          {said !== undefined && said.of === of ? said.text + (said.again ? again : "") : ""}
+        </output>
       </div>
       <EditLockNote notebook={notebook} page={page} released={() => heading.current?.focus()} />
       {data === undefined ? (
