@@ -690,3 +690,69 @@ test("a node's preview whose address has its id in capitals, restored elsewhere,
   expect(screen.getByRole("link", { name: "Open it" }).getAttribute("href")).toBe(pagePath(install.id));
   expect(screen.queryByRole("heading", { level: 1, name: "Page not found" })).toBeNull();
 });
+
+test("a restore from the preview out as the reader goes back and forward is followed by the preview shown again: its Restore busy, pressed it sends nothing; answered, the trash says where the item went, its title taking the focus (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(1));
+
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  expect([restore.getAttribute("aria-busy"), restore.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+  await user.click(restore);
+  act(() => server.release());
+
+  await waitFor(() => expect(router.state.location.pathname).toBe(trashPath));
+  const heading = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+  expect(screen.getByRole("status").textContent).toBe("Restored “Install” under “Guide”. Open");
+  expect(server.sent.filter((each) => each === "RESTORE Install")).toHaveLength(1);
+});
+
+test("a restore from the preview refused as the reader went back and forward is said on the preview shown again (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server, item } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  item.history = 400_001;
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  await act(() => router.navigate(1));
+  await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  act(() => server.release());
+
+  expect((await screen.findByRole("alert")).textContent).toBe(
+    "“Install” is too large to restore here: it holds more pages, attachments, content, links or versions than one restore brings back. Pages: 2, attachments: 0."
+  );
+  expect(await screen.findByRole("button", { name: "Restore “Install” in the background (From: Guide)" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe(previewPath(install.id));
+});
+
+test("a preview shown after its restore answered follows nothing: it says the item is no longer in the trash (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, previewPath(install.id)], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Install"));
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  const before = server.sent.length;
+
+  act(() => server.release());
+  await waitFor(() => expect(server.sent.slice(before)).toContain("GET trash"));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+  await act(() => router.navigate(1));
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  expect(router.state.location.pathname).toBe(previewPath(install.id));
+});

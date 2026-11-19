@@ -1068,3 +1068,22 @@ test("an item's facts write where it was, who deleted it and where a restore put
   expect(by?.textContent).toMatch(/^דוד 删除 · /);
   expect(by?.querySelector("bdi")?.textContent).toBe("דוד");
 });
+
+test("back on the trash's list as a restore from the preview is out, the item's Restore is busy, pressed it sends nothing; answered, the item leaves the list (M5-polish 22.14)", async () => {
+  const user = userEvent.setup();
+  const { server } = trashed();
+  server.restoresHeld = true;
+  const { router } = renderApp([trashPath, `${trashPath}/${notes.id}`], server.app);
+  await user.click(await screen.findByRole("button", { name: "Restore “Notes” (From: the notebook's top level)" }));
+  await waitFor(() => expect(server.sent).toContain("RESTORE Notes"));
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("list", { name: "Trash" });
+  const restore = restoreOf("Notes") as HTMLElement;
+  expect([restore.getAttribute("aria-busy"), restore.getAttribute("aria-disabled")]).toEqual(["true", "true"]);
+  await user.click(restore);
+  act(() => server.release());
+
+  await waitFor(() => expect(rows()).toHaveLength(2));
+  expect(server.sent.filter((each) => each === "RESTORE Notes")).toHaveLength(1);
+});

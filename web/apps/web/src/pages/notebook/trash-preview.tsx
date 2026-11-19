@@ -33,6 +33,7 @@ import {
   refusedText,
   RestoreButton,
   TrashFacts,
+  trashRestoredOf,
   useBackgroundRestore,
   useTrashRestore,
   type RestoredState,
@@ -109,7 +110,10 @@ function mergedOf(state: unknown): boolean {
  * background, as on the trash's list: out, the item shown stays as the
  * restore's own; started, it goes back to the trash, which says so; its
  * start refused, or its answer lost, the alert says what came of it, the
- * restore still offered where the trash's list would offer it.
+ * restore still offered where the trash's list would offer it. A restore
+ * of the item out as it shows, sent from where the reader went back and
+ * forward from, it follows as its own: shown as out, its Restore busy, then
+ * gone to the trash or refused (M5-polish 22.14).
  */
 const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook: Notebook; id: string }) {
   const pages = usePageTree(notebook);
@@ -121,7 +125,41 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const start = useBackgroundRestore(notebook);
   useLeftBehind(notebook.id, id);
   const { data, error, mutate } = useSWR(["trash-item", notebook.id, id], () => pages.trashItem(id));
-  const [restoring, setRestoring] = useState<Restoring>();
+  // A restore out as the preview shows, sent before it did: out from its first render.
+  const [restoring, setRestoring] = useState<Restoring | undefined>(() =>
+    pages.restoreOut(id) === undefined ? undefined : { out: true }
+  );
+  // The item last read, which a restore followed is said of.
+  const latest = useRef(data);
+  useEffect(() => {
+    if (data !== undefined) {
+      latest.current = data;
+    }
+  }, [data]);
+  // Followed as the preview's own, once: this mount's own restore is not out yet as it mounts.
+  useEffect(() => {
+    const out = pages.restoreOut(id);
+    if (out === undefined) {
+      return undefined;
+    }
+    let showing = true;
+    void (async () => {
+      try {
+        const restored = await out;
+        if (showing) {
+          setRestoring({ restored: trashRestoredOf(restored, pages, latest.current) });
+        }
+      } catch (refusal) {
+        const item = latest.current;
+        if (showing) {
+          setRestoring(item === undefined ? undefined : { refused: refusal, item });
+        }
+      }
+    })();
+    return () => {
+      showing = false;
+    };
+  }, [pages, id]);
   // Whether a restore in the background is out: what came before it stays said meanwhile.
   const [starting, setStarting] = useState(false);
   // Whether the item shown left the document holding the focus, which what replaces it takes.
@@ -235,6 +273,7 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
       notebook={notebook}
       item={data}
       restore={() => restoreItem(data)}
+      busy={restoring !== undefined && "out" in restoring}
       start={offered?.id === data.id ? () => startItem(data) : undefined}
       describedBy={describing(said)}
       left={() => setHanded(true)}
@@ -278,6 +317,7 @@ const Preview = observer(function Preview({
   notebook,
   item,
   restore,
+  busy,
   start,
   describedBy,
   left,
@@ -285,6 +325,8 @@ const Preview = observer(function Preview({
   notebook: Notebook;
   item: TrashItem;
   restore: () => Promise<void>;
+  /** Whether a restore of the item is out: one sent before the preview showed, its Restore busy. */
+  busy: boolean;
   start: (() => Promise<void>) | undefined;
   describedBy: string | undefined;
   left: () => void;
@@ -332,6 +374,7 @@ const Preview = observer(function Preview({
                 label={namesOf(item, "none", t, preferences.locale).restore}
                 restore={restore}
                 left={() => heading.current?.focus()}
+                busy={busy}
               />
               {start !== undefined && (
                 <RestoreButton
