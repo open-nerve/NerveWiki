@@ -102,7 +102,8 @@ export function resign(article: Element, before: HTMLTemplateElement, after: HTM
 /**
  * Placed maps the place of an article's top-level node before a patch to its place after, or none. A patch's tells
  * too, of one taken out, the places of the other nodes put in where it was (its gap: between the kept nodes on each
- * side), as far as its new version may be, nearest first, the later of two as near first (near).
+ * side), no farther than its nodes put in outnumber those taken out or the other way, one at least, nearest first, the
+ * later of two as near first (near).
  */
 export type Placed = ((at: number) => number | undefined) & { near?: (at: number) => number[] };
 
@@ -231,10 +232,13 @@ function placed(place: number, kept: Map<number, number>, old: Node[], next: Nod
 /**
  * near are the places of the nodes put in where the node at place was taken out, but the one it is placed at, nearest
  * to that one first, the later of two as near first: a section put before the reader's, which another changed in the
- * same save, has the reader's after it (review A's C1-M1). Only as far as the node's new version may be: placed k-th
- * for k-th, it is off by as many nodes as were put in or taken out there, one at least; a gap a save changed whole,
- * as many put in as taken out, reaches far, where a node of the key would be another (review A's C2-M1). Counted in
- * nodes, blank text left out. None for a node kept, or a gap nothing was put in.
+ * same save, has the reader's after it (review A's C1-M1). Only as far as the gap's nodes put in outnumber those
+ * taken out, or the other way, one at least: a gap a save changed whole, as many put in as taken out, reaches far,
+ * where a node of the key would be another (review A's C2-M1). Placed k-th for k-th, the node's new version is off
+ * by the difference before it alone; puts and takes on its two sides the other way about (put in before it, taken
+ * out after it, or the reverse) take it farther than the reach, where it is not found: step 4 gives the node it is
+ * placed at the focus (review A's C3-N1). Counted in nodes, blank text left out. None for a node kept, or a gap
+ * nothing was put in.
  */
 function near(place: number, kept: Map<number, number>, old: Node[], next: Node[]): number[] {
   const to = placed(place, kept, old, next);
