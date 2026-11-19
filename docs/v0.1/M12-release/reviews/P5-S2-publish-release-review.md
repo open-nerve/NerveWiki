@@ -164,7 +164,7 @@
   - short 一份的 Test 一步：`785d48be` 2:54、`e5ecae06` 2:52（`main` 的 `ab766f02` 3:16、`105ff7c8` 2:53）；`platform/buildinfo` 本机 1.2–1.4 秒（`ab766f02` 1.16–1.23 秒），`TestTheReleaseScripts` 约 0.1 秒。组合根八份的 Test 一步两次都在 450 秒之下（最长 `e5ecae06` 的 bootstrap-1，378 秒）；S2 不改组合根。
   - `release.yml` 的运行 artifact 都是 0 个；costs-1 的 Lint workflows 读三份、0 错。
 - **合并 `main`**（`2ea85cd5`，`305eec44`）：没有冲突，只在本地，与本提交一起推送，分支 CI 是本提交的。
-- **本提交的分支 CI**：`5c2b0ff1` 的 `ci.yml` run 44496522481 十九项全绿、`release.yml` run 44496522497 两个演练绿（amd64 2:06、arm64 1:24），第一次 attempt。S2 合并为 `24e7b316`，之后第一次 `main` 的 `ci.yml` run 44500978151 第一次 attempt 19 项全绿（`web` 5:54，Test 5:06；e2e 8:31，E2E 一步 6:09，594、1；image 1:55），`release.yml` run 44500978182 两个演练绿（amd64 1:53、arm64 1:26），tag 的作业都跳过。
+- **本提交的分支 CI**：`5c2b0ff1` 的 `ci.yml` run 44496522481 十九项全绿、`release.yml` run 44496522497 两个演练绿（amd64 2:06、arm64 1:24），第一次 attempt。S2 合并为 `24e7b316`，之后第一次 `main` 的 `ci.yml` run 44500978151 第一次 attempt 19 项全绿（`web` 5:54，Test 5:06；e2e 8:31，E2E 一步 6:09，594、1；image 1:55），`release.yml` run 44500978182 两个演练绿（amd64 1:53、arm64 1:26），tag 的作业都跳过。记号 `14eb2095` 之后的 `main`：`ci.yml` run 44505636150 第一次 attempt 18 项绿，e2e 在装 Playwright 的浏览器时被 30 分钟的时限取消（AWS us-west-2），E2E 一步没有开始，只重跑 e2e，第二次绿（e2e 9:14，E2E 一步 7:48）；`release.yml` run 44505636179 两个演练绿（amd64 1:44、arm64 1:26）。算作记号之后的第二次。
 - **没有推任何 tag、镜像，没有建 Release，没有写 GHCR**：tag 上的作业在分支上都跳过；仓库的 tag 与 Release 都是 0 个，`orgs/open-nerve/packages/container/nervewiki` 是 404（实施者与三位审查者各核过）。`docker/login-action`、`actions/attest`、`sigstore/cosign-installer`、`actions/download-artifact` 与写权限只在 tag 的作业里，还没跑过，推 rc 之前照 00 号文档"需要负责人确认"第 2 项核对。
 
 ## 环境
