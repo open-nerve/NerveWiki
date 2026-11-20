@@ -45,6 +45,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **跑重的之前看一眼 `df`**：长时间的变异与竞态构建会让 Go 的构建缓存（`~/.cache/go-build`）涨到几十 G；根分区满了，testcontainers 里的 PostgreSQL 写不进 WAL（"No space left on device"），测试以别的样子失败（M11/P1/S2 的修复第二轮：缓存到 59 G，`make test-go-costs-2` 第一次失败）。满了先修剪自己的缓存，它可以重建，例如经 `heavy.sh` 删掉 12 小时没用过的条目（`find ~/.cache/go-build -mindepth 2 -type f -mmin +720 -delete`）；不动 Docker 的镜像、容器与卷。`make image` 与镜像的变异在 Docker 的构建缓存里越积越多（M12/P5/S2 的实施：两次 `make image` 与 13 个镜像的变异，构建缓存从约 10G 到 17.6G，平均每次约 0.5 GB，根分区从开工的 24G 到 17G）。构建缓存是共用的，`docker builder prune` 要负责人点头；镜像的变异一次做完，不要分几轮各建一遍。
 - **只停自己起的进程与容器**，按 PID 或容器 id。不用 `pkill`、`killall`，不重启 Docker，不清别人的容器与卷。testcontainers 的容器由 Ryuk 收走；关掉 Ryuk 跑过的（`TESTCONTAINERS_RYUK_DISABLED=true`），只删自己那次运行留下的。
 - 审查者在自己的副本或 worktree 里跑，不在实施者的树上改坏代码。
+- **P4 的实测怎样跑**（M12/P4/S3）：服务端经 `server/tools/perf/stack.sh`（`up`、`restart`、`down`，起生产配置的 `serve` 与一个 PostgreSQL 容器）与 `perf` 的驱动，浏览器经 `cd e2e && pnpm perf`；每批整段经一次 `heavy.sh` 持锁、机器独占，原始数据放根分区上自己的目录（例如 `~/.cache/m12-p4-s3/`），每批开始与结束记机器与 `df`（[P4 设计](../M12-release/04-P4-performance.md) 3.5、3.8）。
 
 ## 4. CI
 

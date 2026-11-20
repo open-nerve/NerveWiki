@@ -91,15 +91,85 @@ func MCPShape(shape, prefix string, seed uint64, size int) ([3]MCPSend, error) {
 	return out, nil
 }
 
+// MaxMCPBodyBytes is /mcp's body bound (bootstrap/mcp.go's mcpBodyLimit):
+// a call's 5 MiB of content and 1 MiB besides, each byte at JSON's longest
+// escape, six bytes, and 64 KiB.
+const MaxMCPBodyBytes = 6*(MaxContentBytes+1<<20) + 64<<10
+
+// EscapedContent is MaxContentBytes of '<', each of which encoding/json's
+// Marshal, escaping HTML, writes as six bytes, \u003c: M9/P2's content at
+// the bound (02-P2-writes-history.md:2704).
+func EscapedContent() string { return strings.Repeat("<", MaxContentBytes) }
+
+// MCPShapeAtBound is a shape with each MCP body at /mcp's bound,
+// MaxMCPBodyBytes, as M9/P2 measured the large bodies (02-P2-writes-
+// history.md:353, :2714; M12/P4/S3's review B, I2): 1 a write of
+// EscapedContent, _meta a long string to the bound; 2a, 2b and 2c that
+// write, _meta MaxBodyValues values in the body in the shape, the long
+// string among them; 3 a value more, a shape each credential; 4 the first
+// two 1, the third a REST write of the same content; L a write of "x",
+// _meta the long string alone.
+func MCPShapeAtBound(shape, prefix string) ([3]MCPSend, error) {
+	var out [3]MCPSend
+	content := EscapedContent()
+	// write is the credential's write of content, _meta the members and a
+	// long string after them that brings the body to the bound.
+	write := func(cred int, content, members string) ([]byte, error) {
+		args := map[string]string{"path": fmt.Sprintf("%s/%s-%d.md", prefix, shape, cred), "content": content}
+		if members != "" {
+			members += ","
+		}
+		n := MaxMCPBodyBytes - len(client.Call("write", args, members+`"pad":""`, 0))
+		if n < 0 {
+			return nil, fmt.Errorf("shape %s: %d bytes past the bound before its long string", shape, -n)
+		}
+		return client.Call("write", args, members+`"pad":"`+strings.Repeat("a", n)+`"`, 0), nil
+	}
+	// The values of a write of no members, as MCPShape's; the long string
+	// is one more.
+	base, err := client.CountValues(client.Call("write", map[string]string{"path": "p", "content": "x"}, "", 0))
+	if err != nil {
+		return out, err
+	}
+	for c := range out {
+		var b []byte
+		switch shape {
+		case "1":
+			b, err = write(c, content, "")
+		case "2a", "2b", "2c":
+			b, err = write(c, content, valueMembers(shape[1], MaxBodyValues-base-1))
+		case "3":
+			b, err = write(c, content, valueMembers("abc"[c], MaxBodyValues-base))
+		case "4":
+			if c == 2 {
+				out[c].Content = content
+				continue
+			}
+			b, err = write(c, content, "")
+		case "L":
+			b, err = write(c, "x", "")
+		default:
+			return out, fmt.Errorf("no shape %q at the bound: 1, 2a, 2b, 2c, 3, 4 or L", shape)
+		}
+		if err != nil {
+			return out, err
+		}
+		out[c].Body = b
+	}
+	return out, nil
+}
+
 // MCPRun is B3's: Reps times, Gap apart, the three credentials send a
-// shape's at once to the notebook's entry; shape 4's REST write goes to a
-// page of the notebook made first.
+// shape's at once to the notebook's entry, at /mcp's bound when Bound
+// (MCPShapeAtBound; Seed and Size then unused); shape 4's REST write goes
+// to a page of the notebook made first.
 type MCPRun struct {
 	Clients  [3]*client.Client
 	Notebook string
 	Shape    string
 	Seed     uint64
 	Size     int
+	Bound    bool
 	Reps     int
 	Gap      time.Duration
 }
@@ -122,7 +192,14 @@ func (m MCPRun) Run(ctx context.Context) error {
 				return err
 			}
 		}
-		sends, err := MCPShape(m.Shape, fmt.Sprintf("%s/%d", prefix, rep), m.Seed, m.Size)
+		at := fmt.Sprintf("%s/%d", prefix, rep)
+		var sends [3]MCPSend
+		var err error
+		if m.Bound {
+			sends, err = MCPShapeAtBound(m.Shape, at)
+		} else {
+			sends, err = MCPShape(m.Shape, at, m.Seed, m.Size)
+		}
 		if err != nil {
 			return err
 		}
