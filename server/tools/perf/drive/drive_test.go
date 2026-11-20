@@ -388,6 +388,7 @@ func TestMCPShapesAtTheBodyBound(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		var first []byte
 		for i, s := range sends {
 			n := c.values
 			if i == 0 || c.shape == "3" {
@@ -407,6 +408,16 @@ func TestMCPShapesAtTheBodyBound(t *testing.T) {
 			meta := bytes.Index(s.Body, []byte(`"_meta":{`)) + len(`"_meta":{`)
 			if !bytes.HasPrefix(s.Body[meta:], []byte(want[i])) {
 				t.Errorf("%s, credential %d: _meta starts %q, want %q", c.shape, i, s.Body[meta:meta+8], want[i])
+			}
+			// The values are counted on credential 0's alone (but in 3): the
+			// others' _meta before the long string is credential 0's, byte for
+			// byte (check 2 of S3, B3-N1).
+			members := s.Body[meta : meta+bytes.Index(s.Body[meta:], []byte(`"pad":"`))]
+			if i == 0 {
+				first = members
+			} else if c.shape != "3" && !bytes.Equal(members, first) {
+				t.Errorf("%s, credential %d: _meta before the long string is %d bytes, not credential 0's %d", c.shape, i,
+					len(members), len(first))
 			}
 		}
 	}
