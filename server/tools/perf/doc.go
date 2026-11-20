@@ -40,9 +40,18 @@
 //	    collection, its @T from -start). A window without a collection
 //	    says no_gc_in_window: its peak and delta are none, its upper bound
 //	    the next collection's goal.
-//	perf vault -out <zip> -pages 45000 -attachments 5000 -fanout 10,10,98 -links 30 -body 2KiB -attachment-bytes 800KiB -random 12 -seed 1201
-//	    3.4.3: the import-limit vault (batches F and B4); the 50,000 pages
-//	    of batch E are -pages 50000 -fanout 10,50 -links 10 -body 1KiB.
+//	perf vault -out <zip> -pages 33750 -attachments 3750 -fanout 10,10,73 -links 30 -body 2KiB -attachment-bytes 800KiB -random 12 -seed 1201 [-part k/n]
+//	    3.4.3: the import-limit vault (batches F and B4), 44,910 nodes
+//	    within an import's 45,000 (3.12; S3's was -pages 45000
+//	    -attachments 5000 -fanout 10,10,98, 59,910 nodes, before the
+//	    limit came down). -part k/n writes the k-th of n parts of a
+//	    vault, its folders of the first level cut in n runs: the parts
+//	    imported one after another under one page are the whole vault
+//	    imported. S3's vault in -part 1/2 and 2/2 is 34,355 and 25,555
+//	    nodes (P4/S7's top of 59,910); the 100,000 pages of batch E are
+//	    two vaults of 50,510 nodes, -pages 50000 -fanout 10,50 -links 10
+//	    -body 1KiB -seed 2001 and 2002, each in -part 1/2 and 2/2 of
+//	    25,255 nodes.
 //	perf bodies -prepared <dir>/pats.json -records <jsonl> -k 8 -kind normal|pathological [-same-notebook]
 //	    B2: readers and writers of 5 MiB pages; the busy answers early.
 //	perf mcp -prepared … -records … -shape 1|2a|2b|2c|3|4 -reps 3 -gap 20s

@@ -2,30 +2,74 @@ package vault
 
 import (
 	"archive/zip"
+	"bytes"
+	"fmt"
 	"io"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
 
-// hundredth is the import's limits' hundredth, and the import-limit vault's
-// (design 3.4.3: 45,000 pages, 5,000 attachments of 800 KiB, 9,910
-// folders, 30 links and 2 KiB a page, -random 12): 450 pages, 50
-// attachments of the same size, 100 folders.
+// importLimitVault is the import-limit vault (design 3.4.3, as 3.12 brought
+// it within an import's 45,000 nodes): S3's, 45,000 pages, 5,000
+// attachments and -fanout 10,10,98, at three quarters, 33,750 pages, 3,750
+// attachments of 800 KiB, 7,410 folders, 30 links and 2 KiB a page,
+// -random 12: 44,910 nodes.
+func importLimitVault() Spec {
+	return Spec{Pages: 33_750, Attachments: 3_750, Fanout: []int{10, 10, 73}, Links: 30, Body: 2 << 10, AttachmentBytes: 800 << 10,
+		Random: 12, Seed: 1201}
+}
+
+// s3Vault is the vault S3 measured at the import's limits of then (design
+// 3.4.3 before 3.12), 59,910 nodes: P4/S7 imports it in two parts.
+func s3Vault() Spec {
+	return Spec{Pages: 45_000, Attachments: 5_000, Fanout: []int{10, 10, 98}, Links: 30, Body: 2 << 10, AttachmentBytes: 800 << 10,
+		Random: 12, Seed: 1201}
+}
+
+// hundredth is the import's limits' hundredth, and the import-limit
+// vault's: 338 pages, 37 attachments of the same size, 73 folders, of
+// which nine of the second level, as the vault's tens hold its pages'
+// links, 448 nodes.
 func hundredth() (Spec, Limits) {
-	return Spec{Pages: 450, Attachments: 50, Fanout: []int{1, 9, 10}, Links: 30, Body: 2 << 10, AttachmentBytes: 800 << 10,
+	return Spec{Pages: 338, Attachments: 37, Fanout: []int{1, 9, 7}, Links: 30, Body: 2 << 10, AttachmentBytes: 800 << 10,
 			Random: 12, Seed: 1201},
-		Limits{Entries: 500, Nodes: 600, Unpacked: (4 << 30) / 100, Zip: (512 << 20) / 100}
+		Limits{Entries: 500, Nodes: 450, Unpacked: (4 << 30) / 100, Zip: (512 << 20) / 100}
+}
+
+// The import's limits are the server's defaults (config.yaml's transfer,
+// page.MaxJobItems); the import-limit vault is within them at full size,
+// its nodes within 90 of the import's, as S3's of then (S3's own is past
+// them: TestEachPartIsWithinAnImport). Counted, not written: contentsOf
+// is what Write checks before it writes.
+func TestTheImportLimitVaultIsWithinAnImport(t *testing.T) {
+	lim := ImportLimits()
+	if lim != (Limits{Entries: 50_000, Nodes: 45_000, Unpacked: 4 << 30, Zip: 512 << 20}) {
+		t.Errorf("ImportLimits() = %+v, want transfer's defaults and page.MaxJobItems, 45,000 nodes", lim)
+	}
+	c, err := contentsOf(importLimitVault())
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := c.res
+	if r.Entries != 37_500 || r.Folders != 7_410 || r.Unpacked != 33_750*(2<<10)+3_750*(800<<10) {
+		t.Errorf("the import-limit vault %s, want 37,500 entries, 7,410 folders, %d bytes", r, 33_750*(2<<10)+3_750*(800<<10))
+	}
+	if n := r.Entries + r.Folders; n > lim.Nodes || n < lim.Nodes-90 || r.Entries > lim.Entries || r.Unpacked > lim.Unpacked {
+		t.Errorf("the import-limit vault %s: want within %+v, its nodes within 90 of them", r, lim)
+	}
 }
 
 // The import-limit shape at a hundredth: within the limits at a hundredth,
-// the entries, folders and bytes the design's table has at a hundredth
-// (3.90 GiB unpacked; a zip of 468,514,108 bytes, 446.8 MiB, as review B
-// wrote it at full size once, the design's estimate 433 MiB), each link a
-// page of the vault without a path and not the page itself, nine in ten
-// in the page's folder of the second level (design 3.4.3, 7.2's 35).
+// the entries, folders and bytes the full shape has at a hundredth
+// (2.93 GiB unpacked; a zip of 351,272,583 bytes, 335.0 MiB, as S6 wrote
+// it at full size once), each link a page of the vault without a path and
+// not the page itself, nine in ten in the page's folder of the second
+// level (design 3.4.3, 7.2's 35).
 func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 	s, lim := hundredth()
 	path := filepath.Join(t.TempDir(), "vault.zip")
@@ -34,10 +78,10 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("%s", r)
-	if r.Entries != 500 || r.Folders != 100 || r.Entries+r.Folders > lim.Nodes || r.Unpacked > lim.Unpacked || r.Zip > lim.Zip {
+	if r.Entries != 375 || r.Folders != 73 || r.Entries+r.Folders > lim.Nodes || r.Unpacked > lim.Unpacked || r.Zip > lim.Zip {
 		t.Errorf("%s: past the hundredth's limits %+v", r, lim)
 	}
-	const unpacked, zipped = 3.90 * (1 << 30) / 100, 468_514_108.0 / 100
+	const unpacked, zipped = (33_750*(2<<10) + 3_750*(800<<10)) / 100.0, 351_272_583.0 / 100
 	if u := float64(r.Unpacked); u < unpacked*0.97 || u > unpacked*1.03 {
 		t.Errorf("unpacked %d, want about %.0f", r.Unpacked, unpacked)
 	}
@@ -119,8 +163,8 @@ func TestTheImportLimitVaultAtAHundredth(t *testing.T) {
 		t.Errorf("%d of %d links in the page's second-level folder, %.3f; want about 0.91", near, all, share)
 	}
 	// A link of the page's folder is never the page itself; one of the
-	// whole vault is, one in its pages: about 30 × 450 / 10 / 450 = 3. Were
-	// the folder's links drawn at all, about 30 × 450 × 0.9 / 50 = 243.
+	// whole vault is, one in its pages: about 30 × 338 / 10 / 338 = 3. Were
+	// the folder's links drawn at all, about 30 × 338 × 0.9 / 37.6 = 243.
 	t.Logf("%d links of a page to itself", self)
 	if self > 10 {
 		t.Errorf("%d links of a page to itself, want about 3: the folder's links are another page", self)
@@ -192,5 +236,242 @@ func TestAVaultIsItsSeedAndItsLimits(t *testing.T) {
 	}
 	if _, err := write("bad.zip", Spec{Pages: 1, Body: 1, Random: 0}, ImportLimits()); err == nil {
 		t.Error("a -random of 0 wrote")
+	}
+}
+
+// partSpec is a vault of five folders of the first level, which two parts
+// cut 2 and 3 and three parts 1, 2 and 2; its pages and attachments in
+// every deepest folder, some with two attachments, its pages' links of
+// the whole vault a tenth.
+func partSpec() Spec {
+	return Spec{Pages: 120, Attachments: 37, Fanout: []int{5, 2, 3}, Links: 6, Body: 300, AttachmentBytes: 5 << 10, Random: 3, Seed: 41}
+}
+
+// entriesOf is the zip's entries: each one's bytes by its path, and the
+// paths in the zip's order.
+func entriesOf(t *testing.T, path string) (map[string][]byte, []string) {
+	t.Helper()
+	zr, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = zr.Close() }()
+	out, order := map[string][]byte{}, []string{}
+	for _, f := range zr.File {
+		rc, err := f.Open()
+		if err != nil {
+			t.Fatal(err)
+		}
+		b, err := io.ReadAll(rc)
+		_ = rc.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, dup := out[f.Name]; dup {
+			t.Fatalf("%s twice in %s", f.Name, path)
+		}
+		out[f.Name], order = b, append(order, f.Name)
+	}
+	return out, order
+}
+
+// The parts of a vault are the vault (design 3.12): the entries of its n
+// parts, together, are the whole vault's, path by path and byte by byte,
+// none in two parts; each part's in the whole vault's order, its folders
+// of the first level a run, in order, the part's entries and folders the
+// count Write tells. Its pages link the whole vault's pages: a page of one
+// part links pages of another, by the name the whole vault gives them.
+func TestTheVaultsPartsAreTheVault(t *testing.T) {
+	s, dir := partSpec(), t.TempDir()
+	if _, err := Write(filepath.Join(dir, "whole.zip"), s, ImportLimits()); err != nil {
+		t.Fatal(err)
+	}
+	whole, order := entriesOf(t, filepath.Join(dir, "whole.zip"))
+	names := map[string]string{} // a page's name to its folder of the first level
+	for path := range whole {
+		if name, ok := strings.CutSuffix(path[strings.LastIndex(path, "/")+1:], ".md"); ok {
+			names[name] = path[:strings.Index(path, "/")]
+		}
+	}
+	link := regexp.MustCompile(`\[\[([^\]]*)\]\]`)
+	for n, runs := range map[int]map[string]int{
+		2: {"f1": 1, "f2": 1, "f3": 2, "f4": 2, "f5": 2},
+		3: {"f1": 1, "f2": 2, "f3": 2, "f4": 3, "f5": 3},
+	} {
+		union, tops, across := map[string][]byte{}, map[string]int{}, 0
+		for k := 1; k <= n; k++ {
+			s.Part = Part{K: k, N: n}
+			path := filepath.Join(dir, fmt.Sprintf("%dof%d.zip", k, n))
+			r, err := Write(path, s, ImportLimits())
+			if err != nil {
+				t.Fatalf("part %s: %v", s.Part, err)
+			}
+			part, partOrder := entriesOf(t, path)
+			folders := map[string]bool{}
+			for p := range part {
+				for i := range len(p) {
+					if p[i] == '/' {
+						folders[p[:i+1]] = true
+					}
+				}
+			}
+			if len(part) == 0 || r.Entries != len(part) || r.Folders != len(folders) {
+				t.Errorf("part %s: %s, its zip %d entries, %d folders", s.Part, r, len(part), len(folders))
+			}
+			if want := slices.DeleteFunc(slices.Clone(order), func(p string) bool { return part[p] == nil }); !slices.Equal(partOrder, want) {
+				t.Errorf("part %s's entries %v, want the whole vault's order %v", s.Part, partOrder, want)
+			}
+			for p, b := range part {
+				if _, dup := union[p]; dup {
+					t.Errorf("%s in two parts of %d", p, n)
+				}
+				union[p] = b
+				top := p[:strings.Index(p, "/")]
+				if was, ok := tops[top]; ok && was != k {
+					t.Errorf("%s of the first level in parts %d and %d of %d", top, was, k, n)
+				}
+				tops[top] = k
+				for _, l := range link.FindAllStringSubmatch(string(b), -1) {
+					if names[l[1]] == "" {
+						t.Fatalf("%s links %q, no page of the whole vault", p, l[1])
+					}
+					if runs[names[l[1]]] != k {
+						across++
+					}
+				}
+			}
+		}
+		if !maps.Equal(tops, runs) {
+			t.Errorf("%d parts hold the folders of the first level %v, want %v", n, tops, runs)
+		}
+		if len(union) != len(whole) {
+			t.Errorf("%d parts hold %d entries, the whole vault %d", n, len(union), len(whole))
+		}
+		for p, b := range whole {
+			if !bytes.Equal(union[p], b) {
+				t.Errorf("%s in %d parts: %d bytes unlike the whole vault's %d", p, n, len(union[p]), len(b))
+			}
+		}
+		t.Logf("%d parts: %d links to a page of another part", n, across)
+		if across == 0 {
+			t.Errorf("%d parts: no link to a page of another part", n)
+		}
+	}
+}
+
+// A part of one is the whole vault, the zip byte for byte (the CLI's -part
+// 1/1 and no -part, design 3.12), and the whole vault is still the zip
+// S1's generator wrote from the seed, so that S3's records' vaults are
+// still the ones a seed writes (its sha256 taken from the generator before
+// the parts; another Go's deflate could change it): with folders, and with
+// every entry at the root, where the vault is one part.
+func TestAWholePartIsTheWholeVault(t *testing.T) {
+	root := Spec{Pages: 9, Attachments: 2, Links: 2, Body: 200, AttachmentBytes: 1 << 10, Random: 2, Seed: 5}
+	dir := t.TempDir()
+	for _, c := range []struct {
+		name, sha256 string
+		s            Spec
+	}{
+		{"folders", "a91ac5d9312318e9f92e162dd5e86557a7cb755b81284d25d112da6a11834a81", partSpec()},
+		{"root", "b6443b94966be962b7c1049612c305d2f89cb51efe7a5f19ffe57c7de3fb4971", root},
+	} {
+		whole, err := Write(filepath.Join(dir, c.name+".zip"), c.s, ImportLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		c.s.Part = Part{K: 1, N: 1}
+		one, err := Write(filepath.Join(dir, c.name+"-1of1.zip"), c.s, ImportLimits())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if one != whole || whole.SHA256 != c.sha256 {
+			t.Errorf("%s: part 1/1 %s, the whole %s; want both the generator's %s", c.name, one, whole, c.sha256)
+		}
+	}
+	root.Part = Part{K: 1, N: 2}
+	if r, err := Write(filepath.Join(dir, "root-1of2.zip"), root, ImportLimits()); err == nil {
+		t.Errorf("part 1/2 of a vault without folders: %s", r)
+	}
+}
+
+// Each part is within an import when the whole is not: S3's vault in two,
+// counted at full size, each within ImportLimits() and together the whole,
+// as S3 wrote it (50,000 entries, 9,910 folders, 4,188,160,000 bytes
+// unpacked), past the import's nodes (P4/S7's two imports); and Write
+// checks the part's entries and nodes, not the whole's, against its
+// limits (design 3.12).
+func TestEachPartIsWithinAnImport(t *testing.T) {
+	lim, s := ImportLimits(), s3Vault()
+	whole := Result{Entries: 50_000, Folders: 9_910, Unpacked: 4_188_160_000}
+	if whole.Entries+whole.Folders <= lim.Nodes {
+		t.Errorf("S3's vault %s within the import's %d nodes: no parts wanted", whole, lim.Nodes)
+	}
+	var sum Result
+	for k, nodes := range []int{34_355, 25_555} {
+		s.Part = Part{K: k + 1, N: 2}
+		c, err := contentsOf(s)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r := c.res
+		t.Logf("S3's vault, part %s: %s", s.Part, r)
+		if r.Entries+r.Folders != nodes || r.Entries+r.Folders > lim.Nodes || r.Entries > lim.Entries || r.Unpacked > lim.Unpacked {
+			t.Errorf("S3's vault, part %s: %s; want %d nodes, within %+v", s.Part, r, nodes, lim)
+		}
+		sum.Entries, sum.Folders, sum.Unpacked = sum.Entries+r.Entries, sum.Folders+r.Folders, sum.Unpacked+r.Unpacked
+	}
+	if sum != whole {
+		t.Errorf("S3's vault's two parts %s, the whole %s", sum, whole)
+	}
+	small, dir := partSpec(), t.TempDir()
+	most := 0
+	for k := 1; k <= 2; k++ {
+		small.Part = Part{K: k, N: 2}
+		c, err := contentsOf(small)
+		if err != nil {
+			t.Fatal(err)
+		}
+		most = max(most, c.res.Entries+c.res.Folders)
+	}
+	tight := Limits{Entries: most, Nodes: most, Unpacked: 1 << 30, Zip: 1 << 30}
+	small.Part = Part{}
+	if r, err := Write(filepath.Join(dir, "whole.zip"), small, tight); err == nil {
+		t.Errorf("the whole vault within %+v: %s", tight, r)
+	}
+	for k := 1; k <= 2; k++ {
+		small.Part = Part{K: k, N: 2}
+		if r, err := Write(filepath.Join(dir, fmt.Sprintf("%dof2.zip", k)), small, tight); err != nil {
+			t.Errorf("part %s past %+v: %v, %s", small.Part, tight, err, r)
+		}
+	}
+}
+
+// A part is k of n, 1 <= k <= n, n at most the folders of the first level:
+// -part's text read, and a Part set by hand checked before anything is
+// written.
+func TestAPartIsKOfN(t *testing.T) {
+	for s, want := range map[string]Part{"1/1": {1, 1}, "1/2": {1, 2}, "2/2": {2, 2}, "3/10": {3, 10}} {
+		if p, err := ParsePart(s); err != nil || p != want {
+			t.Errorf("ParsePart(%q) = %v, %v; want %v", s, p, err, want)
+		}
+	}
+	for _, s := range []string{"0/2", "3/2", "1/0", "0/0", "-1/2", "1/-1", "", "1", "/2", "1/", "a/2", "1/b", "1/2/3", " 1/2", "1 / 2"} {
+		if p, err := ParsePart(s); err == nil {
+			t.Errorf("ParsePart(%q) = %v, want an error", s, p)
+		}
+	}
+	dir := t.TempDir()
+	for _, p := range []Part{{0, 2}, {3, 2}, {1, 0}, {0, 1}, {1, 6}, {6, 6}} {
+		s := partSpec()
+		s.Part = p
+		if r, err := Write(filepath.Join(dir, "bad.zip"), s, ImportLimits()); err == nil {
+			t.Errorf("part %v of five folders of the first level: %s", p, r)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "bad.zip")); !os.IsNotExist(err) {
+			t.Errorf("part %v: the zip is there: %v", p, err)
+		}
+	}
+	if left, err := filepath.Glob(filepath.Join(dir, ".*")); err != nil || len(left) != 0 {
+		t.Errorf("temporary files left: %v, %v", left, err)
 	}
 }
