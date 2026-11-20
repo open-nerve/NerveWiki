@@ -334,6 +334,109 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 	}
 }
 
+// B3 at /mcp's bound, as M9/P2 measured it (M12/P4/S3's review B, I2):
+// each MCP body exactly the bound, README's 37,814,272 bytes; the content
+// 5 MiB of '<', six bytes each; 2's values at the values' bound and 3's a
+// value more, a shape each credential; 4's third a REST write within the
+// content's body bound; L the long string alone; and the run sends them,
+// three at once.
+func TestMCPShapesAtTheBodyBound(t *testing.T) {
+	if MaxMCPBodyBytes != 37_814_272 {
+		t.Fatalf("the bound is %d bytes, want 37,814,272", MaxMCPBodyBytes)
+	}
+	base, err := client.CountValues(client.Call("write", map[string]string{"path": "p", "content": "x"}, "", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		shape   string
+		values  int
+		content int
+	}{
+		{"1", base + 1, MaxContentBytes},
+		{"2a", MaxBodyValues, MaxContentBytes},
+		{"2b", MaxBodyValues, MaxContentBytes},
+		{"2c", MaxBodyValues, MaxContentBytes},
+		{"3", MaxBodyValues + 1, MaxContentBytes},
+		{"L", base + 1, 1},
+	} {
+		sends, err := MCPShapeAtBound(c.shape, "b3/0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		shapes := map[string]bool{}
+		for i, s := range sends {
+			n, err := client.CountValues(s.Body)
+			var call struct {
+				Params struct {
+					Arguments map[string]string `json:"arguments"`
+				} `json:"params"`
+			}
+			if err == nil {
+				err = json.Unmarshal(s.Body, &call)
+			}
+			content := call.Params.Arguments["content"]
+			escaped := bytes.Count(s.Body, []byte(`\u003c`))
+			if err != nil || len(s.Body) != MaxMCPBodyBytes || n != c.values || len(content) != c.content ||
+				(c.content > 1 && (strings.Trim(content, "<") != "" || escaped != MaxContentBytes)) ||
+				call.Params.Arguments["path"] != fmt.Sprintf("b3/0/%s-%d.md", c.shape, i) || s.Content != "" {
+				t.Errorf("%s, credential %d: %d bytes, %d values, %d bytes of content (%d escaped), %q, %v; want %d, %d, %d",
+					c.shape, i, len(s.Body), n, len(content), escaped, call.Params.Arguments["path"], err, MaxMCPBodyBytes,
+					c.values, c.content)
+			}
+			at := bytes.Index(s.Body, []byte(`"_meta":{`)) + len(`"_meta":{`)
+			shapes[string(s.Body[at:at+6])] = true
+		}
+		if c.shape == "3" && len(shapes) != 3 {
+			t.Errorf("shape 3's credentials send %d shapes, want three", len(shapes))
+		}
+	}
+	four, err := MCPShapeAtBound("4", "b3/0")
+	if err != nil || len(four[0].Body) != MaxMCPBodyBytes || len(four[1].Body) != MaxMCPBodyBytes || four[2].Body != nil ||
+		four[2].Content != EscapedContent() {
+		t.Fatalf("shape 4: %v", err)
+	}
+	// The REST write as the run sends it, within the content's body bound
+	// (page/adapter/http/limits.go's contentBodyLimit).
+	in, err := json.Marshal(map[string]any{"content": changed(four[2].Content, 1), "base_revision": 1 << 40})
+	if err != nil || len(in) > 6*MaxContentBytes+64<<10 || len(in) < 6*(MaxContentBytes-1) {
+		t.Errorf("shape 4's REST write: %d bytes, %v", len(in), err)
+	}
+	if _, err := MCPShapeAtBound("5", "b3/0"); err == nil {
+		t.Error("a shape 5 at the bound")
+	}
+	if _, err := MCPShape("L", "b3/0", 3, 2048); err == nil {
+		t.Error("a shape L below the bound")
+	}
+
+	var mu sync.Mutex
+	inFlight, most := 0, 0
+	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
+		if r.URL.Path != "/mcp" {
+			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
+			return
+		}
+		mu.Lock()
+		inFlight++
+		most = max(most, inFlight)
+		mu.Unlock()
+		time.Sleep(30 * time.Millisecond)
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
+		f.note("mcp %d bytes", len(body))
+		answer(w, http.StatusOK, map[string]any{"jsonrpc": "2.0", "id": 7, "result": map[string]any{}})
+	})
+	cs := f.clients(3, client.NewLog(nil))
+	run := MCPRun{Clients: [3]*client.Client{cs[0], cs[1], cs[2]}, Notebook: "nb-mcp", Shape: "L", Bound: true, Reps: 1}
+	if err := run.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if f.count(fmt.Sprintf("mcp %d bytes", MaxMCPBodyBytes)) != 3 || most != 3 {
+		t.Errorf("L at the bound: %v, %d at once", f.all(), most)
+	}
+}
+
 // The summary times each operation's answers from its start; a request
 // without its whole answer is not timed, cut when its context ended, with
 // the longest of them (not the last: review B's N8), failed when the

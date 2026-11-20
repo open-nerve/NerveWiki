@@ -353,7 +353,8 @@ func bodiesCommand(args []string, stdout io.Writer) error {
 // mcpCommand is B3's run (design 3.6).
 func mcpCommand(args []string, stdout io.Writer) error {
 	d := newDriver("mcp")
-	shape := d.fs.String("shape", "1", "1, 2a, 2b, 2c, 3 or 4")
+	shape := d.fs.String("shape", "1", "1, 2a, 2b, 2c, 3 or 4; with -bound, L too")
+	bound := d.fs.Bool("bound", false, "each MCP body at /mcp's bound, 37,814,272 bytes, as M9/P2 measured")
 	reps := d.fs.Int("reps", 3, "the reps")
 	gap := d.fs.Duration("gap", 20*time.Second, "the time between reps")
 	seed := d.fs.Uint64("seed", 3, "the normal body's seed")
@@ -371,7 +372,7 @@ func mcpCommand(args []string, stdout io.Writer) error {
 	}
 	start := time.Now()
 	m := drive.MCPRun{Clients: [3]*client.Client{cs[0], cs[1], cs[2]}, Notebook: ids[0], Shape: *shape, Seed: *seed,
-		Size: drive.MaxContentBytes, Reps: *reps, Gap: *gap}
+		Size: drive.MaxContentBytes, Bound: *bound, Reps: *reps, Gap: *gap}
 	if err := m.Run(ctx); err != nil {
 		return errors.Join(err, closeLog())
 	}
