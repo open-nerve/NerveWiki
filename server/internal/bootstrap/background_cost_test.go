@@ -27,11 +27,12 @@ import (
 	"github.com/open-nerve/NerveWiki/server/internal/shared"
 )
 
-// What a background revert and restore cost (M8/P4 design 3.11): the
-// measurements MaxJobItems is taken from, run by hand through heavy.sh,
+// What a background revert and restore cost (M8/P4 design 3.11; M12/P4
+// design 3.6's B5, 3.12): the measurements MaxJobItems is taken from, run
+// by hand through heavy.sh,
 //
-//	NW_JOB_SIZES=60000,70000 go test -run '^$' -bench 'BenchmarkStartRevert|BenchmarkBackground' -benchtime 1x \
-//		-timeout 6h ./internal/bootstrap/
+//	NW_JOB_LINKS=20 NW_JOB_SIZES=45000 go test -count=1 -run '^$' -bench '^(BenchmarkBackgroundSteps|BenchmarkBackgroundJobs)$' \
+//		-benchtime 1x -timeout 3h ./internal/bootstrap/
 //
 // and the guards that hold a job at the bound to its time. The bench is
 // the trash's (trash_cost_test.go): the page module wired as serve wires
@@ -71,13 +72,13 @@ func jobLinks(tb testing.TB) int {
 	return n
 }
 
-// jobSizes are the sizes measured: NW_JOB_SIZES, or 50,000, 60,000 and
-// 70,000.
+// jobSizes are the sizes measured: NW_JOB_SIZES, or 40,000, 45,000 and
+// 50,000, MaxJobItems and a step of 5,000 each side (M12/P4 design 3.12).
 func jobSizes(tb testing.TB) []int {
 	tb.Helper()
 	list := os.Getenv("NW_JOB_SIZES")
 	if list == "" {
-		return []int{50_000, 60_000, 70_000}
+		return []int{40_000, 45_000, 50_000}
 	}
 	var out []int
 	for s := range strings.SplitSeq(list, ",") {
@@ -400,7 +401,8 @@ func (b trashBench) restoreJob(tb testing.TB, root uuid.UUID) jobRun {
 // without statistics, then analyzed. It logs each, ms.
 //
 // Measured on an Apple M5 Max shared with other work (load 5-14), at the
-// full load, three runs at MaxJobItems, ms, without statistics / analyzed:
+// full load, three runs at 60,000, M8's MaxJobItems, ms, without
+// statistics / analyzed:
 //
 //	nodes      flat          deep          folders       many groups
 //	 60,000    324-358 /     417-663 /     338-386 /     744-836 /
@@ -446,10 +448,10 @@ func BenchmarkStartRevert(b *testing.B) {
 // (jobRun.String). It logs each, ms.
 //
 // Measured in the first round, at 90,000 nodes of pages of ten links,
-// before MaxJobItems was taken at the full load (60,000), on an Apple M5
-// Max shared with other work (load 5-8), analyzed: the import's revert,
-// its batches' p95 and the whole; the revert of that revert, the same;
-// seconds unless ms:
+// before M8 took MaxJobItems at the full load (60,000; M12 lowered it to
+// 45,000, its comment), on an Apple M5 Max shared with other work (load
+// 5-8), analyzed: the import's revert, its batches' p95 and the whole;
+// the revert of that revert, the same; seconds unless ms:
 //
 //	shape          the import's revert       its revert's revert
 //	flat           325 ms, 191 s             411 ms, 250 s
@@ -525,8 +527,9 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 //
 // Measured on an Apple M5 Max shared with other work (load 5-14), at the
 // full load, ms, without statistics / analyzed, three runs each: the
-// deletion of the top, MaxJobItems the largest size of ten thousands it
-// takes 5 s at most at in every run; the first batch of the group's
+// deletion of the top, M8's MaxJobItems the largest size of ten thousands
+// it takes 5 s at most at in every run there (M12 measured it again and
+// took 45,000: MaxJobItems' comment); the first batch of the group's
 // restore; the request of the revert's revert:
 //
 //	nodes     the top's deletion          the group's first batch       the request
@@ -921,9 +924,10 @@ func fastestOf(tb testing.TB, what string, run func() time.Duration) time.Durati
 }
 
 // The guards' limits, three times the times measured here at the full
-// load (load 6-8): the job of 10,000 nodes 5.5-6.5 s; the largest steps
-// three times the bench's slowest runs (load 6-13), the deletion 3.6-4.7 s
-// here, 4.6 s there, the group's first batch 0.75-1.0 s here, 2.2 s there.
+// load (load 6-8), when MaxJobItems was 60,000: the job of 10,000 nodes
+// 5.5-6.5 s; the largest steps three times the bench's slowest runs (load
+// 6-13), the deletion 3.6-4.7 s here, 4.6 s there, the group's first
+// batch 0.75-1.0 s here, 2.2 s there.
 // The two requests' were three times theirs too, of the import 0.3 s and of
 // many groups 0.7 s, but CI's slowest runner, an EPYC 7763, takes about
 // three times those, not 2.1: 760-875 ms and 1.71-2.16 s in runs
@@ -931,7 +935,9 @@ func fastestOf(tb testing.TB, what string, run func() time.Duration) time.Durati
 // its 2.1 s in 42700292442 (the other runners 437-873 ms, 1.02-1.94 s).
 // Their limits are 1.3 s and 3 s, 1.5 and 1.4 times the 7763's most, the
 // load as it was (decision 249); here they now take 357-381 ms and
-// 0.88-0.92 s (M11), the limits still over three times that.
+// 0.88-0.92 s (M11), the limits still over three times that. At 45,000
+// (M12/P4/S6) the guards measure a smaller import with the limits as they
+// were, neither loosened nor tightened (M12/P4 design 3.12).
 const (
 	startRevertLimit = 1300 * time.Millisecond
 	manyGroupsLimit  = 3 * time.Second
