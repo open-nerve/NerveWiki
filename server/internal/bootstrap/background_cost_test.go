@@ -523,7 +523,9 @@ func BenchmarkBackgroundJobs(b *testing.B) {
 // the restore of a page with 5,000 attachments under it, which marks the
 // 4,901 it leaves trash items of their own (markFrontier); and the
 // arrays' statements at 10,000 and 50,000 ids, planned with their
-// arguments and for any (P2A's lesson). It logs each, ms.
+// arguments and for any (P2A's lesson), the bound raised past 50,000 as
+// the other sizes' (MaxJobItems is 45,000 since M12/P4/S6). It logs each,
+// ms.
 //
 // Measured on an Apple M5 Max shared with other work (load 5-14), at the
 // full load, ms, without statistics / analyzed, three runs each: the
@@ -651,7 +653,7 @@ func BenchmarkBackgroundSteps(b *testing.B) {
 	})
 	b.Run("arrays", func(b *testing.B) {
 		for _, n := range []int{10_000, 50_000} {
-			bench := newJobBench(b, 0)
+			bench := newJobBench(b, 1<<30)
 			c := bench.importOf(b, shapeFlat, n)
 			bench.analyze(b)
 			run := bench.revertJob(b, c)
