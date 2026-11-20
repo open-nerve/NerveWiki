@@ -239,6 +239,22 @@ func TestBodiesReadAndWrite(t *testing.T) {
 	}
 }
 
+// metaStarts is how each credential's _meta starts in a shape: 2a many
+// members, 2b nested empty arrays, 2c a long flat array (valueMembers), 3
+// one of each; 1 and L the long string alone (M12/P4/S3's check B, M2:
+// a 2b that sent 2a's members passed).
+func metaStarts(shape string) [3]string {
+	starts := map[byte]string{'a': `"m0":1`, 'b': `"a":[[]`, 'c': `"a":[1`}
+	switch shape {
+	case "2a", "2b", "2c":
+		s := starts[shape[1]]
+		return [3]string{s, s, s}
+	case "3":
+		return [3]string{starts['a'], starts['b'], starts['c']}
+	}
+	return [3]string{`"pad":"`, `"pad":"`, `"pad":"`}
+}
+
 // B3's shapes: at the bound, MaxBodyValues values counted as bodyshape
 // counts them, a body past 64 KiB; a value more past it; 5 MiB of
 // content; and their run, three at once (design 3.6's B3, 7.2's 39).
@@ -252,6 +268,7 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 		{"2c", [3]int{MaxBodyValues, MaxBodyValues, MaxBodyValues}},
 		{"3", [3]int{MaxBodyValues + 1, MaxBodyValues + 1, MaxBodyValues + 1}},
 	} {
+		want := metaStarts(c.shape)
 		sends, err := MCPShape(c.shape, "b3/0", 3, 1024)
 		if err != nil {
 			t.Fatal(err)
@@ -265,6 +282,9 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 			}
 			at := bytes.Index(s.Body, []byte(`"_meta":{`)) + len(`"_meta":{`)
 			bodies[string(s.Body[at:at+6])] = true
+			if !bytes.HasPrefix(s.Body[at:], []byte(want[i])) {
+				t.Errorf("%s, credential %d: _meta starts %q, want %q", c.shape, i, s.Body[at:at+8], want[i])
+			}
 		}
 		if c.shape == "3" && len(bodies) != 3 {
 			t.Errorf("shape 3's credentials send %d shapes, want three", len(bodies))
@@ -337,9 +357,11 @@ func TestMCPShapesAtTheValuesBound(t *testing.T) {
 // B3 at /mcp's bound, as M9/P2 measured it (M12/P4/S3's review B, I2):
 // each MCP body exactly the bound, README's 37,814,272 bytes; the content
 // 5 MiB of '<', six bytes each; 2's values at the values' bound and 3's a
-// value more, a shape each credential; 4's third a REST write within the
-// content's body bound; L the long string alone; and the run sends them,
-// three at once.
+// value more, each credential's _meta in its shape; 4's third a REST write
+// within the content's body bound; L the long string alone; and the run
+// sends them three at once. The bodies are checked by their bytes, the
+// values counted once a shape (each credential in 3): under -race a large
+// body's decoding is the test's time (CI's costs-3, check 1 of S3).
 func TestMCPShapesAtTheBodyBound(t *testing.T) {
 	if MaxMCPBodyBytes != 37_814_272 {
 		t.Fatalf("the bound is %d bytes, want 37,814,272", MaxMCPBodyBytes)
@@ -348,47 +370,44 @@ func TestMCPShapesAtTheBodyBound(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	escaped := []byte(`"content":"` + strings.Repeat(`\u003c`, MaxContentBytes) + `"`)
 	for _, c := range []struct {
 		shape   string
 		values  int
-		content int
+		content []byte
 	}{
-		{"1", base + 1, MaxContentBytes},
-		{"2a", MaxBodyValues, MaxContentBytes},
-		{"2b", MaxBodyValues, MaxContentBytes},
-		{"2c", MaxBodyValues, MaxContentBytes},
-		{"3", MaxBodyValues + 1, MaxContentBytes},
-		{"L", base + 1, 1},
+		{"1", base + 1, escaped},
+		{"2a", MaxBodyValues, escaped},
+		{"2b", MaxBodyValues, escaped},
+		{"2c", MaxBodyValues, escaped},
+		{"3", MaxBodyValues + 1, escaped},
+		{"L", base + 1, []byte(`"content":"x"`)},
 	} {
+		want := metaStarts(c.shape)
 		sends, err := MCPShapeAtBound(c.shape, "b3/0")
 		if err != nil {
 			t.Fatal(err)
 		}
-		shapes := map[string]bool{}
 		for i, s := range sends {
-			n, err := client.CountValues(s.Body)
-			var call struct {
-				Params struct {
-					Arguments map[string]string `json:"arguments"`
-				} `json:"params"`
+			n := c.values
+			if i == 0 || c.shape == "3" {
+				if n, err = client.CountValues(s.Body); err != nil {
+					t.Fatal(err)
+				}
 			}
-			if err == nil {
-				err = json.Unmarshal(s.Body, &call)
+			// json.Marshal writes the arguments' members in order: content, path.
+			args := []byte(`"arguments":{`)
+			at := bytes.Index(s.Body, args) + len(args)
+			path := fmt.Sprintf(`,"path":"b3/0/%s-%d.md"}`, c.shape, i)
+			if len(s.Body) != MaxMCPBodyBytes || n != c.values || !bytes.HasPrefix(s.Body[at:], c.content) ||
+				!bytes.HasPrefix(s.Body[at+len(c.content):], []byte(path)) || s.Content != "" {
+				t.Errorf("%s, credential %d: %d bytes, %d values, its content or %s not as it should be; want %d bytes, %d values",
+					c.shape, i, len(s.Body), n, path, MaxMCPBodyBytes, c.values)
 			}
-			content := call.Params.Arguments["content"]
-			escaped := bytes.Count(s.Body, []byte(`\u003c`))
-			if err != nil || len(s.Body) != MaxMCPBodyBytes || n != c.values || len(content) != c.content ||
-				(c.content > 1 && (strings.Trim(content, "<") != "" || escaped != MaxContentBytes)) ||
-				call.Params.Arguments["path"] != fmt.Sprintf("b3/0/%s-%d.md", c.shape, i) || s.Content != "" {
-				t.Errorf("%s, credential %d: %d bytes, %d values, %d bytes of content (%d escaped), %q, %v; want %d, %d, %d",
-					c.shape, i, len(s.Body), n, len(content), escaped, call.Params.Arguments["path"], err, MaxMCPBodyBytes,
-					c.values, c.content)
+			meta := bytes.Index(s.Body, []byte(`"_meta":{`)) + len(`"_meta":{`)
+			if !bytes.HasPrefix(s.Body[meta:], []byte(want[i])) {
+				t.Errorf("%s, credential %d: _meta starts %q, want %q", c.shape, i, s.Body[meta:meta+8], want[i])
 			}
-			at := bytes.Index(s.Body, []byte(`"_meta":{`)) + len(`"_meta":{`)
-			shapes[string(s.Body[at:at+6])] = true
-		}
-		if c.shape == "3" && len(shapes) != 3 {
-			t.Errorf("shape 3's credentials send %d shapes, want three", len(shapes))
 		}
 	}
 	four, err := MCPShapeAtBound("4", "b3/0")
@@ -409,31 +428,46 @@ func TestMCPShapesAtTheBodyBound(t *testing.T) {
 		t.Error("a shape L below the bound")
 	}
 
+	// The run: each request counted when it arrives, before its body is
+	// read, and answered once all three arrived (or after 10 s), so that how
+	// long the bodies take to upload does not matter; sent one after
+	// another, they are never in flight together (check 1 of S3: a fixed
+	// overlap saw 2 at once under -race in CI).
 	var mu sync.Mutex
-	inFlight, most := 0, 0
-	f := newFake(t, func(f *fake, w http.ResponseWriter, r *http.Request, body []byte) {
-		if r.URL.Path != "/mcp" {
-			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
-			return
-		}
+	arrived, inFlight, most := 0, 0, 0
+	var sizes []int64
+	all := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
+		arrived++
 		inFlight++
 		most = max(most, inFlight)
+		if arrived == 3 {
+			close(all)
+		}
 		mu.Unlock()
-		time.Sleep(30 * time.Millisecond)
+		n, _ := io.Copy(io.Discard, r.Body)
+		select {
+		case <-all:
+		case <-time.After(10 * time.Second):
+		}
 		mu.Lock()
 		inFlight--
+		sizes = append(sizes, n)
 		mu.Unlock()
-		f.note("mcp %d bytes", len(body))
 		answer(w, http.StatusOK, map[string]any{"jsonrpc": "2.0", "id": 7, "result": map[string]any{}})
-	})
-	cs := f.clients(3, client.NewLog(nil))
-	run := MCPRun{Clients: [3]*client.Client{cs[0], cs[1], cs[2]}, Notebook: "nb-mcp", Shape: "L", Bound: true, Reps: 1}
+	}))
+	t.Cleanup(srv.Close)
+	var cs [3]*client.Client
+	for i := range cs {
+		cs[i] = client.New(srv.URL, fmt.Sprintf("pat-%d", i), i, client.NewLog(nil))
+	}
+	run := MCPRun{Clients: cs, Notebook: "nb-mcp", Shape: "L", Bound: true, Reps: 1}
 	if err := run.Run(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if f.count(fmt.Sprintf("mcp %d bytes", MaxMCPBodyBytes)) != 3 || most != 3 {
-		t.Errorf("L at the bound: %v, %d at once", f.all(), most)
+	if !slices.Equal(sizes, []int64{MaxMCPBodyBytes, MaxMCPBodyBytes, MaxMCPBodyBytes}) || most != 3 {
+		t.Errorf("L at the bound: %v bytes, %d at once", sizes, most)
 	}
 }
 
