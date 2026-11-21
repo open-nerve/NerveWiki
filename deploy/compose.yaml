@@ -2,7 +2,7 @@
 # 同目录要有：.env（chmod 600）写 NERVEWIKI_VERSION（只写确切的版本号，例如 0.1.0）、NWIKI_DB_ADMIN_PASSWORD、NWIKI_DB_PASSWORD、
 # NWIKI_PUBLIC_URL；secrets/jwt.pem；data/（属主 65532）；compose-initdb.sh。
 # 升级：docker compose stop serve，备份，改 NERVEWIKI_VERSION，docker compose run --rm migrate，docker compose up -d serve
-# （deploy/README.md 的"升级与回退"）。make deploy-check 核对它的写法；PostgreSQL 的镜像与建库参数由
+# （deploy/README.md 的"升级与回退"）。make deploy-check 核对它的写法与文档靠着的几条性质；PostgreSQL 的镜像与建库参数由
 # server/internal/platform/postgres/pgtest/image_test.go 核对
 name: nervewiki
 
@@ -21,6 +21,8 @@ services:
       - db:/var/lib/postgresql
       - ./compose-initdb.sh:/docker-entrypoint-initdb.d/10-nervewiki.sh:ro
     healthcheck:
+      # -h 127.0.0.1：第一次建库时官方镜像起的临时服务器只听套接字，经 TCP 才等到 compose-initdb.sh 跑完、正式的服务器
+      # 起来；docker compose up --wait db 靠它（deploy/README.md 的"compose 的恢复"）。make deploy-check 核对
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U nervewiki -d nervewiki"]
       interval: 2s
       timeout: 5s
@@ -47,17 +49,18 @@ services:
       <<: *environment
       NWIKI_SERVER__PUBLIC_URL: ${NWIKI_PUBLIC_URL:?写进 .env：对外的地址，例如 https://wiki.example.com}
       # 宿主机上的反向代理经发布的端口进来，服务看到的对端是下面这个网络的网关；不信任它，所有客户端就共用按 IP 的限流
-      # （deploy/README.md 的"反向代理与 HTTPS"）。与 networks 的子网一起改
+      # （deploy/README.md 的"为什么设 trusted_proxies 与钉子网"）。与 networks 的子网一起改，make deploy-check 核对两处相同
       NWIKI_SERVER__TRUSTED_PROXIES: 10.213.47.0/24
     secrets: [jwt]
     volumes:
       # 附件、导入导出（/data）。第一次装时 mkdir data && sudo chown 65532:65532 data；不可写时服务拒绝启动
       - ./data:/data
     ports:
-      # 只听本机：前面是反向代理
+      # 只听本机：前面是反向代理。make deploy-check 核对
       - "127.0.0.1:${NERVEWIKI_PORT:-8080}:8080"
-    # 停机的各段之和（server.shutdown_timeout 20 秒 + 通知 2 秒 + 任务 10+1 秒 + 连接池 5 秒 = 38 秒），deploy/README.md 的"运行与监控"
-    stop_grace_period: 40s
+    # 停机的各段之和（server.shutdown_timeout 20 秒 + 通知 2 秒 + 任务 10+1 秒 + lint 的收尾至多 7 秒 + 连接池 5 秒 = 45 秒；
+    # lint 那 7 秒一般是零，只在它的工作者卡在提交里时才等），deploy/README.md 的"运行与监控"。make deploy-check 核对
+    stop_grace_period: 50s
     depends_on:
       db:
         condition: service_healthy
@@ -67,7 +70,7 @@ networks:
   default:
     ipam:
       config:
-        # 钉住子网，serve 的 trusted_proxies 信任它。与宿主机上已有的网络重叠时，两处一起改
+        # 钉住子网，serve 的 trusted_proxies 信任它。与宿主机上已有的网络重叠时，两处一起改（make deploy-check 核对两处相同）
         - subnet: 10.213.47.0/24
 
 secrets:

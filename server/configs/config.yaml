@@ -92,7 +92,7 @@ page:
   # 后台任务删除过期而未结束的编辑会话的间隔，至少 1 秒。会话是否活着按租约判断，不等这个任务
   edit_session_cleanup_interval: 10m
   # 同时解析、渲染的正文字节数的上限，至少 5242880（一页正文的上限）；每次至少记 4 KiB。最坏的正文解析时约占它 300 倍的内存，
-  # 默认的 8 MiB 实测最坏约 2.6 GiB 堆（deploy/README.md 的"要求"）；普通的正文约 40 倍。链接索引每页至多记 10,000 条链接，保存时它另占的内存因此有界，不计入预算。取不到额度的请求最多等 parse_max_wait（必须短于
+  # 默认的 8 MiB 最坏约 2.6 GiB 堆（2,662 MiB；最坏实测 2,592 MiB，deploy/README.md 的"要求"）；普通的正文约 40 倍。链接索引每页至多记 10,000 条链接，保存时它另占的内存因此有界，不计入预算。取不到额度的请求最多等 parse_max_wait（必须短于
   # server.request_timeout，且应明显短于它：认证与权限判定也要时间），然后 503 server_busy
   parse_budget_bytes: 8388608
   parse_max_wait: 2s
@@ -106,8 +106,9 @@ events:
   heartbeat_interval: 20s
 
 jobs:
-  # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于
-  # server.shutdown_timeout 加上它再加 8 秒（默认 38 秒）：docker stop -t 40
+  # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于 server.shutdown_timeout 加上它，
+  # 再加通知的 2 秒、任务的宽限 1 秒、lint 的收尾（至多 database.commit_timeout 加 5 秒，一般是零，只在工作者卡在
+  # 提交里时才等）与连接池的 5 秒（默认至多 45 秒）：docker stop -t 50
   shutdown_timeout: 10s
   # 物理删除软删除的行（工作区、成员、邀请等）的间隔，至少 1 秒
   purge_interval: 1h

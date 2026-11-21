@@ -100,12 +100,26 @@ image: ## 构建镜像 $(IMAGE)，版本号取 VERSION，label 带提交与它�
 image-smoke: image ## 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、优雅停机、附件目录的卷与不可写时拒绝启动（需要 Docker、git、curl、jq、openssl）
 	deploy/image-smoke.sh $(IMAGE) $(VERSION)
 
-# deploy/compose.yaml 的写法（M12/P5/S3）：docker compose config 查语法、变量与 schema（整份文件都查，不看 profile），
-# --profile migrate 另让 migrate 里的引用（secrets、depends_on）也核对。必填的变量给假值。升级的次序由 S3 的演练核对
+# deploy/compose.yaml 的写法与文档靠着的几条性质（M12/P5/S3）。docker compose config 查语法、变量与 schema（整份文件都
+# 查，不看 profile），--profile migrate 另让 migrate 里的引用（secrets、depends_on）也核对；必填的变量给假值。之后 jq 在
+# 展开后的配置上核对五条，deploy/README.md 里各有靠它的步骤：服务恰是 db、serve，migrate 只在 profile 里（升级时
+# up -d 不会在备份之前迁移）；可信的代理等于子网；db 的健康检查经 TCP（up --wait db 等到初始化脚本跑完）；端口只听本机；
+# 停机的宽限 50 秒（各段之和至多 45 秒）。升级的步骤本身（先备份、再迁移、再起服务）由 S3 的第 2 遍演练照文档走过，这里不核
+DEPLOY_CHECK_JQ := def must(c; m): if c then . else error("deploy/compose.yaml 不合：" + m) end; \
+	must((.services | map_values(.profiles // [])) == {"db": [], "migrate": ["migrate"], "serve": []}; \
+		"服务恰是 db、serve，migrate 只在 profile migrate 里") \
+	| must(.networks.default.ipam.config == [{"subnet": .services.serve.environment.NWIKI_SERVER__TRUSTED_PROXIES}]; \
+		"serve 的 NWIKI_SERVER__TRUSTED_PROXIES 等于 networks 的子网") \
+	| must(.services.db.healthcheck.test | join(" ") | contains("pg_isready -h 127.0.0.1 "); \
+		"db 的健康检查经 TCP：pg_isready -h 127.0.0.1") \
+	| must((.services.serve.ports | map(.host_ip)) == ["127.0.0.1"]; "serve 的端口只听 127.0.0.1") \
+	| must(.services.serve.stop_grace_period == "50s"; "serve 的 stop_grace_period 是 50s")
 .PHONY: deploy-check
-deploy-check: ## 核对 deploy/compose.yaml 的写法（需要 Docker Compose v2）
-	cd deploy && NERVEWIKI_VERSION=0.0.0-check NWIKI_DB_ADMIN_PASSWORD=check NWIKI_DB_PASSWORD=check \
-		NWIKI_PUBLIC_URL=https://wiki.example.com docker compose -f compose.yaml --profile migrate config -q
+deploy-check: ## 核对 deploy/compose.yaml 的写法与文档靠着的五条性质（需要 Docker Compose v2、jq）
+	cd deploy && export NERVEWIKI_VERSION=0.0.0-check NWIKI_DB_ADMIN_PASSWORD=check NWIKI_DB_PASSWORD=check \
+		NWIKI_PUBLIC_URL=https://wiki.example.com && \
+		json=$$(docker compose -f compose.yaml --profile migrate config --format json) && \
+		jq -e '$(DEPLOY_CHECK_JQ)' <<<"$$json" >/dev/null
 
 .PHONY: tools
 tools: ## 安装锁定版本的 golangci-lint 到 ./bin
