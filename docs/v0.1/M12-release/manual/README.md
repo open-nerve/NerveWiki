@@ -10,7 +10,7 @@
 |---|---|---|
 | [输入法清单](../../M4-pages/manual/P6-ime-checklist.md) | 中文、日文等的组字：编辑、自动保存与推送、补全、粘贴上传、搜索、来源（23 步） | M4–M8、M10 |
 | [MCP 客户端清单](../../M9-mcp/manual/P5-mcp-clients-checklist.md) | 真实的 Claude Code、Codex：接上、读写、审批、答复、大的请求体、重启、编辑锁、反向代理、prompts 与 LLM Wiki、升级（A–K） | M9–M11 |
-| [读屏清单](screen-reader-checklist.md) | 只从 ARIA 推断的八项、M 类里与读屏有关的、P2 各 Step 交来的 | M4–M12 |
+| [读屏清单](screen-reader-checklist.md) | 只从 ARIA 推断的八项、M 类里与读屏有关的、P2 各 Step 与 P4/S4（页面树）交来的 | M4–M12 |
 | 下面"其余各项" | 只在真的浏览器、真的系统上看得到的 | M5–M12 |
 
 MCP 客户端清单 I 一节说的"README 的部署一节"的 nginx 与 Caddy 两份样例，现在在 [deploy/README.md](../../../../deploy/README.md) 的"反向代理与 HTTPS"（M12/P5/S3 把它们挪了过去）。nginx 的多了 `gzip` 几行，没有在真的 nginx 上跑过：I 一节照样例起 nginx 时正好跑到它们。
@@ -24,7 +24,7 @@ M 类（附录 A）里不在读屏清单的，与 P2 交来的人工项：
 3. **16.12 拖放**：从访达拖文件到附件一节与阅读视图（Chromium、Safari、Firefox）；把一个文件夹拖到导入对话框的文件输入框（Safari、Firefox；Chromium 里不收、说明先打成 zip）；页内拖一张图片按 Esc 取消之后再拖文件进来；Firefox 里用键盘打开"打开"；不经 HTTPS 的部署里用读屏复制嵌入。
 4. **17.9 阅读视图里的附件**：PDF 在 CSP `sandbox` 下能不能看；各引擎里媒体出错之后的状态与控件的重试；折叠 callout 里的焦点；复制的提示。
 5. **18.8 编辑器的上传与输入法**：输入法清单第 19、20 步（组字中上传完成；剪贴板里是否带 `text/plain`；拖入之后取消，落点的竖线）。
-6. **26.18a 印地文、泰文的搜索命中**：在真的浏览器里搜一次，看命中的高亮有没有把组合记号切开（P2/S6，决定 627 之前的存疑）。
+6. **26.18a 印地文、泰文的搜索命中**：在真的浏览器里搜一次，看命中的高亮有没有把组合记号切开（P2/S6 的人工项，[S6 的记录](../reviews/P2-S6-versions-trash-history-search-review.md)"读屏与人工清单"）。
 7. **26.18b、27.3 Android 的回车**：手机上用 Gboard 在搜索框里回车，看是不是要按两次才搜。
 8. **26.5 搜索的"在哪里找"**：在 macOS 的 Safari 与 Chrome 上，关着的选择按方向键是否打开列表、列表里选的是否立即用（P2/S6，决定 627）。
 9. **33.1 Safari 的窄屏**：真的 Safari（iPhone，或 macOS 的窄窗口），375 宽左右的搜索页，"在哪里找"选着一本名字很长的笔记本时，页面不横向滚动（Playwright 的 WebKit 上已修，决定 589、590）。
@@ -37,3 +37,5 @@ M 类（附录 A）里不在读屏清单的，与 P2 交来的人工项：
 ## 怎样记
 
 每份清单照它自己写的记法；没写的，每项记日期、浏览器与系统的版本、过或不过、不过时的现象与复现的步骤。做完一份，在 v0.1.1 的移交里写一行：哪一份、哪天、过了几项、不过的是哪几项。
+
+v0.1 里另有两份移交等着这里的清单，跑过之后照结果关上（改为 `done`，写哪天、哪份清单、结果）：输入法清单跑过之后关 [M4-pages/handoffs/M0-P1-editor.md](../../M4-pages/handoffs/M0-P1-editor.md)；MCP 客户端清单的 D、G 两部分跑过之后关 [M9-mcp/handoffs/M0-P1-mcp-sessions.md](../../M9-mcp/handoffs/M0-P1-mcp-sessions.md)。
