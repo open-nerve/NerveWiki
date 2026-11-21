@@ -454,37 +454,67 @@ func tabsCommand(args []string, stdout io.Writer) error {
 // opsCommand is B4's (design 3.6).
 func opsCommand(args []string, stdout io.Writer) error {
 	d := newDriver("ops")
-	notebook := d.fs.String("notebook", "vault", "the notebook's name in the prepared file")
-	root := d.fs.String("root", "vault", "the page at the notebook's root the vault was imported under")
-	reps := d.fs.Int("reps", 3, "each operation's reps")
-	container := d.fs.String("container", "", "the PostgreSQL container's id")
-	idle := d.fs.Duration("idle", 30*time.Second, "the idle after the background is quiet")
-	quiet := d.fs.String("quiet", "all", "the background waited for before each operation: all, or the notebook's alone "+
-		"(notebook: its search queue, River's jobs but the search's; under the editors' load)")
-	if err := d.fs.Parse(args); err != nil {
+	f, err := opsFlags(d, args)
+	if err != nil {
 		return err
-	}
-	if *container == "" {
-		return errors.New("-container is required")
-	}
-	if *quiet != "all" && *quiet != "notebook" {
-		return fmt.Errorf("-quiet %q: all or notebook", *quiet)
 	}
 	p, cs, log, closeLog, err := d.open(1)
 	if err != nil {
 		return err
 	}
-	id, err := p.Notebook(*notebook)
+	id, err := p.Notebook(f.notebook)
 	if err != nil {
 		return errors.Join(err, closeLog())
 	}
 	start := time.Now()
-	o := drive.Ops{Client: cs[0], PSQL: client.NewPSQL(*container), Notebook: id, Root: *root, Reps: *reps, Idle: *idle,
-		Poll: 2 * time.Second, Out: stdout, QuietNotebook: *quiet == "notebook"}
-	if err := o.Run(context.Background()); err != nil {
+	if err := f.ops(cs[0], client.NewPSQL(f.container), id, stdout).Run(context.Background()); err != nil {
 		return errors.Join(err, closeLog())
 	}
 	return errors.Join(drive.Summarize(stdout, log.Records(), start), closeLog())
+}
+
+// opsOptions are ops's flags but the driver's, read.
+type opsOptions struct {
+	notebook, root, container string
+	reps                      int
+	idle                      time.Duration
+	quietNotebook             bool // -quiet notebook
+}
+
+// opsFlags reads ops's flags in args, on d's: -container is required, and
+// -quiet is all, its default, which waits for the whole background before
+// each operation, or notebook, for the notebook's alone (M12/P4/S7 design
+// 6.3 item 5); another is refused before anything is read.
+func opsFlags(d driver, args []string) (opsOptions, error) {
+	var f opsOptions
+	d.fs.StringVar(&f.notebook, "notebook", "vault", "the notebook's name in the prepared file")
+	d.fs.StringVar(&f.root, "root", "vault", "the page at the notebook's root the vault was imported under")
+	d.fs.IntVar(&f.reps, "reps", 3, "each operation's reps")
+	d.fs.StringVar(&f.container, "container", "", "the PostgreSQL container's id")
+	d.fs.DurationVar(&f.idle, "idle", 30*time.Second, "the idle after the background is quiet")
+	quiet := d.fs.String("quiet", "all", "the background waited for before each operation: all, or the notebook's alone "+
+		"(notebook: its search queue, River's jobs but the search's; under the editors' load)")
+	if err := d.fs.Parse(args); err != nil {
+		return opsOptions{}, err
+	}
+	if f.container == "" {
+		return opsOptions{}, errors.New("-container is required")
+	}
+	switch *quiet {
+	case "all":
+	case "notebook":
+		f.quietNotebook = true
+	default:
+		return opsOptions{}, fmt.Errorf("-quiet %q: all or notebook", *quiet)
+	}
+	return f, nil
+}
+
+// ops is the operations f runs, as c, on the notebook id in psql's
+// container.
+func (f opsOptions) ops(c *client.Client, psql client.PSQL, id string, stdout io.Writer) drive.Ops {
+	return drive.Ops{Client: c, PSQL: psql, Notebook: id, Root: f.root, Reps: f.reps, Idle: f.idle, Poll: 2 * time.Second,
+		Out: stdout, QuietNotebook: f.quietNotebook}
 }
 
 // transferCommand is B8's (design 3.6).
