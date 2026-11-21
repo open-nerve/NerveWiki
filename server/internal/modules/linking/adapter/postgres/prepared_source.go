@@ -88,6 +88,10 @@ func (p *preparedSource) Apply(ctx context.Context, unit *app.SourcePreparationU
 	return old, &app.SourceLinks{SourceID: p.page.ID, Links: p.read.inputs}, nil
 }
 
+// LinksExcept implements app.SourcePreparations. A large reach is read
+// here as below the wide reads' threshold, one index search a key: no wide
+// read, as Store.Links has (M12/P4/S7 design decision 655; the reaches
+// that come here and their bounds, design 2.3 item 4).
 func (s *Store) LinksExcept(ctx context.Context, notebookID uuid.UUID, r domain.Reach, excluded []uuid.UUID) ([]app.Link, error) {
 	// Remove the supplied source arm before planning, while SQL still excludes
 	// those sources outside the complete OR to prevent key/target re-entry.

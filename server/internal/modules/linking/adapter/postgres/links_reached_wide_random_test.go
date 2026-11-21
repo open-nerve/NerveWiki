@@ -32,9 +32,12 @@ import (
 // Each reach's keys, targets and sources are drawn from the fixture with
 // misses and NULL elements, or are NULL arrays; their sizes are spread
 // logarithmically below the threshold, so most are tens to hundreds, and a
-// fixed number past it (the reads production makes there: parallel plans,
-// BitmapOr), whose time is about 0.2 s a group of three (review A, round
-// 2, N2). Another seed's fixture is read without statistics and analyzed,
+// fixed number past it, whose time is about 0.2 s a group of three (review
+// A, round 2, N2), read with the parallel plans' costs at 0: the fixture's
+// 27,000 links are too few for the planner to read them in parallel at its
+// costs, as it does the large notebooks the wide reads are for, and the
+// first groups' plans of LinksReachedWide must gather (code review A, M1).
+// No plan here ORs two bitmaps: at this scale the planner builds none. Another seed's fixture is read without statistics and analyzed,
 // below and past the threshold, and under force_generic_plan with reaches
 // of at most 1,000 elements: LinksReached and LinksReachedWide compare each
 // row with a parameter array there, which is quadratic (design 1.3 item 4).
@@ -239,9 +242,23 @@ func (f *wideRandomFixture) reach(r *rand.Rand, size, limit int) wideRandomReach
 	return w
 }
 
+// wideParallelSettings are the session's settings under which the planner
+// reads the fixture in parallel plans (code review A, M1).
+func wideParallelSettings() []string {
+	return []string{"parallel_setup_cost", "parallel_tuple_cost", "min_parallel_table_scan_size", "min_parallel_index_scan_size"}
+}
+
+// wideExplained is the groups past the threshold whose LinksReachedWide
+// plan is explained, the first of each segment: at least wideGathered of
+// them gather (all 10 did in each of the three segments, two runs here;
+// the three segments took 7.9, 1.0 and 2.3 s, 3.4, 0.4 and 1.0 s more).
+const wideExplained, wideGathered = 10, 7
+
 // compare reads groups reaches of seed, of from to to keys and targets
 // together (and, with total, sources too), in the session's mode, through
-// each of the three reads, and fails at the first that differs.
+// each of the three reads, and fails at the first that differs. Past the
+// threshold it reads them with the parallel plans' costs at 0, and fails
+// unless the first groups' plans of LinksReachedWide gather.
 func (f *wideRandomFixture) compare(t *testing.T, mode string, seed uint64, groups, from, to int, total bool) {
 	t.Helper()
 	ctx := t.Context()
@@ -249,12 +266,23 @@ func (f *wideRandomFixture) compare(t *testing.T, mode string, seed uint64, grou
 	if mode != "force_generic_plan" {
 		setting = "auto"
 	}
-	if _, err := f.conn.Exec(ctx, "SET plan_cache_mode = "+setting); err != nil {
-		t.Fatal(err)
+	past := from >= 4000 // Store.Links reads the wide reads from there
+	set := []string{"plan_cache_mode = " + setting}
+	if past {
+		for _, name := range wideParallelSettings() {
+			set = append(set, name+" = 0")
+		}
+	}
+	for _, s := range set {
+		if _, err := f.conn.Exec(ctx, "SET "+s); err != nil {
+			t.Fatal(err)
+		}
 	}
 	defer func() {
-		if _, err := f.conn.Exec(context.Background(), "RESET plan_cache_mode"); err != nil {
-			t.Fatal(err)
+		for _, s := range set {
+			if _, err := f.conn.Exec(context.Background(), "RESET "+strings.Fields(s)[0]); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}()
 	statements := []struct{ name, sql string }{
@@ -262,7 +290,7 @@ func (f *wideRandomFixture) compare(t *testing.T, mode string, seed uint64, grou
 	}
 	r := rand.New(rand.NewPCG(seed, seed^0x2545f4914f6cdd1d))
 	began := time.Now()
-	rows := 0
+	rows, explained, gathered := 0, 0, 0
 	for group := range groups {
 		size := logSize(r, from, to)
 		limit := 0
@@ -271,6 +299,17 @@ func (f *wideRandomFixture) compare(t *testing.T, mode string, seed uint64, grou
 			limit = to
 		}
 		w := f.reach(r, size, limit)
+		if past && group < wideExplained {
+			var plan string
+			if err := postgres.Planned(f.conn).QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+gen.LinksReachedWide, w.book, w.keys, w.targets,
+				w.sources).Scan(&plan); err != nil {
+				t.Fatalf("seed %#x group %d (%s, %s): the plan of LinksReachedWide: %v", seed, group, mode, w, err)
+			}
+			explained++
+			if strings.Contains(plan, `"Node Type": "Gather`) {
+				gathered++
+			}
+		}
 		var first []app.Link
 		for i, s := range statements {
 			native, err := postgres.Planned(f.conn).Query(ctx, s.sql, w.book, w.keys, w.targets, w.sources)
@@ -292,8 +331,19 @@ func (f *wideRandomFixture) compare(t *testing.T, mode string, seed uint64, grou
 			}
 		}
 	}
-	t.Logf("%s: seed %#x, %d groups of %d to %d, %d rows each read, %v; the fixture's %d links",
-		mode, seed, groups, from, to, rows, time.Since(began).Round(time.Millisecond), f.links)
+	plans := ""
+	if past {
+		plans = fmt.Sprintf("; %d of the first %d plans of LinksReachedWide gathered", gathered, explained)
+	}
+	t.Logf("%s: seed %#x, %d groups of %d to %d, %d rows each read, %v; the fixture's %d links%s",
+		mode, seed, groups, from, to, rows, time.Since(began).Round(time.Millisecond), f.links, plans)
+	if rows < groups {
+		t.Errorf("%s: seed %#x: %d rows of %d groups: the reads compared little (code review A, N2)", mode, seed, rows, groups)
+	}
+	if past && gathered < wideGathered {
+		t.Errorf("%s: seed %#x: %d of the first %d groups' plans of LinksReachedWide gather, want %d at least: the comparison reads no "+
+			"parallel plan", mode, seed, gathered, explained, wideGathered)
+	}
 }
 
 func wideFirstDifference(a, b []app.Link) int {

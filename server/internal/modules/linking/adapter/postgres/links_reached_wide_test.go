@@ -30,10 +30,12 @@ type linksReadCall struct {
 }
 
 // linksReadTrace records every statement of sqlc's a pool runs, by its
-// "-- name:" line.
+// "-- name:" line; with fail set, the statement of that name runs with an
+// ended context, which pgx refuses before it sends it.
 type linksReadTrace struct {
 	mu    sync.Mutex
 	calls []linksReadCall
+	fail  string
 }
 
 func (tr *linksReadTrace) TraceQueryStart(ctx context.Context, c *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
@@ -50,8 +52,13 @@ func (tr *linksReadTrace) TraceQueryStart(ctx context.Context, c *pgx.Conn, d pg
 		call.modes = append(call.modes, mode)
 	}
 	tr.mu.Lock()
+	defer tr.mu.Unlock()
 	tr.calls = append(tr.calls, call)
-	tr.mu.Unlock()
+	if tr.fail != "" && call.name == tr.fail {
+		ended, cancel := context.WithCancel(ctx)
+		cancel()
+		return ended
+	}
 	return ctx
 }
 
@@ -222,12 +229,27 @@ func TestLinksReadWideFromItsThreshold(t *testing.T) {
 			}
 		})
 	}
+	// The setting's read alone fails: Links answers its error and reads
+	// nothing more, neither swallowing it nor reading on as auto (code
+	// review A, N1).
 	t.Run("a_failed_setting_read_is_the_links_error", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(t.Context())
-		cancel()
-		_, err := store.Links(ctx, book, domain.Reach{Keys: keys(0, 4000)})
-		if !errors.Is(err, context.Canceled) || !strings.HasPrefix(err.Error(), "links of "+book.String()+": ") {
-			t.Fatalf("Links with an ended context: %v", err)
+		trace.take()
+		trace.mu.Lock()
+		trace.fail = "PlanCacheMode"
+		trace.mu.Unlock()
+		defer func() {
+			trace.mu.Lock()
+			trace.fail = ""
+			trace.mu.Unlock()
+		}()
+		got, err := store.Links(t.Context(), book, domain.Reach{Keys: keys(0, 4000)})
+		var names []string
+		for _, c := range trace.take() {
+			names = append(names, c.name)
+		}
+		if !errors.Is(err, context.Canceled) || !strings.HasPrefix(err.Error(), "links of "+book.String()+": ") || got != nil ||
+			!slices.Equal(names, []string{"PlanCacheMode"}) {
+			t.Fatalf("Links whose setting's read failed: %v, %d links, read %v; want its error alone, after that read alone", err, len(got), names)
 		}
 	})
 }

@@ -276,8 +276,9 @@ var widePlanSubPlan = regexp.MustCompile(`("Subplan Name": ")?(hashed )?SubPlan 
 
 // widePlanSubPlansHashed fails a sub-plan that an expression uses without
 // its hash, or that none uses hashed (InitPlans run once and are not
-// looked at).
-func widePlanSubPlansHashed(t *testing.T, raw string) {
+// looked at), and a plan of other than want sub-plans: a PostgreSQL that
+// wrote them otherwise would find none and pass (code review A, N3).
+func widePlanSubPlansHashed(t *testing.T, raw string, want int) {
 	t.Helper()
 	named, hashed := map[string]bool{}, map[string]bool{}
 	for _, m := range widePlanSubPlan.FindAllStringSubmatch(raw, -1) {
@@ -295,6 +296,20 @@ func widePlanSubPlansHashed(t *testing.T, raw string) {
 			t.Fatalf("the sub-plan SubPlan %s is not used hashed\n%s", n, raw)
 		}
 	}
+	if len(named) != want {
+		t.Fatalf("the plan has %d sub-plans, want %d\n%s", len(named), want, raw)
+	}
+}
+
+// widePlanSubPlans is the sub-plans of a cell's statement: none of
+// LinksReachedWide, whose arrays are constants; four of
+// LinksReachedWideGeneric, its two keys' members, its targets' and its
+// sources' exclusion.
+func widePlanSubPlans(mode string) int {
+	if mode == "force_generic_plan" {
+		return 4
+	}
+	return 0
 }
 
 // widePlanShape fails a plan that is not linear in the reach (design 4.2):
@@ -303,10 +318,10 @@ func widePlanSubPlansHashed(t *testing.T, raw string) {
 // generic statement's exclusion must stay a hashed sub-plan, review A's
 // N2); a nested loop whose inner side is a function's scan run more than
 // once. analyzed says the plan ran: the recheck and the loops are known.
-func widePlanShape(t *testing.T, raw string, analyzed bool) {
+func widePlanShape(t *testing.T, raw string, analyzed bool, subPlans int) {
 	t.Helper()
 	root := widePlanTree(t, raw)
-	widePlanSubPlansHashed(t, raw)
+	widePlanSubPlansHashed(t, raw, subPlans)
 	for _, n := range root.all() {
 		for _, cond := range []string{n.Filter, n.JoinFilter} {
 			if parameterArray.MatchString(cond) {
@@ -381,7 +396,7 @@ func widePlanCell(t *testing.T, f *widePlanFixture, mode, workMem string) {
 		if err := tx.QueryRow(ctx, "EXPLAIN (FORMAT JSON) "+execute).Scan(&planned); err != nil {
 			return err
 		}
-		widePlanShape(t, planned, false)
+		widePlanShape(t, planned, false, widePlanSubPlans(mode))
 		// Store.Links reads the statement of the mode, planned with the reach.
 		work := stablePlanRelationWork(t, ctx, tx)
 		f.trace.begin()
@@ -420,7 +435,7 @@ func widePlanCell(t *testing.T, f *widePlanFixture, mode, workMem string) {
 		if err := tx.Conn().Deallocate(ctx, name); err != nil {
 			return err
 		}
-		widePlanShape(t, analyzed, true)
+		widePlanShape(t, analyzed, true, widePlanSubPlans(mode))
 		widePlanRead(t, analyzed, f.own)
 		for range 3 {
 			began := time.Now()
