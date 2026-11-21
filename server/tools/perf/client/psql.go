@@ -90,5 +90,16 @@ func (p PSQL) Quiet(ctx context.Context) (bool, error) {
 	return n == 0, err
 }
 
+// QuietIn reports whether the serve's background is quiet for the
+// notebook (M12/P4/S7 design 6.3 item 5, decision 661): its own nodes'
+// search queue empty, and River without a job running or available but
+// the search's, which is global and which another notebook's saves keep
+// queueing (the editors' load).
+func (p PSQL) QuietIn(ctx context.Context, notebook string) (bool, error) {
+	n, err := p.Int(ctx, "SELECT (SELECT count(*) FROM page_search_queue WHERE notebook_id = "+Literal(notebook)+") + "+
+		"(SELECT count(*) FROM river_job WHERE state IN ('running', 'available') AND kind <> 'page.index_search')")
+	return n == 0, err
+}
+
 // Literal is s as a quoted SQL literal, for the ids the drivers name.
 func Literal(s string) string { return "'" + strings.ReplaceAll(s, "'", "''") + "'" }

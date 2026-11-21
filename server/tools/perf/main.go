@@ -459,11 +459,16 @@ func opsCommand(args []string, stdout io.Writer) error {
 	reps := d.fs.Int("reps", 3, "each operation's reps")
 	container := d.fs.String("container", "", "the PostgreSQL container's id")
 	idle := d.fs.Duration("idle", 30*time.Second, "the idle after the background is quiet")
+	quiet := d.fs.String("quiet", "all", "the background waited for before each operation: all, or the notebook's alone "+
+		"(notebook: its search queue, River's jobs but the search's; under the editors' load)")
 	if err := d.fs.Parse(args); err != nil {
 		return err
 	}
 	if *container == "" {
 		return errors.New("-container is required")
+	}
+	if *quiet != "all" && *quiet != "notebook" {
+		return fmt.Errorf("-quiet %q: all or notebook", *quiet)
 	}
 	p, cs, log, closeLog, err := d.open(1)
 	if err != nil {
@@ -475,7 +480,7 @@ func opsCommand(args []string, stdout io.Writer) error {
 	}
 	start := time.Now()
 	o := drive.Ops{Client: cs[0], PSQL: client.NewPSQL(*container), Notebook: id, Root: *root, Reps: *reps, Idle: *idle,
-		Poll: 2 * time.Second, Out: stdout}
+		Poll: 2 * time.Second, Out: stdout, QuietNotebook: *quiet == "notebook"}
 	if err := o.Run(context.Background()); err != nil {
 		return errors.Join(err, closeLog())
 	}

@@ -135,6 +135,19 @@ func TestPSQLGoesThroughDockerExec(t *testing.T) {
 	if quiet, err := p.Quiet(context.Background()); err != nil || !quiet {
 		t.Errorf("quiet %v, %v", quiet, err)
 	}
+	// A notebook's quiet is its nodes' search queue and River's jobs but the
+	// search's, which other notebooks' saves keep queueing (M12/P4/S7 design
+	// 6.3 item 5).
+	notebookQuiet := PSQL{Container: "c0ffee", User: "nervewiki", Database: "nervewiki", Run: func(_ context.Context, _ string, a ...string) ([]byte, error) {
+		if sql := a[len(a)-1]; sql != "SELECT (SELECT count(*) FROM page_search_queue WHERE notebook_id = 'nb''1') + "+
+			"(SELECT count(*) FROM river_job WHERE state IN ('running', 'available') AND kind <> 'page.index_search')" {
+			return nil, fmt.Errorf("the notebook's quiet read as %q", sql)
+		}
+		return []byte("2\n"), nil
+	}}
+	if quiet, err := notebookQuiet.QuietIn(context.Background(), "nb'1"); err != nil || quiet {
+		t.Errorf("the notebook's quiet %v, %v; want not quiet", quiet, err)
+	}
 	if _, err := p.Int(context.Background(), "SELECT two rows"); err == nil {
 		t.Error("two rows read as one integer")
 	}

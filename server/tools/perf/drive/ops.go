@@ -18,22 +18,30 @@ import (
 // rename of the page most linked to; then the deletion of its first folder
 // of the first level, recorded alone.
 // Before each, the background quiet (psql: the search queue empty, River
-// without a job running or available, review B's M8), then Idle.
+// without a job running or available, review B's M8), then Idle; with
+// QuietNotebook, the notebook's alone (its nodes' search queue empty, River
+// without one but the search's; M12/P4/S7 design 6.3 item 5): under the
+// editors' load another notebook's saves keep the global queue busy.
 type Ops struct {
-	Client   *client.Client
-	PSQL     client.PSQL
-	Notebook string
-	Root     string
-	Reps     int
-	Idle     time.Duration
-	Poll     time.Duration
-	Out      io.Writer // a line an operation
+	Client        *client.Client
+	PSQL          client.PSQL
+	Notebook      string
+	Root          string
+	Reps          int
+	Idle          time.Duration
+	Poll          time.Duration
+	Out           io.Writer // a line an operation
+	QuietNotebook bool
 }
 
 // quiet waits for the background to be quiet, then o.Idle.
 func (o Ops) quiet(ctx context.Context) error {
 	for {
-		q, err := o.PSQL.Quiet(ctx)
+		read := o.PSQL.Quiet
+		if o.QuietNotebook {
+			read = func(ctx context.Context) (bool, error) { return o.PSQL.QuietIn(ctx, o.Notebook) }
+		}
+		q, err := read(ctx)
 		if err != nil {
 			return err
 		}
