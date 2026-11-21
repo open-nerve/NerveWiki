@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M0/P6
 to: M12
 created: 2026-09-30
@@ -21,3 +21,4 @@ M0/P6 只在本地与持续集成中构建镜像并做冒烟检查（`make image
 - M12/P5/S1（2026-11-18，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 1、2 条的构建一半：`release.yml` 在每次推送上以两种原生 runner 只读地演练构建与 image-smoke，tag 上闸门之后按摘要推送、拉回来 smoke；写权限只在 tag 的作业里，由守卫读工作流核对；版本号的默认值与 MCP 的版本有守卫（[P5 设计](../05-P5-deploy-release.md) 10.1）。
 - M12/P5/S2（2026-11-19，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 1–3 条的推送与签名一半：索引、来源证明、两份 SBOM 的证明、cosign keyless、`/licenses`、Release 先草稿、两种架构上核对过才公开；版本号的 tag 不改指；只有推 tag 才走得到，rc 在收尾之后（[P5 设计](../05-P5-deploy-release.md) 10.2）。
 - M12/P5/S3（2026-11-22，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 3 条的校验说明：Release 的说明里的两条命令与 SBOM 那一条也写进 [deploy/README.md](../../../../deploy/README.md) 的"安装"（`gh auth login`、cosign v3），`SECURITY.md` 指向它（[P5 设计](../05-P5-deploy-release.md) 10.3）。
+- M12 收尾（2026-11-22）：做完，状态改为 `done`。第 1–3 条的工作流、权限、守卫与说明都在：`release.yml` 顶层 `permissions: {}`、演练只读、写权限只在 tag 触发的作业里，闸门、按摘要推送、索引、来源证明、两份 SBOM 的证明、cosign、Release 先草稿、两种架构上核对过才公开，校验的两条命令在 Release 的说明与 deploy/README"安装"；真的推送、签名、证明与公开只有推 tag 才证明得了，在 M12 的发布里（[00-M12](../00-M12-design.md) 4.11 第 2–7 步，收尾记录的"发布"一节）。第 4 条的安全一半在 P1/S2；其余（Node 26、功能性的大版本；Dependabot 的版本更新：负责人 2026-11-22 第 14 问答不开，发布之前在 runner 上跑 `make outdated`）进 v0.2 的 [M12-release.md](../../../v0.2/handoffs/M12-release.md)。核对在 M12 收尾审查 C（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。

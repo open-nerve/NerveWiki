@@ -1,0 +1,27 @@
+```yaml
+status: open
+from: M12
+to: v0.1.1
+created: 2026-11-22
+```
+
+# 发布之后的人工验收
+
+负责人 2026-11-13 第 4 问：先发 v0.1.0，人工验收在发布之后，发现的问题出 v0.1.1（[00-M12](../../v0.1/M12-release/00-M12-design.md) 4.12）。v0.1.1 的工作由负责人另行批准开工，那时照一个小的 M 做（00-M12 第 7 节"写给后面的 M"）；这一份是它的输入。
+
+1. **人工验收**：入口是 [manual/README.md](../../v0.1/M12-release/manual/README.md)，用一台照 deploy/README 装好的 v0.1.0。
+   - [输入法清单](../../v0.1/M4-pages/manual/P6-ime-checklist.md)（23 步；负责人 2026-11-17 第 9 问：同在发布之后）；
+   - [MCP 客户端清单](../../v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md) A–K（Claude Code、Codex）；
+   - [读屏清单](../../v0.1/M12-release/manual/screen-reader-checklist.md) A–G（G 是 M12 收尾补的 P4/S4 的页面树）；
+   - manual/README.md"其余各项"的十四项（只在真的浏览器、真的系统上看得到的：Safari 的窄屏与原生下拉的焦点、Android 的回车、拖放、PDF 等）。
+
+   记法照各份清单与 manual/README.md 的"怎样记"；做完一份，在下面"处理进展"写一行：哪一份、哪天、过了几项、不过的是哪几项。
+2. **读屏验收确认有问题的八项在 v0.1.1 修**（负责人 2026-11-14 第 6 问）：只从 ARIA 推断"念两遍、念得急"的 16.8、18.4a、21.15、21.16、22.10、26.1、26.2 的后一半、28.3（读屏清单 A 一节）。
+3. **M12/P2 的 S5、S6 的焦点只在 Chromium 与 jsdom 里核对过**（M12 收尾审查 B 的 M2）：16.11、18.1、38.7（S5）与 2、21.7、22.19、23.10、24.2、27.2（S6）的焦点，没有在 Firefox、WebKit 里探过；推断与引擎无关（都是程序给的焦点）。读屏清单 E、F 两节在真的 Safari、Firefox 里走到它们，不过的照第 2 项一样在 v0.1.1 修。
+4. **两份 v0.1 的 `open` 移交随清单关**（M12 收尾审查 C 的 M2）：输入法清单跑过之后关 [M4-pages/handoffs/M0-P1-editor.md](../../v0.1/M4-pages/handoffs/M0-P1-editor.md)；MCP 客户端清单的 D、G 两部分跑过之后关 [M9-mcp/handoffs/M0-P1-mcp-sessions.md](../../v0.1/M9-mcp/handoffs/M0-P1-mcp-sessions.md)。M12 收尾之后，它们是 v0.1 里仅剩的 `open`。
+5. **`vuln.yml` 的两件**（00-M12 4.3、4.13）：定时运行的通知发给最后改 cron 的人，要确认那个人是负责人想要的；公开仓库 60 天没有活动时 GitHub 停用定时的工作流，要有人看着、停了就重新打开。
+6. **验收通过之后**：[总体设计](../../v0.1/v0.1-design.md) 12.6 里 M4–M12 的状态一起改为"已完成"（M4–M8 今天写"进行中（待负责人执行输入法清单）"，M9–M12 写"实现完成，待人工验收"）。
+
+## 处理进展
+
+- M12 收尾（2026-11-22）：建这一份（00-M12 4.13；收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。验收在 v0.1.0 发布之后由负责人做。
