@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M7/P5, M7/P6, M7 收尾
 to: M12
 created: 2026-10-09
@@ -35,3 +35,4 @@ M7/P5 的导出（[P5 文档](../../M7-assets-transfer/05-P5-export.md)）有几
 - M12/P3/S3（2026-11-17，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 5 条的三项做完：按人的队列上限：一个人排队与运行中的任务（各笔记本合计，含正在上传的导入）至多 5 个，再开答 409 `transfer.too_many_jobs`，不带 `Retry-After`；升级的回滚算进去、从不因此被拒；上限是常量 `domain.MaxPersonJobs`，不是配置项。名称不是 UTF-8 的条目：没有标志的先读 Info-ZIP 的 Unicode 路径（第一个 0x7075），包里不是 UTF-8 的名字都按 GBK 读得出时整包按 GBK 读，报告逐个列出（`name_unicode_path`、`name_gbk`），读不出的照旧以 `name_not_utf8` 跳过；CP437 没有做。River 取到之后、开始之前停掉的任务：transfer 的五种任务设 `DiscardRunning`，服务下次启动时记成失败 `interrupted`，名额空出（假定单实例）。Shift-JIS、Big5、EUC-KR 的误读与 GBK 的包里没有标志的 UTF-8 名字读成 GBK 是已知限制（P5/S3 的发布说明）；CP437、导入的编码选项与按人的上限做成配置项进 v0.2 的 `M12-transfer.md`（[P3 设计](../03-P3-server-correctness.md) 3.12–3.14、10.3 与第 9 节）。
 - M12/P4/S3（2026-11-21，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 2 条与第 5 条的几个 GB 的导入照 B8 判过：导入上限的包（5 万个条目、59,911 个节点、附件 4.1 GB、zip 468 MB）导入任务本机 224–241 秒，推断 7763 上约 9 分钟（× 4.6 约 18.5 分钟），导出 4.0 秒、zip 473 MB，都远在 6 小时之内；一次导入约 60 GB 的 WAL，服务的 `VmHWM` 至多 827 MiB，导入之后搜索的队列 212–224 秒清空。连接的占用照配置推算（导入、导出与搜索索引任务合起来至多 `max_conns` 的一半，默认 3 条）；与同时的编辑、上传争用磁盘时的 `storage_full` 不量（写满磁盘在本机有伤到别的东西的风险，行为由 M7 的测试守住）。第 6 条按凭证的并发上传不量（不判预算，00-M12 4.7.1 末段）。导入的节点上限由条件的 P4/S6 降到 45,000（[P4 设计](../04-P4-performance.md) 3.12、10.3）。
 - M12/P5/S3（2026-11-22，合并见 [00-M12](../00-M12-design.md) 第 12 节）：部署项写进 [deploy/README.md](../../../../deploy/README.md)：第 1 条结束的任务行不清理在"已知限制"；第 3 条 `exports/`、`imports/` 在"运行与监控"，几个 GB 的导出的下载经代理的超时与缓冲在"反向代理与 HTTPS"；第 4 条校时在"运行与监控"；第 5 条导入的代理上限与超时、正在上传的导入只在进程内计数在"反向代理与 HTTPS"与"要求"；第 6 条附件目录的卷与属主、备份 `blobs/`、监控磁盘（没有总量配额）、上传路由不缓冲、签名地址进访问日志、停机时 `/mcp` 在 20 秒处被切断在"配置""备份与恢复""运行与监控""反向代理与 HTTPS"（[P5 设计](../05-P5-deploy-release.md) 10.3）。
+- M12 收尾（2026-11-22）：做完，状态改为 `done`。T2、T3、T4 在 P3/S3（`transfer/domain/errors.go:38` 的 `MaxPersonJobs`、`archive/names.go` 的 0x7075 与 GBK、`transfer/adapter/river/jobs.go` 的五种 `DiscardRunning`），第 2、5 条几个 GB 的导入导出在 P4/S3 照 B8 过，部署项在 deploy/README；T1、T5、T8、CP437 与别的编码进 v0.2 的 [M12-transfer.md](../../../v0.2/handoffs/M12-transfer.md)。注明：**第 4 条轮询的改法**（任务列表只读第一页）与**第 6 条按凭证的并发上传的上限**进 v0.2 的 [M12-performance.md](../../../v0.2/handoffs/M12-performance.md) 第 9 项。核对在 M12 收尾审查 C（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。

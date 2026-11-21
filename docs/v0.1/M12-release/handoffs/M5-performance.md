@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M5 收尾
 to: M12
 created: 2026-10-04
@@ -26,3 +26,4 @@ M5 的几处部署与性能问题只做了推理或单实例实测，留给 M12 
 - M12/P3/S1（2026-11-16，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 6 条做完：每个凭证（登录会话、PAT）至多 4 条流，第 5 条以 `reset`（新的原因 `superseded`）顶掉它最老的一条、从不被拒；每个账户至多 64 条，净增的第 65 条答 429 `rate_limited`、`Retry-After: 30`；两个都是常量，顶掉的那一条立刻不算，两张表不随进程的寿命涨；hub 的单元测试（含互顶会停下）与整个程序的 `TestASignInsFifthStreamSupersedesItsOldest`；README 与 `events.yaml` 写明（[P3 设计](../03-P3-server-correctness.md) 3.9、10.1）。
 - M12/P4/S3（2026-11-21，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 3 条推算（不写驱动）：N 个标签页各读一次树加一次阅读视图；10 万页的笔记本一次树约 27 MiB 的 JSON，8 个同时读 p99 约 0.43 秒、约 216 MiB 的出口、服务约 2.1 核、堆约 1.4 GiB，16 个推算约 2.9 GiB；普通 5 MiB 的阅读视图 p50 约 0.23 秒（[P4 设计](../04-P4-performance.md) 10.3）。很多标签页同时刷新大笔记本是内存的一个峰值来源，进部署文档（P5/S3）；分层加载进 v0.2。
 - M12/P5/S3（2026-11-22，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 1 条单实例与原因写进 [deploy/README.md](../../../../deploy/README.md) 的"要求"（附件在本地、限流与名额在进程内、启动时的收拾）；第 2 条多实例之间的时钟因此不适用，"运行与监控"另写校时；第 5 条大版本升级时复核 `NOTIFY` 写进"升级与回退"，总体设计第 14 节的那一行指到这里（[P5 设计](../05-P5-deploy-release.md) 10.3）。
+- M12 收尾（2026-11-22）：做完，状态改为 `done`。六条都落了：第 1、2、5 条在 deploy/README，第 3 条推算（事件流同时重连没有量，进 v0.2 的 [M12-performance.md](../../../v0.2/handoffs/M12-performance.md) 第 8 项），第 4 条并入 M4-performance 第 1 条，第 6 条在 P3/S1（`events/app/hub.go:28`、`:34`）；多实例进 v0.2 的 [M12-release.md](../../../v0.2/handoffs/M12-release.md)。核对在 M12 收尾审查 C（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。

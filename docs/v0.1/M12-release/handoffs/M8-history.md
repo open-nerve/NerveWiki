@@ -1,5 +1,5 @@
 ```yaml
-status: open
+status: done
 from: M8 收尾
 to: M12
 created: 2026-10-16
@@ -28,3 +28,4 @@ M8 的设计里有几项明确不在 v0.1 做，或先用简单的写法、把�
 - M12/P2/S2（2026-11-18，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 4 条的界面一句做完：回收站的标题之下说过了可以恢复的期限之后由系统永久删除（`trash.purge`，空与不空都显示），版本列表之下说版本不能单独删除、系统也不会（`version.kept`）；原文见 [P2 设计](../02-P2-web-polish.md) 4.2 的 H4，决定 391。部署文档与发布说明写明与变通在 P5/S3，功能进 v0.2 的 `M12-history.md`。
 - M12/P4/S3（2026-11-21，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 2 条推算：`editors` 前后 `VACUUM FULL page_revisions`，以相邻两档的差分（两次之间另有新建的空页）量得每个编辑会话的版本约 12.5 KB（10 KiB 正文），每天的增长 ≈ 编辑的人数 × 每人每天的编辑会话 × 它：10 人 × 20 次约 0.9 GB/年，50 人 × 30 次约 6.9 GB/年，200 人 × 40 次约 37 GB/年；导入另算，一页一个版本约 5.4 KB（[P4 设计](../04-P4-performance.md) 10.3）。容量写进部署文档（P5/S3），保留策略进 v0.2 的 `M12-history.md`。
 - M12/P5/S3（2026-11-22，合并见 [00-M12](../00-M12-design.md) 第 12 节）：第 2 条版本的增长（每个编辑会话约 12.5 KB，三组代入的数，推算）写进 [deploy/README.md](../../../../deploy/README.md) 的"容量"；第 4 条没有永久删除与变通（先把要留的正文写进新页、删原来的页、照需要调短 `jobs.purge_retention`）写进"已知限制"，`CHANGELOG.md` 的已知限制也写了（[P5 设计](../05-P5-deploy-release.md) 10.3）。
+- M12 收尾（2026-11-22）：做完，状态改为 `done`。第 5 条（H5）、第 6 条（H6）在 P3/S1、P3/S2，第 2 条的增长推算与第 4 条的界面一句、变通在 P2/S2、P4/S3、P5/S3；H1、H2 的保留策略、H3、H4 的功能与"同一形状在后台恢复、后台撤销里"进 v0.2 的 [M12-history.md](../../../v0.2/handoffs/M12-history.md)。注明：**第 5 条**写的"两条语句"今天是五条读，含 `alivePaths` 的都在同一个只读的 REPEATABLE READ 快照里；**第 6 条**正文点名的 `TestRevertingARollbackConflictsUnderANewFolderHoldingBaselineAndNewPages` 随 P3/S2 改名为 `TestRevertingARollbackPutsBackWhatTheAgentLeft`（`bootstrap/upgrade_rollback_revert_test.go`）。核对在 M12 收尾审查 C（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。
