@@ -494,7 +494,7 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeCheckTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
-test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）
+test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫、升级闸门的读的计划与树写的守卫（CI 第三份；需要 Docker）
 	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
@@ -532,6 +532,10 @@ test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升
 	@# M12/P4/S1：B1 的合成搜索语料，同一个种子写出同样的三个 TSV（含 308eafc6 的笔记本列）、查询的词确切地植入、1,000 页经 loadCorpus 载入、
 	@# buildSearch 建完、中国 有结果、键与删除的不变式；三个都在 !race 的文件里，不进竞态的八份；带 -v 打出各自的用时（P4 设计 3.2、2.1 第 8 条）
 	cd server && go test -count=1 -v -run '^TestPerfCorpus(IsItsSeed|PlantsTheQueries|LoadsIntoTheBenchmark)$$' ./internal/bootstrap
+	@# M12/P4/S7：约 1 万个节点、没有链接指向的最上层经 REST 无统计移动一次，有统计改名、移动各三次取最快，删除一次；按语句名数读链接的调用
+	@# （设置与宽读各 1 次，窄读与通用的宽读 0 次）、移动与改名不写页，各在本机两轮均值的 3.6 倍与加 2 秒的较大者之内（P4/S7 设计 4.4，决定 660）；
+	@# 本机这一行 14.6、10.8 秒（整行的墙钟，第一轮含编译）。放在带竞态的 server/tools 一行之前，它仍是末行（ci.yml 的缓存一段的注释）
+	cd server && go test -count=1 -v -run '^TestTreeWritesOfALargeTopReadTheLinksOnce$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint
