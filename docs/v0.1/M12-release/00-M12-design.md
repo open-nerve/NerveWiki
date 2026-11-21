@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M12 发布（`M12-release`） |
 | 日期 | 2026-11-14（初稿）；2026-11-15（第一次、第二次修订；定稿） |
-| 状态 | 实现完成，待发布与人工验收（P1 完成于 `86565dd6`，P2 于 `f1317bc3`，P3 于 `41d0cfda`，P4 于 `11d1674c`，P5 于 `5146e8be`，收尾合并（待填：收尾的合并号）；下一步发布：推 tag 之前问负责人（4.11 第 2 步）；人工验收在发布之后，通过之后改为已完成（4.12，[v0.1.1 的移交](../../v0.1.1/handoffs/M12-after-release.md)）；[审查记录](reviews/M12-design-review.md)、[收尾记录](reviews/M12-closeout-review.md)；总体设计照第 7 节"总体设计的修订"改过） |
+| 状态 | 实现完成，待发布与人工验收（P1 完成于 `86565dd6`，P2 于 `f1317bc3`，P3 于 `41d0cfda`，P4 于 `11d1674c`，P5 于 `5146e8be`，收尾合并于 `ceea5249`；下一步发布：推 tag 之前问负责人（4.11 第 2 步）；人工验收在发布之后，通过之后改为已完成（4.12，[v0.1.1 的移交](../../v0.1.1/handoffs/M12-after-release.md)）；[审查记录](reviews/M12-design-review.md)、[收尾记录](reviews/M12-closeout-review.md)；总体设计照第 7 节"总体设计的修订"改过） |
 | 依赖 | M0–M11 全部。直接改动或量的：M0/P6 的镜像与 image-smoke；M1 的续期（e2e 的 `goto`）；M4–M11 的成本守卫与夹具；M5 的事件流（每个凭证与每个账户的流数）；M6 的解析与标签（标题 id、`#//`）；M7 的导入与任务（名称的编码、按人的队列上限、启动时的收拾）；M8 的撤销计划（第 302 条）与日志的读；M9 的 `log`、后台撤销的分段与 MCP 超时的文字；M10 的 `AGENTS` 模板；M11 的回滚 |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 11、12.2、12.5、12.6、13、14、15 节；[文档约定](../../README.md)；[推进方式](../claude_to_codex/02-workflow.md) |
 | 依据 | 负责人 2026-11-13 批准开工与四个回答、2026-11-14 的两个回答（第 11 节）；设计审查 A、B、C 与两轮修订核对（[审查记录](reviews/M12-design-review.md)）；三份只读调查 I1（发布、部署与依赖）、I2（性能与内存）、I3（打磨与历史的分级），基点 `5e8af5b5`；六份 `open` 的移交 |
@@ -2122,7 +2122,7 @@ P5/S3（部署文档与发布说明）的实施、审查与两轮修复里由主
 | P3 服务端的正确性与历史（S1–S3） | [03-P3](03-P3-server-correctness.md) | 完成（2026-11-17） | [设计](reviews/P3-design-review.md)、[S1](reviews/P3-S1-small-correctness-review.md)、[S2](reviews/P3-S2-nested-trash-roots-review.md)、[S3](reviews/P3-S3-transfer-jobs-review.md)、[等锁帮手的旁支](reviews/P3-lockwait-by-statement-review.md) | S1 `f3e5a6de`、S2 `46b6940f`、S3 `7696d8df`、等锁帮手的旁支 `5d782ff8` |
 | P4 性能与内存实测（S1–S3，条件的 S4 起） | [04-P4](04-P4-performance.md)、[S4](04-P4-S4-page-tree.md)、[S5](04-P4-S5-editor-parse.md)、[S7](04-P4-S7-tree-writes.md) | 完成（2026-11-21） | [设计](reviews/P4-design-review.md)、[S1](reviews/P4-S1-perf-tools-review.md)、[S2](reviews/P4-S2-browser-measures-review.md)、[S4 设计](reviews/P4-S4-design-review.md)、[S4](reviews/P4-S4-page-tree-review.md)、[S5 设计](reviews/P4-S5-design-review.md)、[S5](reviews/P4-S5-editor-parse-review.md)、[L1 的旁支](reviews/M12-e2e-l1-new-tab-review.md)、[提交期限的旁支](reviews/M12-submit-deadline-log-review.md)、[导入守卫的旁支](reviews/M12-ingest-request-deadline-review.md)、[S3](reviews/P4-S3-server-measures-review.md)、[S7 设计](reviews/P4-S7-design-review.md)、[S6](reviews/P4-S6-max-job-items-review.md)、[S7](reviews/P4-S7-tree-writes-review.md) | S1 `f08dca69`、S2 `54a89127`、S4 `35501dec`、S5 `5e58e844`、L1 的旁支 `7ce00077`、提交期限的旁支 `4e309997`、导入守卫的旁支 `e635b957`、S3 `a8b51831`、S6 `9504e2b7`、S7 `75d31f1f` |
 | P5 部署文档与发布流水线（S1–S3） | [05-P5](05-P5-deploy-release.md) | 完成（2026-11-22） | [设计](reviews/P5-design-review.md)、[S1](reviews/P5-S1-version-pipeline-review.md)、[S2](reviews/P5-S2-publish-release-review.md)、[S3](reviews/P5-S3-deploy-docs-review.md)、[装浏览器的旁支](reviews/M12-e2e-browsers-cache-review.md) | S1 `3ef1501f`、S2 `24e7b316`、S3 `d57bf31a`、装浏览器的旁支 `105ff7c8` |
-| 收尾与发布 | — | 收尾已合并；发布未开始（推 tag 之前问负责人） | [收尾](reviews/M12-closeout-review.md) | 收尾（待填：收尾的合并号） |
+| 收尾与发布 | — | 收尾已合并；发布未开始（推 tag 之前问负责人） | [收尾](reviews/M12-closeout-review.md) | 收尾 `ceea5249` |
 
 ## 13. 变更记录
 
