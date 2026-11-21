@@ -7,9 +7,10 @@ import (
 )
 
 // The test container, the development database, the end-to-end stories, the
-// image smoke test and the deployment sample run the same image with the same
-// cluster settings, and deploy/README.md names it (v0.1 design 7.1): trigram
-// splitting depends on the image's C library.
+// image smoke test, the deployment sample and the measuring stack of
+// server/tools/perf run the same image with the same cluster settings, and
+// deploy/README.md names it (v0.1 design 7.1): trigram splitting depends on
+// the image's C library, and the measurements are of the release's database.
 func TestContainerMatchesTheOtherDatabases(t *testing.T) {
 	tests := []struct {
 		file string
@@ -34,6 +35,10 @@ func TestContainerMatchesTheOtherDatabases(t *testing.T) {
 		{
 			file: "deploy/README.md",
 			want: []string{"`" + image + "`"},
+		},
+		{
+			file: "server/tools/perf/stack.sh",
+			want: []string{"\nimage=" + image + "\n", `POSTGRES_INITDB_ARGS="` + initdbArgs + `"`},
 		},
 	}
 	for _, tt := range tests {
