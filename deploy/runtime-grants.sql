@@ -1,7 +1,7 @@
 -- What the role nervewiki serves with needs when another role, the owner of the tables, runs the migrations
--- (README, "部署"). It grants to the group role nervewiki_runtime; the login role of nervewiki serve is a member of
--- it. Run it as the owner of the tables after every `nervewiki migrate up`: it names each table and sequence, and
--- a new migration may add one. Running it again changes nothing.
+-- (deploy/README.md, "不用 compose"). It grants to the group role nervewiki_runtime; the login role of nervewiki
+-- serve is a member of it. Run it as the owner of the tables after every `nervewiki migrate up`: it names each
+-- table and sequence, and a new migration may add one. Running it again changes nothing.
 --
 -- Tables get reads and writes (DML) by table: no TRUNCATE, REFERENCES, TRIGGER or DDL. Sequences get USAGE: River's ids
 -- and the search queue's versions. Functions and types get nothing here: PUBLIC may run every function and use every

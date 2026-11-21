@@ -28,7 +28,7 @@ import (
 )
 
 // The role nervewiki serves with when another role owns the tables and runs
-// the migrations (M1/P4 design 3.9, README "部署"): a login role in the group
+// the migrations (M1/P4 design 3.9, deploy/README.md): a login role in the group
 // role nervewiki_runtime, which deploy/runtime-grants.sql grants to. These
 // tests run nervewiki on such a role, and hold the file to every relation
 // and function of the schema.
@@ -461,7 +461,7 @@ func TestTheGrantsFileCoversEveryRelationAndFunction(t *testing.T) {
 
 // A role without River's grants cannot start the jobs: River's start reads
 // river_queue, fails, and serve stops with that error rather than serve
-// without its jobs (M1/P4 design 3.4); HTTP stops with it. README "部署"
+// without its jobs (M1/P4 design 3.4); HTTP stops with it. deploy/README.md
 // says which missing grant does this and which only log.
 func TestServeStopsWhenTheJobsCannotStart(t *testing.T) {
 	roles := newSplitRoles(t)
