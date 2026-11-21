@@ -192,7 +192,7 @@ docker compose exec -T db psql -U postgres -d nervewiki -Atc 'SELECT DISTINCT ho
 ### 配置
 
 - 镜像默认 `NWIKI_ENV=prod`：不自动迁移，注册关闭，签名私钥必须给。配置用环境变量（`NWIKI_<节>__<键>`，例如 `NWIKI_DATABASE__MAX_CONNS=20`），也可以挂载一个目录并设 `NWIKI_CONFIG_DIR`；全部配置项见 [`server/configs/config.yaml`](../server/configs/config.yaml)，合并规则见根 README 的"配置"。
-- 必须的：数据库地址 `NWIKI_DATABASE__URL`、签名私钥 `NWIKI_AUTH__JWT__PRIVATE_KEY_FILE`（uid 65532 要能读）。在反向代理之后要设代理的地址 `NWIKI_SERVER__TRUSTED_PROXIES`（逗号分隔的 CIDR，"为什么设 `trusted_proxies`"）。对外的地址 `NWIKI_SERVER__PUBLIC_URL`（只到源）：MCP 的 `read` 给附件的下载地址时以它起头，不设时只说没有地址。
+- 必须的：数据库地址 `NWIKI_DATABASE__URL`、签名私钥 `NWIKI_AUTH__JWT__PRIVATE_KEY_FILE`（uid 65532 要能读）。在反向代理之后要设代理的地址 `NWIKI_SERVER__TRUSTED_PROXIES`（逗号分隔的 CIDR，"为什么设 `trusted_proxies`"）。对外的地址 `NWIKI_SERVER__PUBLIC_URL`（只到源）：MCP 的 `read` 给附件的下载地址时以它起头；不设时没有下载地址：图片照样直接给出，别的附件只给元数据。
 - **附件目录**：附件与导入导出的文件在 `/data`（`storage.dir`，镜像以 `NWIKI_STORAGE__DIR=/data` 设定），它是镜像声明的卷。
   - 要挂载宿主机目录（compose 样例的 `./data`，或 `-v /srv/nervewiki/data:/data`）或具名卷。不挂载时 Docker 建一个匿名卷，删掉容器之后就找不回来了。
   - 进程以 uid 65532 运行：宿主机目录的属主要是它（Kubernetes 里设 `securityContext.fsGroup: 65532`）。目录或其中的区（`blobs/` 等）不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
@@ -361,11 +361,11 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 备份没恢复过就不算有。上线之前、之后每隔一段时间，恢复一次最近的备份。
 
-**在另一台机器上**：把正式目录里的 `compose.yaml`、`compose-initdb.sh`、`.env`、`secrets/jwt.pem` 与那次备份的两个文件拷到那台机器的一个目录里（文件的权限照"安装"），在那里照"compose 的恢复"做；那里还没有 `data/`，跳过 `mv data data.old`。
+**在另一台机器上**：把正式目录里的 `compose.yaml`、`compose-initdb.sh`、`.env`、`secrets/jwt.pem` 拷到那台机器的一个目录里（文件的权限照"安装"），那次备份的两个文件放进它的 `backups/`（`chmod 700`），在那里照"compose 的恢复"做；那里还没有 `data/`，跳过 `mv data data.old`。
 
 **在同一台机器上**：正式的那一套照常跑着，演练用另一个目录、另一个项目名、另一个端口与另一个子网，下面的命令只碰演练的容器、网络与卷。开一个新的 shell，整段在里面做：
 
-1. 放文件与备份。`p` 是正式的目录，`d` 是要恢复的那次备份：
+1. 放文件与备份。`p` 是正式的目录，`d` 是要恢复的那次备份。上次演练留下了 `~/nervewiki-drill` 时，先照第 4 步删掉（不然 `mkdir` 失败、`cd` 不做，之后的命令都在别的目录里）：
 
    ```bash
    p=/srv/nervewiki
@@ -400,7 +400,7 @@ curl -fsS http://127.0.0.1:8080/readyz
    ```bash
    docker run --rm -v "$PWD":/w --entrypoint sh postgres:18.7-trixie -c \
      "mkdir /w/data && tar -C /w/data -xzf /w/backups/blobs-$d.tar.gz && chown -R 65532:65532 /w/data"
-   docker run --rm -v "$PWD":/w --entrypoint sh postgres:18.7-trixie -c 'rm -rf /w/data'
+   docker run --rm -v ~/nervewiki-drill:/w --entrypoint sh postgres:18.7-trixie -c 'rm -rf /w/data'
    ```
 
 3. 核对：在浏览器里打开 `http://127.0.0.1:18080`（远程的机器经 `ssh -L 18080:127.0.0.1:18080 <机器>`），登录，打开几页、几个附件，与正式的比；`instance` 的版本号是演练的 `.env` 里的那个。
@@ -409,7 +409,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
    ```bash
    docker compose down -v                     # 只删演练的容器、网络与卷
-   sudo rm -rf data                           # 属主 65532；没有 sudo 时见第 2 步之后
+   sudo rm -rf ~/nervewiki-drill/data         # 属主 65532；没有 sudo 时见第 2 步之后
    cd && rm -rf ~/nervewiki-drill
    unset COMPOSE_PROJECT_NAME
    ```
@@ -438,7 +438,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 curl -fsS http://127.0.0.1:8080/api/v0/instance       # 版本号是新的
 ```
 
-- **先停旧的服务再迁移**：迁移可能以 `ACCESS EXCLUSIVE` 重写整张表，旧的服务还在跑时每次读写都等它、大的实例上会过请求的期限；也不要让旧、新两个版本同时写。不用 compose 时 `docker stop -t 50`（"6. 运行与监控"的停机）。
+- **先停旧的服务再迁移**：迁移可能以 `ACCESS EXCLUSIVE` 重写整张表，旧的服务还在跑时每次读写都等它、大的实例上会过请求的期限；也不要让旧、新两个版本同时写。不用 compose 时 `docker stop -t 60`（"6. 运行与监控"的停机）。
 - `readyz` 同"安装"第 8 步：服务起来要几秒，不是 200 就过几秒再看。
 - 取下一个版本的 `compose.yaml` 与 `compose-initdb.sh` 时，比一下与你改过的有什么不同。
 - 两个角色时，`migrate up` 之后、启动服务之前以表的所有者执行一次 `runtime-grants.sql`。
@@ -461,8 +461,8 @@ curl -fsS http://127.0.0.1:8080/api/v0/instance       # 版本号是新的
 - **磁盘与 507**：剩余空间低于 `storage.min_free_bytes`（默认 1 GiB）时不再接受写入，答 507；磁盘或配额已满时同样照常启动，写入答 507，启动时记 WARN `storage is full`。**没有按工作区或笔记本的总量配额**：由管理员监控附件目录与数据库所在的磁盘（数据库的空间另见"7. 容量"）。
 - **导入导出的文件**：`/data/exports/`、`/data/imports/` 是过程中的文件：导入的 zip 做完就删；成功的导出保留 `transfer.export_ttl`（默认 24 小时），每人每本笔记本只留最新的一份，到期由后台清掉。
 - **后台任务**（River，随 `serve` 运行）：每小时的过期会话清理与软删除清理，每 10 分钟的过期编辑会话清理，每天的附件目录清扫，导入导出的收拾与到期，每 5 秒的搜索的建索引。导出、导入与建索引的任务各占一个连接，合起来至多 `database.max_conns` 的一半（默认的配置下 `max_conns` 至少 6）。
-- **停机**：发 SIGTERM，服务停止接收新连接，关闭事件流，等正在处理的请求（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），等正在执行的后台任务（最多 `jobs.shutdown_timeout` 10 秒，之后取消、再宽限 1 秒），停下 lint 的工作者（最多 `database.commit_timeout` 加 5 秒，默认 7 秒；一般是零，只在工作者卡在提交里时才等），关闭连接池（最多 5 秒），一共至多 45 秒。宽限期要比它长：`docker stop` 默认只等 10 秒，用 `docker stop -t 50`；compose 样例写了 `stop_grace_period: 50s`（`make deploy-check` 核对）。
-  - `server.shutdown_timeout` 20 秒短于一次 `/mcp` 调用（读请求体至多 30 秒，加工作至多 15 秒，至多约 45 秒）：停机开始时还在传大请求体的调用到 20 秒时被切断、整个回滚，什么也不留一半。要它们做完，把 `server.shutdown_timeout` 与宽限期一起调长（例如 50 秒与 80 秒）。
+- **停机**：发 SIGTERM，服务停止接收新连接，关闭事件流，等正在处理的请求（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），等正在执行的后台任务（最多 `jobs.shutdown_timeout` 10 秒，之后取消、再宽限 1 秒），停下 lint 的工作者（最多 `database.commit_timeout` 加 5 秒，默认 7 秒），关闭之前再等它一次（同样至多 7 秒；两次一般都是零，只在工作者卡在提交里时才等），关闭连接池（最多 5 秒），一共至多 52 秒。宽限期要比它长：`docker stop` 默认只等 10 秒，用 `docker stop -t 60`；compose 样例写了 `stop_grace_period: 60s`（`make deploy-check` 核对）。
+  - `server.shutdown_timeout` 20 秒短于一次 `/mcp` 调用（读请求体至多 30 秒，加工作至多 15 秒，至多约 45 秒）：停机开始时还在传大请求体的调用到 20 秒时被切断、整个回滚，什么也不留一半。要它们做完，把 `server.shutdown_timeout` 与宽限期一起调长（例如 50 秒与 90 秒：50 + 2 + 11 + 7 + 7 + 5 = 82 秒）。
   - 停机打断的导入、导出、后台的恢复与撤销记成失败 `interrupted`，已写的部分留着，报告写明，重新开始即可；被不干净地停下的建索引任务在下一次启动时丢掉（WARN `jobs left running by a stopped server discarded`），之后重新排队。
 - **`GOMEMLIMIT`** 与容器的内存见"1. 要求"。
 - **校时**：服务与客户端的时钟都要对。下载地址的到期按客户端的时钟比较，客户端的时钟偏慢时，链接可能指向刚到期的地址、下载失败；服务的时钟决定会话与令牌的到期。用 NTP 或 systemd-timesyncd。
@@ -501,6 +501,6 @@ curl -fsS http://127.0.0.1:8080/api/v0/instance       # 版本号是新的
   - 约 20 万个节点以上的最上层，读到几十万个元素时，PostgreSQL 的并行计划可能在 Docker 默认 64 MB 的 `/dev/shm` 上报错（这样的形状本来就过期限）；要调就给数据库的容器设 `shm_size`（compose 样例没有设）。
 - **很长的历史**：一页 100 万行历史（版本与条目）的删除推断最低配置上约 19–20 秒，过期限（约 75–80 万行起）；后台恢复这样一页约 27–29 秒、其间挡着这本笔记本的写。
 - **很大的笔记本升级为 LLM Wiki**：30 万页的发起推断约 23–25 秒、批准约 19–26 秒，过期限；约 14–16 万页起过它的预算，约 18–20 万页起过 15 秒。
-- **很大的笔记本的页面树**：5 万、10 万页的树一次整个读，很多标签页同时开着时 CPU、内存与出口随标签页数线性涨（"7. 容量"）；5 万页以上的树在浏览器里一次加载，打开很慢（P4/S4 改之前 5 万页首屏约 19 秒、10 万页的标签页崩溃；改了之后没有重量，推断仍慢）。分层加载在 v0.2。
+- **很大的笔记本的页面树**：5 万、10 万页的树一次整个读，很多标签页同时开着时 CPU、内存与出口随标签页数线性涨（"7. 容量"）；5 万页以上的树在浏览器里一次加载，打开可能仍慢（推断；P4/S4 改之前 5 万页首屏约 19 秒、10 万页的标签页崩溃，改了之后没有重量）。分层加载在 v0.2。
 
 网页、导入等别的已知限制见 [CHANGELOG.md](../CHANGELOG.md)。
