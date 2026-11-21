@@ -123,7 +123,7 @@
   组合根的八份作业时间至多 6:53（`bootstrap-4`，7763）。CPU 由 `m12/p4s7/impl/tools/ci-cpus.sh` 从各作业日志的 `Runner CPU` 一步读出（`~/.cache/m12-p4-s7/logs/ci-cpus-*.tsv`）。
 
 - **4.5 要的 7763 上的作业时间**：`guards-core` 落在 7763 上的一次 19:27（Test 19:18）= 1,167 秒，设计 4.5 的表里 7763 上 `main` 是 1,187–1,250 秒，相当，40 分钟的时限是它的 2.06 倍；`race` 15:05（Test 14:53）= 905 秒，对 901–907 秒，`L/adapter/postgres` 包 110.9 秒对设计的 109 秒；`costs-2` 27:21（Test 27:12 = 1,632 秒），推断是 1,536 + 82.3 × 2.4 = 1,734 秒，60 分钟的时限是它的 2.2 倍，两条新测试一行 113.5、47.5 秒。`costs-3` 还没有落在 7763 上：照决定 690，合并之后两次 `main` 里若 `costs-3` 落在 7763 上、过了 1,200 秒，另起提交把时限提到 45 分钟。`costs-3` 那次 19:38 在一台慢的 9V74 上（逐行对 `main` 的 9V74 慢 20–35%，审查 C）。
-- **本提交**只改文档：之前跑 `python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/main` 与 `git diff --check`（负责人第 12 问第 1 点）。分支 CI：`（待填：本提交的分支 CI）`。
+- **本提交**只改文档：之前跑 `python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/main` 与 `git diff --check`（负责人第 12 问第 1 点）。分支 CI：本文档提交 `da003f2e` 的 run 44903038611 第一次 attempt 19 项全绿，Release 44903038616 绿。S7 合并为 `75d31f1f`，之后第一次 `main` 的 run 44905222643 第一次 attempt 19 项全绿（`costs-3` 13:26、`guards-core` 19:01，都在时限的一半之内），Release 44905222689、Vulnerabilities 44905222745 绿。
 
 ## 秘密
 
