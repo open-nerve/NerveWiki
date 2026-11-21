@@ -110,7 +110,7 @@
   | 44854195196 | `b447dd28` | 19 项全绿 | `guards-core` **7763**（19:01）：558 ms、1.190 s，**6.933 s**，1.344 s；`guards-sources` 9V74：1.74–1.93 s | 6975P-C 11 个，9V74 `bootstrap-4`、`costs-3`，9V45 `bootstrap-5` |
 
   60,000 时 7763 上的最大的一步是 10.237 s（`main` 的 `21f9578d`，job 136610343148）；`guards-core` 落在 7763 上的 18–19 分钟与那次（19:12）同一档，不是改动带来的。`costs-3` 里 `server/tools` 那一行 79.1–81.7 秒（9V74 的 `70ac0074` 93.3），由 `perf/drive` 决定。
-- **本提交**只改文档：之前跑 `python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/main` 与 `git diff --check`（负责人第 12 问第 1 点）。分支 CI：`（待填：本提交的分支 CI）`。
+- **本提交**只改文档：之前跑 `python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/main` 与 `git diff --check`（负责人第 12 问第 1 点）。分支 CI：本文档提交 `0ae0a6a1` 的 run 44858379817 第一次 attempt 19 项全绿，Release 44858379823 绿。S6 合并为 `9504e2b7`，之后第一次 `main` 的 run 44860539898 第一次 attempt 19 项全绿，Release 44860539789、Vulnerabilities 44860539853 绿。。
 
 ## 秘密
 
