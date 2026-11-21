@@ -58,9 +58,9 @@ services:
     ports:
       # 只听本机：前面是反向代理。make deploy-check 核对
       - "127.0.0.1:${NERVEWIKI_PORT:-8080}:8080"
-    # 停机的各段之和（server.shutdown_timeout 20 秒 + 通知 2 秒 + 任务 10+1 秒 + lint 的收尾至多 7 秒 + 连接池 5 秒 = 45 秒；
-    # lint 那 7 秒一般是零，只在它的工作者卡在提交里时才等），deploy/README.md 的"运行与监控"。make deploy-check 核对
-    stop_grace_period: 50s
+    # 停机的各段之和（server.shutdown_timeout 20 秒 + 通知 2 秒 + 任务 10+1 秒 + lint 的收尾两次、各至多 7 秒 + 连接池 5 秒
+    # = 52 秒；lint 的两次一般都是零，只在它的工作者卡在提交里时才等），deploy/README.md 的"运行与监控"。make deploy-check 核对
+    stop_grace_period: 60s
     depends_on:
       db:
         condition: service_healthy

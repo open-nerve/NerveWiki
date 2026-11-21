@@ -107,8 +107,8 @@ events:
 
 jobs:
   # 停机时给正在执行的后台任务留的时间，到期后取消它们。停机的宽限期要长于 server.shutdown_timeout 加上它，
-  # 再加通知的 2 秒、任务的宽限 1 秒、lint 的收尾（至多 database.commit_timeout 加 5 秒，一般是零，只在工作者卡在
-  # 提交里时才等）与连接池的 5 秒（默认至多 45 秒）：docker stop -t 50
+  # 再加通知的 2 秒、任务的宽限 1 秒、lint 的收尾两次（停服务时与关闭之前各一次，各至多 database.commit_timeout 加
+  # 5 秒，一般都是零，只在工作者卡在提交里时才等）与连接池的 5 秒（默认至多 52 秒）：docker stop -t 60
   shutdown_timeout: 10s
   # 物理删除软删除的行（工作区、成员、邀请等）的间隔，至少 1 秒
   purge_interval: 1h
