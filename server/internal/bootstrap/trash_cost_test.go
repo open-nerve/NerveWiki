@@ -19,6 +19,7 @@ import (
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/access"
@@ -112,6 +113,14 @@ func newTrashBenchWith(tb testing.TB, set func(d *page.Deps)) trashBench {
 // module's dependencies as set leaves those the composition root gives it.
 func newTrashBenchOf(tb testing.TB, configure func(c *config.Config), set func(d *page.Deps)) trashBench {
 	tb.Helper()
+	return newTrashBenchTraced(tb, nil, configure, set)
+}
+
+// newTrashBenchTraced is newTrashBenchOf whose pool's connections trace
+// their statements to tracer, none for nil, as wire's (wire.go): the tree
+// writes' guard counts the reads of the links (M12/P4/S7 design 4.4).
+func newTrashBenchTraced(tb testing.TB, tracer pgx.QueryTracer, configure func(c *config.Config), set func(d *page.Deps)) trashBench {
+	tb.Helper()
 	ctx := context.Background()
 	url := pgtest.NewDatabase(tb)
 	cfg := testConfig(tb, url, false)
@@ -122,6 +131,14 @@ func newTrashBenchOf(tb testing.TB, configure func(c *config.Config), set func(d
 	pool, err := postgres.NewPool(ctx, cfg.Database)
 	if err != nil {
 		tb.Fatal(err)
+	}
+	if tracer != nil {
+		observed := pool.Config()
+		pool.Close()
+		observed.ConnConfig.Tracer = tracer
+		if pool, err = pgxpool.NewWithConfig(ctx, observed); err != nil {
+			tb.Fatal(err)
+		}
 	}
 	tb.Cleanup(pool.Close)
 	b := trashBench{pool: pool, alice: uuid.NewV7(), nb: uuid.NewV7()}

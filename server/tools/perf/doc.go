@@ -65,9 +65,10 @@
 //	    3.7's M4-performance 1 and 6, and batch G's bytes a version.
 //	perf tabs -prepared … -records … -k 4 -for 60s -notebook tree
 //	    3.7's reread of a tree of 100,000 pages.
-//	perf ops -prepared … -records … -notebook vault -container $CONTAINER
+//	perf ops -prepared … -records … -notebook vault -container $CONTAINER [-quiet notebook]
 //	    B4: the vault's deletion, its move to another page and its renames
-//	    to a new name, each a change, the background quiet before each;
+//	    to a new name, each a change, the background quiet before each
+//	    (-quiet notebook: the notebook's alone, under the editors' load);
 //	    then, not timed, the vault back at the root and its names back.
 //	perf transfer -prepared … -records … -notebook vault -container $CONTAINER -storage $STORAGE -import <zip> | -export <zip>
 //	    B8: the import and the export, their jobs and their footprint.

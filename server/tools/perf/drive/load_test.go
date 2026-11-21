@@ -609,6 +609,34 @@ func TestOpsWaitForTheRestoreAndTheQuiet(t *testing.T) {
 	}
 }
 
+// B4's operations wait for the whole background's quiet by default, for
+// the notebook's alone with QuietNotebook, as -quiet notebook asks under
+// the editors' load (M12/P4/S7 design 6.3 item 5).
+func TestOpsWaitForTheQuietTheyAreToldOf(t *testing.T) {
+	for _, notebook := range []bool{false, true} {
+		var reads []string
+		o := Ops{Notebook: "nb-v", Idle: time.Millisecond, Poll: time.Millisecond, QuietNotebook: notebook,
+			PSQL: client.PSQL{Container: "c0ffee", Run: func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				reads = append(reads, args[len(args)-1])
+				if len(reads) < 2 {
+					return []byte("1\n"), nil
+				}
+				return []byte("0\n"), nil
+			}}}
+		if err := o.quiet(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		want := "SELECT (SELECT count(*) FROM page_search_queue) + (SELECT count(*) FROM river_job WHERE state IN ('running', 'available'))"
+		if notebook {
+			want = "SELECT (SELECT count(*) FROM page_search_queue WHERE notebook_id = 'nb-v') + " +
+				"(SELECT count(*) FROM river_job WHERE state IN ('running', 'available') AND kind <> 'page.index_search')"
+		}
+		if len(reads) != 2 || reads[0] != want || reads[1] != want {
+			t.Errorf("QuietNotebook %t read %q; want %q until quiet", notebook, reads, want)
+		}
+	}
+}
+
 // B8's import uploads the zip under the root page it makes, waits for the
 // job and the quiet; the export waits for its job and downloads; each
 // writes the WAL and the sizes around it (design 3.4.5).

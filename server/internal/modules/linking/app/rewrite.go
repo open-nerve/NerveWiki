@@ -95,6 +95,10 @@ func (r Rewrite) Participate(ctx context.Context, m Moved, u Appender) error {
 	if len(all)+len(met.pages) == 0 {
 		return nil
 	}
+	// It writes pages: the observer reads its reach as it is then, and the
+	// links read are not kept to the unit's end (M12/P4/S7 design 3.2; a
+	// write added before the observer looks at unit_reach.go's conditions).
+	dropReach(m)
 	if err := r.refuseLocked(ctx, all, m); err != nil {
 		return err
 	}
@@ -250,6 +254,9 @@ func (r Rewrite) readTree(ctx context.Context, m Moved, f *followedPages, gone m
 // batch deleted (gone), and of those its content ops decided (m.Written),
 // are not followed from the index: the first are gone, the second followed
 // from their last content ops, whatever their bytes then (Codex review R1).
+// A single rename or move of a tree unit leaves the links it reads, and
+// where they resolve after it, in the unit's memo for the index, which
+// reads them then once (keepReach; M12/P4/S7 design 3.2).
 func (r Rewrite) followed(ctx context.Context, m Moved, gone map[uuid.UUID]bool) (followedPages, error) {
 	relocates, recased := domain.Relocation(m.Changes)
 	if !relocates && len(recased) == 0 {
@@ -315,6 +322,12 @@ func (r Rewrite) reached(ctx context.Context, m Moved, relocates bool, recased d
 	if len(missing) > 0 {
 		return nil, nil, fmt.Errorf("linking: the pages %v of links or aliases are not pages of %s", missing, m.NotebookID)
 	}
+	// For the observer: a single rename or move filters none of links
+	// (no batch's Written, gone or Frozen), which are what it would read
+	// and resolve (design 3.2; the conditions are keepReach's, and who
+	// changes this reach, its resolutions or their use looks at them
+	// again: unit_reach.go).
+	keepReach(m, relocates, links, after)
 	out := make(map[uuid.UUID]map[int]rewritten)
 	var targets []uuid.UUID
 	for i, l := range links {

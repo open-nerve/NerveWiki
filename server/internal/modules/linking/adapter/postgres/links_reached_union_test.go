@@ -1,6 +1,7 @@
 package postgresadapter
 
 import (
+	"context"
 	"reflect"
 	"slices"
 	"testing"
@@ -20,6 +21,9 @@ import (
 // cases catch missing arms and losing a later match when an earlier predicate
 // is UNKNOWN; all-nil input alone cannot catch that loss. The pairwise overlaps
 // isolate each predecessor exclusion so another exclusion cannot mask its loss.
+// The two wide reads, LinksReachedWide and LinksReachedWideGeneric, which
+// Store.Links reads for a reach of many keys and targets, answer each case's
+// literal rows too, read directly (M12/P4/S7 design 4.1).
 func TestLinksReachedUnionSemantics(t *testing.T) {
 	pool, trace := newLinksCollectorPool(t)
 	book, foreign := uuid.UUID{15: 200}, uuid.UUID{15: 201}
@@ -103,6 +107,18 @@ func TestLinksReachedUnionSemantics(t *testing.T) {
 			}
 			trace.checkLast(t, conn.Conn().PgConn().PID(), book, original, nil)
 			linksCollectorReusable(t, conn)
+			for name, read := range map[string]func(context.Context, postgres.Querier, uuid.UUID, domain.Reach) ([]app.Link, error){
+				"LinksReachedWide": linksReachedWide, "LinksReachedWideGeneric": linksReachedWideGeneric,
+			} {
+				got, err := read(t.Context(), postgres.Planned(conn), book, tc.reach)
+				if err != nil || got == nil || !slices.Equal(got, tc.want) || cap(got) != len(tc.want) {
+					t.Fatalf("%s=%+v cap=%d err=%v; want exact literal %+v", name, got, cap(got), err, tc.want)
+				}
+				if !reflect.DeepEqual(tc.reach, original) {
+					t.Fatalf("%s changed caller arrays", name)
+				}
+				linksCollectorReusable(t, conn)
+			}
 		})
 	}
 
@@ -149,6 +165,18 @@ func TestLinksReachedUnionSemantics(t *testing.T) {
 				t.Fatalf("nullable SQL did not retain four native arguments/unnamed prepare/end: %+v", call)
 			}
 			linksCollectorReusable(t, conn)
+			for _, statement := range []string{gen.LinksReachedWide, gen.LinksReachedWideGeneric} {
+				native, err := postgres.Planned(conn).Query(t.Context(), statement, book, tc.keys, tc.targets, tc.sources)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var buffer linksReachedBuffer
+				got, err := buffer.read(native)
+				if err != nil || got == nil || !slices.Equal(got, tc.want) || cap(got) != len(tc.want) {
+					t.Fatalf("%.40q with native nullable arrays=%+v cap=%d err=%v; want literal %+v", statement, got, cap(got), err, tc.want)
+				}
+				linksCollectorReusable(t, conn)
+			}
 		})
 	}
 }

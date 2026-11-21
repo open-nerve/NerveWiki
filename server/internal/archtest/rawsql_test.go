@@ -142,7 +142,15 @@ func rawSQLCollectorCall(path string, f *ast.File) *ast.CallExpr {
 	var query func(*ast.CallExpr) bool
 	switch path {
 	case "internal/modules/linking/adapter/postgres/links_reached.go":
-		name, query = "linksReached", rawSQLLinksReachedQuery
+		name, query = "linksReached", rawSQLLinksReachedQuery("LinksReached")
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"notebookID", "uuid", "UUID"}, {"r", "domain", "Reach"}}
+		protected = []string{"ctx", "q", "gen", "notebookID", "r"}
+	case "internal/modules/linking/adapter/postgres/links_reached_wide.go":
+		name, query = "linksReachedWide", rawSQLLinksReachedQuery("LinksReachedWide")
+		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"notebookID", "uuid", "UUID"}, {"r", "domain", "Reach"}}
+		protected = []string{"ctx", "q", "gen", "notebookID", "r"}
+	case "internal/modules/linking/adapter/postgres/links_reached_wide_generic.go":
+		name, query = "linksReachedWideGeneric", rawSQLLinksReachedQuery("LinksReachedWideGeneric")
 		params = [][3]string{{"ctx", "context", "Context"}, {"q", "postgres", "Querier"}, {"notebookID", "uuid", "UUID"}, {"r", "domain", "Reach"}}
 		protected = []string{"ctx", "q", "gen", "notebookID", "r"}
 	case "internal/modules/linking/adapter/postgres/retention_collect.go":
@@ -216,7 +224,7 @@ func rawSQLCollectorCall(path string, f *ast.File) *ast.CallExpr {
 	if name == "inspectPageLinksForPreparation" {
 		validResult = rawSQLName(results[0].Type, "preparedLinkRead")
 	}
-	if name == "linksReached" || name == "linksReachedExcept" {
+	if name == "linksReached" || name == "linksReachedWide" || name == "linksReachedWideGeneric" || name == "linksReachedExcept" {
 		out, ok := results[0].Type.(*ast.ArrayType)
 		validResult = ok && out.Len == nil && rawSQLSelector(out.Elt, "app", "Link")
 	}
@@ -264,11 +272,17 @@ func rawSQLCollectorCall(path string, f *ast.File) *ast.CallExpr {
 	return nil
 }
 
-func rawSQLLinksReachedQuery(call *ast.CallExpr) bool {
-	return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 6 && !call.Ellipsis.IsValid() &&
-		rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", "LinksReached") &&
-		rawSQLName(call.Args[2], "notebookID") && rawSQLSelector(call.Args[3], "r", "Keys") &&
-		rawSQLSelector(call.Args[4], "r", "Targets") && rawSQLSelector(call.Args[5], "r", "Sources")
+// rawSQLLinksReachedQuery matches the one read of a reach's links that
+// the file of statement may make: statement is its own gen constant
+// (LinksReached, LinksReachedWide or LinksReachedWideGeneric; M12/P4/S7
+// design 3.1), any other one of them is no match.
+func rawSQLLinksReachedQuery(statement string) func(*ast.CallExpr) bool {
+	return func(call *ast.CallExpr) bool {
+		return rawSQLSelector(call.Fun, "q", "Query") && len(call.Args) == 6 && !call.Ellipsis.IsValid() &&
+			rawSQLName(call.Args[0], "ctx") && rawSQLSelector(call.Args[1], "gen", statement) &&
+			rawSQLName(call.Args[2], "notebookID") && rawSQLSelector(call.Args[3], "r", "Keys") &&
+			rawSQLSelector(call.Args[4], "r", "Targets") && rawSQLSelector(call.Args[5], "r", "Sources")
+	}
 }
 
 func rawSQLRetentionQuery(call *ast.CallExpr) bool {

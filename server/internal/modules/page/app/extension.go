@@ -47,8 +47,53 @@ type Write struct {
 	// each guard has the Write by value.
 	Grants *Grants
 	// Tree is the actual unit lock mode, not an operation-name guess.
-	Tree    bool
+	Tree bool
+	// Memo is the unit's memo, built with the unit in its transaction's
+	// closure, no other unit's, which its participants and observers
+	// share: M6's rewrite leaves there the links of a single rename or
+	// move that it read, for the index, which reads them then once
+	// (M12/P4/S7 design 3.2).
+	Memo    *UnitMemo
 	sources *sourceMemo
+}
+
+// UnitMemo is a unit's memo: what a participant or an observer stores
+// under a key, one of its own module's types, the next takes (reads and
+// drops) or drops. Only the unit's goroutine uses it. A nil memo, of a
+// Write no unit made, holds nothing: Take answers none, Store and Drop do
+// nothing (M12/P4/S7 design 3.2). A unit that came to share its memo with
+// another, or a step that wrote between the participants and the
+// observers, would break linking's use of it (its unit_reach.go).
+type UnitMemo struct {
+	values map[any]any
+}
+
+// Store keeps value under key, in place of what key held.
+func (m *UnitMemo) Store(key, value any) {
+	if m == nil {
+		return
+	}
+	if m.values == nil {
+		m.values = map[any]any{}
+	}
+	m.values[key] = value
+}
+
+// Take answers what key holds and drops it; false for none.
+func (m *UnitMemo) Take(key any) (any, bool) {
+	if m == nil {
+		return nil, false
+	}
+	v, ok := m.values[key]
+	delete(m.values, key)
+	return v, ok
+}
+
+// Drop drops what key holds.
+func (m *UnitMemo) Drop(key any) {
+	if m != nil {
+		delete(m.values, key)
+	}
 }
 
 // Step is one operation of a unit: its kind, and each node it changes,

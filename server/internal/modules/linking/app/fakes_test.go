@@ -16,12 +16,14 @@ import (
 
 // tree is a notebook's tree, as the fake Pages reads it, and how many
 // reads of candidates and paths it answered; the read numbered failAt, from
-// 1, fails with errRead.
+// 1, fails with errRead. byKeys, paths and subtrees count ByKeys, Paths
+// and Subtree alone.
 type tree struct {
-	nodes  map[uuid.UUID]*node
-	names  map[string]uuid.UUID
-	reads  int
-	failAt int
+	nodes                   map[uuid.UUID]*node
+	names                   map[string]uuid.UUID
+	reads                   int
+	failAt                  int
+	byKeys, paths, subtrees int
 }
 
 // errRead is a read of the tree that failed.
@@ -71,6 +73,7 @@ func (t *tree) path(id uuid.UUID) []domain.Step {
 
 func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.Node, error) {
 	t.reads++
+	t.byKeys++
 	if t.reads == t.failAt {
 		return nil, errRead
 	}
@@ -85,6 +88,7 @@ func (t *tree) ByKeys(_ context.Context, _ uuid.UUID, keys []string) ([]domain.N
 
 func (t *tree) Paths(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]domain.Node, error) {
 	t.reads++
+	t.paths++
 	if t.reads == t.failAt {
 		return nil, errRead
 	}
@@ -136,6 +140,7 @@ func (t *tree) Attachments(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]a
 }
 
 func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.Step, error) {
+	t.subtrees++
 	if n, ok := t.nodes[id]; !ok || n.gone {
 		return nil, fmt.Errorf("no page %s", id)
 	}
@@ -151,16 +156,21 @@ func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.S
 }
 
 // store is the index's tables in memory, the extractor its rows are of
-// (0 for this one), the last reach it read and the views it answered.
+// (0 for this one), the last reach it read and the views it answered;
+// each reach it read, the reads of aliases and the resolutions set.
 type store struct {
-	locked    []uuid.UUID
-	facts     map[uuid.UUID]domain.Facts
-	revisions map[uuid.UUID]int
-	links     []app.Link
-	missing   bool // SetResolutions finds no link
-	extractor int
-	reached   domain.Reach
-	viewed    int
+	locked     []uuid.UUID
+	facts      map[uuid.UUID]domain.Facts
+	revisions  map[uuid.UUID]int
+	links      []app.Link
+	missing    bool // SetResolutions finds no link
+	extractor  int
+	reached    domain.Reach
+	viewed     int
+	reaches    []domain.Reach
+	aliasReads int
+	aliasKeys  int // reads of AliasKeys
+	resolved   [][]app.Link
 }
 
 func newStore() *store {
@@ -220,6 +230,7 @@ func (s *store) DeleteNotebooks(context.Context, []uuid.UUID) error {
 
 func (s *store) Links(_ context.Context, _ uuid.UUID, r domain.Reach) ([]app.Link, error) {
 	s.reached = r
+	s.reaches = append(s.reaches, r)
 	var out []app.Link
 	for _, l := range s.links {
 		keys := domain.Link{Target: l.Target}.Keys()
@@ -232,6 +243,7 @@ func (s *store) Links(_ context.Context, _ uuid.UUID, r domain.Reach) ([]app.Lin
 }
 
 func (s *store) Aliases(_ context.Context, _ uuid.UUID, keys []string) ([]app.Alias, error) {
+	s.aliasReads++
 	var out []app.Alias
 	for id, f := range s.facts {
 		for _, a := range f.Aliases {
@@ -244,6 +256,7 @@ func (s *store) Aliases(_ context.Context, _ uuid.UUID, keys []string) ([]app.Al
 }
 
 func (s *store) AliasKeys(_ context.Context, ids []uuid.UUID) ([]string, error) {
+	s.aliasKeys++
 	var out []string
 	for _, id := range ids {
 		for _, a := range s.facts[id].Aliases {
@@ -254,6 +267,7 @@ func (s *store) AliasKeys(_ context.Context, ids []uuid.UUID) ([]string, error) 
 }
 
 func (s *store) SetResolutions(_ context.Context, links []app.Link) error {
+	s.resolved = append(s.resolved, slices.Clone(links))
 	for _, l := range links {
 		i := slices.IndexFunc(s.links, func(m app.Link) bool { return m.SourceID == l.SourceID && m.Start == l.Start })
 		if i < 0 || s.missing {

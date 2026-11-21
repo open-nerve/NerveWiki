@@ -18,27 +18,86 @@ func linksReached(ctx context.Context, q postgres.Querier, notebookID uuid.UUID,
 }
 `
 
+// rawSQLLinksRead is one of the three reads of a reach's links, each a
+// forwarder of its own file with its own gen constant (M12/P4/S7 design
+// 3.1): the rule's exception is the same for each, and holds each to its
+// file and its constant.
+type rawSQLLinksRead struct {
+	path, function, statement string
+}
+
+func rawSQLLinksReads() []rawSQLLinksRead {
+	return []rawSQLLinksRead{
+		{rawSQLLinksReachedPath, "linksReached", "LinksReached"},
+		{"internal/modules/linking/adapter/postgres/links_reached_wide.go", "linksReachedWide", "LinksReachedWide"},
+		{"internal/modules/linking/adapter/postgres/links_reached_wide_generic.go", "linksReachedWideGeneric", "LinksReachedWideGeneric"},
+	}
+}
+
+// source is rawSQLLinksReachedSource written for r: its function and its
+// constant.
+func (r rawSQLLinksRead) source() string {
+	s := strings.Replace(rawSQLLinksReachedSource, "func linksReached(", "func "+r.function+"(", 1)
+	return strings.Replace(s, "gen.LinksReached,", "gen."+r.statement+",", 1)
+}
+
 func TestRawSQLLinksReachedOwnQueryPasses(t *testing.T) {
-	rawSQLForwarderCheck(t, rawSQLLinksReachedPath, rawSQLLinksReachedSource)
-	rawSQLForwarderCheck(t, rawSQLLinksReachedPath, strings.Replace(rawSQLLinksReachedSource, "import \"", "import gen \"", 1))
+	for _, read := range rawSQLLinksReads() {
+		t.Run(read.function, func(t *testing.T) {
+			rawSQLForwarderCheck(t, read.path, read.source())
+			rawSQLForwarderCheck(t, read.path, strings.Replace(read.source(), "import \"", "import gen \"", 1))
+		})
+	}
 }
 
 func TestRawSQLLinksReachedExceptionIsExact(t *testing.T) {
+	for _, read := range rawSQLLinksReads() {
+		t.Run(read.function, func(t *testing.T) { rawSQLLinksReadExceptionIsExact(t, read) })
+	}
+}
+
+func rawSQLLinksReadExceptionIsExact(t *testing.T, read rawSQLLinksRead) {
 	const call = ": calls Query, which runs SQL outside sqlc's queries"
+	rawSQLLinksReachedPath, rawSQLLinksReachedSource := read.path, read.source()
+	own := "gen." + read.statement + ","
+	// ours writes a case's text, written for LinksReached, for read: its
+	// constant and its function's name.
+	ours := func(text string) string {
+		text = strings.ReplaceAll(text, "gen.LinksReached", "gen."+read.statement)
+		text = strings.ReplaceAll(text, "func linksReached", "func "+read.function)
+		return strings.ReplaceAll(text, "func (s *Store) linksReached", "func (s *Store) "+read.function)
+	}
 	edit := func(old, replacement string) string {
 		t.Helper()
+		old, replacement = ours(old), ours(replacement)
 		if strings.Count(rawSQLLinksReachedSource, old) != 1 {
 			t.Fatalf("fixture replacement %q is not unique", old)
 		}
 		return strings.Replace(rawSQLLinksReachedSource, old, replacement, 1)
 	}
-	for _, path := range []string{
+	paths := []string{
 		"internal/modules/linking/adapter/postgres/store.go",
 		"internal/modules/linking/adapter/postgres/links_reached_other.go",
 		"internal/modules/page/adapter/postgres/links_reached.go",
 		"internal/modules/linking/app/links_reached.go",
-	} {
+	}
+	for _, other := range rawSQLLinksReads() {
+		if other.path != read.path {
+			paths = append(paths, other.path) // each read is its own file's alone
+		}
+	}
+	for _, path := range paths {
 		t.Run(path, func(t *testing.T) { rawSQLForwarderCheck(t, path, rawSQLLinksReachedSource, call) })
+	}
+	for _, other := range rawSQLLinksReads() {
+		if other.statement == read.statement {
+			continue
+		}
+		// Another read's constant in this read's file: the rule matches
+		// each file's own constant alone.
+		t.Run("other_read_constant_"+other.statement, func(t *testing.T) {
+			rawSQLForwarderCheck(t, rawSQLLinksReachedPath, strings.Replace(rawSQLLinksReachedSource, own, "gen."+other.statement+",", 1), call)
+		})
 	}
 	for _, tc := range []struct{ name, old, replacement string }{
 		{"wrong_package", "package postgresadapter", "package app"},
@@ -103,11 +162,11 @@ func TestRawSQLLinksReachedExceptionIsExact(t *testing.T) {
 		rawSQLForwarderCheck(t, rawSQLLinksReachedPath, source, call, call)
 	})
 	t.Run("matching_call_in_another_function", func(t *testing.T) {
-		source := rawSQLLinksReachedSource + "func other() { q.Query(ctx, gen.LinksReached, notebookID, r.Keys, r.Targets, r.Sources) }\n"
+		source := rawSQLLinksReachedSource + ours("func other() { q.Query(ctx, gen.LinksReached, notebookID, r.Keys, r.Targets, r.Sources) }\n")
 		rawSQLForwarderCheck(t, rawSQLLinksReachedPath, source, call, call)
 	})
 	t.Run("duplicate_function", func(t *testing.T) {
-		source := rawSQLLinksReachedSource + "func linksReached() {}\n"
+		source := rawSQLLinksReachedSource + ours("func linksReached() {}\n")
 		rawSQLForwarderCheck(t, rawSQLLinksReachedPath, source, call)
 	})
 	t.Run("duplicate_gen_binding", func(t *testing.T) {

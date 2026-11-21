@@ -14,6 +14,10 @@ var ErrLintRows = errLintRows
 // its context.
 const CheckEvery = checkEvery
 
+// UnitReachMessage is the debug line of an observer that took the links
+// its unit's participant read (M12/P4/S7 design 3.2).
+const UnitReachMessage = unitReachMessage
+
 // TreeOf is treeOf, what a rewrite reads of the tree, for the tests outside
 // the package.
 func TreeOf(ctx context.Context, pages Pages, m Moved, targets, sources []uuid.UUID) (

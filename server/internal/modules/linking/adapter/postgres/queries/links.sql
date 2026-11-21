@@ -30,6 +30,7 @@ DELETE FROM page_links WHERE notebook_id = ANY(sqlc.arg(ids)::uuid[]);
 -- name: LinksReached :many
 -- The links of a notebook whose target's keys meet keys, that resolve to one of targets, or that are written in
 -- one of sources (M6/P3 design 3.4, step 6), each with whether it is a value of its page's aliases (M6/P4 design 2).
+-- A reach of many keys and targets reads LinksReachedWide (M12/P4/S7 design 3.1).
 WITH args AS NOT MATERIALIZED (
     SELECT sqlc.arg(notebook_id)::uuid AS notebook_id,
            sqlc.arg(keys)::text[] AS keys,
@@ -93,6 +94,89 @@ SELECT l.source_id, l.range_start, l.target, l.resolved_id,
        l.ambiguous, l.resolved_asset, l.aliases
 FROM reached l
 ORDER BY l.source_id, l.range_start;
+
+-- name: LinksReachedWide :many
+-- LinksReached's rows, row by row, for a reach of many keys and targets (M12/P4/S7 design 3.1): the links its
+-- keys and targets meet in one pass over the rows they meet, not an index search a key. Planned with its
+-- parameters (postgres.Planned), the arrays are constants, whose = ANY PostgreSQL hashes at any size and any
+-- work_mem. Under plan_cache_mode = force_generic_plan they are parameters it compares one by one: Store.Links
+-- reads LinksReachedWideGeneric then.
+WITH args AS NOT MATERIALIZED (
+    SELECT sqlc.arg(notebook_id)::uuid AS notebook_id,
+           sqlc.arg(keys)::text[] AS keys,
+           sqlc.arg(targets)::uuid[] AS targets,
+           sqlc.arg(sources)::uuid[] AS sources
+), reached AS (
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE l.source_id = ANY(a.sources)
+        ORDER BY l.source_id, l.range_start
+    )
+
+    UNION ALL
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE (l.target_key = ANY(a.keys) OR l.target_alt_key = ANY(a.keys) OR l.resolved_id = ANY(a.targets))
+          AND (l.source_id = ANY(a.sources)) IS NOT TRUE
+        ORDER BY l.source_id, l.range_start
+    )
+)
+SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+       l.ambiguous, l.resolved_asset, l.aliases
+FROM reached l
+ORDER BY l.source_id, l.range_start;
+
+-- name: LinksReachedWideGeneric :many
+-- LinksReachedWide under plan_cache_mode = force_generic_plan (M12/P4/S7 design 3.1): a parameter's = ANY is
+-- not hashed there, so the keys, the targets and the sources are sub-selects of their arrays, each a hashed
+-- sub-plan in a generic plan (unnest of a parameter is estimated at 10 rows; the hash is built from the array as
+-- it is). Each sub-select reads its array through args: unnest(a.sources) refers to the outer row, so NOT EXISTS
+-- stays a sub-plan, hashed; unnest of the parameter itself would be pulled up into an anti-join whose method the
+-- planner chooses. Not for plans with the parameters: a sub-plan estimated past work_mem * hash_mem_multiplier
+-- is not hashed, and the keys are no index condition here, so it reads the notebook's rows whatever the reach.
+WITH args AS NOT MATERIALIZED (
+    SELECT sqlc.arg(notebook_id)::uuid AS notebook_id,
+           sqlc.arg(keys)::text[] AS keys,
+           sqlc.arg(targets)::uuid[] AS targets,
+           sqlc.arg(sources)::uuid[] AS sources
+), reached AS (
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE l.source_id = ANY(a.sources)
+        ORDER BY l.source_id, l.range_start
+    )
+
+    UNION ALL
+    (
+        SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+               l.ambiguous, l.resolved_asset, l.aliases
+        FROM args a
+        JOIN page_links l ON l.notebook_id = a.notebook_id
+        WHERE (l.target_key IN (SELECT k.value COLLATE "C" FROM unnest(a.keys) AS k(value))
+               OR l.target_alt_key IN (SELECT k.value COLLATE "C" FROM unnest(a.keys) AS k(value))
+               OR l.resolved_id IN (SELECT t.id FROM unnest(a.targets) AS t(id)))
+          AND NOT EXISTS (SELECT 1 FROM unnest(a.sources) AS s(id) WHERE s.id = l.source_id)
+        ORDER BY l.source_id, l.range_start
+    )
+)
+SELECT l.source_id, l.range_start, l.target, l.resolved_id,
+       l.ambiguous, l.resolved_asset, l.aliases
+FROM reached l
+ORDER BY l.source_id, l.range_start;
+
+-- name: PlanCacheMode :one
+-- The session's plan_cache_mode, which chooses between LinksReachedWide and LinksReachedWideGeneric
+-- (M12/P4/S7 design 3.1).
+SELECT current_setting('plan_cache_mode')::text AS mode;
 
 -- name: SetResolutions :execrows
 -- Each link, by its page and start, resolves to the page or the attachment given, the zero id none.

@@ -7,11 +7,13 @@ import (
 	"reflect"
 	"slices"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 	"uuid"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
@@ -323,6 +325,75 @@ func TestTheLinksReachedAreReadPlannedWithTheReach(t *testing.T) {
 	if slices.Contains(cached, "LinksReached") || slices.Contains(cached, "SetResolutions") || !slices.Contains(cached, "InsertIndexedPage") {
 		t.Errorf("the cached statements are %v: want InsertIndexedPage, not LinksReached nor SetResolutions", cached)
 	}
+	// A reach of 4,000 keys and targets is read in one pass over the rows it
+	// meets, planned with it too, under the connection's plan_cache_mode
+	// (M12/P4/S7 design 3.1, 4.1 item 4): a cached LinksReachedWide may be
+	// planned once for any reach from its sixth run, its exclusion then
+	// comparing each link with every source; the setting itself is cached.
+	wide := domain.Reach{Keys: []string{"a"}, Sources: []uuid.UUID{p}}
+	for i := range 3999 {
+		wide.Targets = append(wide.Targets, uuid.UUID{0: 0x7a, 14: byte(i >> 8), 15: byte(i)})
+	}
+	for _, generic := range []bool{false, true} {
+		statement := "LinksReachedWide"
+		if generic {
+			statement = "LinksReachedWideGeneric"
+		}
+		t.Run(statement, func(t *testing.T) {
+			cfg := pool.Config()
+			names := &linksStatementNames{}
+			cfg.ConnConfig.Tracer = names
+			if generic {
+				cfg.ConnConfig.RuntimeParams["plan_cache_mode"] = "force_generic_plan"
+			}
+			wp, err := pgxpool.NewWithConfig(ctx, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer wp.Close()
+			ws := postgresadapter.New(wp)
+			for range 8 {
+				got, err := ws.Links(ctx, f.eng, wide)
+				if err != nil || len(got) != 1 {
+					t.Fatalf("Links: %d, %v; want 1", len(got), err)
+				}
+			}
+			if read := names.count(statement); read != 8 {
+				t.Fatalf("%s was read %d times; want 8", statement, read)
+			}
+			cached := pgtest.CachedStatements(t, wp)
+			if slices.Contains(cached, statement) || !slices.Contains(cached, "PlanCacheMode") {
+				t.Errorf("the cached statements are %v: want PlanCacheMode, not %s", cached, statement)
+			}
+		})
+	}
+}
+
+// linksStatementNames counts the statements of sqlc's a pool runs, by
+// their "-- name:" lines.
+type linksStatementNames struct {
+	mu    sync.Mutex
+	names map[string]int
+}
+
+func (n *linksStatementNames) TraceQueryStart(ctx context.Context, _ *pgx.Conn, d pgx.TraceQueryStartData) context.Context {
+	if name, ok := strings.CutPrefix(strings.SplitN(d.SQL, "\n", 2)[0], "-- name: "); ok {
+		n.mu.Lock()
+		if n.names == nil {
+			n.names = map[string]int{}
+		}
+		n.names[strings.Fields(name)[0]]++
+		n.mu.Unlock()
+	}
+	return ctx
+}
+
+func (*linksStatementNames) TraceQueryEnd(context.Context, *pgx.Conn, pgx.TraceQueryEndData) {}
+
+func (n *linksStatementNames) count(name string) int {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+	return n.names[name]
 }
 
 // A link reached tells whether it is a value of its page's aliases, as the

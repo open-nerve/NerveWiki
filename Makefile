@@ -467,7 +467,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条与批准的守卫（CI 第一�
 	cd server && go test -count=1 -v -timeout 15m -run '^TestUpgradeApprovalTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫与宽读的对照与计划、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -476,6 +476,10 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	@# LinksReached：稀疏9叶与400万行6叶各独立进程；!race、非short，沿默认10m/count=1。
 	cd server && go test -count=1 -v -run '^TestLinksReachedReadPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestLinksReachedDenseReadPlans$$' ./internal/modules/linking/adapter/postgres
+	@# M12/P4/S7：三条读（LinksReached 与两条宽读）逐行相同的随机对照（v0.1 设计 13.4 第 13 条），与宽读在三种统计、三种计划方式（加 work_mem 64kB 两格）下的
+	@# 计划与物理工作量；!race、非 short，各自独立进程（P4/S7 设计 4.1 第 2 条、4.2、4.5，决定 660）
+	cd server && go test -count=1 -v -run '^TestLinksReachedWideIsLinksReached$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestLinksReachedWideReadPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres
@@ -490,7 +494,7 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	cd server && go test -count=1 -v -run '^TestUpgradeCheckTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-3
-test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升级闸门的读的计划（CI 第三份；需要 Docker）
+test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫、升级闸门的读的计划与树写的守卫（CI 第三份；需要 Docker）
 	@# S2-3：真52→53、10万合法历史与百万marks写增长；独立进程沿原default10m。
 	cd server && go test -p 1 -count=1 -v -run '^TestIngestMigrationCostsLongHistory$$' ./internal/bootstrap
 	@# 完整40万历史的真实Store计数：无统计/ANALYZE及两种强制计划模式，沿用既有1秒预算。
@@ -528,6 +532,10 @@ test-go-costs-3: ## 原成本命令第 21–32 条、回滚的三个守卫与升
 	@# M12/P4/S1：B1 的合成搜索语料，同一个种子写出同样的三个 TSV（含 308eafc6 的笔记本列）、查询的词确切地植入、1,000 页经 loadCorpus 载入、
 	@# buildSearch 建完、中国 有结果、键与删除的不变式；三个都在 !race 的文件里，不进竞态的八份；带 -v 打出各自的用时（P4 设计 3.2、2.1 第 8 条）
 	cd server && go test -count=1 -v -run '^TestPerfCorpus(IsItsSeed|PlantsTheQueries|LoadsIntoTheBenchmark)$$' ./internal/bootstrap
+	@# M12/P4/S7：约 1 万个节点、没有链接指向的最上层经 REST 无统计移动一次，有统计改名、移动各三次取最快，删除一次；按语句名数读链接的调用
+	@# （设置与宽读各 1 次，窄读与通用的宽读 0 次）、移动与改名不写页，各在本机两轮均值的 3.6 倍与加 2 秒的较大者之内（P4/S7 设计 4.4，决定 660）；
+	@# 本机这一行 14.6、10.8 秒（整行的墙钟，第一轮含编译）。放在带竞态的 server/tools 一行之前，它仍是末行（ci.yml 的缓存一段的注释）
+	cd server && go test -count=1 -v -run '^TestTreeWritesOfALargeTopReadTheLinksOnce$$' ./internal/bootstrap
 	go -C server/tools test -race -count=1 ./...
 
 .PHONY: test-go-costs-lint
