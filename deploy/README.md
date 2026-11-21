@@ -1,6 +1,6 @@
 # Nerve Wiki 的部署与运维
 
-本文写怎样在一台机器上装、升级、备份与恢复 Nerve Wiki，以及要给它多少机器。镜像是 `ghcr.io/open-nerve/nervewiki:<版本>`，`linux/amd64` 与 `linux/arm64` 两种架构，只有确切的版本号（例如 `0.1.0`），没有 `latest`。配置项的含义与开发环境见仓库根的 [README](../README.md)；每个版本改了什么见 仓库根的 `CHANGELOG.md`。
+本文写怎样在一台机器上装、升级、备份与恢复 Nerve Wiki，以及要给它多少机器。镜像是 `ghcr.io/open-nerve/nervewiki:<版本>`，`linux/amd64` 与 `linux/arm64` 两种架构，只有确切的版本号（例如 `0.1.0`），没有 `latest`。配置项的含义与开发环境见仓库根的 [README](../README.md)；每个版本改了什么见 [CHANGELOG.md](../CHANGELOG.md)。
 
 下面的命令假定 compose 的文件放在 `/srv/nervewiki`，对外的地址是 `https://wiki.example.com`，照你的改。
 
@@ -362,7 +362,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 ### 升级
 
-每个版本的说明（仓库根的 `CHANGELOG.md` 的一节）写明它的迁移会不会重写大表、要不要 `nervewiki reindex`、要不要改代理的配置。通用的步骤：
+每个版本的说明（[CHANGELOG.md](../CHANGELOG.md) 的一节）写明它的迁移会不会重写大表、要不要 `nervewiki reindex`、要不要改代理的配置。通用的步骤：
 
 ```bash
 cd /srv/nervewiki
@@ -441,4 +441,4 @@ curl -fsS http://127.0.0.1:8080/api/v0/instance       # 版本号是新的
 - **很大的笔记本升级为 LLM Wiki**：30 万页的发起推断约 23–25 秒、批准约 19–26 秒，过期限；约 14–16 万页起过它的预算，约 18–20 万页起过 15 秒。
 - **很大的笔记本的页面树**：5 万、10 万页的树一次整个读，很多标签页同时开着时 CPU、内存与出口随标签页数线性涨（"7. 容量"）；10 万页在浏览器里打开会很慢。分层加载在 v0.2。
 
-v0.1.0 的全部已知限制见 仓库根的 `CHANGELOG.md`。
+v0.1.0 的全部已知限制见 [CHANGELOG.md](../CHANGELOG.md)。
