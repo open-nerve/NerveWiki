@@ -22,8 +22,10 @@ import (
 // 2 KiB with 20 resolved links each and a tenth of the nodes attachments,
 // on M12's 8-vCPU aarch64 machine, without statistics / analyzed:
 // 4,114-4,164 / 4,333-4,454 ms at 45,000, 4,637-4,667 / 5,070-5,136 at
-// 50,000, 6,107-6,653 / 6,995-7,382 at 60,000. M8 had taken 60,000 on an
-// Apple M5 Max, about 1.6 times faster, the largest of ten thousands
+// 50,000, 6,107-6,653 / 6,995-7,382 at 60,000; M12/P4/S6 measured both
+// benches at 45,000 again, two rounds: at most 3,683 ms (M12/P4 design
+// 10.4). M8 had taken 60,000 on an Apple M5 Max, about 1.6 times faster,
+// the largest of ten thousands
 // within 5 s there (M8/P4 design 3.11): 3.5-4.6 s at 60,000 (one run of
 // 70,000 took 6.9 s; 80,000, 5.9-6.1 s analyzed), the requests about
 // 1.2 s at most (1,231 ms, the revert's revert of one group of every node;

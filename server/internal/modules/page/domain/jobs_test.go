@@ -44,7 +44,15 @@ func (s *shape) order() ([]domain.GroupNode, []string) {
 // (M12/P4 design 3.12; M8/P4 design 3.11, 3.12): a new value is measured
 // again (BenchmarkBackgroundSteps, BenchmarkBackgroundJobs) and the
 // guards' limits looked at again (TestStartRevertAtMaxJobItems,
-// TestARevertJobOfAnImportAtMaxJobItems; M12/P4/S6 kept them).
+// TestARevertJobOfAnImportAtMaxJobItems,
+// TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork; M12/P4/S6 kept
+// them). The import's nodes follow it (bootstrap/deps.go), and with it,
+// by hand: server/tools/perf/vault's ImportLimits() and its import-limit
+// vault (its TestImportLimitsAreTheServers reads this constant),
+// e2e/perf/shapes.ts's importNodes, the contract's too_many_nodes
+// (api/modules/transfer.yaml, then make gen), the comment of config.yaml's
+// import_max_entries, and README's three (a whole group's revert, the
+// import, the jobs) (M12/P4/S6 review A-M1).
 func TestMaxJobItemsIsTheMeasuredSize(t *testing.T) {
 	if domain.MaxJobItems != 45_000 {
 		t.Errorf("MaxJobItems = %d, measured 45,000", domain.MaxJobItems)

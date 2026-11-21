@@ -72,13 +72,13 @@ func jobLinks(tb testing.TB) int {
 	return n
 }
 
-// jobSizes are the sizes measured: NW_JOB_SIZES, or 40,000, 45,000 and
-// 50,000, MaxJobItems and a step of 5,000 each side (M12/P4 design 3.12).
+// jobSizes are the sizes measured: NW_JOB_SIZES, or MaxJobItems and a
+// step of 5,000 each side, 40,000, 45,000 and 50,000 (M12/P4 design 3.12).
 func jobSizes(tb testing.TB) []int {
 	tb.Helper()
 	list := os.Getenv("NW_JOB_SIZES")
 	if list == "" {
-		return []int{40_000, 45_000, 50_000}
+		return []int{page.MaxJobItems - 5_000, page.MaxJobItems, page.MaxJobItems + 5_000}
 	}
 	var out []int
 	for s := range strings.SplitSeq(list, ",") {
@@ -793,9 +793,9 @@ func (b trashBench) arrays(tb testing.TB, c, r uuid.UUID) string {
 
 // The guards of a background revert at MaxJobItems (M8/P4 design 3.11),
 // each a line of its own in make test-go-guards, with -v, so that CI's
-// runs log their times: their limits are three times the times measured
-// here, CI then about 2.1 times slower (M8/P4 review B-M11), the slowest
-// runner since about three times (the limits' comment). A request's
+// runs log their times: their limits were three times the times measured
+// here at 60,000, CI then about 2.1 times slower (M8/P4 review B-M11), the
+// slowest runner since about three times (the limits' comment). A request's
 // time is the least of three runs (fastestOf): a runner's slow moment once
 // took one past its limit (M8/P5B review, decision 10; M8 closeout A-1).
 // The bench keeps the composition root's bound: one far from the domain's
@@ -939,7 +939,10 @@ func fastestOf(tb testing.TB, what string, run func() time.Duration) time.Durati
 // load as it was (decision 249); here they now take 357-381 ms and
 // 0.88-0.92 s (M11), the limits still over three times that. At 45,000
 // (M12/P4/S6) the guards measure a smaller import with the limits as they
-// were, neither loosened nor tightened (M12/P4 design 3.12).
+// were, neither loosened nor tightened (M12/P4 design 3.12): against it the
+// largest step's limit is about 3.5 times the local time (4.02 s) and 2.7
+// times CI's 6975P-C's (5.10-5.12 s), kept for the 7763's margin (M12/P4
+// design 3.13).
 const (
 	startRevertLimit = 1300 * time.Millisecond
 	manyGroupsLimit  = 3 * time.Second
