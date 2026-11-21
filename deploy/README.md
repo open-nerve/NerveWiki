@@ -84,16 +84,16 @@ cosign verify ghcr.io/open-nerve/nervewiki:0.1.0 \
 2. `.env`：版本号、两个数据库密码与对外的地址。密码只用十六进制（它放进连接地址）：
 
    ```bash
+   touch .env && chmod 600 .env
    cat > .env <<EOF
    NERVEWIKI_VERSION=0.1.0
    NWIKI_DB_ADMIN_PASSWORD=$(openssl rand -hex 24)
    NWIKI_DB_PASSWORD=$(openssl rand -hex 24)
    NWIKI_PUBLIC_URL=https://wiki.example.com
    EOF
-   chmod 600 .env
    ```
 
-   `NWIKI_DB_ADMIN_PASSWORD` 是超级用户 `postgres` 的，只在数据库的容器里用；`NWIKI_DB_PASSWORD` 是服务与迁移登录的 `nervewiki` 的。两个密码只在第一次建库时写进库：之后要改，在库里 `ALTER ROLE`，再改 `.env`。另可写 `NERVEWIKI_PORT`（默认 8080）。
+   先建成 600 再写，密码一刻也不让别人读到（`cat >` 不改已有文件的权限）。`NWIKI_DB_ADMIN_PASSWORD` 是超级用户 `postgres` 的，只在数据库的容器里用；`NWIKI_DB_PASSWORD` 是服务与迁移登录的 `nervewiki` 的。两个密码只在第一次建库时写进库：之后要改，在库里 `ALTER ROLE`，再改 `.env`。另可写 `NERVEWIKI_PORT`（默认 8080）。
 
 3. 签名私钥。服务以 uid 65532 读它，所以文件是 644，所在的目录只给部署的用户：
 
@@ -299,7 +299,7 @@ wiki.example.com {
 
 ```bash
 cd /srv/nervewiki
-mkdir -p backups
+mkdir -p -m 700 backups
 d=$(date +%Y%m%d-%H%M%S)
 docker compose stop serve
 docker compose exec -T db pg_dump -U postgres -Fc nervewiki > backups/nervewiki-$d.dump
@@ -307,7 +307,7 @@ sudo tar -C data -czf backups/blobs-$d.tar.gz blobs
 docker compose up -d serve
 ```
 
-`-T` 不分配终端，二进制的输出才完整。`.env` 与 `secrets/jwt.pem` 另存一份。
+`-T` 不分配终端，二进制的输出才完整。备份里有整个库（账户、会话与令牌的散列在内），`backups/` 只给部署的用户（`-m 700`）。`.env` 与 `secrets/jwt.pem` 另存一份。
 
 ### 不用 compose 的备份
 
@@ -333,6 +333,7 @@ docker compose up -d serve
 curl -fsS http://127.0.0.1:8080/readyz
 ```
 
+- **`up -d --wait db`**：等数据库的健康检查过了才返回。第一次建库时官方镜像先起一个只听套接字的临时的服务器、执行 `compose-initdb.sh`，不等就恢复，会连不上或报 `role "nervewiki" does not exist`。
 - **先 `ANALYZE` 再开放服务**：恢复的库没有统计，PostgreSQL 给树的读、链接的读选的计划可能每一步扫整本笔记本（一万个子节点的文件夹，读子树 21–40 秒），请求过期限。
 - 以 `postgres` 恢复时 `pg_trgm` 归 `postgres`，与新装不同；照上面以 `nervewiki` 恢复。
 - 没有 sudo 时，借已有的镜像当 root 放回 `blobs/`，核对过之后删掉挪开的旧目录（属主 65532，`blobs/` 是 750）：
@@ -353,10 +354,10 @@ curl -fsS http://127.0.0.1:8080/readyz
 
 备份没恢复过就不算有。上线之前、之后每隔一段时间，在另一台机器（或同一台机器上另一个目录与项目名）上照上面恢复一次：
 
-1. 在要演练的目录里放 `compose.yaml`、`compose-initdb.sh`、原来的 `.env` 与 `secrets/jwt.pem`，`NERVEWIKI_PORT` 换一个空闲的端口；同一台机器上另用一个项目名（`docker compose -p nervewiki-drill …`），并把子网改成别的（钉住的子网同一时刻只能有一个项目用）。
+1. 在要演练的目录里放 `compose.yaml`、`compose-initdb.sh`、原来的 `.env` 与 `secrets/jwt.pem`，`NERVEWIKI_PORT` 换一个空闲的端口；同一台机器上另用一个项目名：`export COMPOSE_PROJECT_NAME=nervewiki-drill`，下面的命令就照原样用，只碰这个项目的容器、网络与卷；正式的那一套还在跑时，再把子网两处改成别的（钉住的子网同一时刻只能有一个项目用）。
 2. 照"compose 的恢复"恢复最近的一次备份。
 3. 登录，打开几页、几个附件，与原来的比；看 `/api/v0/instance` 的版本号。
-4. 删掉：`docker compose -p nervewiki-drill down -v`，删 `data/`（属主 65532，要 sudo 或借镜像）。
+4. 删掉：在这个目录里 `docker compose down -v`（`COMPOSE_PROJECT_NAME` 还设着），删 `data/` 与 `backups/`（属主 65532 与 root，要 sudo 或借镜像）。
 
 ## 5. 升级与回退
 
@@ -368,7 +369,9 @@ curl -fsS http://127.0.0.1:8080/readyz
 cd /srv/nervewiki
 docker pull ghcr.io/open-nerve/nervewiki:<新版本>      # 照"2. 安装"校验
 docker compose stop serve                               # 先停
-# 照"4. 备份与恢复"备份库与 blobs/
+mkdir -p -m 700 backups && d=$(date +%Y%m%d-%H%M%S)     # 备份："4. 备份与恢复"的那两行，serve 停着
+docker compose exec -T db pg_dump -U postgres -Fc nervewiki > backups/nervewiki-$d.dump
+sudo tar -C data -czf backups/blobs-$d.tar.gz blobs
 sed -i 's/^NERVEWIKI_VERSION=.*/NERVEWIKI_VERSION=<新版本>/' .env
 docker compose run --rm migrate
 # 说明里要 reindex 时：docker compose run --rm serve reindex
