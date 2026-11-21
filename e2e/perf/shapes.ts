@@ -116,8 +116,9 @@ function archiveOf(files: ZipFile[], under?: string): Archive {
 /**
  * oneFolder is one folder page at the root, "Folder", holding count pages: an import that runs minutes and leaves the
  * tree's root one row (the jobs' polling, design 4.8). Past an import's nodes (folder50k since M12/P4/S6) it is two
- * archives of the same pages: the folder with its first count - importNodes pages, then the last importNodes, the
- * longest import there can be, under it.
+ * archives of the same pages: the folder with its first count - importNodes pages, one at least, then the rest, at
+ * most importNodes, the longest import there can be, under it. Two archives hold count from 45,000 to 89,999
+ * (folder50k's 50,000: 5,000 and 45,000); past that archiveOf throws.
  */
 function oneFolder(notebook: string, count: number): Shape {
   return {
@@ -134,7 +135,7 @@ function oneFolder(notebook: string, count: number): Shape {
       if (count + 1 <= importNodes) {
         return [archiveOf(files)];
       }
-      const first = count - importNodes;
+      const first = Math.max(1, count - importNodes);
       const rest = files.slice(first);
       for (const f of rest) {
         f.name = String(f.name).slice("Folder/".length);

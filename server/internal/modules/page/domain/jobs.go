@@ -25,15 +25,15 @@ import (
 // 50,000, 6,107-6,653 / 6,995-7,382 at 60,000; M12/P4/S6 measured both
 // benches at 45,000 again, two rounds: at most 3,683 ms (M12/P4 design
 // 10.4). M8 had taken 60,000 on an Apple M5 Max, about 1.6 times faster,
-// the largest of ten thousands
-// within 5 s there (M8/P4 design 3.11): 3.5-4.6 s at 60,000 (one run of
-// 70,000 took 6.9 s; 80,000, 5.9-6.1 s analyzed), the requests about
-// 1.2 s at most (1,231 ms, the revert's revert of one group of every node;
-// of as many groups, 0.84 s), a group's first batch 2.2 s. The step grows
-// with the links of the pages past 20 a page as a user's deletion of the
-// same top does, about 1.6 µs a link. The transfer module bounds an
-// import's nodes by it, so that a background revert can undo any import
-// (M8/P4 design 2.2 (a)): a larger vault is imported in parts.
+// the largest of ten thousands within 5 s there (M8/P4 design 3.11):
+// 3.5-4.6 s at 60,000 (one run of 70,000 took 6.9 s; 80,000, 5.9-6.1 s
+// analyzed), the requests about 1.2 s at most (1,231 ms, the revert's
+// revert of one group of every node; of as many groups, 0.84 s), a group's
+// first batch 2.2 s. The step grows with the links of the pages past 20 a
+// page as a user's deletion of the same top does, about 1.6 µs a link. The
+// transfer module bounds an import's nodes by it, so that a background
+// revert can undo any import (M8/P4 design 2.2 (a)): a larger vault is
+// imported in parts.
 const MaxJobItems = 45_000
 
 // MaxRollbackItems bounds the tree's items of one pass of a rollback's

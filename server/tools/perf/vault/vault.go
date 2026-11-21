@@ -39,13 +39,13 @@ type Spec struct {
 }
 
 // Part is the K-th of N parts of a vault: its folders of the first level
-// cut in N runs in their order, part K the folders from (K-1)F/N to KF/N
-// of the F there, rounded down, 0-based, the upper end excluded, with
-// every folder, page and attachment under them. Each is as the whole vault has it, its links to the whole
-// vault's pages: the parts imported one after another under one page are
-// the whole vault imported, a link to a page of a later part unresolved
-// until that part's import (P4/S7 builds S3's top of 59,910 nodes so). The
-// zero Part is the whole vault, as 1/1 is.
+// cut in N runs in their order, part K the folders from (K-1)F/N to KF/N of
+// the F there, rounded down, 0-based, the upper end excluded, with every
+// folder, page and attachment under them. Each is as the whole vault has
+// it, its links to the whole vault's pages: the parts imported one after
+// another under one page are the whole vault imported, a link to a page of
+// a later part unresolved until that part's import (P4/S7 builds S3's top
+// of 59,910 nodes so). The zero Part is the whole vault, as 1/1 is.
 type Part struct{ K, N int }
 
 // ParsePart reads a part, k/n: 1 <= k <= n.
