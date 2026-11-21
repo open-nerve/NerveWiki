@@ -262,7 +262,8 @@ S7 设计第 9 节：删除随子树的历史涨（deploy/README 8 第 1 条、`
 | `dd0d6804` | run 44913031024，19 项 success；image 1:11（Deploy check 4 秒、Image smoke 57 秒）；costs-1 的 Lint workflows 读了改过的 `ci.yml`，3 秒；e2e 7:48 | run 44913031016：amd64 1:40、arm64 1:28 |
 | `d1802a0b` | run 44918606904，19 项 success；image 1:15（Deploy check 3 秒）；e2e 7:45 | run 44918606889：1:33、1:25 |
 | `22d6a822` | run 44921699001，19 项 success；image 1:17（Deploy check 5 秒）；e2e 7:53 | run 44921699047：1:36、1:43 |
-| 本提交 | `（待填：本提交的分支 CI）` | |
+| `701508f1`（文档） | run 44926210841，19 项 success；image 1:19（Deploy check 5 秒）；e2e 9:48 | run 44926210878：1:31、1:21 |
+| 合并 `d57bf31a`（`main`） | 之后第一次 `main` 的 run 44928903970 第一次 attempt 19 项全绿（image 1:15，组合根八份平均 307 秒），Release 的演练 44928904007 绿（1:42、1:27），Vulnerabilities 44928903954 绿。 | |
 
 tag 的七个作业在分支上都跳过；S3 不改 Go 的产品代码，组合根的分份不受影响。
 

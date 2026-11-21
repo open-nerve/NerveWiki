@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M12/P5 部署文档与发布流水线（三个 Step：S1 版本号与流水线的构建；S2 推送、签名、证明、SBOM、许可证与 Release；S3 部署文档与发布说明） |
 | 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订；2026-11-19 照 S2 的实施与审查修订；2026-11-22 照 S3 的实施与审查修订 |
-| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S2 已合并 `24e7b316`，[S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2；S3 已合并 `（待填：合并号）`（2026-11-22），[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3；三个 Step 都已合并，P5 的完成另记；S1、S2 的实施与审查之后与本文不同之处照实改在各节，3.24、3.25 列出；S3 的在 3.16–3.20 加注、3.26 列出） |
+| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S2 已合并 `24e7b316`，[S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2；S3 已合并 `d57bf31a`（2026-11-22），[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3；三个 Step 都已合并，P5 的完成另记；S1、S2 的实施与审查之后与本文不同之处照实改在各节，3.24、3.25 列出；S3 的在 3.16–3.20 加注、3.26 列出） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 第 2 节，第 3 节第 1、7–11 条，4.3，4.8–4.13，5.1 末行，5.3，5.4，第 7 节 P5 一行与"收尾与发布""次序与并行""移交的落实""总体设计的修订"第 6、7、9 条，9.5–9.7，第 10 节，第 11 节决定 306、308、320–324、332、347 与"需要负责人确认"；[M12 设计审查](reviews/M12-design-review.md) B 的 I3、M4–M11、N1–N7、Q1 与"未核实的怀疑"；[移交](handoffs/) M0-P6-image-release 与其余移交里标给 P5 的部署项；[P1 设计](01-P1-foundation.md) 第 9 节；[v0.1 总体设计](../v0.1-design.md) 第 11 节、13.5、第 14 节 |
 | 代码位置的写法 | 同 00 号文档与 P1：模块写作 `page/…`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…` 在 `server/internal/` 之下；其余写仓库根起的路径。行号都是 `main` 的 `86565dd6` 的。00 号文档的行号以它头上的 `5e8af5b5` 为准，本文引它时只写节号；2.1 写出的旧文字与行号是 `86565dd6` 上的 00 号文档 |
 | 工作笔记 | 本文引的每个行号都在 `86565dd6` 上读过（附录）。公开的东西只读：十二个 action 与工具的 tag 与它指的提交（设计者起草时以 `git ls-remote` 读过一次，审查没能复核，见 3.21）；`actions/attest` v4.2.2 的 README 与 `src/sbom.ts`；`anchore/sbom-action` v0.24.3 的 `action.yml` 与 `src/SyftVersion.ts`；`sigstore/cosign-installer` v4.1.3 的 `action.yml`；`docker/build-push-action` v7.4.0 的 `action.yml`；actionlint 的 CHANGELOG；GitHub 文档（Container registry、immutable releases）；Docker 文档（`imagetools create`）；arm 的 runner 的软件表；本机 gh 2.103.2 的帮助；公开接口上 `ci.yml` 的运行。小实验在临时的 worktree 里（用完已删），输出在 `m12/p5-design/`。三位审查者的探针在 `m12/p5-review-{a,b,c}/`，两轮修订核对的在 `m12/p5-check{1,2}-{a,b,c}/`。actionlint 不在本机跑（设计时被权限分类器拒过，3.5） |
@@ -37,7 +37,7 @@
   - 根 README 的"部署"一节缩成入口，守卫里 README 一项换成 `deploy/README.md`；`CHANGELOG.md` 的 0.1.0 一节；`SECURITY.md`；`manual/` 的读屏清单与验收入口（3.19）；
   - 照 `deploy/README.md` 用 `deploy/compose.yaml` 在本机装一遍、升一次级、备份再恢复一遍（3.20）；
   - **单独为绿**：只改文档、一个样例、一个检查、一个守卫与两份 ignore 文件。
-  - **已合并** `（待填：合并号）`（2026-11-22）：[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3，与本文不同之处在 3.26；修复两轮之后 `make deploy-check` 另核五条性质、停机的宽限是 60 秒。
+  - **已合并** `d57bf31a`（2026-11-22）：[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3，与本文不同之处在 3.26；修复两轮之后 `make deploy-check` 另核五条性质、停机的宽限是 60 秒。
 
 ## 1. 基线
 
@@ -2121,7 +2121,7 @@ P5 完成，当且仅当：
   - 第 4 遍（修复第 1 轮，审查 A 的 I1，决定 692）：同一台机器上正式的一套（项目 `nervewiki`、8080）起着，照重写的"演练"一节，三块代码从 README 读出、在一个新的 shell 里执行（94 s）：演练里有备份之前的页与附件、没有备份之后的，浏览器在 `http://127.0.0.1:18080` 登录、打开；正式的容器、启动时间与 `data/` 没被碰；演练的容器、卷、网络留下 0。找到的两处（没有 sudo 的两行、`readyz` 要等）在 `d1802a0b`。同一遍在正式的一套上走了改密码的三步与会话地址的核对。
   - 演练的命令与输出在 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)；秘密不在日志里（密码只在 `.env`，日志只打键名）。
 - **数**：3.18 的十三行与 P4 10.3"给部署文档"逐行对过，取的数与出处、已知限制的十七行与 S7 设计第 9 节的去处，两张表在审查记录。B2 照负责人第 13 问第 4 条写约 2.6 GiB（2,662 MiB）、按约 3 GiB 留给服务、容器约 3.5 GiB；最低配置照第 3 条写 7763 与余约 0.5 秒；B4 用 S7 之后的 9.96、6.82、5.96 秒（× 1.25 12.49、8.52、7.45）；P4 量的那一份 vault 约 6 万个节点，今天要分两次导，上限处的数标"推算"；`/dev/shm` 一句照主持者定的写，`compose.yaml` 不设 `shm_size`（决定 691）。
-- **分支 CI**（每次推送，第一次 attempt）：`dd0d6804` 的 `ci.yml` run 44913031024 十九项都 success（image 1:11，Deploy check 4 秒）、`release.yml` run 44913031016 两个演练绿（amd64 1:40、arm64 1:28）；`d1802a0b` 的 44918606904（image 1:15，Deploy check 3 秒）、44918606889（1:33、1:25）；`22d6a822` 的 44921699001（image 1:17，Deploy check 5 秒）、44921699047（1:36、1:43）；本提交 `（待填：本提交的分支 CI）`。没有推任何 tag、镜像，没有建 Release，没有写 GHCR。
+- **分支 CI**（每次推送，第一次 attempt）：`dd0d6804` 的 `ci.yml` run 44913031024 十九项都 success（image 1:11，Deploy check 4 秒）、`release.yml` run 44913031016 两个演练绿（amd64 1:40、arm64 1:28）；`d1802a0b` 的 44918606904（image 1:15，Deploy check 3 秒）、44918606889（1:33、1:25）；`22d6a822` 的 44921699001（image 1:17，Deploy check 5 秒）、44921699047（1:36、1:43）；文档提交 `701508f1` 的 44926210841（image 1:19，Deploy check 5 秒）、44926210878（1:31、1:21）。S3 合并为 `d57bf31a`，之后第一次 `main` 的 run 44928903970 第一次 attempt 19 项全绿（image 1:15，组合根八份平均 307 秒），Release 的演练 44928904007 绿（1:42、1:27），Vulnerabilities 44928903954 绿。没有推任何 tag、镜像，没有建 Release，没有写 GHCR。
 - **审查**：三份（A compose、演练与检查 1I 2M 4N；B 部署文档的内容对代码与配置 2I 7M 8N 1Q；C 发布说明、清单、对照表与草稿 7M 11N 1Q），修复两轮；核对第 1 轮三位的原发现全关，新的 A 1M 2N、B 2N、C 2M 4N；核对第 2 轮 A、C 各核自己的 Minor 都关上，Nit 主持者核。主持者的决定 691–706。见 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)。
 - **与设计不同之处**在 3.26。
 
