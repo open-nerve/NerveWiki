@@ -391,8 +391,16 @@ curl -fsS http://127.0.0.1:8080/readyz
    mkdir data && sudo tar -C data -xzf backups/blobs-$d.tar.gz && sudo chown -R 65532:65532 data
    docker compose exec -T db psql -U postgres -d nervewiki -c ANALYZE
    docker compose up -d serve
-   curl -fsS http://127.0.0.1:18080/readyz
+   curl -fsS http://127.0.0.1:18080/readyz       # 不是 200 就过几秒再看
    curl -fsS http://127.0.0.1:18080/api/v0/instance
+   ```
+
+   没有 sudo 时借镜像当 root（同"compose 的恢复"之后的写法）：`mkdir data && sudo tar …` 一行换成下面第一行，第 4 步的 `sudo rm -rf data` 换成第二行。
+
+   ```bash
+   docker run --rm -v "$PWD":/w --entrypoint sh postgres:18.7-trixie -c \
+     "mkdir /w/data && tar -C /w/data -xzf /w/backups/blobs-$d.tar.gz && chown -R 65532:65532 /w/data"
+   docker run --rm -v "$PWD":/w --entrypoint sh postgres:18.7-trixie -c 'rm -rf /w/data'
    ```
 
 3. 核对：在浏览器里打开 `http://127.0.0.1:18080`（远程的机器经 `ssh -L 18080:127.0.0.1:18080 <机器>`），登录，打开几页、几个附件，与正式的比；`instance` 的版本号是演练的 `.env` 里的那个。
@@ -401,7 +409,7 @@ curl -fsS http://127.0.0.1:8080/readyz
 
    ```bash
    docker compose down -v                     # 只删演练的容器、网络与卷
-   sudo rm -rf data                           # 属主 65532；没有 sudo 时借镜像，同上文
+   sudo rm -rf data                           # 属主 65532；没有 sudo 时见第 2 步之后
    cd && rm -rf ~/nervewiki-drill
    unset COMPOSE_PROJECT_NAME
    ```
