@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M12/P5 部署文档与发布流水线（三个 Step：S1 版本号与流水线的构建；S2 推送、签名、证明、SBOM、许可证与 Release；S3 部署文档与发布说明） |
-| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订；2026-11-19 照 S2 的实施与审查修订 |
-| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S2 已合并 `24e7b316`，[S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2；S1、S2 的实施与审查之后与本文不同之处照实改在各节，3.24、3.25 列出） |
+| 日期 | 2026-11-16（初稿；设计审查；三次修订；两轮修订核对）；2026-11-18 照 S1 的实施与审查修订；2026-11-19 照 S2 的实施与审查修订；2026-11-22 照 S3 的实施与审查修订 |
+| 状态 | 进行中（设计已审查，[设计的审查记录](reviews/P5-design-review.md)；S1 已合并 `3ef1501f`（2026-11-18），[S1 的审查记录](reviews/P5-S1-version-pipeline-review.md)，结果在 10.1；S2 已合并 `24e7b316`，[S2 的审查记录](reviews/P5-S2-publish-release-review.md)，结果在 10.2；S3 已合并 `（待填：合并号）`（2026-11-22），[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3；三个 Step 都已合并，P5 的完成另记；S1、S2 的实施与审查之后与本文不同之处照实改在各节，3.24、3.25 列出；S3 的在 3.16–3.20 加注、3.26 列出） |
 | 上级文档 | [M12 总设计](00-M12-design.md) 第 2 节，第 3 节第 1、7–11 条，4.3，4.8–4.13，5.1 末行，5.3，5.4，第 7 节 P5 一行与"收尾与发布""次序与并行""移交的落实""总体设计的修订"第 6、7、9 条，9.5–9.7，第 10 节，第 11 节决定 306、308、320–324、332、347 与"需要负责人确认"；[M12 设计审查](reviews/M12-design-review.md) B 的 I3、M4–M11、N1–N7、Q1 与"未核实的怀疑"；[移交](handoffs/) M0-P6-image-release 与其余移交里标给 P5 的部署项；[P1 设计](01-P1-foundation.md) 第 9 节；[v0.1 总体设计](../v0.1-design.md) 第 11 节、13.5、第 14 节 |
 | 代码位置的写法 | 同 00 号文档与 P1：模块写作 `page/…`（`server/internal/modules/` 之下）；`platform/…`、`bootstrap/…` 在 `server/internal/` 之下；其余写仓库根起的路径。行号都是 `main` 的 `86565dd6` 的。00 号文档的行号以它头上的 `5e8af5b5` 为准，本文引它时只写节号；2.1 写出的旧文字与行号是 `86565dd6` 上的 00 号文档 |
 | 工作笔记 | 本文引的每个行号都在 `86565dd6` 上读过（附录）。公开的东西只读：十二个 action 与工具的 tag 与它指的提交（设计者起草时以 `git ls-remote` 读过一次，审查没能复核，见 3.21）；`actions/attest` v4.2.2 的 README 与 `src/sbom.ts`；`anchore/sbom-action` v0.24.3 的 `action.yml` 与 `src/SyftVersion.ts`；`sigstore/cosign-installer` v4.1.3 的 `action.yml`；`docker/build-push-action` v7.4.0 的 `action.yml`；actionlint 的 CHANGELOG；GitHub 文档（Container registry、immutable releases）；Docker 文档（`imagetools create`）；arm 的 runner 的软件表；本机 gh 2.103.2 的帮助；公开接口上 `ci.yml` 的运行。小实验在临时的 worktree 里（用完已删），输出在 `m12/p5-design/`。三位审查者的探针在 `m12/p5-review-{a,b,c}/`，两轮修订核对的在 `m12/p5-check{1,2}-{a,b,c}/`。actionlint 不在本机跑（设计时被权限分类器拒过，3.5） |
@@ -37,6 +37,7 @@
   - 根 README 的"部署"一节缩成入口，守卫里 README 一项换成 `deploy/README.md`；`CHANGELOG.md` 的 0.1.0 一节；`SECURITY.md`；`manual/` 的读屏清单与验收入口（3.19）；
   - 照 `deploy/README.md` 用 `deploy/compose.yaml` 在本机装一遍、升一次级、备份再恢复一遍（3.20）；
   - **单独为绿**：只改文档、一个样例、一个检查、一个守卫与两份 ignore 文件。
+  - **已合并** `（待填：合并号）`（2026-11-22）：[S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3，与本文不同之处在 3.26；修复两轮之后 `make deploy-check` 另核五条性质、停机的宽限是 60 秒。
 
 ## 1. 基线
 
@@ -1413,7 +1414,11 @@ S2 另加的格（共 31 格）见 3.25 第 5 条。
 | `CHANGELOG.md`、`SECURITY.md` | 新（3.19） |
 | `docs/v0.1/M12-release/manual/screen-reader-checklist.md`、`manual/README.md` | 新（3.19） |
 
+**S3 之后**：另改了 `server/configs/config.yaml` 的两处注释（`:95` 的内存、`jobs.shutdown_timeout` 的停机；3.26 第 6、11 条）；根 README 另两处（`:173`、`:383`）也改指 `deploy/README.md`（3.26 第 6 条）。
+
 ### 3.17 S3：`deploy/compose.yaml` 与 `make deploy-check`
+
+**S3 之后**（3.26 第 10、11 条）：下面的代码块是设计时的。现行的 `deploy/compose.yaml` 的 `stop_grace_period` 是 60 秒（停机至多 52 秒：20 + 2 + 11 + 7 + 7 + 5），健康检查与 `trusted_proxies` 的注释写明 `make deploy-check` 核对；`make deploy-check` 改为 `docker compose … config --format json` 之后以 `jq` 核对五条（服务恰是 `db`、`serve`、`migrate` 只在 profile 里，可信的代理等于子网，健康检查经 TCP，端口只听本机，宽限 60 秒）。以 `deploy/compose.yaml` 与 `Makefile` 为准。
 
 ```yaml
 # Nerve Wiki 的部署样例（deploy/README.md 的"安装"）：PostgreSQL、迁移与服务，一台机器、单实例。
@@ -1531,6 +1536,8 @@ SQL
 
 ### 3.18 S3：`deploy/README.md` 的大纲与数的出处
 
+**S3 之后**（3.26 第 1–4、9、11、13 条）：安装与恢复写 `up -d --wait db`；升级块写出备份的两行，`docker stop -t 60`；`backups/` `chmod 700`、`.env` 先 600 再写；部署的目录以 `sudo install -d` 建给部署的用户；同机的演练写成完整的步骤；"导入上限的 vault"的数写成 P4 量的那一份（约 6 万个节点）的、上限处的标"推算"。数的出处逐行在 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)的"数从哪里来"。
+
 照 00 号文档 4.8 的八节加附录。每节写"做什么"的命令，不写开发过程。
 
 1. **要求**：
@@ -1622,6 +1629,8 @@ Release 的说明取这一节（`deploy/release-notes.sh`）。
 - `README.md`：汇总的入口，链到输入法清单（`docs/v0.1/M4-pages/manual/P6-ime-checklist.md`）、MCP 的清单 A–K（`docs/v0.1/M9-mcp/manual/P5-mcp-clients-checklist.md`）、读屏清单与 M 类的其余各项、P2/S3 交的两项（真的 Safari 上窄屏的搜索页与原生下拉的焦点，[S3 的记录](reviews/P2-S3-narrow-bdi-contrast-review.md)"读屏与人工清单"）、P2/S6 交的两项（26.18a 在真的浏览器里看一次印地文、泰文的搜索命中；26.5 在 macOS 的 Safari 与 Chrome 上，关着的选择按方向键是否打开列表、列表里选的是否立即用，[S6 的记录](reviews/P2-S6-versions-trash-history-search-review.md)"读屏与人工清单"）；写明都在发布之后做，发现的问题出 v0.1.1。
 
 ### 3.20 S3：三遍演练
+
+**S3 之后**（结果在 10.3，命令与输出在 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)）：三遍照这一节跑了；隔离设 `COMPOSE_PROJECT_NAME`，不用 `-p`（3.26 第 9 条）；修复第 1 轮另在同一台机器上、正式的一套起着时，照重写的"演练"一节走了第 4 遍。
 
 照 `deploy/README.md` 本身做，用 `deploy/compose.yaml` 与 `compose-initdb.sh`，在本机。
 
@@ -1765,6 +1774,25 @@ S2 的审查与修复见 [S2 的审查记录](reviews/P5-S2-publish-release-revi
     - 演练与 `sbom` 作业的 Check the SBOMs：前端 SBOM 里除 `@nervewiki/*` 之外的每个包都在 `/licenses/npm/INDEX.tsv`；不在的 `@types/` 包打出名字、不算缺（只有类型声明，构建丢掉；今天是 `@types/trusted-types`，dompurify 的可选依赖，pnpm 的 `licenses list --prod` 不走各包的可选依赖，`npm.mjs` 收不到它）。`LC_ALL=C` 之下 `sort` 与 `comm`。
 14. **`tools/licenses/check.mjs`**（3.11、7.2；修复第 1 轮，实施中定）：`make lint-web` 跑它，对着假的 `go` 与假的 `pnpm`、各自一个目录的桩跑 `go.sh` 与 `npm.mjs`，10 格（每个模块的文件与 Go 本身；只有 `license.go` 的模块；不在模块缓存里；程序多一个、`go list` 多一个；程序的 Go 版本不同；Go 本身没有 PATENTS；npm 的生产依赖与 tailwindcss；tailwindcss 没装；pnpm 什么也没列）。x2 由它的一格常驻。收口（核对第 1 轮 A 的 N1）：假的 `go` 照真的每个包一行，每个模块三行、按依赖的次序，`go.sh` 的 `sort -u` 由第 1 格管着。
 15. **`go.sh` 的注释**（审查 A 的 N1）：子目录一句改写为事实："只看模块的根目录：今天链接进来的包所在的子目录里没有另外的许可证（M12/P5/S2 审查 A 核过）"。
+
+### 3.26 S3 的实施对设计的修正
+
+S3 的审查与修复见 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)，结果在 10.3。3.16–3.20 各加了"S3 之后"的注，正文是设计时的。写了行号的，代码是 S3 的头 `22d6a822`。
+
+1. **恢复与安装写 `docker compose up -d --wait db`**（3.18 第 2、4 条写 `up -d db`；决定 698）：恢复紧接着 `pg_restore`，不等健康检查就连到第一次 initdb 的临时服务器（演练的探针：先是没有套接字，再是 `role "nervewiki" does not exist`）；安装里 `run --rm migrate` 本来就等，一并写。健康检查的 `-h 127.0.0.1` 正是 `--wait` 的前提，`compose.yaml` 写了注释（审查 A 的 N1）。
+2. **升级块写出备份的两行**（3.18 第 5 条只写"备份"；决定 699）：照"备份与恢复"整个做会在迁移之前把旧的 `serve` 又起来（第 2 遍演练）。
+3. **`backups/` `chmod 700`、`.env` 先 600 再写**（3.18 第 2、4 条；决定 700）：演练看到 dump 是 664、`.env` 写的那一刻是 664；`mkdir -m` 对已有的目录不改权限，所以写 `mkdir -p backups && chmod 700 backups`（审查 A 的 N3）。
+4. **部署的目录建给部署的用户，恢复的 `mv data data.old` 不要 sudo**（决定 701）：同一个父目录里改名只要父目录可写，删它仍借镜像；所以安装第 1 步 `sudo install -d -o "$(id -u)" -g "$(id -g)" -m 755 /srv/nervewiki`，命令以拥有它、在 `docker` 组里的用户执行（审查 A 的 M1）。
+5. **`CHANGELOG.md` 的一节不写相对链接**（3.19；决定 697）：它原样进 Release 的说明，那里相对链接是坏的；指 `deploy/README.md`、`SECURITY.md`、`manual/README.md` 的写成代码样式的路径。
+6. **根 README**（3.19）：`:45`、`:229` 今天是 `:46`、`:231`；另有 `:173`（`reindex` 的代价）与 `:383`（MCP 的名额照部署一节缓冲）两处也指着旧的一节，一并改；`server/configs/config.yaml:95` 的"约 2.4 GB"同 `:141` 改为"最坏约 2.6 GiB 堆（2,662 MiB；最坏实测 2,592 MiB）"（审查 B 的 N1）。
+7. **两份代理样例加了 JSON 的压缩**（3.18 第 3 条只说"JSON 开压缩"；决定 702）：nginx 的 `gzip` 四行、Caddy 的 `encode zstd gzip`。验证过的是事件流经过的那几行（M5/P2）；nginx 的 `gzip` 几行没在 nginx 上跑过，文档写明（审查 B 的 M5），MCP 客户端清单 I 一节照样例起 nginx 时第一次跑到它们。
+8. **`manual/README.md` 另收 P2/S5 的三项人工**（15.1、17.4、38.7；决定 703），并写明 MCP 客户端清单 I 一节的两份样例（nginx 与 Caddy）现在在 deploy/README；清单 I 一节本身的替换在本提交。
+9. **同一台机器上的恢复演练写成完整的步骤**（3.20 的"隔离"一条原写 `-p`；决定 692、704）：另一个目录、`export COMPOSE_PROJECT_NAME`、另一个端口（18080）与子网（`10.213.48.0/24`），备份拷进演练的目录，不 `cd` 进正式的目录、不 `mv data`，删 `data/` 写绝对路径，最后 `unset`；照它在同一台机器上、正式的一套起着时走过（审查 A 的 I1、A2-N1）。
+10. **`make deploy-check` 另核五条性质**（3.17 只查写法；决定 693）：`profiles`、可信的代理与子网、健康检查的 `-h 127.0.0.1`（认 `pg_isready` 的参数，不论次序）、端口的 `127.0.0.1`、停机的宽限（以 compose 展开的 `1m0s` 比），`deploy/README.md` 各有靠它的步骤；用 `jq` 读 compose 展开后的配置，每条一个变异（审查 A 的 M2、A2-N2）。
+11. **停机的宽限 60 秒**（样例原写 40 秒；决定 694）：停机各段之和算上 lint 的收尾，而它等两次（`run` 停服务时与 `close` 关闭之前各一次，各至多 `database.commit_timeout` 加 5 秒，一般都是零，只在工作者卡在提交里时才等），是 20 + 2 + 11 + 7 + 7 + 5 = 52 秒；"一起调长"的例子是 50 秒与 90 秒（82 秒）。改式子，不改服务端；`close` 在 `run` 已经停过 lint 时不再等，进 v0.2（审查 B 的 Q1、A2-M1、B2-N1）。
+12. **发布说明不写"回归"**（P3 设计 `:184`；决定 695）：v0.1.0 是第一个版本，对用户没有"今天"（审查 C 的 Q1）。
+13. **`CHANGELOG.md` 的已知限制与 deploy/README 第 8 节互相指，另起几条**（决定 705）：前者开头指回后者，后者末句只指"网页、导入等别的"；`CHANGELOG.md` 另起"阅读视图的就地更新""两条边界""内存""大图""不能立即永久删除"（审查 C 的 M1–M5、N2、N5）。"两条边界"的去处是 v0.2 的 `M12-polish.md` 与 `M12-release.md`（决定 696）。
+14. **Release 页上的标题层级不改**（决定 706）：`CHANGELOG.md` 一节的 `###` 在前、`release-notes.sh` 接的 `## 镜像` 等在后，层级倒过来，只是外观；要改得同时改脚本与 `release_test.go` 的期望（审查 C 的 N6）。
 
 ## 4. 网页
 
@@ -2079,6 +2107,23 @@ P5 完成，当且仅当：
 - **第 9 节"P5/S2"的五条**：决定 561、562 做了（守卫也核对）；跳过的矩阵作业仍不展开名字：分支的运行里是 `build (${{ matrix.arch }})` 与 `verify (${{ matrix.arch }})`；`DOCKER_BUILD_RECORD_UPLOAD: "false"` 之后演练的 artifact 仍是 0 个（sbom-action 的 `upload-artifact: false`）；磁盘：根分区开工 24G，实施的 15 次构建（两次 `make image`、13 个镜像的变异）之后 17G，Docker 的构建缓存从约 10G 到 17.6G（共用的，没动），平均每次构建多留约 0.5 GB；修复第 1 轮开始与结束都是 18–19G（一次 `make image` 与 5 个镜像的变异）。
 - **没有推任何 tag、镜像，没有建 Release，没有写 GHCR**：tag 的七个作业在分支上都跳过；分支 CI 与演练没有红在权限或"action 不被允许"上，`anchore/sbom-action` 在演练里跑过（`docker/login-action`、`actions/attest`、`sigstore/cosign-installer`、`actions/download-artifact` 只在 tag 的作业里，还没跑过）。
 - **审查**：三份（A `/licenses` 与演练 1I 2M 1N 1Q；B 五个作业与守卫 0I 2M 4N 1Q；C 脚本、提交、变异与文档 0I 4M 6N 1Q）；核对第 1 轮 A、B、C 各 1N，照负责人 2026-11-19 的规矩不再开核对，收口一个提交、主持者核对。主持者的决定 612–617。见 [S2 的审查记录](reviews/P5-S2-publish-release-review.md)。
+
+### 10.3 S3：部署文档与发布说明（2026-11-21–22，合并见 00 号文档第 12 节）
+
+- **提交**（`m12-p5-s3`，从 `11d1674c`；实施 5 个，修复第 1 轮 3 个，第 2 轮 2 个，一共 10 个；不合并 `main`；文档是本提交）：`453e7459` `deploy/compose.yaml`、`compose-initdb.sh`、两份 ignore、`make deploy-check` 与 CI 的 `image` 一项、守卫加 `compose.yaml`；`913d82e1` `deploy/README.md` 与根 README 的"部署"缩成入口、守卫的 README 一项换成 `deploy/README.md`、三处注释（另 `config.yaml` 的一处）；`221e90bc` `CHANGELOG.md` 的 0.1.0 一节与 `SECURITY.md`；`a18350cb` 读屏清单与人工验收的入口；`dd0d6804` 演练找到的（下面）；修复第 1 轮（三份审查）：`0e20f1bd` `deploy-check` 的五条断言与 `stop_grace_period` 50 秒，`3fef47f3` 文档，`d1802a0b` 同机演练找到的；修复第 2 轮（核对轮）：`1f37cc2e` 停机的宽限 60 秒与健康检查的断言认参数，`22d6a822` 文档。每个提交单独为绿，只跑相关的（负责人 2026-11-19 第 12 问）：改 `Makefile`、`compose.yaml`、`config.yaml`、守卫的 `make lint`、`make test-go-short`、`make deploy-check`，第 1 个另在普通的克隆里 `make image-smoke`（`.dockerignore` 改了；`deploy/.env` 等四样放着，`modified=false`）；只改文档的 `check_links.py`、`git diff --check`、`check:format`。
+- **`make deploy-check`**：`docker compose -f compose.yaml --profile migrate config --format json`，假值给四个必填的变量，之后 `jq` 在展开后的配置上核对五条：服务恰是 `db`、`serve`，`migrate` 只在 profile 里；可信的代理等于子网；健康检查经 TCP；端口只听本机；停机的宽限 60 秒（决定 693）；CI 的 `image` 一项在 Image smoke 之前跑它（3–5 秒）。
+- **变异**：7.2 的 d1、d2、p1、p2 都抓到；d2 去掉 `--profile migrate` 照过（设计写明，它说明那个参数是必要的）；另加的 d1b、d3–d8（两个服务的版本变量与 secret、`depends_on`、schema、YAML、另两个必填变量）与 p1b、p2b（initdb 参数、去掉反引号）都抓到。修复第 1 轮另加 a1–a5，每条断言一个，各自单独红、报的是那一条（判定要 make 失败且输出里有那一条的文字，对照的一个照过）；修复第 2 轮另加健康检查的三个（换了主机、`pg_isready` 不在开头都抓到，换了参数的次序照过）与宽限的两个（50s 抓到，`1m` 照过）；d1–d8、p1、p1b 每轮重跑仍抓到。抓不到的没有。
+- **三遍演练**（3.20；本机构建的 `0.1.0-drill.0`（`5e8af5b5`）与 `0.1.0-drill.1`（S3 的第 4 个提交），每遍一个脚本、整个经 `heavy.sh`，`COMPOSE_PROJECT_NAME` 让文档的命令原样执行；没有 sudo，用文档写的借镜像当 root 的写法）：
+  - 从零装（7 s）：迁移 00001–00059 以非超级用户执行，`nervewiki` 的 `rolsuper`、`rolcreatedb`、`rolcreaterole` 都是 `f`，表与 `pg_trgm` 的所有者是它，库是 builtin `C.UTF-8`；带 `X-Forwarded-For: 203.0.113.9` 经发布的端口登录，没有"not a trusted proxy"的 WARN，会话的 IP 是 `203.0.113.9`；对照：去掉 `trusted_proxies` 时 WARN 一行、IP 是网关 `10.213.47.1`。
+  - 升一次级（10–11 s）：从 `5e8af5b5` 升到 S3，`run --rm migrate` 答 `no pending migrations`（M12 没有新的迁移，P5-17）；版本号与提交是新的，正文与附件的字节不变。
+  - 备份再恢复（15–16 s）：`pg_restore -U nervewiki --exit-on-error` 没有错，恢复之后所有者照旧、`ANALYZE` 之后 33 张表有统计，`blobs` 65532:65532 750，正文与附件的字节相同。
+  - 照文档做不下去或做错的四处，第 5 个提交改了：升级里"照'备份与恢复'备份"会连那一节最后的 `up -d serve` 一起做（旧服务在迁移之前又起来），写出两行；备份是整个库、出来是 664，`backups/` 改 700；`.env` 先建成 600 再写；恢复的 `up -d db` 要 `--wait`。改过之后三遍照最后的文字再各跑一遍，都过。
+  - 第 4 遍（修复第 1 轮，审查 A 的 I1，决定 692）：同一台机器上正式的一套（项目 `nervewiki`、8080）起着，照重写的"演练"一节，三块代码从 README 读出、在一个新的 shell 里执行（94 s）：演练里有备份之前的页与附件、没有备份之后的，浏览器在 `http://127.0.0.1:18080` 登录、打开；正式的容器、启动时间与 `data/` 没被碰；演练的容器、卷、网络留下 0。找到的两处（没有 sudo 的两行、`readyz` 要等）在 `d1802a0b`。同一遍在正式的一套上走了改密码的三步与会话地址的核对。
+  - 演练的命令与输出在 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)；秘密不在日志里（密码只在 `.env`，日志只打键名）。
+- **数**：3.18 的十三行与 P4 10.3"给部署文档"逐行对过，取的数与出处、已知限制的十七行与 S7 设计第 9 节的去处，两张表在审查记录。B2 照负责人第 13 问第 4 条写约 2.6 GiB（2,662 MiB）、按约 3 GiB 留给服务、容器约 3.5 GiB；最低配置照第 3 条写 7763 与余约 0.5 秒；B4 用 S7 之后的 9.96、6.82、5.96 秒（× 1.25 12.49、8.52、7.45）；P4 量的那一份 vault 约 6 万个节点，今天要分两次导，上限处的数标"推算"；`/dev/shm` 一句照主持者定的写，`compose.yaml` 不设 `shm_size`（决定 691）。
+- **分支 CI**（每次推送，第一次 attempt）：`dd0d6804` 的 `ci.yml` run 44913031024 十九项都 success（image 1:11，Deploy check 4 秒）、`release.yml` run 44913031016 两个演练绿（amd64 1:40、arm64 1:28）；`d1802a0b` 的 44918606904（image 1:15，Deploy check 3 秒）、44918606889（1:33、1:25）；`22d6a822` 的 44921699001（image 1:17，Deploy check 5 秒）、44921699047（1:36、1:43）；本提交 `（待填：本提交的分支 CI）`。没有推任何 tag、镜像，没有建 Release，没有写 GHCR。
+- **审查**：三份（A compose、演练与检查 1I 2M 4N；B 部署文档的内容对代码与配置 2I 7M 8N 1Q；C 发布说明、清单、对照表与草稿 7M 11N 1Q），修复两轮；核对第 1 轮三位的原发现全关，新的 A 1M 2N、B 2N、C 2M 4N；核对第 2 轮 A、C 各核自己的 Minor 都关上，Nit 主持者核。主持者的决定 691–706。见 [S3 的审查记录](reviews/P5-S3-deploy-docs-review.md)。
+- **与设计不同之处**在 3.26。
 
 ## 附录：核对过的代码与公开的东西
 
