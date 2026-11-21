@@ -153,7 +153,8 @@ func (t *timeFlag) Set(s string) error {
 	return err
 }
 
-// vaultCommand writes an import's vault from a seed (design 3.4.3).
+// vaultCommand writes an import's vault from a seed (design 3.4.3), or a
+// part of it (-part k/n, design 3.12).
 func vaultCommand(args []string, stdout io.Writer) error {
 	fs := flag.NewFlagSet("vault", flag.ContinueOnError)
 	out := fs.String("out", "", "the zip to write")
@@ -166,6 +167,7 @@ func vaultCommand(args []string, stdout io.Writer) error {
 	attachment := fs.String("attachment-bytes", "800KiB", "an attachment's bytes")
 	fs.IntVar(&s.Random, "random", 12, "1/random of an attachment is random, the rest a block of 4 KiB repeated")
 	fs.Uint64Var(&s.Seed, "seed", 0, "the seed")
+	part := fs.String("part", "", "k/n: the k-th of n parts of the vault by its folders of the first level; none, the whole")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -173,6 +175,11 @@ func vaultCommand(args []string, stdout io.Writer) error {
 		return errors.New("-out is required")
 	}
 	var err error
+	if *part != "" {
+		if s.Part, err = vault.ParsePart(*part); err != nil {
+			return err
+		}
+	}
 	if s.Body, err = bytesOf(*body); err != nil {
 		return err
 	}

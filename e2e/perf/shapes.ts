@@ -11,6 +11,18 @@ import { zipOf, type ZipFile } from "../fixtures/zip-write";
 /** The seed every shape's generator starts from, with its shape's name. */
 export const seed = 20261116;
 
+/**
+ * The most nodes an import makes, its pages, attachments and the folders their paths imply (page.MaxJobItems, 45,000
+ * since M12/P4/S6): a shape past it is imported in archives of at most this many, the same pages in the same tree.
+ */
+const importNodes = 45_000;
+
+/** An archive of a shape, and the title of the page at the notebook's root it is imported under; none, the root. */
+export interface Archive {
+  readonly zip: Buffer;
+  readonly under?: string;
+}
+
 /** A notebook to import. */
 export interface Shape {
   /** Its notebook's name: the tree's navigation is "Pages of <name>". */
@@ -22,8 +34,11 @@ export interface Shape {
   readonly attachments: number;
   /** The folder of 1,000 pages at its root that T3 opens; none in a flat shape. */
   readonly big?: string;
-  /** Its archives, imported one after another into its root: more than one past an import's 50,000 entries. */
-  archives(): Buffer[];
+  /**
+   * Its archives, imported one after another, each into its root or under the page it names: more than one past an
+   * import's nodes (importNodes).
+   */
+  archives(): Archive[];
 }
 
 /** The shapes by name: NW_PERF_SHAPES names those a round imports. */
@@ -56,8 +71,10 @@ export function sha256(archive: Buffer): string {
 }
 
 /**
- * flat is count pages at the root, "p00001 …" on, digits wide: a page each. Its archives start at the numbers of
- * starts, each up to the next or to count.
+ * flat is count pages at the root, "p00001 …" on, digits wide: a page each. Its pages are generated in runs starting
+ * at the numbers of starts, each up to the next or to count, a generator seeded with its start; each run is cut in
+ * even archives of at most importNodes pages (flat50k's one run of 50,000 in two since M12/P4/S6, flat100k's two in
+ * four), so that its pages are the ones they were.
  */
 function flat(notebook: string, count: number, digits: number, starts: number[]): Shape {
   return {
@@ -66,21 +83,42 @@ function flat(notebook: string, count: number, digits: number, starts: number[])
     pages: count,
     attachments: 0,
     archives: () =>
-      starts.map((start, i) => {
+      starts.flatMap((start, i) => {
         const end = (starts[i + 1] ?? count + 1) - 1;
         const random = generator(`${notebook} ${start}`);
         const files: ZipFile[] = [];
         for (let n = start; n <= end; n++) {
           files.push(page(`p${String(n).padStart(digits, "0")}`, random));
         }
-        return zipOf(files);
+        const parts = Math.ceil(files.length / importNodes);
+        const size = Math.ceil(files.length / parts);
+        return Array.from({ length: parts }, (_, k) => archiveOf(files.slice(k * size, (k + 1) * size)));
       }),
   };
 }
 
+/** The archive of files, imported under the page under, checked within an import's nodes. */
+function archiveOf(files: ZipFile[], under?: string): Archive {
+  const nodes = new Set<string>();
+  for (const f of files) {
+    const name = String(f.name);
+    nodes.add(name);
+    for (let at = name.indexOf("/"); at >= 0; at = name.indexOf("/", at + 1)) {
+      nodes.add(name.slice(0, at + 1));
+    }
+  }
+  if (nodes.size > importNodes) {
+    throw new Error(`an archive of ${nodes.size} nodes, past an import's ${importNodes}`);
+  }
+  return under === undefined ? { zip: zipOf(files) } : { zip: zipOf(files), under };
+}
+
 /**
  * oneFolder is one folder page at the root, "Folder", holding count pages: an import that runs minutes and leaves the
- * tree's root one row (the jobs' polling, design 4.8).
+ * tree's root one row (the jobs' polling, design 4.8). Past an import's nodes (folder50k since M12/P4/S6) it is two
+ * archives of the same pages: the folder with its first count - importNodes pages, one at least, then the rest, at
+ * most importNodes, the longest import there can be, under it. Two archives hold count from 45,000 to 89,999
+ * (folder50k's 50,000: 5,000 and 45,000); past that archiveOf throws.
  */
 function oneFolder(notebook: string, count: number): Shape {
   return {
@@ -94,7 +132,15 @@ function oneFolder(notebook: string, count: number): Shape {
       for (let n = 1; n <= count; n++) {
         files.push(page(`Folder/p${pad(n, 6)}`, random));
       }
-      return [zipOf(files)];
+      if (count + 1 <= importNodes) {
+        return [archiveOf(files)];
+      }
+      const first = Math.max(1, count - importNodes);
+      const rest = files.slice(first);
+      for (const f of rest) {
+        f.name = String(f.name).slice("Folder/".length);
+      }
+      return [archiveOf(files.slice(0, first)), archiveOf(rest, "Folder")];
     },
   };
 }
@@ -131,7 +177,7 @@ function deep(notebook: string, attachments: boolean): Shape {
           }
         }
       }
-      return [zipOf(files)];
+      return [archiveOf(files)];
     },
   };
 }

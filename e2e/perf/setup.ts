@@ -161,16 +161,19 @@ async function importShape(api: ApiClient, pat: string, slug: string, name: Shap
   const shape = shapes[name];
   const notebook = await createNotebook(api, pat, slug, title, "editor");
   const archives = shape.archives();
-  for (const [i, archive] of archives.entries()) {
+  for (const [i, { zip: archive, under }] of archives.entries()) {
     const started = Date.now();
+    // oxlint-disable-next-line no-await-in-loop -- the page it goes under, which an import before wrote
+    const parent = under === undefined ? undefined : await rootPageId(api, pat, notebook.id, under);
     // oxlint-disable-next-line no-await-in-loop -- one import after another into the same notebook
-    const job = await startImport(api, pat, notebook.id, archive);
+    const job = await startImport(api, pat, notebook.id, archive, parent);
     // oxlint-disable-next-line no-await-in-loop -- the same
     const state = await jobEnded(api, pat, job.id);
     record("import", {
       shape: name,
       notebook: title,
       archive: i,
+      under: under ?? null,
       bytes: archive.length,
       sha256: sha256(archive),
       ms: Date.now() - started,
@@ -181,6 +184,19 @@ async function importShape(api: ApiClient, pat: string, slug: string, name: Shap
     }
   }
   return { id: notebook.id, notebook: title, roots: shape.roots, big: shape.big };
+}
+
+/** The id of the page titled title at the root of the notebook notebookId, as credential reads its tree. */
+export async function rootPageId(api: ApiClient, credential: string, notebookId: string, title: string) {
+  const { data, response } = await api.GET("/api/v0/notebooks/{notebook_id}/nodes", {
+    params: { path: { notebook_id: notebookId } },
+    headers: bearer(credential),
+  });
+  const page = data?.data.find((node) => node.kind === "page" && node.parent_id === null && node.name === title);
+  if (page === undefined) {
+    throw new Error(`no page ${title} at the root of ${notebookId}: ${response.status}`);
+  }
+  return page.id;
 }
 
 /**

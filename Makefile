@@ -613,7 +613,7 @@ test-go-guards-core: ## 不带竞态检测的组合根通用与虚拟文件守�
 test-go-guards-sources: ## 不带竞态检测的来源操作守卫（CI 的一份；需要 Docker）
 	@# M10/P4/S1 的 986 文档 CI 41517408885 attempt1：旧 guards 的 18 行均打印 package ok，
 	@# 但整作业到 30 分钟被取消；将最后六行分出。两份仍各限 30 分钟，所有 Go argv、单项样本和预算不变。
-	@# M10/P2 来源的六项成功操作分别计时；五项HTTP与完整60k计划均三个DB设置各三次。
+	@# M10/P2 来源的六项成功操作分别计时；五项HTTP与完整计划（MaxJobItems 个节点，M12/P4/S6 起 45k）均三个DB设置各三次。
 	@# HTTP核实际应用池的auto/force_generic_plan设置；来源口仍Planned，不称为PREPARE通用计划。
 	@# 新预算来自本机原始样本的三倍；不修改提交2s或既有守卫。请求4s不变，只有 restore、revert 两行用生产的15s，
 	@# 让7.6s的界、而不是4s时的500来判（M12 旁支 m12-p1-source-revert-deadline，00-M12 决定 359）。
