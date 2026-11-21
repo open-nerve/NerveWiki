@@ -1,6 +1,6 @@
 # 发布之后的人工验收
 
-自动测试做不到、由负责人做的检查，都在 v0.1.0 发布之后（[00-M12](../00-M12-design.md) 4.12，负责人 2026-11-14 第 4 问、2026-11-17 第 9 问）。发布说明（`CHANGELOG.md` 的 0.1.0 一节）写明它们还没有做。发现的问题在 v0.1.1 修：结果写进 v0.1.1 的移交 `docs/v0.1.1/handoffs/M12-after-release.md`（M12 收尾时建），v0.1.1 由负责人另行批准开工。验收通过之后，[总体设计](../../v0.1-design.md) 12.6 里 M4–M12 的状态一起改为"已完成"。
+自动测试做不到、由负责人做的检查，都在 v0.1.0 发布之后（[00-M12](../00-M12-design.md) 4.12，负责人 2026-11-13 第 4 问、2026-11-17 第 9 问）。发布说明（`CHANGELOG.md` 的 0.1.0 一节）写明它们还没有做。发现的问题在 v0.1.1 修：结果写进 v0.1.1 的移交 `docs/v0.1.1/handoffs/M12-after-release.md`（M12 收尾时建），v0.1.1 由负责人另行批准开工。验收通过之后，[总体设计](../../v0.1-design.md) 12.6 里 M4–M12 的状态一起改为"已完成"。
 
 用一台照 [deploy/README.md](../../../../deploy/README.md) 装好的 v0.1.0（包设为公开之后，用 GHCR 的镜像）。
 
@@ -8,12 +8,12 @@
 
 | 清单 | 内容 | 来自 |
 |---|---|---|
-| [输入法清单](../../M4-pages/manual/P6-ime-checklist.md) | 中文、日文等的组字：编辑、自动保存与推送、补全、粘贴上传、搜索、来源（21 步） | M4–M8、M10 |
+| [输入法清单](../../M4-pages/manual/P6-ime-checklist.md) | 中文、日文等的组字：编辑、自动保存与推送、补全、粘贴上传、搜索、来源（23 步） | M4–M8、M10 |
 | [MCP 客户端清单](../../M9-mcp/manual/P5-mcp-clients-checklist.md) | 真实的 Claude Code、Codex：接上、读写、审批、答复、大的请求体、重启、编辑锁、反向代理、prompts 与 LLM Wiki、升级（A–K） | M9–M11 |
 | [读屏清单](screen-reader-checklist.md) | 只从 ARIA 推断的八项、M 类里与读屏有关的、P2 各 Step 交来的 | M4–M12 |
 | 下面"其余各项" | 只在真的浏览器、真的系统上看得到的 | M5–M12 |
 
-MCP 客户端清单 I 一节说的"README 的部署一节的 nginx 样例"，现在在 [deploy/README.md](../../../../deploy/README.md) 的"反向代理与 HTTPS"（M12/P5/S3 把它挪了过去）。
+MCP 客户端清单 I 一节说的"README 的部署一节"的 nginx 与 Caddy 两份样例，现在在 [deploy/README.md](../../../../deploy/README.md) 的"反向代理与 HTTPS"（M12/P5/S3 把它们挪了过去）。nginx 的多了 `gzip` 几行，没有在真的 nginx 上跑过：I 一节照样例起 nginx 时正好跑到它们。
 
 ## 其余各项
 
