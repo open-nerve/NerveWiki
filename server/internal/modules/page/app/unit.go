@@ -290,10 +290,12 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		if at.IsZero() {
 			at = w.d.Clock.Now()
 		}
+		// The unit, its memo and its sources' are this transaction's: a
+		// retry builds them anew (M12/P4/S7 design 3.2).
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, UpgradeOwn: spec.UpgradeOwn, Grants: &Grants{},
-			Tree: spec.Tree, sources: &sourceMemo{},
+			Tree: spec.Tree, Memo: &UnitMemo{}, sources: &sourceMemo{},
 		}, into: spec.Changeset, create: spec.Create, message: spec.Message, bulk: spec.Background || spec.BulkSearch,
 			merged: map[uuid.UUID]int{}, deferring: spec.DeferParticipants}
 		if err := u.lockInto(ctx); err != nil {

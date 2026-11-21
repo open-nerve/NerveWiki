@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"log/slog"
 	"slices"
 	"uuid"
 
@@ -18,6 +19,9 @@ type PagesChanged struct {
 	Kind         string
 	Notebook     IngestNotebook
 	BeforeIngest IngestBefore
+	// Memo is the unit's memo, where a single rename or move's participant
+	// may have left the links it read (M12/P4/S7 design 3.2).
+	Memo UnitMemo
 }
 
 // Index keeps the link index with the writes of the pages (M6/P3 design
@@ -28,6 +32,9 @@ type Index struct {
 	Pages        Pages
 	Publisher    Publisher
 	Ingest       *Ingest
+	// Logger, when set, logs at debug each unit whose links the index took
+	// from its participant (M12/P4/S7 design 3.2).
+	Logger *slog.Logger
 }
 
 // PagesChanged follows the unit e: under the notebook's lock of the index,
@@ -38,7 +45,10 @@ type Index struct {
 // attachments under the nodes it renamed, the keys of every alias of those
 // pages and of those it deleted, and the keys of the aliases a content it
 // wrote drops or adds: those two change the notebook's aliases, which the
-// event tells.
+// event tells. A single rename or move's links its participant read and
+// resolved, left in the unit's memo, it takes instead of reading and
+// resolving them again, when the unit's changes are the participant's
+// (takenReach; M12/P4/S7 design 3.2).
 func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 	reach, renamed, ok := domain.Affected(e.Changes)
 	if !ok {
@@ -77,17 +87,24 @@ func (x Index) PagesChanged(ctx context.Context, e PagesChanged) error {
 		reach.Keys = append(reach.Keys, old.AliasKeys...)
 		aliases += len(old.AliasKeys)
 	}
-	reach, err = spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed, nil)
-	if err != nil {
-		return err
-	}
-	links, err := ingest.links(ctx, x.Store, e.NotebookID, reach)
-	if err != nil {
-		return err
-	}
-	changed, err := x.resolve(ctx, e.NotebookID, links)
-	if err != nil {
-		return err
+	// Taken here, before the reach is spread, whether or not it is used:
+	// the participant's links are not kept to the unit's end (design 3.2).
+	// Who changes spread or resolve here, or what the observer reaches,
+	// looks at unit_reach.go's conditions again.
+	links, changed, taken := x.takenReach(ctx, e)
+	if !taken {
+		reach, err = spread(ctx, x.Store, x.Pages, e.NotebookID, reach, renamed, nil)
+		if err != nil {
+			return err
+		}
+		links, err = ingest.links(ctx, x.Store, e.NotebookID, reach)
+		if err != nil {
+			return err
+		}
+		changed, err = x.resolve(ctx, e.NotebookID, links)
+		if err != nil {
+			return err
+		}
 	}
 	if err := x.Store.SetResolutions(ctx, changed); err != nil {
 		return err

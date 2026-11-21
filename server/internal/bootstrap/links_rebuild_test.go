@@ -7,15 +7,18 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math/rand/v2"
 	"net/http"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"uuid"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/linking"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/transfer"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
 
@@ -41,7 +44,14 @@ import (
 // them (M9 Codex review R1; fix round 1, A-N3). Over the runs, 20 batches
 // done at least, 5 whose deferred rewrite wrote a page, 10 links of
 // written pages checked past a rename or a move after their write, and 10
-// pages put back.
+// pages put back. The index of a single rename or move that writes no page
+// takes the links its rewrite read (M12/P4/S7 design 3.2): the steps whose
+// index did, and those of them after which a link leads elsewhere, are
+// counted by its debug line, each at least two thirds of what was first
+// counted (design 4.3 item 8): the composition hands the unit's memo to
+// both, or none is taken, and the index its rebuild covers what the links
+// taken would get wrong. Each run makes six such steps after which a link
+// that led nowhere resolves (resolving), the random writes few.
 func TestTheIndexIsItsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs of writes through serve against a database")
@@ -49,7 +59,17 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 	rewritten, flagged := 0, 0        // flagged: the runs where a link was a value of the aliases after some step
 	toAssets, assetsRewritten := 0, 0 // toAssets: the steps after which a link resolved to an attachment
 	var seen batchSeen
+	// The steps whose index took the links the rewrite read, and those of
+	// them after which a link led elsewhere: 90 and 40 when first counted
+	// (-race, here), 36 of the 40 the steps each seed makes so (resolving);
+	// 43 and 4 before those were made.
+	taken, takenMoved := 0, 0
 	defer func() {
+		t.Logf("the index took the links its rewrite read after %d steps, a link leading elsewhere after %d", taken, takenMoved)
+		if !t.Failed() && (taken < 90*2/3 || takenMoved < 40*2/3) {
+			t.Errorf("the index took the links its rewrite read after %d steps, %d of them leading a link elsewhere: too few to tell",
+				taken, takenMoved)
+		}
 		if !t.Failed() && rewritten < 20 {
 			t.Errorf("the renames and moves wrote %d pages again, want more: the runs test little of the rewrite", rewritten)
 		}
@@ -72,7 +92,9 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 	}()
 	for seed := range uint64(6) {
 		t.Run(fmt.Sprint(seed), func(t *testing.T) {
-			tm, logs := newAcmeTeamLogged(t)
+			logs, takes := &syncBuffer{}, &atomic.Int64{}
+			tm := newAcmeTeamLogging(t, "member", "", nil, transfer.Batch{},
+				slog.New(unitReachCount{next: slog.NewJSONHandler(logs, nil), n: takes}))
 			admin, err := reindexAdmin(tm.pool, testConfig(t, tm.url, false), slog.New(slog.NewTextHandler(io.Discard, nil)))
 			if err != nil {
 				t.Fatal(err)
@@ -81,10 +103,16 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			b := &batcher{w: writer{t: t, tm: tm, nb: w.nb, rnd: rand.New(rand.NewPCG(seed, 13))}, m: tm.agent(t, "alice", w.nb), logs: logs}
 			written, aliased := 0, false // aliased: a link was a value of the aliases after some step
 			for step := range 60 {
-				led := tm.ledTo(t, w.nb)
+				led, took := tm.ledTo(t, w.nb), takes.Load()
 				what, ok, relocates := w.random()
 				if ok {
 					written++
+				}
+				if takes.Load() > took {
+					taken++
+					if !maps.EqualFunc(led, tm.ledTo(t, w.nb), slices.Equal) {
+						takenMoved++
+					}
 				}
 				before, after := tm.rebuilt(t, admin, w.nb)
 				if !slices.Equal(before, after) {
@@ -96,6 +124,25 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 				}
 				if now := tm.ledTo(t, w.nb); ok && relocates && !leadStill(led, now) {
 					t.Fatalf("after step %d, %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
+				}
+				// A link that led nowhere resolves after a single rename or
+				// move that writes no page: its index takes the rewrite's
+				// links, with one that resolves otherwise (design 4.3 item 8).
+				if step%10 == 5 {
+					c := w.resolving(step)
+					led, took := tm.ledTo(t, w.nb), takes.Load()
+					what := w.send(c, http.StatusOK)
+					if takes.Load() != took+1 || maps.EqualFunc(led, tm.ledTo(t, w.nb), slices.Equal) {
+						t.Fatalf("after step %d's %s the index took the rewrite's links %d times, its links led as before: %t; want once, "+
+							"a link resolving", step, what, takes.Load()-took, maps.EqualFunc(led, tm.ledTo(t, w.nb), slices.Equal))
+					}
+					taken, takenMoved = taken+1, takenMoved+1
+					if before, after := tm.rebuilt(t, admin, w.nb); !slices.Equal(before, after) {
+						t.Fatalf("after step %d's %s, the index is not its rebuild:\n%s", step, what, diff(before, after))
+					}
+					if now := tm.ledTo(t, w.nb); !leadStill(led, now) {
+						t.Fatalf("after step %d's %s, a link leads elsewhere:\n%v\nwas\n%v", step, what, now, led)
+					}
 				}
 				var r *batchRun
 				switch {
@@ -130,6 +177,41 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 			checkAssets(t, tm.pool, tm.storage)
 		})
 	}
+}
+
+// unitReachCount is a log handler that counts the index's debug line of a
+// unit whose links it took from its participant (M12/P4/S7 design 3.2),
+// and hands every other record next is enabled for to next: the program's
+// debug lines are not written.
+type unitReachCount struct {
+	next slog.Handler
+	n    *atomic.Int64
+}
+
+// unitReachMessage is linking's debug line of a unit whose links the
+// index took from its participant.
+const unitReachMessage = "the index takes the links its unit's rewrite read"
+
+func (h unitReachCount) Enabled(ctx context.Context, l slog.Level) bool {
+	return l == slog.LevelDebug || h.next.Enabled(ctx, l)
+}
+
+func (h unitReachCount) Handle(ctx context.Context, r slog.Record) error {
+	if r.Level == slog.LevelDebug && r.Message == unitReachMessage {
+		h.n.Add(1)
+	}
+	if !h.next.Enabled(ctx, r.Level) {
+		return nil
+	}
+	return h.next.Handle(ctx, r)
+}
+
+func (h unitReachCount) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return unitReachCount{next: h.next.WithAttrs(attrs), n: h.n}
+}
+
+func (h unitReachCount) WithGroup(name string) slog.Handler {
+	return unitReachCount{next: h.next.WithGroup(name), n: h.n}
 }
 
 // The check of a page put back in TestTheIndexIsItsRebuild reads only the
@@ -442,6 +524,47 @@ func (w writer) random() (string, bool, bool) {
 		w.t.Fatalf("%s %s %s = %d %s", c.method, c.path, c.body, status, answer)
 	}
 	return fmt.Sprintf("%s %s %s = %d", c.method, c.path, c.body, status), status < http.StatusBadRequest, relocates
+}
+
+// resolving writes, for step, a page whose link leads nowhere and the page
+// the step then renames, or moves, to where it leads, and answers that
+// rename or move: a single relocation that writes no page, after which the
+// link resolves (M12/P4/S7 design 4.3 item 8: made at each seed, not left
+// to the random writes). Its names are the step's own.
+func (w writer) resolving(step int) step {
+	w.t.Helper()
+	far, near := fmt.Sprintf("far%d", step), fmt.Sprintf("near%d", step)
+	if step/10%2 == 0 {
+		w.create(fmt.Sprintf("to%d", step), "[["+far+"]]")
+		return nodeRename("alice", w.create(fmt.Sprintf("away%d", step), ""), far)
+	}
+	parent := w.create(near, "")
+	w.create(fmt.Sprintf("to%d", step), "[["+near+"/"+far+"]]")
+	return nodeMove("alice", w.create(far, ""), parent)
+}
+
+// create creates a page of title and content at the notebook's root and
+// answers its id.
+func (w writer) create(title, content string) string {
+	w.t.Helper()
+	b, _ := json.Marshal(map[string]any{"parent_id": nil, "title": title, "content": content})
+	c := request("alice", http.MethodPost, "/api/v0/notebooks/"+w.nb+"/pages", string(b))
+	status, answer := askTyped(w.t, w.tm.contract, c.method, w.tm.base+c.path, w.tm.tokens["alice"], c.contentType, c.body)
+	var created struct{ ID string }
+	if status != http.StatusCreated || json.Unmarshal([]byte(answer), &created) != nil || created.ID == "" {
+		w.t.Fatalf("%s %s %s = %d %s", c.method, c.path, c.body, status, answer)
+	}
+	return created.ID
+}
+
+// send sends c, which serve answers want, and tells what it was.
+func (w writer) send(c step, want int) string {
+	w.t.Helper()
+	status, answer := askTyped(w.t, w.tm.contract, c.method, w.tm.base+c.path, w.tm.tokens["alice"], c.contentType, c.body)
+	if status != want {
+		w.t.Fatalf("%s %s %s = %d %s", c.method, c.path, c.body, status, answer)
+	}
+	return fmt.Sprintf("%s %s %s", c.method, c.path, c.body)
 }
 
 // content is a random content: links of each kind to random targets, a

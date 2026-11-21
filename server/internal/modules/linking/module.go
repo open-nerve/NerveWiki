@@ -167,7 +167,7 @@ func NewIndex(pool *pgxpool.Pool, pages Pages, publisher Publisher, ingest Inges
 	evidence := postgresadapter.NewIngestReads(pool, ingest.MaxContentBytes)
 	reads := app.NewLintReads(postgresadapter.NewLintReads(pool, ingest.MaxContentBytes), ingest.MaxContentBytes)
 	store := postgresadapter.New(pool)
-	return app.Index{Store: store, Preparations: store, Pages: pages, Publisher: publisher,
+	return app.Index{Store: store, Preparations: store, Pages: pages, Publisher: publisher, Logger: ingest.Logger,
 		Ingest: &app.Ingest{Metadata: ingest.Metadata, Marks: ingest.Marks, Heads: evidence, Candidates: evidence, Reads: reads, OldBodies: evidence, Logger: ingest.Logger}}
 }
 

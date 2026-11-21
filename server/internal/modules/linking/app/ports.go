@@ -360,6 +360,24 @@ type Moved struct {
 	Frozen        []uuid.UUID
 	FrozenMoves   []domain.Change
 	CreatedAfter  map[uuid.UUID][]uuid.UUID
+	// Tree says the unit holds its notebook's row from its start (a tree
+	// unit's FOR NO KEY UPDATE), Batch that the step is a batch's deferred
+	// one, and Memo is the unit's memo (M12/P4/S7 design 3.2): a single
+	// rename or move of a tree unit leaves there the links it read for the
+	// index, which reads them then once (keepReach).
+	Tree  bool
+	Batch bool
+	Memo  UnitMemo
+}
+
+// UnitMemo is a unit's memo, one per unit, which its participants and
+// observers share (M12/P4/S7 design 3.2): what one stores under a key the
+// next takes (read and dropped) or drops. The page module's is safe when
+// nil. Only the unit's goroutine uses it.
+type UnitMemo interface {
+	Store(key, value any)
+	Take(key any) (any, bool)
+	Drop(key any)
 }
 
 // WrittenPage is a page a batch's content ops decided, as its deferred

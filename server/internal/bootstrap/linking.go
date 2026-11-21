@@ -35,7 +35,7 @@ func (l linkIndex) PagesChanged(ctx context.Context, e page.Event) error {
 		changes[i].Facts = facts
 	}
 	event := linking.PagesChanged{WorkspaceID: e.WorkspaceID, NotebookID: e.NotebookID, ChangesetID: e.ChangesetID,
-		Kind: string(e.Kind), Changes: changes, Notebook: linking.IngestNotebook{Mode: string(e.Notebook.Mode)}}
+		Kind: string(e.Kind), Changes: changes, Notebook: linking.IngestNotebook{Mode: string(e.Notebook.Mode)}, Memo: e.Memo}
 	if e.Notebook.Mode == page.ModeLLMWiki {
 		root := e.Notebook.SourceRootID
 		event.Notebook.SourceRootID = &root
@@ -64,13 +64,16 @@ func linkChanges(changes []page.Change) []linking.Change {
 
 // linkRewrite is linking's participant of the page write units, as the
 // page module calls it (M6/P4 design 4.1): the step's changes as linking
-// reads them, the unit's appender adapted.
+// reads them, the unit's appender adapted; whether the unit is a tree's,
+// whether the step is a batch's and the unit's memo, which the index
+// shares (M12/P4/S7 design 3.2).
 type linkRewrite struct {
 	rewrite linking.Rewrite
 }
 
 func (l linkRewrite) Participate(ctx context.Context, s page.Step, u page.Appender) error {
-	m := linking.Moved{NotebookID: s.NotebookID, At: s.At, UpdateLinks: s.Options.UpdateLinks, Changes: linkChanges(s.Changes)}
+	m := linking.Moved{NotebookID: s.NotebookID, At: s.At, UpdateLinks: s.Options.UpdateLinks, Changes: linkChanges(s.Changes),
+		Tree: s.Tree, Batch: s.Batch != nil, Memo: s.Memo}
 	if s.Batch != nil {
 		if err := batchMoved(&m, *s.Batch); err != nil {
 			return err
