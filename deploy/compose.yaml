@@ -1,0 +1,80 @@
+# Nerve Wiki 的部署样例（deploy/README.md 的"安装"）：PostgreSQL、迁移与服务，一台机器、单实例。
+# 同目录要有：.env（chmod 600）写 NERVEWIKI_VERSION（只写确切的版本号，例如 0.1.0）、NWIKI_DB_ADMIN_PASSWORD、NWIKI_DB_PASSWORD、
+# NWIKI_PUBLIC_URL；secrets/jwt.pem；data/（属主 65532）；compose-initdb.sh。
+# 升级：docker compose stop serve，备份，改 NERVEWIKI_VERSION，docker compose run --rm migrate，docker compose up -d serve
+# （deploy/README.md 的"升级与回退"）。make deploy-check 核对它的写法；PostgreSQL 的镜像与建库参数由
+# server/internal/platform/postgres/pgtest/image_test.go 核对
+name: nervewiki
+
+services:
+  db:
+    image: postgres:18.7-trixie
+    environment:
+      # 超级用户 postgres 只在容器里用：初始化、备份与恢复。服务与迁移用 compose-initdb.sh 建的 nervewiki，它不是超级用户
+      POSTGRES_PASSWORD: ${NWIKI_DB_ADMIN_PASSWORD:?写进 .env，例如 openssl rand -hex 24 的输出}
+      # builtin provider 的 C.UTF-8：不满足时服务拒绝启动（总体设计 7.1）
+      POSTGRES_INITDB_ARGS: --locale-provider=builtin --locale=C.UTF-8
+      # compose-initdb.sh 第一次建库时读它
+      NWIKI_DB_PASSWORD: ${NWIKI_DB_PASSWORD:?写进 .env，例如 openssl rand -hex 24 的输出（放进连接地址，只用十六进制）}
+    volumes:
+      # PostgreSQL 18 的数据目录在 /var/lib/postgresql/18/docker，卷挂在 /var/lib/postgresql
+      - db:/var/lib/postgresql
+      - ./compose-initdb.sh:/docker-entrypoint-initdb.d/10-nervewiki.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U nervewiki -d nervewiki"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  # 不随 up 启动：备份之后显式执行 docker compose run --rm migrate。serve 依赖它完成的写法会在改了版本号再 up 时、
+  # 备份之前就迁移（00-M12 4.8，设计审查 B 的 M11）
+  migrate:
+    profiles: [migrate]
+    image: ghcr.io/open-nerve/nervewiki:${NERVEWIKI_VERSION:?写进 .env：确切的版本号，例如 0.1.0}
+    command: [migrate, up]
+    environment: &environment
+      NWIKI_DATABASE__URL: postgres://nervewiki:${NWIKI_DB_PASSWORD:?写进 .env}@db:5432/nervewiki?sslmode=disable
+      NWIKI_AUTH__JWT__PRIVATE_KEY_FILE: /run/secrets/jwt
+    secrets: [jwt]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  serve:
+    image: ghcr.io/open-nerve/nervewiki:${NERVEWIKI_VERSION:?写进 .env：确切的版本号，例如 0.1.0}
+    environment:
+      <<: *environment
+      NWIKI_SERVER__PUBLIC_URL: ${NWIKI_PUBLIC_URL:?写进 .env：对外的地址，例如 https://wiki.example.com}
+      # 宿主机上的反向代理经发布的端口进来，服务看到的对端是下面这个网络的网关；不信任它，所有客户端就共用按 IP 的限流
+      # （deploy/README.md 的"反向代理与 HTTPS"）。与 networks 的子网一起改
+      NWIKI_SERVER__TRUSTED_PROXIES: 10.213.47.0/24
+    secrets: [jwt]
+    volumes:
+      # 附件、导入导出（/data）。第一次装时 mkdir data && sudo chown 65532:65532 data；不可写时服务拒绝启动
+      - ./data:/data
+    ports:
+      # 只听本机：前面是反向代理
+      - "127.0.0.1:${NERVEWIKI_PORT:-8080}:8080"
+    # 停机的各段之和（server.shutdown_timeout 20 秒 + 通知 2 秒 + 任务 10+1 秒 + 连接池 5 秒 = 38 秒），deploy/README.md 的"运行与监控"
+    stop_grace_period: 40s
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        # 钉住子网，serve 的 trusted_proxies 信任它。与宿主机上已有的网络重叠时，两处一起改
+        - subnet: 10.213.47.0/24
+
+secrets:
+  # 私钥：openssl genpkey -algorithm ed25519 -out secrets/jwt.pem。uid 65532 要能读（chmod 644），
+  # 所在的目录只给部署的用户（chmod 700），宿主机上别的用户就读不到
+  jwt:
+    file: ./secrets/jwt.pem
+
+volumes:
+  db:

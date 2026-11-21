@@ -394,6 +394,9 @@ jobs:
         with:
           # .git 进入镜像的构建阶段（取提交信息），其中不能有令牌
           persist-credentials: false
+      # deploy/compose.yaml 的写法：语法、变量与 schema（M12/P5/S3）
+      - name: Deploy check
+        run: make deploy-check
       # 构建镜像，在它上面跑 S1、S3，核对进程不是 root、停机时退出码为 0
       - name: Image smoke
         run: make image-smoke
