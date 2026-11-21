@@ -51,7 +51,12 @@
 //	    nodes (P4/S7's top of 59,910); the 100,000 pages of batch E are
 //	    two vaults of 50,510 nodes, -pages 50000 -fanout 10,50 -links 10
 //	    -body 1KiB -seed 2001 and 2002, each in -part 1/2 and 2/2 of
-//	    25,255 nodes.
+//	    25,255 nodes. Since the limit came down perf vault refuses those
+//	    whole vaults, their nodes past an import's, and writes their parts
+//	    alone: the wholes' sha256s are the perf's before -part. The
+//	    import-limit vault has its nodes at the limit and about 73% of the
+//	    4 GiB unpacked, not the largest import in bytes; for that,
+//	    -attachment-bytes 1072KiB (inferred, not written).
 //	perf bodies -prepared <dir>/pats.json -records <jsonl> -k 8 -kind normal|pathological [-same-notebook]
 //	    B2: readers and writers of 5 MiB pages; the busy answers early.
 //	perf mcp -prepared … -records … -shape 1|2a|2b|2c|3|4 -reps 3 -gap 20s

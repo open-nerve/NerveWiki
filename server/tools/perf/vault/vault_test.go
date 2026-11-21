@@ -3,6 +3,8 @@ package vault
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"maps"
@@ -10,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -61,6 +64,40 @@ func TestTheImportLimitVaultIsWithinAnImport(t *testing.T) {
 	}
 	if n := r.Entries + r.Folders; n > lim.Nodes || n < lim.Nodes-90 || r.Entries > lim.Entries || r.Unpacked > lim.Unpacked {
 		t.Errorf("the import-limit vault %s: want within %+v, its nodes within 90 of them", r, lim)
+	}
+}
+
+// The import's limits are the server's (M12/P4/S6 review A-M1): its nodes
+// page.MaxJobItems, the rest config.yaml's transfer defaults, read from
+// their text, as server/tools is a module of its own and does not import
+// the server's. A change of the constant with its test fails here too; a
+// line not found, or not found once, fails, not skips.
+func TestImportLimitsAreTheServers(t *testing.T) {
+	const jobs, config = "../../../internal/modules/page/domain/jobs.go", "../../../configs/config.yaml"
+	value := func(path, pattern string) int64 {
+		t.Helper()
+		b, err := os.ReadFile(filepath.FromSlash(path))
+		if err != nil {
+			t.Fatalf("the server's %s: %v", path, err)
+		}
+		m := regexp.MustCompile(pattern).FindAllStringSubmatch(string(b), -1)
+		if len(m) != 1 {
+			t.Fatalf("%s: %d lines match %s, want one", path, len(m), pattern)
+		}
+		n, err := strconv.ParseInt(strings.ReplaceAll(m[0][1], "_", ""), 10, 64)
+		if err != nil {
+			t.Fatalf("%s: %s: %v", path, m[0][0], err)
+		}
+		return n
+	}
+	server := Limits{
+		Entries:  int(value(config, `(?m)^\s+import_max_entries: ([0-9]+)$`)),
+		Nodes:    int(value(jobs, `(?m)^const MaxJobItems = ([0-9_]+)$`)),
+		Unpacked: value(config, `(?m)^\s+import_max_unpacked_bytes: ([0-9]+)$`),
+		Zip:      value(config, `(?m)^\s+import_max_bytes: ([0-9]+)$`),
+	}
+	if got := ImportLimits(); got != server {
+		t.Errorf("ImportLimits() = %+v, the server's %+v (page.MaxJobItems, config.yaml's transfer)", got, server)
 	}
 }
 
@@ -247,6 +284,20 @@ func partSpec() Spec {
 	return Spec{Pages: 120, Attachments: 37, Fanout: []int{5, 2, 3}, Links: 6, Body: 300, AttachmentBytes: 5 << 10, Random: 3, Seed: 41}
 }
 
+// contentOf is the SHA-256 of what a zip holds, not of how deflate wrote
+// it: each entry in the zip's order, its path, a zero byte, its unpacked
+// length in decimal, a zero byte and its unpacked bytes.
+func contentOf(t *testing.T, path string) string {
+	t.Helper()
+	entries, order := entriesOf(t, path)
+	h := sha256.New()
+	for _, p := range order {
+		_, _ = fmt.Fprintf(h, "%s\x00%d\x00", p, len(entries[p]))
+		_, _ = h.Write(entries[p])
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 // entriesOf is the zip's entries: each one's bytes by its path, and the
 // paths in the zip's order.
 func entriesOf(t *testing.T, path string) (map[string][]byte, []string) {
@@ -360,20 +411,21 @@ func TestTheVaultsPartsAreTheVault(t *testing.T) {
 }
 
 // A part of one is the whole vault, the zip byte for byte (the CLI's -part
-// 1/1 and no -part, design 3.12), and the whole vault is still the zip
+// 1/1 and no -part, design 3.12), and the whole vault still holds what
 // S1's generator wrote from the seed, so that S3's records' vaults are
-// still the ones a seed writes (its sha256 taken from the generator before
-// the parts; another Go's deflate could change it): with folders, and with
-// every entry at the root, where the vault is one part.
+// still the ones a seed writes (contentOf of the generator's zips before
+// the parts, which another Go's deflate does not change; M12/P4/S6 review
+// B-N1): with folders, and with every entry at the root, where the vault
+// is one part.
 func TestAWholePartIsTheWholeVault(t *testing.T) {
 	root := Spec{Pages: 9, Attachments: 2, Links: 2, Body: 200, AttachmentBytes: 1 << 10, Random: 2, Seed: 5}
 	dir := t.TempDir()
 	for _, c := range []struct {
-		name, sha256 string
-		s            Spec
+		name, content string
+		s             Spec
 	}{
-		{"folders", "a91ac5d9312318e9f92e162dd5e86557a7cb755b81284d25d112da6a11834a81", partSpec()},
-		{"root", "b6443b94966be962b7c1049612c305d2f89cb51efe7a5f19ffe57c7de3fb4971", root},
+		{"folders", "aa4bd4b4adf84bafdabaf61d3ac7651c571dc51d9a52381b29d808445bf33888", partSpec()},
+		{"root", "918237ea0784b33b9d1c3da8cbf2cb8ca9e50dd55764416da47fa2b06310e325", root},
 	} {
 		whole, err := Write(filepath.Join(dir, c.name+".zip"), c.s, ImportLimits())
 		if err != nil {
@@ -384,8 +436,11 @@ func TestAWholePartIsTheWholeVault(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if one != whole || whole.SHA256 != c.sha256 {
-			t.Errorf("%s: part 1/1 %s, the whole %s; want both the generator's %s", c.name, one, whole, c.sha256)
+		if one != whole {
+			t.Errorf("%s: part 1/1 %s, the whole %s; want the same zip", c.name, one, whole)
+		}
+		if got := contentOf(t, filepath.Join(dir, c.name+".zip")); got != c.content {
+			t.Errorf("%s: the whole vault holds %s, the generator's %s", c.name, got, c.content)
 		}
 	}
 	root.Part = Part{K: 1, N: 2}
