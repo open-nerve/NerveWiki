@@ -11,13 +11,15 @@ import { createNotebook } from "../fixtures/notebooks";
 import { createPage } from "../fixtures/pages";
 import { cancelJob, startExport, startImport } from "../fixtures/transfer";
 import { record } from "./record";
-import { perfEnv, type PerfEnv } from "./setup";
-import { sha256, shapes } from "./shapes";
+import { perfEnv, rootPageId, type PerfEnv } from "./setup";
+import { sha256, shapes, type Archive } from "./shapes";
 
 // M7-transfer item 4, only recorded (M12/P4 design 4.8): the notebook's jobs, read again every second while one is
 // queued or running (W/pages/notebook/transfer-page.tsx), every page of them held. For each N, 1 and 3 tabs, a
 // notebook of its own: a page, 60 small exports of it ended (with the import, two pages of 50 jobs), then an import of
-// 50,000 pages under one folder, running through the window. Not the export of 50,000 pages the design names: here it
+// 50,000 pages under one folder, running through the window. Since M12/P4/S6 an import makes 45,000 nodes at most:
+// the folder and its first 5,000 pages are imported before the exports, and the window's import is the last 45,000
+// under it, the same tree. Not the export of 50,000 pages the design names: here it
 // ends within a second, and their tree, in each tab's column, holds its main thread 19 s; the import runs minutes and
 // leaves the root one row. N tabs of one sign-in at the transfer page, each having loaded the second page; for 60
 // seconds each tab's reads of the list, its other requests and its 429s. Two rounds.
@@ -32,14 +34,24 @@ test("the jobs' polling", async ({ browser }) => {
   const admin = await login(api, env.admin);
   // A token of the test's own for its calls: the tabs' sign-in is another credential, its bucket theirs alone.
   const pat = (await createToken(api, admin.access_token, { name: `jobs ${round}` })).token;
-  const [archive] = shapes.folder50k.archives();
-  if (archive === undefined) throw new Error("no archive");
-  // Its bytes and sha256, as setup.ts records each shape's (review A's N2 on M12/P4/S2), as "archive": no import has
-  // run yet, each N imports it anew, and an "import" line has the time and state of one (its check C1-N1).
-  record("archive", { shape: "folder50k", archive: 0, bytes: archive.length, sha256: sha256(archive) });
+  const archives = shapes.folder50k.archives();
+  const [folder, archive] = archives;
+  if (folder === undefined || archive?.under !== "Folder" || archives.length !== 2)
+    throw new Error("not the folder's two");
+  // Their bytes and sha256, as setup.ts records each shape's (review A's N2 on M12/P4/S2), as "archive": no import has
+  // run yet, each N imports them anew, and an "import" line has the time and state of one (its check C1-N1).
+  for (const [i, each] of archives.entries()) {
+    record("archive", {
+      shape: "folder50k",
+      archive: i,
+      under: each.under ?? null,
+      bytes: each.zip.length,
+      sha256: sha256(each.zip),
+    });
+  }
   for (const tabs of [1, 3]) {
     // oxlint-disable-next-line no-await-in-loop -- one N at a time, each with its own notebook and import
-    record("jobs-poll", { round, tabs, ...(await polling(browser, env, api, pat, archive, tabs)) });
+    record("jobs-poll", { round, tabs, ...(await polling(browser, env, api, pat, folder, archive, tabs)) });
   }
 });
 
@@ -73,9 +85,26 @@ interface Tab {
   refused: { at: number; path: string }[];
 }
 
-/** One N: its notebook and jobs, its tabs, its window; the import cancelled and ended after it. */
-async function polling(browser: Browser, env: PerfEnv, api: ApiClient, pat: string, archive: Buffer, tabs: number) {
+/**
+ * One N: its notebook and jobs, its tabs, its window; the import cancelled and ended after it. The folder's first
+ * archive is imported, and ended, before the small exports; the window's import is archive, under the folder.
+ */
+async function polling(
+  browser: Browser,
+  env: PerfEnv,
+  api: ApiClient,
+  pat: string,
+  folder: Archive,
+  archive: Archive,
+  tabs: number
+) {
   const notebook = await createNotebook(api, pat, env.workspace, `Jobs ${round}-${tabs}`, "editor");
+  const folderStarted = Date.now();
+  const first = await startImport(api, pat, notebook.id, new Uint8Array(folder.zip));
+  const folderState = (await stateOf(api, pat, first.id, ended, 600_000)).state;
+  if (folderState !== "succeeded") throw new Error(`the folder's import ended ${folderState}`);
+  const folderMs = Date.now() - folderStarted;
+  const parent = await rootPageId(api, pat, notebook.id, archive.under ?? "");
   const exported = await createPage(api, pat, notebook.id, "Exported", null, "Exported.\n");
   const smallStarted = Date.now();
   for (let i = 1; i <= small; i++) {
@@ -85,7 +114,7 @@ async function polling(browser: Browser, env: PerfEnv, api: ApiClient, pat: stri
     await stateOf(api, pat, job.id, ended, 60_000);
   }
   const smallMs = Date.now() - smallStarted;
-  const job = await startImport(api, pat, notebook.id, new Uint8Array(archive));
+  const job = await startImport(api, pat, notebook.id, new Uint8Array(archive.zip), parent);
   const running = await stateOf(api, pat, job.id, (state) => state !== "queued", 120_000);
   const listPath = `/api/v0/notebooks/${notebook.id}/transfer-jobs`;
   const context = await browser.newContext({ baseURL: env.baseURL });
@@ -127,6 +156,7 @@ async function polling(browser: Browser, env: PerfEnv, api: ApiClient, pat: stri
     const until = finished === null || finished === undefined ? to : Math.min(to, Date.parse(finished));
     const inWindow = (at: number) => at >= from && at <= until;
     const result = {
+      folderMs,
       smallMs,
       importState: data?.state,
       importProgress: data?.progress,

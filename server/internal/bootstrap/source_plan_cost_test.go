@@ -5,6 +5,7 @@ package bootstrap
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"runtime"
 	"slices"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/open-nerve/NerveWiki/server/internal/modules/page"
+	"github.com/open-nerve/NerveWiki/server/internal/modules/page/domain"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/config"
 	"github.com/open-nerve/NerveWiki/server/internal/platform/postgres"
 )
@@ -23,8 +25,9 @@ import (
 // full SQL corpus keeps pages, versions, items and links; its attachments
 // have distinct valid byte/hash metadata but no files. Planning reads only
 // metadata, so these measurements make no file-operation cost claim.
-// All 18 initial samples took at most 1.661868s. The 5s bound rounds up
-// three times that slowest successful sample; every later sample must pass.
+// All 18 initial samples took at most 1.661868s, at 60,000 nodes, M8's
+// MaxJobItems (45,000 since M12/P4/S6). The 5s bound rounds up three times
+// that slowest successful sample; every later sample must pass.
 func TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork(t *testing.T) {
 	probe := &sourcePlanCostProbe{trace: &sourceEntryTrace{}, assets: &sourceEntryAttachments{}}
 	var commitTimeout time.Duration
@@ -82,11 +85,12 @@ func TestSourceBackgroundPlanAtMaxJobItemsCostsItsWork(t *testing.T) {
 						t.Fatal(err)
 					}
 					t.Logf("source plan sample %s", encoded)
-					sourceCostWithin(t, "complete60k "+stage+"/"+route, time.Duration(e.ElapsedNS), 5*time.Second)
+					sourceCostWithin(t, fmt.Sprintf("complete%dk %s/%s", page.MaxJobItems/1000, stage, route), time.Duration(e.ElapsedNS),
+						5*time.Second)
 					samples = append(samples, time.Duration(e.ElapsedNS))
 				}
-				t.Logf("%s %s successful 60k source-entry samples=%v minimum=%s maximum=%s; each sample bound=5s",
-					stage, route, samples, slices.Min(samples), slices.Max(samples))
+				t.Logf("%s %s successful %dk source-entry samples=%v minimum=%s maximum=%s; each sample bound=5s",
+					stage, route, page.MaxJobItems/1000, samples, slices.Min(samples), slices.Max(samples))
 			})
 		}
 	}
@@ -126,7 +130,8 @@ type sourcePlanSample struct {
 }
 
 // Each callback follows the existing complete-segment 100-node/8MiB cut,
-// not allJobBatches. The restore-only fixture must produce 600 cuts.
+// not allJobBatches. The restore-only fixture must produce MaxJobItems/100
+// cuts, 450.
 func sourcePlanCostBatches(steps []page.JobStep) [][2]int {
 	var out [][2]int
 	for from := 0; from < len(steps); {
@@ -188,14 +193,17 @@ func sourcePlanCostSample(t *testing.T, bench trashBench, probe *sourcePlanCostP
 			}
 		}
 	}
-	if got := queries["SourceHeads"]; got.calls != 6 || got.rows != page.MaxJobItems {
-		t.Fatalf("%s source metadata work=%+v, want six real chunks covering 60000 IDs", route, got)
+	// The metadata and the probes are read in chunks of MaxUnitNodes IDs and
+	// keys, the attachments' metadata too: a tenth of the nodes, one chunk.
+	chunks := (page.MaxJobItems + domain.MaxUnitNodes - 1) / domain.MaxUnitNodes
+	if got := queries["SourceHeads"]; got.calls != int64(chunks) || got.rows != page.MaxJobItems {
+		t.Fatalf("%s source metadata work=%+v, want %d real chunks covering %d IDs", route, got, chunks, page.MaxJobItems)
 	}
-	if got := queries["ProbeSources"]; got.calls != 6 || got.rows != 0 {
-		t.Fatalf("%s source probes=%+v, want six full key batches and no live outside candidate", route, got)
+	if got := queries["ProbeSources"]; got.calls != int64(chunks) || got.rows != 0 {
+		t.Fatalf("%s source probes=%+v, want %d full key batches and no live outside candidate", route, got, chunks)
 	}
 	if probe.assets.calls.Load() != 1 {
-		t.Fatalf("%s asset metadata calls=%d, want one 6000-asset batch", route, probe.assets.calls.Load())
+		t.Fatalf("%s asset metadata calls=%d, want one %d-asset batch", route, probe.assets.calls.Load(), page.MaxJobItems/10)
 	}
 	for _, name := range []string{"PageContent", "Contents", "VersionContents", "TrashContents", "TrashContentsWithin", "SetSourceHashes"} {
 		if got := queries[name]; got.calls != 0 {
@@ -257,7 +265,7 @@ func sourcePlanCostFixture(t *testing.T, bench trashBench) uuid.UUID {
 		t.Fatal(err)
 	}
 	if plan.Total() != n || len(plan.Steps()) != 1 || plan.Steps()[0].Nodes != n {
-		t.Fatalf("setup deletion plan total=%d steps=%+v, want one real 60k subtree deletion", plan.Total(), plan.Steps())
+		t.Fatalf("setup deletion plan total=%d steps=%+v, want one real %d-node subtree deletion", plan.Total(), plan.Steps(), n)
 	}
 	if done, err := bench.jobs.RunBatch(ctx, spec, plan, 0, 1); err != nil || done.Deleted != n {
 		t.Fatalf("setup deletion=%+v, %v", done, err)
@@ -268,6 +276,7 @@ func sourcePlanCostFixture(t *testing.T, bench trashBench) uuid.UUID {
 	if got := count(t, bench.pool, "SELECT count(*) FROM changeset_items WHERE changeset_id=$1 AND deleted_at IS NOT NULL", spec.Changeset); got != n {
 		t.Fatalf("actual deletion recorded %d trash items, want %d", got, n)
 	}
-	t.Logf("source plan fixture setup: actual import %s reverted by %s; 60000 source nodes now trash, only raw/AGENTS live", imported, spec.Changeset)
+	t.Logf("source plan fixture setup: actual import %s reverted by %s; %d source nodes now trash, only raw/AGENTS live", imported, spec.Changeset,
+		n)
 	return spec.Changeset
 }

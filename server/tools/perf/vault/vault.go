@@ -2,7 +2,9 @@
 // design 3.4.3): a zip of a page a Markdown file and an attachment a file,
 // its folders the directories of their paths, its links [[name]] without a
 // path, all from a seed. It checks an import's limits before it writes, and
-// the zip's own after.
+// the zip's own after. It writes the whole vault or a part of it (Part), so
+// that a vault past an import's limits is imported in parts (M12/P4 design
+// 3.12).
 package vault
 
 import (
@@ -15,6 +17,7 @@ import (
 	"math/rand/v2"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -23,7 +26,8 @@ import (
 // level (10,10,98: ten at the root, ten in each, 98 in each of those), a
 // page's links and bytes, an attachment's bytes, the part of an attachment
 // that is random (1/Random; the rest one block of 4 KiB repeated), and the
-// seed.
+// seed; and the part of the vault written, the whole vault when it is the
+// zero Part.
 type Spec struct {
 	Pages, Attachments int
 	Fanout             []int
@@ -31,6 +35,39 @@ type Spec struct {
 	AttachmentBytes    int
 	Random             int
 	Seed               uint64
+	Part               Part
+}
+
+// Part is the K-th of N parts of a vault: its folders of the first level
+// cut in N runs in their order, part K the folders from (K-1)F/N to KF/N of
+// the F there, rounded down, 0-based, the upper end excluded, with every
+// folder, page and attachment under them. Each is as the whole vault has
+// it, its links to the whole vault's pages: the parts imported one after
+// another under one page are the whole vault imported, a link to a page of
+// a later part unresolved until that part's import (P4/S7 builds S3's top
+// of 59,910 nodes so). The zero Part is the whole vault, as 1/1 is.
+type Part struct{ K, N int }
+
+// ParsePart reads a part, k/n: 1 <= k <= n.
+func ParsePart(s string) (Part, error) {
+	k, n, ok := strings.Cut(s, "/")
+	pk, errK := strconv.Atoi(k)
+	pn, errN := strconv.Atoi(n)
+	if !ok || errK != nil || errN != nil || pk < 1 || pk > pn {
+		return Part{}, fmt.Errorf("a part %q: want k/n, 1 <= k <= n", s)
+	}
+	return Part{K: pk, N: pn}, nil
+}
+
+func (p Part) String() string { return fmt.Sprintf("%d/%d", p.K, p.N) }
+
+// holds is whether the part holds the folder of the first level top, of
+// first: the zero Part each.
+func (p Part) holds(top, first int) bool {
+	if p == (Part{}) {
+		return true
+	}
+	return (p.K-1)*first/p.N <= top && top < p.K*first/p.N
 }
 
 // Limits are what an import takes (server/configs/config.yaml's transfer
@@ -41,10 +78,11 @@ type Limits struct {
 	Unpacked, Zip  int64
 }
 
-// ImportLimits are the defaults: 50,000 entries, 60,000 nodes, 4 GiB
-// unpacked, a zip of 512 MiB.
+// ImportLimits are the defaults: 50,000 entries, 45,000 nodes
+// (page.MaxJobItems, M12/P4/S6), 4 GiB unpacked, a zip of 512 MiB.
+// TestImportLimitsAreTheServers reads them from the server's text.
 func ImportLimits() Limits {
-	return Limits{Entries: 50_000, Nodes: 60_000, Unpacked: 4 << 30, Zip: 512 << 20}
+	return Limits{Entries: 50_000, Nodes: 45_000, Unpacked: 4 << 30, Zip: 512 << 20}
 }
 
 // Result is what was written: the entries, the folders, the bytes
@@ -74,26 +112,37 @@ const (
 
 // layout is a spec's folders and where each item goes.
 type layout struct {
-	s       Spec
-	folders []string // every folder's path, parents first
-	leaves  []string // the deepest folders, where the items go
-	group   []int    // each leaf's folder of the second level, or of the first of one level: its index there
-	names   []string // each page's name
-	byGroup map[int][]int
+	s         Spec
+	folders   []string // every folder's path, parents first
+	folderTop []int    // each folder's of the first level: its index there
+	leaves    []string // the deepest folders, where the items go
+	group     []int    // each leaf's folder of the second level, or of the first of one level: its index there
+	top       []int    // each leaf's folder of the first level, 0 at the root: its index there
+	first     int      // the folders of the first level, 1 of none
+	names     []string // each page's name
+	byGroup   map[int][]int
 }
 
 func newLayout(s Spec) layout {
-	l := layout{s: s, byGroup: map[int][]int{}}
+	l := layout{s: s, first: 1, byGroup: map[int][]int{}}
+	if len(s.Fanout) > 0 {
+		l.first = s.Fanout[0]
+	}
 	level := []string{""}
-	groupOf := []int{0}
+	groupOf, topOf := []int{0}, []int{0}
 	for depth, n := range s.Fanout {
 		var next []string
-		var nextGroup []int
+		var nextGroup, nextTop []int
 		for i, parent := range level {
 			for k := range n {
 				p := fmt.Sprintf("%sf%d/", parent, k+1)
 				next = append(next, p)
-				l.folders = append(l.folders, p)
+				if depth == 0 {
+					nextTop = append(nextTop, k)
+				} else {
+					nextTop = append(nextTop, topOf[i])
+				}
+				l.folders, l.folderTop = append(l.folders, p), append(l.folderTop, nextTop[len(nextTop)-1])
 				if depth < 2 {
 					nextGroup = append(nextGroup, len(next)-1) // a folder of the first two levels is its own group
 				} else {
@@ -101,9 +150,9 @@ func newLayout(s Spec) layout {
 				}
 			}
 		}
-		level, groupOf = next, nextGroup
+		level, groupOf, topOf = next, nextGroup, nextTop
 	}
-	l.leaves, l.group = level, groupOf
+	l.leaves, l.group, l.top = level, groupOf, topOf
 	l.names = make([]string, s.Pages)
 	for i := range s.Pages {
 		r := rand.New(rand.NewPCG(s.Seed, streamNames|uint64(i)))
@@ -208,6 +257,15 @@ func (s Spec) check() error {
 	case s.Attachments > 0 && s.AttachmentBytes < 1:
 		return errors.New("attachments want their bytes")
 	}
+	if s.Part != (Part{}) {
+		first := 1
+		if len(s.Fanout) > 0 {
+			first = s.Fanout[0]
+		}
+		if s.Part.K < 1 || s.Part.K > s.Part.N || s.Part.N > first {
+			return fmt.Errorf("a part %s of %d folders of the first level: want 1 <= k <= n, a folder a part at least", s.Part, first)
+		}
+	}
 	leaves := 1
 	for _, n := range s.Fanout {
 		if n < 1 {
@@ -224,20 +282,54 @@ func (s Spec) check() error {
 	return nil
 }
 
-// Write writes s's vault to path, within lim: the entries, the nodes and
-// the bytes unpacked first, and nothing written past them; then the zip
-// into a temporary file beside path, removed and an error when it is
-// past lim.Zip, else renamed to path.
-func Write(path string, s Spec, lim Limits) (Result, error) {
+// contents are what s's vault, or its part, holds: its pages and
+// attachments by number, in the whole vault's order, and its entries,
+// folders and bytes unpacked.
+type contents struct {
+	l                  layout
+	pages, attachments []int
+	res                Result
+}
+
+// contentsOf is s's contents, s checked.
+func contentsOf(s Spec) (contents, error) {
 	if err := s.check(); err != nil {
-		return Result{}, err
+		return contents{}, err
 	}
 	l := newLayout(s)
-	res := Result{Entries: s.Pages + s.Attachments, Folders: len(l.folders)}
+	c := contents{l: l}
+	held := func(item int) bool { return s.Part.holds(l.top[item%len(l.leaves)], l.first) }
 	for i := range s.Pages {
-		res.Unpacked += int64(len(l.page(i)))
+		if held(i) {
+			c.pages = append(c.pages, i)
+			c.res.Unpacked += int64(len(l.page(i)))
+		}
 	}
-	res.Unpacked += int64(s.Attachments) * int64(s.AttachmentBytes)
+	for j := range s.Attachments {
+		if held(j) {
+			c.attachments = append(c.attachments, j)
+		}
+	}
+	c.res.Unpacked += int64(len(c.attachments)) * int64(s.AttachmentBytes)
+	c.res.Entries = len(c.pages) + len(c.attachments)
+	for _, top := range l.folderTop {
+		if s.Part.holds(top, l.first) {
+			c.res.Folders++
+		}
+	}
+	return c, nil
+}
+
+// Write writes s's vault, or its part, to path, within lim: the entries,
+// the nodes and the bytes unpacked first, and nothing written past them;
+// then the zip into a temporary file beside path, removed and an error
+// when it is past lim.Zip, else renamed to path.
+func Write(path string, s Spec, lim Limits) (Result, error) {
+	c, err := contentsOf(s)
+	if err != nil {
+		return Result{}, err
+	}
+	l, res := c.l, c.res
 	switch {
 	case res.Entries > lim.Entries:
 		return Result{}, fmt.Errorf("%d entries, past the import's %d", res.Entries, lim.Entries)
@@ -267,7 +359,7 @@ func Write(path string, s Spec, lim Limits) (Result, error) {
 		_, err = w.Write(b)
 		return err
 	}
-	for i := range s.Pages {
+	for _, i := range c.pages {
 		if err := add(l.pagePath(i), l.page(i)); err != nil {
 			_ = tmp.Close()
 			return Result{}, err
@@ -278,7 +370,7 @@ func Write(path string, s Spec, lim Limits) (Result, error) {
 	for i := range block {
 		block[i] = byte(br.IntN(256))
 	}
-	for j := range s.Attachments {
+	for _, j := range c.attachments {
 		if err := add(l.attachmentPath(j), l.attachment(j, block)); err != nil {
 			_ = tmp.Close()
 			return Result{}, err

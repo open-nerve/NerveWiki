@@ -14,19 +14,27 @@ import (
 // items (M8 design 4.9; M8/P4 design 3.11): the request and the job's
 // start each read them all, with their nodes, groups and the notebook's
 // tree, and plan them, and the costliest step it cuts, a top's deletion or
-// a group's first batch, grows with them. It is the largest size of ten
-// thousands whose costliest step took 5 s at most in every run
-// (BenchmarkBackgroundSteps) at the design's full load, pages of 2 KiB with
-// 20 resolved links each and a tenth of the nodes attachments: the
-// deletion of a top of an import of that many nodes, 3.5-4.6 s at 60,000
-// (one run of 70,000 took 6.9 s; 80,000, 5.9-6.1 s analyzed); at 60,000
-// the requests take about 1.2 s at most (1,231 ms, the revert's revert of
-// one group of every node; of as many groups, 0.84 s), a group's first
-// batch 2.2 s. The step grows with the links of the pages
-// past 20 a page as a user's deletion of the same top does, about 1.6 µs a
-// link. The transfer module bounds an import's nodes by it, so that a
-// background revert can undo any import (M8/P4 design 2.2 (a)).
-const MaxJobItems = 60_000
+// a group's first batch, grows with them. It is the largest size of five
+// thousands whose costliest step took 5 s at most in both rounds (M12/P4
+// design 3.6's B5 and 10.3; the owner's question 13, M12 decision 642):
+// the deletion of a top of an import of that many nodes
+// (BenchmarkBackgroundSteps' top-ms) at the design's full load, pages of
+// 2 KiB with 20 resolved links each and a tenth of the nodes attachments,
+// on M12's 8-vCPU aarch64 machine, without statistics / analyzed:
+// 4,114-4,164 / 4,333-4,454 ms at 45,000, 4,637-4,667 / 5,070-5,136 at
+// 50,000, 6,107-6,653 / 6,995-7,382 at 60,000; M12/P4/S6 measured both
+// benches at 45,000 again, two rounds: at most 3,683 ms (M12/P4 design
+// 10.4). M8 had taken 60,000 on an Apple M5 Max, about 1.6 times faster,
+// the largest of ten thousands within 5 s there (M8/P4 design 3.11):
+// 3.5-4.6 s at 60,000 (one run of 70,000 took 6.9 s; 80,000, 5.9-6.1 s
+// analyzed), the requests about 1.2 s at most (1,231 ms, the revert's
+// revert of one group of every node; of as many groups, 0.84 s), a group's
+// first batch 2.2 s. The step grows with the links of the pages past 20 a
+// page as a user's deletion of the same top does, about 1.6 µs a link. The
+// transfer module bounds an import's nodes by it, so that a background
+// revert can undo any import (M8/P4 design 2.2 (a)): a larger vault is
+// imported in parts.
+const MaxJobItems = 45_000
 
 // MaxRollbackItems bounds the tree's items of one pass of a rollback's
 // plan (M11 decision 193), and its versions with them: past it the pass
