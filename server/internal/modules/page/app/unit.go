@@ -290,8 +290,9 @@ func (w *Writer) run(ctx context.Context, spec UnitSpec, at time.Time, do func(c
 		if at.IsZero() {
 			at = w.d.Clock.Now()
 		}
-		// The unit, its memo and its sources' are this transaction's: a
-		// retry builds them anew (M12/P4/S7 design 3.2).
+		// The unit, its memo and its sources' are built here, in the
+		// transaction's closure: one per unit, never another's (M12/P4/S7
+		// design 3.2).
 		u = &Unit{w: w, write: Write{
 			WorkspaceID: workspaceID, NotebookID: spec.NotebookID, By: actor.UserID, Client: spec.Client,
 			Options: spec.Options, At: at, Kind: kind, RevertsID: spec.RevertsID, Notebook: state, UpgradeOwn: spec.UpgradeOwn, Grants: &Grants{},

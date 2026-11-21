@@ -48,10 +48,11 @@ type Write struct {
 	Grants *Grants
 	// Tree is the actual unit lock mode, not an operation-name guess.
 	Tree bool
-	// Memo is the unit's memo, one per unit (a retried transaction's a
-	// new one), which its participants and observers share: M6's rewrite
-	// leaves there the links of a single rename or move that it read, for
-	// the index, which reads them then once (M12/P4/S7 design 3.2).
+	// Memo is the unit's memo, built with the unit in its transaction's
+	// closure, no other unit's, which its participants and observers
+	// share: M6's rewrite leaves there the links of a single rename or
+	// move that it read, for the index, which reads them then once
+	// (M12/P4/S7 design 3.2).
 	Memo    *UnitMemo
 	sources *sourceMemo
 }

@@ -36,7 +36,7 @@ func TestTheIndexOfUnitsOfManyWritesIsItsRebuild(t *testing.T) {
 	// participant read, and of those the ones after which a link leads
 	// elsewhere: 742 and 64 when they were first counted. The bounds
 	// are two thirds of them (05-lessons, section 1).
-	taken, takenMoved := 0, 0
+	taken, takenMoved, written := 0, 0, 0 // written: the pages the participants would have written
 	for seed := range uint64(300) {
 		r := newRandomUnits(t, seed)
 		for step := range 40 {
@@ -51,12 +51,13 @@ func TestTheIndexOfUnitsOfManyWritesIsItsRebuild(t *testing.T) {
 				assets++
 			}
 		}
-		taken, takenMoved = taken+r.taken, takenMoved+r.takenMoved
+		taken, takenMoved, written = taken+r.taken, takenMoved+r.takenMoved, written+r.participantsWritten
 	}
 	if assets < 1000 {
 		t.Errorf("a link resolved to an attachment after %d steps: too few to tell", assets)
 	}
-	t.Logf("single renames and moves whose observer took the participant's links: %d, a link led elsewhere after %d", taken, takenMoved)
+	t.Logf("single renames and moves whose observer took the participant's links: %d, a link led elsewhere after %d; the "+
+		"participants would have written %d pages, in the units whose observer read the links itself", taken, takenMoved, written)
 	if taken < 742*2/3 || takenMoved < 64*2/3 {
 		t.Errorf("the observer took the participant's links in %d units, %d of them leading a link elsewhere: too few to tell", taken, takenMoved)
 	}

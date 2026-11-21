@@ -16,13 +16,14 @@ import (
 
 // tree is a notebook's tree, as the fake Pages reads it, and how many
 // reads of candidates and paths it answered; the read numbered failAt, from
-// 1, fails with errRead. byKeys and paths count ByKeys and Paths alone.
+// 1, fails with errRead. byKeys, paths and subtrees count ByKeys, Paths
+// and Subtree alone.
 type tree struct {
-	nodes         map[uuid.UUID]*node
-	names         map[string]uuid.UUID
-	reads         int
-	failAt        int
-	byKeys, paths int
+	nodes                   map[uuid.UUID]*node
+	names                   map[string]uuid.UUID
+	reads                   int
+	failAt                  int
+	byKeys, paths, subtrees int
 }
 
 // errRead is a read of the tree that failed.
@@ -139,6 +140,7 @@ func (t *tree) Attachments(_ context.Context, _ uuid.UUID, ids []uuid.UUID) ([]a
 }
 
 func (t *tree) Subtree(_ context.Context, _ uuid.UUID, id uuid.UUID) ([]domain.Step, error) {
+	t.subtrees++
 	if n, ok := t.nodes[id]; !ok || n.gone {
 		return nil, fmt.Errorf("no page %s", id)
 	}
@@ -167,6 +169,7 @@ type store struct {
 	viewed     int
 	reaches    []domain.Reach
 	aliasReads int
+	aliasKeys  int // reads of AliasKeys
 	resolved   [][]app.Link
 }
 
@@ -253,6 +256,7 @@ func (s *store) Aliases(_ context.Context, _ uuid.UUID, keys []string) ([]app.Al
 }
 
 func (s *store) AliasKeys(_ context.Context, ids []uuid.UUID) ([]string, error) {
+	s.aliasKeys++
 	var out []string
 	for _, id := range ids {
 		for _, a := range s.facts[id].Aliases {

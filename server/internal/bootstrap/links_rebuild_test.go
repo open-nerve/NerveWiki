@@ -46,12 +46,12 @@ import (
 // written pages checked past a rename or a move after their write, and 10
 // pages put back. The index of a single rename or move that writes no page
 // takes the links its rewrite read (M12/P4/S7 design 3.2): the steps whose
-// index did, and those of them after which a link leads elsewhere, are
-// counted by its debug line, each at least two thirds of what was first
-// counted (design 4.3 item 8): the composition hands the unit's memo to
-// both, or none is taken, and the index its rebuild covers what the links
-// taken would get wrong. Each run makes six such steps after which a link
-// that led nowhere resolves (resolving), the random writes few.
+// index did are counted by its debug line, at least two thirds of what was
+// first counted (design 4.3 item 8): the composition hands the unit's memo
+// to both, or none is taken, and the index its rebuild covers what the
+// links taken would get wrong. Those after which a link leads elsewhere the
+// random writes make few of; each run makes six (resolving), a link that
+// led nowhere resolving, each of which must be taken and move a link.
 func TestTheIndexIsItsRebuild(t *testing.T) {
 	if testing.Short() {
 		t.Skip("runs of writes through serve against a database")
@@ -61,14 +61,15 @@ func TestTheIndexIsItsRebuild(t *testing.T) {
 	var seen batchSeen
 	// The steps whose index took the links the rewrite read, and those of
 	// them after which a link led elsewhere: 90 and 40 when first counted
-	// (-race, here), 36 of the 40 the steps each seed makes so (resolving);
-	// 43 and 4 before those were made.
+	// (-race, here), 43 and 4 before the steps each seed makes (resolving).
+	// The 36 made each assert that they were taken and moved a link: the
+	// second total is logged, not bounded, as it holds them (code review
+	// B, N2).
 	taken, takenMoved := 0, 0
 	defer func() {
 		t.Logf("the index took the links its rewrite read after %d steps, a link leading elsewhere after %d", taken, takenMoved)
-		if !t.Failed() && (taken < 90*2/3 || takenMoved < 40*2/3) {
-			t.Errorf("the index took the links its rewrite read after %d steps, %d of them leading a link elsewhere: too few to tell",
-				taken, takenMoved)
+		if !t.Failed() && taken < 90*2/3 {
+			t.Errorf("the index took the links its rewrite read after %d steps: too few to tell", taken)
 		}
 		if !t.Failed() && rewritten < 20 {
 			t.Errorf("the renames and moves wrote %d pages again, want more: the runs test little of the rewrite", rewritten)

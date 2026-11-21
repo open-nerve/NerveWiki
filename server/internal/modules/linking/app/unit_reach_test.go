@@ -60,20 +60,23 @@ func (m *memo) len() int {
 }
 
 // unitReads is what a unit read and what it did: the reaches of the
-// links it read, the reads of candidates, paths and aliases; the
-// resolutions it set and the events it published, by path; the pages its
-// participant wrote.
+// links it read, the reads of candidates, paths and aliases, of the keys
+// of pages' aliases and of subtrees (the observer's spread reads those
+// two, code review B, M1); the resolutions it set and the events it
+// published, by path; the pages its participant wrote.
 type unitReads struct {
 	reaches                []domain.Reach
 	reached                []string // each reach, by path
 	byKeys, paths, aliases int
+	aliasKeys, subtrees    int
 	set, events            []string
 	writes                 int
 }
 
 // reads is u's reads without its results.
 func (u unitReads) reads() string {
-	return fmt.Sprintf("links %d, by keys %d, paths %d, aliases %d", len(u.reaches), u.byKeys, u.paths, u.aliases)
+	return fmt.Sprintf("links %d, by keys %d, paths %d, aliases %d, alias keys %d, subtrees %d",
+		len(u.reaches), u.byKeys, u.paths, u.aliases, u.aliasKeys, u.subtrees)
 }
 
 // unit runs m, a unit's single step, with mem, as the page module runs a
@@ -81,8 +84,9 @@ func (u unitReads) reads() string {
 // the changes merged (nil: those merged themselves).
 func (w *rewriting) unit(m app.Moved, mem app.UnitMemo, observe func([]domain.Change) []domain.Change) (unitReads, error) {
 	w.t.Helper()
-	w.store.reaches, w.store.aliasReads, w.store.resolved = nil, 0, nil
-	w.tree.byKeys, w.tree.paths = 0, 0
+	// Counted from here: the step was made before, the move's by Subtree.
+	w.store.reaches, w.store.aliasReads, w.store.aliasKeys, w.store.resolved = nil, 0, 0, nil
+	w.tree.byKeys, w.tree.paths, w.tree.subtrees = 0, 0, 0
 	w.published.events = nil
 	m.NotebookID, m.At, m.Memo = w.notebook, time.Now(), mem
 	u := &appender{}
@@ -103,7 +107,8 @@ func (w *rewriting) unit(m app.Moved, mem app.UnitMemo, observe func([]domain.Ch
 		changes = observe(changes)
 	}
 	err := w.index.PagesChanged(context.Background(), app.PagesChanged{WorkspaceID: uuid.NewV7(), NotebookID: w.notebook, Changes: changes, Memo: mem})
-	out := unitReads{reaches: w.store.reaches, byKeys: w.tree.byKeys, paths: w.tree.paths, aliases: w.store.aliasReads, writes: len(u.writes)}
+	out := unitReads{reaches: w.store.reaches, byKeys: w.tree.byKeys, paths: w.tree.paths, aliases: w.store.aliasReads,
+		aliasKeys: w.store.aliasKeys, subtrees: w.tree.subtrees, writes: len(u.writes)}
 	for _, r := range w.store.reaches {
 		keys := slices.Clone(r.Keys)
 		slices.Sort(keys)
@@ -198,22 +203,33 @@ func (c unitCase) both(t *testing.T) (with, without unitReads, mem *memo) {
 // A single move and a single rename of a tree unit that write no page read
 // the links they reach once and resolve them once, and set and publish what
 // they did with two reads (M12/P4/S7 design 4.3 item 1): links that lead
-// somewhere only after them, a value of the aliases among them.
+// somewhere only after them, a value of the aliases among them. The
+// observer skips its spread too: the keys of the aliases are read once,
+// and a rename's subtree once (code review B, M1).
 func TestASingleRenameOrMoveReadsItsLinksOnce(t *testing.T) {
-	for _, c := range []unitCase{
-		{name: "move", world: unitReachWorld, step: func(w *rewriting) app.Moved { return treeStep(w.move("B/X", "A")) }},
-		{name: "rename", world: unitReachWorld, step: func(w *rewriting) app.Moved { return treeStep([]domain.Change{w.rename("C", "Newname")}) }},
+	for _, c := range []struct {
+		unitCase
+		with, without string
+	}{
+		{unitCase{name: "move", world: unitReachWorld, step: func(w *rewriting) app.Moved { return treeStep(w.move("B/X", "A")) }},
+			"links 1, by keys 1, paths 1, aliases 1, alias keys 1, subtrees 0",
+			"links 2, by keys 2, paths 2, aliases 2, alias keys 2, subtrees 0"},
+		{unitCase{name: "rename", world: unitReachWorld, step: func(w *rewriting) app.Moved {
+			return treeStep([]domain.Change{w.rename("C", "Newname")})
+		}},
+			"links 1, by keys 1, paths 1, aliases 1, alias keys 1, subtrees 1",
+			"links 2, by keys 2, paths 2, aliases 2, alias keys 2, subtrees 2"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			with, without, mem := c.both(t)
 			if with.writes != 0 || without.writes != 0 {
 				t.Fatalf("the participant wrote %d and %d pages: not the shape", with.writes, without.writes)
 			}
-			if got := with.reads(); got != "links 1, by keys 1, paths 1, aliases 1" {
-				t.Errorf("with the memo: %s; want each read once", got)
+			if got := with.reads(); got != c.with {
+				t.Errorf("with the memo: %s; want %s", got, c.with)
 			}
-			if got := without.reads(); got != "links 2, by keys 2, paths 2, aliases 2" {
-				t.Errorf("without the memo: %s; want each read twice", got)
+			if got := without.reads(); got != c.without {
+				t.Errorf("without the memo: %s; want %s", got, c.without)
 			}
 			if len(with.set) == 0 || len(with.events) != 1 || strings.Contains(with.events[0], "[]") ||
 				fmt.Sprint(with.set, with.events) != fmt.Sprint(without.set, without.events) {
@@ -233,7 +249,8 @@ func TestASingleRenameOrMoveReadsItsLinksOnce(t *testing.T) {
 // a change of a title's case alone; a participant that writes a page,
 // another or the one it moves; changes the observer gets that are not the
 // participant's (one more, one fewer, in another order, a name, a
-// parent, a place before or a version that differs); a deletion; a step without update_links; and no
+// parent, a parent in the last of them, a place before or a version that
+// differs); a deletion; a step without update_links; and no
 // memo at all, a nil one in the interface.
 func TestEveryConditionOfASingleReadHolds(t *testing.T) {
 	move := func(w *rewriting) []domain.Change { return w.move("B/X", "A") }
@@ -313,6 +330,14 @@ func TestEveryConditionOfASingleReadHolds(t *testing.T) {
 				out[0].After = &after
 				return out
 			}},
+		{name: "the observer gets another parent in its last change", step: func(w *rewriting) app.Moved { return treeStep(move(w)) },
+			observe: func(w *rewriting, changes []domain.Change) []domain.Change {
+				out := slices.Clone(changes) // the moved page's and its child Y's
+				last, c := *out[len(out)-1].After, w.id("C")
+				last.ParentID = &c
+				out[len(out)-1].After = &last
+				return out
+			}},
 		{name: "the observer gets another place before", step: func(w *rewriting) app.Moved { return treeStep(move(w)) },
 			observe: func(_ *rewriting, changes []domain.Change) []domain.Change {
 				out := slices.Clone(changes)
@@ -354,7 +379,7 @@ func TestEveryConditionOfASingleReadHolds(t *testing.T) {
 		w := unitReachWorld(t)
 		var none *memo
 		got, err := w.unit(treeStep(move(w)), none, nil)
-		if err != nil || got.reads() != "links 2, by keys 2, paths 2, aliases 2" {
+		if err != nil || got.reads() != "links 2, by keys 2, paths 2, aliases 2, alias keys 2, subtrees 0" {
 			t.Fatalf("with a nil memo: %s, %v", got.reads(), err)
 		}
 	})
