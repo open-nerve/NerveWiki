@@ -46,16 +46,24 @@ func TestTheIndexOfUnitsOfManyWritesIsItsRebuild(t *testing.T) {
 	taken, takenMoved, written := 0, 0, 0 // written: the units whose participant would have written pages
 	for seed := range uint64(300) {
 		r := newRandomUnits(t, seed)
+		isItsRebuild := func(step int, what string) {
+			if got, want := linksOf(r.w), linksOf(r.rebuilt(t)); !slices.Equal(got, want) {
+				t.Fatalf("seed %d, after step %d (%s), the index is not its rebuild:\nkept    %v\nrebuilt %v", seed, step, what, got, want)
+			}
+		}
 		for step := range 40 {
+			// A step that makes a writing unit checks its random one first,
+			// so that each is told apart (code review B, round 2, N1).
 			what := r.unit(3)
+			if what != "" {
+				isItsRebuild(step, what)
+			}
 			if step%20 == 13 {
 				what = r.writing(step)
+				isItsRebuild(step, what)
 			}
 			if what == "" {
 				continue
-			}
-			if got, want := linksOf(r.w), linksOf(r.rebuilt(t)); !slices.Equal(got, want) {
-				t.Fatalf("seed %d, after step %d (%s), the index is not its rebuild:\nkept    %v\nrebuilt %v", seed, step, what, got, want)
 			}
 			if slices.ContainsFunc(r.w.store.links, func(l app.Link) bool { return l.Resolution.Asset }) {
 				assets++

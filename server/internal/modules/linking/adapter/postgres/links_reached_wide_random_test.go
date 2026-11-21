@@ -37,10 +37,11 @@ import (
 // 27,000 links are too few for the planner to read them in parallel at its
 // costs, as it does the large notebooks the wide reads are for, and the
 // first groups' plans of LinksReachedWide must gather (code review A, M1).
-// No plan here ORs two bitmaps: at this scale the planner builds none. Another seed's fixture is read without statistics and analyzed,
-// below and past the threshold, and under force_generic_plan with reaches
-// of at most 1,000 elements: LinksReached and LinksReachedWide compare each
-// row with a parameter array there, which is quadratic (design 1.3 item 4).
+// No plan here ORs two bitmaps: at this scale the planner builds none.
+// Another seed's fixture is read without statistics and analyzed, below
+// and past the threshold, and under force_generic_plan with reaches of at
+// most 1,000 elements: LinksReached and LinksReachedWide compare each row
+// with a parameter array there, which is quadratic (design 1.3 item 4).
 func TestLinksReachedWideIsLinksReached(t *testing.T) {
 	if testing.Short() {
 		t.Skip("native PostgreSQL comparison of the three reads of a reach's links")
