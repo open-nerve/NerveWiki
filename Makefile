@@ -467,7 +467,7 @@ test-go-costs-1: ## 原成本命令第 1–13 条与批准的守卫（CI 第一�
 	cd server && go test -count=1 -v -timeout 15m -run '^TestUpgradeApprovalTakesItsTimeAtAnyStatistics$$' ./internal/bootstrap
 
 .PHONY: test-go-costs-2
-test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
+test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫与宽读的对照与计划、升级的发起、检查与两种护栏的读（CI 第二份；需要 Docker）
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^matrix$$)/(^pstable$$|^pmixed$$|^pchanged$$|^app_rebuild_after_analyzed$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^boundaries$$|^distinct_d$$|^toast$$)' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestStableLinkRetentionPlans$$/(^capture$$|^named_history$$)' ./internal/modules/linking/adapter/postgres
@@ -476,6 +476,10 @@ test-go-costs-2: ## 原成本命令第 14–20 条、LinksReached 物理守卫�
 	@# LinksReached：稀疏9叶与400万行6叶各独立进程；!race、非short，沿默认10m/count=1。
 	cd server && go test -count=1 -v -run '^TestLinksReachedReadPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestLinksReachedDenseReadPlans$$' ./internal/modules/linking/adapter/postgres
+	@# M12/P4/S7：三条读（LinksReached 与两条宽读）逐行相同的随机对照（v0.1 设计 13.4 第 13 条），与宽读在三种统计、三种计划方式（加 work_mem 64kB 两格）下的
+	@# 计划与物理工作量；!race、非 short，各自独立进程（P4/S7 设计 4.1 第 2 条、4.2、4.5，决定 660）
+	cd server && go test -count=1 -v -run '^TestLinksReachedWideIsLinksReached$$' ./internal/modules/linking/adapter/postgres
+	cd server && go test -count=1 -v -run '^TestLinksReachedWideReadPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -v -run '^TestSetResolutionWritePlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -v -count=1 -run '^TestRebuildBufferedPhysicalPlans$$' ./internal/modules/linking/adapter/postgres
 	cd server && go test -count=1 -run '^(TestSubtreeReadsWithoutStatisticsInTimeAsLongAsIt|TestSubtreeOfAFolderOfMostNodesReadsInTimeAsLongAsIt|TestListTrashReadsInTimeAsLongAsAPage|TestTrashLinesReadInTimeAsLongAsAPage|TestRestoreNodesTakesItsTimeAtAnyStatistics|TestTrashHistoryCountsInTimeAtAnyStatistics|TestTheLogReadsInTimeAsLongAsAPage|TestTheRevertsArrayReadsInTimeAtTheUnitsBound)$$' ./internal/modules/page/adapter/postgres

@@ -341,12 +341,33 @@ func (s *Store) DeleteNotebooks(ctx context.Context, ids []uuid.UUID) error {
 	return nil
 }
 
+// linksReachedWideFrom is the keys and targets together of a reach read in
+// one pass over the rows they meet (LinksReachedWide, or under
+// force_generic_plan LinksReachedWideGeneric): fewer, one index search a
+// key (LinksReached), which is faster for a few and without statistics
+// (M12/P4/S7 design 1.3, 3.1).
+const linksReachedWideFrom = 4_000
+
 // Links implements app.Store, read planned with r's keys, targets and
 // sources, in each unit that writes: a plan for any compared each link with
 // them one by one, 75–83 ms of a rename where theirs took 16–26 ms (M6
-// closeout FA5-Q1).
+// closeout FA5-Q1). A reach of linksReachedWideFrom keys and targets or
+// more reads them in one pass over the rows they meet, by the session's
+// plan_cache_mode, read in the context's transaction: LinksReachedWide, or
+// under force_generic_plan LinksReachedWideGeneric (M12/P4/S7 design 3.1).
 func (s *Store) Links(ctx context.Context, notebookID uuid.UUID, r domain.Reach) ([]app.Link, error) {
-	out, err := linksReached(ctx, postgres.Planned(postgres.DB(ctx, s.pool)), notebookID, r)
+	read := linksReached
+	if len(r.Keys)+len(r.Targets) >= linksReachedWideFrom {
+		mode, err := s.queries(ctx).PlanCacheMode(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("links of %s: %w", notebookID, err)
+		}
+		read = linksReachedWide
+		if mode == "force_generic_plan" {
+			read = linksReachedWideGeneric
+		}
+	}
+	out, err := read(ctx, postgres.Planned(postgres.DB(ctx, s.pool)), notebookID, r)
 	if err != nil {
 		return nil, fmt.Errorf("links of %s: %w", notebookID, err)
 	}
