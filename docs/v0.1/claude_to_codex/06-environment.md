@@ -13,6 +13,7 @@ Claude 在负责人的 macOS 笔记本上工作。它的临时目录、本机记
 - **Playwright 的三个浏览器**：`pnpm --filter @nervewiki/e2e exec playwright install chromium firefox webkit`。Linux 上照 CI 的写法带 `--with-deps` 装系统库。
 - **`make test-go-short`** 要 bash、git、jq 与 awk：发布脚本的测试直接执行 `deploy/` 下的脚本（M12/P5/S1）。
 - **`make lint`** 的网页一半另对着桩跑收集许可证的两个脚本（`tools/licenses/check.mjs`），也要 bash（M12/P5/S2）。
+- **`make deploy-check`** 要 Docker Compose v2 与 jq：`docker compose config --format json` 之后以 `jq` 核对样例的五条（M12/P5/S3）。
 - **`make image-smoke`** 另要 curl、jq、openssl。下面的工具要 python3。
 
 装好之后先在 `main` 上跑一遍下面的门禁，确认机器本身是绿的，再开 S3。下载依赖与工具链是正常的开发准备；不下载的是语料与负责人的数据（[04](04-owner-decisions-and-preferences.md) 第 4 节）。

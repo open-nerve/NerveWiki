@@ -43,7 +43,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
 
 `make build` 构建前端并把它内嵌进 `bin/nervewiki`（版本号取 `VERSION`，默认 `0.1.0-dev`）。`make run` 启动的服务提供上一次 `make build` 复制进去的前端，从未构建时页面路径答 404 并提示；开发前端用 `make web-dev` 或 `make dev`，见下文"前端"。
 
-`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见下文"部署"的附件目录；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`），单个附件、导入包的上限（`asset_max_bytes`、`import_max_bytes`）与导出保留多久（`export_ttl_seconds`）、回收站里的一项可以恢复多久（`trash_retention_seconds`，保留期减 1 小时）；`/api/` 下没有的路径返回 404 problem+json。
+`serve` 启动时要连上数据库（最多等 10 秒，连不上就退出），按配置执行迁移（dev、test 默认执行，prod 默认不执行），然后自检数据库的编码与 locale，不满足就拒绝启动并给出建库命令。它还打开附件目录（`storage.dir`，`make run` 时是 `server/_data/`，不进仓库），不可写就拒绝启动，见 [deploy/README.md](deploy/README.md) 的"配置"；其他命令不碰它。`GET /healthz` 表示进程存活；`GET /readyz` 在数据库可用、迁移已是最新时返回 200，否则 503。`GET /api/v0/instance` 返回产品名、版本、提交与接口版本，以及是否开放注册（`signup_enabled`）、是否开放创建工作区（`workspace_creation_enabled`），单个附件、导入包的上限（`asset_max_bytes`、`import_max_bytes`）与导出保留多久（`export_ttl_seconds`）、回收站里的一项可以恢复多久（`trash_retention_seconds`，保留期减 1 小时）；`/api/` 下没有的路径返回 404 problem+json。
 
 其他命令在 `server/` 下用 `go run ./cmd/nervewiki <命令>` 执行：
 
@@ -138,7 +138,7 @@ make run      # 以 dev 配置启动 nervewiki serve，监听 127.0.0.1:8080；C
   - 会话过期，或不是写的人在这一页、用同一种客户端（网页，或任一令牌）开的，写答 409 `page.edit_session_ended`，心跳与结束答 404 `page.edit_session_not_found`，编辑器重开一个。被接管、被解锁的会话至少保留一个租约，让原来的标签页得知原因（这期间心跳与保存答原因，结束答 204；会话的主人不再能编辑这个笔记本时，心跳照常答 404 或 403），之后与过期的会话一起删除：这一页下一次开启或强制解锁时，或后台任务每 `page.edit_session_cleanup_interval`（默认 10 分钟）一次；删页、删子树、删笔记本时它们的会话一并删除。
 - **阅读视图**：`GET /api/v0/pages/{page_id}/view` 给出渲染好的 HTML 与它所依据的 `revision`：CommonMark 加 GFM（表格、任务项、删除线、自动链接）与脚注，frontmatter 的属性在最前面显示成表格；段落里的单个换行显示为换行（`<br>`），与 Obsidian 关闭"严格换行"（它的默认）时相同；正文里的 HTML 只留排版用的标签与属性，地址只留本站、http(s) 与 mailto，图片不加载、显示为链接。Obsidian 的写法（规则与样例见下文"Markdown 样例集"）：标签是 `<a class="nw-tag" data-nw-tag>`；callout 是带 `data-callout` 的 `<div>`，可折叠的是 `<details>`；`==高亮==` 是 `<mark>`；`%%注释%%` 不输出；公式 `$…$`、`$$…$$` 输出原文，包在 `nw-math`（块的另加 `nw-math-block`）里，由网页用 KaTeX 排版；`mermaid` 代码块由网页画图；嵌入（`![[…]]`）指向页面的照链接显示，指向附件的见下文"附件"；`[文字](#标题)` 指向本页的标题 id。表格、块公式与属性表包一层 `nw-scroll`，宽的时候自己横向滚动。任务项的复选框都是 `disabled`，`data-task` 是方括号里那个字符在正文里的字节位置。指向笔记本里的页的链接（wikilink、嵌入，以及 Markdown 链接与图片里不是外部地址的）不带地址，由网页给出：解析到的带 `data-nw-node`（那一页的 id）与 `data-nw-anchor`（锚点按标题 id 的规则算出，指向同名标题里的第一个），解析不到的带 `class="nw-unresolved"` 与 `data-nw-target`。链接的状态读自链接索引；索引不是这一版本的（`reindex` 之前，或读的期间有写）时当场解析（见下文"链接索引"）。
 - **勾选任务项**：`POST /api/v0/pages/{page_id}/toggle-task`，`{base_revision, offset, checked}`：把位置 `offset` 上的那个字节换成 `x` 或空格，其余字节不变，答这一页；权限与写正文相同，有人持锁时同样答 409 `page.locked`。`base_revision` 不是当前版本答 409 `page.revision_mismatch`（位置只在它所依据的版本里有意义，先于 422）；`offset` 上不是任务项答 422（`offset`，`out_of_range`），勾了会让那里不再有任务项（例如 `- [ ]: /u` 勾上之后成了链接引用定义）答 422（`offset`，`not_allowed`）；已经是那个状态的什么也不写，有人持锁时也答 200。
-- **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB，每次至少记 4 KiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算约 2.4 GB），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
+- **解析预算**：服务端同时解析的正文字节数有上限（`page.parse_budget_bytes`，默认 8 MiB，每次至少记 4 KiB），取不到额度的请求最多等 `page.parse_max_wait`（默认 2 秒），然后答 503 `server_busy`（带 `Retry-After`）；写正文、新建带正文的页与阅读视图都经它。最坏的正文解析时约占它字节数 300 倍的内存（默认预算最坏约 2.6 GiB 堆，即 2,662 MiB，最坏实测 2,592 MiB；部署按约 3 GiB 留内存，见 [deploy/README.md](deploy/README.md) 的"要求"），普通的约 40 倍：内存小的机器调小预算（不能小于 5 MiB），并设置 `GOMEMLIMIT`。
 
 ### 附件
 
@@ -170,7 +170,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 - **`nervewiki reindex [--notebook <id>]`**：从页面重建链接索引，不给 `--notebook` 时逐个处理没删除的笔记本，每个一行（页数、链接数、解析不到的数，以及搜索入队的节点数）。从旧链接格式升级到当前版本 2、或发布说明要求时，用新版本命令执行；启动服务与 `database.auto_migrate` 不会自动重建链接格式。阅读视图遇到旧 extractor 或 revision 不一致时重新解析链接，但不写回索引；改名/移动与 batch 的索引改写跳过非当前 extractor，batch 还核 revision；反链仍有旧页和计数，但没有旧行的正文上下文。其他已有索引读者没有统一过滤旧版本。
   - **链接重建阶段**每个笔记本一个事务：先锁笔记本行，再取链接索引锁，重算标题键、替换链接事实、解析落点并提交链接事件。此阶段持锁期间该本的写入等待，超过请求期限的保存可能答 500；请在停旧实例、备份与 `migrate up` 之后、启动新服务之前执行。原 M6 万页重建“十几秒”是当时的测量，不是版本 2 的停机估计。
   - 同一父页下撞键时不提交该本的链接重建，标准错误列出页的网页地址（含 id；读不到工作区 slug 时只列 id）；改掉冲突标题后再执行。其他链接重建错误也不留下这个事务的部分改动。事务结束后，命令另为缺失或分词版本不同的搜索行入队（升级 Go 或 `golang.org/x/text` 的 Unicode 数据也可能改变分词版本）；当前分词版本的行不入队，已有排队状态也不因此清掉。只要上下文仍可用，即便链接失败或撞键也尝试搜索入队，缺失笔记本等既有提前路径除外。
-  - 搜索入队按 id 分批，每批至多 10,000 个节点、各自提交，链接重建的笔记本/索引锁不覆盖这些批次。入队失败不回滚已提交的版本 2 链接索引；后批失败保留前批，不能从命令失败推断整本原样或队列没有变化。普通全本模式记录失败后继续其余笔记本，最后以 1 退出；指定单本时，链接错误仍先尝试入队再返回合并的错误，撞键或仅入队失败也以 1 退出；取消、输出错误等提前路径照常。随后由服务的搜索任务重建已入队的节点，入队不是构建完成；其间搜索可能不全。旧分词版本 4 的额外重建与磁盘/WAL代价见部署升级说明，单本命令与全实例都不是一个整体事务。
+  - 搜索入队按 id 分批，每批至多 10,000 个节点、各自提交，链接重建的笔记本/索引锁不覆盖这些批次。入队失败不回滚已提交的版本 2 链接索引；后批失败保留前批，不能从命令失败推断整本原样或队列没有变化。普通全本模式记录失败后继续其余笔记本，最后以 1 退出；指定单本时，链接错误仍先尝试入队再返回合并的错误，撞键或仅入队失败也以 1 退出；取消、输出错误等提前路径照常。随后由服务的搜索任务重建已入队的节点，入队不是构建完成；其间搜索可能不全。重建的时长、磁盘与 WAL 见 [deploy/README.md](deploy/README.md) 的"升级与回退"，单本命令与全实例都不是一个整体事务。
 
 ### 历史与回收站
 
@@ -228,7 +228,7 @@ M10/P3/S1的lint读取Extractor2当前索引，不parse正文、不自动重建�
 - **说明**：笔记本入口握手时给出这本笔记本根下标题为 `AGENTS` 的页（不分大小写）去掉 frontmatter 的正文，至多 32 KiB：截在最后一个换行，末尾一行说出怎样用 `read` 读全文。没有这一页、或它去掉 frontmatter 之后只剩空白时，给内置的英文说明（路径的写法与工具）；改了、替换、改名或删掉这一页之后，下一次连接就是新的。团队要别的约定（例如中文）就写一个 `AGENTS` 页，它整个取代内置的说明。LLM Wiki 的说明在这些文字之前多一段系统的文字，见下一节。
 - **客户端的名称**：取客户端报的 `clientInfo.name`（清理之后至多 128 个字符），记在这个令牌上，日志的每次调用带它；重启之后、客户端没有再报时用记下的。一个 agent 用一个 PAT：两个客户端同时用一个时，记的是最后报的那个。
 - **`server.public_url`**：实例对外的地址（只到源，默认空）。`read` 给附件的下载地址时以它起头（签名同"附件"）；为空时图片照样直接放进答复，别的附件只给元数据。
-- 接上 Claude Code、Codex 见下文"接入 agent（MCP）"；反向代理的要求见"部署"。
+- 接上 Claude Code、Codex 见下文"接入 agent（MCP）"；反向代理的要求见 [deploy/README.md](deploy/README.md) 的"反向代理与 HTTPS"。
 
 ### LLM Wiki 与 playbook
 
@@ -380,7 +380,7 @@ lint的summary每规则最多5项，规则页limit默认50、范围1–100；cou
 
 ### 大的请求体的名额
 
-超过 64 KiB 的调用（大的 `write`、`edit`、`batch`）在整个服务里同时至多两个、每个令牌至多一个；取不到名额的等 2 秒，然后答 503 `server_busy`（`Retry-After: 1`），稍后重发即可。所以一个 agent 的大的写一个接一个地发（内置的说明也这样告诉 agent）。名额从读请求体之前占到这次调用答完：慢的上行占得久（1 Mbit/s 上过约 250 KB 就过 2 秒），这时同一个令牌同时发出的两个大的写，第二个多半拿到 503。反向代理照"部署"一节为 `/mcp` 缓冲请求体时，请求在代理收完之后才到服务，名额只占服务端读请求体与做这次调用的时间，不再随上行的快慢。
+超过 64 KiB 的调用（大的 `write`、`edit`、`batch`）在整个服务里同时至多两个、每个令牌至多一个；取不到名额的等 2 秒，然后答 503 `server_busy`（`Retry-After: 1`），稍后重发即可。所以一个 agent 的大的写一个接一个地发（内置的说明也这样告诉 agent）。名额从读请求体之前占到这次调用答完：慢的上行占得久（1 Mbit/s 上过约 250 KB 就过 2 秒），这时同一个令牌同时发出的两个大的写，第二个多半拿到 503。反向代理照 [deploy/README.md](deploy/README.md) 的样例为 `/mcp` 缓冲请求体时，请求在代理收完之后才到服务，名额只占服务端读请求体与做这次调用的时间，不再随上行的快慢。
 
 ### HTTP 的答复
 
@@ -499,140 +499,7 @@ cd e2e && pnpm exec playwright show-report                      # 查看上一�
 
 ## 部署
 
-M10/P3/S1升级沿下述原停机/备份/迁移/权限步骤：停止旧单实例，用新binary完成迁移及 `reindex` 后再 `serve`，启动不会自动重建。Extractor2重建的linking/rekey按每本事务持锁阻写，阶段失败/撞键回滚本阶段；后续search入队按独立≤10000节点批次提交，linking失败仍可能入队，queue失败不回滚已提交v2或前批，锁不覆盖全部queue，整个命令/全实例并非原子。00051/00052普通SHARE索引构建挡写允许读；真实本机Up、5000-links写入和代表重建表见[性能移交](docs/v0.1/M12-release/handoffs/M4-performance.md)，生产停机与负载仍待M12实机复核；回退binary后仍按对应格式重建。
-
-镜像由 `deploy/Dockerfile` 构建：前端与服务端都在其中，运行时是 distroless 镜像，只有 `/nervewiki` 一个程序，以非 root 用户（uid 65532）运行，监听 8080。
-
-```bash
-make image VERSION=0.1.0         # 构建 nervewiki:0.1.0
-make image-smoke VERSION=0.1.0   # 在镜像上跑 S1、S3：迁移、探针、前端、实例、提交信息与镜像的 label、注册关闭、管理员建账户、非 root、附件在重启之后读回、优雅停机、附件目录不可写时拒绝启动（另需 git、curl、jq、openssl）
-```
-
-镜像的提交信息取自构建上下文中的 `.git`，所以要在普通的克隆中构建：`git worktree` 的 `.git` 是指向别处的文件，`make image` 会直接报错。`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个：否则镜像里的二进制报告的 `modified` 与工作区不符，`make image-smoke` 失败。
-
-- 镜像默认 `NWIKI_ENV=prod`。配置用环境变量提供（也可以挂载一个目录并设置 `NWIKI_CONFIG_DIR`），至少要有数据库地址 `NWIKI_DATABASE__URL` 与签名私钥 `NWIKI_AUTH__JWT__PRIVATE_KEY_FILE`（见上文"账户与认证"；私钥文件要能被 uid 65532 读取）；其余配置项见 `server/configs/config.yaml`，合并规则见上文"配置"。
-- prod 配置不自动迁移。每次升级先停旧实例、按下文流程备份数据库与附件，再执行迁移；需要重建链接格式的升级先完成下文的新版 `reindex`，然后才执行示例最后一行启动新服务。每个命令都校验整份配置，所以迁移与重建也带上同样的变量：
-
-  ```bash
-  key=(-v "$PWD/jwt.pem:/run/secrets/jwt.pem:ro" -e NWIKI_AUTH__JWT__PRIVATE_KEY_FILE=/run/secrets/jwt.pem)
-  docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 migrate up
-  docker run -d -p 8080:8080 -v nervewiki-data:/data -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0
-  ```
-
-- **附件目录**（M7）：附件与导入导出的文件在 `/data`（`storage.dir`，镜像以 `NWIKI_STORAGE__DIR=/data` 设定），它是镜像声明的卷。环境变量优先于配置文件：挂载了配置目录也要改目录时，改 `NWIKI_STORAGE__DIR`。
-  - 要挂载具名卷（如上例的 `-v nervewiki-data:/data`）或宿主机目录（`-v /srv/nervewiki/data:/data`）。不挂载时 Docker 建一个匿名卷，删掉容器之后就找不回来了。
-  - 进程以 uid 65532 运行：宿主机目录的属主要是它（`sudo chown -R 65532:65532 /srv/nervewiki/data`；Kubernetes 里设 `securityContext.fsGroup: 65532`）。目录或其中的区（`blobs/` 等）不可写时 `serve` 拒绝启动，错误写明目录与 uid（`storage: cannot write in /data as uid 65532, gid 65532: …`）。
-  - 一个目录只给一个 `serve` 进程用（v0.1 只支持单实例）：启动时它删掉上次中途退出留下的半截文件。升级时先停旧的再起新的（Kubernetes 的 `strategy: Recreate`），不要让两个进程同时挂着它。
-  - 剩余空间低于 `storage.min_free_bytes`（默认 1 GiB）时不再接受写入，答 507。磁盘或配额已经写满时同样照常启动，写入答 507；这两种情况启动时都记一条 WARN（`storage is full`）。监控这块磁盘。
-  - 备份：先 `pg_dump`，再复制 `/data/blobs`（附件写入后不变，物理清除要等 60 天，按这个次序得到的备份里数据库引用的附件都在；其余子目录是过程中的文件）。恢复时用同一次备份的两份，先恢复数据库，再放回目录；目录里多出的文件（数据库里没有的）由每天的清扫删掉。
-
-- 首次升级到带链接索引的版本（M6），或从 `Extractor = 1` 升级到当前版本 2（M10/P3/S1-0a）时，停旧的单实例并备份数据库与附件；用新版本执行 `migrate up`，分用两个数据库角色时先补授权（见下），再用同一新版本执行一次 `nervewiki reindex`，成功后才恢复 `serve`。版本 2 不新增表/列；旧 NULL 来源有歧义，不能以 UPDATE 版本号代替从正文重建。重建失败按上文分别检查链接阶段与搜索队列的进展，再处理原因；不能假设整本回滚。下面命令在 `migrate up` 之后、启动服务之前运行：
-
-  ```bash
-  docker run --rm -e NWIKI_DATABASE__URL=… "${key[@]}" nervewiki:0.1.0 reindex
-  ```
-
-  不混跑旧、新 writer。回退旧 binary 时，版本 2 对旧读者不是当前格式，旧 writer 还可能写出版本 1；再升级须用新版重新重建。链接格式不会由启动、`auto_migrate`、阅读或纯改树修复。来源通常只读，也不能靠日常保存补齐。此升级没有可直接用于真实实例的停机/WAL/空间承诺；保存与代表重建实测及未测项见 [P3](docs/v0.1/M10-llm-wiki/03-P3-lint-health.md) §10.1，完整成本仍按§7.4/7.5及M12真实环境复核，不把旧 M6/M8 数字当版本 2 的新结果。
-
-- 升级到带搜索的版本（M8）时，迁移让已有的全部节点排队，服务起来之后由后台任务一个笔记本接一个笔记本地建索引（早建的笔记本在前）：一个笔记本建完之前，搜索找不到它里面的这些页、页上写明索引正在建立（其间改过的页立即找得到）。任务每次运行约 1 分钟，停下时所在的那个笔记本余下的页等这一轮转回来再建，一次建完全部的升级里那是最后：30 万页时约 15 个笔记本（多是大的）到全部建完才建好。重建的进度看还在排队的节点数：`SELECT count(*) FROM page_search_queue WHERE bulk`。在我们的测试机上，30 万页（1.9 GB 正文、5,000 个笔记本）约 16 分钟建完，写约 130 GB 的 WAL（每页约 0.44 MB），`max_wal_size` 调到 16 GB 只少约 3%。`nervewiki reindex` 重建一个已有的索引更贵：同样 30 万页约 26 分钟、约 290 GB 的 WAL（每页约 1 MB），重建之后 `page_search` 在磁盘上约是原来的 1.7 倍，空出的地方不还给系统。索引约是正文的 5 倍（笔记本少时更小）：升级时留出约正文 5 倍的空闲磁盘（正文大小：`SELECT pg_size_pretty(sum(byte_size)) FROM page_contents`）；`nervewiki reindex` 前留出至少 `page_search` 现在那么大；有 WAL 归档或复制槽时，归档与 `pg_wal` 要容得下这些 WAL。
-
-- 升级到带 `grep` 的版本（M9/P4，迁移 00046，分词的版本 5）时，迁移只让可能被截掉词的页排队（正文多于 74,000 字节的、有长串或长的 `data:` 串的），服务起来之后由后台任务重建它们的索引，其间它们所在的笔记本答 `building`。迁移读一遍全部活着的正文，在它的事务里锁着 `page_search`，只挡着启动。被选中的页像我们量过的语料（2.72% 的页、正文的约 34%、词的约 19%）时，按词估 30 万页约 5 分钟、约 56 GB 的 WAL；在照那份语料的份额造的 30 万页、200 个笔记本的**合成的**库上，入队 8,149 页、954 MB，迁移共 14.1 秒、WAL 4.6 MB，任务重建它们 97.6 秒、WAL 9.76 GB。其余的页不排队：它们的词在版本 5 下不变，升级之后不必执行 `nervewiki reindex`；**但之后不论为了什么执行的第一次 `nervewiki reindex` 也重建全部仍是版本 4 的搜索的行**（约是整个索引：30 万页约 26 分钟、约 290 GB 的 WAL，同上一条"重建一个已有的索引"），照上一条留出磁盘与 WAL 的地方。回退 00046 再升级时，留着的版本 5 的行里被截过的，`page_search.partial` 读作 false，直到它的页再写；v0.1 里没有读这一列的（`grep` 读的是行里的词）。
-
-- 升级到带 `index` 的版本（M9/P4，迁移 00047）时，迁移给 `page_properties` 加两个存储的生成列（`type` 与 `summary` 的值的开头与长度，`index` 只读它们）与两个部分索引，**重写整张表**：其间这张表的读与写都等（ACCESS EXCLUSIVE 锁），要一份表的副本的磁盘，写约表那么大的 WAL。在我们的测试机上，600 万行（922 MB）约 9 秒、1.06 GB 的 WAL，2.6 GB 的表约 17 秒、2.87 GB；回退（Down）约 1 毫秒。所以**先停旧的服务再执行 `migrate up`**（同上文附件目录一条的"升级时先停旧的再起新的"）：旧的还在跑时，每次读属性、每次保存页都要等完重写，大的实例上会过请求的期限。
-- 升级到来源去重版本（M10/P2，00049/00050）前，先停旧实例，备份数据库与附件，再迁移、补运行角色权限并启动新实例。00049的rewrite默认false；旧无标记历史及Down49/再Up49丢失rewrite标记，撤销可能更严，Down50保留该标记。00050增加来源hash、验证nodes表、建非唯一索引并回填已有LLM来源，会持nodes强锁并阻塞读写。600万节点本机冷启动A/B的PG事务为1.678/21.580 s（CLI 1.711060/21.610380 s），不是生产停机承诺；硬件、分布、诊断与限制见[P2测量](docs/v0.1/M10-llm-wiki/02-P2-source-area.md#102-s2-来源-hash去重与验证)。测量未物化真实附件文件，M12须真实服务器与数据复测；Down/Up不能代替备份恢复。
-
-- 升级到带 ingest 标记的版本（M10/P4，00053/00054）前，同样先停旧实例。00053 给 `changesets` 加 `ingest_count` 与它的 CHECK（验证要扫一遍表）、建两个部分索引，`ACCESS EXCLUSIVE` 持到提交，其间读写都等；不回填历史，之前的变更集都不算 ingest。在我们的测试机上（暖表，不是停机承诺），10 万条变更集约 0.03 秒，100 万条约 0.24 秒；WAL 至多约为这张表的大小（CHECK 的扫描写 hint bit 时的整页镜像：100 万条、hint bit 未设时约 120 MiB，已设时不到 1 MiB）。新表 `changeset_sources` 要重新执行 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)。00054 让 `page_contents.content` 与 `page_revisions.content` 之后写入的可压缩的值用 LZ4 压缩：只改目录、不改写已有的值，但在两张表上都持 `ACCESS EXCLUSIVE` 到提交，所以要等它们上已有的事务结束；数据库须带 LZ4 构建（见下文部署一节），没有时这条迁移失败。回退 00054 只恢复之后的默认压缩，已经以 LZ4 存下的值仍要带 LZ4 的数据库才读得出。
-
-- 升级到带 MCP 的版本（M9）时，照下面部署一节的"样例（整个站点）"改代理的配置：`/mcp` 与页面正文的两个写缓冲请求体，附件的上传与导入不缓冲。照之前的样例在 `location /`、`server` 或 `http` 里写的 `proxy_request_buffering off` 只留在上传与导入的 `location` 里，`client_max_body_size 512m` 换成按路由的几个（导入的是 `513m`）。照之前的 README 设了 `client_max_body_size 512m` 的，不改时 `/mcp` 照常能用，但它与正文的写一直不缓冲；留着 nginx 默认的 1m 的，过 1 MiB 的 MCP 调用由 nginx 答 413。
-
-- **迁移与服务分用两个数据库角色时**（表的所有者执行迁移，服务用另一个角色登录，`database.auto_migrate` 关闭），服务需要的权限全部写在 [`deploy/runtime-grants.sql`](deploy/runtime-grants.sql)，授予组角色 `nervewiki_runtime`：业务表逐表的读写（不给 `TRUNCATE`、`REFERENCES`、`TRIGGER` 与 DDL），搜索的两个序列 `page_search_queue_version_seq`（入队时从它取版本）与 `page_search_tags_seq`（建索引的任务第一次写一个笔记本的行时从它取这个笔记本的前缀）的 `USAGE`，River 的表与序列，`river_job` 的 `MAINTAIN`（River 每天用 `REINDEX INDEX CONCURRENTLY` 重建它的索引，需要 PostgreSQL 17 起），导入与后台的恢复、撤销写入的 11 张表的 `MAINTAIN`（这些任务每写 10,000 个节点与结束时对它们 `ANALYZE`；少了它 PostgreSQL 跳过这张表、只发一条 WARNING，任务照常完成，统计等 autovacuum 更新），`page_search` 的 `MAINTAIN`（搜索的建索引任务每写 10,000 行对它 `ANALYZE`），`goose_db_version` 的读（`/readyz` 靠它判断迁移是否执行完）。函数与类型不在文件里，靠 PostgreSQL 默认给 PUBLIC 的权限。
-  - 组角色建一次，服务登录的角色加入它：`CREATE ROLE nervewiki_runtime NOLOGIN;`、`CREATE ROLE nervewiki_app LOGIN PASSWORD '…' IN ROLE nervewiki_runtime;`。
-  - **每次 `migrate up` 之后、启动服务之前**，以表的所有者执行一次这个文件，例如 `psql -v ON_ERROR_STOP=1 -f deploy/runtime-grants.sql`：新的迁移可能加了表，文件逐个列出；重复执行没有影响。
-  - 少了业务表的权限时接口答 500；少了 `goose_db_version` 的读时 `/readyz` 是 503，后台任务一直等着不启动。少了 `river_queue` 的权限时 River 启动失败，服务随之退出（`start the jobs: … permission denied`）；少了 River 其他表的，`/readyz` 仍是 200，会话清理、软删除清理与索引重建因 `permission denied` 失败，只记在日志里（`river_notification` 目前 River 不写，少了它看不出来）。`server/internal/bootstrap/runtime_role_test.go` 以恰好这些权限的角色运行服务与管理命令，`public` 里任何表、视图、序列或函数的权限与文件不符时失败。
-  - 索引属于表的所有者：停机打断 River 的索引重建时留下的 `*_ccnew` 索引，服务的角色删不掉，River 此后每天记 WARN `Found reindex artifact`，由表的所有者执行 `DROP INDEX CONCURRENTLY` 删除。
-
-- 在反向代理之后运行时设置 `NWIKI_SERVER__TRUSTED_PROXIES`，否则每个客户端都被当成代理。
-  - 搜索的词在请求行里（`GET /api/v0/workspaces/{slug}/search?q=…`），会进反向代理的访问日志（服务自己的访问日志只记路由）：同签名地址，访问日志要照敏感数据保管。
-- 反向代理不能缓冲事件流，读超时要长于心跳间隔（`events.heartbeat_interval`，默认 20 秒）。服务端在事件流的答复上设了 `X-Accel-Buffering: no`；只有事件流要它，`/mcp` 是普通的 JSON 答复（下面"反向代理与 MCP"）。下一条的两份样例里，事件流经过的那一部分（nginx 的 `location /` 与 `server` 里共用的几行、Caddy 的最后一个 `handle`）与验证过的配置是同一组指令：帧在写入答复的同一毫秒到达，心跳让连接一直活着（M5/P2）。Caddy 开了 `encode`（`zstd gzip`）也一样：它不压缩 `text/event-stream`，不必排除。nginx 用 HTTP/1.1 连上游；`proxy_read_timeout` 默认 60 秒，长于默认的心跳，调大心跳时一起调大。
-- 样例（整个站点）：请求体按路由处理，`/mcp` 与页面正文的两个写缓冲，附件的上传与导入不缓冲（下面两条）。
-  - nginx：共用的几行写在 `server` 里，每个 `location` 都继承它们。在某个 `location` 里加 `proxy_set_header` 时，它不再继承 `server` 里的三行 `proxy_set_header`，要在那里一起写上（少了 `X-Forwarded-For`，每个客户端都成了代理的 IP）：
-
-    ```nginx
-    server {
-        server_name wiki.example.com;
-        # listen 443 ssl; ssl_certificate …; ssl_certificate_key …; 照你的部署
-
-        proxy_http_version 1.1;
-        proxy_set_header Connection "";
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_read_timeout 60s;
-
-        # 页面、接口与事件流；1m 等于 server.max_body_bytes（默认 1 MiB），改了它时一起改
-        location / {
-            proxy_pass http://127.0.0.1:8080;
-            client_max_body_size 1m;
-        }
-
-        # MCP：缓冲请求体，上限是 /mcp 的 37,814,272 字节
-        location = /mcp {
-            proxy_pass http://127.0.0.1:8080;
-            proxy_request_buffering on;  # 显式写：server 或 http 一层的 off 会被继承
-            client_max_body_size 37m;
-        }
-
-        # 页面正文的两个写：缓冲请求体，上限是它们的 31,522,816 字节
-        location ~ ^/api/v0/(pages/[^/]+/content|notebooks/[^/]+/pages)$ {
-            proxy_pass http://127.0.0.1:8080;
-            proxy_request_buffering on;  # 同上
-            client_max_body_size 31m;
-        }
-
-        # 附件的上传与导入的 zip：不缓冲；上限是导入包的上限（默认 512 MiB）加 64 KiB 的表单
-        location ~ ^/api/v0/notebooks/[^/]+/(assets|imports)$ {
-            proxy_pass http://127.0.0.1:8080;
-            proxy_request_buffering off;
-            client_max_body_size 513m;
-        }
-    }
-    ```
-
-  - Caddy（默认不缓冲请求体，`request_buffers` 只给要缓冲的三个路由；自动的 HTTPS 照 Caddy 的默认）：
-
-    ```caddyfile
-    wiki.example.com {
-        # /mcp 与页面正文的两个写：缓冲请求体（37MiB 不小于 /mcp 的 37,814,272 字节）
-        @buffered path_regexp ^/(mcp|api/v0/pages/[^/]+/content|api/v0/notebooks/[^/]+/pages)$
-        handle @buffered {
-            reverse_proxy 127.0.0.1:8080 {
-                request_buffers 37MiB
-            }
-        }
-
-        # 别的路由（页面、接口、事件流、上传与导入）：不缓冲，Caddy 的默认
-        handle {
-            reverse_proxy 127.0.0.1:8080
-        }
-    }
-    ```
-
-    经 Caddy 时，服务端在读请求体之前就答的拒绝（503 `server_busy`、401、429）对几 MiB 以上的请求体常常到客户端成了 502、没有 `Retry-After`（我们在 Caddy 2.10.2 上量过这三种，用的是在读请求体之前就答它们的替身，不是 nervewiki 本身；nginx 照原样转发了替身的 503 与它的 `Retry-After`）：网页的大的保存看到的是一次失败、不会等一等再重发；agent 看不到 `Retry-After`（客户端怎样对待 502 未核对）。
-
-- 反向代理与上传（M7 起）：附件的上传（`POST /api/v0/notebooks/{notebook_id}/assets`）与导入的 zip（`POST /api/v0/notebooks/{notebook_id}/imports`）走流式的路由，服务端按字节放宽它们的读写期限（不低于每秒 64 KiB）。
-  - 反向代理不要缓冲这两个路由的请求体（nginx 的 `proxy_request_buffering off` 只写在它们的 `location` 里；Caddy 默认不缓冲），否则整个文件传到代理之后服务端才开始读，提前的拒绝（无权、重名、超过上限）也要等传完。别的路由不要关掉缓冲（下一条）。
-  - 它们的 `client_max_body_size`（nginx 默认只有 1 MB）不小于导入包的上限（`transfer.import_max_bytes`，默认 512 MiB）加 64 KiB：请求体是 zip 加表单的几个部分。附件的上限（`asset.max_bytes`，默认 50 MiB）加 64 KiB 在它之内（`import_max_bytes` 不小于 `asset.max_bytes`）。改了 `transfer.import_max_bytes` 的，这一行照它改。nginx 的 `client_body_timeout`、`proxy_send_timeout`、`proxy_read_timeout` 是两次读写之间的间隔，不是整个传输的时长，默认的 60 秒就够；按整个请求计时的代理或负载均衡，要容得下最慢的传输（50 MiB 的附件在每秒 64 KiB 下约 13 分钟，512 MiB 的导入包约 2 小时 17 分钟；`transfer.import_max_bytes` 按 `asset.upload_min_rate` 传完不能超过 3 小时）。
-- 反向代理与 MCP（M9 起）：`/mcp` 是普通的请求与答复，每个 POST 一个 JSON 答复，不是 SSE，也不持住连接。
-  - 请求体的上限不小于 `/mcp` 的 37,814,272 字节（约 36 MiB；nginx 写 `client_max_body_size 37m`，Caddy 的 `request_buffers 37MiB` 同样不小于它）：一次调用至多 5 MiB 的正文加 1 MiB 的别的参数，每个字节按 JSON 最长的转义算 6 个。
-  - 读超时不短于 45 秒：一次调用的工作至多 15 秒（`server.request_timeout`），之前读请求体至多 30 秒（`server.read_timeout`）；改了这两个的，不短于它们的和。nginx 默认的 `proxy_read_timeout 60s` 够；Caddy 默认不限（照 Caddy 的文档）。
-  - `Host` 照常转发（nginx 的 `proxy_set_header Host $host`；Caddy 默认就转发）：服务端关掉了 MCP SDK 对不是回环地址的 `Host` 的拒绝（同一台机器上的代理转来的 `Host` 是对外的名称），由 Bearer 令牌把关。
-  - **`/mcp` 与页面正文的两个写（`PUT /api/v0/pages/{page_id}/content`、`POST /api/v0/notebooks/{notebook_id}/pages`）要缓冲请求体**：大的请求体（MCP 超过 64 KiB 的调用、超过 `server.max_body_bytes` 的正文写）整个服务同时只有两个名额、每个凭证一个（上文"MCP"的"传输"与"接入 agent（MCP）"），名额从读请求体之前占到答完；代理收完请求体再一次转给服务，慢的发送者就占不住名额。上面的两份样例都这样做。缓冲的请求体在服务端认证之前就收下了，放在代理那里：nginx 把过了 `client_body_buffer_size` 的写到 `client_body_temp_path` 的磁盘上（照 nginx 的文档），Caddy 放在内存里（我们在 Caddy 2.10.2 上量过：收着一个 30 MiB 的请求体时代理的内存涨了约 66 MB，一个接近 `/mcp` 上限的约 116 MB，没有写临时文件），所以几个慢的发送者不必有有效的令牌，就能让代理各占至多约 37 MiB 的磁盘（nginx）或一百多 MB 的内存（Caddy）：给代理留出这些地方。
-  - 不缓冲时（代理关掉了缓冲，或直接暴露服务）：两个慢的发送者（两个令牌，或两个登录的会话）各占一个名额至多约 45 秒（请求体至多 `server.read_timeout` 30 秒，之后这次调用至多 `server.request_timeout` 15 秒），其间别人的大的写等 2 秒后答 503 `server_busy`。这样被拒的每个请求，服务端记一行 info 的日志 `large request bodies are saturated`（名额只是满着、没有人被拒时不记），`holders` 是这时持着名额的凭证（`pat:<令牌 id>` 或 `session:<会话 id>`）与路由：由 `api_tokens`（PAT）或 `auth_sessions`（会话）那一行的 `user_id` 找到账户，请他在"访问令牌"里撤销那个令牌，或以 `nervewiki users reset-password` 撤销这个账户的全部会话与 PAT（上文"管理员命令"）。
-- 内存：页面正文的解析预算（`page.parse_budget_bytes`，默认 8 MiB）最坏时约占 2.4 GB，见上文"页面"的"解析预算"。大的请求体（MCP 超过 64 KiB 的调用、超过 1 MiB 的正文写）整个服务同时至多两个，各约 +0.5 GB，合起来约 1 GB（M9/P2 实测两个加一个等着的 +680 到 +961 MiB，见上文"MCP"的"传输"）；请求体的 JSON 值有上限（`/mcp` 10,000 个，REST 1,000 个），所以许多小值的请求体不比一个长字符串贵。内存小的机器调小预算（至少 5 MiB，最坏约 1.5 GB），并用 `GOMEMLIMIT` 给运行时一个略低于容器上限的目标。
-
-- 数据库必须以 builtin provider 的 `C.UTF-8` 初始化，否则服务拒绝启动，见[总体设计](docs/v0.1/v0.1-design.md) 7.1。PostgreSQL 须带 LZ4 构建（`postgres:18.7-trixie` 这样的官方镜像带）：页面正文用 LZ4 压缩，迁移 00054 在不带的数据库上失败。
-- 探针：存活用 `GET /healthz`（不访问任何依赖），就绪用 `GET /readyz`（数据库可用、迁移已执行完）。镜像里没有 shell 与 curl，所以没有写 `HEALTHCHECK`，由编排系统探测。
-- 后台任务（River：每小时一次的过期会话清理 `auth.session_cleanup_interval`，每小时一次的软删除清理 `jobs.purge_interval`，每 10 分钟一次的过期编辑会话清理 `page.edit_session_cleanup_interval`，每天一次的附件目录清扫，导入导出的收拾、到期与清扫（见上文"导入与导出"），每 5 秒一次的搜索的建索引 `page.search_index_interval`（见上文"搜索"））随 `serve` 运行，表在同一条迁移链上。关闭自动迁移时，服务在迁移执行完之前不启动后台任务，迁移之后自动启动，不必重启。River 从连接池里借走一个连接专门监听通知，事件流也借走一个（`LISTEN nwiki_events`，断开后自动重连），数据库要为每个实例多留两个连接（`database.max_conns` + 2）。运行中的导出与导入各占一个连接，搜索的建索引任务运行时也占一个，所以它们合起来至多 `database.max_conns` 的一半（默认的配置下 `max_conns` 至少 6）。搜索的建索引任务被不干净地停下（OOM、`docker kill`、宽限期太短）留在 River 里"运行中"的那一行，下一次 `serve` 启动时丢掉（WARN `jobs left running by a stopped server discarded`）。
-- 停止时发 SIGTERM：服务停止接收新连接，关闭开着的事件流，等正在处理的请求结束（最多 `server.shutdown_timeout`，默认 20 秒），关闭接收通知的连接（最多 2 秒），再等正在执行的后台任务（最多 `jobs.shutdown_timeout`，默认 10 秒，之后取消它们，再宽限 1 秒），最后关闭连接池（最多 5 秒）后退出。停机的宽限期要比这些之和长：`docker stop` 默认只等 10 秒，用 `docker stop -t 40`。启动之后不久就停止时（重启循环、端到端测试），River 通常记一条 ERROR `maintenance.PeriodicJobEnqueuer: Error starting transaction`（`context canceled`，它启动时的定时任务入队被停机打断），退出码仍是 0；运行了一段时间的服务停止时一般没有。
+部署、升级、备份与恢复见 [deploy/README.md](deploy/README.md)：镜像 `ghcr.io/open-nerve/nervewiki`（amd64 与 arm64，只有确切的版本号），`deploy/compose.yaml` 样例，nginx 与 Caddy 的样例，校验签名与来源证明的命令。在本地构建镜像：`make image VERSION=…`、`make image-smoke VERSION=…`，要在普通的克隆里（`git worktree` 的 `.git` 是文件，镜像取不到提交信息）；`.dockerignore` 排除的正好是 `.gitignore` 忽略的，改一个时同步另一个。
 
 ## Markdown 样例集
 

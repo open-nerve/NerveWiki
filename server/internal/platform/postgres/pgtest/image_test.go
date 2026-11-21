@@ -6,10 +6,10 @@ import (
 	"testing"
 )
 
-// The test container, the development database, the end-to-end stories and
-// the image smoke test run the same image with the same cluster settings,
-// and README names it (v0.1 design 7.1): trigram splitting depends on the
-// image's C library.
+// The test container, the development database, the end-to-end stories, the
+// image smoke test and the deployment sample run the same image with the same
+// cluster settings, and deploy/README.md names it (v0.1 design 7.1): trigram
+// splitting depends on the image's C library.
 func TestContainerMatchesTheOtherDatabases(t *testing.T) {
 	tests := []struct {
 		file string
@@ -28,7 +28,11 @@ func TestContainerMatchesTheOtherDatabases(t *testing.T) {
 			want: []string{"  " + image + " >/dev/null\n", `POSTGRES_INITDB_ARGS="` + initdbArgs + `"`},
 		},
 		{
-			file: "README.md",
+			file: "deploy/compose.yaml",
+			want: []string{"image: " + image + "\n", "POSTGRES_INITDB_ARGS: " + initdbArgs + "\n"},
+		},
+		{
+			file: "deploy/README.md",
 			want: []string{"`" + image + "`"},
 		},
 	}
