@@ -106,7 +106,9 @@
   --faint: #91939b;
   --primary: #18191c;
   --primary-foreground: #ffffff;
-  --accent: #c58a22;
+  /* A shade deeper than the mockup's #c58a22 (2.99:1 on white), at which Chromium draws a checked box's tick and a
+     radio's dot dark: from 3.1:1 they are white, as the mockup's (M13/P1/S2, decision 766). Its tint stays. */
+  --accent: #c2871f;
   --ring: var(--accent);
   --accent-soft: rgb(197 138 34 / 12%);
   --destructive: #d64545;
