@@ -128,8 +128,8 @@ const completionTheme = EditorView.theme({
   ".cm-tooltip.cm-tooltip-autocomplete > ul > li": { padding: "0.25rem 0.5rem" },
   // The option selected shows by more than its background, which is near the popover's (M12/P2/S3; M5-polish 12.4).
   ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
+    backgroundColor: "var(--active)",
+    color: "var(--foreground)",
     boxShadow: "inset 0 0 0 2px var(--ring)",
   },
   ".cm-completionDetail": { color: "var(--muted-foreground)", fontStyle: "normal", marginLeft: "0.75rem" },

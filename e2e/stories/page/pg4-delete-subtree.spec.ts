@@ -188,19 +188,26 @@ test("PG4 (page): an editor deletes a page with its subpages, the confirmation c
   await choosePageAction(page, "Plans", "Install", "Delete");
   const dialog = page.getByRole("alertdialog", { name: "Delete Install?", exact: true });
   await expect(dialog).toContainText("Its subpages go with it: 2.");
-  // Its Delete reads against its fill at rest and under the pointer, light and dark: dark, the pointer took the fill
-  // back to destructive at 90%, 3.45:1 under white (M12/P2/S3; M5-polish 12.4).
+  // Its Delete is red, outlined, on the dialog's surface: its text reads against the surface at rest and against the
+  // red tint the pointer lays on it, light and dark, no fainter than it was (M13/P1/S1; 00-M13 4.7).
   const confirm = dialog.getByRole("button", { name: "Delete", exact: true });
-  const read = async (scheme: "light" | "dark"): Promise<Record<string, Contrast>> => {
+  // Floors at what M13/P1/S1 measured, less 0.1: no colour is to fade by accident (00-M13 4.7). Measured on Chromium:
+  // light 4.378 at rest, 3.932 under the pointer; dark 6.335, 5.404.
+  const floors = { light: { rest: 4.27, hover: 3.83 }, dark: { rest: 6.23, hover: 5.3 } } as const;
+  const read = async (scheme: "light" | "dark"): Promise<Record<"rest" | "hover", Contrast>> => {
     await setColorScheme(page, scheme);
     await page.mouse.move(0, 0);
-    const still = await textContrast(confirm);
+    const rest = await textContrast(confirm);
     await confirm.hover();
-    return { [`${scheme} at rest`]: still, [`${scheme} under the pointer`]: await textContrast(confirm) };
+    return { rest, hover: await textContrast(confirm) };
   };
-  const readings = { ...(await read("light")), ...(await read("dark")) };
-  for (const [state, reading] of Object.entries(readings)) {
-    expect(reading.ratio, `${state}: ${JSON.stringify(readings)}`).toBeGreaterThanOrEqual(4.5);
+  const readings = { light: await read("light"), dark: await read("dark") };
+  for (const scheme of ["light", "dark"] as const) {
+    for (const state of ["rest", "hover"] as const) {
+      expect(readings[scheme][state].ratio, `${scheme} ${state}: ${JSON.stringify(readings)}`).toBeGreaterThanOrEqual(
+        floors[scheme][state]
+      );
+    }
   }
   await setColorScheme(page, "light");
   const answer = answerTo(page, "DELETE", `/api/v0/nodes/${install.id}`);

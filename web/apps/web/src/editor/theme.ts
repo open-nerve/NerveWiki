@@ -31,7 +31,7 @@ export const editorTheme = [
     ".cm-line": { padding: "0 1rem" },
     ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--foreground)" },
     "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
-      { backgroundColor: "var(--accent)" },
+      { backgroundColor: "var(--accent-soft)" },
     ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)" },
     ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--border)" },
     ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },

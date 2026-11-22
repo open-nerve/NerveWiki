@@ -54,7 +54,7 @@ export function SubpageList({
 const SubpageRow = memo(function SubpageRow({ href, name }: { href: string; name: string }) {
   return (
     <li>
-      <a href={href} className="block truncate px-4 py-2 hover:bg-accent">
+      <a href={href} className="block truncate px-4 py-2 hover:bg-hover">
         {name}
       </a>
     </li>

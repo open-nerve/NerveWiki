@@ -10,11 +10,11 @@
 
 @layer components {
   :root {
-    --nw-mark-background: oklch(0.93 0.11 95);
+    --nw-mark-background: rgba(245, 196, 81, 0.38);
   }
 
   .dark {
-    --nw-mark-background: oklch(0.45 0.09 95);
+    --nw-mark-background: rgba(217, 168, 78, 0.28);
   }
 
   .nw-reading {

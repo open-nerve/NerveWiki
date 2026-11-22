@@ -85,7 +85,7 @@ test("a dialog by its trigger, the trigger staying, opens anew after confirm wen
 test("the confirm button is destructive unless the dialog's tone is the default one", async () => {
   const user = userEvent.setup();
   for (const [tone, look] of [
-    [undefined, "bg-destructive"],
+    [undefined, "text-destructive"],
     ["default", "bg-primary"],
   ] as const) {
     const { unmount } = render(

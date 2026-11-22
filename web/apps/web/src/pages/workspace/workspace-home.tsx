@@ -43,7 +43,7 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
           <Link
             to={`/${workspace.slug}/notebooks/${notebook.id}`}
             state={arrived}
-            className="rounded-lg border p-4 hover:bg-accent focus-visible:ring-[3px] focus-visible:ring-ring focus-visible:outline-none"
+            className="rounded-lg border p-4 hover:bg-hover focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
           >
             <span className="block truncate font-medium">{notebook.name}</span>
             <span className="block text-sm text-muted-foreground">{t(`access.${notebook.workspace_access}`)}</span>

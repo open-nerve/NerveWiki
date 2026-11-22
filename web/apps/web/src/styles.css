@@ -5,63 +5,118 @@
    first paint and the app keeps in step with the theme preference. */
 @custom-variant dark (&:where(.dark, .dark *));
 
-/* shadcn/ui's semantic colours: components use bg-background,
-   text-muted-foreground and the like, never a raw palette colour. */
+/* The design tokens (M13/P1/S1; 00-M13 4.1): components use their semantic
+   names, bg-surface, text-muted-foreground, shadow-popover and the like, never
+   a palette's colour nor a written value (v0.1 design 13.2 item 32). Colours
+   and shadows differ by theme: their values are in :root and .dark. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
+  --color-hover: var(--hover);
+  --color-active: var(--active);
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-muted-foreground: var(--muted-foreground);
+  --color-faint: var(--faint);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
+  --color-accent-soft: var(--accent-soft);
   --color-destructive: var(--destructive);
   --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
   --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
+  --shadow-popover: var(--elevation-popover);
+  --shadow-dialog: var(--elevation-dialog);
 }
 
+/* What is the same in either theme: the radii, the two sizes the interface
+   keeps using, the system's fonts (decision 752). */
+@theme {
+  --radius-row: 7px;
+  --radius-control: 9px;
+  --radius-popover: 12px;
+  --radius-card: 14px;
+  --radius-dialog: 16px;
+  --text-compact: 13px;
+  --text-row: 13.5px;
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+    "Noto Sans CJK SC", system-ui, sans-serif;
+  --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* A hover over what has a background of its own: layered on it, not in its place (M13/P1/S1, decision 757). */
+@utility hover-layer {
+  background-image: linear-gradient(var(--hover), var(--hover));
+}
+
+/* --accent is amber: it marks a state (checked, current, the focus) and fills
+   nothing that has text on it. --ring is the accent's: amber has one source. */
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --muted-foreground: oklch(0.53 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --ring: oklch(0.556 0 0);
+  --radius: 0.5rem;
+  --background: #ffffff;
+  --foreground: #18191c;
+  --sidebar: #f5f5f6;
+  --surface: #ffffff;
+  --popover: #ffffff;
+  --popover-foreground: #18191c;
+  --surface-2: #f4f4f5;
+  --hover: rgb(15 16 20 / 4.5%);
+  --active: rgb(15 16 20 / 7.5%);
+  --border: #e7e7ea;
+  --border-strong: #d4d4d9;
+  --muted-foreground: #5f6168;
+  --faint: #91939b;
+  --primary: #18191c;
+  --primary-foreground: #ffffff;
+  --accent: #c58a22;
+  --ring: var(--accent);
+  --accent-soft: rgb(197 138 34 / 12%);
+  --destructive: #d64545;
+  --overlay: rgb(16 17 20 / 32%);
+  --elevation-popover: 0 1px 2px rgb(0 0 0 / 4%), 0 10px 28px rgb(16 17 20 / 12%);
+  --elevation-dialog: 0 1px 2px rgb(0 0 0 / 4%), 0 24px 64px rgb(16 17 20 / 18%);
 }
 
 .dark {
   color-scheme: dark;
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --ring: oklch(0.556 0 0);
+  --background: #1a1b1e;
+  --foreground: #e8e8ea;
+  --sidebar: #141517;
+  --surface: #212226;
+  --popover: #25262a;
+  --popover-foreground: #e8e8ea;
+  --surface-2: #25262a;
+  --hover: rgb(255 255 255 / 4.5%);
+  --active: rgb(255 255 255 / 8%);
+  --border: #2b2c31;
+  --border-strong: #3a3b41;
+  --muted-foreground: #a4a5ac;
+  --faint: #74767e;
+  --primary: #ececee;
+  --primary-foreground: #18191c;
+  --accent: #d9a84e;
+  --ring: var(--accent);
+  --accent-soft: rgb(217 168 78 / 14%);
+  --destructive: #ff7b7b;
+  --overlay: rgb(0 0 0 / 45%);
+  --elevation-popover: 0 0 0 1px rgb(255 255 255 / 6%), 0 14px 36px rgb(0 0 0 / 50%);
+  --elevation-dialog: 0 0 0 1px rgb(255 255 255 / 6%), 0 24px 64px rgb(0 0 0 / 60%);
 }
 
 @layer base {
   * {
     @apply border-border;
   }
-  /* What takes the focus shows it, 3:1 at least against the page in either theme (WCAG 1.4.11; M12/P2/S3). Controls
+  /* What takes the focus shows it: solid amber, 2px, shown from the keyboard only (M13/P1/S1; 00-M13 4.7). Controls
      that draw their own ring (outline-none) keep theirs; the reading view's and the editor's are their own. */
   :focus-visible {
     outline: 2px solid var(--ring);
