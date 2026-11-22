@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P2 新外框（三个 Step：S1 外框与账户行；S2 笔记本与页面树；S3 搜索、⌘K、快速切换与窄屏） |
-| 日期 | 2026-11-22（初稿）；2026-11-23（照三份设计审查修订；照修订核对第 1、2 轮再修订；主持者补上最后的 Nit，设计定稿） |
-| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800） |
+| 日期 | 2026-11-22（初稿）；2026-11-23（照三份设计审查修订；照修订核对第 1、2 轮再修订；主持者补上最后的 Nit，设计定稿；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)） |
+| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800）；S1 实施与审查完成（[S1 的审查记录](reviews/P2-S1-shell-account-review.md)，主持者的决定 801–803），合并见 00 号文档第 12 节；S2、S3 待开 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.2（全部）、4.3 的"按钮""菜单"两条、4.7、4.8（UI1、PG16 与变异的最低清单）、第 7 节 P2 三行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"去掉顶栏""账户菜单""搜索框""工作区切换""页面树进笔记本列表""目录、健康、历史、回收站""375 px 与窄屏""窗口滚动与视口"八行、第 10 节"粘住的侧栏"与"窄屏抽屉"两行、第 11 节决定 717、719、720、727、730–733、737、745；[01-P1](01-P1-foundation.md) 第 9 节"P2"与"P2–P5"两条；[v0.1 总体设计](../v0.1-design.md) 9.2、9.3、13.2 第 16、17、20、26 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 14 项、第 1 项里的 26.3、35.7、37、38.5 与第 8 项里的 `onMac` 一条 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（外框：`.side`、`.ws`、`.search`、`.row`、`.tree`、`.group`、`.me`，`:62-91`、`:229-250`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `4c3f10b9` 的 |
@@ -35,7 +35,7 @@
 - **快捷键**（`W/app/shortcuts.ts`）：`isMod`、`isModShift`、`onMac`；`dialogOpen()` 认 `[role="dialog"], [role="alertdialog"]`（`:38-41`）。
 - **快速切换**（`W/pages/notebook/quick-switch.tsx:50-72,136-193`）：对话框里一个组合框与列表；选项是两个 `span`（标题、上级位置，`:176-182`），当前项 `bg-active ring-2 ring-ring ring-inset`（`:171-174`）；`quick-switch.test.tsx:18-22,164` 按 `span` 读它们。
 - **组件**：按钮只有 `default`（36 px）与 `icon` 两个尺寸（`W/components/ui/button.tsx:17-20`）；菜单没有子菜单（`W/components/ui/dropdown-menu.tsx:7-71`）。`W/styles.css` 没有头像的颜色。
-- **测试**：vitest 5118 格（P1/S2 之后）；E2E 本机 2.4–2.8 min（P1/S2 合并之前，随负载）；本机的已知失败三格 SE2 `se2:188` [chromium]、LW8 `lw8:822` [webkit]、PG15 `pg15:75` [webkit]（P1 决定 764；这三个是格的开头行，S1 的基线记下它们失败所在的行与消息的第一行之后，这里与 7.3 照它改写，决定 795(a)），偶发 AS6 `as6:153`、LW8 `lw8:771` 与负载过 100 时 `markdown.test.ts` 的"not slower"。
+- **测试**：vitest 5118 格（P1/S2 之后）；E2E 本机 2.4–2.8 min（P1/S2 合并之前，随负载）；本机的已知失败三格（P1 决定 764；S1 开工之前的基线记下的失败所在的行与消息的第一行，决定 795(a)，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)）：SE2 [chromium] `se2:231`（`Error: expect(locator).toHaveValue(expected) failed`）、LW8 [webkit] `lw8:836`（`Error: expect(locator).toBeFocused() failed`）、PG15 [webkit] `pg15:113`（`Error: expect(received).toEqual(expected) // deep equality`）（格的开头行是 se2:188、lw8:822、pg15:75），偶发 AS6 `as6:153`、LW8 `lw8:771` 与负载过 100 时 `markdown.test.ts` 的"not slower"。
 - **设计者的探针**（Playwright 1.63，macOS，三种引擎，一个模仿外框的静态页）：
   - 窗口滚到 3000 px，在读者之上插进 500 px：三种引擎的窗口都到 3500（滚动锚定留住读者），侧栏带不带 `overflow-anchor: none` 都一样；
   - 粘住的侧栏里的列表一次长 2000 px、侧栏自己滚到底：窗口的 `scrollY` 不变，侧栏的顶一直是 0；
@@ -105,7 +105,7 @@
 - **771 离开工作区外框的菜单项带 `arrived`，从 P3/S1 提前**：账户菜单挪进侧栏之后，"个人设置"去的 `/settings/profile` 在工作区外框之外，侧栏连同触发按钮一起卸下，Radix 还焦点时按钮已不在，焦点落到 `body`（13.2 第 17 条："链接随它所在的页一起离开的……带 `arrived`"）。所以 S1 就让它带 `arrived`，`SettingsLayout` 的 `h1`（`W/pages/settings/settings-layout.tsx:27`）加 `useArrivalFocus` 与 `tabIndex={-1}`。切换器的"新建工作区"同理（今天就落到 `body`，新建页的 `h1` 已有到达的焦点），一并带上。右上角的"回到工作区"去 `/`，带 `arrived`，`LandingPage` 转交给它的 `<Navigate>`，最近的工作区首页的 `h1` 取焦点（`/` 本来就落到最近的工作区：00 号文档"去最近的工作区，没有时去首页"）。
 - **772 头像的颜色是两个新变量**：`--avatar: #3f8f74`、`--avatar-foreground: #ffffff`，亮暗同值（样稿 `.me .av`，palette.html:90），经 `@theme inline` 映射成 `bg-avatar`、`text-avatar-foreground`。不用 `--accent`（琥珀只标状态，13.2 第 32 条）也不用 `--primary`（工作区的方形头像是墨色，账户的是圆形绿色，两种头像分得开）。白字对它 3.89:1，首字是装饰（`aria-hidden`），不量。
 - **773 只加有人用的部件**（P1 决定 747 的延续）：按钮加 `size: "sm"`（`h-7.5 px-3.25 text-compact`）、`"icon-sm"`（`size-7.5`）与 `shape: { default: "", pill: "rounded-full" }`，第一批用处是右上角的账户按钮与外观按钮（S1）、细栏的菜单按钮与搜索框里的提交按钮（S3）；菜单加 `DropdownMenuSub`、`DropdownMenuSubTrigger`（带右箭头）、`DropdownMenuSubContent`，用处是外观。快捷键的部件（`DropdownMenuShortcut`）不加：P2 的菜单里没有带快捷键的项，加了 knip 报出没人用的导出（2.1 第 6 条）。
-- **774 侧栏分三段**（`W/app/shell-sidebar.tsx` 的 `ShellSidebar`，P3 的设置目录也用它）：顶部（切换器、搜索）不滚；中段（工作区的 `nav`）是 `data-sidebar-scroll` 的滚动区，`overflow-y-auto overscroll-contain`；底部是账户行。宽屏上根 `md:sticky md:top-0 md:h-svh md:self-start`，窗口照旧整页滚动（决定 717）。`overflow-anchor: none` 照旧在根上（探针：粘住之后三种引擎带不带它都一样，留着无害，`:108-109` 的理由在侧栏与页一样高时成立）。中段的 `overscroll-contain` 让滚到头的滚轮不带着窗口走。S1、S2 里窄屏照旧把侧栏排在页之上（`max-md:border-b`），S3 换成抽屉。
+- **774 侧栏分三段**（`W/app/shell-sidebar.tsx` 的 `ShellSidebar`，P3 的设置目录也用它）：顶部（切换器、搜索）不滚；中段（工作区的 `nav`）是 `data-sidebar-scroll` 的滚动区，`overflow-y-auto`；底部是账户行。宽屏上根 `md:sticky md:top-0 md:h-svh md:self-start`，窗口照旧整页滚动（决定 717）。`overflow-anchor: none` 照旧在根上（探针：粘住之后三种引擎带不带它都一样，留着无害，`:108-109` 的理由在侧栏与页一样高时成立）。中段滚到头的滚轮带着窗口走，同 S1 之前（决定 802 改：初稿的 `overscroll-contain` 在 Chromium 里让没有溢出的中段吃掉滚轮）。S1、S2 里窄屏照旧把侧栏排在页之上（`max-md:border-b`），S3 换成抽屉。
 - **775 工作区切换挪出 `nav`**：顶部依次是切换器与搜索，再下是 `nav`（00 号文档 4.2.1 的地标与顺序）；切换器照旧在 `[data-shell]` 里（e2e 以它找切换器，`e2e/fixtures/workspace-pages.ts:50-52`），`workspace-layout.test.tsx:84-98` 改写。
 - **776 树的容器由工作区外框按笔记本 id 建，当前那一项按地址收养**（00 号文档决定 730、745 的做法）：`W/pages/workspace/notebook-slot.tsx` 的 `NotebookSlot` 上下文由 `WorkspaceLayout` 给出，`containerFor(id)` 按 id 返回同一个 `document.createElement("div")`（各 id 的容器都留着，决定 798）；`NotebookLayout` 把树门户进 `containerFor(id)`（地址里的 id，照原样）；`NotebookNav` 以地址里的笔记本 id（`useMatch("/:slug/notebooks/:id/*")`，照原样，不转小写：`NotebookLayout` 以 `notebooks.byId(id)` 精确比较，`W/stores/notebook.store.ts:79-80`；审查 B-M3）定"当前"：列表里 id 与它相同的那一项画 `SlotHolder`；列表里没有它时，只有在 `store.unsavedEdit({ notebookId: id })` 时（`NotebookLayout` 留住它的同一条件，`notebook-layout.tsx:63`）才把 `SlotHolder` 放在两组之后，大写的、不存在的 id 什么也不放。`SlotHolder` 在 layout effect 里把容器 `append` 进自己，清理时记下容器里拿着焦点的元素，下一个 `SlotHolder` 挪完之后，焦点空着（`body`）就还给它，并以 `reveal` 的做法（只改 `[data-sidebar-scroll]` 的 `scrollTop`，`intoColumn`，4.2.5）把它带进侧栏的可见范围（审查 B 的怀疑 3：从"我的"挪到"团队"时位置下移）（探针：挪动拿着焦点的节点在三种引擎里都丢焦点，`focus()` 拿得回来；清理在 React 移走那一项的 DOM 之前运行，那时焦点还在容器里）。换组时树开着的那一个菜单跟着按钮走，不另关它（审查 B 的怀疑 2）：`SlotHolder` 挪了容器之后通知，`TreeMenu` 随之重量（决定 800）。"当前"按地址定，不由 `NotebookLayout` 在 effect 里登记：登记要多一次提交，那一次里当前那一项画成链接、紧接着又换掉。收养总在树的 layout effect 之前：`WorkspaceLayout` 先画侧栏的门户、后画 `Outlet`，`:slug` 是懒加载的（`routes.tsx:131`），`Layout` 早一次提交就有了侧栏的位置，同一次提交里 `SlotHolder` 的 layout effect 先跑（探针 `slot-order.cjs`）；所以初稿的"收养之后通知树"（`slot.adopted`、`onAdopted`）在产品里走不到，不要了（审查 C 的过度设计），代码里留一句注释写明这个次序。
 - **777 别的笔记本的链接带 `arrived`**：点开别的笔记本，那一项从链接换成展开的笔记本行，点下去的链接卸下，焦点会落到 `body`；带 `arrived`，笔记本首页的 `h1` 取焦点（今天新建笔记本之后就是这样，n1:101）。当前笔记本那一行的链接（去首页）不卸下，照旧不带状态。
@@ -132,6 +132,9 @@
 - **798 容器按笔记本 id 各留一个，渲染时不淘汰**（审查 B 的怀疑 1）：`containerFor` 在一个 `Map` 里按 id 留着各自的 `div`，不在渲染时去掉别的 id 的（初稿"只留当前的一个"）：去 B 的过渡渲染被打断、放弃，`NotebookLayout(A)` 又以更高的优先级重画时，"只留一个"会给 A 新建一个容器，A 的树门户进一个脱离文档的 `div`，侧栏里的树不见、重新挂载。空的 `div` 很便宜，一个工作区外框的一生里至多每本笔记本一个。`keepFocus`、`takeFocus` 照旧按 id（审查 B 说"同时只留一个容器，一个字段就够"，各 id 都留着之后按 id 存取正合用）。
 - **799 被"未保存"拦下、选了"留下"时抽屉安静地关上**（审查 A 的 P2A1-M1）：窄屏、编辑中有未保存的改动，在抽屉里点树的另一页，`UnsavedGuard` 的确认框拦下导航（`W/pages/page/unsaved-guard.tsx:55-69`）；它的 `FocusScope` 暂停抽屉的那一层，"留下"时 `onCloseAutoFocus` 调 `stay()`，把焦点给 `main` 里的编辑器、横幅或冲突的标题（`page-edit.tsx:207-213` 的 `back()`），之后 Radix 才恢复抽屉那一层（`@radix-ui/react-focus-scope` 的 `index.mjs:94-102`），困住只对之后的焦点事件起作用：抽屉仍开着、遮罩还在，焦点却在它后面，打的字进了被遮住的编辑器。初稿就有，修订核对时才看到。所以 `useDrawer` 的 `actions` 加 `quietClose`（`setDrawer(null)`，不设 `toMenu`，焦点不动），经 `W/app/shell-sidebar.tsx` 的 `Drawer` 上下文（`WorkspaceLayout` 给出 `drawer.actions`；默认值什么也不做：不在工作区外框之内时）与 `useDrawerActions()` 交给外框之下；`UnsavedGuard` 在"留下"那一支里先调它、再 `stay()`（Esc 关上确认框也是"留下"，同一支）。抽屉关着时调它什么也不变。不选 A 的另一个建议"在抽屉里点链接时，若有拦截在，先关上抽屉"：抽屉不知道有没有拦截（`useBlocker` 在页里），选了"离开"时也不该先关（之后焦点由去向页取，决定 790）。探针 `probe-a-r1/run.mjs`（A 的 `r1` 加这个上下文）：三种引擎里"留下"之后抽屉关上、焦点在编辑器；不加时抽屉开着、焦点在被遮住的编辑器上（A 的复现）。`shell-drawer.test.tsx` (7) 一格，变异 63。
 - **800 换组时树的菜单由 `SlotHolder` 通知重量**（审查 C 的 P2C1-M1；取代决定 776 原来靠的"`close` 每次渲染新建"）：`TreeMenu` 每次自己提交之后重量按钮（`page-tree-item.tsx:389-406`），换组时它跟着重画只是顺带的：列表换新给 `PageTree` 新的 `notebook`，`close` 与 `create`（`page-tree.tsx:133-136,222`）每次渲染新建，`observer` 自带的 `memo` 才放它过去。初稿的变异 51 只稳住 `close`，`create` 照样新建，(2c) 抓不到，是等价的变异。改为明说：`Slot` 加 `moved()`、`moves()`、`subscribe(listener)`（整个工作区外框一个计数）；`SlotHolder` 的 layout effect 在容器挪进来之前已有父元素（上一个持有者的、已离开文档的 `div`）时，挪完调 `moved()`，第一次收养不调；`notebook-slot.tsx` 导出 `useSlotMoves()`（`useSyncExternalStore(slot.subscribe, slot.moves)`），`TreeMenu` 调它：计数变了，它在同一次提交里、绘制之前同步重画（layout effect 里触发的外部存储更新），没有依赖的那个重量的 layout effect 随之量到新位置。上下文的默认值是一个从不挪动的 slot（`moves()` 恒为 0）。`PageTree` 的回调照旧每次渲染新建，不去稳住（主持者写了"之后回调可以稳住"）：列表整个重读时（`notebook.store.ts:96`，全部换成新的对象）同一组里上面多了或少了一本，容器不挪、`SlotHolder` 不知道，按钮却移了，今天（M12）靠的就是这次顺带的重画，稳住回调会丢掉这一条。经 `put`、`gone`（`:314-321`：新建、改别本的名、删除、离开、接管、升级之后的那一次）时别的笔记本留着原对象，当前那本只是下标变了，`PageTree` 不重画，树的菜单开着时同一组里的这种位移今天就不重量，P2 照旧：不是回归，接受（审查 B 的 P2B2-N3 与它的 `put-identity.cjs`；B 另提的"在列表的组件里随列表变化调 `slot.moved()`"不做，机制照本条）。所以 (2c) 不经列表换新：在 `act` 里以 `runInAction` 就地改那本笔记本的 `workspace_access`，同一个对象，`PageTree` 不读这个字段（`writesNotebook` 读的是 `role` 与 `upgrade`，`W/app/effective-role.ts:51-53`）、不重画，只有两组的列表读它（`W/stores/notebook.store.ts:22-24`），`TreeMenu` 只能由通知重画；变异 51 改为"`SlotHolder` 挪了容器之后不通知"，(2c) 抓得住。探针 `probe-b/slot-move-r1.cjs`（jsdom，`TreeMenu` 是 `observer`，`NotebookLayout` 是 `memo`）六种情形：列表换新、回调每次新建时，通知与否都量到新位置（不通知时靠重画）；列表换新、回调稳住时，不通知不量（审查 C 担心的将来）、通知量到；就地改时，通知量到，不通知不量（变异 51 被抓）。
+- **801 窄屏的账户菜单把外观直接列在菜单里**（改 770；实施者 375 宽的截图）：md 以下（`(width < 48rem)`，与 Tailwind 的 `max-md:`、S3 的抽屉同一个查询）账户菜单是：个人设置、分隔线、"主题"标签与三个选项、分隔线、"语言"标签与两个选项、分隔线、退出登录、分隔线、版本行；选项照旧 `preventDefault`，选了菜单不关；md 起照旧是子菜单。375 宽时账户行的菜单与行同宽（359 px），子菜单至少 200 px，左右都放不下，Radix 照样把它向右开（`@radix-ui/react-menu` 的 `index.mjs:741`），开到屏幕之外，指针与触摸都选不了主题与语言。两套按条件渲染，不靠 CSS 藏起其中一套。`useNarrow()`（`W/app/narrow.ts`：`useSyncExternalStore` 加 `matchMedia("(width < 48rem)")`，没有 `matchMedia`（jsdom）时为假）与 `narrow.test.ts` 由此在 S1 建好，S3 的抽屉只加调用者（4.3.1）。
+- **802 中段不再 `overscroll-contain`**（改 774；审查 A 的 S1A-M2）：中段没有溢出时（多数工作区首页与小笔记本），Chromium 把停在中段上的滚轮吃掉，窗口不滚（A 的探针 E1；Firefox、WebKit 照滚）：Blink 把没有溢出的 `overflow-y: auto` 也算进滚动链，`contain` 在那里截断了它；S1 之前侧栏不是滚动区，三种都滚窗口。去掉之后三种引擎在中段上都滚窗口；中段溢出、滚到头的滚轮带着窗口走，同 S1 之前（Chromium、WebKit 在同一次滚动里就带，Firefox 另起一次滚动时才带）。第 0 步 (b) 的"侧栏滚到底、窗口不动"由本条取代（8.1 第 4 条、10.1）；A 的 S1A-N1（Firefox 另起一次才带）随之了结。审查 A 给的两种做法（只在中段溢出时 `contain`；去掉）里取后一种。
+- **803 新建工作区页也有"回到工作区"**（审查 A 的 S1A-Q1）：账户有工作区时，`/create-workspace` 的右上角在账户按钮之前也放"回到工作区"（同一个链接：`to="/"`、`arrived`，`LandingPage` 转交给它的 `<Navigate>`）：从切换器点了"新建工作区"又不想建的人有路回去（旧顶栏的产品名链接去 `/`）。`Corner` 在这一页以 `"workspaces"` 键读列表（与落地页、工作区外框同一个键，多半已经读过）；没有工作区时不放：`/` 会又落回这一页。P3 给设置页侧栏之后，个人设置页的那一个去掉，这一个留着（第 9 节）。已登录的邀请页与出错页回去的路留给 P5（产品名与标志的卡片，决定 787）。
 
 ## 3. 服务端
 
@@ -165,6 +168,8 @@
 | `W/components/ui/dropdown-menu.tsx` | 子菜单的三个部件（4.1.6） |
 | `W/styles.css` | `--avatar`、`--avatar-foreground` 与映射（决定 772） |
 | `W/i18n/messages/en.ts`、`zh-CN.ts` | `appearance.label`（Appearance / 外观）、`shell.backToWorkspace`（Back to the workspace / 回到工作区） |
+| `W/app/narrow.ts`、`W/app/narrow.test.ts`（新） | `useNarrow()`：md 以下账户菜单把外观直接列在菜单里，S3 的抽屉也用它（决定 801） |
+| `W/pages/landing.tsx` | 读工作区列表失败时交还右上角（index 路由带 `handle`，审查 A 的 S1A-M1） |
 | vitest | 7.1 的 S1 各行 |
 | `e2e/stories/identity/a8-profile.spec.ts:81-89`、`e2e/stories/search/se1-search.spec.ts:281-288` | 第 5 节 |
 | `docs/v0.1/v0.1-design.md` | 8.2（Step 的文档提交里改） |
@@ -228,7 +233,7 @@ export function ShellSidebar({ top, children }: { top: ReactNode; children: Reac
   return (
     <div data-shell className="flex flex-col bg-sidebar [overflow-anchor:none] max-md:border-b max-md:border-border md:sticky md:top-0 md:h-svh md:w-63 md:shrink-0 md:self-start md:border-r md:border-border">
       <div className="space-y-2 px-2 pt-2.5 pb-1.5">{top}</div>
-      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3">{children}</div>
+      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3">{children}</div>
       <div className="shrink-0 border-t border-border p-2"><UserMenu place="row" /></div>
     </div>
   );
@@ -280,6 +285,32 @@ export function DropdownMenuSubContent({ className, ...props }: ComponentProps<t
 #### 4.1.7 头像的变量
 
 `W/styles.css`：`@theme inline`（`:14-40`）里 `--color-overlay` 之后加 `--color-avatar: var(--avatar);`、`--color-avatar-foreground: var(--avatar-foreground);`；`:root`（`:91-`）与 `.dark`（`:121-`）的 `--sidebar` 之后各加 `--avatar: #3f8f74;`、`--avatar-foreground: #ffffff;`。`design-tokens.test.ts` 测试 1 要两套都有，测试 5 要类名有映射，都满足。
+
+**照实**（S1 的实施与审查，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)）：
+
+- 4.1.1 的表已照实加 `W/app/narrow.ts` 与 `narrow.test.ts`（决定 801）、`W/pages/landing.tsx`（读列表失败时交还右上角）。
+- **4.1.2**：
+  - `useCornerBack()` 不带参数（没有调用者传它）；`GiveCornerBack`（`function GiveCornerBack() { useCornerBack(); return null; }`）在 `corner.tsx` 里导出，工作区外框与 `LandingPage` 都用它（审查 A 的 S1A-M1）。
+  - index 路由也带 `handle: { sidebar: true }`：它的去处是有侧栏的工作区，或没有 `handle` 的新建工作区页；落地页读列表失败时交还右上角（S1A-M1）。
+  - 工作区外框与落地页交还右上角的条件是"有 `error` 且不是 `SessionChangedError`"（`NotLoaded` 把后者当作读取中，与 `guards.tsx` 相同）；这两处与 `Corner` 自己的一处有意不由测试守（y03、y04、y04b，主持者的决定）。
+  - `Corner` 里写的是 `account?.load()`（上面写的是 `!`）；在 `/create-workspace` 上另以 `"workspaces"` 键读列表，账户有工作区时放"回到工作区"（决定 803）。
+  - "回到工作区"另带 `shrink-0 whitespace-nowrap [&_svg]:size-4`：375 宽时它折成两行，箭头是 24 px（7.4）。
+- **4.1.3**：
+  - `corner` 的按钮另带 `min-w-0 shrink`，名字是 `max-w-32 min-w-0 truncate`（375 宽时与"回到工作区"挤在一行）。
+  - 内容：`corner` 另有 `collisionPadding={12}` 与 `max-w-[min(16rem,var(--radix-dropdown-menu-content-available-width))]`：版本行里 40 位的提交号在 375 宽时把菜单撑出屏幕，宽屏时撑到 444 px（审查 B 的 S1B-N3）；版本行带 `wrap-anywhere`（账户行的菜单与行同宽，提交号原先被裁掉）。
+  - "个人设置"的 `leaving` 是 `!atProfile && pendingSteps(me).length === 0`：还有引导步骤时设置页把它送回引导页，没有标题取焦点（S1A-N2）。
+  - 第 2 项的子菜单只在 md 起；md 以下是分隔线加 `AppearanceItems`（决定 801）。
+  - `AppearanceItems` 的语言项前有一个 `size-4` 的 `aria-hidden` 占位，语言名与主题名同线（S1B-N1）。
+- **4.1.4**：上面的代码已照实去掉中段的 `overscroll-contain`（决定 802）。
+- **4.1.5**：分组标题另带 `leading-4.5`，`NotebookNav` 的 `groupClassName` 是 `"flex flex-col gap-0.5"`（S1B-N2）；切换器的菜单是 `w-(--radix-dropdown-menu-trigger-width)`（S1B-N4）。
+- **4.1.6**：`DropdownMenuSubContent` 默认 `collisionPadding={8}`（S1B-M1）；`DropdownMenuSeparator` 是 `h-0 border-t border-border`，强制色画得出（S1B-N5；P1/S2 起是 `h-px bg-border`）。
+- **7.1**：jsdom 没有布局，Radix 把指针离开子菜单的触发项当作去了别处，`user.click` 子菜单里的项之前子菜单已经关上，所以 `layout`、`routes`、`user-menu` 在子菜单里的选择用 `fireEvent.click`（点"外观"本身照旧 `user.click`）；"New workspace"实际名为"Create workspace"（`workspace.create`）；`layout-error` 一格断言"没有"，不是先红；审查之后加的各格见 7.1 的新行。
+- **e2e**：a8 用指针在子菜单里选时分十步移过去：右上角的子菜单在窗口右侧放不下、翻到主菜单左边，Radix 靠指针在主菜单上的横向移动判断它是否正往子菜单去，Playwright 一步跳到项上时没有这样的移动，子菜单就关（三种引擎；人的移动经过主菜单，不受影响；审查 A 的探针 K、L）。L1 的粘住守卫容 1 px：页高带小数、窗口的滚动是整数，滚到最底时粘住的侧栏被容器底边顶上去不到 1 px。
+- **第 0 步**：经 perf 的 `setup.ts`（`flat3k`）与临时的三引擎配置；探针在提交 2 改完、提交之前的构建上跑。(b) 由决定 802 取代（8.1 第 4 条）。
+- **第 5 节**：se1 无效框亮色下限 3.91（实量 4.018，预期写的 4.02）。
+- **决定 795(d)**：se2 失败所在的行是 :231（第二下方向键之后的 `toHaveValue`），:230 是那下方向键本身；"se2:230 之后的步骤只在 Linux 的 CI 上走"照旧成立。
+- **6.1**：多了几个提交：`web: the appearance inline in a narrow account menu (M13/P2/S1)`（决定 801）；审查的修复 `web: the shell's review fixes (M13/P2/S1)`（作用域只写 `web`：它不改 e2e）与 `web, e2e: the shell's tests held tighter, as the review found (M13/P2/S1)`；修复核对第 1 轮的 `web: the onboarding cell waits for the bounce itself (M13/P2/S1 fix check 1)`（主持者）。提交 1 在 e2e 之后本地改过两次（加测试一格、三处类名），决定 801 的提交与第一个修复提交各改过一次（右上角菜单的宽度；`notebook-step.test.tsx`），改后的都重跑了检查（审查记录）。
+- **随决定 801–803 改的设计文字**（审查 C 的 S1C1-M1）：决定 774 的两句、4.1.4 的代码、4.3.1 的 `narrow.ts` 一行、6.3 提交 2、7.1"窄屏的查询"一行（S3 → S1）、8.1 第 4 条、8.2 第 1、2 条的新文字、第 9 节的 P3 一条。
 
 ### 4.2 S2 笔记本与页面树
 
@@ -438,7 +469,7 @@ useEffect(() => {
 | `W/app/shortcuts.ts:4-8,35-41` | 导出 `composing`；`dialogOpen({ besideDrawer })`；`onMac` 挪走（4.3.3） |
 | `W/lib/platform.ts`、`platform.test.ts`（新） | `onMac`（M12-polish 第 8 项，决定 797）；`search-box.tsx`、`quick-switch.tsx`、`W/pages/page/page-edit.tsx`、`page-layout.tsx`、`W/components/ui/native-select.tsx` 改引入（五个调用者；`shortcuts.ts` 不调用它，不再引），`shortcuts.test.ts` 里 `onMac` 的格挪过来 |
 | `W/app/arrival.ts:15-28` | 导出 `headingTakes(state, type)`：`isArrival`、`POP` 加 `isOpened`、`Located`（不导出的 `isLocated`，照 `locatedOf`，`W/pages/page/attachment-row.tsx:42-46`：不从那里引，`arrival.ts` 在主包里、`attachment-row` 在懒加载的包里，引了会把它连同下拉菜单的部件拉进主包）；抽屉用（决定 790），`arrival.test.tsx` 一格 |
-| `W/app/narrow.ts`（新） | `useNarrow()`：`matchMedia("(width < 48rem)")`，没有 `matchMedia`（jsdom）时为假 |
+| `W/app/narrow.ts` | S1 已建（决定 801，`useSyncExternalStore`）：`useNarrow()` 照 `matchMedia("(width < 48rem)")`，没有 `matchMedia`（jsdom）时为假；S3 加调用者（抽屉） |
 | `W/app/shell-sidebar.tsx` | `useDrawer`、抽屉、细栏、遮罩；`Drawer`（上下文）、`useDrawerActions`（4.3.4，决定 790、799） |
 | `W/pages/page/unsaved-guard.tsx:63-69` | "留下"那一支先调 `useDrawerActions().quietClose()`，再 `stay()`（决定 799） |
 | `W/pages/workspace/workspace-layout.tsx` | 调 `useDrawer`（交给 `ShellSidebar` 与 `useSearchShortcuts`）、`Drawer` 上下文的 provider（`drawer.actions`，决定 799）、搜索框的 ref、细栏的位置文字（审查 C 的 P2C2-N5） |
@@ -689,7 +720,7 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 ### 6.3 S3
 
 - [ ] **提交 1 `web, e2e: the pill search box, Mod+K beside Mod+Shift+F from the shell, the quick switch restyled (M13/P2/S3)`**：先改 `search-box.test.tsx:34,44,221` 并写 ⌘K 的格，看到红；4.3.2、4.3.3（`composing` 导出，`dialogOpen` 先不加参数，`onMac` 挪进 `W/lib/platform.ts`）、`useSearchShortcuts`、4.3.5；se1 的"button"照第 5 节重量；在三种引擎里探一次主区开着 Radix 的模态菜单（页的"⋯"菜单、树的行菜单）时按 Mod+K、Mod+Shift+F（审查 A 的未核实）：预期菜单的困住把焦点拉回菜单、按键只被 `preventDefault`，同对话框开着时；不是这样（框拿到焦点、菜单留着）时 `dialogOpen` 另认 `[role="menu"]`、`search-box.test` 加一格，写进记录；`make e2e`；绿。
-- [ ] **提交 2 `web, e2e, tools: the drawer and its strip at a phone's width (M13/P2/S3)`**：先写 `shell-drawer.test.tsx`、`narrow.test.ts`、`arrival.test.tsx` 的 `headingTakes` 格与 UI1，看到红（UI1 的 ⌘K 一格先在 Firefox、WebKit 里各跑一次，确认浏览器不吞掉 `Cmd+K`；吞掉时这一格在那个引擎里改按 `Mod+Shift+F`，写进记录）；4.3.4、`dialogOpen({ besideDrawer })`、树的 `inDrawer`、`arrival.ts` 的 `headingTakes`、`unsaved-guard.tsx` 的"留下"关抽屉（决定 799）；`threeBrowsers` 与 `REQUIRED`；`make e2e`；绿。
+- [ ] **提交 2 `web, e2e, tools: the drawer and its strip at a phone's width (M13/P2/S3)`**：先写 `shell-drawer.test.tsx`、`arrival.test.tsx` 的 `headingTakes` 格与 UI1，看到红（`narrow.test.ts` 在 S1 已写，决定 801）（UI1 的 ⌘K 一格先在 Firefox、WebKit 里各跑一次，确认浏览器不吞掉 `Cmd+K`；吞掉时这一格在那个引擎里改按 `Mod+Shift+F`，写进记录）；4.3.4、`dialogOpen({ besideDrawer })`、树的 `inDrawer`、`arrival.ts` 的 `headingTakes`、`unsaved-guard.tsx` 的"留下"关抽屉（决定 799）；`threeBrowsers` 与 `REQUIRED`；`make e2e`；绿。
 - [ ] 7.2 的 S3 各条变异；7.4 的 S3 截图与强制色模式一张。
 - [ ] **提交 3 `docs: …(M13/P2/S3)`**：8.2 第 3 条的 S3 部分、第 7、8、9 条、第 10 条的 S3 部分与第 12 条的 S3 一行；审查记录（含 se2 的 Linux 那几步与 `Control+K` 只靠 CI 的说明，决定 795(d)）；本文 10.3；M12-polish 的"处理进展"一行（26.3、35.7、第 8 项的 `onMac`；26.8、26.10 留给 v0.2）；00 号文档第 12、13 节；Phase 完成的收尾项（8.1 第 6 条）。
 
@@ -709,6 +740,12 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | 个人设置带 `arrived`、`h1` 取焦点 | `W/pages/settings/profile-page.test.tsx:47-56` 改：从 `/lab` 开始（等"Lab"），点侧栏的"Ada"、"Settings"，`h1`"Settings"有焦点、地址是 `/settings/profile`；再从右上角的"Ada"选一次"Settings"：焦点回到"Ada"（同一地址不设 `leaving`，审查 A 的 P2A1-N1）（S1） |
 | 个人资料页的偏好与外观相同 | `profile-page.test.tsx:146-166` 改：`:161-165` 的"主题"按钮改为右上角的"Ada"、"外观"，"深色"是 `aria-checked="true"`；标题改为"the preferences are the account menu's"（S1） |
 | 账户行 | `W/app/user-menu.test.tsx` 加格（S1）：按钮名恰好是"Ada"，头像的"A"在 `aria-hidden` 里；菜单的次序（Settings、Appearance、Sign out、版本行）；外观里选了"Dark"之后"Light"所在的子菜单仍开着；键盘：Enter 打开、↓ 到"Appearance"、→ 打开子菜单、第一项有焦点、Esc 关上整个菜单、焦点回按钮；简体中文时子菜单的触发项是"外观"（审查 C-N1）。现有五格不动 |
+| 账户菜单的位置与宽度 | `user-menu.test.tsx`（S1，实施者加；变异 x3、x5、x9）：账户行的菜单从左端向上开、右上角的从右端向下开（Radix 的 `data-side`、`data-align`）；右上角的菜单带 `max-w-[min(16rem,…)]` 的上限 |
+| 窄屏的账户菜单 | `user-menu.test.tsx`（S1，决定 801）：`matchMedia` 打桩成窄屏，`/lab` 与 `/settings/profile` 各一次（`test.each`，审查 C 的 S1C-N2）：没有"Appearance"项，菜单的次序是 Settings、—、Theme、—、Language、—、Sign out、—、版本行，主题组里是 System、Light、Dark；选"Dark"之后菜单仍开着、它是 `aria-checked` |
+| `/` 与新建工作区页的右上角 | `layout.test.tsx`（S1，审查之后）：在 `/` 扣住 `GET workspaces` 时没有"Ada"，放开之后恰好一个、在 `[data-shell]` 里；`/` 上列表答 500 时"Ada"在右上角（审查 A 的 S1A-M1）；新建工作区页上有"回到工作区"、点了到 `/lab`、`h1` 有焦点；没有工作区的账户从 `/` 落到新建页时没有它（决定 803） |
+| 会话不可用与读一次 | `layout.test.tsx`（S1，审查之后）：refresh 答 503 时在 `/settings/profile` 与 `/lab` 上有"Appearance"、没有"Ada"（审查 C 的 S1C-M1）；会话启动中那一格数 `GET /me` 为 1（守卫与右上角同一个键）；404 上没有"回到工作区"；"回到工作区"那一格从 `/settings/security` 开始（S1C-N3、审查 A 的 S1A-N4）；`route-error.test.tsx` 首次载入那一格数 `GET /me` 为 1 |
+| 焦点留在按钮上的两处 | `profile-page.test.tsx`（S1，审查之后）：还有引导步骤的账户在 `/onboarding` 从右上角选 Settings，等它被送回（`?next=%2Fsettings%2Fprofile`），焦点在"Ada"上（审查 A 的 S1A-N2；审查 C 的 S1C1-N2）；从 `/settings/security` 在右上角选 Settings、`h1` 取焦点之后再打开菜单按 Esc，焦点回到"Ada"（S1A-N4） |
+| 粘住的侧栏与子菜单里的指针 | L1 (page) 一格的末尾（S1，审查之后，Chromium 1280×720）：长页滚到底，`scrollY` 大于 1000，账户按钮在视口里，`[data-shell]` 的 y 在 1 px 之内为 0（审查 C 的 S1C-M2）；a8 用指针在子菜单里选"浅色"、`html` 去掉 `dark`、子菜单仍开着，再选"深色"（S1C-N6） |
 | 首字 | `W/app/initial.test.ts`（S1）："ada"→"A"，"  bob"→"B"，"产品研发"→"产"，"\u{1F469}‍\u{1F4BB} Dev"（一个字素）→"\u{1F469}‍\u{1F4BB}"，`"e\u0301"`（e 加组合重音，一个字素）→`"E\u0301"`（期望值照写分解的形式：`toLocaleUpperCase` 不把它合成预组合的 `"\u00C9"`，审查 C 的 P2C1-N3），""→"" |
 | 按钮的 30 px 与胶囊 | `W/components/ui/button.test.tsx` 加格（S1）：`size="sm"` 含 `h-7.5`、`text-compact`；`icon-sm` 含 `size-7.5`；`shape="pill"` 含 `rounded-full`、不含 `rounded-lg`（tailwind-merge） |
 | 子菜单 | `W/components/ui/dropdown-menu.test.tsx` 加格（S1）："a submenu opens from its item, by the keyboard too, and animates in, never out"：`SubTrigger` 带 `aria-haspopup="menu"`；→ 打开，子菜单的第一项有焦点；子菜单内容的 `className` 含 `data-[state=open]:animate-pop-in`、不含 `data-[state=closed]:`；Esc 关上两层 |
@@ -726,7 +763,7 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | `dialogOpen` 认得抽屉 | `W/app/shortcuts.test.ts` 加格（S3）：只有 `[data-shell][role=dialog]` 时 `dialogOpen()` 为真、`dialogOpen({ besideDrawer: true })` 为假；另有一个对话框时两者都为真；`composing` 的三种 |
 | `onMac` | `W/lib/platform.test.ts`（S3）：`shortcuts.test.ts` 里 `onMac` 的格挪过来，不改 |
 | `headingTakes` | `W/app/arrival.test.tsx` 加一格（S3，`test.each`）：带 `arrived` 的与带 `Located` 的（`PUSH`、`REPLACE`、`POP` 三种）、`POP` 到带 `opened` 的为真；`PUSH`、`REPLACE` 到带 `opened` 的与没有状态的为假（审查 A 的 P2A1-N2） |
-| 窄屏的查询 | `W/app/narrow.test.ts`（S3）：没有 `matchMedia` 时为假；有时照 `matches`，`change` 之后跟上 |
+| 窄屏的查询 | `W/app/narrow.test.ts`（S1，决定 801）：没有 `matchMedia` 时为假；有时照 `matches`、只问 `(width < 48rem)`，`change` 之后跟上，卸下之后不再听（审查 C 的 S1C-N2） |
 | 抽屉 | `W/pages/workspace/shell-drawer.test.tsx`（新，S3，`matchMedia` 打桩成窄屏）：(1) 关着时根带 `inert` 属性（jsdom 没有 `inert` 的 IDL 属性，React 只写 HTML 属性：这里看 `hasAttribute("inert")`，不像 UI1 看 JS 属性；审查 C 的 P2C1-N5）、不是 `dialog`、没有 `tabindex`；点"Navigation"，根是名为"Navigation"的 `dialog`、切换器有焦点；以程序把焦点放到 `main` 的 `h1` 上，焦点回到抽屉里（审查 C-I2）；Esc 关上、"Navigation"有焦点；简体中文时名为"导航"（审查 C-N1）；(2) 载入页面之后焦点在 `body`（`FocusScope` 不自动聚焦）；(3) 关着时 Mod+K 打开它、框有焦点；开着时 Mod+K、Mod+Shift+F 聚焦框，Mod+O 不开快速切换；在抽屉里点"Home"（抽屉关上、"Navigation"有焦点）之后，Mod+K 仍打开抽屉、框有焦点（审查 A 的 P2A1-M2）；(4) 在抽屉里点树的一页：抽屉关上、`h1` 有焦点；点"Home"：抽屉关上、"Navigation"有焦点；在抽屉里提交搜索：结果页的 `h1` 有焦点；在抽屉里点当前页的那一行：抽屉关上、"Navigation"有焦点（探针 T8）；LLM Wiki 的笔记本里开抽屉、点"Index"：抽屉关上、目录页的 `h1` 有焦点（审查 A 的 P2A2-M1）；抽屉开着时后退到树打开过的一页（`opened`）：`h1` 有焦点（探针 T9；带 `opened` 的那一条这样造：`matchMedia` 先答宽屏、点树里的"Notes"（宽屏上树的链接带 `opened`），再答窄屏、开抽屉点"Roadmap"，再开抽屉（切换器有焦点），然后后退：不再开的话抽屉已随点"Roadmap"关上，后退时 `useDrawer` 什么也不做，变异 54 抓不到；审查 C 的 P2C1-N5、P2C2-N1）；(5) 抽屉里打开账户菜单再按 Esc：菜单关上，抽屉仍开着；组字中的 Esc（`isComposing`）：抽屉仍开着；框里有字时按 Esc：框上有一个替浏览器在按键分发完之后清空框的监听（`keydown` 里 `queueMicrotask(() => (field.value = ""))`，浏览器的清空也是分发之后的默认动作）时抽屉仍开着、再按才关，没有它时（jsdom 不清空）下一个任务里抽屉关上（决定 797）；(6) `matchMedia` 变成宽屏：根不再 `inert`、不是 `dialog`、没有 `tabindex`，点侧栏的空白处焦点仍在 `body`（审查 A-M1）；`matchMedia` 再答窄屏：根带 `inert`、不是 `dialog`，焦点没有动（审查 C 的 P2C3-N2）；(7) 编辑中有未保存的改动（照 `page-edit.test.tsx` 的未保存的格），在抽屉里点树的另一页：确认框出现；选"Stay"：抽屉关上（根带 `inert`、不是 `dialog`），焦点在编辑器里，地址不变（决定 799；审查 A 的 P2A1-M1）。写这个文件时留意：jsdom 没有 `inert`，抽屉里切换器的下拉选了一个工作区之后，Radix 在 `setTimeout(0)` 里把焦点还给切换器，会抢走菜单按钮的焦点（浏览器里切换器那时已 `inert`）；"在抽屉里切换工作区"只在 UI1 第一格里核对（审查 A、C 的未核实） |
 | 快速切换的提示 | `quick-switch.test.tsx` 加格（S3）：键盘提示在 `aria-hidden` 里；简体中文时是"↑↓ 选择 · ↵ 打开 · Esc 关闭"（审查 C-N1）；选项照旧两个 `span` |
 | 外观与布局 | 不在 jsdom 里测：7.4 的截图与第 0 步的探查 |
@@ -807,6 +844,23 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | 67 | S3 | "目录""历史"两行在渲染时定 `state`（`state={context.inDrawer() && !here ? arrived : opened}`，不在点按时） | `shell-drawer.test.tsx` (4) 的 LLM Wiki 格（焦点到"Navigation"，不是 `h1`） |
 | 68 | S2 | `PageTree` 卸下时不结束看守 | `page-tree-reveal.test.tsx` 的"树没读到时离开"格（`removeEventListener` 没被调） |
 | 69 | S3 | 变宽时不清掉 `drawer` | `shell-drawer.test.tsx` (6) 的"再答窄屏"（抽屉又开着、是 `dialog`） |
+| x1 | S1 | 右上角不看账户读取失败 | `layout.test.tsx` 的 `GET /me` 答 500 格 |
+| x2 | S1 | 切换器的首字不 `aria-hidden` | `workspace-layout.test.tsx` 六格 |
+| x3 | S1 | 账户行的菜单不向上开 | `user-menu.test.tsx` 的位置格（加这一格之前活下来） |
+| x4 | S1 | 账户行挪到侧栏顶部 | `layout.test.tsx`、`workspace-layout.test.tsx` |
+| x5 | S1 | 右上角的菜单不靠右 | 同 x3 |
+| m801 | S1 | 窄屏仍用子菜单 | `user-menu.test.tsx` 的窄屏两格 |
+| x6 | S1 | `useNarrow` 的查询写成 `(width < 40rem)` | `narrow.test.ts`；窄屏两格 |
+| x7 | S1 | `useNarrow` 不听 `change` | `narrow.test.ts` |
+| x8 | S1 | 外观的 `keepOpen` 什么也不做 | `user-menu.test.tsx` 的"仍开着"与窄屏两格 |
+| x9 | S1 | 右上角的菜单不设宽度上限 | `user-menu.test.tsx` 的位置格 |
+| n01 | S1 | index 路由不带 `handle` | `layout.test.tsx` 的"`/` 扣住列表"格 |
+| n02 | S1 | `LandingPage` 读取失败时不交还 | `layout.test.tsx` 的"`/` 列表答 500"格 |
+| n03 | S1 | `leaving` 不看引导步骤 | `profile-page.test.tsx` 的引导页格 |
+| n04 | S1 | 新建工作区页不放"回到工作区" | `layout.test.tsx` 的新建工作区页格 |
+| n05 | S1 | 新建工作区页总放"回到工作区" | `layout.test.tsx` 的"没有工作区"格 |
+
+x1–x9 是 S1 的实施者另写的，m801 随决定 801，n01–n05 随审查的修复。审查者另写的与它们的结果在 [S1 的审查记录](reviews/P2-S1-shell-account-review.md)：有意不抓的是 y03、y04、y04b（`SessionChangedError` 的三处排除，主持者的决定）；只关布局与样子、由截图与实量看的是 y08、c03、c04；z3（只去掉 `md:h-svh`）交给 S2 的 PG16 第二格。
 
 00 号文档 4.8 要求的、属于 P2 的四条是第 13（调深侧栏，se1 变红：它的意思是"改了被量元素的底，守卫还在"）、16、29 与 30、34 条。初稿的第 46 条（收养之后不通知树）随那条路一起去掉（决定 776）。第 51 条原来是"`close` 记成稳定的回调"：`create` 照样每次新建、`TreeMenu` 照样重画，是等价的变异（审查 C 的 P2C1-M1），改为去掉决定 800 的通知。第 64 条有意义：`actions` 一生不变，`useSearchShortcuts` 的依赖 `[mac, field, actions]` 也就不变，监听只注册一次，`actions` 的函数若读建它时的值就是过时的，"Home 之后 Mod+K"抽屉不开；把 `actions` 改成随这些值新建（`useMemo` 带上它们）不是这条变异，是另一种对的写法（监听随之重新注册），零警告的 lint 也过（审查 C 的 P2C2-M1）。笔记本行的 `[@media(hover:hover)]:`、读者的 `pr-8` 与树里提示的 `my-1`（审查 B 的 P2B1-N3、N5、N4）是样子，jsdom 里量不出，由 7.4 的截图看，不列。右上角"个人设置"的 `chosen`（决定 770）是预防：探针 T7 三种引擎各 15 次，做不做都到 `h1`，没有能抓它的格，不列。容器各 id 都留（决定 798）防的是并发渲染被打断，jsdom 里造不出来，也不列。
 
@@ -814,7 +868,7 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 
 - **基线**（决定 795(a)）：S1 开工之前在没改的 `m13-ui-refresh` 头上 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make e2e`，失败的格记下文件:行（错误所在的那一行）与消息的第一行（决定 795(a)）。
 - **每个提交**：`docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web`（`lint-web` 是四个 `check.mjs`、零警告的 oxlint（豁免只有 4.4 列的那些）、oxfmt、各包的 tsc；经 `heavy.sh`：06-environment 第 3 节，`test-web` 有计时的断言，决定 788）；改了行为、夹具或故事的另经它跑完整的 `CI=1 make e2e`（决定 795(b)）。
-- **合并之前**（决定 788、795(c)）：在 Step 分支并入 `m13-ui-refresh` 的树上跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web gen-check-web build-web e2e`（三种浏览器与 `webkit-narrow`；整条命令经 `heavy.sh`：`test-web` 里 `markdown.test.ts` 的"not slower"对负载敏感）；`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 以 0 退出；结果写进 Step 的记录。本机允许的失败只有基线里的那几格，且失败所在的行与消息的第一行要与基线相同（第 1 节的三格：SE2 `se2:188` [chromium]、LW8 `lw8:822` [webkit] 是 P1 之前就在的环境问题，PG15 `pg15:75` [webkit] 是 P1 里出现的，决定 764；审查 C-N15；这三个行号是格的开头行，基线之后换成失败所在的行）；AS6 `as6:153`、LW8 `lw8:771` 与负载过 100 时 `markdown.test.ts` 的"not slower"偶发，重跑全过即可，记下。别的红了照 02-workflow 3.1 先停、查清。
+- **合并之前**（决定 788、795(c)）：在 Step 分支并入 `m13-ui-refresh` 的树上跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web gen-check-web build-web e2e`（三种浏览器与 `webkit-narrow`；整条命令经 `heavy.sh`：`test-web` 里 `markdown.test.ts` 的"not slower"对负载敏感）；`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 以 0 退出；结果写进 Step 的记录。本机允许的失败只有基线里的那几格，且失败所在的行与消息的第一行要与基线相同（第 1 节的三格：SE2 `se2:231` [chromium]、LW8 `lw8:836` [webkit] 是 P1 之前就在的环境问题，PG15 `pg15:113` [webkit] 是 P1 里出现的，决定 764；审查 C-N15；行号是 S1 的基线记下的失败所在的行，消息的第一行在第 1 节）；AS6 `as6:153`、LW8 `lw8:771` 与负载过 100 时 `markdown.test.ts` 的"not slower"偶发，重跑全过即可，记下。别的红了照 02-workflow 3.1 先停、查清。
 - **只靠 CI 的**（决定 795(d)）：se2 的 page 格在 se2:230 之后的步骤（含 :274 的访客说明）与 UI1 的 `Control+K` 只在 Linux 的 CI 上走；S3 的记录写明，负责人推送之后看 CI。
 - **没有重现的 CI 项**：照 [01-P1](01-P1-foundation.md) 7.3 的表（Go 一侧、`lint-actions`、部署与镜像、Linux 与 macOS 的差别）；负责人推送之后 CI 在最后一个头上补跑。
 - **文档**：`python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/m13-ui-refresh`（远端的分支不在时用 `m13-ui-refresh`）、`git diff --check`。
@@ -840,7 +894,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 1. 4.1–4.3 的每一项做到；7.1 的测试通过；7.2 的变异都被抓住。
 2. 每个 Step 的合并之前，7.3 的门禁为绿（只败基线里同行同消息的那几格，决定 795）；没有服务端与契约的改动。
 3. se1 的下限照第 5 节重量，实量值与下限写进 S1 与 S3 的记录（S3 起"button"量的是垫底，决定 794）。
-4. 第 0 步的探查成立，写进 S1 的记录。
+4. 第 0 步的探查成立，写进 S1 的记录（S1：三条在三种引擎里都成立；(b) 的"侧栏滚到底、窗口不动"后由决定 802 取代，中段滚到头带着窗口走）。
 5. 7.4 的截图看过，与样稿不同之处写进记录（是有意的，写理由；不是的，修）。
 6. Phase 完成（02-workflow 3.7）：00 号文档第 12 节 P2 一行"完成"、头的状态、第 13 节一行；本文头的状态；M12-polish 的"处理进展"两行（S2；S3，含第 8 项的 `onMac` 与留给 v0.2 的 26.8、26.10）。
 
@@ -850,11 +904,11 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 
 1. **9.2 左栏一段**（S1），把整段"- **左栏**：工作区切换、笔记本列表（"我的笔记本"与"团队笔记本"两组）、当前笔记本的页面树（支持拖拽移动与排序）；页面树之外一个单独命名的导航里有这本笔记本的"历史"与"回收站"（M8），"健康"与"目录"（健康度面板与目录视图，两种模式都有，M10）。左栏最上面是工作区的搜索框（M8）：在一本笔记本里时默认只搜这一本，框下写明在哪里找。"换成：
 
-   > - **左栏**（M13 起没有顶栏）：最上面是工作区切换（方形头像与名称），其下是工作区的搜索框（M8）：在一本笔记本里时默认只搜这一本，框下写明在哪里找；再下是工作区的导航：首页、设置、笔记本列表（"我的笔记本"与"团队笔记本"两组）、新建笔记本，当前笔记本的页面树（支持拖拽移动与排序）在列表之后；页面树之外一个单独命名的导航里有这本笔记本的"历史"与"回收站"（M8），"健康"与"目录"（健康度面板与目录视图，两种模式都有，M10）。最下面是账户行（圆形头像与显示名），菜单里是个人设置、外观（主题与语言，子菜单里就地切换）、退出登录与版本。宽屏上左栏底色深一档（`--sidebar`），粘在窗口的左边、中段自己滚动，窗口照旧整页滚动；没有左栏的时候（登录、注册、引导、新建工作区、个人设置、出错页、工作区读取失败，以及工作区之外与找不到工作区的 404；笔记本里的 404 有左栏）右上角放同一个账户按钮，未登录或会话不可用时放"外观"（主题与语言），会话或账户还在读时什么也不放（M13/P2/S1）。
+   > - **左栏**（M13 起没有顶栏）：最上面是工作区切换（方形头像与名称），其下是工作区的搜索框（M8）：在一本笔记本里时默认只搜这一本，框下写明在哪里找；再下是工作区的导航：首页、设置、笔记本列表（"我的笔记本"与"团队笔记本"两组）、新建笔记本，当前笔记本的页面树（支持拖拽移动与排序）在列表之后；页面树之外一个单独命名的导航里有这本笔记本的"历史"与"回收站"（M8），"健康"与"目录"（健康度面板与目录视图，两种模式都有，M10）。最下面是账户行（圆形头像与显示名），菜单里是个人设置、外观（主题与语言，就地切换：宽屏是子菜单，窄屏直接列在菜单里）、退出登录与版本。宽屏上左栏底色深一档（`--sidebar`），粘在窗口的左边、中段自己滚动，窗口照旧整页滚动；没有左栏的时候（登录、注册、引导、新建工作区、个人设置、出错页、工作区读取失败，以及工作区之外与找不到工作区的 404；笔记本里的 404 有左栏）右上角放同一个账户按钮，未登录或会话不可用时放"外观"（主题与语言），会话或账户还在读时什么也不放（M13/P2/S1）。
 
 2. **13.2 第 17 条的 S1 部分**，"链接随它所在的页一起离开的（子页列表、面包屑、工作区首页的笔记本卡片、右栏与阅读视图里的链接）带 `arrived`，否则焦点落到 `body`（M12/P2/S1）。"之后加：
 
-   > 左栏里通往工作区外框之外的菜单项（账户菜单的"个人设置"、工作区切换的"新建工作区"）与个人设置页右上角的"回到工作区"同样带 `arrived`，个人设置页的 `h1` 取到达的焦点（M13/P2/S1）。
+   > 左栏里通往工作区外框之外的菜单项（账户菜单的"个人设置"、工作区切换的"新建工作区"）与个人设置页、新建工作区页（账户已有工作区时）右上角的"回到工作区"同样带 `arrived`，个人设置页的 `h1` 取到达的焦点（M13/P2/S1）。
 
 3. **9.2 左栏一段的 S2、S3 部分**：
    - S2，把第 1 条写的"新建笔记本，当前笔记本的页面树（支持拖拽移动与排序）在列表之后；页面树之外一个单独命名的导航里有这本笔记本的"历史"与"回收站"（M8），"健康"与"目录"（健康度面板与目录视图，两种模式都有，M10）。"换成"新建笔记本。当前笔记本在列表里就地展开：笔记本那一行（树的标题，行尾是笔记本设置与新建页面），其下是页面树（支持拖拽移动与排序），再下一排图标链接，是一个单独命名的导航：这本笔记本的"目录"与"健康"（目录视图与健康度面板，两种模式都有，M10），"历史"与"回收站"（M8）（M13/P2/S2）。"
@@ -897,7 +951,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 
 ## 9. 交给后面的 Phase
 
-- **P3**：设置模式用 `ShellSidebar`（三段、抽屉、细栏、账户行都现成：中段换成设置目录，顶部换成"返回"与标题）；`/settings` 路由加 `handle: { sidebar: true }`，右上角的"回到工作区"随之去掉（`W/app/corner.tsx` 的 `Corner` 里的那一段与 `shell.backToWorkspace`，以及 `layout.test.tsx` 的那一格）；侧栏的"设置"与笔记本行的齿轮带 `arrived`（P2 里它们不离开外框，决定 778）；三个设置的 `index` 重定向转交路由状态；设置模式里没有搜索框，`useSearchShortcuts` 不挂（00 号文档 4.2.4"设置模式里……两个快捷键都不做事"）；13.2 第 16 条的"左栏常驻"在设置模式下不成立、树随之卸下（`SlotHolder` 卸下，容器随 `NotebookLayout` 留着或卸下，回来时重画）；`NavItem` 在 P2/S1 已换样子。
+- **P3**：设置模式用 `ShellSidebar`（三段、抽屉、细栏、账户行都现成：中段换成设置目录，顶部换成"返回"与标题）；`/settings` 路由加 `handle: { sidebar: true }`，个人设置页右上角的"回到工作区"随之去掉（`W/app/corner.tsx` 的 `back` 里 `settings` 那一项，以及 `layout.test.tsx` 的设置那一格）；新建工作区页的"回到工作区"、`shell.backToWorkspace` 与 `layout.test.tsx` 新建工作区页的两格留着（决定 803）；侧栏的"设置"与笔记本行的齿轮带 `arrived`（P2 里它们不离开外框，决定 778）；三个设置的 `index` 重定向转交路由状态；设置模式里没有搜索框，`useSearchShortcuts` 不挂（00 号文档 4.2.4"设置模式里……两个快捷键都不做事"）；13.2 第 16 条的"左栏常驻"在设置模式下不成立、树随之卸下（`SlotHolder` 卸下，容器随 `NotebookLayout` 留着或卸下，回来时重画）；`NavItem` 在 P2/S1 已换样子。
 - **P4**：页面的头（面包屑、操作）在 `main` 的顶上，P2 的 `main` 照旧 `p-6`，宽屏上的上下留白由 P4 定；窄屏细栏上的位置文字可以换成页的标题（P2 写笔记本或工作区名）；00 号文档第 10 节的滚动锚定一行由 2.1 第 11 条改正（Playwright 的 WebKit 26 也锚定），P4/S1 在它自己的页上于三种引擎里再核对一次。
 - **P5**：产品名放到登录、注册、引导的卡片上（决定 787）；笔记本首页的"笔记本设置"链接去掉之后，`page-tree-scale.test.tsx:243` 改找笔记本行的齿轮（名为"X 的设置"）；工作区首页的笔记本卡片用 `NotebookGroups` 的 `groupClassName`。
 - **P2–P5**：01-P1 第 9 节的手写"标签加控件"组，P2 只改了树的移动对话框的两处（`move-page-dialog.tsx:159,172`），其余照旧各在所在页的 Phase 改。
@@ -905,7 +959,19 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 
 ## 10. 结果
 
-（实施之后写：10.1 S1、10.2 S2、10.3 S3。）
+### 10.1 S1：外框与账户行（2026-11-23，合并见 00 号文档第 12 节）
+
+- **提交**：`0611c586`（右上角、账户行与头像菜单，去掉顶栏，照 6.1 提交 1）、`0986356e`（侧栏三段、`--sidebar`、宽屏粘住、切换器在顶部，照 6.1 提交 2）、`a9d7c030`（窄屏的账户菜单把外观直接列在菜单里，决定 801）；审查的修复 `50e67f1c`（`/` 上账户按钮等侧栏，中段不 `overscroll-contain`（决定 802），子菜单离窗口边 8 px，引导页上选"个人设置"不挡焦点，新建工作区页的"回到工作区"（决定 803），五处外观）、`1d8414a9`（审查发现的测试缺口：会话不可用的右上角、粘住侧栏的守卫、子菜单里的真指针等）；修复核对第 1 轮的 `63810dff`（主持者）；加本文档提交。[S1 的审查记录](reviews/P2-S1-shell-account-review.md)。
+- **基线**（决定 795(a)）：开工之前在没改的 `58c5fa92` 上经 `heavy.sh` 跑 `CI=1 make e2e`：594 过、3 败、1 跳，Playwright 3.1 min；三格失败所在的行与消息的第一行在审查记录，第 1 节与 7.3 照它改写（se2:231、pg15:113、lw8:836）。
+- **做完**：4.1.2（`W/app/corner.tsx`，`GiveCornerBack` 也在那里；`:slug` 与 `/` 的 `handle`；`RouteError`、`SessionUnavailablePage`、工作区外框的读取失败与 404、落地页的读取失败交还右上角；`useSession` 挪进 `W/app/session-state.ts`）；4.1.3（`UserMenu({ place })`、`AppearanceItems`、`AppearanceMenu`、`initialOf`；"个人设置"与切换器的"新建工作区"带 `arrived`，个人设置页的 `h1` 取到达的焦点；新建工作区页也有"回到工作区"，决定 803）；窄屏的账户菜单与 `W/app/narrow.ts`（决定 801）；4.1.4–4.1.7；`ThemeMenu`、`LanguageMenu` 删掉；a8 改从头像菜单看主题、用指针在子菜单里选一次；se1 在侧栏上的三项下限重量；L1 加粘住侧栏的守卫。
+- **测试**：7.1 的 S1 各格与审查之后的新行；vitest 5120 → 5157 格（211 个文件）。新格先写、在没改的树上红；不是先红后绿的五格由变异守着（`layout-error` 一格；`layout.test` 的会话启动中与列表读取失败两格，m47、y34；"`/` 上列表答 500""没有工作区的账户"两格，n02、n05）。`notebook-step.test.tsx` 的一格改为等步骤的文字：测试里潜在的竞态，与引入无关（审查 C 的 S1C1-N1）。
+- **第 0 步**（00 号文档第 10 节）：perf 的造数（`flat3k`）起生产配置的应用，三种引擎里各跑一次（探针不提交）：树分批画行时窗口与侧栏的顶不动；侧栏自己滚到底、窗口不动；读者之上长高约 824 px，读者移动不到 1 px。三条都成立；(b) 后由决定 802 取代：中段不再 `overscroll-contain`，滚到头带着窗口走（Chromium、WebKit 在同一次滚动里，Firefox 另起一次时），没有溢出的中段上滚轮三种都滚窗口。
+- **实量**（Chromium，macOS；下限 = 实量 − 0.1，向下取到 0.01）：se1 的框与"搜索"按钮的焦点（量到 `--sidebar`）亮 2.843 → 2.74、暗 8.406 → 8.30；无效的框亮 4.018 → 3.91、暗 7.283 → 7.18。范围下拉与命中链接不变。
+- **变异**：7.2 的 S1 各条（1–15、46–48、65）都被抓住，3、9、13 另在 e2e 里；实施者的 x1–x9、m801 与修复的 n01–n05 都被抓住；审查者另写的在修复之后都被抓住，除了：y03、y04、y04b（`SessionChangedError` 的三处排除，有意不抓：短暂，守卫接手）与 A 的 r02（同样的后果）；y08（账户行挪进滚动区）、c03（子菜单的 `collisionPadding`）、c04（分隔线的画法）只关布局与样子，由截图与实量看；z3（只去掉 `md:h-svh`）交给 S2 的 PG16 第二格；y06、r25、r29 等价或近乎等价。逐条在审查记录（实施者跑，审查 C 独立重跑）。
+- **视觉的核对**（7.4）：实施者截了 7.4 的 S1 几页（Chromium，亮暗 × 1440、375）、决定 801 的 375 宽菜单与修复之后的各处；审查 B 两轮（Chromium 亮暗 × 1440、375 与强制色；Firefox、WebKit 在 1440 下的侧栏、账户行与菜单）；审查 A 用 Playwright 探针在三种引擎里核对行为。截图在会话的临时目录，不进仓库。与样稿不同之处：账户行上方的 `border-t`、头像一个字素（有意，决定 770）；其余（版本行被裁、"回到工作区"折行、窄屏的子菜单、右上角菜单的宽度、子菜单贴底、语言名的左边线、分组标题的高、切换器菜单的宽、强制色下的分隔线）都已修。
+- **门禁**：每个提交的 `make lint-web knip test-web` 都绿；改了行为的提交的 `make e2e` 与合并之前的整条命令（`0986356e`、`a9d7c030`、`1d8414a9` 上，审查 C 在后两个上另跑）只败基线里同行同消息的格（C 在 `1d8414a9` 上那次 PG15 过了）；E2E 2.2–2.5 min（基线 3.1 min，随负载）；Go 一侧的断言与 `git diff --check` 以 0 退出。逐项在审查记录。
+- **与设计不同之处**：4.1 的"照实"；决定 801–803。
+- **交给后面**：P3 去掉个人设置页的"回到工作区"，留着新建工作区页的（第 9 节）；S2 的 PG16 第二格守 `md:h-svh`（z3）；S3 的抽屉复用 `useNarrow`，抽屉里的账户菜单同样是行内的外观；已登录的邀请页与出错页回去的路留给 P5（决定 803）。
 
 ## 附录：核对过的代码
 
