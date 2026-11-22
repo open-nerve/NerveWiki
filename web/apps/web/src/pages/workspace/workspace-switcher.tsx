@@ -4,6 +4,7 @@ import { useId } from "react";
 import { Link, useNavigate } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { Button } from "../../components/ui/button";
 import {
   DropdownMenu,
@@ -21,7 +22,9 @@ import { useStore, useWorkspaces } from "../../stores/context";
 /**
  * WorkspaceSwitcher is the workspace shown, and the way to the account's
  * others: choosing one goes to it. While this server lets accounts create
- * workspaces, it is also the way to create one (M2/P5 design 3.2).
+ * workspaces, it is also the way to create one (M2/P5 design 3.2), arrived
+ * at: the switcher leaves with the workspace's shell (M13/P2/S1, decision
+ * 771).
  */
 export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }: { current: Workspace }) {
   const workspaces = useWorkspaces();
@@ -53,7 +56,7 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link to="/create-workspace">
+              <Link to="/create-workspace" state={arrived}>
                 <Plus />
                 {t("workspace.create")}
               </Link>

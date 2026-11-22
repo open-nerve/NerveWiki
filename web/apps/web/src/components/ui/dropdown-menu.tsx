@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { DropdownMenu as Primitive } from "radix-ui";
 import type { ComponentProps } from "react";
 
@@ -59,6 +59,44 @@ export function DropdownMenuRadioItem({ className, children, ...props }: Compone
       </span>
       {children}
     </Primitive.RadioItem>
+  );
+}
+
+// A submenu (M13/P2/S1, decision 773): the account's Appearance. Its trigger's arrow is a direct icon of the item, whose
+// [&>svg]: classes (0,1,1) would size and colour it as the item's own; [&>svg:last-child]: (0,2,1) makes it smaller and
+// fainter, tailwind-merge keeping both as different variants. A click opens it, the focus staying on its trigger; Enter,
+// Space and Right open it at its first item; Left and Escape close it, Escape the whole menu.
+
+export const DropdownMenuSub = Primitive.Sub;
+
+export function DropdownMenuSubTrigger({ className, children, ...props }: ComponentProps<typeof Primitive.SubTrigger>) {
+  return (
+    <Primitive.SubTrigger
+      className={cn(
+        item,
+        "px-2.5 data-[state=open]:bg-active [&>svg:last-child]:size-3.5 [&>svg:last-child]:text-faint",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <ChevronRight className="ml-auto" />
+    </Primitive.SubTrigger>
+  );
+}
+
+export function DropdownMenuSubContent({ className, ...props }: ComponentProps<typeof Primitive.SubContent>) {
+  return (
+    <Primitive.Portal>
+      <Primitive.SubContent
+        sideOffset={6}
+        className={cn(
+          "z-50 min-w-[200px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-popover border border-border bg-popover p-1.25 text-popover-foreground shadow-popover data-[state=open]:animate-pop-in",
+          className
+        )}
+        {...props}
+      />
+    </Primitive.Portal>
   );
 }
 

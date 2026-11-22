@@ -5,12 +5,15 @@ import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
+import { useCornerBack } from "../../app/corner";
 import { useShellColumn } from "../../app/layout";
 import { NotLoaded } from "../../app/not-loaded";
+import { UserMenu } from "../../app/user-menu";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
 import type { Workspace } from "../../services/workspace.service";
+import { SessionChangedError } from "../../session/token-manager";
 import { useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
@@ -52,13 +55,25 @@ const sections: readonly { path: string; label: Extract<MessageKey, `workspace.$
 ];
 
 /**
+ * GiveCornerBack has the top right shown in the column's stead (useCornerBack): a hook called only where the shell
+ * shows no column, the workspaces' load failed or the workspace not found, never while they load (M13/P2/S1, decision
+ * 769): the account's button would mount there, then again in the column.
+ */
+function GiveCornerBack() {
+  useCornerBack();
+  return null;
+}
+
+/**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
  * the left column, with the workspace's search box (M8/P5 design 4.2),
  * then its navigation: the switcher, its pages and its notebooks (M3/P4
  * design 3.3), beside the page chosen, which is the layout's main. The
  * column is no landmark of its own: the search and the navigation are the
- * ones it holds, then a notebook's page tree; it goes into the layout's
- * place for it, outside the main (M4/P5 design 3.2).
+ * ones it holds, then a notebook's page tree, and in its foot the account
+ * (M13/P2/S1); it goes into the layout's place for it, outside the main
+ * (M4/P5 design 3.2). Without it, the load failed or the workspace not
+ * found, the account is at the top right.
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -100,10 +115,24 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   }, [preferences, slug, found]);
 
   if (workspaces.list === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
+    // A load cut by a change of session is loading, as NotLoaded shows it.
+    const failed = error !== undefined && !(error instanceof SessionChangedError);
+    return (
+      <>
+        {failed && <GiveCornerBack />}
+        <NotLoaded error={error} retry={() => void mutate()} />
+      </>
+    );
   }
   if (workspace === undefined) {
-    return workspaces.wasRemoved(slug) ? <Navigate replace to="/" state={arrived} /> : <NotFoundPage />;
+    return workspaces.wasRemoved(slug) ? (
+      <Navigate replace to="/" state={arrived} />
+    ) : (
+      <>
+        <GiveCornerBack />
+        <NotFoundPage />
+      </>
+    );
   }
   // Beside the page and as tall, the column would be the window's scroll anchor: what changes size above the
   // reader in the page (a formula typeset, a diagram drawn) would move what they read (M6/P6 B fix check 4).
@@ -125,6 +154,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
         <NotebookNav key={workspace.id} workspace={workspace} />
       </nav>
       <div ref={setNotebookColumn} />
+      <UserMenu place="row" />
     </div>
   );
   return (

@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -128,4 +128,95 @@ test("the user menu says which version the server runs", async () => {
   await user.click(await screen.findByRole("button", { name: "Ada" }));
 
   expect(await screen.findByText("Nerve Wiki 1.2.3 (4f2a9c1)")).toBeTruthy();
+});
+
+// The account's row and its menu (M13/P2/S1, decision 770).
+
+test("the account's button is named for its display name alone, its avatar's letter hidden", async () => {
+  renderApp("/lab", signedInApp());
+
+  // A name matches exactly: what e2e's accountMenu asks for.
+  const button = await screen.findByRole("button", { name: "Ada" });
+  const avatar = [...button.querySelectorAll("span")].find((span) => span.textContent === "A");
+  expect(avatar?.closest('[aria-hidden="true"]')).toBe(avatar);
+  expect(button.closest("[data-shell]")).not.toBeNull();
+});
+
+test("the account's menu: Settings, Appearance, Sign out, then the version", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", signedInApp());
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  const menu = await screen.findByRole("menu");
+  await within(menu).findByText("Nerve Wiki 1.2.3 (4f2a9c1)");
+
+  expect(
+    [...menu.children].map((child) => (child.getAttribute("role") === "separator" ? "—" : child.textContent))
+  ).toEqual(["Settings", "Appearance", "—", "Sign out", "—", "Nerve Wiki 1.2.3 (4f2a9c1)"]);
+  expect(within(menu).getByRole("menuitem", { name: "Appearance" }).getAttribute("aria-haspopup")).toBe("menu");
+});
+
+test("the column's account opens its menu above it, from its start; the top right's below it, from its end", async () => {
+  const user = userEvent.setup();
+  const { unmount } = renderApp("/lab", signedInApp());
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  // Radix's placement, as it asks for it: jsdom lays nothing out to flip it by.
+  const row = await screen.findByRole("menu");
+  expect([row.getAttribute("data-side"), row.getAttribute("data-align")]).toEqual(["top", "start"]);
+  unmount();
+
+  renderApp("/settings/profile", signedInApp());
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  const corner = await screen.findByRole("menu");
+  expect([corner.getAttribute("data-side"), corner.getAttribute("data-align")]).toEqual(["bottom", "end"]);
+});
+
+test("a theme and a language chosen in Appearance apply at once, its menu staying open", async () => {
+  const user = userEvent.setup();
+  const { app } = renderApp("/lab", signedInApp());
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Appearance" }));
+  // Clicked, not moved to: jsdom lays nothing out, and Radix takes the pointer leaving Appearance for a pointer going
+  // elsewhere, which closes the submenu, where a browser sees it go towards it.
+  fireEvent.click(await screen.findByRole("menuitemradio", { name: "Dark" }));
+
+  expect(app.preferences.theme).toBe("dark");
+  const light = screen.getByRole("menuitemradio", { name: "Light" });
+  expect(screen.getByRole("menuitemradio", { name: "Dark" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "简体中文" }));
+  expect(app.preferences.locale).toBe("zh-CN");
+  // The same submenu, in Chinese now.
+  expect(light.isConnected).toBe(true);
+  expect(light.textContent).toBe("浅色");
+});
+
+test("the account's menu by the keyboard: Enter opens it, Down to Appearance, Right opens it at its first choice, Escape closes it all, the focus back on the button", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", signedInApp());
+  const button = await screen.findByRole("button", { name: "Ada" });
+  button.focus();
+
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Settings" })));
+  await user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Appearance" }));
+  await user.keyboard("{ArrowRight}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitemradio", { name: "System" })));
+  await user.keyboard("{Escape}");
+
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(button));
+});
+
+test("in Chinese, the account's menu has 外观", async () => {
+  const user = userEvent.setup();
+  const app = signedInApp();
+  app.preferences.setLocale("zh-CN");
+  renderApp("/lab", app);
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+
+  expect(await screen.findByRole("menuitem", { name: "外观" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "设置" })).toBeTruthy();
 });

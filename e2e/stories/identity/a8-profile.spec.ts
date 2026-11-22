@@ -78,14 +78,16 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveAttribute("lang", "zh-CN");
 
-  // All of it holds after a reload: the name on the server, the preferences in this browser, as the top bar's
-  // theme menu shows too.
+  // All of it holds after a reload: the name on the server, the preferences in this browser, as the account menu's
+  // Appearance shows too (M13/P2/S1).
   await reload(page);
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
-  await page.getByRole("button", { name: "主题" }).click();
+  await accountMenu(page, "Ada Lovelace").click();
+  await page.getByRole("menuitem", { name: "外观", exact: true }).click();
   await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  // One Escape closes the whole menu, its submenu too.
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("显示名", { exact: true })).toHaveValue("Ada Lovelace");
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();

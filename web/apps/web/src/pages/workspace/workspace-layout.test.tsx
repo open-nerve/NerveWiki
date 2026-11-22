@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -44,6 +44,19 @@ test.each([
   const items = screen.queryAllByRole("menuitem");
   expect(items.map((item) => item.textContent)).toEqual(offered);
   expect(items.map((item) => item.getAttribute("href"))).toEqual(offered.map(() => "/create-workspace"));
+});
+
+test("Create workspace in the switcher leaves the workspace's shell, arrived at: the page's title takes the focus", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", withWorkspaces());
+
+  await user.click(await screen.findByRole("button", { name: "Lab", description: "Switch workspace" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Create workspace" }));
+
+  // The switcher leaves with the shell: its menu has no button to give the focus back to (M13/P2/S1, decision 771).
+  const title = await screen.findByRole("heading", { level: 1, name: "Create a workspace" });
+  expect(router.state.location.pathname).toBe("/create-workspace");
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 test("a workspace shown is the one the device lands on next", async () => {

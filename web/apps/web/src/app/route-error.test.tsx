@@ -4,13 +4,16 @@ import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import { RootStore } from "../stores/root.store";
-import { testApp } from "../test/fakes";
+import { signedInApp, testApp } from "../test/fakes";
 import { renderApp } from "../test/render";
 import { AppProviders } from "./providers";
 import { RouteError } from "./route-error";
 
-// The landing page's chunk cannot be loaded, as when an older build is gone.
+// The landing page's chunk cannot be loaded, as when an older build is gone; a workspace's home's neither.
 vi.mock("../pages/landing", () => {
+  throw new Error("Failed to fetch dynamically imported module");
+});
+vi.mock("../pages/workspace/workspace-home", () => {
   throw new Error("Failed to fetch dynamically imported module");
 });
 
@@ -22,9 +25,21 @@ test("a page that fails to load shows the error page inside the layout", async (
 
   expect(alert.textContent).toContain("Something went wrong");
   expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
-  expect(screen.getByRole("banner")).toBeTruthy();
+  // Inside the layout, with its top right: signed out, Appearance (M13/P2/S1).
+  expect(screen.getByRole("button", { name: "Appearance" })).toBeTruthy();
   // The boundary logs from an effect, which may run after the alert shows.
   await waitFor(() => expect(logged).toHaveBeenCalled());
+});
+
+test("a workspace's page that fails to load on the tab's first load has the account's button at the top right", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  renderApp("/lab", signedInApp());
+
+  expect((await screen.findByRole("alert")).textContent).toContain("Something went wrong");
+  // The boundary is above the guards, which never loaded the account: the top right loads it itself (M13/P2/S1,
+  // decision 792; review C-M1).
+  expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Appearance" })).toBeNull();
 });
 
 function Refused(): never {

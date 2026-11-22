@@ -98,3 +98,24 @@ test("an aria-disabled button stays in the tab order, a disabled one is left out
   await user.tab();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "After" }));
 });
+
+test("the small size is 30px of compact text, the small icon's 30px square, the pill round", () => {
+  // The top right's buttons, the drawer's menu and the search's submit (M13/P2, decision 773).
+  render(
+    <>
+      <Button size="sm">Small</Button>
+      <Button size="icon-sm" aria-label="Icon" />
+      <Button shape="pill">Pill</Button>
+    </>
+  );
+  const small = screen.getByRole("button", { name: "Small" }).classList;
+  expect(small.contains("h-7.5"), "h-7.5").toBe(true);
+  expect(small.contains("text-compact"), "text-compact").toBe(true);
+  // tailwind-merge drops what they replace.
+  expect(small.contains("h-9"), "h-9").toBe(false);
+  expect(small.contains("text-sm"), "text-sm").toBe(false);
+  expect(screen.getByRole("button", { name: "Icon" }).classList.contains("size-7.5")).toBe(true);
+  const pill = screen.getByRole("button", { name: "Pill" }).classList;
+  expect(pill.contains("rounded-full"), "rounded-full").toBe(true);
+  expect(pill.contains("rounded-lg"), "rounded-lg").toBe(false);
+});

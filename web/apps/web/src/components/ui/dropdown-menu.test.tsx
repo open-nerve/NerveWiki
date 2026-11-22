@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -8,6 +8,9 @@ import {
   DropdownMenuItem,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "./dropdown-menu";
 
@@ -80,4 +83,51 @@ test("the item's ring is the keyboard's", async () => {
   // The choice's check is sized: lucide's would be 24px, where the item's direct icons alone are sized.
   const check = screen.getByRole("menuitemradio", { name: "Light" }).querySelector("svg");
   expect(check?.classList.contains("size-3.5")).toBe(true);
+});
+
+test("a submenu opens from its item, by the keyboard too, and animates in, never out", async () => {
+  const user = userEvent.setup();
+  render(
+    <DropdownMenu>
+      <DropdownMenuTrigger>Account</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem>Settings</DropdownMenuItem>
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>Appearance</DropdownMenuSubTrigger>
+          <DropdownMenuSubContent>
+            <DropdownMenuItem>Light</DropdownMenuItem>
+            <DropdownMenuItem>Dark</DropdownMenuItem>
+          </DropdownMenuSubContent>
+        </DropdownMenuSub>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+  const trigger = screen.getByRole("button", { name: "Account" });
+
+  // By the pointer: a click opens it (M13/P2/S1; the focus stays on its item, review A-N1).
+  await user.click(trigger);
+  const appearance = await screen.findByRole("menuitem", { name: "Appearance" });
+  expect(appearance.getAttribute("aria-haspopup")).toBe("menu");
+  await user.click(appearance);
+  expect(await screen.findByRole("menuitem", { name: "Light" })).toBeTruthy();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
+
+  // By the keyboard: Right opens it at its first item; Escape closes both.
+  trigger.focus();
+  await user.keyboard("{Enter}");
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Settings" })));
+  await user.keyboard("{ArrowDown}");
+  expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Appearance" }));
+  await user.keyboard("{ArrowRight}");
+  const light = await screen.findByRole("menuitem", { name: "Light" });
+  await waitFor(() => expect(document.activeElement).toBe(light));
+  const sub = screen.getAllByRole("menu").find((menu) => menu.contains(light));
+  expect(sub?.getAttribute("data-state")).toBe("open");
+  expect(sub?.classList.contains("data-[state=open]:animate-pop-in")).toBe(true);
+  // An exit's animation would keep it mounted after Escape (00-M13 737).
+  expect(sub?.className).not.toContain("data-[state=closed]:");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
+  await waitFor(() => expect(document.activeElement).toBe(trigger));
 });

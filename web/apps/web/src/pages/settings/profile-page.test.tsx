@@ -44,14 +44,26 @@ test("an account with a step left does its onboarding before the settings", asyn
   expect(router.state.location.search).toBe("?next=%2Fsettings%2Fprofile");
 });
 
-test("the user menu leads to the settings", async () => {
+test("the account's menu leads to the settings, arrived at: their title takes the focus; chosen there again at the top right, the focus goes back to its button", async () => {
   const user = userEvent.setup();
-  const { router } = renderApp("/", signedInApp());
+  const { router } = renderApp("/lab", signedInApp());
+  await screen.findByRole("heading", { name: "Lab" });
 
-  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  // The left column's, which leaves with the workspace's shell (M13/P2/S1, decision 771).
+  await user.click(screen.getByRole("button", { name: "Ada" }));
   await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
 
+  const title = await screen.findByRole("heading", { level: 1, name: "Settings" });
   expect(await screen.findByRole("heading", { level: 2, name: "Profile" })).toBeTruthy();
+  expect(router.state.location.pathname).toBe("/settings/profile");
+  await waitFor(() => expect(document.activeElement).toBe(title));
+
+  // The same address: the title takes no focus again, the menu gives it back to its button (review A, P2A1-N1).
+  const corner = screen.getByRole("button", { name: "Ada" });
+  await user.click(corner);
+  await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(corner));
   expect(router.state.location.pathname).toBe("/settings/profile");
 });
 
@@ -143,7 +155,7 @@ test("an empty or refused name is marked under the field, which gets the focus",
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
-test("the preferences are the top bar's: chosen here, they apply at once", async () => {
+test("the preferences are the account menu's: chosen here, they apply at once", async () => {
   const user = userEvent.setup();
   const { app } = profileServer();
   renderApp("/settings/profile", app);
@@ -157,8 +169,9 @@ test("the preferences are the top bar's: chosen here, they apply at once", async
   expect(await screen.findByRole("heading", { level: 1, name: "设置" })).toBeTruthy();
   expect(screen.getByRole("radio", { name: "深色" })).toHaveProperty("checked", true);
 
-  // The top bar's menu shows the same choice.
-  await user.click(screen.getByRole("button", { name: "主题" }));
+  // The account menu's Appearance shows the same choice (M13/P2/S1).
+  await user.click(screen.getByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "外观" }));
   await waitFor(() =>
     expect(screen.getByRole("menuitemradio", { name: "深色" }).getAttribute("aria-checked")).toBe("true")
   );

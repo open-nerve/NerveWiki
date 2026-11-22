@@ -128,6 +128,8 @@ export const routes: RouteObject[] = [
                   },
                   {
                     path: ":slug",
+                    // A left column, with the account in its foot: no top right (layout.tsx; M13/P2/S1, decision 769).
+                    handle: { sidebar: true },
                     lazy: async () => {
                       const { WorkspaceLayout } = await import("../pages/workspace/workspace-layout");
                       return { Component: WorkspaceLayout };
