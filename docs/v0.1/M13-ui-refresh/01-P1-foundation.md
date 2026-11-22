@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M13/P1 设计基础（两个 Step：S1 token 与主题；S2 基础组件） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订，照修订核对第 1 轮再修订，第 2 轮之后补上最后的 Nit，[审查记录](reviews/P1-design-review.md)；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)） |
-| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 实施与审查完成（[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)），合并见 00 号文档第 12 节；S2 待开 |
+| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 已合并 `a08bf50f`（[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）；S2 待开 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.1、4.3、4.7、4.8、第 7 节 P1 两行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"对比度门槛""原生控件"两行、第 10 节"下拉的 `appearance: none`"一行、第 11 节决定 716、718、722、735–737、745、746；[v0.1 总体设计](../v0.1-design.md) 9.1、13.2 第 26、31 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 5 项 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（色值、按钮、菜单、输入框、下拉、单选）；[mockups/settings.html](mockups/settings.html)（危险按钮、输入框） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `3c315037` 的；`m13-ui-refresh` 的头 `65dbfcbb` 与它之间只改了文档（`git diff --stat 3c315037 HEAD -- web e2e tools` 为空） |
