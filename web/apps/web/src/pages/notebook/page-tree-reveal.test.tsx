@@ -1,4 +1,4 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, onTestFinished, test, vi } from "vitest";
 
@@ -157,11 +157,12 @@ test("from a page to the notebook's home, the column stays as the reader left it
   expect(area().scrollTop).toBe(0);
 });
 
-test("from the notebook's home, a key pressed, then a page: its row is brought in", async () => {
+test("from the notebook's home, a key pressed in the column's area, then a page: its row is brought in", async () => {
   layOut();
   const { router } = renderApp(home, pageServer({ nodes: sixty }).app);
   await row("Page 60");
-  fireEvent.keyDown(document.body, { key: "ArrowDown" });
+  // In the area, which the home's navigation counts: the page's is another, its watch made anew.
+  fireEvent.keyDown(area(), { key: "ArrowDown" });
 
   await act(() => router.navigate(pagePath(page60.id)));
 
@@ -169,7 +170,33 @@ test("from the notebook's home, a key pressed, then a page: its row is brought i
   await waitFor(() => expect(inView(link)).toBe(true));
 });
 
-test("a wheel in the column's area before the tree is read: the row of the page, read since, is not brought in", async () => {
+test("a wheel in the column's area before the tree is read: the row of the page, read since, is not brought in; the next page's is", async () => {
+  layOut();
+  const server = pageServer({ nodes: sixty });
+  server.nodesHeld = true;
+  const { router } = renderApp(pagePath(page60.id), server.app);
+  await tree();
+  await waitFor(() => expect(server.held.length).toBeGreaterThan(0));
+
+  fireEvent.wheel(area());
+  server.nodesHeld = false;
+  act(() => server.release());
+
+  const link = await row("Page 60");
+  await screen.findByRole("heading", { level: 1, name: "Page 60" });
+  expect(inView(link)).toBe(false);
+  expect(area().scrollTop).toBe(0);
+
+  // Another navigation, its row drawn and out of view: the wheel was the last one's (at most once, not never).
+  await act(() => router.navigate(pagePath(page(59).id)));
+  await screen.findByRole("heading", { level: 1, name: "Page 59" });
+  const next = await row("Page 59");
+  await waitFor(() => expect(inView(next)).toBe(true));
+});
+
+test("in StrictMode, its unmount and mount again ending the first watch, a wheel in the column's area before the tree is read still keeps the row out", async () => {
+  configure({ reactStrictMode: true });
+  onTestFinished(() => configure({ reactStrictMode: false }));
   layOut();
   const server = pageServer({ nodes: sixty });
   server.nodesHeld = true;
