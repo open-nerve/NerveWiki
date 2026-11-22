@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 的 S1 已合并，S2 待开 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 的 S1 已合并，S2 已审查、待合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -81,7 +81,7 @@ v0.1 的功能做完了，界面能用但简陋。M13 只改网页的外观与�
 | `--border` / `--border-strong` | `#e7e7ea` / `#d4d4d9` | `#2b2c31` / `#3a3b41` | 分隔、控件边框 |
 | `--foreground` / `--muted-foreground` / `--faint` | `#18191c` / `#5f6168` / `#91939b` | `#e8e8ea` / `#a4a5ac` / `#74767e` | 正文 / 次要文字 / 说明与占位 |
 | `--primary` / `--primary-foreground`（墨色） | `#18191c` / `#ffffff` | `#ececee` / `#18191c` | 主按钮、工作区头像 |
-| `--accent` | `#c58a22` | `#d9a84e` | 只标状态：勾选、单选（经 `accent-color`）、当前页的图标、大纲当前节、链接下划线、焦点圈、"当前"徽记的字。没有琥珀实心底上的字，所以不设 `--accent-foreground`（主持者的决定 745） |
+| `--accent` | `#c2871f`（样稿的 `#c58a22` 在 Chromium 里勾选的复选框与单选画成深色，[01-P1](01-P1-foundation.md) 决定 766） | `#d9a84e` | 只标状态：勾选、单选（经 `accent-color`）、当前页的图标、大纲当前节、链接下划线、焦点圈、"当前"徽记的字。没有琥珀实心底上的字，所以不设 `--accent-foreground`（主持者的决定 745） |
 | `--accent-soft` | 琥珀 12% | 琥珀 14% | 当前页那一行的底、编辑器的选区 |
 | `--ring` | `var(--accent)` | `var(--accent)` | 焦点圈（4.7）；取 `var(--accent)`，琥珀只有一个来源（[01-P1](01-P1-foundation.md) 2.1 第 4 条） |
 | `--destructive` | `#d64545` | `#ff7b7b` | 删除类：描边按钮与菜单项的字，不用实心红块 |
@@ -541,7 +541,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | S1 已合并；S2 待开 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md) | S1 `a08bf50f` |
+| P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | S1 已合并；S2 已审查、待合并 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f` |
 | P2 新外框（S1–S3） | — | 未开始 | — | — |
 | P3 设置界面（S1、S2） | — | 未开始 | — | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
@@ -557,3 +557,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-22：负责人批准设计、开工 P1（第 11 节）；主持者的决定 746（没有推送的凭据时以本机门禁替代分支 CI）。
 - 2026-11-22：照 P1 的设计修订（[01-P1](01-P1-foundation.md) 2.1：空状态与骨架挪到 P5，按钮的 30 px 与胶囊形、菜单的子菜单与快捷键挪到 P2/S1，S1 的边界，4.1 的表与字号，4.7 的重量，菜单的环只在键盘操作时）。
 - 2026-11-22：P1/S1 实施与审查完成（[审查记录](reviews/P1-S1-tokens-theme-review.md)；主持者的决定 763–765）；合并 `a08bf50f`。
+- 2026-11-22：P1/S2 实施与审查完成（[审查记录](reviews/P1-S2-components-review.md)；主持者的决定 766–768；4.1 的表亮色 `--accent` 改为 `#c2871f`）；合并见第 12 节。
