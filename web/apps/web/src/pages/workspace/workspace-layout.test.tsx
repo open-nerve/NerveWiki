@@ -93,14 +93,21 @@ test("a slug the account has no workspace of is not found, nor remembered", asyn
 });
 
 // The left column is no landmark of its own: the workspace's navigation is
-// the one it holds (M3/P4 design 3.3).
-test("the navigation leads to the workspace's pages, marking the one shown", async () => {
+// the one it holds (M3/P4 design 3.3). Its switcher is the column's top, above
+// the search, outside the navigation (M13/P2/S1, decision 775; 00-M13 4.2.1).
+test("the switcher heads the column, before the search, outside the navigation, which leads to the workspace's pages, marking the one shown", async () => {
   renderApp("/acme", withWorkspaces());
 
   const nav = await screen.findByRole("navigation", { name: "Acme" });
   expect(screen.queryByRole("complementary")).toBeNull();
-  // The switcher too is in the navigation, a landmark's.
-  expect(within(nav).getByRole("button", { name: "Acme", description: "Switch workspace" })).toBeTruthy();
+  const column = nav.closest<HTMLElement>("[data-shell]");
+  if (column === null) throw new Error("the navigation is in no column");
+  const switcher = screen.getByRole("button", { name: "Acme", description: "Switch workspace" });
+  expect(within(column).getAllByRole("button")[0]).toBe(switcher);
+  expect(nav.contains(switcher)).toBe(false);
+  const search = within(column).getByRole("search");
+  expect(switcher.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(search.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const links = within(nav).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href"), link.getAttribute("aria-current")])).toEqual(
     [

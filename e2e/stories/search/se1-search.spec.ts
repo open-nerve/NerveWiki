@@ -282,10 +282,12 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   // Floors at what M13/P1/S1 measured, less 0.1, the light amber's at what M13/P1/S2 did once it was a shade deeper
   // (decision 766): no colour is to fade by accident (00-M13 4.7); the terms marked are text, 7:1. Measured on
   // Chromium: light, the terms 14.642 in the excerpt and in the name, the four focuses 3.098, the box refused 4.378;
-  // dark 8.027, 7.923, 6.865.
+  // dark 8.027, 7.923, 6.865. The box and its button on the sidebar re-measured at M13/P2/S1, their ring on the left
+  // column's colour (--sidebar): light 2.843, refused 4.018; dark 8.406, refused 7.283. Where to look and the hit's
+  // link are on the results' page, its background as it was.
   const floors = {
-    light: { marked: 7, named: 7, box: 2.99, button: 2.99, select: 2.99, link: 2.99, invalid: 4.27 },
-    dark: { marked: 7, named: 7, box: 7.82, button: 7.82, select: 7.82, link: 7.82, invalid: 6.76 },
+    light: { marked: 7, named: 7, box: 2.74, button: 2.74, select: 2.99, link: 2.99, invalid: 3.91 },
+    dark: { marked: 7, named: 7, box: 8.3, button: 8.3, select: 7.82, link: 7.82, invalid: 7.18 },
   } as const;
   const submit = page.getByRole("search").getByRole("button", { name: "Search", exact: true });
   const where = main.getByRole("combobox", { name: "Where to look", exact: true });
