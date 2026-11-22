@@ -233,7 +233,7 @@ export function TransferReport({
       ? stoppedText(job, numberText(total - done, locale), t)
       : [];
   return (
-    <div id={id} className="space-y-3 rounded-md bg-surface-2/50 p-3 text-sm">
+    <div id={id} className="space-y-3 rounded-md bg-surface-2 p-3 text-sm">
       {counts !== undefined && (
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
           {shown.map((count) => (
