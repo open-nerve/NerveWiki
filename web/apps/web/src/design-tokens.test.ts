@@ -7,7 +7,7 @@ import { expect, test } from "vitest";
 // amber marks a state and fills nothing, components name the theme's colours, never a palette's nor a written value.
 // The stylesheets are read from the disk: vitest serves a stylesheet's ?raw as "" (P1 design 1). The sources are read
 // as the bundler sees them, the tests, their helpers and the fakes under testing/ left out, and parsed: what counts is
-// in their string literals, not in their comments.
+// in their string literals, not in their comments. The messages (i18n/messages) are copy: "a fill-in form", "#123".
 
 const readCss = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
 const styles = readCss("./styles.css");
@@ -99,10 +99,11 @@ function themed(css: string, prefix: string): Set<string> {
 type Literal = { text: string; line: number };
 
 /**
- * Parsed is what a source's string literals say: all of them, a module's path not one, each part of a template one,
- * and a property whose value is one also as "key: value", as a style object declares it; and those in a class list.
+ * Parsed is what a source's string literals say. values: its string literals, each part of a template one, a module's
+ * path and an object's key not one. literals: those, the keys, and a property whose value is a string as "key: value",
+ * as a style object declares it.
  */
-type Parsed = { literals: Literal[]; classes: Literal[] };
+type Parsed = { literals: Literal[]; values: Literal[] };
 
 /** Node is a node of the parser's tree, as much of it as parsed reads. */
 type Node = { type: string; start: number; [key: string]: unknown };
@@ -117,43 +118,15 @@ const modulePathOf = new Set([
   "TSExternalModuleReference",
   "TSModuleDeclaration",
 ]);
-/** What is called with class lists. */
-const classFunctions = new Set(["cn", "cva", "clsx"]);
 
 const nodeOf = (value: unknown): Node | undefined =>
   typeof value === "object" && value !== null && typeof (value as Node).type === "string" ? (value as Node) : undefined;
-/** nameOf is an identifier's name, a member's property's, a key's text. */
+/** nameOf is an identifier's name or a literal key's text. */
 const nameOf = (value: unknown): string | undefined => {
   const node = nodeOf(value);
-  if (node === undefined) return undefined;
-  if (node.type === "MemberExpression") return nameOf(node.property);
-  if (typeof node.name === "string") return node.name;
-  return typeof node.value === "string" ? node.value : undefined;
+  if (typeof node?.name === "string") return node.name;
+  return typeof node?.value === "string" ? node.value : undefined;
 };
-
-/**
- * classesUnder is whether what is under node's key is a class list: a className (JSX's, the DOM's), what cn, cva and
- * clsx are given (their nested arrays, objects, templates and conditionals with it), a classList's classes, and what a
- * name that ends in Class or ClassName is set to (the diff's buttonClass).
- */
-function classesUnder(node: Node, key: string): boolean {
-  switch (node.type) {
-    case "JSXAttribute":
-      return key === "value" && nameOf(node.name) === "className";
-    case "CallExpression": {
-      const callee = nodeOf(node.callee);
-      const ofClassList =
-        callee?.type === "MemberExpression" && nameOf(nodeOf(callee.object)?.property) === "classList";
-      return key === "arguments" && (classFunctions.has(nameOf(callee) ?? "") || ofClassList);
-    }
-    case "AssignmentExpression":
-      return key === "right" && nameOf(node.left) === "className";
-    case "VariableDeclarator":
-      return key === "init" && /[cC]lass(?:Name)?$/.test(nameOf(node.id) ?? "");
-    default:
-      return false;
-  }
-}
 
 const parsedOf = new Map<string, Parsed>();
 
@@ -164,18 +137,20 @@ function parsed(path: string, source: string): Parsed {
   const { program, errors } = parseSync(path, source);
   expect(errors, path).toEqual([]);
   const literals: Literal[] = [];
-  const classes: Literal[] = [];
+  const values: Literal[] = [];
   const lineOf = (at: number) => source.slice(0, at).split("\n").length;
-  const found = (literal: Literal, inClasses: boolean) => {
-    literals.push(literal);
-    if (inClasses) classes.push(literal);
-  };
-  const visit = (node: Node, inClasses: boolean, parent?: Node): void => {
+  const visit = (node: Node, parent: Node | undefined, key: string): void => {
     if (node.type === "Literal" && typeof node.value === "string") {
-      if (!modulePathOf.has(parent?.type ?? "")) found({ text: node.value, line: lineOf(node.start) }, inClasses);
+      if (!modulePathOf.has(parent?.type ?? "")) {
+        const literal = { text: node.value, line: lineOf(node.start) };
+        literals.push(literal);
+        // An object's key is no class list: "text-decoration" in a style object.
+        if (!(parent?.type === "Property" && key === "key")) values.push(literal);
+      }
     } else if (node.type === "TemplateElement") {
       const { cooked, raw } = node.value as { cooked: string | null; raw: string };
-      found({ text: cooked ?? raw, line: lineOf(node.start) }, inClasses);
+      literals.push({ text: cooked ?? raw, line: lineOf(node.start) });
+      values.push({ text: cooked ?? raw, line: lineOf(node.start) });
     } else if (node.type === "Property" && node.computed !== true) {
       const value = nodeOf(node.value);
       const text =
@@ -184,47 +159,58 @@ function parsed(path: string, source: string): Parsed {
           : value?.type === "TemplateLiteral"
             ? (value.quasis as Node[]).map((quasi) => (quasi.value as { raw: string }).raw).join("_")
             : undefined;
-      const key = nameOf(node.key);
-      if (text !== undefined && key !== undefined) literals.push({ text: `${key}: ${text}`, line: lineOf(node.start) });
+      const name = nameOf(node.key);
+      if (text !== undefined && name !== undefined)
+        literals.push({ text: `${name}: ${text}`, line: lineOf(node.start) });
     }
-    for (const [key, child] of Object.entries(node)) {
-      if (key === "parent") continue;
-      const under = inClasses || classesUnder(node, key);
+    for (const [at, child] of Object.entries(node)) {
+      if (at === "parent") continue;
       for (const each of Array.isArray(child) ? child : [child]) {
         const next = nodeOf(each);
-        if (next !== undefined) visit(next, under, node);
+        if (next !== undefined) visit(next, node, at);
       }
     }
   };
-  visit(program as unknown as Node, false);
-  const answer = { literals, classes };
+  visit(program as unknown as Node, undefined, "");
+  const answer = { literals, values };
   parsedOf.set(path, answer);
   return answer;
 }
 
 /**
  * walkedRight makes sure the parse reads what it is to read: a JSX attribute's class list and a cva string, both as
- * literals and as classes. A walk that read none would find nothing wrong anywhere.
+ * literals and as values. A walk that read none would find nothing wrong anywhere.
  */
 function walkedRight(files: [string, string][]): void {
   const words = (path: string, of: keyof Parsed) =>
     parsed(path, files.find(([at]) => at === path)?.[1] ?? "")[of].flatMap(({ text }) => text.split(/\s+/));
-  for (const of of ["literals", "classes"] as const) {
+  for (const of of ["literals", "values"] as const) {
     expect(words("./components/ui/dialog.tsx", of), of).toContain("bg-overlay");
     expect(words("./components/ui/button.tsx", of), of).toContain("bg-primary");
   }
 }
 
-/** literalHits are the literals of files on which a pattern matches, each as "file:line: the literal". */
-function literalHits(files: [string, string][], patterns: RegExp[], skip: Set<string> = new Set()): string[] {
+/** literalHits are the literals of files that a check finds, each as "file:line: the literal". */
+function literalHits(
+  files: [string, string][],
+  finds: RegExp[] | ((text: string) => boolean),
+  skip: (path: string) => boolean = () => false
+): string[] {
+  const found =
+    typeof finds === "function"
+      ? finds
+      : (text: string) => finds.some((pattern) => new RegExp(pattern.source, pattern.flags).test(text));
   return files
-    .filter(([path]) => !skip.has(path))
+    .filter(([path]) => !skip(path))
     .flatMap(([path, source]) =>
       parsed(path, source)
-        .literals.filter(({ text }) => patterns.some((pattern) => new RegExp(pattern.source, pattern.flags).test(text)))
+        .literals.filter(({ text }) => found(text))
         .map(({ text, line }) => `${path}:${line}: ${text}`)
     );
 }
+
+/** The messages: copy, not code. */
+const copy = (path: string) => path.startsWith("./i18n/messages/");
 
 test("every colour of the light theme is the dark theme's too", () => {
   const { styles: css } = read();
@@ -278,13 +264,20 @@ test("amber is no fill", () => {
 // A palette's colour as a class: bg-black/50, text-white, border-red-500 and the like.
 const paletteClass =
   /\b(?:bg|text|border|ring|outline|fill|stroke|from|to|via|decoration|divide|placeholder|caret|accent|shadow)-(?:black|white|slate|gray|zinc|neutral|stone|mauve|mist|olive|taupe|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)(?:-\d{2,3})?(?:\/\d+)?\b/;
-// A colour written in a class's arbitrary value: bg-[#000], text-[rgb(0_0_0)], bg-[lab(50%_40_59)].
-const arbitraryColour = /-\[(?:#|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\()/;
-// A colour written as a value: #rgb, #rgba, #rrggbb, #rrggbbaa or a colour function, where it is one, what a literal
-// starts with or what follows a ":" in a declaration; not an "#add" in a sentence. A named colour ("black") is not
-// looked for: English has the same words.
-const colourValue = String.raw`(?:#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})(?![\w-])|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\()`;
-const writtenColour = new RegExp(String.raw`^\s*${colourValue}|:[^;{}]*?(?<![\w#-])${colourValue}`, "i");
+// A colour written as a value: #rgb, #rgba, #rrggbb, #rrggbbaa or a colour function, anywhere not inside a word (an
+// "_" before it counts: Tailwind's arbitrary values write spaces so, shadow-[0_0_0_1px_#000]). A color-mix() of the
+// theme's colours, var(…), with keywords and percentages, is the theme's own. A named colour ("black") is not looked
+// for: English has the same words. Copy outside the messages that reads as one ("issue #add") is red too, accepted.
+const colourValue =
+  /(?<![A-Za-z0-9#-])(?:#(?:[\da-f]{8}|[\da-f]{6}|[\da-f]{3,4})(?![\w-])|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\()/gi;
+const themesMix = /^color-mix\((?:[\s,]*(?:var\(--[\w-]+\)|[a-z-]+|\d+(?:\.\d+)?%))*[\s,]*\)/i;
+const writesColour = (text: string): boolean =>
+  [...text.matchAll(colourValue)].some(
+    (match) => !(/^color-mix\(/i.test(match[0]) && themesMix.test(text.slice(match.index)))
+  );
+// A colour written in a class's arbitrary value, wherever in it: bg-[#000], shadow-[inset_0_0_0_2px_rgb(0,0,0)].
+const writesArbitraryColour = (text: string): boolean =>
+  [...text.matchAll(/-\[([^\]]*)\]/g)].some(([, value = ""]) => writesColour(value.replaceAll("_", " ")));
 // Where a colour may be written (v0.1 design 13.2 item 32): mermaid's themeVariables take hexadecimal colours alone;
 // the editor's links and matches until P4/S3.
 const writtenColourMayBe = new Set(["./editor/theme.ts", "./reading/diagrams.ts"]);
@@ -293,14 +286,15 @@ test("components use the theme's colours, not Tailwind's palette nor written val
   const { sources: files } = read();
   walkedRight(files);
   const found = [
-    ...literalHits(files, [paletteClass, arbitraryColour]),
-    ...literalHits(files, [writtenColour], writtenColourMayBe),
+    ...literalHits(files, [paletteClass]),
+    ...literalHits(files, writesArbitraryColour),
+    ...literalHits(files, writesColour, (path) => writtenColourMayBe.has(path) || copy(path)),
   ];
   expect(found).toEqual([]);
 });
 
-// The classes of these prefixes in the class lists that name no colour, as Tailwind spells them: sizes, styles, an
-// alignment, the shadows Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either.
+// The classes of these prefixes that name no colour, as Tailwind spells them: sizes, styles, an alignment, the shadows
+// Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either.
 const noColour = new Set([
   "decoration-dashed",
   "outline-none",
@@ -371,13 +365,19 @@ test("every colour class names a colour of the theme", () => {
     if (noThemeColour.has(value) || colours.has(value)) return true;
     return (prefix === "text" && sizes.has(value)) || (prefix === "shadow" && shadows.has(value));
   };
-  const found = files.flatMap(([path, source]) =>
-    parsed(path, source).classes.flatMap(({ text, line }) =>
-      text
-        .split(/\s+/)
-        .filter((word) => !named(utility(word)))
-        .map((word) => `${path}:${line}: ${word}`)
-    )
-  );
+  // Every string literal is read as a class list, wherever it is: a className, a headingClassName, cn's and cva's,
+  // { className: … } given to createElement, a constant, what a function answers. Not a module's path, an object's
+  // key ("text-decoration" in a style object), nor the messages. A string elsewhere that only looks like a class, as
+  // getPropertyValue("border-top-width") would, is red too: a rare, loud false alarm, accepted.
+  const found = files
+    .filter(([path]) => !copy(path))
+    .flatMap(([path, source]) =>
+      parsed(path, source).values.flatMap(({ text, line }) =>
+        text
+          .split(/\s+/)
+          .filter((word) => !named(utility(word)))
+          .map((word) => `${path}:${line}: ${word}`)
+      )
+    );
   expect(found).toEqual([]);
 });
