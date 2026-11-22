@@ -127,4 +127,45 @@
   body {
     @apply bg-background text-foreground antialiased;
   }
+  /* Checked is amber; their focus is the outline above, 2px off them. Forced colours ignore it, the controls stay
+     the system's (M13/P1/S2; 00-M13 4.3). */
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+}
+
+@layer components {
+  /* NativeSelect's chevron, drawn by the app: two gradients, each a stroke of 1.6px, make the ∨, its colour the
+     faint text's in either theme (decision 753). Under forced colours the browser's own select comes back, its
+     padding the 0.5rem it had (M13/P1/S2). */
+  .nw-select {
+    appearance: none;
+    padding-inline-end: 2rem;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent calc(50% - 0.8px),
+        var(--faint) calc(50% - 0.8px) calc(50% + 0.8px),
+        transparent calc(50% + 0.8px)
+      ),
+      linear-gradient(
+        135deg,
+        transparent calc(50% - 0.8px),
+        var(--faint) calc(50% - 0.8px) calc(50% + 0.8px),
+        transparent calc(50% + 0.8px)
+      );
+    background-position:
+      calc(100% - 17px) 55%,
+      calc(100% - 12px) 55%;
+    background-size: 6px 6px;
+    background-repeat: no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-select {
+      appearance: auto;
+      padding-inline-end: 0.5rem;
+      background-image: none;
+    }
+  }
 }

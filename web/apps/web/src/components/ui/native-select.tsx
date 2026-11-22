@@ -5,16 +5,18 @@ import { cn } from "../../lib/cn";
 
 /**
  * NativeSelect is the browser's select, styled as the inputs: its keyboard and its screen reader's reading are the
- * platform's. Its paint is contained: WebKit counts the text of the option a select shows, as long as it is, in the
- * page's width, though the select clips it (a notebook's long name made the search's results 704 wide at 375; M12/P2/S3,
- * M5-polish 33.1). Its own ring and border are not its content and stay.
+ * platform's. Its chevron is the app's (styles.css's nw-select: appearance none, the browser's own under forced
+ * colours; M13/P1/S2). Its paint is contained: WebKit counts the text of the option a select shows, as long as it is,
+ * in the page's width, though the select clips it (a notebook's long name made the search's results 704 wide at 375;
+ * M12/P2/S3, M5-polish 33.1). Its own ring and border are not its content and stay.
  */
 export function NativeSelect({ className, ...props }: ComponentProps<"select">) {
   return (
     <select
       className={cn(
-        "h-9 max-w-full rounded-md border bg-surface-2 px-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] contain-paint",
-        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "nw-select h-9 max-w-full rounded-control border border-border bg-surface-2 pl-3 text-base text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-150 contain-paint md:text-sm",
+        "focus-visible:border-ring focus-visible:bg-surface focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "aria-invalid:border-destructive aria-invalid:ring-destructive",
         className
       )}
       {...props}

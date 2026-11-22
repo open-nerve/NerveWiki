@@ -38,7 +38,7 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
     />
   );
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <Label htmlFor={id}>{label}</Label>
       {type === "password" ? (
         <div className="flex gap-1">
@@ -58,7 +58,7 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
       ) : (
         <div className="flex items-center gap-1">
           {input}
-          <span aria-hidden className="text-sm text-muted-foreground">
+          <span aria-hidden className="text-base text-muted-foreground md:text-sm">
             {suffix}
           </span>
         </div>
@@ -66,13 +66,13 @@ export function FormField({ label, error, hint, suffix, type, ...props }: FormFi
       {note !== undefined && (
         <p
           id={`${id}-note`}
-          className={error === undefined ? "text-sm text-muted-foreground" : "text-sm text-destructive"}
+          className={error === undefined ? "text-compact text-muted-foreground" : "text-compact text-destructive"}
         >
           {note}
         </p>
       )}
       {kept !== undefined && (
-        <p id={`${id}-hint`} className="text-sm text-muted-foreground">
+        <p id={`${id}-hint`} className="text-compact text-muted-foreground">
           {kept}
         </p>
       )}
