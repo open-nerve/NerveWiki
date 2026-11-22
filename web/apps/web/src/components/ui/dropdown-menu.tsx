@@ -9,7 +9,8 @@ export const DropdownMenuTrigger = Primitive.Trigger;
 export const DropdownMenuRadioGroup = Primitive.RadioGroup;
 
 // A menu pops in from the side that opened it, and closes at once (M13/P1/S2; 00-M13 737). Its items' ring shows for
-// the keyboard alone (app/input-modality.ts, decision 760); with the pointer the highlight is its background.
+// the keyboard alone (app/input-modality.ts, decision 760); with the pointer the highlight is its background. Forced
+// colours drop the ring and the background: a transparent outline, which they show, says where the focus is.
 
 export function DropdownMenuContent({ className, sideOffset = 4, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
@@ -27,7 +28,7 @@ export function DropdownMenuContent({ className, sideOffset = 4, ...props }: Com
 }
 
 const item =
-  "relative flex h-8 cursor-default items-center gap-2.5 rounded-row text-row outline-none select-none focus:bg-active focus:text-foreground focus:ring-ring focus:ring-inset in-data-[modality=keyboard]:focus:ring-2 data-disabled:pointer-events-none data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
+  "relative flex h-8 cursor-default items-center gap-2.5 rounded-row text-row outline-none select-none focus:bg-active focus:text-foreground focus:ring-ring focus:ring-inset in-data-[modality=keyboard]:focus:ring-2 focus-visible:outline-hidden data-disabled:pointer-events-none data-disabled:opacity-50 [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-muted-foreground";
 
 type ItemProps = ComponentProps<typeof Primitive.Item> & {
   /** destructive: the item deletes, in red. */

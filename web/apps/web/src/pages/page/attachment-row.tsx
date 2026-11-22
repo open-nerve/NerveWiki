@@ -5,6 +5,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { formatBytes } from "../../i18n/format";
@@ -190,9 +191,13 @@ export function AttachmentRow({
             </>
           )}
           {deletable && (
-            <DropdownMenuItem tone="destructive" onSelect={() => act("delete", asset)}>
-              {t("page.delete")}
-            </DropdownMenuItem>
+            <>
+              {/* Open and Download come first, always: the line sets Delete apart. */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem tone="destructive" onSelect={() => act("delete", asset)}>
+                {t("page.delete")}
+              </DropdownMenuItem>
+            </>
           )}
         </DropdownMenuContent>
       </DropdownMenu>

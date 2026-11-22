@@ -15,7 +15,7 @@ export function NativeSelect({ className, ...props }: ComponentProps<"select">) 
     <select
       className={cn(
         "nw-select h-9 max-w-full rounded-control border border-border bg-surface-2 pl-3 text-base text-foreground outline-none transition-[color,background-color,border-color,box-shadow] duration-150 contain-paint md:text-sm",
-        "focus-visible:border-ring focus-visible:bg-surface focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "focus-visible:border-ring focus-visible:bg-surface focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50",
         "aria-invalid:border-destructive aria-invalid:ring-destructive",
         className
       )}

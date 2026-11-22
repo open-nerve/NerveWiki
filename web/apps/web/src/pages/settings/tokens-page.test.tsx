@@ -79,6 +79,8 @@ async function expectEmptyForm(user: ReturnType<typeof userEvent.setup>) {
   const dialog = await screen.findByRole("dialog", { name: "Create an access token" });
   expect(within(dialog).getByLabelText("Name")).toHaveProperty("value", "");
   expect(within(dialog).getByLabelText("Current password")).toHaveProperty("value", "");
+  // The expiry is the app's select, drawn as the others are (M13/P1/S2).
+  expect(within(dialog).getByLabelText("Expires").classList.contains("nw-select")).toBe(true);
   expect(document.body.innerHTML).not.toContain(secret);
 }
 

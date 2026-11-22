@@ -64,10 +64,19 @@ test("the item's ring is the keyboard's", async () => {
     screen.getByRole("menuitemradio", { name: "Light" }),
   ]) {
     const name = item.textContent ?? "";
-    expect(item.classList.contains("in-data-[modality=keyboard]:focus:ring-2"), name).toBe(true);
-    // Class by class: the one above has focus:ring-2 in it.
-    expect(item.classList.contains("focus:ring-2"), name).toBe(false);
+    // Its one ring width, the keyboard's: focus:ring-2, focus-visible:ring-2 (which Radix's pointer matches too) or
+    // data-highlighted:ring-2 would ring the pointer's highlight.
+    expect(
+      [...item.classList].filter((each) => /(?:^|:)ring-(?:\d|\[)/.test(each)),
+      name
+    ).toEqual(["in-data-[modality=keyboard]:focus:ring-2"]);
+    // Under forced colours, which drop the ring, a transparent outline shows where the focus is (decision 768).
+    expect(item.classList.contains("focus-visible:outline-hidden"), name).toBe(true);
   }
+  // An item's own icon is quieter than its text; a destructive item's is red.
+  expect(screen.getByRole("menuitem", { name: "Rename" }).classList.contains("[&>svg]:text-muted-foreground")).toBe(
+    true
+  );
   // The choice's check is sized: lucide's would be 24px, where the item's direct icons alone are sized.
   const check = screen.getByRole("menuitemradio", { name: "Light" }).querySelector("svg");
   expect(check?.classList.contains("size-3.5")).toBe(true);

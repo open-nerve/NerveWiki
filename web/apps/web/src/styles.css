@@ -165,29 +165,29 @@
 }
 
 @layer components {
-  /* NativeSelect's chevron, drawn by the app: two gradients, each a stroke of 1.6px, make the ∨, its colour the
-     faint text's in either theme (decision 753). Under forced colours the browser's own select comes back, its
-     padding the 0.5rem it had (M13/P1/S2). */
+  /* NativeSelect's chevron, drawn by the app: two gradients, each a stroke of 1.2px across 5px, meeting at its point,
+     make the ∨ as wide and as fine as the mockup's 14px icon, its colour the faint text's in either theme (decision
+     753). Under forced colours the browser's own select comes back, its padding the 0.5rem it had (M13/P1/S2). */
   .nw-select {
     appearance: none;
     padding-inline-end: 2rem;
     background-image:
       linear-gradient(
         45deg,
-        transparent calc(50% - 0.8px),
-        var(--faint) calc(50% - 0.8px) calc(50% + 0.8px),
-        transparent calc(50% + 0.8px)
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
       ),
       linear-gradient(
         135deg,
-        transparent calc(50% - 0.8px),
-        var(--faint) calc(50% - 0.8px) calc(50% + 0.8px),
-        transparent calc(50% + 0.8px)
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
       );
     background-position:
-      calc(100% - 17px) 55%,
+      calc(100% - 16px) 55%,
       calc(100% - 12px) 55%;
-    background-size: 6px 6px;
+    background-size: 5px 5px;
     background-repeat: no-repeat;
   }
   @media (forced-colors: active) {

@@ -36,7 +36,13 @@ test("the diff's buttons, which copy the outline button's look, keep to it", () 
   const source = readFileSync(new FileURL("../../editor/text-diff.tsx", import.meta.url), "utf8");
   const [, copied = ""] = /const buttonClass =\s*"([^"]*)"/.exec(source) ?? [];
   const classes = copied.split(/\s+/);
-  for (const look of ["bg-surface", "dark:bg-surface-2", "hover:hover-layer", "focus-visible:ring-2"]) {
+  for (const look of [
+    "bg-surface",
+    "dark:bg-surface-2",
+    "hover:hover-layer",
+    "focus-visible:ring-2",
+    "focus-visible:outline-hidden",
+  ]) {
     expect(classes, look).toContain(look);
   }
   // Dark, a hover in place of its background would show what is under the button, darker (decision 757).
@@ -56,11 +62,16 @@ test("each variant has its look", () => {
     const { unmount } = render(<Button variant={variant as keyof typeof looks}>{variant}</Button>);
     const { classList } = screen.getByRole("button", { name: variant });
     for (const look of classes) expect(classList.contains(look), `${variant} ${look}`).toBe(true);
+    // Under forced colours, which drop the ring, a transparent outline shows where the focus is (decision 768).
+    expect(classList.contains("focus-visible:outline-hidden"), variant).toBe(true);
     unmount();
   }
   render(<Button variant="destructive">Delete</Button>);
   const destructive = screen.getByRole("button", { name: "Delete" });
-  expect([...destructive.classList].filter((name) => name.startsWith("bg-destructive"))).toEqual([]);
+  // Its red is the text's: a red fill only as the pointer's tint, hover: and dark:hover:.
+  expect(
+    [...destructive.classList].filter((name) => /bg-destructive/.test(name) && !/(?:^|:)hover:bg-/.test(name))
+  ).toEqual([]);
 });
 
 test("an aria-disabled button stays in the tab order, a disabled one is left out", async () => {

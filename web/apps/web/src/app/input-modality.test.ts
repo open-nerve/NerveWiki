@@ -93,4 +93,11 @@ test("stopped, it changes the modality no more", () => {
   point("pointermove");
   point("pointerdown");
   expect(root.dataset.modality).toBe("keyboard");
+  // Nor a key: each listener goes, in the capture it was added in.
+  stop = trackInputModality(root);
+  point("pointerdown");
+  stop();
+  stop = undefined;
+  key({ key: "Tab" });
+  expect(root.dataset.modality).toBe("pointer");
 });

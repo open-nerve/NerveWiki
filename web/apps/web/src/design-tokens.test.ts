@@ -297,6 +297,8 @@ test("components use the theme's colours, not Tailwind's palette nor written val
 // Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either.
 const noColour = new Set([
   "decoration-dashed",
+  // The outline forced colours show, transparent otherwise (M13/P1/S2, decision 768).
+  "outline-hidden",
   "outline-none",
   "ring-inset",
   "shadow-lg",
@@ -380,4 +382,19 @@ test("every colour class names a colour of the theme", () => {
       )
     );
   expect(found).toEqual([]);
+});
+
+// Motion is the theme's too (M13/P1/S2; 00-M13 4.1): a menu or a dialog pops in, and asked for less motion only fades
+// in, the variable its utility reads changed where reduced motion is asked for, outside any layer.
+test("asked for less motion, what pops in fades in", () => {
+  const { styles: css } = read();
+  const theme = blocks(css)
+    .filter((block) => block.prelude === "@theme")
+    .map((block) => block.body)
+    .join("\n");
+  expect(theme).toMatch(/--animate-pop-in:\s*nw-pop-in\b/);
+  expect(theme).toMatch(/@keyframes\s+nw-fade-in\b/);
+  const reduced = blocks(css).filter((block) => block.prelude === "@media (prefers-reduced-motion: reduce)");
+  expect(reduced).toHaveLength(1);
+  expect(reduced[0]?.body).toMatch(/^\s*:root\s*\{\s*--animate-pop-in:\s*nw-fade-in\b[^}]*\}\s*$/);
 });
