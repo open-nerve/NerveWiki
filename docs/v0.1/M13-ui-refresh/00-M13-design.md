@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 设计定稿，S1 实施中 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 设计定稿，S1 已审查、待合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -541,7 +541,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
-| P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 设计定稿；S1 实施中 | [设计审查](reviews/P1-design-review.md) | — |
+| P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 设计定稿；S1 已审查、待合并 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md) | — |
 | P2 新外框（S1–S3） | — | 未开始 | — | — |
 | P3 设置界面（S1、S2） | — | 未开始 | — | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
@@ -556,3 +556,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-22：修订核对第 2 轮之后三位都没有 Important、Minor；主持者补上第 2 轮的 Nit（PG16 是新的一格、PG2 照旧；13.4 的修订加 PG16；设置模式在窄屏同样是抽屉；属性表的 `rowgroup`；代码块头部的位置）；照第 7 节把"总体设计的修订"第 1–4、8、9 项与三处移交落进各自的文档（设计定稿）。
 - 2026-11-22：负责人批准设计、开工 P1（第 11 节）；主持者的决定 746（没有推送的凭据时以本机门禁替代分支 CI）。
 - 2026-11-22：照 P1 的设计修订（[01-P1](01-P1-foundation.md) 2.1：空状态与骨架挪到 P5，按钮的 30 px 与胶囊形、菜单的子菜单与快捷键挪到 P2/S1，S1 的边界，4.1 的表与字号，4.7 的重量，菜单的环只在键盘操作时）。
+- 2026-11-22：P1/S1 实施与审查完成（[审查记录](reviews/P1-S1-tokens-theme-review.md)；主持者的决定 763–765）；合并见第 12 节。

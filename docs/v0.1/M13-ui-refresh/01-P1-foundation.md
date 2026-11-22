@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P1 设计基础（两个 Step：S1 token 与主题；S2 基础组件） |
-| 日期 | 2026-11-22（初稿；同日照三份设计审查修订，照修订核对第 1 轮再修订，第 2 轮之后补上最后的 Nit，[审查记录](reviews/P1-design-review.md)） |
-| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 待实施 |
+| 日期 | 2026-11-22（初稿；同日照三份设计审查修订，照修订核对第 1 轮再修订，第 2 轮之后补上最后的 Nit，[审查记录](reviews/P1-design-review.md)；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)） |
+| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 实施与审查完成（[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)），合并见 00 号文档第 12 节；S2 待开 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.1、4.3、4.7、4.8、第 7 节 P1 两行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"对比度门槛""原生控件"两行、第 10 节"下拉的 `appearance: none`"一行、第 11 节决定 716、718、722、735–737、745、746；[v0.1 总体设计](../v0.1-design.md) 9.1、13.2 第 26、31 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 5 项 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（色值、按钮、菜单、输入框、下拉、单选）；[mockups/settings.html](mockups/settings.html)（危险按钮、输入框） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `3c315037` 的；`m13-ui-refresh` 的头 `65dbfcbb` 与它之间只改了文档（`git diff --stat 3c315037 HEAD -- web e2e tools` 为空） |
@@ -88,6 +88,7 @@
   - **合并之前**带 `CI=1` 跑网页一侧的全部与 `make e2e`：`CI=1` 让留着的 `test.only` 在 Playwright 与 vitest 里都红，与 CI 一样；
   - **Go 一侧不重跑**：Step 在 Go 的测试读到的路径（`server`、`api`、`deploy`、`.github`、`testdata`、`e2e/fixtures/db.ts` 与全部 `*.go`）上没有差异（7.3 的断言），Go 的树与 `main` 上 CI 绿过的相同；
   - **CI 只补在最后推上去的头**：负责人推送时，非 `main` 分支上新的推送会取消较早的运行（`ci.yml:10-12`），只有最后一个头有 CI；每个合并的头另有本机门禁的记录。没有重现的 CI 项在 7.3 列出。
+- **763–765**（S1 的实施与审查之后，全文在[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）：763 下拉在 S1 就改成 `bg-surface-2`，两处原来的 `bg-muted` 用满色的 `bg-surface-2`；764 PG15 [webkit] 记为本机的第三个已知失败（环境）；765 守约定的测试从严：测试 5 读全部字符串字面量，测试 4 的色值在任何地方都算，误报响亮、漏掉静默。
 - **762 暗色遮罩 45%**：00 号文档 4.3 写"遮罩更淡"，原来是 `bg-black/50`；亮色 32%、暗色 45%（初稿暗色 55%，比原来重，审查 B 的 N8）。
 
 ## 3. 服务端
@@ -108,7 +109,8 @@
 | 7 个用 `ring-[3px]` 的文件 | 4.1.4 |
 | `W/components/ui/button.tsx` | 危险按钮、描边按钮（4.1.5） |
 | `W/components/ui/dialog.tsx:12,15`、`alert-dialog.tsx:16,19` | 面与遮罩（4.1.6） |
-| `W/pages/notebook/upgrade-page.tsx:659`、`upgrade-banner.tsx:39`、`transfer-report.tsx:236` | `bg-muted` → `bg-surface-2`（4.1.6） |
+| `W/pages/notebook/upgrade-page.tsx:659`、`upgrade-banner.tsx:39`、`transfer-report.tsx:236` | `bg-muted`（后两处 `bg-muted/50`）→ `bg-surface-2`（4.1.6） |
+| `W/components/ui/native-select.tsx:16` | `bg-background` → `bg-surface-2`（4.1.6，决定 763） |
 | `W/lib/cn.ts`、`W/lib/cn.test.ts`（新） | 取舍 756 |
 | `W/app/confirm-dialog.test.tsx:88`、`W/pages/notebook/upgrade-page.test.tsx:1188,1422` | 认危险按钮的类名改成 `text-destructive`，按词认（4.1.5） |
 | `W/components/ui/button.test.tsx`（新） | 描边按钮的一格（4.1.5） |
@@ -241,7 +243,8 @@ S1 新建 `W/components/ui/button.test.tsx`，先放一格 `"the outline button 
 - `W/components/ui/dialog.tsx:12`、`alert-dialog.tsx:16`：`bg-black/50` → `bg-overlay`。
 - 两个内容的 `bg-background` → `bg-surface`（`dialog.tsx:15`、`alert-dialog.tsx:19`）。菜单的 `bg-popover` 照旧（取舍 758 的值）。
 - `W/reading/reading.css:13` 的 `--nw-mark-background` 亮改成 `rgba(245, 196, 81, 0.38)`，`:17` 暗改成 `rgba(217, 168, 78, 0.28)`（00 号文档 4.1 照 reading.html）。正文的字对它：亮约 14.6、暗约 8.0。
-- `bg-muted` 的三处改成 `bg-surface-2`（00 号文档 4.1："次一级的面：行内代码"）。
+- `bg-muted` 的三处改成 `bg-surface-2`（00 号文档 4.1："次一级的面：行内代码"）；其中两处原来是 `bg-muted/50`，也用满色，不带 `/50`（决定 763）。
+- `NativeSelect` 的 `bg-background` 改成 `bg-surface-2`（决定 763：暗色对话框里留着 `bg-background` 比面暗，理由同 748 对描边按钮的）；聚焦时换 `bg-surface` 照旧在 S2（4.2.4）。
 
 #### 4.1.7 守住约定的 vitest
 
@@ -260,6 +263,16 @@ S1 新建 `W/components/ui/button.test.tsx`，先放一格 `"the outline button 
 5. `"every colour class names a colour of the theme"`：取词的方法——取源码里的字符串字面量（`import`、`export … from` 的模块路径不取，例如 `"./text-diff"`、`"../../lib/text-ranges"`），按空白切开，去掉方括号与圆括号之外的 `:` 之前的变体与 `/透明度`，从词头匹配 `(?:bg|text|border|ring|outline|fill|stroke|divide|decoration|caret|placeholder)-NAME`；任意值（`-[…]`、`-(…)`，如 `bg-(--nw-mark-background)`）不取。去掉 Tailwind 的非颜色值（一张写在测试里的表：`text-sm`、`text-left`、`border-b`、`ring-2`、`ring-inset`、`outline-none`、`bg-transparent`……由实施者从现有代码里收齐）与 `transparent`、`current`、`inherit`；`text-NAME` 另接受 `styles.css` 的 `@theme` 里声明的 `--text-NAME`（从同一份原文读出：S2 起用的 `text-compact`、`text-row` 是字号，审查 A、B、C 的修订核对第 1 轮）。剩下的 NAME 必须是 `@theme inline` 里某个 `--color-NAME`。它抓住第 1 节那三处 `bg-muted` 这样的、不产出 CSS 的名字（审查 A 的 M6、C 的 M8）。
 
 在没改的树上：五个测试都失败（测试 1 是前置断言，其余是 `accent-foreground`、`bg-accent`、`bg-black/50`、`text-white`、`bg-muted`）。变异 7 在改完 `styles.css` 之后做（旧的 `.dark` 里本来就没有 `--sidebar`）。
+
+**照实**（S1 的实施与审查，[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）：
+
+- 取字符串字面量用 Vite 8 公开导出的 `parseSync`（oxc 的解析器）：仓库的 TypeScript 7.0.2 是原生的版本，没有 JS 的编译器接口；测试文件与 `testing/` 下的假件在 `import.meta.glob` 里以否定的模式去掉。测试 3、4、5 先断言遍历读到了东西（`dialog.tsx` 的 `bg-overlay`、`button.tsx` 的 `bg-primary`）。
+- 测试 1 另断言 `@theme inline` 引用的每个 `var()` 都在 `:root` 里声明。
+- 测试 2、3 也读 `reading.css`；测试 3 认类名（`bg-accent`、`bg-ring`、`bg-(--accent)`、`bg-[var(--accent)]`）与样式（驼峰、短横线、带引号的键、渐变与 `background-image`，值里有 `var(--accent)`、`var(--color-accent)` 或 `var(--ring)`）两类写法，查源码的字面量与两张样式表（去掉注释）。
+- 测试 4：调色板另有 mauve、mist、olive、taupe；色值（3、4、6、8 位十六进制与 `rgba?`、`hsla?`、`hwb`、`lab`、`lch`、`oklab`、`oklch`、`color`、`color-mix(`）在不在词中间的任何地方都算，任意值查整个 `-[…]`，只含 `var()` 的 `color-mix(` 豁免；颜色名不查。
+- 测试 5 读全部字符串字面量，只跳过模块路径、`i18n/messages` 与对象的键（决定 765）；剥掉透明度（含 `/[0.5]`）、边（`border-t-` 等）与偏移（`ring-offset-`、`outline-offset-`）；前缀另有 `from-`、`via-`、`to-`、`shadow-`，`shadow-X`、`text-X` 在主题里有同名的变量时放行；非颜色的表 14 项。
+- `styles.css` 加 `@source not "./**/*.test.{ts,tsx}"`：测试文件不产出 CSS（审查 A、C 的 N）。
+- `button.test.tsx` 三格：描边按钮（含 `dark:bg-surface-2`）、每个变体的环是 `ring-ring`、对比视图的 `buttonClass` 照描边按钮的样子。`cn.test.ts` 另有一格从 `styles.css` 读出全部登记的名字逐个验。
 
 #### 4.1.8 对比度的守卫
 
@@ -577,7 +590,17 @@ S1 的文档提交里改第 1–5 条，S2 的改第 6 条（脚本逐条替换�
 
 ## 10. 结果
 
-（实施后补：10.1 S1，10.2 S2。）
+### 10.1 S1：token 与主题（2026-11-22，合并见 00 号文档第 12 节）
+
+- **提交**：`5a91cb48`（变量、琥珀、守卫，照 6.1 提交 1）；审查的修复 `f7a79a8d`、`ef0261f6`、`08526c82`，修复核对第 1 轮的 `122e9e96`；加本文档提交。[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)。
+- **做完**：4.1.2 的两套变量（`--ring: var(--accent)`，没有 `--accent-foreground`，`--radius` 0.5rem）、`@theme` 的圆角、字号与字体、`hover-layer`；4.1.3 的 22 处类名与 4 处 `var()`；4.1.4 的 2 px 环；4.1.5 的危险按钮与描边按钮；4.1.6 的面、遮罩、高亮、`bg-muted` 与下拉的底；4.1.9 的 tailwind-merge 登记；守约定的五个测试、`cn` 与按钮的测试；三个故事的下限与 se1 的 `ring 2px`。
+- **实量**（Chromium，macOS）：与 4.1.8 的预期之差都不到 0.01；下限 = 实量 − 0.1，正文的两处是 7，逐项在审查记录。
+- **变异**：7.2 的 S1 各条都被抓住（实施者跑，审查 C 独立重跑）；审查者另写的变异在修复之后都被抓住，除了有意不查的颜色名（决定 765）。
+- **门禁**：第 0 步的基线、每个提交的 `make lint-web`、`make knip`、`make test-web`、合并之前带 `CI=1` 的网页一侧与 `make e2e`（只有允许的三格与两个重跑全过的偶发格）都在审查记录；Go 一侧没有差异。
+- **与设计不同之处**：4.1.6、4.1.7 的"照实"；决定 763–765。
+- **交给 S2**：暗色下搜索框（透明）与"搜索"按钮（`surface-2`）不同色，S2 给输入框 `surface-2` 之后一致；Firefox、WebKit 与强制色模式的外观在 S2 看。
+
+（10.2 S2：实施后补。）
 
 ## 附录：核对过的代码
 
