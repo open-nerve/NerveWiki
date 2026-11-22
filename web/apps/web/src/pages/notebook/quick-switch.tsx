@@ -170,7 +170,7 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
               onClick={() => go(page.id)}
               className={cn(
                 "cursor-pointer px-3 py-1.5 text-sm",
-                index === current && "bg-accent ring-2 ring-ring ring-inset"
+                index === current && "bg-active ring-2 ring-ring ring-inset"
               )}
             >
               <span className="block truncate">{page.name}</span>{" "}

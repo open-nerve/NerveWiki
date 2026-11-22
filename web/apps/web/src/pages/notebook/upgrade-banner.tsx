@@ -36,7 +36,7 @@ export function UpgradeBanner({ notebook }: { notebook: Notebook }) {
   }
   const admin = notebook.role === "admin";
   return (
-    <output className="mb-6 block space-y-1 rounded-md border border-primary/40 bg-muted/50 px-4 py-3 text-sm">
+    <output className="mb-6 block space-y-1 rounded-md border border-primary/40 bg-surface-2 px-4 py-3 text-sm">
       <span className="block">{t(upgradeStateText[upgrade.state])}</span>
       {admin && (upgrade.state !== "rolling_back" || !onItsPage) && (
         <span className="block">

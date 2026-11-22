@@ -1185,7 +1185,8 @@ async function submitting(
   await user.click(await screen.findByRole("button", { name: submits }));
   const dialog = await screen.findByRole("alertdialog", { name: "Submit for review?" });
   // Submitting is no destructive change (decision 259): its confirmation is not styled as one.
-  expect(within(dialog).getByRole("button", { name: "Submit for review" }).className).not.toMatch(/bg-destructive/);
+  const submit = within(dialog).getByRole("button", { name: "Submit for review" });
+  expect(submit.classList.contains("text-destructive")).toBe(false);
   expect(dialog.textContent).toContain(
     "Once submitted, this notebook is frozen for everyone, the initiator's agent too. The system checks it again from that moment: once every check passes, it is in review, waiting for an admin's approval; otherwise it is upgrading again."
   );
@@ -1419,7 +1420,7 @@ test("the review's dialogs: Approve, plain, names the source area it makes read 
     // oxlint-disable-next-line no-await-in-loop -- one dialog at a time
     const dialog = await opened(user, button, name);
     seen.push([
-      within(dialog).getByRole("button", { name: confirm }).className.includes("bg-destructive"),
+      within(dialog).getByRole("button", { name: confirm }).classList.contains("text-destructive"),
       within(dialog).getByText(body) !== null,
     ]);
     // oxlint-disable-next-line no-await-in-loop -- one dialog at a time

@@ -155,7 +155,7 @@ export function AttachmentRow({
             type="button"
             data-actions-of={asset.id}
             aria-label={t("asset.actions", { name: asset.name })}
-            className="rounded p-1 text-muted-foreground hover:bg-accent"
+            className="rounded p-1 text-muted-foreground hover:bg-hover"
           >
             <Ellipsis className="size-4" />
           </button>

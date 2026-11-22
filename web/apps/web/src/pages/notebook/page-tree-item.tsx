@@ -273,7 +273,7 @@ const PageRow = memo(function PageRow({
             aria-controls={open ? listId : undefined}
             aria-label={t("page.subpagesOf", { name: label })}
             onClick={() => context.pages.toggle(id)}
-            className="rounded p-1 text-muted-foreground hover:bg-accent"
+            className="rounded p-1 text-muted-foreground hover:bg-hover"
           >
             <ChevronRight className={cn("size-4 transition-transform", open && "rotate-90")} />
           </button>
@@ -287,8 +287,8 @@ const PageRow = memo(function PageRow({
           draggable={writer ? false : undefined}
           className={cn(
             // Relative: an unseen suffix stays inside what truncate clips.
-            "relative min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm hover:bg-accent",
-            active ? "bg-accent font-medium" : "text-muted-foreground"
+            "relative min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm",
+            active ? "bg-active font-medium" : "text-muted-foreground hover:bg-hover"
           )}
         >
           {agents && <Bot aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
@@ -327,7 +327,7 @@ const PageRow = memo(function PageRow({
               }
             }}
             // Shown on hover, or always where a pointer is a finger, which does not hover.
-            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-accent focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
+            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-hover focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>

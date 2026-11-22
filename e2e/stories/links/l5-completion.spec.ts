@@ -124,17 +124,24 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect.poll(() => completions(page)).toEqual([["project/alpha", "1 page"]]);
   // A screen reader hears the option's text and its detail apart.
   await expect(completion(page).getByRole("option", { name: "project/alpha, 1 page", exact: true })).toBeVisible();
-  // The selected option's detail reads against it, and the editor's frame and the option selected show where the
-  // focus is, against what is around them, in either theme (M12/P2/S3; M5-polish 12.4).
+  // The selected option's detail reads against it, and the editor's amber frame and the option selected show where
+  // the focus is, against what is around them, in either theme no fainter than they were (M13/P1/S1; 00-M13 4.7).
+  // Floors at what M13/P1/S1 measured, less 0.1: no colour is to fade by accident (00-M13 4.7). Measured on Chromium:
+  // light, the detail 5.281, the editor's frame and the view's link 2.986, the option selected and the menu's current
+  // item, their rings inset, 2.551; dark 4.849, 7.923, 5.476.
+  const floors = {
+    light: { detail: 5.18, frame: 2.88, selected: 2.45, link: 2.88, current: 2.45 },
+    dark: { detail: 4.74, frame: 7.82, selected: 5.37, link: 7.82, current: 5.37 },
+  } as const;
   const completionShown = async (scheme: "light" | "dark") => {
     await setColorScheme(page, scheme);
     await expect(completion(page)).toBeVisible();
     const detail = await textContrast(completion(page).locator("[aria-selected] .cm-completionDetail"));
-    expect(detail.ratio, `${scheme} ${JSON.stringify(detail)}`).toBeGreaterThanOrEqual(4.5);
+    expect(detail.ratio, `${scheme} ${JSON.stringify(detail)}`).toBeGreaterThanOrEqual(floors[scheme].detail);
     const frame = await indicatorContrast(page.locator(".cm-editor.cm-focused"));
-    expect(frame.ratio, `${scheme} ${JSON.stringify(frame)}`).toBeGreaterThanOrEqual(3);
+    expect(frame.ratio, `${scheme} ${JSON.stringify(frame)}`).toBeGreaterThanOrEqual(floors[scheme].frame);
     const selected = await indicatorContrast(completion(page).locator("li[aria-selected]"));
-    expect(selected.ratio, `${scheme} ${JSON.stringify(selected)}`).toBeGreaterThanOrEqual(3);
+    expect(selected.ratio, `${scheme} ${JSON.stringify(selected)}`).toBeGreaterThanOrEqual(floors[scheme].selected);
   };
   await completionShown("light");
   await completionShown("dark");
@@ -169,13 +176,13 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     await setColorScheme(page, scheme);
     await link.focus();
     const ring = await focusContrast(link);
-    expect(ring.ratio, `${scheme} ${JSON.stringify(ring)}`).toBeGreaterThanOrEqual(3);
+    expect(ring.ratio, `${scheme} ${JSON.stringify(ring)}`).toBeGreaterThanOrEqual(floors[scheme].link);
     await menu.focus();
     await page.keyboard.press("Enter");
     const item = page.getByRole("menuitem").first();
     await expect(item).toBeFocused();
     const current = await indicatorContrast(item);
-    expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(3);
+    expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(floors[scheme].current);
     await page.keyboard.press("Escape");
     await expect(item).toBeHidden();
   };

@@ -113,7 +113,7 @@ export const TransferJobRow = observer(function TransferJobRow({
       tabIndex={-1}
       aria-label={name}
       aria-describedby={`${stateId} ${detailsId}`}
-      className="space-y-3 p-4 outline-none focus-visible:ring-[3px] focus-visible:ring-ring"
+      className="space-y-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 space-y-1">

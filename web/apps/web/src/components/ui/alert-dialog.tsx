@@ -13,10 +13,10 @@ export const AlertDialogCancel = Primitive.Cancel;
 export function AlertDialogContent({ className, ...props }: ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
-      <Primitive.Overlay className="fixed inset-0 z-50 bg-black/50" />
+      <Primitive.Overlay className="fixed inset-0 z-50 bg-overlay" />
       <Primitive.Content
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-background p-6 shadow-lg sm:max-w-md",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border bg-surface p-6 shadow-lg sm:max-w-md",
           className
         )}
         {...props}

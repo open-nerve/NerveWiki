@@ -656,7 +656,7 @@ function AgentSection({ upgrade }: { upgrade: Upgrade }) {
         <>
           <p>{t("upgrade.agentYours")}</p>
           <p>
-            {t("upgrade.agentPrompt")} <code className="rounded bg-muted px-1 font-mono text-sm">upgrade</code>
+            {t("upgrade.agentPrompt")} <code className="rounded bg-surface-2 px-1 font-mono text-sm">upgrade</code>
           </p>
         </>
       ) : (

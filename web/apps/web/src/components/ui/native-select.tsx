@@ -13,8 +13,8 @@ export function NativeSelect({ className, ...props }: ComponentProps<"select">) 
   return (
     <select
       className={cn(
-        "h-9 max-w-full rounded-md border bg-background px-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] contain-paint",
-        "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+        "h-9 max-w-full rounded-md border bg-surface-2 px-2 text-sm text-foreground shadow-xs outline-none transition-[color,box-shadow] contain-paint",
+        "focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
         className
       )}
       {...props}

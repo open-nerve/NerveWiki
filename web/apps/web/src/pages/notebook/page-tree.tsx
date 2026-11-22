@@ -182,7 +182,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           <Link
             to={`${home}/index`}
             state={opened}
-            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-hover"
           >
             <List aria-hidden="true" className="size-4" />
             {t("index.title")}
@@ -190,7 +190,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           <Link
             to={`${home}/history`}
             state={opened}
-            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-accent"
+            className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-hover"
           >
             <History aria-hidden="true" className="size-4" />
             {t("history.title")}
