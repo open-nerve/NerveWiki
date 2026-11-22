@@ -1,4 +1,4 @@
-import { Bot, ChevronRight, Ellipsis, FileText, Library } from "lucide-react";
+import { Bot, ChevronRight, Ellipsis, File, FileText, Library } from "lucide-react";
 import { computed, type IObservableValue } from "mobx";
 import { observer } from "mobx-react-lite";
 import {
@@ -84,7 +84,11 @@ export type OpenMenu = { id: string; button: string; box: Box };
  * a write's failure shows; the page whose menu button is to have the
  * focus, observable, which the tree gives it once it has it; the tree's
  * menu opened at a page's button, and closed as the page's row leaves;
- * the router's navigation; and each row's handles, by its page.
+ * the router's navigation; each row's handles, by its page; and the
+ * reveal of the page shown's row in the left column (M13/P2/S2, decision
+ * 791): its row registers its link as it is the page shown (show, which
+ * answers how to take it back), and the tree brings it into the column's
+ * view once a navigation (reveal).
  */
 export type TreeContext = {
   pages: PageTreeStore;
@@ -99,6 +103,8 @@ export type TreeContext = {
   left: (id: string) => void;
   go: NavigateFunction;
   rows: Map<string, RowHandles>;
+  show: (link: HTMLElement) => () => void;
+  reveal: () => void;
 };
 
 /** notebookOf is the notebook of the tree as the store reads it, or as the tree was last given it. */
@@ -156,7 +162,7 @@ export const PageList = observer(function PageList({ context, parent, depth, id 
   };
   return (
     // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-noninteractive-element-interactions -- a click on one of its links, which Enter on a link is too
-    <ul id={id} className="flex flex-col gap-0.5" onClick={follow}>
+    <ul id={id} className="flex flex-col" onClick={follow}>
       {children.slice(0, shown).map((node) => {
         const hasChildren = pages.childrenOf(node.id).length > 0;
         return (
@@ -211,7 +217,12 @@ type RowProps = {
  * menu button and its dialogs once chosen, its children's list while
  * shown. It renders again only as what it shows changes: another's change
  * to the tree renders the row it adds, a page followed the two rows whose
- * mark changes.
+ * mark changes. A row of the mockup's .tree (M13/P2/S2, decision 780): a
+ * level 1rem in, its page's icon (a file's for an ordinary page), the page
+ * shown's row on the accent's soft background, its icon amber; the hover's
+ * and the mark's background are the row's, its link still the row's child.
+ * The page shown's row registers its link, which the tree brings into the
+ * column's view (decision 791).
  */
 const PageRow = memo(function PageRow({
   context,
@@ -234,6 +245,7 @@ const PageRow = memo(function PageRow({
   const listId = `${ids}list`;
   const buttonId = `${ids}actions`;
   const row = useRef<HTMLDivElement>(null);
+  const link = useRef<HTMLAnchorElement>(null);
   const instruction = useDrag(context.pages, id, row, open, canDrag, writer);
   const [expanded, setExpanded] = useState(false);
   const [dialog, setDialog] = useState<Chosen>();
@@ -257,16 +269,25 @@ const PageRow = memo(function PageRow({
       context.left(id);
     };
   }, [context, id, writer]);
+  // A layout effect: the tree's own, its parent's, runs after it in the commit and decides for the navigation.
+  useLayoutEffect(() => {
+    const element = link.current;
+    return active && element !== null ? context.show(element) : undefined;
+  }, [active, context]);
+  // The page's icon, amber on the page shown's row.
+  const icon = cn("mr-2.25 inline-block size-4 align-text-bottom", active && "text-accent");
   return (
     <li>
       <div
         ref={row}
+        data-active={active || undefined}
         className={cn(
-          "group relative flex items-center gap-0.5 rounded-md",
+          "group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground",
           instruction?.operation === "combine" &&
             (instruction.blocked ? "ring-2 ring-destructive" : "ring-2 ring-primary")
         )}
-        style={{ paddingLeft: `${depth * 0.75}rem` }}
+        // A level a rem in: a root page's icon at 30px, the next level's at 46px, as the mockup's.
+        style={{ paddingLeft: `${0.5 + depth}rem` }}
       >
         {hasChildren ? (
           <button
@@ -275,27 +296,27 @@ const PageRow = memo(function PageRow({
             aria-controls={open ? listId : undefined}
             aria-label={t("page.subpagesOf", { name: label })}
             onClick={() => context.pages.toggle(id)}
-            className="rounded p-1 text-muted-foreground hover:bg-hover"
+            className="grid size-4.5 shrink-0 place-items-center rounded-sm text-faint hover:bg-hover"
           >
-            <ChevronRight className={cn("size-4 transition-transform", open && "rotate-90")} />
+            <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>
         ) : (
-          <span className="w-6 shrink-0" />
+          <span className="w-4.5 shrink-0" />
         )}
         <a
+          ref={link}
           href={href}
           aria-current={active ? "page" : undefined}
           // A link drags itself: a drag from the title would not be the row's.
           draggable={writer ? false : undefined}
-          className={cn(
-            // Relative: an unseen suffix stays inside what truncate clips.
-            "relative min-w-0 flex-1 truncate rounded-md px-2 py-1.5 text-sm",
-            active ? "bg-active font-medium" : "text-muted-foreground hover:bg-hover"
-          )}
+          // Relative: an unseen suffix stays inside what truncate clips.
+          className={cn("relative min-w-0 flex-1 truncate py-1", active && "font-medium")}
         >
-          {agents && <Bot aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
-          {sourceRoot && <Library aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
-          {source && <FileText aria-hidden className="mr-1 inline-block size-4 align-text-bottom" />}
+          {agents && <Bot aria-hidden className={icon} />}
+          {sourceRoot && <Library aria-hidden className={icon} />}
+          {source && <FileText aria-hidden className={icon} />}
+          {/* An ordinary page's (M5-polish 37): its name at 55px, as the Directory and History rows' are. */}
+          {!agents && !sourceRoot && !source && <File aria-hidden className={icon} />}
           {name}
           {(agents || sourceRoot || source) && (
             <>
@@ -329,7 +350,7 @@ const PageRow = memo(function PageRow({
               }
             }}
             // Shown on hover, or always where a pointer is a finger, which does not hover.
-            className="rounded p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-hover focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
+            className="grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"
           >
             <Ellipsis className="size-4" />
           </button>
@@ -342,8 +363,8 @@ const PageRow = memo(function PageRow({
               instruction.operation === "reorder-before" ? "-top-px" : "-bottom-px",
               instruction.blocked ? "bg-destructive" : "bg-primary"
             )}
-            // At the page's level: where its title starts.
-            style={{ left: `${depth * 0.75 + 1.5}rem` }}
+            // At the page's level: where its title starts, past its level, its children's button and the gap.
+            style={{ left: `${0.5 + depth + 1.375}rem` }}
           />
         )}
       </div>

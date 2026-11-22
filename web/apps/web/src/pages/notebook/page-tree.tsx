@@ -3,8 +3,8 @@ import { extractInstruction } from "@atlaskit/pragmatic-drag-and-drop-hitbox/lis
 import { Book, ChevronDown, History, List, Plus, Settings2 } from "lucide-react";
 import { observable, runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
-import { Link, NavLink, useMatch, useNavigate, useParams } from "react-router";
+import { useEffect, useId, useInsertionEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Link, NavLink, useLocation, useMatch, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { opened } from "../../app/arrival";
@@ -12,8 +12,10 @@ import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
+import { intoColumn } from "../../app/shell-sidebar";
 import { duplicateText } from "./duplicate-text";
 import { useNodeNavigate } from "../node-target";
+import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -37,6 +39,22 @@ const shown =
   "opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100";
 
 /**
+ * A Directory or History row of an LLM Wiki's tree: a page's row at the root, its icon where a page's is, its name
+ * where a page's is, marked as the page shown is (decision 780; M5-polish 38.5).
+ */
+function placeRow({ isActive }: { isActive: boolean }): string {
+  return cn(
+    "flex h-7.5 items-center gap-2.25 rounded-row pr-2 pl-7.5 text-row transition-colors duration-150",
+    isActive
+      ? "bg-accent-soft font-medium text-foreground [&_svg]:text-accent"
+      : "text-muted-foreground hover:bg-hover hover:text-foreground"
+  );
+}
+
+/** What the reveal of the page shown's row watches the reader with, since the navigation it is for (decision 791). */
+type Watch = { key: string | undefined; reader: ReturnType<typeof watchReader> | undefined };
+
+/**
  * PageTree is the notebook's pages in the left column (M4/P5 design 3.6,
  * 3.7): a navigation of its own, in the workspace's, its pages nested
  * lists of links, each page with children a button that shows or hides
@@ -48,6 +66,14 @@ const shown =
  * before the navigation: a link to the notebook's home, then the cog of the
  * notebook's settings; the navigation's New page stands beside the cog, at
  * the row's end, both of them faint until the row is hovered.
+ *
+ * The page shown's row is brought into the column's view (decisions 779,
+ * 791): by the column's area alone, never scrollIntoView, which scrolls the
+ * window too; at most once a navigation, which a hash, a query or a replace
+ * of the address shown does not start again; not once the reader has
+ * scrolled, pressed or touched in the column's area since the navigation,
+ * a row drawn late (a list drawn a chunk a paint, a tree read later) coming
+ * to one who has moved on.
  *
  * An editor or admin also gets New page, each page's menu (New subpage,
  * Rename, Move to…, Delete) and dragging: before a page, after it, or into
@@ -92,7 +118,20 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const writer = writesNotebook(notebook);
   const { move: sourceMove, confirmation } = useSourceMove(pages);
   const navigate = useNavigate();
+  const location = useLocation();
   const atHome = useMatch(home) !== null;
+  // The reveal's (decision 791). key: location.key of the commit, set in an insertion effect, before the commit's
+  // layout effects, the rows' too (a render not committed leaves it); settled: the key the layout effect below last
+  // ran for; path: the pathname it last saw; at: the key of the navigation that last changed the pathname, the one
+  // reveal decides for; revealed: the navigation it brought the row in for; shownLink: the page shown's link, as its
+  // row registers it; watch: the same object for the tree's life, its fields changed.
+  const key = useRef<string | undefined>(undefined);
+  const settled = useRef<string | undefined>(undefined);
+  const path = useRef<string | undefined>(undefined);
+  const at = useRef<string | undefined>(undefined);
+  const revealed = useRef<string | undefined>(undefined);
+  const shownLink = useRef<HTMLElement | null>(null);
+  const watch = useRef<Watch>({ key: undefined, reader: undefined });
   const [menu, setMenu] = useState<OpenMenu>();
   const menuId = useId();
   // The notebook as the tree was last given it: where the store no longer finds it, this tab editing one of its
@@ -120,8 +159,8 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
     }
     return monitorForElements({
       canMonitor: ({ source }) => isDragData(source.data) && source.data.notebook === notebook.id,
-      onDrop: ({ source, location }) => {
-        const target = location.current.dropTargets[0];
+      onDrop: ({ source, location: dropped }) => {
+        const target = dropped.current.dropTargets[0];
         const instruction = target === undefined ? null : extractInstruction(target.data);
         const tree = pages.tree;
         if (
@@ -155,8 +194,29 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   };
   // The same for the tree's life, so that the rows' memo holds: what changes as the tree is shown, the lists and
   // dialogs read from the store, or the menu takes as its own (M12/P4/S4 design 3.2).
-  const context = useMemo<TreeContext>(
-    () => ({
+  const context = useMemo<TreeContext>(() => {
+    // Once for the navigation at decides for, the page shown's row registered and the reader not having done
+    // anything in the column's area since: the watch made at its first call for the navigation, so that what the
+    // reader did before it (the quick switch's keys, a click on a row) is not counted.
+    const reveal = () => {
+      const navigation = at.current;
+      if (navigation === undefined || revealed.current === navigation) {
+        return;
+      }
+      const watching = watch.current;
+      if (watching.key !== navigation || watching.reader === undefined) {
+        watching.reader?.end();
+        watching.key = navigation;
+        watching.reader = watchReader({ within: "[data-sidebar-scroll]" });
+      }
+      const link = shownLink.current;
+      if (link === null || watching.reader.acted() || !intoColumn(link)) {
+        return;
+      }
+      revealed.current = navigation;
+      watching.reader.end();
+    };
+    return {
       pages,
       heading,
       home,
@@ -169,9 +229,42 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       left: (id) => setMenu((open) => (open?.id === id ? undefined : open)),
       go: navigate,
       rows: new Map(),
-    }),
-    [pages, home, menuId, navigate, focusingBox]
-  );
+      reveal,
+      show: (link) => {
+        shownLink.current = link;
+        // A row drawn later in the navigation, which the layout effect below has decided for already.
+        if (settled.current === key.current) {
+          reveal();
+        }
+        return () => {
+          if (shownLink.current === link) {
+            shownLink.current = null;
+          }
+        };
+      },
+    };
+  }, [pages, home, menuId, navigate, focusingBox]);
+  useInsertionEffect(() => {
+    key.current = location.key;
+  }, [location.key]);
+  // After the rows' layout effects, which register the page shown's link: decides for the navigation.
+  useLayoutEffect(() => {
+    settled.current = location.key;
+    if (location.pathname !== path.current) {
+      path.current = location.pathname;
+      at.current = location.key;
+    }
+    // Nothing for a navigation decided already: a hash, a query, a replace of the address shown.
+    context.reveal();
+  }, [location.key, location.pathname, context]);
+  useEffect(() => {
+    const watching = watch.current;
+    return () => {
+      watching.reader?.end();
+      // StrictMode's unmount and mount again: reveal makes a new one (as useArrivalWatch does).
+      watching.reader = undefined;
+    };
+  }, []);
   return (
     <>
       <div
@@ -220,25 +313,17 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           </Button>
         )}
         {notebook.mode === "llm_wiki" && (
-          <div className="space-y-1">
-            {/* Opened by the tree, as its pages are (M12/P2/S1). */}
-            <Link
-              to={`${home}/index`}
-              state={opened}
-              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-hover"
-            >
-              <List aria-hidden="true" className="size-4" />
+          <>
+            {/* Opened by the tree, as its pages are (M12/P2/S1); each its own page's, not a changeset's (end). */}
+            <NavLink to={`${home}/index`} end state={opened} className={placeRow}>
+              <List aria-hidden className="size-4 shrink-0" />
               {t("index.title")}
-            </Link>
-            <Link
-              to={`${home}/history`}
-              state={opened}
-              className="flex items-center gap-2 rounded-md px-3 py-1.5 text-sm hover:bg-hover"
-            >
-              <History aria-hidden="true" className="size-4" />
+            </NavLink>
+            <NavLink to={`${home}/history`} end state={opened} className={placeRow}>
+              <History aria-hidden className="size-4 shrink-0" />
               {t("history.title")}
-            </Link>
-          </div>
+            </NavLink>
+          </>
         )}
         {failure !== undefined && (
           // The navigation has no space between its rows: the notice keeps clear of the ones above and below it.

@@ -364,20 +364,32 @@ test("the wait's listeners go once its read settles", async () => {
     added.mockRestore();
     removed.mockRestore();
   });
-  // The inputs listened to in the capture phase: the wait's.
-  const inputs = (spy: typeof added | typeof removed) =>
-    spy.mock.calls
-      .filter(([type]) => ["wheel", "touchmove", "pointerdown", "keydown"].includes(type))
-      .filter(([, , options]) => options === true || (typeof options === "object" && options.capture === true))
-      .map(([type]) => type);
+  // The inputs listened to in the capture phase, as each listener's types, by the listener.
+  const inputs = (spy: typeof added | typeof removed) => {
+    const by = new Map<unknown, string[]>();
+    for (const [type, listener, options] of spy.mock.calls) {
+      const capture = options === true || (typeof options === "object" && options.capture === true);
+      if (capture && ["wheel", "touchmove", "pointerdown", "keydown"].includes(type)) {
+        by.set(listener, [...(by.get(listener) ?? []), type]);
+      }
+    }
+    return by;
+  };
+  // What still listens: the wait's, the tree's watch of the reader for its row's reveal having ended as the row
+  // came into view (M13/P2/S2), as it had for the pages before.
+  const listening = () => {
+    const removedBy = inputs(removed);
+    return [...inputs(added)].flatMap(([listener, types]) =>
+      types.filter((type) => !(removedBy.get(listener) ?? []).includes(type))
+    );
+  };
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
   await openedFromTheCache(server, "#nw-x");
-  await waitFor(() => expect(inputs(added)).toHaveLength(4));
-  expect(inputs(removed)).toEqual([]);
+  await waitFor(() => expect(listening()).toHaveLength(4));
 
   await act(async () => release());
   await screen.findByRole("heading", { level: 2, name: "X" });
-  expect(new Set(inputs(removed))).toEqual(new Set(inputs(added)));
+  expect(listening()).toEqual([]);
 });
 
 test("the browser's own scrolling during the wait is not the reader's: the element the read brings takes the focus", async () => {
