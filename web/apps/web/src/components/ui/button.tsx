@@ -14,17 +14,24 @@ const buttonVariants = cva(
         destructive:
           "border border-destructive/35 bg-transparent text-destructive hover:bg-destructive/8 dark:hover:bg-destructive/10",
       },
+      // sm and icon-sm are the shell's 30px, its top right's and its search's (M13/P2, decision 773).
       size: {
         default: "h-9 px-4",
+        sm: "h-7.5 px-3.25 text-compact",
         icon: "size-9",
+        "icon-sm": "size-7.5",
+      },
+      shape: {
+        default: "",
+        pill: "rounded-full",
       },
     },
-    defaultVariants: { variant: "default", size: "default" },
+    defaultVariants: { variant: "default", size: "default", shape: "default" },
   }
 );
 
 type ButtonProps = ComponentProps<"button"> & VariantProps<typeof buttonVariants>;
 
-export function Button({ className, variant, size, type = "button", ...props }: ButtonProps) {
-  return <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+export function Button({ className, variant, size, shape, type = "button", ...props }: ButtonProps) {
+  return <button type={type} className={cn(buttonVariants({ variant, size, shape }), className)} {...props} />;
 }

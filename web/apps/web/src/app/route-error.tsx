@@ -4,15 +4,18 @@ import { useRouteError } from "react-router";
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
 import { ApiError } from "../services/api";
+import { useCornerBack } from "./corner";
 import { useDocumentTitle } from "./document-title";
 
 /**
  * RouteError is the error boundary of the routes: an exception while a page
  * loads (a chunk of an older build that is gone) or renders. It shows the
  * API's error code, if any, and nothing else of the exception, which goes to
- * the console.
+ * the console. In place of a page with a left column it has none: it gives
+ * the top right back (M13/P2/S1).
  */
 export function RouteError() {
+  useCornerBack();
   const error = useRouteError();
   const t = useT();
   useDocumentTitle(t("error.title"));

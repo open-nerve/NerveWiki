@@ -1,5 +1,4 @@
 import { observer } from "mobx-react-lite";
-import { useSyncExternalStore } from "react";
 import { Navigate, Outlet, useLocation, useSearchParams } from "react-router";
 import useSWR from "swr";
 
@@ -7,20 +6,14 @@ import { Loading } from "../components/loading";
 import { pendingSteps } from "../onboarding/steps";
 import { SessionChangedError } from "../session/token-manager";
 import { useAccount, useStore } from "../stores/context";
-import type { SessionState } from "../stores/auth.store";
 import { safeNextPath, withNext } from "./next-path";
+import { useSession } from "./session-state";
 import { SessionUnavailablePage } from "./session-unavailable";
 
 // The route guards (M1/P5 design 3.5): the only place that decides where
 // the tab goes as its session changes. The pages never navigate after a
 // sign-in, a sign-up or a sign-out: the session changes, and the guard of
 // the page shown sends the tab on.
-
-/** useSession is the tab's session state; the component renders again on every change. */
-export function useSession(): SessionState {
-  const { auth } = useStore();
-  return useSyncExternalStore(auth.subscribe, () => auth.state);
-}
 
 /** GuestOnly shows the sign-in and sign-up pages to a tab without a session; one with a session goes to next. */
 export function GuestOnly() {

@@ -42,8 +42,8 @@ const ProfileSection = observer(function ProfileSection() {
 
 /**
  * PreferencesSection chooses the theme and the language of this browser:
- * the same preferences as the top bar's menus, applied at once and kept on
- * the device, not on the server.
+ * the same preferences as the account menu's Appearance, applied at once
+ * and kept on the device, not on the server.
  */
 const PreferencesSection = observer(function PreferencesSection() {
   const { preferences } = useStore();

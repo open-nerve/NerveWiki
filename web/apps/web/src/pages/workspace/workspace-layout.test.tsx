@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -46,6 +46,19 @@ test.each([
   expect(items.map((item) => item.getAttribute("href"))).toEqual(offered.map(() => "/create-workspace"));
 });
 
+test("Create workspace in the switcher leaves the workspace's shell, arrived at: the page's title takes the focus", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", withWorkspaces());
+
+  await user.click(await screen.findByRole("button", { name: "Lab", description: "Switch workspace" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Create workspace" }));
+
+  // The switcher leaves with the shell: its menu has no button to give the focus back to (M13/P2/S1, decision 771).
+  const title = await screen.findByRole("heading", { level: 1, name: "Create a workspace" });
+  expect(router.state.location.pathname).toBe("/create-workspace");
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
 test("a workspace shown is the one the device lands on next", async () => {
   const app = withWorkspaces();
   renderApp("/acme", app);
@@ -80,14 +93,21 @@ test("a slug the account has no workspace of is not found, nor remembered", asyn
 });
 
 // The left column is no landmark of its own: the workspace's navigation is
-// the one it holds (M3/P4 design 3.3).
-test("the navigation leads to the workspace's pages, marking the one shown", async () => {
+// the one it holds (M3/P4 design 3.3). Its switcher is the column's top, above
+// the search, outside the navigation (M13/P2/S1, decision 775; 00-M13 4.2.1).
+test("the switcher heads the column, before the search, outside the navigation, which leads to the workspace's pages, marking the one shown", async () => {
   renderApp("/acme", withWorkspaces());
 
   const nav = await screen.findByRole("navigation", { name: "Acme" });
   expect(screen.queryByRole("complementary")).toBeNull();
-  // The switcher too is in the navigation, a landmark's.
-  expect(within(nav).getByRole("button", { name: "Acme", description: "Switch workspace" })).toBeTruthy();
+  const column = nav.closest<HTMLElement>("[data-shell]");
+  if (column === null) throw new Error("the navigation is in no column");
+  const switcher = screen.getByRole("button", { name: "Acme", description: "Switch workspace" });
+  expect(within(column).getAllByRole("button")[0]).toBe(switcher);
+  expect(nav.contains(switcher)).toBe(false);
+  const search = within(column).getByRole("search");
+  expect(switcher.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(search.compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   const links = within(nav).getAllByRole("link");
   expect(links.map((link) => [link.textContent, link.getAttribute("href"), link.getAttribute("aria-current")])).toEqual(
     [

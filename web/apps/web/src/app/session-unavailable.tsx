@@ -2,6 +2,7 @@ import { useRef } from "react";
 
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
+import { useCornerBack } from "./corner";
 import { useDocumentTitle } from "./document-title";
 import { useSignOut } from "./sign-out";
 
@@ -35,8 +36,12 @@ export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   );
 }
 
-/** SessionUnavailablePage is SessionUnavailable in place of a whole page: it names the tab as well. */
+/**
+ * SessionUnavailablePage is SessionUnavailable in place of a whole page: it names the tab as well. In place of a page
+ * with a left column it has none: it gives the top right back, Appearance there (M13/P2/S1, decision 792).
+ */
 export function SessionUnavailablePage({ onRetry }: { onRetry: () => void }) {
+  useCornerBack();
   const t = useT();
   useDocumentTitle(t("session.unavailableTitle"));
   return <SessionUnavailable onRetry={onRetry} />;

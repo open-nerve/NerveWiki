@@ -37,6 +37,7 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
         workspace={workspace}
         headingClassName="text-lg font-medium"
         listClassName="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        groupClassName="space-y-2"
         renderItem={(notebook) => (
           // The card leaves with the home: the notebook's home is arrived at, its title taking the focus (v0.1
           // design 13.2, item 17; M12/P2/S1).

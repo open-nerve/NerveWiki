@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1 实施中 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1 已审查、待合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -148,15 +148,15 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
    - 树在笔记本列表的项里，e2e 的 `notebookGroups`（`e2e/fixtures/notebook-pages.ts:17-26`，17 处调用）改成每一项只取第一个链接，调用处不动。
    - **树的容器要稳定**：一本笔记本可能在两组之间挪动（"我的"= 不开放且只有一个成员，`W/stores/notebook.store.ts:18-24`），列表项随之换了；未保存的编辑期间留着的、已不在列表里的笔记本（`W/pages/notebook/notebook-layout.tsx:63`）没有列表项。所以笔记本行与树不直接画进列表项：工作区外框按笔记本 id 持有一个稳定的容器（里面是笔记本行的标题、树的 `nav`、"更多"的 `nav`），当前笔记本的列表项以 ref 收养它，不在列表里时放在列表之后的备用位置（主持者的决定 730）。树里开着的对话框（挂在 `body` 上）与分批画到的行在笔记本换组时不丢；焦点会丢（移走节点时浏览器把焦点交给 `body`），所以收养之前记下容器里拿着焦点的元素、挪完之后还给它（主持者的决定 745），P2/S2 加一个"焦点在树里时换组"的 vitest。设置模式下侧栏不在，树随之卸下（树的 store 与 `TreeWatch` 照旧在笔记本外框里，`W/pages/notebook/notebook-layout.tsx`），返回时重画；13.2 第 16 条照此改写（P3/S1）。
 5. **新建笔记本**（照旧在工作区的 `nav` 里，`createNotebookWith` 的定位不变）。
-6. 底部：**账户行**（头像 + 显示名 + ⋯），就是现在的账户菜单（`W/app/user-menu.tsx`；头像的首字 `aria-hidden`，按钮名照旧只是显示名，`e2e/fixtures/auth-pages.ts:46-54` 照旧找得到）：个人设置（带 `arrived`）、外观（子菜单：主题三选一、语言二选一，子菜单里就地切换（选了之后菜单不关））、分隔线、退出登录、分隔线、版本行（照旧直接显示在菜单里、在最后，s2 一打开菜单就读它，`e2e/stories/smoke/s2-web-app.spec.ts:60`）。
+6. 底部：**账户行**（头像 + 显示名 + ⋯），就是现在的账户菜单（`W/app/user-menu.tsx`；头像的首字 `aria-hidden`，按钮名照旧只是显示名，`e2e/fixtures/auth-pages.ts:46-54` 照旧找得到）：个人设置（带 `arrived`）、外观（主题三选一、语言二选一，就地切换、选了之后菜单不关：宽屏是子菜单，窄屏（< 768 px）直接列在菜单里、各带分组标题，[02-P2](02-P2-shell.md) 决定 801）、分隔线、退出登录、分隔线、版本行（照旧直接显示在菜单里、在最后，s2 一打开菜单就读它，`e2e/stories/smoke/s2-web-app.spec.ts:60`）。
 
 #### 4.2.3 右上角（没有侧栏的地方）
 
-没有外框把侧栏放进 `Layout` 的时候，`Layout` 在右上角放一个小区域（命中带 `handle: { sidebar: true }` 的路由（`:slug`）时不放，工作区外框没有画出侧栏（读取失败、404）、会话不可用的页与错误边界经 `useCornerBack()` 交还；放什么按会话定，会话或账户还在读时什么也不放，[02-P2](02-P2-shell.md) 决定 769、792）：
+没有外框把侧栏放进 `Layout` 的时候，`Layout` 在右上角放一个小区域（命中带 `handle: { sidebar: true }` 的路由（`:slug` 与去向是它的 `/`）时不放，工作区外框没有画出侧栏（读取失败、404）、`/` 读工作区列表失败、会话不可用的页与错误边界经 `useCornerBack()` 交还；放什么按会话定，会话或账户还在读时什么也不放，[02-P2](02-P2-shell.md) 决定 769、792）：
 
 - **已登录**：同一个账户按钮与菜单。包括引导、新建工作区、已登录的邀请页、工作区之外与找不到工作区的 404、所有出错页（笔记本里的 404 有侧栏；唯一的错误边界在 `W/app/routes.tsx:40-41`）、工作区读取失败（`W/pages/workspace/workspace-layout.tsx:102-104` 里带 `error` 的 `NotLoaded`；读取中不放：账户按钮紧接着要挪进侧栏，c6:113 一打开页就点它），以及 P3 之前的个人设置页。a6、a7、a8、s2 在这些页上打开账户菜单（`e2e/stories/identity/a6-sign-out.spec.ts:31-38,82-96`、`a7-change-password.spec.ts:94,118`、`a8-profile.spec.ts:70,87,91`、`s2-web-app.spec.ts:57-60`）。
 - **未登录**（登录、注册、未登录的邀请页）与会话不可用（`W/app/guards.tsx:51,73` 的 `SessionUnavailablePage`）：一个"外观"按钮，菜单里是主题与语言。今天顶栏对所有人都显示语言与主题（`W/app/layout.tsx:42-46`），去掉顶栏不能让未登录的人失去它们。
-- 个人设置页在 P2/S1 与 P3/S1 之间没有侧栏：右上角另放"回到工作区"的链接（去最近的工作区，没有时去首页；带 `arrived`，`LandingPage` 转交给它的 `<Navigate>`）。
+- 个人设置页在 P2/S1 与 P3/S1 之间没有侧栏：右上角另放"回到工作区"的链接（去最近的工作区，没有时去首页；带 `arrived`，`LandingPage` 转交给它的 `<Navigate>`）。新建工作区页在账户已有工作区时也放它，P3 之后照旧（[02-P2](02-P2-shell.md) 决定 803；没有工作区时 `/` 会落回这一页，不放）；已登录的邀请页与出错页回去的路留给 P5。
 
 （主持者的决定 733，取代初稿的 726。）
 
@@ -544,7 +544,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
-| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1 实施中 | [设计审查](reviews/P2-design-review.md) | — |
+| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1 已审查、待合并 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md) | — |
 | P3 设置界面（S1、S2） | — | 未开始 | — | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
@@ -562,3 +562,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-22：P1/S2 实施与审查完成（[审查记录](reviews/P1-S2-components-review.md)；主持者的决定 766–768；4.1 的表亮色 `--accent` 改为 `#c2871f`）；合并 `e2678ff7`。
 - 2026-11-22：P1 完成（S1 `a08bf50f`、S2 `e2678ff7`；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761）。
 - 2026-11-23：照 P2 的设计修订（[02-P2](02-P2-shell.md) 2.1；[设计审查](reviews/P2-design-review.md)，主持者的决定 769–800）：右上角由路由与会话定，笔记本行与别的笔记本的链接，账户菜单的次序，抽屉里导航之后焦点的去处，菜单的部件，头像的变量，离开外框的菜单项带 `arrived`，PG16 两格，第 10 节滚动锚定一行，第 11 节决定 731、733 注明由 P2 改。
+- 2026-11-23：P2/S1 实施与审查完成（[审查记录](reviews/P2-S1-shell-account-review.md)；主持者的决定 801–803：窄屏的账户菜单把外观直接列在菜单里，侧栏中段滚到头带着窗口走，新建工作区页也有"回到工作区"；4.2.2 第 6 条与 4.2.3 随之改）；合并见第 12 节。

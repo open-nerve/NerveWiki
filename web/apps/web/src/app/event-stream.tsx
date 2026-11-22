@@ -3,7 +3,7 @@ import { useSWRConfig, type ScopedMutator } from "swr";
 
 import { EventHandlers, shown, typeOf } from "../events/handlers";
 import { useStore } from "../stores/context";
-import { useSession } from "./guards";
+import { useSession } from "./session-state";
 
 /**
  * What each connection of the stream reads again, since what was written

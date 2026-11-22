@@ -1,4 +1,6 @@
 import { expectIndexedLinks } from "../../fixtures/assert/links";
+import { displayNameOf } from "../../fixtures/auth";
+import { accountMenu } from "../../fixtures/auth-pages";
 import { expectChangesetOf } from "../../fixtures/assert/page";
 import { countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
@@ -141,7 +143,7 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
   baseURL,
   signedInPage,
 }, testInfo) => {
-  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { adminEmail, pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
   const target = await createPage(
     api,
@@ -249,6 +251,14 @@ test("L1 (page): a link to a page opens it in the app, or in a new tab with a mo
     await expect(page).toHaveURL(targetPath);
   }
   expect(await notReloaded()).toBe(true);
+
+  // The left column stays at the window's top, its account's row in view, the window scrolled to the long page's end
+  // (M13/P2/S1, decision 774; review C, S1C-M2): Chromium's 1280 by 720. Within a pixel: the page's height has a
+  // fraction the window's scroll has not, and at its very end the column, stuck inside the page, goes up by it.
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(1000);
+  await expect(accountMenu(page, displayNameOf(adminEmail))).toBeInViewport();
+  expect(Math.abs((await page.locator("[data-shell]").boundingBox())?.y ?? Number.NaN)).toBeLessThan(1);
 });
 
 test("L1 (page): a link to a page not there leads to it once the page is created elsewhere: the view is read again with the links event, the focus and the scroll kept", async ({

@@ -78,14 +78,31 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveAttribute("lang", "zh-CN");
 
-  // All of it holds after a reload: the name on the server, the preferences in this browser, as the top bar's
-  // theme menu shows too.
+  // All of it holds after a reload: the name on the server, the preferences in this browser, as the account menu's
+  // Appearance shows too (M13/P2/S1).
   await reload(page);
   await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
-  await page.getByRole("button", { name: "主题" }).click();
+  await accountMenu(page, "Ada Lovelace").click();
+  await page.getByRole("menuitem", { name: "外观", exact: true }).click();
   await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  // Chosen by the pointer inside it, the theme changes, the submenu staying open (review C, S1C-N6). The pointer goes
+  // there through the menu, as a hand moves it: the submenu opens to the menu's left here, and Radix reads which way
+  // the pointer goes from its moves over the menu, none in a jump straight to the item, which closes the submenu.
+  const light = page.getByRole("menuitemradio", { name: "浅色" });
+  const box = await light.boundingBox();
+  if (box === null) {
+    throw new Error("浅色 is not laid out");
+  }
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 10 });
+  await light.click();
+  await expect(html).not.toHaveClass(/\bdark\b/);
+  await expect(page.getByRole("menuitemradio", { name: "浅色" })).toBeChecked();
+  await page.getByRole("menuitemradio", { name: "深色" }).click();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
+  // One Escape closes the whole menu, its submenu too.
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("显示名", { exact: true })).toHaveValue("Ada Lovelace");
   await expect(accountMenu(page, "Ada Lovelace")).toBeVisible();
