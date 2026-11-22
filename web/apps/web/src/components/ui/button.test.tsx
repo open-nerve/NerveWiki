@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { URL as FileURL } from "node:url";
+
 import { render, screen } from "@testing-library/react";
 import { expect, test } from "vitest";
 
@@ -25,4 +28,16 @@ test("every button's focus is amber, the destructive one's too", () => {
     expect(classList.contains("focus-visible:ring-destructive"), variant).toBe(false);
     unmount();
   }
+});
+
+test("the diff's buttons, which copy the outline button's look, keep to it", () => {
+  // The editor does not import the app's button (text-diff.tsx's buttonClass): its copy is read as written.
+  const source = readFileSync(new FileURL("../../editor/text-diff.tsx", import.meta.url), "utf8");
+  const [, copied = ""] = /const buttonClass =\s*"([^"]*)"/.exec(source) ?? [];
+  const classes = copied.split(/\s+/);
+  for (const look of ["bg-surface", "dark:bg-surface-2", "hover:hover-layer", "focus-visible:ring-2"]) {
+    expect(classes, look).toContain(look);
+  }
+  // Dark, a hover in place of its background would show what is under the button, darker (decision 757).
+  expect(classes).not.toContain("hover:bg-hover");
 });
