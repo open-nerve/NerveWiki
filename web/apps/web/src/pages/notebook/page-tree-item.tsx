@@ -473,7 +473,11 @@ export const TreeMenu = observer(function TreeMenu({
               <DropdownMenuItem onSelect={() => choose("move")}>{t("page.moveTo")}</DropdownMenuItem>
             </>
           )}
-          {canDelete && <DropdownMenuItem onSelect={() => choose("delete")}>{t("page.delete")}</DropdownMenuItem>}
+          {canDelete && (
+            <DropdownMenuItem tone="destructive" onSelect={() => choose("delete")}>
+              {t("page.delete")}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       )}
     </DropdownMenu>

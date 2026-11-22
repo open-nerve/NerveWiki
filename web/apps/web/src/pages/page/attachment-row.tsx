@@ -189,7 +189,11 @@ export function AttachmentRow({
               <DropdownMenuItem onSelect={() => act("move", asset)}>{t("page.moveTo")}</DropdownMenuItem>
             </>
           )}
-          {deletable && <DropdownMenuItem onSelect={() => act("delete", asset)}>{t("page.delete")}</DropdownMenuItem>}
+          {deletable && (
+            <DropdownMenuItem tone="destructive" onSelect={() => act("delete", asset)}>
+              {t("page.delete")}
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
     </li>

@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { createBrowserRouter } from "react-router";
 
+import { trackInputModality } from "./app/input-modality";
 import { routes } from "./app/routes";
 import { SessionRoot } from "./app/session-root";
 import { EditorExtensions, editorExtensions } from "./editor/registry";
@@ -30,6 +31,8 @@ const session = new Session(sessionDeps);
 void session.start();
 // The event stream's tabs share the session's storage, for the lease where the page has no Web Locks.
 const events = browserEventDeps(storage, sessionDeps.onStorage, sessionDeps.randomHex(16));
+// Whether the reader last typed or pointed, which a menu's ring follows (M13/P1/S2).
+trackInputModality(document.documentElement);
 createRoot(root).render(
   <StrictMode>
     <Enhancements value={readingEnhancements}>

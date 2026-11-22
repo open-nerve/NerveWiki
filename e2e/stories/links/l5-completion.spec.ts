@@ -184,6 +184,15 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     const current = await indicatorContrast(item);
     expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(floors[scheme].current);
     await page.keyboard.press("Escape");
+    // Closed, the menu is gone at once, a frame later: it has no exit's animation, which would keep it mounted, a
+    // second menu as another opens (00-M13 737; M13/P1/S2).
+    const menus = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          requestAnimationFrame(() => resolve(document.querySelectorAll('[role="menu"]').length));
+        })
+    );
+    expect(menus, "menus a frame after Escape").toBe(0);
     await expect(item).toBeHidden();
   };
   await readingShown("light");

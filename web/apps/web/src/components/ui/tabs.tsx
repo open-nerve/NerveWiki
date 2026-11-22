@@ -11,14 +11,14 @@ import { cn } from "../../lib/cn";
 export const Tabs = Primitive.Root;
 
 export function TabsList({ className, ...props }: ComponentProps<typeof Primitive.List>) {
-  return <Primitive.List className={cn("flex flex-wrap gap-1 border-b", className)} {...props} />;
+  return <Primitive.List className={cn("flex flex-wrap gap-x-3 border-b border-border", className)} {...props} />;
 }
 
 export function TabsTrigger({ className, ...props }: ComponentProps<typeof Primitive.Trigger>) {
   return (
     <Primitive.Trigger
       className={cn(
-        "-mb-px rounded-t-md border-b-2 border-transparent px-3 py-1.5 text-sm font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:border-primary data-[state=active]:text-foreground",
+        "-mb-px rounded-sm border-b-2 border-transparent px-1 pt-1 pb-2 text-compact font-medium text-muted-foreground outline-none transition-colors duration-150 hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring data-[state=active]:border-foreground data-[state=active]:text-foreground",
         className
       )}
       {...props}

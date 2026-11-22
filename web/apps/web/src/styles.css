@@ -54,6 +54,33 @@
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Menus and dialogs come in, a fade and a slight scale, the overlay a fade; they close at once, with no exit
+   (00-M13 737): a closing menu kept for its animation is a second menu as another opens. The scale is its own
+   property, as the dialogs' centring translate is (M13/P1/S2). */
+@theme {
+  --animate-pop-in: nw-pop-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: nw-fade-in 150ms ease-out;
+  @keyframes nw-pop-in {
+    from {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+  @keyframes nw-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Asked for less motion, what pops in fades in: the variable the utility reads, not the class, which hangs under
+   data-[state=open]: (M13/P1/S2; 00-M13 4.1). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-pop-in: nw-fade-in 150ms ease-out;
+  }
+}
+
 /* A hover over what has a background of its own: layered on it, not in its place (M13/P1/S1, decision 757). */
 @utility hover-layer {
   background-image: linear-gradient(var(--hover), var(--hover));
