@@ -1,5 +1,7 @@
 @import "tailwindcss";
 @import "./reading/reading.css";
+/* The tests name classes no page uses: Tailwind is not to write their CSS. */
+@source not "./**/*.test.{ts,tsx}";
 
 /* dark: follows the dark class on <html>, which theme-init.js sets before the
    first paint and the app keeps in step with the theme preference. */
