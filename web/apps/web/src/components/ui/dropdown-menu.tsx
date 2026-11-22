@@ -85,11 +85,20 @@ export function DropdownMenuSubTrigger({ className, children, ...props }: Compon
   );
 }
 
-export function DropdownMenuSubContent({ className, ...props }: ComponentProps<typeof Primitive.SubContent>) {
+/**
+ * DropdownMenuSubContent is a submenu, 8px off the window's edges unless it says otherwise: Radix's 0 had the account
+ * row's Appearance, at the window's foot, cut by its bottom edge (M13/P2/S1; review B, S1B-M1).
+ */
+export function DropdownMenuSubContent({
+  className,
+  collisionPadding = 8,
+  ...props
+}: ComponentProps<typeof Primitive.SubContent>) {
   return (
     <Primitive.Portal>
       <Primitive.SubContent
         sideOffset={6}
+        collisionPadding={collisionPadding}
         className={cn(
           "z-50 min-w-[200px] origin-(--radix-dropdown-menu-content-transform-origin) overflow-hidden rounded-popover border border-border bg-popover p-1.25 text-popover-foreground shadow-popover data-[state=open]:animate-pop-in",
           className
@@ -101,7 +110,8 @@ export function DropdownMenuSubContent({ className, ...props }: ComponentProps<t
 }
 
 export function DropdownMenuSeparator({ className, ...props }: ComponentProps<typeof Primitive.Separator>) {
-  return <Primitive.Separator className={cn("mx-1.5 my-1 h-px bg-border", className)} {...props} />;
+  // A border, not a background: forced colours draw it (review B, S1B-N5).
+  return <Primitive.Separator className={cn("mx-1.5 my-1 h-0 border-t border-border", className)} {...props} />;
 }
 
 export function DropdownMenuLabel({ className, ...props }: ComponentProps<typeof Primitive.Label>) {

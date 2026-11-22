@@ -56,7 +56,7 @@ export const WorkspaceSwitcher = observer(function WorkspaceSwitcher({ current }
       <span id={description} hidden>
         {t("workspace.switch")}
       </span>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-(--radix-dropdown-menu-trigger-width)">
         <DropdownMenuRadioGroup value={current.slug} onValueChange={(slug) => void navigate(`/${slug}`)}>
           {workspaces.list?.map((workspace) => (
             <DropdownMenuRadioItem key={workspace.id} value={workspace.slug}>

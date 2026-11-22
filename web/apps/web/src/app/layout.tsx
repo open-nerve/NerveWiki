@@ -30,8 +30,9 @@ type Shell = { sidebar?: boolean };
  * left column is, the top right holds the account (Corner). A route that
  * has one (handle: { sidebar: true }) has the account in the column's
  * foot instead, unless what shows in its place gives the top right back
- * (useCornerBack): the workspace not loaded or not found, the session
- * unavailable, an error (decision 769). The route says so as it renders:
+ * (useCornerBack): the workspaces not loaded, at / or in a workspace, or
+ * the workspace not found, the session unavailable, an error (decision
+ * 769). The route says so as it renders:
  * a mark set in an effect would show the top right for a paint first. A
  * file dropped where no part of the page takes it stays out of the tab
  * (FileDropGuard). It watches the reader from each arrival on

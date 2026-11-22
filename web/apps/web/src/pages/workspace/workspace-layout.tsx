@@ -6,7 +6,7 @@ import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
-import { useCornerBack } from "../../app/corner";
+import { GiveCornerBack } from "../../app/corner";
 import { useShellColumn } from "../../app/layout";
 import { NotLoaded } from "../../app/not-loaded";
 import { ShellSidebar } from "../../app/shell-sidebar";
@@ -59,16 +59,6 @@ const sections: readonly {
   { path: "", label: "workspace.home", icon: House, end: true },
   { path: "/settings", label: "workspace.settings", icon: SlidersHorizontal },
 ];
-
-/**
- * GiveCornerBack has the top right shown in the column's stead (useCornerBack): a hook called only where the shell
- * shows no column, the workspaces' load failed or the workspace not found, never while they load (M13/P2/S1, decision
- * 769): the account's button would mount there, then again in the column.
- */
-function GiveCornerBack() {
-  useCornerBack();
-  return null;
-}
 
 /**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):

@@ -169,9 +169,10 @@ test("the column's account opens its menu above it, from its start; the top righ
   await user.click(await screen.findByRole("button", { name: "Ada" }));
   const corner = await screen.findByRole("menu");
   expect([corner.getAttribute("data-side"), corner.getAttribute("data-align")]).toEqual(["bottom", "end"]);
-  // No wider than the room Radix measures: at 375 px the version line would push it off the screen. jsdom lays
-  // nothing out, so the cap is what it can see; the S1 screenshots at 375 px show the rest.
-  expect(corner.className).toContain("max-w-(--radix-dropdown-menu-content-available-width)");
+  // No wider than 16rem, the version line wrapping, nor than the room Radix measures: at 375 px that line would push
+  // it off the screen, at 1440 px stretch it to 444 px (review B, S1B-N3). jsdom lays nothing out, so the cap is what
+  // it can see; the S1 screenshots show the rest.
+  expect(corner.className).toContain("max-w-[min(16rem,var(--radix-dropdown-menu-content-available-width))]");
 });
 
 test("below md the account's menu has the theme and the language in it, no submenu, a choice keeping it open", async () => {

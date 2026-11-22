@@ -70,7 +70,8 @@ test("an account that sees none creates a private one, My notes unless named, an
 
   expect(await screen.findByText("Step 3 of 3")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Your first notebook" })).toBeTruthy();
-  expect(screen.getByText(/^A private notebook in Lab/)).toBeTruthy();
+  // Once the step has read the workspaces and their notebooks, which may come after its progress line.
+  expect(await screen.findByText(/^A private notebook in Lab/)).toBeTruthy();
   expect((await screen.findByLabelText<HTMLInputElement>("Name")).value).toBe("My notes");
   await user.click(screen.getByRole("button", { name: "Create and continue" }));
 

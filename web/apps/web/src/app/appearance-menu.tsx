@@ -56,6 +56,8 @@ export const AppearanceItems = observer(function AppearanceItems() {
       >
         {locales.map((locale) => (
           <DropdownMenuRadioItem key={locale.value} value={locale.value} lang={locale.value} onSelect={keepOpen}>
+            {/* An icon's room: the names on the themes' line (review B, S1B-N1). */}
+            <span aria-hidden className="size-4 shrink-0" />
             {locale.name}
           </DropdownMenuRadioItem>
         ))}

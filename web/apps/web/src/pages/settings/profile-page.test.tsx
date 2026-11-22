@@ -67,6 +67,24 @@ test("the account's menu leads to the settings, arrived at: their title takes th
   expect(router.state.location.pathname).toBe("/settings/profile");
 });
 
+test("chosen at the top right of the onboarding, where the settings send it back, Settings leaves the focus on the account's button", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(
+    "/onboarding",
+    signedInApp({ "GET /api/v0/me": () => json({ ...userJSON, onboarding_steps: [] }) })
+  );
+  await screen.findByText("Step 1 of 3");
+
+  // No title of the settings takes it: the menu gives it back to its button, still there (review A, S1A-N2).
+  const corner = screen.getByRole("button", { name: "Ada" });
+  await user.click(corner);
+  await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
+
+  await waitFor(() => expect(router.state.location.pathname).toBe("/onboarding"));
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(corner));
+});
+
 test("a new display name is saved, and the user menu shows it", async () => {
   const user = userEvent.setup();
   const { app, sent } = profileServer();

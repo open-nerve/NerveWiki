@@ -24,9 +24,9 @@ export const NotebookNav = observer(function NotebookNav({ workspace }: { worksp
     <div className="flex flex-col gap-0.5">
       <NotebookGroups
         workspace={workspace}
-        headingClassName="px-2 pt-3.5 pb-1 text-xs font-normal text-faint"
+        headingClassName="px-2 pt-3.5 pb-1 text-xs leading-4.5 font-normal text-faint"
         listClassName="flex flex-col gap-0.5"
-        groupClassName=""
+        groupClassName="flex flex-col gap-0.5"
         renderItem={(notebook) => (
           <NavItem to={`/${workspace.slug}/notebooks/${notebook.id}`}>
             <Book aria-hidden />

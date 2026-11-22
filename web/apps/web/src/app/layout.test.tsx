@@ -112,6 +112,30 @@ test("while the workspaces load there is no account's button; a slug not found t
   expect(account.closest("[data-shell]")).toBeNull();
 });
 
+test("at / the account's button waits for the workspaces, then is the column's, one of it", async () => {
+  const workspaces = held();
+  renderApp("/", signedInApp({ "GET /api/v0/workspaces": workspaces.answer }));
+  // Where / goes has a left column, or is the page that creates a workspace: no button at the top right that would
+  // go as the column comes (review A, S1A-M1).
+  await workspaces.asked;
+  expect(await screen.findByRole("status")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
+
+  workspaces.release(json({ data: [workspaceJSON] }));
+  await screen.findByRole("heading", { name: "Lab" });
+  const accounts = screen.getAllByRole("button", { name: "Ada" });
+  expect(accounts).toHaveLength(1);
+  expect(accounts[0]?.closest("[data-shell]")).not.toBeNull();
+});
+
+test("at / the workspaces' load failing, the account's button is at the top right", async () => {
+  renderApp("/", signedInApp({ "GET /api/v0/workspaces": () => problem(500, "internal") }));
+
+  await screen.findByRole("button", { name: "Try again" });
+  const account = await screen.findByRole("button", { name: "Ada" });
+  expect(account.closest("[data-shell]")).toBeNull();
+});
+
 test("the workspaces' load failing, the account's button is at the top right", async () => {
   renderApp("/lab", signedInApp({ "GET /api/v0/workspaces": () => problem(500, "internal") }));
 
@@ -146,6 +170,29 @@ test("on the settings, Back to the workspace lands on one, arrived at: its title
   const lab = await screen.findByRole("heading", { name: "Lab" });
   expect(router.state.location.pathname).toBe("/lab");
   await waitFor(() => expect(document.activeElement).toBe(lab));
+});
+
+test("on the page that creates a workspace, Back to the workspace too, the account having one; arrived at", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/create-workspace", signedInApp());
+  await screen.findByRole("heading", { level: 1, name: "Create a workspace" });
+
+  // Gone there from the switcher, and not creating one after all (decision 803; review A, S1A-Q1).
+  await user.click(await screen.findByRole("link", { name: "Back to the workspace" }));
+
+  const lab = await screen.findByRole("heading", { name: "Lab" });
+  expect(router.state.location.pathname).toBe("/lab");
+  await waitFor(() => expect(document.activeElement).toBe(lab));
+});
+
+test("an account without a workspace, landed on the page that creates one, has no Back to the workspace", async () => {
+  const { router } = renderApp("/", signedInApp({ "GET /api/v0/workspaces": () => json({ data: [] }) }));
+
+  await screen.findByRole("heading", { level: 1, name: "Create a workspace" });
+  expect(router.state.location.pathname).toBe("/create-workspace");
+  expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
+  // / would land it here again.
+  expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 });
 
 test("while the session starts the top right has nothing, then the account's button", async () => {

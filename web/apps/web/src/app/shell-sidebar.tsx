@@ -6,7 +6,9 @@ import { UserMenu } from "./user-menu";
  * ShellSidebar is a shell's left column (M13/P2/S1, decision 774), in
  * three parts: its top, which stays (the workspace's switcher and search);
  * its middle, which scrolls itself ([data-sidebar-scroll]), the end of its
- * scroll not carrying the window on (overscroll-contain); its foot, the
+ * scroll carrying the window on, as before the column stuck: contained,
+ * Chromium let no wheel over a middle that does not overflow scroll the
+ * window (decision 802; review A, S1A-M2); its foot, the
  * account's row, above a line, the middle scrolling past it. On the
  * sidebar's colour, a shade off the page. From md: up it sticks to the
  * window's left, as tall as the window, which still scrolls the whole
@@ -25,7 +27,7 @@ export function ShellSidebar({ top, children }: { top: ReactNode; children: Reac
     >
       <div className="space-y-2 px-2 pt-2.5 pb-1.5">{top}</div>
       {/* pt-1: the area clips what overflows it, the first link's focus ring 2px out of it included. */}
-      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pt-1 pb-3">
+      <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3">
         {children}
       </div>
       <div className="shrink-0 border-t border-border p-2">

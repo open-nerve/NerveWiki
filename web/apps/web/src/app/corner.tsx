@@ -30,25 +30,44 @@ export function useCornerBack(): void {
 }
 
 /**
+ * GiveCornerBack has the top right shown in the column's stead (useCornerBack), rendered only where what a route with
+ * a left column shows has none: the workspaces' load failed, at / or in a workspace, or the workspace not found; never
+ * while they load (M13/P2/S1, decision 769; review A, S1A-M1): the account's button would mount there, then again in
+ * the column.
+ */
+export function GiveCornerBack(): null {
+  useCornerBack();
+  return null;
+}
+
+/**
  * Corner is the top right where no left column is (M13/P2/S1, decisions 769, 792): signed in, the account's button,
- * after Back to the workspace on the settings; signed out, the session unavailable or the account's load failed,
- * Appearance; while the session starts or the account loads, nothing, its height kept. It loads the account itself, by
- * the guard's key: an error boundary above the guards may be the tab's first page, the account never loaded (review
- * C-M1); one load serves both, and none once it is in.
+ * after Back to the workspace on the settings, and on the page that creates a workspace once the account has one to go
+ * back to (decision 803); signed out, the session unavailable or the account's load failed, Appearance; while the
+ * session starts or the account loads, nothing, its height kept. It loads the account itself, by the guard's key: an
+ * error boundary above the guards may be the tab's first page, the account never loaded (review C-M1); one load serves
+ * both, and none once it is in. The workspaces it reads on the page that creates one by the landing's and the shell's
+ * key, mostly read already.
  */
 export const Corner = observer(function Corner() {
   const { status } = useSession();
-  const { account } = useStore();
+  const { account, workspaces } = useStore();
   const t = useT();
   const settings = useMatch("/settings/*") !== null;
+  const creating = useMatch("/create-workspace") !== null;
   const loading = status === "signed-in" && account !== undefined && account.me === undefined;
   const { error } = useSWR(loading ? "me" : null, () => account?.load());
+  useSWR(creating && status === "signed-in" && workspaces !== undefined ? "workspaces" : null, () =>
+    workspaces?.load()
+  );
   const failed = error !== undefined && !(error instanceof SessionChangedError);
+  // Without a workspace, / lands on the page that creates one: back would be there again.
+  const back = settings || (creating && (workspaces?.list?.length ?? 0) > 0);
   let shown = null;
   if (status === "signed-in" && account?.me !== undefined) {
     shown = (
       <>
-        {settings && (
+        {back && (
           <Link
             to="/"
             state={arrived}

@@ -83,6 +83,8 @@ export const routes: RouteObject[] = [
                 children: [
                   {
                     index: true,
+                    // It goes on to a workspace's, which has a left column (M13/P2/S1; review A, S1A-M1).
+                    handle: { sidebar: true },
                     lazy: async () => {
                       const { LandingPage } = await import("../pages/landing");
                       return { Component: LandingPage };
