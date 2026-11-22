@@ -297,7 +297,8 @@ test("components use the theme's colours, not Tailwind's palette nor written val
 // Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either.
 const noColour = new Set([
   "decoration-dashed",
-  // The outline forced colours show, transparent otherwise (M13/P1/S2, decision 768).
+  // No outline as a rule (outline-style: none); under forced colours a transparent 2px one, which the system's
+  // colours draw (M13/P1/S2, decision 768).
   "outline-hidden",
   "outline-none",
   "ring-inset",
@@ -393,8 +394,10 @@ test("asked for less motion, what pops in fades in", () => {
     .map((block) => block.body)
     .join("\n");
   expect(theme).toMatch(/--animate-pop-in:\s*nw-pop-in\b/);
+  expect(theme).toMatch(/@keyframes\s+nw-pop-in\b/);
   expect(theme).toMatch(/@keyframes\s+nw-fade-in\b/);
   const reduced = blocks(css).filter((block) => block.prelude === "@media (prefers-reduced-motion: reduce)");
   expect(reduced).toHaveLength(1);
-  expect(reduced[0]?.body).toMatch(/^\s*:root\s*\{\s*--animate-pop-in:\s*nw-fade-in\b[^}]*\}\s*$/);
+  // Its one declaration: a later --animate-pop-in in the same :root would pop in again.
+  expect(reduced[0]?.body).toMatch(/^\s*:root\s*\{\s*--animate-pop-in:\s*nw-fade-in\b[^;}]*;?\s*\}\s*$/);
 });

@@ -257,7 +257,10 @@ function Failed({ again, busy, retry, root }: FailedProps) {
   useFocusLeaving(own, focusOn(root));
   return (
     <div ref={own} className="space-y-2" aria-busy={busy || undefined}>
-      <p role="alert" className="rounded-md border border-destructive/50 px-4 py-3 text-sm text-destructive">
+      <p
+        role="alert"
+        className="rounded-lg border border-destructive/35 bg-destructive/5 px-4 py-3 text-sm text-destructive"
+      >
         {t(busy ? "diff.comparing" : again ? "diff.failedAgain" : "diff.failed")}
       </p>
       <div className="flex gap-2">
