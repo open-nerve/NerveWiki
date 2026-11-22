@@ -21,6 +21,7 @@ import { useStore } from "../stores/context";
 import { AppearanceItems } from "./appearance-menu";
 import { arrived } from "./arrival";
 import { initialOf } from "./initial";
+import { useNarrow } from "./narrow";
 import { useSignOut } from "./sign-out";
 
 /**
@@ -29,12 +30,14 @@ import { useSignOut } from "./sign-out";
  * (corner); one of them shows at a time. Its button is the display name
  * after an avatar of its initial, which only the eye reads. Its menu: the
  * settings, arrived at, as the column leaves with the workspace's shell
- * (decision 771); Appearance, the theme and the language chosen in place;
- * signing out, which ends the session in every tab of the browser, each
- * tab's guard then taking it to the sign-in page (M1/P5 design 3.6),
- * asking first while an edit has changes not saved (useSignOut), Stay
- * giving the focus back to the menu's button; last, the version this
- * server runs (M2/P5 design 3.8).
+ * (decision 771); Appearance, the theme and the language chosen in place,
+ * a submenu, below md in the menu itself: beside a menu as wide as a
+ * phone's column a submenu has no room, and Radix opens it to the right
+ * all the same (decision 801); signing out, which ends the session in
+ * every tab of the browser, each tab's guard then taking it to the sign-in
+ * page (M1/P5 design 3.6), asking first while an edit has changes not
+ * saved (useSignOut), Stay giving the focus back to the menu's button;
+ * last, the version this server runs (M2/P5 design 3.8).
  */
 export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "corner" }) {
   const { account, instance } = useStore();
@@ -48,6 +51,7 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
   // same, the title taking nothing: the button gets it back (review A, P2A1-N1).
   const leaving = useRef(false);
   const atProfile = useMatch("/settings/profile") !== null;
+  const narrow = useNarrow();
   const info = instance.info;
   if (me === undefined) {
     return null;
@@ -94,7 +98,12 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
         <DropdownMenuContent
           side={row ? "top" : undefined}
           align={row ? "start" : "end"}
-          className={row ? "w-(--radix-dropdown-menu-trigger-width)" : undefined}
+          // The top right's menu is as wide as its longest line, the version, but no wider than the screen less the
+          // corner's own gutter below md (px-3): a phone has less room than the 40 digits of the commit.
+          collisionPadding={row ? undefined : 12}
+          className={
+            row ? "w-(--radix-dropdown-menu-trigger-width)" : "max-w-(--radix-dropdown-menu-content-available-width)"
+          }
           onCloseAutoFocus={(event) => {
             if (leaving.current) {
               event.preventDefault();
@@ -113,15 +122,22 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
               {t("userMenu.settings")}
             </Link>
           </DropdownMenuItem>
-          <DropdownMenuSub>
-            <DropdownMenuSubTrigger>
-              <SunMoon />
-              {t("appearance.label")}
-            </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
+          {narrow ? (
+            <>
+              <DropdownMenuSeparator />
               <AppearanceItems />
-            </DropdownMenuSubContent>
-          </DropdownMenuSub>
+            </>
+          ) : (
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>
+                <SunMoon />
+                {t("appearance.label")}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <AppearanceItems />
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          )}
           <DropdownMenuSeparator />
           <DropdownMenuItem onSelect={() => signOut()}>
             <LogOut />
@@ -130,7 +146,8 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
           {info !== undefined && (
             <>
               <DropdownMenuSeparator />
-              {/* The row's menu is as wide as the row: the commit, 40 digits, wraps where it must. */}
+              {/* The row's menu is as wide as the row, the top right's no wider than the screen: the commit, 40 digits,
+                  wraps where it must. */}
               <DropdownMenuLabel className="wrap-anywhere">
                 {t("userMenu.version", { version: info.version, commit: info.commit })}
               </DropdownMenuLabel>

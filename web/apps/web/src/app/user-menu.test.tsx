@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { FakeChannels } from "../events/testing/fake-channels";
 import { FakePage } from "../events/testing/fake-page";
@@ -169,6 +169,52 @@ test("the column's account opens its menu above it, from its start; the top righ
   await user.click(await screen.findByRole("button", { name: "Ada" }));
   const corner = await screen.findByRole("menu");
   expect([corner.getAttribute("data-side"), corner.getAttribute("data-align")]).toEqual(["bottom", "end"]);
+  // No wider than the room Radix measures: at 375 px the version line would push it off the screen. jsdom lays
+  // nothing out, so the cap is what it can see; the S1 screenshots at 375 px show the rest.
+  expect(corner.className).toContain("max-w-(--radix-dropdown-menu-content-available-width)");
+});
+
+test("below md the account's menu has the theme and the language in it, no submenu, a choice keeping it open", async () => {
+  // A submenu has no room beside a menu as wide as a phone's column (M13/P2/S1, decision 801).
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: query === "(width < 48rem)",
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  }));
+  const user = userEvent.setup();
+  const { app } = renderApp("/lab", signedInApp());
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  const menu = await screen.findByRole("menu");
+  await within(menu).findByText("Nerve Wiki 1.2.3 (4f2a9c1)");
+  expect(within(menu).queryByRole("menuitem", { name: "Appearance" })).toBeNull();
+  expect(
+    [...menu.children].map((child) =>
+      child.getAttribute("role") === "separator" ? "—" : (child.getAttribute("aria-label") ?? child.textContent)
+    )
+  ).toEqual([
+    "Settings",
+    "—",
+    "Theme",
+    "Theme",
+    "—",
+    "Language",
+    "Language",
+    "—",
+    "Sign out",
+    "—",
+    "Nerve Wiki 1.2.3 (4f2a9c1)",
+  ]);
+  expect(
+    within(within(menu).getByRole("group", { name: "Theme" }))
+      .getAllByRole("menuitemradio")
+      .map((item) => item.textContent)
+  ).toEqual(["System", "Light", "Dark"]);
+
+  await user.click(within(menu).getByRole("menuitemradio", { name: "Dark" }));
+  expect(app.preferences.theme).toBe("dark");
+  expect(menu.isConnected).toBe(true);
+  expect(within(menu).getByRole("menuitemradio", { name: "Dark" }).getAttribute("aria-checked")).toBe("true");
 });
 
 test("a theme and a language chosen in Appearance apply at once, its menu staying open", async () => {
