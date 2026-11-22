@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nerve Wiki 设置样稿</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #2a2b2f; color: #e8e8ea; -webkit-font-smoothing: antialiased; }
+  .bar { position: sticky; top: 0; z-index: 10; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; padding: 12px 20px; background: #1d1e21; border-bottom: 1px solid #333439; }
+  .bar h1 { font-size: 14px; font-weight: 600; margin: 0 8px 0 0; }
+  .seg { display: inline-flex; padding: 3px; gap: 2px; background: #2a2b2f; border-radius: 999px; }
+  .seg button { border: 0; background: transparent; color: #b4b5bb; font: inherit; font-size: 13px; padding: 5px 14px; border-radius: 999px; cursor: pointer; }
+  .seg button.on { background: #45464c; color: #fff; }
+  .bar .pick { margin-left: auto; border: 0; font: inherit; font-size: 13px; padding: 7px 16px; border-radius: 999px; background: #e8e8ea; color: #18191c; cursor: pointer; }
+  .bar .pick.done { background: #4a7d54; color: #fff; }
+  .desc { padding: 10px 20px 0; font-size: 13px; color: #b4b5bb; line-height: 1.6; max-width: 1100px; }
+  .stage-wrap { padding: 16px 20px 40px; }
+  .stage { width: 1280px; transform-origin: top left; }
+
+  .mock { --radius-row: 7px; --radius-ctl: 999px; --radius-card: 14px; font-size: 14px; line-height: 1.5; border-radius: 12px; overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.35); }
+  .light { --bg: #ffffff; --sidebar: #f5f5f6; --surface: #ffffff; --surface-2: #f4f4f5; --hover: rgba(15,16,20,.045); --active: rgba(15,16,20,.075);
+    --border: #e7e7ea; --border-strong: #d4d4d9; --text: #18191c; --text-2: #5f6168; --text-3: #91939b; --ink: #18191c; --ink-fg: #fff;
+    --accent: #c58a22; --accent-fg: #fff; --accent-soft: rgba(197,138,34,.12); --danger: #d64545; --page: #fafafa; }
+  .dark { --bg: #1a1b1e; --sidebar: #141517; --surface: #212226; --surface-2: #25262a; --hover: rgba(255,255,255,.045); --active: rgba(255,255,255,.08);
+    --border: #2b2c31; --border-strong: #3a3b41; --text: #e8e8ea; --text-2: #a4a5ac; --text-3: #74767e; --ink: #ececee; --ink-fg: #18191c;
+    --accent: #d9a84e; --accent-fg: #1a1408; --accent-soft: rgba(217,168,78,.14); --danger: #ff7b7b; --page: #1a1b1e; }
+  .mock { background: var(--bg); color: var(--text); }
+  svg.i { width: 16px; height: 16px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+
+  .shell { display: grid; grid-template-columns: 252px 1fr; height: 860px; }
+  .side { background: var(--sidebar); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 10px 8px; gap: 2px; }
+  .ws { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: var(--radius-row); font-weight: 600; font-size: 14px; }
+  .ws .av { width: 22px; height: 22px; border-radius: 6px; background: var(--ink); color: var(--ink-fg); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+  .ws .i { margin-left: auto; color: var(--text-3); width: 14px; height: 14px; }
+  .search { display: flex; align-items: center; gap: 8px; margin: 6px 0 8px; padding: 0 10px; height: 32px; border-radius: var(--radius-ctl); background: var(--surface); border: 1px solid var(--border); color: var(--text-3); font-size: 13px; }
+  .dark .search { background: var(--surface-2); }
+  .search kbd { margin-left: auto; font: inherit; font-size: 11px; color: var(--text-3); border: 1px solid var(--border); border-radius: 5px; padding: 0 5px; line-height: 17px; }
+  .row { display: flex; align-items: center; gap: 9px; height: 30px; padding: 0 8px; border-radius: var(--radius-row); color: var(--text-2); font-size: 13.5px; white-space: nowrap; }
+  .row.on { background: var(--active); color: var(--text); font-weight: 500; }
+  .row.back { color: var(--text-2); margin-bottom: 6px; }
+  .row .tw { width: 14px; height: 14px; color: var(--text-3); margin-left: -2px; margin-right: -4px; }
+  .group { font-size: 12px; color: var(--text-3); padding: 14px 8px 4px; display: flex; gap: 6px; }
+  .group b { color: var(--text-2); font-weight: 500; overflow: hidden; text-overflow: ellipsis; }
+  .tree .row { padding-left: 30px; }
+  .stitle { font-size: 18px; font-weight: 650; padding: 8px 8px 4px; }
+  .spacer { flex: 1; }
+  .me { display: flex; align-items: center; gap: 9px; padding: 8px; border-radius: var(--radius-row); font-size: 13.5px; }
+  .me .av { width: 24px; height: 24px; border-radius: 999px; background: #3f8f74; color: #fff; display: grid; place-items: center; font-size: 11px; font-weight: 600; }
+  .me .i { margin-left: auto; color: var(--text-3); }
+
+  .main { overflow: hidden; }
+  .page { max-width: 760px; margin: 0 auto; padding: 44px 32px 40px; }
+  .page h1 { font-size: 26px; font-weight: 650; margin: 0 0 28px; letter-spacing: -.01em; }
+  .sec { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 26px 2px 10px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); }
+  .dark .card { background: #1f2023; }
+  .set { display: flex; align-items: center; gap: 24px; padding: 14px 18px; min-height: 64px; }
+  .set + .set { border-top: 1px solid var(--border); }
+  .set .t { font-size: 14px; font-weight: 500; }
+  .set .d { font-size: 12.5px; color: var(--text-3); margin-top: 2px; line-height: 1.5; max-width: 420px; }
+  .set .c { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: none; }
+  .btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 13px; border-radius: var(--radius-ctl); font-size: 13px; font-weight: 500; border: 1px solid var(--border); background: var(--surface); color: var(--text); white-space: nowrap; }
+  .dark .btn { background: var(--surface-2); }
+  .btn.primary { background: var(--ink); color: var(--ink-fg); border-color: transparent; }
+  .btn.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, transparent); background: transparent; }
+  .btn.sm { height: 26px; padding: 0 10px; font-size: 12.5px; }
+  .input { display: flex; align-items: center; height: 32px; width: 240px; padding: 0 11px; border-radius: 9px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13.5px; }
+  .input.focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); background: var(--surface); }
+  .select { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface-2); font-size: 13px; }
+  .select .i { width: 14px; height: 14px; color: var(--text-3); }
+  .value { font-size: 13.5px; color: var(--text-2); }
+  .mono { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: 12.5px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; color: var(--text-2); }
+  .toggle { width: 36px; height: 21px; border-radius: 999px; background: var(--border-strong); position: relative; }
+  .toggle::after { content: ""; position: absolute; top: 2.5px; left: 2.5px; width: 16px; height: 16px; border-radius: 999px; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.25); }
+  .toggle.on { background: var(--accent); } .toggle.on::after { left: 17.5px; }
+  .saved { font-size: 12px; color: var(--text-3); display: inline-flex; align-items: center; gap: 4px; }
+  .saved .i { width: 13px; height: 13px; color: var(--accent); stroke-width: 2.5; }
+  .badge { font-size: 11px; color: var(--text-2); background: var(--surface-2); border: 1px solid var(--border); padding: 0 6px; border-radius: 999px; margin-left: 6px; font-weight: 400; }
+
+  /* option B: secondary nav inside the page */
+  .b-wrap { display: grid; grid-template-columns: 180px 1fr; gap: 36px; max-width: 980px; padding: 40px 40px; }
+  .b-wrap h1 { grid-column: 1 / -1; font-size: 26px; font-weight: 650; margin: 0 0 4px; }
+  .b-nav .row { margin-bottom: 2px; }
+  .b-wrap .page { padding: 0; margin: 0; max-width: 680px; }
+  .b-wrap .page h2 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  .tree .row.cur { background: var(--accent-soft); color: var(--text); }
+  .tree .row.cur .i { color: var(--accent); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5.5 9v11.5h13V9"/></symbol>
+  <symbol id="sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+  <symbol id="book" viewBox="0 0 24 24"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v15H6.5A1.5 1.5 0 0 0 5 19.5z"/><path d="M5 19.5A1.5 1.5 0 0 0 6.5 21H19"/></symbol>
+  <symbol id="file" viewBox="0 0 24 24"><path d="M14 3H6.5a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V7.5z"/><path d="M14 3v4.5h4.5"/></symbol>
+  <symbol id="cr" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+  <symbol id="cd" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+  <symbol id="ud" viewBox="0 0 24 24"><path d="m7 15 5 5 5-5M7 9l5-5 5 5"/></symbol>
+  <symbol id="plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></symbol>
+  <symbol id="back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+  <symbol id="lock" viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></symbol>
+  <symbol id="key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 9-9M17 6l3 3"/></symbol>
+  <symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+  <symbol id="users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/></symbol>
+  <symbol id="box" viewBox="0 0 24 24"><path d="M3 7l9-4 9 4-9 4z"/><path d="M3 7v10l9 4 9-4V7"/></symbol>
+  <symbol id="swap" viewBox="0 0 24 24"><path d="M4 8h14l-3-3M20 16H6l3 3"/></symbol>
+  <symbol id="check" viewBox="0 0 24 24"><path d="m5 12 5 5 9-10"/></symbol>
+</svg>
+
+<div class="bar">
+  <h1>设置放在哪</h1>
+  <div class="seg" id="opt">
+    <button data-choice="settings:a" data-v="a" class="on">A：独立的设置界面</button>
+    <button data-choice="settings:b" data-v="b">B：留在原来的侧栏里</button>
+  </div>
+  <div class="seg" id="thm">
+    <button data-v="light">亮</button>
+    <button data-v="dark" class="on">暗</button>
+  </div>
+  <button class="pick" id="pick">就选这个</button>
+</div>
+<div class="desc" id="desc"></div>
+
+<div class="stage-wrap"><div class="stage" id="stage">
+<div class="mock dark" id="mock">
+  <div class="shell">
+    <!-- A: settings sidebar -->
+    <aside class="side" data-a>
+      <div class="row back"><svg class="i"><use href="#back"/></svg>返回工程手册</div>
+      <div class="stitle">设置</div>
+      <div class="group">个人</div>
+      <div class="row"><svg class="i"><use href="#user"/></svg>个人资料</div>
+      <div class="row"><svg class="i"><use href="#sun"/></svg>外观与语言</div>
+      <div class="row"><svg class="i"><use href="#lock"/></svg>安全</div>
+      <div class="row"><svg class="i"><use href="#key"/></svg>访问令牌</div>
+      <div class="group">工作区 <b>产品研发</b></div>
+      <div class="row"><svg class="i"><use href="#sliders"/></svg>常规</div>
+      <div class="row"><svg class="i"><use href="#users"/></svg>成员与邀请</div>
+      <div class="row"><svg class="i"><use href="#box"/></svg>无主笔记本</div>
+      <div class="group">笔记本 <b>工程手册</b></div>
+      <div class="row on"><svg class="i"><use href="#sliders"/></svg>常规</div>
+      <div class="row"><svg class="i"><use href="#users"/></svg>成员</div>
+      <div class="row"><svg class="i"><use href="#swap"/></svg>导入、导出与恢复</div>
+      <div class="spacer"></div>
+      <div class="me"><span class="av">UI</span>UI Dev<svg class="i"><use href="#more"/></svg></div>
+    </aside>
+    <!-- B: the normal sidebar -->
+    <aside class="side hidden" data-b>
+      <div class="ws"><span class="av">产</span>产品研发<svg class="i"><use href="#ud"/></svg></div>
+      <div class="search"><svg class="i"><use href="#search"/></svg>搜索<kbd>⌘K</kbd></div>
+      <div class="row"><svg class="i"><use href="#home"/></svg>首页</div>
+      <div class="row"><svg class="i"><use href="#sliders"/></svg>工作区设置</div>
+      <div class="group">笔记本</div>
+      <div class="row on"><svg class="i tw"><use href="#cd"/></svg><svg class="i"><use href="#book"/></svg>工程手册</div>
+      <div class="tree">
+        <div class="row"><svg class="i"><use href="#file"/></svg>系统架构</div>
+        <div class="row"><svg class="i"><use href="#file"/></svg>部署指南</div>
+        <div class="row"><svg class="i"><use href="#file"/></svg>API 约定</div>
+        <div class="row"><svg class="i"><use href="#file"/></svg>新人入职</div>
+      </div>
+      <div class="row"><svg class="i tw"><use href="#cr"/></svg><svg class="i"><use href="#book"/></svg>设计规范</div>
+      <div class="row"><svg class="i tw"><use href="#cr"/></svg><svg class="i"><use href="#book"/></svg>知识库</div>
+      <div class="row"><svg class="i"><use href="#plus"/></svg>新建笔记本</div>
+      <div class="spacer"></div>
+      <div class="me"><span class="av">UI</span>UI Dev<svg class="i"><use href="#more"/></svg></div>
+    </aside>
+
+    <div class="main">
+      <div id="bodyA" data-a>
+        <div class="page" id="content"></div>
+      </div>
+      <div class="b-wrap hidden" data-b>
+        <h1>工程手册 的设置</h1>
+        <nav class="b-nav">
+          <div class="row on">常规</div>
+          <div class="row">成员</div>
+          <div class="row">导入、导出与恢复</div>
+        </nav>
+        <div class="page" id="contentB"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</div></div>
+
+<template id="tpl">
+  <h1 data-only-a>常规</h1>
+  <div class="sec" style="margin-top:0">基本信息</div>
+  <div class="card">
+    <div class="set"><div><div class="t">名称</div><div class="d">导出时它是文件夹名：不能包含 / \ : * ? " &lt; &gt; | # ^ [ ]，不能以点开头或结尾。</div></div>
+      <div class="c"><span class="input focus">工程手册（v2）</span><span class="btn primary sm">保存</span></div></div>
+    <div class="set"><div><div class="t">在工作区里的开放程度</div><div class="d">工作区的管理员与成员都能编辑；访客要加入才看得到。</div></div>
+      <div class="c"><span class="saved"><svg class="i"><use href="#check"/></svg>已保存</span><span class="select">工作区成员可编辑<svg class="i"><use href="#cd"/></svg></span></div></div>
+  </div>
+  <div class="sec">模式</div>
+  <div class="card">
+    <div class="set"><div><div class="t">普通笔记本<span class="badge">当前</span></div><div class="d">它的页由成员自己写、自己整理。升级为 LLM Wiki 之后，由 agent 依据你们添加的来源维护。</div></div>
+      <div class="c"><span class="btn">升级为 LLM Wiki…</span></div></div>
+  </div>
+  <div class="sec">危险操作</div>
+  <div class="card">
+    <div class="set"><div><div class="t">删除笔记本</div><div class="d">笔记本及其中的一切都将删除，所有成员都不再能看到它。无法撤销。</div></div>
+      <div class="c"><span class="btn danger">删除…</span></div></div>
+  </div>
+</template>
+
+<script>
+  const descs = {
+    a: '<b>A：独立的设置界面</b>（Codex 的做法）。从头像菜单、工作区菜单或笔记本的“…”进入设置后，左边整个换成设置的目录，个人、工作区、当前笔记本三组放在一起；顶部“返回工程手册”回到原处。设置有了自己的“房间”，主题、语言也有地方放（“外观与语言”）。',
+    b: '<b>B：留在原来的侧栏里</b>。侧栏照旧显示页面树，设置在内容区里自带一列小目录。个人、工作区、笔记本的设置仍是三处分开的页面，只把内容改成同样的分组卡片。改动小，但三处入口分散，内容区里又多一列导航。'
+  };
+  const mock = document.getElementById('mock');
+  const tpl = document.getElementById('tpl');
+  document.getElementById('content').append(tpl.content.cloneNode(true));
+  const b = tpl.content.cloneNode(true); b.querySelector('[data-only-a]').remove();
+  document.getElementById('contentB').append(b);
+  let opt = 'a', thm = 'dark';
+  function apply() {
+    mock.className = 'mock ' + thm;
+    document.querySelectorAll('[data-a]').forEach(e => e.classList.toggle('hidden', opt !== 'a'));
+    document.querySelectorAll('[data-b]').forEach(e => e.classList.toggle('hidden', opt !== 'b'));
+    document.querySelectorAll('#opt button').forEach(x => x.classList.toggle('on', x.dataset.v === opt));
+    document.querySelectorAll('#thm button').forEach(x => x.classList.toggle('on', x.dataset.v === thm));
+    document.getElementById('desc').innerHTML = descs[opt];
+    const p = document.getElementById('pick'); p.classList.remove('done'); p.textContent = '就选这个';
+  }
+  document.querySelectorAll('#opt button').forEach(x => x.onclick = () => { opt = x.dataset.v; apply(); });
+  document.querySelectorAll('#thm button').forEach(x => x.onclick = () => { thm = x.dataset.v; apply(); });
+  document.getElementById('pick').onclick = (e) => {
+    if (window.brainstorm) window.brainstorm.choice('settings-final', { option: opt });
+    e.target.classList.add('done'); e.target.textContent = '已记下：' + opt.toUpperCase();
+  };
+  function fit() {
+    const s = document.getElementById('stage');
+    const k = Math.min(1, (document.documentElement.clientWidth - 40) / 1280);
+    s.style.transform = 'scale(' + k + ')';
+    s.parentElement.style.height = (s.offsetHeight * k + 56) + 'px';
+  }
+  window.addEventListener('resize', fit);
+  apply(); fit();
+</script>
+</body>
+</html>
