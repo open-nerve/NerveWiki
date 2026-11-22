@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
-| 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计已修订两次，待修订核对第 2 轮 |
+| 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
+| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor），待负责人批准开工 P1 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -177,6 +177,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - `dialogOpen()`（`W/app/shortcuts.ts:39-41`）明确处理抽屉：抽屉开着时别的快捷键让路，⌘K 与 Mod+Shift+F 照旧聚焦抽屉里的搜索框；关着时不算对话框。
 - 在抽屉里点了链接或提交了搜索：抽屉关上；路由状态是 `arrived` 或 `opened` 时，不把焦点还给菜单按钮（照 13.2 第 17 条，焦点归去向页）。
 - 375 px 下要碰侧栏的故事要先开抽屉。核对过的：se1 的 `@narrow` 格在 1280 px 下搜索、之后才缩窄（`e2e/stories/search/se1-search.spec.ts:397,401`），lw3 的 310–317 行不碰侧栏，两者都不用改；P2/S3 的设计把其余的逐个列全。
+- 设置模式（4.4）在窄屏下同样如此：设置目录就是侧栏那个位置上的同一个抽屉元素，关着时 `inert`，顶部是同一条细栏与菜单按钮；个人设置在工作区外框之外（`W/app/routes.tsx:98-128`），由设置目录组件自己带上这条细栏（RA2-Q1）。
 - 375 px 的 `expectFits` 照旧要过。
 
 ### 4.3 控件
@@ -243,7 +244,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 - 不另画小标签组件，**只用 CSS 把服务端渲染的属性表（`table.nw-props`）排成一条紧凑的属性条**：每个键值一个圆角小块（键灰字、值正文色），列表值（如标签）每项一个小块，自动折行；嵌套的值（`table.nw-props table.nw-props`）照样能读，只是缩进成小块里的一段。
 - 好处：版本页与回收站的预览也是这张表（`W/pages/page/version-page.tsx:209`、`W/pages/notebook/trash-preview.tsx:468`），而属性接口读的是当前的页、删除的页答 `page.not_found`（`api/modules/linking.yaml:93-110`），另画的小标签在那两处会错或没有；值里的链接照旧是服务端的链接，`app-links` 照旧接管，没建的页照旧能"新建"（`W/reading/unresolved-links.ts:17-34`）；13.2 第 24 条的滚动区域照旧（属性条宽过可见范围时仍是名为"属性"的区域）；不加请求。
-- 表与列表改了 `display` 之后，有的读屏（WebKit 加 VoiceOver）会丢掉它们的语义（项目自己的注释，`W/reading/reading.css:246-247`；`list-style: none` 的列表同样）。所以一个阅读视图的增强给属性表补上明确的 `role`（`table`、`row`、`rowheader`、`cell`，值里的列表 `list`、`listitem`），与 `scroll-regions` 补 `role` 的做法相同、只加属性不改结构（主持者的决定 745）；vitest 核对这些 `role`。
+- 表与列表改了 `display` 之后，有的读屏（WebKit 加 VoiceOver）会丢掉它们的语义（项目自己的注释，`W/reading/reading.css:246-247`；`list-style: none` 的列表同样）。所以一个阅读视图的增强给属性表补上明确的 `role`（`table`、`rowgroup`、`row`、`rowheader`、`cell`，值里的列表 `list`、`listitem`；服务端写的表没有 `tbody`，`server/internal/platform/markdown/render.go:102-104`，解析器补上的那一个最可能改 `display`，所以它也要 `rowgroup`），与 `scroll-regions` 补 `role` 的做法相同、只加属性不改结构（主持者的决定 745）；vitest 核对这些 `role`。
 - 右栏的"属性"一节照旧显示完整的键值（`W/pages/page/page-properties.tsx`）。
 - 初稿的"超过一行折成 +N、点开浮层"不做：右栏已有完整的列表。
 - pg5 的 128–129 行照旧（读 `textContent`），只改测试标题里过时的说法。
@@ -257,7 +258,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 代码块：圆角 12 px，顶部一条写语言名与"复制"按钮（主持者的决定 742）：
   - 这是阅读视图交互增强（12.4）的新一项，也是 13.2 第 23 条"增强不改 HTML 结构"的又一个例外（与它已列的例外并列写进去）；
   - 没有剪贴板时（局域网的纯 HTTP 地址，README 第 465 行）不显示按钮，照 `W/pages/settings/create-token-dialog.tsx:194` 的做法；
-  - 头部放在哪由 P4/S2 定，约束是：不改变顶层块（阅读视图的就地更新按顶层块比对，M12/P2/S4）、横向滚动时不跟着滚走、不改变代码块的区域名称"代码"；
+  - 头部放在 `pre` 里面、`position: sticky; left: 0`：不改变顶层块（阅读视图的就地更新按顶层块比对，M12/P2/S4），横向滚动时不跟着滚走，代码块的区域名称"代码"不变（包一层或放在旁边都违反前一条，绝对定位会跟着滚走）。头部 `user-select: none`，手选代码复制时不带上它（as6 核对提示不进复制的文字是先例）；"复制"只取 `code` 的 `textContent`；
   - 高亮的配色换成 4.1 的那套（`reading.css` 的 hljs 一节有 9 个变量，reading.html 只给了关键字、字符串、注释、函数名四色，标题、常量、内置、名称、增删五个由 P4/S2 从同一套色值推出；pg5:158-163"关键字与代码颜色不同"照旧成立）。
 - mermaid：`W/reading/diagrams.ts:97` 由 `default`/`dark` 改为 `base` 加亮暗两套 `themeVariables`（灰阶的节点与线，强调用琥珀）。13.2 第 23 条的换主题重画不变（每次渲染重建选项、缓存按主题分，`diagrams.ts:75-98,219,241`；l4:184-193 照旧）；`W/reading/diagrams.test.ts:67-68,146,326-331` 以 `config.theme` 区分两种画法，改断言。KaTeX 的颜色跟正文（l4:174 核对 KaTeX 字体，照旧）。
 - 任务复选框照 4.3；已完成的项只把它自己的文字划线、变淡，不连带嵌套的子项（任务列表的 `ul` 嵌在 `li` 里，松散的项是 `li > p > input`，`W/reading/task-toggle.test.ts:81-83`）。做法：划线不会传进行内块，所以已完成的项里嵌套的列表设成 `display: inline-block; width: 100%`；变淡用颜色（`--faint`）不用透明度，嵌套的列表把颜色设回正文色（透明度无法在子元素里撤销）。
@@ -317,9 +318,9 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
   - UI2 设置界面（`ui2-settings-mode.spec.ts`）：从侧栏、笔记本行、账户菜单进入，组名随改名变，返回到来处，直接打开地址时的返回；
   - UI3 即时生效（`ui3-instant-save.spec.ts`）：选下拉即生效、"已保存。"；另一个管理员在另一个浏览器上下文（`anotherPage`）里把本人降为成员之后再选，被拒、退回原值、显示原因。只用鼠标与 `selectOption`（Linux 上的 WebKit 在关着的下拉上按方向键会立即生效，M12-polish 第 8 项），键盘逐项走等失焦的规则由 vitest 守。
 
-  另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：PG2 里"菜单打开、改名、取消、焦点回到按钮"一段挪进单独的文件（M12-polish 第 14 项）。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
+  另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：新的、只有页面版本的一格，在三种浏览器里打开树的行菜单、改名、取消、焦点回到按钮（M12-polish 第 14 项）；PG2 的页面版本（`pg2-rename-page.spec.ts:131-170`，以 `expectRenamed` 断言数据库）照旧留在 PG2。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
 
-  四个（UI1–UI3、PG16）都进 `threeBrowsers`（`e2e/playwright.config.ts:3-4`，按文件路径匹配，名字不与别的文件的前缀重叠），并在 `tools/e2e-projects/check.mjs` 的必需格里各加 firefox 与 webkit 两行（正则写错不会让任何一格变红，`check.mjs:1-3`）。10.1 的接口版本与 MCP 版本豁免（照 PG15 的先例写进 13.4 第 3 条）：UI1 只有界面的行为；UI2 经页面改工作区与笔记本的名字，照 w4、n6 调同一组数据库断言，接口版本与 MCP 版本由 W4、N6 覆盖；UI3 写开放程度，照 n3 调 `expectNotebook`，接口版本与 MCP 版本由 N3 覆盖；PG16 是 PG2 的一段，PG2 的接口与 MCP 版本照旧。
+  四个（UI1–UI3、PG16）都进 `threeBrowsers`（`e2e/playwright.config.ts:3-4`，按文件路径匹配，名字不与别的文件的前缀重叠），并在 `tools/e2e-projects/check.mjs` 的必需格里各加 firefox 与 webkit 两行（正则写错不会让任何一格变红，`check.mjs:1-3`）。10.1 的接口版本与 MCP 版本豁免（照 PG15 的先例写进 13.4 第 3 条）：UI1 只有界面的行为；UI2 经页面改工作区与笔记本的名字，照 w4、n6 调同一组数据库断言，接口版本与 MCP 版本由 W4、N6 覆盖；UI3 写开放程度，照 n3 调 `expectNotebook`，接口版本与 MCP 版本由 N3 覆盖；PG16 只核对菜单的行为（取消，不写），接口与 MCP 版本豁免。
 - **变异**（02-workflow 3.1；00-M12 9.6 是先例），每个 Step 的设计写出自己的表，至少含：把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红；⌘K 在编辑器里不让路、对话框开着时不让路，vitest 变红；即时生效被拒不退回，UI3 变红；设置目录的 `nav` 改名，tr1 或 n9 变红；`notebookGroups` 数进树里的链接，n1 或 n2 变红；抽屉关着时不带 `inert`，UI1 变红。
 - **每个 Step 的三位审查者**（02-workflow 3.2）：A 管行为（焦点、键盘、store、路由、快捷键）；B 管外观（对照样稿的色值、圆角、间距、层次，亮暗与 1440/375 的截图；检查单加一条"与样稿一致"）；C 管测试、e2e、完成标准与文档。
 - **视觉的核对**：截图由审查者用 Playwright 截取、在本机看，不进仓库，不做像素对比的门禁（主持者的决定 725）；审查记录写明对照过哪些页面。
@@ -364,7 +365,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 ### 移交的落实
 
-- **[v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)**（`open`，to v0.2）：M13 只认领"落在重做的界面上、属于外观或交互"的项。00 号认领两项："编辑时没有大纲"（发布说明"网页的打磨"一条点名的那项，P4/S3）与第 14 项"页面树的菜单进三种浏览器"（P2/S2 重做那个菜单，把 PG2 里"菜单打开、改名、取消、焦点回按钮"一段挪进新故事 PG16，4.8）。其余由各 Phase 的设计开工时对照 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目逐项认领，写进那份移交的"处理进展"（写明 M13 的哪个 Step）；没认领的照旧留给 v0.2。那份移交仍是 `open`。
+- **[v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)**（`open`，to v0.2）：M13 只认领"落在重做的界面上、属于外观或交互"的项。00 号认领两项："编辑时没有大纲"（发布说明"网页的打磨"一条点名的那项，P4/S3）与第 14 项"页面树的菜单进三种浏览器"（P2/S2 重做那个菜单，加新故事 PG16 在三种浏览器里核对它，4.8）。其余由各 Phase 的设计开工时对照 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目逐项认领，写进那份移交的"处理进展"（写明 M13 的哪个 Step）；没认领的照旧留给 v0.2。那份移交仍是 `open`。
 - **[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md)**（`open`，to v0.1.1）：人工验收照旧在 v0.1.0 发布之后，验的是 M13 之后的界面；三份清单由 M13 收尾改写（见"收尾"第 1 项）；第 6 项"验收通过之后 M4–M12 改为已完成"加上 M13。"处理进展"写一行。
 - **00-M12 第 12 节"收尾与发布"一行**：改为"收尾已合并；发布等 M13 收尾之后（负责人 2026-11-22 第 5 问）"。
 
@@ -395,7 +396,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
    - 第 23 条（增强不改 HTML 结构的例外加代码块的头）：P4/S2；
    - 第 24 条（属性表排成属性条之后仍是名为"属性"的滚动区域）：P4/S1；
    - 写到"顶栏""左栏"的其他条目，由 P2、P3 的设计逐条列出、各自的 Step 改写。
-7. 13.4 第 3 条（e2e）：新分组 `shell/` 与 UI1–UI3 的接口版本与 MCP 版本豁免；对比度三个故事改为回归守卫；`notebookGroups` 每项只取第一个链接；375 px 下用侧栏先开抽屉。各在实现的 Step 写。
+7. 13.4 第 3 条（e2e）：新分组 `shell/` 与 UI1–UI3、PG16 的接口版本与 MCP 版本豁免；对比度三个故事改为回归守卫；`notebookGroups` 每项只取第一个链接；375 px 下用侧栏先开抽屉。各在实现的 Step 写。
 8. 变更记录加一行。
 9. `docs/README.md`：目录结构"v0.1 = 首个生产可用版本（M0–M12）"改为"（M0–M13）"；"Git 工作方式"加一条"M13 同 M12，只是文档与 Step 都合并进 `m13-ui-refresh`，收尾之后它合并进 `main`（负责人的要求，00-M13 第 11 节）"。
 
@@ -519,7 +520,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 ### 2026-11-22：修订核对第 1 轮之后的主持者的决定 745（负责人可以改判）
 
-- **745 修订核对第 1 轮的十余处**（依据见[审查记录](reviews/M13-design-review.md)"修订核对第 1 轮"）：笔记本行的标题放在树的 `nav` 之前（RA1-I1）；进入设置的链接直接指向第一页、`index` 重定向转交路由状态、设置页的 `h1` 取到达的焦点（RA1-M1）；换组时记下并还回树里的焦点（RA1-M2）；＋与齿轮只降透明度、没有悬停的设备与窄屏下一直显示（RA1-M3）；抽屉开着时 ⌘K 与 Mod+Shift+F 照旧、细栏上不放账户按钮（RA1-N3 与未核实的一条）；不设 `--accent-foreground`，旧的用处改成 `--foreground`（RB1）；属性表补明确的 `role`（RB2）；编辑的"保存"拿着焦点消失时焦点给编辑器（RB3）；编辑时的大纲有上限、去抖、解析完成时刷新（RB4）；划线的做法、圆角的变量、单选复选的焦点偏移、代码块头部的约束与 hljs 其余五色（RB5、RB7–RB9）；右栏开关只在并排时出现（RB6，改 741）；设计定稿的提交只改第 1–4、8、9 项（RC1）；PG2 的菜单一段挪进新故事 PG16（RC2）；读屏清单的新节含嵌套的 `nav`、UI2 与 UI3 的豁免理由与数据库断言、`main` 上记录的提交补全（RC3–RC5）；"已保存"前的 ✓ 只用 CSS 画（审查 C 的未核实一条）。
+- **745 修订核对第 1 轮的十余处**（依据见[审查记录](reviews/M13-design-review.md)"修订核对第 1 轮"）：笔记本行的标题放在树的 `nav` 之前（RA1-I1）；进入设置的链接直接指向第一页、`index` 重定向转交路由状态、设置页的 `h1` 取到达的焦点（RA1-M1）；换组时记下并还回树里的焦点（RA1-M2）；＋与齿轮只降透明度、没有悬停的设备与窄屏下一直显示（RA1-M3）；抽屉开着时 ⌘K 与 Mod+Shift+F 照旧、细栏上不放账户按钮（RA1-N3 与未核实的一条）；不设 `--accent-foreground`，旧的用处改成 `--foreground`（RB1）；属性表补明确的 `role`（RB2）；编辑的"保存"拿着焦点消失时焦点给编辑器（RB3）；编辑时的大纲有上限、去抖、解析完成时刷新（RB4）；划线的做法、圆角的变量、单选复选的焦点偏移、代码块头部的约束与 hljs 其余五色（RB5、RB7–RB9）；右栏开关只在并排时出现（RB6，改 741）；设计定稿的提交只改第 1–4、8、9 项（RC1）；树的菜单在三种浏览器里由新故事 PG16 核对、PG2 照旧（RC2）；读屏清单的新节含嵌套的 `nav`、UI2 与 UI3 的豁免理由与数据库断言、`main` 上记录的提交补全（RC3–RC5）；"已保存"前的 ✓ 只用 CSS 画（审查 C 的未核实一条）。
 
 ### 需要负责人确认
 
@@ -541,3 +542,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-22：初稿（负责人的五问、开发方式的两点要求与主持者的决定 715–729；样稿三份进 `mockups/`；代码调查的结果进 9.1，随之放弃合并搜索与快速切换的跳转框）。
 - 2026-11-22：照三份设计审查修订（[审查记录](reviews/M13-design-review.md)；主持者的决定 730–744；取代 723、726）。
 - 2026-11-22：照修订核对第 1 轮修订（主持者的决定 745；改 741）。
+- 2026-11-22：修订核对第 2 轮之后三位都没有 Important、Minor；主持者补上第 2 轮的 Nit（PG16 是新的一格、PG2 照旧；13.4 的修订加 PG16；设置模式在窄屏同样是抽屉；属性表的 `rowgroup`；代码块头部的位置）；照第 7 节把"总体设计的修订"第 1–4、8、9 项与三处移交落进各自的文档（设计定稿）。
