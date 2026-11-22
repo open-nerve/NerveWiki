@@ -80,7 +80,9 @@ test("chosen at the top right of the onboarding, where the settings send it back
   await user.click(corner);
   await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
 
-  await waitFor(() => expect(router.state.location.pathname).toBe("/onboarding"));
+  // The bounce itself, not the onboarding the cell began on (review C, S1C1-N2).
+  await waitFor(() => expect(router.state.location.search).toBe("?next=%2Fsettings%2Fprofile"));
+  expect(router.state.location.pathname).toBe("/onboarding");
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(corner));
 });
