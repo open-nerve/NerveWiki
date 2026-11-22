@@ -9,7 +9,8 @@ import { NotLoaded } from "../../app/not-loaded";
 import type { Notebook } from "../../services/notebook.service";
 import { useNotebooks, usePageTree, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
-import { useNotebookColumn, useWorkspace } from "../workspace/workspace-layout";
+import { useNotebookSlot } from "../workspace/notebook-slot";
+import { useWorkspace } from "../workspace/workspace-layout";
 import { NotebookPlaces } from "./notebook-places";
 import { PageTree } from "./page-tree";
 import { QuickSwitch } from "./quick-switch";
@@ -41,7 +42,10 @@ export function useNotebook(): Notebook {
  * so do its page tree, which it puts in the workspace's left column
  * (M4/P5 design 3.6) with its other places below it (notebook-places.tsx),
  * and its quick switch (3.10); above its pages, the banner of its upgrade
- * under way (M11/P1 design 4.4). A notebook gone while
+ * under way (M11/P1 design 4.4). The tree and the places go into the
+ * container the workspace's shell keeps for the notebook of the address,
+ * which the list's item of the notebook holds (notebook-slot.tsx,
+ * M13/P2/S2). A notebook gone while
  * this tab edits one of its pages with changes not saved stays, as it was
  * last found, until the edit ends (M5/P4 design 3.9).
  */
@@ -50,7 +54,8 @@ export const NotebookLayout = observer(function NotebookLayout() {
   const workspace = useWorkspace();
   const notebooks = useNotebooks(workspace);
   const store = useStore();
-  const column = useNotebookColumn();
+  // The id as the address writes it: the list's item of the same id holds the container (NotebookNav).
+  const container = useNotebookSlot().containerFor(id);
   const { error, mutate } = useSWR(["notebooks", workspace.id], () => notebooks.load());
   const [last, setLast] = useState<Notebook | undefined>(undefined);
   const found = notebooks.list === undefined ? undefined : notebooks.byId(id);
@@ -67,14 +72,15 @@ export const NotebookLayout = observer(function NotebookLayout() {
   return (
     <NotebookContext value={notebook}>
       <TreeWatch notebook={notebook} />
-      {column !== null &&
-        createPortal(
-          <div key={notebook.id} className="space-y-4">
-            <PageTree notebook={notebook} />
-            <NotebookPlaces notebook={notebook} />
-          </div>,
-          column
-        )}
+      {/* Keyed apart from the outlet's notebook.id, its sibling's: one key for both is React's error (review C-M2). */}
+      {createPortal(
+        <>
+          <PageTree notebook={notebook} />
+          <NotebookPlaces notebook={notebook} />
+        </>,
+        container,
+        `tree-${notebook.id}`
+      )}
       <QuickSwitch notebook={notebook} />
       {/* Outside the outlet: the upgrade's state changing remounts none of the page. */}
       <UpgradeBanner notebook={notebook} />

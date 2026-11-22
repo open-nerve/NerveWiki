@@ -1,6 +1,6 @@
 import { House, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { createContext, use, useContext, useEffect, useState } from "react";
+import { createContext, use, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -18,6 +18,7 @@ import { SessionChangedError } from "../../session/token-manager";
 import { useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
+import { makeSlot, NotebookSlot } from "./notebook-slot";
 import { SearchBox } from "./search-box";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
@@ -37,18 +38,6 @@ export function useWorkspace(): Workspace {
   return workspace;
 }
 
-/** NotebookColumn is where a notebook's pages put their part of the left column: below the workspace's navigation. */
-const NotebookColumn = createContext<HTMLElement | null>(null);
-
-/**
- * useNotebookColumn is the element a notebook's pages portal their part of
- * the left column into, the notebook's page tree (M4/P5 design 3.6), or
- * null before the column has it.
- */
-export function useNotebookColumn(): HTMLElement | null {
-  return useContext(NotebookColumn);
-}
-
 /** The workspace's own pages, in the order the navigation lists them, before its notebooks, each with its icon. */
 const sections: readonly {
   path: string;
@@ -64,8 +53,10 @@ const sections: readonly {
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
  * the left column (ShellSidebar, M13/P2/S1), its top the switcher and the
  * workspace's search box (M8/P5 design 4.2), then its navigation: its
- * pages and its notebooks (M3/P4 design 3.3), then a notebook's page tree,
- * and in its foot the account; beside the page chosen, which is the
+ * pages and its notebooks (M3/P4 design 3.3), the open notebook in its
+ * item, its row, page tree and places, in a container the shell keeps by
+ * the notebook's id (notebook-slot.tsx, M13/P2/S2), and in its foot the
+ * account; beside the page chosen, which is the
  * layout's main. The column is no landmark of its own: the search and the
  * navigation are the ones it holds; it goes into the layout's place for
  * it, outside the main (M4/P5 design 3.2). Without it, the load failed or
@@ -89,7 +80,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const { preferences } = store;
   const t = useT();
   const column = useShellColumn();
-  const [notebookColumn, setNotebookColumn] = useState<HTMLElement | null>(null);
+  // For the shell's life: a notebook's tree stays in its container as the notebook moves in the list (decision 776).
+  const [slot] = useState(makeSlot);
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const [last, setLast] = useState<Workspace | undefined>(undefined);
   const listed = workspaces.bySlug(slug);
@@ -150,15 +142,14 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
         ))}
         <NotebookNav key={workspace.id} workspace={workspace} />
       </nav>
-      <div ref={setNotebookColumn} className="mt-3" />
     </ShellSidebar>
   );
   return (
     <WorkspaceContext value={workspace}>
-      {column !== null && createPortal(left, column)}
-      <NotebookColumn value={notebookColumn}>
+      <NotebookSlot value={slot}>
+        {column !== null && createPortal(left, column)}
         <Outlet key={workspace.id} />
-      </NotebookColumn>
+      </NotebookSlot>
     </WorkspaceContext>
   );
 });

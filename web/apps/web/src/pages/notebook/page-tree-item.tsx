@@ -39,6 +39,7 @@ import type { TreeNode } from "../../services/page.service";
 import { useStore } from "../../stores/context";
 import type { PageTreeStore } from "../../stores/page-tree.store";
 import { depthOf, maxDepth, subtreeOf } from "../../stores/page-tree";
+import { useSlotMoves } from "../workspace/notebook-slot";
 import { distinctName } from "./distinct-name";
 import { MovePageDialog } from "./move-page-dialog";
 import { useDrag } from "./page-drag";
@@ -362,7 +363,8 @@ const PageRow = memo(function PageRow({
  * Move to… and Delete, the last three in dialogs the page's row holds; on
  * a source, Paste Markdown and Upload files. It opens at the page's
  * button, named by it, and stays there as another's change moves the
- * button; it closes as the page's row leaves the tree. Closed, it gives
+ * button, or the notebook moves to the other group of the list, the slot
+ * telling it (decision 800); it closes as the page's row leaves the tree. Closed, it gives
  * the focus back to the page's button, wherever the page moved, unless an
  * item opened a dialog, which takes it, or a right click outside closed
  * it, the focus staying where the click was. A page ten levels down has
@@ -391,6 +393,9 @@ export const TreeMenu = observer(function TreeMenu({
   // the page's button as the tree now has it, not as this renders, before the commit.
   const [moved, setMoved] = useState<{ menu: OpenMenu; box: Box }>();
   const box = menu === undefined ? undefined : moved?.menu === menu ? moved.box : menu.box;
+  // The notebook's container moved to the other group: this renders again, the effect below measuring the button
+  // where it went. The tree need not render for it, its callbacks new or not (decision 800).
+  useSlotMoves();
   // oxlint-disable-next-line react-hooks/exhaustive-deps -- after each commit: the tree, or what is above it in the column, moves the button; set only as it moved
   useLayoutEffect(() => {
     if (menu === undefined || box === undefined) {

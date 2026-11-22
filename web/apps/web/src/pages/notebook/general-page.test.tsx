@@ -33,11 +33,12 @@ test("the settings of a notebook open on its general page, from its home", async
   expect(screen.getByRole("heading", { level: 1, name: "Plans settings" })).toBeTruthy();
   const settings = screen.getByRole("navigation", { name: "Notebook settings" });
   expect(within(settings).getByRole("link", { name: "General" }).getAttribute("aria-current")).toBe("page");
+  // The notebook's row links its home alone (end): its settings are no page of the home's (M13/P2/S2).
   expect(
     within(await nav())
       .getByRole("link", { name: "Plans" })
       .getAttribute("aria-current")
-  ).toBe("page");
+  ).toBeNull();
 });
 
 test("an admin renames the notebook; the left column shows the new name, in its place", async () => {
