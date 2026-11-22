@@ -20,6 +20,7 @@ function phone(narrow: boolean) {
   });
   return {
     asked,
+    listeners,
     change: (to: boolean) => {
       matches = to;
       for (const listener of listeners) listener();
@@ -34,9 +35,9 @@ test("without matchMedia, as jsdom has none, it is not narrow", () => {
   expect(renderHook(() => useNarrow()).result.current).toBe(false);
 });
 
-test("it answers md's query, (width < 48rem), and follows its changes", () => {
+test("it answers md's query, (width < 48rem), and follows its changes, until unmounted", () => {
   const media = phone(true);
-  const { result } = renderHook(() => useNarrow());
+  const { result, unmount } = renderHook(() => useNarrow());
   expect(result.current).toBe(true);
   expect(new Set(media.asked)).toEqual(new Set(["(width < 48rem)"]));
 
@@ -44,4 +45,9 @@ test("it answers md's query, (width < 48rem), and follows its changes", () => {
   expect(result.current).toBe(false);
   act(() => media.change(true));
   expect(result.current).toBe(true);
+
+  // It listens no more (review C, S1C-N2).
+  expect(media.listeners.size).toBe(1);
+  unmount();
+  expect(media.listeners.size).toBe(0);
 });

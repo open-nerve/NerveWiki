@@ -110,6 +110,7 @@ test("a submenu opens from its item, by the keyboard too, and animates in, never
   expect(appearance.getAttribute("aria-haspopup")).toBe("menu");
   await user.click(appearance);
   expect(await screen.findByRole("menuitem", { name: "Light" })).toBeTruthy();
+  expect(document.activeElement).toBe(appearance);
   await user.keyboard("{Escape}");
   await waitFor(() => expect(screen.queryAllByRole("menu")).toEqual([]));
 

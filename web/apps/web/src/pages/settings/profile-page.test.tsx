@@ -85,6 +85,25 @@ test("chosen at the top right of the onboarding, where the settings send it back
   await waitFor(() => expect(document.activeElement).toBe(corner));
 });
 
+test("Settings chosen at the top right of another page of theirs, its menu opened again gives Escape's focus back to its button", async () => {
+  const user = userEvent.setup();
+  renderApp("/settings/security", signedInApp());
+  const title = await screen.findByRole("heading", { level: 1, name: "Settings" });
+  const corner = screen.getByRole("button", { name: "Ada" });
+  await user.click(corner);
+  await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
+  expect(await screen.findByRole("heading", { level: 2, name: "Profile" })).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(title));
+
+  // The same top right, kept across the settings: what held the focus from its button then holds it no more (review
+  // A, S1A-N4, r01).
+  await user.click(corner);
+  await screen.findByRole("menu");
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(corner));
+});
+
 test("a new display name is saved, and the user menu shows it", async () => {
   const user = userEvent.setup();
   const { app, sent } = profileServer();

@@ -138,6 +138,7 @@ test("the account's button is named for its display name alone, its avatar's let
   // A name matches exactly: what e2e's accountMenu asks for.
   const button = await screen.findByRole("button", { name: "Ada" });
   const avatar = [...button.querySelectorAll("span")].find((span) => span.textContent === "A");
+  expect(avatar).toBeDefined();
   expect(avatar?.closest('[aria-hidden="true"]')).toBe(avatar);
   expect(button.closest("[data-shell]")).not.toBeNull();
 });
@@ -175,48 +176,52 @@ test("the column's account opens its menu above it, from its start; the top righ
   expect(corner.className).toContain("max-w-[min(16rem,var(--radix-dropdown-menu-content-available-width))]");
 });
 
-test("below md the account's menu has the theme and the language in it, no submenu, a choice keeping it open", async () => {
-  // A submenu has no room beside a menu as wide as a phone's column (M13/P2/S1, decision 801).
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query === "(width < 48rem)",
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  }));
-  const user = userEvent.setup();
-  const { app } = renderApp("/lab", signedInApp());
+// The column's and the top right's (review C, S1C-N2).
+test.each(["/lab", "/settings/profile"])(
+  "below md the account's menu at %s has the theme and the language in it, no submenu, a choice keeping it open",
+  async (path) => {
+    // A submenu has no room beside a menu as wide as a phone's column (M13/P2/S1, decision 801).
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query === "(width < 48rem)",
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const user = userEvent.setup();
+    const { app } = renderApp(path, signedInApp());
 
-  await user.click(await screen.findByRole("button", { name: "Ada" }));
-  const menu = await screen.findByRole("menu");
-  await within(menu).findByText("Nerve Wiki 1.2.3 (4f2a9c1)");
-  expect(within(menu).queryByRole("menuitem", { name: "Appearance" })).toBeNull();
-  expect(
-    [...menu.children].map((child) =>
-      child.getAttribute("role") === "separator" ? "—" : (child.getAttribute("aria-label") ?? child.textContent)
-    )
-  ).toEqual([
-    "Settings",
-    "—",
-    "Theme",
-    "Theme",
-    "—",
-    "Language",
-    "Language",
-    "—",
-    "Sign out",
-    "—",
-    "Nerve Wiki 1.2.3 (4f2a9c1)",
-  ]);
-  expect(
-    within(within(menu).getByRole("group", { name: "Theme" }))
-      .getAllByRole("menuitemradio")
-      .map((item) => item.textContent)
-  ).toEqual(["System", "Light", "Dark"]);
+    await user.click(await screen.findByRole("button", { name: "Ada" }));
+    const menu = await screen.findByRole("menu");
+    await within(menu).findByText("Nerve Wiki 1.2.3 (4f2a9c1)");
+    expect(within(menu).queryByRole("menuitem", { name: "Appearance" })).toBeNull();
+    expect(
+      [...menu.children].map((child) =>
+        child.getAttribute("role") === "separator" ? "—" : (child.getAttribute("aria-label") ?? child.textContent)
+      )
+    ).toEqual([
+      "Settings",
+      "—",
+      "Theme",
+      "Theme",
+      "—",
+      "Language",
+      "Language",
+      "—",
+      "Sign out",
+      "—",
+      "Nerve Wiki 1.2.3 (4f2a9c1)",
+    ]);
+    expect(
+      within(within(menu).getByRole("group", { name: "Theme" }))
+        .getAllByRole("menuitemradio")
+        .map((item) => item.textContent)
+    ).toEqual(["System", "Light", "Dark"]);
 
-  await user.click(within(menu).getByRole("menuitemradio", { name: "Dark" }));
-  expect(app.preferences.theme).toBe("dark");
-  expect(menu.isConnected).toBe(true);
-  expect(within(menu).getByRole("menuitemradio", { name: "Dark" }).getAttribute("aria-checked")).toBe("true");
-});
+    await user.click(within(menu).getByRole("menuitemradio", { name: "Dark" }));
+    expect(app.preferences.theme).toBe("dark");
+    expect(menu.isConnected).toBe(true);
+    expect(within(menu).getByRole("menuitemradio", { name: "Dark" }).getAttribute("aria-checked")).toBe("true");
+  }
+);
 
 test("a theme and a language chosen in Appearance apply at once, its menu staying open", async () => {
   const user = userEvent.setup();

@@ -4,7 +4,7 @@ import { expect, test, vi } from "vitest";
 
 import { ApiError } from "../services/api";
 import { RootStore } from "../stores/root.store";
-import { signedInApp, testApp } from "../test/fakes";
+import { json, signedInApp, testApp, userJSON } from "../test/fakes";
 import { renderApp } from "../test/render";
 import { AppProviders } from "./providers";
 import { RouteError } from "./route-error";
@@ -33,13 +33,23 @@ test("a page that fails to load shows the error page inside the layout", async (
 
 test("a workspace's page that fails to load on the tab's first load has the account's button at the top right", async () => {
   vi.spyOn(console, "error").mockImplementation(() => {});
-  renderApp("/lab", signedInApp());
+  let reads = 0;
+  renderApp(
+    "/lab",
+    signedInApp({
+      "GET /api/v0/me": () => {
+        reads += 1;
+        return json(userJSON);
+      },
+    })
+  );
 
   expect((await screen.findByRole("alert")).textContent).toContain("Something went wrong");
   // The boundary is above the guards, which never loaded the account: the top right loads it itself (M13/P2/S1,
-  // decision 792; review C-M1).
+  // decision 792; review C-M1), once (review C, S1C-N3).
   expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Appearance" })).toBeNull();
+  expect(reads).toBe(1);
 });
 
 function Refused(): never {

@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 
-import { json, problem, signedInApp, testApp, tokensJSON, workspaceJSON, type Answer } from "../test/fakes";
+import { json, problem, signedInApp, testApp, tokensJSON, userJSON, workspaceJSON, type Answer } from "../test/fakes";
 import { renderApp } from "../test/render";
 
 /** held is an answer kept until released; asked settles once it is asked for. */
@@ -110,6 +110,8 @@ test("while the workspaces load there is no account's button; a slug not found t
   await screen.findByRole("heading", { name: "Page not found" });
   const account = await screen.findByRole("button", { name: "Ada" });
   expect(account.closest("[data-shell]")).toBeNull();
+  // Back to the workspace is the settings' and the creating page's (review C, S1C-N3).
+  expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 });
 
 test("at / the account's button waits for the workspaces, then is the column's, one of it", async () => {
@@ -161,7 +163,8 @@ test("from a slug not found back home, there is one account's button, the column
 
 test("on the settings, Back to the workspace lands on one, arrived at: its title takes the focus", async () => {
   const user = userEvent.setup();
-  const { router } = renderApp("/settings/profile", signedInApp());
+  // Any page of theirs, not the profile alone (review A, S1A-N4, r28).
+  const { router } = renderApp("/settings/security", signedInApp());
   await screen.findByRole("heading", { level: 1, name: "Settings" });
   expect(screen.getByRole("button", { name: "Ada" })).toBeTruthy();
 
@@ -197,7 +200,17 @@ test("an account without a workspace, landed on the page that creates one, has n
 
 test("while the session starts the top right has nothing, then the account's button", async () => {
   const refresh = held();
-  renderApp("/settings/profile", signedInApp({ "POST /api/v0/auth/refresh": refresh.answer }));
+  let reads = 0;
+  renderApp(
+    "/settings/profile",
+    signedInApp({
+      "POST /api/v0/auth/refresh": refresh.answer,
+      "GET /api/v0/me": () => {
+        reads += 1;
+        return json(userJSON);
+      },
+    })
+  );
   // The guard's Loading shows: the page is up, its session starting (review A-M4).
   await refresh.asked;
   expect(await screen.findByRole("status")).toBeTruthy();
@@ -208,6 +221,8 @@ test("while the session starts the top right has nothing, then the account's but
 
   expect(await screen.findByRole("button", { name: "Ada" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Appearance" })).toBeNull();
+  // The guard and the top right waited for the account by one key: one read (review C, S1C-N3).
+  expect(reads).toBe(1);
 });
 
 test("the account not loading, the session's unavailable page has Appearance at the top right", async () => {
@@ -218,6 +233,18 @@ test("the account not loading, the session's unavailable page has Appearance at 
   expect(await screen.findByRole("button", { name: "Appearance" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
 });
+
+test.each(["/settings/profile", "/lab"])(
+  "the session unavailable at %s, the top right has Appearance, no account's button",
+  async (path) => {
+    // The refresh refused for now: the tab has a session it cannot reach (decision 792; review C, S1C-M1).
+    renderApp(path, signedInApp({ "POST /api/v0/auth/refresh": () => problem(503, "server_busy") }));
+
+    expect(await screen.findByRole("heading", { name: "Cannot reach the server" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Appearance" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
+  }
+);
 
 test("in Chinese, the top right's Appearance and Back to the workspace", async () => {
   const signedOut = testApp();
