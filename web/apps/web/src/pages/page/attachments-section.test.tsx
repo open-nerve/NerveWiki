@@ -153,6 +153,12 @@ test("a reader's menu opens, downloads and copies the embed; a writer's renames,
     "Move to…",
     "Delete",
   ]);
+  // Delete reads red, set apart from the others by a line, as nothing else does (M13/P1/S2).
+  const remove = screen.getByRole("menuitem", { name: "Delete" });
+  expect(remove.classList.contains("text-destructive")).toBe(true);
+  expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
+  expect(within(screen.getByRole("menu")).getAllByRole("separator")).toHaveLength(1);
+  expect(screen.getByRole("menuitem", { name: "Rename" }).classList.contains("text-destructive")).toBe(false);
 });
 
 test("Copy embed copies the wikilink the server writes for it, its path where another attachment has its name, and says so", async () => {

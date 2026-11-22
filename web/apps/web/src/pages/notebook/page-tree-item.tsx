@@ -26,6 +26,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { formatPeriod } from "../../i18n/format";
@@ -473,7 +474,15 @@ export const TreeMenu = observer(function TreeMenu({
               <DropdownMenuItem onSelect={() => choose("move")}>{t("page.moveTo")}</DropdownMenuItem>
             </>
           )}
-          {canDelete && <DropdownMenuItem onSelect={() => choose("delete")}>{t("page.delete")}</DropdownMenuItem>}
+          {canDelete && (
+            <>
+              {/* A creation comes first, always: the line sets Delete apart. */}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem tone="destructive" onSelect={() => choose("delete")}>
+                {t("page.delete")}
+              </DropdownMenuItem>
+            </>
+          )}
         </DropdownMenuContent>
       )}
     </DropdownMenu>

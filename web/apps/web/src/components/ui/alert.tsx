@@ -7,7 +7,10 @@ export function Alert({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
       role="alert"
-      className={cn("rounded-md border border-destructive/50 px-4 py-3 text-sm text-destructive", className)}
+      className={cn(
+        "rounded-lg border border-destructive/35 bg-destructive/5 px-4 py-3 text-sm text-destructive",
+        className
+      )}
       {...props}
     />
   );

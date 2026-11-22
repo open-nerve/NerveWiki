@@ -279,11 +279,12 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   // What takes the focus shows it, in either theme, no fainter than it was: the box, its Search and Where to look by
   // their amber 2px ring, a hit's link by the page's own outline; a term marked reads against its highlight as text
   // does (M13/P1/S1; 00-M13 4.7).
-  // Floors at what M13/P1/S1 measured, less 0.1: no colour is to fade by accident (00-M13 4.7); the terms marked are
-  // text, 7:1. Measured on Chromium: light, the terms 14.642 in the excerpt and in the name, the four focuses 2.986,
-  // the box refused 4.378; dark 8.027, 7.923, 6.865.
+  // Floors at what M13/P1/S1 measured, less 0.1, the light amber's at what M13/P1/S2 did once it was a shade deeper
+  // (decision 766): no colour is to fade by accident (00-M13 4.7); the terms marked are text, 7:1. Measured on
+  // Chromium: light, the terms 14.642 in the excerpt and in the name, the four focuses 3.098, the box refused 4.378;
+  // dark 8.027, 7.923, 6.865.
   const floors = {
-    light: { marked: 7, named: 7, box: 2.88, button: 2.88, select: 2.88, link: 2.88, invalid: 4.27 },
+    light: { marked: 7, named: 7, box: 2.99, button: 2.99, select: 2.99, link: 2.99, invalid: 4.27 },
     dark: { marked: 7, named: 7, box: 7.82, button: 7.82, select: 7.82, link: 7.82, invalid: 6.76 },
   } as const;
   const submit = page.getByRole("search").getByRole("button", { name: "Search", exact: true });

@@ -297,7 +297,14 @@ test("Delete says how many subpages go with the page; the page shown goes to the
   renderApp(pagePath(linux.id), server.app);
   await screen.findByRole("heading", { level: 1, name: "Linux" });
 
-  await choose(user, "Install", "Delete");
+  await user.click(await within(await tree()).findByRole("button", { name: "Actions for Install" }));
+  // Delete reads red, set apart from the others by a line, as nothing else does (M13/P1/S2).
+  const remove = await screen.findByRole("menuitem", { name: "Delete" });
+  expect(remove.classList.contains("text-destructive")).toBe(true);
+  expect(remove.previousElementSibling?.getAttribute("role")).toBe("separator");
+  expect(within(screen.getByRole("menu")).getAllByRole("separator")).toHaveLength(1);
+  expect(screen.getByRole("menuitem", { name: "Rename" }).classList.contains("text-destructive")).toBe(false);
+  await user.click(remove);
   const dialog = await screen.findByRole("alertdialog", { name: "Delete Install?" });
   expect(dialog.textContent).toContain("Its subpages go with it: 1.");
   await user.click(within(dialog).getByRole("button", { name: "Delete" }));

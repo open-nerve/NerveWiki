@@ -54,6 +54,33 @@
   --font-mono: "SF Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* Menus and dialogs come in, a fade and a slight scale, the overlay a fade; they close at once, with no exit
+   (00-M13 737): a closing menu kept for its animation is a second menu as another opens. The scale is its own
+   property, as the dialogs' centring translate is (M13/P1/S2). */
+@theme {
+  --animate-pop-in: nw-pop-in 150ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-fade-in: nw-fade-in 150ms ease-out;
+  @keyframes nw-pop-in {
+    from {
+      opacity: 0;
+      scale: 0.97;
+    }
+  }
+  @keyframes nw-fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+}
+
+/* Asked for less motion, what pops in fades in: the variable the utility reads, not the class, which hangs under
+   data-[state=open]: (M13/P1/S2; 00-M13 4.1). */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --animate-pop-in: nw-fade-in 150ms ease-out;
+  }
+}
+
 /* A hover over what has a background of its own: layered on it, not in its place (M13/P1/S1, decision 757). */
 @utility hover-layer {
   background-image: linear-gradient(var(--hover), var(--hover));
@@ -79,7 +106,10 @@
   --faint: #91939b;
   --primary: #18191c;
   --primary-foreground: #ffffff;
-  --accent: #c58a22;
+  /* A shade deeper than the mockup's #c58a22 (2.99:1 on white): under 3:1 against white Chromium draws a checked
+     box's tick and a radio's dot dark, from 3:1 white, as the mockup's; #c2871f is 3.10:1 (M13/P1/S2, decision 766).
+     Its tint stays. */
+  --accent: #c2871f;
   --ring: var(--accent);
   --accent-soft: rgb(197 138 34 / 12%);
   --destructive: #d64545;
@@ -126,5 +156,46 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+  }
+  /* Checked is amber; their focus is the outline above, 2px off them. Forced colours ignore it, the controls stay
+     the system's (M13/P1/S2; 00-M13 4.3). */
+  input[type="radio"],
+  input[type="checkbox"] {
+    accent-color: var(--accent);
+  }
+}
+
+@layer components {
+  /* NativeSelect's chevron, drawn by the app: two gradients, each a stroke of 1.2px across 5px, meeting at its point,
+     make the ∨ as wide and as fine as the mockup's 14px icon, its colour the faint text's in either theme (decision
+     753). Under forced colours the browser's own select comes back, its padding the 0.5rem it had (M13/P1/S2). */
+  .nw-select {
+    appearance: none;
+    padding-inline-end: 2rem;
+    background-image:
+      linear-gradient(
+        45deg,
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
+      ),
+      linear-gradient(
+        135deg,
+        transparent calc(50% - 0.6px),
+        var(--faint) calc(50% - 0.6px) calc(50% + 0.6px),
+        transparent calc(50% + 0.6px)
+      );
+    background-position:
+      calc(100% - 16px) 55%,
+      calc(100% - 12px) 55%;
+    background-size: 5px 5px;
+    background-repeat: no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-select {
+      appearance: auto;
+      padding-inline-end: 0.5rem;
+      background-image: none;
+    }
   }
 }

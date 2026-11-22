@@ -101,3 +101,28 @@ test("on macOS the arrows and the others that step elsewhere are no step, as the
   fireEvent.blur(select);
   expect(used).toEqual(["b", "a", "c", "a", "c", "a", "b"]);
 });
+
+test("it is drawn by the app, its paint contained", () => {
+  render(
+    <NativeSelect aria-label="Where">
+      <option>Everywhere</option>
+    </NativeSelect>
+  );
+  const { classList } = screen.getByRole("combobox", { name: "Where" });
+  // The app's chevron, appearance none, which forced colours give back to the browser (styles.css's nw-select).
+  expect(classList.contains("nw-select")).toBe(true);
+  // WebKit counts the text of the option shown in the page's width otherwise (M5-polish 33.1; v0.1 design 13.2 item 31).
+  expect(classList.contains("contain-paint")).toBe(true);
+});
+
+test("what is invalid shows on the select", () => {
+  render(
+    <NativeSelect aria-label="Expires" aria-invalid>
+      <option>Never</option>
+    </NativeSelect>
+  );
+  const select = screen.getByRole("combobox", { name: "Expires" });
+  expect(select.getAttribute("aria-invalid")).toBe("true");
+  expect(select.classList.contains("aria-invalid:border-destructive")).toBe(true);
+  expect(select.classList.contains("aria-invalid:ring-destructive")).toBe(true);
+});

@@ -40,3 +40,4 @@ M12 照负责人 2026-11-13 第 1 问把打磨分级：用户会碰到的错误�
 
 - M12 收尾（2026-11-22）：建这一份，收 00-M12 4.13 的 `M12-polish.md` 一行、P2 各 Step 推后的、决定 696 的 U+2800 与 M12 收尾审查的几项（收尾记录 `docs/v0.1/M12-release/reviews/M12-closeout-review.md`）。v0.2 的总体设计开工时先处理它。
 - M13 设计定稿（2026-11-22）：负责人批准在 v0.1.0 之前做界面焕新（v0.1 的 M13）。M13 认领两项："编辑时没有大纲"（M13/P4/S3）与第 14 项"页面树的菜单进三种浏览器"（M13/P2/S2，新故事 PG16）；其余由 M13 各 Phase 的设计开工时逐项认领，写在这里（[M13 总设计](../../v0.1/M13-ui-refresh/00-M13-design.md)第 7 节"移交的落实"）。这份仍是 `open`、to v0.2。
+- M13/P1/S2（2026-11-22）：第 5 项里"Playwright 的 WebKit 里原生下拉只有 1 px 的 `ring` 色边框、没有 3 px 的环"一小项不再成立：下拉改成 `appearance: none` 之后，macOS 上 Playwright 1.63 的 WebKit 画出 2 px 的环，与 Chromium 逐像素相同（[S2 的审查记录](../../v0.1/M13-ui-refresh/reviews/P1-S2-components-review.md)）。Linux 的 WebKit 等负责人推送之后的 CI 再看；真的 Safari 照旧是第 11 项的人工清单。第 5 项的其余各小项照旧，这份仍是 `open`。

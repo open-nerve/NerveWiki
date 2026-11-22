@@ -7,6 +7,7 @@ import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { NativeSelect } from "../../components/ui/native-select";
 import { useT } from "../../i18n/i18n";
 import type { ApiTokenCreated } from "../../services/api-token.service";
 import { useApiTokens } from "../../stores/context";
@@ -109,24 +110,24 @@ function CreateTokenForm({ onCreated, cancel }: { onCreated: (created: ApiTokenC
         error={problemOf("name")}
         onChange={(event) => setName(event.target.value)}
       />
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor={expiryId}>{t("tokens.expiry")}</Label>
-        <select
+        <NativeSelect
           id={expiryId}
           value={expiry}
           aria-invalid={expiryProblem !== undefined || undefined}
           aria-describedby={expiryProblem === undefined ? undefined : `${expiryId}-note`}
           onChange={(event) => setExpiry(event.target.value as Expiry)}
-          className="h-9 w-full rounded-md border bg-transparent px-3 text-sm"
+          className="w-full"
         >
           {expiries.map(({ value, label }) => (
             <option key={value} value={value}>
               {t(label)}
             </option>
           ))}
-        </select>
+        </NativeSelect>
         {expiryProblem !== undefined && (
-          <p id={`${expiryId}-note`} className="text-sm text-destructive">
+          <p id={`${expiryId}-note`} className="text-compact text-destructive">
             {expiryProblem}
           </p>
         )}

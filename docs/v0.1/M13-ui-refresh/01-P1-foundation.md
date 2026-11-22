@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P1 设计基础（两个 Step：S1 token 与主题；S2 基础组件） |
-| 日期 | 2026-11-22（初稿；同日照三份设计审查修订，照修订核对第 1 轮再修订，第 2 轮之后补上最后的 Nit，[审查记录](reviews/P1-design-review.md)；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)） |
-| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 已合并 `a08bf50f`（[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）；S2 待开 |
+| 日期 | 2026-11-22（初稿；同日照三份设计审查修订，照修订核对第 1 轮再修订，第 2 轮之后补上最后的 Nit，[审查记录](reviews/P1-design-review.md)；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)；同日照 S2 的实施与审查修订，[S2 的审查记录](reviews/P1-S2-components-review.md)） |
+| 状态 | 设计定稿（修订核对第 2 轮之后三位都没有 Important、Minor）；S1 已合并 `a08bf50f`（[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）；S2 实施与审查完成（[S2 的审查记录](reviews/P1-S2-components-review.md)），合并见 00 号文档第 12 节 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.1、4.3、4.7、4.8、第 7 节 P1 两行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"对比度门槛""原生控件"两行、第 10 节"下拉的 `appearance: none`"一行、第 11 节决定 716、718、722、735–737、745、746；[v0.1 总体设计](../v0.1-design.md) 9.1、13.2 第 26、31 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 5 项 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（色值、按钮、菜单、输入框、下拉、单选）；[mockups/settings.html](mockups/settings.html)（危险按钮、输入框） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `3c315037` 的；`m13-ui-refresh` 的头 `65dbfcbb` 与它之间只改了文档（`git diff --stat 3c315037 HEAD -- web e2e tools` 为空） |
@@ -75,7 +75,7 @@
 - **750 门槛的写法**：正文的字固定 7:1 为下限（00 号文档 4.7"正文字至少 7:1"）；其余每一项、每种主题各按 S1 实量的值减 0.1，向下取到 0.01。下限写在故事里一个按主题分的表中，注释写实量值与"M13/P1/S1"；夹具不改。"正文的字"在三个故事里只有 se1 的两处命中字（摘要里的与标题里的）。
 - **751 一个守住约定的 vitest**（`W/design-tokens.test.ts`，4.1.7）：五个测试，`styles.css` 用 `readFileSync` 读（`?raw` 在 vitest 里是空串，第 1 节），每个测试先断言读到了东西（05-lessons 第 1 节：自检的样例证明不了遍历真的读到了文件）。13.2 新第 32 条（8.2）的可检查部分由它守，免得只靠审查。
 - **752 圆角、阴影与字号怎样进 Tailwind**：探针（`compile`，Tailwind 4.3.3）表明 `@theme { --radius-row: 7px }` 产出 `rounded-row { border-radius: var(--radius-row) }`，且在被工具类或 CSS 的 `var()` 用到时在 `:root` 写出 `--radius-row`；`@theme inline { --shadow-popover: var(--elevation-popover) }` 产出 `shadow-popover`，值取 `:root`、`.dark` 里各自的 `--elevation-popover`。所以：五个圆角与两个字号（与主题无关）放 `@theme`；阴影（亮暗不同）的值放 `:root`、`.dark`，经 `@theme inline` 映射；颜色照旧经 `@theme inline`；`--radius-md`、`--radius-lg` 照旧在 `@theme inline`。TS 里的编辑器主题照旧只用 `var(--radius)`（`:root` 里的，总是写出）。00 号文档 4.1 写了"字号"也是变量：只有界面上反复用的两个（13、13.5 px）做成变量，16 px 正文在 `reading.css`、标题字号由用到它们的 Step 定（P2 起）。
-- **753 下拉的箭头用两道渐变画成描边的折线**，不加外层元素：`NativeSelect` 照旧是一个 `<select>`（调用处的 `className`、外层的 `max-w-full min-w-0` 不变），箭头是 `background-image` 的两道四停点 `linear-gradient`，各画一条 1.6 px 的斜线，拼成 ∨，颜色取 `--faint`（样稿的 `cd` 图标），随主题变；不用写死颜色的 SVG 数据地址。审查 B 在 1x 与 2x 下画过，与样稿一致。
+- **753 下拉的箭头用两道渐变画成描边的折线**，不加外层元素：`NativeSelect` 照旧是一个 `<select>`（调用处的 `className`、外层的 `max-w-full min-w-0` 不变），箭头是 `background-image` 的两道四停点 `linear-gradient`，各画一条 1.2 px 的斜线（初稿 1.6 px，比样稿粗大，S2 照审查改细，4.2 的"照实"），拼成 ∨，颜色取 `--faint`（样稿的 `cd` 图标），随主题变；不用写死颜色的 SVG 数据地址。S2 的审查 B 在三种引擎、1x 与 2x 下对照过，与样稿一致。
 - **754 标签页仍是下划线式**，只换颜色与间距：当前项是 `--foreground` 的 2 px 下划线与字（不用琥珀：琥珀只给勾选、当前页与焦点）。初稿的分段式在暗色下当前项比轨道还暗（`#212226` 对 `#25262a`），英文 375 px 下三个标签折成两行时 `rounded-full` 的轨道包成大胶囊（审查 B 的 M2、M3）；下划线式折行也整齐。
 - **755 `--ring` 取 `var(--accent)`**：`:root` 与 `.dark` 都写 `--ring: var(--accent);`，琥珀只有一个来源。初稿各写十六进制，三个故事量的都是 `--ring`，调淡 `--accent` 时没有一个测试变红，00 号文档 4.8 要求的变异落空（审查 A 的 I1、C 的 I2）。
 - **756 tailwind-merge 登记新名字**（`W/lib/cn.ts`）：`extendTailwindMerge({ extend: { theme: { radius: ["row", "control", "popover", "card", "dialog"], shadow: ["popover", "dialog"], text: ["compact", "row"] } } })`。不登记时调用处写的 `rounded-full` 会被组件里的 `rounded-row` 按字母序压过，`text-row` 会被当成颜色、与 `text-muted-foreground` 互相吃掉（审查 A 的 N5、B 的 M7、C 的 M7）。
@@ -89,6 +89,7 @@
   - **Go 一侧不重跑**：Step 在 Go 的测试读到的路径（`server`、`api`、`deploy`、`.github`、`testdata`、`e2e/fixtures/db.ts` 与全部 `*.go`）上没有差异（7.3 的断言），Go 的树与 `main` 上 CI 绿过的相同；
   - **CI 只补在最后推上去的头**：负责人推送时，非 `main` 分支上新的推送会取消较早的运行（`ci.yml:10-12`），只有最后一个头有 CI；每个合并的头另有本机门禁的记录。没有重现的 CI 项在 7.3 列出。
 - **763–765**（S1 的实施与审查之后，全文在[S1 的审查记录](reviews/P1-S1-tokens-theme-review.md)）：763 下拉在 S1 就改成 `bg-surface-2`，两处原来的 `bg-muted` 用满色的 `bg-surface-2`；764 PG15 [webkit] 记为本机的第三个已知失败（环境）；765 守约定的测试从严：测试 5 读全部字符串字面量，测试 4 的色值在任何地方都算，误报响亮、漏掉静默。
+- **766–768**（S2 的实施与审查之后，全文在[S2 的审查记录](reviews/P1-S2-components-review.md)）：766 亮色 `--accent` 深一档为 `#c2871f`，Chromium 给勾选的复选框与单选画白的勾与心，与样稿同（`#c58a22` 对白不到 3:1，画成深色）；767 单选的方形焦点框接受（原生控件做不圆）；768 控件与菜单项在 `outline-none` 旁加 `focus-visible:outline-hidden`，强制色模式去掉环时焦点仍看得见。
 - **762 暗色遮罩 45%**：00 号文档 4.3 写"遮罩更淡"，原来是 `bg-black/50`；亮色 32%、暗色 45%（初稿暗色 55%，比原来重，审查 B 的 N8）。
 
 ## 3. 服务端
@@ -187,7 +188,7 @@
 | `--faint` | `#91939b` | `#74767e` |
 | `--primary` | `#18191c` | `#ececee` |
 | `--primary-foreground` | `#ffffff` | `#18191c` |
-| `--accent` | `#c58a22` | `#d9a84e` |
+| `--accent` | `#c2871f`（样稿的 `#c58a22`，决定 766） | `#d9a84e` |
 | `--ring` | `var(--accent)` | `var(--accent)` |
 | `--accent-soft` | `rgb(197 138 34 / 12%)` | `rgb(217 168 78 / 14%)` |
 | `--destructive` | `#d64545` | `#ff7b7b` |
@@ -353,12 +354,12 @@ const floors = { light: { rest: 4.28, hover: 3.83 }, dark: { rest: 6.23, hover: 
   appearance: none;
   padding-inline-end: 2rem;
   background-image:
-    linear-gradient(45deg, transparent calc(50% - 0.8px), var(--faint) calc(50% - 0.8px) calc(50% + 0.8px), transparent calc(50% + 0.8px)),
-    linear-gradient(135deg, transparent calc(50% - 0.8px), var(--faint) calc(50% - 0.8px) calc(50% + 0.8px), transparent calc(50% + 0.8px));
+    linear-gradient(45deg, transparent calc(50% - 0.6px), var(--faint) calc(50% - 0.6px) calc(50% + 0.6px), transparent calc(50% + 0.6px)),
+    linear-gradient(135deg, transparent calc(50% - 0.6px), var(--faint) calc(50% - 0.6px) calc(50% + 0.6px), transparent calc(50% + 0.6px));
   background-position:
-    calc(100% - 17px) 55%,
+    calc(100% - 16px) 55%,
     calc(100% - 12px) 55%;
-  background-size: 6px 6px;
+  background-size: 5px 5px;
   background-repeat: no-repeat;
 }
 @media (forced-colors: active) {
@@ -438,6 +439,18 @@ input[type="checkbox"] {
 #### 4.2.10 三种引擎里核对下拉
 
 00 号文档第 10 节的风险：`appearance: none` 之后 WebKit 可能开始画 `box-shadow`。S2 改完下拉之后、提交之前，在三种引擎里打开搜索页的范围下拉，截图看静止、聚焦、无效与强制色模式（Chromium 的 `emulateMedia({ forcedColors: "active" })`）；另核对 WebKit 在 `appearance: none` 之后是否仍把显示的那一项的文字算进页面宽度（审查 C 留下的探针 `select-probe.mjs` 可以照用；结论决定 7.2 第 12 条由谁守）。看的是 macOS 上的 Playwright 引擎；CI 的 Linux WebKit 画法可能不同，句子与记录都注明平台，负责人推送之后 CI 上 se1 的 `webkit-narrow` 格再核一次。WebKit 画出了环的，13.2 第 31 条那句"Playwright 的 WebKit 不画原生下拉的 `box-shadow`……"照实改（8.2 第 2 条），M12-polish 第 5 项那一小项写进"处理进展"。
+
+**照实**（S2 的实施与审查，[S2 的审查记录](reviews/P1-S2-components-review.md)）：
+
+- 亮色 `--accent` 是 `#c2871f`（决定 766，4.1.2 与 00 号文档 4.1 的表随之改）；se1、l5 量琥珀的亮色下限照 4.1.8 重量：2.88 → 2.99、2.45 → 2.54。
+- 控件的 `outline-none` 旁另有 `focus-visible:outline-hidden`（决定 768）：4.2.2 的按钮基础、4.2.3 的输入框、4.2.4 的下拉、4.2.6 的菜单项、4.2.8 的标签页触发与内容，与对比视图的 `buttonClass`。Tailwind 4.3.3 平时写 `outline-style: none`，`contrast.ts` 照旧读环。
+- 4.2.3：`Input` 另有 `file:mr-3 file:rounded-md file:border file:border-border file:bg-surface file:px-2 file:font-medium dark:file:bg-active`，"选择文件"读得出是按钮（暗色下比输入框亮一档，与描边按钮的约定同）；对比视图的失败提示（`W/editor/text-diff.tsx`，不引入应用的组件）照抄 `Alert` 的样子；令牌期限那一块的外层是 `space-y-1.5`、问题的小字是 `text-compact`，与夹着它的两个 `FormField` 同。
+- 4.2.4 的箭头：上面的代码块已照实改成 `background-size: 5px 5px`、线宽 ±0.6 px、位置 `calc(100% - 16px) 55%` 与 `calc(100% - 12px) 55%`。初稿的 6 px、±0.8 px、17 px 比样稿 14 px 的图标粗大（审查 B 的 S2B-M1）；15.5 px 时两条线在尖端之前交叉、尖下留一个点，16 px 时正好相交（实施者与审查 B 在三种引擎、1x 与 2x 下比过）。
+- 4.2.6：菜单项与单选项共用一个类名常量，内边距另外追加（合起来与上面的逐字相同）；两处"删除"之前有 `DropdownMenuSeparator`（样稿的 `.msep`；前面总有别的项）；`trackInputModality` 的监听另带 `passive: true`。
+- 4.2.8：`TabsTrigger` 是 `rounded-t-sm`，下划线的两端不往上卷。
+- 4.1.9 与取舍 756：tailwind-merge 另登记 `animate: ["pop-in", "fade-in"]`，调用处能覆盖进场动画。
+- 4.2.1 写的 `design-tokens.test.ts`"不改"不成立：测试 5 的非颜色表加了 `outline-hidden`（决定 765 的"第一次碰到误报就加一行"）；新加一格断言减少动效的块把 `--animate-pop-in` 设成 `nw-fade-in`。对比视图的 `buttonClass` 跟上 4.2.2 的基础（`gap-1.5`、`rounded-lg`、`duration-150`，去掉 `py-2`）。
+- 4.2.10 的结论：三种引擎（macOS）都画出 2 px 的环；WebKit 不带 `contain-paint` 时照旧把页宽撑开，7.2 第 12 条由 vitest 与 se1 的 `@narrow` 一起守。
 
 ## 5. e2e
 
@@ -520,6 +533,14 @@ P1 不加故事。
 | 21 | S1 | 描边按钮的悬停改回 `hover:bg-hover` | `button.test.tsx` 的"layers its hover"（S1 建） |
 | 22 | S2 | `trackInputModality` 不听 `pointermove` | `input-modality.test.ts` |
 | 23 | S2 | 修饰键也算键盘 | `input-modality.test.ts` 的修饰键格 |
+| 24 | S2 | 控件或菜单项去掉 `focus-visible:outline-hidden`（审查之后加，下同） | `button.test.tsx` 的"each variant"与对比视图那一格；`dropdown-menu.test.tsx` 的"keyboard's" |
+| 25 | S2 | 菜单项另加 `focus-visible:ring-2`、`data-highlighted:ring-2` 或 `in-data-[modality=pointer]:focus:ring-2` | "keyboard's"：环宽的类恰好一个 |
+| 26 | S2 | 两处"删除"去掉 `tone` 或前面的分隔线 | `page-tree-writes.test.tsx`、`attachments-section.test.tsx` |
+| 27 | S2 | 令牌期限换回裸的 `<select>` | `tokens-page.test.tsx` |
+| 28 | S2 | 减少动效时 `--animate-pop-in` 仍是 `nw-pop-in` | `design-tokens.test.ts` 的减少动效一格 |
+| 29 | S2 | `stop()` 去掉 `keydown` 时不带 `capture` | `input-modality.test.ts` 停下的一格 |
+| 30 | S2 | `cn.ts` 去掉 `animate` 的登记 | `cn.test.ts` |
+| 31 | S2 | 对比视图的失败提示换回 S2 之前的类 | `alert.test.tsx` 的拷贝一格 |
 
 00 号文档 4.8 要求的 P1 那条（"把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红"）是第 1 条。
 
@@ -583,10 +604,11 @@ S1 的文档提交里改第 1–5 条，S2 的改第 6 条（脚本逐条替换�
 
 ## 9. 交给后面的 Phase
 
-- **P2**：外框用 `--sidebar`、`--hover`、`--active`、`--accent-soft`（当前页的行）、`rounded-row`、`shadow-popover`、`text-row`；按钮的 30 px（`size="sm"`、`icon-sm`）与胶囊形、头像菜单的子菜单与快捷键的部件（2.1 第 2 条，一并在 `button.test.tsx`、`dropdown-menu.test.tsx` 加格）；把搜索框挪到 `--sidebar` 上时，se1 的焦点与无效框的下限照 4.1.8 重量（琥珀对 `#f5f5f6` 约 2.74，红约 4.02，审查 A 的 M3）。
-- **P3**：设置的卡片 `rounded-card border bg-surface`（不加阴影，00 号文档 4.1）；30 px 的下拉用 P2 加的尺寸或 `className="h-[30px]"`。
+- **P2**：外框用 `--sidebar`、`--hover`、`--active`、`--accent-soft`（当前页的行）、`rounded-row`、`shadow-popover`、`text-row`；按钮的 30 px（`size="sm"`、`icon-sm`）与胶囊形、头像菜单的子菜单与快捷键的部件（2.1 第 2 条，一并在 `button.test.tsx`、`dropdown-menu.test.tsx` 加格）；把搜索框挪到 `--sidebar` 上时，se1 的焦点与无效框的下限照 4.1.8 重量（琥珀对 `#f5f5f6` 约 2.74，红约 4.02，审查 A 的 M3；那是换色之前的 `#c58a22`）；亮色下搜索框（`surface-2`）与"搜索"按钮（`surface`）不同色，挪的时候一并处理（S2 的记录）。
+- **P3**：设置的卡片 `rounded-card border bg-surface`（不加阴影，00 号文档 4.1）；30 px 的下拉用 P2 加的尺寸或 `className="h-[30px]"`；文件输入框的按钮悬停时没有反馈（S2 给了它底与边框，原生的悬停没了），暗色的底取 `--active` 还是 `--hover` 一并再看（S2 的记录，S2B2-N1、Q1）。
 - **P4**：阅读视图的其余变量（第 2 节第二段）；已勾的禁用任务项怎样显示（4.2.5）；编辑器的链接色与搜索匹配色（`W/editor/theme.ts:15-26`），选区已在 S1 改成 `--accent-soft`；`reading.css` 的写死的色值加"同源"的注释。
 - **P5**：空状态与骨架（2.1 第 1 条）。
+- **P2–P5**：12 处手写的"Label 加控件"组从 `space-y-2` 改为 `space-y-1.5`，与 `FormField` 同，各在所在页的 Phase 改（审查 B 的 S2B-N3，位置列在[S2 的审查记录](reviews/P1-S2-components-review.md)）。
 
 ## 10. 结果
 
@@ -600,7 +622,18 @@ S1 的文档提交里改第 1–5 条，S2 的改第 6 条（脚本逐条替换�
 - **与设计不同之处**：4.1.6、4.1.7 的"照实"；决定 763–765。
 - **交给 S2**：暗色下搜索框（透明）与"搜索"按钮（`surface-2`）不同色，S2 给输入框 `surface-2` 之后一致；Firefox、WebKit 与强制色模式的外观在 S2 看。
 
-（10.2 S2：实施后补。）
+### 10.2 S2：基础组件（2026-11-22，合并见 00 号文档第 12 节）
+
+- **提交**：`77c0499d`（按钮、输入框与下拉，照 6.2 提交 1）、`3ab4e9fc`（菜单、对话框、标签页、进场动画与只在键盘操作时的环，照 6.2 提交 2）；审查的修复 `f6ef65c8`（亮色琥珀深一档）、`463dd983`（其余修复与收紧的测试）、修复核对第 1 轮的 `67d1e970`；加本文档提交。[S2 的审查记录](reviews/P1-S2-components-review.md)。
+- **做完**：4.2.2 的按钮；4.2.3 的输入框（含文件按钮）、标签、表单字段与提示条；4.2.4 的 `nw-select`（两道渐变的细折线、强制色模式退回原生、无效的样子），令牌期限换成 `NativeSelect`；4.2.5 单选与复选的 `accent-color`；4.2.6 的菜单、危险项的 `tone`、"删除"前的分隔线、`W/app/input-modality.ts`；4.2.7 的对话框；4.2.8 的下划线式标签页；4.2.9 的进场动画与减少动效时换的变量；强制色模式下控件的焦点（决定 768）；l5 关上菜单之后一帧之内没有 `menu`。
+- **测试**：`button.test.tsx`、`native-select.test.tsx` 加格；新的 `dropdown-menu.test.tsx`、`dialog.test.tsx`、`input-modality.test.ts`；审查之后另在 `design-tokens.test.ts`、`cn.test.ts`、`tokens-page.test.tsx`、`page-tree-writes.test.tsx`、`attachments-section.test.tsx` 加断言，新的 `alert.test.tsx` 守 `Alert` 与对比视图照抄它的失败提示；vitest 5100 → 5118 格。新格先写、先红；`aria-disabled` 一格守的是已有的行为，由变异 15 证明会红。
+- **三种引擎里的下拉**（4.2.10，macOS，Playwright 1.63）：三种都画出 2 px 的环，13.2 第 31 条的 WebKit 一句删去（8.2 第 6 条），M12-polish 第 5 项的那一小项写进"处理进展"；WebKit 不带 `contain-paint` 时页宽照旧被撑开（375 宽时 762）；Linux 的 WebKit 由负责人推送之后的 CI 再看。
+- **实量**：亮色琥珀深一档之后，se1、l5 量琥珀的亮色下限由 2.88、2.45 重量为 2.99、2.54；其余与 S1 的相同。
+- **探针与视觉的核对**（7.4）：减少动效时菜单与对话框只淡入，关上之后一帧都已不在；菜单项的环只在键盘操作时出现，三种引擎相同；Chromium 亮暗 × 1440、375 与下拉的三种引擎、强制色模式都截了；与样稿不同之处（勾的颜色、箭头的粗细、下划线的两端、"删除"前的线、文件按钮）都已修。
+- **变异**：7.2 的 S2 各条与第 24–31 条都被抓住（实施者跑，审查 C 独立重跑 S2 各条）；审查者另写的变异都被抓住。
+- **门禁**：每个提交的 `make lint-web`、`make knip`、`make test-web` 都绿；合并之前带 `CI=1` 的网页一侧与 `make e2e` 只败允许的三格；E2E 2.4–2.8 min（随负载），与基线的 2.4 min 之差在 7.5 推断的"不到一分钟"之内；Go 一侧没有差异。逐项在审查记录。
+- **与设计不同之处**：4.2 的"照实"；决定 766–768。
+- **交给后面**：第 9 节（12 处手写标签组的间距，亮色下搜索框与"搜索"按钮不同色，文件按钮的悬停）；已勾的禁用任务项在 P4/S2（4.2.5）。
 
 ## 附录：核对过的代码
 

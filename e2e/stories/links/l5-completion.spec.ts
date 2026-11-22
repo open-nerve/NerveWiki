@@ -126,11 +126,12 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect(completion(page).getByRole("option", { name: "project/alpha, 1 page", exact: true })).toBeVisible();
   // The selected option's detail reads against it, and the editor's amber frame and the option selected show where
   // the focus is, against what is around them, in either theme no fainter than they were (M13/P1/S1; 00-M13 4.7).
-  // Floors at what M13/P1/S1 measured, less 0.1: no colour is to fade by accident (00-M13 4.7). Measured on Chromium:
-  // light, the detail 5.281, the editor's frame and the view's link 2.986, the option selected and the menu's current
-  // item, their rings inset, 2.551; dark 4.849, 7.923, 5.476.
+  // Floors at what M13/P1/S1 measured, less 0.1, the light amber's at what M13/P1/S2 did once it was a shade deeper
+  // (decision 766): no colour is to fade by accident (00-M13 4.7). Measured on Chromium: light, the detail 5.281, the
+  // editor's frame and the view's link 3.098, the option selected and the menu's current item, their rings inset,
+  // 2.646; dark 4.849, 7.923, 5.476.
   const floors = {
-    light: { detail: 5.18, frame: 2.88, selected: 2.45, link: 2.88, current: 2.45 },
+    light: { detail: 5.18, frame: 2.99, selected: 2.54, link: 2.99, current: 2.54 },
     dark: { detail: 4.74, frame: 7.82, selected: 5.37, link: 7.82, current: 5.37 },
   } as const;
   const completionShown = async (scheme: "light" | "dark") => {
@@ -184,6 +185,15 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
     const current = await indicatorContrast(item);
     expect(current.ratio, `${scheme} ${JSON.stringify(current)}`).toBeGreaterThanOrEqual(floors[scheme].current);
     await page.keyboard.press("Escape");
+    // Closed, the menu is gone at once, a frame later: it has no exit's animation, which would keep it mounted, a
+    // second menu as another opens (00-M13 737; M13/P1/S2).
+    const menus = await page.evaluate(
+      () =>
+        new Promise<number>((resolve) => {
+          requestAnimationFrame(() => resolve(document.querySelectorAll('[role="menu"]').length));
+        })
+    );
+    expect(menus, "menus a frame after Escape").toBe(0);
     await expect(item).toBeHidden();
   };
   await readingShown("light");
