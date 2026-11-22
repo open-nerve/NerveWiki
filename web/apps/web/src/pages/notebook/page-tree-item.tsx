@@ -289,6 +289,8 @@ const PageRow = memo(function PageRow({
         // A level a rem in: a root page's icon at 30px, the next level's at 46px, as the mockup's.
         style={{ paddingLeft: `${0.5 + depth}rem` }}
       >
+        {/* The button 4px into the indent and 4px from the link: its › under the notebook row's ⌄, the link where the
+            spacer has it (decision 804). */}
         {hasChildren ? (
           <button
             type="button"
@@ -296,7 +298,7 @@ const PageRow = memo(function PageRow({
             aria-controls={open ? listId : undefined}
             aria-label={t("page.subpagesOf", { name: label })}
             onClick={() => context.pages.toggle(id)}
-            className="grid size-4.5 shrink-0 place-items-center rounded-sm text-faint hover:bg-hover"
+            className="-ml-1 mr-1 grid size-4.5 shrink-0 place-items-center rounded-sm text-faint hover:bg-hover"
           >
             <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />
           </button>

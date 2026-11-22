@@ -32,11 +32,12 @@ import { useSourceMove } from "./source-move-confirmation";
 /**
  * What shows the row's cog and the tree's New page (decision 778): a hover
  * of the notebook's row or of either, or the keyboard's focus; always where
- * nothing hovers, and on a narrow screen. A hover of the tree's rows or of
- * the places does not.
+ * nothing hovers, on a narrow screen, and in forced colours, where a faint
+ * system colour reads poorly. A hover of the tree's rows or of the places
+ * does not. Their icons line up with the rows' ⋯ (M13/P2/S2, review B).
  */
 const shown =
-  "opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100";
+  "opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
 
 /**
  * A Directory or History row of an LLM Wiki's tree: a page's row at the root, its icon where a page's is, its name
@@ -290,7 +291,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
           className={cn(
             "absolute top-0.75 grid size-6 place-items-center rounded-row text-faint hover:bg-hover hover:text-foreground [&_svg]:size-4",
             shown,
-            writer ? "right-8" : "right-1.5"
+            writer ? "right-7.5" : "right-1"
           )}
         >
           <Settings2 aria-hidden />
@@ -304,7 +305,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
             size="icon-sm"
             // At the row's end, placed by the notebook's container. Disabled, fainter still, over the opacities that
             // show it, which come after Button's disabled one and would otherwise win (decision 778).
-            className={cn("absolute top-0.75 right-1.5 size-6 rounded-row text-faint", shown, "disabled:opacity-25!")}
+            className={cn("absolute top-0.75 right-1 size-6 rounded-row text-faint", shown, "disabled:opacity-25!")}
             aria-label={t("page.new")}
             disabled={newPage.sending}
             onClick={() => create(null)}
