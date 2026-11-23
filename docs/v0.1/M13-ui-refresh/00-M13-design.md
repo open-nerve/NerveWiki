@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成，P3 待开 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 设计定稿，S1 实施中 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -146,17 +146,17 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
    - 树下面一排图标链接：目录、健康、历史、回收站，仍是单独命名的 `nav`（"X 的更多"，`W/pages/notebook/notebook-places.tsx:20`），在树的 `nav` 之外；图标带可访问名称与悬停提示（主持者的决定 727）。
    - **别的笔记本**只是一行链接，不显示按钮（它们的树没有读，主持者的决定 730），带 `arrived`：点开之后那一项换成展开的笔记本行，链接随之离开（[02-P2](02-P2-shell.md) 决定 777）。
    - 树在笔记本列表的项里，e2e 的 `notebookGroups`（`e2e/fixtures/notebook-pages.ts:17-26`，17 处调用）改成每一项只取第一个链接，调用处不动。
-   - **树的容器要稳定**：一本笔记本可能在两组之间挪动（"我的"= 不开放且只有一个成员，`W/stores/notebook.store.ts:18-24`），列表项随之换了；未保存的编辑期间留着的、已不在列表里的笔记本（`W/pages/notebook/notebook-layout.tsx:63`）没有列表项。所以笔记本行与树不直接画进列表项：工作区外框按笔记本 id 持有一个稳定的容器（里面是笔记本行的标题、树的 `nav`、"更多"的 `nav`），当前笔记本的列表项以 ref 收养它，不在列表里时放在列表之后的备用位置（主持者的决定 730）。树里开着的对话框（挂在 `body` 上）与分批画到的行在笔记本换组时不丢；焦点会丢（移走节点时浏览器把焦点交给 `body`），所以收养之前记下容器里拿着焦点的元素、挪完之后还给它（主持者的决定 745），P2/S2 加一个"焦点在树里时换组"的 vitest。设置模式下侧栏不在，树随之卸下（树的 store 与 `TreeWatch` 照旧在笔记本外框里，`W/pages/notebook/notebook-layout.tsx`），返回时重画；13.2 第 16 条照此改写（P3/S1）。
+   - **树的容器要稳定**：一本笔记本可能在两组之间挪动（"我的"= 不开放且只有一个成员，`W/stores/notebook.store.ts:18-24`），列表项随之换了；未保存的编辑期间留着的、已不在列表里的笔记本（`W/pages/notebook/notebook-layout.tsx:63`）没有列表项。所以笔记本行与树不直接画进列表项：工作区外框按笔记本 id 持有一个稳定的容器（里面是笔记本行的标题、树的 `nav`、"更多"的 `nav`），当前笔记本的列表项以 ref 收养它，不在列表里时放在列表之后的备用位置（主持者的决定 730）。树里开着的对话框（挂在 `body` 上）与分批画到的行在笔记本换组时不丢；焦点会丢（移走节点时浏览器把焦点交给 `body`），所以收养之前记下容器里拿着焦点的元素、挪完之后还给它（主持者的决定 745），P2/S2 加一个"焦点在树里时换组"的 vitest。设置模式下侧栏换成设置目录，列表里没有一项收养这个容器：笔记本的设置里，目录之后一个 `hidden` 的 `div` 里的 `SlotHolder` 收养它，树照旧挂载、读取与监视（`NotebookLayout` 在笔记本设置里一直挂着，一直把树门户进容器），不显示，也不在可访问性树里；返回时列表里那一项把容器收养回去，不重画。容器要在文档里：直接打开笔记本设置的地址时，"树的 effect 运行时容器已在文档里"（[02-P2](02-P2-shell.md) 决定 776）与"`reveal` 时容器总已收养"（决定 791）才成立。工作区设置与个人设置没有笔记本外框，没有树。13.2 第 16 条照此改写（P3/S1；[03-P3](03-P3-settings.md) 决定 814、836）。
 5. **新建笔记本**（照旧在工作区的 `nav` 里，`createNotebookWith` 的定位不变）。
 6. 底部：**账户行**（头像 + 显示名 + ⋯），就是现在的账户菜单（`W/app/user-menu.tsx`；头像的首字 `aria-hidden`，按钮名照旧只是显示名，`e2e/fixtures/auth-pages.ts:46-54` 照旧找得到）：个人设置（带 `arrived`）、外观（主题三选一、语言二选一，就地切换、选了之后菜单不关：宽屏是子菜单，窄屏（< 768 px）直接列在菜单里、各带分组标题，[02-P2](02-P2-shell.md) 决定 801）、分隔线、退出登录、分隔线、版本行（照旧直接显示在菜单里、在最后，s2 一打开菜单就读它，`e2e/stories/smoke/s2-web-app.spec.ts:60`）。
 
 #### 4.2.3 右上角（没有侧栏的地方）
 
-没有外框把侧栏放进 `Layout` 的时候，`Layout` 在右上角放一个小区域（命中带 `handle: { sidebar: true }` 的路由（`:slug` 与去向是它的 `/`）时不放，工作区外框没有画出侧栏（读取失败、404）、`/` 读工作区列表失败、会话不可用的页与错误边界经 `useCornerBack()` 交还；放什么按会话定，会话或账户还在读时什么也不放，[02-P2](02-P2-shell.md) 决定 769、792）：
+没有外框把侧栏放进 `Layout` 的时候，`Layout` 在右上角放一个小区域（命中带 `handle: { sidebar: true }` 的路由（`:slug`、去向是它的 `/` 与 P3 起的 `/settings`）时不放，账户还有待办的引导步骤时除外（`Onboarded` 会把它送回引导，弹回的那一次渲染里右上角不卸下，[03-P3](03-P3-settings.md) 决定 832），工作区外框没有画出侧栏（读取失败、404）、`/` 读工作区列表失败、会话不可用的页与错误边界经 `useCornerBack()` 交还；放什么按会话定，会话或账户还在读时什么也不放，[02-P2](02-P2-shell.md) 决定 769、792）：
 
 - **已登录**：同一个账户按钮与菜单。包括引导、新建工作区、已登录的邀请页、工作区之外与找不到工作区的 404、所有出错页（笔记本里的 404 有侧栏；唯一的错误边界在 `W/app/routes.tsx:40-41`）、工作区读取失败（`W/pages/workspace/workspace-layout.tsx:102-104` 里带 `error` 的 `NotLoaded`；读取中不放：账户按钮紧接着要挪进侧栏，c6:113 一打开页就点它），以及 P3 之前的个人设置页。a6、a7、a8、s2 在这些页上打开账户菜单（`e2e/stories/identity/a6-sign-out.spec.ts:31-38,82-96`、`a7-change-password.spec.ts:94,118`、`a8-profile.spec.ts:70,87,91`、`s2-web-app.spec.ts:57-60`）。
 - **未登录**（登录、注册、未登录的邀请页）与会话不可用（`W/app/guards.tsx:51,73` 的 `SessionUnavailablePage`）：一个"外观"按钮，菜单里是主题与语言。今天顶栏对所有人都显示语言与主题（`W/app/layout.tsx:42-46`），去掉顶栏不能让未登录的人失去它们。
-- 个人设置页在 P2/S1 与 P3/S1 之间没有侧栏：右上角另放"回到工作区"的链接（去最近的工作区，没有时去首页；带 `arrived`，`LandingPage` 转交给它的 `<Navigate>`）。新建工作区页在账户已有工作区时也放它，P3 之后照旧（[02-P2](02-P2-shell.md) 决定 803；没有工作区时 `/` 会落回这一页，不放）；已登录的邀请页与出错页回去的路留给 P5。
+- 个人设置页在 P2/S1 与 P3/S1 之间没有侧栏：右上角另放"回到工作区"的链接（去最近的工作区，没有时去首页；带 `arrived`，`LandingPage` 转交给它的 `<Navigate>`）；P3/S1 起个人设置有了侧栏，这一项随之删掉（`W/app/corner.tsx` 的 `settings`，[03-P3](03-P3-settings.md) 决定 811）。新建工作区页在账户已有工作区时也放它，P3 之后照旧（[02-P2](02-P2-shell.md) 决定 803；没有工作区时 `/` 会落回这一页，不放）；已登录的邀请页与出错页回去的路留给 P5。
 
 （主持者的决定 733，取代初稿的 726。）
 
@@ -167,7 +167,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
   - 经 `isMod`（`W/app/shortcuts.ts`）；输入法组字中（`isComposing` 或 `keyCode` 229）不理；对话框开着时让路；
   - `event.defaultPrevented` 或焦点在编辑器（`.cm-editor`）里时让路：编辑器的 Mod-K 是插入链接（`W/editor/source-editor.tsx:238`，总体设计 9.3），它优先；
   - 窄屏时先打开抽屉再聚焦；
-  - 设置模式里没有搜索框，两个快捷键都不做事（有意如此）。
+  - 设置模式里没有搜索框，两个快捷键都不做事（有意如此）：`useSearchShortcuts` 照旧挂在工作区外框，框不在时直接返回、不 `preventDefault`（[03-P3](03-P3-settings.md) 决定 819）。
 - 快捷键的监听挪到工作区外框（`WorkspaceLayout`），不随搜索框在窄屏的抽屉里卸下（4.2.5）。
 - **快速切换**（Mod+O，`W/pages/notebook/quick-switch.tsx`）照旧是单独的对话框（"前往页面"），照 4.3 换装：选项带页面图标、上级位置灰字、底部一行键盘提示。
 - 不合并搜索与快速切换，不改搜索的语义与接口（主持者的决定 719）：搜索框的定位、`aria-invalid`、范围描述与 lw8 的"读者动过"的点按目标都在它上面，合并要改 20 处以上的定位与 13.2 第 20 条，好处只是少一个入口。
@@ -202,19 +202,19 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 （主持者的决定 734。）
 
 - 设置的地址照旧：`/settings/*`、`/:slug/settings/*`、`/:slug/notebooks/:id/settings/*`（`W/app/routes.tsx:98-128,274-304,233-263`）。命中这些地址时，外框用"设置模式"：侧栏换成设置目录，内容区居中、最宽 760 px。
-- **一个设置目录组件**，三个设置布局（`W/pages/settings/settings-layout.tsx`、`W/pages/workspace/settings-layout.tsx`、`W/pages/notebook/settings-layout.tsx`）都用它，把它放进侧栏的位置。三处今天各自在内容区画的 `nav`（名为"设置""工作区设置""笔记本设置"）成为目录里的三组，名称照旧（tr1、tr2、n9 以这三个名称找链接，`e2e/stories/transfer/tr1-export.spec.ts:214-217`、`tr2-import.spec.ts:201-204`、`e2e/stories/notebook/n9-take-over.spec.ts:187-189`）；组里的链接文字照旧（"成员"不改名，n9:188 与 `W/pages/workspace/members-page.test.tsx:145` 读它）；`useDocumentTitle` 照旧（13.2 第 22 条）；按角色隐藏的照旧（13.2 第 18 条，例如"无主笔记本"只给管理员）。
+- **一个设置目录组件**（`W/app/settings-directory.tsx` 的 `SettingsTop` 与 `SettingsDirectory`），放它的外框两个：工作区与笔记本的设置由 `WorkspaceLayout` 把自己的那一个侧栏换成目录（同一个 `ShellSidebar` 元素，抽屉、菜单按钮与细栏都不重新挂载），个人设置由它的 `SettingsLayout` 自己画一个侧栏；工作区与笔记本的两个设置布局不再画 `nav`，也不画侧栏：笔记本读取中、读取失败或找不到时设置布局不渲染，侧栏却要在（[03-P3](03-P3-settings.md) 决定 810）。三处今天各自在内容区画的 `nav`（名为"设置""工作区设置""笔记本设置"）成为目录里的三组，名称照旧（tr1、tr2、n9 以这三个名称找链接，`e2e/stories/transfer/tr1-export.spec.ts:214-217`、`tr2-import.spec.ts:201-204`、`e2e/stories/notebook/n9-take-over.spec.ts:187-189`）；组里的链接文字照旧（"成员"不改名，n9:188 与 `W/pages/workspace/members-page.test.tsx:145` 读它）；`useDocumentTitle` 照旧（13.2 第 22 条）；按角色隐藏的照旧（13.2 第 18 条，例如"无主笔记本"只给管理员）。
 - **目录自上而下**：返回、标题"设置"、各组、底部的账户行（与工作区外框的账户行相同）。
   - **个人**（设置）：个人资料、外观与语言、安全、访问令牌。总在。
-  - **工作区**（工作区设置），组名"工作区 产品研发"：在工作区或笔记本的设置里时是那个工作区；在个人设置里时是最近去过的工作区（`W/stores/preferences.store.ts` 已记着它）——它不在当前账户的列表里（离开了、被删了、别的标签页里刚变的）就不显示这一组。
+  - **工作区**（工作区设置），组名"工作区 产品研发"：在工作区或笔记本的设置里时是那个工作区；在个人设置里时是来处所在的工作区，没有来处或来处不在工作区里时是最近去过的工作区（`W/stores/preferences.store.ts` 已记着它；[03-P3](03-P3-settings.md) 决定 818、837）——它不在当前账户的列表里（离开了、被删了、别的标签页里刚变的）就不显示这一组。
   - **笔记本**（笔记本设置），组名"笔记本 工程手册"：只在笔记本的设置里出现，指那一本。
-- **返回**："返回 工程手册"或"返回 产品研发"，回到进入设置之前的那一页。进入设置时把来处记在本标签页的 store 里（不放在路由状态：设置的三个 `index` 重定向 `<Navigate replace>` 会丢掉它，`W/app/routes.tsx:105,240,281`）；没有记录（直接打开设置的地址）时回到组里的工作区首页，再没有就回首页。
-- **焦点**：进入设置的链接（侧栏的"工作区设置"、笔记本行的齿轮、账户菜单的"个人设置"）、"返回"，以及目录里跨布局的链接（个人与工作区、笔记本的设置分属不同的路由子树，跳过去时目录会重新挂载）都带 `arrived`，焦点到去向页的 `h1`，不落到 `body`（13.2 第 17 条）。三个设置的 `index` 重定向不传路由状态（`W/app/routes.tsx:105,240,281`），所以进入的链接直接指向第一页（`…/settings/general`、`/settings/profile`；`W/pages/workspace/workspace-layout.test.tsx:95` 核对这个地址），重定向本身也照 `LandingPage` 的做法把收到的状态转交下去；设置页的 `h1` 今天不取到达的焦点，加上 `useArrivalFocus` 与 `tabIndex={-1}`（主持者的决定 745）。账户菜单的"个人设置"与个人设置页的 `h1` 在 P2/S1 做（[02-P2](02-P2-shell.md) 决定 771）。
+- **返回**："返回 工程手册"或"返回 产品研发"，回到进入设置之前的那一页。进入设置时把来处（地址连同片段，与它所在的工作区）记在 `Layout` 的状态里（渲染时取；不放在路由状态：设置的三个 `index` 重定向 `<Navigate replace>` 会丢掉它，`W/app/routes.tsx:105,240,281`），以 `replace` 进入（守卫与引导的 `next` 那样的重定向）时不记；没有记录（直接打开设置的地址、经重定向进入）时回到组里的工作区首页，再没有就回首页；来处的笔记本已不在列表里时回到它的工作区首页，来处的工作区已不在列表里时回首页；来处不在工作区里（新建工作区页、邀请页）时只写"返回"，连片段回到来处（邀请的令牌在片段里）；工作区里的来处不带片段：页面的锚点与到达的焦点谁先谁后，取决于视图在不在缓存里（[03-P3](03-P3-settings.md) 决定 812、813、833、834）。
+- **焦点**：进入设置的链接（侧栏的"工作区设置"、笔记本行的齿轮、账户菜单的"个人设置"）、"返回"，以及目录里跨布局的链接（个人与工作区、笔记本的设置分属不同的路由子树，跳过去时目录会重新挂载）都带 `arrived`，焦点到去向页的 `h1`，不落到 `body`（13.2 第 17 条）。三个设置的 `index` 重定向不传路由状态（`W/app/routes.tsx:105,240,281`），所以进入的链接直接指向第一页（`…/settings/general`、`/settings/profile`；`W/pages/workspace/workspace-layout.test.tsx:95` 核对这个地址），重定向本身也照 `LandingPage` 的做法把收到的状态转交下去；设置页的 `h1` 今天不取到达的焦点，加上 `useArrivalFocus` 与 `tabIndex={-1}`（主持者的决定 745）：`h1` 是页名（"个人资料""成员"……，不再是"设置""工作区设置""X 设置"；个人设置在 P3/S1，工作区与笔记本的设置在 P3/S2），由布局按页挂载（`key` 是页的路径）；目录的标题"设置"不是标题元素；"返回"可能回到的变更集页、回收站的预览与邀请页的 `h1` 今天也不取，同样加上；在个人资料页上再选账户菜单的"个人设置"不带 `arrived`（地址相同，没有到达），焦点回到菜单按钮（[03-P3](03-P3-settings.md) 决定 815、817、835）。账户菜单的"个人设置"与个人设置页的 `h1` 在 P2/S1 做（[02-P2](02-P2-shell.md) 决定 771）。
 - **外观与语言**是新的一页，内容是今天个人资料页里的主题与语言偏好（`W/pages/settings/profile-page.tsx:48-89`），从个人资料页挪过来；账户菜单与右上角"外观"里的快捷切换与它写同一个偏好。
 - **在设置页上读侧栏的测试**今天有这些，设置模式之后它们读不到侧栏了：
-  - e2e：w4（`e2e/stories/workspace/w4-rename-delete.spec.ts:111-116`，改名后看切换器）、n8（`e2e/stories/notebook/n8-remove-deactivate.spec.ts:131,147`，点侧栏的"首页"）、n9（`n9-take-over.spec.ts:149,168`）、n3（`n3-open-notebook.spec.ts:66-80`）、n6（`n6-rename-delete.spec.ts:75-80`）、n4（`n4-notebook-members.spec.ts:156`）、lw12（`e2e/stories/wiki/lw12-downgrade.spec.ts:160-191,262`：两个标签页停在笔记本设置上，看树里的目录与历史两行随降级消失，再从树里删 AGENTS）；
-  - vitest：`W/pages/workspace/general-page.test.tsx:62`、`W/pages/notebook/general-page.test.tsx:29,43,87,385`、`W/pages/notebook/members-page.test.tsx:14,207-245,399,459-461`（最后一段经侧栏进别的笔记本、再点首页的"笔记本设置"链接，4.6 去掉那个链接）、`W/pages/workspace/ownerless-page.test.tsx:216-219,228-245`（后一段往侧栏的搜索框里打字，是 13.2 第 26 条的覆盖）、`W/pages/notebook/transfer-background.test.tsx:482,611,642,690`（在导入导出页上等树）。
+  - e2e：w4（`e2e/stories/workspace/w4-rename-delete.spec.ts:111-116`，改名后看切换器）、n8（`e2e/stories/notebook/n8-remove-deactivate.spec.ts:131,147`，点侧栏的"首页"）、n9（`n9-take-over.spec.ts:149,168`）、n3（`n3-open-notebook.spec.ts:66-80`）、n6（`n6-rename-delete.spec.ts:75-80`）、n4（`n4-notebook-members.spec.ts:156`）、lw12（`e2e/stories/wiki/lw12-downgrade.spec.ts:160-191,262`：两个标签页停在笔记本设置上，看树里的目录与历史两行随降级消失，再从树里删 AGENTS）、hi5（`e2e/stories/history/hi5-revert-import.spec.ts:213`，在导入导出页上读树）；
+  - vitest：`W/pages/workspace/general-page.test.tsx:62`、`W/pages/notebook/general-page.test.tsx:29,43,87,385`、`W/pages/notebook/members-page.test.tsx:14,207-245,399,459-461`（最后一段经侧栏进别的笔记本、再点首页的"笔记本设置"链接，4.6 去掉那个链接）、`W/pages/workspace/ownerless-page.test.tsx:216-219,228-245`（后一段往侧栏的搜索框里打字，是 13.2 第 26 条的覆盖）、`W/pages/notebook/transfer-background.test.tsx:482,611,642,690`（在导入导出页上等树）；读设置页的标题与右上角的另有 `W/pages/settings/profile-page.test.tsx`、`W/pages/create-workspace.test.tsx`、`W/pages/invitation.test.tsx`、`W/pages/workspace/workspace-home.test.tsx`（"离开之后答复"的三格跳到个人设置等 `h1`"设置"）、`W/app/layout.test.tsx`、`W/app/user-menu.test.tsx`、`W/pages/workspace/workspace-layout.test.tsx`，共 12 个文件，改法见 [03-P3](03-P3-settings.md) 7.1。
 
-  处置：目录的组名读同一份 store，改名即时变，改名之后的断言改读组名；要看侧栏的先点"返回"。lw12：在设置页的那个标签页上点"返回"再看树，另一个标签页（`sourceTab`）留在页面上看两行消失，"不经导航就消失"的要点留在它身上；ownerless 的那一段改往页面里别的输入框打字，覆盖不减；members 的最后一段改从目录的"笔记本"组进去。P3/S1 的设计逐个核对、写出改法。
+  处置：目录的组名读同一份 store，改名即时变，改名之后的断言改读组名；要看侧栏的先点"返回"。lw12：在设置页的那个标签页上点"返回"再看树，另一个标签页（`sourceTab`）留在页面上看两行消失，"不经导航就消失"的要点留在它身上；ownerless 的那一段往 `body` 上挂的一个输入框里打字（页面没有别的输入框），覆盖不减；members 的最后一段是"返回"、点 Atlas、点它的齿轮、再点目录"笔记本设置"一组的"成员"（目录的笔记本组只有当前那一本，[03-P3](03-P3-settings.md) 7.1）。P3/S1 的设计逐个核对、写出改法。
 
 #### 4.4.2 卡片行
 
@@ -226,7 +226,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
 （主持者的决定 715、729、735。）
 
-- **下拉即生效**，照 `useChoice`（`W/components/ui/native-select.tsx:57-105`）：鼠标选中即发，键盘逐项走时等失焦或回车才发。另持一份草稿（照 `W/pages/notebook/general-page.tsx:91-113` 的 `AccessForm`）：发出之后下拉显示新值直到服务端答复，被拒时退回原值；发送中不禁用下拉（禁用会丢焦点）。`useChoice` 自己在发出后清掉待定值、显示已生效的值（`native-select.tsx:67-74`），而 `NotebookStore.update` 不是乐观的（`W/stores/notebook.store.ts:108-114`），所以要这份草稿。
+- **下拉即生效**，照 `useChoice`（`W/components/ui/native-select.tsx:57-105`）：鼠标选中即发，键盘逐项走时等失焦或回车才发。另持一份草稿（照 `W/pages/notebook/general-page.tsx:91-113` 的 `AccessForm`）：发出之后下拉显示新值直到服务端答复，被拒时退回原值；发送中不禁用下拉（禁用会丢焦点）；键盘走到的一项还没发出时，说明照显示的那一项，Esc 退回已生效的值（[03-P3](03-P3-settings.md) 决定 840）。`useChoice` 自己在发出后清掉待定值、显示已生效的值（`native-select.tsx:67-74`），而 `NotebookStore.update` 不是乐观的（`W/stores/notebook.store.ts:108-114`），所以要这份草稿。
 - **写到服务端的单选组不做即生效**：13.2 第 12 条的理由（方向键就会改选中项）照旧。要即生效的改成下拉，留着单选的照旧"保存"。只存在本机的偏好（主题、语言）今天就是单选即生效，照旧。
 - 生效之后显示"已保存。"：仍是 13.2 第 12 条那个常驻的 `<output>`，文字一直在（n3:77-78、n6:79、w4:115 以精确的"Saved."读它），前面的 ✓ 只用 CSS 的 `::before` 画，不进文字；1.5 秒后只把透明度降下来；被拒时原因显示在这一行下面（`useForm` 的横幅照旧）。
 - **文字输入**（名称、显示名）：改动之后才出现"保存"，回车也保存，失焦不自动保存。保存成功、按钮随之消失时，焦点交给输入框（`useFocusLeaving`，13.2 第 17 条），不落到 `body`。改密码、新建令牌、邀请、加成员这些"提交一份表单"的照旧有按钮。
@@ -320,7 +320,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - **e2e 的新故事**（主持者的决定 743、745）：三个放在新的分组 `e2e/stories/shell/`，一个在 `page/`：
   - UI1 窄屏抽屉（`ui1-narrow-drawer.spec.ts`）：375 px 下开抽屉、在里面搜索与开页、关上之后焦点的去处、Esc；
   - UI2 设置界面（`ui2-settings-mode.spec.ts`）：从侧栏、笔记本行、账户菜单进入，组名随改名变，返回到来处，直接打开地址时的返回；
-  - UI3 即时生效（`ui3-instant-save.spec.ts`）：选下拉即生效、"已保存。"；另一个管理员在另一个浏览器上下文（`anotherPage`）里把本人降为成员之后再选，被拒、退回原值、显示原因。只用鼠标与 `selectOption`（Linux 上的 WebKit 在关着的下拉上按方向键会立即生效，M12-polish 第 8 项），键盘逐项走等失焦的规则由 vitest 守。
+  - UI3 即时生效（`ui3-instant-save.spec.ts`）：选下拉即生效、"已保存。"；另一个管理员在另一个浏览器上下文（`anotherPage`）里把本人降为编辑者之后再选（笔记本的角色是管理员、编辑者、读者），被拒、退回原值、显示原因。只用鼠标与 `selectOption`（Linux 上的 WebKit 在关着的下拉上按方向键会立即生效，M12-polish 第 8 项），键盘逐项走等失焦的规则由 vitest 守。
 
   另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：新的、只有页面版本的两格，一格在三种浏览器里打开树的行菜单、改名、以 Esc 取消（对话框没有取消按钮）、焦点回到按钮（M12-polish 第 14 项），另一格核对当前行滚进侧栏而窗口不动，宽屏与 375 px 下都看窗口（[02-P2](02-P2-shell.md) 决定 789、791 与 10.2）；PG2 的页面版本（`pg2-rename-page.spec.ts:131-170`，以 `expectRenamed` 断言数据库）照旧留在 PG2。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
 
@@ -350,8 +350,8 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | **P2 新外框** | S1 外框与账户行 | 去掉顶栏；宽屏粘住的侧栏（`md:` 起）；工作区切换在顶部；账户行与头像菜单；4.2.3 的右上角（含 P3 之前个人设置页的"回到工作区"）；按钮的 30 px 与胶囊形、菜单的子菜单（4.3，[01-P1](01-P1-foundation.md) 2.1 第 2 条）；离开工作区外框的菜单项（账户菜单的"个人设置"、切换器的"新建工作区"）带 `arrived`，个人设置页的 `h1` 取到达的焦点（[02-P2](02-P2-shell.md) 决定 771：4.4.1 的"焦点"一条里个人设置的部分由此提前） | a6、a7、a8、s2、c6、c8 的账户菜单；a8 改从头像菜单切主题；`route-error`、`layout-error`、`layout`、`routes`、`profile-page` 的 vitest 改写；se1 在侧栏上的三项下限照 4.7 重量 |
 | | S2 笔记本与页面树 | 笔记本列表里就地展开的页面树（稳定的容器、换组时还焦点）；笔记本行的＋与齿轮；树下的图标链接；树的换装；侧栏把当前行滚进可见范围；认领 M12-polish 第 14 项（树的菜单进三种浏览器） | `notebookGroups` 夹具；树与笔记本导航的故事；新故事 PG16（4.8） |
 | | S3 搜索、⌘K、快速切换与窄屏 | 4.2.4 的胶囊搜索框、⌘K 与让路、监听挪到外框、快速切换的换装；4.2.5 的抽屉与细栏 | UI1；`@narrow` 与 375 px 的格；se1、se2、lw8 照旧 |
-| **P3 设置界面** | S1 设置模式与个人设置 | 设置目录组件、返回与来处的 store、焦点；卡片行组件；个人资料、外观与语言（新页）、安全、访问令牌 | UI2；4.4.1 的那些故事与 vitest 改法；13.2 第 16 条的核对 |
-| | S2 工作区与笔记本设置 | 常规、成员（含邀请）、无主笔记本；笔记本的常规、成员、导入导出；4.4.3 的即时生效与草稿 | UI3；设置相关的故事改断言；13.2 第 12 条的改写 |
+| **P3 设置界面** | S1 设置模式与个人设置 | 设置目录组件、返回与来处（记在 `Layout`，[03-P3](03-P3-settings.md) 决定 812）、焦点；卡片行组件；个人资料、外观与语言（新页）、安全、访问令牌 | UI2；4.4.1 的那些故事与 vitest 改法；13.2 第 16 条的核对 |
+| | S2 工作区与笔记本设置 | 常规、成员（含邀请）、无主笔记本；笔记本的常规、成员、导入导出；4.4.3 的即时生效与草稿（说明随显示的项，Esc 退回待用的选择）；"危险操作"组 | UI3；设置相关的故事改断言；13.2 第 12 条的改写 |
 | **P4 阅读与编辑** | S1 页头、属性条与右栏 | 4.5.1、4.5.2、4.5.4 | 属性条、右栏收起、大纲当前节的 vitest；l6、hi1–hi3、pg5 |
 | | S2 正文的样式 | 4.5.3（含复制按钮、hljs、mermaid 主题、任务项） | 阅读视图增强的测试；PG15 等就地更新的故事；l4 |
 | | S3 编辑 | 4.5.5 | 编辑器的 vitest；编辑、冲突、锁、补全（l5）的故事 |
@@ -392,12 +392,12 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
    - 9.3 的编辑器（比例字体、压淡的符号、"保存"只在需要时显出）与快捷键（⌘K，`:855-856`、`:865`）。
    这一项由实现的 Step 各改各的那几句（设计基础的一句 P1/S1，其余 P2/S1、P2/S3、P3/S1、P4/S1、P4/S3）。
 6. 13.2 的条目，各在实现它的 Step 里改写：
-   - 第 31 条（对比度与焦点的几句）与新条目"设计基础的变量"（含 4.1 末的例外）：P1/S1；
-   - 第 20 条（快捷键：⌘K 与它的让路规则）：P2/S3；
+   - 第 31 条（对比度与焦点的几句）与新条目"设计基础的变量"（含 4.1 末的例外）：P1/S1；第 31 条强制色下的透明边框加上主按钮与左栏导航的当前一行：P3/S1；
+   - 第 20 条（快捷键：⌘K 与它的让路规则）：P2/S3；设置模式里两个键都不管：P3/S1；
    - 第 17 条（树的标题即笔记本行的标题；设置的进出与跨布局的链接带 `arrived`；抽屉关上时焦点的去处）：P2/S1（离开外框的菜单项）、P2/S2、P2/S3、P3/S1 各改各的；
    - 第 16 条（"左栏常驻"在设置模式下不成立；树的稳定容器）：P2/S2、P3/S1；
    - 第 26 条（侧栏只滚自己把当前行带进可见范围）：P2/S2；
-   - 第 12 条（设置页的下拉即生效、持草稿；单选组仍经保存）：P3/S2；
+   - 第 12 条（"已保存。"的勾与改名称的一行：P3/S1；设置页的下拉即生效、持草稿，单选组仍经保存：P3/S2）；
    - 第 23 条（增强不改 HTML 结构的例外加代码块的头）：P4/S2；
    - 第 24 条（属性表排成属性条之后仍是名为"属性"的滚动区域）：P4/S1；
    - 写到"顶栏""左栏"的其他条目，由 P2、P3 的设计逐条列出、各自的 Step 改写。P2 的逐条列在 [02-P2](02-P2-shell.md) 8.2 第 11 条：第 15、21、30、31 条不改，第 20 条"看得见的搜索框"一句由 P2/S3 改。
@@ -438,7 +438,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | 页面树进笔记本列表 | `notebookGroups` 17 处；`pageTree` 29、`treeTitles` 27、树的菜单 19 处、`newPageWith`（`e2e/fixtures/wiki-pages.ts:45-50`；pg1:182,189；pg12:257） | `W/pages/workspace/notebook-nav.test.tsx`（15）、`W/pages/notebook/page-tree.test.tsx`（24）、`page-tree-writes.test.tsx:66-140,427,437,463,1028`、`upgrade-read-only.test.tsx:141-147`、`notebook-layout.test.tsx:84-87`（读 `textContent`） | `notebookGroups` 每项取第一个链接；树的 `nav` 名、"新建页面"的位置与常驻不变；树标题的焦点给笔记本行的标题 |
 | 目录、健康、历史、回收站 | `healthLink` 等 18 处、9 个文件 | `notebook-layout.test.tsx:84-87` | 仍是"X 的更多"里的链接，定位不动；图标链接以 `aria-label` 命名 |
 | 新建笔记本 | 5 处 | — | 仍在工作区的 `nav` 里 |
-| 设置模式 | 设置目录 3 处（tr1、tr2、n9）；在设置页上读侧栏的 7 个故事（4.4.1）；设置页的 `h1` 2 个文件（a15、a8） | 4.4.1 列出的 5 个文件 | 4.4.1 的处置 |
+| 设置模式 | 设置目录 3 处（tr1、tr2、n9）；在设置页上读侧栏的 8 个故事（4.4.1）；设置页的 `h1` 2 个文件（a15、a8） | 4.4.1 列出的 12 个文件（[03-P3](03-P3-settings.md) 7.1） | 4.4.1 的处置 |
 | 即时生效 | `changeAccessWith`（n3 两处）；`renameWorkspaceWith`、`renameNotebookWith`、a8 的保存 | `W/pages/notebook/general-page.test.tsx`（两个"保存"按下标区分） | 夹具改，调用处不动 |
 | 对比度门槛 | pg4、se1、l5 | — | 回归守卫，P1/S1 |
 | 375 px 与窄屏 | `expectFits`：pg2、mc3、se1（`@narrow`，`webkit-narrow` 再跑）、lw3；手写检查：as3、lw8、lw13、lw3 | — | 4.2.5；`webkit-narrow` 的必需格不变；新加 UI1–UI3、PG16 的 firefox、webkit 各两行 |
@@ -458,7 +458,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | 下拉的 `appearance: none` 在三种引擎里样子不一；WebKit 可能开始给它画 `box-shadow`，13.2 第 31 条那句"WebKit 只有 1 px 的边框"随之过时 | P1/S2 在三种引擎里截图核对，照实改那句 |
 | 窄屏抽屉的焦点、`inert` 与快捷键的交互 | 4.2.5 的单一元素做法；UI1 在三种浏览器里跑 |
 | 侧栏换成设置目录时焦点落到 `body` | 4.4.1 的 `arrived` 规则；UI2 与 A 审查者的焦点检查 |
-| 设置模式在个人设置页多读一次工作区列表，可能改变 a15 的在途时序（a15 在三种浏览器里跑） | P3/S1 跑 a15 三遍；列表在缓存里时不另读 |
+| 设置模式在个人设置页多读一次工作区列表，可能改变 a15 的在途时序（a15 在三种浏览器里跑） | 个人设置只在有工作区可找（来处在某个工作区里，或本设备记着最近的工作区）且列表没读过时读它（[03-P3](03-P3-settings.md) 决定 843）：a15 的页一次也不多读，照常跑 |
 | 编辑器混排比例字体与等宽之后，CodeMirror 对没画的行的高度估计偏差，长文档滚动时跳动 | P4/S3 用 M12/P4/S5 的大文档探查；不行时等宽行只给代码块 |
 | 滚动锚定与属性条、右栏：Playwright 的 WebKit 26 与 Chromium、Firefox 一样做 CSS 的滚动锚定（[02-P2](02-P2-shell.md) 第 1 节与它的审查 A 的探针：窗口滚到 3000 px、读者之上插进 500 px，三种都到 3500），初稿的"WebKit 没有"不成立；属性条是服务端 HTML 的一部分、不是后到的，右栏的高度变化不在正文之上 | P4/S1 在它自己的页上于三种引擎里再核对一次锚定与锚点跳转 |
 | 视觉的判断难以测试，审查容易只看代码 | 4.8 的截图并排与检查单，B 审查者专看外观 |
@@ -545,7 +545,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 |---|---|---|---|---|
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
-| P3 设置界面（S1、S2） | — | 未开始 | — | — |
+| P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 设计定稿；S1 实施中 | [设计审查](reviews/P3-design-review.md) | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
@@ -566,3 +566,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-23：P2/S2 实施与审查完成（[审查记录](reviews/P2-S2-notebooks-tree-review.md)；主持者的决定 804：树里父页的展开箭头与笔记本行的 ⌄ 同列；4.2.2 第 4 条与 4.8 的 PG16 随之改）；合并 `70338fc4`。
 - 2026-11-23：P2/S3 实施与审查完成（[审查记录](reviews/P2-S3-search-drawer-review.md)；主持者的决定 805–809：搜索框的清除按钮按配色画，开着的菜单让开两个搜索键，只改查询参数的 `replace` 不关抽屉，"更多"的图标照两行跟随，抽屉开着时背后不滚；4.2.5 第 4 条随之改）；合并 `82838aac`。
 - 2026-11-23：P2 完成（S1 `fdad6b9e`、S2 `70338fc4`、S3 `82838aac`；主持者的决定 769–809；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761；se2 在 se2:230 之后的步骤与 UI1 的 `Control+K` 只在 Linux 的 CI 上走，决定 795(d)）。
+- 2026-11-23：照 P3 的设计修订（[03-P3](03-P3-settings.md) 2.1；[设计审查](reviews/P3-design-review.md)，主持者的决定 810–847）：设置目录的两个宿主；来处记在 `Layout`（连同片段与工作区，以 `replace` 进入时不记）与"返回"的去处；个人设置的工作区一组；设置模式里树留在 `hidden` 的容器里；页名作 `h1`，三页的到达焦点；右上角对有待办引导步骤的账户、个人设置的"回到工作区"删掉；快捷键照旧挂着；读侧栏的故事 8 个、vitest 12 个文件；下拉的说明与 Esc；UI3 降为编辑者；第 7 节 P3 两行与"总体设计的修订"第 6 项；第 10 节 a15 一行。
