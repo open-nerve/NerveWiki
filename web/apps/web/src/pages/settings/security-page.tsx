@@ -100,7 +100,7 @@ function ChangePasswordForm() {
         hint={t("security.newPasswordHint")}
         onChange={(event) => edit("new_password", event.target.value)}
       />
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button type="submit" disabled={sending}>
           {t("security.change")}
         </Button>

@@ -153,11 +153,11 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
           </NativeSelect>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button type="submit" disabled={sending}>
           {t("invitations.invite")}
         </Button>
-        <output className="text-sm text-muted-foreground">
+        <output className="min-w-0 text-sm break-words text-muted-foreground">
           {invited === undefined ? "" : t("invitations.invited", { email: invited })}
         </output>
       </div>

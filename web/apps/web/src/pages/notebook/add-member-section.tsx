@@ -145,11 +145,11 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
           </NativeSelect>
         </div>
       </div>
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button type="submit" disabled={sending}>
           {t("notebookMembers.add")}
         </Button>
-        <output className="text-sm text-muted-foreground">
+        <output className="min-w-0 text-sm break-words text-muted-foreground">
           {added === undefined ? "" : t("notebookMembers.added", { name: added })}
         </output>
       </div>
