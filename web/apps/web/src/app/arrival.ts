@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
-import { useLocation, useNavigate, useNavigationType, type Location } from "react-router";
+import { useLocation, useNavigate, useNavigationType, type Location, type NavigationType } from "react-router";
 
 import { watchReader } from "../pages/page/readers-input";
 
@@ -25,6 +25,24 @@ export const opened = { opened: true } as const;
 
 function isOpened(state: unknown): boolean {
   return typeof state === "object" && state !== null && "opened" in state && state.opened === true;
+}
+
+/**
+ * isLocated tells whether state is Located's, a page gone to for one of its attachments, as attachment-row.tsx's
+ * locatedOf reads it: not taken from there, which is in a chunk loaded later, with the menu's parts.
+ */
+function isLocated(state: unknown): boolean {
+  return typeof state === "object" && state !== null && "attachment" in state && typeof state.attachment === "string";
+}
+
+/**
+ * headingTakes tells whether the page a navigation of type goes to, its route state state, takes the focus itself:
+ * arrived at, Back or Forward to a page the tree opened (as useArrivalFocus's arrival and fromNoOne), or gone to for an
+ * attachment (Located), whose row, or the title saying it is not found, takes it whatever the navigation. The drawer
+ * of a phone's width, closed by the navigation, gives its menu the focus otherwise (M13/P2/S3, decision 790).
+ */
+export function headingTakes(state: unknown, type: NavigationType): boolean {
+  return isArrival(state) || isLocated(state) || (type === "POP" && isOpened(state));
 }
 
 type Reader = ReturnType<typeof watchReader>;

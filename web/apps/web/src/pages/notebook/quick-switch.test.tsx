@@ -64,6 +64,30 @@ test("Ctrl+O opens it instead of the browser's Open File; it finds by title, Dow
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+// Its foot says the keys (M13/P2/S3, decision 786), hidden from a screen reader, which the combobox tells them already.
+test.each([
+  ["en", "↑↓ to choose · ↵ to open · Esc to close"],
+  ["zh-CN", "↑↓ 选择 · ↵ 打开 · Esc 关闭"],
+] as const)(
+  "in %s its foot says the keys, hidden from a screen reader; an option is still its title and its ancestors",
+  async (locale, keys) => {
+    const { app } = pageServer();
+    app.preferences.setLocale(locale);
+    renderApp(home, app);
+    await screen.findByRole("heading", { level: 1, name: "Plans" });
+    expect(ctrlO()).toBe(false);
+    const dialog = await screen.findByRole("dialog");
+    const said = await within(dialog).findByText(keys);
+    expect(said.closest('[aria-hidden="true"]')).not.toBeNull();
+    const options = () =>
+      within(dialog)
+        .getAllByRole("option")
+        .map((option) => [...option.querySelectorAll("span")].map((span) => span.textContent));
+    await waitFor(() => expect(options()[0]).toEqual(["Guide", ""]));
+    expect(options().every((option) => option.length === 2)).toBe(true);
+  }
+);
+
 test("a page is chosen by a click too; Esc closes without going, the focus back where it was", async () => {
   const user = userEvent.setup();
   renderApp(pagePath(guide.id), pageServer().app);
@@ -110,6 +134,19 @@ test("no page found says so; past 50 the first are listed, and it says so", asyn
   expect(within(dialog).getByRole("status").textContent).toBe("No page's title has that in it.");
   expect(within(dialog).queryByRole("listbox")).toBeNull();
   expect(within(dialog).getByRole("combobox").hasAttribute("aria-controls")).toBe(false);
+});
+
+test("its foot says the keys only beside an option: no page found, it says so alone (review B's S3B-N4)", async () => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer().app);
+  const dialog = await opened();
+  const keys = () => within(dialog).queryByText("↑↓ to choose · ↵ to open · Esc to close");
+  await waitFor(() => expect(keys()).not.toBeNull());
+  await user.type(within(dialog).getByRole("combobox"), "zzz");
+  expect(within(dialog).getByRole("status").textContent).toBe("No page's title has that in it.");
+  expect(keys()).toBeNull();
+  await user.clear(within(dialog).getByRole("combobox"));
+  await waitFor(() => expect(keys()).not.toBeNull());
 });
 
 test("until the tree is read it says why, and Try again reads it", async () => {

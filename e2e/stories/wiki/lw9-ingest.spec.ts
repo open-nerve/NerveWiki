@@ -19,6 +19,7 @@ import {
   contentWrites,
   historyPath,
   pageHeading,
+  pageTree,
   saveEdit,
   startEditing,
   wikiPagePath,
@@ -479,6 +480,8 @@ test("LW9 (page): a wiki edit appears with its ingested source and remains under
   const unmarked = await changesetOfRevision(api, team.pat, ordinary.id, ordinary.revision);
   await expectIngestOf(db, unmarked, wiki.id, []);
   const main = page.getByRole("main");
+  // Unmarked comes into the tree by its event, a row above the notebook's places: they are clicked once it has.
+  await expect(pageTree(page, "Browser ingest").getByRole("link", { name: "Unmarked", exact: true })).toBeVisible();
   await page
     .getByRole("navigation", { name: "More of Browser ingest", exact: true })
     .getByRole("link", { name: "History", exact: true })

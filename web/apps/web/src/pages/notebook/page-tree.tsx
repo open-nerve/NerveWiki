@@ -7,12 +7,11 @@ import { useEffect, useId, useInsertionEffect, useLayoutEffect, useMemo, useRef,
 import { Link, NavLink, useLocation, useMatch, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
-import { opened } from "../../app/arrival";
 import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
 import { errorText } from "../../app/problem-messages";
-import { intoColumn } from "../../app/shell-sidebar";
+import { intoColumn, useDrawerActions, useFollow } from "../../app/shell-sidebar";
 import { duplicateText } from "./duplicate-text";
 import { useNodeNavigate } from "../node-target";
 import { watchReader } from "../page/readers-input";
@@ -120,6 +119,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
   const { move: sourceMove, confirmation } = useSourceMove(pages);
   const navigate = useNavigate();
   const location = useLocation();
+  const { inDrawer } = useDrawerActions();
   const atHome = useMatch(home) !== null;
   // The reveal's (decision 791). key: location.key of the commit, set in an insertion effect, before the commit's
   // layout effects, the rows' too (a render not committed leaves it); settled: the key the layout effect below last
@@ -193,6 +193,8 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
     setFailure(undefined);
     void newPage.create(parent).then(setFailure);
   };
+  // The Directory and History rows, followed as the tree's pages are (review A's P2A2-M1; decision 782).
+  const follow = useFollow();
   // The same for the tree's life, so that the rows' memo holds: what changes as the tree is shown, the lists and
   // dialogs read from the store, or the menu takes as its own (M12/P4/S4 design 3.2).
   const context = useMemo<TreeContext>(() => {
@@ -231,6 +233,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
       go: navigate,
       rows: new Map(),
       reveal,
+      inDrawer,
       show: (link) => {
         shownLink.current = link;
         // A row drawn later in the navigation, which the layout effect below has decided for already.
@@ -244,7 +247,7 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         };
       },
     };
-  }, [pages, home, menuId, navigate, focusingBox]);
+  }, [pages, home, menuId, navigate, focusingBox, inDrawer]);
   useInsertionEffect(() => {
     key.current = location.key;
   }, [location.key]);
@@ -316,11 +319,11 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
         {notebook.mode === "llm_wiki" && (
           <>
             {/* Opened by the tree, as its pages are (M12/P2/S1); each its own page's, not a changeset's (end). */}
-            <NavLink to={`${home}/index`} end state={opened} className={placeRow}>
+            <NavLink to={`${home}/index`} end onClick={follow(`${home}/index`)} className={placeRow}>
               <List aria-hidden className="size-4 shrink-0" />
               {t("index.title")}
             </NavLink>
-            <NavLink to={`${home}/history`} end state={opened} className={placeRow}>
+            <NavLink to={`${home}/history`} end onClick={follow(`${home}/history`)} className={placeRow}>
               <History aria-hidden className="size-4 shrink-0" />
               {t("history.title")}
             </NavLink>

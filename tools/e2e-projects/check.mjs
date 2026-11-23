@@ -26,6 +26,9 @@ const REQUIRED = [
   // The tree's row menu and the row shown brought into the column are each engine's (M13/P2/S2, decision 789).
   ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
   ["webkit", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
+  // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
+  ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
+  ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit-narrow", "mcp/mc3-write-edit.spec.ts", "MC3 (page): at 375 wide"],
   ["webkit-narrow", "page/pg2-rename-page.spec.ts", "PG2 (page): at 375 wide"],
   ["webkit-narrow", "search/se1-search.spec.ts", "SE1 (page): at 375 wide"],

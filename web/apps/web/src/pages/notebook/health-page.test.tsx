@@ -168,6 +168,13 @@ function rule(name: string) {
   return within(section);
 }
 
+test("arrived at, as from the drawer's Health icon, the title takes the focus, as the other places' do (decision 808)", async () => {
+  const fixture = healthServer();
+  renderApp([{ pathname: healthPath, state: { arrived: true } }], fixture.server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Health" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
 test("a failed health summary explains the failure; Try again reads its nonempty results through the signed-in client", async () => {
   const user = userEvent.setup();
   const fixture = healthServer();

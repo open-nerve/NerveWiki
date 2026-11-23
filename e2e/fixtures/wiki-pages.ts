@@ -20,6 +20,16 @@ export function pageTree(page: Page, notebook: string): Locator {
   return page.getByRole("navigation", { name: `Pages of ${notebook}`, exact: true });
 }
 
+/**
+ * Resolves once the tree of the notebook named notebook is read: its list there, where Loading was. The notebook's
+ * places (its More) are under the tree (M13/P2/S2): clicked before the tree is read, the rows come in as the button is
+ * down, the places pushed down under the pointer, and the release lands off the link, no click (LW8 in Firefox,
+ * M13/P2/S3). A tree of up to 100 rows draws them all as it is read (app/shown-rows.ts).
+ */
+export async function treeRead(page: Page, notebook: string): Promise<void> {
+  await expect(pageTree(page, notebook).getByRole("list").first()).toBeAttached();
+}
+
 /** The titles the tree of the notebook named notebook shows, from the top down: the open pages' children too. */
 export function treeTitles(page: Page, notebook: string): Promise<string[]> {
   return pageTree(page, notebook).getByRole("link").allTextContents();

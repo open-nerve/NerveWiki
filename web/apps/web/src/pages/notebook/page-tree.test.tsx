@@ -244,6 +244,27 @@ test.each([
   expect(icon(await within(await tree()).findByRole("link", { name }))).toBe(kind);
 });
 
+// Followed as the tree's pages are, decided as they are clicked (M13/P2/S3, decision 782): opened, the address shown
+// replacing its entry; a click with a modifier the browser's, a new tab's.
+test("an LLM Wiki's Directory and History rows are followed as its pages are: opened, the address shown replaced; a click with a modifier is the browser's", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp(home, wikiServer().app);
+  const nav = await tree();
+  const directory = within(nav).getByRole("link", { name: "Directory" });
+  await user.click(directory);
+  await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/index`));
+  expect(router.state.historyAction).toBe("PUSH");
+  expect(router.state.location.state).toEqual({ opened: true });
+  await user.click(directory);
+  await waitFor(() => expect(router.state.historyAction).toBe("REPLACE"));
+  expect(router.state.location.pathname).toBe(`${home}/index`);
+  expect(router.state.location.state).toEqual({ opened: true });
+
+  expect(fireEvent.click(within(nav).getByRole("link", { name: "History" }), { ctrlKey: true })).toBe(true);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(router.state.location.pathname).toBe(`${home}/index`);
+});
+
 test("an LLM Wiki's Directory and History rows mark their own page, not what is under it, with the icons the places have for them", async () => {
   const { router } = renderApp(`${home}/index`, wikiServer().app);
   const nav = await tree();

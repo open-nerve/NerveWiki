@@ -1,6 +1,6 @@
 import { useRef, useState, type ChangeEvent, type ComponentProps, type KeyboardEvent } from "react";
 
-import { onMac } from "../../app/shortcuts";
+import { onMac } from "../../lib/platform";
 import { cn } from "../../lib/cn";
 
 /**

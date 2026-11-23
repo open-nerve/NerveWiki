@@ -583,8 +583,10 @@ test("an item gone again, its preview shown again since, the reader elsewhere, l
   await waitFor(() => expect(events.streams).toHaveLength(1));
   events.last().hello();
   const tree = { workspace_id: workspaceJSON.id, notebook_id: notebookJSON.id, tree: true, pages: [] };
-  // Restored elsewhere as the reader is on its Restore: what replaces it takes the focus.
-  act(() => (screen.getByRole("button", { name: "Restore “Install” (From: Guide)" }) as HTMLElement).focus());
+  // Restored elsewhere as the reader is on its Restore: what replaces it takes the focus. The preview read first: the
+  // stream may connect before it is answered (M13/P2/S3 fix check 1, review C's S3C1-N1).
+  const restore = await screen.findByRole("button", { name: "Restore “Install” (From: Guide)" });
+  act(() => restore.focus());
   server.restoreElsewhere(install.id);
   events.last().send("pages", tree);
   const gone = await screen.findByRole("heading", { level: 1, name: "Trash" });

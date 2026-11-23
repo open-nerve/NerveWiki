@@ -3,6 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { useLocation } from "react-router";
 import useSWR, { SWRConfig, useSWRConfig, type Unloader } from "swr";
 
+import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
 import { Button } from "../../components/ui/button";
@@ -120,6 +121,8 @@ const HealthResults = observer(function HealthResults({
   const { locale } = store.preferences;
   const title = t("health.title");
   useDocumentTitle(title, notebook.name);
+  // Arrived at, from the drawer's Health icon, the title takes the focus, as the other places' do (decision 808).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   const [generation, setGeneration] = useState(0);
   const { mutate, unload } = useSWRConfig();
   const scope = useMemo<HealthScope>(
@@ -269,7 +272,9 @@ const HealthResults = observer(function HealthResults({
   return (
     <section className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+          {title}
+        </h1>
         <Button variant="outline" aria-busy={view.checking || undefined} onClick={recheck}>
           {t("health.recheck")}
         </Button>

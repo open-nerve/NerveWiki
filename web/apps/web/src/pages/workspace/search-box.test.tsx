@@ -4,7 +4,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
-import { json, notebookJSON, signedInApp, workspaceJSON } from "../../test/fakes";
+import { json, notebookJSON, problem, signedInApp, workspaceJSON } from "../../test/fakes";
 import { guide, install, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -31,7 +31,14 @@ const hintOf = (field: HTMLElement) =>
 const modShiftF = (target: Element = document.body, more: KeyboardEventInit = {}) =>
   fireEvent.keyDown(target, { key: "F", code: "KeyF", ctrlKey: true, shiftKey: true, ...more });
 
-test("the box is at the top of the workspace's left column, a search named for it: its field labelled, described by where it looks, with its shortcut, and a named Search; submitted from another page, the results' title takes the focus, described by what was found", async () => {
+/** take is another's handler that takes the key before the window has it. */
+const take = (event: Event) => event.preventDefault();
+
+/** Presses Mod+K (Ctrl here) on target, with more of the press; tells whether the browser's own action was let be. */
+const modK = (target: Element = document.body, more: KeyboardEventInit = {}) =>
+  fireEvent.keyDown(target, { key: "k", code: "KeyK", ctrlKey: true, ...more });
+
+test("the box is at the top of the workspace's left column, below the switcher, a search named for it: its field labelled, described by where it looks, with its two shortcuts, and a named Search; submitted from another page, the results' title takes the focus, described by what was found", async () => {
   const user = userEvent.setup();
   const events = eventServer();
   const server = pageServer({ answers: { "GET /api/v0/events": events.answer } });
@@ -41,7 +48,8 @@ test("the box is at the top of the workspace's left column, a search named for i
   const nav = screen.getByRole("navigation", { name: "Lab" });
   expect(form().compareDocumentPosition(nav) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(field.getAttribute("type")).toBe("search");
-  expect(field.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+F");
+  expect(field.getAttribute("aria-keyshortcuts")).toBe("Control+K Control+Shift+F");
+  expect(field.getAttribute("placeholder")).toBe("Search");
   expect(hintOf(field)).toBe("Searches the whole workspace.");
   expect(within(form()).getByRole("button", { name: "Search" }).getAttribute("type")).toBe("submit");
 
@@ -218,12 +226,109 @@ test("on macOS it is Cmd+Shift+F, as the field says", async () => {
   const server = pageServer();
   renderApp("/lab", server.app);
   const field = await screen.findByRole("searchbox", { name: "Search terms" });
-  expect(field.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+F");
+  expect(field.getAttribute("aria-keyshortcuts")).toBe("Meta+K Meta+Shift+F");
 
   expect(modShiftF()).toBe(true);
   expect(document.activeElement).toBe(document.body);
   expect(fireEvent.keyDown(document.body, { key: "f", code: "KeyF", metaKey: true, shiftKey: true })).toBe(false);
   expect(document.activeElement).toBe(field);
+});
+
+// Mod+K beside Mod+Shift+F, from the shell (M13/P2/S3, decision 783; M5-polish 26.3): the editor's Mod-K is its link's,
+// and the editor has the key first.
+test("Mod+K gives the box the focus, its text selected, instead of the browser's own; not while held, nor in a composition; over a dialog it only keeps the browser's", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", pageServer().app);
+  const field = (await screen.findByRole("searchbox", { name: "Search terms" })) as HTMLInputElement;
+  await user.type(field, "数据库");
+  act(() => field.blur());
+
+  // In a composition, the IME's: the focus does not leave with half a word.
+  expect(modK(document.body, { key: "Process", isComposing: true })).toBe(true);
+  expect(modK(document.body, { keyCode: 229 })).toBe(true);
+  expect(document.activeElement).toBe(document.body);
+  // Held: the browser's own action kept away, the focus where it is.
+  expect(modK(document.body, { repeat: true })).toBe(false);
+  expect(document.activeElement).toBe(document.body);
+  // Ctrl+Shift+K, Ctrl+Alt+K: not it.
+  expect(modK(document.body, { key: "K", shiftKey: true })).toBe(true);
+  expect(modK(document.body, { altKey: true })).toBe(true);
+  expect(document.activeElement).toBe(document.body);
+
+  expect(modK()).toBe(false);
+  expect(document.activeElement).toBe(field);
+  expect([field.selectionStart, field.selectionEnd]).toEqual([0, 3]);
+
+  // A Cyrillic layout's key at K's place.
+  act(() => field.blur());
+  expect(modK(document.body, { key: "л" })).toBe(false);
+  expect(document.activeElement).toBe(field);
+
+  // Over a dialog: the focus stays.
+  act(() => field.blur());
+  const dialog = document.createElement("div");
+  dialog.setAttribute("role", "dialog");
+  document.body.append(dialog);
+  onTestFinished(() => dialog.remove());
+  expect(modK()).toBe(false);
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("Mod+K in an editor is the editor's: nothing kept from it, the focus staying; one another took already is left too", async () => {
+  renderApp("/lab", pageServer().app);
+  const field = await screen.findByRole("searchbox", { name: "Search terms" });
+
+  const editor = document.createElement("div");
+  editor.className = "cm-editor";
+  const content = document.createElement("div");
+  content.contentEditable = "true";
+  content.tabIndex = 0;
+  editor.append(content);
+  document.body.append(editor);
+  onTestFinished(() => editor.remove());
+  act(() => content.focus());
+  expect(modK(content)).toBe(true);
+  expect(document.activeElement).toBe(content);
+  // Mod+Shift+F is no key of the editor's: the box takes the focus from it.
+  expect(modShiftF(content)).toBe(false);
+  expect(document.activeElement).toBe(field);
+
+  // Taken by another before it reached the window: the focus where it is.
+  act(() => field.blur());
+  document.addEventListener("keydown", take);
+  onTestFinished(() => document.removeEventListener("keydown", take));
+  modK();
+  expect(document.activeElement).toBe(document.body);
+});
+
+test("on macOS it is Cmd+K, not Ctrl+K", async () => {
+  const platform = vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  onTestFinished(() => platform.mockRestore());
+  renderApp("/lab", pageServer().app);
+  const field = await screen.findByRole("searchbox", { name: "Search terms" });
+
+  expect(modK()).toBe(true);
+  expect(document.activeElement).toBe(document.body);
+  expect(fireEvent.keyDown(document.body, { key: "k", code: "KeyK", metaKey: true })).toBe(false);
+  expect(document.activeElement).toBe(field);
+});
+
+// Without a box, the workspaces not loaded, the keys are the browser's (review A-M3).
+test("the workspaces' load failing, there is no box: Mod+K and Mod+Shift+F are the browser's", async () => {
+  renderApp("/lab", signedInApp({ "GET /api/v0/workspaces": () => problem(500, "internal") }));
+  await screen.findByRole("button", { name: "Try again" });
+  expect(screen.queryByRole("searchbox")).toBeNull();
+
+  expect(modK()).toBe(true);
+  expect(modShiftF()).toBe(true);
+});
+
+test("in Chinese the box's placeholder is 搜索", async () => {
+  const app = pageServer().app;
+  app.preferences.setLocale("zh-CN");
+  renderApp("/lab", app);
+  const field = await screen.findByRole("searchbox", { name: "搜索的词" });
+  expect(field.getAttribute("placeholder")).toBe("搜索");
 });
 
 test("on the results page the box holds the address's q as it changes, unless it was edited since", async () => {

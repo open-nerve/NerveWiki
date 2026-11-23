@@ -208,7 +208,9 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
     client: "web",
   });
 
-  // The trash lists the notes, a page of them first; the tree shows the page there before alone.
+  // The tree shows the page there before alone; the trash lists the notes, a page of them first. The tree first: its
+  // places are under it, which its rows going would move as they are clicked.
+  await expect.poll(() => treeTitles(page, "Notes")).toEqual(["Index"]);
   await page
     .getByRole("navigation", { name: "More of Notes", exact: true })
     .getByRole("link", { name: "Trash", exact: true })
@@ -216,6 +218,5 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
   await expect(trashListed(page)).toHaveCount(50);
   await expect(trashListed(page).first()).toContainText("From: the notebook's top level");
   await expect(main.getByRole("button", { name: "More of the trash", exact: true })).toBeVisible();
-  await expect.poll(() => treeTitles(page, "Notes")).toEqual(["Index"]);
   pageWatch.expectConsole({ errors: [failedToLoad(422)] });
 });
