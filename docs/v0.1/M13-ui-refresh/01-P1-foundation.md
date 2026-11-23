@@ -608,7 +608,7 @@ S1 的文档提交里改第 1–5 条，S2 的改第 6 条（脚本逐条替换�
 - **P3**：设置的卡片 `rounded-card border bg-surface`（不加阴影，00 号文档 4.1）；30 px 的下拉用 P2 加的尺寸或 `className="h-[30px]"`；文件输入框的按钮悬停时没有反馈（S2 给了它底与边框，原生的悬停没了），暗色的底取 `--active` 还是 `--hover` 一并再看（S2 的记录，S2B2-N1、Q1）。
 - **P4**：阅读视图的其余变量（第 2 节第二段）；已勾的禁用任务项怎样显示（4.2.5）；编辑器的链接色与搜索匹配色（`W/editor/theme.ts:15-26`），选区已在 S1 改成 `--accent-soft`；`reading.css` 的写死的色值加"同源"的注释。
 - **P5**：空状态与骨架（2.1 第 1 条）。
-- **P2–P5**：12 处手写的"Label 加控件"组从 `space-y-2` 改为 `space-y-1.5`，与 `FormField` 同，各在所在页的 Phase 改（审查 B 的 S2B-N3，位置列在[S2 的审查记录](reviews/P1-S2-components-review.md)）。
+- **P2–P5**：12 处手写的"Label 加控件"组从 `space-y-2` 改为 `space-y-1.5`，与 `FormField` 同，各在所在页的 Phase 改（审查 B 的 S2B-N3，位置列在[S2 的审查记录](reviews/P1-S2-components-review.md)）。P3/S1 改了 `W/pages/settings/create-token-dialog.tsx:184`（`446d7e99` 的行号；`6987baa9` 上是 `:186`）一处（[03-P3](03-P3-settings.md) 决定 830、846，[P3/S1 的审查记录](reviews/P3-S1-settings-mode-review.md)），P3 的其余五处在 S2。
 
 ## 10. 结果
 
