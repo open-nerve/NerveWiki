@@ -9,14 +9,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent,
   type ReactNode,
   type RefObject,
 } from "react";
-import { useLocation, useNavigationType } from "react-router";
+import { createPath, useLocation, useNavigate, useNavigationType } from "react-router";
 
 import { Button } from "../components/ui/button";
 import { useT } from "../i18n/i18n";
-import { headingTakes } from "./arrival";
+import { linkFollowed } from "../lib/link-click";
+import { arrived, headingTakes, opened } from "./arrival";
 import { useNarrow } from "./narrow";
 import { composing } from "./shortcuts";
 import { UserMenu } from "./user-menu";
@@ -73,6 +75,27 @@ export function useDrawerActions(): DrawerActions {
   return use(Drawer);
 }
 
+/**
+ * useFollow is the click of a link of the left column that is no row of the tree's pages, to its address to: an LLM
+ * Wiki's Directory and History rows, a notebook's places' icons. It is followed as the tree's pages are: arrived at
+ * from the drawer open, the page's title then taking the focus; opened otherwise, and the address shown replaced,
+ * decided as it is clicked, the drawer's state read then (review A's P2A2-M1 and S3A-Q1; decisions 782, 808). A
+ * click the browser's (linkFollowed) is left to it.
+ */
+export function useFollow(): (to: string) => (event: MouseEvent<HTMLAnchorElement>) => void {
+  const { inDrawer } = useDrawerActions();
+  const location = useLocation();
+  const navigate = useNavigate();
+  return (to) => (event) => {
+    if (linkFollowed(event) === undefined) {
+      return;
+    }
+    event.preventDefault();
+    const here = createPath(location) === to;
+    void navigate(to, { state: inDrawer() && !here ? arrived : opened, replace: here });
+  };
+}
+
 /** What a shell's drawer is as it renders, and its actions (useDrawer). */
 export type ShellDrawer = {
   narrow: boolean;
@@ -81,6 +104,9 @@ export type ShellDrawer = {
   root: RefObject<HTMLDivElement | null>;
   actions: DrawerActions;
 };
+
+/** The drawer open: the address it was opened at, its key, path and query; where the focus went in it. */
+type Opened = { at: string; pathname: string; search: string; to: "first" | "search" };
 
 /** What the drawer opened gives the focus to when it opens at its first control (the switcher). */
 const focusable = 'button:not([disabled]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -94,13 +120,16 @@ const focusable = 'button:not([disabled]), [href], input:not([disabled]), [tabin
  * at its next render only); after the page's passive effects the state goes, and the menu takes the focus unless the
  * page takes it itself (headingTakes). Escape and the overlay close it, the menu taking the focus once the trap is
  * down; Escape is the IME's in a composition, and the browser's in a search box holding text, which it empties first
- * (one that does not, it closes after all). A wider window closes it, the focus left where it is.
+ * (one that does not, it closes after all). A wider window closes it, the focus left where it is; a narrower one gives
+ * the menu a focus left in the column, which the drawer closed is inert to (review A's S3A-N1). A replace of the query
+ * alone is the page's, no navigation away: a filter's choice waiting, used as the box takes the focus (useChoice), the
+ * drawer stays open, at the new entry (decision 807). Open, the window does not scroll behind it (decision 809).
  */
 export function useDrawer(): ShellDrawer {
   const narrow = useNarrow();
   const location = useLocation();
   const type = useNavigationType();
-  const [drawer, setDrawer] = useState<{ at: string; to: "first" | "search" } | null>(null);
+  const [drawer, setDrawer] = useState<Opened | null>(null);
   // A wider window closes it, not to open again as the window narrows: the width of the last render, as
   // search-box.tsx keeps the q it took (no effect: react/set-state-in-effect).
   const [wide, setWide] = useState(!narrow);
@@ -110,18 +139,32 @@ export function useDrawer(): ShellDrawer {
       setDrawer(null);
     }
   }
+  // A filter's choice used, the same path, another query, replaced (decision 807): the drawer moves to its entry, as the
+  // width's change is taken (no effect). The page shown chosen again in the tree, the same query too, still leaves it.
+  if (
+    drawer !== null &&
+    drawer.at !== location.key &&
+    type === "REPLACE" &&
+    drawer.pathname === location.pathname &&
+    drawer.search !== location.search
+  ) {
+    setDrawer({ ...drawer, at: location.key, search: location.search });
+  }
   const trapping = narrow && drawer !== null && drawer.at === location.key;
   const menu = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const toMenu = useRef(false);
-  const now = useRef({ key: location.key, trapping, narrow });
+  const now = useRef({ location, trapping, narrow });
   useLayoutEffect(() => {
-    now.current = { key: location.key, trapping, narrow };
-  }, [location.key, trapping, narrow]);
+    now.current = { location, trapping, narrow };
+  }, [location, trapping, narrow]);
   const actions = useMemo<DrawerActions>(
     () => ({
       closed: () => now.current.narrow && !now.current.trapping,
-      open: (to) => setDrawer({ at: now.current.key, to }),
+      open: (to) => {
+        const { key, pathname, search } = now.current.location;
+        setDrawer({ at: key, pathname, search, to });
+      },
       close: () => {
         toMenu.current = true;
         setDrawer(null);
@@ -131,6 +174,24 @@ export function useDrawer(): ShellDrawer {
     }),
     []
   );
+  // Narrower, the column turned an inert drawer: a focus left in it to the menu, not to the body (review A's S3A-N1).
+  useLayoutEffect(() => {
+    if (narrow && root.current?.contains(document.activeElement)) {
+      menu.current?.focus();
+    }
+  }, [narrow]);
+  // Open, the window does not scroll behind it: its overflow hidden, as it was again once closed (decision 809).
+  useEffect(() => {
+    if (!trapping) {
+      return undefined;
+    }
+    const style = document.documentElement.style;
+    const was = style.overflow;
+    style.overflow = "hidden";
+    return () => {
+      style.overflow = was;
+    };
+  }, [trapping]);
   // The navigation's commit: the focus leaves the drawer now, no setState (decision 790).
   useLayoutEffect(() => {
     const active = document.activeElement;
@@ -220,7 +281,8 @@ function keep(event: Event): void {
  * harmless kept (M13/P2/S1).
  *
  * Below md it is a drawer, the same element (M13/P2/S3, decisions 781,
- * 784): closed, inert, hidden and off the screen; opened by the menu of a
+ * 784): closed, inert, hidden and off the screen; open, its middle's end
+ * carrying no scroll on (decision 809); opened by the menu of a
  * strip at the page's top, which scrolls with the page and says where the
  * page is (place), it slides in (not asked for less motion; it closes at
  * once) over an overlay, its edge a line as from md: up (forced colours
@@ -281,7 +343,7 @@ export function ShellSidebar({
         >
           <div className="space-y-2 px-2 pt-2.5 pb-1.5">{top}</div>
           {/* pt-1: the area clips what overflows it, the first link's focus ring 2px out of it included. */}
-          <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3">
+          <div data-sidebar-scroll className="min-h-0 flex-1 overflow-y-auto px-2 pt-1 pb-3 max-md:overscroll-contain">
             {children}
           </div>
           <div className="shrink-0 border-t border-border p-2">

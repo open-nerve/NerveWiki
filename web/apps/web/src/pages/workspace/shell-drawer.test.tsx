@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { expect, test, vi } from "vitest";
+import { expect, onTestFinished, test, vi } from "vitest";
 
 import { json, notebookJSON } from "../../test/fakes";
 import { indexFacts } from "../../test/index-server";
@@ -44,6 +44,9 @@ const box = () => within(shell()).getByRole("searchbox", { name: "Search terms" 
 const treeLink = (title: string) =>
   within(within(shell()).getByRole("navigation", { name: "Pages of Plans" })).getByRole("link", { name: title });
 const closed = () => expect(shell().hasAttribute("inert")).toBe(true);
+/** The Trash's icon among Plans' places. */
+const trash = () =>
+  within(within(shell()).getByRole("navigation", { name: "More of Plans" })).getByRole("link", { name: "Trash" });
 /** What the strip of a phone's width says beside its menu. */
 const strip = () => menuButton().parentElement?.textContent;
 /** The overlay beside the drawer open: the root's next sibling. */
@@ -106,6 +109,30 @@ test("(1) closed, the drawer is inert and no dialog, with no tabindex; the menu 
   await waitFor(() => expect(document.activeElement).toBe(menuButton()));
 });
 
+test("(1) open, the window does not scroll behind it: its overflow hidden, as it was again once closed, by Escape, a page chosen or a wider window (decision 809)", async () => {
+  const { media, user } = await guidePage();
+  const html = document.documentElement.style;
+  html.overflow = "auto";
+  onTestFinished(() => {
+    html.overflow = "";
+  });
+  await openDrawer(user);
+  expect(html.overflow).toBe("hidden");
+  await user.keyboard("{Escape}");
+  await waitFor(closed);
+  expect(html.overflow).toBe("auto");
+
+  await openDrawer(user);
+  await user.click(treeLink("Notes"));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  closed();
+  expect(html.overflow).toBe("auto");
+
+  await openDrawer(user);
+  media.set(false);
+  expect(html.overflow).toBe("auto");
+});
+
 test("the strip says where the page is: the notebook of the address, else the workspace", async () => {
   const { router } = await guidePage();
   expect(strip()).toBe("Plans");
@@ -161,6 +188,18 @@ test("(3) closed, Mod+K opens it at the box; open, Mod+K and Mod+Shift+F focus t
   await waitFor(() => expect(document.activeElement).toBe(box()));
 });
 
+test("(3) a menu open in the main, Mod+K and Mod+Shift+F open no drawer under it: the menu's, as a dialog's, kept from the browser (decision 806)", async () => {
+  const { user } = await guidePage();
+  await user.click(within(screen.getByRole("main")).getByRole("button", { name: "Page actions" }));
+  const menu = await screen.findByRole("menu");
+  expect(press("k")).toBe(false);
+  expect(press("F", { shiftKey: true })).toBe(false);
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  closed();
+  expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull();
+  expect(screen.getByRole("menu")).toBe(menu);
+});
+
 test("(4) a page chosen in its tree closes it, the page's title taking the focus; Home, the menu; a search from it, the results' title; the page shown, the menu", async () => {
   const { user, router } = await guidePage();
 
@@ -193,14 +232,14 @@ test("(4) a page chosen in its tree closes it, the page's title taking the focus
   expect(router.state.location.state).toEqual({ opened: true });
 });
 
-test("(4) in an LLM Wiki its Directory row closes it, the directory's title taking the focus (review A's P2A2-M1)", async () => {
+test("(4) in an LLM Wiki its Directory row closes it, the directory's title taking the focus (review A's P2A2-M1); the directory shown, the menu", async () => {
   phone();
   const user = userEvent.setup();
   const server = pageServer({
     mode: "llm_wiki",
     answers: { [`GET /api/v0/notebooks/${notebookJSON.id}/index`]: () => json(indexFacts()) },
   });
-  renderApp(pagePath(guide.id), server.app);
+  const { router } = renderApp(pagePath(guide.id), server.app);
   await screen.findByRole("heading", { level: 1, name: "Guide" });
   await waitFor(() => expect(treeLink("Directory")).toBeTruthy());
   await openDrawer(user);
@@ -208,6 +247,45 @@ test("(4) in an LLM Wiki its Directory row closes it, the directory's title taki
   const title = await screen.findByRole("heading", { level: 1, name: "Directory" });
   closed();
   await waitFor(() => expect(document.activeElement).toBe(title));
+
+  // The directory shown chosen again: its address replaced, opened as ever, the menu taking the focus (review C's
+  // S3C-M2).
+  await openDrawer(user);
+  await user.click(treeLink("Directory"));
+  closed();
+  await waitFor(() => expect(document.activeElement).toBe(menuButton()));
+  expect(router.state.location.state).toEqual({ opened: true });
+});
+
+test("(4) its places' icons are followed as the tree's rows are: a place's title taking the focus; the place shown, the menu (decision 808)", async () => {
+  const { user, router } = await guidePage();
+  await openDrawer(user);
+  await user.click(trash());
+  const title = await screen.findByRole("heading", { level: 1, name: "Trash" });
+  closed();
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  expect(router.state.location.state).toEqual({ arrived: true });
+
+  await openDrawer(user);
+  await user.click(trash());
+  closed();
+  await waitFor(() => expect(document.activeElement).toBe(menuButton()));
+  expect(router.state.location.state).toEqual({ opened: true });
+});
+
+test("(4) Back to the entry it was opened at leaves it closed: its state went with the navigation (review C's S3C-M1)", async () => {
+  const { user, router } = await guidePage();
+  await openDrawer(user);
+  await user.click(treeLink("Notes"));
+  const title = await screen.findByRole("heading", { level: 1, name: "Notes" });
+  closed();
+  await waitFor(() => expect(document.activeElement).toBe(title));
+
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Guide" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  closed();
+  expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull();
 });
 
 test("(4) Back, the drawer open, to a page the tree opened gives its title the focus (probe T9)", async () => {
@@ -310,6 +388,15 @@ test("(6) the window wider, it is no drawer, the focus where it was, a click on 
   expect(document.activeElement).toBe(document.body);
 });
 
+test("(6) the window narrower, the focus in the column goes to the menu, not to the body as the drawer closed is inert (review A's S3A-N1)", async () => {
+  const { media } = await guidePage();
+  media.set(false);
+  act(() => switcher().focus());
+  media.set(true);
+  closed();
+  expect(document.activeElement).toBe(menuButton());
+});
+
 test("(7) an unsaved edit, a page chosen in the drawer asks first; Stay closes it quietly, the focus back in the editor, the address the same (decision 799)", async () => {
   phone();
   const user = userEvent.setup();
@@ -328,4 +415,43 @@ test("(7) an unsaved edit, a page chosen in the drawer asks first; Stay closes i
   const { content } = await pageEditor();
   await waitFor(() => expect(document.activeElement).toBe(content));
   expect(router.state.location.pathname).toBe(pagePath(guide.id));
+});
+
+test("(5) a choice of Where to look waiting, Mod+K opens it at the box: the choice used as the box takes the focus, a replace of the query alone, leaves it open, the focus in the box (decision 807)", async () => {
+  phone();
+  const server = pageServer();
+  const { router } = renderApp(`/lab/search?q=Guide`, server.app);
+  await screen.findByRole("heading", { level: 1, name: "Search “Guide”" });
+  const scope = screen.getByRole("combobox", { name: "Where to look" }) as HTMLSelectElement;
+  act(() => scope.focus());
+  // Stepped to with the keys, as the browsers send them: waiting until the select is left (useChoice).
+  fireEvent.keyDown(scope, { key: "ArrowDown" });
+  fireEvent.change(scope, { target: { value: notebookJSON.id } });
+  const searches = () => server.sent.filter((each) => each.startsWith("GET search")).length;
+  const before = searches();
+
+  expect(press("k")).toBe(false);
+  await waitFor(() => expect(router.state.location.search).toBe(`?q=Guide&notebook_id=${notebookJSON.id}`));
+  await waitFor(() => expect(searches()).toBe(before + 1));
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(screen.getByRole("dialog", { name: "Navigation" })).toBe(shell());
+  expect(document.activeElement).toBe(box());
+});
+
+test("(5) only a replace of the query alone leaves it open: a search from it on the results page, a push, closes it, the menu taking the focus (review A's S3A-Q2, as it was); a replace to another page and query closes it (decision 807)", async () => {
+  phone();
+  const user = userEvent.setup();
+  const { router } = renderApp(`/lab/search?q=Guide`, pageServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Search “Guide”" });
+  await openDrawer(user);
+  await user.clear(box());
+  await user.type(box(), "Notes{Enter}");
+  await screen.findByRole("heading", { level: 1, name: "Search “Notes”" });
+  closed();
+  await waitFor(() => expect(document.activeElement).toBe(menuButton()));
+
+  await openDrawer(user);
+  await act(() => router.navigate(`${pagePath(notes.id)}?from=search`, { replace: true }));
+  await screen.findByRole("heading", { level: 1, name: "Notes" });
+  closed();
 });

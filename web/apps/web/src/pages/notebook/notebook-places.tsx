@@ -1,6 +1,7 @@
 import { HeartPulse, History, List, Trash2, type LucideIcon } from "lucide-react";
 import { NavLink } from "react-router";
 
+import { useFollow } from "../../app/shell-sidebar";
 import { useT } from "../../i18n/i18n";
 import { cn } from "../../lib/cn";
 import type { Notebook } from "../../services/notebook.service";
@@ -31,12 +32,15 @@ const places: readonly {
  * their breadcrumbs place under it (M8/P2B review A-N2). A row of icons
  * (M13/P2/S2, 00-M13 decision 727), each named by its text, which only a
  * screen reader reads, and titled by it for the pointer; the current one
- * as the tree's page shown is (decision 796).
+ * as the tree's page shown is (decision 796). Followed as the tree's rows
+ * are, so that a place gives the focus to the same from its row and its
+ * icon (useFollow; decision 808).
  */
 export function NotebookPlaces({ notebook }: { notebook: Notebook }) {
   const t = useT();
   const { slug } = useWorkspace();
   const home = `/${slug}/notebooks/${notebook.id}`;
+  const follow = useFollow();
   return (
     <nav aria-label={t("notebook.places", { notebook: notebook.name })} className="flex gap-0.5 py-1 pl-6">
       {places.map(({ path, label, icon: Icon }) => (
@@ -44,6 +48,7 @@ export function NotebookPlaces({ notebook }: { notebook: Notebook }) {
           key={path}
           end
           to={`${home}/${path}`}
+          onClick={follow(`${home}/${path}`)}
           title={t(label)}
           className={({ isActive }) =>
             cn(
