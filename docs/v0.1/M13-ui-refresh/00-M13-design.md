@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 设计定稿，S1 已审查、待合并 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 设计定稿，S1 已合并，S2 待开 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -545,7 +545,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 |---|---|---|---|---|
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
-| P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 设计定稿；S1 已审查、待合并 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md) | — |
+| P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 设计定稿；S1 已合并 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md) | S1 `f32b0762` |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
@@ -567,4 +567,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-23：P2/S3 实施与审查完成（[审查记录](reviews/P2-S3-search-drawer-review.md)；主持者的决定 805–809：搜索框的清除按钮按配色画，开着的菜单让开两个搜索键，只改查询参数的 `replace` 不关抽屉，"更多"的图标照两行跟随，抽屉开着时背后不滚；4.2.5 第 4 条随之改）；合并 `82838aac`。
 - 2026-11-23：P2 完成（S1 `fdad6b9e`、S2 `70338fc4`、S3 `82838aac`；主持者的决定 769–809；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761；se2 在 se2:230 之后的步骤与 UI1 的 `Control+K` 只在 Linux 的 CI 上走，决定 795(d)）。
 - 2026-11-23：照 P3 的设计修订（[03-P3](03-P3-settings.md) 2.1；[设计审查](reviews/P3-design-review.md)，主持者的决定 810–847）：设置目录的两个宿主；来处记在 `Layout`（连同片段与工作区，以 `replace` 进入时不记）与"返回"的去处；个人设置的工作区一组；设置模式里树留在 `hidden` 的容器里；页名作 `h1`，三页的到达焦点；右上角对有待办引导步骤的账户、个人设置的"回到工作区"删掉；快捷键照旧挂着；读侧栏的故事 8 个、vitest 12 个文件；下拉的说明与 Esc；UI3 降为编辑者；第 7 节 P3 两行与"总体设计的修订"第 6 项；第 10 节 a15 一行。
-- 2026-11-24：P3/S1 实施与审查完成（[审查记录](reviews/P3-S1-settings-mode-review.md)；主持者的决定 849–851：`SettingsRow` 是 `observer`，设置卡片里列表的名字是 `text-sm`，第一组的分组标题只会重复页名时不写）；合并见第 12 节。
+- 2026-11-24：P3/S1 实施与审查完成（[审查记录](reviews/P3-S1-settings-mode-review.md)；主持者的决定 849–851：`SettingsRow` 是 `observer`，设置卡片里列表的名字是 `text-sm`，第一组的分组标题只会重复页名时不写）；合并 `f32b0762`。
