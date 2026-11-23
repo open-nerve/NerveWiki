@@ -47,10 +47,11 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
   useSWR(me === undefined ? null : "instance", () => instance.load());
   const trigger = useRef<HTMLButtonElement>(null);
   const { signOut, dialog } = useSignOut(() => trigger.current?.focus());
-  // The settings chosen, the focus is their title's: the menu is not to give it back to its button, which stays at
-  // the top right of the settings (page-tree-item.tsx's chosen). Chosen on the profile itself, the address is the
+  // The settings chosen, the focus is their title's: the menu is not to give it back to its button, which stays in
+  // the column's foot on the settings (page-tree-item.tsx's chosen). Chosen on the profile itself, the address is the
   // same, the title taking nothing: the button gets it back (review A, P2A1-N1); so too with a step of onboarding
-  // left, the settings sending it back there (review A, S1A-N2).
+  // left, the settings sending it back there (review A, S1A-N2). On the profile itself no arrival either, the link
+  // replacing the address shown: below md the drawer then gives its menu the focus (M13/P3/S1, decision 816).
   const leaving = useRef(false);
   const atProfile = useMatch("/settings/profile") !== null;
   const narrow = useNarrow();
@@ -122,7 +123,7 @@ export const UserMenu = observer(function UserMenu({ place }: { place: "row" | "
               leaving.current = !atProfile && pendingSteps(me).length === 0;
             }}
           >
-            <Link to="/settings/profile" state={arrived}>
+            <Link to="/settings/profile" state={atProfile ? undefined : arrived}>
               <Settings />
               {t("userMenu.settings")}
             </Link>

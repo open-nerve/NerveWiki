@@ -8,7 +8,8 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // A transparent border: forced colours, which drop the ink fill, draw it (M13/P3/S1, decision 845).
+        default: "border border-transparent bg-primary text-primary-foreground hover:bg-primary/90",
         outline: "border border-border bg-surface hover:hover-layer dark:bg-surface-2",
         ghost: "text-muted-foreground hover:bg-hover hover:text-foreground",
         destructive:

@@ -37,7 +37,9 @@ export function CreateTokenDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>{t("tokens.create")}</Button>
+        <Button size="sm" shape="pill">
+          {t("tokens.create")}
+        </Button>
       </DialogTrigger>
       {open && <CreateToken close={() => setOpen(false)} />}
     </Dialog>
@@ -181,7 +183,7 @@ function NewToken({ token, done }: { token: string; done: () => void }) {
     <div className="space-y-4">
       <DialogTitle>{t("tokens.createdTitle")}</DialogTitle>
       <DialogDescription>{t("tokens.createdWarning")}</DialogDescription>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor={id}>{t("tokens.secret")}</Label>
         <div className="flex gap-2">
           <Input

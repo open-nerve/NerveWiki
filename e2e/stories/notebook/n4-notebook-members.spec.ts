@@ -19,6 +19,7 @@ import {
   removeNotebookMemberWith,
 } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
+import { settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
@@ -152,8 +153,6 @@ test("N4 (page): the admin adds a member and a guest, changes a role and removes
   const { status, added } = await addNotebookMemberWith(page, notebook.id, guest, "Reader");
   expect(status).toBe(201);
   await expect.poll(() => membersListed(page)).toHaveLength(3);
-  // With other members, the notebook is the team's.
-  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Team"] });
 
   expect((await changeNotebookRoleWith(page, mate, "Admin")).status()).toBe(200);
   await expect(roleOf(page, mate)).toHaveText("Admin");
@@ -164,6 +163,11 @@ test("N4 (page): the admin adds a member and a guest, changes a role and removes
   await expect(page.getByRole("heading", { level: 2, name: "Members", exact: true })).toBeFocused();
   await expect.poll(() => membersListed(page)).toHaveLength(2);
   await expectNotebookMember(db, notebook.id, guestId, { role: "reader", active: false, writerId: ownerId });
+
+  // With other members, the notebook is the team's: read in the workspace's left column, out of the settings (opened
+  // at their address, Back goes to the workspace's home; M13/P3/S1).
+  await settingsBack(page, "Acme").click();
+  await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Team"] });
 });
 
 test("N4 (page): an editor sees the members and their roles, and can change nothing", async ({

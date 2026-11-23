@@ -2,46 +2,27 @@ import { observer } from "mobx-react-lite";
 import { Outlet, useLocation } from "react-router";
 
 import { useDocumentTitle } from "../../app/document-title";
-import { NavItem } from "../../components/nav-item";
+import { sectionAt, workspaceSections } from "../../app/settings-directory";
+import { SettingsPage } from "../../app/settings-page";
 import { useT } from "../../i18n/i18n";
 import { useWorkspace } from "./workspace-layout";
 
-/** The workspace settings' pages, in the order the navigation lists them; some are its admins' alone. */
-const sections = [
-  { path: "general", label: "workspaceSettings.general", admins: false },
-  { path: "members", label: "workspaceSettings.members", admins: false },
-  { path: "ownerless", label: "workspaceSettings.ownerless", admins: true },
-] as const;
-
 /**
- * WorkspaceSettingsLayout is the navigation of a workspace's settings and
- * the page chosen, as the account's settings have theirs (M2/P5 design
- * 3.6). The ownerless notebooks are its admins' alone (M3/P5 design 3.3):
- * the others are not offered them.
+ * WorkspaceSettingsLayout is a workspace's settings page (M2/P5 design 3.6) in the settings' mode (M13/P3/S1): their
+ * directory is WorkspaceLayout's left column, where the ownerless notebooks are their admins' alone (decision 810);
+ * here the page chosen, keyed by its path, its h1 taking the arrival focus as it mounts (SettingsPage, decision 815).
  */
 export const WorkspaceSettingsLayout = observer(function WorkspaceSettingsLayout() {
-  const { slug, name, role } = useWorkspace();
+  const { slug, name } = useWorkspace();
   const t = useT();
   const { pathname } = useLocation();
-  const shown = sections.find(({ path }) => pathname === `/${slug}/settings/${path}`);
+  const shown = sectionAt(workspaceSections, `/${slug}/settings`, pathname);
   useDocumentTitle(shown && t(shown.label), t("workspaceSettings.title"), name);
-  return (
-    <div className="max-w-4xl space-y-6">
-      <h1 className="text-2xl font-semibold">{t("workspaceSettings.title")}</h1>
-      <div className="flex flex-col gap-6 md:flex-row">
-        <nav aria-label={t("workspaceSettings.title")} className="flex gap-1 md:w-40 md:shrink-0 md:flex-col">
-          {sections
-            .filter((section) => !section.admins || role === "admin")
-            .map(({ path, label }) => (
-              <NavItem key={path} to={`/${slug}/settings/${path}`}>
-                {t(label)}
-              </NavItem>
-            ))}
-        </nav>
-        <div className="min-w-0 flex-1">
-          <Outlet />
-        </div>
-      </div>
-    </div>
+  return shown === undefined ? (
+    <Outlet />
+  ) : (
+    <SettingsPage key={shown.path} title={t("workspaceSettings.title")}>
+      <Outlet />
+    </SettingsPage>
   );
 });

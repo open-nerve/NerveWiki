@@ -10,6 +10,7 @@ import type { Database } from "../../fixtures/db";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode } from "../../fixtures/pages";
+import { settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, holdNotebookRow, startImport, startTrashRestore } from "../../fixtures/transfer";
 import { restoreNode, restoreWith, trashListed, trashStatus } from "../../fixtures/trash";
@@ -270,7 +271,10 @@ test("TB2 (page): an item deleted from the tree, too large to restore from the t
     client: "web",
   });
 
-  // Big is in the tree again, with its notes; its attachment downloads.
+  // Big is in the tree again, with its notes; its attachment downloads. Back from the settings to the trash they were
+  // entered from, its h1 taking the focus, its tree there (M13/P3/S1).
+  await settingsBack(page, "Plans").click();
+  await expect(main.getByRole("heading", { level: 1, name: "Trash", exact: true })).toBeFocused();
   await expect.poll(() => treeTitles(page, "Plans")).toEqual(["Index", "Big"]);
   await pageTree(page, "Plans").getByRole("link", { name: "Big", exact: true }).click();
   await expect(pageHeading(page, "Big")).toBeVisible();

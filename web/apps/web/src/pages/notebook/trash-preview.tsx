@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link, Navigate, useParams } from "react-router";
 import useSWR from "swr";
 
-import { arrived, useRouteNotice } from "../../app/arrival";
+import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
@@ -403,7 +403,8 @@ const Preview = observer(function Preview({
 }) {
   const t = useT();
   const { preferences } = useStore();
-  const heading = useRef<HTMLHeadingElement>(null);
+  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   const note = useId();
   const shown = useRef<HTMLDivElement>(null);
   useFocusLeaving(shown, left);
@@ -412,7 +413,7 @@ const Preview = observer(function Preview({
     if ((merged || focus) && (at === null || at === document.body)) {
       heading.current?.focus();
     }
-  }, [merged, focus]);
+  }, [merged, focus, heading]);
   useDocumentTitle(item.name, t("trash.title"), notebook.name);
   return (
     <div ref={shown} className="space-y-6">
@@ -576,7 +577,8 @@ function Gone({
   const t = useT();
   const notebook = useNotebook();
   const { slug } = useWorkspace();
-  const heading = useRef<HTMLHeadingElement>(null);
+  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   const section = useRef<HTMLElement>(null);
   useFocusLeaving(section, left);
   useDocumentTitle(t("trash.title"), notebook.name);
@@ -585,7 +587,7 @@ function Gone({
     if (focus && (at === null || at === document.body)) {
       heading.current?.focus();
     }
-  }, [focus]);
+  }, [focus, heading]);
   return (
     <section ref={section} className="space-y-2">
       <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className="text-2xl font-semibold outline-none">

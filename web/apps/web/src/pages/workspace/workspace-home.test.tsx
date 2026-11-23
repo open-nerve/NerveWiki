@@ -128,7 +128,7 @@ test("a notebook created from the empty home answered after leaving it goes nowh
   await user.click(within(dialog).getByRole("button", { name: "Create" }));
   await waitFor(() => expect(release).toBeDefined());
   await act(() => router.navigate("/settings/profile"));
-  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  await screen.findByRole("heading", { level: 1, name: "Profile" });
   release?.();
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 

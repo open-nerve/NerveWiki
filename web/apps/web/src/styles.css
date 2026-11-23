@@ -229,4 +229,43 @@
       color: CanvasText;
     }
   }
+  /* "Saved."'s check, drawn before its text, never in it: the output's text is what a screen reader and the tests read
+     (M13/P3/S1, decisions 823, 841). Amber marks the state, a 13px mask over the text's colour, as the search box's
+     clear button is drawn; under forced colours the system's text colour, which the mask is drawn in still. 1.5s
+     after the text shows the output fades out, the text kept. Each time the text is written its round turns
+     (SavedOutput), which names the other of two like keyframes: the fade starts again however soon after the
+     output was emptied (emptied and written between two style computations, Chromium and Firefox go on with the
+     animation as it was). */
+  .nw-saved:not(:empty) {
+    animation: nw-saved-out 300ms ease-in 1.5s forwards;
+  }
+  .nw-saved[data-round="1"]:not(:empty) {
+    animation-name: nw-saved-out-again;
+  }
+  .nw-saved:not(:empty)::before {
+    content: "";
+    flex: none;
+    width: 13px;
+    height: 13px;
+    color: var(--accent);
+    background-color: currentColor;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23000' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m5 12 5 5 9-10'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  @media (forced-colors: active) {
+    .nw-saved:not(:empty)::before {
+      forced-color-adjust: none;
+      color: CanvasText;
+    }
+  }
+  @keyframes nw-saved-out {
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes nw-saved-out-again {
+    to {
+      opacity: 0;
+    }
+  }
 }

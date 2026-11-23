@@ -3,7 +3,7 @@ import { useRef, useState, type FormEvent } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
-import { arrived } from "../app/arrival";
+import { arrived, useArrivalFocus } from "../app/arrival";
 import { useDocumentTitle } from "../app/document-title";
 import { useForm } from "../app/form";
 import { linkOf } from "../app/invitation-link";
@@ -34,9 +34,13 @@ export const InvitationPage = observer(function InvitationPage() {
   const t = useT();
   useDocumentTitle(t("invitation.title"));
   const link = linkOf(id, hash);
+  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
     <section className="mx-auto max-w-sm space-y-6">
-      <h1 className="text-2xl font-semibold">{t("invitation.title")}</h1>
+      <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+        {t("invitation.title")}
+      </h1>
       {link === undefined ? <Alert>{t("problem.workspace.invitation_not_found")}</Alert> : <Invitation link={link} />}
     </section>
   );

@@ -1,9 +1,13 @@
+import { observer } from "mobx-react-lite";
 import { createContext, useCallback, useContext, useState } from "react";
 import { Outlet, useMatches } from "react-router";
 
+import { pendingSteps } from "../onboarding/steps";
+import { useStore } from "../stores/context";
 import { useArrivalWatch } from "./arrival";
 import { Corner, CornerBack } from "./corner";
 import { FileDropGuard } from "./file-drop";
+import { SettingsOrigin, useOriginRecord, useSettingsMode } from "./settings-origin";
 
 /** ShellColumn is the element a page's shell puts its left column in: before the main, outside it. */
 const ShellColumn = createContext<HTMLElement | null>(null);
@@ -33,12 +37,16 @@ type Shell = { sidebar?: boolean };
  * (useCornerBack): the workspaces not loaded, at / or in a workspace, or
  * the workspace not found, the session unavailable, an error (decision
  * 769). The route says so as it renders:
- * a mark set in an effect would show the top right for a paint first. A
+ * a mark set in an effect would show the top right for a paint first. An
+ * account with a step of onboarding left has the top right all the same:
+ * the route bounces it to the onboarding (M13/P3/S1, decision 832). A
  * file dropped where no part of the page takes it stays out of the tab
  * (FileDropGuard). It watches the reader from each arrival on
- * (useArrivalWatch).
+ * (useArrivalWatch). In the settings' mode (handle: { settings: true }) it
+ * records where they were entered from (useOriginRecord), which their
+ * directory's Back goes to (SettingsOrigin; M13/P3/S1, decision 812).
  */
-export function Layout() {
+export const Layout = observer(function Layout() {
   useArrivalWatch();
   const [column, setColumn] = useState<HTMLElement | null>(null);
   const [given, setGiven] = useState(0);
@@ -46,7 +54,14 @@ export function Layout() {
     setGiven((n) => n + 1);
     return () => setGiven((n) => n - 1);
   }, []);
-  const sidebar = useMatches().some((match) => (match.handle as Shell | undefined)?.sidebar === true);
+  const { account } = useStore();
+  const me = account?.me;
+  // An account with a step of onboarding left is sent there (Onboarded) from every route with a column: through the
+  // bounce the top right stays, its account's button holding the focus its menu gives back (decision 832).
+  const bounced = me !== undefined && pendingSteps(me).length > 0;
+  const routed = useMatches().some((match) => (match.handle as Shell | undefined)?.sidebar === true);
+  const sidebar = routed && !bounced;
+  const origin = useOriginRecord(useSettingsMode());
   return (
     <div className="flex min-h-svh flex-col md:flex-row">
       <FileDropGuard />
@@ -56,11 +71,13 @@ export function Layout() {
         <main className="flex min-w-0 flex-1 flex-col p-6">
           <CornerBack value={giveBack}>
             <ShellColumn value={column}>
-              <Outlet />
+              <SettingsOrigin value={origin}>
+                <Outlet />
+              </SettingsOrigin>
             </ShellColumn>
           </CornerBack>
         </main>
       </div>
     </div>
   );
-}
+});

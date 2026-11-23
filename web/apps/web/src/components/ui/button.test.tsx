@@ -53,7 +53,8 @@ test("each variant has its look", () => {
   // What tells one from another (M13/P1 design 4.2.2): the ink fill, the outline on its surface, the quiet ghost, the red
   // text that fills nothing.
   const looks = {
-    default: ["bg-primary", "text-primary-foreground"],
+    // A transparent border, which forced colours draw: the fill they drop leaves the button its edge (decision 845).
+    default: ["bg-primary", "text-primary-foreground", "border", "border-transparent"],
     outline: ["bg-surface", "hover:hover-layer"],
     ghost: ["text-muted-foreground", "hover:bg-hover"],
     destructive: ["text-destructive", "border-destructive/35"],

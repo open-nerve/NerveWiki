@@ -10,6 +10,7 @@ import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, listNodes } from "../../fixtures/pages";
+import { settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, startImport, startRevert } from "../../fixtures/transfer";
 import { trashListed } from "../../fixtures/trash";
@@ -209,7 +210,10 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
   });
 
   // The tree shows the page there before alone; the trash lists the notes, a page of them first. The tree first: its
-  // places are under it, which its rows going would move as they are clicked.
+  // places are under it, which its rows going would move as they are clicked. Back from the settings to the changeset's
+  // page they were entered from, its tree there, its h1 taking the focus (M13/P3/S1, decision 835).
+  await settingsBack(page, "Notes").click();
+  await expect(heading).toBeFocused();
   await expect.poll(() => treeTitles(page, "Notes")).toEqual(["Index"]);
   await page
     .getByRole("navigation", { name: "More of Notes", exact: true })

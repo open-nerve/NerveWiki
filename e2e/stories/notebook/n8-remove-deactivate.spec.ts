@@ -13,10 +13,11 @@ import { removeMemberWith, who } from "../../fixtures/member-pages";
 import { memberOf, removeMember } from "../../fixtures/members";
 import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
-import { notebookHeading, notebookPath, workspaceNav } from "../../fixtures/notebook-pages";
+import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, listNotebooks } from "../../fixtures/notebooks";
 import { soleAdminOfNotebooks } from "../../fixtures/ownerless";
 import { listedOwnerless, ownerlessListed, ownerlessPath } from "../../fixtures/ownerless-pages";
+import { settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { createWorkspace, newOnboardedTeam, newTeam, slugFor } from "../../fixtures/workspaces";
 
@@ -143,8 +144,9 @@ test("N8 (page): a workspace admin removes the only admin of a notebook, told it
   await expectNotebookMembershipsEndedWith(db, workspace.id, ownerId, adminId, 1);
   await expectOwnerless(db, plans.id, ownerId);
 
-  // The workspace's home reminds the admin of it, and leads to the list, which has it.
-  await workspaceNav(page, "Acme").getByRole("link", { name: "Home", exact: true }).click();
+  // The workspace's home reminds the admin of it, and leads to the list, which has it. The settings opened at their
+  // address, Back goes to it (M13/P3/S1).
+  await settingsBack(page, "Acme").click();
   await expect(page.getByText("Notebooks without an admin: 1.", { exact: false })).toBeVisible();
   await page.getByRole("link", { name: "Review them", exact: true }).click();
   await expect(page).toHaveURL(ownerlessPath(workspace.slug));

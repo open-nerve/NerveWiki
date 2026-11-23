@@ -166,7 +166,8 @@ test("the column's account opens its menu above it, from its start; the top righ
   expect([row.getAttribute("data-side"), row.getAttribute("data-align")]).toEqual(["top", "start"]);
   unmount();
 
-  renderApp("/settings/profile", signedInApp());
+  // A page without a left column: the settings have one (M13/P3/S1, decision 811).
+  renderApp("/create-workspace", signedInApp());
   await user.click(await screen.findByRole("button", { name: "Ada" }));
   const corner = await screen.findByRole("menu");
   expect([corner.getAttribute("data-side"), corner.getAttribute("data-align")]).toEqual(["bottom", "end"]);
@@ -176,8 +177,8 @@ test("the column's account opens its menu above it, from its start; the top righ
   expect(corner.className).toContain("max-w-[min(16rem,var(--radix-dropdown-menu-content-available-width))]");
 });
 
-// The column's and the top right's (review C, S1C-N2).
-test.each(["/lab", "/settings/profile"])(
+// The column's and the top right's (review C, S1C-N2), the latter on a page without a column (M13/P3/S1).
+test.each(["/lab", "/create-workspace"])(
   "below md the account's menu at %s has the theme and the language in it, no submenu, a choice keeping it open",
   async (path) => {
     // A submenu has no room beside a menu as wide as a phone's column (M13/P2/S1, decision 801).

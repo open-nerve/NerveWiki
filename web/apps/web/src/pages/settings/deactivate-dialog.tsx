@@ -18,7 +18,11 @@ export function DeactivateDialog() {
   const t = useT();
   return (
     <ConfirmDialog
-      trigger={<Button variant="destructive">{t("deactivate.open")}</Button>}
+      trigger={
+        <Button variant="destructive" size="sm" shape="pill">
+          {t("deactivate.open")}
+        </Button>
+      }
       title={t("deactivate.confirmTitle")}
       description={t("deactivate.confirmBody")}
       confirmLabel={t("deactivate.confirm")}

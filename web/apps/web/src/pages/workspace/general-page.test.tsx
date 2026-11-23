@@ -49,17 +49,20 @@ function settingsServer({
 
 const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
 
-test("the settings of a workspace open on its general page", async () => {
+test("the settings of a workspace open on its general page, the left column their directory", async () => {
   const { router } = renderApp("/acme/settings", settingsServer().app);
 
   expect(await screen.findByRole("heading", { level: 2, name: "General" })).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 1, name: "Workspace settings" })).toBeTruthy();
   expect(router.state.location.pathname).toBe("/acme/settings/general");
-  const nav = screen.getByRole("navigation", { name: "Acme" });
-  expect(within(nav).getByRole("link", { name: "Settings" }).getAttribute("aria-current")).toBe("page");
-  expect(within(nav).getByRole("link", { name: "Home" }).getAttribute("aria-current")).toBeNull();
+  const nav = screen.getByRole("navigation", { name: "Workspace settings" });
+  expect(within(nav).getByRole("link", { name: "General" }).getAttribute("aria-current")).toBe("page");
+  expect(within(nav).getByRole("link", { name: "Members" }).getAttribute("aria-current")).toBeNull();
+  // The workspace's navigation is not there: the settings' mode (M13/P3/S1, decision 810).
+  expect(screen.queryByRole("navigation", { name: "Acme" })).toBeNull();
 });
 
-test("an admin renames the workspace; the switcher shows the new name", async () => {
+test("an admin renames the workspace; the directory names it so, and Back too", async () => {
   const user = userEvent.setup();
   const { app, sent } = settingsServer();
   renderApp("/acme/settings/general", app);
@@ -70,7 +73,8 @@ test("an admin renames the workspace; the switcher shows the new name", async ()
 
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(sent).toEqual(["PATCH Acme Labs"]);
-  expect(screen.getByRole("button", { name: "Acme Labs" })).toBeTruthy();
+  expect(screen.getByRole("navigation", { name: "Workspace settings" }).textContent).toContain("Acme Labs");
+  expect(screen.getByRole("link", { name: "Back to Acme Labs" })).toBeTruthy();
   expect((await nameField()).value).toBe("Acme Labs");
 
   // Saving the name it has sends nothing; an edit takes the saved state away.

@@ -243,7 +243,7 @@ test("an acceptance answered after the page was left does not go into the worksp
   await user.click(await screen.findByRole("button", { name: "Accept invitation" }));
   await waitFor(() => expect(release).toBeDefined());
   await act(() => router.navigate("/settings/profile"));
-  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  await screen.findByRole("heading", { level: 1, name: "Profile" });
   release?.();
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 

@@ -20,25 +20,26 @@ const rawFile = assetNode(83, "scan.pdf", raw);
 const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
 const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
+/** The workspace's navigation in the left column, out of the settings. */
 const nav = () => screen.findByRole("navigation", { name: "Lab" });
+/** The settings' directory's group of the notebook (M13/P3/S1). */
+const notebookGroup = () => screen.findByRole("navigation", { name: "Notebook settings" });
+const plansHome = `/lab/notebooks/${notebookJSON.id}`;
 
-test("the settings of a notebook open on its general page, from its home", async () => {
+test("the settings of a notebook open on its general page from its row's cog, arrived at; the column their directory", async () => {
   const user = userEvent.setup();
-  const { router } = renderApp(`/lab/notebooks/${notebookJSON.id}`, notebookServer().app);
+  const { router } = renderApp(plansHome, notebookServer().app);
 
-  await user.click(await screen.findByRole("link", { name: "Notebook settings" }));
+  await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
 
   expect(await screen.findByRole("heading", { level: 2, name: "General" })).toBeTruthy();
   expect(router.state.location.pathname).toBe(general);
-  expect(screen.getByRole("heading", { level: 1, name: "Plans settings" })).toBeTruthy();
-  const settings = screen.getByRole("navigation", { name: "Notebook settings" });
+  const title = screen.getByRole("heading", { level: 1, name: "Plans settings" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  const settings = await notebookGroup();
   expect(within(settings).getByRole("link", { name: "General" }).getAttribute("aria-current")).toBe("page");
-  // The notebook's row links its home alone (end): its settings are no page of the home's (M13/P2/S2).
-  expect(
-    within(await nav())
-      .getByRole("link", { name: "Plans" })
-      .getAttribute("aria-current")
-  ).toBeNull();
+  // The workspace's navigation is not there: the settings' mode (M13/P3/S1, decision 810).
+  expect(screen.queryByRole("navigation", { name: "Lab" })).toBeNull();
 });
 
 test("an admin renames the notebook; the left column shows the new name, in its place", async () => {
@@ -53,7 +54,7 @@ test("an admin renames the notebook; the left column shows the new name, in its 
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(server.sent).toEqual(['PATCH {"name":"Roadmap"}']);
   expect((await nameField()).value).toBe("Roadmap");
-  expect(within(await nav()).getByRole("link", { name: "Roadmap" })).toBeTruthy();
+  expect((await notebookGroup()).textContent).toContain("Roadmap");
 
   // The name as saved goes out no more.
   await user.click(screen.getAllByRole("button", { name: "Save" })[0] as HTMLElement);
@@ -85,11 +86,12 @@ test("a name the local check or the server refuses shows under the field, by a t
   expect(server.sent).toEqual(['PATCH {"name":"nul.txt"}']);
 });
 
-test("an admin opens the notebook to the workspace on Save; the left column moves it to the team's", async () => {
+test("an admin opens the notebook to the workspace on Save; back in the workspace, the left column has it among the team's", async () => {
   const user = userEvent.setup();
   const server = notebookServer({ members: [notebookMember(ada, "admin")] });
-  renderApp(general, server.app);
+  renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "My notebooks" });
+  await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
 
   // Moving through the options chooses them; nothing goes out until Save.
   await user.click(await screen.findByRole("radio", { name: "Workspace can read" }));
@@ -98,8 +100,10 @@ test("an admin opens the notebook to the workspace on Save; the left column move
   expect(server.sent).toEqual([]);
   await user.click(screen.getAllByRole("button", { name: "Save" })[1] as HTMLElement);
 
-  expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
+  expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(server.sent).toEqual(['PATCH {"workspace_access":"editor"}']);
+  await user.click(screen.getByRole("link", { name: "Back to Plans" }));
+  expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
   expect(within(await nav()).queryByRole("list", { name: "My notebooks" })).toBeNull();
 });
 
@@ -141,7 +145,7 @@ test("a deletion refused stays in the dialog with why, and the notebook stays", 
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("You do not have permission to do this.");
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(within(await nav()).getByRole("link", { name: "Plans" })).toBeTruthy();
+  expect((await notebookGroup()).textContent).toContain("Plans");
   expect(screen.getByRole("heading", { level: 2, name: "General" })).toBeTruthy();
 });
 
@@ -383,8 +387,10 @@ test.each([
   renderApp(general, server.app);
 
   const section = await modeOf();
-  await within(await screen.findByRole("navigation", { name: "Pages of Plans" })).findByRole("link", {
+  // The tree held out of sight in the settings' mode (M13/P3/S1, decisions 814, 836).
+  await within(await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true })).findByRole("link", {
     name: "Notes",
+    hidden: true,
   });
   expect(section.queryByRole("button", { name: startLabel }) !== null).toBe(offered);
   expect(server.asked).toEqual([]);
