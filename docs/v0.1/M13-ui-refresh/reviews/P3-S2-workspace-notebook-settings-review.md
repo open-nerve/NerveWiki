@@ -223,6 +223,7 @@ S2 的实施者另写的（与 S1 的 t 各自编号）：
 | `397241c7`（实施者；C） | 实施者：lint、knip、gen-check、build 过；221 个文件、5322 格；e2e 628 格，623 过、4 败、1 跳，Playwright 2.5 min：基线三格（同行同消息）与 AS6 [chromium] `as6:153`（在 `:167`，`apiResponse.json: Response has been disposed`），单独重跑 AS6（Chromium）3 格都过；负载 14.59 → 22.08；受保护路径与 `git diff --check` 0。C：221 个文件、5322 格；e2e 625 过、2 败（se2:231、lw8:836；pg15 这次过了）、1 跳，2.8 min（负载最高约 58）；`git diff --quiet 58305870...HEAD -- …` 与 `git diff --check` 0，跑完树干净 |
 | `dd6ef368`（实施者；C） | 实施者：lint、knip、gen-check、build 过；221 个文件、5325 格；e2e 624 过、3 败（基线三格）、1 跳，2.5 min；负载 11.69 → 33.95；受保护路径与 `git diff --check` 0。C（修复核对）：221 个文件、5325 格；e2e 624 / 3 / 1，2.6 min；受保护路径（含 Go 树）与 `git diff --check` 0 |
 | `8d98f64f`（实施者） | lint、knip、gen-check、build 过；221 个文件、5325 格；e2e 624 过、3 败（基线三格）、1 跳，2.5 min；负载 15.45 → 28.89；受保护路径（含 Go 树）与 `git diff --check` 0，跑完树干净 |
+| `633df29f`（主持者；文档提交，加上它的头即合并 `12b0b734` 的树，`m13-ui-refresh` 在这期间没有动过） | 与 `8d98f64f` 只差 `docs/`（`git diff 8d98f64f..633df29f -- . ':(exclude)docs'` 为空），合并之前的整条命令已在 `8d98f64f` 上跑过，不重跑；`git diff --check` 与 `check_links.py m13-ui-refresh`（6 个文件，0 个新的坏链接）干净 |
 
 - 每次都只败基线里同行同消息的格（SE2 `se2:231:23`、PG15 `pg15:113:5`、LW8 `lw8:836:29`），C 在 `397241c7` 上那一次 PG15 过了；实施者在 `397241c7` 上另有 AS6 的抖动（上表）。
 - Go 一侧：`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 每次以 0 退出；`git diff --check` 干净；`m13-ui-refresh` 就是 `58305870`，分支是快进（C）。
