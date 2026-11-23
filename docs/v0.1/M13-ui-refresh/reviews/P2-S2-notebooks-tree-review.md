@@ -221,6 +221,7 @@ C 另核实："先经笔记本首页"那一步只避开了同一历史项上留�
 |---|---|
 | `831e50a6`（实施者；C） | 实施者：214 个文件、5189 格；e2e 600 过、3 败、1 跳（基线三格，同行同消息），Playwright 2.3 min，负载 12.6 → 37.5。C：全过，e2e 600 / 3 / 1，2.3 min，整条 3 分 23 秒，跑完树干净 |
 | `75cac02a`（实施者；C） | 实施者：214 个文件、5190 格；e2e 600 / 3 / 1（基线三格，同行同消息），2.4 min，负载 11.1 → 36.0。C：静态检查、`gen-check-web`、`build-web` 过，5190 格；e2e 600 / 3 / 1，没有 flaky，2.3 min，开始时负载 48，跑完树干净 |
+| `48e80290`（主持者；加上文档提交的头，`m13-ui-refresh` 没有动过，即合并的树） | 与 `75cac02a` 只差 `docs/`（`git diff 75cac02a..48e80290 -- . ':(exclude)docs'` 为空），合并之前的整条命令已在 `75cac02a` 上跑过两次，不再重跑；Go 一侧的断言 0、`git diff --check m13-ui-refresh...HEAD` 0、快进；合并 `70338fc4` |
 
 - 每次都只败基线里同行同消息的格（SE2 `se2:231:23`、PG15 `pg15:113:5`、LW8 `lw8:836:29`）。
 - Go 一侧：`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 每次以 0 退出；`git diff --check` 干净（C 另对 `831e50a6..75cac02a`）；分支是快进。
