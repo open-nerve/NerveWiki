@@ -88,6 +88,7 @@ export const zhCN: Messages = {
   "notebook.homeEmpty": "还没有页面。",
   "notebook.pages": "页面",
   "notebook.places": "{notebook}的更多",
+  "notebook.settingsOf": "{notebook}的设置",
   "notebook.upgradeReadOnly": "升级结束之前，这本笔记本只读。",
   "unresolved.createTitle": "新建页面「{title}」？",
   "unresolved.under": "它在「{place}」下。",

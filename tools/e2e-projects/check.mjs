@@ -23,6 +23,9 @@ const REQUIRED = [
   // The reading view's focus and scroll are each engine's (M12/P2/S4, 4.4.6).
   ["firefox", "page/pg15-reading-updates.spec.ts", "PG15 (page): the reading view updated in place"],
   ["webkit", "page/pg15-reading-updates.spec.ts", "PG15 (page): the reading view updated in place"],
+  // The tree's row menu and the row shown brought into the column are each engine's (M13/P2/S2, decision 789).
+  ["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
+  ["webkit", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"],
   ["webkit-narrow", "mcp/mc3-write-edit.spec.ts", "MC3 (page): at 375 wide"],
   ["webkit-narrow", "page/pg2-rename-page.spec.ts", "PG2 (page): at 375 wide"],
   ["webkit-narrow", "search/se1-search.spec.ts", "SE1 (page): at 375 wide"],

@@ -156,7 +156,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
     <>
       <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
         {banner !== undefined && <Alert>{banner}</Alert>}
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={ids.parent}>{t("page.moveParent")}</Label>
           <NativeSelect
             id={ids.parent}
@@ -169,7 +169,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
           </NativeSelect>
           <Problem id={`${ids.parent}-note`} text={problems.parent} />
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={ids.position}>{t("page.movePosition")}</Label>
           <NativeSelect
             id={ids.position}

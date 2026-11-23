@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P2 新外框（三个 Step：S1 外框与账户行；S2 笔记本与页面树；S3 搜索、⌘K、快速切换与窄屏） |
-| 日期 | 2026-11-22（初稿）；2026-11-23（照三份设计审查修订；照修订核对第 1、2 轮再修订；主持者补上最后的 Nit，设计定稿；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)） |
-| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800）；S1 实施与审查完成（[S1 的审查记录](reviews/P2-S1-shell-account-review.md)，主持者的决定 801–803），已合并 `fdad6b9e`；S2 实施中，S3 待开 |
+| 日期 | 2026-11-22（初稿）；2026-11-23（照三份设计审查修订；照修订核对第 1、2 轮再修订；主持者补上最后的 Nit，设计定稿；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)；同日照 S2 的实施与审查修订，[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)） |
+| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800）；S1 实施与审查完成（[S1 的审查记录](reviews/P2-S1-shell-account-review.md)，主持者的决定 801–803），已合并 `fdad6b9e`；S2 实施与审查完成（[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)，主持者的决定 804），合并见 00 号文档第 12 节；S3 待开 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.2（全部）、4.3 的"按钮""菜单"两条、4.7、4.8（UI1、PG16 与变异的最低清单）、第 7 节 P2 三行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"去掉顶栏""账户菜单""搜索框""工作区切换""页面树进笔记本列表""目录、健康、历史、回收站""375 px 与窄屏""窗口滚动与视口"八行、第 10 节"粘住的侧栏"与"窄屏抽屉"两行、第 11 节决定 717、719、720、727、730–733、737、745；[01-P1](01-P1-foundation.md) 第 9 节"P2"与"P2–P5"两条；[v0.1 总体设计](../v0.1-design.md) 9.2、9.3、13.2 第 16、17、20、26 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 14 项、第 1 项里的 26.3、35.7、37、38.5 与第 8 项里的 `onMac` 一条 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（外框：`.side`、`.ws`、`.search`、`.row`、`.tree`、`.group`、`.me`，`:62-91`、`:229-250`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `4c3f10b9` 的 |
@@ -135,6 +135,7 @@
 - **801 窄屏的账户菜单把外观直接列在菜单里**（改 770；实施者 375 宽的截图）：md 以下（`(width < 48rem)`，与 Tailwind 的 `max-md:`、S3 的抽屉同一个查询）账户菜单是：个人设置、分隔线、"主题"标签与三个选项、分隔线、"语言"标签与两个选项、分隔线、退出登录、分隔线、版本行；选项照旧 `preventDefault`，选了菜单不关；md 起照旧是子菜单。375 宽时账户行的菜单与行同宽（359 px），子菜单至少 200 px，左右都放不下，Radix 照样把它向右开（`@radix-ui/react-menu` 的 `index.mjs:741`），开到屏幕之外，指针与触摸都选不了主题与语言。两套按条件渲染，不靠 CSS 藏起其中一套。`useNarrow()`（`W/app/narrow.ts`：`useSyncExternalStore` 加 `matchMedia("(width < 48rem)")`，没有 `matchMedia`（jsdom）时为假）与 `narrow.test.ts` 由此在 S1 建好，S3 的抽屉只加调用者（4.3.1）。
 - **802 中段不再 `overscroll-contain`**（改 774；审查 A 的 S1A-M2）：中段没有溢出时（多数工作区首页与小笔记本），Chromium 把停在中段上的滚轮吃掉，窗口不滚（A 的探针 E1；Firefox、WebKit 照滚）：Blink 把没有溢出的 `overflow-y: auto` 也算进滚动链，`contain` 在那里截断了它；S1 之前侧栏不是滚动区，三种都滚窗口。去掉之后三种引擎在中段上都滚窗口；中段溢出、滚到头的滚轮带着窗口走，同 S1 之前（Chromium、WebKit 在同一次滚动里就带，Firefox 另起一次滚动时才带）。第 0 步 (b) 的"侧栏滚到底、窗口不动"由本条取代（8.1 第 4 条、10.1）；A 的 S1A-N1（Firefox 另起一次才带）随之了结。审查 A 给的两种做法（只在中段溢出时 `contain`；去掉）里取后一种。
 - **803 新建工作区页也有"回到工作区"**（审查 A 的 S1A-Q1）：账户有工作区时，`/create-workspace` 的右上角在账户按钮之前也放"回到工作区"（同一个链接：`to="/"`、`arrived`，`LandingPage` 转交给它的 `<Navigate>`）：从切换器点了"新建工作区"又不想建的人有路回去（旧顶栏的产品名链接去 `/`）。`Corner` 在这一页以 `"workspaces"` 键读列表（与落地页、工作区外框同一个键，多半已经读过）；没有工作区时不放：`/` 会又落回这一页。P3 给设置页侧栏之后，个人设置页的那一个去掉，这一个留着（第 9 节）。已登录的邀请页与出错页回去的路留给 P5（产品名与标志的卡片，决定 787）。
+- **804 树里父页的展开按钮伸进缩进 4 px**（改 780 的摆放；审查 B 的 S2B-N2）：展开按钮另带 `-ml-1 mr-1`，› 落在 14–28 px，与笔记本行的 ⌄ 同列，深一层右移 16 px；`mr-1` 补回左移的 4 px，链接、页的图标（深度 0 在 38 px）、叶子的空位、落点线与更深的缩进都不动。样稿的树把 › 放在 36 px，并不与笔记本行对齐；这 4 px 之差来自 780 把展开按钮放进缩进的空位。B 说可不改、看图定，主持者取对齐。
 
 ## 3. 服务端
 
@@ -318,7 +319,7 @@ export function DropdownMenuSubContent({ className, ...props }: ComponentProps<t
 
 | 文件 | 改什么 |
 |---|---|
-| `W/pages/workspace/notebook-slot.tsx`（新） | `NotebookSlot`、`useNotebookSlot`、`SlotHolder`、`useSlotMoves`（决定 776、798、800） |
+| `W/pages/workspace/notebook-slot.tsx`（新） | `makeSlot`、`NotebookSlot`、`useNotebookSlot`、`SlotHolder`、`useSlotMoves`（决定 776、798、800） |
 | `W/app/shell-sidebar.tsx` | 导出 `intoColumn(element)`：只改 `[data-sidebar-scroll]` 的 `scrollTop` 把元素带进可见范围（`reveal` 与 `SlotHolder` 共用，4.2.5） |
 | `W/pages/workspace/workspace-layout.tsx:36-46,81,127,133-135` | 去掉 `NotebookColumn`、`useNotebookColumn`，给出 `NotebookSlot` |
 | `W/pages/workspace/notebook-nav.tsx` | 当前那一项画 `SlotHolder`，别的画 `NotebookLink`；备用位置只给编辑中留住的（4.2.2） |
@@ -329,6 +330,8 @@ export function DropdownMenuSubContent({ className, ...props }: ComponentProps<t
 | `W/pages/notebook/notebook-places.tsx:20-33` | 图标链接，图标 16 px，当前项同树的当前行（4.2.3，决定 796） |
 | `W/pages/notebook/move-page-dialog.tsx:159,172` | 手写的"标签加控件"组 `space-y-2` → `space-y-1.5`（01-P1 第 9 节"P2–P5"，树的对话框） |
 | `W/i18n/messages/en.ts`、`zh-CN.ts` | `notebook.settingsOf`（Settings of {notebook} / {notebook}的设置） |
+| `W/pages/workspace/notebook-slot.test.tsx`、`W/pages/notebook/page-tree-reveal.test.tsx`、`W/pages/page/readers-input.test.ts`（新） | 7.1 的"稳定的容器""笔记本行、齿轮与＋""当前行滚进可见范围""看守只算侧栏里的输入"各行 |
+| `W/pages/page/reading-view.test.tsx` | 7.1 的"阅读视图的等待"一行：树的看守也在 `window` 上听 |
 | vitest | 7.1 的 S2 各行 |
 | `e2e/fixtures/notebook-pages.ts:17-26`；`e2e/stories/page/pg16-tree-menu.spec.ts`（新）；`e2e/playwright.config.ts:3-4`；`tools/e2e-projects/check.mjs:22-29` | 第 5 节 |
 | `docs/v0.1/v0.1-design.md` | 8.2 |
@@ -360,7 +363,7 @@ type Slot = {
 
 #### 4.2.3 笔记本行、＋、齿轮与"更多"
 
-`PageTree` 返回一个片段（`shown` 是齿轮与＋共用的类：`opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100`，决定 778）：
+`PageTree` 返回一个片段（`shown` 是齿轮与＋共用的类：`opacity-40 transition-[opacity,color,background-color] duration-150 hover:opacity-100 focus-visible:opacity-100 group-has-[[data-notebook-row]:hover]/notebook:opacity-100 group-has-[[data-notebook-new]:hover]/notebook:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100 forced-colors:opacity-100`，决定 778；强制色一项照审查 B 的 S2B-N3）：
 
 ```tsx
 <>
@@ -372,12 +375,12 @@ type Slot = {
         <span className="min-w-0 truncate">{notebook.name}</span>
       </NavLink>
     </h2>
-    <Link to={`${home}/settings/general`} aria-label={t("notebook.settingsOf", { notebook: notebook.name })} className={cn("absolute top-0.75 grid size-6 place-items-center rounded-row text-faint hover:bg-hover hover:text-foreground [&_svg]:size-4", shown, writer ? "right-8" : "right-1.5")}>
+    <Link to={`${home}/settings/general`} aria-label={t("notebook.settingsOf", { notebook: notebook.name })} className={cn("absolute top-0.75 grid size-6 place-items-center rounded-row text-faint hover:bg-hover hover:text-foreground [&_svg]:size-4", shown, writer ? "right-7.5" : "right-1")}>
       <Settings2 aria-hidden />
     </Link>
   </div>
   <nav ref={nav} aria-label={t("page.tree", { notebook: notebook.name })} className="flex flex-col">
-    {writer && <Button data-notebook-new variant="ghost" size="icon-sm" className={cn("absolute top-0.75 right-1.5 size-6 rounded-row text-faint", shown, "disabled:opacity-25!")} aria-label={t("page.new")} disabled={newPage.sending} onClick={() => create(null)}><Plus /></Button>}
+    {writer && <Button data-notebook-new variant="ghost" size="icon-sm" className={cn("absolute top-0.75 right-1 size-6 rounded-row text-faint", shown, "disabled:opacity-25!")} aria-label={t("page.new")} disabled={newPage.sending} onClick={() => create(null)}><Plus /></Button>}
     {/* 目录、历史两行；失败的提示（Alert 加 my-1，决定 780）；树；TreeMenu：照旧，样子见下 */}
   </nav>
 </>
@@ -395,7 +398,7 @@ type Slot = {
 
 - 列表（`:160`）：`flex flex-col`（去掉 `gap-0.5`，行紧挨着，样稿的 `.tree`；审查 B-N5）。
 - 行（`:261-269`）：`cn("group relative flex h-7.5 items-center gap-1 rounded-row pr-1 text-row text-muted-foreground transition-colors duration-150 hover:bg-hover hover:text-foreground data-active:bg-accent-soft data-active:text-foreground", 合并的环照旧)`，`data-active={active || undefined}`，`style={{ paddingLeft: \`${0.5 + depth}rem\` }}`。
-- 展开按钮（`:271-280`）：`className="grid size-4.5 shrink-0 place-items-center rounded-sm text-faint hover:bg-hover"`，`<ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />`；空位（`:282`）`w-4.5 shrink-0`。
+- 展开按钮（`:271-280`）：`className="-ml-1 mr-1 grid size-4.5 shrink-0 place-items-center rounded-sm text-faint hover:bg-hover"`（`-ml-1 mr-1`：› 与笔记本行的 ⌄ 同列，链接不动，决定 804），`<ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} />`；空位（`:282`）`w-4.5 shrink-0`。
 - 链接（`:284-305`）照旧是行的直接子元素：`cn("relative min-w-0 flex-1 truncate py-1", active && "font-medium")`；普通页（不是 `agents`、`sourceRoot`、`source`）在名字前加 `<File aria-hidden className={cn("mr-2.25 inline-block size-4 align-text-bottom", active && "text-accent")} />`，三种的图标照旧，`mr-1` 改 `mr-2.25`（名字在 55 px，同"目录""历史"两行与样稿；审查 B-N5），当前时同样 `text-accent`。`sr-only` 的种类后缀照旧。
 - 菜单按钮（`:331`）：`"grid size-6 shrink-0 place-items-center rounded-row text-faint opacity-0 group-hover:opacity-100 hover:bg-hover hover:text-foreground focus-visible:opacity-100 aria-expanded:opacity-100 any-pointer-coarse:opacity-100"`，`<Ellipsis className="size-4" />`。
 - 落点线（`:345`）：`left: \`${0.5 + depth + 1.375}rem\``（缩进加展开按钮与间距，标题开始的地方）。
@@ -457,6 +460,29 @@ useEffect(() => {
 ```
 
 同一次提交里行的 layout effect 先跑、只登记，父的这个后跑、定滚不滚；之后才画到的行（分批画、树后读到）由 `show` 直接调。看守按要定的那一次导航（`at`）懒建：这次导航之前的按键、点击（快速切换里的 Mod+O 与 Enter、点树的行）都不算；只算落在侧栏滚动区里的。卸下时 `end()`。同一页换 hash（右栏的大纲、正文里指向本页某一节的链接、后退前进到同一页的另一个 hash）、换查询参数与 `replace` 到当前的地址都算同一次导航：不新建看守，"至多一次"照旧；树还没读到时换了 hash，晚到的行照旧由 `show` 调 `reveal()`（决定 791；审查 B 的 P2B1-M1）。卸下时结束看守并把它清空（审查 C 的 P2C3-N1：StrictMode 模拟的卸下再挂上之后，`reveal()` 见 key 相同会接着用一个已结束的读者，读者在侧栏里的动作就不算了；`W/app/arrival.ts` 的 `useArrivalWatch` 也这样做）。layout effect 总调 `reveal()`、路径变了才更新 `path` 与 `at`（审查 B 的 P2B2-N1：行恰好画在换 hash 的那次提交里时，`show` 看到 `settled` 还是旧的 key、不调，同一路径提前返回的话就没人再调了）。宽屏上滚动区是侧栏的中段；S3 之后窄屏的抽屉里同样（关着时也照样有布局，打开时已在位置上）。
+
+**照实**（S2 的实施与审查，[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)）：
+
+- 4.2.1 的表已照实加三个新的测试文件与 `reading-view.test.tsx`；`notebook-slot.tsx` 也导出 `makeSlot`（`WorkspaceLayout` 用它），`Slot` 类型不导出（只在本文件用）。
+- **4.2.2**：离开一本笔记本再回来时，容器的父元素是上一个已离开文档的持有者，`moving` 为真，再收养它时也调 `moved()`：同决定 800 的条件，只多一次重量，无害。
+- **4.2.3**：上面的类已照实：＋ `right-1`，写者的齿轮 `right-7.5`、读者的 `right-1`，行的 `pr-14`、`pr-8` 不变，两者的图标与树行的 ⋯、样稿的 `.end` 同在 219–235（审查 B 的 S2B-N1；原来的 `right-1.5`、`right-8` 偏左 2 px）；`shown` 加 `forced-colors:opacity-100`（S2B-N3：强制色下系统色加 0.4，对 Canvas 约 2.8:1）。
+- **4.2.4**：展开按钮另带 `-ml-1 mr-1`（决定 804）；拖放的 `onDrop` 把 `location` 解构成 `dropped`，不与路由的 `location` 同名（oxlint 的 `no-shadow`）。
+- **4.2.5**：
+  - `intoColumn` 的两个 `if` 写成 `if … else if`：第二次判断用的是滚动之前量的矩形，只有行比滚动区还高时两者才不同，30 px 的行碰不到。它在 `shell-sidebar.tsx` 里放在 `ShellSidebar` 的注释之前（审查 C 的 S2C-N2）。
+  - `reveal` 开头是 `if (navigation === undefined || revealed.current === navigation) return;`：`at` 起初是 `undefined`，判断用来收窄类型；上面的写法里 `revealed` 同为 `undefined` 时一样返回，行为相同。
+  - ref `shown` 叫 `shownLink`（`shown` 已是决定 778 的类），`nav` 叫 `navigation`。
+- **第 5 节**：PG16 两格已照实改写：改名对话框只有 Save，第一格以 Esc 取消；第二格末尾加了 375 宽一段（变异 24 只有它抓得住，10.2）。
+- **7.1**：
+  - `readers-input.test.ts` 原来没有，是新文件（`test.each` 按键、按下、滚轮、触摸，加"不带 `within` 时哪里都算"一格）；`reading-view.test.tsx` 一格改为按监听函数计。
+  - "首页、按键、开页"一格的按键改在滚动区里（审查 C 的 S2C-M1：原写法按在 `document.body` 上，看守有 `within` 之后不算它，这一格不管看守怎样建都过）；"树读到之前在滚动区里滚轮"一格加第二次导航（S2A-N1）；加 StrictMode 一格（S2C-N1）。7.1 的行已照实改。
+  - 多出的格："更多"的图标、名字与 `title`（s2）；大写 id 格另断言两组之后紧接"New notebook"（s5）；三种图标的 `test.each`（s15）；页 → 首页（s11）。
+  - 不是先红的格与守它们的：大写 id 格由 m49、s5 守；`notebook-nav.test.tsx` 的改写是随结构改的旧格；滚动区里的滚轮格由 m25 守；PG16 的菜单格由 m26 守；"在范围里的行不动""不带 `within` 时哪里都算"、来源根与 `AGENTS` 的图标只断言不变的事；普通页的图标格写在代码之后，经 s15 看过它红；审查修复的三格写在代码之后、没改的树上就绿，由 b1（两格）、b2（一格）守着。
+- **7.2**：第 24 行的抓手已照实改（宽屏那几步抓不到，只有 375 宽一段）；第 52 行照设计原样（修复之后"首页、按键、开页"一格也抓 b1）；表末加 b1、b2，表后一句。s17（`key` 在 layout effect 里设）在 jsdom 里等价，不列。
+- **7.5**：PG16 的时间已照实记。
+- **6.2**：
+  - 多了两个审查修复的提交：`web: the tree's watch held per navigation and across StrictMode, as the review found (M13/P2/S2)` 与 `web: the tree's right-hand icons and chevrons aligned, the cog and ＋ whole in forced colours (M13/P2/S2)`。
+  - 提交 1 在 e2e 之后本地 amend 过一次（大写 id 一格加断言，s5），提交 2 amend 过一次（PG16 第二格加 375 宽一段；提交说明没写这一段，审查 C 的 S2C-N3），amend 之后都重跑了检查。外观的修复提交就是分支头，它的 `make e2e` 就是合并之前整条命令里的那一次。
+- **8.2 第 10 条**：S2 的文字照 PG16 实际做的改了（以 Esc 取消改名；宽屏与 375 px 下都看窗口）。
 
 ### 4.3 S3 搜索、⌘K、快速切换与窄屏
 
@@ -682,8 +708,8 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 
 - `e2e/fixtures/notebook-pages.ts:17-26`：`notebookGroups` 的 `list.getByRole("link").allTextContents()` 改为 `list.evaluate((ul) => [...ul.children].map((li) => li.querySelector("a")?.textContent ?? ""))`（每一项只取第一个链接：当前那一项是笔记本行的链接，后面还有树与"更多"）；注释写明；17 处调用不动。n1:103 在新建的笔记本首页上读它（树空，"更多"四个链接在那一项里），守住这一改法（7.2 第 16 条）。
 - 新故事 `e2e/stories/page/pg16-tree-menu.spec.ts`（照 pg2 的写法：`newTeam`、`joinOnboarded`、`createNotebook`、`createPage`、`goto`、`pageTree`、`renameDialog`）：
-  - **PG16 (page): a row's menu in the tree opens at its button, by the pointer and by the keyboard; Escape closes it, Rename opens its dialog, Cancel closes it; the focus goes back to the row's button each time**：编辑者，笔记本"Plans"里"Roadmap""Notes"两页，在"Roadmap"上；点"Actions for Notes"，名为"Actions for Notes"的菜单出现、有"New subpage""Rename""Move to…""Delete"四项；Esc，菜单不在、按钮有焦点；按钮上按 Enter，菜单出现、"New subpage"有焦点（jsdom 里 `page-tree-writes.test.tsx:798-811` 守着同样的事，这里在三种引擎里看）；选"Rename"，对话框"Rename Notes"出现、"Title"有焦点且是"Notes"；点"Cancel"，对话框不在、按钮有焦点。不写数据库（只核对菜单的行为，接口与 MCP 版本豁免，8.2 第 10 条）。
-  - **PG16 (page): the page shown has its row brought into the left column, which scrolls itself; the window does not scroll**：60 个根下的页（"Page 01"–"Page 60"，"Page 60"的正文 200 行，页比视口高）；`goto` "Page 60"：树里它的链接 `toBeInViewport()`，`[data-sidebar-scroll]` 的 `scrollTop` 大于 0，`window.scrollY` 是 0；以 `quickSwitchFor(page, "Page 01")`（`e2e/fixtures/wiki-pages.ts:181-190`）打开快速切换、按 Enter 到"Page 01"：它的链接 `toBeInViewport()`；再以快速切换回到"Page 60"：它的链接 `toBeInViewport()`、`window.scrollY` 仍是 0（第三次导航，中间都有按键：审查 B-I1 的情形）。
+  - **PG16 (page): a row's menu in the tree opens at its button, by the pointer and by the keyboard; Escape closes it, Rename opens its dialog, which Escape cancels; the focus goes back to the row's button each time**：编辑者，笔记本"Plans"里"Roadmap""Notes"两页，在"Roadmap"上；点"Actions for Notes"，名为"Actions for Notes"的菜单出现、有"New subpage""Rename""Move to…""Delete"四项；Esc，菜单不在、按钮有焦点；按钮上按 Enter，菜单出现、"New subpage"有焦点（jsdom 里 `page-tree-writes.test.tsx:798-811` 守着同样的事，这里在三种引擎里看）；选"Rename"，对话框"Rename Notes"出现、"Title"有焦点且是"Notes"；按 Esc（对话框只有 Save，没有 Cancel：`W/app/rename-form.tsx`），对话框不在、按钮有焦点。不写数据库（只核对菜单的行为，接口与 MCP 版本豁免，8.2 第 10 条）。
+  - **PG16 (page): the page shown has its row brought into the left column, which scrolls itself; the window does not scroll**：60 个根下的页（"Page 01"–"Page 60"，"Page 60"的正文 200 行，页比视口高）；`goto` "Page 60"：树里它的链接 `toBeInViewport()`，`[data-sidebar-scroll]` 的 `scrollTop` 大于 0，`window.scrollY` 是 0；以 `quickSwitchFor(page, "Page 01")`（`e2e/fixtures/wiki-pages.ts:181-190`）打开快速切换、按 Enter 到"Page 01"：它的链接 `toBeInViewport()`；再以快速切换回到"Page 60"：它的链接 `toBeInViewport()`、`window.scrollY` 仍是 0（第三次导航，中间都有按键：审查 B-I1 的情形）；再到 375 宽（`phoneWidth`；md 以下侧栏在页之前、自己不滚，S3 的抽屉之前）：先 `goto` 笔记本首页，再 `goto` "Page 60"：它的链接在，`window.scrollY` 是 0。`scrollIntoView` 只在这一段把窗口滚到那一行：宽屏时整列粘在视口里，当前行在正文画出之前就带进来，文档那时只有视口高，`scrollIntoView` 也滚不动窗口（变异 24，10.2）。先经首页：同一地址再 `goto` 时 Chromium、WebKit 留在原来的历史项里、`arrived` 还在，标题取焦点、窗口滚到它（M3、M12 既有，S2 的审查记录）。
 - `e2e/playwright.config.ts:3-4`：`threeBrowsers` 加 `page\/pg16-`（不与 `pg1-` 重叠：`pg1-` 后面是连字符）；`tools/e2e-projects/check.mjs:22-29` 的 `REQUIRED` 加 `["firefox", "page/pg16-tree-menu.spec.ts", "PG16 (page): a row's menu in the tree"]` 与 webkit 一行。
 - 不改，理由：`pageTree`、`treeTitles`、`newPageWith`、`choosePageAction`、`renamePageWith`（`e2e/fixtures/wiki-pages.ts:19-90`）：树的 `nav` 名照旧，笔记本行在 `nav` 之外，＋照旧在 `nav` 里、看得见（`opacity-40`），树的菜单的项照旧；`treeRow`（`:28-30`）以链接的父元素为行：链接照旧是行的直接子元素；"更多"的 18 处（`healthLink` 等）按名称找，名字在 `sr-only` 里；lw12（`lw12-downgrade.spec.ts:160-191,262`）按名称看"目录""历史"两行；pg1:180、pg12:256、lw10:337 读 `treeTitles`。
 
@@ -720,7 +746,7 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 ### 6.3 S3
 
 - [ ] **提交 1 `web, e2e: the pill search box, Mod+K beside Mod+Shift+F from the shell, the quick switch restyled (M13/P2/S3)`**：先改 `search-box.test.tsx:34,44,221` 并写 ⌘K 的格，看到红；4.3.2、4.3.3（`composing` 导出，`dialogOpen` 先不加参数，`onMac` 挪进 `W/lib/platform.ts`）、`useSearchShortcuts`、4.3.5；se1 的"button"照第 5 节重量；在三种引擎里探一次主区开着 Radix 的模态菜单（页的"⋯"菜单、树的行菜单）时按 Mod+K、Mod+Shift+F（审查 A 的未核实）：预期菜单的困住把焦点拉回菜单、按键只被 `preventDefault`，同对话框开着时；不是这样（框拿到焦点、菜单留着）时 `dialogOpen` 另认 `[role="menu"]`、`search-box.test` 加一格，写进记录；`make e2e`；绿。
-- [ ] **提交 2 `web, e2e, tools: the drawer and its strip at a phone's width (M13/P2/S3)`**：先写 `shell-drawer.test.tsx`、`arrival.test.tsx` 的 `headingTakes` 格与 UI1，看到红（`narrow.test.ts` 在 S1 已写，决定 801）（UI1 的 ⌘K 一格先在 Firefox、WebKit 里各跑一次，确认浏览器不吞掉 `Cmd+K`；吞掉时这一格在那个引擎里改按 `Mod+Shift+F`，写进记录）；4.3.4、`dialogOpen({ besideDrawer })`、树的 `inDrawer`、`arrival.ts` 的 `headingTakes`、`unsaved-guard.tsx` 的"留下"关抽屉（决定 799）；`threeBrowsers` 与 `REQUIRED`；`make e2e`；绿。
+- [ ] **提交 2 `web, e2e, tools: the drawer and its strip at a phone's width (M13/P2/S3)`**：先写 `shell-drawer.test.tsx`、`arrival.test.tsx` 的 `headingTakes` 格与 UI1，看到红（`narrow.test.ts` 在 S1 已写，决定 801）（UI1 的 ⌘K 一格先在 Firefox、WebKit 里各跑一次，确认浏览器不吞掉 `Cmd+K`；吞掉时这一格在那个引擎里改按 `Mod+Shift+F`，写进记录）；4.3.4、`dialogOpen({ besideDrawer })`、树的 `inDrawer`、`arrival.ts` 的 `headingTakes`、`unsaved-guard.tsx` 的"留下"关抽屉（决定 799）；PG16 第二格的 375 宽一段改在开着的抽屉里核对（树关在抽屉里时它照样成立，却不再抓变异 24；10.2）；`threeBrowsers` 与 `REQUIRED`；`make e2e`；绿。
 - [ ] 7.2 的 S3 各条变异；7.4 的 S3 截图与强制色模式一张。
 - [ ] **提交 3 `docs: …(M13/P2/S3)`**：8.2 第 3 条的 S3 部分、第 7、8、9 条、第 10 条的 S3 部分与第 12 条的 S3 一行；审查记录（含 se2 的 Linux 那几步与 `Control+K` 只靠 CI 的说明，决定 795(d)）；本文 10.3；M12-polish 的"处理进展"一行（26.3、35.7、第 8 项的 `onMac`；26.8、26.10 留给 v0.2）；00 号文档第 12、13 节；Phase 完成的收尾项（8.1 第 6 条）。
 
@@ -754,8 +780,9 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | 笔记本设置页上的笔记本行 | `W/pages/notebook/general-page.test.tsx:36-40` 改：在 `…/settings/general` 上，侧栏里名为"Plans"的链接（笔记本行，`NavLink end`）不带 `aria-current`（其余留给 P3 的设置模式；审查 C-I4）（S2） |
 | 稳定的容器 | `W/pages/workspace/notebook-slot.test.tsx`（新，S2）：(1) 在一本笔记本的页上，它那一项里依次是名为它的 `h2`、"Pages of X"、"More of X"，别的项只有一个链接；(2a) 树里一行的菜单按钮有焦点时，这本笔记本从"我的"挪到"团队"（store 里改 `workspace_access`）：树的 `nav` 是同一个节点、在"Team notebooks"里，焦点仍在那个按钮上，滚动区的 `scrollTop` 让它露出（`getBoundingClientRect` 打桩）；(2b) 开着改名的对话框并打了字时换组：对话框与打的字都在，焦点在对话框里（审查 B-N7：模态的对话框拿着焦点，(2a) 与它分开）；(2c) 开着树的行菜单时换组，这一格在 `act` 里以 `runInAction` 就地改那本笔记本的 `workspace_access`（同一个对象：`PageTree` 不重画，`TreeMenu` 只能由 `SlotHolder` 的通知重画；经列表重读的话 `PageTree` 的回调新建、`TreeMenu` 顺带重画，抓不到变异 51）：菜单仍开着，那一次提交里量过那一行的按钮（`getBoundingClientRect` 的 spy；决定 800）；(3) 编辑中留住的、已不在列表里的笔记本（以 `vi.spyOn` 让根 store 的 `unsavedEdit` 答真，`W/stores/root.store.ts`，再让笔记本的列表重读成没有它）：它的行与树在两组之后、不在任何一组的列表里；(4) 点别的笔记本的链接，它首页的 `h1` 有焦点；(5) 地址里的笔记本 id 是大写的：404 页上这本笔记本照旧是列表里的一个链接，两组之后没有别的（审查 B-M3） |
 | 笔记本行、齿轮与＋ | `notebook-slot.test.tsx` 或 `page-tree.test.tsx` 加格（S2）：行的链接指向首页、在首页上 `aria-current="page"`、在一页上没有；齿轮名为"Settings of Plans"、指向 `…/settings/general`；简体中文时是"Plans的设置"（审查 C-N1）；"New page"在树的 `nav` 里；读者没有"New page" |
-| 当前行滚进可见范围 | `W/pages/notebook/page-tree-reveal.test.tsx`（新，S2）：`[data-sidebar-scroll]` 与链接的 `getBoundingClientRect` 用 `vi.spyOn` 给出（jsdom 没有布局；链接的 `top` 按"行的偏移 − 滚动区的 `scrollTop`"算，不然读者滚开之后行在桩里仍在范围内，同一页换 hash 那一格抓不到变异 62，审查 C 的 P2C2-N2）；`Element.prototype.scrollIntoView` 先像 `quick-switch.test.tsx:163-166` 那样赋上一个再 spy（jsdom 没有它，`vi.spyOn` 会抛；审查 C-N3），`window.scrollTo` 也是 spy：到一页时滚动区的 `scrollTop` 变到让行露出、两个 spy 都没被调用；行已在范围里时不变；同一次导航里再挂上不再滚；三次以上的导航、每两次之间在主区按一个键并点一下树的行，每一次都滚（审查 B-I1）；先到笔记本首页、按一个键、再开一页：滚（审查 C-M12）；树还没读到时在 `[data-sidebar-scroll]` 上发 `wheel`，读到之后不滚；在 `main` 上发 `wheel`，读到之后照滚；在一页上于 `[data-sidebar-scroll]` 发 `wheel`、改 `scrollTop`，再点右栏大纲里的一个标题（同一页的 `#…`；页的正文带一个 `## ` 标题），以及 `replace` 到当前的地址：`scrollTop` 不变；树还没读到时换 hash、读到之后照滚（审查 B 的 P2B1-M1）；树还没读到、看守开着时离开这本笔记本：`window.removeEventListener` 对 `readersInput` 的四种事件各调一次（审查 C 的 P2C3-N1） |
-| 看守只算侧栏里的输入 | `W/pages/page/readers-input.test.ts` 加格（S2）：`watchReader({ within: "[data-sidebar-scroll]" })` 不算落在它之外的按键、按下、滚轮，算落在它里面的 |
+| 当前行滚进可见范围 | `W/pages/notebook/page-tree-reveal.test.tsx`（新，S2）：`[data-sidebar-scroll]` 与链接的 `getBoundingClientRect` 用 `vi.spyOn` 给出（jsdom 没有布局；链接的 `top` 按"行的偏移 − 滚动区的 `scrollTop`"算，不然读者滚开之后行在桩里仍在范围内，同一页换 hash 那一格抓不到变异 62，审查 C 的 P2C2-N2）；`Element.prototype.scrollIntoView` 先像 `quick-switch.test.tsx:163-166` 那样赋上一个再 spy（jsdom 没有它，`vi.spyOn` 会抛；审查 C-N3），`window.scrollTo` 也是 spy：到一页时滚动区的 `scrollTop` 变到让行露出、两个 spy 都没被调用；行已在范围里时不变；同一次导航里再挂上不再滚；三次以上的导航、每两次之间在主区按一个键并点一下树的行，每一次都滚（审查 B-I1）；先到笔记本首页、在 `[data-sidebar-scroll]` 里按一个键、再开一页：滚（审查 C-M12；按在别处的键看守本来不算，S2 审查的 S2C-M1）；树还没读到时在 `[data-sidebar-scroll]` 上发 `wheel`，读到之后不滚，再到一页、它的行已画出且在视野外：滚（S2 审查的 S2A-N1）；StrictMode 下（`configure({ reactStrictMode: true })`）同样不滚（S2C-N1）；在 `main` 上发 `wheel`，读到之后照滚；在一页上于 `[data-sidebar-scroll]` 发 `wheel`、改 `scrollTop`，再点右栏大纲里的一个标题（同一页的 `#…`；页的正文带一个 `## ` 标题），以及 `replace` 到当前的地址：`scrollTop` 不变；树还没读到时换 hash、读到之后照滚（审查 B 的 P2B1-M1）；树还没读到、看守开着时离开这本笔记本：`window.removeEventListener` 对 `readersInput` 的四种事件各调一次（审查 C 的 P2C3-N1） |
+| 看守只算侧栏里的输入 | `W/pages/page/readers-input.test.ts`（新，S2：原来没有这个文件）：`watchReader({ within: "[data-sidebar-scroll]" })` 不算落在它之外的按键、按下、滚轮、触摸，算落在它里面的；不带 `within` 时哪里都算 |
+| 阅读视图的等待 | `W/pages/page/reading-view.test.tsx`（S2）："the wait's listeners go once its read settles"改为按监听函数计还在听的：树的看守也在 `window` 的捕获阶段听读者的四种事件，按事件名数到 16 个而不是 4 个 |
 | "目录""历史"两行标当前 | `page-tree.test.tsx` 加格（S2，LLM Wiki 的笔记本）：在目录页上"Index"`aria-current="page"`、"History"没有；在一个变更集的页（`…/history/:id`）上"History"不带 `aria-current`（`end`；审查 C-N2）；两行与"更多"里同名的链接图标相同 |
 | 树的其余 | 照旧：`page-tree.test.tsx`、`page-tree-writes.test.tsx`（标题的名字、`nav` 里的链接与"New page"）、`page-tree-scale.test.tsx`（`li` 与 `li a` 的数、第一个 `ul` 里没有 `data-discover`、首页的"Notebook settings"链接）、`notebook-layout.test.tsx:84-93`（"更多"的 `textContent`）、`upgrade-read-only.test.tsx:141-147`、`quick-switch.test.tsx` 的两个 `span` |
 | 搜索框的两个键 | `W/pages/workspace/search-box.test.tsx:44` 改为 `"Control+K Control+Shift+F"`，`:221` 改为 `"Meta+K Meta+Shift+F"`；`:34` 一格的标题改为切换器之下、两个快捷键（审查 C-N13），描述与标签照旧；占位在简体中文时是"搜索"（审查 C-N1）（S3） |
@@ -798,7 +825,7 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | 21 | S2 | 笔记本行的 `h2` 挪进树的 `nav` | `page-tree.test.tsx:17-20` 的标题表（多出笔记本名）；e2e 的 `treeTitles`（pg1:180 等） |
 | 22 | S2 | ＋挪出树的 `nav` | `page-tree-writes.test.tsx` 在 `nav` 里找"New page"；pg1:182 |
 | 23 | S2 | ＋平时 `invisible` | pg1:182、`newPageWith`（Playwright 只点看得见的） |
-| 24 | S2 | `reveal` 改成 `link.scrollIntoView()` | `page-tree-reveal.test.tsx`；PG16 第二格（`window.scrollY`） |
+| 24 | S2 | `reveal` 改成 `link.scrollIntoView()` | `page-tree-reveal.test.tsx`；PG16 第二格的 375 宽一段（`window.scrollY`；宽屏那几步抓不到，10.2） |
 | 25 | S2 | `reveal` 不看看守 | `page-tree-reveal.test.tsx` 在 `[data-sidebar-scroll]` 上发 `wheel` 的格 |
 | 26 | S2 | 树的菜单的 `onCloseAutoFocus` 不还焦点 | PG16 第一格（三种） |
 | 27 | S2 | "目录""历史"两行不用 `NavLink end` | `page-tree.test.tsx` 的 LLM Wiki 格（`…/history/:id` 上"History"不带 `aria-current`） |
@@ -859,8 +886,10 @@ P2 要的豁免只有一处是新的，连同改到的代码里沿用的列在�
 | n03 | S1 | `leaving` 不看引导步骤 | `profile-page.test.tsx` 的引导页格 |
 | n04 | S1 | 新建工作区页不放"回到工作区" | `layout.test.tsx` 的新建工作区页格 |
 | n05 | S1 | 新建工作区页总放"回到工作区" | `layout.test.tsx` 的"没有工作区"格 |
+| b1 | S2 | `reveal` 只在没有看守时建（一棵树一生一个看守，不按导航换新） | `page-tree-reveal.test.tsx` 的"首页、在滚动区里按键、开页"格与"树读到之前在滚动区里滚轮"格的第二次导航（审查 C 的 S2C-M1，A 的 q24） |
+| b2 | S2 | 卸下时不清空看守（去掉 `watching.reader = undefined`） | `page-tree-reveal.test.tsx` 的 StrictMode 格（审查 C 的 S2C-N1，A 的 q05） |
 
-x1–x9 是 S1 的实施者另写的，m801 随决定 801，n01–n05 随审查的修复。审查者另写的与它们的结果在 [S1 的审查记录](reviews/P2-S1-shell-account-review.md)：有意不抓的是 y03、y04、y04b（`SessionChangedError` 的三处排除，主持者的决定）；只关布局与样子、由截图与实量看的是 y08、c03、c04；z3（只去掉 `md:h-svh`）交给 S2 的 PG16 第二格。
+x1–x9 是 S1 的实施者另写的，m801 随决定 801，n01–n05 随审查的修复。审查者另写的与它们的结果在 [S1 的审查记录](reviews/P2-S1-shell-account-review.md)：有意不抓的是 y03、y04、y04b（`SessionChangedError` 的三处排除，主持者的决定）；只关布局与样子、由截图与实量看的是 y08、c03、c04；z3（只去掉 `md:h-svh`）交给 S2 的 PG16 第二格。b1、b2 随 S2 审查的修复。S2 的实施者另写的 s1–s17 与审查者另写的（A 的 q 各条，C 的 a7、b6、b9、r1 与对照）和它们的结果在 [S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)：s17、q27 等价；z3 由 PG16 第二格在三种浏览器里抓住。
 
 00 号文档 4.8 要求的、属于 P2 的四条是第 13（调深侧栏，se1 变红：它的意思是"改了被量元素的底，守卫还在"）、16、29 与 30、34 条。初稿的第 46 条（收养之后不通知树）随那条路一起去掉（决定 776）。第 51 条原来是"`close` 记成稳定的回调"：`create` 照样每次新建、`TreeMenu` 照样重画，是等价的变异（审查 C 的 P2C1-M1），改为去掉决定 800 的通知。第 64 条有意义：`actions` 一生不变，`useSearchShortcuts` 的依赖 `[mac, field, actions]` 也就不变，监听只注册一次，`actions` 的函数若读建它时的值就是过时的，"Home 之后 Mod+K"抽屉不开；把 `actions` 改成随这些值新建（`useMemo` 带上它们）不是这条变异，是另一种对的写法（监听随之重新注册），零警告的 lint 也过（审查 C 的 P2C2-M1）。笔记本行的 `[@media(hover:hover)]:`、读者的 `pr-8` 与树里提示的 `my-1`（审查 B 的 P2B1-N3、N5、N4）是样子，jsdom 里量不出，由 7.4 的截图看，不列。右上角"个人设置"的 `chosen`（决定 770）是预防：探针 T7 三种引擎各 15 次，做不做都到 `h1`，没有能抓它的格，不列。容器各 id 都留（决定 798）防的是并发渲染被打断，jsdom 里造不出来，也不列。
 
@@ -883,7 +912,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 
 ### 7.5 CI 的余量
 
-新故事两个：PG16 两格、UI1 三格，各在三种浏览器里，共 15 次，每次推断 4–6 秒（一个团队、一本笔记本）；PG16 的第二格按位置依次建 60 页、走三次导航，比别的格多几秒，S2 之后照实记一次（审查 C-N8）；合计约 75–90 test-seconds。`e2e/playwright.config.ts` 没设 `workers`，Playwright 默认用一半的 CPU 核：GitHub 的 `ubuntu-latest` 是 4 vCPU，约 2 个 worker，约合 40–45 秒的墙钟（审查 C-N9）；本机 E2E 2.4–2.8 min；CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节）。其余故事只换定位与断言，次数不变。S3 之后照实记一次时间。
+新故事两个：PG16 两格、UI1 三格，各在三种浏览器里，共 15 次，每次推断 4–6 秒（一个团队、一本笔记本）；PG16 的第二格按位置依次建 60 页、走三次导航，比别的格多几秒，S2 之后照实记一次（审查 C-N8；S2 的实测，审查 C 在 `831e50a6` 上合并之前的整条命令：第一格 0.65 / 1.9 / 0.89 s，第二格连同 375 宽一段 1.8 / 2.3 / 2.2 s（Chromium / Firefox / WebKit），六次合计约 9.7 test-seconds，比推断的少；负载高时第二格到 3.5 s，S2 的审查记录）；合计约 75–90 test-seconds。`e2e/playwright.config.ts` 没设 `workers`，Playwright 默认用一半的 CPU 核：GitHub 的 `ubuntu-latest` 是 4 vCPU，约 2 个 worker，约合 40–45 秒的墙钟（审查 C-N9）；本机 E2E 2.4–2.8 min；CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节）。其余故事只换定位与断言，次数不变。S3 之后照实记一次时间。
 
 **本机的总时长**（粗算，只在本机、经 `heavy.sh` 串行，不进 CI；审查 C 的未核实）：基线一次完整的 `make e2e` 约 5 分钟；九个提交各一次 `make lint-web knip test-web`（P1/S2 的记录约 70 秒）约 11 分钟；六个改行为的提交各一次 `make e2e` 约 30 分钟；三次合并之前的整条命令（网页一侧约 75 秒加 `make e2e`）约 19 分钟，审查 C 各再跑一次，约 19 分钟；变异约 50 条只跑 vitest（一个文件 15–40 秒）约 25 分钟，约 15 条要重建前端再跑一个故事（每条约 3 分钟）约 45 分钟；修复核对每个 Step 一两轮，每轮一次网页一侧加 `make e2e`，约 40 分钟。合计约 3 小时的锁时间；别的 agent 同时排队时墙钟更长。
 
@@ -896,7 +925,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 3. se1 的下限照第 5 节重量，实量值与下限写进 S1 与 S3 的记录（S3 起"button"量的是垫底，决定 794）。
 4. 第 0 步的探查成立，写进 S1 的记录（S1：三条在三种引擎里都成立；(b) 的"侧栏滚到底、窗口不动"后由决定 802 取代，中段滚到头带着窗口走）。
 5. 7.4 的截图看过，与样稿不同之处写进记录（是有意的，写理由；不是的，修）。
-6. Phase 完成（02-workflow 3.7）：00 号文档第 12 节 P2 一行"完成"、头的状态、第 13 节一行；本文头的状态；M12-polish 的"处理进展"两行（S2；S3，含第 8 项的 `onMac` 与留给 v0.2 的 26.8、26.10）。
+6. Phase 完成（02-workflow 3.7）：00 号文档第 12 节 P2 一行"完成"、头的状态、第 13 节一行；本文头的状态；M12-polish 的"处理进展"两行（S2；S3，含第 8 项的 `onMac` 与留给 v0.2 的 26.8、26.10）。S2 的一行在 S2 的文档提交里写了。
 
 ### 8.2 总体设计的新文字
 
@@ -939,7 +968,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 9. **9.2 与 9.3 的快捷键**（S3）：9.2 的"`Ctrl+Shift+F`（macOS 上 `Cmd+Shift+F`）到左栏的搜索框（M8）；"改为"`Ctrl+K` 与 `Ctrl+Shift+F`（macOS 上 `Cmd+K`、`Cmd+Shift+F`）到左栏的搜索框（M8；`Ctrl+K` 是 M13/P2/S3，焦点在编辑器里时让给编辑器的插入链接）；"；9.3 的"`Ctrl+K` 插入链接，"改为"`Ctrl+K` 插入链接（编辑器之外它聚焦搜索框，9.2；M13/P2/S3），"。
 
 10. **13.4 第 3 条**：
-    - S2，"se1 另断言控件的环是 `ring 2px`。"之后加" M13/P2/S2：`notebookGroups` 每一项只取它的第一个链接（当前笔记本的那一项里还有树与"更多"）；PG16 在三种浏览器里核对树的行菜单（打开、Esc、改名、取消、焦点回到按钮）与当前行滚进左栏而窗口不动，只有页面版本：它只核对界面的行为、不写，接口与 MCP 版本豁免（PG2 照旧调 `expectRenamed`）。"
+    - S2，"se1 另断言控件的环是 `ring 2px`。"之后加" M13/P2/S2：`notebookGroups` 每一项只取它的第一个链接（当前笔记本的那一项里还有树与"更多"）；PG16 在三种浏览器里核对树的行菜单（打开、Esc、改名、以 Esc 取消改名（对话框没有取消按钮）、焦点回到按钮）与当前行滚进左栏而窗口不动（宽屏与 375 px 下都看窗口），只有页面版本：它只核对界面的行为、不写，接口与 MCP 版本豁免（PG2 照旧调 `expectRenamed`）。"
     - S3，在 S2 加的"（PG2 照旧调 `expectRenamed`）。"之后加" M13/P2/S3：新分组 `stories/shell/`；UI1 在三种浏览器里核对 375 px 的抽屉（关着时 `inert`、打开与困住焦点、Esc 与遮罩、在里面搜索与开页之后焦点的去处），只有页面版本：只有界面的行为，接口与 MCP 版本豁免；375 px 下要碰左栏的故事先开抽屉（`fixtures/shell-pages.ts` 的 `openDrawer`），今天的 `@narrow` 各格与手写的 375 px 检查都不碰左栏。"
 
 11. **写到"左栏"的其他条目**（00 号文档"总体设计的修订"第 6 项最后一小条；13.2 里没有写到"顶栏"的；第 20 条"看得见的搜索框"一句在第 8 条）：第 15 条（同一份列表在左栏、首页等处显示）、第 21 条（"用户菜单"的退出登录：账户行与右上角是同一个 `UserMenu`，"留下"照旧还焦点给它）、第 30 条（左栏的树列出全部）、第 31 条（375 px 的检查；se1 在侧栏上的重量照它已写的"之后改了被量元素的底或颜色的 Step 照同一规则重量"）不改；第 16 条的"左栏常驻"与 9.2 的设置模式由 P3/S1 改。第 1 节的范围表（"左栏只列页面"）与第 12 节的里程碑表是 M2–M4 的记录，不改。
@@ -972,6 +1001,17 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 - **门禁**：每个提交的 `make lint-web knip test-web` 都绿；改了行为的提交的 `make e2e` 与合并之前的整条命令（`0986356e`、`a9d7c030`、`1d8414a9` 上，审查 C 在后两个上另跑；主持者在加上文档提交的头 `2456d6ed`、即合并的树上再跑一次）只败基线里同行同消息的格（C 在 `1d8414a9` 上那次 PG15 过了）；E2E 2.2–2.5 min（基线 3.1 min，随负载）；Go 一侧的断言与 `git diff --check` 以 0 退出。逐项在审查记录。
 - **与设计不同之处**：4.1 的"照实"；决定 801–803。
 - **交给后面**：P3 去掉个人设置页的"回到工作区"，留着新建工作区页的（第 9 节）；S2 的 PG16 第二格守 `md:h-svh`（z3）；S3 的抽屉复用 `useNarrow`，抽屉里的账户菜单同样是行内的外观；已登录的邀请页与出错页回去的路留给 P5（决定 803）。
+
+### 10.2 S2：笔记本与页面树（2026-11-23，合并见 00 号文档第 12 节）
+
+- **提交**：`485e6be3`（当前笔记本在列表里就地展开：`notebook-slot.tsx` 的稳定容器与 `SlotHolder`，换组时还焦点、带进侧栏、通知树的菜单重量；别的笔记本的链接带 `arrived`；笔记本行、齿轮、＋与"更多"一排图标；`intoColumn`；`notebookGroups` 每项只取第一个链接；照 6.2 提交 1）、`831e50a6`（树的行照样稿、普通页的文件图标、"目录""历史"两行对齐并标当前、当前行滚进侧栏（`reveal`、`show`、`watchReader` 的 `within`）、移动对话框的间距、PG16 两格进三种浏览器与 `check.mjs`；照 6.2 提交 2）；审查的修复 `3ca04574`（看守按导航换新、跨过 StrictMode 的卸下与重挂，由测试守住；`intoColumn` 挪到 `ShellSidebar` 的注释之前）、`75cac02a`（＋与齿轮的图标与树行的 ⋯ 同列，父页的 › 与笔记本行的 ⌄ 同列（决定 804），强制色下齿轮与＋不透明）；加本文档提交。提交 1 在 e2e 之后本地 amend 过一次（大写 id 一格加断言，s5），提交 2 amend 过一次（PG16 第二格加 375 宽一段，变异 24；提交说明没写这一段，审查 C 的 S2C-N3），amend 之后都重跑了检查。[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)。
+- **做完**：4.2.2–4.2.5；决定 776–780、789（PG16 两格）、791、796、798、800、804；`NotebookColumn`、`useNotebookColumn` 随唯一的用处去掉；M12-polish 第 14 项（PG16）、M5-polish 37（普通页的文件图标）、38.5（"目录""历史"两行标当前、与页的行对齐）。
+- **测试**：7.1 的 S2 各格。新文件 `notebook-slot.test.tsx`（11 格）、`page-tree-reveal.test.tsx`（修复之后 12 格）、`readers-input.test.ts`（5 格）；vitest 5157 → 5169（提交 1，212 个文件）→ 5189（提交 2，214 个文件）→ 5190（修复）。新格先写、在没改的树上红；不是先红的格由变异守着，或只断言不变的事（4.2 的"照实"）。`reading-view.test.tsx` 一格改为按监听函数计（树的看守也在 `window` 上听）。审查之后："首页、按键、开页"一格改在滚动区里按键（S2C-M1：7.1 原来的写法在看守有 `within` 之后什么也不抓）；"树读到之前在滚动区里滚轮"一格加第二次导航，行已画出、在视野外，被滚进来（S2A-N1）；加 StrictMode 一格（S2C-N1 = S2A-N2）。
+- **变异**：7.2 的 S2 各条（16–28、49–53、62、68）都被抓住：16、23 在 e2e（n1:103、pg1:182），26 在 PG16 第一格（三种），28 在 `check.mjs`；24 由 vitest 与 PG16 第二格的 375 宽一段抓住，宽屏那几步抓不到（默认与 `nearest` 两种在三种里都过：宽屏时整列粘在视口里，当前行在正文画出之前就带进来，文档那时只有视口高），补了 375 宽一段之后三种都在 :125 抓住（窗口滚到 1830、1239）；52 由三次以上导航格（每次之间点树）、"首页、按键、开页"格与主区里的滚轮格抓住，另在 PG16 第二格（Chromium，第三次导航）；z3（只去掉 `md:h-svh`）由 PG16 第二格在三种里抓住。实施者另写的 s1–s16 都被抓住（s5 在补格之后），s17（`key` 在 layout effect 里设）在 jsdom 里等价。审查另写的：A 的 q17、q35 与 C 的 a7、b6、b9、r1 被抓住，A 的 q27 等价；b1（= A 的 q24，一棵树一生一个看守）与 b2（= A 的 q05，卸下时不清空看守）第一轮活下来，修复之后分别由两格、一格抓住（7.2 新的两行）。逐条在审查记录（实施者跑，审查 C 独立重跑）。
+- **视觉的核对**（7.4）：实施者在 Chromium 里截了 7.4 的 S2 各页（亮暗 × 1440、375）；审查 B 在三种引擎里截（另有读者、触屏、强制色）；修复之后实施者照 B 的 spec 在三种引擎里重截，另看了深度 0–2 与强制色下静止时；主持者看了修复之后的两张。截图在会话的临时目录，不进仓库。实量：当前笔记本与别的笔记本的 ⌄、书本、名字都在 14 / 33 / 58 px；父页的 › 在 14–28，与笔记本行的 ⌄ 同列（决定 804），深一层右移 16 px；页的图标与名字在深度 0 / 1 / 2 是 38 / 63、54 / 79、70 / 95（深度 0 在行内是 30 / 55，同样稿），叶子与父页相同，行高 30 px；"目录""历史"两行、来源根与 `AGENTS` 同是 38 / 63；＋的图标在 219–235，与树行的 ⋯、样稿的 `.end` 同列，写者的齿轮在 193–209，读者的齿轮与＋同位；"更多"四个图标 16 px、格 28 px，当前项 `--accent-soft` 底、琥珀色图标，同树的当前行；齿轮与＋平时 0.4，悬停行、悬停它们、375 宽、触屏与强制色下是 1，悬停树的行时仍是 0.4；树里失败的提示上下各 4 px；落点线从 38 起。与样稿的差别修复之后没有了，改过的就是审查 B 的三处（S2B-N1–N3）。
+- **门禁**：每个提交的 `make lint-web knip test-web` 都绿；改了行为的提交跑了 `make e2e`（提交 1：594 过、3 败、1 跳，2.2 min；提交 2 amend 之前：600 / 3 / 1，2.3 min；审查 C 在两个提交上另跑）；合并之前的整条命令在 `831e50a6` 上由实施者与审查 C 各跑一次，修复之后在头 `75cac02a` 上又各跑一次：都是 600 过、3 败、1 跳，Playwright 2.3–2.4 min（负载 8–73，随机器上别的运行），只败基线里同行同消息的格（se2:231、pg15:113、lw8:836）；Go 一侧的断言与 `git diff --check` 以 0 退出。逐项在审查记录。
+- **与设计不同之处**：4.2 的"照实"；决定 804。
+- **交给后面**：S3 的抽屉：PG16 第二格的 375 宽一段到了抽屉里仍成立，但树关在抽屉里时它不再抓变异 24，S3 的提交 2 改在开着的抽屉里核对（6.3）；375 宽时长树把页推到很下，由抽屉解决；从带 `arrived` 的链接到达之后重载，Chromium、WebKit 里标题重新取焦点（M3、M12 既有），S2 的窄屏里侧栏在页之上才看得出窗口跟着动，抽屉之后不再如此（审查 A、C）。
 
 ## 附录：核对过的代码
 

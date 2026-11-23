@@ -89,6 +89,7 @@ export const en = {
   "notebook.homeEmpty": "No pages yet.",
   "notebook.pages": "Pages",
   "notebook.places": "More of {notebook}",
+  "notebook.settingsOf": "Settings of {notebook}",
   "notebook.upgradeReadOnly": "This notebook is read-only until its upgrade ends.",
   "unresolved.createTitle": "Create page “{title}”?",
   "unresolved.under": "It goes under “{place}”.",

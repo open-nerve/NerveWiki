@@ -13,13 +13,24 @@ export function workspaceNav(page: Page, name: string): Locator {
   return page.getByRole("navigation", { name, exact: true });
 }
 
-/** The groups of notebooks the left column of the workspace named workspace shows: each one's names, by group. */
+/**
+ * The groups of notebooks the left column of the workspace named workspace shows: each one's names, by group. Each
+ * item's first link is its notebook's: the open notebook's item holds its row's link, then its tree's and its places'
+ * (M13/P2/S2).
+ */
 export async function notebookGroups(page: Page, workspace: string): Promise<Record<string, string[]>> {
   const nav = workspaceNav(page, workspace);
   const groups = await Promise.all(
     ["My notebooks", "Team notebooks"].map(async (name) => {
       const list = nav.getByRole("list", { name, exact: true });
-      return (await list.count()) === 0 ? [] : [[name, await list.getByRole("link").allTextContents()] as const];
+      return (await list.count()) === 0
+        ? []
+        : [
+            [
+              name,
+              await list.evaluate((ul) => [...ul.children].map((li) => li.querySelector("a")?.textContent ?? "")),
+            ] as const,
+          ];
     })
   );
   return Object.fromEntries(groups.flat());

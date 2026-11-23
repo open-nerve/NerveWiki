@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1 已合并，S2 实施中 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1 已合并，S2 已审查、待合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -141,8 +141,8 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 3. **首页**、**工作区设置**（图标加文字；"工作区设置"P3 起带 `arrived` 进入设置，4.4.1：P2 里设置还在工作区外框之内，侧栏不卸下）。
 4. **笔记本**："我的""团队"两组照旧（每组一个列表，名称取自分组标题，`W/pages/workspace/notebook-groups.tsx:50-58,67-70`），每本笔记本一行（书本图标）。**当前笔记本**的那一项展开：
    - 项的第一行是笔记本那一行：指向笔记本首页的链接，包在一个标题（`h2`，`tabIndex={-1}`）里；这个标题就是今天树的标题，移动、删除之后焦点照旧回到它（`page-tree.tsx:98`、`page-tree-item.tsx:594`）。标题放在树的 `nav` **之前**（同在稳定的容器里，见下），所以"树里的链接"照旧只有页面：`treeTitles`（`e2e/fixtures/wiki-pages.ts:24-26`，27 处）、pg12:256、pg1:180、lw10:337 与 `W/pages/notebook/page-tree.test.tsx:17-20`、`page-tree-writes.test.tsx:31-34` 都不变。展开的箭头只是装饰（当前笔记本总是展开的），与书本图标一样 `aria-hidden`、在链接里（链接盖满整行），标题的名字照旧只是笔记本名（`page-tree-writes.test.tsx:427,437`）。
-   - 其下是页面树，仍是单独命名的 `nav`（"X 的页面"，`W/pages/notebook/page-tree.tsx:157`）。"新建页面"（＋）照旧是这个 `nav` 里常驻的按钮（`page-tree.tsx:166-177`；`useNewPage` 要求调用者常驻，`W/pages/notebook/new-page.ts:38,82`，13.2 第 16 条），只用 CSS 把它摆到笔记本那一行的右端，齿轮在它左边（与 Tab 的次序相同：齿轮在笔记本行里，＋在其后的树的 `nav` 里；样稿是＋在左）；失败的提示照旧在树里（`page-tree.tsx:200-209`）。"笔记本设置"（齿轮，直接链到常规页，名为"X 的设置"（`notebook.settingsOf`，与笔记本首页上的"笔记本设置"链接不同名，`members-page.test.tsx:460` 等以名称找后者）；P3 起带 `arrived`：P2 里笔记本设置还在工作区外框之内，齿轮不随之卸下，4.4.1）在标题之外、同一行的右端。＋与齿轮平时只降透明度、不藏起（Playwright 只点看得见的元素，`newPageWith` 在 pg1:182,189 点＋），悬停笔记本那一行或它们自己、键盘聚焦时显出（同样稿的 `.row:hover`：悬停树的行不显出）；没有悬停的设备（`@media (hover: none)`）与窄屏下一直显示（齿轮是外框里进笔记本设置的唯一入口，4.6 去掉了首页的链接）。
-   - 树里是 M12/P4/S4 的分批画行与一棵树一个菜单，照旧，只换样子；当前页一行用 `--accent-soft` 底、图标为琥珀色。
+   - 其下是页面树，仍是单独命名的 `nav`（"X 的页面"，`W/pages/notebook/page-tree.tsx:157`）。"新建页面"（＋）照旧是这个 `nav` 里常驻的按钮（`page-tree.tsx:166-177`；`useNewPage` 要求调用者常驻，`W/pages/notebook/new-page.ts:38,82`，13.2 第 16 条），只用 CSS 把它摆到笔记本那一行的右端，齿轮在它左边（与 Tab 的次序相同：齿轮在笔记本行里，＋在其后的树的 `nav` 里；样稿是＋在左）；失败的提示照旧在树里（`page-tree.tsx:200-209`）。"笔记本设置"（齿轮，直接链到常规页，名为"X 的设置"（`notebook.settingsOf`，与笔记本首页上的"笔记本设置"链接不同名，`members-page.test.tsx:460` 等以名称找后者）；P3 起带 `arrived`：P2 里笔记本设置还在工作区外框之内，齿轮不随之卸下，4.4.1）在标题之外、同一行的右端。＋与齿轮平时只降透明度、不藏起（Playwright 只点看得见的元素，`newPageWith` 在 pg1:182,189 点＋），悬停笔记本那一行或它们自己、键盘聚焦时显出（同样稿的 `.row:hover`：悬停树的行不显出）；没有悬停的设备（`@media (hover: none)`）、窄屏与强制色模式下一直显示（齿轮是外框里进笔记本设置的唯一入口，4.6 去掉了首页的链接）。
+   - 树里是 M12/P4/S4 的分批画行与一棵树一个菜单，照旧，只换样子；当前页一行用 `--accent-soft` 底、图标为琥珀色；父页的展开箭头与笔记本行的 ⌄ 同列（[02-P2](02-P2-shell.md) 决定 804）。
    - 树下面一排图标链接：目录、健康、历史、回收站，仍是单独命名的 `nav`（"X 的更多"，`W/pages/notebook/notebook-places.tsx:20`），在树的 `nav` 之外；图标带可访问名称与悬停提示（主持者的决定 727）。
    - **别的笔记本**只是一行链接，不显示按钮（它们的树没有读，主持者的决定 730），带 `arrived`：点开之后那一项换成展开的笔记本行，链接随之离开（[02-P2](02-P2-shell.md) 决定 777）。
    - 树在笔记本列表的项里，e2e 的 `notebookGroups`（`e2e/fixtures/notebook-pages.ts:17-26`，17 处调用）改成每一项只取第一个链接，调用处不动。
@@ -322,7 +322,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
   - UI2 设置界面（`ui2-settings-mode.spec.ts`）：从侧栏、笔记本行、账户菜单进入，组名随改名变，返回到来处，直接打开地址时的返回；
   - UI3 即时生效（`ui3-instant-save.spec.ts`）：选下拉即生效、"已保存。"；另一个管理员在另一个浏览器上下文（`anotherPage`）里把本人降为成员之后再选，被拒、退回原值、显示原因。只用鼠标与 `selectOption`（Linux 上的 WebKit 在关着的下拉上按方向键会立即生效，M12-polish 第 8 项），键盘逐项走等失焦的规则由 vitest 守。
 
-  另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：新的、只有页面版本的两格，一格在三种浏览器里打开树的行菜单、改名、取消、焦点回到按钮（M12-polish 第 14 项），另一格核对当前行滚进侧栏而窗口不动（[02-P2](02-P2-shell.md) 决定 789、791）；PG2 的页面版本（`pg2-rename-page.spec.ts:131-170`，以 `expectRenamed` 断言数据库）照旧留在 PG2。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
+  另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：新的、只有页面版本的两格，一格在三种浏览器里打开树的行菜单、改名、以 Esc 取消（对话框没有取消按钮）、焦点回到按钮（M12-polish 第 14 项），另一格核对当前行滚进侧栏而窗口不动，宽屏与 375 px 下都看窗口（[02-P2](02-P2-shell.md) 决定 789、791 与 10.2）；PG2 的页面版本（`pg2-rename-page.spec.ts:131-170`，以 `expectRenamed` 断言数据库）照旧留在 PG2。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
 
   四个（UI1–UI3、PG16）都进 `threeBrowsers`（`e2e/playwright.config.ts:3-4`，按文件路径匹配，名字不与别的文件的前缀重叠），并在 `tools/e2e-projects/check.mjs` 的必需格里各加 firefox 与 webkit 两行（正则写错不会让任何一格变红，`check.mjs:1-3`）。10.1 的接口版本与 MCP 版本豁免（照 PG15 的先例写进 13.4 第 3 条）：UI1 只有界面的行为；UI2 经页面改工作区与笔记本的名字，照 w4、n6 调同一组数据库断言，接口版本与 MCP 版本由 W4、N6 覆盖；UI3 写开放程度，照 n3 调 `expectNotebook`，接口版本与 MCP 版本由 N3 覆盖；PG16 只核对菜单的行为（取消，不写），接口与 MCP 版本豁免。
 - **变异**（02-workflow 3.1；00-M12 9.6 是先例），每个 Step 的设计写出自己的表，至少含：把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红；⌘K 在编辑器里不让路、对话框开着时不让路，vitest 变红；即时生效被拒不退回，UI3 变红；设置目录的 `nav` 改名，tr1 或 n9 变红；`notebookGroups` 数进树里的链接，n1 或 n2 变红；抽屉关着时不带 `inert`，UI1 变红。
@@ -544,7 +544,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
-| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1 已合并；S2 实施中 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md) | S1 `fdad6b9e` |
+| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1 已合并；S2 已审查、待合并 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md) | S1 `fdad6b9e` |
 | P3 设置界面（S1、S2） | — | 未开始 | — | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
@@ -563,3 +563,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-22：P1 完成（S1 `a08bf50f`、S2 `e2678ff7`；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761）。
 - 2026-11-23：照 P2 的设计修订（[02-P2](02-P2-shell.md) 2.1；[设计审查](reviews/P2-design-review.md)，主持者的决定 769–800）：右上角由路由与会话定，笔记本行与别的笔记本的链接，账户菜单的次序，抽屉里导航之后焦点的去处，菜单的部件，头像的变量，离开外框的菜单项带 `arrived`，PG16 两格，第 10 节滚动锚定一行，第 11 节决定 731、733 注明由 P2 改。
 - 2026-11-23：P2/S1 实施与审查完成（[审查记录](reviews/P2-S1-shell-account-review.md)；主持者的决定 801–803：窄屏的账户菜单把外观直接列在菜单里，侧栏中段滚到头带着窗口走，新建工作区页也有"回到工作区"；4.2.2 第 6 条与 4.2.3 随之改）；合并 `fdad6b9e`。
+- 2026-11-23：P2/S2 实施与审查完成（[审查记录](reviews/P2-S2-notebooks-tree-review.md)；主持者的决定 804：树里父页的展开箭头与笔记本行的 ⌄ 同列；4.2.2 第 4 条与 4.8 的 PG16 随之改）；合并见第 12 节。

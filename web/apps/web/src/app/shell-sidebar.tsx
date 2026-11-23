@@ -3,6 +3,26 @@ import type { ReactNode } from "react";
 import { UserMenu } from "./user-menu";
 
 /**
+ * intoColumn brings element into view in the left column's middle ([data-sidebar-scroll]), 8px to spare above or
+ * below it, by that area's scrollTop alone: never scrollIntoView, which scrolls the window too (v0.1 design 13.2,
+ * item 26; M13/P2/S2, 4.2.5). It answers false for an element in no such area.
+ */
+export function intoColumn(element: Element): boolean {
+  const area = element.closest<HTMLElement>("[data-sidebar-scroll]");
+  if (area === null) {
+    return false;
+  }
+  const row = element.getBoundingClientRect();
+  const view = area.getBoundingClientRect();
+  if (row.top < view.top) {
+    area.scrollTop -= view.top - row.top + 8;
+  } else if (row.bottom > view.bottom) {
+    area.scrollTop += row.bottom - view.bottom + 8;
+  }
+  return true;
+}
+
+/**
  * ShellSidebar is a shell's left column (M13/P2/S1, decision 774), in
  * three parts: its top, which stays (the workspace's switcher and search);
  * its middle, which scrolls itself ([data-sidebar-scroll]), the end of its

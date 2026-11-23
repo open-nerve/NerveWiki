@@ -231,6 +231,43 @@ test("pages of the same title are told apart in their controls and dialogs by wh
   expect(await screen.findByRole("dialog", { name: "Rename Notes (in Guide)" })).toBeTruthy();
 });
 
+/** The lucide icon a link shows, by its class: lucide-list, lucide-history. */
+const icon = (link: HTMLElement) => /\blucide-[\w-]+/.exec(link.querySelector("svg")?.getAttribute("class") ?? "")?.[0];
+
+test.each([
+  ["a standard notebook's ordinary page", () => pageServer(), "Guide", "lucide-file"],
+  ["an LLM Wiki's source area", () => wikiServer(), "raw (source area)", "lucide-library"],
+  ["an LLM Wiki's instructions", () => wikiServer(), "AGENTS (instructions for agents)", "lucide-bot"],
+] as const)("%s has its kind's icon in the tree", async (_kind, server, name, kind) => {
+  renderApp(home, server().app);
+
+  expect(icon(await within(await tree()).findByRole("link", { name }))).toBe(kind);
+});
+
+test("an LLM Wiki's Directory and History rows mark their own page, not what is under it, with the icons the places have for them", async () => {
+  const { router } = renderApp(`${home}/index`, wikiServer().app);
+  const nav = await tree();
+  const directory = within(nav).getByRole("link", { name: "Directory" });
+  const history = within(nav).getByRole("link", { name: "History" });
+
+  await waitFor(() => expect(directory.getAttribute("aria-current")).toBe("page"));
+  expect(history.getAttribute("aria-current")).toBeNull();
+  // A changeset's page is under the history, not the history (end; review C-N2).
+  await act(() => router.navigate(`${home}/history/0199a2b4-0000-7000-8000-000000000777`));
+  await waitFor(() => expect(directory.getAttribute("aria-current")).toBeNull());
+  expect(history.getAttribute("aria-current")).toBeNull();
+  await act(() => router.navigate(`${home}/history`));
+  await waitFor(() => expect(history.getAttribute("aria-current")).toBe("page"));
+
+  // The same place, the same icon (decision 796).
+  const places = screen.getByRole("navigation", { name: "More of Plans" });
+  expect([icon(directory), icon(history)]).toEqual([
+    icon(within(places).getByRole("link", { name: "Directory" })),
+    icon(within(places).getByRole("link", { name: "History" })),
+  ]);
+  expect(icon(directory)).toBeDefined();
+});
+
 test("a page's subpages open and close", async () => {
   const user = userEvent.setup();
   renderApp(home, pageServer().app);
