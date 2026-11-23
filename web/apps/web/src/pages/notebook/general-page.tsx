@@ -6,10 +6,11 @@ import useSWR, { useSWRConfig } from "swr";
 import { arrived } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
+import { NameRow } from "../../app/name-row";
 import { notebookNameProblem, notebookNameTexts } from "../../app/notebook-name";
 import { useMounted } from "../../app/mounted";
 import { pagesLocked } from "../../app/pages-locked";
-import { RenameForm } from "../../app/rename-form";
+import { SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
@@ -27,7 +28,10 @@ import { upgradeStateText } from "./upgrade-banner";
 /**
  * NotebookGeneralPage is a notebook's name, workspace access and mode
  * (M3/P4 design 3.4, M10/P1 design 4.4): its admins change them and delete
- * it; the others see them.
+ * it; the others see them. The basics' card first (M13/P3/S2, decisions
+ * 820, 844): the name saved as it is changed (NameRow), the access; the
+ * others' rows show each as a value. Then the mode's; the deletion the
+ * danger zone's, last (decision 826).
  */
 export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
   const workspace = useWorkspace();
@@ -36,43 +40,52 @@ export const NotebookGeneralPage = observer(function NotebookGeneralPage() {
   const t = useT();
   const admin = notebook.role === "admin";
   return (
-    <div className="space-y-10">
-      <section className="max-w-md space-y-6">
-        <h2 className="text-lg font-semibold">{t("notebookSettings.general")}</h2>
-        {admin ? (
-          <>
-            <RenameForm
-              current={notebook.name}
-              label={t("notebooks.name")}
-              hint={t("notebooks.nameHint")}
-              autoComplete="off"
-              check={notebookNameProblem}
-              fieldTexts={notebookNameTexts}
-              rename={(name) => notebooks.update(notebook.id, { name })}
-              saveLabel={t("notebookSettings.save")}
-              savedLabel={t("notebookSettings.saved")}
-            />
-            <AccessForm workspace={workspace} notebook={notebook} />
-          </>
-        ) : (
-          <>
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium">{t("notebooks.name")}</h3>
-              <p className="break-words">{notebook.name}</p>
-              <p className="text-sm text-muted-foreground">{t("notebookSettings.nameAdminsOnly")}</p>
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-sm font-medium">{t("access.legend")}</h3>
-              <p>{t(`access.${notebook.workspace_access}`)}</p>
-              <p className="text-sm text-muted-foreground">{t(`access.${notebook.workspace_access}Hint`)}</p>
-              <p className="text-sm text-muted-foreground">{t("notebookSettings.accessAdminsOnly")}</p>
-            </div>
-          </>
-        )}
-      </section>
+    <>
+      <SettingsSection title={t("settings.basics")}>
+        <SettingsCard>
+          {admin ? (
+            <>
+              <NameRow
+                current={notebook.name}
+                field="name"
+                label={t("notebooks.name")}
+                description={t("notebooks.nameHint")}
+                autoComplete="off"
+                check={notebookNameProblem}
+                fieldTexts={notebookNameTexts}
+                save={(name) => notebooks.update(notebook.id, { name })}
+                saveLabel={t("notebookSettings.save")}
+                savedLabel={t("notebookSettings.saved")}
+              />
+              <div className="px-4.5 py-4">
+                <AccessForm workspace={workspace} notebook={notebook} />
+              </div>
+            </>
+          ) : (
+            <>
+              <SettingsRow
+                title={t("notebooks.name")}
+                description={t("notebookSettings.nameAdminsOnly")}
+                value={notebook.name}
+              />
+              <SettingsRow
+                title={t("access.legend")}
+                description={
+                  <>
+                    {t(`access.${notebook.workspace_access}Hint`)}
+                    {/* A sentence of its own, which is read whole (review C's R1-N4). */}
+                    <span className="block">{t("notebookSettings.accessAdminsOnly")}</span>
+                  </>
+                }
+                value={t(`access.${notebook.workspace_access}`)}
+              />
+            </>
+          )}
+        </SettingsCard>
+      </SettingsSection>
       <ModeSection workspace={workspace} notebook={notebook} />
-      {admin && <DeleteSection workspace={workspace} notebook={notebook} />}
-    </div>
+      {admin && <DangerSection workspace={workspace} notebook={notebook} />}
+    </>
   );
 });
 
@@ -175,37 +188,52 @@ const ModeSection = observer(function ModeSection({ workspace, notebook }: Noteb
   }
 
   return (
-    <section className="max-w-md space-y-3">
-      <h2 ref={heading} tabIndex={-1} className="text-lg font-semibold outline-none">
-        {t("notebookSettings.mode")}
-      </h2>
-      <p>{wiki ? t("notebookSettings.modeLLMWiki") : t("notebookSettings.modeStandard")}</p>
-      <p className="text-sm text-muted-foreground">
-        {wiki ? t("notebookSettings.modeLLMWikiHint") : t("notebookSettings.modeStandardHint")}
-      </p>
-      {upgrade !== null && (
-        <p className="text-sm">
-          {t(upgradeStateText[upgrade.state])}
-          {admin && (
-            <>
-              {" "}
-              <Link to={`${home}/upgrade`} className="font-medium underline underline-offset-4">
-                {t("upgrade.view")}
-              </Link>
-            </>
+    <SettingsSection title={t("notebookSettings.mode")} heading={heading}>
+      <SettingsCard>
+        <div>
+          <SettingsRow
+            title={wiki ? t("notebookSettings.modeLLMWiki") : t("notebookSettings.modeStandard")}
+            description={wiki ? t("notebookSettings.modeLLMWikiHint") : t("notebookSettings.modeStandardHint")}
+          >
+            {downgrades || upgrades
+              ? () => (
+                  <>
+                    {downgrades && (
+                      <Button ref={button} variant="outline" size="sm" shape="pill" onClick={() => setOpen(true)}>
+                        {t("notebookSettings.downgrade")}
+                      </Button>
+                    )}
+                    {upgrades && (
+                      <Button
+                        ref={startButton}
+                        variant="outline"
+                        size="sm"
+                        shape="pill"
+                        onClick={() => setStarting(true)}
+                      >
+                        {t("upgrade.start")}
+                      </Button>
+                    )}
+                  </>
+                )
+              : undefined}
+          </SettingsRow>
+          {upgrade !== null && (
+            <p className="-mt-1 px-4.5 pb-3.5 text-sm">
+              {t(upgradeStateText[upgrade.state])}
+              {admin && (
+                <>
+                  {" "}
+                  {/* The settings left for the upgrade's page, arrived at (M13/P3/S2, decision 839). */}
+                  <Link to={`${home}/upgrade`} state={arrived} className="font-medium underline underline-offset-4">
+                    {t("upgrade.view")}
+                  </Link>
+                </>
+              )}
+            </p>
           )}
-        </p>
-      )}
-      {downgrades && (
-        <Button ref={button} variant="outline" onClick={() => setOpen(true)}>
-          {t("notebookSettings.downgrade")}
-        </Button>
-      )}
-      {upgrades && (
-        <Button ref={startButton} variant="outline" onClick={() => setStarting(true)}>
-          {t("upgrade.start")}
-        </Button>
-      )}
+        </div>
+      </SettingsCard>
       <ConfirmDialog
         held={{ open, onOpenChange: setOpen, onClosed }}
         title={t("notebookSettings.downgradeTitle", { name: notebook.name })}
@@ -250,7 +278,7 @@ const ModeSection = observer(function ModeSection({ workspace, notebook }: Noteb
         texts={{ "transfer.busy": "transfer.writingBusy" }}
         tone="default"
       />
-    </section>
+    </SettingsSection>
   );
 });
 
@@ -281,27 +309,38 @@ function nodesUnder(nodes: readonly TreeNode[], id: string): number {
 }
 
 /**
- * DeleteSection deletes the notebook for every member, once its name is
- * typed (M3 design 4); the shell then goes to the workspace's home,
- * arrived at.
+ * DangerSection deletes the notebook for every member, once its name is
+ * typed (M3 design 4), a row of the danger zone (M13/P3/S2, decision 826);
+ * the shell then goes to the workspace's home, arrived at.
  */
-function DeleteSection({ workspace, notebook }: NotebookProps) {
+function DangerSection({ workspace, notebook }: NotebookProps) {
   const notebooks = useNotebooks(workspace);
   const t = useT();
   return (
-    <section className="max-w-md space-y-3">
-      <h2 className="text-lg font-semibold">{t("notebookSettings.deleteTitle")}</h2>
-      <p className="text-sm text-muted-foreground">{t("notebookSettings.deleteBody")}</p>
-      <ConfirmDialog
-        trigger={<Button variant="destructive">{t("notebookSettings.delete")}</Button>}
-        title={t("notebookSettings.deleteConfirmTitle", { name: notebook.name })}
-        description={t("notebookSettings.deleteBody")}
-        typedConfirmation={{ label: t("notebookSettings.typeName", { name: notebook.name }), value: notebook.name }}
-        confirmLabel={t("notebookSettings.deleteConfirm")}
-        sendingLabel={t("notebookSettings.deleting")}
-        cancelLabel={t("notebookSettings.cancel")}
-        confirm={() => notebooks.remove(notebook.id)}
-      />
-    </section>
+    <SettingsSection title={t("settings.danger")}>
+      <SettingsCard>
+        <SettingsRow title={t("notebookSettings.deleteTitle")} description={t("notebookSettings.deleteBody")}>
+          {() => (
+            <ConfirmDialog
+              trigger={
+                <Button variant="destructive" size="sm" shape="pill">
+                  {t("notebookSettings.delete")}
+                </Button>
+              }
+              title={t("notebookSettings.deleteConfirmTitle", { name: notebook.name })}
+              description={t("notebookSettings.deleteBody")}
+              typedConfirmation={{
+                label: t("notebookSettings.typeName", { name: notebook.name }),
+                value: notebook.name,
+              }}
+              confirmLabel={t("notebookSettings.deleteConfirm")}
+              sendingLabel={t("notebookSettings.deleting")}
+              cancelLabel={t("notebookSettings.cancel")}
+              confirm={() => notebooks.remove(notebook.id)}
+            />
+          )}
+        </SettingsRow>
+      </SettingsCard>
+    </SettingsSection>
   );
 }

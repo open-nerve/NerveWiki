@@ -115,6 +115,10 @@ test.each([
     const link = within(note!).queryByRole("link", { name: "Take it over in Ownerless notebooks" });
     if (linked) {
       expect(link?.getAttribute("href")).toBe("/lab/settings/ownerless");
+      // The page left, the ownerless notebooks arrived at: their title takes the focus (M13/P3/S2, decision 839).
+      await userEvent.setup().click(link!);
+      const title = await screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" });
+      await waitFor(() => expect(document.activeElement).toBe(title));
     } else {
       expect(link).toBeNull();
       expect(note?.textContent).toBe("This notebook has no admin. A workspace admin can take it over.");
@@ -221,7 +225,8 @@ test("a member removed leaves the list, the focus on its heading; the notebook b
   const dialog = await screen.findByRole("alertdialog", { name: "Remove Bob from Plans?" });
   await user.click(within(dialog).getByRole("button", { name: "Remove" }));
 
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
+  // The page's h1, its name: the list's group has no title of its own (M13/P3/S2, decisions 815, 851).
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" })));
   expect(await rows()).toEqual(["AdaYouada@example.com · Joined Oct 1, 2026Admin"]);
   await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "My notebooks" })).toBeTruthy();
@@ -387,7 +392,7 @@ test("leaving a notebook open to the workspace stays on it, with its role by the
   await waitFor(async () => expect(await rows()).toEqual(["Bobbob@example.com · Joined Oct 2, 2026Admin"]));
   expect(router.state.location.pathname).toBe(members);
   expect(screen.queryByRole("button", { name: "Leave notebook" })).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" })));
 });
 
 test.each([

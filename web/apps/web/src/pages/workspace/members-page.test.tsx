@@ -254,7 +254,8 @@ test.each([
 
   await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   expect(await names()).toEqual(["Ada", "Cy"]);
-  expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" }));
+  // The page's h1, its name: the list's group has no title of its own (M13/P3/S2, decisions 815, 851).
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" }));
   expect(await screen.findByText("No invitations pending.")).toBeTruthy();
   expect(sent).toEqual(["GET members", "DELETE Bob"]);
 });

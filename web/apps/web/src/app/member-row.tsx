@@ -5,6 +5,7 @@ import { useT } from "../i18n/i18n";
 import { ConfirmDialog } from "./confirm-dialog";
 import { MemberSummary, memberWho, type Member } from "./member-summary";
 import { RoleMenu } from "./role-menu";
+import { listRowClass } from "./settings-page";
 
 type MemberRowProps<Role extends string> = {
   member: Member & { role: Role };
@@ -44,7 +45,7 @@ function MemberRowView<Role extends string>({
   const t = useT();
   const who = memberWho(member, t);
   return (
-    <li className="flex flex-wrap items-center justify-between gap-4 p-4">
+    <li className={listRowClass}>
       <MemberSummary member={member} you={you} />
       <div className="flex flex-wrap items-center gap-2">
         {manage ? (
@@ -53,7 +54,7 @@ function MemberRowView<Role extends string>({
             {note !== undefined && <span className="text-sm text-muted-foreground">{note}</span>}
             <ConfirmDialog
               trigger={
-                <Button variant="outline" aria-label={t("members.removeLabel", { name: who })}>
+                <Button variant="outline" size="sm" shape="pill" aria-label={t("members.removeLabel", { name: who })}>
                   {t("members.remove")}
                 </Button>
               }
@@ -82,7 +83,8 @@ function MemberRowView<Role extends string>({
  * notebook's (M3/P4 design 3.4): the name, the address unless the viewer
  * is a guest, when they joined, and the role, with its note; for an
  * admin, another member's role changes as one is chosen in its menu, and
- * they can be removed. The controls name the member by the address too,
+ * they can be removed: in outline, as every irreversible action of a
+ * card's list, red the danger zone's alone (M13/P3/S2, decision 838). The controls name the member by the address too,
  * where it shows: two members may have the same name. The two lists
  * differ only in their roles and their removal's words (M3 handoff 3).
  */

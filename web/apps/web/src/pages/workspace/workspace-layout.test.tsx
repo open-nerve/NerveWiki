@@ -132,7 +132,7 @@ test("the navigation's Settings is arrived at: the column, the same element, tur
 
   await user.click(within(screen.getByRole("navigation", { name: "Acme" })).getByRole("link", { name: "Settings" }));
 
-  const title = await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  const title = await screen.findByRole("heading", { level: 1, name: "General" });
   expect(router.state.location.pathname).toBe("/acme/settings/general");
   await waitFor(() => expect(document.activeElement).toBe(title));
   expect(document.querySelector("[data-shell]")).toBe(column);
@@ -150,7 +150,7 @@ test("in the settings' mode Mod+K and Mod+Shift+F are the browser's: no box to g
   expect(document.activeElement).toBe(screen.getByRole("searchbox"));
 
   await act(() => router.navigate("/acme/settings/members", { state: arrived }));
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "Members" });
 
   expect(fireEvent.keyDown(document.body, { key: "k", code: "KeyK", ctrlKey: true })).toBe(true);
   expect(fireEvent.keyDown(document.body, { key: "F", code: "KeyF", ctrlKey: true, shiftKey: true })).toBe(true);
@@ -210,7 +210,7 @@ test("the column's scroll is kept through the settings: their directory at its t
   sets.length = 0;
 
   await user.click(screen.getByRole("link", { name: "Settings of Plans" }));
-  await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
   expect(area.scrollTop).toBe(0);
 
   sets.length = 0;

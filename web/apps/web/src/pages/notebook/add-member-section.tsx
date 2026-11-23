@@ -5,6 +5,7 @@ import useSWR, { useSWRConfig } from "swr";
 import { useForm } from "../../app/form";
 import { memberWho } from "../../app/member-summary";
 import { NotLoaded } from "../../app/not-loaded";
+import { SettingsCard, SettingsSection } from "../../app/settings-page";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
@@ -21,7 +22,8 @@ export type SectionProps = { workspace: Workspace; notebook: Notebook };
 
 /**
  * AddSection adds a member of the workspace who is not in the notebook
- * yet: its candidates are the two lists' difference.
+ * yet: its candidates are the two lists' difference. A group of the
+ * members page, its form in a card (M13/P3/S2, decision 821).
  */
 export const AddSection = observer(function AddSection({ workspace, notebook }: SectionProps) {
   const workspaceMembers = useMembers(workspace);
@@ -34,17 +36,18 @@ export const AddSection = observer(function AddSection({ workspace, notebook }: 
       ? undefined
       : workspaceMembers.list?.filter((member) => !ins.some((each) => each.user_id === member.user_id));
   return (
-    <section className="max-w-xl space-y-4">
-      <div className="space-y-1">
-        <h2 className="text-lg font-semibold">{t("notebookMembers.addTitle")}</h2>
-        <p className="text-sm text-muted-foreground">{t("notebookMembers.addBody")}</p>
-      </div>
+    <SettingsSection title={t("notebookMembers.addTitle")}>
+      <p className="max-w-xl px-0.5 text-sm text-muted-foreground">{t("notebookMembers.addBody")}</p>
       {candidates === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (
-        <AddForm workspace={workspace} notebook={notebook} candidates={candidates} />
+        <SettingsCard>
+          <div className="px-4.5 py-4">
+            <AddForm workspace={workspace} notebook={notebook} candidates={candidates} />
+          </div>
+        </SettingsCard>
       )}
-    </section>
+    </SettingsSection>
   );
 });
 
@@ -96,10 +99,10 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
   }
 
   return (
-    <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
+    <form ref={ref} noValidate onSubmit={onSubmit} className="max-w-xl space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
       <div className="flex flex-wrap items-start gap-3">
-        <div className="min-w-56 flex-1 space-y-2">
+        <div className="min-w-56 flex-1 space-y-1.5">
           <Label htmlFor={memberId}>{t("notebookMembers.member")}</Label>
           <NativeSelect
             id={memberId}
@@ -129,7 +132,7 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
             </p>
           )}
         </div>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <Label htmlFor={roleId}>{t("notebookMembers.role")}</Label>
           <NativeSelect
             id={roleId}

@@ -28,7 +28,7 @@ type RoleMenuProps<Role extends string> = {
  * moving through the roles chooses none, and the focus goes back to its
  * button. One change goes out at a time; a choice made while one is out
  * is not taken. A workspace's members and a notebook's have one each
- * (M3/P4 design 3.4).
+ * (M3/P4 design 3.4), a card's 30px pill (M13/P3/S2).
  */
 export function RoleMenu<Role extends string>({ role, roles, label, who, changeRole }: RoleMenuProps<Role>) {
   const t = useT();
@@ -51,6 +51,8 @@ export function RoleMenu<Role extends string>({ role, roles, label, who, changeR
       <DropdownMenuTrigger asChild>
         <Button
           variant="outline"
+          size="sm"
+          shape="pill"
           aria-label={t("members.roleOf", { role: label(role), name: who })}
           aria-busy={sending || undefined}
         >

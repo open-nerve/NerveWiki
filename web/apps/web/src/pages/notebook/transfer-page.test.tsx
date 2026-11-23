@@ -88,7 +88,8 @@ test("each job says what it does, its state and progress, who started it, when, 
 
   expect(await rows()).toEqual([
     ["Export of the whole notebook", "Queued", started],
-    ["Export of the page Guide", "Running · Cancelling…", `Started by Bob · ${started}`],
+    // Not "Started by Bob · Started …" (M12-polish item 1's 19.2; M13/P3/S2).
+    ["Export of the page Guide", "Running · Cancelling…", `By Bob · ${started}`],
     ["Export of the whole notebook", "Done", `${started} · ${ended} · 1.5 KiB · Kept until Oct 6, 2026, 10:20 AM`],
     ["Export of the whole notebook", "Failed · The server's storage is full.", `${started} · ${ended}`],
     ["Export of the whole notebook", "Failed · The job failed.", `${started} · ${ended}`],
@@ -862,5 +863,23 @@ test("from one notebook's jobs straight to another's, each reads its own", async
   await act(() => router.navigate(`/lab/notebooks/${atlas.id}/settings/transfer`));
 
   await waitFor(async () => expect((await rows()).map(([title]) => title)).toEqual(["Import of Vault"]));
-  expect(screen.getByRole("heading", { level: 1, name: "Atlas settings" })).toBeTruthy();
+  // The directory's notebook the other; the page's h1 its name (M13/P3/S2, decision 815).
+  expect(screen.getByRole("navigation", { name: "Notebook settings" }).textContent).toContain("Atlas");
+  expect(screen.getByRole("heading", { level: 1, name: "Import, export and restore" })).toBeTruthy();
+});
+
+test("a job's See in the history leaves the settings for its changeset, arrived at: its title takes the focus", async () => {
+  const user = userEvent.setup();
+  const server = jobsServer({
+    jobs: [jobJSON(1, { kind: "import", name: "Vault.zip", changeset_id: jobChangesetId(1) })],
+  });
+  server.log("import", { id: jobChangesetId(1) });
+  const { router } = renderApp(transfer, server.app);
+
+  // Not read before it is arrived at: its title mounts once it is (ChangesetRead, M13/P3/S1).
+  await user.click(control(await row("Import of Vault.zip"), "link", "See in the history") as HTMLElement);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}/history/${jobChangesetId(1)}`);
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

@@ -11,8 +11,8 @@ import { useNotebook } from "./notebook-layout";
 /**
  * NotebookSettingsLayout is a notebook's settings page (M3/P4 design 3.4) in the settings' mode (M13/P3/S1): whoever
  * sees the notebook comes in, only its admins change it; their directory is WorkspaceLayout's left column (decision
- * 810); here the page chosen, keyed by its path, its h1 taking the arrival focus as it mounts (SettingsPage, decision
- * 815).
+ * 810); here the page chosen, keyed by its path, its h1 its name, taking the arrival focus as it mounts
+ * (SettingsPage, decision 815; M13/P3/S2).
  */
 export const NotebookSettingsLayout = observer(function NotebookSettingsLayout() {
   const { slug } = useWorkspace();
@@ -24,7 +24,7 @@ export const NotebookSettingsLayout = observer(function NotebookSettingsLayout()
   return shown === undefined ? (
     <Outlet />
   ) : (
-    <SettingsPage key={shown.path} title={t("notebookSettings.heading", { name: notebook.name })}>
+    <SettingsPage key={shown.path} title={t(shown.label)}>
       <Outlet />
     </SettingsPage>
   );

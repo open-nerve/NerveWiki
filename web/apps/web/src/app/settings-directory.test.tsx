@@ -60,7 +60,7 @@ const strip = (menu = "Navigation") => screen.getByRole("button", { name: menu }
 
 test("a workspace's settings: the column is their directory, the account's group then the workspace's, named with it in a bdi; no search, no switcher", async () => {
   renderApp("/lab/settings/general", notebookServer().app);
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
 
   expect(groups()).toEqual(["Settings", "Workspace settings"]);
   const title = titleOf(group("Workspace settings"));
@@ -90,7 +90,7 @@ test("a workspace's settings: the column is their directory, the account's group
 
 test("a member's directory has no ownerless notebooks", async () => {
   renderApp("/lab/settings/members", notebookServer({ workspaceRole: "member" }).app);
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "Members" });
 
   expect(linksOf("Workspace settings")).toEqual([
     ["General", null],
@@ -101,14 +101,14 @@ test("a member's directory has no ownerless notebooks", async () => {
 test("at a phone's width the strip says Settings", async () => {
   phone();
   renderApp("/lab/settings/general", notebookServer().app);
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
 
   expect(strip()).toBe("Settings");
 });
 
 test("a notebook's settings: three groups, the notebook's named as the list has it; the tree held out of sight", async () => {
   renderApp(`${home}/settings/general`, notebookServer().app);
-  await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
 
   expect(groups()).toEqual(["Settings", "Workspace settings", "Notebook settings"]);
   expect(titleOf(group("Notebook settings")).textContent).toBe("Notebook Plans");
@@ -221,7 +221,7 @@ test("entered from a notebook's page, Back goes there, named by the notebook as 
   renderApp(home, notebookServer().app);
   await screen.findByRole("heading", { level: 1, name: "Plans" });
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
-  await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
   expect([back().textContent, back().getAttribute("href")]).toEqual(["Back to Plans", home]);
 
   const name = await screen.findByLabelText<HTMLInputElement>("Name");
@@ -263,9 +263,7 @@ test("entered from a changeset's page by the notebook's cog, Back to it: its tit
   await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
 
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Plans settings" }))
-  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "General" })));
   await user.click(back());
 
   expect(router.state.location.pathname).toBe(changeset);
@@ -276,7 +274,7 @@ test("entered from a changeset's page by the notebook's cog, Back to it: its tit
 test("opened at their address, Back goes to the workspace's home, its title taking the focus", async () => {
   const user = userEvent.setup();
   const { router } = renderApp("/lab/settings/members", notebookServer().app);
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "Members" });
 
   await user.click(back());
 
@@ -293,25 +291,28 @@ test("a link of the same shell keeps the focus; one to the account's settings an
   const { router } = renderApp(home, notebookServer().app);
   await screen.findByRole("heading", { level: 1, name: "Plans" });
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
-  const general = await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  const general = await screen.findByRole("heading", { level: 1, name: "General" });
   await waitFor(() => expect(document.activeElement).toBe(general));
 
   const members = within(group("Notebook settings")).getByRole("link", { name: "Members" });
   await user.click(members);
   await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/settings/members`));
   // The page's h1 mounts anew, the focus staying on the link.
-  await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "Plans settings" })).not.toBe(general));
+  await waitFor(() => expect(screen.getByRole("heading", { level: 1, name: "Members" })).not.toBe(general));
   expect(document.activeElement).toBe(members);
-  await user.click(within(group("Workspace settings")).getByRole("link", { name: "General" }));
+  // The link itself, not the h1 of the page it opened, which has its name (M13/P3/S2, decision 815).
+  const workspaceGeneral = within(group("Workspace settings")).getByRole("link", { name: "General" });
+  await user.click(workspaceGeneral);
   await waitFor(() => expect(router.state.location.pathname).toBe("/lab/settings/general"));
-  expect(document.activeElement?.textContent).toBe("General");
+  expect(document.activeElement).toBe(workspaceGeneral);
 
   await user.click(within(group("Settings")).getByRole("link", { name: "Profile" }));
   const profile = await screen.findByRole("heading", { level: 1, name: "Profile" });
   await waitFor(() => expect(document.activeElement).toBe(profile));
-  await user.click(within(group("Settings")).getByRole("link", { name: "Security" }));
+  const security = within(group("Settings")).getByRole("link", { name: "Security" });
+  await user.click(security);
   await waitFor(() => expect(router.state.location.pathname).toBe("/settings/security"));
-  expect(document.activeElement?.textContent).toBe("Security");
+  expect(document.activeElement).toBe(security);
 
   await user.click(back());
   const plans = await screen.findByRole("heading", { level: 1, name: "Plans" });
@@ -330,16 +331,14 @@ test("at a phone's width, a link of the directory's drawer closes it, the page's
 
   await user.click(menu);
   await user.click(await within(column()).findByRole("link", { name: "Settings of Plans" }));
-  const general = await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  const general = await screen.findByRole("heading", { level: 1, name: "General" });
   await waitFor(() => expect(document.activeElement).toBe(general));
   expect(column().hasAttribute("inert")).toBe(true);
 
   await user.click(menu);
   await user.click(within(group("Notebook settings")).getByRole("link", { name: "Members" }));
   await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/settings/members`));
-  await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Plans settings" }))
-  );
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Members" })));
   expect(document.activeElement).not.toBe(general);
   expect(column().hasAttribute("inert")).toBe(true);
 
@@ -347,7 +346,7 @@ test("at a phone's width, a link of the directory's drawer closes it, the page's
   await user.click(within(group("Notebook settings")).getByRole("link", { name: "Import, export and restore" }));
   await waitFor(() => expect(router.state.location.pathname).toBe(`${home}/settings/transfer`));
   await waitFor(() =>
-    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Plans settings" }))
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Import, export and restore" }))
   );
   expect(column().hasAttribute("inert")).toBe(true);
 });
@@ -357,7 +356,7 @@ test("in Chinese: the groups' titles, Back, and the strip", async () => {
   const app = notebookServer().app;
   app.preferences.setLocale("zh-CN");
   const { unmount } = renderApp(`${home}/settings/general`, app);
-  await screen.findByRole("heading", { level: 1, name: "Plans 的设置" });
+  await screen.findByRole("heading", { level: 1, name: "常规" });
 
   expect(groups()).toEqual(["设置", "工作区设置", "笔记本设置"]);
   expect(titleOf(group("设置")).textContent).toBe("个人");
@@ -384,7 +383,7 @@ test.each([
   async (state, focused) => {
     const { router } = renderApp([{ pathname: "/lab/settings", state }], notebookServer().app);
 
-    const title = await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+    const title = await screen.findByRole("heading", { level: 1, name: "General" });
     expect(router.state.location.pathname).toBe("/lab/settings/general");
     if (focused) {
       await waitFor(() => expect(document.activeElement).toBe(title));

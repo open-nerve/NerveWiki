@@ -160,7 +160,8 @@ test("N4 (page): the admin adds a member and a guest, changes a role and removes
   await expectNotebookMember(db, notebook.id, mateId, { role: "admin", active: true, writerId: ownerId });
 
   expect(await removeNotebookMemberWith(page, guest, added.id)).toBe(204);
-  await expect(page.getByRole("heading", { level: 2, name: "Members", exact: true })).toBeFocused();
+  // The page's h1, its name: the list's group has no title of its own (M13/P3/S2, decisions 815, 851).
+  await expect(page.getByRole("heading", { level: 1, name: "Members", exact: true })).toBeFocused();
   await expect.poll(() => membersListed(page)).toHaveLength(2);
   await expectNotebookMember(db, notebook.id, guestId, { role: "reader", active: false, writerId: ownerId });
 

@@ -315,7 +315,7 @@ const ImportForm = observer(function ImportForm({
       {/* Not while this upload goes, which the jobs read again may show already, nor beside the refusal it says. */}
       {transfers.writing && !sending && !refusedBusy && <Alert>{t("transfer.importUnderWay")}</Alert>}
       {banner !== undefined && <Alert>{banner}</Alert>}
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor={ids.file}>{t("transfer.importFile")}</Label>
         <Input
           id={ids.file}
@@ -358,7 +358,7 @@ const ImportForm = observer(function ImportForm({
           </p>
         )}
       </div>
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         <Label htmlFor={ids.place}>{t("transfer.importPlace")}</Label>
         <NativeSelect
           id={ids.place}

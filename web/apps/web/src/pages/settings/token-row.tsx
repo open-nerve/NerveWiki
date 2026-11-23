@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
+import { badgeClass, listRowClass } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
@@ -26,15 +27,11 @@ export const TokenRow = observer(function TokenRow({ token, revoked }: { token: 
     expiry = expired ? t("tokens.expiredOn", { date }) : t("tokens.expires", { date });
   }
   return (
-    <li className="flex min-h-14 flex-wrap items-center justify-between gap-x-4 gap-y-2 px-4.5 py-3">
+    <li className={listRowClass}>
       <div className="min-w-0 space-y-1">
         <p className="flex flex-wrap items-center gap-2 text-sm font-medium break-words">
           {token.name}
-          {expired && (
-            <span className="rounded-full border border-border bg-surface-2 px-1.5 text-[11px] font-normal text-muted-foreground">
-              {t("tokens.expired")}
-            </span>
-          )}
+          {expired && <span className={badgeClass}>{t("tokens.expired")}</span>}
         </p>
         <p className="text-sm text-muted-foreground">
           <span className="whitespace-nowrap">

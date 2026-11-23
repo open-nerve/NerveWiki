@@ -43,7 +43,7 @@ test("entered from a workspace's home, its settings go Back there, the origin ke
   await screen.findByRole("heading", { level: 1, name: "Lab" });
 
   await act(() => router.navigate("/lab/settings/general", { state: arrived }));
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
   await expectBack("Back to Lab", "/lab");
 
   // Across to the account's settings, then to a notebook's: the directory mounts anew, the origin stays.
@@ -51,7 +51,7 @@ test("entered from a workspace's home, its settings go Back there, the origin ke
   await screen.findByRole("heading", { level: 1, name: "Profile" });
   await expectBack("Back to Lab", "/lab");
   await act(() => router.navigate(`${home}/settings/members`, { state: arrived }));
-  await screen.findByRole("heading", { level: 1, name: "Plans settings" });
+  await screen.findByRole("heading", { level: 1, name: "Members" });
   await expectBack("Back to Lab", "/lab");
 });
 
@@ -71,7 +71,7 @@ test("left and entered again from a search, the settings go Back to the search, 
 
 test("opened at their address, the tab's first, the settings have no origin: Back goes to the workspace's home; the index's redirect keeps an origin", async () => {
   const { router } = renderApp("/lab/settings", notebookServer().app);
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
   expect(router.state.location.pathname).toBe("/lab/settings/general");
   await expectBack("Back to Lab", "/lab");
 
@@ -186,6 +186,6 @@ test("left for another page and come back to by Back two entries, the settings g
   await screen.findByRole("heading", { level: 1, name: "Plans" });
   await act(() => router.navigate(-2));
 
-  await screen.findByRole("heading", { level: 1, name: "Workspace settings" });
+  await screen.findByRole("heading", { level: 1, name: "General" });
   await expectBack("Back to Plans", home);
 });

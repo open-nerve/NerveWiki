@@ -1,5 +1,6 @@
 import { Link, useMatch } from "react-router";
 
+import { arrived } from "../../app/arrival";
 import { useT, type PlainKey } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import { useWorkspace } from "../workspace/workspace-layout";
@@ -23,7 +24,8 @@ export const upgradeStateText: Record<UpgradeState, PlainKey> = {
  * (decisions 246, 291): neither while it rolls back. A status (output),
  * not an alert: it is not read out again on
  * each page, and it takes no focus (v0.1 design 13.2, item 26). No MCP
- * address nor prompt (decision 184).
+ * address nor prompt (decision 184). Its link leaves the page shown for
+ * the upgrade's, arrived at (M13/P3/S2, decision 839).
  */
 export function UpgradeBanner({ notebook }: { notebook: Notebook }) {
   const t = useT();
@@ -44,7 +46,11 @@ export function UpgradeBanner({ notebook }: { notebook: Notebook }) {
             <>{t(upgrade.state === "reviewing" ? "upgrade.bannerAnyAdminReject" : "upgrade.bannerAnyAdmin")} </>
           )}
           {!onItsPage && (
-            <Link to={`/${slug}/notebooks/${notebook.id}/upgrade`} className="font-medium underline underline-offset-4">
+            <Link
+              to={`/${slug}/notebooks/${notebook.id}/upgrade`}
+              state={arrived}
+              className="font-medium underline underline-offset-4"
+            >
               {t("upgrade.view")}
             </Link>
           )}
