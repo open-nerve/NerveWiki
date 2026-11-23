@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -23,8 +23,40 @@ const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
 /** The name's Save, shown once the field holds another name (NameRow, M13/P3/S2). */
 const nameSave = async () =>
   within((await nameField()).closest("form") as HTMLElement).queryByRole("button", { name: "Save" });
-/** The form of the workspace access. */
-const accessForm = () => screen.getByRole("group", { name: "Workspace access" }).closest("form") as HTMLElement;
+/** The select of the workspace access, which goes out as it is chosen (M13/P3/S2, decision 825). */
+const accessSelect = () => screen.findByLabelText<HTMLSelectElement>("Workspace access");
+/** What describes the access's select: the description of the option it shows. */
+const hintOf = (select: HTMLElement) =>
+  document.getElementById(select.getAttribute("aria-describedby") ?? "")?.textContent;
+/** The access's row, its form: its Saved. and its refusal. */
+const accessRow = (select: HTMLElement) => within(select.closest("form") as HTMLElement);
+const hints = {
+  none: "Only its members see it.",
+  viewer: "The workspace's admins and members can read it; a guest, once added.",
+  editor: "The workspace's admins and members can edit it; a guest, once added.",
+};
+/**
+ * A server of Plans' admin whose changes each wait to be answered: release(n) answers the nth, by the server's state
+ * changed as the change says, or by what refused says instead.
+ */
+function heldServer() {
+  const waiting: ((answer: Response) => void)[] = [];
+  const server = notebookServer({
+    members: [notebookMember(ada, "admin")],
+    answers: {
+      [`PATCH ${plans}`]: async (request) => {
+        const body = (await request.clone().json()) as object;
+        const answer = await new Promise<Response>((resolve) => waiting.push(resolve));
+        return answer.status === 200 ? json({ ...notebookJSON, ...server.plans, ...body }) : answer;
+      },
+    },
+  });
+  const release = async (n: number, refused?: Response) => {
+    await waitFor(() => expect(waiting.length).toBeGreaterThan(n));
+    await act(async () => waiting[n]?.(refused ?? json({})));
+  };
+  return { server, release };
+}
 /** Lets what a key or a click sent reach the fake server. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 /** The workspace's navigation in the left column, out of the settings. */
@@ -98,23 +130,22 @@ test("a name the local check or the server refuses shows under the field, by a t
   expect(server.sent).toEqual(['PATCH {"name":"nul.txt"}']);
 });
 
-test("an admin opens the notebook to the workspace on Save; back in the workspace, the left column has it among the team's", async () => {
+test("an admin opens the notebook to the workspace as it is chosen; back in the workspace, the left column has it among the team's", async () => {
   const user = userEvent.setup();
   const server = notebookServer({ members: [notebookMember(ada, "admin")] });
   renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "My notebooks" });
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
 
-  // Moving through the options chooses them; nothing goes out until Save, the access's form's: the name's is not
-  // there until the name is edited (M13/P3/S2; review C's M6).
-  await user.click(await screen.findByRole("radio", { name: "Workspace can read" }));
-  await user.keyboard("{ArrowDown}");
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  expect(server.sent).toEqual([]);
-  await user.click(within(accessForm()).getByRole("button", { name: "Save" }));
+  // A select, which goes out as the pointer chooses (M13/P3/S2, decision 825): no Save.
+  const select = await accessSelect();
+  expect([select.value, hintOf(select)]).toEqual(["none", hints.none]);
+  await user.selectOptions(select, "Workspace can edit");
 
-  expect(await screen.findByText("Saved.")).toBeTruthy();
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
   expect(server.sent).toEqual(['PATCH {"workspace_access":"editor"}']);
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
   expect(within(await nav()).queryByRole("list", { name: "My notebooks" })).toBeNull();
@@ -172,13 +203,13 @@ test.each(["editor", "reader"] as const)(
     expect(screen.getByText("Workspace can read")).toBeTruthy();
     expect(screen.getByText("Only the notebook's admins can change its workspace access.")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete notebook" })).toBeNull();
   }
 );
 
-test("a name or an access chosen while its save is out keeps the choice, not marked saved", async () => {
+test("a name edited while its save is out keeps the edit, not marked saved", async () => {
   const user = userEvent.setup();
   let release: (() => void) | undefined;
   const server = notebookServer({
@@ -211,16 +242,175 @@ test("a name or an access chosen while its save is out keeps the choice, not mar
   expect(screen.queryByText("Saved.")).toBeNull();
   await settle();
   expect(server.sent).toHaveLength(1);
+});
 
-  const saveAccess = within(accessForm()).getByRole("button", { name: "Save" });
-  await user.click(screen.getByRole("radio", { name: "Workspace can read" }));
-  await user.click(saveAccess);
+// The access as it is chosen (M13/P3/S2, decisions 825, 840): jsdom's platform is not macOS, where the keys step a
+// closed select; jsdom sends no change for a key, so a step is the key, then the change, as native-select.test.tsx
+// sends it (user-event's {ArrowDown} changes no select in jsdom; review C's M3).
+
+test("chosen by the pointer, the access goes out at once, once: shown with its description until the answer, the select busy and never disabled, keeping the focus", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+
+  await user.selectOptions(select, "Workspace can read");
+  await waitFor(() => expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}']));
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(select.getAttribute("aria-busy")).toBe("true");
+  expect(select.hasAttribute("disabled")).toBe(false);
+  expect(accessRow(select).getByRole("status").textContent).toBe("");
+
+  await release(0);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(select.getAttribute("aria-busy")).toBeNull();
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(document.activeElement).toBe(select);
+  await settle();
+  expect(server.sent).toHaveLength(1);
+});
+
+test("a step of the keys waits, shown with its description, nothing out: left, it goes; another, Enter sends it", async () => {
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  act(() => select.focus());
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "viewer" } });
+  // What the select shows, its description too (review B's M5); not busy: nothing went out, which the draft, set as
+  // a choice goes out, would say at once (review C's R1-M2).
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(select.getAttribute("aria-busy")).toBeNull();
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  fireEvent.blur(select);
+  await waitFor(() => expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}']));
+  expect(select.getAttribute("aria-busy")).toBe("true");
+
+  act(() => select.focus());
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "editor" } });
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  await settle();
+  expect(server.sent).toHaveLength(1);
+  fireEvent.keyDown(select, { key: "Enter" });
+  // The second waits for the first's answer (the notebook's changes go in turn): its draft says it went.
+  expect(select.getAttribute("aria-busy")).toBe("true");
+  await release(0);
+  await release(1);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}', 'PATCH {"workspace_access":"editor"}']);
+});
+
+test("a step of the keys, Escape takes it back: the access and its description as they were, the key not the page's; left, nothing goes out; with nothing waiting Escape is not the select's", async () => {
+  const server = notebookServer({ members: [notebookMember(ada, "admin")] });
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  act(() => select.focus());
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "editor" } });
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(false);
+  expect([select.value, hintOf(select)]).toEqual(["none", hints.none]);
+
+  fireEvent.blur(select);
+  await settle();
+  expect(server.sent).toEqual([]);
+  act(() => select.focus());
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(true);
+});
+
+test("Saved. once answered, emptied as the next choice goes out, written again in its other round", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  const saved = () => accessRow(select).getByRole("status");
+
+  await user.selectOptions(select, "Workspace can read");
+  await release(0);
+  await waitFor(() => expect(saved().textContent).toBe("Saved."));
+  const round = saved().dataset.round;
+
+  await user.selectOptions(select, "Workspace can edit");
   await waitFor(() => expect(server.sent).toHaveLength(2));
-  await user.click(screen.getByRole("radio", { name: "Workspace can edit" }));
-  release?.();
-  await waitFor(() => expect(saveAccess).toHaveProperty("disabled", false));
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  expect(screen.queryByText("Saved.")).toBeNull();
+  expect(saved().textContent).toBe("");
+  await release(1);
+  await waitFor(() => expect(saved().textContent).toBe("Saved."));
+  expect(saved().dataset.round).not.toBe(round);
+  expect(saved().classList.contains("nw-saved")).toBe(true);
+});
+
+test.each([
+  ["en", "Only the notebook's admins can change its workspace access.", "Workspace access"],
+  ["zh-CN", "只有笔记本的管理员能修改开放程度。", "在工作区里的开放程度"],
+] as const)(
+  "refused, in %s, the access shows the list's again, why under its row, the focus kept on the select, nothing said saved",
+  async (locale, why, label) => {
+    const user = userEvent.setup();
+    const server = notebookServer({
+      members: [notebookMember(ada, "admin")],
+      answers: { [`PATCH ${plans}`]: () => problem(403, "forbidden") },
+    });
+    server.app.preferences.setLocale(locale);
+    renderApp(general, server.app);
+    const select = await screen.findByLabelText<HTMLSelectElement>(label);
+    act(() => select.focus());
+
+    await user.selectOptions(select, locale === "en" ? "Workspace can edit" : "工作区成员可编辑");
+
+    expect((await accessRow(select).findByRole("alert")).textContent).toBe(why);
+    expect(select.value).toBe("none");
+    expect(select.getAttribute("aria-busy")).toBeNull();
+    expect(document.activeElement).toBe(select);
+    expect(accessRow(select).getByRole("status").textContent).toBe("");
+    expect(server.plans.workspace_access).toBe("none");
+  }
+);
+
+test("two choices, the first refused once the second went out: only the latest's answer counts, no refusal said", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+
+  await user.selectOptions(select, "Workspace can read");
+  await user.selectOptions(select, "Workspace can edit");
+  await release(0, problem(403, "forbidden"));
+  // The second goes once the first is answered (the notebook's changes go in turn).
+  await waitFor(() => expect(server.sent).toHaveLength(2));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", "true"]);
+
+  await release(1);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", null]);
+  expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}', 'PATCH {"workspace_access":"editor"}']);
+});
+
+test("two choices, the first's success back once the second went out: the second shown, busy, not said saved, until its own answer", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  const saved = () => accessRow(select).getByRole("status").textContent;
+
+  await user.selectOptions(select, "Workspace can read");
+  await user.selectOptions(select, "Workspace can edit");
+  await release(0);
+  await waitFor(() => expect(server.sent).toHaveLength(2));
+  // The list has the first now; the select shows the second still, busy until the latest is answered (review B's
+  // R1-N2: useForm's sending, through by the first's answer, would say nothing of the second).
+  await waitFor(() => expect(server.plans.workspace_access).toBe("viewer"));
+  expect([select.value, select.getAttribute("aria-busy"), saved()]).toEqual(["editor", "true", ""]);
+
+  await release(1);
+  await waitFor(() => expect(saved()).toBe("Saved."));
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", null]);
 });
 
 afterEach(() => vi.useRealTimers());
@@ -239,13 +429,14 @@ test("untouched forms follow another admin's changes; Save sends nothing back ov
   act(() => void window.dispatchEvent(new Event("focus")));
 
   await waitFor(async () => expect((await nameField()).value).toBe("Roadmap"));
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  // The name untouched has no Save, Enter sending nothing (NameRow, M13/P3/S2); the access's Save nothing either.
-  expect(await nameSave()).toBeNull();
+  // The name untouched has no Save, Enter sending nothing (NameRow); the access's select follows, Save none
+  // (M13/P3/S2, decision 825).
+  const select = await accessSelect();
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   await user.click(await nameField());
   await user.keyboard("{Enter}");
-  await user.click(within(accessForm()).getByRole("button", { name: "Save" }));
-  expect(await screen.findAllByText("Saved.")).toHaveLength(1);
+  await settle();
   expect(server.sent).toEqual([]);
 });
 

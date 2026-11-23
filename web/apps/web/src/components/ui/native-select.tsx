@@ -55,6 +55,10 @@ function stepping(event: KeyboardEvent<HTMLSelectElement>): boolean {
  * change used at once). On macOS the keys typed to find an option alone
  * step (stepping). What is applied changing elsewhere (the address) drops
  * what waits. Used, the choice already in use reads nothing again.
+ * Escape with a step waiting takes it back, the choice in use shown
+ * again, and goes no further: no dialog's or drawer's Escape is pressed
+ * by it (M13/P3/S2, decision 840); with none waiting it is not the
+ * select's.
  */
 export function useChoice(applied: string, apply: (value: string) => void) {
   // The option the keys stepped to, shown until it is used: a controlled select would otherwise show applied again.
@@ -75,6 +79,13 @@ export function useChoice(applied: string, apply: (value: string) => void) {
   return {
     value: pending ?? applied,
     onKeyDown: (event: KeyboardEvent<HTMLSelectElement>) => {
+      if (event.key === "Escape" && pending !== undefined) {
+        event.preventDefault();
+        event.stopPropagation();
+        stepped.current = false;
+        setPending(undefined);
+        return;
+      }
       if (event.key === "Enter") {
         stepped.current = false;
         if (pending !== undefined) {

@@ -32,6 +32,9 @@ const REQUIRED = [
   // The settings' mode, their way in and out and its focus, are each engine's (M13/P3/S1, 5.3).
   ["firefox", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],
   ["webkit", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],
+  // The access saved as it is chosen, its check's fade and the refusal's focus, are each engine's (M13/P3/S2, 5.5).
+  ["firefox", "shell/ui3-instant-save.spec.ts", "UI3 (page): the workspace access goes out"],
+  ["webkit", "shell/ui3-instant-save.spec.ts", "UI3 (page): the workspace access goes out"],
   ["webkit-narrow", "mcp/mc3-write-edit.spec.ts", "MC3 (page): at 375 wide"],
   ["webkit-narrow", "page/pg2-rename-page.spec.ts", "PG2 (page): at 375 wide"],
   ["webkit-narrow", "search/se1-search.spec.ts", "SE1 (page): at 375 wide"],
