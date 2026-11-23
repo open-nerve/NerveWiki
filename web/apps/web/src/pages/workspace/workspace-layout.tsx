@@ -1,6 +1,6 @@
 import { House, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { createContext, use, useEffect, useState } from "react";
+import { createContext, use, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useParams } from "react-router";
 import useSWR from "swr";
@@ -20,6 +20,7 @@ import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
 import { makeSlot, NotebookSlot } from "./notebook-slot";
 import { SearchBox } from "./search-box";
+import { useSearchShortcuts } from "./search-shortcuts";
 import { WorkspaceSwitcher } from "./workspace-switcher";
 
 /** The workspace WorkspaceLayout shows. */
@@ -60,7 +61,9 @@ const sections: readonly {
  * layout's main. The column is no landmark of its own: the search and the
  * navigation are the ones it holds; it goes into the layout's place for
  * it, outside the main (M4/P5 design 3.2). Without it, the load failed or
- * the workspace not found, the account is at the top right.
+ * the workspace not found, the account is at the top right. It listens
+ * for Mod+K and Mod+Shift+F, which give the box the focus
+ * (useSearchShortcuts, M13/P2/S3).
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -82,6 +85,9 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const column = useShellColumn();
   // For the shell's life: a notebook's tree stays in its container as the notebook moves in the list (decision 776).
   const [slot] = useState(makeSlot);
+  // The search box's field, which Mod+K and Mod+Shift+F give the focus: none until the workspace is shown.
+  const field = useRef<HTMLInputElement>(null);
+  useSearchShortcuts({ field });
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const [last, setLast] = useState<Workspace | undefined>(undefined);
   const listed = workspaces.bySlug(slug);
@@ -129,7 +135,7 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
       top={
         <>
           <WorkspaceSwitcher current={workspace} />
-          <SearchBox key={workspace.id} workspace={workspace} />
+          <SearchBox key={workspace.id} workspace={workspace} field={field} />
         </>
       }
     >

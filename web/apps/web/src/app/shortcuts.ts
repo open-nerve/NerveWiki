@@ -1,11 +1,6 @@
 /** The keys of a key press that a shortcut reads. */
 type Keys = Pick<KeyboardEvent, "key" | "code" | "metaKey" | "ctrlKey" | "altKey" | "shiftKey">;
 
-/** onMac tells whether the browser runs on macOS, where Mod is Cmd; elsewhere it is Ctrl. */
-export function onMac(platform = navigator.platform): boolean {
-  return /^mac/i.test(platform);
-}
-
 /**
  * isMod tells whether keys are Mod and the letter key alone (M4/P5 design
  * 3.10): Cmd on macOS, Ctrl elsewhere, with no other modifier. On a layout
@@ -33,6 +28,11 @@ function modOf(keys: Keys, mac: boolean): boolean {
 /** letterOf is the letter of keys' key, lower case: its own when Latin, else the Latin one at its place. */
 function letterOf(keys: Keys): string | undefined {
   return /^[a-z]$/i.test(keys.key) ? keys.key.toLowerCase() : /^Key[A-Z]$/.exec(keys.code)?.[0].slice(3).toLowerCase();
+}
+
+/** composing tells whether a key press ends or goes into an IME's composition: Safari's Enter after it has 229. */
+export function composing(event: Pick<KeyboardEvent, "isComposing" | "keyCode">): boolean {
+  return event.isComposing || event.keyCode === 229;
 }
 
 /** dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. */

@@ -1,17 +1,18 @@
 import { Search } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import { useId, useState, type FormEvent, type KeyboardEvent, type RefObject } from "react";
 import { useMatch, useNavigate, useSearchParams } from "react-router";
 
 import { arrived } from "../../app/arrival";
 import type { FieldMessage } from "../../app/problem-messages";
-import { dialogOpen, isModShift, onMac } from "../../app/shortcuts";
+import { composing } from "../../app/shortcuts";
 import { useFocusOnInvalid } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { useT } from "../../i18n/i18n";
+import { onMac } from "../../lib/platform";
 import type { Workspace } from "../../services/workspace.service";
 import { useNotebooks } from "../../stores/context";
 
@@ -30,11 +31,6 @@ function queryProblem(q: string): FieldMessage | undefined {
     return "field.q.invalid_format";
   }
   return new TextEncoder().encode(q).length > maxQueryBytes ? "field.q.too_long" : undefined;
-}
-
-/** composing tells whether a key press ends or goes into an IME's composition: Safari's Enter after it has 229. */
-function composing(event: Pick<globalThis.KeyboardEvent, "isComposing" | "keyCode">): boolean {
-  return event.isComposing || event.keyCode === 229;
 }
 
 /** keepComposing keeps an Enter that ends an IME's composition from submitting the box: it confirms the IME's text. */
@@ -57,18 +53,27 @@ function keepComposing(event: KeyboardEvent<HTMLInputElement>): void {
  * the results page's title takes the focus, arrived at; from the results
  * page, it stays in the box. On the results page it holds the address's q
  * as the address changes, unless it was edited since. An Enter that ends
- * an IME's composition submits nothing. Mod+Shift+F (Cmd on macOS, Ctrl
- * elsewhere) gives it the focus, its text selected; not while a key is
- * held, nor in a composition, whose half-typed text the browser would
- * write into the page as the focus left it (13.2, item 20); over a dialog
- * it only keeps the browser's own use of the keys.
+ * an IME's composition submits nothing. Mod+K and Mod+Shift+F give it the
+ * focus, its text selected: the shell's, which listens for them
+ * (useSearchShortcuts, M13/P2/S3) and gives it field, the box's ref.
+ *
+ * A pill (M13/P2/S3, decision 785): Search, the magnifier, at its left in
+ * a pad of the box's own colour, the one its focus ring is measured on
+ * (decision 794), after the field in the DOM, Tab going from the field to
+ * it; at its right a hint of Mod+K for the eye, none below md. Where it
+ * looks is the field's description, for a screen reader alone.
  */
-export const SearchBox = observer(function SearchBox({ workspace }: { workspace: Workspace }) {
+export const SearchBox = observer(function SearchBox({
+  workspace,
+  field,
+}: {
+  workspace: Workspace;
+  field: RefObject<HTMLInputElement | null>;
+}) {
   const t = useT();
   const navigate = useNavigate();
   const notebooks = useNotebooks(workspace);
   const ids = { field: useId(), hint: useId(), problem: useId() };
-  const field = useRef<HTMLInputElement>(null);
   const [mac] = useState(onMac);
   // Not useParams: the column is the workspace's, above the routes that name a notebook.
   const notebookPage = useMatch("/:slug/notebooks/:id/*");
@@ -89,21 +94,6 @@ export const SearchBox = observer(function SearchBox({ workspace }: { workspace:
   const [problem, setProblem] = useState<FieldMessage>();
   const [failures, setFailures] = useState(0);
   const form = useFocusOnInvalid(failures);
-
-  useEffect(() => {
-    const onShortcut = (event: globalThis.KeyboardEvent) => {
-      if (!isModShift(event, "f", mac) || composing(event)) {
-        return;
-      }
-      event.preventDefault();
-      if (!event.repeat && !dialogOpen()) {
-        field.current?.focus();
-        field.current?.select();
-      }
-    };
-    window.addEventListener("keydown", onShortcut);
-    return () => window.removeEventListener("keydown", onShortcut);
-  }, [mac]);
 
   function onSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
@@ -142,27 +132,45 @@ export const SearchBox = observer(function SearchBox({ workspace }: { workspace:
       <Label htmlFor={ids.field} className="sr-only">
         {t("search.field")}
       </Label>
-      <div className="flex gap-1">
+      <div className="relative">
         <Input
           ref={field}
           id={ids.field}
           type="search"
           enterKeyHint="search"
           autoComplete="off"
+          placeholder={t("search.placeholder")}
           value={draft}
           aria-invalid={problem !== undefined || undefined}
           aria-describedby={described}
-          aria-keyshortcuts={mac ? "Meta+Shift+F" : "Control+Shift+F"}
+          aria-keyshortcuts={mac ? "Meta+K Meta+Shift+F" : "Control+K Control+Shift+F"}
           onChange={(event) => {
             setDraft(event.target.value);
             // What was said of the query before goes as it is edited (M5-polish 26.2).
             setProblem(undefined);
           }}
           onKeyDown={keepComposing}
+          className="peer h-8 rounded-full border-border bg-surface pr-12 pl-8.75 md:text-compact dark:bg-surface-2"
         />
-        <Button type="submit" variant="outline" size="icon" aria-label={t("search.submit")}>
-          <Search />
-        </Button>
+        {/* The button's pad, the box's colour as the box's focus changes it: its ring is drawn, and measured, on it. */}
+        <span className="absolute top-1 left-1.75 grid size-6 rounded-full bg-surface transition-[background-color] duration-150 dark:bg-surface-2 dark:peer-focus-visible:bg-surface">
+          <Button
+            type="submit"
+            variant="ghost"
+            size="icon-sm"
+            shape="pill"
+            aria-label={t("search.submit")}
+            className="size-6 text-faint"
+          >
+            <Search />
+          </Button>
+        </span>
+        <kbd
+          aria-hidden
+          className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 rounded-[5px] border border-border px-1.25 font-sans text-[11px] leading-4.25 text-faint max-md:hidden"
+        >
+          {mac ? "⌘K" : "Ctrl K"}
+        </kbd>
       </div>
       {problem !== undefined && (
         // A new alert each failed submit: the same problem again is said again.
@@ -170,7 +178,7 @@ export const SearchBox = observer(function SearchBox({ workspace }: { workspace:
           {t(problem)}
         </Alert>
       )}
-      <p id={ids.hint} className="px-1 text-xs text-muted-foreground">
+      <p id={ids.hint} className="sr-only">
         {scope === undefined ? t("search.inWorkspace") : t("search.inNotebook", { notebook: scope.name })}
       </p>
     </form>

@@ -1,6 +1,6 @@
 import { expect, test } from "vitest";
 
-import { isMod, isModShift, onMac } from "./shortcuts";
+import { composing, isMod, isModShift } from "./shortcuts";
 
 const press = (
   key: string,
@@ -27,12 +27,6 @@ test("Mod is Cmd on macOS and Ctrl elsewhere, alone", () => {
   expect(isMod(press("o", { ctrlKey: true, altKey: true }), "o", false)).toBe(false);
   expect(isMod(press("p", { ctrlKey: true }), "o", false)).toBe(false);
   expect(isMod(press("o"), "o", false)).toBe(false);
-});
-
-test("macOS is told by the platform", () => {
-  expect(onMac("MacIntel")).toBe(true);
-  expect(onMac("Win32")).toBe(false);
-  expect(onMac("Linux x86_64")).toBe(false);
 });
 
 test("the letter is the key's, or on a layout of other letters, the Latin one at its place", () => {
@@ -65,4 +59,11 @@ test("Mod+Shift's letter is the key's, or on a layout of other letters, the Lati
   expect(isModShift(press("А", { ctrlKey: true, shiftKey: true }, "KeyA"), "f", false)).toBe(false);
   // Dvorak: F where QWERTY has Y.
   expect(isModShift(press("F", { ctrlKey: true, shiftKey: true }, "KeyY"), "f", false)).toBe(true);
+});
+
+// An IME's composition keeps its keys (v0.1 design 13.2, item 20): Safari's Enter that ends it has keyCode 229.
+test("a key press is the composition's while composing, or with Safari's 229 after it; not otherwise", () => {
+  expect(composing({ isComposing: true, keyCode: 75 })).toBe(true);
+  expect(composing({ isComposing: false, keyCode: 229 })).toBe(true);
+  expect(composing({ isComposing: false, keyCode: 75 })).toBe(false);
 });
