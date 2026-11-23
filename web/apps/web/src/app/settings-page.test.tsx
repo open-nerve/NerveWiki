@@ -4,7 +4,7 @@ import { createMemoryRouter, RouterProvider, type InitialEntry } from "react-rou
 import { expect, test, vi } from "vitest";
 
 import { arrived } from "./arrival";
-import { SettingsPage, useSettingsHeading } from "./settings-page";
+import { SavedOutput, SettingsPage, useSettingsHeading } from "./settings-page";
 
 // A page of the settings' mode (M13/P3/S1, decisions 815, 820): its name its h1, which takes the arrival focus.
 
@@ -53,4 +53,19 @@ test("useSettingsHeading is the page's h1; outside a settings page it throws", a
 
   vi.spyOn(console, "error").mockImplementation(() => {});
   expect(() => render(<Focus />)).toThrow("useSettingsHeading is used outside SettingsPage");
+});
+
+test("SavedOutput says Saved. or nothing, marked for its check; its round turns each time it is written, not as it empties or stays (decision 841)", () => {
+  const { rerender } = render(<SavedOutput saved={false} label="Saved." />);
+  const output = screen.getByRole("status");
+  expect(output.textContent).toBe("");
+  expect(output.classList.contains("nw-saved")).toBe(true);
+
+  const rounds: (string | null)[] = [];
+  for (const saved of [false, true, false, true, false, false, true, true]) {
+    rerender(<SavedOutput saved={saved} label="Saved." />);
+    expect(output.textContent).toBe(saved ? "Saved." : "");
+    rounds.push(output.getAttribute("data-round"));
+  }
+  expect(rounds).toEqual(["0", "1", "1", "0", "0", "0", "1", "1"]);
 });

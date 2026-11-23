@@ -5,6 +5,7 @@ import {
   KeyRound,
   LockKeyhole,
   SlidersHorizontal,
+  SunMoon,
   UserRound,
   Users,
   type LucideIcon,
@@ -26,9 +27,10 @@ import { useFollow } from "./shell-sidebar";
 /** A settings page as the directory lists it: its path under its group's, its name, its icon, whether admins' alone. */
 type Section = { path: string; label: PlainKey; icon: LucideIcon; admins: boolean };
 
-/** The account's settings (M1/P6 design 3.2), in the order the directory lists them. */
+/** The account's settings (M1/P6 design 3.2; the appearance and the language, M13/P3/S1), in the directory's order. */
 export const personalSections = [
   { path: "profile", label: "settings.profile", icon: UserRound, admins: false },
+  { path: "appearance", label: "settings.appearance", icon: SunMoon, admins: false },
   { path: "security", label: "settings.security", icon: LockKeyhole, admins: false },
   { path: "tokens", label: "settings.tokens", icon: KeyRound, admins: false },
 ] as const satisfies readonly Section[];

@@ -130,6 +130,13 @@ export const routes: RouteObject[] = [
                         },
                       },
                       {
+                        path: "appearance",
+                        lazy: async () => {
+                          const { AppearancePage } = await import("../pages/settings/appearance-page");
+                          return { Component: AppearancePage };
+                        },
+                      },
+                      {
                         path: "security",
                         lazy: async () => {
                           const { SecurityPage } = await import("../pages/settings/security-page");

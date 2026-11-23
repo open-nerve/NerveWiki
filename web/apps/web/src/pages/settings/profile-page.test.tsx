@@ -182,16 +182,18 @@ test("a name edited while its save is out is not marked saved", async () => {
   });
   renderApp("/settings/profile", app);
   const name = await screen.findByLabelText("Display name");
-  const save = screen.getByRole("button", { name: "Save" });
 
   await user.clear(name);
   await user.type(name, "First name");
+  // Save shows once the field holds another name (M13/P3/S1, decision 822).
+  const save = screen.getByRole("button", { name: "Save" });
   await user.click(save);
   await waitFor(() => expect(sent).toHaveLength(1));
   await user.clear(name);
   await user.type(name, "Second name");
   release?.();
-  await waitFor(() => expect(save).toHaveProperty("disabled", false));
+  // Out, Save is aria-disabled and aria-busy, never disabled: answered, no longer busy (review C's M5).
+  await waitFor(() => expect(save.hasAttribute("aria-busy")).toBe(false));
 
   expect(screen.getByRole("status").textContent).toBe("");
   expect(name).toHaveProperty("value", "Second name");
@@ -200,14 +202,18 @@ test("a name edited while its save is out is not marked saved", async () => {
   expect(sent).toEqual([{ display_name: "First name" }, { display_name: "Second name" }]);
 });
 
-test("a name left as it was is saved without a request", async () => {
+test("a name left as it was has no Save, and Enter sends nothing", async () => {
   const user = userEvent.setup();
   const { app, sent } = profileServer();
   renderApp("/settings/profile", app);
+  const name = await screen.findByLabelText("Display name");
 
-  await user.click(await screen.findByRole("button", { name: "Save" }));
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  await user.click(name);
+  await user.keyboard("{Enter}");
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 
-  expect((await screen.findByRole("status")).textContent).toBe("Saved.");
+  expect(screen.getByRole("status").textContent).toBe("");
   expect(sent).toEqual([]);
 });
 
@@ -231,26 +237,4 @@ test("an empty or refused name is marked under the field, which gets the focus",
   expect(document.activeElement).toBe(name);
   expect(screen.getByRole("status").textContent).toBe("");
   expect(screen.queryByRole("alert")).toBeNull();
-});
-
-test("the preferences are the account menu's: chosen here, they apply at once", async () => {
-  const user = userEvent.setup();
-  const { app } = profileServer();
-  renderApp("/settings/profile", app);
-
-  await user.click(await screen.findByRole("radio", { name: "Dark" }));
-  expect(app.preferences.theme).toBe("dark");
-  expect(document.documentElement.classList.contains("dark")).toBe(true);
-
-  await user.click(screen.getByRole("radio", { name: "简体中文" }));
-  expect(app.preferences.locale).toBe("zh-CN");
-  expect(await screen.findByRole("heading", { level: 1, name: "个人资料" })).toBeTruthy();
-  expect(screen.getByRole("radio", { name: "深色" })).toHaveProperty("checked", true);
-
-  // The account menu's Appearance shows the same choice (M13/P2/S1).
-  await user.click(screen.getByRole("button", { name: "Ada" }));
-  await user.click(await screen.findByRole("menuitem", { name: "外观" }));
-  await waitFor(() =>
-    expect(screen.getByRole("menuitemradio", { name: "深色" }).getAttribute("aria-checked")).toBe("true")
-  );
 });

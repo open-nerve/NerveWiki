@@ -50,6 +50,7 @@ export const en = {
     "Notebooks are created in a workspace where you are a member, not a guest. Once you are one, use New notebook in its left column.",
   "settings.title": "Settings",
   "settings.profile": "Profile",
+  "settings.appearance": "Appearance and language",
   "settings.back": "Back",
   "settings.backTo": "Back to {name}",
   "settings.groupPersonal": "Personal",
@@ -60,7 +61,6 @@ export const en = {
   "profile.save": "Save",
   "profile.saved": "Saved.",
   "profile.emailHint": "Only the server's administrator can change it.",
-  "preferences.title": "Preferences",
   "preferences.hint": "Kept in this browser.",
   "userMenu.settings": "Settings",
   "userMenu.version": "Nerve Wiki {version} ({commit})",
@@ -1194,6 +1194,7 @@ export const en = {
   "createWorkspace.off":
     "On this server, workspaces are created by its administrator. You join one when one of its admins invites you: open the invitation's link when it comes.",
   "settings.security": "Security",
+  "settings.danger": "Danger zone",
   "security.passwordTitle": "Password",
   "security.currentPassword": "Current password",
   "security.newPassword": "New password",

@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 
 import { useForm } from "../../app/form";
 import { passwordLength } from "../../app/password-length";
+import { SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -9,21 +10,30 @@ import { useT } from "../../i18n/i18n";
 import { useAccount } from "../../stores/context";
 import { DeactivateDialog } from "./deactivate-dialog";
 
-/** SecurityPage changes the password and deactivates the account (M1/P6 design 3.4, 3.5). */
+/**
+ * SecurityPage changes the password and deactivates the account (M1/P6 design 3.4, 3.5), each a group in a card
+ * (M13/P3/S1, decisions 821, 838): the password's form as it was, its fields one under another; the deactivation a
+ * row of the danger zone, the one group whose button is red.
+ */
 export function SecurityPage() {
   const t = useT();
   return (
-    <div className="space-y-10">
-      <section className="max-w-md space-y-6">
-        <h2 className="text-lg font-semibold">{t("security.passwordTitle")}</h2>
-        <ChangePasswordForm />
-      </section>
-      <section className="max-w-md space-y-3">
-        <h2 className="text-lg font-semibold">{t("deactivate.title")}</h2>
-        <p className="text-sm text-muted-foreground">{t("deactivate.body")}</p>
-        <DeactivateDialog />
-      </section>
-    </div>
+    <>
+      <SettingsSection title={t("security.passwordTitle")}>
+        <SettingsCard>
+          <div className="px-4.5 py-4">
+            <ChangePasswordForm />
+          </div>
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title={t("settings.danger")}>
+        <SettingsCard>
+          <SettingsRow title={t("deactivate.title")} description={t("deactivate.body")}>
+            {() => <DeactivateDialog />}
+          </SettingsRow>
+        </SettingsCard>
+      </SettingsSection>
+    </>
   );
 }
 
@@ -67,7 +77,7 @@ function ChangePasswordForm() {
   };
 
   return (
-    <form ref={ref} noValidate onSubmit={(event) => void onSubmit(event)} className="space-y-4">
+    <form ref={ref} noValidate onSubmit={(event) => void onSubmit(event)} className="max-w-md space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
       {/* The account whose password this is: password managers update the entry of this username. */}
       <input type="text" name="username" autoComplete="username" value={me.email} readOnly hidden />

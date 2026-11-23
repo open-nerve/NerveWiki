@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
@@ -110,6 +110,19 @@ test("a changed password empties the fields and says what became of the sessions
     'POST /api/v0/me/change-password {"current_password":"correct horse battery","new_password":"new horse battery"}',
   ]);
   expect(app.session.tokens.state.status).toBe("signed-in");
+});
+
+test("the deactivation is the danger zone's, a group of its own, in English and in Chinese (M13/P3/S1)", async () => {
+  const { app } = securityPage();
+
+  const zone = (await screen.findByRole("heading", { level: 2, name: "Danger zone" })).closest("section");
+  expect(zone).not.toBeNull();
+  expect(within(zone as HTMLElement).getByRole("button", { name: "Deactivate account" })).toBeTruthy();
+  expect(within(zone as HTMLElement).queryByLabelText("Current password")).toBeNull();
+
+  act(() => app.preferences.setLocale("zh-CN"));
+  const chinese = (await screen.findByRole("heading", { level: 2, name: "危险操作" })).closest("section");
+  expect(within(chinese as HTMLElement).getByRole("button", { name: "停用账户" })).toBeTruthy();
 });
 
 test("a confirmed deactivation forgets the session here, without a logout, and goes to sign in", async () => {

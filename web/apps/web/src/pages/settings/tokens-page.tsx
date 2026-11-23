@@ -2,7 +2,7 @@ import { observer } from "mobx-react-lite";
 import useSWR from "swr";
 
 import { errorText } from "../../app/problem-messages";
-import { useSettingsHeading } from "../../app/settings-page";
+import { SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
 import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -11,7 +11,11 @@ import { useApiTokens } from "../../stores/context";
 import { CreateTokenDialog } from "./create-token-dialog";
 import { TokenRow } from "./token-row";
 
-/** TokensPage lists the account's personal access tokens, creates them and revokes them (M1/P6 design 3.6). */
+/**
+ * TokensPage lists the account's personal access tokens, creates them and revokes them (M1/P6 design 3.6): what they
+ * are and New token above their card, a row each (M13/P3/S1, decision 820); while the list loads or if it cannot be
+ * read, in the card's place; none, a line of text in it.
+ */
 export const TokensPage = observer(function TokensPage() {
   const apiTokens = useApiTokens();
   const t = useT();
@@ -36,24 +40,28 @@ export const TokensPage = observer(function TokensPage() {
         </div>
       );
   } else if (tokens.length === 0) {
-    list = <p className="text-muted-foreground">{t("tokens.empty")}</p>;
+    list = (
+      <SettingsCard>
+        <p className="px-4.5 py-3.5 text-sm text-muted-foreground">{t("tokens.empty")}</p>
+      </SettingsCard>
+    );
   } else {
     list = (
-      <ul className="divide-y rounded-md border">
+      <SettingsCard list>
         {tokens.map((token) => (
           <TokenRow key={token.id} token={token} revoked={revoked} />
         ))}
-      </ul>
+      </SettingsCard>
     );
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <SettingsSection>
+      <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-0.5">
         <p className="max-w-xl text-sm text-muted-foreground">{t("tokens.body")}</p>
         {tokens !== undefined && <CreateTokenDialog />}
       </div>
       {list}
-    </section>
+    </SettingsSection>
   );
 });

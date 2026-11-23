@@ -71,6 +71,7 @@ test("a workspace's settings: the column is their directory, the account's group
   expect(titleOf(group("Settings")).textContent).toBe("Personal");
   expect(linksOf("Settings")).toEqual([
     ["Profile", null],
+    ["Appearance and language", null],
     ["Security", null],
     ["Access tokens", null],
   ]);
@@ -368,8 +369,8 @@ test("in Chinese: the groups' titles, Back, and the strip", async () => {
 
   const alone = signedInApp();
   alone.preferences.setLocale("zh-CN");
-  renderApp("/settings/profile", alone);
-  await screen.findByRole("heading", { level: 1, name: "个人资料" });
+  renderApp("/settings/appearance", alone);
+  await screen.findByRole("heading", { level: 1, name: "外观与语言" });
   expect(back(/^返回/).textContent).toBe("返回");
 });
 
