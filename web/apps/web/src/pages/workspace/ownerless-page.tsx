@@ -131,7 +131,7 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
     <SettingsSection>
       <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("ownerless.body")}</p>
       {failed !== undefined && <Alert>{failed}</Alert>}
-      <output className="block px-0.5 text-sm">
+      <output className="block px-0.5 text-sm empty:absolute">
         {taken !== undefined && (
           <>
             {t("ownerless.takenOver", { name: taken.name })}{" "}

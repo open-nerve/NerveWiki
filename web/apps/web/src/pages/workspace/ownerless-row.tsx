@@ -3,10 +3,11 @@ import { useState } from "react";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { memberWho } from "../../app/member-summary";
-import { listRowClass } from "../../app/settings-page";
+import { listRowClass, listTextClass, WholeParts } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDate } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import { shortId } from "../../lib/twins";
 import type { OwnerlessNotebook } from "../../services/ownerless.service";
 import { useStore } from "../../stores/context";
@@ -75,13 +76,15 @@ export const OwnerlessRow = observer(function OwnerlessRow({
   ];
   return (
     <li className={listRowClass}>
-      <div className="min-w-0 space-y-1">
+      <div className={cn(listTextClass, "space-y-1")}>
         <p className="text-sm font-medium break-words">{notebook.name}</p>
         {id !== undefined && <p className="text-sm text-muted-foreground">{t("ownerless.id", { id })}</p>}
-        <p className="text-sm break-all text-muted-foreground">
+        <p className="text-sm break-words text-muted-foreground">
           {t("ownerless.formerOwner", { name: memberWho(notebook.former_owner, t) })}
         </p>
-        <p className="text-sm text-muted-foreground">{details.join(" · ")}</p>
+        <p className="text-sm text-muted-foreground">
+          <WholeParts parts={details} />
+        </p>
       </div>
       <div className="flex items-center gap-2">
         <Button

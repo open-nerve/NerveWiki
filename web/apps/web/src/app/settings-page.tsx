@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { createContext, use, useId, useState, type ReactNode, type RefObject } from "react";
+import { createContext, Fragment, use, useId, useState, type ReactNode, type RefObject } from "react";
 
 import { useArrivalFocus } from "./arrival";
 
@@ -110,9 +110,30 @@ export const listRowClass = "flex min-h-14 flex-wrap items-center justify-betwee
  */
 export const stackedRowClass = "space-y-3 px-4.5 py-3";
 export const listLineClass = "flex flex-wrap items-center justify-between gap-x-4 gap-y-2";
-/** What a list's row marks a name with (the mockup's .badge): Expired, You. */
+/**
+ * A list row's text, which takes the room its controls leave (as rowTextClass): its controls stay on its right
+ * however long a line of it, below it where 14rem of it and they do not fit (review B's P3S2B-M1).
+ */
+export const listTextClass = "min-w-0 flex-1 basis-56";
+/**
+ * What a list's row marks a name with (the mockup's .badge): Expired, You. Inline, after the name's last word, which
+ * it follows to the next line (review B's P3S2B-N2).
+ */
 export const badgeClass =
-  "rounded-full border border-border bg-surface-2 px-1.5 text-[11px] font-normal text-muted-foreground";
+  "ms-1.5 inline-block rounded-full border border-border bg-surface-2 px-1.5 text-[11px] font-normal text-muted-foreground";
+
+/**
+ * WholeParts is a list row's line of details, " · " between them, each kept whole: a narrow row breaks the line
+ * between two, never inside a date (review B's P3S2B-N1; a token's dates, 6987baa9).
+ */
+export function WholeParts({ parts }: { parts: readonly string[] }) {
+  return parts.map((part, index) => (
+    <Fragment key={part}>
+      {index > 0 && " · "}
+      <span className="whitespace-nowrap">{part}</span>
+    </Fragment>
+  ));
+}
 /** A card's line of text: a list with nothing in it. */
 export const cardTextClass = "px-4.5 py-3.5 text-sm text-muted-foreground";
 

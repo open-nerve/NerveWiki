@@ -6,7 +6,7 @@ import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { arrived } from "../../app/arrival";
 import { errorText } from "../../app/problem-messages";
-import { listLineClass, stackedRowClass } from "../../app/settings-page";
+import { listLineClass, listTextClass, stackedRowClass, WholeParts } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
@@ -73,8 +73,10 @@ export const TransferJobRow = observer(function TransferJobRow({
   const { locale } = preferences;
   const { done, total } = job.progress;
   const ttl = instance.info?.export_ttl_seconds;
+  // Who started it, a name of any length, breaks where the line does; the rest is kept whole (WholeParts).
+  const by =
+    job.created_by.user_id === me.id ? undefined : t("transfer.startedBy", { name: job.created_by.display_name });
   const details = [
-    job.created_by.user_id === me.id ? undefined : t("transfer.startedBy", { name: job.created_by.display_name }),
     t("transfer.startedAt", { time: formatDateTime(job.created_at, locale) }),
     job.finished_at === null ? undefined : t("transfer.endedAt", { time: formatDateTime(job.finished_at, locale) }),
     job.result_bytes === null ? undefined : formatBytes(job.result_bytes, locale),
@@ -121,7 +123,7 @@ export const TransferJobRow = observer(function TransferJobRow({
       className={cn(stackedRowClass, "outline-none focus-visible:ring-2 focus-visible:ring-ring")}
     >
       <div className={listLineClass}>
-        <div className="min-w-0 space-y-1">
+        <div className={cn(listTextClass, "space-y-1")}>
           <p className="text-sm font-medium break-words">{jobTitle(job, t)}</p>
           <p id={stateId} className="text-sm">
             {t(`transfer.state.${job.state}`)}
@@ -140,7 +142,8 @@ export const TransferJobRow = observer(function TransferJobRow({
               <progress className="w-48" aria-label={t(`transfer.state.${job.state}`)} />
             ))}
           <p id={detailsId} className="text-sm break-words text-muted-foreground">
-            {details.join(" · ")}
+            {by !== undefined && `${by} · `}
+            <WholeParts parts={details} />
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">

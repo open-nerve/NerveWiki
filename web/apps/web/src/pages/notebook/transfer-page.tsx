@@ -81,8 +81,9 @@ type Rows = RefObject<Map<string, HTMLLIElement>>;
 
 /**
  * ImportSection imports a zip into the notebook, for its editors; a
- * reader is told who can. The focus goes to the job's row once it
- * started, or to the jobs' title while they are not shown.
+ * reader is told who can, the row's value (review B's P3S2B-N4). The
+ * focus goes to the job's row once it started, or to the jobs' title
+ * while they are not shown.
  */
 function ImportSection({
   notebook,
@@ -97,33 +98,35 @@ function ImportSection({
   const started = useRef<string | undefined>(undefined);
   // The section's, not the dialog's: the dialog goes too when the notebook's role drops to reader.
   const mounted = useMounted();
+  const writes = writesNotebook(notebook);
   return (
     <SettingsSection title={t("transfer.importTitle")}>
       <SettingsCard>
-        <SettingsRow description={t("transfer.importBody")}>
-          {() =>
-            writesNotebook(notebook) ? (
-              <ImportDialog
-                notebook={notebook}
-                trigger={
-                  <Button variant="outline" size="sm" shape="pill">
-                    {t("transfer.importZip")}
-                  </Button>
-                }
-                onStarted={(job) => (started.current = job.id)}
-                focusAfter={() => {
-                  if (started.current !== undefined) {
-                    (rows.current.get(started.current) ?? heading.current)?.focus();
-                  }
-                }}
-                mounted={mounted}
-              />
-            ) : (
-              <p className="max-w-xs text-sm">
-                {t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "transfer.importReaders")}
-              </p>
-            )
+        <SettingsRow
+          description={t("transfer.importBody")}
+          value={
+            writes ? undefined : t(frozenByUpgrade(notebook) ? "notebook.upgradeReadOnly" : "transfer.importReaders")
           }
+        >
+          {writes
+            ? () => (
+                <ImportDialog
+                  notebook={notebook}
+                  trigger={
+                    <Button variant="outline" size="sm" shape="pill">
+                      {t("transfer.importZip")}
+                    </Button>
+                  }
+                  onStarted={(job) => (started.current = job.id)}
+                  focusAfter={() => {
+                    if (started.current !== undefined) {
+                      (rows.current.get(started.current) ?? heading.current)?.focus();
+                    }
+                  }}
+                  mounted={mounted}
+                />
+              )
+            : undefined}
         </SettingsRow>
       </SettingsCard>
     </SettingsSection>

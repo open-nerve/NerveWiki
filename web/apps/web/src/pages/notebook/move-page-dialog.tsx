@@ -164,6 +164,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
             aria-invalid={problems.parent !== undefined || undefined}
             aria-describedby={problems.parent === undefined ? undefined : `${ids.parent}-note`}
             onChange={(event) => choose(event.target.value)}
+            className="block"
           >
             <ParentOptions pages={pages} parents={parents} includeRoot={includeRoot} />
           </NativeSelect>
@@ -177,6 +178,7 @@ const MoveForm = observer(function MoveForm({ notebook, page, onSend, cancel, mo
             aria-invalid={problems.position !== undefined || undefined}
             aria-describedby={problems.position === undefined ? undefined : `${ids.position}-note`}
             onChange={(event) => setPosition(event.target.value)}
+            className="block"
           >
             <option value="first">{t("page.moveFirst")}</option>
             {siblings.map((sibling) => (

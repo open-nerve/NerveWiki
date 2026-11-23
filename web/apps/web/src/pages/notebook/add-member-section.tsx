@@ -37,7 +37,7 @@ export const AddSection = observer(function AddSection({ workspace, notebook }: 
       : workspaceMembers.list?.filter((member) => !ins.some((each) => each.user_id === member.user_id));
   return (
     <SettingsSection title={t("notebookMembers.addTitle")}>
-      <p className="max-w-xl px-0.5 text-sm text-muted-foreground">{t("notebookMembers.addBody")}</p>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("notebookMembers.addBody")}</p>
       {candidates === undefined ? (
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (

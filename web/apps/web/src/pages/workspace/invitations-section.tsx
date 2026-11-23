@@ -6,7 +6,14 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { invitationLink } from "../../app/invitation-link";
 import { NotLoaded } from "../../app/not-loaded";
-import { cardTextClass, listLineClass, SettingsCard, SettingsSection, stackedRowClass } from "../../app/settings-page";
+import {
+  cardTextClass,
+  listLineClass,
+  listTextClass,
+  SettingsCard,
+  SettingsSection,
+  stackedRowClass,
+} from "../../app/settings-page";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -14,6 +21,7 @@ import { Label } from "../../components/ui/label";
 import { NativeSelect } from "../../components/ui/native-select";
 import { formatDate } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { WorkspaceInvitation } from "../../services/invitation.service";
 import type { WorkspaceRole } from "../../services/member.service";
 import type { Workspace } from "../../services/workspace.service";
@@ -65,14 +73,14 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
 
   return (
     <SettingsSection title={t("invitations.title")} heading={heading}>
-      <p className="max-w-xl px-0.5 text-sm text-muted-foreground">{t("invitations.body")}</p>
+      <p className="max-w-2xl px-0.5 text-sm text-muted-foreground">{t("invitations.body")}</p>
       <SettingsCard>
         <div className="px-4.5 py-4">
           <InviteForm workspace={workspace} />
         </div>
         {rows}
       </SettingsCard>
-      <output className="block px-0.5 text-sm text-muted-foreground">
+      <output className="block px-0.5 text-sm text-muted-foreground empty:absolute">
         {copied === undefined ? "" : t("invitations.copied", { email: copied })}
       </output>
     </SettingsSection>
@@ -198,7 +206,7 @@ const InvitationRow = observer(function InvitationRow({
   return (
     <li className={stackedRowClass}>
       <div className={listLineClass}>
-        <div className="min-w-0 space-y-1">
+        <div className={cn(listTextClass, "space-y-1")}>
           <p className="text-sm font-medium break-all">{invitation.email}</p>
           <p className="text-sm text-muted-foreground">
             {t(`role.${invitation.role}`)} ·{" "}

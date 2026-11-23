@@ -1,10 +1,11 @@
 import { observer } from "mobx-react-lite";
 
 import { ConfirmDialog } from "../../app/confirm-dialog";
-import { badgeClass, listRowClass } from "../../app/settings-page";
+import { badgeClass, listRowClass, listTextClass } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatDate, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { ApiToken } from "../../services/api-token.service";
 import { useApiTokens, useStore } from "../../stores/context";
 
@@ -28,8 +29,8 @@ export const TokenRow = observer(function TokenRow({ token, revoked }: { token: 
   }
   return (
     <li className={listRowClass}>
-      <div className="min-w-0 space-y-1">
-        <p className="flex flex-wrap items-center gap-2 text-sm font-medium break-words">
+      <div className={cn(listTextClass, "space-y-1")}>
+        <p className="text-sm font-medium break-words">
           {token.name}
           {expired && <span className={badgeClass}>{t("tokens.expired")}</span>}
         </p>

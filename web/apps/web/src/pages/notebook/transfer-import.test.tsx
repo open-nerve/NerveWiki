@@ -131,6 +131,31 @@ test("a reader is told who imports, and has nothing to import with", async () =>
   expect(screen.queryByRole("button", { name: "Import a zip…" })).toBeNull();
 });
 
+/** readAgain has the notebooks read again, as the tab's focus coming back does (fake timers). */
+async function readAgain() {
+  await act(() => vi.advanceTimersByTimeAsync(6_000));
+  act(() => void window.dispatchEvent(new Event("focus")));
+}
+
+// The import's row follows the role (review B's P3S2B-N4): who cannot write is told so as the row's value.
+test("an editor made a reader on the page loses the import, told who imports; made an editor again, has it back", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  onTestFinished(() => void vi.useRealTimers());
+  const server = jobsServer({ role: "editor" });
+  renderApp(transfer, server.app);
+  expect(await screen.findByRole("button", { name: "Import a zip…" })).toBeTruthy();
+
+  server.notebook = { ...server.notebook, role: "reader" };
+  await readAgain();
+  expect(await screen.findByText("Only those who can edit this notebook import into it.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Import a zip…" })).toBeNull();
+
+  server.notebook = { ...server.notebook, role: "editor" };
+  await readAgain();
+  expect(await screen.findByRole("button", { name: "Import a zip…" })).toBeTruthy();
+  expect(screen.queryByText("Only those who can edit this notebook import into it.")).toBeNull();
+});
+
 test("nothing goes out without a file, or with one larger than the server takes; one not named .zip goes, said so", async () => {
   const user = userEvent.setup({ applyAccept: false });
   const server = jobsServer({
