@@ -1129,6 +1129,7 @@ export const zhCN: Messages = {
   "createWorkspace.off": "这台服务器上的工作区由服务器管理员创建。工作区的管理员邀请你之后，打开邀请链接即可加入。",
   "settings.security": "安全",
   "settings.danger": "危险操作",
+  "settings.basics": "基本信息",
   "security.passwordTitle": "密码",
   "security.currentPassword": "当前密码",
   "security.newPassword": "新密码",

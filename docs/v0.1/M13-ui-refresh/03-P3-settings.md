@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P3 设置界面（两个 Step：S1 设置模式与个人设置；S2 工作区与笔记本设置） |
-| 日期 | 2026-11-23（初稿；同日照设计审查修订，[审查记录](reviews/P3-design-review.md)，主持者的决定 833–847；同日照修订核对第 1、2 轮再修订，决定 848；主持者补上最后的 Nit，设计定稿）；2026-11-24（照 S1 的实施与审查修订，[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)，主持者的决定 849–851） |
-| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P3-design-review.md)，主持者的决定 810–848）；S1 实施与审查完成（[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)，主持者的决定 849–851），合并 `f32b0762`；S2 待开 |
+| 日期 | 2026-11-23（初稿；同日照设计审查修订，[审查记录](reviews/P3-design-review.md)，主持者的决定 833–847；同日照修订核对第 1、2 轮再修订，决定 848；主持者补上最后的 Nit，设计定稿）；2026-11-24（照 S1 的实施与审查修订，[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)，主持者的决定 849–851；同日照 S2 的实施与审查修订，[S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)，主持者的决定 852–853） |
+| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P3-design-review.md)，主持者的决定 810–848）；S1 实施与审查完成（[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)，主持者的决定 849–851），合并 `f32b0762`；S2 实施与审查完成（[S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)，主持者的决定 852–853），合并见 00 号文档第 12 节 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.4（全部）、4.2.2 第 3、4 项里设置模式的两句、4.2.3、4.2.4 末两项、4.2.5"设置模式"一项、4.3 的"单选与复选""下拉""按钮"三条、4.7、4.8（UI2、UI3 与变异的最低清单）、第 7 节 P3 两行、9.1"设置模式""即时生效""原生控件"三行、第 10 节"侧栏换成设置目录""a15"两行；[02-P2](02-P2-shell.md) 第 9 节"P3""P2–P5""P3–P5 的 375 px 故事""收尾"四条；[01-P1](01-P1-foundation.md) 第 9 节"P3"与"P2–P5"两条；[v0.1 总体设计](../v0.1-design.md) 9.2、13.2 第 12、16、17、20、31 条、13.4 第 3 条；移交 [M12-polish](../../v0.2/handoffs/M12-polish.md) 第 1 项（编号沿用 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目，19.2 的现象与改法写在那里） |
 | 视觉参照 | [mockups/settings.html](mockups/settings.html) 方案 A（目录：`.side`、`.row.back`、`.stitle`、`.group`；页：`.page`、`.sec`、`.card`、`.set`；控件：`.btn`、`.input`、`.select`、`.saved`、`.badge`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `ba66557c` 的 |
@@ -277,7 +277,7 @@
 
 ### 2.3 本文的决定（主持者的决定，负责人可以改判）
 
-810–832 是初稿的，设计审查之后照审查记录的处置改了 812–818、820、822、823、825、828–830、832 的说法（改的地方注明新的决定号）；833–847 是审查之后的（[审查记录](reviews/P3-design-review.md)"主持者的决定"，括注是发现的编号）。修订核对第 1 轮之后又照处置改了 822、825、839、840 的说法（发现编号带 R1）；第 2 轮之后加了 848，改了 822、823 的说法（R2）。 849–851 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)"主持者的决定"，括注是发现的编号）。
+810–832 是初稿的，设计审查之后照审查记录的处置改了 812–818、820、822、823、825、828–830、832 的说法（改的地方注明新的决定号）；833–847 是审查之后的（[审查记录](reviews/P3-design-review.md)"主持者的决定"，括注是发现的编号）。修订核对第 1 轮之后又照处置改了 822、825、839、840 的说法（发现编号带 R1）；第 2 轮之后加了 848，改了 822、823 的说法（R2）。 849–851 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P3-S1-settings-mode-review.md)"主持者的决定"，括注是发现的编号）。 852–853 是 S2 的实施审查之后的（[S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)"主持者的决定"，括注是发现的编号）。
 
 - **810 目录的宿主**：工作区与笔记本的设置由 `WorkspaceLayout` 把自己的左栏换成目录：仍是同一个 `ShellSidebar`（同一个位置、同一种组件，React 保留它与它的抽屉、菜单按钮、细栏），`top` 换成 `SettingsTop`，中段换成 `SettingsDirectory`，`place` 换成"设置"；个人设置的 `SettingsLayout` 自己 `useDrawer()`、画 `ShellSidebar`、给 `Drawer` 上下文，门户进 `Layout` 的列。工作区与笔记本的两个设置布局只剩文档标题与按页挂载的 `SettingsPage`。理由见 2.1 第 1 条；另一个做法（三个布局各画目录）在笔记本读取中、失败与 404 时没有左栏，在笔记本与工作区设置之间跳转时整个左栏重新挂载。
 - **811 设置模式的判定**：三个设置路由带 `handle: { settings: true }`，`/settings` 另带 `sidebar: true`；`useSettingsMode()` 读 `useMatches()`，同 `Layout` 的 `sidebar`，渲染时就知道，不用 effect（一个 effect 会先画一帧工作区的左栏）。`/settings` 有了 `sidebar`，个人设置不再有右上角，`corner.tsx` 的 `settings`（`:56`）与它在 `back` 里的一项（`:65`）删掉，"回到工作区"只剩新建工作区页的（[02-P2](02-P2-shell.md) 决定 803）。
@@ -321,6 +321,8 @@
 - **849 `SettingsRow` 是 `observer`**（审查 A 的 P3S1A-Q1）：一行的控件由 `children(ids)` 在 `SettingsRow` 自己的渲染里画，不在页的 `observer` 之内；不是 `observer` 时，控件读到的 store 变了它不重画。实施时外观页点"Dark"之后主题换了、单选不跟着变（a8 在 Chromium 里抓到；vitest 那一格只在换语言、整页重画之后才看单选），先以"页在自己的渲染里先读主题与语言"绕开；A 指出 S2 的行（开放程度）会再踩同一个坑，给了两种做法：`SettingsRow` 包成 `observer`，或 `children` 改为直接传元素。取前者：`children` 的写法不变，规则由组件担，不靠每页记得先读。外观页改为在 `children` 里读（变异 67：`settings-page.test.tsx` 跟着 store 一格、`appearance-page.test.tsx` 选了即生效一格）。
 - **850 设置卡片里列表的名字是 `text-sm`**（审查 B 的 P3S1B-N2）：令牌行的名字照样稿 `.set .t` 是 14 px（`text-sm`、`font-medium`），不照 4.1.7 的"左边的文字块照旧"（`member-summary.tsx` 的名字是 16 px）；S2 的列表随之，设置里只有一种列表名字的字号。经 `MemberSummary` 的（成员行、无主行、审计、添加成员）改它一处；邀请行与任务行不经它，S2 各自改（修复核对 B 的说明）。
 - **851 第一组的标题只会重复页名时不写**（审查 B 的 P3S1B-Q1；照修复核对 B 的说法改写）：个人资料、外观与语言、访问令牌三页的第一张卡片上没有分组标题（4.1.10 的 `SettingsSection` 不带标题，卡片在 `h1` 下 28 px），S2 的工作区成员页、笔记本成员页与无主笔记本页的第一组同样（4.2.2 去掉的就是与 `h1` 重复的那一个）：标题只会重复页名。别的照写：两个常规页的"基本信息"（决定 844）、安全页的"密码""危险操作"、各页其后的分组。是有意的偏离，记进 7.4。
+- **852 卡片之上的组说明同宽**（审查 B 的 P3S2B-N5；主持者的决定，负责人可以改判）：组标题与卡片之间的说明（邀请、添加成员、无主笔记本、审计日志、最近的任务）都是 `max-w-2xl`；邀请与添加成员原来是 `max-w-xl`，英文的邀请说明在 1440 宽折成"no e- / mail."。
+- **853 移动页面对话框的两个下拉在标签之下**（审查 B 的 P3S2B-Q1；主持者的决定，负责人可以改判）：`W/pages/notebook/move-page-dialog.tsx:161,174`（`397241c7` 的行号）的两个下拉加 `block`，同 S2 给邀请、添加成员与导入对话框的下拉（决定 821 的字段竖排）；文件是 P2 的，并进 S2（`1e6231e9`）。历史与目录筛选的标签组照旧随 P4、P5 剩下的标签组（第 9 节）。
 
 ## 3. 服务端
 
@@ -1043,9 +1045,47 @@ const AccessRow = observer(function AccessRow({ workspace, notebook }: NotebookP
 #### 4.2.7 移交的认领（决定 830、846）
 
 - **M12-polish 第 1 项里的 19.2**（现象与改法写在 M5-polish 第 19 条）：英文的任务行今天是"Started by Bob · Started Oct 5, …"（`transfer-job-row.tsx:72-73`），`transfer.startedBy` 改成"By {name}"，读作"By Bob · Started Oct 5, …"；中文"由 Bob 发起 · 开始于 …"不改。`transfer-page.test.tsx:91` 随之改。进展写进 `docs/v0.2/handoffs/M12-polish.md` 的"处理进展"（S2 的文档提交；M5-polish 已是 `done`，不动）。
-- **01-P1 第 9 节的标签组**：S1 的 `create-token-dialog.tsx:184`，S2 的 `invitations-section.tsx:130`、`add-member-section.tsx:102,132`、`import-dialog.tsx:318,361`，`space-y-2` 改 `space-y-1.5`，与 `FormField` 同（`add-member-section.tsx:102` 的 `min-w-56 flex-1` 留着）。剩下的八处在 P4、P5（第 9 节）。完成写进本文 10.2 与 01-P1 第 9 节的交接处。
+- **01-P1 第 9 节的标签组**：S1 的 `create-token-dialog.tsx:184`；S2 的五处：P1/S2 审查记录 S2B-N3 列表里的四处（`invitations-section.tsx:130`、`import-dialog.tsx:318,361`、`add-member-section.tsx:132`）与列表外的 `add-member-section.tsx:102`；`space-y-2` 改 `space-y-1.5`，与 `FormField` 同（`add-member-section.tsx:102` 的 `min-w-56 flex-1` 留着）。列表里的 `move-page-dialog.tsx:159,172` 在 P2/S2（`831e50a6`）就已是 `space-y-1.5`。列表里剩下五处（`asset-dialogs.tsx:221`、`search-page.tsx:221`、`index-filters.tsx:60`、`history-filters.tsx:154`、`source-add-dialog.tsx:261`），连同决定 846 补上的 `history-filters.tsx:132,143` 与 `index-filters.tsx:48`，共八处，在 P4、P5（第 9 节；审查 C 的 P3S2C-N1）。完成写进本文 10.2 与 01-P1 第 9 节的交接处。
 - **01-P1 第 9 节"P3"的文件按钮**：`Input` 加 `file:hover:hover-layer`（`hover-layer` 叠在按钮的底上，亮色 `--surface`、暗色 `--active` 之上叠 `--hover`）。`::file-selector-button:hover` 在三种引擎里都有，S2 截图核对（7.4）；暗色的底照旧 `--active`。
 - **30 px 的下拉**：开放程度的 `h-7.5`（01-P1 第 9 节"P3"）。
+
+**照实**（S2 的实施与审查，[S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)）：
+
+- **4.1.7、4.2.1**：
+  - `SettingsCard` 加 `ordered`（画 `ol`）与 `label`（列表的 `aria-label`）；导出列表行的类名常量 `listRowClass`、`stackedRowClass`、`listLineClass`、`badgeClass`、`cardTextClass`，令牌行与令牌页也改用它们（字符串没变，`b0768903`）；`access-options.tsx` 导出 `accesses`（`5cb1de3f`）。
+  - 审查之后另导出 `listTextClass`（`min-w-0 flex-1 basis-56`，同 `rowTextClass`：列表行的文字块伸缩，按钮留在右边）与 `WholeParts`（明细一段一个 `whitespace-nowrap` 的 `span`，段间" · "），`badgeClass` 前面加 `ms-1.5 inline-block`，名字的 `p` 不再是 `flex`（`1e6231e9`，审查 B 的 P3S2B-M1、N1、N2）。
+  - `rowValueClass` 照旧不导出：导入一行不能写时的那句经 `SettingsRow` 的 `value` 用它（审查 B 的 P3S2B-N4），导出了没有别的用者，knip 不放过。
+  - S1 的 `settings-origin.test.tsx`、`settings-directory.test.tsx`、`workspace-layout.test.tsx` 读旧的 `h1`（"Workspace settings""Plans settings"），随提交 1 改读页名；同外框链接的焦点由比 `textContent` 改为比元素：`h1` 与目录里的链接同名（"General""Security"）。
+- **4.1.10**：安全页密码卡片写出的那句（"Password changed. …"）与"Change password"在可折的一行（`flex flex-wrap items-center gap-x-3 gap-y-2`），同邀请与添加成员：空的时候不占宽，按钮到卡片底 17 px，原来 32 px（审查 B 的 P3S2B-N3，S1 的页，`1e6231e9`）；写出之后那句落到按钮之下、占满表单宽。初版并排、不折，长句挤成窄的一列（1440 宽 284 px、三行，375 宽 125 px、七行；B 修复核对的 P3S2B1-M1，`8d98f64f`）。
+- **4.2.3**：
+  - 列表行的文字块是 `listTextClass`：1440、768 宽按钮在右、离卡片 19 px，375 宽在文字之下；控件宽的一行（工作区成员页里带角色菜单与"移出"的）在 768 宽也落到文字之下，是 `basis-56` 的规则（审查 B 的 P3S2B-M1）。
+  - 邀请组的说明 `p` 在 `h2` 与卡片之间；卡片里先是表单那一块，再是行；读取中、失败与空都在卡片里（空的是 `cardTextClass` 的一行）；复制链接的输出在卡片之下。无主笔记本页与审计组的说明在卡片之上，空列表是卡片里 `cardTextClass` 的一行。组说明都是 `max-w-2xl`（决定 852）。
+  - 无主笔记本页说明之后与邀请卡片之后的 `<output>` 是 `empty:absolute`：Chromium 里空的 `output` 挡住外边距折叠（20 / 36 px，应为 10 / 26）；它照旧挂着、在无障碍树里（审查 B 的 P3S2B-M2，`1e6231e9`）。
+  - 邀请与添加成员的"Role"下拉 `block`，在标签之下：`Label` 是行内的，原来与下拉同行，main 上就这样（决定 821 的字段竖排，`397241c7`）。
+  - 邀请写出的那句（"Invited {email}. …"）与"Invite"在可折的一行，长了落到按钮之下；output 是 `min-w-0 break-words`，长地址里没有可断处的一段在表单边上断开，320 宽不横向滚动（B 修复核对的 P3S2B1-M1，`8d98f64f`）。
+  - `MemberSummary`："You"跟在名字最后一个字之后；地址 `break-words`，"Joined …"在 `whitespace-nowrap` 里（`397241c7`、`1e6231e9`）。无主行的原所有者一行 `break-words`，明细经 `WholeParts`（审查 B 的 P3S2B-N1、N2）。
+- **4.2.4**：
+  - 升级进行中的那一句在模式卡片里、行之下（`-mt-1 px-4.5 pb-3.5`）。
+  - 任务行的主行照设计是 `items-center`（原来 `items-start`）；"Report"是 ghost 的 30 px 胶囊，"Cancel"是 outline 的；明细除"By {name}"（名字长度不定，375 宽会横向滚动）外经 `WholeParts`（审查 B 的 P3S2B-N1）。
+  - 导入一行不能写时（读者、升级中），那句是 `SettingsRow` 的 `value`：灰、靠右、最多 60%；初版是控件区里 `max-w-xs` 的 `p`（审查 B 的 P3S2B-N4，`1e6231e9`）。
+  - 添加成员写出的那句（"{name} added."）与"Add"在同一行，卡片底下不再多 16 px（`397241c7`）；这一行可折，名字长了那句落到按钮之下，output 是 `min-w-0 break-words`（B 修复核对的 P3S2B1-M1，`8d98f64f`）。
+  - 导入对话框的"Import under"下拉 `block`（`397241c7`）；移动页面对话框的"Parent page""Position"同样（决定 853，`1e6231e9`）。
+- **4.2.5**：
+  - `native-select.test.tsx` 父元素一格的包装是 `role="toolbar"` 加 `tabIndex={-1}`：静态元素上的 `onKeyDown` 过不了 jsx-a11y，这样不加豁免。
+  - 名称的扣住格在发出期间点按、回车，放开之后 `settle` 再数；开放程度的扣住格（指针一格）在发出期间不点也不按，只在放开之后再数（审查 C 的 P3S2C-N2）。工作区名称扣住一格打字途经当前名"Acme"，"保存"卸下再挂上，打完再取一次。
+  - `useChoice` 的注释照审查 A 的 P3S2A-N2 改：`stopPropagation` 只挡冒泡的监听；Radix 对话框的 Esc 是 document 上的捕获，照旧先到（`dd6ef368`）。
+- **5.4**：UI2 第 2 格也读"Plans settings"，同改为"General"（原来只列了第 1、3 格）。
+- **5.5**：UI3 第 1 格另在第一次"Saved."之后读 `animationName`，第二次断言不同（审查 C 的 P3S2C-M1，`dd6ef368`）：透明度抓不住轮次，两次写出之间隔着一次网络往返，空的一态总会画出，淡出不靠轮次也重来。
+- **7.1**：
+  - 成员页（工作区、笔记本）与无主笔记本页加分组的格：列表无标题，其后依次是"Invitations"或"Add a member"（只给管理员）、"Danger zone"里的离开；无主笔记本页是"Audit log"，带 `ol`（`397241c7`，变异 t19 活下来之后补）。
+  - "See in the history""The change undone"带 `arrived`，到达尚未读取的变更集，`h1` 取焦点（`transfer-page.test.tsx`、`transfer-background.test.tsx` 各一格）。
+  - 审查之后的新格：`settings-directory.test.tsx` 两格，375 宽"到达之后再到达"（工作区：首页抽屉的"Settings"进 General、再点"Members"；个人：Profile 再点"Security"，换了布局，抽屉按钮每次重取），断言第二个 `h1` 是新元素、拿着焦点（审查 A 的 P3S2A-N1）；`transfer-import.test.tsx` 一格，编辑者在页上变成读者、再变回编辑者，导入一行跟着变（审查 B 的 P3S2B-N4）。
+  - 不是先红的：上面分组的四格与审查之后的三格守已有的行为，在头上本来就绿，由变异 t19、t21–t23、71–73 看到红。
+- **7.2**：第 56 行的 S2 抓手照审查 C 的 P3S2C-M1 改写；表末加 S2 的实施者另写的 t1–t23 与审查之后的 70–74，表后一句。
+- **7.4**：
+  - 800 宽"选前后各一张，行高与下拉的位置相同"要在说明一样的两个值之间核（read → edit → read）：说明随选择变，viewer 的说明在 800 宽两行，none 与 editor 的一行（行高 131.5 对 112.75）。
+  - 文件按钮的悬停三种引擎、亮暗都看过：亮色 255 → 245，暗色 54 → 63；亮色下悬停的按钮与输入框的底（244）接近，靠边框分开，是决定 757 的叠层在灰底上的通例，不改（审查 B）。
+  - 审查之后重截（`1e6231e9`、`dd6ef368` 之后，Chromium 亮暗 × 1440、768、375；B 修复核对的 `8d98f64f` 之后，安全页、邀请与添加成员写出之后，亮暗 × 1440、375、320）：见 10.2。
 
 ### 4.3 lint
 
@@ -1141,7 +1181,7 @@ export async function openNotebookSettings(page: Page, notebook: string): Promis
 
   先挂 `answerTo` 再选（选了即发）。`selectOption` 发 `input` 与 `change`，没有按键，`useChoice` 当它是指针的选择、立即用（`native-select.tsx:92-100`）；它不聚焦下拉（审查 C 的三种引擎探针；vitest 里 user-event 的 `selectOptions` 会聚焦，所以初稿的探针看不出），要看焦点的格先 `focus()`。n3 的两处调用（`:76`、`:84`）不动；`:78` 的 `getByText("Saved.", { exact: true })` 照旧（精确匹配，✓ 不在文字里；常规页上名称一行的输出是空的，只有开放程度那一行写了它，照旧唯一）。S2 的提交 2。
 - **n4**（`n4-notebook-members.spec.ts:164`）：`level: 2` 改为 `level: 1`（成员页的 `h2`"Members"去掉，焦点到 `h1`"Members"）。S2 的提交 1。
-- **UI2**：第 1 格的"Plans settings""Workspace settings"改为"General"，第 3 格的三个"Plans settings"依次改为"General""Members""Import, export and restore"（页名作 `h1`）。S2 的提交 1。
+- **UI2**：第 1 格的"Plans settings""Workspace settings"改为"General"，第 2 格的"Plans settings"也改为"General"（照实：原来漏列），第 3 格的三个"Plans settings"依次改为"General""Members""Import, export and restore"（页名作 `h1`）。S2 的提交 1。
 - **renameWorkspaceWith、renameNotebookWith**（`workspace-pages.ts:73-83`、`notebook-pages.ts:83-93`）不改：`fill` 之后才点"保存"，`renameForm` 找的是有"Name"标签的 `form`，`NameRow` 就是这样一个 `form`。
 - **核对过、不改的**：lw12:162-163,210 与 `upgrade-pages.ts:36` 以 `section` 里的 `h2`"Mode"找模式一组，S2 的 `SettingsSection` 照旧是 `section` 与 `h2`，`:210` 的焦点目标照旧；w5:135（成员看不到"Invitations"）、n4:188（不是管理员看不到"Add a member"）照旧；`deleteWorkspaceWith`、`deleteNotebookWith`、`leaveNotebookWith`、`removeMemberWith`、`takeOverWith`、`changeNotebookRoleWith`、`addNotebookMemberWith` 以按钮与对话框的名字找，文字都不变；`ownerlessListed`、`membersListed`、`auditLog` 以列表的名字找，名字不变（4.2.3、4.2.4）。
 
@@ -1324,7 +1364,7 @@ UI2 第 3 格的 `expectFits` 是设置页在 375 px 的守卫（卡片行在窄
 | 53 | S1 | 问题与 `aria-invalid` 不看 `changed`（审查 A 的 M1） | `name-row.test.tsx` 把原名打回去一格（R11） |
 | 54 | S1 | `ScrollKept` 不还原（审查 A 的 M3） | `workspace-layout.test.tsx` 滚动一格（R12：返回之后 `scrollTop` 没有先被设成 300） |
 | 55 | S1 | 账户菜单的"个人设置"在个人资料页上也带 `arrived`（审查 A 的 M2） | `profile-page.test.tsx` 窄屏一格（模拟 `inert`：焦点在 `h1` 不在菜单按钮，路由状态有 `arrived`，Q1；不模拟时两种都是账户按钮，分不出，审查 A 的 R1-M2、C 的 R1-I1）；UI2 第 3 格（经到达进入之后再选一次，焦点落到 `body`） |
-| 56 | S1 | `SavedOutput` 的轮次不换（决定 841） | `settings-page.test.tsx` 轮次一格（R10）；S2 的 UI3 第 1 格 |
+| 56 | S1 | `SavedOutput` 的轮次不换（决定 841） | `settings-page.test.tsx` 轮次一格（R10）；S2 的 UI3 第 1 格比较两次写出的 `animationName`（`dd6ef368`；原写的透明度抓不住：两次写出之间隔着一次网络往返，空的一态总会画出，淡出不靠轮次也重来，审查 C 的 P3S2C-M1） |
 | 57 | S1 | 组标题与名字之间不留空格（审查 A 的 N1） | `settings-directory.test.tsx` 的 `textContent`"Workspace Lab" |
 | 58 | S2 | 随页离开的链接不带 `arrived`（决定 839；六处各改一次） | `general-page.test.tsx`"View the upgrade"（模式一行的与横幅里的，后者 Q6）；`ownerless-page.test.tsx`"Open it"；`notebook/members-page.test.tsx` 的 `NoAdmin`；`transfer-page.test.tsx`"See in the history"；`transfer-background.test.tsx`"The change undone" |
 | 59 | S2 | `useChoice` 不处理 Esc（决定 840） | `native-select.test.tsx` 的 Esc 格；`general-page.test.tsx` 的 Esc 格（R8） |
@@ -1353,10 +1393,40 @@ UI2 第 3 格的 `expectFits` 是设置页在 375 px 的守卫（卡片行在窄
 | 68 | S1 | `ScrollKept` 挪到 `nav` 之前 | `workspace-layout.test.tsx` 滚动一格（看不见树时滚不动：438，应为 738） |
 | 69 | S1 | `ScrollKept` 不移掉监听 | `workspace-layout.test.tsx` 滚动一格（值变了时异步发 `scroll`：0，应为 300；修复核对 C 的 P3S1C1-M1） |
 | 69b | S1 | 设置模式里也监听 | 同上 |
+| t1 | S2 | 卡片的 `ul` 去掉 `aria-label` | `ownerless-page.test.tsx` 四格 |
+| t2 | S2 | 卡片的 `ol` 去掉 `aria-label` | `ownerless-page.test.tsx` 审计各格 |
+| t3 | S2 | `ordered` 也画成 `ul` | 同上 |
+| t4 | S2 | 工作区成员页移出之后焦点不到 `h1` | `workspace/members-page.test.tsx` 两格 |
+| t5 | S2 | 无主笔记本页删除之后焦点不到 `h1` | `ownerless-page.test.tsx` 两格 |
+| t6 | S2 | 邀请组没有 `heading` | `invitations-section.test.tsx` 撤回两格 |
+| t7 | S2 | 最近的任务一组没有 `heading` | `transfer-page.test.tsx` 三格 |
+| t8 | S2 | 工作区常规页没有"基本信息" | `workspace/general-page.test.tsx` 成员、访客与分组各格 |
+| t9 | S2 | 工作区"危险操作"一组没有标题 | `workspace/general-page.test.tsx` 分组两格 |
+| t10 | S2 | 笔记本"危险操作"一组的标题错 | `notebook/general-page.test.tsx` 分组两格 |
+| t11 | S2 | 中文的"基本信息"写成英文 | 两个常规页的中文分组格 |
+| t12 | S2 | 只读的开放程度没有"只有管理员能改"一句 | `notebook/general-page.test.tsx` 编辑者、读者两格 |
+| t13 | S2 | 只读的开放程度没有值 | 同上 |
+| t14 | S2 | Esc 不看有没有待用的选择 | `native-select.test.tsx` 两格 |
+| t15 | S2 | 笔记本设置布局的标题换回"X settings" | `notebook/members-page.test.tsx` 两格 |
+| t16 | S2 | 工作区设置布局的标题换回"Workspace settings" | `workspace/members-page.test.tsx` 等三格 |
+| t17 | S2 | 工作区名称不做本地检查 | `workspace/general-page.test.tsx` 问题一格 |
+| t18 | S2 | 笔记本名称没有 `fieldTexts` | `notebook/general-page.test.tsx` 问题一格 |
+| t19 | S2 | 工作区的离开不在"危险操作"组里 | `workspace/members-page.test.tsx` 分组两格（`397241c7` 起；之前没有格抓） |
+| t20 | S2 | `sent` 不计数 | `notebook/general-page.test.tsx` 连选两次两格 |
+| t21 | S2 | 笔记本的离开不在"危险操作"组里 | `notebook/members-page.test.tsx` 分组两格 |
+| t22 | S2 | 审计日志一组没有标题 | `ownerless-page.test.tsx` 两格 |
+| t23 | S2 | 添加成员一组没有标题 | `notebook/members-page.test.tsx` 两格 |
+| 70 | S2 | 去掉第二轮的 `.nw-saved[data-round="1"]:not(:empty)` 规则（`styles.css`） | UI3 第 1 格比较两次写出的 `animationName`，三种浏览器（审查 C 的 P3S2C-M1，`dd6ef368`） |
+| 71 | S2 | 工作区设置布局的 `SettingsPage` 去掉 `key` | `settings-directory.test.tsx` 工作区"到达之后再到达"一格（审查 A 的 P3S2A-N1，`dd6ef368`） |
+| 72 | S2 | 个人设置布局的 `SettingsPage` 去掉 `key` | `settings-directory.test.tsx` 个人"到达之后再到达"一格（同上） |
+| 73 | S2 | 导入一行的"能不能写"只在挂载时取 | `transfer-import.test.tsx` 编辑者变读者再变回一格（审查 B 的 P3S2B-N4，`1e6231e9`） |
+| 74 | S2 | 能写时导入一行也给 `value` | 同上一格；`upgrade-read-only.test.tsx` 管理员一格 |
 
 不列的：`SlotHolder` 只在焦点还在原处时调 `intoColumn`（审查 A 的 M3，4.1.5）在有了 `ScrollKept` 之后是等价变异：去掉守卫，`intoColumn` 量到的是 `hidden` 里的 0，滚回 0，`ScrollKept` 在设置模式里本也把左栏放到 0，返回时再还原；留着它，是"焦点还不上时不碰左栏"的写法清楚。强制色下的两处边框（决定 845）的样子由 7.4 的截图看，主按钮的类名另由第 62 条守。"已保存。"的预留宽度（决定 848）没有 vitest 或故事抓得住（jsdom 不排版，故事不在 768–1010 宽下读这两行），由 7.4 的 800 与 940 宽的截图看。
 
 t1–t14b 是 S1 的实施者另写的（t11 即上面不列的 `SlotHolder` 守卫，等价；t10 没有格守着）；64–69b 随审查与修复核对的修复，69、69b 在滚动一格的桩发 `scroll` 之前活下来。审查者另写的（A 的十条，C 的 c1–c13，c3 等价）和它们的结果在 [S1 的审查记录](reviews/P3-S1-settings-mode-review.md)。
+
+S2 的 t1–t23 是 S2 的实施者另写的（与 S1 的 t 各自编号，以 Step 一列分开）；t19 在 `397241c7` 补分组的格之前活下来，t21–t23 随那几格加。70–74 随审查的修复；56 在 S2 的 e2e 一份（56e）第一轮没抓住，`dd6ef368` 之后抓住。审查者另写的（A 的十二条，esc-stepped 等价；C 的 s1–s10，s4 等价）和它们的结果在 [S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)。
 
 ### 7.3 门禁
 
@@ -1593,7 +1663,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 ## 9. 交给后面的 Phase
 
 - **P4**：`main` 照旧 `p-6`，设置页在宽屏上另加 `md:px-2 md:pt-5 md:pb-4` 凑出样稿的 44 / 32 / 40，内容最宽 696 px（`max-w-178`，决定 844；4.1.7）：P4 定了 `main` 的留白之后，`SettingsPage` 的这几个类随之改；细栏的位置文字在设置里是"设置"，P4 把它换成页的标题时，设置页同换（换成页名）；升级进行中，笔记本设置页顶上的升级横幅（`NotebookLayout` 画在 `Outlet` 之前，`W/pages/notebook/notebook-layout.tsx:86`）占 `main` 的全宽，比 `SettingsPage` 的 696 px 内容列宽、左边也不齐，并把 `h1` 往下推：P4 定 `main` 的版式时一并让它与内容列对齐（7.4 S2 有一张截图）。
-- **P5**：别处通往设置的内容链接要不要带 `arrived`，照 13.2 第 17 条逐个看（决定 828；设置页里随页离开的六个 S2 已带，决定 839）：工作区首页无主笔记本提醒里的"Review them"（`W/pages/workspace/workspace-home.tsx:87`）；笔记本首页的"笔记本设置"（`W/pages/notebook/notebook-home.tsx:69`，去掉之后 `page-tree-scale.test.tsx:243` 改找齿轮"Settings of …"）；变更集页的"See its progress"（`W/pages/notebook/changeset-page.tsx:253` 交给 `SaidText` 的 `jobs`）；回收站预览的"See the jobs"（`W/pages/notebook/trash-preview.tsx:361`）。设置里的空列表（"No tokens yet."、没有邀请、没有无主笔记本、没有任务）换成 P5 的空状态组件。01-P1 第 9 节剩下的手写标签组八处（`space-y-2` 改 `space-y-1.5`）：`W/pages/page/asset-dialogs.tsx:221`、`W/pages/search/search-page.tsx:221`、`W/pages/notebook/index-filters.tsx:48,60`、`W/pages/notebook/history-filters.tsx:132,143,154`、`W/pages/notebook/source-add-dialog.tsx:261`（`move-page-dialog.tsx` 两处 P2 已改，P3 改 `create-token-dialog.tsx:184` 与 S2 的四处；决定 846 补上 `history-filters.tsx:132,143` 与 `index-filters.tsx:48`，审查 B 的 M3）。
+- **P5**：别处通往设置的内容链接要不要带 `arrived`，照 13.2 第 17 条逐个看（决定 828；设置页里随页离开的六个 S2 已带，决定 839）：工作区首页无主笔记本提醒里的"Review them"（`W/pages/workspace/workspace-home.tsx:87`）；笔记本首页的"笔记本设置"（`W/pages/notebook/notebook-home.tsx:69`，去掉之后 `page-tree-scale.test.tsx:243` 改找齿轮"Settings of …"）；变更集页的"See its progress"（`W/pages/notebook/changeset-page.tsx:253` 交给 `SaidText` 的 `jobs`）；回收站预览的"See the jobs"（`W/pages/notebook/trash-preview.tsx:361`）。设置里的空列表（"No tokens yet."、没有邀请、没有无主笔记本、没有任务）换成 P5 的空状态组件。01-P1 第 9 节剩下的手写标签组八处（`space-y-2` 改 `space-y-1.5`）：S2B-N3 列表里剩下的五处 `W/pages/page/asset-dialogs.tsx:221`、`W/pages/search/search-page.tsx:221`、`W/pages/notebook/index-filters.tsx:60`、`W/pages/notebook/history-filters.tsx:154`、`W/pages/notebook/source-add-dialog.tsx:261`，与决定 846 补上的 `history-filters.tsx:132,143`、`index-filters.tsx:48`（审查 B 的 M3）。列表里的 `move-page-dialog.tsx:159,172` P2/S2 已改；P3/S1 改了 `create-token-dialog.tsx:184`，P3/S2 改了列表里的四处与列表外的 `add-member-section.tsx:102`（S2 的审查 C 的 P3S2C-N1）。历史与目录的筛选里标签与下拉在 flex 项里，可能并排（S2 的审查 B 未核实），随这几处一起看（决定 853）。
 - **P4、P5 的卡片**：要卡片的页（例如健康、升级）用 `W/app/settings-page.tsx` 的 `SettingsCard` 与一行的类名，不另写一套；`SettingsPage` 只给设置的布局用（它的 `h1` 按页挂载、取到达的焦点，别的页有自己的标题）。
 - **收尾**：读屏清单"H. M13"一节加：设置模式的地标（三个 `nav` 的名称与它们的组标题是纯文字、名字与"工作区""笔记本"之间读出空格、没有搜索）；"返回"的名字（带笔记本或工作区名，或只是"返回"）与回到来处之后的焦点（变更集页、回收站的预览、邀请页的 `h1` 也取）；页名作 `h1`、进入与跨外框之后读到它；"已保存。"的 `<output>`（读屏读文字、不读勾，淡去之后仍读得到）；名称一行发送中的"保存"读作忙；开放程度：键盘走一步时说明随之换、Esc 退回，发送中读作忙，被拒时的 `alert` 与下拉退回原值；`hidden` 里的树不被读到；强制色模式下的勾、主按钮的边框与目录的当前一行。
 - **v0.2**：`docs/v0.2/handoffs/M12-polish.md` 第 1 项里的 19.5、19.6、20.4、31.1 照旧留着（决定 830、846）。
@@ -1613,6 +1683,18 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 - **门禁**：每个提交的 `make lint-web knip test-web` 都绿；改了行为的提交跑了 `make e2e`（提交 1、2：618 过、3 败、1 跳，2.8 min；`2979f1c2`：618 / 3 / 1，2.6 min）。合并之前的整条命令：`276c888a` 上 vitest 221 个文件、5293 格，E2E 618 / 3 / 1，2.5 min；`2979f1c2` 上 5296 格，618 / 3 / 1，2.7 min；`6987baa9` 上 5296 格，619 过、2 败（se2:231、lw8:836；pg15:113 这次过了）、1 跳，3.2 min（load 27.47）。审查 C 在 `2979f1c2` 上第一次另败两格 WebKit（UI2:95、LW10:23：造数的 API 在负载下答 500，`commit transaction: timeout: context deadline exceeded`），重跑只败基线。UI2 九次合计约 17–20 s。受保护路径的 `git diff --quiet` 与 `git diff --check` 都以 0 退出。逐项在审查记录。
 - **与设计不同之处**：4.1 的"照实"（4.1.1、4.1.5、4.1.7、4.1.8、4.1.10、第 5 节、7.1、7.2、7.4）；决定 849–851。
 - **交给后面**：`rowValueClass` 要用时再导出；S2 的列表名字随令牌行用 `text-sm`（决定 850；邀请行与任务行不经 `MemberSummary`，各自改）；第一组的分组标题照决定 851；S2 的工作区与笔记本名称经各自的 store，写"扣住时再提交"的格时同样在放开之后再数（审查 C 的 P3S1C-M1）；决定 839 的任务行链接会到达尚未读取的变更集，`ChangesetRead` 已经能处理。
+
+### 10.2 S2：工作区与笔记本设置（2026-11-24，合并 `<待填>`）
+
+- **提交**：`b0768903`（卡片、页名作 `h1`、危险操作在最后，照 6.2 提交 1）、`5cb1de3f`（开放程度即生效、被拒退回、Esc 退回一步，照 6.2 提交 2）；照实加的 `397241c7`（成员页与无主笔记本页分组的格，变异 t19 活下来之后补；实施者截图看出的三处：三个下拉在标签之下、添加成员写出的那句在按钮旁边、成员的日期不折行）；审查的修复 `1e6231e9`（列表行的文字块伸缩、空的 `<output>` 不占流、明细与日期不折、徽记跟在名字之后、安全页写出的那句在按钮旁边、导入一行不能写时那句是行的值，决定 852、853）与 `dd6ef368`（UI3 比较两次写出的 `animationName`，工作区与个人设置的 `h1` 重挂各一格，`useChoice` 的注释）；B 修复核对的 `8d98f64f`（安全页、邀请与添加成员写出的那句可折到按钮之下，邀请与添加成员的长词在表单边上断开）；加本文档提交。[S2 的审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)。
+- **基线**：不另跑（决定 827）。提交 1 的 `make e2e` 兼作核对：只败第 1 节那三格（se2:231、pg15:113、lw8:836，同行同消息）。
+- **做完**：4.2.1–4.2.7；5.4、5.5；决定 810–851 里 S2 的部分与 852、853。M12-polish 第 1 项里的 19.2（"By {name}"）。01-P1 第 9 节的标签组 S2 改了五处：S2B-N3 列表里的 `invitations-section.tsx:130`、`import-dialog.tsx:318,361`、`add-member-section.tsx:132` 与列表外的 `add-member-section.tsx:102`（`move-page-dialog.tsx:159,172` P2/S2 已改；列表里剩下五处，连同决定 846 补上的三处在 P4、P5，第 9 节；审查 C 的 P3S2C-N1）；`Input` 的 `file:hover:hover-layer`（三种引擎截图看过）；开放程度的下拉 30 px（`h-7.5`）。
+- **测试**：vitest 5296 → 5306（提交 1）→ 5316（提交 2）→ 5322（`397241c7`）→ 5323（`1e6231e9`）→ 5325（`dd6ef368`；`8d98f64f` 只改类名），都是 221 个文件；E2E 618 → 624 过（UI3 两格 × 三种浏览器）。新格先写，在没改的树上红：提交 1 相关的 12 个文件里 11 个、51 格；提交 2 的 vitest 12 格，UI3 两格 × 三种浏览器与 n3 的 page 格。不是先红的：`397241c7` 的分组四格（变异 t19、t21–t23 看到红），审查之后的三格（71、72、73 看到红），UI3 的 `animationName`（56e、70 看到红）；它们守已有的行为。
+- **变异**：7.2 的 S2 各条（31–44 与它们的 e2e 一份、39b、58a–f、59–61、63）都被抓住；44 由 `check.mjs` 抓。56 的 S2 抓手原写的 UI3 透明度抓不住（审查 C 的 P3S2C-M1，9 次全过），改为比较两次写出的 `animationName`，56e 在三种浏览器里都红；另加 70（第二轮的 CSS 规则去掉）。实施者的 t1–t23 都被抓住，t19 在补格之前活下来。审查之后的 70–74 都被抓住。没有格守的：文件按钮的悬停、危险操作组的 `destructive` 与审查修复里的类名（`listTextClass`、`empty:absolute`、`WholeParts`、徽记、并排、`max-w-2xl`、四个下拉的 `block`、`8d98f64f` 的可折与 `min-w-0 break-words`），由截图看。审查者另写的（A 的十二条，C 的 s1–s10）与逐条的结果在审查记录；等价的：A 的 esc-stepped 与 C 的 s4（同一条）、导入一组的 `observer`（父组件随笔记本重画）。
+- **视觉的核对**（7.4）：实施者在 Chromium 里截了亮暗 × 1440、375 的六页，800、1440、375 宽开放程度的前后，长的只读值，被拒的横幅，名称编辑中，升级横幅，强制色，导入对话框，文件按钮的悬停（三种引擎、亮暗）。实量：内容列 x=498、宽 696，控件离卡片右边 19 px；开放程度"Saved."宽屏占 68 px、在下拉左边 8 px，说明一样的两个值之间来回选，800、1440、375 宽前后的行高与下拉位置相同；70 个汉字的工作区名在 1440 宽右对齐、三行，两种宽度都不横向滚动；升级横幅 x=276、宽 1140，`h1` 下移 74 px（留给 P4）；强制色下 ✓ 是 CanvasText。审查之后重截（亮暗 × 1440、768、375）：成员、无主、任务、令牌各行的按钮 1440 宽都在右边、离卡片 19 px；无主页说明到卡片 10 px，邀请卡片到"Danger zone"26 px；"You"在名字最后一行；安全页按钮到卡片底 17 px；升级中导入一行那句灰、靠右；移动对话框的两个下拉在标签之下。B 修复核对之后重截（`8d98f64f`，亮暗 × 1440、375、320）：安全页、邀请与添加成员写出的那句长了都在按钮之下 8 px、不超过表单宽，空的时候按钮到那一块的底照旧 16–17 px，都不横向滚动。审查 B 截了 194 张（三种引擎）。截图在会话的临时目录，不进仓库。
+- **门禁**：每个提交的 `make lint-web knip test-web` 都绿；改了行为的提交跑了 `make e2e`（提交 1：618 / 3 / 1，3.0 min；提交 2：624 / 3 / 1，2.8 min；`1e6231e9`：624 / 3 / 1，2.5 min，审查 C）。合并之前的整条命令：`397241c7` 上实施者 5322 格，E2E 623 过、4 败（基线三格与 AS6 `as6:167` 的抖动，单独重跑过）、1 跳，2.5 min，审查 C 625 / 2 / 1（pg15 过了），2.8 min；`dd6ef368` 上 5325 格，实施者 624 / 3 / 1，2.5 min（负载 11.7 → 34.0），审查 C 624 / 3 / 1，2.6 min；`8d98f64f` 上 实施者 5325 格，624 / 3 / 1，2.5 min（负载 15.5 → 28.9）。UI3 七次合计约 16–17 s：第 1 格 4.0–4.9 s、第 2 格 0.77–1.8 s，都低于 7.5 的推断（5–7 s、3–5 s）。受保护路径的 `git diff --quiet` 与 `git diff --check` 都以 0 退出。逐项在审查记录。
+- **与设计不同之处**：照实多一个代码提交 `397241c7`；4.2 末的"照实"（4.1.7、4.2.1、4.1.10、4.2.3、4.2.4、4.2.5、5.4、5.5、7.1、7.2、7.4）；决定 852、853。
+- **交给后面**：升级横幅与内容列对齐（P4，第 9 节）；01-P1 第 9 节剩下的标签组与历史、目录筛选里可能并排的标签（P4、P5，决定 853）；设置里的空列表换成 P5 的空状态组件（第 9 节）；Linux 上关着的下拉逐项走只由 vitest 守，在浏览器里靠负责人推送之后的 CI（审查 A 未核实的怀疑）。
 
 ## 附录：核对过的代码
 

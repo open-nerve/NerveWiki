@@ -259,7 +259,8 @@ test("a member already goes in, keeping the role they have", async () => {
   expect(await screen.findByRole("heading", { name: "Lab" })).toBeTruthy();
   await user.click(screen.getByRole("link", { name: "Settings" }));
 
-  expect(await screen.findByRole("button", { name: "Save" })).toBeTruthy();
+  // An admin's: the name a field (NameRow, whose Save waits for an edit; M13/P3/S2).
+  expect((await screen.findByLabelText<HTMLInputElement>("Name")).value).toBe("Lab");
   expect(router.state.location.pathname).toBe("/lab/settings/general");
 });
 

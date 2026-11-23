@@ -10,7 +10,8 @@ import { useWorkspace } from "./workspace-layout";
 /**
  * WorkspaceSettingsLayout is a workspace's settings page (M2/P5 design 3.6) in the settings' mode (M13/P3/S1): their
  * directory is WorkspaceLayout's left column, where the ownerless notebooks are their admins' alone (decision 810);
- * here the page chosen, keyed by its path, its h1 taking the arrival focus as it mounts (SettingsPage, decision 815).
+ * here the page chosen, keyed by its path, its h1 its name, taking the arrival focus as it mounts (SettingsPage,
+ * decision 815; M13/P3/S2).
  */
 export const WorkspaceSettingsLayout = observer(function WorkspaceSettingsLayout() {
   const { slug, name } = useWorkspace();
@@ -21,7 +22,7 @@ export const WorkspaceSettingsLayout = observer(function WorkspaceSettingsLayout
   return shown === undefined ? (
     <Outlet />
   ) : (
-    <SettingsPage key={shown.path} title={t("workspaceSettings.title")}>
+    <SettingsPage key={shown.path} title={t(shown.label)}>
       <Outlet />
     </SettingsPage>
   );

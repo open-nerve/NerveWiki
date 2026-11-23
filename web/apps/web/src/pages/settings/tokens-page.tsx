@@ -2,7 +2,7 @@ import { observer } from "mobx-react-lite";
 import useSWR from "swr";
 
 import { errorText } from "../../app/problem-messages";
-import { SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { cardTextClass, SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
 import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -43,7 +43,7 @@ export const TokensPage = observer(function TokensPage() {
   } else if (tokens.length === 0) {
     list = (
       <SettingsCard>
-        <p className="px-4.5 py-3.5 text-sm text-muted-foreground">{t("tokens.empty")}</p>
+        <p className={cardTextClass}>{t("tokens.empty")}</p>
       </SettingsCard>
     );
   } else {

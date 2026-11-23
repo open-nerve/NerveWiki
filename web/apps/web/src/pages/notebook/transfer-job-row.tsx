@@ -2,8 +2,11 @@ import { observer } from "mobx-react-lite";
 import { useCallback, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router";
 
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
+import { arrived } from "../../app/arrival";
 import { errorText } from "../../app/problem-messages";
+import { listLineClass, listTextClass, stackedRowClass, WholeParts } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatBytes, formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
@@ -22,13 +25,15 @@ import { failureText, TransferReport } from "./transfer-report";
  * An export with an address downloads; a job under way cancels, until its
  * cancel is asked; an ended one shows its report. A job that wrote in a
  * changeset leads to it in the history, a revert to the change it undoes
- * too (M8/P4 design 4.3). An upgrade's rollback only the notebook's admins
+ * too (M8/P4 design 4.3), each leaving the settings, arrived at (M13/P3/S2,
+ * decision 839). An upgrade's rollback only the notebook's admins
  * cancel (M11/P1 design 4.4): one who started it, no longer one, sees it
  * without. A cancel refused says
  * why in the row, and the list is read again. The row is named by name,
  * which tells it from the others, and so are its controls (v0.1 design
  * 13.2, item 17); a control gone with the focus gives it to the row. The
- * row takes the focus where the page gives it (its ref).
+ * row takes the focus where the page gives it (its ref). A card's row,
+ * stacked: its line, then its refusal and its report (M13/P3/S2, 4.1.7).
  */
 export const TransferJobRow = observer(function TransferJobRow({
   notebook,
@@ -68,8 +73,10 @@ export const TransferJobRow = observer(function TransferJobRow({
   const { locale } = preferences;
   const { done, total } = job.progress;
   const ttl = instance.info?.export_ttl_seconds;
+  // Who started it, a name of any length, breaks where the line does; the rest is kept whole (WholeParts).
+  const by =
+    job.created_by.user_id === me.id ? undefined : t("transfer.startedBy", { name: job.created_by.display_name });
   const details = [
-    job.created_by.user_id === me.id ? undefined : t("transfer.startedBy", { name: job.created_by.display_name }),
     t("transfer.startedAt", { time: formatDateTime(job.created_at, locale) }),
     job.finished_at === null ? undefined : t("transfer.endedAt", { time: formatDateTime(job.finished_at, locale) }),
     job.result_bytes === null ? undefined : formatBytes(job.result_bytes, locale),
@@ -113,11 +120,11 @@ export const TransferJobRow = observer(function TransferJobRow({
       tabIndex={-1}
       aria-label={name}
       aria-describedby={`${stateId} ${detailsId}`}
-      className="space-y-3 p-4 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(stackedRowClass, "outline-none focus-visible:ring-2 focus-visible:ring-ring")}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0 space-y-1">
-          <p className="font-medium break-words">{jobTitle(job, t)}</p>
+      <div className={listLineClass}>
+        <div className={cn(listTextClass, "space-y-1")}>
+          <p className="text-sm font-medium break-words">{jobTitle(job, t)}</p>
           <p id={stateId} className="text-sm">
             {t(`transfer.state.${job.state}`)}
             {job.state === "running" && job.cancel_requested_at !== null && ` · ${t("transfer.cancelling")}`}
@@ -135,7 +142,8 @@ export const TransferJobRow = observer(function TransferJobRow({
               <progress className="w-48" aria-label={t(`transfer.state.${job.state}`)} />
             ))}
           <p id={detailsId} className="text-sm break-words text-muted-foreground">
-            {details.join(" · ")}
+            {by !== undefined && `${by} · `}
+            <WholeParts parts={details} />
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
@@ -154,6 +162,7 @@ export const TransferJobRow = observer(function TransferJobRow({
           {wrote && (
             <Link
               to={`${history}/${job.changeset_id ?? ""}`}
+              state={arrived}
               aria-label={t("transfer.inHistoryOf", { name })}
               className="text-sm underline underline-offset-4"
             >
@@ -163,6 +172,7 @@ export const TransferJobRow = observer(function TransferJobRow({
           {job.kind === "revert" && job.target_changeset_id !== null && (
             <Link
               to={`${history}/${job.target_changeset_id}`}
+              state={arrived}
               aria-label={t("transfer.revertedOf", { name })}
               className="text-sm underline underline-offset-4"
             >
@@ -173,6 +183,8 @@ export const TransferJobRow = observer(function TransferJobRow({
             <Leaving left={toRow}>
               <Button
                 variant="outline"
+                size="sm"
+                shape="pill"
                 aria-label={t("transfer.cancelOf", { name })}
                 aria-busy={cancelling || undefined}
                 aria-disabled={cancelling || undefined}
@@ -185,6 +197,8 @@ export const TransferJobRow = observer(function TransferJobRow({
           {job.report !== null && (
             <Button
               variant="ghost"
+              size="sm"
+              shape="pill"
               aria-label={t("transfer.reportOf", { name })}
               aria-expanded={reporting}
               aria-controls={reporting ? reportId : undefined}

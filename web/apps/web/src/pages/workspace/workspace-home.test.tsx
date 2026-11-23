@@ -150,7 +150,7 @@ test("an admin with ownerless notebooks reads how many, with a way to them", asy
   );
   await user.click(within(home).getByRole("link", { name: "Review them" }));
 
-  expect(await screen.findByRole("heading", { level: 2, name: "Ownerless notebooks" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" })).toBeTruthy();
   expect(router.state.location.pathname).toBe("/lab/settings/ownerless");
 });
 

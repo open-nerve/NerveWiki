@@ -1,4 +1,4 @@
-import { act, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
@@ -20,6 +20,45 @@ const rawFile = assetNode(83, "scan.pdf", raw);
 const general = `/lab/notebooks/${notebookJSON.id}/settings/general`;
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
 const nameField = () => screen.findByLabelText<HTMLInputElement>("Name");
+/** The name's Save, shown once the field holds another name (NameRow, M13/P3/S2). */
+const nameSave = async () =>
+  within((await nameField()).closest("form") as HTMLElement).queryByRole("button", { name: "Save" });
+/** The select of the workspace access, which goes out as it is chosen (M13/P3/S2, decision 825). */
+const accessSelect = () => screen.findByLabelText<HTMLSelectElement>("Workspace access");
+/** What describes the access's select: the description of the option it shows. */
+const hintOf = (select: HTMLElement) =>
+  document.getElementById(select.getAttribute("aria-describedby") ?? "")?.textContent;
+/** The access's row, its form: its Saved. and its refusal. */
+const accessRow = (select: HTMLElement) => within(select.closest("form") as HTMLElement);
+const hints = {
+  none: "Only its members see it.",
+  viewer: "The workspace's admins and members can read it; a guest, once added.",
+  editor: "The workspace's admins and members can edit it; a guest, once added.",
+};
+/**
+ * A server of Plans' admin whose changes each wait to be answered: release(n) answers the nth, by the server's state
+ * changed as the change says, or by what refused says instead.
+ */
+function heldServer() {
+  const waiting: ((answer: Response) => void)[] = [];
+  const server = notebookServer({
+    members: [notebookMember(ada, "admin")],
+    answers: {
+      [`PATCH ${plans}`]: async (request) => {
+        const body = (await request.clone().json()) as object;
+        const answer = await new Promise<Response>((resolve) => waiting.push(resolve));
+        return answer.status === 200 ? json({ ...notebookJSON, ...server.plans, ...body }) : answer;
+      },
+    },
+  });
+  const release = async (n: number, refused?: Response) => {
+    await waitFor(() => expect(waiting.length).toBeGreaterThan(n));
+    await act(async () => waiting[n]?.(refused ?? json({})));
+  };
+  return { server, release };
+}
+/** Lets what a key or a click sent reach the fake server. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 /** The workspace's navigation in the left column, out of the settings. */
 const nav = () => screen.findByRole("navigation", { name: "Lab" });
 /** The settings' directory's group of the notebook (M13/P3/S1). */
@@ -32,10 +71,11 @@ test("the settings of a notebook open on its general page from its row's cog, ar
 
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
 
-  expect(await screen.findByRole("heading", { level: 2, name: "General" })).toBeTruthy();
+  // The page's name its h1, which no h2 repeats (M13/P3/S2, decision 815).
+  const title = await screen.findByRole("heading", { level: 1, name: "General" });
   expect(router.state.location.pathname).toBe(general);
-  const title = screen.getByRole("heading", { level: 1, name: "Plans settings" });
   await waitFor(() => expect(document.activeElement).toBe(title));
+  expect(screen.queryByRole("heading", { level: 2, name: "General" })).toBeNull();
   const settings = await notebookGroup();
   expect(within(settings).getByRole("link", { name: "General" }).getAttribute("aria-current")).toBe("page");
   // The workspace's navigation is not there: the settings' mode (M13/P3/S1, decision 810).
@@ -47,18 +87,22 @@ test("an admin renames the notebook; the left column shows the new name, in its 
   const server = notebookServer();
   renderApp(general, server.app);
 
+  // Save shows once the field holds another name (NameRow, M13/P3/S2).
+  expect(await nameSave()).toBeNull();
   await user.clear(await nameField());
   await user.type(await nameField(), "  Roadmap ");
-  await user.click(screen.getAllByRole("button", { name: "Save" })[0] as HTMLElement);
+  await user.click((await nameSave()) as HTMLElement);
 
   expect(await screen.findByText("Saved.")).toBeTruthy();
   expect(server.sent).toEqual(['PATCH {"name":"Roadmap"}']);
   expect((await nameField()).value).toBe("Roadmap");
   expect((await notebookGroup()).textContent).toContain("Roadmap");
 
-  // The name as saved goes out no more.
-  await user.click(screen.getAllByRole("button", { name: "Save" })[0] as HTMLElement);
-  expect(await screen.findByText("Saved.")).toBeTruthy();
+  // Saved, Save goes, the field taking the focus; the name as saved goes out no more.
+  expect(await nameSave()).toBeNull();
+  await waitFor(async () => expect(document.activeElement).toBe(await nameField()));
+  await user.keyboard("{Enter}");
+  await settle();
   expect(server.sent).toEqual(['PATCH {"name":"Roadmap"}']);
 });
 
@@ -71,7 +115,7 @@ test("a name the local check or the server refuses shows under the field, by a t
     },
   });
   renderApp(general, server.app);
-  const save = async () => user.click(screen.getAllByRole("button", { name: "Save" })[0] as HTMLElement);
+  const save = async () => user.click((await nameSave()) as HTMLElement);
 
   await user.clear(await nameField());
   await save();
@@ -86,22 +130,22 @@ test("a name the local check or the server refuses shows under the field, by a t
   expect(server.sent).toEqual(['PATCH {"name":"nul.txt"}']);
 });
 
-test("an admin opens the notebook to the workspace on Save; back in the workspace, the left column has it among the team's", async () => {
+test("an admin opens the notebook to the workspace as it is chosen; back in the workspace, the left column has it among the team's", async () => {
   const user = userEvent.setup();
   const server = notebookServer({ members: [notebookMember(ada, "admin")] });
   renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "My notebooks" });
   await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
 
-  // Moving through the options chooses them; nothing goes out until Save.
-  await user.click(await screen.findByRole("radio", { name: "Workspace can read" }));
-  await user.keyboard("{ArrowDown}");
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  expect(server.sent).toEqual([]);
-  await user.click(screen.getAllByRole("button", { name: "Save" })[1] as HTMLElement);
+  // A select, which goes out as the pointer chooses (M13/P3/S2, decision 825): no Save.
+  const select = await accessSelect();
+  expect([select.value, hintOf(select)]).toEqual(["none", hints.none]);
+  await user.selectOptions(select, "Workspace can edit");
 
-  expect(await screen.findByText("Saved.")).toBeTruthy();
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
   expect(server.sent).toEqual(['PATCH {"workspace_access":"editor"}']);
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
   expect(within(await nav()).queryByRole("list", { name: "My notebooks" })).toBeNull();
@@ -146,7 +190,7 @@ test("a deletion refused stays in the dialog with why, and the notebook stays", 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("You do not have permission to do this.");
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
   expect((await notebookGroup()).textContent).toContain("Plans");
-  expect(screen.getByRole("heading", { level: 2, name: "General" })).toBeTruthy();
+  expect(screen.getByRole("heading", { level: 1, name: "General" })).toBeTruthy();
 });
 
 test.each(["editor", "reader"] as const)(
@@ -159,16 +203,13 @@ test.each(["editor", "reader"] as const)(
     expect(screen.getByText("Workspace can read")).toBeTruthy();
     expect(screen.getByText("Only the notebook's admins can change its workspace access.")).toBeTruthy();
     expect(screen.queryByRole("textbox")).toBeNull();
-    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete notebook" })).toBeNull();
   }
 );
 
-/** The general page's two Save buttons: the name's, then the access's. */
-const saves = () => screen.getAllByRole("button", { name: "Save" }) as [HTMLElement, HTMLElement];
-
-test("a name or an access chosen while its save is out keeps the choice, not marked saved", async () => {
+test("a name edited while its save is out keeps the edit, not marked saved", async () => {
   const user = userEvent.setup();
   let release: (() => void) | undefined;
   const server = notebookServer({
@@ -185,22 +226,191 @@ test("a name or an access chosen while its save is out keeps the choice, not mar
 
   await user.clear(await nameField());
   await user.type(await nameField(), "Roadmap");
-  await user.click(saves()[0]);
+  const save = (await nameSave()) as HTMLElement;
+  await user.click(save);
   await waitFor(() => expect(server.sent).toHaveLength(1));
   await user.type(await nameField(), " 2027");
+  // Out, Save says so and sends nothing more, Enter neither: counted once the answer came, the notebook's changes
+  // waiting their turn (M13/P3/S1's handoff; review C, P3S1C-M1).
+  expect(save.getAttribute("aria-busy")).toBe("true");
+  await user.keyboard("{Enter}");
+  await user.click(save);
   release?.();
-  await waitFor(() => expect(saves()[0]).toHaveProperty("disabled", false));
+  // Not disabled while out: aria-busy, gone with the answer (review C's M5).
+  await waitFor(() => expect(save.getAttribute("aria-busy")).toBeNull());
   expect((await nameField()).value).toBe("Roadmap 2027");
   expect(screen.queryByText("Saved.")).toBeNull();
+  await settle();
+  expect(server.sent).toHaveLength(1);
+});
 
-  await user.click(screen.getByRole("radio", { name: "Workspace can read" }));
-  await user.click(saves()[1]);
+// The access as it is chosen (M13/P3/S2, decisions 825, 840): jsdom's platform is not macOS, where the keys step a
+// closed select; jsdom sends no change for a key, so a step is the key, then the change, as native-select.test.tsx
+// sends it (user-event's {ArrowDown} changes no select in jsdom; review C's M3).
+
+test("chosen by the pointer, the access goes out at once, once: shown with its description until the answer, the select busy and never disabled, keeping the focus", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+
+  await user.selectOptions(select, "Workspace can read");
+  await waitFor(() => expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}']));
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(select.getAttribute("aria-busy")).toBe("true");
+  expect(select.hasAttribute("disabled")).toBe(false);
+  expect(accessRow(select).getByRole("status").textContent).toBe("");
+
+  await release(0);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(select.getAttribute("aria-busy")).toBeNull();
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(document.activeElement).toBe(select);
+  await settle();
+  expect(server.sent).toHaveLength(1);
+});
+
+test("a step of the keys waits, shown with its description, nothing out: left, it goes; another, Enter sends it", async () => {
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  act(() => select.focus());
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "viewer" } });
+  // What the select shows, its description too (review B's M5); not busy: nothing went out, which the draft, set as
+  // a choice goes out, would say at once (review C's R1-M2).
+  expect([select.value, hintOf(select)]).toEqual(["viewer", hints.viewer]);
+  expect(select.getAttribute("aria-busy")).toBeNull();
+  await settle();
+  expect(server.sent).toEqual([]);
+
+  fireEvent.blur(select);
+  await waitFor(() => expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}']));
+  expect(select.getAttribute("aria-busy")).toBe("true");
+
+  act(() => select.focus());
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "editor" } });
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  await settle();
+  expect(server.sent).toHaveLength(1);
+  fireEvent.keyDown(select, { key: "Enter" });
+  // The second waits for the first's answer (the notebook's changes go in turn): its draft says it went.
+  expect(select.getAttribute("aria-busy")).toBe("true");
+  await release(0);
+  await release(1);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}', 'PATCH {"workspace_access":"editor"}']);
+});
+
+test("a step of the keys, Escape takes it back: the access and its description as they were, the key not the page's; left, nothing goes out; with nothing waiting Escape is not the select's", async () => {
+  const server = notebookServer({ members: [notebookMember(ada, "admin")] });
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  act(() => select.focus());
+
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  fireEvent.change(select, { target: { value: "editor" } });
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(false);
+  expect([select.value, hintOf(select)]).toEqual(["none", hints.none]);
+
+  fireEvent.blur(select);
+  await settle();
+  expect(server.sent).toEqual([]);
+  act(() => select.focus());
+  expect(fireEvent.keyDown(select, { key: "Escape" })).toBe(true);
+});
+
+test("Saved. once answered, emptied as the next choice goes out, written again in its other round", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  const saved = () => accessRow(select).getByRole("status");
+
+  await user.selectOptions(select, "Workspace can read");
+  await release(0);
+  await waitFor(() => expect(saved().textContent).toBe("Saved."));
+  const round = saved().dataset.round;
+
+  await user.selectOptions(select, "Workspace can edit");
   await waitFor(() => expect(server.sent).toHaveLength(2));
-  await user.click(screen.getByRole("radio", { name: "Workspace can edit" }));
-  release?.();
-  await waitFor(() => expect(saves()[1]).toHaveProperty("disabled", false));
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  expect(screen.queryByText("Saved.")).toBeNull();
+  expect(saved().textContent).toBe("");
+  await release(1);
+  await waitFor(() => expect(saved().textContent).toBe("Saved."));
+  expect(saved().dataset.round).not.toBe(round);
+  expect(saved().classList.contains("nw-saved")).toBe(true);
+});
+
+test.each([
+  ["en", "Only the notebook's admins can change its workspace access.", "Workspace access"],
+  ["zh-CN", "只有笔记本的管理员能修改开放程度。", "在工作区里的开放程度"],
+] as const)(
+  "refused, in %s, the access shows the list's again, why under its row, the focus kept on the select, nothing said saved",
+  async (locale, why, label) => {
+    const user = userEvent.setup();
+    const server = notebookServer({
+      members: [notebookMember(ada, "admin")],
+      answers: { [`PATCH ${plans}`]: () => problem(403, "forbidden") },
+    });
+    server.app.preferences.setLocale(locale);
+    renderApp(general, server.app);
+    const select = await screen.findByLabelText<HTMLSelectElement>(label);
+    act(() => select.focus());
+
+    await user.selectOptions(select, locale === "en" ? "Workspace can edit" : "工作区成员可编辑");
+
+    expect((await accessRow(select).findByRole("alert")).textContent).toBe(why);
+    expect(select.value).toBe("none");
+    expect(select.getAttribute("aria-busy")).toBeNull();
+    expect(document.activeElement).toBe(select);
+    expect(accessRow(select).getByRole("status").textContent).toBe("");
+    expect(server.plans.workspace_access).toBe("none");
+  }
+);
+
+test("two choices, the first refused once the second went out: only the latest's answer counts, no refusal said", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+
+  await user.selectOptions(select, "Workspace can read");
+  await user.selectOptions(select, "Workspace can edit");
+  await release(0, problem(403, "forbidden"));
+  // The second goes once the first is answered (the notebook's changes go in turn).
+  await waitFor(() => expect(server.sent).toHaveLength(2));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", "true"]);
+
+  await release(1);
+  await waitFor(() => expect(accessRow(select).getByRole("status").textContent).toBe("Saved."));
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", null]);
+  expect(server.sent).toEqual(['PATCH {"workspace_access":"viewer"}', 'PATCH {"workspace_access":"editor"}']);
+});
+
+test("two choices, the first's success back once the second went out: the second shown, busy, not said saved, until its own answer", async () => {
+  const user = userEvent.setup();
+  const { server, release } = heldServer();
+  renderApp(general, server.app);
+  const select = await accessSelect();
+  const saved = () => accessRow(select).getByRole("status").textContent;
+
+  await user.selectOptions(select, "Workspace can read");
+  await user.selectOptions(select, "Workspace can edit");
+  await release(0);
+  await waitFor(() => expect(server.sent).toHaveLength(2));
+  // The list has the first now; the select shows the second still, busy until the latest is answered (review B's
+  // R1-N2: useForm's sending, through by the first's answer, would say nothing of the second).
+  await waitFor(() => expect(server.plans.workspace_access).toBe("viewer"));
+  expect([select.value, select.getAttribute("aria-busy"), saved()]).toEqual(["editor", "true", ""]);
+
+  await release(1);
+  await waitFor(() => expect(saved()).toBe("Saved."));
+  expect([select.value, select.getAttribute("aria-busy")]).toEqual(["editor", null]);
 });
 
 afterEach(() => vi.useRealTimers());
@@ -219,11 +429,42 @@ test("untouched forms follow another admin's changes; Save sends nothing back ov
   act(() => void window.dispatchEvent(new Event("focus")));
 
   await waitFor(async () => expect((await nameField()).value).toBe("Roadmap"));
-  expect(screen.getByRole("radio", { name: "Workspace can edit" })).toHaveProperty("checked", true);
-  await user.click(saves()[0]);
-  await user.click(saves()[1]);
-  expect(await screen.findAllByText("Saved.")).toHaveLength(2);
+  // The name untouched has no Save, Enter sending nothing (NameRow); the access's select follows, Save none
+  // (M13/P3/S2, decision 825).
+  const select = await accessSelect();
+  expect([select.value, hintOf(select)]).toEqual(["editor", hints.editor]);
+  expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  await user.click(await nameField());
+  await user.keyboard("{Enter}");
+  await settle();
   expect(server.sent).toEqual([]);
+});
+
+test.each([
+  ["en", "General", ["Basics", "Mode", "Danger zone"]],
+  ["zh-CN", "常规", ["基本信息", "模式", "危险操作"]],
+] as const)(
+  "the general page's groups, in %s: the basics first, the mode, the danger zone last with the deletion",
+  async (locale, title, groups) => {
+    const server = notebookServer();
+    server.app.preferences.setLocale(locale);
+    renderApp(general, server.app);
+
+    await screen.findByRole("heading", { level: 1, name: title });
+    const main = within(screen.getByRole("main"));
+    expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups);
+    const danger = within(main.getByRole("heading", { level: 2, name: groups[2] }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: locale === "en" ? "Delete notebook" : "删除笔记本" })).toBeTruthy();
+  }
+);
+
+test("its editor's groups: the basics and the mode, no danger zone", async () => {
+  const members = [notebookMember(ada, "editor"), notebookMember(bob, "admin")];
+  renderApp(general, notebookServer({ members }).app);
+
+  await screen.findByText("Only the notebook's admins can change its name.");
+  const main = within(screen.getByRole("main"));
+  expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(["Basics", "Mode"]);
 });
 
 test("an admin downgrades a wiki once and focuses the Mode heading", async () => {
@@ -416,6 +657,31 @@ test.each([
     expect(section.getByText(texts[state], { exact: false })).toBeTruthy();
     const link = section.queryByRole("link", { name: "View the upgrade" });
     expect(link?.getAttribute("href") ?? null).toBe(linked ? `/lab/notebooks/${notebookJSON.id}/upgrade` : null);
+  }
+);
+
+// The page left by a link of the settings arrives where it leads (M13/P3/S2, decision 839): the mode's row's, and the
+// banner's above each page of the notebook (review B's R1-N3).
+test.each(["the mode's row", "the banner above the page"] as const)(
+  "an upgrade under way, View the upgrade in %s arrives at its page, its title focused",
+  async (where) => {
+    const user = userEvent.setup();
+    const server = upgradeServer({ upgrade: bobsUpgrade({ state: "upgrading" }) });
+    const { router } = renderApp(general, server.app);
+
+    const section = await modeOf();
+    const banner = screen
+      .getAllByRole("status")
+      .find((status) => status.textContent?.startsWith("This notebook is being upgraded") === true);
+    const link =
+      where === "the mode's row"
+        ? section.getByRole("link", { name: "View the upgrade" })
+        : within(banner as HTMLElement).getByRole("link", { name: "View the upgrade" });
+    await user.click(link);
+
+    const title = await screen.findByRole("heading", { level: 1, name: "Upgrade to an LLM Wiki" });
+    expect(router.state.location.pathname).toBe(`/lab/notebooks/${notebookJSON.id}/upgrade`);
+    await waitFor(() => expect(document.activeElement).toBe(title));
   }
 );
 

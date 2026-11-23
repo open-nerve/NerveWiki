@@ -92,12 +92,14 @@ export async function renameNotebookWith(
   return { status: response.status(), renamed: (await response.json()) as Notebook };
 }
 
-/** Chooses the access of the notebook id on its general page, as the page words it, and saves it; resolves the answer. */
+/**
+ * Chooses the access of the notebook id on its general page, as the page words it, which goes out as it is chosen
+ * (M13/P3/S2); resolves the answer. selectOption chooses as the pointer does and does not focus the select: a story
+ * that reads the focus focuses it first.
+ */
 export async function changeAccessWith(page: Page, id: string, access: string): Promise<Response> {
-  const form = page.locator("form", { has: page.getByRole("group", { name: "Workspace access", exact: true }) });
-  await form.getByRole("radio", { name: access, exact: true }).check();
   const answer = answerTo(page, "PATCH", `/api/v0/notebooks/${id}`);
-  await form.getByRole("button", { name: "Save", exact: true }).click();
+  await page.getByLabel("Workspace access", { exact: true }).selectOption({ label: access });
   return answer;
 }
 

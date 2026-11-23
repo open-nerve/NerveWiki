@@ -46,7 +46,7 @@ test("UI2 (page): the settings are entered from the column's Settings, a noteboo
   // The cog: the notebook's settings, the column their directory, no search, no switcher, the tree out of sight.
   await openNotebookSettings(page, "Plans");
   await expect(page).toHaveURL(notebookPath(slug, notebook.id, "general"));
-  await expect(settingsTitle(page, "Plans settings")).toBeFocused();
+  await expect(settingsTitle(page, "General")).toBeFocused();
   await expect(page.getByRole("searchbox")).toHaveCount(0);
   await expect(switcher(page, "Acme")).toHaveCount(0);
   await expect(page.getByRole("navigation", { name: "Pages of Plans", exact: true })).toHaveCount(0);
@@ -75,7 +75,7 @@ test("UI2 (page): the settings are entered from the column's Settings, a noteboo
   await expect(workspaceHeading(page, "Acme")).toBeVisible();
   await workspaceNav(page, "Acme").getByRole("link", { name: "Settings", exact: true }).click();
   await expect(page).toHaveURL(`/${slug}/settings/general`);
-  await expect(settingsTitle(page, "Workspace settings")).toBeFocused();
+  await expect(settingsTitle(page, "General")).toBeFocused();
   await settingsBack(page, "Acme").click();
   await expect(page).toHaveURL(`/${slug}`);
   await expect(workspaceHeading(page, "Acme")).toBeFocused();
@@ -100,7 +100,7 @@ test("UI2 (page): opened at their address, the directory names its workspace and
   const { page, adminId, workspace, notebook } = await plansOfAcme(api, signedInPage, testInfo);
   const { slug } = workspace;
   await goto(page, notebookPath(slug, notebook.id, "general"));
-  await expect(settingsTitle(page, "Plans settings")).toBeVisible();
+  await expect(settingsTitle(page, "General")).toBeVisible();
   // No origin: Back to the directory's workspace.
   await expect(settingsBack(page, "Acme")).toBeVisible();
 
@@ -147,7 +147,7 @@ test("UI2 (page): at a phone's width the directory is the drawer, each link in i
   await openDrawer(page);
   await openNotebookSettings(page, "Plans");
   await expect(shell(page)).toHaveJSProperty("inert", true);
-  await expect(settingsTitle(page, "Plans settings")).toBeFocused();
+  await expect(settingsTitle(page, "General")).toBeFocused();
   await expect(drawerButton(page).locator("xpath=..")).toHaveText("Settings");
 
   // Opened, the drawer's first control is Back.
@@ -156,7 +156,7 @@ test("UI2 (page): at a phone's width the directory is the drawer, each link in i
   await settingsGroup(page, "Notebook settings").getByRole("link", { name: "Members", exact: true }).click();
   await expect(page).toHaveURL(notebookPath(slug, notebook.id, "members"));
   await expect(shell(page)).toHaveJSProperty("inert", true);
-  await expect(settingsTitle(page, "Plans settings")).toBeFocused();
+  await expect(settingsTitle(page, "Members")).toBeFocused();
 
   // Arrived at after an arrival: the page's h1 mounts anew and takes it again (review C's I1).
   await openDrawer(page);
@@ -165,7 +165,7 @@ test("UI2 (page): at a phone's width the directory is the drawer, each link in i
     .click();
   await expect(page).toHaveURL(notebookPath(slug, notebook.id, "transfer"));
   await expect(shell(page)).toHaveJSProperty("inert", true);
-  await expect(settingsTitle(page, "Plans settings")).toBeFocused();
+  await expect(settingsTitle(page, "Import, export and restore")).toBeFocused();
   await expectFits(page);
 
   await openDrawer(page);

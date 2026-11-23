@@ -106,7 +106,8 @@ function ownerlessServer({ role = "admin", list = [ownerlessJSON, atlas], pages,
   return Object.assign(server, { app });
 }
 
-const heading = () => screen.findByRole("heading", { level: 2, name: "Ownerless notebooks" });
+/** The page's h1, its name (M13/P3/S2, decision 815). */
+const heading = () => screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" });
 
 /** How the row's controls name a notebook of Bob's: by its name and its former owner. */
 const takeOver = (name: string) => `Take over ${name}, former owner Bob (bob@example.com)`;
@@ -216,8 +217,10 @@ test("taking one over puts it among the account's notebooks, says so with a way 
   await waitFor(() => expect(server.sent.filter((sent) => sent === "GET audit")).toHaveLength(2));
 
   await user.click(within(status).getByRole("link", { name: "Open it" }));
-  expect(await screen.findByRole("heading", { level: 1, name: "Roadmap" })).toBeTruthy();
+  // The settings left, the notebook's home arrived at: its title takes the focus (M13/P3/S2, decision 839).
+  const title = await screen.findByRole("heading", { level: 1, name: "Roadmap" });
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${ownerlessJSON.id}`);
+  await waitFor(() => expect(document.activeElement).toBe(title));
   // Out of the settings, the left column is the workspace's again: the notebook among the team's.
   const nav = screen.getByRole("navigation", { name: "Lab" });
   expect(within(within(nav).getByRole("list", { name: "Team notebooks" })).getAllByRole("link")[0]?.textContent).toBe(
@@ -396,7 +399,8 @@ test("the list says so when it cannot be read; Try again reads it", async () => 
   const server = ownerlessServer();
   server.down = true;
   renderApp(page, server.app);
-  const section = (await heading()).closest("section") as HTMLElement;
+  // The list's group, untitled: its title would be the page's (M13/P3/S2, decision 851).
+  const section = (await screen.findByText(/^Notebooks left without an admin/)).closest("section") as HTMLElement;
 
   expect((await within(section).findByRole("alert")).textContent).toBe(
     "Cannot reach the server. Check the connection and try again."
@@ -548,4 +552,17 @@ test("going from one workspace's ownerless notebooks straight to another's lists
   await waitFor(async () =>
     expect(await events()).toEqual(["Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com)."])
   );
+});
+
+// The page's groups (M13/P3/S2, decision 851): the list first, untitled, the page's name saying it; the audit's.
+test("the ownerless notebooks' page: the list untitled, then the audit log", async () => {
+  renderApp(page, ownerlessServer().app);
+
+  const list = await screen.findByRole("list", { name: "Ownerless notebooks" });
+  expect(list.closest("section")?.querySelector("h2")).toBeNull();
+  const main = within(screen.getByRole("main"));
+  expect(main.getAllByRole("heading", { level: 2 }).map((each) => each.textContent)).toEqual(["Audit log"]);
+  expect(
+    main.getByRole("heading", { level: 2, name: "Audit log" }).closest("section")?.querySelector("ol")
+  ).not.toBeNull();
 });
