@@ -109,28 +109,41 @@ test("(1) closed, the drawer is inert and no dialog, with no tabindex; the menu 
   await waitFor(() => expect(document.activeElement).toBe(menuButton()));
 });
 
-test("(1) open, the window does not scroll behind it: its overflow hidden, as it was again once closed, by Escape, a page chosen or a wider window (decision 809)", async () => {
+test("(1) open, the window does not scroll behind it: its overflow hidden, its scrollbar's gutter kept where the scrollbar took room, as they were again once closed, by Escape, a page chosen or a wider window (decision 809; review B's S3B1-N1)", async () => {
   const { media, user } = await guidePage();
   const html = document.documentElement.style;
   html.overflow = "auto";
+  html.scrollbarGutter = "auto";
   onTestFinished(() => {
     html.overflow = "";
+    html.scrollbarGutter = "";
   });
+  const was = () => [html.overflow, html.scrollbarGutter];
   await openDrawer(user);
-  expect(html.overflow).toBe("hidden");
+  expect(was()).toEqual(["hidden", "stable"]);
   await user.keyboard("{Escape}");
   await waitFor(closed);
-  expect(html.overflow).toBe("auto");
+  expect(was()).toEqual(["auto", "auto"]);
 
   await openDrawer(user);
   await user.click(treeLink("Notes"));
   await screen.findByRole("heading", { level: 1, name: "Notes" });
   closed();
-  expect(html.overflow).toBe("auto");
+  expect(was()).toEqual(["auto", "auto"]);
 
   await openDrawer(user);
   media.set(false);
-  expect(html.overflow).toBe("auto");
+  expect(was()).toEqual(["auto", "auto"]);
+
+  // A scrollbar that takes no room (overlay or hidden, a page that fits; jsdom's clientWidth is 0): no gutter, which
+  // would shift the page behind by a scrollbar's width.
+  media.set(true);
+  vi.spyOn(document.documentElement, "clientWidth", "get").mockReturnValue(window.innerWidth);
+  await openDrawer(user);
+  expect(was()).toEqual(["hidden", "auto"]);
+  await user.keyboard("{Escape}");
+  await waitFor(closed);
+  expect(was()).toEqual(["auto", "auto"]);
 });
 
 test("the strip says where the page is: the notebook of the address, else the workspace", async () => {
@@ -392,9 +405,12 @@ test("(6) the window narrower, the focus in the column goes to the menu, not to 
   const { media } = await guidePage();
   media.set(false);
   act(() => switcher().focus());
+  // Not scrolled to: the strip at the page's top, a page scrolled down would jump to it (review A's S3A1-N1).
+  const focus = vi.spyOn(menuButton(), "focus");
   media.set(true);
   closed();
   expect(document.activeElement).toBe(menuButton());
+  expect(focus).toHaveBeenCalledWith({ preventScroll: true });
 });
 
 test("(7) an unsaved edit, a page chosen in the drawer asks first; Stay closes it quietly, the focus back in the editor, the address the same (decision 799)", async () => {
@@ -438,7 +454,7 @@ test("(5) a choice of Where to look waiting, Mod+K opens it at the box: the choi
   expect(document.activeElement).toBe(box());
 });
 
-test("(5) only a replace of the query alone leaves it open: a search from it on the results page, a push, closes it, the menu taking the focus (review A's S3A-Q2, as it was); a replace to another page and query closes it (decision 807)", async () => {
+test("(5) only a replace of the query alone leaves it open: a search from it on the results page, a push, closes it, the menu taking the focus (review A's S3A-Q2, as it was); Back to it, and a replace to another page and query, close it (decision 807)", async () => {
   phone();
   const user = userEvent.setup();
   const { router } = renderApp(`/lab/search?q=Guide`, pageServer().app);
@@ -449,6 +465,12 @@ test("(5) only a replace of the query alone leaves it open: a search from it on 
   await screen.findByRole("heading", { level: 1, name: "Search “Notes”" });
   closed();
   await waitFor(() => expect(document.activeElement).toBe(menuButton()));
+
+  // Back to the first search, the same path, another query: no replace, it closes (review C's S3C1-N2).
+  await openDrawer(user);
+  await act(() => router.navigate(-1));
+  await screen.findByRole("heading", { level: 1, name: "Search “Guide”" });
+  closed();
 
   await openDrawer(user);
   await act(() => router.navigate(`${pagePath(notes.id)}?from=search`, { replace: true }));

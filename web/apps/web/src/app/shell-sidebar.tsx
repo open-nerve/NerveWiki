@@ -174,22 +174,32 @@ export function useDrawer(): ShellDrawer {
     }),
     []
   );
-  // Narrower, the column turned an inert drawer: a focus left in it to the menu, not to the body (review A's S3A-N1).
+  // Narrower, the column turned an inert drawer: a focus left in it to the menu, not to the body (review A's S3A-N1),
+  // the window not scrolled to the strip at its top: the reader did nothing, the window changed (S3A1-N1).
   useLayoutEffect(() => {
     if (narrow && root.current?.contains(document.activeElement)) {
-      menu.current?.focus();
+      menu.current?.focus({ preventScroll: true });
     }
   }, [narrow]);
-  // Open, the window does not scroll behind it: its overflow hidden, as it was again once closed (decision 809).
+  // Open, the window does not scroll behind it: its overflow hidden, as it was again once closed (decision 809). Where
+  // its scrollbar took room (classic scrollbars, the page overflowing), its gutter kept: the page behind does not shift
+  // by its width (S3B1-N1). Not where it took none (overlay or hidden scrollbars, a page that fits): a gutter there
+  // would shift it.
   useEffect(() => {
     if (!trapping) {
       return undefined;
     }
-    const style = document.documentElement.style;
-    const was = style.overflow;
+    const html = document.documentElement;
+    const style = html.style;
+    const was = { overflow: style.overflow, gutter: style.scrollbarGutter };
+    const room = window.innerWidth > html.clientWidth;
     style.overflow = "hidden";
+    if (room) {
+      style.scrollbarGutter = "stable";
+    }
     return () => {
-      style.overflow = was;
+      style.overflow = was.overflow;
+      style.scrollbarGutter = was.gutter;
     };
   }, [trapping]);
   // The navigation's commit: the focus leaves the drawer now, no setState (decision 790).
