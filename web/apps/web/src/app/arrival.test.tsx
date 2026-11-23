@@ -1,5 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { NavigationType } from "react-router";
 import { expect, test } from "vitest";
 
 import type { Notebook } from "../services/notebook.service";
@@ -9,7 +10,7 @@ import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
 import { indexFacts } from "../test/index-server";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
-import { arrived, opened } from "./arrival";
+import { arrived, headingTakes, opened } from "./arrival";
 
 // The arrival focus (M3/P4 design 3.5): a page's heading takes it as the page shows, arrived at, on the first mount
 // for a navigation; one that shows later for the same navigation, the page deleted or restored elsewhere, takes it
@@ -443,4 +444,24 @@ test("a page whose route notice was taken, deleted elsewhere later, gives way to
   await screen.findByRole("heading", { level: 1, name: "Page not found" });
   await settle();
   expect(document.activeElement).toBe(box);
+});
+
+// Whether the page gone to takes the focus itself, its title or an attachment's row: what the drawer leaves it to
+// (M13/P2/S3, decision 790; review A's P2A1-N2).
+test.each([
+  [arrived, NavigationType.Push, true],
+  [arrived, NavigationType.Replace, true],
+  [arrived, NavigationType.Pop, true],
+  [{ attachment: "0199a2b4-0000-7000-8000-000000000021" }, NavigationType.Push, true],
+  [{ attachment: "0199a2b4-0000-7000-8000-000000000021" }, NavigationType.Replace, true],
+  [{ attachment: "0199a2b4-0000-7000-8000-000000000021" }, NavigationType.Pop, true],
+  [opened, NavigationType.Pop, true],
+  [opened, NavigationType.Push, false],
+  [opened, NavigationType.Replace, false],
+  [null, NavigationType.Push, false],
+  [null, NavigationType.Replace, false],
+  [null, NavigationType.Pop, false],
+  [{ arrived: false, attachment: 21 }, NavigationType.Pop, false],
+] as const)("the heading takes the focus of %j by %s: %s", (state, type, takes) => {
+  expect(headingTakes(state, type)).toBe(takes);
 });

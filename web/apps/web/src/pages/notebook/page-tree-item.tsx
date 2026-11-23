@@ -16,7 +16,7 @@ import {
 } from "react";
 import { createPath, useLocation, useParams, type NavigateFunction } from "react-router";
 
-import { opened } from "../../app/arrival";
+import { arrived, opened } from "../../app/arrival";
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { writesNotebook } from "../../app/effective-role";
 import { lockedText } from "../../app/problem-messages";
@@ -84,11 +84,13 @@ export type OpenMenu = { id: string; button: string; box: Box };
  * a write's failure shows; the page whose menu button is to have the
  * focus, observable, which the tree gives it once it has it; the tree's
  * menu opened at a page's button, and closed as the page's row leaves;
- * the router's navigation; each row's handles, by its page; and the
+ * the router's navigation; each row's handles, by its page; the
  * reveal of the page shown's row in the left column (M13/P2/S2, decision
  * 791): its row registers its link as it is the page shown (show, which
  * answers how to take it back), and the tree brings it into the column's
- * view once a navigation (reveal).
+ * view once a navigation (reveal); and whether the tree is in the drawer
+ * of a phone's width, open (inDrawer, read as a link is followed,
+ * M13/P2/S3, decision 782).
  */
 export type TreeContext = {
   pages: PageTreeStore;
@@ -105,6 +107,7 @@ export type TreeContext = {
   rows: Map<string, RowHandles>;
   show: (link: HTMLElement) => () => void;
   reveal: () => void;
+  inDrawer: () => boolean;
 };
 
 /** notebookOf is the notebook of the tree as the store reads it, or as the tree was last given it. */
@@ -126,7 +129,9 @@ type ListProps = { context: TreeContext; parent: string | null; depth: number; i
  * the notebook, and follows a click on a row's link (M12/P4/S4 design 3.2,
  * 3.3). A page the tree opened is marked so (opened, M12/P2/S1); its link
  * followed again where the address is that link's replaces the entry, as
- * a router's link does. It draws its first rows at once and the rest a
+ * a router's link does. From the drawer of a phone's width, open, which the
+ * navigation closes, another page is arrived at, its title taking the
+ * focus; the address shown, opened as ever (M13/P2/S3, decision 782). It draws its first rows at once and the rest a
  * chunk after each paint (3.6); while not all are drawn, at once as far
  * as its row on the way to the page whose button is to have the focus.
  */
@@ -157,7 +162,8 @@ export const PageList = observer(function PageList({ context, parent, depth, id 
     const href = linkFollowed(event);
     if (href !== undefined) {
       event.preventDefault();
-      void context.go(href, { state: opened, replace: createPath(location) === href });
+      const here = createPath(location) === href;
+      void context.go(href, { state: context.inDrawer() && !here ? arrived : opened, replace: here });
     }
   };
   return (

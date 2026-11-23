@@ -2,20 +2,20 @@ import { House, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { createContext, use, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Navigate, Outlet, useParams } from "react-router";
+import { Navigate, Outlet, useMatch, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
 import { GiveCornerBack } from "../../app/corner";
 import { useShellColumn } from "../../app/layout";
 import { NotLoaded } from "../../app/not-loaded";
-import { ShellSidebar } from "../../app/shell-sidebar";
+import { Drawer, ShellSidebar, useDrawer } from "../../app/shell-sidebar";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
 import type { MessageKey } from "../../i18n/messages/en";
 import type { Workspace } from "../../services/workspace.service";
 import { SessionChangedError } from "../../session/token-manager";
-import { useStore, useWorkspaces } from "../../stores/context";
+import { useNotebooks, useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
 import { makeSlot, NotebookSlot } from "./notebook-slot";
@@ -51,6 +51,17 @@ const sections: readonly {
 ];
 
 /**
+ * ShellPlace is where the page is, for the strip of a phone's width (decision 784): the notebook of the address,
+ * when the workspace's list has it, else the workspace.
+ */
+const ShellPlace = observer(function ShellPlace({ workspace }: { workspace: Workspace }) {
+  const notebooks = useNotebooks(workspace);
+  // Not useParams: the column is the workspace's, above the routes that name a notebook.
+  const id = useMatch("/:slug/notebooks/:id/*")?.params.id;
+  return (id === undefined ? undefined : notebooks.byId(id)?.name) ?? workspace.name;
+});
+
+/**
  * WorkspaceLayout is the shell of a workspace's pages (M2/P5 design 3.2):
  * the left column (ShellSidebar, M13/P2/S1), its top the switcher and the
  * workspace's search box (M8/P5 design 4.2), then its navigation: its
@@ -63,7 +74,9 @@ const sections: readonly {
  * it, outside the main (M4/P5 design 3.2). Without it, the load failed or
  * the workspace not found, the account is at the top right. It listens
  * for Mod+K and Mod+Shift+F, which give the box the focus
- * (useSearchShortcuts, M13/P2/S3).
+ * (useSearchShortcuts, M13/P2/S3). Below md the column is a drawer
+ * (useDrawer), whose actions it gives what is below it (Drawer): the
+ * tree's links, an unsaved edit's guard.
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -87,7 +100,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   const [slot] = useState(makeSlot);
   // The search box's field, which Mod+K and Mod+Shift+F give the focus: none until the workspace is shown.
   const field = useRef<HTMLInputElement>(null);
-  useSearchShortcuts({ field });
+  const drawer = useDrawer();
+  useSearchShortcuts({ field, actions: drawer.actions });
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const [last, setLast] = useState<Workspace | undefined>(undefined);
   const listed = workspaces.bySlug(slug);
@@ -132,6 +146,8 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   // ShellSidebar): a probe of the three engines saw no difference, harmless kept (M13/P2/S1).
   const left = (
     <ShellSidebar
+      drawer={drawer}
+      place={<ShellPlace workspace={workspace} />}
       top={
         <>
           <WorkspaceSwitcher current={workspace} />
@@ -153,8 +169,10 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   return (
     <WorkspaceContext value={workspace}>
       <NotebookSlot value={slot}>
-        {column !== null && createPortal(left, column)}
-        <Outlet key={workspace.id} />
+        <Drawer value={drawer.actions}>
+          {column !== null && createPortal(left, column)}
+          <Outlet key={workspace.id} />
+        </Drawer>
       </NotebookSlot>
     </WorkspaceContext>
   );

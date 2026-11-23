@@ -35,7 +35,13 @@ export function composing(event: Pick<KeyboardEvent, "isComposing" | "keyCode">)
   return event.isComposing || event.keyCode === 229;
 }
 
-/** dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. */
-export function dialogOpen(): boolean {
-  return document.querySelector('[role="dialog"], [role="alertdialog"]') !== null;
+/**
+ * dialogOpen tells whether a dialog is open: the page's own shortcuts then leave the keys to it. The drawer of a
+ * phone's width is one (M13/P2/S3), but not to the search's shortcuts, which focus the box inside it (besideDrawer).
+ */
+export function dialogOpen({ besideDrawer = false }: { besideDrawer?: boolean } = {}): boolean {
+  const dialogs = besideDrawer
+    ? '[role="dialog"]:not([data-shell]), [role="alertdialog"]'
+    : '[role="dialog"], [role="alertdialog"]';
+  return document.querySelector(dialogs) !== null;
 }

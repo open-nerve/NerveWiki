@@ -60,6 +60,7 @@ export const en = {
   "userMenu.settings": "Settings",
   "userMenu.version": "Nerve Wiki {version} ({commit})",
   "shell.backToWorkspace": "Back to the workspace",
+  "shell.menu": "Navigation",
   "workspace.home": "Home",
   "workspace.settings": "Settings",
   "workspace.create": "Create workspace",

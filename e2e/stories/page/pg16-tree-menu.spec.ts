@@ -7,6 +7,7 @@ import { goto } from "../../fixtures/navigation";
 import { notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
+import { openDrawer } from "../../fixtures/shell-pages";
 import { expect, test } from "../../fixtures/test";
 import { pageHeading, pageTree, quickSwitchFor, renameDialog, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -81,7 +82,7 @@ test("PG16 (page): the page shown has its row brought into the left column, whic
   // The last one taller than the window, which could scroll then. From md: up the column sticks, all of it in view,
   // and the row is brought in as the tree arrives, before the page's body has made the document tall: a
   // scrollIntoView would not scroll the window here either (M13/P2/S2's m24, in the three engines); at a phone's width
-  // it would, below.
+  // the room it leaves below the row tells, below.
   const long = Array.from({ length: 200 }, (_, at) => `Line ${String(at + 1)}.`).join("\n\n");
   const pages = await createInOrder(api, pat, notebook.id, titles, (title) =>
     title === "Page 60" ? `${long}\n` : undefined
@@ -112,15 +113,23 @@ test("PG16 (page): the page shown has its row brought into the left column, whic
   await expect(row("Page 60")).toBeInViewport();
   expect(await windowScroll()).toBe(0);
 
-  // At a phone's width the column comes before the page and is no scroller of its own (until the drawer, M13/P2/S3):
-  // the window is left at the top, the row far below it, where a scrollIntoView would scroll the window. By the
-  // notebook's home: Chromium and WebKit load the same address over itself in its entry, the arrival kept, and the
-  // heading took the focus again, the window scrolled to it.
+  // At a phone's width the column is the drawer (M13/P2/S3), fixed: a scrollIntoView would no more scroll the window
+  // than the reveal does, closed or open (a probe of the three engines), and what tells the reveal's own from one is
+  // the 8px it leaves below the row, which the drawer opened shows: the row is brought in as it was closed, inert and
+  // off the screen. By the notebook's home: Chromium and WebKit load the same address over itself in its entry, the
+  // arrival kept, and the heading took the focus again.
   await page.setViewportSize({ width: phoneWidth, height: 812 });
   await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect(notebookHeading(page, "Plans")).toBeVisible();
   await goto(page, wikiPagePath(workspace.slug, notebook.id, last.id));
   await expect(pageHeading(page, "Page 60")).toBeVisible();
-  await expect(row("Page 60")).toBeAttached();
+  await openDrawer(page);
+  await expect(row("Page 60")).toBeInViewport();
+  const below = await row("Page 60").evaluate((link) => {
+    const column = link.closest("[data-sidebar-scroll]");
+    return column === null ? undefined : column.getBoundingClientRect().bottom - link.getBoundingClientRect().bottom;
+  });
+  expect(below, "the room below the row").toBeGreaterThanOrEqual(7);
+  expect(below, "the room below the row").toBeLessThanOrEqual(9);
   expect(await windowScroll()).toBe(0);
 });

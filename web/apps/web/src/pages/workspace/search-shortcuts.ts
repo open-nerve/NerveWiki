@@ -1,5 +1,6 @@
 import { useEffect, useState, type RefObject } from "react";
 
+import type { DrawerActions } from "../../app/shell-sidebar";
 import { composing, dialogOpen, isMod, isModShift } from "../../app/shortcuts";
 import { onMac } from "../../lib/platform";
 
@@ -10,9 +11,17 @@ import { onMac } from "../../lib/platform";
  * nor in a composition, whose half-typed text the browser would write into the page as the focus left it (v0.1 design
  * 13.2, item 20); over a dialog it only keeps the browser's use of them. Mod+K is the editor's too, its link's (its
  * Mod-K, which has the key first): one taken already, or pressed in an editor, it leaves alone. Without a box, the
- * workspace not loaded or not found, neither is its: the browser's.
+ * workspace not loaded or not found, neither is its: the browser's. The drawer of a phone's width is no dialog to
+ * them (besideDrawer): open, they focus the box in it; closed, they open it at the box (actions, useDrawer's, the
+ * same for the shell's life, which read the drawer as they are called: the listener is added once).
  */
-export function useSearchShortcuts({ field }: { field: RefObject<HTMLInputElement | null> }): void {
+export function useSearchShortcuts({
+  field,
+  actions,
+}: {
+  field: RefObject<HTMLInputElement | null>;
+  actions: DrawerActions;
+}): void {
   const [mac] = useState(onMac);
   useEffect(() => {
     const onShortcut = (event: KeyboardEvent) => {
@@ -24,13 +33,17 @@ export function useSearchShortcuts({ field }: { field: RefObject<HTMLInputElemen
         return;
       }
       event.preventDefault();
-      if (event.repeat || dialogOpen()) {
+      if (event.repeat || dialogOpen({ besideDrawer: true })) {
         return;
       }
-      field.current.focus();
-      field.current.select();
+      if (actions.closed()) {
+        actions.open("search");
+      } else {
+        field.current.focus();
+        field.current.select();
+      }
     };
     window.addEventListener("keydown", onShortcut);
     return () => window.removeEventListener("keydown", onShortcut);
-  }, [mac, field]);
+  }, [mac, field, actions]);
 }

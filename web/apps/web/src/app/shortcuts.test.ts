@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { expect, onTestFinished, test } from "vitest";
 
-import { composing, isMod, isModShift } from "./shortcuts";
+import { composing, dialogOpen, isMod, isModShift } from "./shortcuts";
 
 const press = (
   key: string,
@@ -66,4 +66,30 @@ test("a key press is the composition's while composing, or with Safari's 229 aft
   expect(composing({ isComposing: true, keyCode: 75 })).toBe(true);
   expect(composing({ isComposing: false, keyCode: 229 })).toBe(true);
   expect(composing({ isComposing: false, keyCode: 75 })).toBe(false);
+});
+
+// The drawer of a phone's width is a dialog to the page's shortcuts, not to the search's (M13/P2/S3, decision 783).
+test("the drawer open is a dialog, but not beside it; another dialog is one either way", () => {
+  expect(dialogOpen()).toBe(false);
+  expect(dialogOpen({ besideDrawer: true })).toBe(false);
+  const drawer = document.createElement("div");
+  drawer.setAttribute("data-shell", "");
+  drawer.setAttribute("role", "dialog");
+  document.body.append(drawer);
+  onTestFinished(() => drawer.remove());
+  expect(dialogOpen()).toBe(true);
+  expect(dialogOpen({ besideDrawer: true })).toBe(false);
+
+  const confirm = document.createElement("div");
+  confirm.setAttribute("role", "alertdialog");
+  document.body.append(confirm);
+  onTestFinished(() => confirm.remove());
+  expect(dialogOpen({ besideDrawer: true })).toBe(true);
+  confirm.remove();
+  const dialog = document.createElement("div");
+  dialog.setAttribute("role", "dialog");
+  document.body.append(dialog);
+  onTestFinished(() => dialog.remove());
+  expect(dialogOpen()).toBe(true);
+  expect(dialogOpen({ besideDrawer: true })).toBe(true);
 });

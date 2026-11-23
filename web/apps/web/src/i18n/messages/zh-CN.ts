@@ -59,6 +59,7 @@ export const zhCN: Messages = {
   "userMenu.settings": "设置",
   "userMenu.version": "Nerve Wiki {version}（{commit}）",
   "shell.backToWorkspace": "回到工作区",
+  "shell.menu": "导航",
   "workspace.home": "首页",
   "workspace.settings": "设置",
   "workspace.create": "创建工作区",
