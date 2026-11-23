@@ -168,7 +168,9 @@ const box = (top: number, bottom: number) => new DOMRect(0, top, 100, bottom - t
 // jsdom lays nothing out: the column's scrolling area and the row shown stand where the stubs put them (decision
 // 814; review A's M3). As a browser does, the area clamps what it is scrolled to: without the tree in sight it has
 // nothing to scroll (a tree taller than the column, as in the implementer's probe; review A's unverified suspicion), so
-// the scroll is put back only once the tree's container is held in the column again, ScrollKept after it.
+// the scroll is put back only once the tree's container is held in the column again, ScrollKept after it. And, its
+// scrollTop changed, the area fires scroll afterwards, as a browser does: a listener left on in the settings' mode
+// would keep their 0 (review C's fix check, M1).
 test("the column's scroll is kept through the settings: their directory at its top; back, the column where it was, then the page's row brought into view", async () => {
   const sets: number[] = [];
   const values = new WeakMap<Element, number>();
@@ -182,7 +184,12 @@ test("the column's scroll is kept through the settings: their directory at its t
     }
     sets.push(value);
     const tree = this.querySelector('nav[aria-label="Pages of Plans"]');
-    values.set(this, tree !== null && tree.closest("[hidden]") === null ? value : 0);
+    const before = values.get(this) ?? 0;
+    const after = tree !== null && tree.closest("[hidden]") === null ? value : 0;
+    values.set(this, after);
+    if (after !== before) {
+      setTimeout(() => this.dispatchEvent(new Event("scroll")), 0);
+    }
   });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     if (this.hasAttribute("data-sidebar-scroll")) {

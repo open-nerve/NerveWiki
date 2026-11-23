@@ -11,7 +11,9 @@ import { useApiTokens, useStore } from "../../stores/context";
  * TokenRow is a personal access token of the list: its name, when it was
  * created, when it expires (or expired), when it was last used (to the
  * minute), and the way to revoke it; revoked, it leaves the list, and the
- * focus goes where revoked puts it.
+ * focus goes where revoked puts it. When it was created and when it expires
+ * are each kept whole: a narrow row breaks their line between them, never
+ * inside a date (review B's fix check, N1).
  */
 export const TokenRow = observer(function TokenRow({ token, revoked }: { token: ApiToken; revoked: () => void }) {
   const { preferences } = useStore();
@@ -35,7 +37,10 @@ export const TokenRow = observer(function TokenRow({ token, revoked }: { token: 
           )}
         </p>
         <p className="text-sm text-muted-foreground">
-          {t("tokens.created", { date: formatDate(token.created_at, locale) })} · {expiry}
+          <span className="whitespace-nowrap">
+            {t("tokens.created", { date: formatDate(token.created_at, locale) })}
+          </span>{" "}
+          · <span className="whitespace-nowrap">{expiry}</span>
         </p>
         <p className="text-sm text-muted-foreground">
           {token.last_used_at === null
