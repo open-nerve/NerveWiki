@@ -6,7 +6,7 @@ import { followStreams, holdStream } from "./events";
 import { goto } from "./navigation";
 import { createNotebook } from "./notebooks";
 import { createPage } from "./pages";
-import { wikiPagePath } from "./wiki-pages";
+import { treeRead, wikiPagePath } from "./wiki-pages";
 
 /** A small real content write gives 61 independent groups: preview 5, a non-final 50, then 6. */
 export async function healthPagination(api: ApiClient, credential: string, slug: string) {
@@ -25,11 +25,17 @@ export function healthCard(page: Page, rule: string) {
   return page.getByRole("main").locator(`section[id="${rule}"]`);
 }
 
-export function healthLink(page: Page, notebook: Notebook) {
+function healthLink(page: Page, notebook: Notebook) {
   return page.getByRole("navigation", { name: `More of ${notebook.name}`, exact: true }).getByRole("link", {
     name: "Health",
     exact: true,
   });
+}
+
+/** Opens the health of notebook from its places in the left column, once the tree above them is read (treeRead). */
+export async function openHealth(page: Page, notebook: Notebook): Promise<void> {
+  await treeRead(page, notebook.name);
+  await healthLink(page, notebook).click();
 }
 
 export async function healthShown(page: Page, checks = 8): Promise<void> {
@@ -156,7 +162,7 @@ export async function connectedHealth(page: Page, slug: string, notebook: Notebo
   let stream: Request;
   try {
     await goto(page, wikiPagePath(slug, notebook.id, pageId));
-    await healthLink(page, notebook).click();
+    await openHealth(page, notebook);
     await healthShown(page);
     const before = { notebooks: notebooks(), nodes: nodes() };
     const answer = answerTo(page, "GET", eventStreamPath);

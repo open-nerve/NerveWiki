@@ -30,6 +30,7 @@ import {
   revertDialog,
   revertWith,
   startEditing,
+  treeRead,
   wikiPagePath,
 } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
@@ -309,6 +310,7 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   const main = page.getByRole("main");
   await goto(page, wikiPagePath(workspace.slug, notebook.id, of.alpha));
   await expect(pageHeading(page, "Alpha")).toBeVisible();
+  await treeRead(page, "Plans");
 
   await page
     .getByRole("navigation", { name: "More of Plans", exact: true })

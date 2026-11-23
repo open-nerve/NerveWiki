@@ -30,12 +30,12 @@ import {
   connectedHealth,
   healthCard,
   healthDocumentStayed,
-  healthLink,
   healthPagination,
   healthPath,
   healthReads,
   healthShown,
   holdHealthGet,
+  openHealth,
   streamHellos,
 } from "../../fixtures/wiki-health";
 import { wikiPagePath } from "../../fixtures/wiki-pages";
@@ -617,7 +617,7 @@ test.describe("LW8 (page)", () => {
       await page.evaluate(() => Object.assign(window, { lw8Document: true }));
       const active = mode === "standard" ? rules.slice(0, 4) : rules;
       checkSummary(
-        await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click(), active.length),
+        await healthAnswer(page, graph.notebook, () => openHealth(page, graph.notebook), active.length),
         graph,
         "REST"
       );
@@ -669,7 +669,7 @@ test.describe("LW8 (page)", () => {
     });
     const page = await signedInPage(team.tokens);
     await goto(page, notebookPath(team.workspace.slug, notebook.id));
-    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    await healthAnswer(page, notebook, () => openHealth(page, notebook));
     const details = page.getByRole("main").locator("details");
     await expect(details.locator("summary")).toHaveText("No issues (8 checks)");
     await expect(details).not.toHaveAttribute("open");
@@ -777,7 +777,7 @@ test.describe("LW8 (page)", () => {
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
     await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
-    const summary = await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    const summary = await healthAnswer(page, notebook, () => openHealth(page, notebook));
     const wantedSummary = summary.rules.find((rule) => rule.rule === "wanted")!;
     expect(wantedSummary.count).toBe(61);
     expect(wantedSummary.items.map((item) => item.target)).toEqual(targets.slice(0, 5));
@@ -825,7 +825,7 @@ test.describe("LW8 (page)", () => {
     const page = await signedInPage(team.tokens);
     const reads = healthReads(page, notebook.id);
     await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
-    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    await healthAnswer(page, notebook, () => openHealth(page, notebook));
     const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint/wanted`);
     const card = healthCard(page, "wanted");
     try {
@@ -854,7 +854,7 @@ test.describe("LW8 (page)", () => {
     const reads = healthReads(page, notebook.id);
     await page.setViewportSize({ width: 1280, height: 600 });
     await goto(page, wikiPagePath(team.workspace.slug, notebook.id, overview.id));
-    await healthAnswer(page, notebook, () => healthLink(page, notebook).click());
+    await healthAnswer(page, notebook, () => openHealth(page, notebook));
     const card = healthCard(page, "wanted");
     const more = card.getByRole("button", { name: "More", exact: true });
     await more.hover();
@@ -911,7 +911,7 @@ test.describe("LW8 (page)", () => {
     const initial = wikiPagePath(team.workspace.slug, graph.notebook.id, graph.overview.id);
     await goto(page, initial);
     await page.evaluate(() => Object.assign(window, { lw8Document: true }));
-    await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click());
+    await healthAnswer(page, graph.notebook, () => openHealth(page, graph.notebook));
     await healthCard(page, "orphans").getByRole("link", { name: "Lonely.md", exact: true }).click();
     await expect(page.getByRole("heading", { level: 1, name: "Lonely", exact: true })).toBeVisible();
     expect(reads.summary()).toBe(1);
@@ -929,7 +929,7 @@ test.describe("LW8 (page)", () => {
     expect(reads.summary()).toBe(3);
     await healthAnswer(page, graph.notebook, () => page.goForward());
     expect(reads.summary()).toBe(4);
-    await healthAnswer(page, graph.notebook, () => healthLink(page, graph.notebook).click());
+    await healthAnswer(page, graph.notebook, () => openHealth(page, graph.notebook));
     expect(reads.summary()).toBe(5);
     await healthDocumentStayed(page);
   });
@@ -946,7 +946,7 @@ test.describe("LW8 (page)", () => {
     await page.evaluate(() => Object.assign(window, { lw8Document: true }));
     const held = await holdHealthGet(page, `/api/v0/notebooks/${notebook.id}/lint`);
     try {
-      await healthLink(page, notebook).click();
+      await openHealth(page, notebook);
       const abandoned = await held.entered;
       await page.goBack();
       await expect(page.getByRole("heading", { level: 1, name: "Overview", exact: true })).toBeVisible();
@@ -1224,7 +1224,7 @@ test.describe("LW8 (page)", () => {
       { times: 1 }
     );
     watchOf(page).expectConsole({ errors: [abortFailedConsole()] });
-    await healthLink(page, notebook).click();
+    await openHealth(page, notebook);
     const retry = page.getByRole("main").getByRole("button", { name: "Try again", exact: true });
     await expect(retry).toBeVisible();
     await expect(page.getByRole("main").getByRole("alert")).toBeVisible();
