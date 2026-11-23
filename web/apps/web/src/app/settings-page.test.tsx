@@ -1,10 +1,11 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
+import { observable, runInAction } from "mobx";
 import type { ReactNode } from "react";
 import { createMemoryRouter, RouterProvider, type InitialEntry } from "react-router";
 import { expect, test, vi } from "vitest";
 
 import { arrived } from "./arrival";
-import { SavedOutput, SettingsPage, useSettingsHeading } from "./settings-page";
+import { SavedOutput, SettingsPage, SettingsRow, useSettingsHeading } from "./settings-page";
 
 // A page of the settings' mode (M13/P3/S1, decisions 815, 820): its name its h1, which takes the arrival focus.
 
@@ -68,4 +69,18 @@ test("SavedOutput says Saved. or nothing, marked for its check; its round turns 
     rounds.push(output.getAttribute("data-round"));
   }
   expect(rounds).toEqual(["0", "1", "1", "0", "0", "0", "1", "1"]);
+});
+
+test("a row's controls follow the store they read: SettingsRow draws them in its own render, which it observes (decision 849)", () => {
+  const theme = observable({ dark: false });
+  render(
+    <SettingsRow title="Theme">
+      {({ title }) => <output aria-labelledby={title}>{theme.dark ? "Dark" : "Light"}</output>}
+    </SettingsRow>
+  );
+  expect(screen.getByRole("status", { name: "Theme" }).textContent).toBe("Light");
+
+  act(() => runInAction(() => (theme.dark = true)));
+
+  expect(screen.getByRole("status", { name: "Theme" }).textContent).toBe("Dark");
 });

@@ -1,3 +1,4 @@
+import { observer } from "mobx-react-lite";
 import { createContext, use, useId, useState, type ReactNode, type RefObject } from "react";
 
 import { useArrivalFocus } from "./arrival";
@@ -103,10 +104,10 @@ type RowIds = { title: string; description: string | undefined };
  * SettingsRow is a card's row that shows or acts (00-M13 4.4.2): its title, a paragraph, and its description; then a
  * value it shows (value, rowValueClass), or its controls (children, given the ids of the title and the description, to
  * name a radio group by). A row without a title says what it is in its description, in the text's size; a field's row
- * labels its field itself (NameRow). children is called in this render, which no observer follows: what it shows
- * from a store, the page reads in its own.
+ * labels its field itself (NameRow). An observer: children is called in its render, so that what the controls read
+ * of a store, it follows (decision 849; a8 found the appearance's radios not following it otherwise).
  */
-export function SettingsRow({
+export const SettingsRow = observer(function SettingsRow({
   title,
   description,
   value,
@@ -143,7 +144,7 @@ export function SettingsRow({
       {children !== undefined && <div className={rowControlClass}>{children(ids)}</div>}
     </div>
   );
-}
+});
 
 /**
  * SavedOutput is a row's "Saved." (v0.1 design 13.2 item 12; decisions 823, 841, 848): an output always mounted, its

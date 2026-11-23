@@ -141,7 +141,8 @@ test("the navigation's Settings is arrived at: the column, the same element, tur
   expect(screen.queryByRole("searchbox")).toBeNull();
 });
 
-test("in the settings' mode Mod+K and Mod+Shift+F are the browser's: no box to give the focus to", async () => {
+test("in the settings' mode Mod+K and Mod+Shift+F are the browser's: no box to give the focus to; back, the shell's again", async () => {
+  const user = userEvent.setup();
   const { router } = renderApp("/acme", withWorkspaces());
   await screen.findByRole("heading", { name: "Acme" });
   // The box there, the shell keeps the key from the browser.
@@ -153,13 +154,21 @@ test("in the settings' mode Mod+K and Mod+Shift+F are the browser's: no box to g
 
   expect(fireEvent.keyDown(document.body, { key: "k", code: "KeyK", ctrlKey: true })).toBe(true);
   expect(fireEvent.keyDown(document.body, { key: "F", code: "KeyF", ctrlKey: true, shiftKey: true })).toBe(true);
+
+  // Back, the box mounted anew: the shell keeps the key again and gives it the focus (review C's N1).
+  await user.click(screen.getByRole("link", { name: "Back to Acme" }));
+  await screen.findByRole("heading", { level: 1, name: "Acme" });
+  expect(fireEvent.keyDown(document.body, { key: "k", code: "KeyK", ctrlKey: true })).toBe(false);
+  expect(document.activeElement).toBe(screen.getByRole("searchbox"));
 });
 
 /** A rectangle from top to bottom, 100px wide. */
 const box = (top: number, bottom: number) => new DOMRect(0, top, 100, bottom - top);
 
 // jsdom lays nothing out: the column's scrolling area and the row shown stand where the stubs put them (decision
-// 814; review A's M3).
+// 814; review A's M3). As a browser does, the area clamps what it is scrolled to: without the tree in sight it has
+// nothing to scroll (a tree taller than the column, as in the implementer's probe; review A's unverified suspicion), so
+// the scroll is put back only once the tree's container is held in the column again, ScrollKept after it.
 test("the column's scroll is kept through the settings: their directory at its top; back, the column where it was, then the page's row brought into view", async () => {
   const sets: number[] = [];
   const values = new WeakMap<Element, number>();
@@ -167,10 +176,13 @@ test("the column's scroll is kept through the settings: their directory at its t
     return values.get(this) ?? 0;
   });
   vi.spyOn(Element.prototype, "scrollTop", "set").mockImplementation(function (this: Element, value: number) {
-    if (this.hasAttribute("data-sidebar-scroll")) {
-      sets.push(value);
+    if (!this.hasAttribute("data-sidebar-scroll")) {
+      values.set(this, value);
+      return;
     }
-    values.set(this, value);
+    sets.push(value);
+    const tree = this.querySelector('nav[aria-label="Pages of Plans"]');
+    values.set(this, tree !== null && tree.closest("[hidden]") === null ? value : 0);
   });
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
     if (this.hasAttribute("data-sidebar-scroll")) {

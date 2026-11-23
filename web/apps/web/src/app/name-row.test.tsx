@@ -123,6 +123,10 @@ test("Save sends the name without its blanks; out, Save says so and sends nothin
   expect(document.activeElement).toBe(name);
   expect(name.value).toBe("Ada Lovelace");
   expect(screen.getByRole("button", { name: "Ada Lovelace" })).toBeTruthy();
+  // Nothing more goes out once it is answered: the account's changes wait their turn, so a submit let through while
+  // the name was out would go then, not while it was held (review A's N1, C's M1).
+  await settle();
+  expect(server.sent).toHaveLength(1);
 });
 
 test("a name edited while its save is out keeps the edit and is not marked saved; Save sends it next", async () => {

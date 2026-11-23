@@ -1,7 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { useId, useRef, useState, type RefObject } from "react";
 import { Link, useParams } from "react-router";
-import useSWR, { unstable_serialize, useSWRConfig } from "swr";
+import useSWR, { unstable_serialize, useSWRConfig, type KeyedMutator } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
@@ -75,7 +75,30 @@ export const ChangesetPage = observer(function ChangesetPage() {
 });
 
 /**
- * ChangesetShell is the changeset found: where it is, under the history;
+ * ChangesetShell reads the changeset of the address (ChangesetRead, once
+ * it is read): while it is read, or if it cannot be, NotLoaded; a
+ * changeset of another notebook is no page of this one's, nor is one not
+ * found.
+ */
+const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
+  const t = useT();
+  const pages = usePageTree(notebook);
+  const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
+  useDocumentTitle(data === undefined ? undefined : byText(data, t), t("history.title"), notebook.name);
+  // Found gone once shown (an undo refused as not found reads it again; SWR keeps the data read before), "Page not
+  // found" stands for it, its title taking the focus the page took with it, from no one (M12/P2/S1, 23.14).
+  const gone = error instanceof ApiError && error.status === 404;
+  if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
+    return <NotFoundPage replacing={gone && data !== undefined} />;
+  }
+  if (data === undefined) {
+    return <NotLoaded error={error} retry={() => void mutate()} />;
+  }
+  return <ChangesetRead notebook={notebook} id={id} data={data} mutate={mutate} />;
+});
+
+/**
+ * ChangesetRead is the changeset found: where it is, under the history;
  * its kind and who made it, from where, when it was made and last
  * written, why, what it undid and what undid it, each leading there, why
  * it can no longer be undone when the purge trimmed it, its counts; a
@@ -88,16 +111,27 @@ export const ChangesetPage = observer(function ChangesetPage() {
  * the background whose answer was lost reads the jobs again: the
  * account's revert of it that is its press's, if any. What a read finds
  * out late, once a later undo said what came of it, it does not say.
+ * Mounted once the changeset is read, its title there as it mounts: arrived
+ * at (the settings' Back, a job's link), the title takes the focus, the
+ * changeset read or not before (M13/P3/S1, decision 835; review A's M1).
  */
-const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { notebook: Notebook; id: string }) {
+const ChangesetRead = observer(function ChangesetRead({
+  notebook,
+  id,
+  data,
+  mutate,
+}: {
+  notebook: Notebook;
+  id: string;
+  data: ChangesetDetail;
+  mutate: KeyedMutator<ChangesetDetail>;
+}) {
   const t = useT();
   const pages = usePageTree(notebook);
   const navigateNode = useNodeNavigate(pages);
   const transfers = useTransfers(notebook);
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
-  const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
-  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
   const heading = useArrivalFocus<HTMLHeadingElement>();
   const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
@@ -111,17 +145,6 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const status = useId();
   const note = useId();
   const history = t("history.title");
-  useDocumentTitle(data === undefined ? undefined : byText(data, t), history, notebook.name);
-  // A changeset of another notebook is no page of this one's, nor is one not found. Found gone once shown (an undo
-  // refused as not found reads it again; SWR keeps the data read before), "Page not found" stands for it, its title
-  // taking the focus the page took with it, from no one (M12/P2/S1, 23.14).
-  const gone = error instanceof ApiError && error.status === 404;
-  if ((data !== undefined && data.notebook_id !== notebook.id) || gone) {
-    return <NotFoundPage replacing={gone && data !== undefined} />;
-  }
-  if (data === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
-  }
   const home = `/${slug}/notebooks/${notebook.id}`;
   const href = (changeset: string) => `${home}/history/${changeset}`;
   const writer = writesNotebook(notebook);

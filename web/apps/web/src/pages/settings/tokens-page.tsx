@@ -13,8 +13,9 @@ import { TokenRow } from "./token-row";
 
 /**
  * TokensPage lists the account's personal access tokens, creates them and revokes them (M1/P6 design 3.6): what they
- * are and New token above their card, a row each (M13/P3/S1, decision 820); while the list loads or if it cannot be
- * read, in the card's place; none, a line of text in it.
+ * are, New token beside it (under it at a phone's width, the text taking the row as a card's row's does; review B's
+ * M1), above their card, a row each (M13/P3/S1, decision 820); while the list loads or if it cannot be read, in the
+ * card's place; none, a line of text in it.
  */
 export const TokensPage = observer(function TokensPage() {
   const apiTokens = useApiTokens();
@@ -58,7 +59,7 @@ export const TokensPage = observer(function TokensPage() {
   return (
     <SettingsSection>
       <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3 px-0.5">
-        <p className="max-w-xl text-sm text-muted-foreground">{t("tokens.body")}</p>
+        <p className="max-w-xl min-w-0 flex-1 basis-56 text-sm text-muted-foreground">{t("tokens.body")}</p>
         {tokens !== undefined && <CreateTokenDialog />}
       </div>
       {list}

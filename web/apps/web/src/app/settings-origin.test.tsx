@@ -7,6 +7,7 @@ import {
   instanceJSON,
   json,
   notebookJSON,
+  problem,
   signedInApp,
   testApp,
   tokensJSON,
@@ -158,6 +159,20 @@ test("entered from a workspace the list read has not (its 404), Back goes to /",
 
   await screen.findByRole("heading", { level: 1, name: "Profile" });
   await expectBack("Back", "/");
+});
+
+test("entered through the top right's account menu from a workspace whose list cannot be read, Back goes to the page it was on, unnamed (review A's N2)", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", signedInApp({ "GET /api/v0/workspaces": () => problem(503, "server_busy") }));
+  await screen.findByRole("button", { name: "Try again" });
+
+  await user.click(await screen.findByRole("button", { name: "Ada" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Settings" }));
+
+  await screen.findByRole("heading", { level: 1, name: "Profile" });
+  expect(router.state.location.pathname).toBe("/settings/profile");
+  // Not known gone, the workspace not known either: Back to where the account was, not to /.
+  await expectBack("Back", "/lab");
 });
 
 test("left for another page and come back to by Back two entries, the settings go Back to the page just left", async () => {

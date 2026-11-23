@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
 import { eventHandlers } from "../../events/handlers";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
@@ -72,6 +73,19 @@ const links = (name: string) =>
 /** rowOf is the row of the node named name, of the list named list. */
 const rowOf = (name: string, list?: string) =>
   nodes(list).find((row) => row.textContent?.startsWith(name)) as HTMLElement;
+
+// Arrived at, the changeset not read yet (the settings' Back, a job's row of S2): its title, drawn once the changeset
+// is read, takes the focus then, not the body (M13/P3/S1, decision 835; review A's M1).
+test("a changeset arrived at before it is read gives its title the focus once it is", async () => {
+  const { server, rework } = reworked();
+  const { router } = renderApp(home, server.app);
+  await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+  await act(() => router.navigate(changesetPath(rework.id), { state: arrived }));
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  await waitFor(() => expect(document.activeElement).toBe(heading));
+});
 
 test("a changeset's page says what it was and who made it, from where, when it was made and last written, why, and its counts, under the history; its tab is named for it", async () => {
   const { server, rework } = reworked();
