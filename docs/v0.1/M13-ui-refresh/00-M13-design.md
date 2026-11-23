@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1、S2 已合并，S3 已审查、待合并 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 设计定稿，S1、S2、S3 已合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -544,7 +544,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P | Phase 文档 | 状态 | 审查 | 合并 |
 |---|---|---|---|---|
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
-| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1、S2 已合并；S3 已审查、待合并 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4` |
+| P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 设计定稿；S1、S2、S3 已合并 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
 | P3 设置界面（S1、S2） | — | 未开始 | — | — |
 | P4 阅读与编辑（S1–S3） | — | 未开始 | — | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
@@ -564,4 +564,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-23：照 P2 的设计修订（[02-P2](02-P2-shell.md) 2.1；[设计审查](reviews/P2-design-review.md)，主持者的决定 769–800）：右上角由路由与会话定，笔记本行与别的笔记本的链接，账户菜单的次序，抽屉里导航之后焦点的去处，菜单的部件，头像的变量，离开外框的菜单项带 `arrived`，PG16 两格，第 10 节滚动锚定一行，第 11 节决定 731、733 注明由 P2 改。
 - 2026-11-23：P2/S1 实施与审查完成（[审查记录](reviews/P2-S1-shell-account-review.md)；主持者的决定 801–803：窄屏的账户菜单把外观直接列在菜单里，侧栏中段滚到头带着窗口走，新建工作区页也有"回到工作区"；4.2.2 第 6 条与 4.2.3 随之改）；合并 `fdad6b9e`。
 - 2026-11-23：P2/S2 实施与审查完成（[审查记录](reviews/P2-S2-notebooks-tree-review.md)；主持者的决定 804：树里父页的展开箭头与笔记本行的 ⌄ 同列；4.2.2 第 4 条与 4.8 的 PG16 随之改）；合并 `70338fc4`。
-- 2026-11-23：P2/S3 实施与审查完成（[审查记录](reviews/P2-S3-search-drawer-review.md)；主持者的决定 805–809：搜索框的清除按钮按配色画，开着的菜单让开两个搜索键，只改查询参数的 `replace` 不关抽屉，"更多"的图标照两行跟随，抽屉开着时背后不滚；4.2.5 第 4 条随之改）；合并见第 12 节。
+- 2026-11-23：P2/S3 实施与审查完成（[审查记录](reviews/P2-S3-search-drawer-review.md)；主持者的决定 805–809：搜索框的清除按钮按配色画，开着的菜单让开两个搜索键，只改查询参数的 `replace` 不关抽屉，"更多"的图标照两行跟随，抽屉开着时背后不滚；4.2.5 第 4 条随之改）；合并 `82838aac`。

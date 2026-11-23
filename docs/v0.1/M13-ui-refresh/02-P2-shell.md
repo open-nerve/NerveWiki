@@ -4,7 +4,7 @@
 |---|---|
 | Phase | M13/P2 新外框（三个 Step：S1 外框与账户行；S2 笔记本与页面树；S3 搜索、⌘K、快速切换与窄屏） |
 | 日期 | 2026-11-22（初稿）；2026-11-23（照三份设计审查修订；照修订核对第 1、2 轮再修订；主持者补上最后的 Nit，设计定稿；同日照 S1 的实施与审查修订，[S1 的审查记录](reviews/P2-S1-shell-account-review.md)；同日照 S2 的实施与审查修订，[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)；同日照 S3 的实施与审查修订，[S3 的审查记录](reviews/P2-S3-search-drawer-review.md)） |
-| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800）；S1 实施与审查完成（[S1 的审查记录](reviews/P2-S1-shell-account-review.md)，主持者的决定 801–803），已合并 `fdad6b9e`；S2 实施与审查完成（[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)，主持者的决定 804），已合并 `70338fc4`；S3 实施与审查完成（[S3 的审查记录](reviews/P2-S3-search-drawer-review.md)，主持者的决定 805–809），合并见 00 号文档第 12 节 |
+| 状态 | 设计定稿（修订核对第 3 轮之后三位都没有 Important、Minor；主持者补上最后的 Nit；[审查记录](reviews/P2-design-review.md)，主持者的决定 769–800）；S1 实施与审查完成（[S1 的审查记录](reviews/P2-S1-shell-account-review.md)，主持者的决定 801–803），已合并 `fdad6b9e`；S2 实施与审查完成（[S2 的审查记录](reviews/P2-S2-notebooks-tree-review.md)，主持者的决定 804），已合并 `70338fc4`；S3 实施与审查完成（[S3 的审查记录](reviews/P2-S3-search-drawer-review.md)，主持者的决定 805–809），已合并 `82838aac` |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.2（全部）、4.3 的"按钮""菜单"两条、4.7、4.8（UI1、PG16 与变异的最低清单）、第 7 节 P2 三行与"移交的落实""总体设计的修订"第 5、6、7 项、9.1 的"去掉顶栏""账户菜单""搜索框""工作区切换""页面树进笔记本列表""目录、健康、历史、回收站""375 px 与窄屏""窗口滚动与视口"八行、第 10 节"粘住的侧栏"与"窄屏抽屉"两行、第 11 节决定 717、719、720、727、730–733、737、745；[01-P1](01-P1-foundation.md) 第 9 节"P2"与"P2–P5"两条；[v0.1 总体设计](../v0.1-design.md) 9.2、9.3、13.2 第 16、17、20、26 条、13.4 第 3 条；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md) 第 14 项、第 1 项里的 26.3、35.7、37、38.5 与第 8 项里的 `onMac` 一条 |
 | 视觉参照 | [mockups/palette.html](mockups/palette.html)（外框：`.side`、`.ws`、`.search`、`.row`、`.tree`、`.group`、`.me`，`:62-91`、`:229-250`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `4c3f10b9` 的 |
@@ -1108,7 +1108,7 @@ B 审查者（00 号文档 4.8）用 Playwright 截取下面这些，亮暗、14
 - **与设计不同之处**：4.2 的"照实"；决定 804。
 - **交给后面**：S3 的抽屉：PG16 第二格的 375 宽一段到了抽屉里仍成立，但树关在抽屉里时它不再抓变异 24，S3 的提交 2 改在开着的抽屉里核对（6.3）；375 宽时长树把页推到很下，由抽屉解决；从带 `arrived` 的链接到达之后重载，Chromium、WebKit 里标题重新取焦点（M3、M12 既有），S2 的窄屏里侧栏在页之上才看得出窗口跟着动，抽屉之后不再如此（审查 A、C）。
 
-### 10.3 S3：搜索、⌘K、快速切换与窄屏（2026-11-23，合并见 00 号文档第 12 节）
+### 10.3 S3：搜索、⌘K、快速切换与窄屏（2026-11-23，合并 `82838aac`）
 
 - **提交**：`87d8eecb`（胶囊搜索框；Mod+K 与 Mod+Shift+F 的监听挪到外框，`W/pages/workspace/search-shortcuts.ts`；`composing` 导出；`onMac` 挪进 `W/lib/platform.ts`；快速切换换装；se1 "button" 的下限重量；照 6.3 提交 1）、`6f5f31c0`（窄屏的抽屉、细栏与遮罩：`W/app/shell-sidebar.tsx` 的 `useDrawer`、`Drawer`、`useDrawerActions`；`dialogOpen({ besideDrawer })`；`W/app/arrival.ts` 的 `headingTakes`；树与"目录""历史"两行在抽屉里带 `arrived`；"留下"安静地关上抽屉；UI1 三格进三种浏览器与 `check.mjs`；PG16 第二格的 375 宽一段改在开着的抽屉里核对；照 6.3 提交 2，本地 amend 过一次，只改说明）；审查的修复 `da648b2c`（开着的菜单让开两个搜索键（决定 806），只改查询参数的 `replace` 不关抽屉（807），变窄时焦点给菜单按钮，"更多"的图标照两行跟随、健康页的标题取到达的焦点（808），困住焦点时背后不滚（809），审查 C 的两格）、`bf67b11d`（搜索框的间距、占位与提示的位置、窄屏的右内边距，清除按钮按配色画（805），快速切换没有选项时不写提示）；修复核对的 `8f51cf11`（变窄时不滚窗口，锁住时滚动条原来占地方就留下它的槽，筛选的后退一格，回收站预览一格等按钮；合并之前的整条命令红了之后 amend 过一次，那一版 `e8da913e` 没有人审过）；`bb00d33f`（只改 e2e：笔记本的"更多"等树读到再点，`treeRead`、`openHealth`；LW8 在合并之前的整条命令里偶发的一格，HI3、HI5、LW9 同样，主持者要现在修）；加本文档提交。[S3 的审查记录](reviews/P2-S3-search-drawer-review.md)。
 - **做完**：4.3.2–4.3.5；决定 781–786、789（UI1 三格）、790、794、797、799、805–809。M5-polish 26.3（框里的 `⌘K` 提示，`aria-keyshortcuts` 两个键）；35.7（375 宽时树在抽屉里，UI1 第三格核对文件夹里的页从搜索打开时标题在视口里）；M12-polish 第 8 项的 `onMac`。26.8、26.10 照决定 797 留给 v0.2。
