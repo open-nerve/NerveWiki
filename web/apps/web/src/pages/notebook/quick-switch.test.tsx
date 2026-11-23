@@ -77,7 +77,7 @@ test.each([
     await screen.findByRole("heading", { level: 1, name: "Plans" });
     expect(ctrlO()).toBe(false);
     const dialog = await screen.findByRole("dialog");
-    const said = within(dialog).getByText(keys);
+    const said = await within(dialog).findByText(keys);
     expect(said.closest('[aria-hidden="true"]')).not.toBeNull();
     const options = () =>
       within(dialog)
@@ -134,6 +134,19 @@ test("no page found says so; past 50 the first are listed, and it says so", asyn
   expect(within(dialog).getByRole("status").textContent).toBe("No page's title has that in it.");
   expect(within(dialog).queryByRole("listbox")).toBeNull();
   expect(within(dialog).getByRole("combobox").hasAttribute("aria-controls")).toBe(false);
+});
+
+test("its foot says the keys only beside an option: no page found, it says so alone (review B's S3B-N4)", async () => {
+  const user = userEvent.setup();
+  renderApp(home, pageServer().app);
+  const dialog = await opened();
+  const keys = () => within(dialog).queryByText("↑↓ to choose · ↵ to open · Esc to close");
+  await waitFor(() => expect(keys()).not.toBeNull());
+  await user.type(within(dialog).getByRole("combobox"), "zzz");
+  expect(within(dialog).getByRole("status").textContent).toBe("No page's title has that in it.");
+  expect(keys()).toBeNull();
+  await user.clear(within(dialog).getByRole("combobox"));
+  await waitFor(() => expect(keys()).not.toBeNull());
 });
 
 test("until the tree is read it says why, and Try again reads it", async () => {

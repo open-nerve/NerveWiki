@@ -198,9 +198,11 @@ const Finder = observer(function Finder({ notebook, leave }: FinderProps) {
               : ""}
         </output>
         {/* The combobox tells a screen reader its keys already: said again, they are noise. */}
-        <p aria-hidden className="ml-auto shrink-0 text-xs text-faint max-md:hidden">
-          {t("page.quickSwitchKeys")}
-        </p>
+        {listed.length > 0 && (
+          <p aria-hidden className="ml-auto shrink-0 text-xs text-faint max-md:hidden">
+            {t("page.quickSwitchKeys")}
+          </p>
+        )}
       </div>
     </div>
   );

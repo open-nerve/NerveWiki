@@ -127,7 +127,7 @@ export const SearchBox = observer(function SearchBox({
       aria-label={t("search.form", { workspace: workspace.name })}
       noValidate
       onSubmit={onSubmit}
-      className="space-y-1"
+      className="flex flex-col gap-1"
     >
       <Label htmlFor={ids.field} className="sr-only">
         {t("search.field")}
@@ -150,7 +150,7 @@ export const SearchBox = observer(function SearchBox({
             setProblem(undefined);
           }}
           onKeyDown={keepComposing}
-          className="peer h-8 rounded-full border-border bg-surface pr-12 pl-8.75 md:text-compact dark:bg-surface-2"
+          className="peer nw-search h-8 rounded-full border-border bg-surface pr-3 pl-8.5 md:pr-12 md:text-compact dark:bg-surface-2"
         />
         {/* The button's pad, the box's colour as the box's focus changes it: its ring is drawn, and measured, on it. */}
         <span className="absolute top-1 left-1.75 grid size-6 rounded-full bg-surface transition-[background-color] duration-150 dark:bg-surface-2 dark:peer-focus-visible:bg-surface">
@@ -167,7 +167,7 @@ export const SearchBox = observer(function SearchBox({
         </span>
         <kbd
           aria-hidden
-          className="pointer-events-none absolute top-1/2 right-2.5 -translate-y-1/2 rounded-[5px] border border-border px-1.25 font-sans text-[11px] leading-4.25 text-faint max-md:hidden"
+          className="pointer-events-none absolute top-1/2 right-2.75 -translate-y-1/2 rounded-[5px] border border-border px-1.25 font-sans text-[11px] leading-4.25 text-faint max-md:hidden"
         >
           {mac ? "⌘K" : "Ctrl K"}
         </kbd>
