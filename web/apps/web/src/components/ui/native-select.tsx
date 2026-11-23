@@ -56,8 +56,10 @@ function stepping(event: KeyboardEvent<HTMLSelectElement>): boolean {
  * step (stepping). What is applied changing elsewhere (the address) drops
  * what waits. Used, the choice already in use reads nothing again.
  * Escape with a step waiting takes it back, the choice in use shown
- * again, and goes no further: no dialog's or drawer's Escape is pressed
- * by it (M13/P3/S2, decision 840); with none waiting it is not the
+ * again, and goes no further up the page: no listener it would bubble to
+ * hears it (M13/P3/S2, decision 840). A Radix dialog's Escape, a capture
+ * on the document, still comes first and closes the dialog with what
+ * waits (review A's P3S2A-N2). With none waiting the key is not the
  * select's.
  */
 export function useChoice(applied: string, apply: (value: string) => void) {

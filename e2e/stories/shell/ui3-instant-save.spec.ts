@@ -30,6 +30,11 @@ function accessRow(page: Page): { access: Locator; saved: Locator; alert: Locato
   return { access, saved: row.getByRole("status"), alert: row.getByRole("alert") };
 }
 
+/** The name of the animation of locator's element as it is computed now: the round's keyframes. */
+function animationOf(locator: Locator): Promise<string> {
+  return locator.evaluate((element) => getComputedStyle(element).animationName);
+}
+
 /** The opacity of locator's element as it is computed now. */
 function opacityOf(locator: Locator): Promise<string> {
   return locator.evaluate((element) => getComputedStyle(element).opacity);
@@ -56,16 +61,21 @@ test("UI3 (page): the workspace access goes out as it is chosen, Saved. said wit
   await expect(access).toHaveValue("viewer");
   expect(await noteOf(access)).toBe("The workspace's admins and members can read it; a guest, once added.");
   await expect(saved).toHaveText("Saved.");
+  // Its round's fade (decision 841): the next Saved. fades by the other one's keyframes.
+  const firstRound = await animationOf(saved);
   // The check is drawn before the text, not in it (decision 823).
   expect(await saved.evaluate((element) => getComputedStyle(element, "::before").content)).not.toBe("none");
   await expect.poll(() => opacityOf(saved), { timeout: 5_000 }).toBe("0");
   await expect(saved).toHaveText("Saved.");
   await expectNotebook(db, (await viewer.json()) as Notebook, adminId);
 
-  // Chosen again: emptied as it went out, written again in its other round, the fade starts anew (decision 841).
+  // Chosen again: emptied as it went out, written again in its other round, the fade starts anew (decision 841). The
+  // round read: emptied for a round trip, the text would fade anew without it, as the opacity alone shows (review C's
+  // P3S2C-M1).
   const editor = await changeAccessWith(page, notebook.id, "Workspace can edit");
   expect(editor.status()).toBe(200);
   await expect(saved).toHaveText("Saved.");
+  expect(await animationOf(saved)).not.toBe(firstRound);
   await expect.poll(() => opacityOf(saved)).toBe("1");
   await expect.poll(() => opacityOf(saved), { timeout: 5_000 }).toBe("0");
   await expect(access).toHaveValue("editor");

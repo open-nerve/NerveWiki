@@ -55,6 +55,9 @@ function phone() {
   }));
 }
 
+/** The menu of a phone's width that opens the drawer: the shown layout's. */
+const navigation = () => screen.getByRole("button", { name: "Navigation" });
+
 /** What the strip of a phone's width says beside its menu. */
 const strip = (menu = "Navigation") => screen.getByRole("button", { name: menu }).parentElement?.textContent;
 
@@ -349,6 +352,52 @@ test("at a phone's width, a link of the directory's drawer closes it, the page's
     expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Import, export and restore" }))
   );
   expect(column().hasAttribute("inert")).toBe(true);
+});
+
+// Each settings layout mounts its page's h1 anew, by its key, for a page arrived at after an arrival in the same
+// layout to take the focus (decision 815; review A's P3S2A-N1): the notebook's above, the workspace's and the
+// account's here.
+test("at a phone's width, the workspace's settings arrived at after an arrival: the next page's title, mounted anew, takes the focus", async () => {
+  phone();
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", notebookServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Lab" });
+  const menu = screen.getByRole("button", { name: "Navigation" });
+
+  await user.click(menu);
+  await user.click(await within(column()).findByRole("link", { name: "Settings" }));
+  const general = await screen.findByRole("heading", { level: 1, name: "General" });
+  await waitFor(() => expect(document.activeElement).toBe(general));
+
+  await user.click(menu);
+  await user.click(within(group("Workspace settings")).getByRole("link", { name: "Members" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe("/lab/settings/members"));
+  const members = await screen.findByRole("heading", { level: 1, name: "Members" });
+  expect(members).not.toBe(general);
+  await waitFor(() => expect(document.activeElement).toBe(members));
+});
+
+test("at a phone's width, the account's settings arrived at after an arrival: the next page's title, mounted anew, takes the focus", async () => {
+  phone();
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", notebookServer().app);
+  await screen.findByRole("heading", { level: 1, name: "Lab" });
+  // The account's settings are another layout's: its menu another button, found each time.
+  await user.click(navigation());
+  await user.click(await within(column()).findByRole("link", { name: "Settings" }));
+  await screen.findByRole("heading", { level: 1, name: "General" });
+
+  await user.click(navigation());
+  await user.click(within(group("Settings")).getByRole("link", { name: "Profile" }));
+  const profile = await screen.findByRole("heading", { level: 1, name: "Profile" });
+  await waitFor(() => expect(document.activeElement).toBe(profile));
+
+  await user.click(navigation());
+  await user.click(within(group("Settings")).getByRole("link", { name: "Security" }));
+  await waitFor(() => expect(router.state.location.pathname).toBe("/settings/security"));
+  const security = await screen.findByRole("heading", { level: 1, name: "Security" });
+  expect(security).not.toBe(profile);
+  await waitFor(() => expect(document.activeElement).toBe(security));
 });
 
 test("in Chinese: the groups' titles, Back, and the strip", async () => {
