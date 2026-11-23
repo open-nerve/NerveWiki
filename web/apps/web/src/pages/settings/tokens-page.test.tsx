@@ -255,8 +255,11 @@ test("a revoked token leaves the list, and so does one another tab revoked alrea
   const confirm = await screen.findByRole("alertdialog", { name: "Revoke deploy?" });
   await user.click(within(confirm).getByRole("button", { name: "Revoke" }));
   await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(1));
-  // The row went with its button: the focus is on the section, not lost to the page.
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Access tokens" })));
+  // The row went with its button: the focus is on the page's title, its name, not lost to the page (M13/P3/S1,
+  // decision 815).
+  await waitFor(() =>
+    expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Access tokens" }))
+  );
 
   gone = true;
   await user.click(screen.getByRole("button", { name: "Revoke agent" }));

@@ -103,7 +103,8 @@ export function useSlotMoves(): number {
  * groups for one the list no longer has, kept while a page of it is edited unsaved (NotebookNav). As it goes, it
  * keeps where the focus was in the container: the DOM's removal of the item, which comes after, would give the
  * focus to the body; the next holder of the id, once it holds the container, gives it back if no one has taken it
- * since, and brings it into the column's view (intoColumn), the container having moved (the other group is below).
+ * since, and brings it into the column's view (intoColumn), the container having moved (the other group is below),
+ * once it took it: a holder out of sight takes no focus (the settings' mode's, M13/P3/S1).
  */
 export function SlotHolder({ id }: { id: string }) {
   const slot = use(NotebookSlot);
@@ -126,7 +127,11 @@ export function SlotHolder({ id }: { id: string }) {
     }
     if (focused?.isConnected && (document.activeElement === null || document.activeElement === document.body)) {
       focused.focus({ preventScroll: true });
-      intoColumn(focused);
+      // Not taken (a holder out of sight, the settings' hidden one), the column is not scrolled for it (M13/P3/S1;
+      // review A's M3).
+      if (document.activeElement === focused) {
+        intoColumn(focused);
+      }
     }
     return () => {
       const active = document.activeElement;

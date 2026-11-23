@@ -16,9 +16,10 @@ import { followStreams, holdStream, settleEvents } from "../../fixtures/events";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
-import { downgradeWith, notebookPath } from "../../fixtures/notebook-pages";
+import { downgradeWith, notebookHeading, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, downgradeNotebook, getNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, listNodes, postPage, readContent } from "../../fixtures/pages";
+import { openNotebookSettings, settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { endedJob, holdNotebookRow, listJobs, runningJob, startImport } from "../../fixtures/transfer";
 import {
@@ -157,8 +158,11 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
   const notebookReads = countAnswers(writer, "GET", `/api/v0/workspaces/${workspace.slug}/notebooks`);
   const letStreamIn = await holdStream(writer);
   try {
-    await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
-    await goto(writer, notebookPath(workspace.slug, notebook.id, "general"));
+    // Both open the settings from the notebook's home: their Back goes there, to its tree (M13/P3/S1).
+    await goto(page, notebookPath(workspace.slug, notebook.id));
+    await openNotebookSettings(page, notebook.name);
+    await goto(writer, notebookPath(workspace.slug, notebook.id));
+    await openNotebookSettings(writer, notebook.name);
     const mode = page.locator("section", { has: page.getByRole("heading", { name: "Mode", exact: true }) });
     const otherMode = writer.locator("section", { has: writer.getByRole("heading", { name: "Mode", exact: true }) });
     const trigger = page.getByRole("button", { name: "Downgrade to a standard notebook…", exact: true });
@@ -183,10 +187,10 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     await expect(sourceTab.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
     await sourceTab.keyboard.press("ControlOrMeta+e");
     await expect(editorContent(sourceTab)).toHaveCount(0);
-    // Both existing tabs already show the two virtual rows. These locators
-    // stay on those same documents while the original event proof below runs.
-    const virtualLinks = [writer, sourceTab].flatMap((tab) =>
-      ["Directory", "History"].map((name) => pageTree(tab, notebook.name).getByRole("link", { name, exact: true }))
+    // The source tab already shows the two virtual rows (the writer's tree is hidden on the settings, M13/P3/S1).
+    // These locators stay on that same document while the original event proof below runs.
+    const virtualLinks = ["Directory", "History"].map((name) =>
+      pageTree(sourceTab, notebook.name).getByRole("link", { name, exact: true })
     );
     await Promise.all(virtualLinks.map((link) => expect(link, "a virtual row in the original tab").toBeVisible()));
     expect(streams.holders()).toEqual([writer]);
@@ -218,6 +222,13 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     expect(streams.opened()).toBe(streamsBefore);
     expect(streams.count()).toBe(1);
     expect(streams.holders()).toEqual([writer]);
+    // Back on the notebook's home, the writer's own tree has neither row.
+    await settingsBack(writer, notebook.name).click();
+    const writerTree = pageTree(writer, notebook.name);
+    await expect(writerTree).toBeVisible();
+    await Promise.all(
+      ["Directory", "History"].map((name) => expect(writerTree.getByRole("link", { name, exact: true })).toHaveCount(0))
+    );
 
     await expect(sourceTab.getByRole("main").getByRole("button", { name: "Edit", exact: true })).toBeVisible();
     await expect(originalArticle.getByRole("checkbox")).toBeEnabled();
@@ -259,6 +270,8 @@ test("LW12 (page): only an admin can downgrade without typing a name; the same s
     expect(streams.opened()).toBe(streamsBefore);
     expect(streams.holders()).toEqual([writer]);
 
+    await settingsBack(page, notebook.name).click();
+    await expect(notebookHeading(page, notebook.name)).toBeVisible();
     const tree = pageTree(page, notebook.name);
     await expect(tree.getByRole("link", { name: "AGENTS", exact: true })).toBeVisible();
     await tree.getByRole("button", { name: "Actions for AGENTS", exact: true }).click();

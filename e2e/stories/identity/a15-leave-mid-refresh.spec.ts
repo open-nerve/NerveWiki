@@ -194,8 +194,7 @@ async function expectSignedInOn(
   path: string,
   section: string
 ): Promise<void> {
-  await expect(page.getByRole("heading", { level: 1, name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { level: 2, name: section, exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: section, exact: true })).toBeVisible();
   await expect(page).toHaveURL(path);
   await expect.poll(() => generationIn(page)).toBe(2);
   expect((await sessionOf(db, tokens.refresh_token)).revoked_at).toBeNull();
@@ -308,7 +307,7 @@ test("A15 (page): leaving through the helper at that moment waits for the first 
   await leaving;
 
   expect(routes.problems).toEqual([]);
-  await expectSignedInOn(page, pageWatch, db, tokens, "/settings/security", "Password");
+  await expectSignedInOn(page, pageWatch, db, tokens, "/settings/security", "Security");
 });
 
 test("A15 (page): leaving through the helper while a read is out waits for its answer", async ({

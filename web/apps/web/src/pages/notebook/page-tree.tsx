@@ -7,6 +7,7 @@ import { useEffect, useId, useInsertionEffect, useLayoutEffect, useMemo, useRef,
 import { Link, NavLink, useLocation, useMatch, useNavigate, useParams } from "react-router";
 import useSWR from "swr";
 
+import { arrived } from "../../app/arrival";
 import { writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { pagesLocked } from "../../app/pages-locked";
@@ -288,8 +289,10 @@ export const PageTree = observer(function PageTree({ notebook }: { notebook: Not
             <span className="min-w-0 truncate">{notebook.name}</span>
           </NavLink>
         </h2>
+        {/* It leaves with the column, the settings' directory taking its place: arrived at (M13/P3/S1, 816). */}
         <Link
           to={`${home}/settings/general`}
+          state={arrived}
           aria-label={t("notebook.settingsOf", { notebook: notebook.name })}
           className={cn(
             "absolute top-0.75 grid size-6 place-items-center rounded-row text-faint hover:bg-hover hover:text-foreground [&_svg]:size-4",

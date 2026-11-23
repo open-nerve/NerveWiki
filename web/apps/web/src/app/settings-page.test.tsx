@@ -1,0 +1,56 @@
+import { act, render, screen, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { createMemoryRouter, RouterProvider, type InitialEntry } from "react-router";
+import { expect, test, vi } from "vitest";
+
+import { arrived } from "./arrival";
+import { SettingsPage, useSettingsHeading } from "./settings-page";
+
+// A page of the settings' mode (M13/P3/S1, decisions 815, 820): its name its h1, which takes the arrival focus.
+
+/** Renders what at /, the router's first entry entry. */
+function at(entry: InitialEntry, what: ReactNode) {
+  const router = createMemoryRouter([{ path: "/", element: what }], { initialEntries: [entry] });
+  return render(<RouterProvider router={router} />);
+}
+
+test("arrived at, a settings page's h1 takes the focus: its name, a heading the program focuses", async () => {
+  at({ pathname: "/", state: arrived }, <SettingsPage title="Profile">The page</SettingsPage>);
+
+  const title = screen.getByRole("heading", { level: 1, name: "Profile" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+  expect(title.getAttribute("tabindex")).toBe("-1");
+  expect(screen.getByText("The page")).toBeTruthy();
+});
+
+test("opened, not arrived at, a settings page's h1 takes no focus", async () => {
+  at("/", <SettingsPage title="Profile">The page</SettingsPage>);
+
+  const title = screen.getByRole("heading", { level: 1, name: "Profile" });
+  await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(document.activeElement).not.toBe(title);
+});
+
+/** Focus gives the focus to the settings page's h1, as a list's removal does. */
+function Focus() {
+  const heading = useSettingsHeading();
+  return (
+    <button type="button" onClick={() => heading.current?.focus()}>
+      Focus
+    </button>
+  );
+}
+
+test("useSettingsHeading is the page's h1; outside a settings page it throws", async () => {
+  at(
+    "/",
+    <SettingsPage title="Access tokens">
+      <Focus />
+    </SettingsPage>
+  );
+  act(() => screen.getByRole("button", { name: "Focus" }).click());
+  expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Access tokens" }));
+
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  expect(() => render(<Focus />)).toThrow("useSettingsHeading is used outside SettingsPage");
+});

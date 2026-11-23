@@ -50,7 +50,7 @@ test("a workspace's left column is beside the one main, which holds its page (M3
 });
 
 test("a page without a shell is the one main", async () => {
-  renderApp("/settings/profile", signedInApp());
+  renderApp("/create-workspace", signedInApp());
   const heading = await screen.findByRole("heading", { level: 1 });
   expect(screen.getByRole("main").contains(heading)).toBe(true);
 });
@@ -161,14 +161,20 @@ test("from a slug not found back home, there is one account's button, the column
   expect(accounts[0]?.closest("[data-shell]")).not.toBeNull();
 });
 
-test("on the settings, Back to the workspace lands on one, arrived at: its title takes the focus", async () => {
+test("the settings have a left column, their directory, the account in its foot, no top right; its Back lands on the workspace, arrived at: its title takes the focus", async () => {
   const user = userEvent.setup();
+  const app = signedInApp();
+  app.preferences.setLastWorkspace("lab");
   // Any page of theirs, not the profile alone (review A, S1A-N4, r28).
-  const { router } = renderApp("/settings/security", signedInApp());
-  await screen.findByRole("heading", { level: 1, name: "Settings" });
-  expect(screen.getByRole("button", { name: "Ada" })).toBeTruthy();
+  const { router } = renderApp("/settings/security", app);
+  await screen.findByRole("heading", { level: 1, name: "Security" });
+  const accounts = screen.getAllByRole("button", { name: "Ada" });
+  expect(accounts).toHaveLength(1);
+  expect(accounts[0]?.closest("[data-shell]")).not.toBeNull();
+  expect(screen.queryByRole("link", { name: "Back to the workspace" })).toBeNull();
 
-  await user.click(screen.getByRole("link", { name: "Back to the workspace" }));
+  // Opened at its address, Back goes to the workspace this device showed last (M13/P3/S1, decision 813).
+  await user.click(await screen.findByRole("link", { name: "Back to Lab" }));
 
   const lab = await screen.findByRole("heading", { name: "Lab" });
   expect(router.state.location.pathname).toBe("/lab");
@@ -202,7 +208,8 @@ test("while the session starts the top right has nothing, then the account's but
   const refresh = held();
   let reads = 0;
   renderApp(
-    "/settings/profile",
+    // A page without a left column, whose top right is there as the session starts (review C, P3C-I5).
+    "/create-workspace",
     signedInApp({
       "POST /api/v0/auth/refresh": refresh.answer,
       "GET /api/v0/me": () => {
@@ -234,7 +241,8 @@ test("the account not loading, the session's unavailable page has Appearance at 
   expect(screen.queryByRole("button", { name: "Ada" })).toBeNull();
 });
 
-test.each(["/settings/profile", "/lab"])(
+// A page without a left column, and one with (review C, P3C-I5).
+test.each(["/create-workspace", "/lab"])(
   "the session unavailable at %s, the top right has Appearance, no account's button",
   async (path) => {
     // The refresh refused for now: the tab has a session it cannot reach (decision 792; review C, S1C-M1).
@@ -255,6 +263,6 @@ test("in Chinese, the top right's Appearance and Back to the workspace", async (
 
   const signedIn = signedInApp();
   signedIn.preferences.setLocale("zh-CN");
-  renderApp("/settings/profile", signedIn);
+  renderApp("/create-workspace", signedIn);
   expect(await screen.findByRole("link", { name: "回到工作区" })).toBeTruthy();
 });

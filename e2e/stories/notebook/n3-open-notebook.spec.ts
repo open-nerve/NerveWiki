@@ -7,6 +7,7 @@ import { joinAs, joinOnboarded } from "../../fixtures/invitations";
 import { goto } from "../../fixtures/navigation";
 import { changeAccessWith, notebookGroups, notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook, listNotebooks, updateNotebook } from "../../fixtures/notebooks";
+import { openNotebookSettings, settingsBack } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { newTeam } from "../../fixtures/workspaces";
 
@@ -63,8 +64,10 @@ test("N3 (page): its admin opens the notebook to the workspace on its general pa
   const guestPat = await joinAs(api, adminPat, workspace.slug, emailFor(testInfo, "guest"), "guest");
   const notebook = await createNotebook(api, ownerTokens.access_token, workspace.slug, "Handbook");
   const page = await signedInPage(ownerTokens);
-  await goto(page, notebookPath(workspace.slug, notebook.id, "general"));
+  // The left column's groups are the workspace's, out of the settings (M13/P3/S1): read on the notebook's home.
+  await goto(page, notebookPath(workspace.slug, notebook.id));
   await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "My notebooks": ["Handbook"] });
+  await openNotebookSettings(page, "Handbook");
   /** The roles the workspace's member, its admin and its guest see the notebook with, as their lists have it. */
   const seen = () =>
     Promise.all(
@@ -77,10 +80,12 @@ test("N3 (page): its admin opens the notebook to the workspace on its general pa
   expect(viewer.status()).toBe(200);
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
   // Open to the workspace, it is the team's.
+  await settingsBack(page, "Handbook").click();
   await expect.poll(() => notebookGroups(page, "Acme")).toEqual({ "Team notebooks": ["Handbook"] });
   await expectNotebook(db, (await viewer.json()) as Notebook, ownerId);
   expect(await seen()).toEqual([["reader"], ["reader"], []]);
 
+  await openNotebookSettings(page, "Handbook");
   expect((await changeAccessWith(page, notebook.id, "Workspace can edit")).status()).toBe(200);
   expect(await seen()).toEqual([["editor"], ["editor"], []]);
 });

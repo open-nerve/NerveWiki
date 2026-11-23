@@ -3,6 +3,7 @@ import { bearer, createToken, displayNameOf, emailFor, register, registerOnboard
 import { accountMenu } from "../../fixtures/auth-pages";
 import { answerTo, failedToLoad, noteOf } from "../../fixtures/browser";
 import { goto, reload } from "../../fixtures/navigation";
+import { settingsTitle } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 
 // A8, the profile and the preferences (M1 design 3); the theme and the language are this browser's (M1/P6 design 3.3).
@@ -75,21 +76,22 @@ test("A8 (page): the settings change the display name, and this browser's theme 
   await page.getByRole("radio", { name: "Dark" }).check();
   await expect(html).toHaveClass(/\bdark\b/);
   await page.getByRole("radio", { name: "简体中文" }).check();
-  await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
+  await expect(settingsTitle(page, "个人资料")).toBeVisible();
   await expect(html).toHaveAttribute("lang", "zh-CN");
 
   // All of it holds after a reload: the name on the server, the preferences in this browser, as the account menu's
   // Appearance shows too (M13/P2/S1).
   await reload(page);
-  await expect(page.getByRole("heading", { level: 1, name: "设置" })).toBeVisible();
+  await expect(settingsTitle(page, "个人资料")).toBeVisible();
   await expect(html).toHaveClass(/\bdark\b/);
   await expect(page.getByRole("radio", { name: "深色" })).toBeChecked();
   await accountMenu(page, "Ada Lovelace").click();
   await page.getByRole("menuitem", { name: "外观", exact: true }).click();
   await expect(page.getByRole("menuitemradio", { name: "深色" })).toBeChecked();
   // Chosen by the pointer inside it, the theme changes, the submenu staying open (review C, S1C-N6). The pointer goes
-  // there through the menu, as a hand moves it: the submenu opens to the menu's left here, and Radix reads which way
-  // the pointer goes from its moves over the menu, none in a jump straight to the item, which closes the submenu.
+  // there in steps, as a hand moves it: the account's menu opens from its row at the left column's foot, its submenu to
+  // the menu's right (M13/P3/S1); Radix keeps the submenu open while the pointer heads for it, which it reads from the
+  // pointer's moves.
   const light = page.getByRole("menuitemradio", { name: "浅色" });
   const box = await light.boundingBox();
   if (box === null) {

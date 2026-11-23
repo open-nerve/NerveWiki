@@ -1,6 +1,6 @@
 import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import type { Notebook } from "../../services/notebook.service";
 import type { NotebookAuditEvent, NotebookAuditEventPage, OwnerlessNotebook } from "../../services/ownerless.service";
@@ -213,20 +213,21 @@ test("taking one over puts it among the account's notebooks, says so with a way 
   expect((await rows()).map(([name]) => name)).toEqual(["Atlas"]);
   const status = screen.getByRole("status");
   expect(status.textContent).toBe("Roadmap taken over. Open it");
-  const nav = screen.getByRole("navigation", { name: "Lab" });
-  expect(within(within(nav).getByRole("list", { name: "Team notebooks" })).getByRole("link").textContent).toBe(
-    "Roadmap"
-  );
   await waitFor(() => expect(server.sent.filter((sent) => sent === "GET audit")).toHaveLength(2));
 
   await user.click(within(status).getByRole("link", { name: "Open it" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Roadmap" })).toBeTruthy();
   expect(router.state.location.pathname).toBe(`/lab/notebooks/${ownerlessJSON.id}`);
+  // Out of the settings, the left column is the workspace's again: the notebook among the team's.
+  const nav = screen.getByRole("navigation", { name: "Lab" });
+  expect(within(within(nav).getByRole("list", { name: "Team notebooks" })).getAllByRole("link")[0]?.textContent).toBe(
+    "Roadmap"
+  );
 });
 
 // M12/P2/S1, 22.17: the reader typing elsewhere as the answer comes keeps the focus and the keys (v0.1 design 13.2,
 // item 26).
-test("a take-over answered as the reader types in the search box leaves the focus and the keys there", async () => {
+test("a take-over answered as the reader types in another field leaves the focus and the keys there", async () => {
   const user = userEvent.setup();
   let answer: ((response: Response) => void) | undefined;
   const server = ownerlessServer({
@@ -235,7 +236,12 @@ test("a take-over answered as the reader types in the search box leaves the focu
   renderApp(page, server.app);
   await user.click(await screen.findByRole("button", { name: takeOver("Roadmap") }));
   await waitFor(() => expect(answer).toBeDefined());
-  const box = screen.getByRole("searchbox", { name: "Search terms" }) as HTMLInputElement;
+  // The settings' mode has no search box, nor the page another field (M13/P3/S1, decision 819): one of the test's,
+  // in the body, which the cleanup leaves there unless the cell takes it away (review C, P3C-N8).
+  const box = document.createElement("input");
+  box.setAttribute("aria-label", "Elsewhere");
+  document.body.append(box);
+  onTestFinished(() => box.remove());
   await user.click(box);
   await user.keyboard("ab");
 

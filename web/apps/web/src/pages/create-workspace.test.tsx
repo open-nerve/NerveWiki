@@ -145,7 +145,7 @@ test("a creation answered after the page was left does not go into the workspace
   await user.click(screen.getByRole("button", { name: "Create workspace" }));
   await waitFor(() => expect(release).toBeDefined());
   await act(() => router.navigate("/settings/profile"));
-  await screen.findByRole("heading", { level: 1, name: "Settings" });
+  await screen.findByRole("heading", { level: 1, name: "Profile" });
   release?.();
   await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
 

@@ -10,7 +10,8 @@ import { bearer, createToken, emailFor, register, registerOnboarded } from "../.
 import { goto } from "../../fixtures/navigation";
 import { expect, test } from "../../fixtures/test";
 import { invite, joinAs, joinOnboarded, preview } from "../../fixtures/invitations";
-import { deleteWorkspaceWith, renameWorkspaceWith, switcher, workspaceHeading } from "../../fixtures/workspace-pages";
+import { settingsBack, settingsGroup } from "../../fixtures/settings-pages";
+import { deleteWorkspaceWith, renameWorkspaceWith, workspaceHeading } from "../../fixtures/workspace-pages";
 import {
   checkSlug,
   createWorkspace,
@@ -113,7 +114,9 @@ test("W4 (page): the admin renames the workspace, then deletes it once its slug 
   const { status, renamed } = await renameWorkspaceWith(page, slug, "  Acme Labs ");
   expect(status).toBe(200);
   await expect(page.getByText("Saved.", { exact: true })).toBeVisible();
-  await expect(switcher(page, "Acme Labs")).toBeVisible();
+  // The settings' directory names the workspace as renamed; opened at their address, Back goes to it (M13/P3/S1).
+  await expect(settingsGroup(page, "Workspace settings")).toContainText("Acme Labs");
+  await expect(settingsBack(page, "Acme Labs")).toBeVisible();
   expect(renamed).toEqual({ ...created, name: "Acme Labs", updated_at: renamed.updated_at });
   await expectRenamed(db, renamed, adminId);
 

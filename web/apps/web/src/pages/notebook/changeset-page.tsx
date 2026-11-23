@@ -3,6 +3,7 @@ import { useId, useRef, useState, type RefObject } from "react";
 import { Link, useParams } from "react-router";
 import useSWR, { unstable_serialize, useSWRConfig } from "swr";
 
+import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
 import { NotLoaded } from "../../app/not-loaded";
@@ -96,7 +97,8 @@ const ChangesetShell = observer(function ChangesetShell({ notebook, id }: { note
   const { slug } = useWorkspace();
   const { locale } = useStore().preferences;
   const { data, error, mutate } = useSWR(["changeset", notebook.id, id], () => pages.changeset(id));
-  const heading = useRef<HTMLHeadingElement>(null);
+  // Arrived at, from the settings' Back say, its title takes the focus (M13/P3/S1, decision 835).
+  const heading = useArrivalFocus<HTMLHeadingElement>();
   const me = useAccount().me.id;
   const [said, setSaid] = useState<Said>();
   // Each undo sent, and the last whose outcome the page says: what is found out of an undo is not said over what a

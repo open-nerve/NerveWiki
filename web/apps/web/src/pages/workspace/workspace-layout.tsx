@@ -1,6 +1,6 @@
 import { House, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { createContext, use, useEffect, useRef, useState } from "react";
+import { createContext, use, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { Navigate, Outlet, useMatch, useParams } from "react-router";
 import useSWR from "swr";
@@ -9,6 +9,8 @@ import { arrived } from "../../app/arrival";
 import { GiveCornerBack } from "../../app/corner";
 import { useShellColumn } from "../../app/layout";
 import { NotLoaded } from "../../app/not-loaded";
+import { SettingsDirectory, SettingsTop } from "../../app/settings-directory";
+import { useSettingsMode } from "../../app/settings-origin";
 import { Drawer, ShellSidebar, useDrawer } from "../../app/shell-sidebar";
 import { NavItem } from "../../components/nav-item";
 import { useT } from "../../i18n/i18n";
@@ -18,7 +20,7 @@ import { SessionChangedError } from "../../session/token-manager";
 import { useNotebooks, useStore, useWorkspaces } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { NotebookNav } from "./notebook-nav";
-import { makeSlot, NotebookSlot } from "./notebook-slot";
+import { makeSlot, NotebookSlot, SlotHolder } from "./notebook-slot";
 import { SearchBox } from "./search-box";
 import { useSearchShortcuts } from "./search-shortcuts";
 import { WorkspaceSwitcher } from "./workspace-switcher";
@@ -39,15 +41,20 @@ export function useWorkspace(): Workspace {
   return workspace;
 }
 
-/** The workspace's own pages, in the order the navigation lists them, before its notebooks, each with its icon. */
+/**
+ * The workspace's own pages, in the order the navigation lists them, before its notebooks, each with its icon. The
+ * settings' link leaves with the column, their directory taking its place: arrived at (M13/P3/S1, decision 816), at
+ * their first page, no index's redirect between.
+ */
 const sections: readonly {
   path: string;
   label: Extract<MessageKey, `workspace.${string}`>;
   icon: LucideIcon;
   end?: boolean;
+  leaves?: boolean;
 }[] = [
   { path: "", label: "workspace.home", icon: House, end: true },
-  { path: "/settings", label: "workspace.settings", icon: SlidersHorizontal },
+  { path: "/settings/general", label: "workspace.settings", icon: SlidersHorizontal, leaves: true },
 ];
 
 /**
@@ -76,7 +83,12 @@ const ShellPlace = observer(function ShellPlace({ workspace }: { workspace: Work
  * for Mod+K and Mod+Shift+F, which give the box the focus
  * (useSearchShortcuts, M13/P2/S3). Below md the column is a drawer
  * (useDrawer), whose actions it gives what is below it (Drawer): the
- * tree's links, an unsaved edit's guard.
+ * tree's links, an unsaved edit's guard. In the settings' mode
+ * (useSettingsMode, M13/P3/S1, decisions 810, 814, 819) the column is
+ * their directory: the same ShellSidebar, its drawer, menu and strip kept;
+ * no search box, the keys then the browser's; the notebook's row, tree and
+ * places held out of sight, still mounted (a hidden SlotHolder); where the
+ * workspace's column was scrolled kept for its return (ScrollKept).
  * It finds the workspace of the address in the account's list: a slug the
  * list does not have is no page of the app's, whether the account was
  * never a member or the workspace is gone; one this tab has just deleted
@@ -101,7 +113,13 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
   // The search box's field, which Mod+K and Mod+Shift+F give the focus: none until the workspace is shown.
   const field = useRef<HTMLInputElement>(null);
   const drawer = useDrawer();
+  // In the settings' mode no search box is mounted: field is null, the keys left to the browser (decision 819).
   useSearchShortcuts({ field, actions: drawer.actions });
+  const settings = useSettingsMode();
+  // Where the workspace's column was scrolled, through the settings (ScrollKept).
+  const scrolled = useRef(0);
+  // Not useParams: the column is the workspace's, above the routes that name a notebook.
+  const notebookId = useMatch("/:slug/notebooks/:id/*")?.params.id;
   const { error, mutate } = useSWR("workspaces", () => workspaces.load());
   const [last, setLast] = useState<Workspace | undefined>(undefined);
   const listed = workspaces.bySlug(slug);
@@ -143,8 +161,20 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     );
   }
   // Stuck and as tall as the window, the column is still no scroll anchor of the window's (overflow-anchor: none,
-  // ShellSidebar): a probe of the three engines saw no difference, harmless kept (M13/P2/S1).
-  const left = (
+  // ShellSidebar): a probe of the three engines saw no difference, harmless kept (M13/P2/S1). One column whatever the
+  // mode: the drawer, its menu and its strip stay the same elements as the settings come and go (decision 810). In the
+  // settings' mode, their directory, the notebook's row, tree and places held out of sight (decisions 814, 836).
+  const left = settings ? (
+    <ShellSidebar drawer={drawer} place={t("settings.title")} top={<SettingsTop fallback={workspace} />}>
+      <SettingsDirectory here="workspace" workspace={workspace} />
+      {notebookId !== undefined && (
+        <div hidden>
+          <SlotHolder id={notebookId} />
+        </div>
+      )}
+      <ScrollKept at={scrolled} settings />
+    </ShellSidebar>
+  ) : (
     <ShellSidebar
       drawer={drawer}
       place={<ShellPlace workspace={workspace} />}
@@ -156,14 +186,15 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
       }
     >
       <nav aria-label={workspace.name} className="flex flex-col gap-0.5">
-        {sections.map(({ path, label, icon: Icon, end }) => (
-          <NavItem key={path} to={`/${slug}${path}`} end={end}>
+        {sections.map(({ path, label, icon: Icon, end, leaves }) => (
+          <NavItem key={path} to={`/${slug}${path}`} end={end} state={leaves === true ? arrived : undefined}>
             <Icon aria-hidden />
             {t(label)}
           </NavItem>
         ))}
         <NotebookNav key={workspace.id} workspace={workspace} />
       </nav>
+      <ScrollKept at={scrolled} settings={false} />
     </ShellSidebar>
   );
   return (
@@ -177,3 +208,33 @@ export const WorkspaceLayout = observer(function WorkspaceLayout() {
     </WorkspaceContext>
   );
 });
+
+/**
+ * ScrollKept keeps where the workspace's left column was scrolled (at) through the settings' mode, which shows another
+ * middle in the same scrolling area: shorter, the directory would leave the browser to clamp the column's scrollTop
+ * (M13/P3/S1; review A's M3). Last in the workspace's middle, its layout effect runs after the notebook's container is
+ * held there again (the tree's rows in, the scrollTop not clamped) and before the tree brings the page shown into view
+ * (PageTree's, below the Outlet, later in the commit): it puts the column back, then follows its scroll, the event's
+ * own (asynchronous: the clamp of the commit that leaves the workspace's mode comes after its listener went). In the
+ * settings' mode the directory starts at its top.
+ */
+function ScrollKept({ at, settings }: { at: RefObject<number>; settings: boolean }) {
+  const marker = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const area = marker.current?.closest<HTMLElement>("[data-sidebar-scroll]");
+    if (area === null || area === undefined) {
+      return undefined;
+    }
+    if (settings) {
+      area.scrollTop = 0;
+      return undefined;
+    }
+    area.scrollTop = at.current;
+    const keep = () => {
+      at.current = area.scrollTop;
+    };
+    area.addEventListener("scroll", keep, { passive: true });
+    return () => area.removeEventListener("scroll", keep);
+  }, [at, settings]);
+  return <span ref={marker} hidden />;
+}

@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { unstable_serialize, type Cache } from "swr";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
 import { eventHandlers, type EventHandler } from "../../events/handlers";
 import { appLinks } from "../../reading/app-links";
 import { taskToggle } from "../../reading/task-toggle";
@@ -230,6 +231,26 @@ test("a node no longer in the trash says so, with a way to it the tree has; a pa
   expect(document.activeElement).toBe(document.body);
   await user.click(await screen.findByRole("link", { name: "Open it" }));
   expect(await screen.findByRole("heading", { level: 1, name: "Install" })).toBe(document.activeElement);
+});
+
+// Back from the settings may come here (M13/P3/S1, decision 835): arrived at, the preview's title takes the focus, as
+// does the trash's that says the item is no longer in it.
+
+test("a preview arrived at gives its title the focus", async () => {
+  const { server } = trashed();
+  renderApp([{ pathname: previewPath(install.id), state: arrived }], server.app);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "Install" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});
+
+test("a preview arrived at, of a node no longer in the trash, gives the trash's title the focus", async () => {
+  const { server } = trashed();
+  server.restoreElsewhere(install.id);
+  renderApp([{ pathname: previewPath(install.id), state: arrived }], server.app);
+
+  expect(await screen.findByText("This is no longer in the trash.")).toBeTruthy();
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1, name: "Trash" })));
 });
 
 test("an attachment no longer in the trash leads to where it is, its row taking the focus", async () => {

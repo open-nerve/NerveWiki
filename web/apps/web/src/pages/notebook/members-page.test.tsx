@@ -10,8 +10,18 @@ import { renderApp } from "../../test/render";
 // A notebook's members page: its members, adding them, leaving (M3/P4
 // design 3.4).
 
-const members = `/lab/notebooks/${notebookJSON.id}/settings/members`;
+const plansHome = `/lab/notebooks/${notebookJSON.id}`;
+const members = `${plansHome}/settings/members`;
+/** The workspace's navigation in the left column, out of the settings. */
 const nav = () => screen.findByRole("navigation", { name: "Lab" });
+/** The settings' directory's group of the notebook (M13/P3/S1). */
+const notebookGroup = () => screen.findByRole("navigation", { name: "Notebook settings" });
+
+/** Goes from the notebook's home to its members by its row's cog and the directory (M13/P3/S1). */
+async function toMembers(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole("link", { name: "Settings of Plans" }));
+  await user.click(within(await notebookGroup()).getByRole("link", { name: "Members" }));
+}
 const plans = `/api/v0/notebooks/${notebookJSON.id}`;
 
 /** The rows of the members list, each as its text. */
@@ -203,8 +213,9 @@ test("a change of role refused says why above the list; the lists read again, th
 test("a member removed leaves the list, the focus on its heading; the notebook becomes the account's own", async () => {
   const user = userEvent.setup();
   const server = notebookServer();
-  renderApp(members, server.app);
+  renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "Team notebooks" });
+  await toMembers(user);
 
   await user.click(await screen.findByRole("button", { name: "Remove Bob (bob@example.com)" }));
   const dialog = await screen.findByRole("alertdialog", { name: "Remove Bob from Plans?" });
@@ -212,6 +223,7 @@ test("a member removed leaves the list, the focus on its heading; the notebook b
 
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("heading", { name: "Members" })));
   expect(await rows()).toEqual(["AdaYouada@example.com · Joined Oct 1, 2026Admin"]);
+  await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "My notebooks" })).toBeTruthy();
 });
 
@@ -224,8 +236,9 @@ async function candidates(): Promise<string[]> {
 test("an admin adds a member of the workspace not in the notebook yet, with a role", async () => {
   const user = userEvent.setup();
   const server = notebookServer({ members: [notebookMember(ada, "admin")] });
-  renderApp(members, server.app);
+  renderApp(plansHome, server.app);
   await within(await nav()).findByRole("list", { name: "My notebooks" });
+  await toMembers(user);
 
   expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)", "Cy (cy@example.com)"]);
   expect(screen.getByLabelText<HTMLSelectElement>("Role").value).toBe("editor");
@@ -242,6 +255,7 @@ test("an admin adds a member of the workspace not in the notebook yet, with a ro
   expect(await candidates()).toEqual(["Choose a member", "Bob (bob@example.com)"]);
   expect(screen.getByLabelText<HTMLSelectElement>("Member").value).toBe("");
   // Two members: the notebook is the team's now.
+  await user.click(screen.getByRole("link", { name: "Back to Plans" }));
   expect(await within(await nav()).findByRole("list", { name: "Team notebooks" })).toBeTruthy();
 });
 
@@ -396,7 +410,7 @@ test.each([
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe(message);
   await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(within(await nav()).getByRole("link", { name: "Plans" })).toBeTruthy();
+  expect((await notebookGroup()).textContent).toContain("Plans");
 });
 
 afterEach(() => vi.useRealTimers());
@@ -456,9 +470,12 @@ test("going from one notebook's members to another's lists the other's", async (
   );
   expect(await rows()).toHaveLength(1);
 
+  // Back to the workspace (opened at the address), to Atlas, its cog, its members (M13/P3/S1): the directory's
+  // workspace's group has a Members too (review C, P3C-N7).
+  await user.click(screen.getByRole("link", { name: "Back to Lab" }));
   await user.click(within(await nav()).getByRole("link", { name: "Atlas" }));
-  await user.click(await screen.findByRole("link", { name: "Notebook settings" }));
-  await user.click(await screen.findByRole("link", { name: "Members" }));
+  await user.click(await screen.findByRole("link", { name: "Settings of Atlas" }));
+  await user.click(within(await notebookGroup()).getByRole("link", { name: "Members" }));
 
   await waitFor(async () => expect(await rows()).toHaveLength(2));
 });

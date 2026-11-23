@@ -479,7 +479,7 @@ test.each([
     });
     const server = jobsServer({ jobs: [job] });
     renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
 
     const shown = await reportOpened(user, "Undo: Import");
 
@@ -608,7 +608,7 @@ test.each([
     });
     const server = jobsServer({ jobs: [job] });
     renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
 
     const shown = await reportOpened(user, "Undo: Import");
 
@@ -639,7 +639,7 @@ test.each([
   });
   const server = jobsServer({ jobs: [job], nodes: present ? [raw] : [] });
   renderApp(transfer, server.app);
-  await screen.findByRole("navigation", { name: "Pages of Plans" });
+  await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
   expect(
     within(await row("Undo: Import")).getByText(
       "Failed · The notebook's rules as an LLM Wiki refused one of its writes."
@@ -687,7 +687,7 @@ test.each(["page", "asset"] as const)(
       nodes: [raw, folder, target, notes, refused],
     });
     const { router } = renderApp(transfer, server.app);
-    await screen.findByRole("navigation", { name: "Pages of Plans" });
+    await screen.findByRole("navigation", { name: "Pages of Plans", hidden: true });
     const shown = await reportOpened(user, "Undo: Import");
     expect(within(shown).getByText("This batch was not written; earlier completed batches are kept.")).toBeTruthy();
     expect(shown.textContent).not.toContain(refused.id);
