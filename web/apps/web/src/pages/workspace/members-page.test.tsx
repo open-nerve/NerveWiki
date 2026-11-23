@@ -368,3 +368,22 @@ test("the members say so when they cannot be read; Try again reads them", async 
 
   expect(await names()).toEqual(["Ada", "Bob", "Cy"]);
 });
+
+// The page's groups (M13/P3/S2, decisions 826, 851): the members first, untitled, the page's name saying it; the
+// invitations an admin's; the leaving the danger zone's, last.
+test.each([
+  ["admin", ["Invitations", "Danger zone"]],
+  ["member", ["Danger zone"]],
+] as const)(
+  "the members page, its %s's: the members untitled, then %j, the leaving in the danger zone",
+  async (role, groups) => {
+    renderApp("/lab/settings/members", membersServer({ role }).app);
+
+    const list = await screen.findByRole("list", { name: "Members" });
+    expect(list.closest("section")?.querySelector("h2")).toBeNull();
+    const main = within(screen.getByRole("main"));
+    expect(main.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups);
+    const danger = within(main.getByRole("heading", { level: 2, name: "Danger zone" }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: "Leave workspace" })).toBeTruthy();
+  }
+);

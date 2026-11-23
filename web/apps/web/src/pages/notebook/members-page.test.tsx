@@ -525,3 +525,24 @@ test("the members to add read again show who joined the workspace since", async 
     expect(await candidates()).toEqual(["Choose a member", "Cy (cy@example.com)", "Dee (dee@example.com)"])
   );
 });
+
+// The page's groups (M13/P3/S2, decisions 826, 851): the members first, untitled, the page's name saying it; the
+// addition its admins'; the leaving, an explicit member's, the danger zone's, last.
+test.each([
+  ["its admin", ["Add a member", "Danger zone"], [notebookMember(ada, "admin"), notebookMember(bob, "editor")], "none"],
+  ["its editor", ["Danger zone"], [notebookMember(ada, "editor"), notebookMember(bob, "admin")], "none"],
+  ["a reader by its access", [], [notebookMember(bob, "admin")], "viewer"],
+] as const)("the members page of %s: the members untitled, then %j", async (_, groups, listed, access) => {
+  renderApp(members, notebookServer({ access, members: [...listed] }).app);
+
+  const list = await screen.findByRole("list", { name: "Members" });
+  expect(list.closest("section")?.querySelector("h2")).toBeNull();
+  const main = within(screen.getByRole("main"));
+  await waitFor(() =>
+    expect(main.queryAllByRole("heading", { level: 2 }).map((heading) => heading.textContent)).toEqual(groups)
+  );
+  if ((groups as readonly string[]).includes("Danger zone")) {
+    const danger = within(main.getByRole("heading", { level: 2, name: "Danger zone" }).parentElement as HTMLElement);
+    expect(danger.getByRole("button", { name: "Leave notebook" })).toBeTruthy();
+  }
+});

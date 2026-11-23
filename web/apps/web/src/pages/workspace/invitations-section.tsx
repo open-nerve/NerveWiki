@@ -139,6 +139,7 @@ function InviteForm({ workspace }: { workspace: Workspace }) {
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as WorkspaceRole)}
+            className="block"
           >
             <RoleOptions />
           </NativeSelect>

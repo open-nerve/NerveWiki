@@ -23,7 +23,8 @@ export function memberWho(member: Pick<Member, "display_name" | "email">, t: Tra
  * MemberSummary is who a member is (M2/P6 design 3.3): the name, You for
  * the account's own row, the address unless the viewer is a guest, and when
  * they joined. The settings' alone: their lists' names are 14px, You their
- * badge (M13/P3/S2, decision 850; 4.1.7).
+ * badge (M13/P3/S2, decision 850; 4.1.7). The address breaks anywhere, the
+ * date never: a narrow row broke "Nov 24" inside the month (as a token's).
  */
 export const MemberSummary = observer(function MemberSummary({ member, you }: { member: Member; you: boolean }) {
   const { preferences } = useStore();
@@ -34,9 +35,15 @@ export const MemberSummary = observer(function MemberSummary({ member, you }: { 
         {member.display_name}
         {you && <span className={badgeClass}>{t("members.you")}</span>}
       </p>
-      <p className="text-sm break-all text-muted-foreground">
-        {member.email !== null && <>{member.email} · </>}
-        {t("members.joined", { date: formatDate(member.created_at, preferences.locale) })}
+      <p className="text-sm text-muted-foreground">
+        {member.email !== null && (
+          <>
+            <span className="break-all">{member.email}</span> ·{" "}
+          </>
+        )}
+        <span className="whitespace-nowrap">
+          {t("members.joined", { date: formatDate(member.created_at, preferences.locale) })}
+        </span>
       </p>
     </div>
   );

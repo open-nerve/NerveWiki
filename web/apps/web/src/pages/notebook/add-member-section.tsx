@@ -139,17 +139,20 @@ function AddForm({ workspace, notebook, candidates }: SectionProps & { candidate
             name="role"
             value={role}
             onChange={(event) => setRole(event.target.value as NotebookRole)}
+            className="block"
           >
             <NotebookRoleOptions />
           </NativeSelect>
         </div>
       </div>
-      <Button type="submit" disabled={sending}>
-        {t("notebookMembers.add")}
-      </Button>
-      <output className="block text-sm text-muted-foreground">
-        {added === undefined ? "" : t("notebookMembers.added", { name: added })}
-      </output>
+      <div className="flex items-center gap-3">
+        <Button type="submit" disabled={sending}>
+          {t("notebookMembers.add")}
+        </Button>
+        <output className="text-sm text-muted-foreground">
+          {added === undefined ? "" : t("notebookMembers.added", { name: added })}
+        </output>
+      </div>
     </form>
   );
 }

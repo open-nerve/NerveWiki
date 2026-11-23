@@ -553,3 +553,16 @@ test("going from one workspace's ownerless notebooks straight to another's lists
     expect(await events()).toEqual(["Ada (ada@example.com) deleted Roadmap; former owner: Bob (bob@example.com)."])
   );
 });
+
+// The page's groups (M13/P3/S2, decision 851): the list first, untitled, the page's name saying it; the audit's.
+test("the ownerless notebooks' page: the list untitled, then the audit log", async () => {
+  renderApp(page, ownerlessServer().app);
+
+  const list = await screen.findByRole("list", { name: "Ownerless notebooks" });
+  expect(list.closest("section")?.querySelector("h2")).toBeNull();
+  const main = within(screen.getByRole("main"));
+  expect(main.getAllByRole("heading", { level: 2 }).map((each) => each.textContent)).toEqual(["Audit log"]);
+  expect(
+    main.getByRole("heading", { level: 2, name: "Audit log" }).closest("section")?.querySelector("ol")
+  ).not.toBeNull();
+});

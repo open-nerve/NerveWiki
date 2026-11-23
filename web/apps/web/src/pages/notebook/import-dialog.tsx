@@ -368,6 +368,7 @@ const ImportForm = observer(function ImportForm({
           aria-invalid={placeProblem !== undefined || undefined}
           aria-describedby={placeProblem === undefined ? undefined : `${ids.place}-note`}
           onChange={(event) => setPlace(event.target.value)}
+          className="block"
         >
           {gone && (
             <option value={place} disabled>
