@@ -1,7 +1,9 @@
 import { observer } from "mobx-react-lite";
 import { createContext, Fragment, use, useId, useState, type ReactNode, type RefObject } from "react";
 
+import { cn } from "../lib/cn";
 import { useArrivalFocus } from "./arrival";
+import { ColumnTop } from "./column-top";
 
 /** The shown settings page's h1, which a row removed with the focus in it gives the focus to (decision 815). */
 const SettingsHeading = createContext<RefObject<HTMLHeadingElement | null> | undefined>(undefined);
@@ -16,16 +18,24 @@ export function useSettingsHeading(): RefObject<HTMLHeadingElement | null> {
 }
 
 /**
+ * settingsColumnClass is the settings' column (the mockup's .page), centred, at most 696px wide, 20px under the main's
+ * top from md: up: SettingsPage's, and the banner's where a notebook's settings have no page yet (decision 898).
+ */
+export const settingsColumnClass = "mx-auto w-full max-w-178 md:px-2 md:pt-5";
+
+/**
  * SettingsPage is a page of the settings' mode (00-M13 4.4.2; M13/P3/S1, decisions 815, 820, 844): its name as its h1,
  * which takes the arrival focus as it mounts (the layouts key it by the page: arrived at twice in one layout, from the
- * drawer, each page's h1 mounts anew and takes it), above its groups. Centred, its content at most 696px wide (the
- * mockup's .page, 760px with 32px each side), the main's 24px of padding made the mockup's 44 / 32 / 40 from md: up
- * (P4 decides the main's own).
+ * drawer, each page's h1 mounts anew and takes it), above its groups; above its h1, a notebook's upgrade banner
+ * (ColumnTop, M13/P4/S1, decision 857). Centred, its content at most 696px wide (the mockup's .page, 760px with 32px
+ * each side), the main's 24px of padding made the mockup's 44 / 32 / 40 from md: up; from xl up the main's sides are
+ * 40px (M13/P4/S1, decision 855), the column centred still.
  */
 export function SettingsPage({ title, children }: { title: string; children: ReactNode }) {
   const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
-    <div className="mx-auto w-full max-w-178 md:px-2 md:pt-5 md:pb-4">
+    <div className={cn(settingsColumnClass, "md:pb-4")}>
+      <ColumnTop />
       <h1
         ref={heading}
         tabIndex={-1}
@@ -147,8 +157,7 @@ export const rowDescriptionClass = "mt-0.5 max-w-105 text-[12.5px] leading-norma
 export const rowControlClass = "flex min-w-0 flex-wrap items-center gap-2 max-md:w-full md:ml-auto md:shrink-0";
 /**
  * A value the row shows alone, in the controls' stead: at most 60% of the row from md: up, on the right, shrinking,
- * broken where it is long (review B's M4). md:text-right: text-end would read as a colour (design-tokens.test.ts).
- * SettingsRow's alone (its value), not exported.
+ * broken where it is long (review B's M4). SettingsRow's alone (its value), not exported.
  */
 const rowValueClass =
   "min-w-0 text-sm break-words text-muted-foreground max-md:w-full md:ml-auto md:max-w-[60%] md:text-right";

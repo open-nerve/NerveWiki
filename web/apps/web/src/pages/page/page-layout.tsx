@@ -1,13 +1,16 @@
+import { Pencil } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { Navigate, useNavigation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
 import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { canEditPageBody } from "../../app/source-permissions";
 import { useMounted } from "../../app/mounted";
+import { useBeside } from "../../app/narrow";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
 import { dialogOpen, isMod } from "../../app/shortcuts";
@@ -16,7 +19,8 @@ import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { useT, type Translate } from "../../i18n/i18n";
-import { focusLost } from "../../lib/focus-leaving";
+import { cn } from "../../lib/cn";
+import { focusLost, useFocusLeaving } from "../../lib/focus-leaving";
 import { ApiError } from "../../services/api";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, TreeNode } from "../../services/page.service";
@@ -31,6 +35,7 @@ import { AttachmentsSection } from "./attachments-section";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
+import { EditHeadSlots, HeadMeta, PanelToggle } from "./page-head";
 import { PageMenu } from "./page-menu";
 import { PagePanel } from "./page-panel";
 import { ReadingView } from "./reading-view";
@@ -67,13 +72,24 @@ export const PageLayout = observer(function PageLayout() {
   if (found !== undefined && found !== last) {
     setLast(found);
   }
+  // The upgrade's banner at the top of the page's column, the tree read or not, the page found or not (decision 857).
   if (pages.tree === undefined || !pages.confirmed) {
-    return <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />;
+    return (
+      <>
+        <ColumnTop />
+        <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
+      </>
+    );
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
     // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
-    return <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />;
+    return (
+      <>
+        <ColumnTop />
+        <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />
+      </>
+    );
   }
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
@@ -140,6 +156,17 @@ function restoredOf(state: unknown): number | undefined {
  * it on a narrow window, is its right column (M6/P7 design 7). Arrived at
  * from one of its versions restored, it says so, with the title that has
  * the focus.
+ *
+ * Its head is one row (M13/P4/S1, 4.1.3): its breadcrumbs on the left, on
+ * the right a group as wide whatever the page's mode (decision 894): who
+ * edited it last, the right column's toggle, the page's menu and Edit, so
+ * that the row's lines are its width's alone. Below it a column centred, at
+ * most 720px wide: the upgrade's banner (ColumnTop), the title, 32px, then
+ * the page. Beside the content from xl up, the right column, the window's
+ * height, which its toggle folds away (decision 859): folded, the content
+ * area has no room kept for it, its column centred in the whole. Edited,
+ * the head's right group has the edit's status in its first box, Save and
+ * Done about the toggle (EditHeadSlots, decision 866).
  */
 const PageShell = observer(function PageShell({
   notebook,
@@ -159,6 +186,16 @@ const PageShell = observer(function PageShell({
   const { mutate } = useSWRConfig();
   const heading = useArrivalFocus<HTMLHeadingElement>();
   useDocumentTitle(page.name, notebook.name);
+  // The right column's: open or folded away, this browser's, and its toggle (decision 859).
+  const open = store.preferences.panelOpen;
+  const beside = useBeside();
+  const rail = useId();
+  const toggle = useRef<HTMLButtonElement>(null);
+  // The head's places the edit fills (decision 866), as they mount.
+  const [group, setGroup] = useState<HTMLElement | null>(null);
+  const [meta, setMeta] = useState<HTMLElement | null>(null);
+  const [before, setBefore] = useState<HTMLElement | null>(null);
+  const [after, setAfter] = useState<HTMLElement | null>(null);
   // Said as the page shows, once: an edit entered takes it away (M5-polish 21.3).
   const notice = useRouteNotice(restoredOf, ["restored"]);
   const [restored, setRestored] = useState(notice);
@@ -298,6 +335,17 @@ const PageShell = observer(function PageShell({
     }
   }, [editable, heading]);
 
+  // The right column folded away, or shown beside the page (the window widened past xl) folded, with the focus in it:
+  // the focus to its toggle, where the reader is (decision 859). Not scrolling: the toggle is in the page's head.
+  useLayoutEffect(() => {
+    if (open || !beside) {
+      return;
+    }
+    if (document.getElementById(rail)?.contains(document.activeElement) === true) {
+      toggle.current?.focus({ preventScroll: true });
+    }
+  }, [open, beside, rail]);
+
   // The keys of the latest render: enter reads its page.
   const keys = useRef({ enter });
   useEffect(() => {
@@ -334,21 +382,30 @@ const PageShell = observer(function PageShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [editable, reading, pages, page.id]);
   return (
-    <div className="space-y-6">
-      <div className="space-y-2">
-        <Breadcrumbs notebook={notebook} ancestors={pages.ancestorsOf(page.id)} page={page} href={href} />
-        <div className="flex items-start justify-between gap-3">
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            aria-describedby={restored === undefined ? undefined : restoredNote}
-            className="min-w-0 text-3xl font-semibold break-words outline-none"
-          >
-            {page.name}
-          </h1>
-          {reading && (
-            <div className="flex shrink-0 gap-2">
-              {!gone && (
+    <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
+      <EditHeadSlots value={{ group, meta, before, after }}>
+        <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
+          <div className="mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Breadcrumbs
+              className="min-w-0 flex-[1_1_14rem]"
+              notebook={notebook}
+              ancestors={pages.ancestorsOf(page.id)}
+              page={page}
+              href={href}
+            />
+            {/* The same width whatever the mode, 32px high with no button in it (decision 894): the row's lines are its
+              width's alone. */}
+            <div
+              ref={setGroup}
+              className="ms-auto flex min-h-8 min-w-0 flex-[0_1_26rem] items-center justify-end gap-1.5"
+            >
+              <div ref={setMeta} className="me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint">
+                {reading && <HeadMeta notebook={notebook} page={page.id} />}
+              </div>
+              <span ref={setBefore} className="contents" />
+              <PanelToggle ref={toggle} controls={rail} />
+              <span ref={setAfter} className="contents" />
+              {reading && !gone && (
                 <PageMenu
                   notebook={notebook}
                   page={page}
@@ -356,88 +413,154 @@ const PageShell = observer(function PageShell({
                   history={`${home}/history?page=${page.id}`}
                 />
               )}
-              {editable && (
-                <Button
-                  ref={edit}
-                  variant="outline"
-                  aria-busy={entering || undefined}
-                  aria-describedby={idleLeft || toldLeft !== "" ? idleNote : undefined}
-                  aria-disabled={entering || undefined}
-                  onClick={() => void enter(false)}
-                >
-                  {t("page.edit")}
-                </Button>
+              {reading && editable && (
+                <EditButton
+                  edit={edit}
+                  left={() => heading.current?.focus({ preventScroll: true })}
+                  entering={entering}
+                  describedBy={idleLeft || toldLeft !== "" ? idleNote : undefined}
+                  press={() => void enter(false)}
+                />
               )}
             </div>
-          )}
-        </div>
-        {restored !== undefined && (
-          <output id={restoredNote} className="block text-sm text-muted-foreground">
-            {t("version.restored", { revision: restored })}
-          </output>
-        )}
-      </div>
-      <div className="space-y-6 xl:grid xl:grid-cols-[minmax(0,1fr)_15rem] xl:items-start xl:gap-8 xl:space-y-0">
-        <div className="min-w-0 space-y-6">
-          {editing === undefined ? (
-            <>
-              {refusal !== undefined && <Alert>{refusalText(refusal, t)}</Alert>}
-              {(idleLeft || toldLeft !== "") && (
-                <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
-                  {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
-                </output>
-              )}
-              <div ref={lockNote} tabIndex={-1} className="outline-none">
-                <EditLockNote
+          </div>
+          <div className="mx-auto w-full max-w-180">
+            <ColumnTop />
+            <h1
+              ref={heading}
+              tabIndex={-1}
+              aria-describedby={restored === undefined ? undefined : restoredNote}
+              className="mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none"
+            >
+              {page.name}
+            </h1>
+            {restored !== undefined && (
+              <output id={restoredNote} className="-mt-2 mb-3.5 block text-[13px] text-muted-foreground">
+                {t("version.restored", { revision: restored })}
+              </output>
+            )}
+            <div className="space-y-6">
+              {editing === undefined ? (
+                <>
+                  {refusal !== undefined && <Alert>{refusalText(refusal, t)}</Alert>}
+                  {(idleLeft || toldLeft !== "") && (
+                    <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
+                      {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
+                    </output>
+                  )}
+                  {/* No one holding the lock, it is empty: no margin of its own, the view right under the title
+                    (review B's P4S1B-M2). Still there, the focus's place as the lock is found. */}
+                  <div ref={lockNote} tabIndex={-1} className="outline-none empty:mb-0">
+                    <EditLockNote
+                      notebook={notebook}
+                      page={page}
+                      editHere={editable ? () => void enter(true) : undefined}
+                      released={() => (edit.current ?? heading.current)?.focus()}
+                    />
+                  </div>
+                  {/* How a source is changed is a note, not an error: it is not announced each time the page opens (M12/P2/S1,
+                    38.1). */}
+                  {source && (
+                    <p className="rounded-md border px-4 py-3 text-sm text-muted-foreground">
+                      {t("page.sourceReadonly")}
+                    </p>
+                  )}
+                  {/* Right under the title, the view's 4px of padding taken back from the view itself: its first block
+                    14px below the title, as the mockup has it (review B's P4S1B-M2), and its loading or its failure
+                    too, which have none (P4S1B-F2); after a note, the view is as far as ever. */}
+                  <AttachmentDrop
+                    notebook={notebook}
+                    parent={page.id}
+                    enabled={writer && !gone}
+                    className="[:first-child:empty+&>.nw-reading:first-child]:-mt-1"
+                  >
+                    <ReadingView
+                      notebook={notebook}
+                      page={page}
+                      refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+                      unanchored={() => heading.current?.focus()}
+                      anchored={anchored}
+                    />
+                  </AttachmentDrop>
+                </>
+              ) : (
+                <PageEdit
                   notebook={notebook}
                   page={page}
-                  editHere={editable ? () => void enter(true) : undefined}
-                  released={() => (edit.current ?? heading.current)?.focus()}
+                  editing={editing}
+                  done={(left) => {
+                    back.current = left.waited === true ? "fallen" : true;
+                    setIdleLeft(left.idle);
+                    setToldLeft(left.told ?? "");
+                    // A toggle's refusal that came while it edited is no longer news.
+                    setRefusal(undefined);
+                    setEditing(undefined);
+                  }}
                 />
-              </div>
-              {/* How a source is changed is a note, not an error: it is not announced each time the page opens (M12/P2/S1,
-                  38.1). */}
-              {source && (
-                <p className="rounded-md border px-4 py-3 text-sm text-muted-foreground">{t("page.sourceReadonly")}</p>
               )}
-              <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
-                <ReadingView
-                  notebook={notebook}
-                  page={page}
-                  refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
-                  unanchored={() => heading.current?.focus()}
-                  anchored={anchored}
-                />
-              </AttachmentDrop>
-            </>
-          ) : (
-            <PageEdit
-              notebook={notebook}
-              page={page}
-              editing={editing}
-              done={(left) => {
-                back.current = left.waited === true ? "fallen" : true;
-                setIdleLeft(left.idle);
-                setToldLeft(left.told ?? "");
-                // A toggle's refusal that came while it edited is no longer news.
-                setRefusal(undefined);
-                setEditing(undefined);
-              }}
-            />
-          )}
-          {children.length > 0 && (
-            <section className="space-y-2">
-              <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
-              <SubpageList label={t("page.subpages")} pages={children} href={href} />
-            </section>
-          )}
-          {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
+              {children.length > 0 && (
+                <section className="space-y-2">
+                  <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
+                  <SubpageList label={t("page.subpages")} pages={children} href={href} />
+                </section>
+              )}
+              {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
+            </div>
+          </div>
         </div>
-        <PagePanel notebook={notebook} page={page} editing={!reading} href={href} />
-      </div>
+      </EditHeadSlots>
+      <PagePanel id={rail} open={open} notebook={notebook} page={page} editing={!reading} href={href} />
     </div>
   );
 });
+
+/**
+ * EditButton is the page's Edit, in its head (M13/P4/S1, decision 865): the primary button, its pencil before its
+ * name. Holding the focus as it goes (the page made one that cannot be edited by an event: the account a reader, an
+ * upgrade started, the page a source), it gives the focus elsewhere (left), not to the page's start: left gives it to
+ * the title without scrolling the window, where the reader may be reading the page's middle (v0.1 design 13.2,
+ * item 17). Entering the edit, the focus goes to the title first: it holds none as it goes then. In development React's
+ * StrictMode runs a new component's effects twice, useFocusLeaving's cleanup with Edit staying, after the shell gave
+ * it the focus back from an edit: the focus goes once Edit has gone (its ref let go), the commit done, and only if no
+ * one has it then.
+ */
+function EditButton({
+  edit,
+  left,
+  entering,
+  describedBy,
+  press,
+}: {
+  edit: RefObject<HTMLButtonElement | null>;
+  left: () => void;
+  entering: boolean;
+  /** The note of the edit's end, which describes it. */
+  describedBy: string | undefined;
+  press: () => void;
+}) {
+  const t = useT();
+  useFocusLeaving(edit, () =>
+    queueMicrotask(() => {
+      if (edit.current === null && focusLost()) {
+        left();
+      }
+    })
+  );
+  return (
+    <Button
+      ref={edit}
+      size="sm"
+      shape="pill"
+      aria-busy={entering || undefined}
+      aria-describedby={describedBy}
+      aria-disabled={entering || undefined}
+      onClick={press}
+    >
+      <Pencil aria-hidden />
+      {t("page.edit")}
+    </Button>
+  );
+}
 
 /**
  * refusalText says a refusal shown above the view: a task item's toggle that would leave no task item there

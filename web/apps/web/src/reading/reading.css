@@ -40,11 +40,16 @@
        nothing of the view paints past it (a formula's negative space), over
        the app. It does not scroll down: a formula's strut past its bottom
        would take the wheel. Its padding keeps the focus rings in; its
-       margin, its place. */
+       margin, its place. Its own paint layer (a stacking context, its
+       absolutely placed formula measures' containing block unchanged): what
+       changes beside it, the right column's outline as the section read
+       moves, does not paint the page's blocks again, a page of a hundred
+       thousand of them too (M13/P4/S1, review A's P4S1A-M1). */
     overflow-x: auto;
     overflow-y: hidden;
     margin-inline: -0.25rem;
     padding: 0.25rem;
+    isolation: isolate;
   }
 
   /* The padding keeps the first child's margin in the view: the page's heading has its own. */
@@ -259,19 +264,102 @@
     font-weight: 600;
   }
 
-  /* The page's properties, above its content: a key's value may be another table of them. */
+  /* The properties as a strip (00-M13 4.5.2): each key and value a chip, a list's items a chip each, wrapping; a nested
+     table a run of its own. The table and its list keep their roles by propertyRoles: changed in display, WebKit with
+     VoiceOver drops them (M13/P4/S1, decision 864). The wrapper's 2px keep a chip's focus ring; first in the view, the
+     strip is 30px above what follows, as the mockup's .props. */
+  .nw-reading .nw-scroll:has(> table.nw-props) {
+    margin: -2px;
+    padding: 2px;
+  }
+
+  .nw-reading > .nw-scroll:first-child:has(> table.nw-props) + * {
+    margin-top: 1.875rem;
+  }
+
   .nw-reading table.nw-props {
-    font-size: 0.875rem;
+    display: block;
+    font-size: 0.78125rem;
+    line-height: 1.5;
   }
 
+  .nw-reading table.nw-props > tbody {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .nw-reading table.nw-props tr,
+  .nw-reading table.nw-props td > ul > li {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    max-width: 100%;
+    min-height: 24px;
+    padding: 2px 9px;
+    border: 1px solid var(--border);
+    /* A pill on one line, its 24px height's half; a value broken over lines keeps its words off the corners (review
+       B's P4S1B-M1). */
+    border-radius: 12px;
+    background: var(--surface-2);
+  }
+
+  .nw-reading table.nw-props :is(th, td) {
+    padding: 0;
+    border: 0;
+  }
+
+  /* The key faint, its value the text's colour (00-M13 4.5.2). */
   .nw-reading table.nw-props th {
-    color: var(--muted-foreground);
-    font-weight: 500;
-    vertical-align: top;
+    color: var(--faint);
+    font-weight: 400;
+    text-align: start;
+    white-space: nowrap;
   }
 
-  .nw-reading table.nw-props table.nw-props {
+  .nw-reading table.nw-props td {
+    min-width: 0;
+    color: var(--foreground);
+    overflow-wrap: anywhere;
+  }
+
+  /* A list's value: no chip of its own, its key before its items, a chip each. */
+  .nw-reading table.nw-props tr:has(> td > ul) {
+    align-items: center;
+    padding: 0;
+    border: 0;
+    background: none;
+  }
+
+  .nw-reading table.nw-props td > ul {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 0;
+    list-style: none;
+  }
+
+  .nw-reading table.nw-props td > ul > li {
     margin: 0;
+  }
+
+  /* A nested table a run that does not wrap: wider than the view, the outer table's wrapper scrolls, a region. A flex
+     of its own, not an inline block: Firefox and WebKit made its chip, and its line, 1.5px taller than the others
+     (review B's P4S1B-N1). */
+  .nw-reading table.nw-props table.nw-props {
+    display: inline-flex;
+  }
+
+  .nw-reading table.nw-props table.nw-props > tbody {
+    display: inline-flex;
+    gap: 0 10px;
+  }
+
+  .nw-reading table.nw-props table.nw-props tr {
+    min-height: 0;
+    padding: 0;
+    border: 0;
+    background: none;
   }
 
   /* A callout (M6/P1): its type's colour and icon, as Obsidian's; one

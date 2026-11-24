@@ -2,18 +2,30 @@ import { useSyncExternalStore } from "react";
 
 /** Below md, Tailwind's max-md: (width < 48rem). */
 const query = "(width < 48rem)";
+/** From xl up, Tailwind's xl: (width >= 80rem): the page's right column beside its content (M13/P4/S1). */
+const besideQuery = "(width >= 80rem)";
 
-function subscribe(changed: () => void): () => void {
-  if (typeof window.matchMedia !== "function") {
-    return () => {};
-  }
-  const list = window.matchMedia(query);
-  list.addEventListener("change", changed);
-  return () => list.removeEventListener("change", changed);
+/** subscriber listens to the window's width crossing of's bound. */
+function subscriber(of: string): (changed: () => void) => () => void {
+  return (changed) => {
+    if (typeof window.matchMedia !== "function") {
+      return () => {};
+    }
+    const list = window.matchMedia(of);
+    list.addEventListener("change", changed);
+    return () => list.removeEventListener("change", changed);
+  };
 }
+
+const subscribe = subscriber(query);
+const subscribeBeside = subscriber(besideQuery);
 
 function narrow(): boolean {
   return typeof window.matchMedia === "function" && window.matchMedia(query).matches;
+}
+
+function beside(): boolean {
+  return typeof window.matchMedia !== "function" || window.matchMedia(besideQuery).matches;
 }
 
 /**
@@ -23,4 +35,13 @@ function narrow(): boolean {
  */
 export function useNarrow(): boolean {
   return useSyncExternalStore(subscribe, narrow);
+}
+
+/**
+ * useBeside tells whether the window is xl or wider, the page's right column beside its content, held and the
+ * window's height, which its toggle folds away (M13/P4/S1, decisions 859, 886), the component rendering again as that
+ * changes. Without matchMedia, as in jsdom, it is: the right column's tests run beside the page.
+ */
+export function useBeside(): boolean {
+  return useSyncExternalStore(subscribeBeside, beside);
 }

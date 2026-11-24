@@ -110,7 +110,8 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   await expect(main.getByRole("article", { name: "Notes", exact: true }).getByRole("link")).toHaveText("Alpha");
   const listed = versionsListed(page);
   await expect(listed).toHaveCount(3);
-  await expect(listed.first()).toContainText(`Current${displayNameOf(adminEmail)} · Restore`);
+  // Who wrote it, then the marks at the line's end (M13/P4/S1, decision 863).
+  await expect(listed.first()).toContainText(`${displayNameOf(adminEmail)} · RestoreCurrent`);
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: first, revision: 3 });
   await expectIndexedLinks(db, notes.id, [{ kind: "wikilink", property: null, target: "Alpha", resolved: alpha.id }]);
   const versions: StoredVersion[] = [

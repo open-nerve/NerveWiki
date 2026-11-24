@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { reaction, when } from "mobx";
 import { observer } from "mobx-react-lite";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
@@ -23,6 +24,7 @@ import { ConflictPanel } from "./conflict-panel";
 import { EditLostBanner } from "./edit-lost-banner";
 import { EditorUploads } from "./editor-uploads";
 import { PageEditingBar } from "./page-editing-bar";
+import { useEditHeadSlots } from "./page-head";
 import { readView } from "./page-view";
 import { UnsavedGuard } from "./unsaved-guard";
 
@@ -94,6 +96,8 @@ type PageEditProps = {
 export const PageEdit = observer(function PageEdit({ notebook, page, editing, done }: PageEditProps) {
   const { slug } = useWorkspace();
   const t = useT();
+  // The page's head's Save and Done, within the edit as its view is (decision 866).
+  const slots = useEditHeadSlots();
   const { mutate } = useSWRConfig();
   const pages = usePageTree(notebook);
   const assets = useAssets(notebook);
@@ -254,9 +258,17 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     // Where the focus was: the leave moves it only from there, or from within the edit, not from where the user went
     // meanwhile.
     const from = document.activeElement;
+    // Within the edit: its view, and its Save and Done in the page's head (M13/P4/S1, decision 866).
     const stayed = () => {
       const at = document.activeElement;
-      return at === null || at === document.body || at === from || view.current?.contains(at) === true;
+      return (
+        at === null ||
+        at === document.body ||
+        at === from ||
+        view.current?.contains(at) === true ||
+        slots.before?.contains(at) === true ||
+        slots.after?.contains(at) === true
+      );
     };
     // The embeds of the files pasted or dropped go in first, to be saved with the rest.
     const waited = current?.working() === true;
@@ -417,7 +429,14 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     );
   }
   return (
-    <div ref={view} className="space-y-3">
+    <div ref={view} className="space-y-3.5">
+      {/* Under the title, as the mockup's .editbar: an edit lost has its banner instead (decision 867). */}
+      {lost === undefined && (
+        <p className="-mt-3 flex items-center gap-1.5 text-[12.5px] text-faint">
+          <Lock aria-hidden className="size-3.25 shrink-0" />
+          {t("page.editingNote")}
+        </p>
+      )}
       {lost === undefined ? (
         <PageEditingBar
           editing={editing}

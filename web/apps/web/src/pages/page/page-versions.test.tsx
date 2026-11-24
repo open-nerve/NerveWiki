@@ -6,6 +6,7 @@ import { json, problem } from "../../test/fakes";
 import { readAgain, section, shownPanel } from "../../test/page-panel";
 import { ada, bob, install, notes, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // The right column's versions (M8 design 4.3, 4.13).
 
@@ -100,7 +101,42 @@ test("in Chinese, the versions say the same", async () => {
     )
   ).toBeTruthy();
   const items = within(screen.getByRole("list", { name: "版本" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["5分钟前当前编辑中Ada · 撤销", "昨天Bob · 导入"]);
+  expect(items.map((item) => item.textContent)).toEqual(["5分钟前Ada · 撤销当前编辑中", "昨天Bob · 导入"]);
+});
+
+/** tags is the tag names of element's children, in order. */
+const tags = (element: Element | undefined) => [...(element?.children ?? [])].map((child) => child.tagName);
+
+// M13/P4/S1 (decisions 863, 868): one row each, the time and who wrote it one run of text, the marks at its end.
+test("a version's row is its time and who wrote it as one run of text, the name in a bdi, then its marks; the current one marked as current", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(now);
+  const server = pageServer();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n", { by: bob, at: "2026-10-02T10:00:00Z" }),
+    versionJSON(2, 1, "Install\nmore\n", { at: "2026-10-03T09:55:00Z", editing: true }),
+  ]);
+  renderApp(pagePath(install.id), server.app);
+
+  const list = await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  const [newest, older] = within(list).getAllByRole("listitem");
+  expect([tags(newest), tags(older)]).toEqual([["DIV", "DIV"], ["DIV"]]);
+  const [said, marks] = newest?.children ?? [];
+  expect(tags(said)).toEqual(["A", "P"]);
+  expect([said?.querySelector("p bdi")?.textContent, older?.querySelector("p bdi")?.textContent]).toEqual([
+    "Ada",
+    "Bob",
+  ]);
+  expect(
+    [...(marks?.children ?? [])].map((mark) => [
+      mark.tagName,
+      mark.textContent,
+      mark.classList.contains("bg-accent-soft"),
+    ])
+  ).toEqual([
+    ["SPAN", "Current", true],
+    ["SPAN", "Editing", false],
+  ]);
 });
 
 test("more reads the next page of twenty and adds it, the focus kept on it until the last, which takes it to the first version it adds; read again, or come back to, the list is as many pages, from the first", async () => {
@@ -380,7 +416,7 @@ test("an edit whose lease ran out, its lock read free, has the versions read aga
   server.withVersions(install.id, [first, edited]);
   const session = server.hold(install.id, bob, 30);
   renderApp(pagePath(install.id), server.app);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
   await waitFor(() => expect(within(section("Versions")).getByText("Editing")).toBeTruthy());
 
   // Bob's tab went away: his lease runs out, and no event says so.
@@ -388,7 +424,7 @@ test("an edit whose lease ran out, its lock read free, has the versions read aga
   server.withVersions(install.id, [first, { ...edited, editing: false }]);
   await act(() => vi.advanceTimersByTimeAsync(31_000));
 
-  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(screen.queryByText(lockNote("Bob is editing this page."))).toBeNull());
   await waitFor(() => expect(within(section("Versions")).queryByText("Editing")).toBeNull());
 });
 

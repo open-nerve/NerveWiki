@@ -184,6 +184,8 @@ export const routes: RouteObject[] = [
                           },
                           {
                             path: "pages/:pageId",
+                            // The notebook's upgrade banner at the top of the page's column (M13/P4/S1, decision 857).
+                            handle: { column: true },
                             lazy: async () => {
                               const { PageLayout } = await import("../pages/page/page-layout");
                               return { Component: PageLayout };

@@ -83,7 +83,7 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   expect(again.data?.html).toContain('<h1 id="nw-q5">Q5</h1>');
 });
 
-test("PG5 (page): the reading view shows the page's properties first, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table scrolls sideways in a region of its own, which the keyboard can scroll", async ({
+test("PG5 (page): the reading view shows the page's properties first, as a strip, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table scrolls sideways in a region of its own, which the keyboard can scroll", async ({
   api,
   db,
   signedInPage,

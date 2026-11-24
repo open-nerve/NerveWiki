@@ -162,13 +162,15 @@ export function useLoadMore(
  * the focus, the last page read, it gives the focus to the list's title
  * before it leaves the document: not to the page's start.
  */
-export function LoadMoreButton({ more, label }: { more: LoadMore; label: string }) {
+export function LoadMoreButton({ more, label, small = false }: { more: LoadMore; label: string; small?: boolean }) {
   const { button, reading, read, left } = more;
   useFocusLeaving(button, left);
   return (
     <Button
       ref={button}
       variant="outline"
+      size={small ? "sm" : undefined}
+      shape={small ? "pill" : undefined}
       aria-busy={reading || undefined}
       aria-disabled={reading || undefined}
       onClick={() => void read()}

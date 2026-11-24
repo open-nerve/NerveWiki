@@ -1,10 +1,11 @@
 import { observer } from "mobx-react-lite";
 import { createContext, use, useLayoutEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Navigate, Outlet, useParams } from "react-router";
+import { Navigate, Outlet, useMatches, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived } from "../../app/arrival";
+import { ColumnTopContext } from "../../app/column-top";
 import { NotLoaded } from "../../app/not-loaded";
 import type { Notebook } from "../../services/notebook.service";
 import { useNotebooks, usePageTree, useStore } from "../../stores/context";
@@ -17,6 +18,9 @@ import { QuickSwitch } from "./quick-switch";
 import { UpgradeBanner } from "./upgrade-banner";
 
 const NotebookContext = createContext<Notebook | undefined>(undefined);
+
+/** What a route says of its page's column: column, that the upgrade's banner is at its top; settings, a settings page's. */
+type ColumnHandle = { column?: boolean; settings?: boolean };
 
 /**
  * useNotebook is the notebook of the page's address, as the workspace's
@@ -42,7 +46,9 @@ export function useNotebook(): Notebook {
  * so do its page tree, which it puts in the workspace's left column
  * (M4/P5 design 3.6) with its other places below it (notebook-places.tsx),
  * and its quick switch (3.10); above its pages, the banner of its upgrade
- * under way (M11/P1 design 4.4). The tree and the places go into the
+ * under way (M11/P1 design 4.4): at the top of the page's column of a page
+ * and of the notebook's settings, which draw it there (ColumnTop; M13/P4/S1,
+ * decision 857), as the render reads the route, above the others'. The tree and the places go into the
  * container the workspace's shell keeps for the notebook of the address,
  * which the list's item of the notebook holds (notebook-slot.tsx,
  * M13/P2/S2). A notebook gone while
@@ -58,6 +64,10 @@ export const NotebookLayout = observer(function NotebookLayout() {
   const container = useNotebookSlot().containerFor(id);
   const { error, mutate } = useSWR(["notebooks", workspace.id], () => notebooks.load());
   const [last, setLast] = useState<Notebook | undefined>(undefined);
+  const columned = useMatches().some((match) => {
+    const handle = match.handle as ColumnHandle | undefined;
+    return handle?.column === true || handle?.settings === true;
+  });
   const found = notebooks.list === undefined ? undefined : notebooks.byId(id);
   if (found !== undefined && found !== last) {
     setLast(found);
@@ -82,9 +92,12 @@ export const NotebookLayout = observer(function NotebookLayout() {
         `tree-${notebook.id}`
       )}
       <QuickSwitch notebook={notebook} />
-      {/* Outside the outlet: the upgrade's state changing remounts none of the page. */}
-      <UpgradeBanner notebook={notebook} />
-      <Outlet key={notebook.id} />
+      {/* Outside the outlet: the upgrade's state changing remounts none of the page; a page's column draws it at its
+          top, ColumnTop alone rendering again as it changes. The outlet at one place in the tree, columned or not. */}
+      {!columned && <UpgradeBanner notebook={notebook} />}
+      <ColumnTopContext value={columned ? <UpgradeBanner notebook={notebook} /> : null}>
+        <Outlet key={notebook.id} />
+      </ColumnTopContext>
     </NotebookContext>
   );
 });

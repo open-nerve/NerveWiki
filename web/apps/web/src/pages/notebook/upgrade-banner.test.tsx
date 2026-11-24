@@ -136,3 +136,86 @@ test.each(["upgrading", "reviewing", "rolling_back"] as const)(
     expect(says).toEqual(anyAdminSays[state] === undefined ? [] : [anyAdminSays[state]]);
   }
 );
+
+// M13/P4/S1 (decision 857): on a page and its settings the banner is at the top of the page's column.
+test("on a page, the banner is at the top of its column, before its title, alone", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  renderApp(pagePath(guide.id), server.app);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
+  const banner = bannerOf(said.upgrading);
+  expect(banner?.parentElement).toBe(heading.parentElement);
+  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
+});
+
+test("a page not found has the banner at the top of its column, before what it says", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  renderApp(pagePath("0199a2b4-0000-7000-8000-0000000001ff"), server.app);
+
+  const heading = await screen.findByRole("heading", { name: "Page not found" });
+  const banner = bannerOf(said.upgrading);
+  expect(banner).not.toBeNull();
+  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
+});
+
+test("a page whose tree cannot be read has the banner above why, which stays with Try again", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  server.nodesDown = true;
+  renderApp(pagePath(guide.id), server.app);
+
+  const alert = await within(screen.getByRole("main")).findByRole("alert");
+  expect(within(screen.getByRole("main")).getByRole("button", { name: "Try again" })).toBeTruthy();
+  const banner = bannerOf(said.upgrading);
+  expect(banner).not.toBeNull();
+  expect(banner?.compareDocumentPosition(alert)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
+});
+
+test("a notebook's settings index has the banner in the settings' column, as its first page has it, from the render that goes there (decisions 892, 898)", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  // Where the banner is each time the page changes: in the settings' column or not, and whether a page's title is there.
+  const placed: { column: boolean; title: boolean }[] = [];
+  const observer = new MutationObserver(() => {
+    // Not by its text: the general page says it in its own row too.
+    const banner = Array.from(document.querySelectorAll("output")).find((each) =>
+      each.textContent?.includes(said.upgrading)
+    );
+    if (banner !== undefined) {
+      placed.push({ column: banner.closest(".max-w-178") !== null, title: document.querySelector("main h1") !== null });
+    }
+  });
+  observer.observe(document.body, { subtree: true, childList: true });
+  try {
+    renderApp(`/lab/notebooks/${notebookJSON.id}/settings`, server.app);
+    await within(screen.getByRole("main")).findByRole("heading", { level: 1 });
+  } finally {
+    observer.disconnect();
+  }
+  // Seen before the first page's title, as the index goes to it (decision 892), and never out of the column.
+  expect(placed[0]).toEqual({ column: true, title: false });
+  expect(placed.every(({ column }) => column)).toBe(true);
+  // One banner: the general page says the mode in its own row too, not as a status.
+  expect(screen.getAllByRole("status").filter((status) => status.textContent?.includes(said.upgrading))).toHaveLength(
+    1
+  );
+});
+
+test("a version's page has the banner where it had it, above the notebook's outlet: not in the page's column", async () => {
+  const server = pageServer();
+  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+  renderApp(`${pagePath(guide.id)}/versions/1`, server.app);
+
+  const heading = await screen.findByRole("heading", { level: 1, name: "Version 1" });
+  const banner = bannerOf(said.upgrading);
+  expect(banner).not.toBeNull();
+  expect(banner?.contains(heading)).toBe(false);
+  expect(banner?.parentElement?.contains(heading)).toBe(true);
+  expect(banner?.parentElement).not.toBe(heading.parentElement);
+  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+});

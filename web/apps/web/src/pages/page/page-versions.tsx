@@ -1,3 +1,4 @@
+import { Clock } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useRef } from "react";
 import { Link } from "react-router";
@@ -9,6 +10,7 @@ import { errorText } from "../../app/problem-messages";
 import { Alert } from "../../components/ui/alert";
 import { formatDateTime, formatRelative } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
+import { isolate, Isolated } from "../../i18n/isolated";
 import type { Notebook } from "../../services/notebook.service";
 import type { PageVersion, PageVersionPage } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -44,6 +46,9 @@ export function useVersions(notebook: Notebook, page: string) {
  * its changeset was; the newest is marked current, and editing while its
  * session is alive. More reads the next page and adds it; the last, More
  * going, the focus falls to the first version it adds (load-more.tsx).
+ * Each a line as the mockup's .ver (M13/P4/S1, decisions 863, 868): the
+ * time, then who wrote it, one run of text wrapping as one, the name in a
+ * bdi; the marks at its first line's end, the current one amber.
  */
 export const PageVersions = observer(function PageVersions({
   notebook,
@@ -79,7 +84,7 @@ export const PageVersions = observer(function PageVersions({
 
   if (data === undefined) {
     return (
-      <PanelSection title={t("version.list")}>
+      <PanelSection title={t("version.list")} icon={Clock}>
         <div className="text-sm">
           <NotLoaded error={error} retry={() => void mutate()} />
         </div>
@@ -91,51 +96,89 @@ export const PageVersions = observer(function PageVersions({
   const { locale } = preferences;
   const now = Date.now();
   return (
-    <PanelSection title={t("version.list")} summaryRef={summary}>
-      <p className="text-xs text-muted-foreground">{t("version.listHint")}</p>
-      <p className="text-xs text-muted-foreground">{t("version.kept")}</p>
+    <PanelSection title={t("version.list")} icon={Clock} summaryRef={summary}>
+      <p className="text-xs text-faint">{t("version.listHint")}</p>
+      <p className="text-xs text-faint">{t("version.kept")}</p>
       {versions.length > 0 && (
-        <ul aria-label={t("version.list")} className="space-y-2 text-sm">
+        <ul aria-label={t("version.list")} className="space-y-1.5 text-[13px]">
           {versions.map((version) => {
             const when = formatRelative(version.updated_at, now, locale);
             const time = formatDateTime(version.updated_at, locale);
+            const current = version.id === newest;
             return (
-              <li key={version.id} className="space-y-0.5">
-                <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <li key={version.id} className="flex items-baseline gap-2">
+                {/* The time and who wrote it one run of text, wrapping as one; the marks at the first line's end (review
+                    B's R2-N2). */}
+                <div className="min-w-0 flex-1 break-words">
                   <Link
                     ref={version.id === more.focusing ? focused : undefined}
                     to={href(version.revision)}
                     state={arrived}
                     aria-label={t("version.linkName", { when, revision: version.revision, time })}
-                    className="underline underline-offset-4"
+                    className="text-muted-foreground hover:text-foreground"
                   >
                     <time dateTime={version.updated_at} title={time}>
                       {when}
                     </time>
                   </Link>
-                  {version.id === newest && <Mark>{t("version.current")}</Mark>}
-                  {version.editing && <Mark>{t("version.editing")}</Mark>}
+                  {/* The dot drawn before it, in no text: what the tests read of the writer stays "Ada · Edit". */}
+                  <p className="inline text-muted-foreground before:mx-1 before:content-['·']">
+                    <VersionBy version={version} t={t} />
+                  </p>
                 </div>
-                <p className="text-xs break-words text-muted-foreground">{versionBy(version, t)}</p>
+                {(current || version.editing) && (
+                  <div className="ms-auto flex shrink-0 items-center gap-1">
+                    {current && <Mark current>{t("version.current")}</Mark>}
+                    {version.editing && <Mark>{t("version.editing")}</Mark>}
+                  </div>
+                )}
               </li>
             );
           })}
         </ul>
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}
-      {cursor !== undefined && <LoadMoreButton more={more} label={t("version.more")} />}
+      {cursor !== undefined && <LoadMoreButton more={more} label={t("version.more")} small />}
     </PanelSection>
   );
 });
 
-/** Mark is a version's mark beside its time: current, or editing. */
-export function Mark({ children }: { children: string }) {
-  return <span className="rounded border px-1.5 text-xs text-muted-foreground">{children}</span>;
+/**
+ * Mark is a version's mark beside its time: current, or editing; current, the right column's current one, amber on
+ * its soft ground, round (the mockup's .ver .tag; M13/P4/S1, decision 863), its border transparent but in forced
+ * colours, which take its ground away (review B's P4S1B-N2): the history's and version's pages have the plain one.
+ */
+export function Mark({ children, current = false }: { children: string; current?: boolean }) {
+  return (
+    <span
+      className={
+        current
+          ? "rounded-full border border-transparent bg-accent-soft px-1.5 text-[11px] text-accent"
+          : "rounded border px-1.5 text-xs text-muted-foreground"
+      }
+    >
+      {children}
+    </span>
+  );
 }
 
-/** versionBy says who wrote version, and what its changeset was: "Ada · Edit". */
+/**
+ * versionBy says who wrote version, and what its changeset was: "Ada · Edit", a no-break space after the dot, so that
+ * the version's page breaks its line before "· Edit", not between them (review B's P4S1B-F2-1). The version's page's.
+ */
 export function versionBy(version: PageVersion, t: Translate): string {
-  return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
+  return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
+}
+
+/** VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. */
+function VersionBy({ version, t }: { version: PageVersion; t: Translate }) {
+  return (
+    <Isolated
+      {...isolate(
+        (name) => `${name(version.changeset.created_by.display_name)} · ${kindText(version.changeset.kind, t)}`
+      )}
+    />
+  );
 }
 
 /** readPages reads count pages of the page id's versions, from the first, fewer when the list ends. */

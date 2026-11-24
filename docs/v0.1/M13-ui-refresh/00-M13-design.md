@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 设计定稿，S1 实施中 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 设计定稿，S1 已审查、待合并 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -324,7 +324,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 
   另有 PG16 树的菜单（`e2e/stories/page/pg16-tree-menu.spec.ts`）：新的、只有页面版本的两格，一格在三种浏览器里打开树的行菜单、改名、以 Esc 取消（对话框没有取消按钮）、焦点回到按钮（M12-polish 第 14 项），另一格核对当前行滚进侧栏而窗口不动，宽屏与 375 px 下都看窗口（[02-P2](02-P2-shell.md) 决定 789、791 与 10.2）；PG2 的页面版本（`pg2-rename-page.spec.ts:131-170`，以 `expectRenamed` 断言数据库）照旧留在 PG2。不把 `pg2-` 加进 `threeBrowsers`：那个文件还有接口、MCP 与 `@narrow` 的格，进了 `threeBrowsers` 会让接口与 MCP 版本跑三遍，`@narrow` 的格被 `webkit-narrow` 的 `testIgnore` 丢掉，`check.mjs:27` 的必需格随之失败（主持者的决定 745）。
 
-  四个（UI1–UI3、PG16）都进 `threeBrowsers`（`e2e/playwright.config.ts:3-4`，按文件路径匹配，名字不与别的文件的前缀重叠），并在 `tools/e2e-projects/check.mjs` 的必需格里各加 firefox 与 webkit 两行（正则写错不会让任何一格变红，`check.mjs:1-3`）。10.1 的接口版本与 MCP 版本豁免（照 PG15 的先例写进 13.4 第 3 条）：UI1 只有界面的行为；UI2 经页面改工作区与笔记本的名字，照 w4、n6 调同一组数据库断言，接口版本与 MCP 版本由 W4、N6 覆盖；UI3 写开放程度，照 n3 调 `expectNotebook`，接口版本与 MCP 版本由 N3 覆盖；PG16 只核对菜单的行为（取消，不写），接口与 MCP 版本豁免。P4 另加 PG17（`e2e/stories/page/pg17-page-head.spec.ts`，两格，S1、S2 各一，三种浏览器）：页的头一行（"谁、何时编辑过"晚到时"编辑"不动）、宽屏的右栏（大纲读到的一节、折叠的 callout 里的标题不算、右栏只滚到刚好露出、读者在右栏里滚过之后不再跟、收起与记住、锚定）、375 px 的属性条，与代码块的头（语言名、"复制"、横向滚动时头不动）；进 `threeBrowsers` 与 `check.mjs` 的必需格（每格 firefox、webkit 两行）；只核对界面的行为，接口与 MCP 版本豁免。"编辑"拿着焦点、读者读到页中间时页变得不能编辑，焦点到标题而窗口不动，由 UP1 核对（三种浏览器）（[04-P4](04-P4-reading.md) 决定 865、879）。
+  四个（UI1–UI3、PG16）都进 `threeBrowsers`（`e2e/playwright.config.ts:3-4`，按文件路径匹配，名字不与别的文件的前缀重叠），并在 `tools/e2e-projects/check.mjs` 的必需格里各加 firefox 与 webkit 两行（正则写错不会让任何一格变红，`check.mjs:1-3`）。10.1 的接口版本与 MCP 版本豁免（照 PG15 的先例写进 13.4 第 3 条）：UI1 只有界面的行为；UI2 经页面改工作区与笔记本的名字，照 w4、n6 调同一组数据库断言，接口版本与 MCP 版本由 W4、N6 覆盖；UI3 写开放程度，照 n3 调 `expectNotebook`，接口版本与 MCP 版本由 N3 覆盖；PG16 只核对菜单的行为（取消，不写），接口与 MCP 版本豁免。P4 另加 PG17（`e2e/stories/page/pg17-page-head.spec.ts`，四格：S1 第 1、3、4 格，S2 第 2 格，三种浏览器；[04-P4](04-P4-reading.md) 决定 879）：页的头一行（"谁、何时编辑过"晚到时"编辑"不动）、宽屏的右栏（大纲读到的一节、折叠的 callout 里的标题不算、右栏只滚到刚好露出、读者在右栏里滚过之后不再跟、收起与记住、锚定）、375 px 的属性条，375 与 820 px 时进出编辑、打字与保存之后标题不动，375 px 时长名字在锁说明与版本页的作者一行里折行，与代码块的头（语言名、"复制"、横向滚动时头不动）；进 `threeBrowsers` 与 `check.mjs` 的必需格（每格 firefox、webkit 两行）；只核对界面的行为，接口与 MCP 版本豁免。"编辑"拿着焦点、读者读到页中间时页变得不能编辑，焦点到标题而窗口不动，由 UP1 核对（三种浏览器）（[04-P4](04-P4-reading.md) 决定 865、879）。
 - **变异**（02-workflow 3.1；00-M12 9.6 是先例），每个 Step 的设计写出自己的表，至少含：把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红；⌘K 在编辑器里不让路、对话框开着时不让路，vitest 变红；即时生效被拒不退回，UI3 变红；设置目录的 `nav` 改名，tr1 或 n9 变红；`notebookGroups` 数进树里的链接，n1 或 n2 变红；抽屉关着时不带 `inert`，UI1 变红。
 - **每个 Step 的三位审查者**（02-workflow 3.2）：A 管行为（焦点、键盘、store、路由、快捷键）；B 管外观（对照样稿的色值、圆角、间距、层次，亮暗与 1440/375 的截图；检查单加一条"与样稿一致"）；C 管测试、e2e、完成标准与文档。
 - **视觉的核对**：截图由审查者用 Playwright 截取、在本机看，不进仓库，不做像素对比的门禁（主持者的决定 725）；审查记录写明对照过哪些页面。
@@ -352,7 +352,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | | S3 搜索、⌘K、快速切换与窄屏 | 4.2.4 的胶囊搜索框、⌘K 与让路、监听挪到外框、快速切换的换装；4.2.5 的抽屉与细栏 | UI1；`@narrow` 与 375 px 的格；se1、se2、lw8 照旧 |
 | **P3 设置界面** | S1 设置模式与个人设置 | 设置目录组件、返回与来处（记在 `Layout`，[03-P3](03-P3-settings.md) 决定 812）、焦点；卡片行组件；个人资料、外观与语言（新页）、安全、访问令牌 | UI2；4.4.1 的那些故事与 vitest 改法；13.2 第 16 条的核对 |
 | | S2 工作区与笔记本设置 | 常规、成员（含邀请）、无主笔记本；笔记本的常规、成员、导入导出；4.4.3 的即时生效与草稿（说明随显示的项，Esc 退回待用的选择）；"危险操作"组 | UI3；设置相关的故事改断言；13.2 第 12 条的改写 |
-| **P4 阅读与编辑** | S1 页头、属性条与右栏 | 4.5.1、4.5.2、4.5.4；`main` 的留白、升级横幅进内容列、编辑时头一行的状态与按钮、标题下的编辑说明（[04-P4](04-P4-reading.md) 决定 854） | 属性条、右栏收起、大纲当前节的 vitest；l6、hi1–hi3、pg5；新故事 PG17 第 1 格 |
+| **P4 阅读与编辑** | S1 页头、属性条与右栏 | 4.5.1、4.5.2、4.5.4；`main` 的留白、升级横幅进内容列、编辑时头一行的状态与按钮、标题下的编辑说明（[04-P4](04-P4-reading.md) 决定 854） | 属性条、右栏收起、大纲当前节的 vitest；l6、hi1–hi3、pg5；新故事 PG17 第 1、3、4 格 |
 | | S2 正文的样式 | 4.5.3（含复制按钮、hljs、mermaid 主题、任务项） | 阅读视图增强的测试；PG15 等就地更新的故事；l4；PG17 第 2 格 |
 | | S3 编辑 | 4.5.5 | 编辑器的 vitest；编辑、冲突、锁、补全（l5）的故事；l6 的编辑时的大纲 |
 | **P5 其余页面** | S1 首页与入口 | 工作区首页、笔记本首页、登录、注册、邀请、引导、新建工作区、出错与 404；空状态的组件（4.3，第一批用处是两个首页） | 引导、登录的故事；375 px |
@@ -546,7 +546,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
 | P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 完成 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md)；[S2](reviews/P3-S2-workspace-notebook-settings-review.md) | S1 `f32b0762`；S2 `12b0b734` |
-| P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 设计定稿；S1 实施中 | [设计审查](reviews/P4-design-review.md) | — |
+| P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 设计定稿；S1 已审查、待合并 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md) | — |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
@@ -571,3 +571,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-24：P3/S2 实施与审查完成（[审查记录](reviews/P3-S2-workspace-notebook-settings-review.md)；主持者的决定 852–853：卡片之上的组说明同宽，移动页面对话框的两个下拉在标签之下）；合并 `12b0b734`。
 - 2026-11-24：P3 完成（S1 `f32b0762`、S2 `12b0b734`；主持者的决定 810–853；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761；UI2、UI3 不按 `Control+K`，没有新的只靠 CI 的步骤）。
 - 2026-11-24：照 P4 的设计修订（[04-P4](04-P4-reading.md) 2.1；[设计审查](reviews/P4-design-review.md)，主持者的决定 854–896）：编辑时标题下的一句；大纲的当前节只观察、跳过关着的 `details`、页能滚时才看到底、点的一项先标；右栏只滚到刚好露出、读者在右栏里动过之后不再跟；编辑时的大纲在语法树补完时刷新；"保存"有未保存的修改而焦点在头一行右边一组里时不隐去（改决定 745 的这一层）；`--accent` 的用处加编辑器的光标、图里的库节点与注、甘特图的今天线与标记线；第 8 节注册属性条的读屏角色；第 7 节 P4 三行与"总体设计的修订"第 3 项；4.8 的 PG17；第 10 节"编辑器混排""滚动锚定"两行的应对。
+- 2026-11-24：P4/S1 实施与审查完成（[审查记录](reviews/P4-S1-head-strip-panel-review.md)；主持者的决定 897–900：读者在右栏里动过之后不再跟，到换页、或进出编辑之后大纲重新出现为止，决定 892 那一支的横幅在设置的列里，"编辑过"一句名字长时只截名字，带锚点打开的页视图第一次到时焦点给锚点照现状、记给 v0.2）；4.8 的 PG17 四格；合并见第 12 节。

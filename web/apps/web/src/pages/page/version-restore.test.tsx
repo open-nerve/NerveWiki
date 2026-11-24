@@ -10,6 +10,7 @@ import { marked } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // A version restored (M8 design 4.4; P1 design 4.5): each answer.
 
@@ -153,7 +154,7 @@ test("the dialog shows what the restore changes of the page as it is now; restor
   expect(restores(server.sent)).toEqual(["RESTORE Install 4 on 6"]);
   expect((await screen.findByRole("article", { name: "Install" })).textContent).toBe("Install\nthree");
   await waitFor(() => expect(within(section("Versions")).getAllByRole("listitem")).toHaveLength(4));
-  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/CurrentAda · Restore$/);
+  expect(within(section("Versions")).getAllByRole("listitem")[0]?.textContent).toMatch(/Ada · RestoreCurrent$/);
   expect(server.sent.slice(before)).toEqual(expect.arrayContaining(["GET view Install", "GET versions Install"]));
 });
 
@@ -374,7 +375,7 @@ test("a page someone edits says who in the dialog, which stays; the page's lock 
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Install”.");
   expect(screen.getByRole("alertdialog")).toBe(dialog);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
 });
 
 test("a page gone closes the dialog, the version's page saying so", async () => {

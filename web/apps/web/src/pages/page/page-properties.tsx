@@ -1,3 +1,4 @@
+import { SlidersHorizontal } from "lucide-react";
 import { useMemo, type ReactNode } from "react";
 import { Link } from "react-router";
 import useSWR from "swr";
@@ -73,16 +74,20 @@ export function PageProperties({
       </div>
     );
   } else if (!data.valid) {
-    shown = <p className="text-sm text-muted-foreground">{t("page.propertiesInvalid")}</p>;
+    shown = <p className="text-[13px] text-faint">{t("page.propertiesInvalid")}</p>;
   } else if (data.properties.length === 0) {
-    shown = <p className="text-sm text-muted-foreground">{t("page.noProperties")}</p>;
+    shown = <p className="text-[13px] text-faint">{t("page.noProperties")}</p>;
   } else {
+    // Two columns, the keys 64px and faint, as the mockup's .kv (M13/P4/S1, decision 863).
     shown = (
-      <dl aria-label={t("page.properties")} className="space-y-2 text-sm">
+      <dl
+        aria-label={t("page.properties")}
+        className="grid grid-cols-[4rem_minmax(0,1fr)] gap-x-2.5 gap-y-1.5 text-[12.5px]"
+      >
         {rows.map(({ key, shown: value }) => (
-          <div key={key}>
-            <dt className="break-words text-muted-foreground">{key}</dt>
-            <dd className="break-words">
+          <div key={key} className="contents">
+            <dt className="break-words text-faint">{key}</dt>
+            <dd className="break-words text-muted-foreground">
               {Array.isArray(value) ? (
                 <ul>
                   {value.map((item, at) => (
@@ -99,7 +104,11 @@ export function PageProperties({
       </dl>
     );
   }
-  return <PanelSection title={t("page.properties")}>{shown}</PanelSection>;
+  return (
+    <PanelSection title={t("page.properties")} icon={SlidersHorizontal}>
+      {shown}
+    </PanelSection>
+  );
 }
 
 /** rowsOf is each property as shown, its property links taken (taking). */
@@ -252,12 +261,13 @@ function show(shown: Shown, href: (id: string) => string, newTab: string): React
       return shown.text;
     }
     const { asset, inline } = shown.lead;
+    // The right column's links unlined but hovered (00-M13 4.7; M13/P4/S1).
     return inline ? (
-      <a href={asset} target="_blank" rel="noopener noreferrer" className="underline underline-offset-4">
+      <a href={asset} target="_blank" rel="noopener noreferrer" className="hover:underline">
         {shown.text} <span className="sr-only select-none">{newTab}</span>
       </a>
     ) : (
-      <a href={asset} download className="underline underline-offset-4">
+      <a href={asset} download className="hover:underline">
         {shown.text}
       </a>
     );
@@ -265,7 +275,7 @@ function show(shown: Shown, href: (id: string) => string, newTab: string): React
   return shown.lead === null ? (
     <span className="text-muted-foreground underline decoration-dashed underline-offset-4">{shown.text}</span>
   ) : (
-    <Link to={href(shown.lead)} state={arrived} className="underline underline-offset-4">
+    <Link to={href(shown.lead)} state={arrived} className="hover:underline">
       {shown.text}
     </Link>
   );
