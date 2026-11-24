@@ -134,11 +134,19 @@ const completionTheme = EditorView.theme({
     borderRadius: "var(--radius-row)",
     fontSize: "var(--text-row)",
   },
-  // The option selected shows by more than its background, which is near the popover's (M12/P2/S3; M5-polish 12.4).
+  // The option selected shows by more than its background, which is near the popover's (M12/P2/S3; M5-polish 12.4);
+  // in forced colours, which draw neither, by a transparent outline inside it that they draw, as the app's menus'
+  // items have (outline-hidden; dropdown-menu.tsx; review B's P4S3B-M4).
   ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--active)",
     color: "var(--foreground)",
     boxShadow: "inset 0 0 0 2px var(--ring)",
+  },
+  "@media (forced-colors: active)": {
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      outline: "2px solid transparent",
+      outlineOffset: "-2px",
+    },
   },
   ".cm-completionDetail": { color: "var(--muted-foreground)", fontStyle: "normal", marginLeft: "0.75rem" },
   ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },

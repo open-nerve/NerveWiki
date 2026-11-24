@@ -107,6 +107,23 @@ describe("TextDiff", () => {
     expect(getComputedStyle(scroller).fontFamily).toBe("monospace");
   });
 
+  // Its gutter, where merge marks the lines changed, is of the view's background, not CodeMirror's light one, a band
+  // in the dark (decision 910; review B's P4S3B-I1).
+  test("has its gutter on the view's background, unbordered, its text secondary", () => {
+    const { container } = render(diff("a\nb\n", "a\nc\n"));
+    const gutters = container.querySelector(".cm-gutters");
+    if (gutters === null) {
+      throw new Error("no gutter");
+    }
+    const style = getComputedStyle(gutters);
+    // jsdom reads transparent as the colour it is.
+    expect([style.backgroundColor, style.color, style.borderRightStyle]).toEqual([
+      "rgba(0, 0, 0, 0)",
+      "var(--muted-foreground)",
+      "none",
+    ]);
+  });
+
   test("marks the lines added and removed, counts the changes and the lines, and gives the legend", () => {
     const { container } = render(diff(`${lines}old\n`, `${lines}new\nmore\n`));
     expect(screen.getByText("1 处改动")).toBeDefined();

@@ -608,6 +608,50 @@ test("the editor draws the frontmatter as plain text: the line lezer reads there
   expect(looks(yaml)).toEqual(["13.5px", "400"]);
 });
 
+// Inline code in the code's type and size, 13.5px as a code line's (review B's P4S3B-M2): of the prose's 15.5px
+// 0.871em, of a monospaced line's 1em; a comparison, which sets no such size, has its text's.
+test("the editor's inline code is as large as its code lines: 0.871em in the prose, 1em in a table's line", () => {
+  const { container } = editor("Text `code` here.\n\n| `cell` |\n|---|\n");
+  const content = container.querySelector(".cm-content");
+  const table = container.querySelector(".nw-mono-line");
+  const codes = [...container.querySelectorAll(".cm-line span")].filter((span) =>
+    ["code", "cell"].includes(span.textContent ?? "")
+  );
+  if (content === null || table === null) {
+    throw new Error("no content");
+  }
+  expect(codes.map((code) => getComputedStyle(code).fontSize)).toEqual([
+    "var(--nw-editor-code, 1em)",
+    "var(--nw-editor-code, 1em)",
+  ]);
+  expect(getComputedStyle(content).getPropertyValue("--nw-editor-code")).toBe("0.871em");
+  expect(getComputedStyle(table).getPropertyValue("--nw-editor-code")).toBe("1em");
+});
+
+/** coloured is the text of the line's spans of each colour jsdom computes, by colour, in order. */
+function coloured(line: Element): Record<string, string> {
+  const by: Record<string, string> = {};
+  const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    const colour = node.parentElement === null ? "" : getComputedStyle(node.parentElement).color;
+    by[colour] = (by[colour] ?? "") + (node.textContent ?? "");
+  }
+  return by;
+}
+
+// In a quote, the Markdown's marks and an address are faint as out of one, its text secondary (review B's P4S3B-N1).
+test("in a quote the marks of emphasis, a link's and code's, and an address are faint; its text secondary", () => {
+  const { container } = editor("> a **b** [x](https://x.test) `c`\n");
+  const line = container.querySelector(".cm-line");
+  if (line === null) {
+    throw new Error("no line");
+  }
+  expect(coloured(line)).toEqual({
+    "var(--faint)": ">****[](https://x.test)``",
+    "var(--muted-foreground)": " a b x c",
+  });
+});
+
 // The outline while the page is edited leads to a heading's line (M13/P4/S3, decision 876).
 test.each([
   ["# One\n\nText\n\n## Two\n", 5, "## Two"],

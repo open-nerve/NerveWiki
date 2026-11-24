@@ -187,6 +187,38 @@ test("markupMarks fades a wiki link's marks, its page underlined, its section an
   ]);
 });
 
+// As the server reads a wiki link (obsidian/wikilink.go; review A's P4S3A-N2): lezer has no syntax of it.
+test("markupMarks marks a wiki link the server reads: none escaped, nor of neither a page nor a section; its page underlined without its spaces, up to a table's \\|; none in a link's title", () => {
+  expect(marked(viewOf("\\[[a]] [[|x]] [[ ]] [[#]] [[ # |y]] but \\\\[[b]] and \\![[c]]"))).toEqual([
+    ["[[", "nw-md-faint"],
+    ["b", "nw-md-link"],
+    ["]]", "nw-md-faint"],
+    // An escaped "!" is text: what follows is a link, not an embed.
+    ["[[", "nw-md-faint"],
+    ["c", "nw-md-link"],
+    ["]]", "nw-md-faint"],
+  ]);
+  expect(marked(viewOf("[[ Page # Sec | alias ]] and [[ # Sec ]]"))).toEqual([
+    ["[[", "nw-md-faint"],
+    ["Page", "nw-md-link"],
+    ["#", "nw-md-faint"],
+    ["|", "nw-md-faint"],
+    ["]]", "nw-md-faint"],
+    ["[[", "nw-md-faint"],
+    ["#", "nw-md-faint"],
+    ["Sec", "nw-md-link"],
+    ["]]", "nw-md-faint"],
+  ]);
+  expect(marked(viewOf("| a |\n|---|\n| [[P\\|al]] |"))).toEqual([
+    ["[[", "nw-md-faint"],
+    ["P", "nw-md-link"],
+    ["\\|", "nw-md-faint"],
+    ["]]", "nw-md-faint"],
+  ]);
+  // A link's title is no Markdown: a wiki link nor a highlight in it.
+  expect(marked(viewOf('A [text](https://x.test "[[a]] ==b==") c'))).toEqual([["text", "nw-md-link"]]);
+});
+
 test("markupMarks underlines a link's text alone, not an image's nor a reference's; it fades a highlight's marks, not an equality's", () => {
   // The link's brackets and address are faint by the highlighting.
   expect(marked(viewOf("A [text](https://x.test/a) b"))).toEqual([["text", "nw-md-link"]]);

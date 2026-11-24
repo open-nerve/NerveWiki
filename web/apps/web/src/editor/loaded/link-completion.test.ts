@@ -142,6 +142,37 @@ test("after [[ the notebook's pages are listed by title, a title others share wi
   expect(shown(view)).toHaveLength(7);
 });
 
+// Forced colours draw neither the option selected's background nor its ring: a transparent outline, which they draw
+// in the system's colour, inside it, as the app's menus' items have (outline-hidden; review B's P4S3B-M4). Out of
+// them none, the ring alone shows it (which L5 measures); jsdom matches no forced colours: their rule is read.
+test("the option selected has a transparent outline inside it in forced colours alone, which they show", async () => {
+  const { view } = editing("See ");
+  type(view, "[[");
+  await opened(view);
+
+  const selected = await vi.waitFor(() => {
+    const option = document.querySelector(".cm-tooltip-autocomplete li[aria-selected]");
+    if (option === null) {
+      throw new Error("no option selected");
+    }
+    return option;
+  });
+  expect(getComputedStyle(selected).outline).toBe("");
+  const forced: string[][] = [];
+  for (const style of document.querySelectorAll("style")) {
+    for (const media of style.sheet?.cssRules ?? []) {
+      if (media instanceof CSSMediaRule && media.media.mediaText === "(forced-colors: active)") {
+        for (const rule of media.cssRules) {
+          if (rule instanceof CSSStyleRule && selected.matches(rule.selectorText)) {
+            forced.push([rule.style.outline, rule.style.outlineOffset]);
+          }
+        }
+      }
+    }
+  }
+  expect(forced).toEqual([["2px solid transparent", "-2px"]]);
+});
+
 test("what is typed after [[ filters by title and by link: a page's folder finds it; Chinese too", async () => {
   const { view } = editing("");
   type(view, "[[Archi");

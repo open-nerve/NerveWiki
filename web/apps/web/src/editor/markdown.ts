@@ -12,8 +12,12 @@ import type { InlineContext, MarkdownConfig, MarkdownParser } from "@lezer/markd
  * the mockup's editor has them, 20px and 16.5px over its 15.5px; a link
  * in the text's colour, its address and marks faint: the source editor's
  * markupMarks underlines its text alone (M13/P4/S3, decisions 874, 875,
- * 889). A link's marks and address are of the link too: their rules come
- * after its, to win.
+ * 889). A link's marks and address are of the link too, and a quote's
+ * text's marks of the quote: their rules come after those, to win; a
+ * link's text in a quote is the quote's (review B's P4S3B-N1). Inline
+ * code is as large as the code lines, where the source editor sets
+ * --nw-editor-code (prose-lines.ts; review B's P4S3B-M2); a comparison
+ * sets none, its text's size.
  */
 const markdownHighlight = HighlightStyle.define([
   { tag: tags.heading1, fontWeight: "650", fontSize: "1.29em" },
@@ -23,11 +27,11 @@ const markdownHighlight = HighlightStyle.define([
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
-  { tag: tags.monospace, fontFamily: "var(--nw-editor-mono)" },
+  { tag: tags.monospace, fontFamily: "var(--nw-editor-mono)", fontSize: "var(--nw-editor-code, 1em)" },
   { tag: tags.link, color: "var(--foreground)" },
+  { tag: tags.quote, color: "var(--muted-foreground)" },
   { tag: tags.url, color: "var(--faint)" },
   { tag: [tags.processingInstruction, tags.contentSeparator, tags.labelName], color: "var(--faint)" },
-  { tag: tags.quote, color: "var(--muted-foreground)" },
 ]);
 
 /**
