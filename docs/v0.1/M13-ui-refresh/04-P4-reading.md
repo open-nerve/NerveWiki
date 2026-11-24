@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P4 阅读与编辑（三个 Step：S1 页头、属性条与右栏；S2 正文的样式；S3 编辑） |
-| 日期 | 2026-11-24（初稿；同日照[设计审查](reviews/P4-design-review.md)修订，又照它的修订核对第 1 轮再修订、第 2 轮三修；主持者照第 3 轮改了最后一条 Minor 与 Nit，第 4 轮核对之后定稿）；同日照 S1 的实施与审查修订（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900）；2026-11-25 照 S2 的实施与审查修订（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)，主持者的决定 901–906） |
-| 状态 | 设计定稿（修订核对之后三位都没有 Important、Minor：B 在第 2 轮、A 在第 3 轮、C 在第 4 轮；主持者补上最后的 Nit；[审查记录](reviews/P4-design-review.md)，主持者的决定 854–896）；S1 实施与审查完成（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900），合并 `715923dd`；S2 实施与审查完成（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)，主持者的决定 901–906），合并 `cea66d69` |
+| 日期 | 2026-11-24（初稿；同日照[设计审查](reviews/P4-design-review.md)修订，又照它的修订核对第 1 轮再修订、第 2 轮三修；主持者照第 3 轮改了最后一条 Minor 与 Nit，第 4 轮核对之后定稿）；同日照 S1 的实施与审查修订（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900）；2026-11-25 照 S2 的实施与审查修订（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)，主持者的决定 901–906）；2026-11-25 照 S3 的实施与审查修订（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)，主持者的决定 907–911） |
+| 状态 | 设计定稿（修订核对之后三位都没有 Important、Minor：B 在第 2 轮、A 在第 3 轮、C 在第 4 轮；主持者补上最后的 Nit；[审查记录](reviews/P4-design-review.md)，主持者的决定 854–896）；S1 实施与审查完成（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900），合并 `715923dd`；S2 实施与审查完成（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)，主持者的决定 901–906），合并 `cea66d69`；S3 实施与审查完成（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)，主持者的决定 907–911），已审查、待合并，合并见 00 号文档第 12 节 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.5（全部）、4.1 末段"阅读视图的变量"与"语义名的例外"、4.3"单选与复选""按钮"两条、4.7、4.8（大纲的当前节、编辑时的大纲、复制按钮的 vitest；变异的最低清单）、第 7 节 P4 三行、第 8 节（注册"代码块的复制按钮"）、9.1"阅读视图的样式断言""右栏""编辑的'保存'""编辑器的字体与主题"四行、第 10 节"编辑器混排""滚动锚定"两行、"移交的落实"（"编辑时没有大纲"由 P4/S3 认领）；[03-P3](03-P3-settings.md) 第 9 节"P4"一条（`main` 的留白、细栏的位置文字、升级横幅与内容列）；[02-P2](02-P2-shell.md) 第 9 节"P2–P5"与"收尾"两条；[01-P1](01-P1-foundation.md) 第 9 节"P4"（任务列表的复选框）与"P2–P5"（标签组）两条；[v0.1 总体设计](../v0.1-design.md) 9.2、9.3、13.2 第 17、23–26、31、32 条、13.4 第 3 条；移交 [M12-polish](../../v0.2/handoffs/M12-polish.md) 第 1、5、6、11 项（编号沿用 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目） |
 | 视觉参照 | [mockups/reading.html](mockups/reading.html)（头一行：`.topbar`、`.crumb`、`.meta`、`.btn.icon`、`.btn.primary`；正文：`.doc`、`.props`/`.chip`、`.callout`、`.diagram`、`.tasks`、`.code`/`.ch`、`table`、`code.ic`；右栏：`.panel`、`.ph`、`.outline`、`.bl`、`.kv`、`.ver`；编辑：`.editbar`、`.editor`、`.saved`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `072dcec2` 的 |
@@ -193,7 +193,7 @@
 
 ### 2.3 本文的决定（主持者的决定，负责人可以改判）
 
-854–884 是初稿的；修订时照设计审查改了其中 857–861、863、865、866、868–877、880、881 的文字（各条里写明依据）。885–893 是主持者照设计审查定的（[审查记录](reviews/P4-design-review.md)"主持者的决定"），894、895 是照修订核对第 1 轮定的（同上，"主持者的决定（第 1 轮）"），写法由设计者补在 4.x。再修订时照第 1 轮又改了 858、859、861、863、866、871、874、876、877、881、885、888 的文字。896 与改过的 895 是照修订核对第 2 轮定的（同上，"主持者的决定（第 2 轮）"）；三修时照第 2 轮又改了 861、863、866、871、877、885、894 的文字。897–900 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)"主持者的决定"，括注是发现的编号）；照 S1 的实施与审查又改了 861、879、886 的文字。901–906 是 S2 的实施审查之后的（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)"主持者的决定"，括注是发现的编号）；照 S2 的实施与审查又改了 869、871、872 的文字。
+854–884 是初稿的；修订时照设计审查改了其中 857–861、863、865、866、868–877、880、881 的文字（各条里写明依据）。885–893 是主持者照设计审查定的（[审查记录](reviews/P4-design-review.md)"主持者的决定"），894、895 是照修订核对第 1 轮定的（同上，"主持者的决定（第 1 轮）"），写法由设计者补在 4.x。再修订时照第 1 轮又改了 858、859、861、863、866、871、874、876、877、881、885、888 的文字。896 与改过的 895 是照修订核对第 2 轮定的（同上，"主持者的决定（第 2 轮）"）；三修时照第 2 轮又改了 861、863、866、871、877、885、894 的文字。897–900 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)"主持者的决定"，括注是发现的编号）；照 S1 的实施与审查又改了 861、879、886 的文字。901–906 是 S2 的实施审查之后的（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)"主持者的决定"，括注是发现的编号）；照 S2 的实施与审查又改了 869、871、872 的文字。907–911 是 S3 的实施审查之后的（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)"主持者的决定"，括注是发现的编号）；照 S3 的实施与审查又改了 874–876、878、889 的文字。
 
 - **854 Step 的分法**：照 00 号文档第 7 节的三个 Step，00 号文档没分到的四件放进 S1：`main` 的留白（P3 交来，855）、升级横幅进内容列（P3 交来，857）、编辑时头一行的状态与按钮（866，它和"编辑"同一行）、标题下的编辑说明（867）。每个 Step 两个代码提交加一个文档提交（第 6 节）；理由与"单独为绿"见第 0 节。
 - **855 `main` 的留白**：`W/app/layout.tsx:71` 的 `p-6` 换成 `p-6 xl:px-10`（样稿 `.content` 左右 40 px）；页的外框另加 `md:-mt-3 md:pb-4`，凑出样稿头一行离顶 12 px、页底 40 px（`main` 的 24 px 加减）。所有页在 1280 px 起左右多 16 px 的留白，是有意的（P5 的页照这个留白排）；设置页的内容列居中、最宽 696 px，1280 px 起照样居中，`SettingsPage` 的类不改（`md:px-2` 在 768–1279 px 之间照旧凑出 32 px），只改它的注释。
@@ -215,11 +215,11 @@
 - **871 mermaid**（S2）：`options(theme)` 的 `theme` 换成 `"base"`，加 `themeVariables`：亮 `{ background: "#ffffff", primaryColor: "#f4f4f5", primaryBorderColor: "#d4d4d9", primaryTextColor: "#18191c", secondaryColor: "#f4f4f5", tertiaryColor: "#ffffff", lineColor: "#91939b", textColor: "#18191c", noteBkgColor: "#f8f1e4", noteBorderColor: "#c2871f", noteTextColor: "#18191c", fontFamily: "inherit", fontSize: "13.5px" }`，暗 `{ background: "#1f2023", primaryColor: "#25262a", primaryBorderColor: "#3a3b41", primaryTextColor: "#e8e8ea", secondaryColor: "#25262a", tertiaryColor: "#1f2023", lineColor: "#74767e", textColor: "#e8e8ea", noteBkgColor: "#39332a", noteBorderColor: "#d9a84e", noteTextColor: "#e8e8ea", fontFamily: "inherit", fontSize: "13.5px" }`（`inherit` 取正文的系统字体；灰阶的节点与线，强调用琥珀；`diagrams.ts` 是 13.2 第 32 条的例外，十六进制）。只给这十三个不够：`base` 由它们转色相推出饼、git、思维导图、时间线的系列色，灰推不出颜色，暗色还要 `darkMode`（审查 B 的 I1）；系列色、甘特、看板、时间线、xychart、边标签与库节点另给，见决定 888 与 4.2.6。`themeVariables` 与 `themeCSS` 不进 `secure`（图自己的 `%%{init}%%` 与 frontmatter 照旧能改颜色；只是颜色，不是信任边界；mermaid 对指令给的 `themeCSS` 自己净化。初稿写"与今天能改 `theme` 一样"，照实不一样：mermaid 把这里给的 `themeVariables` 交给作者指定的主题去推导，应用的灰阶盖在作者的主题上、字读不清，S2 照决定 904、906 改：图自己指定了不是 `base` 的主题、或给了自己的 `themeVariables` 时只照它自己的配置画，只给变量、没写主题的主题按应用的亮暗取 `dark` 或 `default`；没有指令也没有 frontmatter 的图不另解析，审查 A 的 P4S2A-I2、P4S2A-F1-M1、F1-N1）。缓存、换主题重画照旧（13.2 第 23 条）。图的容器：`border`、12 px 圆角、`padding: 26px 20px`，亮 `--surface`、暗 `--nw-code-background`（样稿 `.diagram`）。强制色下不强制它（`forced-color-adjust: none`）：图连同它的底照应用的主题画，同图片；不然底被换成 `Canvas`，而 mermaid 的 SVG 的 `fill` 不被强制，高对比的明暗与应用的主题相反时直接画在底上的字看不见（今天就这样，审查 B 的 R2-N3）。 流程图的节点照样稿：`flowchart: { padding: 9 }`（mermaid 默认 15；"浏览器"一个词的节点 Chromium 76.49×38.24 px，样稿 74.5×40.25；审查 B 的 P4S2B-N3，主持者定），状态图的注也用它、变小一点，标签都不被裁；图框高 129.3 px，样稿 94.25（图框的内边距与 mermaid 自己围着图的边距照旧），照实记成偏离（10.2）。Chromium 里强制色下图里的 `foreignObject` 另要 `forced-color-adjust: none`（`cdedff02`，4.2.5）。
 - **872 任务项**（S2）：复选框照 4.3 用原生的 `accent-color`（P1 已给 `input[type=checkbox]`），不画样稿的自制方块；不可用的已勾选复选框照浏览器的样子（Chromium、Firefox 灰，WebKit 淡琥珀，第 1 节 (b)），不另写。已完成的项照 00 号文档 4.5.3：它自己的文字划线、颜色 `--faint`，里面的链接与标签跟着变淡（`color: inherit`，审查 B 的 M4），嵌套的列表 `display: inline-block; width: 100%` 且颜色设回正文色。服务端写的任务项文字以空格开头，划线从复选框后的那个空格起；`text-decoration-skip-spaces` 三种引擎都不支持，照实记成与样稿的偏离（审查 B 的 N1）。01-P1 第 9 节交给 P4 的"任务列表的复选框"一条到此结束。 S2 的实施与审查之后（[S2 的审查记录](reviews/P4-S2-body-code-diagrams-review.md)）：`text-decoration` 也传进项里流内的块，S2 的第一稿里已完成项下面的代码块（代码、头里的语言名与"复制"）、引用、callout、图与表格都被划线、变淡；照嵌套列表的办法，它的 `pre`、`blockquote`、`div`（callout、图与表格的外层）、`details`（折叠的 callout）也是 `inline-block; width: 100%`，另加 `vertical-align: top`（滚动的 `inline-block` 以底边为基线，不加时下面多一行的空），颜色设回正文色（引用保留它自己的次要色），里面的链接与标签照它们自己的颜色（`color: inherit` 那一条的 `:not()` 同样排除这些块）；项自己的文字、松散项的各段照旧划线（`9685e300`，主持者定）。三种引擎、亮暗、1440 与 375 宽，已完成项与同样内容的没完成项高度、各块的位置与大小都相同，粘住的头、横滚、"复制"与折叠的开合照旧（10.2）。
 - **873 正文**（S2）：字号 16 px、行高 1.8，块间 1.125rem（18 px）；h1 1.5rem、h2 21 px（630，前 38 px、后 14 px，不再有底线）、h3 17 px（620，前 26 px、后 10 px）、h4–h6 16 px；"后"只给接着的不是标题的块，标题接标题时用后一个标题自己的"前"（h2 接 h3 26 px、h2 接 h2 38 px，同样稿；审查 B 的 M2）；标题的 `scroll-margin-top: 1rem` 照旧。链接：正文色、1 px 的下划线 `--nw-link-line`（亮 `rgba(197,138,34,.6)`、暗 `rgba(217,168,78,.55)`）、偏移 3.5 px，悬停时下划线是字色；没建的页：`--muted-foreground`、虚线、`--faint`；标签：`--surface-2` 底、6 px 圆角、0.84375em、`--muted-foreground`；高亮 `--nw-mark-background` 加 3 px 圆角；行内代码：1 px 边、5 px 圆角、`--surface-2`、`--font-mono`、0.84em；表格（属性表之外）只留横线，表头 13 px、500、`--muted-foreground`，单元 `10px 12px`、行高 1.5（样稿每行 41.75 px，审查 B 的 N3）；callout 的字号与行高写在 `.nw-callout` 上（15 px、1.7），标题自己定 14 px：里面的 `pre` 照旧 13 px（审查 B 的 M3：写在子元素上的那条特指度盖过 `.nw-reading pre`）；折叠的 callout 的标题右端一个 chevron，关着时转 −90°，同右栏的小节（审查 B 的 M8）；强制色下 callout 标题的图标与 chevron 是 `CanvasText`（审查 B 的 N2）；`pre`：1 px 边、12 px 圆角、`--nw-code-background`（亮 `#f6f6f7`、暗 `#1f2023`，挪到 `:root`/`.dark`）、13 px、行高 1.7，内边距在 `code` 上（`14px 16px`，`width: max-content; min-width: 100%`）。版本页与回收站的预览也是 `.nw-reading`，随之换样子。
-- **874 编辑器的字体**（S3）：只给 `SourceEditor`（对比与冲突视图照旧等宽，00 号文档 4.5.5）：`proseTheme`（`W/editor/prose-lines.ts`）：底亮 `--surface`、暗 `--nw-code-background`，12 px 圆角；`.cm-scroller` `font-family: var(--font-sans)`；`.cm-content` 15.5 px、行高 1.85、`padding: 22px 0`；`.cm-line` `padding: 0 26px`；光标 `--accent`，写在 `.cm-content` 的 `caretColor` 上（`SourceEditor` 不加 `drawSelection()`，光标是浏览器自己的，`.cm-cursor` 不存在；修订稿那一条在它下面是死的，`editorTheme` 里的同一条今天就是死的，审查 B 的 R1-M1）。它在扩展里以 `Prec.high(proseTheme)` 加：CodeMirror 把样式模块倒过来挂（`@codemirror/view` 6.43.13 `dist/index.js:8351`），排在前面、优先级高的主题冲突时赢；初稿把它排在 `editorTheme` 之后，行高与内边距被盖过（审查 B 的 I2，第 1 节 (f)）。`proseLines`（同文件）：只看 `visibleRanges` 的 ViewPlugin，语法树里的 `FencedCode`、`CodeBlock`、`Table` 的行与 frontmatter 的行加 `nw-mono-line`（`var(--font-mono)`、13.5 px，行高随字号，第 1 节 (a) 的 `mono-relative`），frontmatter 的行另加 `nw-frontmatter-line`（整块 `--muted-foreground`，里面的高亮 `color`、`font-size`、`font-weight` 都 `inherit`：解析成 setext 标题的那一行不放大，lezer 读出的链接、水平线不画样子；决定 889。样稿的 `---` 是淡色、键是次要色、值是正文色；这里整块一种次要色，免得为键另加一层装饰，记成偏离）；frontmatter 的范围由新导出的 `frontmatterRange(state)`（`yaml-quotes.ts`，用它的 `opening`、`closing`：闭合的到闭合的那一行，没闭合的到第一个空行之前），按 `state.doc` 记在 `WeakMap` 里，同一份文档只算一次（审查 A 的 N4：没闭合时每滚一下都扫整篇）；起点在 frontmatter 里的节点不算。文档、可见范围或语法树变了时重建。`markdownHighlight`（共用）：标题 1.29em/650、1.065em/630、1em/620、其余 600（样稿 `.editor .h1` 20 px、`.h2` 16.5 px 对 15.5 px），符号 `--faint`（样稿 `.f`），引用 `--muted-foreground`。
-- **875 编辑器的链接与匹配色**（S3）：`markdownHighlight` 的 `tags.link` 换成正文色、不画下划线，`tags.url` 换成 `--faint`；下划线由 `markupMarks` 画（决定 889：lezer 的链接节点包着 wiki 链接的内层括号与 `[文字](地址)` 的括号与地址，画在 `tags.link` 上就都带下划线，审查 B 的 I3）；对比与冲突视图里链接只是正文色。`editorTheme` 的搜索匹配用 `--nw-mark-background`，当前的匹配用新变量 `--nw-match-selected`（亮 `rgba(245,196,81,.72)`、暗 `rgba(217,168,78,.5)`，`reading.css` 的 `:root`/`.dark`）；`--nw-editor-link`、`--nw-editor-match*` 三个变量删掉，`--nw-editor-mono` 改为 `var(--font-mono)`。`editor/theme.ts` 不再写色值，`design-tokens.test.ts` 的白名单只剩 `reading/diagrams.ts`，注释随之改。
-- **876 编辑时的大纲**（S3）：`W/editor/edit-outline.ts`：从语法树读标题（`ATXHeading1`–`6`、`SetextHeading1`–`2`，只进 `Document`、`Blockquote`、列表与列表项，不进代码与表），起点在 frontmatter 里的不算，文字去掉 `HeaderMark` 与 setext 的下划线行、空白归一，空的不列；至多列 `listedUpTo`（从 `page-outline.tsx` 导出）个，其余只数。构造时立刻算一次（审查 A 的 M3：进编辑时右栏的大纲不空 300 ms），之后每次改动停手 300 ms 再算；树没覆盖到文档末尾时（`syntaxTreeAvailable` 为假）以 `ensureSyntaxTree(state, doc.length, 20)` 一片一片补完（每片之间 `setTimeout(0)`）：下一片前 `view.state.doc` 变了才放弃这一轮、重新排 300 ms 的计时，只换了选区、补全或解析工作者自己的 `Language.setState` 换了 `view.state` 时用 `view.state` 接着补（审查 A 的 I4：初稿遇到不改文档的事务就放弃、不再重排）；补完就用它返回的树算。插件记着上次报出的各标题的位置，之后的改动经 `changes.mapPos` 映射过去，点按时按序号取映射过的位置（审查 A 的 M2：初稿用报出时的 `from`，打字之后 300 ms 之内点会跳错行）；`destroy` 清掉计时与补的那一片（审查 A 的 N5）。经 `SourceEditor` 的新属性 `outline?: OutlineSink`（`{ upTo: number; told(listed, more): void }`）报出去；句柄加 `reveal(index)`：光标到第 `index` 个标题那一行的开头（`view.state.doc.lineAt(映射过的位置).from`：在标题那一行的最前面打的字排在映射的位置之前，引用、列表里的标题的节点在 `> `、`- ` 之后，审查 A 的 R1-N3），`EditorView.scrollIntoView(行首, { y: "start", yMargin: 16 })`，焦点给编辑器（窗口滚动；不是左栏或右栏的滚动，13.2 第 26 条说的是那两处）。页这一边（`W/pages/page/edit-outline.tsx`）：`OutlineBox`（MobX 的可观察：`listed`、`more`、`reveal`），`PageShell` 建一个，交给 `PageEdit`（转给 `SourceEditor`，`reveal` 接到句柄）与 `PagePanel`；`EditOutline`（`observer`）在编辑时画在右栏的最上面：同一个 `PanelSection`（"大纲"）与 `nav`（名字"Outline"），每项一个 `button`（缩进同阅读时，`key` 是序号：位置变了拿着焦点的按钮不换），"…and N more"同阅读时；不标读到的一节（00 号文档）。页这一边只 `import type` 编辑器的类型，主包里不进 CodeMirror（`out-of-main.ts`）。认领 00 号文档已认领的"编辑时没有大纲"（M5-polish 13.1）。
+- **874 编辑器的字体**（S3）：只给 `SourceEditor`（对比与冲突视图照旧等宽，00 号文档 4.5.5）：`proseTheme`（`W/editor/prose-lines.ts`）：底亮 `--surface`、暗 `--nw-code-background`，12 px 圆角；`.cm-scroller` `font-family: var(--font-sans)`；`.cm-content` 15.5 px、行高 1.85、`padding: 22px 0`；`.cm-line` `padding: 0 26px`；光标 `--accent`，写在 `.cm-content` 的 `caretColor` 上（`SourceEditor` 不加 `drawSelection()`，光标是浏览器自己的，`.cm-cursor` 不存在；修订稿那一条在它下面是死的，`editorTheme` 里的同一条今天就是死的，审查 B 的 R1-M1）。它在扩展里以 `Prec.high(proseTheme)` 加：CodeMirror 把样式模块倒过来挂（`@codemirror/view` 6.43.13 `dist/index.js:8351`），排在前面、优先级高的主题冲突时赢；初稿把它排在 `editorTheme` 之后，行高与内边距被盖过（审查 B 的 I2，第 1 节 (f)）。`proseLines`（同文件）：只看 `visibleRanges` 的 ViewPlugin，语法树里的 `FencedCode`、`CodeBlock`、`Table` 的行与 frontmatter 的行加 `nw-mono-line`（`var(--font-mono)`、13.5 px，行高随字号，第 1 节 (a) 的 `mono-relative`），frontmatter 的行另加 `nw-frontmatter-line`（整块 `--muted-foreground`，里面的高亮 `color`、`font-size`、`font-weight` 都 `inherit`：解析成 setext 标题的那一行不放大，lezer 读出的链接、水平线不画样子；决定 889。样稿的 `---` 是淡色、键是次要色、值是正文色；这里整块一种次要色，免得为键另加一层装饰，记成偏离）；frontmatter 的范围由新导出的 `frontmatterRange(state)`（`yaml-quotes.ts`，用它的 `opening`、`closing`：闭合的到闭合的那一行，没闭合的到第一个空行之前），按 `state.doc` 记在 `WeakMap` 里，同一份文档只算一次（审查 A 的 N4：没闭合时每滚一下都扫整篇）；起点在 frontmatter 里的节点不算。文档、可见范围或语法树变了时重建。`markdownHighlight`（共用）：标题 1.29em/650、1.065em/630、1em/620、其余 600（样稿 `.editor .h1` 20 px、`.h2` 16.5 px 对 15.5 px），符号 `--faint`（样稿 `.f`），引用 `--muted-foreground`。 S3 的实施与审查之后（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：行内代码（`tags.monospace`）的字号是 `calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))`：`.cm-content` 设 `--nw-editor-code: 0.871em`（13.5 px），`.nw-mono-line` 设 `1em`，h1、h2 的规则另设 `--nw-heading`（1.29、1.065），标题里的行内代码随标题放大，17.4、14.4 px（审查 B 的 P4S3B-M2、A 的 P4S3A-F1-M1：高亮的 `span` 是扁平的，标题与 monospace 的类在同一个 `span` 上）；引用的规则排在 `url`、`processingInstruction` 之前，引用里的标记与地址也淡（B 的 P4S3B-N1）；对比与冲突视图的等宽是编辑器的等宽字体、13 px（决定 909）。
+- **875 编辑器的链接与匹配色**（S3）：`markdownHighlight` 的 `tags.link` 换成正文色、不画下划线，`tags.url` 换成 `--faint`；下划线由 `markupMarks` 画（决定 889：lezer 的链接节点包着 wiki 链接的内层括号与 `[文字](地址)` 的括号与地址，画在 `tags.link` 上就都带下划线，审查 B 的 I3）；对比与冲突视图里链接只是正文色。`editorTheme` 的搜索匹配用 `--nw-mark-background`，当前的匹配用新变量 `--nw-match-selected`（亮 `rgba(245,196,81,.72)`、暗 `rgba(217,168,78,.5)`，`reading.css` 的 `:root`/`.dark`）；`--nw-editor-link`、`--nw-editor-match*` 三个变量删掉，`--nw-editor-mono` 改为 `var(--font-mono)`。`editor/theme.ts` 不再写色值，`design-tokens.test.ts` 的白名单只剩 `reading/diagrams.ts`，注释随之改。 S3 的实施与审查之后：CodeMirror 自带的查找面板、它的输入框与按钮、对比视图的 gutter 原是亮色基底的样子，也只用变量另写（决定 910）。
+- **876 编辑时的大纲**（S3）：`W/editor/edit-outline.ts`：从语法树读标题（`ATXHeading1`–`6`、`SetextHeading1`–`2`，只进 `Document`、`Blockquote`、列表与列表项，不进代码与表），起点在 frontmatter 里的不算，文字去掉 `HeaderMark` 与 setext 的下划线行、空白归一，空的不列；至多列 `listedUpTo`（从 `page-outline.tsx` 导出）个，其余只数。构造时立刻算一次（审查 A 的 M3：进编辑时右栏的大纲不空 300 ms），之后每次改动停手 300 ms 再算；树没覆盖到文档末尾时（`syntaxTreeAvailable` 为假）以 `ensureSyntaxTree(state, doc.length, 20)` 一片一片补完（每片之间 `setTimeout(0)`）：下一片前 `view.state.doc` 变了才放弃这一轮、重新排 300 ms 的计时，只换了选区、补全或解析工作者自己的 `Language.setState` 换了 `view.state` 时用 `view.state` 接着补（审查 A 的 I4：初稿遇到不改文档的事务就放弃、不再重排）；补完就用它返回的树算。插件记着上次报出的各标题的位置，之后的改动经 `changes.mapPos` 映射过去，点按时按序号取映射过的位置（审查 A 的 M2：初稿用报出时的 `from`，打字之后 300 ms 之内点会跳错行）；`destroy` 清掉计时与补的那一片（审查 A 的 N5）。经 `SourceEditor` 的新属性 `outline?: OutlineSink`（`{ upTo: number; told(listed, more): void }`）报出去；句柄加 `reveal(index)`：光标到第 `index` 个标题那一行的开头（`view.state.doc.lineAt(映射过的位置).from`：在标题那一行的最前面打的字排在映射的位置之前，引用、列表里的标题的节点在 `> `、`- ` 之后，审查 A 的 R1-N3），`EditorView.scrollIntoView(行首, { y: "start", yMargin: 16 })`，焦点给编辑器（窗口滚动；不是左栏或右栏的滚动，13.2 第 26 条说的是那两处）。页这一边（`W/pages/page/edit-outline.tsx`）：`OutlineBox`（MobX 的可观察：`listed`、`more`、`reveal`），`PageShell` 建一个，交给 `PageEdit`（转给 `SourceEditor`，`reveal` 接到句柄）与 `PagePanel`；`EditOutline`（`observer`）在编辑时画在右栏的最上面：同一个 `PanelSection`（"大纲"）与 `nav`（名字"Outline"），每项一个 `button`（缩进同阅读时，`key` 是序号：位置变了拿着焦点的按钮不换），"…and N more"同阅读时；不标读到的一节（00 号文档）。页这一边只 `import type` 编辑器的类型，主包里不进 CodeMirror（`out-of-main.ts`）。认领 00 号文档已认领的"编辑时没有大纲"（M5-polish 13.1）。 S3 的实施与审查之后（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：项的文字同阅读时的大纲（决定 907），只排除闭合的 frontmatter（决定 908）；`same()` 只比级别、文字与 `more`，位置留在插件里（审查 A 的 P4S3A-N3）；`OutlineBox` 另有可观察的 `ready`（`told()` 设真、`clear()` 设假），编辑器第一次报出之前右栏照旧画阅读时的 `PageOutline`（不量读到的一节，那一节连开关 `inert`；A 的 P4S3A-M1、F1-N1、F2-N1，C 的 P4S3C-N1）；按钮 `block`、手形，项与阅读时同高（B 的 P4S3B-M1、N2）。
 - **877 "保存"**（S3）：显出的条件是 `editing.unsaved`，或它显着的时候焦点就在头一行右边一组里、之后一直没离开（`held`，决定 885、895；初稿的"或有显示出来的保存失败"是多余的：显示出来的失败一定伴随未保存的修改，`page-editing.ts:226,257-259,302,314,349,385`，审查 C 的 M5）。不显出时 `invisible`，占位、不可聚焦、不在可访问性树里，不卸下（决定 894）。`held` 是 `PageEditingBar` 的状态：组上的 `focusin` 在有未保存的修改时记下，焦点已在组里时才有了修改（等上传时插进的链接）也记下；`focusout` 时 `relatedTarget` 不在组里、`document.activeElement` 也不在组里才清掉（窗口失焦时它仍在组里，第 1 节 (g)；在组里从"完成"移到开关、"保存"时不清，决定 895）；没有修改时焦点进组（点开关、点"完成"、键盘走进来），藏着的"保存"不显出（审查 A 的 R2-M1）；拿着焦点、没东西可存时按它，`save()` 本来就在 `version === savedVersion` 时返回，不做事。不再经 `useFocusLeaving`：它拿着焦点时不会消失。WebKit 里点它不给它焦点（第 1 节 (g)），焦点不在组里，保存完成就隐去；焦点在点的那一下已从编辑器落到 `body`，与今天点一直在的"保存"相同，P4 不另管。等上传时规则不变，Mod+S 照旧随时保存。
-- **878 冲突、失锁与补全**（S3）：冲突的面板与失锁的横幅换成 `rounded-control border border-destructive/35 bg-surface px-4 py-3`，按钮 `size="sm" shape="pill"`，失锁横幅里的名字进 `bdi`（决定 868）；补全的弹层：圆角 `var(--radius-popover)`、阴影 `var(--elevation-popover)`、4 px 的内边距，选项 `var(--radius-row)` 圆角、`var(--text-row)` 字号，颜色与选中项的环不变（l5 量它们）。
+- **878 冲突、失锁与补全**（S3）：冲突的面板与失锁的横幅换成 `rounded-control border border-destructive/35 bg-surface px-4 py-3`，按钮 `size="sm" shape="pill"`，失锁横幅里的名字进 `bdi`（决定 868）；补全的弹层：圆角 `var(--radius-popover)`、阴影 `var(--elevation-popover)`、4 px 的内边距，选项 `var(--radius-row)` 圆角、`var(--text-row)` 字号，颜色与选中项的环不变（l5 量它们）。 S3 的实施与审查之后：强制色下补全的选中项另有一圈内嵌的透明 2 px 外框（`outline-offset: -2px`，同应用的菜单项，只在 `@media (forced-colors: active)` 里，审查 B 的 P4S3B-M4）；冲突面板里"上一处、下一处"那一组 `flex-wrap justify-end`，320 宽英文时两个按钮上下排、不越出面板（B 的 P4S3B-M3）；补全的密度照旧（决定 911）。
 - **879 PG17**：新故事 `e2e/stories/page/pg17-page-head.spec.ts`，四格（S1 第 1、3、4 格，S2 第 2 格；第 3 格是设计修订时加的，第 4 格是 S1 的审查加的，审查 B 的 P4S1B-F1、C 的 P4S1C-F2-N1），进 `threeBrowsers`（`page\/pg17-`）与 `check.mjs` 的 `REQUIRED`（每格 firefox、webkit 两行；第 4 格的两行是审查 C 的 P4S1C-F2-M1 补的）；只有页面版本，接口与 MCP 版本豁免（13.4 第 3 条）。格的步骤见 5.1、5.2。
 - **880 对比度的下限**：P4 改了被量元素的底或颜色的只有两处：S2 的阅读视图链接（字色与下划线变了，焦点环与底没变）与 S3 的编辑器（暗色的底由 `#1a1b1e` 变成 `#1f2023`）。S2、S3 各重量 l5 的五项、实量值写进 Step 的记录，量出的值不低于下限就不改下限（决定 891）。初稿推算暗色的编辑器外框降到约 7.49、S3 必须改，不成立：l5 量外框时取的是父元素链上第一个不透明的底（`e2e/fixtures/contrast.ts:112-116`），不是编辑器自己的底，两种次序下实量暗 7.923、亮 3.098（审查 B 的 M6、C 的 M1）；量法改不改不在 P4。pg4、se1 不涉及（P4 不碰确认框与搜索页）。
 - **881 移交的认领**：M12-polish 第 1 项里 M5-polish 的 12.10 的"截断"一半（S1，决定 862）与 13.1"编辑时的大纲"（S3，00 号文档已认领）；第 6 项里"编辑"的焦点一半（S1，决定 865）；第 5、11 项的 `bdi` 里 P4 的页上的几处（S1、S3，决定 868）。不认领第 1 项里与阅读、编辑、右栏有关的这些（逐项核对过 M5-polish，审查 C 的 M17 补上初稿漏的 12.6、12.9、13.2、17.3、18.3、18.7；12.10 的"千分位"一半，审查 C 的 R1-N6）：阅读视图的行为，不是外观：3（高亮的闪动：S2 只核对代码块的头不添闪动，清理与重加在同一个任务里）、6.4、8.3、10.3、11.3、11.4、11.5、11.6 的其余、11.9；补全与右栏的数据与功能，不是外观：12.1、12.2 的开合、12.5、12.6（右栏属性链接的文字与序号）、12.7、12.9（反链与补全的代价）、13.2（标签的总览、属性里的标签链接）；附件与粘贴：17.2a、17.3（右栏的附件链接不显示大小）、18.3（粘贴的撤销粒度）、18.4b、18.4c、18.7（等上传时从编辑之外按 Mod+E 的焦点）；别处：4、20.4、21.1；第 7 项"Firefox 复制右栏的值多一个尾随空格"（右栏的属性换成 `grid` 之后由 S1 的实施者在 Firefox 里看一次、照实记进本文 10.1，不改；审查 C 的 N8）。每个 Step 的文档提交在 M12-polish 的"处理进展"写一行。
@@ -233,7 +233,7 @@
 - **886 右栏跟着读到的一节只滚到刚好露出**；读者在右栏里滚过之后不再跟，到下一次换页、或进出编辑之后大纲重新出现为止（P2 的 `watchReader({ within })`，同 P2 决定 779、791；后一半是 S1 照实定的，决定 897）；右栏收起或不在正文旁边时不量（审查 A 的 I3、C 的 I1、A 的 N6；写法见 861、4.1.7；2.1 第 2、12 条）。
 - **887 关着的 `details` 里的标题不当读到的一节**（`closest("details:not([open])")`），大纲照旧列出它们（审查 A 的 I1；861、4.1.7；PG17 第 1 格）。
 - **888 mermaid**：暗色 `darkMode: true`；系列色写死成 callout 的七族；甘特、xychart、暗色的边标签另给；流程图节点 9 px 圆角，圆柱（库）节点琥珀边、淡底，照样稿（00 号文档 4.1 的琥珀用处由 2.1 第 10 条补一句"图里的库节点"；选择器命中不止圆柱时改写成偏离）（审查 B 的 I1、M7，C 的 M4）。设计者照第 1 节 (d) 的探针补齐：七族的次序是蓝、橙、青、紫、红、绿、灰（相邻的色相隔得开），轮着给 `pie1–12`、`git0–7`、`cScale0–11`；系列上的字亮色白、暗色近黑；时间线的线、git 与思维导图的标签、ER 的行与圈、甘特的网格线、雷达与架构图另给；选择器只命中圆柱，不是偏离（写法见 4.2.6）。再修订时照审查 B 的第 1 轮补：甘特亮色"进行中"的底与边（`#e7e7ea`、`#91939b`，原先白底浅边看不见），暗色"关键"的底压暗到 `#b33b3b`（浅字 4.76:1；`#ff7b7b` 配浅字只有 2.05:1，配近黑的字要在 `themeCSS` 里另分条外与条内的字，压暗的底一处就够，B 画过）；暗色看板的列名近黑（6.35:1，原先 2.26–2.74:1）；时间线的事件框去掉 mermaid 自己的 `brightness(120%)`（亮色白字由 2.85–3.70 到 3.99–5.70）。旅程的节用 `fillType0–7`，不给，照旧是灰的（看得清），角色的点是 mermaid 配置里写死的颜色；饼多于七块时颜色重复（第 8 块又是蓝），记成偏离（审查 B 的 R1-M2、M3、N3、N4）。
-- **889 编辑器里 `[[`、`]]`、`==` 压淡**，wiki 链接只有页名带下划线，`[文字](地址)` 的括号与地址压淡、不带下划线，frontmatter 里不画链接的样子，照样稿在 S3 做；不在行内代码与代码块里压淡；只处理可见范围，测试数装饰（审查 B 的 I3、Q1、N7）。写法由设计者照探针定（第 1 节 (e)）：只看可见范围的装饰 `markupMarks`，不加 lezer 的行内语法。理由：一、lezer 的链接节点已经包着 wiki 链接的内层括号，加 `WikiLink` 的行内解析要排在 `Link` 之前、自己找 `]]`，每个 `[[` 往后扫到 `]]` 或行尾，正是 M12/P4/S5 以 `linearScans` 去掉的那种按长度平方增长的扫法（成串的 `[[a` 是服务端 Markdown 的病态输入之一，`server/internal/platform/markdown/markdowntest/inputs.go:225`），要线性就得照 `closersOf` 另做一份预先算好的闭合表；二、frontmatter 不在 lezer 的语法里（它读成水平线加 setext 标题），无论哪种写法都要按 `frontmatterRange` 另判，装饰本来就有它；三、装饰只碰可见的几十行，不改语法树：编辑时的大纲、补全读到的树照旧，M12/P4/S5 的差分与上限不受影响。代价：`==` 与 wiki 链接按行内的文字认（不跨行），行内长过 `inlineLimit` 的一段里 lezer 不认行内代码，那里的 `==` 也压淡（写法见 4.3.3）。
+- **889 编辑器里 `[[`、`]]`、`==` 压淡**，wiki 链接只有页名带下划线，`[文字](地址)` 的括号与地址压淡、不带下划线，frontmatter 里不画链接的样子，照样稿在 S3 做；不在行内代码与代码块里压淡；只处理可见范围，测试数装饰（审查 B 的 I3、Q1、N7）。写法由设计者照探针定（第 1 节 (e)）：只看可见范围的装饰 `markupMarks`，不加 lezer 的行内语法。理由：一、lezer 的链接节点已经包着 wiki 链接的内层括号，加 `WikiLink` 的行内解析要排在 `Link` 之前、自己找 `]]`，每个 `[[` 往后扫到 `]]` 或行尾，正是 M12/P4/S5 以 `linearScans` 去掉的那种按长度平方增长的扫法（成串的 `[[a` 是服务端 Markdown 的病态输入之一，`server/internal/platform/markdown/markdowntest/inputs.go:225`），要线性就得照 `closersOf` 另做一份预先算好的闭合表；二、frontmatter 不在 lezer 的语法里（它读成水平线加 setext 标题），无论哪种写法都要按 `frontmatterRange` 另判，装饰本来就有它；三、装饰只碰可见的几十行，不改语法树：编辑时的大纲、补全读到的树照旧，M12/P4/S5 的差分与上限不受影响。代价：`==` 与 wiki 链接按行内的文字认（不跨行），行内长过 `inlineLimit` 的一段里 lezer 不认行内代码，那里的 `==` 也压淡（写法见 4.3.3）。 S3 的实施与审查之后（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：wiki 链接照服务端的读法认（`W/editor/wiki-links.ts` 的 `wikiLinks`，编辑时的大纲也用它）：前面有奇数个 `\` 的、中间另有方括号的、页名与小节去掉空白之后都空的不算，链接的标题（`LinkTitle`）里不认；下划线不连两边的空白，表格里的 `\|` 一起淡（审查 A 的 P4S3A-N2）。`[see [[A]]](u)` 里的 wiki 链接照样标（lezer 不把外层读成链接，服务端把它当链接的文字），照实。
 - **890 复制的反馈看得见的只有一处**：按钮自己变成 ✓（加"已复制"或只 ✓，照样稿）；`said` 的成功一句只给读屏（`sr-only`）；失败的一句看得见（审查 B 的 Q2）。设计者取"只 ✓"：样稿只画了没按时的"复制"，按钮的字与名字一直是"复制"（869），图标换成琥珀的 ✓；成功的一句在行内藏起（不用 `sr-only` 的绝对定位，869）。
 - **891 l5 的编辑器外框照今天的量法不降**：S2、S3 照旧重量、记实量值，量出的值不低于下限就不改下限；S3 提交 1 没有 e2e 改动就用 `web:`；量法是否改为编辑器自己的底不在 P4 做（审查 B 的 M6、C 的 M1、Q1；880、4.4、6.3）。
 - **892 `NotebookSettingsLayout` 的 `shown === undefined` 那一支也画 `<ColumnTop />`**（审查 C 的 M14；857）。
@@ -257,6 +257,14 @@
 - **904 图自己给了颜色时只照它自己的配置画**（审查 A 的 P4S2A-I2；修复之后照实施者第 7 节第 3 条改）：图自己的指令或 frontmatter 指定了不是 `base` 的主题，或给了自己的 `themeVariables`（写不写 `theme: base` 都算）（只给变量、没写主题的，主题怎么取见 906），`initialize` 只给它的主题，不给应用的 `themeVariables` 与 `themeCSS`（M13 之前的样子）；只写 `base`、没给变量，或什么都没写时，照应用的颜色（871）。mermaid 把 `initialize` 给的 `themeVariables` 交给作者指定的主题去推导，应用的灰阶会盖在作者的主题上：亮色应用里作者的 `dark` 节点名对底 1.08:1，暗色应用里 `forest`、`neutral` 1.13、1.05:1；作者的 `base` 加 `primaryColor: #ffcc00` 在暗色应用里是应用的浅字画在黄底上，1.24:1。改后作者的主题读得清（`dark` 10.17，`forest` 15.15，`base` 加变量 8.36）。`render()` 在 `tooLarge` 之后以 `mermaid.parse(source, { suppressErrors: true })` 读出图自己的配置（`Drawer` 加 `parse`，`ownColours`）；`theme` 照旧不进 `secure`（作者的 `base` 加变量照旧有效）。
 - **905 焦点按"复制"在所在块里的第几个找回，照实**（审查 A 的 P4S2A-Q1）：同一个顶层块（例如一个有序列表）里有几段代码，别人在拿着焦点的那段之前插入或删去一段时，就地更新之后焦点落到别一段的"复制"上（A 在三种引擎里看到）；读者拿着焦点时另一人在同一个块里增删代码块，窄，照实（决定 869 的"按它在所在块里的第几个找回"）。记进 10.2 与第 9 节。
 - **906 图只给了自己的 `themeVariables`、没写主题时，主题按应用的亮暗取 mermaid 的 `dark` 或 `default`，再加作者的变量**（审查 A 的 P4S2A-F1-M1；改 904）：改过的 904 把这一种也算作者自己的颜色，却不给主题，mermaid 取它的 `default`（浅色）：最常见的这种指令只是改字号（`%%{init: {"themeVariables": {"fontSize": "20px"}}}%%`），暗色应用里节点读得清，边与箭头是 `#333`，画在暗色的图框（`#1f2023`）上 1.29:1。M13 之前这种图在暗色应用里是 mermaid 的 `dark`。改后（`5bbf897f`）在暗色应用里是 `dark`：字号 20 px，节点 `#ccc` 在 `#1f2020` 上 10.17:1，边与箭头 lightgrey 对图框 10.88:1；作者给的浅色 `primaryColor`（`#fff4dd`）一样，mermaid 的 `dark`、`default` 的节点底取它们自己的 `mainBkg`、不取 `primaryColor`；亮色应用里两种都是 `default`，`#333` 在 `#ececff` 上 10.83:1，边对白底 12.63:1，三种引擎相同、控制台没有输出。写了 `base` 加变量、或指定了别的主题的，照 904；作者的 `base` 加变量在暗色应用里边是 `#0b0b0b`、对图框 1.21:1，同第 9 节记给 v0.2 的"作者的浅色主题画在暗色图框上"一类。
+
+以下是主持者照 S3 的实施审查定的（负责人可以改判）：
+
+- **907 编辑时大纲的项的文字同阅读时的大纲**（审查 A 的 P4S3A-Q1、B 的 P4S3B-Q1；改 876 的"只去掉 `HeaderMark`"）：`textOf` 沿标题的行内节点读：去掉 `HeaderMark`、`QuoteMark`，强调、行内代码与删除线的标记，链接的括号、地址与标题（`LinkTitle`），引用式链接的标签，HTML 标签与注释（lezer 的 `Comment`），转义的反斜杠（留被转义的字），`==` 与脚注引用 `[^n]`，代码之外的 Obsidian 注释 `%%…%%`（连同里面的字）；字符实体照它显示的字（一次读里同一个实体只解码一次，记在这一次读的表里，读完就丢；只建一个 `textarea`。模块级、不清的表让写者的内容能让编辑者的标签页一直多占内存：1,000 个标题各 300 个不同的数字实体留下约 19 MB，审查 C 修复核对第 2 轮），图片取替代文字；wiki 链接照服务端的 `shown()`（新文件 `W/editor/wiki-links.ts`，照 `server/internal/platform/markdown/obsidian/wikilink.go` 的 split 与 shown、`asset.go` 的说明）：有显示文字取它，否则页名，只有小节时是小节名，页名加小节写作"页名 > 小节"；附件（目标带不是 `.md`、不含空白的扩展名）的嵌入取说明（去掉末尾的尺寸），页的嵌入显示目标；行内代码里的照原样。列出的至多 `upTo` 个之后的标题只判有没有字（`HeaderMark`、`QuoteMark` 之外有没有非空白），不读文字（审查 A 的 P4S3A-F1-M2：20,000 个带行内标记的标题，每次停手重读原是一个 148–168 ms 的长任务）。注释、页的嵌入与 `upTo` 之后的两条是修复核对第 1 轮加的（A 的 P4S3A-F1-M2、F1-N2，`d7fb332c`），扩展名不含空白与每次读新建的表是第 2 轮之后的（B 的 P4S3B-F2-N1、C 的 P4S3C-F2-M1，`bcd1575b`）。L6 的页面格加一个带行内标记的标题，阅读与编辑时项的文字相同。已知的差别照实（4.4 之前的"照实"）：`[see [[A]]](u)`、`[![[img.png]]](u)`（lezer 不把外层读成链接）、行内数学 `$…$`（lezer 没有它的语法）、有定义的简写引用 `[r]`（编辑时 `[r]`，阅读时 r）、带点的页名加显示文字（`![[Node.js|JS]]`、`![[Release 2.0|Rel]]`，当作附件、取了显示文字）与不存在的附件带说明（取了说明；服务端都显示目标，编辑器不知道目标找没找到）、图片替代文字里的 `%%…%%`（服务端当文字，编辑时剪掉）、之前的段落开的块注释里的标题（服务端隐去，编辑时照列）。
+- **908 编辑时的大纲只排除闭合的 frontmatter，与服务端一致**（审查 A 的 P4S3A-Q2）：起点在闭合的 frontmatter（`frontmatterRange` 的 `closed`）里的标题不列；还没闭合的照正文读，同服务端与阅读时的大纲（页开头是一条水平线、之后没有闭合的 `---` 时，服务端把整篇读成正文，初稿的编辑时大纲漏掉其中的标题）。`proseLines`、`markupMarks` 不变：正在写的 frontmatter 照 874 整块等宽、次要色。
+- **909 对比与冲突视图的等宽是编辑器的等宽字体、13 px**（审查 B 的 P4S3B-Q2）：`editorTheme` 的 `.cm-scroller` 写 `font-family: var(--nw-editor-mono)`、`font-size: 13px`（行高照旧 1.6），不再用 CodeMirror 基底的通用 `monospace`（Chromium 画成 Courier，Firefox 中文是 16 px）；源编辑器的 `Prec.high(proseTheme)` 照旧给它比例字体。
+- **910 查找面板（Mod+F）的样子放进 S3，只用变量**（审查 B 的 P4S3B-I1，S3 之前就有）：编辑器从不标 dark，CodeMirror 亮色的基底一直生效，暗色下查找框是白底配 `#e8e8ea` 的字（约 1.2:1），按钮是浅灰的渐变。`editorTheme` 另写：`.cm-panels` 的底随编辑器、上两角随编辑器的 12 px 圆角；输入框照应用的输入框（30 px 高、13 px 字、9 px 圆角，没聚焦时 `--surface-2`、聚焦时 `--surface` 加 2 px 的环，宽 10.5rem：各引擎输入框的默认宽不同，Firefox 中文 1440 宽时面板原成三行，审查 B 的 P4S3B-F1-N1），按钮照小号 outline 按钮（没有渐变），`label` 次要色，关闭按钮另画；强制色下聚焦的输入框与按钮另有透明的 2 px 外框；对比视图的 gutter（同一个亮色基底的 `#f5f5f5`）透明、无边、次要色。L5 (page) 加查找面板一步：亮暗的查找框（聚焦的与没聚焦的）、按钮的字与 `label` 对底，下限取实量 − 0.1，按钮没有渐变，面板的底同编辑器的底。
+- **911 补全照 878 比菜单密，不改**（审查 B 的 P4S3B-Q3）：补全项 26.2 px 高、弹层 4 px 的内边距，应用的菜单 32 px、5 px；补全跟着打字、列得多，密一些合适。
 
 ## 3. 服务端
 
@@ -1208,6 +1216,15 @@ useEffect(() => {
 
 编辑时右栏：大纲（来自编辑器）、反链、属性、版本；`page-versions.test.tsx:403-409` 读的三节照旧在。
 
+**照实**（S3 的实施与审查，[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：
+
+- **4.3.1**：表外另有新文件 `W/editor/wiki-links.ts`（`wikiLinks`、`shownOf`、`WikiLink`：照 `server/internal/platform/markdown/obsidian/wikilink.go` 的 split 与 shown、`asset.go` 的说明认 wiki 链接，编辑时的大纲与 `markupMarks` 共用；`15372fcf`、`d7fb332c`）与 `wiki-links.test.ts`；`yaml-quotes.ts` 的 `frontmatterRange` 返回 `Frontmatter`（`{ from, to, closed, opening, end, span }`），`frontmatterAt`、`fenceAt` 改读它，一份文档只扫一次；`edit-lost-banner.tsx` 的 `lostText` 一律返回 `Isolating`（没有名字的经 `plain()`）；`W/pages/page/edit-outline.tsx` 的 `OutlineBox` 另有 `ready`（不叫 `told`：`told()` 已是方法），按钮 `block`、`cursor-pointer`，`break-words line-clamp-2` 在按钮里文字的 `span` 上（`3c75954d`）；`page-panel.tsx` 的 `ColumnOutline`（编辑中、编辑器报出之前画阅读时的 `PageOutline`，`active` 为假、`inert`）；`page-outline.tsx` 加 `inert` 属性，传给 `panel-section.tsx` 的 `PanelSection`，加在它自己的 `details` 上（`d7fb332c`、`bcd1575b`）；`theme.ts` 加查找面板与 gutter 的样子（决定 910），`.cm-scroller` 用 `--nw-editor-mono`、13 px（决定 909），查找框宽 10.5rem（`e6558722`）；`markdown.ts` 的次序是 link、quote、url、processingInstruction，行内代码的字号是变量乘标题的倍数；`prose-lines.ts` 设 `--nw-editor-code`，wiki 链接经 `wikiLinks`，`LinkTitle` 当原样；`link-completion.ts` 强制色下选中项的外框；`text-diff.tsx` 那一组按钮 `flex-wrap justify-end`（`d54a9d00`）。e2e 另改了 `pg17-page-head.spec.ts`（第 3 格一步）与 `l5-completion.spec.ts`（查找面板与强制色两步），5.3 之后的照实。
+- **4.3.2**：874、875 的"S3 的实施与审查之后"；`markdownHighlight` 的 h1、h2 另设 `--nw-heading`，monospace 的字号是 `calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))`（只写 `var(--nw-editor-code, 1em)` 时，标题里的行内代码只有一个 `span`，后挂的 monospace 定字号，0.871em 又是对 `.cm-line` 算的：h1 里的代码从约 20 px 变成 13.5 px，两边的反引号仍是 20 px，审查 A 的 P4S3A-F1-M1）。
+- **4.3.3**：`markupMarks` 经 `wikiLinks` 认 wiki 链接（889 的"S3 的实施与审查之后"）。代价与边界另有：frontmatter 的 YAML 里只有半个围栏时（块标量里的一行 ```` ``` ````），lezer 的 `FencedCode` 从那里一直到全文末，编辑时的大纲与压淡都停在它的起点，`proseLines` 照旧（`Body` 不等宽）；很少见，照实（审查 A 的 P4S3A-N1）。
+- **4.3.4**：`textOf` 照决定 907（改掉"文字是节点的文字去掉 `HeaderMark` 子节点与 setext 的下划线行"），另去掉 `QuoteMark`，setext 截在下划线那一行的行首；`upTo` 之后的标题只判有没有字（`hasText`：只有脚注引用、注释、`<br>`、`&nbsp;`、空的链接或图片的标题也计数，"…and N more"可能多算、不会少算，审查 A 修复核对第 2 轮）；字符实体在一次读里只解码一次，表是每次读新建的、读完就丢（审查 C 的 P4S3C-F2-M1），只建一个 `textarea`。决定 908。`same()` 只比级别、文字与 `more`。`ready` 由 `told()` 设真、`clear()` 设假：每个新的插件实例第一次读必报，`load` 之后、零个标题时也设真；StrictMode 的二次 effect 里最后一次是编辑器的 layout 挂上，晚于 `PageEdit` 的清理（审查 A 核对）。两片之间文档改了时这一轮直接结束、不另排 300 ms（`update()` 每次 `docChanged` 本就重排）；sink 经 `Facet` 传进插件，答 `undefined` 时不读；`listed` 是 `observableRef`（MobX 7 的名字）。`EditOutline` 的按钮 `block`（`inline-block` 时坐在 `li` 的行框里，项比阅读时高 1.6–5.5 px，审查 B 的 P4S3B-M1）、`cursor-pointer`（B 的 P4S3B-N2），截断在文字的 `span` 上（WebKit 不把 `<button>` 排成 `-webkit-box`，`3c75954d`）；`block` 与 `line-clamp-2` 在同一个按钮上时三种引擎都不截：构建出的 CSS 里 `.line-clamp-2` 排在 `.block` 之前，`display: block` 赢（变异 t29e，审查 C 修复核对第 1 轮查到）。已知的差别（决定 907）：`[see [[A]]](u)`、`[![[img.png]]](u)` 的外层 lezer 不读成链接，编辑时是 `[see A](u)`、`[img.png](u)`；行内数学 `$…$` 照原样；有定义的简写引用 `[r]` 编辑时照原样；带点的页名加显示文字（`![[Node.js|JS]]`、`![[Release 2.0|Rel]]`）当作附件、显示了显示文字，不存在的附件带说明（`![[missing.png|Gone caption]]`）显示了说明，服务端都显示目标（编辑器不知道目标找没找到，只凭扩展名猜，扩展名不含空白，审查 B 的 P4S3B-F2-N1）；图片替代文字里的 `%%…%%` 编辑时剪掉、服务端当文字，之前的段落开的块注释里的标题服务端隐去、编辑时照列（审查 A 修复核对第 2 轮）。
+- **4.3.6**：878 的"S3 的实施与审查之后"；对比与冲突视图照决定 909。
+- **5.3、6.3、7.1、7.2、7.3、7.5、8.1 第 1 条、8.2 第 19、22、24–28 条、第 9 节**：见各节；决定 907–911。
+
 ### 4.4 对比度的下限
 
 照 4.7 与 01-P1 2.1 第 5 条：
@@ -1220,7 +1237,7 @@ useEffect(() => {
 
 - `design-tokens.test.ts`：S1、S2 不写新的色值进 TS（`code-blocks.ts` 只写类名；mermaid 的色值与 `themeCSS` 在白名单里的 `diagrams.ts`）；`reading.css` 的 `.nw-code-copy[data-state=copied]::before` 是 `color: var(--accent)` 加 `background-color: currentColor`，同 `.nw-saved`，"琥珀不是填充"不认它（P3 决定 823）；`bg-accent-soft` 是当前一项的底色，允许。"每个颜色类都是主题的颜色"把 `text-` 开头的类都当颜色读，`noColour` 里只有 `text-right`（`:298-316`）：S1 提交 1 的 `text-end`（头一行的 `meta` 盒子）与 S3 提交 2 的 `text-start`（编辑时大纲的按钮）各在同一提交加进去，注释写"alignments"（审查 B 的 I4；设计者照抄守卫跑了修订之后的全部类名，只有这两个）。S2 提交 1 起亮暗成对的一格另核对 `reading.css`（决定 870）。S3 的白名单去掉 `editor/theme.ts`，之后它与 `markdown.ts`、`prose-lines.ts` 写色值都会红。
 - `out-of-main.ts`：`prose-lines.ts`、`edit-outline.ts` 只由 `source-editor.tsx` 导入（编辑器的分包）；`yaml-quotes.ts` 原本就在编辑器的分包里；页这一边的 `edit-outline.tsx` 只有类型的导入。
-- knip：每个新导出都有调用者（`ColumnTop`、`ColumnTopContext`、`HeadMeta`、`PanelToggle`、`useCurrentHeading`、`useBeside`、`EditHeadSlots`、`useEditHeadSlots`、`propertyRoles`、`codeBlocks`、`frontmatterRange`、`proseTheme`、`proseLines`、`markupMarks`、`editOutline`、`where`、`OutlineHeading`、`OutlineSink`、`OutlineBox`、`EditOutline`、`listedUpTo`）；`Mark` 的 `current` 有调用者。
+- knip：每个新导出都有调用者（`ColumnTop`、`ColumnTopContext`、`HeadMeta`、`PanelToggle`、`useCurrentHeading`、`useBeside`、`EditHeadSlots`、`useEditHeadSlots`、`propertyRoles`、`codeBlocks`、`frontmatterRange`、`proseTheme`、`proseLines`、`markupMarks`、`editOutline`、`where`、`OutlineHeading`、`OutlineSink`、`OutlineBox`、`EditOutline`、`listedUpTo`；S3 照实另有 `Frontmatter`、`wikiLinks`、`shownOf`、`WikiLink`）；`Mark` 的 `current` 有调用者。
 - 文字：13.2 第 4 条，新键两种语言（决定 884）。
 
 ## 5. e2e
@@ -1325,6 +1342,12 @@ test("PG17 (page): a code block's head names its language and copies its code al
 
 **不改的**：l5（决定 891：外框照今天的量法不降，S3 照旧跑、记实量值）；编辑、冲突、锁、自动保存的故事（pg7–pg10、c1–c6、lw4、lw12、up1）经 `saveEdit`（Mod+S）、`editStatus` 与按钮的名字，"保存"不被点（e2e 里点"Save"的 7 处都在对话框与设置里：a8:58、as1:196、lw5:597,613、`wiki-pages.ts:100`、`workspace-pages.ts:80`、`notebook-pages.ts:90`）；as2:199-204（编辑器的内容填满它，点下方落在内容里）：内边距在 `.cm-content`/`.cm-line` 里，`minHeight` 照旧；补全的故事（l5、lw 的几个）读选项的名字与 `aria-selected`，样子换了、结构不变；读编辑器文字的故事（`editorContent(page)` 的 `toHaveText`、`fill`）不受 `markupMarks` 影响（装饰不改文字）。
 
+**照实**（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：
+
+- l6 的这几步在 `45a477bd` 上是 `:245-248`（编辑时大纲的项 `:245`，点按之后的焦点 `:247`，`## Usage` 那一行在视口里 `:248`），回到阅读之后的链接 `:251-252`。L6 另加一个带行内标记的标题 `` ## Run **it** with `make`, [[#Setup|the setup]] and [docs](https://x.test) ``，阅读与编辑时项的文字都是"Run it with make, the setup and docs"（决定 907，`:199`、`:245`）；用同页的 `[[#Setup|…]]`：指向别页的 wiki 链接多一条索引的链接，`fixtures/assert/links.ts:43` 的 `expectLinked` 由 API 两格与页面一格共用，不能只为页面这一格加一行。
+- PG17 第 3 格加一步（`:343-357`，三种浏览器，`REQUIRED` 的起头不变，`check.mjs` 的数不变）：编辑时大纲的项与阅读时同高（0.5 px 内）、手形；一个长标题的按钮高不超过两倍行高加 0.5 px、又大于 1.5 倍（审查 B 的 P4S3B-M1、N2，C 的 P4S3C-M1）。
+- L5 (page) 从"不改的"挪到改的（`:135-212`）：强制色下补全的选中项是实线的外框（`:174-178`，Chromium，审查 B 的 P4S3B-M4）；查找面板一步（`:193-212`，决定 910）。
+
 ### 5.4 375 px 与 `webkit-narrow`
 
 PG17 在三种浏览器里跑，不带 `@narrow`（`webkit-narrow` 只跑带 `@narrow`、又不在 `threeBrowsers` 里的格，`playwright.config.ts:30`）：它的 375 px 两段（第 1 格第 15 步的属性条、第 4 格的长名字）在三种引擎里以 `expectFits` 核对，比 `@narrow` 多一种；第 3 格 375 宽那一遍只量标题与状态。`webkit-narrow` 的必需格（MC3、PG2、SE1）不变。
@@ -1360,8 +1383,10 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 
 - [ ] **提交 1 `web: the editor's prose in the reading's font, its code, tables and frontmatter in lines of their own, its marks faint, its links and matches in the reading's colours (M13/P4/S3)`**：先写 `prose-lines.test.ts`（`proseLines` 与 `markupMarks` 两组）、`source-editor.test.tsx` 的主题、等宽行与压淡几格、`text-diff.test.tsx` 的行高一格、`design-tokens.test.ts` 的白名单（改了之后 `editor/theme.ts` 的色值让它红），看到红；4.3.2、4.3.3、4.3.6 的补全一项；`make e2e`（l5 照旧绿，记下量出的值，决定 891）；绿。没有 e2e 的改动，作用域只写 `web`（审查 C 的 Q1）。
 - [ ] **提交 2 `web, e2e: an outline while the page is edited, leading to a heading's line; Save shown only when it is needed (M13/P4/S3)`**：先写 `edit-outline.test.ts`、`page-panel.test.tsx:186-199` 的改写、`page-edit.test.tsx` 的"保存"各格（点"保存"的几格照旧：它一直挂着，决定 894，7.1），看到红；4.3.4、4.3.5、4.3.6 的冲突与失锁两项、4.3.7、`noColour` 的 `"text-start"`（4.5）；l6:181,236；`make e2e`；绿。
-- [ ] 7.2 的 S3 各条变异；7.4 的 S3 截图（编辑器亮暗、frontmatter、代码块、表格、压淡的标记、长文档滚动、编辑时的大纲、"保存"出现与消失、冲突与失锁、补全）；在 Safari 里人工看一次：焦点在显着的"保存"上时切到别的窗口再回来，它不隐去（`relatedTarget` 为 `null`、`activeElement` 照旧，无头引擎模拟不了，第 1 节 (g)；审查 A 第 2 轮的未核实一条），记进 10.3；在 Chromium 里用第 1 节 (a) 的那种大文档（经 API 建页）进编辑、拖滚动条，看一遍跳动；在一篇几 MB 的文档上进编辑，以 Performance 面板量编辑时的大纲补完解析的总时长，记进 10.3（审查记录"未核实的怀疑"）。
-- [ ] **提交 3 `docs: … (M13/P4/S3)`**：8.2 第 19–26 条；审查记录；本文 10.3；00 号文档第 12、13 节（P4 一行仍是"进行中"）；M12-polish 的"处理进展"一行（13.1"编辑时没有大纲"做了，第 5、11 项的失锁横幅一处）；01-P1 第 9 节交接处记下 P4 那一条的最后一项做完：编辑器的链接色与搜索匹配色（决定 875）。Phase 完成的收尾项不在这里（8.1 第 4 条，S3 合并之后的 `docs: M13/P4 done (M13/P4)`）。
+- [ ] 7.2 的 S3 各条变异；7.4 的 S3 截图（编辑器亮暗、frontmatter、代码块、表格、压淡的标记、长文档滚动、编辑时的大纲、"保存"出现与消失、冲突与失锁、补全）；在 Safari 里人工看一次：焦点在显着的"保存"上时切到别的窗口再回来，它不隐去（`relatedTarget` 为 `null`、`activeElement` 照旧，无头引擎模拟不了，第 1 节 (g)；审查 A 第 2 轮的未核实一条），记进 10.3（照实：没有做，交负责人人工核对，第 9 节，审查 C 的 P4S3C-Q1）；在 Chromium 里用第 1 节 (a) 的那种大文档（经 API 建页）进编辑、拖滚动条，看一遍跳动；在一篇几 MB 的文档上进编辑，以 Performance 面板量编辑时的大纲补完解析的总时长，记进 10.3（审查记录"未核实的怀疑"）。
+- [ ] **提交 3 `docs: … (M13/P4/S3)`**：8.2 第 19–28 条；审查记录；本文 10.3；00 号文档第 12、13 节（P4 一行仍是"进行中"）；M12-polish 的"处理进展"一行（13.1"编辑时没有大纲"做了，第 5、11 项的失锁横幅一处）；01-P1 第 9 节交接处记下 P4 那一条的最后一项做完：编辑器的链接色与搜索匹配色（决定 875）。Phase 完成的收尾项不在这里（8.1 第 4 条，S3 合并之后的 `docs: M13/P4 done (M13/P4)`）。
+
+照实（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：提交 1、2 是 `ab6f4353`、`68a7e4be`，说明与上面逐字相同。另有九个代码提交：`3c75954d`（7.4 的截图找到的：WebKit 不截断编辑时大纲的长标题，截断放在按钮里文字的 `span` 上）、`9a52ddb4`（变异 t8 活下来之后补的一格：frontmatter 里 lezer 读成标题的那一行不放大、不加粗）；审查之后的 `15372fcf`（决定 907、908，`ready`，`same()`，"…and N more"与 `clear()` 两格，按钮 `block` 与手形，PG17 第 3 格一步，L6 带行内标记的标题）、`4ecc3e10`（决定 910，行内代码 13.5 px，引用里的标记淡，`markupMarks` 照服务端认 wiki 链接，强制色下补全的选中项，L5 两步）、`d54a9d00`（决定 909，冲突面板的按钮折行）、`45a477bd`（L5 另量没聚焦的查找框）；修复核对第 1 轮之后的 `d7fb332c`（`upTo` 之后只判有没有字、实体解码记下，注释不进项，页的嵌入显示目标，编辑中先画的阅读大纲 `inert`）、`e6558722`（标题里的行内代码随标题放大，查找框 10.5rem 宽，查找面板强制色的焦点外框一格）；修复核对第 2 轮之后的 `bcd1575b`（实体解码的表每次读新建，阅读大纲那一节连开关 `inert`，附件的扩展名不含空白）。第 3 项：Safari 的人工核对没有做（实施者手里没有 Safari；jsdom 里由 page-edit 的 `relatedTarget` 为 `null` 一格守，变异 68），交负责人（第 9 节）；大文档（980,777 个字符、412 节）进编辑、远跳与拖动：第一次远跳 Chromium 里一帧移 157.2 px（S3 之前 58.9 px），之后的远跳 0 px，是 CodeMirror 对没量过的行的高度估计在校正（审查 A 量过，S3 的校正幅度在对照的范围里，记给 v0.2）；几 MB 的文档（3,581,086 字节、1,501 个标题）进编辑，编辑器出现之后大纲补完解析、显出"…and 501 more"用 290 ms，这一段主线程脚本 158–160 ms，没有 ≥50 ms 的长任务（10.3）。
 
 ## 7. 测试与验证
 
@@ -1464,6 +1489,13 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 
 不另写的：`W/test/page-panel.ts:27-30` 的小节读法（`details` 里的 `h2`）照旧；`page-menu.test.tsx:160-169`（编辑时没有菜单）照旧；`page-properties.test.tsx:14-18`（一个名为"Properties"的 `dl`）照旧：属性条的区域名只在宽时有，jsdom 里不宽；`page-properties.test.tsx` 断言解析不到的链接 `decoration-dashed` 的三格照旧（虚线是"解析不到"的标记，不是链接的下划线，决定 863，审查 C 的 M15）。
 
+**S3 的照实**（[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)）：
+
+- 上面各格都在（`ab6f4353` 13 格、`68a7e4be` 19 格、`9a52ddb4` 1 格）。写法与上面不同的：分片的几格把假计时推 1 ms × 5（运行中排下的 0 ms 计时 1 ms 之后才到；变异 97 照样抓得住）；page-edit"一直在 DOM 里"一格在自己的答复函数里数 `PUT`（自定义答复的请求不进 `server.sent`）；`source-editor.test.tsx` 另有 frontmatter 一格（`9a52ddb4`：frontmatter 里 lezer 读成 setext 标题的那一行 13.5 px、400，正文的 setext 标题 16.5075 px、630 作对照，变异 t8 之下红）。不先红的：page-edit"打了字之后焦点在'完成'上"与"`focusout` 的 `relatedTarget` 为 `null`"两格（改前"保存"一直显着，分别守 109、68），`text-diff.test.tsx` 的行高一格（守 57）。
+- 审查之后多 14 格：`15372fcf` 的 `edit-outline.test.ts` 3 格（决定 907 的项文字逐种、决定 908 的没闭合的 frontmatter、所有标题之前打字不重报），`page-panel.test.tsx` 3 格（扣住正文的读取时右栏照旧是阅读时的大纲；离开编辑、再进时不画上一回的标题；1,003 个标题的"…and 3 more"），新文件 `wiki-links.test.ts` 3 格（显示的文字与说明；转义、空的与内有方括号的；位置、去空白与表格里的 `\|`）；`4ecc3e10` 的 `prose-lines.test.ts` 1 格（`markupMarks` 照服务端认 wiki 链接），`source-editor.test.tsx` 2 格（行内代码 13.5 px；引用里的标记淡），`text-diff.test.tsx` 1 格（gutter），`link-completion.test.ts` 1 格（强制色下选中项的外框：先断言计算出的 `outline` 是空的，再从样式表里读 `(forced-colors: active)` 里选中它的规则）。改写的：`source-editor.test.tsx` 的主题一格多一句 `.cm-scroller` 是 `--font-sans`，`text-diff.test.tsx` 的等宽一格改成 `--nw-editor-mono`、13 px（`d54a9d00`，决定 909）；L6 的页面格、PG17 第 3 格与 L5 的页面格的步（5.3 之后的照实）。都先红，除了"…and 3 more"一格（守已有的行为，t12 下红）与 `--font-sans` 一句（守已有的先后，t49 下红）。
+- 修复核对第 1 轮之后多 5 格：`d7fb332c` 的 `edit-outline.test.ts` 2 格（注释不进项、页的嵌入显示目标；`upTo` 之后不读文字：`vi.mock` 包住 `wikiLinks` 数它被调的次数，2 次，改前 6 次），`page-panel.test.tsx` 1 格（等正文时保留的阅读大纲 `inert`，读到、编辑器报出之后右栏是编辑时的大纲）；`e6558722` 的 `source-editor.test.tsx` 2 格（h1、h2 里的行内代码的字号带 `--nw-heading` 1.29、1.065；查找框宽 10.5rem（jsdom 读作 `168px`），强制色下聚焦的查找框与按钮有透明的 2 px 外框，照 `link-completion.test.ts` 那一格从样式表里读）。改写的：`wiki-links.test.ts` 的显示一格加页的嵌入（`![[Page|alias]]` 显示 Page，`![[Doc.PDF|Spec]]` 显示 Spec），行内代码一格的期望随之是 `calc(…)`。都先红；查找面板一格的强制色一半守已有的规则（t63 下红，即审查 C 的 c-fc-search）。
+- 修复核对第 2 轮之后多 1 格（`bcd1575b`）：`wiki-links.test.ts` 一格（`![[v1.2 notes|Alias]]` 显示 v1.2 notes：扩展名不含空白）。改写的：`page-panel.test.tsx` 的 `inert` 一格改成断言大纲那一节的 `details` 带 `inert`（开关在内）。两格都先红。实体的表每次读新建与模块级的表行为相同，没有格分得出（t67），由堆的量看（10.3）。
+
 ### 7.2 变异
 
 每条在本机改坏、跑它旁边的测试、看到失败，再从备份复原（02-workflow 3.1；先在没改的树上跑一遍同样的命令）。编号从 1 起，P4 自己的；1–69 是初稿的（修订时照审查改了其中几条的改法或抓手，写明依据），70–101 是修订加的，102–111 是再修订加的（修订核对第 1 轮；同时又改了 13、33、35、66、68、74、76、79、80、97、99、100 的改法或抓手），112 起是三修加的（修订核对第 2 轮；同时又改了 68、104、109 的抓手）；实施者另写的以 `t` 起头、各 Step 各自编号，e2e 的一份在编号后加 `e`（P3 的写法）；字母后缀（104b）是同一条的另一种改法，单占一行（P3 的 69b）。"守卫"一列标出它守的是 4.8 的最低清单、焦点的规则、本文的决定还是一处上限。
@@ -1529,12 +1561,12 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | 57 | S3 | `proseTheme` 进了 `editorTheme`（对比视图也用比例字体与 1.85 的行高） | `text-diff.test.tsx` 的行高与字体（初稿记的 `.cm-scroller` 的类在两种编辑器上都不成立，审查 C 的 M6） | 对比视图等宽 |
 | 58 | S3 | `theme.ts` 写回一个 oklch | `design-tokens.test.ts` | 写死的色值 |
 | 59 | S3 | 把 `--accent` 的暗色调淡（`#d9a84e` → `#b88a3c`） | l5 的 `frame`（对父元素的底 `#1a1b1e` 约 5.54，低于下限；59e，Chromium） | 4.8：`--accent` 调淡，l5 红 |
-| 60 | S3 | 编辑时的大纲不去掉 frontmatter | `edit-outline.test.ts`；l6:236（多一项 `up: … see: …`，60e） | 4.8：不含 frontmatter |
+| 60 | S3 | 编辑时的大纲不去掉 frontmatter | `edit-outline.test.ts`；l6:245（多一项 `up: … see: …`，60e；行号是 `45a477bd` 起的） | 4.8：不含 frontmatter |
 | 61 | S3 | 大纲不设上限 | `edit-outline.test.ts` 的 `upTo` | 13.2 第 25 条 |
 | 62 | S3 | 大纲不补完解析（只用 `syntaxTree`） | `edit-outline.test.ts` 分片一格（`ensureSyntaxTree` 的桩） | 2.1 第 3 条 |
 | 63 | S3 | 大纲每次改都算（不去抖） | `edit-outline.test.ts` 的次数 | 13.2 第 25 条 |
-| 64 | S3 | `reveal` 不给编辑器焦点 | `source-editor.test.tsx`；l6:236 的点按（64e） | 焦点的去向 |
-| 65 | S3 | 编辑时右栏照旧不画大纲 | `page-panel.test.tsx:186-199` 的改写；l6:236（65e） | |
+| 64 | S3 | `reveal` 不给编辑器焦点 | `source-editor.test.tsx`；l6:247 的点按（64e，`toBeFocused`） | 焦点的去向 |
+| 65 | S3 | 编辑时右栏照旧不画大纲 | `page-panel.test.tsx:186-199` 的改写；l6:245（65e） | |
 | 66 | S3 | "保存"一直显出（不需要时也不加 `invisible`） | `page-edit.test.tsx` 没有修改一格（读类） | |
 | 67 | S3 | "保存"拿着焦点时自动保存完成就隐去（条件去掉 `held`，初稿的写法；初稿的"失败时不显出'保存'"是等价的：显出的失败一定伴随未保存的修改，审查 C 的 M5） | `page-edit.test.tsx` 自动保存一格 | 决定 885 |
 | 68 | S3 | 组的 `focusout` 不看 `document.activeElement`（窗口失焦也隐去；初稿的"不经 `useFocusLeaving`"随 885 不再有） | `page-edit.test.tsx` 的 `focusout` 一格（在自动保存完成之后发：有未保存的修改时"保存"本来就显出，审查 C 的 R2-N2） | 决定 885、895 |
@@ -1656,15 +1688,96 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | t41 | S2 | 已完成项下面的块去掉 `blockquote, details`（审查 C 的 c1） | PG17 第 2 格第 5 步，三种浏览器（引用与 `details` 是 `block`） | |
 | t42 | S2 | 已完成项下面的引用也设回正文色 | PG17 第 2 格第 5 步（引用是正文色，应是次要色） | |
 | t43 | S2 | callout 的标题 `white-space: nowrap` | PG17 第 2 格第 7 步的 `expectFits`（375 宽时阅读视图横滚），三种浏览器 | 决定 901 |
+| t1 | S3 | `textOf` 留着 `QuoteMark` | `edit-outline.test.ts` 列出一格 | |
+| t2 | S3 | setext 不在下划线那一行的行首截断 | 同上 | |
+| t3 | S3 | `same()` 永远答不同 | `edit-outline.test.ts` 次数一格 | |
+| t4 | S3 | 两片之间改了文档也接着补 | `edit-outline.test.ts` 改文档一格 | |
+| t5 | S3 | 没闭合的 frontmatter 不在空行停 | `yaml-quotes.test.ts` 2 格、`prose-lines.test.ts` 1 格 | |
+| t6 | S3 | `listed` 用深的 observable（不是 `observableRef`） | 等价（`page-panel.test.tsx` 绿，审查 C 重跑同）：写 `listed` 的只有 `told`（`headingsOf` 每读一次新建一个数组）与 `clear`（新的 `[]`），读它的只有 `EditOutline`，只 `reduce`、`map` 取 `level` 与 `text`，没有人按身份比较 `box.listed`、也没有人改其中的项；插件留着的是自己的原数组（`same()` 比的是它），深的 observable 是另一份拷贝；MobX 没有设 `observableRequiresReaction`。只多每次报出时把至多 1,000 个对象包成 observable 的开销。有人按身份比较 `box.listed`、插件就地改已经报出的数组、或页这一边改其中的项时，就不再等价（审查 C 的 P4S3C-N3） | |
+| t7 | S3 | 截断挪回 `button`（`3c75954d` 之前） | PG17 第 3 格 `:354`，三种浏览器（`block` 加进来之后三种都红，同 t29e；之前只有 WebKit 红，审查 C 的 t7e） | |
+| t8 | S3 | 去掉 `.nw-frontmatter-line *` 的 `inherit` | `source-editor.test.tsx` frontmatter 一格（`9a52ddb4`；之前在全部 vitest 下活着） | 决定 874 |
+| t9 | S3 | 扩展里不加 `editOutline` | `source-editor.test.tsx` reveal 2 格、`page-panel.test.tsx` 2 格 | |
+| t10 | S3 | 编辑时右栏不等 `ready`（一编辑就画 `EditOutline`） | `page-panel.test.tsx` 2 格（扣住正文时、再进编辑时） | |
+| t11 | S3 | `clear()` 不复位 `ready` | `page-panel.test.tsx` 再进编辑一格 | |
+| t12 | S3 | 不画"…and N more" | `page-panel.test.tsx` 1,003 个标题一格 | 13.2 第 25 条 |
+| t13 | S3 | `same()` 也比位置 | `edit-outline.test.ts` 所有标题之前打字一格 | |
+| t14 | S3 | 正在写的 frontmatter 里的也不列 | `edit-outline.test.ts` 没闭合的 frontmatter 一格 | 决定 908 |
+| t15 | S3 | 不去掉强调的标记 | `edit-outline.test.ts` 项文字一格 | 决定 907 |
+| t16 | S3 | wiki 链接照原文（不经 `shownOf`） | 同上 | 决定 907 |
+| t17 | S3 | 脚注引用不去掉 | 同上 | 决定 907 |
+| t18 | S3 | 链接的 `](地址 "标题")` 不去掉 | 同上 | 决定 907 |
+| t19 | S3 | 转义的反斜杠不去掉 | 同上 | 决定 907 |
+| t20 | S3 | 字符实体不解码 | 同上 | 决定 907 |
+| t21 | S3 | `==` 不去掉 | 同上 | 决定 907 |
+| t22 | S3 | 行内代码里的也照规则剪 | 同上 | 决定 907 |
+| t23 | S3 | 转义的 `[[` 也认作 wiki 链接 | `wiki-links.test.ts` 不认的一格 | |
+| t24 | S3 | 没有页名也没有小节的也认 | 同上 | |
+| t25 | S3 | 嵌入的说明不去掉末尾的尺寸 | `wiki-links.test.ts` 显示一格、`edit-outline.test.ts` 项文字一格 | 决定 907 |
+| t26 | S3 | 页名加小节写作 `页名#小节` | 同上两格 | 决定 907 |
+| t27e | S3 | 编辑时大纲的按钮去掉 `block` | PG17 第 3 格 `:347`，三种浏览器（项高差 5.5 / 4.75 / 1.625 px） | |
+| t28e | S3 | 去掉 `cursor-pointer` | PG17 第 3 格 `:348`，三种浏览器 | |
+| t29e | S3 | 截断挪回按钮（同 t7） | PG17 第 3 格 `:354`，三种浏览器（178.75 / 178.83 > 36.25 / 36.27 px） | |
+| t30e | S3 | `textOf` 只去掉 `HeaderMark`（初稿） | L6 (page) `:245`（Chromium） | 决定 907 |
+| t31 | S3 | 引用的规则排回最后 | `source-editor.test.tsx` 引用里的标记一格 | |
+| t32 | S3 | 行内代码不设字号（`4ecc3e10` 的写法上；`e6558722` 起由 t61 代替） | `source-editor.test.tsx` 行内代码一格 | |
+| t33 | S3 | `.cm-content` 不设 `--nw-editor-code` | 同上 | |
+| t34 | S3 | `.nw-mono-line` 不设 `1em` | 同上 | |
+| t35 | S3 | `LinkTitle` 不当原样 | `prose-lines.test.ts` wiki 链接一格 | |
+| t36 | S3 | 竖线的淡只给最后一个字（表格里转义的竖线只淡竖线） | 同上 | |
+| t37 | S3 | 页名的范围不去空白 | `wiki-links.test.ts` 位置一格、`prose-lines.test.ts` wiki 链接一格 | |
+| t38 | S3 | `markupMarks` 也认转义的 | `prose-lines.test.ts` wiki 链接一格 | |
+| t39 | S3 | `markupMarks` 也认空的 | 同上 | |
+| t40 | S3 | 补全选中项的外框挪进 `@media print` | `link-completion.test.ts` 强制色一格 | |
+| t41 | S3 | 去掉 gutter 的一条 | `text-diff.test.tsx` gutter 一格 | 决定 910 |
+| t42e | S3 | 查找框去掉自己的底（`--surface-2`） | `4ecc3e10` 上无步抓（L5 只量聚焦的那个框，聚焦时底换成 `--surface`）：`45a477bd` 加没聚焦的框一项，之后是 t50e | 决定 910 |
+| t43e | S3 | 按钮去掉 `background-image: none` | L5 (page) 查找面板一步（按钮的 `background-image`） | 决定 910 |
+| t44e | S3 | 面板的底写回 `--background` | L5 (page) 查找面板一步（面板的底同编辑器的底） | 决定 910 |
+| t45e | S3 | 补全选中项的外框挪进 `@media print` | L5 (page) 强制色一步（`outline-style`，Chromium） | |
+| t46e | S3 | `label` 写成 `--faint` | L5 (page) 查找面板一步（`label` 的下限） | 决定 910 |
+| t47 | S3 | 对比视图的 `.cm-scroller` 一条去掉 | `text-diff.test.tsx` 等宽一格 | 决定 909 |
+| t48 | S3 | 对比视图不写 13 px | 同上 | 决定 909 |
+| t49 | S3 | `proseTheme` 的 `.cm-scroller` 不写 `--font-sans` | `source-editor.test.tsx` 主题一格的 `--font-sans` 一句 | 决定 874 |
+| t50e | S3 | 同 t42e（`45a477bd` 上） | L5 (page) `:198`，暗色没聚焦的框 1.224 | 决定 910 |
+| t51 | S3 | `upTo` 之后也读文字 | `edit-outline.test.ts` `upTo` 之后一格（数 `wikiLinks` 被调的次数） | 13.2 第 25 条 |
+| t52 | S3 | `hasText` 不跳过 `HeaderMark`、`QuoteMark` | 同上（只有标记的标题也计数） | |
+| t53 | S3 | 实体的解码不记下 | 无格抓：只省重读的代价。A 的 20,000 个标题只有一种实体，量不出它；1,000 个各带 20 个命名实体的标题，记下时重读没有 ≥50 ms 的任务，不记下时每轮一个 60–75 ms 的（审查 C 修复核对第 2 轮，A 的 harness）；`bcd1575b` 起表是每次读新建的，同一次读里照样记下：1,000 个各带 20 个命名实体的标题重读 312–323 ms 报出、没有 ≥50 ms 的任务，A 的 20,000 个 328–334 ms、也没有（实施者，`fix/g-heap.log`） | |
+| t54 | S3 | `dropped` 去掉 `Comment` | `edit-outline.test.ts` 注释与嵌入一格 | 决定 907 |
+| t55 | S3 | 不剪 `%%…%%` | 同上 | 决定 907 |
+| t56 | S3 | 页的嵌入也取说明 | `wiki-links.test.ts` 显示一格、`edit-outline.test.ts` 注释与嵌入一格 | 决定 907 |
+| t57 | S3 | `.md` 也算附件的扩展名 | 同上两格 | 决定 907 |
+| t58 | S3 | 阅读大纲的 `nav` 不带 `inert`（`d7fb332c` 的写法；`bcd1575b` 起 `inert` 在那一节的 `details` 上，由 t65、t66 代替） | `page-panel.test.tsx` `inert` 一格 | |
+| t59 | S3 | 阅读时也 `inert` | 同上 | |
+| t60 | S3 | h1 不设 `--nw-heading` | `source-editor.test.tsx` 标题里的行内代码一格 | |
+| t61 | S3 | 行内代码的字号不乘 `--nw-heading` | `source-editor.test.tsx` 行内代码两格 | |
+| t62 | S3 | 查找框不写宽 | `source-editor.test.tsx` 查找面板一格 | 决定 910 |
+| t63 | S3 | 查找面板强制色的焦点外框挪进 `@media print`（同审查 C 的 c-fc-search） | `source-editor.test.tsx` 查找面板一格（`text-diff`、`link-completion`、`prose-lines` 照绿） | 决定 910 |
+| t64 | S3 | 附件的扩展名可以带空白（`d7fb332c` 的写法） | `wiki-links.test.ts` 扩展名一格（`v1.2 notes`） | 决定 907 |
+| t65 | S3 | `PanelSection` 不把 `inert` 加在 `details` 上 | `page-panel.test.tsx` `inert` 一格 | |
+| t66 | S3 | `PageOutline` 把 `inert` 加在 `nav` 上、不传给 `PanelSection`（`d7fb332c` 的写法） | 同上 | |
+| t67 | S3 | 实体的表放回模块级（每次读共用一份、不清） | 无格分得出：行为相同，由堆的量看（`bcd1575b` 编辑器换成空文档之后 2.6 MB，`e6558722` 21.9 MB，t53 2.5 MB；t67 在 `bcd1575b` 上 21.9 MB，审查 C 修复核对第 3 轮） | 13.2 第 25 条 |
+| c-indent | S3 | 编辑时的大纲不按级缩进（审查 C） | `page-panel.test.tsx` 进编辑一格的 `paddingLeft` | |
+| c-codeblock | S3 | `verbatim` 去掉 `CodeText`、`CodeBlock`（审查 C） | `prose-lines.test.ts` 行内代码一格（缩进代码块那一行） | |
+| c-noscroll | S3 | `reveal` 不发 `scrollIntoView`（审查 C） | `source-editor.test.tsx` reveal 2 格；L6 的视口一句（noscroll-e，Chromium） | |
+| c-more | S3 | 不画"…and N more"（审查 C） | 第一轮活着（P4S3C-M3）；`15372fcf` 起 `page-panel.test.tsx` 1,003 个标题一格 | 13.2 第 25 条 |
+| c-clear | S3 | 离开编辑不 `clear()`（审查 C） | 第一轮活着（P4S3C-N1）；`15372fcf` 起再进编辑一格 | |
+| c-ready-never | S3 | `told()` 不设 `ready`（审查 C） | `page-panel.test.tsx` 6 格 | |
+| c-upto | S3 | `upTo` 少一（审查 C） | `page-panel.test.tsx` 1,003 个标题一格 | |
+| c-clamp3e | S3 | 截断写成三行（审查 C） | PG17 第 3 格 `:354`，三种浏览器（53.6 > 36.25 px） | |
+| c-active | S3 | 编辑中的阅读大纲 `active={active}`（审查 C） | 等价：等正文的那一段里阅读视图已卸下，`article h2` 是 0 个，没有可量的标题，至多多挂一个量不到东西的滚动监听（C 的探针）；编辑时阅读视图仍留在 DOM 里（例如改成藏起而不是卸下）时就不再等价 | |
+| c-fc-search | S3 | 查找面板强制色的焦点外框挪进 `@media print`（审查 C） | 修复核对第 1 轮活着（P4S3C-F1-N2）；`e6558722` 起是 t63 | 决定 910 |
+| c-h2 | S3 | h2 不设 `--nw-heading`（审查 C） | `source-editor.test.tsx` 标题里的行内代码一格 | |
+| c-comment-code | S3 | 行内代码里的 `%%…%%` 也剪（审查 C） | `edit-outline.test.ts` 注释与嵌入一格 | 决定 907 |
+| c-decode-fresh | S3 | 实体每次新建 `textarea`、不记下（审查 C；`d7fb332c` 之前的写法） | 等价，同 t53：只省代价 | |
+| c-read-past | S3 | `upTo` 之后照文字计数（审查 C；`d7fb332c` 之前的写法） | `edit-outline.test.ts` `upTo` 之后一格（数 `wikiLinks` 的调用） | 13.2 第 25 条 |
 
-不列的：4.8 最低清单里不在 P4 的几条（⌘K、即时生效、设置目录、`notebookGroups`、抽屉）由 P2、P3 守着；`se1` 的那一半（`--faint` 调淡，se1 红）P4 不碰搜索页。20、35 没有格抓，由 7.4 的截图看（106 原也没有，决定 898 之后由 `upgrade-banner.test.tsx` 的一格抓；31 等价，见它那一行）；S1 的 t1–t25 是 S1 的实施者另写的（t22、t23 改的是故事，只在扣住视图的探针下红；t1、t8 等价，t16 在 e2e 里等价，依据都在行里；t20 没有格抓；t17、t18 只有 Firefox 的 PG17 第 4 格抓），审查者另写的与逐条的结果在 S1 的审查记录；52 等价（依据在它那一行）。S2 的 t1–t43 是 S2 的实施者另写的（t26、t27 没有格抓：t26 由临时探针、t27 由截图看；t5 只有 vitest 抓），审查者另写的与逐条的结果在 S2 的审查记录；格数随 S2 的修复变了的：44 是 2 格（`alone` 之后，没被清掉的旧头让 `code` 不再独自在 `pre` 里，不再叠一个头）、48 是 5 格、49 是 5 格、t5 是 11 格（`ade3abd1` 上）。`useCurrentHeading` 的"值不变就不设"（`shown` 的比较）不另列：去掉它时 React 自己多半也不排更新（同值的 `setState` 提前退出），它是让"不排"成为确定的一层，第 1 节 (k) 的三遍全绿是连同它跑的。决定 885 的"拿着焦点、没东西可存时按它不做事"是 `save()` 原有的判断（`version === savedVersion` 时返回），不另列变异，`page-edit.test.tsx` 的"再按它不发 `PUT`"看着它。决定 889 里下划线落在哪些字上（`tags.link` 不再画下划线）由 7.4 的截图看：下划线画给里面的行内元素而不继承，每个元素自己的 `getComputedStyle` 读不出它落在哪些字上。
+不列的：4.8 最低清单里不在 P4 的几条（⌘K、即时生效、设置目录、`notebookGroups`、抽屉）由 P2、P3 守着；`se1` 的那一半（`--faint` 调淡，se1 红）P4 不碰搜索页。20、35 没有格抓，由 7.4 的截图看（106 原也没有，决定 898 之后由 `upgrade-banner.test.tsx` 的一格抓；31 等价，见它那一行）；S1 的 t1–t25 是 S1 的实施者另写的（t22、t23 改的是故事，只在扣住视图的探针下红；t1、t8 等价，t16 在 e2e 里等价，依据都在行里；t20 没有格抓；t17、t18 只有 Firefox 的 PG17 第 4 格抓），审查者另写的与逐条的结果在 S1 的审查记录；52 等价（依据在它那一行）。S2 的 t1–t43 是 S2 的实施者另写的（t26、t27 没有格抓：t26 由临时探针、t27 由截图看；t5 只有 vitest 抓），审查者另写的与逐条的结果在 S2 的审查记录；格数随 S2 的修复变了的：44 是 2 格（`alone` 之后，没被清掉的旧头让 `code` 不再独自在 `pre` 里，不再叠一个头）、48 是 5 格、49 是 5 格、t5 是 11 格（`ade3abd1` 上）。 S3 的 t1–t67 是 S3 的实施者另写的（t6 等价，依据在它那一行；t53 只省代价、没有格抓，由重量看；t67 没有格分得出，由堆的量看；t42e 的洞由 `45a477bd` 补，之后是 t50e；t32 是 `4ecc3e10` 的写法，`e6558722` 起由 t61 代替；t58 是 `d7fb332c` 的写法，`bcd1575b` 起由 t65、t66 代替），`c-` 开头的是审查 C 另写的（c-active 等价，c-decode-fresh 同 t53 只省代价），逐条的结果在 S3 的审查记录。`useCurrentHeading` 的"值不变就不设"（`shown` 的比较）不另列：去掉它时 React 自己多半也不排更新（同值的 `setState` 提前退出），它是让"不排"成为确定的一层，第 1 节 (k) 的三遍全绿是连同它跑的。决定 885 的"拿着焦点、没东西可存时按它不做事"是 `save()` 原有的判断（`version === savedVersion` 时返回），不另列变异，`page-edit.test.tsx` 的"再按它不发 `PUT`"看着它。决定 889 里下划线落在哪些字上（`tags.link` 不再画下划线）由 7.4 的截图看：下划线画给里面的行内元素而不继承，每个元素自己的 `getComputedStyle` 读不出它落在哪些字上。
 
 ### 7.3 门禁
 
 - **基线**：不另跑（决定 883）。对照的数是第 1 节的：vitest 221 个文件、5325 格；E2E 624 格过、3 格失败、1 格跳过。
 - **每个提交**：`docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web`；改了行为、夹具或故事的另跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make e2e`（S1、S2、S3 的提交 1、2 都要）。
 - **合并之前**：在 Step 分支并入 `m13-ui-refresh` 的树上跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web gen-check-web build-web e2e`；`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 以 0 退出；`git diff --check`；结果写进 Step 的记录。本机允许的失败只有第 1 节那三格（同行同消息）；AS6、LW8:771、"not slower"、`trash-preview.test.tsx:587` 与造数的 500 偶发，重跑全过即可，记下；别的红了先停、查清。PG17 不碰 PG15、LW8 的文件，那三格的行号不变。
-- **只靠 CI 的**：没有新的（PG17 不按 `Control+K`，剪贴板经 `fixtures/clipboard.ts` 在三种引擎里都能读）。Linux 的 WebKit 与 Firefox 上剪贴板的读法、Linux 的字体与滚动条下 PG17 的 `expectFits` 与右栏的量，由负责人推送之后的 CI 看（w5、a10 已在三种浏览器里用同一个剪贴板的夹具；本机的门禁照旧）。 S2 起另有：Linux 的 Chromium 第一次跑 `emulateMedia({ forcedColors })`（L4 的强制色一步，审查 C 的 P4S2C-M1）；PG17 第 2 格第 7 步在 Linux 的字体下的行数（取上限）。
+- **只靠 CI 的**：没有新的（PG17 不按 `Control+K`，剪贴板经 `fixtures/clipboard.ts` 在三种引擎里都能读）。Linux 的 WebKit 与 Firefox 上剪贴板的读法、Linux 的字体与滚动条下 PG17 的 `expectFits` 与右栏的量，由负责人推送之后的 CI 看（w5、a10 已在三种浏览器里用同一个剪贴板的夹具；本机的门禁照旧）。 S2 起另有：Linux 的 Chromium 第一次跑 `emulateMedia({ forcedColors })`（L4 的强制色一步，审查 C 的 P4S2C-M1）；PG17 第 2 格第 7 步在 Linux 的字体下的行数（取上限）。 S3 起另有：PG17 第 3 格的项高与长标题的行数、L5 的查找面板与强制色两步在 Linux 的字体下（比的是同一页里的差、按行高算的界与计算后的颜色，推断照样成立，审查 C 修复核对第 1 轮的未核实一条）。
 - **文档**：`python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/m13-ui-refresh`（远端的分支不在时用 `m13-ui-refresh`，同 02-P2 7.3）、`git diff --check`。
 
 ### 7.4 视觉的核对
@@ -1677,7 +1790,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ### 7.5 CI 的余量
 
-新故事一个：PG17 三格，三种浏览器，共 9 次。PG16 在 P2/S2 的实测是每次 1–4 s；PG17 第 1 格走的多（一次就地更新、两次刷新、四次改窗口大小、十来次滚动与 `expect.poll`），推断每次 6–10 s；第 2 格一次复制、等 1.5 秒，推断 2–4 s；第 3 格两种宽度各进一次编辑、等一次自动保存（停手 2 秒之后），推断 7–10 s。合计约 45–72 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 23–36 秒的墙钟；UP1 多两句断言，不计。本机 E2E 2.5 min 推断到 2.8–3.0 min。CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节），余量足够。其余故事只换定位与断言，次数不变。S1、S2 之后照实各记一次（S1 的在 10.1：第 1、3、4 格合计约 32–42 test-seconds，本机 E2E 2.6–3.8 min，负载 10–62；S2 的在 10.2：第 2 格每次 2.2–3.2 s，本机 E2E 2.6–2.8 min，负载 8–68）。
+新故事一个：PG17 三格，三种浏览器，共 9 次。PG16 在 P2/S2 的实测是每次 1–4 s；PG17 第 1 格走的多（一次就地更新、两次刷新、四次改窗口大小、十来次滚动与 `expect.poll`），推断每次 6–10 s；第 2 格一次复制、等 1.5 秒，推断 2–4 s；第 3 格两种宽度各进一次编辑、等一次自动保存（停手 2 秒之后），推断 7–10 s。合计约 45–72 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 23–36 秒的墙钟；UP1 多两句断言，不计。本机 E2E 2.5 min 推断到 2.8–3.0 min。CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节），余量足够。其余故事只换定位与断言，次数不变。S1、S2 之后照实各记一次（S1 的在 10.1：第 1、3、4 格合计约 32–42 test-seconds，本机 E2E 2.6–3.8 min，负载 10–62；S2 的在 10.2：第 2 格每次 2.2–3.2 s，本机 E2E 2.6–2.8 min，负载 8–68；S3 的在 10.3：第 3 格每次 6.7–7.6 s，本机 E2E 2.6–3.0 min，负载 4–45）。
 
 **本机的总时长**（粗算，经 `heavy.sh` 串行）：六个代码提交各一次 `make lint-web knip test-web`（约 70 秒）约 7 分钟；六次 `make e2e`（约 5 分钟，含构建）约 30 分钟；三次合并之前的整条命令约 13 分钟、审查 C 各再跑一次，约 78 分钟；变异 118 条（含 104b），约 84 条只跑 vitest（一个文件 15–40 秒）约 45 分钟，31 条要重建前端再跑一个故事（每条约 3 分钟）约 93 分钟（审查 C 的 R3-N2），3 条没有格抓；修复核对每个 Step 一两轮约 45 分钟；S1 的全部 vitest 另跑三遍约 4 分钟。合计约 5.0 小时的锁时间（审查 C 的 R4-N1）。
 
@@ -1685,14 +1798,14 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ### 8.1 条件
 
-1. 4.1–4.5 的每一项做到；7.1 的测试通过；7.2 的变异都被抓住（20、35 由截图看，52 等价；31 与 S1 的 t1、t8 等价）。
+1. 4.1–4.5 的每一项做到；7.1 的测试通过；7.2 的变异都被抓住（20、35 由截图看，52 等价；31 与 S1 的 t1、t8 等价；S3 的 t6 与审查 C 的 c-active 等价，t53 与 c-decode-fresh 只省重读的代价、由重量看，t67 由堆的量看；S3 的 t7 由 PG17 第 3 格守）。
 2. 每个 Step 的合并之前，7.3 的门禁为绿（只败第 1 节同行同消息的那几格）；没有服务端与契约的改动。
 3. 7.4 的截图看过，与样稿不同之处写进记录（是有意的，写理由；不是的，修）。
 4. Phase 完成（02-workflow 3.7）：S3 合并、它的合并记下之后，另一个提交 `docs: M13/P4 done (M13/P4)`（不在 S3 的文档提交里，审查 C 的 M13）：00 号文档第 12 节 P4 一行"完成"、头的状态、第 13 节一行；本文头的状态。`docs/v0.2/handoffs/M12-polish.md` 的"处理进展"由每个 Step 的文档提交各写一行（决定 881），这里不另写。
 
 ### 8.2 总体设计的新文字
 
-每条由 Step 的文档提交里的脚本替换（"换成"是旧文字换成新文字，"之后加"是新文字接在旧文字之后），断言旧文字恰好出现一次：S1 的第 1–11 条的旧文字在 `072dcec2` 的 `docs/v0.1/v0.1-design.md` 里各出现一次；S2 的第 12–18 条、S3 的第 19–26 条的旧文字是之前的 Step 写进去的（或那之后仍在的），在之前的 Step 改完的文字里各出现一次。设计者用一个脚本从本节读出这些文字（引用块是旧文字与新文字），依次做了 S1、S2、S3 的替换，每个旧文字在它那一步做之前都恰好一次，每条新文字在它那一步做完之后也恰好一次（脚本在会话的临时目录，不进仓库）。中文里的引号照总体设计的写法是 ASCII 的 `"`。链接在这里写在反引号里（它们相对于 `docs/v0.1/`，不是本文的链接，免得 `check_links.py` 把它们当成本文坏掉的链接），写进总体设计时不带反引号。13.4 第 3 条的新段以一个空格开头（同这一条里 M13/P2、P3 各段的接法）。长期的文字只写行为，类名与 effect 的先后留在第 4 节与代码的注释里。
+每条由 Step 的文档提交里的脚本替换（"换成"是旧文字换成新文字，"之后加"是新文字接在旧文字之后），断言旧文字恰好出现一次：S1 的第 1–11 条的旧文字在 `072dcec2` 的 `docs/v0.1/v0.1-design.md` 里各出现一次；S2 的第 12–18 条、S3 的第 19–28 条的旧文字是之前的 Step 写进去的（或那之后仍在的），在之前的 Step 改完的文字里各出现一次。设计者用一个脚本从本节读出这些文字（引用块是旧文字与新文字），依次做了 S1、S2、S3 的替换，每个旧文字在它那一步做之前都恰好一次，每条新文字在它那一步做完之后也恰好一次（脚本在会话的临时目录，不进仓库）。中文里的引号照总体设计的写法是 ASCII 的 `"`。链接在这里写在反引号里（它们相对于 `docs/v0.1/`，不是本文的链接，免得 `check_links.py` 把它们当成本文坏掉的链接），写进总体设计时不带反引号。13.4 第 3 条的新段以一个空格开头（同这一条里 M13/P2、P3 各段的接法）。长期的文字只写行为，类名与 effect 的先后留在第 4 节与代码的注释里。
 
 1. **9.2 中间一段**（S1）：头一行、720 px 的一列、属性条、编辑说明、升级提示的位置。
 
@@ -1870,7 +1983,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     > - YYYY-MM-DD：M13/P4/S2（依据 `[P4 设计](M13-ui-refresh/04-P4-reading.md)`）：13.2 第 23 条（`codeBlocks`：注册表、第三个例外、"复制"的焦点键、留着的块里的头重建）、第 32 条（mermaid 的 `base`、图自己的主题与变量、`reading.css` 的 `:root`/`.dark` 与它们的成对）；13.4 第 3 条（PG17 的第二格）。
 
-19. **9.3 第一项**（S3）：比例字体、等宽行与压淡的符号。
+19. **9.3 第一项**（S3）：比例字体、等宽行与压淡的符号。新文字里的 `` `[文字](地址)` `` 是 Markdown 的写法，不是链接，写进总体设计时留着反引号（脚本只给目标是 `.md` 的链接去掉反引号）。
 
     旧文字：
 
@@ -1878,7 +1991,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     换成：
 
-    > - Markdown 语法高亮（标题加粗加大，符号保留原样、压淡：wiki 链接的 `[[`、`]]` 与高亮的 `==` 也淡，wiki 链接只有页名带下划线，`[文字](地址)` 只有文字带下划线，行内代码、代码块与 frontmatter 里不压淡）；正文用比例字体，代码块、表格与 frontmatter 的行用等宽，frontmatter 整块次要色、里面的行不当标题放大；等宽的行与压淡的标记只给可见范围加（M13/P4/S3，`editor/prose-lines.ts`）；对比与冲突视图照旧等宽，不另压淡 wiki 链接与高亮；
+    > - Markdown 语法高亮（标题加粗加大，符号保留原样、压淡：wiki 链接的 `[[`、`]]`、`#`、`|`（表格里是 `\|`；嵌入连同 `!`）与高亮的 `==` 也淡，引用里的标记同样淡；wiki 链接照服务端的读法认：前面有奇数个 `\` 的、中间另有方括号的、页名与小节去掉空白之后都空的不算，链接的标题里不认；只有页名（没有页名时是小节名）带下划线，不连两边的空白；`[文字](地址)` 只有文字带下划线；行内代码、代码块与 frontmatter 里不压淡）；正文用比例字体，代码块、表格与 frontmatter 的行用等宽，行内代码与代码行一样大（13.5 px），标题里的随标题放大，frontmatter 整块次要色、里面的行不当标题放大；等宽的行与压淡的标记只给可见范围加（M13/P4/S3，`editor/prose-lines.ts`、`editor/wiki-links.ts`）；对比与冲突视图用编辑器的等宽字体、13 px，不另压淡 wiki 链接与高亮；
 
 20. **9.3 语法树的用处**（S3）。
 
@@ -1909,7 +2022,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     换成：
 
-    > 长标题至多两行；编辑时的大纲来自编辑器的语法树（去掉 frontmatter），点按跳到那一行，不标读到的一节（M13/P4/S1、S3）。
+    > 长标题至多两行；编辑时的大纲来自编辑器的语法树（只去掉闭合的 frontmatter，还没闭合的照正文读，同服务端），项的文字同阅读时的大纲（行内的标记、地址、注释与脚注引用去掉，字符实体照它显示的字，图片取替代文字，wiki 链接取阅读视图显示的文字，行内代码里的照原样），项与阅读时一样高、指上去同样是手形；进编辑之后、编辑器第一次列出标题之前，右栏照旧是阅读时的大纲（不可点、不可聚焦）；点按跳到那一行，不标读到的一节（M13/P4/S1、S3）。
 
 23. **13.2 第 17 条**（S3）："保存"不拿着焦点消失。
 
@@ -1929,7 +2042,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     之后加：
 
-    > 编辑时的大纲同样至多 1,000 项，进编辑时算一次，之后停手 300 毫秒才从语法树重算，CodeMirror 没解析到的部分以 20 毫秒一片补完（`editor/edit-outline.ts`，M13/P4/S3）；
+    > 编辑时的大纲同样至多 1,000 项、另说还有几项（之后的标题只数，不读它们的文字），进编辑时算一次，之后停手 300 毫秒才从语法树重算（只有标题的级别、文字或个数变了才重画），CodeMirror 没解析到的部分以 20 毫秒一片补完（`editor/edit-outline.ts`，M13/P4/S3）；
 
 25. **13.2 第 32 条的例外**（S3）：编辑器不再写色值。
 
@@ -1939,7 +2052,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     换成：
 
-    > ；`editor/theme.ts` 与 `editor/markdown.ts` 不写色值，只用 `styles.css` 与 `reading.css` 的变量（M13/P4/S3）；
+    > ；`editor/` 下的样子不写色值，只用 `styles.css` 与 `reading.css` 的变量：编辑器搜索的当前匹配是 `reading.css` 的 `--nw-match-selected`；CodeMirror 自带的查找面板、它的输入框与按钮、对比视图的 gutter 原是亮色的样子，编辑器的主题照应用的输入框与小号 outline 按钮另写，暗色下也读得清；编辑器的等宽字体是它自己的变量 `--nw-editor-mono`，行内代码的字号是 `--nw-editor-code`（正文里 0.871em、等宽的行里 1em，都是 13.5 px；标题里另乘标题的倍数 `--nw-heading`；对比与冲突视图不设，随它们的 13 px；M13/P4/S3）；
 
 26. **第 15 节**（S3）：变更记录一行，加在 S2 那一行之上。
 
@@ -1947,9 +2060,29 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     之后加：
 
-    > - YYYY-MM-DD：M13/P4/S3（依据 `[P4 设计](M13-ui-refresh/04-P4-reading.md)`）：9.2 的右栏（编辑时的大纲）；9.3（比例字体与等宽行、压淡的符号、"保存"只在需要时显出、语法树的用处）；13.2 第 17 条（"保存"不拿着焦点消失）、第 25 条（编辑时的大纲的上限）、第 32 条（编辑器不再写色值）。
+    > - 2026-11-25：M13/P4/S3（依据 `[P4 设计](M13-ui-refresh/04-P4-reading.md)`）：9.2 的右栏（编辑时的大纲：项的文字同阅读时，只去掉闭合的 frontmatter，编辑器列出标题之前照旧是阅读时的大纲）；9.3（比例字体与等宽行、压淡的符号与照服务端认的 wiki 链接、行内代码的字号、对比与冲突视图的等宽字体、"保存"只在需要时显出、语法树的用处、文档内查找的样子）；13.2 第 17 条（"保存"不拿着焦点消失）、第 25 条（编辑时的大纲的上限）、第 31 条（强制色下补全的选中项与查找面板的焦点）、第 32 条（编辑器不再写色值，查找面板与对比视图的 gutter 只用变量，编辑器自己的变量）。
 
-不改的：9.1（技术栈照旧）；9.2 的左栏一段（P4 不碰左栏；细栏的位置文字照旧，决定 856）；13.2 第 12 条（编辑的状态照旧是一直挂载的 `<output>`；它前面的 ✓ 只在 9.2 的长期文字之外，写在 4.1.9 与代码的注释里）、第 16、18、20–22 条；第 31 条（编辑器聚焦时的 2 px 琥珀外框照旧；P4 加的控件都是 `Button` 或照全局的 `:focus-visible`，焦点照它）。
+27. **9.3 文档内查找一项**（S3）：查找面板的样子（决定 910）。
+
+    旧文字：
+
+    > - 文档内查找与替换。
+
+    换成：
+
+    > - 文档内查找与替换（CodeMirror 的查找面板：在编辑器的底上，输入框与按钮照应用的，亮暗两种主题都读得清；M13/P4/S3）。
+
+28. **13.2 第 31 条的指示**（S3）：强制色下补全的选中项与查找面板的焦点（P4S3B-M4、决定 910）。
+
+    旧文字：
+
+    > 快速切换的选项与补全的选中项另有看得见的指示（内嵌的 2 px `ring-ring` 环），不只靠底色；
+
+    换成：
+
+    > 快速切换的选项与补全的选中项另有看得见的指示（内嵌的 2 px `ring-ring` 环），不只靠底色，强制色下补全的选中项同菜单项另有一圈内嵌的透明 2 px 外框；编辑器查找面板的输入框与按钮聚焦时同控件是 2 px 的环，强制色下另有透明的 2 px 外框（M13/P4/S3）；
+
+不改的：9.1（技术栈照旧）；9.2 的左栏一段（P4 不碰左栏；细栏的位置文字照旧，决定 856）；13.2 第 12 条（编辑的状态照旧是一直挂载的 `<output>`；它前面的 ✓ 只在 9.2 的长期文字之外，写在 4.1.9 与代码的注释里）、第 16、18、20–22 条；第 31 条第 28 条之外的部分（编辑器聚焦时的 2 px 琥珀外框照旧；P4 加的控件都是 `Button` 或照全局的 `:focus-visible`，焦点照它）。
 
 ## 9. 交给后面的 Phase
 
@@ -1962,9 +2095,11 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
   - 空状态（右栏的"没有反链""没有属性"照旧是一行灰字，P5 的空状态组件出来之后看要不要换）；
   - P3 的 `sectionAt`（`W/app/settings-directory.tsx:53`）精确比较路径：笔记本设置的地址带尾随斜杠（`…/settings/general/`）时路由匹配到"基本信息"，`sectionAt` 认不出，走 `shown === undefined` 那一支，页没有 `h1`、各组之间没有间距（S1 起那一支的横幅在设置的列里，决定 898）；P5 做其余页面时先核对工作区与个人设置是否同样，再定改法（审查 B 的 P4S1B-Q1）；
   - 版本页的标题在 320 宽时被"Restore this version"挤成"Version / 1"两行（M8 起的，不是 S1 改出来的；审查 B 修复核对第 2 轮）：P5 照页的头一行排版本页的头时一起看。
-- **各 Step 的实施者**（审查记录"未核实的怀疑"的去向）：S1 在 l6 的大页上量一次读到的一节每帧的代价，记进 10.1；S1 跑全部 vitest 三遍，看有没有"not configured to support act"（第 1 节 (k)；三修的写法下第一次设状态跟着别的更新同一次提交，审查 A、C 第 2 轮推了理、没跑），记进 10.1（6.1）；S1 在 Firefox 里看一次右栏复制属性的值的尾随空格，记进 10.1（决定 881）；S2 看换主题时控制台有没有 mermaid 的警告，记进 10.2；S3 在一篇几 MB 的文档上量一次编辑时的大纲补完解析的总时长，记进 10.3（第 6 节）；S2 在 7.4 的截图里看甘特的 `vert` 标记线与暗色"关键加完成"的条里的字（审查 B 第 2 轮）；S3 在 Safari 里人工看一次窗口失焦时显着的"保存"不隐去，记进 10.3（审查 A 第 2 轮，6.3）；各 Step 的 `make e2e` 里看 PG15 [webkit] 那一格是否仍"同行同消息"（P4 改了 `main` 的留白与两栏，PG15 的文件不改，审查 C 第 1 轮的怀疑），不是就停下查。S1 的四件都做了，记在 10.1（PG15 [webkit] 在 S1 的门禁里照旧同行同消息、有时过）。01-P1 第 9 节 P4 那一条的四项：三项在 S2、一项在 S3，各在它的文档提交里注明（第 6 节，审查 C 的 N6）。
+  - 右栏版本一行里自动生成的长名字（`admin-<hex>-<hex>-0-0`）在 Chromium、WebKit 1440 宽时拆出单独一行"-"（S1 的版本行，S3 的实施者看到）：UAX#14 不在"-"与其后的数字之间断，整串连成一个过长的词，只能紧急断，断点落在"-"之前；一行的改法（`break-all`、`line-break: anywhere`）会把普通名字从词中间切开，比现在差：P5 看名字怎样显示（截短或换行的规则）时一起看（审查 B 修复核对第 1 轮同意）。
+- **各 Step 的实施者**（审查记录"未核实的怀疑"的去向）：S1 在 l6 的大页上量一次读到的一节每帧的代价，记进 10.1；S1 跑全部 vitest 三遍，看有没有"not configured to support act"（第 1 节 (k)；三修的写法下第一次设状态跟着别的更新同一次提交，审查 A、C 第 2 轮推了理、没跑），记进 10.1（6.1）；S1 在 Firefox 里看一次右栏复制属性的值的尾随空格，记进 10.1（决定 881）；S2 看换主题时控制台有没有 mermaid 的警告，记进 10.2；S3 在一篇几 MB 的文档上量一次编辑时的大纲补完解析的总时长，记进 10.3（第 6 节）；S2 在 7.4 的截图里看甘特的 `vert` 标记线与暗色"关键加完成"的条里的字（审查 B 第 2 轮）；S3 在 Safari 里人工看一次窗口失焦时显着的"保存"不隐去，记进 10.3（审查 A 第 2 轮，6.3）；各 Step 的 `make e2e` 里看 PG15 [webkit] 那一格是否仍"同行同消息"（P4 改了 `main` 的留白与两栏，PG15 的文件不改，审查 C 第 1 轮的怀疑），不是就停下查。S1 的四件都做了，记在 10.1（PG15 [webkit] 在 S1 的门禁里照旧同行同消息、有时过）。S3 的几 MB 文档量了，大文档的跳动看了，记在 10.3；Safari 那一件没有做，交负责人（下一条）。01-P1 第 9 节 P4 那一条的四项：三项在 S2、一项在 S3，各在它的文档提交里注明（第 6 节，审查 C 的 N6）。
+- **负责人**：Safari 的人工核对（6.3 第 3 项，审查 A 第 2 轮的未核实一条，审查 C 的 P4S3C-Q1；实施者与审查者手里都没有 Safari，jsdom 里由 page-edit 的 `relatedTarget` 为 `null` 一格守）：在 Safari 里编辑一页，打了字，焦点在"保存"上，等自动保存完成，切到别的窗口再回来，"保存"仍显着、焦点仍在它上面。放进 M13 汇报的"还欠负责人的人工验收"。
 - **收尾**：读屏清单"H. M13"一节加：右栏的开关（名字"页面信息"、`aria-expanded`，收起之后右栏不在可访问性树里，1280 px 以下没有开关）；大纲读到的一节（`aria-current="location"` 读作"当前位置"，随滚动变、不播报）；页头的"谁、何时编辑过"是普通文字（不播报），名字在 `bdi` 里；右栏版本一行的"·"是 CSS 生成的（`before:content`），各读屏读不读出它（审查 B 第 2 轮的未核实一条）；编辑时头一行的状态（`<output>`，读屏读文字、不读 ✓）、"保存"出现与隐去（显着时焦点在头一行右边那一组里就不隐去，自动保存完成之后按它不做事；焦点进组不让藏着的它显出；隐去时不在可访问性树里，决定 885、894、895）、"完成"；标题下的编辑说明；属性条在 VoiceOver 下照旧读作表（`propertyRoles`）；折叠 callout 的 `summary`（决定 901 之后是块，图标在行内、chevron 绝对定位）在 WebKit 加 VoiceOver 下认不认它的展开状态；代码块的"复制"（名字不变，按下之后按钮变成 ✓，经 `aria-live` 读到"已复制"或"没能复制"一次，"已复制"只给读屏，决定 890；记下各读屏是否另读了名字）；编辑时的大纲（按钮，按下之后焦点到编辑器、光标在那一行）；页头的"编辑过"一句是三个弹性项（决定 899），`innerText` 与选中复制都是三行，读屏按行读时会不会拆成三段（审查 A 的 P4S1A-F1-N1，没有核实）。README 与 `CHANGELOG.md` 0.1.0 的"网页的打磨"一条里"编辑时没有大纲"的已知限制删掉（00 号文档第 7 节"收尾"第 2 项）。
-- **v0.2**：M12-polish 第 1 项里 P4 不认领的（决定 881，逐项核对过 M5-polish）：3（高亮的闪动）、4、6.4、8.3、10.3、11.3–11.5、11.6 的其余、11.9、12.1、12.2 的开合、12.5、12.6、12.7、12.9、12.10 的千分位、13.2、17.2a、17.3、18.3、18.4b、18.4c、18.7、20.4、21.1；第 6 项的勾选框一半；第 5、11 项里 P4 的页之外的 `bdi`；第 7 项的 Firefox 尾随空格（照实记进 10.1，不改）：照旧留着。另有：l5 量编辑器外框时取父元素链上的底（`e2e/fixtures/contrast.ts:112-116`），改为量元素自己的底不在 P4（决定 891）；页内查找会找到代码块头里的语言名与"复制"，复制之后的 1.5 秒里也找得到藏起的"已复制"（打印时不印，决定 869；审查 B 第 1 轮核对过选区与剪贴板都不含它们）；mermaid 的 `themeVariables` 与 `themeCSS` 照旧可被图自己的指令改（决定 871；指令给的 `themeCSS` 经 mermaid 的 `sanitizeCss`）。 S2 留下的两件：作者自己指定浅色主题（`forest`、`neutral`、`default`，或 `base` 加浅色的变量）的图在暗色应用里，节点自带底与字、读得清，直接画在图框底上的边、箭头与时序图的消息字是深色，画在暗色的图框上看不清（`base` 加 `primaryColor` 的边 1.21:1；M13 之前图框透明、页是暗的，也这样）：图框的底跟着作者的主题（浅色主题给白底），P4 不做（实施者 S2 修复报告第 7 节第 4 条，主持者定）；同一个顶层块里有几段代码时，在拿着焦点的那段之前增删一段，就地更新之后焦点落到别一段的"复制"上（决定 905，照实；键先认代码的文字、再认第几个是一种改法，审查 A 的 P4S2A-Q1）。S1 留下的两件：带锚点打开的页，视图第一次到时焦点给锚点、不看读者其间的动作（决定 900，`W/pages/page/view-anchors.ts:72-80`；13.2 第 26 条，异步的答复之后移动焦点要看读者动没动）；刚编辑过的页，头一行读作"<名字> 编辑于现在""Edited by <名字> now"（`page.editedBy` 加相对时间一直有的措辞，"刚刚编辑""just now"更顺，审查 B 的 P4S1B-F3），两件都记进 `docs/v0.2/handoffs/M12-polish.md`。
+- **v0.2**：M12-polish 第 1 项里 P4 不认领的（决定 881，逐项核对过 M5-polish）：3（高亮的闪动）、4、6.4、8.3、10.3、11.3–11.5、11.6 的其余、11.9、12.1、12.2 的开合、12.5、12.6、12.7、12.9、12.10 的千分位、13.2、17.2a、17.3、18.3、18.4b、18.4c、18.7、20.4、21.1；第 6 项的勾选框一半；第 5、11 项里 P4 的页之外的 `bdi`；第 7 项的 Firefox 尾随空格（照实记进 10.1，不改）：照旧留着。另有：l5 量编辑器外框时取父元素链上的底（`e2e/fixtures/contrast.ts:112-116`），改为量元素自己的底不在 P4（决定 891）；页内查找会找到代码块头里的语言名与"复制"，复制之后的 1.5 秒里也找得到藏起的"已复制"（打印时不印，决定 869；审查 B 第 1 轮核对过选区与剪贴板都不含它们）；mermaid 的 `themeVariables` 与 `themeCSS` 照旧可被图自己的指令改（决定 871；指令给的 `themeCSS` 经 mermaid 的 `sanitizeCss`）。 S2 留下的两件：作者自己指定浅色主题（`forest`、`neutral`、`default`，或 `base` 加浅色的变量）的图在暗色应用里，节点自带底与字、读得清，直接画在图框底上的边、箭头与时序图的消息字是深色，画在暗色的图框上看不清（`base` 加 `primaryColor` 的边 1.21:1；M13 之前图框透明、页是暗的，也这样）：图框的底跟着作者的主题（浅色主题给白底），P4 不做（实施者 S2 修复报告第 7 节第 4 条，主持者定）；同一个顶层块里有几段代码时，在拿着焦点的那段之前增删一段，就地更新之后焦点落到别一段的"复制"上（决定 905，照实；键先认代码的文字、再认第几个是一种改法，审查 A 的 P4S2A-Q1）。S1 留下的两件：带锚点打开的页，视图第一次到时焦点给锚点、不看读者其间的动作（决定 900，`W/pages/page/view-anchors.ts:72-80`；13.2 第 26 条，异步的答复之后移动焦点要看读者动没动）；刚编辑过的页，头一行读作"<名字> 编辑于现在""Edited by <名字> now"（`page.editedBy` 加相对时间一直有的措辞，"刚刚编辑""just now"更顺，审查 B 的 P4S1B-F3），两件都记进 `docs/v0.2/handoffs/M12-polish.md`。 S3 留下的两件：Firefox 编辑时滚长文档报"scroll-linked positioning effect"（CodeMirror 在 scroll 事件里同步量、以 `window.scrollBy` 校正锚点；S3 之前就有，阅读时没有）；长文档进编辑之后第一次远跳，Chromium 里一帧移约 157 px（S3 之前约 59 px），是 CodeMirror 对没量过的行的高度估计在校正：它没有给单行估计高度的公开接口，S3 的校正幅度在对照的范围里（审查 A 在三种引擎里量过远跳与小步滚动）；两件都记进 M12-polish 的 S3 一行。
 
 ## 10. 结果
 
@@ -2036,6 +2171,39 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
   - 审查 C 的门禁：`cdedff02` 上合并之前的整条命令 636 / 3 / 1（基线三格），2.7 min，整条 3 分 59 秒（负载 7.8 → 45.1），vitest 5395 格（58.0 s），逐个提交的 `make lint-web knip test-web` `96346ed3` 5381 格、`1c170cba` 5395 格；`02cb019e` 上 637 / 2 / 1（se2:231、lw8:836；pg15 过了），2.7 min，整条 4 分 07 秒（负载 15.5 → 67.5，别的审查者也在跑），vitest 5400 格（63.7 s）。
 - **与设计不同之处**：照实多十一个代码提交（`cdedff02` 与十个修复提交）；4.3 之前的"照实"（4.2.1、4.2.4–4.2.7）；869、871、872 的文字；4.2.4、4.2.5、4.2.7 的代码；5.2（PG17 第 2 格的标题、造数与第 5–8 步，L4 挪到"改的"，L4 的行号）；6.2；7.1（S2 的照实）；7.2（第 46、49、52 行，S2 的 t1–t43，表后的一句）；7.3、7.5；8.2 第 13、16、17、18 条；第 9 节；决定 901–906。偏离：流程图的图框高 129.3 px（样稿 94.25）；Chromium 里带行内代码的 callout 标题高 21.64 px；标题里的链接用正文色（同正文的链接，不用族色）；决定 903 让以代码块开头的列表项在代码块上方多 8 px；属性条里列表的列表（`lists: [[a, b], [c]]`）的小块多 4 px，是 S2 之前就有的 `li > :is(ul, ol)` 一条（审查 B 修复核对第 1 轮）；状态图的注也用 `flowchart.padding`，变小一点（框高 428 → 416 px，不裁），照样稿的 9 px 也说得通（同上）。
 - **交给后面**：第 9 节（作者的浅色主题在暗色的图框上，决定 905，给 v0.2；读屏清单里 `summary` 的一条照决定 901 改写）；375 宽时甘特、时间线、旅程的字小于 5 px（照旧）；S3：编辑器借用 `reading.css` 的变量（8.2 第 16 条写"P4/S3 起也给编辑器"，`reading.css:12` 与 `design-tokens.test.ts:236` 的注释到 S3 一起看，审查 C 的 P4S2C-N1）；`W/reading/code-blocks.ts:85` 的注释一行 146 列，下次碰这个文件时折行（审查 C 的 P4S2C-F2-N4）。
+
+### 10.3 S3：编辑器、编辑时的大纲与"保存"（2026-11-25，合并 `<待填>`）
+
+- **提交**：`ab6f4353`（编辑器的比例字体、等宽的行、压淡的标记、阅读视图的链接色与匹配色，照 6.3 提交 1）、`68a7e4be`（编辑时的大纲，"保存"只在需要时显出，照 6.3 提交 2）；照实加的 `3c75954d`（7.4 的截图找到的：WebKit 里编辑时大纲的长标题不截断）、`9a52ddb4`（变异 t8 活下来之后补的 frontmatter 一格）；审查的修复 `15372fcf`、`4ecc3e10`、`d54a9d00`、`45a477bd`；修复核对第 1 轮之后的 `d7fb332c`、`e6558722`，第 2 轮之后的 `bcd1575b`（各做了什么见 6.3 之后的"照实"）；加本文档提交。[S3 的审查记录](reviews/P4-S3-editor-outline-save-review.md)。
+- **基线**：不另跑（决定 883）。提交 1 的 `make e2e` 兼作核对：只败第 1 节那三格里的两格（se2:231、lw8:836，同行同消息；pg15:113 那次过了）。之后 se2:231、lw8:836 每次都红，同行同消息；pg15:113 [webkit] 照旧有时过（实施者的十三次，九次 `make e2e` 与四次合并之前的整条命令，过了 2 次；审查 C 的一次门禁里过了）。另有的红都查清了，见"门禁"。
+- **做完**：4.3.1–4.3.7（照实见 4.4 之前的一段）；决定 874–878、880 与 891 的 S3 一半（l5 的五项照旧量，值不变；决定 910 另加查找面板的八项）、881 的 S3 部分（M5-polish 13.1"编辑时的大纲"，第 5、11 项里失锁横幅的 `bdi`）、885、889、894 的 S3 一半（"保存"不需要时 `invisible`、占位）、895、896、907–911；01-P1 第 9 节 P4 那一条的最后一项（编辑器的链接色与搜索匹配色，决定 875）。S1 交来的：变异 108 跑了（PG17 第 3 格三种浏览器红在 `:344`）；右栏的读者记录随大纲的列表（决定 897），编辑时右栏是 `EditOutline`、回到阅读 `PageOutline` 重新挂上、照旧跟，897 的一格照绿。S2 交来的：`reading.css:12-15` 与 `design-tokens.test.ts:236-238` 的注释在 `ab6f4353` 改了（编辑器借用 `--nw-mark-background`、`--nw-match-selected`、`--nw-link-line`、`--nw-code-background`，审查 C 核对）；`W/reading/code-blocks.ts:85` 没碰。
+- **测试**：
+  - vitest：5402（225 个文件，S3 之前）→ 5415（226，`ab6f4353`：`prose-lines.test.ts` 8 格，`yaml-quotes.test.ts` 2 格，`source-editor.test.tsx` 2 格，`text-diff.test.tsx` 1 格）→ 5434（227，`68a7e4be`：`edit-outline.test.ts` 8 格，`source-editor.test.tsx` 2 格，`page-panel.test.tsx` 一格改写成两格，`page-edit.test.tsx` 6 格，`page-lock.test.tsx` 2 格）→ 5434（`3c75954d`）→ 5435（`9a52ddb4`）→ 5444（228，`15372fcf`：`edit-outline.test.ts` 3 格、`page-panel.test.tsx` 3 格、`wiki-links.test.ts` 3 格）→ 5449（`4ecc3e10`：`prose-lines.test.ts` 1 格、`source-editor.test.tsx` 2 格、`text-diff.test.tsx` 1 格、`link-completion.test.ts` 1 格；`d54a9d00`、`45a477bd` 不变）→ 5452（`d7fb332c`：`edit-outline.test.ts` 2 格、`page-panel.test.tsx` 1 格）→ 5454（`e6558722`：`source-editor.test.tsx` 2 格）→ 5455（`bcd1575b`：`wiki-links.test.ts` 1 格；`page-panel.test.tsx` 的 `inert` 一格改写）。
+  - E2E：640，不变（L6、L5 的页面格与 PG17 第 3 格加步，没有新格）；`check.mjs` 照旧列 chromium 431、firefox 103、webkit 103、webkit-narrow 3，`REQUIRED` 不加行。
+  - 先写的新格在没改的树上红：提交 1 在 `5c1fbdb2` 上只放测试，`prose-lines.test.ts` 导入失败，`design-tokens.test.ts` 一格（`theme.ts` 的 12 处色值），`source-editor.test.tsx` 两格（`'1.6'` 对 `'1.85'`，等宽的标记全无），`yaml-quotes.test.ts` 两格（`frontmatterRange is not a function`）；提交 2 在提交 1 上，`edit-outline.test.ts` 导入失败，reveal 两格（`expected undefined to be 2`），`page-panel.test.tsx` 两格，`page-lock.test.tsx` 两格（`bdi` 为空），`page-edit.test.tsx` 四格（没有 `invisible`），L6 红在当时的 `l6:239`。修复的：`15372fcf` 的 vitest 5 格与 `wiki-links.test.ts` 的导入失败，PG17 `:347` 三种浏览器（项高差 5.5 / 4.75 / 1.625 px）与 L6 `:244`；`4ecc3e10` 的 5 格（gutter 是 `rgb(245, 245, 245)`）、补全的强制色一格（`[]`）、L5 亮色的按钮有渐变、暗色的查找框 1.224；`d54a9d00` 的等宽一格（`monospace`、`16px`）；`d7fb332c` 的 4 格（`upTo` 那一格之后改成数调用，2 次对 6 次）；`e6558722` 的 2 格（标题里的代码没有 `--nw-heading`；查找框的宽是 `auto`）；`bcd1575b` 的 2 格（`![[v1.2 notes|Alias]]` 显示 Alias；大纲那一节的 `details` 不带 `inert`）。不先红的：page-edit 的两格（守 109、68）、`text-diff` 的行高一格（守 57）、"…and 3 more"一格（t12）、`--font-sans` 一句（t49）、查找面板一格的强制色一半（t63）；`9a52ddb4` 的一格在 t8 之下红。
+  - 每次门禁"not configured to support act"0 次；全部 vitest 照旧打一次"Not implemented: navigation to another Document"（S1 已记）。
+- **变异**（逐条在审查记录）：
+  - 7.2 的 S3 各条（54–69、91–101、108–111、116、117，e2e 的 59e、60e、64e、65e、108e）都被它写的格抓住：59e 红在 `l5:143`（5.526 对下限 7.82）；108e 三种浏览器红在 PG17 `:344`（63.73 / 63.70 / 63.73 px）。
+  - 实施者另写的 t1–t67（7.2 表末）：t6 等价（依据在它那一行），t53 只省代价、没有格抓，t67（实体的表放回模块级）没有格分得出、由堆的量看；t42e 活着，`45a477bd` 补了一项之后是 t50e；t7（t29e）、t27e、t28e 三种浏览器都红；其余都被抓住。
+  - 审查者另写的（7.2 表末的 `c-` 各条）：审查 C 第一轮的 c-indent、c-codeblock、c-noscroll 与 noscroll-e 红，c-more、c-clear 活着（P4S3C-M3、N1，`15372fcf` 之后红），t7e 只有 WebKit 红（P4S3C-M1）；修复核对第 1 轮的 c-ready-never、c-upto、c-clamp3e 红，c-active 等价，c-fc-search 活着（P4S3C-F1-N2，`e6558722` 之后是 t63）；修复核对第 2 轮的 c-h2、c-comment-code、c-read-past 红，c-decode-fresh 同 t53 活着。审查 A 的一条（标题的容器过滤去掉）等价：标题节点只是 `Document`、`Blockquote`、`ListItem` 的块级孩子，过滤只省代价。
+- **视觉的核对**（7.4）：
+  - 实施者在三种引擎里截了：编辑器（亮暗；正文、frontmatter、围栏、表格、引用里的代码、标题与标题里的行内代码、链接、压淡的标记、选区、光标）、长文档、编辑时的大纲（1440、1024、375，点一项，阅读与编辑对照）、"保存"的四个状态、冲突与失锁、补全（亮暗、强制色）、查找面板（亮暗、1440 与 375、中英文）、对比视图；修复之后各重拍。三种引擎量出的值相同（除注明的）。
+  - 实量：正文 15.5 px 系统无衬线，等宽行 13.5 px（行高 24.97 px），h1 20 px、h2 16.5 px，与样稿 `.ln` 相同；行内代码 13.5 px，h1、h2 里的随标题 17.42、14.38 px（Firefox 17.41、14.38）；编辑时大纲的项与阅读时同高（单行 25.88、两行 43.75 px，Firefox 43.77），长标题两行；"保存"藏着时状态的右边不动（英文 1440 宽 977.89 px、375 宽 216.89 px），状态到"保存" 10 px，藏着时到开关 73.7 px（英）、70 px（中），决定 896 的偏离；查找面板的框与按钮 30 px 高、13 px 字、9 px 圆角，框宽 168 px，1440 宽两行（82.4 px，Firefox 中文也是），375 宽多行（约 173 px），页不横滚；暗色的查找框对底约 13.0、按钮约 12.35（之前约 1.2）；对比与冲突视图 SF Mono 13 px、行高 20.8 px（Firefox 中文原是 16 px）；320 宽英文冲突面板的两个按钮上下排，右边在内容区的右沿 279 px（原 305.3）。
+  - 大文档（Chromium 1280×800，经 API：980,777 字符、12,360 行、412 节）：`scrollTo` 跳到七处，每处之后 8 帧视口中间那一行：6 处 0 px；第一次远跳（顶 → 10%）一帧移 157.2 px，下一帧 −0.2 px；对照（去掉 S3 的三个扩展）同处 58.9 px。审查 A 在三种引擎里量了远跳与小步滚动：校正是 CodeMirror 对没量过的行的高度估计，S3 的幅度（14–143 px）在对照（59–204 px）的范围里，记给 v0.2。
+  - 几 MB 文档（3,581,086 字节、45,002 行、1,501 个标题）：点"编辑"到编辑器出现 487–494 ms；之后大纲补完解析、显出"…and 501 more"用 290 ms（两次相同），这一段主线程脚本 158–160 ms，只有一个 ≥50 ms 的长任务（53–56 ms），在编辑器出现之前；对照 359 ms。审查 A：打字时每次 `dispatch` 中位 2.6–3.1 ms（不带 S3 的扩展 1.3–1.7 ms）。
+  - 重读的代价（审查 A 的 P4S3A-F1-M2，A 的 `reread2.mjs`，Chromium，在第 500 个标题里插一个字，负载约 5）：20,000 个带行内标记与实体的标题，`d7fb332c` 之前每轮一个 148–168 ms 的长任务、报出在 453–470 ms，之后没有 ≥50 ms 的任务、326–336 ms；不带实体的 100–117 ms 与 5,000 个的 56–62 ms 也都没有了；只有文字的 20,000 个前后都没有。审查 C（修复核对第 2 轮，同一个 harness）：1,000 个各带 20 个命名实体的标题，实体不记下（t53）时每轮一个 60–75 ms 的长任务，记下时没有；`bcd1575b`（表每次读新建）上：1,000 个各带 20 个命名实体的标题重读 312–323 ms 报出、没有 ≥50 ms 的任务，A 的 20,000 个 328–334 ms、也没有（实施者，`fix/g-heap.log`）。
+  - 实体的表留下的堆（审查 C 的 `heap.mjs`，Chromium 加 `--enable-precise-memory-info`，每次量之前以 CDP 做两次 GC；1,000 个标题各 300 个不同的数字实体，2.71 MB，编辑器建好、再换成空文档）：审查 C 量的 `e6558722` 26.9 / 21.9 MB（建好 / 换掉之后），t53 7.6 / 2.6 MB；实施者在同一个 harness 上重量（`fix/g-heap.log`，Chromium 一次，量之前 1.2 MB）：`e6558722` 27.2 / 21.9 MB，t53 7.6 / 2.5 MB，`bcd1575b` 7.6 / 2.6 MB，表每次读新建之后编辑器换掉就不多留，与不记下时一样。
+  - Firefox：编辑时滚长文档报"scroll-linked positioning effect"，阅读时没有；对照同样报，S3 之前就有，记给 v0.2。
+  - 截图在会话的临时目录，不进仓库。
+- **对比度**（l5，决定 880、891）：`ab6f4353` 与 `9a52ddb4` 上与 S2 相同：亮 补全项说明 5.281、编辑器外框 3.098、选中项 2.646、阅读视图链接的焦点 3.098、菜单的当前项 2.646；暗 4.849、7.923、5.476、7.923、5.476；五项的下限不改。决定 910 另加八项，下限取实量 − 0.1：亮 聚焦的查找框 17.578（下限 17.47）、没聚焦的 15.992（15.89）、按钮的字 17.578（17.47）、`label` 6.183（6.08）；暗 12.987（12.88）、12.353（12.25）、12.353（12.25）、6.637（6.53）。
+- **PG17 的时长**（7.5，第 3 格，Chromium / Firefox / WebKit）：实施者 6.7–7.6 s（`e6558722` 的 `make e2e` 7.0 / 7.4 / 7.2 s，合并之前 7.0 / 7.0 / 7.1 s；`bcd1575b` 合并之前 7.0 / 6.9 / 7.1 s）；审查 C 7.0 / 7.4 / 6.9 s（`9a52ddb4`）。推的是 7–10 s。L5 页面格 3.1 s，L6 页面格 1.6–1.7 s；本机 E2E 2.6–3.0 min（负载 4–45）。
+- **门禁**：
+  - 每个提交的 `heavy.sh make lint-web knip test-web` 都绿（提交之前没过的，改了才提交：`ab6f4353` 的 oxlint `no-unmodified-loop-condition`；`68a7e4be` 的 tsc（MobX 7 没有 `observable.ref`，改用 `observableRef`）与 oxlint `consistent-function-scoping` 两处；`9a52ddb4` 的 `consistent-function-scoping`；`15372fcf` 的 `consistent-function-scoping` 与 oxfmt）。
+  - `CI=1 heavy.sh make e2e`：提交 1 637 / 2 / 1，2.8 min（负载 11.3 → 27.8）；提交 2 636 / 3 / 1，2.7 min（14.4 → 21.1）；`3c75954d` 636 / 3 / 1，2.8 min（18.3 → 33.1）；`15372fcf` 第一次 635 / 4 / 1（基线之外 L6 [chromium] 红在 `fixtures/assert/links.ts:43`：新标题里的 `[[Elsewhere#Part|part]]` 多一条索引的链接，改用同页的 `[[#Setup|the setup]]`），之后 636 / 3 / 1，3.0 min；`4ecc3e10` 637 / 2 / 1，2.7 min；`d54a9d00` 636 / 3 / 1，2.7 min；`d7fb332c` 636 / 3 / 1，2.8 min（结束时负载 41.9）；`e6558722` 636 / 3 / 1，2.6 min（24.9）。`9a52ddb4`、`45a477bd`、`bcd1575b` 由合并之前的整条命令覆盖。
+  - 合并之前的整条命令（`CI=1 heavy.sh make lint-web knip test-web gen-check-web build-web e2e`，`m13-ui-refresh` 一直是 `5c1fbdb2`）：`9a52ddb4` 上 vitest 227 个文件、5435 格（59.2 s），E2E 636 / 3 / 1，2.8 min，整条 3 分 56 秒（负载 5.2 → 27.5）；`45a477bd` 上 228 / 5449，636 / 3 / 1，2.7 min，3 分 52 秒（7.3 → 28.9）；`e6558722` 上以 2 退出，只因基线三格（se2:231、pg15:113 [webkit]、lw8:836 [webkit]）：228 / 5454（55.7 s），636 / 3 / 1，2.6 min，3 分 41 秒（04:38:35 → 04:42:16，3.7 → 23.3）；`bcd1575b`（合并的门禁）上同样只因这三格：228 / 5455（55.7 s），636 / 3 / 1，2.6 min，3 分 43 秒（05:21:33 → 05:25:16，15.3 → 20.6）；每次"not configured to support act"0 次，`check.mjs` 431 / 103 / 103 / 3，受保护路径的 `git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 与 `git diff --check` 都以 0 退出，跑完 `git status` 为空。
+  - 审查 C 的门禁：`9a52ddb4` 上合并之前的整条命令 637 / 2 / 1（se2:231、lw8:836；pg15 过了），2.8 min，整条 4 分 13 秒（负载 12.2 → 44.6，别的审查者在锁外也有进程），vitest 5435 格（63.05 s）；逐个提交的 `make lint-web knip test-web`：`ab6f4353` 226 / 5415、`68a7e4be` 227 / 5434、`3c75954d` 227 / 5434，修复核对第 1 轮 `15372fcf` 228 / 5444、`4ecc3e10` 228 / 5449、`d54a9d00` 228 / 5449，第 2 轮 `d7fb332c` 228 / 5452，都以 0 退出（实施者每个提交的门禁跑在提交之前，日志单独证明不了"每个提交单独为绿"，C 的这一遍补上）。
+- **与设计不同之处**：照实多九个代码提交（`3c75954d`、`9a52ddb4` 与七个修复提交）；874–876、878、889 的文字；4.4 之前的"照实"（4.3.1–4.3.4、4.3.6）；4.5 的 knip；5.3（L6 的行号与新标题，PG17 第 3 格一步，L5 挪到改的）；6.3；7.1（S3 的照实）；7.2（第 60、64、65 行，S3 的 t1–t67 与审查 C 的 `c-` 各条，表后的一句）；7.3、7.5；8.1 第 1 条；8.2 第 19、22、24–26 条与新的第 27、28 条，引言与"不改的"一行；第 9 节；决定 907–911。实施者第一轮的偏离 1–9（审查 A 逐条接受）：两个照实加的提交；截断在 `span` 上；`textOf` 另去掉 `QuoteMark`、setext 截在下划线那一行；两片之间改了文档就结束这一轮、sink 经 `Facet`；`observableRef`；假计时推 1 ms × 5；`frontmatterRange` 返回 `Frontmatter`；"一直在 DOM 里"一格自己数 `PUT`；`lostText` 一律 `Isolating`。修复报告的 1–8：`ready` 不叫 `told`；907 另做实体解码、嵌入去尺寸，`[see [[A]]](u)` 与行内数学照实；A-N2 的"`Link` 里跳过"做成 `LinkTitle` 里不认；补全的外框只在强制色下（无条件加会让 L5 的 `indicatorContrast` 量到透明的外框，比值 1）；查找面板的字号 13 px（`text-compact`），不是 13.5；t29e 三种引擎都红；查找面板强制色的焦点外框当时没有格守（`e6558722` 补了）；变异的工具以 `HEAD` 核对复原，每轮在提交之后跑。偏离：藏起的"保存"照旧占位（决定 896）；frontmatter 整块次要色（决定 874）；冲突面板 320 宽的按钮折行量过、没有守（冲突的故事没有窄屏的一步）；907 的已知差别（4.4 之前的"照实"）；e2e 只交叉核对了 907 的显示文字一条路（L6 的 `[[#Setup|the setup]]`），"页名 > 小节"与嵌入的说明只在 vitest 里，对照的是照服务端代码写的期望（审查 C 修复核对第 1 轮）。
+- **交给后面**：第 9 节（v0.2：Firefox 编辑时的 scroll-linked 警告、第一次远跳一帧约 157 px、全篇约 2 万个互不相同的数字实体时编辑时的大纲每轮重读 52–60 ms（审查 A 的 P4S3A-F3-N1，照实）；P5：版本行单独一行的"-"；负责人：Safari 的人工核对）；`CHANGELOG.md` 0.1.0"网页的打磨"一条里的"编辑时没有大纲"由 M13 收尾删（00 号文档第 7 节"收尾"第 2 项）；`W/reading/code-blocks.ts:85` 的长注释照旧（10.2）；P4 的 Phase 完成另一个提交（8.1 第 4 条）。
 
 ## 附录：核对过的代码
 
