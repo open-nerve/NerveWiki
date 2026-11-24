@@ -229,9 +229,12 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   ).toBeLessThanOrEqual(1);
   await expect(toggle).toBeFocused();
 
-  // Reloaded, it is folded still; shown again by its toggle.
+  // Reloaded, it is folded still; shown again by its toggle. The address keeps the anchor clicked: the view's arrival
+  // gives its heading the focus, which is awaited, or a view come late would take it from the toggle between its two
+  // presses (review C's P4S1C-F1-I1).
   await reload(page);
   await expect(pageHeading(page, "Doc")).toBeVisible();
+  await expect(heading("Part 39")).toBeFocused();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(column).toBeHidden();
   await toggle.focus();
