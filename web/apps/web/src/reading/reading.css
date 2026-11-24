@@ -348,16 +348,18 @@
     color: var(--destructive);
   }
 
+  /* Copy as reading.html's .btn in the head: a 16px icon 6px from its word, 500 the weight (review B's N2). */
   .nw-reading .nw-code-copy {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    gap: 6px;
     height: 24px;
     margin-inline-start: 6px;
     padding: 0 8px;
     border-radius: 9999px;
     color: var(--faint);
     font: inherit;
+    font-weight: 500;
     cursor: pointer;
   }
 
@@ -368,8 +370,8 @@
 
   .nw-reading .nw-code-copy::before {
     content: "";
-    width: 13px;
-    height: 13px;
+    width: 16px;
+    height: 16px;
     background-color: currentColor;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect width='14' height='14' x='8' y='8' rx='2' ry='2'/%3E%3Cpath d='M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2'/%3E%3C/svg%3E")
       center / contain no-repeat;
@@ -725,6 +727,12 @@
   .nw-reading .nw-diagram > svg {
     display: block;
     margin-inline: auto;
+  }
+
+  /* A timeline's arrowheads the colour of its line (themeCSS's .lineWrapper), not the text's: mermaid gives their path
+     no fill of its own, and a rule for it in themeCSS does not reach it (review B's N1). */
+  .nw-reading .nw-diagram svg[aria-roledescription="timeline"] marker > path {
+    fill: var(--faint);
   }
 
   /* Its labels too: Chromium's own sheet forces a foreignObject's HTML under forced colours, whatever its SVG's
