@@ -702,6 +702,12 @@
     margin-inline: auto;
   }
 
+  /* Its labels too: Chromium's own sheet forces a foreignObject's HTML under forced colours, whatever its SVG's
+     ancestors say, and a node's name would be the system's text on the app's fill. */
+  .nw-reading .nw-diagram foreignObject {
+    forced-color-adjust: none;
+  }
+
   /* An attachment's image, audio or video, in the line as Obsidian shows
      it, where the preflight would start a block (M7/P3 design 5.5; review
      C9). */
