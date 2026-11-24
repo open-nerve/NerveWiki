@@ -96,14 +96,22 @@ function targetShown({ target, anchor }: WikiLink): string {
   return anchor === "" ? target : `${target} > ${anchor}`;
 }
 
+/** An attachment's name: an extension, not a page's ".md" (review A's P4S3A-F1-N2). */
+const attachment = /\.(?!md$)[^./]+$/i;
+
 /**
  * shownOf is the text the reading view shows of link: a wiki link's display text, or its target and anchor; an
- * embed's caption, its display text but a size at its end, or its target and anchor (an attachment's, which an image
- * shows as its alt; a page's embed shows its target and anchor, its display text a size).
+ * attachment's embed its caption, its display text but a size at its end, or its target and anchor (which an image
+ * shows as its alt); a page's embed, its target of no extension but ".md", its target and anchor, as the server shows
+ * one (wikilink.go's shown). The editor knows not which targets are found: one of an extension is taken for an
+ * attachment.
  */
 export function shownOf(link: WikiLink): string {
   if (!link.embed) {
     return link.display === "" ? targetShown(link) : link.display;
+  }
+  if (!attachment.test(link.target)) {
+    return targetShown(link);
   }
   const last = link.display.lastIndexOf("|");
   const caption = size.test(link.display.slice(last + 1).replace(blank, ""))

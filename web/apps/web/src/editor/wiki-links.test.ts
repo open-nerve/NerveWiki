@@ -8,7 +8,7 @@ import { shownOf, wikiLinks } from "./wiki-links";
 /** links is what wikiLinks finds in text: each link's text and what the reading view shows of it. */
 const links = (text: string) => wikiLinks(text).map((link) => [text.slice(link.from, link.to), shownOf(link)]);
 
-test("a wiki link shows its display text, or its target and anchor as Obsidian writes them; an embed its caption, but a size", () => {
+test("a wiki link shows its display text, or its target and anchor as Obsidian writes them; an attachment's embed its caption, but a size; a page's its target", () => {
   expect(links("[[Page]] [[Page|alias]] [[Page#Sec]] [[#Sec]] [[Page#Sec|there]]")).toEqual([
     ["[[Page]]", "Page"],
     ["[[Page|alias]]", "alias"],
@@ -25,6 +25,14 @@ test("a wiki link shows its display text, or its target and anchor as Obsidian w
     ["![[a.png|Diagram]]", "Diagram"],
     ["![[a.png|Diagram|300]]", "Diagram"],
     ["![[Page#Sec]]", "Page > Sec"],
+  ]);
+  // The server shows a page's embed by its target (wikilink.go's shown): one with no extension but ".md" is a page's.
+  expect(links("![[Page|alias]] ![[Page|cap|300]] ![[Notes/Page.md|x]] ![[v1.2/Page|y]] ![[Doc.PDF|Spec]]")).toEqual([
+    ["![[Page|alias]]", "Page"],
+    ["![[Page|cap|300]]", "Page"],
+    ["![[Notes/Page.md|x]]", "Notes/Page.md"],
+    ["![[v1.2/Page|y]]", "v1.2/Page"],
+    ["![[Doc.PDF|Spec]]", "Spec"],
   ]);
 });
 

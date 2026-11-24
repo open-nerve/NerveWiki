@@ -44,18 +44,37 @@ const levels = new Map([
 /** A part of a heading's text its item does not show as written: cut, or shown as text. */
 type Cut = { from: number; to: number; text: string };
 
-/** The marks an item drops: a heading's, a quote's, emphasis', code's, a strikethrough's; HTML's tags. */
-const dropped = new Set(["HeaderMark", "QuoteMark", "EmphasisMark", "CodeMark", "StrikethroughMark", "HTMLTag"]);
+/** The marks an item drops: a heading's, a quote's, emphasis', code's, a strikethrough's; HTML's tags and comments. */
+const dropped = new Set([
+  "HeaderMark",
+  "QuoteMark",
+  "EmphasisMark",
+  "CodeMark",
+  "StrikethroughMark",
+  "HTMLTag",
+  "Comment",
+]);
 /** The nodes whose text holds no wiki link nor highlight: code, HTML, an address. */
-const verbatim = new Set(["InlineCode", "HTMLTag", "Autolink", "URL"]);
+const verbatim = new Set(["InlineCode", "HTMLTag", "Comment", "Autolink", "URL"]);
 /** A highlight: its text, which neither starts nor ends with a space or a "=". */
 const highlight = /==(?=[^=\s])([^=\n]*?[^=\s])==/g;
+/** An Obsidian comment in a line: its "%%" paired with the next, all it holds hidden (obsidian/comment.go). */
+const comment = /%%.*?%%/g;
+
+/** The characters HTML entities stand for, decoded once each (review A's P4S3A-F1-M2). */
+const entities = new Map<string, string>();
+let decoder: HTMLTextAreaElement | undefined;
 
 /** decoded is the character an HTML entity stands for, as the server's Markdown reads it. */
 function decoded(entity: string): string {
-  const area = document.createElement("textarea");
-  area.innerHTML = entity;
-  return area.value;
+  let character = entities.get(entity);
+  if (character === undefined) {
+    decoder ??= document.createElement("textarea");
+    decoder.innerHTML = entity;
+    character = decoder.value;
+    entities.set(entity, character);
+  }
+  return character;
 }
 
 /**
@@ -109,24 +128,36 @@ function cutsOf(state: EditorState, node: SyntaxNode, end: number, cuts: Cut[], 
 /** inside tells whether at is in one of ranges. */
 const inside = (ranges: readonly Cut[], at: number) => ranges.some(({ from, to }) => at >= from && at < to);
 
+/** endOf is where a heading's text ends: a setext heading's before its underline's line, its quote marks with it. */
+function endOf(state: EditorState, node: SyntaxNode): number {
+  const underline = node.name.startsWith("Setext") ? node.lastChild : null;
+  return underline?.name === "HeaderMark" ? state.doc.lineAt(underline.from).from : node.to;
+}
+
 /**
  * textOf is a heading's text as the reading view's outline has it (M13/P4/S3, decision 907): without its marks (an ATX
  * heading's #s; a setext heading's underline, its line's quote marks with it, and the quote's marks on its lines),
- * its inline marks, addresses and footnotes' references; an image by its alt; a wiki link as the view shows it, a
- * highlight without its "=="; in code as written. Its spaces made one.
+ * its inline marks, addresses, footnotes' references and comments; an image by its alt; a wiki link as the view shows
+ * it, a highlight without its "=="; in code as written. Its spaces made one.
  */
 function textOf(state: EditorState, node: SyntaxNode): string {
-  let end = node.to;
-  const underline = node.name.startsWith("Setext") ? node.lastChild : null;
-  if (underline?.name === "HeaderMark") {
-    end = state.doc.lineAt(underline.from).from;
-  }
+  const end = endOf(state, node);
   const marks: Cut[] = [];
   const codes: Cut[] = [];
   cutsOf(state, node, end, marks, codes);
   const text = state.sliceDoc(node.from, end);
+  // A comment hides what it holds, its links too (review A's P4S3A-F1-N2).
+  const hidden: Cut[] = [];
+  for (const found of text.matchAll(comment)) {
+    const from = node.from + found.index;
+    const to = from + found[0].length;
+    if (!inside(codes, from) && !inside(codes, to - 2)) {
+      hidden.push({ from, to, text: "" });
+    }
+  }
+  marks.push(...hidden);
   const links: Cut[] = wikiLinks(text, node.from)
-    .filter((link) => !inside(codes, link.from))
+    .filter((link) => !inside(codes, link.from) && !inside(hidden, link.from))
     .map((link) => ({ from: link.from, to: link.to, text: shownOf(link) }));
   for (const found of text.matchAll(highlight)) {
     const from = node.from + found.index;
@@ -147,6 +178,25 @@ function textOf(state: EditorState, node: SyntaxNode): string {
     }
   }
   return `${shown}${state.sliceDoc(at, end)}`.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * hasText tells whether a heading has text but its marks, its inline ones read as text: a heading past those listed,
+ * which no item shows, is counted so, its text not read (review A's P4S3A-F1-M2). One of a footnote's reference, a
+ * comment or "[[ ]]" alone, which no item would show, is counted.
+ */
+function hasText(state: EditorState, node: SyntaxNode): boolean {
+  const end = endOf(state, node);
+  let at = node.from;
+  for (let child = node.firstChild; child !== null && child.from < end; child = child.nextSibling) {
+    if (child.name === "HeaderMark" || child.name === "QuoteMark") {
+      if (/\S/.test(state.sliceDoc(at, child.from))) {
+        return true;
+      }
+      at = child.to;
+    }
+  }
+  return /\S/.test(state.sliceDoc(at, end));
 }
 
 /**
@@ -171,13 +221,13 @@ function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: Out
       if (level === undefined) {
         return containers.has(node.name) ? undefined : false;
       }
-      const text = textOf(state, node.node);
-      if (text !== "") {
-        if (listed.length < upTo) {
+      if (listed.length < upTo) {
+        const text = textOf(state, node.node);
+        if (text !== "") {
           listed.push({ from: node.from, level, text });
-        } else {
-          more++;
         }
+      } else if (hasText(state, node.node)) {
+        more++;
       }
       return false;
     },

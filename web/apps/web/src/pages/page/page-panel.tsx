@@ -12,8 +12,9 @@ import { PageVersions } from "./page-versions";
 
 /**
  * ColumnOutline is the right column's outline: the view's while the page is read, and while it is edited until its
- * editor first tells its headings (its content read meanwhile), measuring nothing then (review A's P4S3A-M1); the
- * editor's after.
+ * editor first tells its headings (its content read meanwhile), measuring nothing then (review A's P4S3A-M1), inert:
+ * neither clicked nor tabbed to, no link followed there to jump to an old heading once the edit is left, no focus lost
+ * as the editor's comes (review A's P4S3A-F1-N1); the editor's after.
  */
 const ColumnOutline = observer(function ColumnOutline({
   editing,
@@ -31,7 +32,7 @@ const ColumnOutline = observer(function ColumnOutline({
   return editing && outline.ready ? (
     <EditOutline box={outline} />
   ) : (
-    <PageOutline notebook={notebook} page={page} active={!editing && active} />
+    <PageOutline notebook={notebook} page={page} active={!editing && active} inert={editing} />
   );
 });
 

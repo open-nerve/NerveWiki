@@ -299,6 +299,28 @@ test("as the edit opens, its content read, the right column keeps the view's out
   expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
 });
 
+/** columnOutline is the right column's outline, the view's or the editor's. */
+const columnOutline = () => within(panel()).getByRole("navigation", { name: "Outline" });
+
+// The view's outline kept as the edit opens is inert: not to be clicked nor tabbed to, a link followed there no jump
+// to an old heading once the edit is left (review A's P4S3A-F1-N1). Read, and the editor's, are not.
+test("as the edit opens, its content read, the view's outline it keeps is inert; read and once the editor tells, the outline is not", async () => {
+  const contents = heldContents("## A\n\n## B\n", 0);
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/pages/*/content": contents.answer } });
+  server.views.set(install.id, { html: '<h2 id="nw-v">V</h2>', revision: 1, assets_expire_at: null });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("navigation", { name: "Outline" });
+  expect(columnOutline().closest("[inert]")).toBeNull();
+
+  await editOpened();
+  expect(outlineLinks()).toEqual(["V"]);
+  expect(columnOutline().closest("[inert]")).not.toBeNull();
+  contents.release();
+  await pageEditor();
+  expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
+  expect(columnOutline().closest("[inert]")).toBeNull();
+});
+
 test("left and opened again, its content read, the edit shows none of the last edit's headings: the view's outline until the editor tells (review C's P4S3C-N1)", async () => {
   const contents = heldContents("## A\n\n## B\n", 1);
   const server = pageServer({ role: "editor", answers: { "GET /api/v0/pages/*/content": contents.answer } });

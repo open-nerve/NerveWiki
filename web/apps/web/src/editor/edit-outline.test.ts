@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 import { editOutline, where, type OutlineHeading, type OutlineSink } from "./edit-outline";
 import { markdownEditing } from "./markdown";
+import { wikiLinks } from "./wiki-links";
 
 // The outline while the page is edited (M13/P4/S3, decision 876): the editor's headings, read as it is made, again once
 // its changes settle, the parse completed in slices. Parse.work times its slices by Date.now(), which fake timers stop,
@@ -17,6 +18,12 @@ vi.mock("@codemirror/language", async (actual) => ({
 }));
 const language = await vi.importActual<typeof import("@codemirror/language")>("@codemirror/language");
 const ensured = vi.mocked(ensureSyntaxTree);
+// Each heading's text read looks for its wiki links once: how many are read is how many times they are looked for.
+vi.mock("./wiki-links", async (actual) => {
+  const real = await actual<typeof import("./wiki-links")>();
+  return { ...real, wikiLinks: vi.fn(real.wikiLinks) };
+});
+const scanned = vi.mocked(wikiLinks);
 
 /** The editors the test made, and their parents in the page; a test that destroys one takes it out. */
 const views = new Map<EditorView, HTMLElement>();
@@ -155,6 +162,27 @@ test("an item reads as the reading view's outline has it: the inline marks, addr
   ]);
 });
 
+// What the reading view hides, and an embed of a page, as the server shows them (review A's P4S3A-F1-N2).
+test("an item leaves out a comment, Obsidian's and HTML's, as the view hides them; an embed of a page shows the page, of an attachment its caption", () => {
+  const { sink, told } = sinkOf();
+  viewOf(
+    [
+      "## Comment %%hidden%% shown %%and this%%",
+      "## An <!-- a note --> HTML comment",
+      "## ![[Page|alias]] and ![[Page|cap|300]] and ![[Page.md|x]] and ![[a.png|Diagram]]",
+      "## `%%kept%%` and a lone %% mark",
+      "",
+    ].join("\n"),
+    sink
+  );
+  expect(headings(told)).toEqual([
+    [2, "Comment shown"],
+    [2, "An HTML comment"],
+    [2, "Page and Page and Page.md and Diagram"],
+    [2, "%%kept%% and a lone %% mark"],
+  ]);
+});
+
 test("a frontmatter being written is the body's, as the server reads it: a closed one alone is left out (decision 908)", () => {
   const { sink, told } = sinkOf();
   viewOf(["---", "# Title", "Some text with [[Link]].", "## Next", "more", "", "## Later", ""].join("\n"), sink);
@@ -174,6 +202,20 @@ test("lists upTo headings, the others counted", () => {
     [2, "C"],
   ]);
   expect(told[0]?.more).toBe(2);
+});
+
+// A long document's headings past upTo are counted, their text not read: whether they have any is (review A's
+// P4S3A-F1-M2).
+test("past upTo a heading's text is not read: it is counted if it has any", () => {
+  const { sink, told } = sinkOf(2);
+  scanned.mockClear();
+  viewOf(["# A", "## B", "##", "## C **x** [[Page]]", "> ## D", "##  ##", ""].join("\n"), sink);
+  expect(headings(told)).toEqual([
+    [1, "A"],
+    [2, "B"],
+  ]);
+  expect(told[0]?.more).toBe(2);
+  expect(scanned).toHaveBeenCalledTimes(2);
 });
 
 test("tells as it is made, no timer gone by; then once the changes settle, 300 ms after the last; what reads the same tells nothing (review A's M3)", () => {
