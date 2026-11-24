@@ -207,6 +207,7 @@ export const zhCN: Messages = {
   "page.quickSwitchKeys": "↑↓ 选择 · ↵ 打开 · Esc 关闭",
   "page.edit": "编辑",
   "page.editedBy": "{name} 编辑于{when}",
+  "page.editingNote": "你正在编辑，别人此时只能阅读这一页",
   "page.menu": "页面操作",
   "page.export": "导出此页",
   "page.history": "查看这一页的历史",

@@ -35,7 +35,7 @@ import { AttachmentsSection } from "./attachments-section";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
 import { PageEdit } from "./page-edit";
-import { HeadMeta, PanelToggle } from "./page-head";
+import { EditHeadSlots, HeadMeta, PanelToggle } from "./page-head";
 import { PageMenu } from "./page-menu";
 import { PagePanel } from "./page-panel";
 import { ReadingView } from "./reading-view";
@@ -164,7 +164,9 @@ function restoredOf(state: unknown): number | undefined {
  * most 720px wide: the upgrade's banner (ColumnTop), the title, 32px, then
  * the page. Beside the content from xl up, the right column, the window's
  * height, which its toggle folds away (decision 859): folded, the content
- * area has no room kept for it, its column centred in the whole.
+ * area has no room kept for it, its column centred in the whole. Edited,
+ * the head's right group has the edit's status in its first box, Save and
+ * Done about the toggle (EditHeadSlots, decision 866).
  */
 const PageShell = observer(function PageShell({
   notebook,
@@ -189,6 +191,11 @@ const PageShell = observer(function PageShell({
   const beside = useBeside();
   const rail = useId();
   const toggle = useRef<HTMLButtonElement>(null);
+  // The head's places the edit fills (decision 866), as they mount.
+  const [group, setGroup] = useState<HTMLElement | null>(null);
+  const [meta, setMeta] = useState<HTMLElement | null>(null);
+  const [before, setBefore] = useState<HTMLElement | null>(null);
+  const [after, setAfter] = useState<HTMLElement | null>(null);
   // Said as the page shows, once: an edit entered takes it away (M5-polish 21.3).
   const notice = useRouteNotice(restoredOf, ["restored"]);
   const [restored, setRestored] = useState(notice);
@@ -376,115 +383,122 @@ const PageShell = observer(function PageShell({
   }, [editable, reading, pages, page.id]);
   return (
     <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
-      <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
-        <div className="mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5">
-          <Breadcrumbs
-            className="min-w-0 flex-[1_1_14rem]"
-            notebook={notebook}
-            ancestors={pages.ancestorsOf(page.id)}
-            page={page}
-            href={href}
-          />
-          {/* The same width whatever the mode, 32px high with no button in it (decision 894): the row's lines are its
+      <EditHeadSlots value={{ group, meta, before, after }}>
+        <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
+          <div className="mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Breadcrumbs
+              className="min-w-0 flex-[1_1_14rem]"
+              notebook={notebook}
+              ancestors={pages.ancestorsOf(page.id)}
+              page={page}
+              href={href}
+            />
+            {/* The same width whatever the mode, 32px high with no button in it (decision 894): the row's lines are its
               width's alone. */}
-          <div className="ms-auto flex min-h-8 min-w-0 flex-[0_1_26rem] items-center justify-end gap-1.5">
-            <div className="me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint">
-              {reading && <HeadMeta notebook={notebook} page={page.id} />}
+            <div
+              ref={setGroup}
+              className="ms-auto flex min-h-8 min-w-0 flex-[0_1_26rem] items-center justify-end gap-1.5"
+            >
+              <div ref={setMeta} className="me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint">
+                {reading && <HeadMeta notebook={notebook} page={page.id} />}
+              </div>
+              <span ref={setBefore} className="contents" />
+              <PanelToggle ref={toggle} controls={rail} />
+              <span ref={setAfter} className="contents" />
+              {reading && !gone && (
+                <PageMenu
+                  notebook={notebook}
+                  page={page}
+                  href={`${home}/settings/transfer`}
+                  history={`${home}/history?page=${page.id}`}
+                />
+              )}
+              {reading && editable && (
+                <EditButton
+                  edit={edit}
+                  left={() => heading.current?.focus({ preventScroll: true })}
+                  entering={entering}
+                  describedBy={idleLeft || toldLeft !== "" ? idleNote : undefined}
+                  press={() => void enter(false)}
+                />
+              )}
             </div>
-            <PanelToggle ref={toggle} controls={rail} />
-            {reading && !gone && (
-              <PageMenu
-                notebook={notebook}
-                page={page}
-                href={`${home}/settings/transfer`}
-                history={`${home}/history?page=${page.id}`}
-              />
-            )}
-            {reading && editable && (
-              <EditButton
-                edit={edit}
-                left={() => heading.current?.focus({ preventScroll: true })}
-                entering={entering}
-                describedBy={idleLeft || toldLeft !== "" ? idleNote : undefined}
-                press={() => void enter(false)}
-              />
-            )}
           </div>
-        </div>
-        <div className="mx-auto w-full max-w-180">
-          <ColumnTop />
-          <h1
-            ref={heading}
-            tabIndex={-1}
-            aria-describedby={restored === undefined ? undefined : restoredNote}
-            className="mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none"
-          >
-            {page.name}
-          </h1>
-          {restored !== undefined && (
-            <output id={restoredNote} className="-mt-2 mb-3.5 block text-[13px] text-muted-foreground">
-              {t("version.restored", { revision: restored })}
-            </output>
-          )}
-          <div className="space-y-6">
-            {editing === undefined ? (
-              <>
-                {refusal !== undefined && <Alert>{refusalText(refusal, t)}</Alert>}
-                {(idleLeft || toldLeft !== "") && (
-                  <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
-                    {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
-                  </output>
-                )}
-                <div ref={lockNote} tabIndex={-1} className="outline-none">
-                  <EditLockNote
-                    notebook={notebook}
-                    page={page}
-                    editHere={editable ? () => void enter(true) : undefined}
-                    released={() => (edit.current ?? heading.current)?.focus()}
-                  />
-                </div>
-                {/* How a source is changed is a note, not an error: it is not announced each time the page opens (M12/P2/S1,
+          <div className="mx-auto w-full max-w-180">
+            <ColumnTop />
+            <h1
+              ref={heading}
+              tabIndex={-1}
+              aria-describedby={restored === undefined ? undefined : restoredNote}
+              className="mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none"
+            >
+              {page.name}
+            </h1>
+            {restored !== undefined && (
+              <output id={restoredNote} className="-mt-2 mb-3.5 block text-[13px] text-muted-foreground">
+                {t("version.restored", { revision: restored })}
+              </output>
+            )}
+            <div className="space-y-6">
+              {editing === undefined ? (
+                <>
+                  {refusal !== undefined && <Alert>{refusalText(refusal, t)}</Alert>}
+                  {(idleLeft || toldLeft !== "") && (
+                    <output id={idleNote} className="block text-sm whitespace-pre-line text-muted-foreground">
+                      {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
+                    </output>
+                  )}
+                  <div ref={lockNote} tabIndex={-1} className="outline-none">
+                    <EditLockNote
+                      notebook={notebook}
+                      page={page}
+                      editHere={editable ? () => void enter(true) : undefined}
+                      released={() => (edit.current ?? heading.current)?.focus()}
+                    />
+                  </div>
+                  {/* How a source is changed is a note, not an error: it is not announced each time the page opens (M12/P2/S1,
                     38.1). */}
-                {source && (
-                  <p className="rounded-md border px-4 py-3 text-sm text-muted-foreground">
-                    {t("page.sourceReadonly")}
-                  </p>
-                )}
-                <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
-                  <ReadingView
-                    notebook={notebook}
-                    page={page}
-                    refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
-                    unanchored={() => heading.current?.focus()}
-                    anchored={anchored}
-                  />
-                </AttachmentDrop>
-              </>
-            ) : (
-              <PageEdit
-                notebook={notebook}
-                page={page}
-                editing={editing}
-                done={(left) => {
-                  back.current = left.waited === true ? "fallen" : true;
-                  setIdleLeft(left.idle);
-                  setToldLeft(left.told ?? "");
-                  // A toggle's refusal that came while it edited is no longer news.
-                  setRefusal(undefined);
-                  setEditing(undefined);
-                }}
-              />
-            )}
-            {children.length > 0 && (
-              <section className="space-y-2">
-                <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
-                <SubpageList label={t("page.subpages")} pages={children} href={href} />
-              </section>
-            )}
-            {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
+                  {source && (
+                    <p className="rounded-md border px-4 py-3 text-sm text-muted-foreground">
+                      {t("page.sourceReadonly")}
+                    </p>
+                  )}
+                  <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
+                    <ReadingView
+                      notebook={notebook}
+                      page={page}
+                      refused={(error) => (error === undefined ? setRefusal(undefined) : void toggleRefused(error))}
+                      unanchored={() => heading.current?.focus()}
+                      anchored={anchored}
+                    />
+                  </AttachmentDrop>
+                </>
+              ) : (
+                <PageEdit
+                  notebook={notebook}
+                  page={page}
+                  editing={editing}
+                  done={(left) => {
+                    back.current = left.waited === true ? "fallen" : true;
+                    setIdleLeft(left.idle);
+                    setToldLeft(left.told ?? "");
+                    // A toggle's refusal that came while it edited is no longer news.
+                    setRefusal(undefined);
+                    setEditing(undefined);
+                  }}
+                />
+              )}
+              {children.length > 0 && (
+                <section className="space-y-2">
+                  <h2 className="text-sm font-medium text-muted-foreground">{t("page.subpages")}</h2>
+                  <SubpageList label={t("page.subpages")} pages={children} href={href} />
+                </section>
+              )}
+              {!gone && <AttachmentsSection notebook={notebook} parent={page.id} editorsElsewhere={!reading} />}
+            </div>
           </div>
         </div>
-      </div>
+      </EditHeadSlots>
       <PagePanel id={rail} open={open} notebook={notebook} page={page} editing={!reading} href={href} />
     </div>
   );

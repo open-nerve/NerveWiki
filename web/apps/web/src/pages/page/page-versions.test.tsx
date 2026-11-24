@@ -6,6 +6,7 @@ import { json, problem } from "../../test/fakes";
 import { readAgain, section, shownPanel } from "../../test/page-panel";
 import { ada, bob, install, notes, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // The right column's versions (M8 design 4.3, 4.13).
 
@@ -415,7 +416,7 @@ test("an edit whose lease ran out, its lock read free, has the versions read aga
   server.withVersions(install.id, [first, edited]);
   const session = server.hold(install.id, bob, 30);
   renderApp(pagePath(install.id), server.app);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
   await waitFor(() => expect(within(section("Versions")).getByText("Editing")).toBeTruthy());
 
   // Bob's tab went away: his lease runs out, and no event says so.
@@ -423,7 +424,7 @@ test("an edit whose lease ran out, its lock read free, has the versions read aga
   server.withVersions(install.id, [first, { ...edited, editing: false }]);
   await act(() => vi.advanceTimersByTimeAsync(31_000));
 
-  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(screen.queryByText(lockNote("Bob is editing this page."))).toBeNull());
   await waitFor(() => expect(within(section("Versions")).queryByText("Editing")).toBeNull());
 });
 

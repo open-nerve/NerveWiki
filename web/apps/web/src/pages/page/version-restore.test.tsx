@@ -10,6 +10,7 @@ import { marked } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // A version restored (M8 design 4.4; P1 design 4.5): each answer.
 
@@ -374,7 +375,7 @@ test("a page someone edits says who in the dialog, which stays; the page's lock 
 
   expect((await within(dialog).findByRole("alert")).textContent).toBe("Bob is editing “Install”.");
   expect(screen.getByRole("alertdialog")).toBe(dialog);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
 });
 
 test("a page gone closes the dialog, the version's page saying so", async () => {

@@ -1,3 +1,4 @@
+import { Lock } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useRef, useState } from "react";
 import useSWR, { unstable_serialize, useSWRConfig, type Cache, type ScopedMutator } from "swr";
@@ -5,6 +6,7 @@ import useSWR, { unstable_serialize, useSWRConfig, type Cache, type ScopedMutato
 import { ConfirmDialog } from "../../app/confirm-dialog";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
+import { isolate, Isolated } from "../../i18n/isolated";
 import type { Notebook } from "../../services/notebook.service";
 import type { EditLock, PageVersionContent, TreeNode } from "../../services/page.service";
 import { usePageTree, useStore } from "../../stores/context";
@@ -27,7 +29,9 @@ type EditLockNoteProps = {
  * ends learns so as they save. The account editing elsewhere may edit here
  * instead (M5/P4 design 3.6): the edit elsewhere is then taken over. A
  * lock read free after a held one has the page's versions read again, as
- * its event does (readEnded).
+ * its event does (readEnded). A card, its lock before what it says, the
+ * holder's name in a bdi (M13/P4/S1, decision 868); the version's page has
+ * the same.
  */
 export const EditLockNote = observer(function EditLockNote({ notebook, page, editHere, released }: EditLockNoteProps) {
   const t = useT();
@@ -54,17 +58,28 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page, edi
   }
   const self = holder.user_id === me?.id;
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-4 py-2 text-sm text-muted-foreground">
-      <output>{self ? t("page.lockedBySelf") : t("page.lockedBy", { name: holder.display_name })}</output>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-control border border-border bg-surface-2 px-3.5 py-2 text-[13px] text-muted-foreground">
+      <Lock aria-hidden className="size-3.5 shrink-0" />
+      <output>
+        {self ? (
+          t("page.lockedBySelf")
+        ) : (
+          <Isolated {...isolate((name) => t("page.lockedBy", { name: name(holder.display_name) }))} />
+        )}
+      </output>
       <div className="flex gap-2">
         {self && editHere !== undefined && (
-          <Button variant="outline" onClick={editHere}>
+          <Button variant="outline" size="sm" shape="pill" onClick={editHere}>
             {t("page.editHere")}
           </Button>
         )}
         {notebook.role === "admin" && (
           <ConfirmDialog
-            trigger={<Button variant="outline">{t("page.releaseLock")}</Button>}
+            trigger={
+              <Button variant="outline" size="sm" shape="pill">
+                {t("page.releaseLock")}
+              </Button>
+            }
             focusAfter={released}
             title={t("page.releaseLockTitle")}
             description={

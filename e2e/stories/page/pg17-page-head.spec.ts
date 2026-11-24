@@ -3,11 +3,13 @@ import type { Locator, Page } from "@playwright/test";
 import { bearer } from "../../fixtures/auth";
 import { countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
+import { expectFits } from "../../fixtures/narrow";
 import { goto, reload } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
+import { holdAnswer } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
+import { editorContent, editStatus, pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam } from "../../fixtures/workspaces";
 
 // PG17, the page's head and its right column in the three browsers (M13/P4/S1, decision 879): who edited the page
@@ -250,4 +252,81 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   const now = await box(edit);
   expect(Math.abs(now.x - before.x), "how far Edit moved across").toBeLessThanOrEqual(0.5);
   expect(Math.abs(now.y - before.y), "how far Edit moved down").toBeLessThanOrEqual(0.5);
+
+  // At 375 wide the properties wrap, a long value broken in its chip: the page fits, no region (decision 864).
+  await page.setViewportSize({ width: 375, height: 800 });
+  await expectFits(page);
+  const strip = article.locator("table.nw-props > tbody");
+  const chips = strip.locator(":scope > tr");
+  const stripBox = await box(strip);
+  const firstChip = await box(chips.first());
+  expect(stripBox.height, "the strip's height").toBeGreaterThan(firstChip.height);
+  expect((await box(chips.last())).y, "the last chip's top").not.toBe(firstChip.y);
+  // The regions are marked by a ResizeObserver's callback: read at once, the count would pass before it (review C's M3).
+  await afterFrames(page);
+  await expect(article.getByRole("region")).toHaveCount(0);
+});
+
+/**
+ * keepsItsLines checks, at width, that the title of the page doc shown in page does not move as the page is read
+ * (arrived at by enter), its edit entered, its content awaited (no button in the head's right group), typed in and
+ * saved, then read again; nor the status's right edge as it saves (decision 894). The window is at the page's top.
+ */
+async function keepsItsLines(page: Page, doc: { id: string }, width: number, enter: () => Promise<unknown>) {
+  const main = page.getByRole("main");
+  const edit = main.getByRole("button", { name: "Edit", exact: true });
+  const titleAt = async () => (await box(pageHeading(page, "Doc"))).y;
+  const statusRight = async () => {
+    const shown = await box(editStatus(page));
+    return shown.x + shown.width;
+  };
+  const still = async (when: string, at: number) =>
+    expect(Math.abs((await titleAt()) - at), `${String(width)}: the title, ${when}`).toBeLessThanOrEqual(0.5);
+  await page.setViewportSize({ width, height: 800 });
+  await enter();
+  await expect(main.getByText(/^Edited by /)).toBeVisible();
+  const at = await titleAt();
+
+  // In the edit, its content not read yet: no button in the head's right group (decision 894).
+  const release = await holdAnswer(page, "GET", `/api/v0/pages/${doc.id}/content`);
+  await edit.focus();
+  await page.keyboard.press("Enter");
+  await expect(edit).toHaveCount(0);
+  await afterFrames(page);
+  await still("the content awaited", at);
+  release();
+  await expect(editorContent(page)).toBeVisible();
+  await expect(editStatus(page)).toHaveText("");
+  await still("editing", at);
+
+  await editorContent(page).press("End");
+  await page.keyboard.type("x");
+  await expect(editStatus(page)).toHaveText("Unsaved changes");
+  await still("typed in", at);
+  const right = await statusRight();
+
+  // Saved by itself, the focus in the editor all along.
+  await expect(editStatus(page)).toHaveText("Saved.", { timeout: 10_000 });
+  await expect(editorContent(page)).toBeFocused();
+  await still("saved", at);
+  expect(Math.abs((await statusRight()) - right), `${String(width)}: the status's right`).toBeLessThanOrEqual(0.5);
+
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(edit).toBeVisible();
+  await still("read again", at);
+}
+
+test("PG17 (page): the page's head keeps its lines whatever its mode, the title where it is as the page is read, its content awaited, edited, typed in and saved, at 375 and 820 wide", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  test.slow();
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, "One\n\nTwo\n");
+  const page = await signedInPage(tokens);
+
+  await keepsItsLines(page, doc, 375, () => goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id)));
+  // 820 wide the left column is there, the head's row about 519px: the revised draft's one line reading, two editing.
+  await keepsItsLines(page, doc, 820, () => reload(page));
 });

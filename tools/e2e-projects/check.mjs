@@ -29,6 +29,8 @@ const REQUIRED = [
   // The page's head, its right column and their focus are each engine's (M13/P4/S1, decision 879).
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"],
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],

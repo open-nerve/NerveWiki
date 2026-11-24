@@ -1,5 +1,5 @@
 import { EditorView } from "@codemirror/view";
-import { act, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useEffect } from "react";
 import { Outlet } from "react-router";
@@ -502,4 +502,104 @@ test("Done, the account made a reader meanwhile, gives the focus to the page's t
   await screen.findByRole("button", { name: "Edit" });
   await act(() => new Promise((resolve) => setTimeout(resolve, 100)));
   expect(document.activeElement).toBe(title);
+});
+
+// The edit's status and buttons in the page's head (M13/P4/S1, decisions 866, 867, 894): the status in the box of who
+// edited the page last, Save before the right column's toggle, Done after it; a note under the title.
+
+/** head is the page's head's right group, its box first: the right column's toggle's. */
+function head(): { group: HTMLElement; box: Element | null; toggle: HTMLElement } {
+  const toggle = screen.getByRole("button", { name: "About this page" });
+  const group = toggle.parentElement;
+  if (group === null) {
+    throw new Error("the toggle is in no group");
+  }
+  return { group, box: group.firstElementChild, toggle };
+}
+
+/** before tells whether a comes before b in the document. */
+const before = (a: Node, b: Node) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+
+test("editing, the page's head has the edit's status in the box of who edited the page, Save before the column's toggle, Done after it; reading, that box says who edited it", async () => {
+  const server = pageServer();
+  renderApp(pagePath(guide.id), server.app);
+  await screen.findByText(
+    (_, element) => element?.tagName === "P" && (element.textContent ?? "").startsWith("Edited by ")
+  );
+  const reading = head();
+  expect(reading.box?.textContent).toMatch(/^Edited by Ada /);
+  expect(reading.box?.className).toContain("text-[12.5px]");
+  expect(reading.box?.className).toContain("text-faint");
+
+  await userEvent.setup().click(screen.getByRole("button", { name: "Edit" }));
+  const { type } = await pageEditor();
+  const { group, box, toggle } = head();
+  const output = status();
+  expect(box?.contains(output)).toBe(true);
+  expect(box).toBe(reading.box);
+  const save = within(group).getByRole("button", { name: "Save" });
+  const done = within(group).getByRole("button", { name: "Done" });
+  expect([before(output, save), before(save, toggle), before(toggle, done)]).toEqual([true, true, true]);
+  expect(output.className).not.toContain("text-destructive");
+
+  type("!");
+  await waitFor(() => expect(output.textContent).toBe("Unsaved changes"));
+  expect(output.hasAttribute("data-saved")).toBe(false);
+  ctrl("s");
+  await waitFor(() => expect(output.textContent).toBe("Saved."));
+  expect(output.getAttribute("data-saved")).toBe("true");
+});
+
+test("a save that fails says why in the head's box, in the destructive colour", async () => {
+  const server = pageServer({ answers: { "PUT /api/v0/pages/*/content": () => problem(422, "validation_failed") } });
+  const { type } = await editing(server);
+
+  type("!");
+  ctrl("s");
+  await waitFor(() => expect(status().textContent).toBe("Some values are not valid."));
+  expect(head().box?.contains(status())).toBe(true);
+  expect(status().className).toContain("text-destructive");
+});
+
+test("editing, a note under the title says others only read the page meanwhile; in Chinese too", async () => {
+  const { server } = await editing();
+  const title = screen.getByRole("heading", { level: 1, name: "Guide" });
+  const note = screen.getByText("You are editing; others can only read this page meanwhile.");
+  expect(note.tagName).toBe("P");
+  expect(before(title, note)).toBe(true);
+  expect(note.closest("output, [role=status], [role=alert]")).toBeNull();
+  cleanup();
+
+  const chinese = pageServer();
+  chinese.app.preferences.setLocale("zh-CN");
+  renderApp(pagePath(guide.id), chinese.app);
+  await userEvent.setup().click(await screen.findByRole("button", { name: "编辑" }));
+  expect(await screen.findByText("你正在编辑，别人此时只能阅读这一页")).toBeTruthy();
+  expect(server.sent).toContain("OPEN Guide");
+});
+
+test("an edit lost has no note under the title: its banner says why", async () => {
+  const { server, type } = await editing();
+  expect(screen.getByText("You are editing; others can only read this page meanwhile.")).toBeTruthy();
+  type(" more");
+  server.takeOver(guide.id);
+  // The page shown again beats the session, which answers that it was taken over.
+  act(() => void document.dispatchEvent(new Event("visibilitychange")));
+
+  await screen.findByRole("alert");
+  expect(screen.queryByText("You are editing; others can only read this page meanwhile.")).toBeNull();
+});
+
+test("Done in the page's head, its leave's save meeting a conflict: the conflict's heading takes the focus", async () => {
+  const { user, server, type } = await editing();
+  type("mine");
+  server.contents.set(guide.id, { content: "Guide\ntheirs\n", revision: 2 });
+
+  await user.click(within(head().group).getByRole("button", { name: "Done" }));
+  const region = await screen.findByRole("region", { name: "This page changed while you edited it" });
+  await waitFor(() =>
+    expect(document.activeElement).toBe(
+      within(region).getByRole("heading", { name: "This page changed while you edited it" })
+    )
+  );
 });

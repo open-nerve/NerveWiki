@@ -13,6 +13,7 @@ import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../t
 import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { lockNote } from "../../test/lock-note";
 
 // A version's page (M8 design 4.3, 4.13; P1 design 4.4).
 
@@ -414,7 +415,7 @@ test("who edits the page shows as on the page; the edit's lease run out, its ver
   const session = server.hold(install.id, bob, 30);
   renderApp(versionPath(install.id, 3), server.app);
 
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
   expect(await screen.findByText("Editing")).toBeTruthy();
   // The version before it shows too, which is not being edited.
   await user.click(screen.getByRole("tab", { name: "Compare with the previous" }));
@@ -425,7 +426,7 @@ test("who edits the page shows as on the page; the edit's lease run out, its ver
   const before = server.sent.length;
   await act(() => vi.advanceTimersByTimeAsync(31_000));
 
-  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(screen.queryByText(lockNote("Bob is editing this page."))).toBeNull());
   await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
   expect(screen.getByText("Current")).toBeTruthy();
   expect(server.sent.slice(before).filter((each) => each.startsWith("GET version Install"))).toEqual([
@@ -468,7 +469,7 @@ test("an edit's end, read as the versions are being read again, has them read on
   server.withVersions(install.id, [first, edited]);
   const session = server.hold(install.id, bob);
   renderApp(versionPath(install.id, 3), server.app);
-  expect(await screen.findByText("Bob is editing this page.")).toBeTruthy();
+  expect(await screen.findByText(lockNote("Bob is editing this page."))).toBeTruthy();
   expect(await screen.findByText("Editing")).toBeTruthy();
 
   server.sessions.delete(session);
@@ -478,7 +479,7 @@ test("an edit's end, read as the versions are being read again, has them read on
   const before = server.sent.length;
   // The window's focus back reads the lock, free now, and the list, which waits.
   await focusAgain();
-  await waitFor(() => expect(screen.queryByText("Bob is editing this page.")).toBeNull());
+  await waitFor(() => expect(screen.queryByText(lockNote("Bob is editing this page."))).toBeNull());
   release();
   await waitFor(() => expect(screen.queryByText("Editing")).toBeNull());
   await act(() => vi.advanceTimersByTimeAsync(50));
