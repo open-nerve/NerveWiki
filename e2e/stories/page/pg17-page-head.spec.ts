@@ -262,10 +262,12 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   const above = await box(article);
   expect(after.y, "the column's top").toBeGreaterThan(above.y + above.height);
 
-  // Who edited it, come late at 480 wide with a long name: Edit does not move (decisions 858, 894).
+  // Who edited it, come late at 480 wide with a long name: Edit does not move (decisions 858, 894). The page opened at
+  // its address without the anchor clicked: the view's arrival at it would scroll the window to its heading, Edit with
+  // it, as WebKit had it once at load.
   await page.setViewportSize({ width: 480, height: 800 });
   const release = await holdVersions(page, doc.id);
-  await reload(page);
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
   const edit = main.getByRole("button", { name: "Edit", exact: true });
   await expect(edit).toBeVisible();
   await expect(edited).toHaveCount(0);
