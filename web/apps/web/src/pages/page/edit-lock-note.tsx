@@ -59,14 +59,18 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page, edi
   const self = holder.user_id === me?.id;
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-control border border-border bg-surface-2 px-3.5 py-2 text-[13px] text-muted-foreground">
-      <Lock aria-hidden className="size-3.5 shrink-0" />
-      <output>
-        {self ? (
-          t("page.lockedBySelf")
-        ) : (
-          <Isolated {...isolate((name) => t("page.lockedBy", { name: name(holder.display_name) }))} />
-        )}
-      </output>
+      {/* The lock and its sentence one item: wrapping, they go down together, the sentence broken beside the lock
+        (review B's P4S1B-M3). */}
+      <div className="flex min-w-0 items-center gap-x-3">
+        <Lock aria-hidden className="size-3.5 shrink-0" />
+        <output>
+          {self ? (
+            t("page.lockedBySelf")
+          ) : (
+            <Isolated {...isolate((name) => t("page.lockedBy", { name: name(holder.display_name) }))} />
+          )}
+        </output>
+      </div>
       <div className="flex gap-2">
         {self && editHere !== undefined && (
           <Button variant="outline" size="sm" shape="pill" onClick={editHere}>

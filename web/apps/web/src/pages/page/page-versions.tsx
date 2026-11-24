@@ -145,15 +145,15 @@ export const PageVersions = observer(function PageVersions({
 
 /**
  * Mark is a version's mark beside its time: current, or editing; current, the right column's current one, amber on
- * its soft ground, round (the mockup's .ver .tag; M13/P4/S1, decision 863): the history's and version's pages have
- * the plain one.
+ * its soft ground, round (the mockup's .ver .tag; M13/P4/S1, decision 863), its border transparent but in forced
+ * colours, which take its ground away (review B's P4S1B-N2): the history's and version's pages have the plain one.
  */
 export function Mark({ children, current = false }: { children: string; current?: boolean }) {
   return (
     <span
       className={
         current
-          ? "rounded-full bg-accent-soft px-1.75 text-[11px] text-accent"
+          ? "rounded-full border border-transparent bg-accent-soft px-1.5 text-[11px] text-accent"
           : "rounded border px-1.5 text-xs text-muted-foreground"
       }
     >

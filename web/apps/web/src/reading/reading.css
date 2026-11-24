@@ -40,11 +40,16 @@
        nothing of the view paints past it (a formula's negative space), over
        the app. It does not scroll down: a formula's strut past its bottom
        would take the wheel. Its padding keeps the focus rings in; its
-       margin, its place. */
+       margin, its place. Its own paint layer (a stacking context, its
+       absolutely placed formula measures' containing block unchanged): what
+       changes beside it, the right column's outline as the section read
+       moves, does not paint the page's blocks again, a page of a hundred
+       thousand of them too (M13/P4/S1, review A's P4S1A-M1). */
     overflow-x: auto;
     overflow-y: hidden;
     margin-inline: -0.25rem;
     padding: 0.25rem;
+    isolation: isolate;
   }
 
   /* The padding keeps the first child's margin in the view: the page's heading has its own. */
@@ -293,7 +298,9 @@
     min-height: 24px;
     padding: 2px 9px;
     border: 1px solid var(--border);
-    border-radius: 9999px;
+    /* A pill on one line, its 24px height's half; a value broken over lines keeps its words off the corners (review
+       B's P4S1B-M1). */
+    border-radius: 12px;
     background: var(--surface-2);
   }
 
@@ -336,9 +343,11 @@
     margin: 0;
   }
 
-  /* A nested table a run that does not wrap: wider than the view, the outer table's wrapper scrolls, a region. */
+  /* A nested table a run that does not wrap: wider than the view, the outer table's wrapper scrolls, a region. A flex
+     of its own, not an inline block: Firefox and WebKit made its chip, and its line, 1.5px taller than the others
+     (review B's P4S1B-N1). */
   .nw-reading table.nw-props table.nw-props {
-    display: inline-block;
+    display: inline-flex;
   }
 
   .nw-reading table.nw-props table.nw-props > tbody {

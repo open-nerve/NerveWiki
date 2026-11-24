@@ -448,7 +448,9 @@ const PageShell = observer(function PageShell({
                       {[idleLeft ? t("page.idleLeft") : "", toldLeft].filter((said) => said !== "").join("\n")}
                     </output>
                   )}
-                  <div ref={lockNote} tabIndex={-1} className="outline-none">
+                  {/* No one holding the lock, it is empty: no margin of its own, the view right under the title
+                    (review B's P4S1B-M2). Still there, the focus's place as the lock is found. */}
+                  <div ref={lockNote} tabIndex={-1} className="outline-none empty:mb-0">
                     <EditLockNote
                       notebook={notebook}
                       page={page}
@@ -463,7 +465,14 @@ const PageShell = observer(function PageShell({
                       {t("page.sourceReadonly")}
                     </p>
                   )}
-                  <AttachmentDrop notebook={notebook} parent={page.id} enabled={writer && !gone}>
+                  {/* Right under the title, the view's 4px of padding taken back: its first block 14px below the
+                    title, as the mockup has it (review B's P4S1B-M2); after a note, the view is as far as ever. */}
+                  <AttachmentDrop
+                    notebook={notebook}
+                    parent={page.id}
+                    enabled={writer && !gone}
+                    className="[:first-child:empty+&]:-mt-1"
+                  >
                     <ReadingView
                       notebook={notebook}
                       page={page}
