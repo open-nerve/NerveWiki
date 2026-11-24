@@ -14,16 +14,17 @@ import { expect, test } from "../../fixtures/test";
 import { editorContent, editStatus, pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam } from "../../fixtures/workspaces";
 
-// PG17, the page's head and its right column in the three browsers (M13/P4/S1, decision 879): who edited the page
-// last, in the head, coming late with Edit kept where it is; the right column beside the page, the window's height,
-// its outline marking the section read (a folded callout's heading never, the heading clicked at the page's end), the
+// PG17, the page's head and its right column in the three browsers (M13/P4/S1, decision 879): who edited the page last,
+// in the head, coming late with Edit kept where it is; the right column beside the page, the window's height, its
+// outline marking the section read (a folded callout's heading never, the heading clicked at the page's end), the
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
 // column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
-// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code
-// block's head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and
-// its blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks). The page's version only:
-// the cells check the interface's behaviour, writing nothing but their data and one write through the API (for the
-// update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
+// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code block's
+// head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and its
+// blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks); the edit's outline's items
+// (M13/P4/S3's review). The page's version only: the cells check the interface's behaviour, writing nothing but their
+// data and one write through the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4,
+// item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -303,6 +304,8 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
  * keepsItsLines checks, at width, that the title of the page doc shown in page does not move as the page is read
  * (arrived at by enter), its edit entered, its content awaited (no button in the head's right group), typed in and
  * saved, then read again; nor the status's right edge as it saves (decision 894). The window is at the page's top.
+ * Edited, the outline's items are as high as read, a hand over them, the long heading's cut at two lines: the page has
+ * a heading "Short" and one of a long line.
  */
 async function keepsItsLines(page: Page, doc: { id: string }, width: number, enter: () => Promise<unknown>) {
   const main = page.getByRole("main");
@@ -318,6 +321,11 @@ async function keepsItsLines(page: Page, doc: { id: string }, width: number, ent
   await enter();
   await expect(main.getByText(/^Edited by /)).toBeVisible();
   const at = await titleAt();
+  const outline = page
+    .getByRole("complementary", { name: "About this page" })
+    .getByRole("navigation", { name: "Outline" });
+  const item = (of: Locator) => box(of.locator("xpath=ancestor::li[1]"));
+  const read = await item(outline.getByRole("link", { name: "Short", exact: true }));
 
   // In the edit, its content not read yet: no button in the head's right group (decision 894).
   const release = await holdAnswer(page, "GET", `/api/v0/pages/${doc.id}/content`);
@@ -330,6 +338,23 @@ async function keepsItsLines(page: Page, doc: { id: string }, width: number, ent
   await expect(editorContent(page)).toBeVisible();
   await expect(editStatus(page)).toHaveText("");
   await still("editing", at);
+
+  // The edit's outline: an item as high as read, a hand over it (review B's P4S3B-M1, N2); a long heading cut at two
+  // lines, in WebKit too, which lays out no button as the clamp's box (3c75954d; review C's P4S3C-M1).
+  const short = outline.getByRole("button", { name: "Short", exact: true });
+  await expect(short).toBeVisible();
+  const edited = await item(short);
+  expect(Math.abs(edited.height - read.height), `${String(width)}: an item's height, edited`).toBeLessThanOrEqual(0.5);
+  expect(await short.evaluate((button) => getComputedStyle(button).cursor), `${String(width)}: the item's cursor`).toBe(
+    "pointer"
+  );
+  const cut = outline.getByRole("button", { name: /^A long heading/ });
+  const lineHeight = Number.parseFloat(await cut.evaluate((button) => getComputedStyle(button).lineHeight));
+  const clamped = await box(cut);
+  expect(clamped.height, `${String(width)}: the long heading's lines (line ${String(lineHeight)})`).toBeLessThanOrEqual(
+    2 * lineHeight + 0.5
+  );
+  expect(clamped.height, `${String(width)}: the long heading wraps`).toBeGreaterThan(1.5 * lineHeight);
 
   await editorContent(page).press("End");
   await page.keyboard.type("x");
@@ -348,14 +373,15 @@ async function keepsItsLines(page: Page, doc: { id: string }, width: number, ent
   await still("read again", at);
 }
 
-test("PG17 (page): the page's head keeps its lines whatever its mode, the title where it is as the page is read, its content awaited, edited, typed in and saved, at 375 and 820 wide", async ({
+test("PG17 (page): the page's head keeps its lines whatever its mode, the title where it is as the page is read, its content awaited, edited, typed in and saved, at 375 and 820 wide; edited, the outline's items are as high as read, a long heading cut at two lines", async ({
   api,
   signedInPage,
 }, testInfo) => {
   test.slow();
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const doc = await createPage(api, pat, notebook.id, "Doc", null, "One\n\nTwo\n");
+  const heading = "A long heading ".repeat(30);
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, `One\n\n## Short\n\n## ${heading}\n\nTwo\n`);
   const page = await signedInPage(tokens);
 
   await keepsItsLines(page, doc, 375, () => goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id)));

@@ -127,6 +127,44 @@ test("lists the ATX and setext headings, in quotes and lists too, not in code, t
   expect(told[0]?.more).toBe(0);
 });
 
+test("an item reads as the reading view's outline has it: the inline marks, addresses and footnotes' references gone, an image by its alt, a wiki link as the view shows it; in code as written (decision 907)", () => {
+  const { sink, told } = sinkOf();
+  viewOf(
+    [
+      "# Setup **now**, _then_ and `code` ~~gone~~",
+      '## See [[Page|alias]], [[Page#Sec]], [x](https://x.test "T"), [r][ref] and <https://a.b>',
+      "### ![[img.png|300]] and [[#a]] and ![alt *b*](u.png)",
+      "## a\\#b &amp; c <span>html</span> ==hl==",
+      "## Note[^1] and [[A]]",
+      "## `[[not a link]]` and `==not==`",
+      "",
+      "[^1]: the note",
+      "",
+      "[ref]: https://r.test",
+      "",
+    ].join("\n"),
+    sink
+  );
+  expect(headings(told)).toEqual([
+    [1, "Setup now, then and code gone"],
+    [2, "See alias, Page > Sec, x, r and https://a.b"],
+    [3, "img.png and a and alt b"],
+    [2, "a#b & c html hl"],
+    [2, "Note and A"],
+    [2, "[[not a link]] and ==not=="],
+  ]);
+});
+
+test("a frontmatter being written is the body's, as the server reads it: a closed one alone is left out (decision 908)", () => {
+  const { sink, told } = sinkOf();
+  viewOf(["---", "# Title", "Some text with [[Link]].", "## Next", "more", "", "## Later", ""].join("\n"), sink);
+  expect(headings(told)).toEqual([
+    [1, "Title"],
+    [2, "Next"],
+    [2, "Later"],
+  ]);
+});
+
 test("lists upTo headings, the others counted", () => {
   const { sink, told } = sinkOf(3);
   viewOf(["# A", "## B", "## C", "## D", "### E", ""].join("\n"), sink);
@@ -166,6 +204,16 @@ test("tells as it is made, no timer gone by; then once the changes settle, 300 m
   typed(view, "\n\nmore");
   vi.advanceTimersByTime(1_000);
   expect(told).toHaveLength(2);
+});
+
+test("text put before every heading, moving them all, tells nothing: their places are the plugin's, mapped (review A's P4S3A-N3)", () => {
+  vi.useFakeTimers();
+  const { sink, told } = sinkOf();
+  const view = viewOf("# A\n\n## B\n", sink);
+  view.dispatch({ changes: { from: 0, insert: "Intro\n\n" } });
+  vi.advanceTimersByTime(1_000);
+  expect(told).toHaveLength(1);
+  expect(where(view, 1)).toBe(view.state.doc.line(5).from);
 });
 
 /** long is some 200,000 characters of prose, far past the parse a state is made with, a heading at its end. */

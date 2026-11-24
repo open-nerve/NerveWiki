@@ -17,6 +17,11 @@ export class OutlineBox implements OutlineSink {
   /** The headings listed, as told: the editor tells another list, never changes one. */
   listed: readonly OutlineHeading[] = [];
   more = 0;
+  /**
+   * Whether the editor has told the outline since the edit opened: till then, its content read, the column shows the
+   * view's (review A's P4S3A-M1); none of the last edit's headings (review C's P4S3C-N1).
+   */
+  ready = false;
   /** reveal leads to the index-th heading's line, the editor focused: the editor's, while there is one. */
   reveal: ((index: number) => void) | undefined = undefined;
 
@@ -27,20 +32,22 @@ export class OutlineBox implements OutlineSink {
   told(listed: readonly OutlineHeading[], more: number) {
     this.listed = listed;
     this.more = more;
+    this.ready = true;
   }
 
   clear() {
     this.listed = [];
     this.more = 0;
+    this.ready = false;
   }
 }
 
 /**
  * EditOutline is the right column's outline while the page is edited (M13/P4/S3, decision 876; 00-M13 4.5.4): the
  * editor's headings, as the reading's outline has the view's, each a button that puts the cursor at its line, the
- * editor focused; not marking the section read. Indented as the reading's, from the highest listed; its items by their
- * index, so that a change of the text moving a heading keeps the button that has the focus (review A's M2). None while
- * the editor tells none.
+ * editor focused; not marking the section read. Indented as the reading's, from the highest listed, as high as its
+ * items, a block each, and a hand over them (review B's P4S3B-M1, N2); its items by their index, so that a change of
+ * the text moving a heading keeps the button that has the focus (review A's M2). None while the editor tells none.
  */
 export const EditOutline = observer(function EditOutline({ box }: { box: OutlineBox }) {
   const t = useT();
@@ -64,7 +71,7 @@ export const EditOutline = observer(function EditOutline({ box }: { box: Outline
               <button
                 type="button"
                 onClick={() => box.reveal?.(index)}
-                className="w-full ps-3 pe-1 text-start leading-snug text-muted-foreground hover:text-foreground"
+                className="block w-full cursor-pointer ps-3 pe-1 text-start leading-snug text-muted-foreground hover:text-foreground"
               >
                 {/* Two lines at most on the text's own box: WebKit lays out no button as the clamp's -webkit-box. */}
                 <span className="break-words line-clamp-2">{text}</span>

@@ -3,6 +3,7 @@ import { Facet, type EditorState, type Extension } from "@codemirror/state";
 import { ViewPlugin, type EditorView, type ViewUpdate } from "@codemirror/view";
 
 import { frontmatterRange } from "./loaded/yaml-quotes";
+import { shownOf, wikiLinks } from "./wiki-links";
 
 /** A heading the edit's outline lists: where it starts as it was read, its level, its text. */
 export type OutlineHeading = { from: number; level: number; text: string };
@@ -40,9 +41,79 @@ const levels = new Map([
   ["SetextHeading2", 2],
 ]);
 
+/** A part of a heading's text its item does not show as written: cut, or shown as text. */
+type Cut = { from: number; to: number; text: string };
+
+/** The marks an item drops: a heading's, a quote's, emphasis', code's, a strikethrough's; HTML's tags. */
+const dropped = new Set(["HeaderMark", "QuoteMark", "EmphasisMark", "CodeMark", "StrikethroughMark", "HTMLTag"]);
+/** The nodes whose text holds no wiki link nor highlight: code, HTML, an address. */
+const verbatim = new Set(["InlineCode", "HTMLTag", "Autolink", "URL"]);
+/** A highlight: its text, which neither starts nor ends with a space or a "=". */
+const highlight = /==(?=[^=\s])([^=\n]*?[^=\s])==/g;
+
+/** decoded is the character an HTML entity stands for, as the server's Markdown reads it. */
+function decoded(entity: string): string {
+  const area = document.createElement("textarea");
+  area.innerHTML = entity;
+  return area.value;
+}
+
 /**
- * textOf is a heading's text without its marks: an ATX heading's #s; a setext heading's underline, its line's quote
- * marks with it, and the quote's marks on its lines; its spaces made one.
+ * cutsOf adds to cuts the marks of node's inline children, before end, that its item does not show, and to codes
+ * where code and addresses are: a footnote's reference whole; a link's parts but its text, an image's but its alt (a
+ * shortcut reference "[x]" stays as written: the server reads it as a link only where it is defined); an escape's
+ * "\"; an entity as its character.
+ */
+function cutsOf(state: EditorState, node: SyntaxNode, end: number, cuts: Cut[], codes: Cut[]): void {
+  for (let child = node.firstChild; child !== null && child.from < end; child = child.nextSibling) {
+    const { name, from, to } = child;
+    if (verbatim.has(name)) {
+      codes.push({ from, to, text: "" });
+    }
+    if (dropped.has(name)) {
+      cuts.push({ from, to, text: "" });
+    } else if (name === "Escape") {
+      cuts.push({ from, to: from + 1, text: "" });
+    } else if (name === "Entity") {
+      cuts.push({ from, to, text: decoded(state.sliceDoc(from, to)) });
+    } else if (name === "Link" && child.getChild("URL") === null && state.sliceDoc(from + 1, from + 2) === "^") {
+      cuts.push({ from, to, text: "" });
+    } else if (name === "Autolink") {
+      const [open, close] = child.getChildren("LinkMark");
+      for (const mark of [open, close]) {
+        if (mark !== undefined) {
+          cuts.push({ from: mark.from, to: mark.to, text: "" });
+        }
+      }
+    } else if (
+      name === "Image" ||
+      (name === "Link" && (child.getChild("URL") !== null || child.getChild("LinkLabel") !== null))
+    ) {
+      // Its text alone: its "[" (an image's "![") cut, and all from the "]" after its text to its end.
+      const [open, close] = child.getChildren("LinkMark");
+      if (open !== undefined) {
+        cuts.push({ from: open.from, to: open.to, text: "" });
+      }
+      if (close !== undefined) {
+        // Its address, its title or its label holds no wiki link nor highlight.
+        cuts.push({ from: close.from, to: Math.min(child.to, end), text: "" });
+        codes.push({ from: close.from, to: child.to, text: "" });
+      }
+      cutsOf(state, child, close?.from ?? end, cuts, codes);
+    } else {
+      cutsOf(state, child, end, cuts, codes);
+    }
+  }
+}
+
+/** inside tells whether at is in one of ranges. */
+const inside = (ranges: readonly Cut[], at: number) => ranges.some(({ from, to }) => at >= from && at < to);
+
+/**
+ * textOf is a heading's text as the reading view's outline has it (M13/P4/S3, decision 907): without its marks (an ATX
+ * heading's #s; a setext heading's underline, its line's quote marks with it, and the quote's marks on its lines),
+ * its inline marks, addresses and footnotes' references; an image by its alt; a wiki link as the view shows it, a
+ * highlight without its "=="; in code as written. Its spaces made one.
  */
 function textOf(state: EditorState, node: SyntaxNode): string {
   let end = node.to;
@@ -50,21 +121,39 @@ function textOf(state: EditorState, node: SyntaxNode): string {
   if (underline?.name === "HeaderMark") {
     end = state.doc.lineAt(underline.from).from;
   }
-  let text = "";
-  let at = node.from;
-  for (let mark = node.firstChild; mark !== null && mark.to <= end; mark = mark.nextSibling) {
-    if (mark.name === "HeaderMark" || mark.name === "QuoteMark") {
-      text += `${state.sliceDoc(at, mark.from)} `;
-      at = mark.to;
+  const marks: Cut[] = [];
+  const codes: Cut[] = [];
+  cutsOf(state, node, end, marks, codes);
+  const text = state.sliceDoc(node.from, end);
+  const links: Cut[] = wikiLinks(text, node.from)
+    .filter((link) => !inside(codes, link.from))
+    .map((link) => ({ from: link.from, to: link.to, text: shownOf(link) }));
+  for (const found of text.matchAll(highlight)) {
+    const from = node.from + found.index;
+    const to = from + found[0].length;
+    if (!inside(codes, from) && !inside(codes, to - 2) && !inside(links, from)) {
+      marks.push({ from, to: from + 2, text: "" }, { from: to - 2, to, text: "" });
     }
   }
-  return `${text}${state.sliceDoc(at, end)}`.replace(/\s+/g, " ").trim();
+  // A wiki link is whole: lezer's reading of its brackets as a link's or an image's is not cut again.
+  const cuts = [...links, ...marks.filter(({ from, to }) => !links.some((link) => from < link.to && to > link.from))];
+  cuts.sort((a, b) => a.from - b.from);
+  let shown = "";
+  let at = node.from;
+  for (const cut of cuts) {
+    if (cut.from >= at) {
+      shown += state.sliceDoc(at, cut.from) + cut.text;
+      at = cut.to;
+    }
+  }
+  return `${shown}${state.sliceDoc(at, end)}`.replace(/\s+/g, " ").trim();
 }
 
 /**
  * headingsOf is the headings of tree, the state's text's: the first upTo listed, the rest counted. In quotes, lists and
- * their items too; not in code, tables nor the frontmatter (lezer reads its YAML as a rule and a setext heading, which
- * the server does not); those without text not at all.
+ * their items too; not in code, tables nor a closed frontmatter (lezer reads its YAML as a rule and a setext heading,
+ * which the server does not); one being written, which the server reads as the body, is the body's (decision 908);
+ * those without text not at all.
  */
 function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: OutlineHeading[]; more: number } {
   const frontmatter = frontmatterRange(state);
@@ -75,7 +164,7 @@ function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: Out
       if (node.name === "Document") {
         return undefined;
       }
-      if (frontmatter !== undefined && node.from <= frontmatter.to) {
+      if (frontmatter?.closed === true && node.from <= frontmatter.to) {
         return false;
       }
       const level = levels.get(node.name);
@@ -96,7 +185,10 @@ function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: Out
   return { listed, more };
 }
 
-/** same tells whether two tellings tell the same: each heading's place, level and text, and how many more. */
+/**
+ * same tells whether two tellings tell the same: each heading's level and text, and how many more. Their places are
+ * the plugin's, mapped: text before them tells nothing again (review A's P4S3A-N3).
+ */
 function same(
   told: { listed: readonly OutlineHeading[]; more: number } | undefined,
   listed: readonly OutlineHeading[],
@@ -108,7 +200,7 @@ function same(
     told.listed.length === listed.length &&
     told.listed.every((heading, i) => {
       const now = listed[i];
-      return heading.from === now?.from && heading.level === now.level && heading.text === now.text;
+      return heading.level === now?.level && heading.text === now.text;
     })
   );
 }
