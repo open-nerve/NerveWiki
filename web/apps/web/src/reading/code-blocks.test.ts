@@ -99,6 +99,19 @@ test("a pre of more than one code, as an author's HTML may write it, has no head
   expect(one?.firstElementChild?.className).toBe("nw-code-head");
 });
 
+// Review A's F1-N2: nor has a pre of a code and text about it, whose Copy would copy the code alone; blank text about
+// the code is no text.
+test("a pre of a code and text about it, as an author's HTML may write it, has no head; of a code and blank text, its head", () => {
+  clipboard(() => Promise.resolve());
+  const article = view('<pre>before <code>one</code> after</pre><pre> <code class="language-go">x</code>\n</pre>');
+
+  codeBlocks(article, contextIn());
+
+  const [texted, blank] = [...article.querySelectorAll("pre")];
+  expect(texted?.innerHTML).toBe("before <code>one</code> after");
+  expect(blank?.firstElementChild?.className).toBe("nw-code-head");
+});
+
 test("without a clipboard a code block's head is its language alone, and a block without a language has none", () => {
   const article = view(`${goBlock}<pre><code>plain</code></pre>`);
 

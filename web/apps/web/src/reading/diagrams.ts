@@ -217,7 +217,9 @@ function themeCSS(theme: "light" | "dark"): string {
  * engine), changed by a diagram's own directives. A flowchart's node is
  * reading.html's, 9px about its label (M13/P4/S2). Its theme is mermaid's
  * base in the app's colours (themeVariables, themeCSS: M13/P4/S2), or the
- * diagram's own config's alone, a theme it names or none (own: decision 904).
+ * diagram's own config's alone, a theme it names (own: decision 904), or,
+ * where it names none, mermaid's dark or default as the app's theme is, as
+ * before M13 (decision 906).
  */
 function options(theme: "light" | "dark", own?: { theme?: MermaidConfig["theme"] }): MermaidConfig {
   return {
@@ -244,21 +246,26 @@ function options(theme: "light" | "dark", own?: { theme?: MermaidConfig["theme"]
     flowchart: { padding: 9 },
     // Its colours, which a diagram's own directives may change, as its theme ever could: colours, no trust. A diagram
     // with colours of its own is drawn as mermaid draws it: mermaid derives a theme's from the variables given here,
-    // which would put the app's text on its fills (review A's I2, decision 904).
+    // which would put the app's text on its fills (review A's I2, decision 904); its variables without a theme in
+    // mermaid's theme of the app's light or dark: its default's #333 lines on the dark frame were 1.29:1 (decision
+    // 906, review A's F1-M1).
     ...(own === undefined
       ? { theme: "base", themeVariables: themeVariables(theme), themeCSS: themeCSS(theme) }
-      : own.theme === undefined
-        ? {}
-        : { theme: own.theme }),
+      : { theme: own.theme ?? (theme === "dark" ? "dark" : "default") }),
   };
 }
 
 /**
  * ownColours are the colours a diagram's own directive or frontmatter's config gives, as mermaid reads them: a theme
  * it names other than base, or variables of its own, base's or none's (then its theme, if any); or none, base alone
- * the app's colours too (decision 904).
+ * the app's colours too (decisions 904, 906). A diagram of neither a directive nor frontmatter has none, and is not
+ * read: mermaid reads it as it draws it, once is enough (review A's F1-N1: a long sequence's reading, a third of its
+ * drawing's time).
  */
 async function ownColours(mermaid: Drawer, source: string): Promise<{ theme?: MermaidConfig["theme"] } | undefined> {
+  if (!source.includes("%%{") && !source.trimStart().startsWith("---")) {
+    return undefined;
+  }
   const read = await mermaid.parse(source, { suppressErrors: true });
   if (read === false) {
     return undefined;

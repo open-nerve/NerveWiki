@@ -71,9 +71,18 @@ function copyButton(
 }
 
 /**
- * codeBlocks gives each code block (a pre whose one child is a code not mermaid's: a diagram's is still one until
- * drawn; an author's pre of more than one code has none, review A's N2) its head (00-M13 4.5.3; M13/P4/S2, decisions
- * 869, 890): the language its code names, and Copy where the page may use the clipboard, which copies the code's text
+ * alone is whether code is all its pre holds, but blank text: an author's pre of more codes, or of text about it, is
+ * no code block, its Copy copying a part (review A's N2, F1-N2).
+ */
+const alone = (code: HTMLElement) =>
+  [...(code.parentElement?.childNodes ?? [])].every(
+    (node) => node === code || (node.nodeType === Node.TEXT_NODE && (node.textContent ?? "").trim() === "")
+  );
+
+/**
+ * codeBlocks gives each code block (a pre that holds a code alone, but blank text, not mermaid's: a diagram's is
+ * still one until drawn; an author's pre of more than one code, or of text about it, has none) its head (00-M13
+ * 4.5.3; M13/P4/S2, decisions 869, 890): the language its code names, and Copy where the page may use the clipboard, which copies the code's text
  * alone. A block of neither has none. The head is the pre's first child: the view's top-level node is the same, the
  * block's region its name still (scrollRegions, after it); reading.css keeps it at the block's left as the code
  * scrolls sideways, unselectable, and does not print it. Cleaned up, the heads go and their words' timers with them, a
@@ -86,9 +95,9 @@ export const codeBlocks: Enhancement = (container, { t }) => {
   const undone = { now: false };
   // As create-token-dialog.tsx asks: a page served insecurely, or a browser without it, has none.
   const clipboard = typeof navigator.clipboard?.writeText === "function";
-  for (const code of container.querySelectorAll<HTMLElement>("pre > code:only-child:not(.language-mermaid)")) {
+  for (const code of container.querySelectorAll<HTMLElement>("pre > code:not(.language-mermaid)")) {
     const language = languageOf(code);
-    if (language === undefined && !clipboard) {
+    if (!alone(code) || (language === undefined && !clipboard)) {
       continue;
     }
     const head = document.createElement("div");
