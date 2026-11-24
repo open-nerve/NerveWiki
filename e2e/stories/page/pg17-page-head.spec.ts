@@ -143,8 +143,9 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   await expect(item("Part 05")).toHaveAttribute("aria-current", "location");
   await expect(outline.locator("[aria-current]")).toHaveCount(1);
 
-  // Scrolled to, a section is read.
-  await scrollTo(heading("Part 10"), 0);
+  // Scrolled to, a section is read: its heading 100px down, above the line a third of the window down (Part 09's would
+  // be read at a line at the window's top).
+  await scrollTo(heading("Part 10"), 100);
   await expect(item("Part 10")).toHaveAttribute("aria-current", "location");
 
   // A folded callout's heading is never the section read (decision 887): its own box 5px above the line, Part 20 is.
@@ -265,6 +266,9 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   // The regions are marked by a ResizeObserver's callback: read at once, the count would pass before it (review C's M3).
   await afterFrames(page);
   await expect(article.getByRole("region")).toHaveCount(0);
+  // Laid out as a strip, the table keeps a table's roles, which propertyRoles gives (decision 864).
+  await expect(article.locator("table.nw-props").first()).toHaveAttribute("role", "table");
+  await expect(strip).toHaveAttribute("role", "rowgroup");
 });
 
 /**
