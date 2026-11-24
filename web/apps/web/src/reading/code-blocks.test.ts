@@ -86,6 +86,19 @@ test("a code block's head is its pre's first child: its language, and Copy where
   expect(go?.lastElementChild?.outerHTML).toBe('<code class="language-go">func main() {}\n</code>');
 });
 
+// Review A's N2: an author's HTML may put more than one code in a pre; a head of each would pile at its start, a Copy
+// copying one of them.
+test("a pre of more than one code, as an author's HTML may write it, has no head", () => {
+  clipboard(() => Promise.resolve());
+  const article = view('<pre><code>one</code> and <code>two</code></pre><pre><code class="language-go">x</code></pre>');
+
+  codeBlocks(article, contextIn());
+
+  const [several, one] = [...article.querySelectorAll("pre")];
+  expect(several?.innerHTML).toBe("<code>one</code> and <code>two</code>");
+  expect(one?.firstElementChild?.className).toBe("nw-code-head");
+});
+
 test("without a clipboard a code block's head is its language alone, and a block without a language has none", () => {
   const article = view(`${goBlock}<pre><code>plain</code></pre>`);
 
@@ -241,5 +254,23 @@ test("cleaned up, the heads are gone and a word's timer with them", async () => 
   undo?.();
 
   expect(article.innerHTML).toBe(html);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+// Review A's N1: the view written anew, or left, while the clipboard had not answered.
+test("a copy answered once its view is cleaned up says nothing and sets no timer", async () => {
+  vi.useFakeTimers();
+  const late = pending();
+  clipboard(() => late.answer);
+  const article = view(goBlock);
+  const undo = codeBlocks(article, contextIn());
+  const { said, copy } = parts(article.querySelector("pre") as HTMLElement);
+  copy?.click();
+
+  undo?.();
+  late.resolve();
+  await answered();
+
+  expect([said?.textContent, said?.dataset.state, copy?.dataset.state]).toEqual(["", undefined, undefined]);
   expect(vi.getTimerCount()).toBe(0);
 });

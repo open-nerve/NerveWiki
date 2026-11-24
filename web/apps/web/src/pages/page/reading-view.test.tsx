@@ -21,6 +21,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
   // jsdom scrolls nothing: scrolls gives elements a way.
   Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  // userEvent.setup() gives the page a clipboard of its own, taken away by an afterEach of user-event's only where
+  // vitest's globals are: left, the cells after it would have a clipboard, each code block a Copy (review C).
+  Reflect.deleteProperty(navigator, "clipboard");
 });
 
 /** recording is an enhancement that logs, as name, the HTML it runs on and what it knows, and the HTML it is undone on. */
