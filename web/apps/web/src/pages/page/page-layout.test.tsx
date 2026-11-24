@@ -411,6 +411,8 @@ test.each([
       ["min-w-0", "truncate"],
     ]);
     expect(said.className).toContain("whitespace-pre");
+    // Too narrow for the words around the name, the start kept and the end cut (review A's P4S1A-F1-N2).
+    expect(said.className.split(" ")).toContain("justify-end-safe");
   }
 );
 

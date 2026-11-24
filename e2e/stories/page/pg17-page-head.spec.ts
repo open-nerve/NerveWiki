@@ -1,12 +1,13 @@
 import type { Locator, Page } from "@playwright/test";
 
-import { bearer } from "../../fixtures/auth";
+import { bearer, emailFor } from "../../fixtures/auth";
 import { countAnswers } from "../../fixtures/browser";
 import { holdStream } from "../../fixtures/events";
-import { expectFits } from "../../fixtures/narrow";
+import { joinAs } from "../../fixtures/invitations";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto, reload } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
-import { createPage, writeContent } from "../../fixtures/pages";
+import { createPage, openSession, writeContent } from "../../fixtures/pages";
 import { holdAnswer } from "../../fixtures/settings-pages";
 import { expect, test } from "../../fixtures/test";
 import { editorContent, editStatus, pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
@@ -16,12 +17,21 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // last, in the head, coming late with Edit kept where it is; the right column beside the page, the window's height,
 // its outline marking the section read (a folded callout's heading never, the heading clicked at the page's end), the
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
-// column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl. The
-// page's version only: the cells check the interface's behaviour, writing nothing but their data and one write through
+// column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
+// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1). The page's
+// version only: the cells check the interface's behaviour, writing nothing but their data and one write through
 // the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
+
+/**
+ * unbroken is a long name of who's: hyphens before digits, as a name taken from an address may have them, where Firefox
+ * breaks no line (UAX #14's HY × NU), what shows it broken anywhere in it (review B's P4S1B-F1).
+ */
+function unbroken(who: string): string {
+  return `${who}-${"2026-11-24-".repeat(7)}0`;
+}
 
 /** The page's content: frontmatter, then 40 parts, the 20th ending in a folded callout whose first line is a heading. */
 function content(): string {
@@ -346,4 +356,36 @@ test("PG17 (page): the page's head keeps its lines whatever its mode, the title 
   await keepsItsLines(page, doc, 375, () => goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id)));
   // 820 wide the left column is there, the head's row about 519px: the revised draft's one line reading, two editing.
   await keepsItsLines(page, doc, 820, () => reload(page));
+});
+
+test("PG17 (page): long names break, the lock's holder's in its note, a version's author's in its line: the page and its version fit at 375 wide", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  test.slow();
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const name = async (credential: string, as: string) => {
+    const { response } = await api.PATCH("/api/v0/me", { body: { display_name: as }, headers: bearer(credential) });
+    expect(response.status, `${as}: the name changed`).toBe(200);
+  };
+  await name(pat, unbroken("admin"));
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans", "editor");
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, "One\n");
+  await writeContent(api, pat, doc.id, { content: "One\n\nTwo\n", base_revision: doc.revision });
+  const editor = await joinAs(api, pat, workspace.slug, emailFor(testInfo, "editor"), "member");
+  await name(editor, unbroken("editor"));
+  await openSession(api, editor, doc.id);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  const main = page.getByRole("main");
+  const note = main.getByRole("status").filter({ hasText: `${unbroken("editor")} is editing this page.` });
+  const path = wikiPagePath(workspace.slug, notebook.id, doc.id);
+  const fitsAt = async (shown: string, ...boxes: Locator[]) => {
+    await goto(page, shown);
+    await expect(note).toBeVisible();
+    await expectFits(page, note, ...boxes);
+  };
+  await fitsAt(path);
+  // The version's page: the same note, and the version's author in the line under its title.
+  await fitsAt(`${path}/versions/1`, main.getByRole("link", { name: unbroken("admin") }));
 });

@@ -60,10 +60,11 @@ export const EditLockNote = observer(function EditLockNote({ notebook, page, edi
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-control border border-border bg-surface-2 px-3.5 py-2 text-[13px] text-muted-foreground">
       {/* The lock and its sentence one item: wrapping, they go down together, the sentence broken beside the lock
-        (review B's P4S1B-M3). */}
+        (review B's P4S1B-M3); a name with no break the browser takes (hyphens before digits, in Firefox) broken
+        anywhere, the note kept to the page (P4S1B-F1). */}
       <div className="flex min-w-0 items-center gap-x-3">
         <Lock aria-hidden className="size-3.5 shrink-0" />
-        <output>
+        <output className="min-w-0 wrap-anywhere">
           {self ? (
             t("page.lockedBySelf")
           ) : (

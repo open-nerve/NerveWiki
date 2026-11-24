@@ -37,7 +37,8 @@ export function useEditHeadSlots(): HeadSlots {
  * right column reads the versions by (SWR reads them once for both), the name in a bdi, the time in full as its title;
  * empty until they are read, and for a page without versions. A long name is shortened alone, with an ellipsis, the
  * time kept whole (decision 899): a row of the sentence's parts, the words around the name as they are (pre: their
- * spaces kept at their ends), the name shrinking. A paragraph, no status: not heard each time it comes, the edit's
+ * spaces kept at their ends), the name shrinking; too narrow for the words around it, their start kept, their
+ * end cut (safe alignment: review A's P4S1A-F1-N2). A paragraph, no status: not heard each time it comes, the edit's
  * status the main's only one. As long ago as it was when it was read: it does not go on counting (M5-polish's known
  * limit).
  */
@@ -50,7 +51,7 @@ export const HeadMeta = observer(function HeadMeta({ notebook, page }: { noteboo
   return (
     <p
       title={newest === undefined ? undefined : formatDateTime(newest.updated_at, locale)}
-      className="flex justify-end overflow-hidden whitespace-pre"
+      className="flex justify-end-safe overflow-hidden whitespace-pre"
     >
       {newest !== undefined && (
         <Isolated

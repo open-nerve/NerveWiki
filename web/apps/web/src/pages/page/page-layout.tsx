@@ -465,13 +465,14 @@ const PageShell = observer(function PageShell({
                       {t("page.sourceReadonly")}
                     </p>
                   )}
-                  {/* Right under the title, the view's 4px of padding taken back: its first block 14px below the
-                    title, as the mockup has it (review B's P4S1B-M2); after a note, the view is as far as ever. */}
+                  {/* Right under the title, the view's 4px of padding taken back from the view itself: its first block
+                    14px below the title, as the mockup has it (review B's P4S1B-M2), and its loading or its failure
+                    too, which have none (P4S1B-F2); after a note, the view is as far as ever. */}
                   <AttachmentDrop
                     notebook={notebook}
                     parent={page.id}
                     enabled={writer && !gone}
-                    className="[:first-child:empty+&]:-mt-1"
+                    className="[:first-child:empty+&>.nw-reading:first-child]:-mt-1"
                   >
                     <ReadingView
                       notebook={notebook}

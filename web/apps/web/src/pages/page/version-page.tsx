@@ -181,7 +181,9 @@ const VersionShell = observer(function VersionShell({
         {data !== undefined && (
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
             <time dateTime={data.updated_at}>{formatDateTime(data.updated_at, preferences.locale)}</time>
-            <span>
+            {/* Its author's name broken anywhere, one with no break the browser takes too (hyphens before digits, in
+              Firefox): the line kept to the page (M13/P4/S1, found with review B's P4S1B-F1). */}
+            <span className="min-w-0 wrap-anywhere">
               ·{" "}
               <Link to={`${home}/history/${data.changeset.id}`} className="underline underline-offset-4">
                 {versionBy(data, t)}
