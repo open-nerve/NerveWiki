@@ -52,20 +52,33 @@ const darkBackground = "#1f2023";
 const backgroundOf = (config: MermaidConfig) =>
   (config.themeVariables as { background?: string } | undefined)?.background;
 
+/** The theme a text names as mermaid reads it: in a directive ("theme": "dark") or its frontmatter's config (theme: dark). */
+const namedTheme = /"theme":\s*"([\w-]+)"|^\s+theme:\s*([\w-]+)$/m;
+
 /**
  * drawer is a mermaid that draws <svg id> of its text and its theme (its
  * background: mermaid's base theme in either, M13/P4/S2), its styles and an
- * element of it named by its id, recording the options it was given and each
- * drawing; it cannot draw a text with "bad". A drawing of a text with "held"
- * waits for release.
+ * element of it named by its id, recording the options it was given, the texts
+ * it parsed and each drawing; it cannot draw or parse a text with "bad". A
+ * drawing of a text with "held" waits for release.
  */
 function drawer() {
   const configs: MermaidConfig[] = [];
   const drawn: string[] = [];
+  const parsed: string[] = [];
   const held: (() => void)[] = [];
   const draw: Drawer = {
     initialize: (config) => configs.push(config),
     detectType: (text) => (text.startsWith("mindmap") ? "mindmap" : "flowchart"),
+    parse: async (text) => {
+      parsed.push(text);
+      if (text.includes("bad")) {
+        return false;
+      }
+      const named = namedTheme.exec(text);
+      const theme = (named?.[1] ?? named?.[2]) as MermaidConfig["theme"];
+      return { diagramType: "flowchart", config: theme === undefined ? {} : { theme } };
+    },
     render: async (id, text) => {
       drawn.push(`${id} ${text}`);
       if (text.includes("held")) {
@@ -80,7 +93,7 @@ function drawer() {
       };
     },
   };
-  return { configs, drawn, held, draw };
+  return { configs, drawn, parsed, held, draw };
 }
 
 /** watcher is a Watch the test shows each element through; it records which it watches and which it stopped. */
@@ -170,6 +183,53 @@ async function optionsIn(theme: "light" | "dark", source: string): Promise<Merma
   expect(configs).toHaveLength(1);
   return configs[0] as MermaidConfig;
 }
+
+/** drawnWith are the options a diagram of source was last drawn with in theme, and the texts parsed. */
+async function drawnWith(theme: "light" | "dark", source: string) {
+  const { configs, parsed, draw } = drawer();
+  const { watch, show } = watcher();
+  const { blocks, article } = view(source);
+  diagrams(async () => draw, watch)(article, context(theme));
+  show(blocks[0] as Element);
+  await settled();
+  return { config: configs.at(-1) as MermaidConfig, parsed, drawn: article.querySelector("svg") !== null };
+}
+
+// Decision 904 (review A's I2): a diagram that names a theme of its own, base's aside, is drawn in it alone, as before
+// M13: the app's variables, overriding the theme it derives its own from, would put the app's text on its fills.
+test("a diagram naming a theme of its own, in a directive or its frontmatter, is drawn in that theme alone, not in the app's colours", async () => {
+  const directive = await drawnWith("light", '%%{init: {"theme": "dark"}}%%\ngraph TD; own904-->b');
+  const frontmatter = await drawnWith("dark", "---\nconfig:\n  theme: forest\n---\ngraph TD; own904-->c");
+  for (const [shown, named] of [
+    [directive, "dark"],
+    [frontmatter, "forest"],
+  ] as const) {
+    expect(shown.drawn, named).toBe(true);
+    expect(shown.config.theme, named).toBe(named);
+    expect(shown.config.themeVariables, named).toBeUndefined();
+    expect(shown.config.themeCSS, named).toBeUndefined();
+    // What a diagram cannot change, it cannot still.
+    expect(shown.config.securityLevel, named).toBe("strict");
+    expect(shown.config.secure, named).toContain("dompurifyConfig");
+    expect(shown.config.maxEdges, named).toBe(edgeLimit);
+  }
+});
+
+test("a diagram naming base, its own variables with it, or none, is drawn in the app's colours; a mindmap too large is not read", async () => {
+  const based = await drawnWith(
+    "dark",
+    '%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ff0000"}}}%%\ngraph TD; base904-->b'
+  );
+  const plain = await drawnWith("light", "graph TD; plain904-->b");
+  expect([based.config.theme, backgroundOf(based.config)]).toEqual(["base", darkBackground]);
+  expect([plain.config.theme, backgroundOf(plain.config)]).toEqual(["base", lightBackground]);
+  expect(plain.parsed).toEqual(["graph TD; plain904-->b"]);
+  const large = await drawnWith(
+    "light",
+    ["mindmap", "  root", ...Array.from({ length: mindmapLines }, (_, i) => `    big904n${i.toString()}`)].join("\n")
+  );
+  expect([large.drawn, large.parsed]).toEqual([false, []]);
+});
 
 /** The callouts' blue, the light theme's and the dark's (00-M13 4.1; reading.css's --nw-callout-blue). */
 const blue = { light: "#3d6fb8", dark: "#8fb0ec" };
@@ -471,6 +531,7 @@ test("two drawings whose elements' ids are not the drawing's own have no id in c
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "sequence",
+    parse: async () => ({ config: {} }),
     render: async (id, text) => ({
       svg:
         `<svg id="${id}" aria-labelledby="chart-title-${id}"><title id="chart-title-${id}">${text}</title>` +
@@ -533,6 +594,7 @@ test("a drawing of thousands of ids not its own is read through a few times, not
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "sankey",
+    parse: async () => ({ config: {} }),
     render: async (id) => ({ svg: sankey(id, links) }),
   };
   const { watch, show } = watcher();
@@ -561,6 +623,7 @@ test("a style's declarations name no element: a task whose id is a colour's leav
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "gantt",
+    parse: async () => ({ config: {} }),
     render: async (id) => ({
       svg:
         `<svg id="${id}"><style>#${id} .task{fill:#fff5ad;stroke:#fff5ad}#fff5ad{stroke-width:2px}` +

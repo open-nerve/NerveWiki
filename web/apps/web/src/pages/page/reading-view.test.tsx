@@ -1291,6 +1291,7 @@ async function drawn(html: string) {
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "flowchart",
+    parse: async () => ({ config: {} }),
     render: async (id, text) => ({ svg: `<svg id="${id}"><text>${text}</text></svg>` }),
   };
   const opened = await readable(html, [diagrams(async () => draw, seen), scrollRegions]);

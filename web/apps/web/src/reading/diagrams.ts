@@ -25,6 +25,8 @@ export type Drawer = {
   initialize: (config: MermaidConfig) => void;
   /** detectType is the type of diagram text is, as mermaid reads it; it throws for none. */
   detectType: (text: string) => string;
+  /** parse reads text as mermaid does, its own directives' and frontmatter's config with it; false for what it cannot. */
+  parse: (text: string, options: { suppressErrors: true }) => Promise<{ config: MermaidConfig } | false>;
   render: (id: string, text: string) => Promise<{ svg: string }>;
 };
 
@@ -213,9 +215,10 @@ function themeCSS(theme: "light" | "dark"): string {
  * text and the edges bounded (the edges of a flowchart: mermaid counts no
  * other's); and none of these, nor the layout (which would load another
  * engine), changed by a diagram's own directives. Its theme is mermaid's
- * base in the app's colours (themeVariables, themeCSS: M13/P4/S2).
+ * base in the app's colours (themeVariables, themeCSS: M13/P4/S2), or the
+ * one the diagram names, alone (named: decision 904).
  */
-function options(theme: "light" | "dark"): MermaidConfig {
+function options(theme: "light" | "dark", named?: MermaidConfig["theme"]): MermaidConfig {
   return {
     startOnLoad: false,
     securityLevel: "strict",
@@ -237,11 +240,23 @@ function options(theme: "light" | "dark"): MermaidConfig {
       "dompurifyConfig",
       "layout",
     ],
-    // Its colours, which a diagram's own directives may change, as its theme ever could: colours, no trust.
-    theme: "base",
-    themeVariables: themeVariables(theme),
-    themeCSS: themeCSS(theme),
+    // Its colours, which a diagram's own directives may change, as its theme ever could: colours, no trust. A theme it
+    // names is drawn as mermaid draws it: mermaid derives a named theme's from the variables given here, which would
+    // put the app's text on its fills (review A's I2).
+    ...(named === undefined
+      ? { theme: "base", themeVariables: themeVariables(theme), themeCSS: themeCSS(theme) }
+      : { theme: named }),
   };
+}
+
+/**
+ * ownTheme is the theme a diagram names in its own directive or its frontmatter's config, as mermaid reads them, or
+ * none: base, with the diagram's own variables or not, is the app's colours with them.
+ */
+async function ownTheme(mermaid: Drawer, source: string): Promise<MermaidConfig["theme"] | undefined> {
+  const read = await mermaid.parse(source, { suppressErrors: true });
+  const named = read === false ? undefined : read.config.theme;
+  return named === "base" ? undefined : named;
 }
 
 /** A drawing: mermaid's SVG, and the id its elements' ids begin with. */
@@ -390,6 +405,11 @@ async function render(
   }
   const id = nextId();
   try {
+    // Read once it is known not too large: a mindmap's layout is not all that grows faster than its nodes.
+    const named = await ownTheme(mermaid, source);
+    if (named !== undefined) {
+      mermaid.initialize(options(theme, named));
+    }
     return { id, svg: (await mermaid.render(id, source)).svg };
   } catch {
     // A diagram mermaid cannot read, or past its bounds: its source shows.
