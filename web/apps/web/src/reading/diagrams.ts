@@ -57,6 +57,148 @@ const whenShown: Watch = (element, see) => {
   return () => observer.disconnect();
 };
 
+/** The series' colours, the callouts' seven families (00-M13 4.1): blue, orange, teal, purple, red, green, grey. */
+const series = {
+  light: ["#3d6fb8", "#b26a12", "#2f8f6a", "#7a52b3", "#d64545", "#3e8a4f", "#6b6e76"],
+  dark: ["#8fb0ec", "#e0a656", "#5cc49a", "#c3a6f2", "#ff7b7b", "#7fcf8f", "#9a9ca3"],
+} as const;
+
+/**
+ * The diagrams' colours, mermaid's base theme in the app's (00-M13 4.1; v0.1 design 13.2 item 32): hexadecimal alone,
+ * mermaid takes no other. Grey nodes and lines, the note amber; dark derived as dark (darkMode). A series in the
+ * callouts' families, which base cannot derive from grey: a pie, a git graph, a mindmap, a timeline, a kanban, a radar.
+ * The gantt's rows, grid, tasks and today line; an edge's label, an ER row, an architecture's lines; the xychart and
+ * the radar given whole, as mermaid takes them (M13/P4/S2, decisions 871, 888; review B's I1, R1-M2).
+ */
+function themeVariables(theme: "light" | "dark"): Record<string, unknown> {
+  const light = theme === "light";
+  const colours = series[theme];
+  const background = light ? "#ffffff" : "#1f2023";
+  const text = light ? "#18191c" : "#e8e8ea";
+  const line = light ? "#91939b" : "#74767e";
+  // Text on a series' colour: white on the light theme's, near black on the dark's lighter shade.
+  const onSeries = light ? "#ffffff" : "#18191c";
+  const variables: Record<string, unknown> = {
+    background,
+    primaryColor: light ? "#f4f4f5" : "#25262a",
+    primaryBorderColor: light ? "#d4d4d9" : "#3a3b41",
+    primaryTextColor: text,
+    secondaryColor: light ? "#f4f4f5" : "#25262a",
+    tertiaryColor: background,
+    lineColor: line,
+    textColor: text,
+    noteBkgColor: light ? "#f8f1e4" : "#39332a",
+    noteBorderColor: light ? "#c2871f" : "#d9a84e",
+    noteTextColor: text,
+    fontFamily: "inherit",
+    fontSize: "13.5px",
+  };
+  if (!light) {
+    variables.darkMode = true;
+  }
+  // Round the seven families: an eighth slice is blue again.
+  for (let i = 1; i <= 12; i++) {
+    variables[`pie${i.toString()}`] = colours[(i - 1) % colours.length];
+  }
+  for (let i = 0; i < 8; i++) {
+    variables[`git${i.toString()}`] = colours[i % colours.length];
+    variables[`gitInv${i.toString()}`] = colours[i % colours.length];
+    variables[`gitBranchLabel${i.toString()}`] = onSeries;
+  }
+  for (let i = 0; i < 12; i++) {
+    variables[`cScale${i.toString()}`] = colours[i % colours.length];
+    variables[`cScalePeer${i.toString()}`] = colours[i % colours.length];
+    variables[`cScaleLabel${i.toString()}`] = onSeries;
+    // A timeline's upright lines: the series' inverse otherwise, which light does not show.
+    variables[`cScaleInv${i.toString()}`] = line;
+  }
+  Object.assign(
+    variables,
+    light
+      ? { pieStrokeColor: "#ffffff", pieOuterStrokeColor: "#d4d4d9", pieSectionTextColor: "#ffffff", pieOpacity: "1" }
+      : { pieStrokeColor: "#1f2023", pieOuterStrokeColor: "#3a3b41", pieSectionTextColor: "#18191c", pieOpacity: "1" },
+    // The gantt: its rows, grid, done, critical (dark's a shade deeper: its text is light), today's and a marker's line.
+    light
+      ? {
+          altSectionBkgColor: "#ffffff",
+          gridColor: "#e7e7ea",
+          doneTaskBkgColor: "#d4d4d9",
+          critBkgColor: "#d64545",
+          todayLineColor: "#c2871f",
+          vertLineColor: "#c2871f",
+          // A task in progress: base derives white on a light border, which the white chart does not show.
+          activeTaskBkgColor: "#e7e7ea",
+          activeTaskBorderColor: "#91939b",
+        }
+      : {
+          altSectionBkgColor: "#1f2023",
+          gridColor: "#2b2c31",
+          doneTaskBkgColor: "#3a3b41",
+          critBkgColor: "#b33b3b",
+          todayLineColor: "#d9a84e",
+          vertLineColor: "#d9a84e",
+          excludeBkgColor: "#25262a",
+          // An edge's label, near black otherwise; an ER entity's rows, near black under darkMode.
+          edgeLabelBackground: "#1f2023",
+          rowOdd: "#1f2023",
+          rowEven: "#25262a",
+        },
+    { archEdgeColor: line, archEdgeArrowColor: line, archGroupBorderColor: line }
+  );
+  variables.xyChart = {
+    backgroundColor: background,
+    titleColor: text,
+    dataLabelColor: text,
+    legendTextColor: text,
+    xAxisTitleColor: text,
+    xAxisLabelColor: text,
+    xAxisTickColor: line,
+    xAxisLineColor: line,
+    yAxisTitleColor: text,
+    yAxisLabelColor: text,
+    yAxisTickColor: line,
+    yAxisLineColor: line,
+    plotColorPalette: colours.join(","),
+  };
+  variables.radar = {
+    axisColor: line,
+    axisStrokeWidth: 1,
+    axisLabelFontSize: 12,
+    curveOpacity: 0.5,
+    curveStrokeWidth: 2,
+    graticuleColor: light ? "#e7e7ea" : "#3a3b41",
+    graticuleStrokeWidth: 1,
+    graticuleOpacity: light ? 0.3 : 0.5,
+    legendBoxSize: 12,
+    legendFontSize: 12,
+  };
+  return variables;
+}
+
+/**
+ * What the variables cannot say (decision 888): a node's corners, 9px as the mockup's; a store's (a cylinder's)
+ * amber, its fill the note's; the gantt's grid lines, which mermaid draws in the page's colour, and the timeline's
+ * line, in the series' label colour otherwise; a timeline's event not brightened. Dark, an ER's circle drawn white
+ * and a kanban column's name, light on its darkened series. Mermaid scopes it by the drawing's id: it outranks its
+ * own rules, not an author's style or classDef.
+ */
+function themeCSS(theme: "light" | "dark"): string {
+  const light = theme === "light";
+  return [
+    ".node > rect.basic.label-container { rx: 9px; ry: 9px; }",
+    `.node > path.basic.label-container.outer-path { fill: ${light ? "#f8f1e4" : "#39332a"}; stroke: ${light ? "#c2871f" : "#d9a84e"}; }`,
+    `.grid .tick line { stroke: ${light ? "#e7e7ea" : "#2b2c31"}; }`,
+    `.lineWrapper line { stroke: ${light ? "#91939b" : "#74767e"}; }`,
+    ".eventWrapper { filter: none; }",
+    ...(light
+      ? []
+      : [
+          'marker circle[fill="white"] { fill: #1f2023; }',
+          ".sections > .cluster > .cluster-label { color: #18191c; fill: #18191c; }",
+        ]),
+  ].join("\n");
+}
+
 /**
  * mermaid's options (M6 design 4.9): strict, its labels sanitized and no
  * script of the diagram's run, a label's HTML without a style element
@@ -70,7 +212,8 @@ const whenShown: Watch = (element, see) => {
  * an error not drawn but thrown, so that the diagram shows its source; the
  * text and the edges bounded (the edges of a flowchart: mermaid counts no
  * other's); and none of these, nor the layout (which would load another
- * engine), changed by a diagram's own directives.
+ * engine), changed by a diagram's own directives. Its theme is mermaid's
+ * base in the app's colours (themeVariables, themeCSS: M13/P4/S2).
  */
 function options(theme: "light" | "dark"): MermaidConfig {
   return {
@@ -94,7 +237,10 @@ function options(theme: "light" | "dark"): MermaidConfig {
       "dompurifyConfig",
       "layout",
     ],
-    theme: theme === "dark" ? "dark" : "default",
+    // Its colours, which a diagram's own directives may change, as its theme ever could: colours, no trust.
+    theme: "base",
+    themeVariables: themeVariables(theme),
+    themeCSS: themeCSS(theme),
   };
 }
 

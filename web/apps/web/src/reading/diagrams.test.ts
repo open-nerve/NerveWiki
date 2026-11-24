@@ -44,11 +44,20 @@ function themed(initial: "light" | "dark" = "light") {
 
 const context = (theme: "light" | "dark" = "light") => themed(theme).context;
 
+/** The diagrams' backgrounds, the light theme's and the dark's: mermaid's base theme either way, in the app's colours. */
+const lightBackground = "#ffffff";
+const darkBackground = "#1f2023";
+
+/** backgroundOf is the background a drawing's options give mermaid's theme: what tells the two themes apart. */
+const backgroundOf = (config: MermaidConfig) =>
+  (config.themeVariables as { background?: string } | undefined)?.background;
+
 /**
- * drawer is a mermaid that draws <svg id> of its text and its theme, its
- * styles and an element of it named by its id, recording the options it
- * was given and each drawing; it cannot draw a text with "bad". A drawing
- * of a text with "held" waits for release.
+ * drawer is a mermaid that draws <svg id> of its text and its theme (its
+ * background: mermaid's base theme in either, M13/P4/S2), its styles and an
+ * element of it named by its id, recording the options it was given and each
+ * drawing; it cannot draw a text with "bad". A drawing of a text with "held"
+ * waits for release.
  */
 function drawer() {
   const configs: MermaidConfig[] = [];
@@ -65,7 +74,7 @@ function drawer() {
       if (text.includes("bad")) {
         throw new Error("Parse error");
       }
-      const theme = configs.at(-1)?.theme ?? "";
+      const theme = (configs.at(-1)?.themeVariables as { background?: string } | undefined)?.background ?? "";
       return {
         svg: `<svg id="${id}"><style>#${id} text{}</style><g id="${id}-a"><text>${text}</text><desc>${theme}</desc></g></svg>`,
       };
@@ -143,9 +152,59 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
         "dompurifyConfig",
         "layout",
       ],
-      theme: "dark",
+      theme: "base",
+      themeVariables: expect.objectContaining({ background: darkBackground }),
+      themeCSS: expect.any(String),
     },
   ]);
+});
+
+/** optionsIn are the options a diagram is drawn with in theme. */
+async function optionsIn(theme: "light" | "dark", source: string): Promise<MermaidConfig> {
+  const { configs, draw } = drawer();
+  const { watch, show } = watcher();
+  const { blocks, article } = view(source);
+  diagrams(async () => draw, watch)(article, context(theme));
+  show(blocks[0] as Element);
+  await settled();
+  expect(configs).toHaveLength(1);
+  return configs[0] as MermaidConfig;
+}
+
+/** The callouts' blue, the light theme's and the dark's (00-M13 4.1; reading.css's --nw-callout-blue). */
+const blue = { light: "#3d6fb8", dark: "#8fb0ec" };
+
+// M13/P4/S2, decisions 871, 888: mermaid's base theme in the app's colours, grey nodes and lines; a series in the
+// callouts' families, which base cannot derive from grey; dark derived as dark; what the variables cannot say (a
+// node's corners, a store's amber, the gantt's grid and the timeline's line) in the theme's own CSS.
+test("a diagram is drawn in mermaid's base theme in the app's colours, its series the callouts' families, dark as dark", async () => {
+  const shown = {
+    light: await optionsIn("light", "graph TD; light888-->b"),
+    dark: await optionsIn("dark", "graph TD; dark888-->b"),
+  };
+  for (const theme of ["light", "dark"] as const) {
+    const { theme: named, themeVariables, themeCSS } = shown[theme];
+    const variables = (themeVariables ?? {}) as Record<string, unknown>;
+    const xyChart = variables.xyChart as Record<string, unknown> | undefined;
+    expect(named, theme).toBe("base");
+    expect(variables.background, theme).toBe(theme === "light" ? lightBackground : darkBackground);
+    expect([variables.pie1, variables.git0, variables.cScale0], theme).toEqual([blue[theme], blue[theme], blue[theme]]);
+    // An object mermaid takes whole: its palette alone given, the rest of it is lost (dark drawn on white).
+    expect(xyChart?.backgroundColor, theme).toBe(variables.background);
+    expect(String(xyChart?.plotColorPalette).split(",")[0], theme).toBe(blue[theme]);
+    expect(themeCSS, theme).toContain("outer-path");
+    expect(themeCSS, theme).toContain("rx: 9px");
+    expect(themeCSS, theme).toContain(".eventWrapper { filter: none; }");
+  }
+  const light = (shown.light.themeVariables ?? {}) as Record<string, unknown>;
+  const dark = (shown.dark.themeVariables ?? {}) as Record<string, unknown>;
+  expect([light.darkMode, dark.darkMode]).toEqual([undefined, true]);
+  // The gantt's task in progress seen in light, the critical one's text read in dark (review B's R1-M2); the kanban's
+  // columns' names read in dark (R1-M3).
+  expect([light.activeTaskBkgColor, light.activeTaskBorderColor]).toEqual(["#e7e7ea", "#91939b"]);
+  expect(dark.critBkgColor).toBe("#b33b3b");
+  expect(shown.dark.themeCSS).toContain(".cluster-label");
+  expect(shown.light.themeCSS).not.toContain(".cluster-label");
 });
 
 test("the diagrams are drawn one at a time, each with ids of its own", async () => {
@@ -323,23 +382,23 @@ test("as the theme changes, a drawing is drawn again in it, in its wrapper, once
   await settled();
   const wrapper = article.querySelector(".nw-diagram");
   const themeShown = () => wrapper?.querySelector("desc")?.textContent;
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
 
   change("dark");
   await settled();
   expect(drawn).toHaveLength(1);
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
   expect(watched.has(wrapper as Element)).toBe(true);
 
   show(wrapper as Element);
   await settled();
   expect(drawn).toHaveLength(2);
   expect(article.querySelector(".nw-diagram")).toBe(wrapper);
-  expect(themeShown()).toBe("dark");
+  expect(themeShown()).toBe(darkBackground);
 
   // Kept in the theme it changes back to: put at once.
   change("light");
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
   expect(drawn).toHaveLength(2);
 });
 
@@ -361,12 +420,15 @@ test("a diagram is drawn in the theme shown as it is drawn: a drawing out as it 
   await settled();
   held[1]?.();
   await settled();
-  expect(configs.map((config) => config.theme)).toEqual(["default", "dark"]);
+  expect(configs.map((config) => [config.theme, backgroundOf(config)])).toEqual([
+    ["base", lightBackground],
+    ["base", darkBackground],
+  ]);
   const wrapper = article.querySelector(".nw-diagram");
-  expect(wrapper?.querySelector("desc")?.textContent).toBe("dark");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe(darkBackground);
 
   change("light");
-  expect(wrapper?.querySelector("desc")?.textContent).toBe("default");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe(lightBackground);
   expect(drawn).toHaveLength(2);
 });
 

@@ -233,6 +233,24 @@ test("every colour of the light theme is the dark theme's too", () => {
   expect(missing).toEqual({ "light, not dark": [], "dark, not light": [] });
 });
 
+// The reading view's colours, which the editor borrows too (M13/P4/S2, decision 870): its light and dark theme declare
+// the same, outside any layer, where blocks reads them. A dark value left out shows in a screenshot alone.
+test("every colour of the reading view's light theme is its dark theme's too", () => {
+  const { reading: view } = read();
+  const light = declared(view, ":root");
+  const dark = declared(view, ".dark");
+  for (const name of ["--nw-mark-background", "--nw-code-background", "--nw-link-line", "--nw-hl-keyword"]) {
+    expect(light, name).toContain(name);
+  }
+  expect(light.size).toBeGreaterThanOrEqual(20);
+  expect(dark.size).toBeGreaterThanOrEqual(20);
+  const missing = {
+    "light, not dark": [...light].filter((name) => !dark.has(name)),
+    "dark, not light": [...dark].filter((name) => !light.has(name)),
+  };
+  expect(missing).toEqual({ "light, not dark": [], "dark, not light": [] });
+});
+
 test("no accent-foreground is left", () => {
   const { styles: css, reading: view, sources: files } = read();
   const found = [
