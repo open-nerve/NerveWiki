@@ -4,7 +4,7 @@
 |---|---|
 | 里程碑 | M13 界面焕新（`M13-ui-refresh`） |
 | 日期 | 2026-11-22（初稿；同日照三份设计审查修订、照修订核对第 1 轮再修订、第 2 轮之后补上最后的 Nit，[审查记录](reviews/M13-design-review.md)） |
-| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 设计定稿，S1、S2、S3 已合并 |
+| 状态 | 设计定稿，负责人 2026-11-22 批准；P1 完成；P2 完成；P3 完成；P4 完成，P5 待开 |
 | 依赖 | M0–M12 全部（改的是它们的网页）；M12 的发布等 M13 收尾之后再做（负责人 2026-11-22 第 5 问，第 11 节） |
 | 上级文档 | [v0.1 总体设计](../v0.1-design.md) 第 9、10、12、13.2、13.4 节；[M12 总设计](../M12-release/00-M12-design.md) 第 7 节"提交说明"、第 12 节"收尾与发布"一行；移交 [v0.2/handoffs/M12-polish.md](../../v0.2/handoffs/M12-polish.md)、[v0.1.1/handoffs/M12-after-release.md](../../v0.1.1/handoffs/M12-after-release.md) |
 | 视觉参照 | 负责人认可的三份样稿：[mockups/palette.html](mockups/palette.html)（外框与配色，选"琥珀"）、[mockups/settings.html](mockups/settings.html)（设置，选 A）、[mockups/reading.html](mockups/reading.html)（阅读与编辑）。浏览器直接打开，自带切换。样稿是外观的依据，不是代码：间距、色值、字号照它；结构、行为与可访问性照本文与 13.2；本文与样稿不同之处（例如属性条、焦点圈、编辑时的"保存"）在正文写明并以本文为准；阅读视图的色值以 reading.html 为准 |
@@ -546,7 +546,7 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 | P1 设计基础（S1、S2） | [01-P1](01-P1-foundation.md) | 完成 | [设计审查](reviews/P1-design-review.md)；[S1](reviews/P1-S1-tokens-theme-review.md)；[S2](reviews/P1-S2-components-review.md) | S1 `a08bf50f`；S2 `e2678ff7` |
 | P2 新外框（S1–S3） | [02-P2](02-P2-shell.md) | 完成 | [设计审查](reviews/P2-design-review.md)；[S1](reviews/P2-S1-shell-account-review.md)；[S2](reviews/P2-S2-notebooks-tree-review.md)；[S3](reviews/P2-S3-search-drawer-review.md) | S1 `fdad6b9e`；S2 `70338fc4`；S3 `82838aac` |
 | P3 设置界面（S1、S2） | [03-P3](03-P3-settings.md) | 完成 | [设计审查](reviews/P3-design-review.md)；[S1](reviews/P3-S1-settings-mode-review.md)；[S2](reviews/P3-S2-workspace-notebook-settings-review.md) | S1 `f32b0762`；S2 `12b0b734` |
-| P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 设计定稿；S1、S2、S3 已合并 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md)；[S2](reviews/P4-S2-body-code-diagrams-review.md)；[S3](reviews/P4-S3-editor-outline-save-review.md) | S1 `715923dd`；S2 `cea66d69`；S3 `4f2fde3b` |
+| P4 阅读与编辑（S1–S3） | [04-P4](04-P4-reading.md) | 完成 | [设计审查](reviews/P4-design-review.md)；[S1](reviews/P4-S1-head-strip-panel-review.md)；[S2](reviews/P4-S2-body-code-diagrams-review.md)；[S3](reviews/P4-S3-editor-outline-save-review.md) | S1 `715923dd`；S2 `cea66d69`；S3 `4f2fde3b` |
 | P5 其余页面（S1、S2） | — | 未开始 | — | — |
 | 收尾 | — | 未开始 | — | — |
 
@@ -574,3 +574,4 @@ Tailwind 类 17 处 `bg-accent`（含 `hover:`、`focus:`）、5 处 `text-accen
 - 2026-11-24：P4/S1 实施与审查完成（[审查记录](reviews/P4-S1-head-strip-panel-review.md)；主持者的决定 897–900：读者在右栏里动过之后不再跟，到换页、或进出编辑之后大纲重新出现为止，决定 892 那一支的横幅在设置的列里，"编辑过"一句名字长时只截名字，带锚点打开的页视图第一次到时焦点给锚点照现状、记给 v0.2）；4.8 的 PG17 四格；合并 `715923dd`。
 - 2026-11-25：P4/S2 实施与审查完成（[审查记录](reviews/P4-S2-body-code-diagrams-review.md)；主持者的决定 901–906：callout 的标题是一行文字，callout 里只有标题之后 4 px，列表项里的块之间 0.5rem，图自己给了颜色时只照它自己的配置画、只给变量的主题按应用的亮暗取 mermaid 的 `dark` 或 `default`，焦点按"复制"在块里的第几个找回照实）；4.8 的 PG17 第 2 格另核对已完成项下面的块、callout 的标题与间距、属性条里映射的小块；合并 `cea66d69`。
 - 2026-11-25：P4/S3 实施与审查完成（[审查记录](reviews/P4-S3-editor-outline-save-review.md)；主持者的决定 907–911：编辑时大纲的项的文字同阅读时的大纲，编辑时的大纲只排除闭合的 frontmatter，对比与冲突视图的等宽是编辑器的等宽字体、13 px，查找面板的样子放进 S3、只用变量，补全照 878 比菜单密、不改）；4.8 的编辑时的大纲另核对项与阅读时同高、手形与长标题的两行（PG17 第 3 格），l5 另量查找面板；合并 `4f2fde3b`。
+- 2026-11-25：P4 完成（S1 `715923dd`、S2 `cea66d69`、S3 `4f2fde3b`；主持者的决定 854–911；本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑，决定 746、761；只靠 CI 的步骤见 [04-P4](04-P4-reading.md) 7.3：Linux 的 WebKit 与 Firefox 上剪贴板的读法，Linux 的字体与滚动条下 PG17 的 `expectFits`、右栏的量、第 2 格的行数上限、第 3 格的项高与长标题的行数，Linux 的 Chromium 第一次跑 `emulateMedia({ forcedColors })`（L4 的一步），L5 的查找面板与强制色两步在 Linux 的字体下；还欠负责人的人工核对：Safari 里焦点在显着的"保存"上时切到别的窗口再回来，它不隐去（04-P4 第 9 节"负责人"一条））。
