@@ -397,7 +397,16 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */
 const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
 
-test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items'", async ({
+/** Callouts' titles with markup in them, one with an address longer than a phone's line: lines of text (decision 901). */
+const titled = [
+  "> [!note] A title with **bold**, a [[Doc]] link, `code` and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
+  "> Its body.",
+  "",
+  "> [!tip]- A folded title with **bold**, a [[Doc]] link and `code`",
+  "> Inside the fold.",
+].join("\n");
+
+test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items'; a callout's title is a line of text, its markup in it, at 375 wide too", async ({
   api,
   browserName,
   context,
@@ -406,7 +415,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
   await grantClipboardPermissions(context, browserName);
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const markdown = `\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n- [x] Shipped\n  - [ ] Its follow-up\n`;
+  const markdown = `\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n- [x] Shipped\n  - [ ] Its follow-up\n\n${titled}\n`;
   const doc = await createPage(api, pat, notebook.id, "Doc", null, markdown);
   const page = await signedInPage(tokens);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -481,4 +490,31 @@ test("PG17 (page): a code block's head names its language and copies its code al
       };
     });
   expect(done).toEqual({ struck: true, faint: true, nested: "inline-block", nestedColour: true });
+
+  // A callout's title is a line of text, its bold, link and code in it, folded or not; it wraps as text does, the
+  // address too, at 375 wide in at most four lines, no callout nor the view scrolling sideways (decision 901; review
+  // A's I1, B's I1: a flex made each of them an item of its own, in columns side by side, an address past the edge).
+  const titles = article.locator(".nw-callout > :is(.nw-callout-title, summary)");
+  await expect(titles).toHaveCount(2);
+  const read = () =>
+    titles.evaluateAll((each) =>
+      each.map((title) => ({
+        text: (title as HTMLElement).innerText,
+        lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)),
+      }))
+    );
+  const texts = [
+    "A title with bold, a Doc link, code and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
+    "A folded title with bold, a Doc link and code",
+  ];
+  expect(await read()).toEqual([
+    { text: texts[0], lines: 2 },
+    { text: texts[1], lines: 1 },
+  ]);
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await afterFrames(page);
+  const narrow = await read();
+  expect(narrow.map((title) => title.text)).toEqual(texts);
+  expect(narrow.map((title) => title.lines <= 4)).toEqual([true, true]);
+  await expectFits(page, article, article.locator(".nw-callout").first(), titles.first(), titles.last());
 });

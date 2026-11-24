@@ -572,37 +572,50 @@
     margin-top: 0.25rem;
   }
 
-  /* Its title the family's colour, dark's the lighter shade already: its icon first, 7px apart. */
+  /* Its title the family's colour, dark's the lighter shade already: a line of text, its bold, links and code in it as
+     in any line, its 16px icon first in the line, 7px apart (decision 901: a flex made each of its words and elements
+     an item of its own, side by side in columns where narrow, an address past the callout's edge; reading.html .ct). */
   .nw-reading .nw-callout > :is(.nw-callout-title, summary) {
-    display: flex;
-    align-items: center;
-    gap: 7px;
+    display: block;
     color: var(--nw-callout);
     font-size: 0.875rem;
     font-weight: 600;
+    line-height: 1.5;
   }
 
   .nw-reading .nw-callout > :is(.nw-callout-title, summary)::before {
     content: "";
-    flex: none;
-    width: 1em;
-    height: 1em;
+    display: inline-block;
+    width: 16px;
+    height: 16px;
+    margin-inline-end: 7px;
+    vertical-align: -0.15em;
     background-color: currentColor;
     mask: var(--nw-callout-icon) center / contain no-repeat;
   }
 
+  /* A folded callout's title leaves its chevron room at its end; the browser's triangle is gone (WebKit's a marker of
+     its own), the chevron saying it folds. */
   .nw-reading details.nw-callout > summary {
+    position: relative;
+    padding-inline-end: 22px;
+    list-style: none;
     cursor: pointer;
   }
 
-  /* A folded callout says it folds, the browser's triangle gone with its summary a flex: a chevron at the title's end,
-     turned while closed, as the right column's sections (review B's M8); a medium's controls in the title before it. */
+  .nw-reading details.nw-callout > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* The chevron at the end of the title's first line, turned while closed, as the right column's sections (review B's
+     M8); a medium's controls in the title before it. */
   .nw-reading details.nw-callout > summary::after {
     content: "";
-    flex: none;
+    position: absolute;
+    top: calc((1.5em - 14px) / 2);
+    inset-inline-end: 0;
     width: 14px;
     height: 14px;
-    margin-inline-start: auto;
     background-color: currentColor;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
       center / contain no-repeat;
