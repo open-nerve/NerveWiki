@@ -89,7 +89,7 @@ export function useCurrentHeading(
     // wrote last is laid out only as the scroll regions' observer reads the layout in its callback; the main,
     // observed shallower than the regions, resized after its notification, which WebKit reported undelivered as an
     // error. The view is as deep as the regions' own. What resizes beside it alone (a lock's note above it, the
-    // backlinks below) is measured as the window next scrolls or resizes.
+    // subpages and the attachments below) is measured as the window next scrolls or resizes (review A's P4S1A-F2-N1).
     const view = document.querySelector("main article.nw-reading");
     const resized = typeof ResizeObserver === "undefined" || view === null ? undefined : new ResizeObserver(asked);
     if (view !== null) {

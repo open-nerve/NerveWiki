@@ -162,9 +162,12 @@ export function Mark({ children, current = false }: { children: string; current?
   );
 }
 
-/** versionBy says who wrote version, and what its changeset was: "Ada · Edit". */
+/**
+ * versionBy says who wrote version, and what its changeset was: "Ada · Edit", a no-break space after the dot, so that
+ * the version's page breaks its line before "· Edit", not between them (review B's P4S1B-F2-1). The version's page's.
+ */
 export function versionBy(version: PageVersion, t: Translate): string {
-  return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
+  return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
 }
 
 /** VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. */

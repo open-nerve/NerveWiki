@@ -31,6 +31,10 @@ const REQUIRED = [
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"],
   ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"],
   ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"],
+  // Long names broken, a lock's holder's and a version's author's: Firefox breaks no line at a hyphen before a digit
+  // (UAX #14's HY × NU), and the cell goes red there alone (M13/P4/S1, review B's P4S1B-F1, review C's P4S1C-F2-M1).
+  ["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): long names break"],
+  ["webkit", "page/pg17-page-head.spec.ts", "PG17 (page): long names break"],
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
