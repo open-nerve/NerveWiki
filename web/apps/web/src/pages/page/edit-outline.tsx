@@ -64,9 +64,10 @@ export const EditOutline = observer(function EditOutline({ box }: { box: Outline
               <button
                 type="button"
                 onClick={() => box.reveal?.(index)}
-                className="w-full ps-3 pe-1 text-start leading-snug break-words line-clamp-2 text-muted-foreground hover:text-foreground"
+                className="w-full ps-3 pe-1 text-start leading-snug text-muted-foreground hover:text-foreground"
               >
-                {text}
+                {/* Two lines at most on the text's own box: WebKit lays out no button as the clamp's -webkit-box. */}
+                <span className="break-words line-clamp-2">{text}</span>
               </button>
             </li>
           ))}
