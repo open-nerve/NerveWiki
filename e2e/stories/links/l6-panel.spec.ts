@@ -8,7 +8,7 @@ import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, writeContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
-import { pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
+import { editorContent, pageHeading, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // L6, the page's right column (M6 design 9; M6/P7 design 7–11): beside the
@@ -178,7 +178,7 @@ test("L6 (MCP): an agent reads a page's backlinks by its path, a property's link
   await expectLinked(db, idOf("Doc.md"), idOf("Other.md"), hub);
 });
 
-test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, and is not shown while the page is edited; a property link goes to its page, whose backlinks show a link another writes as it is written", async ({
+test("L6 (page): the right column's outline goes to a heading, one in a folded callout too, and, while the page is edited, comes from the editor, leading to a heading's line; a property link goes to its page, whose backlinks show a link another writes as it is written", async ({
   api,
   db,
   signedInPage,
@@ -228,12 +228,18 @@ test("L6 (page): the right column's outline goes to a heading, one in a folded c
   // Held at the top as the window scrolls.
   await expect(panel).toBeInViewport();
 
-  // The properties: each key and its value. Edited, the column keeps them and the backlinks, not the outline.
+  // The properties: each key and its value. Edited, the column keeps them and the backlinks; its outline is the
+  // editor's (M13/P4/S3, decision 876): the frontmatter, lezer's rule and setext heading, is not in it, the folded
+  // callout's heading is; a heading's button puts the cursor at its line, the editor focused.
   await expect(panel.getByRole("term")).toHaveText(["up", "see"]);
   await expect(panel.getByRole("definition")).toHaveText(["Hub", "Nowhere"]);
   await page.keyboard.press("ControlOrMeta+e");
-  await expect(page.getByRole("textbox", { name: "Page content" })).toBeVisible();
-  await expect(outline).toHaveCount(0);
+  const editor = editorContent(page);
+  await expect(editor).toBeVisible();
+  await expect(outline.getByRole("button")).toHaveText(["Intro", "Setup", "Usage", "Hidden"]);
+  await outline.getByRole("button", { name: "Usage", exact: true }).click();
+  await expect(editor).toBeFocused();
+  await expect(editor.locator(".cm-line", { hasText: /^## Usage$/ })).toBeInViewport();
   await expect(panel.getByRole("term")).toHaveText(["up", "see"]);
   await expect(panel.getByText("Backlinks", { exact: true })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+e");

@@ -2,16 +2,18 @@ import { useBeside } from "../../app/narrow";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
 import type { TreeNode } from "../../services/page.service";
+import { EditOutline, type OutlineBox } from "./edit-outline";
 import { PageBacklinks } from "./page-backlinks";
 import { PageOutline } from "./page-outline";
 import { PageProperties } from "./page-properties";
 import { PageVersions } from "./page-versions";
 
 /**
- * PagePanel is the page's right column (M6/P7 design 7): its outline while
- * it is read, not while it is edited (M6 design 4.12), its backlinks and
- * its properties, each leading to a page by href, and its versions (M8
- * design 4.13), each leading to its version's page. From xl up it is
+ * PagePanel is the page's right column (M6/P7 design 7): its outline, the
+ * view's while it is read, the editor's while it is edited (M13/P4/S3,
+ * decision 876; outline), its backlinks and its properties, each leading
+ * to a page by href, and its versions (M8 design 4.13), each leading to
+ * its version's page. From xl up it is
  * beside the page's content, the window's height, held at the top as the
  * window scrolls, scrolling itself, a line on its left, its negative
  * margins taking back the main's padding (M13/P4/S1, decision 860: the
@@ -30,6 +32,7 @@ export function PagePanel({
   notebook,
   page,
   editing,
+  outline,
   href,
 }: {
   id: string;
@@ -37,6 +40,8 @@ export function PagePanel({
   notebook: Notebook;
   page: TreeNode;
   editing: boolean;
+  /** The edit's outline, its editor's headings. */
+  outline: OutlineBox;
   href: (id: string) => string;
 }) {
   const t = useT();
@@ -49,7 +54,11 @@ export function PagePanel({
       data-page-panel
       className="min-w-0 space-y-6 max-xl:mx-auto max-xl:mt-10 max-xl:max-w-180 xl:sticky xl:top-0 xl:-me-10 xl:-mt-3 xl:-mb-10 xl:h-svh xl:w-63 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-border xl:pt-16 xl:pr-4 xl:pb-5 xl:pl-4.5 xl:[overflow-anchor:none] xl:data-[open=false]:hidden"
     >
-      {!editing && <PageOutline notebook={notebook} page={page.id} active={open && beside} />}
+      {editing ? (
+        <EditOutline box={outline} />
+      ) : (
+        <PageOutline notebook={notebook} page={page.id} active={open && beside} />
+      )}
       <PageBacklinks notebook={notebook} page={page.id} href={href} />
       <PageProperties notebook={notebook} page={page.id} href={href} />
       <PageVersions notebook={notebook} page={page.id} href={(revision) => `${href(page.id)}/versions/${revision}`} />

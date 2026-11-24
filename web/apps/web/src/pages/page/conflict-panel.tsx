@@ -28,7 +28,8 @@ type ConflictPanelProps = {
  * the user's text is in the editor whatever happens here. Try again, as
  * the comparison's, stays while the chunk loads, aria-disabled, the focus
  * on it; loaded, the diff shown, the panel's heading takes the focus that
- * left with it (M12/P2/S1, 21.14).
+ * left with it (M12/P2/S1, 21.14). A card on the surface, its edge the
+ * destructive colour's, its buttons pills (M13/P4/S3, decision 878).
  */
 export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPanelProps) {
   const t = useT();
@@ -41,7 +42,10 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
   const load = useCallback(() => import("../../editor/conflict-view").then(setDiff, () => setFailed("failed")), []);
   useEffect(() => void load(), [load]);
   return (
-    <section aria-labelledby={title} className="space-y-3 rounded-md border border-destructive/50 p-3">
+    <section
+      aria-labelledby={title}
+      className="space-y-3 rounded-control border border-destructive/35 bg-surface px-4 py-3"
+    >
       <h2 id={title} ref={heading} tabIndex={-1} className="font-medium outline-none">
         {t("editor.conflictTitle")}
       </h2>
@@ -72,8 +76,10 @@ export function ConflictPanel({ conflict, heading, keep, discard }: ConflictPane
         <Loading />
       )}
       <div className="flex flex-wrap gap-2">
-        <Button onClick={keep}>{t("editor.keepMine")}</Button>
-        <Button variant="outline" onClick={discard}>
+        <Button size="sm" shape="pill" onClick={keep}>
+          {t("editor.keepMine")}
+        </Button>
+        <Button variant="outline" size="sm" shape="pill" onClick={discard}>
           {t("editor.discardMine")}
         </Button>
       </div>

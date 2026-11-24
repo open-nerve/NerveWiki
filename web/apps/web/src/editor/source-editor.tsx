@@ -6,6 +6,7 @@ import { use, useContext, useId, useImperativeHandle, useLayoutEffect, useRef, t
 
 import { useT, type Translate } from "../i18n/i18n";
 import { insertLink, toggleStrong } from "./commands";
+import { editOutline, where, type OutlineSink } from "./edit-outline";
 import { composeExtensions, loadExtensions, readOnly, readOnlyAs, ready } from "./extensions";
 import { joinBreaks, lineBreaks, splitBreaks } from "./line-breaks";
 import { markdownEditing } from "./markdown";
@@ -40,6 +41,11 @@ export type SourceEditorHandle = {
   working(): boolean;
   /** settled settles once no work of the extensions goes: what begins as it waits is waited for too. */
   settled(): Promise<void>;
+  /**
+   * reveal puts the cursor at the start of the line of the outline's index-th heading, scrolled to near the window's
+   * top, the editor focused (M13/P4/S3, decision 876): nothing past those told.
+   */
+  reveal(index: number): void;
 };
 
 type SourceEditorProps = {
@@ -52,11 +58,13 @@ type SourceEditorProps = {
   controls: Omit<EditorControls, "setReadOnly" | "onChange" | "onClose" | "whenComposed" | "going">;
   /** onChange is told the content's version after each change. */
   onChange(version: number): void;
+  /** The page's outline while it is edited, told the editor's headings; none, they are not read. */
+  outline?: OutlineSink;
   ref?: Ref<SourceEditorHandle>;
 };
 
 /** Live is the latest of the editor's props, which its extensions, made once, read when called. */
-type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange"> & {
+type Live = Pick<SourceEditorProps, "context" | "controls" | "onChange" | "outline"> & {
   t: Translate;
   registered: readonly ReadyExtension[];
 };
@@ -247,6 +255,7 @@ class EditorHost {
         Prec.high(proseTheme),
         proseLines,
         markupMarks,
+        editOutline(() => this.live.current.outline),
         wording.of(this.wordingOf(t)),
         readOnly.of(readOnlyAs(this.locked)),
         EditorView.updateListener.of((update) => {
@@ -274,15 +283,25 @@ class EditorHost {
 /**
  * SourceEditor is the Markdown source editor (M4/P6 design 3.5). Its
  * prose is in the reading's font, its code, tables and frontmatter in
- * monospaced lines, its marks faint (M13/P4/S3, decisions 874, 889). Its
- * EditorView is made once; a content loaded is a new state. The content
+ * monospaced lines, its marks faint (M13/P4/S3, decisions 874, 889); its
+ * headings are told to the page's outline, which leads to their lines
+ * (reveal, decision 876). Its EditorView is made once; a content loaded
+ * is a new state. The content
  * goes in and out as written: the line breaks and the byte order mark
  * are kept apart (editor/line-breaks.ts). The registered extensions come
  * after the editor's own, each in its compartment. Tab indents: a line
  * under the editor, which its content refers to, says how to move out.
  * An extension that loads what builds it is waited for, suspended.
  */
-export function SourceEditor({ content, focusOnOpen = false, context, controls, onChange, ref }: SourceEditorProps) {
+export function SourceEditor({
+  content,
+  focusOnOpen = false,
+  context,
+  controls,
+  onChange,
+  outline,
+  ref,
+}: SourceEditorProps) {
   const t = useT();
   const extensions = useContext(EditorExtensions);
   const registered = ready(extensions) ? extensions : use(loadExtensions(extensions));
@@ -290,9 +309,9 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
   const element = useRef<HTMLDivElement>(null);
   const editor = useRef<EditorHost>(null);
   const first = useRef({ content, focusOnOpen });
-  const live = useRef<Live>({ t, context, controls, onChange, registered });
+  const live = useRef<Live>({ t, context, controls, onChange, outline, registered });
   useLayoutEffect(() => {
-    live.current = { t, context, controls, onChange, registered };
+    live.current = { t, context, controls, onChange, outline, registered };
   });
   useLayoutEffect(() => {
     if (element.current === null) {
@@ -320,6 +339,21 @@ export function SourceEditor({ content, focusOnOpen = false, context, controls, 
       hold: (on) => editor.current?.lock("held", on),
       working: () => editor.current?.working === true,
       settled: () => editor.current?.settled() ?? Promise.resolve(),
+      reveal: (index) => {
+        const view = editor.current?.view;
+        const at = view === undefined ? undefined : where(view, index);
+        if (view === undefined || at === undefined) {
+          return;
+        }
+        // The line's start: what is typed at its very start comes before the place mapped, and a heading in a quote or
+        // a list item starts after its "> " or "- " (review A's R1-N3).
+        const start = view.state.doc.lineAt(at).from;
+        view.dispatch({
+          selection: { anchor: start },
+          effects: EditorView.scrollIntoView(start, { y: "start", yMargin: 16 }),
+        });
+        view.focus();
+      },
     }),
     []
   );

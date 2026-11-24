@@ -12,9 +12,10 @@ import { watchReader } from "./readers-input";
 
 /**
  * How many headings the outline lists at most: a page may have a million, a
- * list of links that long the tab's memory.
+ * list of links that long the tab's memory. The edit's outline too
+ * (edit-outline.tsx).
  */
-const listedUpTo = 1000;
+export const listedUpTo = 1000;
 
 /** A heading of the page: its id, its level and its text. */
 type Heading = { id: string; level: number; text: string };

@@ -313,8 +313,9 @@ test("components use the theme's colours, not Tailwind's palette nor written val
 });
 
 // The classes of these prefixes that name no colour, as Tailwind spells them: sizes, styles, the alignments, the shadows
-// Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either. text-end aligns the
-// page's head's box of who edited it to its right (M13/P4/S1).
+// Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either. The alignments:
+// text-end aligns the page's head's box of who edited it to its right (M13/P4/S1), text-start the edit's outline's
+// buttons to their start (M13/P4/S3).
 const noColour = new Set([
   "decoration-dashed",
   // No outline as a rule (outline-style: none); under forced colours a transparent 2px one, which the system's
@@ -329,6 +330,7 @@ const noColour = new Set([
   "text-3xl",
   "text-base",
   "text-end",
+  "text-start",
   "text-lg",
   "text-right",
   "text-sm",

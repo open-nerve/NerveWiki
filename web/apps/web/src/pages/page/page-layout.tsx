@@ -34,6 +34,7 @@ import { AttachmentDrop } from "./attachment-drop";
 import { AttachmentsSection } from "./attachments-section";
 import { Breadcrumbs } from "./breadcrumbs";
 import { EditLockNote } from "./edit-lock-note";
+import { OutlineBox } from "./edit-outline";
 import { PageEdit } from "./page-edit";
 import { EditHeadSlots, HeadMeta, PanelToggle } from "./page-head";
 import { PageMenu } from "./page-menu";
@@ -191,6 +192,8 @@ const PageShell = observer(function PageShell({
   const beside = useBeside();
   const rail = useId();
   const toggle = useRef<HTMLButtonElement>(null);
+  // The edit's outline, which its editor tells and the right column draws (decision 876).
+  const [outline] = useState(() => new OutlineBox());
   // The head's places the edit fills (decision 866), as they mount.
   const [group, setGroup] = useState<HTMLElement | null>(null);
   const [meta, setMeta] = useState<HTMLElement | null>(null);
@@ -488,6 +491,7 @@ const PageShell = observer(function PageShell({
                   notebook={notebook}
                   page={page}
                   editing={editing}
+                  outline={outline}
                   done={(left) => {
                     back.current = left.waited === true ? "fallen" : true;
                     setIdleLeft(left.idle);
@@ -509,7 +513,15 @@ const PageShell = observer(function PageShell({
           </div>
         </div>
       </EditHeadSlots>
-      <PagePanel id={rail} open={open} notebook={notebook} page={page} editing={!reading} href={href} />
+      <PagePanel
+        id={rail}
+        open={open}
+        notebook={notebook}
+        page={page}
+        editing={!reading}
+        outline={outline}
+        href={href}
+      />
     </div>
   );
 });

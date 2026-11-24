@@ -5,6 +5,7 @@ import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
 import { I18nProvider } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
+import type { OutlineSink } from "./edit-outline";
 import { lockReadOnly } from "./lock-read-only";
 import {
   EditorClosed,
@@ -48,8 +49,13 @@ function sessionState() {
   };
 }
 
-/** The editor on content, its handle, its session, and what it told onChange, save, leave and tell. */
-function editor(content: string, extensions: readonly EditorExtension[] = [], wrap = (node: ReactNode) => node) {
+/** The editor on content, its handle, its session, and what it told onChange, save, leave and tell; its outline's. */
+function editor(
+  content: string,
+  extensions: readonly EditorExtension[] = [],
+  wrap = (node: ReactNode) => node,
+  outline?: OutlineSink
+) {
   const handle = createRef<SourceEditorHandle>();
   const onChange = vi.fn();
   const save = vi.fn(() => Promise.resolve());
@@ -64,6 +70,7 @@ function editor(content: string, extensions: readonly EditorExtension[] = [], wr
             ref={handle}
             content={content}
             context={context}
+            outline={outline}
             controls={{
               save,
               saving: () => false,
@@ -580,3 +587,32 @@ test("the editor has a fence's lines monospaced and a wiki link's marks faint", 
   expect([...container.querySelectorAll(".nw-md-faint")].map((mark) => mark.textContent)).toEqual(["[[", "]]"]);
   expect([...container.querySelectorAll(".nw-md-link")].map((mark) => mark.textContent)).toEqual(["Hub"]);
 });
+
+// The outline while the page is edited leads to a heading's line (M13/P4/S3, decision 876).
+test.each([
+  ["# One\n\nText\n\n## Two\n", 5, "## Two"],
+  // In a quote, the cursor at the line's start, before its mark (review A's R1-N3).
+  ["# One\n\nText\n\n> ## Quoted\n", 5, "> ## Quoted"],
+])(
+  "reveal puts the cursor at the start of the heading's line, scrolled to near the top, the editor focused: %j",
+  (content, line, text) => {
+    const told: string[][] = [];
+    const sink: OutlineSink = { upTo: 10, told: (listed) => void told.push(listed.map((heading) => heading.text)) };
+    const scrolled = vi.spyOn(EditorView, "scrollIntoView");
+    const { view, handle } = editor(content, [], undefined, sink);
+    expect(told.at(-1)?.length).toBe(2);
+    const dispatched = vi.spyOn(view(), "dispatch");
+
+    handle().reveal(1);
+    const { head } = view().state.selection.main;
+    expect(head).toBe(view().state.doc.line(line).from);
+    expect(view().state.doc.lineAt(head).text).toBe(text);
+    expect(document.activeElement).toBe(view().contentDOM);
+    expect(scrolled).toHaveBeenCalledWith(head, { y: "start", yMargin: 16 });
+    const effect = scrolled.mock.results.at(-1)?.value as unknown;
+    expect(dispatched.mock.calls.at(-1)?.[0]).toMatchObject({ effects: effect });
+    // Beyond those listed, nothing.
+    handle().reveal(2);
+    expect(view().state.selection.main.head).toBe(head);
+  }
+);
