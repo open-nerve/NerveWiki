@@ -257,10 +257,11 @@ test("not active, it measures nothing and answers none", async () => {
   expect([measured, read.current()]).toEqual([[], undefined]);
 });
 
-test("without a ResizeObserver it reads all the same; with one, it watches the main and measures again as it resizes", async () => {
+test("without a ResizeObserver it reads all the same; with one, it watches the view, not the main, and measures again as it resizes", async () => {
   expect(typeof ResizeObserver).toBe("undefined");
-  // The page's main there from the start: without a ResizeObserver it is not watched (review C's P4S1C-M1).
-  const main = put(document.createElement("main"));
+  // The page's view there from the start: without a ResizeObserver it is not watched (review C's P4S1C-M1).
+  const view = put(document.createElement("main")).appendChild(document.createElement("article"));
+  view.className = "nw-reading";
   headings({ a: -400, b: 100, c: 500, d: 700 });
   const without = probe();
   expect(without.current()).toBe("b");
@@ -284,7 +285,9 @@ test("without a ResizeObserver it reads all the same; with one, it watches the m
     }
   );
   const read = probe();
-  expect(observers.map(({ observed }) => observed)).toEqual([[main]]);
+  // The main resized after its notification, in a rendering where WebKit lays out late, was told undelivered as
+  // an error (fix check 1, review B's note): the view is watched, as deep as the scroll regions' own.
+  expect(observers.map(({ observed }) => observed)).toEqual([[view]]);
 
   tops = { ...tops, c: 200 };
   await act(async () => {
@@ -309,7 +312,7 @@ test("with no heading listed, it is not active: it listens to nothing, watches n
       disconnect() {}
     }
   );
-  put(document.createElement("main"));
+  put(document.createElement("main")).appendChild(document.createElement("article")).className = "nw-reading";
   const renders: (string | undefined)[] = [];
   function Empty() {
     renders.push(useCurrentHeading([], true).current);

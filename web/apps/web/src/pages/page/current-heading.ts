@@ -7,11 +7,11 @@ import { watchReader } from "./readers-input";
  * (the outline's, in their order) whose heading's top is above the line, a third of the window down; the window's
  * bottom where the page scrolls at all and is at its end. A heading in a closed details (a folded callout) is not
  * read, its box what it may be. While active only (the right column open beside the page, decision 886) and some
- * heading is listed: not, it listens to nothing, measures nothing, and answers none. It measures as it mounts, in the commit (no frame later sets it: the tests'
- * act, section 1 (k)), then at most once a frame as the window scrolls or resizes and as the main resizes (the page
- * written in, its diagrams drawn), setting the state only as the answer changes. pin marks the heading of id
- * clicked in the outline (link, its link) at once: until the view has scrolled it in, and while it is in, until the
- * reader moves (watchReader), it is the current one.
+ * heading is listed: not, it listens to nothing, measures nothing, and answers none. It measures as it mounts, in the
+ * commit (no frame later sets it: the tests' act, section 1 (k)), then at most once a frame as the window scrolls or
+ * resizes and as the view resizes (the page written in, its diagrams drawn), setting the state only as the answer
+ * changes. pin marks the heading of id clicked in the outline (link, its link) at once: until the view has scrolled it
+ * in, and while it is in, until the reader moves (watchReader), it is the current one.
  */
 export function useCurrentHeading(
   ids: readonly string[],
@@ -85,10 +85,15 @@ export function useCurrentHeading(
     show(read());
     addEventListener("scroll", asked, { passive: true });
     addEventListener("resize", asked);
-    const main = document.querySelector("main");
-    const resized = typeof ResizeObserver === "undefined" || main === null ? undefined : new ResizeObserver(asked);
-    if (main !== null) {
-      resized?.observe(main);
+    // The view, not the main (fix check 1, review B's note): in WebKit, while KaTeX's stylesheet loads, what React
+    // wrote last is laid out only as the scroll regions' observer reads the layout in its callback; the main,
+    // observed shallower than the regions, resized after its notification, which WebKit reported undelivered as an
+    // error. The view is as deep as the regions' own. What resizes beside it alone (a lock's note above it, the
+    // backlinks below) is measured as the window next scrolls or resizes.
+    const view = document.querySelector("main article.nw-reading");
+    const resized = typeof ResizeObserver === "undefined" || view === null ? undefined : new ResizeObserver(asked);
+    if (view !== null) {
+      resized?.observe(view);
     }
     return () => {
       cancelAnimationFrame(frame);
