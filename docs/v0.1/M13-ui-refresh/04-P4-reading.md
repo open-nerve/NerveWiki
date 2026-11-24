@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P4 阅读与编辑（三个 Step：S1 页头、属性条与右栏；S2 正文的样式；S3 编辑） |
-| 日期 | 2026-11-24（初稿；同日照[设计审查](reviews/P4-design-review.md)修订，又照它的修订核对第 1 轮再修订、第 2 轮三修；主持者照第 3 轮改了最后一条 Minor 与 Nit，第 4 轮核对之后定稿） |
-| 状态 | 设计定稿（修订核对之后三位都没有 Important、Minor：B 在第 2 轮、A 在第 3 轮、C 在第 4 轮；主持者补上最后的 Nit；[审查记录](reviews/P4-design-review.md)，主持者的决定 854–896） |
+| 日期 | 2026-11-24（初稿；同日照[设计审查](reviews/P4-design-review.md)修订，又照它的修订核对第 1 轮再修订、第 2 轮三修；主持者照第 3 轮改了最后一条 Minor 与 Nit，第 4 轮核对之后定稿）；同日照 S1 的实施与审查修订（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900） |
+| 状态 | 设计定稿（修订核对之后三位都没有 Important、Minor：B 在第 2 轮、A 在第 3 轮、C 在第 4 轮；主持者补上最后的 Nit；[审查记录](reviews/P4-design-review.md)，主持者的决定 854–896）；S1 实施与审查完成（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)，主持者的决定 897–900），已审查、待合并，合并见 00 号文档第 12 节 |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.5（全部）、4.1 末段"阅读视图的变量"与"语义名的例外"、4.3"单选与复选""按钮"两条、4.7、4.8（大纲的当前节、编辑时的大纲、复制按钮的 vitest；变异的最低清单）、第 7 节 P4 三行、第 8 节（注册"代码块的复制按钮"）、9.1"阅读视图的样式断言""右栏""编辑的'保存'""编辑器的字体与主题"四行、第 10 节"编辑器混排""滚动锚定"两行、"移交的落实"（"编辑时没有大纲"由 P4/S3 认领）；[03-P3](03-P3-settings.md) 第 9 节"P4"一条（`main` 的留白、细栏的位置文字、升级横幅与内容列）；[02-P2](02-P2-shell.md) 第 9 节"P2–P5"与"收尾"两条；[01-P1](01-P1-foundation.md) 第 9 节"P4"（任务列表的复选框）与"P2–P5"（标签组）两条；[v0.1 总体设计](../v0.1-design.md) 9.2、9.3、13.2 第 17、23–26、31、32 条、13.4 第 3 条；移交 [M12-polish](../../v0.2/handoffs/M12-polish.md) 第 1、5、6、11 项（编号沿用 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目） |
 | 视觉参照 | [mockups/reading.html](mockups/reading.html)（头一行：`.topbar`、`.crumb`、`.meta`、`.btn.icon`、`.btn.primary`；正文：`.doc`、`.props`/`.chip`、`.callout`、`.diagram`、`.tasks`、`.code`/`.ch`、`table`、`code.ic`；右栏：`.panel`、`.ph`、`.outline`、`.bl`、`.kv`、`.ver`；编辑：`.editbar`、`.editor`、`.saved`） |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `m13-ui-refresh` 的头 `072dcec2` 的 |
@@ -193,7 +193,7 @@
 
 ### 2.3 本文的决定（主持者的决定，负责人可以改判）
 
-854–884 是初稿的；修订时照设计审查改了其中 857–861、863、865、866、868–877、880、881 的文字（各条里写明依据）。885–893 是主持者照设计审查定的（[审查记录](reviews/P4-design-review.md)"主持者的决定"），894、895 是照修订核对第 1 轮定的（同上，"主持者的决定（第 1 轮）"），写法由设计者补在 4.x。再修订时照第 1 轮又改了 858、859、861、863、866、871、874、876、877、881、885、888 的文字。896 与改过的 895 是照修订核对第 2 轮定的（同上，"主持者的决定（第 2 轮）"）；三修时照第 2 轮又改了 861、863、866、871、877、885、894 的文字。
+854–884 是初稿的；修订时照设计审查改了其中 857–861、863、865、866、868–877、880、881 的文字（各条里写明依据）。885–893 是主持者照设计审查定的（[审查记录](reviews/P4-design-review.md)"主持者的决定"），894、895 是照修订核对第 1 轮定的（同上，"主持者的决定（第 1 轮）"），写法由设计者补在 4.x。再修订时照第 1 轮又改了 858、859、861、863、866、871、874、876、877、881、885、888 的文字。896 与改过的 895 是照修订核对第 2 轮定的（同上，"主持者的决定（第 2 轮）"）；三修时照第 2 轮又改了 861、863、866、871、877、885、894 的文字。897–900 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)"主持者的决定"，括注是发现的编号）；照 S1 的实施与审查又改了 861、879、886 的文字。
 
 - **854 Step 的分法**：照 00 号文档第 7 节的三个 Step，00 号文档没分到的四件放进 S1：`main` 的留白（P3 交来，855）、升级横幅进内容列（P3 交来，857）、编辑时头一行的状态与按钮（866，它和"编辑"同一行）、标题下的编辑说明（867）。每个 Step 两个代码提交加一个文档提交（第 6 节）；理由与"单独为绿"见第 0 节。
 - **855 `main` 的留白**：`W/app/layout.tsx:71` 的 `p-6` 换成 `p-6 xl:px-10`（样稿 `.content` 左右 40 px）；页的外框另加 `md:-mt-3 md:pb-4`，凑出样稿头一行离顶 12 px、页底 40 px（`main` 的 24 px 加减）。所有页在 1280 px 起左右多 16 px 的留白，是有意的（P5 的页照这个留白排）；设置页的内容列居中、最宽 696 px，1280 px 起照样居中，`SettingsPage` 的类不改（`md:px-2` 在 768–1279 px 之间照旧凑出 32 px），只改它的注释。
@@ -202,7 +202,7 @@
 - **858 头的"谁、何时编辑过"**：`useVersions(notebook, page.id)` 的第一页的第一项（与右栏的版本同键，SWR 只读一次），没读到或没有版本时不显示。文字新键 `page.editedBy`：英文"Edited by {name} {when}"（"Edited by Ada yesterday"），中文"{name} 编辑于{when}"（"Ada 编辑于昨天"，同样稿）；`name` 是 `changeset.created_by.display_name`，经 `isolate`/`Isolated` 进 `bdi`；`when` 是 `formatRelative(updated_at)`；整句的 `title` 是 `formatDateTime(updated_at)`。是 `<p>`，不是 `<output>`：读屏不在每次读到时播报它，编辑时头一行的状态与 `editStatus`（`e2e/fixtures/wiki-pages.ts:233-235`，`main` 里唯一的 `status`）不受打扰。只在阅读时显示，在头一行右边一组的第一个盒子里（决定 894）：那个盒子一直在、`min-w-0 flex-1`、字靠右，阅读时是这一句（`truncate`，名字长时省略），编辑时是保存的状态；版本读到之前、没有版本时它是空的。右边一组定宽（`flex-[0_1_26rem]`，窄时缩到行宽），它到来时头一行的行数与"编辑"的位置都不变（初稿说"它出现时别的不动"，在 375–696 px 宽时不成立：右边一组随它折行，"编辑"下移 19–36 px，页在顶部时没有滚动锚定可依，审查 A 的 M4；修订稿的 `w-64` 预留只管阅读，进出编辑时右边一组的宽仍随模式变，审查 A 的 R1-I1）。相对时间不随时间刷新（M5-polish 的已知限制，照旧）。
 - **859 右栏的开关**：`Button variant="ghost" size="icon-sm" shape="pill"`，图标 `PanelRight`，`aria-label={t("page.panel")}`（"About this page"/"页面信息"，与右栏同名），`aria-expanded`，`aria-controls` 指右栏的 `id`（`useId`），`className="hidden xl:inline-flex"`：只在并排（1280 px 起）时出现。状态存在 `PreferencesStore` 的 `panelOpen`（键 `nwiki.panel`，值 `"open"`/`"closed"`，没存过或读不到时展开），`setPanelOpen(open)` 写进去；读写照旧经 `read`/`write` 吃掉异常。右栏带 `data-open`，收起时 `xl:data-[open=false]:hidden`（更窄时不认它：右栏照旧在正文之后）；收起时内容区不再留右边的 40 px（`xl:pe-10` 只在展开时），正文那一列在内容区里居中，最宽仍是 720 px（窗口不到 1304 px 时展开的右栏让它窄于 720 px，收起之后放宽到 720 px；审查 A 的 N3）。点了之后焦点留在开关上；右栏藏起时（收起，或窗口变宽跨过 1280 px、偏好是收起）焦点在右栏里的，交给开关（`focus({ preventScroll: true })`，WebKit 里点开关不给它焦点、焦点照旧在右栏里；审查 A 的 N1）。窗口变宽那一支照这里的写法（layout effect 里看焦点在不在右栏）在 Chromium 里落空：它在重算样式时就把藏起的元素里的焦点修到 `body`，早于 `matchMedia` 的 `change` 与之后的 layout effect，那时焦点留在 `body`；Firefox、WebKit 里焦点到开关。在右栏的 `focusout` 里看 `relatedTarget === null && !aside.checkVisibility()`，三种引擎都做得到（审查 A 的 R3-N1 的探针）；焦点在开关上时窗口变窄到 1280 px 以下，开关 `display: none`，三种引擎都把焦点修到 `body`，同样的写法也能把它交给标题。两处都要在焦点停在那里时改窗口的宽，P4 不另修，照实记下（审查 A 的 R1-N4、R3-N1；主持者定）。`PanelToggle` 是 `observer`，自己读 `preferences.panelOpen`（审查 A 的 N2）。阅读与编辑时都有。名字不是"Edit"：lw5 数整页名为"Edit"的按钮。
 - **860 右栏的样子与位置**：页的外框是 `md:-mt-3 md:pb-4 xl:flex xl:items-start`，两个子元素：内容区 `min-w-0 xl:flex-1`（展开时加 `xl:pe-10`）与右栏 `<aside id aria-label data-open data-page-panel className="min-w-0 space-y-6 max-xl:mx-auto max-xl:mt-10 max-xl:max-w-180 xl:sticky xl:top-0 xl:-me-10 xl:-mt-3 xl:-mb-10 xl:h-svh xl:w-63 xl:shrink-0 xl:overflow-y-auto xl:border-l xl:border-border xl:pt-16 xl:pr-4 xl:pb-5 xl:pl-4.5 xl:[overflow-anchor:none] xl:data-[open=false]:hidden">`：负的外边距抵掉 `main` 的右边与上下的留白，宽屏上右栏贴着窗口的右边、从顶到底（样稿 `.panel`：左边一条线，内边距 64/16/20/18 px，宽 252 px），粘住、自己滚动，照旧不作窗口滚动的锚点。更窄时排在正文之后，与正文同宽、居中。静态页的探针（第 1 节 (b)）量过 1440、1280、1024 三种宽度。`data-page-panel` 是 `watchReader` 的 `within`（决定 886；`useId` 的 id 带冒号，不宜写进选择器）。
-- **861 大纲读到的一节**：新文件 `W/pages/page/current-heading.ts` 的 `useCurrentHeading(ids, active)`，`PageOutline` 用它（4.1.7）。`ids` 只是大纲列出的那些（至多 `listedUpTo`；审查 C 的 M10）；`active` 是右栏展开、又在正文旁边（`useBeside()`，`(width >= 80rem)`；决定 886），不是时不监听、不量。窗口的 `scroll`（被动）与 `resize` 的监听、正文的 `ResizeObserver`（`typeof ResizeObserver === "undefined"` 时不用：jsdom 没有它），都只排一个 `requestAnimationFrame`，一帧至多算一次；第一次（挂上、`ids` 或 `active` 变了）在 `useLayoutEffect` 里同步量，之后的每次只在答的值变了时才设状态（第 1 节 (k)：照修订稿在第一帧才设，vitest 里会落进别的格的 `act` 里、让 `setup.ts` 判红；在 layout effect 里量，第一次就在那次提交里，之后在 jsdom 里值不再变，不再有更新）；`active` 变假时清掉当前项、结束点了的那一项，再展开的那一次渲染不答收起之前的那一项；不活跃时点大纲不 `pin`（窄于 1280 px 时大纲在正文之后、点得到；审查 A 的 R1-N5、R2-N2）。`PageOutline` 的 `memo` 比较（`sameView`）加上 `active`：只比笔记本与页时 `active` 的变化传不进来，存着收起时打开页、展开之后读到的一节永远不标、右栏也不跟，收起之后又照旧每次滚动都量（审查 A 的 R2-I1）。算法：线是视口高度的三分之一；文档能滚（`scrollHeight > innerHeight + 1`）、又已滚到底时（`scrollY + innerHeight >= scrollHeight - 1`）线是视口的底（决定 893）；从列出的最后一个标题往前找，第一个不在关着的 `details` 里（`closest("details:not([open])")`，决定 887：关着的 `<details>` 里的标题在三种引擎里都答一个不是 0 的盒子，初稿的"盒子是 0"不成立）且顶不低于线的，就是读到的一节；一个也没有时没有当前项。点了大纲的一项（不带修饰键的主键点按，同 React Router 的 `isModifiedEvent`：带 Cmd、Ctrl、Shift、Alt 的点按开新标签页、新窗口或下载，视图不滚，不算；审查 A 的 R2-N1），在点按里就标它（`pin(id)` 直接设当前项），视图把它滚进视口之前一直标它，进过视口之后到它出了视口为止，读者一动（`watchReader({ on: 那个链接 })` 答 `acted`）立刻照线算（决定 893；路由的那次提交在 `startTransition` 里、可能晚于下一帧，修订稿在下一帧量到它还不在视口里就解除了，审查 A 的 R1-M1）。元素每次按 id 在文档里找（`document.getElementById`），就地更新换了标题的元素也找得到；`ResizeObserver` 看的是应用唯一的 `main`（正文写进去、长高、图与公式画出来，它都随之变高；右栏粘住、自己滚动，不改它的尺寸）。当前项的链接带 `aria-current="location"`；不移焦点；每项是 `memo` 的 `OutlineItem`，当前项变了只重画两项（审查 A 的 N6）。右栏跟着当前项（决定 886）：当前项变了、它的 `li` 不全在右栏的可见范围里、右栏自己滚动时（`scrollHeight > clientHeight`），只改右栏的 `scrollTop`，滚到它刚好露出（在上面时顶对齐，在下面时底对齐）；读者在右栏里动过之后（`watchReader({ on: 大纲的列表, within: "[data-page-panel]" })`，在列表的回调 ref 里随列表挂上而建、卸下而止：直接打开一页时视图的 HTML 晚到、大纲先是 `null`，修订稿在 `[page]` 的 effect 里建，`on` 永远是 `null`，点一下大纲的项就被算成读者动过，审查 A 的 R1-I2，第 1 节 (l)；换页时 `PageShell` 以 `key={page.id}` 重挂，它随之重起）不再跟；没变时不动右栏（l6 的"更多"一格核对窗口与右栏都没滚）；从不调 `scrollIntoView`（13.2 第 26 条）。不用 `IntersectionObserver`：一下跳过一段（点大纲、按 End）时没有标题穿过观察的带，当前项不变（2.1 第 2 条）。版本页与回收站的预览没有大纲。（初稿把当前项放到右栏的中间、每过一节都跟，审查 A 的 I3。）
+- **861 大纲读到的一节**：新文件 `W/pages/page/current-heading.ts` 的 `useCurrentHeading(ids, active)`，`PageOutline` 用它（4.1.7）。`ids` 只是大纲列出的那些（至多 `listedUpTo`；审查 C 的 M10）；`active` 是右栏展开、又在正文旁边（`useBeside()`，`(width >= 80rem)`；决定 886），不是时、或大纲没有列出标题时（审查 A 的 P4S1A-N1），不监听、不量。窗口的 `scroll`（被动）与 `resize` 的监听、正文的 `ResizeObserver`（`typeof ResizeObserver === "undefined"` 时不用：jsdom 没有它），都只排一个 `requestAnimationFrame`，一帧至多算一次；第一次（挂上、`ids` 或 `active` 变了）在 `useLayoutEffect` 里同步量，之后的每次只在答的值变了时才设状态（第 1 节 (k)：照修订稿在第一帧才设，vitest 里会落进别的格的 `act` 里、让 `setup.ts` 判红；在 layout effect 里量，第一次就在那次提交里，之后在 jsdom 里值不再变，不再有更新）；`active` 变假时清掉当前项、结束点了的那一项，再展开的那一次渲染不答收起之前的那一项；不活跃时点大纲不 `pin`（窄于 1280 px 时大纲在正文之后、点得到；审查 A 的 R1-N5、R2-N2）。`PageOutline` 的 `memo` 比较（`sameView`）加上 `active`：只比笔记本与页时 `active` 的变化传不进来，存着收起时打开页、展开之后读到的一节永远不标、右栏也不跟，收起之后又照旧每次滚动都量（审查 A 的 R2-I1）。算法：线是视口高度的三分之一；文档能滚（`scrollHeight > innerHeight + 1`）、又已滚到底时（`scrollY + innerHeight >= scrollHeight - 1`）线是视口的底（决定 893）；从列出的最后一个标题往前找，第一个不在关着的 `details` 里（`closest("details:not([open])")`，决定 887：关着的 `<details>` 里的标题在三种引擎里都答一个不是 0 的盒子，初稿的"盒子是 0"不成立）且顶不低于线的，就是读到的一节；一个也没有时没有当前项。点了大纲的一项（不带修饰键的主键点按，同 React Router 的 `isModifiedEvent`：带 Cmd、Ctrl、Shift、Alt 的点按开新标签页、新窗口或下载，视图不滚，不算；审查 A 的 R2-N1），在点按里就标它（`pin(id)` 直接设当前项），视图把它滚进视口之前一直标它，进过视口之后到它出了视口为止，读者一动（`watchReader({ on: 那个链接 })` 答 `acted`）立刻照线算（决定 893；路由的那次提交在 `startTransition` 里、可能晚于下一帧，修订稿在下一帧量到它还不在视口里就解除了，审查 A 的 R1-M1）。元素每次按 id 在文档里找（`document.getElementById`），就地更新换了标题的元素也找得到；`ResizeObserver` 看的是视图（`main article.nw-reading`：正文写进去、长高、图与公式画出来，它都随之变高；右栏粘住、自己滚动，不改页的尺寸）。照实：设计原写看应用唯一的 `main`，S1 的实施照此写，WebKit 在 KaTeX 的样式表还在途时把它的通知报成没送到（"ResizeObserver loop completed with undelivered notifications"，e2e 的夹具算成未捕获的错误），改看视图（`f698d37e`，4.1.7 与 4.2 之前的"照实"）；视图之外变高的东西（视图之上的锁说明，视图之后的子页与附件两节）要等下一次滚动或改窗口才重量，审查 A 量的两种过时见 10.1。当前项的链接带 `aria-current="location"`；不移焦点；每项是 `memo` 的 `OutlineItem`，当前项变了只重画两项（审查 A 的 N6）。右栏跟着当前项（决定 886）：当前项变了、它的 `li` 不全在右栏的可见范围里、右栏自己滚动时（`scrollHeight > clientHeight`），只改右栏的 `scrollTop`，滚到它刚好露出（在上面时顶对齐，在下面时底对齐）；读者在右栏里动过之后（`watchReader({ on: 大纲的列表, within: "[data-page-panel]" })`，在列表的回调 ref 里随列表挂上而建、卸下而止：直接打开一页时视图的 HTML 晚到、大纲先是 `null`，修订稿在 `[page]` 的 effect 里建，`on` 永远是 `null`，点一下大纲的项就被算成读者动过，审查 A 的 R1-I2，第 1 节 (l)；换页时 `PageShell` 以 `key={page.id}` 重挂，进出编辑之后大纲重新挂上，它都随之重起，决定 897）不再跟；没变时不动右栏（l6 的"更多"一格核对窗口与右栏都没滚）；从不调 `scrollIntoView`（13.2 第 26 条）。不用 `IntersectionObserver`：一下跳过一段（点大纲、按 End）时没有标题穿过观察的带，当前项不变（2.1 第 2 条）。版本页与回收站的预览没有大纲。（初稿把当前项放到右栏的中间、每过一节都跟，审查 A 的 I3。）
 - **862 大纲的长标题**：链接 `line-clamp-2`（不写 `block`，第 1 节 (b)），全文照旧是它的名字。认领 M5-polish 12.10 的"截断"一半（"大纲的长标题撑高右栏"）；"千分位"一半照旧留给 v0.2（l6 读"…and 139000 more"）。
 - **863 小节的标题**：`PanelSection` 加一个 `icon` 属性（大纲 `List`、反链 `Link2`、属性 `SlidersHorizontal`、版本 `Clock`），`details` 是 `group space-y-2`，`summary` 是 `flex cursor-pointer list-none items-center gap-1.5 rounded-row text-xs text-faint [&::-webkit-details-marker]:hidden`，里面依次是 13 px 的图标（`aria-hidden`）、`h2.font-normal`、右端的 `ChevronDown`（`aria-hidden`，`ms-auto size-3.5 transition-transform duration-150 group-not-open:-rotate-90`）。不加样稿 `.ph .n` 的计数（00 号文档 4.5.4 说"右端一个箭头"；计数要另读）。`details` 的子元素照旧直接放在它里面（`W/test/page-panel.ts:27-30` 与 `:scope > ul > li` 的读法），`h2` 照旧在 `summary` 里（l6:319 以级别 2 的标题找"Properties"）。反链是小卡片（`rounded-control border border-border bg-surface px-2.5 py-2 dark:bg-surface-2`，名字 13 px、500，摘要每行 `line-clamp-2`、12 px、`text-faint`），属性是两列的 `grid`（键 64 px、`text-faint`，值 `text-muted-foreground`，12.5 px），版本照样稿 `.ver` 每项一行："时间 · 谁写的"排成一段字，同是 13 px 的 `--muted-foreground`（样稿的 `--text-2`），名字长时接着时间折行，标记一直在第一行的最右（审查 B 的 N4、R2-N2；一行里的元素与次序见 4.1.6，审查 B 的 R1-N1、C 的 R1-M7；"当前"是 `Mark` 的新写法 `current`：`rounded-full bg-accent-soft px-1.75 text-[11px] text-accent`，历史页与版本页的 `Mark` 不变）；右栏里的链接不加下划线（4.7）；解析不到的属性链接照旧是带虚线下划线的文字（`page-properties.tsx:266`：它不是链接，是"解析不到"的标记，三格断言 `decoration-dashed`；审查 C 的 M15）。
 - **864 属性条**：只用 CSS（`reading.css` 的新一节，4.1.8），加一个增强 `propertyRoles`（`W/reading/property-roles.ts`，注册在 `diagrams` 之后、`scrollRegions` 之前；S2 起它之前是 `codeBlocks`）：给 `table.nw-props`（含嵌套的）补 `role="table"`，它的 `tbody` `rowgroup`、`tr` `row`、`th` `rowheader`、`td` `cell`，值里的 `ul` `list`、`li` `listitem`；清理时去掉它加的（原来就有的 `role` 不碰：服务端不写，记下自己加过的元素）。键 `text-faint`、值正文色（00 号文档 4.5.2"键灰字、值正文色"，样稿的值是次要色，从 00 号文档）。不做"+N"（00 号文档）。
@@ -220,7 +220,7 @@
 - **876 编辑时的大纲**（S3）：`W/editor/edit-outline.ts`：从语法树读标题（`ATXHeading1`–`6`、`SetextHeading1`–`2`，只进 `Document`、`Blockquote`、列表与列表项，不进代码与表），起点在 frontmatter 里的不算，文字去掉 `HeaderMark` 与 setext 的下划线行、空白归一，空的不列；至多列 `listedUpTo`（从 `page-outline.tsx` 导出）个，其余只数。构造时立刻算一次（审查 A 的 M3：进编辑时右栏的大纲不空 300 ms），之后每次改动停手 300 ms 再算；树没覆盖到文档末尾时（`syntaxTreeAvailable` 为假）以 `ensureSyntaxTree(state, doc.length, 20)` 一片一片补完（每片之间 `setTimeout(0)`）：下一片前 `view.state.doc` 变了才放弃这一轮、重新排 300 ms 的计时，只换了选区、补全或解析工作者自己的 `Language.setState` 换了 `view.state` 时用 `view.state` 接着补（审查 A 的 I4：初稿遇到不改文档的事务就放弃、不再重排）；补完就用它返回的树算。插件记着上次报出的各标题的位置，之后的改动经 `changes.mapPos` 映射过去，点按时按序号取映射过的位置（审查 A 的 M2：初稿用报出时的 `from`，打字之后 300 ms 之内点会跳错行）；`destroy` 清掉计时与补的那一片（审查 A 的 N5）。经 `SourceEditor` 的新属性 `outline?: OutlineSink`（`{ upTo: number; told(listed, more): void }`）报出去；句柄加 `reveal(index)`：光标到第 `index` 个标题那一行的开头（`view.state.doc.lineAt(映射过的位置).from`：在标题那一行的最前面打的字排在映射的位置之前，引用、列表里的标题的节点在 `> `、`- ` 之后，审查 A 的 R1-N3），`EditorView.scrollIntoView(行首, { y: "start", yMargin: 16 })`，焦点给编辑器（窗口滚动；不是左栏或右栏的滚动，13.2 第 26 条说的是那两处）。页这一边（`W/pages/page/edit-outline.tsx`）：`OutlineBox`（MobX 的可观察：`listed`、`more`、`reveal`），`PageShell` 建一个，交给 `PageEdit`（转给 `SourceEditor`，`reveal` 接到句柄）与 `PagePanel`；`EditOutline`（`observer`）在编辑时画在右栏的最上面：同一个 `PanelSection`（"大纲"）与 `nav`（名字"Outline"），每项一个 `button`（缩进同阅读时，`key` 是序号：位置变了拿着焦点的按钮不换），"…and N more"同阅读时；不标读到的一节（00 号文档）。页这一边只 `import type` 编辑器的类型，主包里不进 CodeMirror（`out-of-main.ts`）。认领 00 号文档已认领的"编辑时没有大纲"（M5-polish 13.1）。
 - **877 "保存"**（S3）：显出的条件是 `editing.unsaved`，或它显着的时候焦点就在头一行右边一组里、之后一直没离开（`held`，决定 885、895；初稿的"或有显示出来的保存失败"是多余的：显示出来的失败一定伴随未保存的修改，`page-editing.ts:226,257-259,302,314,349,385`，审查 C 的 M5）。不显出时 `invisible`，占位、不可聚焦、不在可访问性树里，不卸下（决定 894）。`held` 是 `PageEditingBar` 的状态：组上的 `focusin` 在有未保存的修改时记下，焦点已在组里时才有了修改（等上传时插进的链接）也记下；`focusout` 时 `relatedTarget` 不在组里、`document.activeElement` 也不在组里才清掉（窗口失焦时它仍在组里，第 1 节 (g)；在组里从"完成"移到开关、"保存"时不清，决定 895）；没有修改时焦点进组（点开关、点"完成"、键盘走进来），藏着的"保存"不显出（审查 A 的 R2-M1）；拿着焦点、没东西可存时按它，`save()` 本来就在 `version === savedVersion` 时返回，不做事。不再经 `useFocusLeaving`：它拿着焦点时不会消失。WebKit 里点它不给它焦点（第 1 节 (g)），焦点不在组里，保存完成就隐去；焦点在点的那一下已从编辑器落到 `body`，与今天点一直在的"保存"相同，P4 不另管。等上传时规则不变，Mod+S 照旧随时保存。
 - **878 冲突、失锁与补全**（S3）：冲突的面板与失锁的横幅换成 `rounded-control border border-destructive/35 bg-surface px-4 py-3`，按钮 `size="sm" shape="pill"`，失锁横幅里的名字进 `bdi`（决定 868）；补全的弹层：圆角 `var(--radius-popover)`、阴影 `var(--elevation-popover)`、4 px 的内边距，选项 `var(--radius-row)` 圆角、`var(--text-row)` 字号，颜色与选中项的环不变（l5 量它们）。
-- **879 PG17**：新故事 `e2e/stories/page/pg17-page-head.spec.ts`，两格，进 `threeBrowsers`（`page\/pg17-`）与 `check.mjs` 的 `REQUIRED`（每格 firefox、webkit 两行）；只有页面版本，接口与 MCP 版本豁免（13.4 第 3 条）。格的步骤见 5.1、5.2。
+- **879 PG17**：新故事 `e2e/stories/page/pg17-page-head.spec.ts`，四格（S1 第 1、3、4 格，S2 第 2 格；第 3 格是设计修订时加的，第 4 格是 S1 的审查加的，审查 B 的 P4S1B-F1、C 的 P4S1C-F2-N1），进 `threeBrowsers`（`page\/pg17-`）与 `check.mjs` 的 `REQUIRED`（每格 firefox、webkit 两行；第 4 格的两行是审查 C 的 P4S1C-F2-M1 补的）；只有页面版本，接口与 MCP 版本豁免（13.4 第 3 条）。格的步骤见 5.1、5.2。
 - **880 对比度的下限**：P4 改了被量元素的底或颜色的只有两处：S2 的阅读视图链接（字色与下划线变了，焦点环与底没变）与 S3 的编辑器（暗色的底由 `#1a1b1e` 变成 `#1f2023`）。S2、S3 各重量 l5 的五项、实量值写进 Step 的记录，量出的值不低于下限就不改下限（决定 891）。初稿推算暗色的编辑器外框降到约 7.49、S3 必须改，不成立：l5 量外框时取的是父元素链上第一个不透明的底（`e2e/fixtures/contrast.ts:112-116`），不是编辑器自己的底，两种次序下实量暗 7.923、亮 3.098（审查 B 的 M6、C 的 M1）；量法改不改不在 P4。pg4、se1 不涉及（P4 不碰确认框与搜索页）。
 - **881 移交的认领**：M12-polish 第 1 项里 M5-polish 的 12.10 的"截断"一半（S1，决定 862）与 13.1"编辑时的大纲"（S3，00 号文档已认领）；第 6 项里"编辑"的焦点一半（S1，决定 865）；第 5、11 项的 `bdi` 里 P4 的页上的几处（S1、S3，决定 868）。不认领第 1 项里与阅读、编辑、右栏有关的这些（逐项核对过 M5-polish，审查 C 的 M17 补上初稿漏的 12.6、12.9、13.2、17.3、18.3、18.7；12.10 的"千分位"一半，审查 C 的 R1-N6）：阅读视图的行为，不是外观：3（高亮的闪动：S2 只核对代码块的头不添闪动，清理与重加在同一个任务里）、6.4、8.3、10.3、11.3、11.4、11.5、11.6 的其余、11.9；补全与右栏的数据与功能，不是外观：12.1、12.2 的开合、12.5、12.6（右栏属性链接的文字与序号）、12.7、12.9（反链与补全的代价）、13.2（标签的总览、属性里的标签链接）；附件与粘贴：17.2a、17.3（右栏的附件链接不显示大小）、18.3（粘贴的撤销粒度）、18.4b、18.4c、18.7（等上传时从编辑之外按 Mod+E 的焦点）；别处：4、20.4、21.1；第 7 项"Firefox 复制右栏的值多一个尾随空格"（右栏的属性换成 `grid` 之后由 S1 的实施者在 Firefox 里看一次、照实记进本文 10.1，不改；审查 C 的 N8）。每个 Step 的文档提交在 M12-polish 的"处理进展"写一行。
 - **882 标签组一处**（S1）：01-P1 第 9 节的标签组清单里在 P4 页上的一处，`W/pages/page/asset-dialogs.tsx:221` 的 `space-y-2` 换成 `space-y-1.5`；其余在 P5。
@@ -230,7 +230,7 @@
 以下是主持者照设计审查定的（负责人可以改判），写法由设计者补在 4.x：
 
 - **885 "保存"拿着焦点时不消失**：显出的条件是 `editing.unsaved`，显着时焦点在头一行右边那一组里就留着（决定 895 补的：不只是它自己，又不让焦点进组本身让藏着的它显出）；不显出时 `invisible`、占位、不可聚焦（决定 894）；焦点离开那一组且没有未保存的修改时才隐去；拿着焦点、没东西可存时按它不做事。不再需要"它拿着焦点消失时交给编辑器"的那一步（编辑结束、失锁时照各自的规则）。改 00 号文档 4.5.5 与决定 745 的这一层意思（2.1 第 8、9 条）、本文的 877（审查 A 的 Q1、C 的 M5；写法见 4.3.5）。
-- **886 右栏跟着读到的一节只滚到刚好露出**；读者在右栏里滚过之后不再跟，到下一次换页为止（P2 的 `watchReader({ within })`，同 P2 决定 779、791）；右栏收起或不在正文旁边时不量（审查 A 的 I3、C 的 I1、A 的 N6；写法见 861、4.1.7；2.1 第 2、12 条）。
+- **886 右栏跟着读到的一节只滚到刚好露出**；读者在右栏里滚过之后不再跟，到下一次换页、或进出编辑之后大纲重新出现为止（P2 的 `watchReader({ within })`，同 P2 决定 779、791；后一半是 S1 照实定的，决定 897）；右栏收起或不在正文旁边时不量（审查 A 的 I3、C 的 I1、A 的 N6；写法见 861、4.1.7；2.1 第 2、12 条）。
 - **887 关着的 `details` 里的标题不当读到的一节**（`closest("details:not([open])")`），大纲照旧列出它们（审查 A 的 I1；861、4.1.7；PG17 第 1 格）。
 - **888 mermaid**：暗色 `darkMode: true`；系列色写死成 callout 的七族；甘特、xychart、暗色的边标签另给；流程图节点 9 px 圆角，圆柱（库）节点琥珀边、淡底，照样稿（00 号文档 4.1 的琥珀用处由 2.1 第 10 条补一句"图里的库节点"；选择器命中不止圆柱时改写成偏离）（审查 B 的 I1、M7，C 的 M4）。设计者照第 1 节 (d) 的探针补齐：七族的次序是蓝、橙、青、紫、红、绿、灰（相邻的色相隔得开），轮着给 `pie1–12`、`git0–7`、`cScale0–11`；系列上的字亮色白、暗色近黑；时间线的线、git 与思维导图的标签、ER 的行与圈、甘特的网格线、雷达与架构图另给；选择器只命中圆柱，不是偏离（写法见 4.2.6）。再修订时照审查 B 的第 1 轮补：甘特亮色"进行中"的底与边（`#e7e7ea`、`#91939b`，原先白底浅边看不见），暗色"关键"的底压暗到 `#b33b3b`（浅字 4.76:1；`#ff7b7b` 配浅字只有 2.05:1，配近黑的字要在 `themeCSS` 里另分条外与条内的字，压暗的底一处就够，B 画过）；暗色看板的列名近黑（6.35:1，原先 2.26–2.74:1）；时间线的事件框去掉 mermaid 自己的 `brightness(120%)`（亮色白字由 2.85–3.70 到 3.99–5.70）。旅程的节用 `fillType0–7`，不给，照旧是灰的（看得清），角色的点是 mermaid 配置里写死的颜色；饼多于七块时颜色重复（第 8 块又是蓝），记成偏离（审查 B 的 R1-M2、M3、N3、N4）。
 - **889 编辑器里 `[[`、`]]`、`==` 压淡**，wiki 链接只有页名带下划线，`[文字](地址)` 的括号与地址压淡、不带下划线，frontmatter 里不画链接的样子，照样稿在 S3 做；不在行内代码与代码块里压淡；只处理可见范围，测试数装饰（审查 B 的 I3、Q1、N7）。写法由设计者照探针定（第 1 节 (e)）：只看可见范围的装饰 `markupMarks`，不加 lezer 的行内语法。理由：一、lezer 的链接节点已经包着 wiki 链接的内层括号，加 `WikiLink` 的行内解析要排在 `Link` 之前、自己找 `]]`，每个 `[[` 往后扫到 `]]` 或行尾，正是 M12/P4/S5 以 `linearScans` 去掉的那种按长度平方增长的扫法（成串的 `[[a` 是服务端 Markdown 的病态输入之一，`server/internal/platform/markdown/markdowntest/inputs.go:225`），要线性就得照 `closersOf` 另做一份预先算好的闭合表；二、frontmatter 不在 lezer 的语法里（它读成水平线加 setext 标题），无论哪种写法都要按 `frontmatterRange` 另判，装饰本来就有它；三、装饰只碰可见的几十行，不改语法树：编辑时的大纲、补全读到的树照旧，M12/P4/S5 的差分与上限不受影响。代价：`==` 与 wiki 链接按行内的文字认（不跨行），行内长过 `inlineLimit` 的一段里 lezer 不认行内代码，那里的 `==` 也压淡（写法见 4.3.3）。
@@ -241,6 +241,13 @@
 - **894 头一行的行数只看宽度、不看模式**：右边一组在阅读与编辑时同宽，编辑时的状态占"谁、何时编辑过"的那个盒子，"保存"不需要时 `invisible`（占位、不可聚焦），进出编辑与"保存"出现、隐去时标题不动（审查 A 的 R1-I1，00 号文档 4.5"进出编辑时页面不跳"）。设计者照第 1 节 (j)、(n) 的探针定写法（4.1.3）：右边一组 `flex-[0_1_26rem]`（不长、可缩到行宽）、`min-h-8`（组里一个按钮也没有时——进编辑、内容读到之前，失锁，读取失败，窄于 1280 px 时开关又不显示——它照旧 32 px 高，两行的状态也正好 32 px：不然那一行塌成 0 高、标题上跳 16 px，两行的状态让标题下移 2 px，审查 A 的 R2-I2、B 的 R2-N1），一行放得下面包屑的 `14rem` 加它的 `26rem` 与 12 px 的间距（行宽 652 px，约 950 px 宽的窗口）时一行，放不下时它折到第二行、靠右，行数只看行宽；它的第一个盒子 `me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint`，阅读时放 `HeadMeta`、编辑时放状态，按钮都是 `flex: none` 的 30 px。375 与 820 宽时阅读、编辑都是两行，1024 宽起都是一行。PG17 第 3 格在 375 与 820 宽时核对（含内容读到之前的那一段）。
 - **895 "保存"的 `held`**（第 2 轮改）：焦点在右边一组里、而且"保存"已经显着（有未保存的修改，或焦点就在它上面）时才保住它，直到焦点离开那一组；焦点进组本身不让藏着的"保存"显出（审查 A 的 R1-M2、R2-M1；补决定 885）。第 1 轮的写法是"焦点在右边一组里的任何地方"：没有修改时点开关、点"完成"（离开要等一次往返）、键盘走进组，一个"保存"都会在已经走过的位置上冒出来。写法见 877、4.3.5：组上的 `focusin` 在有未保存的修改时记下，焦点已在组里时才有了修改也记下（藏着的"保存"拿不到焦点，焦点在它上面时它已经显着，不另判）；`focusout` 看 `relatedTarget` 与 `document.activeElement`，照旧。
 - **896 藏起的"保存"照旧占位，与样稿不同**（S3）：编辑时没东西可存，"保存"`invisible`、照旧占着它的 54 px，状态的右边离开关（窄于 1280 px 时是"完成"）约 70 px，样稿是 8 px（那个位置在样稿里是"⋯"）：记成与样稿的偏离（4.1.9、4.3.5、7.4）。理由：打字、自动保存时头一行什么都不动（00 号文档 4.5"进出编辑时页面不跳"，决定 894）；不需要时卸下，静止时同样稿，但每次自动保存状态都左右滑一个按钮宽；一直显出要改 00 号文档 4.5.5 与决定 745 的"只在需要时显出"（审查 B 的 R2-Q1）。
+
+以下是主持者照 S1 的实施审查定的（负责人可以改判）：
+
+- **897 读者在右栏里动过之后不再跟，到换页、或进出编辑之后大纲重新出现为止**（审查 A 的 P4S1A-Q1、C 的 P4S1C-M2）：读者的记录跟着大纲的列表走（`watchReader` 在列表的回调 ref 里随它挂上而建、卸下而止，4.1.7）。阅读时才有大纲（S3 之前编辑时没有），进编辑再回到阅读，列表重新挂上，右栏又跟着读到的一节滚；视图晚到时，大纲挂上之前读者在右栏里的动作也不算。照实写，不把"动过"挪到 `PageShell` 按页记（那一种写法是变异 t12：`page-panel.test.tsx` 的 897 一格与视图晚到一格红）。886 的说法、4.1.7、8.2 第 2、7 条随之改；S3 给编辑时加大纲时照它的写法再核对一次。
+- **898 决定 892 那一支的横幅在设置的列里**（审查 B 的 P4S1B-Q2）：`NotebookSettingsLayout` 的 `shown === undefined` 一支（索引地址换到"基本信息"之前的那次渲染）把 `<ColumnTop />` 包进与 `SettingsPage` 同样的列（`settingsColumnClass`，从 `W/app/settings-page.tsx` 导出），没有横幅时那一层 `empty:hidden`：从索引地址进设置时横幅不在全宽闪一下（改前三种引擎都是先在全宽，x=292、宽 1108，再进列，x=498、宽 696；改后两次都在列里）。`upgrade-banner.test.tsx` 以 `MutationObserver` 核对横幅从出现起一直在列里（变异 106、t13）。
+- **899 "编辑过"一句名字长时只截名字、保住时间**（审查 B 的 P4S1B-Q3）：句子是 `flex justify-end-safe overflow-hidden whitespace-pre` 的一行，名字的 `bdi` 是 `min-w-0 truncate`（`Isolated` 加 `nameClass`），其余不缩；中文"{name} 编辑于{when}"名字也在前，同样。代价：`innerText` 与选中复制成了三行（审查 A 的 P4S1A-F1-N1）；320 宽、能编辑的账户、"10–59 minutes ago"时名字缩到 0、看不见（`justify-end-safe` 之后放不下时裁的是结尾，不到 1 px，审查 A 的 P4S1A-F1-N2）。PG17 第 2 步核对句子不被截、名字被截（变异 t14）。
+- **900 带锚点打开的页，视图第一次到时焦点给锚点，不看读者其间的动作**（审查 C 的 P4S1C-F1-Q1）：照现状（`W/pages/page/view-anchors.ts:72-80`，M6/M12 的写法，不是 S1 带来的；S1 的开关在头一行，读者在视图到之前按了它，焦点也照样被拿走；13.2 第 26 条要异步的答复之后移动焦点时看读者动没动），记给 v0.2（第 9 节，`docs/v0.2/handoffs/M12-polish.md`）。PG17 第 12 步刷新带锚点的地址之后先等锚点的标题拿到焦点再按开关（审查 C 的 P4S1C-F1-I1），第 14 步进不带锚点的地址（5.1）。
 
 ## 3. 服务端
 
@@ -418,9 +425,11 @@ export function useCurrentHeading(ids: readonly string[], active: boolean): { cu
   const ask = useRef<() => void>(() => {});
   const live = useRef(false);
   useLayoutEffect(() => {
-    live.current = active;
-    // Folded away or not beside the page: none and no pin, so that shown again it answers what it measures (review A's R1-N5, R2-N2).
-    if (!active) { pinned.current?.reader.end(); pinned.current = undefined; show(undefined); return; }
+    // Folded away or not beside the page, or no heading listed (nothing to read, review A's P4S1A-N1): none and no pin,
+    // so that shown again it answers what it measures (review A's R1-N5, R2-N2).
+    const reading = active && ids.length > 0;
+    live.current = reading;
+    if (!reading) { pinned.current?.reader.end(); pinned.current = undefined; show(undefined); return; }
     let frame = 0;
     const read = (): string | undefined => {
       const { innerHeight, scrollY } = window;
@@ -452,9 +461,11 @@ export function useCurrentHeading(ids: readonly string[], active: boolean): { cu
     show(read());
     addEventListener("scroll", asked, { passive: true });
     addEventListener("resize", asked);
-    const main = document.querySelector("main");
-    const resized = typeof ResizeObserver === "undefined" || main === null ? undefined : new ResizeObserver(asked);
-    if (main !== null) resized?.observe(main);
+    // The view, not the main (WebKit's undelivered resize while KaTeX's stylesheet loads, f698d37e): what resizes beside
+    // it alone (a lock's note above it, the subpages and the attachments below) is measured as the window next scrolls.
+    const view = document.querySelector("main article.nw-reading");
+    const resized = typeof ResizeObserver === "undefined" || view === null ? undefined : new ResizeObserver(asked);
+    if (view !== null) resized?.observe(view);
     return () => { cancelAnimationFrame(frame); removeEventListener("scroll", asked); removeEventListener("resize", asked); resized?.disconnect(); ask.current = () => {}; };
   }, [ids, active, show]);
   useEffect(() => () => pinned.current?.reader.end(), []);
@@ -467,11 +478,11 @@ export function useCurrentHeading(ids: readonly string[], active: boolean): { cu
     show(id);
     ask.current();
   }, [show]);
-  return { current: active ? current : undefined, pin };
+  return { current: active && ids.length > 0 ? current : undefined, pin };
 }
 ```
 
-（`ids` 是 `useMemo` 出来的数组，只含大纲列出的那些（至多 `listedUpTo`），视图的 HTML 变了才换。视图在同一次提交的 layout effect 里把 HTML 写进 `article`（`server-html.ts:82-171`），它在大纲之前（右栏在内容之后），所以第一次量时标题已在；之后正文长高、图与公式画出来，`main` 的 `ResizeObserver` 再排一次。设状态只在三处：layout effect 里的第一次（在那次提交里，测试的 `act` 之内）、点按里的 `pin`、之后某一帧量到的值变了（jsdom 里不排版，什么也没动，值不变）；第 1 节 (k)：照修订稿在第一帧才设，vitest 里它会落进别的格 `act` 里等 `findBy` 的窗口，React 报"not configured to support act"，`setup.ts` 判红，`src/app/arrival.test.tsx` 的焦点一格时有时无地红。点了一项之后先标它：视图滚过去之前、进了视口之后一直是它；读者再滚、再按键或按下（`watchReader`），或它进过视口之后又出了，就照线来算。不活跃时 `pin` 什么也不做，`active` 变假时连点了的那一项一起结束：窄于 1280 px 时大纲在正文之后、点得到，之后窗口放宽，变真的那次量不答那一项（审查 A 的 R2-N2）。）`PageOutline`（新的属性 `active`；`memo` 的 `sameView` 加比它，见下：只比笔记本与页时 `PagePanel` 的 `open`、`beside` 变了传不进来，存着收起时打开页、展开之后读到的一节永远不标、右栏也不跟，反过来收起之后照旧每次滚动都量，审查 A 的 R2-I1）：
+（`ids` 是 `useMemo` 出来的数组，只含大纲列出的那些（至多 `listedUpTo`），视图的 HTML 变了才换。视图在同一次提交的 layout effect 里把 HTML 写进 `article`（`server-html.ts:82-171`），它在大纲之前（右栏在内容之后），所以第一次量时标题已在；之后正文长高、图与公式画出来，视图的 `ResizeObserver` 再排一次（照实，原写 `main` 的，见 4.2 之前的"照实"）。设状态只在三处：layout effect 里的第一次（在那次提交里，测试的 `act` 之内）、点按里的 `pin`、之后某一帧量到的值变了（jsdom 里不排版，什么也没动，值不变）；第 1 节 (k)：照修订稿在第一帧才设，vitest 里它会落进别的格 `act` 里等 `findBy` 的窗口，React 报"not configured to support act"，`setup.ts` 判红，`src/app/arrival.test.tsx` 的焦点一格时有时无地红。点了一项之后先标它：视图滚过去之前、进了视口之后一直是它；读者再滚、再按键或按下（`watchReader`），或它进过视口之后又出了，就照线来算。不活跃时 `pin` 什么也不做，`active` 变假时连点了的那一项一起结束：窄于 1280 px 时大纲在正文之后、点得到，之后窗口放宽，变真的那次量不答那一项（审查 A 的 R2-N2）。）`PageOutline`（新的属性 `active`；`memo` 的 `sameView` 加比它，见下：只比笔记本与页时 `PagePanel` 的 `open`、`beside` 变了传不进来，存着收起时打开页、展开之后读到的一节永远不标、右栏也不跟，反过来收起之后照旧每次滚动都量，审查 A 的 R2-I1）：
 
 ```tsx
 const { current, pin } = useCurrentHeading(ids, active);
@@ -521,7 +532,7 @@ function sameView(before: OutlineProps, after: OutlineProps): boolean {
 }
 ```
 
-（React 19 的回调 ref 可以返回清理，`watched` 是稳定的 `useCallback`，列表元素不换时它不重跑。列表在大纲有项时才挂上，大纲变空又有项时读者的记录重起，与换页同。）
+（React 19 的回调 ref 可以返回清理，`watched` 是稳定的 `useCallback`，列表元素不换时它不重跑。列表在大纲有项时才挂上，大纲变空又有项时读者的记录重起，与换页同；进编辑时大纲卸下、回到阅读时重新挂上，也重起（照实，决定 897）。）
 
 竖线：`ul` 左边 1 px 的 `--border`，当前项的 `li` 左边 2 px 的琥珀压在它上面（`-ms-px`）；按级的缩进在 `li` 的内边距里，竖线一直在 `ul` 的左边（样稿 `.outline li.sub`）。上下的 4 px 在 `li` 上，不在带 `line-clamp-2` 的链接上（审查 B 的 M1：同在链接上时 Chromium 把第三行的字头画进下内边距）。强制色下边框的颜色被换掉，当前项去掉粗线、以下划线标出（第 1 节 (b)）。
 
@@ -644,6 +655,17 @@ export const propertyRoles: Enhancement = (container) => {
 #### 4.1.12 375 px
 
 头一行折成两行（面包屑；右边一组靠右，"编辑过"缩到放得下、省略）；内容列就是 `main` 的内容宽；属性条折行，长的值在小块里折，不成区域；右栏在正文之后，没有开关。PG17 第 1 格的 375 px 一段以 `expectFits` 核对（5.1）。
+
+**照实**（S1 的实施与审查，[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)）：
+
+- **4.1.1**：表外另改了 `W/pages/load-more.tsx`（`LoadMoreButton` 加 `small`：`size="sm" shape="pill"`，"更多版本""更多反向链接"用它，默认不变）、`W/pages/page/attachment-drop.tsx`（加可选的 `className`，页给它收回视图的 4 px）、`W/i18n/isolated.tsx`（`Isolated` 加 `nameClass`，给名字的 `bdi`，决定 899；别的调用不带它，输出不变）、`W/pages/page/version-page.tsx`（标题下"时间 · 作者"一行，4.1.10 的照实）。`W/app/settings-page.tsx` 另导出 `settingsColumnClass`（决定 898），`md:text-right` 旁那半句过时的注释删掉（审查 A 的 P4S1A-N2）。`tools/e2e-projects/check.mjs` 多第 4 格的两行（5.1）；测试的帮手 `W/test/lock-note.ts`（7.1）。
+- **4.1.3**：`HeadMeta` 是 `<p title className="flex justify-end-safe overflow-hidden whitespace-pre">`，名字的 `bdi` 是 `min-w-0 truncate`（决定 899）：名字长时只截名字、时间完整；`justify-end-safe` 是 `justify-content: safe flex-end`，放不下时裁结尾、不裁开头（审查 A 的 P4S1A-F1-N2；Safari 17.6 之前不认 `safe`，整条声明被丢掉，退成靠左）。`EditButton` 不照设计在同一个组件里 `useFocusLeaving(edit, left)`：它卸下时在微任务里交出焦点，条件是 `edit.current === null && focusLost()`。照设计写，`page-edit`（3 格）、`page-autosave`（2 格）、`page-lock`（1 格）红在"离开编辑之后焦点在'编辑'上"：这三个文件开着 `reactStrictMode`，StrictMode 在"回到阅读，焦点给'编辑'"那个被动效果之后重演新挂的组件的 layout 清理，那时"编辑"拿着焦点，设计的写法立刻把焦点给了标题；生产里没有这次重演，两种写法的结局相同，差别只是焦点先落 `body` 一个微任务（审查 A 核实，偏离 2）。前半个条件多余（变异 t1 等价，7.2）。
+- **4.1.4**：`NotebookLayout` 的 `Outlet` 一直包在 `ColumnTopContext` 里，不带列时值是 `null`（与"没有提供者"答的一样）：照设计只在带列时包，列与非列的路由之间换时 `Outlet` 那一格的元素类型变了，React 卸下重挂（审查 A 的偏离 1）。决定 892 那一支照决定 898 包进 `settingsColumnClass` 的列。
+- **4.1.6**：`Mark` 的 `current` 是 `rounded-full border border-transparent bg-accent-soft px-1.5 text-[11px] text-accent`：透明的边框在强制色下画成框（审查 B 的 P4S1B-N2），`px-1.75` 降成 `px-1.5` 保住宽度，高 18.5 px（同样稿的 `.tag`）。"更多版本""更多反向链接"经 `LoadMoreButton` 的 `small`（审查 A 的偏离 5）。
+- **4.1.7**：右栏跟着时 `scrollTop` 的增减取 `Math.ceil`：项高 25.875 px，边落在小数上，DPR 1 时 Chromium 把 `scrollTop` 取整，差 0.375 px 就切掉项的边，PG17 第 8 步红过；多滚不到 1 px，下一帧当前项不变、不再动（变异 t2，审查 A 的偏离 7）。没有列出的标题时不监听、不量、答 `undefined`（审查 A 的 P4S1A-N1，上面的代码）。`ResizeObserver` 看视图：S1 起初照设计看 `main`，审查 B 在修复核对第 1 轮跑临时故事时 WebKit 报了一次"ResizeObserver loop completed with undelivered notifications"。实施者给页上每个 `ResizeObserver` 包一层，按帧记下观察、回调、目标的深度与还在下载的样式表：每一次报错时 `katex-*.css` 都还在途；那一轮先交出滚动区的观察者看的视图（深度 11）与区块（12），再交出 `main`（5），下一帧 `main` 又交一次。滚动区的回调同步读布局（`scrollWidth`、`clientWidth`），WebKit 这时才把 React 刚写进的东西排进布局，`main` 在它的通知之后又变了，而它不比这一轮最浅的深，规范判为没送到。一页带公式与图、在 WebKit 里打开 40 次跑 3 遍（有 Playwright 的路由，HTTP 缓存关着；开着时 0 次）：改前 120 次 23 次报错（`addcfa69` 上 7、4、12 次，`c6297488` 上 10、6、7 次），只在记录层里拦掉 `main` 的观察 0 次，改看视图之后 0 次（`f698d37e`；视图与滚动区自己的目标一样深，S1 不再多出一个会被跳过的深度）。代价：视图之外变高的东西要等下一次滚动或改窗口才重量（审查 A 在三种引擎里量了两种过时，10.1）；审查 A 提的在内容列上挂 `MutationObserver` 的补法不做（主持者定：代价只在页顶、页底一阵，下次滚动就对）。读者的记录随大纲的列表（决定 897）。
+- **4.1.8**：`.nw-reading` 加 `isolation: isolate`（审查 A 的 P4S1A-M1）：l6 的大页上右栏开着滚动约 20 fps，右栏的每次改动（`aria-current`、类、`font-medium`、`scrollTop`）都让根绘制层重画、走遍正文的每一块；正文成了自己的绘制层，60 fps（10.1）。不用 `position: relative`：它改正文里 `.nw-math-measure`（`position: absolute`）的包含块。小块的圆角是 12 px，不是 9999 px：长的值折成多行时胶囊的弧把键与值压到边框上（审查 B 的 P4S1B-M1；单行时看不出差别）。嵌套表与它的 `tbody` 是 `display: inline-flex`，不是 `inline-block`：Firefox、WebKit 里那一块原比同一行的高约 1.5 px（审查 B 的 P4S1B-N1）。
+- **4.1.2、4.1.10**：没人拿锁时锁说明的外层（`tabIndex={-1}`）是 `empty:mb-0`，不是审查 B 提的 `empty:hidden`：`enter()` 与 `toggleRefused` 读到锁之后立刻聚焦它，那时说明可能还没画出，`display: none` 会让这一下落空。视图的 4 px 内边距在标题下由视图自己收回：`AttachmentDrop` 带 `[:first-child:empty+&>.nw-reading:first-child]:-mt-1`，只在它紧跟着空的、第一个锁说明外层，视图又是它的第一个子元素时生效；标题到属性条（或第一段）14 px，同样稿（审查 B 的 P4S1B-M2）；读取中、读取失败与文件夹的提示也是 14 px（第一回写在 `AttachmentDrop` 自己身上，`[:first-child:empty+&]:-mt-1`，那三种离标题 10 px，审查 B 的 P4S1B-F2）；有锁说明时标题到说明 14 px、说明到属性条 28 px，照旧。锁说明里锁的图标与句子包进 `div.flex.min-w-0.items-center.gap-x-3`，一起换行（审查 B 的 P4S1B-M3：句子比图标右边的空间宽时原是图标单独占一行）；句子的 `output` 是 `min-w-0 wrap-anywhere`（`overflow-wrap: anywhere`）：Firefox 照 UAX #14 的 HY×NU 不在连字符接数字处断行，那样的名字冲出说明、页横向滚动（审查 B 的 P4S1B-F1）。版本页标题下"时间 · 作者"一行是 M8 起的，同样会冲出（实施者找到），同加 `min-w-0 wrap-anywhere`；"·"后与 `versionBy` 的种类前是不断行空格，名字放不下时整个从"·"起换行，"·"不单独留在上一行（审查 B 的 P4S1B-F2-1；右栏的 `VersionBy` 照旧）。
+- **5.1、5.4、5.5、7.1、7.2、7.4**：见各节的照实；决定 897–900。
 
 ### 4.2 S2 正文的样式
 
@@ -1174,20 +1196,20 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
 ```
 
 1. 造数：`newOnboardedTeam`、`createNotebook(…, "Plans")`、`createPage(…, "Doc", null, content)`，`content` 是 frontmatter（`status: draft`、`owner: "[[Hub]]"`、`tags: [alpha, beta]`、一个 97 个字符不断开的值）加 `## Part 01`…`## Part 40` 四十节，`Part 01`–`Part 38` 每节 `"filler\n\n".repeat(12)`，`Part 39`、`Part 40` 每节 `"filler\n\n".repeat(2)`；`Part 20` 一节的末尾是一个折叠的 callout，第一行就是标题（`> [!note]- Folded\n> ## Hidden\n> inside`）。大纲 41 项，比右栏高。第 1 节 (m) 在 S1、S2 的样式下量过：一节约 580、624 px；`Part 38` 的顶到文档末尾 1,058、1,110 px（第 9 步滚得到 0）；`Part 39` 的顶到末尾 479–486 px，矮于窗口（第 10 步点它之后窗口在底、它停在 414–421 px，`Part 40` 在 568–570 px，都在视口里；初稿与修订稿每节都是 12 段，`Part 39` 到末尾 1,281 px，窗口不到底、`Part 40` 在线下，`pin` 不起作用，审查 C 的 R1-I1）。`page.setViewportSize({ width: 1440, height: 900 })`；`holdStream`，进页之后再放（照 PG15：事件流连上之后的写才是事件）。
-2. 头一行：`main` 里以 `/^Edited by /` 起头的文字可见，它的 `bdi` 是造数的管理员的显示名；它不是 `status`（`main.getByRole("status").filter({ hasText: "Edited by" })` 0 个：右栏读取中的"加载中…"也是 `status`，不数全部）。
-3. 右栏：`complementary` "About this page" 的 `x` 不小于 `article` 的右边加 39，`y` 是 0，高是窗口的高；窗口滚到底时 `y` 仍是 0。
+2. 头一行：`main` 里以 `/^Edited by /` 起头的文字可见，它的 `bdi` 是造数的管理员的显示名；它不是 `status`（`main.getByRole("status").filter({ hasText: "Edited by" })` 0 个：右栏读取中的"加载中…"也是 `status`，不数全部）。名字长时只截名字（决定 899）：那一句的 `scrollWidth − clientWidth` 不大于 0，它的 `bdi` 的大于 0（造数的管理员的显示名约 50 个字符，1440 宽时放不下；照实加，`addcfa69`，变异 t14）。
+3. 右栏：`complementary` "About this page" 的 `x` 不小于 `article` 的右边加 39，`y` 是 0，高是窗口的高；窗口滚到底时 `y` 仍是 0（照实：都容 0.5 px，WebKit 在页底差 −0.078 px，审查 A 的偏离 8）。
 4. 大纲：点"Part 05"，标题 `toBeFocused`，它的 `y` 在 16 ± 2；"Part 05"的链接 `aria-current="location"`，别的项没有。
-5. 窗口滚到"Part 10"的顶在 0（`window.scrollTo`）：`expect.poll` 到"Part 10"的链接 `aria-current="location"`。
+5. 窗口滚到"Part 10"的顶在窗口顶下 100 px（`window.scrollBy`）：`expect.poll` 到"Part 10"的链接 `aria-current="location"`（照实：设计写的顶在 0 时线在视口顶的变异 12 也读到"Part 10"，抓不到；100 px 时它读到"Part 09"，12e 红，`d29b68b0`）。
 6. 折叠的 callout（决定 887）：窗口滚到"Hidden"自己的顶在线（视口高的三分之一）之上 5 px（它在关着的 `details` 里，以 `locator.evaluate((h) => h.getBoundingClientRect().top)` 读它的盒子，`boundingBox()` 对看不见的元素答 `null`）：`expect.poll` 到"Part 20"带 `aria-current`；"Hidden"的项在大纲里（`outline.getByRole("link", { name: "Hidden" })` 可见），没有 `aria-current`。这时"Part 21"在线下 27 px（S1）、42 px（S2，第 1 节 (m)），去掉 `closest` 时标的是"Hidden"（修订稿以 callout 的顶定位，"Hidden"在线下约 42 px，两种写法都标"Part 20"，抓不到变异 13，审查 A 的 R1-M4、C 的 R1-M1）。
 7. 之上就地更新：窗口滚到"Part 21"的标题在 200 px；记下"Part 21"一节第一段的 `top`；经接口在"Part 01"一节里加一段（`writeContent`，`base_revision` 照读到的）；等文章里出现那一段；隔两帧（`afterFrames`，PG17 自己写一份，同 up1:252-255 的局部函数）那一段离原处不超过 1 px，`scrollY` 变大了（三种引擎的滚动锚定，00 号文档第 10 节的那一行）。
 8. 右栏跟着（决定 886，审查 C 的 M10）：记下右栏的 `scrollTop`（此时 0 或很小）；窗口滚到"Part 36"的顶在 0；`expect.poll` 到"Part 36"带 `aria-current`；隔两帧：右栏的 `scrollTop` 变大了，"Part 36"的 `li` 的底在右栏的底之上、相差不超过 2 px（只滚到刚好露出，不是放到中间）；`scrollY` 仍是滚到的那个值（窗口没跟着动）。
 9. 读者在右栏里滚过（决定 886）：指针移到右栏上，`mouse.wheel(0, -4000)`，`expect.poll` 到右栏的 `scrollTop` 是 0（Firefox 的滚轮可能是平滑的）；窗口滚到"Part 38"的顶在 0；`expect.poll` 到"Part 38"带 `aria-current`；隔两帧右栏的 `scrollTop` 仍是 0。
 10. 到底（决定 893）：点大纲的"Part 39"（Playwright 先把它滚进右栏的可见范围）：先 `expect.poll` 到窗口在底（`scrollY + innerHeight >= scrollHeight - 1`）、"Part 40"的标题在视口里（`toBeInViewport`），再看"Part 39"的标题拿着焦点、"Part 39"带 `aria-current`、"Part 40"没有（照线算到底时标的是"Part 40"：去掉点按的 `pin`，这一步红，变异 76；初稿到底时标最后一个标题）。
 11. 开关：`toggle.focus()`、`Enter`：`aria-expanded="false"`，右栏不可见（`toBeHidden`），`article` 的宽度与收起之前相同，它的中心与 `main` 的内容区（`main` 的盒子去掉左右各 40 px）的中心相差不超过 1 px（收起之前它在内容区左边那一块的中间），开关拿着焦点；`localStorage` 不读（只看页面的表现）。
-12. `await reload(page)`（`e2e/fixtures/navigation.ts:108`；直接的 `page.reload()` 过不了 `tools/e2e-navigation/check.mjs`，审查 C 的 M2）：开关 `aria-expanded="false"`，右栏不可见；`toggle.focus()`（刷新之后焦点在 `body`）、`Enter`：展开，可见。再 `Enter` 收起。
+12. `await reload(page)`（`e2e/fixtures/navigation.ts:108`；直接的 `page.reload()` 过不了 `tools/e2e-navigation/check.mjs`，审查 C 的 M2）：开关 `aria-expanded="false"`，右栏不可见；地址带着第 10 步点的 `#nw-part-39`，视图到时把焦点给锚点的标题（决定 900）：先等"Part 39"的标题拿到焦点，再 `toggle.focus()`、`Enter`：展开，可见。再 `Enter` 收起（照实：设计写的"刷新之后焦点在 `body`"对带锚点的地址不成立，视图答得慢时焦点在两次 `Enter` 之间被拿走，第二次打在 h2 上、右栏不收起，审查 C 的门禁在负载 62 时红过，审查 C 的 P4S1C-F1-I1；`19518390`，扣住视图的 `GET` 的探针下改前红、改后绿，变异 t22）。
 13. `setViewportSize({ width: 1024, height: 800 })`：开关不可见，右栏可见（偏好是收起也一样），它的 `y` 大于 `article` 的底。
-14. "编辑过"晚到（决定 858，审查 A 的 M4）：`setViewportSize({ width: 480, height: 800 })`（造数的管理员的显示名是 `admin-<testId>-0-0`，约 50 个字符，长得要省略；480 宽时头一行的行宽 432 px，右边一组一开始就在第二行）；以 `page.route` 扣住版本列表的 `GET`（`/api/v0/pages/{id}/versions`，带查询，谓词匹配；写法同 `holdAnswer`，`e2e/fixtures/settings-pages.ts:59`）；`reload(page)`；"Edit"可见，记下它的盒子；放行；"Edited by"出现之后隔两帧，"Edit"的 `x`、`y` 与之前相差不超过 0.5 px（右边一组不定宽时，它在"Edited by"到来时从一行变两行，第 1 节 (j)，变异 79）。
-15. （提交 2）`setViewportSize({ width: 375, height: 800 })`：`expectFits(page)`（`e2e/fixtures/narrow.ts:11`）；属性条折了行：`table.nw-props > tbody` 的高大于它的第一个小块（第一个 `tr`）的高，第一个与最后一个 `tr` 的 `top` 不同；之后隔两帧（滚动区的标记由 `ResizeObserver` 的回调给，立刻读会先通过；审查 C 的 M3），`article.getByRole("region")` 0 个（长的值在小块里折，不比显示的宽）。
+14. "编辑过"晚到（决定 858，审查 A 的 M4）：`setViewportSize({ width: 480, height: 800 })`（造数的管理员的显示名是 `admin-<testId>-0-0`，约 50 个字符，长得要省略；480 宽时头一行的行宽 432 px，右边一组一开始就在第二行）；以 `page.route` 扣住版本列表的 `GET`（`/api/v0/pages/{id}/versions`，带查询，谓词匹配；写法同 `holdAnswer`，`e2e/fixtures/settings-pages.ts:59`）；`goto` 页的地址（照实：不带锚点；原写 `reload(page)`，地址带着 `#nw-part-39`，视图在"Edit"的盒子记下之后才到时把窗口滚到"Part 39"，"Edit"跟着走，`f698d37e` 的门禁里 WebKit 红过一次（"how far Edit moved down"），`286d01b7`；扣住视图到"Edit"的盒子读完的探针下改前红、改后绿，变异 t23）；"Edit"可见、"Edited by"还没有，记下它的盒子；放行；"Edited by"出现之后隔两帧，"Edit"的 `x`、`y` 与之前相差不超过 0.5 px（右边一组不定宽时，它在"Edited by"到来时从一行变两行，第 1 节 (j)，变异 79）。
+15. （提交 2）`setViewportSize({ width: 375, height: 800 })`：`expectFits(page)`（`e2e/fixtures/narrow.ts:11`）；属性条折了行：`table.nw-props > tbody` 的高大于它的第一个小块（第一个 `tr`）的高，第一个与最后一个 `tr` 的 `top` 不同；之后隔两帧（滚动区的标记由 `ResizeObserver` 的回调给，立刻读会先通过；审查 C 的 M3），`article.getByRole("region")` 0 个（长的值在小块里折，不比显示的宽）。属性表带 `role="table"`、它的 `tbody` 带 `role="rowgroup"`（`propertyRoles`；照实加，`d29b68b0`：没有这一句时变异 t6 活下来）。
 
 **PG17 第 3 格**（提交 2，同一文件，三种浏览器，标题以"PG17 (page): the page's head keeps its lines"起头；决定 894，审查 A 的 R1-I1）：
 
@@ -1202,18 +1224,30 @@ test("PG17 (page): the page's head keeps its lines whatever its mode, the title 
 5. 等自动保存（`editStatus(page)` 是"Saved."，至多 10 秒），焦点一直在编辑器里：标题的 `y` 同上；状态的右边与第 4 步相差不超过 0.5 px（S3 起"保存"这时 `invisible`、照旧占位；卸下时状态右移一个按钮宽，变异 108）。
 6. `ControlOrMeta+e` 回到阅读：标题的 `y` 同上。
 
+**PG17 第 4 格**（照实加，`c6297488`；同一文件，三种浏览器，标题以"PG17 (page): long names break"起头；审查 B 的 P4S1B-F1，审查 C 的 P4S1C-F2-M1、N1）：
+
+```
+test("PG17 (page): long names break, the lock's holder's in its note, a version's author's in its line: the page and its version fit at 375 wide", …)
+```
+
+1. 造数：`newOnboardedTeam`；管理员的显示名经 `PATCH /api/v0/me` 改成 `unbroken("admin")`（文件里的函数：名字、七个 `2026-11-24-`、再一个 `0`，连字符都接数字，Firefox 照 UAX #14 的 HY×NU 不在那里断行，像从地址取的名字）；`createNotebook(…, "Plans", "editor")`，一页"Doc"经接口再写一次（有版本 1 与它之后的一版）；一个成员经 `joinAs` 加入，显示名改成 `unbroken("editor")`，`openSession` 拿着这一页的锁。
+2. `setViewportSize({ width: 375, height: 800 })`；`goto` 页：锁说明（`main` 里文字是"<名字> is editing this page."的 `status`）可见；`expectFits(page, 说明)`（页不横向滚动，说明在窗口里、不溢出）。
+3. `goto` 版本页（`…/versions/1`）：同一个锁说明可见；`expectFits(page, 说明, 作者的链接)`（标题下"时间 · 作者"一行里名为 `unbroken("admin")` 的链接）。
+
+先红只在 Firefox：先红在页（锁说明），锁说明修好之后再红在版本页（`scrollWidth` 660），两处都修好之后三种浏览器都绿；Chromium、WebKit 在连字符处断行，本来就绿。t17（锁说明去掉 `min-w-0 wrap-anywhere`）、t18（版本页那一行去掉）都只在 Firefox 红，vitest 的 `edit-lock-note.test.tsx`、`version-page.test.tsx` 抓不到（jsdom 不排版）：这一格是这两处唯一的守卫，所以它在 `REQUIRED` 里有两行（下面"改的"）。只核对 375 宽；320 宽与 B 那种像邮箱的名字由实量看（10.1）。
+
 **改的**：
 
 - `e2e/playwright.config.ts:3-4`：`threeBrowsers` 加 `page\/pg17-`（与 `pg1-`…`pg16-` 都不是前缀重叠：正则以 `-` 结尾）。
-- `tools/e2e-projects/check.mjs` 的 `REQUIRED`：在 PG16 两行之后加 `// The page's head, its right column and their focus are each engine's (M13/P4/S1, decision 879).` 与 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"]`、`["webkit", …同…]`（提交 1）；提交 2 再加第 3 格的两行 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"]`、`["webkit", …同…]`（`check.mjs:78` 以 `startsWith` 认格，两格的起头互不为前缀）。
-- UP1（`e2e/stories/upgrade/up1-start-freeze.spec.ts`，提交 1，已在 `threeBrowsers` 里；决定 865，审查 A 的 I2）：另一个标签页读到页中间之前先把焦点给"编辑"（`await edit.focus()`，在 `paragraph.scrollIntoView` 之前；之后的滚动不动焦点）；升级开始、"编辑"没了之后加 `await expect(tab.getByRole("heading", { level: 1, name: "Plan" })).toBeFocused()`；`:248` 的"读的那一段移动不超过 1 px"照旧，现在它同时守着 `h1.focus()` 的 `preventScroll`（初稿的写法下三种引擎的 `scrollY` 从页中间回到 0）。标题里"…loses Edit, without a reload,"换成"…loses Edit, its focus going to the title without a scroll, without a reload,"（`REQUIRED` 里没有 UP1 的行）。
+- `tools/e2e-projects/check.mjs` 的 `REQUIRED`：在 PG16 两行之后加 `// The page's head, its right column and their focus are each engine's (M13/P4/S1, decision 879).` 与 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head says"]`、`["webkit", …同…]`（提交 1）；提交 2 再加第 3 格的两行 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): the page's head keeps its lines"]`、`["webkit", …同…]`（`check.mjs:78` 以 `startsWith` 认格，两格的起头互不为前缀）。照实：`e2fd05b0` 再加第 4 格的两行 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): long names break"]`、`["webkit", …同…]`，注释写 Firefox 的 HY×NU 与这一格只在那里红（审查 C 的 P4S1C-F2-M1：这一格哪天挪出 `threeBrowsers` 的文件，只在 Chromium 跑就永远绿）；四格的起头（S2 的"a code block's head"在内）互不为前缀，`check.mjs` 列 chromium 430、firefox 102、webkit 102、webkit-narrow 3。
+- UP1（`e2e/stories/upgrade/up1-start-freeze.spec.ts`，提交 1，已在 `threeBrowsers` 里；决定 865，审查 A 的 I2）：另一个标签页读到页中间之前先把焦点给"编辑"（`await edit.focus()`，在 `paragraph.scrollIntoView` 之前；之后的滚动不动焦点）；升级开始、"编辑"没了之后加 `await expect(tab.getByRole("heading", { level: 1, name: "Plan" })).toBeFocused()`；`:248` 的"读的那一段移动不超过 1 px"照旧，现在它同时守着 `h1.focus()` 的 `preventScroll`（初稿的写法下三种引擎的 `scrollY` 从页中间回到 0）。标题里"…loses Edit, without a reload,"换成"…loses Edit, its focus going to the title without a scroll, without a reload,"（`REQUIRED` 里没有 UP1 的行）。照实：那一句找标题写 `tab.getByRole("heading", { level: 1, name: "Plan" }).first()`：页的正文自己也有一个 `# Plan`，壳的 `h1` 在它之前；焦点若落到文章的那个上照样红（审查 A 的偏离 6）。
 - pg5（`e2e/stories/page/pg5-reading-view.spec.ts:86`，提交 2）：标题里"shows the page's properties first"换成"shows the page's properties first, as a strip"；断言不改（`:128-129` 读 `:scope > :first-child > table` 的类与 `textContent`，`propertyRoles` 只加 `role`）。
 
 **不改的**（理由）：
 
 - 夹具：`pageHeading`（`e2e/fixtures/wiki-pages.ts:44-46`，`main` 里唯一的 `h1`）；`breadcrumbs`（`:162-171`，每个 `li` 里不带 `aria-hidden` 的子元素，结构照旧）；`editStatus`（`:233-235`，编辑时 `main` 里唯一的 `status`：头一行的状态是它，`HeadMeta` 是 `<p>`，提交 2 之后它在头一行里、仍在 `main` 里）；`saveEdit`（`:238-241`，Mod+S）；`versionsListed`（`:335-340`，右栏里名为"Versions"的列表）。
 - l6（`e2e/stories/links/l6-panel.spec.ts`）：`:215` 右栏的 `x` 大于正文的右边（内容区展开时右边留 40 px）；`:218-228` 大纲的链接、点了之后标题拿焦点、在视口里，`:229` 右栏在视口里（粘住、高同窗口）；`:234-240` 编辑时没有大纲（S3 改）；`:286-293` 按"更多"之后窗口与右栏都没滚（Hub 没有标题，读到的一节没有、右栏不动）；`:319-320` 级别 2 的"Properties"与 `dl dt` 一个（`h2` 在 `summary` 里、`dl` 照旧）；`:332-333` 1,000 个链接与"…and 139000 more"。
-- hi1:256-265、hi2:111-112（版本三项、点第三项：版本一行的结构变了，项与链接照旧）；hi3:358（以 `details` 与文字找小节）；as3:323、as6:133,150（右栏里的属性链接，`dd` 照旧）：结构与文字不变。
+- hi1:256-265、hi2:111-112（版本三项、点第三项：版本一行的结构变了，项与链接照旧；照实：hi1:258、hi2:113 读整项的文字，4.1.6 把标记挪到谁写的之后，整项随之读作"…· Edit"接"Current"，两处照新次序改了，`f7eb1100`，审查 A 的偏离 4）；hi3:358（以 `details` 与文字找小节）；as3:323、as6:133,150（右栏里的属性链接，`dd` 照旧）：结构与文字不变。
 - 读锁说明的故事：c1:66、c3:86、c6:60、c7:243、c10:211、hi2:137 以 `getByText("… is editing this page.", { exact: true })` 找它，Playwright 的文字含 `bdi` 里的名字，照旧找得到（vitest 的不同，7.1）。
 - ui1:65（`main h1`）；ui1:54、pg2:211、lw3:345 的 `expectFits`：头一行在 375 宽时折行、不溢出（第 1 节 (b)）。
 - up1:240-244：横幅在内容列里、标题之前，不在 `article` 里，文章的第一个节点照旧；之上的变化由滚动锚定吸收（≤ 1 px），同今天。
@@ -1250,11 +1284,11 @@ test("PG17 (page): a code block's head names its language and copies its code al
 
 ### 5.4 375 px 与 `webkit-narrow`
 
-PG17 在三种浏览器里跑，不带 `@narrow`（`webkit-narrow` 只跑带 `@narrow`、又不在 `threeBrowsers` 里的格，`playwright.config.ts:30`）：它的 375 px 一段在三种引擎里以 `expectFits` 核对，比 `@narrow` 多一种。`webkit-narrow` 的必需格（MC3、PG2、SE1）不变。
+PG17 在三种浏览器里跑，不带 `@narrow`（`webkit-narrow` 只跑带 `@narrow`、又不在 `threeBrowsers` 里的格，`playwright.config.ts:30`）：它的 375 px 两段（第 1 格第 15 步的属性条、第 4 格的长名字）在三种引擎里以 `expectFits` 核对，比 `@narrow` 多一种；第 3 格 375 宽那一遍只量标题与状态。`webkit-narrow` 的必需格（MC3、PG2、SE1）不变。
 
 ### 5.5 13.4 第 3 条
 
-PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、开关的记住、代码块的头），写的只有造数与一次经接口的写（为了就地更新），没有页面写、接口读的数据；接口版本与 MCP 版本豁免，同 PG16（8.2 第 10、17 条）。UP1 只加两句断言（标题拿着焦点、读的那一段不动），它照旧是升级的界面一侧，13.4 第 3 条里它的说法不改。
+PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、开关的记住、长名字的折行、代码块的头），写的只有造数（第 4 格的改名、加入与开会话也是造数）与一次经接口的写（为了就地更新），没有页面写、接口读的数据；接口版本与 MCP 版本豁免，同 PG16（8.2 第 10、17 条）。UP1 只加两句断言（标题拿着焦点、读的那一段不动），它照旧是升级的界面一侧，13.4 第 3 条里它的说法不改。
 
 ## 6. 实施步骤
 
@@ -1302,7 +1336,7 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 
 **S1，新文件**：
 
-- `W/pages/page/current-heading.test.ts`（1）：四个标题在 −400、100、500、700（视口高 900，线在 300，`scrollHeight` 3000）：挂上之后不等一帧就是第二个（第一次量在 layout effect 里，第 1 节 (k)）；都在线下：没有当前项；第二个放在一个真的关着的 `<details>` 里（`document.body` 里拼出，盒子照旧桩成 100）：当前是第一个（决定 887），`open` 之后是第二个；页能滚且窗口在底（`scrollY + innerHeight = scrollHeight`）：当前是第四个（线是视口的底）；页不能滚（`scrollHeight` 等于 `innerHeight`）时线照旧在三分之一：当前是第二个（决定 893）；`pin("h3", link)` 之后，第三个在视口里（500）：当前是第三个，`link` 上的 `pointerdown` 不解除它，`window` 上一次 `wheel` 之后照线算（决定 893）；`pin` 时它在视口外（盒子桩成 2000）：`pin` 一返回就是它，下一帧仍是它（视图还没滚过去），盒子移到 16 之后仍是它，再一次 `wheel` 之后照线算（审查 A 的 R1-M1）；一个记下每次渲染答的值的小组件：先 `active` 答第二个，`active` 变假再变真，变真的那次渲染答 `undefined`、之后答第二个，不答收起之前的那一项（审查 A 的 R1-N5）；`active` 为假时 `pin("h3", link)`：照旧答 `undefined`，之后 `active` 变真：照线是第二个，不是第三个（审查 A 的 R2-N2，变异 114）；`active` 时 `pin` 第三个（盒子桩成 2000：在视口外、没量到过），`active` 变假再变真：照线是第二个（点了的那一项随 `active` 变假结束，变异 115）；量到的值不变的一帧不再渲染（渲染的次数不变）；同一帧里两次 `scroll` 只量一次（`requestAnimationFrame` 打桩，数 `getBoundingClientRect` 的调用）；`active` 为假时一次也不量、答 `undefined`；没有 `ResizeObserver` 时不抛错；给了桩时观察的是 `main`，它回调时再量；卸下时监听都去掉。
+- `W/pages/page/current-heading.test.ts`（1）：四个标题在 −400、100、500、700（视口高 900，线在 300，`scrollHeight` 3000）：挂上之后不等一帧就是第二个（第一次量在 layout effect 里，第 1 节 (k)）；都在线下：没有当前项；第二个放在一个真的关着的 `<details>` 里（`document.body` 里拼出，盒子照旧桩成 100）：当前是第一个（决定 887），`open` 之后是第二个；页能滚且窗口在底（`scrollY + innerHeight = scrollHeight`）：当前是第四个（线是视口的底）；页不能滚（`scrollHeight` 等于 `innerHeight`）时线照旧在三分之一：当前是第二个（决定 893）；`pin("h3", link)` 之后，第三个在视口里（500）：当前是第三个，`link` 上的 `pointerdown` 不解除它，`window` 上一次 `wheel` 之后照线算（决定 893）；`pin` 时它在视口外（盒子桩成 2000）：`pin` 一返回就是它，下一帧仍是它（视图还没滚过去），盒子移到 16 之后仍是它，再一次 `wheel` 之后照线算（审查 A 的 R1-M1）；一个记下每次渲染答的值的小组件：先 `active` 答第二个，`active` 变假再变真，变真的那次渲染答 `undefined`、之后答第二个，不答收起之前的那一项（审查 A 的 R1-N5）；`active` 为假时 `pin("h3", link)`：照旧答 `undefined`，之后 `active` 变真：照线是第二个，不是第三个（审查 A 的 R2-N2，变异 114）；`active` 时 `pin` 第三个（盒子桩成 2000：在视口外、没量到过），`active` 变假再变真：照线是第二个（点了的那一项随 `active` 变假结束，变异 115）；量到的值不变的一帧不再渲染（渲染的次数不变）；同一帧里两次 `scroll` 只量一次（`requestAnimationFrame` 打桩，数 `getBoundingClientRect` 的调用）；`active` 为假时一次也不量、答 `undefined`；没有 `ResizeObserver` 时不抛错（照实：格里先放一个 `main > article.nw-reading`，才走得到 `typeof ResizeObserver` 的守卫：原先页上没有 `main`，`=== null` 先短路，去掉守卫的变异 18 在这个文件里活下来，审查 C 的 P4S1C-M1）；给了桩时观察的是视图（`main article.nw-reading`），不是 `main`（照实，`f698d37e`，变异 t21），它回调时再量；大纲没有列出标题（`ids` 为空）时不挂 `scroll`、`resize` 的监听、不观察、答 `undefined`（审查 A 的 P4S1A-N1，变异 t11）；卸下时监听都去掉。
 - `W/reading/property-roles.test.ts`（2）：一张带列表值与嵌套表的 `table.nw-props`（照服务端写的，没有 `tbody`，经 `innerHTML` 由解析器补上）：`table`、`rowgroup`、`row`、`rowheader`、`cell`、`list`、`listitem` 都给了，嵌套的表也是；属性表之外的表不碰；已有 `role` 的元素不碰；清理之后它加的 `role` 都去掉、原有的留着。
 - `W/app/column-top.test.tsx`（1）：没有提供者时 `ColumnTop` 什么也不画；有时画给的元素。
 - `W/test/lock-note.ts`（2，测试的帮手）：`lockNote(text)` 是 Testing Library 的匹配函数，`(_, element) => element?.tagName === "OUTPUT" && element.textContent === text`（整段文字，含 `bdi` 里的名字）。
@@ -1314,19 +1348,28 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
   - 开关：`aria-expanded`、`aria-controls` 等于右栏的 `id`；点了 `data-open` 变 `"false"`、`localStorage` 的 `nwiki.panel` 是 `"closed"`、焦点在开关上；存着 `"closed"` 时打开页是收起的；中文的名字"页面信息"；焦点在右栏的一个链接上时收起：焦点到开关，`focus` 带 `preventScroll`（决定 859）。
   - 读到的一节：给标题的盒子打桩，读到的一节的链接 `aria-current="location"`、别的没有；一页 1,001 个标题、第 1,001 个也在线上：当前项是第 1,000 个（列出的最后一个），大纲照旧 1,000 项加"还有 1 个"（审查 C 的 M10）；收起，或 `matchMedia` 答不在正文旁边：标题的 `getBoundingClientRect` 一次也没被调（决定 886）。
   - 展开与收起时的量（审查 A 的 R2-I1，变异 112）：存着 `"closed"` 时打开页（挂上时 `active` 为假），点开关展开：读到的那一节的链接带 `aria-current`，右栏的 `scrollTop` 跟着变（桩同下一条）；展开时挂上（量过），点开关收起之后再 `fireEvent.scroll(window)`、等一帧：标题的 `getBoundingClientRect` 不再被调。别的格都是从挂上起就收起或展开的，`sameView` 不比 `active` 时照样过。
-  - 右栏跟着（决定 886；审查 C 的 I1 的写法，jsdom 的桩见上）：右栏高 300、`scrollHeight` 2000，项高 28；当前项变到第 30 项（在右栏的可见范围之下）：`scrollTop` 是 `30 × 28 − 300 + 28 = 568`（项的底与右栏的底齐，不是放到中间），`window.scrollTo` 与 `Element.prototype.scrollIntoView` 的桩都没被调；当前项变到第 25 项（还在可见范围里）：`scrollTop` 不变。读者在右栏里滚开：`fireEvent.wheel(aside)`、`aside.scrollTop = 0`；再让当前项变到第 31 项：`scrollTop` 仍是 0。（换页时 `PageShell` 以 `key={page.id}` 重挂，读者的记录随之重起，不另写格，审查 A 的 R1-N1。）
+  - 右栏跟着（决定 886；审查 C 的 I1 的写法，jsdom 的桩见上）：右栏高 300、`scrollHeight` 2000，项高 28；当前项变到第 30 项（在右栏的可见范围之下）：`scrollTop` 是 `30 × 28 − 300 + 28 = 568`（项的底与右栏的底齐，不是放到中间），`window.scrollTo` 与 `Element.prototype.scrollIntoView` 的桩都没被调；当前项变到第 25 项（还在可见范围里）：`scrollTop` 不变。读者在右栏里滚开：`fireEvent.wheel(aside)`、`aside.scrollTop = 0`；再让当前项变到第 31 项：`scrollTop` 仍是 0。（换页时 `PageShell` 以 `key={page.id}` 重挂，读者的记录随之重起，不另写格，审查 A 的 R1-N1。）照实加一格（决定 897，取自审查 C 的探针）：读者滚过右栏、不再跟之后进编辑，以 Mod+E 回到阅读，大纲重新挂上，当前项变到第 35 项时右栏又跟（`scrollTop` 708）；它描述现有的行为，不会先红，变异 t12（按页记"动过"）看到它红。
   - 视图晚到（审查 A 的 R1-I2；第 1 节 (l) 照这一格跑过）：`server.viewsHeld = true`，页的外框挂上、大纲没有；放行，大纲出现；打桩（右栏、项、标题的盒子，40 个标题、每个 100 px）；`user.click` 大纲的"H1"（`pointerdown` 加 `click`）：它带 `aria-current`（"H1"的盒子在 16，视口里：量到过）；把它的盒子移出视口（桩成 −200）、让照线算的一节是第 32 项，`fireEvent.scroll(window)`、等一帧：`pin` 结束（量到过、又出了视口），第 32 项带 `aria-current`，右栏的 `scrollTop` 是 624（照旧跟；在 `[page]` 的 effect 里建 `watchReader` 时是 0，变异 74）。不先把"H1"移出视口，`pin` 一直标着它，读到的一节不变（审查 C 第 2 轮的未核实一条）。
-  - 点按（审查 C 的 R1-I1）：标题的盒子桩成照线算是第 5 项；先按住修饰键点按大纲的第 9 项的链接，Control、Meta、Shift、Alt 各一次（`user.keyboard("{Control>}")`、`user.click`、`user.keyboard("{/Control}")`，其余同），每次之后照线仍是第 5 项带 `aria-current`，不 `pin`（审查 A 的 R1-M1、R2-N1，变异 104、104b）；最后不带修饰键点第 9 项：它立刻带 `aria-current`（`onClick` 设 `pin`；去掉时照线还是第 5 项，变异 76）。次序不能反过来：普通的点按 `pin` 了之后，修饰键的 `keydown` 与 `pointerdown` 都打在 `on` 上、不算读者动过，`pin` 不结束，之后的修饰键点按无论 `pin` 不 `pin` 都答第 9 项（审查 C 的 R3-M1）。这一格在 `document` 上挂一个捕获阶段的 `click` 监听，带修饰键时 `preventDefault()`，格后去掉：React Router 对带修饰键的点按不 `preventDefault`（`Link` 不导航），jsdom 就执行 `<a>` 的默认动作，经虚拟控制台报"Not implemented: navigation to another Document"，vitest 把它转进 `setup.ts` 的 `console.error` 桩，格后判红（审查 C 的 R2-M1，它的 `nav.cjs` 实测）；`Link` 照样先调我们的 `onClick`，`plainPress` 不看 `defaultPrevented`，变异 104 照样抓得住。
+  - 点按（审查 C 的 R1-I1）：标题的盒子桩成照线算是第 5 项；先按住修饰键点按大纲的第 9 项的链接，Control、Meta、Shift、Alt 各一次（`user.keyboard("{Control>}")`、`user.click`、`user.keyboard("{/Control}")`，其余同），每次之后照线仍是第 5 项带 `aria-current`，不 `pin`（审查 A 的 R1-M1、R2-N1，变异 104、104b）；最后不带修饰键点第 9 项：它立刻带 `aria-current`（`onClick` 设 `pin`；去掉时照线还是第 5 项，变异 76）。次序不能反过来：普通的点按 `pin` 了之后，修饰键的 `keydown` 与 `pointerdown` 都打在 `on` 上、不算读者动过，`pin` 不结束，之后的修饰键点按无论 `pin` 不 `pin` 都答第 9 项（审查 C 的 R3-M1）。这一格在 `document` 上挂一个捕获阶段的 `click` 监听，带修饰键时 `preventDefault()`，格后去掉：React Router 对带修饰键的点按不 `preventDefault`（`Link` 不导航），jsdom 就执行 `<a>` 的默认动作，经虚拟控制台报"Not implemented: navigation to another Document"（照实：不挂这个监听时那一格打出四次，格照样绿：这句话不经被桩住的 `console.error`，`setup.ts` 看不见它，设计照审查 C 的 R2-M1 写的"格后判红"不成立，审查 C 的 P4S1C-N8；监听照旧挂着，让输出安静、不让 jsdom 去导航，变异 104、104b、76 的抓法不受影响）；`Link` 照样先调我们的 `onClick`，`plainPress` 不看 `defaultPrevented`，变异 104 照样抓得住。
   - `:16-22` 的 `outlined` 读 `li` 的 `textContent` 与内联的 `paddingLeft`：照旧（缩进仍在 `li` 上）。`:182-183`（右栏在正文与子页之后）照旧。
 - `W/stores/preferences.store.test.ts`（1）：`panelOpen` 默认 `true`；存着 `"closed"` 时 `false`；`setPanelOpen(false)` 写 `"closed"`；存储抛错时照样改、不抛。
 - `W/pages/notebook/upgrade-banner.test.tsx`（1）：新一格：升级中的笔记本的页上，横幅与 `h1` 同在一个父元素里、横幅在前，整页只有一个横幅；找不到的页（`PageGone`）上横幅在列的最上面；页树的 `GET` 答 500（`server.nodesDown`，`NotLoaded` 的 `Alert` 与"重试"一直留着，`app/not-loaded.tsx:17-27`）：横幅在 `Alert` 之上（审查 C 的 R1-M4，变异 80）；`:97` 的"来去、页照旧"照旧（`article` 是同一个元素）。版本页上横幅照旧在笔记本的外框里（`Outlet` 之前）。
-- 决定 892 那一支（`settings-layout.tsx:24-25`，`shown === undefined`）只在笔记本设置的索引地址上、`IndexTo` 换到"基本信息"之前的一瞬画出，不另写格（7.2 第 106 条）。
+- 决定 892 那一支（`settings-layout.tsx:24-25`，`shown === undefined`）只在笔记本设置的索引地址上、`IndexTo` 换到"基本信息"之前的一瞬画出。照实：决定 898 把它包进设置的列之后，`upgrade-banner.test.tsx` 加一格（"a notebook's settings index has the banner in the settings' column…"）：从索引地址进设置，`MutationObserver` 记下每次变动时横幅（`output`）在不在 `.max-w-178` 的列里、有几个、`main h1` 在不在，横幅从出现起一直在列里、只有一个（改前第一次见到它时是 `{column:false,title:false}`，先红；变异 106、t13）。
 - `W/pages/notebook/general-page.test.tsx:665-688`："the banner above the page"一格照旧（横幅在设置页的列里，`getAllByRole("status")` 照样找到）。
 - `W/pages/page/page-versions.test.tsx`（1）：右栏版本一行照 4.1.6：`li` 的子元素依次是放时间链接与谁写的（`p`，名字在 `bdi` 里）的 `div`、标记的 `div`（决定 863）；`Mark` 的 `current`；`:scope > ul > li` 与 `listed()`、`writers()` 的读法照旧；`:103` 的整项文字换成 `"5分钟前Ada · 撤销当前编辑中"`。`W/pages/page/version-restore.test.tsx:156` 的 `/CurrentAda · Restore$/` 换成 `/Ada · RestoreCurrent$/`（审查 C 的 R1-M7）。
 - `W/pages/page/page-edit.test.tsx`（2）：编辑时状态的 `<output>` 在头一行右边一组的第一个子元素（`meta` 盒子）里，"保存"在开关之前、"完成"在开关之后（`compareDocumentPosition`）；盒子的类有 `text-[12.5px] text-faint`，失败时 `<output>` 带 `text-destructive`；阅读时同一个盒子里是"Edited by"（决定 894）；编辑说明（中英文）在、失锁时不在；"已保存。"时 `<output>` 带 `data-saved`；按头一行的"完成"离开、离开的保存撞上冲突（`PUT` 答 409）：冲突面板的标题拿着焦点（守的是"完成"进了头一行之后离开的焦点照旧：按"完成"时 `from` 就是它，`stayed()` 认不认槽都为真，抓不到变异 33，审查 A 的 R1-M3、C 的 R1-M2）。`:27` 等读唯一的 `status` 的格照旧（头一行的状态是它）。
 - `W/pages/page/page-asset-upload.test.tsx:769`："a leave that fails once the uploads are in, Done pressed as it waited after Mod+E, gives the focus back to the editor"照旧，它是变异 33 唯一的抓手（`stayed()` 不认槽时离开失败不调 `back()`：焦点在离开开始之后、等上传时才挪进槽里，只有这一种走法认槽才有区别）。
 - `W/pages/page/edit-lock-note.test.tsx`（2）：拿着锁的人的名字在 `bdi` 里；`status` 仍是一个。
 - 读锁说明的九处（2）：`page-autosave.test.tsx:170`、`page-tasks.test.tsx:411`、`page-versions.test.tsx:383,391`、`version-page.test.tsx:417,428,471,481`、`version-restore.test.tsx:377` 的 `findByText("Bob is editing this page.")`、`queryByText(…)` 改成 `findByText(lockNote("Bob is editing this page."))`、`queryByText(lockNote(…))`。其中三处 `toBeNull()`（`page-versions.test.tsx:391`、`version-page.test.tsx:428,481`）照原样不改会空过（名字进 `bdi` 之后整句本来就找不到）：改了之后，实施者把锁说明的释放事件去掉一次，看这三格红。
+
+**S1 的照实**（[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)）：
+
+- `page-layout.test.tsx`：决定 899 的中英两格（`test.each`）读类名：`p` 不带 `truncate`、带 `flex justify-end-safe overflow-hidden whitespace-pre`，`bdi` 是 `min-w-0 truncate`（jsdom 不排版；浏览器里的行为由 PG17 第 2 步核对；变异 t14、t15、t16、t19）。
+- `page-panel.test.tsx`：开关的格读应用的内存存储（`PreferencesStore` 读写的就是 `nwiki.panel` 这个键），不读 `localStorage`；"重新载入之后照旧收起"由 PG17 第 12 步在真浏览器里守（审查 A 的偏离 9）。
+- `reading-view.test.tsx` 的"the wait's listeners go once its read settles"按监听函数认出等待的那几个：大纲的 `watchReader` 在列表挂上时加 4 个捕获阶段的监听，按函数分开之后，断言等待的全拆、大纲的 4 个在、大纲可见（照设计数个数，这一格红；审查 A 的偏离 3）。
+- `page-edit.test.tsx`：中文那一半的打开读中文那次的 `sent`（原读英文那次的，空断言，审查 C 的 P4S1C-N9）。
+- `version-page.test.tsx`：版本页标题下"时间 · 作者"一行里"·"之后与种类之前是不断行空格（`versionBy`，审查 B 的 P4S1B-F2-1）：找作者链接的名字写 `"Ada · Edit"`，整行的 `textContent` 是 `"· Ada · Edit"`（`e2fd05b0`；变异 t24、t25）。长名字在那一行与锁说明里折行由 PG17 第 4 格守（5.1）。
+- `upgrade-banner.test.tsx`：没改的树上，找不到的页、页树读取失败两格本来就绿（改前横幅画在 `Outlet` 之前，"在它之前、只有一个"成立；变异 25、80 看到它们红），"a version's page has the banner where it had it"守照旧的那一支，构造上就绿（变异 22 不会让它红）；`page-panel.test.tsx` 的"folded away, or not beside the page, the right column measures none"在旧树上什么也不量，本来就绿（变异 73 看到它红）；`general-page.test.tsx:665-688` 原有、没改（变异 24 看到它红）（审查 C 的 P4S1C-N3）。
 
 **S2**：
 
@@ -1385,15 +1428,15 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | 9 | S1 | 右栏去掉 `xl:data-[open=false]:hidden` | PG17 第 11 步（9e） | |
 | 10 | S1 | 开关去掉 `hidden`（窄时也显示） | PG17 第 13 步（10e） | |
 | 11 | S1 | 右栏去掉 `xl:h-svh`（只高到内容） | PG17 第 3 步（11e） | |
-| 12 | S1 | 读到的一节的线是视口的顶（0） | `current-heading.test.ts`；PG17 第 4 步（点到的标题在 16 px，算成上一节，12e） | 大纲的当前节 |
+| 12 | S1 | 读到的一节的线是视口的顶（0） | `current-heading.test.ts`；PG17 第 5 步（"Part 10"的标题在窗口顶下 100 px，线在顶时算成"Part 09"，12e；照实：设计写的第 4 步抓不到，点到的标题被 `pin` 着，线在 0 时也读到它，`d29b68b0` 把第 5 步改到 100 px） | 大纲的当前节 |
 | 13 | S1 | 不跳过关着的 `details` 里的标题（去掉 `closest`；初稿的"盒子是 0"在浏览器里不成立，审查 A 的 I1） | `current-heading.test.ts` 真的关着的 `details` 一格；PG17 第 6 步（照"Hidden"自己的盒子定位，它带 `aria-current`，13e；修订稿以 callout 的顶定位，这一步两种写法都过，审查 A 的 R1-M4、C 的 R1-M1） | 决定 887 |
 | 14 | S1 | 到底时线不放到视口的底 | `current-heading.test.ts` 到底一格 | 大纲的当前节 |
 | 15 | S1 | `aria-current` 写成 `"true"` | `page-panel.test.tsx`；PG17 第 4 步 | 同上 |
-| 16 | S1 | 读到的一节变了时调 `scrollIntoView` | `page-panel.test.tsx` 的桩；PG17 第 8 步（窗口跟着动，16e） | 13.2 第 26 条 |
+| 16 | S1 | 读到的一节变了时调 `scrollIntoView` | `page-panel.test.tsx` 右栏跟着一格的 `scrollIntoView` 桩（2 格；照 `scrollIntoView({ block: "nearest" })` 写时只有它抓：右栏整个在视口里，窗口不动，PG17 照过）；照默认的 `scrollIntoView()` 写，PG17 第 8 步红在"项的底离右栏的底不超过 2 px"（16e；窗口也不动：两种写法都不是"窗口跟着动"，照实，审查 C 的 P4S1C-N2） | 13.2 第 26 条 |
 | 17 | S1 | 读者在右栏里滚过之后照旧跟（去掉 `acted()` 的判断；初稿的"去掉依赖"是等价的：`PageOutline` 只在当前项变了时重渲染，审查 C 的 I1） | `page-panel.test.tsx` 右栏跟着的读者一格（`scrollTop` 不再是 0）；PG17 第 9 步（17e） | 决定 886 |
-| 18 | S1 | 去掉 `typeof ResizeObserver` 的守卫 | `current-heading.test.ts` 与所有有大纲的页的格（jsdom 里抛错） | |
+| 18 | S1 | 去掉 `typeof ResizeObserver` 的守卫 | `page-panel.test.tsx` 15 格（jsdom 里抛错）；`current-heading.test.ts` 的"without a ResizeObserver"一格与连带的"unmounted"一格（照实：那一格先放 `main > article.nw-reading` 才走得到守卫，审查 C 的 P4S1C-M1，`ed95b2cf`；之前这个文件 14 格全绿） | |
 | 19 | S1 | 一次 `scroll` 量一次（不经 `requestAnimationFrame`） | `current-heading.test.ts` 的调用计数 | 每帧至多一次 |
-| 20 | S1 | 大纲的链接写回 `block` | 无格抓（`line-clamp-2` 失效只在截图里看得出，7.4） | |
+| 20 | S1 | 大纲的链接写回 `block`，写在 `line-clamp-2` 之后（照实：写回原来的位置、类名最前是等价的，`cn` 的 tailwind-merge 把两者当作 `display` 的一组、合并掉前面的 `block`，审查 B） | 无格抓（`line-clamp-2` 失效，长标题由两行 35.75 px 变成四行 71.5 px，只在截图里看得出，7.4） | |
 | 21 | S1 | `EditButton` 不经 `useFocusLeaving` | `page-layout.test.tsx` 的角色降级一格 | 焦点的去向 |
 | 22 | S1 | 横幅照旧画在 `Outlet` 之前（`NotebookLayout` 不看 `handle`） | `upgrade-banner.test.tsx` 新的一格（不在列里） | |
 | 23 | S1 | `columned` 时 `NotebookLayout` 另外也画（两个横幅） | `upgrade-banner.test.tsx` 新的一格（一个）；`general-page.test.tsx:665`（`find` 仍找得到，不抓）；up1:237（`upgradeBanner` 的严格模式，23e） | |
@@ -1404,7 +1447,7 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | 28 | S1 | `propertyRoles` 的清理不去掉 `role` | `property-roles.test.ts` 清理一格 | |
 | 29 | S1 | `propertyRoles` 盖掉已有的 `role` | `property-roles.test.ts` | |
 | 30 | S1 | 属性条的 `tbody` 不 `flex-wrap` | PG17 第 15 步：`tbody` 的高不大于第一个 `tr` 的高、首尾 `tr` 的 `top` 相同（小块挤在一行，不宽、不出区域，审查 C 的 M3；30e） | 375 px |
-| 31 | S1 | 属性的值不 `overflow-wrap: anywhere` | PG17 第 15 步：隔两帧之后区域一个（31e） | 375 px |
+| 31 | S1 | 属性的值不 `overflow-wrap: anywhere` | 等价（照实；Chromium 是实施者跑的，Firefox、WebKit 是审查 C 的 31-ffwk）：`.nw-reading` 的 `overflow-wrap: break-word` 继承下来，`td` 的 `min-width: 0` 与 `tr` 的 `max-width: 100%` 已够折行；改成 `normal` 时 PG17 第 15 步红（隔两帧之后区域一个，t10） | 375 px |
 | 32 | S1 | 编辑时的状态与按钮照旧画在原处（不经门户） | `page-edit.test.tsx` 的次序一格 | |
 | 33 | S1 | `stayed()` 不认两个槽 | `page-asset-upload.test.tsx:769`（离开失败不调 `back()`，焦点留在"完成"）。修订稿另记的 `page-edit.test.tsx` 冲突一格抓不到它：按"完成"时 `from` 就是它，`stayed()` 本来就为真（审查 A 的 R1-M3、C 的 R1-M2）；初稿记的"等上传一格（焦点落 `body`）"认不认槽都一样（审查 A 的 M5） | 焦点的去向 |
 | 34 | S1 | 失锁时照旧画编辑说明 | `page-edit.test.tsx` | |
@@ -1452,7 +1495,7 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | 76 | S1 | 点大纲的项不 `pin`（`onClick` 去掉） | `page-panel.test.tsx` 点按一格（照线还是第 5 项）；PG17 第 10 步（"Part 40"带 `aria-current`，76e；修订稿的造数下窗口不到底，这一步两种写法都过，审查 C 的 R1-I1） | 决定 893 |
 | 77 | S1 | `pin` 不随读者的动作解除（不看 `acted()`） | `current-heading.test.ts` pin 一格的 `wheel` | 决定 893 |
 | 78 | S1 | 量 `article` 里的全部标题，不只列出的 | `page-panel.test.tsx` 1,001 个标题一格（审查 C 的 M10） | 13.2 第 25 条 |
-| 79 | S1 | 右边一组不定宽（去掉 `flex-[0_1_26rem]`；修订稿只给"编辑过"预留 `w-64`，变异是去掉它） | PG17 第 1 格第 14 步（"编辑过"到来时头一行由一行变两行，"编辑"下移，79e）；PG17 第 3 格 820 宽（阅读两行、编辑一行）；第 1 节 (j) 量过这两处都动 | 决定 858、894 |
+| 79 | S1 | 右边一组不定宽（去掉 `flex-[0_1_26rem]`；修订稿只给"编辑过"预留 `w-64`，变异是去掉它） | PG17 第 1 格第 14 步（"编辑过"到来时头一行由一行变两行，"编辑"下移，79e）；PG17 第 3 格 820 宽（阅读两行、编辑一行；375 宽那一遍也红，两遍都红在第 3 步的 `:288`：先跑的是 375 宽，820 宽那一遍由审查 C 单独跑，审查 C 的 P4S1C-N1）；第 1 节 (j) 量过这两处都动 | 决定 858、894 |
 | 80 | S1 | `NotLoaded` 不画 `ColumnTop` | `upgrade-banner.test.tsx` 页树读取失败一格（审查 C 的 R1-M4：读取失败时 `Alert` 与"重试"一直留着，不是"一瞬"） | |
 | 81 | S1、S3 | `noColour` 去掉 `"text-end"`（S1）或 `"text-start"`（S3） | `design-tokens.test.ts`（守卫把它们当颜色读，审查 B 的 I4） | 守卫的白名单 |
 | 82 | S2 | `reading.css` 的 `.dark` 少写一个变量 | `design-tokens.test.ts` 的成对一格（审查 C 的 N4） | 亮暗成对 |
@@ -1480,20 +1523,45 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 | 104 | S1 | 带修饰键的点按也 `pin`（`plainPress` 只看主键） | `page-panel.test.tsx` 按住修饰键点按一格（四个键各一次；第一次 Control 点按之后就是第 9 项） | 决定 893 |
 | 104b | S1 | `plainPress` 只排除 Cmd、Ctrl（Shift、Alt 加点按也 `pin`，审查 A 的 R2-N1） | `page-panel.test.tsx` 按住修饰键点按一格（到 Shift 那一次变成第 9 项，审查 C 的 R3-N1） | 决定 893 |
 | 105 | S1 | `active` 变假时不清当前项 | `current-heading.test.ts` 记下每次渲染的一格（变真的那次答收起之前的那一项，审查 A 的 R1-N5） | |
-| 106 | S1 | `NotebookSettingsLayout` 的 `shown === undefined` 一支不画 `ColumnTop` | 无格抓（只在索引地址换到"基本信息"之前的一次渲染里；决定 892） | |
+| 106 | S1 | `NotebookSettingsLayout` 的 `shown === undefined` 一支不画 `ColumnTop` | `upgrade-banner.test.tsx` 决定 898 的一格（`addcfa69`：横幅到"基本信息"的标题出来才有，不是从出现起一直在列里；照实，原写"无格抓"，那时它只在索引地址换到"基本信息"之前的一次渲染里，审查 B 以截图看到它成立） | 决定 892、898 |
 | 107 | S2 | 甘特亮色"进行中"的两项、暗色"关键"的底、暗色看板的列名、时间线的 `filter: none` 去掉任一 | `diagrams.test.ts` 的各一句断言；7.4 的截图 | 决定 888 |
 | 108 | S3 | "保存"不需要时卸下（不是 `invisible`，修订稿的写法） | PG17 第 3 格第 5 步（状态的右边移动，108e）；`page-edit.test.tsx` 没有修改一格（它在 DOM 里） | 决定 894 |
 | 109 | S3 | `held` 只看"保存"自己（885 的写法，不看右边一组） | `page-edit.test.tsx` 打了字之后焦点在"完成"上一格（审查 A 的 R1-M2） | 决定 895 |
 | 110 | S3 | `reveal` 用映射过的位置当光标，不取行首 | `source-editor.test.tsx` 引用里的标题一格（审查 A 的 R1-N3） | |
 | 111 | S3 | 光标色照修订稿写在 `.cm-cursor` 上（`.cm-content` 不给 `caretColor`） | `source-editor.test.tsx` 的 `caretColor` 一格（审查 B 的 R1-M1） | |
 | 112 | S1 | `sameView` 不比 `active`（再修订稿的"照旧"） | `page-panel.test.tsx` 展开与收起时的量两格（存着收起时打开、展开之后不带 `aria-current`；展开时挂上、收起之后照旧量；审查 A 的 R2-I1） | 决定 886 |
-| 113 | S1 | 右边一组去掉 `min-h-8` | PG17 第 3 格第 3 步（内容读到之前标题上跳 16 px，375 与 820 宽两遍都红，113e；第 1 节 (n)，审查 A 的 R2-I2） | 决定 894 |
+| 113 | S1 | 右边一组去掉 `min-h-8` | PG17 第 3 格第 3 步（内容读到之前标题上跳 16 px，375 与 820 宽两遍都红，113e：先跑的 375 宽红在 `:288`，820 宽那一遍由审查 C 单独跑，也红在 `:288`；第 1 节 (n)，审查 A 的 R2-I2） | 决定 894 |
 | 114 | S1 | 不活跃时 `pin` 照样设当前项、建 `watchReader`（去掉 `live` 的判断） | `current-heading.test.ts` 不活跃时 `pin` 一格（变真时答点了的那一项，审查 A 的 R2-N2） | 决定 886 |
 | 115 | S1 | `active` 变假时不结束点了的那一项 | `current-heading.test.ts` 活跃时 `pin`、收起再展开一格（展开时答点了的那一项） | |
 | 116 | S3 | 焦点进组就保住"保存"（`into` 不看 `unsaved`，第 1 轮的 895） | `page-edit.test.tsx` 没有修改时焦点到"完成"、开关一格（审查 A 的 R2-M1） | 决定 895 |
 | 117 | S3 | 焦点已在组里时才有了修改不保住（去掉看 `unsaved` 的第二个 effect） | `page-edit.test.tsx` 焦点在"完成"上时改正文一格（自动保存之后"保存"藏起） | 决定 895 |
+| t1 | S1 | `EditButton` 的微任务去掉 `edit.current === null` 这一半 | 等价（`page-layout`、`page-autosave`、`page-edit`、`page-lock` 103 格全绿，审查 C 重跑同）：微任务里 `edit.current !== null` 只发生在 StrictMode 模拟卸下的那一次，那时"编辑"还拿着焦点，`focusLost()` 已为假；"编辑"改成 `disabled`（不是 `aria-disabled`）拿着焦点时就不再等价（审查 C 的 P4S1C-N7） | |
+| t2 | S1 | 右栏跟着时不取整（去掉 `Math.ceil`） | PG17 第 8 步（项的底差 0.375 px） | 决定 886 |
+| t3 | S1 | "已保存。"时不写 `data-saved` | `page-edit.test.tsx` | 决定 866 |
+| t4 | S1 | 保存失败时 `<output>` 不带 `text-destructive` | `page-edit.test.tsx` | 决定 866 |
+| t5 | S1 | "保存"进了 after 的落点 | `page-edit.test.tsx` 的次序一格 | 决定 866 |
+| t6 | S1 | `propertyRoles` 不注册 | `717f5334` 上没有格抓；`d29b68b0` 之后 PG17 第 15 步（`role="table"`） | 决定 864 |
+| t7 | S1 | 开关去掉 `aria-controls` | `page-panel.test.tsx` 开关一格 | 名字与状态 |
+| t8 | S1 | 不在正文旁边时也把右栏里的焦点交给开关 | 等价（`page-panel.test.tsx` 17 格全绿，审查 C 重跑同）：开关是 `hidden xl:inline-flex`，`useBeside` 是 `(width >= 80rem)`，与 Tailwind 的 `xl` 同界，不在旁边时开关 `display: none`，`focus()` 什么也不做；两处的界不同了就不再等价，jsdom 不读 CSS，没有格分得出（审查 C 的 P4S1C-N7） | |
+| t9 | S1 | `active` 不看 `useBeside()` | `page-panel.test.tsx` 不在正文旁边一格 | 决定 886 |
+| t10 | S1 | 属性的值 `overflow-wrap: normal` | PG17 第 15 步（区域一个） | 375 px |
+| t11 | S1 | 没有列出的标题时照样量（`reading = active`） | `current-heading.test.ts`"with no heading listed"一格 | |
+| t12 | S1 | 读者动过按页记（大纲重新挂上也不再跟） | `page-panel.test.tsx` 897 一格与视图晚到一格 | 决定 897 |
+| t13 | S1 | 决定 898 那一层去掉（索引那一支的 `ColumnTop` 照旧在全宽） | `upgrade-banner.test.tsx` 898 一格 | 决定 898 |
+| t14 | S1 | "编辑过"一句回到整句 `truncate` | `page-layout.test.tsx` 中英两格；PG17 第 2 步（"how much of the sentence is cut"） | 决定 899 |
+| t15 | S1 | "编辑过"一句去掉 `whitespace-pre` | `page-layout.test.tsx` 两格（读类名） | 决定 899 |
+| t16 | S1 | 名字的 `bdi` 只留 `truncate`（去掉 `min-w-0`） | `page-layout.test.tsx` 两格（读类名）；PG17 第 2 步在三种引擎里都过，行为等价：`truncate` 带 `overflow: hidden`，这样的弹性项的自动最小宽度是 0，`min-w-0` 多余；换成不带 `overflow: hidden` 的写法（只 `text-ellipsis whitespace-nowrap`）就不再等价（审查 C 的 P4S1C-F1-N1） | 决定 899 |
+| t17 | S1 | 锁说明的 `output` 去掉 `min-w-0 wrap-anywhere` | PG17 第 4 格，只在 Firefox 红（页的 `expectFits`，`scrollWidth` 658）；Chromium、WebKit 在连字符处断行，绿；`edit-lock-note.test.tsx` 抓不到 | 375 px |
+| t18 | S1 | 版本页"时间 · 作者"一行去掉 `min-w-0 wrap-anywhere` | PG17 第 4 格，只在 Firefox 红（版本页的 `expectFits`，660）；`version-page.test.tsx` 抓不到 | 375 px |
+| t19 | S1 | `justify-end-safe` 改回 `justify-end` | `page-layout.test.tsx` 两格（读类名） | |
+| t20 | S1 | 视图收回 4 px 的选择器改回 `[:first-child:empty+&]:-mt-1`（作用在 `AttachmentDrop` 自己身上） | 无格抓：临时故事量出三种引擎读取中、读取失败回到离标题 10 px（7.4） | |
+| t21 | S1 | 读到的一节改回观察 `main` | `current-heading.test.ts` 观察者一格（`[[main]]` 不等于 `[[article]]`）；WebKit 的报错由探针看（4.2 之前的"照实"） | |
+| t22 | S1 | PG17 第 12 步刷新之后不等锚点的标题拿到焦点 | 只在扣住视图的探针下红（`toBeHidden`，焦点在"Part 39"的 h2）：守的是竞态，平常绿 | 决定 900 |
+| t23 | S1 | PG17 第 14 步改回刷新带锚点的地址 | 只在扣住视图到"Edit"的盒子读完的探针下红（Chromium、WebKit，"how far Edit moved down"，22462、22461 px）：守的是竞态 | 决定 858 |
+| t24 | S1 | `versionBy` 种类前的不断行空格改回普通空格 | `version-page.test.tsx` 5 格（找不到名为"Ada · Edit"的链接） | |
+| t25 | S1 | 版本页一行"·"之后的不断行空格改回普通空格 | `version-page.test.tsx` 1 格（那一行的 `textContent`） | |
 
-不列的：4.8 最低清单里不在 P4 的几条（⌘K、即时生效、设置目录、`notebookGroups`、抽屉）由 P2、P3 守着；`se1` 的那一半（`--faint` 调淡，se1 红）P4 不碰搜索页。20、35、106 没有格抓，由 7.4 的截图看（106 只在一次渲染里）；52 等价（滚动区的 `ResizeObserver` 跟上后到的头）。`useCurrentHeading` 的"值不变就不设"（`shown` 的比较）不另列：去掉它时 React 自己多半也不排更新（同值的 `setState` 提前退出），它是让"不排"成为确定的一层，第 1 节 (k) 的三遍全绿是连同它跑的。决定 885 的"拿着焦点、没东西可存时按它不做事"是 `save()` 原有的判断（`version === savedVersion` 时返回），不另列变异，`page-edit.test.tsx` 的"再按它不发 `PUT`"看着它。决定 889 里下划线落在哪些字上（`tags.link` 不再画下划线）由 7.4 的截图看：下划线画给里面的行内元素而不继承，每个元素自己的 `getComputedStyle` 读不出它落在哪些字上。
+不列的：4.8 最低清单里不在 P4 的几条（⌘K、即时生效、设置目录、`notebookGroups`、抽屉）由 P2、P3 守着；`se1` 的那一半（`--faint` 调淡，se1 红）P4 不碰搜索页。20、35 没有格抓，由 7.4 的截图看（106 原也没有，决定 898 之后由 `upgrade-banner.test.tsx` 的一格抓；31 等价，见它那一行）；S1 的 t1–t25 是 S1 的实施者另写的（t22、t23 改的是故事，只在扣住视图的探针下红；t1、t8 等价，t16 在 e2e 里等价，依据都在行里；t20 没有格抓；t17、t18 只有 Firefox 的 PG17 第 4 格抓），审查者另写的与逐条的结果在 S1 的审查记录；52 等价（滚动区的 `ResizeObserver` 跟上后到的头）。`useCurrentHeading` 的"值不变就不设"（`shown` 的比较）不另列：去掉它时 React 自己多半也不排更新（同值的 `setState` 提前退出），它是让"不排"成为确定的一层，第 1 节 (k) 的三遍全绿是连同它跑的。决定 885 的"拿着焦点、没东西可存时按它不做事"是 `save()` 原有的判断（`version === savedVersion` 时返回），不另列变异，`page-edit.test.tsx` 的"再按它不发 `PUT`"看着它。决定 889 里下划线落在哪些字上（`tags.link` 不再画下划线）由 7.4 的截图看：下划线画给里面的行内元素而不继承，每个元素自己的 `getComputedStyle` 读不出它落在哪些字上。
 
 ### 7.3 门禁
 
@@ -1507,13 +1575,13 @@ PG17 只有页面版本：它核对的是界面的行为（头一行、右栏、
 
 B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张，对照 reading.html 看，记录写明看了哪些：
 
-- **S1**：页的阅读（头一行、标题、属性条、正文、右栏的四节）；1280 宽（内容列 696）与 1024 宽（右栏在正文之后）；右栏收起（1280–1303 px 之间列宽由 696 变 720，8.2 第 2 条）；长的面包屑与长的标题（折行）；名字长的"编辑过"（省略，480 与 375 宽时"编辑"不随它的到来移动）；375 与 820 宽时头一行在阅读、刚进编辑、打了字、自动保存之后都是两行，1024 宽起都是一行（决定 894）；一个两行的失败说明（820 宽的"The network was too slow…"、375 宽的"网络太慢……"）在头一行里折行、行高不变（变异 35；`min-h-8`，审查 B 的 R2-N1）；375 宽时英文三行的失败说明（"too slow"、NUL、"Cannot reach the server for now…"）让头一行高 16 px（照实记下、不截断，审查 A 的 R2-N3）；大纲读到的一节、长标题两行截断（变异 20）、强制色下的当前项（下划线）、一个以标题开头的折叠 callout（大纲里有它的项、从不标为当前）；反链的小卡片（摘要两行）；属性条（列表值、嵌套的表、长值、解析不到的链接的虚线照旧）；版本一行（"时间 · 谁写的"一种字，"当前"在最右；名字长时接着时间折行，"当前"仍在第一行的最右，审查 B 的 R2-N2）；编辑时的头一行（状态四态：空、未保存、保存中、已保存带 ✓；状态是 12.5 px 的淡色）、编辑说明；阅读时的锁说明，页与版本页各一张（同一个组件，审查 C 的 M14）；升级中的页（横幅在列里、标题之前）、升级中的设置页（横幅在 696 px 的列里）、升级中不存在的页；回收站的预览与变更集页的面包屑（随之换了，记下）。有意的偏离：属性的值是正文色（00 号文档，样稿是次要色）；没有小节的计数（决定 863）；编辑时没有页面菜单（00 号文档）。
+- **S1**：页的阅读（头一行、标题、属性条、正文、右栏的四节）；1280 宽（内容列 696）与 1024 宽（右栏在正文之后）；右栏收起（1280–1303 px 之间列宽由 696 变 720，8.2 第 2 条）；长的面包屑与长的标题（折行）；名字长的"编辑过"（只截名字、时间完整，决定 899；480 与 375 宽时"编辑"不随它的到来移动）；375 与 820 宽时头一行在阅读、刚进编辑、打了字、自动保存之后都是两行，1024 宽起都是一行（决定 894）；一个两行的失败说明（820 宽的"The network was too slow…"、375 宽的"网络太慢……"）在头一行里折行、行高不变（变异 35；`min-h-8`，审查 B 的 R2-N1）；375 宽时英文三行的失败说明（"too slow"、NUL、"Cannot reach the server for now…"）让头一行高 16 px（照实记下、不截断，审查 A 的 R2-N3）；大纲读到的一节、长标题两行截断（变异 20）、强制色下的当前项（下划线）、一个以标题开头的折叠 callout（大纲里有它的项、从不标为当前）；反链的小卡片（摘要两行）；属性条（列表值、嵌套的表、长值、解析不到的链接的虚线照旧）；版本一行（"时间 · 谁写的"一种字，"当前"在最右；名字长时接着时间折行，"当前"仍在第一行的最右，审查 B 的 R2-N2）；编辑时的头一行（状态四态：空、未保存、保存中、已保存带 ✓；状态是 12.5 px 的淡色）、编辑说明；阅读时的锁说明，页与版本页各一张（同一个组件，审查 C 的 M14）；升级中的页（横幅在列里、标题之前）、升级中的设置页（横幅在 696 px 的列里）、升级中不存在的页；回收站的预览与变更集页的面包屑（随之换了，记下）。有意的偏离：属性的值是正文色（00 号文档，样稿是次要色）；没有小节的计数（决定 863）；编辑时没有页面菜单（00 号文档）。
 - **S2**：正文的标题（标题接标题的间距，审查 B 的 M2）、段落、链接（悬停）、没建的页、标签、高亮、行内代码、表格（行高 1.5）、引用、列表、任务项（勾与不勾、可用与不可用、嵌套；已完成项里的链接与标签随之变淡；划线从复选框后的空格起，审查 B 的 N1，记成偏离）、七族的 callout（亮暗、折叠的与它的箭头、callout 里的代码块 13 px、强制色下的图标）、代码块（几种语言、长行横向滚动、头、按下之后的 ✓ 与"没能复制"、强制色下的图标、打印预览里没有头）、mermaid 亮暗各一：流程图（9 px 圆角，带圆柱的与 `style` 着色的圆柱）、时序图（注）、饼图（多于七块时颜色重复，记成的偏离）、甘特图（网格线、完成、进行中、关键、关键加完成的条里的字、今天线与 `vert` 标记线，审查 B 第 2 轮的未核实一条）、git 图、思维导图、时间线、xychart、ER（带属性、圈）、状态图、看板（暗色的列名）、块图、时间线（事件框不提亮）、旅程（灰的节）；375 宽时图的字约 7 px（今天就这样，记下）；强制色下的一张图（Chromium 的暗色高对比加亮色应用：图照应用的主题画、字看得见，审查 B 的 R2-N3）；公式；版本页与回收站的预览（同是 `.nw-reading`，记下）。Go 的 hljs 不给方法调用标 title、`nil` 归常量色（审查 B 的 N5，记成偏离）。
 - **S3**：编辑器（亮暗；frontmatter（整块次要色，链接与标签不画链接的样子；样稿的 `---` 淡、值是正文色，决定 874 记的偏离）、围栏代码、表格、引用里的代码、长的正文行、标题、链接（`[[页名]]` 只有页名带下划线、括号淡；`[文字](地址)` 的括号与地址淡；`==高亮==` 两端淡）、选区、琥珀的光标）；长文档拖滚动条；编辑时的大纲（长标题、frontmatter 不在里面）；"保存"的出现、拿着焦点时留着与消失、没有修改时焦点进组它不冒出来；有意的偏离：藏起的"保存"照旧占位，状态离开关约 70 px（样稿 8 px，决定 896）；冲突的面板、失锁的横幅；补全的弹层（亮暗）；对比视图（等宽、只换配色，`[[ ]]` 与 `==` 照旧正文色）。
 
 ### 7.5 CI 的余量
 
-新故事一个：PG17 三格，三种浏览器，共 9 次。PG16 在 P2/S2 的实测是每次 1–4 s；PG17 第 1 格走的多（一次就地更新、两次刷新、四次改窗口大小、十来次滚动与 `expect.poll`），推断每次 6–10 s；第 2 格一次复制、等 1.5 秒，推断 2–4 s；第 3 格两种宽度各进一次编辑、等一次自动保存（停手 2 秒之后），推断 7–10 s。合计约 45–72 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 23–36 秒的墙钟；UP1 多两句断言，不计。本机 E2E 2.5 min 推断到 2.8–3.0 min。CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节），余量足够。其余故事只换定位与断言，次数不变。S1、S2 之后照实各记一次。
+新故事一个：PG17 三格，三种浏览器，共 9 次。PG16 在 P2/S2 的实测是每次 1–4 s；PG17 第 1 格走的多（一次就地更新、两次刷新、四次改窗口大小、十来次滚动与 `expect.poll`），推断每次 6–10 s；第 2 格一次复制、等 1.5 秒，推断 2–4 s；第 3 格两种宽度各进一次编辑、等一次自动保存（停手 2 秒之后），推断 7–10 s。合计约 45–72 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 23–36 秒的墙钟；UP1 多两句断言，不计。本机 E2E 2.5 min 推断到 2.8–3.0 min。CI 的 E2E 一步今天约 6 分 21 秒，时限 18 分钟（00 号文档第 9 节），余量足够。其余故事只换定位与断言，次数不变。S1、S2 之后照实各记一次（S1 的在 10.1：第 1、3、4 格合计约 32–42 test-seconds，本机 E2E 2.6–3.8 min，负载 10–62）。
 
 **本机的总时长**（粗算，经 `heavy.sh` 串行）：六个代码提交各一次 `make lint-web knip test-web`（约 70 秒）约 7 分钟；六次 `make e2e`（约 5 分钟，含构建）约 30 分钟；三次合并之前的整条命令约 13 分钟、审查 C 各再跑一次，约 78 分钟；变异 118 条（含 104b），约 84 条只跑 vitest（一个文件 15–40 秒）约 45 分钟，31 条要重建前端再跑一个故事（每条约 3 分钟）约 93 分钟（审查 C 的 R3-N2），3 条没有格抓；修复核对每个 Step 一两轮约 45 分钟；S1 的全部 vitest 另跑三遍约 4 分钟。合计约 5.0 小时的锁时间（审查 C 的 R4-N1）。
 
@@ -1521,7 +1589,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ### 8.1 条件
 
-1. 4.1–4.5 的每一项做到；7.1 的测试通过；7.2 的变异都被抓住（20、35、106 由截图看，52 等价）。
+1. 4.1–4.5 的每一项做到；7.1 的测试通过；7.2 的变异都被抓住（20、35 由截图看，52 等价；31 与 S1 的 t1、t8 等价）。
 2. 每个 Step 的合并之前，7.3 的门禁为绿（只败第 1 节同行同消息的那几格）；没有服务端与契约的改动。
 3. 7.4 的截图看过，与样稿不同之处写进记录（是有意的，写理由；不是的，修）。
 4. Phase 完成（02-workflow 3.7）：S3 合并、它的合并记下之后，另一个提交 `docs: M13/P4 done (M13/P4)`（不在 S3 的文档提交里，审查 C 的 M13）：00 号文档第 12 节 P4 一行"完成"、头的状态、第 13 节一行；本文头的状态。`docs/v0.2/handoffs/M12-polish.md` 的"处理进展"由每个 Step 的文档提交各写一行（决定 881），这里不另写。
@@ -1548,7 +1616,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    换成：
 
-   > - **右栏**（"页面信息"）：大纲、反链、属性、版本（M8：最近的版本，点开是版本页：阅读、与上一版或当前比较、还原）；锁的状态在中栏（M5）。宽屏（1280 px 起）上右栏在中间的右边，高同窗口、粘住、自己滚动，头一行的开关收起它（记在这个浏览器里，没记过时展开），收起时中间那一列仍居中、最宽 720 px（展开时 1280–1303 px 之间它窄于 720 px，收起之后变宽到 720 px）；更窄时排在中间之后，没有开关。大纲以琥珀竖线与 `aria-current` 标出读到的那一节：视口上三分之一处之上的最后一个标题，页能滚且到了底时是视口里的最后一个；关着的折叠 callout 里的标题照旧列出，不当读到的一节；点了一项之后先标它，直到读者再动或它出了视口。读到的那一节的项不在右栏的可见范围里时右栏滚到刚好露出它，读者在右栏里动过之后不再跟，到换页为止。长标题至多两行；编辑时没有大纲（M13/P4/S1）。
+   > - **右栏**（"页面信息"）：大纲、反链、属性、版本（M8：最近的版本，点开是版本页：阅读、与上一版或当前比较、还原）；锁的状态在中栏（M5）。宽屏（1280 px 起）上右栏在中间的右边，高同窗口、粘住、自己滚动，头一行的开关收起它（记在这个浏览器里，没记过时展开），收起时中间那一列仍居中、最宽 720 px（展开时 1280–1303 px 之间它窄于 720 px，收起之后变宽到 720 px）；更窄时排在中间之后，没有开关。大纲以琥珀竖线与 `aria-current` 标出读到的那一节：视口上三分之一处之上的最后一个标题，页能滚且到了底时是视口里的最后一个；关着的折叠 callout 里的标题照旧列出，不当读到的一节；点了一项之后先标它，直到读者再动或它出了视口。读到的那一节的项不在右栏的可见范围里时右栏滚到刚好露出它，读者在右栏里动过之后不再跟，到换页、或进出编辑之后大纲重新出现为止。长标题至多两行；编辑时没有大纲（M13/P4/S1）。
 
 3. **13.2 第 17 条**（S1）："编辑"消失时的焦点。
 
@@ -1598,7 +1666,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    之后加：
 
-   > 右栏同样（M13/P4/S1，`pages/page/page-outline.tsx`）：大纲读到的那一节变了、它的项不在右栏的可见范围里时，只改右栏的 `scrollTop`，滚到刚好露出，不调 `scrollIntoView`，不移焦点；读者自打开这一页起在右栏里滚过、按过键或按下过（大纲的项除外）就不再跟，到换页为止；右栏不自己滚动时（更窄，排在正文之后）不动。
+   > 右栏同样（M13/P4/S1，`pages/page/page-outline.tsx`）：大纲读到的那一节变了、它的项不在右栏的可见范围里时，只改右栏的 `scrollTop`，滚到刚好露出，不调 `scrollIntoView`，不移焦点；读者自大纲出现起在右栏里滚过、按过键或按下过（大纲的项除外）就不再跟，到换页、或进出编辑之后大纲重新出现为止；右栏不自己滚动时（更窄，排在正文之后）不动。
 
 8. **头的表**（S1）：浏览器本地存储键。
 
@@ -1628,7 +1696,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     之后加（开头一个空格）：
 
-    >  M13/P4/S1：PG17 在三种浏览器里核对页的头一行（谁、何时编辑过，名字在 `bdi` 里，不是 `status`；它晚到时"编辑"不动）、宽屏的右栏（与正文并排、高同窗口；点大纲的项与读到的一节，关着的折叠 callout 里的标题从不标为读到的一节，页末点的一项照旧标它；读者之上就地更新时读的那一行不动；右栏只滚到当前项刚好露出、窗口不动，读者在右栏里滚过之后不再跟；收起之后正文宽度不变、仍居中，刷新之后仍收起；1024 宽时没有开关、右栏在正文之后）与 375 宽时的属性条（折行、不成区域、`expectFits`），另一格在 375 与 820 宽时核对阅读、刚进编辑、打了字与自动保存之后标题都不动，只有页面版本：它只核对界面的行为，写的只有造数与一次经接口的写，接口与 MCP 版本豁免。UP1 另核对"编辑"消失时焦点到标题、读的那一段不动。
+    >  M13/P4/S1：PG17 在三种浏览器里核对页的头一行（谁、何时编辑过，名字在 `bdi` 里，不是 `status`；它晚到时"编辑"不动）、宽屏的右栏（与正文并排、高同窗口；点大纲的项与读到的一节，关着的折叠 callout 里的标题从不标为读到的一节，页末点的一项照旧标它；读者之上就地更新时读的那一行不动；右栏只滚到当前项刚好露出、窗口不动，读者在右栏里滚过之后不再跟；收起之后正文宽度不变、仍居中，刷新之后仍收起；1024 宽时没有开关、右栏在正文之后）与 375 宽时的属性条（折行、不成区域、`expectFits`），一格在 375 宽时核对名字长而无处可断（连字符接数字，Firefox 不在那里断行）时锁说明与版本页"时间 · 作者"一行照样折行、页不横向滚动，另一格在 375 与 820 宽时核对阅读、刚进编辑、打了字与自动保存之后标题都不动，只有页面版本：它只核对界面的行为，写的只有造数与一次经接口的写，接口与 MCP 版本豁免。UP1 另核对"编辑"消失时焦点到标题、读的那一段不动。
 
 11. **第 15 节**（S1）：变更记录一行（`YYYY-MM-DD` 换成提交的日期）。
 
@@ -1795,14 +1863,49 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
   - 版本页、回收站的预览与变更集页的面包屑随 `BreadcrumbTrail` 换了字号与颜色，它们的头（标题、按钮）还是旧的：P5 照 PG 页的头一行排（`HeadMeta` 与开关只属于页）；版本页的锁说明随 S1 换了样子（决定 868），在版本页旧的头之下；版本页与回收站的预览的正文随 `.nw-reading` 换了样子（S2）；
   - `Mark` 只有页的右栏用了 `current`（决定 863），版本页与历史页的 `Mark` 照旧；
   - 01-P1 第 9 节的标签组清单里剩下的（`asset-dialogs.tsx:221` 由 P4 改了，决定 882）；
-  - 空状态（右栏的"没有反链""没有属性"照旧是一行灰字，P5 的空状态组件出来之后看要不要换）。
-- **各 Step 的实施者**（审查记录"未核实的怀疑"的去向）：S1 在 l6 的大页上量一次读到的一节每帧的代价，记进 10.1；S1 跑全部 vitest 三遍，看有没有"not configured to support act"（第 1 节 (k)；三修的写法下第一次设状态跟着别的更新同一次提交，审查 A、C 第 2 轮推了理、没跑），记进 10.1（6.1）；S1 在 Firefox 里看一次右栏复制属性的值的尾随空格，记进 10.1（决定 881）；S2 看换主题时控制台有没有 mermaid 的警告，记进 10.2；S3 在一篇几 MB 的文档上量一次编辑时的大纲补完解析的总时长，记进 10.3（第 6 节）；S2 在 7.4 的截图里看甘特的 `vert` 标记线与暗色"关键加完成"的条里的字（审查 B 第 2 轮）；S3 在 Safari 里人工看一次窗口失焦时显着的"保存"不隐去，记进 10.3（审查 A 第 2 轮，6.3）；各 Step 的 `make e2e` 里看 PG15 [webkit] 那一格是否仍"同行同消息"（P4 改了 `main` 的留白与两栏，PG15 的文件不改，审查 C 第 1 轮的怀疑），不是就停下查。01-P1 第 9 节 P4 那一条的四项：三项在 S2、一项在 S3，各在它的文档提交里注明（第 6 节，审查 C 的 N6）。
-- **收尾**：读屏清单"H. M13"一节加：右栏的开关（名字"页面信息"、`aria-expanded`，收起之后右栏不在可访问性树里，1280 px 以下没有开关）；大纲读到的一节（`aria-current="location"` 读作"当前位置"，随滚动变、不播报）；页头的"谁、何时编辑过"是普通文字（不播报），名字在 `bdi` 里；右栏版本一行的"·"是 CSS 生成的（`before:content`），各读屏读不读出它（审查 B 第 2 轮的未核实一条）；编辑时头一行的状态（`<output>`，读屏读文字、不读 ✓）、"保存"出现与隐去（显着时焦点在头一行右边那一组里就不隐去，自动保存完成之后按它不做事；焦点进组不让藏着的它显出；隐去时不在可访问性树里，决定 885、894、895）、"完成"；标题下的编辑说明；属性条在 VoiceOver 下照旧读作表（`propertyRoles`）；折叠 callout 的 `summary` 改成 `display: flex` 之后，WebKit 加 VoiceOver 还认不认它的展开状态；代码块的"复制"（名字不变，按下之后按钮变成 ✓，经 `aria-live` 读到"已复制"或"没能复制"一次，"已复制"只给读屏，决定 890；记下各读屏是否另读了名字）；编辑时的大纲（按钮，按下之后焦点到编辑器、光标在那一行）。README 与 `CHANGELOG.md` 0.1.0 的"网页的打磨"一条里"编辑时没有大纲"的已知限制删掉（00 号文档第 7 节"收尾"第 2 项）。
-- **v0.2**：M12-polish 第 1 项里 P4 不认领的（决定 881，逐项核对过 M5-polish）：3（高亮的闪动）、4、6.4、8.3、10.3、11.3–11.5、11.6 的其余、11.9、12.1、12.2 的开合、12.5、12.6、12.7、12.9、12.10 的千分位、13.2、17.2a、17.3、18.3、18.4b、18.4c、18.7、20.4、21.1；第 6 项的勾选框一半；第 5、11 项里 P4 的页之外的 `bdi`；第 7 项的 Firefox 尾随空格（照实记进 10.1，不改）：照旧留着。另有：l5 量编辑器外框时取父元素链上的底（`e2e/fixtures/contrast.ts:112-116`），改为量元素自己的底不在 P4（决定 891）；页内查找会找到代码块头里的语言名与"复制"，复制之后的 1.5 秒里也找得到藏起的"已复制"（打印时不印，决定 869；审查 B 第 1 轮核对过选区与剪贴板都不含它们）；mermaid 的 `themeVariables` 与 `themeCSS` 照旧可被图自己的指令改（决定 871；指令给的 `themeCSS` 经 mermaid 的 `sanitizeCss`）。
+  - 空状态（右栏的"没有反链""没有属性"照旧是一行灰字，P5 的空状态组件出来之后看要不要换）；
+  - P3 的 `sectionAt`（`W/app/settings-directory.tsx:53`）精确比较路径：笔记本设置的地址带尾随斜杠（`…/settings/general/`）时路由匹配到"基本信息"，`sectionAt` 认不出，走 `shown === undefined` 那一支，页没有 `h1`、各组之间没有间距（S1 起那一支的横幅在设置的列里，决定 898）；P5 做其余页面时先核对工作区与个人设置是否同样，再定改法（审查 B 的 P4S1B-Q1）；
+  - 版本页的标题在 320 宽时被"Restore this version"挤成"Version / 1"两行（M8 起的，不是 S1 改出来的；审查 B 修复核对第 2 轮）：P5 照页的头一行排版本页的头时一起看。
+- **各 Step 的实施者**（审查记录"未核实的怀疑"的去向）：S1 在 l6 的大页上量一次读到的一节每帧的代价，记进 10.1；S1 跑全部 vitest 三遍，看有没有"not configured to support act"（第 1 节 (k)；三修的写法下第一次设状态跟着别的更新同一次提交，审查 A、C 第 2 轮推了理、没跑），记进 10.1（6.1）；S1 在 Firefox 里看一次右栏复制属性的值的尾随空格，记进 10.1（决定 881）；S2 看换主题时控制台有没有 mermaid 的警告，记进 10.2；S3 在一篇几 MB 的文档上量一次编辑时的大纲补完解析的总时长，记进 10.3（第 6 节）；S2 在 7.4 的截图里看甘特的 `vert` 标记线与暗色"关键加完成"的条里的字（审查 B 第 2 轮）；S3 在 Safari 里人工看一次窗口失焦时显着的"保存"不隐去，记进 10.3（审查 A 第 2 轮，6.3）；各 Step 的 `make e2e` 里看 PG15 [webkit] 那一格是否仍"同行同消息"（P4 改了 `main` 的留白与两栏，PG15 的文件不改，审查 C 第 1 轮的怀疑），不是就停下查。S1 的四件都做了，记在 10.1（PG15 [webkit] 在 S1 的门禁里照旧同行同消息、有时过）。01-P1 第 9 节 P4 那一条的四项：三项在 S2、一项在 S3，各在它的文档提交里注明（第 6 节，审查 C 的 N6）。
+- **收尾**：读屏清单"H. M13"一节加：右栏的开关（名字"页面信息"、`aria-expanded`，收起之后右栏不在可访问性树里，1280 px 以下没有开关）；大纲读到的一节（`aria-current="location"` 读作"当前位置"，随滚动变、不播报）；页头的"谁、何时编辑过"是普通文字（不播报），名字在 `bdi` 里；右栏版本一行的"·"是 CSS 生成的（`before:content`），各读屏读不读出它（审查 B 第 2 轮的未核实一条）；编辑时头一行的状态（`<output>`，读屏读文字、不读 ✓）、"保存"出现与隐去（显着时焦点在头一行右边那一组里就不隐去，自动保存完成之后按它不做事；焦点进组不让藏着的它显出；隐去时不在可访问性树里，决定 885、894、895）、"完成"；标题下的编辑说明；属性条在 VoiceOver 下照旧读作表（`propertyRoles`）；折叠 callout 的 `summary` 改成 `display: flex` 之后，WebKit 加 VoiceOver 还认不认它的展开状态；代码块的"复制"（名字不变，按下之后按钮变成 ✓，经 `aria-live` 读到"已复制"或"没能复制"一次，"已复制"只给读屏，决定 890；记下各读屏是否另读了名字）；编辑时的大纲（按钮，按下之后焦点到编辑器、光标在那一行）；页头的"编辑过"一句是三个弹性项（决定 899），`innerText` 与选中复制都是三行，读屏按行读时会不会拆成三段（审查 A 的 P4S1A-F1-N1，没有核实）。README 与 `CHANGELOG.md` 0.1.0 的"网页的打磨"一条里"编辑时没有大纲"的已知限制删掉（00 号文档第 7 节"收尾"第 2 项）。
+- **v0.2**：M12-polish 第 1 项里 P4 不认领的（决定 881，逐项核对过 M5-polish）：3（高亮的闪动）、4、6.4、8.3、10.3、11.3–11.5、11.6 的其余、11.9、12.1、12.2 的开合、12.5、12.6、12.7、12.9、12.10 的千分位、13.2、17.2a、17.3、18.3、18.4b、18.4c、18.7、20.4、21.1；第 6 项的勾选框一半；第 5、11 项里 P4 的页之外的 `bdi`；第 7 项的 Firefox 尾随空格（照实记进 10.1，不改）：照旧留着。另有：l5 量编辑器外框时取父元素链上的底（`e2e/fixtures/contrast.ts:112-116`），改为量元素自己的底不在 P4（决定 891）；页内查找会找到代码块头里的语言名与"复制"，复制之后的 1.5 秒里也找得到藏起的"已复制"（打印时不印，决定 869；审查 B 第 1 轮核对过选区与剪贴板都不含它们）；mermaid 的 `themeVariables` 与 `themeCSS` 照旧可被图自己的指令改（决定 871；指令给的 `themeCSS` 经 mermaid 的 `sanitizeCss`）。S1 留下的两件：带锚点打开的页，视图第一次到时焦点给锚点、不看读者其间的动作（决定 900，`W/pages/page/view-anchors.ts:72-80`；13.2 第 26 条，异步的答复之后移动焦点要看读者动没动）；刚编辑过的页，头一行读作"<名字> 编辑于现在""Edited by <名字> now"（`page.editedBy` 加相对时间一直有的措辞，"刚刚编辑""just now"更顺，审查 B 的 P4S1B-F3），两件都记进 `docs/v0.2/handoffs/M12-polish.md`。
 
 ## 10. 结果
 
 （S1、S2、S3 合并之后各写一节：提交、做完的、与设计不同之处、实测、审查记录。）
+
+### 10.1 S1：页头、属性条与右栏（2026-11-24，合并 `<待填>`）
+
+- **提交**：`f7eb1100`（头一行与"编辑过"、右栏粘住并可收起、大纲读到的一节，照 6.1 提交 1）、`717f5334`（属性条与 `propertyRoles`、编辑时头一行的状态与按钮、标题下的说明、锁说明，照 6.1 提交 2）；照实加的 `d29b68b0`（PG17 第 5 步把标题滚到窗口顶下 100 px、第 15 步读属性表的角色：变异 12e、t6 在 `717f5334` 上活下来之后补）；审查的修复 `ed95b2cf`（没有列出的标题时不量；`main` 的观察者一格、897 一格与中文那次的打开照它们说的写）、`2ec9ce68`（`.nw-reading` 自成绘制层；小块 12 px 的圆角、视图离标题 14 px、锁与句子一项、嵌套表的小块同高、强制色下"当前"的框）、`addcfa69`（决定 899 的"编辑过"、决定 898 的设置索引）；修复核对第 1 轮之后的 `19518390`（PG17 第 12 步先等锚点的标题拿到焦点）、`c6297488`（长名字在锁说明与版本页一行里折，`justify-end-safe`，读取中与读取失败时离标题 14 px；PG17 第 4 格）、`f698d37e`（读到的一节看视图、不看 `main`）、`286d01b7`（PG17 第 14 步进不带锚点的地址）；修复核对第 2 轮之后的 `e2fd05b0`（第 4 格的 `REQUIRED` 两行、版本页一行的不断行空格、注释里视图旁边变高的是子页与附件）；加本文档提交。[S1 的审查记录](reviews/P4-S1-head-strip-panel-review.md)。
+- **基线**：不另跑（决定 883）。提交 1 的 `make e2e` 兼作核对：只败第 1 节那三格（se2:231、pg15:113、lw8:836，同行同消息）。之后 se2:231、lw8:836 每次都红，同行同消息；pg15:113 [webkit] 照旧有时过：实施者十次 `make e2e` 与四次合并之前的整条命令里红 6 次，审查 C 的三次门禁里红 2 次，红时都同行同消息（审查 C 的 P4S1C-N4）。
+- **做完**：4.1.1–4.1.12（照实见 4.2 之前的一段）；决定 854–868、879（PG17 第 1、3、4 格；第 4 格是审查加的）、882、883、884 里 S1 的两个键、886、887、892、893、894 的 S1 一半（右边一组定宽与 `min-h-8`；"保存"不需要时 `invisible` 在 S3，审查 C 的 P4S1C-N6）、897–900；881 里 S1 的部分：M5-polish 12.10 的截断、第 6 项"编辑"的焦点、P4 的页上的 `bdi`（锁说明、右栏版本一行、新的"编辑过"）；01-P1 第 9 节的标签组一处（`asset-dialogs.tsx:221`，`717f5334`）。S3 的变异 108 的抓手在 S1 的第 3 格里：审查 C 在 S1 的代码上照它的意思做了一条（没有修改时卸下"保存"），红在第 3 格的 `:316`（"375: the status's right"）；S3 照旧要跑 108。
+- **测试**：
+  - vitest：5325（221 个文件）→ 5365（223，提交 1）→ 5374（224，提交 2；`d29b68b0` 不变）→ 5376（`ed95b2cf`：A-N1、897 各一格）→ 5379（`addcfa69`：899 中英两格、898 一格；之后不变，新的断言加在已有的格里）。
+  - E2E：628 → 631（PG17 第 1 格 × 三种浏览器）→ 634（第 3 格 × 三）→ 637（第 4 格 × 三，`c6297488`）；`check.mjs` 列 chromium 430、firefox 102、webkit 102、webkit-narrow 3。
+  - 先写的新格在没改的树上红：提交 1 的 vitest 22 格与两个新文件导入失败，PG17 第 1 格（三种浏览器红在没有"Edited by"）与 UP1 新加的 `toBeFocused`（三种）；提交 2 的 vitest 6 格与 `property-roles.test.ts`，PG17 第 15 步（区域一个）与第 3 格（"375: the status's right"右移约 71 px）（三种）；读锁说明三处 `toBeNull` 的探针（去掉锁的释放事件，三格红）。修复的：A-N1 一格（没改时挂了监听、观察了 `main`）、898 一格（第一次见到横幅时 `{column:false,title:false}`；e2e 里改前三种引擎都是先在全宽、再进列）、899 中英两格与 PG17 第 2 步（三种浏览器红在"how much of the sentence is cut"）、`justify-end-safe` 的断言、观察视图的一格（`[[main]]` 不等于 `[[article]]`）、PG17 第 4 格（只在 Firefox 红：先在页上，锁说明修好之后在版本页）、PG17 第 12、14 步（扣住视图的探针下改前红、改后绿）、版本页一行的不断行空格（t24、t25 下 5 格、1 格红）。
+  - 不是先红的（审查 C 的 P4S1C-N3，7.1 的照实）：`upgrade-banner.test.tsx` 找不到的页、页树读取失败两格与"a version's page has the banner where it had it"，`page-panel.test.tsx` 的"folded away, or not beside the page, the right column measures none"，897 一格（现有的行为，t12 看到它红），原有的 `general-page.test.tsx:665-688`；hi1:258、hi2:113 是实现之后照新的次序改的。
+  - 提交 1 之后全部 vitest 跑三遍（`heavy.sh make test-web`），都是 5365 格全绿，"not configured to support act"零次，约 60.5、55.7、56.3 s（第 1 节 (k)）；之后每次门禁也是零次。全部 vitest 照旧每次打出一次"Not implemented: navigation to another Document"：原有的某一格让 jsdom 去导航，P3 的门禁日志里也有，`setup.ts` 的控制台守卫看不见它（审查 C 的 P4S1C-N8 与未核实的怀疑，没查是哪一格）。
+- **变异**（逐条在审查记录）：
+  - 7.2 的 S1 各条除 20、35 都被它写的格抓住（1–19、21–30、32–34、36、70–81、102–106、104b、112–115），26 由 `check.mjs` 抓（列出 PG17 的格）；照实改了抓手的：12（第 5 步，12e 在 `d29b68b0` 之后红在 `:149`；之前第 4 步点过的标题被 `pin` 着，线在 0 时也读到它）、16（`scrollIntoView({ block: "nearest" })` 只有 vitest 的桩抓，PG17 只抓默认的写法，红在第 8 步，审查 C 的 P4S1C-N2）、18（`page-panel` 15 格；`current-heading` 的那一格先放视图才走到守卫，审查 C 的 P4S1C-M1，之后 2 格红）、31（等价，三种引擎；t10 改成 `normal` 时第 15 步红）、79 与 113（第 3 格先跑的 375 宽红在 `:288`；820 宽那一遍由审查 C 单独跑，也红在 `:288`，审查 C 的 P4S1C-N1；79 另红在第 1 格第 14 步）、106（决定 898 之后由 `upgrade-banner.test.tsx` 的一格抓）。
+  - 20、35 没有格抓，由截图看：20 写在 `line-clamp-2` 之后时长标题由两行（35.75 px）变四行（71.5 px），写回原来的位置（类名最前）是等价的（`cn` 合并掉它）；35 让两行的失败说明把头一行撑高，标题下移 5.5 px（审查 B 在三种引擎里量过）。
+  - 实施者另写的 t1–t25（7.2 表末）：t1、t8 等价，t16 在 e2e 里三种引擎等价、vitest 读类名的两格红（依据都在行里）；t6 由 `d29b68b0` 补格；t17、t18 只有 Firefox 的 PG17 第 4 格抓；t20 没有格抓（临时故事量出读取中、读取失败回到 10 px）；t22、t23 改的是故事，只在扣住视图的探针下红（守的是竞态）；其余都被抓住。
+  - 审查者另写的：审查 C 的 108s1、31-ffwk、16-plain、18-ch、79-820、113-820、t16-ffwk，探针 3、4 配 t22、t23；审查 B 的 20、35、106 的截图对照；审查 A 的 l6 的十三种 CSS 对照。
+- **视觉的核对**（7.4）：
+  - 实施者先在 Chromium 截了 53 张（亮暗 × 1440、1280、1024、820、375 与整页；滚动之后大纲的当前项；1280、1440 收起；强制色；头一行四态（阅读、刚进编辑、打了字、已保存）；820、375 宽两行的失败说明；长面包屑、长标题；样稿的阅读亮暗、编辑、收起），对照样稿：头一行、32 px 的标题、属性条、右栏四节的图标与箭头、反链卡片、属性两列、版本一行"时间 · 谁 · 种类"与最右的"Current"、编辑时的"✓ Saved."、"Save"、开关、"Done"与带锁的说明都相符；不同的都是设计写明的（没有 +N，值是正文色，小节没有计数，编辑时没有菜单）。修复之后在三种引擎里重截：标题到属性条、小块、锁说明（页与版本页，1440、375、320）、强制色下的"当前"、设置索引的横幅、名字长的"编辑过"（中英文，1440、820、375）、大纲的长标题；修复核对第 1 轮之后改前改后的锁说明（固定的长名与像邮箱的名字，375、320）、320、340、375 宽的"编辑过"（30 分钟与 3 小时前，中英文）、三种状态离标题的距离（带属性条与不带，1440、375、320）。
+  - 实量：820 宽两行的失败说明 `output` 32 px、组 32 px，头一行不变高；375 宽三行时头一行高出 16 px（照实，不截断）；320 宽英文 NUL 的失败四行、标题下移 32 px，"too slow"三行下移 16 px，三种引擎相同（审查 B 的 P4S1B-N3，不截断）；820、375 宽阅读与编辑都是两行，1024 起一行；1280 宽收起时列 720、居中；强制色下当前项是下划线；折叠 callout 里的标题列出、从不当前；长标题两行截断；375 宽时长值在小块里折；长面包屑在 1440 宽折 4 行（头一行 78 px）、1024 宽折 6 行（117 px），右边一组照旧 416 px，里面只有一句被截的"编辑过"：决定 894 为"行数只看宽度"付的代价，照现状（审查 B 的 P4S1B-Q4）。
+  - 修复之后：标题到属性条（或第一段）在三种引擎、1440、1024、820、375、320、中英文都是 14 px，读取中、读取失败与文件夹的提示也是 14 px（改前 10 px）；单行的小块 24.75 px 高，折行的 43.5、62.25 px，字都在框里；嵌套表的小块与同一行的同高；"当前"18.5 px 高，Chromium、Firefox 的强制色下有框；"编辑过"在 1440 到 320 都不溢出，名字的 `bdi` 宽 174、210、121、66 px（英文），时间完整，但 `innerText` 与选中复制成了三行（"Edited by \n<名字>\n yesterday"，三种引擎都这样，审查 A 的 P4S1A-F1-N1，决定 899 的代价）；320 宽、能编辑的账户、"10–59 minutes ago"时名字是 0 宽、看不见（省略号也画不出），改前"Edited by"的开头被裁 0.7 px（Chromium、WebKit）、0.92 px（Firefox），`justify-end-safe` 之后开头不裁、裁的是结尾的同样的量；340 宽以上与"N hours ago""yesterday"时名字至少留 4–33 px，中文不受影响（审查 A 的 P4S1A-F1-N2）；锁说明的长名字在 Firefox 里改前冲出 283、338 px（固定的长名，375、320 宽）与 56、111 px（像邮箱的名字），改后 0，Chromium、WebKit 改前改后都是 0；审查 B 试了六种名字（短的、带空格与连字符的、连字符接数字的、像邮箱的、60 个字母的长词、中文的长名字），页与版本页，1440、375、320 宽，浅色深色，三种引擎都不横向滚动；版本页那一行在 1440、820、375、320 宽、中英文都不溢出，改成不断行空格之后"·"跟着名字走（B 的静态探针三种引擎都对）。
+  - 截图在会话的临时目录，不进仓库。
+- **Firefox 复制**（决定 881）：照 AS6 的 `copied` 复制右栏属性的值，Firefox 得 `{"status":"draft","owner":"Hub","owner (link)":"Hub"}`，与 Chromium 相同；属性换成两列的网格之后，M12 记下的尾随空格复现不出（没改代码）。
+- **l6 的大页**（14 万个标题，列出 1,000 个；Chromium，1440×900，每帧滚 40 px、120 帧）：钩子量一次 1,000 个标题中位 0.4 ms、最大 1 ms，脚本每帧 1.3–2.1 ms：慢的不是量位置。右栏开着从页顶滚时帧间隔中位 50 ms（约 20 fps）：审查 A 找到原因，右栏的每次改动都让根绘制层重画、走遍正文的每一块（每次约 36 ms），当前项每帧都变（P4S1A-M1）。`.nw-reading` 加 `isolation: isolate` 之后（`2ec9ce68`），实施者在同一会话里依次量改后、改前（只去掉它）、再改后（Paint 取渲染主线程的 Paint 事件、合并嵌套的区间）：l6 开着，改前帧间隔中位 50.0 ms、p90 50.1 ms、超过 20 ms 的帧 73、每帧 Paint 22.4 ms，改后 16.7 ms、16.7 ms、2–3 帧、11.0–11.3 ms；l6 收起，改前 16.7 ms、16.8 ms、9 帧、2.6 ms，改后 16.7 ms、16.7 ms、0 帧、1.2 ms；普通的页（40 节、每节 8 段）开着与收起，改前改后都是 16.7 ms、0 帧，Paint 0.01–0.03 ms。再展开的那一次与开着相同。改后 l6 开着时 Paint 仍约 11 ms/帧（74 次重画），帧率已是 60 fps，与审查 A 用注入的 CSS 量的一致，原因没再拆。审查 B 以 isolation 开与关逐像素比七个场景（KaTeX 与 mermaid、视图左边的焦点圈、375 宽公式区域的焦点圈、页面菜单、粘住的右栏、375 宽的视图与抽屉）：Firefox、WebKit 相同，Chromium 最大差 3/255，只是栅格化。
+- **读到的一节的观察者**（`f698d37e`，4.2 之前的"照实"）：WebKit 的"undelivered notifications"在改前 120 次载入里报 23 次，只拦掉 `main` 的观察 0 次，改看视图之后 0 次；审查 B 之后两次运行里没有再报。代价，审查 A 在三种引擎里量了（1440×900，40 节的页，在视图外插 200 或 900 px 的块）：页顶（`scrollY` 0）视图之上插 200 px，过时：仍标"Part 01"，按线该是没有，0 次 `scroll`（页顶不做滚动锚定），窗口再滚 1 px 就对；页中视图之上插 200 px，对（滚动锚定把窗口挪 200 px、发一次 `scroll`）；页底视图之后追加 900 px（不再到底），过时：仍标"Part 40"，按线该是"Part 38"，直到下一次滚动或改窗口；视图里变高（就地更新），对。三种引擎相同。只在页顶或页底、视图外的东西变高时过时一阵，下一次滚动或改窗口就纠正，照实记下（主持者定，不补 `MutationObserver`）。
+- **PG17 的时长**（7.5，第 1 / 3 / 4 格）：实施者合并之前的整条命令，`d29b68b0` 上 Chromium 2.1 / 7.3 s、Firefox 5.4 / 7.5 s、WebKit 3.4 / 6.9 s；`addcfa69` 上 1.9 / 7.1、4.2 / 6.9、3.0 / 7.2 s；`286d01b7` 上 2.3 / 6.5 / 0.53、4.5 / 6.6 / 0.84、2.9 / 7.1 / 0.78 s；`e2fd05b0` 上 2.1 / 7.6 / 1.3、7.1 / 7.9 / 1.4、3.7 / 7.7 / 3.0 s。审查 C：`d29b68b0` 上 2.2 / 6.9、5.6 / 7.4、3.6 / 7.7 s；`addcfa69` 上 11.8（红，F1-I1）/ 7.1、4.7 / 6.8、2.9 / 6.9 s；`286d01b7` 上 2.5 / 6.7 / 0.5、4.8 / 7.0 / 1.0、3.5 / 6.8 / 0.9 s。S1 的三格合计约 32–42 test-seconds（7.5 推的是 PG17 三格 45–72，第 2 格在 S2；第 1 格多半比推的 6–10 s 快）；本机 E2E 2.6–3.8 min（负载 10–62），7.5 推的是 2.8–3.0。UP1 的页面格 1.2–3.3 s。
+- **门禁**：
+  - 每个提交的 `heavy.sh make lint-web knip test-web` 都绿（提交之前没过的，改了才提交：提交 1 第一次 7 格红，6 格是 StrictMode 下"离开编辑之后焦点在'编辑'上"、1 格是"the wait's listeners"，4.2 之前的照实与 7.1；`ed95b2cf` 第一次 oxlint 报 `no-shadow`；`addcfa69` 前两次 oxlint 报 `no-array-index-key`、新格的 `MutationObserver` 以 `queryByText` 找横幅、通用页的行里也有那句话；`c6297488` 的第 4 格 oxlint 报 `consistent-function-scoping`、`no-shadow` 与 `no-await-in-loop`，改成模块级的 `unbroken()` 与 `fitsAt`）。
+  - `CI=1 heavy.sh make e2e`：提交 1 第一次 623 过、7 败（基线三格外，hi1:258、hi2:113 的文字次序，PG17 第 1 格在 Chromium 差 −0.375 px、在 WebKit 差 −0.078 px：照实改 hi1、hi2，加 `Math.ceil` 与 0.5 px 的容差），之后 627 / 3 / 1，2.7 min；`717f5334` 631 / 2 / 1，2.7 min；`ed95b2cf`、`2ec9ce68`、`addcfa69` 630 / 3 / 1，2.6–2.7 min；`19518390` 631 / 2 / 1，3.6 min；`c6297488` 632 / 4 / 1，3.1 min（基线之外 lw8:443、lw9:60 [chromium]）；`f698d37e` 632 / 4 / 1，2.9 min（基线之外 PG17 第 1 格 `:278` [webkit]，即 `286d01b7` 修的竞态，与 W6:128 [chromium]）；`286d01b7` 633 / 3 / 1，2.7 min；`e2fd05b0` 634 / 2 / 1，3.2 min（负载 40.3 → 33.1）。lw8:443（建页）、lw9:60（建笔记本）、W6:128（接受邀请）都是造数的 API 在负载（约 33）下答 500 `internal_error`，单独重跑都绿。
+  - 合并之前的整条命令（`CI=1 heavy.sh make lint-web knip test-web gen-check-web build-web e2e`，`m13-ui-refresh` 一直是 `92cbffd9`）：`d29b68b0` 上 vitest 224 个文件、5374 格，E2E 631 / 2 / 1，3.1 min，整条 4 分 40 秒（负载 20.8 → 24.7）；`addcfa69` 上 5379 格，631 / 2 / 1，2.6 min，3 分 45 秒（10.0 → 31.2）；`286d01b7` 上 5379 格，634 / 2 / 1，2.6 min，3 分 47 秒（11.8 → 39.2）；`e2fd05b0` 上 5379 格（82.5 s），633 过、3 败（基线三格，同行同消息）、1 跳，3.8 min，5 分 24 秒（33.1 → 41.4）。每次"not configured to support act"0 次，受保护路径的 `git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 与 `git diff --check` 都以 0 退出，跑完 `git status` 为空。
+  - 审查 C 的门禁：`d29b68b0` 上 630 / 3 / 1，3.1 min；`addcfa69` 上 629 / 4 / 1，2.7 min（基线三格与 PG17 `:242`，即 F1-I1，负载 19 → 62）；`286d01b7` 上 632 / 4 / 1，3.0 min（基线两格与 LW6 `lw6:151`、LW9 `fixtures/pages.ts:169`，服务端日志都是 `commit transaction: timeout: context deadline exceeded`，属造数的 500；重跑这两个文件 12 过）。
+- **与设计不同之处**：照实多九个代码提交（`d29b68b0` 与八个修复提交）；4.2 之前的"照实"（4.1.1、4.1.2、4.1.3、4.1.4、4.1.6、4.1.7、4.1.8、4.1.10）；861、879、886 的文字；5.1（第 2、3、5、12、14、15 步，第 4 格，`REQUIRED`，UP1 的 `.first()`，hi1、hi2）、5.4、5.5；7.1（`current-heading` 的守卫、观察者与没有标题时，点按一格的"Not implemented"，决定 892 那一支的格，897 的格，S1 末的照实一段）；7.2（第 12、16、18、20、31、79、106、113 行，t1–t25，表后的"不列的"）；7.4 的"编辑过"；7.5、8.1 第 1 条；8.2 第 2、7、10 条；第 9 节；决定 897–900。
+- **交给后面**：第 9 节（B 的尾随斜杠与版本页标题在 320 宽的两行给 P5；决定 900 与"编辑于现在"的措辞给 v0.2；读屏清单加"编辑过"的三段）；S3：右栏的读者记录随大纲的列表（决定 897），给编辑时加大纲时再核对；变异 108 照旧要跑；"保存"的显出与编辑时的大纲接在 `EditHeadSlots` 的 before、after 上。
 
 ## 附录：核对过的代码
 
