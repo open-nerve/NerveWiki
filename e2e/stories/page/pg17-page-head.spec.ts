@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { bearer, emailFor } from "../../fixtures/auth";
 import { countAnswers } from "../../fixtures/browser";
+import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
 import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { expectFits, phoneWidth } from "../../fixtures/narrow";
@@ -18,9 +19,11 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // its outline marking the section read (a folded callout's heading never, the heading clicked at the page's end), the
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
 // column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
-// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1). The page's
-// version only: the cells check the interface's behaviour, writing nothing but their data and one write through
-// the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
+// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code
+// block's head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and
+// its blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks). The page's version only:
+// the cells check the interface's behaviour, writing nothing but their data and one write through the API (for the
+// update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -390,4 +393,263 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
   await fitsAt(path);
   // The version's page: the same note, and the version's author in the line under its title.
   await fitsAt(`${path}/versions/1`, main.getByRole("link", { name: unbroken("admin") }));
+});
+
+/** A line of Go longer than the page's column (720px): its block scrolls sideways. */
+const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
+
+/**
+ * A done task with blocks under its text: code blocks, a callout with a tag, a quote, an item nested in it not done and
+ * a folded callout (a code block or the nested list between them, or they would be one quote).
+ */
+const shipped = [
+  "- [x] Shipped",
+  "  ```sh",
+  "  make ship",
+  "  ```",
+  "  > [!note] Shipped with it",
+  "  > Its body, #shipped.",
+  "  ```sh",
+  "  make tag",
+  "  ```",
+  "  > A quote under it.",
+  "  - [ ] Its follow-up",
+  "  > [!tip]- Folded with it",
+  "  > Inside the fold.",
+].join("\n");
+
+/** Properties of a list of maps and a list of words: their chips one height (review B's F1-M1). */
+const listed = [
+  "---",
+  "people:",
+  "  - name: Ada",
+  "    role: lead",
+  "  - name: Grace",
+  "    role: review",
+  "stages: [draft, review]",
+  "---",
+].join("\n");
+
+/**
+ * Callouts' titles with markup in them, one with an address longer than a phone's line: lines of text (decision 901);
+ * its body of three blocks, as a loose list's item is of two and a tight one's of a line and a code block (902, 903).
+ */
+const titled = [
+  "> [!note] A title with **bold**, a [[Doc]] link, `code` and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
+  "> Its body.",
+  ">",
+  "> Its second paragraph.",
+  ">",
+  "> ```sh",
+  "> make build",
+  "> ```",
+  "",
+  "> [!tip]- A folded title with **bold**, a [[Doc]] link and `code`",
+  "> Inside the fold.",
+  "",
+  "- A loose item's first paragraph.",
+  "",
+  "  Its second paragraph.",
+  "- Another loose item.",
+  "",
+  "Between the lists.",
+  "",
+  "- Build it:",
+  "  ```sh",
+  "  make build",
+  "  ```",
+  "  - Its nested step.",
+].join("\n");
+
+test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items' nor its blocks'; a property's map is a chip as tall as a word's; a callout's title is a line of text, its markup in it, at 375 wide too, its blocks apart as a list item's are", async ({
+  api,
+  browserName,
+  context,
+  signedInPage,
+}, testInfo) => {
+  await grantClipboardPermissions(context, browserName);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const markdown = `${listed}\n\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n${shipped}\n\n${titled}\n`;
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, markdown);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+  const article = page.getByRole("article", { name: "Doc" });
+  const pre = article.locator(":scope > pre");
+  const head = pre.locator(".nw-code-head");
+  const copy = pre.getByRole("button", { name: "Copy", exact: true });
+  const said = head.locator(".nw-code-said");
+
+  // Its head names its language: the code's class, its language- taken off.
+  await expect(head).toHaveText(/^go/);
+  await expect(copy).toBeVisible();
+
+  // Copy copies the code alone; its button turns to a check, Copied said to a screen reader alone (decision 890).
+  await copy.click();
+  await expect
+    .poll(() =>
+      pre.evaluate((block) => {
+        const button = block.querySelector<HTMLElement>(".nw-code-copy");
+        const word = block.querySelector<HTMLElement>(".nw-code-said");
+        return {
+          button: button?.dataset.state,
+          said: word?.textContent,
+          saidState: word?.dataset.state,
+          shown: Math.round((word?.getBoundingClientRect().width ?? 0) * 100) / 100 <= 1,
+        };
+      })
+    )
+    .toEqual({ button: "copied", said: "Copied", saidState: "copied", shown: true });
+  const code = await pre.locator(":scope > code").evaluate((element) => element.textContent);
+  expect(code).toBe(`func main() {\n\t${wideGo}\n}\n`);
+  expect(await readClipboardText(page, browserName)).toBe(code);
+  // A moment later, as it was; its name Copy all along.
+  await expect(copy).not.toHaveAttribute("data-state");
+  await expect(said).toHaveText("");
+  await expect(copy).toHaveAccessibleName("Copy");
+
+  // The block wider than the page is a region named Code; scrolled sideways, its head stays at its left.
+  await expect(article.getByRole("region", { name: "Code", exact: true })).toHaveCount(1);
+  await expect(pre).toHaveAttribute("role", "region");
+  const scrolled = await pre.evaluate((block) => {
+    block.scrollLeft = 200;
+    return block.scrollLeft;
+  });
+  expect(scrolled).toBe(200);
+  await afterFrames(page);
+  const [blockLeft, headLeft] = await Promise.all([
+    pre.evaluate((block) => block.getBoundingClientRect().left),
+    head.evaluate((element) => element.getBoundingClientRect().left),
+  ]);
+  expect(Math.abs(headLeft - (blockLeft + 1)), "the head's left, the block's border in").toBeLessThanOrEqual(1);
+
+  // A done item's own text struck and faint; its code blocks, its callouts, its quote and its nested list each an
+  // inline block the item's width, which its line-through goes not into, the text's colour, the quote's its own, as far
+  // apart as blocks are, the callout's tag its own colour (decision 872; S2's fix check: a block's contents were struck
+  // and faint with the item's text; round 1's C-F1-M1: the quote and the folded callout).
+  const done = await article
+    .locator(":scope > ul > li")
+    .first()
+    .evaluate((item) => {
+      const probe = document.createElement("span");
+      document.body.append(probe);
+      probe.style.color = "var(--faint)";
+      const faint = getComputedStyle(probe).color;
+      probe.style.color = "var(--muted-foreground)";
+      const muted = getComputedStyle(probe).color;
+      probe.remove();
+      const tag = item.querySelector(":scope > .nw-callout .nw-tag");
+      const text = getComputedStyle(item.closest("article") as Element).color;
+      const named = (colour: string) =>
+        colour === text ? "text" : colour === muted ? "muted" : colour === faint ? "faint" : colour;
+      const style = getComputedStyle(item);
+      const line = item.getBoundingClientRect().top + parseFloat(style.lineHeight);
+      const width = item.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      const blocks = [...item.querySelectorAll(":scope > :is(pre, .nw-callout, blockquote, ul)")];
+      return {
+        struck: style.textDecorationLine.includes("line-through"),
+        faint: style.color === faint,
+        blocks: blocks.map((block) => ({
+          tag: block.tagName.toLowerCase(),
+          display: getComputedStyle(block).display,
+          colour: named(getComputedStyle(block).color),
+          wide: Math.abs(block.getBoundingClientRect().width - width) <= 1,
+        })),
+        tag: tag !== null && getComputedStyle(tag).color === muted,
+        // Under the item's line, then under each other: their margins apart, no line's room more.
+        gaps: blocks.map((block, at) =>
+          Math.round(
+            block.getBoundingClientRect().top -
+              (at === 0 ? line : (blocks[at - 1] as Element).getBoundingClientRect().bottom)
+          )
+        ),
+      };
+    });
+  expect(done).toEqual({
+    struck: true,
+    faint: true,
+    blocks: [
+      { tag: "pre", display: "inline-block", colour: "text", wide: true },
+      { tag: "div", display: "inline-block", colour: "text", wide: true },
+      { tag: "pre", display: "inline-block", colour: "text", wide: true },
+      { tag: "blockquote", display: "inline-block", colour: "muted", wide: true },
+      { tag: "ul", display: "inline-block", colour: "text", wide: true },
+      { tag: "details", display: "inline-block", colour: "text", wide: true },
+    ],
+    tag: true,
+    gaps: [8, 8, 8, 8, 4, 8],
+  });
+
+  // The properties' list of maps: each map a chip as tall as a list of words' chip, its table not 0.5rem down as a
+  // list item's blocks are (round 1's B-F1-M1: decision 903's rule took the nested table, its chip 8px taller).
+  const chips = await article.evaluate((view) => {
+    const chip = (key: string) =>
+      [...view.querySelectorAll("table.nw-props > tbody > tr")]
+        .find((row) => row.querySelector(":scope > th")?.textContent === key)
+        ?.querySelector(":scope > td > ul > li") ?? null;
+    const [people, stages] = [chip("people"), chip("stages")];
+    const nested = people?.querySelector(":scope > table.nw-props") ?? null;
+    return {
+      chips: [people, stages].map((each) =>
+        each === null ? null : Math.round(each.getBoundingClientRect().height * 4) / 4
+      ),
+      nested: nested === null ? null : getComputedStyle(nested).marginTop,
+    };
+  });
+  expect(chips.chips[0], "a map's chip as tall as a word's").toBe(chips.chips[1]);
+  expect([chips.chips[0] !== null, chips.nested]).toEqual([true, "0px"]);
+
+  // A callout's title is a line of text, its bold, link and code in it, folded or not; it wraps as text does, the
+  // address too, at 375 wide in at most four lines, no callout nor the view scrolling sideways (decision 901; review
+  // A's I1, B's I1: a flex made each of them an item of its own, in columns side by side, an address past the edge).
+  const titles = article.locator(":scope > .nw-callout > :is(.nw-callout-title, summary)");
+  await expect(titles).toHaveCount(2);
+  const read = () =>
+    titles.evaluateAll((each) =>
+      each.map((title) => ({
+        text: (title as HTMLElement).innerText,
+        lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)),
+      }))
+    );
+  const texts = [
+    "A title with bold, a Doc link, code and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
+    "A folded title with bold, a Doc link and code",
+  ];
+  const wide = await read();
+  expect(wide.map((title) => title.text)).toEqual(texts);
+  expect(wide[0]?.lines, "the address's title in two lines at most").toBeLessThanOrEqual(2);
+  expect(wide[1]?.lines).toBe(1);
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await afterFrames(page);
+  const narrow = await read();
+  expect(narrow.map((title) => title.text)).toEqual(texts);
+  expect(narrow.map((title) => title.lines <= 4)).toEqual([true, true]);
+  await expectFits(page, article, article.locator(":scope > .nw-callout").first(), titles.first(), titles.last());
+
+  // In a callout its title 4px above its body, its blocks 0.5rem apart (decision 902); in a list item too, a loose
+  // list's paragraphs and a code block under its line, a nested list as it was (decision 903; review B's Q1, Q2).
+  const apart = await article.evaluate((view) => {
+    const items = [...view.querySelectorAll("li")];
+    const loose = items.find((item) => item.textContent.trim().startsWith("A loose item"));
+    const tight = items.find((item) => item.textContent.trim().startsWith("Build it"));
+    return {
+      callout: [...(view.querySelector(":scope > .nw-callout")?.children ?? [])].map(
+        (child) => getComputedStyle(child).marginTop
+      ),
+      loose: [...(loose?.children ?? [])].map((child) => getComputedStyle(child).marginTop),
+      tight: [...(tight?.children ?? [])].map((child) => [
+        child.tagName.toLowerCase(),
+        getComputedStyle(child).marginTop,
+      ]),
+    };
+  });
+  expect(apart).toEqual({
+    callout: ["0px", "4px", "8px", "8px"],
+    loose: ["0px", "8px"],
+    tight: [
+      ["pre", "8px"],
+      ["ul", "4px"],
+    ],
+  });
 });

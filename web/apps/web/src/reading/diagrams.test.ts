@@ -44,19 +44,50 @@ function themed(initial: "light" | "dark" = "light") {
 
 const context = (theme: "light" | "dark" = "light") => themed(theme).context;
 
+/** The diagrams' backgrounds, the light theme's and the dark's: mermaid's base theme either way, in the app's colours. */
+const lightBackground = "#ffffff";
+const darkBackground = "#1f2023";
+
+/** backgroundOf is the background a drawing's options give mermaid's theme: what tells the two themes apart. */
+const backgroundOf = (config: MermaidConfig) =>
+  (config.themeVariables as { background?: string } | undefined)?.background;
+
+/** A text's directive, whose config is JSON here, as mermaid reads it; and a theme its frontmatter's config names. */
+const directiveOf = /%%\{init:\s*(\{.*\})\s*\}%%/;
+const frontmatterTheme = /^\s+theme:\s*([\w-]+)$/m;
+/** A text's frontmatter, which mermaid's detectType reads past, as it does a directive. */
+const frontmatterOf = /^\s*---\n[\s\S]*?\n---\n/;
+
 /**
- * drawer is a mermaid that draws <svg id> of its text and its theme, its
- * styles and an element of it named by its id, recording the options it
- * was given and each drawing; it cannot draw a text with "bad". A drawing
- * of a text with "held" waits for release.
+ * drawer is a mermaid that draws <svg id> of its text and its theme (its
+ * background: mermaid's base theme in either, M13/P4/S2), its styles and an
+ * element of it named by its id, recording the options it was given, the texts
+ * it parsed and each drawing; it cannot draw or parse a text with "bad". A
+ * drawing of a text with "held" waits for release.
  */
 function drawer() {
   const configs: MermaidConfig[] = [];
   const drawn: string[] = [];
+  const parsed: string[] = [];
   const held: (() => void)[] = [];
   const draw: Drawer = {
     initialize: (config) => configs.push(config),
-    detectType: (text) => (text.startsWith("mindmap") ? "mindmap" : "flowchart"),
+    detectType: (text) =>
+      text.replace(frontmatterOf, "").replace(directiveOf, "").trimStart().startsWith("mindmap")
+        ? "mindmap"
+        : "flowchart",
+    parse: async (text) => {
+      parsed.push(text);
+      if (text.includes("bad")) {
+        return false;
+      }
+      const directive = directiveOf.exec(text)?.[1];
+      if (directive !== undefined) {
+        return { diagramType: "flowchart", config: JSON.parse(directive) as MermaidConfig };
+      }
+      const theme = frontmatterTheme.exec(text)?.[1] as MermaidConfig["theme"];
+      return { diagramType: "flowchart", config: theme === undefined ? {} : { theme } };
+    },
     render: async (id, text) => {
       drawn.push(`${id} ${text}`);
       if (text.includes("held")) {
@@ -65,13 +96,13 @@ function drawer() {
       if (text.includes("bad")) {
         throw new Error("Parse error");
       }
-      const theme = configs.at(-1)?.theme ?? "";
+      const theme = (configs.at(-1)?.themeVariables as { background?: string } | undefined)?.background ?? "";
       return {
         svg: `<svg id="${id}"><style>#${id} text{}</style><g id="${id}-a"><text>${text}</text><desc>${theme}</desc></g></svg>`,
       };
     },
   };
-  return { configs, drawn, held, draw };
+  return { configs, drawn, parsed, held, draw };
 }
 
 /** watcher is a Watch the test shows each element through; it records which it watches and which it stopped. */
@@ -143,9 +174,153 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
         "dompurifyConfig",
         "layout",
       ],
-      theme: "dark",
+      flowchart: { padding: 9 },
+      theme: "base",
+      themeVariables: expect.objectContaining({ background: darkBackground }),
+      themeCSS: expect.any(String),
     },
   ]);
+});
+
+/** optionsIn are the options a diagram is drawn with in theme. */
+async function optionsIn(theme: "light" | "dark", source: string): Promise<MermaidConfig> {
+  const { configs, draw } = drawer();
+  const { watch, show } = watcher();
+  const { blocks, article } = view(source);
+  diagrams(async () => draw, watch)(article, context(theme));
+  show(blocks[0] as Element);
+  await settled();
+  expect(configs).toHaveLength(1);
+  return configs[0] as MermaidConfig;
+}
+
+/** drawnWith are the options a diagram of source was last drawn with in theme, and the texts parsed. */
+async function drawnWith(theme: "light" | "dark", source: string) {
+  const { configs, parsed, draw } = drawer();
+  const { watch, show } = watcher();
+  const { blocks, article } = view(source);
+  diagrams(async () => draw, watch)(article, context(theme));
+  show(blocks[0] as Element);
+  await settled();
+  return { config: configs.at(-1) as MermaidConfig, parsed, drawn: article.querySelector("svg") !== null };
+}
+
+// Decision 904 (review A's I2, revised after the fix): a diagram that names a theme of its own, base's aside, or gives
+// variables of its own, is drawn from its own config alone, as before M13: the app's variables, overriding the theme
+// it derives its own from, would put the app's text on its fills (its light text on an author's yellow: 1.24:1).
+// Decision 906 (review A's F1-M1): variables without a theme, in mermaid's dark theme or its default as the app's is.
+test("a diagram naming a theme of its own, in a directive or its frontmatter, is drawn in that theme alone, not in the app's colours", async () => {
+  const directive = await drawnWith("light", '%%{init: {"theme": "dark"}}%%\ngraph TD; own904-->b');
+  const frontmatter = await drawnWith("dark", "---\nconfig:\n  theme: forest\n---\ngraph TD; own904-->c");
+  for (const [shown, named] of [
+    [directive, "dark"],
+    [frontmatter, "forest"],
+  ] as const) {
+    expect(shown.drawn, named).toBe(true);
+    expect(shown.config.theme, named).toBe(named);
+    expect(shown.config.themeVariables, named).toBeUndefined();
+    expect(shown.config.themeCSS, named).toBeUndefined();
+    // What a diagram cannot change, it cannot still.
+    expect(shown.config.securityLevel, named).toBe("strict");
+    expect(shown.config.secure, named).toContain("dompurifyConfig");
+    expect(shown.config.maxEdges, named).toBe(edgeLimit);
+  }
+});
+
+test("a diagram naming base with variables of its own is drawn from its config alone; base alone, or nothing, in the app's colours; a mindmap too large is not read, its frontmatter's theme neither", async () => {
+  const varied = await drawnWith(
+    "dark",
+    '%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ff0000"}}}%%\ngraph TD; base904-->b'
+  );
+  const based = await drawnWith("dark", '%%{init: {"theme": "base"}}%%\ngraph TD; base904-->c');
+  const plain = await drawnWith("light", "graph TD; plain904-->b");
+  expect([varied.drawn, varied.config.theme, varied.config.themeVariables, varied.config.themeCSS]).toEqual([
+    true,
+    "base",
+    undefined,
+    undefined,
+  ]);
+  expect([based.config.theme, backgroundOf(based.config)]).toEqual(["base", darkBackground]);
+  expect([plain.config.theme, backgroundOf(plain.config)]).toEqual(["base", lightBackground]);
+  const large = await drawnWith(
+    "light",
+    [
+      "---",
+      "config:",
+      "  theme: forest",
+      "---",
+      "mindmap",
+      "  root",
+      ...Array.from({ length: mindmapLines }, (_, i) => `    big904n${i.toString()}`),
+    ].join("\n")
+  );
+  expect([large.drawn, large.parsed]).toEqual([false, []]);
+});
+
+test("a diagram giving variables of its own without a theme is drawn from its config alone, in mermaid's default theme in the light app and its dark one in the dark", async () => {
+  const source =
+    '%%{init: {"themeVariables": {"fontSize": "20px", "primaryColor": "#ffcc00"}}}%%\ngraph TD; vars906-->b';
+  const light = await drawnWith("light", source);
+  const dark = await drawnWith("dark", source);
+  for (const [shown, named] of [
+    [light, "default"],
+    [dark, "dark"],
+  ] as const) {
+    expect(shown.drawn, named).toBe(true);
+    expect([shown.config.theme, shown.config.themeVariables, shown.config.themeCSS], named).toEqual([
+      named,
+      undefined,
+      undefined,
+    ]);
+    expect(shown.config.securityLevel, named).toBe("strict");
+  }
+});
+
+// Review A's F1-N1: a diagram's own config is in a directive (%%{…}%%) or its frontmatter (--- first); one of neither
+// is drawn in the app's colours without mermaid reading it once more before it draws it.
+test("a diagram of neither a directive nor frontmatter is not read before it is drawn; one of frontmatter after blank lines is", async () => {
+  const plain = await drawnWith("light", "graph TD; plain906-->b");
+  const commented = await drawnWith("dark", "%% a comment, no directive\ngraph TD; plain906-->c");
+  const spaced = await drawnWith("dark", "  \n---\nconfig:\n  theme: forest\n---\ngraph TD; plain906-->d");
+  expect([plain.drawn, plain.parsed, plain.config.theme]).toEqual([true, [], "base"]);
+  expect([commented.drawn, commented.parsed, commented.config.theme]).toEqual([true, [], "base"]);
+  expect([spaced.drawn, spaced.parsed.length, spaced.config.theme]).toEqual([true, 1, "forest"]);
+});
+
+/** The callouts' blue, the light theme's and the dark's (00-M13 4.1; reading.css's --nw-callout-blue). */
+const blue = { light: "#3d6fb8", dark: "#8fb0ec" };
+
+// M13/P4/S2, decisions 871, 888: mermaid's base theme in the app's colours, grey nodes and lines; a series in the
+// callouts' families, which base cannot derive from grey; dark derived as dark; what the variables cannot say (a
+// node's corners, a store's amber, the gantt's grid and the timeline's line) in the theme's own CSS.
+test("a diagram is drawn in mermaid's base theme in the app's colours, its series the callouts' families, dark as dark", async () => {
+  const shown = {
+    light: await optionsIn("light", "graph TD; light888-->b"),
+    dark: await optionsIn("dark", "graph TD; dark888-->b"),
+  };
+  for (const theme of ["light", "dark"] as const) {
+    const { theme: named, themeVariables, themeCSS } = shown[theme];
+    const variables = (themeVariables ?? {}) as Record<string, unknown>;
+    const xyChart = variables.xyChart as Record<string, unknown> | undefined;
+    expect(named, theme).toBe("base");
+    expect(variables.background, theme).toBe(theme === "light" ? lightBackground : darkBackground);
+    expect([variables.pie1, variables.git0, variables.cScale0], theme).toEqual([blue[theme], blue[theme], blue[theme]]);
+    // An object mermaid takes whole: its palette alone given, the rest of it is lost (dark drawn on white).
+    expect(xyChart?.backgroundColor, theme).toBe(variables.background);
+    expect(String(xyChart?.plotColorPalette).split(",")[0], theme).toBe(blue[theme]);
+    expect(themeCSS, theme).toContain("outer-path");
+    expect(themeCSS, theme).toContain("rx: 9px");
+    expect(themeCSS, theme).toContain(".eventWrapper { filter: none; }");
+  }
+  const light = (shown.light.themeVariables ?? {}) as Record<string, unknown>;
+  const dark = (shown.dark.themeVariables ?? {}) as Record<string, unknown>;
+  expect([light.darkMode, dark.darkMode]).toEqual([undefined, true]);
+  // The gantt's task in progress seen in light, the critical one's text read in dark (review B's R1-M2); the kanban's
+  // columns' names read in dark (R1-M3).
+  expect([light.activeTaskBkgColor, light.activeTaskBorderColor]).toEqual(["#e7e7ea", "#91939b"]);
+  expect(dark.critBkgColor).toBe("#b33b3b");
+  expect(shown.dark.themeCSS).toContain(".cluster-label");
+  expect(shown.light.themeCSS).not.toContain(".cluster-label");
 });
 
 test("the diagrams are drawn one at a time, each with ids of its own", async () => {
@@ -323,23 +498,23 @@ test("as the theme changes, a drawing is drawn again in it, in its wrapper, once
   await settled();
   const wrapper = article.querySelector(".nw-diagram");
   const themeShown = () => wrapper?.querySelector("desc")?.textContent;
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
 
   change("dark");
   await settled();
   expect(drawn).toHaveLength(1);
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
   expect(watched.has(wrapper as Element)).toBe(true);
 
   show(wrapper as Element);
   await settled();
   expect(drawn).toHaveLength(2);
   expect(article.querySelector(".nw-diagram")).toBe(wrapper);
-  expect(themeShown()).toBe("dark");
+  expect(themeShown()).toBe(darkBackground);
 
   // Kept in the theme it changes back to: put at once.
   change("light");
-  expect(themeShown()).toBe("default");
+  expect(themeShown()).toBe(lightBackground);
   expect(drawn).toHaveLength(2);
 });
 
@@ -361,12 +536,15 @@ test("a diagram is drawn in the theme shown as it is drawn: a drawing out as it 
   await settled();
   held[1]?.();
   await settled();
-  expect(configs.map((config) => config.theme)).toEqual(["default", "dark"]);
+  expect(configs.map((config) => [config.theme, backgroundOf(config)])).toEqual([
+    ["base", lightBackground],
+    ["base", darkBackground],
+  ]);
   const wrapper = article.querySelector(".nw-diagram");
-  expect(wrapper?.querySelector("desc")?.textContent).toBe("dark");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe(darkBackground);
 
   change("light");
-  expect(wrapper?.querySelector("desc")?.textContent).toBe("default");
+  expect(wrapper?.querySelector("desc")?.textContent).toBe(lightBackground);
   expect(drawn).toHaveLength(2);
 });
 
@@ -409,6 +587,7 @@ test("two drawings whose elements' ids are not the drawing's own have no id in c
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "sequence",
+    parse: async () => ({ config: {} }),
     render: async (id, text) => ({
       svg:
         `<svg id="${id}" aria-labelledby="chart-title-${id}"><title id="chart-title-${id}">${text}</title>` +
@@ -471,6 +650,7 @@ test("a drawing of thousands of ids not its own is read through a few times, not
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "sankey",
+    parse: async () => ({ config: {} }),
     render: async (id) => ({ svg: sankey(id, links) }),
   };
   const { watch, show } = watcher();
@@ -499,6 +679,7 @@ test("a style's declarations name no element: a task whose id is a colour's leav
   const draw: Drawer = {
     initialize: () => undefined,
     detectType: () => "gantt",
+    parse: async () => ({ config: {} }),
     render: async (id) => ({
       svg:
         `<svg id="${id}"><style>#${id} .task{fill:#fff5ad;stroke:#fff5ad}#fff5ad{stroke-width:2px}` +

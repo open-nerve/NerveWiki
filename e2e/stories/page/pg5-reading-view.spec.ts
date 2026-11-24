@@ -1,4 +1,5 @@
 import { expectContentWritten } from "../../fixtures/assert/page";
+import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, getView, writeContent } from "../../fixtures/pages";
@@ -10,7 +11,8 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // a page created with its Markdown, and in the browser its code coloured by
 // a worker of the app's own, which loads nothing (M4/P5 design 3.8, 3.9);
 // writing it comes with the editor (M4/P6). A task item's checkbox carries
-// its byte position (M5/P6 design 3.2): C10 ticks it.
+// its byte position (M5/P6 design 3.2): C10 ticks it. A code block's head,
+// its language and Copy, is no part of what a selection copies (M13/P4/S2).
 
 /** taskAt is the byte position of the character between the brackets of the task item that starts item. */
 function taskAt(content: string, item: string): string {
@@ -83,7 +85,7 @@ test("PG5 (API): a page created with Markdown reads as HTML, its properties firs
   expect(again.data?.html).toContain('<h1 id="nw-q5">Q5</h1>');
 });
 
-test("PG5 (page): the reading view shows the page's properties first, as a strip, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table scrolls sideways in a region of its own, which the keyboard can scroll", async ({
+test("PG5 (page): the reading view shows the page's properties first, as a strip, then its heading, table, task items (the admin's enabled, with their positions), strikethrough, autolink and footnote, the frontmatter neither a rule nor a heading; its code is coloured by a worker of the app's own origin, and nothing breaks the CSP; a wide table scrolls sideways in a region of its own, which the keyboard can scroll; a code block selected copies its code without its head", async ({
   api,
   db,
   signedInPage,
@@ -167,4 +169,19 @@ test("PG5 (page): the reading view shows the page's properties first, as a strip
   expect(script.pathname).toMatch(/^\/assets\/highlight\.worker-[\w-]+\.js$/);
   // The worker runs under its own answer's policy: it loads and sends nothing.
   expect((await page.request.get(script.href)).headers()["content-security-policy"]).toBe("default-src 'none'");
+
+  // A code block selected whole and copied: its code, not its head's language and Copy, unselectable (decision 869).
+  // The clipboard holds something else first: a copy that copied nothing does not read as the one before it.
+  const block = article.locator("pre").filter({ has: page.locator("code.language-go") });
+  await expect(block.locator(".nw-code-head")).toHaveText("goCopy");
+  await grantClipboardPermissions(page.context(), "chromium");
+  await page.evaluate(() => navigator.clipboard.writeText("nothing copied"));
+  await block.evaluate((node) => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+  });
+  await page.keyboard.press("ControlOrMeta+c");
+  expect((await readClipboardText(page, "chromium")).replace(/\n+$/, "")).toBe("func main() {}");
 });

@@ -16,7 +16,8 @@ import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 // typeset by KaTeX and a diagram drawn by mermaid, each loaded with the
 // first one, under the pages' Content-Security-Policy, which the page's
 // watch checks as the test ends: no violation, no console error. The
-// diagram follows the theme. Through the API, the view carries the tags,
+// diagram follows the theme, and under forced colours keeps the app's
+// (M13/P4/S2). Through the API, the view carries the tags,
 // formulas and diagrams for the page to make them (typeset and drawn in
 // the browser, page only), and a tag's pages are read. An agent writes the
 // tags and reads them by index, as REST reads them (M9/P5 design 3.4).
@@ -191,6 +192,18 @@ test("L4 (page): a tag leads to the pages of the tag and those under it; formula
   await expect(diagram).toContainText("Start");
   expect(await wrapper?.evaluate((element) => element.isConnected)).toBe(true);
   await expect(tag).toBeFocused();
+
+  // Under forced colours the diagram is drawn in the app's colours, as an image is: its ground, and its labels, which
+  // Chromium would force inside the SVG's foreignObject (M13/P4/S2; review B's R2-N3).
+  const box = article.locator(".nw-diagram");
+  const label = box.locator(".nodeLabel", { hasText: "Start" });
+  const ground = await box.evaluate((element) => getComputedStyle(element).backgroundColor);
+  const ink = await label.evaluate((element) => getComputedStyle(element).color);
+  await page.emulateMedia({ forcedColors: "active" });
+  expect(await page.evaluate(() => matchMedia("(forced-colors: active)").matches)).toBe(true);
+  await expect(box).toHaveCSS("background-color", ground);
+  await expect(label).toHaveCSS("color", ink);
+  await page.emulateMedia({ forcedColors: "none" });
 
   // The tag leads to its pages, the nested tag's among them, not those of the tag above it.
   await tag.click();
