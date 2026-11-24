@@ -223,6 +223,13 @@
     margin-top: 0.25rem;
   }
 
+  /* A list item's blocks 0.5rem apart, as a callout's are: a loose list's paragraphs, and a code block, a quote, a
+     callout or a table under the item's line, which in a tight list is no paragraph but its text (decision 903). */
+  .nw-reading li > p:not(:first-child),
+  .nw-reading li > :is(pre, blockquote, div, details, table, hr, h1, h2, h3, h4, h5, h6) {
+    margin-top: 0.5rem;
+  }
+
   /* A task item: its checkbox stands where the bullet would, in a loose list's first paragraph too; the browser's own,
      amber where it is checked (P1's accent-color), disabled as the browser draws it (decision 872). */
   .nw-reading li:has(> input[type="checkbox"], > p:first-child > input[type="checkbox"]) {
@@ -568,7 +575,12 @@
     line-height: 1.7;
   }
 
+  /* Its blocks 0.5rem apart, its title 4px above the first (decision 902; reading.html .ct's margin). */
   .nw-reading .nw-callout > * + * {
+    margin-top: 0.5rem;
+  }
+
+  .nw-reading .nw-callout > :is(.nw-callout-title, summary) + * {
     margin-top: 0.25rem;
   }
 

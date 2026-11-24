@@ -20,9 +20,10 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
 // column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
 // names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code
-// block's head, its language and Copy, and a done task item (M13/P4/S2, decisions 869, 872, 890). The page's version
-// only: the cells check the interface's behaviour, writing nothing but their data and one write through the API (for
-// the update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
+// block's head, its language and Copy, a done task item, a callout's title and its blocks, a list item's (M13/P4/S2,
+// decisions 869, 872, 890, 901–903). The page's version only: the cells check the interface's behaviour, writing
+// nothing but their data and one write through the API (for the update in place), the API's and MCP's versions exempt
+// (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -397,16 +398,38 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */
 const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
 
-/** Callouts' titles with markup in them, one with an address longer than a phone's line: lines of text (decision 901). */
+/**
+ * Callouts' titles with markup in them, one with an address longer than a phone's line: lines of text (decision 901);
+ * its body of three blocks, as a loose list's item is of two and a tight one's of a line and a code block (902, 903).
+ */
 const titled = [
   "> [!note] A title with **bold**, a [[Doc]] link, `code` and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
   "> Its body.",
+  ">",
+  "> Its second paragraph.",
+  ">",
+  "> ```sh",
+  "> make build",
+  "> ```",
   "",
   "> [!tip]- A folded title with **bold**, a [[Doc]] link and `code`",
   "> Inside the fold.",
+  "",
+  "- A loose item's first paragraph.",
+  "",
+  "  Its second paragraph.",
+  "- Another loose item.",
+  "",
+  "Between the lists.",
+  "",
+  "- Build it:",
+  "  ```sh",
+  "  make build",
+  "  ```",
+  "  - Its nested step.",
 ].join("\n");
 
-test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items'; a callout's title is a line of text, its markup in it, at 375 wide too", async ({
+test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items'; a callout's title is a line of text, its markup in it, at 375 wide too, its blocks apart as a list item's are", async ({
   api,
   browserName,
   context,
@@ -421,7 +444,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
   await page.setViewportSize({ width: 1440, height: 900 });
   await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
   const article = page.getByRole("article", { name: "Doc" });
-  const pre = article.locator("pre");
+  const pre = article.locator(":scope > pre");
   const head = pre.locator(".nw-code-head");
   const copy = pre.getByRole("button", { name: "Copy", exact: true });
   const said = head.locator(".nw-code-said");
@@ -517,4 +540,30 @@ test("PG17 (page): a code block's head names its language and copies its code al
   expect(narrow.map((title) => title.text)).toEqual(texts);
   expect(narrow.map((title) => title.lines <= 4)).toEqual([true, true]);
   await expectFits(page, article, article.locator(".nw-callout").first(), titles.first(), titles.last());
+
+  // In a callout its title 4px above its body, its blocks 0.5rem apart (decision 902); in a list item too, a loose
+  // list's paragraphs and a code block under its line, a nested list as it was (decision 903; review B's Q1, Q2).
+  const apart = await article.evaluate((view) => {
+    const items = [...view.querySelectorAll("li")];
+    const loose = items.find((item) => item.textContent.trim().startsWith("A loose item"));
+    const tight = items.find((item) => item.textContent.trim().startsWith("Build it"));
+    return {
+      callout: [...(view.querySelector(".nw-callout")?.children ?? [])].map(
+        (child) => getComputedStyle(child).marginTop
+      ),
+      loose: [...(loose?.children ?? [])].map((child) => getComputedStyle(child).marginTop),
+      tight: [...(tight?.children ?? [])].map((child) => [
+        child.tagName.toLowerCase(),
+        getComputedStyle(child).marginTop,
+      ]),
+    };
+  });
+  expect(apart).toEqual({
+    callout: ["0px", "4px", "8px", "8px"],
+    loose: ["0px", "8px"],
+    tight: [
+      ["pre", "8px"],
+      ["ul", "4px"],
+    ],
+  });
 });
