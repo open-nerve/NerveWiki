@@ -35,9 +35,11 @@ export function useEditHeadSlots(): HeadSlots {
 /**
  * HeadMeta is who edited the page last, and when (M13/P4/S1, decision 858): its newest version's, read by the key the
  * right column reads the versions by (SWR reads them once for both), the name in a bdi, the time in full as its title;
- * empty until they are read, and for a page without versions; shortened with an ellipsis where it is long. A
- * paragraph, no status: not heard each time it comes, the edit's status the main's only one. As long ago as it was
- * when it was read: it does not go on counting (M5-polish's known limit).
+ * empty until they are read, and for a page without versions. A long name is shortened alone, with an ellipsis, the
+ * time kept whole (decision 899): a row of the sentence's parts, the words around the name as they are (pre: their
+ * spaces kept at their ends), the name shrinking. A paragraph, no status: not heard each time it comes, the edit's
+ * status the main's only one. As long ago as it was when it was read: it does not go on counting (M5-polish's known
+ * limit).
  */
 export const HeadMeta = observer(function HeadMeta({ notebook, page }: { notebook: Notebook; page: string }) {
   const t = useT();
@@ -46,9 +48,13 @@ export const HeadMeta = observer(function HeadMeta({ notebook, page }: { noteboo
   const newest = data?.[0]?.data[0];
   const { locale } = preferences;
   return (
-    <p title={newest === undefined ? undefined : formatDateTime(newest.updated_at, locale)} className="truncate">
+    <p
+      title={newest === undefined ? undefined : formatDateTime(newest.updated_at, locale)}
+      className="flex justify-end overflow-hidden whitespace-pre"
+    >
       {newest !== undefined && (
         <Isolated
+          nameClass="min-w-0 truncate"
           {...isolate((name) =>
             t("page.editedBy", {
               name: name(newest.changeset.created_by.display_name),

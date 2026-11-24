@@ -390,6 +390,30 @@ test("in Chinese, the page's head says who edited it as the mockup has it", asyn
   expect(said.querySelector("bdi")?.textContent).toBe("Ada");
 });
 
+test.each([
+  ["en", "Edited by Ada yesterday"],
+  ["zh-CN", "Ada 编辑于昨天"],
+] as const)(
+  "%s: a long name is shortened alone in the page's head, the time kept whole (decision 899)",
+  async (locale, text) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-10-04T10:00:00Z"));
+    const server = pageServer();
+    server.withVersions(install.id, [versionJSON(1, null, "Install\n", { at: "2026-10-03T08:00:00Z" })]);
+    server.app.preferences.setLocale(locale);
+    renderApp(pagePath(install.id), server.app);
+
+    const said = await within(main()).findByText(edited(text));
+    const name = said.querySelector("bdi");
+    // The sentence a row that does not shorten itself; the name in it shrinks and ends in an ellipsis (truncate).
+    expect([said.className.split(" ").includes("truncate"), name?.className.split(" ")]).toEqual([
+      false,
+      ["min-w-0", "truncate"],
+    ]);
+    expect(said.className).toContain("whitespace-pre");
+  }
+);
+
 test("the page's head says nothing of who edited it while the page is edited", async () => {
   const server = pageServer();
   renderApp(pagePath(install.id), server.app);

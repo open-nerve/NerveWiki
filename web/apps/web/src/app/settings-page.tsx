@@ -1,6 +1,7 @@
 import { observer } from "mobx-react-lite";
 import { createContext, Fragment, use, useId, useState, type ReactNode, type RefObject } from "react";
 
+import { cn } from "../lib/cn";
 import { useArrivalFocus } from "./arrival";
 import { ColumnTop } from "./column-top";
 
@@ -17,6 +18,12 @@ export function useSettingsHeading(): RefObject<HTMLHeadingElement | null> {
 }
 
 /**
+ * settingsColumnClass is the settings' column (the mockup's .page), centred, at most 696px wide, 20px under the main's
+ * top from md: up: SettingsPage's, and the banner's where a notebook's settings have no page yet (decision 898).
+ */
+export const settingsColumnClass = "mx-auto w-full max-w-178 md:px-2 md:pt-5";
+
+/**
  * SettingsPage is a page of the settings' mode (00-M13 4.4.2; M13/P3/S1, decisions 815, 820, 844): its name as its h1,
  * which takes the arrival focus as it mounts (the layouts key it by the page: arrived at twice in one layout, from the
  * drawer, each page's h1 mounts anew and takes it), above its groups; above its h1, a notebook's upgrade banner
@@ -27,7 +34,7 @@ export function useSettingsHeading(): RefObject<HTMLHeadingElement | null> {
 export function SettingsPage({ title, children }: { title: string; children: ReactNode }) {
   const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
-    <div className="mx-auto w-full max-w-178 md:px-2 md:pt-5 md:pb-4">
+    <div className={cn(settingsColumnClass, "md:pb-4")}>
       <ColumnTop />
       <h1
         ref={heading}

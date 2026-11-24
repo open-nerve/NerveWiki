@@ -123,6 +123,16 @@ test("PG17 (page): the page's head says who edited the page last, Edit kept wher
   const edited = main.getByText(/^Edited by /);
   await expect(edited).toBeVisible();
   await expect(edited.locator("bdi")).toHaveText(name);
+  // The admin's long name is shortened alone, the time after it kept whole (decision 899).
+  const cut = await edited.evaluate((sentence) => {
+    const shown = sentence.querySelector("bdi");
+    return {
+      sentence: sentence.scrollWidth - sentence.clientWidth,
+      name: shown === null ? 0 : shown.scrollWidth - shown.clientWidth,
+    };
+  });
+  expect(cut.sentence, "how much of the sentence is cut").toBeLessThanOrEqual(0);
+  expect(cut.name, "how much of the name is cut").toBeGreaterThan(0);
   await expect(main.getByRole("status").filter({ hasText: "Edited by" })).toHaveCount(0);
 
   // The right column, right of the page's column with the content area's 40px between, the window's height, held.
