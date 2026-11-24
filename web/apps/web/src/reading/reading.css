@@ -224,9 +224,11 @@
   }
 
   /* A list item's blocks 0.5rem apart, as a callout's are: a loose list's paragraphs, and a code block, a quote, a
-     callout or a table under the item's line, which in a tight list is no paragraph but its text (decision 903). */
+     callout or a table's wrapper under the item's line, which in a tight list is no paragraph but its text (decision
+     903). Not a table: the one in a list item is a property's map in its chip, which it would make 8px taller (review
+     B's F1-M1); the page's own tables are in their wrappers. */
   .nw-reading li > p:not(:first-child),
-  .nw-reading li > :is(pre, blockquote, div, details, table, hr, h1, h2, h3, h4, h5, h6) {
+  .nw-reading li > :is(pre, blockquote, div, details, hr, h1, h2, h3, h4, h5, h6) {
     margin-top: 0.5rem;
   }
 

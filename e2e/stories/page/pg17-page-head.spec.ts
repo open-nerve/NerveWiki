@@ -20,10 +20,10 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
 // column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
 // names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code
-// block's head, its language and Copy, a done task item, a callout's title and its blocks, a list item's (M13/P4/S2,
-// decisions 869, 872, 890, 901–903). The page's version only: the cells check the interface's behaviour, writing
-// nothing but their data and one write through the API (for the update in place), the API's and MCP's versions exempt
-// (v0.1 design 13.4, item 3).
+// block's head, its language and Copy, a done task item and its blocks, a property's map's chip, a callout's title and
+// its blocks, a list item's (M13/P4/S2, decisions 869, 872, 890, 901–903; the fix checks). The page's version only:
+// the cells check the interface's behaviour, writing nothing but their data and one write through the API (for the
+// update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -398,7 +398,10 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */
 const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
 
-/** A done task with blocks under its text, a code block and a callout with a tag, and an item nested in it not done. */
+/**
+ * A done task with blocks under its text: code blocks, a callout with a tag, a quote, an item nested in it not done and
+ * a folded callout (a code block or the nested list between them, or they would be one quote).
+ */
 const shipped = [
   "- [x] Shipped",
   "  ```sh",
@@ -406,7 +409,25 @@ const shipped = [
   "  ```",
   "  > [!note] Shipped with it",
   "  > Its body, #shipped.",
+  "  ```sh",
+  "  make tag",
+  "  ```",
+  "  > A quote under it.",
   "  - [ ] Its follow-up",
+  "  > [!tip]- Folded with it",
+  "  > Inside the fold.",
+].join("\n");
+
+/** Properties of a list of maps and a list of words: their chips one height (review B's F1-M1). */
+const listed = [
+  "---",
+  "people:",
+  "  - name: Ada",
+  "    role: lead",
+  "  - name: Grace",
+  "    role: review",
+  "stages: [draft, review]",
+  "---",
 ].join("\n");
 
 /**
@@ -440,7 +461,7 @@ const titled = [
   "  - Its nested step.",
 ].join("\n");
 
-test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items' nor its blocks'; a callout's title is a line of text, its markup in it, at 375 wide too, its blocks apart as a list item's are", async ({
+test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items' nor its blocks'; a property's map is a chip as tall as a word's; a callout's title is a line of text, its markup in it, at 375 wide too, its blocks apart as a list item's are", async ({
   api,
   browserName,
   context,
@@ -449,7 +470,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
   await grantClipboardPermissions(context, browserName);
   const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
   const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
-  const markdown = `\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n${shipped}\n\n${titled}\n`;
+  const markdown = `${listed}\n\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n${shipped}\n\n${titled}\n`;
   const doc = await createPage(api, pat, notebook.id, "Doc", null, markdown);
   const page = await signedInPage(tokens);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -503,11 +524,12 @@ test("PG17 (page): a code block's head names its language and copies its code al
   ]);
   expect(Math.abs(headLeft - (blockLeft + 1)), "the head's left, the block's border in").toBeLessThanOrEqual(1);
 
-  // A done item's own text struck and faint; its code block, its callout and its nested list each an inline block the
-  // item's width, which its line-through goes not into, the text's colour, as far apart as blocks are, the callout's
-  // tag its own colour (decision 872; S2's fix check: a block's contents were struck and faint with the item's text).
+  // A done item's own text struck and faint; its code blocks, its callouts, its quote and its nested list each an
+  // inline block the item's width, which its line-through goes not into, the text's colour, the quote's its own, as far
+  // apart as blocks are, the callout's tag its own colour (decision 872; S2's fix check: a block's contents were struck
+  // and faint with the item's text; round 1's C-F1-M1: the quote and the folded callout).
   const done = await article
-    .locator("li")
+    .locator(":scope > ul > li")
     .first()
     .evaluate((item) => {
       const probe = document.createElement("span");
@@ -518,18 +540,20 @@ test("PG17 (page): a code block's head names its language and copies its code al
       const muted = getComputedStyle(probe).color;
       probe.remove();
       const tag = item.querySelector(":scope > .nw-callout .nw-tag");
-      const view = item.closest("article");
+      const text = getComputedStyle(item.closest("article") as Element).color;
+      const named = (colour: string) =>
+        colour === text ? "text" : colour === muted ? "muted" : colour === faint ? "faint" : colour;
       const style = getComputedStyle(item);
       const line = item.getBoundingClientRect().top + parseFloat(style.lineHeight);
       const width = item.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
-      const blocks = [...item.querySelectorAll(":scope > :is(pre, .nw-callout, ul)")];
+      const blocks = [...item.querySelectorAll(":scope > :is(pre, .nw-callout, blockquote, ul)")];
       return {
         struck: style.textDecorationLine.includes("line-through"),
         faint: style.color === faint,
         blocks: blocks.map((block) => ({
           tag: block.tagName.toLowerCase(),
           display: getComputedStyle(block).display,
-          colour: view !== null && getComputedStyle(block).color === getComputedStyle(view).color,
+          colour: named(getComputedStyle(block).color),
           wide: Math.abs(block.getBoundingClientRect().width - width) <= 1,
         })),
         tag: tag !== null && getComputedStyle(tag).color === muted,
@@ -546,13 +570,35 @@ test("PG17 (page): a code block's head names its language and copies its code al
     struck: true,
     faint: true,
     blocks: [
-      { tag: "pre", display: "inline-block", colour: true, wide: true },
-      { tag: "div", display: "inline-block", colour: true, wide: true },
-      { tag: "ul", display: "inline-block", colour: true, wide: true },
+      { tag: "pre", display: "inline-block", colour: "text", wide: true },
+      { tag: "div", display: "inline-block", colour: "text", wide: true },
+      { tag: "pre", display: "inline-block", colour: "text", wide: true },
+      { tag: "blockquote", display: "inline-block", colour: "muted", wide: true },
+      { tag: "ul", display: "inline-block", colour: "text", wide: true },
+      { tag: "details", display: "inline-block", colour: "text", wide: true },
     ],
     tag: true,
-    gaps: [8, 8, 4],
+    gaps: [8, 8, 8, 8, 4, 8],
   });
+
+  // The properties' list of maps: each map a chip as tall as a list of words' chip, its table not 0.5rem down as a
+  // list item's blocks are (round 1's B-F1-M1: decision 903's rule took the nested table, its chip 8px taller).
+  const chips = await article.evaluate((view) => {
+    const chip = (key: string) =>
+      [...view.querySelectorAll("table.nw-props > tbody > tr")]
+        .find((row) => row.querySelector(":scope > th")?.textContent === key)
+        ?.querySelector(":scope > td > ul > li") ?? null;
+    const [people, stages] = [chip("people"), chip("stages")];
+    const nested = people?.querySelector(":scope > table.nw-props") ?? null;
+    return {
+      chips: [people, stages].map((each) =>
+        each === null ? null : Math.round(each.getBoundingClientRect().height * 4) / 4
+      ),
+      nested: nested === null ? null : getComputedStyle(nested).marginTop,
+    };
+  });
+  expect(chips.chips[0], "a map's chip as tall as a word's").toBe(chips.chips[1]);
+  expect([chips.chips[0] !== null, chips.nested]).toEqual([true, "0px"]);
 
   // A callout's title is a line of text, its bold, link and code in it, folded or not; it wraps as text does, the
   // address too, at 375 wide in at most four lines, no callout nor the view scrolling sideways (decision 901; review
@@ -570,10 +616,10 @@ test("PG17 (page): a code block's head names its language and copies its code al
     "A title with bold, a Doc link, code and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
     "A folded title with bold, a Doc link and code",
   ];
-  expect(await read()).toEqual([
-    { text: texts[0], lines: 2 },
-    { text: texts[1], lines: 1 },
-  ]);
+  const wide = await read();
+  expect(wide.map((title) => title.text)).toEqual(texts);
+  expect(wide[0]?.lines, "the address's title in two lines at most").toBeLessThanOrEqual(2);
+  expect(wide[1]?.lines).toBe(1);
   await page.setViewportSize({ width: phoneWidth, height: 800 });
   await afterFrames(page);
   const narrow = await read();
