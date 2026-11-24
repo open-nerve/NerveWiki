@@ -129,8 +129,9 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   // Floors at what M13/P1/S1 measured, less 0.1, the light amber's at what M13/P1/S2 did once it was a shade deeper
   // (decision 766): no colour is to fade by accident (00-M13 4.7). Measured on Chromium: light, the detail 5.281, the
   // editor's frame and the view's link 3.098, the option selected and the menu's current item, their rings inset,
-  // 2.646; dark 4.849, 7.923, 5.476. The search panel's as M13/P4/S3 styled it (decision 910), its field focused:
-  // light, the field's text and a button's word 17.578, a label 6.183; dark 12.987, 12.353, 6.637.
+  // 2.646; dark 4.849, 7.923, 5.476. The search panel's as M13/P4/S3 styled it (decision 910): light, the text of the
+  // field focused and a button's word 17.578, of the other field 15.992, a label 6.183; dark 12.987, 12.353, 12.353,
+  // 6.637.
   const floors = {
     light: {
       detail: 5.18,
@@ -139,6 +140,7 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
       link: 2.99,
       current: 2.54,
       field: 17.47,
+      idle: 15.89,
       button: 17.47,
       label: 6.08,
     },
@@ -149,6 +151,7 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
       link: 7.82,
       current: 5.37,
       field: 12.88,
+      idle: 12.25,
       button: 12.25,
       label: 6.53,
     },
@@ -183,13 +186,16 @@ test("L5 (page): [[ completes a page by its title and by an alias, # a tag; noth
   await expect(completion(page)).toHaveCount(0);
 
   // The search panel (Mod+F) in the app's colours, light and dark, its field and buttons the app's (decision 910;
-  // review B's P4S3B-I1): what is typed in its field, a button's word and a label read against what is under them; a
-  // button draws no picture of its own, which the measure would not see; the panel on the editor's background.
+  // review B's P4S3B-I1): what is typed in its field, the other field's, not focused, a button's word and a label read
+  // against what is under them; a button draws no picture of its own, which the measure would not see; the panel on
+  // the editor's background.
   const search = page.locator(".cm-panel.cm-search");
   const searchShown = async (scheme: "light" | "dark") => {
     await setColorScheme(page, scheme);
     const field = await textContrast(search.locator(".cm-textfield").first());
     expect(field.ratio, `${scheme} ${JSON.stringify(field)}`).toBeGreaterThanOrEqual(floors[scheme].field);
+    const idle = await textContrast(search.locator(".cm-textfield").nth(1));
+    expect(idle.ratio, `${scheme} ${JSON.stringify(idle)}`).toBeGreaterThanOrEqual(floors[scheme].idle);
     const button = search.locator(".cm-button").first();
     await expect(button).toHaveCSS("background-image", "none");
     const word = await textContrast(button);
