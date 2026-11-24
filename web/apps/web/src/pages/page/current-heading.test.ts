@@ -259,6 +259,8 @@ test("not active, it measures nothing and answers none", async () => {
 
 test("without a ResizeObserver it reads all the same; with one, it watches the main and measures again as it resizes", async () => {
   expect(typeof ResizeObserver).toBe("undefined");
+  // The page's main there from the start: without a ResizeObserver it is not watched (review C's P4S1C-M1).
+  const main = put(document.createElement("main"));
   headings({ a: -400, b: 100, c: 500, d: 700 });
   const without = probe();
   expect(without.current()).toBe("b");
@@ -281,7 +283,6 @@ test("without a ResizeObserver it reads all the same; with one, it watches the m
       }
     }
   );
-  const main = put(document.createElement("main"));
   const read = probe();
   expect(observers.map(({ observed }) => observed)).toEqual([[main]]);
 
@@ -294,6 +295,32 @@ test("without a ResizeObserver it reads all the same; with one, it watches the m
 
   read.unmount();
   expect(observers[0]?.disconnected).toBe(true);
+});
+
+test("with no heading listed, it is not active: it listens to nothing, watches nothing and answers none", () => {
+  const listened = vi.spyOn(window, "addEventListener");
+  const observed: Element[] = [];
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe(element: Element) {
+        observed.push(element);
+      }
+      disconnect() {}
+    }
+  );
+  put(document.createElement("main"));
+  const renders: (string | undefined)[] = [];
+  function Empty() {
+    renders.push(useCurrentHeading([], true).current);
+    return null;
+  }
+  render(createElement(Empty));
+  expect([
+    listened.mock.calls.map(([type]) => type).filter((type) => type === "scroll" || type === "resize"),
+    observed,
+  ]).toEqual([[], []]);
+  expect(renders.at(-1)).toBeUndefined();
 });
 
 test("unmounted, it listens no more", async () => {

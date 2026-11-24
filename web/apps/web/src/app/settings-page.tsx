@@ -150,8 +150,7 @@ export const rowDescriptionClass = "mt-0.5 max-w-105 text-[12.5px] leading-norma
 export const rowControlClass = "flex min-w-0 flex-wrap items-center gap-2 max-md:w-full md:ml-auto md:shrink-0";
 /**
  * A value the row shows alone, in the controls' stead: at most 60% of the row from md: up, on the right, shrinking,
- * broken where it is long (review B's M4). md:text-right: text-end would read as a colour (design-tokens.test.ts).
- * SettingsRow's alone (its value), not exported.
+ * broken where it is long (review B's M4). SettingsRow's alone (its value), not exported.
  */
 const rowValueClass =
   "min-w-0 text-sm break-words text-muted-foreground max-md:w-full md:ml-auto md:max-w-[60%] md:text-right";

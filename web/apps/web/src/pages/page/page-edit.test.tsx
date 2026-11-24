@@ -575,7 +575,7 @@ test("editing, a note under the title says others only read the page meanwhile; 
   renderApp(pagePath(guide.id), chinese.app);
   await userEvent.setup().click(await screen.findByRole("button", { name: "编辑" }));
   expect(await screen.findByText("你正在编辑，别人此时只能阅读这一页")).toBeTruthy();
-  expect(server.sent).toContain("OPEN Guide");
+  expect([server.sent, chinese.sent].map((sent) => sent.includes("OPEN Guide"))).toEqual([true, true]);
 });
 
 test("an edit lost has no note under the title: its banner says why", async () => {

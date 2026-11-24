@@ -466,6 +466,38 @@ test("the right column follows the section read only as far as shows it, scrolli
   expect(column.scrollTop).toBe(0);
 });
 
+test("the reader's scroll of the column stops its following until the outline's list mounts again: after an edit and back, it follows (decision 897)", async () => {
+  const layout = laidOut();
+  const server = pageServer({ role: "editor" });
+  server.views.set(install.id, forty);
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("navigation", { name: "Outline" });
+  const column = panel();
+  layout.columned(column);
+  layout.at(30);
+  await windowScrolled();
+  expect(column.scrollTop).toBe(568);
+
+  fireEvent.wheel(column);
+  column.scrollTop = 0;
+  layout.at(31);
+  await windowScrolled();
+  expect(current()).toEqual(["H31 location"]);
+  expect(column.scrollTop).toBe(0);
+
+  // Into the edit, where the column has no outline, and back: the outline's list mounts anew.
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await pageEditor();
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await screen.findByRole("button", { name: "Edit" });
+  await within(await shownPanel()).findByRole("navigation", { name: "Outline" });
+  expect(panel()).toBe(column);
+  layout.at(35);
+  await windowScrolled();
+  expect(current()).toEqual(["H35 location"]);
+  expect(column.scrollTop).toBe(35 * 28 + 28 - 300);
+});
+
 test("an outline come after its page, its heading clicked, is marked until gone from view; the column follows still", async () => {
   scrolls();
   const user = userEvent.setup();

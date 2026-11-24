@@ -6,8 +6,8 @@ import { watchReader } from "./readers-input";
  * useCurrentHeading is the section read of the page (M13/P4/S1, decisions 861, 887, 893): the id of the last of ids
  * (the outline's, in their order) whose heading's top is above the line, a third of the window down; the window's
  * bottom where the page scrolls at all and is at its end. A heading in a closed details (a folded callout) is not
- * read, its box what it may be. While active only (the right column open beside the page, decision 886): not, it
- * measures nothing, and answers none. It measures as it mounts, in the commit (no frame later sets it: the tests'
+ * read, its box what it may be. While active only (the right column open beside the page, decision 886) and some
+ * heading is listed: not, it listens to nothing, measures nothing, and answers none. It measures as it mounts, in the commit (no frame later sets it: the tests'
  * act, section 1 (k)), then at most once a frame as the window scrolls or resizes and as the main resizes (the page
  * written in, its diagrams drawn), setting the state only as the answer changes. pin marks the heading of id
  * clicked in the outline (link, its link) at once: until the view has scrolled it in, and while it is in, until the
@@ -30,10 +30,11 @@ export function useCurrentHeading(
   const ask = useRef<() => void>(() => {});
   const live = useRef(false);
   useLayoutEffect(() => {
-    live.current = active;
-    // Folded away or not beside the page: none and no pin, so that shown again it answers what it measures (review A's
-    // R1-N5, R2-N2).
-    if (!active) {
+    // Folded away or not beside the page, or no heading listed (nothing to read, review A's P4S1A-N1): none and no pin,
+    // so that shown again it answers what it measures (review A's R1-N5, R2-N2).
+    const reading = active && ids.length > 0;
+    live.current = reading;
+    if (!reading) {
       pinned.current?.reader.end();
       pinned.current = undefined;
       show(undefined);
@@ -112,5 +113,5 @@ export function useCurrentHeading(
     },
     [show]
   );
-  return { current: active ? current : undefined, pin };
+  return { current: active && ids.length > 0 ? current : undefined, pin };
 }
