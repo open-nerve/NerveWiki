@@ -588,6 +588,26 @@ test("the editor has a fence's lines monospaced and a wiki link's marks faint", 
   expect([...container.querySelectorAll(".nw-md-link")].map((mark) => mark.textContent)).toEqual(["Hub"]);
 });
 
+/** looks is an element's type as jsdom computes it: its size and weight. */
+const looks = (element: Element) => [getComputedStyle(element).fontSize, getComputedStyle(element).fontWeight];
+
+test("the editor draws the frontmatter as plain text: the line lezer reads there as a heading is not enlarged nor bold (decision 889)", () => {
+  // lezer reads the YAML's last line over the closing "---" as a setext heading, as it does the body's over a "---".
+  const { container } = editor("---\ntags: [a, b]\n---\n\nBody\n---\n");
+  const lines = container.querySelectorAll(".cm-line");
+  const heading = lines[4]?.querySelector("span");
+  const yaml = lines[1];
+  if (heading === null || heading === undefined || yaml === undefined) {
+    throw new Error("no lines");
+  }
+  // jsdom resolves the highlighting's 1.065em against the prose's 15.5px.
+  expect(looks(heading)).toEqual(["16.5075px", "630"]);
+  const spans = [...yaml.querySelectorAll("span")];
+  expect(spans.map((span) => span.textContent).join("")).toBe("tags: [a, b]");
+  expect(spans.map(looks)).toEqual(spans.map(() => looks(yaml)));
+  expect(looks(yaml)).toEqual(["13.5px", "400"]);
+});
+
 // The outline while the page is edited leads to a heading's line (M13/P4/S3, decision 876).
 test.each([
   ["# One\n\nText\n\n## Two\n", 5, "## Two"],
