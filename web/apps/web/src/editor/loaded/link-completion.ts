@@ -116,21 +116,37 @@ function pause(option: Completion): Node | null {
   return comma;
 }
 
-/** completionTheme draws the completion's list in the app's colours, light and dark (the editor's own are light). */
+/**
+ * completionTheme draws the completion's list in the app's colours, light and dark (the editor's own are light), as
+ * the app's popovers are: their radius and shadow, its options rows of a menu's (M13/P4/S3, decision 878).
+ */
 const completionTheme = EditorView.theme({
   ".cm-tooltip.cm-tooltip-autocomplete": {
     backgroundColor: "var(--popover)",
     color: "var(--popover-foreground)",
     border: "1px solid var(--border)",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "var(--radius-popover)",
+    boxShadow: "var(--elevation-popover)",
   },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul": { fontFamily: "inherit", maxHeight: "16rem" },
-  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": { padding: "0.25rem 0.5rem" },
-  // The option selected shows by more than its background, which is near the popover's (M12/P2/S3; M5-polish 12.4).
+  ".cm-tooltip.cm-tooltip-autocomplete > ul": { fontFamily: "inherit", maxHeight: "16rem", padding: "4px" },
+  ".cm-tooltip.cm-tooltip-autocomplete > ul > li": {
+    padding: "0.3125rem 0.5rem",
+    borderRadius: "var(--radius-row)",
+    fontSize: "var(--text-row)",
+  },
+  // The option selected shows by more than its background, which is near the popover's (M12/P2/S3; M5-polish 12.4);
+  // in forced colours, which draw neither, by a transparent outline inside it that they draw, as the app's menus'
+  // items have (outline-hidden; dropdown-menu.tsx; review B's P4S3B-M4).
   ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
     backgroundColor: "var(--active)",
     color: "var(--foreground)",
     boxShadow: "inset 0 0 0 2px var(--ring)",
+  },
+  "@media (forced-colors: active)": {
+    ".cm-tooltip.cm-tooltip-autocomplete > ul > li[aria-selected]": {
+      outline: "2px solid transparent",
+      outlineOffset: "-2px",
+    },
   },
   ".cm-completionDetail": { color: "var(--muted-foreground)", fontStyle: "normal", marginLeft: "0.75rem" },
   ".cm-completionMatchedText": { textDecoration: "none", fontWeight: "600" },

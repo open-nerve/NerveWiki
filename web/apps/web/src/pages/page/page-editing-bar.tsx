@@ -1,4 +1,5 @@
 import { observer } from "mobx-react-lite";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { errorText, fieldErrors } from "../../app/problem-messages";
@@ -32,10 +33,50 @@ type PageEditingBarProps = {
  * the page last is while it is read, its type and colour the box's (12.5px, faint; a failure in the destructive
  * colour), wrapping in it where it is long; "Saved." with its check before it (styles.css, nw-edit-status); Save
  * before the right column's toggle, Done after it. Nothing of its own takes room in the edit's view.
+ *
+ * Save shows only when it is needed (M13/P4/S3, decisions 877, 885, 895): with something unsaved (a failure shown is
+ * of something unsaved: Save tries again), and, once it shows, as long as the focus stays in the head's right group,
+ * so that the keys on their way to it find it there however the autosave falls (held); pressed with nothing to save,
+ * it does nothing. The focus coming into the group shows no Save that was hidden. Hidden, it keeps its room (decision
+ * 894: the head does not move as it comes and goes, which the mockup's has not, decision 896).
  */
 export const PageEditingBar = observer(function PageEditingBar({ editing, waiting, save, leave }: PageEditingBarProps) {
   const t = useT();
-  const { meta, before, after } = useEditHeadSlots();
+  const { group, meta, before, after } = useEditHeadSlots();
+  // Whether a Save showing is kept (decision 895): from the focus in the head's right group with something to save
+  // until it leaves the group, so that the keys on their way to Save find it there however the autosave falls (review
+  // A's R1-M2); the focus coming into the group shows no Save that was hidden (review A's R2-M1).
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (group === null) {
+      return undefined;
+    }
+    const into = () => {
+      if (editing.unsaved) {
+        setHeld(true);
+      }
+    };
+    const out = (event: FocusEvent) => {
+      const to = event.relatedTarget;
+      // A window losing the focus keeps the active element where it was: it is not left (design section 1 (g)).
+      if (!(to instanceof Node && group.contains(to)) && !group.contains(document.activeElement)) {
+        setHeld(false);
+      }
+    };
+    group.addEventListener("focusin", into);
+    group.addEventListener("focusout", out);
+    return () => {
+      group.removeEventListener("focusin", into);
+      group.removeEventListener("focusout", out);
+    };
+  }, [group, editing]);
+  // Something to save coming as the focus is in the group already (a link an upload puts in as Done waits): kept too.
+  const { unsaved } = editing;
+  useEffect(() => {
+    if (unsaved && group?.contains(document.activeElement) === true) {
+      setHeld(true);
+    }
+  }, [group, unsaved]);
   // Waiting to leave, the failure shown before is tried again by the leave's own save; one after it shows.
   const failed =
     editing.failure === undefined || editing.failure === waiting?.failure
@@ -71,13 +112,7 @@ export const PageEditingBar = observer(function PageEditingBar({ editing, waitin
           </output>,
           meta
         )}
-      {before !== null &&
-        createPortal(
-          <Button variant="outline" size="sm" shape="pill" onClick={save}>
-            {t("page.save")}
-          </Button>,
-          before
-        )}
+      {before !== null && createPortal(<SaveButton save={save} shown={unsaved || held} />, before)}
       {after !== null &&
         createPortal(
           <Button
@@ -94,3 +129,16 @@ export const PageEditingBar = observer(function PageEditingBar({ editing, waitin
     </>
   );
 });
+
+/**
+ * SaveButton is the edit's Save, always there: not shown, it is invisible, keeping its room, not to be focused and not
+ * in the accessibility tree (decisions 877, 894), so that the head's row stays as it is.
+ */
+function SaveButton({ save, shown }: { save: () => void; shown: boolean }) {
+  const t = useT();
+  return (
+    <Button variant="outline" size="sm" shape="pill" className={cn(!shown && "invisible")} onClick={save}>
+      {t("page.save")}
+    </Button>
+  );
+}

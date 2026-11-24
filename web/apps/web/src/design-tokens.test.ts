@@ -233,8 +233,9 @@ test("every colour of the light theme is the dark theme's too", () => {
   expect(missing).toEqual({ "light, not dark": [], "dark, not light": [] });
 });
 
-// The reading view's colours, which the editor borrows too (M13/P4/S2, decision 870): its light and dark theme declare
-// the same, outside any layer, where blocks reads them. A dark value left out shows in a screenshot alone.
+// The reading view's colours, which the editor borrows too (M13/P4/S2, decision 870; its links, marks and search
+// matches since P4/S3, decision 875): its light and dark theme declare the same, outside any layer, where blocks reads
+// them. A dark value left out shows in a screenshot alone.
 test("every colour of the reading view's light theme is its dark theme's too", () => {
   const { reading: view } = read();
   const light = declared(view, ":root");
@@ -296,9 +297,9 @@ const writesColour = (text: string): boolean =>
 // A colour written in a class's arbitrary value, wherever in it: bg-[#000], shadow-[inset_0_0_0_2px_rgb(0,0,0)].
 const writesArbitraryColour = (text: string): boolean =>
   [...text.matchAll(/-\[([^\]]*)\]/g)].some(([, value = ""]) => writesColour(value.replaceAll("_", " ")));
-// Where a colour may be written (v0.1 design 13.2 item 32): mermaid's themeVariables take hexadecimal colours alone;
-// the editor's links and matches until P4/S3.
-const writtenColourMayBe = new Set(["./editor/theme.ts", "./reading/diagrams.ts"]);
+// Where a colour may be written (v0.1 design 13.2 item 32): mermaid's themeVariables take hexadecimal colours alone.
+// The editor's links and matches are the reading view's colours since M13/P4/S3 (decision 875).
+const writtenColourMayBe = new Set(["./reading/diagrams.ts"]);
 
 test("components use the theme's colours, not Tailwind's palette nor written values", () => {
   const { sources: files } = read();
@@ -312,8 +313,9 @@ test("components use the theme's colours, not Tailwind's palette nor written val
 });
 
 // The classes of these prefixes that name no colour, as Tailwind spells them: sizes, styles, the alignments, the shadows
-// Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either. text-end aligns the
-// page's head's box of who edited it to its right (M13/P4/S1).
+// Tailwind has. A number (a width, an offset, a stop) or a side alone (border-b) is none either. The alignments:
+// text-end aligns the page's head's box of who edited it to its right (M13/P4/S1), text-start the edit's outline's
+// buttons to their start (M13/P4/S3).
 const noColour = new Set([
   "decoration-dashed",
   // No outline as a rule (outline-style: none); under forced colours a transparent 2px one, which the system's
@@ -328,6 +330,7 @@ const noColour = new Set([
   "text-3xl",
   "text-base",
   "text-end",
+  "text-start",
   "text-lg",
   "text-right",
   "text-sm",

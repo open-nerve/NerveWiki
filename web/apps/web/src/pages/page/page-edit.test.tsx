@@ -6,6 +6,8 @@ import { Outlet } from "react-router";
 import { afterAll, afterEach, beforeAll, expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { autosavePause } from "../../editor/autosave";
+import { editorExtensions } from "../../editor/registry";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { json, problem, workspaceJSON } from "../../test/fakes";
@@ -602,4 +604,131 @@ test("Done in the page's head, its leave's save meeting a conflict: the conflict
       within(region).getByRole("heading", { name: "This page changed while you edited it" })
     )
   );
+});
+
+// Save shown only when it is needed (M13/P4/S3, decisions 877, 885, 894, 895, 896): with something unsaved, or as long
+// as the focus stays in the head's right group once it showed; otherwise invisible, its room kept. jsdom reads no
+// Tailwind: the cells read its class, and find it in either case.
+
+/** Guide edited with the app's editor extensions, autosave's among them, on timers the test moves. */
+async function autosaving(server = pageServer()) {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+  renderApp(pagePath(guide.id), server.app, { editorExtensions });
+  await user.click(await screen.findByRole("button", { name: "Edit" }));
+  return { user, server, ...(await pageEditor()) };
+}
+
+/** autosaved has autosave's pause go by, what was typed saved. */
+async function autosaved() {
+  await act(() => vi.advanceTimersByTimeAsync(autosavePause));
+  await waitFor(() => expect(status().textContent).toBe("Saved."));
+}
+
+/** The head's Save, Done and the right column's toggle. */
+const save = () => within(head().group).getByRole("button", { name: "Save" });
+const done = () => within(head().group).getByRole("button", { name: "Done" });
+const toggle = () => within(head().group).getByRole("button", { name: "About this page" });
+
+/** hidden tells whether Save is invisible: there, its room kept, not to be focused. */
+const hidden = (button: HTMLElement) => button.classList.contains("invisible");
+
+test("Save is always there, invisible while nothing is unsaved: typed in, it shows; a save that fails keeps it, which tries again", async () => {
+  // The writes the server refuses, which it does not count as sent.
+  let puts = 0;
+  const server = pageServer({
+    answers: {
+      "PUT /api/v0/pages/*/content": () => {
+        puts++;
+        return problem(500, "internal_error");
+      },
+    },
+  });
+  const { user, type } = await editing(server);
+  expect(hidden(save())).toBe(true);
+
+  type("!");
+  await waitFor(() => expect(status().textContent).toBe("Unsaved changes"));
+  expect(hidden(save())).toBe(false);
+  await user.click(save());
+  await waitFor(() => expect(status().className).toContain("text-destructive"));
+  expect(puts).toBe(1);
+  expect(hidden(save())).toBe(false);
+  await user.click(save());
+  await waitFor(() => expect(puts).toBe(2));
+});
+
+test("Save holding the focus as autosave saves stays, pressed then doing nothing; the focus gone, it hides (decision 885)", async () => {
+  const { user, server, type, content } = await autosaving();
+  type("!");
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  act(() => save().focus());
+
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  expect(document.activeElement).toBe(save());
+  const puts = server.sent.filter((line) => line.startsWith("PUT")).length;
+  await user.click(save());
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(server.sent.filter((line) => line.startsWith("PUT"))).toHaveLength(puts);
+
+  act(() => content.focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("typed in, the focus on Done as autosave saves: Save stays, the keys back from Done finding it (decision 895, review A's R1-M2)", async () => {
+  const { user, type } = await autosaving();
+  type("!");
+  act(() => done().focus());
+
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  // Through the toggle, which jsdom, reading no CSS, has in the order too.
+  await user.tab({ shift: true });
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(save());
+  expect(hidden(save())).toBe(false);
+});
+
+test("nothing unsaved, the focus going into the head's group shows no Save: as the edit opens, and once autosave saved (review A's R2-M1)", async () => {
+  const { type, content } = await autosaving();
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+  act(() => toggle().focus());
+  expect(hidden(save())).toBe(true);
+
+  act(() => content.focus());
+  type("!");
+  await autosaved();
+  expect(hidden(save())).toBe(true);
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+  act(() => toggle().focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("something unsaved coming as the focus is in the group, as an upload's link goes in while Done waits: Save shows, and stays once saved until the focus goes", async () => {
+  const { view, content } = await autosaving();
+  act(() => done().focus());
+  expect(hidden(save())).toBe(true);
+
+  act(() => view.dispatch({ changes: { from: view.state.doc.length, insert: "![a](/a.png)" } }));
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  expect(document.activeElement).toBe(done());
+  await autosaved();
+  expect(hidden(save())).toBe(false);
+  act(() => content.focus());
+  expect(hidden(save())).toBe(true);
+});
+
+test("the window losing the focus as Save holds it keeps it: the focus leaves for nothing, the element still active (section 1 (g))", async () => {
+  const { type } = await autosaving();
+  type("!");
+  await waitFor(() => expect(hidden(save())).toBe(false));
+  act(() => save().focus());
+  await autosaved();
+
+  fireEvent.focusOut(save(), { relatedTarget: null });
+  expect(document.activeElement).toBe(save());
+  expect(hidden(save())).toBe(false);
 });

@@ -21,6 +21,7 @@ import { useAssets, usePageTree, useStore } from "../../stores/context";
 import type { PageEditing } from "../../stores/page-editing";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { ConflictPanel } from "./conflict-panel";
+import type { OutlineBox } from "./edit-outline";
 import { EditLostBanner } from "./edit-lost-banner";
 import { EditorUploads } from "./editor-uploads";
 import { PageEditingBar } from "./page-editing-bar";
@@ -57,6 +58,8 @@ type PageEditProps = {
   page: TreeNode;
   /** The edit, its session open: the view keeps it while mounted. */
   editing: PageEditing;
+  /** The edit's outline, which its editor tells and leads to its headings' lines (M13/P4/S3, decision 876). */
+  outline: OutlineBox;
   /** done is called once the edit is over: saved, its session ended, the reading view read again. */
   done(left: Left): void;
 };
@@ -93,7 +96,7 @@ type PageEditProps = {
  * and a banner says why in place of the bar; Mod+S does nothing, and
  * Mod+E is Back to reading, which asks first while changes are not saved.
  */
-export const PageEdit = observer(function PageEdit({ notebook, page, editing, done }: PageEditProps) {
+export const PageEdit = observer(function PageEdit({ notebook, page, editing, outline, done }: PageEditProps) {
   const { slug } = useWorkspace();
   const t = useT();
   // The page's head's Save and Done, within the edit as its view is (decision 866).
@@ -135,6 +138,15 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
     editing.keep();
     return () => editing.letGo();
   }, [editing]);
+
+  // The outline leads to the editor's headings while the edit is up; gone, it lists none.
+  useEffect(() => {
+    outline.reveal = (index) => editor.current?.reveal(index);
+    return () => {
+      outline.clear();
+      outline.reveal = undefined;
+    };
+  }, [outline]);
 
   useEffect(() => {
     if (conflict !== undefined && asked.current) {
@@ -507,6 +519,7 @@ export const PageEdit = observer(function PageEdit({ notebook, page, editing, do
             },
           }}
           onChange={editing.changed}
+          outline={outline}
         />
       </Suspense>
       <UnsavedGuard unsaved={editing.unsaved} uploading={uploading} stay={back} />

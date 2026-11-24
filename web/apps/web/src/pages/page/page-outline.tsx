@@ -12,9 +12,10 @@ import { watchReader } from "./readers-input";
 
 /**
  * How many headings the outline lists at most: a page may have a million, a
- * list of links that long the tab's memory.
+ * list of links that long the tab's memory. The edit's outline too
+ * (edit-outline.tsx).
  */
-const listedUpTo = 1000;
+export const listedUpTo = 1000;
 
 /** A heading of the page: its id, its level and its text. */
 type Heading = { id: string; level: number; text: string };
@@ -24,6 +25,11 @@ type OutlineProps = {
   page: string;
   /** Whether the section read is measured and marked: the right column open beside the page (decision 886). */
   active: boolean;
+  /**
+   * Whether its section is inert, its summary with it, neither clicked nor tabbed to: the page edited (review A's
+   * P4S3A-F1-N1, F2-N1).
+   */
+  inert?: boolean;
 };
 
 /**
@@ -46,8 +52,10 @@ type OutlineProps = {
  * until the reader moves in it (wheel, touch, a press but on the outline's
  * items, a key with the focus in it): from then on, while its list is up,
  * no more. A long heading shows two lines at most, all of it its name.
+ * Inert while the page is edited, its editor's outline not told yet: its
+ * links neither clicked nor tabbed to (review A's P4S3A-F1-N1).
  */
-export const PageOutline = memo(function PageOutline({ notebook, page, active }: OutlineProps) {
+export const PageOutline = memo(function PageOutline({ notebook, page, active, inert = false }: OutlineProps) {
   const t = useT();
   const { data } = usePageView(notebook, page);
   const html = data?.html;
@@ -101,7 +109,7 @@ export const PageOutline = memo(function PageOutline({ notebook, page, active }:
   // Not by spreading them into Math.min: a call takes so many arguments only.
   const top = listed.reduce((highest, { level }) => Math.min(highest, level), 6);
   return (
-    <PanelSection title={t("page.outline")} icon={List}>
+    <PanelSection title={t("page.outline")} icon={List} inert={inert}>
       <nav aria-label={t("page.outline")}>
         <ul ref={watched} className="border-l border-border text-[13px]">
           {listed.map(({ id, level, text }) => (
@@ -174,7 +182,12 @@ const plainPress = (event: MouseEvent) =>
 
 /** sameView tells whether the outline's props are those of the same page's view, measured or not (review A's R2-I1). */
 function sameView(before: OutlineProps, after: OutlineProps): boolean {
-  return before.notebook.id === after.notebook.id && before.page === after.page && before.active === after.active;
+  return (
+    before.notebook.id === after.notebook.id &&
+    before.page === after.page &&
+    before.active === after.active &&
+    before.inert === after.inert
+  );
 }
 
 /** attachmentElements are an attachment's elements, whose text is an attribute. */

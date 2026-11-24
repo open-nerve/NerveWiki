@@ -4,7 +4,7 @@ import { afterEach, expect, test, vi } from "vitest";
 
 import { PreferencesStore } from "../../stores/preferences.store";
 import { AppStores } from "../../stores/root.store";
-import { darkScheme, memoryStorage } from "../../test/fakes";
+import { darkScheme, json, memoryStorage } from "../../test/fakes";
 import { pageEditor } from "../../test/page-editor";
 import { panel, scrolls, shownPanel } from "../../test/page-panel";
 import { guide, install, pagePath, pageServer } from "../../test/page-server";
@@ -188,19 +188,176 @@ test("the right column comes after the page's content and its subpages", async (
   expect(subpages.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
-test("while the page is edited the outline is not shown; back to reading, it is", async () => {
+/** editOutline is the right column's outline while the page is edited: its headings' buttons. */
+function editOutline(): HTMLElement[] {
+  return within(within(panel()).getByRole("navigation", { name: "Outline" })).getAllByRole("button");
+}
+
+test("while the page is edited the outline is the editor's: a heading's button puts the cursor at its line, the editor focused; back to reading, the outline's links are the view's (decision 876)", async () => {
   const server = pageServer({ role: "editor" });
   server.views.set(install.id, { html: '<h2 id="nw-a">A</h2>', revision: 1, assets_expire_at: null });
+  server.contents.set(install.id, { content: "## A\n\nText\n\n## B\n\n### C\n", revision: 1 });
   renderApp(pagePath(install.id), server.app);
   await screen.findByRole("navigation", { name: "Outline" });
 
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
-  await pageEditor();
-  expect(within(panel()).queryByRole("navigation", { name: "Outline" })).toBeNull();
+  // There as the editor shows: read as it is made, not 300 ms later (review A's M3).
+  await screen.findByRole("textbox", { name: "Page content" });
+  expect(editOutline().map((button) => [button.textContent, button.closest("li")?.style.paddingLeft])).toEqual([
+    ["A", "0rem"],
+    ["B", "0rem"],
+    ["C", "0.75rem"],
+  ]);
+  const { content, view } = await pageEditor();
+  // In the column, first: before the backlinks.
+  const outline = within(panel()).getByRole("navigation", { name: "Outline" });
+  expect(
+    outline.compareDocumentPosition(within(panel()).getByText("Backlinks")) & Node.DOCUMENT_POSITION_FOLLOWING
+  ).toBeTruthy();
+
+  await userEvent.setup().click(within(outline).getByRole("button", { name: "B" }));
+  expect(document.activeElement).toBe(content);
+  expect(view.state.selection.main.head).toBe(view.state.doc.line(5).from);
 
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
   await screen.findByRole("button", { name: "Edit" });
-  expect(await within(await shownPanel()).findByRole("navigation", { name: "Outline" })).toBeTruthy();
+  const reading = await within(await shownPanel()).findByRole("navigation", { name: "Outline" });
+  expect(
+    within(reading)
+      .getAllByRole("link")
+      .map((link) => link.textContent)
+  ).toEqual(["A"]);
+  expect(within(reading).queryByRole("button")).toBeNull();
+});
+
+test("a change of the content keeps the outline's button that has the focus, as its heading moves (review A's M2)", async () => {
+  const server = pageServer({ role: "editor" });
+  server.contents.set(install.id, { content: "## A\n\n## B\n\n## C\n", revision: 1 });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("button", { name: "Edit" });
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  const { view } = await pageEditor();
+  const focused = editOutline()[2];
+  focused?.focus();
+  expect(focused?.textContent).toBe("C");
+
+  // Not typed, the focus where it is: as an upload's link goes in.
+  act(() => view.dispatch({ changes: { from: 0, insert: "## New\n\n" } }));
+  await waitFor(() => expect(editOutline().map((button) => button.textContent)).toEqual(["New", "A", "B", "C"]));
+  expect(document.activeElement).toBe(focused);
+  expect(editOutline()[2]).toBe(focused);
+});
+
+/**
+ * heldContents answers the reads of the page's content, content each time: the first count at once, those after when
+ * release is called. The edit opens (its session) before its content is read.
+ */
+function heldContents(content: string, count: number) {
+  let reads = 0;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const answer = async () => {
+    reads++;
+    if (reads > count) {
+      await held;
+    }
+    return json({ content, revision: 1, content_hash: "0".repeat(64) });
+  };
+  return { answer, release: () => release?.() };
+}
+
+/** outlineLinks is the texts of the links of the right column's outline: the view's. */
+function outlineLinks(): (string | null)[] {
+  const outline = within(panel()).getByRole("navigation", { name: "Outline" });
+  return within(outline)
+    .getAllByRole("link")
+    .map((link) => link.textContent);
+}
+
+/** editOpened opens the edit with its keys, and resolves once it is open, its content maybe not read yet. */
+async function editOpened(): Promise<void> {
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Edit" })).toBeNull());
+}
+
+test("as the edit opens, its content read, the right column keeps the view's outline, measuring nothing, until the editor tells its own (review A's P4S3A-M1)", async () => {
+  const contents = heldContents("## A\n\n## B\n", 0);
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/pages/*/content": contents.answer } });
+  server.views.set(install.id, { html: '<h2 id="nw-v">V</h2>', revision: 1, assets_expire_at: null });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("navigation", { name: "Outline" });
+
+  await editOpened();
+  // Its content held: the column's sections as they were, the outline first.
+  expect(outlineLinks()).toEqual(["V"]);
+  expect([...panel().querySelectorAll("nav")].map((nav) => nav.getAttribute("aria-label"))[0]).toBe("Outline");
+
+  contents.release();
+  await pageEditor();
+  expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
+});
+
+/** columnOutline is the right column's outline, the view's or the editor's. */
+const columnOutline = () => within(panel()).getByRole("navigation", { name: "Outline" });
+
+/** outlineInert tells whether the right column's outline section, its summary with it, is inert. */
+const outlineInert = () => columnOutline().closest("details")?.hasAttribute("inert");
+
+// The view's outline kept as the edit opens is inert, its section's summary too: not to be clicked nor tabbed to, a
+// link followed there no jump to an old heading once the edit is left, the focus on its summary not lost as the
+// editor's section comes (review A's P4S3A-F1-N1, F2-N1). Read, and the editor's, are not.
+test("as the edit opens, its content read, the view's outline section it keeps is inert, its summary with it; read and once the editor tells, the section is not", async () => {
+  const contents = heldContents("## A\n\n## B\n", 0);
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/pages/*/content": contents.answer } });
+  server.views.set(install.id, { html: '<h2 id="nw-v">V</h2>', revision: 1, assets_expire_at: null });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("navigation", { name: "Outline" });
+  expect(outlineInert()).toBe(false);
+
+  await editOpened();
+  expect(outlineLinks()).toEqual(["V"]);
+  expect(outlineInert()).toBe(true);
+  contents.release();
+  await pageEditor();
+  expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
+  expect(outlineInert()).toBe(false);
+});
+
+test("left and opened again, its content read, the edit shows none of the last edit's headings: the view's outline until the editor tells (review C's P4S3C-N1)", async () => {
+  const contents = heldContents("## A\n\n## B\n", 1);
+  const server = pageServer({ role: "editor", answers: { "GET /api/v0/pages/*/content": contents.answer } });
+  server.views.set(install.id, { html: '<h2 id="nw-v">V</h2>', revision: 1, assets_expire_at: null });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("navigation", { name: "Outline" });
+  await editOpened();
+  await pageEditor();
+  expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
+  fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
+  await screen.findByRole("button", { name: "Edit" });
+  await waitFor(() => expect(outlineLinks()).toEqual(["V"]));
+
+  await editOpened();
+  expect(outlineLinks()).toEqual(["V"]);
+  expect(within(panel()).queryByRole("button", { name: "A" })).toBeNull();
+  contents.release();
+  await pageEditor();
+  expect(editOutline().map((button) => button.textContent)).toEqual(["A", "B"]);
+});
+
+test("while the page is edited the outline lists the first 1,000 headings and says how many more, as read (review C's P4S3C-M3)", async () => {
+  const server = pageServer({ role: "editor" });
+  const content = Array.from({ length: 1_003 }, (_, at) => `## H${at.toString()}`).join("\n\n");
+  server.contents.set(install.id, { content, revision: 1 });
+  renderApp(pagePath(install.id), server.app);
+  await screen.findByRole("button", { name: "Edit" });
+  await editOpened();
+  await pageEditor();
+  const outline = within(panel()).getByRole("navigation", { name: "Outline" });
+  await within(outline).findByText("…and 3 more");
+  const buttons = within(outline).getAllByRole("button");
+  expect([buttons.length, buttons.at(-1)?.textContent]).toEqual([1_000, "H999"]);
 });
 
 /** storedIn is app with its preferences over storage: what this browser had stored as the page opened. */
@@ -485,7 +642,7 @@ test("the reader's scroll of the column stops its following until the outline's 
   expect(current()).toEqual(["H31 location"]);
   expect(column.scrollTop).toBe(0);
 
-  // Into the edit, where the column has no outline, and back: the outline's list mounts anew.
+  // Into the edit, where the column's outline is the editor's, and back: the outline's list mounts anew.
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
   await pageEditor();
   fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", ctrlKey: true });
