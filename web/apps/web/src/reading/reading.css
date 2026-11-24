@@ -252,19 +252,32 @@
     text-decoration-color: var(--faint);
   }
 
-  .nw-reading li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked) > :is(ul, ol) {
+  /* Its nested items, and its blocks under its text, a code block, a quote, a callout, a diagram or a table's wrapper,
+     each an inline block the item's width, their colours their own: a block's contents were struck and faint with the
+     item's text (S2's fix check). Atop their line, as a block stands: an inline block that scrolls has its baseline at
+     its bottom, which would leave a descender's room under it. */
+  .nw-reading
+    li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked)
+    > :is(ul, ol, pre, blockquote, div, details) {
     display: inline-block;
     width: 100%;
+    vertical-align: top;
+  }
+
+  .nw-reading
+    li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked)
+    > :is(ul, ol, pre, div, details) {
     color: var(--foreground);
   }
 
-  /* Its own links and tags faint with it (review B's M4), not those of the items nested in it (review B's R1-N2). */
+  /* Its own links and tags faint with it (review B's M4), not those of the items nested in it (review B's R1-N2) nor
+     those of its blocks. */
   .nw-reading
     li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked)
     > :is(a, .nw-tag),
   .nw-reading
     li:has(> input[type="checkbox"]:checked, > p:first-child > input[type="checkbox"]:checked)
-    > :not(ul, ol)
+    > :not(ul, ol, pre, blockquote, div, details)
     :is(a, .nw-tag) {
     color: inherit;
   }
