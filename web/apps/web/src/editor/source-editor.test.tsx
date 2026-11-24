@@ -555,3 +555,28 @@ test("Tab indents; the content refers to the line that says how to move out; its
   expect(view().contentDOM.getAttribute("aria-label")).toBe("页面正文");
   expect(screen.getByText("Tab 键缩进。要离开编辑区，先按 Esc，再按 Tab。")).toBe(hint);
 });
+
+// The source editor as the page reads (M13/P4/S3, decisions 874, 889): its prose in the reading's font, its code,
+// tables and frontmatter in lines of their own, its marks faint. jsdom cascades the editor's style modules in the order
+// CodeMirror mounts them; it reads no var(), answering what is written.
+test("the editor's look wins over the editor's theme: its content's line 1.85, its lines' padding 26px, its caret amber", () => {
+  const { container } = editor("Text\n");
+  const content = container.querySelector(".cm-content");
+  const line = container.querySelector(".cm-line");
+  if (content === null || line === null) {
+    throw new Error("no content");
+  }
+  expect(getComputedStyle(content).lineHeight).toBe("1.85");
+  expect(getComputedStyle(line).paddingLeft).toBe("26px");
+  // The caret is the browser's: there is no drawn one (review B's R1-M1).
+  expect(getComputedStyle(content).caretColor).toBe("var(--accent)");
+  expect(container.querySelector(".cm-cursor")).toBeNull();
+});
+
+test("the editor has a fence's lines monospaced and a wiki link's marks faint", () => {
+  const { container } = editor("See [[Hub]].\n\n```\ncode\n```\n");
+  const lines = [...container.querySelectorAll(".cm-line")];
+  expect(lines.map((line) => line.classList.contains("nw-mono-line"))).toEqual([false, false, true, true, true, false]);
+  expect([...container.querySelectorAll(".nw-md-faint")].map((mark) => mark.textContent)).toEqual(["[[", "]]"]);
+  expect([...container.querySelectorAll(".nw-md-link")].map((mark) => mark.textContent)).toEqual(["Hub"]);
+});

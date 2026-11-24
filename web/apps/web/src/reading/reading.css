@@ -9,11 +9,14 @@
    design 4.3). The body as the mockup has it (M13/P4/S2: reading.html's
    .doc). */
 
-/* The colours of the reading view, the editor's too (M13/P4/S2, decision 870): outside any layer, as styles.css's, and
-   each in either theme (design-tokens.test.ts). Written values, as v0.1 design 13.2 item 32 lets these: the same
-   source as 00-M13 4.1's table and reading.html. */
+/* The colours of the reading view, the editor's too (M13/P4/S2, decision 870; the editor's links, marks and search
+   matches since P4/S3, decision 875): outside any layer, as styles.css's, and each in either theme
+   (design-tokens.test.ts). Written values, as v0.1 design 13.2 item 32 lets these: the same source as 00-M13 4.1's
+   table and reading.html. */
 :root {
   --nw-mark-background: rgba(245, 196, 81, 0.38);
+  /* The editor's search match selected, over the others' highlight (M13/P4/S3). */
+  --nw-match-selected: rgba(245, 196, 81, 0.72);
   /* reading.html .light: --code, --link-line (00-M13 4.1). */
   --nw-code-background: #f6f6f7;
   --nw-link-line: rgba(197, 138, 34, 0.6);
@@ -41,6 +44,7 @@
 
 .dark {
   --nw-mark-background: rgba(217, 168, 78, 0.28);
+  --nw-match-selected: rgba(217, 168, 78, 0.5);
   --nw-code-background: #1f2023;
   --nw-link-line: rgba(217, 168, 78, 0.55);
   --nw-hl-keyword: #e0b061;

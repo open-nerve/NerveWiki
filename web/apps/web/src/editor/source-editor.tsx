@@ -1,6 +1,6 @@
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { search, searchKeymap } from "@codemirror/search";
-import { Compartment, EditorState } from "@codemirror/state";
+import { Compartment, EditorState, Prec } from "@codemirror/state";
 import { EditorView, keymap } from "@codemirror/view";
 import { use, useContext, useId, useImperativeHandle, useLayoutEffect, useRef, type Ref, type RefObject } from "react";
 
@@ -10,6 +10,7 @@ import { composeExtensions, loadExtensions, readOnly, readOnlyAs, ready } from "
 import { joinBreaks, lineBreaks, splitBreaks } from "./line-breaks";
 import { markdownEditing } from "./markdown";
 import { editorPhrases } from "./phrases";
+import { markupMarks, proseLines, proseTheme } from "./prose-lines";
 import {
   EditorClosed,
   EditorExtensions,
@@ -242,6 +243,10 @@ class EditorHost {
           ...searchKeymap,
         ]),
         editorTheme,
+        // The editor's look as the page reads, over the editor's theme, which a comparison keeps (decision 874).
+        Prec.high(proseTheme),
+        proseLines,
+        markupMarks,
         wording.of(this.wordingOf(t)),
         readOnly.of(readOnlyAs(this.locked)),
         EditorView.updateListener.of((update) => {
@@ -268,6 +273,8 @@ class EditorHost {
 
 /**
  * SourceEditor is the Markdown source editor (M4/P6 design 3.5). Its
+ * prose is in the reading's font, its code, tables and frontmatter in
+ * monospaced lines, its marks faint (M13/P4/S3, decisions 874, 889). Its
  * EditorView is made once; a content loaded is a new state. The content
  * goes in and out as written: the line breaks and the byte order mark
  * are kept apart (editor/line-breaks.ts). The registered extensions come

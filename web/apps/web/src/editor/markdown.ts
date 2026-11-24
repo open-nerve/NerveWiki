@@ -8,20 +8,25 @@ import type { InlineContext, MarkdownConfig, MarkdownParser } from "@lezer/markd
 /**
  * The headings stand out by weight and size, the code is monospaced; the
  * syntax's own marks (#, *, `, [) stay as written, only fainter (M4/P6
- * design 3.2). The colours are the app's, light or dark.
+ * design 3.2). The colours are the app's, light or dark. The headings as
+ * the mockup's editor has them, 20px and 16.5px over its 15.5px; a link
+ * in the text's colour, its address and marks faint: the source editor's
+ * markupMarks underlines its text alone (M13/P4/S3, decisions 874, 875,
+ * 889). A link's marks and address are of the link too: their rules come
+ * after its, to win.
  */
 const markdownHighlight = HighlightStyle.define([
-  { tag: tags.heading1, fontWeight: "700", fontSize: "1.6em" },
-  { tag: tags.heading2, fontWeight: "700", fontSize: "1.4em" },
-  { tag: tags.heading3, fontWeight: "700", fontSize: "1.25em" },
-  { tag: tags.heading4, fontWeight: "700", fontSize: "1.1em" },
-  { tag: [tags.heading5, tags.heading6], fontWeight: "700" },
+  { tag: tags.heading1, fontWeight: "650", fontSize: "1.29em" },
+  { tag: tags.heading2, fontWeight: "630", fontSize: "1.065em" },
+  { tag: tags.heading3, fontWeight: "620" },
+  { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: "600" },
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
   { tag: tags.monospace, fontFamily: "var(--nw-editor-mono)" },
-  { tag: [tags.link, tags.url], color: "var(--nw-editor-link)" },
-  { tag: [tags.processingInstruction, tags.contentSeparator, tags.labelName], color: "var(--muted-foreground)" },
+  { tag: tags.link, color: "var(--foreground)" },
+  { tag: tags.url, color: "var(--faint)" },
+  { tag: [tags.processingInstruction, tags.contentSeparator, tags.labelName], color: "var(--faint)" },
   { tag: tags.quote, color: "var(--muted-foreground)" },
 ]);
 

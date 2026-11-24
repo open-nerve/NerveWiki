@@ -1,8 +1,8 @@
 import { EditorState } from "@codemirror/state";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { lineBreaks, splitBreaks } from "../line-breaks";
-import { fenceAt, frontmatterAt, openingQuote, quoted } from "./yaml-quotes";
+import { fenceAt, frontmatterAt, frontmatterRange, openingQuote, quoted } from "./yaml-quotes";
 
 // The quote of the YAML string a frontmatter's link starts (Codex review
 // R1): where a link completes, and what the completion escapes a page's
@@ -352,4 +352,64 @@ test('a frontmatter\'s lines "---" end where the server ends a line, LF or CRLF:
     ["-", true],
     ["-", false],
   ]);
+});
+
+/** spanned is the text of state's frontmatter, as frontmatterRange finds it, and whether it is closed; "-" for none. */
+function spanned(state: EditorState): [string, boolean] | "-" {
+  const range = frontmatterRange(state);
+  return range === undefined ? "-" : [state.sliceDoc(range.from, range.to), range.closed];
+}
+
+test("frontmatterRange is the frontmatter as frontmatterAt and fenceAt read it: closed, to its closing line; being written, to the line before a blank one, or the content's end (M13/P4/S3, decision 874)", () => {
+  const cases: [string, [string, boolean] | "-"][] = [
+    ["---\na: ''\n---\nBody", ["---\na: ''\n---", true]],
+    ["---\r\na: ''\r\n---\r\nBody", ["---\na: ''\n---", true]],
+    ["---\na: ''\nb: x\n\nBody", ["---\na: ''\nb: x", false]],
+    ["---\na: ''\nb: x", ["---\na: ''\nb: x", false]],
+    ["---\n\nBody", ["---", false]],
+    ["# Title\n---\na: x\n---\n", "-"],
+    ["---", "-"],
+    ["--- \na: ''\n---", "-"],
+    ["---\ra: ''\r---\rBody", "-"],
+    // The closing line spans two of the editor's lines, a CR alone and the empty line an LF ends (fix check A2-M1).
+    ["---\na: ''\n---\r", ["---\na: ''\n---\n", true]],
+  ];
+  for (const [raw, range] of cases) {
+    const state = stateOf(raw);
+    expect(spanned(state), JSON.stringify(raw)).toEqual(range);
+    // Each line in it is in it as frontmatterAt and fenceAt tell; each line after it is not.
+    const found = frontmatterRange(state);
+    for (let n = 1; n <= state.doc.lines; n++) {
+      const line = state.doc.line(n);
+      const inside = frontmatterAt(state, line.from) !== undefined || fenceAt(state, line.from);
+      const within = found !== undefined && line.from >= found.from && line.to <= found.to;
+      expect(within, `${JSON.stringify(raw)}, line ${n.toString()}`).toBe(inside);
+      if (found !== undefined && within) {
+        expect(frontmatterAt(state, line.from) ?? "fence", `${JSON.stringify(raw)}, line ${n.toString()}`).toBe(
+          fenceAt(state, line.from) ? "fence" : found.closed ? "closed" : "open"
+        );
+      }
+    }
+  }
+});
+
+test("frontmatterRange reads a content once: the same text again is not scanned (review A's N4)", () => {
+  // Not closed, as far as a blank line: the scan goes over each of its lines.
+  const state = stateOf(["---", ...Array.from({ length: 500 }, (_, i) => `k${i.toString()}: v`)].join("\n"));
+  const third = state.doc.line(3).from;
+  const lines = vi.spyOn(state.doc, "line");
+  const iterated = vi.spyOn(state.doc, "iterLines");
+  expect(frontmatterRange(state)?.closed).toBe(false);
+  expect(lines.mock.calls.length + iterated.mock.calls.length).toBeGreaterThan(0);
+  lines.mockClear();
+  iterated.mockClear();
+  // The same content in another state (a selection moved): its text is the same.
+  const moved = state.update({ selection: { anchor: 4 } }).state;
+  expect(moved.doc).toBe(state.doc);
+  expect(frontmatterRange(moved)).toBe(frontmatterRange(state));
+  expect(frontmatterAt(moved, third)).toBe("open");
+  expect([lines.mock.calls.length, iterated.mock.calls.length]).toEqual([0, 0]);
+  // A change is a new text, read anew.
+  const changed = state.update({ changes: { from: state.doc.length, insert: "\n---" } }).state;
+  expect(frontmatterRange(changed)?.closed).toBe(true);
 });

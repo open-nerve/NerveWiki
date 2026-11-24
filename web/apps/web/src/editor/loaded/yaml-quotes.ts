@@ -1,4 +1,4 @@
-import type { EditorState } from "@codemirror/state";
+import type { EditorState, Text } from "@codemirror/state";
 
 import { writtenBreak } from "../line-breaks";
 
@@ -219,35 +219,87 @@ function keyClose(state: EditorState, at: number, quote: Quote): boolean {
 const stringTags = new Set(["!!str", "!<tag:yaml.org,2002:str>", "!", "!<!>"]);
 
 /**
- * frontmatterAt tells whether pos is in the content's frontmatter, as the
- * server's frontmatterSpan finds it ("closed"): after its first line
- * "---", up to a later line "---" ("..." closes nothing), as fenceSpan
- * reads them. The content the editor loads has no byte order mark
- * (line-breaks.ts); one pasted at its start is not looked for (accepted).
- * One not closed, which the server reads as the body until it is, is one
- * being written ("open") as far as a blank line: a link or a tag written
- * there as the body's would be nothing once it is closed.
+ * Frontmatter is where the content's frontmatter is, as the server's
+ * frontmatterSpan finds it: from its first line "---" to the later line
+ * "---" that closes it ("..." closes nothing), as fenceSpan reads them; one
+ * not closed, which the server reads as the body until it is, is one being
+ * written as far as a blank line, or the content's end.
  */
-export function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
+export type Frontmatter = {
+  /** Its first line's start, and its last line's end: the closing line's, or the one's before the blank line. */
+  from: number;
+  to: number;
+  /** Whether a line "---" closes it; one being written is not closed. */
+  closed: boolean;
+  /** How many of the editor's lines its opening "---" spans (opening). */
+  opening: number;
+  /** The editor's line its YAML ends before: the closing line, the blank one, or one past the content's last. */
+  end: number;
+  /** How many of the editor's lines its closing "---" spans; 0 for one being written. */
+  span: number;
+};
+
+/**
+ * The frontmatter of each content read, by its text: CodeMirror's Text is
+ * immutable, a change makes a new one, and the line breaks as written
+ * change with it alone (line-breaks.ts). One not closed is read as far as
+ * a blank line, the whole content without one: an editor decorating the
+ * lines in view reads it as each scroll draws them (review A's N4).
+ */
+const frontmatters = new WeakMap<Text, Frontmatter | null>();
+
+/**
+ * frontmatterRange is the content's frontmatter, as frontmatterAt and
+ * fenceAt read it (M13/P4/S3, decision 874): undefined for none. The
+ * content the editor loads has no byte order mark (line-breaks.ts); one
+ * pasted at its start is not looked for (accepted).
+ */
+export function frontmatterRange(state: EditorState): Frontmatter | undefined {
   const { doc } = state;
-  const at = doc.lineAt(pos).number;
+  let found = frontmatters.get(doc);
+  if (found === undefined) {
+    found = frontmatterOf(state);
+    frontmatters.set(doc, found);
+  }
+  return found ?? undefined;
+}
+
+/** frontmatterOf reads the content's frontmatter from its start: null for none. */
+function frontmatterOf(state: EditorState): Frontmatter | null {
+  const { doc } = state;
   const open = opening(state);
-  if (open === 0 || at <= open) {
-    return undefined;
+  if (open === 0) {
+    return null;
   }
   const close = closing(state, open + 1);
   if (close !== undefined) {
-    return at < close.line ? "closed" : undefined;
+    const { line, span } = close;
+    return { from: 0, to: doc.line(line + span - 1).to, closed: true, opening: open, end: line, span };
   }
   // Line by line, as the text's own iterator goes: a content opened by "---" and never closed is read to its end.
   let n = open;
   for (const text of doc.iterLines(open + 1)) {
     n++;
     if (/^[ \t]*$/.test(text)) {
-      return at < n ? "open" : undefined;
+      return { from: 0, to: doc.line(n - 1).to, closed: false, opening: open, end: n, span: 0 };
     }
   }
-  return "open";
+  return { from: 0, to: doc.length, closed: false, opening: open, end: doc.lines + 1, span: 0 };
+}
+
+/**
+ * frontmatterAt tells whether pos is in the content's frontmatter's YAML,
+ * after its first line "---": up to the line that closes it ("closed"),
+ * or, one not closed, as far as a blank line ("open"): a link or a tag
+ * written there as the body's would be nothing once it is closed.
+ */
+export function frontmatterAt(state: EditorState, pos: number): "closed" | "open" | undefined {
+  const found = frontmatterRange(state);
+  const at = state.doc.lineAt(pos).number;
+  if (found === undefined || at <= found.opening || at >= found.end) {
+    return undefined;
+  }
+  return found.closed ? "closed" : "open";
 }
 
 /**
@@ -257,13 +309,12 @@ export function frontmatterAt(state: EditorState, pos: number): "closed" | "open
  * none (Codex M7 review R1, fix checks A2-M1, A3-M1).
  */
 export function fenceAt(state: EditorState, pos: number): boolean {
-  const open = opening(state);
-  if (open === 0) {
+  const found = frontmatterRange(state);
+  if (found === undefined) {
     return false;
   }
   const at = state.doc.lineAt(pos).number;
-  const close = at <= open ? undefined : closing(state, open + 1);
-  return at <= open || (close !== undefined && at >= close.line && at < close.line + close.span);
+  return at <= found.opening || (found.closed && at >= found.end && at < found.end + found.span);
 }
 
 /**
