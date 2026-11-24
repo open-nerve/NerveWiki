@@ -36,6 +36,16 @@ test("a wiki link shows its display text, or its target and anchor as Obsidian w
   ]);
 });
 
+// An attachment's extension has no space: "v1.2 notes" is a page's name, its embed shown by its target (review B's
+// P4S3B-F2-N1). One of a dot in its name and a display text, "Node.js", is taken for an attachment's (4.3.4).
+test("an embed's target whose last dot is followed by a space is a page's: its target shown, not its display text", () => {
+  expect(links("![[v1.2 notes|Alias]] ![[v1.2 notes]] ![[Doc.PDF|Spec]]")).toEqual([
+    ["![[v1.2 notes|Alias]]", "v1.2 notes"],
+    ["![[v1.2 notes]]", "v1.2 notes"],
+    ["![[Doc.PDF|Spec]]", "Spec"],
+  ]);
+});
+
 test("none is a wiki link whose first bracket is escaped, nor one with neither a target nor an anchor, nor one with a bracket inside", () => {
   expect(links("\\[[a]] \\\\[[b]] \\![[c]] [[|x]] [[ ]] [[#]] [[ # |y]] [[a]b]] [[d[e]]")).toEqual([
     ["[[b]]", "b"],

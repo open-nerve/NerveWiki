@@ -96,8 +96,11 @@ function targetShown({ target, anchor }: WikiLink): string {
   return anchor === "" ? target : `${target} > ${anchor}`;
 }
 
-/** An attachment's name: an extension, not a page's ".md" (review A's P4S3A-F1-N2). */
-const attachment = /\.(?!md$)[^./]+$/i;
+/**
+ * An attachment's name: an extension, not a page's ".md", and no space in it: "v1.2 notes" is a page's (review A's
+ * P4S3A-F1-N2, B's P4S3B-F2-N1).
+ */
+const attachment = /\.(?!md$)[^./\s]+$/i;
 
 /**
  * shownOf is the text the reading view shows of link: a wiki link's display text, or its target and anchor; an

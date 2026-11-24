@@ -12,15 +12,18 @@ export function PanelSection({
   title,
   icon: Icon,
   summaryRef,
+  inert = false,
   children,
 }: {
   title: string;
   icon: LucideIcon;
   summaryRef?: Ref<HTMLElement>;
+  /** Whether the section, its summary with it, is inert: neither clicked nor tabbed to (M13/P4/S3). */
+  inert?: boolean;
   children: ReactNode;
 }) {
   return (
-    <details open className="group space-y-2">
+    <details open inert={inert} className="group space-y-2">
       <summary
         ref={summaryRef}
         className="flex cursor-pointer list-none items-center gap-1.5 rounded-row text-xs text-faint [&::-webkit-details-marker]:hidden"

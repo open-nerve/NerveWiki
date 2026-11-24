@@ -25,7 +25,10 @@ type OutlineProps = {
   page: string;
   /** Whether the section read is measured and marked: the right column open beside the page (decision 886). */
   active: boolean;
-  /** Whether its list is inert, neither clicked nor tabbed to: the page edited (review A's P4S3A-F1-N1). */
+  /**
+   * Whether its section is inert, its summary with it, neither clicked nor tabbed to: the page edited (review A's
+   * P4S3A-F1-N1, F2-N1).
+   */
   inert?: boolean;
 };
 
@@ -106,8 +109,8 @@ export const PageOutline = memo(function PageOutline({ notebook, page, active, i
   // Not by spreading them into Math.min: a call takes so many arguments only.
   const top = listed.reduce((highest, { level }) => Math.min(highest, level), 6);
   return (
-    <PanelSection title={t("page.outline")} icon={List}>
-      <nav aria-label={t("page.outline")} inert={inert}>
+    <PanelSection title={t("page.outline")} icon={List} inert={inert}>
+      <nav aria-label={t("page.outline")}>
         <ul ref={watched} className="border-l border-border text-[13px]">
           {listed.map(({ id, level, text }) => (
             <OutlineItem key={id} id={id} indent={level - top} text={text} current={id === current} pin={pin} />

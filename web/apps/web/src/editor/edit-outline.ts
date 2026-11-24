@@ -61,12 +61,16 @@ const highlight = /==(?=[^=\s])([^=\n]*?[^=\s])==/g;
 /** An Obsidian comment in a line: its "%%" paired with the next, all it holds hidden (obsidian/comment.go). */
 const comment = /%%.*?%%/g;
 
-/** The characters HTML entities stand for, decoded once each (review A's P4S3A-F1-M2). */
-const entities = new Map<string, string>();
+/**
+ * Entities is the characters the HTML entities a read meets stand for, each decoded once in it (review A's
+ * P4S3A-F1-M2): made for each read and dropped after, as large as its document. One kept for the tab, never cleared,
+ * held what a writer's entities would have it hold, without a bound (review C's P4S3C-F2-M1).
+ */
+type Entities = Map<string, string>;
 let decoder: HTMLTextAreaElement | undefined;
 
-/** decoded is the character an HTML entity stands for, as the server's Markdown reads it. */
-function decoded(entity: string): string {
+/** decoded is the character an HTML entity stands for, as the server's Markdown reads it, decoded once in a read. */
+function decoded(entity: string, entities: Entities): string {
   let character = entities.get(entity);
   if (character === undefined) {
     decoder ??= document.createElement("textarea");
@@ -83,7 +87,14 @@ function decoded(entity: string): string {
  * shortcut reference "[x]" stays as written: the server reads it as a link only where it is defined); an escape's
  * "\"; an entity as its character.
  */
-function cutsOf(state: EditorState, node: SyntaxNode, end: number, cuts: Cut[], codes: Cut[]): void {
+function cutsOf(
+  state: EditorState,
+  node: SyntaxNode,
+  end: number,
+  cuts: Cut[],
+  codes: Cut[],
+  entities: Entities
+): void {
   for (let child = node.firstChild; child !== null && child.from < end; child = child.nextSibling) {
     const { name, from, to } = child;
     if (verbatim.has(name)) {
@@ -94,7 +105,7 @@ function cutsOf(state: EditorState, node: SyntaxNode, end: number, cuts: Cut[], 
     } else if (name === "Escape") {
       cuts.push({ from, to: from + 1, text: "" });
     } else if (name === "Entity") {
-      cuts.push({ from, to, text: decoded(state.sliceDoc(from, to)) });
+      cuts.push({ from, to, text: decoded(state.sliceDoc(from, to), entities) });
     } else if (name === "Link" && child.getChild("URL") === null && state.sliceDoc(from + 1, from + 2) === "^") {
       cuts.push({ from, to, text: "" });
     } else if (name === "Autolink") {
@@ -118,9 +129,9 @@ function cutsOf(state: EditorState, node: SyntaxNode, end: number, cuts: Cut[], 
         cuts.push({ from: close.from, to: Math.min(child.to, end), text: "" });
         codes.push({ from: close.from, to: child.to, text: "" });
       }
-      cutsOf(state, child, close?.from ?? end, cuts, codes);
+      cutsOf(state, child, close?.from ?? end, cuts, codes, entities);
     } else {
-      cutsOf(state, child, end, cuts, codes);
+      cutsOf(state, child, end, cuts, codes, entities);
     }
   }
 }
@@ -140,11 +151,11 @@ function endOf(state: EditorState, node: SyntaxNode): number {
  * its inline marks, addresses, footnotes' references and comments; an image by its alt; a wiki link as the view shows
  * it, a highlight without its "=="; in code as written. Its spaces made one.
  */
-function textOf(state: EditorState, node: SyntaxNode): string {
+function textOf(state: EditorState, node: SyntaxNode, entities: Entities): string {
   const end = endOf(state, node);
   const marks: Cut[] = [];
   const codes: Cut[] = [];
-  cutsOf(state, node, end, marks, codes);
+  cutsOf(state, node, end, marks, codes, entities);
   const text = state.sliceDoc(node.from, end);
   // A comment hides what it holds, its links too (review A's P4S3A-F1-N2).
   const hidden: Cut[] = [];
@@ -208,6 +219,7 @@ function hasText(state: EditorState, node: SyntaxNode): boolean {
 function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: OutlineHeading[]; more: number } {
   const frontmatter = frontmatterRange(state);
   const listed: OutlineHeading[] = [];
+  const entities: Entities = new Map();
   let more = 0;
   tree.iterate({
     enter: (node) => {
@@ -222,7 +234,7 @@ function headingsOf(state: EditorState, tree: Tree, upTo: number): { listed: Out
         return containers.has(node.name) ? undefined : false;
       }
       if (listed.length < upTo) {
-        const text = textOf(state, node.node);
+        const text = textOf(state, node.node, entities);
         if (text !== "") {
           listed.push({ from: node.from, level, text });
         }
