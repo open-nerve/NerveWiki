@@ -65,8 +65,10 @@ export const editorTheme = [
       lineHeight: "1",
     },
     ".cm-panel.cm-search [name=close]:hover": { backgroundColor: "var(--hover)", color: "var(--foreground)" },
-    // The app's input (components/ui/input.tsx), as high as a small button.
+    // The app's input (components/ui/input.tsx), as high as a small button; as wide in every engine, whose own widths
+    // differ (Firefox's put the search panel's Chinese on three rows at 1440; review B's P4S3B-F1-N1).
     ".cm-textfield": {
+      width: "10.5rem",
       height: "1.875rem",
       padding: "0 0.625rem",
       fontSize: "inherit",

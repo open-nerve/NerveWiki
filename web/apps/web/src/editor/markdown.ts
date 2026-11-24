@@ -17,17 +17,23 @@ import type { InlineContext, MarkdownConfig, MarkdownParser } from "@lezer/markd
  * link's text in a quote is the quote's (review B's P4S3B-N1). Inline
  * code is as large as the code lines, where the source editor sets
  * --nw-editor-code (prose-lines.ts; review B's P4S3B-M2); a comparison
- * sets none, its text's size.
+ * sets none, its text's size. In a heading it grows with the heading, as
+ * the reading view's: the heading's rule sets --nw-heading on the code's
+ * own span, which has both (review A's P4S3A-F1-M1).
  */
 const markdownHighlight = HighlightStyle.define([
-  { tag: tags.heading1, fontWeight: "650", fontSize: "1.29em" },
-  { tag: tags.heading2, fontWeight: "630", fontSize: "1.065em" },
+  { tag: tags.heading1, fontWeight: "650", fontSize: "1.29em", "--nw-heading": "1.29" },
+  { tag: tags.heading2, fontWeight: "630", fontSize: "1.065em", "--nw-heading": "1.065" },
   { tag: tags.heading3, fontWeight: "620" },
   { tag: [tags.heading4, tags.heading5, tags.heading6], fontWeight: "600" },
   { tag: tags.strong, fontWeight: "700" },
   { tag: tags.emphasis, fontStyle: "italic" },
   { tag: tags.strikethrough, textDecoration: "line-through" },
-  { tag: tags.monospace, fontFamily: "var(--nw-editor-mono)", fontSize: "var(--nw-editor-code, 1em)" },
+  {
+    tag: tags.monospace,
+    fontFamily: "var(--nw-editor-mono)",
+    fontSize: "calc(var(--nw-editor-code, 1em) * var(--nw-heading, 1))",
+  },
   { tag: tags.link, color: "var(--foreground)" },
   { tag: tags.quote, color: "var(--muted-foreground)" },
   { tag: tags.url, color: "var(--faint)" },
