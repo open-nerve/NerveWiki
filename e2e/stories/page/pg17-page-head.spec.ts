@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { bearer, emailFor } from "../../fixtures/auth";
 import { countAnswers } from "../../fixtures/browser";
+import { grantClipboardPermissions, readClipboardText } from "../../fixtures/clipboard";
 import { holdStream } from "../../fixtures/events";
 import { joinAs } from "../../fixtures/invitations";
 import { expectFits, phoneWidth } from "../../fixtures/narrow";
@@ -18,9 +19,10 @@ import { newOnboardedTeam } from "../../fixtures/workspaces";
 // its outline marking the section read (a folded callout's heading never, the heading clicked at the page's end), the
 // column following it into view until the reader moves in it; the line read kept as the page is written above it; the
 // column folded away, the page's column as wide and centred, folded still once reloaded, after the page below xl; long
-// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1). The page's
-// version only: the cells check the interface's behaviour, writing nothing but their data and one write through
-// the API (for the update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
+// names broken, the lock's holder's in its note, a version's author's in its line (review B's P4S1B-F1); a code
+// block's head, its language and Copy, and a done task item (M13/P4/S2, decisions 869, 872, 890). The page's version
+// only: the cells check the interface's behaviour, writing nothing but their data and one write through the API (for
+// the update in place), the API's and MCP's versions exempt (v0.1 design 13.4, item 3).
 
 /** A value of 97 characters without a break: the properties' strip breaks it in its chip (decision 864). */
 const long = "x".repeat(97);
@@ -390,4 +392,93 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
   await fitsAt(path);
   // The version's page: the same note, and the version's author in the line under its title.
   await fitsAt(`${path}/versions/1`, main.getByRole("link", { name: unbroken("admin") }));
+});
+
+/** A line of Go longer than the page's column (720px): its block scrolls sideways. */
+const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
+
+test("PG17 (page): a code block's head names its language and copies its code alone, its button turning to a check a moment, held at the block's left as the code scrolls sideways; a done task's own text is struck and faint, not its nested items'", async ({
+  api,
+  browserName,
+  context,
+  signedInPage,
+}, testInfo) => {
+  await grantClipboardPermissions(context, browserName);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const markdown = `\`\`\`go\nfunc main() {\n\t${wideGo}\n}\n\`\`\`\n\n- [x] Shipped\n  - [ ] Its follow-up\n`;
+  const doc = await createPage(api, pat, notebook.id, "Doc", null, markdown);
+  const page = await signedInPage(tokens);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await goto(page, wikiPagePath(workspace.slug, notebook.id, doc.id));
+  const article = page.getByRole("article", { name: "Doc" });
+  const pre = article.locator("pre");
+  const head = pre.locator(".nw-code-head");
+  const copy = pre.getByRole("button", { name: "Copy", exact: true });
+  const said = head.locator(".nw-code-said");
+
+  // Its head names its language: the code's class, its language- taken off.
+  await expect(head).toHaveText(/^go/);
+  await expect(copy).toBeVisible();
+
+  // Copy copies the code alone; its button turns to a check, Copied said to a screen reader alone (decision 890).
+  await copy.click();
+  await expect
+    .poll(() =>
+      pre.evaluate((block) => {
+        const button = block.querySelector<HTMLElement>(".nw-code-copy");
+        const word = block.querySelector<HTMLElement>(".nw-code-said");
+        return {
+          button: button?.dataset.state,
+          said: word?.textContent,
+          saidState: word?.dataset.state,
+          shown: Math.round((word?.getBoundingClientRect().width ?? 0) * 100) / 100 <= 1,
+        };
+      })
+    )
+    .toEqual({ button: "copied", said: "Copied", saidState: "copied", shown: true });
+  const code = await pre.locator(":scope > code").evaluate((element) => element.textContent);
+  expect(code).toBe(`func main() {\n\t${wideGo}\n}\n`);
+  expect(await readClipboardText(page, browserName)).toBe(code);
+  // A moment later, as it was; its name Copy all along.
+  await expect(copy).not.toHaveAttribute("data-state");
+  await expect(said).toHaveText("");
+  await expect(copy).toHaveAccessibleName("Copy");
+
+  // The block wider than the page is a region named Code; scrolled sideways, its head stays at its left.
+  await expect(article.getByRole("region", { name: "Code", exact: true })).toHaveCount(1);
+  await expect(pre).toHaveAttribute("role", "region");
+  const scrolled = await pre.evaluate((block) => {
+    block.scrollLeft = 200;
+    return block.scrollLeft;
+  });
+  expect(scrolled).toBe(200);
+  await afterFrames(page);
+  const [blockLeft, headLeft] = await Promise.all([
+    pre.evaluate((block) => block.getBoundingClientRect().left),
+    head.evaluate((element) => element.getBoundingClientRect().left),
+  ]);
+  expect(Math.abs(headLeft - (blockLeft + 1)), "the head's left, the block's border in").toBeLessThanOrEqual(1);
+
+  // A done item's own text struck and faint; its nested list a block of its own, the text's colour (decision 872).
+  const done = await article
+    .locator("li")
+    .first()
+    .evaluate((item) => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--faint)";
+      document.body.append(probe);
+      const faint = getComputedStyle(probe).color;
+      probe.remove();
+      const nested = item.querySelector(":scope > ul");
+      const view = item.closest("article");
+      return {
+        struck: getComputedStyle(item).textDecorationLine.includes("line-through"),
+        faint: getComputedStyle(item).color === faint,
+        nested: nested === null ? null : getComputedStyle(nested).display,
+        nestedColour:
+          nested !== null && view !== null && getComputedStyle(nested).color === getComputedStyle(view).color,
+      };
+    });
+  expect(done).toEqual({ struck: true, faint: true, nested: "inline-block", nestedColour: true });
 });

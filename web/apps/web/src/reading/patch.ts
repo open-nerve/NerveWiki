@@ -350,7 +350,7 @@ function stamped(root: Element): Element[] {
 export type FocusKey = { key: string; nth: number };
 
 /** The elements a focus key may be of. */
-const keyed = "h1, h2, h3, h4, h5, h6, a, summary, audio, video, [id]";
+const keyed = "h1, h2, h3, h4, h5, h6, a, summary, audio, video, [id], button.nw-code-copy";
 
 /** text is element's text, its white space collapsed. */
 function text(element: Element): string {
@@ -360,8 +360,9 @@ function text(element: Element): string {
 /**
  * keyOf is what element is, to find it again (M12/P2/S4, 4.4.3's step 3): a heading its level and text, not its id,
  * which a heading of the same name put before changes; a link its address (an attachment's masked) and its text, one
- * to no page its target; a callout's summary its text; an audio or a video its attachment; another element its id.
- * None, it has no key.
+ * to no page its target; a callout's summary its text; a code block's Copy, its head made anew as the view is
+ * written, Copy (M13/P4/S2), which of its block's it is telling it apart; an audio or a video its attachment; another
+ * element its id. None, it has no key.
  */
 function keyOf(element: Element): string | undefined {
   const name = element.localName;
@@ -376,6 +377,9 @@ function keyOf(element: Element): string | undefined {
   }
   if (name === "summary") {
     return `summary ${text(element)}`;
+  }
+  if (element.matches("button.nw-code-copy")) {
+    return "copy";
   }
   if (name === "audio" || name === "video") {
     const asset = assetOf(element);

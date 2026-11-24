@@ -4,6 +4,7 @@ import type { Translate } from "../i18n/i18n";
 import type { Locale } from "../i18n/locale";
 import { appLinks } from "./app-links";
 import { assets } from "./assets";
+import { codeBlocks } from "./code-blocks";
 import { diagrams, loadMermaid } from "./diagrams";
 import { expiredDownloads } from "./expired-downloads";
 import { codeHighlight, highlightWorker } from "./highlight";
@@ -123,8 +124,8 @@ export type Enhancement = (container: HTMLElement, context: ReadingContext) => (
  * and those to pages not there, the formulas and the diagrams; M7 the
  * attachments; M12 a download of an attachment clicked as its address has
  * expired signed anew (expiredDownloads), and a folded callout kept as it
- * was by a control of a medium in its title (titleMedia); M13 the properties' roles (propertyRoles), after the
- * diagrams, before the regions. The app's composition root (main.tsx)
+ * was by a control of a medium in its title (titleMedia); M13 a code block's head (codeBlocks) and the properties'
+ * roles (propertyRoles), after the diagrams, before the regions. The app's composition root (main.tsx)
  * gives them to the reading views through Enhancements; without it they
  * have none.
  */
@@ -132,6 +133,7 @@ export const readingEnhancements: readonly Enhancement[] = [
   codeHighlight(highlightWorker),
   math(loadKatex),
   diagrams(loadMermaid),
+  codeBlocks,
   propertyRoles,
   scrollRegions,
   taskToggle,
