@@ -356,7 +356,7 @@ function UnifiedDiff({ state, legend, lines, busy, note }: UnifiedDiffProps) {
         <span>{t("diff.changes", { count: chunks })}</span>
         <span className="text-muted-foreground">{t("diff.lines", { added: lines.added, removed: lines.removed })}</span>
         <span className="text-muted-foreground">{legend}</span>
-        <span className="ms-auto flex gap-1">
+        <span className="ms-auto flex flex-wrap justify-end gap-1">
           <button type="button" className={buttonClass} disabled={chunks === 0} onClick={() => move(goToPreviousChunk)}>
             {t("diff.previous")}
           </button>

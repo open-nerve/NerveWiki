@@ -566,13 +566,16 @@ test("Tab indents; the content refers to the line that says how to move out; its
 // The source editor as the page reads (M13/P4/S3, decisions 874, 889): its prose in the reading's font, its code,
 // tables and frontmatter in lines of their own, its marks faint. jsdom cascades the editor's style modules in the order
 // CodeMirror mounts them; it reads no var(), answering what is written.
-test("the editor's look wins over the editor's theme: its content's line 1.85, its lines' padding 26px, its caret amber", () => {
+test("the editor's look wins over the editor's theme: its prose's font, its content's line 1.85, its lines' padding 26px, its caret amber", () => {
   const { container } = editor("Text\n");
   const content = container.querySelector(".cm-content");
   const line = container.querySelector(".cm-line");
-  if (content === null || line === null) {
+  const scroller = container.querySelector(".cm-scroller");
+  if (content === null || line === null || scroller === null) {
     throw new Error("no content");
   }
+  // A comparison's monospace, which the editor's theme has (decision 909), is not the page's editor's.
+  expect(getComputedStyle(scroller).fontFamily).toBe("var(--font-sans)");
   expect(getComputedStyle(content).lineHeight).toBe("1.85");
   expect(getComputedStyle(line).paddingLeft).toBe("26px");
   // The caret is the browser's: there is no drawn one (review B's R1-M1).

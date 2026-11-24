@@ -27,6 +27,9 @@ export const editorTheme = [
       borderRadius: "12px",
     },
     "&.cm-focused": { outline: "2px solid var(--ring)", outlineOffset: "1px" },
+    // A comparison's and a conflict's monospace the editor's, 13px written: the browser shrinks its own generic one
+    // alone, and to its own size (decision 909; review B's P4S3B-Q2). The page's editor writes its prose's over it.
+    ".cm-scroller": { fontFamily: "var(--nw-editor-mono)", fontSize: "13px" },
     // The content fills the editor, however short: what is clicked or dropped below its text is the content's.
     ".cm-content": { minHeight: "20rem", padding: "1rem 0", caretColor: "var(--foreground)", lineHeight: "1.6" },
     ".cm-line": { padding: "0 1rem" },
