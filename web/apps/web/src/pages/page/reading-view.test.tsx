@@ -375,21 +375,26 @@ test("the wait's listeners go once its read settles", async () => {
     }
     return by;
   };
-  // What still listens: the wait's, the tree's watch of the reader for its row's reveal having ended as the row
-  // came into view (M13/P2/S2), as it had for the pages before.
+  // What still listens, by the listener: the wait's, the tree's watch of the reader for its row's reveal having ended
+  // as the row came into view (M13/P2/S2), as it had for the pages before.
   const listening = () => {
     const removedBy = inputs(removed);
     return [...inputs(added)].flatMap(([listener, types]) =>
-      types.filter((type) => !(removedBy.get(listener) ?? []).includes(type))
+      types.filter((type) => !(removedBy.get(listener) ?? []).includes(type)).map((type) => ({ listener, type }))
     );
   };
   const { server, release } = heldServer(["<p>Install</p>", '<h2 id="nw-x">X</h2>']);
   await openedFromTheCache(server, "#nw-x");
   await waitFor(() => expect(listening()).toHaveLength(4));
+  const waits = new Set(listening().map(({ listener }) => listener));
 
   await act(async () => release());
   await screen.findByRole("heading", { level: 2, name: "X" });
-  expect(listening()).toEqual([]);
+  expect(listening().filter(({ listener }) => waits.has(listener))).toEqual([]);
+  // The one left is the outline's, come with the view: its watch of the reader in the right column, while its list is
+  // up (M13/P4/S1, decision 886).
+  expect(listening().map(({ type }) => type)).toEqual(["wheel", "touchmove", "pointerdown", "keydown"]);
+  expect(screen.getByRole("navigation", { name: "Outline" })).toBeTruthy();
 });
 
 test("the browser's own scrolling during the wait is not the reader's: the element the read brings takes the focus", async () => {

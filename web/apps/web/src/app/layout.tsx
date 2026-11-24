@@ -68,7 +68,7 @@ export const Layout = observer(function Layout() {
       <div ref={setColumn} className="contents" />
       <div className="flex min-w-0 flex-1 flex-col">
         {(!sidebar || given > 0) && <Corner />}
-        <main className="flex min-w-0 flex-1 flex-col p-6">
+        <main className="flex min-w-0 flex-1 flex-col p-6 xl:px-10">
           <CornerBack value={giveBack}>
             <ShellColumn value={column}>
               <SettingsOrigin value={origin}>

@@ -1,3 +1,4 @@
+import { Link2 } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
@@ -125,7 +126,7 @@ export const PageBacklinks = observer(function PageBacklinks({
 
   if (data === undefined) {
     return (
-      <PanelSection title={t("page.backlinks")}>
+      <PanelSection title={t("page.backlinks")} icon={Link2}>
         <div className="text-sm">
           <NotLoaded error={error} retry={() => void mutate()} />
         </div>
@@ -135,35 +136,34 @@ export const PageBacklinks = observer(function PageBacklinks({
   const shown = shownOf(data, nameOf);
   const cursor = data.at(-1)?.next_cursor ?? undefined;
   return (
-    <PanelSection title={t("page.backlinks")} summaryRef={summary}>
-      {shown.length === 0 && cursor === undefined && (
-        <p className="text-sm text-muted-foreground">{t("page.noBacklinks")}</p>
-      )}
+    <PanelSection title={t("page.backlinks")} icon={Link2} summaryRef={summary}>
+      {shown.length === 0 && cursor === undefined && <p className="text-[13px] text-faint">{t("page.noBacklinks")}</p>}
       {shown.length > 0 && (
-        <ul aria-label={t("page.backlinks")} className="space-y-3 text-sm">
+        // A card each (the mockup's .bl; M13/P4/S1, decision 863), its name unlined (00-M13 4.7) but hovered.
+        <ul aria-label={t("page.backlinks")} className="space-y-2">
           {shown.map(({ id, name, count, contexts }) => (
-            <li key={id} className="space-y-1">
-              <div className="break-words">
+            <li key={id} className="rounded-control border border-border bg-surface px-2.5 py-2 dark:bg-surface-2">
+              <div className="text-[13px] break-words">
                 <Link
                   ref={id === focusing ? focused : undefined}
                   to={href(id)}
                   state={arrived}
-                  className="underline underline-offset-4"
+                  className="font-medium hover:underline"
                 >
                   {name}
                 </Link>
                 {count > 1 && (
-                  <span className="text-muted-foreground">
+                  <span className="text-faint">
                     {" · "}
                     {t("page.backlinkCount", { count: count >= countedUpTo ? `${countedUpTo}+` : String(count) })}
                   </span>
                 )}
               </div>
               {contexts.length > 0 && (
-                <ul className="space-y-1 text-xs text-muted-foreground">
+                <ul className="mt-0.5 space-y-0.5 text-xs leading-normal text-faint">
                   {contexts.map((line, index) => (
                     // oxlint-disable-next-line react/no-array-index-key -- two lines may read the same: by where they are
-                    <li key={index} className="break-words">
+                    <li key={index} className="line-clamp-2 break-words">
                       {line}
                     </li>
                   ))}
@@ -178,6 +178,8 @@ export const PageBacklinks = observer(function PageBacklinks({
         <Button
           ref={moreButton}
           variant="outline"
+          size="sm"
+          shape="pill"
           aria-busy={reading || undefined}
           aria-disabled={reading || undefined}
           onClick={() => void more(cursor)}

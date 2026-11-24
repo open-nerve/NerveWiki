@@ -206,6 +206,7 @@ export const zhCN: Messages = {
   "page.quickSwitchFirst": "只显示前 {count} 个：多输入几个字找其余的。",
   "page.quickSwitchKeys": "↑↓ 选择 · ↵ 打开 · Esc 关闭",
   "page.edit": "编辑",
+  "page.editedBy": "{name} 编辑于{when}",
   "page.menu": "页面操作",
   "page.export": "导出此页",
   "page.history": "查看这一页的历史",

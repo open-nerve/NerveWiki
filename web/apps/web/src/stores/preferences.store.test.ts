@@ -122,3 +122,41 @@ test("PreferencesStore last workspace: one the storage failed to keep comes firs
 
   expect(prefs.lastWorkspace()).toBe("acme");
 });
+
+// The page's right column folded or not, this browser's (M13/P4/S1, decision 859).
+describe("PreferencesStore right column", () => {
+  test("is open until it is folded away, which is stored for the next visit", () => {
+    const storage = memoryStorage();
+    const prefs = store({ storage });
+    expect(prefs.panelOpen).toBe(true);
+
+    prefs.setPanelOpen(false);
+    expect([prefs.panelOpen, storage.values["nwiki.panel"]]).toEqual([false, "closed"]);
+    expect(store({ storage }).panelOpen).toBe(false);
+
+    prefs.setPanelOpen(true);
+    expect([prefs.panelOpen, storage.values["nwiki.panel"]]).toEqual([true, "open"]);
+  });
+
+  test("stored folded, it is folded; anything else stored, open", () => {
+    expect(store({ storage: memoryStorage({ "nwiki.panel": "closed" }) }).panelOpen).toBe(false);
+    expect(store({ storage: memoryStorage({ "nwiki.panel": "open" }) }).panelOpen).toBe(true);
+    expect(store({ storage: memoryStorage({ "nwiki.panel": "shut" }) }).panelOpen).toBe(true);
+  });
+
+  test("folds for this page when storage throws", () => {
+    const blocked = {
+      getItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+      setItem: () => {
+        throw new DOMException("blocked", "SecurityError");
+      },
+    };
+    const prefs = store({ storage: blocked });
+    expect(prefs.panelOpen).toBe(true);
+
+    prefs.setPanelOpen(false);
+    expect(prefs.panelOpen).toBe(false);
+  });
+});

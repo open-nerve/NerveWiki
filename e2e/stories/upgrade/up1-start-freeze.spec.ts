@@ -169,7 +169,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, without a reload, its reading view not written again, the paragraph it reads not moved; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -206,6 +206,9 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   // browsers' scroll anchoring keeps in place while the view's HTML stays (M12/P2/S4, 48; the three engines have it,
   // the S4 probe). The article's first node is kept in a reference of the window: the HTML is not written again.
   const reading = tab.getByRole("article", { name: "Plan" }).getByText("Paragraph 40 of the plan.", { exact: true });
+  // Edit holds the focus as the reader scrolls on: gone, it gives it to the title, the window kept where it is
+  // (M13/P4/S1, decision 865).
+  await edit.focus();
   await reading.evaluate((paragraph) => {
     paragraph.scrollIntoView({ block: "center" });
     Object.assign(window, { up1First: paragraph.closest("article")?.firstChild });
@@ -236,6 +239,10 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
 
   await expect(upgradeBanner(tab, bannerText.upgrading)).toBeVisible();
   await expect(edit).toHaveCount(0);
+  // The page's title, before the article's own "# Plan".
+  await expect(
+    tab.getByRole("main").getByRole("heading", { level: 1, name: "Plan", exact: true }).first()
+  ).toBeFocused();
   await afterFrames(tab);
   expect(
     await reading.evaluate((paragraph) => paragraph.closest("article")?.firstChild === Reflect.get(window, "up1First")),

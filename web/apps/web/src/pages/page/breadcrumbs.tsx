@@ -10,6 +10,7 @@ import type { TreeNode } from "../../services/page.service";
  * its ancestors from the root down, each a link, then the page itself,
  * marked as the current one; or, a part of the page shown (one of its
  * versions, M8 design 4.13), a link too, then that part, the current one.
+ * className places its trail in a row (the page's head, M13/P4/S1).
  */
 export function Breadcrumbs({
   notebook,
@@ -17,6 +18,7 @@ export function Breadcrumbs({
   page,
   href,
   part,
+  className,
 }: {
   notebook: Notebook;
   ancestors: readonly TreeNode[];
@@ -24,13 +26,14 @@ export function Breadcrumbs({
   href: (id?: string) => string;
   /** The part of the page shown, named. */
   part?: string;
+  className?: string;
 }) {
   const steps = [
     { key: notebook.id, to: href(), name: notebook.name },
     ...ancestors.map((ancestor) => ({ key: ancestor.id, to: href(ancestor.id), name: ancestor.name })),
     ...(part === undefined ? [] : [{ key: page.id, to: href(page.id), name: page.name }]),
   ];
-  return <BreadcrumbTrail steps={steps} current={part ?? page.name} />;
+  return <BreadcrumbTrail steps={steps} current={part ?? page.name} className={className} />;
 }
 
 /**
@@ -38,28 +41,32 @@ export function Breadcrumbs({
  * is (current), marked as the current one: a page's (Breadcrumbs), a trash
  * item's preview (its notebook, the trash, the item). A step leaves with
  * the page it is on: the page it leads to is arrived at, its title taking
- * the focus (v0.1 design 13.2, item 17; M5-polish 12.3).
+ * the focus (v0.1 design 13.2, item 17; M5-polish 12.3). Faint and 13px, as the mockup's .crumb: a step lights up
+ * as it is hovered, unlined (00-M13 4.7), where the reader is in the secondary text and heavier (M13/P4/S1).
+ * className is its nav's.
  */
 export function BreadcrumbTrail({
   steps,
   current,
+  className,
 }: {
   steps: readonly { key: string; to: string; name: string }[];
   current: string;
+  className?: string;
 }) {
   const t = useT();
   return (
-    <nav aria-label={t("page.breadcrumb")}>
-      <ol className="flex flex-wrap items-center gap-x-1 text-sm text-muted-foreground [overflow-wrap:anywhere]">
+    <nav aria-label={t("page.breadcrumb")} className={className}>
+      <ol className="flex flex-wrap items-center gap-x-1 text-compact text-faint [overflow-wrap:anywhere]">
         {steps.map((step, i) => (
           <li key={step.key}>
             {i > 0 && <Separator />}
-            <Link to={step.to} state={arrived} className="hover:underline">
+            <Link to={step.to} state={arrived} className="hover:text-foreground">
               {step.name}
             </Link>
           </li>
         ))}
-        <li className="text-foreground">
+        <li className="font-medium text-muted-foreground">
           {steps.length > 0 && <Separator />}
           <span aria-current="page">{current}</span>
         </li>
@@ -71,7 +78,7 @@ export function BreadcrumbTrail({
 /** Separator stands between two steps, for the eye: screen readers have the list. */
 function Separator() {
   return (
-    <span aria-hidden className="pr-1 text-muted-foreground">
+    <span aria-hidden className="pr-1 font-normal text-faint">
       /
     </span>
   );

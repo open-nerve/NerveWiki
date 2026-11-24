@@ -219,6 +219,7 @@ export const en = {
   "page.quickSwitchFirst": "The first {count} are shown: type more to find the others.",
   "page.quickSwitchKeys": "↑↓ to choose · ↵ to open · Esc to close",
   "page.edit": "Edit",
+  "page.editedBy": "Edited by {name} {when}",
   "page.menu": "Page actions",
   "page.export": "Export this page",
   "page.history": "This page's history",

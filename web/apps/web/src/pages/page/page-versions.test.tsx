@@ -100,7 +100,42 @@ test("in Chinese, the versions say the same", async () => {
     )
   ).toBeTruthy();
   const items = within(screen.getByRole("list", { name: "版本" })).getAllByRole("listitem");
-  expect(items.map((item) => item.textContent)).toEqual(["5分钟前当前编辑中Ada · 撤销", "昨天Bob · 导入"]);
+  expect(items.map((item) => item.textContent)).toEqual(["5分钟前Ada · 撤销当前编辑中", "昨天Bob · 导入"]);
+});
+
+/** tags is the tag names of element's children, in order. */
+const tags = (element: Element | undefined) => [...(element?.children ?? [])].map((child) => child.tagName);
+
+// M13/P4/S1 (decisions 863, 868): one row each, the time and who wrote it one run of text, the marks at its end.
+test("a version's row is its time and who wrote it as one run of text, the name in a bdi, then its marks; the current one marked as current", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.setSystemTime(now);
+  const server = pageServer();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n", { by: bob, at: "2026-10-02T10:00:00Z" }),
+    versionJSON(2, 1, "Install\nmore\n", { at: "2026-10-03T09:55:00Z", editing: true }),
+  ]);
+  renderApp(pagePath(install.id), server.app);
+
+  const list = await within(await shownPanel()).findByRole("list", { name: "Versions" });
+  const [newest, older] = within(list).getAllByRole("listitem");
+  expect([tags(newest), tags(older)]).toEqual([["DIV", "DIV"], ["DIV"]]);
+  const [said, marks] = newest?.children ?? [];
+  expect(tags(said)).toEqual(["A", "P"]);
+  expect([said?.querySelector("p bdi")?.textContent, older?.querySelector("p bdi")?.textContent]).toEqual([
+    "Ada",
+    "Bob",
+  ]);
+  expect(
+    [...(marks?.children ?? [])].map((mark) => [
+      mark.tagName,
+      mark.textContent,
+      mark.classList.contains("bg-accent-soft"),
+    ])
+  ).toEqual([
+    ["SPAN", "Current", true],
+    ["SPAN", "Editing", false],
+  ]);
 });
 
 test("more reads the next page of twenty and adds it, the focus kept on it until the last, which takes it to the first version it adds; read again, or come back to, the list is as many pages, from the first", async () => {

@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { createContext, Fragment, use, useId, useState, type ReactNode, type RefObject } from "react";
 
 import { useArrivalFocus } from "./arrival";
+import { ColumnTop } from "./column-top";
 
 /** The shown settings page's h1, which a row removed with the focus in it gives the focus to (decision 815). */
 const SettingsHeading = createContext<RefObject<HTMLHeadingElement | null> | undefined>(undefined);
@@ -18,14 +19,16 @@ export function useSettingsHeading(): RefObject<HTMLHeadingElement | null> {
 /**
  * SettingsPage is a page of the settings' mode (00-M13 4.4.2; M13/P3/S1, decisions 815, 820, 844): its name as its h1,
  * which takes the arrival focus as it mounts (the layouts key it by the page: arrived at twice in one layout, from the
- * drawer, each page's h1 mounts anew and takes it), above its groups. Centred, its content at most 696px wide (the
- * mockup's .page, 760px with 32px each side), the main's 24px of padding made the mockup's 44 / 32 / 40 from md: up
- * (P4 decides the main's own).
+ * drawer, each page's h1 mounts anew and takes it), above its groups; above its h1, a notebook's upgrade banner
+ * (ColumnTop, M13/P4/S1, decision 857). Centred, its content at most 696px wide (the mockup's .page, 760px with 32px
+ * each side), the main's 24px of padding made the mockup's 44 / 32 / 40 from md: up; from xl up the main's sides are
+ * 40px (M13/P4/S1, decision 855), the column centred still.
  */
 export function SettingsPage({ title, children }: { title: string; children: ReactNode }) {
   const heading = useArrivalFocus<HTMLHeadingElement>();
   return (
     <div className="mx-auto w-full max-w-178 md:px-2 md:pt-5 md:pb-4">
+      <ColumnTop />
       <h1
         ref={heading}
         tabIndex={-1}
