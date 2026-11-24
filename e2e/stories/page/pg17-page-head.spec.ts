@@ -398,14 +398,14 @@ test("PG17 (page): long names break, the lock's holder's in its note, a version'
 /** A line of Go longer than the page's column (720px): its block scrolls sideways. */
 const wideGo = `fmt.Println("${"a line of Go wider than the page's column ".repeat(4)}")`;
 
-/** A done task with blocks under its text, a code block and a callout, and an item nested in it not done. */
+/** A done task with blocks under its text, a code block and a callout with a tag, and an item nested in it not done. */
 const shipped = [
   "- [x] Shipped",
   "  ```sh",
   "  make ship",
   "  ```",
   "  > [!note] Shipped with it",
-  "  > Its body.",
+  "  > Its body, #shipped.",
   "  - [ ] Its follow-up",
 ].join("\n");
 
@@ -504,17 +504,20 @@ test("PG17 (page): a code block's head names its language and copies its code al
   expect(Math.abs(headLeft - (blockLeft + 1)), "the head's left, the block's border in").toBeLessThanOrEqual(1);
 
   // A done item's own text struck and faint; its code block, its callout and its nested list each an inline block the
-  // item's width, which its line-through goes not into, the text's colour, as far apart as blocks are (decision 872;
-  // S2's fix check: a block's contents were struck and faint with the item's text).
+  // item's width, which its line-through goes not into, the text's colour, as far apart as blocks are, the callout's
+  // tag its own colour (decision 872; S2's fix check: a block's contents were struck and faint with the item's text).
   const done = await article
     .locator("li")
     .first()
     .evaluate((item) => {
       const probe = document.createElement("span");
-      probe.style.color = "var(--faint)";
       document.body.append(probe);
+      probe.style.color = "var(--faint)";
       const faint = getComputedStyle(probe).color;
+      probe.style.color = "var(--muted-foreground)";
+      const muted = getComputedStyle(probe).color;
       probe.remove();
+      const tag = item.querySelector(":scope > .nw-callout .nw-tag");
       const view = item.closest("article");
       const style = getComputedStyle(item);
       const line = item.getBoundingClientRect().top + parseFloat(style.lineHeight);
@@ -529,6 +532,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
           colour: view !== null && getComputedStyle(block).color === getComputedStyle(view).color,
           wide: Math.abs(block.getBoundingClientRect().width - width) <= 1,
         })),
+        tag: tag !== null && getComputedStyle(tag).color === muted,
         // Under the item's line, then under each other: their margins apart, no line's room more.
         gaps: blocks.map((block, at) =>
           Math.round(
@@ -546,6 +550,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
       { tag: "div", display: "inline-block", colour: true, wide: true },
       { tag: "ul", display: "inline-block", colour: true, wide: true },
     ],
+    tag: true,
     gaps: [8, 8, 4],
   });
 
