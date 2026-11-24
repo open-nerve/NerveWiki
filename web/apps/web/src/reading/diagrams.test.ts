@@ -52,8 +52,9 @@ const darkBackground = "#1f2023";
 const backgroundOf = (config: MermaidConfig) =>
   (config.themeVariables as { background?: string } | undefined)?.background;
 
-/** The theme a text names as mermaid reads it: in a directive ("theme": "dark") or its frontmatter's config (theme: dark). */
-const namedTheme = /"theme":\s*"([\w-]+)"|^\s+theme:\s*([\w-]+)$/m;
+/** A text's directive, whose config is JSON here, as mermaid reads it; and a theme its frontmatter's config names. */
+const directiveOf = /%%\{init:\s*(\{.*\})\s*\}%%/;
+const frontmatterTheme = /^\s+theme:\s*([\w-]+)$/m;
 
 /**
  * drawer is a mermaid that draws <svg id> of its text and its theme (its
@@ -75,8 +76,11 @@ function drawer() {
       if (text.includes("bad")) {
         return false;
       }
-      const named = namedTheme.exec(text);
-      const theme = (named?.[1] ?? named?.[2]) as MermaidConfig["theme"];
+      const directive = directiveOf.exec(text)?.[1];
+      if (directive !== undefined) {
+        return { diagramType: "flowchart", config: JSON.parse(directive) as MermaidConfig };
+      }
+      const theme = frontmatterTheme.exec(text)?.[1] as MermaidConfig["theme"];
       return { diagramType: "flowchart", config: theme === undefined ? {} : { theme } };
     },
     render: async (id, text) => {
@@ -165,6 +169,7 @@ test("a diagram is drawn once it shows, in a wrapper of its own in the block's p
         "dompurifyConfig",
         "layout",
       ],
+      flowchart: { padding: 9 },
       theme: "base",
       themeVariables: expect.objectContaining({ background: darkBackground }),
       themeCSS: expect.any(String),
@@ -195,8 +200,9 @@ async function drawnWith(theme: "light" | "dark", source: string) {
   return { config: configs.at(-1) as MermaidConfig, parsed, drawn: article.querySelector("svg") !== null };
 }
 
-// Decision 904 (review A's I2): a diagram that names a theme of its own, base's aside, is drawn in it alone, as before
-// M13: the app's variables, overriding the theme it derives its own from, would put the app's text on its fills.
+// Decision 904 (review A's I2, revised after the fix): a diagram that names a theme of its own, base's aside, or gives
+// variables of its own, is drawn from its own config alone, as before M13: the app's variables, overriding the theme
+// it derives its own from, would put the app's text on its fills (its light text on an author's yellow: 1.24:1).
 test("a diagram naming a theme of its own, in a directive or its frontmatter, is drawn in that theme alone, not in the app's colours", async () => {
   const directive = await drawnWith("light", '%%{init: {"theme": "dark"}}%%\ngraph TD; own904-->b');
   const frontmatter = await drawnWith("dark", "---\nconfig:\n  theme: forest\n---\ngraph TD; own904-->c");
@@ -215,12 +221,19 @@ test("a diagram naming a theme of its own, in a directive or its frontmatter, is
   }
 });
 
-test("a diagram naming base, its own variables with it, or none, is drawn in the app's colours; a mindmap too large is not read", async () => {
-  const based = await drawnWith(
+test("a diagram naming base with variables of its own is drawn from its config alone; base alone, or nothing, in the app's colours; a mindmap too large is not read", async () => {
+  const varied = await drawnWith(
     "dark",
     '%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#ff0000"}}}%%\ngraph TD; base904-->b'
   );
+  const based = await drawnWith("dark", '%%{init: {"theme": "base"}}%%\ngraph TD; base904-->c');
   const plain = await drawnWith("light", "graph TD; plain904-->b");
+  expect([varied.drawn, varied.config.theme, varied.config.themeVariables, varied.config.themeCSS]).toEqual([
+    true,
+    "base",
+    undefined,
+    undefined,
+  ]);
   expect([based.config.theme, backgroundOf(based.config)]).toEqual(["base", darkBackground]);
   expect([plain.config.theme, backgroundOf(plain.config)]).toEqual(["base", lightBackground]);
   expect(plain.parsed).toEqual(["graph TD; plain904-->b"]);
@@ -229,6 +242,20 @@ test("a diagram naming base, its own variables with it, or none, is drawn in the
     ["mindmap", "  root", ...Array.from({ length: mindmapLines }, (_, i) => `    big904n${i.toString()}`)].join("\n")
   );
   expect([large.drawn, large.parsed]).toEqual([false, []]);
+});
+
+test("a diagram giving variables of its own without a theme is drawn from its config alone, in mermaid's default theme", async () => {
+  const varied = await drawnWith(
+    "light",
+    '%%{init: {"themeVariables": {"primaryColor": "#ffcc00"}}}%%\ngraph TD; vars904-->b'
+  );
+  expect(varied.drawn).toBe(true);
+  expect([varied.config.theme, varied.config.themeVariables, varied.config.themeCSS]).toEqual([
+    undefined,
+    undefined,
+    undefined,
+  ]);
+  expect(varied.config.securityLevel).toBe("strict");
 });
 
 /** The callouts' blue, the light theme's and the dark's (00-M13 4.1; reading.css's --nw-callout-blue). */
