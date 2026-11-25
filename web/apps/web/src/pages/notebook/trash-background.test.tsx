@@ -87,6 +87,10 @@ test("a restore refused as too large says so above the list, with Restore in the
   const start = await refused(user);
 
   expect(start.textContent).toBe("Restore “Linux” in the background");
+  // Named for the item, it breaks as the name does and shrinks in its row, as the preview's (review B's P5B-M12).
+  expect([...start.classList]).toEqual(
+    expect.arrayContaining(["h-auto", "shrink", "whitespace-normal", "wrap-anywhere", "text-start"])
+  );
   expect(restoreOf("Linux")).toBeTruthy();
   expect(startsOf(server.asked)).toEqual([]);
   expect(screen.getByRole("status").textContent).toBe("");

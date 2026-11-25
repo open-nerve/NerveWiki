@@ -3,7 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
 import { arrived } from "../../app/arrival";
-import { filterBarClass, filterFieldClass, groupTitleClass, listColumnClass, noteClass } from "../../app/page-classes";
+import {
+  factsClass,
+  filterBarClass,
+  filterFieldClass,
+  groupTitleClass,
+  lineTitleClass,
+  listColumnClass,
+  noteClass,
+  stackedLinesClass,
+} from "../../app/page-classes";
 import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { cn } from "../../lib/cn";
 import { json, notebookJSON, problem } from "../../test/fakes";
@@ -604,6 +613,16 @@ test("the directory is a list's page: its title, its filters a bar, its notes, i
   const group = within(region).getAllByRole("heading", { level: 2 })[0] as HTMLElement;
   expect(group.className).toBe(cn(groupTitleClass, "break-words"));
   expect((group.nextElementSibling as HTMLElement).className).toBe(cardClass);
+  // A row's lines: its link's, its type, its summary as an excerpt is, its tags, its time and links (4.2.9).
+  const alpha = within(region).getAllByRole("listitem")[0] as HTMLElement;
+  expect(alpha.className).toBe(cn(stackedLinesClass, "space-y-1.5"));
+  expect([...alpha.children].map((line) => line.className)).toEqual([
+    lineTitleClass,
+    factsClass,
+    "text-sm break-words",
+    cn(factsClass, "flex flex-wrap gap-2"),
+    cn(factsClass, "flex flex-wrap gap-x-4 gap-y-1"),
+  ]);
 });
 
 test.each([

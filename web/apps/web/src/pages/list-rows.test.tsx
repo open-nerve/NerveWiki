@@ -1,6 +1,8 @@
 import { screen, within } from "@testing-library/react";
 import { expect, test } from "vitest";
 
+import { factsClass, lineLinkClass } from "../app/page-classes";
+import { cn } from "../lib/cn";
 import { notebookJSON } from "../test/fakes";
 import { changesetId, created, wrote } from "../test/history-server";
 import { indexPath, indexServer } from "../test/index-server";
@@ -48,6 +50,9 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       const sources = within(row).getByRole("list", { name: "Ingested sources" });
       const source = await within(sources).findByRole("link");
       expect(classesOf(sources.parentElement)).not.toContain("text-sm");
+      // The block the row's facts, as its counts are (4.2.5).
+      expect(sources.parentElement?.className).toBe(cn("space-y-1", factsClass));
+      expect(within(row).getByText(/^Nodes: /).className).toBe(factsClass);
       expect(classesOf(source)).toContain("hover:underline");
       expect(classesOf(source)).not.toContain("underline");
     },
@@ -59,6 +64,12 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       server.log("one", { id: changesetId(9201), changes: [created(guide)] });
       renderApp(`${home}/history/${changesetId(9201)}`, server.app);
       return rowOf("Nodes of this change");
+    },
+    async (row) => {
+      // Its other link in the facts' grey and weight, its facts a line of them (review B's P5B-R1-N4).
+      const other = within(row).getByRole("link", { name: "History of this node: “Guide”" });
+      expect(other.className).toBe(cn(lineLinkClass, "font-normal text-muted-foreground hover:text-foreground"));
+      expect(within(row).getByText("Created").parentElement?.className).toBe(cn(factsClass, "flex flex-wrap gap-x-3"));
     },
   ],
   [

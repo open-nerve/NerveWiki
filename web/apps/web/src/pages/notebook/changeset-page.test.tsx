@@ -267,7 +267,9 @@ test("a revert says what it undid, leading there, or that the purge took it; wha
     [`Undo change, ID ${again.id.slice(-6)}`, changesetPath(again.id)],
     [`Undo change, ID ${undo.id.slice(-6)}`, changesetPath(undo.id)],
   ]);
-  expect(screen.getByText("Undone before: undoing it again succeeds only once that undo is undone.")).toBeTruthy();
+  expect(screen.getByText("Undone before: undoing it again succeeds only once that undo is undone.").className).toBe(
+    noteClass
+  );
   expect(screen.getByRole("button", { name: "Undo change" })).toBeTruthy();
 
   await act(() => router.navigate(changesetPath(undo.id)));
@@ -541,6 +543,10 @@ test("a changeset's page is headed as a page is: Undo change in the head's row a
   expect(trail.parentElement?.contains(undo)).toBe(true);
   expect(heading.className).toBe(docTitleClass);
   expect((heading.nextElementSibling as HTMLElement).className).toBe(cn(docFactsClass, "space-y-1"));
+  // Its message is content, the body's colour, not the facts' grey (review B's P5B-R1-M3).
+  expect(heading.nextElementSibling?.querySelector("bdi")?.parentElement?.className).toBe(
+    "text-sm break-words text-foreground"
+  );
   expect(heading.closest(".max-w-180")).not.toBeNull();
   expect([...undo.classList]).toEqual(expect.arrayContaining(["h-7.5", "rounded-full"]));
 
