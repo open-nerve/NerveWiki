@@ -10,9 +10,9 @@ import { guide, notes, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 
 // M13/P5/S2 (decision 925, review B's P5B-I2): the lists' pages have one kind of row, page after page: its first line
-// 14px and 500, the main link in it underlined as it is hovered alone (00-M13 4.7: a list's links are not), the row in a
-// card. Each page's row as its own tests make it; jsdom lays nothing out, so these hold the classes, and the rows side
-// by side are seen in the screenshots (05-P5 7.4).
+// 14px and 500, the main link in it underlined as it is hovered alone (00-M13 4.7: a list's links are not), the row in
+// a card. Each page's row as its own tests make it; jsdom lays nothing out, so these hold the classes, and the rows
+// side by side are seen in the screenshots (05-P5 7.4).
 
 const home = `/lab/notebooks/${notebookJSON.id}`;
 

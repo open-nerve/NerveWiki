@@ -1099,8 +1099,8 @@ test("back on the trash's list as a restore from the preview is out, the item's 
   expect(server.sent.filter((each) => each === "RESTORE Notes")).toHaveLength(1);
 });
 
-// M13/P5/S2 (decision 925): the trash is a list's page: its title the settings' kind, two notes under it, its items rows
-// of a card, each its text on the left, Restore, a small pill, on its right; empty, said with an icon.
+// M13/P5/S2 (decision 925): the trash is a list's page: its title the settings' kind, two notes under it, its items
+// rows of a card, each its text on the left, Restore, a small pill, on its right; empty, said with an icon.
 test("the trash is a list's page: its title, its notes, its items a card's rows of text and Restore; empty, said with an icon", async () => {
   const { server } = trashed();
   renderApp(trashPath, server.app);
