@@ -58,7 +58,7 @@ function Waiting({ complete }: StepProps) {
   return (
     <form ref={ref} noValidate onSubmit={onSubmit} className="space-y-4">
       {banner !== undefined && <Alert>{banner}</Alert>}
-      <p className="text-muted-foreground">{t("createWorkspace.off")}</p>
+      <p className="text-sm text-muted-foreground">{t("createWorkspace.off")}</p>
       <Button type="submit" className="w-full" disabled={sending}>
         {t("onboarding.continue")}
       </Button>

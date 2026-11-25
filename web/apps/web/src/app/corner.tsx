@@ -5,6 +5,7 @@ import { Link, useMatch } from "react-router";
 import useSWR from "swr";
 
 import { useT } from "../i18n/i18n";
+import { pendingSteps } from "../onboarding/steps";
 import { SessionChangedError } from "../session/token-manager";
 import { useStore } from "../stores/context";
 import { AppearanceMenu } from "./appearance-menu";
@@ -43,25 +44,31 @@ export function GiveCornerBack(): null {
 /**
  * Corner is the top right where no left column is (M13/P2/S1, decisions 769, 792): signed in, the account's button,
  * after Back to the workspace on the page that creates a workspace once the account has one to go back to (decision
- * 803); signed out, the session unavailable or the account's load failed, Appearance; while the session starts or the
- * account loads, nothing, its height kept. It loads the account itself, by the guard's key: an error boundary above
- * the guards may be the tab's first page, the account never loaded (review C-M1); one load serves both, and none once
- * it is in. The workspaces it reads on the page that creates one by the landing's and the shell's key, mostly read
- * already.
+ * 803), and on an invitation's page once the account has one and its onboarding is done, / landing on a workspace
+ * then (M13/P5/S1, decision 941: the invitation is outside the guards); signed out, the session unavailable or the
+ * account's load failed, Appearance; while the session starts or the account loads, nothing, its height kept. It loads
+ * the account itself, by the guard's key: an error boundary above the guards may be the tab's first page, the account
+ * never loaded (review C-M1); one load serves both, and none once it is in. The workspaces it reads on those two pages
+ * by the landing's and the shell's key, mostly read already on the one that creates a workspace; an invitation opened
+ * from an e-mail reads them first (WorkspaceStore.load reads again if it is accepted meanwhile).
  */
 export const Corner = observer(function Corner() {
   const { status } = useSession();
   const { account, workspaces } = useStore();
   const t = useT();
   const creating = useMatch("/create-workspace") !== null;
+  const inviting = useMatch("/invitations/:id") !== null;
   const loading = status === "signed-in" && account !== undefined && account.me === undefined;
   const { error } = useSWR(loading ? "me" : null, () => account?.load());
-  useSWR(creating && status === "signed-in" && workspaces !== undefined ? "workspaces" : null, () =>
+  useSWR((creating || inviting) && status === "signed-in" && workspaces !== undefined ? "workspaces" : null, () =>
     workspaces?.load()
   );
   const failed = error !== undefined && !(error instanceof SessionChangedError);
-  // Without a workspace, / lands on the page that creates one: back would be there again.
-  const back = creating && (workspaces?.list?.length ?? 0) > 0;
+  // Without a workspace, / lands on the page that creates one: back would be there again; with onboarding left, / goes
+  // to the onboarding (review A's P5A-R1-N1).
+  const back =
+    (creating || (inviting && account?.me !== undefined && pendingSteps(account.me).length === 0)) &&
+    (workspaces?.list?.length ?? 0) > 0;
   let shown = null;
   if (status === "signed-in" && account?.me !== undefined) {
     shown = (

@@ -5,6 +5,7 @@ import { expect, test, vi } from "vitest";
 import type { User } from "../../services/account.service";
 import { json, problem, signedInApp, userJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
+import { arrived } from "../../app/arrival";
 
 /** A signed-in tab whose account the fake server keeps; each change it was sent is in sent. */
 function profileServer(patch?: Answer) {
@@ -237,4 +238,11 @@ test("an empty or refused name is marked under the field, which gets the focus",
   expect(document.activeElement).toBe(name);
   expect(screen.getByRole("status").textContent).toBe("");
   expect(screen.queryByRole("alert")).toBeNull();
+});
+
+test("the profile at its address with a trailing slash is its page still: its name the h1, which takes the arrival focus (decision 923)", async () => {
+  renderApp([{ pathname: "/settings/profile/", state: arrived }], signedInApp());
+
+  const title = await screen.findByRole("heading", { level: 1, name: "Profile" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

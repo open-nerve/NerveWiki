@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
-import { Link, useMatch } from "react-router";
+import { Link, matchPath, useMatch } from "react-router";
 import useSWR from "swr";
 
 import { NavItem } from "../components/nav-item";
@@ -49,9 +49,30 @@ export const notebookSections = [
   { path: "transfer", label: "notebookSettings.transfer", icon: ArrowLeftRight, admins: false },
 ] as const satisfies readonly Section[];
 
-/** sectionAt is the section of sections whose page, under base, is pathname: the page shown, if any. */
+/**
+ * sectionAt is the section of sections whose page, under base, is pathname: the page shown, if any. As the router
+ * matches (M13/P5/S1, decision 923): the path decoded, any number of trailing slashes, whatever the case.
+ */
 export function sectionAt<S extends Section>(sections: readonly S[], base: string, pathname: string): S | undefined {
-  return sections.find(({ path }) => pathname === `${base}/${path}`);
+  const at = decodedPath(pathname);
+  return sections.find(
+    ({ path }) => matchPath({ path: `${base}/${path}`, caseSensitive: false, end: true }, at) !== null
+  );
+}
+
+/**
+ * decodedPath is pathname as the router decodes it before it matches (React Router's decodePath, which it does not
+ * export): each segment decoded, a slash decoded in one written back as %2F; as it is if it cannot be decoded.
+ */
+function decodedPath(pathname: string): string {
+  try {
+    return pathname
+      .split("/")
+      .map((segment) => decodeURIComponent(segment).replaceAll("/", "%2F"))
+      .join("/");
+  } catch {
+    return pathname;
+  }
 }
 
 /**

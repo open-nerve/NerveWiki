@@ -1,3 +1,4 @@
+import { Mail } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import useSWR from "swr";
@@ -6,14 +7,8 @@ import { ConfirmDialog } from "../../app/confirm-dialog";
 import { useForm } from "../../app/form";
 import { invitationLink } from "../../app/invitation-link";
 import { NotLoaded } from "../../app/not-loaded";
-import {
-  cardTextClass,
-  listLineClass,
-  listTextClass,
-  SettingsCard,
-  SettingsSection,
-  stackedRowClass,
-} from "../../app/settings-page";
+import { listLineClass, listTextClass, SettingsCard, SettingsSection, stackedRowClass } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { FormField } from "../../components/form-field";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -51,7 +46,11 @@ export const InvitationsSection = observer(function InvitationsSection({ workspa
       </div>
     );
   } else if (list.length === 0) {
-    rows = <p className={cardTextClass}>{t("invitations.empty")}</p>;
+    rows = (
+      <EmptyState icon={Mail} size="card">
+        {t("invitations.empty")}
+      </EmptyState>
+    );
   } else {
     rows = (
       <ul aria-label={t("invitations.title")} className="divide-y divide-border">

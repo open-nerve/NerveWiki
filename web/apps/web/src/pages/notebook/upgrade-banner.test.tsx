@@ -1,4 +1,4 @@
-import { act, screen, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import { useEffect } from "react";
 import { Outlet } from "react-router";
 import { expect, test } from "vitest";
@@ -137,44 +137,71 @@ test.each(["upgrading", "reviewing", "rolling_back"] as const)(
   }
 );
 
-// M13/P4/S1 (decision 857): on a page and its settings the banner is at the top of the page's column.
-test("on a page, the banner is at the top of its column, before its title, alone", async () => {
-  const server = pageServer();
-  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
-  renderApp(pagePath(guide.id), server.app);
+// M13/P4/S1 (decision 857), M13/P5 (decision 915): every branch of a notebook's page draws the banner at the top of its
+// column. Each row is a route and one of its branches: how the server is set, the address, what the branch shows first
+// (a level-1 heading by its name, the main's alert, or its Loading…). Rows are added by the Step that lays out their
+// page (05-P5 4.3.6), red before it does.
 
-  const heading = await screen.findByRole("heading", { level: 1, name: "Guide" });
-  const banner = bannerOf(said.upgrading);
-  expect(banner?.parentElement).toBe(heading.parentElement);
-  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
-});
+/** How a row sets the server before the address opens. */
+type Setup = (server: ReturnType<typeof pageServer>) => void;
+/** What a branch shows first: its h1 by its name, the main's alert, or its Loading…. */
+type First = { h1: string } | "alert" | "loading";
 
-test("a page not found has the banner at the top of its column, before what it says", async () => {
-  const server = pageServer();
-  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
-  renderApp(pagePath("0199a2b4-0000-7000-8000-0000000001ff"), server.app);
-
-  const heading = await screen.findByRole("heading", { name: "Page not found" });
-  const banner = bannerOf(said.upgrading);
-  expect(banner).not.toBeNull();
-  expect(banner?.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
-});
-
-test("a page whose tree cannot be read has the banner above why, which stays with Try again", async () => {
-  const server = pageServer();
-  server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+const home = `/lab/notebooks/${notebookJSON.id}`;
+const none: Setup = () => undefined;
+const held: Setup = (server) => {
+  server.nodesHeld = true;
+};
+const down: Setup = (server) => {
   server.nodesDown = true;
-  renderApp(pagePath(guide.id), server.app);
+};
 
-  const alert = await within(screen.getByRole("main")).findByRole("alert");
-  expect(within(screen.getByRole("main")).getByRole("button", { name: "Try again" })).toBeTruthy();
-  const banner = bannerOf(said.upgrading);
-  expect(banner).not.toBeNull();
-  expect(banner?.compareDocumentPosition(alert)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-  expect(screen.getAllByText(said.upgrading)).toHaveLength(1);
-});
+const columned: [string, string, Setup, First][] = [
+  ["a page, read", pagePath(guide.id), none, { h1: "Guide" }],
+  ["a page, its tree on its way", pagePath(guide.id), held, "loading"],
+  ["a page, its tree not read", pagePath(guide.id), down, "alert"],
+  ["a page not found", pagePath("0199a2b4-0000-7000-8000-0000000001ff"), none, { h1: "Page not found" }],
+  ["a notebook's settings, read", `${home}/settings/general`, none, { h1: "General" }],
+  ["a notebook's home, read", home, none, { h1: "Plans" }],
+  ["a notebook's home, its tree on its way", home, held, "loading"],
+  ["a notebook's home, its tree not read", home, down, "alert"],
+];
+
+/** The banners saying the upgrade: statuses, as the settings' general page says the mode in a row of its own. */
+const banners = () => screen.queryAllByRole("status").filter((status) => status.textContent?.includes(said.upgrading));
+
+test.each(columned)(
+  "%s: one banner, first in the branch's column, before what it shows and before any title",
+  async (_, path, setup, first) => {
+    const server = pageServer();
+    server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
+    setup(server);
+    renderApp(path, server.app);
+
+    let shown: HTMLElement;
+    if (first === "loading") {
+      // The banner first: the notebook's layout says Loading… itself before the notebooks are read, then goes.
+      await waitFor(() => expect(banners()).toHaveLength(1));
+      shown = within(screen.getByRole("main")).getByText("Loading…", { selector: "output" });
+    } else if (first === "alert") {
+      shown = await within(screen.getByRole("main")).findByRole("alert");
+    } else {
+      shown = await screen.findByRole("heading", { level: 1, name: first.h1 });
+    }
+
+    expect(banners()).toHaveLength(1);
+    const banner = banners()[0] as HTMLElement;
+    const column = banner.parentElement as HTMLElement;
+    // The column's root: the banner its first child, the column centred (the main's own first child otherwise).
+    expect(column.firstElementChild).toBe(banner);
+    expect(column.classList.contains("mx-auto")).toBe(true);
+    expect(column.contains(shown)).toBe(true);
+    expect(banner.compareDocumentPosition(shown)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    for (const title of within(screen.getByRole("main")).queryAllByRole("heading", { level: 1 })) {
+      expect(banner.compareDocumentPosition(title)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    }
+  }
+);
 
 test("a notebook's settings index has the banner in the settings' column, as its first page has it, from the render that goes there (decisions 892, 898)", async () => {
   const server = pageServer();

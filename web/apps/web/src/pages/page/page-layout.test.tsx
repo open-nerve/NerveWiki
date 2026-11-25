@@ -15,6 +15,7 @@ import { pageEditor } from "../../test/page-editor";
 import { section } from "../../test/page-panel";
 import { bob, guide, install, linux, notes, pageNode, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { PageColumn } from "./page-layout";
 
 // A page's shell: where it is, its title, its reading view, its subpages
 // (M4/P5 design 3.5, 3.8).
@@ -476,4 +477,93 @@ test("Edit, holding the focus as an event makes the account a reader, gives it t
   const given = focus.mock.contexts.indexOf(heading);
   expect(given).not.toBe(-1);
   expect(focus.mock.calls[given]).toEqual([{ preventScroll: true }]);
+});
+
+// M13/P5/S1 (decisions 946, 951): PageColumn lays a column out as the page read lays its own: its outer box, a head's
+// row above it; the right column's room beside it only for the page's own branches (panel), the right column open.
+// Without panel none: the pages that have no right column keep their column where they read it, centred.
+
+/** The boxes a column of PageColumn's is in: its own row, and that row's outer box. */
+function columnOf(inside: HTMLElement) {
+  const row = inside.closest(".max-w-180")?.parentElement as HTMLElement;
+  return { row, outer: row.parentElement as HTMLElement };
+}
+
+/** Whether a column's outer box leaves the right column's room: the room, and the row's padding before it. */
+function roomOf(inside: HTMLElement) {
+  const { row, outer } = columnOf(inside);
+  return {
+    room: outer.querySelector(":scope > [aria-hidden].xl\\:w-63") !== null,
+    padded: row.classList.contains("xl:pe-10"),
+  };
+}
+
+test("a column without panel leaves no room for a right column, open or not", async () => {
+  const app = pageServer().app;
+  renderApp("/column", app, { routes: [{ path: "/column", element: <PageColumn>Body</PageColumn> }] });
+  const body = await screen.findByText("Body");
+
+  expect(app.preferences.panelOpen).toBe(true);
+  expect(roomOf(body)).toEqual({ room: false, padded: false });
+  // A head's row above it all the same.
+  expect(columnOf(body).row.firstElementChild?.getAttribute("aria-hidden")).toBe("true");
+});
+
+test.each([
+  ["its tree on its way", pagePath(install.id), "Loading…"],
+  ["not found", pagePath("0199a2b4-0000-7000-8000-0000000001ff"), "Page not found"],
+])("a page %s leaves the right column's room while it is open, none once it is folded away", async (_, path, shown) => {
+  const server = pageServer();
+  server.nodesHeld = shown === "Loading…";
+  renderApp(path, server.app);
+  // In the page's column: the notebook's layout says Loading… itself before the notebooks are read.
+  const what = await waitFor(() => {
+    const found = within(main()).getByText(shown);
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+
+  expect(roomOf(what)).toEqual({ room: true, padded: true });
+  act(() => server.app.preferences.setPanelOpen(false));
+  expect(roomOf(what)).toEqual({ room: false, padded: false });
+});
+
+/** An element's classes, sorted. */
+function classes(element: Element | undefined) {
+  return [...(element?.classList ?? [])].toSorted();
+}
+
+// M13/P5/S1 (review B's P5S1B-F1-N1): the empty row above a page's column on its way is laid out as the page read lays
+// its head's row, its two blocks as the trail, one line high, and the group: as high as the head's at every width, at
+// two lines too.
+test("a page on its way lays its head's row out empty, as the page read lays it", async () => {
+  const server = pageServer();
+  server.nodesHeld = true;
+  renderApp(pagePath(install.id), server.app);
+  const loading = await waitFor(() => {
+    const found = within(main()).getByText("Loading…");
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+  const empty = columnOf(loading).row.firstElementChild as HTMLElement;
+  const shape = {
+    row: classes(empty),
+    blocks: empty.children.length,
+    text: empty.textContent,
+    trail: classes(empty.children[0]),
+    group: classes(empty.children[1]),
+  };
+  act(() => server.release());
+  const trail = await within(main()).findByRole("navigation", { name: "Breadcrumb" });
+  const row = trail.parentElement as HTMLElement;
+  expect(within(main()).getByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+  expect(shape).toEqual({
+    row: classes(row),
+    blocks: 2,
+    text: "",
+    trail: [...classes(trail), "h-[1lh]", "text-compact"].toSorted(),
+    group: classes(row.children[1]).filter(
+      (each) => !["flex", "items-center", "justify-end", "gap-1.5"].includes(each)
+    ),
+  });
 });

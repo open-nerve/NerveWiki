@@ -41,6 +41,14 @@ const REQUIRED = [
   // The drawer of a phone's width, its focus and Escape, are each engine's (M13/P2/S3, decision 789).
   ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
   ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the left column is a drawer"],
+  // The cards' grid of the workspace's home, at 375 and 320, and a notebook's title broken are each engine's: an auto
+  // track widened by a name cut short in the three, Firefox's breaks not the others' (M13/P5/S1, 5.1).
+  ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the workspace's home"],
+  ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the workspace's home"],
+  // The entry's card and a page not found, their widths and the way home's focus, are each engine's, and so are the
+  // invitations' cards breaking a name or an address that has no break (M13/P5/S1, 5.1, P5S1B-I1).
+  ["firefox", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the sign-in card"],
+  ["webkit", "shell/ui1-narrow-drawer.spec.ts", "UI1 (page): at 375 wide the sign-in card"],
   // The settings' mode, their way in and out and its focus, are each engine's (M13/P3/S1, 5.3).
   ["firefox", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],
   ["webkit", "shell/ui2-settings-mode.spec.ts", "UI2 (page): the settings are entered"],

@@ -6,7 +6,7 @@ import { expect, test } from "vitest";
 import type { Notebook } from "../services/notebook.service";
 import { eventHandlers } from "../events/handlers";
 import { eventServer, withEvents } from "../test/event-server";
-import { json, notebookJSON, workspaceJSON, type Answer } from "../test/fakes";
+import { json, notebookJSON, signedInApp, workspaceJSON, type Answer } from "../test/fakes";
 import { indexFacts } from "../test/index-server";
 import { assetNode, guide, install, linux, notes, pagePath, pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
@@ -464,4 +464,17 @@ test.each([
   [{ arrived: false, attachment: 21 }, NavigationType.Pop, false],
 ] as const)("the heading takes the focus of %j by %s: %s", (state, type, takes) => {
   expect(headingTakes(state, type)).toBe(takes);
+});
+
+// M13/P5/S1 (decision 924): "Page not found"'s way home is arrived at, the landing passing it on.
+test("a page not found's Go to the home page arrives at the workspace's home: its title takes the focus", async () => {
+  const user = userEvent.setup();
+  const { router } = renderApp("/nowhere", signedInApp());
+
+  await screen.findByRole("heading", { level: 1, name: "Page not found" });
+  await user.click(screen.getByRole("link", { name: "Go to the home page" }));
+
+  const lab = await screen.findByRole("heading", { level: 1, name: "Lab" });
+  expect(router.state.location.pathname).toBe("/lab");
+  await waitFor(() => expect(document.activeElement).toBe(lab));
 });

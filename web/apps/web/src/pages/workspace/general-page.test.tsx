@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { Workspace } from "../../services/workspace.service";
 import { json, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
 import { renderApp } from "../../test/render";
+import { arrived } from "../../app/arrival";
 import { watchFor } from "../../test/watch";
 
 // A workspace's general settings (M2/P5 design 3.6).
@@ -296,4 +297,11 @@ test("an untouched name follows a rename by another admin; Save sends nothing ba
   await user.keyboard("{Enter}");
   await settle();
   expect(sent).toEqual([]);
+});
+
+test("a workspace's general page at its address with a trailing slash is its page still: its name the h1, which takes the arrival focus (decision 923)", async () => {
+  renderApp([{ pathname: "/acme/settings/general/", state: arrived }], settingsServer().app);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "General" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

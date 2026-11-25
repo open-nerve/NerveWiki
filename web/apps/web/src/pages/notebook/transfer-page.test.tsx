@@ -66,7 +66,10 @@ test("whoever sees the notebook comes to its imports and exports from its settin
     "page"
   );
   expect(document.title).toBe("Import, export and restore · Plans settings · Nerve Wiki");
-  expect(await screen.findByText("No jobs yet.")).toBeTruthy();
+  const none = await screen.findByText("No jobs yet.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(none.tagName).toBe("P");
+  expect(none.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
   expect(screen.getByRole("button", { name: "Export the whole notebook" })).toBeTruthy();
 });
 

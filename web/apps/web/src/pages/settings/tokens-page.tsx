@@ -1,8 +1,10 @@
+import { KeyRound } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import useSWR from "swr";
 
 import { errorText } from "../../app/problem-messages";
-import { cardTextClass, SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Loading } from "../../components/loading";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
@@ -15,7 +17,7 @@ import { TokenRow } from "./token-row";
  * TokensPage lists the account's personal access tokens, creates them and revokes them (M1/P6 design 3.6): what they
  * are, New token beside it (under it at a phone's width, the text taking the row as a card's row's does; review B's
  * M1), above their card, a row each (M13/P3/S1, decision 820); while the list loads or if it cannot be read, in the
- * card's place; none, a line of text in it.
+ * card's place; none, said in it with the directory's icon of the page (M13/P5/S1, decision 938).
  */
 export const TokensPage = observer(function TokensPage() {
   const apiTokens = useApiTokens();
@@ -43,7 +45,9 @@ export const TokensPage = observer(function TokensPage() {
   } else if (tokens.length === 0) {
     list = (
       <SettingsCard>
-        <p className={cardTextClass}>{t("tokens.empty")}</p>
+        <EmptyState icon={KeyRound} size="card">
+          {t("tokens.empty")}
+        </EmptyState>
       </SettingsCard>
     );
   } else {

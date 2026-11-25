@@ -6,6 +6,7 @@ import { json, notebookJSON, problem } from "../../test/fakes";
 import { ada, bob, notebookMember, notebookServer } from "../../test/notebook-server";
 import { ada as adaPerson, assetNode, bob as bobPerson, guide, install, notes, pageNode } from "../../test/page-server";
 import { renderApp } from "../../test/render";
+import { arrived } from "../../app/arrival";
 import { deferred } from "../../test/health-server";
 import { bobsUpgrade, upgradeJSON, upgradeServer } from "../../test/upgrade-server";
 
@@ -965,4 +966,11 @@ test("cancelling the start returns to its trigger; another admin's start first k
 
   const heading = screen.getByRole("heading", { level: 2, name: "Mode" });
   await waitFor(() => expect(document.activeElement).toBe(heading));
+});
+
+test("a notebook's general page at its address with a trailing slash is its page still: its name the h1, which takes the arrival focus (decision 923)", async () => {
+  renderApp([{ pathname: `${general}/`, state: arrived }], notebookServer().app);
+
+  const title = await screen.findByRole("heading", { level: 1, name: "General" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

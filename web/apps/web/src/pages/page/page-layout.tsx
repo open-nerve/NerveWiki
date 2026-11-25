@@ -1,6 +1,15 @@
 import { Pencil } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Navigate, useNavigation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -73,26 +82,72 @@ export const PageLayout = observer(function PageLayout() {
   if (found !== undefined && found !== last) {
     setLast(found);
   }
-  // The upgrade's banner at the top of the page's column, the tree read or not, the page found or not (decision 857).
+  // The upgrade's banner at the top of a column, the tree read or not, the page found or not (decisions 857, 915): the
+  // same column as the page's content, so that it moves not as the page comes.
   if (pages.tree === undefined || !pages.confirmed) {
     return (
-      <>
-        <ColumnTop />
+      <PageColumn panel>
         <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
-      </>
+      </PageColumn>
     );
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
     // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
     return (
-      <>
-        <ColumnTop />
+      <PageColumn panel>
         <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />
-      </>
+      </PageColumn>
     );
   }
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
+});
+
+/** The page's column, as a page's content column is (decision 915): local in S1, exported in S2 with the strings. */
+const docColumnClass = "mx-auto w-full max-w-180";
+
+/**
+ * The page's head row (decisions 858, 894): its trail, then its right group, the group below the trail where the two do
+ * not fit side by side. PageColumn's empty row is laid out by the same classes, so that it is as high as the head's at
+ * every width (review B's P5S1B-F1-N1). Local in S1, exported in S2 with the strings.
+ */
+const headRowClass = "mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5";
+/** The trail's part of the head row. */
+const headCrumbsClass = "min-w-0 flex-[1_1_14rem]";
+/** The right group's part of the head row: its width, and its height with no button in it (decision 894). */
+const headGroupClass = "ms-auto min-h-8 min-w-0 flex-[0_1_26rem]";
+
+/**
+ * PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. It is placed as
+ * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's;
+ * so that the banner moves not as the page comes. panel, the page's own branches (decision 951): at xl, the right
+ * column open, beside the right column's room, as the page has it. Without it none, for a page with no right column.
+ */
+export const PageColumn = observer(function PageColumn({
+  panel = false,
+  children,
+}: {
+  panel?: boolean;
+  children: ReactNode;
+}) {
+  const { panelOpen } = useStore().preferences;
+  const open = panel && panelOpen;
+  return (
+    <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
+      <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
+        {/* The head's row, empty: the trail one line of its type high, the group as the page's (P5S1B-F1-N1). */}
+        <div aria-hidden className={headRowClass}>
+          <div className={cn(headCrumbsClass, "h-[1lh] text-compact")} />
+          <div className={headGroupClass} />
+        </div>
+        <div className={docColumnClass}>
+          <ColumnTop />
+          {children}
+        </div>
+      </div>
+      {open && <div aria-hidden className="hidden xl:-me-10 xl:block xl:w-63 xl:shrink-0" />}
+    </div>
+  );
 });
 
 /**
@@ -388,9 +443,9 @@ const PageShell = observer(function PageShell({
     <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
       <EditHeadSlots value={{ group, meta, before, after }}>
         <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
-          <div className="mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className={headRowClass}>
             <Breadcrumbs
-              className="min-w-0 flex-[1_1_14rem]"
+              className={headCrumbsClass}
               notebook={notebook}
               ancestors={pages.ancestorsOf(page.id)}
               page={page}
@@ -398,10 +453,7 @@ const PageShell = observer(function PageShell({
             />
             {/* The same width whatever the mode, 32px high with no button in it (decision 894): the row's lines are its
               width's alone. */}
-            <div
-              ref={setGroup}
-              className="ms-auto flex min-h-8 min-w-0 flex-[0_1_26rem] items-center justify-end gap-1.5"
-            >
+            <div ref={setGroup} className={cn(headGroupClass, "flex items-center justify-end gap-1.5")}>
               <div ref={setMeta} className="me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint">
                 {reading && <HeadMeta notebook={notebook} page={page.id} />}
               </div>
@@ -427,7 +479,7 @@ const PageShell = observer(function PageShell({
               )}
             </div>
           </div>
-          <div className="mx-auto w-full max-w-180">
+          <div className={docColumnClass}>
             <ColumnTop />
             <h1
               ref={heading}

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
-const app = "Nerve Wiki";
+/** The product's name: the tab's last part, and the entry pages' card's (M13/P5/S1, decision 920). */
+export const appName = "Nerve Wiki";
 
 /**
  * useDocumentTitle names the tab after the page shown (WCAG 2.4.2): what
@@ -10,11 +11,11 @@ const app = "Nerve Wiki";
  * page names it.
  */
 export function useDocumentTitle(...parts: (string | undefined)[]): void {
-  const title = [...parts.filter((part) => part !== undefined && part !== ""), app].join(" · ");
+  const title = [...parts.filter((part) => part !== undefined && part !== ""), appName].join(" · ");
   useEffect(() => {
     document.title = title;
     return () => {
-      document.title = app;
+      document.title = appName;
     };
   }, [title]);
 }

@@ -1,8 +1,12 @@
 import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
-import type { Page, TestInfo } from "@playwright/test";
+import type { Locator, Page, TestInfo } from "@playwright/test";
 
+import { emailFor, registerOnboarded } from "../../fixtures/auth";
+import { linkTo } from "../../fixtures/invitation-pages";
+import { invite } from "../../fixtures/invitations";
 import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { drawerButton, openDrawer, shell } from "../../fixtures/shell-pages";
@@ -150,4 +154,194 @@ test("UI1 (page): a page opened from the drawer's tree closes it, the page's tit
   await searchResults(page).getByRole("link", { name: "Q1", exact: true }).click();
   await expect(pageHeading(page, "Q1")).toBeFocused();
   await expect(pageHeading(page, "Q1")).toBeInViewport();
+});
+
+/**
+ * longName is 60 characters without a space, hyphens before digits, as a name taken from a date may have them, where
+ * Firefox breaks no line (UAX #14's HY × NU, as PG17's unbroken; review B's P4S1B-F1).
+ */
+const longName = `Notes-${"2026-11-25-".repeat(5).slice(0, 54)}`;
+
+/** How many lines of its own line height element is high: 1 for a line, 2 or more for a name broken. */
+function lines(box: Locator): Promise<number> {
+  return box.evaluate(
+    (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
+  );
+}
+
+/** Whether box's text is cut short: wider than the box it shows in. */
+function cut(box: Locator): Promise<boolean> {
+  return box.evaluate((element) => element.scrollWidth > element.clientWidth);
+}
+
+// M13/P5/S1 (decisions 916, 917, 919, 931): the cards one abreast at a phone's width, their grid's track written (no
+// auto track widened by a name cut short), the name on one line, cut; the notebook's title broken, New page below it on
+// the right; the list of pages a row a name, cut, its subpages said by the link's description.
+test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to the screen, the home's card at 320 too, a long name cut on its card and in the list of pages, broken in the title", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  expect(longName).toHaveLength(60);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const plans = await createNotebook(api, pat, workspace.slug, "Plans");
+  await createNotebook(api, pat, workspace.slug, "Wiki", undefined, { mode: "llm_wiki" });
+  const long = await createNotebook(api, pat, workspace.slug, longName);
+  const longPage = await createPage(api, pat, plans.id, longName);
+  await createPage(api, pat, plans.id, "Child", longPage.id);
+  const page = await signedInPage(tokens);
+  const main = page.getByRole("main");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+
+  await goto(page, `/${workspace.slug}`);
+  const card = main.getByRole("link", { name: longName });
+  await expect(card).toBeVisible();
+  await expectFits(page, card);
+  await expect(main.getByRole("link", { name: "Wiki" })).toContainText("LLM Wiki");
+  await expect(card).toContainText("· 1 member");
+  const cardName = card.getByText(longName, { exact: true });
+  expect(await lines(cardName)).toBeLessThan(1.5);
+  expect(await cut(cardName)).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expectFits(page, card);
+
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await goto(page, notebookPath(workspace.slug, long.id));
+  const title = main.getByRole("heading", { level: 1, name: longName, exact: true });
+  await expect(title).toBeVisible();
+  const newPage = main.getByRole("button", { name: "New page", exact: true });
+  expect(await lines(title)).toBeGreaterThanOrEqual(1.5);
+  const [titleBox, newPageBox] = [await title.boundingBox(), await newPage.boundingBox()];
+  // Below the title, on the right as the title is: the title takes the width the button leaves, the button ms-auto.
+  expect(newPageBox?.y ?? 0).toBeGreaterThanOrEqual((titleBox?.y ?? 0) + (titleBox?.height ?? 0));
+  expect(
+    Math.abs((newPageBox?.x ?? 0) + (newPageBox?.width ?? 0) - (titleBox?.x ?? 0) - (titleBox?.width ?? 0))
+  ).toBeLessThan(1);
+  await expectFits(page, title, newPage);
+
+  await goto(page, notebookPath(workspace.slug, plans.id));
+  const row = main
+    .getByRole("list", { name: "Pages", exact: true })
+    .getByRole("listitem")
+    .filter({ hasText: longName });
+  await expect(row).toBeVisible();
+  await expectFits(page, row);
+  const rowName = row.getByText(longName, { exact: true });
+  expect(await lines(rowName)).toBeLessThan(1.5);
+  expect(await cut(rowName)).toBe(true);
+  // Cut short before the number of its subpages, which has its room at the row's end (decision 919).
+  const [nameBox, countBox] = [await rowName.boundingBox(), await row.getByText("1", { exact: true }).boundingBox()];
+  expect((nameBox?.x ?? 0) + (nameBox?.width ?? 0)).toBeLessThanOrEqual(countBox?.x ?? 0);
+  // The number of its subpages outside the link, read by no one: the link's description says it.
+  await expect(row.getByRole("link")).toHaveAccessibleDescription("1 subpage");
+  // The sentence it reads hidden: read once, not again in browse mode (P5S1C-M2).
+  await expect(row.getByText("1 subpage", { exact: true })).toBeHidden();
+  // A short title keeps New page beside it: under sm the title is as wide as its words (review B's P5B-R1-M1).
+  const plansTitle = await main.getByRole("heading", { level: 1, name: "Plans", exact: true }).boundingBox();
+  const beside = await newPage.boundingBox();
+  expect(beside?.y ?? 0).toBeLessThan((plansTitle?.y ?? 0) + (plansTitle?.height ?? 0));
+});
+
+/** A workspace's name with no break of its own, 60 letters (P5S1B-I1). */
+const unbrokenName = "Researchnotesforthespringsemesteroftwentytwentysixandbeyond!";
+
+/**
+ * The left and right edges of what card holds, its boxes' and its text's, by position, and the card's own: what is
+ * past them has left the card, a text overflowing its paragraph too, which the paragraph's box does not show.
+ */
+function edgesIn(card: Locator) {
+  return card.evaluate((element) => {
+    const edges = { left: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      let rect = node instanceof Element ? node.getBoundingClientRect() : undefined;
+      if (rect === undefined) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rect = range.getBoundingClientRect();
+      }
+      if (rect.width > 0) {
+        edges.left = Math.min(edges.left, rect.left);
+        edges.right = Math.max(edges.right, rect.right);
+      }
+    }
+    const own = element.getBoundingClientRect();
+    return { ...edges, card: { left: own.left, right: own.right } };
+  });
+}
+
+/** expectInCard checks, as expectFits does, that the entry card keeps to the screen and what it holds to the card. */
+async function expectInCard(page: Page, card: Locator): Promise<void> {
+  await expectFits(page, card);
+  const edges = await edgesIn(card);
+  expect(edges.left, "the leftmost of what the card holds").toBeGreaterThanOrEqual(edges.card.left);
+  expect(edges.right, "the rightmost of what the card holds").toBeLessThanOrEqual(edges.card.right);
+}
+
+/** The two invitations' pages UI1's entry cell opens: on page signed out, on other signed in with longMail. */
+interface Invitations {
+  page: Page;
+  other: Page;
+  toWorkspace: string;
+  toLongMail: string;
+  longMail: string;
+}
+
+/** expectInvitationsFit opens both invitations at width, and checks each in its card (P5S1B-I1). */
+async function expectInvitationsFit({ page, other, toWorkspace, toLongMail, longMail }: Invitations, width: number) {
+  await page.setViewportSize({ width, height: 800 });
+  await goto(page, toWorkspace);
+  const main = page.getByRole("main");
+  await expect(main.getByText(`You are invited to join ${unbrokenName}.`, { exact: true })).toBeVisible();
+  await expectInCard(page, main.locator("section").first());
+  await other.setViewportSize({ width, height: 800 });
+  await goto(other, toLongMail);
+  const otherMain = other.getByRole("main");
+  await expect(otherMain.getByText(`(${longMail}).`, { exact: false })).toBeVisible();
+  await expectInCard(other, otherMain.locator("section").first());
+}
+
+// M13/P5/S1 (decisions 920, 921, 924): the entry pages a card under the product's name, 327px wide at a phone's width;
+// a page not found centred, its way home arrived at. A workspace's name or an address with no break breaks in the card
+// (P5S1B-I1).
+test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the screen, the product's name above the form; the invitations to a workspace whose name has no break and to an address that has none break in their cards, at 375 and at 320", async ({
+  api,
+  page,
+  signedInPage,
+  anotherPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo, unbrokenName);
+  const main = page.getByRole("main");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+
+  await goto(page, "/sign-in");
+  const title = main.getByRole("heading", { level: 1, name: "Sign in", exact: true });
+  await expect(title).toBeVisible();
+  const name = main.getByText("Nerve Wiki", { exact: true });
+  await expect(name).toBeVisible();
+  // Text, above the title: no heading of its own.
+  await expect(main.getByRole("heading")).toHaveCount(1);
+  expect((await name.boundingBox())?.y ?? 0).toBeLessThan((await title.boundingBox())?.y ?? 0);
+  await expectFits(page, main.locator("form"));
+
+  // The invitation to a workspace whose name has no break, signed out; then, signed in, an account whose address's
+  // 40 characters have none: each breaks in the card, at 375 and at 320.
+  const address = `christopheralexanderwellington${slugFor(testInfo, "x").slice(2)}`.slice(0, 40);
+  const longMail = `${address}@example.com`;
+  const toWorkspace = await invite(api, pat, workspace.slug, emailFor(testInfo, "invited"));
+  const toLongMail = await invite(api, pat, workspace.slug, longMail);
+  const other = await anotherPage(await registerOnboarded(api, longMail));
+  const invitations = { page, other, toWorkspace: linkTo(toWorkspace), toLongMail: linkTo(toLongMail), longMail };
+  await expectInvitationsFit(invitations, phoneWidth);
+  await expectInvitationsFit(invitations, 320);
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+
+  await signedInPage(tokens);
+  await goto(page, `/${slugFor(testInfo, "nowhere")}`);
+  await expect(main.getByRole("heading", { level: 1, name: "Page not found", exact: true })).toBeVisible();
+  const home = main.getByRole("link", { name: "Go to the home page", exact: true });
+  await expect(home).toBeVisible();
+  await expectFits(page);
+  await home.click();
+  await expect(main.getByRole("heading", { level: 1, name: workspace.name, exact: true })).toBeFocused();
 });

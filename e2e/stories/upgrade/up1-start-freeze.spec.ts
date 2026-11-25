@@ -169,7 +169,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -253,8 +253,63 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   await expect(editorContent(tab)).toHaveCount(0);
   expect(await tab.evaluate(() => "up1Document" in window)).toBe(true);
   expect(streams.opened()).toBe(opened);
+
+  // M13/P5/S1 (decision 946, review B's P5S1B-M1 and P5S1B-F1-N1): while the page's tree is on its way, the banner is
+  // where the page read has it, the right column open: the same x, y and width at 1440, 1280 and 1024, and at 768 and
+  // 375, where the head's row is two lines.
+  const planPath = wikiPagePath(workspace.slug, notebook.id, plan.id);
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, planPath, notebook.id, 1440)],
+    [1280, await bannerPlaces(tab, planPath, notebook.id, 1280)],
+    [1024, await bannerPlaces(tab, planPath, notebook.id, 1024)],
+    [768, await bannerPlaces(tab, planPath, notebook.id, 768)],
+    [375, await bannerPlaces(tab, planPath, notebook.id, 375)],
+  ] as const) {
+    expect(at.read, `the banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
+  }
   expect(pageWatch.apiFailures).toEqual([]);
 });
+
+/** Where a banner is drawn: its left, its top and its width, in CSS pixels. */
+async function placeOf(banner: Locator): Promise<{ x: number; y: number; width: number }> {
+  const box = await banner.boundingBox();
+  if (box === null) {
+    throw new Error("the banner is not drawn");
+  }
+  return { x: box.x, y: box.y, width: box.width };
+}
+
+/**
+ * bannerPlaces opens path on page at width, the notebook's tree held until the banner is measured on its way, then
+ * measures it again once the page is read: where the upgrade's banner is in either.
+ */
+async function bannerPlaces(page: Page, path: string, notebookId: string, width: number) {
+  await page.setViewportSize({ width, height: 900 });
+  const nodes = `**/api/v0/notebooks/${notebookId}/nodes`;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(nodes, async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await goto(page, path);
+    const main = page.getByRole("main");
+    const banner = upgradeBanner(page, bannerText.upgrading);
+    await expect(banner).toBeVisible();
+    await expect(main.getByText("Loading…", { exact: true })).toBeVisible();
+    await expect(main.getByRole("heading", { level: 1 })).toHaveCount(0);
+    const loading = await placeOf(banner);
+    release?.();
+    await expect(main.getByRole("heading", { level: 1, name: "Plan", exact: true }).first()).toBeVisible();
+    return { loading, read: await placeOf(banner) };
+  } finally {
+    release?.();
+    await page.unroute(nodes);
+  }
+}
 
 /** afterFrames settles once page has drawn two frames: a layout's scroll anchoring is done by then. */
 function afterFrames(page: Page): Promise<unknown> {

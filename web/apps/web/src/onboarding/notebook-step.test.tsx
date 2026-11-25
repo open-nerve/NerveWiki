@@ -122,7 +122,10 @@ test.each([
   const { app, server } = stepServer(list);
   const { router } = renderApp("/onboarding", app);
 
-  expect(await screen.findByText(/^Notebooks are created in a workspace where you are a member/)).toBeTruthy();
+  // The card's text at 14px (decision 948).
+  expect(
+    (await screen.findByText(/^Notebooks are created in a workspace where you are a member/)).className.split(" ")
+  ).toContain("text-sm");
   expect(screen.queryByLabelText("Name")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Continue" }));
 

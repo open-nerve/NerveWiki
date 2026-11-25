@@ -1,4 +1,5 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { expect, test, vi } from "vitest";
 
@@ -6,6 +7,7 @@ import { ApiError } from "../services/api";
 import { RootStore } from "../stores/root.store";
 import { json, signedInApp, testApp, userJSON } from "../test/fakes";
 import { renderApp } from "../test/render";
+import { arrived } from "./arrival";
 import { AppProviders } from "./providers";
 import { RouteError } from "./route-error";
 
@@ -71,4 +73,23 @@ test("an ApiError thrown while rendering shows its code", async () => {
 
   expect(alert.textContent).toContain("Error code: server_busy");
   expect(alert.textContent).not.toContain("busy.");
+});
+
+// M13/P5/S1 (decisions 921, 924): the way home, a link drawn as a button, arrived at.
+test("the error page's Go to the home page leads to /, arrived at; a pill, as Reload is", async () => {
+  vi.spyOn(console, "error").mockImplementation(() => {});
+  const user = userEvent.setup();
+  const { router } = renderApp("/lab", signedInApp());
+
+  const alert = await screen.findByRole("alert");
+  const home = within(alert).getByRole("link", { name: "Go to the home page" });
+  expect(home.getAttribute("href")).toBe("/");
+  const looks = home.className.split(" ");
+  expect(looks).toContain("rounded-full");
+  expect(looks).not.toContain("rounded-lg");
+  expect(within(alert).getByRole("button", { name: "Reload" }).className.split(" ")).toContain("rounded-full");
+  await user.click(home);
+
+  await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+  expect(router.state.location.state).toEqual(arrived);
 });
