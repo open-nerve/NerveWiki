@@ -286,10 +286,13 @@ test("SE1 (page): searched from the left column's box, each find is listed, its 
   // column's colour (--sidebar): light 2.843, refused 4.018; dark 8.406, refused 7.283. From M13/P2/S3 the button is
   // in the pill box, on a pad of the box's colour, which its ring is measured on (decision 794): light 3.098 on the
   // box's #ffffff, dark 6.954 on its #25262a; the box and the refused one, their ring outside the box, on the sidebar
-  // still, as at S1. Where to look and the hit's link are on the results' page, its background as it was.
+  // still, as at S1. Where to look and the hit's link are on the results' page, its background as it was. From
+  // M13/P5/S2 the hits are in a card, on --surface: the link's ring re-measured there (decision 936), dark 7.311 on
+  // the card's #212226, its floor that less 0.1; light as it was, the card white as the page. Where to look is on the
+  // page still.
   const floors = {
     light: { marked: 7, named: 7, box: 2.74, button: 2.99, select: 2.99, link: 2.99, invalid: 3.91 },
-    dark: { marked: 7, named: 7, box: 8.3, button: 6.85, select: 7.82, link: 7.82, invalid: 7.18 },
+    dark: { marked: 7, named: 7, box: 8.3, button: 6.85, select: 7.82, link: 7.21, invalid: 7.18 },
   } as const;
   const submit = page.getByRole("search").getByRole("button", { name: "Search", exact: true });
   const where = main.getByRole("combobox", { name: "Where to look", exact: true });

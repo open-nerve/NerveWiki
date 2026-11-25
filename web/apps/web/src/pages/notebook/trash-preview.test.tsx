@@ -547,17 +547,17 @@ test("a restore refused on the preview of an item gone to from a node deleted wi
   expect(heading.getAttribute("aria-describedby")).toBe(refusal?.id);
 });
 
-// M8/P2B fix check 2 (v0.1 design 13.2, item 17): opened, not gone to from a node deleted with it since.
-test("a preview opened from the trash's list takes no focus", async () => {
+// M8/P2B fix check 2 (v0.1 design 13.2, item 17); M13/P5/S2 (decision 940): opened from the list, it is arrived at.
+test("a preview opened from the trash's list is arrived at, its title taking the focus", async () => {
   const user = userEvent.setup();
   const { server } = trashed();
   renderApp(trashPath, server.app);
 
   await user.click(await screen.findByRole("link", { name: "Install (From: Guide)" }));
 
-  await screen.findByRole("heading", { level: 1, name: "Install" });
-  await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
-  expect(document.activeElement).toBe(document.body);
+  const title = await screen.findByRole("heading", { level: 1, name: "Install" });
+  // Waited for, as an arrival is (P5S2C-N2): the time it once gave the negative is no longer needed.
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 // M8/P2B fix check 1, N2 (K5b): the item read again as a network would, after the refusal is said.

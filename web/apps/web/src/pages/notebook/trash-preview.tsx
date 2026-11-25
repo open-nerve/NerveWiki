@@ -4,14 +4,17 @@ import { Link, Navigate, useParams } from "react-router";
 import useSWR from "swr";
 
 import { arrived, useArrivalFocus, useRouteNotice } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { writesNotebook } from "../../app/effective-role";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
+import { docFactsClass, titleTextClass } from "../../app/page-classes";
 import { Alert } from "../../components/ui/alert";
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { assetKind } from "../../lib/asset-kind";
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { idPattern } from "../../lib/ids";
 import { ApiError } from "../../services/api";
@@ -21,12 +24,22 @@ import { usePageTree, useStore } from "../../stores/context";
 import { NotFoundPage } from "../not-found";
 import { openOf } from "../open-node";
 import { BreadcrumbTrail } from "../page/breadcrumbs";
+import {
+  docColumnClass,
+  docShellClass,
+  docTitleClass,
+  EmptyHead,
+  headCrumbsClass,
+  headRowClass,
+  PageColumn,
+} from "../page/page-layout";
 import { useLeftBehind, VersionView } from "../page/version-view";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { useNotebook } from "./notebook-layout";
 import { sourceHistoryText } from "./duplicate-text";
 import { useNodeNavigate } from "../node-target";
 import {
+  backgroundClass,
   ItemIcon,
   namesOf,
   offeredOf,
@@ -62,8 +75,13 @@ import {
 export const TrashPreview = observer(function TrashPreview() {
   const notebook = useNotebook();
   const { nodeId = "" } = useParams();
+  // Each branch in the column, below an empty row of the trail alone, as the item read has it (decisions 915, 951).
   if (!idPattern.test(nodeId)) {
-    return <NotFoundPage />;
+    return (
+      <PageColumn>
+        <NotFoundPage />
+      </PageColumn>
+    );
   }
   // As the server writes it, which the tree and the store key by: a node restored is found (M5-polish 23.19).
   const id = nodeId.toLowerCase();
@@ -187,16 +205,20 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   const note = useId();
   const home = `/${slug}/notebooks/${notebook.id}`;
   // What shows, below what a refusal says, below the item's breadcrumb (M5-polish 22.19): each in a slot of its own,
-  // so that a view replacing another keeps the same alert. The breadcrumb is as close to the title as on a page.
+  // so that a view replacing another keeps the same alert. The breadcrumb in the head's row and the rest in the
+  // column, as a page's (M13/P5/S2, decision 929); without it, that row empty, as on the item's way (decision 946).
   const shell = (told: ReactNode, view: ReactNode, trail?: ReactNode) => (
-    <div>
-      {trail !== undefined && <Trail left={() => setHanded(true)}>{trail}</Trail>}
-      {told !== undefined && (
-        <Alert id={note} className="mb-4">
-          {told}
-        </Alert>
-      )}
-      {view}
+    <div className={docShellClass}>
+      {trail === undefined ? <EmptyHead /> : <Trail left={() => setHanded(true)}>{trail}</Trail>}
+      <div className={docColumnClass}>
+        <ColumnTop />
+        {told !== undefined && (
+          <Alert id={note} className="mb-4">
+            {told}
+          </Alert>
+        )}
+        {view}
+      </div>
     </div>
   );
   const describing = (told: ReactNode) => (told === undefined ? undefined : note);
@@ -246,7 +268,11 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   }
   // An item read of another notebook is no page of this one's, whatever is read since.
   if (data !== undefined && data.notebook_id !== notebook.id) {
-    return <NotFoundPage />;
+    return (
+      <PageColumn>
+        <NotFoundPage />
+      </PageColumn>
+    );
   }
   const refused = restoring !== undefined && "refused" in restoring ? restoring : undefined;
   const refusal = refused && { error: refused.refused, item: refused.item, start: refused.start };
@@ -267,7 +293,11 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
   if (error instanceof ApiError && !out) {
     switch (error.code) {
       case "page.not_found":
-        return <NotFoundPage />;
+        return (
+          <PageColumn>
+            <NotFoundPage />
+          </PageColumn>
+        );
       case "page.not_trash_root": {
         const root = error.problem?.root_id;
         if (root !== undefined) {
@@ -304,7 +334,11 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
     }
   }
   if (data === undefined) {
-    return <NotLoaded error={error} retry={() => void mutate()} />;
+    return (
+      <PageColumn>
+        <NotLoaded error={error} retry={() => void mutate()} />
+      </PageColumn>
+    );
   }
   return shell(
     said,
@@ -332,14 +366,15 @@ const PreviewShell = observer(function PreviewShell({ notebook, id }: { notebook
 /**
  * Trail holds the item's breadcrumb, which leaves with the item: gone from
  * the document with the focus, it hands the focus on (left), as the item
- * does (M5-polish 22.19).
+ * does (M5-polish 22.19). It is the head's row, the trail's block alone
+ * in it (M13/P5/S2, decision 951).
  */
 function Trail({ left, children }: { left: () => void; children: ReactNode }) {
   const own = useRef<HTMLDivElement>(null);
   useFocusLeaving(own, left);
   return (
-    <div ref={own} className="mb-2">
-      {children}
+    <div ref={own} className={headRowClass}>
+      <div className={headCrumbsClass}>{children}</div>
     </div>
   );
 }
@@ -358,7 +393,11 @@ function LostStart({ lost, item }: { lost: "none" | "unread"; item: TrashItem })
   return (
     <>
       {t("trash.backgroundUnknown", { name: item.name })}{" "}
-      <Link to={`/${slug}/notebooks/${item.notebook_id}/settings/transfer`} className="underline underline-offset-4">
+      <Link
+        to={`/${slug}/notebooks/${item.notebook_id}/settings/transfer`}
+        state={arrived}
+        className="underline underline-offset-4"
+      >
         {t("transfer.seeJobs")}
       </Link>
     </>
@@ -418,18 +457,20 @@ const Preview = observer(function Preview({
   return (
     <div ref={shown} className="space-y-6">
       <div className="space-y-2">
-        <div className="flex items-start justify-between gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+          {/* The page's title, the width its buttons leave (P5B-M7); its name broken anywhere in it (decision 937). */}
           <h1
             ref={heading}
             tabIndex={-1}
             aria-describedby={describedBy ?? (merged ? note : undefined)}
-            className="flex min-w-0 items-center gap-2 text-3xl font-semibold break-words outline-none"
+            className={cn(docTitleClass, titleTextClass, "mb-0 flex items-start gap-2.5")}
           >
-            <ItemIcon item={item} />
-            {item.name}
+            <ItemIcon item={item} className="mt-1.5 size-6 shrink-0 text-faint" />
+            <span className="min-w-0 wrap-anywhere">{item.name}</span>
           </h1>
           {writesNotebook(notebook) && (
-            <div className="flex flex-wrap justify-end gap-2">
+            // On the right below the title too (P5B-Q2).
+            <div className="ms-auto flex flex-wrap justify-end gap-2">
               <RestoreButton
                 label={namesOf(item, "none", t, preferences.locale).restore}
                 restore={restore}
@@ -442,14 +483,14 @@ const Preview = observer(function Preview({
                   text={t("trash.background", { name: item.name })}
                   restore={start}
                   left={() => heading.current?.focus()}
+                  className={backgroundClass}
                 />
               )}
             </div>
           )}
         </div>
-        <div className="space-y-1">
-          <TrashFacts item={item} now={Date.now()} />
-        </div>
+        {/* Spaced below the title and between their lines as a changeset's are (review B's P5S2B-N3). */}
+        <TrashFacts item={item} now={Date.now()} className={cn(docFactsClass, "mt-3.5 space-y-1")} />
       </div>
       {merged && <Alert id={note}>{t("trash.mergedHere")}</Alert>}
       {item.kind === "page" ? <PagePreview notebook={notebook} item={item} /> : <AttachmentPreview item={item} />}
@@ -590,7 +631,7 @@ function Gone({
   }, [focus, heading]);
   return (
     <section ref={section} className="space-y-2">
-      <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className="text-2xl font-semibold outline-none">
+      <h1 ref={heading} tabIndex={-1} aria-describedby={describedBy} className={docTitleClass}>
         {t("trash.title")}
       </h1>
       {text !== undefined && <p>{text}</p>}

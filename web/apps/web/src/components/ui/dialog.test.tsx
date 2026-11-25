@@ -46,3 +46,33 @@ test("an alert dialog animates in, its overlay too, never out", () => {
   expectEntranceOnly(screen.getByRole("alertdialog", { name: "Delete" }), "animate-pop-in");
   expectEntranceOnly(overlay(), "animate-fade-in");
 });
+
+// M13/P5/S2 (decision 952): the one column of either is the dialog's width, so that what is in it wraps inside it, as
+// an alert naming a page and who edits it does, its buttons kept in the dialog.
+test.each([
+  [
+    "dialog",
+    () => (
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Rename</DialogTitle>
+          <DialogDescription>A new name.</DialogDescription>
+        </DialogContent>
+      </Dialog>
+    ),
+  ],
+  [
+    "alertdialog",
+    () => (
+      <AlertDialog open>
+        <AlertDialogContent>
+          <AlertDialogTitle>Delete</AlertDialogTitle>
+          <AlertDialogDescription>It cannot be undone.</AlertDialogDescription>
+        </AlertDialogContent>
+      </AlertDialog>
+    ),
+  ],
+] as const)("the %s's one column is no wider than it", (role, dialog) => {
+  render(dialog());
+  expect(screen.getByRole(role).classList.contains("grid-cols-[minmax(0,1fr)]")).toBe(true);
+});

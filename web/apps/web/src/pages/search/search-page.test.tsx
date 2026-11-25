@@ -2,6 +2,8 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { filterBarClass, filterFieldClass, listColumnClass, stackedLinesClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
 import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import type { SearchHit, SearchPage, TreeNode } from "../../services/page.service";
@@ -906,4 +908,44 @@ test("Where to look stepped through with the keys on the closed select searches 
   await waitFor(() => expect(hits()).toHaveLength(2));
   expect(router.state.location.search).toBe(`?q=${encodeURIComponent("检索")}`);
   expect(reads(server)).toHaveLength(before + 2);
+});
+
+// M13/P5/S2 (decisions 925, 928): a list's page: its title the settings' kind, Where to look in a bar of filters, the
+// hits rows of a card, each a row that offers what a row offers (group/row), its icon of the faint grey; with no search
+// asked, what to do said with an icon.
+test("the results are a list's page: its title the settings' kind, Where to look a filter of a bar, the hits a card's rows", async () => {
+  const server = searched();
+  renderApp(searchPath("数据库"), server.app);
+  const title = await heading("Search “数据库”");
+  const list = await screen.findByRole("list", { name: "Search results" });
+
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.parentElement?.className).toBe(listColumnClass);
+  const where = screen.getByRole("combobox", { name: "Where to look" });
+  expect(where.parentElement?.className).toBe(filterFieldClass);
+  expect(where.parentElement?.parentElement?.className).toBe(filterBarClass);
+  // At most 16rem, as Who is (review B's P5S2B-N2).
+  expect(where.classList.contains("max-w-64")).toBe(true);
+  expect(where.classList.contains("max-w-full")).toBe(false);
+  expect(list.className).toBe(cardClass);
+  const [first] = hits() as HTMLElement[];
+  expect(first?.className).toBe(stackedLinesClass);
+  expect(first?.classList.contains("group/row")).toBe(true);
+  expect(first?.querySelector("svg")?.classList.contains("text-faint")).toBe(true);
+  // Each hit's icon, a page's and an attachment's, by its name's first line as the name wraps (P5S2B-M1).
+  for (const hit of hits()) {
+    expect([...(hit.querySelector("p svg")?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["self-start", "mt-0.5"])
+    );
+  }
+  expect(statusLine().classList.contains("text-compact")).toBe(true);
+});
+
+test("an address without q says how to search with an icon", async () => {
+  renderApp("/lab/search", searched().app);
+  const said = await screen.findByText("Type what to find in the search box at the top, and press Enter.", {
+    selector: "p",
+  });
+  expect(said.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(said.previousElementSibling?.querySelector("svg")).not.toBeNull();
 });

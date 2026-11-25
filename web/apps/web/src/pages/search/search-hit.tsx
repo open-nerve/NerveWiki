@@ -2,6 +2,7 @@ import { File, ScrollText } from "lucide-react";
 import { Fragment, type Ref } from "react";
 import { Link } from "react-router";
 
+import { factsClass, lineLinkClass, lineTitleClass, stackedLinesClass } from "../../app/page-classes";
 import { formatBytes, formatDateTime, formatRelative } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { isolate, Isolated, same, type Namer } from "../../i18n/isolated";
@@ -84,28 +85,23 @@ export function SearchHitRow({
         ? t("search.linkTwin", { name: node.name, path })
         : t("search.linkTwinId", { name: node.name, path, id });
   return (
-    <li className="space-y-1 p-4">
-      <p className="flex items-center gap-2 font-medium">
+    <li className={stackedLinesClass}>
+      {/* Its icon by the first line of a name that wraps (review B's P5S2B-M1). */}
+      <p className={lineTitleClass}>
         {node.kind === "page" ? (
-          <ScrollText aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <ScrollText aria-hidden className="mt-0.5 size-4 shrink-0 self-start text-faint" />
         ) : attachment === null ? (
-          <File aria-hidden className="size-4 shrink-0 text-muted-foreground" />
+          <File aria-hidden className="mt-0.5 size-4 shrink-0 self-start text-faint" />
         ) : (
-          <AssetIcon mime={attachment.mime} />
+          <AssetIcon mime={attachment.mime} className="mt-0.5 self-start" />
         )}
-        <Link
-          ref={linkRef}
-          to={open.to}
-          state={open.state}
-          aria-label={label}
-          className="min-w-0 break-words underline underline-offset-4"
-        >
+        <Link ref={linkRef} to={open.to} state={open.state} aria-label={label} className={lineLinkClass}>
           <bdi>
             <Marked text={node.name} ranges={hit.title_hits} />
           </bdi>
         </Link>
       </p>
-      <p className="text-sm break-words text-muted-foreground">
+      <p className={factsClass}>
         <Isolated {...isolate((name) => pathOf(hit, notebook ?? t("search.notebook"), name))} />
         {twin === "id" && (
           <>
@@ -123,7 +119,7 @@ export function SearchHitRow({
           </bdi>
         </p>
       )}
-      <p className="text-sm text-muted-foreground">
+      <p className={factsClass}>
         <time dateTime={hit.changed_at} title={formatDateTime(hit.changed_at, locale)}>
           {formatRelative(hit.changed_at, now, locale)}
         </time>

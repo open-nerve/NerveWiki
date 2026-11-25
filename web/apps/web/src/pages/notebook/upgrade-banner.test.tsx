@@ -8,7 +8,9 @@ import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { notebookJSON, upgradeOf, workspaceJSON } from "../../test/fakes";
-import { bob, guide, pagePath, pageServer } from "../../test/page-server";
+import { changesetId, created } from "../../test/history-server";
+import { indexServer } from "../../test/index-server";
+import { bob, guide, notes, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
 // The banner of a notebook's upgrade under way, above each of its pages
@@ -155,8 +157,51 @@ const held: Setup = (server) => {
 const down: Setup = (server) => {
   server.nodesDown = true;
 };
+/** A changeset of the history's, logged as the history's rows find it: Ada's creation of Guide. */
+const logged = changesetId(9101);
+const logOne: Setup = (server) => {
+  server.log("one", { id: logged, changes: [created(guide)] });
+};
+const historyDown: Setup = (server) => {
+  server.historyDown = true;
+};
+/** The changeset's read never answered. */
+const changesetHeld: Setup = (server) => {
+  logOne(server);
+  server.historyWaits.changeset = new Promise(() => undefined);
+};
+/** Notes deleted: the trash's item, its preview at its id. */
+const trashOne: Setup = (server) => {
+  server.trashNode(notes.id);
+};
+const trashDown: Setup = (server) => {
+  trashOne(server);
+  server.trashDown = true;
+};
+/** Notes' item read as another notebook's: its one member, its root. */
+const trashElsewhere: Setup = (server) => {
+  server.trashNode(notes.id).members = [{ ...notes, notebook_id: "0199a2b4-0000-7000-8000-0000000000c2" }];
+};
+const trashExpired: Setup = (server) => {
+  server.trashNode(notes.id).expired = true;
+};
+/** The trash item's read never answered. */
+const trashHeld: Setup = (server) => {
+  trashOne(server);
+  server.trashWaits.item = new Promise(() => undefined);
+};
+const tagged: Setup = (server) => {
+  server.tags.set("plan", [guide.id]);
+};
+const tagDown: Setup = (server) => {
+  tagged(server);
+  server.nodesDown = true;
+};
 
-const columned: [string, string, Setup, First][] = [
+/** A row's server, when it is not the page server's own: the directory's. */
+type Make = () => ReturnType<typeof pageServer>;
+
+const columned: [string, string, Setup, First, Make?][] = [
   ["a page, read", pagePath(guide.id), none, { h1: "Guide" }],
   ["a page, its tree on its way", pagePath(guide.id), held, "loading"],
   ["a page, its tree not read", pagePath(guide.id), down, "alert"],
@@ -165,6 +210,38 @@ const columned: [string, string, Setup, First][] = [
   ["a notebook's home, read", home, none, { h1: "Plans" }],
   ["a notebook's home, its tree on its way", home, held, "loading"],
   ["a notebook's home, its tree not read", home, down, "alert"],
+  // M13/P5/S2: the history and a changeset's page, each branch of the changeset's (changeset-page.tsx).
+  ["the history, read", `${home}/history`, logOne, { h1: "History" }],
+  ["the history, its log not read", `${home}/history`, historyDown, "alert"],
+  ["a changeset's page, read", `${home}/history/${logged}`, logOne, { h1: "Edit · Ada" }],
+  ["a changeset's page, its address no id", `${home}/history/not-an-id`, none, { h1: "Page not found" }],
+  ["a changeset's page, not found", `${home}/history/${changesetId(9102)}`, logOne, { h1: "Page not found" }],
+  ["a changeset's page, on its way", `${home}/history/${logged}`, changesetHeld, "loading"],
+  ["a changeset's page, not read", `${home}/history/${logged}`, historyDown, "alert"],
+  // M13/P5/S2: the trash and its preview, each branch of the preview's (trash-preview.tsx), the directory, a tag's.
+  ["the trash, read", `${home}/trash`, trashOne, { h1: "Trash" }],
+  ["the trash, its list not read", `${home}/trash`, trashDown, "alert"],
+  ["a trash item's preview, read", `${home}/trash/${notes.id}`, trashOne, { h1: "Notes" }],
+  ["a trash item's preview, its address no id", `${home}/trash/not-an-id`, none, { h1: "Page not found" }],
+  [
+    "a trash item's preview, another notebook's item",
+    `${home}/trash/${notes.id}`,
+    trashElsewhere,
+    { h1: "Page not found" },
+  ],
+  [
+    "a trash item's preview, in neither the trash nor the tree",
+    `${home}/trash/0199a2b4-0000-7000-8000-0000000001ff`,
+    none,
+    { h1: "Page not found" },
+  ],
+  ["a trash item's preview, not in the trash", `${home}/trash/${guide.id}`, none, { h1: "Trash" }],
+  ["a trash item's preview, past its time", `${home}/trash/${notes.id}`, trashExpired, { h1: "Trash" }],
+  ["a trash item's preview, on its way", `${home}/trash/${notes.id}`, trashHeld, "loading"],
+  ["a trash item's preview, not read", `${home}/trash/${notes.id}`, trashDown, "alert"],
+  ["the directory, read", `${home}/index`, none, { h1: "Directory" }, () => indexServer().server],
+  ["a tag's pages, read", `${home}/tags/plan`, tagged, { h1: "#plan" }],
+  ["a tag's pages, its tree not read", `${home}/tags/plan`, tagDown, "alert"],
 ];
 
 /** The banners saying the upgrade: statuses, as the settings' general page says the mode in a row of its own. */
@@ -172,8 +249,8 @@ const banners = () => screen.queryAllByRole("status").filter((status) => status.
 
 test.each(columned)(
   "%s: one banner, first in the branch's column, before what it shows and before any title",
-  async (_, path, setup, first) => {
-    const server = pageServer();
+  async (_, path, setup, first, make) => {
+    const server = make?.() ?? pageServer();
     server.notebook = { ...server.notebook, upgrade: upgradeOf("upgrading", bob.user_id) };
     setup(server);
     renderApp(path, server.app);

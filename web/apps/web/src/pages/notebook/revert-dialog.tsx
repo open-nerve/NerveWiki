@@ -156,8 +156,16 @@ export const RevertDialog = observer(function RevertDialog({
         }
       }}
     >
+      {/* A small pill in the changeset's head's row, as a page's Edit is (M13/P5/S2, decision 929). */}
       <AlertDialogTrigger asChild>
-        <Button ref={trigger} variant="outline" aria-busy={out || undefined} aria-disabled={out || undefined}>
+        <Button
+          ref={trigger}
+          variant="outline"
+          size="sm"
+          shape="pill"
+          aria-busy={out || undefined}
+          aria-disabled={out || undefined}
+        >
           {t(out ? "history.reverting" : "history.undo")}
         </Button>
       </AlertDialogTrigger>

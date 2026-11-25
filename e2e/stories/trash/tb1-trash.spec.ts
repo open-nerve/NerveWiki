@@ -5,6 +5,7 @@ import { download, getAsset, pngBytes, uploadAsset } from "../../fixtures/assets
 import { displayNameOf } from "../../fixtures/auth";
 import { answerTo, countAnswers, failedToLoad } from "../../fixtures/browser";
 import { holdStream, settleEvents } from "../../fixtures/events";
+import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, deleteNode, getVersionView, listNodes, writeContent } from "../../fixtures/pages";
@@ -398,4 +399,46 @@ test("TB1 (preview): a page restored from its preview, its own event reading it 
   ).toBe(false);
   expect(rereads()).toBeGreaterThanOrEqual(1);
   pageWatch.expectConsole({ errors: Array.from({ length: rereads() }, () => failedToLoad(409)) });
+});
+
+// M13/P5/S2 (decisions 937, 952; M12-polish 5, "the trash preview's h1 with a long name"; review B's P5B-M12): at a
+// phone's width the preview of an item whose name has no break keeps to the screen: its title broken anywhere in the
+// name, Restore, the refusal's alert and the restore in the background it offers when Restore is refused as too large,
+// both naming the item, and the breadcrumb. The page version alone: it checks the look, the deletion is the data and
+// the restore is refused by a fake answer (13.4, item 3). Letters alone: Chromium breaks a name after its hyphens.
+const longName = `Notes${"quarterlyroadmap".repeat(4)}`;
+
+test("TB1 (preview): at 375 wide an item whose name has no break keeps its preview to the screen: its title broken, its Restore, the refusal, its restore in the background and its breadcrumb", async ({
+  api,
+  pageWatch,
+  signedInPage,
+}, testInfo) => {
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const notebook = await createNotebook(api, pat, workspace.slug, "Plans");
+  const long = await createPage(api, pat, notebook.id, longName);
+  expect((await deleteNode(api, pat, long.id)).response.status).toBe(204);
+  const page = await signedInPage(tokens);
+  const main = page.getByRole("main");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await goto(page, trashPath(workspace.slug, notebook.id, long.id));
+
+  const title = main.getByRole("heading", { level: 1, name: longName, exact: true });
+  await expect(title).toBeVisible();
+  const restore = main.getByRole("button", { name: /^Restore “/ });
+  await expectFits(page, title, restore, main.getByRole("navigation", { name: "Breadcrumb", exact: true }));
+
+  await page.route("**/api/v0/nodes/*/restore", (route) =>
+    route.fulfill({
+      status: 422,
+      contentType: "application/problem+json",
+      json: { status: 422, code: "page.restore_too_large", title: "Unprocessable Entity" },
+    })
+  );
+  await restore.click();
+  // Named by where the item was too (its label); its text the item's name.
+  const background = main.getByRole("button", { name: /^Restore “.*” in the background/u });
+  await expect(background).toHaveText(`Restore “${longName}” in the background`);
+  await expect(background).toBeVisible();
+  await expectFits(page, main.getByRole("alert"), background);
+  pageWatch.expectConsole({ errors: [failedToLoad(422)] });
 });

@@ -433,6 +433,12 @@ test("an undo in the background whose answer was lost, the jobs not read again, 
     )
   );
   expect(within(status).getByRole("link", { name: "See the jobs" }).getAttribute("href")).toBe(transfer);
+
+  // Out of the notebook's pages into its settings, arrived at: the jobs' page's title takes the focus, not the body
+  // (M13/P5/S2, decision 924).
+  await user.click(within(status).getByRole("link", { name: "See the jobs" }));
+  const jobs = await screen.findByRole("heading", { level: 1, name: "Import, export and restore" });
+  await waitFor(() => expect(document.activeElement).toBe(jobs));
 });
 
 test("Undo in the background pressed twice sends one start; busy, it stays where the focus is, and nothing closes the dialog while it is out", async () => {

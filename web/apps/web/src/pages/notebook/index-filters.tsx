@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 
+import { filterBarClass, filterFieldClass } from "../../app/page-classes";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
@@ -39,15 +40,16 @@ export function IndexFilters({
   const outside = filter.type !== "" && !catalogue.some((option) => option.type === filter.type);
   return (
     <form
-      className="flex flex-wrap items-end gap-4"
+      className={filterBarClass}
       onSubmit={(event) => {
         event.preventDefault();
         choose({ ...filter, tag });
       }}
     >
-      <div className="max-w-full min-w-0 space-y-2">
+      <div className={filterFieldClass}>
         <Label htmlFor={typeId}>{t("index.type")}</Label>
-        <NativeSelect id={typeId} {...type} className="max-w-full">
+        {/* At most 16rem, as the history's Who: a long type widens it, and the bar, no more (P5S2B-N2). */}
+        <NativeSelect id={typeId} {...type} className="max-w-64">
           <option value="">{t("index.allTypes")}</option>
           {outside && <option value={filter.type}>{label(filter.type)}</option>}
           {catalogue.map((option) => (
@@ -57,7 +59,7 @@ export function IndexFilters({
           ))}
         </NativeSelect>
       </div>
-      <div className="space-y-2">
+      <div className={filterFieldClass}>
         <Label htmlFor={tagId}>{t("index.tag")}</Label>
         <Input id={tagId} value={tag} onChange={(event) => setTag(event.target.value)} />
       </div>

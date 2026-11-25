@@ -16,8 +16,9 @@ import { goto } from "../../fixtures/navigation";
 import { addedNotebookMember } from "../../fixtures/notebook-members";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook, getNotebook } from "../../fixtures/notebooks";
-import { createPage, listNodes, postPage, putContent, readContent } from "../../fixtures/pages";
+import { createPage, deleteNode, listNodes, postPage, putContent, readContent } from "../../fixtures/pages";
 import { expect, test } from "../../fixtures/test";
+import { trashPath } from "../../fixtures/trash";
 import {
   bannerText,
   modeSection,
@@ -28,7 +29,7 @@ import {
   upgradeTitle,
 } from "../../fixtures/upgrade-pages";
 import { getUpgrade, startUpgrade } from "../../fixtures/upgrades";
-import { editorContent, wikiPagePath } from "../../fixtures/wiki-pages";
+import { changesetPath, editorContent, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // UP1, an upgrade's start and its freeze (M11/P1 design 5): an admin
@@ -169,7 +170,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375, a changeset's and a page's preview in the trash on their way where they read have it at 1440, 768 and 375; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -182,6 +183,9 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   const body = Array.from({ length: 80 }, (_, n) => `Paragraph ${n.toString()} of the plan.\n`).join("\n");
   const plan = await createPage(api, pat, notebook.id, "Plan", null, `# Plan\n\n${body}`);
   await createPage(api, pat, notebook.id, "Notes", plan.id, "# Notes\n");
+  // In the trash before the upgrade freezes the notebook: its preview's banner is measured at the end (M13/P5/S2).
+  const gone = await createPage(api, pat, notebook.id, "Gone", null, "# Gone\n");
+  expect((await deleteNode(api, pat, gone.id)).response.status).toBe(204);
   const page = await signedInPage(tokens);
   const tab = await anotherTab(page);
   const streams = followStreams(page.context());
@@ -258,14 +262,51 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   // where the page read has it, the right column open: the same x, y and width at 1440, 1280 and 1024, and at 768 and
   // 375, where the head's row is two lines.
   const planPath = wikiPagePath(workspace.slug, notebook.id, plan.id);
+  const nodes = `**/api/v0/notebooks/${notebook.id}/nodes`;
   for (const [width, at] of [
-    [1440, await bannerPlaces(tab, planPath, notebook.id, 1440)],
-    [1280, await bannerPlaces(tab, planPath, notebook.id, 1280)],
-    [1024, await bannerPlaces(tab, planPath, notebook.id, 1024)],
-    [768, await bannerPlaces(tab, planPath, notebook.id, 768)],
-    [375, await bannerPlaces(tab, planPath, notebook.id, 375)],
+    [1440, await bannerPlaces(tab, planPath, nodes, "Plan", 1440)],
+    [1280, await bannerPlaces(tab, planPath, nodes, "Plan", 1280)],
+    [1024, await bannerPlaces(tab, planPath, nodes, "Plan", 1024)],
+    [768, await bannerPlaces(tab, planPath, nodes, "Plan", 768)],
+    [375, await bannerPlaces(tab, planPath, nodes, "Plan", 375)],
   ] as const) {
     expect(at.read, `the banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
+  }
+  // M13/P5/S2 (decision 951, review B's P5S1B-F2-N1): a changeset's page, its read held, has its column below an empty
+  // row laid out as its head's, the trail alone (no one writes a notebook under an upgrade): its banner is where the
+  // page read has it, at 1440, 768 and 375, but for the lines its trail wraps to beyond the row's least height, 36 px
+  // (the page's own, decision 946): the trail ends with who made the change and when, the author's name here some fifty
+  // characters: it is one line at 1440 alone.
+  const made = (await listChangesets(api, pat, notebook.id)).data?.data.at(-1);
+  if (made === undefined) {
+    throw new Error("the notebook's history lists no changeset");
+  }
+  // The page made: its title is its kind and who made it.
+  expect(made.kind).toBe("edit");
+  const madeTitle = `Edit · ${made.created_by.display_name}`;
+  const madePath = changesetPath(workspace.slug, notebook.id, made.id);
+  const changeset = `**/api/v0/changesets/${made.id}`;
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, madePath, changeset, madeTitle, 1440)],
+    [768, await bannerPlaces(tab, madePath, changeset, madeTitle, 768)],
+    [375, await bannerPlaces(tab, madePath, changeset, madeTitle, 375)],
+  ] as const) {
+    const wrapped = Math.max(0, at.trail - 36);
+    expect(
+      { ...at.read, y: at.read.y - wrapped },
+      `a changeset's banner read at ${String(width)}, its trail ${String(at.trail)} px high, as it was on its way`
+    ).toEqual(at.loading);
+  }
+  // A page's preview in the trash, the item's read held, likewise, its trail alone (decision 951): "Field notes / Trash
+  // / Gone" is one line at each width, the banner where the preview read has it.
+  const gonePath = trashPath(workspace.slug, notebook.id, gone.id);
+  const item = `**/api/v0/nodes/${gone.id}/trash-item`;
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, gonePath, item, "Gone", 1440)],
+    [768, await bannerPlaces(tab, gonePath, item, "Gone", 768)],
+    [375, await bannerPlaces(tab, gonePath, item, "Gone", 375)],
+  ] as const) {
+    expect(at.read, `a preview's banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
   expect(pageWatch.apiFailures).toEqual([]);
 });
@@ -280,18 +321,19 @@ async function placeOf(banner: Locator): Promise<{ x: number; y: number; width: 
 }
 
 /**
- * bannerPlaces opens path on page at width, the notebook's tree held until the banner is measured on its way, then
- * measures it again once the page is read: where the upgrade's banner is in either.
+ * bannerPlaces opens path on page at width, the read of held (a glob of its address: a notebook's tree, a changeset)
+ * held until the banner is measured on its way, then measures it again once the page is read, its title shown, that
+ * title, not "Page not found" (P5S2A-N2): where the upgrade's banner is in either, and how high the trail read is, in
+ * CSS pixels.
  */
-async function bannerPlaces(page: Page, path: string, notebookId: string, width: number) {
+async function bannerPlaces(page: Page, path: string, held: string, title: string, width: number) {
   await page.setViewportSize({ width, height: 900 });
-  const nodes = `**/api/v0/notebooks/${notebookId}/nodes`;
   let release: (() => void) | undefined;
-  const held = new Promise<void>((resolve) => {
+  const answered = new Promise<void>((resolve) => {
     release = resolve;
   });
-  await page.route(nodes, async (route) => {
-    await held;
+  await page.route(held, async (route) => {
+    await answered;
     await route.continue();
   });
   try {
@@ -303,11 +345,13 @@ async function bannerPlaces(page: Page, path: string, notebookId: string, width:
     await expect(main.getByRole("heading", { level: 1 })).toHaveCount(0);
     const loading = await placeOf(banner);
     release?.();
-    await expect(main.getByRole("heading", { level: 1, name: "Plan", exact: true }).first()).toBeVisible();
-    return { loading, read: await placeOf(banner) };
+    // The first: a page's content may have its title as a heading too.
+    await expect(main.getByRole("heading", { level: 1, name: title, exact: true }).first()).toBeVisible();
+    const trail = await main.getByRole("navigation", { name: "Breadcrumb", exact: true }).boundingBox();
+    return { loading, read: await placeOf(banner), trail: trail?.height ?? 0 };
   } finally {
     release?.();
-    await page.unroute(nodes);
+    await page.unroute(held);
   }
 }
 

@@ -11,6 +11,7 @@ import {
 import { formatBytes } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
 import { assetKind, embedOf, opensInline, type AssetKind } from "../../lib/asset-kind";
+import { cn } from "../../lib/cn";
 import { focusLost } from "../../lib/focus-leaving";
 import type { Asset } from "../../services/asset.service";
 import { useStore } from "../../stores/context";
@@ -24,10 +25,13 @@ const icons: Record<AssetKind, LucideIcon> = {
   file: File,
 };
 
-/** AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview shows it too. */
-export function AssetIcon({ mime }: { mime: string }) {
+/**
+ * AssetIcon is the icon of the kind of an attachment of type mime, for the eye alone: the trash's preview and a search's
+ * hits show it too, in the faint grey of their own icons (M13/P5/S2, review B's P5B-N2); className places it.
+ */
+export function AssetIcon({ mime, className }: { mime: string; className?: string }) {
   const Icon = icons[assetKind(mime)];
-  return <Icon aria-hidden className="size-4 shrink-0 text-muted-foreground" />;
+  return <Icon aria-hidden className={cn("size-4 shrink-0 text-faint", className)} />;
 }
 
 /**
