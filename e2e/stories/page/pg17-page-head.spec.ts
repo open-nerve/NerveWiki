@@ -627,30 +627,53 @@ test("PG17 (page): a code block's head names its language and copies its code al
   expect([chips.chips[0] !== null, chips.nested]).toEqual([true, "0px"]);
 
   // A callout's title is a line of text, its bold, link and code in it, folded or not; it wraps as text does, the
-  // address too, at 375 wide in at most four lines, no callout nor the view scrolling sideways (decision 901; review
-  // A's I1, B's I1: a flex made each of them an item of its own, in columns side by side, an address past the edge).
+  // address too: at 1440 and at 375 wide in no more lines than its text on one line fills of the room its callout
+  // gives it, and two for what lines' ends no longer hold (the address, too long for any line, starting one of its
+  // own; a word the line before had no room for, once the words before the address wrap too); no callout nor the view
+  // scrolling sideways at 375 (decision 901; review A's I1, B's I1: a flex made each of them an item of its own, in
+  // columns side by side, an address past the edge). Bounded by what the browser's own fonts measure, not by a count:
+  // Linux's are wider, and at 375 the first title took more than the four lines it takes on macOS in Chromium and
+  // WebKit on CI; with Verdana or Courier New for the title it takes one more than its measure and the address's line.
   const titles = article.locator(":scope > .nw-callout > :is(.nw-callout-title, summary)");
   await expect(titles).toHaveCount(2);
   const read = () =>
     titles.evaluateAll((each) =>
-      each.map((title) => ({
-        text: (title as HTMLElement).innerText,
-        lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)),
-      }))
+      each.map((title) => {
+        const style = getComputedStyle(title);
+        const callout = getComputedStyle(title.parentElement as Element);
+        const own = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+        // The room its text has: its callout's, less the title's own padding (a folded one's, the chevron's).
+        const room =
+          (title.parentElement as Element).clientWidth -
+          parseFloat(callout.paddingLeft) -
+          parseFloat(callout.paddingRight) -
+          own;
+        const lines = Math.round(title.getBoundingClientRect().height / parseFloat(style.lineHeight));
+        // Its text on one line, its icon with it, as the page's fonts draw it: the title unwrapped a moment.
+        const was = (title as HTMLElement).style.cssText;
+        (title as HTMLElement).style.cssText = `${was}; white-space: nowrap; width: max-content`;
+        const line = title.getBoundingClientRect().width - own;
+        (title as HTMLElement).style.cssText = was;
+        return { text: (title as HTMLElement).innerText, lines, most: Math.ceil(line / room) + 2 };
+      })
     );
+  const fit = (shown: Awaited<ReturnType<typeof read>>) =>
+    expect(
+      shown.map((title) => title.lines <= title.most),
+      `lines ${JSON.stringify(shown.map((title) => title.lines))} at most ${JSON.stringify(shown.map((title) => title.most))}`
+    ).toEqual([true, true]);
   const texts = [
     "A title with bold, a Doc link, code and https://example.com/a/very/long/path/that/keeps/going/and/going/without/a/space",
     "A folded title with bold, a Doc link and code",
   ];
   const wide = await read();
   expect(wide.map((title) => title.text)).toEqual(texts);
-  expect(wide[0]?.lines, "the address's title in two lines at most").toBeLessThanOrEqual(2);
-  expect(wide[1]?.lines).toBe(1);
+  fit(wide);
   await page.setViewportSize({ width: phoneWidth, height: 800 });
   await afterFrames(page);
   const narrow = await read();
   expect(narrow.map((title) => title.text)).toEqual(texts);
-  expect(narrow.map((title) => title.lines <= 4)).toEqual([true, true]);
+  fit(narrow);
   await expectFits(page, article, article.locator(":scope > .nw-callout").first(), titles.first(), titles.last());
 
   // In a callout its title 4px above its body, its blocks 0.5rem apart (decision 902); in a list item too, a loose
