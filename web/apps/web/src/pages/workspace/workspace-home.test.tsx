@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { arrived } from "../../app/arrival";
+import { buttonClass } from "../../components/ui/button";
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { json, notebookJSON, ownerlessJSON, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
@@ -96,9 +97,11 @@ test("with notebooks, the home offers New notebook after the groups, in no list:
   ).toEqual(["New notebook"]);
   expect(create.closest("ul")).toBeNull();
   // A control's focus, the ring, as a Button's: transparent outline in forced colours (v0.1 design 13.2, item 31).
+  // From sm as tall as the cards (decision 917, P5S1B-M2).
   expect(create.className.split(" ")).toEqual(
     expect.arrayContaining([
       "border-dashed",
+      "sm:min-h-28",
       "focus-visible:ring-2",
       "focus-visible:ring-ring",
       "focus-visible:outline-hidden",
@@ -113,6 +116,31 @@ test("with notebooks, the home offers New notebook after the groups, in no list:
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(create));
 });
+
+// Decision 918: the dashed card once the list is read and has notebooks, not while it is on its way nor when it cannot
+// be read (P5S1A-M1, P5S1C-N1).
+test("while the notebooks are on their way, the home offers no New notebook", async () => {
+  renderApp(
+    "/lab",
+    labApp([], "admin", { "GET /api/v0/workspaces/lab/notebooks": () => new Promise<Response>(() => {}) })
+  );
+  const home = await main();
+
+  expect(await within(home).findByText("Loading…")).toBeTruthy();
+  expect(within(home).queryAllByRole("button")).toEqual([]);
+});
+
+test("once the notebooks cannot be read, the home offers Try again alone", async () => {
+  renderApp("/lab", labApp([], "admin", { "GET /api/v0/workspaces/lab/notebooks": () => problem(500, "internal") }));
+  const home = await main();
+
+  await within(home).findByRole("button", { name: "Try again" }, { timeout: 8000 });
+  expect(
+    within(home)
+      .queryAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["Try again"]);
+}, 15_000);
 
 test("a guest's home with notebooks offers no New notebook", async () => {
   renderApp("/lab", labApp([atlas, notebookJSON], "guest"));
@@ -155,10 +183,15 @@ test("a card: its icon read by no one, its name titled, an LLM Wiki's badge, its
   const card = within(home).getByRole("link", { name: /^Research notes for the spring/ });
   const icon = card.querySelector("svg")?.parentElement;
   expect(icon?.getAttribute("aria-hidden")).toBe("true");
-  expect(within(card).getByText("Research notes for the spring").getAttribute("title")).toBe(
-    "Research notes for the spring"
-  );
-  expect(within(card).getByText("LLM Wiki")).toBeTruthy();
+  // Its tile bordered, the border transparent but in forced colours, where the fill is gone (P5S1B-N2).
+  expect(icon?.className.split(" ")).toEqual(expect.arrayContaining(["border", "border-transparent"]));
+  const name = within(card).getByText("Research notes for the spring");
+  expect(name.getAttribute("title")).toBe("Research notes for the spring");
+  // The badge right after the name, not pushed to the card's end: the name grows not (decision 947).
+  expect(name.className.split(" ")).not.toContain("flex-1");
+  expect(name.nextElementSibling?.textContent).toBe("LLM Wiki");
+  // From sm at least as tall as the dashed card, and a row's cards as tall as one another (decision 917, P5S1B-M2).
+  expect(card.className.split(" ")).toEqual(expect.arrayContaining(["h-full", "sm:min-h-28"]));
   expect(within(home).getByRole("link", { name: /^Company/ }).textContent).not.toContain("LLM Wiki");
 });
 
@@ -184,7 +217,10 @@ test("a notebook created from the empty home opens on its home, arrived at", asy
   const { router } = renderApp("/lab", app);
   const home = await main();
 
-  await user.click(await within(home).findByRole("button", { name: "New notebook" }));
+  const create = await within(home).findByRole("button", { name: "New notebook" });
+  // A centred action, a small pill as a status page's (decision 949).
+  expect(create.className).toBe(buttonClass({ size: "sm", shape: "pill" }));
+  await user.click(create);
   const dialog = await screen.findByRole("dialog", { name: "New notebook" });
   await user.type(within(dialog).getByLabelText("Name"), "Plans");
   await user.click(within(dialog).getByRole("button", { name: "Create" }));

@@ -63,14 +63,16 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
             state={arrived}
             className="flex h-full flex-col gap-3 rounded-card border border-border bg-surface p-4 transition-colors duration-150 hover:border-border-strong hover:hover-layer sm:min-h-28"
           >
+            {/* The name as wide as its words, the badge right after it (decision 947); the tile bordered, transparent but
+              in forced colours, where its fill is gone (P5S1B-N2). */}
             <span className="flex min-w-0 items-center gap-2.5">
               <span
                 aria-hidden
-                className="grid size-8 shrink-0 place-items-center rounded-control bg-surface-2 text-muted-foreground [&_svg]:size-4"
+                className="grid size-8 shrink-0 place-items-center rounded-control border border-transparent bg-surface-2 text-muted-foreground [&_svg]:size-4"
               >
                 <Book />
               </span>
-              <span title={notebook.name} className="min-w-0 flex-1 truncate text-sm font-medium">
+              <span title={notebook.name} className="min-w-0 truncate text-sm font-medium">
                 {notebook.name}
               </span>
               {notebook.mode === "llm_wiki" && (
@@ -90,7 +92,12 @@ export const WorkspaceHomePage = observer(function WorkspaceHomePage() {
                 <CreateNotebookDialog
                   workspace={workspace}
                   here={here}
-                  trigger={<Button>{t("notebooks.create")}</Button>}
+                  trigger={
+                    // A centred action, a small pill as a status page's (decision 949).
+                    <Button size="sm" shape="pill">
+                      {t("notebooks.create")}
+                    </Button>
+                  }
                 />
               ) : undefined
             }
