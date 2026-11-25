@@ -253,8 +253,60 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   await expect(editorContent(tab)).toHaveCount(0);
   expect(await tab.evaluate(() => "up1Document" in window)).toBe(true);
   expect(streams.opened()).toBe(opened);
+
+  // M13/P5/S1 (decision 946, review B's P5S1B-M1): while the page's tree is on its way, the banner is where the page
+  // read has it, the right column open: the same x, y and width at 1440, 1280 and 1024.
+  const planPath = wikiPagePath(workspace.slug, notebook.id, plan.id);
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, planPath, notebook.id, 1440)],
+    [1280, await bannerPlaces(tab, planPath, notebook.id, 1280)],
+    [1024, await bannerPlaces(tab, planPath, notebook.id, 1024)],
+  ] as const) {
+    expect(at.read, `the banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
+  }
   expect(pageWatch.apiFailures).toEqual([]);
 });
+
+/** Where a banner is drawn: its left, its top and its width, in CSS pixels. */
+async function placeOf(banner: Locator): Promise<{ x: number; y: number; width: number }> {
+  const box = await banner.boundingBox();
+  if (box === null) {
+    throw new Error("the banner is not drawn");
+  }
+  return { x: box.x, y: box.y, width: box.width };
+}
+
+/**
+ * bannerPlaces opens path on page at width, the notebook's tree held until the banner is measured on its way, then
+ * measures it again once the page is read: where the upgrade's banner is in either.
+ */
+async function bannerPlaces(page: Page, path: string, notebookId: string, width: number) {
+  await page.setViewportSize({ width, height: 900 });
+  const nodes = `**/api/v0/notebooks/${notebookId}/nodes`;
+  let release: (() => void) | undefined;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(nodes, async (route) => {
+    await held;
+    await route.continue();
+  });
+  try {
+    await goto(page, path);
+    const main = page.getByRole("main");
+    const banner = upgradeBanner(page, bannerText.upgrading);
+    await expect(banner).toBeVisible();
+    await expect(main.getByText("Loading…", { exact: true })).toBeVisible();
+    await expect(main.getByRole("heading", { level: 1 })).toHaveCount(0);
+    const loading = await placeOf(banner);
+    release?.();
+    await expect(main.getByRole("heading", { level: 1, name: "Plan", exact: true }).first()).toBeVisible();
+    return { loading, read: await placeOf(banner) };
+  } finally {
+    release?.();
+    await page.unroute(nodes);
+  }
+}
 
 /** afterFrames settles once page has drawn two frames: a layout's scroll anchoring is done by then. */
 function afterFrames(page: Page): Promise<unknown> {

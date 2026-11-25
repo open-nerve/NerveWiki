@@ -106,15 +106,26 @@ export const PageLayout = observer(function PageLayout() {
 /** The page's column, as a page's content column is (decision 915): local in S1, exported in S2 with the strings. */
 const docColumnClass = "mx-auto w-full max-w-180";
 
-/** PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. */
-function PageColumn({ children }: { children: ReactNode }) {
+/**
+ * PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. It is placed as
+ * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's,
+ * and at xl, the right column open, beside the right column's room; so that the banner moves not as the page comes.
+ */
+const PageColumn = observer(function PageColumn({ children }: { children: ReactNode }) {
+  const open = useStore().preferences.panelOpen;
   return (
-    <div className={docColumnClass}>
-      <ColumnTop />
-      {children}
+    <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
+      <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
+        <div aria-hidden className="mb-7.5 min-h-9" />
+        <div className={docColumnClass}>
+          <ColumnTop />
+          {children}
+        </div>
+      </div>
+      {open && <div aria-hidden className="hidden xl:-me-10 xl:block xl:w-63 xl:shrink-0" />}
     </div>
   );
-}
+});
 
 /**
  * PageGone answers the page id the notebook's tree does not have, a page's
