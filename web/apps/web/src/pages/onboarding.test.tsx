@@ -67,7 +67,10 @@ test("each completed step is recorded and the next shows; after the last, the ta
   const user = userEvent.setup();
   const { app, server } = accountServer();
   const { router } = renderApp("/onboarding?next=%2Facme", app, { routes });
-  expect(await screen.findByText("Step 1 of 2")).toBeTruthy();
+  const step = await screen.findByText("Step 1 of 2");
+  // Which step it is, close above its title (decision 948).
+  expect(step.parentElement?.className).toBe("space-y-1.5");
+  expect(step.nextElementSibling?.tagName).toBe("H1");
   const name = await screen.findByLabelText("Display name");
   expect(name).toHaveProperty("value", "ada");
 

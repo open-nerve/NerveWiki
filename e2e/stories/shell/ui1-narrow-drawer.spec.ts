@@ -1,6 +1,9 @@
 import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
 import type { Locator, Page, TestInfo } from "@playwright/test";
 
+import { emailFor, registerOnboarded } from "../../fixtures/auth";
+import { linkTo } from "../../fixtures/invitation-pages";
+import { invite } from "../../fixtures/invitations";
 import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
@@ -237,14 +240,75 @@ test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to
   expect(beside?.y ?? 0).toBeLessThan((plansTitle?.y ?? 0) + (plansTitle?.height ?? 0));
 });
 
+/** A workspace's name with no break of its own, 60 letters (P5S1B-I1). */
+const unbrokenName = "Researchnotesforthespringsemesteroftwentytwentysixandbeyond!";
+
+/**
+ * The left and right edges of what card holds, its boxes' and its text's, by position, and the card's own: what is
+ * past them has left the card, a text overflowing its paragraph too, which the paragraph's box does not show.
+ */
+function edgesIn(card: Locator) {
+  return card.evaluate((element) => {
+    const edges = { left: Number.POSITIVE_INFINITY, right: Number.NEGATIVE_INFINITY };
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+      let rect = node instanceof Element ? node.getBoundingClientRect() : undefined;
+      if (rect === undefined) {
+        const range = document.createRange();
+        range.selectNodeContents(node);
+        rect = range.getBoundingClientRect();
+      }
+      if (rect.width > 0) {
+        edges.left = Math.min(edges.left, rect.left);
+        edges.right = Math.max(edges.right, rect.right);
+      }
+    }
+    const own = element.getBoundingClientRect();
+    return { ...edges, card: { left: own.left, right: own.right } };
+  });
+}
+
+/** expectInCard checks, as expectFits does, that the entry card keeps to the screen and what it holds to the card. */
+async function expectInCard(page: Page, card: Locator): Promise<void> {
+  await expectFits(page, card);
+  const edges = await edgesIn(card);
+  expect(edges.left, "the leftmost of what the card holds").toBeGreaterThanOrEqual(edges.card.left);
+  expect(edges.right, "the rightmost of what the card holds").toBeLessThanOrEqual(edges.card.right);
+}
+
+/** The two invitations' pages UI1's entry cell opens: on page signed out, on other signed in with longMail. */
+interface Invitations {
+  page: Page;
+  other: Page;
+  toWorkspace: string;
+  toLongMail: string;
+  longMail: string;
+}
+
+/** expectInvitationsFit opens both invitations at width, and checks each in its card (P5S1B-I1). */
+async function expectInvitationsFit({ page, other, toWorkspace, toLongMail, longMail }: Invitations, width: number) {
+  await page.setViewportSize({ width, height: 800 });
+  await goto(page, toWorkspace);
+  const main = page.getByRole("main");
+  await expect(main.getByText(`You are invited to join ${unbrokenName}.`, { exact: true })).toBeVisible();
+  await expectInCard(page, main.locator("section").first());
+  await other.setViewportSize({ width, height: 800 });
+  await goto(other, toLongMail);
+  const otherMain = other.getByRole("main");
+  await expect(otherMain.getByText(`(${longMail}).`, { exact: false })).toBeVisible();
+  await expectInCard(other, otherMain.locator("section").first());
+}
+
 // M13/P5/S1 (decisions 920, 921, 924): the entry pages a card under the product's name, 327px wide at a phone's width;
-// a page not found centred, its way home arrived at.
+// a page not found centred, its way home arrived at. A workspace's name or an address with no break breaks in the card
+// (P5S1B-I1).
 test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the screen, the product's name above the form", async ({
   api,
   page,
   signedInPage,
+  anotherPage,
 }, testInfo) => {
-  const { tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo, unbrokenName);
   const main = page.getByRole("main");
   await page.setViewportSize({ width: phoneWidth, height: 800 });
 
@@ -257,6 +321,18 @@ test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the 
   await expect(main.getByRole("heading")).toHaveCount(1);
   expect((await name.boundingBox())?.y ?? 0).toBeLessThan((await title.boundingBox())?.y ?? 0);
   await expectFits(page, main.locator("form"));
+
+  // The invitation to a workspace whose name has no break, signed out; then, signed in, an account whose address's
+  // 40 characters have none: each breaks in the card, at 375 and at 320.
+  const address = `christopheralexanderwellington${slugFor(testInfo, "x").slice(2)}`.slice(0, 40);
+  const longMail = `${address}@example.com`;
+  const toWorkspace = await invite(api, pat, workspace.slug, emailFor(testInfo, "invited"));
+  const toLongMail = await invite(api, pat, workspace.slug, longMail);
+  const other = await anotherPage(await registerOnboarded(api, longMail));
+  const invitations = { page, other, toWorkspace: linkTo(toWorkspace), toLongMail: linkTo(toLongMail), longMail };
+  await expectInvitationsFit(invitations, phoneWidth);
+  await expectInvitationsFit(invitations, 320);
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
 
   await signedInPage(tokens);
   await goto(page, `/${slugFor(testInfo, "nowhere")}`);

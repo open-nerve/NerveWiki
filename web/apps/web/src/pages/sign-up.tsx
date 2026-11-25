@@ -51,7 +51,7 @@ export const SignUpPage = observer(function SignUpPage() {
         </>
       ) : (
         <>
-          <p>{t("signUp.closed")}</p>
+          <p className="text-sm">{t("signUp.closed")}</p>
           <p className="text-sm">{signInLink}</p>
         </>
       )}

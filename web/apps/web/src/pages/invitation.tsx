@@ -66,7 +66,7 @@ const Invitation = observer(function Invitation({ link }: { link: InvitationLink
       break;
     case "unavailable":
       // The page's one h1 is the invitation's (decision 922).
-      next = <SessionUnavailable level="h2" onRetry={() => void auth.retry()} />;
+      next = <SessionUnavailable onRetry={() => void auth.retry()} />;
       break;
     case "signed-out":
       next = <SignInOrUp link={link} />;
@@ -78,7 +78,7 @@ const Invitation = observer(function Invitation({ link }: { link: InvitationLink
   return (
     <div className="space-y-6">
       <div className="space-y-1">
-        <p className="text-lg">{t("invitation.invites", { workspace: workspace.name })}</p>
+        <p className="text-sm">{t("invitation.invites", { workspace: workspace.name })}</p>
         <p className="text-sm text-muted-foreground">{t("invitation.role", { role: t(`role.${role}`) })}</p>
       </div>
       {next}

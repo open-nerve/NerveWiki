@@ -38,3 +38,9 @@ test("the card says the product's name above the page, in text, its mark read by
   expect(name.compareDocumentPosition(screen.getByText("The form"))).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   expect(document.title).toBe(`Sign in · ${appName}`);
 });
+
+test("a word longer than the card's width breaks in it, a name or an address with no break of its own (P5S1B-I1)", () => {
+  const { container } = render(<Entry />);
+
+  expect(container.querySelector("section")?.className.split(" ")).toContain("break-words");
+});

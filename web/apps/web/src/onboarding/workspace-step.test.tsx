@@ -80,7 +80,10 @@ test("while creation is off, an account without a workspace reads how to get int
   const { app, server } = stepServer([], false);
   const { router } = renderApp("/onboarding", app);
 
-  expect(await screen.findByText(/workspaces are created by its administrator/)).toBeTruthy();
+  // The card's text at 14px (decision 948).
+  expect((await screen.findByText(/workspaces are created by its administrator/)).className.split(" ")).toContain(
+    "text-sm"
+  );
   expect(screen.queryByLabelText("Name")).toBeNull();
   await user.click(screen.getByRole("button", { name: "Continue" }));
 

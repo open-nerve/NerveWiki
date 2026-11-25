@@ -420,6 +420,9 @@ test("a session that cannot be used for now says so in an alert under the invita
 
   const title = await screen.findByRole("heading", { name: "Cannot reach the server" });
   expect(title.tagName).toBe("H2");
+  // The card's text at 14px, the invitation's sentence as its line (decision 948).
+  expect(screen.getByText(/^You are still signed in/).className.split(" ")).toContain("text-sm");
+  expect(screen.getByText("You are invited to join Lab.").className.split(" ")).toContain("text-sm");
   expect(title.closest('[role="alert"]')).not.toBeNull();
   expect(screen.getAllByRole("heading", { level: 1 }).map((heading) => heading.textContent)).toEqual(["Invitation"]);
 });

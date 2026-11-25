@@ -41,21 +41,18 @@ function useUnavailable(
 }
 
 /**
- * SessionUnavailable stands in for a page while the session cannot be used
- * for now: a refresh or the account's load failed for a passing reason
- * (429, 5xx, no network). The tab is still signed in, and the address
- * stays (M1/P5 design 3.5). Under a page (the invitation's) the page keeps
- * naming the tab; there its title is an h2 (level), the page's one h1 the
- * invitation's, its lines left as the card's (M13/P5/S1, decision 922). An
- * alert, its title in it.
+ * SessionUnavailable says the session cannot be used for now under a page, the invitation's, while a refresh or the
+ * account's load failed for a passing reason (429, 5xx, no network). The tab is still signed in, and the address stays
+ * (M1/P5 design 3.5); the page keeps naming the tab. Its title is an h2, the page's one h1 the invitation's, its lines
+ * left as the card's, its text the card's 14px (M13/P5/S1, decisions 922, 948). An alert, its title in it. In place of
+ * a whole page, SessionUnavailablePage says it.
  */
-export function SessionUnavailable({ onRetry, level = "h1" }: { onRetry: () => void; level?: "h1" | "h2" }) {
+export function SessionUnavailable({ onRetry }: { onRetry: () => void }) {
   const { title, body, buttons, dialog } = useUnavailable(onRetry);
-  const Title = level;
   return (
     <section role="alert" className="space-y-3">
-      <Title className={level === "h2" ? "text-base font-semibold" : "text-xl font-semibold"}>{title}</Title>
-      <p className="text-muted-foreground">{body}</p>
+      <h2 className="text-base font-semibold">{title}</h2>
+      <p className="text-sm text-muted-foreground">{body}</p>
       <div className="flex gap-2">{buttons}</div>
       {dialog}
     </section>

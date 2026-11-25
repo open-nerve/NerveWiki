@@ -46,7 +46,7 @@ export const CreateWorkspacePage = observer(function CreateWorkspacePage() {
           }}
         />
       ) : (
-        <p className="text-muted-foreground">{t("createWorkspace.off")}</p>
+        <p className="text-sm text-muted-foreground">{t("createWorkspace.off")}</p>
       )}
     </EntryCard>
   );

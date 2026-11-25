@@ -86,9 +86,9 @@ test("while sign-up is closed the page says so, with the way back to sign in", a
     signUpWith(() => json(tokensJSON, 201), { ...instanceJSON, signup_enabled: false }).app
   );
 
-  expect(
-    await screen.findByText("This server does not take new accounts. Ask its administrator for one.")
-  ).toBeTruthy();
+  const closed = await screen.findByText("This server does not take new accounts. Ask its administrator for one.");
+  // The card's text at 14px (decision 948).
+  expect(closed.className.split(" ")).toContain("text-sm");
   expect(screen.getByRole("link", { name: "Sign in" }).getAttribute("href")).toBe("/sign-in?next=%2Facme");
   expect(screen.queryByLabelText("Password")).toBeNull();
 });

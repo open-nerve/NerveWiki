@@ -31,10 +31,13 @@ export const Onboarding = observer(function Onboarding({ steps }: { steps: reado
   const { id, title, Component } = step;
   return (
     <EntryCard>
-      <p className="text-compact text-muted-foreground">
-        {t("onboarding.progress", { current: steps.indexOf(step) + 1, total: steps.length })}
-      </p>
-      <h1 className={entryTitleClass}>{t(title)}</h1>
+      {/* Which step it is, close above its title (decision 948). */}
+      <div className="space-y-1.5">
+        <p className="text-compact text-muted-foreground">
+          {t("onboarding.progress", { current: steps.indexOf(step) + 1, total: steps.length })}
+        </p>
+        <h1 className={entryTitleClass}>{t(title)}</h1>
+      </div>
       <Suspense fallback={<Loading />}>
         <Component key={id} complete={async () => void (await account.recordStep(id))} />
       </Suspense>
