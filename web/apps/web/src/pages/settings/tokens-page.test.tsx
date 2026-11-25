@@ -21,9 +21,13 @@ const listed = (name: string, more: Partial<ApiToken> = {}): ApiToken => ({
  * A signed-in tab on the tokens page, over a server that keeps tokens:
  * create answers a creation (by default the new token, "id-new", with
  * secret), revoke a revocation (by default 204). What the tab changed is
- * in sent.
+ * in sent. The tab opens at at, the page's address by default.
  */
-function tokensPage(tokens: ApiToken[] = [], answers: { create?: Answer; revoke?: Answer } = {}) {
+function tokensPage(
+  tokens: ApiToken[] = [],
+  answers: { create?: Answer; revoke?: Answer } = {},
+  at = "/settings/tokens"
+) {
   const sent: string[] = [];
   let kept = tokens;
   const revokeRoutes = Object.fromEntries(
@@ -53,7 +57,7 @@ function tokensPage(tokens: ApiToken[] = [], answers: { create?: Answer; revoke?
       return json({ ...token, token: secret }, 201);
     },
   });
-  renderApp("/settings/tokens", app);
+  renderApp(at, app);
   return { app, sent };
 }
 
@@ -281,3 +285,14 @@ test("a refused revocation stays in the dialog, and the token in the list", asyn
   // The page behind the dialog is hidden from assistive technology while it is open.
   expect(screen.getAllByRole("listitem", { hidden: true })).toHaveLength(1);
 });
+
+test.each(["/settings/tokens/", "/settings/Tokens"])(
+  "the tokens at %s, as the router matches it, are their page: its h1, its list, no error (decision 923)",
+  async (at) => {
+    tokensPage([], {}, at);
+
+    expect(await screen.findByRole("heading", { level: 1, name: "Access tokens" })).toBeTruthy();
+    expect(await screen.findByText("You have no access tokens.")).toBeTruthy();
+    expect(screen.queryByText("Something went wrong")).toBeNull();
+  }
+);

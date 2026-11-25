@@ -51,7 +51,9 @@ export const notebookSections = [
 
 /** sectionAt is the section of sections whose page, under base, is pathname: the page shown, if any. */
 export function sectionAt<S extends Section>(sections: readonly S[], base: string, pathname: string): S | undefined {
-  return sections.find(({ path }) => pathname === `${base}/${path}`);
+  // As the router matches: a trailing slash or not, whatever the case (M13/P5/S1, decision 923).
+  const at = pathname.replace(/\/+$/, "").toLowerCase();
+  return sections.find(({ path }) => at === `${base}/${path}`.toLowerCase());
 }
 
 /**

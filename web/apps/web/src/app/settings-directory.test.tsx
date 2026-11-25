@@ -7,6 +7,7 @@ import { notebookServer } from "../test/notebook-server";
 import { pageServer } from "../test/page-server";
 import { renderApp } from "../test/render";
 import { arrived } from "./arrival";
+import { sectionAt, workspaceSections } from "./settings-directory";
 
 // The settings' directory in the left column (M13/P3/S1, decisions 810, 813, 816–818, 837, 843): Back, the title and a
 // navigation for each group, the account's, the workspace's and the notebook's.
@@ -442,3 +443,17 @@ test.each([
     }
   }
 );
+
+/** The label of the workspace's section that sectionAt finds at pathname, under Acme's settings. */
+const at = (pathname: string) => sectionAt(workspaceSections, "/acme/settings", pathname)?.label;
+
+test("a section is the page at its address as the router matches it: a trailing slash or not, whatever the case; the settings' own address is none (decision 923)", () => {
+  expect(at("/acme/settings/members")).toBe("workspaceSettings.members");
+  expect(at("/acme/settings/members/")).toBe("workspaceSettings.members");
+  expect(at("/acme/settings/Members")).toBe("workspaceSettings.members");
+  expect(at("/acme/SETTINGS/members")).toBe("workspaceSettings.members");
+  // The index's redirect, which has no page of its own.
+  expect(at("/acme/settings")).toBeUndefined();
+  expect(at("/acme/settings/")).toBeUndefined();
+  expect(at("/acme/settings//")).toBeUndefined();
+});
