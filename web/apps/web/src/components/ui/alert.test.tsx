@@ -16,6 +16,12 @@ test("an alert reads red on a red tint", () => {
   for (const each of look) expect(classList.contains(each), each).toBe(true);
 });
 
+// M13/P5/S2 (decision 952): a name of no break in it, as a refusal to restore says one, breaks inside the box.
+test("an alert breaks a word too long for its box", () => {
+  render(<Alert>Not saved.</Alert>);
+  expect(screen.getByRole("alert").classList.contains("break-words")).toBe(true);
+});
+
 test("the diff's failure, which copies the alert's look, keeps to it", () => {
   // The editor does not import the app's alert (text-diff.tsx's Failed): its copy is read as written.
   const source = readFileSync(new FileURL("../../editor/text-diff.tsx", import.meta.url), "utf8");

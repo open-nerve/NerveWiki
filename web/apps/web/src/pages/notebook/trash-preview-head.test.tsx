@@ -24,7 +24,7 @@ function trashed() {
 // M13/P5/S2 (decisions 929, 937): the preview is headed as a page is: its trail in the head's row, its title the page's
 // 32px one, a long name broken anywhere in it (M12-polish 5), Restore beside it, on the right below it too; its facts
 // the document's grey.
-const longName = `Notes-${"2026-11-25-".repeat(5).slice(0, 54)}`;
+const longName = `Notes${"quarterlyroadmap".repeat(4)}`;
 
 test("a preview is headed as a page is, its title a long name broken in a span of its own, Restore on the right, its facts grey", async () => {
   const user = userEvent.setup();
