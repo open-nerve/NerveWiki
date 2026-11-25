@@ -1327,7 +1327,7 @@ test("PG17 (page): a code block's head names its language and copies its code al
 4. `pre` 是名为"Code"的区域；`scrollLeft = 200` 之后头的左边等于 `pre` 的左边加 1（边框）± 1。
 5. 已完成的项（审查 C 的 M12；S2 的修复）：它的 `li`（`:scope > ul > li` 的第一个，属性条里也有 `li`）的 `text-decoration-line` 含 `line-through`、`color` 是 `--faint` 的值（读 `:root` 的变量算出的颜色）；它下面的块依次是 `pre`、`div`（callout）、`pre`、`blockquote`、`ul`、`details`，各是 `inline-block`、与项同宽，颜色是 `article` 的（引用是 `--muted-foreground`），离上面的那一行或块 8、8、8、8、4、8 px；callout 里的标签是 `--muted-foreground`（`9685e300`、`02cb019e`、`ade3abd1`）。
 6. 属性条（S2 的修复核对第 1 轮，审查 B 的 P4S2B-F1-M1）：`people` 的第一个小块与 `stages` 的第一个小块同高（取到 0.25 px），映射的嵌套表 `margin-top` 是 0。
-7. callout 的标题（决定 901）：两个标题的 `innerText` 是连续的一行文字（`.nw-callout` 取 `:scope >` 的，已完成项里的不算）；1440 宽时第一个不超过 2 行、第二个 1 行（上限，不是等于：Linux 的字体更宽时不至于红，审查 C 修复核对第 1 轮的未核实一条），375 宽时各不超过 4 行，`expectFits` 核对视图、callout 与两个标题不横滚、不出屏。
+7. callout 的标题（决定 901）：两个标题的 `innerText` 是连续的一行文字（`.nw-callout` 取 `:scope >` 的，已完成项里的不算）；1440 与 375 宽时各不超过它的文字排成一行的宽度（标题暂时 `nowrap`、`max-content`，连图标，照当前浏览器的字体量）除以 callout 给它的宽度、向上取整再加 2 行（一行给另起一行的网址，一行给网址之前那段折行时挤下的词；CI 上 Linux 的字体更宽，原先数 macOS 的行数定的上限红了，见 10.4），`expectFits` 核对视图、callout 与两个标题不横滚、不出屏。
 8. 块的间距（决定 902、903）：第一个 callout 的子元素的 `margin-top` 是 0、4、8、8 px，松散项的两段 0、8 px，紧凑项里的 `pre` 8 px、嵌套的 `ul` 4 px。
 
 **改的**：`check.mjs` 的 `REQUIRED` 再加 `["firefox", "page/pg17-page-head.spec.ts", "PG17 (page): a code block's head"]`、`["webkit", …同…]`（注释同上，Step 写 S2）。pg5（只在 Chromium）加一段：选中整个 `pre`（`selectNodeContents`）、`ControlOrMeta+c`，剪贴板里是代码的字，不带"go"与"Copy"（as6:97-110 的写法：先写一句别的进剪贴板，再读）；标题加"…, a code block selected copying its code without its head"。L4 (page) 第一格（`cdedff02`，`e2e/stories/links/l4-tags-math.spec.ts:196-206`，只在 Chromium）：暗色重画之后 `emulateMedia({ forcedColors: "active" })`，先断言 `matchMedia("(forced-colors: active)")` 为真（不空过；WebKit 模拟不了，在那里会红、不会空过），再断言 `.nw-diagram` 的底与"Start"节点 `.nodeLabel` 的颜色同强制之前，最后还原成 `forcedColors: "none"`；L4 经 `emulateMedia({ colorScheme: "dark" })` 进暗色，模拟的是暗色高对比加暗色应用（主持者定：比的是强制前后不变，够了，审查 C 的 P4S2C-Q1）。
@@ -2103,7 +2103,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ## 10. 结果
 
-（S1、S2、S3 合并之后各写一节：提交、做完的、与设计不同之处、实测、审查记录。）
+（S1、S2、S3 合并之后各写一节：提交、做完的、与设计不同之处、实测、审查记录。分支第一次推送之后 CI 跑出的两处另写 10.4。）
 
 ### 10.1 S1：页头、属性条与右栏（2026-11-24，合并 `715923dd`）
 
@@ -2204,6 +2204,14 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
   - 审查 C 的门禁：`9a52ddb4` 上合并之前的整条命令 637 / 2 / 1（se2:231、lw8:836；pg15 过了），2.8 min，整条 4 分 13 秒（负载 12.2 → 44.6，别的审查者在锁外也有进程），vitest 5435 格（63.05 s）；逐个提交的 `make lint-web knip test-web`：`ab6f4353` 226 / 5415、`68a7e4be` 227 / 5434、`3c75954d` 227 / 5434，修复核对第 1 轮 `15372fcf` 228 / 5444、`4ecc3e10` 228 / 5449、`d54a9d00` 228 / 5449，第 2 轮 `d7fb332c` 228 / 5452，都以 0 退出（实施者每个提交的门禁跑在提交之前，日志单独证明不了"每个提交单独为绿"，C 的这一遍补上）。
 - **与设计不同之处**：照实多九个代码提交（`3c75954d`、`9a52ddb4` 与七个修复提交）；874–876、878、889 的文字；4.4 之前的"照实"（4.3.1–4.3.4、4.3.6）；4.5 的 knip；5.3（L6 的行号与新标题，PG17 第 3 格一步，L5 挪到改的）；6.3；7.1（S3 的照实）；7.2（第 60、64、65 行，S3 的 t1–t67 与审查 C 的 `c-` 各条，表后的一句）；7.3、7.5；8.1 第 1 条；8.2 第 19、22、24–26 条与新的第 27、28 条，引言与"不改的"一行；第 9 节；决定 907–911。实施者第一轮的偏离 1–9（审查 A 逐条接受）：两个照实加的提交；截断在 `span` 上；`textOf` 另去掉 `QuoteMark`、setext 截在下划线那一行；两片之间改了文档就结束这一轮、sink 经 `Facet`；`observableRef`；假计时推 1 ms × 5；`frontmatterRange` 返回 `Frontmatter`；"一直在 DOM 里"一格自己数 `PUT`；`lostText` 一律 `Isolating`。修复报告的 1–8：`ready` 不叫 `told`；907 另做实体解码、嵌入去尺寸，`[see [[A]]](u)` 与行内数学照实；A-N2 的"`Link` 里跳过"做成 `LinkTitle` 里不认；补全的外框只在强制色下（无条件加会让 L5 的 `indicatorContrast` 量到透明的外框，比值 1）；查找面板的字号 13 px（`text-compact`），不是 13.5；t29e 三种引擎都红；查找面板强制色的焦点外框当时没有格守（`e6558722` 补了）；变异的工具以 `HEAD` 核对复原，每轮在提交之后跑。偏离：藏起的"保存"照旧占位（决定 896）；frontmatter 整块次要色（决定 874）；冲突面板 320 宽的按钮折行量过、没有守（冲突的故事没有窄屏的一步）；907 的已知差别（4.4 之前的"照实"）；e2e 只交叉核对了 907 的显示文字一条路（L6 的 `[[#Setup|the setup]]`），"页名 > 小节"与嵌入的说明只在 vitest 里，对照的是照服务端代码写的期望（审查 C 修复核对第 1 轮）。
 - **交给后面**：第 9 节（v0.2：Firefox 编辑时的 scroll-linked 警告、第一次远跳一帧约 157 px、全篇约 2 万个互不相同的数字实体时编辑时的大纲每轮重读 52–60 ms（审查 A 的 P4S3A-F3-N1，照实）；P5：版本行单独一行的"-"；负责人：Safari 的人工核对）；`CHANGELOG.md` 0.1.0"网页的打磨"一条里的"编辑时没有大纲"由 M13 收尾删（00 号文档第 7 节"收尾"第 2 项）；`W/reading/code-blocks.ts:85` 的长注释照旧（10.2）；P4 的 Phase 完成另一个提交（8.1 第 4 条）。
+
+### 10.4 CI 第一次跑出的两处（2026-11-25，合并 `9871c7d4`）
+
+- **来由**：负责人推送 `f62d0390` 之后分支的 CI 第一次跑（run 45551442052）：Release 绿，CI 的 e2e 红三格，都不是产品的错。
+- **PG17 第 2 格**（Chromium、WebKit，`pg17-page-head.spec.ts:653`）：375 宽时第一个 callout 标题在 Linux 的字体下超过 macOS 量出的 4 行。`59cf6bd9` 把 1440 与 375 两种宽度的上限都改成按当前浏览器的字体量（5.2 第 7 步）。之所以不从 1440 的行数推 375 的：1440 的"不超过 2 行"本身就看字体，标题换成 Verdana 时 Chromium、WebKit 在 1440 宽是 3 行。实施者临时换 Verdana、Courier New 在三种引擎里量：实际行数比量出的多，最多多 1 行，取 +2 是为 Linux 的 DejaVu Sans 留的余地。文字相等与 `expectFits` 照旧。变异：t14（标题 `display: flex`）、t43（`nowrap`）三种引擎照旧红；另加的 b1（t14 去掉两处文字相等）三种引擎红，其中 Firefox 由新上限抓（行数 [8,2]，上限 [5,4]），Chromium、WebKit 由 `expectFits`；b2（标题 `max-width: 50%`，去掉文字相等）三种引擎都由新上限单独抓（1440 宽 [6,3] 或 [7,3]，上限 [3,3]）。
+- **C8**（Chromium，`c8-stream-life.spec.ts:254`）：poll 的判定本身卡满 10 s（"Timeout 10000ms exceeded while waiting on the predicate"），页面已经显示"No notebooks yet."。原因是 M13/P2/S2 的 `485e6be3` 让 `notebookGroups`（`e2e/fixtures/notebook-pages.ts`）先 `count()` 再 `evaluate()`：删除的事件在两次调用之间卸下最后一个列表，`evaluate` 一直等它。`5cd99e50` 改成每组一次不等待的 `evaluateAll`，一个组名对上不止一个列表时照旧报错。临时的探针（静态页，在旧写法的 `count()` 之后删掉"Team notebooks"）三种引擎相同：旧写法 4 s 内不答，照 C8 的写法 poll 时红在同一句；新写法 4–9 ms 答。扫过 `e2e/fixtures` 与 `e2e/stories` 的 156 个 `expect.poll` 判定与 1 个 `toPass`，先做不等待的检查、再调会等待的方法的只有这一处（n3 的两处 poll 经它也会撞上）。
+- **核对**：只改测试，由主持者读 diff、看变异与门禁的结果核对（02-workflow 3.4）。实施者在 `m13-ci-pg17` 上每个提交的 `heavy.sh make lint-web knip test-web` 都绿（228 个文件、5455 格）；`CI=1 heavy.sh make e2e` 两次都是 636 / 3 / 1，红的正是第 1 节那三格（se2:231、pg15:113、lw8:836，同行同消息），C8 也过了；调 `notebookGroups` 的十个故事在三种引擎里 107 过，红的 `c8:212` [webkit]（`:234` 流的计数）改回旧写法照样红，正式套件里 C8 只跑 Chromium。主持者在 `5cd99e50` 上跑合并之前的整条命令（`CI=1 heavy.sh make lint-web knip test-web gen-check-web build-web e2e`）：vitest 228 / 5455，E2E 636 / 3 / 1，同上三格。`server`、`api`、`deploy`、`.github`、`testdata`、`e2e/fixtures/db.ts` 与 Go 文件没动，`git diff --check` 干净。
+- **计数**：vitest、E2E 的格数与 `check.mjs` 的四个数都不变。
 
 ## 附录：核对过的代码
 
