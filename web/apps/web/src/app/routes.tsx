@@ -239,15 +239,19 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
-                            // The notebook's history, its filters in the query (M8/P3 design 4.2).
+                            // The notebook's history, its filters in the query (M8/P3 design 4.2); the banner at the
+                            // top of its column (M13/P5/S2, decision 915).
                             path: "history",
+                            handle: { column: true },
                             lazy: async () => {
                               const { HistoryPage } = await import("../pages/notebook/history-page");
                               return { Component: HistoryPage };
                             },
                           },
                           {
+                            // The banner at the top of the changeset's column, each branch's (M13/P5/S2, decision 915).
                             path: "history/:changesetId",
+                            handle: { column: true },
                             lazy: async () => {
                               const { ChangesetPage } = await import("../pages/notebook/changeset-page");
                               return { Component: ChangesetPage };

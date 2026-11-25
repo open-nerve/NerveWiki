@@ -2,6 +2,7 @@ import { observer } from "mobx-react-lite";
 import { useId, useRef, type Ref } from "react";
 import useSWR from "swr";
 
+import { filterBarClass, filterChipClass, filterFieldClass } from "../../app/page-classes";
 import { Button } from "../../components/ui/button";
 import { Label } from "../../components/ui/label";
 import { NativeSelect, useChoice } from "../../components/ui/native-select";
@@ -128,10 +129,11 @@ export const HistoryFilters = observer(function HistoryFilters({
         ? "…"
         : t("history.nodeDeleted");
   return (
-    <div className="flex flex-wrap items-end gap-4">
-      <div className="max-w-full min-w-0 space-y-2">
+    <div className={filterBarClass}>
+      <div className={filterFieldClass}>
         <Label htmlFor={ids.actor}>{t("history.actor")}</Label>
-        <NativeSelect ref={whoRef} id={ids.actor} {...who}>
+        {/* At most 16rem: a long name widens it, and the bar, no more (review B's P5B-N7). */}
+        <NativeSelect ref={whoRef} id={ids.actor} {...who} className="max-w-64">
           <option value="">{t("history.everyone")}</option>
           {actors.map((actor) => (
             <option key={actor.id} value={actor.id}>
@@ -140,7 +142,7 @@ export const HistoryFilters = observer(function HistoryFilters({
           ))}
         </NativeSelect>
       </div>
-      <div className="max-w-full min-w-0 space-y-2">
+      <div className={filterFieldClass}>
         <Label htmlFor={ids.client}>{t("history.client")}</Label>
         <NativeSelect id={ids.client} {...from}>
           <option value="">{t("history.everyClient")}</option>
@@ -151,7 +153,7 @@ export const HistoryFilters = observer(function HistoryFilters({
           ))}
         </NativeSelect>
       </div>
-      <div className="space-y-2">
+      <div className={filterFieldClass}>
         <Label htmlFor={ids.ingest}>{t("history.ingestion")}</Label>
         <NativeSelect id={ids.ingest} {...ingested}>
           <option value="">{t("history.allChanges")}</option>
@@ -172,12 +174,13 @@ function PageFilter({ label, remove, left }: { label: string; remove: () => void
   const button = useRef<HTMLButtonElement>(null);
   useFocusLeaving(button, left);
   return (
-    <p className="flex min-h-9 max-w-full min-w-0 items-center gap-2 rounded-md border px-3 text-sm">
+    <p className={filterChipClass}>
       <span className="min-w-0 break-words">{label}</span>
       <Button
         ref={button}
         variant="ghost"
-        className="h-7 px-2 text-xs"
+        size="sm"
+        shape="pill"
         aria-label={t("history.removeFilterLabel", { filter: label })}
         onClick={remove}
       >

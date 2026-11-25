@@ -1,3 +1,4 @@
+import { Search } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useEffect, useId, useRef, useState } from "react";
 import { Link, useLocation, useSearchParams } from "react-router";
@@ -7,7 +8,10 @@ import { useArrivalFocus } from "../../app/arrival";
 import { useDocumentTitle } from "../../app/document-title";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
+import { filterBarClass, filterFieldClass, listColumnClass } from "../../app/page-classes";
 import { errorText, fieldErrors } from "../../app/problem-messages";
+import { pageTitleClass, SettingsCard } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { Label } from "../../components/ui/label";
 import { NativeSelect, useChoice } from "../../components/ui/native-select";
@@ -208,40 +212,42 @@ export const SearchPage = observer(function SearchPage() {
     data !== undefined && data.length > 0 && (data.at(-1)?.data ?? []).every((hit) => earlier.has(hit.node.id));
   const now = Date.now();
   return (
-    <section className="space-y-4">
+    <section className={listColumnClass}>
       <h1
         ref={heading}
         tabIndex={-1}
         aria-describedby={said === "" ? undefined : ids.status}
-        className="text-2xl font-semibold break-words outline-none"
+        className={pageTitleClass}
       >
         {asked ? <Heading q={q} /> : title}
       </h1>
       {asked && (
-        <div className="space-y-2">
-          <Label htmlFor={ids.scope}>{t("search.scope")}</Label>
-          <NativeSelect id={ids.scope} {...scope} className="block max-w-full">
-            <option value="">{t("search.everyNotebook")}</option>
-            {listed?.map((each) => (
-              <option key={each.id} value={each.id}>
-                {notebookTwins.has(each.id)
-                  ? t("search.notebookTwin", { name: each.name, id: shortId(each.id) })
-                  : each.name}
-              </option>
-            ))}
-            {notebook !== undefined && nameOf(notebook) === undefined && (
-              <option value={notebook}>{listed === undefined ? "…" : t("search.notebookUnknown")}</option>
-            )}
-          </NativeSelect>
+        <div className={filterBarClass}>
+          <div className={filterFieldClass}>
+            <Label htmlFor={ids.scope}>{t("search.scope")}</Label>
+            <NativeSelect id={ids.scope} {...scope} className="block max-w-full">
+              <option value="">{t("search.everyNotebook")}</option>
+              {listed?.map((each) => (
+                <option key={each.id} value={each.id}>
+                  {notebookTwins.has(each.id)
+                    ? t("search.notebookTwin", { name: each.name, id: shortId(each.id) })
+                    : each.name}
+                </option>
+              ))}
+              {notebook !== undefined && nameOf(notebook) === undefined && (
+                <option value={notebook}>{listed === undefined ? "…" : t("search.notebookUnknown")}</option>
+              )}
+            </NativeSelect>
+          </div>
         </div>
       )}
       {/* There before it says anything: a status that comes with its region is not always read. */}
-      <output id={ids.status} className="block text-sm empty:sr-only">
+      <output id={ids.status} className="block text-compact text-muted-foreground empty:sr-only">
         {said}
       </output>
       <output className="sr-only">{told.text + (told.again ? again : "")}</output>
       {!asked ? (
-        <p className="text-muted-foreground">{t("search.howTo")}</p>
+        <EmptyState icon={Search}>{t("search.howTo")}</EmptyState>
       ) : notFound !== undefined ? (
         <NotFound text={notFound} q={q} left={() => heading.current?.focus()} />
       ) : refused !== undefined ? (
@@ -250,7 +256,7 @@ export const SearchPage = observer(function SearchPage() {
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : (
         hits.length > 0 && (
-          <ul aria-label={t("search.results")} className="divide-y rounded-md border">
+          <SettingsCard list label={t("search.results")}>
             {hits.map((hit) => (
               <SearchHitRow
                 key={hit.node.id}
@@ -261,7 +267,7 @@ export const SearchPage = observer(function SearchPage() {
                 linkRef={hit.node.id === more.focusing ? focused : undefined}
               />
             ))}
-          </ul>
+          </SettingsCard>
         )
       )}
       {more.failure !== undefined && <Alert>{errorText(more.failure, t)}</Alert>}

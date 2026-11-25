@@ -2,8 +2,11 @@ import { observer } from "mobx-react-lite";
 import { useRef, type Ref } from "react";
 import { Link } from "react-router";
 
+import { arrived } from "../../app/arrival";
+import { factsClass, lineLinkClass, lineTitleClass, stackedLinesClass } from "../../app/page-classes";
 import { useT, type Translate } from "../../i18n/i18n";
 import { isolate, Isolated, type Isolating, type Namer } from "../../i18n/isolated";
+import { cn } from "../../lib/cn";
 import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId } from "../../lib/twins";
 import type { Notebook } from "../../services/notebook.service";
@@ -63,6 +66,9 @@ function treeTexts(change: ChangesetChange, t: Translate): Isolating[] {
   }
 }
 
+/** The first line's other links (In the trash, History of this node): the row's, in the facts' grey and weight. */
+const secondaryLinkClass = cn(lineLinkClass, "font-normal text-muted-foreground hover:text-foreground");
+
 /**
  * ChangesetChange is a node a changeset changed, as its page lists them
  * (M8 design 4.7; M8/P3 design 4.3): the node by its name now, leading to
@@ -102,42 +108,44 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
   const open = openOf({ id: node.id, kind: node.kind, parent }, home);
   const texts = treeTexts(change, t);
   return (
-    <li ref={row} className="space-y-1 p-4">
-      <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+    <li ref={row} className={stackedLinesClass}>
+      <p className={cn(lineTitleClass, "flex-wrap gap-x-3 gap-y-1")}>
         {node.alive ? (
           <Link
             ref={linkRef}
             to={open.to}
             state={open.state}
             aria-label={twin ? name : undefined}
-            className="min-w-0 font-medium break-words underline underline-offset-4"
+            className={lineLinkClass}
           >
             {node.name}
           </Link>
         ) : (
           <>
-            <span className="min-w-0 font-medium break-words">{node.name}</span>
+            <span className="min-w-0 break-words">{node.name}</span>
             <Link
               ref={linkRef}
               to={`${home}/trash/${node.id}`}
+              state={arrived}
               aria-label={t("history.inTrashLabel", { name })}
-              className="text-sm underline underline-offset-4"
+              className={secondaryLinkClass}
             >
               {t("history.inTrash")}
             </Link>
           </>
         )}
-        {twin && <span className="text-sm text-muted-foreground">{t("history.id", { id: shortId(node.id) })}</span>}
+        {twin && <span className="font-normal text-muted-foreground">{t("history.id", { id: shortId(node.id) })}</span>}
         <Link
           to={`${home}/history?page=${node.id}`}
+          state={arrived}
           aria-label={t("history.nodeHistoryLabel", { name })}
-          className="text-sm underline underline-offset-4"
+          className={secondaryLinkClass}
         >
           {t("history.nodeHistory")}
         </Link>
       </p>
       {(texts.length > 0 || content !== null) && (
-        <p className="flex flex-wrap gap-x-3 text-sm break-words text-muted-foreground">
+        <p className={cn(factsClass, "flex flex-wrap gap-x-3")}>
           {texts.map((text) => (
             <span key={text.text} className="min-w-0">
               <Isolated {...text} />
@@ -147,8 +155,9 @@ export const ChangesetChangeRow = observer(function ChangesetChangeRow({
             (node.alive && node.kind === "page" ? (
               <Link
                 to={`${home}/pages/${node.id}/versions/${content.revision.toString()}`}
+                state={arrived}
                 aria-label={t("history.detail.contentLabel", { name, revision: content.revision })}
-                className="underline underline-offset-4"
+                className={cn(lineLinkClass, "text-muted-foreground hover:text-foreground")}
               >
                 {t("history.detail.content")}
               </Link>

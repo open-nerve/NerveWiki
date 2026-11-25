@@ -325,10 +325,25 @@ test("HI3 (page): the history in the left column lists the changesets; Only this
   await expect(listed.nth(0)).toContainText("Wrote “Notes”");
   await expect(listed.nth(2)).toContainText("Renamed “Beta” to “Gamma”, wrote “Alpha”");
 
-  await listed
-    .nth(2)
-    .getByRole("button", { name: `Only this person (${bName})`, exact: true })
-    .click();
+  const row = listed.nth(2);
+  const only = row.getByRole("button", { name: `Only this person (${bName})`, exact: true });
+  const link = row.getByRole("link").first();
+  // Transparent at rest, shown as the row is hovered, once the row's link holds the keyboard's focus, and in forced
+  // colours (M13/P5/S2, decision 927). The pointer moved off first: a click before may have left it on the row.
+  await page.mouse.move(0, 0);
+  await expect(only).toHaveCSS("opacity", "0");
+  await link.hover();
+  await expect(only).toHaveCSS("opacity", "1");
+  await page.mouse.move(0, 0);
+  await expect(only).toHaveCSS("opacity", "0");
+  await link.focus();
+  await expect(only).toHaveCSS("opacity", "1");
+  await link.blur();
+  await expect(only).toHaveCSS("opacity", "0");
+  await page.emulateMedia({ forcedColors: "active" });
+  await expect(only).toHaveCSS("opacity", "1");
+  await page.emulateMedia({ forcedColors: "none" });
+  await only.click();
   await expect(listed).toHaveCount(1);
   expect(new URL(page.url()).search).toBe(`?actor=${bId}`);
   await expect(main.getByRole("status")).toHaveText("Listed: 1.");

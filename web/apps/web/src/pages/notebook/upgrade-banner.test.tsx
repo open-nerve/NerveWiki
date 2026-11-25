@@ -8,6 +8,7 @@ import type { Notebook, NotebookRole } from "../../services/notebook.service";
 import { useStore } from "../../stores/context";
 import type { RootStore } from "../../stores/root.store";
 import { notebookJSON, upgradeOf, workspaceJSON } from "../../test/fakes";
+import { changesetId, created } from "../../test/history-server";
 import { bob, guide, pagePath, pageServer } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 
@@ -155,6 +156,19 @@ const held: Setup = (server) => {
 const down: Setup = (server) => {
   server.nodesDown = true;
 };
+/** A changeset of the history's, logged as the history's rows find it: Ada's creation of Guide. */
+const logged = changesetId(9101);
+const logOne: Setup = (server) => {
+  server.log("one", { id: logged, changes: [created(guide)] });
+};
+const historyDown: Setup = (server) => {
+  server.historyDown = true;
+};
+/** The changeset's read never answered. */
+const changesetHeld: Setup = (server) => {
+  logOne(server);
+  server.historyWaits.changeset = new Promise(() => undefined);
+};
 
 const columned: [string, string, Setup, First][] = [
   ["a page, read", pagePath(guide.id), none, { h1: "Guide" }],
@@ -165,6 +179,14 @@ const columned: [string, string, Setup, First][] = [
   ["a notebook's home, read", home, none, { h1: "Plans" }],
   ["a notebook's home, its tree on its way", home, held, "loading"],
   ["a notebook's home, its tree not read", home, down, "alert"],
+  // M13/P5/S2: the history and a changeset's page, each branch of the changeset's (changeset-page.tsx).
+  ["the history, read", `${home}/history`, logOne, { h1: "History" }],
+  ["the history, its log not read", `${home}/history`, historyDown, "alert"],
+  ["a changeset's page, read", `${home}/history/${logged}`, logOne, { h1: "Edit · Ada" }],
+  ["a changeset's page, its address no id", `${home}/history/not-an-id`, none, { h1: "Page not found" }],
+  ["a changeset's page, not found", `${home}/history/${changesetId(9102)}`, logOne, { h1: "Page not found" }],
+  ["a changeset's page, on its way", `${home}/history/${logged}`, changesetHeld, "loading"],
+  ["a changeset's page, not read", `${home}/history/${logged}`, historyDown, "alert"],
 ];
 
 /** The banners saying the upgrade: statuses, as the settings' general page says the mode in a row of its own. */

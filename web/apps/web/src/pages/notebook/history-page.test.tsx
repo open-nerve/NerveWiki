@@ -2,6 +2,9 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
+import { filterBarClass, filterChipClass, filterFieldClass, listColumnClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
@@ -1106,3 +1109,91 @@ test.each<[string, string, string]>([
     await waitFor(() => expect(reads()).toHaveLength(before + 1));
   }
 );
+
+// M13/P5/S2 (decision 927): Only this person is what a row offers besides its link: transparent at rest, shown as its
+// row is hovered or holds the keyboard's focus, or as it has it itself; always where nothing hovers, on a narrow screen
+// and in forced colours. jsdom lays out nothing: the classes are held here, what they do by hi3 and mc3 (no story has a
+// device that hovers not, review C's P5C-R1-M2).
+test("Only this person is shown as its row is hovered or focused, and always where nothing hovers, on a narrow screen and in forced colours; a small pill, its transition its colours' too", async () => {
+  const { server } = logged();
+  renderApp(historyPath, server.app);
+  const only = await screen.findByRole("button", { name: "Only this person (Bob)" });
+
+  expect([...only.classList]).toEqual(
+    expect.arrayContaining([
+      "opacity-0",
+      "group-hover/row:opacity-100",
+      "group-focus-within/row:opacity-100",
+      "focus-visible:opacity-100",
+      "aria-expanded:opacity-100",
+      "[@media(hover:none)]:opacity-100",
+      "max-md:opacity-100",
+      "forced-colors:opacity-100",
+      // cn would have let transition-opacity take the button's transition-colors' place (review A's P5A-N2).
+      "transition-[opacity,color,background-color]",
+      "h-7.5",
+      "rounded-full",
+      "-my-1",
+    ])
+  );
+  expect(only.closest("li")?.classList.contains("group/row")).toBe(true);
+});
+
+// M13/P5/S2 (decision 926): the filters are a bar, each label above its select, as FormField spaces them; Who at most
+// 16rem, a long name widening it no more; the page's filter a chip, its corners half its least height, Remove a pill.
+test("the filters are a bar of labelled selects, Who at most 16rem wide; a page's filter is a chip with its Remove", async () => {
+  const { server } = logged();
+  renderApp(`${historyPath}?page=${guide.id}`, server.app);
+  const who = await screen.findByRole("combobox", { name: "Who" });
+
+  expect(who.parentElement?.className).toBe(filterFieldClass);
+  expect(who.parentElement?.parentElement?.className).toBe(filterBarClass);
+  for (const name of ["Client", "Ingestion"]) {
+    expect(screen.getByRole("combobox", { name }).parentElement?.className).toBe(filterFieldClass);
+  }
+  expect(who.classList.contains("max-w-64")).toBe(true);
+  expect(who.classList.contains("max-w-full")).toBe(false);
+  const chip = (await screen.findByText("Page: Guide")).closest("p") as HTMLElement;
+  expect(chip.className).toBe(filterChipClass);
+  expect([...within(chip).getByRole("button", { name: "Remove the filter “Page: Guide”" }).classList]).toEqual(
+    expect.arrayContaining(["h-7.5", "rounded-full"])
+  );
+});
+
+// M13/P5/S2 (decision 925): a list's page, its title the settings' kind, its rows in a card; empty, it says so with an
+// icon.
+test("the history is a list's page: its title the settings' kind, its rows in a card; empty, said with an icon", async () => {
+  const server = pageServer();
+  renderApp(historyPath, server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "History" });
+  expect(title.className).toBe(pageTitleClass);
+  expect(title.parentElement?.className).toBe(listColumnClass);
+
+  const empty = await screen.findByText("No changes.", { selector: "p" });
+  expect(empty.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
+  expect(empty.previousElementSibling?.querySelector("svg")).not.toBeNull();
+});
+
+test("the history's rows are a card's", async () => {
+  const { server } = logged();
+  renderApp(historyPath, server.app);
+  expect((await screen.findByRole("list", { name: "Changes" })).className).toBe(cardClass);
+});
+
+// M13/P5/S2 (decision 940): a row's links to elsewhere arrive there, where the title takes the focus: not the body.
+test.each<[string, (rows: HTMLElement[]) => HTMLElement]>([
+  ["a row's own link", (listed) => within(listed[3] as HTMLElement).getAllByRole("link")[0] as HTMLElement],
+  ["Undone", (listed) => within(listed[2] as HTMLElement).getByRole("link", { name: /^Undone: / })],
+  ["Undid “…”", (listed) => within(listed[0] as HTMLElement).getByRole("link", { name: /^Undid / })],
+])("%s leads to its changeset arrived at, its title taking the focus", async (_, linkOf) => {
+  const user = userEvent.setup();
+  const { server } = logged();
+  const { router } = renderApp(historyPath, server.app);
+  await screen.findByRole("list", { name: "Changes" });
+
+  await user.click(linkOf(rows()));
+
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  const title = await screen.findByRole("heading", { level: 1, name: / · (Ada|Bob)$/ });
+  await waitFor(() => expect(document.activeElement).toBe(title));
+});

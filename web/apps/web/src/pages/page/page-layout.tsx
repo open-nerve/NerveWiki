@@ -86,7 +86,7 @@ export const PageLayout = observer(function PageLayout() {
   // same column as the page's content, so that it moves not as the page comes.
   if (pages.tree === undefined || !pages.confirmed) {
     return (
-      <PageColumn panel>
+      <PageColumn head={headGroupClass} panel>
         <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
       </PageColumn>
     );
@@ -95,7 +95,7 @@ export const PageLayout = observer(function PageLayout() {
   if (page === undefined) {
     // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
     return (
-      <PageColumn panel>
+      <PageColumn head={headGroupClass} panel>
         <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />
       </PageColumn>
     );
@@ -103,43 +103,67 @@ export const PageLayout = observer(function PageLayout() {
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
 
-/** The page's column, as a page's content column is (decision 915): local in S1, exported in S2 with the strings. */
-const docColumnClass = "mx-auto w-full max-w-180";
+// A page's strings, which a document's page (a changeset's, a trash item's preview, a version's) is laid out by too:
+// written here, where the page has them, and exported from here, one source (M13/P5/S2, decision 925).
+
+/** A page's outer, and a document's page's: the head's row a line above the column (P4's PageShell; decision 916). */
+export const docShellClass = "md:-mt-3 md:pb-4";
 
 /**
  * The page's head row (decisions 858, 894): its trail, then its right group, the group below the trail where the two do
  * not fit side by side. PageColumn's empty row is laid out by the same classes, so that it is as high as the head's at
- * every width (review B's P5S1B-F1-N1). Local in S1, exported in S2 with the strings.
+ * every width (review B's P5S1B-F1-N1).
  */
-const headRowClass = "mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5";
+export const headRowClass = "mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5";
 /** The trail's part of the head row. */
-const headCrumbsClass = "min-w-0 flex-[1_1_14rem]";
-/** The right group's part of the head row: its width, and its height with no button in it (decision 894). */
+export const headCrumbsClass = "min-w-0 flex-[1_1_14rem]";
+/** The right group's part of the page's head row: its width, and its height with no button in it (decision 894). */
 const headGroupClass = "ms-auto min-h-8 min-w-0 flex-[0_1_26rem]";
+
+/** The page's column, as a page's content column is (decision 915). */
+export const docColumnClass = "mx-auto w-full max-w-180";
+
+/** A page's title, 32px (the mockup reading.html's h1), and a document's page's. */
+export const docTitleClass =
+  "mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none";
+
+/**
+ * EmptyHead is a page's head's row with nothing in it, as high as the head read: its trail one line of its type, and,
+ * group given, its right group by group's classes, as the page read has it (decision 951; review B's P5S1B-F2-N1).
+ */
+function EmptyHead({ group }: { group?: string }) {
+  return (
+    <div aria-hidden className={headRowClass}>
+      <div className={cn(headCrumbsClass, "h-[1lh] text-compact")} />
+      {group !== undefined && <div className={group} />}
+    </div>
+  );
+}
 
 /**
  * PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. It is placed as
  * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's;
- * so that the banner moves not as the page comes. panel, the page's own branches (decision 951): at xl, the right
- * column open, beside the right column's room, as the page has it. Without it none, for a page with no right column.
+ * so that the banner moves not as the page comes. head, the classes of the right group of the head of the page it
+ * stands for, as that page read has it: none, its trail alone (decision 951; review B's P5S1B-F2-N1). panel, the
+ * page's own branches (decision 951): at xl, the right column open, beside the right column's room, as the page has
+ * it. Without it none, for a page with no right column.
  */
 export const PageColumn = observer(function PageColumn({
+  head,
   panel = false,
   children,
 }: {
+  head?: string;
   panel?: boolean;
   children: ReactNode;
 }) {
   const { panelOpen } = useStore().preferences;
   const open = panel && panelOpen;
   return (
-    <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
+    <div className={cn(docShellClass, "xl:flex xl:items-start")}>
       <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
         {/* The head's row, empty: the trail one line of its type high, the group as the page's (P5S1B-F1-N1). */}
-        <div aria-hidden className={headRowClass}>
-          <div className={cn(headCrumbsClass, "h-[1lh] text-compact")} />
-          <div className={headGroupClass} />
-        </div>
+        <EmptyHead group={head} />
         <div className={docColumnClass}>
           <ColumnTop />
           {children}
@@ -440,7 +464,7 @@ const PageShell = observer(function PageShell({
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [editable, reading, pages, page.id]);
   return (
-    <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
+    <div className={cn(docShellClass, "xl:flex xl:items-start")}>
       <EditHeadSlots value={{ group, meta, before, after }}>
         <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
           <div className={headRowClass}>
@@ -485,7 +509,7 @@ const PageShell = observer(function PageShell({
               ref={heading}
               tabIndex={-1}
               aria-describedby={restored === undefined ? undefined : restoredNote}
-              className="mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none"
+              className={docTitleClass}
             >
               {page.name}
             </h1>
