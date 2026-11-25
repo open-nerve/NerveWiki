@@ -527,3 +527,43 @@ test.each([
   act(() => server.app.preferences.setPanelOpen(false));
   expect(roomOf(what)).toEqual({ room: false, padded: false });
 });
+
+/** An element's classes, sorted. */
+function classes(element: Element | undefined) {
+  return [...(element?.classList ?? [])].toSorted();
+}
+
+// M13/P5/S1 (review B's P5S1B-F1-N1): the empty row above a page's column on its way is laid out as the page read lays
+// its head's row, its two blocks as the trail, one line high, and the group: as high as the head's at every width, at
+// two lines too.
+test("a page on its way lays its head's row out empty, as the page read lays it", async () => {
+  const server = pageServer();
+  server.nodesHeld = true;
+  renderApp(pagePath(install.id), server.app);
+  const loading = await waitFor(() => {
+    const found = within(main()).getByText("Loading…");
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+  const empty = columnOf(loading).row.firstElementChild as HTMLElement;
+  const shape = {
+    row: classes(empty),
+    blocks: empty.children.length,
+    text: empty.textContent,
+    trail: classes(empty.children[0]),
+    group: classes(empty.children[1]),
+  };
+  act(() => server.release());
+  const trail = await within(main()).findByRole("navigation", { name: "Breadcrumb" });
+  const row = trail.parentElement as HTMLElement;
+  expect(within(main()).getByRole("heading", { level: 1, name: "Install" })).toBeTruthy();
+  expect(shape).toEqual({
+    row: classes(row),
+    blocks: 2,
+    text: "",
+    trail: [...classes(trail), "h-[1lh]", "text-compact"].toSorted(),
+    group: classes(row.children[1]).filter(
+      (each) => !["flex", "items-center", "justify-end", "gap-1.5"].includes(each)
+    ),
+  });
+});

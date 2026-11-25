@@ -107,6 +107,17 @@ export const PageLayout = observer(function PageLayout() {
 const docColumnClass = "mx-auto w-full max-w-180";
 
 /**
+ * The page's head row (decisions 858, 894): its trail, then its right group, the group below the trail where the two do
+ * not fit side by side. PageColumn's empty row is laid out by the same classes, so that it is as high as the head's at
+ * every width (review B's P5S1B-F1-N1). Local in S1, exported in S2 with the strings.
+ */
+const headRowClass = "mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5";
+/** The trail's part of the head row. */
+const headCrumbsClass = "min-w-0 flex-[1_1_14rem]";
+/** The right group's part of the head row: its width, and its height with no button in it (decision 894). */
+const headGroupClass = "ms-auto min-h-8 min-w-0 flex-[0_1_26rem]";
+
+/**
  * PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. It is placed as
  * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's;
  * so that the banner moves not as the page comes. panel, the page's own branches (decision 951): at xl, the right
@@ -124,7 +135,11 @@ export const PageColumn = observer(function PageColumn({
   return (
     <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
       <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
-        <div aria-hidden className="mb-7.5 min-h-9" />
+        {/* The head's row, empty: the trail one line of its type high, the group as the page's (P5S1B-F1-N1). */}
+        <div aria-hidden className={headRowClass}>
+          <div className={cn(headCrumbsClass, "h-[1lh] text-compact")} />
+          <div className={headGroupClass} />
+        </div>
         <div className={docColumnClass}>
           <ColumnTop />
           {children}
@@ -428,9 +443,9 @@ const PageShell = observer(function PageShell({
     <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
       <EditHeadSlots value={{ group, meta, before, after }}>
         <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
-          <div className="mb-7.5 flex min-h-9 flex-wrap items-center gap-x-3 gap-y-1.5">
+          <div className={headRowClass}>
             <Breadcrumbs
-              className="min-w-0 flex-[1_1_14rem]"
+              className={headCrumbsClass}
               notebook={notebook}
               ancestors={pages.ancestorsOf(page.id)}
               page={page}
@@ -438,10 +453,7 @@ const PageShell = observer(function PageShell({
             />
             {/* The same width whatever the mode, 32px high with no button in it (decision 894): the row's lines are its
               width's alone. */}
-            <div
-              ref={setGroup}
-              className="ms-auto flex min-h-8 min-w-0 flex-[0_1_26rem] items-center justify-end gap-1.5"
-            >
+            <div ref={setGroup} className={cn(headGroupClass, "flex items-center justify-end gap-1.5")}>
               <div ref={setMeta} className="me-1 min-w-0 flex-1 text-end text-[12.5px] leading-4 text-faint">
                 {reading && <HeadMeta notebook={notebook} page={page.id} />}
               </div>

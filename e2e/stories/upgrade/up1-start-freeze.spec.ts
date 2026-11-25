@@ -254,13 +254,16 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
   expect(await tab.evaluate(() => "up1Document" in window)).toBe(true);
   expect(streams.opened()).toBe(opened);
 
-  // M13/P5/S1 (decision 946, review B's P5S1B-M1): while the page's tree is on its way, the banner is where the page
-  // read has it, the right column open: the same x, y and width at 1440, 1280 and 1024.
+  // M13/P5/S1 (decision 946, review B's P5S1B-M1 and P5S1B-F1-N1): while the page's tree is on its way, the banner is
+  // where the page read has it, the right column open: the same x, y and width at 1440, 1280 and 1024, and at 768 and
+  // 375, where the head's row is two lines.
   const planPath = wikiPagePath(workspace.slug, notebook.id, plan.id);
   for (const [width, at] of [
     [1440, await bannerPlaces(tab, planPath, notebook.id, 1440)],
     [1280, await bannerPlaces(tab, planPath, notebook.id, 1280)],
     [1024, await bannerPlaces(tab, planPath, notebook.id, 1024)],
+    [768, await bannerPlaces(tab, planPath, notebook.id, 768)],
+    [375, await bannerPlaces(tab, planPath, notebook.id, 375)],
   ] as const) {
     expect(at.read, `the banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
