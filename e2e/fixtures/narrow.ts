@@ -33,12 +33,20 @@ export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void>
 }
 
 /**
+ * floatNoise is how far a button's edge may pass its box's and still be inside: not the animation, which is let end,
+ * but a float's noise. Firefox's rects are not of whole 1/60 px (a left of −14.333328…, not −860/60 = −14.333333…), so
+ * on a box whose edge falls between pixels an edge may miss by 1e-5 px (review C's P5S3C-F2-N1). One that sticks out
+ * does so by pixels: 21 to 41 in decision 958's rows.
+ */
+const floatNoise = 0.01;
+
+/**
  * expectButtonsInside checks, by their boxes and not by a font (05-lessons 6), that each button of box keeps inside
  * its border and padding: a row of them to the right that cannot wrap sticks out of its left at a narrow width
  * (M13/P5/S3, decision 958; review B's P5S3B-I1). A dialog pops in scaled (styles.css's pop-in, 0.97 to 1 in 150 ms)
  * while its border and padding read unscaled, which put a button up to 0.75 px past the padding: what runs on box or
  * above it, and ends, is let end first (as openDrawer does), then the edges are compared as they are (review C's
- * P5S3C-F1-I1; not an engine's rounding, as said before).
+ * P5S3C-F1-I1; not an engine's rounding, as said before), within floatNoise.
  */
 export async function expectButtonsInside(box: Locator): Promise<void> {
   await box.evaluate((element) => {
@@ -63,7 +71,11 @@ export async function expectButtonsInside(box: Locator): Promise<void> {
   });
   expect(placed.buttons.length, `the buttons of ${String(box)}`).toBeGreaterThan(0);
   for (const button of placed.buttons) {
-    expect(button.left, `${button.name}'s left, inside ${String(box)}`).toBeGreaterThanOrEqual(placed.left);
-    expect(button.right, `${button.name}'s right, inside ${String(box)}`).toBeLessThanOrEqual(placed.right);
+    expect(button.left, `${button.name}'s left, inside ${String(box)}`).toBeGreaterThanOrEqual(
+      placed.left - floatNoise
+    );
+    expect(button.right, `${button.name}'s right, inside ${String(box)}`).toBeLessThanOrEqual(
+      placed.right + floatNoise
+    );
   }
 }

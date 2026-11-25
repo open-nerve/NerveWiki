@@ -180,6 +180,12 @@ export const ImportDialog = observer(function ImportDialog({
   );
 });
 
+/**
+ * How long after the upload starts Stop the upload takes no pointer's click (decision 960). At 320 its row wraps and
+ * Stop comes under where Import was, and a double tap's second click there has a count of 1 in WebKit and Firefox.
+ */
+const stopTakesNoPointerMs = 500;
+
 type ImportFormProps = {
   notebook: Notebook;
   /** The upload going, which the dialog stops as it closes. */
@@ -217,6 +223,8 @@ const ImportForm = observer(function ImportForm({
   const progress = useRef<((sent: number, total: number) => void) | undefined>(undefined);
   const importButton = useRef<HTMLButtonElement>(null);
   const wasSending = useRef(false);
+  // When the upload started, on performance's clock: Stop the upload takes no pointer's click for a while after.
+  const sentAt = useRef(0);
   // Whether the last press was refused for a write under way (transfer.busy): its banner says what the standing
   // alert would, and answers the press; the standing one waits for the next press (M12/P2/S5, 20.2).
   const [refusedBusy, setRefusedBusy] = useState(false);
@@ -280,6 +288,7 @@ const ImportForm = observer(function ImportForm({
       }
       const stop = new AbortController();
       upload.current = stop;
+      sentAt.current = performance.now();
       onUploading(true);
       try {
         const job = await transfers.startImport(place === root ? null : place, file, {
@@ -403,11 +412,18 @@ const ImportForm = observer(function ImportForm({
             variant="outline"
             onClick={(event) => {
               // At 320 its row wraps and this comes under where Import was: the second click of a double one on Import
-              // stops nothing (review A's P5S3A-F1-M1), as Cancel's does. A key's click has no count (0).
-              if (event.detail > 1) {
+              // stops nothing (review A's P5S3A-F1-M1), as Cancel's does, nor a pointer's in the upload's first moments
+              // (decision 960). A key's click has no count (0) and stops it at once.
+              if (event.detail > 1 || (event.detail > 0 && performance.now() - sentAt.current < stopTakesNoPointerMs)) {
                 return;
               }
               upload.current?.abort();
+            }}
+            onKeyDown={(event) => {
+              // Enter held on Import: the focus comes here, and its repeats press nothing (review A's P5S3A-F2-N2).
+              if (event.repeat && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+              }
             }}
           >
             {t("transfer.importStop")}
