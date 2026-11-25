@@ -535,6 +535,11 @@ test("a capped rule shows its localized lower bound while displaying the given f
   expect(rule("Wanted pages").getByText("10,000+ issues")).toBeTruthy();
   expect(rule("Wanted pages").getAllByRole("listitem")).toHaveLength(5);
   expect(rule("Wanted pages").getByText("Missing e")).toBeTruthy();
+  // A rule with more to read: the note that each page checks the notebook as it is now, a list's note (M13/P5/S3,
+  // decision 932; review C's cxb).
+  expect(screen.getByText("Each page checks the current notebook. Results may change between pages.").className).toBe(
+    noteClass
+  );
 });
 
 test("the results output already exists while the summary is loading and stays for its announcement", async () => {

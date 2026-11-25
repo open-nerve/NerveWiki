@@ -100,9 +100,31 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
     (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
   );
   expect(lines).toBeLessThan(1.5);
-  await expectFits(page, title, main.getByRole("button", { name: "Restore this version", exact: true }));
+  const restore = main.getByRole("button", { name: "Restore this version", exact: true });
+  await expectFits(page, title, restore);
+  // Where they are, by their boxes, not by a font (05-lessons 6): Restore above the title, inside its cell of the
+  // head's row, clear of the trail (review C's P5S3C-M1; the host's, of review A's).
+  const placed = await restore.evaluate((button) => {
+    const trail = document.querySelector("main nav[aria-label='Breadcrumb']");
+    const cell = [...(trail?.parentElement?.children ?? [])].find((child) => child.contains(button));
+    // oxlint-disable-next-line unicorn/consistent-function-scoping -- serialized into the page: it stays in the body
+    const box = (element: Element | null | undefined) => {
+      const { left, right, top, bottom } = element?.getBoundingClientRect() ?? new DOMRect(NaN, NaN, NaN, NaN);
+      return { left, right, top, bottom };
+    };
+    return { button: box(button), cell: box(cell), trail: box(trail), title: box(document.querySelector("main h1")) };
+  });
+  expect(placed.button.bottom, "Restore's bottom, at most the title's top").toBeLessThanOrEqual(placed.title.top);
+  expect(placed.button.left, "Restore's left, in its cell").toBeGreaterThanOrEqual(placed.cell.left);
+  expect(placed.button.right, "Restore's right, in its cell").toBeLessThanOrEqual(placed.cell.right);
+  const crosses =
+    placed.button.left < placed.trail.right &&
+    placed.trail.left < placed.button.right &&
+    placed.button.top < placed.trail.bottom &&
+    placed.trail.top < placed.button.bottom;
+  expect(crosses, "Restore over the trail").toBe(false);
   await page.setViewportSize({ width: 1280, height: 800 });
-  await main.getByRole("button", { name: "Restore this version", exact: true }).click();
+  await restore.click();
   const dialog = restoreDialog(page, 1);
   await expect(dialog).toContainText("The page now → Version 1");
   // What the restore changes: the page now's line, struck out, for the version's.

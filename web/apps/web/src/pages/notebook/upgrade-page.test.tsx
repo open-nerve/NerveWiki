@@ -25,6 +25,7 @@ import {
   upgradeJSON,
   upgradeServer,
 } from "../../test/upgrade-server";
+import { clearSummaryClass } from "./health-rule";
 
 // The page of a notebook's upgrade under way (M11/P1 design 4.4): its
 // admins' alone (v0.1 design 13.2, item 18).
@@ -1115,6 +1116,8 @@ test("in review, the page shows the report kept: each gate, each count, each rul
   ]);
   const clear = report.querySelector("details") as HTMLElement;
   expect(clear.querySelector("summary")?.textContent).toBe("No issues (1 check)");
+  // A group's title, as the check's and the health page's (M13/P5/S3, decision 955; review C's cxc).
+  expect(clear.querySelector("summary")?.className).toBe(clearSummaryClass);
   expect(cardsIn(clear)).toEqual([["H3", "Invalid frontmatter", "0 issues", [], false]]);
   expect(cardsIn(report)).toEqual([
     [

@@ -5,6 +5,7 @@ import { useState } from "react";
 import type { RouteObject } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { noteClass } from "../../app/page-classes";
 import { routes } from "../../app/routes";
 import { buttonClass } from "../../components/ui/button";
 import { ApiError } from "../../services/api";
@@ -326,7 +327,8 @@ test("a page mode mismatch locks every More until a fresh matching summary", asy
   fixture.responses.page = () => fixture.pageOf(wantedFacts(6).slice(5), null, "standard");
   await opened(fixture);
   await user.click(wanted().getByRole("button", { name: "More" }));
-  await screen.findByText("The notebook mode has changed. Recheck its health.");
+  // A list's note, as the page's others (M13/P5/S3, decision 932; review C's cxa).
+  expect((await screen.findByText("The notebook mode has changed. Recheck its health.")).className).toBe(noteClass);
   expect(wanted().getAllByRole("listitem")).toHaveLength(5);
   await user.click(wanted().getByRole("button", { name: "More" }));
   expect(fixture.pages).toHaveLength(1);

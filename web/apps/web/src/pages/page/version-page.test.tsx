@@ -40,8 +40,12 @@ const enhancements = [taskToggle, appLinks, unresolvedLinks];
  * task items, its second, of one more line, and the newest, written over;
  * Ada's role in Plans is role, answers answering instead of it.
  */
-function installed(role: NotebookRole = "admin", answers: Record<string, Answer> = {}) {
-  const server = pageServer({ role, answers });
+function installed(
+  role: NotebookRole = "admin",
+  answers: Record<string, Answer> = {},
+  notebook: Pick<NonNullable<Parameters<typeof pageServer>[0]>, "mode" | "sourceRootId"> = {}
+) {
+  const server = pageServer({ role, answers, ...notebook });
   server.withVersions(install.id, [
     versionJSON(1, null, "- [ ] one\n- [x] two\n", { kind: "import", by: bob, at: "2026-10-01T09:00:00Z" }),
     versionJSON(4, 1, "- [ ] one\n- [x] two\n- [ ] three\n", { at: "2026-10-02T09:00:00Z" }),
@@ -816,22 +820,25 @@ test.each([
 );
 
 // The early branches' empty head row laid out as the read version's (decisions 946, 951): the cell a writer's, the
-// trail alone a reader's; no one writes under an upgrade, which alone has a banner to keep in its place.
+// trail alone a reader's; no one writes under an upgrade, which alone has a banner to keep in its place. Before the
+// tree is read the page's place is not known: a source page's writer has the cell there, and not once it is read
+// (decision 957; review A's P5S3A-N1).
 test.each([
   ["a writer's", "on its way", "admin", "loading"],
   ["a writer's", "of a page not found", "admin", "gone"],
   ["a reader's", "on its way", "reader", "loading"],
   ["a reader's", "of a page not found", "reader", "gone"],
+  ["a writer's", "of a source page on its way", "admin", "source"],
 ] as const)("%s version %s lays its head's row out empty as the version read lays it", async (_, __, role, branch) => {
-  const server = installed(role);
-  if (branch === "loading") {
+  const server = installed(role, {}, branch === "source" ? { mode: "llm_wiki", sourceRootId: guide.id } : {});
+  if (branch !== "gone") {
     server.nodesHeld = true;
   }
   renderApp(versionPath(branch === "gone" ? "0199a2b4-0000-7000-8000-0000000001ff" : install.id, 4), server.app);
   const inside = await waitFor(() => {
     const main = within(screen.getByRole("main"));
     const found =
-      branch === "loading"
+      branch !== "gone"
         ? main.getByText("Loading…", { selector: "output" })
         : main.getByRole("heading", { level: 1, name: "Page not found" });
     expect(found.closest(".max-w-180")).not.toBeNull();
@@ -851,13 +858,13 @@ test.each([
     text: "",
     blocks: [cn(headCrumbsClass, "h-[1lh] text-compact"), ...(role === "admin" ? [group] : [])],
   });
-  if (branch === "loading") {
-    // The version read: its head's row the same, the trail and the writer's cell.
+  if (branch !== "gone") {
+    // The version read: its head's row the same, the trail and the writer's cell; a source page's, the trail alone.
     act(() => server.release());
     await screen.findByRole("heading", { level: 1, name: "Version 4" });
     expect([...headRowOf().children].map((block) => block.className)).toEqual([
       headCrumbsClass,
-      ...(role === "admin" ? [group] : []),
+      ...(role === "admin" && branch !== "source" ? [group] : []),
     ]);
   }
 });

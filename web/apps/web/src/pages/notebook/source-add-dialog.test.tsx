@@ -205,11 +205,16 @@ test("pasted Markdown refused as a duplicate says which, the focus on what it sa
   expect(creates(server)).toEqual(["POST Again under Guide"]);
 });
 
-test("pasted Markdown shows a server title refusal without clearing the draft", async () => {
+test("pasted Markdown shows a server refusal of the title and the body without clearing the draft", async () => {
   const user = userEvent.setup();
   const server = sourceServer({
     [`POST /api/v0/notebooks/${notebookJSON.id}/pages`]: () =>
-      problem(422, "validation_failed", { errors: [{ field: "title", code: "not_allowed", message: "reserved" }] }),
+      problem(422, "validation_failed", {
+        errors: [
+          { field: "title", code: "not_allowed", message: "reserved" },
+          { field: "content", code: "too_long", message: "too long" },
+        ],
+      }),
   });
   sourcePage(server);
   const dialog = await pasteDialog(user);
@@ -218,6 +223,12 @@ test("pasted Markdown shows a server title refusal without clearing the draft", 
   await user.click(within(dialog).getByRole("button", { name: "Add source" }));
 
   await waitFor(() => expect(dialog.textContent).toContain("Windows reserves this name"));
+  // The body's problem in its note, a form's size in the colour of a problem (M13/P5/S3, 4.3.7; review C's cxx).
+  const note = document.getElementById(`${within(dialog).getByRole("textbox", { name: "Markdown" }).id}-note`);
+  expect([note?.textContent, note?.className]).toEqual([
+    "The page is over 5 MiB: shorten it to save it.",
+    "text-compact text-destructive",
+  ]);
   expect(within(dialog).getByRole("textbox", { name: "Title" })).toHaveProperty("value", "Evidence");
   expect(within(dialog).getByRole("textbox", { name: "Markdown" })).toHaveProperty(
     "value",
