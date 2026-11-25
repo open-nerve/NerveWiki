@@ -570,36 +570,50 @@ test("a reader's note and a writer's Undone before are notes under the facts", a
 
 // M13/P5/S2 (decisions 946, 951, 954): on its way, not found, its address no changeset's, the changeset's column is
 // where the read page's is, below an empty row laid out as its head's row: the trail alone, for whoever reads it (no
-// one undoes under an upgrade, which alone has a banner to keep in its place).
-test("a changeset on its way lays its head's row out empty, the trail alone, as a reader's changeset read lays it", async () => {
-  const { server, rework } = reworked("reader");
-  const held = gateOf();
-  server.historyWaits.changeset = held.promise;
-  renderApp(changesetPath(rework.id), server.app);
-  const loading = await waitFor(() => {
-    const found = within(screen.getByRole("main")).getByText("Loading…", { selector: "output" });
-    expect(found.closest(".max-w-180")).not.toBeNull();
-    return found;
-  });
-  const empty = (loading.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
-  const shape = {
-    hidden: empty?.getAttribute("aria-hidden"),
-    row: empty?.className,
-    text: empty?.textContent,
-    blocks: [...(empty?.children ?? [])].map((block) => block.className),
-  };
+// one undoes under an upgrade, which alone has a banner to keep in its place). Each branch is a PageColumn of its own,
+// each held here (P5S2C-F1-N2).
+test.each([
+  ["on its way", "loading"],
+  ["not found", "missing"],
+  ["at an address of no changeset's id", "noId"],
+] as const)(
+  "a changeset %s lays its head's row out empty, the trail alone, as a reader's changeset read lays it",
+  async (_, branch) => {
+    const { server, rework } = reworked("reader");
+    const held = gateOf();
+    if (branch === "loading") {
+      server.historyWaits.changeset = held.promise;
+    }
+    const address = { loading: rework.id, missing: changesetId(9997), noId: "rework" }[branch];
+    renderApp(changesetPath(address), server.app);
+    const inside = await waitFor(() => {
+      const main = within(screen.getByRole("main"));
+      const found =
+        branch === "loading"
+          ? main.getByText("Loading…", { selector: "output" })
+          : main.getByRole("heading", { level: 1, name: "Page not found" });
+      expect(found.closest(".max-w-180")).not.toBeNull();
+      return found;
+    });
+    const empty = (inside.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
 
-  act(() => held.open());
-  const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
-  const row = trail.parentElement as HTMLElement;
-  expect(shape).toEqual({
-    hidden: "true",
-    row: row.className,
-    text: "",
-    blocks: [cn(trail.className, "h-[1lh] text-compact")],
-  });
-  expect(row.children).toHaveLength(1);
-});
+    expect({
+      hidden: empty?.getAttribute("aria-hidden"),
+      row: empty?.className,
+      text: empty?.textContent,
+      blocks: [...(empty?.children ?? [])].map((block) => block.className),
+    }).toEqual({ hidden: "true", row: headRowClass, text: "", blocks: [cn(headCrumbsClass, "h-[1lh] text-compact")] });
+    if (branch === "loading") {
+      // The changeset read: its head's row the same, its trail alone in it.
+      act(() => held.open());
+      const trail = await screen.findByRole("navigation", { name: "Breadcrumb" });
+      const row = trail.parentElement as HTMLElement;
+      expect(trail.className).toBe(headCrumbsClass);
+      expect(row.className).toBe(headRowClass);
+      expect(row.children).toHaveLength(1);
+    }
+  }
+);
 
 /** gateOf is a wait a test opens: what waits for its promise goes on once open is called. */
 function gateOf() {
