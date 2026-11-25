@@ -119,6 +119,9 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       expect(within(card as HTMLElement).getByText("Wiki pages that need a summary property.").className).toBe(
         factsClass
       );
+      expect(within(card as HTMLElement).getByRole("heading", { name: "Missing summary" }).className).toBe(
+        "text-sm font-semibold outline-none"
+      );
     },
   ],
 ];

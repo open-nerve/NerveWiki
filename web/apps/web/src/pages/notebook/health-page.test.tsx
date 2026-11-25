@@ -557,7 +557,13 @@ test("the results output already exists while the summary is loading and stays f
 // its notes 13px and grey; its rules cards (list-rows.test.tsx has a rule's row), the clear ones' summary a group's
 // title. jsdom lays nothing out: these hold the classes, the look is in the screenshots (05-P5 7.4).
 test("the health page is a list's page: its title in a row with Recheck on its right, its notes and its clear checks' summary as a list's", async () => {
-  const fixture = healthServer();
+  const user = userEvent.setup();
+  // The summary as the lint fake answers it, until a recheck is held.
+  const hold: { answer?: Answer; until?: Promise<Response> } = {};
+  const fixture = healthServer("llm_wiki", {
+    [summaryRoute]: (request) => hold.until ?? (hold.answer as Answer)(request),
+  });
+  hold.answer = lintRoutes(fixture.notebooks)[summaryRoute];
   fixture.value.rules = { orphans: fixture.value.rules.orphans };
   renderApp(healthPath, fixture.server.app);
   const title = await screen.findByRole("heading", { level: 1, name: "Health" });
@@ -574,4 +580,8 @@ test("the health page is a list's page: its title in a row with Recheck on its r
   expect(screen.getByText("No issues (7 checks)").className).toBe(
     "cursor-pointer text-compact font-semibold text-muted-foreground"
   );
+  // Rechecking, its note a list's too.
+  hold.until = new Promise(() => undefined);
+  await user.click(recheck);
+  expect((await screen.findByText("Rechecking health…")).className).toBe(noteClass);
 });

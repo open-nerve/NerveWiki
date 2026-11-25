@@ -98,7 +98,10 @@ test("without attachments, a reader sees no section; a writer sees its title, Up
   renderApp(pagePath(guide.id), writer.app);
   const section = await attachments();
   expect(within(section).getByRole("button", { name: "Upload" })).toBeDefined();
-  await within(section).findByText("Drop files here to upload them.");
+  // Faint, a hint's (M13/P5/S3, decision 933).
+  expect((await within(section).findByText("Drop files here to upload them.")).className).toBe(
+    "text-compact text-faint"
+  );
 });
 
 test("a list that cannot be read says why, and is read on Try again; read again, it shows what changed elsewhere", async () => {

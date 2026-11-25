@@ -648,5 +648,7 @@ test.each([
     const card = within(screen.getByRole("heading", { name: "Orphan pages" }).closest("section") as HTMLElement);
     await waitFor(() => expect(card.getAllByRole("listitem")[1]?.textContent).toBe("Guide.md"));
     expect(card.getAllByRole("listitem")[0]?.textContent).toBe(said);
+    // In the path's line (14px, 500), grey and of the text's weight (M13/P5/S3, decision 925).
+    if (said !== "") expect(card.getByText(said).className).toBe("font-normal text-muted-foreground");
   }
 );

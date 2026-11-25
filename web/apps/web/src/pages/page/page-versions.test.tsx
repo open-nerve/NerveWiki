@@ -140,6 +140,8 @@ test("a version's row is its time and who wrote it as one run of text, the name 
   ]);
   // Each mark after a space, in the run's text: "Ada · Edit Current Editing".
   expect(said?.textContent).toBe("5 minutes agoAda · Edit Current Editing");
+  // Broken where a long name must be, the row's width its own.
+  expect(said?.className).toBe("min-w-0 flex-1 break-words");
 });
 
 // M13/P5/S3 (decisions 930, 943): the plain mark is round as a badge is; both kinds one piece, their words kept on
