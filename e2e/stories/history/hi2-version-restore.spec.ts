@@ -4,6 +4,7 @@ import { expectVersions, type StoredVersion } from "../../fixtures/assert/page";
 import { displayNameOf, emailFor } from "../../fixtures/auth";
 import { failedToLoad } from "../../fixtures/browser";
 import { joinAs, joinOnboarded } from "../../fixtures/invitations";
+import { expectFits } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage, endSession, openSession, postRestore, readContent, writeContent } from "../../fixtures/pages";
@@ -92,6 +93,15 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
 
   await goto(page, versionPath(workspace.slug, notebook.id, notes.id, 1));
   await expect(main.getByRole("article", { name: "Version 1", exact: true })).toContainText("See Alpha.");
+  // 320 wide, the version's title on one line, Restore in the head's row above it (decision 929; P4's handoff).
+  await page.setViewportSize({ width: 320, height: 800 });
+  const title = main.getByRole("heading", { level: 1, name: "Version 1", exact: true });
+  const lines = await title.evaluate(
+    (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
+  );
+  expect(lines).toBeLessThan(1.5);
+  await expectFits(page, title, main.getByRole("button", { name: "Restore this version", exact: true }));
+  await page.setViewportSize({ width: 1280, height: 800 });
   await main.getByRole("button", { name: "Restore this version", exact: true }).click();
   const dialog = restoreDialog(page, 1);
   await expect(dialog).toContainText("The page now → Version 1");
@@ -110,8 +120,8 @@ test("HI2 (page): A restores an older version: the page shows it, its title focu
   await expect(main.getByRole("article", { name: "Notes", exact: true }).getByRole("link")).toHaveText("Alpha");
   const listed = versionsListed(page);
   await expect(listed).toHaveCount(3);
-  // Who wrote it, then the marks at the line's end (M13/P4/S1, decision 863).
-  await expect(listed.first()).toContainText(`${displayNameOf(adminEmail)} · RestoreCurrent`);
+  // Who wrote it, then its marks, after a space (M13/P5/S3, decision 943).
+  await expect(listed.first()).toContainText(`${displayNameOf(adminEmail)} · Restore Current`);
   expect(await readContent(api, pat, notes.id)).toMatchObject({ content: first, revision: 3 });
   await expectIndexedLinks(db, notes.id, [{ kind: "wikilink", property: null, target: "Alpha", resolved: alpha.id }]);
   const versions: StoredVersion[] = [

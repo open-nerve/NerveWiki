@@ -4,6 +4,7 @@ import { expect, test } from "vitest";
 import { factsClass, lineLinkClass } from "../app/page-classes";
 import { cn } from "../lib/cn";
 import { notebookJSON } from "../test/fakes";
+import { healthPath, healthServer } from "../test/health-server";
 import { changesetId, created, wrote } from "../test/history-server";
 import { indexPath, indexServer } from "../test/index-server";
 import { guide, notes, pageServer } from "../test/page-server";
@@ -97,6 +98,27 @@ const rows: [string, () => Promise<Row>, ((row: HTMLElement) => Promise<void>)?]
       const region = await screen.findByRole("region", { name: "Directory pages" });
       const row = within(region).getAllByRole("listitem")[0] as HTMLElement;
       return { row, link: within(row).getAllByRole("link")[0] as HTMLElement };
+    },
+  ],
+  [
+    "the health's item",
+    async () => {
+      renderApp(healthPath, healthServer().server.app);
+      const listed = await screen.findByRole("list", { name: "Missing summary" });
+      const row = within(listed).getAllByRole("listitem")[0] as HTMLElement;
+      // Its path, once the tree is read.
+      return { row, link: await within(row).findByRole("link") };
+    },
+    async (row) => {
+      // The rule's card the section itself, its list below a line under its facts (M13/P5/S3, 4.3.3).
+      const card = row.closest("section");
+      expect(card?.className).toBe("min-w-0 space-y-2 rounded-card border border-border bg-surface px-4.5 py-4");
+      expect(row.parentElement?.className).toBe("divide-y divide-border border-t border-border");
+      expect(classesOf(row)).toEqual(expect.arrayContaining(["py-2.5"]));
+      expect(classesOf(row)).not.toContain("py-3");
+      expect(within(card as HTMLElement).getByText("Wiki pages that need a summary property.").className).toBe(
+        factsClass
+      );
     },
   ],
 ];

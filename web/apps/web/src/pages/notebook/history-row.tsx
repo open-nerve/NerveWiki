@@ -13,7 +13,7 @@ import { useFocusLeaving } from "../../lib/focus-leaving";
 import { shortId } from "../../lib/twins";
 import type { Changeset } from "../../services/page.service";
 import { useStore } from "../../stores/context";
-import { Mark } from "../page/page-versions";
+import { Mark, markClass } from "../page/page-versions";
 import { byText, changesetName, changesText, clientText, countsText } from "./changeset-text";
 import { IngestMark, IngestSources } from "./history-ingest";
 
@@ -116,7 +116,9 @@ export const HistoryRow = observer(function HistoryRow({
               to={href(newest)}
               state={arrived}
               aria-label={t("history.revertedLabel", { name })}
-              className="rounded border px-1.5 text-xs underline underline-offset-4"
+              // A mark as Trimmed is, one shape of them in the row (decision 930): its edge and words darker as it is
+              // hovered, as a card is, not underlined, which its border would cross (review B's P5B-R1-N3).
+              className={cn(markClass, "hover:border-border-strong hover:text-foreground")}
             >
               {t("history.reverted")}
             </Link>

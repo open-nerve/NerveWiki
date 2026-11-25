@@ -2,7 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { stackedLinesClass } from "../../app/page-classes";
+import { cardClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
+import { cn } from "../../lib/cn";
 import type { UpgradeCheck, UpgradeReport } from "../../services/upgrade.service";
 import { eventServer, withEvents } from "../../test/event-server";
 import { json, notebookJSON, problem, workspaceJSON } from "../../test/fakes";
@@ -1265,3 +1268,18 @@ test.each([
     expect(reads.count).toBe(2);
   }
 );
+
+// M13/P5/S3 (decision 932): the check's gates are a card's rows, as a list's page has them; its clear checks' summary
+// as the health page's.
+test("the check's gates are rows of a card; its clear checks' summary a group's title", async () => {
+  const user = userEvent.setup();
+  const { section } = await opened(serverOf());
+  await checked(user, section, passedAt);
+
+  const list = within(section).getByRole("list", { name: "The checks" });
+  expect(list.className).toBe(cn(cardClass, "text-sm"));
+  expect(list.children).toHaveLength(8);
+  expect(new Set([...list.children].map((row) => row.className))).toEqual(new Set([stackedLinesClass]));
+  const summary = section.querySelector("details > summary");
+  expect(summary?.className).toBe("cursor-pointer text-compact font-semibold text-muted-foreground");
+});

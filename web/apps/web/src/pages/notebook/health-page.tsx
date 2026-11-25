@@ -4,11 +4,15 @@ import { useLocation } from "react-router";
 import useSWR, { SWRConfig, useSWRConfig, type Unloader } from "swr";
 
 import { useArrivalFocus } from "../../app/arrival";
+import { ColumnTop } from "../../app/column-top";
 import { useDocumentTitle } from "../../app/document-title";
 import { NotLoaded } from "../../app/not-loaded";
+import { listColumnClass, noteClass, titleRowClass, titleTextClass } from "../../app/page-classes";
+import { pageTitleClass } from "../../app/settings-page";
 import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT } from "../../i18n/i18n";
+import { cn } from "../../lib/cn";
 import type { Notebook } from "../../services/notebook.service";
 import type { LintRule, LintSummary } from "../../services/wiki.service";
 import { usePageTree, useStore, useWiki } from "../../stores/context";
@@ -18,7 +22,15 @@ import { watchReader } from "../page/readers-input";
 import { useWorkspace } from "../workspace/workspace-layout";
 import { healthNodeId } from "./health-item";
 import { healthCancelled, healthRequest, healthRetry, type HealthScope } from "./health-request";
-import { clearText, HealthRule, healthRuleOrder, staleText, type HealthCard, type HealthRuleItem } from "./health-rule";
+import {
+  clearSummaryClass,
+  clearText,
+  HealthRule,
+  healthRuleOrder,
+  staleText,
+  type HealthCard,
+  type HealthRuleItem,
+} from "./health-rule";
 import { useNotebook } from "./notebook-layout";
 
 type HealthView = {
@@ -269,13 +281,23 @@ const HealthResults = observer(function HealthResults({
       />
     );
   }
+  // A list's page (decision 932): the banner at the top of its column, its title in a row with Recheck on its right,
+  // below the title too; its notes a list's; each rule a card (health-rule.tsx).
   return (
-    <section className="min-w-0 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold outline-none">
+    <section className={cn(listColumnClass, "min-w-0")}>
+      <ColumnTop />
+      <div className={titleRowClass}>
+        <h1 ref={heading} tabIndex={-1} className={cn(pageTitleClass, titleTextClass)}>
           {title}
         </h1>
-        <Button variant="outline" aria-busy={view.checking || undefined} onClick={recheck}>
+        <Button
+          variant="outline"
+          size="sm"
+          shape="pill"
+          className="ms-auto"
+          aria-busy={view.checking || undefined}
+          onClick={recheck}
+        >
           {t("health.recheck")}
         </Button>
       </div>
@@ -289,13 +311,13 @@ const HealthResults = observer(function HealthResults({
         <NotLoaded error={view.error} retry={recheck} />
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
+          <p className={noteClass}>
             {t("health.computedAt")} <time dateTime={data.computed_at}>{formatDateTime(data.computed_at, locale)}</time>
           </p>
-          {view.checking && <p className="text-sm">{t("health.checking")}</p>}
+          {view.checking && <p className={noteClass}>{t("health.checking")}</p>}
           {view.error !== undefined && <NotLoaded error={view.error} retry={recheck} />}
-          {mismatch && <p className="text-sm">{t("health.modeChanged")}</p>}
-          {data.stale_pages > 0 && <p className="text-sm">{staleText(t, locale, data.stale_pages)}</p>}
+          {mismatch && <p className={noteClass}>{t("health.modeChanged")}</p>}
+          {data.stale_pages > 0 && <p className={noteClass}>{staleText(t, locale, data.stale_pages)}</p>}
           {tree.error !== undefined && (
             <fieldset aria-label={t("health.paths")}>
               <NotLoaded error={tree.error} retry={() => void tree.retry().catch(() => undefined)} />
@@ -304,13 +326,11 @@ const HealthResults = observer(function HealthResults({
           {found.map(card)}
           {clear.length > 0 && (
             <details ref={details} className="space-y-3">
-              <summary className="cursor-pointer font-medium">{clearText(t, clear.length)}</summary>
+              <summary className={clearSummaryClass}>{clearText(t, clear.length)}</summary>
               {clear.map(card)}
             </details>
           )}
-          {found.some((rule) => rule.next_cursor !== null) && (
-            <p className="text-sm text-muted-foreground">{t("health.paginationNote")}</p>
-          )}
+          {found.some((rule) => rule.next_cursor !== null) && <p className={noteClass}>{t("health.paginationNote")}</p>}
         </>
       )}
     </section>

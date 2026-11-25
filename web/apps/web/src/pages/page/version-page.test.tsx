@@ -2,6 +2,9 @@ import { act, configure, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
+import { docFactsClass, headActionsClass } from "../../app/page-classes";
+import { buttonClass } from "../../components/ui/button";
 import { eventHandlers } from "../../events/handlers";
 import { appLinks } from "../../reading/app-links";
 import type { Enhancement } from "../../reading/enhancement";
@@ -9,11 +12,16 @@ import { taskToggle } from "../../reading/task-toggle";
 import { unresolvedLinks } from "../../reading/unresolved-links";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventServer, withEvents } from "../../test/event-server";
+import { deferred } from "../../test/health-server";
+import { changesetId, wrote } from "../../test/history-server";
 import { json, notebookJSON, problem, workspaceJSON, type Answer } from "../../test/fakes";
+import { cn } from "../../lib/cn";
 import { marked } from "../../test/page-editor";
 import { bob, guide, install, pagePath, pageServer, versionJSON } from "../../test/page-server";
 import { renderApp } from "../../test/render";
 import { lockNote } from "../../test/lock-note";
+import { docColumnClass, docShellClass, docTitleClass, headCrumbsClass, headRowClass } from "./page-layout";
+import { markClass } from "./page-versions";
 
 // A version's page (M8 design 4.3, 4.13; P1 design 4.4).
 
@@ -709,4 +717,162 @@ test("a version gone to within its notebook whose tree could not be read says wh
   // The failure is the notebook's own, as it shows: not one from before it was left.
   expect(await within(screen.getByRole("main")).findByRole("button", { name: "Try again" })).toBeTruthy();
   expect(server.sent.filter((each) => each === "GET nodes")).toHaveLength(1);
+});
+
+// M13/P5/S3 (decisions 929, 930, 940): a version's page headed as a page is. Its trail and Restore this version in the
+// head's row, Restore before the title as the page's Edit is; the writer's cell there before the versions are read, so
+// that the head keeps its lines as Restore comes; the version's Current the right column's amber mark; its author's
+// link arrived at.
+
+/** headRowOf is the head's row the page's trail is in. */
+function headRowOf(): HTMLElement {
+  const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
+  expect(trail.className).toBe(headCrumbsClass);
+  return trail.parentElement as HTMLElement;
+}
+
+test("a version's page has its trail and Restore this version in its head's row, before its title, in a column of a page's, its facts under its title", async () => {
+  const server = installed();
+  renderApp(versionPath(install.id, 4), server.app);
+  const restore = await screen.findByRole("button", { name: "Restore this version" });
+  const heading = screen.getByRole("heading", { level: 1, name: "Version 4" });
+
+  const row = headRowOf();
+  expect(row.className).toBe(headRowClass);
+  expect(row.parentElement?.className).toBe(docShellClass);
+  const cell = row.children[1] as HTMLElement;
+  expect(cell.className).toBe(cn(headActionsClass, "min-h-7.5 flex-[0_1_10rem]"));
+  expect(cell.contains(restore)).toBe(true);
+  expect(restore.className).toBe(buttonClass({ variant: "outline", size: "sm", shape: "pill" }));
+  expect(screen.getByRole("navigation", { name: "Breadcrumb" }).compareDocumentPosition(restore)).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING
+  );
+  expect(restore.compareDocumentPosition(heading)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(heading.className).toBe(docTitleClass);
+  expect(heading.closest(`.${CSS.escape("max-w-180")}`)?.className).toBe(cn(docColumnClass, "space-y-5"));
+  const facts = (await screen.findByRole("link", { name: "Ada · Edit" })).closest("p");
+  expect(facts?.className).toBe(cn(docFactsClass, "flex flex-wrap items-center gap-x-2 gap-y-1"));
+  expect(heading.nextElementSibling).toBe(facts);
+  expect(facts?.nextElementSibling?.className).toBe("mt-1 block text-compact text-muted-foreground empty:sr-only");
+});
+
+test("the newest version's Current is the right column's mark, amber; Editing the plain one", async () => {
+  const server = installed();
+  server.withVersions(install.id, [
+    versionJSON(1, null, "Install\n"),
+    versionJSON(3, 1, "Install\nmore\n", { by: bob, editing: true }),
+  ]);
+  server.hold(install.id, bob);
+  renderApp(versionPath(install.id, 3), server.app);
+
+  const current = await screen.findByText("Current");
+  // The right column's: amber on its soft ground, round, one piece.
+  expect([...current.classList]).toEqual(
+    expect.arrayContaining(["rounded-full", "bg-accent-soft", "text-accent", "whitespace-nowrap"])
+  );
+  expect(screen.getByText("Editing").className).toBe(markClass);
+});
+
+test.each([
+  ["an admin", "admin", true],
+  ["an editor", "editor", true],
+  ["a reader", "reader", false],
+] as const)(
+  "%s opening a version before its page's versions are read: the head's cell for Restore a writer's alone, there already",
+  async (_who, role, cell) => {
+    const gate = deferred<void>();
+    const server = installed(role, {
+      // The versions' list, answered once the test opens the gate.
+      "GET /api/v0/pages/*/versions": async () => {
+        server.sent.push("GET versions Install");
+        await gate.promise;
+        const listed = (server.versions.get(install.id) ?? []).toReversed();
+        return json({ data: listed.map(({ content: _, ...version }) => version), next_cursor: null });
+      },
+    });
+    renderApp(versionPath(install.id, 4), server.app);
+    await screen.findByRole("tab", { name: "Read" });
+    await waitFor(() => expect(server.sent).toContain("GET versions Install"));
+
+    const row = headRowOf();
+    expect(row.children).toHaveLength(cell ? 2 : 1);
+    const held = row.children[1];
+    expect(screen.queryByRole("button", { name: "Restore this version" })).toBeNull();
+    if (!cell) {
+      return;
+    }
+    expect(held?.className).toContain("min-h-7.5");
+    expect(held?.children).toHaveLength(0);
+    // The versions read: Restore in the same cell, the row as it was.
+    act(() => gate.resolve());
+    const restore = await screen.findByRole("button", { name: "Restore this version" });
+    expect(headRowOf()).toBe(row);
+    expect(row.children[1]).toBe(held);
+    expect(held?.contains(restore)).toBe(true);
+  }
+);
+
+// The early branches' empty head row laid out as the read version's (decisions 946, 951): the cell a writer's, the
+// trail alone a reader's; no one writes under an upgrade, which alone has a banner to keep in its place.
+test.each([
+  ["a writer's", "on its way", "admin", "loading"],
+  ["a writer's", "of a page not found", "admin", "gone"],
+  ["a reader's", "on its way", "reader", "loading"],
+  ["a reader's", "of a page not found", "reader", "gone"],
+] as const)("%s version %s lays its head's row out empty as the version read lays it", async (_, __, role, branch) => {
+  const server = installed(role);
+  if (branch === "loading") {
+    server.nodesHeld = true;
+  }
+  renderApp(versionPath(branch === "gone" ? "0199a2b4-0000-7000-8000-0000000001ff" : install.id, 4), server.app);
+  const inside = await waitFor(() => {
+    const main = within(screen.getByRole("main"));
+    const found =
+      branch === "loading"
+        ? main.getByText("Loading…", { selector: "output" })
+        : main.getByRole("heading", { level: 1, name: "Page not found" });
+    expect(found.closest(".max-w-180")).not.toBeNull();
+    return found;
+  });
+  const empty = (inside.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
+  const group = cn(headActionsClass, "min-h-7.5 flex-[0_1_10rem]");
+
+  expect({
+    hidden: empty?.getAttribute("aria-hidden"),
+    row: empty?.className,
+    text: empty?.textContent,
+    blocks: [...(empty?.children ?? [])].map((block) => block.className),
+  }).toEqual({
+    hidden: "true",
+    row: headRowClass,
+    text: "",
+    blocks: [cn(headCrumbsClass, "h-[1lh] text-compact"), ...(role === "admin" ? [group] : [])],
+  });
+  if (branch === "loading") {
+    // The version read: its head's row the same, the trail and the writer's cell.
+    act(() => server.release());
+    await screen.findByRole("heading", { level: 1, name: "Version 4" });
+    expect([...headRowOf().children].map((block) => block.className)).toEqual([
+      headCrumbsClass,
+      ...(role === "admin" ? [group] : []),
+    ]);
+  }
+});
+
+test("a version's author leads to its changeset arrived at, its title taking the focus", async () => {
+  const user = userEvent.setup();
+  const server = installed();
+  const made = changesetId(9301);
+  // The version of revision 4 made in a changeset the history has.
+  const fourth = server.versions.get(install.id)?.find((version) => version.revision === 4);
+  if (fourth === undefined) throw new Error("installed has a version 4");
+  fourth.changeset = { ...fourth.changeset, id: made };
+  server.log("the version's", { id: made, changes: [wrote(install, 1, 4)] });
+  const { router } = renderApp(versionPath(install.id, 4), server.app);
+
+  await user.click(await screen.findByRole("link", { name: "Ada · Edit" }));
+
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  const title = await screen.findByRole("heading", { level: 1, name: "Edit · Ada" });
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });

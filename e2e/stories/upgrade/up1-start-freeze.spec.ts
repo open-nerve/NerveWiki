@@ -29,7 +29,7 @@ import {
   upgradeTitle,
 } from "../../fixtures/upgrade-pages";
 import { getUpgrade, startUpgrade } from "../../fixtures/upgrades";
-import { changesetPath, editorContent, wikiPagePath } from "../../fixtures/wiki-pages";
+import { changesetPath, editorContent, versionPath, wikiPagePath } from "../../fixtures/wiki-pages";
 import { newOnboardedTeam, newTeam } from "../../fixtures/workspaces";
 
 // UP1, an upgrade's start and its freeze (M11/P1 design 5): an admin
@@ -170,7 +170,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375, a changeset's and a page's preview in the trash on their way where they read have it at 1440, 768 and 375; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375, a changeset's, a page's preview in the trash and a version's page on their way where they read have it at 1440, 768 and 375; nothing is refused", async ({
   api,
   db,
   signedInPage,
@@ -307,6 +307,16 @@ test("UP1 (page): an admin starts the upgrade in the notebook's settings and lan
     [375, await bannerPlaces(tab, gonePath, item, "Gone", 375)],
   ] as const) {
     expect(at.read, `a preview's banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
+  }
+  // M13/P5/S3 (decision 951): a version's page, its tree held, likewise: its empty row the trail alone, as the version
+  // read has it, no one restoring under an upgrade: "Field notes / Plan / Version 1" is one line at each width.
+  const versionOf = versionPath(workspace.slug, notebook.id, plan.id, 1);
+  for (const [width, at] of [
+    [1440, await bannerPlaces(tab, versionOf, nodes, "Version 1", 1440)],
+    [768, await bannerPlaces(tab, versionOf, nodes, "Version 1", 768)],
+    [375, await bannerPlaces(tab, versionOf, nodes, "Version 1", 375)],
+  ] as const) {
+    expect(at.read, `a version's banner read at ${String(width)}, as it was on its way`).toEqual(at.loading);
   }
   expect(pageWatch.apiFailures).toEqual([]);
 });

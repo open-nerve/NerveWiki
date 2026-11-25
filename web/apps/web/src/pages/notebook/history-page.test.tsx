@@ -5,6 +5,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { arrived } from "../../app/arrival";
 import { filterBarClass, filterChipClass, filterFieldClass, listColumnClass } from "../../app/page-classes";
 import { cardClass, pageTitleClass } from "../../app/settings-page";
+import { cn } from "../../lib/cn";
 import type { NotebookRole } from "../../services/notebook.service";
 import { eventHandlers } from "../../events/handlers";
 import { eventServer, withEvents } from "../../test/event-server";
@@ -13,6 +14,7 @@ import { changesetId, created, deleted, moved, renamed, reordered, restored, wro
 import { assetNode, bob, guide, install, linux, notes, pageNode, pageServer } from "../../test/page-server";
 import { readAgain } from "../../test/page-panel";
 import { renderApp } from "../../test/render";
+import { markClass } from "../page/page-versions";
 
 // A notebook's history (M8 design 4.7, 4.13; M8/P3 design 4.2).
 
@@ -119,6 +121,11 @@ test("the history lists its changesets newer first, each by its kind and who mad
       .getAttribute("href")
   ).toBe(`${historyPath}/${undo.id}`);
   expect(within(renaming as HTMLElement).getByRole("link", { name: /^Undone/ }).textContent).toBe("Undone");
+  // A mark as the others are, round (M13/P5/S3, decision 930): its edge and words darker as it is hovered, no line.
+  const undone = within(renaming as HTMLElement).getByRole("link", { name: /^Undone/ });
+  expect(undone.className).toBe(cn(markClass, "hover:border-border-strong hover:text-foreground"));
+  expect([...undone.classList]).toEqual(expect.arrayContaining(["rounded-full", "hover:border-border-strong"]));
+  expect([...undone.classList]).not.toContain("underline");
   expect(server.sent).toContain("GET changesets");
 });
 

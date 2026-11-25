@@ -2,7 +2,11 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
+import { listColumnClass, noteClass } from "../../app/page-classes";
+import { cardClass, pageTitleClass } from "../../app/settings-page";
 import { eventHandlers } from "../../events/handlers";
+import { cn } from "../../lib/cn";
 import type { TransferJob } from "../../services/transfer.service";
 import type { Upgrade, UpgradeReport } from "../../services/upgrade.service";
 import { eventServer, withEvents } from "../../test/event-server";
@@ -2122,4 +2126,60 @@ test("sent back with its report, refused as another admin approved it meanwhile:
   expect(await screen.findByText(noneUnderWay)).toBeTruthy();
   expect(within(dialog).queryByText(stillChecked)).toBeNull();
   expect(askedOf(server)).toEqual(["GET upgrade", "SEND BACK", "GET upgrade"]);
+});
+
+// M13/P5/S3 (decisions 932, 940): the upgrade's page in a list's column, its sections as they were, their titles a size
+// down from the page's, their notes a list's, its two lists in cards; the pages its start wrote arrived at.
+
+/** The level-2 titles of the page, and their classes. */
+const sectionTitles = () =>
+  within(screen.getByRole("main"))
+    .getAllByRole("heading", { level: 2 })
+    .map((heading) => [heading.textContent, heading.className]);
+
+test("the upgrade's page is a list's page: its column, its title, its sections' titles, the check's intro a note", async () => {
+  const server = upgradeServer({ nodes: [guide, install, notes, seededRaw, seededAgents], upgrade: bobsUpgrade() });
+  renderApp(upgradePath, server.app);
+  await screen.findByRole("heading", { level: 2, name: "Check" });
+
+  expect(title().className).toBe(pageTitleClass);
+  expect(title().parentElement?.tagName).toBe("DIV");
+  expect(title().parentElement?.className).toBe(cn(listColumnClass, "space-y-8"));
+  expect(sectionTitles()).toEqual([
+    ["Where it is", "text-base font-semibold"],
+    ["Connect an agent", "text-base font-semibold"],
+    ["Check", "text-base font-semibold"],
+  ]);
+  expect(screen.getByText(/^Checks whether this notebook keeps/).className).toBe(noteClass);
+});
+
+test("a rollback's job is a card's row; a report's section is titled as the others", async () => {
+  const job = underWay(rollbackJobJSON(70), 1, 4);
+  const server = upgradeServer({ jobs: [job], upgrade: rollbackOf(job) });
+  const view = renderApp(upgradePath, server.app);
+  const rollback = await section("Rollback");
+
+  expect((await within(rollback).findByRole("list", { name: "The rollback's job" })).className).toBe(cardClass);
+  expect(sectionTitles()).toEqual([
+    ["Where it is", "text-base font-semibold"],
+    ["Rollback", "text-base font-semibold"],
+  ]);
+  view.unmount();
+  renderApp(upgradePath, upgradeServer({ nodes: reviewTree, upgrade: reviewed() }).app);
+  await screen.findByRole("heading", { level: 2, name: "Check report" });
+  expect(sectionTitles().at(-1)).toEqual(["Check report", "text-base font-semibold"]);
+  expect(screen.getByText(/^The check at its submission/).className).toBe(noteClass);
+});
+
+test("a page the upgrade wrote leads to it arrived at, its title taking the focus", async () => {
+  const user = userEvent.setup();
+  const server = upgradeServer({ nodes: [guide, install, notes, seededRaw, seededAgents], upgrade: bobsUpgrade() });
+  const { router } = renderApp(upgradePath, server.app);
+  const state = await section("Where it is");
+
+  await user.click(await within(state).findByRole("link", { name: "AGENTS" }));
+
+  await waitFor(() => expect(router.state.location.state).toEqual(arrived));
+  const heading = (await screen.findAllByRole("heading", { level: 1, name: "AGENTS" }))[0] as HTMLElement;
+  await waitFor(() => expect(document.activeElement).toBe(heading));
 });

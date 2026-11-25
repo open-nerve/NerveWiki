@@ -2,6 +2,10 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, test } from "vitest";
 
+import { listColumnClass, noteClass, titleRowClass, titleTextClass } from "../../app/page-classes";
+import { pageTitleClass } from "../../app/settings-page";
+import { buttonClass } from "../../components/ui/button";
+import { cn } from "../../lib/cn";
 import { json, notebookJSON, type Answer } from "../../test/fakes";
 import { lintRoutes, type LintFacts } from "../../test/lint-server";
 import { assetNode, guide, install, linux, notes, pageNode, pageServer } from "../../test/page-server";
@@ -547,4 +551,27 @@ test("the results output already exists while the summary is loading and stays f
   );
   await waitFor(() => expect(output.textContent).toBe("8 checks completed."));
   expect(health().getByRole("status", { name: "Health results" })).toBe(output);
+});
+
+// M13/P5/S3 (decision 932): a list's page, in the 720px column; its title in a row with Recheck, a pill on its right;
+// its notes 13px and grey; its rules cards (list-rows.test.tsx has a rule's row), the clear ones' summary a group's
+// title. jsdom lays nothing out: these hold the classes, the look is in the screenshots (05-P5 7.4).
+test("the health page is a list's page: its title in a row with Recheck on its right, its notes and its clear checks' summary as a list's", async () => {
+  const fixture = healthServer();
+  fixture.value.rules = { orphans: fixture.value.rules.orphans };
+  renderApp(healthPath, fixture.server.app);
+  const title = await screen.findByRole("heading", { level: 1, name: "Health" });
+  const computedAt = await screen.findByText("Computed at", { exact: false });
+
+  expect(title.closest("section")?.className).toBe(cn(listColumnClass, "min-w-0"));
+  expect(title.className).toBe(cn(pageTitleClass, titleTextClass));
+  expect(title.parentElement?.className).toBe(titleRowClass);
+  const recheck = health().getByRole("button", { name: "Recheck" });
+  expect(recheck.parentElement).toBe(title.parentElement);
+  expect(recheck.className).toBe(buttonClass({ variant: "outline", size: "sm", shape: "pill" }, "ms-auto"));
+  expect(computedAt.className).toBe(noteClass);
+  expect(screen.getByText(/have an outdated index/).className).toBe(noteClass);
+  expect(screen.getByText("No issues (7 checks)").className).toBe(
+    "cursor-pointer text-compact font-semibold text-muted-foreground"
+  );
 });

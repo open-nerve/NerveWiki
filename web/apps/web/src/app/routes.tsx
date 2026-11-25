@@ -194,8 +194,10 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
-                            // A version of a page, by a revision it holds (M8 design 4.3).
+                            // A version of a page, by a revision it holds (M8 design 4.3); the banner at the top of
+                            // its column, each branch's (M13/P5/S3, decision 915).
                             path: "pages/:pageId/versions/:revision",
+                            handle: { column: true },
                             lazy: async () => {
                               const { VersionPage } = await import("../pages/page/version-page");
                               return { Component: VersionPage };
@@ -230,15 +232,19 @@ export const routes: RouteObject[] = [
                             },
                           },
                           {
+                            // The banner at the top of the health page's column (M13/P5/S3, decision 915).
                             path: "health",
+                            handle: { column: true },
                             lazy: async () => {
                               const { HealthPage } = await import("../pages/notebook/health-page");
                               return { Component: HealthPage };
                             },
                           },
                           {
-                            // The notebook's upgrade under way, its admins' (M11/P1 design 4.4).
+                            // The notebook's upgrade under way, its admins' (M11/P1 design 4.4); the banner at the top
+                            // of its column (M13/P5/S3, decision 915).
                             path: "upgrade",
+                            handle: { column: true },
                             lazy: async () => {
                               const { UpgradePage } = await import("../pages/notebook/upgrade-page");
                               return { Component: UpgradePage };
