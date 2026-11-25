@@ -177,6 +177,8 @@ export const routes: RouteObject[] = [
                         children: [
                           {
                             index: true,
+                            // The banner at the top of the home's column (M13/P5/S1, decision 915).
+                            handle: { column: true },
                             lazy: async () => {
                               const { NotebookHomePage } = await import("../pages/notebook/notebook-home");
                               return { Component: NotebookHomePage };

@@ -1,3 +1,4 @@
+import { Box } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -7,7 +8,8 @@ import { arrived } from "../../app/arrival";
 import { useFollowRole } from "../../app/follow-role";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
-import { cardTextClass, SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { SettingsCard, SettingsSection, useSettingsHeading } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Alert } from "../../components/ui/alert";
 import { useT } from "../../i18n/i18n";
 import { twinsOf } from "../../lib/twins";
@@ -149,7 +151,9 @@ const OwnerlessSection = observer(function OwnerlessSection({ workspace }: { wor
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : ownerless.list.length === 0 ? (
         <SettingsCard>
-          <p className={cardTextClass}>{t("ownerless.none")}</p>
+          <EmptyState icon={Box} size="card">
+            {t("ownerless.none")}
+          </EmptyState>
         </SettingsCard>
       ) : (
         <SettingsCard list label={t("workspaceSettings.ownerless")}>

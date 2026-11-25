@@ -110,7 +110,10 @@ test("each token shows when it was created, when it expires and when it was last
 test("without tokens the page says so", async () => {
   tokensPage();
 
-  expect(await screen.findByText("You have no access tokens.")).toBeTruthy();
+  const line = await screen.findByText("You have no access tokens.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(line.tagName).toBe("P");
+  expect(line.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test("a new token needs a name and the password, checked here first", async () => {

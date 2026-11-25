@@ -1,6 +1,15 @@
 import { Pencil } from "lucide-react";
 import { observer } from "mobx-react-lite";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import { Navigate, useNavigation, useParams } from "react-router";
 import useSWR, { useSWRConfig } from "swr";
 
@@ -73,27 +82,39 @@ export const PageLayout = observer(function PageLayout() {
   if (found !== undefined && found !== last) {
     setLast(found);
   }
-  // The upgrade's banner at the top of the page's column, the tree read or not, the page found or not (decision 857).
+  // The upgrade's banner at the top of a column, the tree read or not, the page found or not (decisions 857, 915): the
+  // same column as the page's content, so that it moves not as the page comes.
   if (pages.tree === undefined || !pages.confirmed) {
     return (
-      <>
-        <ColumnTop />
+      <PageColumn>
         <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
-      </>
+      </PageColumn>
     );
   }
   const page = found ?? (last?.id === pageId && store.unsavedEdit({ pageId }) ? last : undefined);
   if (page === undefined) {
     // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
     return (
-      <>
-        <ColumnTop />
+      <PageColumn>
         <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />
-      </>
+      </PageColumn>
     );
   }
   return <PageShell key={page.id} notebook={notebook} page={page} gone={found === undefined} />;
 });
+
+/** The page's column, as a page's content column is (decision 915): local in S1, exported in S2 with the strings. */
+const docColumnClass = "mx-auto w-full max-w-180";
+
+/** PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. */
+function PageColumn({ children }: { children: ReactNode }) {
+  return (
+    <div className={docColumnClass}>
+      <ColumnTop />
+      {children}
+    </div>
+  );
+}
 
 /**
  * PageGone answers the page id the notebook's tree does not have, a page's
@@ -427,7 +448,7 @@ const PageShell = observer(function PageShell({
               )}
             </div>
           </div>
-          <div className="mx-auto w-full max-w-180">
+          <div className={docColumnClass}>
             <ColumnTop />
             <h1
               ref={heading}

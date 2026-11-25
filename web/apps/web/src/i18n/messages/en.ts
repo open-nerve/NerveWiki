@@ -85,6 +85,8 @@ export const en = {
   "notebooks.modeLLMWiki": "LLM Wiki",
   "notebooks.modeLLMWikiHint":
     "Agents keep a wiki from the sources you add. It starts with two pages in this page's language: raw for the sources, AGENTS for the rules.",
+  "notebooks.membersOne": "1 member",
+  "notebooks.members": "{count} members",
   "access.legend": "Workspace access",
   "access.none": "Private",
   "access.noneHint": "Only its members see it.",
@@ -94,6 +96,8 @@ export const en = {
   "access.editorHint": "The workspace's admins and members can edit it; a guest, once added.",
   "notebook.homeEmpty": "No pages yet.",
   "notebook.pages": "Pages",
+  "notebook.subpagesOne": "1 subpage",
+  "notebook.subpages": "{count} subpages",
   "notebook.places": "More of {notebook}",
   "notebook.settingsOf": "Settings of {notebook}",
   "notebook.upgradeReadOnly": "This notebook is read-only until its upgrade ends.",

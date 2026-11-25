@@ -24,6 +24,12 @@ export function useSettingsHeading(): RefObject<HTMLHeadingElement | null> {
 export const settingsColumnClass = "mx-auto w-full max-w-178 md:px-2 md:pt-5";
 
 /**
+ * A page's title of the settings' kind (decision 925): 26px, a settings page's h1 (SettingsPage, 28px above its groups)
+ * and the homes' and the lists' pages' (M13/P5).
+ */
+export const pageTitleClass = "text-[26px] leading-normal font-[650] tracking-[-0.01em] break-words outline-none";
+
+/**
  * SettingsPage is a page of the settings' mode (00-M13 4.4.2; M13/P3/S1, decisions 815, 820, 844): its name as its h1,
  * which takes the arrival focus as it mounts (the layouts key it by the page: arrived at twice in one layout, from the
  * drawer, each page's h1 mounts anew and takes it), above its groups; above its h1, a notebook's upgrade banner
@@ -36,11 +42,7 @@ export function SettingsPage({ title, children }: { title: string; children: Rea
   return (
     <div className={cn(settingsColumnClass, "md:pb-4")}>
       <ColumnTop />
-      <h1
-        ref={heading}
-        tabIndex={-1}
-        className="mb-7 text-[26px] leading-normal font-[650] tracking-[-0.01em] break-words outline-none"
-      >
+      <h1 ref={heading} tabIndex={-1} className={cn("mb-7", pageTitleClass)}>
         {title}
       </h1>
       <SettingsHeading value={heading}>
@@ -81,8 +83,14 @@ export function SettingsSection({
 }
 
 /**
- * SettingsCard is a group's card: 14px corners, a line between its rows, no shadow; list, a list of them (ordered, an
- * ordered one: the audit's, the jobs'), named by label.
+ * A card (the mockup's .card): 14px corners, a line between its rows, no shadow. SettingsCard's, and a list's that
+ * SettingsCard cannot draw, its own attributes on it (M13/P5, decision 925).
+ */
+export const cardClass = "divide-y divide-border rounded-card border border-border bg-surface";
+
+/**
+ * SettingsCard is a group's card (cardClass); list, a list of them (ordered, an ordered one: the audit's, the jobs'),
+ * named by label.
  */
 export function SettingsCard({
   list = false,
@@ -95,20 +103,19 @@ export function SettingsCard({
   label?: string;
   children: ReactNode;
 }) {
-  const className = "divide-y divide-border rounded-card border border-border bg-surface";
   if (ordered) {
     return (
-      <ol aria-label={label} className={className}>
+      <ol aria-label={label} className={cardClass}>
         {children}
       </ol>
     );
   }
   return list ? (
-    <ul aria-label={label} className={className}>
+    <ul aria-label={label} className={cardClass}>
       {children}
     </ul>
   ) : (
-    <div className={className}>{children}</div>
+    <div className={cardClass}>{children}</div>
   );
 }
 
@@ -144,9 +151,6 @@ export function WholeParts({ parts }: { parts: readonly string[] }) {
     </Fragment>
   ));
 }
-/** A card's line of text: a list with nothing in it. */
-export const cardTextClass = "px-4.5 py-3.5 text-sm text-muted-foreground";
-
 /** A card's row (the mockup's .set): its text on the left, its control on the right, under the text below md. */
 export const rowClass = "flex min-h-16 flex-wrap items-center gap-x-6 gap-y-2.5 px-4.5 py-3.5";
 /** The row's text: its title, its description. */

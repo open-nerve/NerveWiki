@@ -100,7 +100,10 @@ test("an admin sees the invitations pending, newest first", async () => {
 test("without invitations pending, the section says so", async () => {
   renderApp("/lab/settings/members", invitationsServer({ pending: [] }).app);
 
-  expect(await screen.findByText("No invitations pending.")).toBeTruthy();
+  const line = await screen.findByText("No invitations pending.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(line.tagName).toBe("P");
+  expect(line.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test.each(["member", "guest"] as const)("a %s sees no invitations, which are not even read", async (role) => {

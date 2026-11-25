@@ -180,7 +180,10 @@ test("two notebooks of one former owner with one name each show the end of their
 test("with none, the page says so", async () => {
   renderApp(page, ownerlessServer({ list: [] }).app);
 
-  expect(await screen.findByText("No ownerless notebooks.")).toBeTruthy();
+  const line = await screen.findByText("No ownerless notebooks.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(line.tagName).toBe("P");
+  expect(line.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test.each(["member", "guest"] as const)(
@@ -528,7 +531,10 @@ test("an empty audit says so; one that cannot be read says why, and Try again re
   server.pages = { "": { data: [], next_cursor: null } };
   await user.click(within(section).getByRole("button", { name: "Try again" }));
 
-  expect(await within(section).findByText("Nothing yet.")).toBeTruthy();
+  const none = await within(section).findByText("Nothing yet.");
+  // Said with an icon, read by no one, in a paragraph (M13/P5/S1, decision 938).
+  expect(none.tagName).toBe("P");
+  expect(none.previousElementSibling?.getAttribute("aria-hidden")).toBe("true");
 });
 
 test("going from one workspace's ownerless notebooks straight to another's lists the other's, and its audit", async () => {

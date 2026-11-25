@@ -84,6 +84,8 @@ export const zhCN: Messages = {
   "notebooks.modeLLMWiki": "LLM Wiki",
   "notebooks.modeLLMWikiHint":
     "agent 依据你们添加的来源维护一本 wiki。它从两页开始，用这个页面的语言写成：放来源的 raw，写约定的 AGENTS。",
+  "notebooks.membersOne": "1 位成员",
+  "notebooks.members": "{count} 位成员",
   "access.legend": "在工作区里的开放程度",
   "access.none": "私密",
   "access.noneHint": "只有它的成员看得到。",
@@ -93,6 +95,8 @@ export const zhCN: Messages = {
   "access.editorHint": "工作区的管理员与成员都能编辑；访客要加入它才看得到。",
   "notebook.homeEmpty": "还没有页面。",
   "notebook.pages": "页面",
+  "notebook.subpagesOne": "1 个子页面",
+  "notebook.subpages": "{count} 个子页面",
   "notebook.places": "{notebook}的更多",
   "notebook.settingsOf": "{notebook}的设置",
   "notebook.upgradeReadOnly": "升级结束之前，这本笔记本只读。",

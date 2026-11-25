@@ -240,7 +240,7 @@ test("a row of the tree holds no menu of its own and no router link, until one i
   expect(list.querySelectorAll("a")).toHaveLength(many);
   expect(discovering(list)).toBe(0);
   // The shell's router links do: this tells the guard still sees what a router's link is.
-  expect(screen.getByRole("link", { name: "Notebook settings" }).getAttribute("data-discover")).toBe("true");
+  expect(screen.getByRole("link", { name: "Settings of Plans" }).getAttribute("data-discover")).toBe("true");
 }, 30_000);
 
 test("following a page of a tree of 1,000 renders the two rows whose mark changes", async () => {

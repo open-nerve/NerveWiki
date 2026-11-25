@@ -5,7 +5,7 @@ import { createMemoryRouter, RouterProvider, type InitialEntry } from "react-rou
 import { expect, test, vi } from "vitest";
 
 import { arrived } from "./arrival";
-import { SavedOutput, SettingsPage, SettingsRow, useSettingsHeading } from "./settings-page";
+import { cardClass, SavedOutput, SettingsCard, SettingsPage, SettingsRow, useSettingsHeading } from "./settings-page";
 
 // A page of the settings' mode (M13/P3/S1, decisions 815, 820): its name its h1, which takes the arrival focus.
 
@@ -83,4 +83,21 @@ test("a row's controls follow the store they read: SettingsRow draws them in its
   act(() => runInAction(() => (theme.dark = true)));
 
   expect(screen.getByRole("status", { name: "Theme" }).textContent).toBe("Dark");
+});
+
+test("a card is cardClass, a list of them too: the one card the lists' pages and the homes share (M13/P5/S1, decision 925)", () => {
+  render(
+    <>
+      <SettingsCard list label="Tokens">
+        <li>deploy</li>
+      </SettingsCard>
+      <SettingsCard>
+        <p>None</p>
+      </SettingsCard>
+    </>
+  );
+
+  expect(screen.getByRole("list", { name: "Tokens" }).className).toBe(cardClass);
+  expect(screen.getByText("None").parentElement?.className).toBe(cardClass);
+  expect(cardClass).toBe("divide-y divide-border rounded-card border border-border bg-surface");
 });

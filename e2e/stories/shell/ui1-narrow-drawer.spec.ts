@@ -1,8 +1,9 @@
 import type { ApiClient, AuthTokens } from "@nervewiki/api-client";
-import type { Page, TestInfo } from "@playwright/test";
+import type { Locator, Page, TestInfo } from "@playwright/test";
 
 import { expectFits, phoneWidth } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
+import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
 import { createPage } from "../../fixtures/pages";
 import { drawerButton, openDrawer, shell } from "../../fixtures/shell-pages";
@@ -150,4 +151,85 @@ test("UI1 (page): a page opened from the drawer's tree closes it, the page's tit
   await searchResults(page).getByRole("link", { name: "Q1", exact: true }).click();
   await expect(pageHeading(page, "Q1")).toBeFocused();
   await expect(pageHeading(page, "Q1")).toBeInViewport();
+});
+
+/**
+ * longName is 60 characters without a space, hyphens before digits, as a name taken from a date may have them, where
+ * Firefox breaks no line (UAX #14's HY × NU, as PG17's unbroken; review B's P4S1B-F1).
+ */
+const longName = `Notes-${"2026-11-25-".repeat(5).slice(0, 54)}`;
+
+/** How many lines of its own line height element is high: 1 for a line, 2 or more for a name broken. */
+function lines(box: Locator): Promise<number> {
+  return box.evaluate(
+    (element) => element.getBoundingClientRect().height / parseFloat(getComputedStyle(element).lineHeight)
+  );
+}
+
+/** Whether box's text is cut short: wider than the box it shows in. */
+function cut(box: Locator): Promise<boolean> {
+  return box.evaluate((element) => element.scrollWidth > element.clientWidth);
+}
+
+// M13/P5/S1 (decisions 916, 917, 919, 931): the cards one abreast at a phone's width, their grid's track written (no
+// auto track widened by a name cut short), the name on one line, cut; the notebook's title broken, New page below it on
+// the right; the list of pages a row a name, cut, its subpages said by the link's description.
+test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to the screen, a long name cut on its card and in the list of pages, broken in the title", async ({
+  api,
+  signedInPage,
+}, testInfo) => {
+  expect(longName).toHaveLength(60);
+  const { pat, tokens, workspace } = await newOnboardedTeam(api, testInfo);
+  const plans = await createNotebook(api, pat, workspace.slug, "Plans");
+  await createNotebook(api, pat, workspace.slug, "Wiki", undefined, { mode: "llm_wiki" });
+  const long = await createNotebook(api, pat, workspace.slug, longName);
+  const longPage = await createPage(api, pat, plans.id, longName);
+  await createPage(api, pat, plans.id, "Child", longPage.id);
+  const page = await signedInPage(tokens);
+  const main = page.getByRole("main");
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+
+  await goto(page, `/${workspace.slug}`);
+  const card = main.getByRole("link", { name: longName });
+  await expect(card).toBeVisible();
+  await expectFits(page, card);
+  await expect(main.getByRole("link", { name: "Wiki" })).toContainText("LLM Wiki");
+  await expect(card).toContainText("· 1 member");
+  const cardName = card.getByText(longName, { exact: true });
+  expect(await lines(cardName)).toBeLessThan(1.5);
+  expect(await cut(cardName)).toBe(true);
+
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expectFits(page, card);
+
+  await page.setViewportSize({ width: phoneWidth, height: 800 });
+  await goto(page, notebookPath(workspace.slug, long.id));
+  const title = main.getByRole("heading", { level: 1, name: longName, exact: true });
+  await expect(title).toBeVisible();
+  const newPage = main.getByRole("button", { name: "New page", exact: true });
+  expect(await lines(title)).toBeGreaterThanOrEqual(1.5);
+  const [titleBox, newPageBox] = [await title.boundingBox(), await newPage.boundingBox()];
+  // Below the title, on the right as the title is: the title takes the width the button leaves, the button ms-auto.
+  expect(newPageBox?.y ?? 0).toBeGreaterThanOrEqual((titleBox?.y ?? 0) + (titleBox?.height ?? 0));
+  expect(
+    Math.abs((newPageBox?.x ?? 0) + (newPageBox?.width ?? 0) - (titleBox?.x ?? 0) - (titleBox?.width ?? 0))
+  ).toBeLessThan(1);
+  await expectFits(page, title, newPage);
+
+  await goto(page, notebookPath(workspace.slug, plans.id));
+  const row = main
+    .getByRole("list", { name: "Pages", exact: true })
+    .getByRole("listitem")
+    .filter({ hasText: longName });
+  await expect(row).toBeVisible();
+  await expectFits(page, row);
+  const rowName = row.getByText(longName, { exact: true });
+  expect(await lines(rowName)).toBeLessThan(1.5);
+  expect(await cut(rowName)).toBe(true);
+  // The number of its subpages outside the link, read by no one: the link's description says it.
+  await expect(row.getByRole("link")).toHaveAccessibleDescription("1 subpage");
+  // A short title keeps New page beside it: under sm the title is as wide as its words (review B's P5B-R1-M1).
+  const plansTitle = await main.getByRole("heading", { level: 1, name: "Plans", exact: true }).boundingBox();
+  const beside = await newPage.boundingBox();
+  expect(beside?.y ?? 0).toBeLessThan((plansTitle?.y ?? 0) + (plansTitle?.height ?? 0));
 });

@@ -1,3 +1,4 @@
+import { ArrowLeftRight } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import { useLocation } from "react-router";
@@ -6,8 +7,9 @@ import useSWR from "swr";
 import { useMounted } from "../../app/mounted";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
-import { cardTextClass, SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
+import { SettingsCard, SettingsRow, SettingsSection } from "../../app/settings-page";
 import { frozenByUpgrade, writesNotebook } from "../../app/effective-role";
+import { EmptyState } from "../../components/empty-state";
 import { Button } from "../../components/ui/button";
 import { useT } from "../../i18n/i18n";
 import type { Notebook } from "../../services/notebook.service";
@@ -232,7 +234,9 @@ const JobsSection = observer(function JobsSection({
           {error !== undefined && <NotLoaded error={error} retry={reread} />}
           {jobs.length === 0 ? (
             <SettingsCard>
-              <p className={cardTextClass}>{t("transfer.none")}</p>
+              <EmptyState icon={ArrowLeftRight} size="card">
+                {t("transfer.none")}
+              </EmptyState>
             </SettingsCard>
           ) : (
             <SettingsCard ordered label={t("transfer.jobsTitle")}>

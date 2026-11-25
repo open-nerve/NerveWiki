@@ -2,6 +2,7 @@ import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, expect, test, vi } from "vitest";
 
+import { arrived } from "../../app/arrival";
 import type { Notebook } from "../../services/notebook.service";
 import type { Workspace } from "../../services/workspace.service";
 import { json, notebookJSON, ownerlessJSON, problem, signedInApp, workspaceJSON, type Answer } from "../../test/fakes";
@@ -39,12 +40,12 @@ test("the home shows each group's notebooks as cards leading to them", async () 
     within(mine)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["PlansPrivate"]);
+  ).toEqual(["PlansPrivate · 1 member"]);
   expect(
     within(team)
       .getAllByRole("link")
       .map((link) => link.textContent)
-  ).toEqual(["AtlasWorkspace can edit"]);
+  ).toEqual(["AtlasWorkspace can edit · 1 member"]);
   await user.click(within(team).getByRole("link"));
 
   expect(await screen.findByRole("heading", { level: 1, name: "Atlas" })).toBeTruthy();
@@ -80,12 +81,88 @@ test.each([
   ).toEqual(offered);
 });
 
-test("with notebooks, the home offers no New notebook: the left column does", async () => {
-  renderApp("/lab", labApp([notebookJSON]));
+// M13/P5/S1 (decisions 918, 942): after the two groups, in no list, a dashed New notebook for who creates them.
+test("with notebooks, the home offers New notebook after the groups, in no list: the left column's dialog, Escape's focus back on it", async () => {
+  const user = userEvent.setup();
+  renderApp("/lab", labApp([atlas, notebookJSON]));
+  const home = await main();
+
+  await within(home).findByRole("list", { name: "My notebooks" });
+  const create = within(home).getByRole("button", { name: "New notebook" });
+  expect(
+    within(home)
+      .queryAllByRole("button")
+      .map((button) => button.textContent)
+  ).toEqual(["New notebook"]);
+  expect(create.closest("ul")).toBeNull();
+  const team = within(home).getByRole("list", { name: "Team notebooks" });
+  expect(team.compareDocumentPosition(create)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  await user.click(create);
+  const dialog = await screen.findByRole("dialog", { name: "New notebook" });
+  expect(within(dialog).getByLabelText("Name")).toBeTruthy();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await waitFor(() => expect(document.activeElement).toBe(create));
+});
+
+test("a guest's home with notebooks offers no New notebook", async () => {
+  renderApp("/lab", labApp([atlas, notebookJSON], "guest"));
   const home = await main();
 
   await within(home).findByRole("list", { name: "My notebooks" });
   expect(within(home).queryAllByRole("button")).toEqual([]);
+});
+
+const wiki: Notebook = {
+  ...notebookJSON,
+  id: "0199a2b4-0000-7000-8000-0000000000c3",
+  name: "Research notes for the spring",
+  mode: "llm_wiki",
+  workspace_access: "viewer",
+  member_count: 2,
+};
+const big: Notebook = {
+  ...notebookJSON,
+  id: "0199a2b4-0000-7000-8000-0000000000c4",
+  name: "Company",
+  workspace_access: "editor",
+  member_count: 1200,
+};
+
+/** The text of each card of the team's list, in its order. */
+const teamCards = async (home: HTMLElement) =>
+  within(await within(home).findByRole("list", { name: "Team notebooks" }))
+    .getAllByRole("link")
+    .map((link) => link.textContent);
+
+test("a card: its icon read by no one, its name titled, an LLM Wiki's badge, its access and its members, counted as the locale writes numbers (decision 917)", async () => {
+  renderApp("/lab", labApp([wiki, big]));
+  const home = await main();
+
+  expect(await teamCards(home)).toEqual([
+    "Research notes for the springLLM WikiWorkspace can read · 2 members",
+    "CompanyWorkspace can edit · 1,200 members",
+  ]);
+  const card = within(home).getByRole("link", { name: /^Research notes for the spring/ });
+  const icon = card.querySelector("svg")?.parentElement;
+  expect(icon?.getAttribute("aria-hidden")).toBe("true");
+  expect(within(card).getByText("Research notes for the spring").getAttribute("title")).toBe(
+    "Research notes for the spring"
+  );
+  expect(within(card).getByText("LLM Wiki")).toBeTruthy();
+  expect(within(home).getByRole("link", { name: /^Company/ }).textContent).not.toContain("LLM Wiki");
+});
+
+test("in Chinese, a card's members: one, and more as the locale writes numbers", async () => {
+  const app = labApp([notebookJSON, { ...big, member_count: 2 }]);
+  app.preferences.setLocale("zh-CN");
+  renderApp("/lab", app);
+  const home = (await screen.findByRole("heading", { level: 1, name: "Lab" })).closest("section") as HTMLElement;
+
+  const mine = await within(home).findByRole("list", { name: "我的笔记本" });
+  expect(within(mine).getByRole("link").textContent).toBe("Plans私密 · 1 位成员");
+  const team = within(home).getByRole("list", { name: "团队笔记本" });
+  expect(within(team).getByRole("link").textContent).toBe("Company工作区成员可编辑 · 2 位成员");
 });
 
 // The home's New notebook goes with the empty state the creation ends: the
@@ -152,6 +229,22 @@ test("an admin with ownerless notebooks reads how many, with a way to them", asy
 
   expect(await screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" })).toBeTruthy();
   expect(router.state.location.pathname).toBe("/lab/settings/ownerless");
+});
+
+// M13/P5/S1 (decision 924): Review them leaves the workspace's shell for the settings', arrived at.
+test("the reminder's Review them arrives at the ownerless notebooks: their page's title takes the focus", async () => {
+  const user = userEvent.setup();
+  const app = labApp([notebookJSON], "admin", {
+    "GET /api/v0/workspaces/lab/ownerless-notebooks": () => json({ data: [ownerlessJSON] }),
+  });
+  const { router } = renderApp("/lab", app);
+  const home = await main();
+
+  await user.click(await within(home).findByRole("link", { name: "Review them" }));
+
+  const title = await screen.findByRole("heading", { level: 1, name: "Ownerless notebooks" });
+  expect(router.state.location.state).toEqual(arrived);
+  await waitFor(() => expect(document.activeElement).toBe(title));
 });
 
 test.each([

@@ -1,3 +1,4 @@
+import { ScrollText } from "lucide-react";
 import { observer } from "mobx-react-lite";
 import { useState } from "react";
 import useSWR from "swr";
@@ -6,7 +7,8 @@ import { useFollowRole } from "../../app/follow-role";
 import { memberWho } from "../../app/member-summary";
 import { NotLoaded } from "../../app/not-loaded";
 import { errorText } from "../../app/problem-messages";
-import { cardTextClass, SettingsCard, SettingsSection } from "../../app/settings-page";
+import { SettingsCard, SettingsSection } from "../../app/settings-page";
+import { EmptyState } from "../../components/empty-state";
 import { Button } from "../../components/ui/button";
 import { formatDateTime } from "../../i18n/format";
 import { useT, type Translate } from "../../i18n/i18n";
@@ -69,7 +71,9 @@ export const AuditSection = observer(function AuditSection({ workspace }: { work
         <NotLoaded error={error} retry={() => void mutate()} />
       ) : audit.events.length === 0 ? (
         <SettingsCard>
-          <p className={cardTextClass}>{t("audit.none")}</p>
+          <EmptyState icon={ScrollText} size="card">
+            {t("audit.none")}
+          </EmptyState>
         </SettingsCard>
       ) : (
         <SettingsCard ordered label={t("audit.title")}>
