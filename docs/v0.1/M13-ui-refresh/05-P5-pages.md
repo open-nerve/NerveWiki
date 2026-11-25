@@ -3,8 +3,8 @@
 | 项 | 内容 |
 |---|---|
 | Phase | M13/P5 其余页面（三个 Step：S1 首页与入口；S2 列表与筛选；S3 版本、健康、升级、附件与对话框） |
-| 日期 | 2026-11-25（初稿；同日照设计审查修订（审查记录由主持者写进 `reviews/P5-design-review.md`；三份审查全部接受，主持者的决定 940–945），又照修订核对第 1 轮再修订（三份报告全部接受，没有新的决定），照修订核对第 2 轮三修（A、C 的报告全部接受，B 没有新的发现，没有新的决定）；主持者照修订核对第 3 轮改了 A、C 的两条 Minor 与两条 Nit（大半用审查 C 给的文字，没有新的决定），又照第 4 轮改了 C 的一条 Minor 与一条 Nit（用 C 的文字）之后定稿；修订的依据写在各条里）；同日照 S1 的实施与审查修订（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，主持者的决定 946–951） |
-| 状态 | 设计定稿（2026-11-25）：B 在修订核对第 2 轮、A 在第 4 轮没有新的发现；C 第 4 轮的一条 Minor（主持者换了 2.1 第 12 条的锚点，重放的基随之改成 `3e288acb`，四处说法跟着改）与一条 Nit 由主持者用 C 的文字改，C 在第 5 轮核对过（没有 Important、Minor，最后一条 Nit 由主持者补上）、在改后的全文上重放过；[审查记录](reviews/P5-design-review.md)，主持者的决定 912–945；S1 实施与审查完成（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，主持者的决定 946–951），合并 `326034d3` |
+| 日期 | 2026-11-25（初稿；同日照设计审查修订（审查记录由主持者写进 `reviews/P5-design-review.md`；三份审查全部接受，主持者的决定 940–945），又照修订核对第 1 轮再修订（三份报告全部接受，没有新的决定），照修订核对第 2 轮三修（A、C 的报告全部接受，B 没有新的发现，没有新的决定）；主持者照修订核对第 3 轮改了 A、C 的两条 Minor 与两条 Nit（大半用审查 C 给的文字，没有新的决定），又照第 4 轮改了 C 的一条 Minor 与一条 Nit（用 C 的文字）之后定稿；修订的依据写在各条里）；同日照 S1 的实施与审查修订（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，主持者的决定 946–951）；同日照 S2 的实施与审查修订（[S2 的审查记录](reviews/P5-S2-lists-review.md)，主持者的决定 952–954） |
+| 状态 | 设计定稿（2026-11-25）：B 在修订核对第 2 轮、A 在第 4 轮没有新的发现；C 第 4 轮的一条 Minor（主持者换了 2.1 第 12 条的锚点，重放的基随之改成 `3e288acb`，四处说法跟着改）与一条 Nit 由主持者用 C 的文字改，C 在第 5 轮核对过（没有 Important、Minor，最后一条 Nit 由主持者补上）、在改后的全文上重放过；[审查记录](reviews/P5-design-review.md)，主持者的决定 912–945；S1 实施与审查完成（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，主持者的决定 946–951），合并 `326034d3`；S2 实施与审查完成（[S2 的审查记录](reviews/P5-S2-lists-review.md)，主持者的决定 952–954），合并 `<待填>` |
 | 上级文档 | [M13 总设计](00-M13-design.md) 4.6（全部）、4.2.3 末句（"已登录的邀请页与出错页回去的路留给 P5"）、4.3"空状态""加载"两条、4.4.2（卡片与行）、4.7、4.8（变异的最低清单里"把 `--faint` 或 `--accent` 调淡"一条）、第 7 节 P5 两行、第 9 节"全部 e2e 在 P5 之后完整跑一次"；[04-P4](04-P4-reading.md) 第 9 节"P5"一条（`main` 的留白、升级横幅与内容列、版本页等的头、`Mark` 的 `current`、右栏的一行灰字、`sectionAt` 的尾随斜杠、版本页标题在 320 宽、右栏版本行的"-"）；[03-P3](03-P3-settings.md) 第 9 节"P5"与"P4、P5 的卡片"两条（通往设置的内容链接、设置里的空列表、八处标签组、卡片用 `SettingsCard`）；[01-P1](01-P1-foundation.md) 第 9 节"P5"（空状态与骨架）与"P2–P5"（标签组）两条；[v0.1 总体设计](../v0.1-design.md) 9.2、12.2、13.2 第 17、31 条、13.4 第 3 条；移交 [M12-polish](../../v0.2/handoffs/M12-polish.md) 第 1、5 项（编号沿用 [M5-polish](../M12-release/handoffs/M5-polish.md) 的条目） |
 | 视觉参照 | 没有 P5 自己的样稿。外观照三份样稿里已有的部件：[mockups/settings.html](mockups/settings.html) 的页（26 px 的标题、13 px 灰的分组标题、14 px 圆角的卡片与行、`.badge`）用于列表类的页与首页的卡片；[mockups/reading.html](mockups/reading.html) 的头一行（`.topbar`、`.crumb`）、32 px 的标题与 720 px 的一列用于版本页、变更集页与回收站的预览，`.meta .dot` 用于升级横幅的小圆点；[mockups/palette.html](mockups/palette.html) 的配色与按钮。外观的结论以正文的类名为准（第 1 节 (b)、(h)）：初稿的静态参照页与正文有几处不同（审查 B 的 P5B-N8），修订时不再引它们，另照正文的类名写探针页 |
 | 代码位置的写法 | 同 00 号文档：`W/` 是 `web/apps/web/src/`；e2e 写作 `e2e/stories/…:行`。行号是 `f62d0390`（P4 完成时 `m13-ui-refresh` 的头）的；之后的 `9871c7d4`、`3e288acb`（CI 的两处修复，04-P4 10.4）只改了 pg17、`e2e/fixtures/notebook-pages.ts` 与三份文档，本文引的行里只有 pg17:654（今天 `:677`）与 `notebook-pages.ts:17-37,55`（今天 `:17-41,59`）挪了；2.1、8.2 照今天的头 `3e288acb` 做（2.1 第 12 条的旧文字是 `3e288acb` 加的 CI 修复那一行的末句，`f62d0390` 上没有），32 处各恰好一次（审查 C 的 `p5-rev-c/r4b/`） |
@@ -208,7 +208,7 @@
 
 ### 2.3 本文的决定（主持者的决定，负责人可以改判）
 
-912–939 是初稿的；修订时照设计审查改了其中 913、915–925、927–935、937 的文字（各条里写明依据，审查的编号如 P5A-I1）。940–945 是主持者照设计审查定的（审查记录"主持者的决定"），写法由设计者补在第 4 节与这里。修订核对第 1 轮之后再修订（三份报告全部接受，没有新的决定）：919、925、930、932、935、940、941、943 的文字照它改了（各条里写明依据，报告的编号如 P5A-R1-M1）。修订核对第 2 轮之后再修订（没有新的决定）：941 的文字照它改了（竞态的一格先等邀请页发出的那次读，审查 A 的 P5A-R2-M1、C 的 P5C-R2-M1）。修订核对第 3 轮之后主持者改（没有新的决定）：941 的文字（否定的两格在旧树上红在等列表那一步，审查 A 的 P5A-R3-M1、C 的 P5C-R3-M1）与 944 的文字（M13 在 CI 上跑过一次，run 45551442052，C 的 P5C-R3-M2）。946–951 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)"主持者的决定"，括注是发现的编号）；照它们与 S1 的实施又改了 915、922、923、944 的文字（各条里写明"S1 的实施与审查之后"）。
+912–939 是初稿的；修订时照设计审查改了其中 913、915–925、927–935、937 的文字（各条里写明依据，审查的编号如 P5A-I1）。940–945 是主持者照设计审查定的（审查记录"主持者的决定"），写法由设计者补在第 4 节与这里。修订核对第 1 轮之后再修订（三份报告全部接受，没有新的决定）：919、925、930、932、935、940、941、943 的文字照它改了（各条里写明依据，报告的编号如 P5A-R1-M1）。修订核对第 2 轮之后再修订（没有新的决定）：941 的文字照它改了（竞态的一格先等邀请页发出的那次读，审查 A 的 P5A-R2-M1、C 的 P5C-R2-M1）。修订核对第 3 轮之后主持者改（没有新的决定）：941 的文字（否定的两格在旧树上红在等列表那一步，审查 A 的 P5A-R3-M1、C 的 P5C-R3-M1）与 944 的文字（M13 在 CI 上跑过一次，run 45551442052，C 的 P5C-R3-M2）。946–951 是 S1 的实施审查之后的（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)"主持者的决定"，括注是发现的编号）；照它们与 S1 的实施又改了 915、922、923、944 的文字（各条里写明"S1 的实施与审查之后"）。952–954 是 S2 的实施审查之后的（[S2 的审查记录](reviews/P5-S2-lists-review.md)"主持者的决定"，括注是发现的编号）；照它们与 S2 的实施又改了 929、936、937、951 的文字（各条里写明"S2 的实施与审查之后"）。
 
 - **912 三个 Step**（第 0 节）：00 号文档的 S2 拆成 S2"列表与筛选"与 S3"版本、健康、升级、附件与对话框"。理由：十一页、一百多处读它们的测试放进一次审查太大；分开之后两个 Step 各有一套共用的东西（S2 的筛选条与行，S3 的跨页部件），读它们的测试不交叉。全部 e2e 的那一次完整跑随之在 P5/S3 之后（2.1 第 1–4、13、14 条）。
 - **913 空状态的组件**（4.1.1）：`W/components/empty-state.tsx` 的 `EmptyState`，图标（`aria-hidden` 的方块里一个 lucide 图标）、一句说明（`<p>`，就是今天那一行的文字，不改）、主操作（可选，调用者给的按钮）；没有标题（00 号文档 4.3 只要"图标 + 一句说明 + 主操作"）；两种大小：`page`（页上的列表，居中、上下留白大）与 `card`（设置的卡片里、代替今天的 `cardTextClass` 那一行）。它不是 `status`，不播报：说明今天就不是，播报的照旧是各页自己的 `<output>`。图标方块的类名 `iconTileClass` 在 S1 提交 2 只在本文件用、不导出，提交 3 的 `StatusPage` 用它时才导出（审查 A 的 P5A-I2、C 的 P5C-M1：knip 照默认配置报只在本文件用的导出）。
@@ -227,16 +227,16 @@
 - **926 筛选条与标签组**（4.2.2）：筛选条 `flex flex-wrap items-end gap-x-3 gap-y-3`；每个"标签 + 下拉"的组 `flex min-w-0 max-w-full flex-col gap-1.5`，标签总在下拉之上（03-P3 第 9 节说的"可能并排"由 `flex-col` 排除），间距同 `FormField`（01-P1 第 9 节"P2–P5"，P5 的七处：`W/pages/search/search-page.tsx:221`、`W/pages/notebook/index-filters.tsx:48,60`、`W/pages/notebook/history-filters.tsx:132,143,154`、`W/pages/notebook/source-add-dialog.tsx:261`，最后一处在对话框里，照旧 `space-y-1.5`）。下拉照旧 36 px（筛选不是工具栏）；历史的"谁"至多 256 px（`max-w-64`，e2e 式的名字让它宽到 382 px，筛选条参差不齐；`NativeSelect` 的 `contain-paint` 在，截掉的名字不撑宽页，审查 B 的 P5B-N7）。页的筛选小块的圆角是 18 px（它最矮时高的一半），名字长、折成几行时是圆角的方块，不是胶囊（审查 C 顺手看到的：`rounded-full` 折行之后字贴着弧形的边）。
 - **927 行内次要操作的显出**（4.2.3）：历史行的"只看此人"与附件行的"操作"平时透明（`opacity-0`），不藏起、不 `inert`：Playwright 只点看得见的元素，透明的照样看得见（hi3:328-331 悬停之后点它）；悬停这一行、键盘的焦点在这一行里（含它自己）、它的菜单开着（`aria-expanded`）时显出；没有悬停的设备、窄屏（< 768 px）与强制色下一直显示（同左栏的齿轮，`W/pages/notebook/page-tree.tsx:39-40`）。过渡写 `transition-[opacity,color,background-color]`（同左栏的齿轮）：`cn` 把 `transition-opacity` 与 `Button` 的 `transition-colors` 当作同一组，留下前者，悬停时底色与字色的过渡就没了（审查 A 的 P5A-N2、B 的 P5B-N1）。别的行内操作（回收站的"恢复"、目录与健康的链接）照旧一直显示：它们是这一行的主操作。
 - **928 搜索**（4.2.4）：结果在卡片里，每行照旧标题（`p`，`font-medium`：se1:340 读它的字重）、位置、摘要、时刻；命中的链接不加下划线（4.7：列表里的链接不加），悬停时加。没有命中时照旧只有状态行说"没有找到。"（`W/pages/search/search-status.ts:24`），不另画空状态：两处同一句会让找它的查找撞名；没有提交时的那一行说明（`search.howTo`）换成空状态（放大镜）。
-- **929 文档类的头**（4.2.6、4.3.1）：版本页与变更集页照页的头一行：左边面包屑，右边是页级的操作（"还原这个版本"、"撤销这次改动"，`size="sm"` 的描边胶囊）；其下居中的 720 px 一列里是 32 px 的 `h1`、它下面的一行事实与其余。版本页右边那一格对能编辑这一页的人总在、定宽（`flex-[0_1_10rem]`、`min-h-7.5`），"还原这个版本"在其中出现或消失不改头一行的行数（P4 的决定 894 的规矩，P3 的决定 848 的教训）：它要等版本与版本列表都读到才知道显不显，直接打开版本的地址时版本列表常常晚到，窄屏上头一行会从一行变两行、标题与正文下移约 36 px（审查 A 的 P5A-M4；第 1 节 (h) 照正文的类名量过，有没有按钮 `h1` 的上边都一样）；读者没有这一格。代价是能编辑的人看最新的版本时，窄屏上头一行之下空着一行（30 px）。变更集页的"撤销"与 `h1` 同在 `ChangesetRead` 挂载时出现，不跳，不另留。两页的按钮在 `h1` 之前：从页首按 Tab 的次序不变；到达之后焦点在 `h1` 上，从 `h1` 起 Tab 先到事实里的链接、跳过按钮，要 Shift+Tab 回去，与页的"编辑"一样（决定 865、894：主操作统一在头一行右边；挪到 `h1` 之后就要放进列里，与页不一致），可以接受（审查 A 的 P5A-N3），记进读屏清单（第 9 节）。回收站的预览只有面包屑进头一行，"恢复"两个按钮留在标题旁：它们在预览的 `shown` 容器里（`trash-preview.tsx:409-411` 的 `useFocusLeaving`），挪出去之后预览被换掉时它们带着焦点离开、不在那个容器里，`trash-preview.test.tsx:372,395,523,603-614,632` 的焦点交接都要改写，好处只是对齐（主持者照审查 B 的 P5B-Q2 定：留在标题旁）；名字长时标题取按钮留下的宽，按钮在标题之下时仍靠右（`ms-auto`，同 919）。`HeadMeta` 与右栏开关只属于页（P4 第 9 节），这三页没有。三页标题下的事实是同一种样子（`docFactsClass`：12.5 px、`text-faint`，其中的链接 `text-muted-foreground`，同版本页与 P4 的头一行的灰字；初稿是三种字号与颜色，审查 B 的 P5B-M9），变更集页的 `ChangesetFacts` 只换类名、结构照旧（`changeset-page.test.tsx:106,257,495` 读 `h1` 的 `nextElementSibling`）。
+- **929 文档类的头**（4.2.6、4.3.1）：版本页与变更集页照页的头一行：左边面包屑，右边是页级的操作（"还原这个版本"、"撤销这次改动"，`size="sm"` 的描边胶囊）；其下居中的 720 px 一列里是 32 px 的 `h1`、它下面的一行事实与其余。版本页右边那一格对能编辑这一页的人总在、定宽（`flex-[0_1_10rem]`、`min-h-7.5`），"还原这个版本"在其中出现或消失不改头一行的行数（P4 的决定 894 的规矩，P3 的决定 848 的教训）：它要等版本与版本列表都读到才知道显不显，直接打开版本的地址时版本列表常常晚到，窄屏上头一行会从一行变两行、标题与正文下移约 36 px（审查 A 的 P5A-M4；第 1 节 (h) 照正文的类名量过，有没有按钮 `h1` 的上边都一样）；读者没有这一格。代价是能编辑的人看最新的版本时，窄屏上头一行之下空着一行（30 px）。变更集页的"撤销"与 `h1` 同在 `ChangesetRead` 挂载时出现，不跳，不另留。两页的按钮在 `h1` 之前：从页首按 Tab 的次序不变；到达之后焦点在 `h1` 上，从 `h1` 起 Tab 先到事实里的链接、跳过按钮，要 Shift+Tab 回去，与页的"编辑"一样（决定 865、894：主操作统一在头一行右边；挪到 `h1` 之后就要放进列里，与页不一致），可以接受（审查 A 的 P5A-N3），记进读屏清单（第 9 节）。回收站的预览只有面包屑进头一行，"恢复"两个按钮留在标题旁：它们在预览的 `shown` 容器里（`trash-preview.tsx:409-411` 的 `useFocusLeaving`），挪出去之后预览被换掉时它们带着焦点离开、不在那个容器里，`trash-preview.test.tsx:372,395,523,603-614,632` 的焦点交接都要改写，好处只是对齐（主持者照审查 B 的 P5B-Q2 定：留在标题旁）；名字长时标题取按钮留下的宽，按钮在标题之下时仍靠右（`ms-auto`，同 919）。`HeadMeta` 与右栏开关只属于页（P4 第 9 节），这三页没有。三页标题下的事实是同一种样子（`docFactsClass`：12.5 px、`text-faint`，其中的链接 `text-muted-foreground`，同版本页与 P4 的头一行的灰字；初稿是三种字号与颜色，审查 B 的 P5B-M9），变更集页的 `ChangesetFacts` 只换类名、结构照旧（`changeset-page.test.tsx:106,257,495` 读 `h1` 的 `nextElementSibling`）。 S2 的实施与审查之后（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：预览没有面包屑的两支（不在回收站里、已过期）照决定 946 也在头一行的位置画空的头一行（`EmptyHead`，只有面包屑一块；实施者的偏离 a，4.2.8 的照实）；预览的事实离标题与行间同变更集页（`cn(docFactsClass, "mt-3.5 space-y-1")`：14 px 与 4 px，审查 B 的 P5S2B-N3）。
 - **930 `Mark`**（4.3.2）：普通的那种换成圆角小块（同 `badgeClass` 的形状与字号，`page-versions.tsx` 导出它的类名 `markClass`）；版本页的"当前"用 `current`（琥珀，同右栏，P4 的决定 863）。历史的"Ingest"与"Trimmed"用普通的；历史行的"Reverted"链接同一种形状（`cn(markClass, "hover:border-border-strong hover:text-foreground")`，悬停时边与字变深，同卡片的悬停；不用下划线：它压在小块的下边框上，审查 B 的 P5B-R1-N3），一行里不再有两套小块（审查 B 的 P5B-M8），随 `Mark` 在 S3。
 - **931 名字的显示**：卡片里与子页面列表的行里的名字截短一行（卡片排成网格，高要齐；子页面列表与今天一样，行尾给数留了位置），名字的 `span` 带 `title`，全名照旧是链接的可访问名称；其余列表的行（搜索、历史、回收站、目录）与标题里的名字折行（`break-words`，`h1` 里没有空格的长名字用 `wrap-anywhere` 的 `span`）。初稿写成"行里的名字折行"，与 4.1.4 的 `truncate`、UI1 第 4 格的标题与 8.2 第 4 条互相矛盾（审查 A 的 P5A-N5、B 的 P5B-M4、C 的 P5C-M7），四处照这一条改。右栏版本行的单独一行"-"见决定 943。
 - **932 健康与升级**（4.3.3、4.3.4）：只换类名，结构不动：健康的每条规则照旧是带 `id` 的 `section`（`e2e/fixtures/wiki-health.ts:24-26`、lw8:625,678 数 `section[id]`），换成卡片的样子，其中的项是同一种行（决定 925）；健康页的标题行同笔记本首页（`h1` 取 `titleTextClass`，"重新检查"靠右）；升级页的根照旧是 `div`（`e2e/fixtures/upgrade-pages.ts:31` 以"含某个 `h2` 的 `section`"找各节，外面多一层 `section` 会撞名），各节照旧是 `section`，标题换样子，两个列表进卡片（各节本身不是卡片）。
 - **933 附件一节**（4.3.5）：列表进卡片，行的间距同列表类的页，"操作"照决定 927 显出，拖进来时的环用琥珀（`ring-accent`，琥珀只标状态，"可以放下"是一种状态），页的阅读视图那一块的拖放区（`attachment-drop.tsx:51`）同样换成琥珀，同一页上两个拖放区一种颜色（审查 C 顺手看到的）；不内联的附件（名字是下载的链接）在名字之后、大小之前一个灰的下载图标（`aria-hidden`），认领 M5-polish 16.7 看得见的一半；读屏那一半（名字里说"下载"）要改链接的文字，`W/test/attachments.ts:21-26` 的 `rows()` 与二十七处读它的格都读链接的 `textContent`，不做。类型的图标（`AssetIcon`）与新的下载图标、搜索结果里的图标同是 `text-faint`（审查 B 的 P5B-N2）。上传中的列表（`UploadRows`）同样进卡片、行的内边距同附件行（审查 B 的 P5B-M11），附件一节、编辑时的上传与粘贴来源的对话框一起变。小标题"附件"照旧是 `text-sm font-medium text-muted-foreground`，同页上"子页面"一节的小标题（`page-layout.tsx:507`，P4 的文件，不动；初稿把附件的改成 `text-compact font-semibold`，同一页上两个小节标题就不一样了，审查 C 顺手看到的）。页的底部与笔记本首页是同一个组件，一起变。
 - **934 对话框的内容**（4.3.7）：对话框的外框与底部的按钮 P1/S2 已换；P5 换里面手写的三处：导入与粘贴来源两个对话框里 `role=alert` 的框（`W/pages/notebook/import-dialog.tsx:139`、`source-add-dialog.tsx:135` 的 `space-y-3 rounded-md border px-4 py-3 text-sm`）换成只有边、没有底的 14 px 以内的圆角框（`rounded-lg border border-border`：暗色下框若是 `bg-surface-2`，描边按钮也是 `dark:bg-surface-2`，只剩约 1.07:1 的边，看不出是按钮，审查 B 的 P5B-N4）；粘贴来源的文本框（`source-add-dialog.tsx:263-271`）用 `Input` 抽出的共用类名 `fieldClass`（底、边、圆角、聚焦时的边与环、`focus-visible:outline-hidden`：强制色下聚焦时有透明的外框画出，13.2 第 31 条），说明换成 `text-compact`（同 `FormField` 的说明）；一处标签组（决定 926）。初稿说"以 `rounded-md border` 搜过，对话框里只有这两处"，漏了这个文本框（它的类名里就有 `rounded-md border`，审查 B 的 P5B-M10）；修订时以 `<textarea`、`rounded-md border`、`border bg-transparent` 再搜 `W/pages`、`W/components`、`W/app`（测试之外）：对话框里手写的框与字段只有这三处，其余的 `rounded-md border` 是 P5 各页的列表、卡片与横幅（第 4 节各自换），`page-layout.tsx:467` 是 P4 的页里的一个说明框（不动）。
 - **935 升级横幅的样子**（4.3.6）：`rounded-card border border-border bg-surface-2 px-4.5 py-3.5 text-sm`，第一行（升级的状态）`font-medium`，前面一个 6 px 的琥珀小圆点（样稿 reading.html 的 `.meta .dot`；3 px 的 `border-accent` 画的圆，不是填色，"琥珀只标状态"，审查 B 的 P5B-N5；对齐第一行，状态折行时不落在两行之间，审查 B 的 P5B-R1-N1）；去掉 `border-primary/40`（墨色的半透明边在暗色里发灰，与卡片的边不是一套）。文字不动，状态那一行的文字照旧是 `output` 的直接子元素的文字（`upgrade-banner.test.tsx:35-36` 的 `bannerOf` 读文字的 `parentElement`）。
-- **936 se1 暗色链接的下限重量**（4.4.3）：命中进了卡片，暗色的焦点环量的是卡片的底（`--surface`），推算约 7.31（第 1 节 (d)），今天的下限 7.82 会红；S2 照 4.7 的规则在应用里量、改成实量减 0.1，量出的值与下限写进 se1 的注释与本文 10.2。亮色不变（两种底都是白）；"在哪里找"的下拉照旧在页的底上，不变。
+- **936 se1 暗色链接的下限重量**（4.4.3）：命中进了卡片，暗色的焦点环量的是卡片的底（`--surface`），推算约 7.31（第 1 节 (d)），今天的下限 7.82 会红；S2 照 4.7 的规则在应用里量、改成实量减 0.1，量出的值与下限写进 se1 的注释与本文 10.2。亮色不变（两种底都是白）；"在哪里找"的下拉照旧在页的底上，不变。 S2 的实施与审查之后（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：量出暗色 `link` 7.311（卡片 `#212226` 上，同推算），下限写成 7.21；暗色的高亮字在卡片上 7.418（推算 7.28）；别的值见 4.4 的照实。变异 34（下限留 7.82）红在 `link`；审查 C 的 33L（琥珀调淡，暗色的 `box`、`button`、`select` 三个下限放开）红在 `link` 5.096 < 7.21：新下限守得住琥珀（P5S2C-M1）。
 - **937 移交的认领**（第 9 节、4.5）：M12-polish 第 1 项（M5-polish 的条目）与第 5、11 项里落在 P5 的页上的，逐项写明（修订时照审查 C 的 P5C-M8 补全）：
-  - 认领的：第 5 项的"回收站预览 `h1` 的长名"（S2：名字在 `wrap-anywhere` 的 `span` 里，TB1 新的一格在 375 宽核对；M12/P2 的决定 414 留下它，因为"没有现成的 375 检查"），同一页与回收站页上带名字的"在后台恢复"按钮在 375、320 宽横向溢出的那一处也在 S2 一并改（按钮可折行，TB1 那一格核对；审查 B 的 P5B-M12，它不是 M12-polish 里的条目，算进这一项的同类）；第 1 项里的 16.7 看得见的一半（S3，决定 933）。
+  - 认领的：第 5 项的"回收站预览 `h1` 的长名"（S2：名字在 `wrap-anywhere` 的 `span` 里，TB1 新的一格在 375 宽核对；M12/P2 的决定 414 留下它，因为"没有现成的 375 检查"），同一页与回收站页上带名字的"在后台恢复"按钮在 375、320 宽横向溢出的那一处也在 S2 一并改（按钮可折行，TB1 那一格核对；审查 B 的 P5B-M12，它不是 M12-polish 里的条目，算进这一项的同类）；第 1 项里的 16.7 看得见的一半（S3，决定 933）。 S2 的实施与审查之后（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：TB1 新格的名字只有字母（`` `Notes${"quarterlyroadmap".repeat(4)}` ``：Chromium 在连字符之后断，设计写的连字符加数字的名字量不出标题的 `wrap-anywhere`，审查 C 的 P5S2C-I1），第二个 `expectFits` 也量拒绝时的提示；提示里的名字随决定 952 折行（共用的 `Alert` 加 `break-words`，同"在后台恢复"算进这一项的同类）。
   - 不认领、照旧留给 v0.2 的（第 1 项）：1（笔记本首页上"某某正在编辑"的标记：要在线状态的数据，是功能）；9.4（笔记本首页的"新建页"不清掉树上拖动被拒的说明：行为）；16.2、16.4a、16.5、16.9（附件的拖放、复制、焦点：行为）；21.1、21.4、21.5、21.6、21.9、21.12、21.13（版本：行为与 Worker）；22.1、22.3–22.9（回收站：文字、焦点与竞态）；23.2（"撤销这次改动"的英文措辞：改按钮的名字要改以这个名字找它的 16 个 e2e 与 vitest 文件，含 `e2e/fixtures/wiki-pages.ts:391-401` 的 `revertWith`，不是外观）；23.5、23.6、23.7、23.9、23.15、23.18；24.4（进度的写法带单位、计数分位：改文字）；24.5（回收站页的"在后台恢复"在说明之下、离那一项的行远：放进行里要改拒绝的提示与按钮在哪、行离开时焦点给谁，是行为；"已开始"不区分同名是文字；S2 只改这个按钮的折行，见上）；26.6、26.7、26.8、26.10；27.1（搜索之后退回已删的页：行为）；31.2（历史显示 `clientInfo.title`：要服务端给）；34（目录的父页选择器：功能）；35.4、35.5、35.6、36、38.2、38.4、38.13、42–47（行为、服务端或文字）。
   - 不认领的（第 5、11 项）：同类约二十处的 `bdi`（M12/P2 决定 395 只说"其余约二十处"，没有逐处的清单；P4 第 9 节把"P4 的页之外的"交了出来）：找出它们要逐个看名字后面紧跟的是什么，是文字的方向，不是外观；P5 新加与改写的文字里，名字都在自己的盒子里（卡片的名字、子页面行的名字是弹性项，数与"开放程度 · 成员数"在别的盒子里），不与数或别的名字同一段，P5 不另加；第 5 项的"变更集页面包屑的 `current`"（要让 `BreadcrumbTrail` 收 `ReactNode`，不是外观）。
 - **938 设置里的空列表与右栏**（4.1.1）：令牌、邀请、无主笔记本、审计、任务五个空列表（`W/pages/settings/tokens-page.tsx:46`、`W/pages/workspace/invitations-section.tsx:54`、`ownerless-page.tsx:152`、`audit-section.tsx:72`、`W/pages/notebook/transfer-page.tsx:235`）换成卡片大小的空状态（03-P3 第 9 节交来）；令牌、无主笔记本、任务三个的图标与设置目录里那一页的相同（`KeyRound`、`Box`、`ArrowLeftRight`，`W/app/settings-directory.tsx:35,42,49`），邀请是 `Mail`，审计是 `ScrollText`。右栏的"没有反链""没有属性"（`W/pages/page/page-backlinks.tsx:140`、`page-properties.tsx:79`）照旧一行灰字：右栏的小节窄，一个图标方块比它的内容还占地方（P4 第 9 节交来"看要不要换"）。
@@ -255,7 +255,13 @@
 - **948 入口卡片里的正文一律 `text-sm`**（审查 B 的 P5S1B-N3）：邀请的一句（原是 `text-lg`）、注册关闭、新建工作区关闭时、邀请页里会话不可用的说明；引导的"第 N 步"与 `h1` 包进 `space-y-1.5`。实施者照"一律"另改了引导里的两句（工作区那一步关闭时、笔记本那一步的 noTarget），接受。卡片里短暂出现的共用 `Loading`、`NotLoaded` 一行照旧 16 px：全站共用的组件，只闪一下，不改（审查 B 修复核对第 1 轮同意：要统一时改的是 `Loading` 本身，另作一条决定）。
 - **949 居中的操作是小胶囊**（审查 B 的 P5S1B-Q1）：`EmptyState` 与 `StatusPage` 的居中操作一律 `size="sm" shape="pill"`（00 号文档的按钮规则：卡片与居中的页级操作用胶囊，表单底部才用 8 px 圆角）；工作区首页空状态的"新建笔记本"随之。
 - **950 8.2 第 1 条在 S1 收窄**（审查 C 的 P5S1C-Q1）：S1 只给两个首页与设置的五个列表用了 `EmptyState`，总体设计 9.2 那一句在 S1 写成"两个首页与设置的卡片里，没有东西的列表是……"，句尾"右栏的……（M13/P5/S1）"照旧（S2 第 6 条的锚点）；S2 的文档提交再放宽到列表类的页（8.2 第 6 条的第二处）。
-- **951 `PageColumn` 的 `panel`**（审查 B 的 P5S1B-F1-M1）：`PageColumn` 收 `panel?: boolean`，默认 `false`，不留右栏的地方；只有页的两支早退传它。S2、S3 照 4.2.6、4.2.8、4.3.1 把它用在变更集页、回收站的预览与版本页的早退里时不传：那三页没有右栏，读取中、找不到与读到之后的列同在居中处；S2 导出它时，空的头一行由调用者定形（只有面包屑一块，或带调用者那一页右边一组的类名），选项按"页的头"命名；S2、S3 的表在 1440、768 与 375 宽同时量 x 与 y（审查 B 的 P5S1B-F2-N1，主持者定，归在 951 之下：今天不传 `panel` 的空头一行照页的样子排，面包屑一块加 26rem 的右边一组，那三页的头一行不是这样，900 以下会差约 21.5 px）。
+- **951 `PageColumn` 的 `panel`**（审查 B 的 P5S1B-F1-M1）：`PageColumn` 收 `panel?: boolean`，默认 `false`，不留右栏的地方；只有页的两支早退传它。S2、S3 照 4.2.6、4.2.8、4.3.1 把它用在变更集页、回收站的预览与版本页的早退里时不传：那三页没有右栏，读取中、找不到与读到之后的列同在居中处；S2 导出它时，空的头一行由调用者定形（只有面包屑一块，或带调用者那一页右边一组的类名），选项按"页的头"命名；S2、S3 的表在 1440、768 与 375 宽同时量 x 与 y（审查 B 的 P5S1B-F2-N1，主持者定，归在 951 之下：今天不传 `panel` 的空头一行照页的样子排，面包屑一块加 26rem 的右边一组，那三页的头一行不是这样，900 以下会差约 21.5 px）。 S2 的实施与审查之后（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：选项名是 `head`（页的头的右边一组的类名，`panel` 照旧另有），页的两支传 `headGroupClass`；空的头一行是导出的 `EmptyHead`（`group` 是右边一组的类名，不给时只有面包屑一块），预览没有面包屑的两支也画它；变更集页与回收站的预览不传 `head`，只有面包屑一块（决定 954：实施时变更集页对能写的人传 `headActionsClass` 的 `headOf` 去掉）；量 x 与 y 的是 UP1 (page) 的变更集与预览两步（1440、768、375 宽，5.2 的照实）。
+
+以下是主持者照 S2 的实施审查定的（负责人可以改判）：
+
+- **952 提示框与警示对话框里的长名字**（实施者的偏离 g，审查 B 的 P5S2B-Q1）：共用的 `Alert`（`W/components/ui/alert.tsx`）加 `break-words`；`AlertDialogContent`（`W/components/ui/alert-dialog.tsx`）照 `DialogContent` 加 `grid-cols-[minmax(0,1fr)]`。回收站"太大，不能在这里恢复"的提示与对话框里说谁正在编辑哪一页的提示，名字没有断点也在框里折行，对话框的按钮不被推出框外。TB1 新格的名字随之换成只有字母的，第二个 `expectFits` 也量提示（审查 C 的 P5S2C-I1）；vitest 断言两处类名（`alert.test.tsx`、`dialog.test.tsx`），变异 952a、952b。写进总体设计 13.2 第 31 条（8.2 第 7 条第二处，审查 C 的 P5S2C-Q2）。
+- **953 可能用手指点的设备上，"只看此人"静止也显着**（审查 A 的 P5S2A-Q1）：`revealClass` 另加 `any-pointer-coarse:opacity-100`，同左栏树每行的"⋯"（`W/pages/notebook/page-tree-item.tsx:361`）。触屏笔记本这类同时有鼠标与手指的设备，主指针报 `hover: hover`，`[@media(hover:none)]` 管不到它。类名一句，变异 953。左栏的齿轮（P2）只看 `hover:none`，记给收尾的审查。
+- **954 变更集页的空头一行对谁都只有面包屑**（审查 A 的 P5S2A-N1、B 的 P5S2B-N4、C 的 P5S2C-N1）：去掉 `headOf`，三处早退都是 `<PageColumn>`。能写的人的空头一行原来传 `headActionsClass`：空的组不占宽，排版与只有面包屑相同；升级中没有能写的人，横幅也只在那时有。`changeset-page.test.tsx` 的写者一格与 7.2 的 pc2、pc3 随之去掉。`PageColumn` 的 `head` 选项照旧（页传 `headGroupClass`），变更集一步的守卫是 cR（UP1 `:298`）。
 
 ## 3. 服务端
 
@@ -562,12 +568,12 @@ export const filterBarClass = "flex flex-wrap items-end gap-x-3 gap-y-3";
 /** A filter's label above its control, as FormField spaces them (01-P1 section 9; decision 926). */
 export const filterFieldClass = "flex min-w-0 max-w-full flex-col gap-1.5";
 /** A filter shown as a chip: the history's page, with its Remove; its corners half its least height, not round when it wraps. */
-export const filterChipClass = "flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-[18px] border border-border bg-surface-2 ps-3 pe-1 text-compact";
+export const filterChipClass = "flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-[18px] border border-border bg-surface-2 py-1.5 ps-3 pe-1 text-compact";
 ```
 
-- 历史（提交 1，`W/pages/notebook/history-filters.tsx`）：`:131` → `filterBarClass`；`:132`、`:143`、`:154` → `filterFieldClass`；"谁"的下拉（`:134`）加 `className="max-w-64"`（`cn` 换掉 `NativeSelect` 的 `max-w-full`，决定 926）；`:175` 的 `p`（页的筛选）→ `filterChipClass`（照旧是 `p`：`history-page.test.tsx:783` 读它的 `closest("p")` 的文字"…Remove"）；里面的名字照旧 `span.min-w-0.break-words`，"移除"（`:177-185`，`variant="ghost"`、`h-7 px-2 text-xs`）换成 `variant="ghost" size="sm" shape="pill"`，文字与名字照旧。
-- 搜索（提交 1，`W/pages/search/search-page.tsx:221`）：`div.space-y-2` → `filterFieldClass`，外面包一个 `filterBarClass` 的 `div`；`NativeSelect` 的 `block max-w-full` 照旧。
-- 目录（提交 2，`W/pages/notebook/index-filters.tsx`）：`:42` 的 `form` → `filterBarClass`；`:48`、`:60` → `filterFieldClass`；"应用""清除"两个按钮照旧。
+- 历史（提交 1，`W/pages/notebook/history-filters.tsx`）：`:131` → `filterBarClass`；`:132`、`:143`、`:154` → `filterFieldClass`；"谁"的下拉（`:134`）加 `className="max-w-64"`（`cn` 换掉 `NativeSelect` 的 `max-w-full`，决定 926）；`:175` 的 `p`（页的筛选）→ `filterChipClass`（照旧是 `p`：`history-page.test.tsx:783` 读它的 `closest("p")` 的文字"…Remove"）；里面的名字照旧 `span.min-w-0.break-words`，"移除"（`:177-185`，`variant="ghost"`、`h-7 px-2 text-xs`）换成 `variant="ghost" size="sm" shape="pill"`，另带 `className="-my-1.5"`（小块的 `py-1.5` 之下，30 px 的胶囊不把一行撑过 36 px，审查 B 的 P5S2B-M2），文字与名字照旧。
+- 搜索（提交 1，`W/pages/search/search-page.tsx:221`）：`div.space-y-2` → `filterFieldClass`，外面包一个 `filterBarClass` 的 `div`；`NativeSelect` 的 `block max-w-full` 换成 `block max-w-64`（同历史的"谁"，审查 B 的 P5S2B-N2）。
+- 目录（提交 2，`W/pages/notebook/index-filters.tsx`）：`:42` 的 `form` → `filterBarClass`；`:48`、`:60` → `filterFieldClass`；"类型"的下拉 `className="max-w-full"` → `"max-w-64"`（同上）；"应用""清除"两个按钮照旧。
 
 #### 4.2.3 行内次要操作的显出（提交 1）
 
@@ -576,12 +582,13 @@ export const filterChipClass = "flex min-h-9 max-w-full min-w-0 items-center gap
 ```ts
 /**
  * What a row offers besides its own link, seen as the row is hovered or holds the keyboard's focus, or as its menu is
- * open; always where nothing hovers, on a narrow screen, and in forced colours (decision 927). Transparent, not
- * hidden: Playwright clicks what it sees, and a transparent control is seen. Its transition names opacity and the
- * button's colours both, as the tree's cog does: cn would let transition-opacity take transition-colors' place.
+ * open; always where nothing hovers or a finger may point (as the tree's ⋯, decision 953), on a narrow screen, and in
+ * forced colours (decision 927). Transparent, not hidden: Playwright clicks what it sees, and a transparent control is
+ * seen. Its transition names opacity and the button's colours both, as the tree's cog does: cn would let
+ * transition-opacity take transition-colors' place.
  */
 export const revealClass =
-  "opacity-0 transition-[opacity,color,background-color] duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
+  "opacity-0 transition-[opacity,color,background-color] duration-150 group-hover/row:opacity-100 group-focus-within/row:opacity-100 focus-visible:opacity-100 aria-expanded:opacity-100 [@media(hover:none)]:opacity-100 any-pointer-coarse:opacity-100 max-md:opacity-100 forced-colors:opacity-100";
 ```
 
 用处：历史行的"只看此人"（提交 1，`W/pages/notebook/history-row.tsx:73-77`：`Button variant="ghost"` 的 `h-7 px-2 text-xs` 换成 `size="sm" shape="pill"` 加 `-my-1` 与 `revealClass`；`-my-1` 让 30 px 高的按钮不把第一行撑高：历史行的第一行 22 px、到第二行 26 px，同搜索的行的 20、24 px 只差 2 px，第 1 节 (l)，审查 B 的 P5B-R1-N5）；附件行的"操作"（S3，4.3.5）。行（`li`）带 `group/row`（`stackedLinesClass` 已有，附件行另加）。
@@ -590,7 +597,7 @@ export const revealClass =
 
 `W/pages/search/search-page.tsx`：`:211` `section.space-y-4` → `listColumnClass`（工作区的页，不在笔记本里，没有 `ColumnTop`）；`:212-219` 的 `h1` → `pageTitleClass`（`aria-describedby` 照旧）；`:221` 见 4.2.2；`:239-241` 的状态行 `output.block.text-sm.empty:sr-only` 照旧（换成 `text-compact text-muted-foreground`）；`:242` 的 `sr-only` 输出照旧在它之后（`search-page.test.tsx:79-80,543` 数 `status` 的次序与第一个 `output`）；`:244` 没提交时的说明 → `<EmptyState icon={Search}>{t("search.howTo")}</EmptyState>`（`search-page.test.tsx:653,663` 以文字找它）；`:253` 的 `ul` → `<SettingsCard list label={t("search.results")}>`（只带 `aria-label`）。没有命中时照旧不画列表（决定 928）。
 
-`W/pages/search/search-hit.tsx`：`:87` `li.space-y-1.p-4` → `stackedLinesClass`；`:88` 的 `p` → `lineTitleClass`（照旧 `p`、500：se1:340）；`:90,92` 的图标照旧是行里第一个 `svg`（`search-page.test.tsx:105,113`），`text-muted-foreground` → `text-faint`；`:94` 的 `AssetIcon`（`W/pages/page/attachment-row.tsx:27-31`）同样 → `text-faint`，另收 `className?: string`，类名写成 `cn("size-4 shrink-0 text-faint", className)`（它在这个提交里改：搜索、回收站与附件一节同用它，同一种灰；初稿写在 S3，审查 B 的 P5B-N2、P5B-R1-N2）；`:96-106` 的链接 `underline underline-offset-4` → `lineLinkClass`；`:108`、`:118`、`:126` 的三行 → 位置与时刻 `factsClass`，摘要 `text-sm break-words`（照旧 `p`：`search-page.test.tsx:125,191` 读 `p bdi`）。名字照旧是 `li` 里的第一段文字（`:348`）。
+`W/pages/search/search-hit.tsx`：`:87` `li.space-y-1.p-4` → `stackedLinesClass`；`:88` 的 `p` → `lineTitleClass`（照旧 `p`、500：se1:340）；`:90,92` 的图标照旧是行里第一个 `svg`（`search-page.test.tsx:105,113`），`text-muted-foreground` → `text-faint`，另加 `mt-0.5 self-start`（名字折行时对着第一行，审查 B 的 P5S2B-M1）；`:94` 的 `AssetIcon`（`W/pages/page/attachment-row.tsx:27-31`）同样 → `text-faint`，另收 `className?: string`，类名写成 `cn("size-4 shrink-0 text-faint", className)`（它在这个提交里改：搜索、回收站与附件一节同用它，同一种灰；初稿写在 S3，审查 B 的 P5B-N2、P5B-R1-N2），搜索命中里另传 `className="mt-0.5 self-start"`（同上，P5S2B-M1）；`:96-106` 的链接 `underline underline-offset-4` → `lineLinkClass`；`:108`、`:118`、`:126` 的三行 → 位置与时刻 `factsClass`，摘要 `text-sm break-words`（照旧 `p`：`search-page.test.tsx:125,191` 读 `p bdi`）。名字照旧是 `li` 里的第一段文字（`:348`）。
 
 #### 4.2.5 历史（提交 1）
 
@@ -620,7 +627,7 @@ export const docColumnClass = "mx-auto w-full max-w-180";
 export const docTitleClass = "mb-3.5 min-w-0 text-[32px] leading-tight font-[650] tracking-[-0.012em] break-words outline-none";
 ```
 
-`:388` 写成 `cn(docShellClass, "xl:flex xl:items-start")`（P4 的页的外层要排右栏；文档类的三页没有右栏，只取 `docShellClass`：带着 `xl:flex` 的外层，唯一的子元素会缩成内容宽）。`PageColumn`（4.1.2）S1 已导出。文档类的三页的早退用它时不传 `panel`（决定 951）：它们没有右栏，读取中、找不到与读到之后的列同在居中处。S2 导出它时，空的头一行由调用者定形：只有面包屑一块，或带调用者那一页右边一组的类名（变更集页的 `headActionsClass` 一组、版本页的那一格；回收站的预览只有面包屑），选项按"页的头"命名（今天的 `panel`）；今天不传 `panel` 的空头一行照页的样子排（面包屑一块加 26rem 的右边一组），这三页在 900 以下会差约 21.5 px（审查 B 的 P5S1B-F2-N1，决定 951 之下）。4.3.6 的表里这几行在 1440、768 与 375 宽同时量 x 与 y，与读到之后相同。
+`:388` 写成 `cn(docShellClass, "xl:flex xl:items-start")`（P4 的页的外层要排右栏；文档类的三页没有右栏，只取 `docShellClass`：带着 `xl:flex` 的外层，唯一的子元素会缩成内容宽）。`PageColumn`（4.1.2）S1 已导出。文档类的三页的早退用它时不传 `panel`（决定 951）：它们没有右栏，读取中、找不到与读到之后的列同在居中处。S2 导出它时，空的头一行由调用者定形：只有面包屑一块，或带调用者那一页右边一组的类名（变更集页的 `headActionsClass` 一组、版本页的那一格；回收站的预览只有面包屑），选项按"页的头"命名（今天的 `panel`）；今天不传 `panel` 的空头一行照页的样子排（面包屑一块加 26rem 的右边一组），这三页在 900 以下会差约 21.5 px（审查 B 的 P5S1B-F2-N1，决定 951 之下）。4.3.6 的表里这几行在 1440、768 与 375 宽同时量 x 与 y，与读到之后相同。 照实（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：选项名是 `head`（`panel` 照旧另有），空的头一行是导出的 `EmptyHead`；页的两支传 `headGroupClass`，变更集页与回收站的预览不传（决定 954），见 2.3 的 951 末尾。
 
 `page-classes.ts` 加文档类的头的右边一组与标题下的事实（它们不是 P4 的串）：
 
@@ -651,7 +658,7 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
 - "撤销这次改动"（`W/pages/notebook/revert-dialog.tsx:160` 的触发按钮）加 `size="sm" shape="pill"`，挪到头一行：它的 `ref`、`aria-busy` 与对话框关上之后焦点回到它（`revert-dialog.test.tsx:165,247,665,1351`）照旧，按钮不卸下；`RevertDialog` 自己的 `useFocusLeaving(trigger, …)`（`revert-dialog.tsx:98`）跟着按钮走，挪走它不丢交接。"再撤销一次"的说明（`history.revertAgain`）与读者的说明照旧在原来的条件下，挪到事实之后，`noteClass`。
 - 改动的列表（`:458-459`）→ `<SettingsCard list label={t("history.changes")}>`。`W/pages/notebook/changeset-change.tsx`：`:105` 的 `li.space-y-1.p-4` → `stackedLinesClass`；`:106` 的第一行 → `cn(lineTitleClass, "flex-wrap gap-x-3 gap-y-1")`；`:108-116` 的主链接 → `lineLinkClass`（`open.state` 照旧）；不在了的节点的名字（`:119`）`min-w-0 font-medium break-words` → `min-w-0 break-words`；"In the trash"（`:120-127`）与"History of this page"（`:131-137`）→ `cn(lineLinkClass, "font-normal text-muted-foreground hover:text-foreground")`，加 `state={arrived}`（决定 940）；同名时的 id（`:130`）`text-sm text-muted-foreground` → `font-normal text-muted-foreground`；`:140` 的第二行 → `cn(factsClass, "flex flex-wrap gap-x-3")`，其中内容的版本（`:148-154`）`underline underline-offset-4` → `cn(lineLinkClass, "text-muted-foreground hover:text-foreground")`（同第一行的次要链接，悬停才有下划线，审查 B 的 P5B-R1-N4），加 `state={arrived}`（决定 940）。行里的 `span` 照旧（`changeset-page.test.tsx:501,515`）。
 - 内容链接（决定 940）：`SaidText` 的"See it"（`:296`）、"Reverts …"（`:387`）、"Reverted by"的各个（`:398`）加 `state={arrived}`；"See the jobs"（`:344`，`startUnread`）加 `state={arrived}`（决定 924）。
-- 早退（决定 915，第 1 节）：`ChangesetPage` 的 `:69`（地址不是 id）`return <PageColumn><NotFoundPage /></PageColumn>`；`ChangesetShell` 的 `:92`（别的笔记本的，或读到 404 `page.changeset_not_found`）同样包 `NotFoundPage`；`:95`（读取中，或读不到：变更集的读失败）包 `NotLoaded`。 这几处的 `PageColumn` 都不传 `panel`，空的头一行照这一页的头定形（决定 951，审查 B 的 P5S1B-F2-N1）。
+- 早退（决定 915，第 1 节）：`ChangesetPage` 的 `:69`（地址不是 id）`return <PageColumn><NotFoundPage /></PageColumn>`；`ChangesetShell` 的 `:92`（别的笔记本的，或读到 404 `page.changeset_not_found`）同样包 `NotFoundPage`；`:95`（读取中，或读不到：变更集的读失败）包 `NotLoaded`。 这几处的 `PageColumn` 都不传 `panel`，空的头一行只有面包屑一块，能写的人与读者一样（决定 951、954）。
 - 路由 `:247-253` 加 `handle`。
 
 #### 4.2.7 回收站（提交 2）
@@ -662,19 +669,19 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
 
 - `TrashRow` 的 `li`（`:498`）→ `splitRowClass`；行里照旧先是链接、再是"恢复"（`trash-page.test.tsx:446-447` 两次 Tab）。
 - `:499` 文字的一块 `min-w-0 space-y-1` → `cn(listTextClass, "space-y-1")`：它取"恢复"留下的宽，"恢复"在右上（审查 B 的 P5B-M6：今天长的事实让它折到文字之下、靠左）。窄屏时 `basis-56` 加"恢复"宽过行里的宽（375 宽时 289 px），文字一块占满一行、"恢复"在它之下；行里的 `RestoreButton` 给 `className="ms-auto"`，在下面时靠右，同标题行的按钮（初稿说"总在右上"，375、320 宽时不是，审查 B 的 P5B-R1-N7）。
-- `ItemIcon`（`:271-280`）自画的两个图标（`ScrollText`、`File`）`text-muted-foreground` → `text-faint`，同 `AssetIcon`（4.2.4）；它收 `className?: string`（预览用，4.2.8），两个图标的类名写成 `cn("size-4 shrink-0 text-faint", className)`，附件那一支交给 `AssetIcon`（`<AssetIcon mime={…} className={className} />`），预览里附件的图标与页的同大、同位置（审查 B 的 P5B-R1-N2：今天的写法给预览的 `className` 到不了 `AssetIcon`，附件是 16 px、贴顶）。
+- `ItemIcon`（`:271-280`）自画的两个图标（`ScrollText`、`File`）`text-muted-foreground` → `text-faint`，同 `AssetIcon`（4.2.4）；它收 `className?: string`（预览用，4.2.8），两个图标的类名写成 `cn("mt-0.5 size-4 shrink-0 self-start text-faint", className)`，附件那一支交给 `AssetIcon`（`<AssetIcon mime={…} className={cn("mt-0.5 self-start", className)} />`），预览里附件的图标与页的同大、同位置（审查 B 的 P5B-R1-N2：今天的写法给预览的 `className` 到不了 `AssetIcon`，附件是 16 px、贴顶）。 行里的图标带 `mt-0.5 self-start`，名字折行时对着第一行（审查 B 的 P5S2B-M1：预览给的 `mt-1.5` 经 `cn` 换掉 `mt-0.5`）。
 - `:500` 的第一行 `flex items-center gap-2 font-medium` → `lineTitleClass`；`:502-509` 的链接 `min-w-0 break-words underline underline-offset-4` → `lineLinkClass`，加 `state={arrived}`（决定 940：去预览，它的 `h1` 在到达时取焦点）。
-- `TrashFacts`（`:288-319`）收 `className`，几行 `p` 包进一个带它的 `div`，`p` 自己只留 `break-words`（今天每个 `p` 是 `text-sm break-words text-muted-foreground`）：行里给 `cn(factsClass, "space-y-1")`，预览给 `cn(docFactsClass, "mt-2.5 space-y-0.5")`（4.2.8）。"恢复到…"那一行照旧是最后一个 `p`：`trash-page.test.tsx:120,147` 读每行的 `p:last-child`，包了一层之后它仍是那个 `div` 的最后一个子元素，第一行的 `p` 不是（它之后是那个 `div`）。
+- `TrashFacts`（`:288-319`）收 `className`，几行 `p` 包进一个带它的 `div`，`p` 自己只留 `break-words`（今天每个 `p` 是 `text-sm break-words text-muted-foreground`）：行里给 `cn(factsClass, "space-y-1")`，预览给 `cn(docFactsClass, "mt-3.5 space-y-1")`（4.2.8；离标题与行间同变更集页，审查 B 的 P5S2B-N3）。"恢复到…"那一行照旧是最后一个 `p`：`trash-page.test.tsx:120,147` 读每行的 `p:last-child`，包了一层之后它仍是那个 `div` 的最后一个子元素，第一行的 `p` 不是（它之后是那个 `div`）。
 - `RestoreButton`（`:449-459`）加 `size="sm" shape="pill"`，另收 `className` 交给 `Button`（带名字的"在后台恢复"用，4.2.8）。
 
 #### 4.2.8 回收站的预览（提交 2）
 
 `W/pages/notebook/trash-preview.tsx`：
 
-- `shell`（`:192-202`）：有面包屑时外层是 `docShellClass`（没有时，"不在回收站里"与"已过期"两支，不带它：没有头一行，同页不在时的 `PageColumn`）；`Trail`（`:336-344`）的 `div.mb-2` → `headRowClass`，里面的面包屑包在 `headCrumbsClass` 的 `div` 里（`useFocusLeaving` 照旧在 `Trail` 自己的 `div` 上）；`Alert` 与 `view` 进 `docColumnClass` 的 `div`，它的第一个子元素是 `<ColumnTop />`（面包屑照旧在提示之前：`trash-preview.test.tsx:928`）。
-- `Preview`（`:396-460`）：`div ref={shown}`（`:419`）照旧包着标题、"恢复"与其余（决定 929）；标题一行（`:421`）`flex items-start justify-between gap-3` → `flex flex-wrap items-start justify-between gap-x-3 gap-y-2`；`h1`（`:422-430`）→ `cn(docTitleClass, titleTextClass, "mb-0 flex items-start gap-2.5")`（取按钮留下的宽，审查 B 的 P5B-M7），`ItemIcon`（`trash-row.tsx:271-280`）收 `className`、这里给 `mt-1.5 size-6 shrink-0 text-faint`，名字进 `<span className="min-w-0 wrap-anywhere">`（认领的"长名"，决定 937）；按钮的一组（`:432`）`flex flex-wrap justify-end gap-2` → `ms-auto flex flex-wrap justify-end gap-2`（在标题之下时仍靠右，审查 B 的 P5B-Q2）；两个 `RestoreButton` 加 `size="sm" shape="pill"`；带名字的"在后台恢复"（`:439-446`）另给 `className="h-auto min-h-7.5 shrink rounded-[15px] py-1 whitespace-normal text-start wrap-anywhere"`（审查 B 的 P5B-M12：名字没有空格时今天 375、320 宽横向溢出；`shrink` 去掉 `Button` 的 `shrink-0`，不然它在 `justify-end` 的一行里向左伸出屏幕，第 1 节 (h)；圆角 15 px 是一行时的胶囊、折成几行时的圆角方块），回收站页的那一个（`trash-page.tsx:201-208`）同样给；`TrashFacts` 一块（`:450-452` 的 `div.space-y-1` 去掉）→ `TrashFacts` 带 `className={cn(docFactsClass, "mt-2.5 space-y-0.5")}`。
+- `shell`（`:192-202`）：外层是 `docShellClass`（初稿写"有面包屑时"：没有时，"不在回收站里"与"已过期"两支不带它、没有头一行，同页不在时的 `PageColumn`。照实：那一句写在决定 946 之前，946 之后 `PageColumn` 本身是 `docShellClass` 加空的头一行，照字面画，横幅从读取中到这两支会上移一个头一行；这两支照它在头一行的位置画 `EmptyHead`，只有面包屑一块、`aria-hidden`，实施者的偏离 a，审查 A、B 接受，变异 pc6）；`Trail`（`:336-344`）的 `div.mb-2` → `headRowClass`，里面的面包屑包在 `headCrumbsClass` 的 `div` 里（`useFocusLeaving` 照旧在 `Trail` 自己的 `div` 上）；`Alert` 与 `view` 进 `docColumnClass` 的 `div`，它的第一个子元素是 `<ColumnTop />`（面包屑照旧在提示之前：`trash-preview.test.tsx:928`）。
+- `Preview`（`:396-460`）：`div ref={shown}`（`:419`）照旧包着标题、"恢复"与其余（决定 929）；标题一行（`:421`）`flex items-start justify-between gap-3` → `flex flex-wrap items-start justify-between gap-x-3 gap-y-2`；`h1`（`:422-430`）→ `cn(docTitleClass, titleTextClass, "mb-0 flex items-start gap-2.5")`（取按钮留下的宽，审查 B 的 P5B-M7），`ItemIcon`（`trash-row.tsx:271-280`）收 `className`、这里给 `mt-1.5 size-6 shrink-0 text-faint`，名字进 `<span className="min-w-0 wrap-anywhere">`（认领的"长名"，决定 937）；按钮的一组（`:432`）`flex flex-wrap justify-end gap-2` → `ms-auto flex flex-wrap justify-end gap-2`（在标题之下时仍靠右，审查 B 的 P5B-Q2）；两个 `RestoreButton` 加 `size="sm" shape="pill"`；带名字的"在后台恢复"（`:439-446`）另给 `className="h-auto min-h-7.5 shrink rounded-[15px] py-1 whitespace-normal text-start wrap-anywhere"`（审查 B 的 P5B-M12：名字没有空格时今天 375、320 宽横向溢出；`shrink` 去掉 `Button` 的 `shrink-0`，不然它在 `justify-end` 的一行里向左伸出屏幕，第 1 节 (h)；圆角 15 px 是一行时的胶囊、折成几行时的圆角方块），回收站页的那一个（`trash-page.tsx:201-208`）同样给（照实：这串写成 `trash-row.tsx` 导出的 `backgroundClass`，两处共用，实施者的偏离 b）；`TrashFacts` 一块（`:450-452` 的 `div.space-y-1` 去掉）→ `TrashFacts` 带 `className={cn(docFactsClass, "mt-3.5 space-y-1")}`（离标题与行间同变更集页，审查 B 的 P5S2B-N3）。
 - 不在回收站里、已过期的两支（`:277-301`，`NotInTrash` 与 `Gone`）照旧经 `shell` 画在它的列里，`Gone` 的 `section`（`:591-605`）与 `NotInTrash` 的只把 `h1` 换成 `docTitleClass`，自己不画 `ColumnTop`、不另套列（审查 A 的 P5A-M3：初稿让它们"进同样的列、`ColumnTop` 在前"，与 `shell` 的列重了，会有两个横幅、两层外层）。
-- 早退（决定 915，第 1 节）：`TrashPreview` 的 `:66`（地址不是 id）、`PreviewShell` 的 `:249`（读到别的笔记本的项）与 `:270`（`page.not_found`：不在回收站里也不在树上，或笔记本没了）各 `return <PageColumn><NotFoundPage /></PageColumn>`；`:306-308`（读取中，或读不到：回收站项的读失败）包 `NotLoaded`。`:237-246`、`:274` 是 `<Navigate>`，不画东西。 这几处的 `PageColumn` 都不传 `panel`，空的头一行照这一页的头定形（决定 951，审查 B 的 P5S1B-F2-N1）。
+- 早退（决定 915，第 1 节）：`TrashPreview` 的 `:66`（地址不是 id）、`PreviewShell` 的 `:249`（读到别的笔记本的项）与 `:270`（`page.not_found`：不在回收站里也不在树上，或笔记本没了）各 `return <PageColumn><NotFoundPage /></PageColumn>`；`:306-308`（读取中，或读不到：回收站项的读失败）包 `NotLoaded`。`:237-246`、`:274` 是 `<Navigate>`，不画东西。 这几处的 `PageColumn` 都不传 `panel`，空的头一行照这一页的头定形（决定 951，审查 B 的 P5S1B-F2-N1；照实：不传 `head`，只有面包屑一块）。
 - `LostStart`（`:352-366`）里"See the jobs"的 `Link`（`:361`）加 `state={arrived}`（决定 924）。
 - 路由 `:210-216` 加 `handle`。
 
@@ -869,7 +876,7 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
 
 ### 4.4 对比度的下限
 
-- **se1**（S2，决定 936）：暗色的 `link` 下限照实量减 0.1 改（推算约 7.31 → 约 7.21）；`marked`、`named`（命中的字，7:1）照旧：暗色的高亮字在卡片上推算 7.28，仍在 7 之上，量出来低于 7 时停下查（4.7"正文至少 7:1"）。注释照 P1–P4 的写法加一句"From M13/P5/S2 the hits are in a card, on --surface: the link's ring re-measured there"，写进量出的值。亮色与 `box`、`button`、`select`、`invalid` 不变。
+- **se1**（S2，决定 936）：暗色的 `link` 下限照实量减 0.1 改（推算约 7.31 → 约 7.21）；`marked`、`named`（命中的字，7:1）照旧：暗色的高亮字在卡片上推算 7.28，仍在 7 之上，量出来低于 7 时停下查（4.7"正文至少 7:1"）。注释照 P1–P4 的写法加一句"From M13/P5/S2 the hits are in a card, on --surface: the link's ring re-measured there"，写进量出的值。亮色与 `box`、`button`、`select`、`invalid` 不变。 照实（S2，[S2 的审查记录](reviews/P5-S2-lists-review.md)；Chromium、1440 宽，se1 自己的量法）：暗色 `link` 7.311（卡片 `#212226` 上，outline solid 2px），下限写成 7.21；暗色 `marked`、`named` 在卡片上 7.418（下限 7）；暗色 `box` 8.406 / 8.3、`button` 6.954 / 6.85（`#25262a` 上）、`select` 7.923 / 7.82（页的 `#1a1b1e` 上）、`invalid` 7.283 / 7.18；亮色 `marked`、`named` 14.642，`box` 2.843，`button`、`select`、`link` 3.098，`invalid` 4.018，与改之前相同。注释照写了那一句与量出的值。
 - pg4、l5 不在 P5 的页上，不动。
 
 ### 4.5 lint、分包与设计基础的检查
@@ -912,7 +919,7 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
   1. 不登录的 `page`，375 宽，`goto` `/sign-in`：卡片里有"Nerve Wiki"（`getByText("Nerve Wiki", { exact: true })`，不是标题），`h1`"Sign in"；`expectFits(page, 表单)`。
   2. `signedInPage`，`goto` 一个不存在的工作区（`/` 加 `slugFor(testInfo, "nowhere")`）：`h1`"Page not found"，"Go to the home page"是链接；`expectFits(page)`；按下它，工作区首页的 `h1` 拿着焦点（决定 924）。
   同上豁免；`REQUIRED` 加 firefox、webkit 两行（前缀 `UI1 (page): at 375 wide the sign-in card`）。
-- **照实**（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：两格在 `ui1-narrow-drawer.spec.ts:180`、`:307`。第 4 格第 5 步另断言名字的右边不超过数的左边（`:234`，`9975478d`，变异 t6）与"1 subpage"那一句藏着（`:238` 的 `toBeHidden`，审查 C 的 P5S1C-M2）。第 5 格另有一步（审查 B 的 P5S1B-I1，`4340e64a`）：未登录开一个工作区名 60 个字符、没有断点的邀请，已登录（`anotherPage`，`registerOnboarded` 注册的地址，本地部分是 `christopheralexanderwellington` 加 `slugFor` 的哈希、截到 40 个字符）开另一个，375 与 320 宽各 `expectFits`，卡片里每个盒子与每段文字的左右边都在卡片之内（`expectInvitationsFit`、`edgesIn`）；造数写在格里，不改夹具。`expectFits` 另断言窗口不宽于 `phoneWidth`（审查 A 的 P5S1A-N4）。UP1 (page)（`e2e/stories/upgrade/up1-start-freeze.spec.ts:172`）末尾加一步（决定 946）：扣住树的读，在 1440、1280、1024、768、375 宽各量读取中与读到之后横幅的 x、y、宽，逐个相等（`:268`）。三格的名字写出新加的步（审查 C 的 P5S1C-F1-N3，`dc59e9e2`），`REQUIRED` 的前缀照旧对得上，`check.mjs` 的数不变。
+- **照实**（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：两格在 `ui1-narrow-drawer.spec.ts:180`、`:307`。第 4 格第 5 步另断言名字的右边不超过数的左边（`:234`，`9975478d`，变异 t6）与"1 subpage"那一句藏着（`:238` 的 `toBeHidden`，审查 C 的 P5S1C-M2）。第 5 格另有一步（审查 B 的 P5S1B-I1，`4340e64a`）：未登录开一个工作区名 60 个字符、没有断点的邀请，已登录（`anotherPage`，`registerOnboarded` 注册的地址，本地部分是 `christopheralexanderwellington` 加 `slugFor` 的哈希、截到 40 个字符）开另一个，375 与 320 宽各 `expectFits`，卡片里每个盒子与每段文字的左右边都在卡片之内（`expectInvitationsFit`、`edgesIn`）；造数写在格里，不改夹具。`expectFits` 另断言窗口不宽于 `phoneWidth`（审查 A 的 P5S1A-N4）。UP1 (page)（`e2e/stories/upgrade/up1-start-freeze.spec.ts:172`，S2 之后 `:173`）末尾加一步（决定 946）：扣住树的读，在 1440、1280、1024、768、375 宽各量读取中与读到之后横幅的 x、y、宽，逐个相等（`:268`，S2 之后 `:273`）。三格的名字写出新加的步（审查 C 的 P5S1C-F1-N3，`dc59e9e2`），`REQUIRED` 的前缀照旧对得上，`check.mjs` 的数不变。
 - 不改的（核对过）：a1–a15、w1–w12、n1–n13、s2、s4 以角色与名字找入口、首页与 404 的元素（第 1 节 (f)）；w5 以名字找邀请页的按钮与链接，右上角多一个"Back to the workspace"不撞（决定 941）；`n1:116` 是访客，没有虚线卡；`createNotebookWith`（`e2e/fixtures/notebook-pages.ts:55`）在左栏的 `nav` 里找"新建笔记本"，主区里多一个同名的不撞；pg16:121-123 只看笔记本首页的标题；`e2e/perf/tree.perf.ts:249`、`perf/probe.ts:157,174,208` 数 `ul[aria-label="Pages"] > li`（照旧每页一个）；ui1:40-54（页上的子页面与附件一节，S1 换了 `SubpageList`）、ui2:143-169（任务的空列表，S1 起是卡片大小的空状态，`expectFits` 照旧要过）；17 处 `expectFits` 的调用（上面）。
 
 ### 5.2 S2
@@ -940,6 +947,12 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
   hi3 只在 Chromium（不在 `threeBrowsers`），1280 宽（`max-md` 不生效）。先把指针移开：之前的点按可能让它停在这一行上。`toHaveCSS` 会等 150 ms 的过渡走完。
 - **mc3**（提交 1，`e2e/stories/mcp/mc3-write-edit.spec.ts:200` 之后，`@narrow` 的那一格，375 宽）：`await expect(listed.first().getByRole("button", { name: /^Only this person/ })).toHaveCSS("opacity", "1");`（窄屏上一直显示，`revealClass` 的 `max-md:opacity-100`；mc3 的历史没有按人筛，每行都有它；这一格在 Chromium 与 `webkit-narrow` 上都跑，审查 C 的 P5C-M4，变异 63）。
 - **TB1 新的一格**（提交 2，`e2e/stories/trash/tb1-trash.spec.ts` 末尾）`TB1 (preview): at 375 wide an item whose name has no space keeps its preview to the screen: its title broken, its Restore, its restore in the background and its breadcrumb`：`newOnboardedTeam`，建一本笔记本与一页长名字（同 UI1 的 `longName`）的页，经接口删掉（`deleteNode`，`e2e/fixtures/pages.ts:101`），`signedInPage`、375 宽，`goto` `trashPath(slug, notebookId, 页的 id)`（`trashPath` 取的就是节点的 id，tb1:269,361）：`h1` 的名字是那个长名字，`expectFits(page, h1, "Restore"按钮, 面包屑的 nav)`。再以 `page.route` 让 `POST **/api/v0/nodes/*/restore` 答 422 `page.restore_too_large`（`application/problem+json`，写法照 a11:130-136），按"Restore"：带名字的"Restore “<长名字>” in the background"出现，`expectFits(page, 它)`（审查 B 的 P5B-M12：今天它是一行、横向溢出）；控制台的那一条 422 照 tb1:400 的写法以 `pageWatch.expectConsole({ errors: [failedToLoad(422)] })` 记为预期的。只有页面版本：只核对预览的样子，不写（删除是造数，恢复被假的答复拒了，不发生）；接口与 MCP 版本豁免（5.5）。只在 Chromium（tb1 不在 `threeBrowsers`），不带 `@narrow`：`h1` 的 `wrap-anywhere` 与按钮的折行只在 Chromium 里核对（初稿说"WebKit 上的同类由 UI1 第 4 格覆盖"，不成立：UI1 的卡片与行都是截短，没有 `wrap-anywhere` 的元素，审查 C 的 P5C-M7），WebKit 与 Firefox 上的同类写法在第 1 节 (h) 的探针里量过。
+- **照实**（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：
+  - se1：注释加了那一句，`floors.dark.link` 7.82 → 7.21（量出 7.311，4.4 的照实）；改样子之前的树上 7.82 照过，不是先红（变异 34 是反证）。
+  - hi3（`hi3-log-revert.spec.ts:328-345`）：静止的 0 之后多一步悬停（`link.hover()` 得 1，指针移开得 0），再是聚焦、失焦与强制色（审查 C 的 P5S2C-M3 记进 8.2 第 9 条）；先红在 `:334`（旧树上静止是 1）。
+  - mc3：那一句在 `:204`，之前先 `page.mouse.move(0, 0)`（`:203`，审查 C 的 P5S2C-N3）；旧树上是绿的（一直是 1），由变异 63 证。
+  - TB1 新的一格（`tb1-trash.spec.ts:411`）：名字是 `` `Notes${"quarterlyroadmap".repeat(4)}` ``（`:409`，只有字母：Chromium 在连字符之后断，设计写的连字符加数字的名字量不出标题的 `wrap-anywhere`，变异 42 与 bw 下照绿，审查 C 的 P5S2C-I1），格名写"an item whose name has no break"，末尾列出"the refusal"；第二个 `expectFits`（`:442`）量拒绝时的提示与带名字的"在后台恢复"（决定 952）。先红在 `:442`，不在设计说的第一个 `expectFits`：初写的名字时页宽 724（"在后台恢复"），换名之后、952 之前页宽 552（提示）。
+  - UP1 (page)（`:173`）另加两步：变更集页（扣住变更集的读）与回收站的预览（扣住回收站项的读），各在 1440、768、375 宽量读取中与读到之后横幅的 x、y、宽。`bannerPlaces` 收所等的标题（"Plan"、变更集的 `Edit · <名字>`、"Gone"，`exact`，`:349`）：读到"Page not found"时直接红、报出所等的名字（审查 A 的 P5S2A-N2；旧写法在量面包屑时等到 30 s 超时）。预览一步严格相等（`:309`）。变更集一步的面包屑末尾是作者与时刻，e2e 的显示名约 50 个字符，768、375 宽折成几行，断言写成 `read.y − max(0, trail − 36) = loading.y`，x 与宽严格相等（`:298`，决定 946 的照实）。两步在旧树上是绿的（回退把横幅画在出口之上，读取中与读到之后同在一处）：预览一步由 pc4 证，变更集一步由审查 C 的 cR 证，39b、45b、82 只由 vitest 的表抓（审查 C 的 P5S2C-I3）。格名写出新加的两步，`REQUIRED` 没有这一格的前缀，`check.mjs` 的数不变。
 - 不改的（核对过）：se1:340（命中的标题照旧是 500 的 `p`）、se1:309-316（Tab 的次序）、se1:401-421（`@narrow`）、`e2e/fixtures/wiki-search.ts:25-36`（结果是 `listitem`，状态行经 `h1` 的 `aria-describedby`）；hi3:321-334（行的文字，`main` 里一个 `status`）、hi3:343,417 与 hi4:165,185（`listed.….getByRole("link").first()` 仍是行的主链接）、hi4:162、lw1:238；lw9:492（`:scope > li`）、lw9:528-529（一个 `h1`，`main` 里一个"Ingest"）；`e2e/fixtures/wiki-pages.ts:391-401`（`revertWith` 以名字找"Undo change"）；mc3:174-233（历史与变更集页在 375 宽，筛选的组外面的 `xpath=..` 照旧是 `filterFieldClass` 的那一层）；`e2e/fixtures/trash.ts:46-66`、tb1、tb2:235（`main` 里一个 `alert`）；lw6:180,198（"Restore … in the background"以名字找）；lw13:172-185（区域里的两个 `section`）、lw13:232（目录第 50 个链接：行里的链接只多包一层 `p`）、lw13:300-317、lw10:346。
 
 ### 5.3 S3
@@ -963,7 +976,7 @@ export const docFactsClass = "text-[12.5px] text-faint [&_a]:text-muted-foregrou
 
 ### 5.4 375 px 与 `webkit-narrow`
 
-`webkit-narrow` 的三格（MC3、PG2、SE1 的 `@narrow`）不变：P5 不加 `@narrow` 的格，mc3 那一格多一句。375 宽的新检查在 UI1（三种浏览器）、TB1（Chromium）、mc3 的一句（Chromium 与 `webkit-narrow`）与 hi2 的 320 宽一段（Chromium）。`check.mjs` 预计列出：chromium 434、firefox 105、webkit 105、webkit-narrow 3（UI1 两格在三种浏览器里、TB1 一格在 Chromium；实施者照 `node tools/e2e-projects/check.mjs` 的输出写准）。E2E 预计 647 格。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：S1 之后 chromium 433、firefox 105、webkit 105、webkit-narrow 3，E2E 646 格（UI1 两格 × 三种浏览器）；审查之后的修复都在已有的格里加步，数不变；vitest 231 个文件、5504 格。
+`webkit-narrow` 的三格（MC3、PG2、SE1 的 `@narrow`）不变：P5 不加 `@narrow` 的格，mc3 那一格多一句。375 宽的新检查在 UI1（三种浏览器）、TB1（Chromium）、mc3 的一句（Chromium 与 `webkit-narrow`）与 hi2 的 320 宽一段（Chromium）。`check.mjs` 预计列出：chromium 434、firefox 105、webkit 105、webkit-narrow 3（UI1 两格在三种浏览器里、TB1 一格在 Chromium；实施者照 `node tools/e2e-projects/check.mjs` 的输出写准）。E2E 预计 647 格。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：S1 之后 chromium 433、firefox 105、webkit 105、webkit-narrow 3，E2E 646 格（UI1 两格 × 三种浏览器）；审查之后的修复都在已有的格里加步，数不变；vitest 231 个文件、5504 格。 照实（S2，[S2 的审查记录](reviews/P5-S2-lists-review.md)）：S2 之后 chromium 434、firefox 105、webkit 105、webkit-narrow 3，E2E 647 格（TB1 新的一格在 Chromium），同预计；审查之后的修复都在已有的格里，数不变；vitest 233 个文件（新的 `list-rows.test.tsx`、`trash-preview-head.test.tsx`）、5564 格。
 
 ### 5.5 13.4 第 3 条
 
@@ -988,10 +1001,12 @@ UI1 的两格新的只有界面的样子，接口与 MCP 版本豁免（同 UI1 
 
 ### 6.2 S2
 
-- [ ] **提交 1 `web, e2e: search, the history and a changeset as a list's page, a title, a bar of filters and rows in a card, one kind of row; Only this person shown as its row is hovered or focused; a changeset's head as a page's, Undo change in its row; their links to elsewhere arrived at (M13/P5/S2)`**：先写 7.1 的提交 1 各格（表的历史与变更集各行，`list-rows.test.tsx` 的搜索、历史、变更集三行，`history-page.test.tsx` 的"只看此人"与主链接的到达，`changeset-page.test.tsx` 的按钮次序与链接的到达，`revert-background.test.tsx:432-435` 加的一句）与 hi3、mc3 的几句、se1 的下限，看到红（hi3 红在静止的 `opacity` 0：今天它一直是 1；mc3 那一句在旧树上是绿的（今天一直是 1），它守的是 `max-md:` 不被去掉，由变异 63 证；se1 在改样子之前是绿的，改了之后才红在暗色的 `link`，量出新值再改下限：这一条不是"先红"，照实写进 10.2）；4.2.1–4.2.6、`page-layout.tsx` 原处导出的五串与 `PageColumn`、`routes.tsx` 两处 `handle`。
-- [ ] **提交 2 `web, e2e: the trash and its preview, the directory and a tag's pages as the lists are, their empty lists said with an icon; a long name in the preview's title broken, its restore in the background too; their links arrived at (M13/P5/S2)`**：先写 7.1 的提交 2 各格（表的回收站、预览、目录、标签各行，`list-rows.test.tsx` 的回收站、目录两行，`trash-page.test.tsx` 的链接的到达，`trash-background.test.tsx:388-391,686-689` 加的两句，`trash-preview.test.tsx` 末尾的一格）与 TB1 新的一格，看到红（TB1 红在第一个 `expectFits`：今天的 `h1` 是 `flex`，名字是匿名的弹性项，最小宽度是整个名字）；4.2.7–4.2.10、`routes.tsx` 四处 `handle`。
-- [ ] 7.2 的 S2 各条变异；实施者先截 7.4 的 S2 几张；照实记 TB1 一格的秒数。
-- [ ] **提交 3 `docs: … (M13/P5/S2)`**：8.2 第 6–10 条；S2 的审查记录；本文 10.2 与照实改的各节（se1 量出的值）；00 号文档第 12、13 节；M12-polish 的"处理进展"一行（第 5 项的"回收站预览 `h1` 的长名"做了，TB1 核对，同一处的"在后台恢复"按钮一并；第 1 项里落在这几页上的不认领，逐项见决定 937）；01-P1 第 9 节"P2–P5"一条记下 P5 的六处标签组已改（`source-add-dialog.tsx:261` 留给 S3）。
+- [x] **提交 1 `web, e2e: search, the history and a changeset as a list's page, a title, a bar of filters and rows in a card, one kind of row; Only this person shown as its row is hovered or focused; a changeset's head as a page's, Undo change in its row; their links to elsewhere arrived at (M13/P5/S2)`**：先写 7.1 的提交 1 各格（表的历史与变更集各行，`list-rows.test.tsx` 的搜索、历史、变更集三行，`history-page.test.tsx` 的"只看此人"与主链接的到达，`changeset-page.test.tsx` 的按钮次序与链接的到达，`revert-background.test.tsx:432-435` 加的一句）与 hi3、mc3 的几句、se1 的下限，看到红（hi3 红在静止的 `opacity` 0：今天它一直是 1；mc3 那一句在旧树上是绿的（今天一直是 1），它守的是 `max-md:` 不被去掉，由变异 63 证；se1 在改样子之前是绿的，改了之后才红在暗色的 `link`，量出新值再改下限：这一条不是"先红"，照实写进 10.2）；4.2.1–4.2.6、`page-layout.tsx` 原处导出的五串与 `PageColumn`、`routes.tsx` 两处 `handle`。
+- [x] **提交 2 `web, e2e: the trash and its preview, the directory and a tag's pages as the lists are, their empty lists said with an icon; a long name in the preview's title broken, its restore in the background too; their links arrived at (M13/P5/S2)`**：先写 7.1 的提交 2 各格（表的回收站、预览、目录、标签各行，`list-rows.test.tsx` 的回收站、目录两行，`trash-page.test.tsx` 的链接的到达，`trash-background.test.tsx:388-391,686-689` 加的两句，`trash-preview.test.tsx` 末尾的一格）与 TB1 新的一格，看到红（TB1 红在第一个 `expectFits`：今天的 `h1` 是 `flex`，名字是匿名的弹性项，最小宽度是整个名字）；4.2.7–4.2.10、`routes.tsx` 四处 `handle`。
+- [x] 7.2 的 S2 各条变异；实施者先截 7.4 的 S2 几张；照实记 TB1 一格的秒数。
+- [x] **提交 3 `docs: … (M13/P5/S2)`**：8.2 第 6–10 条；S2 的审查记录；本文 10.2 与照实改的各节（se1 量出的值）；00 号文档第 12、13 节；M12-polish 的"处理进展"一行（第 5 项的"回收站预览 `h1` 的长名"做了，TB1 核对，同一处的"在后台恢复"按钮一并；第 1 项里落在这几页上的不认领，逐项见决定 937）；01-P1 第 9 节"P2–P5"一条记下 P5 的六处标签组已改（`source-add-dialog.tsx:261` 留给 S3）。
+
+照实（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：提交 1、2 是 `1a7a735e`、`dbf2c2cf`，说明与上面逐字相同。提交 2 的 TB1 先红在第二个 `expectFits`（"在后台恢复"，页宽 724），不在第一个（Chromium 在连字符之后断，5.2 的照实）；"`trash-preview.test.tsx` 末尾的一格"与预览的另两格放进新的 `trash-preview-head.test.tsx`（加在末尾要的三行 import 会让 `:587` 下移，7.1 的照实）。另有九个代码提交：`75578e08`（变异 t3、t7、t25、t36、t50–t53、t56、t57 在 `dbf2c2cf` 上活下来之后补的类名断言，只改测试，同 S1 `9975478d` 的先例）、`c238d24d`（40b 在 `75578e08` 上活下来之后，回收站一行补"链接在恢复之前"，只改测试）；审查之后的 `74b22728`（决定 952：`Alert` 的 `break-words` 与 `AlertDialogContent` 的一列；TB1 换成只有字母的名字、量提示）、`48c0eaa1`（按地址打开的预览不取焦点一格，`:554` 那一格的 50 ms 换成 `waitFor`，只改测试）、`446d2463`（决定 954：去掉 `headOf`；UP1 的 `bannerPlaces` 等所称的标题）、`9c97fc79`（决定 953：`any-pointer-coarse`；mc3 先移开指针）、`df0437d2`（行首图标对着名字的第一行，筛选小块的上下内边距与"移除"的 `-my-1.5`，"在哪里找"与"类型"最宽 16rem，预览的事实同变更集页的间距）；修复核对第 1 轮之后的 `4730ddd3`（变更集页三支的空头一行写成 `test.each`，预览那一格的注释引格名，只改测试）、`2c0af01a`（三处测试的注释折到 120 列以内，只改注释）。本文档提交另在 04-P4 第 9 节"P5"一条记下 S2 一行（审查 C 的 P5S2C-Q1）。
 
 ### 6.3 S3
 
@@ -1097,6 +1112,15 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 - `9975478d` 补的格：`notebook-home.test.tsx` 1,200 个子页面一格（数与描述照语言区写，t2），`entry-card.test.tsx` 标志带 `forced-colors:hidden`（t3），`workspace-home.test.tsx` 虚线卡的焦点环三个类（t12），UI1 第 4 格第 5 步名字截在数之前（t6）。
 - 审查之后多的：`settings-directory.test.tsx` 的 `members//`、`%6Dembers` 与答 `undefined` 的 `members%2F`、`%E0%A4%A`，令牌页的 `test.each` 加 `/settings/tokens//`、`/settings/%74okens`（`b46675d9`）；`workspace-home.test.tsx` 两格（笔记本的读不答时 `main` 里没有按钮，答 500 时只有"Try again"），卡片一格断言 `h-full`、`sm:min-h-28`、图标方块的边、名字不带 `flex-1` 且下一个兄弟是"LLM Wiki"，虚线卡一格断言 `sm:min-h-28`，空首页新建一格断言 `buttonClass({ size: "sm", shape: "pill" })`（`45f02991`）；`entry-card.test.tsx` 的 `break-words` 一格，邀请、注册、新建工作区、引导两步的 `text-sm` 与引导页的 `space-y-1.5`（`4340e64a`）；`notebook-home.test.tsx` 第一格断言描述的句子 `hidden`（`de40d1e6`）；`page-layout.test.tsx` 三格：不带 `panel` 的列不留右栏的地方，页的两支开着右栏时留、收起时不留（`31e05f59`），读取中的空头一行与读到之后的头一行同类名（`e41fce83`）。
 
+**S2 的照实**（[S2 的审查记录](reviews/P5-S2-lists-review.md)）：
+
+- 上面 S2 的各格都在。写法与上面不同的：预览的三格（长名字的标题、读取中的空头一行、不在回收站里的空头一行）在新的 `trash-preview-head.test.tsx`，自带一个只把 Install 放进回收站的 `trashed`（加在 `trash-preview.test.tsx` 末尾要的三行 import 会让 `:587` 下移）；它另有一格"按地址打开、不带状态的预览不取焦点"（`48c0eaa1`，审查 A 的 P5S2A-M1、C 的 P5S2C-I2）：等到标题、`article` 与其中的内容，再等文档以物件的名字命名（`document.title`：`Preview` 的取焦点与命名是同一次提交的 effect，命名之时取不取焦点已定），再断言焦点在 `body`（变异 pvA）。
+- `trash-preview.test.tsx:554` 那一格（M8/P2B 修复核对 2 的"从列表打开的预览不取焦点"）与决定 940 相反，7.1 没有列它：原地改写成"到达、标题取焦点"（今天 `:551-561`，行数不变、`:587` 不挪），之后的 50 ms 换成 `waitFor` 焦点到标题（审查 C 的 P5S2C-N2）；它原来另守的"预览自己不取焦点"由上一条的新格守。
+- `list-rows.test.tsx` 的回收站一行另断言链接在"恢复"之前（`compareDocumentPosition`，`c238d24d`，变异 40b）；第 90、91 条各有类名断言（`trash-preview-head.test.tsx` 长名字一格的按钮一组 `ms-auto`，`history-page.test.tsx` 筛选条一格的"谁" `max-w-64`）。
+- 变更集页读取中的空头一行：初写是写者、读者两行的 `test.each`，决定 954 之后只剩读者的；修复核对第 1 轮之后写成三行的 `test.each`（读取中、404、地址不是 id，`4730ddd3`，审查 C 的 P5S2C-F1-N2），每一支的空头一行都只有面包屑一块，读取中那一行另看读到之后的头一行也只有一块（`changeset-page.test.tsx:575`，断言在 `:605`；变异 cR、cRnf）。
+- `75578e08` 补的类名断言（变异 t3、t7、t25、t36、t50–t53、t56、t57）：回收站页上页与附件的图标 `text-faint`，目录一行的摘要 `text-sm` 与类型 `factsClass`，回收站页上带名字的"在后台恢复"带 `backgroundClass`，"Undone before"的 `noteClass`，变更集的消息 `text-foreground`，改动行的次要链接，历史行的计数与来源 `factsClass`。
+- 审查之后多的：`alert.test.tsx` 一格（`break-words`）与 `dialog.test.tsx` 两行（dialog 与 alertdialog 的一列，决定 952；dialog 一行守的是原有的 `DialogContent`，改前就绿）；`history-page.test.tsx` 只看此人一格的类名单加 `any-pointer-coarse:opacity-100`（决定 953），筛选条一格断言小块的 `py-1.5` 与"移除"的 `-my-1.5`；`trash-page.test.tsx` 与 `search-page.test.tsx` 的列表页一格断言行首图标带 `self-start`、`mt-0.5`（审查 B 的 P5S2B-M1），两个文件与 `index-page.test.tsx` 断言两个下拉 `max-w-64`、没有 `max-w-full`（P5S2B-N2）；`trash-preview-head.test.tsx` 头的一格断言事实是 `cn(docFactsClass, "mt-3.5 space-y-1")`（P5S2B-N3）。
+
 ### 7.2 变异
 
 每条在对应的树上做、跑写明的测试、看到红、还原。"故事"一列要重建前端再跑那一个故事（Chromium，除非写明）。1–60 与 43b 是初稿的（修订时照审查改了其中 5、6、9、10、13、15、17、18、19、39、45、46、49、52、56、57、58、60 的抓手，写明依据），61–91 是修订加的；修订核对第 2 轮之后再修订加了 96；修订核对第 1 轮之后再修订加了 92–95，改了 62、63 的抓手的理由，69 的去处（审查的编号如 P5C-R1-M2）。
@@ -1135,16 +1159,16 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 30 | S2 | `revealClass` 去掉 `group-focus-within/row:opacity-100` | hi3（故事：焦点在链接上时仍是 0） |
 | 31 | S2 | `revealClass` 去掉 `forced-colors:opacity-100` | hi3（故事：强制色下 0） |
 | 32 | S2 | "只看此人"的 `li` 去掉 `group/row` | `history-page.test.tsx` 新格；hi3（故事） |
-| 33 | S2 | 把暗色的 `--accent` 调淡（`#d9a84e` → `#b88a3a`） | se1（故事：暗色的 `link`、`select` 红；00 号文档 4.8 的最低清单） |
+| 33 | S2 | 把暗色的 `--accent` 调淡（`#d9a84e` → `#b88a3a`） | se1（故事：暗色的 `link`、`select` 红；00 号文档 4.8 的最低清单）。照实红在 `se1:305` 的暗色 `box`（`#b88a3a` 对左栏的 `#141517`，5.859 < 8.3），排在它们之前（审查 C 的 P5S2C-M1）；新下限守不守得住琥珀见 33L |
 | 34 | S2 | se1 的暗色 `link` 下限留在 7.82 | se1（故事：改了样子的树上红；这是"下限跟着改"的反证） |
 | 35 | S2 | 命中的标题换成 `div` | se1:340（故事） |
 | 36 | S2 | 筛选条里在"在哪里找"之前多一个可聚焦的元素（例如把状态行做成链接） | se1:309-316（故事） |
 | 37 | S2 | 变更集页在 `h1` 与事实之间插进"撤销"的那一行 | `changeset-page.test.tsx:106` |
 | 38 | S2 | "撤销这次改动"留在事实之后 | `changeset-page.test.tsx` 新格 |
 | 39 | S2 | 历史与变更集页的路由不加 `handle` | 表的历史、变更集各行（第 2 句） |
-| 40 | S2 | 回收站的行里"恢复"排在链接之前 | `trash-page.test.tsx:446-447` |
+| 40 | S2 | 回收站的行里"恢复"排在链接之前 | `trash-page.test.tsx:446-447`。照实（40b）：挪按钮时保留类名，这两次 Tab 对它等价（从第一行的"恢复"按两次 Tab，原样经过链接 2 到恢复 2，变异后经过链接 1 到恢复 2，都落在第二行的"恢复"；今天 `:457-458`），在 `75578e08` 上活下来；`c238d24d` 在 `list-rows.test.tsx:90` 补"链接在恢复之前"（`compareDocumentPosition`），红在那里（初写的变异挪按钮时丢了 `ms-auto`，红的是类名，不算数） |
 | 41 | S2 | 预览的"恢复"挪出 `shown` | `trash-preview.test.tsx:372`（预览被换掉时焦点交接） |
-| 42 | S2 | 预览的名字不进 `wrap-anywhere` 的 `span`（照旧是 `flex` 的 `h1` 里的文字） | TB1 新的一格（故事） |
+| 42 | S2 | 预览的名字不进 `wrap-anywhere` 的 `span`（照旧是 `flex` 的 `h1` 里的文字） | TB1 新的一格 `tb1:428`（故事：第一个 `expectFits`，页宽 1180；名字只有字母，审查 C 的 P5S2C-I1）；vitest 42v：`trash-preview-head.test.tsx:43` |
 | 43 | S2 | 面包屑挪到提示之后 | `trash-preview.test.tsx:928` |
 | 43b | S2 | 预览的"See the jobs"不带 `arrived` | `trash-background.test.tsx:686-689` 加的一句（焦点在 `body`） |
 | 44 | S2 | 目录的分组不再是 `section`（换成 `div`） | lw13:176-177（故事） |
@@ -1166,7 +1190,7 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 60 | S3 | `source-add-dialog.tsx:261` 照旧 `space-y-2` | `source-add-dialog.test.tsx` 新格（标签的父元素带 `space-y-1.5`；初稿说"没有格，由截图看"，C 的 P5C-M4） |
 | 61 | S3 | 版本页的 `:79-82`（页不在、版本号不合法）不包 `PageColumn`（直接 `return <PageGone …/>`） | 表的版本页"页不在""版本号不合法"两行（S3 提交 1 起；提交 2 删了回退之后同样，审查 A 的 P5A-I1） |
 | 62 | S1 | 笔记本首页的 `h1` 不带 `titleTextClass`（只有 `pageTitleClass`） | UI1 第 4 格第 4 步，只在 Firefox 那一次红（照实红在 `:213` 的行数：Firefox 里 `h1` 一行也不折，先被 `lines` 拦下，S1 的审查 C 的 P5S1C-N4；初稿写的是：Firefox 不在连字符与数字之间断，`h1` 以整个名字作最小宽度，375 宽时页宽 863、`expectFits` 红；Chromium 与 WebKit 在连字符之后断，`h1` 不带 `min-w-0` 也缩到一行宽、折成三行，"新建页面"照样与它右边齐，两次都过；审查 C 的 P5C-R1-M3 的探针 `p5-rev-c/probe1/m62.mjs`） |
-| 63 | S2 | `revealClass` 去掉 `max-md:opacity-100` | mc3 加的一句（故事：Chromium 与 `webkit-narrow` 两次都在 375 宽静止时 `opacity` 0：`webkit-narrow` 用的是 `Desktop Safari`，不是触屏，三个项目都报 `hover: hover`，审查 C 的 P5C-R1-M2 的探针 `p5-rev-c/probe1/hover.mjs`；C 的 P5C-M4） |
+| 63 | S2 | `revealClass` 去掉 `max-md:opacity-100` | mc3 加的一句 `:204`（故事：先把指针移开，`:203`，审查 C 的 P5S2C-N3；Chromium 与 `webkit-narrow` 两次都在 375 宽静止时 `opacity` 0：`webkit-narrow` 用的是 `Desktop Safari`，不是触屏，三个项目都报 `hover: hover`，审查 C 的 P5C-R1-M2 的探针 `p5-rev-c/probe1/hover.mjs`；C 的 P5C-M4） |
 | 64 | S1 | `sectionAt` 不转小写 | `settings-directory.test.tsx` 新格的大写地址；令牌页的新格（`/settings/Tokens` 整页报错） |
 | 65 | S1 | 出错页的"回到首页"不带 `arrived` | `route-error.test.tsx` 新格（C 的 P5C-M4） |
 | 66 | S1 | `buttonClass` 不经 `cn`（直接返回 `buttonVariants(…)`） | `button.test.tsx` 新格；`route-error.test.tsx` 新格的同一句（类名里有 `rounded-lg`，B 的 P5B-I1） |
@@ -1174,7 +1198,7 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 68 | S1 | 邀请页的"回到工作区"不看工作区的列表（没有工作区时也放） | `invitation.test.tsx` 账户没有工作区的那一格（列表空着也放了链接，"没有"红） |
 | 69 | S1 | 邀请页的"回到工作区"不带 `arrived` | `invitation.test.tsx` 有"回到工作区"的那一格（`/acme` 的 `h1` 不拿焦点；初稿写 `/lab`，`invitationServer` 的账户只有 Acme，审查 A 的 P5A-R1-N1） |
 | 70 | S2 | 历史行的主链接不带 `arrived` | `history-page.test.tsx` 新格（路由状态、变更集页的 `h1` 不拿焦点） |
-| 71 | S2 | 回收站行的链接不带 `arrived` | `trash-page.test.tsx` 新格 |
+| 71 | S2 | 回收站行的链接不带 `arrived` | `trash-page.test.tsx` 新格（`:1151`）；`trash-preview.test.tsx:560`（原 `:554` 那一格的 `waitFor`，审查 C 的 P5S2C-N2） |
 | 72 | S2 | 变更集页的"Reverts …"（`:387`）不带 `arrived` | `changeset-page.test.tsx` 新格的那一次 |
 | 73 | S2 | 改动行的"In the trash"不带 `arrived` | `changeset-page.test.tsx` 新格的那一次 |
 | 74 | S2 | 变更集页的"See the jobs"（`:344`）不带 `arrived` | `revert-background.test.tsx:432-435` 加的一句 |
@@ -1182,8 +1206,8 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 76 | S2 | 回收站行文字的一块不带 `listTextClass` | `list-rows.test.tsx` 回收站一行（`basis-56`）；7.4 的截图（长的事实下"恢复"折到左下） |
 | 77 | S2 | 回收站行的链接照旧 `underline underline-offset-4` | `list-rows.test.tsx` 回收站一行 |
 | 78 | S2 | 历史行的第一行不带 `lineTitleClass`（照旧没写字号） | `list-rows.test.tsx` 历史一行 |
-| 79 | S2 | 带名字的"在后台恢复"不带 `shrink` | TB1 新的一格的后一段（故事：`expectFits` 的左边小于 0） |
-| 80 | S2 | 带名字的"在后台恢复"不带 `whitespace-normal`（照旧不折行） | TB1 新的一格的后一段（故事：页宽或右边出屏） |
+| 79 | S2 | 带名字的"在后台恢复"不带 `shrink` | TB1 新的一格的后一段（故事：`expectFits` 的左边小于 0；照实 `tb1:442`，换名之后左边 −336.4） |
+| 80 | S2 | 带名字的"在后台恢复"不带 `whitespace-normal`（照旧不折行） | TB1 新的一格的后一段（故事：页宽或右边出屏；照实 `tb1:442`，换名之后页宽 711） |
 | 81 | S2 | 预览"不在回收站里"一支另画 `ColumnTop`（初稿的字面） | 表的预览"不在回收站里"一行（第 1 句：两个横幅，审查 A 的 P5A-M3） |
 | 82 | S2 | 变更集页 `:69`（地址不是 id）不包 `PageColumn` | 表的变更集页"地址不是 id"一行（路由有 `handle`，回退不画；那一支没有 `ColumnTop` 就没有横幅，第 1 句） |
 | 83 | S3 | 版本页右边那一格只在按钮显示时画 | `version-page.test.tsx` 新格（版本列表扣住时那一格不在） |
@@ -1193,8 +1217,8 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 87 | S3 | 升级页通往页面的链接不带 `arrived` | `upgrade-page.test.tsx` 新格 |
 | 88 | S3 | 版本页作者的链接不带 `arrived` | `version-page.test.tsx` 新格 |
 | 89 | S3 | 横幅的小圆点写成 `bg-accent` | `design-tokens.test.ts`（"amber is no fill"） |
-| 90 | S2 | 预览的按钮一组不带 `ms-auto` | 7.4 的截图（长名字时按钮在标题之下靠左）；没有格量它，照实记"由截图看" |
-| 91 | S2 | 历史的"谁"不带 `max-w-64` | 7.4 的截图（长名字的"谁"让筛选条参差）；没有格，照实记 |
+| 90 | S2 | 预览的按钮一组不带 `ms-auto` | 7.4 的截图（长名字时按钮在标题之下靠左）；照实有格：`trash-preview-head.test.tsx` 长名字一格断言按钮一组 `ms-auto` |
+| 91 | S2 | 历史的"谁"不带 `max-w-64` | 7.4 的截图（长名字的"谁"让筛选条参差）；照实有格：`history-page.test.tsx` 筛选条一格断言"谁" `max-w-64`、没有 `max-w-full` |
 | 92 | S2 | `revealClass` 去掉 `[@media(hover:none)]:opacity-100` | `history-page.test.tsx` 新格的类名（e2e 的三个项目都报 `hover: hover`，没有故事量它；审查 C 的 P5C-R1-M2） |
 | 93 | S1 | `WorkspaceStore.load` 不再读（照旧 `this.changesAnswered !== answeredBefore && this.list !== undefined`） | `workspace.store.test.ts` 新格（`list` 里没有刚加入的）；`invitation.test.tsx` 竞态的一格（`h1` 是"Page not found"；审查 A 的 P5A-R1-M1） |
 | 94 | S3 | `markClass` 去掉 `whitespace-nowrap` | `page-versions.test.tsx` 新格的类名（断开的小块由第 1 节 (g) 的第四次扫描看到，jsdom 不排版；审查 B 的 P5B-R1-M2） |
@@ -1213,19 +1237,44 @@ vitest 的格写明文件与要点；改写的写明行号与改法。改了文�
 | 949 | S1 | 空首页的"新建笔记本"回到默认大小 | `workspace-home.test.tsx` 从空首页新建一格（`buttonClass`） |
 | bi1 | S1 | `EntryCard` 去掉 `break-words` | `entry-card.test.tsx` 新格；故事：UI1 第 5 格 `:335`，375 宽未登录那页页宽 482，三种浏览器（审查 B 的 P5S1B-I1） |
 | 948 | S1 | 邀请那一句回到 `text-lg`；步骤与 `h1` 的外层换成 `contents`（948-step） | `invitation.test.tsx:426`；`onboarding.test.tsx:72` |
-| 946 | S1 | `PageColumn` 去掉空头一行（946-head）；去掉右栏的地方（946-room）；外层去掉 `md:-mt-3`（946-outer） | UP1 (page) 的那一步，三种浏览器：1440 宽 y 12 对 78；x 466 对 360；y 90 对 78（当时在 `:265`，今天 `:268`） |
+| 946 | S1 | `PageColumn` 去掉空头一行（946-head）；去掉右栏的地方（946-room）；外层去掉 `md:-mt-3`（946-outer） | UP1 (page) 的那一步，三种浏览器：1440 宽 y 12 对 78；x 466 对 360；y 90 对 78（当时在 `:265`，S1 合并时 `:268`，S2 之后 `:273`） |
 | an4 | S1 | UI1 第 5 格去掉开头的 `setViewportSize` | `expectFits` 的守卫"a phone's width or narrower"（1280 > 375），三种浏览器（审查 A 的 P5S1A-N4） |
 | 951 | S1 | `panel` 默认 `true`（951-default）；页的一支早退不传 `panel`（951-page-loading、951-page-gone） | `page-layout.test.tsx`：不带 `panel` 的一格；页的两支各一格（决定 951） |
-| n1 | S1 | 空头一行回到 `mb-7.5 min-h-9`（n1-plain；故事 n1-plain-story）；面包屑那一块不带一行的高（n1-no-line） | `page-layout.test.tsx` 空头一行一格；故事：UP1 (page) `:268`，768 宽 y 78 对 99.5，三种浏览器（审查 B 的 P5S1B-F1-N1） |
+| n1 | S1 | 空头一行回到 `mb-7.5 min-h-9`（n1-plain；故事 n1-plain-story）；面包屑那一块不带一行的高（n1-no-line） | `page-layout.test.tsx` 空头一行一格；故事：UP1 (page) `:268`（S2 之后 `:273`），768 宽 y 78 对 99.5，三种浏览器（审查 B 的 P5S1B-F1-N1） |
+| 33L | S2 | 同 33 调淡琥珀，另把暗色的 `box`、`button`、`select` 三个下限放开（审查 C） | se1 `:322`（故事：暗色 `link` 5.096 < 7.21，卡片 `#212226` 上：新下限守得住琥珀，审查 C 的 P5S2C-M1） |
+| pc1 | S2 | 页的两支不传 `head`（空头一行没有右边一组） | `page-layout.test.tsx:560`；故事：UP1 (page) `up1:273`，768 宽读取中 y 78 对读到之后 99.5，三种浏览器 |
+| pc4 | S2 | 预览的 `PageColumn` 传页的 26rem 一组 | `trash-preview-head.test.tsx:88`；故事：UP1 (page) `up1:309`，768 宽 99.5 对 78，三种浏览器 |
+| pc5 | S2 | `EmptyHead` 的面包屑一块不带 `h-[1lh] text-compact` | `page-layout.test.tsx`、`changeset-page.test.tsx`、`trash-preview-head.test.tsx` 的空头一行各格；故事：UP1 (page) `up1:273`，768 宽 80 对 99.5，三种浏览器 |
+| pc6 | S2 | 预览没有面包屑的两支不画 `EmptyHead`（4.2.8 初稿的字面） | `trash-preview-head.test.tsx:101` |
+| t3、t57 | S2 | 回收站行的图标（`ItemIcon` 自画的两个；t57：`AssetIcon`）回到 `text-muted-foreground` | `trash-page.test.tsx` 列表页一格（`75578e08` 起；之前活着） |
+| t7、t36 | S2 | 目录一行的摘要不带 `text-sm`；类型一行不带 `factsClass` | `index-page.test.tsx` 列表页一格（同上） |
+| t25 | S2 | 回收站页上带名字的"在后台恢复"不带 `backgroundClass` | `trash-background.test.tsx` 太大被拒那一格（同上） |
+| t50、t51 | S2 | "Undone before"不带 `noteClass`；变更集的消息不带 `text-foreground` | `changeset-page.test.tsx` 撤销的说明一格（`:270`）与头的一格（同上） |
+| t52 | S2 | 改动行的次要链接的类名 | `list-rows.test.tsx` 改动一行（同上） |
+| t53、t56 | S2 | 历史行的 `IngestSources` 不给 `factsClass`；计数不带 `factsClass` | `list-rows.test.tsx` 历史（摄取）一行（同上） |
+| cR | S2 | 变更集页读取中的 `PageColumn` 传页的 26rem 一组（审查 C 的 P5S2C-I3） | `changeset-page.test.tsx:605`（读取中那一行）；故事：UP1 (page) `up1:298`，三种浏览器：768 宽读到之后扣掉折出的一截是 78，读取中 99.5 |
+| cRnf | S2 | 变更集页两支"找不到"（地址不是 id；别的笔记本的或 404）传页的 26rem 一组，读取中一支不动（审查 C 的 P5S2C-F1-N2） | `changeset-page.test.tsx:605`（404 与地址不是 id 两行；`4730ddd3` 之前没有格，`df0437d2` 上照绿） |
+| pvA | S2 | 预览取焦点的 effect 去掉 `(merged \|\| focus) &&`（按地址打开也取焦点；审查 C 的 P5S2C-I2，= A 的 r7） | `trash-preview-head.test.tsx:119`（只有这一格红；`48c0eaa1` 之前整套 vitest 照绿） |
+| bw | S2 | 带名字的"在后台恢复"去掉 `wrap-anywhere`（审查 C） | TB1 `tb1:442`（故事：页宽 545；换名之前照绿） |
+| 952a | S2 | `Alert` 去掉 `break-words` | `alert.test.tsx:22`；TB1 `tb1:442`（故事：页宽 552） |
+| 952b | S2 | `AlertDialogContent` 去掉 `grid-cols-[minmax(0,1fr)]` | `dialog.test.tsx:77`（alertdialog 一行） |
+| 953 | S2 | `revealClass` 去掉 `any-pointer-coarse:opacity-100` | `history-page.test.tsx:1122`（类名；e2e 的三个项目都不是粗指针，没有故事量它） |
+| m1t | S2 | 回收站行的图标回到居中（`ItemIcon` 与它给 `AssetIcon` 的去掉 `mt-0.5 self-start`） | `trash-page.test.tsx:1122` |
+| m1s | S2 | 搜索命中的图标回到居中 | `search-page.test.tsx:937` |
+| m2 | S2 | `filterChipClass` 去掉 `py-1.5` | `history-page.test.tsx:1160` |
+| m2b | S2 | 小块里的"移除"去掉 `-my-1.5` | `history-page.test.tsx:1161`（一行 36 px 由探针量，没有格量高） |
+| n2s | S2 | "在哪里找"回到 `max-w-full` | `search-page.test.tsx:928` |
+| n2i | S2 | 目录的"类型"回到 `max-w-full` | `index-page.test.tsx:612` |
+| n3 | S2 | 预览的事实回到 `mt-2.5 space-y-0.5` | `trash-preview-head.test.tsx:54` |
 
-第 33 条照 00 号文档 4.8 的最低清单（"把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红"）取 `--accent`：se1 不量 `--faint`（4.7"说明文字不量"）。第 90、91 条没有格抓，由截图看，写进 10.x；第 15 条等价，不跑；第 76、86 条另有截图。 表末 t2 起的各行是 S1 的实施与审查加的（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，逐条的改法、在哪棵树上跑与审查者另写的在那里）：t 是实施者另写的（t1–t12 里活下来的四条由 `9975478d` 补格，t7 由 `45f02991` 补格），cx 是审查者的，以决定号起头的是修复的；第 15 条等价（审查 C 的 `probe15/`：1,000 个顶层页，`indexTree` 改前改后都只调 1 次）。
+第 33 条照 00 号文档 4.8 的最低清单（"把 `--faint` 或 `--accent` 调淡，se1 或 l5 变红"）取 `--accent`：se1 不量 `--faint`（4.7"说明文字不量"）。第 90、91 条没有格抓，由截图看，写进 10.x；第 15 条等价，不跑；第 76、86 条另有截图。 表末 t2 起的各行是 S1 的实施与审查加的（[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)，逐条的改法、在哪棵树上跑与审查者另写的在那里）：t 是实施者另写的（t1–t12 里活下来的四条由 `9975478d` 补格，t7 由 `45f02991` 补格），cx 是审查者的，以决定号起头的是修复的；第 15 条等价（审查 C 的 `probe15/`：1,000 个顶层页，`indexTree` 改前改后都只调 1 次）。 表末 33L 起的各行是 S2 的实施与审查加的（[S2 的审查记录](reviews/P5-S2-lists-review.md)，逐条的改法、在哪棵树上跑与审查者另写的在那里）：pc 是实施者照决定 951 加的（pc2、pc3 随决定 954 去掉），t 是实施者另写的、在 `dbf2c2cf` 上活下来由 `75578e08` 补格的十条，33L、cR、cRnf、pvA、bw 是审查 C 的，以决定号或发现的编号起头的是修复的；第 90、91 条照实有类名的格，第 40 条照实是 40b。
 
 ### 7.3 门禁
 
 - **基线**：不另跑（同 P4 的决定 883）。对照的数是第 1 节的：vitest 228 个文件、5455 格；E2E 636 格过、3 格失败、1 格跳过。
 - **每个提交**：`docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web`；改了行为、夹具或故事的另跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make e2e`（S1 的提交 1–3，S2 的提交 1、2，S3 的提交 1、2 都要）。
-- **合并之前**：在 Step 分支并入 `m13-ui-refresh` 的树上跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web gen-check-web build-web e2e`；`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 以 0 退出；`git diff --check`；结果写进 Step 的记录。本机允许的失败只有第 1 节那三格，同行同消息：P5 不改 `se2-*.spec.ts`、`lw8-health.spec.ts`、`pg15-reading-updates.spec.ts` 三个文件，SE2 的那一格照旧在 `se2:231`（S2 改了搜索页的样子，消息照旧是 `toHaveValue`；行号或消息变了先停、查清），LW8 的照旧在 `lw8:836`（S3 改了健康页的类名，Tab 的次序不变），PG15 的照旧在 `pg15:113`。AS6、`lw8:771`、"not slower"、`trash-preview.test.tsx:587`（S2 的新格加在那个文件的末尾，这一格的行号不挪）、造数的 500 与 WebKit 的"mermaid could not be loaded"偶发，重跑全过即可，记下；别的红了先停、查清。
-- **CI**（决定 944）：M13 在 CI 上只跑过一次：负责人推送 `f62d0390` 之后的 run 45551442052，e2e 红的三格（PG17 两格、C8）由 `9871c7d4` 修好（04-P4 10.4），修好的头还没推送（决定 746：没有推送的凭据时以本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑）。下面这些只有 P5 推送之后的 CI 才看得到，都等负责人推送之后：Linux 的字体下 UI1 两格的截短与折行、TB1 与 hi2 的行数（比的是按行高算的界，推断照样成立）；Linux 的 Chromium 上 hi3 的 `emulateMedia({ forcedColors })`（L4 的同一步在 run 45551442052 里已在 Linux 的 Chromium 上跑过、没有红；hi3 是另一页，照样等 P5 推送之后的 CI。初稿写"L4 已在 CI 上用过，P4/S2"，在写的时候不对，审查 C 的 P5C-Q1）；mc3 那一句在 Linux 的 `webkit-narrow` 上。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：负责人推送 `e8809170` 之后分支的 CI（run 45579305353）全绿，E2E 一步 8 分 5 秒，两处修复在 Linux 上成立；release 的演练（run 45579305372）也绿。S1 另有只靠 CI 的：UI1 第 5 格的邀请一步与 UP1 (page) 的新一步在 Linux 的字体与滚动条下（x 与宽由列宽定、与字体无关；会占位的经典滚动条会让居中的列左移，PG17 在 run 45579305353 上断言过 `clientWidth` 是 375，反面的证据，审查 C 修复核对第 1 轮）。
+- **合并之前**：在 Step 分支并入 `m13-ui-refresh` 的树上跑 `CI=1 docs/v0.1/claude_to_codex/tools/heavy.sh make lint-web knip test-web gen-check-web build-web e2e`；`git diff --quiet m13-ui-refresh...HEAD -- server api deploy .github testdata e2e/fixtures/db.ts ':(glob)**/*.go'` 以 0 退出；`git diff --check`；结果写进 Step 的记录。本机允许的失败只有第 1 节那三格，同行同消息：P5 不改 `se2-*.spec.ts`、`lw8-health.spec.ts`、`pg15-reading-updates.spec.ts` 三个文件，SE2 的那一格照旧在 `se2:231`（S2 改了搜索页的样子，消息照旧是 `toHaveValue`；行号或消息变了先停、查清），LW8 的照旧在 `lw8:836`（S3 改了健康页的类名，Tab 的次序不变），PG15 的照旧在 `pg15:113`。AS6、`lw8:771`、"not slower"、`trash-preview.test.tsx:587`（S2 的新格加在那个文件的末尾，这一格的行号不挪）、造数的 500 与 WebKit 的"mermaid could not be loaded"偶发，重跑全过即可，记下；别的红了先停、查清。 照实（S2，[S2 的审查记录](reviews/P5-S2-lists-review.md)）：合并之前的整条命令实施者在 `dbf2c2cf`（249 秒）、`c238d24d`（242 秒）、`df0437d2`（231 秒）上各跑一次，审查 C 在 `c238d24d`（250 秒）、`df0437d2`（260 秒）上各一次，每次 643 / 3 / 1，只败那三格，同行同消息（se2:231 的"在哪里找"修复之后带 `max-w-64`，消息照旧）；`4730ddd3`、`2c0af01a` 只改 vitest 的格与注释，跑 `make lint-web knip test-web`。`trash-preview.test.tsx:587` 没有挪（预览的新格放进新的 `trash-preview-head.test.tsx`），这几次都没有遇到它与别的偶发。
+- **CI**（决定 944）：M13 在 CI 上只跑过一次：负责人推送 `f62d0390` 之后的 run 45551442052，e2e 红的三格（PG17 两格、C8）由 `9871c7d4` 修好（04-P4 10.4），修好的头还没推送（决定 746：没有推送的凭据时以本机门禁替代分支 CI，负责人推送之后 CI 在最后一个头上补跑）。下面这些只有 P5 推送之后的 CI 才看得到，都等负责人推送之后：Linux 的字体下 UI1 两格的截短与折行、TB1 与 hi2 的行数（比的是按行高算的界，推断照样成立）；Linux 的 Chromium 上 hi3 的 `emulateMedia({ forcedColors })`（L4 的同一步在 run 45551442052 里已在 Linux 的 Chromium 上跑过、没有红；hi3 是另一页，照样等 P5 推送之后的 CI。初稿写"L4 已在 CI 上用过，P4/S2"，在写的时候不对，审查 C 的 P5C-Q1）；mc3 那一句在 Linux 的 `webkit-narrow` 上。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：负责人推送 `e8809170` 之后分支的 CI（run 45579305353）全绿，E2E 一步 8 分 5 秒，两处修复在 Linux 上成立；release 的演练（run 45579305372）也绿。S1 另有只靠 CI 的：UI1 第 5 格的邀请一步与 UP1 (page) 的新一步在 Linux 的字体与滚动条下（x 与宽由列宽定、与字体无关；会占位的经典滚动条会让居中的列左移，PG17 在 run 45579305353 上断言过 `clientWidth` 是 375，反面的证据，审查 C 修复核对第 1 轮）。 照实（S2，[S2 的审查记录](reviews/P5-S2-lists-review.md)）：负责人推送 `af33b81e`（P5/S1 合并之后）之后分支的 CI（run 45631867718）全绿，E2E 一步 8 分 5 秒，S1 只靠 CI 的几样在 Linux 上成立；release 的演练（run 45631867695）也绿。S2 另有只靠 CI 的：TB1 新的一格（只有字母的名字靠 `wrap-anywhere` 与 `break-words` 断行，与字体无关）与 UP1 (page) 变更集一步的面包屑在 Linux 的字体下折几行（公式只宽免折出的高，x 与宽照样严格相等）；hi3 静止的那一步在 Linux 的无头 Chromium 上，决定 953 之后另依赖 `any-pointer` 不是 coarse（审查 A 修复核对第 1 轮）。
 - **文档**：`python3 docs/v0.1/claude_to_codex/tools/check_links.py origin/m13-ui-refresh`（远端的分支不在时用 `m13-ui-refresh`）、`git diff --check`。
 
 ### 7.4 视觉的核对
@@ -1238,7 +1287,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ### 7.5 CI 的余量
 
-新的格：UI1 两格（三种浏览器，共 6 次）、TB1 一格（Chromium）；hi1、hi2、hi3、mc3、as1 各多一两句。UI1 已有的格每次约 2–5 s（P2/S3 的记录）；第 4 格建三本笔记本与两页、开三页、改三次窗口，推断每次 6–9 s；第 5 格两次导航、一次点按，推断 2–4 s；TB1 一格建页、删除、开一页、一次假的拒绝，推断 3–6 s；hi2 多一次改窗口与量，hi3 多两次 `emulateMedia`，mc3、as1 各一句，各不到 1 s。合计约 30–50 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 15–25 秒的墙钟。本机 E2E 2.6–2.8 min 推断到 2.7–3.0 min。CI 的 E2E 一步在 `f62d0390` 上是 8 分 22 秒（run 45551442052，决定 944；那一次红了三格，修好之后的头还没在 CI 上量过），时限 18 分钟（00 号文档第 9 节）；照本机的增量（2.6–2.8 → 2.7–3.0 min）推断余量足够，这是推断，等负责人推送之后的 CI 才有数。S1、S2、S3 之后照实各记一次本机的时间，S3 的那一次是 00 号文档第 9 节要的"P5 之后记一次时间"。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：CI 的 E2E 一步在 `e8809170` 上是 8 分 5 秒（run 45579305353，全绿）。S1 本机的 E2E 每次 2.7–2.9 min（646 格）。UI1 两格与 UP1 (page) 远快于推断，合并之前的整条命令里（Chromium / Firefox / WebKit）：`9975478d` 第 4 格 0.50 / 0.91 / 0.91 s、第 5 格 0.35 / 0.60 / 0.50 s；`de40d1e6` 第 4 格 0.50 / 0.99 / 1.1 s、第 5 格 0.68 / 1.5 / 1.3 s、UP1 (page) 1.7 / 2.7 / 3.4 s；`dc59e9e2` 第 4 格 0.55 / 1.0 / 1.4 s、第 5 格 0.68 / 1.8 / 1.6 s、UP1 (page) 2.4 / 3.1 / 3.4 s（UP1 多了五种宽度各一次扣住的读）。
+新的格：UI1 两格（三种浏览器，共 6 次）、TB1 一格（Chromium）；hi1、hi2、hi3、mc3、as1 各多一两句。UI1 已有的格每次约 2–5 s（P2/S3 的记录）；第 4 格建三本笔记本与两页、开三页、改三次窗口，推断每次 6–9 s；第 5 格两次导航、一次点按，推断 2–4 s；TB1 一格建页、删除、开一页、一次假的拒绝，推断 3–6 s；hi2 多一次改窗口与量，hi3 多两次 `emulateMedia`，mc3、as1 各一句，各不到 1 s。合计约 30–50 test-seconds，CI 的 `ubuntu-latest` 约 2 个 worker，约合 15–25 秒的墙钟。本机 E2E 2.6–2.8 min 推断到 2.7–3.0 min。CI 的 E2E 一步在 `f62d0390` 上是 8 分 22 秒（run 45551442052，决定 944；那一次红了三格，修好之后的头还没在 CI 上量过），时限 18 分钟（00 号文档第 9 节）；照本机的增量（2.6–2.8 → 2.7–3.0 min）推断余量足够，这是推断，等负责人推送之后的 CI 才有数。S1、S2、S3 之后照实各记一次本机的时间，S3 的那一次是 00 号文档第 9 节要的"P5 之后记一次时间"。 照实（S1，[S1 的审查记录](reviews/P5-S1-homes-entry-review.md)）：CI 的 E2E 一步在 `e8809170` 上是 8 分 5 秒（run 45579305353，全绿）。S1 本机的 E2E 每次 2.7–2.9 min（646 格）。UI1 两格与 UP1 (page) 远快于推断，合并之前的整条命令里（Chromium / Firefox / WebKit）：`9975478d` 第 4 格 0.50 / 0.91 / 0.91 s、第 5 格 0.35 / 0.60 / 0.50 s；`de40d1e6` 第 4 格 0.50 / 0.99 / 1.1 s、第 5 格 0.68 / 1.5 / 1.3 s、UP1 (page) 1.7 / 2.7 / 3.4 s；`dc59e9e2` 第 4 格 0.55 / 1.0 / 1.4 s、第 5 格 0.68 / 1.8 / 1.6 s、UP1 (page) 2.4 / 3.1 / 3.4 s（UP1 多了五种宽度各一次扣住的读）。 照实（S2，[S2 的审查记录](reviews/P5-S2-lists-review.md)）：CI 的 E2E 一步在 `af33b81e` 上是 8 分 5 秒（run 45631867718，全绿）。S2 本机的 E2E 每次 2.7–2.9 min（647 格）。TB1 新的一格远快于推断：0.41 s（`dbf2c2cf`）、0.53 s（审查 C，`c238d24d`）、0.43 s（`df0437d2`）；UP1 (page) 多了变更集与预览两步、各三种宽度的扣住的读，Chromium / Firefox / WebKit 3.1 / 5.3 / 5.6 s（`c238d24d`）、3.0 / 4.5 / 4.5 s（`df0437d2`）；hi3 4.5–4.6 s（多了悬停一步）；mc3 0.97–1.0 s、`webkit-narrow` 2.1–2.3 s；se1 (page) 1.4 s。合并之前的整条命令 231–260 秒。
 
 **本机的总时长**（粗算，经 `heavy.sh` 串行）：七个代码提交各一次 `make lint-web knip test-web`（约 70 秒）约 8 分钟；七次 `make e2e`（约 5 分钟，含构建）约 35 分钟；三次合并之前的整条命令约 13 分钟、审查 C 各再跑一次，约 78 分钟；变异 97 条（1–96 与 43b）：72 条只跑 vitest（一个文件 15–40 秒）约 32 分钟，22 条的抓手是故事，要重建前端再跑一个（每条约 3 分钟，UI1 的四条三种浏览器各约 4 分钟）约 70 分钟，第 15 条等价、不跑，第 90、91 条只看截图；修复核对每个 Step 一两轮约 45 分钟。合计约 4.5 小时的锁时间。
 
@@ -1253,7 +1302,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
 ### 8.2 总体设计的新文字
 
-每条由 Step 的文档提交里的脚本替换（"换成"是旧文字换成新文字，"之后加"是新文字接在旧文字之后），断言旧文字恰好出现一次：S1 的第 1–5 条的旧文字在 2.1 落进去之后的 `docs/v0.1/v0.1-design.md` 里各出现一次（2.1 对总体设计只改 12.2 的一行与第 15 节的头一行，与这里的旧文字不重叠）；S2 的第 6–10 条、S3 的第 11–16 条的旧文字有的是之前的 Step 写进去的，在之前的 Step 改完的文字里各出现一次。设计者用 `p5-design/replay.py` 从本节读出这些文字（引用块是旧文字与新文字），在 `3e288acb` 的副本上先做 2.1，再依次做 S1、S2、S3 的 18 处替换（第 3、6 条各两处），每个旧文字在它那一步做之前都恰好一次，每条新文字在它那一步做完之后也恰好一次（修订之后重跑过；脚本在会话的临时目录，不进仓库，审查 C 的 P5C-I3）。中文里的引号照总体设计的写法是 ASCII 的 `"`。13.2 第 17、31 条里句与句之间不空格，接在其后的新文字不以空格开头；13.4 第 3 条里句与句之间空一格，新文字以一个空格开头（审查 C 的 Nit）。链接在这里写在反引号里（它们相对于 `docs/v0.1/`，不是本文的链接，免得链接检查把它们当成本文的；写进总体设计时去掉反引号，同 P4 的 8.2）。第 5、10、16 条的日期写合并的那一天（`YYYY-MM-DD` 由实施者换掉）。2.1 第 13、14 条（12.2 的一行与它的变更记录）不在这里：它们随设计的提交改。13.2 第 17 条在 S1、S2、S3 都改（决定 924、940、941：通往别处的内容链接随改写那一页的 Step 带上到达的状态；初稿说 S3 不改，那时还没有决定 940）。
+每条由 Step 的文档提交里的脚本替换（"换成"是旧文字换成新文字，"之后加"是新文字接在旧文字之后），断言旧文字恰好出现一次：S1 的第 1–5 条的旧文字在 2.1 落进去之后的 `docs/v0.1/v0.1-design.md` 里各出现一次（2.1 对总体设计只改 12.2 的一行与第 15 节的头一行，与这里的旧文字不重叠）；S2 的第 6–10 条、S3 的第 11–16 条的旧文字有的是之前的 Step 写进去的，在之前的 Step 改完的文字里各出现一次。设计者用 `p5-design/replay.py` 从本节读出这些文字（引用块是旧文字与新文字），在 `3e288acb` 的副本上先做 2.1，再依次做 S1、S2、S3 的 19 处替换（第 3、6、7 条各两处），每个旧文字在它那一步做之前都恰好一次，每条新文字在它那一步做完之后也恰好一次（修订之后重跑过；脚本在会话的临时目录，不进仓库，审查 C 的 P5C-I3）。中文里的引号照总体设计的写法是 ASCII 的 `"`。13.2 第 17、31 条里句与句之间不空格，接在其后的新文字不以空格开头；13.4 第 3 条里句与句之间空一格，新文字以一个空格开头（审查 C 的 Nit）。链接在这里写在反引号里（它们相对于 `docs/v0.1/`，不是本文的链接，免得链接检查把它们当成本文的；写进总体设计时去掉反引号，同 P4 的 8.2）。第 5、10、16 条的日期写合并的那一天（`YYYY-MM-DD` 由实施者换掉）。2.1 第 13、14 条（12.2 的一行与它的变更记录）不在这里：它们随设计的提交改。13.2 第 17 条在 S1、S2、S3 都改（决定 924、940、941：通往别处的内容链接随改写那一页的 Step 带上到达的状态；初稿说 S3 不改，那时还没有决定 940）。
 
 1. **9.2 中间一段**（S1）：两个首页、入口的卡片、出错与 404、空状态（审查 C 的 P5C-M9：只有有子页面的行带数；搜索没有命中与右栏是空状态的例外；决定 950：S1 只说两个首页与设置的卡片，列表类的页由第 6 条放宽）。
 
@@ -1319,7 +1368,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    之后加：
 
-   > 搜索、历史、回收站、目录与标签的页居中、最宽 720 px：标题、一两句说明、筛选条与卡片里的行，行里的次要操作（历史的"只看此人"）在悬停或键盘聚焦时显出；变更集页与回收站的预览也是 720 px 的一列，头同页的头一行，"撤销这次改动""恢复"在它的右边（M13/P5/S2）。
+   > 搜索、历史、回收站、目录与标签的页居中、最宽 720 px：标题、一两句说明、筛选条与卡片里的行，行里的次要操作（历史的"只看此人"）在悬停或焦点进了这一行时显出；变更集页与回收站的预览也是 720 px 的一列，头同页的头一行（左边是面包屑），变更集页的"撤销这次改动"在头一行的右边，预览的"恢复"留在标题旁，标题排不下时在它之下靠右（M13/P5/S2）。
 
    旧文字（S1 写进的）：
 
@@ -1329,7 +1378,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    > 两个首页、设置的卡片与列表类的页里（搜索没提交时、历史、回收站、目录与标签，M13/P5/S2），没有东西的列表是
 
-7. **13.2 第 31 条**（S2）：行内次要操作的显出（决定 927）。
+7. **13.2 第 31 条**（S2）：行内次要操作的显出（决定 927、953），提示框与警示对话框里的长名字（决定 952，审查 C 的 P5S2C-Q2）。
 
    旧文字：
 
@@ -1337,7 +1386,15 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    之后加：
 
-   > 列表行里的次要操作（历史的"只看此人"）平时透明、不藏起（Playwright 照样点得到，读屏照样读得到），悬停这一行、键盘的焦点进了这一行或它自己、它的菜单开着（`aria-expanded`）时显出；没有悬停的设备、窄屏（< 768 px）与强制色下一直显示（`app/page-classes.ts` 的 `revealClass`，M13/P5/S2）。
+   > 列表行里的次要操作（历史的"只看此人"）平时透明、不藏起（Playwright 照样点得到，读屏照样读得到），悬停这一行、焦点进了这一行或它自己、它的菜单开着（`aria-expanded`）时显出；没有悬停的设备、可能用手指点的设备（`any-pointer-coarse`，同左栏树每行的"⋯"）、窄屏（< 768 px）与强制色下一直显示（`app/page-classes.ts` 的 `revealClass`，M13/P5/S2）。
+
+   旧文字（S1 写进的）：
+
+   > 截短的名字照样以全长撑宽（工作区首页，M13/P5/S1）。
+
+   之后加：
+
+   > 提示框（`components/ui/alert.tsx` 的 `Alert`）里的文字 `break-words`：没有断点的名字（回收站里"太大，不能在这里恢复"的提示）在框里折行；警示对话框（`components/ui/alert-dialog.tsx` 的 `AlertDialogContent`）同对话框写明一列（`grid-cols-[minmax(0,1fr)]`），里面的提示（删除或撤销时说谁正在编辑哪一页）在框里折行，按钮不被推出框外（M13/P5/S2）。
 
 8. **13.2 第 17 条**（S2）：列表类的页与变更集页通往别处的链接（决定 924、940；审查 A 的 P5A-M2、P5A-Q1）。
 
@@ -1349,7 +1406,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    > 列表类的页与变更集页的行和头里通往别处的内容链接同样带 `arrived`，去处的 `h1` 取焦点：历史行的主链接、"已撤销"与"撤销了「…」"，变更集的改动行的"在回收站里""这个节点的历史"与正文的版本，回收站的行，变更集页的"查看这次撤销""撤销了「…」"与"被撤销："之后的各个；后台的答复丢了、说不出是哪个任务时变更集页、回收站与它的预览里的"查看任务"（去导入导出的设置页）也带（M13/P5/S2；已带路由状态的照旧：改动行的主链接与健康的项经 `openOf`，目录的行，"查看进度"经 `focusJob`）。
 
-9. **13.4 第 3 条**（S2）：TB1 的一格、hi3 与 mc3（决定 927，审查 B 的 P5B-M12）。
+9. **13.4 第 3 条**（S2）：TB1 的一格、hi3、mc3 与 UP1 的两步（决定 927、946、951、952，审查 B 的 P5B-M12，审查 C 的 P5S2C-I1、P5S2C-M3）。
 
    旧文字（S1 写进的）：
 
@@ -1357,7 +1414,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
    之后加：
 
-   >  M13/P5/S2：TB1 一格在 375 宽核对回收站的预览里没有空格的长名字（标题折行，"恢复"、带名字的"在后台恢复"与面包屑都不出屏），只有页面版本：只核对样子，删除是造数，恢复被假的答复拒了，接口与 MCP 版本豁免；hi3 另核对"只看此人"静止时透明、键盘的焦点进了那一行与强制色下显出，mc3 另核对 375 宽时它静止也显着。
+   >  M13/P5/S2：TB1 一格在 375 宽核对回收站的预览里没有断点的长名字（标题折行，"恢复"、拒绝时的提示、带名字的"在后台恢复"与面包屑都不出屏），只有页面版本：只核对样子，删除是造数，恢复被假的答复拒了，接口与 MCP 版本豁免；hi3 另核对"只看此人"静止时透明，悬停这一行、焦点进了这一行与强制色下显出，mc3 另核对 375 宽时指针不在任何一行上、它静止也显着；UP1 另核对变更集页与回收站的预览读到之前与之后横幅的位置与宽相同（1440、768、375 宽，读到以页的标题出现为准；变更集页的面包屑折成几行时，扣除多出的高）。
 
 10. **第 15 节**（S2）：变更记录一行，加在 S1 那一行之上。
 
@@ -1365,13 +1422,13 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     之后加：
 
-    > - YYYY-MM-DD：M13/P5/S2（依据 `[P5 设计](M13-ui-refresh/05-P5-pages.md)`）：9.2 的中间一段（列表类的页与它们的空状态、变更集页与回收站的预览的头）；13.2 第 17 条（列表类的页与变更集页通往别处的链接、"查看任务"带 `arrived`）、第 31 条（行内次要操作的显出）；13.4 第 3 条（TB1 的一格、hi3、mc3）。
+    > - YYYY-MM-DD：M13/P5/S2（依据 `[P5 设计](M13-ui-refresh/05-P5-pages.md)`）：9.2 的中间一段（列表类的页与它们的空状态、变更集页与回收站的预览的头）；13.2 第 17 条（列表类的页与变更集页通往别处的链接、"查看任务"带 `arrived`）、第 31 条（行内次要操作的显出、提示框与警示对话框里的长名字折行）；13.4 第 3 条（TB1 的一格、hi3、mc3、UP1 的两步）。
 
 11. **9.2 中间一段**（S3）：版本、健康、升级与附件（审查 C 的 P5C-M9：升级页只有两个列表在卡片里；决定 943）。
 
     旧文字（S2 写进的）：
 
-    > 变更集页与回收站的预览也是 720 px 的一列，头同页的头一行，"撤销这次改动""恢复"在它的右边（M13/P5/S2）。
+    > 预览的"恢复"留在标题旁，标题排不下时在它之下靠右（M13/P5/S2）。
 
     之后加：
 
@@ -1411,7 +1468,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 
     旧文字（S2 写进的）：
 
-    > mc3 另核对 375 宽时它静止也显着。
+    > 变更集页的面包屑折成几行时，扣除多出的高）。
 
     之后加：
 
@@ -1431,6 +1488,7 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
   - 读屏清单"H. M13"一节加：空状态（图标不读、说明是普通的段落、主操作是按钮，不播报）；入口的卡片（产品名是普通的文字、在 `h1` 之前读到，标志不读）；已登录的邀请页右上角的"回到工作区"（账户已有工作区时才有，决定 941）；工作区首页的卡片（链接名是"名称 LLM Wiki 开放程度 · N 位成员"连读，记下各读屏有没有在几段之间停顿）、虚线的"新建笔记本"（按钮，与左栏的同名）；笔记本首页的子页面数（看得见的数不读，读屏读链接的描述"3 个子页面"：按 Tab 走到链接时与浏览时各听一次，记下各读屏读不读描述，决定 919）；出错页与会话不可用的 `alert`（打开时读出整段）、邀请页里会话不可用的 `h2`；列表行里透明的"只看此人"与"操作"（透明时照样可聚焦，读屏照样读到）；版本页与变更集页的按钮在 `h1` 之前（阅读的次序是面包屑、按钮、标题；到达之后焦点在 `h1`，从它起 Tab 先到作者或下一个链接，主操作要往回找，同 P4 的"编辑"，决定 929，审查 A 的 P5A-N3）；右栏版本行的"当前""编辑中"接在作者之后读；升级横幅在每一页每一支的列里、标题之前，状态前的小圆点不读；下载的图标不读（名字里不说"下载"，16.7 读屏那一半留给 v0.2）。
   - README 与 `CHANGELOG.md` 0.1.0：P5 没有改它们。`CHANGELOG.md` 的"网页的打磨"一条（`CHANGELOG.md:43`）里没有 P5 做掉的已知限制。README 描述界面的句子里与 P5 有关的：`README.md:471` 说笔记本的外壳与设置，没有"笔记本首页有设置链接"的说法，"管理员的工作区首页提醒还有几本无主笔记本"照旧成立，不用改；顺带看到 `:471`"开放程度点'保存'才发出"在 P3/S2 之后已不准（即生效的下拉，03-P3 决定 825），收尾改 README 时一并改。
   - 全部 e2e 的完整跑：P5/S3 合并之前的门禁跑过一次、记了时间（2.1 第 4 条）；收尾照 00 号文档第 7 节在 `main` 上再跑。M13 在 CI 上的第一次跑等负责人推送（决定 944），7.3 列的那几样那时才看得到。
+  - 左栏的齿轮（P2，`W/pages/notebook/page-tree.tsx:40`）只看 `[@media(hover:none)]`：触屏笔记本这类主指针能悬停、另有手指的设备上，它静止时看不见。S2 的"只看此人"照同一棵树每行的"⋯"另加了 `any-pointer-coarse:opacity-100`（决定 953），齿轮要不要同样加，收尾的审查定。953 在真的触屏笔记本上没有看过：Chromium 的 CDP 模拟不了只有 `any-pointer` 是 coarse 的设备，审查 B 以 `--blink-settings` 起的浏览器量过（[S2 的审查记录](reviews/P5-S2-lists-review.md)）。
 - **v0.2**（写进 `docs/v0.2/handoffs/M12-polish.md` 的"处理进展"，各 Step 的文档提交）：M12-polish 第 1 项里落在 P5 的页上、P5 不认领的（决定 937 的清单，逐项带理由：1、9.4、16.2、16.4a、16.5、16.9、21 与 22 的各条、23.2、23.5–23.18 的各条、24.4、24.5、26.6–26.10 的各条、27.1、31.2、34、35.4–35.6、36、38.2、38.4、38.13、42–47）；16.7 读屏那一半；第 5、11 项里落在 P5 的页上的约二十处 `bdi`（要逐处看名字之后紧跟的是什么，决定 937）；第 5 项的"变更集页面包屑的 `current`"；骨架（决定 914：若以后有分批的长列表再看）。右栏版本行单独一行的"-"不再交出：S3 提交 1 照决定 943 改了（第 1 节 (g) 的扫描：今天的写法三种引擎都复现，内联之后三种引擎都是 0；小块带 `whitespace-nowrap`，中文的小块也不在字间断开），S3 的文档提交在 04-P4 第 9 节记下。
 - **负责人**：无新的人工核对。M13 的 CI 等负责人推送（决定 944）。
 
@@ -1458,6 +1516,28 @@ B 审查者用 Playwright 截取下面这些，亮暗、1440 与 375 各一张�
 - **交给后面**：
   - S2：标签页的列表在 S1 之后铺满 `main`（S1 改了共用的 `SubpageList`，标签页的版式在 S2 换，审查 B 的旁记）；`PageColumn` 导出时空的头一行由调用者定形、选项按"页的头"命名，S2、S3 的表在 1440、768 与 375 宽量 x 与 y（决定 951 之下的 P5S1B-F2-N1，4.2.6）；8.2 第 6 条的第二处把空状态那一句放宽到列表类的页（决定 950）。
   - 负责人推送之后的 CI：UI1 两格在 Linux 的字体下的截短与折行，第 5 格的邀请一步与 UP1 (page) 的新一步在 Linux 的字体与滚动条下（7.3）。
+
+### 10.2 S2：列表与筛选（2026-11-25 至 26，合并 `<待填>`）
+
+- **提交**：照 6.2 的 `1a7a735e`（提交 1）、`dbf2c2cf`（提交 2），说明与 6.2 逐字相同；照实加的 `75578e08`（变异 t3、t7、t25、t36、t50–t53、t56、t57 在 `dbf2c2cf` 上活下来之后补的类名断言）、`c238d24d`（40b 在 `75578e08` 上活下来之后补的"链接在恢复之前"），都只改测试；第一轮审查之后的 `74b22728`、`48c0eaa1`、`446d2463`、`9c97fc79`、`df0437d2`，修复核对第 1 轮之后的 `4730ddd3`、`2c0af01a`（各做了什么见 6.2 之后的照实）；加本文档提交。[S2 的审查记录](reviews/P5-S2-lists-review.md)。
+- **基线**：不另跑（7.3）。提交 1、2 的 `make e2e` 只败 se2:231 [chromium]（`toHaveValue`）与 lw8:836 [webkit]（`toBeFocused`），同行同消息，pg15:113 [webkit] 这两次过了；之后实施者的七次（三次合并之前的整条命令、修复的四次 `make e2e`）与审查 C 的两次，三格都败，同行同消息。se2:231 的行号与消息没有变（S2 改了搜索页，"在哪里找"照旧是那个下拉，修复之后带 `max-w-64`）。
+- **做完**：4.2.1–4.2.11；决定 915 里 S2 的部分（历史、变更集页、回收站、预览、目录、标签六个路由的 `handle` 与 `<ColumnTop />`，变更集页与预览的每一处早退包进 `PageColumn`，"路由 × 支"表加 20 行：提交 1 七行、提交 2 十三行）；916 里 S2 的部分（列表类的页 720 px）；924 里 S2 的部分（三个"See the jobs"带 `arrived`）；925–929；931 里 S2 的部分（行里的名字 `break-words`，预览标题的名字 `wrap-anywhere`）；936（se1 的暗色 `link` 下限，4.4）；937 里 S2 的部分（认领的"回收站预览 `h1` 的长名"与同一处的"在后台恢复"）；940 里 S2 的部分；945；951 之下的 P5S1B-F2-N1（`PageColumn` 收 `head`，页的两支传 `headGroupClass`，变更集页与预览不传；UP1 在 1440、768、375 宽量 x 与 y）；S1 交来的标签页的版式（`listColumnClass`）；决定 952–954；审查 B 的 P5S2B-M1、M2、N2、N3（行首图标对着名字的第一行，筛选小块的上下内边距，"在哪里找"与"类型"最宽 16rem，预览的事实同变更集页的间距）；8.2 第 6–10 条（第 6 条的第二处把空状态那一句放宽到列表类的页，决定 950；第 7 条的第二处是 952，审查 C 的 P5S2C-Q2）。
+- **测试**：
+  - vitest：5504（231 个文件）→ 5533（232，提交 1：新 `list-rows.test.tsx`）→ 5559（233，提交 2：新 `trash-preview-head.test.tsx`）→ 5559（`75578e08`、`c238d24d`，断言加在已有的格里）→ 5562（`74b22728`：`alert.test.tsx` 一格、`dialog.test.tsx` 两行）→ 5563（`48c0eaa1`：按地址打开的预览一格）→ 5562（`446d2463`：去掉写者的空头一行一格）→ 5562（`9c97fc79`、`df0437d2`，断言加在已有的格里）→ 5564（`4730ddd3`：变更集页空头一行的三行 `test.each`）→ 5564（`2c0af01a`），之后都是 233 个文件。
+  - E2E：646 格 → 646（提交 1 只在 hi3、mc3、se1、UP1 (page) 已有的格里加步）→ 647（TB1 新的一格，Chromium）；修复都在已有的格里。`check.mjs` 列 chromium 434、firefox 105、webkit 105、webkit-narrow 3（之前 433、105、105、3）。
+  - 先写的新格在没改的树上红：提交 1 的 vitest 30 格（6 个文件），hi3 红在 `hi3:334`（opacity 期望 0、得 1）；提交 2 的 vitest 28 格（7 个文件，表的 13 行红在第 2 句的 `mx-auto`），挪进新文件的 3 格与改写的 `trash-preview.test.tsx:554` 另在旧代码上红；TB1 新格红在 `tb1:442`（第二个 `expectFits`：页宽 724 对 375，不在设计说的第一个，见与设计不同之处）；`74b22728` 的 alert 一格、alertdialog 一行与 TB1（换名之后红在 `tb1:442`，页宽 552）；`9c97fc79` 的只看此人一格（缺 `any-pointer-coarse:opacity-100`）；`df0437d2` 的 6 格（5 个文件，其中 `max-md:-ms-3.25` 那一句随 P5S2B-N1 撤回）。
+  - 不是先红的：mc3 那一句（旧树没有透明，恒为 1；由变异 63 证；`9c97fc79` 先把指针移开，只改测试）；UP1 (page) 的变更集与预览两步（旧树上回退把横幅画在出口之上，读取中与读到之后同一处）：预览一步由 pc4 证（`up1:309`），变更集一步由审查 C 的 cR 证（`up1:298`），39b、45b、82 只由 vitest 的表抓（审查 C 的 P5S2C-I3）；se1 的下限（照改后的样子量；变异 34、33L）；`48c0eaa1` 的按地址打开一格（守的是本来就对的代码，由 pvA 证）；决定 954（删掉的是在排版上不起作用的一支，由 cR 守）；`4730ddd3` 的两行"找不到"（由 cRnf 证）；`dialog.test.tsx` 的 dialog 一行（守原有的 `DialogContent`）。
+  - 每次门禁"not configured to support act"0 次；"Not implemented: navigation to another Document"照旧每次一次。
+- **变异**（逐条在审查记录，7.2 的表末）：7.2 的 S2 各条都被抓住：vitest 的 32、37–41、43、43b、45a–d、46、70–78、81、82、90、91、92 红在写明的格（90、91 设计说只由截图看，照实各有类名断言）；40 照实：设计写的抓手 `trash-page.test.tsx:446-447`（今天 `:457-458`）的两次 Tab 对"恢复排在链接之前"等价，重做成保留类名的 40b，在 `75578e08` 上活下来，`c238d24d` 在 `list-rows.test.tsx:90` 补了次序的断言，红。故事抓住的：30（`hi3:340`）、31（`hi3:344`）、32（`hi3:336`，另有 vitest）、33（照实红在 `se1:305` 的暗色 `box` 5.859 < 8.3，排在 `link` 之前；审查 C 的 33L 放开前三个下限，红在 `se1:322` 的 `link` 5.096 < 7.21）、34（`se1:322`，7.311 < 7.82）、35（`se1:343`）、36（`se1:314`）、44（`lw13:176`）、63（`mc3:204`，Chromium 与 `webkit-narrow`）、42（换名之后 `tb1:428`，页宽 1180；vitest 42v 另抓）、79（`tb1:442`，换名之后左边 −336.4）、80（`tb1:442`，页宽 711）。实施者另写的：`PageColumn` 的头一行 pc1、pc4、pc5、pc6 都被抓住（pc1、pc4、pc5 另在 UP1 (page) 上红，768 宽：pc1 读取中 78 对读到之后 99.5，pc4 99.5 对 78，pc5 80 对 99.5；pc2、pc3 随决定 954 去掉）；t1–t58 里 t3、t7、t25、t36、t50–t53、t56、t57 在 `dbf2c2cf` 上活下来（都是只改样子的类名），由 `75578e08` 补格，重跑都红，其余都被抓住。修复各行（952a、952b、bw、pvA、cR、cRnf、953、m1t、m1s、m2、m2b、n2s、n2i、n3）都红在说好的格；71 在 `:554` 那一格换成 `waitFor` 之后红在 `trash-preview.test.tsx:560` 与 `trash-page.test.tsx:1151`。审查者另写的：A 的 r1–r13 里 r7（预览的 effect 恒取焦点）与 C 的 pvA、C 的 bw 与第一轮 42 的故事、C 的 cRnf 先活着，修复之后都红，其余都红；`File` 一支的行首图标（C 的 m1s-file、m1t-file）没有格，照实。
+- **视觉的核对**（7.4）：实施者在三种浏览器各截约 300 张（21 个视图 × 英文亮暗 1440、1024、768、375、320 + 中文亮色 1440、375、320，另有只看此人的静止、悬停与聚焦，Chromium 的强制色，422 之后的"在后台恢复"，读者的变更集页与回收站，升级中三种页在五种宽度读取中与读到之后的横幅），长名字三种（连字符加数字、没有断点、长中文）；修复之后另截 952 的提示与警示对话框、行首图标、筛选小块、下拉的宽、事实的间距（1440、768、375、320）。实量：横向溢出 0；列表类的页 1440 宽 x 486 / 宽 720，375 宽 24 / 327；回收站的"恢复"≥ 768 宽在右上（离右边 18、离行顶 14），375、320 宽在文字之下靠右；预览标题与变更集页标题同在 486 / 78；横幅：预览与"不在回收站里"五种宽度读取中 = 读到之后，变更集页在面包屑折行时差折出的那一截（946 照实）；历史行第一行 22 px 对搜索 20 px；952 之后提示框在 1440、768、375、320 宽是 720、468、327、272 宽、不溢出，删除别人正在编辑的页时警示对话框里的提示在框里折行、两个按钮在框里；行首图标的中线与名字第一行的中线差 −0.5 到 +0.5；筛选小块一行 36 px，折行时字离上下边约 7–9.5 px；"在哪里找"与"类型"在 Chromium、WebKit 最宽 256；预览与变更集页的事实离标题 14、行间 4。对照 settings.html 与 reading.html：卡片、行距、第一行、分组标题、头一行、32 px 标题与 `.meta` 一致。截图在会话的临时目录，不进仓库。
+- **对比度**（4.4，Chromium 1440 宽）：se1 的值见 4.4 的照实：暗色 `link` 7.311（卡片 `#212226` 上，下限 7.21），暗色的高亮字在卡片上 7.418；别的与改之前相同，都在下限之上。
+- **时长**（7.5）：本机 E2E 每次 2.7–2.9 min（647 格）；合并之前的整条命令 231–260 秒；TB1 新的一格 0.41–0.53 s，UP1 (page) Chromium / Firefox / WebKit 3.0–3.1 / 4.5–5.3 / 4.5–5.6 s，hi3 4.5–4.6 s（7.5 的照实）。CI 的 E2E 一步在 `af33b81e` 上 8 分 5 秒。
+- **门禁**：每个提交的 `heavy.sh make lint-web knip test-web` 都绿（vitest 约 60–63 秒；`dbf2c2cf` 与 `74b22728` 的第一次 oxlint 各报两条，在提交之前改了）；改了行为、故事或夹具的提交（提交 1、2，`74b22728`、`446d2463`、`9c97fc79`、`df0437d2`）各跑 `CI=1 heavy.sh make e2e`，只败基线的格。合并之前的整条命令在 `dbf2c2cf`（249 秒）、`c238d24d`（242 秒）、`df0437d2`（231 秒）上各跑一次，审查 C 在 `c238d24d`（250 秒）、`df0437d2`（260 秒）上各一次，每次只败基线那三格；`4730ddd3`、`2c0af01a` 只改 vitest 的格与注释，跑 `make lint-web knip test-web`（233 / 5564）。受保护路径的 `git diff --quiet` 与 `git diff --check` 都以 0 退出，跑完 `git status` 为空。
+- **与设计不同之处**：照实多九个代码提交（6.2 之后）；预览没有面包屑的两支照决定 946 画空的头一行（`EmptyHead`，4.2.8 的照实，实施者的偏离 a），`EmptyHead` 由此从 `page-layout.tsx` 导出；带名字的"在后台恢复"的类名是 `trash-row.tsx` 导出的 `backgroundClass`，两处共用；`trash-preview.test.tsx:554`（M8/P2B 的"从列表打开的预览不取焦点"，与决定 940 相反，7.1 没列）原地改写成到达、行数不变，它原来另守的"按地址打开不取焦点"由 `trash-preview-head.test.tsx` 的新格守（审查 A 的 P5S2A-M1、C 的 P5S2C-I2）；预览的格放进新的 `trash-preview-head.test.tsx`（加在原文件末尾要的三行 import 会让 `:587` 下移）；TB1 新格先红在第二个 `expectFits`，名字照实换成只有字母的（Chromium 在连字符之后断，审查 C 的 P5S2C-I1），第二个 `expectFits` 也量拒绝时的提示；hi3 多了悬停的一步；UP1 (page) 变更集那一步照决定 946 的"照实"扣掉面包屑折行多出的高（`read.y − max(0, trail − 36) = loading.y`，x 与宽严格相等），`bannerPlaces` 等所称的标题（审查 A 的 P5S2A-N2）；se1 暗色 `link` 量出 7.311，下限 7.21（同推算）；共用的 `Alert` 与 `AlertDialogContent` 改了（决定 952，超出 S2 原来的设计，由实施者交出的发现起）；`revealClass` 多 `any-pointer-coarse:opacity-100`（决定 953）；`headOf` 去掉（决定 954）；小块里的"移除"多 `-my-1.5`（P5S2B-M2 的处置之外，一行仍 36 px）；审查 B 的 P5S2B-N1（`max-md:-ms-3.25`）试过、撤回：不折时按钮压进链接 1 px，焦点环压在最后一个字上。
+- **交给后面**：
+  - S3：`PageColumn` 的 `head` 已导出，版本页的早退传它那一格的类名（4.3.1）；附件一节的"操作"用 `revealClass`（4.3.5，带着 953 的 `any-pointer-coarse`）；历史行的"Reverted"的形状随 `Mark` 改（4.3.2）。
+  - 收尾：左栏的齿轮（P2）要不要同 953 加 `any-pointer-coarse`；953 在真的触屏笔记本上的样子（第 9 节）。
+  - 负责人推送之后的 CI：TB1 新的一格与 UP1 (page) 变更集一步的面包屑在 Linux 的字体下，hi3 静止那一步在 Linux 的无头 Chromium 上（7.3）。
 
 ## 附录：核对过的代码
 
