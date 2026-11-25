@@ -67,6 +67,19 @@ test("in Chinese, how many pages are under a root page: one, and more", async ()
   expect(within(list).getByRole("link", { name: "Plans for Q1", description: "1 个子页面" })).toBeTruthy();
 });
 
+test("how many pages are under a root page, seen and said, is written as the locale writes numbers", async () => {
+  const big = pageNode(8, "Archive");
+  const under = Array.from({ length: 1200 }, (_, i) => ({
+    ...pageNode(9, `Box ${i}`, big),
+    id: `0199a2b4-0000-7000-8000-${String(10_000 + i).padStart(12, "0")}`,
+  }));
+  renderApp(home, pageServer({ nodes: [big, ...under] }).app);
+  const list = await listed();
+
+  expect(within(list).getByRole("link", { name: "Archive", description: "1,200 subpages" })).toBeTruthy();
+  expect(seen(within(list).getByRole("listitem")).map((child) => child.textContent)).toEqual(["1,200"]);
+});
+
 test("the home has no link to the notebook's settings: the left column's cog is the way there", async () => {
   renderApp(home, pageServer({ nodes: [guide, notes] }).app);
   await listed();

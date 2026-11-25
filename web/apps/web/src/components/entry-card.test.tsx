@@ -28,6 +28,8 @@ test("the card says the product's name above the page, in text, its mark read by
   expect(name.closest("h1, h2, h3, h4, h5, h6")).toBeNull();
   const mark = container.querySelector("svg");
   expect(mark?.getAttribute("aria-hidden")).toBe("true");
+  // Hidden in forced colours, where its fills would be the system's one colour; the name stays (decision 920).
+  expect(mark?.getAttribute("class")?.split(" ")).toContain("forced-colors:hidden");
   expect(name.contains(mark)).toBe(true);
   // The page's content after it.
   expect(name.compareDocumentPosition(screen.getByRole("heading", { level: 1 }))).toBe(

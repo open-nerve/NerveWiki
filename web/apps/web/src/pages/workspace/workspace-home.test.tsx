@@ -95,6 +95,15 @@ test("with notebooks, the home offers New notebook after the groups, in no list:
       .map((button) => button.textContent)
   ).toEqual(["New notebook"]);
   expect(create.closest("ul")).toBeNull();
+  // A control's focus, the ring, as a Button's: transparent outline in forced colours (v0.1 design 13.2, item 31).
+  expect(create.className.split(" ")).toEqual(
+    expect.arrayContaining([
+      "border-dashed",
+      "focus-visible:ring-2",
+      "focus-visible:ring-ring",
+      "focus-visible:outline-hidden",
+    ])
+  );
   const team = within(home).getByRole("list", { name: "Team notebooks" });
   expect(team.compareDocumentPosition(create)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   await user.click(create);

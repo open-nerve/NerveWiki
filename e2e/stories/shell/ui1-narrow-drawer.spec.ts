@@ -226,6 +226,9 @@ test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to
   const rowName = row.getByText(longName, { exact: true });
   expect(await lines(rowName)).toBeLessThan(1.5);
   expect(await cut(rowName)).toBe(true);
+  // Cut short before the number of its subpages, which has its room at the row's end (decision 919).
+  const [nameBox, countBox] = [await rowName.boundingBox(), await row.getByText("1", { exact: true }).boundingBox()];
+  expect((nameBox?.x ?? 0) + (nameBox?.width ?? 0)).toBeLessThanOrEqual(countBox?.x ?? 0);
   // The number of its subpages outside the link, read by no one: the link's description says it.
   await expect(row.getByRole("link")).toHaveAccessibleDescription("1 subpage");
   // A short title keeps New page beside it: under sm the title is as wide as its words (review B's P5B-R1-M1).
