@@ -86,7 +86,7 @@ export const PageLayout = observer(function PageLayout() {
   // same column as the page's content, so that it moves not as the page comes.
   if (pages.tree === undefined || !pages.confirmed) {
     return (
-      <PageColumn>
+      <PageColumn panel>
         <NotLoaded error={error === stale ? undefined : error} retry={() => void mutate()} />
       </PageColumn>
     );
@@ -95,7 +95,7 @@ export const PageLayout = observer(function PageLayout() {
   if (page === undefined) {
     // In place of the page shown, deleted under its edit: "Page not found" takes the focus it took with it.
     return (
-      <PageColumn>
+      <PageColumn panel>
         <PageGone notebook={notebook} page={pageId} replacing={last?.id === pageId} />
       </PageColumn>
     );
@@ -108,11 +108,19 @@ const docColumnClass = "mx-auto w-full max-w-180";
 
 /**
  * PageColumn is a page's column alone, the shell's banner at its top: what shows before its head can. It is placed as
- * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's,
- * and at xl, the right column open, beside the right column's room; so that the banner moves not as the page comes.
+ * the page read places its column (decision 946): in the shell's outer box, below an empty row as high as the head's;
+ * so that the banner moves not as the page comes. panel, the page's own branches (decision 951): at xl, the right
+ * column open, beside the right column's room, as the page has it. Without it none, for a page with no right column.
  */
-const PageColumn = observer(function PageColumn({ children }: { children: ReactNode }) {
-  const open = useStore().preferences.panelOpen;
+export const PageColumn = observer(function PageColumn({
+  panel = false,
+  children,
+}: {
+  panel?: boolean;
+  children: ReactNode;
+}) {
+  const { panelOpen } = useStore().preferences;
+  const open = panel && panelOpen;
   return (
     <div className="md:-mt-3 md:pb-4 xl:flex xl:items-start">
       <div className={cn("min-w-0 xl:flex-1", open && "xl:pe-10")}>
