@@ -466,6 +466,11 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   await user.upload(within(shown).getByLabelText("Zip archive"), vault());
   await user.click(within(shown).getByRole("button", { name: "Import" }));
   await waitFor(() => expect(transfers(server.app).length).toBe(1));
+  // While it uploads, Stop the upload and Uploading… a line each, to the right, where one line holds not both: at 320,
+  // English (decision 958, extended).
+  expect(within(shown).getByRole("button", { name: "Stop the upload" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
 
   await user.click(within(shown).getByRole("button", { name: "Stop the upload" }));
   await waitFor(() => expect(transfers(server.app)[0]?.aborted).toBe(true));

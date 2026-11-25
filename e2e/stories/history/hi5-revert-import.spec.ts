@@ -6,6 +6,7 @@ import { displayNameOf } from "../../fixtures/auth";
 import { answerTo, failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { revertChangeset } from "../../fixtures/history";
+import { expectButtonsInside } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -176,6 +177,12 @@ test("HI5 (page): an import of more notes than an undo takes, its changeset reac
     "This change is too large to undo here: its nodes, pages, content, links or those pages' history are more than one undo does. Nodes it touched: 1,000+."
   );
   await expect(tooLarge).toBeFocused();
+  // 320 wide, Cancel and Undo in the background inside the dialog, a line each, as one line holds not both (decision
+  // 958, extended to the undo's dialog).
+  const wide = page.viewportSize() ?? { width: 1280, height: 720 };
+  await page.setViewportSize({ width: 320, height: 800 });
+  await expectButtonsInside(dialog);
+  await page.setViewportSize(wide);
   const answer = answerTo(page, "POST", `/api/v0/notebooks/${notebook.id}/reverts`);
   await dialog.getByRole("button", { name: "Undo in the background", exact: true }).click();
   const started = await answer;

@@ -392,7 +392,9 @@ const ImportForm = observer(function ImportForm({
           }}
         />
       )}
-      <div className="flex justify-end gap-2">
+      {/* A line each, to the right, where one line holds not both: Stop the upload and Uploading… at 320 (decision
+          958, extended). */}
+      <div className="flex flex-wrap justify-end gap-2">
         {sending ? (
           <Button key="stop" ref={stopButton} type="button" variant="outline" onClick={() => upload.current?.abort()}>
             {t("transfer.importStop")}

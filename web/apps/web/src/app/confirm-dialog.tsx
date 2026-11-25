@@ -188,7 +188,9 @@ export function ConfirmDialog({
           />
         )}
         {failed !== undefined && <Alert>{failed}</Alert>}
-        <div className="flex justify-end gap-2">
+        {/* A line each, to the right, where one line holds not both: Cancel and Abandon the upgrade at 320 (decision
+            958, extended). */}
+        <div className="flex flex-wrap justify-end gap-2">
           {/* Not disabled while confirm is out: a disabled button drops the focus. Without the typed word there is
               no focus to keep. */}
           <AlertDialogCancel asChild>

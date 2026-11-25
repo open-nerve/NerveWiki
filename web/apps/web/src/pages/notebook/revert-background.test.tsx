@@ -99,6 +99,10 @@ test("an undo too large here asks whether to undo it in the background: that it 
       .getAllByRole("button")
       .map((button) => button.textContent)
   ).toEqual(["Cancel", "Undo in the background"]);
+  // Its buttons a line each, to the right, where one line holds not both: at 320, English (decision 958, extended).
+  expect(within(dialog).getByRole("button", { name: "Undo in the background" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
   expect(within(dialog).queryByRole("alert")).toBeNull();
   expect(server.sent.filter((each) => each.startsWith("REVERT"))).toEqual(['REVERT rework "Back"']);
   expect(starts(server.asked)).toEqual([]);

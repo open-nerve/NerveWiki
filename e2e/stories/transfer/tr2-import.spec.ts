@@ -253,11 +253,13 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await dialog.getByRole("button", { name: "Import", exact: true }).click();
     await expect(dialog.getByRole("button", { name: "Stop the upload" })).toBeVisible();
     await expect.poll(() => routed.length).toBe(1);
-    await page.goBack();
-    // 320 wide, the two buttons of what the dialog asks inside its box, a line each, as one line holds not both
+    // 320 wide, while it uploads, Stop the upload and Uploading… inside the dialog, a line each, as one line holds not
+    // both (decision 958, extended to the dialog's own buttons); then the two buttons of what it asks inside its box
     // (decision 958; review B's P5S3B-I1).
     const wide = page.viewportSize() ?? { width: 1280, height: 720 };
     await page.setViewportSize({ width: 320, height: 800 });
+    await expectButtonsInside(dialog);
+    await page.goBack();
     const asking = dialog.getByRole("alert");
     await expect(asking.getByRole("button", { name: "Keep uploading" })).toBeVisible();
     await expectFits(page, dialog, asking);
