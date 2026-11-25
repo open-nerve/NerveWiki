@@ -273,16 +273,17 @@ export function namesOf(item: TrashItem, twin: Twin, t: Translate, locale: Local
 
 /**
  * ItemIcon is the icon of item's kind, for the eye: a page's, or its attachment's type's, the grey of the search's
- * (M13/P5/S2); className, the preview's size and place, which its attachment's takes too (review B's P5B-R1-N2).
+ * (M13/P5/S2), by the first line of a name that wraps (review B's P5S2B-M1: 2px down the 20px line); className, the
+ * preview's size and place, which its attachment's takes too (review B's P5B-R1-N2).
  */
 export function ItemIcon({ item, className }: { item: TrashItem; className?: string }) {
   if (item.kind === "page") {
-    return <ScrollText aria-hidden className={cn("size-4 shrink-0 text-faint", className)} />;
+    return <ScrollText aria-hidden className={cn("mt-0.5 size-4 shrink-0 self-start text-faint", className)} />;
   }
   return item.asset === null ? (
-    <File aria-hidden className={cn("size-4 shrink-0 text-faint", className)} />
+    <File aria-hidden className={cn("mt-0.5 size-4 shrink-0 self-start text-faint", className)} />
   ) : (
-    <AssetIcon mime={item.asset.mime} className={className} />
+    <AssetIcon mime={item.asset.mime} className={cn("mt-0.5 self-start", className)} />
   );
 }
 

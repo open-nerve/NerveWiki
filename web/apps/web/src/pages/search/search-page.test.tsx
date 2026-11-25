@@ -924,11 +924,20 @@ test("the results are a list's page: its title the settings' kind, Where to look
   const where = screen.getByRole("combobox", { name: "Where to look" });
   expect(where.parentElement?.className).toBe(filterFieldClass);
   expect(where.parentElement?.parentElement?.className).toBe(filterBarClass);
+  // At most 16rem, as Who is (review B's P5S2B-N2).
+  expect(where.classList.contains("max-w-64")).toBe(true);
+  expect(where.classList.contains("max-w-full")).toBe(false);
   expect(list.className).toBe(cardClass);
   const [first] = hits() as HTMLElement[];
   expect(first?.className).toBe(stackedLinesClass);
   expect(first?.classList.contains("group/row")).toBe(true);
   expect(first?.querySelector("svg")?.classList.contains("text-faint")).toBe(true);
+  // Each hit's icon, a page's and an attachment's, by its name's first line as the name wraps (P5S2B-M1).
+  for (const hit of hits()) {
+    expect([...(hit.querySelector("p svg")?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["self-start", "mt-0.5"])
+    );
+  }
   expect(statusLine().classList.contains("text-compact")).toBe(true);
 });
 

@@ -608,6 +608,9 @@ test("the directory is a list's page: its title, its filters a bar, its notes, i
   const type = screen.getByRole("combobox", { name: "Type" });
   expect(type.parentElement?.className).toBe(filterFieldClass);
   expect(type.parentElement?.parentElement?.className).toBe(filterBarClass);
+  // At most 16rem, as the history's Who is (review B's P5S2B-N2).
+  expect(type.classList.contains("max-w-64")).toBe(true);
+  expect(type.classList.contains("max-w-full")).toBe(false);
   expect(screen.getByRole("textbox", { name: "Tag" }).parentElement?.className).toBe(filterFieldClass);
   expect(screen.getByText("Only some filterable types are shown.").className).toBe(noteClass);
   const group = within(region).getAllByRole("heading", { level: 2 })[0] as HTMLElement;

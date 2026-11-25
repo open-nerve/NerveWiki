@@ -42,7 +42,7 @@ test("a preview is headed as a page is, its title a long name broken in a span o
   const name = title.querySelector("span.wrap-anywhere") as HTMLElement;
   expect(name.textContent).toBe(longName);
   expect(name.classList.contains("min-w-0")).toBe(true);
-  expect(title.querySelector("svg")?.classList.contains("size-6")).toBe(true);
+  expect([...(title.querySelector("svg")?.classList ?? [])]).toEqual(expect.arrayContaining(["size-6", "mt-1.5"]));
   const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
   expect(trail.parentElement?.className).toBe(headCrumbsClass);
   expect(trail.parentElement?.parentElement?.className).toBe(headRowClass);
@@ -50,7 +50,8 @@ test("a preview is headed as a page is, its title a long name broken in a span o
   const restore = screen.getByRole("button", { name: /^Restore “/ });
   expect(restore.parentElement?.classList.contains("ms-auto")).toBe(true);
   expect([...restore.classList]).toEqual(expect.arrayContaining(["h-7.5", "rounded-full"]));
-  expect(title.parentElement?.nextElementSibling?.className).toBe(cn(docFactsClass, "mt-2.5 space-y-0.5"));
+  // Spaced below the title and between their lines as a changeset's are (review B's P5S2B-N3).
+  expect(title.parentElement?.nextElementSibling?.className).toBe(cn(docFactsClass, "mt-3.5 space-y-1"));
 
   // Refused as too large: Restore in the background, named for the item, breaks its name as its title does (review
   // B's P5B-M12), shrinking in its row as it wraps.

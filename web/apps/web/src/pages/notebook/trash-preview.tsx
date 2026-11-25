@@ -489,7 +489,8 @@ const Preview = observer(function Preview({
             </div>
           )}
         </div>
-        <TrashFacts item={item} now={Date.now()} className={cn(docFactsClass, "mt-2.5 space-y-0.5")} />
+        {/* Spaced below the title and between their lines as a changeset's are (review B's P5S2B-N3). */}
+        <TrashFacts item={item} now={Date.now()} className={cn(docFactsClass, "mt-3.5 space-y-1")} />
       </div>
       {merged && <Alert id={note}>{t("trash.mergedHere")}</Alert>}
       {item.kind === "page" ? <PagePreview notebook={notebook} item={item} /> : <AttachmentPreview item={item} />}

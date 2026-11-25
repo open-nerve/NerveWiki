@@ -48,7 +48,8 @@ export function IndexFilters({
     >
       <div className={filterFieldClass}>
         <Label htmlFor={typeId}>{t("index.type")}</Label>
-        <NativeSelect id={typeId} {...type} className="max-w-full">
+        {/* At most 16rem, as the history's Who: a long type widens it, and the bar, no more (P5S2B-N2). */}
+        <NativeSelect id={typeId} {...type} className="max-w-64">
           <option value="">{t("index.allTypes")}</option>
           {outside && <option value={filter.type}>{label(filter.type)}</option>}
           {catalogue.map((option) => (

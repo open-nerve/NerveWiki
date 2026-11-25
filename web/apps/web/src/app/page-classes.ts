@@ -56,10 +56,10 @@ export const filterFieldClass = "flex min-w-0 max-w-full flex-col gap-1.5";
 
 /**
  * A filter shown as a chip: the history's page, with its Remove; its corners half its least height, so that it is no
- * pill when it wraps.
+ * pill when it wraps, its lines then off its edges (review B's P5S2B-M2; one line is min-h-9's 36px still).
  */
 export const filterChipClass =
-  "flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-[18px] border border-border bg-surface-2 ps-3 pe-1 text-compact";
+  "flex min-h-9 max-w-full min-w-0 items-center gap-1 rounded-[18px] border border-border bg-surface-2 py-1.5 ps-3 pe-1 text-compact";
 
 /**
  * What a row offers besides its own link, seen as the row is hovered or holds the keyboard's focus, or as its menu is

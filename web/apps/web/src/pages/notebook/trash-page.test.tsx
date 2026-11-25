@@ -1116,9 +1116,12 @@ test("the trash is a list's page: its title, its notes, its items a card's rows 
   const link = within(row as HTMLElement).getByRole("link");
   expect(link.className).toBe(lineLinkClass);
   expect(link.parentElement?.className).toBe(lineTitleClass);
-  // Each row's icon the faint grey, a page's and an attachment's alike (decision 925; 4.2.4).
+  // Each row's icon the faint grey, a page's and an attachment's alike (decision 925; 4.2.4), by its name's first line
+  // as the name wraps (review B's P5S2B-M1).
   for (const each of rows()) {
-    expect(each.querySelector("p svg")?.getAttribute("class")).toContain("text-faint");
+    expect([...(each.querySelector("p svg")?.classList ?? [])]).toEqual(
+      expect.arrayContaining(["text-faint", "self-start", "mt-0.5"])
+    );
   }
   // Its facts in a block of their own, the row's size and grey; restores-to the last line still.
   const facts = link.parentElement?.nextElementSibling as HTMLElement;

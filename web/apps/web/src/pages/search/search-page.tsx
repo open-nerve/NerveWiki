@@ -225,7 +225,8 @@ export const SearchPage = observer(function SearchPage() {
         <div className={filterBarClass}>
           <div className={filterFieldClass}>
             <Label htmlFor={ids.scope}>{t("search.scope")}</Label>
-            <NativeSelect id={ids.scope} {...scope} className="block max-w-full">
+            {/* At most 16rem, as the history's Who: a long name widens it, and the bar, no more (P5S2B-N2). */}
+            <NativeSelect id={ids.scope} {...scope} className="block max-w-64">
               <option value="">{t("search.everyNotebook")}</option>
               {listed?.map((each) => (
                 <option key={each.id} value={each.id}>

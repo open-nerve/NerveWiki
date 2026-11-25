@@ -176,11 +176,13 @@ function PageFilter({ label, remove, left }: { label: string; remove: () => void
   return (
     <p className={filterChipClass}>
       <span className="min-w-0 break-words">{label}</span>
+      {/* -my-1.5: the 30px pill and the chip's py-1.5 make a line of it no higher than 36px (P5S2B-M2). */}
       <Button
         ref={button}
         variant="ghost"
         size="sm"
         shape="pill"
+        className="-my-1.5"
         aria-label={t("history.removeFilterLabel", { filter: label })}
         onClick={remove}
       >

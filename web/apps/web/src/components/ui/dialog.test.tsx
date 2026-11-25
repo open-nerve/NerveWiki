@@ -72,7 +72,7 @@ test.each([
       </AlertDialog>
     ),
   ],
-] as const)("an %s's one column is no wider than it", (role, dialog) => {
+] as const)("the %s's one column is no wider than it", (role, dialog) => {
   render(dialog());
   expect(screen.getByRole(role).classList.contains("grid-cols-[minmax(0,1fr)]")).toBe(true);
 });

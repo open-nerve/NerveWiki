@@ -1156,8 +1156,10 @@ test("the filters are a bar of labelled selects, Who at most 16rem wide; a page'
   expect(who.classList.contains("max-w-full")).toBe(false);
   const chip = (await screen.findByText("Page: Guide")).closest("p") as HTMLElement;
   expect(chip.className).toBe(filterChipClass);
+  // Its lines off its edges as it wraps, its Remove making one line no higher (review B's P5S2B-M2).
+  expect(chip.classList.contains("py-1.5")).toBe(true);
   expect([...within(chip).getByRole("button", { name: "Remove the filter “Page: Guide”" }).classList]).toEqual(
-    expect.arrayContaining(["h-7.5", "rounded-full"])
+    expect.arrayContaining(["h-7.5", "rounded-full", "-my-1.5"])
   );
 });
 
