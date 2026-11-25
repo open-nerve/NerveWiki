@@ -169,7 +169,7 @@ test("UP1 (MCP): while an admin's upgrade is under way, the initiator's agent wr
   ]);
 });
 
-test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; nothing is refused", async ({
+test("UP1 (page): an admin starts the upgrade in the notebook's settings and lands on its page, its title focused, the banner above it; their other tab, its stream connected, gets the banner by the mode event and loses Edit, its focus going to the title without a scroll, without a reload, its reading view not written again, the paragraph it reads not moved; the page opened again, its tree on its way, the banner where the page read has it at 1440, 1280, 1024, 768 and 375; nothing is refused", async ({
   api,
   db,
   signedInPage,

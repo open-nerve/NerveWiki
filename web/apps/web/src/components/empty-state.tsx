@@ -18,8 +18,9 @@ export const iconTileClass: Record<Size, string> = {
 /**
  * EmptyState says a list has nothing in it (00-M13 4.3; M13/P5/S1, decision 913): an icon in its tile, read by no one,
  * the line that says it, a paragraph (the line the list said before, its key unchanged), then what to do (action, a
- * button its caller gives, a small pill as a status page's actions: decision 949), if anything. No title, and no role: it is no status, what a page says as it changes its
- * own output. Two sizes: a page's list (page) and a settings card's (card).
+ * button its caller gives, a small pill as a status page's actions: decision 949), if anything. No title, and no role:
+ * it is no status, what a page says as it changes its own output. Two sizes: a page's list (page) and a settings
+ * card's (card).
  */
 export function EmptyState({
   icon: Icon,

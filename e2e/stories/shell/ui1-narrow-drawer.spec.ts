@@ -177,7 +177,7 @@ function cut(box: Locator): Promise<boolean> {
 // M13/P5/S1 (decisions 916, 917, 919, 931): the cards one abreast at a phone's width, their grid's track written (no
 // auto track widened by a name cut short), the name on one line, cut; the notebook's title broken, New page below it on
 // the right; the list of pages a row a name, cut, its subpages said by the link's description.
-test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to the screen, a long name cut on its card and in the list of pages, broken in the title", async ({
+test("UI1 (page): at 375 wide the workspace's home and a notebook's home keep to the screen, the home's card at 320 too, a long name cut on its card and in the list of pages, broken in the title", async ({
   api,
   signedInPage,
 }, testInfo) => {
@@ -304,7 +304,7 @@ async function expectInvitationsFit({ page, other, toWorkspace, toLongMail, long
 // M13/P5/S1 (decisions 920, 921, 924): the entry pages a card under the product's name, 327px wide at a phone's width;
 // a page not found centred, its way home arrived at. A workspace's name or an address with no break breaks in the card
 // (P5S1B-I1).
-test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the screen, the product's name above the form", async ({
+test("UI1 (page): at 375 wide the sign-in card and a page not found keep to the screen, the product's name above the form; the invitations to a workspace whose name has no break and to an address that has none break in their cards, at 375 and at 320", async ({
   api,
   page,
   signedInPage,

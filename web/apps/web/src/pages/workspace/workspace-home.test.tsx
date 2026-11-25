@@ -134,13 +134,13 @@ test("once the notebooks cannot be read, the home offers Try again alone", async
   renderApp("/lab", labApp([], "admin", { "GET /api/v0/workspaces/lab/notebooks": () => problem(500, "internal") }));
   const home = await main();
 
-  await within(home).findByRole("button", { name: "Try again" }, { timeout: 8000 });
+  await within(home).findByRole("button", { name: "Try again" });
   expect(
     within(home)
       .queryAllByRole("button")
       .map((button) => button.textContent)
   ).toEqual(["Try again"]);
-}, 15_000);
+});
 
 test("a guest's home with notebooks offers no New notebook", async () => {
   renderApp("/lab", labApp([atlas, notebookJSON], "guest"));
