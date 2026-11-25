@@ -481,6 +481,10 @@ test("Stop the upload stops it, the dialog kept; leaving the page asks first, an
   // (M13/P5/S3, decision 934; review B's P5B-N4).
   const asking = await within(shown).findByRole("alert");
   expect(asking.className).toBe("space-y-3 rounded-lg border border-border px-4 py-3 text-sm");
+  // Its buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+  expect(within(asking).getByRole("button", { name: "Keep uploading" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
+  );
   await user.click(within(asking).getByRole("button", { name: "Keep uploading" }));
   expect([router.state.location.pathname === general, transfers(server.app)[1]?.aborted]).toEqual([false, false]);
   expect(within(shown).queryByRole("alert")).toBeNull();

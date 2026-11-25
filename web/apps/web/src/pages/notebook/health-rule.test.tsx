@@ -6,6 +6,7 @@ import type { RouteObject } from "react-router";
 import { afterEach, expect, test, vi } from "vitest";
 
 import { routes } from "../../app/routes";
+import { buttonClass } from "../../components/ui/button";
 import { ApiError } from "../../services/api";
 import type { LintPage, LintRule, LintRuleSummary } from "../../services/wiki.service";
 import { usePageTree } from "../../stores/context";
@@ -288,6 +289,35 @@ test("a successful refresh removes old expanded items and retained card errors t
   const renewed = within(screen.getByRole("heading", { name: "Missing summary" }).closest("section")!);
   expect(renewed.getAllByRole("listitem")).toHaveLength(5);
   expect(renewed.getByRole("button", { name: "More" })).toBeTruthy();
+});
+
+/** endsOf is the rule's card's first and last children: the first's tag and classes, the last's tag. */
+function endsOf(rule: string) {
+  const card = document.getElementById(rule);
+  return [rule, card?.firstElementChild?.tagName, card?.firstElementChild?.className, card?.lastElementChild?.tagName];
+}
+
+// M13/P5/S3 (review B's P5S3B-M1, N1): what a card tells a screen reader its first child, so that the margin space-y-2
+// puts under all but the last child falls under no block one sees: 17px above and below, More there or not (B's f1).
+// Its More a card's small pill, as the versions' More (00-M13 4.3).
+test("a rule's card tells a screen reader first and ends with what one sees; its More a small pill", async () => {
+  await opened();
+  const rules = [
+    "wanted",
+    "orphans",
+    "ambiguous",
+    "invalid_frontmatter",
+    "missing_type",
+    "missing_summary",
+    "undigested_sources",
+    "invalid_sources",
+  ];
+  expect(rules.map(endsOf)).toEqual(
+    rules.map((rule) => [rule, "OUTPUT", "sr-only", ["wanted", "missing_summary"].includes(rule) ? "FIELDSET" : "P"])
+  );
+  expect(wanted().getByRole("button", { name: "More" }).className).toBe(
+    buttonClass({ variant: "outline", size: "sm", shape: "pill" })
+  );
 });
 
 test("a page mode mismatch locks every More until a fresh matching summary", async () => {

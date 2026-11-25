@@ -741,7 +741,10 @@ test("a version's page has its trail and Restore this version in its head's row,
   expect(row.className).toBe(headRowClass);
   expect(row.parentElement?.className).toBe(docShellClass);
   const cell = row.children[1] as HTMLElement;
-  expect(cell.className).toBe(cn(headActionsClass, "min-h-7.5 flex-[0_1_10rem]"));
+  expect(cell.className).toBe(cn(headActionsClass, "min-h-7.5 min-w-fit flex-[0_1_10rem]"));
+  // Never narrower than Restore, which would leave it on the left over the trail (a wider font's): min-w-fit in
+  // headActionsClass's min-w-0's place (review A's suspicion, the host's).
+  expect([cell.classList.contains("min-w-fit"), cell.classList.contains("min-w-0")]).toEqual([true, false]);
   expect(cell.contains(restore)).toBe(true);
   expect(restore.className).toBe(buttonClass({ variant: "outline", size: "sm", shape: "pill" }));
   expect(screen.getByRole("navigation", { name: "Breadcrumb" }).compareDocumentPosition(restore)).toBe(
@@ -835,7 +838,7 @@ test.each([
     return found;
   });
   const empty = (inside.closest(".max-w-180")?.previousElementSibling ?? null) as HTMLElement | null;
-  const group = cn(headActionsClass, "min-h-7.5 flex-[0_1_10rem]");
+  const group = cn(headActionsClass, "min-h-7.5 min-w-fit flex-[0_1_10rem]");
 
   expect({
     hidden: empty?.getAttribute("aria-hidden"),

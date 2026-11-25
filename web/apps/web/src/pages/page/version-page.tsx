@@ -112,9 +112,11 @@ export const VersionPage = observer(function VersionPage() {
 /**
  * The cell of the head's row Restore this version is in: a writer's always, of a width of its own and as high as the
  * button, Restore shown in it or not (decision 929; review A's P5A-M4): the versions read later than the version, or
- * this version restored as the newest elsewhere, the row keeps its lines, the title its place.
+ * this version restored as the newest elsewhere, the row keeps its lines, the title its place. Never narrower than
+ * Restore (min-w-fit in headActionsClass's min-w-0's place): a font wider than 10rem's room would leave the button out
+ * of the cell's left, over the trail (the host's, of review A's).
  */
-const restoreCellClass = cn(headActionsClass, "min-h-7.5 flex-[0_1_10rem]");
+const restoreCellClass = cn(headActionsClass, "min-h-7.5 min-w-fit flex-[0_1_10rem]");
 
 /**
  * VersionShell is the version found: where its page is, the version's

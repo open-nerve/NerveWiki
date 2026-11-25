@@ -446,7 +446,10 @@ test("the paste's field looks as the title's does, its label spaced as a form's,
   expect(document.getElementById(`${markdown.id}-note`)?.className).toBe("text-compact text-muted-foreground");
   draft(dialog);
   await user.keyboard("{Escape}");
-  expect(within(dialog).getByRole("alert").className).toBe(
-    "space-y-3 rounded-lg border border-border px-4 py-3 text-sm"
+  const ask = within(dialog).getByRole("alert");
+  expect(ask.className).toBe("space-y-3 rounded-lg border border-border px-4 py-3 text-sm");
+  // Its buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
+  expect(within(ask).getByRole("button", { name: "Keep editing" }).parentElement?.className).toBe(
+    "flex flex-wrap justify-end gap-2"
   );
 });

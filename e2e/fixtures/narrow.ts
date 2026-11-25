@@ -31,3 +31,29 @@ export async function expectFits(page: Page, ...boxes: Locator[]): Promise<void>
     expect(placed.overflow, `what overflows ${String(box)}`).toBeLessThanOrEqual(0);
   }
 }
+
+/**
+ * expectButtonsInside checks, by their boxes and not by a font (05-lessons 6), that each button of box keeps inside
+ * its border and padding: a row of them to the right that cannot wrap sticks out of its left at a narrow width
+ * (M13/P5/S3, decision 958; review B's P5S3B-I1). Within half a pixel: a centred dialog lies on fractions of one, and
+ * Chromium and WebKit put a button 0.07 px past the padding they lay it against.
+ */
+export async function expectButtonsInside(box: Locator): Promise<void> {
+  const placed = await box.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+      right: rect.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+      buttons: [...element.querySelectorAll("button")].map((button) => {
+        const { left, right } = button.getBoundingClientRect();
+        return { name: button.textContent, left, right };
+      }),
+    };
+  });
+  expect(placed.buttons.length, `the buttons of ${String(box)}`).toBeGreaterThan(0);
+  for (const button of placed.buttons) {
+    expect(button.left, `${button.name}'s left, inside ${String(box)}`).toBeGreaterThanOrEqual(placed.left - 0.5);
+    expect(button.right, `${button.name}'s right, inside ${String(box)}`).toBeLessThanOrEqual(placed.right + 0.5);
+  }
+}

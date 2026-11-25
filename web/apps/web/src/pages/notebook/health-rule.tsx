@@ -240,6 +240,9 @@ export const HealthRule = observer(function HealthRule({
       aria-labelledby={`${summary.rule}-heading`}
       className="min-w-0 space-y-2 rounded-card border border-border bg-surface px-4.5 py-4"
     >
+      {/* What it tells a screen reader first: the margin space-y-2 gives all but the last child falls under no block
+          one sees, the card 17px above and below, More there or not (review B's P5S3B-M1). */}
+      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
       <Heading
         ref={heading}
         id={`${summary.rule}-heading`}
@@ -269,11 +272,10 @@ export const HealthRule = observer(function HealthRule({
           ))}
         </ul>
       )}
-      <output className="sr-only">{card.told + (card.again ? String.fromCharCode(0xa0) : "")}</output>
       {card.error !== undefined && <Alert>{errorText(card.error, t)}</Alert>}
       {card.cursor !== null && (
         <fieldset disabled={disabled}>
-          <LoadMoreButton more={more} label={t(card.error === undefined ? "health.more" : "status.retry")} />
+          <LoadMoreButton more={more} label={t(card.error === undefined ? "health.more" : "status.retry")} small />
         </fieldset>
       )}
     </section>

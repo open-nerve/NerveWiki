@@ -7,6 +7,7 @@ import { failedToLoad } from "../../fixtures/browser";
 import type { Database } from "../../fixtures/db";
 import { expectImported, idsOf, sha256Of, storedImports, treeOf } from "../../fixtures/assert/transfer";
 import { pngBytes, utf8 } from "../../fixtures/assets";
+import { expectButtonsInside, expectFits } from "../../fixtures/narrow";
 import { goto } from "../../fixtures/navigation";
 import { notebookPath } from "../../fixtures/notebook-pages";
 import { createNotebook } from "../../fixtures/notebooks";
@@ -253,7 +254,16 @@ test("TR2 (page): a vault imports from the notebook's settings, at its root and 
     await expect(dialog.getByRole("button", { name: "Stop the upload" })).toBeVisible();
     await expect.poll(() => routed.length).toBe(1);
     await page.goBack();
-    await dialog.getByRole("alert").getByRole("button", { name: "Stop and leave" }).click();
+    // 320 wide, the two buttons of what the dialog asks inside its box, a line each, as one line holds not both
+    // (decision 958; review B's P5S3B-I1).
+    const wide = page.viewportSize() ?? { width: 1280, height: 720 };
+    await page.setViewportSize({ width: 320, height: 800 });
+    const asking = dialog.getByRole("alert");
+    await expect(asking.getByRole("button", { name: "Keep uploading" })).toBeVisible();
+    await expectFits(page, dialog, asking);
+    await expectButtonsInside(asking);
+    await page.setViewportSize(wide);
+    await asking.getByRole("button", { name: "Stop and leave" }).click();
     await expect(page).toHaveURL(notebookPath(workspace.slug, notebook.id, "general"));
     await expect(page.getByRole("dialog")).toHaveCount(0);
   } finally {

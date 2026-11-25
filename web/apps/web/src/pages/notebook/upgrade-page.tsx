@@ -605,7 +605,8 @@ const UpgradeRead = observer(function UpgradeRead({
 /**
  * UpgradeState is who started the upgrade and when, the source root it
  * proposes and the pages its start wrote, each leading to its page while
- * the tree has it.
+ * the tree has it. Its text a row's size, the body's colour, as a row of
+ * settings.html (decision 956), as AgentSection's.
  */
 const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { notebook: Notebook; upgrade: Upgrade }) {
   const t = useT();
@@ -630,7 +631,7 @@ const UpgradeState = observer(function UpgradeState({ notebook, upgrade }: { not
   const root = pageLink(upgrade.source_root_id);
   const seeded = upgrade.seeded_page_ids.flatMap((id) => pageLink(id) ?? []);
   return (
-    <section className="space-y-2">
+    <section className="space-y-2 text-sm">
       <h2 className={sectionTitleClass}>{t("upgrade.state")}</h2>
       <p>
         {t("upgrade.startedBy", {
@@ -669,7 +670,7 @@ function AgentSection({ upgrade }: { upgrade: Upgrade }) {
   const { me } = useAccount();
   const t = useT();
   return (
-    <section className="space-y-2">
+    <section className="space-y-2 text-sm">
       <h2 className={sectionTitleClass}>{t("upgrade.agent")}</h2>
       {upgrade.started_by.user_id === me.id ? (
         <>

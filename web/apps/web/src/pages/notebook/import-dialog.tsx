@@ -136,10 +136,11 @@ export const ImportDialog = observer(function ImportDialog({
           <DialogTitle>{t("transfer.importTitleOf", { name: notebook.name })}</DialogTitle>
           <DialogDescription>{t("transfer.importExplain")}</DialogDescription>
           {asking && (
-            // Its edge alone, no ground: the outlined buttons in it show in the dark (M13/P5/S3, decision 934).
+            // Its edge alone, no ground: the outlined buttons in it show in the dark (M13/P5/S3, decision 934). Its
+            // buttons a line each, to the right, where one line holds not both (decision 958; review B's P5S3B-I1).
             <div role="alert" className="space-y-3 rounded-lg border border-border px-4 py-3 text-sm">
               <p>{t("transfer.importStopAsk")}</p>
-              <div className="flex justify-end gap-2">
+              <div className="flex flex-wrap justify-end gap-2">
                 <Button type="button" variant="outline" ref={keepButton} onClick={keep}>
                   {t("transfer.importKeepGoing")}
                 </Button>

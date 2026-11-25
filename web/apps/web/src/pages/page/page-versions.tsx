@@ -110,14 +110,15 @@ export const PageVersions = observer(function PageVersions({
               <li key={version.id} className="flex items-baseline gap-2">
                 {/* The time and who wrote it one run of text, wrapping as one; the marks after it, in the same run,
                     each after a space: the text has the row's whole width, no lone "-" on a line of its own
-                    (M13/P5/S3, decision 943; review B's P5B-M5). */}
+                    (M13/P5/S3, decision 943; review B's P5B-M5). The time and the kind each on one line, the name
+                    alone broken: no character of either alone on a line in zh-CN (decision 959; B's P5S3B-N2). */}
                 <div className="min-w-0 flex-1 break-words">
                   <Link
                     ref={version.id === more.focusing ? focused : undefined}
                     to={href(version.revision)}
                     state={arrived}
                     aria-label={t("version.linkName", { when, revision: version.revision, time })}
-                    className="text-muted-foreground hover:text-foreground"
+                    className="whitespace-nowrap text-muted-foreground hover:text-foreground"
                   >
                     <time dateTime={version.updated_at} title={time}>
                       {when}
@@ -187,14 +188,16 @@ export function versionBy(version: PageVersion, t: Translate): string {
   return `${version.changeset.created_by.display_name} · ${kindText(version.changeset.kind, t)}`;
 }
 
-/** VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. */
+/**
+ * VersionBy is versionBy written with the name in a bdi (M13/P4/S1, decision 868): the right column's. The kind kept
+ * on one line, after the name (decision 959).
+ */
 function VersionBy({ version, t }: { version: PageVersion; t: Translate }) {
   return (
-    <Isolated
-      {...isolate(
-        (name) => `${name(version.changeset.created_by.display_name)} · ${kindText(version.changeset.kind, t)}`
-      )}
-    />
+    <>
+      <Isolated {...isolate((name) => `${name(version.changeset.created_by.display_name)} · `)} />
+      <span className="whitespace-nowrap">{kindText(version.changeset.kind, t)}</span>
+    </>
   );
 }
 

@@ -2150,6 +2150,11 @@ test("the upgrade's page is a list's page: its column, its title, its sections' 
     ["Connect an agent", "text-base font-semibold"],
     ["Check", "text-base font-semibold"],
   ]);
+  // Where it is and the agent's section in a row's size, the body's colour, as settings.html has a row (decision 956).
+  expect([(await section("Where it is")).className, (await section("Connect an agent")).className]).toEqual([
+    "space-y-2 text-sm",
+    "space-y-2 text-sm",
+  ]);
   expect(screen.getByText(/^Checks whether this notebook keeps/).className).toBe(noteClass);
 });
 
